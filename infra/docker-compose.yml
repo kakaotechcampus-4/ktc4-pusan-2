@@ -1,5 +1,6 @@
 services:
   be:
+    restart: unless-stopped
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -9,6 +10,7 @@ services:
       - "127.0.0.1:8000:8000"
 
   fe:
+    restart: unless-stopped
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -16,6 +18,7 @@ services:
       - ../frontend/.env
 
   ai:
+    restart: unless-stopped
     build:
       context: ../aiagent
       dockerfile: Dockerfile
