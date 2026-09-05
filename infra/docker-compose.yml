@@ -1,0 +1,42 @@
+services:
+  be:
+    build:
+      context: ../BE
+      dockerfile: Dockerfile
+    env_file:
+      - ../BE/.env
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  fe:
+    build:
+      context: ../FE
+      dockerfile: Dockerfile
+    env_file:
+      - ../FE/.env
+
+  ai:
+    build:
+      context: ../AI
+      dockerfile: Dockerfile
+    env_file:
+      - ../AI/.env
+
+  caddy:
+    image: caddy:2.6.4-alpine
+    container_name: caddy
+    restart: unless-stopped
+    depends_on:
+      - be
+      - fe
+      - ai
+    ports:
+      - "8080:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
