@@ -1,26 +1,26 @@
 services:
   be:
     build:
-      context: ../BE
+      context: ../backend
       dockerfile: Dockerfile
     env_file:
-      - ../BE/.env
+      - ../backend/.env
     ports:
       - "127.0.0.1:8000:8000"
 
   fe:
     build:
-      context: ../FE
+      context: ../frontend
       dockerfile: Dockerfile
     env_file:
-      - ../FE/.env
+      - ../frontend/.env
 
   ai:
     build:
-      context: ../AI
+      context: ../aiagent
       dockerfile: Dockerfile
     env_file:
-      - ../AI/.env
+      - ../aiagent/.env
 
   caddy:
     image: caddy:2.6.4-alpine
@@ -30,8 +30,6 @@ services:
       - be
       - fe
       - ai
-    ports:
-      - "8080:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
