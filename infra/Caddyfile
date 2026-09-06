@@ -3,10 +3,6 @@
 		reverse_proxy be:8000
 	}
 
-	handle /ai/* {
-		reverse_proxy ai:8001
-	}
-
 	handle {
 		reverse_proxy fe:3000
 	}
