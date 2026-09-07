@@ -25,7 +25,7 @@ class Base(DeclarativeBase):
 
 
 class UUIDPrimaryKeyMixin:
-    """UUIDv7 PK. 시간순 정렬되어 인덱스 단편화가 적고, 외부에 노출해도 추측이 어렵다."""
+    """UUIDv7 PK. 시간순 정렬되어 인덱스 단편화가 적고 외부 노출에도 안전하다."""
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid7, sort_order=-10
