@@ -1,7 +1,8 @@
+import uuid
 from collections.abc import Generator
 from datetime import datetime
 
-from sqlalchemy import DateTime, create_engine, func
+from sqlalchemy import DateTime, Uuid, create_engine, func
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -23,17 +24,29 @@ class Base(DeclarativeBase):
     pass
 
 
+class UUIDPrimaryKeyMixin:
+    """UUIDv7 PK. 시간순 정렬되어 인덱스 단편화가 적고, 외부에 노출해도 추측이 어렵다."""
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid7, sort_order=-10
+    )
+
+
 class TimestampMixin:
-    """created_at / updated_at 공통 컬럼. entity 에 Base 와 함께 상속한다."""
+    """created_at / updated_at 공통 컬럼. sort_order 로 테이블 맨 뒤에 놓인다."""
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        sort_order=10,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+        sort_order=10,
     )
 
 

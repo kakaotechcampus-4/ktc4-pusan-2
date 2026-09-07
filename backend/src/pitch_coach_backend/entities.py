@@ -6,3 +6,5 @@ Alembic(env.py)과 main.py 가 이 모듈을 import 하면 Base.metadata 에 모
 예)
     import pitch_coach_backend.module.user.entity  # noqa: F401
 """
+
+import pitch_coach_backend.module.user.entity  # noqa: F401
