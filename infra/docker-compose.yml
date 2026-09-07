@@ -1,6 +1,7 @@
 services:
   be:
     restart: unless-stopped
+    image: ${IMAGE_REPO:-pitch-coach}:be-${IMAGE_TAG:-latest}
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -11,6 +12,7 @@ services:
 
   fe:
     restart: unless-stopped
+    image: ${IMAGE_REPO:-pitch-coach}:fe-${IMAGE_TAG:-latest}
     build:
       context: ../frontend
       dockerfile: Dockerfile
