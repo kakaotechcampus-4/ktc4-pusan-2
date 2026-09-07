@@ -1,0 +1,71 @@
+name: Deploy dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/pitch-coach
+      IMAGE_TAG: ${{ github.sha }}
+      # caddy : develop의 경우 8080
+      FILES: -f docker-compose.yml -f docker-compose.prod.yml
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Stub env files
+        run: touch backend/.env frontend/.env
+
+      - name: Build & push
+        working-directory: infra
+        run: |
+          docker compose $FILES build be fe
+          docker compose $FILES push be fe
+
+      - name: Copy compose files to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: infra/
+          target: ~/pitch-coach
+
+      - name: Pull & up on EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: IMAGE_REPO,IMAGE_TAG
+          script: |
+            set -euo pipefail
+            cd ~/pitch-coach
+
+            # docker-compose.yml 의 env_file 경로(../backend/.env) 복원
+            mkdir -p backend frontend
+            printf '%s' '${{ secrets.BACKEND_ENV }}' > backend/.env
+            printf '%s' '${{ secrets.FRONTEND_ENV }}' > frontend/.env
+
+            cd infra
+            printf 'IMAGE_REPO=%s\nIMAGE_TAG=%s\n' "$IMAGE_REPO" "$IMAGE_TAG" > .env
+
+            echo '${{ secrets.DOCKERHUB_TOKEN }}' \
+              | docker login -u '${{ secrets.DOCKERHUB_USERNAME }}' --password-stdin
+
+            FILES="-f docker-compose.yml -f docker-compose.dev.yml"
+            docker compose $FILES pull
+            docker compose $FILES up -d --no-build --remove-orphans
+            docker image prune -f
