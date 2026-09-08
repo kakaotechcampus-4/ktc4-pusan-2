@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 WORKDIR /app
 
 # 로그 버퍼링 비활성화, 실시간으로 로그 확인 가능
