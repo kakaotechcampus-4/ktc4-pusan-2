@@ -155,12 +155,15 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 | 400 | `BAD_REQUEST` | `AppException` |
 | 401 | `UNAUTHORIZED` | `UnauthorizedException` (+ `WWW-Authenticate: Bearer`) |
 | 403 | `FORBIDDEN` | `ForbiddenException` |
-| 404 | `NOT_FOUND` | `NotFoundException` |
+| 404 | `NOT_FOUND` | `NotFoundException`, 없는 경로 (라우터가 자동 생성) |
+| 405 | `METHOD_NOT_ALLOWED` | 허용되지 않는 메서드 (자동, `Allow` 헤더 유지) |
 | 409 | `CONFLICT` | `ConflictException` |
 | 422 | `VALIDATION_ERROR` | FastAPI 검증 실패 (자동, `detail` 에 필드별 오류) |
+| 500 | `INTERNAL_SERVER_ERROR` | 처리되지 않은 예외 (자동, 원인은 서버 로그에만 남는다) |
 
 도메인 예외는 `module/<name>/exception.py` 에서 위 클래스를 상속하고 `message` 만 바꾼다.
-`HTTPException` 을 직접 던지지 않는다.
+`HTTPException` 을 직접 던지지 않는다. 라우터가 만드는 404·405 와 처리되지 않은 예외도
+핸들러가 같은 형태로 바꾸므로, 프론트엔드는 모든 에러에서 `code` 만 보면 된다.
 
 ## 새 도메인 추가 절차
 
