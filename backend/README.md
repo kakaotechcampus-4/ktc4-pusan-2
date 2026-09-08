@@ -64,7 +64,7 @@ backend/
 │   └── test_<domain>.py          # 도메인이 늘면 같은 이름 규칙으로
 │
 └── src/pitch_coach_backend/
-    ├── main.py                   # FastAPI 앱 생성, 컨트롤러 등록, /health
+    ├── main.py                   # FastAPI 앱 생성, /api 라우터에 컨트롤러 등록, /api/health
     ├── entities.py               # 모든 도메인 entity 를 한 곳에서 import (Alembic·main 이 사용)
     │
     ├── core/                     # 설정·인프라 연결. 도메인 로직을 두지 않는다
@@ -142,6 +142,20 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 - **core**: 모두가 import 한다. core 는 module·realtime·agent·task 를 import 하지 않는다 (core 안에서는 서로 import 가능).
 - **entity ↔ dto 변환**: service 가 entity 를 반환하고 controller 의 `response_model` 이 변환한다 (`model_config = ConfigDict(from_attributes=True)`). 도메인마다 다르게 하지 않는다.
 
+## URL 규칙
+
+**모든 경로는 `/api` 아래에 둔다.** `infra/Caddyfile` 이 `/api/*` 만 백엔드로 넘기고 나머지는
+프론트로 보내기 때문이다. 접두어를 빠뜨린 경로는 404 가 아니라 프론트 화면을 받게 되어
+원인을 찾기 어렵다.
+
+- `/api` 는 `main.py` 의 `API_PREFIX` 한 곳에만 적는다. controller 는 `prefix="/users"` 처럼
+  설계 문서에 적힌 경로만 선언하고 `main.py` 의 `api` 라우터에 붙는다.
+- **버전 접두어(`/v1`)는 쓰지 않는다.** 설계 문서 경로에 `/api` 만 앞에 붙는 형태다.
+  `/auth/google/start` -> `/api/auth/google/start`
+- Swagger·OpenAPI 도 같은 이유로 `/api/docs`, `/api/redoc`, `/api/openapi.json` 이다.
+
+`tests/test_health.py` 가 OpenAPI 경로와 문서 URL 전부를 검사해 접두어 누락을 막는다.
+
 ## 에러 응답 형식
 
 모든 에러는 `core/exceptions.py` 의 핸들러를 거쳐 같은 형태로 나간다. 프론트엔드는 `code` 로 분기한다.
@@ -169,7 +183,8 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 
 1. `module/<name>/` 에 6 파일을 만든다 (`controller`, `service`, `repository`, `entity`, `dto`, `exception`).
 2. `entities.py` 에 `import pitch_coach_backend.module.<name>.entity  # noqa: F401` 를 추가한다. 빠뜨리면 Alembic 이 테이블을 인식하지 못한다.
-3. `main.py` 에 controller 를 `prefix="/api/v1/<names>"` 로 등록한다.
+3. controller 에 `router = APIRouter(prefix="/<names>", tags=["<name>"])` 를 두고,
+   `main.py` 의 `api.include_router(...)` 에 추가한다. `/api` 는 다시 적지 않는다.
 4. `uv run alembic revision --autogenerate -m "..."` 로 마이그레이션을 만들고, 생성된 파일을 읽어 의도와 같은지 확인한 뒤 `uv run alembic upgrade head` 로 적용한다. 마이그레이션 파일은 커밋한다.
 5. `tests/test_<name>.py` 를 만든다.
 
@@ -191,7 +206,7 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 |---|---|
 | 앱 실행 | `uvicorn pitch_coach_backend.main:app --host 0.0.0.0 --port 8000` |
 | 배포 전 마이그레이션 | `alembic upgrade head` |
-| 헬스체크 | `GET /health` |
+| 헬스체크 | `GET /api/health` |
 | CI 테스트 / 린트 | `uv run pytest` / `uv run ruff check` / `uv run ruff format --check` (테스트는 PostgreSQL 서비스 + `DATABASE_URL` 필요) |
 | 환경변수 목록 | `.env.example` |
-| Google OAuth 리다이렉트 | `/api/v1/auth/google/callback` (운영 도메인 확정 시 Google Console 에 추가 등록 필요) |
+| Google OAuth 리다이렉트 | `/api/auth/google/callback` (운영 도메인 확정 시 Google Console 에 추가 등록 필요) |
