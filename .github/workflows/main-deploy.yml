@@ -12,7 +12,6 @@ jobs:
     env:
       IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/pitch-coach
       IMAGE_TAG: ${{ github.sha }}
-      # caddy : develop의 경우 8080
       FILES: -f docker-compose.yml -f docker-compose.prod.yml
 
     steps:
@@ -45,25 +44,30 @@ jobs:
 
       - name: Pull & up on EC2
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+          FRONTEND_ENV: ${{ secrets.FRONTEND_ENV }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: IMAGE_REPO,IMAGE_TAG
+          envs: IMAGE_REPO,IMAGE_TAG,BACKEND_ENV,FRONTEND_ENV,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
           script: |
             set -euo pipefail
             cd ~/pitch-coach
 
             # docker-compose.yml 의 env_file 경로(../backend/.env) 복원
             mkdir -p backend frontend
-            printf '%s' '${{ secrets.BACKEND_ENV }}' > backend/.env
-            printf '%s' '${{ secrets.FRONTEND_ENV }}' > frontend/.env
+            printf '%s' "$BACKEND_ENV" > backend/.env
+            printf '%s' "$FRONTEND_ENV" > frontend/.env
 
             cd infra
             printf 'IMAGE_REPO=%s\nIMAGE_TAG=%s\n' "$IMAGE_REPO" "$IMAGE_TAG" > .env
 
-            echo '${{ secrets.DOCKERHUB_TOKEN }}' \
-              | docker login -u '${{ secrets.DOCKERHUB_USERNAME }}' --password-stdin
+            echo "$DOCKERHUB_TOKEN" \
+              | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 
             FILES="-f docker-compose.yml -f docker-compose.dev.yml"
             docker compose $FILES pull
