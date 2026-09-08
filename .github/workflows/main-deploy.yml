@@ -12,7 +12,6 @@ jobs:
     env:
       IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/pitch-coach
       IMAGE_TAG: ${{ github.sha }}
-      # caddy : develop의 경우 8080
       FILES: -f docker-compose.yml -f docker-compose.prod.yml
 
     steps:
