@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════
+   피치코치 디자인 토큰
+
+   색을 새로 만들지 않습니다. 여기 있는 것만 씁니다.
+   임의값(`bg-[#EDE6DD]`)이 보이면 리뷰에서 잡습니다.
+   ═══════════════════════════════════════════════════════════════ */
+@theme {
+  /* ── 지면 · 밝은 화면 (홈 · 폼 · 리포트) ───────────────────── */
+  --color-greige: #EDE6DD;          /* 앱 배경 */
+  --color-cream: #E6DFD5;           /* 한 단 낮은 면 */
+  --color-panel: #F5F0E9;           /* 카드 · 패널 */
+  --color-line: #DDD4C7;            /* 기본 경계 */
+  --color-line-strong: #C6BCAC;     /* 강조 경계 */
+
+  /* ── 지면 · 어두운 화면 (리허설 전용) ──────────────────────── */
+  --color-stage: #332E28;           /* 무대 배경 */
+  --color-stage-panel: #443D35;     /* 무대 위 패널 */
+  --color-stage-deep: #2A2622;      /* 슬라이드 레터박스 */
+
+  /* ── 글자 ──────────────────────────────────────────────────── */
+  --color-ink: #2A2723;             /* 본문 */
+  --color-stone: #8C8375;           /* 보조 · 캡션 */
+  --color-ink-stage: #F5F0E9;       /* 무대 위 본문 */
+
+  /* ── 강조 ──────────────────────────────────────────────────── */
+  --color-coral: #E8532A;
+  --color-coral-deep: #C9421C;      /* hover · 눌림 */
+  --color-coral-wash: #F3DED5;      /* 배경 강조 */
+
+  /* ── 시선 상태 3색 ─────────────────────────────────────────────
+     리허설 화면 테두리에만 씁니다. 다른 곳에서 쓰지 않습니다.
+     여기서 색이 새면 사용자가 "초록 = 좋음"을 다른 화면에서 학습합니다. */
+  --color-gaze-audience: #6B9E78;   /* 청중 · solid 2px */
+  --color-gaze-screen: #D9A441;     /* 대본 · 슬라이드 · solid 5px */
+  --color-gaze-unknown: #C0392B;    /* 판정 불가 · dashed 5px */
+
+  /* ── ★ 계측 조건 ───────────────────────────────────────────────
+     이 네 값은 디자인이 아닙니다.
+
+     대본 영역 높이가 바뀌면 사용자가 대본을 볼 때의 시선 각도가
+     바뀌고, Calibration으로 잡은 기준이 어긋납니다.
+     그러면 지난 Take와 비교가 불가능해집니다.
+
+     ★ 고치려면 팀 합의가 필요합니다. 여백이 답답해 보인다는 이유로
+       고치면 그 시점 이전 기록이 전부 못 쓰게 됩니다.              */
+  --spacing-script-full: 180px;
+  --spacing-script-highlight: 180px;
+  --spacing-script-keyword: 120px;
+  --spacing-script-off: 0px;
+
+  --spacing-sidebar: 236px;         /* 공통 셸 사이드바 */
+
+  /* ── 타이포 ────────────────────────────────────────────────── */
+  --font-sans: "Pretendard", "Noto Sans KR", -apple-system,
+               "Apple SD Gothic Neo", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--color-greige);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 숫자가 세로로 정렬돼야 하는 곳 — 타이머 · 지표 · 비교표 */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* 키보드 전용 조작이 요구사항이라 포커스 링을 지우지 않습니다 */
+:focus-visible {
+  outline: 2px solid var(--color-coral);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
