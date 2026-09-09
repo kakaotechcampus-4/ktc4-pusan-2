@@ -61,6 +61,9 @@ backend/
 │   ├── script.py.mako            # 새 마이그레이션 파일 템플릿
 │   └── versions/                 # 자동 생성. 날짜 접두어로 정렬. ruff 검사 제외
 │
+├── dev/
+│   └── oauth-test.html           # 로그인 흐름 수동 확인용. 앱이 서빙하지 않는다
+│
 ├── tests/
 │   ├── conftest.py               # 테스트 DB 자동 생성, 트랜잭션 격리 세션, TestClient fixture
 │   ├── test_health.py
