@@ -1,0 +1,9 @@
+:80 {
+	handle /api/* {
+		reverse_proxy be:8000
+	}
+
+	handle {
+		reverse_proxy fe:3000
+	}
+}
