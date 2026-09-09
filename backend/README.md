@@ -10,8 +10,8 @@ FastAPI 기반 백엔드. 발표(pitch) 연습을 녹음·실시간 세션으로
 | 웹 프레임워크 | FastAPI |
 | ORM / 마이그레이션 | SQLAlchemy 2.x, Alembic |
 | DB | PostgreSQL 17 (드라이버 psycopg 3) |
-| 인증 | JWT (PyJWT). Google OAuth 2.0 은 별도 브랜치에서 진행 |
-| 비동기 작업 / 캐시 | Celery + Redis (예정) |
+| 인증 | Google OAuth 2.0 (Authorization Code + PKCE) + JWT (PyJWT) |
+| 비동기 작업 / 캐시 | Redis (OAuth state 저장에 사용 중). Celery 는 예정 |
 | 테스트 / 린트 | pytest, ruff |
 
 ## 시작하기
@@ -38,7 +38,13 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 - 테스트는 `DATABASE_URL` 의 DB 이름에 `_test` 를 붙인 DB 를 쓴다 (예: `pitch_coach_test`). 없으면 `conftest.py` 가 만든다. 개발 DB 는 건드리지 않는다.
 - 각 테스트는 트랜잭션 안에서 실행되고 끝나면 롤백된다. service 가 `commit()` 을 호출해도 savepoint 로 처리되므로 테스트 사이에 데이터가 남지 않는다.
 - `client` fixture 는 `get_db` 를 테스트 세션으로 바꿔 끼운 `TestClient` 다. HTTP 테스트는 이걸 쓴다.
-- CI 는 PostgreSQL 서비스와 `DATABASE_URL` 만 제공하면 된다. `JWT_SECRET_KEY` 는 conftest 가 테스트용 값을 넣는다.
+- 인증 테스트는 **Redis 15번 DB** 를 쓰고 매번 비운다. 개발용 0번은 건드리지 않는다.
+- `client` fixture 의 base_url 이 `https://testserver` 인 이유: 쿠키를 `Secure` 로 심으므로
+  http 로는 httpx 가 쿠키를 되돌려 보내지 않는다. 설정을 낮추는 대신 https 를 쓴다.
+- 구글 연동 테스트는 **외부 HTTP 통신만 모킹하고 검증 로직은 실제로 실행**한다.
+  테스트용 RSA 키로 진짜 RS256 토큰을 서명해 위조·만료·`aud` 불일치를 실제로 거부시킨다.
+- CI 는 PostgreSQL·Redis 서비스와 `DATABASE_URL` 만 제공하면 된다.
+  `JWT_SECRET_KEY` 와 구글 값은 conftest 가 테스트용 값을 넣는다.
 
 ## 폴더 구조
 
@@ -61,6 +67,11 @@ backend/
 │   ├── test_security.py          # JWT 발급/검증
 │   ├── test_exceptions.py        # 에러 응답 형식 계약
 │   ├── test_user_entity.py
+│   ├── test_auth_entity.py       # oauth_accounts·refresh_tokens 제약
+│   ├── test_google_oauth.py      # ID Token 검증 (실제 RSA 서명으로)
+│   ├── test_state_store.py       # Redis state 1회 소비
+│   ├── test_auth_service.py      # 가입·재로그인·회전·재사용 탐지
+│   ├── test_auth_endpoints.py    # 쿠키·CSRF·리다이렉트
 │   └── test_<domain>.py          # 도메인이 늘면 같은 이름 규칙으로
 │
 └── src/pitch_coach_backend/
@@ -72,17 +83,19 @@ backend/
     │   ├── database.py           # 엔진, 세션, Base, get_db, UUIDPrimaryKeyMixin, TimestampMixin
     │   ├── security.py           # JWT 발급/검증
     │   ├── exceptions.py         # 공통 예외 베이스 + 에러 응답 핸들러
-    │   └── redis.py              # Redis 클라이언트 (realtime 시작 시 생성)
+    │   └── redis.py              # Redis 클라이언트 + get_redis 의존성
     │
     ├── module/                   # 도메인. 폴더마다 아래 6 파일을 같은 이름으로 둔다
-    │   ├── auth/                 # Google OAuth, JWT 발급, get_current_user
-    │   │   ├── controller.py
-    │   │   ├── service.py
+    │   ├── auth/                 # Google OAuth, 토큰 발급·회전, get_current_user
+    │   │   ├── controller.py     # google/start·callback, refresh, logout. 쿠키 설정
+    │   │   ├── service.py        # 로그인·회전·로그아웃. 트랜잭션 경계
     │   │   ├── repository.py
-    │   │   ├── entity.py         # OAuthAccount
+    │   │   ├── entity.py         # OAuthAccount, RefreshToken
     │   │   ├── dto.py
-    │   │   ├── dependencies.py   # get_current_user (auth 에만 있음)
-    │   │   └── exception.py
+    │   │   ├── dependencies.py   # get_current_user, verify_csrf (auth 에만 있음)
+    │   │   ├── exception.py
+    │   │   ├── google.py         # 구글 어댑터. DB·Redis 를 모른다 (6파일 규칙 밖)
+    │   │   └── state_store.py    # state·nonce·PKCE 의 Redis 1회 소비 (6파일 규칙 밖)
     │   ├── user/                 # User
     │   ├── pitch/                # 발표 원고/자료
     │   ├── take/                 # 발표 1회 수행 기록
@@ -156,6 +169,35 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 
 `tests/test_health.py` 가 OpenAPI 경로와 문서 URL 전부를 검사해 접두어 누락을 막는다.
 
+## 인증
+
+Google OAuth 2.0 (Authorization Code + PKCE). **백엔드가 시작·콜백·code 교환을 전부 담당한다.**
+프론트는 구글과 직접 통신하지 않고 `client_secret` 도 보지 않는다.
+
+```
+GET  /api/auth/google/start     구글로 302. state·nonce·PKCE 를 Redis 에 저장
+GET  /api/auth/google/callback  ID Token 검증 -> 쿠키 심고 프론트로 302
+POST /api/auth/refresh          Access 발급 + Refresh 회전. Access 를 얻는 유일한 경로
+POST /api/auth/logout           현재 세션 폐기
+```
+
+| 토큰 | 형식 | 수명 | 어디에 |
+|---|---|---|---|
+| Access | JWT | 15분 | 응답 바디 -> 프론트 **메모리만** -> `Authorization: Bearer` |
+| Refresh | 난수 (JWT 아님) | 14일 | HttpOnly 쿠키. DB 에는 **해시만** |
+
+- 사용자 식별 키는 이메일이 아니라 검증된 ID Token 의 `sub` 다.
+- 이메일이 같아도 기존 계정에 **자동으로 연결하지 않는다** (`409 CONFLICT`).
+- `refresh` 는 호출할 때마다 Refresh 를 회전시킨다. 폐기된 토큰이 다시 오면
+  유출로 보고 그 세션(`device_id`)의 토큰을 전부 끊는다. 다른 기기는 살아남는다.
+- 쿠키로 인증하는 `refresh`·`logout` 은 **Origin 대조 + CSRF 토큰**(double-submit)으로 막는다.
+  프론트는 `csrf_token` 쿠키를 읽어 `X-CSRF-Token` 헤더에 실어야 한다.
+- 구글이 준 토큰은 신원 확인에만 쓰고 **저장하지 않는다.** Google refresh token 은 요청하지 않는다.
+
+로컬은 프론트(3000)와 백엔드(8000)가 cross-origin 이라 CORS 와 `credentials: 'include'` 가
+필요하다. 배포에서는 Caddy 가 같은 origin 으로 묶어 그 문제가 사라진다.
+자세한 흐름과 프론트 연동 코드는 `docs/oauth-architecture.md` 에 있다 (로컬 문서).
+
 ## 에러 응답 형식
 
 모든 에러는 `core/exceptions.py` 의 핸들러를 거쳐 같은 형태로 나간다. 프론트엔드는 `code` 로 분기한다.
@@ -210,3 +252,4 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 | CI 테스트 / 린트 | `uv run pytest` / `uv run ruff check` / `uv run ruff format --check` (테스트는 PostgreSQL 서비스 + `DATABASE_URL` 필요) |
 | 환경변수 목록 | `.env.example` |
 | Google OAuth 리다이렉트 | `/api/auth/google/callback` (운영 도메인 확정 시 Google Console 에 추가 등록 필요) |
+| 추가로 필요한 것 | Redis (`REDIS_URL`). OAuth state 저장에 쓴다 |
