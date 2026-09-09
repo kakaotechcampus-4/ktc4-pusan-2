@@ -1,0 +1,15 @@
+# doc 5 per-user 2-point calibration
+camera_seconds: 2.0
+bottom_seconds: 2.0
+min_samples_per_class: 10
+min_loo_accuracy: 0.85
+min_centroid_distance: 0.60
+min_separability: 1.00
+feature_set: C
+C: 1.0
+max_iter: 1000
+class_weight: balanced
+random_seed: 42
+p_max_threshold: 0.70
+margin_threshold: 0.20
+check_pitch_ordering: true

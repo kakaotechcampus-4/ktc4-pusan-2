@@ -1,0 +1,19 @@
+# Normalise line endings. The repo is developed on Windows but several writers
+# force LF on purpose -- vision/data/manifest.py and ai/evaluation/experiment_log.py
+# open their JSONL with newline="\n" so a record stays one line per row -- and a
+# checkout that rewrote those to CRLF would make the two disagree with the files
+# they append to. Keeping the whole tree LF in the index avoids the mismatch.
+* text=auto eol=lf
+
+# Binary fixtures: never touch these, and do not try to diff them.
+*.jpg   binary
+*.png   binary
+*.mp4   binary
+*.task  binary
+*.pkl   binary
+*.pt    binary
+*.parquet binary
+*.gz    binary
+
+# Windows launcher: cmd.exe needs CRLF for reliable multi-line parsing.
+*.bat   text eol=crlf

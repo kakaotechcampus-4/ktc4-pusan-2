@@ -1,0 +1,8 @@
+# doc 3-2 backbone selection. name must be registered in vision.backbones.registry
+# candidates: mediapipe_geom | l2cs | gazetr
+name: mediapipe_geom
+checkpoint: null
+device: cpu
+num_threads: 0
+batch_size: 1
+params: {}

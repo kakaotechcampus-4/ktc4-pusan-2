@@ -1,0 +1,20 @@
+# Camera placement check (runs once, before the doc-5 2-point calibration).
+# Turns doc 19's "webcam이 화면 아래/옆에 위치" failure bucket into an up-front
+# check, because that geometry inverts CAMERA/BOTTOM rather than degrading it.
+camera_seconds: 2.0
+screen_seconds: 2.0
+min_samples_per_target: 8
+min_sample_confidence: 0.30
+
+# learned: fit the same LogisticRegression family as doc 5-3 and read the
+#          placement off the decision boundary (default).
+# geometric: fixed angular thresholds.
+mode: learned
+min_loo_accuracy: 0.85
+C: 1.0
+max_iter: 1000
+random_seed: 42
+min_axis_dominance: 1.30
+
+min_delta_deg: 4.0
+min_separation: 1.00
