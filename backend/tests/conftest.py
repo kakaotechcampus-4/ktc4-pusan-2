@@ -19,6 +19,11 @@ from sqlalchemy.orm import Session
 # 테스트 토큰은 항상 같은 키로 서명된다 (.env 값보다 우선)
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-do-not-use-in-production")
 
+# 필수 설정이 늘면 .env 가 없는 CI 에서 settings import 자체가 실패한다.
+# 구글 값은 테스트에서 실제로 쓰이지 않고(외부 HTTP 는 모킹), 존재하기만 하면 된다.
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent.com")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
+
 
 def _test_database_url() -> str:
     from pitch_coach_backend.core.config import settings
