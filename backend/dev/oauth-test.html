@@ -194,7 +194,11 @@ async function logout() {
              'POST /api/auth/logout')
   accessToken = null; expiresAt = null
   paint()
-  say('   이제 2번(갱신)을 누르면 401 이어야 한다', 'dim')
+  // 쿠키가 지워져서 2번을 눌러도 요청이 나가지 않는다. 서버가 실제로 폐기했는지는
+  // 훔친 쿠키를 되돌려 보내야 확인되는데, HttpOnly 라 브라우저에서는 못 한다.
+  // tests/test_auth_endpoints.py 의 test_refresh_after_logout_is_rejected 가 그걸 검증한다.
+  say('   쿠키 두 개가 지워졌다. 다시 쓰려면 1번으로 로그인한다.', 'dim')
+  say('   이 세션의 Refresh 는 서버에서도 폐기됐다 (다른 기기 세션은 그대로다).', 'dim')
 }
 
 // 콜백에서 막 돌아온 상황이면 바로 갱신한다 — 실제 프론트가 할 동작이다.
