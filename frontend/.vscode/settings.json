@@ -1,0 +1,58 @@
+{
+  // ★ defaultFormatter 를 반드시 못 박습니다.
+  //    formatOnSave 만 켜 두고 포맷터를 지정하지 않으면 사람마다 다른 포맷터가
+  //    붙어서, 저장할 때마다 따옴표와 줄바꿈이 오갑니다. 리뷰가 불가능해집니다.
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[typescriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[javascript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[jsonc]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[css]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[html]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[markdown]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "prettier.requireConfig": true,
+
+  "editor.codeActionsOnSave": { "source.fixAll.oxc": "explicit" },
+
+  // 이 프로젝트는 oxlint를 씁니다. ESLint 확장이 깔려 있으면 설정 파일이 없어서
+  // "unable to resolve configuration" 잡음만 냅니다. 워크스페이스에서 끕니다.
+  "eslint.enable": false,
+
+  // 워크스페이스 TypeScript 를 쓰게 합니다. 보안상 최초 1회는 사람이 허용해야 합니다
+  // (SETUP S5). 이걸 빠뜨리면 한 사람 화면에만 빨간 줄이 뜨고 build 는 통과합니다.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "search.exclude": { "**/node_modules": true, "**/dist": true },
+
+  // ── 탐색기를 간략하게 ─────────────────────────────────────────────────
+  //
+  // 루트의 설정 파일을 옮기지 않습니다. .npmrc·.nvmrc·.gitattributes·
+  // tsconfig·.env 는 도구가 루트에서 찾기 때문에 옮기면 조용히 동작을 멈춥니다.
+  // 대신 관련 파일을 부모 아래로 **접어서 보이게만** 줄입니다.
+  // 파일은 원래 자리에 그대로 있고, 화살표를 펴면 다 나옵니다.
+  //
+  // 이 설정이 .vscode/ 에 커밋되므로 두 사람의 탐색기가 같은 모양이 됩니다.
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.expand": false,
+  "explorer.fileNesting.patterns": {
+    "package.json": ".gitattributes, .gitignore, .npmrc, .nvmrc, .oxlintrc.json, .prettierignore, .prettierrc, package-lock.json",
+    "tsconfig.json": "tsconfig.*.json",
+    ".env.example": ".env, .env.*",
+    "README.md": "CLAUDE.md"
+  },
+
+  // dist 는 빌드 산출물입니다. 열어 볼 일이 없어 탐색기에서 감춥니다.
+  // node_modules 는 남겨 둡니다 — 설치가 깨졌을 때 직접 들여다보는 게
+  // 원인 찾기의 첫 단계입니다(이 프로젝트에서 실제로 그랬습니다).
+  "files.exclude": { "dist": true },
+
+  // Tailwind v4 는 설정이 CSS 안(@theme)에 있습니다. 이걸 지정하지 않으면
+  // bg-greige 같은 토큰 유틸에 자동완성과 색 미리보기가 뜨지 않습니다.
+  "tailwindCSS.experimental.configFile": "src/index.css"
+}
