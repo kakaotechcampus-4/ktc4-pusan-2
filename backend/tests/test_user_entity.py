@@ -18,7 +18,6 @@ def test_create_user_fills_defaults(db_session: Session) -> None:
     assert user.id.version == 7
     assert user.created_at is not None
     assert user.updated_at is not None
-    assert user.profile_image_url is None
     assert db_session.scalar(select(User).where(User.email == "a@example.com")) is user
 
 

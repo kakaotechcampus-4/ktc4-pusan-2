@@ -19,6 +19,11 @@ from sqlalchemy.orm import Session
 # 테스트 토큰은 항상 같은 키로 서명된다 (.env 값보다 우선)
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-do-not-use-in-production")
 
+# 필수 설정이 늘면 .env 가 없는 CI 에서 settings import 자체가 실패한다.
+# 구글 값은 테스트에서 실제로 쓰이지 않고(외부 HTTP 는 모킹), 존재하기만 하면 된다.
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent.com")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
+
 
 def _test_database_url() -> str:
     from pitch_coach_backend.core.config import settings
@@ -78,6 +83,9 @@ def client(db_session: Session) -> Generator[TestClient]:
     from pitch_coach_backend.main import app
 
     app.dependency_overrides[get_db] = lambda: db_session
-    with TestClient(app) as c:
+    # base_url 이 https 여야 한다. 쿠키를 Secure 로 심는데(cookie_secure 기본값 True)
+    # http 로는 httpx 가 그 쿠키를 되돌려 보내지 않아 인증 흐름이 통째로 막힌다.
+    # 운영과 같은 설정을 그대로 테스트하려고 설정을 낮추는 대신 https 를 쓴다.
+    with TestClient(app, base_url="https://testserver") as c:
         yield c
     app.dependency_overrides.clear()
