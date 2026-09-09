@@ -8,6 +8,7 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import UnauthorizedException
 from pitch_coach_backend.core.security import (
     ALGORITHM,
+    constant_time_equals,
     create_access_token,
     create_refresh_token,
     decode_access_token,
@@ -112,3 +113,24 @@ def test_refresh_token_expiry_follows_settings() -> None:
     actual = refresh_token_expires_at()
 
     assert abs((actual - expected).total_seconds()) < 5
+
+
+def test_constant_time_equals_matches_identical_strings() -> None:
+    assert constant_time_equals("abc", "abc")
+    assert not constant_time_equals("abc", "abd")
+
+
+def test_constant_time_equals_handles_non_ascii() -> None:
+    """hmac.compare_digest 는 비ASCII str 에 TypeError 를 낸다.
+
+    비교 대상이 공격자가 정하는 헤더·쿠키라 그대로 두면 401 이 500 이 된다.
+    """
+    assert constant_time_equals("한글", "한글")
+    assert not constant_time_equals("한글", "다른값")
+    assert not constant_time_equals("한글", "abc")
+
+
+def test_constant_time_equals_treats_none_as_mismatch() -> None:
+    assert not constant_time_equals(None, "abc")
+    assert not constant_time_equals("abc", None)
+    assert not constant_time_equals(None, None)

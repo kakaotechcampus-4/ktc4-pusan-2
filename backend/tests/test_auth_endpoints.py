@@ -62,9 +62,7 @@ def fake_google(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             subject="sub-e2e", email="e2e@example.com", name="엔드투엔드"
         )
     }
-    monkeypatch.setattr(
-        service.google, "exchange_code_for_tokens", lambda **kw: {"id_token": "tok"}
-    )
+    monkeypatch.setattr(service.google, "exchange_code_for_id_token", lambda **kw: "tok")
     monkeypatch.setattr(
         service.google, "verify_id_token", lambda token, *, expected_nonce: box["identity"]
     )
@@ -101,15 +99,35 @@ def test_start_sets_the_temporary_browser_cookie(client: TestClient) -> None:
     assert "HttpOnly" in cookie
 
 
-def test_start_rejects_an_external_return_to(client: TestClient) -> None:
-    """열린 리다이렉트 방지. 외부 주소는 조용히 '/' 로 바뀐다."""
-    from pitch_coach_backend.module.auth.controller import _safe_return_to
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        "https://evil.com",
+        "//evil.com",
+        "/\\evil.com",
+        # 앞의 '/' 를 떼면 절대 URL 이 된다. 실제로 뚫렸던 형태다.
+        "/https://evil.com",
+        "/http://evil.com",
+        "//evil.com/path",
+        None,
+        "",
+    ],
+)
+def test_return_to_never_leaves_the_frontend(hostile: str | None) -> None:
+    """로그인 직후 사용자를 외부로 보내면 그대로 피싱 통로가 된다."""
+    from pitch_coach_backend.module.auth.controller import _frontend_url
 
-    assert _safe_return_to("https://evil.com") == "/"
-    assert _safe_return_to("//evil.com") == "/"
-    assert _safe_return_to("/\\evil.com") == "/"
-    assert _safe_return_to(None) == "/"
-    assert _safe_return_to("/pitches/1") == "/pitches/1"
+    destination = _frontend_url(hostile)
+
+    assert destination.startswith(settings.frontend_base_url)
+    assert "evil.com" not in destination
+
+
+def test_return_to_keeps_internal_paths() -> None:
+    from pitch_coach_backend.module.auth.controller import _frontend_url
+
+    assert _frontend_url("/pitches/1") == f"{settings.frontend_base_url}/pitches/1"
+    assert _frontend_url("/") == f"{settings.frontend_base_url}/"
 
 
 # --- callback -----------------------------------------------------------
@@ -195,8 +213,47 @@ def test_callback_without_the_browser_cookie_is_rejected(
     assert res.status_code == 400
 
 
-def test_callback_requires_code_and_state(client: TestClient) -> None:
-    assert client.get(CALLBACK, follow_redirects=False).status_code == 422
+def test_cancelled_consent_redirects_to_the_frontend(client: TestClient) -> None:
+    """동의 화면에서 취소하면 구글이 code 없이 error 만 보낸다.
+
+    필수 파라미터로 두면 사용자가 원인 모를 422 JSON 을 보게 된다.
+    """
+    res = client.get(
+        CALLBACK, params={"error": "access_denied", "state": "st"}, follow_redirects=False
+    )
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=access_denied" in res.headers["location"]
+
+
+def test_callback_without_any_parameter_redirects_too(client: TestClient) -> None:
+    res = client.get(CALLBACK, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert "auth_error=invalid_request" in res.headers["location"]
+
+
+def test_cancelled_consent_clears_the_temporary_cookie(client: TestClient) -> None:
+    client.get(START, follow_redirects=False)
+    assert BROWSER_COOKIE_NAME in client.cookies
+
+    client.get(CALLBACK, params={"error": "access_denied"}, follow_redirects=False)
+
+    assert client.cookies.get(BROWSER_COOKIE_NAME) is None
+
+
+def test_google_error_code_is_not_reflected_verbatim(client: TestClient) -> None:
+    """error 값은 구글이 주지만 URL 에 그대로 실으면 주입 통로가 된다."""
+    res = client.get(
+        CALLBACK,
+        params={"error": "<script>alert(1)</script>", "state": "st"},
+        follow_redirects=False,
+    )
+
+    location = res.headers["location"]
+    assert "script" not in location
+    assert "auth_error=login_failed" in location
 
 
 # --- refresh ------------------------------------------------------------
@@ -373,3 +430,37 @@ def test_me_rejects_an_expired_access_token(
     expired = create_access_token(user_id, expires_minutes=-1)
 
     assert client.get(ME, headers={"Authorization": f"Bearer {expired}"}).status_code == 401
+
+
+# Starlette 은 헤더·쿠키를 latin-1 로 디코딩한다. 0xFF 바이트는 'ÿ'(비ASCII str)가 된다.
+NON_ASCII = "ÿ".encode("latin-1")
+
+
+def test_non_ascii_csrf_header_is_rejected_not_crashed(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """헤더 값은 공격자가 정한다. hmac.compare_digest 는 비ASCII str 에 TypeError 를 낸다.
+
+    그대로 넘기면 401 이 아니라 500 이 나가면서 스택트레이스가 로그를 더럽힌다.
+    """
+    do_login(client)
+
+    res = client.post(REFRESH, headers={CSRF_HEADER_NAME: NON_ASCII})
+
+    assert res.status_code == 401
+
+
+def test_non_ascii_browser_cookie_is_rejected_not_crashed(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    started = client.get(START, follow_redirects=False)
+    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+
+    res = client.get(
+        CALLBACK,
+        params={"code": "c", "state": state},
+        headers={"Cookie": b"%s=%s" % (BROWSER_COOKIE_NAME.encode(), NON_ASCII)},
+        follow_redirects=False,
+    )
+
+    assert res.status_code == 400

@@ -245,9 +245,9 @@ def test_exchange_sends_secret_and_verifier(monkeypatch: pytest.MonkeyPatch) -> 
         return _Response()
 
     monkeypatch.setattr(google.httpx, "post", fake_post)
-    result = google.exchange_code_for_tokens(code="the-code", code_verifier="the-verifier")
+    result = google.exchange_code_for_id_token(code="the-code", code_verifier="the-verifier")
 
-    assert result == {"id_token": "tok"}
+    assert result == "tok"
     assert sent["url"] == google.TOKEN_ENDPOINT
     assert sent["data"]["code"] == "the-code"
     assert sent["data"]["code_verifier"] == "the-verifier"
@@ -266,7 +266,7 @@ def test_exchange_failure_does_not_leak_google_response(monkeypatch: pytest.Monk
     monkeypatch.setattr(google.httpx, "post", lambda url, **kw: _Response())
 
     with pytest.raises(GoogleTokenExchangeFailed) as exc:
-        google.exchange_code_for_tokens(code="bad", code_verifier="v")
+        google.exchange_code_for_id_token(code="bad", code_verifier="v")
 
     assert "invalid_grant" not in str(exc.value)
     assert "secret-ish" not in str(exc.value)
@@ -279,4 +279,32 @@ def test_exchange_network_error_becomes_domain_exception(monkeypatch: pytest.Mon
     monkeypatch.setattr(google.httpx, "post", boom)
 
     with pytest.raises(GoogleTokenExchangeFailed, match="연결하지 못했습니다"):
-        google.exchange_code_for_tokens(code="c", code_verifier="v")
+        google.exchange_code_for_id_token(code="c", code_verifier="v")
+
+
+def test_exchange_without_id_token_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """200 이어도 id_token 이 없을 수 있다. 그대로 꺼내면 KeyError -> 500 이 된다."""
+
+    class _Response:
+        status_code = 200
+
+        def json(self) -> dict[str, str]:
+            return {"access_token": "구글이-준-액세스-토큰", "token_type": "Bearer"}
+
+    monkeypatch.setattr(google.httpx, "post", lambda url, **kw: _Response())
+
+    with pytest.raises(GoogleTokenExchangeFailed):
+        google.exchange_code_for_id_token(code="c", code_verifier="v")
+
+
+def test_exchange_with_non_json_body_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Response:
+        status_code = 200
+
+        def json(self) -> dict[str, str]:
+            raise ValueError("JSON 이 아니다")
+
+    monkeypatch.setattr(google.httpx, "post", lambda url, **kw: _Response())
+
+    with pytest.raises(GoogleTokenExchangeFailed):
+        google.exchange_code_for_id_token(code="c", code_verifier="v")

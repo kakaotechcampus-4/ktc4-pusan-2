@@ -4,7 +4,6 @@ get_current_user 는 Access JWT 검증과 사용자 존재 확인만 한다.
 활성 상태 컬럼을 두지 않기로 했으므로 계정 정지 같은 판단은 여기서 하지 않는다.
 """
 
-import hmac
 import uuid
 from typing import Annotated
 
@@ -15,7 +14,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.core.exceptions import UnauthorizedException
-from pitch_coach_backend.core.security import decode_access_token
+from pitch_coach_backend.core.security import constant_time_equals, decode_access_token
 from pitch_coach_backend.module.auth.exception import CsrfValidationFailed
 from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.module.user.entity import User
@@ -77,7 +76,7 @@ def verify_csrf(
     if not cookie_token or not csrf_header:
         raise CsrfValidationFailed()
 
-    if not hmac.compare_digest(cookie_token, csrf_header):
+    if not constant_time_equals(cookie_token, csrf_header):
         raise CsrfValidationFailed()
 
 

@@ -61,6 +61,18 @@ def decode_access_token(token: str) -> dict[str, Any]:
     return payload
 
 
+def constant_time_equals(left: str | None, right: str | None) -> bool:
+    """타이밍 차이 없이 두 문자열을 비교한다.
+
+    hmac.compare_digest 는 비ASCII str 을 받으면 TypeError 를 낸다.
+    비교 대상(CSRF 헤더, 쿠키)은 공격자가 값을 정할 수 있으므로 그대로 넘기면
+    401 이 아니라 500 이 나간다. bytes 로 바꿔서 그 경로를 없앤다.
+    """
+    if left is None or right is None:
+        return False
+    return hmac.compare_digest(left.encode("utf-8"), right.encode("utf-8"))
+
+
 def create_refresh_token() -> str:
     """예측 불가능한 난수 문자열. 이 값은 쿠키로만 나가고 DB 에 남지 않는다."""
     return secrets.token_urlsafe(REFRESH_TOKEN_BYTES)

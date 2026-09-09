@@ -80,11 +80,11 @@ def build_authorization_url(*, state: str, nonce: str, code_challenge: str) -> s
     return f"{AUTHORIZATION_ENDPOINT}?{urlencode(params)}"
 
 
-def exchange_code_for_tokens(*, code: str, code_verifier: str) -> dict[str, Any]:
-    """code 를 토큰으로 교환한다. client_secret 이 나가는 유일한 지점이다.
+def exchange_code_for_id_token(*, code: str, code_verifier: str) -> str:
+    """code 를 ID Token 으로 교환한다. client_secret 이 나가는 유일한 지점이다.
 
-    돌려받은 access_token 은 쓰지 않고 버린다. refresh_token 은 아예 요청하지 않는다.
-    필요한 것은 id_token 하나뿐이다.
+    응답의 access_token 은 쓰지 않고 버리고, refresh_token 은 아예 요청하지 않는다.
+    필요한 것이 id_token 하나뿐이라 그것만 돌려준다 — 남은 값을 실수로 저장할 여지를 없앤다.
     """
     try:
         response = httpx.post(
@@ -105,7 +105,18 @@ def exchange_code_for_tokens(*, code: str, code_verifier: str) -> dict[str, Any]
     if response.status_code != httpx.codes.OK:
         # 구글 응답 본문은 로그에도 남기지 않는다. code 와 client_secret 이 섞여 있다.
         raise GoogleTokenExchangeFailed()
-    return response.json()
+
+    try:
+        payload: dict[str, Any] = response.json()
+    except ValueError as e:
+        raise GoogleTokenExchangeFailed() from e
+
+    # 200 인데 id_token 이 없을 수 있다 (scope 에 openid 가 빠진 경우 등).
+    # 그대로 꺼내면 KeyError -> 500 이 된다. 도메인 예외로 바꾼다.
+    id_token = payload.get("id_token")
+    if not isinstance(id_token, str) or not id_token:
+        raise GoogleTokenExchangeFailed()
+    return id_token
 
 
 def verify_id_token(id_token: str, *, expected_nonce: str) -> GoogleIdentity:

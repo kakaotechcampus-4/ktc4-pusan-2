@@ -51,15 +51,15 @@ def fake_google(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         "exchanged": [],
     }
 
-    def fake_exchange(*, code: str, code_verifier: str) -> dict[str, str]:
+    def fake_exchange(*, code: str, code_verifier: str) -> str:
         box["exchanged"].append({"code": code, "code_verifier": code_verifier})
-        return {"id_token": "signed-by-google"}
+        return "signed-by-google"
 
     def fake_verify(id_token: str, *, expected_nonce: str) -> google.GoogleIdentity:
         box["nonce_seen"] = expected_nonce
         return box["identity"]
 
-    monkeypatch.setattr(service.google, "exchange_code_for_tokens", fake_exchange)
+    monkeypatch.setattr(service.google, "exchange_code_for_id_token", fake_exchange)
     monkeypatch.setattr(service.google, "verify_id_token", fake_verify)
     return box
 

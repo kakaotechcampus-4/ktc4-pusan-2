@@ -8,7 +8,6 @@ DB 를 아는 것은 이 파일과 repository 뿐이다.
 - Refresh(난수): Access 재발급. DB 조회로 즉시 폐기할 수 있어 14일.
 """
 
-import hmac
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -100,11 +99,11 @@ def complete_login(
         raise InvalidAuthorizationRequest()
 
     # 로그인을 시작한 브라우저가 맞는지. compare_digest 로 타이밍 차이를 없앤다.
-    if browser_token is None or not hmac.compare_digest(browser_token, pending.browser_token):
+    if not security.constant_time_equals(browser_token, pending.browser_token):
         raise InvalidAuthorizationRequest()
 
-    tokens = google.exchange_code_for_tokens(code=code, code_verifier=pending.code_verifier)
-    identity = google.verify_id_token(tokens["id_token"], expected_nonce=pending.nonce)
+    id_token = google.exchange_code_for_id_token(code=code, code_verifier=pending.code_verifier)
+    identity = google.verify_id_token(id_token, expected_nonce=pending.nonce)
 
     user = _find_or_create_user(db, identity)
     session = _issue_session(db, user=user, device_id=uuid.uuid7(), return_to=pending.return_to)
