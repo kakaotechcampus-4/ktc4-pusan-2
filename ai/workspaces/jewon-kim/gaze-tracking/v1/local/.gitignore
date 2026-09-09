@@ -1,0 +1,27 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# doc 16: checkpoints live in object storage, never in git
+ai/models/*.task
+ai/models/gaze/backbone/*
+!ai/models/gaze/backbone/.gitkeep
+# ...but the provenance sidecars download_checkpoints.py writes are small text
+# files, and they are the only record of which build of a checkpoint a run used.
+# Without this negation the `backbone/*` rule swallowed them and provenance did
+# not survive a clone.
+!ai/models/gaze/backbone/*.json
+
+# doc 20: raw video never enters the repo.
+# Use the `dir/*` form, not `dir/`: a trailing-slash rule excludes the directory
+# itself, so git never descends into it and a `!dir/.gitkeep` negation cannot
+# match. These trees have to survive a clone -- extract_features and gaze_eval
+# write into them and only PipelineDemo._dump creates its own parent.
+ai/datasets/raw/*
+!ai/datasets/raw/.gitkeep
+ai/datasets/features/*
+!ai/datasets/features/.gitkeep
+ai/reports/*
+!ai/reports/.gitkeep
