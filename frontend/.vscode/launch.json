@@ -1,0 +1,21 @@
+{
+  // F5로 Chrome을 띄워 VS Code에서 중단점을 찍습니다.
+  // ★ 먼저 터미널에서 npm run dev 를 켜두세요. 이 설정은 서버를 띄우지 않습니다.
+  //
+  // 다만 워커·WASM 프로파일링과 카메라 상태 확인(chrome://media-internals)은
+  // Chrome DevTools에서만 제대로 됩니다. 시선 파이프라인은 그쪽에서 보세요.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Chrome · localhost:5173",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/src",
+      "sourceMapPathOverrides": {
+        "/@fs/*": "/*",
+        "webpack:///./src/*": "${webRoot}/*"
+      }
+    }
+  ]
+}
