@@ -1,4 +1,5 @@
 import { http, HttpResponse } from 'msw';
+import { authHandlers } from './auth';
 import type { AnalysisStatus, HomeResponse, TakeReport } from '@/types/api';
 
 /**
@@ -102,6 +103,7 @@ const analyzing: AnalysisStatus = {
 };
 
 export const handlers = [
+  ...authHandlers,
   http.get('/api/home', () => HttpResponse.json(home)),
 
   http.get('/api/takes/:takeId/report', ({ params }) =>

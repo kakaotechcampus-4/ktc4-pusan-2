@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router';
 import { Stub } from '@/shared/ui/Stub';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { RequireSession } from '@/features/auth/session';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -11,7 +12,7 @@ import { LoginPage } from '@/features/auth/LoginPage';
  */
 // P 번호와 경로를 열로 맞춰 둔다 — 화면 목록 문서와 나란히 놓고 대조하는 표다.
 // prettier-ignore
-export const router = createBrowserRouter([
+const routes = [
   { path: '/',            element: <Stub id="P2"   name="홈 대시보드" track="B" /> },
   { path: '/welcome',     element: <Stub id="P1"   name="온보딩" track="B" /> },
   { path: '/login',       element: <LoginPage /> },
@@ -35,4 +36,17 @@ export const router = createBrowserRouter([
   { path: '/terms',       element: <Stub id="F2"   name="이용약관" track="B" /> },
   { path: '/unsupported', element: <Stub id="P18"  name="미지원 브라우저" track="B" /> },
   { path: '*',            element: <Stub id="404"  name="찾을 수 없음" track="B" /> },
-]);
+];
+
+const publicPaths = ['/login', '/about', '/privacy', '/terms', '/unsupported', '/dev/stage', '*'];
+export const router = createBrowserRouter(
+  routes.map((route) =>
+    publicPaths.includes(route.path)
+      ? route
+      : {
+          path: route.path,
+          element: <RequireSession />,
+          children: [{ index: true, element: route.element }],
+        },
+  ),
+);
