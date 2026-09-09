@@ -1,0 +1,49 @@
+[project]
+name = "pitch-coach-backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "myeowon", email = "myw7931@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.19.2",
+    "fastapi[standard]>=0.141.1",
+    "httpx>=0.28.1",
+    "psycopg[binary]>=3.3.5",
+    "pydantic-settings>=2.15.0",
+    "pyjwt>=2.13.0",
+    "sqlalchemy>=2.0.52",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.14,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.12.0",
+    "pytest>=9.1.1",
+    "ruff>=0.16.6",
+]
+
+[tool.ruff]
+line-length = 100
+# 자동 생성되는 마이그레이션 파일은 검사하지 않는다
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+# E/F: pyflakes·pycodestyle, I: import 정렬, UP: 최신 문법, B: 흔한 버그, SIM: 단순화
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+# 프로젝트 루트의 alembic/ 폴더 때문에 alembic 패키지가 1st-party 로 오인되는 것을 막는다
+known-third-party = ["alembic"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    # Starlette 내부의 anyio 별칭 사용. 우리 코드와 무관
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
