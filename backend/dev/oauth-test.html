@@ -39,7 +39,9 @@
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   #log { border: 1px solid #8884; border-radius: 8px; padding: 14px 16px; min-height: 200px;
          white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-         font-size: 12.5px; line-height: 1.7; }
+         font-size: 12.5px; line-height: 1.7;
+         /* JWT 는 공백이 없어 pre-wrap 만으로는 안 끊긴다 */
+         overflow-wrap: anywhere; }
   .ok { color: #1a7f37; } .bad { color: #cf222e; } .dim { opacity: .55; }
   @media (prefers-color-scheme: dark) { .ok { color: #3fb950; } .bad { color: #f85149; } }
 </style>
@@ -115,13 +117,22 @@ async function call(path, opts = {}, label = path) {
     const body = await res.text()
     let parsed; try { parsed = JSON.parse(body) } catch { parsed = body }
     say(`${label} → ${res.status}`, res.ok ? 'ok' : 'bad')
-    say('   ' + JSON.stringify(parsed), 'dim')
+    say('   ' + JSON.stringify(shorten(parsed)), 'dim')
     return { res, parsed }
   } catch (e) {
     say(`${label} → 요청 실패: ${e.message}`, 'bad')
     say('   백엔드가 안 떠 있거나 CORS 가 막혔다', 'dim')
     return {}
   }
+}
+
+// 900자짜리 JWT 를 로그에 통째로 찍으면 나머지가 안 보인다. 값만 줄인다.
+function shorten(value, max = 40) {
+  if (typeof value === 'string') return value.length > max ? value.slice(0, max) + '…' : value
+  if (Array.isArray(value)) return value.map(v => shorten(v, max))
+  if (value && typeof value === 'object')
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shorten(v, max)]))
+  return value
 }
 
 function expect(res, status, note) {
