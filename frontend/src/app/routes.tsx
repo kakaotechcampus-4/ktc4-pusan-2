@@ -44,7 +44,16 @@ const routes = [
   { path: '*',            element: <Stub id="404"  name="찾을 수 없음" track="B" /> },
 ];
 
-const publicPaths = ['/login', '/about', '/privacy', '/terms', '/unsupported', '/dev/stage', '*'];
+const publicPaths = [
+  '/login',
+  '/about',
+  '/privacy',
+  '/terms',
+  '/unsupported',
+  '/dev/stage',
+  '/dev/media',
+  '*',
+];
 export const router = createBrowserRouter(
   routes.map((route) =>
     publicPaths.includes(route.path)
