@@ -158,7 +158,7 @@ if (!head) {
 // ── 7. COOP/COEP  ★ §3-7 — 오타는 에러를 내지 않는다 ──────────────────
 // 워커에서 SharedArrayBuffer를 쓰려면 이 두 줄이 필요합니다.
 // 지금 없어도 아무 에러가 안 나고, 몇 주 뒤 MediaPipe를 붙일 때 터집니다.
-const port = process.env.PORT ?? '5173';
+const port = process.env.PORT ?? '3000';
 let res = null;
 for (const scheme of ['http', 'https']) {
   try {
