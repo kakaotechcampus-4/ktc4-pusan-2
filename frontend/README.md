@@ -50,6 +50,7 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 **디자인 토큰** (`src/index.css` `@theme`) — 시안 v5의 팔레트와 시선 3색, 그리고 **계측 조건인 고정 높이 네 값**이 있습니다. 밝은 지면(홈·리포트)과 어두운 지면(리허설)이 나뉘어 있습니다. **색을 새로 만들지 말고 여기 있는 것만 쓰세요.**
 
 **라우팅 21개** (`src/app/routes.tsx`) — 전부 Stub이지만 이동은 됩니다. P 번호는 화면 목록 문서와 같습니다.
+여기에 제품 화면이 아닌 검증용 `/dev/stage` · `/dev/media` 둘이 더 있습니다.
 
 **API 타입** (`src/types/api.ts`) — 명세 8-4를 옮긴 것. 시선 3값, 시간 필드 셋, `null` 규칙이 들어 있습니다.
 
@@ -57,12 +58,35 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 
 **빈 자리** (`src/features/auth` · `pitch` · `report`) — `.gitkeep`만 있습니다. Track B가 여기 채웁니다.
 
-**아직 없는 것** — 시선 파이프라인(워커 · `shared/lib` · `features/rehearsal`)은
-**다음 PR로 따로 들어옵니다.** 그 밖에 웹소켓 · 공용 컴포넌트 · 실제 화면이 없습니다.
+**시선 파이프라인** — 프레임이 워커까지 흐르고 1초 판정이 나옵니다
+- `workers/gaze.contract.ts` — **분류기 계약. 고정하고 바꾸지 않습니다.** AI 모델은 이것만 구현하면 됩니다
+- `workers/gaze.worker.ts` — 워커. 모델 자리에 지금은 가짜 부하(`?load=`)가 들어 있습니다
+- `workers/temporalVoter.ts` — 1초 다수결. **모델이 아니라 우리 정책이라 계약 밖입니다**
+- `workers/dummyClassifier.ts` — 프레임 하나만 판단합니다 (`classify`)
+- `workers/modelClassifier.ts` — 실모델 자리. `toTensor`·`runInference`·`fromOutput` 셋으로 갈라
+  **AI팀 답이 오면 양쪽 두 함수만 채우면 됩니다**
+- `features/rehearsal/media/useCameraStream.ts` — 권한 3종 분기 + HMR 정리
+- `features/rehearsal/media/useGazeWorker.ts` — **프레임 펌프 + 백프레셔.** 여기가 성능의 전부입니다
+- `features/rehearsal/media/MediaDevPage.tsx` — `/dev/media` 프레임 예산 계기판
 
-**테스트가 0개입니다.** 순수 로직 테스트 셋이 전부 `shared/lib` 과 `workers` 에 있어
-파이프라인과 함께 들어옵니다. 그동안 `npm run test` 는 `--passWithNoTests` 로 통과합니다 —
-파이프라인 PR 에서 이 플래그를 지우세요.
+**녹음 · 음량** — 브라우저가 원본입니다 (CLAUDE.md 4번)
+- `features/rehearsal/media/recorder.ts` — `MediaRecorder` 5초 조각 → IndexedDB.
+  한 덩이로 받으면 탭이 죽을 때 발표 전체를 잃습니다
+- `features/rehearsal/media/level.ts` — `AnalyserNode` RMS 직독. 래퍼를 안 끼우는 이유는
+  **권한은 살아 있는데 입력만 0인 상황**(이어폰 분리·타앱 점유·시스템 음소거)을 잡아야 하기 때문입니다
+
+**기록 · 조립**
+- `shared/lib/db.ts` — IndexedDB 스키마 한 곳. 키는 업로드 멱등키와 **같은** `clientSessionId`
+- `shared/lib/gazePayload.ts` — 1초 판정들을 `GazePayload` 로 조립 (테스트 포함)
+- `shared/lib/gazeSegments.ts` — 구간 압축·합계·자체 검증 (테스트 포함)
+- `shared/lib/clock.ts` — `performance.now()` 기준 단조 시계. 백그라운드 탭에서도 정확합니다
+
+**무대 레이아웃** (`features/rehearsal/Stage/`) — `/dev/stage`에서 확인합니다.
+Script Mode 4단 높이 · 시선 테두리 3색 · **리렌더 없이 테두리가 바뀌는 것**을 눈으로 봅니다.
+이 프로젝트에서 Tailwind를 안 쓰는 유일한 곳입니다 (`stage.css`).
+
+**아직 없는 것** — 실모델 가중치 · Calibration(`ZoneReference` 를 만드는 코드가 없어서
+더미가 항상 `null` 을 냅니다) · 웹소켓 · 공용 컴포넌트 · 실제 화면.
 
 ## 다음에 할 일 (W4 남은 분량)
 
@@ -71,11 +95,13 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 - [ ] `401` 무음 갱신 인터셉터
 - [ ] Pretendard 폰트 셀프 호스팅 (`public/fonts/`)
 
-**Track A** — 별도 PR (`chore/fe-dev-environment` 다음)
-- [ ] 시선 파이프라인 — 워커 · 백프레셔 · 프레임 예산 계기판
-- [ ] 녹음(`MediaRecorder` → IndexedDB 5초 조각) · 음량(`AnalyserNode` RMS)
-- [ ] IndexedDB 스키마 · 하트비트
-- [ ] 실모델 껍데기 + 실패 경로(`ENGINE_UNAVAILABLE` → 측정 제외)
+**Track A**
+- [x] 워커·백프레셔·`/dev/media` 계기판
+- [x] 녹음(`MediaRecorder` → IndexedDB 5초 조각) · 음량(`AnalyserNode` RMS)
+- [x] IndexedDB 스키마 · 하트비트
+- [x] 실모델 껍데기 + 실패 경로(`ENGINE_UNAVAILABLE` → 측정 제외)
+- [ ] **프레임 예산 측정** — `/dev/media` 에서 부하 0/20/40/60/80 의 fps 표 ← AI팀에 보낼 숫자
+- [ ] Calibration — `ZoneReference` 를 만드는 경로
 
 > **MediaPipe(`@mediapipe/tasks-vision`)를 붙이지 않습니다.** AI팀이 전처리까지 합니다.
 > 의존성에는 남아 있지만(제거하면 lock 이 갱신됩니다) 코드에서 쓰지 않습니다.
@@ -91,9 +117,12 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 CI 는 레포 루트의 `.github/workflows/frontend-ci.yml` 에 있습니다 — GitHub 는 루트의
 `.github/` 만 읽어서, `frontend/` 안에 두면 **에러 없이 그냥 안 돕니다.**
 
-> **이 브랜치의 기준점.** 백엔드·인프라가 들어오기 전 시점(`a493804`)에서 떴습니다.
-> 그래서 `backend/` · `infra/` · `frontend/Dockerfile` 이 이 트리에 없습니다.
-> `develop` 에 머지되면 함께 놓입니다 — `Dockerfile` 과 `develop` push 자동배포는 그쪽에 있습니다.
+> **이 브랜치의 기준점.** `chore/fe-dev-environment` 위에 쌓았습니다. 그 브랜치가
+> 백엔드·인프라가 들어오기 전 시점(`a493804`)에서 떠서, `backend/` · `infra/` ·
+> `frontend/Dockerfile` 이 이 트리에 없습니다. `develop` 에 머지되면 함께 놓입니다.
+>
+> **PR 순서가 있습니다** — `chore/fe-dev-environment` 가 먼저 머지돼야 이 브랜치의
+> base 를 `develop` 으로 바꿀 수 있습니다. 그전에는 base 를 앞 브랜치로 두세요.
 > 도커로 확인해야 하면 `develop` 을 머지해 오세요.
 
 ### 아직 남아 있는 것 셋

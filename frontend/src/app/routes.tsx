@@ -1,5 +1,8 @@
 import { createBrowserRouter } from 'react-router';
 import { Stub } from '@/shared/ui/Stub';
+import { StageDemo } from '@/features/rehearsal/Stage/StageDemo';
+import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
+import { LoginPage } from '@/features/auth/LoginPage';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -13,7 +16,7 @@ import { Stub } from '@/shared/ui/Stub';
 export const router = createBrowserRouter([
   { path: '/',            element: <Stub id="P2"   name="홈 대시보드" track="B" /> },
   { path: '/welcome',     element: <Stub id="P1"   name="온보딩" track="B" /> },
-  { path: '/login',       element: <Stub id="P11"  name="로그인" track="B" /> },
+  { path: '/login',       element: <LoginPage /> },
   { path: '/about',       element: <Stub id="P14"  name="분석 방식 설명" track="B" /> },
   { path: '/pitches',     element: <Stub id="P10"  name="Pitch 목록" track="B" /> },
   { path: '/pitch/new',   element: <Stub id="P3"   name="Pitch 생성" track="B" /> },
@@ -33,5 +36,9 @@ export const router = createBrowserRouter([
   { path: '/privacy',     element: <Stub id="F2"   name="개인정보 처리방침" track="B" /> },
   { path: '/terms',       element: <Stub id="F2"   name="이용약관" track="B" /> },
   { path: '/unsupported', element: <Stub id="P18"  name="미지원 브라우저" track="B" /> },
+  // 제품 화면이 아니다. 무대 레이아웃·시선 테두리 검증용.
+  { path: '/dev/stage',   element: <StageDemo /> },
+  // 프레임 예산 계기판. 부하별 처리 fps 를 읽는 곳.
+  { path: '/dev/media',   element: <MediaDevPage /> },
   { path: '*',            element: <Stub id="404"  name="찾을 수 없음" track="B" /> },
 ]);

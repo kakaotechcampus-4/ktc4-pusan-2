@@ -1,0 +1,7 @@
+# doc 7 vision release gate (first PoC pass line, not a final KPI)
+min_macro_f1: 0.85
+min_bottom_recall: 0.90
+min_per_user_f1: 0.75
+max_uncertain_ratio: 0.20
+max_calibration_failure_rate: 0.10
+max_p95_latency_ms: 125.0
