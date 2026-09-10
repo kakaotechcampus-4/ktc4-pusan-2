@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 # 의존성 설치
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 # 소스코드 복사
 COPY src/ ./src/
 RUN pip install --no-cache-dir .
