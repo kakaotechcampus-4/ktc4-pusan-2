@@ -12,6 +12,8 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir .
 
 # alembic 마이그레이션 복사
+# alembic.ini 파일은 config 파일과 유사한 개념이라, 반드시 복사가 필요하다.
+COPY alembic.ini ./
 COPY alembic/ ./alembic/
 
 # 포트 8000 노출 명시
