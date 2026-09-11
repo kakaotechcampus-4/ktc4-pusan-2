@@ -7,7 +7,7 @@ nvm use 24                 # .nvmrc → Node 24. 다르면 npm ci가 멈춥니�
 npm ci                     # install 아님 — lock을 갱신하면 두 사람 트리가 갈립니다
 cp .env.example .env.local # PowerShell: copy .env.example .env.local
 npm run doctor             # 세팅이 끝났는지 한 번에 확인
-npm run dev                # http://localhost:5173
+npm run dev                # http://localhost:3000
 ```
 
 `npm run doctor`가 실패 0개로 나와야 세팅이 끝난 것입니다. `.env.local`을 안 만들면

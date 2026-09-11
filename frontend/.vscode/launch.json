@@ -7,10 +7,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Chrome · localhost:5173",
+      "name": "Chrome · localhost:3000",
       "type": "chrome",
       "request": "launch",
-      "url": "http://localhost:5173",
+      "url": "http://localhost:3000",
       "webRoot": "${workspaceFolder}/src",
       "sourceMapPathOverrides": {
         "/@fs/*": "/*",
