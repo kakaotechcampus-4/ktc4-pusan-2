@@ -9,7 +9,7 @@ import {
 } from './recorder';
 import { createLevelMeter, type LevelMeter } from './level';
 import { TemporalVoter } from '@/workers/temporalVoter';
-import { buildGazePayload } from '@/shared/lib/gazePayload';
+import { buildGazePayload } from '../lib/gazePayload';
 import {
   appendGazeDecision,
   audioBytes,
@@ -21,7 +21,7 @@ import {
   setEngineVersion,
   setGazePerf,
   startSession,
-} from '@/shared/lib/db';
+} from '../lib/db';
 import type { ZoneDecision } from '@/workers/gaze.contract';
 import type { GazeExcludedReason } from '@/types/api';
 

@@ -56,12 +56,8 @@ export class DummyGazeClassifier implements GazeClassifier {
     if (camera.length < 10 || bottom.length < 10) return null;
 
     return {
-      camera: [0, 0, -1],
-      bottom: [0, -0.5, -0.85],
-      // AI 설정의 min_separability 가 1.00 입니다. 더미는 통과하는 값을 냅니다.
-      separability: 1.4,
-      coordinateSpace: 'mirrored',
       layoutSignature: 'dummy',
+      quality: 'GOOD',
       model: { kind: 'dummy' },
     };
   }
