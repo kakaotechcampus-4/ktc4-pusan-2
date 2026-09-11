@@ -93,12 +93,14 @@ jobs:
             echo "$name OK"
           }
 
-          npm run dev -- --port 5173 &
+          # 포트를 여기 적지 않습니다 — vite.config.ts 의 server.port/preview.port
+          # 를 그대로 씁니다. 두 곳에 적으면 한쪽만 바뀌어 조용히 갈라집니다.
+          npm run dev &
           dev_pid=$!
-          check dev http://localhost:5173/
+          check dev http://localhost:3000/
           kill $dev_pid
 
-          npm run preview -- --port 4173 &
+          npm run preview &
           prev_pid=$!
-          check preview http://localhost:4173/
+          check preview http://localhost:3001/
           kill $prev_pid

@@ -24,7 +24,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl';
  * http://192.168.x.x 가 되고, 이건 secure context가 아니라서
  * **카메라가 아예 안 잡힙니다.** 권한 팝업조차 안 뜹니다.
  *
- *   npm run dev:lan   → https://192.168.x.x:5173
+ *   npm run dev:lan   → https://192.168.x.x:3000
  *
  * ★ VITE_HTTPS=true 를 스크립트 앞에 붙이지 않습니다.
  *   그 문법은 Windows(cmd·PowerShell)에서 안 돌아서, 두 사람의 OS가 다르면
@@ -52,7 +52,21 @@ export default defineConfig(({ mode }) => {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
     worker: { format: 'es' },
-    server: { headers: COEP_HEADERS },
-    preview: { headers: COEP_HEADERS },
+
+    /**
+     * ── 포트는 여기서만 정합니다 ──────────────────────────────────
+     *
+     * 3000 인 이유는 백엔드가 프론트를 그 주소로 가정하기 때문입니다.
+     * `frontend_base_url` 이 CORS 허용 origin 과 OAuth 콜백 리다이렉트
+     * 대상으로 동시에 쓰여서, 다른 포트로 띄우면 **로그인이 아예 안 됩니다.**
+     * 운영도 같습니다 — Dockerfile 의 Caddy 가 :3000 을 서브하고
+     * infra/Caddyfile 이 `reverse_proxy fe:3000` 입니다.
+     *
+     * ★ strictPort — 3000 이 이미 쓰이고 있으면 **바로 실패**합니다.
+     *   없으면 Vite 가 조용히 3001 로 옮겨가고, 그러면 CI 의 헤더 검사가
+     *   빈 포트를 60초 재시도한 뒤 죽습니다. 원인이 로그에 안 나옵니다.
+     */
+    server: { port: 3000, strictPort: true, headers: COEP_HEADERS },
+    preview: { port: 3001, strictPort: true, headers: COEP_HEADERS },
   };
 });

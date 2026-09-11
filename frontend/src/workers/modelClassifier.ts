@@ -1,140 +1,107 @@
-import type { FrameVerdict, GazeClassifier, GazeSample, ZoneReference } from './gaze.contract';
+import type { FrameVerdict, GazeClassifier, ZoneReference } from './gaze.contract';
+import type { Ms } from '@/types/api';
 
 /**
- * 실모델이 들어올 자리.
+ * AI 모듈이 들어올 자리 (A안).
  *
- * ── 세 함수로 나눈 이유 ─────────────────────────────────────────────
+ * ── 왜 이렇게 얇은가 ────────────────────────────────────────────────
  *
- *   toTensor(sample)      ← 입력 형식 미정. TODO
- *   runInference(tensor)  ← 지금 비어 있음. 라이브러리가 정해지면 채움
- *   fromOutput(output)    ← 출력 형식 미정. TODO
+ * A안에서 AI팀이 주는 것은 **`GazeClassifier` 를 구현한 JS/TS 모듈**입니다.
+ * 전처리·얼굴검출·특징추출·프레임 판정·캘리브레이션 계산이 모두 그 안에 있습니다.
+ * 그래서 이 파일이 할 일은 **모듈을 불러와 위임하는 것**뿐입니다.
  *
- * 가운데(파이프라인 배선·실패 처리·버전 기록)는 지금 만들 수 있고,
- * 양쪽 둘만 AI팀 답을 기다립니다. **답이 오면 두 함수만 채우면 됩니다.**
- * 나누지 않고 한 덩이로 두면 답이 왔을 때 이 파일을 다시 설계하게 됩니다.
+ * 이전에는 여기에 toTensor / runInference / fromOutput 세 함수가 있었습니다.
+ * 그건 FE 가 전처리하고 모델은 추론만 하는 B안(ONNX 파일) 전제였습니다.
+ * AI 산출물이 가중치 없는 기하 계산 + 사용자별 분류기라 내보낼 대상이 없어서
+ * A안으로 정리했고, 그 세 함수는 사라졌습니다.
  *
  * ── 아직 하지 않은 것 ───────────────────────────────────────────────
  *
- * `onnxruntime-web` 을 **설치하지 않았습니다.** AI팀이 실행 형식(ONNX / TFLite)을
- * 확정한 뒤에 넣습니다. 실패 경로(T12)를 시험하는 데는 라이브러리가 필요 없습니다 —
- * 지금 확인하려는 것은 "모델이 없을 때 앱이 죽지 않는가"이고, 그건 init() 만으로 됩니다.
+ * 모듈이 아직 없습니다. 그래서 `init()` 이 throw 하고,
+ * 워커가 그걸 `error { ENGINE_UNAVAILABLE }` 로 바꿉니다.
+ * **이 실패 경로가 지금 확인하려는 것입니다** — 모델이 없을 때 앱이 죽지 않는가.
+ * `/dev/media` 에서 구현을 model 로 바꾸면 이 경로를 탑니다.
  *
  * ── AI팀에 물어야 채울 수 있는 것 ───────────────────────────────────
  *
- *   1. 실행 형식 — ONNX(onnxruntime-web)인가 TFLite 인가
- *   2. 입력 — 640×480 프레임 그대로인가, 리사이즈해서 줘야 하나. 정규화 규격은
- *   3. 얼굴 검출 포함? 프레임 전체에서 얼굴을 찾는 것까지 모델이 하나
- *   4. 보정 — 사람마다 "정면"이 다른데 모델이 흡수하나, 2지점 보정이 필요하나
+ *   1. 모듈 형식 — npm 패키지인가, 파일로 받아 `src/workers/vendor/` 에 두나
+ *   2. 초기화에 필요한 자산 — `face_landmarker.task` 같은 파일의 경로·버전
+ *   3. 워커에서 도는가 — DOM(`document`·`window`)을 쓰면 워커에서 죽습니다
+ *   4. `ZoneReference.model` 에 담기는 값이 구조화 복제 가능한가
+ *      (IndexedDB 에 저장해 다음 Take 에서 되살립니다)
  *
- * 4번이 W3 작업(Calibration 화면)을 결정합니다.
+ * 3번이 제일 중요합니다. MediaPipe Tasks 는 워커에서 돌지만 초기화 방식이
+ * 다르고, 모르고 만들면 나중에 통째로 고칩니다.
  */
 
-/** `public/models/` 에 둡니다. CDN 에서 받지 않습니다 — 시연장 와이파이가 느리면 발표가 안 됩니다. */
-const MODEL_URL = '/models/gaze.onnx';
+/**
+ * 모델 자산을 두는 곳. **CDN 에서 받지 않습니다** —
+ * 시연장 와이파이가 느리면 발표가 안 됩니다.
+ *
+ * 지금은 존재 확인에만 씁니다. 어떤 파일이 필요한지는 AI팀 2번 답에 달렸습니다.
+ */
+const ASSET_DIR = '/models/';
 
 export class ModelGazeClassifier implements GazeClassifier {
   /**
-   * 로드 전에는 `unloaded`. init() 이 성공하면 모델 파일의 식별자가 붙습니다.
+   * 로드 전에는 `unloaded`.
    *
-   * 왜 파일 식별자를 쓰나 — `engineVersion` 은 Take 에 영구 고정되고
+   * 왜 자산 식별자를 쓰나 — `engineVersion` 은 Take 에 영구 고정되고
    * 서버는 시선을 재계산할 수 없습니다. AI팀이 버전 문자열을 주기 전까지는
-   * **적어도 "다른 파일이면 다른 값"** 이 되어야 두 Take 를 비교할 때 근거가 됩니다.
+   * **적어도 "다른 자산이면 다른 값"** 이 되어야 두 Take 를 비교할 때 근거가 됩니다.
    */
-  #version = 'gaze-onnx@unloaded';
+  #version = 'gaze-module@unloaded';
 
   get version(): string {
     return this.#version;
   }
 
   #ref: ZoneReference | null = null;
-  #session: unknown = null;
 
   /**
-   * 모델 가중치 로드. **실패하면 throw 합니다** —
+   * AI 모듈 로드. **실패하면 throw 합니다** —
    * 워커가 그걸 받아 `error { ENGINE_UNAVAILABLE }` 로 바꾸고,
    * 화면은 "측정 제외"로 표시하되 타이머·키보드·녹음은 계속 돕니다.
    */
   async init(): Promise<void> {
-    const res = await fetch(MODEL_URL, { method: 'HEAD' });
+    // TODO(AI팀 1번) — 모듈이 오면 여기서 import 하고 초기화합니다.
+    //   const { createClassifier } = await import('./vendor/gaze');
+    //   this.#impl = await createClassifier({ assetDir: ASSET_DIR });
+    //
+    // 그때까지는 자산 디렉터리에 무엇이 있는지만 확인하고 실패합니다.
+    // 이 경로가 도는지가 지금의 관심사입니다.
+    const res = await fetch(`${ASSET_DIR}README.md`, { method: 'HEAD' }).catch(() => null);
 
-    // dev 서버는 없는 경로에 index.html 을 돌려줄 수 있습니다(SPA 폴백).
-    // 200 만 보고 넘어가면 HTML 을 모델로 착각합니다.
-    const type = res.headers.get('content-type') ?? '';
-    if (!res.ok || type.includes('text/html')) {
-      throw new Error(`gaze model not found at ${MODEL_URL} (status ${res.status})`);
-    }
+    throw new Error(
+      `gaze module not installed (asset dir ${ASSET_DIR} reachable: ${res?.ok ?? false})`,
+    );
+  }
 
-    // AI팀이 버전 문자열을 주기 전까지의 임시 식별자.
-    // ETag 가 없으면 크기라도 씁니다 — 파일이 바뀌면 값이 바뀌어야 합니다.
-    const etag = res.headers.get('etag')?.replaceAll('"', '');
-    const size = res.headers.get('content-length');
-    this.#version = `gaze-onnx@${etag ?? size ?? 'unknown'}`;
-
-    // TODO(AI팀 1번) — 실행 형식이 정해지면 여기서 세션을 만듭니다.
-    //   ONNX 면:  this.#session = await ort.InferenceSession.create(MODEL_URL)
-    // 지금은 파일 존재만 확인하고 끝냅니다. 추론은 runInference 가 null 을 냅니다.
-    this.#session = null;
+  fitCalibration(
+    _camera: readonly ImageBitmap[],
+    _bottom: readonly ImageBitmap[],
+  ): ZoneReference | null {
+    // init() 이 throw 하므로 여기까지 오지 않습니다.
+    // 모듈이 오면 그대로 위임합니다 — FE 는 기준값을 저장·복원만 합니다.
+    return null;
   }
 
   calibrate(ref: ZoneReference): void {
     this.#ref = ref;
+    // TODO(AI팀 4번) — 모듈에 ref.model 을 되돌려줍니다.
   }
 
-  classify(sample: GazeSample): FrameVerdict | null {
-    if (!sample.faceFound) return null;
-
-    const tensor = toTensor(sample, this.#ref);
-    if (!tensor) return null;
-
-    const output = runInference(tensor, this.#session);
-    if (!output) return null;
-
-    return fromOutput(output);
+  classify(_frame: ImageBitmap, _tMs: Ms): FrameVerdict | null {
+    if (!this.#ref) return null;
+    // TODO(AI팀 1번) — 모듈에 프레임을 그대로 넘깁니다.
+    //   return this.#impl.classify(frame, tMs);
+    //
+    // ★ 비트맵을 여기서 닫지 마세요. 워커가 finally 에서 닫습니다.
+    return null;
   }
 
   dispose(): void {
     this.#ref = null;
-    this.#session = null;
-    // TODO(AI팀 1번) — ONNX 세션은 여기서 release() 해야 합니다.
+    // TODO(AI팀 1번) — 모듈에 해제할 자원이 있으면 여기서 놓습니다.
   }
-}
-
-/**
- * 프레임 하나를 모델 입력으로 바꿉니다.
- *
- * TODO(AI팀 2번) — 입력 규격이 정해지면 채웁니다.
- *   · 640×480 을 그대로 받나, 리사이즈해서 줘야 하나
- *   · 정규화 — [0,1] 인가 [-1,1] 인가, 채널 순서는 NCHW 인가 NHWC 인가
- *   · 얼굴 크롭이 필요하면 그 좌표는 누가 주나 (AI팀 3번과 연결)
- *
- * `sample.features` 는 워커가 채워 줍니다. 지금은 빈 배열이라 null 을 냅니다.
- * `ref` 는 모델이 보정을 흡수하지 않는 경우에만 씁니다 (AI팀 4번).
- */
-function toTensor(sample: GazeSample, _ref: ZoneReference | null): Float32Array | null {
-  if (sample.features.length === 0) return null;
-  return sample.features;
-}
-
-/**
- * 추론. **지금은 항상 null 입니다** — 라이브러리를 아직 설치하지 않았습니다.
- *
- * TODO(AI팀 1번) — ONNX 면 세션에 feed 하고 결과를 꺼냅니다.
- */
-function runInference(_tensor: Float32Array, session: unknown): Float32Array | null {
-  if (!session) return null;
-  return null;
-}
-
-/**
- * 모델 출력을 zone 판정으로 바꿉니다.
- *
- * TODO(AI팀 2번) — 출력 형식이 정해지면 채웁니다.
- *   · zone 3값의 확률인가, 시선 벡터인가
- *   · 벡터면 ZoneReference 와의 거리로 우리가 판정합니다 (dummyClassifier 와 같은 방식)
- *   · 확률이면 argmax 를 쓰고 confidence 는 그 확률을 그대로 씁니다
- *
- * 1초 다수결은 여기서 하지 않습니다 — TemporalVoter 의 일입니다.
- */
-function fromOutput(_output: Float32Array): FrameVerdict | null {
-  return null;
 }

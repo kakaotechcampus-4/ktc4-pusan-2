@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: main-ec2-deploy
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -69,7 +73,7 @@ jobs:
             echo "$DOCKERHUB_TOKEN" \
               | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
 
-            FILES="-f docker-compose.yml -f docker-compose.dev.yml"
+            FILES="-f docker-compose.yml -f docker-compose.prod.yml"
             docker compose $FILES pull
             docker compose $FILES up -d --no-build --remove-orphans
             docker image prune -f

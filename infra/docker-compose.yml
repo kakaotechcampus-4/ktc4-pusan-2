@@ -19,6 +19,8 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:5173:5173"
     env_file:
       - ../frontend/.env
 
@@ -50,7 +52,7 @@ services:
     env_file:
       - ../backend/.env
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:6380:6379"
     command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
     volumes:
       - redis_data:/data
