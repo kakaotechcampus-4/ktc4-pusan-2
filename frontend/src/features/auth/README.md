@@ -32,7 +32,7 @@ VITE_USE_MOCK=false
 VITE_API_BASE=http://localhost:8000
 ```
 
-프론트는 http://localhost:5173 으로 접속하고 백엔드 FRONTEND_BASE_URL도 이 값으로 맞춥니다.
+프론트는 http://localhost:3000 으로 접속하고 백엔드 FRONTEND_BASE_URL도 이 값으로 맞춥니다.
 localhost와 127.0.0.1을 혼용하면 CSRF 쿠키를 읽지 못합니다.
 운영은 동일 호스트에서 /api를 백엔드로 프록시하며 VITE_API_BASE를 비웁니다.
 백엔드는 Google OAuth 구현 코드, PostgreSQL, Redis 및 Google 클라이언트 설정이 필요합니다.
@@ -53,4 +53,3 @@ mocks/auth.ts: 비로그인 기본 응답.
 토큰 모듈은 shared 계층에서 features를 참조하지 않도록 shared/api에 배치했습니다.
 공용 types/api.ts의 기존 ApiError.detail 타입은 수정하지 않았습니다.
 Google 공식 버튼 이미지 출처: https://developers.google.com/identity/branding-guidelines
-

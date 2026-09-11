@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router';
 import { safeDestination, useSession } from './useSession';
 
-/** P11: 화면과 로그인 시작만 담당한다. 세션 복원은 추후 공용 인증 계층에서 연결한다. */
+/** P11: 로그인 시작과 콜백 상태 안내, 세션 확인 후 목적지 이동을 담당한다. */
 export function LoginPage() {
   const [params] = useSearchParams();
   const session = useSession();
@@ -15,7 +15,7 @@ export function LoginPage() {
     authError === null
       ? null
       : authError === 'access_denied'
-        ? 'Google 로그인이 취소되었습니다. 아래 버튼을 눌러 다시 로그인해 주세요.'
+        ? '로그인이 취소되었습니다. 원하시면 다시 로그인할 수 있습니다.'
         : '로그인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.';
 
   useEffect(() => {
