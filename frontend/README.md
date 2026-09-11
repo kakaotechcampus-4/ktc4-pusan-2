@@ -76,9 +76,9 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
   **권한은 살아 있는데 입력만 0인 상황**(이어폰 분리·타앱 점유·시스템 음소거)을 잡아야 하기 때문입니다
 
 **기록 · 조립**
-- `shared/lib/db.ts` — IndexedDB 스키마 한 곳. 키는 업로드 멱등키와 **같은** `clientSessionId`
-- `shared/lib/gazePayload.ts` — 1초 판정들을 `GazePayload` 로 조립 (테스트 포함)
-- `shared/lib/gazeSegments.ts` — 구간 압축·합계·자체 검증 (테스트 포함)
+- `features/rehearsal/lib/db.ts` — IndexedDB 스키마 한 곳. 키는 업로드 멱등키와 **같은** `clientSessionId`
+- `features/rehearsal/lib/gazePayload.ts` — 1초 판정들을 `GazePayload` 로 조립 (테스트 포함)
+- `features/rehearsal/lib/gazeSegments.ts` — 구간 압축·합계·자체 검증 (테스트 포함)
 - `shared/lib/clock.ts` — `performance.now()` 기준 단조 시계. 백그라운드 탭에서도 정확합니다
 
 **무대 레이아웃** (`features/rehearsal/Stage/`) — `/dev/stage`에서 확인합니다.
@@ -87,6 +87,70 @@ Script Mode 4단 높이 · 시선 테두리 3색 · **리렌더 없이 테두리
 
 **아직 없는 것** — 실모델 가중치 · Calibration(`ZoneReference` 를 만드는 코드가 없어서
 더미가 항상 `null` 을 냅니다) · 웹소켓 · 공용 컴포넌트 · 실제 화면.
+
+## 폴더 구조와 의존 방향
+
+세 폴더는 **책임이 아니라 실행 환경**으로 갈려 있습니다. 취향이 아니라 제약입니다.
+
+| 폴더 | 어디서 도나 | 쓸 수 있는 것 |
+| --- | --- | --- |
+| `workers/` | 워커 스레드 | DOM · React **없음** |
+| `features/rehearsal/` | 메인 스레드 | React · DOM · 워커 호출 |
+| `shared/lib/` | 양쪽 | 순수 함수만 |
+
+### 의존 방향 — 화살표를 거스르지 않습니다
+
+```
+app/ ──▶ features/* ──▶ workers/ ──┐
+                │                  ├──▶ types/       (런타임 코드 없음. 잎사귀)
+                └──▶ shared/*  ────┘
+```
+
+| 규칙 | 어기면 |
+| --- | --- |
+| `workers/` → `features/` **금지** | 워커 번들에 React 가 들어갑니다. **빌드는 통과하고 워커만 런타임에 죽습니다** |
+| `features/a` → `features/b` **금지** | Track A·B 가 서로를 기다리게 됩니다 |
+| `types/` 는 무엇도 참조하지 않음 | 잎사귀라서 순환이 생기지 않습니다 |
+
+`features/` → `workers/` 는 정방향입니다. 화면이 워커를 띄우는 쪽이니까요.
+
+### `shared/` 에 둘지 판단하는 기준
+
+**순수 함수라서가 아니라, 여러 feature 가 실제로 나눠 쓰는지**로 정합니다.
+테스트 용이성은 배치 기준이 아닙니다 — `features/rehearsal/lib/` 에 둬도 똑같이 쉽습니다.
+
+그래서 시선 전용 규칙(`gazeSegments` · `gazePayload` · `db`)은 `features/rehearsal/lib/` 에 있습니다.
+`shared/lib/clock.ts` 만 남았습니다 — `formatDuration` 을 리포트 화면도 쓰기 때문입니다.
+
+## 시선 파이프라인 호출 흐름
+
+진입점은 `useGazeWorker` 하나입니다. 위에서 아래로 읽으면 됩니다.
+
+```
+features/rehearsal/media/useCameraStream.ts     카메라 권한 · MediaStream
+        │
+        ▼
+features/rehearsal/media/useGazeWorker.ts       ★ 진입점
+        │   프레임 펌프 — frameDone 을 받고서야 다음 프레임을 만든다 (백프레셔)
+        │   postMessage({ type: 'frame', bitmap, tMs })
+        ▼
+workers/gaze.worker.ts                          워커 경계. 여기부터 다른 스레드
+        │   classifier.classify(bitmap, tMs)  →  FrameVerdict (프레임 단위)
+        │   bitmap.close()                       ★ 프레임은 즉시 폐기. 저장하지 않는다
+        ▼
+workers/temporalVoter.ts                        1초 다수결 → ZoneDecision
+        │   postMessage({ type: 'decision', ... })   ← 워커에서 나가는 건 이것뿐
+        ▼
+features/rehearsal/lib/db.ts                    IndexedDB 에 1초 판정을 쌓는다
+        │
+        ▼  (발표 종료 시)
+features/rehearsal/lib/gazeSegments.ts          같은 zone 끼리 구간으로 압축
+features/rehearsal/lib/gazePayload.ts           GazePayload 조립 → POST /complete
+```
+
+분류기는 `workers/gaze.contract.ts` 의 `GazeClassifier` 인터페이스입니다.
+`DummyGazeClassifier`(지금)와 `ModelGazeClassifier`(AI 모듈 어댑터)가 구현합니다.
+**화면은 `ZoneDecision` 만 압니다** — 분류기가 바뀌어도 화면 코드는 안 바뀝니다.
 
 ## 다음에 할 일 (W4 남은 분량)
 

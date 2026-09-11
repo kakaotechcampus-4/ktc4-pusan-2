@@ -1,4 +1,4 @@
-import { appendAudioChunk } from '@/shared/lib/db';
+import { appendAudioChunk } from '../lib/db';
 import type { Ms } from '@/types/api';
 
 /**

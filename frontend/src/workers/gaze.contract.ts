@@ -27,24 +27,37 @@
 
 import type { GazeZone, Ms } from '@/types/api';
 
-/** 캘리브레이션 기준 벡터. 서버로 보내지 않고 IndexedDB에만 둡니다. */
+/**
+ * 캘리브레이션 결과. **서버로 보내지 않습니다** — IndexedDB 에만 둡니다.
+ * 서버에는 품질 요약(`CalibrationSummary`)만 갑니다.
+ *
+ * ── 왜 세 필드뿐인가 ────────────────────────────────────────────────
+ *
+ * 이전에는 `camera`·`bottom` 2점 벡터와 `separability`·`coordinateSpace` 가
+ * 있었습니다. 그건 **분류기 구현 세부가 FE 타입으로 새어 나온 것**이었습니다 —
+ * 시선을 3차원 벡터로 본다는 가정, 기준이 정확히 2점이라는 가정,
+ * separability 라는 지표가 있다는 가정이 들어 있었습니다.
+ *
+ * AI 가 3점 캘리브레이션으로 바꾸거나 표현을 바꾸면 FE 타입이 따라 바뀝니다.
+ * FE 가 실제로 필요한 건 아래 셋뿐이라, 나머지는 `model` 안으로 넣었습니다.
+ */
 export interface ZoneReference {
-  /** 2점 — 카메라를 볼 때, 화면을 볼 때 */
-  camera: readonly [number, number, number];
-  bottom: readonly [number, number, number];
-  /** 두 기준이 얼마나 떨어져 있나. 낮으면 판정을 믿을 수 없습니다 */
-  separability: number;
-  /** 미러링된 영상인지 — 좌우가 뒤집히는 고전적인 버그의 원인 */
-  coordinateSpace: 'raw' | 'mirrored';
-  /** 해상도·배율·카메라 위치. 다르면 다른 기기의 값입니다 */
+  /**
+   * 저장 키. 해상도·배율·카메라 위치를 담습니다.
+   * 이게 다르면 다른 기기의 값이라 재사용할 수 없습니다.
+   */
   layoutSignature: string;
   /**
-   * 분류기가 캘리브레이션에서 학습한 것. **FE 는 해석하지 않습니다** —
-   * 저장하고 되돌려주기만 합니다.
+   * 화면에 보여줄 등급. **수치가 아니라 등급으로 받습니다** —
+   * 임계값을 어디서 자를지는 분류기가 압니다.
+   * POOR 면 화면이 재시도를 권합니다.
+   */
+  quality: 'GOOD' | 'FAIR' | 'POOR';
+  /**
+   * 분류기가 학습한 것. **FE 는 해석하지 않습니다** — 저장하고 되돌려주기만 합니다.
    *
-   * 사용자별 분류기라 계수가 여기 들어옵니다. 형식은 분류기가 정하고,
-   * 바뀌어도 FE 는 안 바뀝니다. 단 IndexedDB 에 넣고 다음 Take 에서
-   * 되살려야 하므로 **구조화 복제(structured clone)가 되는 값**이어야 합니다.
+   * IndexedDB 에 넣고 다음 Take 에서 되살려야 하므로
+   * **구조화 복제(structured clone)가 되는 값**이어야 합니다.
    */
   model: unknown;
 }
