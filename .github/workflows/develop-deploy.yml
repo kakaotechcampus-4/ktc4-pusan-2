@@ -1,0 +1,147 @@
+name: Deploy develop
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: develop-ec2-deploy
+  cancel-in-progress: true
+
+permissions:
+  id-token: write # OIDC로 AWS 역할을 맡기 위해 필요
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/pitch-coach
+      IMAGE_TAG: ${{ github.sha }}
+      # caddy : develop의 경우 8080
+      FILES: -f docker-compose.yml -f docker-compose.dev.yml
+      # EC2가 있는 리전과 다르면 반드시 수정
+      AWS_REGION: ap-northeast-2
+      # ~/.ssh/config 에 만들 별칭. 아래 ssh/scp 호출이 모두 이 이름을 씀
+      SSH_HOST: ktc-server
+      REMOTE_DIR: pitch-coach
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Stub env files
+        run: touch backend/.env frontend/.env
+
+      - name: Build & push
+        working-directory: infra
+        run: |
+          docker compose $FILES build be fe
+          docker compose $FILES push be fe
+
+      # ── 여기부터 EC2 접속 (22번 포트 대신 SSM 터널 사용) ──
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install session-manager-plugin
+        run: |
+          curl -fsSL -o /tmp/session-manager-plugin.deb \
+            https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb
+          sudo dpkg -i /tmp/session-manager-plugin.deb
+          session-manager-plugin --version
+
+      - name: Configure SSH over SSM
+        env:
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          EC2_KEYPAIR_ID: ${{ secrets.EC2_KEYPAIR_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+
+          # 개인키는 GitHub Secret이 아니라 파라미터 스토어에서 런타임에 받아온다
+          aws ssm get-parameter \
+            --name "/ec2/keypair/$EC2_KEYPAIR_ID" \
+            --with-decryption \
+            --query Parameter.Value \
+            --output text > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          cat >> ~/.ssh/config <<EOF
+          Host $SSH_HOST
+            HostName $EC2_INSTANCE_ID
+            User $EC2_USER
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            ServerAliveInterval 30
+            ControlMaster auto
+            ControlPath ~/.ssh/cm-%r@%h:%p
+            ControlPersist 10m
+            ProxyCommand sh -c "aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters 'portNumber=%p'"
+          EOF
+          chmod 600 ~/.ssh/config
+
+          ssh "$SSH_HOST" 'echo SSM SSH OK: $(hostname)'
+
+      - name: Copy compose files to EC2
+        run: |
+          set -euo pipefail
+          tar -czf - -C infra . \
+            | ssh "$SSH_HOST" "mkdir -p ~/$REMOTE_DIR/infra && tar -xzf - -C ~/$REMOTE_DIR/infra"
+
+      - name: Write env files on EC2
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+          FRONTEND_ENV: ${{ secrets.FRONTEND_ENV }}
+        run: |
+          set -euo pipefail
+          # docker-compose.yml 의 env_file 경로(../backend/.env) 복원.
+          # 시크릿은 stdin으로만 넘겨서 원격 셸이 내용을 파싱하지 않게 한다.
+          ssh "$SSH_HOST" "mkdir -p ~/$REMOTE_DIR/backend ~/$REMOTE_DIR/frontend"
+
+          printf '%s' "$BACKEND_ENV" \
+            | ssh "$SSH_HOST" "cat > ~/$REMOTE_DIR/backend/.env"
+          printf '%s' "$FRONTEND_ENV" \
+            | ssh "$SSH_HOST" "cat > ~/$REMOTE_DIR/frontend/.env"
+
+          printf 'IMAGE_REPO=%s\nIMAGE_TAG=%s\n' "$IMAGE_REPO" "$IMAGE_TAG" \
+            | ssh "$SSH_HOST" "cat > ~/$REMOTE_DIR/infra/.env"
+
+      - name: Pull & up on EC2
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # 자격증명도 stdin으로: 원격 명령줄(ps)이나 셸 파싱에 노출되지 않는다
+          printf '%s\n%s\n' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" \
+            | ssh "$SSH_HOST" 'read -r u; read -r t; printf "%s" "$t" | docker login -u "$u" --password-stdin'
+
+          ssh "$SSH_HOST" "REMOTE_DIR=$REMOTE_DIR bash -se" <<'SCRIPT'
+          set -euo pipefail
+          cd ~/"$REMOTE_DIR"/infra
+
+          FILES="-f docker-compose.yml -f docker-compose.dev.yml"
+          docker compose $FILES pull
+          docker compose $FILES up -d --no-build --remove-orphans
+          docker image prune -f
+          SCRIPT
+
+      - name: Close SSM tunnel
+        if: always()
+        run: ssh -O exit "$SSH_HOST" 2>/dev/null || true

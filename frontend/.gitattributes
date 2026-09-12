@@ -1,0 +1,12 @@
+# 두 사람의 OS가 달라도 줄바꿈이 갈리지 않게.
+# 이게 없으면 Windows에서 클론한 쪽이 파일 전체를 CRLF로 받아,
+# 한 줄만 고쳐도 diff에 파일 전체가 바뀐 것으로 뜬다.
+* text=auto eol=lf
+
+# 바이너리는 건드리지 않는다
+*.png   binary
+*.jpg   binary
+*.svg   text eol=lf
+*.task  binary
+*.onnx  binary
+*.wasm  binary
