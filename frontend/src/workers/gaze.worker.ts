@@ -3,7 +3,7 @@
 import { DummyGazeClassifier } from './dummyClassifier';
 import { ModelGazeClassifier } from './modelClassifier';
 import { TemporalVoter } from './temporalVoter';
-import type { GazeClassifier, GazeSample, GazeWorkerIn, GazeWorkerOut } from './gaze.contract';
+import type { GazeClassifier, GazeWorkerIn, GazeWorkerOut } from './gaze.contract';
 
 /**
  * 시선 워커 — 프레임을 받아 1초 판정을 낸다.
@@ -110,18 +110,9 @@ function handleFrame(bitmap: ImageBitmap, tMs: number): void {
     // 모델이 들어올 자리. 지금은 스레드만 점유한다.
     burn(LOAD_MS);
 
-    // 추론이 없으니 채울 것이 없다. features 는 빈 배열, headPose 는 null,
-    // faceFound 는 false — 그래서 classify() 가 null 을 내고 판정이 UNCERTAIN 이 된다.
-    // /dev/media 에 "zone 이 계속 UNCERTAIN 인 건 정상"이라고 적어 둔 이유가 이것이다.
-    const sample: GazeSample = {
-      tMs,
-      features: new Float32Array(0),
-      headPose: null,
-      faceFound: false,
-      confidence: 0,
-    };
-
-    const verdict = classifier.classify(sample);
+    // ★ 비트맵을 그대로 넘긴다 (A안) — 전처리·얼굴검출은 분류기 안에서 한다.
+    //   더미는 프레임을 보지 않고 시간으로 가짜 판정을 낸다.
+    const verdict = classifier.classify(bitmap, tMs);
     if (verdict) voter.push(verdict, tMs);
 
     const decision = voter.decide(tMs);
@@ -165,6 +156,23 @@ self.onmessage = (e: MessageEvent<GazeWorkerIn>) => {
           post({ type: 'error', reason: 'ENGINE_UNAVAILABLE' });
         });
       return;
+
+    case 'fitCalibration': {
+      // ★ 비트맵은 여기서 닫는다. 계약에 "호출부가 닫는다"고 적어 둔 그 호출부다.
+      //   실패해도 닫아야 한다 — 안 닫으면 4초분 프레임이 GPU 메모리에 그대로 남는다.
+      let ref = null;
+      try {
+        ref = classifier.fitCalibration(msg.camera, msg.bottom);
+      } catch {
+        ref = null;
+      } finally {
+        for (const b of msg.camera) b.close();
+        for (const b of msg.bottom) b.close();
+      }
+      // null 이면 품질 미달 — 화면이 재시도를 안내한다.
+      post({ type: 'calibrated', ref });
+      return;
+    }
 
     case 'calibrate':
       classifier.calibrate(msg.ref);

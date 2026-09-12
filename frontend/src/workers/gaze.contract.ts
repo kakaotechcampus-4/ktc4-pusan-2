@@ -12,45 +12,54 @@
  * 지켜야 할 경계:
  *   프레임은 워커로 들어가고, 1초 판정만 나옵니다.
  *   원시 좌표를 메인 스레드로 넘기기 시작하면 그 순간 성능이 끝납니다.
+ *
+ * ── 분업 (A안) ──────────────────────────────────────────────────────
+ *
+ *   AI  전처리 · 얼굴검출 · 특징추출 · 프레임 판정 · 캘리브레이션 계산
+ *   FE  카메라 · 프레임 펌프 · 1초 다수결 · 저장 · 4초 안내 화면
+ *
+ * 그래서 `classify` 가 특징 벡터가 아니라 **ImageBitmap** 을 받고,
+ * `fitCalibration` 이 기준값을 **돌려줍니다**(받지 않습니다).
+ *
+ * 1초 다수결을 AI 쪽에도 두면 이중 평활이 걸려 반응이 두 배로 느려집니다.
+ * 분류기는 프레임 단위 판정만 냅니다.
  */
 
 import type { GazeZone, Ms } from '@/types/api';
 
-/** 캘리브레이션 기준 벡터. 서버로 보내지 않고 IndexedDB에만 둡니다. */
-export interface ZoneReference {
-  /** 2점 — 카메라를 볼 때, 화면을 볼 때 */
-  camera: readonly [number, number, number];
-  bottom: readonly [number, number, number];
-  /** 두 기준이 얼마나 떨어져 있나. 낮으면 판정을 믿을 수 없습니다 */
-  separability: number;
-  /** 미러링된 영상인지 — 좌우가 뒤집히는 고전적인 버그의 원인 */
-  coordinateSpace: 'raw' | 'mirrored';
-  /** 해상도·배율·카메라 위치. 다르면 다른 기기의 값입니다 */
-  layoutSignature: string;
-}
-
 /**
- * 한 프레임에서 뽑은 모델 입력. 분류기의 입력.
+ * 캘리브레이션 결과. **서버로 보내지 않습니다** — IndexedDB 에만 둡니다.
+ * 서버에는 품질 요약(`CalibrationSummary`)만 갑니다.
  *
- * `vector: [number, number, number]` 였는데 넓혔습니다 —
- * 모델 입력이 이미지일 수 있어서 숫자 3개에 담기지 않습니다.
- * 길이를 정하지 않는 이유도 그것입니다. AI팀이 입력 형식을 알려주면 채웁니다.
+ * ── 왜 세 필드뿐인가 ────────────────────────────────────────────────
+ *
+ * 이전에는 `camera`·`bottom` 2점 벡터와 `separability`·`coordinateSpace` 가
+ * 있었습니다. 그건 **분류기 구현 세부가 FE 타입으로 새어 나온 것**이었습니다 —
+ * 시선을 3차원 벡터로 본다는 가정, 기준이 정확히 2점이라는 가정,
+ * separability 라는 지표가 있다는 가정이 들어 있었습니다.
+ *
+ * AI 가 3점 캘리브레이션으로 바꾸거나 표현을 바꾸면 FE 타입이 따라 바뀝니다.
+ * FE 가 실제로 필요한 건 아래 셋뿐이라, 나머지는 `model` 안으로 넣었습니다.
  */
-export interface GazeSample {
-  tMs: Ms;
+export interface ZoneReference {
   /**
-   * 모델에 그대로 넣는 값. 길이는 모델이 정합니다.
-   * 지금은 빈 배열입니다 — 추론이 없어서 채울 것이 없습니다(자리만 만들어 둡니다).
+   * 저장 키. 해상도·배율·카메라 위치를 담습니다.
+   * 이게 다르면 다른 기기의 값이라 재사용할 수 없습니다.
    */
-  features: Float32Array;
+  layoutSignature: string;
   /**
-   * 고개 방향 (yaw, pitch, roll). 모델이 안 주면 null.
-   * CAMERA↔BOTTOM 은 고개도 함께 움직이므로 이것만으로도 축소 판정이 가능합니다 (I-19).
+   * 화면에 보여줄 등급. **수치가 아니라 등급으로 받습니다** —
+   * 임계값을 어디서 자를지는 분류기가 압니다.
+   * POOR 면 화면이 재시도를 권합니다.
    */
-  headPose: readonly [number, number, number] | null;
-  /** 얼굴이 잡혔는지. false면 이 프레임은 버립니다 */
-  faceFound: boolean;
-  confidence: number;
+  quality: 'GOOD' | 'FAIR' | 'POOR';
+  /**
+   * 분류기가 학습한 것. **FE 는 해석하지 않습니다** — 저장하고 되돌려주기만 합니다.
+   *
+   * IndexedDB 에 넣고 다음 Take 에서 되살려야 하므로
+   * **구조화 복제(structured clone)가 되는 값**이어야 합니다.
+   */
+  model: unknown;
 }
 
 /**
@@ -82,16 +91,38 @@ export interface ZoneDecision {
 export interface GazeClassifier {
   /** 모델 가중치 로드. 실패하면 throw — 호출부가 excludedReason으로 바꿉니다 */
   init(): Promise<void>;
-  /** 캘리브레이션 기준 적용 */
+  /**
+   * 캘리브레이션 4초분 프레임에서 그 사용자의 기준을 **계산합니다.**
+   *
+   * 왜 분류기가 계산하나 — 같은 절대 시선 각도가 사람마다·카메라 위치마다
+   * 다른 의미입니다. 판별에 쓰이는 값은 그 사용자 자신의 CAMERA·BOTTOM
+   * 기준으로부터의 상대 위치이고, 그걸 아는 건 분류기뿐입니다.
+   *
+   * `null` 이면 품질 미달입니다 — 화면은 재시도를 안내합니다.
+   * 4초 안내 화면(P4)은 FE 가 만듭니다. 계산만 여기서 합니다.
+   */
+  fitCalibration(
+    camera: readonly ImageBitmap[],
+    bottom: readonly ImageBitmap[],
+  ): ZoneReference | null;
+  /**
+   * 기준을 적용합니다. `fitCalibration` 이 방금 낸 값이거나,
+   * IndexedDB 에서 되살린 지난 Take 의 값입니다.
+   */
   calibrate(ref: ZoneReference): void;
   /**
-   * 프레임 하나를 판단합니다. 판단할 수 없으면 null —
-   * 얼굴이 없거나 입력이 모자란 경우입니다. null 은 버려지고
-   * TemporalVoter 의 MIN_SAMPLES 규칙이 그 1초를 UNCERTAIN 으로 만듭니다.
+   * 프레임 하나를 판단합니다. **전처리·얼굴검출·특징추출까지 이 안에서 합니다** —
+   * FE 는 프레임만 넘깁니다.
+   *
+   * 판단할 수 없으면 null — 얼굴이 없거나 캘리브레이션이 없는 경우입니다.
+   * null 은 버려지고 TemporalVoter 의 MIN_SAMPLES 규칙이 그 1초를
+   * UNCERTAIN 으로 만듭니다.
    *
    * 1초 다수결은 여기서 하지 않습니다. FrameVerdict 주석 참고.
+   *
+   * ★ 비트맵은 **호출부가 닫습니다.** 이 함수 안에서 close() 하지 마세요.
    */
-  classify(sample: GazeSample): FrameVerdict | null;
+  classify(frame: ImageBitmap, tMs: Ms): FrameVerdict | null;
   dispose(): void;
   /** Take에 기록할 버전 문자열. 셋을 다 담습니다 */
   readonly version: string;
@@ -119,6 +150,11 @@ export type GazeWorkerOut =
    * 담는 것은 방금 처리한 프레임의 tMs 하나뿐입니다.
    */
   | { type: 'frameDone'; tMs: Ms }
+  /**
+   * `fitCalibration` 결과. `null` 이면 품질 미달이라 재시도해야 합니다.
+   * 화면은 이 값을 IndexedDB 에 저장하고 다음 Take 에서 되살립니다.
+   */
+  | { type: 'calibrated'; ref: ZoneReference | null }
   | { type: 'decision'; decision: ZoneDecision }
   | { type: 'perf'; avgFps: number; droppedFrames: number }
   | { type: 'error'; reason: 'ENGINE_UNAVAILABLE' | 'CAMERA_LOST' };
@@ -126,6 +162,9 @@ export type GazeWorkerOut =
 /** 메인 → 워커 메시지. */
 export type GazeWorkerIn =
   | { type: 'init' }
+  /** 캘리브레이션 4초분. 비트맵은 워커가 닫습니다 */
+  | { type: 'fitCalibration'; camera: ImageBitmap[]; bottom: ImageBitmap[] }
+  /** 저장해 둔 기준을 되살릴 때 */
   | { type: 'calibrate'; ref: ZoneReference }
   | { type: 'frame'; bitmap: ImageBitmap; tMs: Ms }
   | { type: 'stop' };

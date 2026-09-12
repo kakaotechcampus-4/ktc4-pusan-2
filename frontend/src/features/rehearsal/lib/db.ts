@@ -1,6 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { GazeExcludedReason, Ms } from '@/types/api';
-import type { ZoneDecision } from '@/workers/gaze.contract';
+import type { ZoneDecision, ZoneReference } from '@/workers/gaze.contract';
 
 /**
  * 리허설 중 쌓이는 모든 기록. **브라우저가 원본입니다** (CLAUDE.md 4번).
@@ -14,7 +14,7 @@ import type { ZoneDecision } from '@/workers/gaze.contract';
  */
 
 const DB_NAME = 'pitchcoach';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 /** 세션 상태. 서버의 TakeStatus 와 다릅니다 — 이건 브라우저 쪽 진행 상태입니다. */
 export type SessionStatus = 'RUNNING' | 'ENDED' | 'ABORTED';
@@ -86,6 +86,18 @@ interface PitchDb extends DBSchema {
     key: [string, number];
     value: { clientSessionId: string; seq: number; offsetMs: Ms; blob: Blob };
   };
+  /**
+   * 캘리브레이션 기준. **서버로 보내지 않습니다** (CLAUDE.md 1번) —
+   * 서버에는 품질 요약(`CalibrationSummary`)만 갑니다.
+   *
+   * 키가 `layoutSignature` 인 이유 — 해상도·배율·카메라 위치가 바뀌면
+   * 시선 각도가 달라져 지난 기준을 쓸 수 없습니다. 키로 두면
+   * "다른 기기에서는 자동으로 재사용되지 않는" 동작이 그냥 나옵니다.
+   */
+  zoneRefs: {
+    key: string;
+    value: ZoneReference & { fittedAt: number };
+  };
 }
 
 let dbPromise: Promise<IDBPDatabase<PitchDb>> | null = null;
@@ -102,6 +114,11 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
       db.createObjectStore('scriptScroll', { keyPath: ['clientSessionId', 'atMs'] });
       db.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
       db.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
+
+      // v2 — 캘리브레이션 기준. 세션이 아니라 기기(layoutSignature)에 매입니다.
+      if (!db.objectStoreNames.contains('zoneRefs')) {
+        db.createObjectStore('zoneRefs', { keyPath: 'layoutSignature' });
+      }
     },
   });
   return dbPromise;
@@ -286,4 +303,39 @@ export async function findAbandonedSessions(staleAfterMs = 10_000): Promise<Sess
   const running = await db.getAllFromIndex('session', 'byStatus', 'RUNNING');
   const now = Date.now();
   return running.filter((s) => now - s.lastBeatAt > staleAfterMs);
+}
+
+/* ------------------------------------------------------------------ */
+/* 캘리브레이션 기준 — 기기별로 보관하고 다음 Take 에서 되살립니다        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 기준을 저장합니다. `fitCalibration` 이 낸 값을 그대로 넣습니다.
+ *
+ * `model` 안에 무엇이 들었는지 FE 는 모릅니다 — 분류기가 정하고,
+ * IndexedDB 는 구조화 복제로 그대로 보관합니다.
+ */
+export async function saveZoneRef(ref: ZoneReference): Promise<void> {
+  const db = await openPitchDb();
+  await db.put('zoneRefs', { ...ref, fittedAt: Date.now() });
+}
+
+/**
+ * 이 기기의 기준을 되살립니다. 없으면 `null` — 캘리브레이션을 다시 받습니다.
+ *
+ * `layoutSignature` 가 다르면 애초에 키가 달라 안 잡힙니다.
+ * 같은 기기라도 오래된 기준은 쓰지 않습니다 — 카메라를 옮겼거나
+ * 앉은 자리가 바뀌었을 가능성이 시간과 함께 커집니다.
+ */
+export async function loadZoneRef(
+  layoutSignature: string,
+  maxAgeMs = 7 * 24 * 60 * 60 * 1000,
+): Promise<ZoneReference | null> {
+  const db = await openPitchDb();
+  const row = await db.get('zoneRefs', layoutSignature);
+  if (!row) return null;
+  if (Date.now() - row.fittedAt > maxAgeMs) return null;
+
+  const { fittedAt: _fittedAt, ...ref } = row;
+  return ref;
 }
