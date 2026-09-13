@@ -7,6 +7,7 @@ from pitch_coach_backend.core.exceptions import register_exception_handlers
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.user.controller import router as user_router
+from pitch_coach_backend.realtime.controller import router as realtime_router
 
 # Caddy 는 /api/* 만 백엔드로 넘긴다 (infra/Caddyfile). 접두어 없는 경로는 404 도 아니고
 # 프론트 화면이 돌아온다. 그래서 /docs·/openapi.json 까지 전부 /api 아래로 옮긴다.
@@ -49,5 +50,6 @@ def health() -> dict[str, str]:
 
 api.include_router(auth_router)
 api.include_router(user_router)
+api.include_router(realtime_router)
 
 app.include_router(api)
