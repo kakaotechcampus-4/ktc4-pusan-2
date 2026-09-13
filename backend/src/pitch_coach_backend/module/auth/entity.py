@@ -14,18 +14,23 @@ from pitch_coach_backend.core.database import Base, TimestampMixin, UUIDPrimaryK
 
 
 class OAuthAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    """소셜 계정과 User 의 연결. 지금은 Google 전용이라 User 와 1:1 이다."""
+    """소셜 계정과 User 의 연결. 회원 하나에 provider 당 하나씩 붙을 수 있다.
+
+    지금은 Google 만 있어서 결과적으로 1:1 이지만, 스키마는 1:N 을 허용한다.
+    """
 
     __tablename__ = "oauth_accounts"
     __table_args__ = (
-        # 같은 제공자의 같은 sub 가 두 계정에 붙는 것을 DB 가 막는다.
+        # 같은 제공자의 같은 sub 가 두 회원에 붙는 것을 DB 가 막는다.
         # 동시 최초 로그인 경쟁도 이 제약으로 걸러진다.
         UniqueConstraint("provider", "provider_subject", name="uq_oauth_accounts_provider_subject"),
+        # 회원 하나가 같은 제공자의 계정을 둘 붙이는 것을 막는다.
+        # user_id 가 앞이라 FK CASCADE 와 "이 회원의 계정" 조회의 인덱스 역할도 한다.
+        UniqueConstraint("user_id", "provider", name="uq_oauth_accounts_user_provider"),
     )
 
-    # unique=True 로 1:1 을 강제한다. 다른 provider 를 붙일 때 이 제약을 푼다.
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     # Google ID Token 의 sub. 이메일이 바뀌어도 변하지 않는 유일한 식별자다.
