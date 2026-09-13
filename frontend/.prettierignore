@@ -1,0 +1,16 @@
+node_modules
+dist
+package-lock.json
+
+# MSW가 생성한 파일. 우리가 포맷하지 않는다 (msw init이 다시 덮어쓴다)
+public/mockServiceWorker.js
+
+# 모델 가중치·WASM
+public/models
+
+# 무대 CSS와 토큰은 정렬이 곧 주석이다. Prettier가 표를 흩뜨린다.
+src/index.css
+src/features/rehearsal/Stage/stage.css
+
+# 문서는 손으로 맞춘 표와 괘선이 곧 내용이다. Prettier가 재정렬하면 읽기 어려워진다.
+*.md

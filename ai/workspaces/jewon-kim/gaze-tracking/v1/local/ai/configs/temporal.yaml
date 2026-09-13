@@ -1,0 +1,11 @@
+# doc 6 temporal smoothing
+window_frames: 8
+ema_alpha: 0.35
+vote_recency_weight: 2.0
+enter_bottom_threshold: 0.60
+enter_camera_threshold: 0.60
+to_bottom_dwell_ms: 600
+to_camera_dwell_ms: 400
+uncertain_dwell_ms: 800
+heartbeat_ms: 1000
+decay_on_invalid: true

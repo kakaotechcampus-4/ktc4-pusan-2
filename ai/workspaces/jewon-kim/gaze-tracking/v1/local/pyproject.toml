@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# Distribution name. The IMPORT package stays ``vision`` (see packages.find
+# below) because every module in the tree imports ``from vision...``; renaming
+# that is a tree-wide change, not a packaging one.
+name = "gaze-tracking"
+version = "1.0.0"
+description = "Pitch Coach gaze tracking v1 (CAMERA / BOTTOM) - local rig"
+requires-python = ">=3.10,<3.13"
+
+[tool.setuptools.packages.find]
+where = ["ai/src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["ai/src"]
+filterwarnings = ["ignore::DeprecationWarning"]

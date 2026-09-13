@@ -1,0 +1,14 @@
+# doc 3-1 input standardisation
+analysis_fps: 8.0
+face_crop_size: 224
+eye_crop_size: [60, 36]
+face_crop_margin: 0.25
+eye_crop_scale: 2.2
+min_face_confidence: 0.50
+min_face_area_ratio: 0.010
+min_eye_openness: 0.12
+border_tolerance_px: 2
+align_face_roll: true
+num_faces: 1
+landmarker_model_path: ai/models/face_landmarker.task
+running_mode: IMAGE
