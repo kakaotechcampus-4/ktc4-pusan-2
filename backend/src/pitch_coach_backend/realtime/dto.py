@@ -33,11 +33,17 @@ client_message_adapter: TypeAdapter[ClientMessage] = TypeAdapter(ClientMessage)
 
 
 class ReadyMessage(BaseModel):
-    """인증과 Deepgram 연결이 끝났다. 이제 오디오를 보내도 된다."""
+    """인증이 끝났다. 이제 오디오를 보내도 된다.
+
+    Deepgram 연결을 기다리지 않는다 — 아직 붙기 전이면 오디오는 큐에 쌓이고 `stt_state` 가
+    `connecting` 으로 온다. STT 가 죽어 있어도 발표는 진행되어야 하기 때문이다.
+    재연결로 기존 스트림에 다시 붙은 경우에는 그 시점의 상태와 세션 번호가 그대로 온다.
+    """
 
     type: Literal["ready"] = "ready"
     take_id: uuid.UUID
     stt_session_no: int
+    stt_state: SttState
 
 
 class WordOut(BaseModel):
@@ -66,9 +72,20 @@ class TranscriptMessage(BaseModel):
     words: list[WordOut]
 
 
+# connecting 첫 연결 전 · ok 정상 · reconnecting 세션이 끊겨 재접속 중
+# degraded 재접속이 이어서 실패 (재시도는 계속한다) · closed 정리 완료
+SttState = Literal["connecting", "ok", "reconnecting", "degraded", "closed"]
+
+
 class SttStatusMessage(BaseModel):
+    """서버 2단 코치가 살아 있는지. 상태가 바뀔 때와 연결이 붙을 때 보낸다.
+
+    숫자는 **Take 누적**이다 (연결 단위가 아니다). `lost_ms` 는 STT 에 닿지 못한 오디오 —
+    채우지 못한 갭과 Deepgram 이 죽어 있는 동안 버린 프레임을 합친 값이다.
+    """
+
     type: Literal["stt_status"] = "stt_status"
-    state: Literal["ok", "degraded", "reconnecting", "closed"]
+    state: SttState
     stt_session_no: int
     frames: int
     dropped_frames: int
