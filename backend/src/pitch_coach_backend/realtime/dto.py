@@ -5,6 +5,7 @@
 """
 
 import uuid
+from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter
@@ -93,9 +94,30 @@ class SttStatusMessage(BaseModel):
     lost_ms: int
 
 
+class WsErrorCode(StrEnum):
+    """FE 가 분기하는 값이다 (REST 의 에러 `code` 와 같은 역할).
+
+    **에러가 곧 종료는 아니다.** 코드마다 연결을 어떻게 하는지가 다르다.
+
+    | 코드 | 연결 |
+    |---|---|
+    | `UNAUTHORIZED` | 1008 로 닫는다 |
+    | `FORBIDDEN` | 1008 로 닫는다 |
+    | `BAD_MESSAGE` | 유지 |
+    | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
+    | `TAKE_TAKEN_OVER` | 1008 로 닫는다. FE 는 **재연결하지 않는다** |
+    """
+
+    UNAUTHORIZED = "UNAUTHORIZED"
+    FORBIDDEN = "FORBIDDEN"
+    BAD_MESSAGE = "BAD_MESSAGE"
+    BAD_AUDIO_FRAME = "BAD_AUDIO_FRAME"
+    TAKE_TAKEN_OVER = "TAKE_TAKEN_OVER"
+
+
 class ErrorMessage(BaseModel):
-    """REST 에러 응답과 같은 code 체계. 닫기 직전에 한 번 보낸다."""
+    """무엇이 잘못됐는지. 연결을 닫을지는 code 가 정한다 (WsErrorCode 표)."""
 
     type: Literal["error"] = "error"
-    code: str
+    code: WsErrorCode
     message: str

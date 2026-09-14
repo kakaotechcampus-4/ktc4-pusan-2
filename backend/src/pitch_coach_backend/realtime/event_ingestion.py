@@ -26,8 +26,9 @@ MAX_FRAME_BYTES = FRAME_HEADER.size + MAX_FRAME_MS * BYTES_PER_MS
 # performance.now() 지터. 이 이하로 어긋난 건 갭이 아니라 타이머 흔들림이다
 GAP_TOLERANCE_MS = 50
 
-# 이보다 큰 갭은 채우지 않는다. 몇 분짜리 무음을 밀어 넣으면 그동안 실시간 전사가 멈춘다.
-# 못 채운 만큼은 lost_ms 로 기록한다 — 그 뒤 타임스탬프는 그만큼 앞당겨져 있다.
+# 이보다 큰 갭은 무음으로 채우지 않는다. 몇 분짜리 무음을 밀어 넣으면 그동안 실시간 전사가
+# 멈추고 그만큼 과금된다. 대신 timeline_break 로 표시해 Deepgram 세션을 갈게 한다 —
+# 부분만 채우면 그 뒤 타임스탬프가 못 채운 만큼 통째로 앞당겨진다.
 MAX_SILENCE_FILL_MS = 5_000
 
 
@@ -68,8 +69,17 @@ class Accepted:
     frame: AudioFrame
     # 프레임 앞에 먼저 보낼 무음 길이. 0 이면 이전 프레임과 이어진다
     silence_ms: int
-    # 무음으로 채우지 못하고 잃은 길이. 0 이 아니면 이후 타임스탬프가 이만큼 앞당겨져 있다
+    # 무음으로 메우기에는 너무 긴 갭이라 받지 못한 길이
     lost_ms: int
+
+    @property
+    def timeline_break(self) -> bool:
+        """이 프레임부터는 지금 Deepgram 세션의 타임라인에 이어 붙일 수 없다.
+
+        갭을 무음으로 메우지 않았으므로 그대로 보내면 이후 전사 시각이 갭만큼 앞당겨진다.
+        보내는 쪽(take_stream)이 세션을 갈아 base 를 다시 잡아야 한다.
+        """
+        return self.lost_ms > 0
 
 
 class FrameSequencer:
@@ -92,9 +102,11 @@ class FrameSequencer:
         lost_ms = 0
         if self._last is not None:
             gap_ms = frame.offset_ms - self._last.end_ms
-            if gap_ms > GAP_TOLERANCE_MS:
-                silence_ms = min(gap_ms, MAX_SILENCE_FILL_MS)
-                lost_ms = gap_ms - silence_ms
+            if gap_ms > MAX_SILENCE_FILL_MS:
+                # 부분만 채우면 타임라인이 어긋난다. 아예 채우지 않고 세션 교체를 요구한다
+                lost_ms = gap_ms
+            elif gap_ms > GAP_TOLERANCE_MS:
+                silence_ms = gap_ms
             # 음수(겹침) 는 지터다. 그대로 이어 보낸다
 
         self._last = frame

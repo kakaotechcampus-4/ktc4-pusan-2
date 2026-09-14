@@ -10,10 +10,15 @@
 두 가지 끊김을 따로 다룬다.
 
 - **WS-1** (FE↔BE): 연결만 떨어진다. Deepgram 세션은 `GRACE_SEC` 동안 살려 두고 그 안에
-  다시 붙으면 같은 세션에 이어 붙인다. 못 붙으면 `CloseStream` 으로 정리한다.
+  다시 붙으면 같은 세션에 이어 붙인다. 떨어져 있는 동안 온 final 은 모아 두었다가 재연결 때
+  다시 보낸다. 못 붙으면 `CloseStream` 으로 정리한다.
 - **WS-2** (BE↔Deepgram): 큐에 담아 두고 백오프로 재접속한다. 새 세션은 타임스탬프가 다시
   0 부터라 `base_offset_ms` 를 새로 잡고 `stt_session_no` 를 올린다. 재접속이 이어서 실패해도
   **연결을 끊지 않는다** — FE 1단 코치는 계속 돌아야 하므로 `degraded` 만 알리고 재시도한다.
+
+타임라인 규칙: 한 Deepgram 세션 안에서는 `take_ms = base_offset_ms + deepgram_ms` 가 성립해야
+한다. 그래서 프레임 사이 갭은 무음으로 메운다. 메우기에 너무 긴 갭(`MAX_SILENCE_FILL_MS` 초과)
+은 **세션을 갈아** base 를 다시 잡는다 — 일부만 메우면 그 뒤 전사 시각이 통째로 앞당겨진다.
 
 MVP 는 uvicorn 1 프로세스라 레지스트리가 in-process dict 다. 워커를 늘리려면 sticky 라우팅이나
 Redis 가 필요한데 그때는 어차피 재설계다 (계획 문서 §8-6).
@@ -37,8 +42,10 @@ from pitch_coach_backend.realtime.dto import (
     SttStatusMessage,
     TranscriptMessage,
     WordOut,
+    WsErrorCode,
 )
 from pitch_coach_backend.realtime.event_ingestion import (
+    MAX_SILENCE_FILL_MS,
     Accepted,
     FrameSequencer,
     parse_audio_frame,
@@ -65,8 +72,21 @@ BACKOFF_SEC = (0.5, 1.0, 2.0, 5.0, 10.0)
 FAST_ATTEMPTS = 3
 # CloseStream 뒤 남은 결과와 Metadata 를 기다리는 상한
 DRAIN_TIMEOUT_SEC = 10.0
+# 정리 중인 스트림에 재연결이 왔을 때 그 정리를 기다리는 상한
+HANDOVER_TIMEOUT_SEC = 3.0
 # Deepgram 이 받았다는 길이와 우리가 보낸 길이의 허용 오차
 DURATION_TOLERANCE_MS = 50
+# FE 가 떨어져 있는 동안 모아 둘 final 개수. 10분 발표가 200개 안팎이다
+MAX_MISSED_FINALS = 200
+
+# _run_session 이 끝난 이유
+_STOPPED = "stopped"  # CloseStream 을 보냈다. Take 가 끝났다
+_ROTATE = "rotate"  # 타임라인이 끊겨 새 세션이 필요하다
+_LOST = "lost"  # Deepgram 이 끊었다
+
+
+class StreamOwnerMismatch(Exception):
+    """다른 사용자가 이미 쓰고 있는 Take 다."""
 
 
 def _backoff(attempt: int) -> float:
@@ -78,11 +98,15 @@ class TakeStream:
         self,
         take_id: uuid.UUID,
         *,
+        owner_id: uuid.UUID,
         stt_adapter: SttAdapter,
         config: SttConfig,
         grace_sec: float | None = None,
     ) -> None:
         self.take_id = take_id
+        # 이 스트림을 만든 사용자. Take 테이블이 없는 동안 남의 Take 를 가로채지 못하게
+        # 막는 유일한 선이다. 진짜 검사(Take 존재·소유·RUNNING) 는 take 모듈이 생기면 붙인다
+        self.owner_id = owner_id
         self._adapter = stt_adapter
         self._config = config
         self._grace_sec = GRACE_SEC if grace_sec is None else grace_sec
@@ -100,15 +124,28 @@ class TakeStream:
         self._bytes_sent = 0
         # 드롭된 오디오만큼 다음 프레임 앞에 채울 무음. 타임라인을 밀리지 않게 한다
         self._pending_silence_ms = 0
+        # 세션을 갈면서 넘긴 프레임. 새 세션의 첫 프레임이 된다
+        self._carry: Accepted | None = None
 
         self._queue: asyncio.Queue[Accepted | None] = asyncio.Queue(maxsize=QUEUE_MAX_FRAMES)
         self._client: WebSocket | None = None
+        # FE 가 떨어져 있는 동안 온 final. 다시 붙으면 순서대로 보낸다
+        self._missed_finals: list[TranscriptMessage] = []
         self._grace_task: asyncio.Task[None] | None = None
         self._task: asyncio.Task[None] | None = None
         self._ever_connected = False
         self._stopping = False
         self._stop_event = asyncio.Event()
         self._closed = asyncio.Event()
+
+    @property
+    def is_stopping(self) -> bool:
+        """정리에 들어갔다. 새 연결을 붙이면 안 된다 — 곧 사라질 스트림이다."""
+        return self._stopping
+
+    @property
+    def is_finished(self) -> bool:
+        return self._closed.is_set()
 
     # ── 수명 ──────────────────────────────────────────────────────────
 
@@ -132,11 +169,25 @@ class TakeStream:
             await _quiet(
                 previous.send_text(
                     ErrorMessage(
-                        code="TAKE_TAKEN_OVER", message="다른 탭에서 같은 연습을 이어받았어요."
+                        code=WsErrorCode.TAKE_TAKEN_OVER,
+                        message="다른 탭에서 같은 연습을 이어받았어요.",
                     ).model_dump_json()
                 )
             )
-            await _quiet(previous.close(code=1008, reason="TAKE_TAKEN_OVER"))
+            await _quiet(previous.close(code=1008, reason=WsErrorCode.TAKE_TAKEN_OVER))
+
+    async def resend_missed(self) -> None:
+        """떨어져 있는 동안 온 final 을 순서대로 다시 보낸다.
+
+        `ready` 뒤에 부른다. 저장이 붙기 전까지는 이게 유일한 복구 수단이다 —
+        여기서 버리면 그 발화는 어디에도 남지 않는다.
+        """
+        if not self._missed_finals:
+            return
+        missed, self._missed_finals = self._missed_finals, []
+        logger.info("재연결 중 놓친 final %d개를 다시 보낸다 take=%s", len(missed), self.take_id)
+        for message in missed:
+            await self._send(message)
 
     def detach(self, ws: WebSocket) -> None:
         """연결이 끊겼다. 이미 다른 연결이 붙었으면 아무것도 하지 않는다."""
@@ -163,16 +214,20 @@ class TakeStream:
         self._stop_event.set()
         self._put(None)
 
-    async def wait_closed(self, timeout: float = DRAIN_TIMEOUT_SEC) -> bool:
+    async def wait_closed(self, timeout: float | None = None) -> bool:
         try:
-            await asyncio.wait_for(self._closed.wait(), timeout)
+            await asyncio.wait_for(
+                self._closed.wait(), DRAIN_TIMEOUT_SEC if timeout is None else timeout
+            )
         except TimeoutError:
-            logger.warning("Deepgram drain 타임아웃 take=%s", self.take_id)
             return False
         return True
 
     def cancel(self) -> None:
-        """태스크를 즉시 끊는다. 정상 종료(`request_stop`) 와 달리 남은 전사를 버린다."""
+        """태스크를 즉시 끊는다. 정상 종료(`request_stop`) 와 달리 남은 전사를 버린다.
+
+        Deepgram 연결은 `_run` 의 finally 가 shield 안에서 닫는다.
+        """
         self._stopping = True
         self._stop_event.set()
         if self._grace_task is not None:
@@ -180,6 +235,9 @@ class TakeStream:
             self._grace_task = None
         if self._task is not None:
             self._task.cancel()
+        self._finish()
+
+    def _finish(self) -> None:
         self.state = "closed"
         self._closed.set()
         forget(self)
@@ -219,38 +277,38 @@ class TakeStream:
 
     async def _run(self) -> None:
         attempt = 0
-        while not self._stopping:
-            session = await self._connect()
-            if session is None:
-                attempt += 1
-                if attempt >= FAST_ATTEMPTS:
-                    # 재시도는 계속한다. 여기서 연결을 끊으면 FE 1단 코치까지 같이 죽는다
-                    await self._set_state("degraded")
+        try:
+            while not self._stopping:
+                session = await self._connect()
+                if session is None:
+                    attempt += 1
+                    if attempt >= FAST_ATTEMPTS:
+                        # 재시도는 계속한다. 여기서 연결을 끊으면 FE 1단 코치까지 같이 죽는다
+                        await self._set_state("degraded")
+                    if await self._sleep_or_stop(_backoff(attempt)):
+                        break
+                    continue
+
+                attempt = 0
+                self._ever_connected = True
+                self.stt_session_no += 1
+                self._base_offset_ms = None
+                self._bytes_sent = 0
+                self._pending_silence_ms = 0
+                await self._set_state("ok")
+
+                reason = await self._run_session(session)
+                if self._stopping:
+                    break
+                if reason == _ROTATE:
+                    # 우리가 의도한 교체다. 백오프도 reconnecting 알림도 없다
+                    continue
+                await self._set_state("reconnecting")
+                attempt = 1
                 if await self._sleep_or_stop(_backoff(attempt)):
                     break
-                continue
-
-            attempt = 0
-            self._ever_connected = True
-            self.stt_session_no += 1
-            self._base_offset_ms = None
-            self._bytes_sent = 0
-            self._pending_silence_ms = 0
-            await self._set_state("ok")
-
-            await self._run_session(session)
-            await _quiet(session.abort())
-            if self._stopping:
-                break
-            # 세션만 죽었다. Take 는 계속 간다
-            await self._set_state("reconnecting")
-            attempt = 1
-            if await self._sleep_or_stop(_backoff(attempt)):
-                break
-
-        self.state = "closed"
-        self._closed.set()
-        forget(self)
+        finally:
+            self._finish()
 
     async def _connect(self) -> SttSession | None:
         try:
@@ -267,42 +325,68 @@ class TakeStream:
             return False
         return True
 
-    async def _run_session(self, session: SttSession) -> None:
-        async with anyio.create_task_group() as tg:
+    async def _run_session(self, session: SttSession) -> str:
+        reason = _LOST
+        try:
+            async with anyio.create_task_group() as tg:
 
-            async def audio() -> None:
-                try:
-                    await self._pump_audio(session)
-                except ConnectionClosed:
+                async def audio() -> None:
+                    nonlocal reason
+                    try:
+                        reason = await self._pump_audio(session)
+                    except ConnectionClosed:
+                        reason = _LOST
+                        tg.cancel_scope.cancel()
+                        return
+                    # CloseStream 을 보냈다. 이벤트 펌프가 Metadata 까지 받을 시간을 준다
+                    await anyio.sleep(DRAIN_TIMEOUT_SEC)
                     tg.cancel_scope.cancel()
-                    return
-                # CloseStream 을 보냈다. 이벤트 펌프가 Metadata 까지 받을 시간을 준다
-                await anyio.sleep(DRAIN_TIMEOUT_SEC)
-                tg.cancel_scope.cancel()
 
-            async def events() -> None:
-                await self._pump_events(session)
-                tg.cancel_scope.cancel()
+                async def events() -> None:
+                    await self._pump_events(session)
+                    tg.cancel_scope.cancel()
 
-            tg.start_soon(audio)
-            tg.start_soon(events)
-            tg.start_soon(session.keepalive_loop)
+                tg.start_soon(audio)
+                tg.start_soon(events)
+                tg.start_soon(session.keepalive_loop)
+        finally:
+            # 취소로 빠져나가도 Deepgram 소켓은 닫는다. shield 가 없으면 이 await 가
+            # 다시 취소되어 연결이 그대로 남는다
+            with anyio.CancelScope(shield=True):
+                await _quiet(session.abort())
+        return reason
 
-    async def _pump_audio(self, session: SttSession) -> None:
+    async def _pump_audio(self, session: SttSession) -> str:
         while True:
-            item = await self._queue.get()
+            item = self._carry or await self._queue.get()
+            self._carry = None
             if item is None:
                 await session.close_stream()
-                return
-            await self._send_frame(session, item)
+                return _STOPPED
 
-    async def _send_frame(self, session: SttSession, item: Accepted) -> None:
+            gap_ms = item.silence_ms + self._pending_silence_ms
+            if self._base_offset_ms is not None and (
+                item.timeline_break or gap_ms > MAX_SILENCE_FILL_MS
+            ):
+                # 무음으로 메우기엔 너무 긴 갭이다. 이대로 보내면 이후 전사 시각이
+                # 갭만큼 앞당겨진다. 세션을 갈아 base 를 다시 잡는다
+                logger.info(
+                    "타임라인 단절로 Deepgram 세션을 교체한다 take=%s gap_ms=%d",
+                    self.take_id,
+                    gap_ms + item.lost_ms,
+                )
+                self._carry = item
+                await session.close_stream()
+                return _ROTATE
+
+            await self._send_frame(session, item, gap_ms)
+
+    async def _send_frame(self, session: SttSession, item: Accepted, gap_ms: int) -> None:
         if self._base_offset_ms is None:
             # 세션의 첫 프레임. 앞의 갭·드롭은 base 가 흡수하므로 무음을 보내지 않는다
             self._base_offset_ms = item.frame.offset_ms
             self._pending_silence_ms = 0
         else:
-            gap_ms = item.silence_ms + self._pending_silence_ms
             self._pending_silence_ms = 0
             if gap_ms:
                 await self._send_audio(session, silence(gap_ms))
@@ -331,27 +415,31 @@ class TakeStream:
         base = self._base_offset_ms or 0
         if event.transcript or event.words:
             # 다음 PR: is_final 이면 여기서 take_transcript_segments 에 저장한다
-            await self._send(
-                TranscriptMessage(
-                    segment_id=f"{self.stt_session_no}-{self.segment_no}",
-                    is_final=event.is_final,
-                    speech_final=event.speech_final,
-                    start_ms=base + event.start_ms,
-                    end_ms=base + event.end_ms,
-                    text=event.transcript,
-                    confidence=event.confidence,
-                    words=[
-                        WordOut(
-                            word=w.word,
-                            punctuated_word=w.punctuated_word,
-                            start_ms=base + w.start_ms,
-                            end_ms=base + w.end_ms,
-                            confidence=w.confidence,
-                        )
-                        for w in event.words
-                    ],
-                )
+            message = TranscriptMessage(
+                segment_id=f"{self.stt_session_no}-{self.segment_no}",
+                is_final=event.is_final,
+                speech_final=event.speech_final,
+                start_ms=base + event.start_ms,
+                end_ms=base + event.end_ms,
+                text=event.transcript,
+                confidence=event.confidence,
+                words=[
+                    WordOut(
+                        word=w.word,
+                        punctuated_word=w.punctuated_word,
+                        start_ms=base + w.start_ms,
+                        end_ms=base + w.end_ms,
+                        confidence=w.confidence,
+                    )
+                    for w in event.words
+                ],
             )
+            if event.is_final and self._client is None:
+                # FE 가 떨어져 있다. interim 은 어차피 다음 것이 덮으니 버리고 final 만 모은다
+                self._missed_finals.append(message)
+                del self._missed_finals[:-MAX_MISSED_FINALS]
+            else:
+                await self._send(message)
         if event.is_final:
             # 빈 final 도 구간을 닫는다. 다음 interim 은 새 번호로
             self.segment_no += 1
@@ -419,15 +507,35 @@ async def attach(
     take_id: uuid.UUID,
     ws: WebSocket,
     *,
+    owner_id: uuid.UUID,
     stt_adapter: SttAdapter,
     config: SttConfig,
 ) -> TakeStream:
-    """Take 의 스트림을 찾거나 만들고 이 연결을 붙인다."""
+    """Take 의 스트림을 찾거나 만들고 이 연결을 붙인다.
+
+    다른 사용자의 스트림이면 `StreamOwnerMismatch`. Take 테이블이 없는 동안 이것이
+    남의 연습을 가로채지 못하게 막는 유일한 선이다 (계획 문서 §6-2).
+    """
     stream = _streams.get(take_id)
-    if stream is None or stream.state == "closed":
-        stream = TakeStream(take_id, stt_adapter=stt_adapter, config=config)
+
+    if stream is not None and stream.is_stopping:
+        # 정리 중인 스트림에 붙이면 곧 사라질 객체에 오디오를 밀어 넣게 된다.
+        # 끝나기를 기다렸다가 새로 만든다
+        await stream.wait_closed(timeout=HANDOVER_TIMEOUT_SEC)
+        forget(stream)
+        stream = None
+
+    if stream is not None and stream.is_finished:
+        forget(stream)
+        stream = None
+
+    if stream is None:
+        stream = TakeStream(take_id, owner_id=owner_id, stt_adapter=stt_adapter, config=config)
         _streams[take_id] = stream
         stream.start()
+    elif stream.owner_id != owner_id:
+        raise StreamOwnerMismatch
+
     await stream.attach(ws)
     return stream
 

@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import contextlib
 import json
 import struct
 import time
@@ -14,15 +15,17 @@ from dataclasses import dataclass, field
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from websockets.exceptions import ConnectionClosedError
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.main import app
 from pitch_coach_backend.module.user.entity import User
-from pitch_coach_backend.realtime import take_stream
+from pitch_coach_backend.realtime import service, take_stream
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
 from pitch_coach_backend.realtime.dependencies import get_stt_adapter
+from pitch_coach_backend.realtime.dto import ErrorMessage, WsErrorCode
 from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
     SttConfig,
@@ -63,6 +66,8 @@ class Plan:
     replies: list[SttEvent] = field(default_factory=list)
     # 이 개수만큼 오디오를 받은 뒤 연결이 끊긴 것처럼 군다
     die_after: int | None = None
+    # CloseStream 에 Metadata 도 종료도 돌려주지 않는다 (drain 타임아웃 재현)
+    swallow_close: bool = False
 
 
 class FakeSttSession:
@@ -71,6 +76,7 @@ class FakeSttSession:
     def __init__(self, plan: Plan) -> None:
         self.replies = list(plan.replies)
         self.die_after = plan.die_after
+        self.swallow_close = plan.swallow_close
         self.audio: list[bytes] = []
         self.controls: list[str] = []
         self.aborted = False
@@ -98,6 +104,8 @@ class FakeSttSession:
 
     async def close_stream(self) -> None:
         self.controls.append("CloseStream")
+        if self.swallow_close:
+            return
         reported = self.audio_ms if self.report_ms is None else self.report_ms
         self._events.put_nowait(Metadata(request_id="fake", duration_ms=reported))
         self._events.put_nowait(None)
@@ -161,6 +169,14 @@ def user(db_session: Session) -> User:
     # 서비스가 인증 뒤 rollback() 으로 커넥션을 돌려준다. 커밋(=savepoint 해제) 해 둬야 살아남는다
     db_session.commit()
     return user
+
+
+@pytest.fixture
+def other_token(db_session: Session) -> str:
+    other = User(email="other@example.com", name="다른 사람")
+    db_session.add(other)
+    db_session.commit()
+    return create_access_token(other.id)
 
 
 @pytest.fixture
@@ -566,3 +582,151 @@ def test_duration_mismatch_is_logged(
             stop(ws)
 
     assert "sent_ms=100 duration_ms=40 drift_ms=-60" in caplog.text
+
+
+# ── 소유권·정리 (코드 리뷰 지적) ───────────────────────────────────────
+
+
+def test_other_user_cannot_take_over_the_stream(
+    client: TestClient, stt: FakeSttAdapter, token: str, other_token: str
+):
+    """Take 테이블이 없는 동안 스트림을 만든 사용자만 붙을 수 있다."""
+    with client.websocket_connect(WS_PATH) as mine:
+        handshake(mine, token)
+        wait_state(mine, "ok")
+
+        with client.websocket_connect(WS_PATH) as theirs:
+            auth(theirs, other_token)
+            assert theirs.receive_json()["code"] == "FORBIDDEN"
+            assert closed_with(theirs) == 1008
+
+        # 내 연결은 그대로다 — 쫓겨나지 않았다
+        mine.send_bytes(frame(1, 0))
+        assert stop(mine)["frames"] == 1
+
+    assert len(stt.sessions) == 1
+
+
+def test_stop_timeout_cancels_the_stream_instead_of_leaking_it(
+    client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
+):
+    """drain 이 실패해도 레지스트리에서만 사라지고 태스크가 계속 도는 일이 없어야 한다."""
+    monkeypatch.setattr(service, "STOP_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 5.0)
+    adapter = use(FakeSttAdapter(Plan(swallow_close=True)))
+
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        assert stop(ws)["state"] == "closed"
+        assert closed_with(ws) == 1000
+
+    assert take_stream.active_count() == 0
+    assert adapter.session is not None
+    # 태스크를 끊었으면 Deepgram 소켓도 닫혀야 한다 (shield 안의 abort)
+    assert adapter.session.aborted
+
+
+def test_reconnect_while_stopping_gets_a_fresh_stream(
+    client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
+):
+    """정리 중인 스트림에 붙으면 소비되지 않는 큐에 오디오가 쌓인다."""
+    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 2.0)
+    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.3)
+    adapter = use(FakeSttAdapter(Plan(swallow_close=True), Plan()))
+
+    first = client.websocket_connect(WS_PATH)
+    ws1 = first.__enter__()
+    handshake(ws1, token)
+    wait_state(ws1, "ok")
+    ws1.send_text(json.dumps({"type": "stop"}))  # 응답을 기다리지 않는다
+
+    with client.websocket_connect(WS_PATH) as ws2:
+        ready = handshake(ws2, token)
+        wait_state(ws2, "ok")
+        ws2.send_bytes(frame(1, 0))
+        status = stop(ws2)
+
+    with contextlib.suppress(Exception):
+        first.__exit__(None, None, None)
+
+    # 정리 중인 스트림을 재사용하지 않고 새로 만든다
+    assert ready["stt_session_no"] in (0, 1)
+    assert len(adapter.sessions) == 2
+    assert status["frames"] == 1, "새 스트림의 통계는 처음부터 센다"
+
+
+def test_long_gap_rotates_the_session_and_keeps_take_timeline(client: TestClient, token: str):
+    """무음으로 메울 수 없는 갭 뒤에도 전사 시각이 Take 기준이어야 한다."""
+    adapter = use(
+        FakeSttAdapter(
+            # 세션 1 에 답을 둘 준다. 교체가 안 되면 두 번째 프레임이 여기로 가서
+            # Deepgram 시각 5,100ms(= 100 + 무음 5,000) 로 답이 오고 아래 assert 가 잡는다.
+            # 답이 하나뿐이면 교체 실패 시 전사가 안 와서 테스트가 실패 대신 멈춘다
+            Plan(
+                replies=[
+                    transcript(0, 100, "앞", is_final=True),
+                    transcript(5_100, 5_200, "뒤", is_final=True),
+                ]
+            ),
+            Plan(replies=[transcript(0, 100, "뒤", is_final=True)]),
+        )
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+
+        ws.send_bytes(frame(1, 0))
+        first = ws.receive_json()
+        # 10초 갭 — MAX_SILENCE_FILL_MS(5초) 를 넘는다
+        ws.send_bytes(frame(2, 10_100))
+        second = ws.receive_json()
+        status = stop(ws)
+
+    assert first["start_ms"] == 0
+    # 예전 동작: 5초만 무음으로 채우고 5,100ms 로 보고했다 (Take 시계와 5초 어긋남)
+    assert second["start_ms"] == 10_100
+    assert second["segment_id"] == "2-2", "세션은 갈리고 세그먼트 번호는 이어진다"
+    assert len(adapter.sessions) == 2
+    # 못 받은 오디오는 유실로 기록하되 무음으로 밀어 넣지는 않는다
+    assert status["lost_ms"] == 10_000
+    assert status["silence_ms"] == 0
+    assert [len(a) for a in adapter.sessions[1].audio] == [3200]
+
+
+def test_finals_that_arrive_while_detached_are_resent_on_reconnect(client: TestClient, token: str):
+    """grace 동안 온 final 을 버리면 저장이 없는 지금은 그 발화가 어디에도 안 남는다."""
+    adapter = use(
+        FakeSttAdapter(Plan(replies=[transcript(0, 200, "놓친 말", is_final=True)]), fail_times=1)
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        # Deepgram 이 아직 안 붙었다. 프레임은 큐에 쌓인다
+        ws.send_bytes(frame(1, 0))
+
+    # 연결이 끊긴 사이에 Deepgram 이 붙고 final 이 도착한다
+    deadline = time.monotonic() + 3.0
+    while not adapter.sessions and time.monotonic() < deadline:
+        time.sleep(0.02)
+    time.sleep(0.1)
+
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        missed = ws.receive_json()
+        stop(ws)
+
+    assert missed["type"] == "transcript"
+    assert (missed["text"], missed["is_final"]) == ("놓친 말", True)
+
+
+def test_error_code_must_be_a_known_value():
+    """code 는 FE 분기 키다. 오타를 런타임에서 막는다 (이 프로젝트에 정적 타입 검사기는 없다)."""
+    assert (
+        json.loads(ErrorMessage(code=WsErrorCode.BAD_MESSAGE, message="x").model_dump_json())[
+            "code"
+        ]
+        == "BAD_MESSAGE"
+    )
+    with pytest.raises(ValidationError):
+        ErrorMessage(code="TYPO_CODE", message="x")

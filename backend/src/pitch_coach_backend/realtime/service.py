@@ -24,18 +24,18 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import UnauthorizedException
 from pitch_coach_backend.core.security import decode_access_token
 from pitch_coach_backend.module.user import service as user_service
-from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.dto import (
     ErrorMessage,
     ReadyMessage,
     StopMessage,
+    WsErrorCode,
     client_message_adapter,
 )
 from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.stt_adapter import SttAdapter, SttConfig
-from pitch_coach_backend.realtime.take_stream import TakeStream
+from pitch_coach_backend.realtime.take_stream import StreamOwnerMismatch, TakeStream
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,11 @@ CLOSE_NORMAL = 1000
 CLOSE_POLICY_VIOLATION = 1008  # 인증·권한·프로토콜 위반
 
 AUTH_TIMEOUT_SEC = 5.0
+# stop 뒤 스트림 정리를 기다리는 상한. 스트림이 Deepgram 을 기다리는 시간과 별개다 —
+# FE 를 무한정 붙잡아 두지 않으려는 값이다
+STOP_TIMEOUT_SEC = 12.0
+# 정상 종료가 실패해 태스크를 끊은 뒤 정리를 기다리는 상한
+CANCEL_TIMEOUT_SEC = 2.0
 
 
 def _origin_allowed(origin: str | None) -> bool:
@@ -76,7 +81,8 @@ class RealtimeSession:
         self.db = db
         self.stt_adapter = stt_adapter
 
-        self.user: User | None = None
+        # entity 가 아니라 id 만 들고 있는다. realtime 은 다른 도메인의 service 만 부른다
+        self.user_id: uuid.UUID | None = None
         self.invalid_frames = 0
 
     # ── 수명 ──────────────────────────────────────────────────────────
@@ -87,14 +93,22 @@ class RealtimeSession:
             return
         await self.ws.accept()
 
-        self.user = await self._authenticate()
-        if self.user is None:
+        self.user_id = await self._authenticate()
+        if self.user_id is None:
             return
-        # 다음 PR: Take 소유권 + RUNNING 검사가 여기 들어간다 (take 모듈 필요)
-
-        stream = await take_stream.attach(
-            self.take_id, self.ws, stt_adapter=self.stt_adapter, config=self._stt_config()
-        )
+        # 다음 PR: Take 존재·소유·RUNNING 검사가 여기 들어간다 (take 모듈 필요).
+        # 그때까지는 스트림을 만든 사용자만 다시 붙을 수 있다는 것이 유일한 방어선이다
+        try:
+            stream = await take_stream.attach(
+                self.take_id,
+                self.ws,
+                owner_id=self.user_id,
+                stt_adapter=self.stt_adapter,
+                config=self._stt_config(),
+            )
+        except StreamOwnerMismatch:
+            await self._reject(WsErrorCode.FORBIDDEN, "다른 사용자가 사용 중인 연습입니다.")
+            return
         # Deepgram 연결을 기다리지 않는다. 아직 붙기 전이면 stt_state 가 connecting 이고
         # 오디오는 큐에 쌓인다. 상태가 바뀌면 stt_status 가 뒤따른다
         await self._send(
@@ -104,41 +118,43 @@ class RealtimeSession:
                 stt_state=stream.state,
             )
         )
+        # 떨어져 있는 동안 온 final 을 먼저 따라잡는다. 저장이 붙기 전까지 유일한 복구 수단이다
+        await stream.resend_missed()
 
         try:
             await self._pump_client(stream)
         finally:
             stream.detach(self.ws)
 
-    async def _authenticate(self) -> User | None:
+    async def _authenticate(self) -> uuid.UUID | None:
         """첫 메시지가 5초 안에 auth 여야 한다. 아니면 1008 로 닫는다."""
         try:
             with anyio.fail_after(AUTH_TIMEOUT_SEC):
                 message = await self.ws.receive()
         except TimeoutError:
-            await self._reject("UNAUTHORIZED", "인증 메시지가 오지 않았습니다.")
+            await self._reject(WsErrorCode.UNAUTHORIZED, "인증 메시지가 오지 않았습니다.")
             return None
         if message["type"] == "websocket.disconnect":
             return None
 
         text = message.get("text")
         if text is None:
-            await self._reject("UNAUTHORIZED", "첫 메시지는 auth 여야 합니다.")
+            await self._reject(WsErrorCode.UNAUTHORIZED, "첫 메시지는 auth 여야 합니다.")
             return None
         try:
             parsed = client_message_adapter.validate_json(text)
         except ValidationError:
-            await self._reject("UNAUTHORIZED", "첫 메시지는 auth 여야 합니다.")
+            await self._reject(WsErrorCode.UNAUTHORIZED, "첫 메시지는 auth 여야 합니다.")
             return None
         if isinstance(parsed, StopMessage):
-            await self._reject("UNAUTHORIZED", "첫 메시지는 auth 여야 합니다.")
+            await self._reject(WsErrorCode.UNAUTHORIZED, "첫 메시지는 auth 여야 합니다.")
             return None
 
         try:
             payload = decode_access_token(parsed.token)
             user_id = uuid.UUID(payload["sub"])
         except UnauthorizedException, ValueError, TypeError:
-            await self._reject("UNAUTHORIZED", "유효하지 않은 토큰입니다.")
+            await self._reject(WsErrorCode.UNAUTHORIZED, "유효하지 않은 토큰입니다.")
             return None
 
         # 동기 SQLAlchemy 를 이벤트 루프에서 직접 부르면 다른 Take 의 오디오까지 멈춘다
@@ -147,9 +163,9 @@ class RealtimeSession:
         # 트랜잭션을 연 채로 두면 Take 수만큼 풀이 마른다
         await run_in_threadpool(self.db.rollback)
         if user is None:
-            await self._reject("UNAUTHORIZED", "유효하지 않은 토큰입니다.")
+            await self._reject(WsErrorCode.UNAUTHORIZED, "유효하지 않은 토큰입니다.")
             return None
-        return user
+        return user.id
 
     def _stt_config(self) -> SttConfig:
         # 다음 PR: Pitch 대본 키워드를 filler 뒤에 붙인다 (keyterm 100개·500토큰 상한)
@@ -178,7 +194,7 @@ class RealtimeSession:
                 parsed = client_message_adapter.validate_json(text)
             except ValidationError:
                 await self._send(
-                    ErrorMessage(code="BAD_MESSAGE", message="알 수 없는 메시지입니다.")
+                    ErrorMessage(code=WsErrorCode.BAD_MESSAGE, message="알 수 없는 메시지입니다.")
                 )
                 continue
             if isinstance(parsed, StopMessage):
@@ -193,7 +209,7 @@ class RealtimeSession:
             self.invalid_frames += 1
             if self.invalid_frames == 1:
                 # 한 번만 알린다. 매 프레임 알리면 잘못된 클라이언트가 우리 큐를 채운다
-                await self._send(ErrorMessage(code="BAD_AUDIO_FRAME", message=str(e)))
+                await self._send(ErrorMessage(code=WsErrorCode.BAD_AUDIO_FRAME, message=str(e)))
 
     async def _stop(self, stream: TakeStream) -> None:
         """큐에 남은 오디오까지 보내고 Deepgram 을 정리한 뒤 닫는다.
@@ -202,7 +218,12 @@ class RealtimeSession:
         마지막 1~2초 전사가 사라진다.
         """
         stream.request_stop()
-        await stream.wait_closed()
+        if not await stream.wait_closed(STOP_TIMEOUT_SEC):
+            # Deepgram 이 CloseStream 에 응답하지 않았다. 그냥 잊으면 스트림은 계속 돌면서
+            # 레지스트리에서만 사라진다 — 태스크를 끊고 소켓을 닫은 뒤에 보낸다
+            logger.warning("Deepgram drain 타임아웃 take=%s. 스트림을 끊는다", self.take_id)
+            stream.cancel()
+            await stream.wait_closed(timeout=CANCEL_TIMEOUT_SEC)
         take_stream.forget(stream)
         await stream.send_status()
         await self._quiet(self.ws.close(code=CLOSE_NORMAL))
@@ -212,7 +233,7 @@ class RealtimeSession:
     async def _send(self, message: BaseModel) -> None:
         await self.ws.send_text(message.model_dump_json())
 
-    async def _reject(self, code: str, message: str) -> None:
+    async def _reject(self, code: WsErrorCode, message: str) -> None:
         """인증 단계 거절. 에러를 한 번 보내고 1008 로 닫는다."""
         await self._quiet(self._send(ErrorMessage(code=code, message=message)))
         await self._quiet(self.ws.close(code=CLOSE_POLICY_VIOLATION, reason=code))
