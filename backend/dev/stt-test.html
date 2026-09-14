@@ -131,7 +131,7 @@ const newTake = () => takeInput.value = crypto.randomUUID()
 newTake()
 
 let accessToken = null
-let ws = null, ctx = null, node = null, micStream = null
+let ws = null, wsReady = false, ctx = null, node = null, micStream = null
 let seq = 0, firstFrame = null, sentMs = 0, micPeak = 0
 let stopping = false, retries = 0
 const pending = []              // 재연결 전까지 들고 있을 프레임 (FE 계약: 1~2초)
@@ -247,7 +247,9 @@ function onFrame({ pcm, startFrame, peak }) {
   head.setUint32(4, offsetMs, true)
   out.set(new Uint8Array(pcm), 8)
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  // ready 전에는 보내지 않는다. OPEN 만 보고 보내면 버퍼보다 **새 프레임이 먼저** 나가고,
+  // 서버가 뒤늦게 도착한 낮은 seq 를 역행으로 버린다
+  if (ws && wsReady) {
     ws.send(out)
     sentMs = offsetMs + 100
   } else {
@@ -262,6 +264,7 @@ function onFrame({ pcm, startFrame, peak }) {
 function connect() {
   const url = api().replace(/^http/, 'ws') + '/api/ws/takes/' + takeInput.value
   set('s-ws', '연결 중…', 'dim')
+  wsReady = false
   ws = new WebSocket(url)
   ws.onopen = () => {
     set('s-ws', '열림', 'ok')
@@ -270,6 +273,7 @@ function connect() {
   ws.onmessage = e => handle(JSON.parse(e.data))
   ws.onerror = () => say('WebSocket 오류', 'bad')
   ws.onclose = e => {
+    wsReady = false
     set('s-ws', `닫힘 (${e.code})`, e.code === 1000 ? 'dim' : 'bad')
     say(`WebSocket 닫힘 code=${e.code} ${e.reason || ''}`, e.code === 1000 ? 'dim' : 'bad')
     ws = null
@@ -290,11 +294,13 @@ function handle(msg) {
       set('s-stt', msg.stt_state, msg.stt_state === 'ok' ? 'ok' : 'warn')
       set('s-session', String(msg.stt_session_no))
       say(`ready — stt_state=${msg.stt_state} session=${msg.stt_session_no}`, 'ok')
+      // 버퍼를 순서대로 비운 **뒤에** 실시간 전송을 연다. 순서가 뒤집히면 서버가 버린다
       if (pending.length) {
         say(`끊겨 있는 동안 모아 둔 ${pending.length}개 프레임을 흘린다`, 'warn')
         for (const f of pending) ws.send(f)
         pending.length = 0
       }
+      wsReady = true
       break
     case 'transcript':
       msg.is_final ? addFinal(msg) : ($('interim').textContent = msg.text || '…',
