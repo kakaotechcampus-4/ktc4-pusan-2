@@ -15,7 +15,7 @@ BE 는 이 값으로 (1) 순서 꼬임·중복을 버리고 (2) 끊긴 구간을
 import struct
 from dataclasses import dataclass
 
-from pitch_coach_backend.realtime.stt_adapter import BYTES_PER_MS
+from pitch_coach_backend.realtime.audio import BYTES_PER_MS
 
 FRAME_HEADER = struct.Struct("<II")
 
@@ -102,8 +102,3 @@ class FrameSequencer:
         self.silence_ms += silence_ms
         self.lost_ms += lost_ms
         return Accepted(frame=frame, silence_ms=silence_ms, lost_ms=lost_ms)
-
-
-def silence(duration_ms: int) -> bytes:
-    """0 으로 채운 PCM. Deepgram 에 '아무 말도 없었다' 를 시간 그대로 전달한다."""
-    return bytes(duration_ms * BYTES_PER_MS)

@@ -30,7 +30,8 @@ from websockets.asyncio.client import connect
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.user import service as user_service
-from pitch_coach_backend.realtime.event_ingestion import BYTES_PER_MS, FRAME_HEADER
+from pitch_coach_backend.realtime.audio import BYTES_PER_MS
+from pitch_coach_backend.realtime.event_ingestion import FRAME_HEADER
 
 CHUNK_MS = 100
 CHUNK_BYTES = CHUNK_MS * BYTES_PER_MS

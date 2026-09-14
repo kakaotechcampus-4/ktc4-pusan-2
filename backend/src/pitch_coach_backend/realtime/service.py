@@ -34,6 +34,7 @@ from pitch_coach_backend.core.exceptions import UnauthorizedException
 from pitch_coach_backend.core.security import decode_access_token
 from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.module.user.entity import User
+from pitch_coach_backend.realtime.audio import silence
 from pitch_coach_backend.realtime.dto import (
     ErrorMessage,
     ReadyMessage,
@@ -47,7 +48,6 @@ from pitch_coach_backend.realtime.event_ingestion import (
     FrameSequencer,
     InvalidAudioFrame,
     parse_audio_frame,
-    silence,
 )
 from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.stt_adapter import (

@@ -23,6 +23,8 @@ from urllib.parse import urlencode
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK, WebSocketException
 
+from pitch_coach_backend.realtime.audio import CHANNELS, ENCODING, SAMPLE_RATE
+
 logger = logging.getLogger(__name__)
 
 DEEPGRAM_LISTEN_URL = "wss://api.deepgram.com/v1/listen"
@@ -30,10 +32,6 @@ DEEPGRAM_LISTEN_URL = "wss://api.deepgram.com/v1/listen"
 # 환경마다 바뀌지 않는 값은 설정이 아니라 상수 (README 환경변수 절)
 MODEL = "nova-3"  # 한국어는 Nova-3 에만 있다. Nova-2 fallback 은 없다
 LANGUAGE = "ko"
-SAMPLE_RATE = 16_000
-CHANNELS = 1
-# 16 kHz * 16-bit * mono = 32 bytes/ms. offset 계산과 무음 채우기의 기준 상수
-BYTES_PER_MS = SAMPLE_RATE * 2 * CHANNELS // 1000
 
 # Deepgram 은 오디오도 KeepAlive 도 없이 10초가 지나면 NET-0001 로 끊는다. 문서 권장 3~5초
 KEEPALIVE_INTERVAL_SEC = 3.0
@@ -58,7 +56,7 @@ def build_listen_url(base_url: str, config: SttConfig) -> str:
         ("model", MODEL),
         ("language", LANGUAGE),
         # raw PCM 이라 세 값이 전부 필수다. 틀리면 에러 없이 쓰레기 전사가 나온다
-        ("encoding", "linear16"),
+        ("encoding", ENCODING),
         ("sample_rate", str(SAMPLE_RATE)),
         ("channels", str(CHANNELS)),
         ("interim_results", "true"),
