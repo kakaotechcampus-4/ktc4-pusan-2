@@ -1,46 +1,72 @@
 
-from fastapi import APIRouter, UploadFile
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Form, UploadFile
+from sqlalchemy.orm import Session
+
+from pitch_coach_backend.core.database import get_db
+from pitch_coach_backend.module.auth.dependencies import CurrentUser
+from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
 from pitch_coach_backend.module.pitch.dto import PitchDTO, UploadPresentationDTO, UploadScriptDTO
-from pitch_coach_backend.module.pitch.service import add_pitch_service, delete_pitch_service, update_pitch_service, upload_presentation_service
+from pitch_coach_backend.module.pitch.service import (
+    add_pitch_service,
+    delete_pitch_service,
+    update_pitch_service,
+    upload_presentation_service,
+    upload_script_service,
+)
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 
 @router.post("/add")
-def add_pitch(user_id, pitch_dto: PitchDTO):
-    result = add_pitch_service(user_id, pitch_dto)
+def add_pitch(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    pitch_dto: PitchDTO
+):
+    result = add_pitch_service(db, current_user.id, pitch_dto)
     return {"message": "Pitch added successfully", "pitch_id": result}
 
 @router.put("/update/{pitch_id}")
-def update_pitch(user_id, pitch_id: str, pitch_dto: PitchDTO):
-    result = update_pitch_service(user_id, pitch_id, pitch_dto)
+def update_pitch(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)],
+    pitch_dto: PitchDTO
+):
+    result = update_pitch_service(db, pitch_id, pitch_dto)
     return {"message": "Pitch updated successfully", "pitch_id": result}
 
 @router.delete("/delete/{pitch_id}")
-def delete_pitch(user_id, pitch_id: str):
-    result = delete_pitch_service(user_id, pitch_id)
+def delete_pitch(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)]
+):
+    result = delete_pitch_service(db, pitch_id)
     return {"message": "Pitch deleted successfully", "pitch_id": result}
 
 @router.post("/{pitch_id}/upload")
 def upload_presentation(
-    user_id,
-    pitch_id,
-    upload_presentation: UploadFile,
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)],
+    presentation_file: UploadFile,
     script_file: UploadFile,
-    description: str | None = None
+    description: Annotated[str | None, Form()] = None
 ):
     upload_presentation_dto = UploadPresentationDTO(
-        pitch_id=pitch_id,
-        user_id=user_id,
-        presentation_file=upload_presentation,
+        presentation_file=presentation_file,
         description=description
     )
 
-
     upload_script_dto = UploadScriptDTO(
-        pitch_id=pitch_id,
-        user_id=user_id,
         script_file=script_file
     )
 
-    result = upload_presentation_service(user_id, upload_presentation_dto)
-    return {"message": "Presentation uploaded successfully", "pitch_id": pitch_id}
+    presentation_id = upload_presentation_service(db, pitch_id, upload_presentation_dto)
+    script_id = upload_script_service(db, pitch_id, upload_script_dto)
+
+    return {
+        "message": "Presentation uploaded successfully",
+        "pitch_id": pitch_id,
+        "presentation_version_id": presentation_id,
+        "script_version_id": script_id
+    }

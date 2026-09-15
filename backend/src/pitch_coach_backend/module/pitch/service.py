@@ -1,101 +1,94 @@
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
-from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.exception import InvalidAuthorizationRequest, NonExistentPitch
-from pitch_coach_backend.module.pitch.s3_service import s3_upload_file
+import uuid
+from pathlib import Path
 
-def add_pitch_service(user_id, pitch_dto):
-    if not user_id:
-        raise InvalidAuthorizationRequest() 
-    
+from sqlalchemy.orm import Session
+
+from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.exception import NonExistentPitch
+from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.pitch.s3_service import upload
+
+
+def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto):
     new_pitch = Pitch(
+        user_id=user_id,
         title=pitch_dto.title,
         time_limit_sec=pitch_dto.time_limit_sec,
         presentation_date=pitch_dto.presentation_date
     )
-    
-    # DB에 저장 (PitchRepository를 통해)
-    pitch_repository = PitchRepository()
-    saved_pitch = pitch_repository.save(new_pitch)
-    
-    return saved_pitch.id  # 저장된 Pitch의 ID를 반환
 
-def update_pitch_service(user_id, pitch_id, pitch_dto):
-    if not user_id:
-        raise InvalidAuthorizationRequest()
-    
-    pitch_repository = PitchRepository()
+    pitch_repository = PitchRepository(db)
+    saved_pitch = pitch_repository.save(new_pitch)
+    db.commit()
+
+    return saved_pitch.id
+
+def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
+    pitch_repository = PitchRepository(db)
     existing_pitch = pitch_repository.get_by_id(pitch_id)
-    
+
     if not existing_pitch:
         raise NonExistentPitch()
-    
-    # Update the existing pitch with new data
+
     existing_pitch.title = pitch_dto.title
     existing_pitch.time_limit_sec = pitch_dto.time_limit_sec
     existing_pitch.presentation_date = pitch_dto.presentation_date
-    
-    # Save the updated pitch
+
     updated_pitch = pitch_repository.save(existing_pitch)
-    
-    return updated_pitch.id  # 저장된 Pitch의 ID를 반환
+    db.commit()
 
-def delete_pitch_service(user_id, pitch_id):
-    if not user_id:
-        raise InvalidAuthorizationRequest()
-    
-    pitch_repository = PitchRepository()
+    return updated_pitch.id
+
+def delete_pitch_service(db: Session, pitch_id: uuid.UUID):
+    pitch_repository = PitchRepository(db)
     existing_pitch = pitch_repository.get_by_id(pitch_id)
-    
+
     if not existing_pitch:
         raise NonExistentPitch()
-    
-    # Delete the pitch
+
     pitch_repository.delete(existing_pitch)
-    
-    return pitch_id  # 삭제된 Pitch의 ID를 반환
+    db.commit()
 
-def upload_presentation_service(user_id, upload_dto):
-    if not user_id:
-        raise InvalidAuthorizationRequest()
+    return pitch_id
 
-    pitch_repository = PitchRepository()
-    existing_pitch = pitch_repository.get_by_id(upload_dto.pitch_id)
+def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
+    pitch_repository = PitchRepository(db)
 
-    presentation_url = s3_upload_file(upload_dto.presentation_file, upload_dto.pitch_id)
-
-    if not existing_pitch:
-        raise NonExistentPitch()
+    version = pitch_repository.next_presentation_version(pitch_id)
+    suffix = Path(upload_dto.presentation_file.filename or "").suffix
+    presentation_key = upload(
+        upload_dto.presentation_file,
+        f"pitches/{pitch_id}/presentations/{version}{suffix}"
+    )
 
     presentation = PresentationVersion(
-        pitch_id=upload_dto.pitch_id,
-        user_id=upload_dto.user_id,
-        file=presentation_url,
+        pitch_id=pitch_id,
+        version=version,
+        file_url=presentation_key,
         description=upload_dto.description
     )
 
     pitch_repository.save_presentation(presentation)
+    db.commit()
+
     return presentation.id
 
-def upload_script_service(user_id, upload_script_dto):
-    if not user_id:
-        raise InvalidAuthorizationRequest()
+def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
+    pitch_repository = PitchRepository(db)
 
-    pitch_repository = PitchRepository()
-    existing_pitch = pitch_repository.get_by_id(upload_script_dto.pitch_id)
-
-    if not existing_pitch:
-        raise NonExistentPitch()
-
-    script_url = s3_upload_file(upload_script_dto.script_file, upload_script_dto.pitch_id)
-    script = ScriptVersion(
-        pitch_id=upload_script_dto.pitch_id,
-        user_id=upload_script_dto.user_id,
-        file=script_url
+    version = pitch_repository.next_script_version(pitch_id)
+    suffix = Path(upload_script_dto.script_file.filename or "").suffix
+    upload(
+        upload_script_dto.script_file,
+        f"pitches/{pitch_id}/scripts/{version}{suffix}"
     )
 
-    # 슬라이드 분할 AI 호출
-    # ...
+    script = ScriptVersion(
+        pitch_id=pitch_id,
+        version=version
+    )
 
     pitch_repository.save_script(script)
-    return script.id
+    db.commit()
 
+    return script.id

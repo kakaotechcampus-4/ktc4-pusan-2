@@ -6,6 +6,8 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
+from pitch_coach_backend.module.pitch.controller import router as pitch_router
+from pitch_coach_backend.module.take.controller import router as take_router
 from pitch_coach_backend.module.user.controller import router as user_router
 
 # Caddy 는 /api/* 만 백엔드로 넘긴다 (infra/Caddyfile). 접두어 없는 경로는 404 도 아니고
@@ -33,7 +35,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_base_url.rstrip("/")],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", CSRF_HEADER_NAME],
 )
 
@@ -49,5 +51,7 @@ def health() -> dict[str, str]:
 
 api.include_router(auth_router)
 api.include_router(user_router)
+api.include_router(pitch_router)
+api.include_router(take_router)
 
 app.include_router(api)

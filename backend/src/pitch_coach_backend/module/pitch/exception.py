@@ -1,4 +1,5 @@
-from pitch_coach_backend.core.exceptions import UnauthorizedException, AppException
+from pitch_coach_backend.core.exceptions import AppException, UnauthorizedException
+
 
 class InvalidAuthorizationRequest(UnauthorizedException):
      message = "로그인 후 다시 시도해 주세요."

@@ -1,26 +1,59 @@
+import uuid
 
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
+
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 
-db = Session()
 
-def create_pitch(db: Session, pitch_entity: Pitch) -> Pitch:
-    db.add(pitch_entity)
-    db.commit()
-    db.refresh(pitch_entity)
-    return pitch_entity
+class PitchRepository:
+    def __init__(self, db: Session):
+        self.db = db
 
-def get_by_id(db: Session, pitch_id: str) -> Pitch | None:
-    return db.query(Pitch).filter(Pitch.id == pitch_id).first()
+    def get_by_id(self, pitch_id: uuid.UUID) -> Pitch | None:
+        return self.db.get(Pitch, pitch_id)
 
-def save_presentation(db: Session, presentation_version: PresentationVersion) -> PresentationVersion:
-    db.add(presentation_version)
-    db.commit()
-    db.refresh(presentation_version)
-    return presentation_version
+    def get_owned(self, pitch_id: uuid.UUID, user_id: uuid.UUID) -> Pitch | None:
+        return self.db.scalar(
+            select(Pitch).where(Pitch.id == pitch_id, Pitch.user_id == user_id)
+        )
 
-def save_script(db: Session, script_version: ScriptVersion) -> ScriptVersion:
-    db.add(script_version)
-    db.commit()
-    db.refresh(script_version)
-    return script_version
+    def save(self, pitch: Pitch) -> Pitch:
+        self.db.add(pitch)
+        self.db.flush()
+        return pitch
+
+    def delete(self, pitch: Pitch) -> None:
+        self.db.delete(pitch)
+        self.db.flush()
+
+    def clear_best_take(self, pitch_id: uuid.UUID, take_id: uuid.UUID) -> None:
+        self.db.execute(
+            update(Pitch)
+            .where(Pitch.id == pitch_id, Pitch.best_take_id == take_id)
+            .values(best_take_id=None)
+        )
+
+    def next_presentation_version(self, pitch_id: uuid.UUID) -> int:
+        current = self.db.scalar(
+            select(func.max(PresentationVersion.version)).where(
+                PresentationVersion.pitch_id == pitch_id
+            )
+        )
+        return (current or 0) + 1
+
+    def save_presentation(self, presentation_version: PresentationVersion) -> PresentationVersion:
+        self.db.add(presentation_version)
+        self.db.flush()
+        return presentation_version
+
+    def next_script_version(self, pitch_id: uuid.UUID) -> int:
+        current = self.db.scalar(
+            select(func.max(ScriptVersion.version)).where(ScriptVersion.pitch_id == pitch_id)
+        )
+        return (current or 0) + 1
+
+    def save_script(self, script_version: ScriptVersion) -> ScriptVersion:
+        self.db.add(script_version)
+        self.db.flush()
+        return script_version
