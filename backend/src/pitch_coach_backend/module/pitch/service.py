@@ -1,6 +1,7 @@
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
+from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.exception import InvalidAuthorizationRequest, NonExistentPitch
+from pitch_coach_backend.module.pitch.s3_service import s3_upload_file
 
 def add_pitch_service(user_id, pitch_dto):
     if not user_id:
@@ -60,15 +61,41 @@ def upload_presentation_service(user_id, upload_dto):
     pitch_repository = PitchRepository()
     existing_pitch = pitch_repository.get_by_id(upload_dto.pitch_id)
 
+    presentation_url = s3_upload_file(upload_dto.presentation_file, upload_dto.pitch_id)
+
     if not existing_pitch:
         raise NonExistentPitch()
 
     presentation = PresentationVersion(
         pitch_id=upload_dto.pitch_id,
         user_id=upload_dto.user_id,
-        file=upload_dto.presentation_file,
+        file=presentation_url,
         description=upload_dto.description
     )
 
     pitch_repository.save_presentation(presentation)
     return presentation.id
+
+def upload_script_service(user_id, upload_script_dto):
+    if not user_id:
+        raise InvalidAuthorizationRequest()
+
+    pitch_repository = PitchRepository()
+    existing_pitch = pitch_repository.get_by_id(upload_script_dto.pitch_id)
+
+    if not existing_pitch:
+        raise NonExistentPitch()
+
+    script_url = s3_upload_file(upload_script_dto.script_file, upload_script_dto.pitch_id)
+    script = ScriptVersion(
+        pitch_id=upload_script_dto.pitch_id,
+        user_id=upload_script_dto.user_id,
+        file=script_url
+    )
+
+    # 슬라이드 분할 AI 호출
+    # ...
+
+    pitch_repository.save_script(script)
+    return script.id
+

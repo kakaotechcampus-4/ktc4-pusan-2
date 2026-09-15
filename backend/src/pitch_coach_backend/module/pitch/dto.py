@@ -14,3 +14,8 @@ class UploadPresentationDTO(BaseModel):
     user_id: str
     presentation_file: UploadFile = File(...)
     description: str | None = None
+
+class UploadScriptDTO(BaseModel):
+    pitch_id: str
+    user_id: str
+    script_file: UploadFile = File(...)
