@@ -54,6 +54,7 @@ const publicPaths = [
   '/dev/media',
   '*',
 ];
+
 export const router = createBrowserRouter(
   routes.map((route) =>
     publicPaths.includes(route.path)
