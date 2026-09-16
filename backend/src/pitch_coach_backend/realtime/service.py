@@ -109,19 +109,23 @@ class RealtimeSession:
         except StreamOwnerMismatch:
             await self._reject(WsErrorCode.FORBIDDEN, "다른 사용자가 사용 중인 연습입니다.")
             return
-        # Deepgram 연결을 기다리지 않는다. 아직 붙기 전이면 stt_state 가 connecting 이고
-        # 오디오는 큐에 쌓인다. 상태가 바뀌면 stt_status 가 뒤따른다
-        await self._send(
-            ReadyMessage(
-                take_id=self.take_id,
-                stt_session_no=stream.stt_session_no,
-                stt_state=stream.state,
-            )
-        )
-        # 떨어져 있는 동안 온 final 을 먼저 따라잡는다. 저장이 붙기 전까지 유일한 복구 수단이다
-        await stream.resend_missed()
 
+        # attach() 가 성공한 순간부터는 반드시 detach() 로 짝을 맞춘다. ready 전송이나
+        # resend_missed 중간에 클라이언트가 사라져 예외가 나도 detach() 없이 빠져나가면
+        # 스트림이 이 죽은 self.ws 를 "현재 클라이언트" 로 문 채 남는다 — grace 타이머가
+        # 영영 안 걸려서 Deepgram 세션이 끝까지 살아 있게 된다
         try:
+            # Deepgram 연결을 기다리지 않는다. 아직 붙기 전이면 stt_state 가 connecting 이고
+            # 오디오는 큐에 쌓인다. 상태가 바뀌면 stt_status 가 뒤따른다
+            await self._send(
+                ReadyMessage(
+                    take_id=self.take_id,
+                    stt_session_no=stream.stt_session_no,
+                    stt_state=stream.state,
+                )
+            )
+            # 떨어져 있는 동안 온 final 을 먼저 따라잡는다. 저장이 붙기 전까지 유일한 복구 수단이다
+            await stream.resend_missed()
             await self._pump_client(stream)
         finally:
             stream.detach(self.ws)
@@ -159,13 +163,20 @@ class RealtimeSession:
 
         # 동기 SQLAlchemy 를 이벤트 루프에서 직접 부르면 다른 Take 의 오디오까지 멈춘다
         user = await run_in_threadpool(user_service.find, self.db, user_id)
+        found = user is not None
         # 조회가 끝나면 커넥션을 풀에 돌려준다. 이 연결은 몇 분씩 살아 있는데
-        # 트랜잭션을 연 채로 두면 Take 수만큼 풀이 마른다
+        # 트랜잭션을 연 채로 두면 Take 수만큼 풀이 마른다.
+        #
+        # rollback() 은 세션에 남은 객체를 전부 expire 시킨다 — 그래서 이 다음에
+        # user.id 처럼 속성을 읽으면 SQLAlchemy 가 "값을 다시 읽어와야 한다" 며
+        # **새 커넥션을 풀에서 다시 꺼내 SELECT 를 한 번 더** 날린다. 방금 커넥션을
+        # 돌려준 의미가 없어지므로, id 는 이미 알고 있는 user_id(요청받은 값) 를 그대로
+        # 쓰고 만료될 user 객체의 속성은 건드리지 않는다
         await run_in_threadpool(self.db.rollback)
-        if user is None:
+        if not found:
             await self._reject(WsErrorCode.UNAUTHORIZED, "유효하지 않은 토큰입니다.")
             return None
-        return user.id
+        return user_id
 
     def _stt_config(self) -> SttConfig:
         # 다음 PR: Pitch 대본 키워드를 filler 뒤에 붙인다 (keyterm 100개·500토큰 상한)

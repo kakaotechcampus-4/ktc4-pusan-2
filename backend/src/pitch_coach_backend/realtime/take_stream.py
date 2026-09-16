@@ -181,13 +181,23 @@ class TakeStream:
 
         `ready` 뒤에 부른다. 저장이 붙기 전까지는 이게 유일한 복구 수단이다 —
         여기서 버리면 그 발화는 어디에도 남지 않는다.
+
+        **성공한 것만 지운다.** 한꺼번에 비우고 보내면, 재연결 직후 클라이언트가
+        다시 끊기는 것처럼 중간에 전송이 실패했을 때 아직 못 보낸 나머지가 이미
+        비워진 리스트와 함께 통째로 사라진다. 하나씩 확인하며 지워서, 실패하면
+        그 지점부터는 다음 재연결 때 다시 시도할 수 있게 남겨 둔다.
         """
-        if not self._missed_finals:
-            return
-        missed, self._missed_finals = self._missed_finals, []
-        logger.info("재연결 중 놓친 final %d개를 다시 보낸다 take=%s", len(missed), self.take_id)
-        for message in missed:
-            await self._send(message)
+        while self._missed_finals:
+            message = self._missed_finals[0]
+            if not await self._send_checked(message):
+                logger.warning(
+                    "final 재전송이 중간에 끊겼다 take=%s 남은 개수=%d",
+                    self.take_id,
+                    len(self._missed_finals),
+                )
+                return
+            self._missed_finals.pop(0)
+        logger.info("재연결 중 놓친 final 을 모두 다시 보냈다 take=%s", self.take_id)
 
     def detach(self, ws: WebSocket) -> None:
         """연결이 끊겼다. 이미 다른 연결이 붙었으면 아무것도 하지 않는다."""
@@ -226,16 +236,25 @@ class TakeStream:
     def cancel(self) -> None:
         """태스크를 즉시 끊는다. 정상 종료(`request_stop`) 와 달리 남은 전사를 버린다.
 
-        Deepgram 연결은 `_run` 의 finally 가 shield 안에서 닫는다.
+        **`cancel()` 은 요청일 뿐이다.** `self._task.cancel()` 은 다음 await 지점에서
+        `CancelledError` 를 던지도록 예약할 뿐, 그 자리에서 정리가 끝나는 게 아니다.
+        실제 정리(Deepgram 소켓을 shield 안에서 닫는 것)는 `_run` 의 finally 가 한다.
+        여기서 `_finish()` 를 바로 부르면 `wait_closed()` 가 정리가 끝나기도 전에
+        True 를 돌려줘서, 호출자가 "닫혔다" 고 믿고 레지스트리에서 지운 바로 그 순간에도
+        옛 태스크가 아직 Deepgram 소켓을 붙들고 있을 수 있다.
+
+        태스크가 이미 없거나 끝난 경우(예: `start()` 를 부르기 전)에는 그 finally 가
+        절대 실행되지 않으므로 여기서 직접 마무리한다.
         """
         self._stopping = True
         self._stop_event.set()
         if self._grace_task is not None:
             self._grace_task.cancel()
             self._grace_task = None
-        if self._task is not None:
+        if self._task is not None and not self._task.done():
             self._task.cancel()
-        self._finish()
+        else:
+            self._finish()
 
     def _finish(self) -> None:
         self.state = "closed"
@@ -276,9 +295,18 @@ class TakeStream:
     # ── Deepgram 세션 루프 ────────────────────────────────────────────
 
     async def _run(self) -> None:
+        """Deepgram 세션을 필요한 만큼 이어서 연다.
+
+        **루프 조건에 `not self._stopping` 을 두지 않는다.** 회전(`_ROTATE`)과 stop 이
+        겹치면(회전 직전에 넘겨받은 `self._carry` 오디오 한 프레임이 아직 안 나갔는데
+        `request_stop()` 이 먼저 온 경우) `_stopping` 은 이미 True 다. 거기서 루프
+        조건만으로 재진입을 막으면 `continue` 를 써도 다음 세션이 절대 안 열려서
+        캐리 프레임과 그 뒤 큐에 쌓인 stop 신호(`None`) 를 통째로 못 보내고 끝난다.
+        그래서 재진입 여부는 오직 `_run_session` 의 반환값(`reason`) 으로만 정한다.
+        """
         attempt = 0
         try:
-            while not self._stopping:
+            while True:
                 session = await self._connect()
                 if session is None:
                     attempt += 1
@@ -298,11 +326,17 @@ class TakeStream:
                 await self._set_state("ok")
 
                 reason = await self._run_session(session)
+                if reason == _ROTATE:
+                    # stop 이 회전과 동시에 왔어도 새 세션을 반드시 한 번 더 연다 — 그래야
+                    # self._carry 와 큐에 남은 나머지(stop 신호 포함) 가 새 세션에서
+                    # 정상적으로 드레인되고, 그 세션이 스스로 _STOPPED 로 끝난다
+                    continue
+                if reason == _STOPPED:
+                    # CloseStream 을 이미 보냈다. 더 열 세션이 없다
+                    break
+                # _LOST — Deepgram 이 끊었다. stop 까지 요청된 상태라면 재시도하지 않는다
                 if self._stopping:
                     break
-                if reason == _ROTATE:
-                    # 우리가 의도한 교체다. 백오프도 reconnecting 알림도 없다
-                    continue
                 await self._set_state("reconnecting")
                 attempt = 1
                 if await self._sleep_or_stop(_backoff(attempt)):
@@ -488,6 +522,21 @@ class TakeStream:
             return
         await _quiet(client.send_text(message.model_dump_json()))
 
+    async def _send_checked(self, message: BaseModel) -> bool:
+        """`_send` 와 같지만 성공 여부를 알려준다. `resend_missed` 가 재시도를 판단하는 데 쓴다.
+
+        일반 전사·상태 메시지는 실패해도 다음 메시지가 금방 또 오니 무시해도 되지만
+        (`_send`), 놓친 final 은 **다시 안 오면 영영 없어지는 데이터**라 구분한다.
+        """
+        client = self._client
+        if client is None:
+            return False
+        try:
+            await client.send_text(message.model_dump_json())
+        except Exception:  # noqa: BLE001 - 어떤 전송 실패든 "재시도 대상" 으로 취급한다
+            return False
+        return True
+
 
 async def _quiet(awaitable: Awaitable[object]) -> None:
     """이미 끊긴 상대에게 보내거나 닫을 때 나는 예외는 무시한다.
@@ -501,6 +550,18 @@ async def _quiet(awaitable: Awaitable[object]) -> None:
 # ── 레지스트리 ────────────────────────────────────────────────────────
 
 _streams: dict[uuid.UUID, TakeStream] = {}
+
+# attach() 의 "확인 -> 생성" 이 원자적이어야 한다. 아니면 grace 만료 직후처럼 같은
+# take_id 로 재연결이 동시에 두 개 오는 순간 **둘 다** `_streams.get()` 에서 "없다" 를
+# 보고 각자 TakeStream·Deepgram 세션을 만든다. 그러면 하나는 `_streams` 덮어쓰기로
+# 레지스트리에서 밀려나 고아가 되고, Deepgram 연결은 둘 생긴다.
+#
+# 프로세스 전체에 락 하나로 충분하다 — attach() 는 연결이 열릴 때 한 번만 타는 경로라
+# 자주 불리지 않고(오디오 프레임이 오가는 push() 는 이 락을 안 탄다), take_id 별로
+# 나누는 복잡성을 들일 이유가 없다. is_stopping 핸드오버(최대 HANDOVER_TIMEOUT_SEC) 동안
+# 다른 take_id 의 attach() 도 같이 멈추지만, 그 경로 자체가 "재연결이 정리 타이밍과
+# 정확히 겹칠 때" 만 타는 드문 경로라 MVP 규모에서는 감수한다.
+_attach_lock = asyncio.Lock()
 
 
 async def attach(
@@ -516,25 +577,26 @@ async def attach(
     다른 사용자의 스트림이면 `StreamOwnerMismatch`. Take 테이블이 없는 동안 이것이
     남의 연습을 가로채지 못하게 막는 유일한 선이다 (계획 문서 §6-2).
     """
-    stream = _streams.get(take_id)
+    async with _attach_lock:
+        stream = _streams.get(take_id)
 
-    if stream is not None and stream.is_stopping:
-        # 정리 중인 스트림에 붙이면 곧 사라질 객체에 오디오를 밀어 넣게 된다.
-        # 끝나기를 기다렸다가 새로 만든다
-        await stream.wait_closed(timeout=HANDOVER_TIMEOUT_SEC)
-        forget(stream)
-        stream = None
+        if stream is not None and stream.is_stopping:
+            # 정리 중인 스트림에 붙이면 곧 사라질 객체에 오디오를 밀어 넣게 된다.
+            # 끝나기를 기다렸다가 새로 만든다
+            await stream.wait_closed(timeout=HANDOVER_TIMEOUT_SEC)
+            forget(stream)
+            stream = None
 
-    if stream is not None and stream.is_finished:
-        forget(stream)
-        stream = None
+        if stream is not None and stream.is_finished:
+            forget(stream)
+            stream = None
 
-    if stream is None:
-        stream = TakeStream(take_id, owner_id=owner_id, stt_adapter=stt_adapter, config=config)
-        _streams[take_id] = stream
-        stream.start()
-    elif stream.owner_id != owner_id:
-        raise StreamOwnerMismatch
+        if stream is None:
+            stream = TakeStream(take_id, owner_id=owner_id, stt_adapter=stt_adapter, config=config)
+            _streams[take_id] = stream
+            stream.start()
+        elif stream.owner_id != owner_id:
+            raise StreamOwnerMismatch
 
     await stream.attach(ws)
     return stream

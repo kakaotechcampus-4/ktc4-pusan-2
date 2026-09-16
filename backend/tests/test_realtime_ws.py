@@ -25,7 +25,7 @@ from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import service, take_stream
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
 from pitch_coach_backend.realtime.dependencies import get_stt_adapter
-from pitch_coach_backend.realtime.dto import ErrorMessage, WsErrorCode
+from pitch_coach_backend.realtime.dto import ErrorMessage, TranscriptMessage, WsErrorCode
 from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
     SttConfig,
@@ -34,9 +34,15 @@ from pitch_coach_backend.realtime.stt_adapter import (
     Transcript,
     Word,
 )
+from pitch_coach_backend.realtime.take_stream import TakeStream
 
 TAKE_ID = uuid.uuid7()
 WS_PATH = f"/api/ws/takes/{TAKE_ID}"
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
 
 
 def frame(seq: int, offset_ms: int, duration_ms: int = 100, fill: int = 1) -> bytes:
@@ -68,6 +74,8 @@ class Plan:
     die_after: int | None = None
     # CloseStream 에 Metadata 도 종료도 돌려주지 않는다 (drain 타임아웃 재현)
     swallow_close: bool = False
+    # abort() 가 이만큼 걸린다 (cancel() 이 정리를 기다리는지 재현하는 용)
+    abort_delay: float = 0.0
 
 
 class FakeSttSession:
@@ -77,6 +85,7 @@ class FakeSttSession:
         self.replies = list(plan.replies)
         self.die_after = plan.die_after
         self.swallow_close = plan.swallow_close
+        self.abort_delay = plan.abort_delay
         self.audio: list[bytes] = []
         self.controls: list[str] = []
         self.aborted = False
@@ -111,6 +120,8 @@ class FakeSttSession:
         self._events.put_nowait(None)
 
     async def abort(self) -> None:
+        if self.abort_delay:
+            await asyncio.sleep(self.abort_delay)
         self.aborted = True
         self._events.put_nowait(None)
 
@@ -730,3 +741,256 @@ def test_error_code_must_be_a_known_value():
     )
     with pytest.raises(ValidationError):
         ErrorMessage(code="TYPO_CODE", message="x")
+
+
+# ── 최소 WebSocket 더블 ──────────────────────────────────────────────
+
+
+class FakeWebSocket:
+    """RealtimeSession/TakeStream 이 쓰는 최소 인터페이스만 흉내 낸다.
+
+    TestClient 없이 run() 을 직접 몰거나, attach() 만 따로 확인할 때 쓴다.
+    """
+
+    def __init__(
+        self,
+        inbound: list[dict] | None = None,
+        *,
+        fail_send_after: int | None = None,
+    ) -> None:
+        self.headers: dict[str, str] = {}
+        self._inbound = list(inbound or [])
+        self.sent: list[str] = []
+        self.closed: tuple[int, str] | None = None
+        # 이 번째(1-base) send_text 호출부터 실패시킨다. None 이면 항상 성공
+        self.fail_send_after = fail_send_after
+        self._send_count = 0
+
+    async def accept(self) -> None:
+        return None
+
+    async def receive(self) -> dict:
+        if self._inbound:
+            return self._inbound.pop(0)
+        return {"type": "websocket.disconnect"}
+
+    async def send_text(self, text: str) -> None:
+        self._send_count += 1
+        if self.fail_send_after is not None and self._send_count >= self.fail_send_after:
+            raise RuntimeError("client vanished")
+        self.sent.append(text)
+
+    async def close(self, code: int = 1000, reason: str = "") -> None:
+        self.closed = (code, reason)
+
+
+def transcript_message(segment_id: str, text: str) -> TranscriptMessage:
+    return TranscriptMessage(
+        segment_id=segment_id,
+        is_final=True,
+        speech_final=True,
+        start_ms=0,
+        end_ms=100,
+        text=text,
+        confidence=0.9,
+        words=[],
+    )
+
+
+async def _wait_until_ok(stream: TakeStream, timeout: float = 2.0) -> None:
+    deadline = time.monotonic() + timeout
+    while stream.state != "ok" and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    assert stream.state == "ok", f"연결이 ok 상태가 되지 않았다 (state={stream.state})"
+
+
+# ── P1 인증 후 DB 커넥션을 다시 여는 문제 ───────────────────────────────
+
+
+def test_authenticate_does_not_touch_user_after_rollback(
+    client: TestClient,
+    stt: FakeSttAdapter,
+    db_session: Session,
+    user: User,
+    token: str,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """rollback() 은 세션의 객체를 전부 expire 시킨다. 그 뒤 user.id 를 읽으면 SQLAlchemy
+    가 값을 다시 읽으려고 커넥션을 풀에서 또 꺼낸다 — 방금 돌려준 의미가 없어진다.
+    이미 알고 있는 user_id(요청 값) 를 그대로 쓰면 이 문제 자체가 없다."""
+    tripwire = {"rolled_back": False, "id_read_after_rollback": False}
+
+    class TripwireUser:
+        def __init__(self, real_id: uuid.UUID) -> None:
+            self._id = real_id
+
+        @property
+        def id(self) -> uuid.UUID:
+            if tripwire["rolled_back"]:
+                tripwire["id_read_after_rollback"] = True
+            return self._id
+
+    monkeypatch.setattr(service.user_service, "find", lambda db, uid: TripwireUser(user.id))
+    original_rollback = db_session.rollback
+
+    def rollback_and_arm() -> None:
+        original_rollback()
+        tripwire["rolled_back"] = True
+
+    monkeypatch.setattr(db_session, "rollback", rollback_and_arm)
+
+    with client.websocket_connect(WS_PATH) as ws:
+        auth(ws, token)
+        ready = ws.receive_json()
+
+    assert ready["type"] == "ready"
+    assert tripwire["rolled_back"] is True
+    assert tripwire["id_read_after_rollback"] is False, (
+        "user.id 를 rollback 이후에 읽었다 — 커넥션을 다시 연다"
+    )
+
+
+# ── ready 전송 실패 시 detach() 가 안 불리는 문제 ───────────────────────
+
+
+@pytest.mark.anyio
+async def test_ready_send_failure_still_detaches_from_the_stream(
+    db_session: Session, user: User, token: str
+):
+    """ready 전송·resend_missed·pump_client 가 하나의 try/finally 로 묶여야 한다.
+    그중 아무거나 먼저 실패해도 detach() 가 불려야 스트림에 grace 타이머가 걸린다.
+    안 그러면 죽은 self.ws 가 "현재 클라이언트" 로 영원히 남아 Deepgram 세션이
+    다시는 정리되지 않는다."""
+    adapter = FakeSttAdapter()
+    take_id = uuid.uuid7()
+    ws = FakeWebSocket(
+        inbound=[
+            {"type": "websocket.receive", "text": json.dumps({"type": "auth", "token": token})}
+        ],
+        fail_send_after=1,  # 첫 send_text = ready 메시지에서 터진다
+    )
+    realtime = service.RealtimeSession(ws, take_id=take_id, db=db_session, stt_adapter=adapter)
+
+    with pytest.raises(RuntimeError):
+        await realtime.run()
+
+    stream = take_stream._streams[take_id]
+    assert stream._client is None, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
+    stream.cancel()
+
+
+# ── final 재전송이 실패하면 나머지도 같이 사라지는 문제 ─────────────────
+
+
+@pytest.mark.anyio
+async def test_resend_missed_keeps_unsent_finals_when_send_fails_partway():
+    """한꺼번에 비우고 보내면, 두 번째 전송이 실패했을 때 아직 못 보낸 세 번째 이후가
+    이미 비워진 리스트와 함께 사라진다. 성공한 만큼만 지워야 다음 재연결 때
+    나머지를 다시 시도할 수 있다."""
+    stream = TakeStream(
+        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=FakeSttAdapter(), config=SttConfig()
+    )
+    stream._missed_finals = [
+        transcript_message("1-1", "첫"),
+        transcript_message("1-2", "둘"),
+        transcript_message("1-3", "셋"),
+    ]
+    fake_ws = FakeWebSocket(fail_send_after=2)  # 두 번째 전송에서 끊긴다
+    await stream.attach(fake_ws)
+
+    await stream.resend_missed()
+
+    assert [json.loads(t)["text"] for t in fake_ws.sent] == ["첫"]
+    assert [m.text for m in stream._missed_finals] == ["둘", "셋"], (
+        "실패한 지점부터는 다음 재연결을 위해 남아 있어야 한다"
+    )
+
+
+# ── 종료 중 동시 재연결이 스트림을 두 번 만드는 문제 ────────────────────
+
+
+@pytest.mark.anyio
+async def test_concurrent_attach_during_handover_does_not_duplicate_stream(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """확인(get) -> 생성(TakeStream) 이 원자적이지 않으면, 정리 중인 스트림에
+    두 연결이 동시에 오는 순간 둘 다 "없다" 를 보고 각자 새 스트림·Deepgram 세션을
+    만든다. 하나는 레지스트리에서 밀려나 고아로 남는다."""
+    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 0.05)
+    take_id = uuid.uuid7()
+    owner_id = uuid.uuid7()
+    adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
+
+    first = await take_stream.attach(
+        take_id, FakeWebSocket(), owner_id=owner_id, stt_adapter=adapter, config=SttConfig()
+    )
+    await _wait_until_ok(first)
+    first.request_stop()  # swallow_close 라서 스스로는 절대 안 끝난다 -> is_stopping 만 유지된다
+
+    second, third = await asyncio.gather(
+        take_stream.attach(
+            take_id, FakeWebSocket(), owner_id=owner_id, stt_adapter=adapter, config=SttConfig()
+        ),
+        take_stream.attach(
+            take_id, FakeWebSocket(), owner_id=owner_id, stt_adapter=adapter, config=SttConfig()
+        ),
+    )
+
+    assert second is third, "같은 take_id 로 겹친 재연결은 같은 스트림으로 수렴해야 한다"
+    assert take_stream.active_count() == 1
+    # Deepgram 연결은 처음(1) + 핸드오버 뒤 새로 한 번(1) = 2 여야 한다. 락이 없으면 3 이 된다
+    assert len(adapter.sessions) == 2
+
+
+# ── cancel() 이 요청을 완료로 착각하는 문제 ─────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_cancel_waits_for_real_deepgram_cleanup_before_reporting_closed():
+    """cancel() 은 취소 '요청' 일 뿐이다. task.cancel() 은 다음 await 지점에서
+    CancelledError 를 던지도록 예약할 뿐 그 자리에서 정리가 끝나는 게 아니다.
+    실제 정리(Deepgram 소켓을 shield 안에서 닫는 것)가 끝나야 closed 여야 한다."""
+    adapter = FakeSttAdapter(Plan(abort_delay=0.15))
+    stream = TakeStream(
+        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=adapter, config=SttConfig()
+    )
+    stream.start()
+    await _wait_until_ok(stream)
+
+    stream.cancel()
+    assert not stream.is_finished, "cancel() 직후인데 벌써 닫혔다고 보고했다"
+    await asyncio.sleep(0.05)  # abort_delay(0.15) 보다 짧다 — 아직 안 끝났어야 한다
+    assert not stream.is_finished, "cancel() 이 실제 정리(abort)를 기다리지 않았다"
+
+    closed = await stream.wait_closed(timeout=1.0)
+    assert closed is True
+    assert adapter.sessions[0].aborted is True
+
+
+# ── 긴 갭 직후 stop 이 남은 오디오를 버리는 문제 ────────────────────────
+
+
+@pytest.mark.anyio
+async def test_stop_immediately_after_long_gap_still_flushes_carried_audio():
+    """세션 회전(_ROTATE)과 stop 이 겹치면, 회전 직전에 넘겨받은 캐리 프레임과 그 뒤
+    큐에 남은 stop 신호가 새 세션을 하나 더 열어서라도 처리돼야 한다."""
+    adapter = FakeSttAdapter(Plan(), Plan())
+    stream = TakeStream(
+        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=adapter, config=SttConfig()
+    )
+    stream.start()
+    await _wait_until_ok(stream)
+
+    stream.push(frame(1, 0))
+    # push()·request_stop() 은 둘 다 동기(non-async) 라 이 세 줄 사이에는 백그라운드
+    # 태스크가 끼어들 틈이 없다 — "회전을 부르는 프레임과 stop 이 동시에 온다" 는
+    # 가장 흔한 경합 모양을 그대로 재현한다
+    stream.push(frame(2, 10_100))  # 10초 갭 -> 캐리로 넘어가며 세션 회전을 요구한다
+    stream.request_stop()
+
+    closed = await stream.wait_closed(timeout=2.0)
+    assert closed is True
+    # 회전이 필요했으니 Deepgram 세션이 두 번 열려야 한다. stop 을 먼저 보고 끝내면 1 뿐이다
+    assert len(adapter.sessions) == 2
+    # 회전으로 넘어간 캐리 프레임(3,200 bytes)이 새 세션에 실제로 전달됐다
+    assert [len(a) for a in adapter.sessions[1].audio] == [3200]
