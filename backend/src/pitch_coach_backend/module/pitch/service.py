@@ -91,4 +91,7 @@ def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
     pitch_repository.save_script(script)
     db.commit()
 
+    # 나중에 분할 로직 들어오면 여기서 슬라이드 단위로 ScriptSlide 를 생성해야 한다.
+    # ...
+    
     return script.id

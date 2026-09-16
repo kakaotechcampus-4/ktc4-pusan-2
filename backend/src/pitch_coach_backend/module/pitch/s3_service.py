@@ -12,7 +12,7 @@ def upload(file: UploadFile, key: str):
             file.file,
             settings.s3_bucket_name,
             key,
-            ExtraArgs={"ContentType": file.content_type or "application/octet-stream"}
+            ExtraArgs={"ContentType": file.content_type or "application/octet-stream"} # 알려지지 않은 파일의 경우 octet-stream 으로 처리한다.
         )
     except (ClientError, BotoCoreError) as e:
         raise Exception(f"S3에 파일 업로드 실패: {str(e)}")
