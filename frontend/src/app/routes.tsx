@@ -4,6 +4,7 @@ import { StageDemo } from '@/features/rehearsal/Stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
+import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
 import { PreparePage } from '@/features/rehearsal/prepare/PreparePage';
 import { RehearsalPage } from '@/features/rehearsal/Stage/RehearsalPage';
@@ -19,7 +20,7 @@ import { RehearsalPage } from '@/features/rehearsal/Stage/RehearsalPage';
 // prettier-ignore
 const routes = [
   { path: '/',            element: <Stub id="P2"   name="홈 대시보드" track="B" /> },
-  { path: '/welcome',     element: <Stub id="P1"   name="온보딩" track="B" /> },
+  { path: '/welcome',     element: <WelcomePage /> },
   { path: '/login',       element: <LoginPage /> },
   { path: '/about',       element: <Stub id="P14"  name="분석 방식 설명" track="B" /> },
   { path: '/pitches',     element: <Stub id="P10"  name="Pitch 목록" track="B" /> },
@@ -54,6 +55,7 @@ const routes = [
 
 const publicPaths = [
   '/login',
+  '/welcome',
   '/about',
   '/privacy',
   '/terms',
