@@ -1,18 +1,5 @@
 import { create } from 'zustand';
 
-/**
- * ★ 시선 캘리브레이션이 아직 붙지 않았습니다.
- *
- * 분류기 계약(A안)의 `fitCalibration` 은 4초 동안 모은 **프레임**을 받아
- * 기준과 품질을 분류기가 계산해 돌려줍니다. 그 경로에 맞춘 화면 배선은
- * 다음 브랜치에서 합니다.
- *
- * 그때까지 05 는 안내만 하고, 06 은 기준 없이도 시작할 수 있게 둡니다 —
- * 아니면 뒤 화면을 아무도 못 봅니다.
- *
- * 붙이고 나면 이 상수와 이걸 보는 두 곳(05·06)을 지웁니다.
- */
-export const GAZE_CALIBRATION_WIRED = false;
 import type { CalibrationSummary, ScriptMode } from '@/types/api';
 
 /**

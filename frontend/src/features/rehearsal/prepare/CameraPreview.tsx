@@ -1,9 +1,5 @@
 import type { RefObject } from 'react';
-/**
- * 캘리브레이션 진행 단계. 화면이 그리는 상태라 여기에 둡니다 —
- * 실제 수집·판정이 붙으면 그 훅이 이 타입을 가져다 씁니다.
- */
-export type CalibrationPhase = 'IDLE' | 'CAMERA' | 'BOTTOM' | 'EVALUATING' | 'DONE' | 'FAILED';
+import type { CalibrationPhase } from './useGazeCalibration';
 
 /**
  * 카메라 자기 화면.

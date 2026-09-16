@@ -115,7 +115,12 @@ export interface CalibrationSummary {
   /** 2점 캘리브레이션 — 카메라 한 번, 화면 한 번 */
   points: 2;
   quality: 'GOOD' | 'FAIR' | 'POOR';
-  separability: number;
+  /**
+   * 두 기준이 얼마나 떨어져 있나. **모르면 null 입니다** —
+   * A안에서 분류기는 등급(quality)만 주고 수치는 내지 않습니다.
+   * 0 으로 채우면 "분리도가 0" 이라는 뜻이 되어 리포트가 거짓말을 합니다.
+   */
+  separability: number | null;
   coordinateSpace: 'raw' | 'mirrored';
   /** 해상도·배율·카메라 위치. 이게 다르면 다른 기기의 값이라 재사용 불가 */
   layoutSignature: string;

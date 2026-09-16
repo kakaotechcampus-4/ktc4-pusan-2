@@ -7,7 +7,7 @@ import type { EvalCriterion, Mode, ScriptMode } from '@/types/api';
 import { ScreenFrame, StageButton } from './ScreenFrame';
 import { StagePreview } from './StagePreview';
 import { toMessage } from '@/shared/api/errorMessage';
-import { GAZE_CALIBRATION_WIRED, usePrepareStore } from './prepareStore';
+import { usePrepareStore } from './prepareStore';
 
 /** 4단. Off는 대본 영역 자체가 사라집니다 (높이 0) */
 const SCRIPT_MODES: { value: ScriptMode; label: string }[] = [
@@ -67,11 +67,8 @@ export function PreparePage() {
     [pitch.data?.script.content],
   );
 
-  /**
-   * 05에서 기준을 잡았거나, 소리만으로 가기로 했거나.
-   * 캘리브레이션이 붙기 전에는 막지 않습니다 — 막으면 뒤 화면을 아무도 못 봅니다.
-   */
-  const gazeReady = !GAZE_CALIBRATION_WIRED || calibration !== null || gazeDeclined;
+  /** 05에서 기준을 잡았거나, 소리만으로 가기로 했거나 */
+  const gazeReady = calibration !== null || gazeDeclined;
   const canStart = data !== undefined && gazeReady && !starting;
 
   /** ★ Take는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요 */

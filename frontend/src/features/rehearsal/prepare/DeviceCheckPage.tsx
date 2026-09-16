@@ -7,6 +7,7 @@ import { CheckCard } from './CheckCard';
 import { LevelBar } from '@/features/rehearsal/media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
 import { usePrepareStore } from './prepareStore';
+import { useGazeCalibration } from './useGazeCalibration';
 import { useMicLevel } from '@/features/rehearsal/media/useMicLevel';
 import { useVideoStream } from '@/features/rehearsal/media/useVideoStream';
 
@@ -30,6 +31,7 @@ export function DeviceCheckPage() {
   const { videoRef, live } = useVideoStream(stream, 'device-check');
   const { meterRef, dbRef, rowRef, silentRef, micOk, audioState } = useMicLevel(stream);
   const declineGaze = usePrepareStore((s) => s.declineGaze);
+  const cal = useGazeCalibration({ videoRef, live });
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
 
@@ -59,9 +61,7 @@ export function DeviceCheckPage() {
   const cameras = devices.filter((d) => d.kind === 'videoinput');
   const mics = devices.filter((d) => d.kind === 'audioinput');
 
-  // 시선 기준점은 아직 점검을 막지 않습니다 — 수집·판정이 분류기 계약(A안)에
-  // 맞춰 붙기 전까지는 안내만 합니다 (prepareStore 의 GAZE_CALIBRATION_WIRED).
-  const ready = live && micOk;
+  const ready = live && micOk && cal.points === 2;
   const goPrepare = () => navigate(`/pitch/${pitchId}/prepare`);
 
   const hint = deviceError
@@ -70,7 +70,11 @@ export function DeviceCheckPage() {
       ? '카메라를 켜야 점검을 시작할 수 있습니다'
       : !micOk
         ? '마이크에 대고 한 마디 해보세요'
-        : '점검이 끝났어요';
+        : cal.phase === 'FAILED'
+          ? '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요'
+          : cal.points < 2
+            ? '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다'
+            : '점검이 끝났어요';
 
   return (
     <ScreenFrame
@@ -105,7 +109,8 @@ export function DeviceCheckPage() {
             <CameraPreview
               videoRef={videoRef}
               live={live}
-              phase="IDLE"
+              phase={cal.phase}
+              countdownRef={cal.countdownRef}
               onEnable={() => void request()}
             />
           </div>
@@ -150,12 +155,29 @@ export function DeviceCheckPage() {
                 done: micOk,
               },
               {
-                // 카메라를 2초, 대본 자리를 2초 보며 기준을 잡는 단계입니다.
-                // 화면(표적·카운트다운)은 CameraPreview 에 들어 있고, 수집·판정만
-                // 분류기 계약(A안)에 맞춰 다음 브랜치에서 붙입니다.
+                // 카메라를 2초, 대본 자리를 2초. 모은 프레임은 분류기가 받아
+                // 기준과 품질을 정합니다 (A안) — 여기서는 순서와 안내만 합니다.
                 id: 'gaze',
-                label: '시선 기준점 · 분류기 연결 대기',
-                done: false,
+                label:
+                  cal.phase === 'FAILED'
+                    ? '시선 기준점 · 다시 필요'
+                    : `시선 기준점 ${cal.points} / 2`,
+                done: cal.phase === 'DONE',
+                action: {
+                  text:
+                    cal.phase === 'DONE'
+                      ? '다시 잡기'
+                      : cal.phase === 'EVALUATING'
+                        ? '확인 중…'
+                        : cal.running
+                          ? '잡는 중…'
+                          : !live
+                            ? '카메라 먼저'
+                            : '누르면 시작',
+                  onClick: () => {
+                    if (live && !cal.running) cal.start();
+                  },
+                },
               },
             ]}
           />
@@ -172,6 +194,24 @@ export function DeviceCheckPage() {
                   예: 주소창 왼쪽 자물쇠 → 카메라 → 허용으로 바꿔 주세요
                 </p>
               </>
+            )}
+
+            {cal.phase === 'FAILED' && (
+              <div className="mt-2 rounded-lg border border-coral bg-coral/10 p-3">
+                <p className="font-bold text-coral">기준을 잡지 못했어요</p>
+                <p className="mt-1 text-stone">
+                  두 지점을 바라보는 4초 동안 얼굴이 화면 안에 있어야 합니다. 카메라를 볼 때와 대본
+                  자리를 볼 때를 분명히 나눠 주세요.
+                </p>
+                <button
+                  type="button"
+                  onClick={cal.start}
+                  className="mt-2 rounded-full bg-coral px-3 py-1 font-semibold text-white
+                             hover:bg-coral-deep"
+                >
+                  다시 잡기
+                </button>
+              </div>
             )}
 
             <p className="mt-1 text-coral">
