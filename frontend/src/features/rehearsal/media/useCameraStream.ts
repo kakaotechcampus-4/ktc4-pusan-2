@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+/** 장치 점검 화면에서 고른 카메라·마이크. 안 주면 브라우저 기본 장치입니다 */
+export interface DeviceChoice {
+  videoDeviceId?: string;
+  audioDeviceId?: string;
+}
+
 export type DeviceError =
   | 'PERMISSION_DENIED' // 사용자가 거부
   | 'NOT_FOUND' // 카메라·마이크가 없음
@@ -42,23 +48,37 @@ export function useCameraStream() {
     setStream(null);
   }, []);
 
-  const request = useCallback(async () => {
-    stop();
-    setError(null);
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, frameRate: { ideal: 15 } },
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
-      liveStreams.add(s);
-      streamRef.current = s;
-      setStream(s);
-      return s;
-    } catch (e) {
-      setError(toDeviceError(e));
-      return null;
-    }
-  }, [stop]);
+  const request = useCallback(
+    async (choice: DeviceChoice = {}) => {
+      stop();
+      setError(null);
+      try {
+        // deviceId 는 exact 로 겁니다 — ideal 로 주면 브라우저가 조용히 다른 장치를
+        // 열어서, 사용자가 고른 마이크와 실제로 녹음되는 마이크가 달라집니다.
+        const s = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: 640,
+            height: 480,
+            frameRate: { ideal: 15 },
+            ...(choice.videoDeviceId ? { deviceId: { exact: choice.videoDeviceId } } : {}),
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            ...(choice.audioDeviceId ? { deviceId: { exact: choice.audioDeviceId } } : {}),
+          },
+        });
+        liveStreams.add(s);
+        streamRef.current = s;
+        setStream(s);
+        return s;
+      } catch (e) {
+        setError(toDeviceError(e));
+        return null;
+      }
+    },
+    [stop],
+  );
 
   // 언마운트 시 반드시 놓아줍니다. 안 그러면 카메라 불이 안 꺼집니다.
   useEffect(() => stop, [stop]);

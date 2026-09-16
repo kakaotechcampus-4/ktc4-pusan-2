@@ -305,3 +305,72 @@ export interface AnalysisStatus {
   }[];
   estimatedRemainSec: number;
 }
+
+/* ------------------------------------------------------------------ */
+/* 리허설 준비 (P4) · 장치 점검                                         */
+/*                                                                     */
+/* ★ 명세 8-4에 아직 없는 화면입니다. 시안 기준의 잠정 형태이고,        */
+/*   명세가 나오면 다른 타입과 같이 여기서부터 고칩니다.                */
+/* ------------------------------------------------------------------ */
+
+/** 사용자가 직접 적은 평가 기준. 준비 화면에서는 읽기 전용입니다 */
+export interface EvalCriterion {
+  id: string;
+  order: number;
+  text: string;
+}
+
+export interface PrepareResponse {
+  pitchId: string;
+  title: string;
+  /** Take가 스냅샷하는 값 — 준비 화면에서 고정됩니다 (CLAUDE.md 8번) */
+  presentationVersion: number;
+  scriptVersion: number;
+  timeLimitSec: number;
+  /** 이번에 만들어질 Take 번호. POST /takes의 응답과 같아야 합니다 */
+  nextTakeNumber: number;
+  /** 지난 Take가 남긴 다음 과제. 없으면 null — 배너를 그리지 않습니다 */
+  lastMission: { id: string; description: string } | null;
+  criteria: { version: number; readOnly: boolean; items: EvalCriterion[] };
+  /** 지난 Take에서 고른 Script Mode. 화면의 초기 선택값입니다 */
+  defaultScriptMode: ScriptMode;
+}
+
+export interface CreateTakeRequest {
+  pitchId: string;
+  /** 멱등키. IndexedDB 세션 키와 **같은 값**입니다 */
+  clientSessionId: string;
+  mode: Mode;
+  scriptMode: ScriptMode;
+  presentationVersion: number;
+  scriptVersion: number;
+  criteriaVersion: number;
+}
+
+export interface CreateTakeResponse {
+  takeId: string;
+  takeNumber: number;
+  status: TakeStatus;
+}
+
+/* ------------------------------------------------------------------ */
+/* 리허설 화면 (P5 · P5x)                                               */
+/*                                                                     */
+/* ★ 명세 8-4에 아직 없습니다. 준비 화면과 같은 이유로 잠정 형태입니다.  */
+/*   리허설은 URL에 takeId 하나만 들고 들어옵니다 — 새로고침으로 돌아와도 */
+/*   화면이 서야 해서, 그 하나로 필요한 걸 다 받아올 곳이 필요합니다.    */
+/* ------------------------------------------------------------------ */
+
+export interface TakeContext {
+  takeId: string;
+  takeNumber: number;
+  pitchId: string;
+  pitchTitle: string;
+  /** Take가 시작될 때 고정된 값입니다. 화면이 임의로 바꾸지 않습니다 */
+  mode: Mode;
+  scriptMode: ScriptMode;
+  timeLimitSec: number;
+  status: TakeStatus;
+  /** 이번 Take의 과제. 없으면 null */
+  mission: { id: string; description: string } | null;
+}
