@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,11 +12,22 @@ from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
 from pitch_coach_backend.module.take.controller import router as take_router
 from pitch_coach_backend.module.user.controller import router as user_router
+from pitch_coach_backend.realtime.controller import router as realtime_router
+from pitch_coach_backend.realtime.take_stream import stop_all as stop_all_streams
 
 # Caddy 는 /api/* 만 백엔드로 넘긴다 (infra/Caddyfile). 접두어 없는 경로는 404 도 아니고
 # 프론트 화면이 돌아온다. 그래서 /docs·/openapi.json 까지 전부 /api 아래로 옮긴다.
 # 버전 접두어(/v1)는 붙이지 않는다 — 설계 문서 경로에 /api 만 앞에 붙는 형태다.
 API_PREFIX = "/api"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield
+    # 실시간 STT 스트림은 WebSocket 요청 밖에서 도는 백그라운드 태스크다.
+    # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.
+    await stop_all_streams()
+
 
 app = FastAPI(
     title="Pitch Coach API",
@@ -22,6 +36,7 @@ app = FastAPI(
     redoc_url=f"{API_PREFIX}/redoc",
     openapi_url=f"{API_PREFIX}/openapi.json",
     swagger_ui_oauth2_redirect_url=f"{API_PREFIX}/docs/oauth2-redirect",
+    lifespan=lifespan,
 )
 register_exception_handlers(app)
 
@@ -53,5 +68,6 @@ api.include_router(auth_router)
 api.include_router(user_router)
 api.include_router(pitch_router)
 api.include_router(take_router)
+api.include_router(realtime_router)
 
 app.include_router(api)

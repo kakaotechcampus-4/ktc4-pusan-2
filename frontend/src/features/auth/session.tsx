@@ -1,18 +1,22 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { useLogout, useSession } from './useSession';
+
 export function RequireSession() {
   const session = useSession();
   const signOut = useLogout();
   const location = useLocation();
+
   const oauthError = new URLSearchParams(location.search).get('auth_error');
   if (oauthError)
     return <Navigate replace to={`/login?auth_error=${encodeURIComponent(oauthError)}`} />;
+
   if (session.isPending)
     return (
       <p role="status" className="p-8">
         로그인 상태를 확인하고 있습니다.
       </p>
     );
+
   if (session.isError)
     return (
       <div role="alert" className="p-8">
@@ -20,6 +24,7 @@ export function RequireSession() {
         <button onClick={() => void session.refetch()}>다시 시도</button>
       </div>
     );
+
   if (!session.data)
     return (
       <Navigate
@@ -27,6 +32,7 @@ export function RequireSession() {
         to={`/login?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`}
       />
     );
+
   return (
     <>
       <div className="flex items-center justify-end gap-4 px-6 py-3 text-sm">
