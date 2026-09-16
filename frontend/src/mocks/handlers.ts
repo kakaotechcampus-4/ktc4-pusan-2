@@ -17,7 +17,7 @@ const ENGINE = 'face-landmarker@0.10.3+mobileone-s0@1.0+vote-v1';
 // 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
 // prettier-ignore
 const home: HomeResponse = {
-  nearestPitch: { title: '캡스톤 최종 발표', daysUntil: 3 },
+  nearestPitch: { title: '캡스톤 중간발표', daysUntil: 3 },
   nextMission: {
     pitchId: 'p1',
     nextTakeNumber: 4,
@@ -27,13 +27,34 @@ const home: HomeResponse = {
   weeklyDelta: 1,
   pitches: [
     {
-      id: 'p1', title: '캡스톤 최종 발표', timeLimitSec: 600, daysUntil: 3,
+      id: 'p1', title: '캡스톤 중간발표', timeLimitSec: 300, daysUntil: 3,
       presentationVersion: 2, scriptVersion: 2, bestTakeId: null,
+      lastPracticedAt: '2026-09-02T21:40:00+09:00', latestScore: 82,
       takes: [
         { id: 't1', takeNumber: 1, status: 'COMPLETED', isBest: false },
         { id: 't2', takeNumber: 2, status: 'COMPLETED', isBest: false },
         { id: 't3', takeNumber: 3, status: 'COMPLETED', isBest: false },
       ],
+    },
+    {
+      id: 'p2', title: '공모전 예선 피칭', timeLimitSec: 180, daysUntil: 5,
+      presentationVersion: 1, scriptVersion: 1, bestTakeId: null,
+      lastPracticedAt: '2026-09-04T19:10:00+09:00', latestScore: 74,
+      takes: [
+        { id: 't4', takeNumber: 1, status: 'COMPLETED', isBest: false },
+        { id: 't5', takeNumber: 2, status: 'COMPLETED', isBest: false },
+        { id: 't6', takeNumber: 3, status: 'COMPLETED', isBest: false },
+        { id: 't7', takeNumber: 4, status: 'COMPLETED', isBest: false },
+        { id: 't8', takeNumber: 5, status: 'COMPLETED', isBest: false },
+        { id: 't9', takeNumber: 6, status: 'COMPLETED', isBest: false },
+        { id: 't10', takeNumber: 7, status: 'COMPLETED', isBest: false },
+      ],
+    },
+    {
+      id: 'p3', title: '학회 세미나 발제', timeLimitSec: 600, daysUntil: 12,
+      presentationVersion: 1, scriptVersion: 1, bestTakeId: null,
+      lastPracticedAt: '2026-08-28T16:00:00+09:00', latestScore: null,
+      takes: [{ id: 't11', takeNumber: 1, status: 'COMPLETED', isBest: false }],
     },
   ],
   inProgressTake: null,
