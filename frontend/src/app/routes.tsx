@@ -4,6 +4,10 @@ import { StageDemo } from '@/features/rehearsal/Stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
+import { WelcomePage } from '@/features/onboarding/WelcomePage';
+import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
+import { PreparePage } from '@/features/rehearsal/prepare/PreparePage';
+import { RehearsalPage } from '@/features/rehearsal/Stage/RehearsalPage';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -16,7 +20,7 @@ import { RequireSession } from '@/features/auth/session';
 // prettier-ignore
 const routes = [
   { path: '/',            element: <Stub id="P2"   name="홈 대시보드" track="B" /> },
-  { path: '/welcome',     element: <Stub id="P1"   name="온보딩" track="B" /> },
+  { path: '/welcome',     element: <WelcomePage /> },
   { path: '/login',       element: <LoginPage /> },
   { path: '/about',       element: <Stub id="P14"  name="분석 방식 설명" track="B" /> },
   { path: '/pitches',     element: <Stub id="P10"  name="Pitch 목록" track="B" /> },
@@ -25,9 +29,14 @@ const routes = [
   { path: '/takes',       element: <Stub id="P16"  name="Take 기록" track="B" /> },
   // ★ Take는 준비 화면의 시작 CTA에서 생긴다.
   //    그래서 준비는 pitchId, 리허설은 takeId를 받는다. 이 경계를 흐리지 말 것.
-  { path: '/pitch/:pitchId/prepare',   element: <Stub id="P4"  name="리허설 준비 · Calibration" track="A" /> },
-  { path: '/takes/:takeId/rehearsal',  element: <Stub id="P5"  name="실시간 코칭 리허설" track="A" /> },
-  { path: '/takes/:takeId/exam',       element: <Stub id="P5x" name="실전 검증 리허설" track="A" /> },
+  //    장치 점검은 준비 바로 앞에 선다. 여기서는 Take 를 만들지 않는다 — 점검하다 그만둔
+  //    만큼 빈 Take 가 쌓이고 takeNumber 가 실제 연습 횟수와 어긋난다.
+  { path: '/pitch/:pitchId/device-check', element: <DeviceCheckPage /> },
+  { path: '/pitch/:pitchId/prepare',   element: <PreparePage /> },
+  //    같은 무대다. 코치가 말을 하느냐 마느냐만 다르고, 그 차이는 Take 의 mode 가 정한다 —
+  //    화면이 경로로 판단하지 않는다 (경로와 Take 가 어긋나면 서버 값이 맞다).
+  { path: '/takes/:takeId/rehearsal',  element: <RehearsalPage /> },
+  { path: '/takes/:takeId/exam',       element: <RehearsalPage /> },
   { path: '/takes/:takeId/processing', element: <Stub id="P6-0" name="분석 대기" track="B" /> },
   { path: '/takes/:takeId/retry',      element: <Stub id="P15" name="업로드 실패 · 재시도" track="A" /> },
   { path: '/takes/:takeId',            element: <Stub id="P6"  name="Take 리포트" track="B" /> },
@@ -46,6 +55,7 @@ const routes = [
 
 const publicPaths = [
   '/login',
+  '/welcome',
   '/about',
   '/privacy',
   '/terms',
@@ -54,6 +64,7 @@ const publicPaths = [
   '/dev/media',
   '*',
 ];
+
 export const router = createBrowserRouter(
   routes.map((route) =>
     publicPaths.includes(route.path)

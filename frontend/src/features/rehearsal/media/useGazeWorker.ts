@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { GazeWorkerIn, GazeWorkerOut, ZoneDecision } from '@/workers/gaze.contract';
+import type {
+  GazeWorkerIn,
+  GazeWorkerOut,
+  ZoneDecision,
+  ZoneReference,
+} from '@/workers/gaze.contract';
 
 export interface GazePerf {
   /** 실제로 끝낸 프레임 수 기준. 보낸 수가 아니다 — 이게 진짜 숫자 */
@@ -95,6 +100,11 @@ export function useGazeWorker(
   onDecision: (d: ZoneDecision) => void,
   loadMs: number,
   impl: GazeImpl = 'dummy',
+  /**
+   * 캘리브레이션 결과. `null` 이면 품질 미달이라 화면이 재시도를 안내합니다.
+   * 장치 점검 화면만 씁니다 — 발표 중에는 기준을 다시 잡지 않습니다.
+   */
+  onCalibrated?: (ref: ZoneReference | null) => void,
 ) {
   const [state, setState] = useState<WorkerState>(() => freshState(loadMs, impl));
 
@@ -126,6 +136,11 @@ export function useGazeWorker(
     onDecisionRef.current = onDecision;
   }, [onDecision]);
 
+  const onCalibratedRef = useRef(onCalibrated);
+  useEffect(() => {
+    onCalibratedRef.current = onCalibrated;
+  }, [onCalibrated]);
+
   // ── 워커 생명주기. loadMs 가 바뀌면 새로 만든다 ────────────────────
   useEffect(() => {
     const worker = makeWorker(loadMs, impl);
@@ -152,6 +167,9 @@ export function useGazeWorker(
           return;
         case 'decision':
           onDecisionRef.current(msg.decision);
+          return;
+        case 'calibrated':
+          onCalibratedRef.current?.(msg.ref);
           return;
         case 'perf': {
           const n = rttCountRef.current;
@@ -288,5 +306,24 @@ export function useGazeWorker(
     inFlightRef.current = false;
   }, []);
 
-  return { ready, engineVersion, error, perf, startPump, stopPump };
+  /**
+   * 모은 프레임으로 기준을 잡아 달라고 분류기에 넘깁니다 (A안).
+   *
+   * ★ 비트맵을 **넘깁니다**(transfer). 복사하면 4초분 프레임이 두 벌이 되어
+   *   그 순간 수십 MB 가 더 잡힙니다. 넘긴 뒤에는 이쪽에서 쓸 수 없고,
+   *   닫는 것은 워커 몫입니다 — 계약에 그렇게 적혀 있습니다.
+   */
+  const fitCalibration = useCallback((camera: ImageBitmap[], bottom: ImageBitmap[]) => {
+    const worker = workerRef.current;
+    if (!worker) {
+      // 워커가 없으면 프레임만 남습니다. 닫지 않으면 GPU 메모리에 그대로 쌓입니다
+      for (const b of [...camera, ...bottom]) b.close();
+      return false;
+    }
+    const msg: GazeWorkerIn = { type: 'fitCalibration', camera, bottom };
+    worker.postMessage(msg, [...camera, ...bottom]);
+    return true;
+  }, []);
+
+  return { ready, engineVersion, error, perf, startPump, stopPump, fitCalibration };
 }

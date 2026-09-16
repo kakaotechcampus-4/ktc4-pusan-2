@@ -17,6 +17,7 @@ dependencies = [
     "pyjwt[crypto]>=2.13.0",
     "redis>=8.1.0",
     "sqlalchemy>=2.0.52",
+    "websockets>=17.1",
 ]
 
 [build-system]

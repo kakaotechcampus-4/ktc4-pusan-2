@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" fill="none">
+  <defs>
+    <linearGradient id="rim" x1="500" y1="8" x2="500" y2="551" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8c8d8e"/>
+      <stop offset=".05" stop-color="#454647"/>
+      <stop offset=".45" stop-color="#6b6d6e"/>
+      <stop offset="1" stop-color="#252627"/>
+    </linearGradient>
+    <linearGradient id="chin" x1="500" y1="520" x2="500" y2="550" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1d1e20"/>
+      <stop offset=".8" stop-color="#292a2c"/>
+      <stop offset="1" stop-color="#101112"/>
+    </linearGradient>
+    <linearGradient id="aluminum" x1="500" y1="550" x2="500" y2="584" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d6d7d9"/>
+      <stop offset=".12" stop-color="#b1b3b6"/>
+      <stop offset=".48" stop-color="#929497"/>
+      <stop offset=".72" stop-color="#77797b"/>
+      <stop offset=".9" stop-color="#4e5052"/>
+      <stop offset="1" stop-color="#303234"/>
+    </linearGradient>
+    <linearGradient id="machined-edges" x1="0" y1="566" x2="1000" y2="566" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#333638"/>
+      <stop offset=".008" stop-color="#e2e3e4"/>
+      <stop offset=".021" stop-color="#96989a"/>
+      <stop offset=".042" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#ffffff" stop-opacity=".13"/>
+      <stop offset=".958" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset=".979" stop-color="#96989a"/>
+      <stop offset=".992" stop-color="#e2e3e4"/>
+      <stop offset="1" stop-color="#333638"/>
+    </linearGradient>
+    <linearGradient id="recess" x1="414" y1="556" x2="586" y2="556" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3a3c3e"/>
+      <stop offset=".035" stop-color="#77797b"/>
+      <stop offset=".07" stop-color="#b6b8ba"/>
+      <stop offset=".5" stop-color="#bfc1c3"/>
+      <stop offset=".93" stop-color="#b6b8ba"/>
+      <stop offset=".965" stop-color="#77797b"/>
+      <stop offset="1" stop-color="#3a3c3e"/>
+    </linearGradient>
+    <radialGradient id="ground-shadow">
+      <stop stop-color="#171819" stop-opacity=".38"/>
+      <stop offset=".65" stop-color="#171819" stop-opacity=".15"/>
+      <stop offset="1" stop-color="#171819" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <ellipse cx="500" cy="589" rx="492" ry="30" fill="url(#ground-shadow)"/>
+  <path d="M57 580h63l-4 8H63zM880 580h63l-6 8h-53z" fill="#27292b"/>
+
+  <!-- The transparent opening matches the separate 3974 x 2478 screen image. -->
+  <path fill-rule="evenodd" d="M112 8h776a24 24 0 0 1 24 24v519H88V32a24 24 0 0 1 24-24ZM107 22a5 5 0 0 0-5 5v491.34h796V27a5 5 0 0 0-5-5H107Z" fill="url(#rim)"/>
+  <path fill-rule="evenodd" d="M112 10h776a22 22 0 0 1 22 22v517H90V32a22 22 0 0 1 22-22ZM107 22a5 5 0 0 0-5 5v491.34h796V27a5 5 0 0 0-5-5H107Z" fill="#08090a"/>
+  <path d="M91 32a21 21 0 0 1 21-21h776a21 21 0 0 1 21 21" stroke="#ffffff" stroke-opacity=".14"/>
+  <path d="M102 519h796" stroke="#000000" stroke-width="2"/>
+  <path d="M91 520h818v28H91z" fill="url(#chin)"/>
+  <path d="M91 546h818" stroke="#444648" stroke-opacity=".6"/>
+
+  <!-- Front camera notch, integrated into the top bezel. -->
+  <path d="M452 20h96v12a6 6 0 0 1-6 6h-84a6 6 0 0 1-6-6V20Z" fill="#08090a"/>
+  <circle cx="500" cy="27" r="3.3" fill="#15191c"/>
+  <circle cx="500" cy="27" r="1.5" fill="#222d36"/>
+
+  <!-- Only the slim front edge of the keyboard deck is visible head-on. -->
+  <path d="M1 550h998v14c0 14-11 20-27 20H28C12 584 1 578 1 564v-14Z" fill="url(#aluminum)"/>
+  <path d="M1 550h998v14c0 14-11 20-27 20H28C12 584 1 578 1 564v-14Z" fill="url(#machined-edges)"/>
+  <path d="M2 550h996" stroke="#eceeef" stroke-width="1.5"/>
+  <path d="M414 550h172v3c0 8-6 11-13 11H427c-7 0-13-3-13-11v-3Z" fill="url(#recess)"/>
+  <path d="M427 564h146" stroke="#e0e1e2" stroke-opacity=".6"/>
+  <path d="M25 580c10 2 21 2 35 2h880c14 0 25 0 35-2" stroke="#26282a" stroke-opacity=".5"/>
+</svg>

@@ -104,23 +104,50 @@ let dbPromise: Promise<IDBPDatabase<PitchDb>> | null = null;
 
 export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
   dbPromise ??= openDB<PitchDb>(DB_NAME, DB_VERSION, {
+    /**
+     * ★ 이미 있는 스토어는 다시 만들지 않습니다.
+     *
+     * upgrade 는 **버전이 오를 때마다** 돕니다. v1 을 쓰던 브라우저가 v2 로 올라오면
+     * session·gazeSegments… 가 이미 있는데, 무조건 createObjectStore 를 부르면
+     * ConstraintError 로 열기 자체가 실패합니다. 그러면 화면에는 "시작이 안 된다"만
+     * 보이고 원인은 안 보입니다 — 실제로 그렇게 한 번 막혔습니다.
+     */
     upgrade(db) {
-      const session = db.createObjectStore('session', { keyPath: 'clientSessionId' });
-      session.createIndex('byStatus', 'status');
+      if (!db.objectStoreNames.contains('session')) {
+        const session = db.createObjectStore('session', { keyPath: 'clientSessionId' });
+        session.createIndex('byStatus', 'status');
+      }
 
       // 복합 키 [clientSessionId, 시각] — 세션별 범위 조회가 그냥 됩니다.
-      db.createObjectStore('gazeSegments', { keyPath: ['clientSessionId', 'tMs'] });
-      db.createObjectStore('slideChanges', { keyPath: ['clientSessionId', 'atMs'] });
-      db.createObjectStore('scriptScroll', { keyPath: ['clientSessionId', 'atMs'] });
-      db.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
-      db.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
+      if (!db.objectStoreNames.contains('gazeSegments')) {
+        db.createObjectStore('gazeSegments', { keyPath: ['clientSessionId', 'tMs'] });
+      }
+      if (!db.objectStoreNames.contains('slideChanges')) {
+        db.createObjectStore('slideChanges', { keyPath: ['clientSessionId', 'atMs'] });
+      }
+      if (!db.objectStoreNames.contains('scriptScroll')) {
+        db.createObjectStore('scriptScroll', { keyPath: ['clientSessionId', 'atMs'] });
+      }
+      if (!db.objectStoreNames.contains('coachLog')) {
+        db.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
+      }
+      if (!db.objectStoreNames.contains('audioChunks')) {
+        db.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
+      }
 
       // v2 — 캘리브레이션 기준. 세션이 아니라 기기(layoutSignature)에 매입니다.
       if (!db.objectStoreNames.contains('zoneRefs')) {
         db.createObjectStore('zoneRefs', { keyPath: 'layoutSignature' });
       }
     },
-  });
+  })
+    // 실패한 약속을 캐시하면 새로고침 전까지 영원히 실패합니다.
+    // 한 번 열기에 실패하면 다음 호출이 다시 시도하게 비워 둡니다.
+    .catch((e: unknown) => {
+      dbPromise = null;
+      throw e;
+    });
+
   return dbPromise;
 }
 
@@ -238,6 +265,78 @@ export async function readGazeDecisions(clientSessionId: string): Promise<ZoneDe
   return rows
     .map(({ tMs, zone, confidence, sampleCount }) => ({ tMs, zone, confidence, sampleCount }))
     .sort((a, b) => a.tMs - b.tMs);
+}
+
+/**
+ * 준비 화면에서 발급받은 takeId 를 세션에 적습니다 (CLAUDE.md 8번).
+ * 세션은 takeId 보다 먼저 생깁니다 — clientSessionId 가 POST /takes 의 멱등키라서,
+ * 발급을 요청하려면 그 값이 이미 있어야 합니다.
+ */
+export async function setTakeId(clientSessionId: string, takeId: string): Promise<void> {
+  await patchSession(clientSessionId, { takeId });
+}
+
+/**
+ * takeId 로 세션을 찾습니다. 리허설 화면을 새로고침했을 때 쓰는 길입니다 —
+ * 라우터 state 는 새로고침으로 사라지지만 기록은 IndexedDB 에 남아 있어야 합니다.
+ * 같은 Take 로 두 번 시작된 세션이 있으면 **가장 최근 것**을 잇습니다.
+ */
+export async function findSessionByTakeId(takeId: string): Promise<SessionRow | null> {
+  const db = await openPitchDb();
+  const rows = await db.getAll('session');
+  const mine = rows.filter((r) => r.takeId === takeId);
+  if (mine.length === 0) return null;
+  return mine.reduce((a, b) => (a.lastBeatAt >= b.lastBeatAt ? a : b));
+}
+
+/**
+ * 슬라이드가 바뀐 시각. 전송 직전에 구간(`slideEvents`)으로 접습니다 —
+ * 여기서 미리 접지 않는 이유는 시선 판정과 같습니다. 중간에 죽어도 부분 기록이 살아야 합니다.
+ */
+export async function appendSlideChange(
+  clientSessionId: string,
+  atMs: Ms,
+  slideNumber: number,
+): Promise<void> {
+  const db = await openPitchDb();
+  await db.put('slideChanges', { clientSessionId, atMs, slideNumber });
+}
+
+export async function readSlideChanges(
+  clientSessionId: string,
+): Promise<{ atMs: Ms; slideNumber: number }[]> {
+  const db = await openPitchDb();
+  const rows = await db.getAll('slideChanges', sessionRange(clientSessionId));
+  return rows
+    .map((r) => ({ atMs: r.atMs, slideNumber: r.slideNumber }))
+    .sort((a, b) => a.atMs - b.atMs);
+}
+
+/**
+ * 코치가 **띄운 것과 참은 것 둘 다** 남깁니다.
+ *
+ * 참은 기록이 없으면 "왜 안 떴나"를 나중에 알 수 없습니다. 임계값을 조정할 근거가
+ * 그것뿐이라, 발동 기록만 남기면 다음 Take 에서 같은 문제가 반복됩니다
+ * (`CompleteRequest.suppressedFeedbacks`).
+ */
+export async function appendCoachLog(
+  clientSessionId: string,
+  entry: {
+    atMs: Ms;
+    type: string;
+    fired: boolean;
+    message: string | null;
+    suppressedReason: string | null;
+  },
+): Promise<void> {
+  const db = await openPitchDb();
+  await db.put('coachLog', { clientSessionId, ...entry });
+}
+
+export async function readCoachLog(clientSessionId: string) {
+  const db = await openPitchDb();
+  const rows = await db.getAll('coachLog', sessionRange(clientSessionId));
+  return rows.sort((a, b) => a.atMs - b.atMs);
 }
 
 // ── 오디오 조각 ────────────────────────────────────────────────────────
