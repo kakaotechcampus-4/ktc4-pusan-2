@@ -131,6 +131,11 @@ class TakeStream:
         self._client: WebSocket | None = None
         # FE 가 떨어져 있는 동안 온 final. 다시 붙으면 순서대로 보낸다
         self._missed_finals: list[TranscriptMessage] = []
+        # resend_missed() 를 감싼다. 탭 두 개가 거의 동시에 붙으면(예: 재연결이 겹칠 때)
+        # 서로 다른 RealtimeSession 이 이 메서드를 동시에 부를 수 있다. 락 없이 같은
+        # 리스트를 각자 확인(while)->접근([0])->제거(pop) 하면, await 로 갈라진 그 틈에
+        # 한쪽이 이미 비운 자리를 다른 쪽이 또 pop(0) 하다가 IndexError 가 난다
+        self._resend_lock = asyncio.Lock()
         self._grace_task: asyncio.Task[None] | None = None
         self._task: asyncio.Task[None] | None = None
         self._ever_connected = False
@@ -186,18 +191,21 @@ class TakeStream:
         다시 끊기는 것처럼 중간에 전송이 실패했을 때 아직 못 보낸 나머지가 이미
         비워진 리스트와 함께 통째로 사라진다. 하나씩 확인하며 지워서, 실패하면
         그 지점부터는 다음 재연결 때 다시 시도할 수 있게 남겨 둔다.
+
+        **락으로 감싼다.** 이 메서드가 두 번 동시에 돌면 같은 자리를 두 번 pop 하게 된다.
         """
-        while self._missed_finals:
-            message = self._missed_finals[0]
-            if not await self._send_checked(message):
-                logger.warning(
-                    "final 재전송이 중간에 끊겼다 take=%s 남은 개수=%d",
-                    self.take_id,
-                    len(self._missed_finals),
-                )
-                return
-            self._missed_finals.pop(0)
-        logger.info("재연결 중 놓친 final 을 모두 다시 보냈다 take=%s", self.take_id)
+        async with self._resend_lock:
+            while self._missed_finals:
+                message = self._missed_finals[0]
+                if not await self._send_checked(message):
+                    logger.warning(
+                        "final 재전송이 중간에 끊겼다 take=%s 남은 개수=%d",
+                        self.take_id,
+                        len(self._missed_finals),
+                    )
+                    return
+                self._missed_finals.pop(0)
+            logger.info("재연결 중 놓친 final 을 모두 다시 보냈다 take=%s", self.take_id)
 
     def detach(self, ws: WebSocket) -> None:
         """연결이 끊겼다. 이미 다른 연결이 붙었으면 아무것도 하지 않는다."""
@@ -239,24 +247,39 @@ class TakeStream:
         **`cancel()` 은 요청일 뿐이다.** `self._task.cancel()` 은 다음 await 지점에서
         `CancelledError` 를 던지도록 예약할 뿐, 그 자리에서 정리가 끝나는 게 아니다.
         실제 정리(Deepgram 소켓을 shield 안에서 닫는 것)는 `_run` 의 finally 가 한다.
-        여기서 `_finish()` 를 바로 부르면 `wait_closed()` 가 정리가 끝나기도 전에
-        True 를 돌려줘서, 호출자가 "닫혔다" 고 믿고 레지스트리에서 지운 바로 그 순간에도
-        옛 태스크가 아직 Deepgram 소켓을 붙들고 있을 수 있다.
 
-        태스크가 이미 없거나 끝난 경우(예: `start()` 를 부르기 전)에는 그 finally 가
-        절대 실행되지 않으므로 여기서 직접 마무리한다.
+        **`_run` 이 한 번도 스텝되지 않은 채로 취소되면 그 finally 조차 안 돈다.**
+        `asyncio.create_task()` 로 만든 태스크는 아직 "실행 중" 이 아니라 "예약됨" 상태다.
+        이 상태에서 바로 `.cancel()` 하면 코루틴 본문이 단 한 줄도 실행되지 않고 그대로
+        취소 처리된다 (직접 확인함). `not self._task.done()` 만으로는 이 경우와
+        "정말 돌고 있어서 finally 가 곧 돈다" 를 구분할 수 없으므로, 취소 결과를
+        직접 기다렸다가 `_finish()` 가 안 불렸으면 여기서 마무리한다 (idempotent).
         """
         self._stopping = True
         self._stop_event.set()
         if self._grace_task is not None:
             self._grace_task.cancel()
             self._grace_task = None
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-        else:
+        if self._task is None:
             self._finish()
+            return
+        if self._task.done():
+            # 이미 끝났다. finally 가 돌았을 테지만 _finish() 는 idempotent 하다
+            self._finish()
+            return
+        self._task.cancel()
+        asyncio.create_task(self._reap_after_cancel())
+
+    async def _reap_after_cancel(self) -> None:
+        """취소가 실제로 끝나는 걸 기다렸다가, `_run` 의 finally 가 못 불렀으면 대신 부른다."""
+        if self._task is not None:
+            with contextlib.suppress(BaseException):
+                await self._task
+        self._finish()
 
     def _finish(self) -> None:
+        if self._closed.is_set():
+            return
         self.state = "closed"
         self._closed.set()
         forget(self)
@@ -583,7 +606,13 @@ async def attach(
         if stream is not None and stream.is_stopping:
             # 정리 중인 스트림에 붙이면 곧 사라질 객체에 오디오를 밀어 넣게 된다.
             # 끝나기를 기다렸다가 새로 만든다
-            await stream.wait_closed(timeout=HANDOVER_TIMEOUT_SEC)
+            if not await stream.wait_closed(timeout=HANDOVER_TIMEOUT_SEC):
+                # 정상 drain 은 최대 DRAIN_TIMEOUT_SEC(10s) 까지 걸릴 수 있는데
+                # 핸드오버는 HANDOVER_TIMEOUT_SEC(3s) 만 기다린다. 여기서 그냥
+                # forget() 만 하면 옛 스트림은 레지스트리에서만 사라질 뿐 Deepgram
+                # 연결을 붙든 채 자기 페이스대로 계속 돈다 — "정리" 가 아니라 "방치" 다.
+                # 강제로 끊는다
+                stream.cancel()
             forget(stream)
             stream = None
 

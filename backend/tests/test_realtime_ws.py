@@ -775,6 +775,10 @@ class FakeWebSocket:
         return {"type": "websocket.disconnect"}
 
     async def send_text(self, text: str) -> None:
+        # 실제 WebSocket 전송은 항상 I/O 라 이벤트 루프에 제어를 한 번 돌려준다.
+        # 여기서 진짜로 양보하지 않으면 asyncio.gather 로 묶어도 두 호출이 교차 실행되지
+        # 않아(둘 다 끝까지 한 번에 실행됨) 동시 호출 경합을 재현하는 테스트가 무의미해진다
+        await asyncio.sleep(0)
         self._send_count += 1
         if self.fail_send_after is not None and self._send_count >= self.fail_send_after:
             raise RuntimeError("client vanished")
@@ -994,3 +998,87 @@ async def test_stop_immediately_after_long_gap_still_flushes_carried_audio():
     assert len(adapter.sessions) == 2
     # 회전으로 넘어간 캐리 프레임(3,200 bytes)이 새 세션에 실제로 전달됐다
     assert [len(a) for a in adapter.sessions[1].audio] == [3200]
+
+
+# ── 핸드오버 타임아웃 시 옛 스트림이 정리 안 되는 문제 ──────────────────
+
+
+@pytest.mark.anyio
+async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """DRAIN_TIMEOUT_SEC(정상 drain 상한, 10s) 이 HANDOVER_TIMEOUT_SEC(핸드오버 유예, 3s)
+    보다 길어서, 옛 스트림이 아직 정상적으로 정리되는 중이어도 핸드오버는 먼저 포기한다.
+    그때 그냥 forget() 만 하면 옛 스트림은 레지스트리에서만 사라질 뿐 자기 페이스대로
+    계속 돈다 — Deepgram 연결이 안 끊긴다. cancel() 로 강제로 끊어야 한다."""
+    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 0.05)
+    take_id = uuid.uuid7()
+    owner_id = uuid.uuid7()
+    # swallow_close: CloseStream 을 보내도 스스로는 절대 안 끝난다 (느린 정상 drain 재현)
+    adapter = FakeSttAdapter(Plan(swallow_close=True), Plan())
+
+    old_stream = await take_stream.attach(
+        take_id, FakeWebSocket(), owner_id=owner_id, stt_adapter=adapter, config=SttConfig()
+    )
+    await _wait_until_ok(old_stream)
+    old_stream.request_stop()  # 정상적으로 정리를 시작했다 (아직 안 끝났을 뿐)
+
+    new_stream = await take_stream.attach(
+        take_id, FakeWebSocket(), owner_id=owner_id, stt_adapter=adapter, config=SttConfig()
+    )
+
+    assert new_stream is not old_stream
+    # 옛 스트림이 실제로 끊겼는지 — cancel() 이 안 불리면 이 대기가 계속 False 로 남는다
+    assert await old_stream.wait_closed(timeout=1.0) is True, (
+        "핸드오버 타임아웃 뒤에도 옛 스트림이 스스로 안 끝나면 강제로 끊어야 한다"
+    )
+    assert adapter.sessions[0].aborted is True
+
+
+# ── final 재전송이 겹치면 IndexError 나는 문제 ──────────────────────────
+
+
+@pytest.mark.anyio
+async def test_concurrent_resend_missed_does_not_race_on_the_shared_list():
+    """탭 두 개가 거의 동시에 붙으면 서로 다른 RealtimeSession 이 resend_missed() 를
+    동시에 부를 수 있다. 락 없이 같은 리스트를 각자 확인-후-pop 하면, 한쪽이 이미
+    비운 자리를 다른 쪽이 또 pop 하다가 IndexError 가 난다."""
+    stream = TakeStream(
+        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=FakeSttAdapter(), config=SttConfig()
+    )
+    stream._missed_finals = [
+        transcript_message("1-1", "첫"),
+        transcript_message("1-2", "둘"),
+    ]
+    ws_a = FakeWebSocket()
+    await stream.attach(ws_a)
+
+    # 두 호출이 서로 await 지점에서 번갈아 실행되도록(진짜 동시 호출처럼) gather 로 묶는다.
+    # IndexError 가 나면 gather 자체가 그 예외로 실패한다
+    await asyncio.gather(stream.resend_missed(), stream.resend_missed())
+
+    assert stream._missed_finals == []
+    # 두 메시지 모두 (중복 없이) 정확히 한 번씩만 나갔다
+    sent_texts = [json.loads(t)["text"] for t in ws_a.sent]
+    assert sent_texts == ["첫", "둘"]
+
+
+# ── 태스크가 한 번도 실행되기 전에 취소되면 종료가 기록 안 되는 문제 ────
+
+
+@pytest.mark.anyio
+async def test_cancel_before_task_ever_runs_still_reports_closed():
+    """asyncio.create_task() 직후 바로 cancel() 하면(태스크가 단 한 번도 스텝되지
+    않은 채로), 코루틴 본문이 아예 실행되지 않아 _run() 의 finally 조차 안 돈다.
+    그러면 _finish() 를 아무도 안 불러서 wait_closed() 가 영원히 False 만 준다."""
+    adapter = FakeSttAdapter(Plan())
+    stream = TakeStream(
+        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=adapter, config=SttConfig()
+    )
+    stream.start()
+    stream.cancel()  # start() 직후, 태스크가 단 한 번도 스텝되지 않은 채로 취소한다
+
+    closed = await stream.wait_closed(timeout=1.0)
+    assert closed is True
+    assert stream.is_finished is True
+    assert take_stream.active_count() == 0
