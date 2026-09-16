@@ -34,5 +34,12 @@ class Settings(BaseSettings):
     # Chrome·Firefox 는 http://localhost 를 신뢰 출처로 보므로 로컬에서도 동작한다.
     cookie_secure: bool = True
 
+    # AWS S3 Configuration
+    # SSO로 로그인, 그래서 따로 액세스&시크릿 키를 발급받지 않아도 됨.
+    s3_bucket_name: str
+    s3_region: str = "ap-northeast-2"
+    # AWS_PROFILE 환경변수로 SSO 프로필 지정
+    aws_profile: str | None = None
+
 
 settings = Settings()

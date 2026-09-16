@@ -8,6 +8,7 @@
 """
 
 import os
+import uuid
 from collections.abc import Generator
 
 import pytest
@@ -77,6 +78,16 @@ def db_session(engine: Engine) -> Generator[Session]:
         finally:
             session.close()
             outer.rollback()
+
+
+@pytest.fixture
+def user_id(db_session: Session) -> uuid.UUID:
+    from pitch_coach_backend.module.user.entity import User
+
+    user = User(email=f"{uuid.uuid4()}@example.com", name="테스트 사용자")
+    db_session.add(user)
+    db_session.flush()
+    return user.id
 
 
 @pytest.fixture
