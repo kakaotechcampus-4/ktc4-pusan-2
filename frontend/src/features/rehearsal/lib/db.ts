@@ -104,23 +104,50 @@ let dbPromise: Promise<IDBPDatabase<PitchDb>> | null = null;
 
 export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
   dbPromise ??= openDB<PitchDb>(DB_NAME, DB_VERSION, {
+    /**
+     * ★ 이미 있는 스토어는 다시 만들지 않습니다.
+     *
+     * upgrade 는 **버전이 오를 때마다** 돕니다. v1 을 쓰던 브라우저가 v2 로 올라오면
+     * session·gazeSegments… 가 이미 있는데, 무조건 createObjectStore 를 부르면
+     * ConstraintError 로 열기 자체가 실패합니다. 그러면 화면에는 "시작이 안 된다"만
+     * 보이고 원인은 안 보입니다 — 실제로 그렇게 한 번 막혔습니다.
+     */
     upgrade(db) {
-      const session = db.createObjectStore('session', { keyPath: 'clientSessionId' });
-      session.createIndex('byStatus', 'status');
+      if (!db.objectStoreNames.contains('session')) {
+        const session = db.createObjectStore('session', { keyPath: 'clientSessionId' });
+        session.createIndex('byStatus', 'status');
+      }
 
       // 복합 키 [clientSessionId, 시각] — 세션별 범위 조회가 그냥 됩니다.
-      db.createObjectStore('gazeSegments', { keyPath: ['clientSessionId', 'tMs'] });
-      db.createObjectStore('slideChanges', { keyPath: ['clientSessionId', 'atMs'] });
-      db.createObjectStore('scriptScroll', { keyPath: ['clientSessionId', 'atMs'] });
-      db.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
-      db.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
+      if (!db.objectStoreNames.contains('gazeSegments')) {
+        db.createObjectStore('gazeSegments', { keyPath: ['clientSessionId', 'tMs'] });
+      }
+      if (!db.objectStoreNames.contains('slideChanges')) {
+        db.createObjectStore('slideChanges', { keyPath: ['clientSessionId', 'atMs'] });
+      }
+      if (!db.objectStoreNames.contains('scriptScroll')) {
+        db.createObjectStore('scriptScroll', { keyPath: ['clientSessionId', 'atMs'] });
+      }
+      if (!db.objectStoreNames.contains('coachLog')) {
+        db.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
+      }
+      if (!db.objectStoreNames.contains('audioChunks')) {
+        db.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
+      }
 
       // v2 — 캘리브레이션 기준. 세션이 아니라 기기(layoutSignature)에 매입니다.
       if (!db.objectStoreNames.contains('zoneRefs')) {
         db.createObjectStore('zoneRefs', { keyPath: 'layoutSignature' });
       }
     },
-  });
+  })
+    // 실패한 약속을 캐시하면 새로고침 전까지 영원히 실패합니다.
+    // 한 번 열기에 실패하면 다음 호출이 다시 시도하게 비워 둡니다.
+    .catch((e: unknown) => {
+      dbPromise = null;
+      throw e;
+    });
+
   return dbPromise;
 }
 

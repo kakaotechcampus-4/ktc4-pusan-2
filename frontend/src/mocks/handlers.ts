@@ -21,6 +21,11 @@ import type {
  * 시연 데이터가 화면마다 어긋나는 사고(시안의 09:42 vs 09:58)가 여기서 시작됩니다.
  */
 
+// ★ 경로 앞에 와일드카드를 붙입니다.
+//
+//   .env 의 VITE_API_BASE 가 채워져 있으면 요청이 http://localhost:8000/api/... 로
+//   나갑니다. 상대 경로 핸들러는 **같은 origin 요청만** 잡으므로 그때 목이 통째로
+//   새고, 화면에는 네트워크 오류만 뜹니다. mocks/auth.ts 가 같은 이유로 그렇게 씁니다.
 const ENGINE = 'face-landmarker@0.10.3+mobileone-s0@1.0+vote-v1';
 
 // 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
@@ -230,26 +235,26 @@ const takeContexts = new Map<string, TakeContext>();
 
 export const handlers = [
   ...authHandlers,
-  http.get('/api/home', () => HttpResponse.json(home)),
+  http.get('*/api/home', () => HttpResponse.json(home)),
 
-  http.get('/api/takes/:takeId/report', ({ params }) =>
+  http.get('*/api/takes/:takeId/report', ({ params }) =>
     HttpResponse.json(params.takeId === 't2' ? reportExcluded : report),
   ),
 
-  http.get('/api/takes/:takeId/status', () => HttpResponse.json(analyzing)),
+  http.get('*/api/takes/:takeId/status', () => HttpResponse.json(analyzing)),
 
-  http.post('/api/takes/:takeId/complete', async ({ params }) =>
+  http.post('*/api/takes/:takeId/complete', async ({ params }) =>
     HttpResponse.json({ takeId: params.takeId, status: 'ANALYZING' }, { status: 202 }),
   ),
 
-  http.post('/api/takes/:takeId/calibration', () => new HttpResponse(null, { status: 204 })),
+  http.post('*/api/takes/:takeId/calibration', () => new HttpResponse(null, { status: 204 })),
 
-  http.get('/api/pitches/:pitchId/prepare', ({ params }) =>
+  http.get('*/api/pitches/:pitchId/prepare', ({ params }) =>
     HttpResponse.json({ ...prepare, pitchId: String(params.pitchId) }),
   ),
 
   // ★ Take는 여기서만 생깁니다 (CLAUDE.md 8번). 홈·리포트의 'Take N 시작'은 이동만 합니다.
-  http.post('/api/takes', async ({ request }) => {
+  http.post('*/api/takes', async ({ request }) => {
     const body = (await request.json()) as CreateTakeRequest;
     const seen = issuedTakes.get(body.clientSessionId);
     if (seen) return HttpResponse.json(seen, { status: 200 });
@@ -273,14 +278,14 @@ export const handlers = [
   }),
 
   // ★ :takeId 보다 먼저 와야 합니다 — 안 그러면 in-progress 가 takeId 로 잡힙니다
-  http.get('/api/takes/in-progress', () => HttpResponse.json(null)),
+  http.get('*/api/takes/in-progress', () => HttpResponse.json(null)),
 
-  http.get('/api/takes/:takeId', ({ params }) => {
+  http.get('*/api/takes/:takeId', ({ params }) => {
     const takeId = String(params.takeId);
     return HttpResponse.json(takeContexts.get(takeId) ?? { ...fallbackTake, takeId });
   }),
 
-  http.get('/api/pitches/:pitchId', ({ params }) =>
+  http.get('*/api/pitches/:pitchId', ({ params }) =>
     HttpResponse.json({ ...pitchDetail, id: String(params.pitchId) }),
   ),
 ];
