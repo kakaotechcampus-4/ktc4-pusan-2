@@ -54,8 +54,16 @@ CANCEL_TIMEOUT_SEC = 2.0
 def _origin_allowed(origin: str | None) -> bool:
     """Origin 이 있으면 프론트 주소와 같아야 한다. 없으면(스크립트 등 비브라우저) 통과.
 
-    쿠키가 아니라 토큰으로 인증하므로 CSWSH 위험은 낮지만 검사 비용이 0 이다.
-    auth/dependencies 의 출처 비교와 같은 단위(스킴+호스트+포트) 로 본다.
+    여기서는 Origin 이 실제 인증 수단이 아니라 추가 방어 수단이다. WS 핸드셰이크
+    자체엔 인증 정보가 없고, 연결 뒤 첫 메시지로 Access Token 을 직접 보내야
+    `RealtimeSession._authenticate` 를 통과한다 — 쿠키처럼 브라우저가 자동으로
+    붙여주는 값이 아니므로, 공격 페이지가 Origin 을 속여 연결 자체는 만들어도
+    토큰을 모르면 인증을 통과할 수 없다. 그래서 이 검사를 없애도 CSWSH 는 뚫리지
+    않지만, 비용이 0 이라 방어선 하나로 남겨 둔다.
+
+    Origin 이 없는 건 브라우저가 아니라는 뜻이다(서버 간 호출·스크립트 등은
+    Origin 을 안 보낼 수 있다). 여기서 None 을 막으면 이런 정상적인 비브라우저
+    호출까지 막게 되므로 통과시킨다.
     """
     if origin is None:
         return True
