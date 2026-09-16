@@ -262,6 +262,10 @@ export interface HomeResponse {
     presentationVersion: number;
     scriptVersion: number;
     bestTakeId: string | null;
+    /** 아직 연습하지 않은 Pitch는 null. */
+    lastPracticedAt: string | null;
+    /** 분석 완료 Take가 없으면 null. */
+    latestScore: number | null;
     takes: { id: string; takeNumber: number; status: TakeStatus; isBest: boolean }[];
   }[];
   inProgressTake: { takeId: string; pitchTitle: string; startedAt: string } | null;

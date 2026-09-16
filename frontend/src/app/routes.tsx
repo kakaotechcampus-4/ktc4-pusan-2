@@ -3,6 +3,7 @@ import { Stub } from '@/shared/ui/Stub';
 import { StageDemo } from '@/features/rehearsal/Stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { HomePage } from '@/features/home/HomePage';
 import { RequireSession } from '@/features/auth/session';
 
 /**
@@ -15,7 +16,7 @@ import { RequireSession } from '@/features/auth/session';
 // P 번호와 경로를 열로 맞춰 둔다 — 화면 목록 문서와 나란히 놓고 대조하는 표다.
 // prettier-ignore
 const routes = [
-  { path: '/',            element: <Stub id="P2"   name="홈 대시보드" track="B" /> },
+  { path: '/',            element: <HomePage /> },
   { path: '/welcome',     element: <Stub id="P1"   name="온보딩" track="B" /> },
   { path: '/login',       element: <LoginPage /> },
   { path: '/about',       element: <Stub id="P14"  name="분석 방식 설명" track="B" /> },
@@ -61,7 +62,7 @@ export const router = createBrowserRouter(
       ? route
       : {
           path: route.path,
-          element: <RequireSession />,
+          element: <RequireSession showUserBar={route.path !== '/'} />,
           children: [{ index: true, element: route.element }],
         },
   ),
