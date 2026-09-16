@@ -1,10 +1,12 @@
+import uuid
+
 from pydantic import BaseModel
 
 class TakeInitRequestDTO(BaseModel):
     mode: str
     script_mode: str
-    presentation_version_id: str
-    script_version_id: str
+    presentation_version_id: uuid.UUID
+    script_version_id: uuid.UUID
 
 class TakeUpdateRequestDTO(BaseModel):
     started_at: str | None = None
