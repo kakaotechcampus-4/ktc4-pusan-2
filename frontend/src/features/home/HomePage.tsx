@@ -202,21 +202,11 @@ function HomeContent() {
   if (home.data.pitches.length === 0) return <EmptyHome />;
 
   return (
-    <>
-      <div className="grid grid-cols-1 gap-x-8 gap-y-10 md:grid-cols-2 xl:grid-cols-3">
-        {home.data.pitches.map((pitch, index) => (
-          <PitchCard key={pitch.id} pitch={pitch} index={index} />
-        ))}
-      </div>
-      <div className="mt-12 flex items-center">
-        <Link
-          to="/takes"
-          className="rounded-full border border-line-strong px-5 py-3 text-sm font-semibold hover:bg-panel"
-        >
-          Take 기록 보기 <span aria-hidden="true">→</span>
-        </Link>
-      </div>
-    </>
+    <div className="grid grid-cols-1 gap-x-8 gap-y-10 md:grid-cols-2 xl:grid-cols-3">
+      {home.data.pitches.map((pitch, index) => (
+        <PitchCard key={pitch.id} pitch={pitch} index={index} />
+      ))}
+    </div>
   );
 }
 
