@@ -17,7 +17,7 @@ def upload(file: UploadFile, key: str):
     except (ClientError, BotoCoreError) as e:
         raise Exception(f"S3에 파일 업로드 실패: {str(e)}")
 
-    return key
+    return generate_presigned_url(key)
 
 def generate_presigned_url(key: str, expiration: int = 3600):
     return s3.generate_presigned_url(

@@ -78,14 +78,15 @@ def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
 
     version = pitch_repository.next_script_version(pitch_id)
     suffix = Path(upload_script_dto.script_file.filename or "").suffix
-    upload(
+    script_url = upload(
         upload_script_dto.script_file,
         f"pitches/{pitch_id}/scripts/{version}{suffix}"
     )
 
     script = ScriptVersion(
         pitch_id=pitch_id,
-        version=version
+        version=version,
+        file_url=script_url
     )
 
     pitch_repository.save_script(script)

@@ -80,6 +80,7 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
+    file_url: Mapped[str] = mapped_column(String(255), nullable=False)
 
 
 class ScriptSlide(UUIDPrimaryKeyMixin, Base):
