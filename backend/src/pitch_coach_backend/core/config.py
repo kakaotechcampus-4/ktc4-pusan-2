@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     google_client_secret: str
     google_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
 
+    # Deepgram 스트리밍 STT. 서버만 알고 브라우저에는 절대 내려보내지 않는다.
+    deepgram_api_key: str
+
     # 콜백이 끝난 뒤 브라우저를 돌려보낼 프론트 주소. CORS 허용 origin 으로도 쓴다.
     frontend_base_url: str = "http://localhost:3000"
 
