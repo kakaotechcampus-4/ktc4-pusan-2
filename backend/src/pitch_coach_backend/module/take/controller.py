@@ -50,3 +50,11 @@ def create_calibration(
 ):
     result = create_calibration_service(db, pitch_id, take_id, calibration_dto)
     return {"message": "Calibration created successfully", "calibration_id": result}
+
+@router.get("/previous-missions")
+def get_previous_missions(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)],
+):
+    result = get_previous_missions_service(db, pitch_id)
+    return {"message": "Previous missions retrieved successfully", "missions": result}

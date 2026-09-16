@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.take.dto import CalibrationDTO, TakeInitRequestDTO, TakeUpdateRequestDTO
+from pitch_coach_backend.module.take.dto import CalibrationDTO, MissionDTO, PreviousMissionsDTO, TakeInitRequestDTO, TakeUpdateRequestDTO
 from pitch_coach_backend.module.take.entity import Calibration, Take
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import TakeRepository
@@ -85,6 +85,27 @@ def create_calibration(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, cal
     db.commit()
 
     return saved_calibration.id
+
+def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
+    take_repository = TakeRepository(db)
+    latest_take = take_repository.get_latest_take_in_pitch(pitch_id)
+
+    if latest_take is None:
+        return None
+
+    return PreviousMissionsDTO(
+        source_take_id=latest_take.id,
+        next_take_number=latest_take.take_number + 1,
+        missions = [
+            MissionDTO(
+                mission_id=mission.source_take_id,
+                slide_number=mission.slide_number,
+                description=mission.description,
+                priority=mission.priority,
+                completed=mission.complete
+            ) for mission in take_repository.get_missions_in_take(latest_take.id)
+        ]
+    )
 
 
 

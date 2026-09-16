@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.entity import PresentationVersion, ScriptVersion
-from pitch_coach_backend.module.take.entity import Calibration, Take
+from pitch_coach_backend.module.take.entity import Calibration, Mission, Take
 
 
 class TakeRepository:
@@ -49,3 +49,16 @@ class TakeRepository:
         self.db.add(calibration)
         self.db.flush()
         return calibration
+
+    def get_latest_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
+        return self.db.scalar(
+            select(Take)
+            .where(Take.pitch_id == pitch_id)
+            .order_by(Take.created_at.desc())
+            .limit(1)
+        )
+
+    def get_missions_in_take(self, take_id: uuid.UUID) -> list[Mission] | None:
+        return self.db.execute(
+            select(Calibration.mission).where(Calibration.take_id == take_id)
+        ).scalars().all()
