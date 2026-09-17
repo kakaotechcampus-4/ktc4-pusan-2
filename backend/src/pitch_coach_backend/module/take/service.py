@@ -62,6 +62,19 @@ def update_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, ta
 
     return updated_take.id
 
+def delete_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
+    take_repository = TakeRepository(db)
+    existing_take = take_repository.get_in_pitch(take_id, pitch_id)
+
+    if not existing_take:
+        raise NonExistentTake()
+
+    PitchRepository(db).clear_best_take(pitch_id, take_id)
+    take_repository.delete(existing_take)
+    db.commit()
+
+    return take_id
+
 # Calibration 완료 후 Calibration 데이터 저장
 def create_calibration(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, calibration_dto: CalibrationDTO):
     take_repository = TakeRepository(db)

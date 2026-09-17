@@ -23,6 +23,15 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto):
 
     return saved_pitch.id
 
+def get_pitch_service(db: Session, pitch_id: uuid.UUID):
+    pitch_repository = PitchRepository(db)
+    existing_pitch = pitch_repository.get_by_id(pitch_id)
+
+    if not existing_pitch:
+        raise NonExistentPitch()
+
+    return existing_pitch
+
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     pitch_repository = PitchRepository(db)
     existing_pitch = pitch_repository.get_by_id(pitch_id)
@@ -94,5 +103,5 @@ def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
 
     # 나중에 분할 로직 들어오면 여기서 슬라이드 단위로 ScriptSlide 를 생성해야 한다.
     # ...
-    
+
     return script.id
