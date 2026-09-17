@@ -62,3 +62,8 @@ class TakeRepository:
         return self.db.execute(
             select(Calibration.mission).where(Calibration.take_id == take_id)
         ).scalars().all()
+
+    def save_missions(self, missions: list[Mission]) -> list[Mission]:
+        self.db.add_all(missions)
+        self.db.flush()
+        return missions

@@ -99,6 +99,10 @@ def create_calibration(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, cal
 
     return saved_calibration.id
 
+def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
+    # 미션 생성 로직
+    pass
+
 def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
     take_repository = TakeRepository(db)
     latest_take = take_repository.get_latest_take_in_pitch(pitch_id)
