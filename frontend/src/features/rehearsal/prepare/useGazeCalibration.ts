@@ -63,7 +63,7 @@ export function useGazeCalibration({
 
       setPhase('DONE');
       // 기준은 브라우저에만 남습니다. 다음 Take 가 같은 기기·배치면 되살려 씁니다
-      void saveZoneRef(ref);
+      saveZoneRef(ref).catch(() => undefined);
       setCalibration({
         points: 2,
         quality: ref.quality,
@@ -133,7 +133,7 @@ export function useGazeCalibration({
 
     cancelledRef.current = false;
 
-    void (async () => {
+    (async () => {
       setPhase('CAMERA');
       const camera = await collect(video);
 
@@ -153,7 +153,7 @@ export function useGazeCalibration({
       setPhase('EVALUATING');
       // 여기서부터는 분류기 몫입니다. 비트맵은 넘어가고, 닫는 것도 워커가 합니다
       if (!fitCalibration(camera, bottom)) setPhase('FAILED');
-    })();
+    })().catch(() => undefined);
   }, [videoRef, live, collect, fitCalibration]);
 
   const points = phase === 'DONE' ? 2 : phase === 'BOTTOM' || phase === 'EVALUATING' ? 1 : 0;

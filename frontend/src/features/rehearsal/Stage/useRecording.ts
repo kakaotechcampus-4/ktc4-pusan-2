@@ -55,16 +55,18 @@ export function useRecording({
 
     // 결과 알림은 마이크로태스크로 미룹니다. 이펙트 본문에서 상태를 바꾸면
     // 같은 커밋에서 렌더가 한 번 더 돌고, 그 렌더가 발표 시작 순간과 겹칩니다
-    void Promise.resolve().then(() => {
-      if (!cancelled) setResult({ stream, error });
-    });
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setResult({ stream, error });
+      })
+      .catch(() => undefined);
 
     const paintSize = async () => {
       const bytes = await audioBytes(clientSessionId);
       if (sizeRef.current) sizeRef.current.textContent = `${(bytes / 1024 / 1024).toFixed(1)}MB`;
     };
-    void paintSize();
-    const id = window.setInterval(() => void paintSize(), SIZE_TICK_MS);
+    paintSize().catch(() => undefined);
+    const id = window.setInterval(() => paintSize().catch(() => undefined), SIZE_TICK_MS);
 
     return () => {
       cancelled = true;
@@ -72,7 +74,7 @@ export function useRecording({
       // 마지막 조각까지 받고 멈춥니다 — 기다리지 않으면 마지막 5초가 잘립니다
       const h = handleRef.current;
       handleRef.current = null;
-      void h?.stop();
+      h?.stop().catch(() => undefined);
     };
   }, [enabled, stream, clientSessionId]);
 

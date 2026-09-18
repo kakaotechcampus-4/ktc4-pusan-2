@@ -141,13 +141,13 @@ export function PreparePage() {
       }
       actions={
         <>
-          <StageButton disabled={!canStart} onClick={() => void start('EXAM')}>
+          <StageButton disabled={!canStart} onClick={() => start('EXAM').catch(() => undefined)}>
             실전 모드로 Take {takeNumber} 시작
           </StageButton>
           <StageButton
             variant="primary"
             disabled={!canStart}
-            onClick={() => void start('COACHING')}
+            onClick={() => start('COACHING').catch(() => undefined)}
           >
             코칭 모드로 Take {takeNumber} 시작
           </StageButton>
@@ -157,7 +157,7 @@ export function PreparePage() {
       {isError ? (
         <div className="flex flex-col items-start gap-3 rounded-xl border border-coral bg-coral/10 p-5">
           <p className="text-sm">{toMessage(error)}</p>
-          <StageButton onClick={() => void refetch()}>다시 시도</StageButton>
+          <StageButton onClick={() => refetch().catch(() => undefined)}>다시 시도</StageButton>
         </div>
       ) : isPending ? (
         <PrepareSkeleton />

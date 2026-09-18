@@ -49,13 +49,16 @@ export function DeviceCheckPage() {
     askedRef.current = true;
     const activation = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } })
       .userActivation;
-    if (activation?.hasBeenActive) void request();
+    if (activation?.hasBeenActive) request().catch(() => undefined);
   }, [request]);
 
   // 장치 이름은 권한을 받은 뒤에야 채워집니다. 그 전에는 label이 빈 문자열입니다
   useEffect(() => {
     if (!stream) return;
-    void navigator.mediaDevices.enumerateDevices().then(setDevices);
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then(setDevices)
+      .catch(() => undefined);
   }, [stream]);
 
   const cameras = devices.filter((d) => d.kind === 'videoinput');
@@ -111,7 +114,7 @@ export function DeviceCheckPage() {
               live={live}
               phase={cal.phase}
               countdownRef={cal.countdownRef}
-              onEnable={() => void request()}
+              onEnable={() => request().catch(() => undefined)}
             />
           </div>
 
@@ -129,14 +132,18 @@ export function DeviceCheckPage() {
               value={videoId}
               options={cameras}
               fallback="기본 카메라"
-              onChange={(id) => void request({ videoDeviceId: id, audioDeviceId: audioId })}
+              onChange={(id) =>
+                request({ videoDeviceId: id, audioDeviceId: audioId }).catch(() => undefined)
+              }
             />
             <DeviceSelect
               label="마이크"
               value={audioId}
               options={mics}
               fallback="기본 마이크"
-              onChange={(id) => void request({ videoDeviceId: videoId, audioDeviceId: id })}
+              onChange={(id) =>
+                request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
+              }
             />
           </section>
 

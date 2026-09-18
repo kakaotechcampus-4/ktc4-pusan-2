@@ -97,7 +97,7 @@ export async function createLevelMeter(stream: MediaStream): Promise<LevelMeter 
       stopped = true;
       source.disconnect();
       analyser.disconnect();
-      void ctx.close().catch(() => undefined);
+      ctx.close().catch(() => undefined);
     },
   };
 }
