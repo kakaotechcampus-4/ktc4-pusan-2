@@ -53,13 +53,18 @@ export function useRecording({
     });
     handleRef.current = handle;
 
-    // 결과 알림은 마이크로태스크로 미룹니다. 이펙트 본문에서 상태를 바꾸면
-    // 같은 커밋에서 렌더가 한 번 더 돌고, 그 렌더가 발표 시작 순간과 겹칩니다
-    Promise.resolve()
-      .then(() => {
-        if (!cancelled) setResult({ stream, error });
-      })
-      .catch(() => undefined);
+    // 여기서 바로 넣습니다. useEffect 는 화면을 그린 뒤에 도는 passive effect 라,
+    // 여기서 setState 를 해도 이미 끝난 커밋에 렌더를 얹는 일은 없습니다 —
+    // 그건 그리기 전에 도는 useLayoutEffect 의 동작입니다.
+    //
+    // cancelled 가드도 여기엔 두지 않습니다. 이펙트 본문은 자기 정리 함수보다
+    // 반드시 먼저 도니 걸릴 일이 없습니다. 위 onError 쪽만 진짜 비동기입니다.
+    //
+    // 룰을 끄는 이유 — 룰의 안내가 "외부 시스템과 동기화할 때만 effect 를 써라" 인데
+    // MediaRecorder 를 시작하는 것이 바로 그 경우입니다. 시작해 봐야 결과를 알 수 있고,
+    // 그 결과를 화면이 알아야 합니다. 렌더 중에 유도할 수도, 초기값으로 둘 수도 없습니다.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setResult({ stream, error });
 
     const paintSize = async () => {
       const bytes = await audioBytes(clientSessionId);
