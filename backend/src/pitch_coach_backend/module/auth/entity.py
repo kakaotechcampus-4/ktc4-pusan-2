@@ -12,7 +12,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from pitch_coach_backend.core.database import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
-
 class OAuthAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """소셜 계정과 User 의 연결. 회원 하나에 provider 당 하나씩 붙을 수 있다.
 
@@ -29,6 +28,7 @@ class OAuthAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UniqueConstraint("user_id", "provider", name="uq_oauth_accounts_user_provider"),
     )
 
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -37,6 +37,8 @@ class OAuthAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     provider_subject: Mapped[str] = mapped_column(String(255), nullable=False)
     # 제공자가 준 이메일. 참고용이며 사용자 식별에 쓰지 않는다.
     provider_email: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class RefreshToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -44,6 +46,7 @@ class RefreshToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "refresh_tokens"
 
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
@@ -53,5 +56,9 @@ class RefreshToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # 이 device_id 의 토큰을 통째로 폐기할 수 있다.
     device_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     # NULL 이면 살아 있는 토큰. 회전·로그아웃·재사용 탐지 시 시각이 찍힌다.
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
