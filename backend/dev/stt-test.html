@@ -75,8 +75,8 @@
 
 <div class="row">
   <label>API <input type="text" id="api" size="26"></label>
-  <label>Take <input type="text" id="take" size="34" class="mono"></label>
-  <button onclick="newTake()">새 Take</button>
+  <label>Take <input type="text" id="take" size="34" class="mono" placeholder="실제 Take id"></label>
+  <span class="dim">서버가 Take 존재·소유를 검사한다 — <code>uv run python dev/stt-send-pcm.py --create-take --email …</code> 로 만든 id</span>
 </div>
 
 <div class="row">
@@ -127,8 +127,8 @@ apiInput.value = new URLSearchParams(location.search).get('api')
 apiInput.onchange = () => localStorage.setItem('stt-test-api', api())
 const api = () => apiInput.value.replace(/\/$/, '')
 const csrf = () => document.cookie.split('; ').find(c => c.startsWith('csrf_token='))?.split('=')[1]
-const newTake = () => takeInput.value = crypto.randomUUID()
-newTake()
+takeInput.value = localStorage.getItem('stt-test-take') || ''
+takeInput.onchange = () => localStorage.setItem('stt-test-take', takeInput.value.trim())
 
 let accessToken = null
 let ws = null, wsReady = false, ctx = null, node = null, micStream = null
@@ -201,6 +201,7 @@ registerProcessor('pcm-framer', PcmFramer)
 
 async function start() {
   if (!accessToken) return say('먼저 1번으로 토큰을 받는다.', 'bad')
+  if (!takeInput.value.trim()) return say('Take id 가 필요하다 (stt-send-pcm.py --create-take).', 'bad')
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -278,7 +279,7 @@ function connect() {
     say(`WebSocket 닫힘 code=${e.code} ${e.reason || ''}`, e.code === 1000 ? 'dim' : 'bad')
     ws = null
     if (stopping || !ctx) return
-    if (e.code === 1008) return say('1008 은 인증·권한·중복 연결이다. 재연결하지 않는다.', 'bad')
+    if (e.code === 1008) return say('1008 은 인증·권한·Take 검사·중복 연결이다. 재연결하지 않는다.', 'bad')
     if (!$('autoReconnect').checked) return
     if (++retries > 3) return say('재연결 3회 실패. 포기한다.', 'bad')
     const wait = 500 * retries
