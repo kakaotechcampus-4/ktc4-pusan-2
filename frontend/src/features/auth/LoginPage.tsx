@@ -20,8 +20,6 @@ export function LoginPage() {
         : '로그인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.';
 
   useEffect(() => {
-    document.title = '로그인 | 피치코치';
-
     const reset = () => {
       navigationStarted.current = false;
       setRedirecting(false);
