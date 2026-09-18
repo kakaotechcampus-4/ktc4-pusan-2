@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 import pytest
+from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -83,6 +84,8 @@ class Plan:
     swallow_close: bool = False
     # abort() 가 이만큼 걸린다 (cancel() 이 정리를 기다리는지 재현하는 용)
     abort_delay: float = 0.0
+    # send_audio 가 예상 못 한 예외를 던진다 (어댑터 버그 재현)
+    explode_on_send: bool = False
 
 
 class FakeSttSession:
@@ -93,6 +96,7 @@ class FakeSttSession:
         self.die_after = plan.die_after
         self.swallow_close = plan.swallow_close
         self.abort_delay = plan.abort_delay
+        self.explode_on_send = plan.explode_on_send
         self.audio: list[bytes] = []
         self.controls: list[str] = []
         self.aborted = False
@@ -108,6 +112,8 @@ class FakeSttSession:
     async def send_audio(self, pcm: bytes) -> None:
         if not self.alive:
             raise ConnectionClosedError(None, None)
+        if self.explode_on_send:
+            raise ValueError("adapter bug")
         self.audio.append(pcm)
         if self.replies:
             self._events.put_nowait(self.replies.pop(0))
@@ -863,7 +869,8 @@ class FakeWebSocket:
         await asyncio.sleep(0)
         self._send_count += 1
         if self.fail_send_after is not None and self._send_count >= self.fail_send_after:
-            raise RuntimeError("client vanished")
+            # Starlette 는 끊긴 상대에게 보내면 WebSocketDisconnect(1006) 를 던진다
+            raise WebSocketDisconnect(code=1006)
         self.sent.append(text)
 
     async def close(self, code: int = 1000, reason: str = "") -> None:
@@ -946,7 +953,8 @@ async def test_ready_send_failure_still_detaches_from_the_stream(
     """ready 전송·resend_missed·pump_client 가 하나의 try/finally 로 묶여야 한다.
     그중 아무거나 먼저 실패해도 detach() 가 불려야 스트림에 grace 타이머가 걸린다.
     안 그러면 죽은 self.ws 가 "현재 클라이언트" 로 영원히 남아 Deepgram 세션이
-    다시는 정리되지 않는다."""
+    다시는 정리되지 않는다. 그리고 run() 은 이 예외를 밖으로 내보내지 않는다 — 클라이언트가
+    사라진 건 오류가 아니라 흔한 종료라, 새면 uvicorn 이 연결마다 트레이스를 남긴다."""
     adapter = FakeSttAdapter()
     ws = FakeWebSocket(
         inbound=[
@@ -962,8 +970,7 @@ async def test_ready_send_failure_still_detaches_from_the_stream(
         transcript_store=FakeTranscriptStore(),
     )
 
-    with pytest.raises(RuntimeError):
-        await realtime.run()
+    await realtime.run()  # 예외가 새지 않는다
 
     stream = take_stream._streams[TAKE_ID]
     assert stream._client is None, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
@@ -1553,3 +1560,79 @@ async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.Monk
     assert new_a is not old_a and stream_b is not old_a
     assert take_stream.active_count() == 2
     assert not take_stream._attach_locks, "다 쓴 락은 남기지 않는다"
+
+
+# ── 그 밖의 예외 케이스 ───────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_audio_after_stop_is_ignored():
+    """stop 뒤의 오디오는 아무도 소비하지 않는다. 큐에 넣으면 통계(frames)만 어긋난다."""
+    stream = TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    stream.start()
+    await _wait_until_ok(stream)
+
+    stream.push(frame(1, 0))
+    stream.request_stop()
+    stream.push(frame(2, 100))
+
+    assert await stream.wait_closed(timeout=2.0)
+    assert stream.sequencer.frames == 1
+
+
+@pytest.mark.anyio
+async def test_audio_that_never_reached_deepgram_is_reported_as_lost():
+    """Deepgram 이 끝내 안 붙은 채 끝나면 큐에 남은 오디오는 유실이다. 마지막 stt_status 의
+    lost_ms 가 이걸 빼먹으면 리포트가 "STT 다 받았다" 고 잘못 말한다."""
+    stream = TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(fail_times=1_000),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    stream.start()
+    for i in range(3):
+        stream.push(frame(i + 1, i * 100))
+    await asyncio.sleep(0.05)
+
+    stream.cancel()
+    assert await stream.wait_closed(timeout=1.0)
+    assert stream.dropped_audio_ms == 300
+
+
+@pytest.mark.anyio
+async def test_unexpected_exception_in_session_reconnects_instead_of_dying(
+    caplog: pytest.LogCaptureFixture,
+):
+    """어댑터 버그 같은 예상 못 한 예외로 태스크가 죽으면 FE 는 아무 알림 없이 STT 만 조용히
+    멈춘 상태가 된다. Deepgram 이 끊긴 것과 같게 다뤄 재접속해야 한다."""
+    adapter = FakeSttAdapter(Plan(explode_on_send=True), Plan())
+    stream = TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    stream.start()
+    await _wait_until_ok(stream)
+
+    with caplog.at_level("ERROR"):
+        stream.push(frame(1, 0))  # 첫 세션이 터진다
+        deadline = time.monotonic() + 2.0
+        while (len(adapter.sessions) < 2 or stream.state != "ok") and time.monotonic() < deadline:
+            await asyncio.sleep(0.01)
+
+    assert len(adapter.sessions) == 2 and stream.state == "ok"
+    assert "예상 못 한 예외" in caplog.text
+    stream.push(frame(2, 100))
+    stream.request_stop()
+    assert await stream.wait_closed(timeout=2.0)
+    assert [len(a) for a in adapter.sessions[1].audio] == [3200]

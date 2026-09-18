@@ -147,6 +147,11 @@ class RealtimeSession:
             # 떨어져 있는 동안 화면에 못 간 final 을 먼저 따라잡는다
             await stream.resend_missed()
             await self._pump_client(stream)
+        except WebSocketDisconnect:
+            # ready 나 재전송 도중 클라이언트가 사라졌다 (Starlette 는 끊긴 상대에게 보내면
+            # 이 예외를 던진다). 오류가 아니라 흔한 종료라 여기서 삼킨다 — 밖으로 새면 uvicorn
+            # 이 연결마다 "Exception in ASGI application" 트레이스를 남긴다
+            logger.info("ready/재전송 중 클라이언트가 끊겼다 take=%s", self.take_id)
         finally:
             stream.detach(self.ws)
 

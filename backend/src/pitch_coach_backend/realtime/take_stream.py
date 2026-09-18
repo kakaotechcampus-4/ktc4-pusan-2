@@ -320,6 +320,23 @@ class TakeStream:
     def _finish(self) -> None:
         if self._closed.is_set():
             return
+        # Deepgram 에 닿지 못한 채 큐에 남은 오디오는 유실이다. 마지막 stt_status 의
+        # lost_ms 가 이걸 빼먹으면 리포트가 "STT 다 받았다" 고 잘못 말한다
+        while True:
+            try:
+                item = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if item is not None:
+                self._drop(item)
+        if self._missed_finals:
+            # 저장은 이미 됐다 (final 은 붙어 있는 클라이언트와 무관하게 저장한다).
+            # 실시간 화면에만 못 간 것이라 개수만 남긴다
+            logger.info(
+                "재연결 없이 끝나 화면에 못 보낸 final take=%s count=%d",
+                self.take_id,
+                len(self._missed_finals),
+            )
         self.state = "closed"
         self._closed.set()
         forget(self)
@@ -329,6 +346,9 @@ class TakeStream:
     def push(self, data: bytes) -> None:
         """FE 프레임 하나. InvalidAudioFrame 은 호출자가 처리한다."""
         frame = parse_audio_frame(data)
+        if self._stopping:
+            # stop 신호 뒤의 오디오는 아무도 소비하지 않는다. 큐에 넣으면 통계만 더럽힌다
+            return
         accepted = self.sequencer.accept(frame)
         if accepted is None:
             return
@@ -388,7 +408,14 @@ class TakeStream:
                 self._pending_silence_ms = 0
                 await self._set_state("ok")
 
-                reason = await self._run_session(session)
+                try:
+                    reason = await self._run_session(session)
+                except Exception:
+                    # 어댑터·파서의 버그처럼 예상 못 한 예외다. 여기서 태스크가 죽으면 FE 는
+                    # 아무 알림 없이 STT 만 조용히 멈춘 상태가 된다 (큐는 쌓이고 stt_status
+                    # 는 안 온다). Deepgram 이 끊긴 것과 같게 다뤄 재접속한다
+                    logger.exception("STT 세션에서 예상 못 한 예외 take=%s", self.take_id)
+                    reason = _LOST
                 if reason == _ROTATE:
                     # stop 이 회전과 동시에 왔어도 새 세션을 반드시 한 번 더 연다 — 그래야
                     # self._carry 와 큐에 남은 나머지(stop 신호 포함) 가 새 세션에서
