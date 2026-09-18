@@ -112,13 +112,14 @@ backend/
     │
     ├── realtime/                 # WebSocket. entity 를 갖지 않고 저장은 도메인 service 에 위임
     │   ├── controller.py         # /ws/takes/{take_id} 엔드포인트
-    │   ├── service.py            # 연결 하나의 수명: Origin → 인증 → 스트림에 붙이기 → 프레임 전달
+    │   ├── service.py            # 연결 하나의 수명: Origin → 인증 → Take 검사 → 스트림에 붙이기 → 프레임 전달
     │   ├── take_stream.py        # Take 의 STT 파이프라인 + 레지스트리. **연결보다 오래 산다**
+    │   ├── transcript_store.py   # final 저장. 짧은 DB 세션을 열어 take/service 에 넘긴다
     │   ├── stt_adapter.py        # Deepgram WebSocket 어댑터. DB 를 모른다 (auth/google.py 와 같은 위치)
     │   ├── event_ingestion.py    # 오디오 프레임 헤더 검증, 순서·중복, 갭 계산
     │   ├── audio.py              # 오디오 규격(16 kHz·mono·16-bit)과 무음 생성. 잎 모듈
     │   ├── dto.py                # BE ↔ FE 메시지
-    │   ├── dependencies.py       # get_stt_adapter (테스트가 가짜로 바꿔 끼운다)
+    │   ├── dependencies.py       # get_stt_adapter · get_transcript_store (테스트가 가짜로 바꿔 끼운다)
     │   ├── fillers.py            # 한국어 군더더기 목록. keyterm boosting + 후처리 사전의 단일 소스
     │   ├── state_aggregator.py   # (예정) 시간 정렬/sliding window/state 생성
     │   └── session_store.py      # (예정) take_stream 의 레지스트리를 Redis 로 옮길 때 분리한다
@@ -224,7 +225,7 @@ WS /api/ws/takes/{take_id}
 | 순서 | 방향 | 프레임 | 내용 |
 |---|---|---|---|
 | 1 | FE → BE | text | `{"type":"auth","token":"<access>"}` — 5초 안에 와야 한다. 브라우저는 헤더를 못 붙이므로 첫 메시지로 |
-| 2 | BE → FE | text | `{"type":"ready","take_id":…,"stt_session_no":0,"stt_state":"connecting"}` — 이제 오디오를 보내도 된다 |
+| 2 | BE → FE | text | `{"type":"ready","take_id":…,"stt_session_no":0,"stt_state":"connecting"}` — 사용자·Take(존재·소유·상태) 검사를 통과했다. 이제 오디오를 보내도 된다 |
 | 3 | FE → BE | **binary** | `[seq u32 LE][offset_ms u32 LE][PCM 16-bit LE 16 kHz mono]`. 100 ms = 3,200 bytes. `offset_ms` 는 Take 시작 = 0 |
 | 4 | BE → FE | text | `{"type":"transcript","segment_id","is_final","speech_final","start_ms","end_ms","text","confidence","words":[…]}` — `segment_id` 가 같으면 덮어쓴다. **타임스탬프는 Take 기준** |
 | 5 | FE → BE | text | `{"type":"stop"}` — BE 가 Deepgram 을 정리(`CloseStream` → `Metadata`)하고 |
@@ -239,20 +240,29 @@ WS /api/ws/takes/{take_id}
 
   | code | 연결 |
   |---|---|
-  | `UNAUTHORIZED` | `1008` 로 닫는다 |
-  | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 만든 스트림 |
+  | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
+  | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다) |
+  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`). FE 는 **재연결하지 않는다** |
+  | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
   | `BAD_MESSAGE` | 유지 |
   | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
   | `TAKE_TAKEN_OVER` | `1008` 로 닫는다. FE 는 **재연결하지 않는다** |
 
 - `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
+- **인증 뒤 Take 를 검사한다.** 사용자 존재 → Take 존재·소유(`takes` → `pitches.user_id`) → 상태
+  (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 도 받는 이유는 `READY→RUNNING`
+  전이가 take 모듈(FE 의 `started_at` 갱신) 몫이라 WebSocket 을 여는 순서를 FE 에 강제하지 않기 위해서다.
+- **final 은 `take_transcript_segments` 에 저장한다** (interim 은 저장하지 않는다). 리포트의 유일한
+  원천이다. 시각은 Take 기준(ms), `words` 는 `[{word, punctuated_word, start_ms, end_ms, confidence}]`
+  JSONB. 저장은 realtime 이 아니라 `take/service.py` 가 하고(`append_transcript_segment`), 스트림이
+  DB 를 직접 만지지 않도록 `realtime/transcript_store.py` 가 저장할 때마다 짧은 세션을 연다.
+  **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다.
 - **STT 파이프라인은 연결보다 오래 산다** (`take_stream.py`). 연결이 끊겨도 30초 동안 Deepgram
   세션을 살려 두고, 그 안에 다시 붙으면 세그먼트 번호와 프레임 수가 이어진다. 떨어져 있는 동안
-  온 final 은 모아 두었다가 `ready` 직후 순서대로 다시 보낸다. 번호가 리셋되면 FE 가 같은
-  `segment_id` 를 덮어써 **발표 앞부분 전사가 사라진다.**
-- 스트림은 **만든 사용자에게 묶인다.** 다른 계정이 같은 `take_id` 로 붙으면 `FORBIDDEN`.
-  Take 테이블이 없는 동안 남의 연습을 가로채지 못하게 막는 유일한 선이고, 진짜 검사
-  (Take 존재·소유·`RUNNING`) 는 take 모듈이 생기면 붙는다.
+  화면에 못 간 final 은 모아 두었다가 `ready` 직후 순서대로 다시 보낸다 (DB 에는 이미 있다).
+  번호가 리셋되면 FE 가 같은 `segment_id` 를 덮어써 **발표 앞부분 전사가 사라진다** — 그래서
+  30초가 지나 스트림이 사라진 뒤 다시 붙어도 **저장된 마지막 `seq`·`stt_session_no` 에서 이어 받는다.**
+- 스트림은 만든 사용자에게 묶인다 (`FORBIDDEN`). 위 DB 검사의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
 - 같은 사용자의 두 번째 연결이 오면 **기존 것을 `TAKE_TAKEN_OVER` 로 쫓아낸다** (탭 복구).
   반대로 하면 재연결 레이스에서 사용자가 영영 못 붙는다. 정리 중인 스트림에는 붙이지 않고
   끝나기를 기다렸다가 새로 만든다.
@@ -263,14 +273,17 @@ WS /api/ws/takes/{take_id}
   어긋나면 로그에 남긴다.
 - 한국어 군더더기("음", "어", "그", "이제")는 Deepgram 이 기본으로 버리므로 `realtime/fillers.py` 의
   목록을 `keyterm` 으로 넘겨 전사에 남긴다. `filler_words` 옵션은 영어 전용이다.
-- 아직 없는 것: final 세그먼트 저장, Take 소유권·RUNNING 검사 (둘 다 take 모듈 필요).
+- 정리가 늦어도 FE 를 붙잡아 두지 않는다. `stop` 뒤 Deepgram drain 이 12초 안에 안 끝나면 태스크를
+  끊고, 그마저 2초 안에 안 끝나면 닫힌 것으로 확정해 `closed` 를 보낸다. Deepgram 소켓 닫기 자체도
+  3초 상한이 있다. `stop` 을 보낸 직후 FE 가 사라져도(탭 닫힘) 서버 쪽 종료·저장 절차는 같다.
+- 아직 없는 것: Pitch 대본 키워드 → `keyterm`, `metrics`/`coach` 메시지 (AI 팀 규칙 확정 후).
 
 FE 없이 확인하는 두 가지 —
 
 | | 무엇 | 어떻게 |
 |---|---|---|
-| 파일 | `dev/stt-send-pcm.py` | `uv run python dev/stt-send-pcm.py 녹음.pcm --email <가입한 이메일>` (파일 상단에 변환 명령) |
-| 마이크 | `dev/stt-test.html` | `python3 -m http.server 3000 --directory dev` 로 띄우고 `http://localhost:3000/stt-test.html`. **3000 포트로 열어야** Origin 검사를 통과한다 |
+| 파일 | `dev/stt-send-pcm.py` | `uv run python dev/stt-send-pcm.py 녹음.pcm --email <가입한 이메일>` (파일 상단에 변환 명령). `--take-id` 를 안 주면 그 사용자의 Take 를 하나 만들어 쓴다 |
+| 마이크 | `dev/stt-test.html` | `python3 -m http.server 3000 --directory dev` 로 띄우고 `http://localhost:3000/stt-test.html`. **3000 포트로 열어야** Origin 검사를 통과한다. Take 칸에는 `uv run python dev/stt-send-pcm.py --create-take --email <이메일>` 로 만든 id 를 넣는다 |
 
 ## 에러 응답 형식
 
