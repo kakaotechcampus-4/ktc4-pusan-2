@@ -18,8 +18,7 @@ def create_take(
     db: Annotated[Session, Depends(get_db)],
     take_dto: TakeInitRequestDTO
 ):
-    take_init_dto = TakeInitRequestDTO(**take_dto)
-    result = create_take_service(db, pitch_id, take_init_dto)
+    result = create_take_service(db, pitch_id, take_dto)
     return {"message": "Take created successfully", "take_id": result}
 
 @router.delete("/{take_id}")
