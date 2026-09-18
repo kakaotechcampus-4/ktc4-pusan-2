@@ -282,8 +282,13 @@ class RealtimeSession:
             # 레지스트리에서만 사라진다 — 태스크를 끊고 소켓을 닫은 뒤에 보낸다
             logger.warning("Deepgram drain 타임아웃 take=%s. 스트림을 끊는다", self.take_id)
             stream.cancel()
-            await stream.wait_closed(timeout=CANCEL_TIMEOUT_SEC)
+            # 취소마저 제때 안 끝나면 (abort 가 ABORT_TIMEOUT_SEC 까지 걸리는 경우) 스트림
+            # 쪽에서 닫힌 것으로 확정한다. FE 를 더 붙잡아 둘 이유가 없다 — final 은 이미
+            # 저장됐고, 남은 소켓 정리는 reaper 가 마저 한다
+            await stream.wait_cancelled(CANCEL_TIMEOUT_SEC)
         take_stream.forget(stream)
+        # FE 가 그 사이 끊겼어도(탭 닫힘) 아래 둘은 조용히 실패하고, 스트림 정리와 저장은
+        # 이미 끝났다 — FE 가 있든 없든 서버 쪽 종료 절차는 같다
         await stream.send_status()
         await self._quiet(self.ws.close(code=CLOSE_NORMAL))
 

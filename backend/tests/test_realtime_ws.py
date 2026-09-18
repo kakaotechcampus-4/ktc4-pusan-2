@@ -191,6 +191,7 @@ def _no_leftover_streams():
     for stream in list(take_stream._streams.values()):
         stream.cancel()
     take_stream._streams.clear()
+    take_stream._attach_locks.clear()
     app.dependency_overrides.pop(get_stt_adapter, None)
     app.dependency_overrides.pop(get_transcript_store, None)
 
@@ -1414,3 +1415,141 @@ def test_persist_failure_keeps_the_stream_alive(
     assert status["state"] == "closed" and status["frames"] == 2
     assert "final 저장 실패" in caplog.text
     assert "하나" not in caplog.text, "전사 원문은 로그에 남기지 않는다"
+
+
+@pytest.mark.anyio
+async def test_stop_persists_the_last_final_even_if_the_client_dies_during_drain(
+    db_session: Session, token: str
+):
+    """FE 가 stop 을 보낸 직후 탭을 닫아도(stt_status=closed 를 못 받아도) 서버 쪽 종료 절차는
+    같다 — CloseStream 으로 마지막 전사를 받아 저장하고 스트림을 정리한다. 화면에 못 보낸
+    건 조용히 실패하고, run() 은 예외를 새지 않는다."""
+    adapter = FakeSttAdapter(Plan(replies=[transcript(0, 200, "마지막 말", is_final=True)]))
+    store = FakeTranscriptStore()
+    ws = FakeWebSocket(
+        inbound=[
+            {"type": "websocket.receive", "text": json.dumps({"type": "auth", "token": token})},
+            {"type": "websocket.receive", "bytes": frame(1, 0)},
+            {"type": "websocket.receive", "text": json.dumps({"type": "stop"})},
+        ],
+        fail_send_after=2,  # ready 는 나가고, 그 뒤(마지막 transcript·closed 상태) 부터 끊긴다
+    )
+    realtime = service.RealtimeSession(
+        ws, take_id=TAKE_ID, db=db_session, stt_adapter=adapter, transcript_store=store
+    )
+
+    await realtime.run()
+
+    assert [json.loads(t)["type"] for t in ws.sent] == ["ready"]
+    assert [seg.transcript for seg in store.segments] == ["마지막 말"]
+    assert adapter.sessions[0].controls == ["CloseStream"]
+    assert take_stream.active_count() == 0
+
+
+# ── 코드 리뷰 반영: cancel 정리 상한 · reaper 참조 · take 별 락 ─────────
+
+
+@pytest.mark.anyio
+async def test_cancel_keeps_a_reference_to_the_reaper_task():
+    """asyncio 는 태스크를 약하게만 잡는다. 참조 없이 create_task 만 하면 정리가 끝나기 전에
+    GC 될 수 있다 (asyncio.create_task 문서의 경고)."""
+    adapter = FakeSttAdapter(Plan(abort_delay=0.05))
+    stream = TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    stream.start()
+    await _wait_until_ok(stream)
+
+    stream.cancel()
+
+    assert isinstance(stream._reaper, asyncio.Task)
+    assert await stream.wait_closed(timeout=1.0) is True
+    await asyncio.wait_for(stream._reaper, 1.0)  # 참조가 있으니 끝까지 기다릴 수 있다
+
+
+@pytest.mark.anyio
+async def test_abort_is_bounded_so_cancel_cannot_hang_on_deepgram(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Deepgram 소켓 닫기는 shield 안에서 돌아 바깥에서 끊을 수 없다. 상대가 close 에 답하지
+    않으면 상한을 두지 않는 한 영영 기다린다."""
+    monkeypatch.setattr(take_stream, "ABORT_TIMEOUT_SEC", 0.1)
+    adapter = FakeSttAdapter(Plan(abort_delay=10.0))  # 사실상 답이 없다
+    stream = TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    stream.start()
+    await _wait_until_ok(stream)
+
+    stream.cancel()
+
+    assert await stream.wait_closed(timeout=1.0) is True
+    assert adapter.sessions[0].aborted is False, "답이 없어서 버리고 나왔다"
+
+
+@pytest.mark.anyio
+async def test_wait_cancelled_gives_up_and_reports_closed(monkeypatch: pytest.MonkeyPatch):
+    """CANCEL_TIMEOUT_SEC 안에 정리가 안 끝나면 (코드 리뷰 케이스 1) 닫힌 것으로 확정한다.
+    FE 는 더 붙잡히지 않고, 뒤늦게 끝난 정리는 idempotent 한 _finish 로 흡수된다."""
+    monkeypatch.setattr(take_stream, "ABORT_TIMEOUT_SEC", 1.0)
+    adapter = FakeSttAdapter(Plan(abort_delay=0.3))
+    stream = TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    stream.start()
+    await _wait_until_ok(stream)
+
+    stream.cancel()
+    assert await stream.wait_cancelled(0.05) is False
+    assert stream.is_finished and stream.state == "closed"
+
+    await asyncio.sleep(0.4)  # abort 가 뒤늦게 끝난다
+    assert adapter.sessions[0].aborted is True
+    assert stream.is_finished
+
+
+@pytest.mark.anyio
+async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.MonkeyPatch):
+    """attach 락이 프로세스 전역이면 한 Take 의 핸드오버 대기(HANDOVER_TIMEOUT_SEC) 동안
+    다른 모든 Take 의 연결이 같이 멈춘다 (코드 리뷰 지적). take_id 별 락이어야 한다."""
+    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 0.5)
+    adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
+    take_a, take_b, owner = uuid.uuid7(), uuid.uuid7(), uuid.uuid7()
+
+    def attach(take_id: uuid.UUID):
+        return take_stream.attach(
+            take_id,
+            FakeWebSocket(),
+            owner_id=owner,
+            stt_adapter=adapter,
+            config=SttConfig(),
+            store=FakeTranscriptStore(),
+        )
+
+    old_a = await attach(take_a)
+    await _wait_until_ok(old_a)
+    old_a.request_stop()  # swallow_close 라 스스로 안 끝난다 -> 재연결은 핸드오버를 기다린다
+
+    async def attach_b_timed() -> tuple[float, TakeStream]:
+        started = time.monotonic()
+        stream = await attach(take_b)
+        return time.monotonic() - started, stream
+
+    new_a, (elapsed_b, stream_b) = await asyncio.gather(attach(take_a), attach_b_timed())
+
+    assert elapsed_b < 0.25, f"다른 Take 가 핸드오버 대기에 같이 막혔다 ({elapsed_b:.2f}s)"
+    assert new_a is not old_a and stream_b is not old_a
+    assert take_stream.active_count() == 2
+    assert not take_stream._attach_locks, "다 쓴 락은 남기지 않는다"

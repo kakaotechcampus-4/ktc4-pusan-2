@@ -33,6 +33,7 @@ import contextlib
 import logging
 import uuid
 from collections.abc import Awaitable
+from dataclasses import dataclass, field
 
 import anyio
 from fastapi import WebSocket
@@ -78,6 +79,9 @@ BACKOFF_SEC = (0.5, 1.0, 2.0, 5.0, 10.0)
 FAST_ATTEMPTS = 3
 # CloseStream 뒤 남은 결과와 Metadata 를 기다리는 상한
 DRAIN_TIMEOUT_SEC = 10.0
+# 취소·오류로 세션을 버릴 때 Deepgram 소켓 닫기(abort) 를 기다리는 상한. 이게 없으면
+# 상대가 close 핸드셰이크에 답하지 않을 때 shield 안에서 영영 기다린다
+ABORT_TIMEOUT_SEC = 3.0
 # 정리 중인 스트림에 재연결이 왔을 때 그 정리를 기다리는 상한
 HANDOVER_TIMEOUT_SEC = 3.0
 # Deepgram 이 받았다는 길이와 우리가 보낸 길이의 허용 오차
@@ -150,6 +154,10 @@ class TakeStream:
         self._resend_lock = asyncio.Lock()
         self._grace_task: asyncio.Task[None] | None = None
         self._task: asyncio.Task[None] | None = None
+        # cancel() 뒤 _run 의 정리를 기다리는 태스크. 참조를 들고 있어야 한다 — asyncio 는
+        # 태스크를 약하게만 잡고 있어서, 아무도 참조하지 않는 태스크는 GC 에 끝나기 전에
+        # 사라질 수 있다 (asyncio.create_task 문서의 경고)
+        self._reaper: asyncio.Task[None] | None = None
         self._ever_connected = False
         self._stopping = False
         self._stop_event = asyncio.Event()
@@ -280,7 +288,9 @@ class TakeStream:
             self._finish()
             return
         self._task.cancel()
-        asyncio.create_task(self._reap_after_cancel())
+        self._reaper = asyncio.create_task(
+            self._reap_after_cancel(), name=f"take-stream-reap:{self.take_id}"
+        )
 
     async def _reap_after_cancel(self) -> None:
         """취소가 실제로 끝나는 걸 기다렸다가, `_run` 의 finally 가 못 불렀으면 대신 부른다."""
@@ -288,6 +298,24 @@ class TakeStream:
             with contextlib.suppress(BaseException):
                 await self._task
         self._finish()
+
+    async def wait_cancelled(self, timeout: float) -> bool:
+        """`cancel()` 뒤의 정리를 기다린다. 제때 안 끝나면 **닫힌 것으로 확정**하고 False.
+
+        정리가 늦는 경우는 사실상 하나다 — Deepgram 소켓 닫기(abort) 가 상대 응답을
+        기다리는 것. 그건 `ABORT_TIMEOUT_SEC` 안에 어차피 끝나고, 그 뒤엔 reaper 가
+        `_finish()` 를 다시 불러도 idempotent 라 문제없다. 기다리는 쪽(FE 의 stop 응답,
+        핸드오버) 이 그 소켓 하나 때문에 더 붙잡혀 있을 이유는 없다.
+        """
+        if await self.wait_closed(timeout):
+            return True
+        logger.error(
+            "취소 뒤 %.1fs 안에 정리가 안 끝났다 take=%s. 닫힌 것으로 확정한다",
+            timeout,
+            self.take_id,
+        )
+        self._finish()
+        return False
 
     def _finish(self) -> None:
         if self._closed.is_set():
@@ -420,9 +448,12 @@ class TakeStream:
                 tg.start_soon(session.keepalive_loop)
         finally:
             # 취소로 빠져나가도 Deepgram 소켓은 닫는다. shield 가 없으면 이 await 가
-            # 다시 취소되어 연결이 그대로 남는다
-            with anyio.CancelScope(shield=True):
+            # 다시 취소되어 연결이 그대로 남는다. 다만 shield 안이라 바깥에서는 끊을 수
+            # 없으므로 상한을 둔다 — 상대가 close 에 답하지 않으면 그냥 버리고 나온다
+            with anyio.CancelScope(shield=True), anyio.move_on_after(ABORT_TIMEOUT_SEC) as scope:
                 await _quiet(session.abort())
+            if scope.cancelled_caught:
+                logger.warning("Deepgram 소켓 닫기 타임아웃 take=%s. 버리고 나온다", self.take_id)
         return reason
 
     async def _pump_audio(self, session: SttSession) -> str:
@@ -627,12 +658,34 @@ _streams: dict[uuid.UUID, TakeStream] = {}
 # 보고 각자 TakeStream·Deepgram 세션을 만든다. 그러면 하나는 `_streams` 덮어쓰기로
 # 레지스트리에서 밀려나 고아가 되고, Deepgram 연결은 둘 생긴다.
 #
-# 프로세스 전체에 락 하나로 충분하다 — attach() 는 연결이 열릴 때 한 번만 타는 경로라
-# 자주 불리지 않고(오디오 프레임이 오가는 push() 는 이 락을 안 탄다), take_id 별로
-# 나누는 복잡성을 들일 이유가 없다. is_stopping 핸드오버(최대 HANDOVER_TIMEOUT_SEC) 동안
-# 다른 take_id 의 attach() 도 같이 멈추지만, 그 경로 자체가 "재연결이 정리 타이밍과
-# 정확히 겹칠 때" 만 타는 드문 경로라 MVP 규모에서는 감수한다.
-_attach_lock = asyncio.Lock()
+# 락은 **take_id 별**이다. 프로세스 전체 락 하나면 is_stopping 핸드오버(최대
+# HANDOVER_TIMEOUT_SEC) 나 커서 조회(DB 왕복) 동안 다른 Take 의 연결까지 같이 멈춘다 —
+# 동시 사용자가 늘면 그 지연이 체감된다 (코드 리뷰 지적). 다른 Take 끼리는 공유하는
+# 상태가 없으니 서로 기다릴 이유가 없다. 락 객체는 쓰는 동안만 살아 있고 마지막으로
+# 나가는 쪽이 치운다 — Take 마다 락이 영영 남지 않게.
+
+
+@dataclass
+class _KeyedLock:
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # 락을 잡았거나 기다리는 코루틴 수. asyncio 는 단일 스레드라 await 사이에서만 바뀐다
+    holders: int = 0
+
+
+_attach_locks: dict[uuid.UUID, _KeyedLock] = {}
+
+
+@contextlib.asynccontextmanager
+async def _attach_lock(take_id: uuid.UUID):
+    entry = _attach_locks.setdefault(take_id, _KeyedLock())
+    entry.holders += 1
+    try:
+        async with entry.lock:
+            yield
+    finally:
+        entry.holders -= 1
+        if entry.holders == 0 and _attach_locks.get(take_id) is entry:
+            del _attach_locks[take_id]
 
 
 async def attach(
@@ -649,7 +702,7 @@ async def attach(
     Take 존재·소유·상태는 호출자(service)가 DB 로 먼저 검사한다. 여기서는 스트림을
     만든 사용자와 다르면 `StreamOwnerMismatch` — 그 검사의 이중 안전장치다.
     """
-    async with _attach_lock:
+    async with _attach_lock(take_id):
         stream = _streams.get(take_id)
 
         if stream is not None and stream.is_stopping:
@@ -700,7 +753,12 @@ def active_count() -> int:
 
 
 async def stop_all() -> None:
-    """앱 종료. 남은 스트림을 정리한다."""
+    """앱 종료. 남은 스트림을 정리한다.
+
+    정상 종료(CloseStream) 를 잠깐 기다렸다가 안 끝나면 끊는다. 끊은 뒤에도 정리
+    (Deepgram 소켓 닫기) 가 끝나기를 기다린다 — 여기서 바로 돌아가면 이벤트 루프가
+    닫히면서 "Task was destroyed but it is pending" 로 정리가 중간에 잘린다.
+    """
     streams = list(_streams.values())
     _streams.clear()
     for stream in streams:
@@ -708,3 +766,4 @@ async def stop_all() -> None:
     for stream in streams:
         if not await stream.wait_closed(timeout=2.0):
             stream.cancel()
+            await stream.wait_closed(timeout=ABORT_TIMEOUT_SEC)
