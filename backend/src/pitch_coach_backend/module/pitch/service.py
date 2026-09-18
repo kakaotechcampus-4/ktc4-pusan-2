@@ -78,7 +78,6 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     )
 
     pitch_repository.save_presentation(presentation)
-    db.commit()
 
     return presentation.id
 
@@ -99,9 +98,19 @@ def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
     )
 
     pitch_repository.save_script(script)
-    db.commit()
 
     # 나중에 분할 로직 들어오면 여기서 슬라이드 단위로 ScriptSlide 를 생성해야 한다.
     # ...
 
     return script.id
+
+def upload_service(db: Session, pitch_id: uuid.UUID, upload_dto, upload_script_dto):
+    presentation_id = upload_presentation_service(db, pitch_id, upload_dto)
+    script_id = upload_script_service(db, pitch_id, upload_script_dto)
+
+    db.commit()
+
+    return {
+        "presentation_id": presentation_id,
+        "script_id": script_id
+    }
