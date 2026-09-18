@@ -91,8 +91,7 @@ export function ScriptPane({
       )}
 
       <div className="foot">
-        <span>SCRIPT {mode === 'KEYWORD' ? '120PX' : '180PX'} · 슬라이드 기준 자동 스크롤</span>
-        <span>↑↓ 대본 · ←→ 슬라이드</span>
+        <span>↑↓ 대본 · ←→ 슬라이드 · 자동 스크롤</span>
       </div>
     </div>
   );
