@@ -68,7 +68,7 @@ export function useMicLevel(stream: MediaStream | null) {
     let meter: LevelMeter | null = null;
     let heard = false;
 
-    void (async () => {
+    (async () => {
       // 제스처 뒤에 만듭니다 — getUserMedia가 이미 통한 시점이라 resume()이 먹습니다
       meter = await createLevelMeter(stream);
       if (cancelled) {
@@ -107,7 +107,7 @@ export function useMicLevel(stream: MediaStream | null) {
         }
       };
       raf = requestAnimationFrame(loop);
-    })();
+    })().catch(() => undefined);
 
     return () => {
       cancelled = true;

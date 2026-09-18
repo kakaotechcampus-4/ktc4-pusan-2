@@ -1,4 +1,4 @@
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { openDB, type DBSchema, type IDBPDatabase, type StoreNames } from 'idb';
 import type { GazeExcludedReason, Ms } from '@/types/api';
 import type { ZoneDecision, ZoneReference } from '@/workers/gaze.contract';
 
@@ -100,45 +100,40 @@ interface PitchDb extends DBSchema {
   };
 }
 
+/**
+ * 없을 때만 만듭니다. 이미 있으면 `null` —
+ * 인덱스가 필요한 스토어는 `?.` 로 이어 붙입니다.
+ *
+ * ★ upgrade 는 **버전이 오를 때마다** 돕니다. v1 을 쓰던 브라우저가 v2 로 올라오면
+ * session·gazeSegments… 가 이미 있는데, 무조건 createObjectStore 를 부르면
+ * ConstraintError 로 열기 자체가 실패합니다. 그러면 화면에는 "시작이 안 된다"만
+ * 보이고 원인은 안 보입니다 — 실제로 그렇게 한 번 막혔습니다.
+ */
+function ensureStore<N extends StoreNames<PitchDb>>(
+  db: IDBPDatabase<PitchDb>,
+  name: N,
+  keyPath: string | string[],
+) {
+  if (db.objectStoreNames.contains(name)) return null;
+  return db.createObjectStore(name, { keyPath });
+}
+
 let dbPromise: Promise<IDBPDatabase<PitchDb>> | null = null;
 
 export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
   dbPromise ??= openDB<PitchDb>(DB_NAME, DB_VERSION, {
-    /**
-     * ★ 이미 있는 스토어는 다시 만들지 않습니다.
-     *
-     * upgrade 는 **버전이 오를 때마다** 돕니다. v1 을 쓰던 브라우저가 v2 로 올라오면
-     * session·gazeSegments… 가 이미 있는데, 무조건 createObjectStore 를 부르면
-     * ConstraintError 로 열기 자체가 실패합니다. 그러면 화면에는 "시작이 안 된다"만
-     * 보이고 원인은 안 보입니다 — 실제로 그렇게 한 번 막혔습니다.
-     */
     upgrade(db) {
-      if (!db.objectStoreNames.contains('session')) {
-        const session = db.createObjectStore('session', { keyPath: 'clientSessionId' });
-        session.createIndex('byStatus', 'status');
-      }
+      ensureStore(db, 'session', 'clientSessionId')?.createIndex('byStatus', 'status');
 
       // 복합 키 [clientSessionId, 시각] — 세션별 범위 조회가 그냥 됩니다.
-      if (!db.objectStoreNames.contains('gazeSegments')) {
-        db.createObjectStore('gazeSegments', { keyPath: ['clientSessionId', 'tMs'] });
-      }
-      if (!db.objectStoreNames.contains('slideChanges')) {
-        db.createObjectStore('slideChanges', { keyPath: ['clientSessionId', 'atMs'] });
-      }
-      if (!db.objectStoreNames.contains('scriptScroll')) {
-        db.createObjectStore('scriptScroll', { keyPath: ['clientSessionId', 'atMs'] });
-      }
-      if (!db.objectStoreNames.contains('coachLog')) {
-        db.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
-      }
-      if (!db.objectStoreNames.contains('audioChunks')) {
-        db.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
-      }
+      ensureStore(db, 'gazeSegments', ['clientSessionId', 'tMs']);
+      ensureStore(db, 'slideChanges', ['clientSessionId', 'atMs']);
+      ensureStore(db, 'scriptScroll', ['clientSessionId', 'atMs']);
+      ensureStore(db, 'coachLog', ['clientSessionId', 'atMs']);
+      ensureStore(db, 'audioChunks', ['clientSessionId', 'seq']);
 
       // v2 — 캘리브레이션 기준. 세션이 아니라 기기(layoutSignature)에 매입니다.
-      if (!db.objectStoreNames.contains('zoneRefs')) {
-        db.createObjectStore('zoneRefs', { keyPath: 'layoutSignature' });
-      }
+      ensureStore(db, 'zoneRefs', 'layoutSignature');
     },
   })
     // 실패한 약속을 캐시하면 새로고침 전까지 영원히 실패합니다.

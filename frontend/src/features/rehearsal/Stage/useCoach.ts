@@ -162,13 +162,13 @@ export function useCoach({
         if (suppressed !== null) lastSuppressLogRef.current[rule.type] = now;
 
         if (clientSessionId && worthLogging) {
-          void appendCoachLog(clientSessionId, {
+          appendCoachLog(clientSessionId, {
             atMs: now,
             type: rule.type,
             fired: suppressed === null,
             message: suppressed === null ? text : null,
             suppressedReason: suppressed,
-          });
+          }).catch(() => undefined);
         }
         if (suppressed !== null) return;
 

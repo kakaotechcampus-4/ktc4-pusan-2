@@ -142,7 +142,7 @@ export function RehearsalPage() {
     if (resolvedRef.current || takeId === '') return;
     resolvedRef.current = true;
 
-    void (async () => {
+    (async () => {
       const passed = (location.state as { clientSessionId?: string } | null)?.clientSessionId;
       if (passed) {
         setSessionId(passed);
@@ -150,7 +150,7 @@ export function RehearsalPage() {
       }
       const row = await findSessionByTakeId(takeId);
       setSessionId(row ? row.clientSessionId : await startSession(takeId));
-    })();
+    })().catch(() => undefined);
   }, [takeId, location.state]);
 
   // 화면을 떠날 때 다음 Take를 위해 무대 상태를 비웁니다
@@ -161,7 +161,7 @@ export function RehearsalPage() {
   useEffect(() => {
     if (askedRef.current || gazeDeclined) return;
     askedRef.current = true;
-    void request();
+    request().catch(() => undefined);
   }, [request, gazeDeclined]);
 
   // ── 제외 사유 배선 ───────────────────────────────────────────────
@@ -169,38 +169,41 @@ export function RehearsalPage() {
   // 시선 숫자는 앞뒤가 다른 조건에서 나온 것이라 믿을 수 없습니다.
   useEffect(() => {
     if (!sessionId) return;
-    if (gazeDeclined) void markGazeExcluded(sessionId, 'USER_DECLINED');
+    if (gazeDeclined) markGazeExcluded(sessionId, 'USER_DECLINED').catch(() => undefined);
   }, [sessionId, gazeDeclined]);
 
   useEffect(() => {
     if (!sessionId || !deviceError) return;
-    void markGazeExcluded(
+    markGazeExcluded(
       sessionId,
       deviceError === 'PERMISSION_DENIED' ? 'USER_DECLINED' : 'CAMERA_LOST',
-    );
+    ).catch(() => undefined);
   }, [sessionId, deviceError]);
 
   useEffect(() => {
     if (!sessionId || !gazeError) return;
-    void markGazeExcluded(sessionId, gazeError);
+    markGazeExcluded(sessionId, gazeError).catch(() => undefined);
   }, [sessionId, gazeError]);
 
   // 엔진 버전은 종료 시점에 영구 고정됩니다 — 받는 즉시 기록해 둡니다
   useEffect(() => {
     if (!sessionId || !engineVersion) return;
-    void setEngineVersion(sessionId, engineVersion);
+    setEngineVersion(sessionId, engineVersion).catch(() => undefined);
   }, [sessionId, engineVersion]);
 
   useEffect(() => {
     if (!sessionId || !perf) return;
-    void setGazePerf(sessionId, perf.avgFps, perf.droppedFrames);
+    setGazePerf(sessionId, perf.avgFps, perf.droppedFrames).catch(() => undefined);
   }, [sessionId, perf]);
 
   // 하트비트 — 벽시계로 찍습니다. 탭이 죽으면 이 값이 마지막 흔적이 되고,
   // 다음에 앱을 열었을 때 "진행 중이던 Take가 있다"를 이걸로 압니다
   useEffect(() => {
     if (!running || !sessionId) return;
-    const id = window.setInterval(() => void beat(sessionId, elapsedMs()), BEAT_MS);
+    const id = window.setInterval(
+      () => beat(sessionId, elapsedMs()).catch(() => undefined),
+      BEAT_MS,
+    );
     return () => window.clearInterval(id);
   }, [running, sessionId, elapsedMs]);
 
@@ -438,7 +441,7 @@ export function RehearsalPage() {
                     window.setTimeout(() => setConfirming(false), 4000);
                     return;
                   }
-                  void finish();
+                  finish().catch(() => undefined);
                 }}
               >
                 {phase === 'ENDING'

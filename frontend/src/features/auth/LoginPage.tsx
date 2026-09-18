@@ -99,7 +99,10 @@ export function LoginPage() {
         >
           {message && <p className="rounded-lg border border-line bg-cream px-4 py-3">{message}</p>}
           {session.isError && (
-            <button className="mt-3 underline" onClick={() => void session.refetch()}>
+            <button
+              className="mt-3 underline"
+              onClick={() => session.refetch().catch(() => undefined)}
+            >
               연결 다시 확인
             </button>
           )}

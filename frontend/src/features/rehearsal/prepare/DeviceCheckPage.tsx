@@ -1,15 +1,78 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { DEVICE_ERROR_MESSAGE, useCameraStream } from '@/features/rehearsal/media/useCameraStream';
+import {
+  DEVICE_ERROR_MESSAGE,
+  useCameraStream,
+  type DeviceError,
+} from '@/features/rehearsal/media/useCameraStream';
 import { usePrepare } from '@/shared/api/prepare';
 import { CameraPreview } from './CameraPreview';
 import { CheckCard } from './CheckCard';
 import { LevelBar } from '@/features/rehearsal/media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
 import { usePrepareStore } from './prepareStore';
-import { useGazeCalibration } from './useGazeCalibration';
+import { useGazeCalibration, type CalibrationPhase } from './useGazeCalibration';
 import { useMicLevel } from '@/features/rehearsal/media/useMicLevel';
 import { useVideoStream } from '@/features/rehearsal/media/useVideoStream';
+
+/**
+ * 점검 안내 한 줄.
+ *
+ * **쓴 순서가 곧 우선순위입니다.** 여럿이 동시에 어긋나 있어도 사용자가 지금 할 수 있는
+ * 일은 하나뿐이라, 가장 앞을 막고 있는 것만 말합니다.
+ *
+ * 마이크가 시선 기준보다 앞인 이유 — 마이크가 없으면 '소리만으로 계속하기'까지 잠깁니다.
+ * 그 상태에서 시선 기준을 잡아 봐야 열리는 버튼이 없습니다. 반대로 시선을 못 잡아도
+ * 마이크만 되면 소리만으로 갈 수 있습니다. 그래서 마이크가 먼저입니다.
+ */
+function deviceCheckHint({
+  deviceError,
+  live,
+  micOk,
+  calPhase,
+  calPoints,
+}: {
+  deviceError: DeviceError | null;
+  live: boolean;
+  micOk: boolean;
+  calPhase: CalibrationPhase;
+  calPoints: number;
+}): string {
+  if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
+  if (!live) return '카메라를 켜야 점검을 시작할 수 있습니다';
+  if (!micOk) return '마이크에 대고 한 마디 해보세요';
+  if (calPhase === 'FAILED')
+    return '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요';
+  if (calPoints < 2) return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
+  return '점검이 끝났어요';
+}
+
+/**
+ * 시선 기준점 항목의 버튼 문구.
+ *
+ * `cal.running` 을 보지 않고 phase 만 봅니다 — running 이 phase 에서 파생된 값이라
+ * (CAMERA·BOTTOM·EVALUATING) 둘을 같이 보면 같은 사실을 두 번 묻는 셈입니다.
+ *
+ * 상태 하나에 대한 분기라 switch 로 둡니다. phase 가 늘면 **여기서 컴파일이 깨져서**
+ * 빠뜨린 갈래가 바로 드러납니다 — 삼항으로 이어 붙이면 조용히 마지막 갈래로 떨어집니다.
+ *
+ * IDLE·FAILED 만 `live` 를 함께 봅니다. 카메라가 없으면 눌러도 시작되지 않는데
+ * 버튼이 '누르면 시작'이라고 말하면 안 됩니다.
+ */
+function calibrationActionText(phase: CalibrationPhase, live: boolean): string {
+  switch (phase) {
+    case 'DONE':
+      return '다시 잡기';
+    case 'EVALUATING':
+      return '확인 중…';
+    case 'CAMERA':
+    case 'BOTTOM':
+      return '잡는 중…';
+    case 'IDLE':
+    case 'FAILED':
+      return live ? '누르면 시작' : '카메라 먼저';
+  }
+}
 
 /**
  * 05 카메라 점검 — 리허설 준비 바로 앞.
@@ -49,13 +112,16 @@ export function DeviceCheckPage() {
     askedRef.current = true;
     const activation = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } })
       .userActivation;
-    if (activation?.hasBeenActive) void request();
+    if (activation?.hasBeenActive) request().catch(() => undefined);
   }, [request]);
 
   // 장치 이름은 권한을 받은 뒤에야 채워집니다. 그 전에는 label이 빈 문자열입니다
   useEffect(() => {
     if (!stream) return;
-    void navigator.mediaDevices.enumerateDevices().then(setDevices);
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then(setDevices)
+      .catch(() => undefined);
   }, [stream]);
 
   const cameras = devices.filter((d) => d.kind === 'videoinput');
@@ -64,17 +130,13 @@ export function DeviceCheckPage() {
   const ready = live && micOk && cal.points === 2;
   const goPrepare = () => navigate(`/pitch/${pitchId}/prepare`);
 
-  const hint = deviceError
-    ? DEVICE_ERROR_MESSAGE[deviceError]
-    : !live
-      ? '카메라를 켜야 점검을 시작할 수 있습니다'
-      : !micOk
-        ? '마이크에 대고 한 마디 해보세요'
-        : cal.phase === 'FAILED'
-          ? '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요'
-          : cal.points < 2
-            ? '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다'
-            : '점검이 끝났어요';
+  const hint = deviceCheckHint({
+    deviceError,
+    live,
+    micOk,
+    calPhase: cal.phase,
+    calPoints: cal.points,
+  });
 
   return (
     <ScreenFrame
@@ -111,7 +173,7 @@ export function DeviceCheckPage() {
               live={live}
               phase={cal.phase}
               countdownRef={cal.countdownRef}
-              onEnable={() => void request()}
+              onEnable={() => request().catch(() => undefined)}
             />
           </div>
 
@@ -129,14 +191,18 @@ export function DeviceCheckPage() {
               value={videoId}
               options={cameras}
               fallback="기본 카메라"
-              onChange={(id) => void request({ videoDeviceId: id, audioDeviceId: audioId })}
+              onChange={(id) =>
+                request({ videoDeviceId: id, audioDeviceId: audioId }).catch(() => undefined)
+              }
             />
             <DeviceSelect
               label="마이크"
               value={audioId}
               options={mics}
               fallback="기본 마이크"
-              onChange={(id) => void request({ videoDeviceId: videoId, audioDeviceId: id })}
+              onChange={(id) =>
+                request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
+              }
             />
           </section>
 
@@ -164,16 +230,7 @@ export function DeviceCheckPage() {
                     : `시선 기준점 ${cal.points} / 2`,
                 done: cal.phase === 'DONE',
                 action: {
-                  text:
-                    cal.phase === 'DONE'
-                      ? '다시 잡기'
-                      : cal.phase === 'EVALUATING'
-                        ? '확인 중…'
-                        : cal.running
-                          ? '잡는 중…'
-                          : !live
-                            ? '카메라 먼저'
-                            : '누르면 시작',
+                  text: calibrationActionText(cal.phase, live),
                   onClick: () => {
                     if (live && !cal.running) cal.start();
                   },
