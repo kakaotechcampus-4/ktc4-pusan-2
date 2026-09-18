@@ -1,7 +1,8 @@
-"""WebSocket 엔드포인트와 Take 스트림. Deepgram 만 가짜로 바꾸고 나머지는 실제로 돈다.
+"""WebSocket 엔드포인트와 Take 스트림. Deepgram 과 전사 저장소만 가짜로 바꾸고 나머지는 실제로 돈다.
 
-인증은 실제 JWT 로, 사용자 조회는 테스트 DB 로. 프레임 파싱·offset·무음 채우기·재연결·
-번호 연속성·종료 순서가 전부 실제 코드를 거친다.
+인증은 실제 JWT 로, 사용자·Take 조회는 테스트 DB 로. 프레임 파싱·offset·무음 채우기·재연결·
+번호 연속성·종료 순서가 전부 실제 코드를 거친다. 저장소는 기본이 가짜(메모리) 이고,
+실제 DB 저장은 `DbTranscriptStore` 를 테스트 세션에 묶어 따로 확인한다.
 """
 
 import asyncio
@@ -16,15 +17,20 @@ from dataclasses import dataclass, field
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from websockets.exceptions import ConnectionClosedError
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.main import app
+from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.take import service as take_service
+from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
+from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import service, take_stream
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
-from pitch_coach_backend.realtime.dependencies import get_stt_adapter
+from pitch_coach_backend.realtime.dependencies import get_stt_adapter, get_transcript_store
 from pitch_coach_backend.realtime.dto import ErrorMessage, TranscriptMessage, WsErrorCode
 from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
@@ -35,6 +41,7 @@ from pitch_coach_backend.realtime.stt_adapter import (
     Word,
 )
 from pitch_coach_backend.realtime.take_stream import TakeStream
+from pitch_coach_backend.realtime.transcript_store import DbTranscriptStore
 
 TAKE_ID = uuid.uuid7()
 WS_PATH = f"/api/ws/takes/{TAKE_ID}"
@@ -154,6 +161,26 @@ class FakeSttAdapter:
         return self.sessions[-1] if self.sessions else None
 
 
+class FakeTranscriptStore:
+    """final 을 메모리에 모은다. cursor 는 "이미 저장된 마지막 번호" 를 흉내 낸다."""
+
+    def __init__(self, *, cursor: tuple[int, int] = (0, 0), fail: bool = False) -> None:
+        self.segments: list[TranscriptSegmentCreateDTO] = []
+        self.take_ids: list[uuid.UUID] = []
+        self._cursor = cursor
+        self.fail = fail
+
+    async def cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
+        return self._cursor
+
+    async def append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None:
+        await asyncio.sleep(0)  # 실제 저장은 threadpool 왕복이라 한 번은 양보한다
+        if self.fail:
+            raise RuntimeError("db down")
+        self.take_ids.append(take_id)
+        self.segments.append(segment)
+
+
 # ── fixture ───────────────────────────────────────────────────────────
 
 
@@ -165,6 +192,21 @@ def _no_leftover_streams():
         stream.cancel()
     take_stream._streams.clear()
     app.dependency_overrides.pop(get_stt_adapter, None)
+    app.dependency_overrides.pop(get_transcript_store, None)
+
+
+@pytest.fixture(autouse=True)
+def store() -> FakeTranscriptStore:
+    """기본 저장소는 가짜다. 실제 DbTranscriptStore 는 SessionLocal 로 새 커넥션을 열어서
+    테스트 트랜잭션 안의(아직 커밋 안 된) Take 행을 못 보고 FK 위반이 난다."""
+    fake = FakeTranscriptStore()
+    app.dependency_overrides[get_transcript_store] = lambda: fake
+    return fake
+
+
+def use_store(fake: FakeTranscriptStore) -> FakeTranscriptStore:
+    app.dependency_overrides[get_transcript_store] = lambda: fake
+    return fake
 
 
 @pytest.fixture(autouse=True)
@@ -191,7 +233,46 @@ def other_token(db_session: Session) -> str:
 
 
 @pytest.fixture
-def token(user: User) -> str:
+def take(db_session: Session, user: User) -> Take:
+    """user 소유의 RUNNING Take. id 는 모듈 상수 TAKE_ID 라 WS_PATH 가 그대로 맞는다.
+
+    각 테스트가 롤백되는 트랜잭션 안에서 돌기 때문에 같은 id 를 매번 넣어도 안 겹친다."""
+    return make_take(db_session, user.id, take_id=TAKE_ID)
+
+
+def make_take(
+    db_session: Session,
+    user_id: uuid.UUID,
+    *,
+    take_id: uuid.UUID | None = None,
+    status: str = "RUNNING",
+) -> Take:
+    pitch = Pitch(user_id=user_id, title="발표", time_limit_sec=300)
+    db_session.add(pitch)
+    db_session.flush()
+    presentation = PresentationVersion(pitch_id=pitch.id, version=1, file_url="deck.pdf")
+    script = ScriptVersion(pitch_id=pitch.id, version=1, file_url="script.txt")
+    db_session.add_all([presentation, script])
+    db_session.flush()
+    take = Take(
+        pitch_id=pitch.id,
+        take_number=1,
+        presentation_version_id=presentation.id,
+        script_version_id=script.id,
+        mode="COACHING",
+        script_mode="FULL",
+        status=status,
+    )
+    if take_id is not None:
+        take.id = take_id
+    db_session.add(take)
+    # 서비스가 인가 뒤 rollback() 으로 커넥션을 돌려준다. 커밋(=savepoint 해제) 해 둬야 살아남는다
+    db_session.commit()
+    return take
+
+
+@pytest.fixture
+def token(user: User, take: Take) -> str:
     return create_access_token(user.id)
 
 
@@ -601,14 +682,14 @@ def test_duration_mismatch_is_logged(
 def test_other_user_cannot_take_over_the_stream(
     client: TestClient, stt: FakeSttAdapter, token: str, other_token: str
 ):
-    """Take 테이블이 없는 동안 스트림을 만든 사용자만 붙을 수 있다."""
+    """남의 Take 는 DB 검사에서 막힌다. 존재 여부를 흘리지 않도록 "없음" 과 같은 코드다."""
     with client.websocket_connect(WS_PATH) as mine:
         handshake(mine, token)
         wait_state(mine, "ok")
 
         with client.websocket_connect(WS_PATH) as theirs:
             auth(theirs, other_token)
-            assert theirs.receive_json()["code"] == "FORBIDDEN"
+            assert theirs.receive_json()["code"] == "TAKE_NOT_FOUND"
             assert closed_with(theirs) == 1008
 
         # 내 연결은 그대로다 — 쫓겨나지 않았다
@@ -866,19 +947,24 @@ async def test_ready_send_failure_still_detaches_from_the_stream(
     안 그러면 죽은 self.ws 가 "현재 클라이언트" 로 영원히 남아 Deepgram 세션이
     다시는 정리되지 않는다."""
     adapter = FakeSttAdapter()
-    take_id = uuid.uuid7()
     ws = FakeWebSocket(
         inbound=[
             {"type": "websocket.receive", "text": json.dumps({"type": "auth", "token": token})}
         ],
         fail_send_after=1,  # 첫 send_text = ready 메시지에서 터진다
     )
-    realtime = service.RealtimeSession(ws, take_id=take_id, db=db_session, stt_adapter=adapter)
+    realtime = service.RealtimeSession(
+        ws,
+        take_id=TAKE_ID,
+        db=db_session,
+        stt_adapter=adapter,
+        transcript_store=FakeTranscriptStore(),
+    )
 
     with pytest.raises(RuntimeError):
         await realtime.run()
 
-    stream = take_stream._streams[take_id]
+    stream = take_stream._streams[TAKE_ID]
     assert stream._client is None, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
     stream.cancel()
 
@@ -892,7 +978,11 @@ async def test_resend_missed_keeps_unsent_finals_when_send_fails_partway():
     이미 비워진 리스트와 함께 사라진다. 성공한 만큼만 지워야 다음 재연결 때
     나머지를 다시 시도할 수 있다."""
     stream = TakeStream(
-        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=FakeSttAdapter(), config=SttConfig()
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
     )
     stream._missed_finals = [
         transcript_message("1-1", "첫"),
@@ -926,17 +1016,32 @@ async def test_concurrent_attach_during_handover_does_not_duplicate_stream(
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
 
     first = await take_stream.attach(
-        take_id, FakeWebSocket(), owner_id=owner_id, stt_adapter=adapter, config=SttConfig()
+        take_id,
+        FakeWebSocket(),
+        owner_id=owner_id,
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
     )
     await _wait_until_ok(first)
     first.request_stop()  # swallow_close 라서 스스로는 절대 안 끝난다 -> is_stopping 만 유지된다
 
     second, third = await asyncio.gather(
         take_stream.attach(
-            take_id, FakeWebSocket(), owner_id=owner_id, stt_adapter=adapter, config=SttConfig()
+            take_id,
+            FakeWebSocket(),
+            owner_id=owner_id,
+            stt_adapter=adapter,
+            config=SttConfig(),
+            store=FakeTranscriptStore(),
         ),
         take_stream.attach(
-            take_id, FakeWebSocket(), owner_id=owner_id, stt_adapter=adapter, config=SttConfig()
+            take_id,
+            FakeWebSocket(),
+            owner_id=owner_id,
+            stt_adapter=adapter,
+            config=SttConfig(),
+            store=FakeTranscriptStore(),
         ),
     )
 
@@ -956,7 +1061,11 @@ async def test_cancel_waits_for_real_deepgram_cleanup_before_reporting_closed():
     실제 정리(Deepgram 소켓을 shield 안에서 닫는 것)가 끝나야 closed 여야 한다."""
     adapter = FakeSttAdapter(Plan(abort_delay=0.15))
     stream = TakeStream(
-        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=adapter, config=SttConfig()
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
     )
     stream.start()
     await _wait_until_ok(stream)
@@ -980,7 +1089,11 @@ async def test_stop_immediately_after_long_gap_still_flushes_carried_audio():
     큐에 남은 stop 신호가 새 세션을 하나 더 열어서라도 처리돼야 한다."""
     adapter = FakeSttAdapter(Plan(), Plan())
     stream = TakeStream(
-        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=adapter, config=SttConfig()
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
     )
     stream.start()
     await _wait_until_ok(stream)
@@ -1018,13 +1131,23 @@ async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan())
 
     old_stream = await take_stream.attach(
-        take_id, FakeWebSocket(), owner_id=owner_id, stt_adapter=adapter, config=SttConfig()
+        take_id,
+        FakeWebSocket(),
+        owner_id=owner_id,
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
     )
     await _wait_until_ok(old_stream)
     old_stream.request_stop()  # 정상적으로 정리를 시작했다 (아직 안 끝났을 뿐)
 
     new_stream = await take_stream.attach(
-        take_id, FakeWebSocket(), owner_id=owner_id, stt_adapter=adapter, config=SttConfig()
+        take_id,
+        FakeWebSocket(),
+        owner_id=owner_id,
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
     )
 
     assert new_stream is not old_stream
@@ -1044,7 +1167,11 @@ async def test_concurrent_resend_missed_does_not_race_on_the_shared_list():
     동시에 부를 수 있다. 락 없이 같은 리스트를 각자 확인-후-pop 하면, 한쪽이 이미
     비운 자리를 다른 쪽이 또 pop 하다가 IndexError 가 난다."""
     stream = TakeStream(
-        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=FakeSttAdapter(), config=SttConfig()
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
     )
     stream._missed_finals = [
         transcript_message("1-1", "첫"),
@@ -1073,7 +1200,11 @@ async def test_cancel_before_task_ever_runs_still_reports_closed():
     그러면 _finish() 를 아무도 안 불러서 wait_closed() 가 영원히 False 만 준다."""
     adapter = FakeSttAdapter(Plan())
     stream = TakeStream(
-        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=adapter, config=SttConfig()
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
     )
     stream.start()
     stream.cancel()  # start() 직후, 태스크가 단 한 번도 스텝되지 않은 채로 취소한다
@@ -1082,3 +1213,204 @@ async def test_cancel_before_task_ever_runs_still_reports_closed():
     assert closed is True
     assert stream.is_finished is True
     assert take_stream.active_count() == 0
+
+
+# ── Take 연결: 존재·소유·상태 검사 ──────────────────────────────────────
+
+
+def test_unknown_take_is_rejected_before_deepgram(
+    client: TestClient, stt: FakeSttAdapter, user: User
+):
+    with client.websocket_connect(f"/api/ws/takes/{uuid.uuid7()}") as ws:
+        auth(ws, create_access_token(user.id))
+        assert ws.receive_json()["code"] == "TAKE_NOT_FOUND"
+        assert closed_with(ws) == 1008
+    assert stt.configs == [], "Take 검사에 걸리면 Deepgram 에 붙지 않는다"
+    assert take_stream.active_count() == 0
+
+
+def test_ended_take_is_rejected(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User
+):
+    """끝난 연습에 전사를 더 붙이면 리포트가 오염된다. FE 는 이 코드로 재연결하지 않는다."""
+    ended = make_take(db_session, user.id, status="COMPLETED")
+    with client.websocket_connect(f"/api/ws/takes/{ended.id}") as ws:
+        auth(ws, create_access_token(user.id))
+        assert ws.receive_json()["code"] == "TAKE_ENDED"
+        assert closed_with(ws) == 1008
+    assert stt.configs == []
+
+
+def test_someone_elses_take_is_rejected_even_without_a_live_stream(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, other_token: str
+):
+    """소유권 검사는 레지스트리(owner_id)가 아니라 DB(takes JOIN pitches.user_id) 가 한다.
+    스트림이 하나도 없어도 남의 Take 는 열리지 않고, "없는 Take" 와 같은 코드로 답한다."""
+    # TAKE_ID 는 `take` fixture(=token 의존) 가 만드는데 여기선 그걸 안 쓰고 다른 사람 걸 만든다
+    with client.websocket_connect(WS_PATH) as ws:
+        auth(ws, other_token)
+        assert ws.receive_json()["code"] == "TAKE_NOT_FOUND"
+        assert closed_with(ws) == 1008
+    assert stt.configs == [], "Deepgram 에 붙지 않는다"
+    assert take_stream.active_count() == 0, "스트림도 만들지 않는다"
+
+
+def test_reconnect_is_authorized_again_even_while_the_stream_is_alive(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, token: str, take: Take
+):
+    """검사는 연결마다 한다. grace 동안 스트림이 살아 있어도 그 사이 Take 가 끝났으면
+    (예: complete 처리) 재연결은 거절된다 — 레지스트리에 있다고 통과시키지 않는다."""
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+    assert take_stream.active_count() == 1, "grace 중이라 스트림은 살아 있다"
+
+    take.status = "COMPLETED"
+    db_session.commit()
+
+    with client.websocket_connect(WS_PATH) as ws:
+        auth(ws, token)
+        assert ws.receive_json()["code"] == "TAKE_ENDED"
+        assert closed_with(ws) == 1008
+    assert len(stt.sessions) == 1, "재연결이 거절돼 새 Deepgram 세션이 생기지 않는다"
+
+
+def test_ready_take_is_accepted(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User
+):
+    """READY→RUNNING 전이는 take 모듈(FE 의 started_at 갱신) 몫이라 순서를 강제하지 않는다."""
+    ready_take = make_take(db_session, user.id, status="READY")
+    with client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
+        assert handshake(ws, create_access_token(user.id))["take_id"] == str(ready_take.id)
+        stop(ws)
+
+
+# ── final 저장 ─────────────────────────────────────────────────────────
+
+
+def test_only_finals_are_persisted_with_take_timeline(
+    client: TestClient, token: str, store: FakeTranscriptStore
+):
+    use(
+        FakeSttAdapter(
+            Plan(
+                replies=[
+                    transcript(0, 100, "안녕", is_final=False),
+                    transcript(0, 200, "안녕하세요", is_final=True),
+                ]
+            )
+        )
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 5000))
+        ws.receive_json()  # interim
+        ws.send_bytes(frame(2, 5100))
+        ws.receive_json()  # final
+        stop(ws)
+
+    (segment,) = store.segments
+    assert store.take_ids == [TAKE_ID]
+    assert (segment.seq, segment.stt_session_no) == (1, 1)
+    assert (segment.start_ms, segment.end_ms) == (5000, 5200), "Take 기준 시각으로 저장한다"
+    assert segment.transcript == "안녕하세요"
+    assert segment.words[0].word == "안녕하세요" and segment.words[0].start_ms == 5000
+    assert segment.speech_final is True
+
+
+def test_finals_are_written_to_the_database(client: TestClient, db_session: Session, token: str):
+    """가짜가 아니라 실제 take service · 테이블을 거친다.
+
+    저장소를 테스트 세션에 묶어 같은 트랜잭션 안에서 결과를 본다."""
+    use(
+        FakeSttAdapter(
+            Plan(
+                replies=[
+                    transcript(0, 200, "첫 문장", is_final=True),
+                    transcript(200, 400, "둘째 문장", is_final=True),
+                ]
+            )
+        )
+    )
+    use_store(DbTranscriptStore(session_factory=lambda: db_session))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 1000))
+        ws.receive_json()
+        ws.send_bytes(frame(2, 1100))
+        ws.receive_json()
+        stop(ws)
+
+    # take.id 가 아니라 상수를 쓴다 — 인가 단계의 rollback() 이 세션 객체를 expire 시키고
+    # 저장소의 close() 가 떼어 내서(detached) 속성을 다시 읽을 수 없다
+    rows = db_session.scalars(
+        select(TakeTranscriptSegment)
+        .where(TakeTranscriptSegment.take_id == TAKE_ID)
+        .order_by(TakeTranscriptSegment.seq)
+    ).all()
+    assert [(r.seq, r.stt_session_no, r.transcript) for r in rows] == [
+        (1, 1, "첫 문장"),
+        (2, 1, "둘째 문장"),
+    ]
+    assert rows[0].start_ms == 1000 and rows[1].end_ms == 1400
+    assert rows[0].words == [
+        {
+            "word": "첫 문장",
+            "punctuated_word": "첫 문장",
+            "start_ms": 1000,
+            "end_ms": 1200,
+            "confidence": 0.9,
+        }
+    ]
+    assert take_service.transcript_cursor(db_session, TAKE_ID) == (2, 1)
+
+
+def test_new_stream_resumes_numbering_from_persisted_cursor(client: TestClient, token: str):
+    """grace 가 만료돼 스트림이 사라진 뒤 다시 붙으면 새 스트림이다. 번호가 1 로 돌아가면
+    FE 가 앞부분 전사를 덮어쓰고 UNIQUE(take_id, seq) 도 깨진다 — 저장된 값에서 이어 받는다."""
+    use(FakeSttAdapter(Plan(replies=[transcript(0, 100, "이어서", is_final=True)])))
+    # 이전 스트림이 Deepgram 세션 2 에서 seq 5 까지 저장하고 사라졌다
+    store = use_store(FakeTranscriptStore(cursor=(5, 2)))
+    with client.websocket_connect(WS_PATH) as ws:
+        ready = handshake(ws, token)
+        assert ready["stt_session_no"] == 2
+        assert wait_state(ws, "ok")["stt_session_no"] == 3
+        ws.send_bytes(frame(1, 60_000))
+        resumed = ws.receive_json()
+        stop(ws)
+
+    assert resumed["segment_id"] == "3-6"
+    assert (store.segments[0].seq, store.segments[0].stt_session_no) == (6, 3)
+
+
+def test_persist_failure_keeps_the_stream_alive(
+    client: TestClient, token: str, caplog: pytest.LogCaptureFixture
+):
+    """DB 가 죽어도 발표는 계속된다. 화면 전사는 나가고 스트림은 다음 final 도 처리한다."""
+    use(
+        FakeSttAdapter(
+            Plan(
+                replies=[
+                    transcript(0, 100, "하나", is_final=True),
+                    transcript(100, 200, "둘", is_final=True),
+                ]
+            )
+        )
+    )
+    use_store(FakeTranscriptStore(fail=True))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        with caplog.at_level("ERROR"):
+            ws.send_bytes(frame(1, 0))
+            first = ws.receive_json()
+            ws.send_bytes(frame(2, 100))
+            second = ws.receive_json()
+            status = stop(ws)
+
+    assert (first["text"], second["text"]) == ("하나", "둘")
+    assert status["state"] == "closed" and status["frames"] == 2
+    assert "final 저장 실패" in caplog.text
+    assert "하나" not in caplog.text, "전사 원문은 로그에 남기지 않는다"

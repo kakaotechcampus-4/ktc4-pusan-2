@@ -20,6 +20,10 @@
 한다. 그래서 프레임 사이 갭은 무음으로 메운다. 메우기에 너무 긴 갭(`MAX_SILENCE_FILL_MS` 초과)
 은 **세션을 갈아** base 를 다시 잡는다 — 일부만 메우면 그 뒤 전사 시각이 통째로 앞당겨진다.
 
+final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). 스트림이 새로 만들어질 때는
+저장된 마지막 번호를 이어 받는다 — grace 가 만료돼 스트림이 사라진 뒤 다시 붙어도 `segment_id`
+가 `"1-1"` 부터 다시 나오지 않아야 FE 가 앞부분을 덮어쓰지 않고, `UNIQUE(take_id, seq)` 도 지켜진다.
+
 MVP 는 uvicorn 1 프로세스라 레지스트리가 in-process dict 다. 워커를 늘리려면 sticky 라우팅이나
 Redis 가 필요한데 그때는 어차피 재설계다 (계획 문서 §8-6).
 """
@@ -35,6 +39,7 @@ from fastapi import WebSocket
 from pydantic import BaseModel
 from websockets.exceptions import ConnectionClosed
 
+from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO, TranscriptWordDTO
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS, silence
 from pitch_coach_backend.realtime.dto import (
     ErrorMessage,
@@ -59,6 +64,7 @@ from pitch_coach_backend.realtime.stt_adapter import (
     SttSession,
     Transcript,
 )
+from pitch_coach_backend.realtime.transcript_store import TranscriptStore
 
 logger = logging.getLogger(__name__)
 
@@ -101,20 +107,26 @@ class TakeStream:
         owner_id: uuid.UUID,
         stt_adapter: SttAdapter,
         config: SttConfig,
+        store: TranscriptStore,
+        segment_no: int = 1,
+        stt_session_no: int = 0,
         grace_sec: float | None = None,
     ) -> None:
         self.take_id = take_id
-        # 이 스트림을 만든 사용자. Take 테이블이 없는 동안 남의 Take 를 가로채지 못하게
-        # 막는 유일한 선이다. 진짜 검사(Take 존재·소유·RUNNING) 는 take 모듈이 생기면 붙인다
+        # 이 스트림을 만든 사용자. Take 소유권은 연결마다 service 가 DB 로 검사하므로
+        # 정상 흐름에서는 다른 사용자가 여기까지 오지 못한다 — 검사와 레지스트리가
+        # 어긋나는 일이 생겨도 남의 스트림에 붙지 못하게 하는 이중 안전장치다
         self.owner_id = owner_id
         self._adapter = stt_adapter
         self._config = config
+        self._store = store
         self._grace_sec = GRACE_SEC if grace_sec is None else grace_sec
 
         # ── 연결이 바뀌어도 이어지는 상태 ──
         self.sequencer = FrameSequencer()
-        self.stt_session_no = 0
-        self.segment_no = 1
+        # 둘 다 Take 기준이다. 스트림이 새로 만들어질 때 저장된 마지막 값에서 이어 받는다
+        self.stt_session_no = stt_session_no
+        self.segment_no = segment_no
         self.state: SttState = "connecting"
         # 큐가 넘치거나 Deepgram 이 죽어 있어 STT 에 닿지 못한 오디오
         self.dropped_audio_ms = 0
@@ -184,8 +196,8 @@ class TakeStream:
     async def resend_missed(self) -> None:
         """떨어져 있는 동안 온 final 을 순서대로 다시 보낸다.
 
-        `ready` 뒤에 부른다. 저장이 붙기 전까지는 이게 유일한 복구 수단이다 —
-        여기서 버리면 그 발화는 어디에도 남지 않는다.
+        `ready` 뒤에 부른다. final 은 이미 DB 에 저장돼 있으므로 리포트에는 영향이 없다 —
+        이건 실시간 화면(자막·2단 코치)이 끊긴 구간을 건너뛰지 않게 하는 용도다.
 
         **성공한 것만 지운다.** 한꺼번에 비우고 보내면, 재연결 직후 클라이언트가
         다시 끊기는 것처럼 중간에 전송이 실패했을 때 아직 못 보낸 나머지가 이미
@@ -497,9 +509,45 @@ class TakeStream:
                 del self._missed_finals[:-MAX_MISSED_FINALS]
             else:
                 await self._send(message)
+            if event.is_final:
+                # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
+                # 리포트의 원천은 이 행이지 화면이 아니다
+                await self._persist(message)
         if event.is_final:
             # 빈 final 도 구간을 닫는다. 다음 interim 은 새 번호로
             self.segment_no += 1
+
+    async def _persist(self, message: TranscriptMessage) -> None:
+        segment = TranscriptSegmentCreateDTO(
+            seq=self.segment_no,
+            stt_session_no=self.stt_session_no,
+            start_ms=message.start_ms,
+            end_ms=message.end_ms,
+            transcript=message.text,
+            words=[
+                TranscriptWordDTO(
+                    word=w.word,
+                    punctuated_word=w.punctuated_word,
+                    start_ms=w.start_ms,
+                    end_ms=w.end_ms,
+                    confidence=w.confidence,
+                )
+                for w in message.words
+            ],
+            confidence=message.confidence,
+            speech_final=message.speech_final,
+        )
+        try:
+            await self._store.append(self.take_id, segment)
+        except Exception:
+            # DB 장애로 스트림까지 멈추면 안 된다 — 화면 전사는 이미 나갔고 발표는 계속된다.
+            # 전사 원문은 로그에 남기지 않는다 (seq 와 길이만)
+            logger.exception(
+                "final 저장 실패 take=%s seq=%d len=%d",
+                self.take_id,
+                segment.seq,
+                len(segment.transcript),
+            )
 
     def _check_duration(self, metadata: Metadata) -> None:
         """Deepgram 이 받았다는 길이와 우리가 보낸 길이를 대조한다.
@@ -549,7 +597,7 @@ class TakeStream:
         """`_send` 와 같지만 성공 여부를 알려준다. `resend_missed` 가 재시도를 판단하는 데 쓴다.
 
         일반 전사·상태 메시지는 실패해도 다음 메시지가 금방 또 오니 무시해도 되지만
-        (`_send`), 놓친 final 은 **다시 안 오면 영영 없어지는 데이터**라 구분한다.
+        (`_send`), 놓친 final 은 화면에 **다시 안 오면 그 구간이 비는 데이터**라 구분한다.
         """
         client = self._client
         if client is None:
@@ -594,11 +642,12 @@ async def attach(
     owner_id: uuid.UUID,
     stt_adapter: SttAdapter,
     config: SttConfig,
+    store: TranscriptStore,
 ) -> TakeStream:
     """Take 의 스트림을 찾거나 만들고 이 연결을 붙인다.
 
-    다른 사용자의 스트림이면 `StreamOwnerMismatch`. Take 테이블이 없는 동안 이것이
-    남의 연습을 가로채지 못하게 막는 유일한 선이다 (계획 문서 §6-2).
+    Take 존재·소유·상태는 호출자(service)가 DB 로 먼저 검사한다. 여기서는 스트림을
+    만든 사용자와 다르면 `StreamOwnerMismatch` — 그 검사의 이중 안전장치다.
     """
     async with _attach_lock:
         stream = _streams.get(take_id)
@@ -621,7 +670,17 @@ async def attach(
             stream = None
 
         if stream is None:
-            stream = TakeStream(take_id, owner_id=owner_id, stt_adapter=stt_adapter, config=config)
+            # 저장된 마지막 번호에서 이어 받는다. 이 스트림이 처음이면 (0, 0) 이라 1·0 부터
+            last_seq, last_session_no = await store.cursor(take_id)
+            stream = TakeStream(
+                take_id,
+                owner_id=owner_id,
+                stt_adapter=stt_adapter,
+                config=config,
+                store=store,
+                segment_no=last_seq + 1,
+                stt_session_no=last_session_no,
+            )
             _streams[take_id] = stream
             stream.start()
         elif stream.owner_id != owner_id:
