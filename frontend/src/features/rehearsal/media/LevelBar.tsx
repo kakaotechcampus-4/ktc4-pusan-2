@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 
 /** 칸 수. 칸이 있으면 "지금 어느 정도인지"를 숫자 없이도 읽을 수 있습니다 */
-const SEGMENTS = 14;
+const SEGMENT_COUNT = 14;
 
 /**
  * 마이크 음량계.
@@ -25,7 +25,7 @@ export function LevelBar({
       {variant === 'segments' ? (
         <div className="relative h-4 flex-1">
           <div className="absolute inset-0 flex gap-1">
-            {Array.from({ length: SEGMENTS }, (_, i) => (
+            {Array.from({ length: SEGMENT_COUNT }, (_, i) => (
               <span key={i} className="h-full flex-1 rounded-xs bg-stage-panel" />
             ))}
           </div>
@@ -36,7 +36,7 @@ export function LevelBar({
             className="absolute inset-0 flex gap-1"
             style={{ clipPath: 'inset(0 100% 0 0)' }}
           >
-            {Array.from({ length: SEGMENTS }, (_, i) => (
+            {Array.from({ length: SEGMENT_COUNT }, (_, i) => (
               <span key={i} className="h-full flex-1 rounded-xs bg-coral" />
             ))}
           </div>
