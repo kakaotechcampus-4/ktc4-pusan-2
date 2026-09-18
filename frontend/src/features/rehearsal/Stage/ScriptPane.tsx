@@ -4,6 +4,9 @@ import type { ScriptMode } from '@/types/api';
 /** ↑/↓ 한 번에 움직이는 양. 한 문장 정도입니다 */
 const SCROLL_STEP = 56;
 
+/** 맞춰 올린 문단 위에 남기는 숨 쉴 틈 */
+const SCROLL_MARGIN = 8;
+
 /**
  * 발표 중 대본.
  *
@@ -32,12 +35,21 @@ export function ScriptPane({
   const currentRef = useRef<HTMLParagraphElement>(null);
 
   // 슬라이드를 넘기면 그 문단이 위로 오게 맞춥니다. scrollIntoView 대신
-  // 컨테이너 scrollTop을 직접 씁니다 — scrollIntoView는 페이지 전체를 움직입니다
+  // 컨테이너 scrollTop 을 직접 씁니다 — scrollIntoView 는 페이지 전체를 움직입니다.
+  //
+  // ★ offsetTop 을 쓰지 않습니다. offsetTop 은 offsetParent 기준인데
+  //   stage.css 의 `.script` 에 position: relative 가 걸려 있어 그 기준이 이미 이 상자입니다.
+  //   거기서 box.offsetTop(무대 안에서 상자가 앉은 위치)을 또 빼면 값이 음수가 되고,
+  //   Math.max 가 0 으로 눌러 **어느 문단이든 맨 위로 튀었습니다.**
+  //
+  //   두 사각형의 지금 화면상 거리로 구하면 상자의 position·padding 이 무엇이든 맞습니다.
+  //   stage.css 는 계측 조건이라 앞으로도 바뀔 수 있는데, 그때 여기가 같이 깨지면 안 됩니다.
   useEffect(() => {
     const box = boxRef.current;
     const p = currentRef.current;
     if (!box || !p) return;
-    box.scrollTop = Math.max(0, p.offsetTop - box.offsetTop - 8);
+    const delta = p.getBoundingClientRect().top - box.getBoundingClientRect().top;
+    box.scrollTop = Math.max(0, box.scrollTop + delta - SCROLL_MARGIN);
   }, [currentIndex, mode]);
 
   // ↑/↓ 는 대본만 움직입니다. ←/→ 는 슬라이드라 useSlideDeck이 받습니다
