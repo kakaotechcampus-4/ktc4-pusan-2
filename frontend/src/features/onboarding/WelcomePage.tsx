@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Link } from 'react-router';
 
 function PitchCoachMark() {
@@ -41,10 +40,6 @@ function ProductPreview() {
 
 /** P1: 첫 방문자에게 서비스의 핵심 가치와 시작점을 안내한다. */
 export function WelcomePage() {
-  useEffect(() => {
-    document.title = '피치코치 | AI 발표 코치';
-  }, []);
-
   return (
     <main className="min-h-dvh overflow-hidden bg-greige px-4 pb-0 pt-4 sm:px-8 sm:pt-7">
       <header className="mx-auto flex h-14 max-w-[1440px] items-center justify-between rounded-full bg-cream px-5 sm:h-15 sm:px-7">
