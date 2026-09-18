@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.entity import PresentationVersion, ScriptVersion
@@ -49,6 +49,12 @@ class TakeRepository:
         self.db.add(calibration)
         self.db.flush()
         return calibration
+
+    def next_take_number(self, pitch_id: uuid.UUID) -> int:
+        current = self.db.scalar(
+            select(func.max(Take.take_number)).where(Take.pitch_id == pitch_id)
+        )
+        return (current or 0) + 1
 
     def get_latest_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
         return self.db.scalar(

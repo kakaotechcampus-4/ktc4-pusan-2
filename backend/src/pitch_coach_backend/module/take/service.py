@@ -19,12 +19,14 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     if take_repository.get_script_version_in_pitch(take_dto.script_version_id, pitch_id) is None:
         raise NonExistentTake()
 
+    next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,
         mode=take_dto.mode,
         script_mode=take_dto.script_mode,
         presentation_version_id=take_dto.presentation_version_id,
         script_version_id=take_dto.script_version_id,
+        take_number=next_take_number
     )
 
     saved_take = take_repository.save(new_take)
