@@ -26,6 +26,8 @@ os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
 # Deepgram 도 마찬가지. 실제 연결은 가짜 서버로 대체한다.
 os.environ.setdefault("DEEPGRAM_API_KEY", "test-deepgram-key")
+# S3 도 마찬가지. 업로드는 테스트에서 모킹한다.
+os.environ.setdefault("S3_BUCKET_NAME", "test-bucket")
 
 
 def _test_database_url() -> str:
