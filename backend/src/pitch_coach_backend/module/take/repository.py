@@ -11,11 +11,6 @@ class TakeRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_in_pitch(self, take_id: uuid.UUID, pitch_id: uuid.UUID) -> Take | None:
-        return self.db.scalar(
-            select(Take).where(Take.id == take_id, Take.pitch_id == pitch_id)
-        )
-
     def get_presentation_version_in_pitch(
         self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID
     ) -> uuid.UUID | None:

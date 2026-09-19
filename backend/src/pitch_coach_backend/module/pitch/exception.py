@@ -8,3 +8,8 @@ class NonExistentPitch(AppException):
     status_code = 404
     code = "PITCH_NOT_FOUND"
     message = "존재하지 않는 발표자료입니다."
+
+class NonExistentTake(AppException):
+     status_code = 404
+     code = "TAKE_NOT_FOUND"
+     message = "존재하지 않는 테이크입니다."
