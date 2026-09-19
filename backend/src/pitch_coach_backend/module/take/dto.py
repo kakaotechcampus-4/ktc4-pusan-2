@@ -30,3 +30,23 @@ class PreviousMissionsDTO(BaseModel):
     source_take_id: uuid.UUID
     next_take_number: int
     missions: list[MissionDTO]
+
+class TranscriptWordDTO(BaseModel):
+    word: str
+    punctuated_word: str
+    start_ms: int
+    end_ms: int
+    confidence: float
+
+
+class TranscriptSegmentCreateDTO(BaseModel):
+    """실시간 STT 가 확정한 구간 하나. realtime 이 만들어 take service 에 넘긴다."""
+
+    seq: int
+    stt_session_no: int
+    start_ms: int
+    end_ms: int
+    transcript: str
+    words: list[TranscriptWordDTO]
+    confidence: float
+    speech_final: bool

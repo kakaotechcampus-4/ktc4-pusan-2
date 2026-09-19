@@ -57,7 +57,7 @@ export function useLiveGaze({
 
       // 2. 기록 — 종료 시점에 이 행들을 구간으로 접어 서버로 보냅니다
       const id = sessionRef.current;
-      if (id) void appendGazeDecision(id, d);
+      if (id) appendGazeDecision(id, d).catch(() => undefined);
 
       // 3. 최근 창
       const recent = recentRef.current;

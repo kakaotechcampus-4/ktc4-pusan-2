@@ -11,9 +11,10 @@ from fastapi import APIRouter, Depends, WebSocket
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
-from pitch_coach_backend.realtime.dependencies import get_stt_adapter
+from pitch_coach_backend.realtime.dependencies import get_stt_adapter, get_transcript_store
 from pitch_coach_backend.realtime.service import RealtimeSession
 from pitch_coach_backend.realtime.stt_adapter import SttAdapter
+from pitch_coach_backend.realtime.transcript_store import TranscriptStore
 
 router = APIRouter(tags=["realtime"])
 
@@ -24,5 +25,12 @@ async def take_stream(
     take_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     stt_adapter: Annotated[SttAdapter, Depends(get_stt_adapter)],
+    transcript_store: Annotated[TranscriptStore, Depends(get_transcript_store)],
 ) -> None:
-    await RealtimeSession(websocket, take_id=take_id, db=db, stt_adapter=stt_adapter).run()
+    await RealtimeSession(
+        websocket,
+        take_id=take_id,
+        db=db,
+        stt_adapter=stt_adapter,
+        transcript_store=transcript_store,
+    ).run()

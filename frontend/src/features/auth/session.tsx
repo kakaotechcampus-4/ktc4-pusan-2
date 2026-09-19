@@ -21,7 +21,7 @@ export function RequireSession() {
     return (
       <div role="alert" className="p-8">
         서버에 연결하지 못했습니다.{' '}
-        <button onClick={() => void session.refetch()}>다시 시도</button>
+        <button onClick={() => session.refetch().catch(() => undefined)}>다시 시도</button>
       </div>
     );
 

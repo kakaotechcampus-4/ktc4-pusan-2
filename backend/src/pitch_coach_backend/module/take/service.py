@@ -5,6 +5,13 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import CalibrationDTO, MissionDTO, PreviousMissionsDTO, TakeInitRequestDTO, TakeUpdateRequestDTO
 from pitch_coach_backend.module.take.entity import Calibration, Take
+from pitch_coach_backend.module.take.dto import (
+    CalibrationDTO,
+    TakeInitRequestDTO,
+    TakeUpdateRequestDTO,
+    TranscriptSegmentCreateDTO,
+)
+from pitch_coach_backend.module.take.entity import Calibration, Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import TakeRepository
 
@@ -127,4 +134,37 @@ def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
     )
 
 
+# ── 실시간 STT (realtime 모듈이 부른다) ──────────────────────────────
+#
+# realtime 은 entity 를 갖지 않고 저장을 여기에 위임한다. 아래 셋은 WebSocket 연결·
+# 백그라운드 스트림에서 불리므로 **호출자가 run_in_threadpool 로 감싼다** (동기 SQLAlchemy).
 
+
+def find_owned(db: Session, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | None:
+    """없을 수 있는 조회. 남의 take 도 None — WebSocket 이 존재 여부를 흘리지 않게."""
+    return TakeRepository(db).get_owned(take_id, user_id)
+
+
+def transcript_cursor(db: Session, take_id: uuid.UUID) -> tuple[int, int]:
+    """저장된 마지막 (seq, stt_session_no). 스트림이 새로 만들어질 때 번호를 이어 받는다."""
+    return TakeRepository(db).last_transcript_cursor(take_id)
+
+
+def append_transcript_segment(
+    db: Session, take_id: uuid.UUID, segment_dto: TranscriptSegmentCreateDTO
+) -> uuid.UUID:
+    """final 구간 하나를 저장하고 커밋한다. 짧은 트랜잭션 하나로 끝난다."""
+    segment = TakeTranscriptSegment(
+        take_id=take_id,
+        seq=segment_dto.seq,
+        stt_session_no=segment_dto.stt_session_no,
+        start_ms=segment_dto.start_ms,
+        end_ms=segment_dto.end_ms,
+        transcript=segment_dto.transcript,
+        words=[w.model_dump() for w in segment_dto.words],
+        confidence=segment_dto.confidence,
+        speech_final=segment_dto.speech_final,
+    )
+    saved = TakeRepository(db).save_transcript_segment(segment)
+    db.commit()
+    return saved.id

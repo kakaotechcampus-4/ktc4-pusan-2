@@ -114,7 +114,7 @@ export function MediaDevPage() {
   useEffect(() => {
     const saved = localStorage.getItem(SESSION_KEY);
     if (!saved) return;
-    void (async () => {
+    (async () => {
       const row = await getSession(saved);
       if (!row) {
         localStorage.removeItem(SESSION_KEY);
@@ -123,7 +123,7 @@ export function MediaDevPage() {
       sessionIdRef.current = saved;
       setSessionId(saved);
       await refreshCounts(saved);
-    })();
+    })().catch(() => undefined);
   }, [refreshCounts]);
 
   const ensureSession = useCallback(async () => {
@@ -143,7 +143,7 @@ export function MediaDevPage() {
     }
     // ★ 판정을 붙잡아 둔다. 이게 없으면 파이프라인의 산출물이 화면에 찍히고 사라진다.
     const id = sessionIdRef.current;
-    if (id) void appendGazeDecision(id, d);
+    if (id) appendGazeDecision(id, d).catch(() => undefined);
   }, []);
 
   const {
@@ -230,13 +230,15 @@ export function MediaDevPage() {
   //   어느 모델 파일이 낸 숫자인지 알 수 없어져서, 기록의 의미가 사라진다.
   useEffect(() => {
     if (!ready || !engineVersion || !sessionId) return;
-    void setEngineVersion(sessionId, engineVersion).then(() => refreshCounts(sessionId));
+    setEngineVersion(sessionId, engineVersion)
+      .then(() => refreshCounts(sessionId))
+      .catch(() => undefined);
   }, [ready, engineVersion, sessionId, refreshCounts]);
 
   // 1초마다 오는 perf 를 clientPerf 용으로 남긴다.
   useEffect(() => {
     if (!perf || !sessionId) return;
-    void setGazePerf(sessionId, perf.avgFps, perf.droppedFrames);
+    setGazePerf(sessionId, perf.avgFps, perf.droppedFrames).catch(() => undefined);
   }, [perf, sessionId]);
 
   // ── 제외 사유 배선 ──────────────────────────────────────────────────
@@ -244,12 +246,16 @@ export function MediaDevPage() {
   // 사유가 문구를 결정하므로 뭉치면 사용자가 뭘 해야 할지 모른다.
   useEffect(() => {
     if (!workerError || !sessionId) return;
-    void markGazeExcluded(sessionId, workerError).then(() => refreshCounts(sessionId));
+    markGazeExcluded(sessionId, workerError)
+      .then(() => refreshCounts(sessionId))
+      .catch(() => undefined);
   }, [workerError, sessionId, refreshCounts]);
 
   useEffect(() => {
     if (deviceError !== 'PERMISSION_DENIED' || !sessionId) return;
-    void markGazeExcluded(sessionId, 'USER_DECLINED').then(() => refreshCounts(sessionId));
+    markGazeExcluded(sessionId, 'USER_DECLINED')
+      .then(() => refreshCounts(sessionId))
+      .catch(() => undefined);
   }, [deviceError, sessionId, refreshCounts]);
 
   const handleStop = () => {
@@ -266,10 +272,13 @@ export function MediaDevPage() {
     const rec = recorderRef.current;
     recorderRef.current = null;
     setRecording(false);
-    void rec?.stop().then(() => {
-      const id = sessionIdRef.current;
-      if (id) void refreshCounts(id);
-    });
+    rec
+      ?.stop()
+      .then(() => {
+        const id = sessionIdRef.current;
+        if (id) refreshCounts(id).catch(() => undefined);
+      })
+      .catch(() => undefined);
 
     stop();
   };
@@ -367,7 +376,7 @@ export function MediaDevPage() {
         <section className="flex flex-col gap-3 rounded-xl border border-line bg-panel p-4">
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => void request()}
+              onClick={() => request().catch(() => undefined)}
               disabled={pumping}
               className="rounded-full bg-coral px-4 py-1.5 text-xs font-semibold text-white
                          hover:bg-coral-deep disabled:opacity-40"
@@ -383,7 +392,7 @@ export function MediaDevPage() {
               정지
             </button>
             <button
-              onClick={() => void handleComplete()}
+              onClick={() => handleComplete().catch(() => undefined)}
               disabled={!sessionId}
               className="rounded-full border border-line bg-cream px-4 py-1.5 text-xs font-semibold
                          hover:bg-coral-wash disabled:opacity-40"
@@ -391,7 +400,7 @@ export function MediaDevPage() {
               종료 · 페이로드 조립
             </button>
             <button
-              onClick={() => void handleNewSession()}
+              onClick={() => handleNewSession().catch(() => undefined)}
               className="ml-auto rounded-full border border-line bg-cream px-3 py-1.5 text-xs
                          font-semibold text-stone hover:bg-coral-wash"
             >

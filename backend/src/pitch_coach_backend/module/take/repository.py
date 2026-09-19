@@ -68,3 +68,20 @@ class TakeRepository:
         self.db.add_all(missions)
         self.db.flush()
         return missions
+    def last_transcript_cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
+        """저장된 마지막 (seq, stt_session_no). 하나도 없으면 (0, 0).
+
+        WebSocket 스트림이 새로 만들어질 때 번호를 이어 받기 위한 값이다.
+        """
+        row = self.db.execute(
+            select(
+                func.coalesce(func.max(TakeTranscriptSegment.seq), 0),
+                func.coalesce(func.max(TakeTranscriptSegment.stt_session_no), 0),
+            ).where(TakeTranscriptSegment.take_id == take_id)
+        ).one()
+        return int(row[0]), int(row[1])
+
+    def save_transcript_segment(self, segment: TakeTranscriptSegment) -> TakeTranscriptSegment:
+        self.db.add(segment)
+        self.db.flush()
+        return segment

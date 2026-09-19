@@ -101,14 +101,22 @@ class WsErrorCode(StrEnum):
 
     | 코드 | 연결 |
     |---|---|
-    | `UNAUTHORIZED` | 1008 로 닫는다 |
-    | `FORBIDDEN` | 1008 로 닫는다 |
+    | `UNAUTHORIZED` | 1008 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
+    | `TAKE_NOT_FOUND` | 1008 로 닫는다 — Take 가 없거나 내 것이 아니다 |
+    | `TAKE_ENDED` | 1008 로 닫는다 — 이미 끝난 Take. FE 는 **재연결하지 않는다** |
+    | `FORBIDDEN` | 1008 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 |
     | `BAD_MESSAGE` | 유지 |
     | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
     | `TAKE_TAKEN_OVER` | 1008 로 닫는다. FE 는 **재연결하지 않는다** |
+
+    - `TAKE_NOT_FOUND` 는 REST 의 404 와 같은 규칙으로 "없음" 과 "남의 것" 을 구분하지 않는다.
+    - `TAKE_ENDED` 는 ANALYZING·COMPLETED·FAILED. 끝난 연습에 전사를 더 붙이면 리포트가 오염된다.
+    - `FORBIDDEN` 은 소유권 검사(DB) 뒤의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
     """
 
     UNAUTHORIZED = "UNAUTHORIZED"
+    TAKE_NOT_FOUND = "TAKE_NOT_FOUND"
+    TAKE_ENDED = "TAKE_ENDED"
     FORBIDDEN = "FORBIDDEN"
     BAD_MESSAGE = "BAD_MESSAGE"
     BAD_AUDIO_FRAME = "BAD_AUDIO_FRAME"

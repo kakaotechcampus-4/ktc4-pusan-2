@@ -135,3 +135,34 @@ class Mission(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False)
     complete: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
+
+
+class TakeTranscriptSegment(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    """실시간 STT 가 확정(is_final)한 전사 구간 1건. 리포트의 유일한 원천이다.
+
+    interim 은 저장하지 않는다 — 같은 구간의 단어·시각이 계속 바뀌어 분석 근거로 못 쓴다.
+    어절을 행으로 펼치지 않고 words 에 통째로 둔다. 리포트는 Take 단위로 한 번에 읽는다.
+    raw 는 words[].word, 정규화는 words[].punctuated_word + transcript 에 있다.
+    """
+
+    __tablename__ = "take_transcript_segments"
+    __table_args__ = (
+        # seq 는 Take 안에서 이어지는 번호다. WebSocket 이 다시 붙어도 리셋되지 않는다.
+        UniqueConstraint("take_id", "seq", name="uq_take_transcript_segments_take_seq"),
+    )
+
+    take_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Deepgram 세션 교체 횟수. 커버리지·디버깅용
+    stt_session_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Take 시작 = 0 기준 (ms). 시선·슬라이드 이벤트와 같은 축이다.
+    start_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    transcript: Mapped[str] = mapped_column(Text, nullable=False)
+    # [{word, punctuated_word, start_ms, end_ms, confidence}]
+    words: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    # endpointing 이 침묵을 감지한 문장 경계인지
+    speech_final: Mapped[bool] = mapped_column(Boolean, nullable=False)

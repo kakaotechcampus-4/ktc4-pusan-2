@@ -39,7 +39,7 @@ export function useSlideDeck({
       const atMs = elapsedMs();
       slideStartedAtRef.current = atMs;
       setSlide(clamped);
-      if (clientSessionId) void appendSlideChange(clientSessionId, atMs, clamped);
+      if (clientSessionId) appendSlideChange(clientSessionId, atMs, clamped).catch(() => undefined);
     },
     [total, elapsedMs, setSlide, clientSessionId],
   );
@@ -49,7 +49,9 @@ export function useSlideDeck({
   useEffect(() => {
     if (!enabled || !clientSessionId) return;
     slideStartedAtRef.current = 0;
-    void appendSlideChange(clientSessionId, 0, useRehearsalStore.getState().slideNumber);
+    appendSlideChange(clientSessionId, 0, useRehearsalStore.getState().slideNumber).catch(
+      () => undefined,
+    );
   }, [enabled, clientSessionId]);
 
   useEffect(() => {
