@@ -3,6 +3,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.pitch.dto import UploadResultDTO
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
@@ -73,7 +74,7 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     presentation = PresentationVersion(
         pitch_id=pitch_id,
         version=version,
-        file_url=presentation_key,
+        file_key=presentation_key,
         description=upload_dto.description
     )
 
@@ -86,7 +87,7 @@ def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
 
     version = pitch_repository.next_script_version(pitch_id)
     suffix = Path(upload_script_dto.script_file.filename or "").suffix
-    script_url = upload(
+    script_key = upload(
         upload_script_dto.script_file,
         f"pitches/{pitch_id}/scripts/{version}{suffix}"
     )
@@ -94,7 +95,7 @@ def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
     script = ScriptVersion(
         pitch_id=pitch_id,
         version=version,
-        file_url=script_url
+        file_key=script_key
     )
 
     pitch_repository.save_script(script)
@@ -110,7 +111,7 @@ def upload_service(db: Session, pitch_id: uuid.UUID, upload_dto, upload_script_d
 
     db.commit()
 
-    return {
-        "presentation_id": presentation_id,
-        "script_id": script_id
-    }
+    return UploadResultDTO(
+        presentation_version_id=presentation_id,
+        script_version_id=script_id
+    )

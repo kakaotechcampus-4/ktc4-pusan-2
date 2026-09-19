@@ -63,7 +63,7 @@ class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    file_url: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_key: Mapped[str] = mapped_column(String(255), nullable=False)
     # 사용자가 남기는 변경 메모. 없어도 된다.
     description: Mapped[str | None] = mapped_column(Text)
 
@@ -80,7 +80,7 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    file_url: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_key: Mapped[str] = mapped_column(String(255), nullable=False)
 
 
 class ScriptSlide(UUIDPrimaryKeyMixin, Base):
