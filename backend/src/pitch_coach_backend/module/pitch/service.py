@@ -3,6 +3,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.pitch.dto import UploadResultDTO
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
@@ -22,6 +23,15 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto):
     db.commit()
 
     return saved_pitch.id
+
+def get_pitch_service(db: Session, pitch_id: uuid.UUID):
+    pitch_repository = PitchRepository(db)
+    existing_pitch = pitch_repository.get_by_id(pitch_id)
+
+    if not existing_pitch:
+        raise NonExistentPitch()
+
+    return existing_pitch
 
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     pitch_repository = PitchRepository(db)
@@ -64,12 +74,11 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     presentation = PresentationVersion(
         pitch_id=pitch_id,
         version=version,
-        file_url=presentation_key,
+        file_key=presentation_key,
         description=upload_dto.description
     )
 
     pitch_repository.save_presentation(presentation)
-    db.commit()
 
     return presentation.id
 
@@ -78,7 +87,7 @@ def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
 
     version = pitch_repository.next_script_version(pitch_id)
     suffix = Path(upload_script_dto.script_file.filename or "").suffix
-    script_url = upload(
+    script_key = upload(
         upload_script_dto.script_file,
         f"pitches/{pitch_id}/scripts/{version}{suffix}"
     )
@@ -86,13 +95,23 @@ def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
     script = ScriptVersion(
         pitch_id=pitch_id,
         version=version,
-        file_url=script_url
+        file_key=script_key
     )
 
     pitch_repository.save_script(script)
-    db.commit()
 
     # 나중에 분할 로직 들어오면 여기서 슬라이드 단위로 ScriptSlide 를 생성해야 한다.
     # ...
-    
+
     return script.id
+
+def upload_service(db: Session, pitch_id: uuid.UUID, upload_dto, upload_script_dto):
+    presentation_id = upload_presentation_service(db, pitch_id, upload_dto)
+    script_id = upload_script_service(db, pitch_id, upload_script_dto)
+
+    db.commit()
+
+    return UploadResultDTO(
+        presentation_version_id=presentation_id,
+        script_version_id=script_id
+    )

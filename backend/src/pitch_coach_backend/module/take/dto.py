@@ -19,6 +19,17 @@ class CalibrationDTO(BaseModel):
     base_volume: float = 0.0
     gaze_confidence: bool = False
 
+class MissionDTO(BaseModel):
+    mission_id: uuid.UUID
+    slide_number: int
+    description:str
+    priority: int
+    completed: bool
+
+class PreviousMissionsDTO(BaseModel):
+    source_take_id: uuid.UUID
+    next_take_number: int
+    missions: list[MissionDTO]
 
 class TranscriptWordDTO(BaseModel):
     word: str

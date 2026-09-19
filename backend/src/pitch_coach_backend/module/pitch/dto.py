@@ -1,4 +1,5 @@
 
+import uuid
 from datetime import date
 
 from fastapi import File, UploadFile
@@ -16,3 +17,7 @@ class UploadPresentationDTO(BaseModel):
 
 class UploadScriptDTO(BaseModel):
     script_file: UploadFile = File(...)
+
+class UploadResultDTO(BaseModel):
+    presentation_version_id: uuid.UUID
+    script_version_id: uuid.UUID

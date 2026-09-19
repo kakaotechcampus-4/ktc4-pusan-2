@@ -3,26 +3,13 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
-from pitch_coach_backend.module.take.entity import Calibration, Take, TakeTranscriptSegment
+from pitch_coach_backend.module.pitch.entity import PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.take.entity import Calibration, Mission, Take
 
 
 class TakeRepository:
     def __init__(self, db: Session):
         self.db = db
-
-    def get_in_pitch(self, take_id: uuid.UUID, pitch_id: uuid.UUID) -> Take | None:
-        return self.db.scalar(
-            select(Take).where(Take.id == take_id, Take.pitch_id == pitch_id)
-        )
-
-    def get_owned(self, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | None:
-        """사용자의 pitch 에 속한 take. 없거나 남의 것이면 None — 둘을 구분하지 않는다."""
-        return self.db.scalar(
-            select(Take)
-            .join(Pitch, Pitch.id == Take.pitch_id)
-            .where(Take.id == take_id, Pitch.user_id == user_id)
-        )
 
     def get_presentation_version_in_pitch(
         self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID
@@ -58,6 +45,29 @@ class TakeRepository:
         self.db.flush()
         return calibration
 
+    def next_take_number(self, pitch_id: uuid.UUID) -> int:
+        current = self.db.scalar(
+            select(func.max(Take.take_number)).where(Take.pitch_id == pitch_id)
+        )
+        return (current or 0) + 1
+
+    def get_latest_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
+        return self.db.scalar(
+            select(Take)
+            .where(Take.pitch_id == pitch_id)
+            .order_by(Take.created_at.desc())
+            .limit(1)
+        )
+
+    def get_missions_in_take(self, take_id: uuid.UUID) -> list[Mission] | None:
+        return self.db.execute(
+            select(Calibration.mission).where(Calibration.take_id == take_id)
+        ).scalars().all()
+
+    def save_missions(self, missions: list[Mission]) -> list[Mission]:
+        self.db.add_all(missions)
+        self.db.flush()
+        return missions
     def last_transcript_cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
         """저장된 마지막 (seq, stt_session_no). 하나도 없으면 (0, 0).
 

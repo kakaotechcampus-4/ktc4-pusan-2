@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.dto import TakeInitRequestDTO, CalibrationDTO
 from pitch_coach_backend.core.database import get_db
-from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
-from pitch_coach_backend.module.take.service import delete_take_service, create_take_service, update_take_service, create_calibration as create_calibration_service
+from pitch_coach_backend.module.pitch.dependencies import OwnedPitch, BelongToPitch
+from pitch_coach_backend.module.take.service import delete_take_service, create_take_service, update_take_service, create_calibration_service, get_previous_missions_service
 
 router = APIRouter(prefix="/pitches/{pitch_id}/takes", tags=["Take"])
 
@@ -18,15 +18,14 @@ def create_take(
     db: Annotated[Session, Depends(get_db)],
     take_dto: TakeInitRequestDTO
 ):
-    take_init_dto = TakeInitRequestDTO(**take_dto)
-    result = create_take_service(db, pitch_id, take_init_dto)
+    result = create_take_service(db, pitch_id, take_dto)
     return {"message": "Take created successfully", "take_id": result}
 
 @router.delete("/{take_id}")
 def delete_take(
     pitch_id: OwnedPitch,
-    db: Annotated[Session, Depends(get_db)],
-    take_id: uuid.UUID
+    take_id: BelongToPitch,
+    db: Annotated[Session, Depends(get_db)]
 ):
     result = delete_take_service(db, pitch_id, take_id)
     return {"message": "Take deleted successfully", "take_id": result}
@@ -35,7 +34,7 @@ def delete_take(
 def update_take(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
-    take_id: uuid.UUID,
+    take_id: BelongToPitch,
     take_update_dto: TakeUpdateRequestDTO
 ):
     result = update_take_service(db, pitch_id, take_id, take_update_dto)
@@ -45,8 +44,16 @@ def update_take(
 def create_calibration(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
-    take_id: uuid.UUID,
+    take_id: BelongToPitch,
     calibration_dto: CalibrationDTO
 ):
     result = create_calibration_service(db, pitch_id, take_id, calibration_dto)
     return {"message": "Calibration created successfully", "calibration_id": result}
+
+@router.get("/previous-missions")
+def get_previous_missions(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)],
+):
+    result = get_previous_missions_service(db, pitch_id)
+    return {"message": "Previous missions retrieved successfully", "missions": result}

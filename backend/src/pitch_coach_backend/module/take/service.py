@@ -3,6 +3,8 @@ import uuid
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.take.dto import CalibrationDTO, MissionDTO, PreviousMissionsDTO, TakeInitRequestDTO, TakeUpdateRequestDTO
+from pitch_coach_backend.module.take.entity import Calibration, Take
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     TakeInitRequestDTO,
@@ -24,12 +26,14 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     if take_repository.get_script_version_in_pitch(take_dto.script_version_id, pitch_id) is None:
         raise NonExistentTake()
 
+    next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,
         mode=take_dto.mode,
         script_mode=take_dto.script_mode,
         presentation_version_id=take_dto.presentation_version_id,
         script_version_id=take_dto.script_version_id,
+        take_number=next_take_number
     )
 
     saved_take = take_repository.save(new_take)
@@ -67,8 +71,21 @@ def update_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, ta
 
     return updated_take.id
 
+def delete_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
+    take_repository = TakeRepository(db)
+    existing_take = take_repository.get_in_pitch(take_id, pitch_id)
+
+    if not existing_take:
+        raise NonExistentTake()
+
+    PitchRepository(db).clear_best_take(pitch_id, take_id)
+    take_repository.delete(existing_take)
+    db.commit()
+
+    return take_id
+
 # Calibration 완료 후 Calibration 데이터 저장
-def create_calibration(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, calibration_dto: CalibrationDTO):
+def create_calibration_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, calibration_dto: CalibrationDTO):
     take_repository = TakeRepository(db)
     existing_take = take_repository.get_in_pitch(take_id, pitch_id)
 
@@ -90,6 +107,31 @@ def create_calibration(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, cal
     db.commit()
 
     return saved_calibration.id
+
+def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
+    # 미션 생성 로직
+    pass
+
+def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
+    take_repository = TakeRepository(db)
+    latest_take = take_repository.get_latest_take_in_pitch(pitch_id)
+
+    if latest_take is None:
+        return None
+
+    return PreviousMissionsDTO(
+        source_take_id=latest_take.id,
+        next_take_number=latest_take.take_number + 1,
+        missions = [
+            MissionDTO(
+                mission_id=mission.source_take_id,
+                slide_number=mission.slide_number,
+                description=mission.description,
+                priority=mission.priority,
+                completed=mission.complete
+            ) for mission in take_repository.get_missions_in_take(latest_take.id)
+        ]
+    )
 
 
 # ── 실시간 STT (realtime 모듈이 부른다) ──────────────────────────────
