@@ -1,0 +1,375 @@
+<!doctype html>
+<!--
+  실시간 STT 수동 테스트 페이지 (개발 전용).
+
+  프론트엔드가 아직 없는 동안 마이크 → AudioWorklet → WebSocket → Deepgram 경로 전체를
+  브라우저에서 확인하려고 만들었다. FE 연동 계약(첫 메시지 auth, 8바이트 프레임 헤더,
+  stop 뒤 closed 대기)을 실행 가능한 형태로 남긴 참조 구현이기도 하다.
+
+  **앱이 이 파일을 서빙하지 않는다.** main.py 에 StaticFiles 로 붙이지 말 것.
+
+  필요한 것
+
+    - backend/.env 에 DEEPGRAM_API_KEY 가 있어야 한다 (.env.example 이 키 목록이다)
+    - 먼저 oauth-test.html 로 구글 로그인을 해 둔다. 이 페이지는 그때 심긴 쿠키로
+      /api/auth/refresh 를 불러 Access 토큰을 얻는다
+
+  실행
+
+      cd backend
+      uv run uvicorn pitch_coach_backend.main:app --port 8000    # 터미널 1
+      python3 -m http.server 3000 --directory dev                # 터미널 2
+      open http://localhost:3000/oauth-test.html                 # 로그인 먼저
+      open http://localhost:3000/stt-test.html
+
+  **3000 포트로 열어야 한다.** 서버가 Origin 을 FRONTEND_BASE_URL 과 대조하므로
+  file:// 로 열면 WebSocket 이 1008 로 닫힌다. 그 검사를 확인하는 것도 이 페이지의 일이다.
+
+  마이크는 secure context 에서만 열린다. localhost 는 예외로 허용되지만 배포 도메인은
+  HTTPS 여야 한다 (README 인프라 표).
+-->
+<meta charset="utf-8">
+<title>실시간 STT 로컬 테스트</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+         max-width: 900px; margin: 32px auto; padding: 0 20px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  h2 { font-size: 14px; margin: 24px 0 8px; opacity: .7; }
+  .sub { opacity: .65; margin-bottom: 20px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+  button { font: inherit; padding: 8px 14px; border: 1px solid #8886; border-radius: 6px;
+           background: #8881; cursor: pointer; }
+  button:hover:not(:disabled) { background: #8883; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+  button.danger { background: #c0392b; color: #fff; border-color: #c0392b; }
+  input[type=text] { font: inherit; padding: 6px 10px; border: 1px solid #8886; border-radius: 6px;
+                     background: transparent; color: inherit; }
+  label.chk { display: inline-flex; gap: 5px; align-items: center; opacity: .8; }
+  .state { border: 1px solid #8884; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;
+           display: grid; grid-template-columns: 130px 1fr 130px 1fr; gap: 4px 10px; }
+  .state b { font-weight: 600; opacity: .7; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ok { color: #1a7f37; } .bad { color: #c0392b; } .warn { color: #b26a00; } .dim { opacity: .6; }
+  #level { height: 8px; border-radius: 4px; background: #8882; overflow: hidden; }
+  #level > div { height: 100%; width: 0; background: #1a7f37; transition: width .08s linear; }
+  #interim { border: 1px dashed #8886; border-radius: 8px; padding: 12px 14px; min-height: 46px;
+             opacity: .8; }
+  #finals { border: 1px solid #8884; border-radius: 8px; padding: 8px 14px; min-height: 120px;
+            max-height: 320px; overflow: auto; }
+  .seg { padding: 8px 0; border-bottom: 1px solid #8882; }
+  .seg:last-child { border-bottom: 0; }
+  .seg .head { font-size: 12px; opacity: .55; }
+  .seg .text { font-size: 15px; margin: 2px 0 5px; }
+  .w { display: inline-block; font-size: 11px; padding: 1px 6px; margin: 1px 3px 1px 0;
+       border: 1px solid #8884; border-radius: 10px; }
+  .w.filler { border-color: #b26a00; color: #b26a00; }
+  #log { border: 1px solid #8884; border-radius: 8px; padding: 10px 14px; height: 150px;
+         overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+         font-size: 12px; }
+</style>
+
+<h1>실시간 STT 로컬 테스트</h1>
+<div class="sub">마이크 → AudioWorklet(16 kHz mono Int16) → <code>WS /api/ws/takes/{takeId}</code> → Deepgram</div>
+
+<div class="row">
+  <label>API <input type="text" id="api" size="26"></label>
+  <label>Take <input type="text" id="take" size="34" class="mono" placeholder="실제 Take id"></label>
+  <span class="dim">서버가 Take 존재·소유를 검사한다 — <code>uv run python dev/stt-send-pcm.py --create-take --email …</code> 로 만든 id</span>
+</div>
+
+<div class="row">
+  <button class="primary" onclick="getToken()">1. 토큰 받기</button>
+  <button class="primary" id="b-start" onclick="start()">2. 시작</button>
+  <button id="b-stop" onclick="stopTake()" disabled>3. 중지 (stop)</button>
+  <button class="danger" id="b-drop" onclick="dropConnection()" disabled>연결만 끊기</button>
+  <label class="chk"><input type="checkbox" id="autoReconnect" checked> 자동 재연결</label>
+</div>
+
+<div class="row">
+  <span class="dim">마이크 처리 —</span>
+  <label class="chk"><input type="checkbox" id="ec" checked> echoCancellation</label>
+  <label class="chk"><input type="checkbox" id="ns" checked> noiseSuppression</label>
+  <label class="chk"><input type="checkbox" id="agc" checked> autoGainControl</label>
+  <span class="dim">(끄고 켜 보며 "음·어" 가 살아남는지 비교한다)</span>
+</div>
+
+<div class="state">
+  <b>토큰</b><span id="s-token" class="dim">없음</span>
+  <b>WebSocket</b><span id="s-ws" class="dim">닫힘</span>
+  <b>STT 상태</b><span id="s-stt" class="dim">-</span>
+  <b>STT 세션</b><span id="s-session" class="dim">-</span>
+  <b>프레임</b><span id="s-frames" class="dim">-</span>
+  <b>드롭 / 유실</b><span id="s-loss" class="dim">-</span>
+  <b>보낸 시간</b><span id="s-sent" class="dim">-</span>
+  <b>마이크</b><span id="level"><div></div></span>
+</div>
+
+<h2>지금 (interim — 계속 고쳐진다)</h2>
+<div id="interim" class="dim">-</div>
+
+<h2>확정 (final — 저장·분석은 이것만 쓴다)</h2>
+<div id="finals"></div>
+
+<h2>로그</h2>
+<div id="log"></div>
+
+<script>
+// realtime/fillers.py 의 KEYTERM_FILLERS 와 같은 목록. 전사에 살아남았는지 눈으로 보려고 표시만 한다
+const FILLERS = new Set(['음','어','아','에','으','그','저','이제','인제','뭐','자','저기','음음','어어','으음'])
+
+const $ = id => document.getElementById(id)
+const apiInput = $('api'), takeInput = $('take'), log = $('log')
+
+apiInput.value = new URLSearchParams(location.search).get('api')
+  || localStorage.getItem('stt-test-api') || 'http://localhost:8000'
+apiInput.onchange = () => localStorage.setItem('stt-test-api', api())
+const api = () => apiInput.value.replace(/\/$/, '')
+const csrf = () => document.cookie.split('; ').find(c => c.startsWith('csrf_token='))?.split('=')[1]
+takeInput.value = localStorage.getItem('stt-test-take') || ''
+takeInput.onchange = () => localStorage.setItem('stt-test-take', takeInput.value.trim())
+
+let accessToken = null
+let ws = null, wsReady = false, ctx = null, node = null, micStream = null
+let seq = 0, firstFrame = null, sentMs = 0, micPeak = 0
+let stopping = false, retries = 0
+const pending = []              // 재연결 전까지 들고 있을 프레임 (FE 계약: 1~2초)
+const MAX_PENDING = 20          // 100ms × 20 = 2초
+
+function say(msg, cls = '') {
+  const t = new Date().toLocaleTimeString('ko-KR', { hour12: false })
+  const line = document.createElement('div')
+  if (cls) line.className = cls
+  line.textContent = `[${t}] ${msg}`
+  log.appendChild(line); log.scrollTop = log.scrollHeight
+}
+
+function set(id, text, cls = '') { const el = $(id); el.textContent = text; el.className = cls }
+
+// ── 1. 토큰 ──────────────────────────────────────────────────────────
+
+async function getToken() {
+  const token = csrf()
+  if (!token) return say('csrf_token 쿠키가 없다. oauth-test.html 에서 먼저 로그인한다.', 'bad')
+  try {
+    const res = await fetch(api() + '/api/auth/refresh',
+      { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': token } })
+    const body = await res.json()
+    if (!res.ok) return say(`토큰 발급 실패 ${res.status} ${body.code ?? ''}`, 'bad')
+    accessToken = body.access_token
+    set('s-token', `있음 (${body.expires_in}초)`, 'ok')
+    say('Access 토큰을 메모리에 보관했다. WebSocket 첫 메시지로 보낸다.', 'ok')
+  } catch (e) {
+    say(`토큰 요청 실패: ${e.message} — 백엔드가 떴는지, 3000 포트로 열었는지 확인한다`, 'bad')
+  }
+}
+
+// ── 2. 마이크 ────────────────────────────────────────────────────────
+
+// AudioWorklet 은 URL 로 받는다. 이 페이지를 한 파일로 두려고 Blob 으로 만든다.
+// (실제 FE 는 public/worklets/ 에 평범한 JS 로 둔다 — 번들러를 태우지 않으려고)
+const WORKLET_SRC = `
+class PcmFramer extends AudioWorkletProcessor {
+  constructor () {
+    super()
+    this.size = Math.round(sampleRate / 10)   // 100ms
+    this.buf = new Int16Array(this.size)
+    this.n = 0; this.startFrame = 0; this.peak = 0
+  }
+  process (inputs) {
+    const ch = inputs[0] && inputs[0][0]
+    if (!ch) return true
+    for (let i = 0; i < ch.length; i++) {
+      if (this.n === 0) this.startFrame = currentFrame + i
+      const s = Math.max(-1, Math.min(1, ch[i]))
+      if (Math.abs(s) > this.peak) this.peak = Math.abs(s)
+      // Int16 로 스케일. 음수 쪽이 한 칸 더 넓다
+      this.buf[this.n++] = s < 0 ? s * 0x8000 : s * 0x7fff
+      if (this.n === this.size) {
+        const copy = this.buf.slice()
+        this.port.postMessage({ pcm: copy.buffer, startFrame: this.startFrame, peak: this.peak },
+                              [copy.buffer])
+        this.n = 0; this.peak = 0
+      }
+    }
+    return true
+  }
+}
+registerProcessor('pcm-framer', PcmFramer)
+`
+
+async function start() {
+  if (!accessToken) return say('먼저 1번으로 토큰을 받는다.', 'bad')
+  if (!takeInput.value.trim()) return say('Take id 가 필요하다 (stt-send-pcm.py --create-take).', 'bad')
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: $('ec').checked,
+        noiseSuppression: $('ns').checked,
+        autoGainControl: $('agc').checked,
+      }
+    })
+  } catch (e) {
+    return say(`마이크를 못 열었다: ${e.name} — 권한을 허용했는지, https 또는 localhost 인지 본다`, 'bad')
+  }
+
+  // 브라우저 리샘플러에 16 kHz 를 맡긴다. 직접 데시메이션하면 안티앨리어싱 필터를 붙여야 한다
+  ctx = new AudioContext({ sampleRate: 16000 })
+  if (ctx.sampleRate !== 16000) say(`AudioContext 가 ${ctx.sampleRate}Hz 로 열렸다 — 이 브라우저는 16k 를 못 준다`, 'warn')
+  const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }))
+  await ctx.audioWorklet.addModule(url)
+  URL.revokeObjectURL(url)
+
+  node = new AudioWorkletNode(ctx, 'pcm-framer')
+  node.port.onmessage = e => onFrame(e.data)
+  const mute = ctx.createGain(); mute.gain.value = 0     // 출력이 없으면 process 가 안 도는 브라우저가 있다
+  ctx.createMediaStreamSource(micStream).connect(node).connect(mute).connect(ctx.destination)
+
+  seq = 0; firstFrame = null; sentMs = 0; stopping = false; retries = 0; pending.length = 0
+  $('finals').innerHTML = ''
+  takeInput.disabled = true
+  $('b-start').disabled = true; $('b-stop').disabled = false; $('b-drop').disabled = false
+  say(`마이크를 열었다 (${ctx.sampleRate}Hz). Take ${takeInput.value}`, 'ok')
+  connect()
+}
+
+function onFrame({ pcm, startFrame, peak }) {
+  micPeak = peak
+  if (firstFrame === null) firstFrame = startFrame
+  // offset 은 오디오 시계로 잰다. 그래프가 멈추면 그만큼 갭이 생기고 서버가 무음으로 채운다
+  const offsetMs = Math.round((startFrame - firstFrame) / ctx.sampleRate * 1000)
+
+  seq += 1
+  const out = new Uint8Array(8 + pcm.byteLength)
+  const head = new DataView(out.buffer, 0, 8)
+  head.setUint32(0, seq, true)          // little-endian — 서버의 struct("<II") 와 같아야 한다
+  head.setUint32(4, offsetMs, true)
+  out.set(new Uint8Array(pcm), 8)
+
+  // ready 전에는 보내지 않는다. OPEN 만 보고 보내면 버퍼보다 **새 프레임이 먼저** 나가고,
+  // 서버가 뒤늦게 도착한 낮은 seq 를 역행으로 버린다
+  if (ws && wsReady) {
+    ws.send(out)
+    sentMs = offsetMs + 100
+  } else {
+    // 끊겨 있는 동안 들고 있다가 다시 붙으면 보낸다 (FE 계약: 1~2초 버퍼)
+    pending.push(out)
+    while (pending.length > MAX_PENDING) pending.shift()
+  }
+}
+
+// ── 3. WebSocket ─────────────────────────────────────────────────────
+
+function connect() {
+  const url = api().replace(/^http/, 'ws') + '/api/ws/takes/' + takeInput.value
+  set('s-ws', '연결 중…', 'dim')
+  wsReady = false
+  ws = new WebSocket(url)
+  ws.onopen = () => {
+    set('s-ws', '열림', 'ok')
+    ws.send(JSON.stringify({ type: 'auth', token: accessToken }))   // 브라우저는 헤더를 못 붙인다
+  }
+  ws.onmessage = e => handle(JSON.parse(e.data))
+  ws.onerror = () => say('WebSocket 오류', 'bad')
+  ws.onclose = e => {
+    wsReady = false
+    set('s-ws', `닫힘 (${e.code})`, e.code === 1000 ? 'dim' : 'bad')
+    say(`WebSocket 닫힘 code=${e.code} ${e.reason || ''}`, e.code === 1000 ? 'dim' : 'bad')
+    ws = null
+    if (stopping || !ctx) return
+    if (e.code === 1008) return say('1008 은 인증·권한·Take 검사·중복 연결이다. 재연결하지 않는다.', 'bad')
+    if (!$('autoReconnect').checked) return
+    if (++retries > 3) return say('재연결 3회 실패. 포기한다.', 'bad')
+    const wait = 500 * retries
+    say(`${wait}ms 뒤 재연결한다 (${retries}/3). 서버는 grace 동안 STT 세션을 살려 둔다.`, 'warn')
+    setTimeout(() => { if (!stopping && ctx) connect() }, wait)
+  }
+}
+
+function handle(msg) {
+  switch (msg.type) {
+    case 'ready':
+      retries = 0
+      set('s-stt', msg.stt_state, msg.stt_state === 'ok' ? 'ok' : 'warn')
+      set('s-session', String(msg.stt_session_no))
+      say(`ready — stt_state=${msg.stt_state} session=${msg.stt_session_no}`, 'ok')
+      // 버퍼를 순서대로 비운 **뒤에** 실시간 전송을 연다. 순서가 뒤집히면 서버가 버린다
+      if (pending.length) {
+        say(`끊겨 있는 동안 모아 둔 ${pending.length}개 프레임을 흘린다`, 'warn')
+        for (const f of pending) ws.send(f)
+        pending.length = 0
+      }
+      wsReady = true
+      break
+    case 'transcript':
+      msg.is_final ? addFinal(msg) : ($('interim').textContent = msg.text || '…',
+                                      $('interim').className = '')
+      break
+    case 'stt_status':
+      set('s-stt', msg.state, msg.state === 'ok' ? 'ok' : msg.state === 'closed' ? 'dim' : 'warn')
+      set('s-session', String(msg.stt_session_no))
+      set('s-frames', `${msg.frames} (무음 ${msg.silence_ms}ms)`)
+      set('s-loss', `${msg.dropped_frames}개 / ${msg.lost_ms}ms`, msg.lost_ms ? 'warn' : 'dim')
+      say(`stt_status ${msg.state} session=${msg.stt_session_no} frames=${msg.frames} lost=${msg.lost_ms}ms`)
+      if (msg.state === 'closed') finishStop()
+      break
+    case 'error':
+      say(`error ${msg.code}: ${msg.message}`, 'bad')
+      break
+    default:
+      say('모르는 메시지: ' + JSON.stringify(msg), 'dim')
+  }
+}
+
+function addFinal(msg) {
+  $('interim').textContent = '-'; $('interim').className = 'dim'
+  const seg = document.createElement('div')
+  seg.className = 'seg'
+  const words = msg.words.map(w =>
+    `<span class="w ${FILLERS.has(w.word) ? 'filler' : ''}">${w.start_ms}~${w.end_ms} · ${w.confidence.toFixed(2)} · ${w.word}</span>`
+  ).join('')
+  seg.innerHTML =
+    `<div class="head">${msg.segment_id} · ${msg.start_ms}~${msg.end_ms}ms · conf ${msg.confidence.toFixed(2)}`
+    + `${msg.speech_final ? ' · speech_final' : ''}</div>`
+    + `<div class="text">${msg.text || '<span class="dim">(빈 구간)</span>'}</div><div>${words}</div>`
+  $('finals').appendChild(seg)
+  $('finals').scrollTop = $('finals').scrollHeight
+}
+
+// ── 4. 종료 ──────────────────────────────────────────────────────────
+
+function stopTake() {
+  stopping = true
+  $('b-stop').disabled = true; $('b-drop').disabled = true
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    say('stop 을 보낸다. stt_status=closed 를 받을 때까지 닫지 않는다 — 먼저 닫으면 마지막 전사가 사라진다.')
+    ws.send(JSON.stringify({ type: 'stop' }))
+  } else {
+    finishStop()
+  }
+}
+
+function finishStop() {
+  if (node) { node.port.onmessage = null; node.disconnect(); node = null }
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null }
+  if (ctx) { ctx.close(); ctx = null }
+  takeInput.disabled = false
+  $('b-start').disabled = false; $('b-stop').disabled = true; $('b-drop').disabled = true
+  say('정리 완료. 같은 Take 로 다시 시작하면 서버가 새 스트림을 만든다.', 'ok')
+}
+
+/** stop 없이 연결만 끊는다. grace·재연결·번호 연속성을 확인하는 버튼이다. */
+function dropConnection() {
+  if (!ws) return
+  say('stop 없이 WebSocket 만 끊는다. 마이크는 계속 돈다 — 그동안 프레임은 버퍼에 쌓인다.', 'warn')
+  ws.close(4000, 'dev drop')
+}
+
+setInterval(() => {
+  $('level').firstElementChild.style.width = Math.min(100, micPeak * 140) + '%'
+  micPeak *= 0.6
+  if (ctx) set('s-sent', `${(sentMs / 1000).toFixed(1)}s · 버퍼 ${pending.length}`)
+}, 100)
+</script>

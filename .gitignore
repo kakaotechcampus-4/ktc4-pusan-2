@@ -38,6 +38,17 @@ Thumbs.db
 *.swp
 *.iml
 
+# ★ 루트의 .vscode/settings.json 하나만 되살립니다.
+#
+#   VS Code 는 워크스페이스 루트의 .vscode/ 하나만 읽습니다. 저장소 루트를 열면
+#   frontend/.vscode/ 가 통째로 무시되어, 작업자마다 포맷터와 에디터 TS 버전이
+#   갈립니다. 이 파일은 비밀이 아니라 두 사람의 결과물을 같게 만드는 설정입니다.
+#
+#   나머지(launch.json 같은 개인 설정)는 계속 막습니다.
+!/.vscode/
+/.vscode/*
+!/.vscode/settings.json
+
 # ── JavaScript / TypeScript ─────────────────────────
 node_modules/
 dist/

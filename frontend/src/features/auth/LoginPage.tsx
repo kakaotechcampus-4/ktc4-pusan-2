@@ -10,6 +10,7 @@ export function LoginPage() {
   const [redirecting, setRedirecting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const navigationStarted = useRef(false);
+
   const authError = params.get('auth_error');
   const error =
     authError === null
@@ -19,26 +20,30 @@ export function LoginPage() {
         : '로그인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.';
 
   useEffect(() => {
-    document.title = '로그인 | 피치코치';
     const reset = () => {
       navigationStarted.current = false;
       setRedirecting(false);
     };
+
     window.addEventListener('pageshow', reset);
+
     return () => window.removeEventListener('pageshow', reset);
   }, []);
 
   function login() {
     if (navigationStarted.current) return;
+
     if (import.meta.env.DEV && import.meta.env.VITE_USE_MOCK !== 'false') {
       setNotice(
         '현재는 화면 미리보기 환경입니다. 실제 Google 로그인은 서버 연결 후 사용할 수 있습니다.',
       );
       return;
     }
+
     navigationStarted.current = true;
     setNotice(null);
     setRedirecting(true);
+
     const base = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
     const callback = `/login?next=${encodeURIComponent(destination)}`;
     window.location.assign(
@@ -53,6 +58,7 @@ export function LoginPage() {
       : redirecting
         ? 'Google 로그인 화면으로 이동 중입니다.'
         : notice || error;
+
   if (session.data && !authError) return <Navigate replace to={destination} />;
 
   return (
@@ -93,7 +99,10 @@ export function LoginPage() {
         >
           {message && <p className="rounded-lg border border-line bg-cream px-4 py-3">{message}</p>}
           {session.isError && (
-            <button className="mt-3 underline" onClick={() => void session.refetch()}>
+            <button
+              className="mt-3 underline"
+              onClick={() => session.refetch().catch(() => undefined)}
+            >
               연결 다시 확인
             </button>
           )}

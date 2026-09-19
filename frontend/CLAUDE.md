@@ -152,6 +152,42 @@ cameraMs   + bottomMs    === measuredMs
 Take가 스냅샷하는 값(`mode`·`scriptMode`·자료/대본/기준 버전)이 준비 화면에서 정해지고,
 Calibration과 WebSocket을 붙일 `takeId`가 리허설 직전에 필요하기 때문입니다.
 
+### 9. `void` 연산자를 쓰지 않습니다 — 떠 있는 Promise에는 `.catch()`
+
+기다리지 않는 Promise에 `void`를 붙이지 마세요. `.catch()`를 붙입니다.
+
+```ts
+// 안 됩니다
+void appendGazeDecision(id, d);
+window.setInterval(() => void beat(sessionId, elapsedMs()), BEAT_MS);
+
+// 이렇게
+appendGazeDecision(id, d).catch(() => undefined);
+window.setInterval(() => beat(sessionId, elapsedMs()).catch(() => undefined), BEAT_MS);
+```
+
+`void promise`는 원래 `@typescript-eslint/no-floating-promises`가 켜져 있을 때 성립하는
+약속입니다 — 룰이 안 기다린 Promise를 **전부** 잡고, 개발자가 `void`로 "알고 그런다"고
+답하는 구조죠. 그래야 `void`가 없다는 것이 곧 실수라는 신호가 됩니다.
+
+**우리는 그 룰이 없습니다.** oxlint는 타입 정보를 안 보기 때문에 아예 제공되지 않습니다.
+강제하는 게 없으면 붙은 곳과 안 붙은 곳이 섞이고, 그 순간 `void`는 아무것도 말하지 않는
+장식이 됩니다. `.catch()`는 표시가 아니라 **처리**라서, 있다는 것 자체가 의도의 증거입니다.
+
+타입 자리의 `void`는 그대로 씁니다 — `function f(): void`, `() => void`, `Promise<void>`.
+쟁점은 연산자뿐입니다.
+
+**`.catch(() => undefined)`는 "처리했다"가 아니라 "명시적으로 버린다"입니다.**
+실패가 기록에 영향을 주는 자리는 실제 경로를 태우세요. 원본 오디오(`appendAudioChunk`)와
+시선 판정(`appendGazeDecision`)이 그렇습니다 — 조용히 빠지면 종료 시점에 고정되는
+숫자가 틀어지고, 되돌릴 방법이 없습니다.
+
+린터가 못 잡으니 리뷰에서 봅니다. 한 줄로 확인할 수 있습니다.
+
+```bash
+grep -rnE "(^|[^:>|] )void [a-zA-Z(]|=> void [a-zA-Z(]" src/ --include=*.ts --include=*.tsx
+```
+
 ---
 
 ## 구조

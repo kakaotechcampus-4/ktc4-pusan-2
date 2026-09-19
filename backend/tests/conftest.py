@@ -8,6 +8,7 @@
 """
 
 import os
+import uuid
 from collections.abc import Generator
 
 import pytest
@@ -23,6 +24,10 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-do-not-use-in-producti
 # 구글 값은 테스트에서 실제로 쓰이지 않고(외부 HTTP 는 모킹), 존재하기만 하면 된다.
 os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent.com")
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
+# Deepgram 도 마찬가지. 실제 연결은 가짜 서버로 대체한다.
+os.environ.setdefault("DEEPGRAM_API_KEY", "test-deepgram-key")
+# S3 도 마찬가지. 업로드는 테스트에서 모킹한다.
+os.environ.setdefault("S3_BUCKET_NAME", "test-bucket")
 
 
 def _test_database_url() -> str:
@@ -75,6 +80,16 @@ def db_session(engine: Engine) -> Generator[Session]:
         finally:
             session.close()
             outer.rollback()
+
+
+@pytest.fixture
+def user_id(db_session: Session) -> uuid.UUID:
+    from pitch_coach_backend.module.user.entity import User
+
+    user = User(email=f"{uuid.uuid4()}@example.com", name="테스트 사용자")
+    db_session.add(user)
+    db_session.flush()
+    return user.id
 
 
 @pytest.fixture

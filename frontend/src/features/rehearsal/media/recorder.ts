@@ -101,7 +101,7 @@ export function startRecording(
     seq += 1;
     // 받는 즉시 넘깁니다. 여기서 await 하지 않는 이유는 ondataavailable 을
     // 막으면 다음 조각이 밀리기 때문입니다.
-    void appendAudioChunk(clientSessionId, seq, offsetMs, e.data);
+    appendAudioChunk(clientSessionId, seq, offsetMs, e.data).catch(() => undefined);
   };
 
   recorder.onerror = () => onError?.('RECORDER_FAILED');
