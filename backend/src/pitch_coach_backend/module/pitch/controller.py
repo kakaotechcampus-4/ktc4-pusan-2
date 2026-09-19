@@ -14,8 +14,7 @@ from pitch_coach_backend.module.pitch.service import (
     delete_pitch_service,
     get_pitch_service,
     update_pitch_service,
-    upload_presentation_service,
-    upload_script_service,
+    upload_service
 )
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
@@ -80,12 +79,11 @@ def upload_presentation(
         script_file=script_file
     )
 
-    presentation_id = upload_presentation_service(db, pitch_id, upload_presentation_dto)
-    script_id = upload_script_service(db, pitch_id, upload_script_dto)
+    result = upload_service(db, pitch_id, upload_presentation_dto, upload_script_dto)
 
     return {
         "message": "Presentation uploaded successfully",
         "pitch_id": pitch_id,
-        "presentation_version_id": presentation_id,
-        "script_version_id": script_id
+        "presentation_version_id": result.presentation_version_id,
+        "script_version_id": result.script_version_id
     }
