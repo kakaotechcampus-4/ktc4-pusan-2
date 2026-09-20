@@ -133,11 +133,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          ssh "$SSH_HOST" "REMOTE_DIR=$REMOTE_DIR AWS_REGION=$AWS_REGION IMAGE_REPO=$IMAGE_REPO bash -se" <<'SCRIPT'
-          set -euo pipefail
           aws ecr get-login-password --region "$AWS_REGION" \
-            | docker login --username AWS --password-stdin "${IMAGE_REPO%%/*}"
+            | ssh "$SSH_HOST" "docker login --username AWS --password-stdin '${IMAGE_REPO%%/*}'"
 
+          ssh "$SSH_HOST" "REMOTE_DIR=$REMOTE_DIR bash -se" <<'SCRIPT'
+          set -euo pipefail
           cd ~/"$REMOTE_DIR"/infra
 
           FILES="-f docker-compose.yml -f docker-compose.dev.yml"

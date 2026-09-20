@@ -64,6 +64,7 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_sec: Mapped[int | None] = mapped_column(Integer)
+    goal_time_sec: Mapped[int | None] = mapped_column(Integer)
     # 슬라이드 넘김·일시정지 같은 원본 이벤트열. 재생과 재분석에 쓴다.
     event_logs: Mapped[Any | None] = mapped_column(JSONB)
 
