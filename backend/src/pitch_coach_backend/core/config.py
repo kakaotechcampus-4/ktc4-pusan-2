@@ -24,12 +24,22 @@ class Settings(BaseSettings):
     google_client_secret: str
     google_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
 
+    # Deepgram 스트리밍 STT. 서버만 알고 브라우저에는 절대 내려보내지 않는다.
+    deepgram_api_key: str
+
     # 콜백이 끝난 뒤 브라우저를 돌려보낼 프론트 주소. CORS 허용 origin 으로도 쓴다.
     frontend_base_url: str = "http://localhost:3000"
 
     # 운영에서 설정을 빠뜨려도 Secure 가 붙는 쪽이 안전하다.
     # Chrome·Firefox 는 http://localhost 를 신뢰 출처로 보므로 로컬에서도 동작한다.
     cookie_secure: bool = True
+
+    # AWS S3 Configuration
+    # SSO로 로그인, 그래서 따로 액세스&시크릿 키를 발급받지 않아도 됨.
+    s3_bucket_name: str
+    s3_region: str = "ap-northeast-2"
+    # AWS_PROFILE 환경변수로 SSO 프로필 지정
+    aws_profile: str | None = None
 
 
 settings = Settings()

@@ -18,7 +18,6 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/pitch-coach
       IMAGE_TAG: ${{ github.sha }}
       # caddy : develop의 경우 8080
       FILES: -f docker-compose.yml -f docker-compose.dev.yml
@@ -31,12 +30,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Resolve image repo
+        run: |
+          set -euo pipefail
+          echo "IMAGE_REPO=${{ steps.ecr.outputs.registry }}/pitch-coach" >> "$GITHUB_ENV"
+
+      - name: Ensure ECR repository
+        run: |
+          set -euo pipefail
+          aws ecr describe-repositories --repository-names pitch-coach --region "$AWS_REGION" >/dev/null 2>&1 \
+            || aws ecr create-repository --repository-name pitch-coach --region "$AWS_REGION" >/dev/null
+
+      - uses: docker/setup-buildx-action@v3
 
       - name: Stub env files
         run: touch backend/.env frontend/.env
@@ -48,12 +62,6 @@ jobs:
           docker compose $FILES push be fe
 
       # ── 여기부터 EC2 접속 (22번 포트 대신 SSM 터널 사용) ──
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
 
       - name: Install session-manager-plugin
         run: |
@@ -122,15 +130,11 @@ jobs:
             | ssh "$SSH_HOST" "cat > ~/$REMOTE_DIR/infra/.env"
 
       - name: Pull & up on EC2
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           set -euo pipefail
 
-          # 자격증명도 stdin으로: 원격 명령줄(ps)이나 셸 파싱에 노출되지 않는다
-          printf '%s\n%s\n' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" \
-            | ssh "$SSH_HOST" 'read -r u; read -r t; printf "%s" "$t" | docker login -u "$u" --password-stdin'
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | ssh "$SSH_HOST" "docker login --username AWS --password-stdin '${IMAGE_REPO%%/*}'"
 
           ssh "$SSH_HOST" "REMOTE_DIR=$REMOTE_DIR bash -se" <<'SCRIPT'
           set -euo pipefail

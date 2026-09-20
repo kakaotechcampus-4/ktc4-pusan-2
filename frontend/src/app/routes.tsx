@@ -1,9 +1,15 @@
+import type { ReactElement } from 'react';
 import { createBrowserRouter } from 'react-router';
+import { PageTitle } from './PageTitle';
 import { Stub } from '@/shared/ui/Stub';
 import { StageDemo } from '@/features/rehearsal/Stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
+import { WelcomePage } from '@/features/onboarding/WelcomePage';
+import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
+import { PreparePage } from '@/features/rehearsal/prepare/PreparePage';
+import { RehearsalPage } from '@/features/rehearsal/Stage/RehearsalPage';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -15,37 +21,43 @@ import { RequireSession } from '@/features/auth/session';
 // P 번호와 경로를 열로 맞춰 둔다 — 화면 목록 문서와 나란히 놓고 대조하는 표다.
 // prettier-ignore
 const routes = [
-  { path: '/',            element: <Stub id="P2"   name="홈 대시보드" track="B" /> },
-  { path: '/welcome',     element: <Stub id="P1"   name="온보딩" track="B" /> },
-  { path: '/login',       element: <LoginPage /> },
-  { path: '/about',       element: <Stub id="P14"  name="분석 방식 설명" track="B" /> },
-  { path: '/pitches',     element: <Stub id="P10"  name="Pitch 목록" track="B" /> },
-  { path: '/pitch/new',   element: <Stub id="P3"   name="Pitch 생성" track="B" /> },
-  { path: '/pitch/:id/edit', element: <Stub id="P13" name="Pitch 수정" track="B" /> },
-  { path: '/takes',       element: <Stub id="P16"  name="Take 기록" track="B" /> },
+  { path: '/',            title: '홈 대시보드 | 피치코치', element: <Stub id="P2"   name="홈 대시보드" track="B" /> },
+  { path: '/welcome',     title: '피치코치 | AI 발표 코치', element: <WelcomePage /> },
+  { path: '/login',       title: '로그인 | 피치코치', element: <LoginPage /> },
+  { path: '/about',       title: '분석 방식 설명 | 피치코치', element: <Stub id="P14"  name="분석 방식 설명" track="B" /> },
+  { path: '/pitches',     title: 'Pitch 목록 | 피치코치', element: <Stub id="P10"  name="Pitch 목록" track="B" /> },
+  { path: '/pitch/new',   title: 'Pitch 생성 | 피치코치', element: <Stub id="P3"   name="Pitch 생성" track="B" /> },
+  { path: '/pitch/:id/edit', title: 'Pitch 수정 | 피치코치', element: <Stub id="P13" name="Pitch 수정" track="B" /> },
+  { path: '/takes',       title: 'Take 기록 | 피치코치', element: <Stub id="P16"  name="Take 기록" track="B" /> },
   // ★ Take는 준비 화면의 시작 CTA에서 생긴다.
   //    그래서 준비는 pitchId, 리허설은 takeId를 받는다. 이 경계를 흐리지 말 것.
-  { path: '/pitch/:pitchId/prepare',   element: <Stub id="P4"  name="리허설 준비 · Calibration" track="A" /> },
-  { path: '/takes/:takeId/rehearsal',  element: <Stub id="P5"  name="실시간 코칭 리허설" track="A" /> },
-  { path: '/takes/:takeId/exam',       element: <Stub id="P5x" name="실전 검증 리허설" track="A" /> },
-  { path: '/takes/:takeId/processing', element: <Stub id="P6-0" name="분석 대기" track="B" /> },
-  { path: '/takes/:takeId/retry',      element: <Stub id="P15" name="업로드 실패 · 재시도" track="A" /> },
-  { path: '/takes/:takeId',            element: <Stub id="P6"  name="Take 리포트" track="B" /> },
-  { path: '/pitch/:id/comparison',     element: <Stub id="P7"  name="Take 비교" track="B" /> },
-  { path: '/pitch/:id/best',           element: <Stub id="P8"  name="Best Take 선택" track="B" /> },
-  { path: '/me',          element: <Stub id="P9"   name="마이페이지" track="B" /> },
-  { path: '/privacy',     element: <Stub id="F2"   name="개인정보 처리방침" track="B" /> },
-  { path: '/terms',       element: <Stub id="F2"   name="이용약관" track="B" /> },
-  { path: '/unsupported', element: <Stub id="P18"  name="미지원 브라우저" track="B" /> },
+  //    장치 점검은 준비 바로 앞에 선다. 여기서는 Take 를 만들지 않는다 — 점검하다 그만둔
+  //    만큼 빈 Take 가 쌓이고 takeNumber 가 실제 연습 횟수와 어긋난다.
+  { path: '/pitch/:pitchId/device-check', title: '장치 점검 | 피치코치', element: <DeviceCheckPage /> },
+  { path: '/pitch/:pitchId/prepare',   title: '리허설 준비 | 피치코치', element: <PreparePage /> },
+  //    같은 무대다. 코치가 말을 하느냐 마느냐만 다르고, 그 차이는 Take 의 mode 가 정한다 —
+  //    화면이 경로로 판단하지 않는다 (경로와 Take 가 어긋나면 서버 값이 맞다).
+  { path: '/takes/:takeId/rehearsal',  title: '실시간 코칭 리허설 | 피치코치', element: <RehearsalPage /> },
+  { path: '/takes/:takeId/exam',       title: '실전 검증 리허설 | 피치코치', element: <RehearsalPage /> },
+  { path: '/takes/:takeId/processing', title: '분석 대기 | 피치코치', element: <Stub id="P6-0" name="분석 대기" track="B" /> },
+  { path: '/takes/:takeId/retry',      title: '업로드 실패 · 재시도 | 피치코치', element: <Stub id="P15" name="업로드 실패 · 재시도" track="A" /> },
+  { path: '/takes/:takeId',            title: 'Take 리포트 | 피치코치', element: <Stub id="P6"  name="Take 리포트" track="B" /> },
+  { path: '/pitch/:id/comparison',     title: 'Take 비교 | 피치코치', element: <Stub id="P7"  name="Take 비교" track="B" /> },
+  { path: '/pitch/:id/best',           title: 'Best Take 선택 | 피치코치', element: <Stub id="P8"  name="Best Take 선택" track="B" /> },
+  { path: '/me',          title: '마이페이지 | 피치코치', element: <Stub id="P9"   name="마이페이지" track="B" /> },
+  { path: '/privacy',     title: '개인정보 처리방침 | 피치코치', element: <Stub id="F2"   name="개인정보 처리방침" track="B" /> },
+  { path: '/terms',       title: '이용약관 | 피치코치', element: <Stub id="F2"   name="이용약관" track="B" /> },
+  { path: '/unsupported', title: '미지원 브라우저 | 피치코치', element: <Stub id="P18"  name="미지원 브라우저" track="B" /> },
   // 제품 화면이 아니다. 무대 레이아웃·시선 테두리 검증용.
-  { path: '/dev/stage',   element: <StageDemo /> },
+  { path: '/dev/stage',   title: '무대 레이아웃 검증 | 피치코치', element: <StageDemo /> },
   // 프레임 예산 계기판. 부하별 처리 fps 를 읽는 곳.
-  { path: '/dev/media',   element: <MediaDevPage /> },
-  { path: '*',            element: <Stub id="404"  name="찾을 수 없음" track="B" /> },
-];
+  { path: '/dev/media',   title: '미디어 성능 검증 | 피치코치', element: <MediaDevPage /> },
+  { path: '*',            title: '찾을 수 없음 | 피치코치', element: <Stub id="404"  name="찾을 수 없음" track="B" /> },
+] satisfies { path: string; title: string; element: ReactElement }[];
 
 const publicPaths = [
   '/login',
+  '/welcome',
   '/about',
   '/privacy',
   '/terms',
@@ -54,13 +66,21 @@ const publicPaths = [
   '/dev/media',
   '*',
 ];
+
 export const router = createBrowserRouter(
   routes.map((route) =>
     publicPaths.includes(route.path)
-      ? route
+      ? {
+          path: route.path,
+          element: <PageTitle title={route.title}>{route.element}</PageTitle>,
+        }
       : {
           path: route.path,
-          element: <RequireSession />,
+          element: (
+            <PageTitle title={route.title}>
+              <RequireSession />
+            </PageTitle>
+          ),
           children: [{ index: true, element: route.element }],
         },
   ),

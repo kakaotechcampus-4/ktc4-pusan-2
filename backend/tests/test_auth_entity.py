@@ -33,12 +33,23 @@ def _refresh(user_id: uuid.UUID, token_hash: str, **kw: object) -> RefreshToken:
     )
 
 
-def test_oauth_account_is_one_to_one_with_user(db_session: Session) -> None:
+def test_user_can_have_one_account_per_provider(db_session: Session) -> None:
+    """provider 가 다르면 한 회원에 여럿 붙는다. 스키마만 허용하고 붙이는 기능은 아직 없다."""
+    user = _user(db_session, "multi@example.com")
+    db_session.add(OAuthAccount(user_id=user.id, provider="google", provider_subject="sub-g"))
+    db_session.add(OAuthAccount(user_id=user.id, provider="kakao", provider_subject="sub-k"))
+    db_session.commit()
+
+    rows = db_session.scalars(select(OAuthAccount).where(OAuthAccount.user_id == user.id)).all()
+    assert sorted(row.provider for row in rows) == ["google", "kakao"]
+
+
+def test_user_cannot_have_two_accounts_of_the_same_provider(db_session: Session) -> None:
     user = _user(db_session, "one@example.com")
     db_session.add(OAuthAccount(user_id=user.id, provider="google", provider_subject="sub-1"))
     db_session.commit()
 
-    # 같은 사용자에게 두 번째 소셜 계정을 붙일 수 없다 (user_id UNIQUE)
+    # 같은 사용자에게 같은 provider 의 계정을 하나 더 붙일 수 없다 (UNIQUE(user_id, provider))
     db_session.add(OAuthAccount(user_id=user.id, provider="google", provider_subject="sub-2"))
     with pytest.raises(IntegrityError):
         db_session.commit()
@@ -56,10 +67,11 @@ def test_same_provider_subject_cannot_map_to_two_users(db_session: Session) -> N
         db_session.commit()
 
 
-def test_deleting_user_cascades_to_oauth_account(db_session: Session) -> None:
-    """탈퇴하면 연결된 소셜 계정도 사라진다."""
+def test_deleting_user_cascades_to_oauth_accounts(db_session: Session) -> None:
+    """탈퇴하면 연결된 소셜 계정이 몇 개든 전부 사라진다."""
     user = _user(db_session, "bye@example.com")
-    db_session.add(OAuthAccount(user_id=user.id, provider="google", provider_subject="sub-bye"))
+    db_session.add(OAuthAccount(user_id=user.id, provider="google", provider_subject="sub-bye-g"))
+    db_session.add(OAuthAccount(user_id=user.id, provider="kakao", provider_subject="sub-bye-k"))
     db_session.commit()
 
     db_session.delete(user)
