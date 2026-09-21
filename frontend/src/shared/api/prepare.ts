@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest } from './client';
+import { postJson } from './http';
 import type {
   CalibrationSummary,
   CreateTakeRequest,
@@ -8,14 +9,6 @@ import type {
 } from '@/types/api';
 
 export const prepareKey = (pitchId: string) => ['prepare', pitchId] as const;
-
-/** JSON 본문을 보내는 요청. 경로는 `/api` 로 시작해야 apiRequest 가 받습니다 */
-const postJson = <T>(path: string, body: unknown) =>
-  apiRequest<T>(path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
 
 /** 준비 화면(P4)과 장치 점검이 같이 씁니다 — 제목·버전·Take 번호가 한 곳에서 옵니다 */
 export function usePrepare(pitchId: string) {
