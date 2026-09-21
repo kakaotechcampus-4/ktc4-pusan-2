@@ -15,10 +15,10 @@ class TakeUpdateRequestDTO(BaseModel):
 
 class TakeSummaryDTO(BaseModel):
     take_version: int
-    take_elapsed: int
+    take_elapsed: int | None = None
     take_time: int
     script_mode: str
-    score: int
+    score: int | None = None
     delta: int | None = None
 
 class CalibrationDTO(BaseModel):

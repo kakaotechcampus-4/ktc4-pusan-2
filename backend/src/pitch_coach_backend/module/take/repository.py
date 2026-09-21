@@ -1,3 +1,4 @@
+from ast import List
 import uuid
 
 from sqlalchemy import func, select
@@ -11,16 +12,15 @@ class TakeRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_takes_in_pitch(self, pitch_id: uuid.UUID) -> list[Take] | None:
+    def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[Take] | None:
         return self.db.execute(
             select(Take).where(Take.pitch_id == pitch_id)
         ).scalars().all()
 
-
-    def get_score_in_take(self, take_id: uuid.UUID) -> int | None:
-        return self.db.scalar(
-            select(TakeSummary.score).where(TakeSummary.take_id == take_id)
-        )
+    def get_scores_in_take(self, take_id: List[uuid.UUID]) -> int | None:
+        return self.db.execute(
+            select(TakeSummary.score).where(TakeSummary.take_id.in_(take_id))
+        ).scalars().all()
     
     def get_presentation_version_in_pitch(
         self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID

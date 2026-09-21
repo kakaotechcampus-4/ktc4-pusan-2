@@ -1,5 +1,6 @@
 import uuid
 
+from pitch_coach_backend.module.take.entity import Take, TakeSummary
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,20 @@ class PitchRepository:
         return self.db.scalar(
             select(Pitch).where(Pitch.id == pitch_id, Pitch.user_id == user_id)
         )
+
+    def get_all_by_user(self, user_id: uuid.UUID) -> list[Pitch]:
+        return self.db.execute(
+            select(Pitch).where(Pitch.user_id == user_id)
+        ).scalars().all()
+
+    def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[tuple[Take, int | None]]:
+        return self.db.execute(
+            select(Take, TakeSummary.score)
+            .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
+            .where(Take.pitch_id == pitch_id)
+            # take_number 순서 - 먼저 한 순서대로 정렬됨.
+            .order_by(Take.take_number)
+        ).all()
 
     def save(self, pitch: Pitch) -> Pitch:
         self.db.add(pitch)
