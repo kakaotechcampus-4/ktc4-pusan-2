@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { appendSlideChange } from '@/features/rehearsal/lib/db';
+import { noteWriteFailure } from '@/features/rehearsal/lib/writeFailures';
 import type { Ms } from '@/types/api';
 import { useRehearsalStore } from './rehearsalStore';
 
@@ -39,7 +40,13 @@ export function useSlideDeck({
       const atMs = elapsedMs();
       slideStartedAtRef.current = atMs;
       setSlide(clamped);
-      if (clientSessionId) appendSlideChange(clientSessionId, atMs, clamped).catch(() => undefined);
+      // 전환 하나가 빠지면 그 슬라이드의 체류 시간이 앞 슬라이드에 합산됩니다 —
+      // 서버가 받는 타임라인이 조용히 달라지므로 버리지 않고 셉니다
+      if (clientSessionId) {
+        appendSlideChange(clientSessionId, atMs, clamped).catch((err: unknown) =>
+          noteWriteFailure(clientSessionId, 'slideChange', err),
+        );
+      }
     },
     [total, elapsedMs, setSlide, clientSessionId],
   );
@@ -49,8 +56,10 @@ export function useSlideDeck({
   useEffect(() => {
     if (!enabled || !clientSessionId) return;
     slideStartedAtRef.current = 0;
+    // 이 0ms 행이 타임라인의 시작점입니다. 빠지면 첫 전환 전까지가
+    // 어느 슬라이드였는지 서버가 알 방법이 없습니다
     appendSlideChange(clientSessionId, 0, useRehearsalStore.getState().slideNumber).catch(
-      () => undefined,
+      (err: unknown) => noteWriteFailure(clientSessionId, 'slideChange', err),
     );
   }, [enabled, clientSessionId]);
 

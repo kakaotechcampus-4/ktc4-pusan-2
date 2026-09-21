@@ -51,7 +51,13 @@ export type GazeExcludedReason =
   | 'CAMERA_LOST'
   | 'USER_DECLINED'
   | 'VALIDATION_FAILED'
-  | 'UNCERTAIN_RATIO_EXCEEDED';
+  | 'UNCERTAIN_RATIO_EXCEEDED'
+  /**
+   * 판정은 나왔는데 IndexedDB 에 못 쌓은 구간이 있습니다 (저장소 가득 참 등).
+   * 몇 초가 빠졌는지 알 수 없으므로 비율을 계산하면 조용히 틀린 숫자가 나옵니다.
+   * 다른 사유들과 달리 **측정 자체는 정상이었다**는 점이 다릅니다.
+   */
+  | 'STORAGE_FAILED';
 
 /** NORMAL 정상 · LIGHT 경량 모드 · OFF 시선 없이 진행 */
 export type GazeEngineProfile = 'NORMAL' | 'LIGHT' | 'OFF';

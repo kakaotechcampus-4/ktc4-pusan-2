@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { LevelBar } from '@/features/rehearsal/media/LevelBar';
 import { useCameraStream } from '@/features/rehearsal/media/useCameraStream';
@@ -9,6 +9,7 @@ import { usePitchDetail, useCompleteTake, useTakeContext } from '@/shared/api/ta
 import { buildGazePayload } from '@/features/rehearsal/lib/gazePayload';
 import {
   beat,
+  countAudioChunks,
   endSession,
   findSessionByTakeId,
   getSession,
@@ -20,10 +21,15 @@ import {
   setGazePerf,
   startSession,
 } from '@/features/rehearsal/lib/db';
+import {
+  clearWriteFailures,
+  noteWriteFailure,
+  readWriteFailures,
+} from '@/features/rehearsal/lib/writeFailures';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ScreenLabel } from '@/shared/ui/ScreenLabel';
 import { TemporalVoter } from '@/workers/temporalVoter';
-import type { CompleteRequest, Ms } from '@/types/api';
+import type { CompleteRequest, GazeExcludedReason, Ms } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
 import { useCoach } from './useCoach';
 import { useLiveGaze } from './useLiveGaze';
@@ -75,6 +81,21 @@ export function RehearsalPage() {
   const gazeDeclined = usePrepareStore((s) => s.gazeDeclined);
 
   const stageRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * 정해진 제외 사유. **IndexedDB 와 별개로** 들고 있습니다.
+   *
+   * DB 는 새로고침을 견디고, 이 ref 는 **DB 쓰기가 실패해도 남습니다.**
+   * 제외 표시를 놓치면 믿을 수 없는 숫자가 정상인 척 리포트에 실리므로,
+   * 둘 다 잃는 경우에만 그 일이 벌어지게 해 둡니다.
+   *
+   * `??=` 인 이유는 **먼저 정해진 사유가 이깁니다** — 카메라가 끊긴 뒤에
+   * 저장까지 실패했다고 사유가 STORAGE_FAILED 로 덮이면 원인이 뒤바뀝니다.
+   */
+  const excludedRef = useRef<GazeExcludedReason | null>(null);
+  const noteExclusion = useCallback((reason: GazeExcludedReason) => {
+    excludedRef.current ??= reason;
+  }, []);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
@@ -105,6 +126,8 @@ export function RehearsalPage() {
     videoRef,
     stageRef,
     clientSessionId: sessionId,
+    // 판정 저장이 실패해 제외가 정해지면 메모리에도 받아 둡니다
+    onExcluded: noteExclusion,
     // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
     // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다
     enabled: running && !gazeDeclined && live,
@@ -167,39 +190,52 @@ export function RehearsalPage() {
   // ── 제외 사유 배선 ───────────────────────────────────────────────
   // 한 번 정해지면 되돌리지 않습니다. 발표 도중 엔진이 죽었다면 그 Take의
   // 시선 숫자는 앞뒤가 다른 조건에서 나온 것이라 믿을 수 없습니다.
+  const excludeGaze = useCallback(
+    (id: string, reason: GazeExcludedReason) => {
+      noteExclusion(reason);
+      markGazeExcluded(id, reason).catch((err: unknown) =>
+        noteWriteFailure(id, 'gazeExcluded', err),
+      );
+    },
+    [noteExclusion],
+  );
+
   useEffect(() => {
     if (!sessionId) return;
-    if (gazeDeclined) markGazeExcluded(sessionId, 'USER_DECLINED').catch(() => undefined);
-  }, [sessionId, gazeDeclined]);
+    if (gazeDeclined) excludeGaze(sessionId, 'USER_DECLINED');
+  }, [sessionId, gazeDeclined, excludeGaze]);
 
   useEffect(() => {
     if (!sessionId || !deviceError) return;
-    markGazeExcluded(
-      sessionId,
-      deviceError === 'PERMISSION_DENIED' ? 'USER_DECLINED' : 'CAMERA_LOST',
-    ).catch(() => undefined);
-  }, [sessionId, deviceError]);
+    excludeGaze(sessionId, deviceError === 'PERMISSION_DENIED' ? 'USER_DECLINED' : 'CAMERA_LOST');
+  }, [sessionId, deviceError, excludeGaze]);
 
   useEffect(() => {
     if (!sessionId || !gazeError) return;
-    markGazeExcluded(sessionId, gazeError).catch(() => undefined);
-  }, [sessionId, gazeError]);
+    excludeGaze(sessionId, gazeError);
+  }, [sessionId, gazeError, excludeGaze]);
 
   // 엔진 버전은 종료 시점에 영구 고정됩니다 — 받는 즉시 기록해 둡니다
   useEffect(() => {
     if (!sessionId || !engineVersion) return;
-    setEngineVersion(sessionId, engineVersion).catch(() => undefined);
+    setEngineVersion(sessionId, engineVersion).catch((err: unknown) =>
+      noteWriteFailure(sessionId, 'engineVersion', err),
+    );
   }, [sessionId, engineVersion]);
 
   useEffect(() => {
     if (!sessionId || !perf) return;
-    setGazePerf(sessionId, perf.avgFps, perf.droppedFrames).catch(() => undefined);
+    setGazePerf(sessionId, perf.avgFps, perf.droppedFrames).catch((err: unknown) =>
+      noteWriteFailure(sessionId, 'gazePerf', err),
+    );
   }, [sessionId, perf]);
 
   // 하트비트 — 벽시계로 찍습니다. 탭이 죽으면 이 값이 마지막 흔적이 되고,
   // 다음에 앱을 열었을 때 "진행 중이던 Take가 있다"를 이걸로 압니다
   useEffect(() => {
     if (!running || !sessionId) return;
+    // 여기의 버리기는 의도한 것입니다 — 이 값은 매 틱 덮어써지므로
+    // 한 번 실패해도 다음 틱이 같은 자리를 채웁니다. 잃는 것이 없습니다.
     const id = window.setInterval(
       () => beat(sessionId, elapsedMs()).catch(() => undefined),
       BEAT_MS,
@@ -248,9 +284,26 @@ export function RehearsalPage() {
     const durationMs: Ms = elapsedMs();
 
     // 마지막 5초 조각까지 받고 멈춥니다. 이걸 기다리지 않으면 끝말이 잘립니다
-    await stopRecording();
+    const rec = await stopRecording();
     setPhase('ENDING');
     await endSession(sessionId);
+
+    // ── 대조 ────────────────────────────────────────────────────────
+    // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패와
+    // 실제로 남은 행 수를 함께 봅니다 — 어느 한쪽만으로는 모자랍니다.
+    // 장부는 "쓰다 실패한 것"을, 개수 대조는 "장부에도 안 남은 것"을 잡습니다.
+    //
+    // ★ 지금은 알리는 곳이 콘솔뿐입니다. audioFileKey(업로드 경로)가 붙으면
+    //   "원본이 불완전함" 을 서버에도 실어 보내야 합니다 — 그 자리가 여기입니다.
+    const savedChunks = await countAudioChunks(sessionId);
+    const failures = readWriteFailures(sessionId);
+    if (Object.keys(failures).length > 0 || savedChunks < rec.chunkCount) {
+      console.error('[rehearsal] 기록이 불완전합니다', {
+        실패: failures,
+        넘긴조각: rec.chunkCount,
+        실제저장: savedChunks,
+      });
+    }
 
     const row = await getSession(sessionId);
     const decisions = await readGazeDecisions(sessionId);
@@ -260,9 +313,13 @@ export function RehearsalPage() {
     const gazePayload = buildGazePayload({
       decisions,
       durationMs,
-      engineVersion: row?.engineVersion ?? null,
+      // DB 쓰기가 실패했어도 값 자체는 메모리에 있습니다. 행을 못 읽었다고
+      // ENGINE_VERSION_UNAVAILABLE 로 보내면 없는 사실을 만들어 내는 셈입니다
+      engineVersion: row?.engineVersion ?? engineVersion,
       decisionIntervalMs: TemporalVoter.INTERVAL_MS,
-      excludedReason: row?.gazeExcluded ? row.gazeExcludedReason : null,
+      // 행이 우선이고, 못 적혔으면 ref 가 받습니다. 제외를 놓치는 쪽이
+      // 잘못 제외하는 쪽보다 나쁩니다 — 틀린 숫자가 정상인 척 실리니까요
+      excludedReason: row?.gazeExcluded ? row.gazeExcludedReason : excludedRef.current,
       calibration,
     });
 
@@ -292,8 +349,8 @@ export function RehearsalPage() {
       //   업로드가 붙으면 그 키가 여기 들어옵니다 (실패 시 P15 재시도 화면).
       audioFileKey: '',
       clientPerf: {
-        avgGazeFps: row?.gazeAvgFps ?? 0,
-        droppedFrames: row?.gazeDroppedFrames ?? 0,
+        avgGazeFps: row?.gazeAvgFps ?? perf?.avgFps ?? 0,
+        droppedFrames: row?.gazeDroppedFrames ?? perf?.droppedFrames ?? 0,
         // LIGHT 강등 임계값은 I-03이 정해져야 만들 수 있습니다
         degradedToLightAtMs: null,
       },
@@ -301,6 +358,7 @@ export function RehearsalPage() {
 
     try {
       await complete.mutateAsync(body);
+      clearWriteFailures(sessionId);
       navigate(`/takes/${takeId}/processing`);
     } catch (e) {
       // 기록은 브라우저에 그대로 있습니다. 여기서 잃는 것은 없고,
@@ -441,7 +499,15 @@ export function RehearsalPage() {
                     window.setTimeout(() => setConfirming(false), 4000);
                     return;
                   }
-                  finish().catch(() => undefined);
+                  // ★ 여기를 비워 두면 안 됩니다 — finish() 는 mutateAsync 안쪽만
+                  //   try 로 감싸고 있어서, 그 앞의 stopRecording·endSession·읽기가
+                  //   실패하면 버튼은 '정리하는 중…' 에서 멈춘 채 아무 말도 안 합니다.
+                  //   기록은 IndexedDB 에 남아 있으니 다시 누를 수 있게 되돌립니다.
+                  finish().catch((e: unknown) => {
+                    console.error('[rehearsal] 종료 처리 실패', e);
+                    setEndError(toMessage(e));
+                    setPhase('RUNNING');
+                  });
                 }}
               >
                 {phase === 'ENDING'
