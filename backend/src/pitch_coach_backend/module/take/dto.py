@@ -13,6 +13,14 @@ class TakeUpdateRequestDTO(BaseModel):
     ended_at: str | None = None
     event_logs: list[dict] | None = None
 
+class TakeSummaryDTO(BaseModel):
+    take_version: int
+    take_elapsed: int
+    take_time: int
+    script_mode: str
+    score: int
+    delta: int | None = None
+
 class CalibrationDTO(BaseModel):
     face_detected: bool = False
     mic_detected: bool = False
