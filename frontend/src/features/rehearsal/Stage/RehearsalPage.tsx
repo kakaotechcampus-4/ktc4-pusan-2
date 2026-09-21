@@ -286,84 +286,90 @@ export function RehearsalPage() {
     // 마지막 5초 조각까지 받고 멈춥니다. 이걸 기다리지 않으면 끝말이 잘립니다
     const rec = await stopRecording();
     setPhase('ENDING');
-    await endSession(sessionId);
 
-    // ── 대조 ────────────────────────────────────────────────────────
-    // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패와
-    // 실제로 남은 행 수를 함께 봅니다 — 어느 한쪽만으로는 모자랍니다.
-    // 장부는 "쓰다 실패한 것"을, 개수 대조는 "장부에도 안 남은 것"을 잡습니다.
-    //
-    // ★ 지금은 알리는 곳이 콘솔뿐입니다. audioFileKey(업로드 경로)가 붙으면
-    //   "원본이 불완전함" 을 서버에도 실어 보내야 합니다 — 그 자리가 여기입니다.
-    const savedChunks = await countAudioChunks(sessionId);
-    const failures = readWriteFailures(sessionId);
-    if (Object.keys(failures).length > 0 || savedChunks < rec.chunkCount) {
-      console.error('[rehearsal] 기록이 불완전합니다', {
-        실패: failures,
-        넘긴조각: rec.chunkCount,
-        실제저장: savedChunks,
-      });
-    }
-
-    const row = await getSession(sessionId);
-    const decisions = await readGazeDecisions(sessionId);
-    const changes = await readSlideChanges(sessionId);
-    const coachRows = await readCoachLog(sessionId);
-
-    const gazePayload = buildGazePayload({
-      decisions,
-      durationMs,
-      // DB 쓰기가 실패했어도 값 자체는 메모리에 있습니다. 행을 못 읽었다고
-      // ENGINE_VERSION_UNAVAILABLE 로 보내면 없는 사실을 만들어 내는 셈입니다
-      engineVersion: row?.engineVersion ?? engineVersion,
-      decisionIntervalMs: TemporalVoter.INTERVAL_MS,
-      // 행이 우선이고, 못 적혔으면 ref 가 받습니다. 제외를 놓치는 쪽이
-      // 잘못 제외하는 쪽보다 나쁩니다 — 틀린 숫자가 정상인 척 실리니까요
-      excludedReason: row?.gazeExcluded ? row.gazeExcludedReason : excludedRef.current,
-      calibration,
-    });
-
-    const body: CompleteRequest = {
-      clientSessionId: sessionId,
-      startedAt: row?.startedAtIso ?? new Date(Date.now() - durationMs).toISOString(),
-      endedAt: new Date().toISOString(),
-      durationMs,
-      mode,
-      // 패널 숨김 UI는 아직 없습니다. 생기면 여기에 그 목록이 들어갑니다
-      hiddenPanels: [],
-      slideEvents: toSlideEvents(changes, durationMs),
-      gaze: gazePayload.payload,
-      liveFeedbacks: coachRows
-        .filter((c) => c.fired)
-        .map((c) => ({
-          type: c.type,
-          message: c.message ?? '',
-          triggeredAtMs: c.atMs,
-          // 1단은 규칙이라 확률이 없습니다. 2단(모델)이 붙으면 그쪽이 값을 채웁니다
-          confidence: 1,
-        })),
-      suppressedFeedbacks: coachRows
-        .filter((c) => !c.fired)
-        .map((c) => ({ type: c.type, atMs: c.atMs, reason: c.suppressedReason ?? 'UNKNOWN' })),
-      // ★ 오디오 업로드 경로가 아직 없습니다. 조각은 IndexedDB에 있고,
-      //   업로드가 붙으면 그 키가 여기 들어옵니다 (실패 시 P15 재시도 화면).
-      audioFileKey: '',
-      clientPerf: {
-        avgGazeFps: row?.gazeAvgFps ?? perf?.avgFps ?? 0,
-        droppedFrames: row?.gazeDroppedFrames ?? perf?.droppedFrames ?? 0,
-        // LIGHT 강등 임계값은 I-03이 정해져야 만들 수 있습니다
-        degradedToLightAtMs: null,
-      },
-    };
-
+    // ★ 여기서부터 끝까지 한 try 입니다. 중간이 실패해도 **무대를 되살리면 안 됩니다** —
+    //   phase 가 RUNNING 으로 돌아가면 useRecording 이 다시 돌면서 seq 가 0 부터
+    //   시작하고, audioChunks 의 키가 [clientSessionId, seq] 라 put 이 원본 조각을
+    //   덮어씁니다. 시계도 clock.start() 로 t0 를 다시 잡아 durationMs 가 어긋납니다.
+    //   기록은 IndexedDB 에 그대로 있으므로 재시도 화면으로 보냅니다.
     try {
+      await endSession(sessionId);
+
+      // ── 대조 ────────────────────────────────────────────────────────
+      // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패와
+      // 실제로 남은 행 수를 함께 봅니다 — 어느 한쪽만으로는 모자랍니다.
+      // 장부는 "쓰다 실패한 것"을, 개수 대조는 "장부에도 안 남은 것"을 잡습니다.
+      //
+      // ★ 지금은 알리는 곳이 콘솔뿐입니다. audioFileKey(업로드 경로)가 붙으면
+      //   "원본이 불완전함" 을 서버에도 실어 보내야 합니다 — 그 자리가 여기입니다.
+      const savedChunks = await countAudioChunks(sessionId);
+      const failures = readWriteFailures(sessionId);
+      if (Object.keys(failures).length > 0 || savedChunks < rec.chunkCount) {
+        console.error('[rehearsal] 기록이 불완전합니다', {
+          실패: failures,
+          넘긴조각: rec.chunkCount,
+          실제저장: savedChunks,
+        });
+      }
+
+      const row = await getSession(sessionId);
+      const decisions = await readGazeDecisions(sessionId);
+      const changes = await readSlideChanges(sessionId);
+      const coachRows = await readCoachLog(sessionId);
+
+      const gazePayload = buildGazePayload({
+        decisions,
+        durationMs,
+        // DB 쓰기가 실패했어도 값 자체는 메모리에 있습니다. 행을 못 읽었다고
+        // ENGINE_VERSION_UNAVAILABLE 로 보내면 없는 사실을 만들어 내는 셈입니다
+        engineVersion: row?.engineVersion ?? engineVersion,
+        decisionIntervalMs: TemporalVoter.INTERVAL_MS,
+        // 행이 우선이고, 못 적혔으면 ref 가 받습니다. 제외를 놓치는 쪽이
+        // 잘못 제외하는 쪽보다 나쁩니다 — 틀린 숫자가 정상인 척 실리니까요
+        excludedReason: row?.gazeExcluded ? row.gazeExcludedReason : excludedRef.current,
+        calibration,
+      });
+
+      const body: CompleteRequest = {
+        clientSessionId: sessionId,
+        startedAt: row?.startedAtIso ?? new Date(Date.now() - durationMs).toISOString(),
+        endedAt: new Date().toISOString(),
+        durationMs,
+        mode,
+        // 패널 숨김 UI는 아직 없습니다. 생기면 여기에 그 목록이 들어갑니다
+        hiddenPanels: [],
+        slideEvents: toSlideEvents(changes, durationMs),
+        gaze: gazePayload.payload,
+        liveFeedbacks: coachRows
+          .filter((c) => c.fired)
+          .map((c) => ({
+            type: c.type,
+            message: c.message ?? '',
+            triggeredAtMs: c.atMs,
+            // 1단은 규칙이라 확률이 없습니다. 2단(모델)이 붙으면 그쪽이 값을 채웁니다
+            confidence: 1,
+          })),
+        suppressedFeedbacks: coachRows
+          .filter((c) => !c.fired)
+          .map((c) => ({ type: c.type, atMs: c.atMs, reason: c.suppressedReason ?? 'UNKNOWN' })),
+        // ★ 오디오 업로드 경로가 아직 없습니다. 조각은 IndexedDB에 있고,
+        //   업로드가 붙으면 그 키가 여기 들어옵니다 (실패 시 P15 재시도 화면).
+        audioFileKey: '',
+        clientPerf: {
+          avgGazeFps: row?.gazeAvgFps ?? perf?.avgFps ?? 0,
+          droppedFrames: row?.gazeDroppedFrames ?? perf?.droppedFrames ?? 0,
+          // LIGHT 강등 임계값은 I-03이 정해져야 만들 수 있습니다
+          degradedToLightAtMs: null,
+        },
+      };
+
       await complete.mutateAsync(body);
       clearWriteFailures(sessionId);
       navigate(`/takes/${takeId}/processing`);
     } catch (e) {
       // 기록은 브라우저에 그대로 있습니다. 여기서 잃는 것은 없고,
       // 재시도 화면이 같은 clientSessionId로 다시 보냅니다
-      console.error('[rehearsal] complete failed', e);
+      console.error('[rehearsal] 종료 처리 실패', e);
       setEndError(toMessage(e));
       navigate(`/takes/${takeId}/retry`, { state: { clientSessionId: sessionId } });
     }
@@ -499,14 +505,12 @@ export function RehearsalPage() {
                     window.setTimeout(() => setConfirming(false), 4000);
                     return;
                   }
-                  // ★ 여기를 비워 두면 안 됩니다 — finish() 는 mutateAsync 안쪽만
-                  //   try 로 감싸고 있어서, 그 앞의 stopRecording·endSession·읽기가
-                  //   실패하면 버튼은 '정리하는 중…' 에서 멈춘 채 아무 말도 안 합니다.
-                  //   기록은 IndexedDB 에 남아 있으니 다시 누를 수 있게 되돌립니다.
+                  // 복구는 finish() 안에서 끝납니다 (재시도 화면으로 이동).
+                  // 여기까지 새어 나오는 것은 stopRecording 실패뿐이라 기록만 남깁니다 —
+                  // 이때는 phase 가 아직 RUNNING 이라 버튼을 다시 누를 수 있습니다.
                   finish().catch((e: unknown) => {
-                    console.error('[rehearsal] 종료 처리 실패', e);
+                    console.error('[rehearsal] 녹음 정지 실패', e);
                     setEndError(toMessage(e));
-                    setPhase('RUNNING');
                   });
                 }}
               >

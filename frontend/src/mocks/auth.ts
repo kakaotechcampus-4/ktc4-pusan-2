@@ -22,18 +22,28 @@ const unauthorized = { code: 'UNAUTHORIZED', message: '로그인이 필요합니
  *
  * 실서버에 붙을 때(VITE_USE_MOCK=false)는 목 자체가 안 뜨므로 영향이 없습니다.
  */
-const OVERRIDE_KEY = 'mock-session';
+/**
+ * 토글 값을 담는 쿠키.
+ *
+ * localStorage 가 아니라 쿠키인 이유는 **시크릿 모드에서도 써야** 하기 때문입니다.
+ * 아래 토글은 새로고침으로 끝나는데, 저장이 막히는 프로필에서 localStorage 를 쓰면
+ * 새로고침과 동시에 값이 날아가 `on()` 이 아무 일도 안 한 것처럼 보입니다.
+ * 어차피 CSRF 쿠키를 심는 화면이라 쿠키가 막히면 목 세션 자체가 성립하지 않습니다.
+ */
+const OVERRIDE_COOKIE = 'mock_session';
+
+function readOverride(): boolean | null {
+  if (typeof document === 'undefined') return null;
+  const m = new RegExp(String.raw`(?:^|;\s*)` + OVERRIDE_COOKIE + String.raw`=(true|false)`).exec(
+    document.cookie,
+  );
+  return m ? m[1] === 'true' : null;
+}
 
 function initialSignedIn(): boolean {
   // 새로고침을 건너뛰고 살아남아야 합니다 — 토글이 한 번 쓰고 날아가면
   // F5 한 번에 되돌아가서 "왜 또 로그아웃이지" 가 됩니다.
-  try {
-    const saved = localStorage.getItem(OVERRIDE_KEY);
-    if (saved !== null) return saved === 'true';
-  } catch {
-    // 시크릿 모드 등에서 접근이 막히면 env 기본값으로 갑니다
-  }
-  return import.meta.env.VITE_MOCK_SESSION === 'true';
+  return readOverride() ?? import.meta.env.VITE_MOCK_SESSION === 'true';
 }
 
 let signedIn = initialSignedIn();
@@ -68,11 +78,7 @@ if (import.meta.env.DEV) {
   const set = (on: boolean) => {
     signedIn = on;
     setCsrfCookie(on);
-    try {
-      localStorage.setItem(OVERRIDE_KEY, String(on));
-    } catch {
-      // 저장이 막혀도 이번 세션에서는 동작합니다 — 새로고침하면 env 기본값으로 돌아갑니다
-    }
+    document.cookie = `${OVERRIDE_COOKIE}=${String(on)}; path=/; SameSite=Lax`;
     // 메모리에 남은 액세스 토큰과 React Query 캐시까지 한 번에 정리합니다.
     // 변수만 뒤집으면 화면은 그대로라 "껐는데 왜 로그인 상태지" 가 됩니다.
     location.reload();
