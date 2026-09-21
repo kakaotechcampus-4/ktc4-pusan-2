@@ -40,7 +40,10 @@ export function StagePreview({
     <div className="stage-preview h-115">
       {/* data-gaze 는 청중(초록)으로 고정합니다 — 세 색 중 하나는 보여야
           "테두리가 시선을 말한다"는 것이 전달됩니다 */}
-      <div className="stage" data-script-mode={mode} data-gaze="AUDIENCE" aria-hidden>
+      {/* inert — 미리보기는 조작 대상이 아닙니다. Tab 포커스·포인터·스크린 리더가
+          한 번에 빠집니다. aria-hidden 만 두면 포커스는 그대로 들어가서, 읽어 줄
+          것이 없는 자리로 커서만 사라집니다 (aria-hidden + 포커스 가능 요소 위반) */}
+      <div className="stage" data-script-mode={mode} data-gaze="AUDIENCE" inert="">
         <header className="stage-head">
           <span className="elapsed">00:00</span>
           <span className="limit">/ {limit}</span>
