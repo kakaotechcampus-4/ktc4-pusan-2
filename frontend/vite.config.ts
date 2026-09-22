@@ -68,5 +68,15 @@ export default defineConfig(({ mode }) => {
      */
     server: { port: 3000, strictPort: true, headers: COEP_HEADERS },
     preview: { port: 3001, strictPort: true, headers: COEP_HEADERS },
+
+    /**
+     * IndexedDB 는 브라우저 API 라 Node 에는 없습니다. 그래서 db.ts 는 여태
+     * 테스트가 한 줄도 없었습니다 — 순수 계산 함수만 덮여 있었습니다.
+     *
+     * fake-indexeddb 가 명세대로 동작하는 구현을 전역에 꽂아 주므로,
+     * db.ts 를 **고치지 않고** 그대로 열어 마이그레이션을 검증할 수 있습니다.
+     * jsdom 은 필요 없습니다 — db.ts 는 DOM 을 쓰지 않습니다.
+     */
+    test: { setupFiles: ['fake-indexeddb/auto'] },
   };
 });
