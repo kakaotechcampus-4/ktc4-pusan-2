@@ -26,7 +26,7 @@
      그만큼 발표자의 시선 각도가 흔들린다. 그 흔들림이 곧 측정 오차다.
      그래서 메시지가 없어도 자리는 남는다.                       */
 .stage {
-  --script-h: var(--spacing-script-full);
+  --script-h: var(--spacing-script-highlight);
   --rail-w: 320px;
   --coach-h: 46px;
 
@@ -46,9 +46,6 @@
    Keyword는 이미 16:9 폭 한계에 닿아 있어서,
    Off로 가도 슬라이드가 더 커지지 않고 위아래 여백만 늘어난다.
    그래서 실제 슬라이드 크기는 네 모드에 두 종류뿐이다.        */
-.stage[data-script-mode='FULL'] {
-  --script-h: var(--spacing-script-full);
-}
 .stage[data-script-mode='HIGHLIGHT'] {
   --script-h: var(--spacing-script-highlight);
 }

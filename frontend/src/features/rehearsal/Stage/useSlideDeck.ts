@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { appendSlideChange } from '@/features/rehearsal/lib/db';
+import { appendSlideChange } from '../lib/db';
 import type { Ms } from '@/types/api';
 import { useRehearsalStore } from './rehearsalStore';
 

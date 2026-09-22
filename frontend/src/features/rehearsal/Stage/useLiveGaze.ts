@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
-import { useGazeWorker } from '@/features/rehearsal/media/useGazeWorker';
-import { appendGazeDecision } from '@/features/rehearsal/lib/db';
+import { useGazeWorker } from '../media/useGazeWorker';
+import { appendGazeDecision } from '../lib/db';
 import type { ZoneDecision } from '@/workers/gaze.contract';
 import type { GazeZone, Ms } from '@/types/api';
 

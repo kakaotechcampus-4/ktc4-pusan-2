@@ -8,7 +8,8 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
-import { PreparePage } from '@/features/rehearsal/prepare/PreparePage';
+import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
+import { PitchCreatePage } from '@/features/pitch/create/PitchCreatePage';
 import { RehearsalPage } from '@/features/rehearsal/Stage/RehearsalPage';
 
 /**
@@ -26,7 +27,7 @@ const routes = [
   { path: '/login',       title: '로그인 | 피치코치', element: <LoginPage /> },
   { path: '/about',       title: '분석 방식 설명 | 피치코치', element: <Stub id="P14"  name="분석 방식 설명" track="B" /> },
   { path: '/pitches',     title: 'Pitch 목록 | 피치코치', element: <Stub id="P10"  name="Pitch 목록" track="B" /> },
-  { path: '/pitch/new',   title: 'Pitch 생성 | 피치코치', element: <Stub id="P3"   name="Pitch 생성" track="B" /> },
+  { path: '/pitch/new',   title: 'Pitch 생성 | 피치코치', element: <PitchCreatePage /> },
   { path: '/pitch/:id/edit', title: 'Pitch 수정 | 피치코치', element: <Stub id="P13" name="Pitch 수정" track="B" /> },
   { path: '/takes',       title: 'Take 기록 | 피치코치', element: <Stub id="P16"  name="Take 기록" track="B" /> },
   // ★ Take는 준비 화면의 시작 CTA에서 생긴다.
@@ -34,7 +35,8 @@ const routes = [
   //    장치 점검은 준비 바로 앞에 선다. 여기서는 Take 를 만들지 않는다 — 점검하다 그만둔
   //    만큼 빈 Take 가 쌓이고 takeNumber 가 실제 연습 횟수와 어긋난다.
   { path: '/pitch/:pitchId/device-check', title: '장치 점검 | 피치코치', element: <DeviceCheckPage /> },
-  { path: '/pitch/:pitchId/prepare',   title: '리허설 준비 | 피치코치', element: <PreparePage /> },
+  // 준비 화면은 시작 전 세팅(09)에 합쳐졌습니다. 옛 주소는 404 대신 그쪽으로 보냅니다
+  { path: '/pitch/:pitchId/prepare',   title: '시작 전 세팅 | 피치코치', element: <PrepareRedirect /> },
   //    같은 무대다. 코치가 말을 하느냐 마느냐만 다르고, 그 차이는 Take 의 mode 가 정한다 —
   //    화면이 경로로 판단하지 않는다 (경로와 Take 가 어긋나면 서버 값이 맞다).
   { path: '/takes/:takeId/rehearsal',  title: '실시간 코칭 리허설 | 피치코치', element: <RehearsalPage /> },

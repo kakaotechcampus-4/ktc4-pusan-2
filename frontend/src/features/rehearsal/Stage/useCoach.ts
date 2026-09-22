@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { appendCoachLog } from '@/features/rehearsal/lib/db';
+import { appendCoachLog } from '../lib/db';
 import type { Mode, Ms } from '@/types/api';
 import { useRehearsalStore } from './rehearsalStore';
 
