@@ -48,16 +48,19 @@ class Pitch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("takes.id", use_alter=True, name="pitches_best_take_id_fkey"),
     )
     standard_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid,
+        Uuid
     )
 
 class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """발표 표준. 발표를 평가할 때 기준이 되는 표준 발표를 저장한다."""
 
     __tablename__ = "standards"
+    __table_args__ = (
+        UniqueConstraint("pitch_id", "version", name="uq_standards_pitch_version"),
+    )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    pitch_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(50), nullable=False)
