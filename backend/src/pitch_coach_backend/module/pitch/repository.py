@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion, Standards
 
 
 class PitchRepository:
@@ -57,3 +57,18 @@ class PitchRepository:
         self.db.add(script_version)
         self.db.flush()
         return script_version
+
+    def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
+        return self.db.scalars(
+            select(PresentationVersion).where(PresentationVersion.pitch_id == pitch_id)
+        ).all()
+
+    def get_scripts(self, pitch_id: uuid.UUID) -> list[ScriptVersion]:
+        return self.db.scalars(
+            select(ScriptVersion).where(ScriptVersion.pitch_id == pitch_id)
+        ).all()
+
+    def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
+        return self.db.scalars(
+            select(Standards).where(Standards.pitch_id == pitch_id)
+        ).all()
