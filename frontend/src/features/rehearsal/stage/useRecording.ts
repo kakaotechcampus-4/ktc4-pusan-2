@@ -4,8 +4,8 @@ import {
   startRecording,
   type RecorderError,
   type RecordingHandle,
-} from '@/features/rehearsal/media/recorder';
-import { audioBytes } from '@/features/rehearsal/lib/db';
+} from '../media/recorder';
+import { audioBytes } from '../lib/db';
 
 /** 크기 표시 갱신 주기. 조각이 5초마다 들어오니 그보다 자주 볼 이유가 없습니다 */
 const SIZE_TICK_MS = 5_000;

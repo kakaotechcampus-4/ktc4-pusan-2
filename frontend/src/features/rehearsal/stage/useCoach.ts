@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { appendCoachLog } from '@/features/rehearsal/lib/db';
-import { noteWriteFailure } from '@/features/rehearsal/lib/writeFailures';
+import { appendCoachLog } from '../lib/db';
+import { noteWriteFailure } from '../lib/writeFailures';
 import type { Mode, Ms } from '@/types/api';
 import { useRehearsalStore } from './rehearsalStore';
 

@@ -1,6 +1,6 @@
 import { formatDuration } from '@/shared/lib/clock';
 import type { ScriptMode, Slide } from '@/types/api';
-import '@/features/rehearsal/Stage/stage.css';
+import '../Stage/stage.css';
 
 /**
  * 07 발표 연습 화면을 그대로 축소해 보여 줍니다.

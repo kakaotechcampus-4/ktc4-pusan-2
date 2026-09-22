@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { appendSlideChange } from '@/features/rehearsal/lib/db';
-import { noteWriteFailure } from '@/features/rehearsal/lib/writeFailures';
+import { appendSlideChange } from '../lib/db';
+import { noteWriteFailure } from '../lib/writeFailures';
 import type { Ms } from '@/types/api';
 import { useRehearsalStore } from './rehearsalStore';
 

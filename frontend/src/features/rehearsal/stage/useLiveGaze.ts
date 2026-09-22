@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
-import { useGazeWorker } from '@/features/rehearsal/media/useGazeWorker';
-import { appendGazeDecision, markGazeExcluded } from '@/features/rehearsal/lib/db';
-import { noteWriteFailure } from '@/features/rehearsal/lib/writeFailures';
+import { useGazeWorker } from '../media/useGazeWorker';
+import { appendGazeDecision, markGazeExcluded } from '../lib/db';
+import { noteWriteFailure } from '../lib/writeFailures';
 import type { ZoneDecision } from '@/workers/gaze.contract';
 import type { GazeExcludedReason, GazeZone, Ms } from '@/types/api';
 

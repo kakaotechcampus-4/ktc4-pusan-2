@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
-import { LevelBar } from '@/features/rehearsal/media/LevelBar';
-import { useCameraStream } from '@/features/rehearsal/media/useCameraStream';
-import { useMicLevel } from '@/features/rehearsal/media/useMicLevel';
-import { useVideoStream } from '@/features/rehearsal/media/useVideoStream';
-import { usePrepareStore } from '@/features/rehearsal/prepare/prepareStore';
+import { LevelBar } from '../media/LevelBar';
+import { useCameraStream } from '../media/useCameraStream';
+import { useMicLevel } from '../media/useMicLevel';
+import { useVideoStream } from '../media/useVideoStream';
+import { usePrepareStore } from '../prepare/prepareStore';
 import { usePitchDetail, useCompleteTake, useTakeContext } from '@/shared/api/take';
-import { buildGazePayload } from '@/features/rehearsal/lib/gazePayload';
+import { buildGazePayload } from '../lib/gazePayload';
 import {
   beat,
   countAudioChunks,
@@ -20,12 +20,8 @@ import {
   setEngineVersion,
   setGazePerf,
   startSession,
-} from '@/features/rehearsal/lib/db';
-import {
-  clearWriteFailures,
-  noteWriteFailure,
-  readWriteFailures,
-} from '@/features/rehearsal/lib/writeFailures';
+} from '../lib/db';
+import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/writeFailures';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ScreenLabel } from '@/shared/ui/ScreenLabel';
 import { TemporalVoter } from '@/workers/temporalVoter';

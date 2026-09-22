@@ -1,19 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import {
-  DEVICE_ERROR_MESSAGE,
-  useCameraStream,
-  type DeviceError,
-} from '@/features/rehearsal/media/useCameraStream';
+import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { usePrepare } from '@/shared/api/prepare';
 import { CameraPreview } from './CameraPreview';
 import { CheckCard } from './CheckCard';
-import { LevelBar } from '@/features/rehearsal/media/LevelBar';
+import { LevelBar } from '../media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
 import { usePrepareStore } from './prepareStore';
 import { useGazeCalibration, type CalibrationPhase } from './useGazeCalibration';
-import { useMicLevel } from '@/features/rehearsal/media/useMicLevel';
-import { useVideoStream } from '@/features/rehearsal/media/useVideoStream';
+import { useMicLevel } from '../media/useMicLevel';
+import { useVideoStream } from '../media/useVideoStream';
 
 /**
  * 점검 안내 한 줄.

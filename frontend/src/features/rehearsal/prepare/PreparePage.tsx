@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
 import { usePitchDetail } from '@/shared/api/take';
-import { setTakeId, startSession } from '@/features/rehearsal/lib/db';
+import { setTakeId, startSession } from '../lib/db';
 import type { EvalCriterion, Mode, ScriptMode } from '@/types/api';
 import { ScreenFrame, StageButton } from './ScreenFrame';
 import { StagePreview } from './StagePreview';
