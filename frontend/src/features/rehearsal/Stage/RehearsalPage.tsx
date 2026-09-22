@@ -31,6 +31,7 @@ import { useRecording } from './useRecording';
 import { useRehearsalStore } from './rehearsalStore';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
+import { useSttStream } from './useSttStream';
 import './stage.css';
 
 /** 하트비트 주기. 탭이 죽으면 이 값이 멈춘 시각이 마지막 흔적입니다 */
@@ -52,9 +53,10 @@ const BEAT_MS = 5_000;
  * 3. **끝내기는 되돌릴 수 없습니다.** 숫자는 종료 시점에 영구 고정되고
  *    (서버는 시선을 재계산할 수 없습니다) 그래서 한 번 더 묻습니다.
  *
- * ── 아직 없는 것 ────────────────────────────────────────────────────
- * 2단(서버) 코치 — 속도·군더더기·대본 일치. WebSocket이 붙는 날 코치 줄에
- * 같이 들어옵니다. 1단이 그것과 무관하게 돈다는 게 이 구조의 요점입니다.
+ * ── 2단(서버)은 어디까지 왔나 ───────────────────────────────────────
+ * 마이크 PCM을 WebSocket으로 흘리고 전사를 받는 데까지 붙었습니다(`useSttStream`).
+ * 속도·군더더기·대본 일치는 서버가 아직 `metrics`·`coach` 메시지를 안 보내서
+ * 코치 줄에는 들어오지 않습니다. 1단이 그것과 무관하게 돈다는 게 이 구조의 요점입니다.
  */
 export function RehearsalPage() {
   const { takeId = '' } = useParams();
@@ -121,6 +123,22 @@ export function RehearsalPage() {
     errorMessage: recErrorMessage,
     stop: stopRecording,
   } = useRecording({ stream, clientSessionId: sessionId, enabled: running });
+
+  /**
+   * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
+   * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
+   */
+  const {
+    transcriptRef,
+    note: sttNote,
+    alert: sttAlert,
+    stop: stopStt,
+  } = useSttStream({
+    takeId,
+    stream,
+    enabled: ready && (phase === 'RUNNING' || phase === 'ENDING'),
+    elapsedMs,
+  });
 
   useCoach({
     enabled: running,
@@ -244,12 +262,19 @@ export function RehearsalPage() {
   const finish = async () => {
     if (!running || !sessionId || !take.data) return;
 
-    // 시간을 먼저 붙잡습니다. 아래 await들이 도는 동안에도 시계는 갑니다
+    // 시간을 먼저 붙잡습니다. 아래 await들이 도는 동안에도 시계는 갑니다.
+    // ★ 끝난 시각도 여기서 찍습니다 — STT 정리는 최대 15초까지 걸리는데,
+    //   그 시간을 endedAt에 얹으면 endedAt - startedAt이 durationMs와 어긋납니다
     const durationMs: Ms = elapsedMs();
+    const endedAtIso = new Date().toISOString();
 
     // 마지막 5초 조각까지 받고 멈춥니다. 이걸 기다리지 않으면 끝말이 잘립니다
     await stopRecording();
     setPhase('ENDING');
+
+    // 서버가 남은 오디오를 Deepgram에 흘리고 `closed`를 줄 때까지 기다립니다.
+    // 보통 1초, 최대 15초입니다. 그 사이 버튼은 '정리하는 중…'을 보여 줍니다
+    await stopStt();
     await endSession(sessionId);
 
     const row = await getSession(sessionId);
@@ -269,7 +294,7 @@ export function RehearsalPage() {
     const body: CompleteRequest = {
       clientSessionId: sessionId,
       startedAt: row?.startedAtIso ?? new Date(Date.now() - durationMs).toISOString(),
-      endedAt: new Date().toISOString(),
+      endedAt: endedAtIso,
       durationMs,
       mode,
       // 패널 숨김 UI는 아직 없습니다. 생기면 여기에 그 목록이 들어갑니다
@@ -422,6 +447,14 @@ export function RehearsalPage() {
                 </span>
               </span>
               <span>{gazeNote}</span>
+              {sttNote && (
+                <span className="stt" data-alert={sttAlert}>
+                  {sttNote}
+                </span>
+              )}
+              {/* 실전 모드에서는 전사를 숨깁니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
+                  기록은 그대로 서버에 쌓이니 리포트에서는 차이가 없습니다 */}
+              {mode !== 'EXAM' && <span className="stt-text" ref={transcriptRef} />}
               {audioState !== null && audioState !== 'running' && (
                 <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
               )}

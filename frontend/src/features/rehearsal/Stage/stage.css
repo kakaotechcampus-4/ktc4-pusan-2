@@ -529,3 +529,29 @@
   /* 미리보기는 조작 대상이 아니다. 클릭·키보드가 들어가지 않는다 */
   pointer-events: none;
 }
+
+/* ── 말하기 분석(2단 코치) 한 줄 ────────────────────────────────
+   상태와 전사가 발밑에 앉는 이유는 **행을 늘리지 않기 위해서**다.
+   여기에 칸을 하나 더 만들면 대본 높이(--spacing-script-*)가 밀리고,
+   그건 디자인이 아니라 계측 조건이다 — 그 순간 이전 Take 와 비교가 끊긴다.
+
+   그래서 전사는 한 줄에 가둔다. 길어지면 늘어나는 게 아니라 잘린다. */
+.stage-foot .stt {
+  color: var(--color-gaze-audience);
+}
+
+/* 재연결 중·중단은 눈에 띄어야 한다. 다만 발표를 멈추라는 뜻은 아니다 */
+.stage-foot .stt[data-alert='true'] {
+  color: var(--color-gaze-screen);
+}
+
+.stage-foot .stt-text {
+  flex: 1;
+  min-width: 0;
+  max-width: 48ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--color-ink-stage);
+  opacity: 0.75;
+}
