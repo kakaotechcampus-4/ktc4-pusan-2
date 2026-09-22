@@ -3,13 +3,26 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.entity import PresentationVersion, ScriptVersion
-from pitch_coach_backend.module.take.entity import Calibration, Mission, Take
+from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.take.entity import (
+    Calibration,
+    Mission,
+    Take,
+    TakeTranscriptSegment,
+)
 
 
 class TakeRepository:
     def __init__(self, db: Session):
         self.db = db
+
+    def get_owned(self, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | None:
+        """사용자의 pitch 에 속한 take. 없거나 남의 것이면 None — 둘을 구분하지 않는다."""
+        return self.db.scalar(
+            select(Take)
+            .join(Pitch, Pitch.id == Take.pitch_id)
+            .where(Take.id == take_id, Pitch.user_id == user_id)
+        )
 
     def get_presentation_version_in_pitch(
         self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID
