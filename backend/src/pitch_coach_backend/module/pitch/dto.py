@@ -22,19 +22,12 @@ class UploadResultDTO(BaseModel):
     presentation_version_id: uuid.UUID
     script_version_id: uuid.UUID
 
-class PresentationSummaryDTO(BaseModel):
+class VersionDTO(BaseModel):
     id: uuid.UUID
     version: int
-    description: str | None = None
-    create_at: date
 
-class ScriptSummaryDTO(BaseModel):
-    id: uuid.UUID
-    version: int
-    create_at: date
-
-class EvaluationSummaryDTO(BaseModel):
-    id: uuid.UUID
-    version: int
-    create_at: date
-    standards: list[str] | None = None
+class VersionSummaryDTO(BaseModel):
+    pitch_id: uuid.UUID
+    presentation_versions: list[VersionDTO]
+    script_versions: list[VersionDTO]
+    evaluation_versions: list[VersionDTO]

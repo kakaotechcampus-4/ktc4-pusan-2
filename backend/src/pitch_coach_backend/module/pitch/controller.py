@@ -30,7 +30,8 @@ def get_pitches(
     return pitches
 
 # 사이드바
-@router.get("/{pitch_id}")
+# /api/pitches/{pitch_id}/resources로 변경
+@router.get("/{pitch_id}/resources")
 def get_pitch_summaries(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)]

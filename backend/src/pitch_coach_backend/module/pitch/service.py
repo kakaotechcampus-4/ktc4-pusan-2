@@ -3,7 +3,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.dto import EvaluationSummaryDTO, PresentationSummaryDTO, ScriptSummaryDTO, UploadResultDTO
+from pitch_coach_backend.module.pitch.dto import UploadResultDTO, VersionDTO, VersionSummaryDTO
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
@@ -45,12 +45,12 @@ def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
     script_versions = get_script_versions(db, pitch_id)   
     evaluations = get_evaluation_versions(db, pitch_id)
 
-    return {
-        "pitch_id": existing_pitch.id,
-        "presentation_versions": presentation_versions,
-        "script_versions": script_versions,
-        "evaluations": evaluations
-    }
+    return VersionSummaryDTO(
+        pitch_id=pitch_id,
+        presentation_versions=presentation_versions,
+        script_versions=script_versions,
+        evaluation_versions=evaluations
+    )
 
 # 발표자료 기본 정보들 들고 오기
 # 근데 발표자료, 대본, 평가 들고 오는 로직이 다 비슷한 것 같은데....?
@@ -61,40 +61,37 @@ def get_presentation_versions(db: Session, pitch_id: uuid.UUID):
     if not existing_pitch:
         raise NonExistentPitch()
 
-    presentation_versions = pitch_repository.get_presentation_versions(pitch_id)
+    presentation_versions = pitch_repository.get_presentations(pitch_id)
 
     presentation_version_summaries = []
 
     for version in presentation_versions:
         presentation_version_summaries.append(
-            PresentationSummaryDTO(
+            VersionDTO(
                 id=version.id,
-                version=version.version,
-                description=version.description,
-                create_at=version.create_at
+                version=version.version
             )
         )
                 
     return presentation_version_summaries
 
 # 대본 기본 정보들 들고 오기
-def get_script_versions(db: Session, pitch_id: uuid.UUID, script_version_id: uuid.UUID):
+def get_script_versions(db: Session, pitch_id: uuid.UUID):
     pitch_repository = PitchRepository(db)
     existing_pitch = pitch_repository.get_by_id(pitch_id)
 
     if not existing_pitch:
         raise NonExistentPitch()
 
-    script_version = pitch_repository.get_script_version(script_version_id)
-
+    script_versions = pitch_repository.get_scripts(pitch_id)
     script_version_summaries = []
 
-    if script_version:
-        script_version_summaries.append(
-            ScriptSummaryDTO(
+    if script_versions:
+        for script_version in script_versions:
+            script_version_summaries.append(
+            VersionDTO(
                 id=script_version.id,
-                version=script_version.version,
-                create_at=script_version.create_at
+                version=script_version.version
             )
         )
 
@@ -111,12 +108,11 @@ def get_evaluation_versions(db: Session, pitch_id: uuid.UUID):
 
     evaluation_summaries = []
     for evaluation in evaluations:
+
         evaluation_summaries.append(
-            EvaluationSummaryDTO(
+            VersionDTO(
                 id=evaluation.id,
-                version=evaluation.version,
-                create_at=evaluation.create_at,
-                standards=evaluation.standards
+                version=evaluation.version
             )
         )
     return evaluation_summaries
