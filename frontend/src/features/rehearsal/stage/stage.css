@@ -26,7 +26,7 @@
      그만큼 발표자의 시선 각도가 흔들린다. 그 흔들림이 곧 측정 오차다.
      그래서 메시지가 없어도 자리는 남는다.                       */
 .stage {
-  --script-h: var(--spacing-script-full);
+  --script-h: var(--spacing-script-highlight);
   --rail-w: 320px;
   --coach-h: 46px;
 
@@ -46,9 +46,6 @@
    Keyword는 이미 16:9 폭 한계에 닿아 있어서,
    Off로 가도 슬라이드가 더 커지지 않고 위아래 여백만 늘어난다.
    그래서 실제 슬라이드 크기는 네 모드에 두 종류뿐이다.        */
-.stage[data-script-mode='FULL'] {
-  --script-h: var(--spacing-script-full);
-}
 .stage[data-script-mode='HIGHLIGHT'] {
   --script-h: var(--spacing-script-highlight);
 }
@@ -526,6 +523,8 @@
   /* 축소한 만큼 넓고 높게 잡아야 축소 후 상자를 꽉 채운다 */
   width: calc(100% / var(--preview-scale));
   height: calc(100% / var(--preview-scale));
-  /* 미리보기는 조작 대상이 아니다. 클릭·키보드가 들어가지 않는다 */
+  /* 조작을 막는 것은 마크업의 inert 다 — 포커스·포인터·접근성 트리가 한 번에
+     빠진다. 이 줄은 inert 미지원 브라우저(Chrome 102 / Safari 15.5 이전)를 위한
+     폴백이다. pointer-events 로는 Tab 이동을 막지 못한다 */
   pointer-events: none;
 }
