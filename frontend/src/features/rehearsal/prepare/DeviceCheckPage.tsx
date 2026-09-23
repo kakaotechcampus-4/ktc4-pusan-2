@@ -1,19 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import {
-  DEVICE_ERROR_MESSAGE,
-  useCameraStream,
-  type DeviceError,
-} from '@/features/rehearsal/media/useCameraStream';
+import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { usePrepare } from '@/shared/api/prepare';
 import { CameraPreview } from './CameraPreview';
 import { CheckCard } from './CheckCard';
-import { LevelBar } from '@/features/rehearsal/media/LevelBar';
+import { LevelBar } from '../media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
 import { usePrepareStore } from './prepareStore';
 import { useGazeCalibration, type CalibrationPhase } from './useGazeCalibration';
-import { useMicLevel } from '@/features/rehearsal/media/useMicLevel';
-import { useVideoStream } from '@/features/rehearsal/media/useVideoStream';
+import { useMicLevel } from '../media/useMicLevel';
+import { useVideoStream } from '../media/useVideoStream';
 
 /**
  * 점검 안내 한 줄.
@@ -92,7 +88,7 @@ export function DeviceCheckPage() {
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
-  const { meterRef, dbRef, rowRef, silentRef, micOk, audioState } = useMicLevel(stream);
+  const { meterRef, dbRef, rowRef, silentRef, micOk, audioState, meterError } = useMicLevel(stream);
   const declineGaze = usePrepareStore((s) => s.declineGaze);
   const cal = useGazeCalibration({ videoRef, live });
 
@@ -279,6 +275,9 @@ export function DeviceCheckPage() {
                 AudioContext가 {audioState} 상태입니다 — 오디오가 흐르지 않습니다
               </p>
             )}
+            {/* 계량기가 아예 못 떴을 때. '입력 없음'과 구분해서 보여줘야
+                사용자가 말을 더 크게 할지, 장치를 바꿀지 정할 수 있습니다 */}
+            {meterError && <p className="mt-1 text-coral">{meterError}</p>}
           </section>
         </div>
       </div>

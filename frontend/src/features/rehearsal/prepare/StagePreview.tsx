@@ -1,6 +1,6 @@
 import { formatDuration } from '@/shared/lib/clock';
 import type { ScriptMode, Slide } from '@/types/api';
-import '@/features/rehearsal/Stage/stage.css';
+import '../stage/stage.css';
 
 /**
  * 07 발표 연습 화면을 그대로 축소해 보여 줍니다.
@@ -40,7 +40,13 @@ export function StagePreview({
     <div className="stage-preview h-115">
       {/* data-gaze 는 청중(초록)으로 고정합니다 — 세 색 중 하나는 보여야
           "테두리가 시선을 말한다"는 것이 전달됩니다 */}
-      <div className="stage" data-script-mode={mode} data-gaze="AUDIENCE" aria-hidden>
+      {/* 조작 대상이 아닙니다. 둘 다 답니다 —
+          inert        : Tab 포커스·포인터·접근성 트리를 한 번에 막습니다
+          aria-hidden  : inert 미지원 브라우저(Chrome 102 / Safari 15.5 이전)에서
+                         이 장식용 무대가 스크린 리더에 읽히지 않게 합니다
+          지금 이 안에 포커스 가능한 요소는 없어서 "aria-hidden 안의 포커스 대상"
+          문제는 생기지 않습니다. 버튼이 생기면 inert 가 그쪽을 맡습니다 */}
+      <div className="stage" data-script-mode={mode} data-gaze="AUDIENCE" inert="" aria-hidden>
         <header className="stage-head">
           <span className="elapsed">00:00</span>
           <span className="limit">/ {limit}</span>

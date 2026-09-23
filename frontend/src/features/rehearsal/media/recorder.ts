@@ -1,4 +1,5 @@
 import { appendAudioChunk } from '../lib/db';
+import { noteWriteFailure, readWriteFailures } from '../lib/writeFailures';
 import type { Ms } from '@/types/api';
 
 /**
@@ -40,12 +41,26 @@ function pickMimeType(): string | null {
   return MIME_CANDIDATES.find((t) => MediaRecorder.isTypeSupported(t)) ?? null;
 }
 
-export type RecorderError = 'UNSUPPORTED' | 'NO_AUDIO_TRACK' | 'RECORDER_FAILED';
+export type RecorderError =
+  | 'UNSUPPORTED'
+  | 'NO_AUDIO_TRACK'
+  | 'RECORDER_FAILED'
+  /**
+   * 녹음기는 도는데 조각을 IndexedDB 에 못 넣고 있습니다 (저장소 가득 참·시크릿 모드 등).
+   * `RECORDER_FAILED` 와 나누는 이유는 원인도 대처도 다르기 때문입니다 —
+   * 저쪽은 마이크가 죽은 것이고, 이쪽은 **소리는 들어오는데 남지 않는** 것입니다.
+   */
+  | 'CHUNK_PERSIST_FAILED';
 
 export interface RecordingHandle {
   readonly mimeType: string;
-  /** 지금까지 넘긴 조각 수 */
+  /** 지금까지 넘긴 조각 수. **저장에 성공한 수가 아닙니다** — `droppedCount` 를 빼야 합니다 */
   readonly chunkCount: number;
+  /**
+   * 저장에 실패한 조각 수. 0 이 아니면 원본 오디오에 구멍이 있습니다.
+   * 발표는 되돌릴 수 없으니 이 값은 "복구 가능" 이 아니라 "얼마나 잃었나" 입니다.
+   */
+  readonly droppedCount: number;
   /** 마지막 조각까지 받고 멈춥니다 */
   stop(): Promise<void>;
 }
@@ -101,7 +116,17 @@ export function startRecording(
     seq += 1;
     // 받는 즉시 넘깁니다. 여기서 await 하지 않는 이유는 ondataavailable 을
     // 막으면 다음 조각이 밀리기 때문입니다.
-    appendAudioChunk(clientSessionId, seq, offsetMs, e.data).catch(() => undefined);
+    //
+    // ★ 여기를 `.catch(() => undefined)` 로 두면 안 됩니다 (CLAUDE.md 9번).
+    //   이건 원본입니다. 저장이 실패해도 화면은 "기록 중" 그대로고 seq 는 계속 오르니,
+    //   발표가 끝난 뒤에야 오디오가 비어 있는 걸 알게 됩니다 — 그때는 다시 할 수 없습니다.
+    appendAudioChunk(clientSessionId, seq, offsetMs, e.data).catch((err: unknown) => {
+      // 저장소가 찼다면 5초마다 계속 실패합니다. 콜백까지 5초마다 부르면
+      // 그 자체가 소음이 되므로 장부가 "첫 건" 이라고 답할 때만 알립니다.
+      if (noteWriteFailure(clientSessionId, 'audioChunk', err)) {
+        onError?.('CHUNK_PERSIST_FAILED');
+      }
+    });
   };
 
   recorder.onerror = () => onError?.('RECORDER_FAILED');
@@ -121,6 +146,9 @@ export function startRecording(
       mimeType,
       get chunkCount() {
         return seq;
+      },
+      get droppedCount() {
+        return readWriteFailures(clientSessionId).audioChunk ?? 0;
       },
       stop() {
         return new Promise<void>((resolve) => {
@@ -143,4 +171,6 @@ export const RECORDER_ERROR_MESSAGE: Record<RecorderError, string> = {
   UNSUPPORTED: '이 브라우저는 녹음을 지원하지 않아요. Chrome이나 Edge로 열어 주세요.',
   NO_AUDIO_TRACK: '마이크가 연결되지 않았어요. 시선 측정은 계속되지만 말하기 분석은 빠집니다.',
   RECORDER_FAILED: '녹음이 중단됐어요. 발표는 계속 진행하셔도 됩니다.',
+  CHUNK_PERSIST_FAILED:
+    '녹음을 저장하지 못하고 있어요. 저장 공간을 확인해 주세요 — 발표는 계속 진행됩니다.',
 };
