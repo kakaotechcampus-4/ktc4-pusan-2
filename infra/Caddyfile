@@ -1,4 +1,4 @@
-:80 {
+https://pitch-coach-dev.duckdns.org {
 	handle /api/* {
 		reverse_proxy be:8000
 	}
