@@ -21,27 +21,16 @@ class TakeRepository:
         return self.db.execute(
             select(TakeSummary.score).where(TakeSummary.take_id.in_(take_id))
         ).scalars().all()
+
+    def get_max_score_take_in_pitch(self, pitch_id: uuid.UUID) -> int | None:
+        return self.db.scalar(
+            select(TakeSummary.take_id)
+            .join(Take, TakeSummary.take_id == Take.id)
+            .where(Take.pitch_id == pitch_id)
+            .order_by(TakeSummary.score.desc())
+            .limit(1)
+        )
     
-    def get_presentation_version_in_pitch(
-        self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID
-    ) -> uuid.UUID | None:
-        return self.db.scalar(
-            select(PresentationVersion.id).where(
-                PresentationVersion.id == presentation_version_id,
-                PresentationVersion.pitch_id == pitch_id,
-            )
-        )
-
-    def get_script_version_in_pitch(
-        self, script_version_id: uuid.UUID, pitch_id: uuid.UUID
-    ) -> uuid.UUID | None:
-        return self.db.scalar(
-            select(ScriptVersion.id).where(
-                ScriptVersion.id == script_version_id,
-                ScriptVersion.pitch_id == pitch_id,
-            )
-        )
-
     def save(self, take: Take) -> Take:
         self.db.add(take)
         self.db.flush()

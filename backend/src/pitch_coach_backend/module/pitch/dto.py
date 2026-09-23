@@ -17,6 +17,9 @@ class PitchesDTO(BaseModel):
     pitch_time: int
     thumbnail_url: str | None = None
     takes: list[TakeSummaryDTO]
+
+class AllPitchesDTO(BaseModel):
+    pitches: list[PitchesDTO]
 class UploadPresentationDTO(BaseModel):
     presentation_file: UploadFile = File(...)
     description: str | None = None

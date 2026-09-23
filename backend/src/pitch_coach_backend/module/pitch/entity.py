@@ -44,10 +44,6 @@ class Pitch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # takes 와 서로를 참조한다. use_alter 로 테이블 생성 후 FK 를 따로 걸어
     # 순환 때문에 생성 순서가 막히는 것을 피한다.
     best_take_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid,
-        ForeignKey("takes.id", use_alter=True, name="pitches_best_take_id_fkey"),
-    )
-    standard_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid
     )
 

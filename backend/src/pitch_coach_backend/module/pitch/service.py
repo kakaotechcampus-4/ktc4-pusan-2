@@ -5,7 +5,7 @@ from pathlib import Path
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.dto import PitchesDTO, UploadResultDTO
+from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, UploadResultDTO
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
@@ -75,7 +75,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> List[PitchesDTO]
         
         results.append(pitch_dto)
 
-    return results
+    return AllPitchesDTO(pitches=results)
 
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     pitch_repository = PitchRepository(db)
