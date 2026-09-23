@@ -72,3 +72,23 @@ class PitchRepository:
         return self.db.scalars(
             select(Standards).where(Standards.pitch_id == pitch_id)
         ).all()
+
+    def get_presentation_version_in_pitch(
+            self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID
+        ) -> uuid.UUID | None:
+            return self.db.scalar(
+                select(PresentationVersion.id).where(
+                    PresentationVersion.id == presentation_version_id,
+                    PresentationVersion.pitch_id == pitch_id,
+                )
+            )
+    
+    def get_script_version_in_pitch(
+        self, script_version_id: uuid.UUID, pitch_id: uuid.UUID
+    ) -> uuid.UUID | None:
+        return self.db.scalar(
+            select(ScriptVersion.id).where(
+                ScriptVersion.id == script_version_id,
+                ScriptVersion.pitch_id == pitch_id,
+            )
+        )
