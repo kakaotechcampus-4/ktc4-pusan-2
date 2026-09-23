@@ -1,0 +1,20 @@
+# Optional: the two pretrained gaze backbones (doc 3-2), needed only for the
+# doc 23 Experiment 1 backbone comparison. The shipped default backbone,
+# mediapipe_geom, is pure geometry over MediaPipe landmarks and needs neither
+# torch nor a checkpoint -- a torch-free install is the supported default.
+#
+# INSTALL FROM THE CPU INDEX, not plain PyPI:
+#
+#   pip install -r requirements-torch.txt --index-url https://download.pytorch.org/whl/cpu
+#
+# Without --index-url pip resolves the CUDA build from PyPI: several gigabytes
+# this rig has no device for, and on Windows that wheel can fail to load its
+# DLLs outright ("Error loading shm.dll", a side-by-side configuration error) --
+# which is worse than not having torch at all, because tests that would cleanly
+# skip on a missing torch instead error on a broken one.
+#
+# Verified pairing on this rig: torch 2.5.1+cpu / torchvision 0.20.1+cpu.
+# The two are version-locked to each other; a mismatched pair fails at import.
+
+torch>=2.2
+torchvision>=0.17

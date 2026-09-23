@@ -11,11 +11,11 @@ RUN npm run build
 FROM caddy:2.6.4-alpine
 COPY --from=build /app/dist /srv
 
-RUN printf ':3000 {\n\
+RUN printf ':5173 {\n\
     root * /srv\n\
     try_files {path} /index.html\n\
     file_server\n\
 }' > /etc/caddy/Caddyfile
 
-EXPOSE 3000
+EXPOSE 5173
 

@@ -4,6 +4,6 @@
 	}
 
 	handle {
-		reverse_proxy fe:3000
+		reverse_proxy fe:5173
 	}
 }

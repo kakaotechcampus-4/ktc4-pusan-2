@@ -1,0 +1,43 @@
+# doc 4-1 Stage A PoC recording protocol.
+# Every block shows an on-screen cue; the cue timeline is written next to the
+# video and becomes the protocol-derived segment labels. Frames within
+# transition_guard_ms of a cue change are labelled IGNORE.
+record_fps: 30
+frame_width: 1280
+frame_height: 720
+transition_guard_ms: 500
+countdown_s: 3.0
+conditions:
+  - key: static_camera
+    seconds: 20
+    cue: CAMERA
+    prompt: "Look straight at the webcam. Stay still and silent."
+  - key: static_bottom
+    seconds: 20
+    cue: BOTTOM
+    prompt: "Look at your script below the screen. Stay still and silent."
+  - key: alternating
+    seconds: 60
+    alternate_period_s: 5
+    prompt: "Follow the cue. Switch as soon as it changes."
+  - key: speaking_camera
+    seconds: 60
+    cue: CAMERA
+    speaking: true
+    prompt: "Present out loud while looking at the camera."
+  - key: speaking_bottom_reference
+    seconds: 60
+    alternate_period_s: 6
+    speaking: true
+    prompt: "Present out loud, glancing down at your script when cued."
+  - key: head_motion
+    seconds: 60
+    alternate_period_s: 5
+    speaking: true
+    head_motion: true
+    prompt: "Same as before, but move your head naturally while you speak."
+  - key: lighting_variant
+    seconds: 40
+    alternate_period_s: 5
+    speaking: true
+    prompt: "Change the lighting (dim the room or face a window), then repeat."

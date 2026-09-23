@@ -27,6 +27,7 @@ CALLBACK = "/api/auth/google/callback"
 REFRESH = "/api/auth/refresh"
 LOGOUT = "/api/auth/logout"
 ME = "/api/users/me"
+FRONTEND_ORIGIN = {"Origin": settings.frontend_base_url}
 
 
 @pytest.fixture(autouse=True)
@@ -77,8 +78,14 @@ def do_login(client: TestClient) -> None:
     assert done.status_code == 302, done.text
 
 
-def csrf_headers(client: TestClient) -> dict[str, str]:
+def csrf_token_header(client: TestClient) -> dict[str, str]:
+    """double-submit 헤더만. 출처 헤더를 직접 정하는 테스트가 쓴다."""
     return {CSRF_HEADER_NAME: client.cookies[CSRF_COOKIE_NAME]}
+
+
+def csrf_headers(client: TestClient) -> dict[str, str]:
+    """브라우저가 보내는 모양. 브라우저는 POST 에 Origin 을 늘 붙인다."""
+    return csrf_token_header(client) | FRONTEND_ORIGIN
 
 
 # --- start --------------------------------------------------------------
@@ -293,7 +300,7 @@ def test_refresh_rotates_the_cookie(client: TestClient, fake_google: dict[str, A
 
 
 def test_refresh_without_a_cookie_is_unauthorized(client: TestClient) -> None:
-    res = client.post(REFRESH)
+    res = client.post(REFRESH, headers=FRONTEND_ORIGIN)
 
     assert res.status_code == 401
     assert res.headers["www-authenticate"] == "Bearer"
@@ -305,7 +312,7 @@ def test_refresh_without_the_csrf_header_is_rejected(
     """쿠키만으로 통과하면 다른 사이트가 사용자를 시켜 갱신을 호출할 수 있다."""
     do_login(client)
 
-    res = client.post(REFRESH)
+    res = client.post(REFRESH, headers=FRONTEND_ORIGIN)
 
     assert res.status_code == 401
 
@@ -315,7 +322,7 @@ def test_refresh_with_a_wrong_csrf_header_is_rejected(
 ) -> None:
     do_login(client)
 
-    res = client.post(REFRESH, headers={CSRF_HEADER_NAME: "attacker-guess"})
+    res = client.post(REFRESH, headers=FRONTEND_ORIGIN | {CSRF_HEADER_NAME: "attacker-guess"})
 
     assert res.status_code == 401
 
@@ -324,7 +331,7 @@ def test_refresh_from_a_foreign_origin_is_rejected(
     client: TestClient, fake_google: dict[str, Any]
 ) -> None:
     do_login(client)
-    headers = csrf_headers(client) | {"Origin": "https://evil.example.com"}
+    headers = csrf_token_header(client) | {"Origin": "https://evil.example.com"}
 
     res = client.post(REFRESH, headers=headers)
 
@@ -335,9 +342,72 @@ def test_refresh_from_the_frontend_origin_is_allowed(
     client: TestClient, fake_google: dict[str, Any]
 ) -> None:
     do_login(client)
-    headers = csrf_headers(client) | {"Origin": settings.frontend_base_url}
+    headers = csrf_token_header(client) | FRONTEND_ORIGIN
 
     assert client.post(REFRESH, headers=headers).status_code == 200
+
+
+def test_refresh_with_only_a_referer_from_the_frontend_is_allowed(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """Origin 이 빠진 요청도 있다. 그때는 Referer 의 출처를 본다."""
+    do_login(client)
+    headers = csrf_token_header(client) | {"Referer": f"{settings.frontend_base_url}/login?next=/"}
+
+    assert client.post(REFRESH, headers=headers).status_code == 200
+
+
+def test_refresh_with_a_foreign_referer_is_rejected(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    do_login(client)
+    headers = csrf_token_header(client) | {"Referer": "https://evil.example.com/attack"}
+
+    assert client.post(REFRESH, headers=headers).status_code == 401
+
+
+def test_refresh_without_any_origin_or_referer_is_rejected(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """출처를 확인할 방법이 없는 요청은 막는다. OWASP 가 권하는 쪽이다."""
+    do_login(client)
+
+    assert client.post(REFRESH, headers=csrf_token_header(client)).status_code == 401
+
+
+def test_a_trusted_referer_does_not_rescue_a_foreign_origin(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """Origin 이 있으면 그것만 본다. Referer 를 덧붙여 우회할 수 없다."""
+    do_login(client)
+    headers = csrf_token_header(client) | {
+        "Origin": "https://evil.example.com",
+        "Referer": f"{settings.frontend_base_url}/",
+    }
+
+    assert client.post(REFRESH, headers=headers).status_code == 401
+
+
+def test_a_referer_that_merely_starts_with_the_frontend_url_is_rejected(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """localhost:3000.evil.example.com 은 남의 사이트다. 출처는 통째로 같아야 한다."""
+    do_login(client)
+    headers = csrf_token_header(client) | {
+        "Referer": f"{settings.frontend_base_url}.evil.example.com/"
+    }
+
+    assert client.post(REFRESH, headers=headers).status_code == 401
+
+
+def test_a_malformed_referer_is_rejected_not_crashed(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """헤더 값은 공격자가 정한다. urlsplit 은 깨진 URL 에 ValueError 를 낸다."""
+    do_login(client)
+    headers = csrf_token_header(client) | {"Referer": "http://["}
+
+    assert client.post(REFRESH, headers=headers).status_code == 401
 
 
 def test_replaying_an_old_refresh_cookie_is_rejected(
@@ -378,7 +448,7 @@ def test_refresh_after_logout_is_rejected(client: TestClient, fake_google: dict[
 def test_logout_also_requires_csrf(client: TestClient, fake_google: dict[str, Any]) -> None:
     do_login(client)
 
-    assert client.post(LOGOUT).status_code == 401
+    assert client.post(LOGOUT, headers=FRONTEND_ORIGIN).status_code == 401
 
 
 # --- /users/me ----------------------------------------------------------
@@ -445,7 +515,7 @@ def test_non_ascii_csrf_header_is_rejected_not_crashed(
     """
     do_login(client)
 
-    res = client.post(REFRESH, headers={CSRF_HEADER_NAME: NON_ASCII})
+    res = client.post(REFRESH, headers=FRONTEND_ORIGIN | {CSRF_HEADER_NAME: NON_ASCII})
 
     assert res.status_code == 401
 

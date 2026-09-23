@@ -12,6 +12,7 @@ FastAPI 기반 백엔드. 발표(pitch) 연습을 녹음·실시간 세션으로
 | DB | PostgreSQL 17 (드라이버 psycopg 3) |
 | 인증 | Google OAuth 2.0 (Authorization Code + PKCE) + JWT (PyJWT) |
 | 비동기 작업 / 캐시 | Redis (OAuth state 저장에 사용 중). Celery 는 예정 |
+| 실시간 STT | Deepgram Nova-3 스트리밍 (`ko`). FE → BE → Deepgram, WebSocket |
 | 테스트 / 린트 | pytest, ruff |
 
 ## 시작하기
@@ -62,7 +63,9 @@ backend/
 │   └── versions/                 # 자동 생성. 날짜 접두어로 정렬. ruff 검사 제외
 │
 ├── dev/
-│   └── oauth-test.html           # 로그인 흐름 수동 확인용. 앱이 서빙하지 않는다
+│   ├── oauth-test.html           # 로그인 흐름 수동 확인용. 앱이 서빙하지 않는다
+│   ├── stt-send-pcm.py           # PCM 파일을 WebSocket 으로 흘려 전사를 보는 스크립트
+│   └── stt-test.html             # 마이크로 실시간 STT 를 확인하는 페이지 (3000 포트로 연다)
 │
 ├── tests/
 │   ├── conftest.py               # 테스트 DB 자동 생성, 트랜잭션 격리 세션, TestClient fixture
@@ -75,6 +78,8 @@ backend/
 │   ├── test_state_store.py       # Redis state 1회 소비
 │   ├── test_auth_service.py      # 가입·재로그인·회전·재사용 탐지
 │   ├── test_auth_endpoints.py    # 쿠키·CSRF·리다이렉트
+│   ├── test_realtime_stt_adapter.py  # Deepgram 파싱 + 가짜 서버 왕복
+│   ├── test_realtime_ws.py       # WS 인증·프레임·offset·재연결·종료 순서 (Deepgram 은 가짜)
 │   └── test_<domain>.py          # 도메인이 늘면 같은 이름 규칙으로
 │
 └── src/pitch_coach_backend/
@@ -105,13 +110,19 @@ backend/
     │   ├── rehearsal/            # 실시간 연습 세션
     │   └── feedback/             # LLM 리뷰 결과
     │
-    ├── realtime/                 # WebSocket. entity 를 갖지 않고 저장은 rehearsal service 에 위임
-    │   ├── controller.py         # 연결/인증/송수신
-    │   ├── service.py            # 실시간 처리 orchestration
-    │   ├── event_ingestion.py    # 이벤트 검증/정규화/중복 제거
-    │   ├── state_aggregator.py   # 시간 정렬/sliding window/state 생성
-    │   ├── session_store.py      # Redis session/lease/checkpoint
-    │   └── stt_adapter.py        # Streaming STT 연결/결과 정규화
+    ├── realtime/                 # WebSocket. entity 를 갖지 않고 저장은 도메인 service 에 위임
+    │   ├── controller.py         # /ws/takes/{take_id} 엔드포인트
+    │   ├── service.py            # 연결 하나의 수명: Origin → 인증 → Take 검사 → 스트림에 붙이기 → 프레임 전달
+    │   ├── take_stream.py        # Take 의 STT 파이프라인 + 레지스트리. **연결보다 오래 산다**
+    │   ├── transcript_store.py   # final 저장. 짧은 DB 세션을 열어 take/service 에 넘긴다
+    │   ├── stt_adapter.py        # Deepgram WebSocket 어댑터. DB 를 모른다 (auth/google.py 와 같은 위치)
+    │   ├── event_ingestion.py    # 오디오 프레임 헤더 검증, 순서·중복, 갭 계산
+    │   ├── audio.py              # 오디오 규격(16 kHz·mono·16-bit)과 무음 생성. 잎 모듈
+    │   ├── dto.py                # BE ↔ FE 메시지
+    │   ├── dependencies.py       # get_stt_adapter · get_transcript_store (테스트가 가짜로 바꿔 끼운다)
+    │   ├── fillers.py            # 한국어 군더더기 목록. keyterm boosting + 후처리 사전의 단일 소스
+    │   ├── state_aggregator.py   # (예정) 시간 정렬/sliding window/state 생성
+    │   └── session_store.py      # (예정) take_stream 의 레지스트리를 Redis 로 옮길 때 분리한다
     │
     ├── agent/                    # LLM 어댑터. module 을 import 하지 않는다
     │   ├── client.py             # 모델 호출·타임아웃·재시도. 동기 함수로 작성
@@ -193,13 +204,86 @@ POST /api/auth/logout           현재 세션 폐기
 - 이메일이 같아도 기존 계정에 **자동으로 연결하지 않는다** (`409 CONFLICT`).
 - `refresh` 는 호출할 때마다 Refresh 를 회전시킨다. 폐기된 토큰이 다시 오면
   유출로 보고 그 세션(`device_id`)의 토큰을 전부 끊는다. 다른 기기는 살아남는다.
-- 쿠키로 인증하는 `refresh`·`logout` 은 **Origin 대조 + CSRF 토큰**(double-submit)으로 막는다.
+- 쿠키로 인증하는 `refresh`·`logout` 은 **출처 대조 + CSRF 토큰**(double-submit)으로 막는다.
+  출처는 `Origin`, 없으면 `Referer` 순으로 보고 **둘 다 없으면 막는다** (OWASP 권장).
   프론트는 `csrf_token` 쿠키를 읽어 `X-CSRF-Token` 헤더에 실어야 한다.
 - 구글이 준 토큰은 신원 확인에만 쓰고 **저장하지 않는다.** Google refresh token 은 요청하지 않는다.
 
 로컬은 프론트(3000)와 백엔드(8000)가 cross-origin 이라 CORS 와 `credentials: 'include'` 가
 필요하다. 배포에서는 Caddy 가 같은 origin 으로 묶어 그 문제가 사라진다.
 자세한 흐름과 프론트 연동 코드는 `docs/oauth-architecture.md` 에 있다 (로컬 문서).
+
+## 실시간 STT (WebSocket)
+
+발표 중 마이크 오디오를 Deepgram 으로 흘리고 전사를 FE 로 돌려준다. **BE 가 Deepgram 에 API 키를
+붙인다** — 브라우저 WebSocket 은 헤더를 못 붙이므로 FE → BE → Deepgram 구조가 필수다.
+
+```
+WS /api/ws/takes/{take_id}
+```
+
+| 순서 | 방향 | 프레임 | 내용 |
+|---|---|---|---|
+| 1 | FE → BE | text | `{"type":"auth","token":"<access>"}` — 5초 안에 와야 한다. 브라우저는 헤더를 못 붙이므로 첫 메시지로 |
+| 2 | BE → FE | text | `{"type":"ready","take_id":…,"stt_session_no":0,"stt_state":"connecting"}` — 사용자·Take(존재·소유·상태) 검사를 통과했다. 이제 오디오를 보내도 된다 |
+| 3 | FE → BE | **binary** | `[seq u32 LE][offset_ms u32 LE][PCM 16-bit LE 16 kHz mono]`. 100 ms = 3,200 bytes. `offset_ms` 는 Take 시작 = 0 |
+| 4 | BE → FE | text | `{"type":"transcript","segment_id","is_final","speech_final","start_ms","end_ms","text","confidence","words":[…]}` — `segment_id` 가 같으면 덮어쓴다. **타임스탬프는 Take 기준** |
+| 5 | FE → BE | text | `{"type":"stop"}` — BE 가 Deepgram 을 정리(`CloseStream` → `Metadata`)하고 |
+| 6 | BE → FE | text | `{"type":"stt_status","state":"closed",…}` 를 보낸 뒤 `1000` 으로 닫는다. **FE 는 이걸 받기 전에 닫지 않는다** |
+
+- `stt_status` 는 상태가 바뀔 때마다 온다. `connecting` → `ok` → (`reconnecting` → `degraded`) → `closed`.
+  숫자(`frames`·`dropped_frames`·`silence_ms`·`lost_ms`)는 연결 단위가 아니라 **Take 누적**이다.
+- **Deepgram 이 죽어도 연결을 끊지 않는다.** 오디오를 최대 5초 큐에 담고 백오프로 재접속하며
+  `degraded` 만 알린다 — 그동안 FE 1단 코치는 계속 돌아야 하기 때문이다.
+- 에러는 `{"type":"error","code","message"}`. **에러가 곧 종료는 아니다** — `code` 마다 다르다
+  (`realtime/dto.py` 의 `WsErrorCode`).
+
+  | code | 연결 |
+  |---|---|
+  | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
+  | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다) |
+  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`). FE 는 **재연결하지 않는다** |
+  | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
+  | `BAD_MESSAGE` | 유지 |
+  | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
+  | `TAKE_TAKEN_OVER` | `1008` 로 닫는다. FE 는 **재연결하지 않는다** |
+
+- `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
+- **인증 뒤 Take 를 검사한다.** 사용자 존재 → Take 존재·소유(`takes` → `pitches.user_id`) → 상태
+  (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 도 받는 이유는 `READY→RUNNING`
+  전이가 take 모듈(FE 의 `started_at` 갱신) 몫이라 WebSocket 을 여는 순서를 FE 에 강제하지 않기 위해서다.
+- **final 은 `take_transcript_segments` 에 저장한다** (interim 은 저장하지 않는다). 리포트의 유일한
+  원천이다. 시각은 Take 기준(ms), `words` 는 `[{word, punctuated_word, start_ms, end_ms, confidence}]`
+  JSONB. 저장은 realtime 이 아니라 `take/service.py` 가 하고(`append_transcript_segment`), 스트림이
+  DB 를 직접 만지지 않도록 `realtime/transcript_store.py` 가 저장할 때마다 짧은 세션을 연다.
+  **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다.
+- **STT 파이프라인은 연결보다 오래 산다** (`take_stream.py`). 연결이 끊겨도 30초 동안 Deepgram
+  세션을 살려 두고, 그 안에 다시 붙으면 세그먼트 번호와 프레임 수가 이어진다. 떨어져 있는 동안
+  화면에 못 간 final 은 모아 두었다가 `ready` 직후 순서대로 다시 보낸다 (DB 에는 이미 있다).
+  번호가 리셋되면 FE 가 같은 `segment_id` 를 덮어써 **발표 앞부분 전사가 사라진다** — 그래서
+  30초가 지나 스트림이 사라진 뒤 다시 붙어도 **저장된 마지막 `seq`·`stt_session_no` 에서 이어 받는다.**
+- 스트림은 만든 사용자에게 묶인다 (`FORBIDDEN`). 위 DB 검사의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
+- 같은 사용자의 두 번째 연결이 오면 **기존 것을 `TAKE_TAKEN_OVER` 로 쫓아낸다** (탭 복구).
+  반대로 하면 재연결 레이스에서 사용자가 영영 못 붙는다. 정리 중인 스트림에는 붙이지 않고
+  끝나기를 기다렸다가 새로 만든다.
+- Deepgram 타임스탬프는 "그 연결의 첫 바이트 = 0" 이라 BE 가 그 세션 첫 프레임의 `offset_ms` 를 더한다.
+  프레임 사이 갭(> 50 ms) 은 **무음으로 채워** 두 타임라인을 맞추고, 5초를 넘는 갭은 무음 대신
+  **Deepgram 세션을 갈아** base 를 다시 잡는다 — 일부만 채우면 그 뒤 전사 시각이 통째로 앞당겨진다.
+  역행·중복 `seq` 는 버린다. 세션이 끝나면 Deepgram 이 보고한 길이와 우리가 보낸 길이를 대조해
+  어긋나면 로그에 남긴다.
+- 한국어 군더더기("음", "어", "그", "이제")는 Deepgram 이 기본으로 버리므로 `realtime/fillers.py` 의
+  목록을 `keyterm` 으로 넘겨 전사에 남긴다. `filler_words` 옵션은 영어 전용이다.
+- 정리가 늦어도 FE 를 붙잡아 두지 않는다. `stop` 뒤 Deepgram drain 이 12초 안에 안 끝나면 태스크를
+  끊고, 그마저 2초 안에 안 끝나면 닫힌 것으로 확정해 `closed` 를 보낸다. Deepgram 소켓 닫기 자체도
+  3초 상한이 있다. `stop` 을 보낸 직후 FE 가 사라져도(탭 닫힘) 서버 쪽 종료·저장 절차는 같다.
+- 아직 없는 것: Pitch 대본 키워드 → `keyterm`, `metrics`/`coach` 메시지 (AI 팀 규칙 확정 후).
+
+FE 없이 확인하는 두 가지 —
+
+| | 무엇 | 어떻게 |
+|---|---|---|
+| 파일 | `dev/stt-send-pcm.py` | `uv run python dev/stt-send-pcm.py 녹음.pcm --email <가입한 이메일>` (파일 상단에 변환 명령). `--take-id` 를 안 주면 그 사용자의 Take 를 하나 만들어 쓴다 |
+| 마이크 | `dev/stt-test.html` | `python3 -m http.server 3000 --directory dev` 로 띄우고 `http://localhost:3000/stt-test.html`. **3000 포트로 열어야** Origin 검사를 통과한다. Take 칸에는 `uv run python dev/stt-send-pcm.py --create-take --email <이메일>` 로 만든 id 를 넣는다 |
 
 ## 에러 응답 형식
 
@@ -256,3 +340,4 @@ POST /api/auth/logout           현재 세션 폐기
 | 환경변수 목록 | `.env.example` |
 | Google OAuth 리다이렉트 | `/api/auth/google/callback` (운영 도메인 확정 시 Google Console 에 추가 등록 필요) |
 | 추가로 필요한 것 | Redis (`REDIS_URL`). OAuth state 저장에 쓴다 |
+| Deepgram | `DEEPGRAM_API_KEY`. 운영 도메인은 HTTPS 여야 한다 — 브라우저 마이크(`getUserMedia`)는 secure context 에서만 열린다 |

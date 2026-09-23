@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    /* tsconfig.json 이 references 로 이 프로젝트를 가리킨다 →
+       composite 가 없으면 tsc -b 가 TS6306 으로 멈춘다. */
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* ★ strict 가 없으면 strictNullChecks 도 꺼진다.
+       그러면 CLAUDE.md 6번("없음은 null 이고 키는 유지한다")이 타입에서
+       전혀 강제되지 않는다 — cameraMs: number | null 을 그냥 빼도 통과한다.
+       이 프로젝트에서 null 규율은 문서가 아니라 컴파일러가 지켜야 한다. */
+    "strict": true,
+
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}

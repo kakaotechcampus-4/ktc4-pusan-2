@@ -1,0 +1,51 @@
+# Local test rig for Windows 11, Python 3.11.9, CPU only (no CUDA device present).
+#
+# These are FLOORS, not pins, and there is no lockfile -- a fresh install will
+# not reproduce the environment this was verified on. Versions verified here:
+#   numpy 2.4.6, opencv-python 5.0.0.93, mediapipe 1.0.1, scikit-learn 1.9.0,
+#   scipy 1.17.1, pandas 3.0.5, pyarrow 25.0.1, matplotlib 3.11.1, PyYAML 6.0.3,
+#   tqdm 4.70.0, joblib 1.6.0, Pillow 12.3.0, pytest 9.1.1, kiwisolver 1.4.9.
+#
+# Install (from the repository root):
+#
+#   python -m venv .venv
+#   ./.venv/Scripts/python.exe -m pip install -r requirements.txt
+#   ./.venv/Scripts/python.exe -m pip install -e .
+#
+# This is the DEFAULT install and it is torch-free: the shipped mediapipe_geom
+# backbone is pure geometry and needs neither torch nor a checkpoint. The 38
+# tests that exercise the torch backends skip themselves. For those, see
+# requirements-torch.txt.
+
+numpy>=2.0            # mediapipe 1.0.1 requires numpy>=2
+opencv-python>=4.9
+mediapipe>=1.0.1
+scikit-learn>=1.4
+scipy>=1.11
+pandas>=2.0
+pyarrow>=15.0         # parquet feature tables; csv.gz fallback if absent
+matplotlib>=3.8
+PyYAML>=6.0
+tqdm>=4.66
+joblib>=1.3
+pytest>=8.0
+
+# Korean on-screen text for pipeline_demo / collect / label_review. cv2.putText
+# cannot draw Hangul, so these tools render it through Pillow plus a Windows CJK
+# font (malgun.ttf / malgunbd.ttf / gulim.ttc) and fall back to English without
+# it -- silently, which is why it must be declared rather than left implicit.
+Pillow>=10.0
+
+# matplotlib pulls kiwisolver. The 1.5.1 cp311 win_amd64 wheel fails to load on
+# Windows 11 with "DLL load failed while importing _cext" (side-by-side
+# configuration error) even with a current MSVC 2015-2022 x64 redistributable
+# installed. Because mediapipe imports matplotlib transitively
+# (tasks/python/vision/drawing_utils.py), that break takes down `import
+# mediapipe` too and with it every preprocess code path. 1.4.9 loads correctly.
+kiwisolver>=1.4,<1.5
+
+# torch/torchvision are NOT here on purpose -- see requirements-torch.txt.
+# They are needed only by the l2cs and gazetr backbones (doc 3-3 / Experiment 1),
+# they are multi-gigabyte, and a plain PyPI install pulls a CUDA build that this
+# rig neither needs nor can always load. The default mediapipe_geom backbone
+# runs without them, so a torch-free install is the supported default.

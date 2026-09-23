@@ -1,0 +1,36 @@
+node_modules
+dist
+
+# 로컬 설정. .env.example 과 .env.lan 은 반대로 커밋합니다 —
+# 비밀이 아니고 두 사람이 같아야 하는 값입니다.
+.env.local
+.env.*.local
+
+# 빌드·툴 캐시
+.vite
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 모델 가중치는 커밋하지 않습니다 (수십 MB). public/models/README.md 참고.
+public/models/*
+!public/models/README.md
+
+# ★ .vscode 는 절대 여기 넣지 않습니다.
+#   두 사람의 에디터 TS 버전·포맷터를 맞추는 파일입니다. 커밋해야 합니다.
+
+# ── 레포 루트 .gitignore 를 되돌리는 규칙 ─────────────────────────
+#
+# 모노레포 루트의 .gitignore 는 팀 전체 기준이라 `.env.*` 와 `.vscode/` 를 막습니다.
+# 비밀 유출을 막는 규칙이라 루트를 고치지 않고, frontend/ 안에서만 되살립니다.
+# 중첩 .gitignore 가 상위보다 우선합니다.
+#
+# ★ .env.lan 은 비밀이 아닙니다 — LAN HTTPS 스위치(VITE_HTTPS=true) 하나뿐이고
+#   두 사람이 같아야 하는 값입니다. 실제 비밀은 .env.local 에 있고 위에서 막습니다.
+!.env.lan
+
+# ★ 디렉터리 자체를 먼저 되살려야 안의 파일이 보입니다.
+#   루트가 `.vscode/` 로 디렉터리를 막고 있어서, 파일만 부정해도 안 됩니다.
+!.vscode/

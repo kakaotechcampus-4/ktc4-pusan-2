@@ -32,6 +32,17 @@ class UUIDPrimaryKeyMixin:
     )
 
 
+class CreatedAtMixin:
+    """생성 시각만 필요한 테이블용. 한 번 쓰이면 갱신되지 않는 기록성 행에 쓴다."""
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        sort_order=10,
+    )
+
+
 class TimestampMixin:
     """created_at / updated_at 공통 컬럼. sort_order 로 테이블 맨 뒤에 놓인다."""
 
