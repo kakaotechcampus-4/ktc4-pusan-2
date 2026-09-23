@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { createBrowserRouter } from 'react-router';
 import { PageTitle } from './PageTitle';
 import { Stub } from '@/shared/ui/Stub';
-import { StageDemo } from '@/features/rehearsal/Stage/StageDemo';
+import { StageDemo } from '@/features/rehearsal/stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
@@ -10,7 +10,7 @@ import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
 import { PitchCreatePage } from '@/features/pitch/create/PitchCreatePage';
-import { RehearsalPage } from '@/features/rehearsal/Stage/RehearsalPage';
+import { RehearsalPage } from '@/features/rehearsal/stage/RehearsalPage';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.

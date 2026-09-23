@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import { useGazeWorker } from '../media/useGazeWorker';
-import { appendGazeDecision } from '../lib/db';
+import { appendGazeDecision, markGazeExcluded } from '../lib/db';
+import { noteWriteFailure } from '../lib/writeFailures';
 import type { ZoneDecision } from '@/workers/gaze.contract';
-import type { GazeZone, Ms } from '@/types/api';
+import type { GazeExcludedReason, GazeZone, Ms } from '@/types/api';
 
 /** contract의 Zone → 테두리 상태. 워커가 뭘 주든 매핑은 한 곳에서만 합니다 */
 const BORDER: Record<GazeZone, string> = {
@@ -34,6 +35,7 @@ export function useLiveGaze({
   stageRef,
   clientSessionId,
   enabled,
+  onExcluded,
 }: {
   stream: MediaStream | null;
   videoRef: RefObject<HTMLVideoElement>;
@@ -41,6 +43,12 @@ export function useLiveGaze({
   clientSessionId: string | null;
   /** 시선 측정을 제외한 Take면 false — 워커를 아예 띄우지 않습니다 */
   enabled: boolean;
+  /**
+   * 제외 사유가 정해진 순간 **메모리로도** 알립니다.
+   * IndexedDB 에 적는 것과 별개인 이유는, 적는 일 자체가 실패할 수 있기 때문입니다 —
+   * 그때 이 값이 종료 페이로드의 마지막 근거가 됩니다.
+   */
+  onExcluded: (reason: GazeExcludedReason) => void;
 }) {
   const recentRef = useRef<ZoneDecision[]>([]);
   // 판정 콜백이 읽을 세션 키. 이펙트에서 옮깁니다 — 렌더에서 ref 에 쓰면
@@ -56,15 +64,32 @@ export function useLiveGaze({
       if (stageRef.current) stageRef.current.dataset.gaze = BORDER[d.zone];
 
       // 2. 기록 — 종료 시점에 이 행들을 구간으로 접어 서버로 보냅니다
+      //
+      // ★ 여기를 `.catch(() => undefined)` 로 두면 안 됩니다 (CLAUDE.md 9번).
+      //   빠진 초는 화면에 아무 흔적도 남기지 않고, 종료 시점에 "화면 응시 62%" 같은
+      //   숫자만 조용히 틀리게 만듭니다. 원본이 없으니 나중에 다시 계산할 수도 없습니다.
+      //   그래서 실패를 감추는 대신 **믿을 수 없다는 사실을 기록에 고정**합니다.
       const id = sessionRef.current;
-      if (id) appendGazeDecision(id, d).catch(() => undefined);
+      if (id) {
+        appendGazeDecision(id, d).catch((err: unknown) => {
+          // 한 건이라도 빠지면 이 Take 의 시선 비율은 이미 틀렸습니다 —
+          // 분모(발표 길이)는 그대로인데 분자에서만 빠지기 때문입니다.
+          if (noteWriteFailure(id, 'gazeDecision', err)) {
+            onExcluded('STORAGE_FAILED');
+            // 이 표시까지 실패하면 호출부의 메모리 폴백이 받습니다
+            markGazeExcluded(id, 'STORAGE_FAILED').catch((e: unknown) =>
+              noteWriteFailure(id, 'gazeExcluded', e),
+            );
+          }
+        });
+      }
 
       // 3. 최근 창
       const recent = recentRef.current;
       recent.push(d);
       while (recent.length > 0 && d.tMs - recent[0]!.tMs > WINDOW_MS) recent.shift();
     },
-    [stageRef],
+    [stageRef, onExcluded],
   );
 
   const { ready, engineVersion, error, perf, startPump, stopPump } = useGazeWorker(

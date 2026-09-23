@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { appendCoachLog } from '../lib/db';
+import { noteWriteFailure } from '../lib/writeFailures';
 import type { Mode, Ms } from '@/types/api';
 import { useRehearsalStore } from './rehearsalStore';
 
@@ -168,7 +169,7 @@ export function useCoach({
             fired: suppressed === null,
             message: suppressed === null ? text : null,
             suppressedReason: suppressed,
-          }).catch(() => undefined);
+          }).catch((err: unknown) => noteWriteFailure(clientSessionId, 'coachLog', err));
         }
         if (suppressed !== null) return;
 

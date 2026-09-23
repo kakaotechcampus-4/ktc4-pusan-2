@@ -85,7 +85,7 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 - `features/rehearsal/lib/gazeSegments.ts` — 구간 압축·합계·자체 검증 (테스트 포함)
 - `shared/lib/clock.ts` — `performance.now()` 기준 단조 시계. 백그라운드 탭에서도 정확합니다
 
-**무대 레이아웃** (`features/rehearsal/Stage/`) — `/dev/stage`에서 확인합니다.
+**무대 레이아웃** (`features/rehearsal/stage/`) — `/dev/stage`에서 확인합니다.
 Script Mode 4단 높이 · 시선 테두리 3색 · **리렌더 없이 테두리가 바뀌는 것**을 눈으로 봅니다.
 이 프로젝트에서 Tailwind를 안 쓰는 유일한 곳입니다 (`stage.css`).
 

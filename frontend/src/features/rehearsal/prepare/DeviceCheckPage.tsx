@@ -95,7 +95,7 @@ export function DeviceCheckPage() {
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
-  const { meterRef, dbRef, rowRef, silentRef, micOk, audioState } = useMicLevel(stream);
+  const { meterRef, dbRef, rowRef, silentRef, micOk, audioState, meterError } = useMicLevel(stream);
   const declineGaze = usePrepareStore((s) => s.declineGaze);
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다
   const scriptMode = usePrepareStore((s) => s.scriptMode);
@@ -366,6 +366,9 @@ export function DeviceCheckPage() {
                 AudioContext가 {audioState} 상태입니다 — 오디오가 흐르지 않습니다
               </p>
             )}
+            {/* 계량기가 아예 못 떴을 때. '입력 없음'과 구분해서 보여줘야
+                사용자가 말을 더 크게 할지, 장치를 바꿀지 정할 수 있습니다 */}
+            {meterError && <p className="mt-1 text-coral">{meterError}</p>}
           </section>
         </div>
       </div>
