@@ -337,6 +337,56 @@ describe('종료', () => {
     expect(sockets).toHaveLength(1);
   });
 
+  it('끊긴 채로 끝내면 재연결을 기다렸다가 남은 음성을 보낸다', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    // 연결이 끊긴 사이에 말한 2초가 버퍼에 남습니다 — 이게 마무리 문장입니다
+    sockets[0]!.serverClose(1006);
+    stt.sendFrame(pcm(), 0);
+    stt.sendFrame(pcm(), 100);
+    expect(stt.bufferedFrames).toBe(2);
+
+    let done = false;
+    stt.stop().then(() => {
+      done = true;
+    });
+
+    // 여기서 바로 정리하면 버퍼가 그대로 버려집니다
+    await settle();
+    expect(done).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+
+    expect(sockets[1]!.frames).toHaveLength(2);
+    expect(JSON.parse(sockets[1]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
+  });
+
+  it('재연결마저 실패하면 더 기다리지 않고 정리한다', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    sockets[0]!.serverClose(1006);
+    stt.sendFrame(pcm(), 0);
+
+    const stopped = stt.stop();
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.serverClose(1006);
+
+    // 상한(3초)을 다 쓰지 않고 바로 풀립니다
+    await expect(stopped).resolves.toBeUndefined();
+  });
+
   it('closed 가 안 오면 15초 뒤에 끊는다 — 종료 화면을 붙잡아 두지 않는다', async () => {
     vi.useFakeTimers();
     const stt = makeSocket();

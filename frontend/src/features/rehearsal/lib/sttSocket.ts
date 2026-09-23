@@ -43,6 +43,14 @@ const RETRY_DELAYS_MS = [500, 1_000, 2_000];
 const STOP_TIMEOUT_MS = 15_000;
 
 /**
+ * 끊긴 채로 발표를 끝냈을 때, 남은 버퍼를 보내려고 재연결을 기다리는 상한.
+ *
+ * 전체 상한(15초)을 쓰지 않습니다 — 네트워크가 정말 죽었으면 끝내기 버튼을 누른 사람이
+ * 15초를 서서 기다리게 됩니다. 백오프 한 번(최대 2초)이 지나갈 만큼만 줍니다.
+ */
+const STOP_RECONNECT_BUDGET_MS = 3_000;
+
+/**
  * 테스트에서 가짜를 끼우려고 최소한만 추려낸 WebSocket 모양입니다.
  * 실제로 쓰는 것은 여기 있는 것이 전부입니다.
  */
@@ -160,25 +168,49 @@ export class SttSocket {
   }
 
   /**
-   * 발표 종료. `closed` 를 받거나 15초가 지나면 풀립니다.
+   * 발표 종료. `closed` 를 받거나 상한이 지나면 풀립니다.
    *
    * 여기서 기다리지 않고 닫으면 **마지막 1~2초의 전사가 사라집니다** —
    * 발표의 마무리 문장이라 리포트에서 가장 아쉬운 자리입니다.
+   *
+   * ── 끊긴 채로 끝낸 경우 ────────────────────────────────────────────
+   *
+   * 재연결을 기다리는 중이면 아직 못 보낸 버퍼가 남아 있고, 그 2초가 바로 마무리
+   * 문장입니다. 그래서 **예약된 재연결을 취소하지 않고** 짧게 기다립니다 —
+   * 다시 붙으면 `ready` 뒤에 버퍼를 흘리고 그때 `stop` 을 보냅니다.
+   * 서버는 끊긴 뒤 30초 동안 스트림을 살려 두므로 번호도 이어집니다.
+   *
+   * 그 시도마저 실패하면(다시 `close`) 곧바로 정리합니다. 원본 녹음은 로컬에 남아
+   * 있으니 여기서 더 붙잡고 있을 이유가 없습니다.
    */
   stop(): Promise<void> {
-    if (this.disposed || !this.socket) {
+    if (this.disposed) {
       this.dispose();
       return Promise.resolve();
     }
 
     if (!this.stopping) {
       this.stopping = true;
-      this.clearRetry();
-      this.stopTimer = setTimeout(() => this.dispose(), STOP_TIMEOUT_MS);
-      this.sendStop();
+
+      if (this.socket) {
+        this.clearRetry();
+        this.armStopTimer(STOP_TIMEOUT_MS);
+        this.sendStop();
+      } else if (this.pending.length > 0 && this.retryTimer !== null) {
+        // 예약된 재연결을 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다
+        this.armStopTimer(STOP_RECONNECT_BUDGET_MS);
+      } else {
+        this.dispose();
+        return Promise.resolve();
+      }
     }
 
     return new Promise((resolve) => this.stopResolvers.push(resolve));
+  }
+
+  private armStopTimer(afterMs: number): void {
+    if (this.stopTimer !== null) clearTimeout(this.stopTimer);
+    this.stopTimer = setTimeout(() => this.dispose(), afterMs);
   }
 
   /**
@@ -195,6 +227,8 @@ export class SttSocket {
     try {
       this.flushPending();
       this.socket.send(JSON.stringify({ type: 'stop' }));
+      // 여기서부터는 서버가 Deepgram 을 정리하는 시간입니다. 상한을 그쪽에 맞춥니다
+      this.armStopTimer(STOP_TIMEOUT_MS);
     } catch {
       this.dispose();
     }
