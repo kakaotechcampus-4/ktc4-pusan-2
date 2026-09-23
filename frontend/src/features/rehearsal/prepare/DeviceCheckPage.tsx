@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
-import { usePrepare } from '@/shared/api/prepare';
+import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
+import { setTakeId, startSession } from '../lib/db';
+import { toMessage } from '@/shared/api/errorMessage';
 import { CameraPreview } from './CameraPreview';
 import { CheckCard } from './CheckCard';
 import { LevelBar } from '../media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
-import { usePrepareStore } from './prepareStore';
+import { MissionCard } from './MissionCard';
+import { ScriptModeChoice } from './ScriptModeChoice';
+import { modeForScriptMode, normalizeScriptMode, usePrepareStore } from './prepareStore';
 import { useGazeCalibration, type CalibrationPhase } from './useGazeCalibration';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
@@ -71,11 +75,14 @@ function calibrationActionText(phase: CalibrationPhase, live: boolean): string {
 }
 
 /**
- * 05 카메라 점검 — 리허설 준비 바로 앞.
+ * 09 시작 전 세팅 — 리허설 바로 앞. **Take가 생기는 유일한 화면입니다.**
  *
- * 여기서는 **Take를 만들지 않습니다.** Take는 준비 화면의 시작 CTA에서만 생깁니다
- * (CLAUDE.md 8번). 여기서 만들면 점검하다 그만둔 만큼 빈 Take가 쌓이고,
- * takeNumber가 실제 연습 횟수와 어긋납니다.
+ * 전에는 장치 점검(05)과 리허설 준비(06)가 따로였는데, 시안 09 가 둘을 한 화면으로
+ * 그리면서 합쳤습니다. 미션·대본 표시·평가기준이 준비 화면에만 있던 것들입니다.
+ *
+ * ★ Take 는 아래 `start()` 에서만 생깁니다 (CLAUDE.md 8번). 화면에 들어오는 것만으로는
+ *   만들지 않습니다 — 점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 실제
+ *   연습 횟수와 어긋납니다. 이 함수를 다른 화면으로 복사하지 마세요.
  *
  * 점검 셋 중 둘은 장치(카메라·마이크)고 하나는 시선 기준점입니다.
  * 시선을 못 잡겠으면 '소리만으로 계속하기'로 빠집니다 — 그 Take의 시선은
@@ -90,9 +97,17 @@ export function DeviceCheckPage() {
   const { videoRef, live } = useVideoStream(stream, 'device-check');
   const { meterRef, dbRef, rowRef, silentRef, micOk, audioState, meterError } = useMicLevel(stream);
   const declineGaze = usePrepareStore((s) => s.declineGaze);
+  // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다
+  const scriptMode = usePrepareStore((s) => s.scriptMode);
+  const setScriptMode = usePrepareStore((s) => s.setScriptMode);
+  const calibration = usePrepareStore((s) => s.calibration);
+  const scriptModeTouched = usePrepareStore((s) => s.scriptModeTouched);
   const cal = useGazeCalibration({ videoRef, live });
+  const createTake = useCreateTake();
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   // 지금 열려 있는 트랙이 곧 선택값입니다. 따로 상태로 들고 있으면
   // 브라우저가 다른 장치를 열었을 때 화면과 실제가 갈라집니다
@@ -111,6 +126,14 @@ export function DeviceCheckPage() {
     if (activation?.hasBeenActive) request().catch(() => undefined);
   }, [request]);
 
+  // 서버 기본값은 **사용자가 고르기 전에만** 넣습니다. 조건 없이 덮으면 응답이 늦게
+  // 올 때 사용자가 고른 것이 되돌아갑니다. FULL 이 올 수 있어 3단계로 접습니다.
+  useEffect(() => {
+    if (data && !scriptModeTouched) {
+      setScriptMode(normalizeScriptMode(data.defaultScriptMode), false);
+    }
+  }, [data, scriptModeTouched, setScriptMode]);
+
   // 장치 이름은 권한을 받은 뒤에야 채워집니다. 그 전에는 label이 빈 문자열입니다
   useEffect(() => {
     if (!stream) return;
@@ -123,45 +146,107 @@ export function DeviceCheckPage() {
   const cameras = devices.filter((d) => d.kind === 'videoinput');
   const mics = devices.filter((d) => d.kind === 'audioinput');
 
-  const ready = live && micOk && cal.points === 2;
-  const goPrepare = () => navigate(`/pitch/${pitchId}/prepare`);
+  const ready = live && micOk && cal.points === 2 && data !== undefined && !starting;
 
-  const hint = deviceCheckHint({
-    deviceError,
-    live,
-    micOk,
-    calPhase: cal.phase,
-    calPoints: cal.points,
-  });
+  /**
+   * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
+   *
+   * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
+   * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
+   */
+  const start = async () => {
+    if (!data || starting) return;
+    setStarting(true);
+    setStartError(null);
+
+    // 시안 09 - 대본 표시 하나로 연습 모드까지 정해집니다
+    const mode = modeForScriptMode(scriptMode);
+
+    try {
+      const clientSessionId = await startSession();
+
+      const take = await createTake.mutateAsync({
+        pitchId: data.pitchId,
+        clientSessionId,
+        mode,
+        scriptMode,
+        presentationVersion: data.presentationVersion,
+        scriptVersion: data.scriptVersion,
+        criteriaVersion: data.criteria.version,
+      });
+      await setTakeId(clientSessionId, take.takeId);
+
+      // 품질 요약만 갑니다. 기준 벡터는 브라우저에 남습니다 (CLAUDE.md 1번)
+      if (calibration) await postCalibration(take.takeId, calibration);
+
+      navigate(mode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`, {
+        state: { clientSessionId, scriptMode },
+      });
+    } catch (e) {
+      // 여기서 멈춰야 합니다. 실패한 채로 넘어가면 takeId 없이 발표가 시작되고
+      // 그 Take 는 어디에도 안 남습니다
+      setStartError(toMessage(e));
+      setStarting(false);
+    }
+  };
+
+  // 시작에 실패했으면 그 문구가 먼저입니다 - 점검 안내보다 급합니다
+  const hint =
+    startError ??
+    (starting
+      ? '연습을 여는 중…'
+      : deviceCheckHint({
+          deviceError,
+          live,
+          micOk,
+          calPhase: cal.phase,
+          calPoints: cal.points,
+        }));
+
+  const takeNumber = data?.nextTakeNumber ?? 0;
+  const startLabel = modeForScriptMode(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
 
   return (
     <ScreenFrame
-      screenNo="05"
-      screenName="카메라 점검"
-      entry="진입 · 피치 생성의 다음 / 리포트의 다시 연습하기"
+      screenNo="09"
+      screenName="시작 전 세팅 (Take 준비)"
+      entry="진입 · 피치 생성 완료 / 리포트의 다시 연습하기"
       title={data?.title ?? '불러오는 중…'}
       subtitle={data ? `자료 v${data.presentationVersion} · 대본 v${data.scriptVersion}` : ''}
-      badge={`TAKE ${data?.nextTakeNumber ?? '—'} · 장치 점검`}
+      badge={`TAKE ${data?.nextTakeNumber || '—'} · 시작 전 세팅`}
       onBack={() => navigate(-1)}
       hint={hint}
       actions={
         <>
+          {/*
+            시선을 못 잡아도 연습은 갑니다. 그 Take 의 시선은 USER_DECLINED 로 제외되고
+            말하기 지표만으로 리포트가 나옵니다 - 막는 것보다 반쪽이라도 남기는 것이 낫습니다.
+          */}
           <StageButton
-            disabled={!micOk}
+            disabled={!micOk || starting || data === undefined}
             onClick={() => {
               declineGaze();
-              goPrepare();
+              start().catch(() => undefined);
             }}
           >
             소리만으로 계속하기
           </StageButton>
-          <StageButton variant="primary" disabled={!ready} onClick={goPrepare}>
-            시작하기
+          <StageButton
+            variant="primary"
+            disabled={!ready}
+            onClick={() => start().catch(() => undefined)}
+          >
+            {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
           </StageButton>
         </>
       }
     >
-      <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+      {/*
+        목업 09 의 구성 — 왼쪽은 "지금 보이는 것"(카메라와 그 아래 점검), 오른쪽은
+        "이번 Take 를 어떻게 할지"(미션 · 대본 표시)입니다. 장치와 결정을 갈라 두면
+        발표 직전에 눈이 한쪽만 훑어도 됩니다.
+      */}
+      <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <div className="flex flex-col gap-4">
           <div className="aspect-video w-full">
             <CameraPreview
@@ -173,71 +258,77 @@ export function DeviceCheckPage() {
             />
           </div>
 
-          <div className="rounded-xl border border-stage-panel bg-stage-panel/40 px-4 py-3">
-            <LevelBar variant="segments" meterRef={meterRef} dbRef={dbRef} />
+          {/* 장치 선택과 점검 항목을 나란히 — 고른 장치의 결과가 바로 옆에서 보입니다 */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <section className="rounded-xl border border-line-strong bg-panel p-4">
+              <h2 className="text-sm font-bold">장치 선택</h2>
+
+              <DeviceSelect
+                label="카메라"
+                value={videoId}
+                options={cameras}
+                fallback="기본 카메라"
+                onChange={(id) =>
+                  request({ videoDeviceId: id, audioDeviceId: audioId }).catch(() => undefined)
+                }
+              />
+              <DeviceSelect
+                label="마이크"
+                value={audioId}
+                options={mics}
+                fallback="기본 마이크"
+                onChange={(id) =>
+                  request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
+                }
+              />
+            </section>
+
+            <CheckCard
+              title="점검 항목"
+              rows={[
+                {
+                  id: 'camera',
+                  label: live ? '카메라 · 얼굴 인식됨' : '카메라 · 영상 없음',
+                  done: live,
+                },
+                {
+                  id: 'mic',
+                  // 문구 전체를 rAF가 다시 씁니다 — 초당 수십 번 바뀌는 값이라 상태로 올리지 않습니다
+                  label: <span ref={rowRef}>마이크 입력 확인 중</span>,
+                  done: micOk,
+                  // 막대를 이 줄 안에 둡니다 (목업 09) — 숫자와 움직임이 같이 보여야
+                  // "소리가 들어오고 있다"가 한 번에 읽힙니다
+                  trailing: <LevelBar variant="segments" meterRef={meterRef} dbRef={dbRef} />,
+                },
+                {
+                  // 카메라를 2초, 대본 자리를 2초. 모은 프레임은 분류기가 받아
+                  // 기준과 품질을 정합니다 (A안) — 여기서는 순서와 안내만 합니다.
+                  id: 'gaze',
+                  label:
+                    cal.phase === 'FAILED'
+                      ? '시선 기준점 · 다시 필요'
+                      : `시선 기준점 ${cal.points} / 2`,
+                  done: cal.phase === 'DONE',
+                  action: {
+                    text: calibrationActionText(cal.phase, live),
+                    onClick: () => {
+                      if (live && !cal.running) cal.start();
+                    },
+                  },
+                },
+              ]}
+            />
           </div>
         </div>
 
         <div className="flex flex-col gap-4">
-          <section className="rounded-xl border border-stage-panel bg-stage-panel/40 p-4">
-            <h2 className="text-sm font-bold">장치 선택</h2>
+          <MissionCard description={data?.lastMission?.description ?? null} />
 
-            <DeviceSelect
-              label="카메라"
-              value={videoId}
-              options={cameras}
-              fallback="기본 카메라"
-              onChange={(id) =>
-                request({ videoDeviceId: id, audioDeviceId: audioId }).catch(() => undefined)
-              }
-            />
-            <DeviceSelect
-              label="마이크"
-              value={audioId}
-              options={mics}
-              fallback="기본 마이크"
-              onChange={(id) =>
-                request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
-              }
-            />
-          </section>
-
-          <CheckCard
-            title="점검 항목"
-            rows={[
-              {
-                id: 'camera',
-                label: live ? '카메라 · 영상 들어옴' : '카메라 · 영상 없음',
-                done: live,
-              },
-              {
-                id: 'mic',
-                // 문구 전체를 rAF가 다시 씁니다 — 초당 수십 번 바뀌는 값이라 상태로 올리지 않습니다
-                label: <span ref={rowRef}>마이크 입력 확인 중</span>,
-                done: micOk,
-              },
-              {
-                // 카메라를 2초, 대본 자리를 2초. 모은 프레임은 분류기가 받아
-                // 기준과 품질을 정합니다 (A안) — 여기서는 순서와 안내만 합니다.
-                id: 'gaze',
-                label:
-                  cal.phase === 'FAILED'
-                    ? '시선 기준점 · 다시 필요'
-                    : `시선 기준점 ${cal.points} / 2`,
-                done: cal.phase === 'DONE',
-                action: {
-                  text: calibrationActionText(cal.phase, live),
-                  onClick: () => {
-                    if (live && !cal.running) cal.start();
-                  },
-                },
-              },
-            ]}
-          />
+          <ScriptModeChoice value={scriptMode} onChange={(m) => setScriptMode(m)} />
 
           {/* 권한·무입력 안내. 문구는 useCameraStream이 들고 있는 것을 그대로 씁니다 —
               화면마다 새로 지으면 사용자가 뭘 해야 할지 매번 달라집니다 */}
-          <section className="rounded-xl border border-stage-panel bg-stage-panel/40 p-4 text-xs leading-relaxed">
+          <section className="rounded-xl border border-dashed border-line-strong p-4 text-xs leading-relaxed">
             {deviceError ? (
               <p className="font-bold text-coral">{DEVICE_ERROR_MESSAGE[deviceError]}</p>
             ) : (
@@ -305,7 +396,7 @@ function DeviceSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={options.length === 0}
-        className="mt-1 w-full rounded-lg border border-stage-panel bg-stage px-3 py-2 text-sm
+        className="mt-1 w-full rounded-lg border border-line-strong bg-panel px-3 py-2 text-sm
                    disabled:opacity-50"
       >
         {options.length === 0 ? (

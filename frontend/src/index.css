@@ -45,7 +45,7 @@
 
      ★ 고치려면 팀 합의가 필요합니다. 여백이 답답해 보인다는 이유로
        고치면 그 시점 이전 기록이 전부 못 쓰게 됩니다.              */
-  --spacing-script-full: 180px;
+  /* FULL 은 HIGHLIGHT 로 합쳐졌습니다 (types/api.ts). 원래 둘 다 180px 이라 높이 변화 없음 */
   --spacing-script-highlight: 180px;
   --spacing-script-keyword: 120px;
   --spacing-script-off: 0px;

@@ -1,6 +1,37 @@
 import { create } from 'zustand';
 
-import type { CalibrationSummary, ScriptMode } from '@/types/api';
+import type { CalibrationSummary, Mode, ScriptMode } from '@/types/api';
+
+/**
+ * 서버가 준 대본 표시 값을 지금 쓰는 3단계로 접습니다.
+ *
+ * 없어진 `FULL`(전체 대본)은 HIGHLIGHT 로 갑니다 — 보이는 글도 영역 높이도 같았고,
+ * 강조가 붙느냐만 달랐습니다. 모르는 값이 와도 HIGHLIGHT 로 떨어집니다:
+ * 대본을 아예 안 띄우는 것(OFF)으로 잘못 떨어지면 발표자가 말을 잃습니다.
+ *
+ * ★ BE 가 아직 FULL 을 보낼 수 있어서 필요합니다. 계약이 3단계로 맞춰지면 지웁니다.
+ */
+export function normalizeScriptMode(raw: string | null | undefined): ScriptMode {
+  if (raw === 'KEYWORD' || raw === 'OFF' || raw === 'HIGHLIGHT') return raw;
+  return 'HIGHLIGHT';
+}
+
+/**
+ * 고른 대본 표시에서 연습 모드를 정합니다.
+ *
+ * 시안 09 가 `실전 모드 - 대본 없이` 를 한 줄로 묶었습니다. 그래서 화면에서는
+ * 하나만 고르고, 두 계약 필드(`mode` / `script_mode`)는 여기서 같이 정해집니다.
+ *
+ * 대가가 있습니다 - **"대본만 끄고 코칭은 받기"가 없어집니다.** 실전 모드는 대본만
+ * 끄는 것이 아니라 발표 중 코치를 통째로 침묵시킵니다 (CLAUDE.md 4번). 둘을 따로
+ * 고르게 하려면 시안과 화면이 달라져야 해서, 시안을 따르기로 했습니다.
+ *
+ * 계약에서 Mode 와 ScriptMode 는 여전히 별개입니다 - 서버로는 두 값이 그대로 갑니다.
+ * 나중에 둘을 따로 고르게 되돌리려면 이 함수만 지우면 됩니다.
+ */
+export function modeForScriptMode(scriptMode: ScriptMode): Mode {
+  return scriptMode === 'OFF' ? 'EXAM' : 'COACHING';
+}
 
 /**
  * 장치 점검 → 리허설 준비로 넘어가는 동안 들고 가야 하는 것들.
