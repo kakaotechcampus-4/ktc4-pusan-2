@@ -60,6 +60,14 @@ export function useSttStream({
 
     let cancelled = false;
 
+    /**
+     * 소켓이 포기했다. **캡처 준비가 그보다 늦게 끝날 수 있어서** 따로 둡니다 —
+     * 인증이 먼저 실패하면 `onGiveUp` 시점에는 아직 `captureRef` 가 비어 있고,
+     * 그 뒤에 준비가 끝난 캡처를 그대로 받아 두면 보낼 곳도 없는 워클릿이
+     * 남은 발표 내내 돕니다.
+     */
+    let abandoned = false;
+
     const paint = (message: TranscriptMessage) => {
       if (message.is_final) lastFinalRef.current = message.text;
       const text = message.is_final ? message.text : message.text || lastFinalRef.current;
@@ -84,6 +92,7 @@ export function useSttStream({
       onGiveUp: (reason) => {
         // 보낼 곳이 없어졌습니다. 마이크 캡처를 계속 돌리면 남은 발표 내내
         // 오디오 스레드와 워클릿이 헛돕니다 — 같은 화면에서 시선 워커가 돌고 있습니다
+        abandoned = true;
         captureRef.current?.stop().catch(() => undefined);
         captureRef.current = null;
 
@@ -105,7 +114,8 @@ export function useSttStream({
       onFrame: ({ pcm, offsetMs }) => socket.sendFrame(pcm, offsetMs),
     })
       .then(({ capture, error }) => {
-        if (cancelled || error) {
+        // abandoned — 준비가 끝나기 전에 소켓이 포기한 경우입니다
+        if (cancelled || abandoned || error) {
           capture?.stop().catch(() => undefined);
           // 오디오가 없으면 소켓을 붙잡고 있을 이유가 없습니다
           if (error) {
