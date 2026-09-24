@@ -28,7 +28,7 @@ const BORDER: Record<GazeZone, string> = {
  */
 export function StageDemo() {
   const stageRef = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<ScriptMode>('FULL');
+  const [mode, setMode] = useState<ScriptMode>('HIGHLIGHT');
 
   // 렌더 횟수를 세는 것도 DOM에 직접 쓴다 — 세느라 렌더를 유발하면 의미가 없다
   const countRef = useRef(0);
@@ -68,7 +68,7 @@ export function StageDemo() {
         ))}
 
         <span className="mr-1 ml-4 text-xs font-bold text-stone">대본</span>
-        {(['FULL', 'HIGHLIGHT', 'KEYWORD', 'OFF'] as ScriptMode[]).map((m) => (
+        {(['HIGHLIGHT', 'KEYWORD', 'OFF'] as ScriptMode[]).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
