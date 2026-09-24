@@ -56,6 +56,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> List[PitchesDTO]
                     d = take_score - previous_take_score
         
             take_summary = TakeSummaryDTO(
+                take_id=take.id,
                 take_version=take.take_number,
                 take_elapsed=take.duration_sec,
                 take_time=take.goal_time_sec,
@@ -67,6 +68,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> List[PitchesDTO]
             take_summaries.append(take_summary)
 
         pitch_dto = PitchesDTO(
+            pitch_id=pitch.id,
             pitch_title=pitch.title,
             pitch_time=pitch.time_limit_sec,
             thumbnail_url=None,

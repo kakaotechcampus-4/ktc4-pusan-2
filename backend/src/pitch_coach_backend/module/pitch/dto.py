@@ -13,6 +13,7 @@ class PitchDTO(BaseModel):
     presentation_date: date | None = None
 
 class PitchesDTO(BaseModel):
+    pitch_id: uuid.UUID
     pitch_title: str
     pitch_time: int
     thumbnail_url: str | None = None

@@ -14,6 +14,7 @@ class TakeUpdateRequestDTO(BaseModel):
     event_logs: list[dict] | None = None
 
 class TakeSummaryDTO(BaseModel):
+    take_id: uuid.UUID
     take_version: int
     take_elapsed: int | None = None
     take_time: int
