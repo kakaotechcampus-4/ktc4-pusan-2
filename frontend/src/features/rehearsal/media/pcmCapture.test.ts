@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { STT_SAMPLE_RATE } from '@/features/rehearsal/lib/sttProtocol';
+import { STT_SAMPLE_RATE } from '../lib/sttProtocol';
 import { startPcmCapture } from './pcmCapture';
 
 /**

@@ -4,9 +4,9 @@ import {
   type SttState,
   type SttStatusMessage,
   type TranscriptMessage,
-} from '@/features/rehearsal/lib/sttProtocol';
-import { SttSocket, sttUrl } from '@/features/rehearsal/lib/sttSocket';
-import { startPcmCapture, type PcmCapture } from '@/features/rehearsal/media/pcmCapture';
+} from '../lib/sttProtocol';
+import { SttSocket, sttUrl } from '../lib/sttSocket';
+import { startPcmCapture, type PcmCapture } from './pcmCapture';
 import { refresh } from '@/shared/api/tokenStore';
 
 /**

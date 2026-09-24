@@ -4,13 +4,13 @@ import {
   STT_STATE_NOTE,
   type SttState,
   type TranscriptMessage,
-} from '@/features/rehearsal/lib/sttProtocol';
-import { SttSocket } from '@/features/rehearsal/lib/sttSocket';
+} from '../lib/sttProtocol';
+import { SttSocket } from '../lib/sttSocket';
 import {
   PCM_CAPTURE_ERROR_MESSAGE,
   startPcmCapture,
   type PcmCapture,
-} from '@/features/rehearsal/media/pcmCapture';
+} from '../media/pcmCapture';
 import type { Ms } from '@/types/api';
 
 /**
