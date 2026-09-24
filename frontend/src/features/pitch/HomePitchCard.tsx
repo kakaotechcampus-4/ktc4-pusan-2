@@ -84,7 +84,7 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
               <ul>
                 {takes.map((take) => (
                   <li
-                    key={take.take_version}
+                    key={take.take_id}
                     className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-line px-6 py-4 text-sm"
                   >
                     <span className="w-20 font-mono font-bold">

@@ -149,11 +149,11 @@ export function HomePage() {
                 {data.pitches.length ? (
                   <>
                     <p className="mb-5 text-xs text-stone">
-                      피치별 연습 기록을 펼쳐 발표 시간과 대본 모드를 확인해 보세요.
+                      발표 제목을 누르면 자료와 대본을 확인하고, 연습을 이어갈 수 있어요.
                     </p>
                     <div className="space-y-5">
                       {data.pitches.map((pitch, index) => (
-                        <HomePitchCard key={pitch.pitch_id ?? index} pitch={pitch} index={index} />
+                        <HomePitchCard key={pitch.pitch_id} pitch={pitch} index={index} />
                       ))}
                     </div>
                   </>

@@ -6,8 +6,8 @@ export interface HomeTake {
   script_mode: string;
   score: number | null;
   delta: number | null;
-  /** Not supplied by #47 yet. Never derive a resource ID from its version. */
-  take_id?: string | null;
+  /** UUID returned by #47; distinct from take_version. */
+  take_id: string;
 }
 
 export interface HomePitch {
@@ -15,8 +15,8 @@ export interface HomePitch {
   pitch_time: number;
   thumbnail_url: string | null;
   takes: HomeTake[];
-  /** Required backend extension for opening this pitch's editor. */
-  pitch_id?: string | null;
+  /** UUID returned by #47 for opening the pitch editor. */
+  pitch_id: string;
 }
 
 export interface PitchListResponse {
