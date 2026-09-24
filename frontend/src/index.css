@@ -84,3 +84,20 @@ body {
     transition-duration: .01ms !important;
   }
 }
+
+/* Landing-only motion: no changes to the measured rehearsal layout. */
+@keyframes landing-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes landing-wave {
+  0%, 100% { transform: scaleY(.55); }
+  50% { transform: scaleY(1); }
+}
+.landing-float { animation: landing-float 4s ease-in-out infinite; }
+.landing-wave { animation: landing-wave 1.6s ease-in-out infinite; }
+.landing[data-motion="off"] .landing-float,
+.landing[data-motion="off"] .landing-wave { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .landing-float, .landing-wave { animation: none; }
+}
