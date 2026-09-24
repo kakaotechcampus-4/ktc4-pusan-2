@@ -1,3 +1,4 @@
+import { homeHandlers } from './home';
 import { http, HttpResponse } from 'msw';
 import { authHandlers } from './auth';
 import { sttHandlers } from './stt';
@@ -235,6 +236,7 @@ const fallbackTake: TakeContext = {
 const takeContexts = new Map<string, TakeContext>();
 
 export const handlers = [
+  ...homeHandlers,
   ...authHandlers,
   ...sttHandlers,
   http.get('*/api/home', () => HttpResponse.json(home)),

@@ -9,6 +9,7 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { PolicyPage } from '@/features/onboarding/PolicyPage';
+import { HomePage } from '@/features/pitch/HomePage';
 import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
 import { PitchCreatePage } from '@/features/pitch/create/PitchCreatePage';
@@ -24,11 +25,11 @@ import { RehearsalPage } from '@/features/rehearsal/stage/RehearsalPage';
 // P 번호와 경로를 열로 맞춰 둔다 — 화면 목록 문서와 나란히 놓고 대조하는 표다.
 // prettier-ignore
 const routes = [
-  { path: '/',            title: '홈 대시보드 | 피치코치', element: <Stub id="P2"   name="홈 대시보드" track="B" /> },
+  { path: '/',            title: '홈 대시보드 | 피치코치', element: <HomePage /> },
   { path: '/welcome',     title: '피치코치 | AI 발표 코치', element: <WelcomePage /> },
   { path: '/login',       title: '로그인 | 피치코치', element: <LoginPage /> },
   { path: '/about',       title: '분석 방식 설명 | 피치코치', element: <Stub id="P14"  name="분석 방식 설명" track="B" /> },
-  { path: '/pitches',     title: 'Pitch 목록 | 피치코치', element: <Stub id="P10"  name="Pitch 목록" track="B" /> },
+  { path: '/pitches',     title: 'Pitch 목록 | 피치코치', element: <HomePage /> },
   { path: '/pitch/new',   title: 'Pitch 생성 | 피치코치', element: <PitchCreatePage /> },
   { path: '/pitch/:id/edit', title: 'Pitch 수정 | 피치코치', element: <Stub id="P13" name="Pitch 수정" track="B" /> },
   { path: '/takes',       title: 'Take 기록 | 피치코치', element: <Stub id="P16"  name="Take 기록" track="B" /> },
@@ -85,7 +86,7 @@ export const router = createBrowserRouter(
           path: route.path,
           element: (
             <PageTitle title={route.title}>
-              <RequireSession />
+              <RequireSession showHeader={!['/', '/pitches'].includes(route.path)} />
             </PageTitle>
           ),
           children: [{ index: true, element: route.element }],

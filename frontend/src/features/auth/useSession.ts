@@ -1,21 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 import { apiRequest } from '@/shared/api/client';
-import { ApiFailure, getAccessToken, refresh, logout } from '@/shared/api/tokenStore';
+import { ApiFailure, getAccessToken, refresh } from '@/shared/api/tokenStore';
 
 export type User = { id: string; email: string; name: string };
 
-export function useLogout() {
-  const client = useQueryClient();
-
-  return useMutation({
-    mutationFn: logout,
-    onSuccess: () => {
-      client.clear();
-      client.setQueryData(['session'], null);
-    },
-  });
-}
+export { useLogout } from '@/shared/api/useLogout';
 
 export function safeDestination(value: string | null) {
   if (
