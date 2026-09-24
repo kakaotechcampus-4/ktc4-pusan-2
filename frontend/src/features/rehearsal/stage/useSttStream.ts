@@ -6,11 +6,7 @@ import {
   type TranscriptMessage,
 } from '../lib/sttProtocol';
 import { SttSocket } from '../lib/sttSocket';
-import {
-  PCM_CAPTURE_ERROR_MESSAGE,
-  startPcmCapture,
-  type PcmCapture,
-} from '../media/pcmCapture';
+import { PCM_CAPTURE_ERROR_MESSAGE, startPcmCapture, type PcmCapture } from '../media/pcmCapture';
 import type { Ms } from '@/types/api';
 
 /**
