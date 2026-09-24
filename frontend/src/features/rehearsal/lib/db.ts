@@ -1,4 +1,4 @@
-import { openDB, type DBSchema, type IDBPDatabase, type StoreNames } from 'idb';
+import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { GazeExcludedReason, Ms } from '@/types/api';
 import type { ZoneDecision, ZoneReference } from '@/workers/gaze.contract';
 
@@ -100,40 +100,60 @@ interface PitchDb extends DBSchema {
   };
 }
 
-/**
- * 없을 때만 만듭니다. 이미 있으면 `null` —
- * 인덱스가 필요한 스토어는 `?.` 로 이어 붙입니다.
- *
- * ★ upgrade 는 **버전이 오를 때마다** 돕니다. v1 을 쓰던 브라우저가 v2 로 올라오면
- * session·gazeSegments… 가 이미 있는데, 무조건 createObjectStore 를 부르면
- * ConstraintError 로 열기 자체가 실패합니다. 그러면 화면에는 "시작이 안 된다"만
- * 보이고 원인은 안 보입니다 — 실제로 그렇게 한 번 막혔습니다.
- */
-function ensureStore<N extends StoreNames<PitchDb>>(
-  db: IDBPDatabase<PitchDb>,
-  name: N,
-  keyPath: string | string[],
-) {
-  if (db.objectStoreNames.contains(name)) return null;
-  return db.createObjectStore(name, { keyPath });
-}
-
 let dbPromise: Promise<IDBPDatabase<PitchDb>> | null = null;
 
 export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
   dbPromise ??= openDB<PitchDb>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      ensureStore(db, 'session', 'clientSessionId')?.createIndex('byStatus', 'status');
+    /**
+     * ★ 버전별 장부입니다. 위에서부터 순서대로, 각 블록은 브라우저마다 **평생 한 번만** 돕니다.
+     *
+     * `oldVersion` 은 올라오기 **직전** 버전입니다 (처음 여는 브라우저면 0). 그래서
+     * `oldVersion < N` 은 "N 단계를 아직 안 거친 브라우저만" 이 됩니다. 어디서 출발하든
+     * 끝나면 같은 모양이 됩니다.
+     *
+     * ── "있으면 건너뛴다" 로 하면 안 되는 이유 ──────────────────────
+     * `objectStoreNames.contains` 는 **있다/없다**만 답합니다. 그래서 답할 수 있는 건
+     * 스토어를 통째로 새로 만드는 경우 하나뿐입니다. 이미 있는 스토어에 인덱스를 붙이거나
+     * 저장된 행을 옮기는 일은 전부 "스토어는 있는데 안을 고쳐야 하는" 변경이라,
+     * 있다/없다로는 판단할 수 없습니다.
+     *
+     * 실제로 v3 에서 session 에 인덱스를 붙이면, 처음 여는 사람만 인덱스를 갖고
+     * v2 를 쓰던 사람은 못 갖습니다. 에러도 안 나고 사람마다 다른 DB 가 생깁니다.
+     * 개발 중에는 DB 를 자주 지워서 본인 화면에서는 재현도 안 됩니다.
+     *
+     * 스키마가 묻는 질문은 "있나" 가 아니라 **"어디까지 해놨나"** 이고,
+     * `oldVersion` 이 IndexedDB 가 그 답으로 준 값입니다.
+     */
+    upgrade(db, oldVersion) {
+      // ── v1 · 세션과 기록들 ──────────────────────────────────────
+      if (oldVersion < 1) {
+        const session = db.createObjectStore('session', { keyPath: 'clientSessionId' });
+        session.createIndex('byStatus', 'status');
 
-      // 복합 키 [clientSessionId, 시각] — 세션별 범위 조회가 그냥 됩니다.
-      ensureStore(db, 'gazeSegments', ['clientSessionId', 'tMs']);
-      ensureStore(db, 'slideChanges', ['clientSessionId', 'atMs']);
-      ensureStore(db, 'scriptScroll', ['clientSessionId', 'atMs']);
-      ensureStore(db, 'coachLog', ['clientSessionId', 'atMs']);
-      ensureStore(db, 'audioChunks', ['clientSessionId', 'seq']);
+        // 복합 키 [clientSessionId, 시각] — 세션별 범위 조회가 그냥 됩니다.
+        db.createObjectStore('gazeSegments', { keyPath: ['clientSessionId', 'tMs'] });
+        db.createObjectStore('slideChanges', { keyPath: ['clientSessionId', 'atMs'] });
+        db.createObjectStore('scriptScroll', { keyPath: ['clientSessionId', 'atMs'] });
+        db.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
+        db.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
+      }
 
-      // v2 — 캘리브레이션 기준. 세션이 아니라 기기(layoutSignature)에 매입니다.
-      ensureStore(db, 'zoneRefs', 'layoutSignature');
+      // ── v2 · 캘리브레이션 기준. 세션이 아니라 기기(layoutSignature)에 매입니다 ──
+      if (oldVersion < 2) {
+        db.createObjectStore('zoneRefs', { keyPath: 'layoutSignature' });
+      }
+
+      // ── v3 를 만들 때는 여기에 블록을 덧붙입니다. 위는 절대 고치지 않습니다 ──
+      //   이미 그 단계를 지나온 브라우저는 다시 밟지 않으므로, 위를 고치면
+      //   새로 여는 사람에게만 반영되고 기존 사용자와 구조가 갈립니다.
+      //
+      //   이미 있는 스토어에 인덱스를 붙일 때는 db 가 아니라 upgrade 가 넘겨주는
+      //   versionchange 트랜잭션에서 꺼냅니다 — db.createObjectStore 는 이미 있는
+      //   이름에 ConstraintError 를 냅니다.
+      //
+      //   upgrade(db, oldVersion, _newVersion, tx) {
+      //     if (oldVersion < 3) tx.objectStore('session').createIndex('byTakeId', 'takeId');
+      //   }
     },
   })
     // 실패한 약속을 캐시하면 새로고침 전까지 영원히 실패합니다.
