@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { authHandlers } from './auth';
+import { sttHandlers } from './stt';
 import type {
   AnalysisStatus,
   CreateTakeRequest,
@@ -235,6 +236,7 @@ const takeContexts = new Map<string, TakeContext>();
 
 export const handlers = [
   ...authHandlers,
+  ...sttHandlers,
   http.get('*/api/home', () => HttpResponse.json(home)),
 
   http.get('*/api/takes/:takeId/report', ({ params }) =>

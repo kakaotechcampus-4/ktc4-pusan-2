@@ -4,6 +4,7 @@ import { PageTitle } from './PageTitle';
 import { Stub } from '@/shared/ui/Stub';
 import { StageDemo } from '@/features/rehearsal/stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
+import { SttDevPage } from '@/features/rehearsal/media/SttDevPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
@@ -54,6 +55,8 @@ const routes = [
   { path: '/dev/stage',   title: '무대 레이아웃 검증 | 피치코치', element: <StageDemo /> },
   // 프레임 예산 계기판. 부하별 처리 fps 를 읽는 곳.
   { path: '/dev/media',   title: '미디어 성능 검증 | 피치코치', element: <MediaDevPage /> },
+  // 실시간 STT WebSocket 검증. takeId 를 손으로 넣어 WS 경로만 실서버에 붙인다.
+  { path: '/dev/stt',     title: '실시간 STT 검증 | 피치코치', element: <SttDevPage /> },
   { path: '*',            title: '찾을 수 없음 | 피치코치', element: <Stub id="404"  name="찾을 수 없음" track="B" /> },
 ] satisfies { path: string; title: string; element: ReactElement }[];
 
@@ -66,6 +69,7 @@ const publicPaths = [
   '/unsupported',
   '/dev/stage',
   '/dev/media',
+  '/dev/stt',
   '*',
 ];
 
