@@ -4,8 +4,8 @@ import {
   startRecording,
   type RecorderError,
   type RecordingHandle,
-} from '@/features/rehearsal/media/recorder';
-import { audioBytes } from '@/features/rehearsal/lib/db';
+} from '../media/recorder';
+import { audioBytes } from '../lib/db';
 
 /** 크기 표시 갱신 주기. 조각이 5초마다 들어오니 그보다 자주 볼 이유가 없습니다 */
 const SIZE_TICK_MS = 5_000;
@@ -83,11 +83,18 @@ export function useRecording({
     };
   }, [enabled, stream, clientSessionId]);
 
-  /** 종료 CTA가 먼저 부릅니다. 페이로드를 만들기 전에 마지막 조각이 들어와야 합니다 */
-  const stop = async () => {
+  /**
+   * 종료 CTA가 먼저 부릅니다. 페이로드를 만들기 전에 마지막 조각이 들어와야 합니다.
+   *
+   * 집계를 돌려주는 이유는 핸들이 여기서 사라지기 때문입니다 — 종료 쪽에서
+   * "몇 조각을 넘겼고 그중 몇이 저장에 실패했나" 를 확인할 마지막 기회입니다.
+   */
+  const stop = async (): Promise<{ chunkCount: number; droppedCount: number }> => {
     const h = handleRef.current;
     handleRef.current = null;
     await h?.stop();
+    // stop() 이 마지막 조각을 한 번 더 흘리므로 기다린 **뒤에** 읽습니다
+    return { chunkCount: h?.chunkCount ?? 0, droppedCount: h?.droppedCount ?? 0 };
   };
 
   const error = result?.stream === stream ? result.error : null;

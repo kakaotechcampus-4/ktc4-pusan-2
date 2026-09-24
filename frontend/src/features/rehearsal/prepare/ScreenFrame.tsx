@@ -3,11 +3,14 @@ import type { ReactNode } from 'react';
 /**
  * 장치 점검 · 리허설 준비가 같이 쓰는 껍데기.
  *
- * 두 화면은 어두운 지면입니다 — 바로 다음이 리허설 무대라서, 여기서 밝았다가
- * 무대에서 어두워지면 발표 직전에 눈이 한 번 적응해야 합니다.
- * 색은 `index.css`의 무대 토큰을 그대로 씁니다. 새 색을 만들지 않습니다.
+ * ── 지면이 밝습니다 (시안 09 기준, 2026-09-22 변경) ─────────────────
+ * 전에는 어두웠습니다. "바로 다음이 무대라 여기서 밝았다가 어두워지면 발표 직전에
+ * 눈이 한 번 적응해야 한다"는 이유였는데, 시안 09 가 밝은 지면으로 나오면서
+ * 그쪽을 따릅니다. **어두운 것은 카메라 미리보기 하나뿐입니다** — 자기 얼굴을
+ * 볼 때 주변이 밝으면 화면이 반사되고, 무대의 레터박스와도 같은 색입니다.
  *
- * 무대(`stage.css`)와 달리 여기는 평범한 카드·폼이라 Tailwind로 갑니다 (CLAUDE.md 7번).
+ * 색은 `index.css`의 토큰만 씁니다. 새 색을 만들지 않습니다 (CLAUDE.md 7번).
+ * 무대(`stage.css`)와 달리 여기는 평범한 카드·폼이라 Tailwind로 갑니다.
  */
 export function ScreenFrame({
   screenNo,
@@ -42,13 +45,13 @@ export function ScreenFrame({
           <span className="text-xs text-stone">{entry}</span>
         </div>
 
-        <div className="overflow-hidden rounded-2xl bg-stage text-ink-stage shadow-lg">
-          <header className="flex flex-wrap items-center gap-2 border-b border-stage-panel px-6 py-4">
+        <div className="overflow-hidden rounded-2xl border border-line-strong bg-panel shadow-sm">
+          <header className="flex flex-wrap items-center gap-2 border-b border-line px-6 py-4">
             <button
               type="button"
               onClick={onBack}
-              className="rounded-full border border-stage-panel px-2.5 py-1 text-sm
-                         hover:bg-stage-panel"
+              className="rounded-full border border-line-strong px-2.5 py-1 text-sm
+                         hover:bg-cream"
               aria-label="뒤로"
             >
               ←
@@ -62,7 +65,7 @@ export function ScreenFrame({
 
           <div className="px-6 py-5">{children}</div>
 
-          <footer className="flex flex-wrap items-center gap-3 border-t border-stage-panel px-6 py-4">
+          <footer className="flex flex-wrap items-center gap-3 border-t border-line px-6 py-4">
             <p className="text-sm text-stone">{hint}</p>
             <div className="ml-auto flex flex-wrap gap-3">{actions}</div>
           </footer>
@@ -89,7 +92,7 @@ export function StageButton({
   const skin =
     variant === 'primary'
       ? 'bg-coral text-white hover:bg-coral-deep'
-      : 'border border-line-strong text-ink-stage hover:bg-stage-panel';
+      : 'border border-line-strong text-ink hover:bg-cream';
   return (
     <button type="button" onClick={onClick} disabled={disabled} className={`${base} ${skin}`}>
       {children}
