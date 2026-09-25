@@ -3,11 +3,12 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.dto import UploadResultDTO
+from pitch_coach_backend.module.pitch.dto import UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import upload
+from typing import Iterable
 
 
 def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto):
@@ -32,6 +33,30 @@ def get_pitch_service(db: Session, pitch_id: uuid.UUID):
         raise NonExistentPitch()
 
     return existing_pitch
+
+# Protocol(해당 타입만 가지고 있다면 Versioned 타입으로 간주)로 통일
+# Versioned 타입을 가진 객체들을 VersionDTO로 변환
+def to_version_dtos(rows: Iterable[Versioned]) -> list[VersionDTO]:
+    return [VersionDTO(id=row.id, version=row.version) for row in rows]
+
+
+# 존재 확인
+def ensure_pitch_exists(pitch_repository: PitchRepository, pitch_id: uuid.UUID) -> None:
+    if not pitch_repository.get_by_id(pitch_id):
+        raise NonExistentPitch()
+
+
+# 발표 자료 버전 들고오기
+def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
+    pitch_repository = PitchRepository(db)
+    ensure_pitch_exists(pitch_repository, pitch_id)
+
+    return VersionSummaryDTO(
+        pitch_id=pitch_id,
+        presentation_versions=to_version_dtos(pitch_repository.get_presentations(pitch_id)),
+        script_versions=to_version_dtos(pitch_repository.get_scripts(pitch_id)),
+        evaluation_versions=to_version_dtos(pitch_repository.get_evaluations(pitch_id)),
+    )
 
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     pitch_repository = PitchRepository(db)

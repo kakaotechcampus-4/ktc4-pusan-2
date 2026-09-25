@@ -24,26 +24,6 @@ class TakeRepository:
             .where(Take.id == take_id, Pitch.user_id == user_id)
         )
 
-    def get_presentation_version_in_pitch(
-        self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID
-    ) -> uuid.UUID | None:
-        return self.db.scalar(
-            select(PresentationVersion.id).where(
-                PresentationVersion.id == presentation_version_id,
-                PresentationVersion.pitch_id == pitch_id,
-            )
-        )
-
-    def get_script_version_in_pitch(
-        self, script_version_id: uuid.UUID, pitch_id: uuid.UUID
-    ) -> uuid.UUID | None:
-        return self.db.scalar(
-            select(ScriptVersion.id).where(
-                ScriptVersion.id == script_version_id,
-                ScriptVersion.pitch_id == pitch_id,
-            )
-        )
-
     def save(self, take: Take) -> Take:
         self.db.add(take)
         self.db.flush()
@@ -81,6 +61,7 @@ class TakeRepository:
         self.db.add_all(missions)
         self.db.flush()
         return missions
+    
     def last_transcript_cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
         """저장된 마지막 (seq, stt_session_no). 하나도 없으면 (0, 0).
 
