@@ -4,7 +4,7 @@ from datetime import date
 
 from fastapi import File, UploadFile
 from pydantic import BaseModel
-from ..take.dto import TakeSummaryDTO
+from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 
 
 class PitchDTO(BaseModel):
