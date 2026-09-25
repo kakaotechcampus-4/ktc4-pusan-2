@@ -27,7 +27,8 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
         script_mode=take_dto.script_mode,
         presentation_version_id=take_dto.presentation_version_id,
         script_version_id=take_dto.script_version_id,
-        take_number=next_take_number
+        take_number=next_take_number,
+        goal_time_sec=take_dto.goal_time_sec
     )
 
     saved_take = take_repository.save(new_take)

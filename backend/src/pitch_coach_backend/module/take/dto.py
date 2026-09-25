@@ -7,6 +7,7 @@ class TakeInitRequestDTO(BaseModel):
     script_mode: str
     presentation_version_id: uuid.UUID
     script_version_id: uuid.UUID
+    goal_time_sec: int
 
 class TakeUpdateRequestDTO(BaseModel):
     started_at: str | None = None
