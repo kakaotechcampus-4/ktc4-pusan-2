@@ -4,7 +4,7 @@ from datetime import date
 
 from fastapi import File, UploadFile
 from pydantic import BaseModel
-
+from typing import Protocol
 
 class PitchDTO(BaseModel):
     title: str
@@ -31,4 +31,7 @@ class VersionSummaryDTO(BaseModel):
     presentation_versions: list[VersionDTO]
     script_versions: list[VersionDTO]
     evaluation_versions: list[VersionDTO]
-    
+
+class Versioned(Protocol):
+    id: uuid.UUID
+    version: int

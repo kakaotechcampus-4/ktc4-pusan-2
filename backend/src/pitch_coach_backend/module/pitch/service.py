@@ -3,11 +3,12 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.dto import UploadResultDTO, VersionDTO, VersionSummaryDTO
+from pitch_coach_backend.module.pitch.dto import UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import upload
+from typing import Iterable
 
 
 def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto):
@@ -33,89 +34,29 @@ def get_pitch_service(db: Session, pitch_id: uuid.UUID):
 
     return existing_pitch
 
-# 관련 자료(발표자료, 대본, 평가) 들고 오기
-def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
-    pitch_repository = PitchRepository(db)
-    existing_pitch = pitch_repository.get_by_id(pitch_id)
+# Protocol(해당 타입만 가지고 있다면 Versioned 타입으로 간주)로 통일
+# Versioned 타입을 가진 객체들을 VersionDTO로 변환
+def to_version_dtos(rows: Iterable[Versioned]) -> list[VersionDTO]:
+    return [VersionDTO(id=row.id, version=row.version) for row in rows]
 
-    if not existing_pitch:
+
+# 존재 확인
+def ensure_pitch_exists(pitch_repository: PitchRepository, pitch_id: uuid.UUID) -> None:
+    if not pitch_repository.get_by_id(pitch_id):
         raise NonExistentPitch()
 
-    presentation_versions = get_presentation_versions(db, pitch_id)
-    script_versions = get_script_versions(db, pitch_id)   
-    evaluations = get_evaluation_versions(db, pitch_id)
+
+# 발표 자료 버전 들고오기
+def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
+    pitch_repository = PitchRepository(db)
+    ensure_pitch_exists(pitch_repository, pitch_id)
 
     return VersionSummaryDTO(
         pitch_id=pitch_id,
-        presentation_versions=presentation_versions,
-        script_versions=script_versions,
-        evaluation_versions=evaluations
+        presentation_versions=to_version_dtos(pitch_repository.get_presentations(pitch_id)),
+        script_versions=to_version_dtos(pitch_repository.get_scripts(pitch_id)),
+        evaluation_versions=to_version_dtos(pitch_repository.get_evaluations(pitch_id)),
     )
-
-# 발표자료 기본 정보들 들고 오기
-# 근데 발표자료, 대본, 평가 들고 오는 로직이 다 비슷한 것 같은데....?
-def get_presentation_versions(db: Session, pitch_id: uuid.UUID):
-    pitch_repository = PitchRepository(db)
-    existing_pitch = pitch_repository.get_by_id(pitch_id)
-
-    if not existing_pitch:
-        raise NonExistentPitch()
-
-    presentation_versions = pitch_repository.get_presentations(pitch_id)
-
-    presentation_version_summaries = []
-
-    for version in presentation_versions:
-        presentation_version_summaries.append(
-            VersionDTO(
-                id=version.id,
-                version=version.version
-            )
-        )
-                
-    return presentation_version_summaries
-
-# 대본 기본 정보들 들고 오기
-def get_script_versions(db: Session, pitch_id: uuid.UUID):
-    pitch_repository = PitchRepository(db)
-    existing_pitch = pitch_repository.get_by_id(pitch_id)
-
-    if not existing_pitch:
-        raise NonExistentPitch()
-
-    script_versions = pitch_repository.get_scripts(pitch_id)
-    script_version_summaries = []
-
-    if script_versions:
-        for script_version in script_versions:
-            script_version_summaries.append(
-            VersionDTO(
-                id=script_version.id,
-                version=script_version.version
-            )
-        )
-
-    return script_version_summaries
-
-def get_evaluation_versions(db: Session, pitch_id: uuid.UUID):
-    pitch_repository = PitchRepository(db)
-    existing_pitch = pitch_repository.get_by_id(pitch_id)
-
-    if not existing_pitch:
-        raise NonExistentPitch()
-
-    evaluations = pitch_repository.get_evaluations(pitch_id)
-
-    evaluation_summaries = []
-    for evaluation in evaluations:
-
-        evaluation_summaries.append(
-            VersionDTO(
-                id=evaluation.id,
-                version=evaluation.version
-            )
-        )
-    return evaluation_summaries
 
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     pitch_repository = PitchRepository(db)
