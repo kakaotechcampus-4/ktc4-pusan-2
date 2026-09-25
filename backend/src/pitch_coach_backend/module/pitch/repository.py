@@ -88,3 +88,4 @@ class PitchRepository:
                 ScriptVersion.pitch_id == pitch_id,
             )
         )
+    
