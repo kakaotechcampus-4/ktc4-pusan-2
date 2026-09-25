@@ -93,10 +93,12 @@ def user_id(db_session: Session) -> uuid.UUID:
 
 
 @pytest.fixture
-def client(db_session: Session) -> Generator[TestClient]:
+def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient]:
+    from pitch_coach_backend import main
     from pitch_coach_backend.core.database import get_db
     from pitch_coach_backend.main import app
 
+    monkeypatch.setattr(main, "get_s3", lambda: None)
     app.dependency_overrides[get_db] = lambda: db_session
     # base_url 이 https 여야 한다. 쿠키를 Secure 로 심는데(cookie_secure 기본값 True)
     # http 로는 httpx 가 그 쿠키를 되돌려 보내지 않아 인증 흐름이 통째로 막힌다.

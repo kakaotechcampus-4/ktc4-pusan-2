@@ -35,7 +35,7 @@ def get_pitch_service(db: Session, pitch_id: uuid.UUID):
     return existing_pitch
 
 # 홈 화면 : pitches 목록 조회
-def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> List[PitchesDTO]:
+def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
     pitch_repository = PitchRepository(db)
     pitches = pitch_repository.get_all_by_user(user_id)
 
