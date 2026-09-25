@@ -1,5 +1,6 @@
 from typing import List
 import uuid
+from collections import defaultdict
 from pathlib import Path
 
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
@@ -39,11 +40,15 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
     pitch_repository = PitchRepository(db)
     pitches = pitch_repository.get_all_by_user(user_id)
 
+    rows_by_pitch = defaultdict(list)
+    for row in pitch_repository.get_takes_with_scores_in_pitches([p.id for p in pitches]):
+        rows_by_pitch[row.Take.pitch_id].append(row)
+
     results = []
     for pitch in pitches:
         take_summaries = []
         # Take, Score로 이루어진 row.
-        takes = pitch_repository.get_takes_with_scores_in_pitch(pitch.id)
+        takes = rows_by_pitch[pitch.id]
 
         for t in range(len(takes)):
             take = takes[t].Take
