@@ -27,13 +27,6 @@ class PitchRepository:
         self.db.delete(pitch)
         self.db.flush()
 
-    def clear_best_take(self, pitch_id: uuid.UUID, take_id: uuid.UUID) -> None:
-        self.db.execute(
-            update(Pitch)
-            .where(Pitch.id == pitch_id, Pitch.best_take_id == take_id)
-            .values(best_take_id=None)
-        )
-
     def next_presentation_version(self, pitch_id: uuid.UUID) -> int:
         current = self.db.scalar(
             select(func.max(PresentationVersion.version)).where(
