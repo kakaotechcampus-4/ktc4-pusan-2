@@ -54,16 +54,19 @@ class PitchRepository:
     def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
         return self.db.scalars(
             select(PresentationVersion).where(PresentationVersion.pitch_id == pitch_id)
+            .order_by(PresentationVersion.version.asc())
         ).all()
 
     def get_scripts(self, pitch_id: uuid.UUID) -> list[ScriptVersion]:
         return self.db.scalars(
             select(ScriptVersion).where(ScriptVersion.pitch_id == pitch_id)
+            .order_by(ScriptVersion.version.asc())
         ).all()
 
     def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
         return self.db.scalars(
             select(Standards).where(Standards.pitch_id == pitch_id)
+            .order_by(Standards.version.asc())
         ).all()
 
     def get_presentation_version_in_pitch(
