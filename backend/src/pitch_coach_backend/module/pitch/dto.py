@@ -31,3 +31,4 @@ class VersionSummaryDTO(BaseModel):
     presentation_versions: list[VersionDTO]
     script_versions: list[VersionDTO]
     evaluation_versions: list[VersionDTO]
+    
