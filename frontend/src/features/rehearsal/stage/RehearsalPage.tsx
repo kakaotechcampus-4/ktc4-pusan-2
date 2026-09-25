@@ -77,6 +77,8 @@ export function RehearsalPage() {
   /** 준비 화면에서 잡은 기준. 새로고침으로 돌아왔으면 없습니다(= null로 보냅니다) */
   const calibration = usePrepareStore((s) => s.calibration);
   const gazeDeclined = usePrepareStore((s) => s.gazeDeclined);
+  /** 점검을 통과한 장치. 새로고침으로 돌아왔으면 비어 있고, 기본 장치를 엽니다 */
+  const devices = usePrepareStore((s) => s.devices);
 
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -193,13 +195,23 @@ export function RehearsalPage() {
   // 화면을 떠날 때 다음 Take를 위해 무대 상태를 비웁니다
   useEffect(() => resetStore, [resetStore]);
 
-  // 카메라는 준비 화면 CTA를 누른 직후라 바로 열립니다 (같은 문서 = 조작이 살아 있음)
+  // 카메라는 준비 화면 CTA를 누른 직후라 바로 열립니다 (같은 문서 = 조작이 살아 있음).
+  // 점검에서 쓴 장치를 그대로 엽니다 — 기본 장치를 열면 USB 마이크로 점검하고
+  // 내장 마이크로 녹음하는 일이 생깁니다
   const askedRef = useRef(false);
   useEffect(() => {
     if (askedRef.current || gazeDeclined) return;
     askedRef.current = true;
-    request().catch(() => undefined);
-  }, [request, gazeDeclined]);
+
+    (async () => {
+      const opened = await request(devices);
+      // 고른 장치가 그사이 빠졌으면(USB 분리 등) exact 제약에 걸려 못 엽니다.
+      // 발표를 못 여는 것보다 기본 장치로라도 여는 편이 낫습니다
+      if (!opened && (devices.videoDeviceId || devices.audioDeviceId)) {
+        await request();
+      }
+    })().catch(() => undefined);
+  }, [request, gazeDeclined, devices]);
 
   // ── 제외 사유 배선 ───────────────────────────────────────────────
   // 한 번 정해지면 되돌리지 않습니다. 발표 도중 엔진이 죽었다면 그 Take의
