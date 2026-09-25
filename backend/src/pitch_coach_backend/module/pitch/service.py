@@ -52,7 +52,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
 
             if t > 0:
                 previous_take_score = takes[t - 1].score
-                if take_score and previous_take_score:
+                if take_score is not None and previous_take_score is not None:
                     d = take_score - previous_take_score
         
             take_summary = TakeSummaryDTO(
