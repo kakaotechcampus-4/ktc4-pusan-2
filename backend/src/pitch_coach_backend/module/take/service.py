@@ -18,13 +18,7 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
 def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequestDTO):
     take_repository = TakeRepository(db)
-
-    if take_repository.get_presentation_version_in_pitch(take_dto.presentation_version_id, pitch_id) is None:
-        raise NonExistentTake()
-
-    if take_repository.get_script_version_in_pitch(take_dto.script_version_id, pitch_id) is None:
-        raise NonExistentTake()
-
+    
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,
@@ -32,7 +26,8 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
         script_mode=take_dto.script_mode,
         presentation_version_id=take_dto.presentation_version_id,
         script_version_id=take_dto.script_version_id,
-        take_number=next_take_number
+        take_number=next_take_number,
+        goal_time_sec=take_dto.goal_time_sec
     )
 
     saved_take = take_repository.save(new_take)

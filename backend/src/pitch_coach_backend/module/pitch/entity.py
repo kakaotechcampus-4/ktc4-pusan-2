@@ -49,6 +49,9 @@ class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """발표 표준. 발표를 평가할 때 기준이 되는 표준 발표를 저장한다."""
 
     __tablename__ = "standards"
+    __table_args__ = (
+        UniqueConstraint("pitch_id", "version", name="uq_standards_pitch_version"),
+    )
 
     # 자식 쪽에 외래키를 건다. 
     pitch_id: Mapped[uuid.UUID] = mapped_column(

@@ -7,11 +7,21 @@ class TakeInitRequestDTO(BaseModel):
     script_mode: str
     presentation_version_id: uuid.UUID
     script_version_id: uuid.UUID
+    goal_time_sec: int
 
 class TakeUpdateRequestDTO(BaseModel):
     started_at: str | None = None
     ended_at: str | None = None
     event_logs: list[dict] | None = None
+
+class TakeSummaryDTO(BaseModel):
+    take_id: uuid.UUID
+    take_version: int
+    take_elapsed: int | None = None
+    take_time: int
+    script_mode: str
+    score: int | None = None
+    delta: int | None = None
 
 class CalibrationDTO(BaseModel):
     face_detected: bool = False

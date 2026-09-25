@@ -12,6 +12,7 @@ from pitch_coach_backend.module.pitch.dto import PitchDTO, UploadPresentationDTO
 from pitch_coach_backend.module.pitch.service import (
     add_pitch_service,
     delete_pitch_service,
+    get_all_pitches_service,
     get_pitch_datas,
     get_pitch_service,
     update_pitch_service,
@@ -20,14 +21,14 @@ from pitch_coach_backend.module.pitch.service import (
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 
-@router.get
+@router.get("/")
 def get_pitches(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)]
 ):
-    pitch_repository = PitchRepository(db)
-    pitches = pitch_repository.get_all_by_user(current_user.id)
-    return pitches
+    all_pitches = get_all_pitches_service(db, current_user.id)
+    return all_pitches
+
 
 # 사이드바
 # /api/pitches/{pitch_id}/resources로 변경
