@@ -1,4 +1,3 @@
-from ast import List
 import uuid
 
 from sqlalchemy import func, select
@@ -18,15 +17,16 @@ class TakeRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[Take] | None:
+    def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[Take]:
         return self.db.execute(
             select(Take).where(Take.pitch_id == pitch_id)
         ).scalars().all()
 
-    def get_scores_in_take(self, take_id: List[uuid.UUID]) -> int | None:
+    def get_scores_in_take(self, take_id: list[uuid.UUID]) -> list[int]:
         return self.db.execute(
             select(TakeSummary.score).where(TakeSummary.take_id.in_(take_id))
         ).scalars().all()
+
     def get_owned(self, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | None:
         """사용자의 pitch 에 속한 take. 없거나 남의 것이면 None — 둘을 구분하지 않는다."""
         return self.db.scalar(
@@ -35,7 +35,7 @@ class TakeRepository:
             .where(Take.id == take_id, Pitch.user_id == user_id)
         )
 
-    def get_max_score_take_in_pitch(self, pitch_id: uuid.UUID) -> int | None:
+    def get_max_score_take_in_pitch(self, pitch_id: uuid.UUID) -> uuid.UUID | None:
         return self.db.scalar(
             select(TakeSummary.take_id)
             .join(Take, TakeSummary.take_id == Take.id)
