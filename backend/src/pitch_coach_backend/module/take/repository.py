@@ -9,7 +9,7 @@ from pitch_coach_backend.module.take.entity import (
     Calibration,
     Mission,
     Take,
-    TakeSummary
+    TakeSummary,
     TakeTranscriptSegment,
 )
 
@@ -33,16 +33,6 @@ class TakeRepository:
             select(Take)
             .join(Pitch, Pitch.id == Take.pitch_id)
             .where(Take.id == take_id, Pitch.user_id == user_id)
-        )
-
-    def get_presentation_version_in_pitch(
-        self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID
-    ) -> uuid.UUID | None:
-        return self.db.scalar(
-            select(PresentationVersion.id).where(
-                PresentationVersion.id == presentation_version_id,
-                PresentationVersion.pitch_id == pitch_id,
-            )
         )
 
     def get_max_score_take_in_pitch(self, pitch_id: uuid.UUID) -> int | None:
