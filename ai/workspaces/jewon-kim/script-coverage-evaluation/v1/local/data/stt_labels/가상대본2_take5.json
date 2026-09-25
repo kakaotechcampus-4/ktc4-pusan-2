@@ -1,0 +1,550 @@
+{
+  "take_id": "가상대본2_take5",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'매일 아침 그날 팔릴 양을 감으로 정해 굽는다'를 '아침마다 오늘 얼마나 팔릴지 사장님 감으로 정해서 굽는다'로 바꿔 말함"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "15~20%를 '15에서 20%'로 읽음"
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "판매 기록 기반 다음 날 품목별 판매량 예측과 생산 개수 추천을 자기 말로 풀어 말함"
+        }
+      ],
+      "additions": [
+        "저희 동네 빵집 사장님도 문 닫을 때쯤 남은 빵 보면서 한숨 쉬시는 걸 자주 봤습니다"
+      ]
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'예측 모델과 성능 검증을 맡았다'를 '모델을 만들고 성능이 잘 나오는지 검증까지 했다'로 바꿔 말함. 한도윤은 맞게 말함"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'데이터 수집'을 '데이터 모으는 일'로, '담당했다'를 '맡아 줬다'로 바꿔 말함. 오예린은 맞게 말함"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "12곳을 '열두 곳'으로 읽음"
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "품목별·시간대별 판매량에 요일, 날씨, 학교 방학 여부, 지역 행사 정보를 붙였다는 내용을 자기 말로 풀어 말함"
+        },
+        {
+          "index": 2,
+          "status": "partial",
+          "dropped_values": [
+            "두 배"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "디저트류가 '두 배 가까이' 팔린다는 수치를 '훨씬 많이'로 흐리게 말함. 비 오는 날 식빵 판매 증가는 맞게 말함"
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "Prophet→'프로펫', LightGBM→'라이트지비엠' 음차. '기본 판매 흐름'을 '기본적인 판매 패턴'으로, '변수의 영향을 더했다'를 '요인이 주는 영향을 추가로 반영했다'로 바꿔 말함"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'판매량 규모가 달라서 비율로 보는 MAPE로 비교'를 '팔리는 개수가 워낙 달라서 퍼센트로 오차를 따지는 MAPE를 기준으로 삼았다'로 바꿔 말함"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'폐기율'을 '버리는 빵 비율'로 바꿔 말함. 약 18퍼센트('약 십팔 퍼센트')는 맞게 말함"
+        },
+        {
+          "index": 2,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "11.4%",
+              "stt": "십사 점 일 퍼센트"
+            }
+          ],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "MAPE 예측 오차 11.4%를 '십사 점 일 퍼센트'(14.1%)로 잘못 말함"
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [
+            "30% 이상"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "신규 품목 오차 '30% 이상'을 '꽤 크게'로 흐리게 말함"
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'비슷한 기존 품목의 판매 흐름을 빌려 와 예측'을 '비슷한 기존 빵이 어떻게 팔렸는지를 가져다 써서 예측'으로 바꿔 말함"
+        },
+        {
+          "index": 5,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'남았을 때의 손해와 모자랐을 때의 손해가 다르다'를 '남았을 때 손해 보는 거랑 모자랐을 때 손해 보는 게 다르다'로 바꿔 말함"
+        },
+        {
+          "index": 2,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "반대 주장: 대본은 '원가가 비싼 케이크는 적게, 싸고 인기 있는 식빵은 넉넉하게'인데 '케이크는 넉넉하게, 식빵은 오히려 적게' 굽는 게 이득이라고 거꾸로 말함"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "두 가지를 '두 가지'로 맞게 말함"
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'단체 주문이나 날씨를 보고 둘 중 하나를 고르면 된다'를 '단체 주문이 잡혀 있는지 날씨는 어떤지 보시고 둘 중에 하나만 고르시면 된다'로 바꿔 말함"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "두 예시 질문(내일 비 오면 크루아상 몇 개, 버터 주문량)과 에이전트의 답(날씨 반영 추천 생산량과 이유, 필요한 재료 양)을 모두 자기 말로 풀어 말함"
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": [
+        "이 기능은 시연할 때 사장님들 반응이 제일 좋았습니다"
+      ]
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "오후 6시",
+              "stt": "오후 다섯 시"
+            }
+          ],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "마감 할인 알림 시각 오후 6시를 '오후 다섯 시'로 잘못 말함"
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'남을 것으로 예상되는 품목'을 '오늘 남을 것 같은 빵'으로, '승인하면'을 '오케이 하시면'으로 바꿔 말함"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "오전 9시를 '오전 아홉 시'로 읽음"
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "1만 9천 원을 '만 구천 원'으로 읽음"
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "3개월을 '석 달'로 말함(값은 동일). '무료로 제공하고 효과를 확인한 뒤 유료로 전환'을 '무료로 써 보시고 확인하신 다음에 유료로 넘어가시면 된다'로 바꿔 말함"
+        },
+        {
+          "index": 2,
+          "status": "partial",
+          "dropped_values": [
+            "여섯 배"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "한 곳, 약 120만 원, 10%('십 퍼센트')는 말했지만 '요금의 여섯 배가 넘는'을 '요금보다 훨씬 많은'으로 흐리게 말함"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "500곳을 '오백 곳'으로 읽음"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 10,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'품목별 예측 판매량과 두 가지 추천 생산량이 나타난다'를 '빵 종류별로 예상 판매량이 뜨고 추천 생산량도 두 가지가 같이 뜬다'로 바꿔 말함"
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'에이전트에게 비 소식을 물어보고 크루아상 생산량을 줄이는 모습'을 '에이전트한테 내일 비 오냐고 물어보고 크루아상을 좀 덜 굽기로 하는 장면'으로 바꿔 말함"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 11,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'모델 성능을 높이는 데 집중했지만 판매 기록 정리가 훨씬 오래 걸렸다'를 자기 말로 풀어 말함"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'숫자를 믿지 못하면 쓰이지 않았다'를 '숫자를 못 믿으시면 결국 안 쓰시더라'로 바꿔 말함"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 6,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}
