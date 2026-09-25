@@ -1,0 +1,399 @@
+{
+  "take_id": "가상대본1_take3",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "시험 기간 열람실 혼잡 언급 생략"
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [
+            "평균 23분"
+          ],
+          "changed_values": [],
+          "note": "312명은 말했으나 '하루 평균 23분'을 '꽤 많은 시간'으로 뭉뚱그림"
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 6,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "partial",
+          "dropped_values": [
+            "약 18퍼센트"
+          ],
+          "changed_values": [],
+          "note": "노쇼 비율 수치 대신 '상당수'라고 말함"
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "슬라이드 2의 claim(필요한 건 예약 수단이 아니라 몇 분 뒤 자리 정보) 누락"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "앱에서 현재·30분 뒤 예상 빈자리를 함께 본다는 문장 생략"
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [
+            "10분 이내"
+          ],
+          "changed_values": [],
+          "note": "'10분 이내'를 '일정 시간 안에'로 흐림"
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "센서 없이 기존 기록만 써서 도입 비용이 거의 없다는 문장 생략"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "partial",
+          "dropped_values": [
+            "2년",
+            "약 1,240만 건"
+          ],
+          "changed_values": [],
+          "note": "3곳은 말했으나 2년 치·약 1,240만 건을 '굉장히 많은 양'으로 대체"
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "입력 변수 중 시험 기간 여부와 날씨를 말하지 않음 (XGBoost 선택은 전달)"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "XGBoost 선택 이유(딥러닝과 정확도 비슷, 학습·추론 빠름) 생략"
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [
+            "2.4개"
+          ],
+          "changed_values": [],
+          "note": "평균 오차 2.4개를 '몇 개 수준'으로 흐림"
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "3:1 시험 기간에도 오차가 크게 늘지 않았다는 문장 생략"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "'이번 주 혼잡한 시간대를 한눈에 볼 수 있습니다'를 '어느 시간대가 붐비는지 한눈에 보여 줍니다'로 바꿔 말함"
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "관리자 화면 설명 생략"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "partial",
+          "dropped_values": [
+            "8주 동안"
+          ],
+          "changed_values": [],
+          "note": "2025년 3월과 3곳은 말했으나 운영 기간 8주를 빠뜨림"
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [
+            "약 42퍼센트"
+          ],
+          "changed_values": [],
+          "note": "1,860명·평균 23분→13분은 말했으나 '약 42퍼센트'를 '꽤 많이'로 대체"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "10분 안에 자리 잡은 비율 76% 문장 생략"
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [
+            "18%",
+            "7%"
+          ],
+          "changed_values": [],
+          "note": "노쇼 비율 18%→7%를 '많이 낮아졌습니다'로만 말함"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "partial",
+          "dropped_values": [
+            "약 430곳"
+          ],
+          "changed_values": [],
+          "note": "공공도서관 약 1,200곳은 말했으나 대학 도서관 약 430곳을 '상당히 많습니다'로 대체"
+        },
+        {
+          "index": 1,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "슬라이드 7의 claim(초기 대상 약 900곳, 시장 규모 24억~36억 원) 통째로 누락"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [
+            "600만 원",
+            "1,200만 원"
+          ],
+          "changed_values": [],
+          "note": "공공도서관 월 49만 원은 말했으나 대학 도서관 연 600만~1,200만 원 금액을 빠뜨림"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "추가 상품(학습 통계 리포트, 좌석 배치 컨설팅) 생략"
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "첫 3개월 무료 제공 생략"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [
+            "2026년 상반기"
+          ],
+          "changed_values": [],
+          "note": "'2026년 상반기까지'를 '빠른 시일 안에'로 흐림 (서울·대전·20곳은 말함)"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "SeatFlow 기대 효과 요약 문장 생략"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}

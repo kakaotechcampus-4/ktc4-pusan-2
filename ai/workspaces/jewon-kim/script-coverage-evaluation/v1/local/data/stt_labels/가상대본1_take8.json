@@ -1,0 +1,505 @@
+{
+  "take_id": "가상대본1_take8",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [
+            "SeatFlow"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "팀 이름만 말하고 서비스 설명과 SeatFlow 이름은 생략"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [
+            {
+              "script": "312명",
+              "stt": "삼백 명 넘게"
+            }
+          ],
+          "note": "312명을 '삼백 명 넘게'로 반올림해 말함(참인 하한). 하루 평균 23분은 정확히 말함"
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 6,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "partial",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "S1과 합쳐 기존 방식 중 키오스크·모바일 예약 앱만 언급, 현장 순번표는 생략"
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [
+            "10분 이내"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'10분 이내'를 '정해진 시간 안에'로 흐림"
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "partial",
+          "dropped_values": [
+            "2년"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [
+            {
+              "script": "약 1,240만 건",
+              "stt": "천만 건이 넘는"
+            }
+          ],
+          "note": "3곳은 말했으나 2년 치는 생략, 약 1,240만 건을 '천만 건이 넘는'으로 반올림(참인 하한)"
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "XGBoost 선택만 말하고 입력 변수(요일·시간대·시험 기간·날씨)와 모델 비교 과정은 생략"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": [
+        "시간 관계상 짧게 말씀드리면"
+      ]
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [
+            "30분"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "현재 빈자리만 말하고 30분 뒤 예상 빈자리와 막대그래프는 생략"
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "partial",
+          "dropped_values": [
+            "3곳",
+            "8주 동안"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "2025년 3월은 말했으나 8주 동안·제휴 도서관 3곳은 생략"
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [
+            {
+              "script": "약 42퍼센트",
+              "stt": "40퍼센트 넘게"
+            }
+          ],
+          "note": "1,860명·평균 23분·13분은 정확히 말했고, 약 42퍼센트를 '40퍼센트 넘게'로 반올림(참인 하한)"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [
+            "18%",
+            "7%"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "노쇼 감소는 말했으나 18%→7% 수치 없이 '눈에 띄게'로 흐림"
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [
+            "600만 원",
+            "1,200만 원"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [
+            {
+              "script": "49만 원",
+              "stt": "오십만 원 조금 안 되는"
+            }
+          ],
+          "note": "월 49만 원을 '오십만 원 조금 안 되는'으로 말함(참인 상한), 대학 도서관 600만~1,200만 원은 '연 단위'로만 말하고 금액 생략"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [
+            "20곳"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "2026년 상반기·서울·대전은 말했으나 20곳은 생략"
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "2단계·3단계 구분 없이 공공도서관→스터디카페 확장을 한 문장으로 말함"
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}

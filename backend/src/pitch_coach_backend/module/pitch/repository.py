@@ -4,7 +4,7 @@ from pitch_coach_backend.module.take.entity import Take, TakeSummary
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion, Standards
 
 
 class PitchRepository:
@@ -54,13 +54,6 @@ class PitchRepository:
         self.db.delete(pitch)
         self.db.flush()
 
-    def clear_best_take(self, pitch_id: uuid.UUID, take_id: uuid.UUID) -> None:
-        self.db.execute(
-            update(Pitch)
-            .where(Pitch.id == pitch_id, Pitch.best_take_id == take_id)
-            .values(best_take_id=None)
-        )
-
     def next_presentation_version(self, pitch_id: uuid.UUID) -> int:
         current = self.db.scalar(
             select(func.max(PresentationVersion.version)).where(
@@ -84,6 +77,24 @@ class PitchRepository:
         self.db.add(script_version)
         self.db.flush()
         return script_version
+
+    def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
+        return self.db.scalars(
+            select(PresentationVersion).where(PresentationVersion.pitch_id == pitch_id)
+            .order_by(PresentationVersion.version.asc())
+        ).all()
+
+    def get_scripts(self, pitch_id: uuid.UUID) -> list[ScriptVersion]:
+        return self.db.scalars(
+            select(ScriptVersion).where(ScriptVersion.pitch_id == pitch_id)
+            .order_by(ScriptVersion.version.asc())
+        ).all()
+
+    def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
+        return self.db.scalars(
+            select(Standards).where(Standards.pitch_id == pitch_id)
+            .order_by(Standards.version.asc())
+        ).all()
 
     def get_presentation_version_in_pitch(
             self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID

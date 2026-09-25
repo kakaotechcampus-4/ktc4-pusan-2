@@ -1,0 +1,485 @@
+{
+  "take_id": "가상대본1_take5",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "SeatFlow를 '시트플로우'로 음차"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [
+            "312명"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "설문 대상 인원(312명)을 빼고 '대학생들한테'라고만 말함. 평균 23분은 '이십삼 분'으로 맞게 말함"
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'자리가 없는 것만이 문제가 아니다'를 '자리가 모자라서만 생기는 문제는 아니다'로 바꿔 말함"
+        },
+        {
+          "index": 5,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "가방만 두고 자리를 비워 빈 좌석도 찾기 어렵다는 내용을 자기 말로 풀어 말함"
+        },
+        {
+          "index": 6,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "키오스크·모바일 앱·현장 순번표 세 방식을 '예약하거나 ~ 뽑는 식으로 운영'으로 풀어 말함"
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "약 18퍼센트를 '약 십팔 퍼센트'로 읽음"
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'언제 자리가 날지 알 수 없어 기다리는 시간이 길어진다'를 '언제 날지를 모르니까 결국 오래 기다리게 된다'로 바꿔 말함"
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'예약 수단이 아니라 몇 분 뒤 자리가 나는지에 대한 정보'를 '예약하는 방법이 아니라 몇 분 뒤에 자리가 생기는지 아는 것'으로 바꿔 말함"
+        }
+      ],
+      "additions": [
+        "저도 예약만 걸어 두고 못 간 적이 몇 번 있어서 좀 찔리는데요"
+      ]
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'합쳐 ~ 몇 자리가 비게 될지 계산'을 '한데 모아서 ~ 자리가 몇 개나 빌지 계산하는 방식'으로 바꿔 말함"
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "30분을 '삼십 분'으로 읽고, '지금 빈자리와 30분 뒤 예상 빈자리를 함께 볼 수 있다'를 '현재 빈자리하고 삼십 분 후 예상 빈자리가 같이 나온다'로 바꿔 말함"
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [
+            "10분 이내"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "도착 제한 시간 '10분 이내'를 '정해진 시간 안에'로 흐리게 말함. 푸시 알림과 차례 넘김은 전달"
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "3곳·약 1,240만 건은 숫자로, 2년은 '이 년'으로 말함. '모은'은 사소한 덧붙임"
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "입력 변수(요일, 시간대, 시험 기간 여부, 날씨)와 XGBoost 선택을 자기 말로 풀어 말함"
+        },
+        {
+          "index": 2,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "반대 주장: 대본은 '딥러닝과 정확도는 비슷하지만 학습·추론이 훨씬 빨랐다'인데, '학습·추론은 조금 느렸지만 정확도가 훨씬 높았다'고 거꾸로 말함"
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "시계열 교차검증 설명을 '시간 순서대로 데이터를 잘라서 검증하는'으로 바꿔 말함. 30분('삼십 분'), 2.4개 모두 맞게 말함"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "3:1을 '삼 대 일'로 읽음"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'현재 빈자리와 30분 뒤 예상 빈자리'를 '지금 비어 있는 자리랑 30분 후에 빌 것으로 보이는 자리'로 바꿔 말함"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "관리자 화면(이용률, 노쇼 비율, 오래 비워 둔 자리 정리)을 자기 말로 풀어 말함. 내용은 모두 전달"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "8주를 '팔 주', 3곳을 '세 곳'으로 읽음"
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "문장 구조를 바꿔 말함. 1,860명, 평균 23분('이십삼 분'), 13분, 약 42퍼센트('사십이 퍼센트') 모두 맞게 말함"
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'알림을 받고 10분 안에 자리를 잡은 비율은 76%'를 '알림 받은 분들 중 76%는 십 분 안에 자리를 잡았다'로 바꿔 말함"
+        },
+        {
+          "index": 3,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "7%",
+              "stt": "구 퍼센트"
+            }
+          ],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "낮아진 노쇼 비율 7%를 '구 퍼센트'(9%)로 잘못 말함. 18%는 맞게 말함"
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": [
+        "사실 이 결과 나왔을 때 팀원들끼리 좀 소리 질렀습니다"
+      ]
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "약 430곳을 '약 사백삼십 곳'으로 읽음"
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [
+            "약 24억 원",
+            "36억 원"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "초기 대상 약 900곳('약 구백 곳')은 말했지만 시장 규모 약 24억~36억 원을 '꽤 큰 편'으로만 말함"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'수익은 도서관 구독료에서 나온다'를 '수익 모델은 도서관에서 받는 구독료'로 바꿔 말함"
+        },
+        {
+          "index": 1,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "49만 원",
+              "stt": "사십오만 원"
+            }
+          ],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "공공도서관 월 구독료 49만 원을 '사십오만 원'으로 잘못 말함. 600만 원, 1,200만 원('천이백만 원')은 맞게 말함"
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "2026년 상반기('이천이십육 년 상반기'), 서울·대전, 20곳('스무 곳') 모두 맞게 말하고 '도입하겠다'를 '들어가는 게 목표'로 바꿔 말함"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "SeatFlow를 '시트플로우'로 음차. '기다리는 시간을 줄이고 좌석을 더 공정하게 운영'을 '기다리는 시간이 줄고 좌석 운영이 더 공정해진다'로 바꿔 말함"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}

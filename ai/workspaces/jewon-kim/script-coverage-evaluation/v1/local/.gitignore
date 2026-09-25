@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+
+# 노트북이 실행할 때마다 새로 만드는 로컬 DB
+outputs/

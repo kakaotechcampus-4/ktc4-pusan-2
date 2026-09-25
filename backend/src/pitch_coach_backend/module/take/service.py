@@ -2,7 +2,6 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import CalibrationDTO, MissionDTO, PreviousMissionsDTO, TakeInitRequestDTO, TakeUpdateRequestDTO
 from pitch_coach_backend.module.take.entity import Calibration, Take
 from pitch_coach_backend.module.take.dto import (
@@ -36,20 +35,6 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
 
     return saved_take.id
 
-
-def delete_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
-    take_repository = TakeRepository(db)
-    existing_take = take_repository.get_in_pitch(take_id, pitch_id)
-
-    if not existing_take:
-        raise NonExistentTake()
-
-    PitchRepository(db).clear_best_take(pitch_id, take_id)
-    take_repository.delete(existing_take)
-    db.commit()
-
-    return take_id
-
 def update_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, take_update_dto: TakeUpdateRequestDTO):
     take_repository = TakeRepository(db)
     existing_take = take_repository.get_in_pitch(take_id, pitch_id)
@@ -73,7 +58,6 @@ def delete_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
     if not existing_take:
         raise NonExistentTake()
 
-    PitchRepository(db).clear_best_take(pitch_id, take_id)
     take_repository.delete(existing_take)
     db.commit()
 
