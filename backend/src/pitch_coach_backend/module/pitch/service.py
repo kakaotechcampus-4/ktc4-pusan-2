@@ -37,6 +37,55 @@ def get_pitch_service(db: Session, pitch_id: uuid.UUID):
 
     return existing_pitch
 
+# 홈 화면 : pitches 목록 조회
+def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
+    pitch_repository = PitchRepository(db)
+    pitches = pitch_repository.get_all_by_user(user_id)
+
+    rows_by_pitch = defaultdict(list)
+    for row in pitch_repository.get_takes_with_scores_in_pitches([p.id for p in pitches]):
+        rows_by_pitch[row.Take.pitch_id].append(row)
+
+    results = []
+    for pitch in pitches:
+        take_summaries = []
+        # Take, Score로 이루어진 row.
+        takes = rows_by_pitch[pitch.id]
+
+        for t in range(len(takes)):
+            take = takes[t].Take
+            take_score = takes[t].score
+            d = None
+
+            if t > 0:
+                previous_take_score = takes[t - 1].score
+                if take_score is not None and previous_take_score is not None:
+                    d = take_score - previous_take_score
+
+            take_summary = TakeSummaryDTO(
+                take_id=take.id,
+                take_version=take.take_number,
+                take_elapsed=take.duration_sec,
+                take_time=take.goal_time_sec,
+                script_mode=take.script_mode,
+                score=take_score,
+                delta=d
+            )
+
+            take_summaries.append(take_summary)
+
+        pitch_dto = PitchesDTO(
+            pitch_id=pitch.id,
+            pitch_title=pitch.title,
+            pitch_time=pitch.time_limit_sec,
+            thumbnail_url=None,
+            takes=take_summaries
+        )
+
+        results.append(pitch_dto)
+
+    return AllPitchesDTO(pitches=results)
+
 # Protocol(해당 타입만 가지고 있다면 Versioned 타입으로 간주)로 통일
 # Versioned 타입을 가진 객체들을 VersionDTO로 변환
 def to_version_dtos(rows: Iterable[Versioned]) -> list[VersionDTO]:

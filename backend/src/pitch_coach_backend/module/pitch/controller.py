@@ -12,9 +12,8 @@ from pitch_coach_backend.module.pitch.dto import PitchDTO, UploadPresentationDTO
 from pitch_coach_backend.module.pitch.service import (
     add_pitch_service,
     delete_pitch_service,
-    get_all_pitches_service,
     get_pitch_datas,
-    get_pitch_service,
+    get_all_pitches_service,
     update_pitch_service,
     upload_service
 )
