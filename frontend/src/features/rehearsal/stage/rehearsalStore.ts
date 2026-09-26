@@ -7,8 +7,6 @@ export type StagePhase = 'RUNNING' | 'ENDING' | 'ENDED';
  * 단계의 순서. **한 방향으로만 갑니다.**
  *
  * 발표는 한 번뿐입니다. ENDING 에서 RUNNING 으로 돌아가면 —
- *   · useRecording 이 새 MediaRecorder 를 띄우고 seq 가 0 부터 시작합니다.
- *     audioChunks 의 키가 [clientSessionId, seq] 라 put 이 **원본 조각을 덮어씁니다**
  *   · clock.start() 가 t0 를 다시 잡아 durationMs 가 재시도 시점부터 재측정됩니다
  *   · useSlideDeck 의 init 이펙트가 다시 돌아 0ms 행을 현재 슬라이드로 덮어씁니다
  *

@@ -73,9 +73,8 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 - `features/rehearsal/media/useGazeWorker.ts` — **프레임 펌프 + 백프레셔.** 여기가 성능의 전부입니다
 - `features/rehearsal/media/MediaDevPage.tsx` — `/dev/media` 프레임 예산 계기판
 
-**녹음 · 음량** — 브라우저가 원본입니다 (CLAUDE.md 4번)
-- `features/rehearsal/media/recorder.ts` — `MediaRecorder` 5초 조각 → IndexedDB.
-  한 덩이로 받으면 탭이 죽을 때 발표 전체를 잃습니다
+**음성 · 음량** — 음성은 로컬에 남기지 않고 WebSocket으로만 보냅니다 (CLAUDE.md 4번)
+- `features/rehearsal/media/pcmCapture.ts` — `AudioWorklet` → 16kHz Int16 100ms 프레임 → STT 소켓
 - `features/rehearsal/media/level.ts` — `AnalyserNode` RMS 직독. 래퍼를 안 끼우는 이유는
   **권한은 살아 있는데 입력만 0인 상황**(이어폰 분리·타앱 점유·시스템 음소거)을 잡아야 하기 때문입니다
 
@@ -165,7 +164,7 @@ features/rehearsal/lib/gazePayload.ts           GazePayload 조립 → POST /com
 
 **Track A**
 - [x] 워커·백프레셔·`/dev/media` 계기판
-- [x] 녹음(`MediaRecorder` → IndexedDB 5초 조각) · 음량(`AnalyserNode` RMS)
+- [x] 음량(`AnalyserNode` RMS) — 로컬 녹음은 두었다가 뺐습니다 (CLAUDE.md 4번)
 - [x] IndexedDB 스키마 · 하트비트
 - [x] 실모델 껍데기 + 실패 경로(`ENGINE_UNAVAILABLE` → 측정 제외)
 - [ ] **프레임 예산 측정** — `/dev/media` 에서 부하 0/20/40/60/80 의 fps 표 ← AI팀에 보낼 숫자
@@ -250,7 +249,7 @@ refactor/fe-*             멘토 리뷰 반영
 ## 읽어야 할 것
 
 `CLAUDE.md`에 **바꾸면 안 되는 결정 8가지**가 정리돼 있습니다.
-카메라 온디바이스 · 시선 2분할(3값) · 1초 판정 주기 · **서버는 덤이고 브라우저가 원본** ·
+카메라 온디바이스 · 시선 2분할(3값) · 1초 판정 주기 · **서버는 덤이고 브라우저가 원본(음성 제외)** ·
 시간 필드 관계식 · `null` 규칙 · 스타일 경계 · Take 생성 시점.
 이걸 모르고 짜면 나중에 다시 만듭니다.
 

@@ -9,7 +9,6 @@ import { usePitchDetail, useCompleteTake, useTakeContext } from '@/shared/api/ta
 import { buildGazePayload } from '../lib/gazePayload';
 import {
   beat,
-  countAudioChunks,
   endSession,
   findSessionByTakeId,
   getSession,
@@ -29,7 +28,6 @@ import type { CompleteRequest, GazeExcludedReason, Ms } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
 import { useCoach } from './useCoach';
 import { useLiveGaze } from './useLiveGaze';
-import { useRecording } from './useRecording';
 import { useRehearsalStore } from './rehearsalStore';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
@@ -44,11 +42,12 @@ const BEAT_MS = 5_000;
  *
  * ── 이 화면이 지키는 것 ─────────────────────────────────────────────
  *
- * 1. **브라우저가 원본입니다.** 시선 판정·슬라이드 전환·코치 기록·녹음 조각이
+ * 1. **브라우저가 원본입니다.** 시선 판정·슬라이드 전환·코치 기록이
  *    전부 IndexedDB에 먼저 쌓입니다. 서버로 가는 건 발표가 끝난 뒤입니다.
+ *    음성만 예외입니다 — 로컬에 남기지 않고 WebSocket으로만 흘립니다 (CLAUDE.md 4번).
  *    중간에 탭이 죽어도 남은 기록으로 리포트를 만들 수 있어야 합니다.
  *
- * 2. **초당 한 번 바뀌는 값은 React를 거치지 않습니다.** 시계·음량·녹음 크기·
+ * 2. **초당 한 번 바뀌는 값은 React를 거치지 않습니다.** 시계·음량·
  *    시선 테두리는 전부 DOM에 직접 씁니다. 상태로 올리는 것은 슬라이드 번호와
  *    코치 메시지뿐입니다 — 둘 다 사람이 움직일 때만 바뀝니다.
  *
@@ -138,13 +137,6 @@ export function RehearsalPage() {
     elapsedMs,
     enabled: running,
   });
-  const {
-    sizeRef,
-    recording,
-    errorMessage: recErrorMessage,
-    stop: stopRecording,
-  } = useRecording({ stream, clientSessionId: sessionId, enabled: running });
-
   /**
    * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
    * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
@@ -312,14 +304,11 @@ export function RehearsalPage() {
     const durationMs: Ms = elapsedMs();
     const endedAtIso = new Date().toISOString();
 
-    // 마지막 5초 조각까지 받고 멈춥니다. 이걸 기다리지 않으면 끝말이 잘립니다
-    const rec = await stopRecording();
     setPhase('ENDING');
 
     // ★ 여기서부터 끝까지 한 try 입니다. 중간이 실패해도 **무대를 되살리면 안 됩니다** —
-    //   phase 가 RUNNING 으로 돌아가면 useRecording 이 다시 돌면서 seq 가 0 부터
-    //   시작하고, audioChunks 의 키가 [clientSessionId, seq] 라 put 이 원본 조각을
-    //   덮어씁니다. 시계도 clock.start() 로 t0 를 다시 잡아 durationMs 가 어긋납니다.
+    //   phase 가 RUNNING 으로 돌아가면 clock.start() 가 t0 를 다시 잡아 durationMs 가
+    //   어긋나고, useSlideDeck 이 0ms 행을 덮어씁니다 (rehearsalStore 주석 참고).
     //   기록은 IndexedDB 에 그대로 있으므로 재시도 화면으로 보냅니다.
     try {
       // 서버가 남은 오디오를 Deepgram에 흘리고 `closed`를 줄 때까지 기다립니다.
@@ -328,20 +317,11 @@ export function RehearsalPage() {
       await endSession(sessionId);
 
       // ── 대조 ────────────────────────────────────────────────────────
-      // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패와
-      // 실제로 남은 행 수를 함께 봅니다 — 어느 한쪽만으로는 모자랍니다.
-      // 장부는 "쓰다 실패한 것"을, 개수 대조는 "장부에도 안 남은 것"을 잡습니다.
-      //
-      // ★ 지금은 알리는 곳이 콘솔뿐입니다. audioFileKey(업로드 경로)가 붙으면
-      //   "원본이 불완전함" 을 서버에도 실어 보내야 합니다 — 그 자리가 여기입니다.
-      const savedChunks = await countAudioChunks(sessionId);
+      // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패를 봅니다.
+      // ★ 지금은 알리는 곳이 콘솔뿐입니다.
       const failures = readWriteFailures(sessionId);
-      if (Object.keys(failures).length > 0 || savedChunks < rec.chunkCount) {
-        console.error('[rehearsal] 기록이 불완전합니다', {
-          실패: failures,
-          넘긴조각: rec.chunkCount,
-          실제저장: savedChunks,
-        });
+      if (Object.keys(failures).length > 0) {
+        console.error('[rehearsal] 기록이 불완전합니다', { 실패: failures });
       }
 
       const row = await getSession(sessionId);
@@ -384,9 +364,6 @@ export function RehearsalPage() {
         suppressedFeedbacks: coachRows
           .filter((c) => !c.fired)
           .map((c) => ({ type: c.type, atMs: c.atMs, reason: c.suppressedReason ?? 'UNKNOWN' })),
-        // ★ 오디오 업로드 경로가 아직 없습니다. 조각은 IndexedDB에 있고,
-        //   업로드가 붙으면 그 키가 여기 들어옵니다 (실패 시 P15 재시도 화면).
-        audioFileKey: '',
         clientPerf: {
           avgGazeFps: row?.gazeAvgFps ?? perf?.avgFps ?? 0,
           droppedFrames: row?.gazeDroppedFrames ?? perf?.droppedFrames ?? 0,
@@ -511,12 +488,6 @@ export function RehearsalPage() {
             />
 
             <div className="stage-foot">
-              <span className="rec" data-on={recording}>
-                {recording ? '기록 중 · ' : '기록 멈춤 · '}
-                <span ref={sizeRef} className="tabular">
-                  0.0MB
-                </span>
-              </span>
               <span>{gazeNote}</span>
               {sttNote && (
                 <span className="stt" data-alert={sttAlert}>
@@ -530,7 +501,6 @@ export function RehearsalPage() {
                 <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
               )}
               {mode === 'EXAM' && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
-              {recErrorMessage && <span>{recErrorMessage}</span>}
               {endError && <span>{endError}</span>}
 
               <button
@@ -546,10 +516,9 @@ export function RehearsalPage() {
                     return;
                   }
                   // 복구는 finish() 안에서 끝납니다 (재시도 화면으로 이동).
-                  // 여기까지 새어 나오는 것은 stopRecording 실패뿐이라 기록만 남깁니다 —
-                  // 이때는 phase 가 아직 RUNNING 이라 버튼을 다시 누를 수 있습니다.
+                  // try 밖에서 던질 것이 없지만, 새어 나오면 삼키지 않고 남깁니다
                   finish().catch((e: unknown) => {
-                    console.error('[rehearsal] 녹음 정지 실패', e);
+                    console.error('[rehearsal] 종료 처리 실패', e);
                     setEndError(toMessage(e));
                   });
                 }}

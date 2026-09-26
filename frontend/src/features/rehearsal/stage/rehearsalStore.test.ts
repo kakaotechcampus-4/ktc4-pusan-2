@@ -26,7 +26,7 @@ describe('단계는 한 방향으로만 간다', () => {
 
   /**
    * ★ 이 테스트가 이번 사고를 막습니다.
-   *   되돌아가면 useRecording 이 seq 0 부터 다시 시작해 원본 오디오를 덮어씁니다.
+   *   되돌아가면 시계가 t0 를 다시 잡아 durationMs 가 재시도 시점부터 재측정됩니다.
    */
   it('ENDING 에서 RUNNING 으로 되돌아가지 않는다', () => {
     useRehearsalStore.getState().setPhase('ENDING');

@@ -61,7 +61,7 @@ export class ModelGazeClassifier implements GazeClassifier {
   /**
    * AI 모듈 로드. **실패하면 throw 합니다** —
    * 워커가 그걸 받아 `error { ENGINE_UNAVAILABLE }` 로 바꾸고,
-   * 화면은 "측정 제외"로 표시하되 타이머·키보드·녹음은 계속 돕니다.
+   * 화면은 "측정 제외"로 표시하되 타이머·키보드·음성 전송은 계속 돕니다.
    */
   async init(): Promise<void> {
     // TODO(AI팀 1번) — 모듈이 오면 여기서 import 하고 초기화합니다.

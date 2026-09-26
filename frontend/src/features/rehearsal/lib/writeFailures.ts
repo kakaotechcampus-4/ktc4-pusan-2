@@ -4,7 +4,7 @@
  * ── 왜 필요한가 ────────────────────────────────────────────────────
  * 발표 중에 IndexedDB 쓰기가 실패하면 화면에는 아무 흔적도 남지 않습니다.
  * 그렇다고 자리마다 `console.error` 를 흩뿌리면, 저장소가 가득 찬 경우처럼
- * 초당·5초당 계속 실패하는 상황에서 콘솔이 같은 줄로 덮여 버립니다.
+ * 초당 계속 실패하는 상황에서 콘솔이 같은 줄로 덮여 버립니다.
  *
  * 그래서 **종류별로 첫 건만 찍고 나머지는 셉니다.** 종료 시점에 이 장부를
  * 한 번 읽으면 "무엇을 몇 건 잃었나" 가 한 줄로 나옵니다.
@@ -17,13 +17,7 @@
 
 /** 무엇을 쓰다 실패했나. 종료 로그에 이 이름 그대로 나옵니다 */
 export type WriteKind =
-  | 'audioChunk'
-  | 'gazeDecision'
-  | 'slideChange'
-  | 'coachLog'
-  | 'gazeExcluded'
-  | 'engineVersion'
-  | 'gazePerf';
+  'gazeDecision' | 'slideChange' | 'coachLog' | 'gazeExcluded' | 'engineVersion' | 'gazePerf';
 
 const ledger = new Map<string, Map<WriteKind, number>>();
 
