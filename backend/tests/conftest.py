@@ -10,8 +10,10 @@
 import os
 import uuid
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
+from dotenv import dotenv_values
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
@@ -28,6 +30,15 @@ os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
 os.environ.setdefault("DEEPGRAM_API_KEY", "test-deepgram-key")
 # S3 도 마찬가지. 업로드는 테스트에서 모킹한다.
 os.environ.setdefault("S3_BUCKET_NAME", "test-bucket")
+
+_dotenv = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
+for _target, _source in (
+    ("DATABASE_URL", "LOCAL_DATABASE_URL"),
+    ("REDIS_URL", "LOCAL_REDIS_URL"),
+):
+    _value = os.environ.get(_source) or _dotenv.get(_source)
+    if _value:
+        os.environ[_target] = _value
 
 
 def _test_database_url() -> str:
@@ -93,10 +104,12 @@ def user_id(db_session: Session) -> uuid.UUID:
 
 
 @pytest.fixture
-def client(db_session: Session) -> Generator[TestClient]:
+def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient]:
+    from pitch_coach_backend import main
     from pitch_coach_backend.core.database import get_db
     from pitch_coach_backend.main import app
 
+    monkeypatch.setattr(main, "get_s3", lambda: None)
     app.dependency_overrides[get_db] = lambda: db_session
     # base_url 이 https 여야 한다. 쿠키를 Secure 로 심는데(cookie_secure 기본값 True)
     # http 로는 httpx 가 그 쿠키를 되돌려 보내지 않아 인증 흐름이 통째로 막힌다.

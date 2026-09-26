@@ -1,4 +1,7 @@
 services:
   caddy:
     ports:
-      - "8080:80"
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_URL: https://pitch-coach-dev.duckdns.org
