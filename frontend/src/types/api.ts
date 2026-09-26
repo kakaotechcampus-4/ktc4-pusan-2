@@ -188,7 +188,6 @@ export interface CompleteRequest {
   }[];
   /** 띄우려다 참은 것과 사유 — 코칭 임계값 조정의 유일한 근거 */
   suppressedFeedbacks: { type: string; atMs: Ms; reason: string }[];
-  audioFileKey: string;
   clientPerf: {
     avgGazeFps: number;
     droppedFrames: number;
