@@ -22,6 +22,7 @@ class PitchRepository:
     def get_all_by_user(self, user_id: uuid.UUID) -> list[Pitch]:
         return self.db.execute(
             select(Pitch).where(Pitch.user_id == user_id)
+            .order_by(Pitch.presentation_date.desc()) # 우선 마감일이 빠른 순서대로 정렬
         ).scalars().all()
 
     def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[tuple[Take, int | None]]:
