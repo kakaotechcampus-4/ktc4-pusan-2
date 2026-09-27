@@ -17,6 +17,11 @@ class TakeRepository:
     def __init__(self, db: Session):
         self.db = db
 
+    def get_take(self, take_id: uuid.UUID) -> Take | None:
+        return self.db.scalar(
+            select(Take).where(Take.id == take_id)
+        )
+    
     def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[Take]:
         return self.db.execute(
             select(Take).where(Take.pitch_id == pitch_id)
