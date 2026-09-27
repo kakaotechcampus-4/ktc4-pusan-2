@@ -3,12 +3,12 @@ from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import UploadFile
 
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.core.s3 import s3
+from pitch_coach_backend.core.s3 import get_s3
 
 
 def upload(file: UploadFile, key: str):
     try:
-        s3.upload_fileobj(
+        get_s3().upload_fileobj(
             file.file,
             settings.s3_bucket_name,
             key,

@@ -43,25 +43,22 @@ class Pitch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     presentation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # takes 와 서로를 참조한다. use_alter 로 테이블 생성 후 FK 를 따로 걸어
     # 순환 때문에 생성 순서가 막히는 것을 피한다.
-    best_take_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid,
-        ForeignKey("takes.id", use_alter=True, name="pitches_best_take_id_fkey"),
-    )
-    standard_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid,
-    )
+    # best_take_id는 추후 점수로 계산한 후, 가장 최고 점수의 take 를 best_take 로 지정할 때 사용한다.
 
 class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """발표 표준. 발표를 평가할 때 기준이 되는 표준 발표를 저장한다."""
 
     __tablename__ = "standards"
+    __table_args__ = (
+        UniqueConstraint("pitch_id", "version", name="uq_standards_pitch_version"),
+    )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    # 자식 쪽에 외래키를 건다. 
+    pitch_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(50), nullable=False)
-    create_at: Mapped[date] = mapped_column(Date, nullable=False)
 
 class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """업로드된 발표자료 파일의 한 버전. 한 번 올리면 수정하지 않는다."""

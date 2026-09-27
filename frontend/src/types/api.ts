@@ -38,8 +38,24 @@
 export type Ms = number;
 
 export type Mode = 'COACHING' | 'EXAM';
-/** 4단계. OFF는 대본 영역 자체가 사라진다 (높이 0) */
-export type ScriptMode = 'FULL' | 'HIGHLIGHT' | 'KEYWORD' | 'OFF';
+/**
+ * 3단계. OFF는 대본 영역 자체가 사라진다 (높이 0).
+ *
+ * ── FULL 이 없는 이유 (시안 09 기준, 2026-09-22 변경) ────────────────
+ * 전에는 `FULL | HIGHLIGHT | KEYWORD | OFF` 넷이었습니다. FULL(전체 대본)과
+ * HIGHLIGHT(전체 대본 + 강조)를 **HIGHLIGHT 하나로 합쳤습니다** — 화면에 보이는
+ * 글은 둘 다 대본 전체이고, 강조가 붙느냐만 달랐습니다. 고르는 사람에게는
+ * 같은 것이 둘로 보였습니다.
+ *
+ * 대본 영역 높이는 바뀌지 않습니다 — `--spacing-script-full` 과
+ * `--spacing-script-highlight` 가 원래 둘 다 180px 이었습니다. 그래서 이 합치기는
+ * CLAUDE.md 7번의 계측 조건에 걸리지 않고, 이 시점 이전 Take 와도 비교가 됩니다.
+ *
+ * ★ 서버가 아직 `FULL` 을 보낼 수 있습니다. 받는 쪽에서 접어서 씁니다 —
+ *   `features/rehearsal/prepare/prepareStore.ts` 의 `normalizeScriptMode`.
+ *   이 파일에는 런타임 코드를 두지 않습니다 (위 머리말의 잎사귀 규칙).
+ */
+export type ScriptMode = 'HIGHLIGHT' | 'KEYWORD' | 'OFF';
 export type TakeStatus = 'READY' | 'RUNNING' | 'ANALYZING' | 'COMPLETED' | 'FAILED';
 
 /** AI팀 파이프라인의 최종 출력. 4분할이 아니라 3값입니다. */
@@ -51,7 +67,13 @@ export type GazeExcludedReason =
   | 'CAMERA_LOST'
   | 'USER_DECLINED'
   | 'VALIDATION_FAILED'
-  | 'UNCERTAIN_RATIO_EXCEEDED';
+  | 'UNCERTAIN_RATIO_EXCEEDED'
+  /**
+   * 판정은 나왔는데 IndexedDB 에 못 쌓은 구간이 있습니다 (저장소 가득 참 등).
+   * 몇 초가 빠졌는지 알 수 없으므로 비율을 계산하면 조용히 틀린 숫자가 나옵니다.
+   * 다른 사유들과 달리 **측정 자체는 정상이었다**는 점이 다릅니다.
+   */
+  | 'STORAGE_FAILED';
 
 /** NORMAL 정상 · LIGHT 경량 모드 · OFF 시선 없이 진행 */
 export type GazeEngineProfile = 'NORMAL' | 'LIGHT' | 'OFF';

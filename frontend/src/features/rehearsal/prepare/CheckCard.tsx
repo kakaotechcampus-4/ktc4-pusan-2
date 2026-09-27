@@ -19,13 +19,19 @@ export function CheckCard({
     done: boolean;
     /** 아직 안 된 항목의 오른쪽 동작. 없으면 문구만 */
     action?: { text: string; onClick: () => void } | null;
+    /**
+     * 줄 오른쪽에 붙는 표시물 — 마이크 레벨 막대처럼 **누르는 것이 아닌** 것.
+     * `action` 과 같이 쓰지 않습니다. 줄 전체가 버튼이 되면 막대를 누르려다
+     * 캘리브레이션이 시작되는 식으로 어긋납니다.
+     */
+    trailing?: ReactNode;
   }[];
   children?: ReactNode;
 }) {
   const done = rows.filter((r) => r.done).length;
 
   return (
-    <section className="rounded-xl border border-stage-panel bg-stage-panel/40 p-4">
+    <section className="rounded-xl border border-line-strong bg-panel p-4">
       <header className="flex items-baseline gap-2">
         <h2 className="text-sm font-bold">{title}</h2>
         <span className="tabular ml-auto font-mono text-xs text-stone">
@@ -34,8 +40,8 @@ export function CheckCard({
       </header>
 
       <ul className="mt-3 flex flex-col gap-2">
-        {rows.map((row) => (
-          <li key={row.id}>
+        {rows.map(({ id, ...row }) => (
+          <li key={id}>
             <CheckRow {...row} />
           </li>
         ))}
@@ -50,14 +56,14 @@ function CheckRow({
   label,
   done,
   action,
+  trailing,
 }: {
   label: ReactNode;
   done: boolean;
   action?: { text: string; onClick: () => void } | null;
+  trailing?: ReactNode;
 }) {
-  const skin = done
-    ? 'border-stage-panel bg-stage-panel text-ink-stage'
-    : 'border-coral bg-coral/10 text-coral';
+  const skin = done ? 'border-line bg-panel text-ink' : 'border-coral bg-coral/10 text-coral';
 
   const body = (
     <>
@@ -67,6 +73,7 @@ function CheckRow({
       </span>
       <span className="text-sm">{label}</span>
       {action ? <span className="ml-auto text-xs font-semibold">{action.text}</span> : null}
+      {trailing ? <span className="ml-auto w-20 shrink-0">{trailing}</span> : null}
     </>
   );
 
@@ -78,7 +85,7 @@ function CheckRow({
       <button
         type="button"
         onClick={action.onClick}
-        className={`${className} ${done ? 'hover:bg-stage-panel' : 'hover:bg-coral/20'}`}
+        className={`${className} ${done ? 'hover:bg-cream' : 'hover:bg-coral/20'}`}
       >
         {body}
       </button>

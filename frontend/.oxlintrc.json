@@ -3,6 +3,41 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@/features/**"],
+            "message": "features 끼리 참조하지 않습니다 (FRONTEND_CONVENTION.md 5). 공유가 필요하면 shared/ 로 올리고, 같은 feature 안이면 상대 경로(../)를 쓰세요."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/app/**", "src/mocks/**", "src/main.tsx"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["src/workers/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/features/**", "@/shared/**"],
+                "message": "workers/ 는 features/ 와 shared/ 를 참조하지 않습니다 (FRONTEND_CONVENTION.md 5). 타입만 필요하면 @/types 에서 가져오세요 — shared/ 경로로 열어 두면 나중에 런타임 코드가 워커 번들에 딸려 들어옵니다."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

@@ -23,8 +23,9 @@ def bucket():
 
 @pytest.fixture(scope="module")
 def s3_client(bucket: str):
-    from pitch_coach_backend.core.s3 import s3
+    from pitch_coach_backend.core.s3 import get_s3
 
+    s3 = get_s3()
     try:
         s3.head_bucket(Bucket=bucket)
     except MISSING_CREDENTIALS as e:

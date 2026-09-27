@@ -1,0 +1,7 @@
+python-dotenv
+pydantic>=2
+langchain-openai
+kiwipiepy>=0.23
+scikit-learn
+pandas
+jupyter

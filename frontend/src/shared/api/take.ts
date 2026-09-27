@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { apiRequest } from './client';
+import { apiRequest, postJson } from './client';
 import type { CompleteRequest, PitchDetail, TakeContext } from '@/types/api';
 
 export const takeKey = (takeId: string) => ['take', takeId] as const;
@@ -38,10 +38,6 @@ export function usePitchDetail(pitchId: string | undefined) {
 export function useCompleteTake(takeId: string) {
   return useMutation({
     mutationFn: (body: CompleteRequest) =>
-      apiRequest<{ takeId: string; status: string }>(`/api/takes/${takeId}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }),
+      postJson<{ takeId: string; status: string }>(`/api/takes/${takeId}/complete`, body),
   });
 }

@@ -59,6 +59,11 @@ export function useMicLevel(stream: MediaStream | null) {
   const [audio, setAudio] = useState<{ stream: MediaStream; state: AudioContextState } | null>(
     null,
   );
+  /**
+   * 계량기를 못 띄운 스트림. 이게 있으면 `micOk` 가 false 인 이유가
+   * "소리가 안 들어옴" 이 아니라 **"재보지도 못함"** 입니다 — 사용자가 할 일이 다릅니다.
+   */
+  const [failedFor, setFailedFor] = useState<MediaStream | null>(null);
 
   useEffect(() => {
     if (!stream) return;
@@ -107,7 +112,13 @@ export function useMicLevel(stream: MediaStream | null) {
         }
       };
       raf = requestAnimationFrame(loop);
-    })().catch(() => undefined);
+      // ★ 전체를 `.catch(() => undefined)` 로 감싸면 안 됩니다 (CLAUDE.md 9번).
+      //   createLevelMeter 가 실패하면 아래 루프가 아예 시작되지 않고, 화면에는
+      //   '마이크 입력 없음' 만 영원히 남습니다 — 원인은 어디에도 안 보입니다.
+    })().catch((err: unknown) => {
+      console.error('[mic] 음량 계량기를 시작하지 못했습니다', err);
+      if (!cancelled) setFailedFor(stream);
+    });
 
     return () => {
       cancelled = true;
@@ -124,5 +135,10 @@ export function useMicLevel(stream: MediaStream | null) {
     statsRef,
     micOk: stream !== null && heardFor === stream,
     audioState: audio && audio.stream === stream ? audio.state : null,
+    /** 계량기 자체가 못 떴을 때의 문구. null 이면 정상입니다 */
+    meterError:
+      stream !== null && failedFor === stream
+        ? '마이크 음량을 측정하지 못했어요. 장치를 다시 선택해 주세요.'
+        : null,
   };
 }

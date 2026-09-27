@@ -1,0 +1,65 @@
+# Alembic 리비전 그래프 검사.
+#
+# ── 왜 이것부터인가 ───────────────────────────────────────────────────
+#
+# 두 사람이 각자 브랜치에서 마이그레이션을 만들어 머지하면 head 가 둘이 되고,
+# 그때부터 `alembic upgrade head` 가 "Multiple head revisions are present" 로
+# 죽습니다. 죽는 곳은 PR 이 아니라 **배포**라, 먼저 받은 사람만 모르고 지나갑니다.
+# 실제로 PR #32 리뷰에서 같은 지적을 받고도 develop 에 head 2개가 남아 있었습니다.
+#
+# 엔티티만 고치고 마이그레이션을 빠뜨리는 것도 같은 종류입니다. 그쪽은 DB 가 필요해서
+# `alembic check` 로 봐야 하는데, 여기서는 DB 없이 볼 수 있는 head 개수만 검사합니다.
+# (pytest·ruff 는 별도 job 으로 붙이면 됩니다 — 지금은 둘 다 DB·정리가 더 필요합니다)
+#
+# ★ 이 파일만으로는 게이트가 아닙니다. Settings → Branches → 브랜치 보호에서
+#   `backend` 를 Require status checks 에 넣어야 실패한 PR 이 막힙니다.
+#   job 이름이 `check` 가 아니라 `backend` 인 이유도 그것입니다 (frontend-ci.yml 과 같은 규칙).
+name: Backend CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    # alembic env.py 가 Settings 를 만들면서 필수 값을 요구합니다.
+    # 리비전 그래프만 읽으므로 실제로 접속하지는 않습니다 — 형식만 맞으면 됩니다.
+    env:
+      DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/ci
+      JWT_SECRET_KEY: ci-dummy
+      GOOGLE_CLIENT_ID: ci-dummy
+      GOOGLE_CLIENT_SECRET: ci-dummy
+      DEEPGRAM_API_KEY: ci-dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --locked
+
+      - name: Alembic head 는 하나여야 합니다
+        run: |
+          heads=$(uv run alembic heads | grep -c '(head)')
+          echo "head 개수: $heads"
+          uv run alembic heads
+          if [ "$heads" -ne 1 ]; then
+            echo "::error::head 가 $heads 개입니다. 'uv run alembic merge -m \"...\" <head1> <head2>' 로 합친 뒤 다시 올려 주세요."
+            exit 1
+          fi

@@ -3,34 +3,47 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.entity import PresentationVersion, ScriptVersion
-from pitch_coach_backend.module.take.entity import Calibration, Mission, Take
+from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.take.entity import (
+    Calibration,
+    Mission,
+    Take,
+    TakeSummary,
+    TakeTranscriptSegment,
+)
 
 
 class TakeRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_presentation_version_in_pitch(
-        self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID
-    ) -> uuid.UUID | None:
+    def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[Take]:
+        return self.db.execute(
+            select(Take).where(Take.pitch_id == pitch_id)
+        ).scalars().all()
+
+    def get_scores_in_take(self, take_id: list[uuid.UUID]) -> list[int]:
+        return self.db.execute(
+            select(TakeSummary.score).where(TakeSummary.take_id.in_(take_id))
+        ).scalars().all()
+
+    def get_owned(self, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | None:
+        """사용자의 pitch 에 속한 take. 없거나 남의 것이면 None — 둘을 구분하지 않는다."""
         return self.db.scalar(
-            select(PresentationVersion.id).where(
-                PresentationVersion.id == presentation_version_id,
-                PresentationVersion.pitch_id == pitch_id,
-            )
+            select(Take)
+            .join(Pitch, Pitch.id == Take.pitch_id)
+            .where(Take.id == take_id, Pitch.user_id == user_id)
         )
 
-    def get_script_version_in_pitch(
-        self, script_version_id: uuid.UUID, pitch_id: uuid.UUID
-    ) -> uuid.UUID | None:
+    def get_max_score_take_in_pitch(self, pitch_id: uuid.UUID) -> uuid.UUID | None:
         return self.db.scalar(
-            select(ScriptVersion.id).where(
-                ScriptVersion.id == script_version_id,
-                ScriptVersion.pitch_id == pitch_id,
-            )
+            select(TakeSummary.take_id)
+            .join(Take, TakeSummary.take_id == Take.id)
+            .where(Take.pitch_id == pitch_id)
+            .order_by(TakeSummary.score.desc())
+            .limit(1)
         )
-
+    
     def save(self, take: Take) -> Take:
         self.db.add(take)
         self.db.flush()
@@ -68,6 +81,7 @@ class TakeRepository:
         self.db.add_all(missions)
         self.db.flush()
         return missions
+    
     def last_transcript_cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
         """저장된 마지막 (seq, stt_session_no). 하나도 없으면 (0, 0).
 

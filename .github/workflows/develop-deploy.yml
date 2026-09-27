@@ -142,6 +142,7 @@ jobs:
 
           FILES="-f docker-compose.yml -f docker-compose.dev.yml"
           docker compose $FILES pull
+          docker compose $FILES run --rm be alembic upgrade head
           docker compose $FILES up -d --no-build --remove-orphans
           docker image prune -f
           SCRIPT

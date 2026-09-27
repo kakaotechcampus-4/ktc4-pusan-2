@@ -79,7 +79,7 @@ BE가 WebSocket을 쓰기로 확정돼서, 발표 중에 음성이 서버로 실
 **그런데 이걸 연습의 전제로 삼지 않습니다.**
 
 ```
-화면이 쓸 자료   → P4에서 한 번에 다 받아둔다
+화면이 쓸 자료   → 시작 전 세팅에서 한 번에 다 받아둔다
 모든 기록        → IndexedDB에 쌓인다             ★ 원본
 음성             → MediaRecorder로 로컬 저장       ★ 원본
                  → AudioWorklet PCM으로 WS 전송     덤
@@ -122,35 +122,60 @@ cameraMs   + bottomMs    === measuredMs
 | 어디 | 무엇으로 | 왜 |
 | --- | --- | --- |
 | 화면 18개 | **Tailwind** | 평범한 폼·카드·목록이다. 빠른 게 이긴다 |
-| 리허설 무대 | **`Stage/stage.css`** | 레이아웃 자체가 명세라 주석이 붙어야 한다 |
+| 리허설 무대 | **`stage/stage.css`** | 레이아웃 자체가 명세라 주석이 붙어야 한다 |
 
 토큰은 `src/index.css`의 `@theme` 한 곳에만 있습니다.
 `bg-[#EDE6DD]` 같은 임의값이 보이면 리뷰에서 잡습니다.
 
-**`--spacing-script-*` 네 값은 디자인이 아니라 계측 조건입니다.**
+**`--spacing-script-*` 세 값은 디자인이 아니라 계측 조건입니다.**
 대본 영역 높이가 바뀌면 시선 각도가 바뀌고 Calibration 기준이 어긋납니다.
 그러면 그 시점 이전 Take와 비교가 불가능해집니다. 고치려면 팀 합의가 필요합니다.
+
+전에는 네 값이었습니다. `--spacing-script-full`을 지운 것은 `ScriptMode`에서
+FULL이 HIGHLIGHT로 합쳐졌기 때문인데, **원래 둘 다 180px이라 높이는 그대로입니다** —
+그래서 이 합치기는 지난 Take와의 비교를 깨지 않습니다 (2026-09-22).
 
 시선 테두리는 **React를 거치지 않습니다** — `stageRef.current.dataset.gaze = zone` 한 줄이고
 색·두께·점선은 `stage.css`가 `[data-gaze=...]`로 받습니다.
 `/dev/stage`에서 확인할 수 있습니다. 시선 버튼을 눌러도 렌더 카운터가 안 올라가야 정상입니다.
 
-### 8. Take는 준비 화면의 시작 CTA에서만 생깁니다
+### 8. Take는 시작 전 세팅의 시작 CTA에서만 생깁니다
 
 ```
-/pitch/:pitchId/prepare      ← 아직 Take가 없다
+/pitch/new                        피치 생성 — 슬라이드 · 대본 · 평가기준
+    다음 CTA                      ★ 어느 버전으로 연습할지 여기서 고른다
+/pitch/:pitchId/device-check      시작 전 세팅 (시안 09) ← 아직 Take가 없다
     시작 CTA
       POST /takes                    takeId 발급 (clientSessionId 멱등키)
       POST /takes/{id}/calibration   품질 요약만
       WS   /ws/takes/{id}
-/takes/:takeId/rehearsal     ← 여기부터 takeId
+/takes/:takeId/rehearsal          ← 여기부터 takeId  (실전이면 /exam)
 ```
 
 홈과 리포트의 `Take N 시작`은 **이동만 합니다.** 거기서 `POST /takes`를 부르면
-준비 화면에서 이탈한 만큼 빈 Take가 쌓이고 `takeNumber`가 실제 연습 횟수와 어긋납니다.
+세팅 화면에서 이탈한 만큼 빈 Take가 쌓이고 `takeNumber`가 실제 연습 횟수와 어긋납니다.
 
-Take가 스냅샷하는 값(`mode`·`scriptMode`·자료/대본/기준 버전)이 준비 화면에서 정해지고,
+Take가 스냅샷하는 값(`mode`·`scriptMode`·자료/대본/기준 버전)이 세팅 화면에서 정해지고,
 Calibration과 WebSocket을 붙일 `takeId`가 리허설 직전에 필요하기 때문입니다.
+
+**리허설 앞 화면은 하나뿐입니다.** 전에는 장치 점검(05)과 리허설 준비(06)가 따로였는데,
+시안 09가 둘을 한 화면으로 그리면서 합쳤습니다 (2026-09-22). `/pitch/:id/prepare`는
+리다이렉트만 남아 있습니다 — 지운 게 아니라 옛 링크를 받기 위해서입니다.
+
+`start()`는 `prepare/DeviceCheckPage.tsx`에 **하나만** 있습니다. 복사하지 마세요.
+
+**대본 표시를 고르면 연습 모드가 같이 정해집니다.** 시안 09가 `실전 모드 · 대본 없이`를
+한 줄로 묶어서, 화면에서는 셋 중 하나만 고릅니다.
+
+| 고른 것 | `scriptMode` | `mode` |
+| --- | --- | --- |
+| 전체 대본 + 하이라이트 | `HIGHLIGHT` | `COACHING` |
+| 핵심 키워드만 | `KEYWORD` | `COACHING` |
+| 실전 모드 · 대본 없이 | `OFF` | `EXAM` |
+
+대가가 있습니다 — **"대본만 끄고 코칭은 받기"가 없습니다.** 계약에서 `Mode`와 `ScriptMode`는
+여전히 별개이고 서버로도 따로 가므로, 되돌리려면 `prepareStore.ts`의 `modeForScriptMode`만
+지우면 됩니다.
 
 ### 9. `void` 연산자를 쓰지 않습니다 — 떠 있는 Promise에는 `.catch()`
 

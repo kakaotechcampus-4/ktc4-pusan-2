@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pitch_coach_backend import entities  # noqa: F401  # 모든 entity 를 매퍼에 등록
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
+from pitch_coach_backend.core.s3 import get_s3
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
@@ -23,6 +24,7 @@ API_PREFIX = "/api"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    get_s3()
     yield
     # 실시간 STT 스트림은 WebSocket 요청 밖에서 도는 백그라운드 태스크다.
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.

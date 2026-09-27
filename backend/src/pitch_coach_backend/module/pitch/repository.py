@@ -1,9 +1,10 @@
 import uuid
 
+from pitch_coach_backend.module.take.entity import Take, TakeSummary
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion, Standards
 
 
 class PitchRepository:
@@ -18,6 +19,32 @@ class PitchRepository:
             select(Pitch).where(Pitch.id == pitch_id, Pitch.user_id == user_id)
         )
 
+    def get_all_by_user(self, user_id: uuid.UUID) -> list[Pitch]:
+        return self.db.execute(
+            select(Pitch).where(Pitch.user_id == user_id)
+        ).scalars().all()
+
+    def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[tuple[Take, int | None]]:
+        return self.db.execute(
+            select(Take, TakeSummary.score)
+            .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
+            .where(Take.pitch_id == pitch_id)
+            # take_number 순서 - 먼저 한 순서대로 정렬됨.
+            .order_by(Take.take_number)
+        ).all()
+
+    def get_takes_with_scores_in_pitches(
+        self, pitch_ids: list[uuid.UUID]
+    ) -> list[tuple[Take, int | None]]:
+        if not pitch_ids:
+            return []
+        return self.db.execute(
+            select(Take, TakeSummary.score)
+            .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
+            .where(Take.pitch_id.in_(pitch_ids))
+            .order_by(Take.pitch_id, Take.take_number)
+        ).all()
+
     def save(self, pitch: Pitch) -> Pitch:
         self.db.add(pitch)
         self.db.flush()
@@ -26,13 +53,6 @@ class PitchRepository:
     def delete(self, pitch: Pitch) -> None:
         self.db.delete(pitch)
         self.db.flush()
-
-    def clear_best_take(self, pitch_id: uuid.UUID, take_id: uuid.UUID) -> None:
-        self.db.execute(
-            update(Pitch)
-            .where(Pitch.id == pitch_id, Pitch.best_take_id == take_id)
-            .values(best_take_id=None)
-        )
 
     def next_presentation_version(self, pitch_id: uuid.UUID) -> int:
         current = self.db.scalar(
@@ -57,3 +77,42 @@ class PitchRepository:
         self.db.add(script_version)
         self.db.flush()
         return script_version
+
+    def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
+        return self.db.scalars(
+            select(PresentationVersion).where(PresentationVersion.pitch_id == pitch_id)
+            .order_by(PresentationVersion.version.asc())
+        ).all()
+
+    def get_scripts(self, pitch_id: uuid.UUID) -> list[ScriptVersion]:
+        return self.db.scalars(
+            select(ScriptVersion).where(ScriptVersion.pitch_id == pitch_id)
+            .order_by(ScriptVersion.version.asc())
+        ).all()
+
+    def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
+        return self.db.scalars(
+            select(Standards).where(Standards.pitch_id == pitch_id)
+            .order_by(Standards.version.asc())
+        ).all()
+
+    def get_presentation_version_in_pitch(
+            self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID
+        ) -> uuid.UUID | None:
+            return self.db.scalar(
+                select(PresentationVersion.id).where(
+                    PresentationVersion.id == presentation_version_id,
+                    PresentationVersion.pitch_id == pitch_id,
+                )
+            )
+    
+    def get_script_version_in_pitch(
+        self, script_version_id: uuid.UUID, pitch_id: uuid.UUID
+    ) -> uuid.UUID | None:
+        return self.db.scalar(
+            select(ScriptVersion.id).where(
+                ScriptVersion.id == script_version_id,
+                ScriptVersion.pitch_id == pitch_id,
+            )
+        )
+    
