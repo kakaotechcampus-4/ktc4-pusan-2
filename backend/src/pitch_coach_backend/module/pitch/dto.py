@@ -46,3 +46,11 @@ class VersionSummaryDTO(BaseModel):
 class Versioned(Protocol):
     id: uuid.UUID
     version: int
+
+class PresentationDetailDTO(BaseModel):
+    pitch_id: uuid.UUID
+    presentation_version_id: uuid.UUID
+    version: int
+    file_url: str
+    description: str | None = None
+    created_at: date

@@ -18,3 +18,15 @@ def upload(file: UploadFile, key: str):
         raise Exception(f"S3에 파일 업로드 실패: {str(e)}")
 
     return key
+
+def presigned_url(key: str, expires_in: int = 3600):
+    try:
+        url = get_s3().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": settings.s3_bucket_name, "Key": key},
+            ExpiresIn=expires_in
+        )
+    except (ClientError, BotoCoreError) as e:
+        raise Exception(f"S3 presigned URL 생성 실패: {str(e)}")
+
+    return url

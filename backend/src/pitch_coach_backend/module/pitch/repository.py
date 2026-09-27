@@ -77,6 +77,14 @@ class PitchRepository:
         self.db.flush()
         return script_version
 
+    def get_presentation_detail(self, pitch_id: uuid.UUID, presentation_version_id: int) -> PresentationVersion | None:
+        return self.db.scalar(
+            select(PresentationVersion).where(
+                PresentationVersion.pitch_id == pitch_id,
+                PresentationVersion.id == presentation_version_id
+            )
+        )
+        
     def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
         return self.db.scalars(
             select(PresentationVersion).where(PresentationVersion.pitch_id == pitch_id)
@@ -94,5 +102,5 @@ class PitchRepository:
             select(Standards).where(Standards.pitch_id == pitch_id)
             .order_by(Standards.version.asc())
         ).all()
-    
+
     

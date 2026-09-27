@@ -5,11 +5,11 @@ from pathlib import Path
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
+from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, PresentationDetailDTO, UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.s3_service import upload
+from pitch_coach_backend.module.pitch.s3_service import presigned_url, upload
 from typing import Iterable
 
 def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto):
@@ -188,4 +188,20 @@ def upload_service(db: Session, pitch_id: uuid.UUID, upload_dto, upload_script_d
     return UploadResultDTO(
         presentation_version_id=presentation_id,
         script_version_id=script_id
+    )
+
+def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID):
+    pitch_repository = PitchRepository(db)
+    presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_version_id)
+
+    if not presentation_version:
+        raise NonExistentPitch()
+
+    return PresentationDetailDTO(
+        pitch_id=pitch_id,
+        presentation_version_id=presentation_version.id,
+        version=presentation_version.version,
+        file_url=presigned_url(presentation_version.file_key),
+        description=presentation_version.description,
+        created_at=presentation_version.created_at.date()
     )

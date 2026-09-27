@@ -77,6 +77,7 @@ class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     file_key: Mapped[str] = mapped_column(String(255), nullable=False)
     # 사용자가 남기는 변경 메모. 없어도 된다.
     description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[date] = mapped_column(Date, nullable=False)
 
 
 class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):

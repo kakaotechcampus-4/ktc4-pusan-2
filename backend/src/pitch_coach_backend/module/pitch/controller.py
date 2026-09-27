@@ -17,6 +17,7 @@ from pitch_coach_backend.module.pitch.service import (
     update_pitch_service,
     upload_service
 )
+from pitch_coach_backend.module.pitch.exception import NonExistPresentationVersion
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 
@@ -38,6 +39,21 @@ def get_pitch_summaries(
 ):
     pitch_summaries = get_pitch_datas(db, pitch_id)
     return pitch_summaries
+
+@router.get("/{pitch_id}/presentations/{presentation_id}")
+def get_presentation(
+    
+    pitch_id: OwnedPitch,
+    presentation_id: int,
+    db: Annotated[Session, Depends(get_db)]
+):
+    pitch_repository = PitchRepository(db)
+    presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_id)
+
+    if not presentation_version:
+        raise NonExistPresentationVersion()
+
+    return presentation_version
 
 @router.post("/add")
 def add_pitch(
