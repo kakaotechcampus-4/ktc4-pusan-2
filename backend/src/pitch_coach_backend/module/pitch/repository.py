@@ -24,15 +24,6 @@ class PitchRepository:
             select(Pitch).where(Pitch.user_id == user_id)
         ).scalars().all()
 
-    def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[tuple[Take, int | None]]:
-        return self.db.execute(
-            select(Take, TakeSummary.score)
-            .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
-            .where(Take.pitch_id == pitch_id)
-            # take_number 순서 - 먼저 한 순서대로 정렬됨.
-            .order_by(Take.take_number)
-        ).all()
-
     def get_takes_with_scores_in_pitches(
         self, pitch_ids: list[uuid.UUID]
     ) -> list[tuple[Take, int | None]]:
