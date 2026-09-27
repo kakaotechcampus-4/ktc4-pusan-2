@@ -22,6 +22,7 @@ class PitchRepository:
     def get_all_by_user(self, user_id: uuid.UUID) -> list[Pitch]:
         return self.db.execute(
             select(Pitch).where(Pitch.user_id == user_id)
+            .order_by(Pitch.presentation_date.desc()) # 우선 마감일이 빠른 순서대로 정렬
         ).scalars().all()
 
     def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[tuple[Take, int | None]]:
@@ -29,10 +30,8 @@ class PitchRepository:
             select(Take, TakeSummary.score)
             .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
             .where(Take.pitch_id == pitch_id)
-            # take_number 순서 - 먼저 한 순서대로 정렬됨.
-            .order_by(Take.take_number)
-        ).all()
-
+            ).all()
+    
     def get_takes_with_scores_in_pitches(
         self, pitch_ids: list[uuid.UUID]
     ) -> list[tuple[Take, int | None]]:
@@ -95,24 +94,5 @@ class PitchRepository:
             select(Standards).where(Standards.pitch_id == pitch_id)
             .order_by(Standards.version.asc())
         ).all()
-
-    def get_presentation_version_in_pitch(
-            self, presentation_version_id: uuid.UUID, pitch_id: uuid.UUID
-        ) -> uuid.UUID | None:
-            return self.db.scalar(
-                select(PresentationVersion.id).where(
-                    PresentationVersion.id == presentation_version_id,
-                    PresentationVersion.pitch_id == pitch_id,
-                )
-            )
     
-    def get_script_version_in_pitch(
-        self, script_version_id: uuid.UUID, pitch_id: uuid.UUID
-    ) -> uuid.UUID | None:
-        return self.db.scalar(
-            select(ScriptVersion.id).where(
-                ScriptVersion.id == script_version_id,
-                ScriptVersion.pitch_id == pitch_id,
-            )
-        )
     

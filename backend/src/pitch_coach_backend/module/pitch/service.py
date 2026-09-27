@@ -1,4 +1,3 @@
-from typing import List
 import uuid
 from collections import defaultdict
 from pathlib import Path
@@ -6,8 +5,7 @@ from pathlib import Path
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, UploadResultDTO
-from pitch_coach_backend.module.pitch.dto import UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
+from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
@@ -101,7 +99,6 @@ def ensure_pitch_exists(pitch_repository: PitchRepository, pitch_id: uuid.UUID) 
 # 발표 자료 버전 들고오기
 def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
     pitch_repository = PitchRepository(db)
-    ensure_pitch_exists(pitch_repository, pitch_id)
 
     return VersionSummaryDTO(
         pitch_id=pitch_id,
