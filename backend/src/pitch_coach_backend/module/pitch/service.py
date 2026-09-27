@@ -99,7 +99,6 @@ def ensure_pitch_exists(pitch_repository: PitchRepository, pitch_id: uuid.UUID) 
 # 발표 자료 버전 들고오기
 def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
     pitch_repository = PitchRepository(db)
-    ensure_pitch_exists(pitch_repository, pitch_id)
 
     return VersionSummaryDTO(
         pitch_id=pitch_id,
