@@ -66,7 +66,7 @@ def delete_pitch(
     result = delete_pitch_service(db, pitch_id)
     return {"message": "Pitch deleted successfully", "pitch_id": result}
 
-@router.post("/{pitch_id}/upload")
+@router.post("add/{pitch_id}/presentation")
 def upload_presentation(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
