@@ -57,6 +57,11 @@ jobs:
       - name: Stub env files
         run: touch backend/.env frontend/.env
 
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
       - name: alembic revision
         working-directory: backend
         run: |
@@ -117,11 +122,6 @@ jobs:
           set -euo pipefail
           tar -czf - -C infra . \
             | ssh "$SSH_HOST" "mkdir -p ~/$REMOTE_DIR/infra && tar -xzf - -C ~/$REMOTE_DIR/infra"
-
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: backend/uv.lock
 
       - name: Write env files on EC2
         env:
