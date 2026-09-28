@@ -148,8 +148,7 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     presentation = PresentationVersion(
         pitch_id=pitch_id,
         version=version,
-        file_key=presentation_key,
-        description=upload_dto.description
+        file_key=presentation_key
     )
 
     pitch_repository.save_presentation(presentation)
