@@ -26,6 +26,15 @@ wheels = [
 ]
 
 [[package]]
+name = "alembic-git-revisions"
+version = "13"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/78/4b/2b29098aeebaae3f35e9f9a9c3d546ce7f2805cf821d3d8e563749443690/alembic_git_revisions-13.tar.gz", hash = "sha256:f90b99c871711632175e6533fd664ea8c0fe45a432d492f5970268d6ba5c5fc8", size = 44966, upload-time = "2026-09-24T15:08:26.646Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/35/72d4cd1e56b9fde6cd0d38e680684fad908f4ad5a4b4d4ca22cd70074336/alembic_git_revisions-13-py3-none-any.whl", hash = "sha256:73916abd87727398bd3db44805dd3bf24b8a7b556439a88983c4b043f5c8d740", size = 16682, upload-time = "2026-09-24T15:08:25.199Z" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -646,6 +655,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "alembic-git-revisions" },
     { name = "boto3" },
     { name = "fastapi", extra = ["standard"] },
     { name = "httpx" },
@@ -667,6 +677,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.19.2" },
+    { name = "alembic-git-revisions", specifier = ">=13" },
     { name = "boto3", specifier = ">=1.43.94" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.141.1" },
     { name = "httpx", specifier = ">=0.28.1" },
