@@ -15,6 +15,7 @@ from pitch_coach_backend.module.pitch.service import (
     get_pitch_datas,
     get_all_pitches_service,
     update_pitch_service,
+    upload_presentation_service,
     upload_service
 )
 
@@ -69,24 +70,15 @@ def delete_pitch(
 def upload_presentation(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
-    presentation_file: UploadFile,
-    script_file: UploadFile,
-    description: Annotated[str | None, Form()] = None
+    presentation_file: UploadFile
 ):
     upload_presentation_dto = UploadPresentationDTO(
-        presentation_file=presentation_file,
-        description=description
+        presentation_file=presentation_file
     )
 
-    upload_script_dto = UploadScriptDTO(
-        script_file=script_file
-    )
-
-    result = upload_service(db, pitch_id, upload_presentation_dto, upload_script_dto)
+    result = upload_presentation_service(db, pitch_id, upload_presentation_dto)
 
     return {
         "message": "Presentation uploaded successfully",
-        "pitch_id": pitch_id,
-        "presentation_version_id": result.presentation_version_id,
-        "script_version_id": result.script_version_id
+        "presentation": result
     }

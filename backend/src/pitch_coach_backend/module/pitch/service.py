@@ -5,11 +5,11 @@ from pathlib import Path
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
+from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, UploadPresentationResultDTO, UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.s3_service import upload
+from pitch_coach_backend.module.pitch.s3_service import upload, generate_presigned_url
 from typing import Iterable
 
 def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto):
@@ -153,8 +153,11 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     )
 
     pitch_repository.save_presentation(presentation)
-
-    return presentation.id
+    return UploadPresentationResultDTO(
+        pitch_id=pitch_id,
+        presentation_version_id=presentation.id,
+        file_url = generate_presigned_url(presentation_key)
+    )
 
 def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
     pitch_repository = PitchRepository(db)
