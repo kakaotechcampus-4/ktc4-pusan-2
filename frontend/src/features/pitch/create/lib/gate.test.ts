@@ -163,7 +163,7 @@ describe('고른 버전으로 판정한다', () => {
         { version: 2, pageCount: 12 },
       ],
       scripts: [
-        { version: 1, text: SCRIPT_TEXT, blocks: Array<string>(8).fill('블록') },
+        { version: 1, text: SCRIPT_TEXT, blocks: Array<string>(12).fill('블록') },
         { version: 2, text: '', blocks: null },
       ],
       criteria: [{ version: 1, items: [{ id: 'c1', text: '기준', scoring: 'AUTO' }] }],
@@ -174,8 +174,36 @@ describe('고른 버전으로 판정한다', () => {
     expect(gate.ready).toBe(true);
     expect(gate.rows.map((r) => r.label)).toEqual([
       '슬라이드 12장',
-      '대본 8블록 매핑 완료',
+      '대본 12블록 매핑 완료',
       '평가기준 1개',
+    ]);
+  });
+
+  /**
+   * ★ 섞어 고르면 장수가 어긋나기 쉽습니다. 8장으로 나눈 대본 V1 을 12장짜리
+   *   슬라이드 V2 와 들고 가면 9~12번 슬라이드에 붙을 대본이 없습니다.
+   */
+  it('고른 슬라이드와 대본의 장수가 어긋나면 다시 매핑해야 한다', () => {
+    const draft: PitchDraft = {
+      ...EMPTY,
+      slides: [
+        { version: 1, pageCount: 8 },
+        { version: 2, pageCount: 12 },
+      ],
+      scripts: [{ version: 1, text: SCRIPT_TEXT, blocks: Array<string>(8).fill('블록') }],
+      criteria: [{ version: 1, items: [{ id: 'c1', text: '기준', scoring: 'AUTO' }] }],
+    };
+
+    // 같은 대본도 8장짜리 V1 과 들고 가면 맞습니다
+    expect(computeGate(draft, { slides: 1, script: 1, criteria: 1 }).ready).toBe(true);
+
+    const gate = computeGate(draft, { slides: 2, script: 1, criteria: 1 });
+    expect(gate.ready).toBe(false);
+    expect(gate.message).toBe('슬라이드 장수가 바뀌었어요. 매핑을 다시 실행해주세요');
+    expect(gate.rows.map((r) => r.label)).toEqual([
+      '슬라이드 12장',
+      '대본 1,284자',
+      '매핑 다시 필요 (8블록 / 12장)',
     ]);
   });
 
@@ -185,5 +213,56 @@ describe('고른 버전으로 판정한다', () => {
     expect(computeGate(draft, { slides: 99, script: null, criteria: null }).rows[0]!.label).toBe(
       '슬라이드 12장',
     );
+  });
+});
+
+describe('빈 평가기준', () => {
+  /** 매핑까지 끝나 평가기준만 남은 상태 (목업 07) */
+  const MAPPED: PitchDraft = {
+    ...EMPTY,
+    slides: [{ version: 1, pageCount: 12 }],
+    scripts: [{ version: 1, text: SCRIPT_TEXT, blocks: Array<string>(12).fill('블록') }],
+  };
+
+  /** 추가 버튼은 빈 항목부터 만듭니다. 누르기만 하고 안 쓴 상태입니다 */
+  it('빈 항목만 있으면 평가기준이 없는 것이다', () => {
+    const gate = computeGate({
+      ...MAPPED,
+      criteria: [{ version: 1, items: [{ id: 'c1', text: '', scoring: 'AUTO' }] }],
+    });
+
+    expect(gate.rows[2]).toMatchObject({ label: '평가기준 0개 · 빈 칸 1개', done: false });
+    expect(gate.message).toBe('비어 있는 평가기준을 채우거나 지워주세요');
+    expect(gate.ready).toBe(false);
+  });
+
+  it('공백만 쓴 항목도 빈 칸이다', () => {
+    const gate = computeGate({
+      ...MAPPED,
+      criteria: [{ version: 1, items: [{ id: 'c1', text: '  \n ', scoring: 'AUTO' }] }],
+    });
+
+    expect(gate.ready).toBe(false);
+  });
+
+  /** 채운 것이 있어도 빈 칸이 남으면 막습니다 — 그대로 넘기면 빈 기준이 저장됩니다 */
+  it('채운 항목 사이에 빈 칸이 남아 있으면 넘어가지 않는다', () => {
+    const gate = computeGate({
+      ...MAPPED,
+      criteria: [
+        {
+          version: 1,
+          items: [
+            { id: 'c1', text: '시장 규모 숫자를 말한다', scoring: 'AUTO' },
+            { id: 'c2', text: '', scoring: 'AUTO' },
+            { id: 'c3', text: '군더더기 표현 5회 이하', scoring: 'AUTO' },
+          ],
+        },
+      ],
+    });
+
+    expect(gate.rows[2]).toMatchObject({ label: '평가기준 2개 · 빈 칸 1개', done: false });
+    expect(gate.message).toBe('비어 있는 평가기준을 채우거나 지워주세요');
+    expect(gate.ready).toBe(false);
   });
 });
