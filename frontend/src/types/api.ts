@@ -142,10 +142,14 @@ export interface GazeSegment {
 export interface CalibrationSummary {
   /** 2점 캘리브레이션 — 카메라 한 번, 화면 한 번 */
   points: 2;
+  /**
+   * GOOD 검사 통과 · FAIR 통과했지만 경고 · POOR 검사 불합격이지만 모델은 있어 진행함.
+   * POOR 인 Take 의 시선 숫자는 믿음이 낮습니다 — 리포트가 그 점을 알려야 합니다.
+   */
   quality: 'GOOD' | 'FAIR' | 'POOR';
   /**
-   * 두 기준이 얼마나 떨어져 있나. **모르면 null 입니다** —
-   * A안에서 분류기는 등급(quality)만 주고 수치는 내지 않습니다.
+   * 두 기준이 얼마나 떨어져 있나 (AI `separability`). **모르면 null 입니다** —
+   * 더미 분류기처럼 수치를 내지 않는 경우입니다.
    * 0 으로 채우면 "분리도가 0" 이라는 뜻이 되어 리포트가 거짓말을 합니다.
    */
   separability: number | null;

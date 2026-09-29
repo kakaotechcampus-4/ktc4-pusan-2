@@ -91,7 +91,11 @@ interface PitchDb extends DBSchema {
    */
   zoneRefs: {
     key: string;
-    value: ZoneReference & { fittedAt: number };
+    /**
+     * `layoutSignature` 는 FE 가 만든 키입니다 — 분류기는 모릅니다 (layoutSignature.ts).
+     * `engineVersion` 은 이 기준을 만든 엔진입니다. 다른 엔진에는 넣지 않습니다.
+     */
+    value: ZoneReference & { layoutSignature: string; engineVersion: string; fittedAt: number };
   };
 }
 
@@ -396,14 +400,18 @@ export async function findAbandonedSessions(staleAfterMs = 10_000): Promise<Sess
 /* ------------------------------------------------------------------ */
 
 /**
- * 기준을 저장합니다. `fitCalibration` 이 낸 값을 그대로 넣습니다.
+ * 기준을 저장합니다. `fitCalibration` 이 낸 값을 그대로 넣고, 키는 FE 가 붙입니다.
  *
  * `model` 안에 무엇이 들었는지 FE 는 모릅니다 — 분류기가 정하고,
  * IndexedDB 는 구조화 복제로 그대로 보관합니다.
  */
-export async function saveZoneRef(ref: ZoneReference): Promise<void> {
+export async function saveZoneRef(
+  layoutSignature: string,
+  ref: ZoneReference,
+  engineVersion: string,
+): Promise<void> {
   const db = await openPitchDb();
-  await db.put('zoneRefs', { ...ref, fittedAt: Date.now() });
+  await db.put('zoneRefs', { ...ref, layoutSignature, engineVersion, fittedAt: Date.now() });
 }
 
 /**
@@ -412,16 +420,23 @@ export async function saveZoneRef(ref: ZoneReference): Promise<void> {
  * `layoutSignature` 가 다르면 애초에 키가 달라 안 잡힙니다.
  * 같은 기기라도 오래된 기준은 쓰지 않습니다 — 카메라를 옮겼거나
  * 앉은 자리가 바뀌었을 가능성이 시간과 함께 커집니다.
+ *
+ * **엔진이 바뀌었으면 버립니다.** 모델이 업데이트되면 `model` 안의 모양과 뜻이 달라질 수
+ * 있는데, 분류기의 `calibrate()` 는 반환값이 없어 "이건 못 쓴다"고 말할 수 없습니다.
+ * 그대로 넣으면 판정이 조용히 틀어집니다. AI 도 스키마가 다른 기준은 거부합니다.
+ * 버전이 없는 옛 행도 같은 이유로 버립니다.
  */
 export async function loadZoneRef(
   layoutSignature: string,
+  engineVersion: string,
   maxAgeMs = 7 * 24 * 60 * 60 * 1000,
 ): Promise<ZoneReference | null> {
   const db = await openPitchDb();
   const row = await db.get('zoneRefs', layoutSignature);
   if (!row) return null;
+  if (row.engineVersion !== engineVersion) return null;
   if (Date.now() - row.fittedAt > maxAgeMs) return null;
 
-  const { fittedAt: _fittedAt, ...ref } = row;
+  const { fittedAt: _fittedAt, layoutSignature: _key, engineVersion: _engine, ...ref } = row;
   return ref;
 }

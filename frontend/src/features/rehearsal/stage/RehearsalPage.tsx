@@ -120,11 +120,14 @@ export function RehearsalPage() {
     error: gazeError,
     perf,
     bottomRatio,
+    missingCalibration,
   } = useLiveGaze({
     stream,
     videoRef,
     stageRef,
     clientSessionId: sessionId,
+    // 장치 점검에서 저장한 기준을 이 키로 꺼내 리허설 워커에 넣습니다
+    layoutSignature: calibration?.layoutSignature ?? null,
     // 판정 저장이 실패해 제외가 정해지면 메모리에도 받아 둡니다
     onExcluded: noteExclusion,
     // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
@@ -388,11 +391,13 @@ export function RehearsalPage() {
     ? '시선 측정 제외 · 소리만으로 진행 중'
     : deviceError
       ? '카메라가 끊겼습니다 — 발표는 계속됩니다'
-      : gazeError
-        ? `시선 측정 제외 · ${gazeError}`
-        : gazeReady
-          ? '시선 기록 중'
-          : '시선 엔진 준비 중';
+      : missingCalibration
+        ? '시선 기준이 없어 측정 제외 — 발표는 계속됩니다'
+        : gazeError
+          ? `시선 측정 제외 · ${gazeError}`
+          : gazeReady
+            ? '시선 기록 중'
+            : '시선 엔진 준비 중';
 
   return (
     <div className="min-h-full bg-greige px-4 py-5">

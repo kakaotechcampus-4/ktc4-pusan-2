@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import type { DeviceChoice } from '../media/useCameraStream';
 import type { CalibrationSummary, PracticeMode, ScriptMode } from '@/types/api';
+import type { CalibrationFailReason, PlacementResult } from '@/workers/gaze.contract';
 
 /**
  * 서버가 준 대본 표시 값을 지금 쓰는 3단계로 접습니다.
@@ -53,6 +54,21 @@ export function practiceModeFor(scriptMode: ScriptMode): PracticeMode {
 interface PrepareState {
   /** 2점 캘리브레이션 결과. 시작 CTA에서 POST /takes/{id}/calibration으로 갑니다 */
   calibration: CalibrationSummary | null;
+  /**
+   * 기준은 잡혔지만 품질이 낮을 때(POOR) 다시 잡기를 권하는 이유.
+   * 요약과 같은 곳에 둡니다 — 화면에만 두면 장치 점검에 다시 들어왔을 때
+   * "품질 낮음" 안내가 사라지고 평범한 완료로 보입니다.
+   */
+  calibrationAdvice: CalibrationFailReason | null;
+  /**
+   * 카메라 배치 확인 결과. **브라우저에만 둡니다** — 서버 요약에 넣으려면 BE 와
+   * 필드를 맞춰야 합니다. 참고용 추정이라 캘리브레이션을 막지 않고,
+   * 경고를 보고도 진행했으면 `overridden` 에 남깁니다 (AI 데모의 `_forced` 와 같은 뜻).
+   *
+   * `layoutSignature` 는 어느 배치에서 잰 것인지입니다. 같은 배치면 다시 잡을 때
+   * 배치 확인을 건너뜁니다 — 카메라를 바꾸면 키가 달라져 다시 확인합니다.
+   */
+  placement: (PlacementResult & { overridden: boolean; layoutSignature: string }) | null;
   /** '소리만으로 계속하기' — 시선 없이 진행합니다 (excludedReason: USER_DECLINED) */
   gazeDeclined: boolean;
   scriptMode: ScriptMode;
@@ -65,7 +81,13 @@ interface PrepareState {
    */
   devices: DeviceChoice;
 
-  setCalibration: (summary: CalibrationSummary) => void;
+  setCalibration: (summary: CalibrationSummary, advice?: CalibrationFailReason | null) => void;
+  /**
+   * 잡아 둔 기준을 무효로 합니다 — 카메라나 화면이 바뀌었거나, 저장된 기준이 사라졌을 때.
+   * 배치 기록도 같이 지웁니다. 둘 다 "이 배치에서 잰 값"이라 배치가 바뀌면 함께 틀립니다.
+   */
+  clearCalibration: () => void;
+  setPlacement: (placement: PrepareState['placement']) => void;
   declineGaze: () => void;
   setScriptMode: (mode: ScriptMode, byUser?: boolean) => void;
   setDevices: (devices: DeviceChoice) => void;
@@ -74,6 +96,8 @@ interface PrepareState {
 
 const INITIAL = {
   calibration: null,
+  calibrationAdvice: null,
+  placement: null,
   gazeDeclined: false,
   scriptMode: 'HIGHLIGHT' as ScriptMode,
   scriptModeTouched: false,
@@ -82,8 +106,11 @@ const INITIAL = {
 
 export const usePrepareStore = create<PrepareState>((set) => ({
   ...INITIAL,
-  setCalibration: (summary) => set({ calibration: summary, gazeDeclined: false }),
-  declineGaze: () => set({ gazeDeclined: true, calibration: null }),
+  setCalibration: (summary, advice = null) =>
+    set({ calibration: summary, calibrationAdvice: advice, gazeDeclined: false }),
+  clearCalibration: () => set({ calibration: null, calibrationAdvice: null, placement: null }),
+  setPlacement: (placement) => set({ placement }),
+  declineGaze: () => set({ gazeDeclined: true, calibration: null, calibrationAdvice: null }),
   setScriptMode: (mode, byUser = true) =>
     set((s) => ({ scriptMode: mode, scriptModeTouched: s.scriptModeTouched || byUser })),
   setDevices: (devices) => set({ devices }),
