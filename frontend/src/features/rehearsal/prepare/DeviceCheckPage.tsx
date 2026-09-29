@@ -10,7 +10,7 @@ import { LevelBar } from '../media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
 import { MissionCard } from './MissionCard';
 import { ScriptModeChoice } from './ScriptModeChoice';
-import { modeForScriptMode, normalizeScriptMode, usePrepareStore } from './prepareStore';
+import { normalizeScriptMode, practiceModeFor, usePrepareStore } from './prepareStore';
 import { useGazeCalibration, type CalibrationPhase } from './useGazeCalibration';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
@@ -129,6 +129,7 @@ export function DeviceCheckPage() {
 
   // 서버 기본값은 **사용자가 고르기 전에만** 넣습니다. 조건 없이 덮으면 응답이 늦게
   // 올 때 사용자가 고른 것이 되돌아갑니다. FULL 이 올 수 있어 3단계로 접습니다.
+  // 지난번이 OFF 였으면 실전 모드가 미리 골라집니다 (practiceModeFor 의 대가 참고)
   useEffect(() => {
     if (data && !scriptModeTouched) {
       setScriptMode(normalizeScriptMode(data.defaultScriptMode), false);
@@ -169,7 +170,7 @@ export function DeviceCheckPage() {
     });
 
     // 시안 09 - 대본 표시 하나로 연습 모드까지 정해집니다
-    const mode = modeForScriptMode(scriptMode);
+    const practiceMode = practiceModeFor(scriptMode);
 
     try {
       const clientSessionId = await startSession();
@@ -177,7 +178,7 @@ export function DeviceCheckPage() {
       const take = await createTake.mutateAsync({
         pitchId: data.pitchId,
         clientSessionId,
-        mode,
+        mode: practiceMode,
         scriptMode,
         presentationVersion: data.presentationVersion,
         scriptVersion: data.scriptVersion,
@@ -188,9 +189,12 @@ export function DeviceCheckPage() {
       // 품질 요약만 갑니다. 기준 벡터는 브라우저에 남습니다 (CLAUDE.md 1번)
       if (calibration) await postCalibration(take.takeId, calibration);
 
-      navigate(mode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`, {
-        state: { clientSessionId, scriptMode },
-      });
+      navigate(
+        practiceMode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`,
+        {
+          state: { clientSessionId, scriptMode },
+        },
+      );
     } catch (e) {
       // 여기서 멈춰야 합니다. 실패한 채로 넘어가면 takeId 없이 발표가 시작되고
       // 그 Take 는 어디에도 안 남습니다
@@ -213,7 +217,7 @@ export function DeviceCheckPage() {
         }));
 
   const takeNumber = data?.nextTakeNumber ?? 0;
-  const startLabel = modeForScriptMode(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
+  const startLabel = practiceModeFor(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
 
   return (
     <ScreenFrame
