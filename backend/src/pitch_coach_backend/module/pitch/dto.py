@@ -10,8 +10,7 @@ from typing import Protocol
 class PitchDTO(BaseModel):
     title: str
     time_limit_sec: int
-    upper: int = 0
-    lower: int = 0
+    deviation: int = 0
     presentation_date: date | None = None
 
 class PitchesDTO(BaseModel):
