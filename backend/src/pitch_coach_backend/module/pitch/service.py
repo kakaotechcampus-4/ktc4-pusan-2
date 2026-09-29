@@ -5,7 +5,7 @@ from pathlib import Path
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
+from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, StandardTextResponseDTO, UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
@@ -189,3 +189,17 @@ def upload_service(db: Session, pitch_id: uuid.UUID, upload_dto, upload_script_d
         presentation_version_id=presentation_id,
         script_version_id=script_id
     )
+
+def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_dto):
+    pitch_repository = PitchRepository(db)
+    # 평가 기준 분할 로직
+    # standards_result =
+
+    # for standard in standards_result.standards:
+    #    pitch_repository.save_standard(pitch_id, standard)
+
+    # return StandardTextResponseDTO(
+    #     pitch_id=pitch_id,
+    #     standards=[{"standard": standard} for standard in standards_result.standards],
+    #     except_standard=standards_result.except_standard
+    # )

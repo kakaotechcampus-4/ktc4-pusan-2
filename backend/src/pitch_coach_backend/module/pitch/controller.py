@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
-from pitch_coach_backend.module.pitch.dto import PitchDTO, UploadPresentationDTO, UploadScriptDTO
+from pitch_coach_backend.module.pitch.dto import PitchDTO, StandardTextDTO, UploadPresentationDTO, UploadScriptDTO
 from pitch_coach_backend.module.pitch.service import (
     add_pitch_service,
+    add_pitch_standard_service,
     delete_pitch_service,
     get_pitch_datas,
     get_all_pitches_service,
@@ -90,3 +91,12 @@ def upload_presentation(
         "presentation_version_id": result.presentation_version_id,
         "script_version_id": result.script_version_id
     }
+
+@router.post("/add/{pitch_id}/standards")
+def post_pitch_standard_text(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)],
+    standard_text: StandardTextDTO
+):
+    result = add_pitch_standard_service(db, pitch_id, standard_text)
+    return {"message": "Pitch standard text added successfully", "pitch_id": result}
