@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
 import { setTakeId, startSession } from '../lib/db';
@@ -96,13 +97,26 @@ export function DeviceCheckPage() {
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
   const { meterRef, dbRef, rowRef, silentRef, micOk, audioState, meterError } = useMicLevel(stream);
-  const declineGaze = usePrepareStore((s) => s.declineGaze);
-  // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다
-  const scriptMode = usePrepareStore((s) => s.scriptMode);
-  const setScriptMode = usePrepareStore((s) => s.setScriptMode);
-  const calibration = usePrepareStore((s) => s.calibration);
-  const scriptModeTouched = usePrepareStore((s) => s.scriptModeTouched);
-  const setChosenDevices = usePrepareStore((s) => s.setDevices);
+  // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
+  // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
+  // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
+  const {
+    declineGaze,
+    scriptMode,
+    setScriptMode,
+    calibration,
+    scriptModeTouched,
+    setChosenDevices,
+  } = usePrepareStore(
+    useShallow((s) => ({
+      declineGaze: s.declineGaze,
+      scriptMode: s.scriptMode,
+      setScriptMode: s.setScriptMode,
+      calibration: s.calibration,
+      scriptModeTouched: s.scriptModeTouched,
+      setChosenDevices: s.setDevices,
+    })),
+  );
   const cal = useGazeCalibration({ videoRef, live });
   const createTake = useCreateTake();
 
