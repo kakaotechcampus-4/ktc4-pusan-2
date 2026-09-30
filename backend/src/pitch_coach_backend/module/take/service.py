@@ -3,7 +3,6 @@ import uuid
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.dto import CalibrationDTO, MissionDTO, PreviousMissionsDTO, TakeInitRequestDTO, TakeUpdateRequestDTO
-from pitch_coach_backend.module.take.entity import Calibration, Take
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     TakeInitRequestDTO,

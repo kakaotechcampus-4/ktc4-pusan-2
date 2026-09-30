@@ -1,7 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 import { useLogout, useSession } from './useSession';
 
-export function RequireSession() {
+export function RequireSession({ showHeader = true }: { showHeader?: boolean }) {
   const session = useSession();
   const signOut = useLogout();
   const location = useLocation();
@@ -35,17 +35,21 @@ export function RequireSession() {
 
   return (
     <>
-      <div className="flex items-center justify-end gap-4 px-6 py-3 text-sm">
-        <span>{session.data.name}</span>
-        <button
-          disabled={signOut.isPending}
-          onClick={() => signOut.mutate()}
-          className="underline disabled:opacity-60"
-        >
-          {signOut.isPending ? '로그아웃 중…' : '로그아웃'}
-        </button>
-        {signOut.isError && <span role="alert">로그아웃에 실패했습니다. 다시 시도해 주세요.</span>}
-      </div>
+      {showHeader && (
+        <div className="flex items-center justify-end gap-4 px-6 py-3 text-sm">
+          <span>{session.data.name}</span>
+          <button
+            disabled={signOut.isPending}
+            onClick={() => signOut.mutate()}
+            className="underline disabled:opacity-60"
+          >
+            {signOut.isPending ? '로그아웃 중…' : '로그아웃'}
+          </button>
+          {signOut.isError && (
+            <span role="alert">로그아웃에 실패했습니다. 다시 시도해 주세요.</span>
+          )}
+        </div>
+      )}
       <Outlet />
     </>
   );

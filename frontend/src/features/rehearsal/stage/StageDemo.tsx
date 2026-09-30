@@ -167,7 +167,6 @@ export function StageDemo() {
           </div>
 
           <div className="stage-foot">
-            <span className="rec">기록 중 · 42.6MB</span>
             <span>이 페이지는 자리만 잡습니다 — 실제 기록은 P5에서</span>
           </div>
         </div>

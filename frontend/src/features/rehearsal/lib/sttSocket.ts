@@ -150,7 +150,7 @@ export class SttSocket {
    * 프레임 한 장. `ready` 전이면 버퍼에 쌓입니다.
    *
    * 버퍼가 넘치면 **오래된 것부터** 버립니다. 발표는 계속 진행되고 있으니
-   * 최근 2초를 살리는 쪽이 낫습니다 — 어차피 원본 녹음은 로컬에 남습니다.
+   * 최근 2초를 살리는 쪽이 낫습니다.
    */
   sendFrame(pcm: ArrayBuffer, offsetMs: Ms): void {
     if (this.disposed || this.stopping) return;
@@ -180,8 +180,8 @@ export class SttSocket {
    * 다시 붙으면 `ready` 뒤에 버퍼를 흘리고 그때 `stop` 을 보냅니다.
    * 서버는 끊긴 뒤 30초 동안 스트림을 살려 두므로 번호도 이어집니다.
    *
-   * 그 시도마저 실패하면(다시 `close`) 곧바로 정리합니다. 원본 녹음은 로컬에 남아
-   * 있으니 여기서 더 붙잡고 있을 이유가 없습니다.
+   * 그 시도마저 실패하면(다시 `close`) 곧바로 정리합니다. 남은 버퍼는 잃지만,
+   * 종료를 더 붙잡아 두면 사용자가 발표 끝내기에서 멈춰 기다리게 됩니다.
    */
   stop(): Promise<void> {
     if (this.disposed) {
