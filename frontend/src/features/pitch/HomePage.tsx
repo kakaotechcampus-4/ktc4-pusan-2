@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
+import { HomeHelpDialog } from './HomeHelpDialog';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { useLogout } from '@/shared/api/useLogout';
 import { useHome } from '@/shared/api/home';
@@ -8,6 +10,7 @@ import { duration } from './homeFormat';
 const primary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-coral-deep active:translate-y-1 active:shadow-none';
 export function HomePage() {
+  const [helpOpen, setHelpOpen] = useState(false);
   const home = useHome();
   const logout = useLogout();
   const data = home.data;
@@ -23,12 +26,13 @@ export function HomePage() {
             <Link to="/" aria-current="page" className="border-b-2 border-coral py-2 font-bold">
               내 피치
             </Link>
-            <Link to="/welcome#guide" className="hover:text-coral-deep">
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="hover:text-coral-deep"
+            >
               사용방법
-            </Link>
-            <Link to="/welcome#coaches" className="hidden hover:text-coral-deep sm:block">
-              연구실 소개
-            </Link>
+            </button>
             <button
               disabled={logout.isPending}
               onClick={() => logout.mutate()}
@@ -45,36 +49,18 @@ export function HomePage() {
         )}
       </header>
       <main className="mx-auto max-w-7xl px-6 pb-16 pt-10 lg:px-10 lg:pt-14">
-        <section className="grid overflow-hidden border-2 border-ink bg-cream md:grid-cols-[1fr_280px]">
-          <div className="p-7 sm:p-10">
-            <p className="mb-4 font-mono text-[11px] tracking-[0.2em] text-coral-deep">
-              PITCH LAB / MY DESK
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <p className="mb-2 font-mono text-[10px] tracking-widest text-stone">MY PITCHES</p>
+            <h1 className="text-3xl font-bold">내 피치</h1>
+            <p className="mt-3 text-sm text-stone">
+              발표 자료와 지금까지의 연습 기록을 확인해 보세요.
             </p>
-            <h1 className="text-3xl font-black leading-tight tracking-tight sm:text-4xl">
-              한 번 더 말하면,
-              <br />
-              조금 더 나다워질 거야.
-            </h1>
-            <p className="mt-5 text-sm leading-7 text-stone">
-              완벽한 발표보다 어제보다 나아진 한 번.
-              <br className="sm:hidden" /> 오늘의 연습도 여기서 시작해요.
-            </p>
-            <div className="mt-7 inline-flex items-center gap-3 border border-ink bg-panel px-4 py-2 text-xs">
-              <span className="h-2 w-2 bg-coral" aria-hidden="true" />
-              치치의 발표 연구실 <span className="font-mono text-stone">OPEN</span>
-            </div>
           </div>
-          <div className="relative flex items-end justify-center border-t border-line-strong px-6 pt-10 md:border-l md:border-t-0">
-            <span className="absolute top-5 border border-ink bg-panel px-3 py-2 text-xs shadow-[3px_3px_0_var(--color-line-strong)]">
-              오늘은 어제보다 덜 떨릴지도! skrr
-            </span>
-            <img
-              src="/onboarding/chichi-portrait-longsleeve.png"
-              alt="흰색 롱슬리브를 입은 연구원 치치"
-              className="mt-4 h-48 w-48 object-cover object-top mix-blend-multiply [image-rendering:pixelated]"
-            />
-          </div>
-        </section>
+          <Link to="/pitch/new" className={primary}>
+            <span aria-hidden="true">＋</span> 새 피치 만들기
+          </Link>
+        </div>
         {home.isPending ? (
           <div
             role="status"
@@ -130,26 +116,13 @@ export function HomePage() {
                 </div>
               </div>
               <section aria-labelledby="pitches-title" className="mt-12">
-                <div className="mb-6 flex flex-wrap items-end justify-between gap-5">
-                  <div>
-                    <p className="mb-2 font-mono text-[10px] tracking-widest text-stone">
-                      MY PITCHES
-                    </p>
-                    <h2 id="pitches-title" className="text-2xl font-bold">
-                      내 피치{' '}
-                      <span className="ml-2 text-sm font-normal text-stone">
-                        발표 {data.pitches.length}개 · 연습 {count}회
-                      </span>
-                    </h2>
-                  </div>
-                  <Link to="/pitch/new" className={primary}>
-                    <span aria-hidden="true">＋</span> 새 피치 만들기
-                  </Link>
-                </div>
+                <h2 id="pitches-title" className="mb-5 text-xl font-bold">
+                  발표 목록
+                </h2>
                 {data.pitches.length ? (
                   <>
                     <p className="mb-5 text-xs text-stone">
-                      발표 제목을 누르면 자료와 대본을 확인하고, 연습을 이어갈 수 있어요.
+                      피치별 연습 기록을 펼쳐 발표 시간과 대본 모드를 확인해 보세요.
                     </p>
                     <div className="space-y-5">
                       {data.pitches.map((pitch, index) => (
@@ -182,24 +155,29 @@ export function HomePage() {
             <span className="mr-3 font-mono text-coral-deep">TIP /</span>연습 전, 슬라이드와 대본을
             한 번 확인해 보세요.
           </p>
-          <Link to="/welcome#guide" className="text-stone hover:text-coral-deep">
-            사용방법 살펴보기 ↗
-          </Link>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="text-stone hover:text-coral-deep"
+          >
+            사용방법 살펴보기
+          </button>
         </aside>
       </main>
       <footer className="border-t border-line-strong">
         <div className="mx-auto flex max-w-7xl flex-wrap justify-between gap-4 px-6 py-6 text-xs text-stone lg:px-10">
           <span className="font-mono tracking-widest">PITCH COACH · ONE TAKE AT A TIME.</span>
           <div className="flex gap-5">
-            <Link to="/terms" className="hover:text-ink">
+            <Link to="/terms?from=home" className="hover:text-ink">
               이용약관
             </Link>
-            <Link to="/privacy" className="hover:text-ink">
+            <Link to="/privacy?from=home" className="hover:text-ink">
               개인정보 처리방침
             </Link>
           </div>
         </div>
       </footer>
+      {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
     </div>
   );
 }
