@@ -1,5 +1,6 @@
 
 from typing import Annotated
+import uuid
 
 from fastapi import APIRouter, Depends, Form, UploadFile
 from pitch_coach_backend.module.pitch.repository import PitchRepository
@@ -16,10 +17,9 @@ from pitch_coach_backend.module.pitch.service import (
     get_pitch_datas,
     get_all_pitches_service,
     update_pitch_service,
-    upload_presentation_service,
-    upload_service
+    upload_presentation_service
 )
-from pitch_coach_backend.module.pitch.exception import NonExistPresentationVersion
+from pitch_coach_backend.module.pitch.exception import NotExistPresentationVersion
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 
@@ -46,14 +46,14 @@ def get_pitch_summaries(
 def get_presentation(
     
     pitch_id: OwnedPitch,
-    presentation_id: int,
+    presentation_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)]
 ):
     pitch_repository = PitchRepository(db)
     presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_id)
 
     if not presentation_version:
-        raise NonExistPresentationVersion()
+        raise NotExistPresentationVersion()
 
     return presentation_version
 
