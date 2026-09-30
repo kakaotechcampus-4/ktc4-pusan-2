@@ -69,7 +69,7 @@ def create_take(user_id: uuid.UUID) -> uuid.UUID:
         db.add(pitch)
         db.flush()
         presentation = PresentationVersion(pitch_id=pitch.id, version=1, file_key="dev/none.pdf")
-        script = ScriptVersion(pitch_id=pitch.id, version=1, file_key="dev/none.txt")
+        script = ScriptVersion(pitch_id=pitch.id, version=1, content="dev")
         db.add_all([presentation, script])
         db.flush()
         take = Take(
