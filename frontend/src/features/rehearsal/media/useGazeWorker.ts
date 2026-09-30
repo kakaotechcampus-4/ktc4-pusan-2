@@ -248,7 +248,7 @@ export function useGazeWorker(
     // 화면에는 아무 표시가 없고 fps 만 0 으로 떨어진다.
     //
     // 소실은 측정 제외 사유이지만 **발표는 계속 갑니다** —
-    // 타이머·키보드·녹음은 그대로 돌고 시선만 조용해집니다 (CLAUDE.md 4번).
+    // 타이머·키보드·음성 전송은 그대로 돌고 시선만 조용해집니다 (CLAUDE.md 4번).
     const track = (video.srcObject as MediaStream | null)?.getVideoTracks()[0];
     if (!track || track.readyState === 'ended') {
       if (!cameraLostRef.current) {

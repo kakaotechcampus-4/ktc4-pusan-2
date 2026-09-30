@@ -6,7 +6,7 @@ import type { ZoneDecision, ZoneReference } from '@/workers/gaze.contract';
  * 리허설 중 쌓이는 모든 기록. **브라우저가 원본입니다** (CLAUDE.md 4번).
  *
  * 스키마를 이 파일 한 곳에 모읍니다. 흩어지면 복구 로직이 무너집니다 —
- * 비정상 종료를 감지하려면 session·gazeSegments·audioChunks 를 같은 관점에서
+ * 비정상 종료를 감지하려면 session·gazeSegments 를 같은 관점에서
  * 봐야 하는데, 접근 경로가 갈리면 "기록이 남아 있는데 진행 중이었다"를 판단할 수 없습니다.
  *
  * 키는 `clientSessionId` 입니다. 업로드 재시도의 멱등 키와 **같은 값**입니다
@@ -14,7 +14,7 @@ import type { ZoneDecision, ZoneReference } from '@/workers/gaze.contract';
  */
 
 const DB_NAME = 'pitchcoach';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 /** 세션 상태. 서버의 TakeStatus 와 다릅니다 — 이건 브라우저 쪽 진행 상태입니다. */
 export type SessionStatus = 'RUNNING' | 'ENDED' | 'ABORTED';
@@ -81,11 +81,6 @@ interface PitchDb extends DBSchema {
       suppressedReason: string | null;
     };
   };
-  /** ★ 원본. 메모리에 10분을 들고 있으면 안 됩니다 */
-  audioChunks: {
-    key: [string, number];
-    value: { clientSessionId: string; seq: number; offsetMs: Ms; blob: Blob };
-  };
   /**
    * 캘리브레이션 기준. **서버로 보내지 않습니다** (CLAUDE.md 1번) —
    * 서버에는 품질 요약(`CalibrationSummary`)만 갑니다.
@@ -125,6 +120,10 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
      * `oldVersion` 이 IndexedDB 가 그 답으로 준 값입니다.
      */
     upgrade(db, oldVersion) {
+      // 스키마 타입에서 빠진 스토어(audioChunks)를 만들고 지우려면 타입 없는 핸들이 필요합니다.
+      // 지나간 단계는 그대로 재생해야 하므로 v1 의 생성 줄을 지우지 않고 이걸로 돌립니다.
+      const untyped = db as unknown as IDBPDatabase;
+
       // ── v1 · 세션과 기록들 ──────────────────────────────────────
       if (oldVersion < 1) {
         const session = db.createObjectStore('session', { keyPath: 'clientSessionId' });
@@ -135,7 +134,7 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
         db.createObjectStore('slideChanges', { keyPath: ['clientSessionId', 'atMs'] });
         db.createObjectStore('scriptScroll', { keyPath: ['clientSessionId', 'atMs'] });
         db.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
-        db.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
+        untyped.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
       }
 
       // ── v2 · 캘리브레이션 기준. 세션이 아니라 기기(layoutSignature)에 매입니다 ──
@@ -143,7 +142,13 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
         db.createObjectStore('zoneRefs', { keyPath: 'layoutSignature' });
       }
 
-      // ── v3 를 만들 때는 여기에 블록을 덧붙입니다. 위는 절대 고치지 않습니다 ──
+      // ── v3 · 로컬 녹음 폐기. 음성은 WebSocket 으로만 갑니다 (CLAUDE.md 4번) ──
+      //   이미 쌓인 조각이 용량만 차지하므로 스토어째 지웁니다.
+      if (oldVersion < 3) {
+        untyped.deleteObjectStore('audioChunks');
+      }
+
+      // ── v4 를 만들 때는 여기에 블록을 덧붙입니다. 위는 절대 고치지 않습니다 ──
       //   이미 그 단계를 지나온 브라우저는 다시 밟지 않으므로, 위를 고치면
       //   새로 여는 사람에게만 반영되고 기존 사용자와 구조가 갈립니다.
       //
@@ -152,7 +157,7 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
       //   이름에 ConstraintError 를 냅니다.
       //
       //   upgrade(db, oldVersion, _newVersion, tx) {
-      //     if (oldVersion < 3) tx.objectStore('session').createIndex('byTakeId', 'takeId');
+      //     if (oldVersion < 4) tx.objectStore('session').createIndex('byTakeId', 'takeId');
       //   }
     },
   })
@@ -354,54 +359,21 @@ export async function readCoachLog(clientSessionId: string) {
   return rows.sort((a, b) => a.atMs - b.atMs);
 }
 
-// ── 오디오 조각 ────────────────────────────────────────────────────────
-
-/**
- * 녹음 조각 하나를 쌓습니다. **메모리에 들고 있지 않습니다** —
- * 10분치 Blob 을 배열에 모으면 수십 MB 가 힙에 남고, 탭이 죽으면 전부 사라집니다.
- *
- * seq 는 도착 순서, offsetMs 는 그 조각이 시작된 발표 경과 시각입니다.
- * 나중에 이어 붙일 때와, 끊긴 구간을 배치로 다시 처리할 때 둘 다 필요합니다.
- */
-export async function appendAudioChunk(
-  clientSessionId: string,
-  seq: number,
-  offsetMs: Ms,
-  blob: Blob,
-): Promise<void> {
-  const db = await openPitchDb();
-  await db.put('audioChunks', { clientSessionId, seq, offsetMs, blob });
-}
-
-export async function countAudioChunks(clientSessionId: string): Promise<number> {
-  const db = await openPitchDb();
-  return db.count('audioChunks', sessionRange(clientSessionId));
-}
-
-/** 녹음 총 바이트 — dev 페이지에서 실제로 쌓이는지 눈으로 보려고 */
-export async function audioBytes(clientSessionId: string): Promise<number> {
-  const db = await openPitchDb();
-  const rows = await db.getAll('audioChunks', sessionRange(clientSessionId));
-  return rows.reduce((n, r) => n + r.blob.size, 0);
-}
-
 /** dev 페이지의 `기록: N건` 용 */
 export async function countAll(clientSessionId: string): Promise<Record<string, number>> {
   const db = await openPitchDb();
   const range = sessionRange(clientSessionId);
-  const [gaze, slides, scroll, coach, audio] = await Promise.all([
+  const [gaze, slides, scroll, coach] = await Promise.all([
     db.count('gazeSegments', range),
     db.count('slideChanges', range),
     db.count('scriptScroll', range),
     db.count('coachLog', range),
-    db.count('audioChunks', range),
   ]);
   return {
     gazeSegments: gaze,
     slideChanges: slides,
     scriptScroll: scroll,
     coachLog: coach,
-    audioChunks: audio,
   };
 }
 

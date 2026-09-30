@@ -2,13 +2,12 @@ import { STT_SAMPLE_RATE } from '../lib/sttProtocol';
 import type { Ms } from '@/types/api';
 
 /**
- * 마이크 → 16kHz Int16 100ms 프레임. **서버로 가는 경로 전용**입니다.
+ * 마이크 → 16kHz Int16 100ms 프레임. **음성이 서버로 가는 유일한 경로**입니다.
  *
- * ── 녹음(recorder.ts)과 왜 따로인가 ────────────────────────────────
+ * 로컬 녹음은 두지 않습니다 (CLAUDE.md 4번). 이 파일이 실패하면 말하기 분석이
+ * 빠질 뿐, 시선과 1단 코치는 계속 돕니다.
  *
- * `MediaRecorder` 가 뱉는 webm/opus 는 스트리밍 STT 에 못 씁니다. 그래서 오디오
- * 경로가 둘입니다 — 저쪽이 **원본**이고 이쪽은 덤입니다 (CLAUDE.md 4번).
- * 이 파일이 실패해도 녹음은 계속 돌아야 합니다.
+ * `MediaRecorder` 를 쓰지 않는 이유 — 그게 뱉는 webm/opus 는 스트리밍 STT 에 못 씁니다.
  *
  * ── 음량 미터(level.ts)와도 왜 따로인가 ────────────────────────────
  *

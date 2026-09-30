@@ -1,18 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEVICE_ERROR_MESSAGE, useCameraStream } from './useCameraStream';
 import { useGazeWorker, type GazeImpl } from './useGazeWorker';
-import {
-  RECORDER_ERROR_MESSAGE,
-  startRecording,
-  type RecorderError,
-  type RecordingHandle,
-} from './recorder';
 import { createLevelMeter, type LevelMeter } from './level';
 import { TemporalVoter } from '@/workers/temporalVoter';
 import { buildGazePayload } from '../lib/gazePayload';
 import {
   appendGazeDecision,
-  audioBytes,
   countAll,
   endSession,
   getSession,
@@ -52,15 +45,9 @@ export function MediaDevPage() {
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [excluded, setExcluded] = useState<GazeExcludedReason | null>(null);
   const [payloadJson, setPayloadJson] = useState<string | null>(null);
-  const [bytes, setBytes] = useState(0);
-  const [recorderError, setRecorderError] = useState<RecorderError | null>(null);
   const [audioState, setAudioState] = useState<string | null>(null);
-  // 녹음 여부는 시작·정지에 한 번씩만 바뀌므로 상태로 둔다.
-  // ref 를 렌더에서 읽으면 갱신이 안 된다 — ref 는 렌더를 유발하지 않는다.
-  const [recording, setRecording] = useState(false);
 
-  // 녹음과 음량은 화면 상태로 올리지 않는다 — 조각은 IndexedDB 로, 레벨은 DOM 으로.
-  const recorderRef = useRef<RecordingHandle | null>(null);
+  // 음량은 화면 상태로 올리지 않는다 — 레벨은 DOM 으로.
   const levelRef = useRef<LevelMeter | null>(null);
   const levelRafRef = useRef(0);
   const levelBarRef = useRef<HTMLDivElement>(null);
@@ -105,7 +92,6 @@ export function MediaDevPage() {
 
   const refreshCounts = useCallback(async (id: string) => {
     setCounts(await countAll(id));
-    setBytes(await audioBytes(id));
     const row = await getSession(id);
     setExcluded(row?.gazeExcluded ? row.gazeExcludedReason : null);
   }, []);
@@ -172,23 +158,11 @@ export function MediaDevPage() {
       .play()
       .then(async () => {
         if (cancelled) return;
-        const id = await ensureSession();
+        await ensureSession();
         if (cancelled) return;
-
-        // 시선 tMs 와 오디오 offsetMs 가 **같은 기준**이어야 나중에 두 기록을
-        // 겹쳐 볼 수 있다. 여기서 한 번 잡아 둘에 같이 넘긴다.
-        // (startPump 는 내부에서 다시 now() 를 읽어 몇 ms 어긋나지만,
-        //  판정 주기가 1000ms 라 무시할 수 있는 차이다.)
-        const t0 = performance.now();
 
         decisionCountRef.current = 0;
         startPump(video);
-
-        // 녹음 — 원본. 실패해도 발표는 계속 간다.
-        const rec = startRecording(stream, id, t0, setRecorderError);
-        recorderRef.current = rec.handle;
-        setRecording(rec.handle !== null);
-        setRecorderError(rec.error);
 
         // 음량 — AudioContext 는 여기서 만든다. 제스처 뒤라 resume() 이 통한다.
         const meter = await createLevelMeter(stream);
@@ -202,9 +176,9 @@ export function MediaDevPage() {
         levelRafRef.current = requestAnimationFrame(levelLoop);
       })
       .catch((e: unknown) => {
-        // ★ 빈 catch 를 두지 않는다. 여기서 삼키면 녹음 시작 실패 같은 진짜 문제가
+        // ★ 빈 catch 를 두지 않는다. 여기서 삼키면 시작 실패 같은 진짜 문제가
         //   "아무 일도 안 일어남"으로 보인다. 실제로 그래서 한참 헤맸다:
-        //   recorder.start() 가 throw 했고, 그 뒤의 음량계까지 같이 죽었는데
+        //   앞 단계가 throw 했고, 그 뒤의 음량계까지 같이 죽었는데
         //   화면에는 아무 표시가 없었다.
         console.error('[dev/media] start failed', e);
       });
@@ -268,17 +242,8 @@ export function MediaDevPage() {
     if (levelBarRef.current) levelBarRef.current.style.width = '0%';
     if (silentRef.current) silentRef.current.textContent = '';
 
-    // 마지막 조각까지 받고 멈춘다 — 기다리지 않으면 마지막 5초가 잘린다.
-    const rec = recorderRef.current;
-    recorderRef.current = null;
-    setRecording(false);
-    rec
-      ?.stop()
-      .then(() => {
-        const id = sessionIdRef.current;
-        if (id) refreshCounts(id).catch(() => undefined);
-      })
-      .catch(() => undefined);
+    const id = sessionIdRef.current;
+    if (id) refreshCounts(id).catch(() => undefined);
 
     stop();
   };
@@ -489,9 +454,7 @@ export function MediaDevPage() {
             {counts ? (
               <span>
                 시선 <b>{counts.gazeSegments}</b>건
-                <span className="ml-2 text-stone">
-                  · 슬라이드 {counts.slideChanges} · 오디오 {counts.audioChunks}
-                </span>
+                <span className="ml-2 text-stone">· 슬라이드 {counts.slideChanges}</span>
               </span>
             ) : (
               <span className="text-stone">세션 없음</span>
@@ -514,19 +477,6 @@ export function MediaDevPage() {
             )}
           </Cell>
 
-          <Cell label="녹음">
-            {recorderError ? (
-              <span className="text-coral-deep">{recorderError}</span>
-            ) : recording ? (
-              <span>
-                {counts?.audioChunks ?? 0}조각
-                <span className="ml-2 text-stone">{(bytes / 1024).toFixed(0)}KB · 5초 단위</span>
-              </span>
-            ) : (
-              <span className="text-stone">멈춤 · {counts?.audioChunks ?? 0}조각 저장됨</span>
-            )}
-          </Cell>
-
           <Cell label="시선 측정">
             {excluded ? (
               <span className="text-coral-deep">제외 · {excluded}</span>
@@ -543,13 +493,6 @@ export function MediaDevPage() {
           <div className="rounded-xl border border-coral bg-panel p-4 text-sm">
             <b className="text-coral-deep">{deviceError}</b>
             <p className="mt-1 leading-relaxed">{DEVICE_ERROR_MESSAGE[deviceError]}</p>
-          </div>
-        )}
-
-        {recorderError && (
-          <div className="rounded-xl border border-coral bg-panel p-4 text-sm">
-            <b className="text-coral-deep">{recorderError}</b>
-            <p className="mt-1 leading-relaxed">{RECORDER_ERROR_MESSAGE[recorderError]}</p>
           </div>
         )}
 

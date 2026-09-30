@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { modeForScriptMode, normalizeScriptMode } from './prepareStore';
+import { practiceModeFor, normalizeScriptMode } from './prepareStore';
 
 describe('서버가 준 대본 표시 값 접기', () => {
   it('3단계는 그대로 둔다', () => {
@@ -26,11 +26,11 @@ describe('서버가 준 대본 표시 값 접기', () => {
 
 describe('대본 표시에서 연습 모드 정하기 (시안 09)', () => {
   it('대본 없이를 고르면 실전 모드다', () => {
-    expect(modeForScriptMode('OFF')).toBe('EXAM');
+    expect(practiceModeFor('OFF')).toBe('EXAM');
   });
 
   it('대본을 띄우면 코칭 모드다', () => {
-    expect(modeForScriptMode('HIGHLIGHT')).toBe('COACHING');
-    expect(modeForScriptMode('KEYWORD')).toBe('COACHING');
+    expect(practiceModeFor('HIGHLIGHT')).toBe('COACHING');
+    expect(practiceModeFor('KEYWORD')).toBe('COACHING');
   });
 });

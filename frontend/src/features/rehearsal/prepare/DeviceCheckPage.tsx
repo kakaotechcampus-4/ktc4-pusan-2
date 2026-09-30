@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
 import { setTakeId, startSession } from '../lib/db';
@@ -10,7 +11,7 @@ import { LevelBar } from '../media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
 import { MissionCard } from './MissionCard';
 import { ScriptModeChoice } from './ScriptModeChoice';
-import { modeForScriptMode, normalizeScriptMode, usePrepareStore } from './prepareStore';
+import { normalizeScriptMode, practiceModeFor, usePrepareStore } from './prepareStore';
 import { useGazeCalibration, type CalibrationPhase } from './useGazeCalibration';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
@@ -96,12 +97,26 @@ export function DeviceCheckPage() {
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
   const { meterRef, dbRef, rowRef, silentRef, micOk, audioState, meterError } = useMicLevel(stream);
-  const declineGaze = usePrepareStore((s) => s.declineGaze);
-  // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다
-  const scriptMode = usePrepareStore((s) => s.scriptMode);
-  const setScriptMode = usePrepareStore((s) => s.setScriptMode);
-  const calibration = usePrepareStore((s) => s.calibration);
-  const scriptModeTouched = usePrepareStore((s) => s.scriptModeTouched);
+  // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
+  // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
+  // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
+  const {
+    declineGaze,
+    scriptMode,
+    setScriptMode,
+    calibration,
+    scriptModeTouched,
+    setChosenDevices,
+  } = usePrepareStore(
+    useShallow((s) => ({
+      declineGaze: s.declineGaze,
+      scriptMode: s.scriptMode,
+      setScriptMode: s.setScriptMode,
+      calibration: s.calibration,
+      scriptModeTouched: s.scriptModeTouched,
+      setChosenDevices: s.setDevices,
+    })),
+  );
   const cal = useGazeCalibration({ videoRef, live });
   const createTake = useCreateTake();
 
@@ -128,6 +143,7 @@ export function DeviceCheckPage() {
 
   // 서버 기본값은 **사용자가 고르기 전에만** 넣습니다. 조건 없이 덮으면 응답이 늦게
   // 올 때 사용자가 고른 것이 되돌아갑니다. FULL 이 올 수 있어 3단계로 접습니다.
+  // 지난번이 OFF 였으면 실전 모드가 미리 골라집니다 (practiceModeFor 의 대가 참고)
   useEffect(() => {
     if (data && !scriptModeTouched) {
       setScriptMode(normalizeScriptMode(data.defaultScriptMode), false);
@@ -159,8 +175,16 @@ export function DeviceCheckPage() {
     setStarting(true);
     setStartError(null);
 
+    // 드롭다운 값이 아니라 **실제로 열린 트랙**의 장치를 넘깁니다. 기본 장치로 통과했어도
+    // 그 장치가 남아서, 그사이 OS 기본값이 바뀌어도 리허설이 같은 장치를 엽니다.
+    // '' 는 undefined 로 — exact 에 빈 문자열을 걸면 OverconstrainedError 가 납니다
+    setChosenDevices({
+      videoDeviceId: videoId || undefined,
+      audioDeviceId: audioId || undefined,
+    });
+
     // 시안 09 - 대본 표시 하나로 연습 모드까지 정해집니다
-    const mode = modeForScriptMode(scriptMode);
+    const practiceMode = practiceModeFor(scriptMode);
 
     try {
       const clientSessionId = await startSession();
@@ -168,7 +192,7 @@ export function DeviceCheckPage() {
       const take = await createTake.mutateAsync({
         pitchId: data.pitchId,
         clientSessionId,
-        mode,
+        mode: practiceMode,
         scriptMode,
         presentationVersion: data.presentationVersion,
         scriptVersion: data.scriptVersion,
@@ -179,9 +203,12 @@ export function DeviceCheckPage() {
       // 품질 요약만 갑니다. 기준 벡터는 브라우저에 남습니다 (CLAUDE.md 1번)
       if (calibration) await postCalibration(take.takeId, calibration);
 
-      navigate(mode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`, {
-        state: { clientSessionId, scriptMode },
-      });
+      navigate(
+        practiceMode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`,
+        {
+          state: { clientSessionId, scriptMode },
+        },
+      );
     } catch (e) {
       // 여기서 멈춰야 합니다. 실패한 채로 넘어가면 takeId 없이 발표가 시작되고
       // 그 Take 는 어디에도 안 남습니다
@@ -204,7 +231,7 @@ export function DeviceCheckPage() {
         }));
 
   const takeNumber = data?.nextTakeNumber ?? 0;
-  const startLabel = modeForScriptMode(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
+  const startLabel = practiceModeFor(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
 
   return (
     <ScreenFrame
