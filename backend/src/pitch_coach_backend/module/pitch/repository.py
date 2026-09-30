@@ -73,6 +73,8 @@ class PitchRepository:
         FK 검사로 pitch 행에 KEY SHARE 를 거는데, FOR UPDATE 는 그것과 충돌해 잠금을 쥔 동안
         같은 pitch 의 Take 생성까지 멈춘다. NO KEY UPDATE 는 버전을 만드는 요청끼리만 막는다.
         """
+        # key_share=True 는 이름과 달리 KEY SHARE 가 아니라 FOR NO KEY UPDATE 로 나간다
+        # (KEY SHARE 는 read=True 를 같이 줄 때). tests/test_script_parse.py 가 확인한다
         self.db.execute(
             select(Pitch.id).where(Pitch.id == pitch_id).with_for_update(key_share=True)
         )

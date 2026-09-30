@@ -807,3 +807,55 @@ def test_concurrent_script_creates_on_one_pitch_get_distinct_versions(
         with Session(engine) as cleanup:
             cleanup.delete(cleanup.get(User, user_id))  # pitch·버전은 CASCADE
             cleanup.commit()
+
+
+def test_version_lock_does_not_block_take_creation_on_the_same_pitch(engine: Engine) -> None:
+    """버전 잠금(lock_for_new_version)을 쥔 동안에도 같은 pitch 에 Take 를 만들 수 있다.
+
+    Take INSERT 는 FK 검사로 pitch 행에 KEY SHARE 를 건다. 잠금이 FOR UPDATE 면 그것과 충돌해
+    Take 생성이 커밋까지 멈추고, FOR NO KEY UPDATE 면 지나간다. 멈추면 lock_timeout 에 걸려 실패한다.
+    """
+    from sqlalchemy import text
+
+    from pitch_coach_backend.module.pitch.entity import PresentationVersion
+    from pitch_coach_backend.module.take.entity import Take
+    from pitch_coach_backend.module.user.entity import User
+
+    with Session(engine) as setup:
+        user = User(email=f"{uuid.uuid4()}@example.com", name="잠금")
+        setup.add(user)
+        setup.flush()
+        pitch = Pitch(user_id=user.id, title="잠금", time_limit_sec=60)
+        setup.add(pitch)
+        setup.flush()
+        presentation = PresentationVersion(pitch_id=pitch.id, version=1, file_key="k")
+        script = ScriptVersion(
+            pitch_id=pitch.id, version=1, content="대본", parse_status=ScriptParseStatus.DONE
+        )
+        setup.add_all([presentation, script])
+        setup.commit()
+        user_id, pitch_id = user.id, pitch.id
+        presentation_id, script_id = presentation.id, script.id
+
+    try:
+        with Session(engine) as locker, Session(engine) as take_writer:
+            PitchRepository(locker).lock_for_new_version(pitch_id)  # 커밋하지 않고 쥐고 있는다
+
+            take_writer.execute(text("SET LOCAL lock_timeout = '2s'"))
+            take_writer.add(
+                Take(
+                    pitch_id=pitch_id,
+                    take_number=1,
+                    presentation_version_id=presentation_id,
+                    script_version_id=script_id,
+                    mode="PRACTICE",
+                    script_mode="FULL",
+                    goal_time_sec=60,
+                )
+            )
+            take_writer.commit()  # FOR UPDATE 였다면 여기서 LockNotAvailable
+            locker.rollback()
+    finally:
+        with Session(engine) as cleanup:
+            cleanup.delete(cleanup.get(User, user_id))  # pitch·버전·take 는 CASCADE
+            cleanup.commit()
