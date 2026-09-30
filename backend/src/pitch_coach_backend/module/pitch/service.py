@@ -5,11 +5,11 @@ from pathlib import Path
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, PresentationDetailDTO, UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
+from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchesDTO, UploadPresentationResultDTO, StandardTextResponseDTO, UploadResultDTO, VersionDTO, VersionSummaryDTO, Versioned
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.s3_service import presigned_url, upload
+from pitch_coach_backend.module.pitch.s3_service import upload, generate_presigned_url
 from typing import Iterable
 
 def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto):
@@ -67,7 +67,8 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
                 take_time=take.goal_time_sec,
                 script_mode=take.script_mode,
                 score=take_score,
-                delta=d
+                delta=d,
+                created_at = take.created_at
             )
 
             take_summaries.append(take_summary)
@@ -77,6 +78,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
             pitch_title=pitch.title,
             pitch_time=pitch.time_limit_sec,
             thumbnail_url=None,
+            pitch_deadline=pitch.presentation_date,
             takes=take_summaries
         )
 
@@ -148,13 +150,15 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     presentation = PresentationVersion(
         pitch_id=pitch_id,
         version=version,
-        file_key=presentation_key,
-        description=upload_dto.description
+        file_key=presentation_key
     )
 
     pitch_repository.save_presentation(presentation)
-
-    return presentation.id
+    return UploadPresentationResultDTO(
+        pitch_id=pitch_id,
+        presentation_version_id=presentation.id,
+        file_url = generate_presigned_url(presentation_key)
+    )
 
 def upload_script_service(db: Session, pitch_id: uuid.UUID, upload_script_dto):
     pitch_repository = PitchRepository(db)
@@ -205,3 +209,16 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         description=presentation_version.description,
         created_at=presentation_version.created_at.date()
     )
+def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_dto):
+    pitch_repository = PitchRepository(db)
+    # 평가 기준 분할 로직
+    # standards_result =
+
+    # for standard in standards_result.standards:
+    #    pitch_repository.save_standard(pitch_id, standard)
+
+    # return StandardTextResponseDTO(
+    #     pitch_id=pitch_id,
+    #     standards=[{"standard": standard} for standard in standards_result.standards],
+    #     except_standard=standards_result.except_standard
+    # )

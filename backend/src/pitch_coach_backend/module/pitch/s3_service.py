@@ -19,12 +19,12 @@ def upload(file: UploadFile, key: str):
 
     return key
 
-def presigned_url(key: str, expires_in: int = 3600):
+def generate_presigned_url(key: str, expiration: int = 3600):
     try:
         url = get_s3().generate_presigned_url(
             "get_object",
             Params={"Bucket": settings.s3_bucket_name, "Key": key},
-            ExpiresIn=expires_in
+            ExpiresIn=expiration
         )
     except (ClientError, BotoCoreError) as e:
         raise Exception(f"S3 presigned URL 생성 실패: {str(e)}")

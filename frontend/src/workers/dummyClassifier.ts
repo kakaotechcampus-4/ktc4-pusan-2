@@ -1,4 +1,10 @@
-import type { FrameVerdict, GazeClassifier, ZoneReference } from './gaze.contract';
+import type {
+  CalibrationResult,
+  FrameVerdict,
+  GazeClassifier,
+  PlacementResult,
+  ZoneReference,
+} from './gaze.contract';
 import type { GazeZone, Ms } from '@/types/api';
 
 /**
@@ -51,15 +57,38 @@ export class DummyGazeClassifier implements GazeClassifier {
   fitCalibration(
     camera: readonly ImageBitmap[],
     bottom: readonly ImageBitmap[],
-  ): ZoneReference | null {
-    // AI 설정의 min_samples_per_class 와 같은 취지. 모자라면 재시도를 안내합니다.
-    if (camera.length < 10 || bottom.length < 10) return null;
+  ): CalibrationResult {
+    // AI 와 같은 세 갈래입니다 —
+    //   한쪽이 0장이면 모델을 못 만듭니다(막음)
+    //   min_samples_per_class(10) 미만이면 모델은 있지만 품질 미달(POOR, 진행 가능)
+    if (camera.length === 0 || bottom.length === 0) {
+      return { ok: false, reason: 'NOT_ENOUGH_SAMPLES' };
+    }
+    const enough = camera.length >= 10 && bottom.length >= 10;
 
     return {
-      layoutSignature: 'dummy',
-      quality: 'GOOD',
-      model: { kind: 'dummy' },
+      ok: true,
+      ref: {
+        quality: enough ? 'GOOD' : 'POOR',
+        // 프레임을 안 봤으니 수치를 모릅니다. 0 이 아니라 null 입니다
+        metrics: null,
+        model: { kind: 'dummy' },
+      },
+      advice: enough ? null : 'NOT_ENOUGH_SAMPLES',
     };
+  }
+
+  /**
+   * 진짜는 두 응시의 각도 차이로 배치를 추정합니다.
+   * 더미는 프레임을 볼 수 없으니 **개수만 보고** 늘 TOP 이라고 답합니다 —
+   * 화면 흐름(경고 없이 캘리브레이션으로 넘어가는 길)을 확인하는 용도입니다.
+   */
+  checkPlacement(camera: readonly ImageBitmap[], screen: readonly ImageBitmap[]): PlacementResult {
+    // AI 설정의 min_samples_per_target 과 같은 값, 같은 사유입니다
+    if (camera.length < 8 || screen.length < 8) {
+      return { placement: 'INCONCLUSIVE', supported: false, reason: 'NOT_ENOUGH_SAMPLES' };
+    }
+    return { placement: 'TOP', supported: true, reason: 'OK' };
   }
 
   calibrate(ref: ZoneReference): void {
