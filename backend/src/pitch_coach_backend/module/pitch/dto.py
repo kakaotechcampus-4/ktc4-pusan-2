@@ -50,3 +50,14 @@ class VersionSummaryDTO(BaseModel):
 class Versioned(Protocol):
     id: uuid.UUID
     version: int
+
+class StandardTextDTO(BaseModel):
+    standard_text: str
+
+class StandardDTO(BaseModel):
+    standard: str
+class StandardTextResponseDTO(BaseModel):
+    pitch_id: uuid.UUID
+    standards: list[StandardDTO]
+    except_standard: str | None = None
+    
