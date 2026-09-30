@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import type { DeviceChoice } from '../media/useCameraStream';
-import type { CalibrationSummary, Mode, ScriptMode } from '@/types/api';
+import type { CalibrationSummary, PracticeMode, ScriptMode } from '@/types/api';
 
 /**
  * 서버가 준 대본 표시 값을 지금 쓰는 3단계로 접습니다.
@@ -27,10 +27,16 @@ export function normalizeScriptMode(raw: string | null | undefined): ScriptMode 
  * 끄는 것이 아니라 발표 중 코치를 통째로 침묵시킵니다 (CLAUDE.md 4번). 둘을 따로
  * 고르게 하려면 시안과 화면이 달라져야 해서, 시안을 따르기로 했습니다.
  *
- * 계약에서 Mode 와 ScriptMode 는 여전히 별개입니다 - 서버로는 두 값이 그대로 갑니다.
+ * 이 대가는 기본값에도 번집니다. 서버는 지난 Take 의 대본 표시만 돌려주므로
+ * (`defaultScriptMode`), 예전에 `OFF + COACHING` 으로 연습했던 사람은 실전 모드가
+ * 미리 골라진 채로 들어옵니다. 지난 연습 방식은 응답에 없어서 FE 는 구분할 수도
+ * 없습니다. 출시 전이라 두었습니다 - 출시 뒤에 둘을 묶거나 푸는 변경을 하면
+ * prepare 응답에 지난 연습 방식을 받아, 없어진 조합은 KEYWORD 로 보정해야 합니다.
+ *
+ * 계약에서 PracticeMode 와 ScriptMode 는 여전히 별개입니다 - 서버로는 두 값이 그대로 갑니다.
  * 나중에 둘을 따로 고르게 되돌리려면 이 함수만 지우면 됩니다.
  */
-export function modeForScriptMode(scriptMode: ScriptMode): Mode {
+export function practiceModeFor(scriptMode: ScriptMode): PracticeMode {
   return scriptMode === 'OFF' ? 'EXAM' : 'COACHING';
 }
 

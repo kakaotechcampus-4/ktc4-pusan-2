@@ -37,7 +37,13 @@
 
 export type Ms = number;
 
-export type Mode = 'COACHING' | 'EXAM';
+/**
+ * 연습 방식. 코치가 발표 중에 말을 거느냐입니다 - 대본 표시(ScriptMode)와는 별개입니다.
+ *
+ * 서버 필드 이름은 그대로 `mode` 입니다 (BE DTO·DB 계약). 그래서 요청·응답에서는
+ * `mode: PracticeMode` 로 보입니다. 이름을 맞추려면 BE 와 같이 바꿔야 합니다.
+ */
+export type PracticeMode = 'COACHING' | 'EXAM';
 /**
  * 3단계. OFF는 대본 영역 자체가 사라진다 (높이 0).
  *
@@ -176,7 +182,7 @@ export interface CompleteRequest {
   startedAt: string;
   endedAt: string;
   durationMs: Ms;
-  mode: Mode;
+  mode: PracticeMode;
   hiddenPanels: string[];
   slideEvents: { slideNumber: number; startMs: Ms; endMs: Ms }[];
   gaze: GazePayload;
@@ -239,7 +245,7 @@ export interface Finding {
 export interface TakeReport {
   takeId: string;
   takeNumber: number;
-  mode: Mode;
+  mode: PracticeMode;
   scriptMode: ScriptMode;
   headline: string;
   summary: {
@@ -366,7 +372,7 @@ export interface CreateTakeRequest {
   pitchId: string;
   /** 멱등키. IndexedDB 세션 키와 **같은 값**입니다 */
   clientSessionId: string;
-  mode: Mode;
+  mode: PracticeMode;
   scriptMode: ScriptMode;
   presentationVersion: number;
   scriptVersion: number;
@@ -393,7 +399,7 @@ export interface TakeContext {
   pitchId: string;
   pitchTitle: string;
   /** Take가 시작될 때 고정된 값입니다. 화면이 임의로 바꾸지 않습니다 */
-  mode: Mode;
+  mode: PracticeMode;
   scriptMode: ScriptMode;
   timeLimitSec: number;
   status: TakeStatus;
