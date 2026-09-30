@@ -18,8 +18,8 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchDTO):
         title=pitch_dto.title,
         time_limit_sec=pitch_dto.time_limit_sec,
         presentation_date=pitch_dto.presentation_date,
-        upper_deviation=pitch_dto.deviation,
-        lower_deviation=pitch_dto.deviation
+        upper_deviation=pitch_dto.upper_deviation,
+        lower_deviation=pitch_dto.lower_deviation
     )
 
     pitch_repository = PitchRepository(db)
