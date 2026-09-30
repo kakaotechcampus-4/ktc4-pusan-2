@@ -258,7 +258,7 @@ def make_take(
     db_session.add(pitch)
     db_session.flush()
     presentation = PresentationVersion(pitch_id=pitch.id, version=1, file_key="deck.pdf")
-    script = ScriptVersion(pitch_id=pitch.id, version=1, file_key="script.txt")
+    script = ScriptVersion(pitch_id=pitch.id, version=1, content="대본")
     db_session.add_all([presentation, script])
     db_session.flush()
     take = Take(
