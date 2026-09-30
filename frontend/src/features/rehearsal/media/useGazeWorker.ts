@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
+  CalibrationResult,
   GazeWorkerIn,
   GazeWorkerOut,
+  PlacementResult,
   ZoneDecision,
   ZoneReference,
 } from '@/workers/gaze.contract';
@@ -37,6 +39,7 @@ export type GazeWorkerError = 'ENGINE_UNAVAILABLE' | 'CAMERA_LOST';
  * 쿼리를 붙이면 청크는 하나로 유지되고 부하 값만 달라진다.
  */
 import gazeWorkerUrl from '@/workers/gaze.worker?worker&url';
+import { ANALYSIS_FPS, nextFrameDue } from './frameClock';
 
 /** 분류기 구현체. 화면은 이 값만 바꾸고, 나머지 코드는 그대로다 (T12 판정 기준 B) */
 export type GazeImpl = 'dummy' | 'model';
@@ -93,6 +96,9 @@ const freshState = (loadMs: number, impl: GazeImpl): WorkerState => ({
  * 깃발이 올라가 있으면 createImageBitmap 을 **아예 부르지 않는다.**
  * 그러면 우체통에 항상 1장 이하이고, fps 가 자연히 실제 처리 속도에 수렴한다.
  *
+ * 그리고 **초당 `maxFps` 장을 넘기지 않는다** (기본 8, AI 분석 속도).
+ * 백프레셔는 "처리한 만큼만" 보내게 할 뿐이라, 처리가 빠르면 초당 수십 장을 돈다.
+ *
  * @param onDecision 1초 판정 콜백. **React 상태로 올리지 않는다** — 받는 쪽이 처리한다
  * @param loadMs     가짜 부하. 바뀌면 워커를 새로 만든다 (앞 측정이 다음에 안 섞이게)
  */
@@ -100,11 +106,24 @@ export function useGazeWorker(
   onDecision: (d: ZoneDecision) => void,
   loadMs: number,
   impl: GazeImpl = 'dummy',
-  /**
-   * 캘리브레이션 결과. `null` 이면 품질 미달이라 화면이 재시도를 안내합니다.
-   * 장치 점검 화면만 씁니다 — 발표 중에는 기준을 다시 잡지 않습니다.
-   */
-  onCalibrated?: (ref: ZoneReference | null) => void,
+  {
+    onCalibrated,
+    onPlacementChecked,
+    maxFps = ANALYSIS_FPS,
+  }: {
+    /**
+     * 캘리브레이션 결과와 그 기준을 만든 엔진 버전. `ok: false` 면 화면이 재시도를 안내합니다.
+     * 장치 점검 화면만 씁니다 — 발표 중에는 기준을 다시 잡지 않습니다.
+     */
+    onCalibrated?: (result: CalibrationResult, engineVersion: string) => void;
+    /** 카메라 배치 결과. 장치 점검 화면만 씁니다 — 참고용이라 화면은 경고만 합니다 */
+    onPlacementChecked?: (result: PlacementResult) => void;
+    /**
+     * 초당 최대 프레임. 제품 화면은 기본값(AI 분석 속도)을 씁니다.
+     * `/dev/media` 처럼 **파이프라인이 낼 수 있는 최대치**를 재는 곳만 `Infinity` 를 줍니다.
+     */
+    maxFps?: number;
+  } = {},
 ) {
   const [state, setState] = useState<WorkerState>(() => freshState(loadMs, impl));
 
@@ -129,6 +148,18 @@ export function useGazeWorker(
   const rttCountRef = useRef(0);
   /** 카메라 소실을 한 번만 보고하기 위한 표시 */
   const cameraLostRef = useRef(false);
+  /** 다음 프레임을 보낼 수 있는 시각 (performance.now 기준) */
+  const dueRef = useRef(0);
+  /** 프레임 간격. tick 이 매번 읽으므로 ref 로 둡니다 — 바뀌어도 펌프를 다시 만들지 않습니다 */
+  const intervalRef = useRef(1000 / maxFps);
+  useEffect(() => {
+    intervalRef.current = 1000 / maxFps;
+  }, [maxFps]);
+  /**
+   * 적용할 캘리브레이션 기준. **워커가 새로 뜰 때마다 다시 보냅니다** —
+   * 부하나 구현체가 바뀌면 워커를 새로 만들고, 옛 워커의 `stop` 이 기준을 지웁니다.
+   */
+  const zoneRefRef = useRef<ZoneReference | null>(null);
 
   // 콜백을 ref 에 담는다 — 콜백이 바뀔 때마다 워커를 다시 만들면 안 된다.
   const onDecisionRef = useRef(onDecision);
@@ -140,6 +171,11 @@ export function useGazeWorker(
   useEffect(() => {
     onCalibratedRef.current = onCalibrated;
   }, [onCalibrated]);
+
+  const onPlacementCheckedRef = useRef(onPlacementChecked);
+  useEffect(() => {
+    onPlacementCheckedRef.current = onPlacementChecked;
+  }, [onPlacementChecked]);
 
   // ── 워커 생명주기. loadMs 가 바뀌면 새로 만든다 ────────────────────
   useEffect(() => {
@@ -169,7 +205,10 @@ export function useGazeWorker(
           onDecisionRef.current(msg.decision);
           return;
         case 'calibrated':
-          onCalibratedRef.current?.(msg.ref);
+          onCalibratedRef.current?.(msg.result, msg.engineVersion);
+          return;
+        case 'placementChecked':
+          onPlacementCheckedRef.current?.(msg.result);
           return;
         case 'perf': {
           const n = rttCountRef.current;
@@ -201,6 +240,12 @@ export function useGazeWorker(
 
     const init: GazeWorkerIn = { type: 'init' };
     worker.postMessage(init);
+    // 기준이 이미 있으면 init 바로 뒤에 붙입니다. 메시지는 순서대로 처리되므로
+    // 첫 프레임보다 먼저 들어갑니다
+    if (zoneRefRef.current) {
+      const cal: GazeWorkerIn = { type: 'calibrate', ref: zoneRefRef.current };
+      worker.postMessage(cal);
+    }
 
     return () => {
       // ★ 정리를 빠뜨리면 HMR 마다 워커가 쌓이고 fps 가 점점 떨어진다.
@@ -264,6 +309,11 @@ export function useGazeWorker(
     // HAVE_CURRENT_DATA 미만이면 아직 그릴 프레임이 없다
     if (video.readyState < 2) return;
 
+    // 초당 maxFps 장. 아직 때가 아니면 이번 화면 갱신은 건너뜁니다
+    const now = performance.now();
+    if (now < dueRef.current) return;
+    dueRef.current = nextFrameDue(dueRef.current, now, intervalRef.current);
+
     inFlightRef.current = true;
     const tMs = Math.round(performance.now() - pumpStartRef.current);
 
@@ -294,6 +344,7 @@ export function useGazeWorker(
       cancelAnimationFrame(rafRef.current);
       inFlightRef.current = false;
       cameraLostRef.current = false;
+      dueRef.current = 0;
       rafRef.current = requestAnimationFrame(tick);
     },
     [tick],
@@ -325,5 +376,42 @@ export function useGazeWorker(
     return true;
   }, []);
 
-  return { ready, engineVersion, error, perf, startPump, stopPump, fitCalibration };
+  /**
+   * 카메라 배치를 확인해 달라고 넘깁니다. 비트맵 처리는 `fitCalibration` 과 같습니다 —
+   * 넘기고(transfer) 나면 이쪽에서 쓸 수 없고, 닫는 것은 워커 몫입니다.
+   */
+  const checkPlacement = useCallback((camera: ImageBitmap[], screen: ImageBitmap[]) => {
+    const worker = workerRef.current;
+    if (!worker) {
+      for (const b of [...camera, ...screen]) b.close();
+      return false;
+    }
+    const msg: GazeWorkerIn = { type: 'checkPlacement', camera, screen };
+    worker.postMessage(msg, [...camera, ...screen]);
+    return true;
+  }, []);
+
+  /**
+   * 저장해 둔 기준을 분류기에 적용합니다. 리허설이 씁니다 —
+   * 기준은 장치 점검 화면의 **다른 워커**에서 계산되어 IndexedDB 로 넘어옵니다.
+   *
+   * 펌프를 켜기 **전에** 불러야 합니다. 기준 없이 들어간 프레임은 전부 버려집니다.
+   */
+  const calibrate = useCallback((ref: ZoneReference) => {
+    zoneRefRef.current = ref;
+    const msg: GazeWorkerIn = { type: 'calibrate', ref };
+    workerRef.current?.postMessage(msg);
+  }, []);
+
+  return {
+    ready,
+    engineVersion,
+    error,
+    perf,
+    startPump,
+    stopPump,
+    fitCalibration,
+    checkPlacement,
+    calibrate,
+  };
 }

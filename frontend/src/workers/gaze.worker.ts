@@ -3,7 +3,13 @@
 import { DummyGazeClassifier } from './dummyClassifier';
 import { ModelGazeClassifier } from './modelClassifier';
 import { TemporalVoter } from './temporalVoter';
-import type { GazeClassifier, GazeWorkerIn, GazeWorkerOut } from './gaze.contract';
+import type {
+  CalibrationResult,
+  GazeClassifier,
+  GazeWorkerIn,
+  GazeWorkerOut,
+  PlacementResult,
+} from './gaze.contract';
 
 /**
  * 시선 워커 — 프레임을 받아 1초 판정을 낸다.
@@ -65,6 +71,13 @@ const IMPL = new URLSearchParams(self.location.search).get('impl') === 'model' ?
 const classifier: GazeClassifier =
   IMPL === 'model' ? new ModelGazeClassifier() : new DummyGazeClassifier();
 const voter = new TemporalVoter();
+
+/**
+ * Take 에 고정되는 엔진 버전. 분류기 버전 뒤에 다수결 규칙을 붙입니다.
+ * `ready` 와 `calibrated` 가 **같은 문자열**을 내야 저장한 기준의 버전 비교가 맞습니다.
+ * 모델 분류기는 init 이 끝나야 버전이 정해지므로 매번 읽습니다.
+ */
+const engineVersion = () => `${classifier.version}+vote-v1`;
 
 let running = false;
 let lastFrameTMs = -1;
@@ -147,7 +160,7 @@ self.onmessage = (e: MessageEvent<GazeWorkerIn>) => {
         .then(() => {
           running = true;
           // 버전은 init 뒤에 읽는다 — 모델 파일 식별자가 여기서 정해진다.
-          post({ type: 'ready', version: `${classifier.version}+vote-v1` });
+          post({ type: 'ready', version: engineVersion() });
         })
         .catch(() => {
           // ★ running 을 올리지 않는다. 프레임이 와도 처리하지 않고 깃발만 내려 준다.
@@ -160,17 +173,34 @@ self.onmessage = (e: MessageEvent<GazeWorkerIn>) => {
     case 'fitCalibration': {
       // ★ 비트맵은 여기서 닫는다. 계약에 "호출부가 닫는다"고 적어 둔 그 호출부다.
       //   실패해도 닫아야 한다 — 안 닫으면 4초분 프레임이 GPU 메모리에 그대로 남는다.
-      let ref = null;
+      let result: CalibrationResult;
       try {
-        ref = classifier.fitCalibration(msg.camera, msg.bottom);
+        result = classifier.fitCalibration(msg.camera, msg.bottom);
       } catch {
-        ref = null;
+        // 품질 미달이 아니라 분류기가 터진 것이다. 사유를 나눠야 화면이 맞는 말을 한다.
+        result = { ok: false, reason: 'ENGINE_ERROR' };
       } finally {
         for (const b of msg.camera) b.close();
         for (const b of msg.bottom) b.close();
       }
-      // null 이면 품질 미달 — 화면이 재시도를 안내한다.
-      post({ type: 'calibrated', ref });
+      // ok: false 면 품질 미달 — 화면이 사유에 맞는 재시도 안내를 띄운다.
+      // 어느 엔진이 만든 기준인지 같이 보냅니다. 되살릴 때 엔진이 다르면 버립니다
+      post({ type: 'calibrated', result, engineVersion: engineVersion() });
+      return;
+    }
+
+    case 'checkPlacement': {
+      // fitCalibration 과 같은 규칙 — 실패해도 비트맵은 여기서 닫는다
+      let result: PlacementResult;
+      try {
+        result = classifier.checkPlacement(msg.camera, msg.screen);
+      } catch {
+        result = { placement: 'INCONCLUSIVE', supported: false, reason: 'ENGINE_ERROR' };
+      } finally {
+        for (const b of msg.camera) b.close();
+        for (const b of msg.screen) b.close();
+      }
+      post({ type: 'placementChecked', result });
       return;
     }
 

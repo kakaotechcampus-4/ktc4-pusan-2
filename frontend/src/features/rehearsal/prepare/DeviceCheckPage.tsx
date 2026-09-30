@@ -12,7 +12,12 @@ import { ScreenFrame, StageButton } from './ScreenFrame';
 import { MissionCard } from './MissionCard';
 import { ScriptModeChoice } from './ScriptModeChoice';
 import { normalizeScriptMode, practiceModeFor, usePrepareStore } from './prepareStore';
-import { useGazeCalibration, type CalibrationPhase } from './useGazeCalibration';
+import {
+  CALIBRATION_FAIL_MESSAGE,
+  placementMessage,
+  useGazeCalibration,
+  type CalibrationPhase,
+} from './useGazeCalibration';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 
@@ -32,19 +37,24 @@ function deviceCheckHint({
   micOk,
   calPhase,
   calPoints,
+  calPoor,
 }: {
   deviceError: DeviceError | null;
   live: boolean;
   micOk: boolean;
   calPhase: CalibrationPhase;
   calPoints: number;
+  /** 기준은 잡혔지만 품질이 낮음 — 막지 않고 권하기만 합니다 */
+  calPoor: boolean;
 }): string {
   if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
   if (!live) return '카메라를 켜야 점검을 시작할 수 있습니다';
   if (!micOk) return '마이크에 대고 한 마디 해보세요';
   if (calPhase === 'FAILED')
     return '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요';
+  if (calPhase === 'PLACE_WARN') return '카메라 위치를 확인해 주세요';
   if (calPoints < 2) return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
+  if (calPoor) return '시선 기준이 흐릿해요. 다시 잡으면 더 정확해지지만, 이대로 시작해도 됩니다';
   return '점검이 끝났어요';
 }
 
@@ -57,7 +67,7 @@ function deviceCheckHint({
  * 상태 하나에 대한 분기라 switch 로 둡니다. phase 가 늘면 **여기서 컴파일이 깨져서**
  * 빠뜨린 갈래가 바로 드러납니다 — 삼항으로 이어 붙이면 조용히 마지막 갈래로 떨어집니다.
  *
- * IDLE·FAILED 만 `live` 를 함께 봅니다. 카메라가 없으면 눌러도 시작되지 않는데
+ * IDLE·FAILED·PLACE_WARN 만 `live` 를 함께 봅니다. 카메라가 없으면 눌러도 시작되지 않는데
  * 버튼이 '누르면 시작'이라고 말하면 안 됩니다.
  */
 function calibrationActionText(phase: CalibrationPhase, live: boolean): string {
@@ -66,9 +76,15 @@ function calibrationActionText(phase: CalibrationPhase, live: boolean): string {
       return '다시 잡기';
     case 'EVALUATING':
       return '확인 중…';
+    case 'PLACE_CAMERA':
+    case 'PLACE_SCREEN':
+    case 'PLACE_EVALUATING':
+      return '위치 확인 중…';
     case 'CAMERA':
     case 'BOTTOM':
       return '잡는 중…';
+    case 'PLACE_WARN':
+      return live ? '다시 확인' : '카메라 먼저';
     case 'IDLE':
     case 'FAILED':
       return live ? '누르면 시작' : '카메라 먼저';
@@ -162,7 +178,10 @@ export function DeviceCheckPage() {
   const cameras = devices.filter((d) => d.kind === 'videoinput');
   const mics = devices.filter((d) => d.kind === 'audioinput');
 
-  const ready = live && micOk && cal.points === 2 && data !== undefined && !starting;
+  // 저장된 기준을 확인하는 중에는 열지 않습니다 — "완료"로 보이는데 기준이 없으면
+  // 리허설에서 시선이 조용히 빠집니다
+  const ready =
+    live && micOk && cal.points === 2 && !cal.verifying && data !== undefined && !starting;
 
   /**
    * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
@@ -202,6 +221,8 @@ export function DeviceCheckPage() {
 
       // 품질 요약만 갑니다. 기준 벡터는 브라우저에 남습니다 (CLAUDE.md 1번)
       if (calibration) await postCalibration(take.takeId, calibration);
+      // 리허설은 다른 워커라 기준을 IndexedDB 에서 꺼내 씁니다. 저장이 끝난 뒤에 넘어갑니다
+      await cal.saved();
 
       navigate(
         practiceMode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`,
@@ -228,6 +249,7 @@ export function DeviceCheckPage() {
           micOk,
           calPhase: cal.phase,
           calPoints: cal.points,
+          calPoor: cal.advice !== null,
         }));
 
   const takeNumber = data?.nextTakeNumber ?? 0;
@@ -328,13 +350,18 @@ export function DeviceCheckPage() {
                   trailing: <LevelBar variant="segments" meterRef={meterRef} dbRef={dbRef} />,
                 },
                 {
-                  // 카메라를 2초, 대본 자리를 2초. 모은 프레임은 분류기가 받아
-                  // 기준과 품질을 정합니다 (A안) — 여기서는 순서와 안내만 합니다.
+                  // 먼저 카메라 위치를 4초 보고, 이어서 카메라 2초 · 대본 자리 2초.
+                  // 모은 프레임은 분류기가 받아 판정합니다 (A안) — 여기서는 순서와 안내만 합니다.
                   id: 'gaze',
-                  label:
-                    cal.phase === 'FAILED'
+                  label: cal.verifying
+                    ? '시선 기준점 · 저장된 기준 확인 중'
+                    : cal.phase === 'FAILED'
                       ? '시선 기준점 · 다시 필요'
-                      : `시선 기준점 ${cal.points} / 2`,
+                      : cal.phase === 'PLACE_WARN'
+                        ? '시선 기준점 · 카메라 위치 확인'
+                        : cal.advice
+                          ? '시선 기준점 2 / 2 · 품질 낮음'
+                          : `시선 기준점 ${cal.points} / 2`,
                   done: cal.phase === 'DONE',
                   action: {
                     text: calibrationActionText(cal.phase, live),
@@ -367,12 +394,59 @@ export function DeviceCheckPage() {
               </>
             )}
 
+            {/* 품질이 낮은 기준. AI 정책대로 막지 않습니다 — 시작 버튼은 열려 있고 다시 잡기를 권합니다 */}
+            {cal.advice && (
+              <div className="mt-2 rounded-lg border border-line-strong bg-panel p-3">
+                <p className="font-bold">시선 기준이 흐릿해요 · 다시 잡기를 권해요</p>
+                <p className="mt-1 text-stone">{CALIBRATION_FAIL_MESSAGE[cal.advice]}</p>
+                <p className="mt-1 text-stone">
+                  이대로 시작해도 되지만, 이번 Take 의 시선 기록은 덜 정확할 수 있어요.
+                </p>
+                <button
+                  type="button"
+                  onClick={cal.start}
+                  className="mt-2 rounded-full border border-coral px-3 py-1 font-semibold text-coral
+                             hover:bg-coral/10"
+                >
+                  다시 잡기
+                </button>
+              </div>
+            )}
+
+            {/* 배치 경고. 참고용 추정이라 막지 않습니다 — 옮기고 다시 재거나, 그대로 갑니다 */}
+            {cal.placementWarning && (
+              <div className="mt-2 rounded-lg border border-coral bg-coral/10 p-3">
+                <p className="font-bold text-coral">카메라가 화면 위에 있지 않은 것 같아요</p>
+                <p className="mt-1 text-stone">{placementMessage(cal.placementWarning)}</p>
+                <p className="mt-1 text-stone">
+                  참고용 결과예요. 두 지점을 제대로 보지 않았을 때도 이렇게 나올 수 있어요.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={cal.start}
+                    className="rounded-full bg-coral px-3 py-1 font-semibold text-white
+                               hover:bg-coral-deep"
+                  >
+                    다시 확인
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cal.continueAnyway}
+                    className="rounded-full border border-coral px-3 py-1 font-semibold text-coral
+                               hover:bg-coral/10"
+                  >
+                    이대로 계속
+                  </button>
+                </div>
+              </div>
+            )}
+
             {cal.phase === 'FAILED' && (
               <div className="mt-2 rounded-lg border border-coral bg-coral/10 p-3">
                 <p className="font-bold text-coral">기준을 잡지 못했어요</p>
                 <p className="mt-1 text-stone">
-                  두 지점을 바라보는 4초 동안 얼굴이 화면 안에 있어야 합니다. 카메라를 볼 때와 대본
-                  자리를 볼 때를 분명히 나눠 주세요.
+                  {CALIBRATION_FAIL_MESSAGE[cal.failReason ?? 'ENGINE_ERROR']}
                 </p>
                 <button
                   type="button"
