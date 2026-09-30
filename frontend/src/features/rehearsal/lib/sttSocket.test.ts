@@ -174,7 +174,7 @@ describe('재연결', () => {
     expect(sockets[1]!.frames.map((f) => f.getUint32(0, true))).toEqual([2]);
   });
 
-  it('세 번 실패하면 포기한다', async () => {
+  it('세 번 실패해도 포기하지 않고 5초마다 다시 붙는다', async () => {
     vi.useFakeTimers();
     const onGiveUp = vi.fn();
     const stt = makeSocket({ onGiveUp });
@@ -190,7 +190,51 @@ describe('재연결', () => {
     await settle();
 
     expect(sockets).toHaveLength(4);
-    expect(onGiveUp).toHaveBeenCalledWith('RETRIES_EXHAUSTED');
+    expect(onGiveUp).not.toHaveBeenCalled();
+    expect(states.at(-1)).toBe('degraded');
+
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(sockets).toHaveLength(4);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sockets).toHaveLength(5);
+    // 느린 재시도 중에는 문구를 바꾸지 않습니다 — 5초마다 깜빡이면 발표자가 신경 씁니다
+    expect(states.at(-1)).toBe('degraded');
+
+    sockets.at(-1)!.serverClose(1006);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(sockets).toHaveLength(6);
+    expect(onGiveUp).not.toHaveBeenCalled();
+  });
+
+  it('느린 재시도 끝에 붙으면 seq 를 이어 보내고 다시 빠른 백오프로 돌아간다', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    stt.sendFrame(pcm(), 0);
+
+    // 빠른 백오프 3회를 다 쓰고 느린 재시도로 넘어갑니다
+    sockets.at(-1)!.serverClose(1006);
+    for (const delay of [500, 1_000, 2_000]) {
+      await vi.advanceTimersByTimeAsync(delay);
+      sockets.at(-1)!.serverClose(1006);
+    }
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    stt.sendFrame(pcm(), 100);
+    sockets.at(-1)!.open();
+    sockets.at(-1)!.emit(READY);
+    expect(states.at(-1)).toBe('ok');
+    expect(sockets.at(-1)!.frames.map((f) => f.getUint32(0, true))).toEqual([2]);
+
+    // 붙은 뒤 다시 끊기면 처음부터 빠르게 붙어 봅니다
+    const before = sockets.length;
+    sockets.at(-1)!.serverClose(1006);
+    expect(states.at(-1)).toBe('reconnecting');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(sockets).toHaveLength(before + 1);
   });
 });
 

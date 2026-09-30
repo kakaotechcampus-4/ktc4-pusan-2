@@ -26,7 +26,8 @@ import {
  *      (OPEN 만 보고 보내면 새 프레임이 버퍼를 앞질러 나가고, 서버는 역행한
  *       seq 를 버린다 — 그만큼 전사가 사라진다)
  *   2. `seq` 는 Take 안에서 단조 증가한다. **재연결해도 리셋하지 않는다.**
- *   3. close 1000·1008 이면 재연결하지 않는다. 그 외에는 백오프 3회.
+ *   3. close 1000·1008 이면 재연결하지 않는다. 그 외에는 백오프 3회, 그 뒤로는
+ *      **포기하지 않고** 발표가 끝날 때까지 5초마다 다시 붙어 본다.
  *   4. `stop` 을 보낸 뒤 `stt_status.state === 'closed'` 를 기다리되 **3초까지만** 기다린다.
  *      마지막 전사를 저장하는 것은 서버 몫이다 — `stop` 을 받은 서버는 이 소켓이 먼저
  *      닫혀도 Deepgram 정리와 저장을 끝까지 한다. 그래서 FE 가 더 붙잡고 있을 이유가 없다.
@@ -37,8 +38,17 @@ import {
 /** 재연결될 때까지 들고 있을 프레임 수. 100ms × 20 = 2초 (BE 와 합의한 계약) */
 const MAX_PENDING_FRAMES = 20;
 
-/** 백오프. 길이가 곧 재연결 횟수 상한입니다 */
+/** 빠른 백오프. 이걸 다 쓰면 화면을 `degraded` 로 두고 느린 재시도로 넘어갑니다 */
 const RETRY_DELAYS_MS = [500, 1_000, 2_000];
+
+/**
+ * 빠른 백오프가 다 실패한 뒤의 재시도 간격. 발표가 끝날 때까지 계속합니다.
+ *
+ * 여기서 포기하면 몇 초 끊긴 것 때문에 남은 발표의 말하기 분석이 통째로 빠집니다.
+ * 늦게 붙어도 서버가 받아 줍니다 — 30초 grace 안이면 같은 스트림에 이어 붙고,
+ * 그 뒤면 저장된 마지막 번호에서 이어 새 스트림을 엽니다. seq 는 여기서 계속 오릅니다.
+ */
+const SLOW_RETRY_MS = 5_000;
 
 /**
  * `stop()` 을 부른 뒤 종료가 풀리기까지의 상한. 끝내기 버튼을 누른 사람이 기다리는 시간입니다.
@@ -64,7 +74,8 @@ export interface SocketLike {
   onerror: (() => void) | null;
 }
 
-export type GiveUpReason = 'FATAL' | 'RETRIES_EXHAUSTED' | 'NO_TOKEN' | 'CONNECT_FAILED';
+/** 네트워크 끊김은 여기 없습니다 — 그건 포기하지 않고 계속 붙어 봅니다 */
+export type GiveUpReason = 'FATAL' | 'NO_TOKEN' | 'CONNECT_FAILED';
 
 export interface SttSocketOptions {
   takeId: string;
@@ -276,7 +287,11 @@ export class SttSocket {
       return;
     }
 
-    this.options.onState(this.retries === 0 ? 'connecting' : 'reconnecting');
+    // 느린 재시도 중에는 `degraded` 를 그대로 둡니다. 시도마다 reconnecting 으로 바꾸면
+    // 발밑 문구가 5초마다 두 줄 사이를 깜빡입니다
+    if (this.retries <= RETRY_DELAYS_MS.length) {
+      this.options.onState(this.retries === 0 ? 'connecting' : 'reconnecting');
+    }
 
     const create = this.options.createSocket ?? ((url: string) => new WebSocket(url) as SocketLike);
     const socket = create(sttUrl(this.options.takeId));
@@ -369,14 +384,11 @@ export class SttSocket {
       return;
     }
 
-    const delay = RETRY_DELAYS_MS[this.retries];
-    if (delay === undefined) {
-      this.giveUp('RETRIES_EXHAUSTED');
-      return;
-    }
+    const slow = this.retries >= RETRY_DELAYS_MS.length;
+    const delay = RETRY_DELAYS_MS[this.retries] ?? SLOW_RETRY_MS;
 
     this.retries += 1;
-    this.options.onState('reconnecting');
+    this.options.onState(slow ? 'degraded' : 'reconnecting');
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       if (!this.disposed) this.connect().catch(() => this.giveUp('CONNECT_FAILED'));
