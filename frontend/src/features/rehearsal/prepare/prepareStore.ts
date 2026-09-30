@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import type { DeviceChoice } from '../media/useCameraStream';
 import type { CalibrationSummary, Mode, ScriptMode } from '@/types/api';
 
 /**
@@ -51,10 +52,17 @@ interface PrepareState {
   scriptMode: ScriptMode;
   /** 사용자가 직접 골랐나. 서버 기본값으로 덮어쓰지 않기 위한 표시입니다 */
   scriptModeTouched: boolean;
+  /**
+   * 점검을 통과한 카메라·마이크. 리허설이 **같은 장치**를 엽니다.
+   * 비어 있으면 브라우저 기본 장치입니다 — 캘리브레이션과 녹음이 다른 장치에서
+   * 나오면 점검이 아무것도 보장하지 못합니다.
+   */
+  devices: DeviceChoice;
 
   setCalibration: (summary: CalibrationSummary) => void;
   declineGaze: () => void;
   setScriptMode: (mode: ScriptMode, byUser?: boolean) => void;
+  setDevices: (devices: DeviceChoice) => void;
   reset: () => void;
 }
 
@@ -63,6 +71,7 @@ const INITIAL = {
   gazeDeclined: false,
   scriptMode: 'HIGHLIGHT' as ScriptMode,
   scriptModeTouched: false,
+  devices: {} as DeviceChoice,
 };
 
 export const usePrepareStore = create<PrepareState>((set) => ({
@@ -71,5 +80,6 @@ export const usePrepareStore = create<PrepareState>((set) => ({
   declineGaze: () => set({ gazeDeclined: true, calibration: null }),
   setScriptMode: (mode, byUser = true) =>
     set((s) => ({ scriptMode: mode, scriptModeTouched: s.scriptModeTouched || byUser })),
+  setDevices: (devices) => set({ devices }),
   reset: () => set(INITIAL),
 }));

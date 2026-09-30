@@ -102,6 +102,7 @@ export function DeviceCheckPage() {
   const setScriptMode = usePrepareStore((s) => s.setScriptMode);
   const calibration = usePrepareStore((s) => s.calibration);
   const scriptModeTouched = usePrepareStore((s) => s.scriptModeTouched);
+  const setChosenDevices = usePrepareStore((s) => s.setDevices);
   const cal = useGazeCalibration({ videoRef, live });
   const createTake = useCreateTake();
 
@@ -158,6 +159,14 @@ export function DeviceCheckPage() {
     if (!data || starting) return;
     setStarting(true);
     setStartError(null);
+
+    // 드롭다운 값이 아니라 **실제로 열린 트랙**의 장치를 넘깁니다. 기본 장치로 통과했어도
+    // 그 장치가 남아서, 그사이 OS 기본값이 바뀌어도 리허설이 같은 장치를 엽니다.
+    // '' 는 undefined 로 — exact 에 빈 문자열을 걸면 OverconstrainedError 가 납니다
+    setChosenDevices({
+      videoDeviceId: videoId || undefined,
+      audioDeviceId: audioId || undefined,
+    });
 
     // 시안 09 - 대본 표시 하나로 연습 모드까지 정해집니다
     const mode = modeForScriptMode(scriptMode);
