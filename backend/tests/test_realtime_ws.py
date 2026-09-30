@@ -24,7 +24,13 @@ from websockets.exceptions import ConnectionClosedError
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.main import app
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.entity import (
+    Pitch,
+    PresentationVersion,
+    ScriptParseStatus,
+    ScriptSlide,
+    ScriptVersion,
+)
 from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
@@ -33,6 +39,7 @@ from pitch_coach_backend.realtime import service, take_stream
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
 from pitch_coach_backend.realtime.dependencies import get_stt_adapter, get_transcript_store
 from pitch_coach_backend.realtime.dto import ErrorMessage, TranscriptMessage, WsErrorCode
+from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
     SttConfig,
@@ -390,6 +397,31 @@ def test_ready_reports_state_before_deepgram_is_up(
     (config,) = stt.configs
     assert "음" in config.keyterms and "이제" in config.keyterms
     assert config.tag == f"take:{TAKE_ID}"
+
+
+def test_script_terms_follow_fillers_in_keyterms(
+    client: TestClient, stt: FakeSttAdapter, token: str, take: Take, db_session: Session
+):
+    script = db_session.get(ScriptVersion, take.script_version_id)
+    script.parse_status = ScriptParseStatus.DONE
+    script.terms = ["SeatFlow", "음"]
+    db_session.add(
+        ScriptSlide(
+            script_version_id=script.id,
+            slide_number=1,
+            full_content="본문",
+            keywords=["좌석 예측"],
+        )
+    )
+    db_session.commit()
+
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+
+    (config,) = stt.configs
+    # filler 가 먼저, 대본 용어가 뒤. filler 와 겹치는 "음" 은 한 번만
+    assert config.keyterms == (*KEYTERM_FILLERS, "SeatFlow", "좌석 예측")
 
 
 def test_deepgram_outage_degrades_instead_of_closing(client: TestClient, token: str):
