@@ -139,7 +139,8 @@ export function MediaDevPage() {
     perf,
     startPump,
     stopPump,
-  } = useGazeWorker(onDecision, loadMs, impl);
+    // 이 화면은 파이프라인이 낼 수 있는 최대 fps 를 잽니다. 제품의 8fps 제한을 풀어 둡니다
+  } = useGazeWorker(onDecision, loadMs, impl, { maxFps: Infinity });
 
   // 스트림이 붙으면 비디오에 물리고 펌프를 시작한다.
   useEffect(() => {
