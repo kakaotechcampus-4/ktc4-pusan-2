@@ -223,6 +223,8 @@ def create_script_service(
     """
     content = validate_script_text(content)
     pitch_repository = PitchRepository(db)
+    # 같은 pitch 에 동시에 올려도 같은 버전 번호를 받지 않게 커밋까지 줄을 세운다
+    pitch_repository.lock_for_new_version(pitch_id)
 
     script = ScriptVersion(
         pitch_id=pitch_id,

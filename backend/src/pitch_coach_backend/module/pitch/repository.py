@@ -62,6 +62,21 @@ class PitchRepository:
         self.db.delete(pitch)
         self.db.flush()
 
+    def lock_for_new_version(self, pitch_id: uuid.UUID) -> None:
+        """이 pitch 에 새 버전을 만드는 요청을 한 줄로 세운다 (트랜잭션이 끝날 때까지 잠금).
+
+        버전은 max(version) + 1 로 계산한다. 같은 pitch 에 요청 둘이 동시에 오면 둘 다 같은
+        번호를 받아 unique(pitch_id, version) 에 걸리고 하나가 500 이 된다. pitch 행을 잠그면
+        두 번째 요청은 첫 번째가 커밋할 때까지 기다렸다가 다음 번호를 받는다.
+
+        FOR UPDATE 가 아니라 FOR NO KEY UPDATE (key_share=True) 다. 자식 행 INSERT(Take 생성 등)는
+        FK 검사로 pitch 행에 KEY SHARE 를 거는데, FOR UPDATE 는 그것과 충돌해 잠금을 쥔 동안
+        같은 pitch 의 Take 생성까지 멈춘다. NO KEY UPDATE 는 버전을 만드는 요청끼리만 막는다.
+        """
+        self.db.execute(
+            select(Pitch.id).where(Pitch.id == pitch_id).with_for_update(key_share=True)
+        )
+
     def next_presentation_version(self, pitch_id: uuid.UUID) -> int:
         current = self.db.scalar(
             select(func.max(PresentationVersion.version)).where(
