@@ -194,6 +194,21 @@ def upload_service(db: Session, pitch_id: uuid.UUID, upload_dto, upload_script_d
         script_version_id=script_id
     )
 
+def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID):
+    pitch_repository = PitchRepository(db)
+    presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_version_id)
+
+    if not presentation_version:
+        raise NonExistentPitch()
+
+    return PresentationDetailDTO(
+        pitch_id=pitch_id,
+        presentation_version_id=presentation_version.id,
+        version=presentation_version.version,
+        file_url=presigned_url(presentation_version.file_key),
+        description=presentation_version.description,
+        created_at=presentation_version.created_at.date()
+    )
 def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_dto):
     pitch_repository = PitchRepository(db)
     # 평가 기준 분할 로직

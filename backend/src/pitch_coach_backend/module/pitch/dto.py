@@ -51,11 +51,19 @@ class Versioned(Protocol):
     id: uuid.UUID
     version: int
 
+class PresentationDetailDTO(BaseModel):
+    pitch_id: uuid.UUID
+    presentation_version_id: uuid.UUID
+    version: int
+    file_url: str
+    description: str | None = None
+    created_at: date
 class StandardTextDTO(BaseModel):
     standard_text: str
 
 class StandardDTO(BaseModel):
     standard: str
+      
 class StandardTextResponseDTO(BaseModel):
     pitch_id: uuid.UUID
     standards: list[StandardDTO]

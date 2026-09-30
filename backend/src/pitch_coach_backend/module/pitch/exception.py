@@ -13,3 +13,8 @@ class NonExistentTake(AppException):
      status_code = 404
      code = "TAKE_NOT_FOUND"
      message = "존재하지 않는 테이크입니다."
+
+class NotExistPresentationVersion(AppException):
+    status_code = 404
+    code = "PRESENTATION_VERSION_NOT_FOUND"
+    message = "존재하지 않는 발표자료 버전입니다."
