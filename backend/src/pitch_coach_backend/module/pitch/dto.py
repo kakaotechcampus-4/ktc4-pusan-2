@@ -17,6 +17,7 @@ class PitchesDTO(BaseModel):
     pitch_title: str
     pitch_time: int
     thumbnail_url: str | None = None
+    pitch_deadline: date
     takes: list[TakeSummaryDTO]
 
 class AllPitchesDTO(BaseModel):
@@ -24,11 +25,14 @@ class AllPitchesDTO(BaseModel):
       
 class UploadPresentationDTO(BaseModel):
     presentation_file: UploadFile = File(...)
-    description: str | None = None
 
 class UploadScriptDTO(BaseModel):
     script_file: UploadFile = File(...)
 
+class UploadPresentationResultDTO(BaseModel):
+    pitch_id: uuid.UUID
+    presentation_version_id: uuid.UUID
+    file_url: str
 class UploadResultDTO(BaseModel):
     presentation_version_id: uuid.UUID
     script_version_id: uuid.UUID

@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { appendCoachLog } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
-import type { Mode, Ms } from '@/types/api';
+import type { Ms, PracticeMode } from '@/types/api';
 import { useRehearsalStore } from './rehearsalStore';
 
 /**
@@ -116,7 +116,7 @@ export function useCoach({
 }: {
   /** 발표가 도는 동안만 true. 종료 뒤에는 규칙을 돌리지 않습니다 */
   enabled: boolean;
-  mode: Mode;
+  mode: PracticeMode;
   clientSessionId: string | null;
   limitSec: number;
   elapsedMs: () => Ms;
@@ -207,7 +207,7 @@ export function useCoach({
 function suppressReason(
   type: string,
   now: Ms,
-  mode: Mode,
+  mode: PracticeMode,
   lastFiredAt: RefObject<Ms>,
   lastByType: RefObject<Record<string, Ms>>,
 ): string | null {

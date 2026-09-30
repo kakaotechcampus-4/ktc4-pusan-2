@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createLevelMeter, type LevelMeter } from './level';
+import { createLevelMeter, openMeasureStream, type LevelMeter, type MeasureStream } from './level';
 
 /** 화면에 쓰는 dB 바닥. 이보다 작으면 '입력 없음'으로 봅니다 */
 const DB_FLOOR = -60;
@@ -7,9 +7,26 @@ const DB_FLOOR = -60;
 /** 무음이 이만큼 이어지면 권한은 있는데 입력이 없는 상황입니다 (명세 8-3) */
 const SILENT_WARN_MS = 8_000;
 
-function toDb(rms: number): number {
-  if (rms <= 0) return DB_FLOOR;
-  return Math.max(DB_FLOOR, Math.min(0, 20 * Math.log10(rms)));
+/**
+ * 화면에 보여 줄 때 더하는 값. dBFS(-60~0)를 사람이 아는 dB(대화 60dB 같은)처럼 보이게 합니다.
+ *
+ * ★ **추정값입니다.** 마이크 감도를 모르므로 기기마다 ±10~15dB 틀릴 수 있습니다.
+ *   보통 노트북 마이크에서 평소 말소리가 -30dBFS 안팎이고, 그게 60dB 쯤으로 보이게
+ *   잡은 값입니다. 휴대폰 소음계 앱과 나란히 재 보며 맞출 값이지 근거가 있는 숫자가
+ *   아닙니다 — 기기별 보정은 아직 정하지 않았습니다.
+ *
+ * **보여 주기에만 씁니다.** 코치 규칙(LOW_DB)은 여전히 dBFS 로 판정합니다 —
+ * 추정값으로 판정하면 마이크에 따라 같은 목소리가 통과하기도 하고 떨어지기도 합니다.
+ */
+const DISPLAY_OFFSET_DB = 90;
+
+function toDisplayDb(dbfs: number): number {
+  return Math.round(dbfs + DISPLAY_OFFSET_DB);
+}
+
+/** 화면과 코치 규칙이 쓰는 범위로 자릅니다 */
+function clampDb(db: number): number {
+  return Math.max(DB_FLOOR, Math.min(0, db));
 }
 
 /**
@@ -42,9 +59,9 @@ function paint(el: HTMLElement | null, percent: number): void {
  */
 export function useMicLevel(stream: MediaStream | null) {
   const meterRef = useRef<HTMLDivElement>(null);
-  /** 계량기 옆 숫자 (-12) */
+  /** 계량기 옆 숫자 (약 64). 추정 dB 입니다 — DISPLAY_OFFSET_DB */
   const dbRef = useRef<HTMLSpanElement>(null);
-  /** 점검 항목 줄 전체 문구 ('마이크 입력 -12dB') */
+  /** 점검 항목 줄 전체 문구 ('마이크 입력 약 64dB') */
   const rowRef = useRef<HTMLSpanElement>(null);
   const silentRef = useRef<HTMLSpanElement>(null);
 
@@ -52,8 +69,16 @@ export function useMicLevel(stream: MediaStream | null) {
    * 지금 값. **코치 규칙이 읽는 창구입니다.**
    * 상태가 아니라 ref 인 이유는 초당 수십 번 바뀌기 때문입니다 —
    * 규칙 쪽은 1초에 한 번 들여다보기만 하면 됩니다.
+   *
+   * `db` 는 A-가중 · Fast 가중 dBFS 입니다. `speechLeqDb` 는 말한 구간만 모은
+   * 평균이라 침묵이 섞이지 않습니다 — 리포트에 목소리 크기를 쓸 때는 이쪽입니다.
    */
-  const statsRef = useRef({ db: -60, silentMs: 0 });
+  const statsRef = useRef<{
+    db: number;
+    silentMs: number;
+    speechLeqDb: number | null;
+    speechMs: number;
+  }>({ db: -60, silentMs: 0, speechLeqDb: null, speechMs: 0 });
 
   const [heardFor, setHeardFor] = useState<MediaStream | null>(null);
   const [audio, setAudio] = useState<{ stream: MediaStream; state: AudioContextState } | null>(
@@ -71,11 +96,19 @@ export function useMicLevel(stream: MediaStream | null) {
     let raf = 0;
     let cancelled = false;
     let meter: LevelMeter | null = null;
+    let measure: MeasureStream | null = null;
     let heard = false;
 
     (async () => {
+      // 크기는 가공 없는 트랙으로 잽니다. 못 받으면 녹음용 스트림으로 갑니다 (level.ts)
+      measure = await openMeasureStream(stream);
+      if (cancelled) {
+        measure?.stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
       // 제스처 뒤에 만듭니다 — getUserMedia가 이미 통한 시점이라 resume()이 먹습니다
-      meter = await createLevelMeter(stream);
+      meter = await createLevelMeter(measure?.stream ?? stream);
       if (cancelled) {
         meter?.stop();
         return;
@@ -86,17 +119,22 @@ export function useMicLevel(stream: MediaStream | null) {
         raf = requestAnimationFrame(loop);
         if (!meter) return;
 
-        const db = toDb(meter.read());
+        // read() 가 먼저입니다 — 무음 판정과 크기가 여기서 같이 갱신됩니다
+        meter.read();
+        const db = clampDb(meter.levelDb());
+        const speech = meter.speech();
         statsRef.current.db = db;
         statsRef.current.silentMs = meter.silentMs();
+        statsRef.current.speechLeqDb = speech.leqDb;
+        statsRef.current.speechMs = speech.ms;
         paint(meterRef.current, ((db - DB_FLOOR) / -DB_FLOOR) * 100);
 
         const quiet = db <= DB_FLOOR;
-        if (dbRef.current) dbRef.current.textContent = quiet ? '—' : String(Math.round(db));
+        if (dbRef.current) dbRef.current.textContent = quiet ? '—' : String(toDisplayDb(db));
         if (rowRef.current) {
           rowRef.current.textContent = quiet
             ? '마이크 입력 없음'
-            : `마이크 입력 ${Math.round(db)}dB`;
+            : `마이크 입력 약 ${toDisplayDb(db)}dB`;
         }
 
         // 한 번이라도 소리가 들어오면 점검 통과입니다. 이 setState는 스트림당 한 번 돕니다
@@ -124,6 +162,8 @@ export function useMicLevel(stream: MediaStream | null) {
       cancelled = true;
       cancelAnimationFrame(raf);
       meter?.stop();
+      // ★ 따로 받은 트랙도 꼭 놓습니다. 안 그러면 화면을 떠나도 마이크 표시등이 남습니다
+      measure?.stream.getTracks().forEach((t) => t.stop());
     };
   }, [stream]);
 

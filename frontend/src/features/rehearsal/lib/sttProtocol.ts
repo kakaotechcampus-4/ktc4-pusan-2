@@ -121,7 +121,7 @@ export function isFatalError(code: SttErrorCode): boolean {
 
 /**
  * 화면에 그대로 나가는 문구입니다. **발표를 멈추라고 말하지 않습니다** —
- * 말하기 분석만 빠지고 시선·시간·녹음은 계속 돕니다 (CLAUDE.md 4번).
+ * 말하기 분석만 빠지고 시선·시간은 계속 돕니다 (CLAUDE.md 4번).
  */
 export const STT_ERROR_MESSAGE: Record<SttErrorCode, string> = {
   UNAUTHORIZED: '로그인이 만료되어 말하기 분석이 멈췄어요. 발표는 계속하세요.',

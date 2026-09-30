@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 
-import type { CalibrationSummary, Mode, ScriptMode } from '@/types/api';
+import type { DeviceChoice } from '../media/useCameraStream';
+import type { CalibrationSummary, PracticeMode, ScriptMode } from '@/types/api';
+import type { CalibrationFailReason, PlacementResult } from '@/workers/gaze.contract';
 
 /**
  * 서버가 준 대본 표시 값을 지금 쓰는 3단계로 접습니다.
@@ -26,10 +28,16 @@ export function normalizeScriptMode(raw: string | null | undefined): ScriptMode 
  * 끄는 것이 아니라 발표 중 코치를 통째로 침묵시킵니다 (CLAUDE.md 4번). 둘을 따로
  * 고르게 하려면 시안과 화면이 달라져야 해서, 시안을 따르기로 했습니다.
  *
- * 계약에서 Mode 와 ScriptMode 는 여전히 별개입니다 - 서버로는 두 값이 그대로 갑니다.
+ * 이 대가는 기본값에도 번집니다. 서버는 지난 Take 의 대본 표시만 돌려주므로
+ * (`defaultScriptMode`), 예전에 `OFF + COACHING` 으로 연습했던 사람은 실전 모드가
+ * 미리 골라진 채로 들어옵니다. 지난 연습 방식은 응답에 없어서 FE 는 구분할 수도
+ * 없습니다. 출시 전이라 두었습니다 - 출시 뒤에 둘을 묶거나 푸는 변경을 하면
+ * prepare 응답에 지난 연습 방식을 받아, 없어진 조합은 KEYWORD 로 보정해야 합니다.
+ *
+ * 계약에서 PracticeMode 와 ScriptMode 는 여전히 별개입니다 - 서버로는 두 값이 그대로 갑니다.
  * 나중에 둘을 따로 고르게 되돌리려면 이 함수만 지우면 됩니다.
  */
-export function modeForScriptMode(scriptMode: ScriptMode): Mode {
+export function practiceModeFor(scriptMode: ScriptMode): PracticeMode {
   return scriptMode === 'OFF' ? 'EXAM' : 'COACHING';
 }
 
@@ -46,30 +54,65 @@ export function modeForScriptMode(scriptMode: ScriptMode): Mode {
 interface PrepareState {
   /** 2점 캘리브레이션 결과. 시작 CTA에서 POST /takes/{id}/calibration으로 갑니다 */
   calibration: CalibrationSummary | null;
+  /**
+   * 기준은 잡혔지만 품질이 낮을 때(POOR) 다시 잡기를 권하는 이유.
+   * 요약과 같은 곳에 둡니다 — 화면에만 두면 장치 점검에 다시 들어왔을 때
+   * "품질 낮음" 안내가 사라지고 평범한 완료로 보입니다.
+   */
+  calibrationAdvice: CalibrationFailReason | null;
+  /**
+   * 카메라 배치 확인 결과. **브라우저에만 둡니다** — 서버 요약에 넣으려면 BE 와
+   * 필드를 맞춰야 합니다. 참고용 추정이라 캘리브레이션을 막지 않고,
+   * 경고를 보고도 진행했으면 `overridden` 에 남깁니다 (AI 데모의 `_forced` 와 같은 뜻).
+   *
+   * `layoutSignature` 는 어느 배치에서 잰 것인지입니다. 같은 배치면 다시 잡을 때
+   * 배치 확인을 건너뜁니다 — 카메라를 바꾸면 키가 달라져 다시 확인합니다.
+   */
+  placement: (PlacementResult & { overridden: boolean; layoutSignature: string }) | null;
   /** '소리만으로 계속하기' — 시선 없이 진행합니다 (excludedReason: USER_DECLINED) */
   gazeDeclined: boolean;
   scriptMode: ScriptMode;
   /** 사용자가 직접 골랐나. 서버 기본값으로 덮어쓰지 않기 위한 표시입니다 */
   scriptModeTouched: boolean;
+  /**
+   * 점검을 통과한 카메라·마이크. 리허설이 **같은 장치**를 엽니다.
+   * 비어 있으면 브라우저 기본 장치입니다 — 캘리브레이션과 녹음이 다른 장치에서
+   * 나오면 점검이 아무것도 보장하지 못합니다.
+   */
+  devices: DeviceChoice;
 
-  setCalibration: (summary: CalibrationSummary) => void;
+  setCalibration: (summary: CalibrationSummary, advice?: CalibrationFailReason | null) => void;
+  /**
+   * 잡아 둔 기준을 무효로 합니다 — 카메라나 화면이 바뀌었거나, 저장된 기준이 사라졌을 때.
+   * 배치 기록도 같이 지웁니다. 둘 다 "이 배치에서 잰 값"이라 배치가 바뀌면 함께 틀립니다.
+   */
+  clearCalibration: () => void;
+  setPlacement: (placement: PrepareState['placement']) => void;
   declineGaze: () => void;
   setScriptMode: (mode: ScriptMode, byUser?: boolean) => void;
+  setDevices: (devices: DeviceChoice) => void;
   reset: () => void;
 }
 
 const INITIAL = {
   calibration: null,
+  calibrationAdvice: null,
+  placement: null,
   gazeDeclined: false,
   scriptMode: 'HIGHLIGHT' as ScriptMode,
   scriptModeTouched: false,
+  devices: {} as DeviceChoice,
 };
 
 export const usePrepareStore = create<PrepareState>((set) => ({
   ...INITIAL,
-  setCalibration: (summary) => set({ calibration: summary, gazeDeclined: false }),
-  declineGaze: () => set({ gazeDeclined: true, calibration: null }),
+  setCalibration: (summary, advice = null) =>
+    set({ calibration: summary, calibrationAdvice: advice, gazeDeclined: false }),
+  clearCalibration: () => set({ calibration: null, calibrationAdvice: null, placement: null }),
+  setPlacement: (placement) => set({ placement }),
+  declineGaze: () => set({ gazeDeclined: true, calibration: null, calibrationAdvice: null }),
   setScriptMode: (mode, byUser = true) =>
     set((s) => ({ scriptMode: mode, scriptModeTouched: s.scriptModeTouched || byUser })),
+  setDevices: (devices) => set({ devices }),
   reset: () => set(INITIAL),
 }));
