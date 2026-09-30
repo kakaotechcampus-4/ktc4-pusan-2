@@ -12,12 +12,14 @@ from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import upload, generate_presigned_url
 from typing import Iterable
 
-def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto):
+def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchDTO):
     new_pitch = Pitch(
         user_id=user_id,
         title=pitch_dto.title,
         time_limit_sec=pitch_dto.time_limit_sec,
-        presentation_date=pitch_dto.presentation_date
+        presentation_date=pitch_dto.presentation_date,
+        upper_deviation=pitch_dto.upper_deviation,
+        lower_deviation=pitch_dto.lower_deviation
     )
 
     pitch_repository = PitchRepository(db)

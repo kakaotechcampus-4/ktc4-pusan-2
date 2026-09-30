@@ -44,6 +44,8 @@ class Pitch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # takes 와 서로를 참조한다. use_alter 로 테이블 생성 후 FK 를 따로 걸어
     # 순환 때문에 생성 순서가 막히는 것을 피한다.
     # best_take_id는 추후 점수로 계산한 후, 가장 최고 점수의 take 를 best_take 로 지정할 때 사용한다.
+    upper_deviation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lower_deviation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """발표 표준. 발표를 평가할 때 기준이 되는 표준 발표를 저장한다."""
