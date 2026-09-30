@@ -2,6 +2,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
+from itertools import zip_longest
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -402,6 +403,31 @@ def fail_parse(db: Session, ticket: ParseTicket, error_code: ScriptParseErrorCod
         return False
     db.commit()
     return True
+
+
+def stt_keyterm_candidates(
+    db: Session, pitch_id: uuid.UUID, script_version_id: uuid.UUID
+) -> list[str]:
+    """리허설 STT 에 넘길 대본 용어. 우선순위 순이고, 한도에 맞춰 자르는 건 호출자 몫이다.
+
+    realtime 이 WebSocket 인가 중에 부른다 (호출자가 run_in_threadpool 로 감싼다).
+    파싱이 끝나지 않은 대본은 빈 목록 — 용어가 없어도 STT 는 돈다.
+
+    순서: terms(STT 가 틀리기 쉬운 고유명사, 파서가 우선순위대로 준다) → 슬라이드 keywords.
+    keywords 는 슬라이드마다 하나씩 번갈아 담는다. 한도가 모자랄 때 뒤 슬라이드가 통째로
+    빠지지 않게 하려는 것이다.
+    """
+    pitch_repository = PitchRepository(db)
+    script = pitch_repository.get_script_in_pitch(pitch_id, script_version_id)
+    if script is None or script.parse_status != ScriptParseStatus.DONE:
+        return []
+
+    per_slide = [slide.keywords or [] for slide in pitch_repository.get_slides(script.id)]
+    keywords = [
+        keyword for rank in zip_longest(*per_slide) for keyword in rank if keyword is not None
+    ]
+    return [term for term in [*(script.terms or []), *keywords] if isinstance(term, str)]
+
 
 # 각 발표자료 버전의 상세 정보.
 def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID):
