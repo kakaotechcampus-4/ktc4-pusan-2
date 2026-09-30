@@ -1,4 +1,4 @@
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 
 const terms = [
   [
@@ -61,12 +61,18 @@ const privacy = [
   ],
 ];
 export function PolicyPage({ kind }: { kind: 'terms' | 'privacy' }) {
+  const [searchParams] = useSearchParams();
+  const fromHome = searchParams.get('from') === 'home';
+  const originQuery = fromHome ? '?from=home' : '';
   const title = kind === 'terms' ? '이용약관' : '개인정보 처리방침';
   return (
     <main className="min-h-dvh bg-panel px-6 py-10">
       <article className="mx-auto max-w-3xl">
-        <Link to="/welcome#policies" className="text-sm underline underline-offset-4">
-          ← 피치코치로 돌아가기
+        <Link
+          to={fromHome ? '/' : '/welcome#policies'}
+          className="text-sm underline underline-offset-4"
+        >
+          ← {fromHome ? '홈으로 돌아가기' : '피치코치로 돌아가기'}
         </Link>
         <p className="mb-3 mt-12 font-mono text-xs tracking-widest text-coral-deep">
           PITCH COACH / POLICY DRAFT
@@ -81,14 +87,14 @@ export function PolicyPage({ kind }: { kind: 'terms' | 'privacy' }) {
         </div>
         <nav aria-label="정책 문서" className="mb-8 flex gap-6 text-sm">
           <Link
-            to="/terms"
+            to={`/terms${originQuery}`}
             aria-current={kind === 'terms' ? 'page' : undefined}
             className="underline"
           >
             이용약관
           </Link>
           <Link
-            to="/privacy"
+            to={`/privacy${originQuery}`}
             aria-current={kind === 'privacy' ? 'page' : undefined}
             className="underline"
           >
