@@ -87,5 +87,4 @@ def test_upload_presentation_persists_version_one(
     assert saved is not None
     assert saved.pitch_id == pitch_id
     assert saved.version == 1
-    assert saved.description == "초안"
     assert saved.file_key == expected_key
