@@ -17,6 +17,7 @@ class PitchesDTO(BaseModel):
     pitch_title: str
     pitch_time: int
     thumbnail_url: str | None = None
+    pitch_deadline: date
     takes: list[TakeSummaryDTO]
 
 class AllPitchesDTO(BaseModel):

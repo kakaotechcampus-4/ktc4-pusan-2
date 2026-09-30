@@ -67,7 +67,8 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
                 take_time=take.goal_time_sec,
                 script_mode=take.script_mode,
                 score=take_score,
-                delta=d
+                delta=d,
+                created_at = take.created_at
             )
 
             take_summaries.append(take_summary)
@@ -77,6 +78,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
             pitch_title=pitch.title,
             pitch_time=pitch.time_limit_sec,
             thumbnail_url=None,
+            pitch_deadline=pitch.presentation_date,
             takes=take_summaries
         )
 
