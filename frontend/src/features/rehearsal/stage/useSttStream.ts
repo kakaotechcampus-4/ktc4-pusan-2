@@ -141,8 +141,8 @@ export function useSttStream({
    * 종료 CTA 가 **화면을 정리하기 전에** 부릅니다.
    *
    * 마이크를 먼저 끊고(더 보낼 것이 없다) `stop` 을 보낸 뒤 서버가 `closed` 를
-   * 줄 때까지 기다립니다. 여기서 안 기다리면 마지막 문장의 전사가 사라집니다.
-   * 서버가 늦으면 15초에서 끊습니다 — 종료 화면을 붙잡아 두지 않습니다.
+   * 줄 때까지 기다립니다. 서버가 늦으면 3초에서 끊습니다 — `stop` 을 받은 서버는
+   * 소켓이 닫혀도 마지막 전사까지 저장하므로, 종료 화면을 붙잡아 둘 이유가 없습니다.
    */
   const stop = useCallback(async () => {
     const capture = captureRef.current;

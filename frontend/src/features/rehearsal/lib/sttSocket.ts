@@ -27,8 +27,9 @@ import {
  *       seq 를 버린다 — 그만큼 전사가 사라진다)
  *   2. `seq` 는 Take 안에서 단조 증가한다. **재연결해도 리셋하지 않는다.**
  *   3. close 1000·1008 이면 재연결하지 않는다. 그 외에는 백오프 3회.
- *   4. `stop` 을 보낸 뒤 `stt_status.state === 'closed'` 를 받기 전에 닫지 않는다.
- *      서버 정리 상한이 12초라 15초까지 기다리고, 그 뒤에는 끊는다.
+ *   4. `stop` 을 보낸 뒤 `stt_status.state === 'closed'` 를 기다리되 **3초까지만** 기다린다.
+ *      마지막 전사를 저장하는 것은 서버 몫이다 — `stop` 을 받은 서버는 이 소켓이 먼저
+ *      닫혀도 Deepgram 정리와 저장을 끝까지 한다. 그래서 FE 가 더 붙잡고 있을 이유가 없다.
  *
  * 끊겨도 발표는 계속됩니다. 이 소켓이 죽었을 때 멈추는 것은 2단 코치뿐입니다.
  */
@@ -39,16 +40,16 @@ const MAX_PENDING_FRAMES = 20;
 /** 백오프. 길이가 곧 재연결 횟수 상한입니다 */
 const RETRY_DELAYS_MS = [500, 1_000, 2_000];
 
-/** `stop` 뒤 `closed` 를 기다리는 상한. 서버 쪽 상한(12초)보다 조금 깁니다 */
-const STOP_TIMEOUT_MS = 15_000;
-
 /**
- * 끊긴 채로 발표를 끝냈을 때, 남은 버퍼를 보내려고 재연결을 기다리는 상한.
+ * `stop()` 을 부른 뒤 종료가 풀리기까지의 상한. 끝내기 버튼을 누른 사람이 기다리는 시간입니다.
  *
- * 전체 상한(15초)을 쓰지 않습니다 — 네트워크가 정말 죽었으면 끝내기 버튼을 누른 사람이
- * 15초를 서서 기다리게 됩니다. 백오프 한 번(최대 2초)이 지나갈 만큼만 줍니다.
+ * 서버 정리 상한(12초)에 맞추지 않습니다. `stop` 이 나간 뒤로는 서버가 알아서 저장하므로
+ * 여기서 기다리는 것은 깔끔하게 `closed` 를 받고 닫는 것뿐입니다 (보통 1초).
+ * 이 시간이 실제로 필요한 것은 `stop` 을 아직 못 보낸 경우입니다 — 인증(`ready`)을
+ * 기다리거나, 끊긴 채로 끝내 재연결을 기다리는 동안 들고 있는 버퍼는 FE 에만 있습니다.
+ * 백오프 한 번(최대 2초)이 지나갈 만큼 줍니다.
  */
-const STOP_RECONNECT_BUDGET_MS = 3_000;
+const STOP_WAIT_MS = 3_000;
 
 /**
  * 테스트에서 가짜를 끼우려고 최소한만 추려낸 WebSocket 모양입니다.
@@ -168,10 +169,11 @@ export class SttSocket {
   }
 
   /**
-   * 발표 종료. `closed` 를 받거나 상한이 지나면 풀립니다.
+   * 발표 종료. `closed` 를 받거나 상한(3초)이 지나면 풀립니다.
    *
-   * 여기서 기다리지 않고 닫으면 **마지막 1~2초의 전사가 사라집니다** —
-   * 발표의 마무리 문장이라 리포트에서 가장 아쉬운 자리입니다.
+   * `stop` 이 나간 뒤에 닫는 것은 괜찮습니다 — 서버가 마지막 전사까지 저장합니다.
+   * 잃으면 안 되는 것은 **아직 `stop` 을 못 보낸 버퍼**입니다. 마지막 1~2초라
+   * 발표의 마무리 문장이고, 리포트에서 가장 아쉬운 자리입니다.
    *
    * ── 끊긴 채로 끝낸 경우 ────────────────────────────────────────────
    *
@@ -194,11 +196,11 @@ export class SttSocket {
 
       if (this.socket) {
         this.clearRetry();
-        this.armStopTimer(STOP_TIMEOUT_MS);
+        this.armStopTimer(STOP_WAIT_MS);
         this.sendStop();
       } else if (this.pending.length > 0 && this.retryTimer !== null) {
         // 예약된 재연결을 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다
-        this.armStopTimer(STOP_RECONNECT_BUDGET_MS);
+        this.armStopTimer(STOP_WAIT_MS);
       } else {
         this.dispose();
         return Promise.resolve();
@@ -219,7 +221,10 @@ export class SttSocket {
    * 아직 `ready` 가 아니면 **보내지 않고 기다립니다.** 인증이 끝나기 전의 오디오는
    * 서버가 받지 않으므로, 여기서 stop 부터 보내면 들고 있던 2초가 그대로 버려집니다
    * (발표를 짧게 끝냈거나 마지막 순간에 재연결 중이던 경우). `ready` 가 오면
-   * `handleMessage` 가 이 함수를 다시 부르고, 안 오면 15초 타임아웃이 끊습니다.
+   * `handleMessage` 가 이 함수를 다시 부르고, 안 오면 3초 상한이 끊습니다.
+   *
+   * 보낸 뒤에 상한을 다시 걸지 않습니다. 여기서부터는 서버가 정리하는 시간이고,
+   * 소켓이 닫혀도 서버는 멈추지 않습니다 — 사용자가 기다리는 시간은 `stop()` 부터 3초입니다.
    */
   private sendStop(): void {
     if (!this.socket || !this.ready) return;
@@ -227,8 +232,6 @@ export class SttSocket {
     try {
       this.flushPending();
       this.socket.send(JSON.stringify({ type: 'stop' }));
-      // 여기서부터는 서버가 Deepgram 을 정리하는 시간입니다. 상한을 그쪽에 맞춥니다
-      this.armStopTimer(STOP_TIMEOUT_MS);
     } catch {
       this.dispose();
     }

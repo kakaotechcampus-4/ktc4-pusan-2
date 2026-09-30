@@ -330,7 +330,7 @@ describe('종료', () => {
     sockets[0]!.emit(READY);
 
     const stopped = stt.stop();
-    // 서버가 정리 도중 끊긴 경우입니다. 여기서 안 풀리면 종료 화면이 15초 멈춰 있습니다
+    // 서버가 정리 도중 끊긴 경우입니다. 여기서 안 풀리면 종료 화면이 3초 멈춰 있습니다
     sockets[0]!.serverClose(1006);
 
     await expect(stopped).resolves.toBeUndefined();
@@ -387,7 +387,7 @@ describe('종료', () => {
     await expect(stopped).resolves.toBeUndefined();
   });
 
-  it('closed 가 안 오면 15초 뒤에 끊는다 — 종료 화면을 붙잡아 두지 않는다', async () => {
+  it('closed 가 안 오면 3초 뒤에 끊는다 — 저장은 서버 몫이라 종료 화면을 붙잡아 두지 않는다', async () => {
     vi.useFakeTimers();
     const stt = makeSocket();
     stt.start();
@@ -395,10 +395,38 @@ describe('종료', () => {
     sockets[0]!.open();
     sockets[0]!.emit(READY);
 
-    const stopped = stt.stop();
-    await vi.advanceTimersByTimeAsync(15_000);
+    let done = false;
+    stt.stop().then(() => {
+      done = true;
+    });
+    expect(JSON.parse(sockets[0]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
 
-    await expect(stopped).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(done).toBe(true);
     expect(sockets[0]!.closedWith).toBe(1000);
+  });
+
+  it('ready 를 기다리다 stop 을 보내도 상한은 stop() 부터 3초다', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+
+    let done = false;
+    stt.stop().then(() => {
+      done = true;
+    });
+
+    // 인증이 늦게 끝나 stop 이 2초 뒤에 나갑니다. 여기서 상한을 다시 걸면 5초를 기다립니다
+    await vi.advanceTimersByTimeAsync(2_000);
+    sockets[0]!.emit(READY);
+    expect(JSON.parse(sockets[0]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(done).toBe(true);
   });
 });
