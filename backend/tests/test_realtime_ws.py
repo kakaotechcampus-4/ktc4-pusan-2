@@ -269,6 +269,7 @@ def make_take(
         mode="COACHING",
         script_mode="FULL",
         status=status,
+        goal_time_sec=300,
     )
     if take_id is not None:
         take.id = take_id
@@ -644,6 +645,39 @@ def test_grace_expiry_closes_the_stream(
     assert adapter.session is not None
     # 그냥 버리지 않고 CloseStream 으로 마지막 전사까지 받아 둔다
     assert adapter.session.controls == ["CloseStream"]
+
+
+def test_reconnect_after_grace_expiry_resumes_on_a_new_stream(
+    client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
+):
+    """FE 는 빠른 백오프가 다 실패해도 포기하지 않고 5초마다 다시 붙는다. 그래서 grace 가
+    지난 뒤에 붙는 연결도 받아야 한다 — 새 스트림을 열고, FE 가 리셋하지 않은 seq 와
+    Take 기준 offset 을 그대로 받아 전사 시각이 Take 타임라인에 맞게 나온다."""
+    monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
+    adapter = use(
+        FakeSttAdapter(Plan(), Plan(replies=[transcript(0, 100, "다시 붙었다", is_final=True)]))
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+
+    deadline = time.monotonic() + 3.0
+    while take_stream.active_count() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert take_stream.active_count() == 0
+
+    # 40초 뒤에 붙었다. 그동안 FE 는 seq 를 계속 올렸다 (끊긴 동안의 프레임은 버려졌다)
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(400, 40_000))
+        resumed = ws.receive_json()
+        stop(ws)
+
+    assert len(adapter.sessions) == 2
+    assert (resumed["type"], resumed["is_final"]) == ("transcript", True)
+    assert resumed["start_ms"] == 40_000
 
 
 def test_second_tab_takes_over_and_evicts_the_first(client: TestClient, token: str):
