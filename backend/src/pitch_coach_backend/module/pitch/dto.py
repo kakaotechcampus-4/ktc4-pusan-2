@@ -5,7 +5,7 @@ from datetime import date, datetime
 from enum import StrEnum
 
 from fastapi import File, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from typing import Protocol
@@ -24,6 +24,13 @@ class PitchUpdateDTO(BaseModel):
     upper_deviation: int | None = None
     lower_deviation: int | None = None
     presentation_date: date | None = None
+
+    @field_validator("time_limit_sec", "title", "upper_deviation", "lower_deviation")
+    @classmethod
+    def not_null(cls, v):
+        if v is None:
+            raise ValueError("Field cannot be null")
+        return v
 
 class PitchesDTO(BaseModel):
     pitch_id: uuid.UUID
