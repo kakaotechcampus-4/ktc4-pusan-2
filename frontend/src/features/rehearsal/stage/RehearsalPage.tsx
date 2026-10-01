@@ -302,7 +302,7 @@ export function RehearsalPage() {
     if (!running || !sessionId || !take.data) return;
 
     // 시간을 먼저 붙잡습니다. 아래 await들이 도는 동안에도 시계는 갑니다.
-    // ★ 끝난 시각도 여기서 찍습니다 — STT 정리는 최대 15초까지 걸리는데,
+    // ★ 끝난 시각도 여기서 찍습니다 — STT 정리는 최대 3초까지 걸리는데,
     //   그 시간을 endedAt에 얹으면 endedAt - startedAt이 durationMs와 어긋납니다
     const durationMs: Ms = elapsedMs();
     const endedAtIso = new Date().toISOString();
@@ -315,7 +315,9 @@ export function RehearsalPage() {
     //   기록은 IndexedDB 에 그대로 있으므로 재시도 화면으로 보냅니다.
     try {
       // 서버가 남은 오디오를 Deepgram에 흘리고 `closed`를 줄 때까지 기다립니다.
-      // 보통 1초, 최대 15초입니다. 그 사이 버튼은 '정리하는 중…'을 보여 줍니다
+      // 보통 1초, 최대 3초입니다. 그 사이 버튼은 '정리하는 중…'을 보여 줍니다
+      // ★ 3초에서 끊겨도 서버는 마지막 전사까지 저장합니다. 그래서 아래 `/complete`가
+      //   그 저장보다 먼저 도착할 수 있습니다 — 분석이 저장을 기다리는 것은 BE 몫입니다
       await stopStt();
       await endSession(sessionId);
 

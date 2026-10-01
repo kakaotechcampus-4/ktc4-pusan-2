@@ -106,6 +106,8 @@ backend/
     │   │   └── state_store.py    # state·nonce·PKCE 의 Redis 1회 소비 (6파일 규칙 밖)
     │   ├── user/                 # User
     │   ├── pitch/                # 발표 원고/자료
+    │   │   ├── script_parser.py      # AI 대본 파서 HTTP 어댑터. 응답 검증·변환·재시도. DB 를 모른다 (6파일 규칙 밖)
+    │   │   └── script_parse_runner.py  # 업로드 뒤 BackgroundTasks 로 도는 파싱 작업. 짧은 세션으로 저장 (6파일 규칙 밖)
     │   ├── take/                 # 발표 1회 수행 기록
     │   ├── rehearsal/            # 실시간 연습 세션
     │   └── feedback/             # LLM 리뷰 결과
@@ -285,6 +287,44 @@ FE 없이 확인하는 두 가지 —
 | 파일 | `dev/stt-send-pcm.py` | `uv run python dev/stt-send-pcm.py 녹음.pcm --email <가입한 이메일>` (파일 상단에 변환 명령). `--take-id` 를 안 주면 그 사용자의 Take 를 하나 만들어 쓴다 |
 | 마이크 | `dev/stt-test.html` | `python3 -m http.server 3000 --directory dev` 로 띄우고 `http://localhost:3000/stt-test.html`. **3000 포트로 열어야** Origin 검사를 통과한다. Take 칸에는 `uv run python dev/stt-send-pcm.py --create-take --email <이메일>` 로 만든 id 를 넣는다 |
 
+## 대본 파싱 (AI)
+
+올린 대본을 AI 서버가 슬라이드 단위로 나누고 키워드를 뽑는다. **BE 가 AI 를 부르고 기다린다** —
+AI 는 BE 주소를 모른다. FE 쪽은 비동기다 (즉시 `202` + 폴링).
+
+```
+POST /api/pitches/{pitch_id}/scripts                          202  {"content"} → script_version_id·version, PENDING
+GET  /api/pitches/{pitch_id}/scripts/{script_version_id}           PENDING | DONE(+slides) | FAILED(+error_code)
+POST /api/pitches/{pitch_id}/scripts/{script_version_id}/parse  202  FAILED 일 때만. 아니면 409
+POST /api/pitches/add/{pitch_id}/presentation                     발표자료(PDF)만. 대본은 받지 않는다
+```
+
+- **대본은 발표자료와 따로 올린다.** 대본만 여러 번 고치는 게 정상 흐름이라, 발표자료 업로드에 묶으면 PDF 를 매번 다시 올려야 한다.
+  버전은 pitch 안에서 자동으로 1, 2, … 로 매기고, 발표자료 버전과는 따로 센다.
+- 대본은 JSON `{"content": "..."}` 로 받는다 (FE 는 textarea 내용 그대로). 비어 있거나 5만 자를 넘거나 NUL 문자가 있으면
+  `400 INVALID_SCRIPT` 이고 아무것도 저장하지 않는다. NUL 은 JSON(`\u0000`)으로는 오지만 PostgreSQL TEXT 가 받지 못한다.
+  AI 응답에 NUL 이 있어도 `AI_INVALID_OUTPUT`.
+- 대본을 올리면 pitch 행을 `FOR NO KEY UPDATE` 로 잠그고 버전을 매긴다. 같은 pitch 에 동시에 올려도 버전이 겹치지 않는다
+  (잠금이 없으면 둘 다 `max+1` 을 받아 한쪽이 unique 위반 500). `FOR UPDATE` 는 같은 pitch 의 Take 생성까지 막아서 쓰지 않는다.
+- **대본 원문은 S3 가 아니라 DB(`script_versions.content`)에 둔다.** 5만 자 이하 텍스트라 TEXT 로 충분하고, 슬라이드와
+  한 트랜잭션으로 저장되며, 재시도·편집 화면이 네트워크 호출 없이 읽는다. S3 는 발표자료(PDF)만 쓴다.
+  `script_slides.full_content` 는 AI 가 구분자·제목을 빼고 공백을 합친 글이라 원문을 대신하지 못한다.
+- 이 기능 전에 올라온 대본은 원문이 S3 파일(`pitches/{pitch_id}/scripts/{version}.<확장자>`)로만 있어 migration 이 `FAILED (LEGACY_UNPARSED)` 로 두고,
+  재시도하면 `409 SCRIPT_REUPLOAD_REQUIRED` — 새로 올려야 한다.
+- BE → AI 는 `POST {AI_BASE_URL}/v1/scripts/parse` `{"script_text"}`. 응답은 AI 노트북의 `SeperatedSlides`
+  그대로이고 `script_parser.py` 가 바꾼다 (`status` → `segmented`, `"0:6"` → `[0, 6]`, 틀린 highlight 는 그 항목만 버림).
+  시도 한 번 전체 35초(httpx 의 읽기 30초·연결 5초는 단계별 상한이라 따로 묶는다). 타임아웃·연결 실패·5xx·429·408·계약 위반은
+  1초 뒤 1회 재시도, 그 밖의 4xx 는 바로 실패. 결과 저장이 실패하면 `FAILED (INTERNAL_ERROR)` 로 남긴다 (PENDING 으로 두지 않는다).
+- 작업은 `BackgroundTasks` + `async`. **AI 를 기다리는 동안 DB 세션을 쥐지 않고**, 저장만 threadpool 의
+  짧은 세션으로 한다 (`transcript_store.py` 와 같은 이유 — 같은 이벤트 루프에서 STT 가 돈다).
+- 상태 전이는 전부 **조건부 UPDATE** 다. 재시도 두 번 눌러도 작업은 하나, 늦게 끝난 옛 작업은
+  `parse_requested_at` 이 달라 새 결과를 못 덮는다. 만료가 지난 작업도 쓰지 못한다 (FAILED 가 DONE 으로 뒤집히지 않게).
+- BE 가 재시작돼 작업이 사라지면 PENDING 이 남는다. 요청 후 **90초**가 지난 PENDING 은 읽을 때
+  `FAILED (PARSE_EXPIRED)` 로 보여주고 재시도를 연다. 90초는 어댑터 최악 소요(35 × 2 + 1 = 71초)보다 길어야 한다 (테스트가 확인한다).
+- 테스트는 `conftest.py` 가 파싱 작업을 기본으로 끈다(실제 AI 를 부르지 않게). 흐름 테스트는 가짜 파서를 끼운
+  실제 runner 로 바꿔 끼운다 (`tests/test_script_parse.py`).
+- 아직 없는 것: 파싱된 `terms` → 리허설 STT `keyterm` (다음 PR).
+
 ## 에러 응답 형식
 
 모든 에러는 `core/exceptions.py` 의 핸들러를 거쳐 같은 형태로 나간다. 프론트엔드는 `code` 로 분기한다.
@@ -341,3 +381,4 @@ FE 없이 확인하는 두 가지 —
 | Google OAuth 리다이렉트 | `/api/auth/google/callback` (운영 도메인 확정 시 Google Console 에 추가 등록 필요) |
 | 추가로 필요한 것 | Redis (`REDIS_URL`). OAuth state 저장에 쓴다 |
 | Deepgram | `DEEPGRAM_API_KEY`. 운영 도메인은 HTTPS 여야 한다 — 브라우저 마이크(`getUserMedia`)는 secure context 에서만 열린다 |
+| AI 서버 | `AI_BASE_URL` (기본 `http://localhost:8001`, 운영은 compose 내부 `http://ai:8000`). 없으면 BE 는 뜨고 대본 파싱만 `AI_UNAVAILABLE` 로 실패한다 |

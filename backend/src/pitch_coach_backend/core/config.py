@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # Chrome·Firefox 는 http://localhost 를 신뢰 출처로 보므로 로컬에서도 동작한다.
     cookie_secure: bool = True
 
+    # AI 서버 (대본 파싱 등). 운영은 compose 내부 주소 http://ai:8000.
+    # 필수로 두지 않는다 — 빠져도 BE 는 뜨고, 파싱만 AI_UNAVAILABLE 로 실패한다
+    ai_base_url: str = "http://localhost:8001"
+
     # AWS S3 Configuration
     # SSO로 로그인, 그래서 따로 액세스&시크릿 키를 발급받지 않아도 됨.
     s3_bucket_name: str
