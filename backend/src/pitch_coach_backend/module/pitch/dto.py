@@ -17,6 +17,14 @@ class PitchDTO(BaseModel):
     lower_deviation: int = 0
     presentation_date: date | None = None
 
+# 수정에 사용할 DTO
+class PitchUpdateDTO(BaseModel):
+    title: str | None = None
+    time_limit_sec: int | None = None
+    upper_deviation: int | None = None
+    lower_deviation: int | None = None
+    presentation_date: date | None = None
+
 class PitchesDTO(BaseModel):
     pitch_id: uuid.UUID
     pitch_title: str
