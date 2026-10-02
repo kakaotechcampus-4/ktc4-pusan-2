@@ -179,6 +179,9 @@ def delete_pitch_service(db: Session, pitch_id: uuid.UUID):
 
 def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     pitch_repository = PitchRepository(db)
+    # 같은 pitch 에 동시에 올려도 같은 버전 번호를 받지 않게 커밋까지 줄을 세운다.
+    # 번호가 S3 키에도 들어가서, 잠그지 않으면 500 에 더해 앞서 올린 파일이 덮어쓰인다
+    pitch_repository.lock_for_new_version(pitch_id)
 
     version = pitch_repository.next_presentation_version(pitch_id)
     suffix = Path(upload_dto.presentation_file.filename or "").suffix
