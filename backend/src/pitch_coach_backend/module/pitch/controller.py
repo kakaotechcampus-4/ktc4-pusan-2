@@ -27,12 +27,13 @@ from pitch_coach_backend.module.pitch.service import (
     get_each_presentation_service,
     get_pitch_datas,
     get_all_pitches_service,
+    get_presentation_detail,
     get_script_detail,
     request_reparse,
     update_pitch_service,
     upload_presentation_service,
 )
-from pitch_coach_backend.module.pitch.exception import NotExistPresentationVersion
+from pitch_coach_backend.module.pitch.exception import NonExistentPresentationVersion, NotExistPresentationVersion
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 
@@ -62,10 +63,10 @@ def get_presentation(
     presentation_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)]
 ):
-    presentation_version = get_each_presentation_service(db, pitch_id, presentation_id)
+    presentation_version = get_presentation_detail(db, pitch_id, presentation_id)
 
     if not presentation_version:
-        raise NotExistPresentationVersion()
+        raise NonExistentPresentationVersion()
 
     return presentation_version
 

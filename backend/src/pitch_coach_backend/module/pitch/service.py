@@ -68,22 +68,6 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchDTO):
 
     return saved_pitch.id
 
-def get_each_presentation_service(db: Session, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID):
-    pitch_repository = PitchRepository(db)
-    presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_version_id)
-
-    if not presentation_version:
-        raise NonExistentPresentationVersion()
-
-    return EachPresentationDTO(
-        pitch_id=pitch_id,
-        presentation_version_id=presentation_version.id,
-        version=presentation_version.version,
-        file_url=generate_presigned_url(presentation_version.file_key),
-        description=presentation_version.description,
-        created_at=presentation_version.created_at.date()
-    )
-
 # 홈 화면 : pitches 목록 조회
 def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
     pitch_repository = PitchRepository(db)
@@ -417,12 +401,13 @@ def fail_parse(db: Session, ticket: ParseTicket, error_code: ScriptParseErrorCod
     db.commit()
     return True
 
+# 각 발표자료 버전의 상세 정보.
 def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID):
     pitch_repository = PitchRepository(db)
     presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_version_id)
 
     if not presentation_version:
-        raise NonExistentPitch()
+        raise NonExistentPresentationVersion()
 
     return PresentationDetailDTO(
         pitch_id=pitch_id,
@@ -432,6 +417,7 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         description=presentation_version.description,
         created_at=presentation_version.created_at.date()
     )
+
 def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_dto):
     pitch_repository = PitchRepository(db)
     # 평가 기준 분할 로직
