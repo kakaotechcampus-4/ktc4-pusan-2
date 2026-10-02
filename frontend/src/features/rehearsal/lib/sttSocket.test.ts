@@ -72,6 +72,8 @@ function makeSocket(overrides: Partial<ConstructorParameters<typeof SttSocket>[0
     onTranscript: () => undefined,
     onState: (state) => states.push(state),
     getToken: () => Promise.resolve('access-token'),
+    // 느린 재시도 간격을 정확히 5초로 고정합니다. jitter 는 따로 확인합니다
+    random: () => 0.5,
     createSocket: () => {
       const socket = new FakeSocket();
       sockets.push(socket);
@@ -235,6 +237,88 @@ describe('재연결', () => {
     expect(states.at(-1)).toBe('reconnecting');
     await vi.advanceTimersByTimeAsync(500);
     expect(sockets).toHaveLength(before + 1);
+  });
+});
+
+describe('느린 재시도 간격과 상한', () => {
+  /** 빠른 백오프 3회를 다 쓰고 느린 재시도로 넘어간 상태를 만듭니다 */
+  async function exhaustFastBackoff() {
+    sockets.at(-1)!.serverClose(1006);
+    for (const delay of [500, 1_000, 2_000]) {
+      await vi.advanceTimersByTimeAsync(delay);
+      sockets.at(-1)!.serverClose(1006);
+    }
+  }
+
+  /** 느린 재시도를 계속 실패시키며 시간을 흘립니다 */
+  async function keepFailing(forMs: number) {
+    const until = Date.now() + forMs;
+    while (Date.now() < until) {
+      await vi.advanceTimersByTimeAsync(5_000);
+      sockets.at(-1)!.serverClose(1006);
+    }
+  }
+
+  it.each([
+    [0, 4_000],
+    [0.9995, 5_999],
+  ])('간격은 4~6초 사이에서 무작위로 고른다 (random=%s → %sms)', async (random, delay) => {
+    vi.useFakeTimers();
+    const stt = makeSocket({ random: () => random });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    await exhaustFastBackoff();
+    const before = sockets.length;
+
+    await vi.advanceTimersByTimeAsync(delay - 1);
+    expect(sockets).toHaveLength(before);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sockets).toHaveLength(before + 1);
+  });
+
+  it('끊긴 지 30분이 지나면 멈춘다 — 열어 두고 떠난 탭이 계속 두드리지 않게', async () => {
+    vi.useFakeTimers();
+    const onGiveUp = vi.fn();
+    const stt = makeSocket({ onGiveUp });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    await exhaustFastBackoff();
+    await keepFailing(29 * 60_000);
+    expect(onGiveUp).not.toHaveBeenCalled();
+
+    await keepFailing(60_000);
+    expect(onGiveUp).toHaveBeenCalledWith('RETRY_LIMIT');
+    expect(states.at(-1)).toBe('degraded');
+
+    const after = sockets.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(after);
+  });
+
+  it('중간에 한 번 붙으면 30분을 처음부터 다시 센다', async () => {
+    vi.useFakeTimers();
+    const onGiveUp = vi.fn();
+    const stt = makeSocket({ onGiveUp });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    await exhaustFastBackoff();
+    await keepFailing(25 * 60_000);
+    await vi.advanceTimersByTimeAsync(5_000);
+    sockets.at(-1)!.open();
+    sockets.at(-1)!.emit(READY);
+
+    // 처음 끊긴 때부터는 30분이 넘지만, 다시 끊긴 때부터는 아직 25분입니다
+    await exhaustFastBackoff();
+    await keepFailing(25 * 60_000);
+    expect(onGiveUp).not.toHaveBeenCalled();
   });
 });
 
