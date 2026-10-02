@@ -101,7 +101,7 @@ export function RehearsalPage() {
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
-  const { meterRef, dbRef, statsRef, audioState } = useMicLevel(stream);
+  const { meterRef, statsRef, audioState } = useMicLevel(stream);
 
   const ready = take.data !== undefined && pitch.data !== undefined;
   const running = ready && phase === 'RUNNING';
@@ -460,7 +460,7 @@ export function RehearsalPage() {
                 </section>
 
                 <section className="mic">
-                  <LevelBar variant="segments" meterRef={meterRef} dbRef={dbRef} />
+                  <LevelBar variant="segments" meterRef={meterRef} />
                 </section>
 
                 <section className="next">

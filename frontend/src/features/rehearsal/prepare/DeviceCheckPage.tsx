@@ -112,7 +112,7 @@ export function DeviceCheckPage() {
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
-  const { meterRef, dbRef, rowRef, silentRef, micOk, audioState, meterError } = useMicLevel(stream);
+  const { meterRef, rowRef, silentRef, micOk, audioState, meterError } = useMicLevel(stream);
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
   // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
   // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
@@ -342,12 +342,12 @@ export function DeviceCheckPage() {
                 },
                 {
                   id: 'mic',
-                  // 문구 전체를 rAF가 다시 씁니다 — 초당 수십 번 바뀌는 값이라 상태로 올리지 않습니다
+                  // 문구는 rAF가 씁니다 — 계량기 루프 안에서 바뀌는 값이라 상태로 올리지 않습니다
                   label: <span ref={rowRef}>마이크 입력 확인 중</span>,
                   done: micOk,
-                  // 막대를 이 줄 안에 둡니다 (목업 09) — 숫자와 움직임이 같이 보여야
+                  // 막대를 이 줄 안에 둡니다 (목업 09) — 문구와 움직임이 같이 보여야
                   // "소리가 들어오고 있다"가 한 번에 읽힙니다
-                  trailing: <LevelBar variant="segments" meterRef={meterRef} dbRef={dbRef} />,
+                  trailing: <LevelBar variant="segments" meterRef={meterRef} />,
                 },
                 {
                   // 먼저 카메라 위치를 4초 보고, 이어서 카메라 2초 · 대본 자리 2초.

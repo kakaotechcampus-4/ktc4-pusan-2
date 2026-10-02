@@ -7,22 +7,11 @@ const DB_FLOOR = -60;
 /** 무음이 이만큼 이어지면 권한은 있는데 입력이 없는 상황입니다 (명세 8-3) */
 const SILENT_WARN_MS = 8_000;
 
-/**
- * 화면에 보여 줄 때 더하는 값. dBFS(-60~0)를 사람이 아는 dB(대화 60dB 같은)처럼 보이게 합니다.
- *
- * ★ **추정값입니다.** 마이크 감도를 모르므로 기기마다 ±10~15dB 틀릴 수 있습니다.
- *   보통 노트북 마이크에서 평소 말소리가 -30dBFS 안팎이고, 그게 60dB 쯤으로 보이게
- *   잡은 값입니다. 휴대폰 소음계 앱과 나란히 재 보며 맞출 값이지 근거가 있는 숫자가
- *   아닙니다 — 기기별 보정은 아직 정하지 않았습니다.
- *
- * **보여 주기에만 씁니다.** 코치 규칙(LOW_DB)은 여전히 dBFS 로 판정합니다 —
- * 추정값으로 판정하면 마이크에 따라 같은 목소리가 통과하기도 하고 떨어지기도 합니다.
- */
-const DISPLAY_OFFSET_DB = 90;
-
-function toDisplayDb(dbfs: number): number {
-  return Math.round(dbfs + DISPLAY_OFFSET_DB);
-}
+// ★ 화면에는 dB 숫자를 보여 주지 않습니다.
+//   브라우저가 주는 값은 dBFS 라서 실제 소리 크기(dB SPL)로 바꿀 수 없습니다 —
+//   마이크 감도 · OS 입력 볼륨에 따라 같은 목소리가 기기마다 10dB 넘게 다르게 나옵니다.
+//   근거 없는 숫자를 보여 주면 사용자가 그 숫자를 믿습니다.
+//   크기가 적당한지(작아요 · 적당해요 · 커요)는 AI 음량 판정을 받아서 보여 줄 자리입니다.
 
 /** 화면과 코치 규칙이 쓰는 범위로 자릅니다 */
 function clampDb(db: number): number {
@@ -59,9 +48,7 @@ function paint(el: HTMLElement | null, percent: number): void {
  */
 export function useMicLevel(stream: MediaStream | null) {
   const meterRef = useRef<HTMLDivElement>(null);
-  /** 계량기 옆 숫자 (약 64). 추정 dB 입니다 — DISPLAY_OFFSET_DB */
-  const dbRef = useRef<HTMLSpanElement>(null);
-  /** 점검 항목 줄 전체 문구 ('마이크 입력 약 64dB') */
+  /** 점검 항목 줄 전체 문구 ('마이크 입력 확인됨') */
   const rowRef = useRef<HTMLSpanElement>(null);
   const silentRef = useRef<HTMLSpanElement>(null);
 
@@ -129,18 +116,17 @@ export function useMicLevel(stream: MediaStream | null) {
         statsRef.current.speechMs = speech.ms;
         paint(meterRef.current, ((db - DB_FLOOR) / -DB_FLOOR) * 100);
 
-        const quiet = db <= DB_FLOOR;
-        if (dbRef.current) dbRef.current.textContent = quiet ? '—' : String(toDisplayDb(db));
-        if (rowRef.current) {
-          rowRef.current.textContent = quiet
-            ? '마이크 입력 없음'
-            : `마이크 입력 약 ${toDisplayDb(db)}dB`;
-        }
-
         // 한 번이라도 소리가 들어오면 점검 통과입니다. 이 setState는 스트림당 한 번 돕니다
         if (!heard && meter.silentMs() === 0) {
           heard = true;
           setHeardFor(stream);
+        }
+
+        // 말 사이 쉼마다 문구가 바뀌지 않게, 한 번 들어온 뒤로는 '확인됨'으로 둡니다.
+        // 오래 조용한 건 아래 silentRef 가 따로 알립니다
+        if (rowRef.current) {
+          const text = heard ? '마이크 입력 확인됨' : '마이크 입력 없음';
+          if (rowRef.current.textContent !== text) rowRef.current.textContent = text;
         }
 
         if (silentRef.current) {
@@ -169,7 +155,6 @@ export function useMicLevel(stream: MediaStream | null) {
 
   return {
     meterRef,
-    dbRef,
     rowRef,
     silentRef,
     statsRef,
