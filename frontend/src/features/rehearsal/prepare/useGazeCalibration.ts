@@ -103,6 +103,13 @@ export const CALIBRATION_FAIL_MESSAGE: Record<CalibrationFailReason, string> = {
   ENGINE_ERROR: '시선 분석이 잠시 멈췄어요. 다시 시도해도 안 되면 페이지를 새로고침해 주세요.',
 };
 
+/** 잡은 기준점 수. 아래 자리까지 넘어왔으면 카메라 자리는 이미 잡힌 것입니다 */
+function calibrationPoints(phase: CalibrationPhase): number {
+  if (phase === 'DONE') return 2;
+  if (phase === 'BOTTOM' || phase === 'EVALUATING') return 1;
+  return 0;
+}
+
 /**
  * 카메라 배치 확인(렌즈 2초 · 화면 가운데 2초) → 2점 캘리브레이션(카메라 2초 · 화면 아래 2초).
  *
@@ -485,7 +492,7 @@ export function useGazeCalibration({
 
   const saved = useCallback(() => savingRef.current, []);
 
-  const points = phase === 'DONE' ? 2 : phase === 'BOTTOM' || phase === 'EVALUATING' ? 1 : 0;
+  const points = calibrationPoints(phase);
 
   return {
     phase,

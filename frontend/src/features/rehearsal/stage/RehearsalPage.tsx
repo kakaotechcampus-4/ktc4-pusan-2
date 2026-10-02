@@ -389,17 +389,13 @@ export function RehearsalPage() {
     }
   };
 
-  const gazeNote = gazeDeclined
-    ? '시선 측정 제외 · 소리만으로 진행 중'
-    : deviceError
-      ? '카메라가 끊겼습니다 — 발표는 계속됩니다'
-      : missingCalibration
-        ? '시선 기준이 없어 측정 제외 — 발표는 계속됩니다'
-        : gazeError
-          ? `시선 측정 제외 · ${gazeError}`
-          : gazeReady
-            ? '시선 기록 중'
-            : '시선 엔진 준비 중';
+  const gazeNote = gazeNoteText({
+    declined: gazeDeclined,
+    cameraLost: deviceError !== null,
+    missingCalibration,
+    error: gazeError,
+    ready: gazeReady,
+  });
 
   return (
     <div className="min-h-full bg-greige px-4 py-5">
@@ -530,11 +526,7 @@ export function RehearsalPage() {
                   });
                 }}
               >
-                {phase === 'ENDING'
-                  ? '정리하는 중…'
-                  : confirming
-                    ? '정말 끝낼까요?'
-                    : '발표 끝내기'}
+                {endButtonText(phase === 'ENDING', confirming)}
               </button>
             </div>
           </div>
@@ -542,6 +534,31 @@ export function RehearsalPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다 —
+ * 사용자가 거절했으면 카메라가 끊겼든 말든 "거절"이 이유입니다.
+ */
+function gazeNoteText(state: {
+  declined: boolean;
+  cameraLost: boolean;
+  missingCalibration: boolean;
+  error: GazeExcludedReason | null;
+  ready: boolean;
+}): string {
+  if (state.declined) return '시선 측정 제외 · 소리만으로 진행 중';
+  if (state.cameraLost) return '카메라가 끊겼습니다 — 발표는 계속됩니다';
+  if (state.missingCalibration) return '시선 기준이 없어 측정 제외 — 발표는 계속됩니다';
+  if (state.error) return `시선 측정 제외 · ${state.error}`;
+  if (state.ready) return '시선 기록 중';
+  return '시선 엔진 준비 중';
+}
+
+function endButtonText(ending: boolean, confirming: boolean): string {
+  if (ending) return '정리하는 중…';
+  if (confirming) return '정말 끝낼까요?';
+  return '발표 끝내기';
 }
 
 /**

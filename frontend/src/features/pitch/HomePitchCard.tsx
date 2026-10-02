@@ -10,6 +10,13 @@ const modes: Record<string, string> = {
   OFF: '대본 없이',
 };
 
+function deltaText(delta: number | null): string {
+  if (delta === null) return '비교 없음';
+  if (delta === 0) return '변화 없음';
+  if (delta > 0) return `↑ +${delta}`;
+  return `↓ ${delta}`;
+}
+
 export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: number }) {
   const [open, setOpen] = useState(index === 0);
   const [failedImage, setFailedImage] = useState<string | null>(null);
@@ -124,11 +131,7 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
                       take.delta === null ? '점수 비교 없음' : `이전 대비 ${take.delta}점`
                     }
                   >
-                    {take.delta === null
-                      ? '비교 없음'
-                      : take.delta === 0
-                        ? '변화 없음'
-                        : `${take.delta > 0 ? '↑ +' : '↓ '}${take.delta}`}
+                    {deltaText(take.delta)}
                   </span>
                   {take.take_id ? (
                     <Link

@@ -63,11 +63,7 @@ export function computeGate(draft: PitchDraft, chosen: Chosen = CHOOSE_LATEST): 
     key: 'script',
     // 매핑까지 끝나면 줄 하나가 그 사실을 말합니다 — 목업 07 · 08.
     // 장수가 어긋났으면 끝난 것이 아니므로 "매핑 완료"라고 하지 않습니다
-    label: mappingDone
-      ? `대본 ${blocks.length}블록 매핑 완료`
-      : scriptWritten
-        ? `대본 ${charCount.toLocaleString()}자`
-        : '대본 미등록',
+    label: scriptLabel(mappingDone, scriptWritten, blocks?.length ?? 0, charCount),
     done: scriptWritten,
   };
 
@@ -124,4 +120,15 @@ function nextAction({
   if (!mappingDone) return '매핑을 실행해주세요';
   if (blankCount > 0) return '비어 있는 평가기준을 채우거나 지워주세요';
   return '평가기준을 1개 이상 추가해주세요';
+}
+
+function scriptLabel(
+  mappingDone: boolean,
+  scriptWritten: boolean,
+  blockCount: number,
+  charCount: number,
+): string {
+  if (mappingDone) return `대본 ${blockCount}블록 매핑 완료`;
+  if (scriptWritten) return `대본 ${charCount.toLocaleString()}자`;
+  return '대본 미등록';
 }

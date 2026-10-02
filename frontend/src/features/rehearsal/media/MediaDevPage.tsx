@@ -416,13 +416,7 @@ export function MediaDevPage() {
         {/* 계기판 */}
         <section className="grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2">
           <Cell label="워커">
-            {workerError ? (
-              <span className="text-coral-deep">{workerError}</span>
-            ) : ready ? (
-              <span className="text-ink">ready</span>
-            ) : (
-              <span className="text-stone">로딩 중…</span>
-            )}
+            <WorkerStatus error={workerError} ready={ready} />
           </Cell>
 
           <Cell label="처리 fps" strong>
@@ -542,4 +536,10 @@ function Cell({
       <div className={`tabular mt-1 ${strong ? 'text-2xl font-bold' : 'text-sm'}`}>{children}</div>
     </div>
   );
+}
+
+function WorkerStatus({ error, ready }: { error: string | null; ready: boolean }) {
+  if (error) return <span className="text-coral-deep">{error}</span>;
+  if (ready) return <span className="text-ink">ready</span>;
+  return <span className="text-stone">로딩 중…</span>;
 }

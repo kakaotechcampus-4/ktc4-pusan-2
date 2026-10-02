@@ -91,6 +91,17 @@ function calibrationActionText(phase: CalibrationPhase, live: boolean): string {
   }
 }
 
+/** 시선 기준점 항목의 문구. 확인 중이면 phase 보다 그게 먼저입니다 */
+function calibrationLabel(
+  cal: Pick<ReturnType<typeof useGazeCalibration>, 'verifying' | 'phase' | 'advice' | 'points'>,
+): string {
+  if (cal.verifying) return '시선 기준점 · 저장된 기준 확인 중';
+  if (cal.phase === 'FAILED') return '시선 기준점 · 다시 필요';
+  if (cal.phase === 'PLACE_WARN') return '시선 기준점 · 카메라 위치 확인';
+  if (cal.advice) return '시선 기준점 2 / 2 · 품질 낮음';
+  return `시선 기준점 ${cal.points} / 2`;
+}
+
 /**
  * 09 시작 전 세팅 — 리허설 바로 앞. **Take가 생기는 유일한 화면입니다.**
  *
@@ -353,15 +364,7 @@ export function DeviceCheckPage() {
                   // 먼저 카메라 위치를 4초 보고, 이어서 카메라 2초 · 대본 자리 2초.
                   // 모은 프레임은 분류기가 받아 판정합니다 (A안) — 여기서는 순서와 안내만 합니다.
                   id: 'gaze',
-                  label: cal.verifying
-                    ? '시선 기준점 · 저장된 기준 확인 중'
-                    : cal.phase === 'FAILED'
-                      ? '시선 기준점 · 다시 필요'
-                      : cal.phase === 'PLACE_WARN'
-                        ? '시선 기준점 · 카메라 위치 확인'
-                        : cal.advice
-                          ? '시선 기준점 2 / 2 · 품질 낮음'
-                          : `시선 기준점 ${cal.points} / 2`,
+                  label: calibrationLabel(cal),
                   done: cal.phase === 'DONE',
                   action: {
                     text: calibrationActionText(cal.phase, live),

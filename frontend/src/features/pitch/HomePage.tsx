@@ -61,14 +61,16 @@ export function HomePage() {
             <span aria-hidden="true">＋</span> 새 피치 만들기
           </Link>
         </div>
-        {home.isPending ? (
+        {home.isPending && (
           <div
             role="status"
             className="mt-10 border border-line-strong p-10 text-center text-stone"
           >
             발표 노트를 가져오는 중이에요…
           </div>
-        ) : home.isError ? (
+        )}
+        {/* 불러오는 중에는 isError 도 data 도 없어 아래는 그리지 않습니다 */}
+        {home.isError ? (
           <div role="alert" className="mt-10 border border-line-strong p-10 text-center">
             <h2 className="font-bold">발표 목록을 가져오지 못했어요.</h2>
             <p className="mt-2 text-sm text-stone">잠시 후 다시 시도해 주세요.</p>

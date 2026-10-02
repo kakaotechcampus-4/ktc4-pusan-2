@@ -23,6 +23,14 @@ interface RailGroup {
   onAdd: () => void;
 }
 
+/** 연습 버튼 색. 선택된 줄(active) 위에서는 배경이 진해서 같은 상태라도 색을 바꿉니다 */
+function practiceButtonTone(going: boolean, active: boolean): string {
+  if (going && active) return 'bg-panel/25';
+  if (going) return 'bg-coral-wash text-coral-deep';
+  if (active) return 'text-panel/60 hover:bg-panel/20';
+  return 'text-stone hover:bg-coral-wash hover:text-coral-deep';
+}
+
 function GroupBlock({ group }: { group: RailGroup }) {
   const node = useCreateStore((s) => s.node);
   const version = useCreateStore((s) => s.version);
@@ -97,13 +105,7 @@ function GroupBlock({ group }: { group: RailGroup }) {
                 className={[
                   'mr-1 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold',
                   // 숨기지 않습니다 — hover 로만 나타나면 터치와 키보드에서 못 찾습니다
-                  going
-                    ? active
-                      ? 'bg-panel/25'
-                      : 'bg-coral-wash text-coral-deep'
-                    : active
-                      ? 'text-panel/60 hover:bg-panel/20'
-                      : 'text-stone hover:bg-coral-wash hover:text-coral-deep',
+                  practiceButtonTone(going, active),
                 ].join(' ')}
               >
                 {going ? '연습' : '연습으로'}
