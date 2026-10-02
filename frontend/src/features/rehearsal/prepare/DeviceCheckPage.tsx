@@ -38,6 +38,7 @@ function deviceCheckHint({
   calPhase,
   calPoints,
   calPoor,
+  calSaveFailed,
 }: {
   deviceError: DeviceError | null;
   live: boolean;
@@ -46,6 +47,8 @@ function deviceCheckHint({
   calPoints: number;
   /** 기준은 잡혔지만 품질이 낮음 — 막지 않고 권하기만 합니다 */
   calPoor: boolean;
+  /** 기준은 잡혔지만 브라우저에 저장하지 못함 — 리허설이 못 쓰므로 막습니다 */
+  calSaveFailed: boolean;
 }): string {
   if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
   if (!live) return '카메라를 켜야 점검을 시작할 수 있습니다';
@@ -54,6 +57,9 @@ function deviceCheckHint({
     return '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요';
   if (calPhase === 'PLACE_WARN') return '카메라 위치를 확인해 주세요';
   if (calPoints < 2) return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
+  if (calSaveFailed) {
+    return "시선 기준을 저장하지 못했어요. 다시 잡거나 '소리만으로 계속하기'를 눌러 주세요";
+  }
   if (calPoor) return '시선 기준이 흐릿해요. 다시 잡으면 더 정확해지지만, 이대로 시작해도 됩니다';
   return '점검이 끝났어요';
 }
@@ -192,7 +198,13 @@ export function DeviceCheckPage() {
   // 저장된 기준을 확인하는 중에는 열지 않습니다 — "완료"로 보이는데 기준이 없으면
   // 리허설에서 시선이 조용히 빠집니다
   const ready =
-    live && micOk && cal.points === 2 && !cal.verifying && data !== undefined && !starting;
+    live &&
+    micOk &&
+    cal.points === 2 &&
+    !cal.verifying &&
+    !cal.saveFailed &&
+    data !== undefined &&
+    !starting;
 
   /**
    * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
@@ -200,7 +212,7 @@ export function DeviceCheckPage() {
    * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
    * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
    */
-  const start = async () => {
+  const start = async ({ withGaze }: { withGaze: boolean }) => {
     if (!data || starting) return;
     setStarting(true);
     setStartError(null);
@@ -217,6 +229,10 @@ export function DeviceCheckPage() {
     const practiceMode = practiceModeFor(scriptMode);
 
     try {
+      // 리허설은 다른 워커라 기준을 IndexedDB 에서 꺼내 씁니다. **Take 를 만들기 전에** 확인합니다 —
+      // 뒤에서 실패하면 연습 없이 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다
+      if (withGaze) await cal.saved();
+
       const clientSessionId = await startSession();
 
       const take = await createTake.mutateAsync({
@@ -232,8 +248,6 @@ export function DeviceCheckPage() {
 
       // 품질 요약만 갑니다. 기준 벡터는 브라우저에 남습니다 (CLAUDE.md 1번)
       if (calibration) await postCalibration(take.takeId, calibration);
-      // 리허설은 다른 워커라 기준을 IndexedDB 에서 꺼내 씁니다. 저장이 끝난 뒤에 넘어갑니다
-      await cal.saved();
 
       navigate(
         practiceMode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`,
@@ -261,6 +275,7 @@ export function DeviceCheckPage() {
           calPhase: cal.phase,
           calPoints: cal.points,
           calPoor: cal.advice !== null,
+          calSaveFailed: cal.saveFailed,
         }));
 
   const takeNumber = data?.nextTakeNumber ?? 0;
@@ -286,7 +301,7 @@ export function DeviceCheckPage() {
             disabled={!micOk || starting || data === undefined}
             onClick={() => {
               declineGaze();
-              start().catch(() => undefined);
+              start({ withGaze: false }).catch(() => undefined);
             }}
           >
             소리만으로 계속하기
@@ -294,7 +309,7 @@ export function DeviceCheckPage() {
           <StageButton
             variant="primary"
             disabled={!ready}
-            onClick={() => start().catch(() => undefined)}
+            onClick={() => start({ withGaze: true }).catch(() => undefined)}
           >
             {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
           </StageButton>
