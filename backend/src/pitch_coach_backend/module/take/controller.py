@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.dto import TakeInitRequestDTO, CalibrationDTO
 from pitch_coach_backend.core.database import get_db
-from pitch_coach_backend.module.pitch.dependencies import OwnedPitch, BelongToPitch
+from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
 from pitch_coach_backend.module.take.dependencies import OwnedTake
 from pitch_coach_backend.module.take.service import delete_take_service, create_take_service, update_take_service, create_calibration_service, get_previous_missions_service
 
