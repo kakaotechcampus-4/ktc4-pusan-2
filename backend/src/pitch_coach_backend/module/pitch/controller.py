@@ -24,6 +24,7 @@ from pitch_coach_backend.module.pitch.service import (
     add_pitch_standard_service,
     create_script_service,
     delete_pitch_service,
+    get_each_presentation_service,
     get_pitch_datas,
     get_all_pitches_service,
     get_script_detail,
@@ -61,8 +62,7 @@ def get_presentation(
     presentation_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)]
 ):
-    pitch_repository = PitchRepository(db)
-    presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_id)
+    presentation_version = get_each_presentation_service(db, pitch_id, presentation_id)
 
     if not presentation_version:
         raise NotExistPresentationVersion()

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.dto import (
     AllPitchesDTO,
+    EachPresentationDTO,
     HighlightDTO,
     ParseRequestedDTO,
     ParseTicket,
@@ -74,6 +75,22 @@ def get_pitch_service(db: Session, pitch_id: uuid.UUID):
         raise NonExistentPitch()
 
     return existing_pitch
+
+def get_each_presentation_service(db: Session, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID):
+    pitch_repository = PitchRepository(db)
+    presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_version_id)
+
+    if not presentation_version:
+        raise NonExistentPitch()
+
+    return EachPresentationDTO(
+        pitch_id=pitch_id,
+        presentation_version_id=presentation_version.id,
+        version=presentation_version.version,
+        file_url=generate_presigned_url(presentation_version.file_key),
+        description=presentation_version.description,
+        created_at=presentation_version.created_at.date()
+    )
 
 # 홈 화면 : pitches 목록 조회
 def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:

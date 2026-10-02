@@ -27,6 +27,14 @@ class PitchesDTO(BaseModel):
 
 class AllPitchesDTO(BaseModel):
     pitches: list[PitchesDTO]
+
+class EachPresentationDTO(BaseModel):
+    pitch_id: uuid.UUID
+    presentation_version_id: uuid.UUID
+    version: int
+    file_url: str
+    description: str | None = None
+    created_at: date
       
 class UploadPresentationDTO(BaseModel):
     presentation_file: UploadFile = File(...)
