@@ -17,23 +17,31 @@ export function NextGate({ onStart }: { onStart: () => void }) {
     <div className="flex flex-col gap-3">
       <div
         className={[
-          'rounded border px-4 py-3',
+          'rounded border px-3 py-3',
           gate.ready ? 'border-coral bg-coral-wash' : 'border-line-strong bg-panel',
         ].join(' ')}
       >
-        <p className="text-xs text-stone">{gate.heading}</p>
-        <p className="mt-0.5 text-sm font-bold leading-snug">{gate.message}</p>
+        {gate.ready && <p className="mb-0.5 text-[10px] text-coral-deep">{gate.heading}</p>}
+        <p className="text-xs font-bold leading-snug">{gate.message}</p>
 
-        <ul className="mt-3 flex flex-col gap-1">
+        <ul className="mt-2.5 flex flex-col gap-1.5">
           {gate.rows.map((row) => (
             <li
               key={row.key}
-              className={['flex items-center gap-1.5 text-xs', row.done ? '' : 'text-stone'].join(
+              className={['flex items-center gap-2 text-xs', row.done ? '' : 'text-stone'].join(
                 ' ',
               )}
             >
-              {/* 색만으로 구분하지 않습니다 — 기호가 먼저 읽혀야 합니다 */}
-              <span aria-hidden="true">{row.done ? '✓' : '○'}</span>
+              {/* 색만으로 구분하지 않습니다 — 체크 표시가 먼저 읽혀야 합니다 */}
+              <span
+                aria-hidden="true"
+                className={[
+                  'flex h-3.5 w-3.5 shrink-0 items-center justify-center border text-[9px] leading-none',
+                  row.done ? 'border-coral bg-coral text-white' : 'border-stone bg-panel',
+                ].join(' ')}
+              >
+                {row.done ? '✓' : ''}
+              </span>
               <span>{row.label}</span>
             </li>
           ))}
@@ -45,13 +53,13 @@ export function NextGate({ onStart }: { onStart: () => void }) {
         disabled={!gate.ready}
         onClick={onStart}
         className={[
-          'w-full rounded px-4 py-3 text-sm font-bold',
+          'w-full rounded px-4 py-2.5 text-sm font-bold',
           gate.ready
-            ? 'bg-coral text-panel hover:bg-coral-deep'
-            : 'cursor-not-allowed bg-cream text-stone',
+            ? 'bg-coral text-white hover:bg-coral-deep'
+            : 'cursor-not-allowed bg-line text-stone',
         ].join(' ')}
       >
-        다음 ▶
+        다음 →
       </button>
     </div>
   );

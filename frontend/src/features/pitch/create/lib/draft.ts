@@ -12,8 +12,32 @@ import type { Ms } from '@/types/api';
  * 매번 다르게 보이는데, 눈으로 읽어서는 어느 조합이 빠졌는지 알 수 없습니다.
  */
 
-/** 사이드바의 세 갈래. 본문에 무엇을 띄울지가 여기서 정해집니다 */
+/** 사이드바의 세 갈래. 각자 버전을 올립니다 */
 export type DraftNode = 'slides' | 'script' | 'criteria';
+
+/**
+ * 본문에 띄울 수 있는 것. 세 갈래에 더해 맨 위의 **발표 정보**(제목 · 날짜)가 있습니다.
+ * 발표 정보는 피치 한 판에 하나뿐이라 버전이 없습니다 — 그래서 `DraftNode` 와 나눕니다.
+ */
+export type PaneNode = 'info' | DraftNode;
+
+/**
+ * 발표시간 허용 오차(초). 평가기준 00번 줄의 `같음` · `±30초` · `±1분`.
+ *
+ * 서버에는 `PitchDTO.upper_deviation` · `lower_deviation` 로 나뉘어 있습니다 —
+ * 보낼 때 같은 값을 둘 다에 넣습니다 (±30초 → 위 30 · 아래 30).
+ */
+export type TimeToleranceSec = 0 | 30 | 60;
+
+export const TIME_TOLERANCE_OPTIONS: { value: TimeToleranceSec; label: string }[] = [
+  { value: 0, label: '같음' },
+  { value: 30, label: '±30초' },
+  { value: 60, label: '±1분' },
+];
+
+/** 발표시간 범위(분). 입력 칸이 아니라 −/+ 로만 바꿉니다 */
+export const MIN_TIME_LIMIT_MIN = 1;
+export const MAX_TIME_LIMIT_MIN = 60;
 
 /**
  * 평가기준의 채점 방식. 목업의 `자동 채점` · `발화 대조` 두 가지입니다.
@@ -37,9 +61,37 @@ export const MAX_SLIDE_BYTES = 40 * 1024 * 1024;
 
 export interface SlideVersion {
   version: number;
-  /** PDF 변환이 끝나야 정해집니다. 변환 전에는 null */
+  /**
+   * 업로드가 끝나고 받은 URL 로 PDF 를 열어야 정해집니다. 그 전(빈 버전 · 올리는 중)에는 null.
+   * 서버는 장수를 주지 않습니다 — pdf.js 가 연 문서의 `numPages` 입니다.
+   */
   pageCount: number | null;
+  /**
+   * 업로드 응답의 presigned URL. 뷰어가 이것으로 PDF 를 엽니다.
+   * ★ 1시간 뒤 만료됩니다. 한 번 연 문서는 메모리에 있어 화면은 그대로지만,
+   *   새로고침 뒤에 다시 열려면 조회 API 로 새 URL 을 받아야 합니다.
+   */
+  fileUrl?: string;
+  /** 서버의 presentation_versions.id. Take 를 만들 때 이 버전을 가리킵니다 */
+  presentationVersionId?: string;
 }
+
+/** 업로드 결과로 버전에 채워 넣는 값 */
+export type UploadedSlides = Required<Pick<SlideVersion, 'fileUrl' | 'presentationVersionId'>> & {
+  pageCount: number;
+};
+
+/**
+ * 슬라이드 업로드 진행 상태. 버전과 따로 둡니다 — 올리는 도중에는 아직 버전에 채울 것이 없고,
+ * 실패하면 버전을 만들지 않은 채로 "다시 시도"할 파일만 들고 있어야 합니다.
+ *
+ * `upload` 는 서버에 못 올린 것, `open` 은 올렸지만 받은 URL 로 PDF 를 못 연 것입니다
+ * (깨진 파일이거나, 실서버에서 S3 CORS 가 막혀 있거나).
+ */
+export type SlideUpload =
+  | { status: 'idle' }
+  | { status: 'uploading'; file: File }
+  | { status: 'failed'; file: File; reason: 'upload' | 'open' };
 
 export interface ScriptVersion {
   version: number;
@@ -57,6 +109,14 @@ export interface DraftCriterion {
 export interface CriteriaVersion {
   version: number;
   items: DraftCriterion[];
+  /**
+   * 자연어로 적은 원문. 서버가 이것을 `items` 로 나눕니다.
+   * 다시 열었을 때 무엇을 적어서 이 목록이 나왔는지 보여 주려고 함께 둡니다.
+   * 손으로만 만든 버전에는 없습니다.
+   */
+  sourceText?: string;
+  /** 서버가 기준으로 넣지 못한 부분(`except_standard`). 5개를 넘었거나 평가할 수 없는 문장 */
+  exceptText?: string | null;
 }
 
 export interface PitchDraft {
@@ -64,6 +124,7 @@ export interface PitchDraft {
   /** ISO yyyy-mm-dd. 안 정했으면 빈 문자열 */
   presentationDate: string;
   timeLimitSec: number;
+  timeToleranceSec: TimeToleranceSec;
   slides: SlideVersion[];
   scripts: ScriptVersion[];
   criteria: CriteriaVersion[];

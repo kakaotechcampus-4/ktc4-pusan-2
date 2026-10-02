@@ -1,5 +1,14 @@
 import { create } from 'zustand';
-import type { Chosen, DraftCriterion, DraftNode, PitchDraft, ScoringMode } from './lib/draft';
+import type {
+  Chosen,
+  SlideUpload,
+  UploadedSlides,
+  DraftCriterion,
+  DraftNode,
+  PaneNode,
+  PitchDraft,
+  ScoringMode,
+} from './lib/draft';
 import { CHOOSE_LATEST, MAX_CRITERIA } from './lib/draft';
 
 /**
@@ -18,7 +27,7 @@ import { CHOOSE_LATEST, MAX_CRITERIA } from './lib/draft';
 interface CreateState {
   draft: PitchDraft;
   /** 본문에 무엇을 띄울지. 사이드바에서 고른 것 */
-  node: DraftNode;
+  node: PaneNode;
   /** 고른 버전. null 이면 그 갈래의 최신 */
   version: number | null;
 
@@ -43,23 +52,26 @@ interface CreateState {
   chosen: Chosen;
   chooseVersion: (node: DraftNode, version: number | null) => void;
 
-  select: (node: DraftNode, version?: number | null) => void;
+  select: (node: PaneNode, version?: number | null) => void;
 
   setMeta: (
-    patch: Partial<Pick<PitchDraft, 'title' | 'presentationDate' | 'timeLimitSec'>>,
+    patch: Partial<
+      Pick<PitchDraft, 'title' | 'presentationDate' | 'timeLimitSec' | 'timeToleranceSec'>
+    >,
   ) => void;
 
-  /** 슬라이드 새 버전. 변환 전이라 장수는 아직 모릅니다 */
+  /** 슬라이드 새 버전. 올리기 전이라 장수는 아직 모릅니다 */
   addSlideVersion: () => void;
+  /** 업로드 진행 상태. 흐름은 `slideUpload.ts` 가 몹니다 */
+  slideUpload: SlideUpload;
+  setSlideUpload: (next: SlideUpload) => void;
   /**
-   * 파일을 받았습니다. 변환 대기 중인 버전이 있으면 거기 채우고, 없으면 새로 만듭니다.
+   * 올리고 열기까지 끝났습니다. 비어 있는 버전이 있으면 거기 채우고, 없으면 새로 만듭니다.
    *
    * 한 동작으로 묶은 이유 — 나눠 부르면 "버전을 만들었는데 장수는 다음 렌더에
    * 들어오는" 중간 상태가 생기고, 그 틈에 진행 조건이 한 번 잘못 계산됩니다.
    */
-  attachSlides: (pageCount: number) => void;
-  /** 서버 변환이 끝나 장수가 정해졌을 때 */
-  setPageCount: (version: number, pageCount: number) => void;
+  attachSlides: (uploaded: UploadedSlides) => void;
 
   /** 대본 새 버전. 목업 사이드바의 "+ 새로운 대본 추가" */
   addScriptVersion: (text?: string) => void;
@@ -68,6 +80,14 @@ interface CreateState {
   setBlocks: (version: number, blocks: string[]) => void;
 
   addCriteriaVersion: () => void;
+  /**
+   * 자연어를 서버가 나눠 준 결과를 목록으로 넣습니다. 그 버전의 목록을 **통째로 바꿉니다**.
+   * 버전이 아직 없으면(`null`) 새로 만듭니다 — 평가기준 화면에 들어오자마자 적을 수 있게.
+   */
+  applyParsedCriteria: (
+    version: number | null,
+    parsed: { sourceText: string; standards: string[]; exceptText: string | null },
+  ) => void;
   addCriterion: (version: number) => void;
   editCriterion: (version: number, id: string, patch: Partial<Omit<DraftCriterion, 'id'>>) => void;
   removeCriterion: (version: number, id: string) => void;
@@ -80,6 +100,8 @@ const EMPTY_DRAFT: PitchDraft = {
   presentationDate: '',
   // 5분. 목업의 기본값입니다
   timeLimitSec: 300,
+  // ±1분. 목업에서 골라 둔 값입니다
+  timeToleranceSec: 60,
   slides: [],
   scripts: [],
   criteria: [],
@@ -114,16 +136,19 @@ export const useCreateStore = create<CreateState>((set) => ({
       };
     }),
 
-  attachSlides: (pageCount) =>
+  slideUpload: { status: 'idle' },
+  setSlideUpload: (next) => set({ slideUpload: next }),
+
+  attachSlides: (uploaded) =>
     set((s) => {
       const pending = s.draft.slides.at(-1);
-      // 변환을 기다리던 버전이 있으면 그것을 채웁니다 — "+ 새로운 슬라이드 추가" 뒤의 경로
+      // 파일을 기다리던 빈 버전이 있으면 그것을 채웁니다 — "+ 슬라이드 추가" 뒤의 경로
       if (pending && pending.pageCount === null) {
         return {
           draft: {
             ...s.draft,
             slides: s.draft.slides.map((v) =>
-              v.version === pending.version ? { ...v, pageCount } : v,
+              v.version === pending.version ? { ...v, ...uploaded } : v,
             ),
           },
           node: 'slides' as const,
@@ -132,19 +157,11 @@ export const useCreateStore = create<CreateState>((set) => ({
       }
       const version = nextVersion(s.draft.slides);
       return {
-        draft: { ...s.draft, slides: [...s.draft.slides, { version, pageCount }] },
+        draft: { ...s.draft, slides: [...s.draft.slides, { version, ...uploaded }] },
         node: 'slides' as const,
         version,
       };
     }),
-
-  setPageCount: (version, pageCount) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        slides: s.draft.slides.map((v) => (v.version === version ? { ...v, pageCount } : v)),
-      },
-    })),
 
   addScriptVersion: (text = '') =>
     set((s) => {
@@ -179,9 +196,44 @@ export const useCreateStore = create<CreateState>((set) => ({
     set((s) => {
       const version = nextVersion(s.draft.criteria);
       return {
-        draft: { ...s.draft, criteria: [...s.draft.criteria, { version, items: [] }] },
+        draft: {
+          ...s.draft,
+          criteria: [
+            ...s.draft.criteria,
+            // 원문을 물려받습니다 — 새 버전은 대개 "조금 고쳐서 다시 나누기"입니다
+            { version, items: [], sourceText: s.draft.criteria.at(-1)?.sourceText ?? '' },
+          ],
+        },
         node: 'criteria',
         version,
+      };
+    }),
+
+  applyParsedCriteria: (version, { sourceText, standards, exceptText }) =>
+    set((s) => {
+      const items: DraftCriterion[] = standards
+        .slice(0, MAX_CRITERIA)
+        .map((text) => ({ id: crypto.randomUUID(), text, scoring: 'AUTO' }));
+      const target = s.draft.criteria.find((v) => v.version === version);
+
+      if (!target) {
+        const next = nextVersion(s.draft.criteria);
+        return {
+          draft: {
+            ...s.draft,
+            criteria: [...s.draft.criteria, { version: next, items, sourceText, exceptText }],
+          },
+          node: 'criteria' as const,
+          version: next,
+        };
+      }
+      return {
+        draft: {
+          ...s.draft,
+          criteria: s.draft.criteria.map((v) =>
+            v.version === target.version ? { ...v, items, sourceText, exceptText } : v,
+          ),
+        },
       };
     }),
 
@@ -230,6 +282,7 @@ export const useCreateStore = create<CreateState>((set) => ({
       pitchId: null,
       draftId: crypto.randomUUID(),
       chosen: CHOOSE_LATEST,
+      slideUpload: { status: 'idle' },
     }),
 }));
 

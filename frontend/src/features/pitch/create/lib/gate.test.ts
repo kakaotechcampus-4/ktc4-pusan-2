@@ -14,6 +14,7 @@ const EMPTY: PitchDraft = {
   title: '',
   presentationDate: '',
   timeLimitSec: 300,
+  timeToleranceSec: 60,
   slides: [],
   scripts: [],
   criteria: [],
@@ -25,11 +26,11 @@ describe('진행 조건 — 목업 04~08', () => {
   it('04 슬라이드 업로드 — 아무것도 없다', () => {
     const gate = computeGate(EMPTY);
 
-    expect(gate.message).toBe('슬라이드와 대본을 입력해주세요');
+    expect(gate.message).toBe('슬라이드와 대본을 준비해 주세요');
     expect(gate.rows.map((r) => r.label)).toEqual([
       '슬라이드 미등록',
       '대본 미등록',
-      '평가기준 0개',
+      '평가기준 (선택)',
     ]);
     expect(gate.ready).toBe(false);
   });
@@ -38,7 +39,11 @@ describe('진행 조건 — 목업 04~08', () => {
     const gate = computeGate({ ...EMPTY, slides: [{ version: 1, pageCount: 12 }] });
 
     expect(gate.message).toBe('대본을 입력해주세요');
-    expect(gate.rows.map((r) => r.label)).toEqual(['슬라이드 12장', '대본 미등록', '평가기준 0개']);
+    expect(gate.rows.map((r) => r.label)).toEqual([
+      '슬라이드 12장',
+      '대본 미등록',
+      '평가기준 (선택)',
+    ]);
     expect(gate.rows[0]!.done).toBe(true);
     expect(gate.ready).toBe(false);
   });
@@ -57,21 +62,23 @@ describe('진행 조건 — 목업 04~08', () => {
     expect(gate.ready).toBe(false);
   });
 
-  it('07 매핑 확인 — 나눴고 평가기준만 남았다', () => {
+  /** ★ 평가기준은 선택입니다 — 매핑까지 끝나면 바로 시작할 수 있습니다 */
+  it('07 매핑 확인 — 나눴으면 평가기준 없이도 시작할 수 있다', () => {
     const gate = computeGate({
       ...EMPTY,
       slides: [{ version: 1, pageCount: 12 }],
       scripts: [{ version: 3, text: SCRIPT_TEXT, blocks: Array<string>(12).fill('블록') }],
     });
 
-    expect(gate.message).toBe('평가기준을 1개 이상 추가해주세요');
+    expect(gate.heading).toBe('준비 완료');
+    expect(gate.message).toBe('바로 연습을 시작할 수 있어요');
     expect(gate.rows.map((r) => r.label)).toEqual([
       '슬라이드 12장',
       '대본 12블록 매핑 완료',
-      '평가기준 0개',
+      '평가기준 (선택)',
     ]);
     expect(gate.rows[2]!.key).toBe('criteria');
-    expect(gate.ready).toBe(false);
+    expect(gate.ready).toBe(true);
   });
 
   it('08 평가기준 — 셋이 다 찼다', () => {
