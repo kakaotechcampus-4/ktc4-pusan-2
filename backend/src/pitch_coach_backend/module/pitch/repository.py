@@ -117,7 +117,7 @@ class PitchRepository:
                 PresentationVersion.id == presentation_version_id
             )
         )
-        
+ 
     def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
         return self.db.scalars(
             select(PresentationVersion).where(PresentationVersion.pitch_id == pitch_id)

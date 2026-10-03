@@ -3,11 +3,13 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from pitch_coach_backend.module.pitch.dto import PitchDTO
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.dto import (
     AllPitchesDTO,
+    EachPresentationDTO,
     HighlightDTO,
     ParseRequestedDTO,
     ParseTicket,
@@ -37,6 +39,7 @@ from pitch_coach_backend.module.pitch.exception import (
     ScriptAlreadyParsed,
     ScriptParseInProgress,
     ScriptReuploadRequired,
+    NonExistentPresentationVersion,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import generate_presigned_url, upload
@@ -65,15 +68,6 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchDTO):
     db.commit()
 
     return saved_pitch.id
-
-def get_pitch_service(db: Session, pitch_id: uuid.UUID):
-    pitch_repository = PitchRepository(db)
-    existing_pitch = pitch_repository.get_by_id(pitch_id)
-
-    if not existing_pitch:
-        raise NonExistentPitch()
-
-    return existing_pitch
 
 # 홈 화면 : pitches 목록 조회
 def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
@@ -411,12 +405,13 @@ def fail_parse(db: Session, ticket: ParseTicket, error_code: ScriptParseErrorCod
     db.commit()
     return True
 
+# 각 발표자료 버전의 상세 정보.
 def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID):
     pitch_repository = PitchRepository(db)
     presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_version_id)
 
     if not presentation_version:
-        raise NonExistentPitch()
+        raise NonExistentPresentationVersion()
 
     return PresentationDetailDTO(
         pitch_id=pitch_id,
@@ -426,6 +421,7 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         description=presentation_version.description,
         created_at=presentation_version.created_at.date()
     )
+
 def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_dto):
     pitch_repository = PitchRepository(db)
     # 평가 기준 분할 로직
