@@ -9,7 +9,6 @@ import { usePitchDetail, useCompleteTake, useTakeContext } from '@/shared/api/ta
 import { buildGazePayload } from '../lib/gazePayload';
 import {
   beat,
-  countAudioChunks,
   endSession,
   findSessionByTakeId,
   getSession,
@@ -29,7 +28,6 @@ import type { CompleteRequest, GazeExcludedReason, Ms } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
 import { useCoach } from './useCoach';
 import { useLiveGaze } from './useLiveGaze';
-import { useRecording } from './useRecording';
 import { useRehearsalStore } from './rehearsalStore';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
@@ -44,11 +42,12 @@ const BEAT_MS = 5_000;
  *
  * ── 이 화면이 지키는 것 ─────────────────────────────────────────────
  *
- * 1. **브라우저가 원본입니다.** 시선 판정·슬라이드 전환·코치 기록·녹음 조각이
+ * 1. **브라우저가 원본입니다.** 시선 판정·슬라이드 전환·코치 기록이
  *    전부 IndexedDB에 먼저 쌓입니다. 서버로 가는 건 발표가 끝난 뒤입니다.
+ *    음성만 예외입니다 — 로컬에 남기지 않고 WebSocket으로만 흘립니다 (CLAUDE.md 4번).
  *    중간에 탭이 죽어도 남은 기록으로 리포트를 만들 수 있어야 합니다.
  *
- * 2. **초당 한 번 바뀌는 값은 React를 거치지 않습니다.** 시계·음량·녹음 크기·
+ * 2. **초당 한 번 바뀌는 값은 React를 거치지 않습니다.** 시계·음량·
  *    시선 테두리는 전부 DOM에 직접 씁니다. 상태로 올리는 것은 슬라이드 번호와
  *    코치 메시지뿐입니다 — 둘 다 사람이 움직일 때만 바뀝니다.
  *
@@ -77,6 +76,8 @@ export function RehearsalPage() {
   /** 준비 화면에서 잡은 기준. 새로고침으로 돌아왔으면 없습니다(= null로 보냅니다) */
   const calibration = usePrepareStore((s) => s.calibration);
   const gazeDeclined = usePrepareStore((s) => s.gazeDeclined);
+  /** 점검을 통과한 장치. 새로고침으로 돌아왔으면 비어 있고, 기본 장치를 엽니다 */
+  const devices = usePrepareStore((s) => s.devices);
 
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -97,10 +98,15 @@ export function RehearsalPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
+  /**
+   * 세션을 못 연 이유. 이게 있으면 이 Take 의 기록(시선·슬라이드·코치)이 하나도 쌓이지 않고
+   * 종료 버튼도 아무것도 하지 않습니다 — 조용히 넘어가면 발표를 다 하고 나서야 압니다.
+   */
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
-  const { meterRef, dbRef, statsRef, audioState } = useMicLevel(stream);
+  const { meterRef, statsRef, audioState } = useMicLevel(stream);
 
   const ready = take.data !== undefined && pitch.data !== undefined;
   const running = ready && phase === 'RUNNING';
@@ -119,11 +125,14 @@ export function RehearsalPage() {
     error: gazeError,
     perf,
     bottomRatio,
+    missingCalibration,
   } = useLiveGaze({
     stream,
     videoRef,
     stageRef,
     clientSessionId: sessionId,
+    // 장치 점검에서 저장한 기준을 이 키로 꺼내 리허설 워커에 넣습니다
+    layoutSignature: calibration?.layoutSignature ?? null,
     // 판정 저장이 실패해 제외가 정해지면 메모리에도 받아 둡니다
     onExcluded: noteExclusion,
     // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
@@ -136,13 +145,6 @@ export function RehearsalPage() {
     elapsedMs,
     enabled: running,
   });
-  const {
-    sizeRef,
-    recording,
-    errorMessage: recErrorMessage,
-    stop: stopRecording,
-  } = useRecording({ stream, clientSessionId: sessionId, enabled: running });
-
   /**
    * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
    * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
@@ -187,19 +189,41 @@ export function RehearsalPage() {
       }
       const row = await findSessionByTakeId(takeId);
       setSessionId(row ? row.clientSessionId : await startSession(takeId));
-    })().catch(() => undefined);
+      // IndexedDB 를 못 열면(사생활 보호 모드 · 저장 공간 부족) 여기로 옵니다.
+      // 준비 화면을 거쳐 온 길은 위에서 끝나므로, 새로고침·직접 진입일 때만 탑니다
+    })().catch((err: unknown) => {
+      console.error('[rehearsal] 세션을 열지 못했습니다', err);
+      setSessionError(
+        '연습 기록을 저장할 수 없어요. 새로고침하거나 준비 화면에서 다시 시작해 주세요',
+      );
+    });
   }, [takeId, location.state]);
 
   // 화면을 떠날 때 다음 Take를 위해 무대 상태를 비웁니다
   useEffect(() => resetStore, [resetStore]);
 
-  // 카메라는 준비 화면 CTA를 누른 직후라 바로 열립니다 (같은 문서 = 조작이 살아 있음)
+  // 카메라는 준비 화면 CTA를 누른 직후라 바로 열립니다 (같은 문서 = 조작이 살아 있음).
+  // 점검에서 쓴 장치를 그대로 엽니다 — 기본 장치를 열면 USB 마이크로 점검하고
+  // 내장 마이크로 녹음하는 일이 생깁니다
   const askedRef = useRef(false);
   useEffect(() => {
     if (askedRef.current || gazeDeclined) return;
     askedRef.current = true;
-    request().catch(() => undefined);
-  }, [request, gazeDeclined]);
+
+    (async () => {
+      const opened = await request(devices);
+      // 고른 장치가 그사이 빠졌으면(USB 분리 등) exact 제약에 걸려 못 엽니다.
+      // 발표를 못 여는 것보다 기본 장치로라도 여는 편이 낫습니다
+      if (!opened && (devices.videoDeviceId || devices.audioDeviceId)) {
+        await request();
+      }
+      // 장치를 못 연 이유(권한 거부 · 장치 없음)는 request 가 deviceError 로 올립니다 —
+      // 시선 제외와 화면 표시는 그쪽이 맡습니다. 여기로 오는 건 예상 밖의 오류뿐이라
+      // 버리지 않고 남깁니다
+    })().catch((err: unknown) => {
+      console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
+    });
+  }, [request, gazeDeclined, devices]);
 
   // ── 제외 사유 배선 ───────────────────────────────────────────────
   // 한 번 정해지면 되돌리지 않습니다. 발표 도중 엔진이 죽었다면 그 Take의
@@ -295,41 +319,31 @@ export function RehearsalPage() {
     if (!running || !sessionId || !take.data) return;
 
     // 시간을 먼저 붙잡습니다. 아래 await들이 도는 동안에도 시계는 갑니다.
-    // ★ 끝난 시각도 여기서 찍습니다 — STT 정리는 최대 15초까지 걸리는데,
+    // ★ 끝난 시각도 여기서 찍습니다 — STT 정리는 최대 3초까지 걸리는데,
     //   그 시간을 endedAt에 얹으면 endedAt - startedAt이 durationMs와 어긋납니다
     const durationMs: Ms = elapsedMs();
     const endedAtIso = new Date().toISOString();
 
-    // 마지막 5초 조각까지 받고 멈춥니다. 이걸 기다리지 않으면 끝말이 잘립니다
-    const rec = await stopRecording();
     setPhase('ENDING');
 
     // ★ 여기서부터 끝까지 한 try 입니다. 중간이 실패해도 **무대를 되살리면 안 됩니다** —
-    //   phase 가 RUNNING 으로 돌아가면 useRecording 이 다시 돌면서 seq 가 0 부터
-    //   시작하고, audioChunks 의 키가 [clientSessionId, seq] 라 put 이 원본 조각을
-    //   덮어씁니다. 시계도 clock.start() 로 t0 를 다시 잡아 durationMs 가 어긋납니다.
+    //   phase 가 RUNNING 으로 돌아가면 clock.start() 가 t0 를 다시 잡아 durationMs 가
+    //   어긋나고, useSlideDeck 이 0ms 행을 덮어씁니다 (rehearsalStore 주석 참고).
     //   기록은 IndexedDB 에 그대로 있으므로 재시도 화면으로 보냅니다.
     try {
       // 서버가 남은 오디오를 Deepgram에 흘리고 `closed`를 줄 때까지 기다립니다.
-      // 보통 1초, 최대 15초입니다. 그 사이 버튼은 '정리하는 중…'을 보여 줍니다
+      // 보통 1초, 최대 3초입니다. 그 사이 버튼은 '정리하는 중…'을 보여 줍니다
+      // ★ 3초에서 끊겨도 서버는 마지막 전사까지 저장합니다. 그래서 아래 `/complete`가
+      //   그 저장보다 먼저 도착할 수 있습니다 — 분석이 저장을 기다리는 것은 BE 몫입니다
       await stopStt();
       await endSession(sessionId);
 
       // ── 대조 ────────────────────────────────────────────────────────
-      // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패와
-      // 실제로 남은 행 수를 함께 봅니다 — 어느 한쪽만으로는 모자랍니다.
-      // 장부는 "쓰다 실패한 것"을, 개수 대조는 "장부에도 안 남은 것"을 잡습니다.
-      //
-      // ★ 지금은 알리는 곳이 콘솔뿐입니다. audioFileKey(업로드 경로)가 붙으면
-      //   "원본이 불완전함" 을 서버에도 실어 보내야 합니다 — 그 자리가 여기입니다.
-      const savedChunks = await countAudioChunks(sessionId);
+      // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패를 봅니다.
+      // ★ 지금은 알리는 곳이 콘솔뿐입니다.
       const failures = readWriteFailures(sessionId);
-      if (Object.keys(failures).length > 0 || savedChunks < rec.chunkCount) {
-        console.error('[rehearsal] 기록이 불완전합니다', {
-          실패: failures,
-          넘긴조각: rec.chunkCount,
-          실제저장: savedChunks,
-        });
+      if (Object.keys(failures).length > 0) {
+        console.error('[rehearsal] 기록이 불완전합니다', { 실패: failures });
       }
 
       const row = await getSession(sessionId);
@@ -372,9 +386,6 @@ export function RehearsalPage() {
         suppressedFeedbacks: coachRows
           .filter((c) => !c.fired)
           .map((c) => ({ type: c.type, atMs: c.atMs, reason: c.suppressedReason ?? 'UNKNOWN' })),
-        // ★ 오디오 업로드 경로가 아직 없습니다. 조각은 IndexedDB에 있고,
-        //   업로드가 붙으면 그 키가 여기 들어옵니다 (실패 시 P15 재시도 화면).
-        audioFileKey: '',
         clientPerf: {
           avgGazeFps: row?.gazeAvgFps ?? perf?.avgFps ?? 0,
           droppedFrames: row?.gazeDroppedFrames ?? perf?.droppedFrames ?? 0,
@@ -395,15 +406,13 @@ export function RehearsalPage() {
     }
   };
 
-  const gazeNote = gazeDeclined
-    ? '시선 측정 제외 · 소리만으로 진행 중'
-    : deviceError
-      ? '카메라가 끊겼습니다 — 발표는 계속됩니다'
-      : gazeError
-        ? `시선 측정 제외 · ${gazeError}`
-        : gazeReady
-          ? '시선 기록 중'
-          : '시선 엔진 준비 중';
+  const gazeNote = gazeNoteText({
+    declined: gazeDeclined,
+    cameraLost: deviceError !== null,
+    missingCalibration,
+    error: gazeError,
+    ready: gazeReady,
+  });
 
   return (
     <div className="min-h-full bg-greige px-4 py-5">
@@ -464,7 +473,7 @@ export function RehearsalPage() {
                 </section>
 
                 <section className="mic">
-                  <LevelBar variant="segments" meterRef={meterRef} dbRef={dbRef} />
+                  <LevelBar variant="segments" meterRef={meterRef} />
                 </section>
 
                 <section className="next">
@@ -499,12 +508,6 @@ export function RehearsalPage() {
             />
 
             <div className="stage-foot">
-              <span className="rec" data-on={recording}>
-                {recording ? '기록 중 · ' : '기록 멈춤 · '}
-                <span ref={sizeRef} className="tabular">
-                  0.0MB
-                </span>
-              </span>
               <span>{gazeNote}</span>
               {sttNote && (
                 <span className="stt" data-alert={sttAlert}>
@@ -518,7 +521,7 @@ export function RehearsalPage() {
                 <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
               )}
               {mode === 'EXAM' && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
-              {recErrorMessage && <span>{recErrorMessage}</span>}
+              {sessionError && <span>{sessionError}</span>}
               {endError && <span>{endError}</span>}
 
               <button
@@ -534,19 +537,14 @@ export function RehearsalPage() {
                     return;
                   }
                   // 복구는 finish() 안에서 끝납니다 (재시도 화면으로 이동).
-                  // 여기까지 새어 나오는 것은 stopRecording 실패뿐이라 기록만 남깁니다 —
-                  // 이때는 phase 가 아직 RUNNING 이라 버튼을 다시 누를 수 있습니다.
+                  // try 밖에서 던질 것이 없지만, 새어 나오면 삼키지 않고 남깁니다
                   finish().catch((e: unknown) => {
-                    console.error('[rehearsal] 녹음 정지 실패', e);
+                    console.error('[rehearsal] 종료 처리 실패', e);
                     setEndError(toMessage(e));
                   });
                 }}
               >
-                {phase === 'ENDING'
-                  ? '정리하는 중…'
-                  : confirming
-                    ? '정말 끝낼까요?'
-                    : '발표 끝내기'}
+                {endButtonText(phase === 'ENDING', confirming)}
               </button>
             </div>
           </div>
@@ -554,6 +552,31 @@ export function RehearsalPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다 —
+ * 사용자가 거절했으면 카메라가 끊겼든 말든 "거절"이 이유입니다.
+ */
+function gazeNoteText(state: {
+  declined: boolean;
+  cameraLost: boolean;
+  missingCalibration: boolean;
+  error: GazeExcludedReason | null;
+  ready: boolean;
+}): string {
+  if (state.declined) return '시선 측정 제외 · 소리만으로 진행 중';
+  if (state.cameraLost) return '카메라가 끊겼습니다 — 발표는 계속됩니다';
+  if (state.missingCalibration) return '시선 기준이 없어 측정 제외 — 발표는 계속됩니다';
+  if (state.error) return `시선 측정 제외 · ${state.error}`;
+  if (state.ready) return '시선 기록 중';
+  return '시선 엔진 준비 중';
+}
+
+function endButtonText(ending: boolean, confirming: boolean): string {
+  if (ending) return '정리하는 중…';
+  if (confirming) return '정말 끝낼까요?';
+  return '발표 끝내기';
 }
 
 /**

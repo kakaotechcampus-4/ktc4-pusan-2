@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { useGazeWorker } from '../media/useGazeWorker';
-import { appendGazeDecision, markGazeExcluded } from '../lib/db';
+import { appendGazeDecision, loadZoneRef, markGazeExcluded } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
 import type { ZoneDecision } from '@/workers/gaze.contract';
 import type { GazeExcludedReason, GazeZone, Ms } from '@/types/api';
@@ -16,6 +16,20 @@ const BORDER: Record<GazeZone, string> = {
 const WINDOW_MS = 10_000;
 
 /**
+ * 저장된 기준을 불러온 상태. 결과가 지금 키에 대한 것이 아니면 아직 불러오는 중입니다 —
+ * 레이아웃이나 엔진이 바뀌면 이전 결과는 저절로 LOADING 으로 읽힙니다.
+ */
+function zoneRefState(
+  layoutSignature: string | null,
+  loadKey: string | null,
+  loaded: { key: string; found: boolean } | null,
+): 'LOADING' | 'READY' | 'MISSING' {
+  if (layoutSignature === null) return 'MISSING';
+  if (loadKey === null || loaded?.key !== loadKey) return 'LOADING';
+  return loaded.found ? 'READY' : 'MISSING';
+}
+
+/**
  * 발표 중 시선.
  *
  * 프레임은 워커로 들어가고 **1초 판정만** 나옵니다. 원시 좌표는 메인 스레드로
@@ -26,14 +40,23 @@ const WINDOW_MS = 10_000;
  *   2. 기록: IndexedDB에 한 행 (★ 이게 없으면 리포트가 비어 있습니다)
  *   3. 최근 10초 창: 코치 규칙이 읽습니다
  *
- * 초당 한 번이라 setState를 해도 당장은 버틸 것 같지만, 같은 초에 시계·음량·
- * 녹음 크기가 함께 바뀝니다. 하나를 상태로 올리면 나머지도 따라 올라갑니다.
+ * 초당 한 번이라 setState를 해도 당장은 버틸 것 같지만, 같은 초에 시계·음량이
+ * 함께 바뀝니다. 하나를 상태로 올리면 나머지도 따라 올라갑니다.
+ *
+ * ── 기준을 먼저 넣습니다 ────────────────────────────────────────────
+ * 분류기는 그 사람의 캘리브레이션 기준이 없으면 판정하지 않습니다 (AI v1 도 같습니다).
+ * 기준은 장치 점검 화면의 다른 워커에서 계산되어 IndexedDB 에 있으므로,
+ * 꺼내서 이 워커에 넣은 **뒤에** 펌프를 켭니다.
+ *
+ * 기준을 못 찾으면(새로고침으로 요약이 사라짐 · 오래됨 · 저장 실패) 시선은
+ * `ENGINE_UNAVAILABLE` 로 제외되고 발표는 계속됩니다 — 엔진이 판정할 수 없는 상태라서입니다.
  */
 export function useLiveGaze({
   stream,
   videoRef,
   stageRef,
   clientSessionId,
+  layoutSignature,
   enabled,
   onExcluded,
 }: {
@@ -41,7 +64,13 @@ export function useLiveGaze({
   videoRef: RefObject<HTMLVideoElement>;
   stageRef: RefObject<HTMLDivElement>;
   clientSessionId: string | null;
-  /** 시선 측정을 제외한 Take면 false — 워커를 아예 띄우지 않습니다 */
+  /**
+   * 장치 점검에서 잡은 기준의 저장 키 (`CalibrationSummary.layoutSignature`).
+   * 여기서 다시 계산하지 않습니다 — 리허설 스트림의 해상도가 조금만 달라도
+   * 키가 바뀌어 방금 잡은 기준을 못 찾습니다.
+   */
+  layoutSignature: string | null;
+  /** 시선 측정을 제외한 Take면 false — 펌프를 돌리지 않습니다 */
   enabled: boolean;
   /**
    * 제외 사유가 정해진 순간 **메모리로도** 알립니다.
@@ -92,7 +121,15 @@ export function useLiveGaze({
     [stageRef, onExcluded],
   );
 
-  const { ready, engineVersion, error, perf, startPump, stopPump } = useGazeWorker(
+  const {
+    ready,
+    engineVersion,
+    error: workerError,
+    perf,
+    startPump,
+    stopPump,
+    calibrate,
+  } = useGazeWorker(
     onDecision,
     0,
     // 실모델은 /models 에 가중치가 들어오는 날 'model'로 바뀝니다 (I-03).
@@ -100,14 +137,56 @@ export function useLiveGaze({
     'dummy',
   );
 
+  /**
+   * 기준을 불러온 결과. 어느 키·엔진에 대한 결과인지 함께 둡니다 —
+   * 둘 중 하나가 바뀌면 이전 결과는 저절로 무효가 되어 LOADING 으로 읽힙니다.
+   *
+   * 엔진 버전은 워커가 ready 를 보내야 압니다. 그 전에는 비교할 수 없으니 기다립니다 —
+   * 엔진이 끝내 못 뜨면 워커가 ENGINE_UNAVAILABLE 을 내고, 그게 제외 사유가 됩니다.
+   */
+  const [loaded, setLoaded] = useState<{ key: string; found: boolean } | null>(null);
+  const loadKey =
+    layoutSignature !== null && engineVersion !== null
+      ? `${layoutSignature}#${engineVersion}`
+      : null;
+  const refState = zoneRefState(layoutSignature, loadKey, loaded);
+
   useEffect(() => {
-    if (!enabled) return;
+    if (layoutSignature === null || engineVersion === null || loadKey === null) return;
+    let cancelled = false;
+
+    // 엔진이 다르면 null 입니다 — 다른 모델이 만든 기준은 넣지 않습니다
+    loadZoneRef(layoutSignature, engineVersion)
+      .then((ref) => {
+        if (cancelled) return;
+        // 펌프보다 먼저 들어가야 합니다 — READY 가 되어야 아래 효과가 펌프를 켭니다
+        if (ref) calibrate(ref);
+        setLoaded({ key: loadKey, found: ref !== null });
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded({ key: loadKey, found: false });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [layoutSignature, engineVersion, loadKey, calibrate]);
+
+  const pumping = enabled && refState === 'READY';
+
+  useEffect(() => {
+    if (!pumping) return;
     const video = videoRef.current;
     if (!video || !stream) return;
 
     startPump(video);
     return () => stopPump();
-  }, [enabled, stream, videoRef, startPump, stopPump]);
+  }, [pumping, stream, videoRef, startPump, stopPump]);
+
+  // 기준이 없는 것은 발표를 시작한 뒤에만 사유가 됩니다 — enabled 가 false 인
+  // 동안(소리만으로 진행 등)은 다른 사유가 이미 정해져 있으니 덮지 않습니다
+  const missingCalibration = enabled && refState === 'MISSING';
+  const error = workerError ?? (missingCalibration ? 'ENGINE_UNAVAILABLE' : null);
 
   /**
    * 최근 창에서 화면(아래)을 본 비율. 표본이 모자라면 null —
@@ -123,5 +202,5 @@ export function useLiveGaze({
     return measured.filter((d) => d.zone === 'BOTTOM').length / measured.length;
   }, []);
 
-  return { ready, engineVersion, error, perf, bottomRatio };
+  return { ready, engineVersion, error, perf, bottomRatio, missingCalibration };
 }

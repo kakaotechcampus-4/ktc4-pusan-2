@@ -48,6 +48,6 @@ export function formatDuration(ms: Ms, showSign = false): string {
   const total = Math.floor(Math.abs(ms) / 1000);
   const mm = String(Math.floor(total / 60)).padStart(2, '0');
   const ss = String(total % 60).padStart(2, '0');
-  const sign = showSign ? (neg ? '+' : '-') : '';
-  return `${sign}${mm}:${ss}`;
+  if (!showSign) return `${mm}:${ss}`;
+  return `${neg ? '+' : '-'}${mm}:${ss}`;
 }

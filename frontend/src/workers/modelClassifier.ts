@@ -1,4 +1,10 @@
-import type { FrameVerdict, GazeClassifier, ZoneReference } from './gaze.contract';
+import type {
+  CalibrationResult,
+  FrameVerdict,
+  GazeClassifier,
+  PlacementResult,
+  ZoneReference,
+} from './gaze.contract';
 import type { Ms } from '@/types/api';
 
 /**
@@ -30,6 +36,13 @@ import type { Ms } from '@/types/api';
  *   4. `ZoneReference.model` 에 담기는 값이 구조화 복제 가능한가
  *      (IndexedDB 에 저장해 다음 Take 에서 되살립니다)
  *
+ * ── 출력 모양은 이미 맞춰 두었습니다 ────────────────────────────────
+ *
+ * AI v1 Python 이 내는 값(`CalibrationQuality` · 평활화 전 `GazeDecision` ·
+ * `AiVersion`)을 계약으로 옮기는 규칙은 `aiAdapter.ts` 에 있습니다.
+ * 모듈이 같은 키로 값을 내 주면 여기서는 그 함수들을 거치기만 합니다.
+ * AI 의 `TemporalSmoother` 출력(`GAZE_STATE`)은 받지 않습니다 — 다수결은 FE 몫입니다.
+ *
  * 3번이 제일 중요합니다. MediaPipe Tasks 는 워커에서 돌지만 초기화 방식이
  * 다르고, 모르고 만들면 나중에 통째로 고칩니다.
  */
@@ -47,8 +60,11 @@ export class ModelGazeClassifier implements GazeClassifier {
    * 로드 전에는 `unloaded`.
    *
    * 왜 자산 식별자를 쓰나 — `engineVersion` 은 Take 에 영구 고정되고
-   * 서버는 시선을 재계산할 수 없습니다. AI팀이 버전 문자열을 주기 전까지는
+   * 서버는 시선을 재계산할 수 없습니다. 모듈이 오기 전까지는
    * **적어도 "다른 자산이면 다른 값"** 이 되어야 두 Take 를 비교할 때 근거가 됩니다.
+   *
+   * 모듈이 오면 `init()` 에서 `engineVersion(...)` (aiAdapter.ts) 으로 바꿉니다 —
+   * `gaze_v1.0.0+mediapipe_geom+per_user_lr_v1` 모양입니다.
    */
   #version = 'gaze-module@unloaded';
 
@@ -61,12 +77,13 @@ export class ModelGazeClassifier implements GazeClassifier {
   /**
    * AI 모듈 로드. **실패하면 throw 합니다** —
    * 워커가 그걸 받아 `error { ENGINE_UNAVAILABLE }` 로 바꾸고,
-   * 화면은 "측정 제외"로 표시하되 타이머·키보드·녹음은 계속 돕니다.
+   * 화면은 "측정 제외"로 표시하되 타이머·키보드·음성 전송은 계속 돕니다.
    */
   async init(): Promise<void> {
     // TODO(AI팀 1번) — 모듈이 오면 여기서 import 하고 초기화합니다.
     //   const { createClassifier } = await import('./vendor/gaze');
     //   this.#impl = await createClassifier({ assetDir: ASSET_DIR });
+    //   this.#version = engineVersion(this.#impl.version);
     //
     // 그때까지는 자산 디렉터리에 무엇이 있는지만 확인하고 실패합니다.
     // 이 경로가 도는지가 지금의 관심사입니다.
@@ -80,10 +97,22 @@ export class ModelGazeClassifier implements GazeClassifier {
   fitCalibration(
     _camera: readonly ImageBitmap[],
     _bottom: readonly ImageBitmap[],
-  ): ZoneReference | null {
+  ): CalibrationResult {
     // init() 이 throw 하므로 여기까지 오지 않습니다.
-    // 모듈이 오면 그대로 위임합니다 — FE 는 기준값을 저장·복원만 합니다.
-    return null;
+    // 모듈이 오면 위임하고 품질 보고를 옮깁니다 — FE 는 기준값을 저장·복원만 합니다.
+    //   const { quality, model } = this.#impl.fitCalibration(camera, bottom);
+    //   return toCalibrationResult(quality, model);
+    return { ok: false, reason: 'ENGINE_ERROR' };
+  }
+
+  checkPlacement(
+    _camera: readonly ImageBitmap[],
+    _screen: readonly ImageBitmap[],
+  ): PlacementResult {
+    // init() 이 throw 하므로 여기까지 오지 않습니다.
+    // 모듈이 오면 위임하고 결과를 옮깁니다.
+    //   return toPlacementResult(this.#impl.checkPlacement(camera, screen));
+    return { placement: 'INCONCLUSIVE', supported: false, reason: 'ENGINE_ERROR' };
   }
 
   calibrate(ref: ZoneReference): void {
@@ -93,8 +122,8 @@ export class ModelGazeClassifier implements GazeClassifier {
 
   classify(_frame: ImageBitmap, _tMs: Ms): FrameVerdict | null {
     if (!this.#ref) return null;
-    // TODO(AI팀 1번) — 모듈에 프레임을 그대로 넘깁니다.
-    //   return this.#impl.classify(frame, tMs);
+    // TODO(AI팀 1번) — 모듈에 프레임을 그대로 넘기고, 평활화 전 판정을 옮깁니다.
+    //   return toFrameVerdict(this.#impl.classify(frame, tMs));
     //
     // ★ 비트맵을 여기서 닫지 마세요. 워커가 finally 에서 닫습니다.
     return null;

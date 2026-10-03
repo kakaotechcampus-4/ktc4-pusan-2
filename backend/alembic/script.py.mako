@@ -9,11 +9,12 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from alembic_git_revisions import get_down_revision
 ${imports if imports else ""}
 
 # revision identifiers, used by Alembic.
 revision: str = ${repr(up_revision)}
-down_revision: str | Sequence[str] | None = ${repr(down_revision)}
+down_revision: str | Sequence[str] | None = get_down_revision(revision)
 branch_labels: str | Sequence[str] | None = ${repr(branch_labels)}
 depends_on: str | Sequence[str] | None = ${repr(depends_on)}
 

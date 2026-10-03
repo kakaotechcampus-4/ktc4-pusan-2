@@ -103,14 +103,23 @@ def user_id(db_session: Session) -> uuid.UUID:
     return user.id
 
 
+class _NoopParseRunner:
+    async def run(self, ticket: object) -> None:
+        return None
+
+
 @pytest.fixture
 def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient]:
     from pitch_coach_backend import main
     from pitch_coach_backend.core.database import get_db
     from pitch_coach_backend.main import app
+    from pitch_coach_backend.module.pitch.dependencies import get_script_parse_runner
 
     monkeypatch.setattr(main, "get_s3", lambda: None)
     app.dependency_overrides[get_db] = lambda: db_session
+    # 업로드 뒤 백그라운드 대본 파싱이 실제 AI 서버를 부르지 않게 막는다.
+    # 파싱을 확인하는 테스트는 가짜 파서를 끼운 runner 로 다시 바꿔 끼운다
+    app.dependency_overrides[get_script_parse_runner] = lambda: _NoopParseRunner()
     # base_url 이 https 여야 한다. 쿠키를 Secure 로 심는데(cookie_secure 기본값 True)
     # http 로는 httpx 가 그 쿠키를 되돌려 보내지 않아 인증 흐름이 통째로 막힌다.
     # 운영과 같은 설정을 그대로 테스트하려고 설정을 낮추는 대신 https 를 쓴다.

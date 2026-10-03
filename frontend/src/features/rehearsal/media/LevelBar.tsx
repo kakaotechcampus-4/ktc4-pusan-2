@@ -8,15 +8,14 @@ const SEGMENT_COUNT = 14;
  *
  * 값은 React를 거치지 않습니다 — `useMicLevel`이 rAF 안에서 이 엘리먼트에 직접 씁니다.
  * 어떻게 칠할지는 `data-meter`가 정합니다 (clip · width).
+ * dB 숫자는 두지 않습니다 — 이유는 `useMicLevel` 위쪽 주석에 있습니다.
  */
 export function LevelBar({
   variant,
   meterRef,
-  dbRef,
 }: {
   variant: 'segments' | 'bar';
   meterRef: RefObject<HTMLDivElement>;
-  dbRef: RefObject<HTMLSpanElement>;
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -46,11 +45,6 @@ export function LevelBar({
           <div ref={meterRef} data-meter="width" className="h-full bg-coral" style={{ width: 0 }} />
         </div>
       )}
-
-      <span className="tabular shrink-0 text-sm">
-        <span ref={dbRef}>—</span>
-        <span className="ml-1 text-xs text-stone">dB</span>
-      </span>
     </div>
   );
 }

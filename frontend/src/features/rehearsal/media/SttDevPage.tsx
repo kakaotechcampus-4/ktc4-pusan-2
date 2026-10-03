@@ -141,7 +141,7 @@ export function SttDevPage() {
   }, [takeId, say, releaseDevices]);
 
   const stop = useCallback(async () => {
-    say('stop 을 보내고 closed 를 기다립니다 (최대 15초).');
+    say('stop 을 보내고 closed 를 기다립니다 (최대 3초).');
 
     await releaseDevices();
     await socketRef.current?.stop();

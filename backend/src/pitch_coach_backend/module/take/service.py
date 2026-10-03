@@ -3,7 +3,6 @@ import uuid
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.dto import CalibrationDTO, MissionDTO, PreviousMissionsDTO, TakeInitRequestDTO, TakeUpdateRequestDTO
-from pitch_coach_backend.module.take.entity import Calibration, Take
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     TakeInitRequestDTO,
@@ -35,9 +34,9 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
 
     return saved_take.id
 
-def update_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, take_update_dto: TakeUpdateRequestDTO):
+def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUpdateRequestDTO):
     take_repository = TakeRepository(db)
-    existing_take = take_repository.get_in_pitch(take_id, pitch_id)
+    existing_take = take_repository.get_take(take_id)
 
     if not existing_take:
         raise NonExistentTake()
@@ -51,9 +50,9 @@ def update_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, ta
 
     return updated_take.id
 
-def delete_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
+def delete_take_service(db: Session, take_id: uuid.UUID):
     take_repository = TakeRepository(db)
-    existing_take = take_repository.get_in_pitch(take_id, pitch_id)
+    existing_take = take_repository.get_take(take_id)
 
     if not existing_take:
         raise NonExistentTake()
@@ -64,9 +63,9 @@ def delete_take_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
     return take_id
 
 # Calibration 완료 후 Calibration 데이터 저장
-def create_calibration_service(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID, calibration_dto: CalibrationDTO):
+def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto: CalibrationDTO):
     take_repository = TakeRepository(db)
-    existing_take = take_repository.get_in_pitch(take_id, pitch_id)
+    existing_take = take_repository.get_take(take_id)
 
     if not existing_take:
         raise NonExistentTake()

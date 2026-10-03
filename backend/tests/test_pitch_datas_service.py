@@ -39,7 +39,7 @@ def _make_script(db: Session, pitch_id: uuid.UUID, version: int) -> ScriptVersio
     script = ScriptVersion(
         pitch_id=pitch_id,
         version=version,
-        file_key=f"pitches/{pitch_id}/scripts/{version}.txt",
+        content=f"대본 {version}",
     )
     db.add(script)
     db.flush()

@@ -26,9 +26,11 @@ import {
  *      (OPEN 만 보고 보내면 새 프레임이 버퍼를 앞질러 나가고, 서버는 역행한
  *       seq 를 버린다 — 그만큼 전사가 사라진다)
  *   2. `seq` 는 Take 안에서 단조 증가한다. **재연결해도 리셋하지 않는다.**
- *   3. close 1000·1008 이면 재연결하지 않는다. 그 외에는 백오프 3회.
- *   4. `stop` 을 보낸 뒤 `stt_status.state === 'closed'` 를 받기 전에 닫지 않는다.
- *      서버 정리 상한이 12초라 15초까지 기다리고, 그 뒤에는 끊는다.
+ *   3. close 1000·1008 이면 재연결하지 않는다. 그 외에는 백오프 3회, 그 뒤로는
+ *      4~6초마다 다시 붙어 본다. 횟수로는 포기하지 않고, 끊긴 지 30분이 지나야 멈춘다.
+ *   4. `stop` 을 보낸 뒤 `stt_status.state === 'closed'` 를 기다리되 **3초까지만** 기다린다.
+ *      마지막 전사를 저장하는 것은 서버 몫이다 — `stop` 을 받은 서버는 이 소켓이 먼저
+ *      닫혀도 Deepgram 정리와 저장을 끝까지 한다. 그래서 FE 가 더 붙잡고 있을 이유가 없다.
  *
  * 끊겨도 발표는 계속됩니다. 이 소켓이 죽었을 때 멈추는 것은 2단 코치뿐입니다.
  */
@@ -36,19 +38,40 @@ import {
 /** 재연결될 때까지 들고 있을 프레임 수. 100ms × 20 = 2초 (BE 와 합의한 계약) */
 const MAX_PENDING_FRAMES = 20;
 
-/** 백오프. 길이가 곧 재연결 횟수 상한입니다 */
+/** 빠른 백오프. 이걸 다 쓰면 화면을 `degraded` 로 두고 느린 재시도로 넘어갑니다 */
 const RETRY_DELAYS_MS = [500, 1_000, 2_000];
 
-/** `stop` 뒤 `closed` 를 기다리는 상한. 서버 쪽 상한(12초)보다 조금 깁니다 */
-const STOP_TIMEOUT_MS = 15_000;
+/**
+ * 빠른 백오프가 다 실패한 뒤의 재시도 간격. 횟수 상한 없이 계속합니다.
+ *
+ * 여기서 포기하면 몇 초 끊긴 것 때문에 남은 발표의 말하기 분석이 통째로 빠집니다.
+ * 늦게 붙어도 서버가 받아 줍니다 — 30초 grace 안이면 같은 스트림에 이어 붙고,
+ * 그 뒤면 저장된 마지막 번호에서 이어 새 스트림을 엽니다. seq 는 여기서 계속 오릅니다.
+ *
+ * 간격은 5초 ± 1초에서 무작위로 고릅니다 (jitter). 서버가 잠깐 내려갔다 오면 끊긴
+ * 사용자들이 같은 박자로 한꺼번에 다시 붙는데, 간격을 흩뜨리면 그 몰림이 퍼집니다.
+ */
+const SLOW_RETRY_MS = 5_000;
+const SLOW_RETRY_JITTER_MS = 1_000;
 
 /**
- * 끊긴 채로 발표를 끝냈을 때, 남은 버퍼를 보내려고 재연결을 기다리는 상한.
- *
- * 전체 상한(15초)을 쓰지 않습니다 — 네트워크가 정말 죽었으면 끝내기 버튼을 누른 사람이
- * 15초를 서서 기다리게 됩니다. 백오프 한 번(최대 2초)이 지나갈 만큼만 줍니다.
+ * 끊긴 뒤 이만큼 지나도 못 붙으면 멈춥니다. 발표 중에 걸릴 일은 거의 없는 안전 상한입니다 —
+ * 리허설 화면을 열어 둔 채 자리를 떠난 탭이 밤새 5초마다 서버를 두드리지 않게 합니다.
+ * 한 번이라도 다시 붙으면(`ready`) 처음부터 다시 셉니다.
  */
-const STOP_RECONNECT_BUDGET_MS = 3_000;
+const GIVE_UP_AFTER_MS = 30 * 60_000;
+
+/**
+ * `stop()` 을 부른 뒤 종료가 풀리기까지의 상한. 끝내기 버튼을 누른 사람이 기다리는 시간입니다.
+ *
+ * 서버 정리 상한(12초)에 맞추지 않습니다. `stop` 이 나간 뒤로는 서버가 알아서 저장하므로
+ * 여기서 기다리는 것은 깔끔하게 `closed` 를 받고 닫는 것뿐입니다 (보통 1초).
+ * 이 시간이 실제로 필요한 것은 `stop` 을 아직 못 보낸 경우입니다 — 인증(`ready`)을
+ * 기다리거나, 끊긴 채로 끝내 재연결을 기다리는 동안 들고 있는 버퍼는 FE 에만 있습니다.
+ * 빠른 백오프 한 번(최대 2초)이 지나갈 만큼 줍니다. 느린 재시도(4~6초) 중에 끝내면 대개 못 붙고
+ * 버퍼를 잃습니다 — 네트워크가 이미 몇 초째 죽어 있던 경우라 더 기다려도 가망이 적습니다.
+ */
+const STOP_WAIT_MS = 3_000;
 
 /**
  * 테스트에서 가짜를 끼우려고 최소한만 추려낸 WebSocket 모양입니다.
@@ -63,7 +86,8 @@ export interface SocketLike {
   onerror: (() => void) | null;
 }
 
-export type GiveUpReason = 'FATAL' | 'RETRIES_EXHAUSTED' | 'NO_TOKEN' | 'CONNECT_FAILED';
+/** 네트워크 끊김은 `RETRY_LIMIT` 하나뿐입니다 — 30분 동안은 포기하지 않고 계속 붙어 봅니다 */
+export type GiveUpReason = 'FATAL' | 'NO_TOKEN' | 'CONNECT_FAILED' | 'RETRY_LIMIT';
 
 export interface SttSocketOptions {
   takeId: string;
@@ -76,6 +100,8 @@ export interface SttSocketOptions {
   onGiveUp?: (reason: GiveUpReason) => void;
   createSocket?: (url: string) => SocketLike;
   getToken?: (options: { renew: boolean }) => Promise<string | null>;
+  /** 느린 재시도 간격을 고르는 난수 [0, 1). 테스트에서 간격을 고정하려고 둡니다 */
+  random?: () => number;
 }
 
 /**
@@ -115,6 +141,8 @@ export class SttSocket {
 
   private retries = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 마지막으로 끊긴 시각. 다시 붙으면(`ready`) 비웁니다 */
+  private disconnectedAt: number | null = null;
 
   /** 닫혀도 다시 붙지 않는 상태. 에러 코드가 정합니다 */
   private fatal = false;
@@ -150,7 +178,7 @@ export class SttSocket {
    * 프레임 한 장. `ready` 전이면 버퍼에 쌓입니다.
    *
    * 버퍼가 넘치면 **오래된 것부터** 버립니다. 발표는 계속 진행되고 있으니
-   * 최근 2초를 살리는 쪽이 낫습니다 — 어차피 원본 녹음은 로컬에 남습니다.
+   * 최근 2초를 살리는 쪽이 낫습니다.
    */
   sendFrame(pcm: ArrayBuffer, offsetMs: Ms): void {
     if (this.disposed || this.stopping) return;
@@ -168,10 +196,11 @@ export class SttSocket {
   }
 
   /**
-   * 발표 종료. `closed` 를 받거나 상한이 지나면 풀립니다.
+   * 발표 종료. `closed` 를 받거나 상한(3초)이 지나면 풀립니다.
    *
-   * 여기서 기다리지 않고 닫으면 **마지막 1~2초의 전사가 사라집니다** —
-   * 발표의 마무리 문장이라 리포트에서 가장 아쉬운 자리입니다.
+   * `stop` 이 나간 뒤에 닫는 것은 괜찮습니다 — 서버가 마지막 전사까지 저장합니다.
+   * 잃으면 안 되는 것은 **아직 `stop` 을 못 보낸 버퍼**입니다. 마지막 1~2초라
+   * 발표의 마무리 문장이고, 리포트에서 가장 아쉬운 자리입니다.
    *
    * ── 끊긴 채로 끝낸 경우 ────────────────────────────────────────────
    *
@@ -180,8 +209,8 @@ export class SttSocket {
    * 다시 붙으면 `ready` 뒤에 버퍼를 흘리고 그때 `stop` 을 보냅니다.
    * 서버는 끊긴 뒤 30초 동안 스트림을 살려 두므로 번호도 이어집니다.
    *
-   * 그 시도마저 실패하면(다시 `close`) 곧바로 정리합니다. 원본 녹음은 로컬에 남아
-   * 있으니 여기서 더 붙잡고 있을 이유가 없습니다.
+   * 그 시도마저 실패하면(다시 `close`) 곧바로 정리합니다. 남은 버퍼는 잃지만,
+   * 종료를 더 붙잡아 두면 사용자가 발표 끝내기에서 멈춰 기다리게 됩니다.
    */
   stop(): Promise<void> {
     if (this.disposed) {
@@ -194,11 +223,11 @@ export class SttSocket {
 
       if (this.socket) {
         this.clearRetry();
-        this.armStopTimer(STOP_TIMEOUT_MS);
+        this.armStopTimer(STOP_WAIT_MS);
         this.sendStop();
       } else if (this.pending.length > 0 && this.retryTimer !== null) {
         // 예약된 재연결을 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다
-        this.armStopTimer(STOP_RECONNECT_BUDGET_MS);
+        this.armStopTimer(STOP_WAIT_MS);
       } else {
         this.dispose();
         return Promise.resolve();
@@ -219,7 +248,10 @@ export class SttSocket {
    * 아직 `ready` 가 아니면 **보내지 않고 기다립니다.** 인증이 끝나기 전의 오디오는
    * 서버가 받지 않으므로, 여기서 stop 부터 보내면 들고 있던 2초가 그대로 버려집니다
    * (발표를 짧게 끝냈거나 마지막 순간에 재연결 중이던 경우). `ready` 가 오면
-   * `handleMessage` 가 이 함수를 다시 부르고, 안 오면 15초 타임아웃이 끊습니다.
+   * `handleMessage` 가 이 함수를 다시 부르고, 안 오면 3초 상한이 끊습니다.
+   *
+   * 보낸 뒤에 상한을 다시 걸지 않습니다. 여기서부터는 서버가 정리하는 시간이고,
+   * 소켓이 닫혀도 서버는 멈추지 않습니다 — 사용자가 기다리는 시간은 `stop()` 부터 3초입니다.
    */
   private sendStop(): void {
     if (!this.socket || !this.ready) return;
@@ -227,8 +259,6 @@ export class SttSocket {
     try {
       this.flushPending();
       this.socket.send(JSON.stringify({ type: 'stop' }));
-      // 여기서부터는 서버가 Deepgram 을 정리하는 시간입니다. 상한을 그쪽에 맞춥니다
-      this.armStopTimer(STOP_TIMEOUT_MS);
     } catch {
       this.dispose();
     }
@@ -273,7 +303,11 @@ export class SttSocket {
       return;
     }
 
-    this.options.onState(this.retries === 0 ? 'connecting' : 'reconnecting');
+    // 느린 재시도 중에는 `degraded` 를 그대로 둡니다. 시도마다 reconnecting 으로 바꾸면
+    // 발밑 문구가 5초마다 두 줄 사이를 깜빡입니다
+    if (this.retries <= RETRY_DELAYS_MS.length) {
+      this.options.onState(this.retries === 0 ? 'connecting' : 'reconnecting');
+    }
 
     const create = this.options.createSocket ?? ((url: string) => new WebSocket(url) as SocketLike);
     const socket = create(sttUrl(this.options.takeId));
@@ -295,6 +329,7 @@ export class SttSocket {
     switch (message.type) {
       case 'ready':
         this.retries = 0;
+        this.disconnectedAt = null;
         this.flushPending();
         this.ready = true;
         this.options.onState(message.stt_state);
@@ -366,18 +401,27 @@ export class SttSocket {
       return;
     }
 
-    const delay = RETRY_DELAYS_MS[this.retries];
-    if (delay === undefined) {
-      this.giveUp('RETRIES_EXHAUSTED');
+    this.disconnectedAt ??= Date.now();
+    if (Date.now() - this.disconnectedAt >= GIVE_UP_AFTER_MS) {
+      this.giveUp('RETRY_LIMIT');
       return;
     }
 
+    const slow = this.retries >= RETRY_DELAYS_MS.length;
+    const delay = RETRY_DELAYS_MS[this.retries] ?? this.slowRetryDelay();
+
     this.retries += 1;
-    this.options.onState('reconnecting');
+    this.options.onState(slow ? 'degraded' : 'reconnecting');
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       if (!this.disposed) this.connect().catch(() => this.giveUp('CONNECT_FAILED'));
     }, delay);
+  }
+
+  /** 4~6초 사이. `random` 이 0 이면 4초, 1 에 가까우면 6초입니다 */
+  private slowRetryDelay(): number {
+    const random = this.options.random ?? Math.random;
+    return Math.round(SLOW_RETRY_MS + (random() * 2 - 1) * SLOW_RETRY_JITTER_MS);
   }
 
   /**

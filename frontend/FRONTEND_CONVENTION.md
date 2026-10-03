@@ -15,6 +15,22 @@
 
 - 하나의 함수가 여러 역할을 수행하면 함수 분리를 고려한다.
 - 함수는 이름만으로 주요 역할을 이해할 수 있도록 작성한다.
+- **삼항 연산자를 중첩하지 않는다.** 갈래가 셋 이상이면 early return 하는 함수로 빼거나
+  (상태 하나에 대한 분기면) `switch` 로 쓴다. 이름이 붙어 읽기 쉽고, 갈래마다 중단점을 걸 수 있다.
+  JSX 안이면 작은 컴포넌트로 빼거나 `&&` 조건 여러 개로 나눈다.
+  `oxlint` 의 `no-nested-ternary` 가 강제한다 (PR 리뷰에서 두 번 지적됨).
+
+  ```ts
+  // 안 됩니다
+  const label = ending ? '정리하는 중…' : confirming ? '정말 끝낼까요?' : '발표 끝내기';
+
+  // 이렇게
+  function endButtonText(ending: boolean, confirming: boolean): string {
+    if (ending) return '정리하는 중…';
+    if (confirming) return '정말 끝낼까요?';
+    return '발표 끝내기';
+  }
+  ```
 
 ## 4. Naming
 

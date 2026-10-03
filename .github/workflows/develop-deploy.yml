@@ -29,6 +29,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -54,6 +56,16 @@ jobs:
 
       - name: Stub env files
         run: touch backend/.env frontend/.env
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: alembic revision
+        working-directory: backend
+        run: |
+          uv run alembic-git-revisions alembic/versions
 
       - name: Build & push
         working-directory: infra
