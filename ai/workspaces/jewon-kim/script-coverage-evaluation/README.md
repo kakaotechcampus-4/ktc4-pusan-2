@@ -42,23 +42,28 @@ script-coverage-evaluation/
 ## 두 단계로 동작합니다
 
 ```
-[대본 JSON]  ──▶ ① 대본 분석 (대본 등록·수정 시 1번, 슬라이드당 LLM 2회) ──▶ 평가 기준 (DB)
+[대본 JSON]  ──▶ ① 대본 분석 (대본 등록·수정 시 1번, 슬라이드당 LLM 3회) ──▶ 평가 기준 (DB)
                                                                                │
 [슬라이드별 STT] ──▶ ② STT 평가 (연습마다, 슬라이드당 LLM 1회 + 필요할 때 1회) ◀──┘
                                     │
                                     ▼
-                  평가 결과 + 비슷한 말 위치 (DB) ──▶ 코칭(리뷰) agent
+                  평가 결과 + 비슷한 말 위치 (DB) ──▶ 리뷰 agent ──▶ 사용자 확인
+                                    ▲                                    │
+                                    └──── 점수 다시 계산 (코드, LLM 없음) ◀─┘
 ```
 
 - **① 대본 분석** — 규칙으로 수치·이름을 뽑고, LLM 이 문장 역할·핵심 주장·Key Point 를 정한 뒤, LLM 이 한 번 더 최종 결론을 냅니다.
-- **② STT 평가** — 규칙으로 정렬·수치 검증·비슷한 말 찾기를 하고, LLM 이 **대본 문장마다** 전달 여부를 판정합니다.
+  마지막으로 문장마다 **전달 단위**(주장·사실·수치·나열 항목 하나)를 나눠 둡니다.
+- **② STT 평가** — 규칙으로 정렬·수치 검증·비슷한 말 찾기를 하고, LLM 이 **전달 단위마다** 말했는지 판정하면 코드가 대본 문장 판정으로 모읍니다.
   규칙과 LLM 이 어긋난 문장만 LLM 이 다시 보고, 점수는 코드가 계산합니다.
+- **발음이 비슷한 말**(`노쇼` → `노조`)은 인식 오류인지 발표자가 실제로 다르게 말했는지 텍스트로는 알 수 없어 점수에서 빼 둡니다.
+  리뷰 agent 가 사용자에게 확인하면 그 답으로 점수를 다시 계산합니다.
 
 ---
 
 ## 다른 프로젝트가 이 프로젝트를 쓰는 법
 
-소비자(코칭·리뷰 agent)가 받는 것은 연습 한 번의 **슬라이드별 평가 결과**와 **비슷한 말 목록**입니다.
+소비자(리뷰 agent)가 받는 것은 연습 한 번의 **슬라이드별 평가 결과**와 **비슷한 말 목록**이고, 돌려주는 것은 **비슷한 말에 대한 사용자 답**입니다.
 
 ```json
 {
@@ -68,7 +73,8 @@ script-coverage-evaluation/
              "similar_words": 1, "similar_numbers": 0},
   "sentences": [
     {"sentence_index": 0, "text": "2025년 3월부터 8주 동안 제휴 도서관 3곳에서 시범 운영을 했습니다.",
-     "status": "said", "evidence": [0], "reason": "…핵심 내용과 수치가 모두 전달되었습니다.", "verified": false}
+     "status": "said", "evidence": [0], "reason": "…핵심 내용과 수치가 모두 전달되었습니다.", "verified": false,
+     "units": [{"unit_id": "S0-U1", "text": "2025년 3월부터 시범 운영을 함", "status": "said"}]}
   ],
   "key_points": [{"key_point_id": "KP1", "importance": "normal", "status": "covered", "sentence_indices": [0]}],
   "similar_items": [
@@ -79,11 +85,14 @@ script-coverage-evaluation/
 ```
 
 - `sentences` · `key_points` 의 판정은 근거 STT 문장 번호(`evidence`)와 이유를 함께 줍니다. 사용자에게 지적할 때는 근거 문장을 인용하세요.
+- `units` 는 문장 판정의 근거가 된 전달 단위별 판정입니다. "시험 기간과 날씨를 빠뜨렸다"처럼 빠진 정보를 짚을 때 쓰세요.
 - `similar_items` 는 **판단을 보류한 항목**입니다 — 발표자가 잘못 말했는지 음성 인식이 잘못 적었는지 텍스트만으로는 알 수 없어,
-  점수 비율에서 빼고 위치만 남겼습니다. 녹음이나 발표자 확인으로 판단하는 것은 소비자의 몫입니다.
+  점수 비율에서 빼고 위치만 남겼습니다. 리뷰 agent 가 위치(→ 녹음 구간)를 보여 주며 사용자에게 확인하고,
+  `confirm_similar_item(take_id, slide, item_id, "as_script" | "as_stt")` 으로 답을 넘기면 그 슬라이드의 판정과 점수를 다시 계산합니다.
+  최종 점수는 `confirmed_evaluation` · `confirmed_take_scores` 로 읽습니다 (확인한 답이 없으면 처음 채점과 같음).
 
 > ⚠️ **아직 서비스 API가 없습니다.** 지금은 노트북이 로컬 SQLite(`v1/local/outputs/rubrics.sqlite`)에 씁니다.
-> 소비자는 이 DB의 `slide_evaluations` · `similar_items` 테이블을 읽습니다. 서비스에 붙이는 형태는 `v1/deploy/`에서 정해질 예정입니다.
+> 소비자는 이 DB의 `slide_evaluations` · `similar_items` 를 읽고, 사용자 답은 `similar_confirmations` 에, 다시 계산한 결과는 `confirmed_evaluations` 에 남습니다. 서비스에 붙이는 형태는 `v1/deploy/`에서 정해질 예정입니다.
 
 각 필드의 의미는 [v1/README.md](v1/README.md)의 §2를 보세요.
 
