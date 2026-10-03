@@ -16,6 +16,20 @@ const BORDER: Record<GazeZone, string> = {
 const WINDOW_MS = 10_000;
 
 /**
+ * 저장된 기준을 불러온 상태. 결과가 지금 키에 대한 것이 아니면 아직 불러오는 중입니다 —
+ * 레이아웃이나 엔진이 바뀌면 이전 결과는 저절로 LOADING 으로 읽힙니다.
+ */
+function zoneRefState(
+  layoutSignature: string | null,
+  loadKey: string | null,
+  loaded: { key: string; found: boolean } | null,
+): 'LOADING' | 'READY' | 'MISSING' {
+  if (layoutSignature === null) return 'MISSING';
+  if (loadKey === null || loaded?.key !== loadKey) return 'LOADING';
+  return loaded.found ? 'READY' : 'MISSING';
+}
+
+/**
  * 발표 중 시선.
  *
  * 프레임은 워커로 들어가고 **1초 판정만** 나옵니다. 원시 좌표는 메인 스레드로
@@ -135,14 +149,7 @@ export function useLiveGaze({
     layoutSignature !== null && engineVersion !== null
       ? `${layoutSignature}#${engineVersion}`
       : null;
-  const refState: 'LOADING' | 'READY' | 'MISSING' =
-    layoutSignature === null
-      ? 'MISSING'
-      : loadKey === null || loaded?.key !== loadKey
-        ? 'LOADING'
-        : loaded.found
-          ? 'READY'
-          : 'MISSING';
+  const refState = zoneRefState(layoutSignature, loadKey, loaded);
 
   useEffect(() => {
     if (layoutSignature === null || engineVersion === null || loadKey === null) return;

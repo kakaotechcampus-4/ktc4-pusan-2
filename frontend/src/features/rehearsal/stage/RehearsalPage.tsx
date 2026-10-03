@@ -98,10 +98,15 @@ export function RehearsalPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
+  /**
+   * 세션을 못 연 이유. 이게 있으면 이 Take 의 기록(시선·슬라이드·코치)이 하나도 쌓이지 않고
+   * 종료 버튼도 아무것도 하지 않습니다 — 조용히 넘어가면 발표를 다 하고 나서야 압니다.
+   */
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
-  const { meterRef, dbRef, statsRef, audioState } = useMicLevel(stream);
+  const { meterRef, statsRef, audioState } = useMicLevel(stream);
 
   const ready = take.data !== undefined && pitch.data !== undefined;
   const running = ready && phase === 'RUNNING';
@@ -184,7 +189,14 @@ export function RehearsalPage() {
       }
       const row = await findSessionByTakeId(takeId);
       setSessionId(row ? row.clientSessionId : await startSession(takeId));
-    })().catch(() => undefined);
+      // IndexedDB 를 못 열면(사생활 보호 모드 · 저장 공간 부족) 여기로 옵니다.
+      // 준비 화면을 거쳐 온 길은 위에서 끝나므로, 새로고침·직접 진입일 때만 탑니다
+    })().catch((err: unknown) => {
+      console.error('[rehearsal] 세션을 열지 못했습니다', err);
+      setSessionError(
+        '연습 기록을 저장할 수 없어요. 새로고침하거나 준비 화면에서 다시 시작해 주세요',
+      );
+    });
   }, [takeId, location.state]);
 
   // 화면을 떠날 때 다음 Take를 위해 무대 상태를 비웁니다
@@ -205,7 +217,12 @@ export function RehearsalPage() {
       if (!opened && (devices.videoDeviceId || devices.audioDeviceId)) {
         await request();
       }
-    })().catch(() => undefined);
+      // 장치를 못 연 이유(권한 거부 · 장치 없음)는 request 가 deviceError 로 올립니다 —
+      // 시선 제외와 화면 표시는 그쪽이 맡습니다. 여기로 오는 건 예상 밖의 오류뿐이라
+      // 버리지 않고 남깁니다
+    })().catch((err: unknown) => {
+      console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
+    });
   }, [request, gazeDeclined, devices]);
 
   // ── 제외 사유 배선 ───────────────────────────────────────────────
@@ -389,17 +406,13 @@ export function RehearsalPage() {
     }
   };
 
-  const gazeNote = gazeDeclined
-    ? '시선 측정 제외 · 소리만으로 진행 중'
-    : deviceError
-      ? '카메라가 끊겼습니다 — 발표는 계속됩니다'
-      : missingCalibration
-        ? '시선 기준이 없어 측정 제외 — 발표는 계속됩니다'
-        : gazeError
-          ? `시선 측정 제외 · ${gazeError}`
-          : gazeReady
-            ? '시선 기록 중'
-            : '시선 엔진 준비 중';
+  const gazeNote = gazeNoteText({
+    declined: gazeDeclined,
+    cameraLost: deviceError !== null,
+    missingCalibration,
+    error: gazeError,
+    ready: gazeReady,
+  });
 
   return (
     <div className="min-h-full bg-greige px-4 py-5">
@@ -460,7 +473,7 @@ export function RehearsalPage() {
                 </section>
 
                 <section className="mic">
-                  <LevelBar variant="segments" meterRef={meterRef} dbRef={dbRef} />
+                  <LevelBar variant="segments" meterRef={meterRef} />
                 </section>
 
                 <section className="next">
@@ -508,6 +521,7 @@ export function RehearsalPage() {
                 <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
               )}
               {mode === 'EXAM' && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
+              {sessionError && <span>{sessionError}</span>}
               {endError && <span>{endError}</span>}
 
               <button
@@ -530,11 +544,7 @@ export function RehearsalPage() {
                   });
                 }}
               >
-                {phase === 'ENDING'
-                  ? '정리하는 중…'
-                  : confirming
-                    ? '정말 끝낼까요?'
-                    : '발표 끝내기'}
+                {endButtonText(phase === 'ENDING', confirming)}
               </button>
             </div>
           </div>
@@ -542,6 +552,31 @@ export function RehearsalPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다 —
+ * 사용자가 거절했으면 카메라가 끊겼든 말든 "거절"이 이유입니다.
+ */
+function gazeNoteText(state: {
+  declined: boolean;
+  cameraLost: boolean;
+  missingCalibration: boolean;
+  error: GazeExcludedReason | null;
+  ready: boolean;
+}): string {
+  if (state.declined) return '시선 측정 제외 · 소리만으로 진행 중';
+  if (state.cameraLost) return '카메라가 끊겼습니다 — 발표는 계속됩니다';
+  if (state.missingCalibration) return '시선 기준이 없어 측정 제외 — 발표는 계속됩니다';
+  if (state.error) return `시선 측정 제외 · ${state.error}`;
+  if (state.ready) return '시선 기록 중';
+  return '시선 엔진 준비 중';
+}
+
+function endButtonText(ending: boolean, confirming: boolean): string {
+  if (ending) return '정리하는 중…';
+  if (confirming) return '정말 끝낼까요?';
+  return '발표 끝내기';
 }
 
 /**

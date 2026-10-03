@@ -3,6 +3,28 @@ import { Navigate, useSearchParams } from 'react-router';
 import { safeDestination, useSession } from './useSession';
 
 /** P11: 로그인 시작과 콜백 상태 안내, 세션 확인 후 목적지 이동을 담당한다. */
+function authErrorMessage(authError: string | null): string | null {
+  if (authError === null) return null;
+  if (authError === 'access_denied') {
+    return '로그인이 취소되었습니다. 원하시면 다시 로그인할 수 있습니다.';
+  }
+  return '로그인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+}
+
+function loginStatusMessage(state: {
+  checking: boolean;
+  checkFailed: boolean;
+  redirecting: boolean;
+  fallback: string | null;
+}): string | null {
+  if (state.checking) return '로그인 상태를 확인하고 있습니다.';
+  if (state.checkFailed) {
+    return '로그인 상태를 확인하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.';
+  }
+  if (state.redirecting) return 'Google 로그인 화면으로 이동 중입니다.';
+  return state.fallback;
+}
+
 export function LoginPage() {
   const [params] = useSearchParams();
   const session = useSession();
@@ -12,12 +34,7 @@ export function LoginPage() {
   const navigationStarted = useRef(false);
 
   const authError = params.get('auth_error');
-  const error =
-    authError === null
-      ? null
-      : authError === 'access_denied'
-        ? '로그인이 취소되었습니다. 원하시면 다시 로그인할 수 있습니다.'
-        : '로그인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+  const error = authErrorMessage(authError);
 
   useEffect(() => {
     const reset = () => {
@@ -51,13 +68,12 @@ export function LoginPage() {
     );
   }
 
-  const message = session.isPending
-    ? '로그인 상태를 확인하고 있습니다.'
-    : session.isError
-      ? '로그인 상태를 확인하지 못했습니다. 연결을 확인하고 다시 시도해 주세요.'
-      : redirecting
-        ? 'Google 로그인 화면으로 이동 중입니다.'
-        : notice || error;
+  const message = loginStatusMessage({
+    checking: session.isPending,
+    checkFailed: session.isError,
+    redirecting,
+    fallback: notice || error,
+  });
 
   if (session.data && !authError) return <Navigate replace to={destination} />;
 

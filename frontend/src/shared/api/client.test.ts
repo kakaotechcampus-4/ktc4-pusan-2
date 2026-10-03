@@ -7,21 +7,17 @@ beforeEach(() => {
   vi.stubGlobal('document', { cookie: 'csrf_token=test-csrf' });
 });
 
+function fakeResponseBody(url: string): object {
+  if (url.endsWith('/refresh')) return { access_token: 'restored' };
+  if (url.endsWith('/logout')) return { detail: 'done' };
+  return { id: 'user', email: 'test@example.com', name: '테스트' };
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('인증 갱신', () => {
   it('새로고침 복원 후 내 정보 조회와 로그아웃을 처리한다', async () => {
-    const mock = vi.fn((url: string) =>
-      Promise.resolve(
-        Response.json(
-          url.endsWith('/refresh')
-            ? { access_token: 'restored' }
-            : url.endsWith('/logout')
-              ? { detail: 'done' }
-              : { id: 'user', email: 'test@example.com', name: '테스트' },
-        ),
-      ),
-    );
+    const mock = vi.fn((url: string) => Promise.resolve(Response.json(fakeResponseBody(url))));
     vi.stubGlobal('fetch', mock);
 
     await refresh();

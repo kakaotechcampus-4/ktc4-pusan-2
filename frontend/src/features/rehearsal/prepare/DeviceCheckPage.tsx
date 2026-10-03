@@ -38,6 +38,7 @@ function deviceCheckHint({
   calPhase,
   calPoints,
   calPoor,
+  calSaveFailed,
 }: {
   deviceError: DeviceError | null;
   live: boolean;
@@ -46,6 +47,8 @@ function deviceCheckHint({
   calPoints: number;
   /** 기준은 잡혔지만 품질이 낮음 — 막지 않고 권하기만 합니다 */
   calPoor: boolean;
+  /** 기준은 잡혔지만 브라우저에 저장하지 못함 — 리허설이 못 쓰므로 막습니다 */
+  calSaveFailed: boolean;
 }): string {
   if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
   if (!live) return '카메라를 켜야 점검을 시작할 수 있습니다';
@@ -54,6 +57,9 @@ function deviceCheckHint({
     return '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요';
   if (calPhase === 'PLACE_WARN') return '카메라 위치를 확인해 주세요';
   if (calPoints < 2) return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
+  if (calSaveFailed) {
+    return "시선 기준을 저장하지 못했어요. 다시 잡거나 '소리만으로 계속하기'를 눌러 주세요";
+  }
   if (calPoor) return '시선 기준이 흐릿해요. 다시 잡으면 더 정확해지지만, 이대로 시작해도 됩니다';
   return '점검이 끝났어요';
 }
@@ -91,6 +97,17 @@ function calibrationActionText(phase: CalibrationPhase, live: boolean): string {
   }
 }
 
+/** 시선 기준점 항목의 문구. 확인 중이면 phase 보다 그게 먼저입니다 */
+function calibrationLabel(
+  cal: Pick<ReturnType<typeof useGazeCalibration>, 'verifying' | 'phase' | 'advice' | 'points'>,
+): string {
+  if (cal.verifying) return '시선 기준점 · 저장된 기준 확인 중';
+  if (cal.phase === 'FAILED') return '시선 기준점 · 다시 필요';
+  if (cal.phase === 'PLACE_WARN') return '시선 기준점 · 카메라 위치 확인';
+  if (cal.advice) return '시선 기준점 2 / 2 · 품질 낮음';
+  return `시선 기준점 ${cal.points} / 2`;
+}
+
 /**
  * 09 시작 전 세팅 — 리허설 바로 앞. **Take가 생기는 유일한 화면입니다.**
  *
@@ -112,7 +129,7 @@ export function DeviceCheckPage() {
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
-  const { meterRef, dbRef, rowRef, silentRef, micOk, audioState, meterError } = useMicLevel(stream);
+  const { meterRef, rowRef, silentRef, micOk, audioState, meterError } = useMicLevel(stream);
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
   // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
   // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
@@ -181,7 +198,13 @@ export function DeviceCheckPage() {
   // 저장된 기준을 확인하는 중에는 열지 않습니다 — "완료"로 보이는데 기준이 없으면
   // 리허설에서 시선이 조용히 빠집니다
   const ready =
-    live && micOk && cal.points === 2 && !cal.verifying && data !== undefined && !starting;
+    live &&
+    micOk &&
+    cal.points === 2 &&
+    !cal.verifying &&
+    !cal.saveFailed &&
+    data !== undefined &&
+    !starting;
 
   /**
    * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
@@ -189,7 +212,7 @@ export function DeviceCheckPage() {
    * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
    * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
    */
-  const start = async () => {
+  const start = async ({ withGaze }: { withGaze: boolean }) => {
     if (!data || starting) return;
     setStarting(true);
     setStartError(null);
@@ -206,6 +229,10 @@ export function DeviceCheckPage() {
     const practiceMode = practiceModeFor(scriptMode);
 
     try {
+      // 리허설은 다른 워커라 기준을 IndexedDB 에서 꺼내 씁니다. **Take 를 만들기 전에** 확인합니다 —
+      // 뒤에서 실패하면 연습 없이 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다
+      if (withGaze) await cal.saved();
+
       const clientSessionId = await startSession();
 
       const take = await createTake.mutateAsync({
@@ -221,8 +248,6 @@ export function DeviceCheckPage() {
 
       // 품질 요약만 갑니다. 기준 벡터는 브라우저에 남습니다 (CLAUDE.md 1번)
       if (calibration) await postCalibration(take.takeId, calibration);
-      // 리허설은 다른 워커라 기준을 IndexedDB 에서 꺼내 씁니다. 저장이 끝난 뒤에 넘어갑니다
-      await cal.saved();
 
       navigate(
         practiceMode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`,
@@ -250,6 +275,7 @@ export function DeviceCheckPage() {
           calPhase: cal.phase,
           calPoints: cal.points,
           calPoor: cal.advice !== null,
+          calSaveFailed: cal.saveFailed,
         }));
 
   const takeNumber = data?.nextTakeNumber ?? 0;
@@ -275,7 +301,7 @@ export function DeviceCheckPage() {
             disabled={!micOk || starting || data === undefined}
             onClick={() => {
               declineGaze();
-              start().catch(() => undefined);
+              start({ withGaze: false }).catch(() => undefined);
             }}
           >
             소리만으로 계속하기
@@ -283,7 +309,7 @@ export function DeviceCheckPage() {
           <StageButton
             variant="primary"
             disabled={!ready}
-            onClick={() => start().catch(() => undefined)}
+            onClick={() => start({ withGaze: true }).catch(() => undefined)}
           >
             {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
           </StageButton>
@@ -342,26 +368,18 @@ export function DeviceCheckPage() {
                 },
                 {
                   id: 'mic',
-                  // 문구 전체를 rAF가 다시 씁니다 — 초당 수십 번 바뀌는 값이라 상태로 올리지 않습니다
+                  // 문구는 rAF가 씁니다 — 계량기 루프 안에서 바뀌는 값이라 상태로 올리지 않습니다
                   label: <span ref={rowRef}>마이크 입력 확인 중</span>,
                   done: micOk,
-                  // 막대를 이 줄 안에 둡니다 (목업 09) — 숫자와 움직임이 같이 보여야
+                  // 막대를 이 줄 안에 둡니다 (목업 09) — 문구와 움직임이 같이 보여야
                   // "소리가 들어오고 있다"가 한 번에 읽힙니다
-                  trailing: <LevelBar variant="segments" meterRef={meterRef} dbRef={dbRef} />,
+                  trailing: <LevelBar variant="segments" meterRef={meterRef} />,
                 },
                 {
                   // 먼저 카메라 위치를 4초 보고, 이어서 카메라 2초 · 대본 자리 2초.
                   // 모은 프레임은 분류기가 받아 판정합니다 (A안) — 여기서는 순서와 안내만 합니다.
                   id: 'gaze',
-                  label: cal.verifying
-                    ? '시선 기준점 · 저장된 기준 확인 중'
-                    : cal.phase === 'FAILED'
-                      ? '시선 기준점 · 다시 필요'
-                      : cal.phase === 'PLACE_WARN'
-                        ? '시선 기준점 · 카메라 위치 확인'
-                        : cal.advice
-                          ? '시선 기준점 2 / 2 · 품질 낮음'
-                          : `시선 기준점 ${cal.points} / 2`,
+                  label: calibrationLabel(cal),
                   done: cal.phase === 'DONE',
                   action: {
                     text: calibrationActionText(cal.phase, live),

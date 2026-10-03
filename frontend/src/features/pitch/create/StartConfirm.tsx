@@ -54,11 +54,7 @@ function describe(draft: PitchDraft, resolved: Resolved): RowSpec[] {
       label: '대본',
       versions: draft.scripts.map((v) => v.version),
       chosen: script?.version ?? null,
-      detail: script
-        ? blocks
-          ? `${countChars(script.text).toLocaleString()}자 · ${blocks.length}블록 매핑됨`
-          : `${countChars(script.text).toLocaleString()}자 · 매핑 안 됨`
-        : '없음',
+      detail: scriptDetail(script?.text ?? null, blocks?.length ?? null),
       ok: blocks !== null && blocks.length > 0,
     },
     {
@@ -70,6 +66,14 @@ function describe(draft: PitchDraft, resolved: Resolved): RowSpec[] {
       ok: (criteria?.items.length ?? 0) > 0,
     },
   ];
+}
+
+/** 블록 수가 null 이면 매핑을 안 한 것입니다 — 0 블록과는 다릅니다 */
+function scriptDetail(text: string | null, blockCount: number | null): string {
+  if (text === null) return '없음';
+  const chars = `${countChars(text).toLocaleString()}자`;
+  if (blockCount === null) return `${chars} · 매핑 안 됨`;
+  return `${chars} · ${blockCount}블록 매핑됨`;
 }
 
 export function StartConfirm({ onClose, onGo }: { onClose: () => void; onGo: () => void }) {

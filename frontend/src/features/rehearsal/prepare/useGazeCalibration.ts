@@ -103,6 +103,13 @@ export const CALIBRATION_FAIL_MESSAGE: Record<CalibrationFailReason, string> = {
   ENGINE_ERROR: '시선 분석이 잠시 멈췄어요. 다시 시도해도 안 되면 페이지를 새로고침해 주세요.',
 };
 
+/** 잡은 기준점 수. 아래 자리까지 넘어왔으면 카메라 자리는 이미 잡힌 것입니다 */
+function calibrationPoints(phase: CalibrationPhase): number {
+  if (phase === 'DONE') return 2;
+  if (phase === 'BOTTOM' || phase === 'EVALUATING') return 1;
+  return 0;
+}
+
 /**
  * 카메라 배치 확인(렌즈 2초 · 화면 가운데 2초) → 2점 캘리브레이션(카메라 2초 · 화면 아래 2초).
  *
@@ -171,6 +178,8 @@ export function useGazeCalibration({
    * 저장이 끝나기 전에 넘어가면 방금 잡은 기준을 못 찾습니다.
    */
   const savingRef = useRef<Promise<void>>(Promise.resolve());
+  /** 기준을 IndexedDB 에 저장하지 못함. 리허설이 기준을 못 찾으므로 시작을 막습니다 */
+  const [saveFailed, setSaveFailed] = useState(false);
 
   /** 남은 초는 DOM 에 직접 씁니다 — 4초 동안 렌더를 열 번 돌릴 이유가 없습니다 */
   const countdownRef = useRef<HTMLSpanElement>(null);
@@ -204,11 +213,17 @@ export function useGazeCalibration({
 
       const { ref } = result;
       const layoutSignature = signatureRef.current;
+      const id = attemptRef.current;
       setFailReason(null);
       setPhase('DONE');
       // 기준은 브라우저에만 남습니다. 다음 Take 가 같은 기기·배치·엔진이면 되살려 씁니다
-      // 실패는 여기서 삼킵니다 — 리허설이 기준을 못 찾으면 시선을 제외하고 발표는 계속합니다
-      savingRef.current = saveZoneRef(layoutSignature, ref, engineVersion).catch(() => undefined);
+      // 실패는 삼키지 않습니다 — 화면은 '완료'인데 리허설에서 시선이 조용히 빠지기 때문입니다.
+      // 시작은 막고, 다시 잡거나 '소리만으로 계속하기'로 가게 합니다
+      savingRef.current = saveZoneRef(layoutSignature, ref, engineVersion);
+      savingRef.current.catch(() => {
+        // 그사이 다시 잡기를 눌렀으면 옛 시도의 실패로 새 시도를 막지 않습니다
+        if (attemptRef.current === id) setSaveFailed(true);
+      });
       setCalibration(
         {
           points: 2,
@@ -447,6 +462,7 @@ export function useGazeCalibration({
     if (!video || !live) return;
 
     const id = ++attemptRef.current;
+    setSaveFailed(false);
     const layoutSignature = readLayoutSignature(video);
     signatureRef.current = layoutSignature;
 
@@ -485,7 +501,7 @@ export function useGazeCalibration({
 
   const saved = useCallback(() => savingRef.current, []);
 
-  const points = phase === 'DONE' ? 2 : phase === 'BOTTOM' || phase === 'EVALUATING' ? 1 : 0;
+  const points = calibrationPoints(phase);
 
   return {
     phase,
@@ -508,6 +524,8 @@ export function useGazeCalibration({
     continueAnyway,
     /** 기준 저장이 끝날 때까지 기다립니다. 리허설로 넘어가기 직전에 부릅니다 */
     saved,
+    /** 기준을 저장하지 못함. 시작을 막고 다시 잡기나 소리만으로 계속하기를 안내합니다 */
+    saveFailed,
     /** 워커가 떴나 · 엔진이 없으면 사유 */
     engineReady: ready,
     engineError: error,
