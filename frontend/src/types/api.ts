@@ -37,7 +37,13 @@
 
 export type Ms = number;
 
-export type Mode = 'COACHING' | 'EXAM';
+/**
+ * 연습 방식. 코치가 발표 중에 말을 거느냐입니다 - 대본 표시(ScriptMode)와는 별개입니다.
+ *
+ * 서버 필드 이름은 그대로 `mode` 입니다 (BE DTO·DB 계약). 그래서 요청·응답에서는
+ * `mode: PracticeMode` 로 보입니다. 이름을 맞추려면 BE 와 같이 바꿔야 합니다.
+ */
+export type PracticeMode = 'COACHING' | 'EXAM';
 /**
  * 3단계. OFF는 대본 영역 자체가 사라진다 (높이 0).
  *
@@ -136,10 +142,14 @@ export interface GazeSegment {
 export interface CalibrationSummary {
   /** 2점 캘리브레이션 — 카메라 한 번, 화면 한 번 */
   points: 2;
+  /**
+   * GOOD 검사 통과 · FAIR 통과했지만 경고 · POOR 검사 불합격이지만 모델은 있어 진행함.
+   * POOR 인 Take 의 시선 숫자는 믿음이 낮습니다 — 리포트가 그 점을 알려야 합니다.
+   */
   quality: 'GOOD' | 'FAIR' | 'POOR';
   /**
-   * 두 기준이 얼마나 떨어져 있나. **모르면 null 입니다** —
-   * A안에서 분류기는 등급(quality)만 주고 수치는 내지 않습니다.
+   * 두 기준이 얼마나 떨어져 있나 (AI `separability`). **모르면 null 입니다** —
+   * 더미 분류기처럼 수치를 내지 않는 경우입니다.
    * 0 으로 채우면 "분리도가 0" 이라는 뜻이 되어 리포트가 거짓말을 합니다.
    */
   separability: number | null;
@@ -176,7 +186,7 @@ export interface CompleteRequest {
   startedAt: string;
   endedAt: string;
   durationMs: Ms;
-  mode: Mode;
+  mode: PracticeMode;
   hiddenPanels: string[];
   slideEvents: { slideNumber: number; startMs: Ms; endMs: Ms }[];
   gaze: GazePayload;
@@ -188,7 +198,6 @@ export interface CompleteRequest {
   }[];
   /** 띄우려다 참은 것과 사유 — 코칭 임계값 조정의 유일한 근거 */
   suppressedFeedbacks: { type: string; atMs: Ms; reason: string }[];
-  audioFileKey: string;
   clientPerf: {
     avgGazeFps: number;
     droppedFrames: number;
@@ -240,7 +249,7 @@ export interface Finding {
 export interface TakeReport {
   takeId: string;
   takeNumber: number;
-  mode: Mode;
+  mode: PracticeMode;
   scriptMode: ScriptMode;
   headline: string;
   summary: {
@@ -367,7 +376,7 @@ export interface CreateTakeRequest {
   pitchId: string;
   /** 멱등키. IndexedDB 세션 키와 **같은 값**입니다 */
   clientSessionId: string;
-  mode: Mode;
+  mode: PracticeMode;
   scriptMode: ScriptMode;
   presentationVersion: number;
   scriptVersion: number;
@@ -394,7 +403,7 @@ export interface TakeContext {
   pitchId: string;
   pitchTitle: string;
   /** Take가 시작될 때 고정된 값입니다. 화면이 임의로 바꾸지 않습니다 */
-  mode: Mode;
+  mode: PracticeMode;
   scriptMode: ScriptMode;
   timeLimitSec: number;
   status: TakeStatus;

@@ -1,3 +1,4 @@
+from datetime import datetime
 import uuid
 
 from pydantic import BaseModel
@@ -22,6 +23,7 @@ class TakeSummaryDTO(BaseModel):
     script_mode: str
     score: int | None = None
     delta: int | None = None
+    created_at: datetime | None = None
 
 class CalibrationDTO(BaseModel):
     face_detected: bool = False

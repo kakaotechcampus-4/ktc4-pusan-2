@@ -30,9 +30,7 @@ def _make_versions(db: Session, pitch_id: uuid.UUID) -> tuple[uuid.UUID, uuid.UU
     presentation = PresentationVersion(
         pitch_id=pitch_id, version=1, file_key=f"pitches/{pitch_id}/presentations/1.pdf"
     )
-    script = ScriptVersion(
-        pitch_id=pitch_id, version=1, file_key=f"pitches/{pitch_id}/scripts/1.txt"
-    )
+    script = ScriptVersion(pitch_id=pitch_id, version=1, content="대본")
     db.add_all([presentation, script])
     db.flush()
     return presentation.id, script.id

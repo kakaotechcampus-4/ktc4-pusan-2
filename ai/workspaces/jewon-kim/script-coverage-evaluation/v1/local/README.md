@@ -21,7 +21,7 @@ v1의 범위와 출력 계약은 [../README.md](../README.md)를 보세요.
 ```
  data/scripts/*.json ──▶ script_analysis_pipeline.ipynb ──▶ outputs/rubrics.sqlite
    (대본)                  ① 대본 → 평가 기준                  evaluation_rubrics
-                           슬라이드당 LLM 2회                          │
+                           슬라이드당 LLM 3회                          │
                                                                        ▼
  data/stt/*.json ──────▶ stt_evaluation_pipeline.ipynb ──▶ outputs/rubrics.sqlite
    (슬라이드별 STT)        ② STT → 채점 (①을 %run)            slide_evaluations
@@ -35,7 +35,7 @@ v1의 범위와 출력 계약은 [../README.md](../README.md)를 보세요.
 | LLM | OpenAI 호환 API, 검증한 모델 `gpt-5.6-luna` |
 | 데이터 | 가상 대본 2개(슬라이드 20장), 가상 STT 18개 + 정답 라벨 |
 | 실행 시간 (캐시 있음) | 대본 분석 약 25초, STT 평가 약 40초 — API 호출 0회 |
-| 처음부터 (캐시 없음) | 대본 분석 약 40회 + 일관성 측정 약 80회, STT 평가 약 220회 + 반복 채점 약 440회 |
+| 처음부터 (캐시 없음) | 대본 분석 약 60회 + 일관성 측정 약 80회, STT 평가 약 225회 + 반복 채점 약 450회 |
 
 ---
 
@@ -112,7 +112,8 @@ PowerShell 에서는 환경 변수를 `$env:STT_CONSISTENCY_SAMPLES = "1"` 처�
 | 4 | LLM 1차 분석 | `SEMANTIC_SYSTEM_PROMPT`, `analyze_semantics` |
 | 5 | 1차 정리·검증 | `draft_rubric`, `ROLE_IMPORTANCE`, **`SCORE_WEIGHT`**, `key_term_rejection`, `link_facts_to_key_points`, `validate_rubric` |
 | 6 | LLM 최종 결론 | `FINAL_SYSTEM_PROMPT`, `review_final`, `finalize_rubric` |
-| 7 | DB | `connect_db`, `save_rubric`, `load_rubric` |
+| 6-2 | LLM 전달 단위 | `UNIT_SYSTEM_PROMPT`, `extract_units`, `build_content_units`, **`QUOTE_MATCH`**, `attach_units` |
+| 7 | DB | `connect_db`, `save_rubric`, `load_rubric`, `load/save_cached_units` |
 | 8~9 | 파이프라인, 실행 | `run_script_analysis` |
 | 10 | 대본 수정 시 재분석 | (예: 가상대본2 슬라이드 5 수정) |
 | 11 | 점검 | 규칙 `assert`, `PARSER_CASES` (수 파서 회귀 사례) |
@@ -129,14 +130,15 @@ PowerShell 에서는 환경 변수를 `$env:STT_CONSISTENCY_SAMPLES = "1"` 처�
 | 4 | 핵심 사실 검증 | `check_critical_facts` |
 | 4-2 | 다른 수치의 원인 신호 | `mismatch_signals`, `reading_of` |
 | 4-3 | 비슷한 말 찾기 | `find_similar_items`, `phonetic_distance`, **`WORD_DISTANCE`**, `settle_facts` |
-| 5 | LLM 의미 평가 (문장별) | `SEMANTIC_EVAL_PROMPT`, `semantic_eval_message`, `judged_sentences` |
-| 6 | 병합 · 충돌 → Key Point | `merge_sentences`, **`LEXICAL_PRESENT` / `LEXICAL_ABSENT`**, `aggregate_status`, `aggregate_key_points` |
+| 5 | LLM 의미 평가 (전달 단위별) | `SEMANTIC_EVAL_PROMPT`, `semantic_eval_message`, `sentence_units`, `judged_sentences` |
+| 6 | 단위 → 문장 판정 · 충돌 → Key Point | `merge_sentences`, `status_from_units`, `raise_units_with_facts`, `CONFLICT_TEXT`, `evidence_coverage`, **`LEXICAL_PRESENT` / `LEXICAL_ABSENT` / `LEXICAL_COMPLETE`**, `aggregate_status`, `aggregate_key_points` |
 | 7 | LLM 교차 검증 | `VERIFIER_PROMPT`, `verifier_message` |
 | 8 | 점수 | `slide_scores`, `take_scores`, `STATUS_SCORE`, `FACT_SCORE` |
-| 9 | DB · 파이프라인 | `evaluate_take`, `save_evaluation`, **`load_similar_items`** |
-| 10 | 실행, 비슷한 말 목록, 슬라이드 상세 | `take_summary`, `similar_report`, `show_evaluation` |
-| 11 | 정답 라벨과 비교 | `build_tables`, `kp_accuracy`, `fact_accuracy`, `similar_tables` |
-| 12 | 반복 채점 일관성 | `N_EVAL_SAMPLES` ← `STT_CONSISTENCY_SAMPLES` |
+| 9 | DB · 파이프라인 | `evaluate_take`, `save_evaluation`, **`load_similar_items`**, `fidelity_excluding` |
+| 9-2 | 사용자 확인 → 점수 다시 계산 (리뷰 agent 용) | **`confirm_similar_item`**, **`confirmed_evaluation`**, `confirmed_take_scores`, `rescore_evaluation` |
+| 10 | 실행, 충돌 조건별 발동 기록, 비슷한 말 목록, 슬라이드 상세 | `take_summary`, `conflict_log`, `similar_report`, `show_evaluation` |
+| 11 | 정답 라벨과 비교, 충돌 조건 점검 (11-2), 사용자 확인 뒤 정확도 (11-3) | `build_tables`, `kp_accuracy`, `fact_accuracy`, `similar_tables`, `conflict_check`, `first_status_check` |
+| 12 | 반복 채점 일관성, 충돌 조건 점검 합산 | `N_EVAL_SAMPLES` ← `STT_CONSISTENCY_SAMPLES`, `confidence_check` |
 
 코드는 노트북 셀에 있습니다. 한 셀을 고치면 **그 뒤 셀들을 다시 실행**하세요 (STT 노트북은 ①을 `%run` 하므로 ①을 고쳤으면 STT 노트북도 처음부터).
 
@@ -167,7 +169,7 @@ PowerShell 에서는 환경 변수를 `$env:STT_CONSISTENCY_SAMPLES = "1"` 처�
 }
 ```
 
-`script_name` 은 평가 기준을 만든 대본 이름이어야 합니다. `stt` 는 그 슬라이드를 띄워 둔 동안의 음성 인식 결과(원문 그대로)입니다.
+`scenario` 는 가상 데이터의 시나리오 이름이라 없어도 됩니다. `script_name` 은 평가 기준을 만든 대본 이름이어야 합니다. `stt` 는 그 슬라이드를 띄워 둔 동안의 음성 인식 결과(원문 그대로)입니다.
 
 ### 정답 라벨 — `data/stt_labels/<take_id>.json` (성능 측정용, 선택)
 
@@ -187,7 +189,7 @@ PowerShell 에서는 환경 변수를 `$env:STT_CONSISTENCY_SAMPLES = "1"` 처�
 }
 ```
 
-대본 **문장마다**(인덱스는 대본 분석의 문장 번호) 발표자가 **실제로 말한 것** 기준으로 적습니다. 필드 뜻은 [../README.md](../README.md) §10.
+대본 **문장마다**(인덱스는 대본 분석의 문장 번호) 발표자가 **실제로 말한 것** 기준으로 적습니다. 필드 뜻과 **판정 기준(라벨 기준)** 은 [../README.md](../README.md) §10.
 값 목록의 `script` 에는 수치를 **단위까지** 적으세요 (`15` 가 아니라 `15%`) — 라벨의 값도 수 파서로 읽어 비교합니다.
 
 > **정답 라벨을 채점 결과에 맞춰 고치지 마세요.** 11장 정확도가 의미 없어집니다.
@@ -201,7 +203,9 @@ PowerShell 에서는 환경 변수를 `$env:STT_CONSISTENCY_SAMPLES = "1"` 처�
 | `FILLER` | STT 2장 | `음 어 으 엄 흠 아 에` | 지우는 간투사 |
 | `LONG_SENTENCE`, `FILLER_CANDIDATES` | STT 3-2장 | 120자, `그 저 뭐 …` | 문장 분리 점검 기준 (채점에 영향 없음) |
 | `WORD_DISTANCE` | STT 4-3장 | 0.34 | 이 발음 거리 이하면 비슷한 단어 |
-| `LEXICAL_PRESENT` / `LEXICAL_ABSENT` | STT 6장 | 0.6 / 0.2 | 단어 비율로 LLM 판정과 충돌을 잡는 기준 |
+| `QUOTE_MATCH` | 대본 분석 6-2장 | 0.6 | 전달 단위의 대본 표현이 그대로 없을 때, 내용 형태소가 이 비율 이상 있으면 받음 |
+| `LEXICAL_PRESENT` / `LEXICAL_ABSENT` | STT 6장 | 0.6 / 0.2 | 단어 비율로 LLM 판정과 충돌을 잡는 기준 (0.2 는 LLM 근거 문장에도 씀) |
+| `LEXICAL_COMPLETE` | STT 6장 | 0.8 | partial 인데 빠진 수치·이름이 없고 단어가 이만큼 나오면 충돌 (`partial_complete`) |
 | `STATUS_SCORE`, `FACT_SCORE` | STT 8장 | 1 / 0.5 / 0 / −0.5, 1 / 0.5 | 판정별 점수 |
 | `SCORE_WEIGHT` | 대본 분석 5장 | 3 / 2 / 1 | 중요도 가중치 (두 노트북 공용) |
 | `RUBRIC_CONSISTENCY_SAMPLES` | 환경 변수 | 3 | 대본 분석 12장 일관성 측정 횟수 (1 이면 끔) |
@@ -218,8 +222,9 @@ LLM 응답은 `outputs/rubrics.sqlite` 에 캐시됩니다. 키는 **입력 해�
 | 바꾼 것 | 다시 부르는 호출 |
 |---|---|
 | 코드 상수 · 점수 계산 · 규칙 | 없음 (단, 규칙 결과가 LLM 입력에 들어가는 곳은 입력이 바뀌면 다시 부름) |
-| 대본 한 슬라이드 | 그 슬라이드의 ① 2회 + 그 대본을 쓰는 모든 연습의 해당 슬라이드 ② |
-| ② 프롬프트 · 출력 스키마 · 모델 | ② 전부 (반복 채점 포함 약 660회) |
+| 대본 한 슬라이드 | 그 슬라이드의 ① 3회 + 그 대본을 쓰는 모든 연습의 해당 슬라이드 ② |
+| ② 프롬프트 · 출력 스키마 · 모델 | ② 전부 (반복 채점 포함 약 675회) |
+| ① 전달 단위 프롬프트 | ① 전달 단위 약 20회 → 단위가 바뀌므로 ② 1차 판정 전부 |
 | ① 프롬프트 · 출력 스키마 · 모델 | ① 전부 → 평가 기준이 바뀌므로 ② 도 전부 |
 | `outputs/` 삭제 | 전부 |
 
@@ -233,6 +238,7 @@ LLM 응답은 `outputs/rubrics.sqlite` 에 캐시됩니다. 키는 **입력 해�
 |---|---|
 | 상위 `.env` 자동 사용 | `.env` 를 위로 찾아 올라가므로 저장소 공용 키로 바로 과금됩니다 |
 | 테이블 컬럼 변경 | `CREATE TABLE IF NOT EXISTS` 라 예전 테이블이 남습니다. `similar_items` 처럼 매번 새로 채워지는 테이블은 지우고 다시 실행하세요 |
+| 사용자 답 | `similar_confirmations` 는 사용자 답이라 지우면 되살릴 수 없습니다. 11-3장은 가상 데이터의 사용자 답을 정답 라벨로 대신해 이 테이블에 씁니다 |
 | 커널이 DB 를 잡고 있음 | Windows 에서 `outputs/rubrics.sqlite` 를 지우려면 커널을 먼저 종료하세요 |
 | 한글 출력 깨짐 | 명령줄 실행 시 `PYTHONIOENCODING=utf-8` (Windows cp949 콘솔) |
 | STT 텍스트를 고치고 싶을 때 | 정규화는 일부러 규칙만 씁니다 — LLM 으로 다시 쓰면 인식 오류·발표자 실수가 사라지고 원본 위치가 깨집니다 ([../README.md](../README.md) §12) |
@@ -261,7 +267,7 @@ LLM 응답은 `outputs/rubrics.sqlite` 에 캐시됩니다. 키는 **입력 해�
 | ✅ | 두 노트북 전 구간 동작 · 가상 데이터로 정답 비교·반복 채점 완료 · 캐시로 재실행 시 API 호출 0회 |
 | ⚠️ | **실제 발표 녹음·Deepgram 결과 없음** — 모든 정확도는 가상 데이터 기준 |
 | ⚠️ | 테스트 코드 · CI 없음 — 규칙 회귀 확인은 대본 분석 노트북 11장의 `assert` 뿐 |
-| ⬜ | `v1/deploy` 없음 — 서비스 API 와 코칭 agent 인터페이스 미정 |
+| ⬜ | `v1/deploy` 없음 — 서비스 API 와 리뷰 agent 인터페이스(사용자 확인 주고받기) 미정 |
 
 가장 큰 공백은 **실제 데이터**입니다. 실제 슬라이드별 Deepgram 결과와 문장별 라벨이 생기면 STT 노트북 3-2장 → 11장 → 12장 순서로 확인하세요.
 

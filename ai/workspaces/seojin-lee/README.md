@@ -14,6 +14,7 @@
 | [script-parser](script-parser/) | 발표 대본 전체 텍스트를 간단한 전처리 및 **슬라이드 단위**로 분리하고, 슬라이드별 **키워드**를 추출 | v1 개발 중 (local) |
 | [evaluation-criteria](evaluation-criteria/) | 사용자가 자연어로 작성한 발표 평가 기준을 **판단 가능 / 정보 부족 / 판단 불가**로 분류 | v1 개발 중 (local) |
 | [stt-live](stt-live/) | STT 단어별 타임스탬프로 **분당 발화 글자 수(CPM)**를 계산해 말하기 속도를 **느림/보통/빠름**으로 판정 | v1 개발 중 (local) |
+| [volume-analysis](volume-analysis/) | 캘리브레이션(주변 소음·평소 목소리) 대비 현재 음량 지표를 계산해 발표 음량을 **작음/보통/큼**으로 판정 | v1 개발 중 (local) |
 
 ---
 

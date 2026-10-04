@@ -1,4 +1,5 @@
 import type { RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import type { CalibrationPhase } from './useGazeCalibration';
 
 /**
@@ -6,7 +7,7 @@ import type { CalibrationPhase } from './useGazeCalibration';
  *
  * 두 가지를 같이 합니다 —
  *   1. 얼굴이 화면 안에 들어왔는지 스스로 보게 한다
- *   2. 2점 캘리브레이션의 시선 표적을 띄운다
+ *   2. 카메라 배치 확인과 2점 캘리브레이션의 시선 표적을 띄운다
  *
  * 영상은 **거울상**으로 보여 줍니다. 자기 모습을 좌우 반대로 보면 위치를 못 맞춥니다.
  * 그래서 `CalibrationSummary.coordinateSpace`가 'mirrored'로 남습니다 —
@@ -56,8 +57,9 @@ export function CameraPreview({
 
       <CalibrationTarget phase={phase} mini={mini} />
 
-      {/* 남은 초. 표적 옆이 아니라 가운데 둡니다 — 표적을 보는 동안 곁눈으로 읽힙니다 */}
-      {!mini && (phase === 'CAMERA' || phase === 'BOTTOM') && (
+      {/* 남은 초. 표적 옆이 아니라 가운데 둡니다 — 표적을 보는 동안 곁눈으로 읽힙니다.
+          PLACE_SCREEN 에서는 화면 전체 표적이 같은 ref 로 초를 받습니다 */}
+      {!mini && (phase === 'PLACE_CAMERA' || phase === 'CAMERA' || phase === 'BOTTOM') && (
         <span
           ref={countdownRef}
           className="tabular pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2
@@ -90,6 +92,8 @@ export function CameraPreview({
         </>
       )}
 
+      {!mini && phase === 'PLACE_SCREEN' && <ScreenCenterTarget countdownRef={countdownRef} />}
+
       {!live && onEnable && (
         <div className="absolute inset-0 grid place-items-center bg-stage/70 px-4 text-center">
           <button
@@ -108,6 +112,10 @@ export function CameraPreview({
 
 const CAPTION: Record<CalibrationPhase, string> = {
   IDLE: '얼굴을 안내선 안에 맞춰 주세요',
+  PLACE_CAMERA: '카메라 렌즈를 바라보세요 · 카메라 위치 확인 중',
+  PLACE_SCREEN: '화면 한가운데 점을 바라보세요',
+  PLACE_EVALUATING: '카메라 위치를 확인하는 중…',
+  PLACE_WARN: '카메라 위치를 확인해 주세요',
   CAMERA: '카메라 렌즈를 바라보세요',
   BOTTOM: '대본이 놓일 아래쪽을 바라보세요',
   EVALUATING: '기준을 확인하는 중…',
@@ -120,7 +128,9 @@ const CAPTION: Record<CalibrationPhase, string> = {
  * 이 두 방향은 고개도 같이 움직여서 head pose가 시선 벡터를 보강합니다 (CLAUDE.md 2번).
  */
 function CalibrationTarget({ phase, mini }: { phase: CalibrationPhase; mini: boolean }) {
-  if (phase !== 'CAMERA' && phase !== 'BOTTOM') {
+  // 배치 확인의 첫 2초도 렌즈를 봅니다 — 캘리브레이션 CAMERA 와 같은 자리입니다
+  const lookingAtLens = phase === 'CAMERA' || phase === 'PLACE_CAMERA';
+  if (!lookingAtLens && phase !== 'BOTTOM') {
     return (
       <span
         aria-hidden
@@ -130,12 +140,37 @@ function CalibrationTarget({ phase, mini }: { phase: CalibrationPhase; mini: boo
     );
   }
 
-  const place = phase === 'CAMERA' ? 'top-4' : 'bottom-4';
+  const place = lookingAtLens ? 'top-4' : 'bottom-4';
   return (
     <span
       aria-hidden
       className={`pointer-events-none absolute left-1/2 -translate-x-1/2 animate-pulse rounded-full
                   bg-coral ${place} ${mini ? 'size-2.5' : 'size-4'}`}
     />
+  );
+}
+
+/**
+ * 배치 확인 둘째 2초의 표적 — **모니터 한가운데.**
+ *
+ * 미리보기 안이 아니라 화면 전체를 덮습니다. 배치 확인은 "렌즈에서 본 화면 가운데가
+ * 어느 쪽인가"를 재는 것이라, 표적이 미리보기(화면 위쪽 왼편)에 있으면 각도가 틀어집니다.
+ *
+ * body 로 포털을 띄웁니다 — 조상에 transform 이 있으면 `fixed` 가 그 조상 기준이 되어
+ * 화면 가운데를 벗어납니다.
+ */
+function ScreenCenterTarget({ countdownRef }: { countdownRef?: RefObject<HTMLSpanElement> }) {
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-stage-deep/95" role="status" aria-live="polite">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-1/2 left-1/2 size-5 -translate-x-1/2
+                   -translate-y-1/2 animate-pulse rounded-full bg-coral"
+      />
+      <p className="absolute inset-x-0 top-1/2 mt-8 text-center text-sm text-ink-stage/80">
+        화면 한가운데 점을 바라보세요 · <span ref={countdownRef} className="tabular" />
+      </p>
+    </div>,
+    document.body,
   );
 }

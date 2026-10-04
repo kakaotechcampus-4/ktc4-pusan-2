@@ -81,3 +81,4 @@ target/
 *.sqlite3
 *.db
 .terraform/
+activate.bat
