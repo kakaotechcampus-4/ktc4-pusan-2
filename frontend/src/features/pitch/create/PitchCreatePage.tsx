@@ -6,7 +6,13 @@ import { MetaBar } from './MetaBar';
 import { StartConfirm } from './StartConfirm';
 import { VersionRail } from './VersionRail';
 import { useCreateStore } from './createStore';
-import { latestCriteria, latestScript, latestSlides, type PitchDraft } from './lib/draft';
+import {
+  latestCriteria,
+  latestScript,
+  latestSlides,
+  type DraftNode,
+  type PitchDraft,
+} from './lib/draft';
 import { CriteriaPane } from './steps/CriteriaPane';
 import { InfoPane } from './steps/InfoPane';
 import { ScriptPane } from './steps/ScriptPane';
@@ -23,16 +29,24 @@ import { SlidePane } from './steps/SlidePane';
  * 본문은 사이드바에서 고른 것(`node` + `version`)이 정합니다.
  */
 
-/** 마스코트 말풍선. 비어 있으면 풍선 없이 서 있기만 합니다 */
-function mascotLine(node: string, draft: PitchDraft, version: number | null): string | undefined {
-  if (node === 'info') return '준비부터 차근차근!';
-  if (node === 'slides') return '발표할 자료를 확인해 봐!';
+/** 현재 선택한 버전의 편집 상태에 맞춘 안내. 모든 화면에 멘트를 제공합니다. */
+function mascotLine(node: DraftNode, draft: PitchDraft, version: number | null): string {
+  if (node === 'info') return draft.infoSaved ? '발표 준비, 좋은 시작이야!' : '준비부터 차근차근!';
+  if (node === 'slides') {
+    const slide = draft.slides.find((v) => v.version === version) ?? latestSlides(draft);
+    return slide?.pageCount ? '발표할 자료를 확인해 봐!' : '발표할 PDF를 올려 봐!';
+  }
   if (node === 'script') {
     const script = draft.scripts.find((v) => v.version === version) ?? draft.scripts.at(-1) ?? null;
-    if (script?.blocks && script.mappingSaved) return '저장 완료! 이제 연습하자.';
+    if (script?.blocks && script.mappingSaved) return '매핑 저장 완료! 다음 준비도 확인해 봐!';
     return script?.blocks ? '이대로 괜찮은지 봐 줘!' : '한 문장씩 준비해 보자!';
   }
-  return undefined;
+  const criteria = draft.criteria.find((v) => v.version === version) ?? latestCriteria(draft);
+  if (!criteria || !criteria.source.trim()) return '어떤 점을 연습하고 싶어?';
+  if (criteria.source !== criteria.organizedSource) return '적은 기준을 정리해 보자!';
+  if (criteria.saved) return '기준 저장 완료! 차근차근 준비하자.';
+  if (criteria.skipped.length > 0) return '빠진 기준을 함께 확인해 봐!';
+  return '정리된 기준을 확인하고 저장해 줘!';
 }
 
 export function PitchCreatePage() {
