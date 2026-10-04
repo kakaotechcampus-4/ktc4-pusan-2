@@ -45,7 +45,8 @@ export function computeGate(draft: PitchDraft, chosen: Chosen = CHOOSE_LATEST): 
   // 버전을 따로 고르므로(슬라이드 V2 + 대본 V1) 쉽게 생깁니다.
   // 변환 전이면 장수를 모르니 비교하지 않습니다 (그때는 슬라이드 줄이 막습니다)
   const mappingStale = mapped && slidesDone && blocks.length !== pageCount;
-  const mappingDone = mapped && !mappingStale && mappingSaved;
+  const wrongSlideVersion = mapped && slidesDone && script?.slideVersion !== slides?.version;
+  const mappingDone = mapped && !mappingStale && !wrongSlideVersion && mappingSaved;
 
   // 정리만으로는 부족합니다 — 정리된 항목을 확인하고 저장해야 합니다
   const criteriaCount = criteria?.items.length ?? 0;
@@ -88,19 +89,23 @@ export function computeGate(draft: PitchDraft, chosen: Chosen = CHOOSE_LATEST): 
 
   const ready = infoDone && slidesDone && mappingDone && criteriaDone;
 
+  let message = nextAction({
+    infoDone,
+    slidesDone,
+    scriptWritten,
+    mapped,
+    mappingStale,
+    mappingSaved,
+    criteriaCount,
+  });
+  if (wrongSlideVersion && !mappingStale) {
+    message = '대본에 연결된 슬라이드 버전을 선택하거나 대본을 다시 매핑해주세요';
+  }
+  if (ready) message = '바로 연습을 시작할 수 있어요';
+
   return {
     heading: ready ? '준비 완료' : '다음으로 넘어가려면',
-    message: ready
-      ? '바로 연습을 시작할 수 있어요'
-      : nextAction({
-          infoDone,
-          slidesDone,
-          scriptWritten,
-          mapped,
-          mappingStale,
-          mappingSaved,
-          criteriaCount,
-        }),
+    message,
     rows: [slidesRow, scriptRow, thirdRow],
     ready,
   };

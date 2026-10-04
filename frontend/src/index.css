@@ -58,6 +58,18 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
+/* 발표 생성 시안의 밝은 지면. 다른 화면의 색상과 계측 레이아웃은 유지합니다. */
+.pitch-create {
+  --color-greige: #faf9f6;
+  --color-cream: #f1f0eb;
+  --color-panel: #ffffff;
+  --color-line: #e3e3e3;
+  --color-line-strong: #d0d1d4;
+  --color-ink: #17191e;
+  --color-stone: #6b7280;
+  --color-coral-wash: #fff0e9;
+}
+
 html, body, #root { height: 100%; }
 
 body {

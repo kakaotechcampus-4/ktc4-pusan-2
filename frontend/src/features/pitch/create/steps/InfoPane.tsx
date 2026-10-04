@@ -130,7 +130,7 @@ function Calendar({ value, onPick }: { value: string; onPick: (iso: string) => v
               aria-pressed={selected}
               aria-label={c.iso}
               className={[
-                'tabular mx-auto my-0.5 flex h-9 w-9 items-center justify-center rounded text-sm',
+                'tabular mx-auto my-0.5 flex h-8 w-8 items-center justify-center rounded text-sm',
                 selected
                   ? 'bg-coral font-bold text-white'
                   : `hover:bg-cream ${weekdayTone(c.weekday, c.inMonth)}`,
@@ -161,7 +161,7 @@ export function InfoPane() {
     <div className="flex flex-col gap-4">
       <PaneHeading title="발표정보" subtitle="발표의 기본 정보를 설정해 주세요." />
 
-      <Surface className="flex flex-col gap-6 p-6">
+      <Surface className="flex flex-col gap-5 p-5">
         <label className="flex flex-col gap-2">
           <span className="text-sm font-bold">발표 제목</span>
           <input
@@ -202,7 +202,7 @@ export function InfoPane() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-2">
                 <span className="text-sm font-bold">하한 허용오차</span>
                 <Stepper
@@ -215,7 +215,7 @@ export function InfoPane() {
                 />
                 <p className="text-xs text-stone">목표보다 짧게 발표해도 되는 시간</p>
               </div>
-              <div className="flex flex-col gap-2 border-l border-line pl-6">
+              <div className="flex flex-col gap-2 border-l border-line pl-3">
                 <span className="text-sm font-bold">상한 허용오차</span>
                 <Stepper
                   label="상한 허용오차"

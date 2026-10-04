@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useCreateStore } from '../createStore';
 import {
   countChars,
@@ -40,6 +41,7 @@ function Editor({
   const editScript = useCreateStore((s) => s.editScript);
   const linkSlide = useCreateStore((s) => s.linkSlide);
   const setBlocks = useCreateStore((s) => s.setBlocks);
+  const lineNumbers = useRef<HTMLDivElement>(null);
 
   const chars = countChars(script.text);
   const estimate = formatEstimate(estimateDurationMs(script.text));
@@ -92,10 +94,11 @@ function Editor({
         </div>
       </div>
 
-      <div className="flex min-h-72 flex-1 overflow-auto rounded border border-line bg-panel">
+      <div className="flex h-96 min-h-72 flex-1 overflow-hidden rounded border border-line bg-panel">
         <div
+          ref={lineNumbers}
           aria-hidden="true"
-          className="tabular w-12 shrink-0 select-none border-r border-line bg-cream/50 py-5 pr-3 text-right font-mono text-xs leading-7 text-stone"
+          className="tabular w-12 shrink-0 select-none overflow-hidden border-r border-line bg-cream/50 py-5 pr-3 text-right font-mono text-xs leading-7 text-stone"
         >
           {Array.from({ length: lineCount }, (_, i) => (
             <div key={i}>{i + 1}</div>
@@ -105,10 +108,13 @@ function Editor({
           aria-label="대본"
           value={script.text}
           onChange={(e) => editScript(script.version, e.target.value)}
+          onScroll={(e) => {
+            if (lineNumbers.current) lineNumbers.current.scrollTop = e.currentTarget.scrollTop;
+          }}
           placeholder="발표할 내용을 그대로 적어 주세요."
           wrap="off"
-          rows={lineCount}
-          className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent px-5 py-5 text-sm leading-7"
+          rows={MIN_LINES}
+          className="min-w-0 flex-1 resize-none overflow-auto bg-transparent px-5 py-5 text-sm leading-7"
         />
       </div>
 
@@ -132,6 +138,7 @@ function BlockReview({
 }) {
   const draft = useCreateStore((s) => s.draft);
   const chosen = useCreateStore((s) => s.chosen);
+  const chooseVersion = useCreateStore((s) => s.chooseVersion);
   const editBlock = useCreateStore((s) => s.editBlock);
   const saveMapping = useCreateStore((s) => s.saveMapping);
   const clearMapping = useCreateStore((s) => s.clearMapping);
@@ -139,7 +146,8 @@ function BlockReview({
   const blocks = script.blocks ?? [];
   const saved = script.mappingSaved;
   // 다음 버튼은 매핑만이 아니라 발표정보·평가기준까지 본 진행 조건을 따릅니다
-  const gate = computeGate(draft, chosen);
+  const reviewChoice = { ...chosen, slides: linked?.version ?? null, script: script.version };
+  const gate = computeGate(draft, reviewChoice);
   const combo = `슬라이드 V${linked?.version ?? '?'} / 대본 V${script.version}`;
   const connected = blocks.filter((b) => b.trim() !== '').length;
 
@@ -164,15 +172,12 @@ function BlockReview({
         </span>
       </div>
 
-      <ul className="flex min-h-72 flex-1 flex-col gap-3 overflow-y-auto">
+      <ul className="flex min-h-72 flex-1 flex-col gap-2 overflow-y-auto">
         {blocks.map((block, i) => {
           const empty = block.trim() === '';
           const no = String(i + 1).padStart(2, '0');
           return (
-            <li
-              key={i}
-              className="flex items-center gap-3 rounded border border-line bg-panel p-2.5"
-            >
+            <li key={i} className="flex items-center gap-3 rounded border border-line bg-panel p-2">
               <span aria-hidden="true" className="select-none px-1 text-stone">
                 ⋮⋮
               </span>
@@ -243,7 +248,11 @@ function BlockReview({
             <button
               type="button"
               disabled={!gate.ready}
-              onClick={onNext}
+              onClick={() => {
+                chooseVersion('slides', reviewChoice.slides);
+                chooseVersion('script', script.version);
+                onNext();
+              }}
               className={`${primaryBtn} min-w-36`}
             >
               다음 →

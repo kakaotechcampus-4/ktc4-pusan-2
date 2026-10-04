@@ -143,7 +143,18 @@ export const useCreateStore = create<CreateState>((set) => ({
   select: (node, version = null) => set({ node, version }),
 
   // 값이 바뀌면 저장 표시가 풀립니다 — 저장한 뒤에 고친 값이 "저장됨" 으로 남으면 안 됩니다
-  setMeta: (patch) => set((s) => ({ draft: { ...s.draft, ...patch, infoSaved: false } })),
+  setMeta: (patch) =>
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        ...patch,
+        toleranceBelowSec: Math.min(
+          patch.toleranceBelowSec ?? s.draft.toleranceBelowSec,
+          patch.timeLimitSec ?? s.draft.timeLimitSec,
+        ),
+        infoSaved: false,
+      },
+    })),
   saveInfo: () => set((s) => ({ draft: { ...s.draft, infoSaved: true } })),
 
   addSlideVersion: () =>
@@ -161,7 +172,7 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   attachSlides: (fileName, pageCount) =>
     set((s) => {
-      const pending = s.draft.slides.at(-1);
+      const pending = s.draft.slides.find((v) => v.version === s.version) ?? s.draft.slides.at(-1);
       // 파일을 기다리던 버전이 있으면 그것을 채웁니다 — "+ 새 버전" 뒤의 경로
       if (pending && pending.pageCount === null) {
         return {
@@ -189,6 +200,9 @@ export const useCreateStore = create<CreateState>((set) => ({
         ...s.draft,
         slides: s.draft.slides.map((v) =>
           v.version === version ? { ...v, fileName, pageCount } : v,
+        ),
+        scripts: s.draft.scripts.map((v) =>
+          v.slideVersion === version ? { ...v, blocks: null, mappingSaved: false } : v,
         ),
       },
     })),
@@ -225,11 +239,10 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   editBlock: (version, index, text) =>
     set((s) =>
-      patchScript(s, version, (v) => ({
-        ...v,
-        blocks: v.blocks?.map((b, i) => (i === index ? text : b)) ?? null,
-        mappingSaved: false,
-      })),
+      patchScript(s, version, (v) => {
+        const blocks = v.blocks?.map((b, i) => (i === index ? text : b)) ?? null;
+        return { ...v, blocks, text: blocks?.join('\n\n') ?? v.text, mappingSaved: false };
+      }),
     ),
 
   saveMapping: (version) =>

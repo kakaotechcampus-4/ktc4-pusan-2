@@ -39,6 +39,8 @@ function describe(draft: PitchDraft, resolved: Resolved): RowSpec[] {
   const criteria = resolved.criteria;
 
   const blocks = script?.blocks ?? null;
+  const matchingSlides =
+    script?.slideVersion === slides?.version && blocks?.length === slides?.pageCount;
 
   return [
     {
@@ -54,12 +56,15 @@ function describe(draft: PitchDraft, resolved: Resolved): RowSpec[] {
       label: '대본',
       versions: draft.scripts.map((v) => v.version),
       chosen: script?.version ?? null,
-      detail: scriptDetail(
-        script?.text ?? null,
-        blocks?.length ?? null,
-        script?.mappingSaved ?? false,
-      ),
-      ok: blocks !== null && blocks.length > 0 && script?.mappingSaved === true,
+      detail:
+        blocks && !matchingSlides
+          ? '슬라이드 연결 확인 필요'
+          : scriptDetail(
+              script?.text ?? null,
+              blocks?.length ?? null,
+              script?.mappingSaved ?? false,
+            ),
+      ok: blocks !== null && blocks.length > 0 && script?.mappingSaved === true && matchingSlides,
     },
     {
       node: 'criteria',

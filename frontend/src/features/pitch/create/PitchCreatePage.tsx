@@ -62,7 +62,7 @@ export function PitchCreatePage() {
   })();
 
   return (
-    <div className="flex h-dvh flex-col bg-greige text-ink">
+    <div className="pitch-create flex h-dvh flex-col bg-greige text-ink">
       <header className="flex items-center justify-between border-b border-line-strong bg-panel px-6 py-4">
         <Link to="/" aria-label="PITCH COACH 홈">
           <PitchCoachWordmark />
@@ -81,7 +81,7 @@ export function PitchCreatePage() {
         </aside>
 
         {/* ── 우측: 위치 · 메타 · 본문 ────────────────────────────── */}
-        <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
+        <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-4 xl:p-6">
           <p className="text-xs text-stone">
             <Link to="/" className="hover:text-ink">
               내 피치

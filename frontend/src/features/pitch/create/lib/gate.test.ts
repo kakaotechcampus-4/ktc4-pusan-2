@@ -181,6 +181,12 @@ describe('진행 조건 — 경계', () => {
 });
 
 describe('고른 버전으로 판정한다', () => {
+  it('장수가 같아도 연결되지 않은 슬라이드 버전으로 시작하지 않는다', () => {
+    const draft: PitchDraft = { ...READY, slides: [slide(1, 12), slide(2, 12)] };
+    const gate = computeGate(draft, { slides: 2, script: 1, criteria: 1 });
+    expect(gate.ready).toBe(false);
+    expect(gate.message).toContain('대본에 연결된 슬라이드 버전');
+  });
   /**
    * ★ 핵심 — 최신이 멀쩡해도 **들고 갈 버전**이 비어 있으면 시작할 수 없습니다.
    *   대본 V2 는 매핑했지만 연습에 V1 을 쓰기로 골랐고, 그 V1 이 안 나뉘어 있다면

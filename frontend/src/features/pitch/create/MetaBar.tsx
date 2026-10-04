@@ -50,7 +50,7 @@ export function MetaBar() {
         </span>
         {d !== null && (
           <span className="tabular rounded bg-coral-wash px-2 py-0.5 font-mono text-xs font-bold text-coral-deep">
-            D-{d}
+            {d === 0 ? 'D-day' : `D-${d}`}
           </span>
         )}
       </div>
