@@ -39,19 +39,23 @@ export function computeGate(draft: PitchDraft, chosen: Chosen = CHOOSE_LATEST): 
   const scriptWritten = charCount > 0;
   const blocks = script?.blocks ?? null;
   const mapped = blocks !== null && blocks.length > 0;
+  // 나눈 것만으로는 부족합니다 — 확인하고 저장해야 `다음` 이 열립니다
+  const mappingSaved = script?.mappingSaved ?? false;
   // 나눈 뒤에 슬라이드 장수가 바뀌었다 — 뒤쪽 슬라이드에 붙을 대본이 없습니다.
   // 버전을 따로 고르므로(슬라이드 V2 + 대본 V1) 쉽게 생깁니다.
   // 변환 전이면 장수를 모르니 비교하지 않습니다 (그때는 슬라이드 줄이 막습니다)
   const mappingStale = mapped && slidesDone && blocks.length !== pageCount;
-  const mappingDone = mapped && !mappingStale;
+  const mappingDone = mapped && !mappingStale && mappingSaved;
 
-  // 추가 버튼은 빈 항목부터 만듭니다. 개수만 세면 누르기만 해도 통과합니다.
-  // 빈 칸이 남아 있으면 막습니다 — 그대로 넘기면 빈 기준이 저장되고,
-  // 몰래 빼면 하나가 왜 없어졌는지 모릅니다
-  const items = criteria?.items ?? [];
-  const filledCount = items.filter((it) => it.text.trim() !== '').length;
-  const blankCount = items.length - filledCount;
-  const criteriaDone = filledCount > 0 && blankCount === 0;
+  // 정리만으로는 부족합니다 — 정리된 항목을 확인하고 저장해야 합니다
+  const criteriaCount = criteria?.items.length ?? 0;
+  // 원문을 고친 뒤 다시 정리하지 않았다면 저장된 항목은 옛 원문의 것입니다
+  const criteriaStale = criteria !== null && criteria.source !== criteria.organizedSource;
+  const criteriaSaved = (criteria?.saved ?? false) && !criteriaStale;
+  const criteriaDone = criteriaCount > 0 && criteriaSaved;
+
+  // 제목이 비면 연습 기록 어디에도 이름이 안 남습니다. 저장까지 마쳐야 합니다
+  const infoDone = draft.title.trim() !== '' && draft.infoSaved;
 
   const slidesRow: GateRow = {
     key: 'slides',
@@ -73,27 +77,30 @@ export function computeGate(draft: PitchDraft, chosen: Chosen = CHOOSE_LATEST): 
     scriptWritten && !mappingDone
       ? {
           key: 'mapping',
-          label: mappingStale
-            ? `매핑 다시 필요 (${blocks.length}블록 / ${pageCount}장)`
-            : '매핑 미실행',
+          label: mappingLabel(mapped, mappingStale, blocks?.length ?? 0, pageCount),
           done: false,
         }
       : {
           key: 'criteria',
-          label:
-            blankCount > 0
-              ? `평가기준 ${filledCount}개 · 빈 칸 ${blankCount}개`
-              : `평가기준 ${filledCount}개`,
+          label: criteriaLabel(criteriaCount, criteriaSaved),
           done: criteriaDone,
         };
 
-  const ready = slidesDone && mappingDone && criteriaDone;
+  const ready = infoDone && slidesDone && mappingDone && criteriaDone;
 
   return {
     heading: ready ? '준비 완료' : '다음으로 넘어가려면',
     message: ready
       ? '바로 연습을 시작할 수 있어요'
-      : nextAction({ slidesDone, scriptWritten, mappingDone, mappingStale, blankCount }),
+      : nextAction({
+          infoDone,
+          slidesDone,
+          scriptWritten,
+          mapped,
+          mappingStale,
+          mappingSaved,
+          criteriaCount,
+        }),
     rows: [slidesRow, scriptRow, thirdRow],
     ready,
   };
@@ -101,25 +108,46 @@ export function computeGate(draft: PitchDraft, chosen: Chosen = CHOOSE_LATEST): 
 
 /** 한 번에 하나만 시킵니다. 두 개를 같이 적으면 무엇부터 할지가 안 보입니다 */
 function nextAction({
+  infoDone,
   slidesDone,
   scriptWritten,
-  mappingDone,
+  mapped,
   mappingStale,
-  blankCount,
+  mappingSaved,
+  criteriaCount,
 }: {
+  infoDone: boolean;
   slidesDone: boolean;
   scriptWritten: boolean;
-  mappingDone: boolean;
+  mapped: boolean;
   mappingStale: boolean;
-  blankCount: number;
+  mappingSaved: boolean;
+  criteriaCount: number;
 }): string {
+  if (!infoDone) return '발표정보를 입력하고 저장해주세요';
   if (!slidesDone && !scriptWritten) return '슬라이드와 대본을 입력해주세요';
   if (!slidesDone) return '슬라이드를 올려주세요';
   if (!scriptWritten) return '대본을 입력해주세요';
   if (mappingStale) return '슬라이드 장수가 바뀌었어요. 매핑을 다시 실행해주세요';
-  if (!mappingDone) return '매핑을 실행해주세요';
-  if (blankCount > 0) return '비어 있는 평가기준을 채우거나 지워주세요';
-  return '평가기준을 1개 이상 추가해주세요';
+  if (!mapped) return '매핑을 실행해주세요';
+  if (!mappingSaved) return '매핑을 확인하고 저장해주세요';
+  if (criteriaCount === 0) return '평가기준을 정리하고 저장해주세요';
+  return '평가기준을 확인하고 저장해주세요';
+}
+
+function mappingLabel(
+  mapped: boolean,
+  stale: boolean,
+  blockCount: number,
+  pageCount: number | null,
+): string {
+  if (stale) return `매핑 다시 필요 (${blockCount}블록 / ${pageCount}장)`;
+  return mapped ? '매핑 저장 전' : '매핑 미실행';
+}
+
+function criteriaLabel(count: number, saved: boolean): string {
+  if (count === 0) return '평가기준 0개';
+  return saved ? `평가기준 ${count}개` : `평가기준 ${count}개 · 저장 전`;
 }
 
 function scriptLabel(

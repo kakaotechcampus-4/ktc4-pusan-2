@@ -1,120 +1,199 @@
 import { useCreateStore } from '../createStore';
-import { MAX_CRITERIA, SCORING_LABEL, type CriteriaVersion, type ScoringMode } from '../lib/draft';
+import { MAX_CRITERIA, type CriteriaVersion } from '../lib/draft';
+import { PaneHeading, StatusPill, Surface, outlineBtn, primaryBtn } from './ui';
 
 /**
- * 목업 08 — 평가기준. 최대 5개.
+ * 시안 — 평가기준. 왼쪽에 자유롭게 적고, 오른쪽에서 정리된 결과를 확인한 뒤 저장합니다.
  *
- * ★ 채점 방식(`자동 채점` · `발화 대조`)이 목업에만 있습니다. `types/api.ts` 의
- *   `EvalCriterion` 은 `{ id, order, text }` 뿐이라 필드가 빠져 있고, 서버에는
- *   항목을 담을 테이블 자체가 없습니다 (`Standards` 는 pitch 가 아니라 user 에 달려 있습니다).
- *   여기서 쓰는 모양이 곧 서버에 요구할 모양입니다.
+ * ★ 정리는 지금 임시 규칙입니다(`lib/criteria.ts`). 실제로는 AI 가 정리하고,
+ *   그때도 이 화면이 요구하는 것은 같습니다 — 정리된 항목, 그리고 **반영하지 못한
+ *   문장과 그 이유**. 이유를 보여 주지 않으면 사용자는 적은 기준이 왜 사라졌는지 모릅니다.
+ *
+ * 채점 방식(자동 채점 · 발화 대조)은 이 시안에서 빠졌습니다. 서버 계약에도 없던 필드입니다.
  */
 
-const SCORING_ORDER: ScoringMode[] = ['AUTO', 'TRANSCRIPT'];
+const PLACEHOLDER =
+  '이번 발표에서 확인하고 싶은 기준을 자유롭게 적어 주세요.\n예: 시장 규모와 출처를 말하고, 채움말은 5회 이하로 줄이고 싶어요.';
 
-export function CriteriaPane({ criteria }: { criteria: CriteriaVersion | null }) {
-  const addCriteriaVersion = useCreateStore((s) => s.addCriteriaVersion);
-  const addCriterion = useCreateStore((s) => s.addCriterion);
-  const editCriterion = useCreateStore((s) => s.editCriterion);
-  const removeCriterion = useCreateStore((s) => s.removeCriterion);
+function Notice({ criteria, stale }: { criteria: CriteriaVersion; stale: boolean }) {
+  // 정리하기 전이거나 반영하지 못한 문장이 없으면 일반 안내를 보여 줍니다
+  const hasSkipped = criteria.skipped.length > 0 && !stale;
 
-  if (criteria === null) {
+  if (!hasSkipped) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded border-2 border-dashed border-line-strong">
-        <p className="text-sm text-stone">아직 평가기준이 없습니다</p>
-        <button
-          type="button"
-          onClick={addCriteriaVersion}
-          className="rounded bg-coral px-5 py-2.5 text-sm font-bold text-panel hover:bg-coral-deep"
-        >
-          평가기준 만들기
-        </button>
+      <div className="rounded border border-amber-300 bg-amber-50 p-4 text-sm">
+        <p className="flex items-center gap-2 font-bold text-amber-800">
+          <span aria-hidden="true">!</span>
+          {stale ? '입력문이 바뀌었어요' : '작성 안내'}
+        </p>
+        <p className="mt-1.5 text-xs leading-relaxed text-ink">
+          {stale
+            ? '정리된 항목은 이전 입력문 기준이에요. 다시 정리한 뒤 저장해 주세요.'
+            : `구체적인 행동이나 목표를 적어 주세요. 기준은 최대 ${MAX_CRITERIA}개까지 반영돼요.`}
+          <br />
+          {!stale && '정리 과정에서 반영하지 못한 내용이 있으면 이유와 안내를 이곳에 알려드려요.'}
+        </p>
       </div>
     );
   }
 
-  const rows = Array.from({ length: MAX_CRITERIA }, (_, i) => criteria.items[i] ?? null);
+  return (
+    <div className="flex flex-col gap-2">
+      <div role="alert" className="rounded border border-amber-300 bg-amber-50 p-4 text-sm">
+        <p className="flex items-center gap-2 font-bold text-amber-800">
+          <span aria-hidden="true">!</span>
+          다시 확인해 주세요
+        </p>
+        <ul className="mt-2 flex flex-col gap-2.5 text-xs leading-relaxed">
+          {criteria.skipped.map((sk) => (
+            <li key={sk.text}>
+              <q className="font-bold">{sk.text}</q> — {sk.reason}
+              <br />
+              <span className="text-stone">{sk.example}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="text-xs text-stone">위 입력문을 수정한 뒤 다시 정리해 주세요.</p>
+    </div>
+  );
+}
+
+function Organized({ criteria, stale }: { criteria: CriteriaVersion; stale: boolean }) {
+  if (criteria.items.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          className="h-16 w-16 text-stone"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.2"
+        >
+          <path d="M7 3h8l4 4v14H7zM14 3v5h5M10 13h6M10 17h4" />
+        </svg>
+        <p className="text-sm font-bold">아직 정리된 평가기준이 없어요</p>
+        <p className="text-xs text-stone">왼쪽에 기준을 작성하고 정리 버튼을 눌러 주세요.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-lg font-bold">평가기준을 입력해주세요</h2>
-        <span className="tabular rounded border border-line-strong bg-cream px-3 py-2 font-mono text-xs font-bold">
-          {criteria.items.length} / {MAX_CRITERIA} 입력됨
-        </span>
+    <ol className={['flex flex-col gap-3', stale ? 'opacity-50' : ''].join(' ')}>
+      {criteria.items.map((item, i) => (
+        <li
+          key={item.id}
+          className="flex items-center gap-4 rounded border border-line-strong bg-panel px-3 py-3.5"
+        >
+          <span className="tabular flex h-9 w-9 shrink-0 items-center justify-center rounded bg-cream font-mono text-xs font-bold">
+            {String(i + 1).padStart(2, '0')}
+          </span>
+          <span className="text-sm">{item.text}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function CriteriaPane({ criteria }: { criteria: CriteriaVersion | null }) {
+  const addCriteriaVersion = useCreateStore((s) => s.addCriteriaVersion);
+  const editCriteriaSource = useCreateStore((s) => s.editCriteriaSource);
+  const organize = useCreateStore((s) => s.organize);
+  const saveCriteria = useCreateStore((s) => s.saveCriteria);
+
+  if (criteria === null) {
+    return (
+      <div className="flex flex-1 flex-col gap-4">
+        <PaneHeading
+          title="평가기준"
+          subtitle="원하는 기준을 한 번에 적고, 정리된 결과를 확인해 주세요."
+        />
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded border-2 border-dashed border-line-strong">
+          <p className="text-sm text-stone">아직 평가기준이 없습니다</p>
+          <button type="button" onClick={addCriteriaVersion} className={primaryBtn}>
+            평가기준 만들기
+          </button>
+        </div>
       </div>
+    );
+  }
 
-      <div className="flex flex-1 flex-col rounded border-2 border-ink bg-panel p-4">
-        <ul className="flex flex-col gap-3">
-          {rows.map((item, i) => {
-            const no = String(i + 1).padStart(2, '0');
+  const hasSource = criteria.source.trim() !== '';
+  const organized = criteria.items.length > 0 || criteria.skipped.length > 0;
+  const stale = organized && criteria.source !== criteria.organizedSource;
+  const canSave = criteria.items.length > 0 && !stale && !criteria.saved;
 
-            if (item === null) {
-              return (
-                <li key={`empty-${i}`}>
-                  <button
-                    type="button"
-                    onClick={() => addCriterion(criteria.version)}
-                    className="flex w-full items-stretch gap-0 text-left"
-                  >
-                    <span className="tabular flex w-14 shrink-0 items-center justify-center rounded-l border border-dashed border-line-strong font-mono text-xs text-stone">
-                      {no}
-                    </span>
-                    <span className="flex-1 rounded-r border border-dashed border-line-strong px-4 py-3 text-sm text-stone">
-                      + 평가기준 추가
-                    </span>
-                  </button>
-                </li>
-              );
+  return (
+    <div className="flex flex-1 flex-col gap-4">
+      <PaneHeading
+        title="평가기준"
+        subtitle="원하는 기준을 한 번에 적고, 정리된 결과를 확인해 주세요."
+      />
+
+      <div className="grid flex-1 gap-4 lg:grid-cols-2">
+        {/* ── 왼쪽: 작성 ─────────────────────────────────────── */}
+        <Surface className="flex flex-col gap-4 p-5">
+          <div>
+            <h3 className="text-lg font-bold">평가기준 작성</h3>
+            <p className="mt-0.5 text-xs text-stone">문장이나 목록으로 자유롭게 작성해 주세요.</p>
+          </div>
+
+          <textarea
+            aria-label="평가기준 원문"
+            value={criteria.source}
+            onChange={(e) => editCriteriaSource(criteria.version, e.target.value)}
+            placeholder={PLACEHOLDER}
+            rows={7}
+            className="min-h-40 resize-y rounded border border-line-strong bg-panel p-4 text-sm leading-relaxed"
+          />
+
+          <button
+            type="button"
+            disabled={!hasSource}
+            onClick={() => organize(criteria.version)}
+            className={
+              organized
+                ? `${outlineBtn} !border-coral !text-coral-deep hover:!bg-coral-wash`
+                : outlineBtn
             }
+          >
+            {organized ? '수정해서 다시 정리' : '평가기준 정리'}
+          </button>
 
-            return (
-              <li key={item.id} className="flex items-stretch gap-0">
-                <span className="tabular flex w-14 shrink-0 items-center justify-center rounded-l bg-ink font-mono text-xs font-bold text-panel">
-                  {no}
-                </span>
-                <div className="flex flex-1 items-center gap-3 rounded-r border border-line bg-panel px-4 py-2">
-                  <input
-                    aria-label={`평가기준 ${no}`}
-                    value={item.text}
-                    onChange={(e) =>
-                      editCriterion(criteria.version, item.id, { text: e.target.value })
-                    }
-                    placeholder="발표에서 반드시 지킬 것을 한 줄로"
-                    className="flex-1 bg-transparent text-sm outline-none"
-                  />
+          <Notice criteria={criteria} stale={stale} />
+        </Surface>
 
-                  {/* 채점 방식 — 두 개뿐이라 토글로 둡니다 */}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      editCriterion(criteria.version, item.id, {
-                        scoring:
-                          SCORING_ORDER[(SCORING_ORDER.indexOf(item.scoring) + 1) % 2] ?? 'AUTO',
-                      })
-                    }
-                    className="shrink-0 rounded border border-line px-2 py-1 text-xs text-stone hover:text-ink"
-                  >
-                    {SCORING_LABEL[item.scoring]}
-                  </button>
+        {/* ── 오른쪽: 정리된 결과 ─────────────────────────────── */}
+        <Surface className="flex flex-col gap-4 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-bold">정리된 평가기준</h3>
+              <StatusPill tone="idle">{criteria.items.length}개 항목</StatusPill>
+            </div>
+            {criteria.items.length > 0 && (
+              <span className="text-xs text-stone">
+                {criteria.saved && !stale ? '저장됨' : '아직 저장하지 않았어요'}
+              </span>
+            )}
+          </div>
 
-                  <button
-                    type="button"
-                    onClick={() => removeCriterion(criteria.version, item.id)}
-                    aria-label={`평가기준 ${no} 삭제`}
-                    className="shrink-0 px-1 text-stone hover:text-coral"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+          <div className="flex flex-1 flex-col">
+            <Organized criteria={criteria} stale={stale} />
+          </div>
 
-        <p className="mt-auto pt-6 text-xs text-stone">
-          기준은 최대 {MAX_CRITERIA}개까지. 적을수록 피드백이 선명해져요.
-        </p>
+          <div className="flex items-center justify-between gap-4 border-t border-line pt-4">
+            <p className="text-xs text-stone">정리된 항목을 확인한 뒤 저장해 주세요.</p>
+            <button
+              type="button"
+              disabled={!canSave}
+              onClick={() => saveCriteria(criteria.version)}
+              className={`${primaryBtn} min-w-40`}
+            >
+              {criteria.saved && !stale ? '저장됨' : '평가기준 저장'}
+            </button>
+          </div>
+        </Surface>
       </div>
     </div>
   );

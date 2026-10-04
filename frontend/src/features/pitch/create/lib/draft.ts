@@ -12,58 +12,72 @@ import type { Ms } from '@/types/api';
  * 매번 다르게 보이는데, 눈으로 읽어서는 어느 조합이 빠졌는지 알 수 없습니다.
  */
 
-/** 사이드바의 세 갈래. 본문에 무엇을 띄울지가 여기서 정해집니다 */
-export type DraftNode = 'slides' | 'script' | 'criteria';
+/** 사이드바의 네 갈래. 본문에 무엇을 띄울지가 여기서 정해집니다 */
+export type DraftNode = 'info' | 'slides' | 'script' | 'criteria';
 
-/**
- * 평가기준의 채점 방식. 목업의 `자동 채점` · `발화 대조` 두 가지입니다.
- *
- * ★ 이 값은 아직 어디에도 정의돼 있지 않습니다 — 목업에만 있습니다.
- *   `types/api.ts` 의 `EvalCriterion` 은 `{ id, order, text }` 뿐이라
- *   필드가 하나 빠져 있습니다. 서버와 합의되면 그쪽으로 옮깁니다.
- */
-export type ScoringMode = 'AUTO' | 'TRANSCRIPT';
-
-export const SCORING_LABEL: Record<ScoringMode, string> = {
-  AUTO: '자동 채점',
-  TRANSCRIPT: '발화 대조',
-};
-
-/** 목업 하단 — "기준은 최대 5개까지. 적을수록 피드백이 선명해져요." */
+/** 평가기준은 최대 5개. 적을수록 피드백이 선명해집니다 */
 export const MAX_CRITERIA = 5;
 
-/** 업로드 제한. 목업의 "최대 40MB" */
+/** 업로드 제한. 시안의 "최대 40MB" */
 export const MAX_SLIDE_BYTES = 40 * 1024 * 1024;
 
 export interface SlideVersion {
   version: number;
+  /** 올린 파일 이름. 뷰어 머리줄에 보입니다 */
+  fileName: string | null;
   /** PDF 변환이 끝나야 정해집니다. 변환 전에는 null */
   pageCount: number | null;
 }
 
 export interface ScriptVersion {
   version: number;
+  /** 이 대본이 붙는 슬라이드 버전 — 시안의 "연결할 슬라이드 V1 · 12장" */
+  slideVersion: number | null;
   text: string;
   /** 매핑 실행 결과. 슬라이드 장수만큼의 블록입니다. 미실행이면 null */
   blocks: string[] | null;
+  /** 매핑을 확인하고 저장했나. 블록을 고치면 다시 false 가 됩니다 */
+  mappingSaved: boolean;
 }
 
 export interface DraftCriterion {
   id: string;
   text: string;
-  scoring: ScoringMode;
+}
+
+/** 정리 과정에서 반영하지 못한 문장과 그 이유 */
+export interface SkippedCriterion {
+  text: string;
+  reason: string;
+  /** 이렇게 쓰면 반영된다는 예시 */
+  example: string;
 }
 
 export interface CriteriaVersion {
   version: number;
+  /** 사용자가 자유롭게 적은 원문 */
+  source: string;
+  /** 마지막으로 정리한 때의 원문. `source` 와 다르면 정리 결과가 낡았다는 뜻입니다 */
+  organizedSource: string;
+  /** 정리된 결과. 정리 전에는 비어 있습니다 */
   items: DraftCriterion[];
+  skipped: SkippedCriterion[];
+  /** 정리 결과를 확인하고 저장했나. 원문이나 항목을 고치면 다시 false 입니다 */
+  saved: boolean;
 }
 
 export interface PitchDraft {
   title: string;
   /** ISO yyyy-mm-dd. 안 정했으면 빈 문자열 */
   presentationDate: string;
+  /** 목표 발표시간 */
   timeLimitSec: number;
+  /** 목표보다 짧게 해도 되는 시간 */
+  toleranceBelowSec: number;
+  /** 목표보다 길게 해도 되는 시간 */
+  toleranceAboveSec: number;
+  /** 발표정보를 확인하고 저장했나. 고치면 다시 false 입니다 */
+  infoSaved: boolean;
   slides: SlideVersion[];
   scripts: ScriptVersion[];
   criteria: CriteriaVersion[];
@@ -110,9 +124,14 @@ export interface Resolved {
  * 없는 버전을 가리킨 채로 연습을 시작하는 것보다 낫습니다.
  */
 export function resolveChosen(draft: PitchDraft, chosen: Chosen): Resolved {
+  const script = draft.scripts.find((v) => v.version === chosen.script) ?? latestScript(draft);
+  // 슬라이드를 따로 고르지 않았으면 대본이 붙은 슬라이드를 따라갑니다 — 매핑이 그 장수로 나뉘었습니다
+  const slides =
+    draft.slides.find((v) => v.version === (chosen.slides ?? script?.slideVersion)) ??
+    latestSlides(draft);
   return {
-    slides: draft.slides.find((v) => v.version === chosen.slides) ?? latestSlides(draft),
-    script: draft.scripts.find((v) => v.version === chosen.script) ?? latestScript(draft),
+    slides,
+    script,
     criteria: draft.criteria.find((v) => v.version === chosen.criteria) ?? latestCriteria(draft),
   };
 }

@@ -1,13 +1,14 @@
 import { create } from 'zustand';
-import type { Chosen, DraftCriterion, DraftNode, PitchDraft, ScoringMode } from './lib/draft';
-import { CHOOSE_LATEST, MAX_CRITERIA } from './lib/draft';
+import type { Chosen, CriteriaVersion, DraftNode, PitchDraft, ScriptVersion } from './lib/draft';
+import { CHOOSE_LATEST } from './lib/draft';
+import { organizeCriteria } from './lib/criteria';
 
 /**
  * 피치 생성 한 판의 초안.
  *
- * 왜 Zustand인가 — 화면 다섯 장이 **한 라우트 안에서** 좌측 사이드바 선택으로
- * 갈리고, 셋(슬라이드·대본·평가기준)이 서로의 상태를 봐야 합니다. 서버에서 온
- * 값이 아니고(그건 TanStack Query), 프레임 단위도 아닙니다(그건 ref).
+ * 왜 Zustand인가 — 화면 여섯 장이 **한 라우트 안에서** 좌측 사이드바 선택으로
+ * 갈리고, 넷(발표정보·슬라이드·대본·평가기준)이 서로의 상태를 봐야 합니다.
+ * 서버에서 온 값이 아니고(그건 TanStack Query), 프레임 단위도 아닙니다(그건 ref).
  * 상태 배치표의 가운데 칸입니다 — prepareStore 와 같은 이유입니다.
  *
  * ★ 지금은 서버가 없어서 전부 메모리에만 있습니다. 새로고침하면 사라집니다.
@@ -38,39 +39,53 @@ interface CreateState {
   /**
    * 이번 연습에 들고 갈 버전. 셋을 **따로** 고릅니다 (슬라이드 V2 · 대본 V1 …).
    * `null` 은 최신입니다 — 고르지 않은 것을 번호로 박아 두면 새 버전을 올려도
-   * 옛것으로 계속 연습하게 됩니다.
+   * 옛것으로 계속 연습하게 됩니다. 고르는 곳은 시작 직전의 확인 창(`StartConfirm`)입니다.
    */
   chosen: Chosen;
-  chooseVersion: (node: DraftNode, version: number | null) => void;
+  chooseVersion: (node: Exclude<DraftNode, 'info'>, version: number | null) => void;
 
   select: (node: DraftNode, version?: number | null) => void;
 
   setMeta: (
-    patch: Partial<Pick<PitchDraft, 'title' | 'presentationDate' | 'timeLimitSec'>>,
+    patch: Partial<
+      Pick<
+        PitchDraft,
+        'title' | 'presentationDate' | 'timeLimitSec' | 'toleranceBelowSec' | 'toleranceAboveSec'
+      >
+    >,
   ) => void;
+  saveInfo: () => void;
 
-  /** 슬라이드 새 버전. 변환 전이라 장수는 아직 모릅니다 */
+  /** 슬라이드 새 버전. 파일을 올리기 전이라 장수는 아직 모릅니다 */
   addSlideVersion: () => void;
   /**
-   * 파일을 받았습니다. 변환 대기 중인 버전이 있으면 거기 채우고, 없으면 새로 만듭니다.
+   * 파일을 받았습니다. 파일을 기다리던 버전이 있으면 거기 채우고, 없으면 새로 만듭니다.
    *
    * 한 동작으로 묶은 이유 — 나눠 부르면 "버전을 만들었는데 장수는 다음 렌더에
    * 들어오는" 중간 상태가 생기고, 그 틈에 진행 조건이 한 번 잘못 계산됩니다.
    */
-  attachSlides: (pageCount: number) => void;
-  /** 서버 변환이 끝나 장수가 정해졌을 때 */
-  setPageCount: (version: number, pageCount: number) => void;
+  attachSlides: (fileName: string, pageCount: number) => void;
+  /** "파일 교체" — 같은 버전에 다른 파일을 올립니다. 장수가 바뀌면 매핑이 어긋납니다 */
+  replaceSlides: (version: number, fileName: string, pageCount: number) => void;
 
-  /** 대본 새 버전. 목업 사이드바의 "+ 새로운 대본 추가" */
+  /** 대본 새 버전. 직전 글과 슬라이드 연결을 물려받습니다 */
   addScriptVersion: (text?: string) => void;
   editScript: (version: number, text: string) => void;
-  /** 매핑 실행 결과를 붙입니다 */
+  /** "연결할 슬라이드" 를 바꿉니다. 장수가 달라질 수 있어 지난 매핑은 버립니다 */
+  linkSlide: (version: number, slideVersion: number) => void;
+  /** 매핑 실행 결과를 붙입니다. 아직 저장 전입니다 */
   setBlocks: (version: number, blocks: string[]) => void;
+  editBlock: (version: number, index: number, text: string) => void;
+  /** 매핑 확인을 마치고 저장합니다 */
+  saveMapping: (version: number) => void;
+  /** 매핑 화면에서 입력 화면으로 돌아갑니다. 글은 그대로, 나눈 결과만 버립니다 */
+  clearMapping: (version: number) => void;
 
   addCriteriaVersion: () => void;
-  addCriterion: (version: number) => void;
-  editCriterion: (version: number, id: string, patch: Partial<Omit<DraftCriterion, 'id'>>) => void;
-  removeCriterion: (version: number, id: string) => void;
+  editCriteriaSource: (version: number, source: string) => void;
+  /** 원문을 항목으로 정리합니다. 아직 저장 전입니다 */
+  organize: (version: number) => void;
+  saveCriteria: (version: number) => void;
 
   reset: () => void;
 }
@@ -78,8 +93,11 @@ interface CreateState {
 const EMPTY_DRAFT: PitchDraft = {
   title: '',
   presentationDate: '',
-  // 5분. 목업의 기본값입니다
+  // 5분 · −30초 · +1분. 시안의 기본값입니다
   timeLimitSec: 300,
+  toleranceBelowSec: 30,
+  toleranceAboveSec: 60,
+  infoSaved: false,
   slides: [],
   scripts: [],
   criteria: [],
@@ -88,9 +106,31 @@ const EMPTY_DRAFT: PitchDraft = {
 /** 버전 번호는 갈래 안에서 1부터 셉니다 — 서버의 presentation_versions 와 같은 규칙 */
 const nextVersion = (list: { version: number }[]) => (list.at(-1)?.version ?? 0) + 1;
 
+const patchScript = (
+  s: { draft: PitchDraft },
+  version: number,
+  patch: (v: ScriptVersion) => ScriptVersion,
+) => ({
+  draft: {
+    ...s.draft,
+    scripts: s.draft.scripts.map((v) => (v.version === version ? patch(v) : v)),
+  },
+});
+
+const patchCriteria = (
+  s: { draft: PitchDraft },
+  version: number,
+  patch: (v: CriteriaVersion) => CriteriaVersion,
+) => ({
+  draft: {
+    ...s.draft,
+    criteria: s.draft.criteria.map((v) => (v.version === version ? patch(v) : v)),
+  },
+});
+
 export const useCreateStore = create<CreateState>((set) => ({
   draft: EMPTY_DRAFT,
-  node: 'slides',
+  node: 'info',
   version: null,
 
   pitchId: null,
@@ -102,28 +142,33 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   select: (node, version = null) => set({ node, version }),
 
-  setMeta: (patch) => set((s) => ({ draft: { ...s.draft, ...patch } })),
+  // 값이 바뀌면 저장 표시가 풀립니다 — 저장한 뒤에 고친 값이 "저장됨" 으로 남으면 안 됩니다
+  setMeta: (patch) => set((s) => ({ draft: { ...s.draft, ...patch, infoSaved: false } })),
+  saveInfo: () => set((s) => ({ draft: { ...s.draft, infoSaved: true } })),
 
   addSlideVersion: () =>
     set((s) => {
       const version = nextVersion(s.draft.slides);
       return {
-        draft: { ...s.draft, slides: [...s.draft.slides, { version, pageCount: null }] },
+        draft: {
+          ...s.draft,
+          slides: [...s.draft.slides, { version, fileName: null, pageCount: null }],
+        },
         node: 'slides',
         version,
       };
     }),
 
-  attachSlides: (pageCount) =>
+  attachSlides: (fileName, pageCount) =>
     set((s) => {
       const pending = s.draft.slides.at(-1);
-      // 변환을 기다리던 버전이 있으면 그것을 채웁니다 — "+ 새로운 슬라이드 추가" 뒤의 경로
+      // 파일을 기다리던 버전이 있으면 그것을 채웁니다 — "+ 새 버전" 뒤의 경로
       if (pending && pending.pageCount === null) {
         return {
           draft: {
             ...s.draft,
             slides: s.draft.slides.map((v) =>
-              v.version === pending.version ? { ...v, pageCount } : v,
+              v.version === pending.version ? { ...v, fileName, pageCount } : v,
             ),
           },
           node: 'slides' as const,
@@ -132,105 +177,109 @@ export const useCreateStore = create<CreateState>((set) => ({
       }
       const version = nextVersion(s.draft.slides);
       return {
-        draft: { ...s.draft, slides: [...s.draft.slides, { version, pageCount }] },
+        draft: { ...s.draft, slides: [...s.draft.slides, { version, fileName, pageCount }] },
         node: 'slides' as const,
         version,
       };
     }),
 
-  setPageCount: (version, pageCount) =>
+  replaceSlides: (version, fileName, pageCount) =>
     set((s) => ({
       draft: {
         ...s.draft,
-        slides: s.draft.slides.map((v) => (v.version === version ? { ...v, pageCount } : v)),
+        slides: s.draft.slides.map((v) =>
+          v.version === version ? { ...v, fileName, pageCount } : v,
+        ),
       },
     })),
 
   addScriptVersion: (text = '') =>
     set((s) => {
       const version = nextVersion(s.draft.scripts);
+      const slideVersion =
+        s.draft.scripts.at(-1)?.slideVersion ?? s.draft.slides.at(-1)?.version ?? null;
       return {
-        draft: { ...s.draft, scripts: [...s.draft.scripts, { version, text, blocks: null }] },
+        draft: {
+          ...s.draft,
+          scripts: [
+            ...s.draft.scripts,
+            { version, slideVersion, text, blocks: null, mappingSaved: false },
+          ],
+        },
         node: 'script',
         version,
       };
     }),
 
+  // 글자가 바뀌면 지난 매핑은 근거를 잃습니다. 다시 실행해야 합니다.
   editScript: (version, text) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        scripts: s.draft.scripts.map((v) =>
-          // 글자가 바뀌면 지난 매핑은 근거를 잃습니다. 다시 실행해야 합니다.
-          v.version === version ? { ...v, text, blocks: null } : v,
-        ),
-      },
-    })),
+    set((s) => patchScript(s, version, (v) => ({ ...v, text, blocks: null, mappingSaved: false }))),
+
+  linkSlide: (version, slideVersion) =>
+    set((s) =>
+      patchScript(s, version, (v) => ({ ...v, slideVersion, blocks: null, mappingSaved: false })),
+    ),
 
   setBlocks: (version, blocks) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        scripts: s.draft.scripts.map((v) => (v.version === version ? { ...v, blocks } : v)),
-      },
-    })),
+    set((s) => patchScript(s, version, (v) => ({ ...v, blocks, mappingSaved: false }))),
+
+  editBlock: (version, index, text) =>
+    set((s) =>
+      patchScript(s, version, (v) => ({
+        ...v,
+        blocks: v.blocks?.map((b, i) => (i === index ? text : b)) ?? null,
+        mappingSaved: false,
+      })),
+    ),
+
+  saveMapping: (version) =>
+    set((s) => patchScript(s, version, (v) => ({ ...v, mappingSaved: true }))),
+
+  clearMapping: (version) =>
+    set((s) => patchScript(s, version, (v) => ({ ...v, blocks: null, mappingSaved: false }))),
 
   addCriteriaVersion: () =>
     set((s) => {
       const version = nextVersion(s.draft.criteria);
       return {
-        draft: { ...s.draft, criteria: [...s.draft.criteria, { version, items: [] }] },
+        draft: {
+          ...s.draft,
+          criteria: [
+            ...s.draft.criteria,
+            { version, source: '', organizedSource: '', items: [], skipped: [], saved: false },
+          ],
+        },
         node: 'criteria',
         version,
       };
     }),
 
-  addCriterion: (version) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        criteria: s.draft.criteria.map((v) =>
-          v.version === version && v.items.length < MAX_CRITERIA
-            ? {
-                ...v,
-                items: [...v.items, { id: crypto.randomUUID(), text: '', scoring: 'AUTO' }],
-              }
-            : v,
-        ),
-      },
-    })),
+  editCriteriaSource: (version, source) =>
+    set((s) => patchCriteria(s, version, (v) => ({ ...v, source, saved: false }))),
 
-  editCriterion: (version, id, patch) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        criteria: s.draft.criteria.map((v) =>
-          v.version === version
-            ? { ...v, items: v.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) }
-            : v,
-        ),
-      },
-    })),
+  organize: (version) =>
+    set((s) =>
+      patchCriteria(s, version, (v) => {
+        const { items, skipped } = organizeCriteria(v.source);
+        return {
+          ...v,
+          items: items.map((text) => ({ id: crypto.randomUUID(), text })),
+          skipped,
+          organizedSource: v.source,
+          saved: false,
+        };
+      }),
+    ),
 
-  removeCriterion: (version, id) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        criteria: s.draft.criteria.map((v) =>
-          v.version === version ? { ...v, items: v.items.filter((it) => it.id !== id) } : v,
-        ),
-      },
-    })),
+  saveCriteria: (version) => set((s) => patchCriteria(s, version, (v) => ({ ...v, saved: true }))),
 
   reset: () =>
     set({
       draft: EMPTY_DRAFT,
-      node: 'slides',
+      node: 'info',
       version: null,
       pitchId: null,
       draftId: crypto.randomUUID(),
       chosen: CHOOSE_LATEST,
     }),
 }));
-
-export type { ScoringMode };

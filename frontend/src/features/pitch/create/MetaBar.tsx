@@ -1,92 +1,67 @@
 import { useCreateStore } from './createStore';
+import { daysUntil, formatSeconds } from './lib/duration';
 
 /**
- * 상단 세 칸 — 제목 · 발표 날짜 · 제한 시간. 그리고 "수정 불가" 토글.
+ * 상단 세 칸 — 발표 제목 · 발표 날짜 · 발표시간. 시안에서 모든 화면 위에 서 있습니다.
  *
- * 목업에서 이 줄은 다섯 장 내내 같은 자리에 있습니다. 슬라이드를 고치든 대본을
- * 고치든 이 셋은 피치 한 판에 하나뿐이라, 버전 트리 밖에 둡니다.
- *
- * "수정 불가"는 실수로 값이 바뀌는 것을 막는 잠금입니다 — 발표 날짜나 제한 시간이
- * 바뀌면 지난 Take 와의 비교 기준이 흔들립니다.
+ * 읽기 전용입니다. 값을 고치는 곳은 사이드바의 `발표정보` 한 곳뿐이고, 여기는
+ * 지금 무엇을 연습하는 중인지 보여 주기만 합니다. 슬라이드를 고치든 대본을 고치든
+ * 이 셋은 피치 한 판에 하나뿐이라 버전 트리 밖에 둡니다.
  */
 
-/** 초 → "5분". 목업 표기 */
-function minutesLabel(sec: number): string {
-  const m = Math.round(sec / 60);
-  return `${m}분`;
+const card = 'flex min-w-0 items-center gap-3 rounded border border-line bg-panel px-4 py-3';
+const label = 'shrink-0 text-xs text-stone';
+
+/** 아이콘은 글자 앞의 장식입니다 — 의미는 옆의 라벨이 말합니다 */
+function Icon({ d }: { d: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5 shrink-0 text-ink"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+    >
+      <path d={d} />
+    </svg>
+  );
 }
 
-/** 발표일까지 남은 날. 지났으면 null — 배지를 그리지 않습니다 */
-function daysUntil(iso: string): number | null {
-  if (!iso) return null;
-  const target = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(target.getTime())) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.round((target.getTime() - today.getTime()) / 86_400_000);
-  return diff < 0 ? null : diff;
-}
-
-export function MetaBar({ locked, onToggleLock }: { locked: boolean; onToggleLock: () => void }) {
+export function MetaBar() {
   const draft = useCreateStore((s) => s.draft);
-  const setMeta = useCreateStore((s) => s.setMeta);
-
   const d = daysUntil(draft.presentationDate);
 
-  const field = [
-    'h-12 w-full rounded border bg-panel px-4 text-sm',
-    locked ? 'border-line text-stone' : 'border-ink',
-  ].join(' ');
+  const tolerance = `−${formatSeconds(draft.toleranceBelowSec)} / +${formatSeconds(draft.toleranceAboveSec)}`;
 
   return (
-    <div className="flex items-start gap-3">
-      <input
-        aria-label="발표 제목"
-        placeholder="발표 제목"
-        value={draft.title}
-        disabled={locked}
-        onChange={(e) => setMeta({ title: e.target.value })}
-        className={`${field} flex-[2] font-bold`}
-      />
+    <div className="grid gap-3 md:grid-cols-[1.35fr_1fr_1.1fr]">
+      <div className={card}>
+        <Icon d="M7 3h8l4 4v14H7zM14 3v5h5M10 12h6M10 16h6" />
+        <span className={label}>발표 제목</span>
+        <span className="truncate text-sm font-bold">{draft.title || '제목 없음'}</span>
+      </div>
 
-      <div className="relative flex-1">
-        <input
-          aria-label="발표 날짜"
-          type="date"
-          value={draft.presentationDate}
-          disabled={locked}
-          onChange={(e) => setMeta({ presentationDate: e.target.value })}
-          className={field}
-        />
+      <div className={card}>
+        <Icon d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" />
+        <span className={label}>발표 날짜</span>
+        <span className="tabular text-sm font-bold">
+          {draft.presentationDate ? draft.presentationDate.replaceAll('-', '.') : '미정'}
+        </span>
         {d !== null && (
-          <span className="tabular pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-coral">
+          <span className="tabular rounded bg-coral-wash px-2 py-0.5 font-mono text-xs font-bold text-coral-deep">
             D-{d}
           </span>
         )}
       </div>
 
-      <input
-        aria-label="발표 제한시간 (분)"
-        type="number"
-        min={1}
-        max={60}
-        value={Math.round(draft.timeLimitSec / 60)}
-        disabled={locked}
-        onChange={(e) => setMeta({ timeLimitSec: Math.max(1, Number(e.target.value)) * 60 })}
-        placeholder={minutesLabel(draft.timeLimitSec)}
-        className={`${field} flex-1 tabular`}
-      />
-
-      <button
-        type="button"
-        onClick={onToggleLock}
-        aria-pressed={locked}
-        className="h-12 shrink-0 rounded border border-line-strong bg-panel px-3 text-xs leading-tight text-stone hover:text-ink"
-      >
-        수정
-        <br />
-        {locked ? '불가' : '가능'}
-      </button>
+      <div className={card}>
+        <Icon d="M12 3a9 9 0 100 18 9 9 0 000-18zM12 7v5l3 2" />
+        <span className={label}>발표시간</span>
+        <span className="tabular truncate text-sm font-bold">
+          {formatSeconds(draft.timeLimitSec)} ({tolerance})
+        </span>
+      </div>
     </div>
   );
 }

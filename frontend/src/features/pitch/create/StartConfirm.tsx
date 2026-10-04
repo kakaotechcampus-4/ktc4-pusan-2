@@ -24,7 +24,7 @@ import { computeGate } from './lib/gate';
  */
 
 interface RowSpec {
-  node: DraftNode;
+  node: Exclude<DraftNode, 'info'>;
   label: string;
   versions: number[];
   chosen: number | null;
@@ -54,26 +54,35 @@ function describe(draft: PitchDraft, resolved: Resolved): RowSpec[] {
       label: '대본',
       versions: draft.scripts.map((v) => v.version),
       chosen: script?.version ?? null,
-      detail: scriptDetail(script?.text ?? null, blocks?.length ?? null),
-      ok: blocks !== null && blocks.length > 0,
+      detail: scriptDetail(
+        script?.text ?? null,
+        blocks?.length ?? null,
+        script?.mappingSaved ?? false,
+      ),
+      ok: blocks !== null && blocks.length > 0 && script?.mappingSaved === true,
     },
     {
       node: 'criteria',
       label: '평가기준',
       versions: draft.criteria.map((v) => v.version),
       chosen: criteria?.version ?? null,
-      detail: criteria ? `${criteria.items.length}개` : '없음',
-      ok: (criteria?.items.length ?? 0) > 0,
+      detail: criteriaDetail(criteria),
+      ok: criteria !== null && criteria.items.length > 0 && criteria.saved,
     },
   ];
 }
 
+function criteriaDetail(criteria: Resolved['criteria']): string {
+  if (criteria === null) return '없음';
+  return criteria.saved ? `${criteria.items.length}개` : `${criteria.items.length}개 · 저장 전`;
+}
+
 /** 블록 수가 null 이면 매핑을 안 한 것입니다 — 0 블록과는 다릅니다 */
-function scriptDetail(text: string | null, blockCount: number | null): string {
+function scriptDetail(text: string | null, blockCount: number | null, saved: boolean): string {
   if (text === null) return '없음';
   const chars = `${countChars(text).toLocaleString()}자`;
   if (blockCount === null) return `${chars} · 매핑 안 됨`;
-  return `${chars} · ${blockCount}블록 매핑됨`;
+  return `${chars} · ${blockCount}블록 ${saved ? '매핑됨' : '매핑 저장 전'}`;
 }
 
 export function StartConfirm({ onClose, onGo }: { onClose: () => void; onGo: () => void }) {
