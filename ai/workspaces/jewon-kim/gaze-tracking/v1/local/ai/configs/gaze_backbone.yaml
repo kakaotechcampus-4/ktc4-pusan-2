@@ -1,6 +1,7 @@
 # doc 3-2 backbone selection. name must be registered in vision.backbones.registry
-# candidates: mediapipe_geom | l2cs | gazetr
-name: mediapipe_geom
+# default: head_pose (gaze = the direction the face points; no eye reading)
+# parked eye backbones (vision.eye, comparison experiments only): mediapipe_geom | l2cs | gazetr
+name: head_pose
 checkpoint: null
 device: cpu
 num_threads: 0

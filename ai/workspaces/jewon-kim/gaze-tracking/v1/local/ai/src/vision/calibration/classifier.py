@@ -21,6 +21,7 @@ from sklearn.pipeline import Pipeline
 
 from vision.config import CalibrationConfig
 from vision.schemas import (
+    DECISION_CLASSES,
     CalibrationQuality,
     CalibrationSample,
     FrameObservation,
@@ -47,6 +48,9 @@ UNCERTAIN_LOW_MARGIN = "LOW_MARGIN"
 
 class PerUserGazeClassifier:
     """CAMERA vs BOTTOM for one user (doc 5-3) plus the doc 5-4 decision rule."""
+
+    #: ``calibration.method`` value that selects this classifier.
+    method = "logistic"
 
     def __init__(
         self,
@@ -111,6 +115,11 @@ class PerUserGazeClassifier:
     def quality(self) -> Optional[CalibrationQuality]:
         """The report from the calibration this model was fitted on, if any."""
         return self._quality
+
+    @property
+    def classes(self) -> Tuple[str, ...]:
+        """The states this classifier decides between (the smoother's class set)."""
+        return tuple(DECISION_CLASSES)
 
     def feature_names(self) -> List[str]:
         return self._extractor.feature_names()

@@ -1121,3 +1121,15 @@ def test_load_refuses_a_payload_that_is_not_a_model(tmp_path):
 
     with pytest.raises(ValueError, match="not a PerUserGazeClassifier payload"):
         PerUserGazeClassifier.load(path)
+
+
+def test_split_by_label_drops_screen_instead_of_folding_it_into_bottom():
+    """The logistic model has no SCREEN class; it used to land in BOTTOM silently."""
+    samples = [
+        CalibrationSample(label="CAMERA", gaze=GazeVector(0.0, -0.02, 0.9), head_pose=HeadPose()),
+        CalibrationSample(label="SCREEN", gaze=GazeVector(0.0, -0.18, 0.9), head_pose=HeadPose()),
+        CalibrationSample(label="BOTTOM", gaze=GazeVector(0.0, -0.32, 0.9), head_pose=HeadPose()),
+    ]
+    camera, bottom = split_by_label(samples)
+    assert [s.label for s in camera] == ["CAMERA"]
+    assert [s.label for s in bottom] == ["BOTTOM"]

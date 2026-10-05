@@ -1,5 +1,5 @@
 @echo off
-REM Staged vision demo: camera placement check -> 2-point calibration -> live gaze.
+REM Staged vision demo: set-up check -> head-fixed calibration (lens, screen centre, video bottom) -> live gaze.
 REM Double-click this file, or run it from a terminal with extra flags:
 REM     run_demo.bat --english
 REM     run_demo.bat --video tests/fixtures/static_face_30fps.mp4

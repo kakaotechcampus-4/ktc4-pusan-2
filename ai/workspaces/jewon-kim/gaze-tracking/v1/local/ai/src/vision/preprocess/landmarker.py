@@ -20,7 +20,7 @@ refer to one and the same eye.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -105,13 +105,25 @@ class FaceLandmarkerWrapper:
         self._closed = False
 
     def detect(self, rgb: np.ndarray, t_ms: Optional[int] = None) -> Optional[LandmarkResult]:
-        """Run the landmarker on one uint8 RGB frame (doc 3-1).
+        """Run the landmarker on one uint8 RGB frame (doc 3-1); the LARGEST face.
 
         ``presence`` is the fraction of landmarks that fall inside the image.
         MediaPipe exposes no per-face score in IMAGE mode, so this is an honest
         proxy rather than a fabricated confidence: a fully visible face scores
         1.0 and a face sliding out of frame decays toward 0.
+
+        With ``num_faces > 1`` MediaPipe returns faces in no promised order, so
+        "index 0" is not "the presenter".  The largest face is the best single
+        guess without context; ``PreprocessPipeline`` refines it with the
+        position of the face it followed on the previous frames.
         """
+        faces = self.detect_all(rgb, t_ms=t_ms)
+        if not faces:
+            return None
+        return max(faces, key=lambda face: landmark_extent_area(face.landmarks))
+
+    def detect_all(self, rgb: np.ndarray, t_ms: Optional[int] = None) -> List[LandmarkResult]:
+        """Every face MediaPipe found (at most ``num_faces``), in MediaPipe's order."""
         if self._closed:
             raise RuntimeError("FaceLandmarkerWrapper is closed")
         _validate_frame(rgb)
@@ -131,30 +143,31 @@ class FaceLandmarkerWrapper:
         else:
             result = self._landmarker.detect(image)
 
-        if not result.face_landmarks:
-            return None
+        faces: List[LandmarkResult] = []
+        blendshape_lists = result.face_blendshapes or []
+        matrices = result.facial_transformation_matrixes or []
+        for index, points in enumerate(result.face_landmarks or []):
+            landmarks = np.asarray([[p.x, p.y, p.z] for p in points], dtype=np.float32)
 
-        points = result.face_landmarks[0]
-        landmarks = np.asarray([[p.x, p.y, p.z] for p in points], dtype=np.float32)
+            blendshapes: Dict[str, float] = {}
+            if index < len(blendshape_lists):
+                blendshapes = {
+                    c.category_name: float(c.score) for c in blendshape_lists[index]
+                }
 
-        blendshapes: Dict[str, float] = {}
-        if result.face_blendshapes:
-            blendshapes = {
-                c.category_name: float(c.score) for c in result.face_blendshapes[0]
-            }
+            matrix: Optional[np.ndarray] = None
+            if index < len(matrices):
+                matrix = np.asarray(matrices[index], dtype=np.float64).reshape(4, 4)
 
-        matrix: Optional[np.ndarray] = None
-        if result.facial_transformation_matrixes:
-            matrix = np.asarray(
-                result.facial_transformation_matrixes[0], dtype=np.float64
-            ).reshape(4, 4)
-
-        return LandmarkResult(
-            landmarks=landmarks,
-            blendshapes=blendshapes,
-            transform_matrix=matrix,
-            presence=in_bounds_fraction(landmarks),
-        )
+            faces.append(
+                LandmarkResult(
+                    landmarks=landmarks,
+                    blendshapes=blendshapes,
+                    transform_matrix=matrix,
+                    presence=in_bounds_fraction(landmarks),
+                )
+            )
+        return faces
 
     def close(self) -> None:
         if not self._closed:
@@ -184,6 +197,21 @@ def _validate_frame(frame: np.ndarray) -> None:
         raise ValueError("expected HxWx3 uint8 pixels, got shape {}".format(frame.shape))
     if frame.dtype != np.uint8:
         raise ValueError("expected uint8 pixels, got {}".format(frame.dtype))
+
+
+def landmark_extent_area(landmarks: np.ndarray) -> float:
+    """Area of the landmark hull's bounding box in normalised image units.
+
+    Only for ranking faces of the same frame against each other, so the
+    normalised units are enough.  Non-finite points are ignored; a face with no
+    finite point has area 0 and never wins.
+    """
+    xy = np.asarray(landmarks, dtype=np.float64).reshape(-1, 3)[:, :2]
+    xy = xy[np.all(np.isfinite(xy), axis=1)]
+    if xy.shape[0] == 0:
+        return 0.0
+    span = xy.max(axis=0) - xy.min(axis=0)
+    return float(span[0] * span[1])
 
 
 def in_bounds_fraction(landmarks: np.ndarray) -> float:

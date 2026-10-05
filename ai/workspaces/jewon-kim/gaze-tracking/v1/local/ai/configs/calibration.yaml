@@ -1,6 +1,8 @@
-# doc 5 per-user 2-point calibration
+# doc 5 per-user calibration: look at CAMERA -> SCREEN -> BOTTOM in turn
+# (naturally with the default head_pose backbone; head held still with an eye backbone)
 camera_seconds: 2.0
 bottom_seconds: 2.0
+screen_seconds: 2.0
 min_samples_per_class: 10
 min_loo_accuracy: 0.85
 min_centroid_distance: 0.60
@@ -13,3 +15,57 @@ random_seed: 42
 p_max_threshold: 0.70
 margin_threshold: 0.20
 check_pitch_ordering: true
+
+# reference = anchor regions in gaze space (calibration/references.py);
+# logistic = the doc 5-3 LR above (feature_set, C, ... apply to it only).
+method: reference
+
+# Good-frame gauge, one cue at a time. max_head_deviation_deg applies to eye backbones only.
+target_good_frames: 16
+cue_settle_ms: 500
+cue_timeout_ms: 8000
+min_sample_confidence: 0.30
+max_head_deviation_deg: 6.0
+outlier_k: 4.0
+# Head-pose engine: count a frame only when the head points the cue's way from the
+# reference pose (head circle centre, else the screen-centre look): lens = up,
+# script = down, screen = near the centre, never far to the side.
+cue_direction_gate: true
+cue_min_up_deg: 2.0
+cue_min_down_deg: 3.0
+cue_screen_radius_deg: 7.0
+cue_max_side_deg: 10.0
+# After a head circle, the screen-centre look confirms the circle's centre: 8 good frames
+# within 4 deg of it -> the circle's frames join the screen-centre samples; else a full look.
+cue_confirm_frames: 8
+cue_confirm_deg: 4.0
+
+# Reference-anchor classifier.
+sigma_min_deg: 1.5
+sigma_scale: 1.25
+screen_aspect: 1.7778
+script_width_fraction: 0.60
+script_height_fraction: 0.25
+camera_halfwidth_deg: 0.0
+other_field_yaw_deg: 120.0
+other_field_pitch_deg: 90.0
+# OTHER only beyond this many degrees outside the calibrated screen area; closer in the nearest target wins.
+other_margin_deg: 6.0
+# The calibrated screen area is at least this wide each side (yaw), however close the looks were sideways,
+screen_min_halfwidth_deg: 10.0
+# ... and at most this wide (yaw), however far the head moved from the lens to the screen centre.
+screen_max_halfwidth_deg: 12.0
+prior_camera: 0.25
+prior_screen: 0.25
+prior_bottom: 0.25
+prior_other: 0.25
+head_away_yaw_deg: 35.0
+head_away_pitch_deg: 30.0
+min_anchor_separation: 4.0
+# Lens and screen centre too close to tell apart -> fold SCREEN into CAMERA instead of failing.
+merge_inseparable_screen: true
+
+# Re-anchor ("look at the lens again") during a live take.
+reanchor_frames: 8
+reanchor_max_shift_deg: 8.0
+reanchor_timeout_ms: 3000

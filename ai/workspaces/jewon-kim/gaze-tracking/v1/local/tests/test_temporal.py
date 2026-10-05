@@ -1012,3 +1012,217 @@ def test_a_stream_emits_transitions_and_heartbeats_only(temporal):
     gaps = [b.t_ms - a.t_ms for a, b in zip(on_the_wire, on_the_wire[1:])]
     assert all(gap > 0 for gap in gaps)
     assert max(gaps) <= temporal.heartbeat_ms + FRAME_MS
+
+
+# --------------------------------------------------------------------------
+# Golden equivalence: the two-class rule did not move with K-class support
+# --------------------------------------------------------------------------
+
+
+def _random_stream(seed: int, n_frames: int = 400) -> List[GazeDecision]:
+    """A hostile but deterministic decision stream.
+
+    Mixes confident and borderline probabilities, abstentions with and without
+    a face, non-finite and unnormalised probabilities, stray labels, repeated
+    and backwards timestamps -- everything the smoother has a guard for.
+    """
+    import random
+
+    rng = random.Random(seed)
+    t_ms = 0
+    stream = []
+    specials = [math.nan, math.inf, -math.inf, -0.2, 1.7, 0.0, 1.0]
+    for i in range(n_frames):
+        t_ms += rng.choice([FRAME_MS] * 8 + [0, 2 * FRAME_MS, 7 * FRAME_MS, -3 * FRAME_MS])
+        kind = rng.random()
+        if kind < 0.12:
+            stream.append(abstention(t_ms, face_valid=rng.random() < 0.5))
+            continue
+        p_bottom = rng.choice(specials) if kind < 0.18 else rng.random()
+        p_camera = rng.choice(specials) if kind > 0.94 else (
+            1.0 - p_bottom if math.isfinite(p_bottom) else rng.random()
+        )
+        label = rng.choice([CAMERA, BOTTOM, UNCERTAIN, "SCREEN", "camera"])
+        stream.append(
+            GazeDecision(
+                t_ms=t_ms, frame_id=i, label=label, p_camera=p_camera, p_bottom=p_bottom,
+                face_valid=rng.random() > 0.05,
+            )
+        )
+    return stream
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2, 3, 4])
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},
+        {"decay_on_invalid": False},
+        {"window_frames": 1},
+        {"enter_bottom_threshold": 0.4, "enter_camera_threshold": 0.4},
+        {"to_bottom_dwell_ms": 0, "to_camera_dwell_ms": 0, "uncertain_dwell_ms": 0},
+        {"ema_alpha": 1.0, "vote_recency_weight": 0.5, "heartbeat_ms": 0},
+    ],
+    ids=["shipped", "frozen_on_invalid", "window_1", "overlapping", "zero_dwell", "extreme"],
+)
+def test_two_class_events_match_the_legacy_smoother_exactly(temporal, seed, overrides):
+    from _legacy_smoother import TemporalSmoother as LegacySmoother
+
+    cfg = dataclasses.replace(temporal, **overrides)
+    live = TemporalSmoother(cfg, model_version="golden")
+    legacy = LegacySmoother(cfg, model_version="golden")
+    for d in _random_stream(seed):
+        new_event, old_event = live.update(d), legacy.update(d)
+        assert new_event.to_debug_dict() == old_event.to_debug_dict()
+        assert live.should_emit(new_event) == legacy.should_emit(old_event)
+        assert live.state == legacy.state
+        assert live.pending_state == legacy.pending_state
+        assert live.smoothed_p_bottom == legacy.smoothed_p_bottom
+        assert live.smoothed_p_camera == legacy.smoothed_p_camera
+
+
+# --------------------------------------------------------------------------
+# K classes (reference-anchor classifier)
+# --------------------------------------------------------------------------
+
+SCREEN = GazeState.SCREEN.value
+OTHER = GazeState.OTHER.value
+ALL_FOUR = (CAMERA, SCREEN, BOTTOM, OTHER)
+
+
+def kdecision(t_ms: int, probs, *, face_valid: bool = True) -> GazeDecision:
+    best = max(probs, key=probs.get)
+    return GazeDecision(
+        t_ms=t_ms, frame_id=t_ms // FRAME_MS, label=best,
+        p_camera=probs.get(CAMERA, 0.0), p_bottom=probs.get(BOTTOM, 0.0),
+        face_valid=face_valid, probs=dict(probs),
+    )
+
+
+def one_hot(cls: str, p: float = 0.97):
+    rest = (1.0 - p) / 3.0
+    return {c: (p if c == cls else rest) for c in ALL_FOUR}
+
+
+def first_commit_ms(smoother: TemporalSmoother, probs, target: str, start_ms: int = 0) -> int:
+    t_ms = start_ms
+    for _ in range(64):
+        event = smoother.update(kdecision(t_ms, probs))
+        if event.is_transition and event.label == target:
+            return t_ms
+        t_ms += FRAME_MS
+    raise AssertionError(f"never committed {target}")
+
+
+def test_four_class_smoother_starts_uniform(temporal):
+    smoother = TemporalSmoother(temporal, classes=list(reversed(ALL_FOUR)))
+    assert smoother.classes == ALL_FOUR  # canonical order whatever was passed
+    assert smoother.smoothed_probs == pytest.approx({c: 0.25 for c in ALL_FOUR})
+    assert smoother.state == UNCERTAIN
+
+
+def test_screen_and_other_commit_after_their_own_dwells(temporal):
+    screen = TemporalSmoother(temporal, classes=ALL_FOUR)
+    other = TemporalSmoother(temporal, classes=ALL_FOUR)
+    screen_ms = first_commit_ms(screen, one_hot(SCREEN), SCREEN)
+    other_ms = first_commit_ms(other, one_hot(OTHER), OTHER)
+    # Same evidence, same arming frame; OTHER waits its longer dwell.  Commits
+    # land on the 125 ms frame grid, so each dwell rounds up to a whole frame.
+    def on_grid(dwell_ms: int) -> int:
+        return math.ceil(dwell_ms / FRAME_MS) * FRAME_MS
+
+    assert other_ms - screen_ms == on_grid(temporal.to_other_dwell_ms) - on_grid(temporal.to_screen_dwell_ms)
+    assert screen.state == SCREEN and other.state == OTHER
+
+
+def test_bottom_wins_when_several_classes_clear_a_low_threshold(temporal):
+    cfg = dataclasses.replace(
+        temporal, enter_bottom_threshold=0.3, enter_screen_threshold=0.3, to_bottom_dwell_ms=0,
+    )
+    smoother = TemporalSmoother(cfg, classes=ALL_FOUR)
+    event = smoother.update(kdecision(0, {CAMERA: 0.05, SCREEN: 0.45, BOTTOM: 0.45, OTHER: 0.05}))
+    assert event.label == BOTTOM
+
+
+def test_four_class_abstentions_decay_toward_uniform_and_never_arm(temporal):
+    smoother = TemporalSmoother(temporal, classes=ALL_FOUR)
+    for i in range(40):
+        event = smoother.update(abstention(i * FRAME_MS))
+        assert smoother.pending_state is None
+    assert event.label == UNCERTAIN
+    assert smoother.smoothed_probs == pytest.approx({c: 0.25 for c in ALL_FOUR})
+
+
+def test_four_class_event_confidence_is_the_state_score_and_probs_sum_to_one(temporal):
+    smoother = TemporalSmoother(temporal, classes=ALL_FOUR)
+    first_commit_ms(smoother, one_hot(SCREEN, 0.9), SCREEN)
+    event = smoother.update(kdecision(10_000, one_hot(SCREEN, 0.9)))
+    debug = event.to_debug_dict()
+    assert event.confidence == pytest.approx(smoother.smoothed_probs[SCREEN])
+    assert sum(debug["smoothed_probs"].values()) == pytest.approx(1.0, abs=1e-3)
+    assert len(event.to_dict()) == 7  # the wire contract never grows
+
+
+def test_a_two_class_decision_feeds_a_four_class_smoother_as_camera_bottom_mass(temporal):
+    smoother = TemporalSmoother(temporal, classes=ALL_FOUR)
+    steady(smoother, 1.0, 0, 16)  # plain p_camera/p_bottom decisions, no probs
+    assert smoother.state == BOTTOM
+    assert smoother.smoothed_probs[SCREEN] == pytest.approx(0.0, abs=1e-3)
+
+
+@pytest.mark.parametrize(
+    "probs",
+    [
+        {CAMERA: math.nan, SCREEN: 0.9, BOTTOM: 0.05, OTHER: 0.05},
+        {CAMERA: 0.0, SCREEN: math.inf, BOTTOM: 0.0, OTHER: 0.0},
+        {CAMERA: 0.0, SCREEN: 0.0, BOTTOM: 0.0, OTHER: 0.0},
+    ],
+    ids=["nan", "inf", "all_zero"],
+)
+def test_unreadable_class_probabilities_carry_no_evidence(temporal, probs):
+    smoother = TemporalSmoother(temporal, classes=ALL_FOUR)
+    for i in range(20):
+        smoother.update(kdecision(i * FRAME_MS, probs))
+    assert smoother.smoothed_probs == pytest.approx({c: 0.25 for c in ALL_FOUR})
+    assert smoother.pending_state is None
+
+
+def test_negative_probabilities_are_floored_not_subtracted(temporal):
+    smoother = TemporalSmoother(temporal, classes=ALL_FOUR)
+    smoother.update(kdecision(0, {CAMERA: -5.0, SCREEN: 1.0, BOTTOM: 0.0, OTHER: 0.0}))
+    assert all(v >= 0.0 for v in smoother.smoothed_probs.values())
+
+
+@pytest.mark.parametrize(
+    "classes, message",
+    [
+        ([BOTTOM, SCREEN], "CAMERA"),
+        ([CAMERA], "two classes"),
+        ([CAMERA, "SIDEWAYS"], "unknown"),
+    ],
+)
+def test_bad_class_sets_fail_at_construction(temporal, classes, message):
+    with pytest.raises(ValueError, match=message):
+        TemporalSmoother(temporal, classes=classes)
+
+
+def test_set_classes_resets_the_stream(temporal):
+    smoother = TemporalSmoother(temporal)
+    settle(smoother, 1.0)
+    smoother.set_classes(ALL_FOUR)
+    assert smoother.state == UNCERTAIN
+    assert smoother.classes == ALL_FOUR
+    assert smoother.smoothed_p_camera == pytest.approx(0.25)
+
+
+@pytest.mark.parametrize("name", ["enter_screen_threshold", "enter_other_threshold"])
+@pytest.mark.parametrize("value", [0.0, 1.5])
+def test_new_entry_thresholds_are_validated(temporal, name, value):
+    with pytest.raises(ValueError, match=name):
+        TemporalSmoother(dataclasses.replace(temporal, **{name: value}))
+
+
+@pytest.mark.parametrize("name", ["to_screen_dwell_ms", "to_other_dwell_ms"])
+def test_new_dwells_are_validated(temporal, name):
+    with pytest.raises(ValueError, match=name):
+        TemporalSmoother(dataclasses.replace(temporal, **{name: -1}))

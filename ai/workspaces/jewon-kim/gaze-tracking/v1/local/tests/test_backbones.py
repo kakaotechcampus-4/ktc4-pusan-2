@@ -43,9 +43,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pytest
 
-from vision.backbones import gazetr as gazetr_mod
-from vision.backbones import l2cs as l2cs_mod
-from vision.backbones import mediapipe_geom as geom_mod
+from vision.eye import gazetr as gazetr_mod
+from vision.eye import l2cs as l2cs_mod
+from vision.eye import mediapipe_geom as geom_mod
 from vision.backbones import registry as registry_mod
 from vision.backbones.base import (
     BackboneError,
@@ -55,9 +55,9 @@ from vision.backbones.base import (
     assert_required_keys_loaded,
     load_checkpoint_state_dict,
 )
-from vision.backbones.gazetr import GazeTRBackbone
-from vision.backbones.l2cs import L2CSBackbone
-from vision.backbones.mediapipe_geom import MediaPipeGeomBackbone
+from vision.eye.gazetr import GazeTRBackbone
+from vision.eye.l2cs import L2CSBackbone
+from vision.eye.mediapipe_geom import MediaPipeGeomBackbone
 from vision.backbones.registry import (
     available_backbones,
     build_backbone,
@@ -68,7 +68,7 @@ from vision.config import BackboneConfig
 from vision.preprocess.landmarker import in_bounds_fraction
 from vision.schemas import FrameObservation, GazeVector, HeadPose
 
-BUILTIN_BACKBONES = ("gazetr", "l2cs", "mediapipe_geom")
+BUILTIN_BACKBONES = ("gazetr", "head_pose", "l2cs", "mediapipe_geom")
 
 
 # ==========================================================================
@@ -280,9 +280,11 @@ def test_builtin_module_list_and_registry_stay_in_step():
     # _load_builtins imports exactly these modules and every one of them must
     # register something, otherwise a silent import-order bug hides a backbone.
     assert len(registry_mod._BUILTIN_MODULES) == len(BUILTIN_BACKBONES)
-    # mediapipe_geom first: a broken optional dependency in a torch backbone
-    # must not be able to break the default path.
-    assert registry_mod._BUILTIN_MODULES[0].endswith("mediapipe_geom")
+    # The default head_pose first: a broken optional dependency in a torch
+    # backbone must not be able to break the default path.
+    assert registry_mod._BUILTIN_MODULES[0].endswith(".head")
+    # The eye backbones are parked in their own package.
+    assert all(m.startswith("vision.eye.") for m in registry_mod._BUILTIN_MODULES[1:])
 
 
 # ==========================================================================
@@ -301,13 +303,13 @@ class Blocker:
 
 sys.meta_path.insert(0, Blocker())
 
-import vision.backbones.l2cs
-import vision.backbones.gazetr
+import vision.eye.l2cs
+import vision.eye.gazetr
 from vision.backbones.registry import available_backbones, get_backbone_class
 
 names = available_backbones()
-assert names == ["gazetr", "l2cs", "mediapipe_geom"], names
-assert get_backbone_class("l2cs") is vision.backbones.l2cs.L2CSBackbone
+assert names == ["gazetr", "head_pose", "l2cs", "mediapipe_geom"], names
+assert get_backbone_class("l2cs") is vision.eye.l2cs.L2CSBackbone
 assert "torch" not in sys.modules
 print("OK")
 """
@@ -320,7 +322,7 @@ class Breaker:
     healed = False
 
     def find_spec(self, fullname, path=None, target=None):
-        if fullname == "vision.backbones.gazetr" and not self.healed:
+        if fullname == "vision.eye.gazetr" and not self.healed:
             raise ImportError("simulated broken optional dependency")
         return None
 
@@ -339,14 +341,14 @@ else:
 
 breaker.healed = True
 names = available_backbones()
-assert names == ["gazetr", "l2cs", "mediapipe_geom"], names
+assert names == ["gazetr", "head_pose", "l2cs", "mediapipe_geom"], names
 print("OK")
 """
 
 _LAZY_IMPORT_SCRIPT = """
 import sys
-import vision.backbones.l2cs
-import vision.backbones.gazetr
+import vision.eye.l2cs
+import vision.eye.gazetr
 from vision.backbones.registry import available_backbones
 
 available_backbones()

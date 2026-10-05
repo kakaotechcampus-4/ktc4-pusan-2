@@ -9,3 +9,8 @@ to_camera_dwell_ms: 400
 uncertain_dwell_ms: 800
 heartbeat_ms: 1000
 decay_on_invalid: true
+# States only the multi-class (reference) classifier produces.
+enter_screen_threshold: 0.60
+enter_other_threshold: 0.60
+to_screen_dwell_ms: 400
+to_other_dwell_ms: 800

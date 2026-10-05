@@ -103,12 +103,16 @@ class StubPipeline:
 
     def __init__(self) -> None:
         self.calls: List[Tuple[int, int]] = []
+        self.hints: List[Optional[Tuple[float, float]]] = []
         self.closed = 0
         self.face_valid = True
         self.invalid_reason: Optional[str] = None
 
-    def process_bgr(self, bgr: np.ndarray, frame_id: int, t_ms: int) -> FrameObservation:
+    def process_bgr(
+        self, bgr: np.ndarray, frame_id: int, t_ms: int, *, main_face_hint=None
+    ) -> FrameObservation:
         self.calls.append((int(frame_id), int(t_ms)))
+        self.hints.append(main_face_hint)
         return FrameObservation(
             frame_id=int(frame_id),
             t_ms=int(t_ms),
@@ -282,7 +286,7 @@ def test_a_cue_the_classifier_cannot_train_on_is_rejected_loudly(session, cue):
     with pytest.raises(ValueError):
         session.add_calibration_frame(FRAME, cue, 0)
 
-    assert session.calibration_counts == {"CAMERA": 0, "BOTTOM": 0}
+    assert session.calibration_counts == {"CAMERA": 0, "BOTTOM": 0, "SCREEN": 0}
 
 
 @pytest.mark.parametrize("cue", ["camera", " Camera ", GazeLabel.CAMERA])
@@ -340,7 +344,7 @@ def test_reset_calibration_clears_the_take_but_never_the_frame_counter(session, 
     assert session.classifier is None
     assert session.calibration_quality is None
     assert session.calibration_samples == []
-    assert session.calibration_counts == {"CAMERA": 0, "BOTTOM": 0}
+    assert session.calibration_counts == {"CAMERA": 0, "BOTTOM": 0, "SCREEN": 0}
     assert session.events == []
     assert session.latency_percentile() == 0.0
     assert session.last_decision is None
@@ -378,7 +382,7 @@ def test_preview_shows_a_frame_without_advancing_any_stage(session, stubs):
 
     assert obs is session.last_observation
     assert gaze is session.last_gaze is not None
-    assert session.calibration_counts == {"CAMERA": 0, "BOTTOM": 0}
+    assert session.calibration_counts == {"CAMERA": 0, "BOTTOM": 0, "SCREEN": 0}
     assert session.placement_counts == {TARGET_CAMERA: 0, TARGET_SCREEN: 0}
     assert session.events == []
     assert session.last_event is None
@@ -480,6 +484,35 @@ def test_an_unusable_frame_is_never_offered_to_the_backbone(session, stubs):
     assert decision.uncertain_reason == InvalidReason.EYES_CLOSED.value
     assert decision.label == GazeState.UNCERTAIN.value
     assert session.last_gaze is None
+
+
+@pytest.mark.parametrize("eye_reason", [InvalidReason.EYES_CLOSED.value, InvalidReason.CROP_FAILED.value])
+def test_hidden_eyes_do_not_void_a_frame_for_a_backbone_that_reads_the_head(fresh_cfg, stubs, eye_reason):
+    # Reading a script at the bottom of the screen lowers the eyelids below the
+    # eyes-closed floor, and a head turned far or a small face leaves no eye to
+    # crop; the head direction the head-pose backbone measures is still there,
+    # so the frame is judged instead of held back.
+    pipeline, backbone = stubs
+    backbone.uses_eyes = False
+    sess = VisionSession(fresh_cfg, backbone=backbone, pipeline=pipeline)
+    try:
+        _quality, t_ms = _calibrate(sess, backbone)
+        calls_after_calibration = backbone.calls
+        pipeline.face_valid = False
+        pipeline.invalid_reason = eye_reason
+
+        _event, decision = sess.process_frame(FRAME, t_ms)
+
+        assert backbone.calls == calls_after_calibration + 1
+        assert decision.face_valid is True
+        assert decision.uncertain_reason != eye_reason
+        assert sess.last_observation.invalid_reason is None
+
+        pipeline.invalid_reason = InvalidReason.OUT_OF_FRAME.value
+        _event, decision = sess.process_frame(FRAME, t_ms + 125)
+        assert decision.uncertain_reason == InvalidReason.OUT_OF_FRAME.value
+    finally:
+        sess.close()
 
 
 def test_a_rejected_calibration_frame_is_reported_under_its_preprocess_reason(session, stubs):
@@ -680,10 +713,13 @@ def test_debug_dump_adds_the_non_contract_keys_without_dropping_any(session, stu
     target = session.dump_events(tmp_path / "debug.jsonl", debug=True)
 
     payload = json.loads(target.read_text(encoding="utf-8").splitlines()[0])
-    assert set(payload) == EVENT_CONTRACT_KEYS | EVENT_DEBUG_KEYS
-    assert payload["smoothed_p_camera"] + payload["smoothed_p_bottom"] == pytest.approx(
-        1.0, abs=1e-4
-    )
+    # The shipped reference classifier decides more than two classes, so the
+    # debug dump also carries every smoothed class score; they sum to one and
+    # the CAMERA/BOTTOM pair is a part of that distribution.
+    assert set(payload) == EVENT_CONTRACT_KEYS | EVENT_DEBUG_KEYS | {"smoothed_probs"}
+    assert sum(payload["smoothed_probs"].values()) == pytest.approx(1.0, abs=1e-3)
+    assert payload["smoothed_p_camera"] == pytest.approx(payload["smoothed_probs"]["CAMERA"], abs=1e-4)
+    assert payload["smoothed_p_camera"] + payload["smoothed_p_bottom"] <= 1.0 + 1e-4
 
 
 def test_dumping_a_session_that_emitted_nothing_writes_an_empty_file(session, tmp_path):
@@ -722,7 +758,7 @@ def test_collect_calibration_replays_a_cue_timeline_into_one_report(session, stu
     quality = collect_calibration(session, frames)
 
     assert quality is session.calibration_quality
-    assert session.calibration_counts == {"CAMERA": 12, "BOTTOM": 12}
+    assert session.calibration_counts == {"CAMERA": 12, "BOTTOM": 12, "SCREEN": 0}
     assert session.is_calibrated is True
 
 
@@ -1092,9 +1128,9 @@ def test_a_perfectly_still_gaze_yields_a_finite_separation(fresh_cfg):
 
 
 def test_the_wire_version_constants_are_the_ones_downstream_parses():
-    assert MODEL_VERSION == "gaze_v1.0.0"
-    assert CLASSIFIER_VERSION == "per_user_lr_v1"
-    assert TEMPORAL_RULE_VERSION == "gaze_temporal_v1.0"
+    assert MODEL_VERSION == "gaze_v1.1.0"
+    assert CLASSIFIER_VERSION == "reference_anchor_v1"
+    assert TEMPORAL_RULE_VERSION == "gaze_temporal_v1.1"
     # The schema defaults and the runtime constants must not drift apart.
     event = GazeStateEvent(
         t_ms=0, label="CAMERA", confidence=1.0, continuous_duration_ms=0, face_valid=True
@@ -1106,7 +1142,7 @@ def test_the_wire_version_constants_are_the_ones_downstream_parses():
 
 @pytest.mark.parametrize(
     "backbone_name, stamped",
-    [("l2cs", "l2cs"), ("  GazeTR  ", "gazetr"), (None, "mediapipe_geom"), ("", "mediapipe_geom")],
+    [("l2cs", "l2cs"), ("  GazeTR  ", "gazetr"), (None, "head_pose"), ("", "head_pose")],
 )
 def test_the_stamp_names_the_backbone_that_actually_ran(cfg, monkeypatch, backbone_name, stamped):
     """Experiment 1 builds several backbones against one config, so a stamp that
@@ -1115,7 +1151,7 @@ def test_the_stamp_names_the_backbone_that_actually_ran(cfg, monkeypatch, backbo
 
     stamp = current_ai_version(cfg, backbone_name)
 
-    assert cfg.backbone.name == "mediapipe_geom"
+    assert cfg.backbone.name == "head_pose"
     assert stamp.gaze_backbone == stamped
     assert stamp.code_commit == "cafebabe1234"
     assert stamp.config_hash == cfg.hash()
@@ -1129,7 +1165,7 @@ def test_a_session_stamps_its_own_backbone_not_the_configured_one(fresh_cfg, stu
 
     stamp = sess.ai_version()
 
-    assert fresh_cfg.backbone.name == "mediapipe_geom"
+    assert fresh_cfg.backbone.name == "head_pose"
     assert stamp.gaze_backbone == "scripted"
     assert stamp.feature_set == "C"
     assert stamp.temporal_rule == TEMPORAL_RULE_VERSION
@@ -1252,3 +1288,255 @@ def test_every_git_failure_mode_collapses_to_no_commit(monkeypatch, tmp_path, ou
 
     monkeypatch.delenv(COMMIT_ENV_VAR, raising=False)
     assert git_commit(tmp_path) == "unknown"
+
+
+# ==========================================================================
+# Gauge-driven three-cue calibration, placement, face following, condition
+# ==========================================================================
+
+CUE_ANGLES_DEG = {"CAMERA": (0.5, -1.0), "SCREEN": (0.8, -10.5), "BOTTOM": (0.6, -18.0)}
+
+
+class ScenePipeline(StubPipeline):
+    """A stub that also reports a face box and scene, so the live monitors run."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.bbox = (250, 150, 140, 180)
+        self.iris = 11.0
+        self.second = 0.0
+
+    def process_bgr(self, bgr, frame_id, t_ms, *, main_face_hint=None):
+        from vision.schemas import FaceScene, FrameQuality
+
+        obs = super().process_bgr(bgr, frame_id, t_ms, main_face_hint=main_face_hint)
+        obs.face_bbox = self.bbox
+        obs.quality = FrameQuality(face_brightness=120.0, background_brightness=110.0,
+                                   left_eye_openness=0.3, right_eye_openness=0.3)
+        obs.scene = FaceScene(n_faces=1, second_face_area_ratio=self.second, iris_diameter_px=self.iris)
+        return obs
+
+
+def _run_cue(sess, backbone, cue, t_ms, n_frames=40, angles=None):
+    yaw_deg, pitch_deg = (angles or CUE_ANGLES_DEG)[cue]
+    sess.start_calibration_cue(cue, t_ms)
+    status = None
+    for i in range(n_frames):
+        jitter = ((i % 5) - 2) * 0.2
+        backbone.yaw = math.radians(yaw_deg + jitter)
+        backbone.pitch = math.radians(pitch_deg + jitter)
+        status = sess.offer_calibration_frame(FRAME, t_ms)
+        t_ms += 125
+        if status.finished:
+            break
+    return status, t_ms
+
+
+def _calibrate_three(sess, backbone, angles=None):
+    t_ms = 0
+    for cue in ("CAMERA", "SCREEN", "BOTTOM"):
+        status, t_ms = _run_cue(sess, backbone, cue, t_ms, angles=angles)
+        assert status.state == "DONE", status
+    return sess.finish_calibration(), t_ms
+
+
+@pytest.fixture
+def scene_session(fresh_cfg):
+    pipeline, backbone = ScenePipeline(), ScriptedBackbone()
+    sess = VisionSession(fresh_cfg, backbone=backbone, pipeline=pipeline)
+    yield sess, pipeline, backbone
+    sess.close()
+
+
+def test_the_gauge_fills_each_cue_and_the_model_decides_four_classes(session, stubs):
+    _pipeline, backbone = stubs
+    quality, t_ms = _calibrate_three(session, backbone)
+
+    assert quality.ok, quality
+    assert quality.method == "reference"
+    target = session.cfg.calibration.target_good_frames
+    assert session.calibration_counts == {"CAMERA": target, "BOTTOM": target, "SCREEN": target}
+    assert session.smoother.classes == ("CAMERA", "SCREEN", "BOTTOM", "OTHER")
+    assert quality.placement["placement"] == "TOP" and quality.placement["mode"] == "anchors"
+
+    labels = []
+    for cue in ("CAMERA", "SCREEN", "BOTTOM"):
+        backbone.yaw, backbone.pitch = (math.radians(v) for v in CUE_ANGLES_DEG[cue])
+        for _ in range(16):
+            event, _decision = session.process_frame(FRAME, t_ms)
+            t_ms += 125
+        labels.append(event.label)
+    assert labels == ["CAMERA", "SCREEN", "BOTTOM"]
+
+
+def test_settling_frames_are_not_samples_and_are_not_blamed(session, stubs):
+    session.start_calibration_cue("CAMERA", 0)
+    status = None
+    for i in range(3):  # 0, 125, 250 ms: all inside the 500 ms settle window
+        status = session.offer_calibration_frame(FRAME, i * 125)
+    assert status.good == 0
+    assert session.calibration_counts["CAMERA"] == 0
+    assert session.rejected_frames == {}
+
+
+def test_restarting_a_cue_replaces_its_samples(session, stubs):
+    _pipeline, backbone = stubs
+    _run_cue(session, backbone, "CAMERA", 0)
+    first = session.calibration_counts["CAMERA"]
+    session.start_calibration_cue("CAMERA", 10_000)
+    assert session.calibration_counts["CAMERA"] == 0 and first > 0
+
+
+def test_offering_a_frame_before_a_cue_starts_is_a_bug(session):
+    with pytest.raises(RuntimeError, match="start_calibration_cue"):
+        session.offer_calibration_frame(FRAME, 0)
+
+
+def test_placement_is_known_before_the_script_cue(session, stubs):
+    _pipeline, backbone = stubs
+    assert session.estimate_placement() is None
+    _, t_ms = _run_cue(session, backbone, "CAMERA", 0)
+    _run_cue(session, backbone, "SCREEN", t_ms)
+    result = session.estimate_placement()
+    assert result.placement == CameraPlacement.TOP.value and result.supported
+    assert session.placement_result is result
+
+
+def test_a_side_camera_is_caught_from_the_anchors(session, stubs):
+    _pipeline, backbone = stubs
+    side = {"CAMERA": (0.0, -1.0), "SCREEN": (-14.0, -2.0), "BOTTOM": (-14.0, -12.0)}
+    _, t_ms = _run_cue(session, backbone, "CAMERA", 0, angles=side)
+    _run_cue(session, backbone, "SCREEN", t_ms, angles=side)
+    result = session.estimate_placement()
+    assert result.placement == CameraPlacement.SIDE_LEFT.value
+    assert not result.supported
+
+
+@pytest.mark.parametrize("method", ["reference", "logistic"])
+def test_both_methods_run_the_live_loop(fresh_cfg, stubs, method):
+    fresh_cfg.calibration.method = method
+    pipeline, backbone = stubs
+    with VisionSession(fresh_cfg, backbone=backbone, pipeline=pipeline) as sess:
+        quality, t_ms = _calibrate(sess, backbone)
+        assert quality.method == method
+        backbone.pitch = BOTTOM_PITCH
+        for i in range(16):
+            event, _ = sess.process_frame(FRAME, t_ms + i * 125)
+        assert event.label == GazeState.BOTTOM.value
+        assert sess.ai_version().gaze_classifier == (
+            "reference_anchor_v1" if method == "reference" else "per_user_lr_v1"
+        )
+
+
+def test_the_session_follows_the_face_it_measured(scene_session):
+    sess, pipeline, _backbone = scene_session
+    sess.preview(FRAME, 0)
+    sess.preview(FRAME, 125)
+    assert pipeline.hints[0] is None
+    assert pipeline.hints[1] == pytest.approx(((250 + 70) / 640, (150 + 90) / 480))
+
+
+def test_preconditions_report_without_touching_calibration(scene_session):
+    sess, _pipeline, _backbone = scene_session
+    report = None
+    for i in range(12):
+        report = sess.check_preconditions(FRAME, i * 125)
+    assert report.status == "PASS"
+    assert sess.precondition_report is report
+    assert sess.calibration_counts == {"CAMERA": 0, "BOTTOM": 0, "SCREEN": 0}
+
+
+def test_condition_events_track_a_drifting_scene(scene_session):
+    sess, pipeline, backbone = scene_session
+    _quality, t_ms = _calibrate_three(sess, backbone)
+    backbone.yaw, backbone.pitch = (math.radians(v) for v in CUE_ANGLES_DEG["CAMERA"])
+    for _ in range(8):
+        sess.process_frame(FRAME, t_ms)
+        t_ms += 125
+    assert sess.last_condition.reliability == 1.0
+    pipeline.second = 0.9  # a second person who stays: a notice, not a reliability cut
+    for _ in range(sess.cfg.condition.second_face_confirm_ms // 125 + 1):
+        sess.process_frame(FRAME, t_ms)
+        t_ms += 125
+    assert sess.last_condition.notices == ["SECOND_FACE"] and sess.last_condition.reliability == 1.0
+    pipeline.second = 0.0
+    pipeline.bbox = (330, 150, 140, 180)  # the presenter moved aside
+    sess.process_frame(FRAME, t_ms)
+    assert "OFF_CENTER" in sess.last_condition.issues
+    assert sess.condition_events[-1].to_dict()["issues"] == ["OFF_CENTER"]
+    assert all(e.type == "SESSION_CONDITION" for e in sess.condition_events)
+    assert all(e.type == "GAZE_STATE" for e in sess.events)
+
+
+def test_a_replaced_face_forces_decisions_to_uncertain(scene_session):
+    sess, pipeline, backbone = scene_session
+    _quality, t_ms = _calibrate_three(sess, backbone)
+    backbone.yaw, backbone.pitch = (math.radians(v) for v in CUE_ANGLES_DEG["CAMERA"])
+    pipeline.bbox = (10, 40, 320, 400)  # someone else, bigger, elsewhere
+    decision = None
+    for _ in range(8):
+        _event, decision = sess.process_frame(FRAME, t_ms)
+        t_ms += 125
+    assert sess.last_condition.severe
+    assert decision.label == GazeState.UNCERTAIN.value
+    assert decision.face_valid is False
+    assert decision.uncertain_reason == "FACE_REPLACED"
+
+
+def test_reanchor_moves_the_anchors_by_the_measured_offset(scene_session):
+    sess, _pipeline, backbone = scene_session
+    _quality, t_ms = _calibrate_three(sess, backbone)
+    shifted = {k: (y + 3.0, p - 1.5) for k, (y, p) in CUE_ANGLES_DEG.items()}
+    sess.begin_reanchor(t_ms)
+    backbone.yaw, backbone.pitch = (math.radians(v) for v in shifted["CAMERA"])
+    for _ in range(sess.cfg.calibration.reanchor_frames):
+        sess.process_frame(FRAME, t_ms)
+        t_ms += 125
+    status = sess.reanchor_status
+    assert status.state == "DONE"
+    assert status.shift_deg == pytest.approx((3.0, -1.5), abs=0.3)
+    backbone.yaw, backbone.pitch = (math.radians(v) for v in shifted["BOTTOM"])
+    for _ in range(16):
+        event, _ = sess.process_frame(FRAME, t_ms)
+        t_ms += 125
+    assert event.label == GazeState.BOTTOM.value
+
+
+def test_reanchor_refuses_a_shift_that_cannot_be_the_lens(scene_session):
+    sess, _pipeline, backbone = scene_session
+    _quality, t_ms = _calibrate_three(sess, backbone)
+    anchors_before = dict(sess.classifier.model.anchors)
+    sess.begin_reanchor(t_ms)
+    backbone.yaw, backbone.pitch = math.radians(0.5), math.radians(-17.0)  # reading the script
+    for _ in range(sess.cfg.calibration.reanchor_frames):
+        sess.process_frame(FRAME, t_ms)
+        t_ms += 125
+    assert sess.reanchor_status.state == "REJECTED"
+    assert sess.reanchor_status.reason == "SHIFT_TOO_LARGE"
+    assert sess.classifier.model.anchors == anchors_before
+
+
+def test_reanchor_is_unsupported_for_the_logistic_method(fresh_cfg, stubs):
+    fresh_cfg.calibration.method = "logistic"
+    pipeline, backbone = stubs
+    with VisionSession(fresh_cfg, backbone=backbone, pipeline=pipeline) as sess:
+        _calibrate(sess, backbone)
+        assert sess.begin_reanchor(0).state == "UNSUPPORTED"
+
+
+def test_reset_calibration_disarms_the_live_monitors(scene_session):
+    sess, _pipeline, backbone = scene_session
+    _calibrate_three(sess, backbone)
+    sess.reset_calibration()
+    assert sess.last_condition is None and sess.condition_events == []
+    assert sess.reanchor_status.state == "IDLE"
+    assert sess.gauge_status.state == "IDLE"
+
+
+def test_condition_events_dump_as_jsonl(scene_session, tmp_path):
+    sess, _pipeline, backbone = scene_session
+    _quality, t_ms = _calibrate_three(sess, backbone)
+    sess.process_frame(FRAME, t_ms)
+    target = sess.dump_condition_events(tmp_path / "condition.jsonl")
+    lines = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
+    assert lines and set(lines[0]) == {"type", "t_ms", "reliability", "issues"}

@@ -125,6 +125,36 @@ def iris_center(
     return pixels[list(ring)].mean(axis=0)
 
 
+def iris_diameter_px(landmarks: np.ndarray, image_size: Tuple[int, int]) -> float:
+    """Mean iris diameter of both eyes, in source-frame pixels; 0.0 when unknown.
+
+    Per eye, the largest distance between any two of the four ring landmarks --
+    the ring points sit on opposite ends of two diameters, so this is the
+    diameter whatever order MediaPipe lists them in.  An eye with a non-finite
+    point is skipped; a mesh without the iris rows (fewer than 478 points)
+    returns 0.0 rather than raising, because callers treat 0 as "not measured".
+
+    This is the precision proxy the precondition check gates on: the human iris
+    is ~11.7 mm across with little spread between adults, so its pixel size is
+    both a distance estimate and a direct count of how many pixels an eye
+    rotation has to move.
+    """
+    points = np.asarray(landmarks, dtype=np.float64)
+    if points.ndim != 2 or points.shape[0] <= max(LEFT_IRIS_RING):
+        return 0.0
+    pixels = to_pixels(points, image_size)
+    diameters = []
+    for ring in (LEFT_IRIS_RING, RIGHT_IRIS_RING):
+        ring_px = pixels[list(ring)]
+        if not np.all(np.isfinite(ring_px)):
+            continue
+        gaps = ring_px[:, None, :] - ring_px[None, :, :]
+        diameters.append(float(np.sqrt((gaps ** 2).sum(axis=2)).max()))
+    if not diameters:
+        return 0.0
+    return float(np.mean(diameters))
+
+
 def roll_angle_deg(landmarks: np.ndarray, image_size: Tuple[int, int]) -> float:
     """In-image tilt of the eye line, degrees, positive = clockwise.
 

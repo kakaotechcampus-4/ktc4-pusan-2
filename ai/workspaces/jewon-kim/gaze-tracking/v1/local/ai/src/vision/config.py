@@ -51,17 +51,31 @@ class PreprocessConfig:
     border_tolerance_px: int = 2
     #: Rotate the face crop so the eye line is horizontal.
     align_face_roll: bool = True
-    num_faces: int = 1
+    #: Faces MediaPipe may return.  Only one is analysed (the main face, see
+    #: ``preprocess.pipeline.select_main_face``); the others are what lets the
+    #: runtime notice a second person instead of silently measuring them.
+    num_faces: int = 3
     landmarker_model_path: str = "ai/models/face_landmarker.task"
     #: MediaPipe running mode: IMAGE keeps offline runs deterministic.
     running_mode: str = "IMAGE"
+    #: After calibration, treat a frame as a blink when its eye aspect ratio
+    #: drops below ``blink_ratio`` x this user's own open-eye reference (never
+    #: below ``min_eye_openness``).  The reference is the smaller of the recent
+    #: median and the BOTTOM-cue median, because the eyelid lowers when the
+    #: user reads the script -- a CAMERA-only reference would call that a blink.
+    adaptive_blink: bool = True
+    blink_ratio: float = 0.70
+    #: Recent valid frames the running median is taken over.
+    blink_window_frames: int = 24
+    #: The adaptive gate stays off until it has seen this many frames.
+    blink_min_reference_frames: int = 8
 
 
 @dataclass
 class BackboneConfig:
     """doc 3-2 / 3-3: which gaze backbone to run and where its weights live."""
 
-    name: str = "mediapipe_geom"
+    name: str = "head_pose"
     checkpoint: Optional[str] = None
     device: str = "cpu"
     #: torch threads; 0 leaves the torch default alone.
@@ -75,9 +89,12 @@ class BackboneConfig:
 class CalibrationConfig:
     """doc 5-1 .. 5-4."""
 
-    #: Seconds of CAMERA / BOTTOM staring at take start.
+    #: Seconds of CAMERA / BOTTOM / SCREEN staring at take start.  The runtime
+    #: ends a cue on its good-frame gauge instead; these size the recording
+    #: blocks (collector) and the offline calibration windows (data.splits).
     camera_seconds: float = 2.0
     bottom_seconds: float = 2.0
+    screen_seconds: float = 2.0
     #: Hard floor on usable samples per class before we even try to fit.
     min_samples_per_class: int = 10
     #: doc 5-2 pass rule.
@@ -98,6 +115,109 @@ class CalibrationConfig:
     margin_threshold: float = 0.20
     #: Warn (do not fail) when BOTTOM pitch is not below CAMERA pitch.
     check_pitch_ordering: bool = True
+
+    #: Which per-user classifier to fit: "reference" (anchor regions in gaze
+    #: space, see ``calibration.references``) or "logistic" (the doc 5-3 LR,
+    #: kept for ablation).  The feature_set / C / max_iter / class_weight keys
+    #: above only apply to "logistic".
+    method: str = "reference"
+
+    # -- good-frame gauge (one cue at a time; see calibration.gauge) -------
+    #: Accepted frames each cue needs before it is complete.
+    target_good_frames: int = 16
+    #: Frames this soon after a cue appears are still the saccade to it.
+    cue_settle_ms: int = 500
+    #: A cue that has not filled by now ends; it passes only if it reached
+    #: ``min_samples_per_class``.
+    cue_timeout_ms: int = 8000
+    #: Gaze estimates below this backbone confidence never count.
+    min_sample_confidence: float = 0.30
+    #: The head must stay within this many degrees (yaw and pitch) of the
+    #: pose it had when the first cue settled: the eyes move, the head does not.
+    max_head_deviation_deg: float = 6.0
+    #: A frame further than this many noise units from its cue's running
+    #: median is a glance elsewhere, not a sample of the cue.
+    outlier_k: float = 4.0
+    #: Head-pose engine: with a reference pose (the head circle's centre, else
+    #: the screen-centre look) a frame counts only when the head points the
+    #: cue's way from it -- up toward the lens, down toward the script, near
+    #: the centre for the screen -- so looking elsewhere never fills the gauge.
+    cue_direction_gate: bool = True
+    cue_min_up_deg: float = 2.0
+    cue_min_down_deg: float = 3.0
+    cue_screen_radius_deg: float = 7.0
+    #: Turned further sideways than this from the reference: not at the target.
+    cue_max_side_deg: float = 10.0
+    #: With a head circle measured, the screen-centre look *confirms* its centre
+    #: instead of measuring from scratch: after ``cue_confirm_frames`` good frames
+    #: their median is compared with the circle's centre.  Within
+    #: ``cue_confirm_deg`` the circle's centre frames join the screen-centre
+    #: samples and the look ends; further, the presenter moved since the circle,
+    #: so the look goes on to a full ``target_good_frames`` measurement and the
+    #: lens and script looks are read from that new posture.
+    cue_confirm_frames: int = 8
+    cue_confirm_deg: float = 4.0
+
+    # -- reference-anchor classifier ---------------------------------------
+    #: Floor on the pooled per-axis gaze noise, degrees.
+    sigma_min_deg: float = 1.5
+    #: Calibration is a still fixation; live gaze is noisier.  The pooled
+    #: robust sigma is widened by this factor before use.
+    sigma_scale: float = 1.25
+    #: Effective width/height ratio of the screen region in GAZE space.  The
+    #: screen box is sized from the CAMERA->SCREEN offset (half its height) and
+    #: this ratio; geometric backbones compress vertical gaze, so this is the
+    #: first knob to tune when the screen sides read as OTHER.
+    screen_aspect: float = 1.7778
+    #: Script region around the BOTTOM anchor, as fractions of the screen box.
+    script_width_fraction: float = 0.60
+    script_height_fraction: float = 0.25
+    #: > 0 pins the CAMERA region to a disc of this radius instead of a point
+    #: (0 lets the noise level alone set the eye-contact zone).
+    camera_halfwidth_deg: float = 0.0
+    #: OTHER is a constant density over this gaze field (degrees).
+    other_field_yaw_deg: float = 120.0
+    other_field_pitch_deg: float = 90.0
+    #: OTHER takes part only once the gaze is this far outside the calibrated
+    #: screen area (``screen_region``).  Closer in -- a head raised a little
+    #: above the lens, turned a little past the screen's edge -- the nearest
+    #: target wins: presenters move their heads, and with the head-pose backbone
+    #: the calibrated regions are only a few degrees wide.  A clear look away
+    #: (beyond this, or past ``head_away_*``) is still OTHER.
+    other_margin_deg: float = 6.0
+    #: The calibrated screen area is at least this wide on each side (yaw).
+    #: With the head-pose backbone the lens, screen-centre and script looks often
+    #: sit within a degree or two sideways (and the screen folds into the lens),
+    #: which would leave no room to turn the head toward the screen's sides.
+    screen_min_halfwidth_deg: float = 10.0
+    #: ... and at most this wide (yaw), however far the head moved from the lens
+    #: to the screen centre.  The width is read from that vertical move times
+    #: ``screen_aspect``; a presenter who lifts the head a lot for the lens would
+    #: otherwise get a screen 20+ deg wide each side, and a clear turn to the
+    #: side would never read as OTHER.  The head turns ~10 deg at most to look
+    #: at a laptop screen's edge.
+    screen_max_halfwidth_deg: float = 12.0
+    #: Class priors (renormalised; 0 switches a class off).
+    prior_camera: float = 0.25
+    prior_screen: float = 0.25
+    prior_bottom: float = 0.25
+    prior_other: float = 0.25
+    #: A head turned this far from the calibration pose is looking away: the
+    #: decision is OTHER whatever the eyes read (they are unreliable there).
+    head_away_yaw_deg: float = 35.0
+    head_away_pitch_deg: float = 30.0
+    #: Anchors closer than this (in pooled noise units) cannot be told apart.
+    min_anchor_separation: float = 4.0
+    #: When only the SCREEN anchor is the problem (too close to the lens or the
+    #: script), keep a CAMERA / BOTTOM / OTHER model and report screen looks as
+    #: CAMERA instead of failing the calibration.
+    merge_inseparable_screen: bool = True
+
+    # -- re-anchor ("look at the lens again") during a live take -------------
+    reanchor_frames: int = 8
+    #: A shift larger than this means the user was not looking at the lens.
+    reanchor_max_shift_deg: float = 8.0
+    reanchor_timeout_ms: int = 3000
 
 
 @dataclass
@@ -130,6 +250,11 @@ class PlacementConfig:
     #: geometric mode (and the sanity floor for learned mode).
     min_delta_deg: float = 4.0
     min_separation: float = 1.00
+    #: Placement read off the calibration anchors: the dominant axis must be
+    #: this many times the other one.  2.5 means a top-centre verdict needs
+    #: ``|delta_yaw| <= 0.4 * |delta_pitch|``, i.e. the lens within ~22 deg
+    #: of straight above the screen centre.
+    anchor_min_axis_dominance: float = 2.5
 
 
 @dataclass
@@ -153,6 +278,239 @@ class TemporalConfig:
     heartbeat_ms: int = 1000
     #: Invalid frames decay the EMA toward 0.5 instead of freezing it.
     decay_on_invalid: bool = True
+    #: Entry thresholds and dwells for the states only a multi-class
+    #: classifier produces.  Looking away (OTHER) needs the longest evidence:
+    #: a short glance off-screen while thinking is normal and not feedback.
+    enter_screen_threshold: float = 0.60
+    enter_other_threshold: float = 0.60
+    to_screen_dwell_ms: int = 400
+    to_other_dwell_ms: int = 800
+
+
+@dataclass
+class PreconditionConfig:
+    """Set-up check that runs before calibration (runtime only).
+
+    The whole model assumes one presenter facing a webcam mounted at the top
+    centre of the screen.  Every bound here is the MINIMUM the measurement needs
+    -- can the face be found and its landmarks tracked -- not an ideal posture:
+    a set-up that can be measured passes.  When it clearly cannot, the take is
+    refused with an actionable hint (``strict``); research tools run advisory
+    and only record it.
+    """
+
+    #: True: a failing check blocks calibration.  False: report only.
+    strict: bool = True
+    #: Every check must hold this long, continuously, to pass.
+    hold_ms: int = 1000
+    #: One check failing this long, continuously, is a rejection (before that
+    #: the answer is "retry": the user is probably still settling).
+    reject_after_ms: int = 3000
+    #: Another face larger than this fraction of the main face's area means
+    #: a second person is in the shot -- once it has been seen for
+    #: ``second_face_confirm_ms`` (a one-frame false find is not a person).
+    #: Only a distinct face counts (``preprocess.pipeline.second_face_ratio``).
+    max_second_face_area_ratio: float = 0.25
+    second_face_confirm_ms: int = 500
+    #: Face-centre offset from the frame centre, as a fraction of frame width
+    #: and height: the face only has to stay well inside the picture.
+    max_center_offset_x: float = 0.35
+    max_center_offset_y: float = 0.35
+    #: Too far = the face nears the size below which it cannot be found
+    #: reliably: ``preprocess.min_face_area_ratio`` (0.010, the face detector's
+    #: floor) with a little headroom, so leaning back does not drop frames.
+    min_face_area_ratio: float = 0.012
+    #: Eye-reading backbones only: iris diameter floor in source-frame pixels;
+    #: below it the eye is too few pixels to resolve a ~9 deg eye rotation.  The
+    #: head-pose backbone does not read the iris and ignores this.
+    min_iris_px: float = 7.0
+    #: Too close = the face fills so much of the picture that a small head
+    #: movement takes it out of frame.
+    max_face_height_ratio: float = 0.70
+    #: The user should roughly face the camera while the check runs (landmarks
+    #: stay reliable well within this).  Pitch is wider: a laptop webcam sits
+    #: below eye level, so a presenter looking at the lens already reads
+    #: 16-24 deg chin-up (measured on a laptop webcam).
+    max_head_yaw_deg: float = 30.0
+    max_head_pitch_deg: float = 40.0
+    #: Mean face luminance floor (0-255) and the backlight ceiling: dim light
+    #: still tracks; only a face too dark or too backlit to find fails.
+    min_face_brightness: float = 40.0
+    max_backlight_ratio: float = 2.5
+    #: Analysed frames per second the stream must sustain: the 1 s vote needs 4
+    #: frames, so 5 FPS leaves a little room (8 FPS is the target).
+    min_analysis_fps: float = 5.0
+
+
+@dataclass
+class SweepConfig:
+    """Head circle check between the set-up check and calibration (``vision.runtime.sweep``).
+
+    The presenter looks straight ahead for a moment, then turns the head
+    slowly around in a circle; a ring of ticks around the face fills in the
+    directions the head reached while the face stayed tracked.  It checks the
+    tracking in every direction and never blocks on its own.  Every number here
+    is an initial value, not a measured one.
+    """
+
+    #: Ticks around the ring; a multiple of 8 so each direction owns whole ticks.
+    ticks: int = 32
+    #: Valid frames whose median head pose is the centre of the circle (1 s at
+    #: 8 FPS).  That pose is the presenter looking at the screen -- their own
+    #: face in the picture -- so it is also the screen-centre baseline the
+    #: calibration confirms and folds in (``CalibrationConfig.cue_confirm_*``).
+    neutral_frames: int = 8
+    #: How far the head must turn from that centre to light a tick: an ellipse
+    #: with these half-axes (heads turn further sideways than up and down).
+    reach_yaw_deg: float = 14.0
+    reach_pitch_deg: float = 9.0
+    #: Turning faster than this between two frames lights nothing ("slower").
+    max_speed_deg_s: float = 150.0
+    #: Two turned frames in a row fill the ticks between them when they are at
+    #: most this far apart in time and angle (at 8 FPS a circle skips ticks).
+    max_gap_ms: int = 400
+    max_fill_arc_deg: float = 90.0
+    #: No new tick for this long: point at the largest gap still to fill.
+    hint_after_ms: int = 3000
+    #: Stop after this long; the result names the directions still missing.
+    timeout_ms: int = 25000
+
+
+@dataclass
+class ConditionConfig:
+    """Live measurement-condition monitor (runtime only).
+
+    Compares every live frame with the scene recorded during calibration.  A
+    deviation does not stop the take; it lowers ``reliability`` linearly from
+    1.0 at the ``*_warn`` bound to ``fail_reliability`` at the ``*_fail`` bound.
+    Reliability is the minimum over the signals, so the issue list always names
+    what lowered it.
+    """
+
+    #: Window the valid-frame ratio is measured over.
+    window_ms: int = 3000
+    #: Re-emit an unchanged condition this often.
+    heartbeat_ms: int = 2000
+    #: A reliability change of at least this much is emitted immediately.
+    emit_delta: float = 0.10
+    #: Reliability a signal contributes at (and beyond) its fail bound.
+    fail_reliability: float = 0.30
+    #: Head pose drift from the calibration pose, degrees (max of yaw, pitch).
+    head_warn_deg: float = 12.0
+    head_fail_deg: float = 30.0
+    #: Position drift: how far the head moved from where it was calibrated,
+    #: read as the head-angle error it causes at a target -- atan(move / distance)
+    #: for a move sideways or up/down, and the change of the farthest cue's angle
+    #: for a move closer or further.  It fails at ``drift_fail_share`` x the
+    #: smallest separation between the calibrated cue postures (a move that can
+    #: carry a look all the way to the neighbouring target: the measurement no
+    #: longer means what it meant), clamped to [``drift_fail_min_deg``,
+    #: ``drift_fail_max_deg``], and warns at ``drift_warn_share`` x that bound.
+    #: Lenient on purpose: presenters shift in their seat, and the classifier
+    #: tolerates a few degrees (``calibration.other_margin_deg``).
+    drift_fail_share: float = 1.0
+    drift_fail_min_deg: float = 6.0
+    drift_fail_max_deg: float = 12.0
+    drift_warn_share: float = 0.6
+    #: Beyond the fail bound for this long: the measurement is unusable
+    #: (MOVED_TOO_FAR, severe) until the presenter returns or re-anchors.
+    drift_confirm_ms: int = 2000
+    #: The farthest cue's angle from the screen centre when the cues are unknown.
+    drift_default_span_deg: float = 7.0
+    #: Head rotation centre behind the face, cm.  Turning the head moves the face
+    #: in the picture by about this x sin(angle) without the head moving; that
+    #: part is taken out before the move is measured.
+    head_radius_cm: float = 8.0
+    #: A second face at least this large (vs the main face), seen for
+    #: ``second_face_confirm_ms``, is a *notice* (``ConditionState.notices``):
+    #: the presenter's face is still the one measured (FACE_REPLACED catches a
+    #: switch), so it does not lower reliability.  Only a distinct face counts
+    #: (``preprocess.pipeline.second_face_ratio``).
+    second_face_area_ratio: float = 0.35
+    second_face_confirm_ms: int = 1000
+    #: Head-direction noise: the frame-to-frame scatter of the measured head
+    #: angles over the last ``jitter_window_ms`` (robust second difference, so a
+    #: smooth head movement is not noise).  Shaky landmarks -- poor light, a face
+    #: near the recognition floor, motion blur -- show up here as they affect the
+    #: measurement, whatever caused them.  It fails at ``jitter_fail_share`` x
+    #: the smallest separation between the calibrated cue postures (noise that
+    #: carries a frame half-way to the neighbouring target), clamped to
+    #: [``jitter_fail_min_deg``, ``jitter_fail_max_deg``], and warns at
+    #: ``jitter_warn_share`` x that.  Needs ``jitter_min_samples`` differences
+    #: over frames at most ``jitter_max_gap_ms`` apart.
+    jitter_window_ms: int = 2000
+    jitter_max_gap_ms: int = 300
+    jitter_min_samples: int = 6
+    jitter_fail_share: float = 0.5
+    jitter_fail_min_deg: float = 3.0
+    jitter_fail_max_deg: float = 6.0
+    jitter_warn_share: float = 0.5
+    #: Valid-frame ratio over ``window_ms``.
+    valid_warn_ratio: float = 0.90
+    valid_fail_ratio: float = 0.50
+    #: Face size against the recognition floor (``preprocess.min_face_area_ratio``
+    #: 0.010): reliability falls as the face shrinks from ``small_face_warn_area``
+    #: to ``small_face_fail_area`` (moving away) or grows from
+    #: ``large_face_warn_height`` to ``large_face_fail_height`` of the frame
+    #: (moving so close a small movement leaves the frame).
+    small_face_warn_area: float = 0.016
+    small_face_fail_area: float = 0.011
+    large_face_warn_height: float = 0.70
+    large_face_fail_height: float = 0.85
+    #: The main face JUMPED this far (fraction of the frame) or changed area by
+    #: this factor between two sightings (at most ``face_lost_ms`` apart), and
+    #: did not come back to the calibrated place for ``replace_confirm_ms``: a
+    #: different person is now being measured.  Moving away, closer or aside
+    #: gradually is never a replacement -- that is the position drift.
+    replace_center_offset: float = 0.30
+    replace_area_ratio: float = 2.0
+    replace_confirm_ms: int = 500
+    #: No face for this long is a lost measurement.
+    face_lost_ms: int = 1500
+
+
+@dataclass
+class EvidenceConfig:
+    """Gaze evidence for the coach and review agents (``vision.evidence.gaze``).
+
+    Frame decisions are cut into fixed slices (one record per second by
+    default), the slices form a timeline, and the timeline is read as issues in
+    the agents' common evaluator format, take summaries and intervention
+    outcomes.  Every number here is an initial value, not a measured one.
+    """
+
+    #: Slice length and how a slice is decided from its frames.
+    slice_ms: int = 1000
+    min_frames_per_slice: int = 4
+    slice_vote_threshold: float = 0.6
+    #: Windows the realtime stats are read over (the coach's "recent 5-30 s").
+    short_window_ms: int = 5000
+    long_window_ms: int = 30000
+    #: A continuous run must last ``*_min_ms`` to be an issue; severity reaches
+    #: 1.0 at ``*_full_ms``.  Script reading is the most expected, so the most
+    #: tolerated; looking away the least.
+    script_min_ms: int = 3000
+    script_full_ms: int = 10000
+    screen_min_ms: int = 5000
+    screen_full_ms: int = 15000
+    away_min_ms: int = 2000
+    away_full_ms: int = 8000
+    #: Eye contact below this share of the measured time over the long window.
+    low_eye_contact_ratio: float = 0.30
+    low_eye_contact_min_measured_ms: int = 15000
+    #: The gaze is not usable when, over the short window, the measured share
+    #: or the mean condition reliability falls below these.
+    unmeasurable_coverage: float = 0.5
+    unmeasurable_reliability: float = 0.5
+    #: Runs shorter than this are not reported as segments.
+    segment_min_ms: int = 1000
+    #: Intervention outcome: the target ratio over ``before_ms`` before the
+    #: feedback against ``after_ms`` starting ``delay_ms`` after it.
+    outcome_before_ms: int = 5000
+    outcome_delay_ms: int = 5000
+    outcome_after_ms: int = 5000
+    #: The ratio must move the right way by this much to call it effective.
+    outcome_min_change: float = 0.2
 
 
 @dataclass
@@ -207,6 +565,10 @@ class VisionConfig:
     temporal: TemporalConfig = field(default_factory=TemporalConfig)
     release_gate: ReleaseGateConfig = field(default_factory=ReleaseGateConfig)
     collection: CollectionConfig = field(default_factory=CollectionConfig)
+    preconditions: PreconditionConfig = field(default_factory=PreconditionConfig)
+    condition: ConditionConfig = field(default_factory=ConditionConfig)
+    evidence: EvidenceConfig = field(default_factory=EvidenceConfig)
+    sweep: SweepConfig = field(default_factory=SweepConfig)
 
     # -- serialisation ----------------------------------------------------
     def to_dict(self) -> Dict[str, Any]:
@@ -304,10 +666,14 @@ def load_config(
         temporal.yaml       -> temporal
         release_gate.yaml   -> release_gate
         collection.yaml     -> collection
+        preconditions.yaml  -> preconditions
+        condition.yaml      -> condition
+        evidence.yaml       -> evidence
+        sweep.yaml          -> sweep
 
     An ``overrides`` dict is keyed by the SECTION name, not the file name, so
     the backbone section must be given as ``{"backbone": {...}}``; a key that is
-    not one of the seven above is merged into the raw mapping and then silently
+    not one of the eleven above is merged into the raw mapping and then silently
     ignored.  A missing file yields ``{}`` and ``_build`` drops unknown keys, so
     a wrong ``config_dir`` or a typo'd key produces an all-defaults config with
     a valid-looking hash rather than an error.  A file that parses to something
@@ -329,6 +695,10 @@ def load_config(
         "temporal": _read_yaml(directory / "temporal.yaml"),
         "release_gate": _read_yaml(directory / "release_gate.yaml"),
         "collection": _read_yaml(directory / "collection.yaml"),
+        "preconditions": _read_yaml(directory / "preconditions.yaml"),
+        "condition": _read_yaml(directory / "condition.yaml"),
+        "evidence": _read_yaml(directory / "evidence.yaml"),
+        "sweep": _read_yaml(directory / "sweep.yaml"),
     }
     if overrides:
         raw = _deep_merge(raw, overrides)
@@ -362,6 +732,10 @@ def load_config(
         temporal=_build(TemporalConfig, raw.get("temporal"), "temporal"),
         release_gate=_build(ReleaseGateConfig, raw.get("release_gate"), "release_gate"),
         collection=collection,
+        preconditions=_build(PreconditionConfig, raw.get("preconditions"), "preconditions"),
+        condition=_build(ConditionConfig, raw.get("condition"), "condition"),
+        evidence=_build(EvidenceConfig, raw.get("evidence"), "evidence"),
+        sweep=_build(SweepConfig, raw.get("sweep"), "sweep"),
     )
 
 

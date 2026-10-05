@@ -56,12 +56,14 @@ def _bootstrap_import_path() -> None:
 
 _bootstrap_import_path()
 
-from vision.calibration.classifier import PerUserGazeClassifier  # noqa: E402
+from vision.calibration.factory import fit_gaze_classifier  # noqa: E402
 from vision.config import REPORTS_DIR, VisionConfig, load_config  # noqa: E402
 from vision.data.features_table import load_table, save_table  # noqa: E402
 from vision.data.labels import load_segments  # noqa: E402
 from vision.data.splits import participant_split, per_participant_partition  # noqa: E402
 from vision.schemas import (  # noqa: E402
+    CALIBRATION_CUES,
+    STATE_CLASSES,
     CalibrationQuality,
     CalibrationSample,
     FrameObservation,
@@ -96,6 +98,8 @@ PREDICTION_COLUMNS: Tuple[str, ...] = (
     "pred_label",
     "p_camera",
     "p_bottom",
+    "p_screen",
+    "p_other",
     "uncertain_reason",
     "decision_face_valid",
     "decide_ms",
@@ -210,7 +214,7 @@ def calibration_samples_from_frame(df: pd.DataFrame) -> Tuple[List[CalibrationSa
     unusable = 0
     for row in df.to_dict(orient="records"):
         label = str(_cell(row, "label") or "").strip().upper()
-        if label not in CLASSES:
+        if label not in CALIBRATION_CUES:
             continue
         gaze = gaze_from_row(row)
         if gaze is None:
@@ -234,37 +238,62 @@ def calibration_samples_from_frame(df: pd.DataFrame) -> Tuple[List[CalibrationSa
 # --------------------------------------------------------------------------
 
 
+def _numeric(values: Sequence[Any]) -> np.ndarray:
+    return pd.to_numeric(pd.Series(list(values)), errors="coerce").to_numpy(dtype=float, na_value=np.nan)
+
+
 def apply_uncertain_rule(
     p_camera: Sequence[float],
     p_bottom: Sequence[float],
     face_valid: Sequence[Any],
     p_max_threshold: float,
     margin_threshold: float,
+    *,
+    p_screen: Optional[Sequence[Any]] = None,
+    p_other: Optional[Sequence[Any]] = None,
 ) -> np.ndarray:
     """Vectorised doc 5-4 decision rule over stored probabilities.
 
     It exists for ``threshold_sweep``, which re-decides the same frames a few
     hundred times and cannot afford to rebuild a ``FrameObservation`` each time.
-    It is a second implementation of ``PerUserGazeClassifier.decide``, so
+    It is a second implementation of the classifiers' ``decide``, so
     :func:`run_evaluation` asserts the two agree on every frame at the
     configured thresholds and records the result in the report.
+
+    With ``p_screen`` / ``p_other`` it replays the multi-class rule: ``p_max``
+    is the largest class probability, the margin is top-1 minus top-2, and the
+    winner is the first maximum in ``STATE_CLASSES`` order (so CAMERA still wins
+    a tie).  A missing SCREEN / OTHER probability is a class the model did not
+    have, i.e. 0.  Without them it is exactly the original two-class rule.
 
     ``face_valid`` is the *decision's* flag, not the frame's: doc 5-4 abstains
     when the backbone returned nothing even though the face was fine.
     """
-    camera = pd.to_numeric(pd.Series(list(p_camera)), errors="coerce").to_numpy(
-        dtype=float, na_value=np.nan
-    )
-    bottom = pd.to_numeric(pd.Series(list(p_bottom)), errors="coerce").to_numpy(
-        dtype=float, na_value=np.nan
-    )
+    camera = _numeric(p_camera)
+    bottom = _numeric(p_bottom)
     valid = np.asarray([_truthy(value) for value in face_valid], dtype=bool)
     valid &= np.isfinite(camera) & np.isfinite(bottom)
 
-    p_max = np.maximum(camera, bottom)
-    margin = np.abs(camera - bottom)
+    if p_screen is None and p_other is None:
+        p_max = np.maximum(camera, bottom)
+        margin = np.abs(camera - bottom)
+        labels = np.where(camera >= bottom, GazeState.CAMERA.value, GazeState.BOTTOM.value)
+    else:
+        n = len(camera)
+        screen = np.nan_to_num(_numeric(p_screen if p_screen is not None else [np.nan] * n), nan=0.0)
+        other = np.nan_to_num(_numeric(p_other if p_other is not None else [np.nan] * n), nan=0.0)
+        by_class = {
+            GazeState.CAMERA.value: np.nan_to_num(camera, nan=0.0),
+            GazeState.SCREEN.value: screen,
+            GazeState.BOTTOM.value: np.nan_to_num(bottom, nan=0.0),
+            GazeState.OTHER.value: other,
+        }
+        stacked = np.vstack([by_class[c] for c in STATE_CLASSES]).T  # rows x classes
+        ranked = -np.sort(-stacked, axis=1)
+        p_max = ranked[:, 0]
+        margin = ranked[:, 0] - ranked[:, 1]
+        labels = np.asarray(STATE_CLASSES, dtype=object)[np.argmax(stacked, axis=1)]
     decided = valid & (p_max >= float(p_max_threshold)) & (margin >= float(margin_threshold))
-    labels = np.where(camera >= bottom, GazeState.CAMERA.value, GazeState.BOTTOM.value)
     return np.where(decided, labels, UNCERTAIN)
 
 
@@ -332,7 +361,7 @@ def score_participant(
     rows = evaluation_df.copy()
 
     try:
-        classifier, quality = PerUserGazeClassifier.fit(samples, cfg.calibration)
+        classifier, quality = fit_gaze_classifier(samples, cfg.calibration)
     except Exception as exc:  # a broken calibration must not abort the whole run
         for column in PREDICTION_COLUMNS:
             rows[column] = None
@@ -381,6 +410,10 @@ def score_participant(
     rows["pred_label"] = [decision.label for decision in decisions]
     rows["p_camera"] = [decision.p_camera for decision in decisions]
     rows["p_bottom"] = [decision.p_bottom for decision in decisions]
+    # Multi-class probabilities; None where the classifier has no such class
+    # (the logistic model, or a calibration without a SCREEN cue).
+    rows["p_screen"] = [_class_prob(decision, GazeState.SCREEN.value) for decision in decisions]
+    rows["p_other"] = [_class_prob(decision, GazeState.OTHER.value) for decision in decisions]
     rows["uncertain_reason"] = [decision.uncertain_reason for decision in decisions]
     rows["decision_face_valid"] = [decision.face_valid for decision in decisions]
     rows["decide_ms"] = decide_times
@@ -393,7 +426,11 @@ def score_participant(
         # the report rows must stay in table order; walk a sorted index and put
         # each event back in its own row's slot rather than joining on t_ms,
         # which two rows of a merged table can share.
-        smoother = TemporalSmoother(cfg.temporal)
+        # The smoother scores the classifier's own class set; a two-class
+        # smoother would silently drop the SCREEN / OTHER probability mass.
+        smoother = TemporalSmoother(
+            cfg.temporal, classes=classifier.classes if classifier.is_fitted else None
+        )
         order = sorted(
             range(len(decisions)), key=lambda i: (decisions[i].t_ms, decisions[i].frame_id)
         )
@@ -441,6 +478,12 @@ def _stored_prediction_rows(evaluation_df: pd.DataFrame) -> pd.DataFrame:
     return rows
 
 
+def _class_prob(decision: GazeDecision, cls: str) -> Optional[float]:
+    if decision.probs is None or cls not in decision.probs:
+        return None
+    return float(decision.probs[cls])
+
+
 def _calibration_record(result: ParticipantResult) -> Dict[str, Any]:
     quality = result.quality
     return {
@@ -456,9 +499,21 @@ def _calibration_record(result: ParticipantResult) -> Dict[str, Any]:
         "centroid_distance": None if quality is None else quality.centroid_distance,
         "n_camera": None if quality is None else quality.n_camera,
         "n_bottom": None if quality is None else quality.n_bottom,
+        "n_screen": None if quality is None else quality.n_screen,
+        "method": None if quality is None else quality.method,
         "failed": result.calibration_failed,
         "error": result.error,
     }
+
+
+def _multi_class_columns(scored: pd.DataFrame) -> Dict[str, Any]:
+    """``p_screen`` / ``p_other`` for the rule replay, when any row has them."""
+    columns = {
+        column: scored[column]
+        for column in ("p_screen", "p_other")
+        if column in scored.columns and scored[column].notna().any()
+    }
+    return columns
 
 
 def run_evaluation(
@@ -524,6 +579,7 @@ def run_evaluation(
             scored["decision_face_valid"],
             cfg.calibration.p_max_threshold,
             cfg.calibration.margin_threshold,
+            **_multi_class_columns(scored),
         )
         rule_consistent = bool(
             (replayed.astype(object) == scored["pred_label"].to_numpy(dtype=object)).all()
@@ -578,6 +634,7 @@ def run_evaluation(
     summary: Dict[str, Any] = {
         "config": {
             "hash": cfg.hash(),
+            "method": cfg.calibration.method,
             "feature_set": cfg.calibration.feature_set,
             "p_max_threshold": cfg.calibration.p_max_threshold,
             "margin_threshold": cfg.calibration.margin_threshold,

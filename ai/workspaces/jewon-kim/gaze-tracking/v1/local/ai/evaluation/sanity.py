@@ -35,7 +35,7 @@ def _bootstrap_import_path() -> None:
 
 _bootstrap_import_path()
 
-from vision.schemas import GazeLabel  # noqa: E402
+from vision.schemas import STATE_CLASSES, GazeLabel  # noqa: E402
 
 #: Below this many usable frames in either class the means are noise.
 MIN_SAMPLES_PER_CLASS = 5
@@ -190,7 +190,9 @@ def uncertain_reason_report(
     if pred_col not in df.columns:
         raise ValueError(f"uncertain_reason_report needs column {pred_col!r}")
     predictions = df[pred_col].astype("object")
-    undecided = ~predictions.isin(["CAMERA", "BOTTOM"])
+    # Every decided state is excluded, the off-target SCREEN / OTHER included:
+    # they are confident answers, not abstentions with a reason to triage.
+    undecided = ~predictions.isin(list(STATE_CLASSES))
     subset = df[undecided.to_numpy(dtype=bool)]
 
     reasons = pd.Series(["UNSPECIFIED"] * len(subset), index=subset.index, dtype=object)

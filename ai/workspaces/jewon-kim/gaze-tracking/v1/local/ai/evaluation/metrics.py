@@ -56,6 +56,7 @@ _bootstrap_import_path()
 from vision.config import ReleaseGateConfig  # noqa: E402
 from vision.schemas import (  # noqa: E402
     DECISION_CLASSES,
+    OFF_TARGET_STATES,
     GazeLabel,
     GazeState,
     GazeStateEvent,
@@ -66,6 +67,13 @@ from vision.schemas import (  # noqa: E402
 CLASSES: Tuple[str, str] = DECISION_CLASSES
 UNCERTAIN: str = GazeState.UNCERTAIN.value
 IGNORE: str = GazeLabel.IGNORE.value
+
+#: Decided states outside the ground-truth vocabulary (the multi-class
+#: classifier's SCREEN / OTHER).  Against CAMERA/BOTTOM truth they are
+#: confident misses: they count as decided and wrong (a false negative of the
+#: true class), never as abstentions, and never as a false positive of either
+#: truth class.  They are tallied in ``confusion_off_target``.
+OFF_TARGET: Tuple[str, ...] = tuple(OFF_TARGET_STATES)
 
 #: Accepted spellings of "no decision" on the prediction side.
 _UNDECIDED = frozenset({UNCERTAIN, "", "NONE", "NAN", "NULL"})
@@ -114,10 +122,15 @@ def _split_truth_prediction(
             continue
         if truth not in CLASSES:
             raise ValueError(f"row {index}: unknown ground-truth label {truth!r}")
-        if prediction is not None and prediction not in CLASSES and prediction not in _UNDECIDED:
+        if (
+            prediction is not None
+            and prediction not in CLASSES
+            and prediction not in OFF_TARGET
+            and prediction not in _UNDECIDED
+        ):
             raise ValueError(f"row {index}: unknown predicted label {prediction!r}")
         kept_true.append(truth)
-        kept_pred.append(prediction if prediction in CLASSES else UNCERTAIN)
+        kept_pred.append(prediction if (prediction in CLASSES or prediction in OFF_TARGET) else UNCERTAIN)
     return kept_true, kept_pred, ignored
 
 
@@ -163,11 +176,18 @@ def frame_metrics(
     counts: Dict[str, Dict[str, int]] = {
         truth: {prediction: 0 for prediction in (*CLASSES, UNCERTAIN)} for truth in CLASSES
     }
+    off_target: Dict[str, Dict[str, int]] = {
+        truth: {prediction: 0 for prediction in OFF_TARGET} for truth in CLASSES
+    }
     for truth, prediction in zip(truths, predictions):
-        counts[truth][prediction] += 1
+        if prediction in OFF_TARGET:
+            off_target[truth][prediction] += 1
+        else:
+            counts[truth][prediction] += 1
 
     n_labelled = len(truths)
     n_uncertain = sum(counts[truth][UNCERTAIN] for truth in CLASSES)
+    n_off_target = sum(sum(row.values()) for row in off_target.values())
     n_decided = n_labelled - n_uncertain
 
     per_class: Dict[str, Dict[str, float]] = {}
@@ -176,7 +196,7 @@ def frame_metrics(
         other = [c for c in CLASSES if c != cls]
         tp = counts[cls][cls]
         fp = sum(counts[o][cls] for o in other)
-        fn = sum(counts[cls][o] for o in other)
+        fn = sum(counts[cls][o] for o in other) + sum(off_target[cls].values())
         abstained = counts[cls][UNCERTAIN]
         stats = _prf(tp, fp, fn)
         stats["support"] = float(tp + fn + abstained)
@@ -210,6 +230,9 @@ def frame_metrics(
         "confusion": counts,
         "confusion_matrix": [[counts[t][p] for p in CLASSES] for t in CLASSES],
         "confusion_labels": list(CLASSES),
+        "n_off_target": n_off_target,
+        "off_target_ratio": (n_off_target / n_labelled) if n_labelled else 0.0,
+        "confusion_off_target": off_target,
     }
     if uncertain_reasons is not None:
         out["uncertain_by_reason"] = _uncertain_reason_counts(
@@ -228,7 +251,7 @@ def _uncertain_reason_counts(
         raise ValueError("uncertain_reasons must be the same length as y_true / y_pred")
     tally: Dict[str, int] = {}
     for truth, prediction, reason in zip(truths, predictions, reasons):
-        if truth not in CLASSES or prediction in CLASSES:
+        if truth not in CLASSES or prediction in CLASSES or prediction in OFF_TARGET:
             continue
         key = _clean_label(reason) or "UNSPECIFIED"
         tally[key] = tally.get(key, 0) + 1
@@ -413,15 +436,21 @@ def segment_predictions(
         ):
             continue
         covered: Dict[str, float] = {cls: 0.0 for cls in (*CLASSES, UNCERTAIN)}
+        off_target_ms: Dict[str, float] = {cls: 0.0 for cls in OFF_TARGET}
         onset_ms: Optional[float] = None
         for interval_start, interval_end, label in intervals:
             overlap = min(float(end_ms), interval_end) - max(float(start_ms), interval_start)
             if overlap <= 0:
                 continue
-            covered[label if label in CLASSES else UNCERTAIN] += overlap
+            if label in OFF_TARGET:
+                off_target_ms[label] += overlap
+            else:
+                covered[label if label in CLASSES else UNCERTAIN] += overlap
             if label == truth and onset_ms is None:
                 onset_ms = max(float(start_ms), interval_start) - float(start_ms)
-        decided = {cls: covered[cls] for cls in CLASSES}
+        # Every decided state competes, so a script glance reported as SCREEN
+        # for most of its duration is a miss, not a silently dropped segment.
+        decided = {**{cls: covered[cls] for cls in CLASSES}, **off_target_ms}
         best = max(decided, key=lambda cls: decided[cls]) if max(decided.values()) > 0 else None
         records.append(
             {
@@ -432,6 +461,7 @@ def segment_predictions(
                 "label": truth,
                 "pred_label": best,
                 "covered_ms": covered,
+                "off_target_ms": off_target_ms,
                 "onset_latency_ms": onset_ms,
             }
         )
@@ -447,11 +477,13 @@ def segment_metrics_from_predictions(records: Sequence[Mapping[str, Any]]) -> Di
     covered: Dict[str, Dict[str, float]] = {
         truth: {prediction: 0.0 for prediction in (*CLASSES, UNCERTAIN)} for truth in CLASSES
     }
+    off_target_ms = 0.0
     for record in records:
         for prediction, milliseconds in record["covered_ms"].items():
             covered[record["label"]][prediction] += float(milliseconds)
+        off_target_ms += sum(float(v) for v in (record.get("off_target_ms") or {}).values())
 
-    total_ms = sum(sum(row.values()) for row in covered.values())
+    total_ms = sum(sum(row.values()) for row in covered.values()) + off_target_ms
     decided_ms = total_ms - sum(row[UNCERTAIN] for row in covered.values())
     correct_ms = sum(covered[cls][cls] for cls in CLASSES)
 
@@ -480,6 +512,7 @@ def segment_metrics_from_predictions(records: Sequence[Mapping[str, Any]]) -> Di
             "uncertain_time_ratio": float(1.0 - decided_ms / total_ms) if total_ms else 0.0,
             "accuracy": float(correct_ms / decided_ms) if decided_ms else 0.0,
             "covered_ms": {truth: dict(row) for truth, row in covered.items()},
+            "off_target_ms": float(off_target_ms),
         },
         "detection_rate": {
             cls: (detected[cls] / totals[cls]) if totals[cls] else None for cls in CLASSES

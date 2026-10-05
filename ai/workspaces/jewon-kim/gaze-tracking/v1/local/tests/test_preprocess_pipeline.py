@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 
@@ -904,3 +905,113 @@ def test_video_frames_survive_the_pipeline_in_video_mode(
 def test_missing_video_path_fails_before_opencv_guesses(tmp_path):
     with pytest.raises(FileNotFoundError, match="video not found"):
         list(iter_video_frames(tmp_path / "nope.mp4", 8.0))
+
+
+# --------------------------------------------------------------------------
+# multiple faces: main-face selection and the scene signals
+# --------------------------------------------------------------------------
+
+
+def test_main_face_without_a_hint_is_the_largest():
+    from vision.preprocess.pipeline import select_main_face
+
+    boxes = [(0, 0, 50, 50), (300, 100, 120, 160), (500, 50, 60, 60)]
+    assert select_main_face(boxes, (640, 480)) == 1
+
+
+def test_main_face_with_a_hint_is_the_nearest_not_the_largest():
+    """Someone leaning in, bigger for a moment, must not take over the take."""
+    from vision.preprocess.pipeline import select_main_face
+
+    presenter, intruder = (260, 160, 120, 160), (440, 120, 190, 250)
+    hint = ((260 + 60) / 640.0, (160 + 80) / 480.0)  # the presenter's centre
+    assert select_main_face([intruder, presenter], (640, 480), hint) == 1
+    # Without the hint the bigger intruder would have been analysed.
+    assert select_main_face([intruder, presenter], (640, 480)) == 0
+
+
+def test_main_face_hint_tie_goes_to_the_larger_face():
+    from vision.preprocess.pipeline import select_main_face
+
+    small, large = (300, 220, 40, 40), (280, 200, 80, 80)  # same centre
+    assert select_main_face([small, large], (640, 480), (320 / 640, 240 / 480)) == 1
+
+
+@pytest.mark.parametrize(
+    "boxes, expected",
+    [([], None), ([(0, 0, 0, 0)], 0), ([(0, 0, 0, 0), (10, 10, 20, 20)], 1)],
+)
+def test_main_face_edge_cases(boxes, expected):
+    """No face is None; an empty-bbox face only wins when it is the only one."""
+    from vision.preprocess.pipeline import select_main_face
+
+    assert select_main_face(boxes, (640, 480)) == expected
+
+
+@pytest.mark.parametrize(
+    "others, expected",
+    [
+        ([], 0.0),
+        ([(270, 170, 100, 140)], 0.0),          # the main face found again, inside it
+        ([(200, 100, 300, 360)], 0.0),          # a box around the main face (its centre inside)
+        ([(20, 20, 40, 50)], 0.0),              # 0.65 % of the frame: below the detector floor
+        ([(480, 140, 120, 160)], 1.0),          # someone beside the presenter
+        ([(20, 20, 40, 50), (480, 160, 90, 120)], 90 * 120 / (120 * 160)),
+    ],
+)
+def test_only_a_distinct_face_counts_as_someone_else(others, expected):
+    from vision.preprocess.pipeline import second_face_ratio
+
+    main = (260, 160, 120, 160)
+    assert second_face_ratio(main, others, (640, 480), 0.010) == pytest.approx(expected)
+
+
+def test_a_single_face_reports_a_clean_scene(mediapipe_ready, cfg, face_rgb):
+    obs = _observe(cfg, face_rgb)
+
+    assert obs.scene is not None
+    assert obs.scene.n_faces == 1
+    assert obs.scene.second_face_area_ratio == 0.0
+    assert obs.scene.face_bboxes[0] == tuple(obs.face_bbox)
+    # An adult iris is ~11.7 mm, the face ~140 mm wide: the iris is a few
+    # percent of the face width, never zero and never most of it.
+    face_w = obs.face_bbox[2]
+    assert 0.03 * face_w < obs.scene.iris_diameter_px < 0.2 * face_w
+
+
+def test_two_people_side_by_side_are_both_seen_and_one_is_followed(mediapipe_ready, cfg, face_rgb):
+    pair = np.ascontiguousarray(np.hstack([face_rgb, face_rgb]))
+    width = pair.shape[1]
+
+    with PreprocessPipeline(cfg) as pipeline:
+        left = pipeline.process_rgb(pair, 0, 0, main_face_hint=(0.25, 0.5))
+        right = pipeline.process_rgb(pair, 1, 125, main_face_hint=(0.75, 0.5))
+
+    for obs in (left, right):
+        assert obs.scene.n_faces == 2
+        assert obs.scene.second_face_area_ratio == pytest.approx(1.0, rel=0.15)
+    assert left.face_bbox[0] + left.face_bbox[2] / 2 < width / 2
+    assert right.face_bbox[0] + right.face_bbox[2] / 2 > width / 2
+
+
+def test_no_face_scene_says_zero_faces(mediapipe_ready, cfg):
+    obs = _observe(cfg, np.zeros((480, 640, 3), np.uint8))
+    assert obs.invalid_reason == InvalidReason.NO_FACE.value
+    assert obs.scene is not None and obs.scene.n_faces == 0
+
+
+def test_detect_returns_the_largest_of_several_faces(mediapipe_ready, cfg, face_rgb):
+    from vision.preprocess.landmarker import landmark_extent_area
+
+    small = cv2.resize(face_rgb, (int(face_rgb.shape[1] * 0.9), int(face_rgb.shape[0] * 0.9)))
+    canvas = np.zeros((face_rgb.shape[0], face_rgb.shape[1] + small.shape[1], 3), np.uint8)
+    canvas[:, : face_rgb.shape[1]] = face_rgb
+    top = (face_rgb.shape[0] - small.shape[0]) // 2
+    canvas[top: top + small.shape[0], face_rgb.shape[1]:] = small
+
+    with FaceLandmarkerWrapper(cfg.preprocess) as wrapper:
+        faces = wrapper.detect_all(canvas)
+        best = wrapper.detect(canvas)
+
+    assert len(faces) == 2
+    assert landmark_extent_area(best.landmarks) == max(landmark_extent_area(f.landmarks) for f in faces)

@@ -5,9 +5,10 @@ expressed in the camera convention fixed at the top of ``schemas.py``.  Every
 concrete backbone owns the conversion from whatever its native convention is;
 nothing downstream is allowed to flip a sign.
 
-This module deliberately imports nothing heavier than numpy.  ``mediapipe_geom``
-is the default backbone and must run on a machine where torch was never
-installed, so torch may only be imported lazily inside ``l2cs`` / ``gazetr``.
+This module deliberately imports nothing heavier than numpy.  The default
+``head_pose`` backbone and the parked eye backbones in ``vision.eye`` must all
+import on a machine where torch was never installed, so torch may only be
+imported lazily inside ``l2cs`` / ``gazetr``.
 """
 
 from __future__ import annotations
@@ -147,6 +148,10 @@ class GazeBackbone(abc.ABC):
     name: str = "unknown"
     #: Bumped whenever the numeric output of this backbone changes.
     version: str = "0.0.0"
+    #: Whether the estimate reads the eyes.  Calibration only holds the head
+    #: still and screens out blinks for backbones that do; for one that reads
+    #: the head, the head movement *is* the signal.
+    uses_eyes: bool = True
 
     @abc.abstractmethod
     def predict(

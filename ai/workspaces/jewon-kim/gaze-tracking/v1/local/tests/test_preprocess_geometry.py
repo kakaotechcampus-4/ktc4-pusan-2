@@ -539,6 +539,44 @@ def test_eye_aspect_ratio_does_not_mutate_the_caller_landmarks(face_landmarks, f
     assert np.array_equal(face_landmarks, before)
 
 
+def _iris_mesh(radius_px: float, image_size=(640, 480)) -> np.ndarray:
+    """478 points with both iris rings drawn as exact circles of ``radius_px``."""
+    mesh = np.full((NUM_LANDMARKS, 3), 0.5, dtype=np.float64)
+    width, height = image_size
+    for ring, cx in ((crops.LEFT_IRIS_RING, 400.0), (crops.RIGHT_IRIS_RING, 240.0)):
+        # Deliberately not in clockwise order: the diameter must not depend on it.
+        for index, angle in zip(ring, (0.0, math.pi, math.pi / 2, 3 * math.pi / 2)):
+            mesh[index, 0] = (cx + radius_px * math.cos(angle)) / width
+            mesh[index, 1] = (240.0 + radius_px * math.sin(angle)) / height
+    return mesh
+
+
+@pytest.mark.parametrize("radius", [3.0, 5.5, 9.25])
+def test_iris_diameter_is_twice_the_ring_radius_in_pixels(radius):
+    assert crops.iris_diameter_px(_iris_mesh(radius), (640, 480)) == pytest.approx(2 * radius)
+
+
+def test_iris_diameter_skips_a_broken_eye_and_reports_zero_when_both_are_broken():
+    mesh = _iris_mesh(5.0)
+    mesh[crops.LEFT_IRIS_RING[0], 0] = np.nan
+    assert crops.iris_diameter_px(mesh, (640, 480)) == pytest.approx(10.0)
+    mesh[crops.RIGHT_IRIS_RING[1], 1] = np.inf
+    assert crops.iris_diameter_px(mesh, (640, 480)) == 0.0
+
+
+def test_iris_diameter_of_a_mesh_without_iris_rows_is_zero_not_an_error():
+    assert crops.iris_diameter_px(np.zeros((468, 3)), (640, 480)) == 0.0
+
+
+def test_iris_diameter_on_the_fixture_matches_an_adult_iris(face_landmarks, face_image_size):
+    """~11.7 mm iris vs ~63 mm between the pupils: the ratio is anatomy, not tuning."""
+    iris = crops.iris_diameter_px(face_landmarks, face_image_size)
+    left = crops.iris_center(face_landmarks, "left", face_image_size)
+    right = crops.iris_center(face_landmarks, "right", face_image_size)
+    interpupillary = float(np.linalg.norm(left - right))
+    assert 0.12 < iris / interpupillary < 0.28
+
+
 # ==========================================================================
 # crops: frame quality
 # ==========================================================================

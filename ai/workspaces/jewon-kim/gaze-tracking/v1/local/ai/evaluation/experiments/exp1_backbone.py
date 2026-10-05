@@ -1014,6 +1014,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "backbones": backbones,
             "split": args.split,
             "split_participants": split_ids,
+            "calibration_method": cfg.calibration.method,
             "feature_set": cfg.calibration.feature_set,
             "thresholds": {
                 "p_max_threshold": cfg.calibration.p_max_threshold,
