@@ -12,6 +12,7 @@
 |---|---|---|
 | [gaze-tracking](gaze-tracking/) | 웹캠 영상에서 시선이 **카메라**를 향하는지 **화면 아래 대본**을 향하는지 판정 | v1 개발 중 (local) |
 | [script-coverage-evaluation](script-coverage-evaluation/) | 발표 대본을 슬라이드별 **평가 기준**으로 만들고, 발표 연습 STT가 대본 내용을 얼마나 전달했는지 **문장 · Key Point · 핵심 수치** 단위로 채점 | v1 개발 중 (local) |
+| [coach-agent](coach-agent/) | 발표 중 1초마다 시선 · 속도 · 음량 · 침묵 · 군더더기 · 시간을 보고 **지금 말을 걸지, 무엇 하나를 말할지** 결정. 개입 효과를 보고 방법을 바꾸며, 판단 기록을 리뷰 에이전트 근거로 넘김 | v1 개발 중 (local) |
 
 ---
 
@@ -66,6 +67,10 @@
 |---|---|
 | `PITCHCOACH_FORCE_CSV` | `1`/`true`/`yes`면 parquet 엔진이 있어도 gzip CSV로 특징 테이블을 저장. 첫 호출에서 캐시되므로 테이블 조작 전에 설정해야 합니다 |
 | `PITCHCOACH_GIT_COMMIT` | 실험 기록에 남는 `code_commit` 값을 덮어씁니다. 커밋을 물어볼 git이 없는 환경(컨테이너·휠)용이며, **빌드에서 설정**해야 합니다 — 손으로 넣으면 기록이 거짓말을 시작합니다 |
+
+### coach-agent
+
+**없습니다.** v1 은 LLM 을 쓰지 않습니다 (v1.1 코칭 계획부터 LLM 키가 필요해집니다).
 
 ### script-coverage-evaluation
 
