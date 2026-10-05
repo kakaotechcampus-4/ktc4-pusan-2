@@ -21,7 +21,7 @@ ai/
 
 | 폴더 | 역할 |
 |---|---|
-| `service/` | 배포 대상 AI 서버. 기능 코어는 `src/pitch_coach_ai/features/<x>/`, HTTP 진입점은 `src/pitch_coach_ai/api/v1/`, 계약 파일은 `contracts/` |
+| `service/` | 배포 대상 AI 서버. 기능 코어는 `src/pitch_coach_ai/features/<x>/`, HTTP 진입점은 `src/pitch_coach_ai/api/`, 계약 파일은 `contracts/` |
 | `research/` | 기능별 비교 실험 · 평가 · 보고용 노트북. service를 import해서 평가한다 ([research/README.md](research/README.md)) |
 | `archive/` | 개편 전 `workspaces/`. 수정 · import 금지 ([archive/README.md](archive/README.md)) |
 
@@ -58,6 +58,8 @@ ai/
 
 기능 버전은 출력 의미가 바뀔 때만 올립니다. 응답 메타데이터에 실려 나가고, BE가 저장합니다.
 
+API 경로(`/scripts/parse`)와 라우터 폴더(`api/`)에는 버전을 붙이지 않습니다. BE 한 곳만 호출하는 내부 API라서, 깨지는 변경은 새 필드를 먼저 추가하고 옛 필드를 나중에 지우는 방식으로 처리합니다.
+
 ### 6. 담당과 비밀
 
 - 담당은 `CODEOWNERS`와 각 폴더 README에 적습니다.
@@ -70,7 +72,7 @@ ai/
 1. `features/<x>/schemas.py` — 입출력 **계약**부터 정한다
 2. `features/<x>/core.py` + 단위 테스트
 3. `research/<x>/` — core를 import해서 평가한다
-4. `api/v1/` 에 라우터를 추가하고 계약 예시를 만든다. 이 단계까지 끝나면 배포할 수 있다
+4. `api/` 에 라우터를 추가하고 계약 예시를 만든다. 이 단계까지 끝나면 배포할 수 있다
 
 core가 처음부터 service 안에 있으므로, 실험이 끝난 뒤 배포용으로 옮기는 단계가 따로 없습니다.
 
