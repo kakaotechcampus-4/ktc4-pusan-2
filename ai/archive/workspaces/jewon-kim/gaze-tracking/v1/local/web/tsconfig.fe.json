@@ -21,8 +21,8 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@fe/*": ["../../../../../../../frontend/src/*"],
-      "@/*": ["../../../../../../../frontend/src/*"]
+      "@fe/*": ["../../../../../../../../frontend/src/*"],
+      "@/*": ["../../../../../../../../frontend/src/*"]
     }
   },
   "include": ["src/engine", "src/worker", "src/camera", "test/fe-contract/conformance.ts"]
