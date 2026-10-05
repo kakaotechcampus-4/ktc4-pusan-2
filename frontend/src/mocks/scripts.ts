@@ -21,11 +21,13 @@ const PARSE_MS = 1500;
 const SEPARATOR = /^\s*(?:(?:slide|슬라이드)\s*(\d+)|(\d+)\s*[.)])\s*[:.\-–)]?\s*/i;
 
 export function splitScript(text: string): { segmented: boolean; slides: ScriptSlide[] } {
-  const sections: string[][] = [];
+  // AI 처럼 원문에 적힌 번호를 그대로 씁니다 — "슬라이드 4" 는 4번입니다
+  const sections: { number: number; lines: string[] }[] = [];
   let lead = '';
   for (const line of text.split('\n')) {
-    if (SEPARATOR.test(line)) sections.push([line.replace(SEPARATOR, '')]);
-    else if (sections.length > 0) sections.at(-1)!.push(line);
+    const m = SEPARATOR.exec(line);
+    if (m) sections.push({ number: Number(m[1] ?? m[2]), lines: [line.replace(SEPARATOR, '')] });
+    else if (sections.length > 0) sections.at(-1)!.lines.push(line);
     else lead += line;
   }
 
@@ -41,7 +43,10 @@ export function splitScript(text: string): { segmented: boolean; slides: ScriptS
   }
   return {
     segmented: true,
-    slides: sections.map((lines, i) => ({ ...whole(lines.join('\n')), slide_number: i + 1 })),
+    slides: sections.map(({ number, lines }) => ({
+      ...whole(lines.join('\n')),
+      slide_number: number,
+    })),
   };
 }
 

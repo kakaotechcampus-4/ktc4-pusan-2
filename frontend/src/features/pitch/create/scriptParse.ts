@@ -1,4 +1,5 @@
 import { toMessage } from '@/shared/api/errorMessage';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import { createScript, getScript, reparseScript } from '@/shared/api/script';
 import { useCreateStore } from './createStore';
 import { fromScriptCreated, fromScriptDetail } from './lib/beAdapter';
@@ -25,6 +26,15 @@ const GIVE_UP_MS = 100_000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const failed = (message: string) => ({ status: 'failed' as const, message });
+
+/**
+ * 다시 나누기를 요청했는데 BE 가 409 로 거절한 경우. 실패가 아닙니다 (BE #64) —
+ * 이미 나누는 중이거나(다른 탭 · 앞 요청) 이미 끝났으니, 폴링을 이어 가면 결과가 옵니다.
+ */
+const KEEP_POLLING = new Set(['SCRIPT_PARSE_IN_PROGRESS', 'SCRIPT_ALREADY_PARSED']);
+
+const shouldKeepPolling = (error: unknown) =>
+  error instanceof ApiFailure && error.status === 409 && KEEP_POLLING.has(error.code);
 
 /** 그사이 글을 고쳤거나 다시 올렸으면, 이 서버 버전의 결과는 더 이상 그 대본의 것이 아닙니다 */
 function stillCurrent(version: number, remoteId: string): boolean {
@@ -104,9 +114,11 @@ async function retry(version: number): Promise<void> {
   try {
     await reparseScript(pitchId, remote.id);
   } catch (error) {
-    console.error('[대본] 다시 나누기를 요청하지 못했습니다', { remoteId: remote.id, error });
-    patchScript(version, { parse: failed(toMessage(error)) });
-    return;
+    if (!shouldKeepPolling(error)) {
+      console.error('[대본] 다시 나누기를 요청하지 못했습니다', { remoteId: remote.id, error });
+      patchScript(version, { parse: failed(toMessage(error)) });
+      return;
+    }
   }
   await poll(pitchId, version, remote.id);
 }

@@ -10,6 +10,7 @@ import {
   infoChanged,
   infoOf,
   MAX_TIME_LIMIT_MIN,
+  MAX_TITLE_CHARS,
   MAX_TOLERANCE_SEC,
   MIN_TIME_LIMIT_MIN,
   TOLERANCE_STEP_SEC,
@@ -164,13 +165,20 @@ export function InfoPane() {
 
       <div className="flex flex-col gap-6 rounded-lg border border-line bg-white p-7">
         <div className="flex flex-col gap-2">
-          <label htmlFor={`${id}-title`} className="text-sm font-bold">
-            발표 제목
-          </label>
+          <div className="flex items-baseline justify-between">
+            <label htmlFor={`${id}-title`} className="text-sm font-bold">
+              발표 제목
+            </label>
+            <span className="tabular text-xs text-stone" aria-live="polite">
+              {form.title.length} / {MAX_TITLE_CHARS}
+            </span>
+          </div>
           <input
             id={`${id}-title`}
             placeholder="발표 제목을 입력해 주세요"
             value={form.title}
+            // BE 가 50자를 넘으면 422 로 거절합니다 — 저장할 때 알게 하지 않고 입력에서 막습니다
+            maxLength={MAX_TITLE_CHARS}
             onChange={(e) => patch({ title: e.target.value })}
             className="h-12 rounded-md border border-line-strong bg-white px-4 text-base outline-none placeholder:text-stone focus:border-ink"
           />

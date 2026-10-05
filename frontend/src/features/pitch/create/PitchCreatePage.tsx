@@ -8,6 +8,7 @@ import {
   latestCriteria,
   latestScript,
   latestSlides,
+  toPracticeCombo,
   type PaneNode,
   type ScriptVersion,
 } from './lib/draft';
@@ -40,6 +41,7 @@ export function PitchCreatePage() {
   const node = useCreateStore((s) => s.node);
   const version = useCreateStore((s) => s.version);
   const pitchId = useCreateStore((s) => s.pitchId);
+  const chosen = useCreateStore((s) => s.chosen);
   const navigate = useNavigate();
   const unsaved = useCreateStore(selectInfoUnsaved);
   const busy = useCreateStore(selectBusy);
@@ -65,11 +67,12 @@ export function PitchCreatePage() {
       Take 는 준비 화면의 시작 CTA 에서만 생깁니다. 여기서 만들면
       점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 어긋납니다.
 
-    매핑 확인은 발표정보를 저장한 뒤에만 열리므로(그 전에는 대본을 올릴 곳이 없습니다)
-    여기서 pitchId 는 늘 있습니다.
+    ★ 매핑을 저장하며 고른 조합(슬라이드 + 대본)을 장치 점검에 넘깁니다. BE 는 이 조합을
+      Take 에 박아 두므로(TakeInitRequestDTO), "어느 슬라이드에 맞춘 대본인가"가 남는 곳은 거기뿐입니다.
   */
   const start = () => {
-    if (pitchId) navigate(`/pitch/${pitchId}/device-check`);
+    const practice = toPracticeCombo(draft, chosen);
+    if (pitchId && practice) navigate(`/pitch/${pitchId}/device-check`, { state: { practice } });
   };
 
   // 고른 버전이 없으면 그 갈래의 최신을 봅니다 — 사이드바가 강조한 것

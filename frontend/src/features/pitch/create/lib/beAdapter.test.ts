@@ -140,6 +140,39 @@ describe('대본 — 폴링 응답', () => {
     expect(progress).toEqual({ status: 'done', blocks: ['전체'], segmented: false });
   });
 
+  /** script-parser 는 원문 번호를 그대로 줍니다. 건너뛴 번호는 빈 자리로 남아야 어디가 빠졌는지 보입니다 */
+  it('번호를 건너뛰면(1, 2, 4) 4번 내용은 4번 자리에, 3번은 비워 둔다', () => {
+    const slide = (n: number, content: string) => ({
+      slide_number: n,
+      content,
+      keywords: [],
+      highlights: [],
+    });
+    const progress = fromScriptDetail({
+      ...base,
+      parse_status: 'DONE',
+      segmented: true,
+      slides: [slide(1, '가'), slide(4, '라'), slide(2, '나')],
+    });
+    expect(progress).toEqual({ status: 'done', blocks: ['가', '나', '', '라'], segmented: true });
+  });
+
+  it('번호를 자리로 쓸 수 없으면(0 · 너무 큼) 번호 순서대로만 붙인다', () => {
+    const slide = (n: number, content: string) => ({
+      slide_number: n,
+      content,
+      keywords: [],
+      highlights: [],
+    });
+    const progress = fromScriptDetail({
+      ...base,
+      parse_status: 'DONE',
+      segmented: true,
+      slides: [slide(2026, '나'), slide(0, '가')],
+    });
+    expect(progress).toEqual({ status: 'done', blocks: ['가', '나'], segmented: true });
+  });
+
   it('FAILED 면 원인 코드를 넘긴다', () => {
     expect(fromScriptDetail({ ...base, parse_status: 'FAILED', error_code: 'AI_TIMEOUT' })).toEqual(
       { status: 'failed', errorCode: 'AI_TIMEOUT' },

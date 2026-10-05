@@ -99,19 +99,38 @@ export type ScriptProgress =
   | { status: 'failed'; errorCode: string | null };
 
 /**
+ * 번호가 이보다 크면 원문 번호를 자리로 쓰지 않습니다. "슬라이드 2026" 처럼 번호가 아닌 숫자를
+ * AI 가 구분자로 읽었을 때 빈 블록 2,025개가 생기지 않게 하려는 상한입니다.
+ */
+const MAX_SLIDE_SLOT = 300;
+
+/**
+ * 나뉜 슬라이드 → 블록. **AI 가 준 `slide_number` 자리에 넣습니다** (1번 → 첫 블록).
+ *
+ * script-parser 는 원문에 적힌 번호를 그대로 돌려줍니다. 사용자가 "슬라이드 1, 2, 4" 처럼
+ * 3을 건너뛰었으면 4번 내용은 4번 자리에 두고 3번은 비워 둡니다 — 순서대로 채우면
+ * 4번 내용이 3번 슬라이드에 붙어, 어디가 빠졌는지 화면에서 보이지 않습니다.
+ *
+ * 번호가 1보다 작거나 너무 크면 자리로 쓸 수 없으니 번호 순서대로만 붙입니다.
+ */
+function toBlocks(slides: ScriptDetail['slides']): string[] {
+  const sorted = [...slides].sort((a, b) => a.slide_number - b.slide_number);
+  const numbers = sorted.map((s) => s.slide_number);
+  const usable = numbers.every((n) => n >= 1) && Math.max(0, ...numbers) <= MAX_SLIDE_SLOT;
+  if (!usable) return sorted.map((s) => s.content);
+
+  const blocks = Array.from({ length: Math.max(0, ...numbers) }, () => '');
+  for (const slide of sorted) blocks[slide.slide_number - 1] = slide.content;
+  return blocks;
+}
+
+/**
  * 폴링 응답 → 화면이 할 일.
  *
- * `slides` 는 순서가 보장되지 않는다고 보고 `slide_number` 로 정렬합니다.
  * 본문은 AI 가 구분자 · 소제목을 뺀 `content` 를 씁니다 — `original_content` 는 원문입니다.
  */
 export function fromScriptDetail(detail: ScriptDetail): ScriptProgress {
   if (detail.parse_status === 'PENDING') return { status: 'pending' };
   if (detail.parse_status === 'FAILED') return { status: 'failed', errorCode: detail.error_code };
-  return {
-    status: 'done',
-    blocks: [...detail.slides]
-      .sort((a, b) => a.slide_number - b.slide_number)
-      .map((slide) => slide.content),
-    segmented: detail.segmented,
-  };
+  return { status: 'done', blocks: toBlocks(detail.slides), segmented: detail.segmented };
 }

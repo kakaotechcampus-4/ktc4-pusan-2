@@ -3,6 +3,7 @@
  * BE 그대로 snake_case 입니다 (`PitchDTO`).
  */
 export interface PitchRequest {
+  /** 1~50자. BE 가 DTO 에서 검사하고, 어기면 422 VALIDATION_ERROR 입니다 */
   title: string;
   time_limit_sec: number;
   /** 목표보다 길게 발표해도 되는 시간(초) */

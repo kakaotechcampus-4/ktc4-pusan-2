@@ -1,4 +1,4 @@
-import type { Ms } from '@/types/api';
+import type { Ms, PracticeCombo } from '@/types/api';
 
 /**
  * 피치 생성 중의 초안 상태와 그 위에서 도는 규칙.
@@ -18,6 +18,9 @@ export type DraftNode = 'slides' | 'script' | 'criteria';
  * 발표 정보는 피치 한 판에 하나뿐이라 버전이 없습니다 — 그래서 `DraftNode` 와 나눕니다.
  */
 export type PaneNode = 'info' | DraftNode;
+
+/** 발표 제목 최대 글자 수. BE 의 `title: StringConstraints(min_length=1, max_length=50)` 과 같습니다 */
+export const MAX_TITLE_CHARS = 50;
 
 /** 발표시간 범위(분). 입력 칸이 아니라 −/+ 로만 바꿉니다 */
 export const MIN_TIME_LIMIT_MIN = 1;
@@ -247,6 +250,24 @@ export function resolveChosen(draft: PitchDraft, chosen: Chosen): Resolved {
     script: draft.scripts.find((v) => v.version === chosen.script) ?? latestScript(draft),
     criteria:
       savedCriteria.find((v) => v.version === chosen.criteria) ?? latestSavedCriteria(draft),
+  };
+}
+
+/**
+ * 장치 점검에 넘길 이번 연습의 조합. BE 는 이 조합을 Take 에 박아 둡니다 (`TakeInitRequestDTO`).
+ *
+ * 서버 id 가 하나라도 없으면 null 입니다 — 올리지 않은 슬라이드나 서버에서 나누지 않은 대본으로는
+ * Take 를 만들 수 없습니다. 매핑을 저장했다면 둘 다 있습니다 (업로드 응답 · 대본 파싱 응답).
+ */
+export function toPracticeCombo(draft: PitchDraft, chosen: Chosen): PracticeCombo | null {
+  const { slides, script } = resolveChosen(draft, chosen);
+  if (!slides?.presentationVersionId || !script?.remote) return null;
+  return {
+    presentationVersionId: slides.presentationVersionId,
+    scriptVersionId: script.remote.id,
+    slideVersion: slides.version,
+    scriptVersion: script.version,
+    goalTimeSec: draft.timeLimitSec,
   };
 }
 

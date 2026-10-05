@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
+import type { PracticeCombo, PrepareResponse } from '@/types/api';
 import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
@@ -122,8 +123,17 @@ function calibrationLabel(
  * 시선을 못 잡겠으면 '소리만으로 계속하기'로 빠집니다 — 그 Take의 시선은
  * USER_DECLINED로 제외되고, 말하기 지표만으로 리포트가 나옵니다.
  */
+/** 화면 위 부제목. 피치 생성에서 고른 조합이 있으면 그 번호를 씁니다 — 실제로 연습할 조합입니다 */
+function versionLabel(combo: PracticeCombo | null, data: PrepareResponse | undefined): string {
+  if (combo) return `자료 v${combo.slideVersion} · 대본 v${combo.scriptVersion}`;
+  if (data) return `자료 v${data.presentationVersion} · 대본 v${data.scriptVersion}`;
+  return '';
+}
+
 export function DeviceCheckPage() {
   const { pitchId = '' } = useParams();
+  // 피치 생성에서 매핑을 저장하며 고른 조합. 홈에서 바로 왔거나 새로고침했으면 없습니다
+  const combo = (useLocation().state as { practice?: PracticeCombo } | null)?.practice ?? null;
   const navigate = useNavigate();
   const { data } = usePrepare(pitchId);
 
@@ -235,14 +245,17 @@ export function DeviceCheckPage() {
 
       const clientSessionId = await startSession();
 
+      // ★ 이번 연습의 슬라이드 + 대본 조합이 Take 에 박힙니다 (BE TakeInitRequestDTO).
+      //   피치 생성에서 고른 조합이 먼저이고, 없으면 준비 화면 응답의 현재 버전입니다
       const take = await createTake.mutateAsync({
         pitchId: data.pitchId,
-        clientSessionId,
-        mode: practiceMode,
-        scriptMode,
-        presentationVersion: data.presentationVersion,
-        scriptVersion: data.scriptVersion,
-        criteriaVersion: data.criteria.version,
+        body: {
+          mode: practiceMode,
+          script_mode: scriptMode,
+          presentation_version_id: combo?.presentationVersionId ?? data.presentationVersionId,
+          script_version_id: combo?.scriptVersionId ?? data.scriptVersionId,
+          goal_time_sec: combo?.goalTimeSec ?? data.timeLimitSec,
+        },
       });
       await setTakeId(clientSessionId, take.takeId);
 
@@ -287,7 +300,7 @@ export function DeviceCheckPage() {
       screenName="시작 전 세팅 (Take 준비)"
       entry="진입 · 피치 생성 완료 / 리포트의 다시 연습하기"
       title={data?.title ?? '불러오는 중…'}
-      subtitle={data ? `자료 v${data.presentationVersion} · 대본 v${data.scriptVersion}` : ''}
+      subtitle={versionLabel(combo, data)}
       badge={`TAKE ${data?.nextTakeNumber || '—'} · 시작 전 세팅`}
       onBack={() => navigate(-1)}
       hint={hint}

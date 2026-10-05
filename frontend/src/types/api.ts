@@ -362,6 +362,12 @@ export interface PrepareResponse {
   /** Take가 스냅샷하는 값 — 준비 화면에서 고정됩니다 (CLAUDE.md 8번) */
   presentationVersion: number;
   scriptVersion: number;
+  /**
+   * 위 두 버전의 서버 id. BE 의 Take 생성(`TakeInitRequestDTO`)은 번호가 아니라 id 를 받습니다.
+   * ★ `/prepare` 는 BE 에 아직 없습니다 — 생기면 이 둘도 함께 내려 달라고 요청할 값입니다.
+   */
+  presentationVersionId: string;
+  scriptVersionId: string;
   timeLimitSec: number;
   /** 이번에 만들어질 Take 번호. POST /takes의 응답과 같아야 합니다 */
   nextTakeNumber: number;
@@ -372,21 +378,20 @@ export interface PrepareResponse {
   defaultScriptMode: ScriptMode;
 }
 
-export interface CreateTakeRequest {
-  pitchId: string;
-  /** 멱등키. IndexedDB 세션 키와 **같은 값**입니다 */
-  clientSessionId: string;
-  mode: PracticeMode;
-  scriptMode: ScriptMode;
-  presentationVersion: number;
+/**
+ * 피치 생성에서 매핑을 저장하며 정한 **이번 연습의 조합**. "다음 →" 이 장치 점검에
+ * `location.state.practice` 로 넘깁니다. 장치 점검은 이 값으로 Take 를 만들고,
+ * 없으면(홈에서 바로 들어옴 · 새로고침) `/prepare` 의 버전을 씁니다.
+ *
+ * 두 화면이 서로 다른 feature 라 직접 import 하지 않고 이 타입만 함께 씁니다.
+ */
+export interface PracticeCombo {
+  presentationVersionId: string;
+  scriptVersionId: string;
+  /** 화면에 보여 줄 번호 — "자료 v1 · 대본 v3" */
+  slideVersion: number;
   scriptVersion: number;
-  criteriaVersion: number;
-}
-
-export interface CreateTakeResponse {
-  takeId: string;
-  takeNumber: number;
-  status: TakeStatus;
+  goalTimeSec: number;
 }
 
 /* ------------------------------------------------------------------ */

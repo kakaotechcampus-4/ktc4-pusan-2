@@ -6,10 +6,9 @@ import { presentationHandlers } from './presentation';
 import { standardsHandlers } from './standards';
 import { pitchHandlers } from './pitch';
 import { scriptHandlers } from './scripts';
+import type { TakeCreateRequest, TakeCreated } from '@/types/take';
 import type {
   AnalysisStatus,
-  CreateTakeRequest,
-  CreateTakeResponse,
   HomeResponse,
   PitchDetail,
   PrepareResponse,
@@ -131,6 +130,7 @@ const analyzing: AnalysisStatus = {
 const prepare: PrepareResponse = {
   pitchId: 'p1', title: '캡스톤 최종 발표',
   presentationVersion: 2, scriptVersion: 2, timeLimitSec: 600,
+  presentationVersionId: 'pv2', scriptVersionId: 'sv2',
   nextTakeNumber: 4,
   lastMission: { id: 'm1', description: 'Slide 6을 Keyword Mode로 설명하기' },
   criteria: {
@@ -146,12 +146,8 @@ const prepare: PrepareResponse = {
   defaultScriptMode: 'HIGHLIGHT',
 };
 
-/**
- * 발급한 Take. clientSessionId가 멱등키입니다 —
- * 같은 값으로 다시 부르면 **새 Take를 만들지 않습니다.**
- * 준비 화면에서 시작 버튼을 두 번 눌러도 빈 Take가 쌓이면 안 됩니다.
- */
-const issuedTakes = new Map<string, CreateTakeResponse>();
+/** 발급한 Take 수. BE 처럼 멱등키가 없어 부를 때마다 새로 만듭니다 */
+let issuedTakes = 0;
 
 /**
  * 발표 자료와 대본. 리허설 화면이 **시작 전에 한 번에 다 받아 둡니다** —
@@ -266,27 +262,23 @@ export const handlers = [
   ),
 
   // ★ Take는 여기서만 생깁니다 (CLAUDE.md 8번). 홈·리포트의 'Take N 시작'은 이동만 합니다.
-  http.post('*/api/takes', async ({ request }) => {
-    const body = (await request.json()) as CreateTakeRequest;
-    const seen = issuedTakes.get(body.clientSessionId);
-    if (seen) return HttpResponse.json(seen, { status: 200 });
-
-    const created: CreateTakeResponse = {
-      takeId: `t${prepare.nextTakeNumber + issuedTakes.size}`,
-      takeNumber: prepare.nextTakeNumber,
-      status: 'READY',
-    };
-    issuedTakes.set(body.clientSessionId, created);
-    takeContexts.set(created.takeId, {
+  //   BE 모양 그대로입니다 — POST /pitches/{id}/takes/ 에 TakeInitRequestDTO, 응답은 {message, take_id}
+  http.post('*/api/pitches/:pitchId/takes/', async ({ request, params }) => {
+    const body = (await request.json()) as TakeCreateRequest;
+    const takeNumber = prepare.nextTakeNumber + issuedTakes;
+    const takeId = `t${takeNumber}`;
+    issuedTakes += 1;
+    takeContexts.set(takeId, {
       ...fallbackTake,
-      takeId: created.takeId,
-      takeNumber: created.takeNumber,
-      pitchId: body.pitchId,
+      takeId,
+      takeNumber,
+      pitchId: String(params.pitchId),
       mode: body.mode,
-      scriptMode: body.scriptMode,
+      scriptMode: body.script_mode,
       status: 'READY',
     });
-    return HttpResponse.json(created, { status: 201 });
+    const res: TakeCreated = { message: 'Take created successfully', take_id: takeId };
+    return HttpResponse.json(res);
   }),
 
   // ★ :takeId 보다 먼저 와야 합니다 — 안 그러면 in-progress 가 takeId 로 잡힙니다
