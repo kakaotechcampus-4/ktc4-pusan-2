@@ -3,10 +3,8 @@ import type { Ms } from '@/types/api';
 /**
  * 피치 생성 중의 초안 상태와 그 위에서 도는 규칙.
  *
- * 서버가 아직 없습니다 — `POST /pitches/add` 와 `POST /{id}/upload` 만 있고,
- * 목업이 요구하는 것(슬라이드·대본·평가기준이 **각자** 버전을 올린다)과 모양이 다릅니다.
- * 그래서 이 파일은 **화면이 무엇을 요구하는지를 타입으로 먼저 적은 것**이고,
- * 서버 계약이 정해지면 `types/api.ts` 로 올라갑니다.
+ * 서버에는 피치(`POST /pitches/add`) 아래로 발표자료 · 대본 · 평가기준이 **각자** 버전을 올립니다.
+ * 이 파일은 그 버전들을 화면이 들고 있는 모양입니다 — 서버가 준 id 는 각 버전 안에 둡니다.
  *
  * 계산을 컴포넌트에서 꺼내 둔 이유 — 진행 조건(`gate`)은 화면 다섯 장에서
  * 매번 다르게 보이는데, 눈으로 읽어서는 어느 조합이 빠졌는지 알 수 없습니다.
@@ -21,37 +19,38 @@ export type DraftNode = 'slides' | 'script' | 'criteria';
  */
 export type PaneNode = 'info' | DraftNode;
 
-/**
- * 발표시간 허용 오차(초). 평가기준 00번 줄의 `같음` · `±30초` · `±1분`.
- *
- * 서버에는 `PitchDTO.upper_deviation` · `lower_deviation` 로 나뉘어 있습니다 —
- * 보낼 때 같은 값을 둘 다에 넣습니다 (±30초 → 위 30 · 아래 30).
- */
-export type TimeToleranceSec = 0 | 30 | 60;
-
-export const TIME_TOLERANCE_OPTIONS: { value: TimeToleranceSec; label: string }[] = [
-  { value: 0, label: '같음' },
-  { value: 30, label: '±30초' },
-  { value: 60, label: '±1분' },
-];
-
 /** 발표시간 범위(분). 입력 칸이 아니라 −/+ 로만 바꿉니다 */
 export const MIN_TIME_LIMIT_MIN = 1;
 export const MAX_TIME_LIMIT_MIN = 60;
 
 /**
- * 평가기준의 채점 방식. 목업의 `자동 채점` · `발화 대조` 두 가지입니다.
- *
- * ★ 이 값은 아직 어디에도 정의돼 있지 않습니다 — 목업에만 있습니다.
- *   `types/api.ts` 의 `EvalCriterion` 은 `{ id, order, text }` 뿐이라
- *   필드가 하나 빠져 있습니다. 서버와 합의되면 그쪽으로 옮깁니다.
+ * 허용 오차(초). 목표보다 **짧게**(하한) · **길게**(상한) 발표해도 되는 시간을 따로 둡니다 —
+ * 목업의 "−30초 / +1분". 서버의 `PitchDTO.lower_deviation` · `upper_deviation` 과 같은 모양입니다.
  */
-export type ScoringMode = 'AUTO' | 'TRANSCRIPT';
+export const TOLERANCE_STEP_SEC = 30;
+export const MAX_TOLERANCE_SEC = 5 * 60;
 
-export const SCORING_LABEL: Record<ScoringMode, string> = {
-  AUTO: '자동 채점',
-  TRANSCRIPT: '발화 대조',
-};
+/** "5분" · "30초" · "1분 30초". 0 이면 "0초" — 빈칸보다 "없음"이 분명합니다 */
+export function formatDuration(sec: number): string {
+  const minutes = Math.floor(sec / 60);
+  const seconds = sec % 60;
+  if (minutes === 0) return `${seconds}초`;
+  if (seconds === 0) return `${minutes}분`;
+  return `${minutes}분 ${seconds}초`;
+}
+
+/** 정보 줄의 "5분 (−30초 / +1분)". 오차가 둘 다 0 이면 괄호를 붙이지 않습니다 */
+export function formatTimeLimit(limitSec: number, lowerSec: number, upperSec: number): string {
+  const limit = formatDuration(limitSec);
+  if (lowerSec === 0 && upperSec === 0) return limit;
+  return `${limit} (−${formatDuration(lowerSec)} / +${formatDuration(upperSec)})`;
+}
+
+/** "4분 30초 ~ 6분". 하한이 목표보다 길면 0 에서 멈춥니다 */
+export function formatAllowedRange(limitSec: number, lowerSec: number, upperSec: number): string {
+  const from = Math.max(0, limitSec - lowerSec);
+  return `${formatDuration(from)} ~ ${formatDuration(limitSec + upperSec)}`;
+}
 
 /** 목업 하단 — "기준은 최대 5개까지. 적을수록 피드백이 선명해져요." */
 export const MAX_CRITERIA = 5;
@@ -74,10 +73,14 @@ export interface SlideVersion {
   fileUrl?: string;
   /** 서버의 presentation_versions.id. Take 를 만들 때 이 버전을 가리킵니다 */
   presentationVersionId?: string;
+  /** 뷰어 위에 띄우는 파일 이름. 서버 응답에는 없어 고른 파일에서 가져옵니다 */
+  fileName?: string;
 }
 
 /** 업로드 결과로 버전에 채워 넣는 값 */
-export type UploadedSlides = Required<Pick<SlideVersion, 'fileUrl' | 'presentationVersionId'>> & {
+export type UploadedSlides = Required<
+  Pick<SlideVersion, 'fileUrl' | 'presentationVersionId' | 'fileName'>
+> & {
   pageCount: number;
 };
 
@@ -87,28 +90,63 @@ export type UploadedSlides = Required<Pick<SlideVersion, 'fileUrl' | 'presentati
  *
  * `upload` 는 서버에 못 올린 것, `open` 은 올렸지만 받은 URL 로 PDF 를 못 연 것입니다
  * (깨진 파일이거나, 실서버에서 S3 CORS 가 막혀 있거나).
+ *
+ * `replace` 는 "파일 교체"로 올리는 중인 버전입니다. null 이면 빈 자리에 새로 올리는 것입니다.
  */
 export type SlideUpload =
   | { status: 'idle' }
-  | { status: 'uploading'; file: File }
-  | { status: 'failed'; file: File; reason: 'upload' | 'open' };
+  | { status: 'uploading'; file: File; replace: number | null }
+  | { status: 'failed'; file: File; replace: number | null; reason: 'upload' | 'open' };
+
+/**
+ * 대본을 서버에 올려 슬라이드로 나누는 진행 상태. 흐름은 `scriptParse.ts` 가 몹니다.
+ * `failed` 의 `message` 는 화면에 그대로 띄울 문구입니다.
+ */
+export type ScriptParse =
+  { status: 'idle' } | { status: 'pending' } | { status: 'failed'; message: string };
 
 export interface ScriptVersion {
   version: number;
   text: string;
-  /** 매핑 실행 결과. 슬라이드 장수만큼의 블록입니다. 미실행이면 null */
+  /**
+   * 서버에 올린 버전 (`script_version_id` · 서버 버전 번호). 올리기 전이면 null.
+   * 글을 고치면 서버의 것과 달라지므로 비웁니다 — 다음 매핑에서 새 버전으로 올라갑니다.
+   *
+   * ★ 서버 번호와 사이드바 번호(`version`)는 다를 수 있습니다. 사이드바는 화면에서 만든 초안까지
+   *   세고, 서버는 올린 것만 셉니다. 사이드바를 `GET /resources` 로 채우게 되면 하나로 맞춥니다.
+   */
+  remote: { id: string; version: number } | null;
+  parse: ScriptParse;
+  /** 서버가 구분자로 나눴나. false 는 구분자가 없어 대본 전체를 한 슬라이드로 둔 정상 결과 */
+  segmented: boolean | null;
+  /**
+   * 이 대본을 나눌 슬라이드 버전 — 목업의 "연결할 슬라이드 V1 · 12장".
+   * 매핑은 장수에 맞춰 나누므로 어느 슬라이드에 맞춘 것인지를 대본이 들고 있어야 합니다.
+   */
+  slideVersion: number | null;
+  /** 서버가 나눈 슬라이드별 본문 (`slides[].content`, slide_number 순). 나누기 전이면 null */
   blocks: string[] | null;
+  /**
+   * 매핑 확인 화면에서 "저장"을 눌렀나. 저장한 조합(슬라이드 + 대본)으로 연습합니다.
+   * 글이나 연결한 슬라이드가 바뀌면 다시 false 가 됩니다.
+   */
+  saved: boolean;
 }
 
 export interface DraftCriterion {
   id: string;
   text: string;
-  scoring: ScoringMode;
 }
 
 export interface CriteriaVersion {
   version: number;
   items: DraftCriterion[];
+  /**
+   * 서버에 저장됐나. BE 는 나누면서 바로 저장하므로(`POST /standards`) 정리가 끝나면 true 입니다.
+   * "+ 새 버전"으로 만든 빈 버전만 false 이고, 그런 버전은 연습에 쓰지 않습니다.
+   * 저장한 버전은 고치지 않고, 다시 정리하면 새 버전이 됩니다.
+   */
+  saved: boolean;
   /**
    * 자연어로 적은 원문. 서버가 이것을 `items` 로 나눕니다.
    * 다시 열었을 때 무엇을 적어서 이 목록이 나왔는지 보여 주려고 함께 둡니다.
@@ -124,16 +162,44 @@ export interface PitchDraft {
   /** ISO yyyy-mm-dd. 안 정했으면 빈 문자열 */
   presentationDate: string;
   timeLimitSec: number;
-  timeToleranceSec: TimeToleranceSec;
+  /** 목표보다 짧게 발표해도 되는 시간(초) */
+  lowerToleranceSec: number;
+  /** 목표보다 길게 발표해도 되는 시간(초) */
+  upperToleranceSec: number;
   slides: SlideVersion[];
   scripts: ScriptVersion[];
   criteria: CriteriaVersion[];
 }
 
+/** 발표정보 화면이 고치는 값. 피치 한 판에 하나뿐이라 버전이 없습니다 */
+export type InfoForm = Pick<
+  PitchDraft,
+  'title' | 'presentationDate' | 'timeLimitSec' | 'lowerToleranceSec' | 'upperToleranceSec'
+>;
+
+export const infoOf = (d: PitchDraft): InfoForm => ({
+  title: d.title,
+  presentationDate: d.presentationDate,
+  timeLimitSec: d.timeLimitSec,
+  lowerToleranceSec: d.lowerToleranceSec,
+  upperToleranceSec: d.upperToleranceSec,
+});
+
+export const infoChanged = (a: InfoForm, b: InfoForm): boolean =>
+  (Object.keys(a) as (keyof InfoForm)[]).some((k) => a[k] !== b[k]);
+
 /** 각 갈래의 **최신** 버전. 사이드바가 굵게 보여 주는 그것입니다 */
 export const latestSlides = (d: PitchDraft): SlideVersion | null => d.slides.at(-1) ?? null;
 export const latestScript = (d: PitchDraft): ScriptVersion | null => d.scripts.at(-1) ?? null;
 export const latestCriteria = (d: PitchDraft): CriteriaVersion | null => d.criteria.at(-1) ?? null;
+
+/** 저장까지 끝난 마지막 평가기준. 정리만 해 둔 버전은 연습에 들고 가지 않습니다 */
+export const latestSavedCriteria = (d: PitchDraft): CriteriaVersion | null =>
+  d.criteria.findLast((v) => v.saved) ?? null;
+
+/** 파일까지 올라간 마지막 슬라이드. 대본에 연결할 기본값입니다 */
+export const latestUploadedSlides = (d: PitchDraft): SlideVersion | null =>
+  d.slides.findLast((v) => v.pageCount !== null) ?? null;
 
 /* ------------------------------------------------------------------ */
 /* 연습에 들고 갈 버전 고르기                                            */
@@ -146,6 +212,9 @@ export const latestCriteria = (d: PitchDraft): CriteriaVersion | null => d.crite
  *
  * `null` 은 "최신" 입니다. 번호로 박아 두지 않는 이유 — 사용자가 고르지 않았는데
  * V1 로 고정해 두면, 뒤에 V2 를 올려도 계속 V1 로 연습하게 됩니다.
+ *
+ * 슬라이드와 대본은 매핑 확인 화면에서 "저장"할 때 함께 정해집니다 — 목업의
+ * "저장 완료 · 슬라이드 V1 / 대본 V4 · 이 조합으로 연습을 진행해요".
  *
  * ★ 이 셋이 Take 가 **스냅샷하는 값**입니다 (CLAUDE.md 8번). 한 번 정해지면
  *   그 Take 의 리포트는 영원히 이 버전들을 근거로 읽힙니다.
@@ -169,12 +238,15 @@ export interface Resolved {
  *
  * 고른 번호가 없어졌으면(지웠거나 아직 안 만들었으면) 최신으로 떨어집니다 —
  * 없는 버전을 가리킨 채로 연습을 시작하는 것보다 낫습니다.
+ * 평가기준은 **서버에 저장된 것만** 봅니다. 빈 버전으로 채점하면 안 됩니다.
  */
 export function resolveChosen(draft: PitchDraft, chosen: Chosen): Resolved {
+  const savedCriteria = draft.criteria.filter((v) => v.saved);
   return {
     slides: draft.slides.find((v) => v.version === chosen.slides) ?? latestSlides(draft),
     script: draft.scripts.find((v) => v.version === chosen.script) ?? latestScript(draft),
-    criteria: draft.criteria.find((v) => v.version === chosen.criteria) ?? latestCriteria(draft),
+    criteria:
+      savedCriteria.find((v) => v.version === chosen.criteria) ?? latestSavedCriteria(draft),
   };
 }
 

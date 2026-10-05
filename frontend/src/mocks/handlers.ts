@@ -4,6 +4,8 @@ import { authHandlers } from './auth';
 import { sttHandlers } from './stt';
 import { presentationHandlers } from './presentation';
 import { standardsHandlers } from './standards';
+import { pitchHandlers } from './pitch';
+import { scriptHandlers } from './scripts';
 import type {
   AnalysisStatus,
   CreateTakeRequest,
@@ -243,6 +245,8 @@ export const handlers = [
   ...sttHandlers,
   ...presentationHandlers,
   ...standardsHandlers,
+  ...pitchHandlers,
+  ...scriptHandlers,
   http.get('*/api/home', () => HttpResponse.json(home)),
 
   http.get('*/api/takes/:takeId/report', ({ params }) =>

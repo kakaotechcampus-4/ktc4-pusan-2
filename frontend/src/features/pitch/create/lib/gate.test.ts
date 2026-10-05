@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeGate } from './gate';
-import type { PitchDraft } from './draft';
+import { CHOOSE_LATEST, resolveChosen, type PitchDraft } from './draft';
 
 /**
  * 목업 다섯 장(04~08)을 그대로 재현합니다.
@@ -14,13 +14,17 @@ const EMPTY: PitchDraft = {
   title: '',
   presentationDate: '',
   timeLimitSec: 300,
-  timeToleranceSec: 60,
+  lowerToleranceSec: 30,
+  upperToleranceSec: 60,
   slides: [],
   scripts: [],
   criteria: [],
 };
 
 const SCRIPT_TEXT = '가'.repeat(1_284);
+
+/** 진행 조건은 서버 쪽 상태를 보지 않습니다 — 대본 픽스처에 공통으로 붙입니다 */
+const SERVER_IDLE = { remote: null, parse: { status: 'idle' }, segmented: null } as const;
 
 describe('진행 조건 — 목업 04~08', () => {
   it('04 슬라이드 업로드 — 아무것도 없다', () => {
@@ -53,7 +57,17 @@ describe('진행 조건 — 목업 04~08', () => {
     const gate = computeGate({
       ...EMPTY,
       slides: [{ version: 1, pageCount: 12 }],
-      scripts: [{ version: 3, text: SCRIPT_TEXT, blocks: null }],
+      scripts: [
+        {
+          version: 3,
+          text: SCRIPT_TEXT,
+          blocks: null,
+          slideVersion: 1,
+          saved: false,
+          ...SERVER_IDLE,
+          ...SERVER_IDLE,
+        },
+      ],
     });
 
     expect(gate.message).toBe('매핑을 실행해주세요');
@@ -67,7 +81,16 @@ describe('진행 조건 — 목업 04~08', () => {
     const gate = computeGate({
       ...EMPTY,
       slides: [{ version: 1, pageCount: 12 }],
-      scripts: [{ version: 3, text: SCRIPT_TEXT, blocks: Array<string>(12).fill('블록') }],
+      scripts: [
+        {
+          version: 3,
+          text: SCRIPT_TEXT,
+          blocks: Array<string>(12).fill('블록'),
+          slideVersion: 1,
+          saved: false,
+          ...SERVER_IDLE,
+        },
+      ],
     });
 
     expect(gate.heading).toBe('준비 완료');
@@ -85,14 +108,24 @@ describe('진행 조건 — 목업 04~08', () => {
     const gate = computeGate({
       ...EMPTY,
       slides: [{ version: 1, pageCount: 12 }],
-      scripts: [{ version: 3, text: SCRIPT_TEXT, blocks: Array<string>(12).fill('블록') }],
+      scripts: [
+        {
+          version: 3,
+          text: SCRIPT_TEXT,
+          blocks: Array<string>(12).fill('블록'),
+          slideVersion: 1,
+          saved: false,
+          ...SERVER_IDLE,
+        },
+      ],
       criteria: [
         {
           version: 1,
+          saved: true,
           items: [
-            { id: 'c1', text: '시장 규모 숫자를 반드시 말한다', scoring: 'AUTO' },
-            { id: 'c2', text: '대본을 보지 않고 도입부 30초를 말한다', scoring: 'TRANSCRIPT' },
-            { id: 'c3', text: '군더더기 표현 5회 이하', scoring: 'AUTO' },
+            { id: 'c1', text: '시장 규모 숫자를 반드시 말한다' },
+            { id: 'c2', text: '대본을 보지 않고 도입부 30초를 말한다' },
+            { id: 'c3', text: '군더더기 표현 5회 이하' },
           ],
         },
       ],
@@ -117,7 +150,12 @@ describe('진행 조건 — 목업에 없는 경계', () => {
   });
 
   it('빈 문자열만 있는 대본은 쓴 것으로 보지 않는다', () => {
-    const gate = computeGate({ ...EMPTY, scripts: [{ version: 1, text: '   \n ', blocks: null }] });
+    const gate = computeGate({
+      ...EMPTY,
+      scripts: [
+        { version: 1, text: '   \n ', blocks: null, slideVersion: 1, saved: false, ...SERVER_IDLE },
+      ],
+    });
 
     expect(gate.rows[1]).toMatchObject({ label: '대본 미등록', done: false });
   });
@@ -146,10 +184,25 @@ describe('고른 버전으로 판정한다', () => {
       ...EMPTY,
       slides: [{ version: 1, pageCount: 12 }],
       scripts: [
-        { version: 1, text: SCRIPT_TEXT, blocks: null },
-        { version: 2, text: SCRIPT_TEXT, blocks: Array<string>(12).fill('블록') },
+        {
+          version: 1,
+          text: SCRIPT_TEXT,
+          blocks: null,
+          slideVersion: 1,
+          saved: false,
+          ...SERVER_IDLE,
+          ...SERVER_IDLE,
+        },
+        {
+          version: 2,
+          text: SCRIPT_TEXT,
+          blocks: Array<string>(12).fill('블록'),
+          slideVersion: 1,
+          saved: false,
+          ...SERVER_IDLE,
+        },
       ],
-      criteria: [{ version: 1, items: [{ id: 'c1', text: '기준', scoring: 'AUTO' }] }],
+      criteria: [{ version: 1, saved: true, items: [{ id: 'c1', text: '기준' }] }],
     };
 
     // 최신(V2)으로 보면 다 찼습니다
@@ -170,10 +223,17 @@ describe('고른 버전으로 판정한다', () => {
         { version: 2, pageCount: 12 },
       ],
       scripts: [
-        { version: 1, text: SCRIPT_TEXT, blocks: Array<string>(12).fill('블록') },
-        { version: 2, text: '', blocks: null },
+        {
+          version: 1,
+          text: SCRIPT_TEXT,
+          blocks: Array<string>(12).fill('블록'),
+          slideVersion: 1,
+          saved: false,
+          ...SERVER_IDLE,
+        },
+        { version: 2, text: '', blocks: null, slideVersion: 1, saved: false, ...SERVER_IDLE },
       ],
-      criteria: [{ version: 1, items: [{ id: 'c1', text: '기준', scoring: 'AUTO' }] }],
+      criteria: [{ version: 1, saved: true, items: [{ id: 'c1', text: '기준' }] }],
     };
 
     const gate = computeGate(draft, { slides: 2, script: 1, criteria: 1 });
@@ -197,8 +257,17 @@ describe('고른 버전으로 판정한다', () => {
         { version: 1, pageCount: 8 },
         { version: 2, pageCount: 12 },
       ],
-      scripts: [{ version: 1, text: SCRIPT_TEXT, blocks: Array<string>(8).fill('블록') }],
-      criteria: [{ version: 1, items: [{ id: 'c1', text: '기준', scoring: 'AUTO' }] }],
+      scripts: [
+        {
+          version: 1,
+          text: SCRIPT_TEXT,
+          blocks: Array<string>(8).fill('블록'),
+          slideVersion: 1,
+          saved: false,
+          ...SERVER_IDLE,
+        },
+      ],
+      criteria: [{ version: 1, saved: true, items: [{ id: 'c1', text: '기준' }] }],
     };
 
     // 같은 대본도 8장짜리 V1 과 들고 가면 맞습니다
@@ -206,11 +275,11 @@ describe('고른 버전으로 판정한다', () => {
 
     const gate = computeGate(draft, { slides: 2, script: 1, criteria: 1 });
     expect(gate.ready).toBe(false);
-    expect(gate.message).toBe('슬라이드 장수가 바뀌었어요. 매핑을 다시 실행해주세요');
+    expect(gate.message).toBe('대본과 슬라이드 장수가 달라요. 대본의 구분을 확인해 주세요');
     expect(gate.rows.map((r) => r.label)).toEqual([
       '슬라이드 12장',
       '대본 1,284자',
-      '매핑 다시 필요 (8블록 / 12장)',
+      '장수 다름 (대본 8 / 슬라이드 12장)',
     ]);
   });
 
@@ -223,53 +292,27 @@ describe('고른 버전으로 판정한다', () => {
   });
 });
 
-describe('빈 평가기준', () => {
-  /** 매핑까지 끝나 평가기준만 남은 상태 (목업 07) */
-  const MAPPED: PitchDraft = {
-    ...EMPTY,
-    slides: [{ version: 1, pageCount: 12 }],
-    scripts: [{ version: 1, text: SCRIPT_TEXT, blocks: Array<string>(12).fill('블록') }],
-  };
-
-  /** 추가 버튼은 빈 항목부터 만듭니다. 누르기만 하고 안 쓴 상태입니다 */
-  it('빈 항목만 있으면 평가기준이 없는 것이다', () => {
+describe('평가기준은 서버에 저장된 것만 연습에 들고 간다', () => {
+  /** "+ 새 버전"으로 만들고 아직 정리하지 않은 버전 — 서버에 없는 기준으로 채점하면 안 됩니다 */
+  it('저장되지 않은 버전은 평가기준이 없는 것으로 본다', () => {
     const gate = computeGate({
-      ...MAPPED,
-      criteria: [{ version: 1, items: [{ id: 'c1', text: '', scoring: 'AUTO' }] }],
+      ...EMPTY,
+      criteria: [{ version: 1, saved: false, items: [{ id: 'c1', text: '시장 규모 말하기' }] }],
     });
-
-    expect(gate.rows[2]).toMatchObject({ label: '평가기준 0개 · 빈 칸 1개', done: false });
-    expect(gate.message).toBe('비어 있는 평가기준을 채우거나 지워주세요');
-    expect(gate.ready).toBe(false);
+    expect(gate.rows[2]!.label).toBe('평가기준 (선택)');
   });
 
-  it('공백만 쓴 항목도 빈 칸이다', () => {
-    const gate = computeGate({
-      ...MAPPED,
-      criteria: [{ version: 1, items: [{ id: 'c1', text: '  \n ', scoring: 'AUTO' }] }],
-    });
-
-    expect(gate.ready).toBe(false);
-  });
-
-  /** 채운 것이 있어도 빈 칸이 남으면 막습니다 — 그대로 넘기면 빈 기준이 저장됩니다 */
-  it('채운 항목 사이에 빈 칸이 남아 있으면 넘어가지 않는다', () => {
-    const gate = computeGate({
-      ...MAPPED,
-      criteria: [
-        {
-          version: 1,
-          items: [
-            { id: 'c1', text: '시장 규모 숫자를 말한다', scoring: 'AUTO' },
-            { id: 'c2', text: '', scoring: 'AUTO' },
-            { id: 'c3', text: '군더더기 표현 5회 이하', scoring: 'AUTO' },
-          ],
-        },
-      ],
-    });
-
-    expect(gate.rows[2]).toMatchObject({ label: '평가기준 2개 · 빈 칸 1개', done: false });
-    expect(gate.message).toBe('비어 있는 평가기준을 채우거나 지워주세요');
-    expect(gate.ready).toBe(false);
+  it('저장된 V1 뒤에 저장되지 않은 V2 가 있으면 V1 을 쓴다', () => {
+    const { criteria } = resolveChosen(
+      {
+        ...EMPTY,
+        criteria: [
+          { version: 1, saved: true, items: [{ id: 'a', text: 'V1 기준' }] },
+          { version: 2, saved: false, items: [{ id: 'b', text: 'V2 기준' }] },
+        ],
+      },
+      CHOOSE_LATEST,
+    );
+    expect(criteria?.version).toBe(1);
   });
 });

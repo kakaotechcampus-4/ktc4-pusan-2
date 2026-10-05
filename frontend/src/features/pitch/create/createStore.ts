@@ -1,15 +1,22 @@
 import { create } from 'zustand';
 import type {
   Chosen,
-  SlideUpload,
-  UploadedSlides,
-  DraftCriterion,
   DraftNode,
+  InfoForm,
   PaneNode,
   PitchDraft,
-  ScoringMode,
+  ScriptParse,
+  ScriptVersion,
+  SlideUpload,
+  UploadedSlides,
 } from './lib/draft';
-import { CHOOSE_LATEST, MAX_CRITERIA } from './lib/draft';
+import {
+  CHOOSE_LATEST,
+  MAX_CRITERIA,
+  infoChanged,
+  infoOf,
+  latestUploadedSlides,
+} from './lib/draft';
 
 /**
  * 피치 생성 한 판의 초안.
@@ -19,9 +26,11 @@ import { CHOOSE_LATEST, MAX_CRITERIA } from './lib/draft';
  * 값이 아니고(그건 TanStack Query), 프레임 단위도 아닙니다(그건 ref).
  * 상태 배치표의 가운데 칸입니다 — prepareStore 와 같은 이유입니다.
  *
- * ★ 지금은 서버가 없어서 전부 메모리에만 있습니다. 새로고침하면 사라집니다.
- *   업로드·저장 API 가 생기면 각 저장 지점에서 서버로 올리고, 이 스토어는
- *   "아직 저장하지 않은 편집분"만 들고 있게 됩니다.
+ * 각 저장 지점(발표정보 저장 · 슬라이드 업로드 · 평가기준 정리 · 대본 매핑)에서 서버로 올리고,
+ * 서버가 준 id 를 버전 안에 들고 있습니다.
+ *
+ * ★ 새로고침하면 사라집니다. 서버에는 남아 있지만, 다시 열어 사이드바를 채우는 일
+ *   (`GET /pitches/{id}/resources`)은 아직 붙지 않았습니다.
  */
 
 interface CreateState {
@@ -32,20 +41,15 @@ interface CreateState {
   version: number | null;
 
   /**
-   * 서버가 준 pitch id. **생성 API(`POST /pitches`)가 아직 없어서 늘 null 입니다.**
-   *
-   * 뒤 화면(장치 점검 · 준비)은 URL 의 `pitchId` 로 서버를 부릅니다. 그래서 null 인
-   * 동안에는 아래 `draftId` 로 대신 이동합니다 — 목이 어떤 id 로도 답하므로 흐름은
-   * 확인되지만 **서버에 저장된 것은 아무것도 없습니다.** API 가 붙으면 응답의 id 를
-   * `setPitchId` 로 넣고, 그 순간부터 draftId 는 쓰이지 않습니다.
+   * 서버가 준 pitch id. 발표정보를 처음 저장할 때(`POST /pitches/add`) 생깁니다.
+   * 발표자료 · 대본 · 평가기준은 전부 이 id 아래에 올라가므로, null 인 동안에는
+   * 그 화면들이 "발표정보를 먼저 저장해 주세요"로 막습니다.
    */
   pitchId: string | null;
-  /** 저장 전 임시 식별자. 스토어가 만들어질 때 한 번 정해집니다 */
-  draftId: string;
   setPitchId: (id: string) => void;
 
   /**
-   * 이번 연습에 들고 갈 버전. 셋을 **따로** 고릅니다 (슬라이드 V2 · 대본 V1 …).
+   * 이번 연습에 들고 갈 버전. 슬라이드와 대본은 매핑을 저장할 때 함께 정해집니다.
    * `null` 은 최신입니다 — 고르지 않은 것을 번호로 박아 두면 새 버전을 올려도
    * 옛것으로 계속 연습하게 됩니다.
    */
@@ -54,11 +58,15 @@ interface CreateState {
 
   select: (node: PaneNode, version?: number | null) => void;
 
-  setMeta: (
-    patch: Partial<
-      Pick<PitchDraft, 'title' | 'presentationDate' | 'timeLimitSec' | 'timeToleranceSec'>
-    >,
-  ) => void;
+  /**
+   * 발표정보 화면에서 고치는 중인 값. 저장하기 전까지는 `draft` 에 넣지 않습니다 —
+   * 위 정보 줄이 입력 중인 글자를 따라 깜빡이지 않게. 화면을 떠났다 와도 남도록 여기 둡니다.
+   * 고친 게 없으면 null 입니다.
+   */
+  infoEdits: InfoForm | null;
+  editInfo: (patch: Partial<InfoForm>) => void;
+  /** 발표정보 저장이 서버에서 끝났습니다. 고치던 값은 비웁니다 */
+  setMeta: (saved: InfoForm) => void;
 
   /** 슬라이드 새 버전. 올리기 전이라 장수는 아직 모릅니다 */
   addSlideVersion: () => void;
@@ -72,25 +80,37 @@ interface CreateState {
    * 들어오는" 중간 상태가 생기고, 그 틈에 진행 조건이 한 번 잘못 계산됩니다.
    */
   attachSlides: (uploaded: UploadedSlides) => void;
+  /** "파일 교체" — 이 버전의 파일만 바꿉니다. 버전 번호는 그대로입니다 */
+  replaceSlides: (version: number, uploaded: UploadedSlides) => void;
 
-  /** 대본 새 버전. 목업 사이드바의 "+ 새로운 대본 추가" */
+  /** 대본 새 버전. 직전 글을 물려받고, 마지막으로 올린 슬라이드에 연결합니다 */
   addScriptVersion: (text?: string) => void;
   editScript: (version: number, text: string) => void;
-  /** 매핑 실행 결과를 붙입니다 */
-  setBlocks: (version: number, blocks: string[]) => void;
+  /**
+   * 대본을 맞춰 볼 슬라이드 버전을 바꿉니다. 서버는 슬라이드를 모르고 구분자로만 나누므로
+   * 나눈 결과는 그대로 두고, 장수가 맞는지는 진행 조건이 다시 봅니다.
+   */
+  linkSlides: (version: number, slideVersion: number) => void;
+  /** 서버 쪽 진행을 적습니다. `scriptParse.ts` 만 부릅니다 */
+  patchScript: (
+    version: number,
+    patch: Partial<Pick<ScriptVersion, 'remote' | 'parse' | 'blocks' | 'segmented'>>,
+  ) => void;
+  /** 매핑 확인에서 대본 입력으로 돌아갑니다. 다시 매핑하면 서버에 새 버전으로 올라갑니다 */
+  unmapScript: (version: number) => void;
+  /** 매핑 확인의 "저장" — 이 대본과 연결한 슬라이드를 연습할 조합으로 정합니다 */
+  saveMapping: (version: number) => void;
 
+  /** 평가기준 새 버전. 원문을 물려받습니다 — 대개 "조금 고쳐서 다시 정리"입니다 */
   addCriteriaVersion: () => void;
   /**
-   * 자연어를 서버가 나눠 준 결과를 목록으로 넣습니다. 그 버전의 목록을 **통째로 바꿉니다**.
-   * 버전이 아직 없으면(`null`) 새로 만듭니다 — 평가기준 화면에 들어오자마자 적을 수 있게.
+   * 서버가 나누고 저장한 결과를 넣습니다. "+ 새 버전"으로 만든 빈 버전이면 거기 채우고,
+   * 아니면 새 버전을 만듭니다 — 서버도 정리할 때마다 새로 저장하고, 저장한 것은 고치지 않습니다.
    */
   applyParsedCriteria: (
     version: number | null,
     parsed: { sourceText: string; standards: string[]; exceptText: string | null },
   ) => void;
-  addCriterion: (version: number) => void;
-  editCriterion: (version: number, id: string, patch: Partial<Omit<DraftCriterion, 'id'>>) => void;
-  removeCriterion: (version: number, id: string) => void;
 
   reset: () => void;
 }
@@ -98,10 +118,10 @@ interface CreateState {
 const EMPTY_DRAFT: PitchDraft = {
   title: '',
   presentationDate: '',
-  // 5분. 목업의 기본값입니다
+  // 5분 · −30초 / +1분. 목업의 기본값입니다
   timeLimitSec: 300,
-  // ±1분. 목업에서 골라 둔 값입니다
-  timeToleranceSec: 60,
+  lowerToleranceSec: 30,
+  upperToleranceSec: 60,
   slides: [],
   scripts: [],
   criteria: [],
@@ -110,13 +130,31 @@ const EMPTY_DRAFT: PitchDraft = {
 /** 버전 번호는 갈래 안에서 1부터 셉니다 — 서버의 presentation_versions 와 같은 규칙 */
 const nextVersion = (list: { version: number }[]) => (list.at(-1)?.version ?? 0) + 1;
 
+/** 서버와의 연결을 끊은 대본. 글이 바뀌면 서버의 버전과 더는 같지 않습니다 */
+const DETACHED: Pick<ScriptVersion, 'remote' | 'parse' | 'blocks' | 'segmented' | 'saved'> = {
+  remote: null,
+  parse: { status: 'idle' } satisfies ScriptParse,
+  blocks: null,
+  segmented: null,
+  saved: false,
+};
+
+const mapScripts = (
+  draft: PitchDraft,
+  version: number,
+  update: (v: ScriptVersion) => ScriptVersion,
+): PitchDraft => ({
+  ...draft,
+  scripts: draft.scripts.map((v) => (v.version === version ? update(v) : v)),
+});
+
 export const useCreateStore = create<CreateState>((set) => ({
   draft: EMPTY_DRAFT,
-  node: 'slides',
+  // 목업의 순서대로 발표정보부터 엽니다
+  node: 'info',
   version: null,
 
   pitchId: null,
-  draftId: crypto.randomUUID(),
   setPitchId: (id) => set({ pitchId: id }),
 
   chosen: CHOOSE_LATEST,
@@ -124,7 +162,11 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   select: (node, version = null) => set({ node, version }),
 
-  setMeta: (patch) => set((s) => ({ draft: { ...s.draft, ...patch } })),
+  infoEdits: null,
+  editInfo: (patch) =>
+    set((s) => ({ infoEdits: { ...(s.infoEdits ?? infoOf(s.draft)), ...patch } })),
+
+  setMeta: (saved) => set((s) => ({ draft: { ...s.draft, ...saved }, infoEdits: null })),
 
   addSlideVersion: () =>
     set((s) => {
@@ -142,7 +184,7 @@ export const useCreateStore = create<CreateState>((set) => ({
   attachSlides: (uploaded) =>
     set((s) => {
       const pending = s.draft.slides.at(-1);
-      // 파일을 기다리던 빈 버전이 있으면 그것을 채웁니다 — "+ 슬라이드 추가" 뒤의 경로
+      // 파일을 기다리던 빈 버전이 있으면 그것을 채웁니다 — "+ 새 버전" 뒤의 경로
       if (pending && pending.pageCount === null) {
         return {
           draft: {
@@ -163,34 +205,60 @@ export const useCreateStore = create<CreateState>((set) => ({
       };
     }),
 
+  replaceSlides: (version, uploaded) =>
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        slides: s.draft.slides.map((v) => (v.version === version ? { ...v, ...uploaded } : v)),
+        // 이 슬라이드로 정한 연습 조합은 다시 확인해야 합니다 — 장수나 내용이 바뀌었을 수 있습니다
+        scripts: s.draft.scripts.map((v) =>
+          v.slideVersion === version ? { ...v, saved: false } : v,
+        ),
+      },
+    })),
+
   addScriptVersion: (text = '') =>
     set((s) => {
       const version = nextVersion(s.draft.scripts);
+      const slideVersion = latestUploadedSlides(s.draft)?.version ?? null;
       return {
-        draft: { ...s.draft, scripts: [...s.draft.scripts, { version, text, blocks: null }] },
+        draft: {
+          ...s.draft,
+          scripts: [...s.draft.scripts, { version, text, slideVersion, ...DETACHED }],
+        },
         node: 'script',
         version,
       };
     }),
 
+  // 글자가 바뀌면 서버에 올린 것과 달라집니다. 다시 매핑하면 새 버전으로 올라갑니다
   editScript: (version, text) =>
+    set((s) => ({ draft: mapScripts(s.draft, version, (v) => ({ ...v, text, ...DETACHED })) })),
+
+  linkSlides: (version, slideVersion) =>
     set((s) => ({
-      draft: {
-        ...s.draft,
-        scripts: s.draft.scripts.map((v) =>
-          // 글자가 바뀌면 지난 매핑은 근거를 잃습니다. 다시 실행해야 합니다.
-          v.version === version ? { ...v, text, blocks: null } : v,
-        ),
-      },
+      draft: mapScripts(s.draft, version, (v) => ({ ...v, slideVersion, saved: false })),
     })),
 
-  setBlocks: (version, blocks) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        scripts: s.draft.scripts.map((v) => (v.version === version ? { ...v, blocks } : v)),
-      },
-    })),
+  patchScript: (version, patch) =>
+    set((s) => ({ draft: mapScripts(s.draft, version, (v) => ({ ...v, ...patch })) })),
+
+  unmapScript: (version) =>
+    set((s) => ({ draft: mapScripts(s.draft, version, (v) => ({ ...v, ...DETACHED })) })),
+
+  saveMapping: (version) =>
+    set((s) => {
+      const script = s.draft.scripts.find((v) => v.version === version);
+      if (!script) return s;
+      return {
+        draft: {
+          ...s.draft,
+          scripts: s.draft.scripts.map((v) => (v.version === version ? { ...v, saved: true } : v)),
+        },
+        // ★ 저장한 조합이 곧 연습할 조합입니다 — 둘을 따로 고르면 장수가 어긋날 수 있습니다
+        chosen: { ...s.chosen, slides: script.slideVersion, script: version },
+      };
+    }),
 
   addCriteriaVersion: () =>
     set((s) => {
@@ -200,8 +268,12 @@ export const useCreateStore = create<CreateState>((set) => ({
           ...s.draft,
           criteria: [
             ...s.draft.criteria,
-            // 원문을 물려받습니다 — 새 버전은 대개 "조금 고쳐서 다시 나누기"입니다
-            { version, items: [], sourceText: s.draft.criteria.at(-1)?.sourceText ?? '' },
+            {
+              version,
+              items: [],
+              saved: false,
+              sourceText: s.draft.criteria.at(-1)?.sourceText ?? '',
+            },
           ],
         },
         node: 'criteria',
@@ -211,17 +283,20 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   applyParsedCriteria: (version, { sourceText, standards, exceptText }) =>
     set((s) => {
-      const items: DraftCriterion[] = standards
+      const items = standards
         .slice(0, MAX_CRITERIA)
-        .map((text) => ({ id: crypto.randomUUID(), text, scoring: 'AUTO' }));
+        .map((text) => ({ id: crypto.randomUUID(), text }));
       const target = s.draft.criteria.find((v) => v.version === version);
 
-      if (!target) {
+      if (!target || target.saved) {
         const next = nextVersion(s.draft.criteria);
         return {
           draft: {
             ...s.draft,
-            criteria: [...s.draft.criteria, { version: next, items, sourceText, exceptText }],
+            criteria: [
+              ...s.draft.criteria,
+              { version: next, items, saved: true, sourceText, exceptText },
+            ],
           },
           node: 'criteria' as const,
           version: next,
@@ -231,59 +306,28 @@ export const useCreateStore = create<CreateState>((set) => ({
         draft: {
           ...s.draft,
           criteria: s.draft.criteria.map((v) =>
-            v.version === target.version ? { ...v, items, sourceText, exceptText } : v,
+            v.version === target.version ? { ...v, items, saved: true, sourceText, exceptText } : v,
           ),
         },
       };
     }),
 
-  addCriterion: (version) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        criteria: s.draft.criteria.map((v) =>
-          v.version === version && v.items.length < MAX_CRITERIA
-            ? {
-                ...v,
-                items: [...v.items, { id: crypto.randomUUID(), text: '', scoring: 'AUTO' }],
-              }
-            : v,
-        ),
-      },
-    })),
-
-  editCriterion: (version, id, patch) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        criteria: s.draft.criteria.map((v) =>
-          v.version === version
-            ? { ...v, items: v.items.map((it) => (it.id === id ? { ...it, ...patch } : it)) }
-            : v,
-        ),
-      },
-    })),
-
-  removeCriterion: (version, id) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        criteria: s.draft.criteria.map((v) =>
-          v.version === version ? { ...v, items: v.items.filter((it) => it.id !== id) } : v,
-        ),
-      },
-    })),
-
   reset: () =>
     set({
       draft: EMPTY_DRAFT,
-      node: 'slides',
+      node: 'info',
       version: null,
       pitchId: null,
-      draftId: crypto.randomUUID(),
+      infoEdits: null,
       chosen: CHOOSE_LATEST,
       slideUpload: { status: 'idle' },
     }),
 }));
 
-export type { ScoringMode };
+/** 발표정보를 고치고 아직 저장하지 않았나. 사이드바 표시와 떠나기 경고가 함께 봅니다 */
+export const selectInfoUnsaved = (s: CreateState): boolean =>
+  s.infoEdits !== null && infoChanged(s.infoEdits, infoOf(s.draft));
+
+/** 서버로 가는 중인 일이 있나 — 슬라이드 업로드 · 대본 나누기. 지금 떠나면 결과를 받을 곳이 없습니다 */
+export const selectBusy = (s: CreateState): boolean =>
+  s.slideUpload.status === 'uploading' || s.draft.scripts.some((v) => v.parse.status === 'pending');

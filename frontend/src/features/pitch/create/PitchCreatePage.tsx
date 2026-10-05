@@ -1,52 +1,92 @@
+import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { InfoBar } from './InfoBar';
-import { NextGate } from './NextGate';
 import { VersionRail } from './VersionRail';
-import { useCreateStore } from './createStore';
-import { latestCriteria, latestScript, latestSlides } from './lib/draft';
+import { selectBusy, selectInfoUnsaved, useCreateStore } from './createStore';
+import {
+  latestCriteria,
+  latestScript,
+  latestSlides,
+  type PaneNode,
+  type ScriptVersion,
+} from './lib/draft';
 import { CriteriaPane } from './steps/CriteriaPane';
 import { InfoPane } from './steps/InfoPane';
 import { ScriptPane } from './steps/ScriptPane';
 import { SlidePane } from './steps/SlidePane';
 
 /**
- * P3 피치 생성. 목업 04~08 이 **한 라우트**입니다.
+ * P3 피치 생성. 목업의 발표정보 · 평가기준 · 슬라이드 · 대본 입력 · 매핑 확인이 **한 라우트**입니다.
  *
  * 마법사(다음 → 다음)가 아닌 이유 — 사이드바가 버전 트리라 아무 때나 지난
  * 버전으로 돌아갈 수 있고, 목업에서 대본만 세 번 고친 흔적(V3)이 그 증거입니다.
- * "다음" 버튼은 단계 이동이 아니라 **연습 시작**입니다.
+ * "다음" 버튼은 단계 이동이 아니라 **연습 시작**이고, 매핑 확인 화면에만 있습니다.
  *
  * 본문은 사이드바에서 고른 것(`node` + `version`)이 정합니다.
  */
+
+/** 사이드바 아래 치치의 말풍선. 지금 화면에서 할 일을 한마디로 */
+function mascotLine(node: PaneNode, script: ScriptVersion | null): string {
+  if (node === 'criteria') return '기준을 정하면\n피드백이 선명해져!';
+  if (node === 'slides') return '발표할 자료를\n확인해 봐!';
+  if (node === 'script' && script?.saved) return '저장 완료!\n이제 연습하자.';
+  if (node === 'script') return '한 문장씩\n준비해 보자!';
+  return '준비부터\n차근차근!';
+}
+
 export function PitchCreatePage() {
   const draft = useCreateStore((s) => s.draft);
   const node = useCreateStore((s) => s.node);
   const version = useCreateStore((s) => s.version);
   const pitchId = useCreateStore((s) => s.pitchId);
-  const draftId = useCreateStore((s) => s.draftId);
   const navigate = useNavigate();
+  const unsaved = useCreateStore(selectInfoUnsaved);
+  const busy = useCreateStore(selectBusy);
 
-  const slideCount = latestSlides(draft)?.pageCount ?? 0;
+  // 탭을 닫거나 새로고침하면 저장하지 않은 발표정보와 진행 중인 업로드 · 나누기가 사라집니다.
+  // 브라우저 기본 확인 창만 띄웁니다 — 문구는 브라우저가 정하고 바꿀 수 없습니다
+  useEffect(() => {
+    if (!unsaved && !busy) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved, busy]);
 
-  // 고른 버전이 없으면 그 갈래의 최신을 봅니다 — 사이드바가 굵게 표시한 것
+  const pickedScript =
+    node === 'script'
+      ? (draft.scripts.find((v) => v.version === version) ?? latestScript(draft))
+      : null;
+
+  /*
+    매핑 확인의 "다음" — 장치 점검 → 준비 화면 → 시작 CTA 순서입니다.
+
+    ★ 여기서 POST /takes 를 부르지 않습니다 (CLAUDE.md 8번) —
+      Take 는 준비 화면의 시작 CTA 에서만 생깁니다. 여기서 만들면
+      점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 어긋납니다.
+
+    매핑 확인은 발표정보를 저장한 뒤에만 열리므로(그 전에는 대본을 올릴 곳이 없습니다)
+    여기서 pitchId 는 늘 있습니다.
+  */
+  const start = () => {
+    if (pitchId) navigate(`/pitch/${pitchId}/device-check`);
+  };
+
+  // 고른 버전이 없으면 그 갈래의 최신을 봅니다 — 사이드바가 강조한 것
   const pane = (() => {
     if (node === 'info') return <InfoPane />;
     if (node === 'slides') {
       const picked = draft.slides.find((v) => v.version === version) ?? latestSlides(draft);
       return <SlidePane slide={picked} />;
     }
-    if (node === 'script') {
-      const picked = draft.scripts.find((v) => v.version === version) ?? latestScript(draft);
-      return <ScriptPane script={picked} slideCount={slideCount} />;
-    }
+    if (node === 'script') return <ScriptPane script={pickedScript} onStart={start} />;
     const picked = draft.criteria.find((v) => v.version === version) ?? latestCriteria(draft);
     return <CriteriaPane criteria={picked} />;
   })();
 
   return (
     <div className="flex h-dvh flex-col bg-panel text-ink">
-      <header className="flex shrink-0 items-center justify-between border-b border-line-strong px-6 py-4">
+      <header className="flex shrink-0 items-center justify-between border-b border-line-strong px-8 py-4">
         <Link to="/" aria-label="PITCH COACH 홈">
           <PitchCoachWordmark />
         </Link>
@@ -55,47 +95,32 @@ export function PitchCreatePage() {
         </Link>
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-4 p-4">
-        {/* ── 좌측: 발표 정보 · 발표 자료 트리 · 응원 · 진행 조건 ──── */}
-        <aside className="flex w-sidebar shrink-0 flex-col gap-4 rounded border border-line-strong bg-cream p-3">
+      <div className="flex min-h-0 flex-1 gap-6 px-6 py-5">
+        {/* ── 좌측: 발표 자료 트리 · 치치 ─────────────────────────── */}
+        <aside className="flex w-sidebar shrink-0 flex-col gap-4 rounded-lg border border-line bg-cream/60 p-4">
           <VersionRail />
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-end gap-1">
             <img
               src="/onboarding/chichi-portrait-longsleeve.png"
               alt=""
-              className="h-14 w-14 shrink-0 rounded-full object-cover [image-rendering:pixelated]"
+              className="h-20 w-20 shrink-0 object-contain [image-rendering:pixelated]"
             />
-            <p className="text-xs font-bold leading-snug">
-              준비는 꼼꼼하게,
-              <br />
-              발표는 자신 있게!
+            {/* 말풍선. 꼬리는 치치 쪽(왼쪽 아래)으로 */}
+            <p className="relative mb-8 whitespace-pre-line rounded-lg border border-ink bg-white px-3 py-2 text-xs font-bold leading-snug before:absolute before:-left-1.5 before:bottom-2 before:h-2.5 before:w-2.5 before:rotate-45 before:border-b before:border-l before:border-ink before:bg-white">
+              {mascotLine(node, pickedScript)}
             </p>
           </div>
-
-          {/*
-            장치 점검 → 준비 화면 → 시작 CTA 순서입니다. 연습할 버전은 사이드바의 "연습"
-            버튼으로 고르고, 고르지 않은 갈래는 최신으로 갑니다 (확인 창은 두지 않습니다).
-
-            ★ 여기서 POST /takes 를 부르지 않습니다 (CLAUDE.md 8번) —
-              Take 는 준비 화면의 시작 CTA 에서만 생깁니다. 여기서 만들면
-              점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 어긋납니다.
-
-            ★ pitchId 가 null 인 것은 생성 API 가 아직 없어서입니다.
-              그동안은 draftId 로 이동합니다 — 목은 어떤 id 로도 답하므로
-              화면 흐름은 확인되지만 서버에 저장된 것은 없습니다.
-          */}
-          <NextGate onStart={() => navigate(`/pitch/${pitchId ?? draftId}/device-check`)} />
         </aside>
 
         {/* ── 우측: 경로 · 발표 정보 줄 · 본문 ────────────────────── */}
-        <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-1">
+        <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-2">
           <nav aria-label="경로" className="flex items-center gap-2 text-xs text-stone">
             <Link to="/" className="hover:text-ink">
               내 피치
             </Link>
             <span aria-hidden="true">›</span>
-            <span aria-current="page" className="border-b border-ink text-ink">
+            <span aria-current="page" className="text-ink">
               {draft.title.trim() || '새 피치'}
             </span>
           </nav>

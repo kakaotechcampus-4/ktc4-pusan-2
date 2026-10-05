@@ -116,3 +116,94 @@ export function PixelMark() {
     </svg>
   );
 }
+
+/** 문서 한 장. 사이드바의 발표정보 · 각 버전 줄, 정보 줄의 발표 제목 */
+export function DocIcon({ className = 'h-4 w-4 stroke-ink' }: { className?: string }) {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className={className}>
+      <path className="fill-none" strokeWidth="1.5" d="M3.25 1.75h7l2.5 2.5v10h-9.5z" />
+      <path className="fill-none" strokeWidth="1.5" d="M5.5 7.25h5M5.5 10.25h5" />
+    </svg>
+  );
+}
+
+/** "연결할 슬라이드" 칩 */
+export function LinkIcon() {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className="h-3.5 w-3.5">
+      <path
+        className="fill-none stroke-ink"
+        strokeWidth="1.5"
+        d="M7 4.5l1.5-1.5a2.5 2.5 0 0 1 3.5 3.5l-2 2a2.5 2.5 0 0 1-3.5 0M9 11.5l-1.5 1.5a2.5 2.5 0 0 1-3.5-3.5l2-2a2.5 2.5 0 0 1 3.5 0"
+      />
+    </svg>
+  );
+}
+
+/** "파일 교체" */
+export function PaperclipIcon() {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4">
+      <path
+        className="fill-none stroke-ink"
+        strokeWidth="1.5"
+        d="M10.5 4.5l-5 5a1.5 1.5 0 0 0 2 2l5.5-5.5a3 3 0 0 0-4-4l-5.5 5.5a4.5 4.5 0 0 0 6.5 6.5l4.5-4.5"
+      />
+    </svg>
+  );
+}
+
+/** "평가기준 정리" · "수정해서 다시 정리" */
+export function RefreshIcon() {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4 stroke-current">
+      <path className="fill-none" strokeWidth="1.5" d="M13 7a5 5 0 0 0-9-2.5M3 9a5 5 0 0 0 9 2.5" />
+      <path className="fill-none" strokeWidth="1.5" d="M3.5 1.75v3h3M12.5 14.25v-3h-3" />
+    </svg>
+  );
+}
+
+/** 안내 상자의 느낌표 동그라미 */
+export function AlertIcon({ className = 'h-4 w-4 fill-stone' }: { className?: string }) {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className={className}>
+      <circle cx="8" cy="8" r="7" />
+      <path className="fill-white" d="M7.25 4h1.5v5h-1.5zM7.25 10.5h1.5v1.5h-1.5z" />
+    </svg>
+  );
+}
+
+/** "저장됨" · "확인됨" 의 체크 */
+export function CheckIcon({ className = 'h-3.5 w-3.5 stroke-current' }: { className?: string }) {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className={className}>
+      <path className="fill-none" strokeWidth="2" d="M3 8.5l3.25 3.25l6.75-7" />
+    </svg>
+  );
+}
+
+/** 뷰어 도구줄 — 폭에 맞추기 */
+export function FitWidthIcon() {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4">
+      <path
+        className="fill-none stroke-ink"
+        strokeWidth="1.5"
+        d="M2.75 2.75v10.5M13.25 2.75v10.5M5 8h6M6.5 6l-2 2l2 2M9.5 6l2 2l-2 2"
+      />
+    </svg>
+  );
+}
+
+/** 뷰어 도구줄 — 전체 화면 */
+export function FullscreenIcon() {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4">
+      <path
+        className="fill-none stroke-ink"
+        strokeWidth="1.5"
+        d="M2.75 6v-3.25h3.25M10 2.75h3.25v3.25M13.25 10v3.25h-3.25M6 13.25h-3.25v-3.25"
+      />
+    </svg>
+  );
+}
