@@ -110,13 +110,18 @@ COMPARISON_COLUMNS: Sequence[str] = (
 
 
 def config_for_feature_set(cfg: VisionConfig, feature_set: str) -> VisionConfig:
-    """A copy of ``cfg`` with only ``calibration.feature_set`` changed.
+    """A copy of ``cfg`` with ``calibration.feature_set`` changed.
 
     Deep-copied rather than mutated in place: the arms are scored in a loop and
     a shared config object would make every arm's recorded ``config_hash`` the
     hash of whichever set ran last (doc 18).
+
+    Feature sets only exist for the logistic classifier, so every arm runs
+    ``calibration.method: logistic`` -- under the shipped reference method the
+    feature set would be ignored and every arm would score the same model.
     """
     arm = copy.deepcopy(cfg)
+    arm.calibration.method = "logistic"
     arm.calibration.feature_set = normalise_feature_set(feature_set)
     return arm
 

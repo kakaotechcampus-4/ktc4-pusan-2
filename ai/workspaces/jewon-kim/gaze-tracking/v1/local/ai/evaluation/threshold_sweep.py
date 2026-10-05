@@ -115,6 +115,13 @@ def sweep(
 ) -> pd.DataFrame:
     """One row per grid point: the doc 7 metrics under that decision rule."""
     rows: List[Dict[str, Any]] = []
+    # The reference-anchor classifier stores SCREEN / OTHER probabilities too;
+    # the sweep must re-decide over all of them, as the classifier did.
+    multi_class = {
+        column: scored[column]
+        for column in ("p_screen", "p_other")
+        if column in scored.columns and scored[column].notna().any()
+    }
     for p_max_threshold in p_max_grid:
         for margin_threshold in margin_grid:
             predictions = apply_uncertain_rule(
@@ -123,6 +130,7 @@ def sweep(
                 scored["decision_face_valid"],
                 p_max_threshold,
                 margin_threshold,
+                **multi_class,
             )
             working = scored.assign(pred_label=predictions)
             scores = frame_metrics(working["label"], working["pred_label"])
