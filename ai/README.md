@@ -4,7 +4,7 @@
 
 담당은 두 명입니다: `jewon-kim`, `seojin-lee`.
 
-이 README는 폴더 구조와 모두가 지키는 규칙을 정리합니다. 자세한 배경은 Notion 문서 [피치코치 — AI 레포 구조 및 개발 규칙](https://app.notion.com/p/3f0c2c9a181681f495b1dd8900e7a24d)에 있지만, 일상적인 작업에는 이 문서만으로 충분합니다.
+이 README는 폴더 구조와 모두가 지키는 규칙을 정리합니다.
 
 ---
 
@@ -106,4 +106,3 @@ core가 처음부터 service 안에 있으므로, 실험이 끝난 뒤 배포용
 
 - [archive/README.md](archive/README.md) — 동결본 사용법과 목차
 - [research/README.md](research/README.md) — 연구 폴더 규칙과 기능별 구성
-- Notion: [피치코치 — AI 레포 구조 및 개발 규칙](https://app.notion.com/p/3f0c2c9a181681f495b1dd8900e7a24d)
