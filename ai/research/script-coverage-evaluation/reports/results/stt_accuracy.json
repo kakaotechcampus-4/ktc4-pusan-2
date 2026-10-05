@@ -1,0 +1,260 @@
+{
+  "feature_version": "1.0",
+  "model": "openai/gpt-5.6-luna",
+  "counts": {
+    "sentences": 765,
+    "key_points": 720,
+    "facts": 738,
+    "held_facts": 18
+  },
+  "sentence_accuracy": {
+    "규칙만": {
+      "정확도": 0.848,
+      "심각한 오판 비율": 0.02
+    },
+    "LLM 1차": {
+      "정확도": 0.97,
+      "심각한 오판 비율": 0.024
+    },
+    "최종": {
+      "정확도": 0.992,
+      "심각한 오판 비율": 0.004
+    }
+  },
+  "sentence_accuracy_by_scenario": {
+    "누락": 1.0,
+    "더듬기": 1.0,
+    "발음": 1.0,
+    "실수": 0.988,
+    "요약": 0.965,
+    "의역": 1.0,
+    "인식오류": 1.0,
+    "충실": 1.0,
+    "혼합": 0.976
+  },
+  "key_point_accuracy": {
+    "규칙만": {
+      "정확도": 0.846,
+      "심각한 오판 비율": 0.019
+    },
+    "LLM 1차": {
+      "정확도": 0.967,
+      "심각한 오판 비율": 0.026
+    },
+    "최종": {
+      "정확도": 0.992,
+      "심각한 오판 비율": 0.004
+    }
+  },
+  "key_point_accuracy_by_scenario": {
+    "누락": 1.0,
+    "더듬기": 1.0,
+    "발음": 1.0,
+    "실수": 0.988,
+    "요약": 0.963,
+    "의역": 1.0,
+    "인식오류": 1.0,
+    "충실": 1.0,
+    "혼합": 0.975
+  },
+  "fact_accuracy": 0.999,
+  "similar": {
+    "인식 오류를 보류한 비율": 1.0,
+    "보류한 것 중 실제 인식 오류": 0.897,
+    "보류한 것 중 실제 발표자 실수 (사용자 확인으로 가릴 것)": 0.103,
+    "규칙 추정 정확도": 0.897
+  },
+  "slide_coverage_error": {
+    "LLM 1차": 0.044,
+    "최종": 0.011
+  },
+  "conflict_check": {
+    "contradicted": {
+      "발동": 42,
+      "단독": 22,
+      "1차 오답": 17,
+      "단독 1차 오답": 0,
+      "바로잡음": 17,
+      "망침": 3
+    },
+    "low_confidence": {
+      "발동": 3,
+      "단독": 2,
+      "1차 오답": 2,
+      "단독 1차 오답": 1,
+      "바로잡음": 2,
+      "망침": 0
+    },
+    "judgment_incomplete": {
+      "발동": 0,
+      "단독": 0,
+      "1차 오답": 0,
+      "단독 1차 오답": 0,
+      "바로잡음": 0,
+      "망침": 0
+    },
+    "evidence_invalid": {
+      "발동": 7,
+      "단독": 7,
+      "1차 오답": 0,
+      "단독 1차 오답": 0,
+      "바로잡음": 0,
+      "망침": 0
+    },
+    "evidence_unrelated": {
+      "발동": 1,
+      "단독": 0,
+      "1차 오답": 0,
+      "단독 1차 오답": 0,
+      "바로잡음": 0,
+      "망침": 0
+    },
+    "fact_missing": {
+      "발동": 0,
+      "단독": 0,
+      "1차 오답": 0,
+      "단독 1차 오답": 0,
+      "바로잡음": 0,
+      "망침": 0
+    },
+    "sound_alike": {
+      "발동": 21,
+      "단독": 0,
+      "1차 오답": 18,
+      "단독 1차 오답": 0,
+      "바로잡음": 18,
+      "망침": 3
+    },
+    "speaker_changed": {
+      "발동": 1,
+      "단독": 1,
+      "1차 오답": 1,
+      "단독 1차 오답": 1,
+      "바로잡음": 1,
+      "망침": 0
+    },
+    "approximation": {
+      "발동": 0,
+      "단독": 0,
+      "1차 오답": 0,
+      "단독 1차 오답": 0,
+      "바로잡음": 0,
+      "망침": 0
+    },
+    "partial_complete": {
+      "발동": 0,
+      "단독": 0,
+      "1차 오답": 0,
+      "단독 1차 오답": 0,
+      "바로잡음": 0,
+      "망침": 0
+    },
+    "fact_present": {
+      "발동": 0,
+      "단독": 0,
+      "1차 오답": 0,
+      "단독 1차 오답": 0,
+      "바로잡음": 0,
+      "망침": 0
+    },
+    "lexical_present": {
+      "발동": 0,
+      "단독": 0,
+      "1차 오답": 0,
+      "단독 1차 오답": 0,
+      "바로잡음": 0,
+      "망침": 0
+    },
+    "lexical_absent": {
+      "발동": 1,
+      "단독": 0,
+      "1차 오답": 0,
+      "단독 1차 오답": 0,
+      "바로잡음": 0,
+      "망침": 0
+    }
+  },
+  "confirmation": {
+    "answers": {
+      "STT 대로 말함 (발표자가 다른 말을 함)": 3,
+      "대본대로 말함 (음성 인식이 잘못 적음)": 26
+    },
+    "accuracy": {
+      "처음 채점": {
+        "대본 문장 정확도": 0.992,
+        "Key Point 정확도": 0.992,
+        "Key Point 심각한 오판 비율": 0.004,
+        "사실 정확도 (보류 제외)": 0.999,
+        "보류한 사실": 18,
+        "슬라이드 내용 점수 평균 오차": 0.011
+      },
+      "사용자 확인 뒤": {
+        "대본 문장 정확도": 0.996,
+        "Key Point 정확도": 0.996,
+        "Key Point 심각한 오판 비율": 0.0,
+        "사실 정확도 (보류 제외)": 0.999,
+        "보류한 사실": 0,
+        "슬라이드 내용 점수 평균 오차": 0.002
+      }
+    },
+    "changed_sentences": 3,
+    "changed_take_scores": {
+      "가상대본1_take5": {
+        "content_coverage (처음)": 0.778,
+        "critical_fact_accuracy (처음)": 0.802,
+        "script_fidelity (처음)": 0.647,
+        "content_coverage (확인 뒤)": 0.74,
+        "critical_fact_accuracy (확인 뒤)": 0.787,
+        "script_fidelity (확인 뒤)": 0.645
+      },
+      "가상대본1_take6": {
+        "content_coverage (처음)": 0.905,
+        "critical_fact_accuracy (처음)": 0.947,
+        "script_fidelity (처음)": 0.903,
+        "content_coverage (확인 뒤)": 0.905,
+        "critical_fact_accuracy (확인 뒤)": 0.951,
+        "script_fidelity (확인 뒤)": 0.903
+      },
+      "가상대본1_take9": {
+        "content_coverage (처음)": 0.924,
+        "critical_fact_accuracy (처음)": 1.0,
+        "script_fidelity (처음)": 0.965,
+        "content_coverage (확인 뒤)": 0.924,
+        "critical_fact_accuracy (확인 뒤)": 1.0,
+        "script_fidelity (확인 뒤)": 0.965
+      },
+      "가상대본2_take4": {
+        "content_coverage (처음)": 0.81,
+        "critical_fact_accuracy (처음)": 0.921,
+        "script_fidelity (처음)": 0.916,
+        "content_coverage (확인 뒤)": 0.753,
+        "critical_fact_accuracy (확인 뒤)": 0.879,
+        "script_fidelity (확인 뒤)": 0.914
+      },
+      "가상대본2_take5": {
+        "content_coverage (처음)": 0.797,
+        "critical_fact_accuracy (처음)": 0.841,
+        "script_fidelity (처음)": 0.588,
+        "content_coverage (확인 뒤)": 0.747,
+        "critical_fact_accuracy (확인 뒤)": 0.803,
+        "script_fidelity (확인 뒤)": 0.587
+      },
+      "가상대본2_take6": {
+        "content_coverage (처음)": 0.943,
+        "critical_fact_accuracy (처음)": 0.946,
+        "script_fidelity (처음)": 0.918,
+        "content_coverage (확인 뒤)": 0.943,
+        "critical_fact_accuracy (확인 뒤)": 0.955,
+        "script_fidelity (확인 뒤)": 0.918
+      },
+      "가상대본2_take9": {
+        "content_coverage (처음)": 0.943,
+        "critical_fact_accuracy (처음)": 0.952,
+        "script_fidelity (처음)": 0.958,
+        "content_coverage (확인 뒤)": 0.943,
+        "critical_fact_accuracy (확인 뒤)": 0.955,
+        "script_fidelity (확인 뒤)": 0.958
+      }
+    }
+  }
+}

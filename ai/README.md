@@ -25,7 +25,7 @@ ai/
 | `research/` | 기능별 비교 실험 · 평가 · 보고용 노트북. service를 import해서 평가한다 ([research/README.md](research/README.md)) |
 | `archive/` | 개편 전 `workspaces/`. 수정 · import 금지 ([archive/README.md](archive/README.md)) |
 
-**지금은 `service/`와 `research/`가 비어 있습니다.** `service/`에는 `.gitkeep`만 있고, 기능을 `archive/`에서 하나씩 옮길 때마다 채워집니다. 아래 경로에 나오는 `features/<x>/`는 `service/src/pitch_coach_ai/features/<x>/`를 줄여 쓴 것입니다.
+**지금 `research/`에는 script-coverage-evaluation 이 옮겨져 있고, `service/`는 아직 비어 있습니다.** `service/`에는 `.gitkeep`만 있고, 기능을 `archive/`에서 하나씩 옮길 때마다 채워집니다. 아래 경로에 나오는 `features/<x>/`는 `service/src/pitch_coach_ai/features/<x>/`를 줄여 쓴 것입니다.
 
 ---
 
@@ -80,13 +80,13 @@ core가 처음부터 service 안에 있으므로, 실험이 끝난 뒤 배포용
 
 ## 이전 현황
 
-`archive/workspaces/` 안의 경로 기준입니다.
+현재 위치는 이전하기 전이면 `archive/workspaces/` 안의 경로, 이전한 뒤면 `ai/` 기준 경로입니다.
 
 | 기능 | 담당 | 현재 위치 | 이전 목적지 | 상태 |
 |---|---|---|---|---|
 | gaze-tracking (시선: 카메라 · 화면 · 대본 · 기타 판정, v1.1 head-pose 엔진) | jewon-kim | `jewon-kim/gaze-tracking/` | 브라우저 엔진(TS)은 `frontend/` (FE와 협의 필요), 1초 기록 요약은 `features/gaze/`, 나머지는 `research/gaze-tracking/` | 이전 전 |
 | coach-agent (규칙 기반 실시간 코치) | jewon-kim | `jewon-kim/coach-agent/` | `features/coach/` + `research/coach-agent/` | 이전 전 |
-| script-coverage-evaluation (대본 기준 생성 · STT 전달도 채점) | jewon-kim | `jewon-kim/script-coverage-evaluation/` | `features/script_coverage/` + `research/script-coverage-evaluation/` | 이전 전 |
+| script-coverage-evaluation (대본 기준 생성 · STT 전달도 채점) | jewon-kim | `research/script-coverage-evaluation/` | `features/script_coverage/` + `research/script-coverage-evaluation/` | research 로 이전. 코어(`src/script_coverage/`)는 service 로 옮기기 전 |
 | script-parser (대본 슬라이드 분할 · 키워드 추출) | seojin-lee | `seojin-lee/script-parser/` | `features/script_parser/` + research | 이전 전 |
 | evaluation-criteria (자유 서술 기준 판정 가능성 분류) | seojin-lee | `seojin-lee/evaluation-criteria/` | `features/evaluation_criteria/` + research | 이전 전 |
 | stt-live (STT 단어 타임스탬프로 말 속도 CPM → 느림 · 보통 · 빠름) | seojin-lee | `seojin-lee/stt-live/` | `features/pace/` + research | 이전 전 |
