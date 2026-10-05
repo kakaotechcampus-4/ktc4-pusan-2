@@ -1,7 +1,28 @@
 """Geometric gaze from MediaPipe iris landmarks + eyeLook* blendshapes (doc 3-2).
 
-This is the default backbone: no download, no torch, and it is what the user
-runs on their own webcam before any checkpoint exists.
+Parked (``vision.eye``): no download, no torch, and it used to be the default.
+The default is now ``head_pose``; this backbone stays selectable
+(``backbone.name: mediapipe_geom``) for comparison experiments.
+
+Measured limits (laptop webcam, 1280x720, one presenter, head held still while
+the eyes moved lens -> screen centre -> screen bottom -> left -> right, then the
+eyes held on the lens while the head nodded and turned):
+
+* **Vertical eye movement is nearly invisible.**  The iris landmark moved
+  ~0.1 iris radii between the lens and the screen bottom, where the geometry
+  predicts 0.7-1.0, and the ``eyeLookDown`` scores separated those looks by
+  only ~2 noise units; so did a pixel dark-blob iris centroid and the upper-lid
+  position.  With the eyes held on the lens while nodding, the iris landmark
+  moved *with* the head instead of counter-rotating.
+* **Horizontal eye movement is visible** (``eyeLookIn/Out`` correlated -0.91
+  with the counter-rotation while turning).
+* **MediaPipe's iris depth is not usable for the head de-rotation.**  The
+  iris-minus-canthus z measured ~3 iris radii live (1.0-1.5 on the still
+  fixture) and tracked head pitch (r = 0.94), so ``_iris_eye_angles`` moved the
+  eye angle about 2 deg the *wrong* way per degree of head pitch and the final
+  gaze cancelled the head movement.  Replacing that z with a constant ~1 iris
+  radius made the horizontal estimate head-invariant on the same data; this
+  module has not been changed to do so.
 
 Geometry
 --------

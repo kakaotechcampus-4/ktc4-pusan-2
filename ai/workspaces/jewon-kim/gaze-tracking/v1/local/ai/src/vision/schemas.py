@@ -52,11 +52,18 @@ import numpy as np
 
 
 class GazeLabel(str, Enum):
-    """Ground-truth frame/segment label (doc 4-2)."""
+    """Ground-truth frame/segment label (doc 4-2), and the calibration cue vocabulary.
+
+    ``SCREEN`` (look at the centre of the screen) is a calibration cue: the
+    reference-anchor classifier needs it to size the screen region and to read
+    the camera placement off the same frames.  The recorded datasets and the
+    release-gate metrics still only carry CAMERA / BOTTOM ground truth.
+    """
 
     CAMERA = "CAMERA"
     BOTTOM = "BOTTOM"
     IGNORE = "IGNORE"
+    SCREEN = "SCREEN"
 
     @classmethod
     def coerce(cls, value):
@@ -73,11 +80,19 @@ class GazeLabel(str, Enum):
 
 
 class GazeState(str, Enum):
-    """Predicted state emitted by the runtime (doc 5-4 / 6-2)."""
+    """Predicted state emitted by the runtime (doc 5-4 / 6-2).
+
+    ``SCREEN`` is the rest of the screen (slides, the middle of the display),
+    ``OTHER`` is a confident "looking at none of the calibrated targets" --
+    away from the screen, or the head turned far off the calibration pose.
+    Neither is an abstention: ``UNCERTAIN`` alone means "could not tell".
+    """
 
     CAMERA = "CAMERA"
     BOTTOM = "BOTTOM"
     UNCERTAIN = "UNCERTAIN"
+    SCREEN = "SCREEN"
+    OTHER = "OTHER"
 
     @classmethod
     def coerce(cls, value):
@@ -89,8 +104,46 @@ class GazeState(str, Enum):
         return cls(str(getattr(value, "value", value)).strip().upper())
 
 
-#: Classes the per-user classifier is actually trained on, in fixed order.
+#: Ground-truth classes the release gate scores (doc 7), in fixed order.  Also
+#: the class set of the logistic classifier and of a two-class smoother.  The
+#: recorded datasets only carry these two labels, so the evaluation truth
+#: vocabulary stays at two even though the runtime can decide more.
 DECISION_CLASSES: Tuple[str, str] = (GazeLabel.CAMERA.value, GazeLabel.BOTTOM.value)
+
+#: Every state the reference-anchor classifier can decide, in tie-break order:
+#: when two classes score exactly the same, the earlier one wins (so CAMERA
+#: still beats BOTTOM on a dead heat, as it always has).
+STATE_CLASSES: Tuple[str, ...] = (
+    GazeState.CAMERA.value,
+    GazeState.SCREEN.value,
+    GazeState.BOTTOM.value,
+    GazeState.OTHER.value,
+)
+
+#: Decided states that are neither CAMERA nor BOTTOM.  Against CAMERA/BOTTOM
+#: ground truth they are confident misses, not abstentions.
+OFF_TARGET_STATES: Tuple[str, ...] = (GazeState.SCREEN.value, GazeState.OTHER.value)
+
+#: The three calibration cues, in the order the runtime asks for them.
+CALIBRATION_CUES: Tuple[str, ...] = (
+    GazeLabel.CAMERA.value,
+    GazeLabel.SCREEN.value,
+    GazeLabel.BOTTOM.value,
+)
+
+#: Where an OTHER look went, from the PRESENTER's point of view (their own left
+#: and right, not the image's), in 45-degree sectors counter-clockwise from
+#: their right.  The order is also the tie-break order when slices are merged.
+GAZE_DIRECTIONS: Tuple[str, ...] = (
+    "RIGHT",
+    "UP_RIGHT",
+    "UP",
+    "UP_LEFT",
+    "LEFT",
+    "DOWN_LEFT",
+    "DOWN",
+    "DOWN_RIGHT",
+)
 
 
 class InvalidReason(str, Enum):
@@ -113,8 +166,10 @@ class CalibrationStatus(str, Enum):
 class CalibrationFailReason(str, Enum):
     """Why doc 5-2 asked for a calibration retry.
 
-    Only the first five are ever assigned to ``CalibrationQuality.reason`` --
-    those are the members ``calibration.quality._fail`` can emit.
+    Every member except :attr:`INVERTED_PITCH` can be assigned to
+    ``CalibrationQuality.reason``.  ``ANCHOR_AMBIGUOUS`` is only produced by
+    the reference-anchor classifier (``calibration.references``); the logistic
+    path (``calibration.quality._fail``) emits the first five.
     """
 
     NOT_ENOUGH_SAMPLES = "NOT_ENOUGH_SAMPLES"
@@ -122,6 +177,10 @@ class CalibrationFailReason(str, Enum):
     LOW_LOO_ACCURACY = "LOW_LOO_ACCURACY"
     CENTROIDS_TOO_CLOSE = "CENTROIDS_TOO_CLOSE"
     DEGENERATE_FEATURES = "DEGENERATE_FEATURES"
+    #: A calibration anchor does not even classify as itself: its region is
+    #: so diluted (a very large screen box, a script box nested too loosely)
+    #: that the decision rule could never pick that class.
+    ANCHOR_AMBIGUOUS = "ANCHOR_AMBIGUOUS"
     #: ADVISORY ONLY -- never assigned to ``CalibrationQuality.reason``.  An
     #: inverted pitch ordering is a warning, not a failure (see the module
     #: docstring), so ``calibration.quality`` puts the literal string
@@ -208,6 +267,32 @@ class FrameQuality:
 
 
 @dataclass
+class FaceScene:
+    """What the frame looks like around the main face (runtime only).
+
+    Kept apart from :class:`FrameQuality` on purpose: ``FrameQuality`` is
+    flattened into the frozen feature-table schema (doc 20), and these signals
+    exist for the precondition check and the live condition monitor, not for
+    the recorded dataset.
+    """
+
+    #: Faces MediaPipe found in this frame (0 when none).
+    n_faces: int = 0
+    #: Largest *other* face's bbox area over the main face's (0 when alone).
+    #: A person leaning in beside the presenter reads close to 1.
+    second_face_area_ratio: float = 0.0
+    #: Mean iris diameter of the main face in source-frame pixels (0 unknown).
+    #: The direct precision proxy: an eye rotation of ~9 deg moves the iris by
+    #: only ~16% of its diameter, so fewer iris pixels means coarser gaze.
+    iris_diameter_px: float = 0.0
+    #: Pixel bbox of every detected face, the main face first.
+    face_bboxes: List[Tuple[int, int, int, int]] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class FrameObservation:
     """Everything preprocess produces for one analysed frame (doc 3-1).
 
@@ -238,6 +323,8 @@ class FrameObservation:
     invalid_reason: Optional[str] = None
     #: Wall-clock cost of preprocessing this frame.
     preprocess_ms: float = 0.0
+    #: Multi-face and framing signals (runtime only; not part of ``to_record``).
+    scene: Optional[FaceScene] = None
 
     def to_record(self) -> Dict[str, Any]:
         """Serialisable view without pixels (for manifests and caches)."""
@@ -364,7 +451,7 @@ def unit_vector_to_angles(vec: Sequence[float]) -> Tuple[float, float]:
 class CalibrationSample:
     """One usable calibration frame (doc 5-1)."""
 
-    label: str  # CAMERA | BOTTOM
+    label: str  # CAMERA | SCREEN | BOTTOM
     gaze: GazeVector
     head_pose: HeadPose
     t_ms: int = 0
@@ -402,6 +489,25 @@ class CalibrationQuality:
     reason: Optional[str] = None
     #: Human-readable hint shown on the retry screen.
     hint: Optional[str] = None
+    #: Usable SCREEN (screen-centre) samples; 0 for a two-cue calibration.
+    n_screen: int = 0
+    #: Which classifier produced this report: "logistic" or "reference".
+    method: str = "logistic"
+    #: Reference method: median gaze per cue, ``{cue: [yaw_deg, pitch_deg]}``.
+    anchors_deg: Dict[str, List[float]] = field(default_factory=dict)
+    #: Reference method: pooled robust noise ``[yaw_sigma_deg, pitch_sigma_deg]``.
+    sigma_deg: List[float] = field(default_factory=list)
+    #: Reference method: anchor distance in noise units per pair, e.g.
+    #: ``{"CAMERA-BOTTOM": 9.1}``.
+    pair_separation: Dict[str, float] = field(default_factory=dict)
+    #: Reference method: radius (deg) within which a gaze still reads as CAMERA
+    #: over the screen interior -- the effective "eye contact" zone.
+    camera_capture_radius_deg: float = 0.0
+    #: Camera placement read off the CAMERA/SCREEN anchors (``to_dict`` of a
+    #: ``PlacementCheckResult``), when a SCREEN cue was collected.
+    placement: Optional[Dict[str, Any]] = None
+    #: Advisory notes that did not fail the calibration.
+    warnings: List[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -419,7 +525,7 @@ class GazeDecision:
 
     t_ms: int
     frame_id: int
-    label: str  # CAMERA | BOTTOM | UNCERTAIN
+    label: str  # CAMERA | SCREEN | BOTTOM | OTHER | UNCERTAIN
     p_camera: float
     p_bottom: float
     face_valid: bool
@@ -427,14 +533,47 @@ class GazeDecision:
     gaze: Optional[GazeVector] = None
     #: End-to-end cost for this frame (preprocess + backbone + classifier).
     latency_ms: float = 0.0
+    #: Posterior over every class the classifier decides between, keyed by
+    #: ``GazeState`` value (``None`` for the two-class logistic classifier,
+    #: whose ``p_camera``/``p_bottom`` already are the whole distribution).
+    #: ``p_camera``/``p_bottom`` always mirror the matching entries.
+    probs: Optional[Dict[str, float]] = None
+    #: For an OTHER decision: which way outside the calibrated screen area the
+    #: gaze went (one of ``GAZE_DIRECTIONS``, presenter-centric); ``None``
+    #: otherwise, or when an OTHER look stayed inside that area.
+    direction: Optional[str] = None
+    #: ``(right_deg, up_deg)`` the gaze lies outside the calibrated screen area,
+    #: presenter-centric (``(0, 0)`` inside it).  Reference classifier only.
+    offset_deg: Optional[Tuple[float, float]] = None
+    #: ``(right_deg, up_deg)`` of the gaze from the screen-centre look,
+    #: presenter-centric, inside the screen area too.  Reference classifier only.
+    aim_deg: Optional[Tuple[float, float]] = None
+
+    def class_probs(self) -> Dict[str, float]:
+        """The full class distribution, whichever classifier produced it."""
+        if self.probs is not None:
+            return dict(self.probs)
+        return {GazeState.CAMERA.value: self.p_camera, GazeState.BOTTOM.value: self.p_bottom}
+
+    def _ranked(self) -> List[float]:
+        return sorted((float(v) for v in (self.probs or {}).values()), reverse=True)
 
     @property
     def p_max(self) -> float:
-        return max(self.p_camera, self.p_bottom)
+        if self.probs is None:
+            return max(self.p_camera, self.p_bottom)
+        ranked = self._ranked()
+        return ranked[0] if ranked else 0.0
 
     @property
     def margin(self) -> float:
-        return abs(self.p_camera - self.p_bottom)
+        """Top-1 minus top-2 probability (``|p_camera - p_bottom|`` for two classes)."""
+        if self.probs is None:
+            return abs(self.p_camera - self.p_bottom)
+        ranked = self._ranked()
+        if len(ranked) < 2:
+            return ranked[0] if ranked else 0.0
+        return ranked[0] - ranked[1]
 
     def to_dict(self) -> Dict[str, Any]:
         out = {
@@ -447,6 +586,14 @@ class GazeDecision:
             "uncertain_reason": self.uncertain_reason,
             "latency_ms": self.latency_ms,
         }
+        if self.probs is not None:
+            out["probs"] = {k: float(v) for k, v in self.probs.items()}
+        if self.direction is not None:
+            out["direction"] = self.direction
+        if self.offset_deg is not None:
+            out["offset_deg"] = [round(float(v), 4) for v in self.offset_deg]
+        if self.aim_deg is not None:
+            out["aim_deg"] = [round(float(v), 4) for v in self.aim_deg]
         if self.gaze is not None:
             out["gaze"] = self.gaze.to_dict()
         return out
@@ -469,13 +616,16 @@ class GazeStateEvent:
     confidence: float
     continuous_duration_ms: int
     face_valid: bool
-    model_version: str = "gaze_v1.0.0"
+    model_version: str = "gaze_v1.1.0"
     type: str = "GAZE_STATE"
     #: True only on the frame where the state actually flipped.
     is_transition: bool = False
     #: Smoothed probabilities behind the decision (debug only, not the contract).
     smoothed_p_camera: float = 0.0
     smoothed_p_bottom: float = 0.0
+    #: Every smoothed class score when the smoother tracks more than two
+    #: classes (debug only); ``None`` keeps a two-class debug dump unchanged.
+    smoothed_probs: Optional[Dict[str, float]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -497,6 +647,43 @@ class GazeStateEvent:
                 "smoothed_p_bottom": round(float(self.smoothed_p_bottom), 4),
             }
         )
+        if self.smoothed_probs is not None:
+            out["smoothed_probs"] = {k: round(float(v), 4) for k, v in self.smoothed_probs.items()}
+        return out
+
+
+@dataclass
+class SessionConditionEvent:
+    """How trustworthy the live measurement currently is (runtime only).
+
+    A separate event, not extra keys on ``GAZE_STATE``: the 7-key gaze contract
+    stays exactly as it is, and a consumer that only wants gaze states ignores
+    this type.  ``reliability`` is in ``[0, 1]`` and is the *minimum* over the
+    monitored signals, so ``issues`` always names what pulled it down.
+    """
+
+    t_ms: int
+    reliability: float
+    issues: List[str] = field(default_factory=list)
+    type: str = "SESSION_CONDITION"
+    #: True when the measurement is not usable at all (the main face was lost
+    #: or replaced); gaze decisions are forced to UNCERTAIN meanwhile.
+    severe: bool = False
+    #: Per-signal reliability behind the minimum (debug only).
+    components: Dict[str, float] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "type": self.type,
+            "t_ms": int(self.t_ms),
+            "reliability": round(float(self.reliability), 4),
+            "issues": list(self.issues),
+        }
+
+    def to_debug_dict(self) -> Dict[str, Any]:
+        out = self.to_dict()
+        out["severe"] = bool(self.severe)
+        out["components"] = {k: round(float(v), 4) for k, v in self.components.items()}
         return out
 
 
@@ -582,8 +769,8 @@ class AiVersion:
 
     face_landmarker: str = "mediapipe_face_landmarker_v2"
     gaze_backbone: str = "unset"
-    gaze_classifier: str = "per_user_lr_v1"
-    temporal_rule: str = "gaze_temporal_v1.0"
+    gaze_classifier: str = "reference_anchor_v1"
+    temporal_rule: str = "gaze_temporal_v1.1"
     feature_set: str = "C"
     config_hash: str = ""
     code_commit: str = "unknown"

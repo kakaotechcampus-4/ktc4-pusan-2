@@ -206,6 +206,11 @@ def calibration_frames(df: pd.DataFrame, participant_id: str, cfg: Any = None) -
       first ``bottom_seconds`` of the earliest BOTTOM run at or after it (doc
       4-1 opens with the two static blocks, but the order is not assumed).
 
+    A recording that also has a SCREEN cue (look at the screen centre) gets the
+    first ``screen_seconds`` of its earliest SCREEN run at or after the CAMERA
+    window too, so the offline model is fitted on the same three cues as the
+    runtime's three-cue calibration.  Without one, nothing changes.
+
     ``IGNORE`` frames can never be selected -- they carry no ground truth.
     Invalid frames are kept: dropping them here would hide a participant whose
     calibration failed for a preprocessing reason, and doc 5-2 wants to see that
@@ -226,8 +231,10 @@ def calibration_frames(df: pd.DataFrame, participant_id: str, cfg: Any = None) -
     camera = _first_run_window(session, GazeLabel.CAMERA.value, calib.camera_seconds, None)
     camera_end = int(camera["t_ms"].iloc[-1]) if not camera.empty else None
     bottom = _first_run_window(session, GazeLabel.BOTTOM.value, calib.bottom_seconds, camera_end)
+    screen = _first_run_window(session, GazeLabel.SCREEN.value, calib.screen_seconds, camera_end)
 
-    selected = pd.concat([camera, bottom]) if not (camera.empty and bottom.empty) else session.iloc[0:0]
+    parts = [part for part in (camera, screen, bottom) if not part.empty]
+    selected = pd.concat(parts) if parts else session.iloc[0:0]
     sort_keys = ["t_ms", "frame_id"] if "frame_id" in selected.columns else ["t_ms"]
     return selected.sort_values(sort_keys, kind="stable").copy()
 

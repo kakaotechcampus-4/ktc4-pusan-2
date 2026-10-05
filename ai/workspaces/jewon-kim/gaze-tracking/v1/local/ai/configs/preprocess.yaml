@@ -9,6 +9,13 @@ min_face_area_ratio: 0.010
 min_eye_openness: 0.12
 border_tolerance_px: 2
 align_face_roll: true
-num_faces: 1
+num_faces: 3
 landmarker_model_path: ai/models/face_landmarker.task
 running_mode: IMAGE
+# Adaptive blink gate (post-calibration): blink when EAR < blink_ratio x the
+# user's open-eye reference (min of the recent median and the BOTTOM-cue
+# median), never below min_eye_openness.
+adaptive_blink: true
+blink_ratio: 0.70
+blink_window_frames: 24
+blink_min_reference_frames: 8

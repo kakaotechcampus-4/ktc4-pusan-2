@@ -1,4 +1,4 @@
-"""Camera placement check -- run once, before the 2-point calibration.
+"""Camera placement check: is the webcam at the top centre of the screen?
 
 The whole CAMERA / BOTTOM formulation in the design document assumes a laptop
 webcam sitting *above* the screen, with the script somewhere below it.  When
@@ -161,8 +161,7 @@ _INCONCLUSIVE_HINTS: Dict[str, str] = {
     ),
     PlacementReason.TARGETS_NOT_SEPARATED.value: (
         "The two cues looked the same to the model. Look right into the lens for the "
-        "first cue, then at the middle of the screen for the second - move your eyes, "
-        "not just your head."
+        "first cue, then clearly at the middle of the screen for the second."
     ),
     PlacementReason.DISPLACEMENT_TOO_SMALL.value: (
         "Camera and screen centre are almost the same direction. Either the camera sits "
@@ -322,54 +321,12 @@ class CameraPlacementCheck:
         delta_pitch_deg: float,
         delta_yaw_deg: float,
     ) -> PlacementCheckResult:
-        """Turn "which axis" plus the centroid displacement into the verdict.
-
-        The sign convention lives here and nowhere else.  The two modes differ
-        only in how they *choose* the axis -- the learned one off the boundary
-        normal, the geometric one off raw degrees -- so spelling the signs out
-        in each of them was two chances to invert one and no test that compares
-        the two against each other.
-
-        ``delta_*_deg`` are the UNROUNDED degrees on purpose: ``base`` carries
-        them rounded to 2 dp for the report, and thresholding on the rounded
-        value would let a 3.996 deg displacement clear a 4.0 deg floor.
-        """
-        base["axis"] = "vertical" if vertical else "horizontal"
-        axis_delta_deg = delta_pitch_deg if vertical else delta_yaw_deg
-
-        # Separable is not enough: the movement still has to be screen-sized.
-        # A perfectly still sitter can be separable at half a degree, which is
-        # not evidence about where the lens is.
-        if abs(axis_delta_deg) < self.cfg.min_delta_deg:
-            return self._fail(PlacementReason.DISPLACEMENT_TOO_SMALL, **base)
-
-        if vertical:
-            # schemas.py: pitch > 0 is UP, so screen centre *below* the lens (a
-            # negative delta) is the expected top-mounted laptop camera.
-            placement = CameraPlacement.TOP if axis_delta_deg < 0 else CameraPlacement.BOTTOM
-        else:
-            # Raw frame: presenter's right appears on the image left (module docstring).
-            placement = (
-                CameraPlacement.SIDE_RIGHT if axis_delta_deg > 0 else CameraPlacement.SIDE_LEFT
-            )
-
-        return PlacementCheckResult(
-            placement=placement.value,
-            supported=placement is CameraPlacement.TOP,
-            reason=PlacementReason.OK.value,
-            hint=_HINTS[placement.value],
-            **base,
-        )
+        """Turn "which axis" plus the centroid displacement into the verdict."""
+        return _verdict_from_deltas(self.cfg, base, vertical, delta_pitch_deg, delta_yaw_deg)
 
     @staticmethod
     def _fail(reason: PlacementReason, **base: Any) -> PlacementCheckResult:
-        return PlacementCheckResult(
-            placement=CameraPlacement.INCONCLUSIVE.value,
-            supported=False,
-            reason=reason.value,
-            hint=_INCONCLUSIVE_HINTS[reason.value],
-            **base,
-        )
+        return _fail_result(reason, **base)
 
     def _inconclusive(
         self, cam: np.ndarray, scr: np.ndarray, reason: PlacementReason
@@ -382,6 +339,118 @@ class CameraPlacementCheck:
         """
         base, _pitch_deg, _yaw_deg = _geometry(cam, scr, str(self.cfg.mode).lower())
         return self._fail(reason, **base)
+
+
+def _fail_result(reason: PlacementReason, **base: Any) -> PlacementCheckResult:
+    return PlacementCheckResult(
+        placement=CameraPlacement.INCONCLUSIVE.value,
+        supported=False,
+        reason=reason.value,
+        hint=_INCONCLUSIVE_HINTS[reason.value],
+        **base,
+    )
+
+
+def _verdict_from_deltas(
+    cfg: PlacementConfig,
+    base: Dict[str, Any],
+    vertical: bool,
+    delta_pitch_deg: float,
+    delta_yaw_deg: float,
+) -> PlacementCheckResult:
+    """Turn "which axis" plus the centroid displacement into the verdict.
+
+    The sign convention lives here and nowhere else.  The modes differ only in
+    how they *choose* the axis -- the learned one off the boundary normal, the
+    geometric one off raw degrees, the anchor one off the calibration medians
+    -- so spelling the signs out in each of them was several chances to invert
+    one and no test that compares them against each other.
+
+    ``delta_*_deg`` are the UNROUNDED degrees on purpose: ``base`` carries
+    them rounded to 2 dp for the report, and thresholding on the rounded
+    value would let a 3.996 deg displacement clear a 4.0 deg floor.
+    """
+    base["axis"] = "vertical" if vertical else "horizontal"
+    axis_delta_deg = delta_pitch_deg if vertical else delta_yaw_deg
+
+    # Separable is not enough: the movement still has to be screen-sized.
+    # A perfectly still sitter can be separable at half a degree, which is
+    # not evidence about where the lens is.
+    if abs(axis_delta_deg) < cfg.min_delta_deg:
+        return _fail_result(PlacementReason.DISPLACEMENT_TOO_SMALL, **base)
+
+    if vertical:
+        # schemas.py: pitch > 0 is UP, so screen centre *below* the lens (a
+        # negative delta) is the expected top-mounted laptop camera.
+        placement = CameraPlacement.TOP if axis_delta_deg < 0 else CameraPlacement.BOTTOM
+    else:
+        # Raw frame: presenter's right appears on the image left (module docstring).
+        placement = (
+            CameraPlacement.SIDE_RIGHT if axis_delta_deg > 0 else CameraPlacement.SIDE_LEFT
+        )
+
+    return PlacementCheckResult(
+        placement=placement.value,
+        supported=placement is CameraPlacement.TOP,
+        reason=PlacementReason.OK.value,
+        hint=_HINTS[placement.value],
+        **base,
+    )
+
+
+def placement_from_anchors(
+    camera_deg: Tuple[float, float],
+    screen_deg: Tuple[float, float],
+    n_camera: int,
+    n_screen: int,
+    sigma_deg: Tuple[float, float],
+    cfg: PlacementConfig,
+) -> PlacementCheckResult:
+    """Camera placement read off the calibration's CAMERA and SCREEN anchors.
+
+    No separate placement stage: the three-cue calibration already asks for
+    the lens and the screen centre, and their medians are the two points this
+    check needs.  Unlike the stand-alone check it reports *both* components and
+    requires the vertical one to dominate by ``anchor_min_axis_dominance`` for
+    a TOP verdict -- so TOP here means "above and near the centre", and a lens
+    in a top corner comes out AMBIGUOUS_AXIS instead of passing as TOP.
+
+    Order: NOT_ENOUGH_SAMPLES -> TARGETS_NOT_SEPARATED (the two medians within
+    ``min_separation`` noise units) -> AMBIGUOUS_AXIS -> DISPLACEMENT_TOO_SMALL
+    -> the verdict.  Same sign convention as the other modes (raw frame).
+    """
+    cam = np.asarray(camera_deg, dtype=np.float64)
+    scr = np.asarray(screen_deg, dtype=np.float64)
+    delta = scr - cam
+    delta_yaw_deg, delta_pitch_deg = float(delta[_YAW]), float(delta[_PITCH])
+    base: Dict[str, Any] = dict(
+        delta_pitch_deg=round(delta_pitch_deg, 2),
+        delta_yaw_deg=round(delta_yaw_deg, 2),
+        n_camera=int(n_camera),
+        n_screen=int(n_screen),
+        mode="anchors",
+        offset_deg=round(float(np.hypot(delta_yaw_deg, delta_pitch_deg)), 2),
+        camera_centroid_deg=[round(float(v), 2) for v in cam],
+        screen_centroid_deg=[round(float(v), 2) for v in scr],
+    )
+    if min(int(n_camera), int(n_screen)) < int(cfg.min_samples_per_target):
+        return _fail_result(PlacementReason.NOT_ENOUGH_SAMPLES, **base)
+
+    s_yaw = max(float(sigma_deg[0]), 1e-6)
+    s_pitch = max(float(sigma_deg[1]), 1e-6)
+    separation = float(np.hypot(delta_yaw_deg / s_yaw, delta_pitch_deg / s_pitch))
+    base["separation"] = round(separation, 3)
+    if separation < float(cfg.min_separation):
+        return _fail_result(PlacementReason.TARGETS_NOT_SEPARATED, **base)
+
+    vertical = abs(delta_pitch_deg) >= abs(delta_yaw_deg)
+    big, small = (abs(delta_pitch_deg), abs(delta_yaw_deg)) if vertical else (abs(delta_yaw_deg), abs(delta_pitch_deg))
+    dominance = big / small if small > 1e-9 else float("inf")
+    base["axis_dominance"] = round(min(dominance, 999.0), 3)
+    base["axis"] = "vertical" if vertical else "horizontal"
+    if dominance < float(cfg.anchor_min_axis_dominance):
+        return _fail_result(PlacementReason.AMBIGUOUS_AXIS, **base)
+    return _verdict_from_deltas(cfg, base, vertical, delta_pitch_deg, delta_yaw_deg)
 
 
 def _geometry(

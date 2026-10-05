@@ -1037,6 +1037,26 @@ def test_the_calibration_window_length_follows_the_calibration_config():
     assert set(short["sample_id"]) < set(default["sample_id"])
 
 
+def test_a_screen_cue_in_the_calibration_block_is_selected_too():
+    """Offline calibration mirrors the runtime's three head-fixed cues."""
+    df = _table([("P01", "S1", [
+        ("calib_camera", "CAMERA", 6), ("calib_screen", "SCREEN", 6), ("calib_bottom", "BOTTOM", 6),
+        ("speaking", "CAMERA", 10),
+    ])])
+
+    chosen = sp.calibration_frames(df, "P01")
+
+    assert chosen["label"].value_counts().to_dict() == {"CAMERA": 4, "SCREEN": 4, "BOTTOM": 4}
+    # The evaluation boundary covers the whole calibration block, SCREEN included.
+    _session, boundary = sp.calibration_boundary_ms(df, "P01")
+    assert boundary == int(df[df["condition"] == "calib_bottom"]["t_ms"].max())
+
+
+def test_a_recording_without_a_screen_cue_selects_exactly_as_before():
+    df = _table([("P01", "S1", [("static_camera", "CAMERA", 10), ("static_bottom", "BOTTOM", 10)])])
+    assert set(sp.calibration_frames(df, "P01")["label"]) == {"CAMERA", "BOTTOM"}
+
+
 @pytest.mark.parametrize(
     "cfg",
     [None, CalibrationConfig(), VisionConfig(), SimpleNamespace(calibration=CalibrationConfig())],

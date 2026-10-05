@@ -9,16 +9,19 @@ calibration hints need in order to explain the failure to the user.
 from __future__ import annotations
 
 import time
-from typing import Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
 
 from ..config import VisionConfig
-from ..schemas import FrameObservation, FrameQuality, HeadPose, InvalidReason
-from .crops import crop_eyes, crop_face, frame_quality, to_pixels
+from ..schemas import FaceScene, FrameObservation, FrameQuality, HeadPose, InvalidReason
+from .crops import crop_eyes, crop_face, face_bbox_from_landmarks, frame_quality, iris_diameter_px, to_pixels
 from .headpose import head_pose_from_landmarks, head_pose_from_matrix
 from .landmarker import FaceLandmarkerWrapper, LandmarkResult, _validate_frame
+
+#: A normalised (x, y) point in the frame -- where the main face was last seen.
+FaceHint = Tuple[float, float]
 
 
 class PreprocessPipeline:
@@ -29,19 +32,37 @@ class PreprocessPipeline:
         self.pre = cfg.preprocess
         self.landmarker = FaceLandmarkerWrapper(cfg.preprocess)
 
-    def process_bgr(self, bgr: np.ndarray, frame_id: int, t_ms: int) -> FrameObservation:
+    def process_bgr(
+        self,
+        bgr: np.ndarray,
+        frame_id: int,
+        t_ms: int,
+        *,
+        main_face_hint: Optional[FaceHint] = None,
+    ) -> FrameObservation:
         """Analyse an OpenCV BGR frame (what a ``VideoCapture`` hands you).
 
         Validated BEFORE the colour conversion, not after: ``cv2.cvtColor``
         accepts a grayscale frame and a BGRA one without complaining, so a
         wrong-shaped frame used to reach the backbone as a valid observation.
+
+        ``main_face_hint`` is the normalised centre of the face being followed;
+        with it the face nearest that point is analysed, without it the largest
+        (see :func:`select_main_face`).
         """
         started = time.perf_counter()
         _validate_frame(bgr)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        return self._observe(rgb, frame_id, t_ms, started)
+        return self._observe(rgb, frame_id, t_ms, started, main_face_hint)
 
-    def process_rgb(self, rgb: np.ndarray, frame_id: int, t_ms: int) -> FrameObservation:
+    def process_rgb(
+        self,
+        rgb: np.ndarray,
+        frame_id: int,
+        t_ms: int,
+        *,
+        main_face_hint: Optional[FaceHint] = None,
+    ) -> FrameObservation:
         """Analyse an already-RGB frame.
 
         Same guard as ``process_bgr`` and as ``landmarker.detect``: one shape
@@ -49,7 +70,7 @@ class PreprocessPipeline:
         """
         started = time.perf_counter()
         _validate_frame(rgb)
-        return self._observe(rgb, frame_id, t_ms, started)
+        return self._observe(rgb, frame_id, t_ms, started, main_face_hint)
 
     def close(self) -> None:
         self.landmarker.close()
@@ -61,13 +82,20 @@ class PreprocessPipeline:
         self.close()
 
     def _observe(
-        self, rgb: np.ndarray, frame_id: int, t_ms: int, started: float
+        self,
+        rgb: np.ndarray,
+        frame_id: int,
+        t_ms: int,
+        started: float,
+        main_face_hint: Optional[FaceHint] = None,
     ) -> FrameObservation:
         height, width = rgb.shape[:2]
         image_size: Tuple[int, int] = (width, height)
 
-        result = self.landmarker.detect(rgb, t_ms=t_ms)
-        if result is None:
+        faces = self.landmarker.detect_all(rgb, t_ms=t_ms)
+        bboxes = [face_bbox_from_landmarks(face.landmarks, image_size) for face in faces]
+        main = select_main_face(bboxes, image_size, main_face_hint)
+        if main is None:
             return FrameObservation(
                 frame_id=int(frame_id),
                 t_ms=int(t_ms),
@@ -84,8 +112,11 @@ class PreprocessPipeline:
                 image_size=image_size,
                 invalid_reason=InvalidReason.NO_FACE.value,
                 preprocess_ms=_elapsed_ms(started),
+                scene=FaceScene(n_faces=0),
             )
 
+        result = faces[main]
+        scene = _scene(main, bboxes, result.landmarks, image_size, float(self.pre.min_face_area_ratio))
         head_pose = self._head_pose(result, image_size)
         face_crop, bbox = crop_face(rgb, result.landmarks, self.pre)
         left_eye, right_eye = crop_eyes(rgb, result.landmarks, self.pre)
@@ -110,6 +141,7 @@ class PreprocessPipeline:
             image_size=image_size,
             invalid_reason=reason,
             preprocess_ms=_elapsed_ms(started),
+            scene=scene,
         )
 
     def _head_pose(
@@ -151,6 +183,110 @@ class PreprocessPipeline:
         if face_crop is None or (left_eye is None and right_eye is None):
             return InvalidReason.CROP_FAILED.value
         return None
+
+
+def _bbox_area(bbox: Tuple[int, int, int, int]) -> float:
+    return float(max(0, bbox[2]) * max(0, bbox[3]))
+
+
+def _bbox_centre(bbox: Tuple[int, int, int, int], image_size: Tuple[int, int]) -> FaceHint:
+    width, height = float(image_size[0]), float(image_size[1])
+    return (
+        (bbox[0] + bbox[2] / 2.0) / max(width, 1.0),
+        (bbox[1] + bbox[3] / 2.0) / max(height, 1.0),
+    )
+
+
+def select_main_face(
+    bboxes: Sequence[Tuple[int, int, int, int]],
+    image_size: Tuple[int, int],
+    hint: Optional[FaceHint] = None,
+) -> Optional[int]:
+    """Index of the face to analyse, or ``None`` when there is no usable face.
+
+    Without a hint: the largest face -- the presenter sits closest to their own
+    laptop.  With one: the face whose centre is nearest the hint (ties go to
+    the larger face), so someone leaning in from the side cannot take over the
+    measurement just by being momentarily bigger.  A face with an empty bbox
+    (non-finite landmarks) only wins when it is the only thing detected; it is
+    then still analysed, and reported FACE_TOO_SMALL, exactly as before multiple
+    faces were considered.
+    """
+    if not bboxes:
+        return None
+    candidates = [i for i, bbox in enumerate(bboxes) if _bbox_area(bbox) > 0.0]
+    if not candidates:
+        return 0
+    if hint is None or not all(np.isfinite(hint)):
+        return max(candidates, key=lambda i: (_bbox_area(bboxes[i]), -i))
+
+    def distance(i: int) -> float:
+        cx, cy = _bbox_centre(bboxes[i], image_size)
+        return float(np.hypot(cx - float(hint[0]), cy - float(hint[1])))
+
+    return min(candidates, key=lambda i: (round(distance(i), 6), -_bbox_area(bboxes[i]), i))
+
+
+def _inside(point: Tuple[float, float], bbox: Tuple[int, int, int, int]) -> bool:
+    x, y, w, h = bbox
+    return x <= point[0] <= x + w and y <= point[1] <= y + h
+
+
+def second_face_ratio(
+    main_bbox: Tuple[int, int, int, int],
+    others: Sequence[Tuple[int, int, int, int]],
+    image_size: Tuple[int, int],
+    min_area_ratio: float,
+) -> float:
+    """Area of the largest *other person's* face over the main face's; 0 when none.
+
+    Only a distinct face counts.  The main face found a second time -- either
+    box's centre inside the other box; MediaPipe sometimes returns one face
+    twice, more often when it is small -- is the same person.  A find smaller
+    than the face detector's own floor (``min_area_ratio`` of the frame, where
+    most "faces" are false finds in the background) is not taken for one.
+    """
+    main_area = _bbox_area(main_bbox)
+    if main_area <= 0.0:
+        return 0.0
+    floor = float(min_area_ratio) * float(image_size[0]) * float(image_size[1])
+    mx, my, mw, mh = main_bbox
+    main_centre = (mx + mw / 2.0, my + mh / 2.0)
+    best = 0.0
+    for bbox in others:
+        area = _bbox_area(bbox)
+        if area <= 0.0 or area < floor:
+            continue
+        x, y, w, h = bbox
+        if _inside((x + w / 2.0, y + h / 2.0), main_bbox) or _inside(main_centre, bbox):
+            continue
+        best = max(best, area / main_area)
+    return best
+
+
+def _scene(
+    main: int,
+    bboxes: List[Tuple[int, int, int, int]],
+    landmarks: np.ndarray,
+    image_size: Tuple[int, int],
+    min_area_ratio: float = 0.0,
+) -> FaceScene:
+    others = [b for i, b in enumerate(bboxes) if i != main]
+    second = second_face_ratio(bboxes[main], others, image_size, min_area_ratio)
+    return FaceScene(
+        n_faces=len(bboxes),
+        second_face_area_ratio=float(second),
+        iris_diameter_px=iris_diameter_px(landmarks, image_size),
+        face_bboxes=[tuple(int(v) for v in bboxes[main])]
+        + [tuple(int(v) for v in b) for i, b in enumerate(bboxes) if i != main],
+    )
+
+
+def face_centre(obs: FrameObservation) -> Optional[FaceHint]:
+    """Normalised centre of the observation's main face, or ``None``."""
+    if obs.face_bbox is None or obs.image_size is None or _bbox_area(obs.face_bbox) <= 0.0:
+        return None
+    return _bbox_centre(obs.face_bbox, obs.image_size)
 
 
 def _elapsed_ms(started: float) -> float:

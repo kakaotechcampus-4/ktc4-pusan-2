@@ -599,7 +599,7 @@ def test_event_to_dict_is_exactly_the_seven_key_doc_contract():
 def test_event_to_dict_defaults_carry_the_type_and_model_version():
     out = _event().to_dict()
     assert out["type"] == "GAZE_STATE"
-    assert out["model_version"] == "gaze_v1.0.0"
+    assert out["model_version"] == "gaze_v1.1.0"
 
 
 def test_event_to_dict_rounds_confidence_and_normalises_numeric_types():
@@ -855,6 +855,8 @@ def test_backbone_section_is_fed_by_gaze_backbone_yaml_only(tmp_path):
         ("temporal.yaml", "temporal", "window_frames", 3),
         ("release_gate.yaml", "release_gate", "min_macro_f1", 0.5),
         ("collection.yaml", "collection", "record_fps", 60),
+        ("preconditions.yaml", "preconditions", "min_iris_px", 9.0),
+        ("condition.yaml", "condition", "head_warn_deg", 15.0),
     ],
 )
 def test_every_config_file_lands_on_its_documented_section(tmp_path, filename, section, key, value):
@@ -1112,6 +1114,9 @@ def test_hash_depends_on_values_not_on_object_identity():
         ("temporal", "ema_alpha", 0.5),
         ("release_gate", "min_macro_f1", 0.9),
         ("collection", "record_fps", 60),
+        ("preconditions", "strict", False),
+        ("condition", "emit_delta", 0.2),
+        ("calibration", "method", "logistic"),
     ],
 )
 def test_hash_changes_when_any_single_section_changes(fresh_cfg, section, key, value):
@@ -1288,3 +1293,179 @@ def test_positive_counters_and_durations_are_positive(cfg):
     ):
         assert value > 0
     assert len(cfg.preprocess.eye_crop_size) == 2
+
+
+# ==========================================================================
+# multi-class decision surface, scene signals, condition event, new sections
+# ==========================================================================
+
+
+def test_state_classes_put_camera_first_so_it_still_wins_a_dead_heat():
+    from vision.schemas import CALIBRATION_CUES, OFF_TARGET_STATES, STATE_CLASSES
+
+    assert STATE_CLASSES == ("CAMERA", "SCREEN", "BOTTOM", "OTHER")
+    assert CALIBRATION_CUES == ("CAMERA", "SCREEN", "BOTTOM")
+    assert OFF_TARGET_STATES == ("SCREEN", "OTHER")
+    # The evaluation truth vocabulary is deliberately unchanged.
+    assert DECISION_CLASSES == ("CAMERA", "BOTTOM")
+    assert set(STATE_CLASSES) <= {s.value for s in GazeState}
+
+
+def test_screen_is_a_calibration_cue_label_and_screen_other_are_states():
+    assert GazeLabel.coerce(" screen ") is GazeLabel.SCREEN
+    assert GazeState.coerce("other") is GazeState.OTHER
+    assert GazeState.coerce("SCREEN") is GazeState.SCREEN
+    with pytest.raises(ValueError):
+        GazeLabel.coerce("OTHER")  # a decision, never a ground-truth label
+
+
+@pytest.mark.parametrize(
+    "probs, p_max, margin",
+    [
+        ({"CAMERA": 0.7, "SCREEN": 0.2, "BOTTOM": 0.05, "OTHER": 0.05}, 0.7, 0.5),
+        ({"CAMERA": 0.4, "SCREEN": 0.35, "BOTTOM": 0.2, "OTHER": 0.05}, 0.4, 0.05),
+        ({"CAMERA": 0.25, "SCREEN": 0.25, "BOTTOM": 0.25, "OTHER": 0.25}, 0.25, 0.0),
+    ],
+)
+def test_p_max_and_margin_read_the_full_distribution_when_there_is_one(probs, p_max, margin):
+    decision = GazeDecision(
+        t_ms=0, frame_id=0, label="UNCERTAIN",
+        p_camera=probs["CAMERA"], p_bottom=probs["BOTTOM"], face_valid=True, probs=probs,
+    )
+    assert decision.p_max == pytest.approx(p_max)
+    assert decision.margin == pytest.approx(margin)
+    # For K > 2 the margin is top-1 minus top-2, which is at least 2*p_max - 1.
+    assert decision.margin >= 2.0 * decision.p_max - 1.0 - 1e-12
+    assert decision.class_probs() == probs
+
+
+def test_class_probs_falls_back_to_the_two_class_pair_without_probs():
+    decision = GazeDecision(t_ms=0, frame_id=0, label="CAMERA", p_camera=0.8, p_bottom=0.2, face_valid=True)
+    assert decision.class_probs() == {"CAMERA": 0.8, "BOTTOM": 0.2}
+
+
+def test_decision_to_dict_carries_probs_only_when_the_classifier_set_them():
+    base = dict(t_ms=0, frame_id=0, label="SCREEN", p_camera=0.1, p_bottom=0.1, face_valid=True)
+    assert "probs" not in GazeDecision(**base).to_dict()
+    out = GazeDecision(**base, probs={"CAMERA": 0.1, "SCREEN": 0.75, "BOTTOM": 0.1, "OTHER": 0.05}).to_dict()
+    assert out["probs"]["SCREEN"] == pytest.approx(0.75)
+    json.dumps(out)
+
+
+def test_smoothed_probs_reach_the_debug_dict_only_and_only_when_set():
+    plain = _event().to_debug_dict()
+    assert "smoothed_probs" not in plain
+    event = _event(smoothed_probs={"CAMERA": 0.123456, "SCREEN": 0.876544})
+    assert "smoothed_probs" not in event.to_dict()
+    assert event.to_debug_dict()["smoothed_probs"] == {"CAMERA": 0.1235, "SCREEN": 0.8765}
+    assert len(event.to_dict()) == 7
+
+
+def test_session_condition_event_is_a_four_key_contract():
+    from vision.schemas import SessionConditionEvent
+
+    event = SessionConditionEvent(
+        t_ms=np.int64(4000), reliability=np.float32(0.6123456), issues=["TOO_FAR"],
+        severe=True, components={"distance": 0.61234},
+    )
+    out = event.to_dict()
+    assert set(out) == {"type", "t_ms", "reliability", "issues"}
+    assert out["type"] == "SESSION_CONDITION"
+    assert out["reliability"] == pytest.approx(0.6123)
+    assert type(out["t_ms"]) is int
+    debug = event.to_debug_dict()
+    assert set(debug) - set(out) == {"severe", "components"}
+    assert debug["severe"] is True
+    json.dumps(debug)
+
+
+def test_face_scene_never_reaches_the_frozen_record():
+    from vision.schemas import FaceScene
+
+    obs = _observation(scene=FaceScene(n_faces=2, second_face_area_ratio=0.9, iris_diameter_px=11.2))
+    record = obs.to_record()
+    assert not any(key.startswith("scene") or key == "n_faces" for key in record)
+    assert record == _observation().to_record()
+
+
+def test_calibration_quality_new_fields_default_so_old_payloads_still_load():
+    old_payload = {"status": "OK", "n_camera": 12, "n_bottom": 12, "loo_accuracy": 1.0}
+    quality = CalibrationQuality(**old_payload)
+    assert quality.n_screen == 0
+    assert quality.method == "logistic"
+    assert quality.anchors_deg == {} and quality.warnings == []
+    assert quality.placement is None
+    assert CalibrationFailReason.ANCHOR_AMBIGUOUS.value == "ANCHOR_AMBIGUOUS"
+
+
+def test_every_shipped_yaml_key_is_a_real_dataclass_field():
+    """``_build`` drops unknown keys silently, so a typo would quietly become the default."""
+    import yaml
+
+    from vision.config import ConditionConfig, EvidenceConfig, PreconditionConfig, SweepConfig
+
+    files = {
+        "preprocess.yaml": PreprocessConfig,
+        "gaze_backbone.yaml": BackboneConfig,
+        "placement.yaml": PlacementConfig,
+        "calibration.yaml": CalibrationConfig,
+        "temporal.yaml": TemporalConfig,
+        "release_gate.yaml": ReleaseGateConfig,
+        "collection.yaml": CollectionConfig,
+        "preconditions.yaml": PreconditionConfig,
+        "condition.yaml": ConditionConfig,
+        "evidence.yaml": EvidenceConfig,
+        "sweep.yaml": SweepConfig,
+    }
+    for name, cls in files.items():
+        path = CONFIG_DIR / name
+        assert path.is_file(), name
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        unknown = set(data) - {f.name for f in fields(cls)}
+        assert not unknown, f"{name} carries keys {sorted(unknown)} that no field reads"
+
+
+def test_hash_distinguishes_every_section():
+    digests = set()
+    for section, key, value in [
+        ("preprocess", "analysis_fps", 15.0),
+        ("backbone", "num_threads", 4),
+        ("placement", "max_iter", 500),
+        ("calibration", "max_iter", 500),
+        ("temporal", "window_frames", 4),
+        ("release_gate", "max_p95_latency_ms", 200.0),
+        ("collection", "record_fps", 60),
+        ("preconditions", "hold_ms", 1500),
+        ("condition", "window_ms", 4000),
+        ("evidence", "slice_ms", 500),
+        ("sweep", "ticks", 24),
+    ]:
+        cfg = VisionConfig()
+        setattr(getattr(cfg, section), key, value)
+        digests.add(cfg.hash())
+    assert len(digests) == 11
+
+
+def test_new_thresholds_stay_inside_their_units(cfg):
+    calib, temporal, cond, pre = cfg.calibration, cfg.temporal, cfg.condition, cfg.preconditions
+    for value in (
+        calib.min_sample_confidence, calib.script_width_fraction, calib.script_height_fraction,
+        temporal.enter_screen_threshold, temporal.enter_other_threshold,
+        cond.fail_reliability, cond.jitter_fail_share, cond.jitter_warn_share, cond.valid_warn_ratio,
+        cond.valid_fail_ratio, pre.max_second_face_area_ratio, pre.max_face_height_ratio,
+        cfg.preprocess.blink_ratio,
+    ):
+        assert 0.0 <= value <= 1.0
+    assert calib.method in {"reference", "logistic"}
+    assert calib.sigma_min_deg > 0 and calib.sigma_scale >= 1.0
+    assert all(getattr(calib, f"prior_{c}") >= 0 for c in ("camera", "screen", "bottom", "other"))
+    # Each warn bound sits below its fail bound, or the ramp is inverted.
+    assert cond.head_warn_deg < cond.head_fail_deg
+    assert 0.0 < cond.drift_warn_share < 1.0 and 0.0 < cond.drift_fail_share <= 1.0
+    assert 0.0 < cond.drift_fail_min_deg < cond.drift_fail_max_deg
+    assert cond.valid_fail_ratio < cond.valid_warn_ratio
+    assert 0.0 < cond.jitter_fail_min_deg < cond.jitter_fail_max_deg and cond.jitter_min_samples >= 3
+    assert 0.0 < pre.min_face_area_ratio < 1.0
+    assert cond.small_face_fail_area < cond.small_face_warn_area
+    assert cond.large_face_warn_height < cond.large_face_fail_height
+    assert pre.hold_ms < pre.reject_after_ms

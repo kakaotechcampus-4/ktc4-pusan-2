@@ -121,6 +121,10 @@ def split_by_label(
     IGNORE frames (doc 4-2 guard bands) and frames whose angles are not finite
     are dropped here, so ``n_camera``/``n_bottom`` count what the model can
     really train on rather than what the collector attempted.
+
+    SCREEN samples are dropped too: the two-class logistic model has no SCREEN
+    class.  The test is an explicit BOTTOM branch, not "everything that is not
+    CAMERA", which used to fold any other cue silently into BOTTOM.
     """
     camera: List[CalibrationSample] = []
     bottom: List[CalibrationSample] = []
@@ -129,7 +133,7 @@ def split_by_label(
             label = GazeLabel.coerce(sample.label)
         except ValueError:
             continue
-        if label is GazeLabel.IGNORE:
+        if label not in (GazeLabel.CAMERA, GazeLabel.BOTTOM):
             continue
         angles = np.asarray(
             [

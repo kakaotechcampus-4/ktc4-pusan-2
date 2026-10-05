@@ -6,21 +6,33 @@ Downstream consumers want a *state* ("looking at the script since 1.4 s"), not
 a label stream, so this module turns decisions into ``GazeStateEvent``s through
 three stages:
 
-1. **EMA** over ``p_bottom`` (``ema_alpha``) removes per-frame jitter.  Its
-   memory is exponential and unbounded, which is what makes it cheap.
-2. **Recency-weighted vote** over the last ``window_frames`` values of
-   ``p_bottom``, with linear weights running from ``1.0`` (oldest) to
+1. **EMA** over each class probability (``ema_alpha``) removes per-frame
+   jitter.  Its memory is exponential and unbounded, which is what makes it
+   cheap.
+2. **Recency-weighted vote** over the last ``window_frames`` probability
+   vectors, with linear weights running from ``1.0`` (oldest) to
    ``vote_recency_weight`` (newest).  This bounds how far back a stale
    observation can reach - after ``window_frames`` frames an old spike is gone
    entirely, which the EMA alone never guarantees.
-3. **Asymmetric hysteresis** turns the score into a state: it must sit above
-   the entry threshold for ``to_bottom_dwell_ms`` / ``to_camera_dwell_ms``
+3. **Asymmetric hysteresis** turns the scores into a state: a class must sit
+   above its entry threshold for its dwell (``to_bottom_dwell_ms``,
+   ``to_camera_dwell_ms``, ``to_screen_dwell_ms``, ``to_other_dwell_ms``)
    before the state commits.  Entering BOTTOM is deliberately more expensive
    than leaving it, because a wrongly reported script-glance is worse feedback
    than a missed one.
 
-The smoothed BOTTOM score is the mean of stages 1 and 2, not a cascade of one
-into the other.  Both readings honour doc 6, but they cost very different
+Classes
+-------
+The smoother tracks whatever class set the classifier decides between: the
+two doc 5-3 classes (CAMERA, BOTTOM) by default, or the reference-anchor set
+(CAMERA, SCREEN, BOTTOM, OTHER) via ``classes=`` / :meth:`set_classes`.  CAMERA
+is the *complement* class: only the others are smoothed, and CAMERA's score is
+``1 - sum(others)``.  With two classes that is literally the original
+``1 - score_bottom``, so the two-class behaviour -- every number below -- is
+unchanged to the last bit (``tests/_legacy_smoother.py`` pins it).
+
+The smoothed score of a class is the mean of stages 1 and 2, not a cascade of
+one into the other.  Both readings honour doc 6, but they cost very different
 latency, and at ``analysis_fps=8`` both smoothers are frame-based while the
 dwell is not, so the smoothing lag is the term that dominates.  Measured on a
 clean step with the shipped config (threshold 0.60, 125 ms frames):
@@ -52,38 +64,62 @@ frame that committed the current state.
 UNCERTAIN
 ---------
 An UNCERTAIN decision - a lost face, or a low-confidence / low-margin call on a
-perfectly good face (doc 5-4) - is an *abstention*: it never votes for either
-class.  With ``decay_on_invalid`` it pushes the EMA toward 0.5 and enters the
-window as a neutral 0.5 sample, so evidence goes stale instead of freezing;
-without it both smoothers are frozen and the pre-blackout state is simply held.
-Abstentions never arm a transition, because they only move the score toward
-0.5.  They do not reset an armed one either - dropped frames are normal and
-must not restart a dwell - so a transition armed before a dropout can commit
-*on* an abstaining frame, on the strength of the evidence that preceded it;
-that event then carries ``face_valid=False`` like any other.  After
-``uncertain_dwell_ms`` of *continuous* abstention the state itself becomes
-UNCERTAIN, and every UNCERTAIN event reports ``face_valid=False`` whichever
-doc 5-4 branch produced it.
+perfectly good face (doc 5-4) - is an *abstention*: it never votes for any
+class.  With ``decay_on_invalid`` it pushes every EMA toward the uniform ``1/K``
+and enters the window as a uniform sample, so evidence goes stale instead of
+freezing; without it both smoothers are frozen and the pre-blackout state is
+simply held.  Abstentions never arm a transition as long as every entry
+threshold is above ``1/K``, because they only move the scores toward it.  They
+do not reset an armed one either - dropped frames are normal and must not
+restart a dwell - so a transition armed before a dropout can commit *on* an
+abstaining frame, on the strength of the evidence that preceded it; that event
+then carries ``face_valid=False`` like any other.  After ``uncertain_dwell_ms``
+of *continuous* abstention the state itself becomes UNCERTAIN, and every
+UNCERTAIN event reports ``face_valid=False`` whichever doc 5-4 branch produced
+it.
 """
 
 from __future__ import annotations
 
 import math
 from collections import deque
-from typing import Deque, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Sequence, Tuple
 
 from vision.config import TemporalConfig
-from vision.schemas import GazeDecision, GazeState, GazeStateEvent
+from vision.schemas import DECISION_CLASSES, STATE_CLASSES, GazeDecision, GazeState, GazeStateEvent
 
 #: Identifies this rule set in ``AiVersion.temporal_rule`` (doc 15).
-TEMPORAL_RULE_VERSION = "gaze_temporal_v1.0"
+#: v1.1 added multi-class smoothing; the two-class rule is unchanged.
+TEMPORAL_RULE_VERSION = "gaze_temporal_v1.1"
 
 _CAMERA = GazeState.CAMERA.value
 _BOTTOM = GazeState.BOTTOM.value
+_SCREEN = GazeState.SCREEN.value
+_OTHER = GazeState.OTHER.value
 _UNCERTAIN = GazeState.UNCERTAIN.value
 
-#: Score an abstaining frame contributes: exactly no evidence for either class.
+#: Score an abstaining frame contributes in the two-class case: exactly no
+#: evidence for either class.  In general the neutral value is ``1/K``.
 _NEUTRAL = 0.5
+
+#: Which armed candidate wins when several clear their thresholds at once.
+#: BOTTOM first because doc 7 gates on BOTTOM recall (a missed script-glance
+#: costs more); then CAMERA, as in the original two-class rule.
+_CANDIDATE_PRIORITY: Tuple[str, ...] = (_BOTTOM, _CAMERA, _SCREEN, _OTHER)
+
+#: Config field holding each class's entry threshold and dwell.
+_THRESHOLD_FIELD = {
+    _CAMERA: "enter_camera_threshold",
+    _BOTTOM: "enter_bottom_threshold",
+    _SCREEN: "enter_screen_threshold",
+    _OTHER: "enter_other_threshold",
+}
+_DWELL_FIELD = {
+    _CAMERA: "to_camera_dwell_ms",
+    _BOTTOM: "to_bottom_dwell_ms",
+    _SCREEN: "to_screen_dwell_ms",
+    _OTHER: "to_other_dwell_ms",
+}
 
 
 def _elapsed(now_ms: int, since_ms: Optional[int]) -> int:
@@ -158,6 +194,47 @@ def _normalised_p_bottom(decision: GazeDecision) -> float:
     return min(1.0, max(0.0, ratio))
 
 
+def _normalised_probs(decision: GazeDecision, classes: Sequence[str]) -> Dict[str, float]:
+    """The decision's distribution restricted and renormalised to ``classes``.
+
+    Same positive-guard discipline as :func:`_normalised_p_bottom`: any value
+    that is not a finite number makes the whole frame uniform (no evidence), a
+    class the decision does not mention counts as 0, and a non-positive total
+    is unusable.  Negative entries cannot be probabilities and are floored at 0
+    rather than allowed to subtract mass from the others.
+    """
+    uniform = 1.0 / len(classes)
+    raw = decision.class_probs()
+    values = []
+    for cls in classes:
+        try:
+            value = float(raw.get(cls, 0.0))
+        except (TypeError, ValueError):
+            return {c: uniform for c in classes}
+        if not math.isfinite(value):
+            return {c: uniform for c in classes}
+        values.append(max(0.0, value))
+    total = sum(values)
+    if not (total > 1e-9) or not math.isfinite(total):
+        return {c: uniform for c in classes}
+    return {c: v / total for c, v in zip(classes, values)}
+
+
+def _canonical_classes(classes: Optional[Sequence[str]]) -> Tuple[str, ...]:
+    """Validate a class set and put it in ``STATE_CLASSES`` order."""
+    if classes is None:
+        return tuple(DECISION_CLASSES)
+    wanted = {str(getattr(c, "value", c)).strip().upper() for c in classes}
+    unknown = wanted - set(STATE_CLASSES)
+    if unknown:
+        raise ValueError(f"unknown smoother classes {sorted(unknown)}; allowed {STATE_CLASSES}")
+    if _CAMERA not in wanted:
+        raise ValueError("the smoother needs CAMERA: it is the complement class")
+    if len(wanted) < 2:
+        raise ValueError("the smoother needs at least two classes")
+    return tuple(c for c in STATE_CLASSES if c in wanted)
+
+
 def _validate(cfg: TemporalConfig) -> None:
     """Fail at construction, not three hundred frames into a take."""
     if int(cfg.window_frames) < 1:
@@ -166,11 +243,23 @@ def _validate(cfg: TemporalConfig) -> None:
         raise ValueError(f"ema_alpha must be in (0, 1], got {cfg.ema_alpha}")
     if float(cfg.vote_recency_weight) <= 0.0:
         raise ValueError(f"vote_recency_weight must be > 0, got {cfg.vote_recency_weight}")
-    for name in ("enter_bottom_threshold", "enter_camera_threshold"):
+    for name in (
+        "enter_bottom_threshold",
+        "enter_camera_threshold",
+        "enter_screen_threshold",
+        "enter_other_threshold",
+    ):
         value = float(getattr(cfg, name))
         if not 0.0 < value <= 1.0:
             raise ValueError(f"{name} must be in (0, 1], got {value}")
-    for name in ("to_bottom_dwell_ms", "to_camera_dwell_ms", "uncertain_dwell_ms", "heartbeat_ms"):
+    for name in (
+        "to_bottom_dwell_ms",
+        "to_camera_dwell_ms",
+        "to_screen_dwell_ms",
+        "to_other_dwell_ms",
+        "uncertain_dwell_ms",
+        "heartbeat_ms",
+    ):
         if int(getattr(cfg, name)) < 0:
             raise ValueError(f"{name} must be >= 0, got {getattr(cfg, name)}")
 
@@ -182,7 +271,12 @@ class TemporalSmoother:
     in order; ``reset`` returns it to the just-constructed state.
     """
 
-    def __init__(self, cfg: TemporalConfig, model_version: str = "gaze_v1.0.0") -> None:
+    def __init__(
+        self,
+        cfg: TemporalConfig,
+        model_version: str = "gaze_v1.1.0",
+        classes: Optional[Sequence[str]] = None,
+    ) -> None:
         _validate(cfg)
         self.cfg = cfg
         self.model_version = model_version
@@ -196,16 +290,40 @@ class TemporalSmoother:
         # snapshotted: the rest are read per frame so a live tweak of a
         # threshold or a dwell still takes effect.
         self._window_frames = int(cfg.window_frames)
+        self._classes: Tuple[str, ...] = _canonical_classes(classes)
         self.reset()
+
+    # -- classes ----------------------------------------------------------
+    @property
+    def classes(self) -> Tuple[str, ...]:
+        """The classes this smoother scores, in ``STATE_CLASSES`` order."""
+        return self._classes
+
+    def set_classes(self, classes: Sequence[str]) -> None:
+        """Switch to another class set (a new calibration) and forget the stream."""
+        self._classes = _canonical_classes(classes)
+        self.reset()
+
+    @property
+    def _tracked(self) -> Tuple[str, ...]:
+        """Every class except the complement (CAMERA)."""
+        return tuple(c for c in self._classes if c != _CAMERA)
+
+    @property
+    def _neutral(self) -> float:
+        return _NEUTRAL if len(self._classes) == 2 else 1.0 / len(self._classes)
 
     # -- state ------------------------------------------------------------
     def reset(self) -> None:
         """Forget the stream.  Starts UNCERTAIN: no frame seen, no evidence."""
+        neutral = self._neutral
+        tracked = self._tracked
         self._state: str = _UNCERTAIN
-        self._ema: float = _NEUTRAL
-        self._vote: float = _NEUTRAL
-        self._score_bottom: float = _NEUTRAL
-        self._window: Deque[float] = deque(maxlen=self._window_frames)
+        self._ema: Dict[str, float] = {c: neutral for c in tracked}
+        self._vote: Dict[str, float] = {c: neutral for c in tracked}
+        self._score: Dict[str, float] = {}
+        self._set_tracked_scores({c: neutral for c in tracked})
+        self._window: Deque[Tuple[float, ...]] = deque(maxlen=self._window_frames)
         self._state_entry_ms: Optional[int] = None
         self._pending: Optional[str] = None
         self._pending_since_ms: Optional[int] = None
@@ -214,10 +332,31 @@ class TemporalSmoother:
         self._last_emit_key: Optional[Tuple[int, str, bool]] = None
         self._last_event: Optional[GazeStateEvent] = None
 
+    def _set_tracked_scores(self, tracked_scores: Dict[str, float]) -> None:
+        """Store the smoothed tracked scores and derive CAMERA as the complement.
+
+        ``1.0 - sum([x])`` is exactly ``1.0 - x``, which is what keeps the
+        two-class arithmetic identical to the original rule.
+        """
+        score = {c: float(tracked_scores[c]) for c in self._tracked}
+        score[_CAMERA] = 1.0 - sum(score[c] for c in self._tracked)
+        self._score = score
+
     @property
     def state(self) -> str:
         """Current committed state, one of ``GazeState``."""
         return self._state
+
+    @property
+    def _score_bottom(self) -> float:
+        """The BOTTOM score the hysteresis tests (white-box hook for tests)."""
+        return self._score.get(_BOTTOM, 0.0)
+
+    @_score_bottom.setter
+    def _score_bottom(self, value: float) -> None:
+        tracked = {c: self._score[c] for c in self._tracked}
+        tracked[_BOTTOM] = float(value)
+        self._set_tracked_scores(tracked)
 
     @property
     def smoothed_p_bottom(self) -> float:
@@ -226,17 +365,22 @@ class TemporalSmoother:
 
     @property
     def smoothed_p_camera(self) -> float:
-        return 1.0 - self._score_bottom
+        return self._score[_CAMERA]
+
+    @property
+    def smoothed_probs(self) -> Dict[str, float]:
+        """Every class's smoothed score (sums to 1)."""
+        return dict(self._score)
 
     @property
     def ema_p_bottom(self) -> float:
         """Stage-1 output; exposed for the debug overlay and for tests."""
-        return self._ema
+        return self._ema.get(_BOTTOM, 0.0)
 
     @property
     def vote_p_bottom(self) -> float:
         """Stage-2 output; exposed for the debug overlay and for tests."""
-        return self._vote
+        return self._vote.get(_BOTTOM, 0.0)
 
     @property
     def pending_state(self) -> Optional[str]:
@@ -259,24 +403,29 @@ class TemporalSmoother:
         if self._state_entry_ms is None:
             self._state_entry_ms = t_ms
 
+        tracked = self._tracked
+        alpha = float(self.cfg.ema_alpha)
         # UNCERTAIN by label *or* by a dead face: doc 5-4 lets a frame be
         # UNCERTAIN with a good face (LOW_MARGIN), and a frame with
         # face_valid=False can never carry a trustworthy probability.
         abstains = _decision_label(decision) == _UNCERTAIN or not decision.face_valid
         if abstains:
             if self.cfg.decay_on_invalid:
-                self._ema += float(self.cfg.ema_alpha) * (_NEUTRAL - self._ema)
-                self._window.append(_NEUTRAL)
+                neutral = self._neutral
+                for c in tracked:
+                    self._ema[c] += alpha * (neutral - self._ema[c])
+                self._window.append(tuple(neutral for _ in tracked))
             if self._uncertain_since_ms is None:
                 self._uncertain_since_ms = t_ms
         else:
-            p_bottom = _normalised_p_bottom(decision)
-            self._ema += float(self.cfg.ema_alpha) * (p_bottom - self._ema)
-            self._window.append(p_bottom)
+            observed = self._observed(decision)
+            for c in tracked:
+                self._ema[c] += alpha * (observed[c] - self._ema[c])
+            self._window.append(tuple(observed[c] for c in tracked))
             self._uncertain_since_ms = None
 
         self._vote = self._weighted_vote()
-        self._score_bottom = 0.5 * (self._ema + self._vote)
+        self._set_tracked_scores({c: 0.5 * (self._ema[c] + self._vote[c]) for c in tracked})
         transitioned = self._advance_state(t_ms, abstains)
 
         event = self._build_event(t_ms, decision, transitioned)
@@ -304,7 +453,17 @@ class TemporalSmoother:
         return due
 
     # -- internals --------------------------------------------------------
-    def _weighted_vote(self) -> float:
+    def _observed(self, decision: GazeDecision) -> Dict[str, float]:
+        """This frame's evidence for every tracked class."""
+        if len(self._classes) == 2:
+            # The two-class path keeps the original reader bit for bit.
+            other = self._tracked[0]
+            if other == _BOTTOM:
+                return {_BOTTOM: _normalised_p_bottom(decision)}
+            return {other: _normalised_probs(decision, self._classes)[other]}
+        return _normalised_probs(decision, self._classes)
+
+    def _weighted_vote(self) -> Dict[str, float]:
         """Recency-weighted mean of the window; the EMA covers the empty case.
 
         The window is empty only before the first frame, or while
@@ -312,17 +471,19 @@ class TemporalSmoother:
         falling back to the EMA keeps the blend a plain average of two defined
         quantities instead of a special case.
         """
+        tracked = self._tracked
         if not self._window:
-            return self._ema
-        total = 0.0
+            return dict(self._ema)
+        totals = [0.0] * len(tracked)
         weight_sum = 0.0
-        for lag, value in enumerate(reversed(self._window)):
+        for lag, values in enumerate(reversed(self._window)):
             weight = self._weights[lag]
-            total += weight * value
+            for i, value in enumerate(values):
+                totals[i] += weight * value
             weight_sum += weight
         if weight_sum <= 1e-12:
-            return self._ema
-        return total / weight_sum
+            return dict(self._ema)
+        return {c: totals[i] / weight_sum for i, c in enumerate(tracked)}
 
     def _advance_state(self, t_ms: int, abstains: bool) -> bool:
         """Run the hysteresis; True when the state actually flipped."""
@@ -346,11 +507,7 @@ class TemporalSmoother:
             self._pending = candidate
             self._pending_since_ms = t_ms
 
-        dwell = (
-            int(self.cfg.to_bottom_dwell_ms)
-            if candidate == _BOTTOM
-            else int(self.cfg.to_camera_dwell_ms)
-        )
+        dwell = int(getattr(self.cfg, _DWELL_FIELD[candidate]))
         if _elapsed(t_ms, self._pending_since_ms) >= dwell:
             self._commit(candidate, t_ms)
             self._disarm()
@@ -358,16 +515,17 @@ class TemporalSmoother:
         return False
 
     def _candidate(self) -> Optional[str]:
-        """Which state the smoothed score argues for, if any.
+        """Which state the smoothed scores argue for, if any.
 
-        BOTTOM is tested first: with thresholds below 0.5 both tests can pass,
-        and doc 7 gates on BOTTOM recall, so the tie goes to the class whose
-        misses cost more.
+        BOTTOM is tested first: with thresholds below 0.5 several tests can
+        pass, and doc 7 gates on BOTTOM recall, so the tie goes to the class
+        whose misses cost more; then CAMERA, SCREEN, OTHER.
         """
-        if self._score_bottom >= float(self.cfg.enter_bottom_threshold):
-            return _BOTTOM
-        if (1.0 - self._score_bottom) >= float(self.cfg.enter_camera_threshold):
-            return _CAMERA
+        for cls in _CANDIDATE_PRIORITY:
+            if cls not in self._score:
+                continue
+            if self._score[cls] >= float(getattr(self.cfg, _THRESHOLD_FIELD[cls])):
+                return cls
         return None
 
     def _commit(self, state: str, t_ms: int) -> None:
@@ -379,17 +537,14 @@ class TemporalSmoother:
         self._pending_since_ms = None
 
     def _build_event(self, t_ms: int, decision: GazeDecision, transitioned: bool) -> GazeStateEvent:
-        score_bottom = self._score_bottom
-        score_camera = 1.0 - score_bottom
-        if self._state == _BOTTOM:
-            confidence = score_bottom
-        elif self._state == _CAMERA:
-            confidence = score_camera
+        score = self._score
+        if self._state in score:
+            confidence = score[self._state]
         else:
-            # While UNCERTAIN the leading score says *why*: ~0.5 means the
+            # While UNCERTAIN the leading score says *why*: ~1/K means the
             # evidence is ambiguous or stale, a high value means a transition
             # is armed and only the dwell is still missing.
-            confidence = max(score_bottom, score_camera)
+            confidence = max(score.values())
         return GazeStateEvent(
             t_ms=t_ms,
             label=self._state,
@@ -400,6 +555,7 @@ class TemporalSmoother:
             face_valid=bool(decision.face_valid) and self._state != _UNCERTAIN,
             model_version=self.model_version,
             is_transition=transitioned,
-            smoothed_p_camera=float(score_camera),
-            smoothed_p_bottom=float(score_bottom),
+            smoothed_p_camera=float(score[_CAMERA]),
+            smoothed_p_bottom=float(score.get(_BOTTOM, 0.0)),
+            smoothed_probs=dict(score) if len(self._classes) > 2 else None,
         )

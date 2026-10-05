@@ -16,12 +16,15 @@ from vision.backbones.base import GazeBackbone
 
 _REGISTRY: Dict[str, Type[GazeBackbone]] = {}
 
-#: Modules that self-register on import.  ``mediapipe_geom`` first so that a
-#: broken optional dependency in a torch backbone cannot break the default path.
+#: Modules that self-register on import.  The default ``head_pose`` first so
+#: that a broken optional dependency in a torch backbone cannot break the
+#: default path.  The eye backbones live in ``vision.eye``: they are parked for
+#: comparison experiments, not used by default (see that package).
 _BUILTIN_MODULES = (
-    "vision.backbones.mediapipe_geom",
-    "vision.backbones.l2cs",
-    "vision.backbones.gazetr",
+    "vision.backbones.head",
+    "vision.eye.mediapipe_geom",
+    "vision.eye.l2cs",
+    "vision.eye.gazetr",
 )
 
 _builtins_loaded = False

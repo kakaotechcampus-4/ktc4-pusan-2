@@ -25,6 +25,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from vision.calibration.factory import normalise_method
 from vision.calibration.features import normalise_feature_set
 from vision.config import REPO_ROOT, VisionConfig
 from vision.schemas import AiVersion
@@ -34,12 +35,19 @@ from vision.temporal.smoother import TEMPORAL_RULE_VERSION
 #: vision slice, not one component: the per-take detail (backbone, config hash,
 #: commit) travels in ``AiVersion``, which is stored once per take, so the event
 #: stream stays the fixed-shape contract downstream consumers parse.
-MODEL_VERSION = "gaze_v1.0.0"
+MODEL_VERSION = "gaze_v1.1.0"
 
-#: Identifies the doc 5-3 estimator family in ``AiVersion.gaze_classifier``.
-#: Distinct from ``classifier.SCHEMA_VERSION``, which versions the *file format*
-#: of a persisted model: the two move for different reasons.
-CLASSIFIER_VERSION = "per_user_lr_v1"
+#: Identifies each per-user estimator family in ``AiVersion.gaze_classifier``,
+#: keyed by ``calibration.method``.  Distinct from ``classifier.SCHEMA_VERSION``,
+#: which versions the *file format* of a persisted model: the two move for
+#: different reasons.
+CLASSIFIER_VERSIONS: Dict[str, str] = {
+    "logistic": "per_user_lr_v1",
+    "reference": "reference_anchor_v1",
+}
+
+#: The family the shipped config selects (``CalibrationConfig.method``).
+CLASSIFIER_VERSION = "reference_anchor_v1"
 
 #: Overrides the git lookup where there is no repository to ask -- a container
 #: or a wheel built from a checkout that is no longer around.  Set it in the
@@ -122,9 +130,10 @@ def current_ai_version(
     mislabel every row but one.
     """
     feature_set = normalise_feature_set(cfg.calibration.feature_set)
+    method = normalise_method(cfg.calibration.method)
     return AiVersion(
         gaze_backbone=str(backbone_name or cfg.backbone.name).strip().lower(),
-        gaze_classifier=CLASSIFIER_VERSION,
+        gaze_classifier=CLASSIFIER_VERSIONS[method],
         temporal_rule=TEMPORAL_RULE_VERSION,
         feature_set=feature_set,
         config_hash=cfg.hash(),
