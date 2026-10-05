@@ -19,8 +19,8 @@
     // Read-only views of the frontend's contract files, for the conformance check
     // (test/fe-contract). Nothing under frontend/ is modified.
     "paths": {
-      "@fe/*": ["../../../../../../../frontend/src/*"],
-      "@/*": ["../../../../../../../frontend/src/*"]
+      "@fe/*": ["../../../../../../../../frontend/src/*"],
+      "@/*": ["../../../../../../../../frontend/src/*"]
     }
   },
   "include": ["src", "test"]
