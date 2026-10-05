@@ -686,17 +686,20 @@ def measure_camera_position(
 ) -> Optional[PlacementCheckResult]:
     """Run the doc-19 camera-placement check before the take (see module docstring).
 
-    Reuses ``pipeline_demo``'s stage machine rather than re-drawing the two cues:
+    Reuses ``pipeline_demo``'s stage machine rather than re-drawing the cues:
     the check the operator already knows from the demo must be the same check the
     dataset records, otherwise ``camera_position`` describes a different
-    measurement than the one the demo verified.
+    measurement than the one the demo verified.  It runs the demo's
+    ``placement`` flow -- set-up check, then the lens and screen-centre looks --
+    in advisory mode: a recording session wants the verdict written down, not
+    the take refused.
     """
     with VisionSession(cfg) as session:
-        demo = PipelineDemo(cfg, session, countdown_s=countdown_s, korean=korean)
+        demo = PipelineDemo(cfg, session, countdown_s=countdown_s, korean=korean,
+                            flow="placement", strict=False)
         for t_ms, frame in frames:
             view = demo.step(frame, t_ms)
-            if demo.stage is Stage.INTRO:
-                demo._advance(t_ms)
+            demo.auto_advance(t_ms)
             if demo.stage is Stage.PLACE_RESULT:
                 break
             if window is not None:
