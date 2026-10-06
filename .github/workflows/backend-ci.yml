@@ -1,4 +1,4 @@
-# Alembic 리비전 그래프 검사.
+# 백엔드 PR 검사: 마이그레이션 · ruff · 앱 import · pytest.
 #
 # ── 왜 이것부터인가 ───────────────────────────────────────────────────
 #
@@ -36,6 +36,8 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # 기본값은 360분이다. WebSocket·asyncio 테스트가 멈추면 그만큼 실행 시간을 잡아먹는다
+    timeout-minutes: 15
 
     defaults:
       run:
