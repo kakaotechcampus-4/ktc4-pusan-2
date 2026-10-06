@@ -7,7 +7,7 @@ Left / right
 ``side="left"`` always means the SUBJECT's left eye, which in a non-mirrored
 frame appears on the IMAGE RIGHT.  That is MediaPipe's own convention: the
 wheel's ``FACE_LANDMARKS_LEFT_EYE`` is built from 362..263 and
-``FACE_LANDMARKS_LEFT_IRIS`` from 474..477, and on ``tests/fixtures/face.jpg``
+``FACE_LANDMARKS_LEFT_IRIS`` from 474..477, and on the archive's ``tests/fixtures/face.jpg``
 those points sit at x ~ 0.55 while the "right" sets (33..133, 469..472) sit at
 x ~ 0.44.  Keeping the same meaning here means ``left_eye_crop`` and the
 ``...Left`` blendshapes describe one eye, not two different ones.

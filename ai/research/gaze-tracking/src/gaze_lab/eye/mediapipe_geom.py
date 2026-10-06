@@ -54,7 +54,7 @@ The canthal midpoint carries two constant offsets from the true ``proj(C)``:
 * it sits *nasal* to the eyeball centre, because the palpebral fissure reaches
   further temporally than nasally.  This one is self-evident from any frontal
   frame: the bias is mirror-antisymmetric between the eyes while true conjugate
-  gaze is common-mode, so on ``tests/fixtures/face.jpg`` (subject looking into
+  gaze is common-mode, so on the archive's ``tests/fixtures/face.jpg`` (subject looking into
   the lens) the two eyes measure -2.29 px and +2.60 px horizontally -- a
   +/-2.45 px = 0.29 iris-radii temporal bias around a mean of ~0.
 * it sits slightly *below* the eyeball centre: the same fixture measures the
@@ -81,8 +81,8 @@ eye-in-head estimate: learned, smooth, and far less noisy than a ~5 px iris
 displacement, but only piecewise linear in the true angle.  The two estimates
 are fused with fixed weights and their disagreement feeds confidence.
 
-Side naming (verified on ``tests/fixtures/face.jpg``, a non-mirrored image)
---------------------------------------------------------------------------
+Side naming (verified on the archive's ``tests/fixtures/face.jpg``, a non-mirrored image)
+----------------------------------------------------------------------------------------
 * Landmarks 33/133 lie at x = 348/383 px and 362/263 at x = 430/465 px, so the
   ``33..133`` ring is the eye on the **image left** = the subject's **right**
   eye, and ``362..263`` is the image-right = subject's left eye.
@@ -359,7 +359,7 @@ def _iris_eye_angles(
     # whole iris branch was dropped -- the backbone then returned the head
     # direction dressed up as a gaze estimate.  ``fallback_radius_px`` comes from
     # the same landmarks in the same working frame, so the ratio means the same
-    # thing in both unit systems; 0.05 of it is 0.38 px on tests/fixtures/face.jpg,
+    # thing in both unit systems; 0.05 of it is 0.38 px on the archive's face.jpg,
     # i.e. the half-pixel the literal used to mean, while a healthy ring measures
     # ~1.1x the fallback (a 22x margin) in either unit system.
     floor = _MIN_IRIS_RADIUS_FRACTION * fallback_radius_px

@@ -8,7 +8,7 @@ Left / right naming (verified, do not "fix" it)
 MediaPipe's ``FACE_LANDMARKS_LEFT_EYE`` is built from indices 362..263 and
 ``FACE_LANDMARKS_LEFT_IRIS`` from 474..477 (see
 ``mediapipe/tasks/python/vision/face_landmarker.py`` in the installed wheel).
-On ``tests/fixtures/face.jpg`` those points sit at x ~ 0.55 -- the IMAGE RIGHT
+On the archive's ``tests/fixtures/face.jpg`` those points sit at x ~ 0.55 -- the IMAGE RIGHT
 half -- while the "right" sets (33..133, 469..472) sit at x ~ 0.44.  So
 MediaPipe's "left" is the SUBJECT's left eye, which appears on the image right
 in a non-mirrored frame, matching the ARKit convention its blendshape names
@@ -71,6 +71,8 @@ class FaceLandmarkerWrapper:
         if not model_path.exists():
             raise FileNotFoundError(
                 "face landmarker model not found at {p}. Download it with:\n"
+                "  uv run python tools/fetch_assets.py   (checks the sha256)\n"
+                "or by hand:\n"
                 "  curl -L -o artifacts/face_landmarker.task https://storage.googleapis.com"
                 "/mediapipe-models/face_landmarker/face_landmarker/float16/1/"
                 "face_landmarker.task".format(p=model_path)

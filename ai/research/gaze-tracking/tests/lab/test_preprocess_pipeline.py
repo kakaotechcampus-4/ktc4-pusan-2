@@ -25,7 +25,7 @@ until something downstream is silently mirrored, dropped or mis-gated:
   ``to_record`` is a pixel-free ``q_``-prefixed row.
 
 There is no recorded dataset in this repo, so everything that needs pixels uses
-``tests/fixtures/local/face.jpg`` / ``static_face_30fps.mp4``.  Hand-built arrays
+``tests/fixtures/local/face.png`` / ``static_face_30fps.mp4``.  Hand-built arrays
 appear only where the point is one specific code path (the in-bounds counter,
 the gate-ordering ladder); no accuracy number is measured anywhere.
 """
@@ -68,7 +68,7 @@ def mediapipe_ready() -> None:
 
     model = resolve_path(load_config().preprocess.landmarker_model_path)
     if not model.is_file():
-        pytest.skip("artifacts/face_landmarker.task not installed")
+        pytest.skip("artifacts/face_landmarker.task not installed (run tools/fetch_assets.py)")
 
 
 def _observe(cfg: VisionConfig, rgb: np.ndarray, frame_id: int = 0, t_ms: int = 0):
@@ -445,11 +445,11 @@ def test_frame_id_and_timestamp_are_passed_through_untouched(
 
 
 def test_process_bgr_and_process_rgb_agree_on_the_same_pixels(
-    mediapipe_ready, cfg, face_jpg, face_rgb
+    mediapipe_ready, cfg, face_photo, face_rgb
 ):
     """The BGR entry point must be a colour swap, not a second code path."""
     cv2 = pytest.importorskip("cv2")
-    bgr = cv2.imread(str(face_jpg), cv2.IMREAD_COLOR)
+    bgr = cv2.imread(str(face_photo), cv2.IMREAD_COLOR)
 
     with PreprocessPipeline(cfg) as pipeline:
         from_rgb = pipeline.process_rgb(face_rgb, frame_id=1, t_ms=10)

@@ -12,8 +12,8 @@ Frames involved
 MediaPipe's metric space is OpenGL-style: ``+x`` image right, ``+y`` UP,
 ``+z`` toward the viewer, camera at the origin.  ``schemas.py`` (and OpenCV) use
 ``+y`` DOWN and ``+z`` into the scene.  The change of basis is therefore
-``S = diag(1, -1, -1)`` applied on both sides: ``R_cv = S @ R_gl @ S``.  On
-``tests/fixtures/face.jpg`` the raw translation is ``(-0.41, +22.46, -65.45)``,
+``S = diag(1, -1, -1)`` applied on both sides: ``R_cv = S @ R_gl @ S``.  On the
+archive's ``tests/fixtures/face.jpg`` the raw translation is ``(-0.41, +22.46, -65.45)``,
 i.e. a face 65 cm in front of the camera and above its axis -- consistent with
 that reading of the axes, and with the nose landmark sitting in the upper part
 of the portrait.
@@ -69,13 +69,16 @@ _GIMBAL_EPS = 1e-6
 #: path reports.
 #:
 #: The points are MediaPipe's canonical geometry, not a textbook anthropometric
-#: table: they were back-projected from ``tests/fixtures/face.jpg`` as
-#: ``R_cv^T (P_cv - t_cv)``, taking each landmark's depth from the mesh's own
+#: table: they were back-projected from the archive's ``tests/fixtures/face.jpg``
+#: as ``R_cv^T (P_cv - t_cv)``, taking each landmark's depth from the mesh's own
 #: ``z`` channel (width-normalised, head centre at 0) and the metric scale from
 #: the transformation matrix.  ``tools/derive_headpose_model.py`` is that recipe
 #: and reproduces these values exactly from that photo: points derived on one
-#: near-frontal face make the two paths agree on that face.  The classic
-#: OpenCV 6-point model was tried first and rejected --
+#: near-frontal face make the two paths agree on that face.  They are one
+#: person's geometry, though -- on the current synthetic test face they are up to
+#: 3.3 cm off and the PnP path reads ~18 deg more pitch than the matrix path.
+#: Only frames without a matrix ever take this path (the browser engine never
+#: does).  The classic OpenCV 6-point model was tried first and rejected --
 #: its chin sits 7.0 cm below the nose where MediaPipe puts 9.1 cm, which shows
 #: up as a constant -19 deg pitch bias and an 11 px reprojection residual.
 #:

@@ -4,7 +4,9 @@ Two jobs.
 
 1. Hand out the two real fixtures in ``tests/fixtures/local`` and the expensive
    objects built from them.  There is no recorded dataset in this repo, so every
-   test that needs pixels uses ``face.jpg`` / ``static_face_30fps.mp4``.  Tests
+   test that needs pixels uses ``face.png`` / ``static_face_30fps.mp4``.  Both are
+   a synthetic face (SFHQ, CC0) that ``tools/fetch_assets.py`` downloads and frames
+   like a laptop webcam; neither is committed (``tests/fixtures/README.md``).  Tests
    must NOT fabricate a stand-in dataset and read accuracy off it -- a number
    measured on invented gaze angles says nothing about the model.  Hand-built
    inputs are fine where the point is a specific code path (a known-angle vector
@@ -38,16 +40,16 @@ def repo_root() -> Path:
 
 
 @pytest.fixture(scope="session")
-def face_jpg() -> Path:
-    """A single real face looking into the lens (truth ~(0, 0) degrees).
+def face_photo() -> Path:
+    """A single synthetic face looking into the lens (truth ~(0, 0) degrees).
 
-    Load-bearing: the PnP model points, the 63 deg focal length, the iris bias
-    constants and the cross-backbone sign check were all derived against this
-    image. Replacing it invalidates those constants.
+    The PnP model points, the 63 deg focal length, the iris bias constants and
+    the cross-backbone sign check were derived on the archive's earlier photo;
+    the tests that read this one check that they still hold on a different face.
     """
-    path = FIXTURES / "face.jpg"
+    path = FIXTURES / "face.png"
     if not path.is_file():
-        pytest.skip(f"missing fixture {path}")
+        pytest.skip(f"missing fixture {path} (run tools/fetch_assets.py)")
     return path
 
 
@@ -56,7 +58,7 @@ def face_video() -> Path:
     """640x480 30 fps, 420 frames (14 s) of one static face."""
     path = FIXTURES / "static_face_30fps.mp4"
     if not path.is_file():
-        pytest.skip(f"missing fixture {path}")
+        pytest.skip(f"missing fixture {path} (run tools/fetch_assets.py)")
     return path
 
 
@@ -87,12 +89,12 @@ def fresh_cfg():
 
 
 @pytest.fixture(scope="session")
-def face_rgb(face_jpg: Path) -> np.ndarray:
-    """``face.jpg`` as a contiguous uint8 RGB array."""
+def face_rgb(face_photo: Path) -> np.ndarray:
+    """``face.png`` as a contiguous uint8 RGB array."""
     cv2 = pytest.importorskip("cv2")
-    bgr = cv2.imread(str(face_jpg), cv2.IMREAD_COLOR)
+    bgr = cv2.imread(str(face_photo), cv2.IMREAD_COLOR)
     if bgr is None:
-        pytest.skip(f"cv2 could not decode {face_jpg}")
+        pytest.skip(f"cv2 could not decode {face_photo}")
     return np.ascontiguousarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
 
 
@@ -119,7 +121,7 @@ def landmark_result(face_rgb: np.ndarray, cfg):
     """
     pytest.importorskip("mediapipe")
     if _require_landmarker_model() is None:
-        pytest.skip("artifacts/face_landmarker.task not installed")
+        pytest.skip("artifacts/face_landmarker.task not installed (run tools/fetch_assets.py)")
 
     from gaze_lab.preprocess.landmarker import FaceLandmarkerWrapper
 
@@ -141,7 +143,7 @@ def face_observation(face_rgb: np.ndarray, cfg):
     """A real ``FrameObservation`` straight from the shipped preprocess pipeline."""
     pytest.importorskip("mediapipe")
     if _require_landmarker_model() is None:
-        pytest.skip("artifacts/face_landmarker.task not installed")
+        pytest.skip("artifacts/face_landmarker.task not installed (run tools/fetch_assets.py)")
 
     from gaze_lab.preprocess.pipeline import PreprocessPipeline
 

@@ -261,19 +261,35 @@ def test_roll_is_measured_in_pixels_so_the_frame_aspect_changes_it():
     assert tall > square
 
 
+@pytest.mark.parametrize("tilt_deg", [-6.0, 6.0])
 def test_roll_from_the_eye_line_agrees_with_the_head_pose_roll(
-    face_landmarks, face_image_size, landmark_result
+    cfg, face_rgb, landmark_result, tilt_deg
 ):
+    """Two independent estimators (two landmarks vs the whole mesh fit) agree on the tilt.
+
+    The fixture face is level (both read |roll| < 0.5 deg), so comparing signs on
+    it would be a coin flip.  The photo is rotated by a known angle instead,
+    which also pins the sign convention (positive = clockwise) to ground truth.
+    """
     if landmark_result.transform_matrix is None:
         pytest.skip("no facial transformation matrix in this MediaPipe build")
-    pose = headpose.head_pose_from_matrix(landmark_result.transform_matrix, face_image_size)
+    from gaze_lab.preprocess.landmarker import FaceLandmarkerWrapper
 
-    eye_line = crops.roll_angle_deg(face_landmarks, face_image_size)
+    height, width = face_rgb.shape[:2]
+    # cv2 turns a positive angle counter-clockwise; a positive roll is clockwise.
+    rotation = cv2.getRotationMatrix2D((width / 2.0, height / 2.0), -tilt_deg, 1.0)
+    tilted = np.ascontiguousarray(
+        cv2.warpAffine(face_rgb, rotation, (width, height), borderMode=cv2.BORDER_REPLICATE)
+    )
+    with FaceLandmarkerWrapper(cfg.preprocess) as wrapper:
+        result = wrapper.detect(tilted)
+    assert result is not None and result.transform_matrix is not None
 
-    # Two independent estimators (two landmarks vs the whole mesh fit) must at
-    # least agree on which way the head is tilted.
+    pose = headpose.head_pose_from_matrix(result.transform_matrix, (width, height))
+    eye_line = crops.roll_angle_deg(result.landmarks, (width, height))
+
     assert eye_line == pytest.approx(math.degrees(pose.roll), abs=1.0)
-    assert np.sign(eye_line) == np.sign(math.degrees(pose.roll))
+    assert math.degrees(pose.roll) == pytest.approx(tilt_deg, abs=1.5)
 
 
 # ==========================================================================
@@ -905,26 +921,85 @@ def test_pnp_ignores_the_landmark_depth_channel(face_landmarks, face_image_size)
     )
 
 
-def test_the_two_head_pose_estimators_agree_on_the_real_face(
-    face_landmarks, face_image_size, landmark_result
-):
+def test_the_shipped_pnp_points_are_the_archive_values():
+    """The constants themselves.  tools/derive_headpose_model.py reproduces exactly
+    these from the archive's photo; an accidental edit shows up here."""
+    assert headpose.PNP_MODEL_POINTS.tolist() == [
+        [0.0512, 1.5818, -4.2221],
+        [0.1589, -3.7952, -1.1034],
+        [0.2138, -9.4695, 0.2987],
+        [-4.4244, -4.1455, 1.5249],
+        [4.8945, -4.2610, 1.5852],
+        [-1.6582, -3.8961, 0.9662],
+        [2.0551, -3.9470, 1.0084],
+        [-8.0902, -3.6247, 7.2830],
+        [8.3375, -3.7099, 7.3076],
+    ]
+
+
+def test_the_shipped_pnp_points_on_the_fixture_face(face_landmarks, face_image_size, landmark_result):
+    """What the shipped points do on a face they were not derived from (no patching).
+
+    They are one person's geometry, so on this synthetic face the PnP path reads
+    ~18 deg more pitch than the matrix path (pnp 19.16 deg vs matrix 1.08 deg),
+    with a 3.9 px residual.  Pinned so a change to the constants or the solver
+    shows up; the browser engine never takes this path, and the Python pipeline
+    only does for frames without a transformation matrix.
+    """
+    pose = headpose.head_pose_from_landmarks(
+        crops.to_pixels(face_landmarks, face_image_size), face_image_size
+    )
+
+    assert math.degrees(pose.yaw) == pytest.approx(1.16, abs=0.5)
+    assert math.degrees(pose.pitch) == pytest.approx(19.16, abs=0.5)
+    assert math.degrees(pose.roll) == pytest.approx(0.40, abs=0.5)
+    assert pose.reprojection_error == pytest.approx(3.90, abs=0.5)
+    if landmark_result.transform_matrix is not None:
+        from_matrix = headpose.head_pose_from_matrix(landmark_result.transform_matrix, face_image_size)
+        assert math.degrees(pose.pitch - from_matrix.pitch) == pytest.approx(18.1, abs=1.0)
+
+
+@pytest.fixture
+def fixture_pnp_points(monkeypatch, face_landmarks, face_image_size, landmark_result):
+    """PNP_MODEL_POINTS re-derived from the fixture face (tools/derive_headpose_model.py).
+
+    The shipped points are one person's geometry, back-projected from the
+    archive's earlier photo; on this synthetic face they are up to 3.3 cm off and
+    the PnP path reads ~18 deg more pitch than the matrix path.  The property the
+    recipe promises -- points derived on a near-frontal face make the two paths
+    agree on that face -- is what these tests check, so they derive the points
+    from the fixture the same way.
+    """
     if landmark_result.transform_matrix is None:
         pytest.skip("no facial transformation matrix in this MediaPipe build")
+    from derive_headpose_model import back_project
 
+    points = back_project(
+        face_landmarks, np.asarray(landmark_result.transform_matrix), face_image_size
+    )
+    monkeypatch.setattr(headpose, "PNP_MODEL_POINTS", points)
+    return points
+
+
+def test_the_two_head_pose_estimators_agree_on_the_real_face(
+    fixture_pnp_points, face_landmarks, face_image_size, landmark_result
+):
     from_matrix = headpose.head_pose_from_matrix(landmark_result.transform_matrix, face_image_size)
     from_pnp = headpose.head_pose_from_landmarks(
         crops.to_pixels(face_landmarks, face_image_size), face_image_size
     )
 
-    # PNP_MODEL_POINTS was back-projected from this very fixture, so the two
-    # paths must not step the head-pose features when one takes over.
+    # Points back-projected from this very face, so the two paths must not step
+    # the head-pose features when one takes over.
     assert from_pnp.as_array() == pytest.approx(from_matrix.as_array(), abs=math.radians(0.5))
     assert from_pnp.depth_proxy == pytest.approx(from_matrix.depth_proxy, rel=0.01)
     assert from_pnp.reprojection_error < 2.0
     assert from_matrix.reprojection_error == 0.0
 
 
-def test_the_pnp_solution_is_a_near_frontal_pose_on_the_fixture(face_landmarks, face_image_size):
+def test_the_pnp_solution_is_a_near_frontal_pose_on_the_fixture(
+    fixture_pnp_points, face_landmarks, face_image_size
+):
     pose = headpose.head_pose_from_landmarks(
         crops.to_pixels(face_landmarks, face_image_size), face_image_size
     )

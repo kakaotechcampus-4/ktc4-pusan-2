@@ -20,7 +20,7 @@ published Gaze360 weights load and mean what they meant there:
   Normalize``); ``AdaptiveAvgPool2d`` makes the 14x14 feature map work.  Training
   instead used ``Resize(448) + CenterCrop(224)``, i.e. a 2x centre zoom into the
   face.  Both are supported and both behave sensibly, but a *plain* 224 resize
-  does not -- measured on ``tests/fixtures/face.jpg``, whose subject looks into
+  does not -- measured on the archive's ``tests/fixtures/face.jpg``, whose subject looks into
   the lens so the truth is about (0, 0) deg::
 
       input_size 448, center_crop_ratio 1.0   yaw  +2.20  pitch  -0.23  conf 0.98  565 ms

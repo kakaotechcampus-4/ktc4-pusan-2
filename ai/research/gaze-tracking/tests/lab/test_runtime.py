@@ -878,7 +878,7 @@ def test_the_session_runs_the_real_preprocess_path_on_the_face_fixture(cfg, face
     from gaze_lab.preprocess.pipeline import PreprocessPipeline
 
     if not resolve_path(cfg.preprocess.landmarker_model_path).is_file():
-        pytest.skip("artifacts/face_landmarker.task not installed")
+        pytest.skip("artifacts/face_landmarker.task not installed (run tools/fetch_assets.py)")
 
     bgr = np.ascontiguousarray(face_rgb[:, :, ::-1])
     backbone = ScriptedBackbone(pitch=CAMERA_PITCH)

@@ -14,7 +14,7 @@ convention (``schemas`` module docstring), so the properties locked in here are
   reported as corrupt, the three published wrapper shapes plus ``DataParallel``'s
   ``module.`` prefix are unwrapped, and a *missing* required parameter is fatal
   while extra keys are tolerated.
-* **geometry / sign** -- on the real ``face.jpg`` fixture the subject looks into
+* **geometry / sign** -- on the real ``face.png`` fixture the subject looks into
   the lens, so both angles must come out small and finite; and moving the irises
   DOWN in the image must make ``gaze_pitch`` MORE NEGATIVE.  That is the
   BOTTOM-vs-CAMERA invariant every adapter owes the rest of the pipeline.
@@ -23,7 +23,7 @@ convention (``schemas`` module docstring), so the properties locked in here are
   stub model, so it holds with or without the published weights on disk.
 
 There is no recorded dataset in this repo and none is invented here: pixels come
-from ``tests/fixtures/local/face.jpg`` through the shipped preprocess pipeline, and the
+from ``tests/fixtures/local/face.png`` through the shipped preprocess pipeline, and the
 hand-built arrays exist only to drive one specific code path (a known offset
 through the iris model, a known bin through the L2CS de-binning, a known byte
 string through the checkpoint reader).  No accuracy number is asserted anywhere.

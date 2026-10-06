@@ -12,7 +12,9 @@
 
 ```bash
 cd ai/research/gaze-tracking
-uv sync                      # Python 3.12 (.python-version), 라이브러리 + 개발 도구
+uv sync                                  # Python 3.12 (.python-version), 라이브러리 + 개발 도구
+uv run python tools/fetch_assets.py      # 모델 · 테스트 얼굴(합성, git 밖)을 받고 sha256 확인
+uv run python -m pytest                  # 테스트
 ```
 
 Windows에서는 `pytest.exe`가 앱 제어로 막혀 있을 수 있어 `uv run python -m pytest`로 부릅니다.
