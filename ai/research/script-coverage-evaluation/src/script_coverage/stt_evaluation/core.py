@@ -9,7 +9,7 @@ from ..shared.llm_step import LLMCache, llm_step
 from ..shared.rubric import EvaluationRubric
 from ..shared.text import normalize_script
 from .align import align_sentences, fidelity_excluding, positioned_tokens
-from .facts import annotate_mismatches, check_critical_facts
+from .fact_check import annotate_mismatches, check_critical_facts
 from .judge import eval_config_hash, evaluate_semantics, semantic_eval_message
 from .merge import (
     CONFLICT_TEXT,

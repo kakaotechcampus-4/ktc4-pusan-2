@@ -8,7 +8,7 @@ from ..shared.rubric import NAME_TYPES, EvaluationRubric
 from ..shared.text import NormalizedScript
 from .align import NUMERIC_TYPES, Token
 from .config import SIMILAR_SOUNDS, WORD_DISTANCE
-from .facts import jamo_diff, mismatch_signals
+from .fact_check import jamo_diff, mismatch_signals
 from .normalize import locate_raw
 from .schemas import Alignment, FactCheck, SimilarItem
 
@@ -86,11 +86,11 @@ def find_similar_items(
 ) -> list[SimilarItem]:
     """비슷한 말 찾기 (규칙).
 
-    ① `facts.py` 에서 대본과 다른 값이 나온 수치 중 발음이 비슷하거나 애매한 것 (발음 관계 similar·near, `mismatch_signals`)
+    ① `fact_check.py` 에서 대본과 다른 값이 나온 수치 중 발음이 비슷하거나 애매한 것 (발음 관계 similar·near, `mismatch_signals`)
     ② 대본 문장과 정렬된 STT 문장을 형태소 단위로 맞춰(SequenceMatcher) 같은 자리에서 바뀐 표현
        - 수치 → 수치 (발음이 비슷한 것만): 같은 수치를 다른 문장에서 맞게 말해 ①에서 빠진 경우도 잡힌다
        - 단어 → 단어: 대본 명사가 그 자리에서 빠지고, 발음 거리 ≤ WORD_DISTANCE 인 새 말이 나온 경우
-    발음이 전혀 다르거나 음절 순서만 바뀐 수치, 어림 표현은 여기 들지 않는다 — `facts.py` 의 규칙 원인으로 비율에 반영한다.
+    발음이 전혀 다르거나 음절 순서만 바뀐 수치, 어림 표현은 여기 들지 않는다 — `fact_check.py` 의 규칙 원인으로 비율에 반영한다.
     """
     facts = {f.id: f for f in rubric.critical_facts}
     fact_by_value = {(f.type, f.normalized): f for f in rubric.critical_facts}

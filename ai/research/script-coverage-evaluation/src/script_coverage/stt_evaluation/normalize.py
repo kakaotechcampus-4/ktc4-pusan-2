@@ -10,7 +10,7 @@ from .fillers import remove_fillers
 def normalize_stt(text: str) -> NormalizedScript:
     """STT 정규화: 대본과 같은 정규화에 간투사·말 반복 제거를 더한다.
 
-    숫자를 한글로 받아 적은 표기("사십이 퍼센트")는 바꾸지 않는다. `facts.py` 의 사실 검증에서 대본 쪽과 같은 수 파서로 읽는다.
+    숫자를 한글로 받아 적은 표기("사십이 퍼센트")는 바꾸지 않는다. `fact_check.py` 의 사실 검증에서 대본 쪽과 같은 수 파서로 읽는다.
     """
     text = unicodedata.normalize("NFKC", text).translate(QUOTE_MAP)
     text = remove_fillers(text)

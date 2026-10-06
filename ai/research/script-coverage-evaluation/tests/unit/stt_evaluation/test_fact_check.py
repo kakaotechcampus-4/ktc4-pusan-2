@@ -5,7 +5,7 @@ import pytest
 from script_coverage.shared.facts import extract_critical_facts
 from script_coverage.shared.rubric import NAME_TYPES
 from script_coverage.shared.text import normalize_script
-from script_coverage.stt_evaluation.facts import (
+from script_coverage.stt_evaluation.fact_check import (
     jamo_diff,
     mismatch_signals,
     read_number,
