@@ -3,7 +3,7 @@
     FE ──(WS-1)── RealtimeSession ──push──▶ TakeStream ──(WS-2)── Deepgram
 
 이 클래스는 **연결만큼만** 산다. 오디오 파이프라인과 Deepgram 세션은 `take_stream.TakeStream`
-이 들고 있고 연결보다 오래 남는다 — 탭을 새로 고쳐도 세그먼트 번호와 타임라인이 이어지도록.
+이 들고 있고 연결보다 오래 남는다 — 탭을 새로고침해도 세그먼트 번호가 이어지도록.
 
 연결 하나의 순서: Origin → auth(JWT) → 인가(DB 1회: 사용자·Take 존재·소유·상태·대본 용어)
 → ready → 오디오.

@@ -2,7 +2,7 @@
 
     FE ──(WS-1)── RealtimeSession ──push──▶ TakeStream ──(WS-2)── Deepgram
 
-연결(`RealtimeSession`)은 탭을 새로 고치면 바뀌지만 `TakeStream` 은 남는다. 그래서
+연결(`RealtimeSession`)은 탭을 새로고침하면 바뀌지만 `TakeStream` 은 남는다. 그래서
 세그먼트 번호·프레임 순서·Deepgram 세션 번호가 재연결 뒤에도 이어진다. 이 값들이 연결 객체
 안에 있으면 재연결마다 1 로 리셋되고, `segment_id` 가 `"1-1"` 부터 다시 나와 FE 가
 **발표 앞부분 전사를 뒷부분으로 덮어쓴다.**
@@ -12,6 +12,9 @@
 - **WS-1** (FE↔BE): 연결만 떨어진다. Deepgram 세션은 `GRACE_SEC` 동안 살려 두고 그 안에
   다시 붙으면 같은 세션에 이어 붙인다. 떨어져 있는 동안 온 final 은 모아 두었다가 재연결 때
   다시 보낸다. 못 붙으면 `CloseStream` 으로 정리한다.
+  탭을 새로고침하면 FE 는 무대 시계와 함께 seq·offset 을 1·0 부터 다시 센다. 새 연결의 첫
+  프레임이 뒤로 가면 그렇게 보고(`Accepted.restart`) 세션을 갈아 새 offset 으로 base 를 잡는다.
+  grace 가 지난 뒤 새 스트림이 열리는 경우와 같은 결과다.
 - **WS-2** (BE↔Deepgram): 큐에 담아 두고 백오프로 재접속한다. 새 세션은 타임스탬프가 다시
   0 부터라 `base_offset_ms` 를 새로 잡고 `stt_session_no` 를 올린다. 재접속이 이어서 실패해도
   **연결을 끊지 않는다** — FE 1단 코치는 계속 돌아야 하므로 `degraded` 만 알리고 재시도한다.
@@ -194,6 +197,7 @@ class TakeStream:
 
         previous = self._client
         self._client = ws
+        self.sequencer.new_connection()
         if previous is not None and previous is not ws:
             await _quiet(
                 previous.send_text(
@@ -356,6 +360,14 @@ class TakeStream:
         accepted = self.sequencer.accept(frame)
         if accepted is None:
             return
+        if accepted.restart:
+            logger.info(
+                "새 연결이 seq 를 처음부터 보낸다(탭 새로고침). 타임라인을 다시 잡는다 "
+                "take=%s seq=%d offset_ms=%d",
+                self.take_id,
+                accepted.frame.seq,
+                accepted.frame.offset_ms,
+            )
         self._put(accepted)
 
     def _put(self, item: Accepted | None) -> None:

@@ -741,6 +741,49 @@ def test_reconnect_within_grace_keeps_the_same_deepgram_session(client: TestClie
     assert status["frames"] == 2, "프레임 수도 Take 누적이다"
 
 
+def test_reload_within_grace_restarts_the_timeline_instead_of_dropping_audio(
+    client: TestClient, token: str
+):
+    """탭을 새로고침하면 FE 는 무대 시계와 함께 seq·offset 을 1·0 부터 다시 센다.
+    grace 안에 붙어 같은 스트림을 쓰더라도 그 프레임을 역행으로 버리면 안 된다 —
+    예전 seq 를 넘을 때까지 오디오가 통째로 사라진다."""
+    adapter = use(
+        FakeSttAdapter(
+            Plan(replies=[transcript(0, 100, "앞부분", is_final=True)]),
+            Plan(replies=[transcript(0, 100, "새로고침한 뒤", is_final=True)]),
+        )
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        for i in range(3):
+            ws.send_bytes(frame(i + 1, i * 100))
+        assert ws.receive_json()["segment_id"] == "1-1"
+
+    # 새로고침. 같은 Take 에 grace 안에 다시 붙는데 seq·offset 이 처음부터다
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        ws.send_bytes(frame(1, 0))
+        ws.send_bytes(frame(2, 100))
+        ws.send_text(json.dumps({"type": "stop"}))
+        messages = []
+        while not (messages and messages[-1].get("state") == "closed"):
+            messages.append(ws.receive_json())
+
+    transcripts = [m for m in messages if m["type"] == "transcript"]
+    status = messages[-1]
+
+    # offset 이 0 으로 돌아갔으니 Deepgram 세션을 갈아 base 를 다시 잡는다
+    assert len(adapter.sessions) == 2
+    assert [len(a) for a in adapter.sessions[1].audio] == [3200, 3200]
+    # 세그먼트 번호는 이어지고, 시각은 새 무대 시계 기준이다
+    assert [(t["segment_id"], t["start_ms"], t["text"]) for t in transcripts] == [
+        ("2-2", 0, "새로고침한 뒤")
+    ]
+    assert status["frames"] == 5
+    assert status["dropped_frames"] == 0
+
+
 def test_grace_expiry_closes_the_stream(
     client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
 ):
