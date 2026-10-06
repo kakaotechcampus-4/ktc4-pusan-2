@@ -1,0 +1,25 @@
+# Set-up check before calibration: one presenter facing a webcam mounted at the
+# top centre of the screen. Every bound is the MINIMUM the measurement needs (can
+# the face be found and tracked), not an ideal posture.
+strict: true
+hold_ms: 1000
+reject_after_ms: 3000
+# A distinct second face this large (vs the main face), seen for 0.5 s.
+max_second_face_area_ratio: 0.25
+second_face_confirm_ms: 500
+# The face only has to stay well inside the picture.
+max_center_offset_x: 0.35
+max_center_offset_y: 0.35
+# Too far: near the face detector's floor (preprocess.min_face_area_ratio 0.010) + headroom.
+min_face_area_ratio: 0.012
+# Eye-reading backbones only (the head-pose backbone does not read the iris).
+min_iris_px: 7.0
+# Too close: a small head movement would take the face out of frame.
+max_face_height_ratio: 0.70
+max_head_yaw_deg: 30.0
+# A laptop webcam below eye level reads 16-24 deg chin-up while looking at the lens.
+max_head_pitch_deg: 40.0
+min_face_brightness: 40.0
+max_backlight_ratio: 2.5
+# The 1 s vote needs 4 frames; 5 FPS leaves a little room (target 8 FPS).
+min_analysis_fps: 5.0
