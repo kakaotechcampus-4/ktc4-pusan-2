@@ -72,9 +72,10 @@ _GIMBAL_EPS = 1e-6
 #: table: they were back-projected from ``tests/fixtures/face.jpg`` as
 #: ``R_cv^T (P_cv - t_cv)``, taking each landmark's depth from the mesh's own
 #: ``z`` channel (width-normalised, head centre at 0) and the metric scale from
-#: the transformation matrix.  ``tools`` has no need to re-derive them, but
-#: the recipe is: solve the two paths on one near-frontal face and require them
-#: to agree.  The classic OpenCV 6-point model was tried first and rejected --
+#: the transformation matrix.  ``tools/derive_headpose_model.py`` is that recipe
+#: and reproduces these values exactly from that photo: points derived on one
+#: near-frontal face make the two paths agree on that face.  The classic
+#: OpenCV 6-point model was tried first and rejected --
 #: its chin sits 7.0 cm below the nose where MediaPipe puts 9.1 cm, which shows
 #: up as a constant -19 deg pitch bias and an 11 px reprojection residual.
 #:
