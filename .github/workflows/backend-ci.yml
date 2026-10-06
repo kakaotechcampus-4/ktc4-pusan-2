@@ -7,15 +7,15 @@
 # 죽습니다. 죽는 곳은 PR 이 아니라 **배포**라, 먼저 받은 사람만 모르고 지나갑니다.
 # 실제로 PR #32 리뷰에서 같은 지적을 받고도 develop 에 head 2개가 남아 있었습니다.
 #
-# 엔티티만 고치고 마이그레이션을 빠뜨리는 것도 같은 종류입니다. 그쪽은 DB 가 필요해서
-# `alembic check` 로 봐야 하는데, 여기서는 DB 없이 볼 수 있는 것만 검사합니다.
+# 엔티티만 고치고 마이그레이션을 빠뜨리는 것도 같은 종류입니다. 그래서 job 하나에서
+# 아래를 순서대로 검사합니다. 빠른 것(DB 불필요)을 앞에 둬서 실패를 일찍 알립니다.
 #
 #   - alembic head 개수
 #   - ruff check src
 #   - 앱 import. 지워진 이름을 import 한 채로 머지돼 develop·main 이 기동조차 못 한 적이
 #     있습니다 (PR #69). 이 검사가 그때 있었으면 PR 에서 막혔습니다.
-#
-# (pytest 는 PostgreSQL·Redis 서비스를 붙인 별도 job 으로 추가하면 됩니다)
+#   - 빈 DB 에 마이그레이션 적용 + alembic check (엔티티와 마이그레이션이 같은지)
+#   - pytest. PostgreSQL·Redis 는 아래 services 컨테이너를 쓴다
 #
 # ★ 이 파일만으로는 게이트가 아닙니다. Settings → Branches → 브랜치 보호에서
 #   `backend` 를 Require status checks 에 넣어야 실패한 PR 이 막힙니다.
@@ -41,11 +41,37 @@ jobs:
       run:
         working-directory: backend
 
-    # alembic env.py 와 앱 import 가 Settings 를 만들면서 필수 값을 요구합니다.
-    # 둘 다 실제로 접속하지는 않습니다 — 형식만 맞으면 됩니다.
+    # job 하나로 두는 이유: 브랜치 보호의 필수 체크를 `backend` 하나로 유지하려고.
+    # healthcheck 가 없으면 DB 가 뜨기 전에 단계가 시작돼 가끔 연결 실패가 난다.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # Settings 가 요구하는 필수 값. DATABASE_URL 은 위 postgres 서비스를 가리킨다.
+    # 마이그레이션 검사는 이 ci DB 를, pytest 는 conftest 가 만드는 ci_test DB 를 쓴다.
+    # REDIS_URL 은 기본값(localhost:6379)이 서비스와 맞아 넣지 않는다.
+    # 나머지는 형식만 맞으면 된다 — 외부 호출은 테스트에서 모킹한다.
     env:
       DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/ci
-      JWT_SECRET_KEY: ci-dummy
+      JWT_SECRET_KEY: ci-dummy-jwt-secret-at-least-32-bytes
       GOOGLE_CLIENT_ID: ci-dummy
       GOOGLE_CLIENT_SECRET: ci-dummy
       DEEPGRAM_API_KEY: ci-dummy
@@ -78,3 +104,11 @@ jobs:
 
       - name: 앱이 import 되어야 합니다
         run: uv run python -c "import pitch_coach_backend.main"
+
+      - name: 마이그레이션이 빈 DB 에 적용되고 엔티티와 같아야 합니다
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+
+      - name: 테스트
+        run: uv run pytest -q
