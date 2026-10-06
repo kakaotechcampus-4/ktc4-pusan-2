@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.dto import (
     AllPitchesDTO,
-    EachPresentationDTO,
     HighlightDTO,
     ParseRequestedDTO,
     ParseTicket,

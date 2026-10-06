@@ -24,7 +24,6 @@ from pitch_coach_backend.module.pitch.service import (
     add_pitch_standard_service,
     create_script_service,
     delete_pitch_service,
-    get_each_presentation_service,
     get_pitch_datas,
     get_all_pitches_service,
     get_presentation_detail,
@@ -33,7 +32,7 @@ from pitch_coach_backend.module.pitch.service import (
     update_pitch_service,
     upload_presentation_service,
 )
-from pitch_coach_backend.module.pitch.exception import NonExistentPresentationVersion, NotExistPresentationVersion
+from pitch_coach_backend.module.pitch.exception import NonExistentPresentationVersion
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 
