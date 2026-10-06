@@ -58,7 +58,7 @@ FE ──▶ BE ──HTTP──▶ AI 서버 (상태 없음) ──▶ LLM API
 
 - 대본을 고쳤을 때는 평가 기준의 `meta.content_hash`로 바뀐 슬라이드만 골라 보내면 비용이 줄어듭니다.
 - 평가 결과에는 채점에 쓴 평가 기준의 `rubric_id`가 들어 있습니다. 평가 기준이 바뀌면 다시 계산은 거절되고, 다시 채점해야 합니다.
-- 요청 · 응답 모양의 기준은 코어의 pydantic 모델입니다: 평가 기준 `shared/rubric.py`, 평가 결과 `stt_evaluation/schemas.py`.
+- 요청 · 응답 모양의 기준은 코어의 pydantic 모델입니다. 진입점별 입력 · 출력, 필드 표, JSON 예시는 [INTERFACE.md](INTERFACE.md)에 있습니다.
 
 ## 비용과 시간 (v1 가상 데이터 기준)
 

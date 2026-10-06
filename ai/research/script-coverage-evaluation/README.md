@@ -23,7 +23,7 @@
 4. [실행 흐름 따라가기](#4-실행-흐름-따라가기)
 5. [실행법](#5-실행법)
 6. [코드 읽는 순서와 자주 묻는 것](#6-코드-읽는-순서와-자주-묻는-것)
-7. [출력 계약](#7-출력-계약)
+7. [입출력](#7-입출력)
 8. [버전별 결과표](#8-버전별-결과표)
 9. [배포](#9-배포)
 10. [설계 결정](#10-설계-결정)
@@ -119,7 +119,9 @@ src/script_coverage/        코어: 실제 판정 로직                     →
 
 ```
 script-coverage-evaluation/
-├── README.md · DEPLOY.md          이 문서, 배포 가이드
+├── README.md                      이 문서
+├── INTERFACE.md                   코어의 입출력 (API 를 만들 때 기준)
+├── DEPLOY.md                      배포 가이드
 ├── pyproject.toml · uv.lock       라이브러리 목록 (코어용 / research 전용 구분) · 버전 고정
 ├── .gitignore                     outputs/ 와 data/ 제외 (data/virtual/ 만 커밋)
 │
@@ -469,69 +471,19 @@ uv run python -m pytest -m live            # 실제 API 를 부르는 테스트�
 
 ---
 
-## 7. 출력 계약
+## 7. 입출력
 
-다운스트림(BE · 리뷰 agent)과의 접점은 네 가지입니다: 평가 기준, 슬라이드 평가, 비슷한 말, 사용자 확인.
-**원본은 pydantic 클래스입니다** — 평가 기준(`EvaluationRubric`)은 `shared/rubric.py`, 평가 결과(`SlideEvaluation`, `SimilarItem` 등)는 `stt_evaluation/schemas.py` 입니다.
-이 문서의 표는 읽기 쉽게 요약한 것이고, 필드가 어긋나면 코드가 맞습니다.
-service 에서는 이 모델이 `contracts/`로 생성되고 BE가 저장합니다. research 에서는 `coverage_lab/store.py`의 SQLite 표가 그 역할을 대신합니다 (아래 대응표).
+코어가 무엇을 받아 무엇을 돌려주는지는 **[INTERFACE.md](INTERFACE.md)**에 정리했습니다. API 요청 · 응답을 정할 때 기준이 되는 문서입니다.
 
-### 평가 기준 — `EvaluationRubric` (① 이 만들고 ② 가 읽음)
-
-| 필드 | 뜻 |
+| 내용 | INTERFACE.md |
 |---|---|
-| `meta` | `rubric_id`, 대본 이름, 슬라이드 번호, `content_hash`, 스키마 버전(`1.1`), LLM 모델, 1차 · 최종 · 전달 단위 설정 해시 |
-| `sentences`, `sentence_roles` | 정규화한 대본 문장과 문장별 역할 `claim` / `evidence` / `detail` / `skip` |
-| `core_claim` | 슬라이드의 핵심 주장 한 문장 |
-| `key_points[]` | `id`, `content`, `importance`(`critical` / `high` / `normal`), `sentence_indices`(근거 문장), `source_quote`, `key_terms`, `fact_ids` |
-| `critical_facts[]` | `id`, `type`, `value`(대본 표기), `normalized`(비교용 정규형), `numeric_value`, `unit`, `qualifier`, `spans`, `sentence_indices`, `source`(`rule` / `llm`), `key_point_ids`, `importance` |
-| `content_units[]` | 전달 단위: `id`(`S1-U2`), `sentence_index`, `text`, `quote`(대본 속 표현), `span`, `fact_ids`, `source`(`llm` / `fact` / `sentence`). `skip` 문장은 없음 |
-| `keywords`, `warnings`, `review_changes`, `name_decisions` | TF-IDF 키워드, 최종 경고, 최종 결론이 1차에서 바꾼 점, 이름 · 용어 후보 판정 |
+| 진입점 3개(`analyze_script` · `evaluate_take` · `rescore_evaluation`)의 입력 · 출력 · 실패 처리와 실제 JSON 예시 | 1절 |
+| 데이터 모델 필드: 입력, 평가 기준(`EvaluationRubric`), 평가 결과(`SlideEvaluation`), 판정 값의 뜻 | 2절 |
+| 단계 모듈마다 주고받는 것 | 3절 |
+| LLM에 보내는 것과 받는 스키마 5종 | 4절 |
+| 버전 값과 호환 규칙 | 5절 |
 
-### 슬라이드 평가 — `SlideEvaluation` (② 가 만들고 소비자가 읽음)
-
-| 필드 | 뜻 |
-|---|---|
-| `scores` | `content_coverage`, `critical_fact_accuracy`(사실이 없으면 `null`), `script_fidelity`, `similar_words`, `similar_numbers` |
-| `sentences[]` | 대본 문장별 `status` · `first_status`(LLM 1차) · `evidence`(T번호) · `reason` · `confidence` · `units`(전달 단위별 `status` · `first_status` · `raised_by_rule`) · `lexical_coverage` · `evidence_coverage` · `fact_statuses` · `similar_ids` · `conflicts` · `verified` |
-| `key_points[]` | Key Point 별 `status`(`covered` / `partial` / `missing` / `contradicted`) — 근거 문장 판정을 모은 값 |
-| `critical_facts[]` | 사실별 `status`(`matched` / `approximate` / `mismatched` / `missing` / `sound_alike` / `unverified`), STT 표기, 원인 |
-| `similar_items[]` | 비슷한 말 (아래) |
-| `stt_text`, `stt_sentences`, `confirmations` | 정규화한 STT 전체 · 문장(T번호가 가리키는 원문), 반영한 사용자 확인 (처음 채점에는 비어 있음) |
-| `rubric_id`, `alignments`, `fidelity`, `verification` | 채점에 쓴 평가 기준, 문장 정렬, 충실도 세부, 교차 검증 대상과 충돌 조건별 문장 번호 |
-
-| 문장 `status` | 뜻 | 사실 `status` | 뜻 |
-|---|---|---|---|
-| `said` | 뜻이 전달됨 (의역 포함, 핵심 수치 · 이름까지) | `matched` | 같은 값을 말함 |
-| `partial` | 일부만 (수치를 흐리거나 내용 일부만) | `approximate` | 어림해 말함, 사실은 맞음 |
-| `missing` | 없음 | `mismatched` | 다른 값을 말함 (발음이 전혀 다르거나 음절 순서가 바뀜) |
-| `contradicted` | 다른 수치 · 반대 내용 | `sound_alike` | 발음이 비슷한 다른 말 — **판단 보류** |
-| | | `unverified` | 규칙으로 못 찾은 영문 이름 — LLM이 확인 |
-
-### 비슷한 말 — `SimilarItem` (한 항목씩)
-
-| 열 | 뜻 |
-|---|---|
-| `kind`, `script_text`, `stt_text` | `word` / `number`, 대본 표현, STT 표현 |
-| `script_sentence_index`, `script_start`, `script_end` | 대본 문장 번호와 정규화 대본 안의 위치 |
-| `stt_sentence_index`, `stt_start`, `stt_end` | STT 문장 번호(T번호)와 정규화 STT 안의 위치 |
-| `stt_raw_start`, `stt_raw_end` | **원본 STT** 안의 위치 (간투사를 지우기 전 기준). Deepgram 단어 타임스탬프와 맞춰 녹음 구간을 찾는 데 쓴다 |
-| `fact_id`, `key_point_ids` | 관련 Critical Fact, 이 자리가 걸린 Key Point |
-| `rule_guess`, `signals` | 규칙 추정(`asr_error` / `speaker_error`)과 근거 신호 — **참고용** |
-
-### 사용자 확인과 다시 계산 — `confirm.rescore_evaluation`
-
-| 사용자 답 | 뜻 | 다시 계산 |
-|---|---|---|
-| `as_script` | 대본대로 말함 — 음성 인식이 잘못 적음 | 사실 `sound_alike` → `matched`. 문장 판정은 그대로 (처음 채점이 이미 대본대로 말한 것으로 보고 판정) |
-| `as_stt` | STT 대로 말함 — 발표자가 다른 말을 함 | 사실 → `mismatched`, 그 자리가 든 전달 단위 → `contradicted` → 문장 · Key Point · 점수를 다시 모음 |
-
-- 사용자 확인에는 답과 함께 항목의 대본 · STT 표현을 남겨, 다시 채점해서 항목 번호가 바뀌어도 다른 항목에 적용되지 않게 합니다.
-- 확인 뒤 평가는 처음 채점과 같은 모양에 `confirmations`가 채워진 것이고, **처음 채점 결과는 바꾸지 않습니다.**
-- 답하지 않은 항목은 계속 보류입니다. 평가 기준이 바뀌었으면(`rubric_id`가 다르면) 다시 계산하지 않고 다시 채점하라고 알립니다.
-- 코드만 씁니다 (LLM 호출 없음, DB 없음). 읽고 저장하는 일은 호출하는 쪽이 합니다.
-
-이 모양들의 **의미**가 바뀌면 기능 버전을 올립니다.
+다운스트림(BE · 리뷰 agent)과의 접점은 네 가지입니다: 평가 기준, 슬라이드 평가, 비슷한 말, 사용자 확인. 필드의 원본은 pydantic 모델이고, 문서와 코드가 다르면 코드가 맞습니다.
 
 ### research의 SQLite 표 (`coverage_lab/store.py`, `outputs/rubrics.sqlite`)
 
