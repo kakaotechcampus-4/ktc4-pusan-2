@@ -6,7 +6,7 @@
 
 - LLM 호출: 처음 실행하면 바뀐 슬라이드 하나만 최대 3회 (1차 분석 · 최종 결론 · 전달 단위). 다시 실행하면 0회
 - 쓰는 곳: outputs/가상대본2_수정.json (고친 대본), outputs/rubrics.sqlite
-- 먼저 build_rubrics.py 를 실행해 원본 평가 기준을 만들어 둔다
+- 먼저 01_build_rubrics.py 를 실행해 원본 평가 기준을 만들어 둔다
 """
 
 # %% 준비
@@ -17,9 +17,9 @@ from IPython.display import display
 
 from coverage_lab.llm import load_settings, script_llms
 from coverage_lab.paths import OUTPUTS_DIR, SCRIPT_DIR
+from coverage_lab.rubric_quality import fact_values, facts_of
+from coverage_lab.rubric_report import key_points_table
 from coverage_lab.runs import run_script_analysis
-from coverage_lab.script_analysis.quality import fact_values, facts_of
-from coverage_lab.script_analysis.report import key_points_table
 from coverage_lab.store import connect, load_rubric
 
 # 스크립트로 실행할 때도 표가 잘리지 않게 한다

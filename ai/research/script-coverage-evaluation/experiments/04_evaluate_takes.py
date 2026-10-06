@@ -2,7 +2,7 @@
 
 - LLM 호출: 연습의 슬라이드마다 의미 평가 1회 + 충돌한 문장이 있는 슬라이드만 교차 검증 1회 (캐시에 있으면 호출 0)
 - 쓰는 곳: outputs/rubrics.sqlite 의 slide_evaluations · similar_items (처음 채점 결과)
-- 먼저 experiments/script_analysis/build_rubrics.py 로 평가 기준을 만들어 둔다
+- 먼저 experiments/01_build_rubrics.py 로 평가 기준을 만들어 둔다
 """
 
 # %% 준비
@@ -13,7 +13,7 @@ from coverage_lab.datasets import load_take, take_files
 from coverage_lab.llm import load_settings, stt_llms
 from coverage_lab.runs import run_take_evaluation
 from coverage_lab.store import connect
-from coverage_lab.stt_evaluation.report import (
+from coverage_lab.stt_report import (
     conflict_log,
     segmentation_report,
     show_evaluation,

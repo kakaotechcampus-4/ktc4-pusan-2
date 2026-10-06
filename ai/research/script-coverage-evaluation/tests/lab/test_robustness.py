@@ -4,11 +4,11 @@ import json
 
 import pytest
 
+from coverage_lab import rubric_consistency as consistency
 from coverage_lab.cache import SqliteLLMCache
 from coverage_lab.llm import Settings
+from coverage_lab.rubric_consistency import sample_rubrics
 from coverage_lab.runs import run_script_analysis
-from coverage_lab.script_analysis import consistency
-from coverage_lab.script_analysis.consistency import sample_rubrics
 from coverage_lab.store import (
     confirm_similar_item,
     connect,
@@ -18,7 +18,7 @@ from coverage_lab.store import (
     save_evaluation,
     save_rubric,
 )
-from coverage_lab.stt_evaluation.stability import check_baseline, repeat_runs
+from coverage_lab.stt_stability import check_baseline, repeat_runs
 from script_coverage.script_analysis.schemas import SlideSemanticAnalysis
 from script_coverage.script_analysis.semantic import semantic_config_hash
 from script_coverage.shared.text import normalize_script
@@ -64,7 +64,7 @@ def test_baseline_rejects_missing_evaluation(conn):
     save_rubric(conn, _rubric(slide_number=1))
     save_rubric(conn, _rubric(slide_number=2))
     with pytest.raises(
-        RuntimeError, match=r"evaluate_takes\.py.*슬라이드 2: 처음 채점 결과가 없다"
+        RuntimeError, match=r"04_evaluate_takes.py.*슬라이드 2: 처음 채점 결과가 없다"
     ):
         check_baseline(conn, [_take((1, 2))], {"대본_take1": [_evaluation(slide_number=1)]})
 

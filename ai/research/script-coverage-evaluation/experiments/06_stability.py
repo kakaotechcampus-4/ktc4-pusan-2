@@ -1,6 +1,6 @@
 """STT 평가: 같은 STT 를 여러 번 채점해 LLM 판정이 채점할 때마다 얼마나 달라지는지 본다.
 
-STT_CONSISTENCY_SAMPLES 번(기본 3) 채점한다. 0번은 evaluate_takes.py 의 채점이고, 1번부터는 LLM 의미 평가와
+STT_CONSISTENCY_SAMPLES 번(기본 3) 채점한다. 0번은 04_evaluate_takes.py 의 채점이고, 1번부터는 LLM 의미 평가와
 교차 검증을 다시 부른다. 1 이면 측정하지 않는다.
 
 - **LLM 비용 (과금)**: 기본 3벌이라, 캐시가 비어 있으면 연습 18번의 슬라이드 약 180장마다 의미 평가를 2회(= 약 360회) 부르고,
@@ -9,7 +9,7 @@ STT_CONSISTENCY_SAMPLES 번(기본 3) 채점한다. 0번은 evaluate_takes.py �
 - 시작할 때 처음 채점(0번)이 온전한지(모든 슬라이드에 결과가 있고 평가 기준이 같은지) 먼저 확인하고, 아니면 LLM 을 부르기 전에 멈춘다
 - 쓰는 곳: outputs/rubrics.sqlite 의 stt_llm_cache (kind = semantic#k / verifier#k. 채점 결과는 저장하지 않는다),
   reports/results/stt_stability.json
-- 먼저 evaluate_takes.py 를 실행해 채점해 둔다
+- 먼저 04_evaluate_takes.py 를 실행해 채점해 둔다
 """
 
 # %% 준비
@@ -22,8 +22,8 @@ from coverage_lab.datasets import load_take, take_files
 from coverage_lab.llm import load_settings, stt_llms
 from coverage_lab.results import write_result
 from coverage_lab.store import connect, load_take_evaluations
-from coverage_lab.stt_evaluation.checks import confidence_check, conflict_check, first_status_check
-from coverage_lab.stt_evaluation.stability import (
+from coverage_lab.stt_checks import confidence_check, conflict_check, first_status_check
+from coverage_lab.stt_stability import (
     accuracy_by_run,
     repeat_runs,
     stability_summary,

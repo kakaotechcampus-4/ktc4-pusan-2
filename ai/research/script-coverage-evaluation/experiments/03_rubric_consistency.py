@@ -7,7 +7,7 @@
   최종 결론 호출(최대 40회)을 부른다. 캐시에 있는 응답은 다시 부르지 않으므로 같은 설정으로 다시 실행하면 0회다.
   호출 없이 건너뛰려면 `RUBRIC_CONSISTENCY_SAMPLES=1` (건너뛰면 reports/results/rubric_consistency.json 을 덮어쓰지 않는다)
 - 쓰는 곳: outputs/rubrics.sqlite (semantic_samples 등 캐시), reports/results/rubric_consistency.json
-- 먼저 build_rubrics.py 를 실행해 평가 기준을 만들어 둔다
+- 먼저 01_build_rubrics.py 를 실행해 평가 기준을 만들어 둔다
 """
 
 # %% 준비
@@ -20,8 +20,8 @@ from coverage_lab.cache import SqliteLLMCache
 from coverage_lab.datasets import script_files
 from coverage_lab.llm import load_settings, script_llms
 from coverage_lab.results import write_result
-from coverage_lab.script_analysis.consistency import measure_consistency
-from coverage_lab.script_analysis.quality import facts_of, llm_quality_report
+from coverage_lab.rubric_consistency import measure_consistency
+from coverage_lab.rubric_quality import facts_of, llm_quality_report
 from coverage_lab.store import connect, load_rubrics
 
 # 스크립트로 실행할 때도 표가 잘리지 않게 한다

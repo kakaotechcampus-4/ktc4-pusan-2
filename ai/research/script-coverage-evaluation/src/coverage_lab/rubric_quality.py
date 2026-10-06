@@ -8,7 +8,7 @@ import pandas as pd
 from script_coverage.shared.facts import CriticalFact
 from script_coverage.shared.rubric import EvaluationRubric
 
-from ..store import load_rubric
+from .store import load_rubric
 
 
 def facts_of(

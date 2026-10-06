@@ -1,9 +1,9 @@
 """STT 평가: 정답 라벨과 비교해 판정 정확도를 재고, 충돌 조건을 점검하고, 사용자 확인 뒤 정확도를 본다.
 
-- LLM 호출: 없음. 채점 결과는 evaluate_takes.py 가 DB 에 남긴 것을 읽는다
+- LLM 호출: 없음. 채점 결과는 04_evaluate_takes.py 가 DB 에 남긴 것을 읽는다
 - 쓰는 곳: outputs/rubrics.sqlite 의 similar_confirmations · confirmed_evaluations (정답 라벨로 사용자 답을 대신한 확인),
   reports/results/stt_accuracy.json (핵심 지표)
-- 먼저 evaluate_takes.py 를 실행해 채점해 둔다
+- 먼저 04_evaluate_takes.py 를 실행해 채점해 둔다
 """
 
 # %% 준비
@@ -15,7 +15,7 @@ from coverage_lab.datasets import load_take, take_files
 from coverage_lab.llm import load_settings
 from coverage_lab.results import write_result
 from coverage_lab.store import connect, load_take_evaluations
-from coverage_lab.stt_evaluation.checks import (
+from coverage_lab.stt_checks import (
     accuracy_row,
     confirm_with_labels,
     conflict_check,
@@ -23,7 +23,7 @@ from coverage_lab.stt_evaluation.checks import (
     first_status_check,
     unchecked_errors,
 )
-from coverage_lab.stt_evaluation.labels import (
+from coverage_lab.stt_labels import (
     FACT_PRED_ORDER,
     FACT_TRUTH_ORDER,
     ORDER,

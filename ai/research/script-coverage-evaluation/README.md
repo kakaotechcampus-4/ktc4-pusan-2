@@ -78,7 +78,7 @@ script-coverage-evaluation/
 │   │   │   └── prompts/            #     프롬프트 상수 (.py)
 │   │   └── stt_evaluation/         #   ② STT → 평가 결과. 진입점 core.evaluate_take
 │   │       ├── core.py             #     연습 1회 파이프라인
-│   │       ├── normalize.py · fillers.py · align.py · facts.py · similar.py
+│   │       ├── normalize.py · fillers.py · align.py · fact_check.py · similar.py
 │   │       ├── judge.py · merge.py · verify.py · scoring.py
 │   │       ├── confirm.py          #     rescore_evaluation: 사용자 확인 뒤 다시 계산
 │   │       ├── schemas.py · config.py
@@ -88,11 +88,10 @@ script-coverage-evaluation/
 │       ├── cache.py                #   LLM 응답 캐시 (SQLite)
 │       ├── store.py                #   평가 기준 · 평가 결과 · 비슷한 말 · 사용자 확인 저장 (SQLite)
 │       ├── datasets.py · paths.py · results.py · runs.py
-│       ├── script_analysis/        #   결과 표, 품질 지표, 일관성 측정
-│       └── stt_evaluation/         #   결과 표, 정답 라벨 비교, 충돌 조건 점검, 반복 채점 안정성
-├── experiments/                    # `# %%` 셀 스크립트 (아래 실행법)
-│   ├── script_analysis/            #   build_rubrics · consistency · reanalyze_edit
-│   └── stt_evaluation/             #   evaluate_takes · accuracy · stability
+│       ├── rubric_report.py · rubric_quality.py · rubric_consistency.py   # ① 결과 표, 품질 지표, 일관성 측정
+│       └── stt_report.py · stt_labels.py · stt_checks.py · stt_stability.py  # ② 결과 표, 정답 라벨 비교, 충돌 조건 점검, 반복 채점 안정성
+├── experiments/                    # `# %%` 셀 스크립트, 번호 순서대로 실행 (아래 실행법)
+│   └── 01_build_rubrics · 02_reanalyze_edit · 03_rubric_consistency · 04_evaluate_takes · 05_accuracy · 06_stability
 ├── reports/
 │   ├── script_analysis.ipynb       # 보고용 노트북 (import + 표시만)
 │   ├── stt_evaluation.ipynb
@@ -185,7 +184,7 @@ cp ../../archive/workspaces/jewon-kim/script-coverage-evaluation/v1/local/output
 ```bash
 # PowerShell
 $env:OPENAI_BASE_URL = "http://127.0.0.1:9"; $env:OPENAI_API_KEY = "dummy"; $env:OPENAI_MODEL = "openai/gpt-5.6-luna"
-uv run python experiments/script_analysis/build_rubrics.py
+uv run python experiments/01_build_rubrics.py
 ```
 
 실패한 슬라이드는 평가 기준을 만들지 않고 `stats["failed"]` 에 남습니다. 성공한 호출은 캐시에 남으므로 나중에 제대로 된 주소로 다시 돌리면 실패한 것만 부릅니다.
@@ -194,19 +193,19 @@ uv run python experiments/script_analysis/build_rubrics.py
 ### 실험 순서
 
 `experiments/*.py` 는 `# %%` 셀 스크립트라 VS Code Interactive Window 에서 셀 단위로 돌릴 수 있고,
-`uv run python experiments/<폴더>/<이름>.py` 로 끝까지 돌릴 수도 있습니다. 비용은 **캐시가 비어 있을 때** 기준이고, 같은 입력으로 다시 돌리면 0회입니다.
+`uv run python experiments/<번호_이름>.py` 로 끝까지 돌릴 수도 있습니다. 비용은 **캐시가 비어 있을 때** 기준이고, 같은 입력으로 다시 돌리면 0회입니다.
 
 | 순서 | 스크립트 | 하는 일 | LLM 호출 (캐시 없음) | 남기는 것 |
 |---|---|---|---|---|
-| 1 | `script_analysis/build_rubrics.py` | 대본 2개를 분석해 슬라이드별 평가 기준 저장 | 슬라이드당 3회 (1차 · 최종 · 전달 단위), 20장 약 60회 | `evaluation_rubrics`, 캐시 |
-| 2 | `script_analysis/consistency.py` | 품질 지표 + 같은 대본을 `RUBRIC_CONSISTENCY_SAMPLES` 벌(기본 3) 분석해 흔들림 측정 | 약 80회 | `reports/results/rubric_consistency.json` |
-| 3 | `script_analysis/reanalyze_edit.py` | 가상대본2 슬라이드 5 의 한 문장을 고쳐 바뀐 슬라이드만 다시 분석되는지 확인 | 최대 3회 | `outputs/가상대본2_수정.json` |
-| 4 | `stt_evaluation/evaluate_takes.py` | 연습 18번을 평가 기준으로 채점, 결과 표 | 슬라이드당 1회 + 충돌 슬라이드 1회, 약 225회 | `slide_evaluations`, `similar_items` |
-| 5 | `stt_evaluation/accuracy.py` | 정답 라벨과 비교, 충돌 조건 점검, 사용자 확인 뒤 정확도 | **0회** | `reports/results/stt_accuracy.json` |
-| 6 | `stt_evaluation/stability.py` | 같은 STT 를 `STT_CONSISTENCY_SAMPLES` 번(기본 3) 채점해 판정 흔들림 측정 | 약 450회 | `reports/results/stt_stability.json` |
+| 1 | `01_build_rubrics.py` | 대본 2개를 분석해 슬라이드별 평가 기준 저장 | 슬라이드당 3회 (1차 · 최종 · 전달 단위), 20장 약 60회 | `evaluation_rubrics`, 캐시 |
+| 2 | `02_reanalyze_edit.py` | 가상대본2 슬라이드 5 의 한 문장을 고쳐 바뀐 슬라이드만 다시 분석되는지 확인 | 최대 3회 | `outputs/가상대본2_수정.json` |
+| 3 | `03_rubric_consistency.py` | 품질 지표 + 같은 대본을 `RUBRIC_CONSISTENCY_SAMPLES` 벌(기본 3) 분석해 흔들림 측정 | 약 80회 | `reports/results/rubric_consistency.json` |
+| 4 | `04_evaluate_takes.py` | 연습 18번을 평가 기준으로 채점, 결과 표 | 슬라이드당 1회 + 충돌 슬라이드 1회, 약 225회 | `slide_evaluations`, `similar_items` |
+| 5 | `05_accuracy.py` | 정답 라벨과 비교, 충돌 조건 점검, 사용자 확인 뒤 정확도 | **0회** | `reports/results/stt_accuracy.json` |
+| 6 | `06_stability.py` | 같은 STT 를 `STT_CONSISTENCY_SAMPLES` 번(기본 3) 채점해 판정 흔들림 측정 | 약 450회 | `reports/results/stt_stability.json` |
 
 - 1 이 먼저입니다. 2~4 는 1 의 평가 기준을, 5 · 6 은 4 의 채점을 읽습니다.
-- 비싼 측정(2, 6)은 `RUBRIC_CONSISTENCY_SAMPLES=1` · `STT_CONSISTENCY_SAMPLES=1` 로 끌 수 있습니다.
+- 비싼 측정(3, 6)은 `RUBRIC_CONSISTENCY_SAMPLES=1` · `STT_CONSISTENCY_SAMPLES=1` 로 끌 수 있습니다.
 - 프롬프트 · 출력 스키마 · 모델을 바꾸면 설정 해시가 바뀌어 캐시가 모두 무효가 되고 전부 다시 부릅니다. 의도한 변경이 아니면 되돌리세요.
 
 ### 보고용 노트북
@@ -394,7 +393,7 @@ BE 가 배포 환경에서 맡을 저장을 research 에서는 이 표들이 대
 
 출력 의미가 바뀌어 `FEATURE_VERSION` 을 올렸다면 위 표 아래에 그 버전의 표를 추가합니다. 실제 Deepgram 데이터로 측정하면 가상 데이터 결과와 분리해서 적습니다.
 v1 을 "완료"라고 부르려면 실제 슬라이드별 Deepgram 결과와 녹음 5~10개에 정답 라벨(`data/virtual/stt_labels/` 형식)을 만들어
-`accuracy.py` → `stability.py` 를 돌려야 합니다.
+`05_accuracy.py` → `06_stability.py` 를 돌려야 합니다.
 
 ---
 
@@ -474,7 +473,7 @@ LLM 은 점수를 매기지 않습니다. 모두 `stt_evaluation/scoring.py` 가
 - **STT** — 대본마다 9개 시나리오: 충실 · 의역 · 누락 · 실수 · 혼합 · 인식오류 · 더듬기 · 요약 · 발음 (`take1` ~ `take9`). 형식은
   `{"script_name", "take_id", "scenario"(선택), "slides": [{"slide_number", "stt"}]}`.
   문장부호가 거의 없고, 간투사 · 말 반복 · 띄어쓰기 오류, 한글로 읽은 숫자, 발음대로 적은 영문 이름이 섞여 있습니다.
-- **정답 라벨** (`stt_labels/<take_id>.json`) — 대본 **문장마다** 발표자가 **실제로 말한 것** 기준으로 적습니다. 평가 파이프라인은 라벨을 보지 않고 `coverage_lab/stt_evaluation/labels.py` 가 비교할 때만 읽습니다.
+- **정답 라벨** (`stt_labels/<take_id>.json`) — 대본 **문장마다** 발표자가 **실제로 말한 것** 기준으로 적습니다. 평가 파이프라인은 라벨을 보지 않고 `coverage_lab/stt_labels.py` 가 비교할 때만 읽습니다.
 
 | `status` | 기준 |
 |---|---|
@@ -496,10 +495,10 @@ LLM 은 점수를 매기지 않습니다. 모두 `stt_evaluation/scoring.py` 가
 | LLM 호출이 400 으로 실패 | 엔드포인트가 허용하지 않는 모델 이름. `OPENAI_MODEL` 확인 |
 | 실행했더니 API 가 많이 불림 | 프롬프트 · 스키마 · 모델 이름이 캐시를 만든 때와 다르거나 캐시(`outputs/rubrics.sqlite`)가 없습니다. 의도한 게 아니면 되돌리거나 아카이브 캐시를 복사 |
 | `sqlite3.OperationalError: table … has N columns` | 표 컬럼을 바꿨는데 예전 표가 남아 있음. 해당 표를 지우고 다시 실행 (`similar_confirmations` 는 지우지 말 것) |
-| STT 쪽에서 평가 기준이 없다는 오류 | 평가 기준이 먼저 있어야 합니다. `build_rubrics.py` 를 먼저 실행 |
+| STT 쪽에서 평가 기준이 없다는 오류 | 평가 기준이 먼저 있어야 합니다. `01_build_rubrics.py` 를 먼저 실행 |
 | 콘솔에 한글이 깨짐 (Windows) | `PYTHONIOENCODING=utf-8` |
 | `pytest.exe` · `jupyter-*.exe` 가 실행되지 않음 (Windows 앱 제어) | `uv run python -m pytest`, `uv run python -m nbconvert` 처럼 모듈로 실행 |
-| 반복 측정(`stability.py` · `consistency.py`)이 오래 걸리고 호출이 많음 | 검증용입니다. `STT_CONSISTENCY_SAMPLES=1`, `RUBRIC_CONSISTENCY_SAMPLES=1` 로 끄세요 |
+| 반복 측정(`06_stability.py` · `03_rubric_consistency.py`)이 오래 걸리고 호출이 많음 | 검증용입니다. `STT_CONSISTENCY_SAMPLES=1`, `RUBRIC_CONSISTENCY_SAMPLES=1` 로 끄세요 |
 
 ---
 

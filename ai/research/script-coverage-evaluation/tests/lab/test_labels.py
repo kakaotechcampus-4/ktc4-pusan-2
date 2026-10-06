@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from coverage_lab.stt_evaluation.checks import (
+from coverage_lab.stt_checks import (
     LABEL_ANSWER,
     accuracy_row,
     confidence_check,
@@ -11,7 +11,7 @@ from coverage_lab.stt_evaluation.checks import (
     first_status_check,
     unchecked_errors,
 )
-from coverage_lab.stt_evaluation.labels import (
+from coverage_lab.stt_labels import (
     FACT_PRED,
     coverage_from,
     fact_accuracy,
@@ -23,7 +23,7 @@ from coverage_lab.stt_evaluation.labels import (
     truth_fact,
     truth_key_point,
 )
-from coverage_lab.stt_evaluation.stability import spread
+from coverage_lab.stt_stability import spread
 from script_coverage.shared.facts import CriticalFact
 from script_coverage.stt_evaluation.schemas import SentenceResult, SimilarItem
 

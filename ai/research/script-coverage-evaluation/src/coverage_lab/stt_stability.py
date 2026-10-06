@@ -12,10 +12,10 @@ import pandas as pd
 from script_coverage.stt_evaluation.schemas import SlideEvaluation, Take
 from script_coverage.stt_evaluation.scoring import take_scores
 
-from ..llm import Settings
-from ..runs import run_take_evaluation
-from ..store import load_rubrics
-from .labels import build_tables, fact_accuracy, kp_accuracy, similar_accuracy
+from .llm import Settings
+from .runs import run_take_evaluation
+from .store import load_rubrics
+from .stt_labels import build_tables, fact_accuracy, kp_accuracy, similar_accuracy
 
 
 def spread(values: list[float]) -> float:
@@ -51,7 +51,7 @@ def check_baseline(
             f" … 외 {len(problems) - 5}건" if len(problems) > 5 else ""
         )
         raise RuntimeError(
-            f"반복 채점의 기준(0번)이 온전하지 않다 — evaluate_takes.py 를 먼저 (다시) 실행한다. {shown}"
+            f"반복 채점의 기준(0번)이 온전하지 않다 — 04_evaluate_takes.py 를 먼저 (다시) 실행한다. {shown}"
         )
 
 

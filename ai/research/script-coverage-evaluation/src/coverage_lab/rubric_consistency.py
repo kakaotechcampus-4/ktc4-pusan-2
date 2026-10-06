@@ -31,8 +31,8 @@ from script_coverage.shared.llm_step import (
 from script_coverage.shared.rubric import NAME_TYPES, SCORE_WEIGHT, EvaluationRubric
 from script_coverage.shared.text import normalize_script
 
-from ..cache import SampleCache
-from ..datasets import load_script_json
+from .cache import SampleCache
+from .datasets import load_script_json
 
 
 def sample_rubrics(

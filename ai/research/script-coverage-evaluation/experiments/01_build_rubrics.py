@@ -3,7 +3,7 @@
 - LLM 호출: 대본 슬라이드마다 1차 분석 · 최종 결론 · 전달 단위 (캐시가 비어 있으면 20장 × 3회). 같은 대본 ·
   같은 LLM 설정이면 outputs/rubrics.sqlite 의 캐시를 써서 다시 호출하지 않는다 (과금은 처음 한 번)
 - 쓰는 곳: outputs/rubrics.sqlite 의 evaluation_rubrics (STT 평가가 읽어 가는 평가 기준) 와 캐시 표
-- 실행: VS Code Interactive Window 에서 셀 단위로, 또는 프로젝트 폴더에서 `uv run python experiments/script_analysis/build_rubrics.py`
+- 실행: VS Code Interactive Window 에서 셀 단위로, 또는 프로젝트 폴더에서 `uv run python experiments/01_build_rubrics.py`
 """
 
 # %% 준비: .env 의 키와 모델, 로컬 DB, LLM
@@ -14,8 +14,8 @@ from IPython.display import display
 
 from coverage_lab.datasets import script_files
 from coverage_lab.llm import load_settings, script_llms
+from coverage_lab.rubric_report import rubric_summary, show_rubric
 from coverage_lab.runs import run_script_analysis
-from coverage_lab.script_analysis.report import rubric_summary, show_rubric
 from coverage_lab.store import connect, load_rubric
 from script_coverage.shared.rubric import EvaluationRubric
 

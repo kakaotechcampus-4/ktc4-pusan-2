@@ -28,8 +28,8 @@ from script_coverage.stt_evaluation.schemas import (
 )
 from script_coverage.stt_evaluation.similar import _plain
 
-from ..paths import LABEL_DIR
-from ..store import load_rubric
+from .paths import LABEL_DIR
+from .store import load_rubric
 
 # 정답 라벨: 가상 STT 를 만들 때 대본 문장마다 어떻게 말했는지 기록해 둔 것 (평가 파이프라인은 보지 않는다)
 LABEL_STATUS = {

@@ -15,11 +15,11 @@ from script_coverage.stt_evaluation.normalize import normalize_stt
 from script_coverage.stt_evaluation.schemas import SlideEvaluation, Take
 from script_coverage.stt_evaluation.scoring import take_scores
 
-from ..store import load_rubric, load_similar_items
+from .store import load_rubric, load_similar_items
 
 # 실제 STT 는 문장부호가 거의 없어 Kiwi 가 문장을 나눈다. 여러 문장이 한 문장으로 붙으면 문장 정렬과 T번호 근거가 거칠어진다
 LONG_SENTENCE = 120  # 이보다 긴 STT 문장(글자 수)은 여러 문장이 붙었을 가능성이 크다
-# 뜻이 있을 수도 있어서 지우지 않는 말. 실제 데이터에서 간투사로 많이 쓰이면 `stt_evaluation/fillers.py` 의 FILLER 에 넣을지 검토한다
+# 뜻이 있을 수도 있어서 지우지 않는 말. 실제 데이터에서 간투사로 많이 쓰이면 `script_coverage/stt_evaluation/fillers.py` 의 FILLER 에 넣을지 검토한다
 FILLER_CANDIDATES = ["그", "저", "뭐", "막", "좀", "이제", "그러니까", "약간"]
 
 

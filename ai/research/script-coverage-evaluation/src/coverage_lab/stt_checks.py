@@ -13,8 +13,8 @@ import pandas as pd
 from script_coverage.stt_evaluation.merge import CONFLICT_TEXT
 from script_coverage.stt_evaluation.schemas import SlideEvaluation, Take
 
-from ..store import confirm_similar_item, confirmed_evaluation
-from .labels import SENTENCE_ORDER, fact_accuracy, kp_accuracy, label_pairs, pair_match
+from .store import confirm_similar_item, confirmed_evaluation
+from .stt_labels import SENTENCE_ORDER, fact_accuracy, kp_accuracy, label_pairs, pair_match
 
 
 def conflict_check(sentence_table: pd.DataFrame) -> pd.DataFrame:
