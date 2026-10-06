@@ -549,3 +549,54 @@ def intervention_outcome(
         },
         "effective": effective,
     }
+
+
+# --------------------------------------------------------------------------
+# Server boundary: records as they arrive
+# --------------------------------------------------------------------------
+
+
+def normalize_samples(
+    samples: Iterable[GazeSample],
+    *,
+    start_ms: int | None = None,
+    end_ms: int | None = None,
+) -> GazeTimeline:
+    """1초 기록을 서버에서 읽기 전에 정리한다. 기록이 없는 시간은 '측정 못 함'이다.
+
+    기기는 재지 못한 1초도 UNMEASURED 로 기록하지만, 기록이 아예 오지 않는 경우가 있다
+    (카메라가 끊김, 탭이 숨겨져 브라우저가 처리를 멈춤, 전송 유실). 그대로 읽으면
+    마지막 상태가 계속 이어지는 것처럼 보여 오래된 이슈(예: 대본을 보는 중)가 나가고,
+    요약은 받은 시간만으로 coverage 를 계산한다. 그래서:
+
+    - 테이크(``start_ms`` ~ ``end_ms``) 밖의 기록은 버린다. 경계에 걸친 기록은 둔다.
+    - 시각 순으로 정렬하고, 앞 기록과 겹치는 기록은 버린다. 같은 시각이면 먼저 받은 기록이 남는다
+      (재전송 등).
+    - 기록 사이 · 테이크 시작 앞 · 끝 뒤의 빈 시간을 UNMEASURED 기록 하나로 채운다.
+      실시간에서는 ``end_ms`` 에 지금 시각을 준다.
+
+    빈 시간이 측정 못 함이 되면 evaluate_gaze 는 그 시간을 지적하지 않고, 길어지면
+    GAZE_UNMEASURABLE(시선 피드백 보류 신호)을 낸다. 공백이 없는 기록은 그대로 돌려준다.
+    빈 시간은 길이와 상관없이 기록 하나라서, 시각이 잘못된 기록(단위가 다른 시각 등)이
+    와도 계산량이 늘지 않는다. 읽는 함수들은 시간 가중이라 1초 단위로 채운 것과 결과가 같다.
+    """
+
+    def in_take(s: GazeSample) -> bool:
+        return (start_ms is None or s.end_ms > start_ms) and (end_ms is None or s.t_ms < end_ms)
+
+    ordered: list[GazeSample] = []
+    for s in sorted(filter(in_take, samples), key=lambda s: s.t_ms):
+        if ordered and s.t_ms < ordered[-1].end_ms:
+            continue
+        ordered.append(s)
+
+    out: list[GazeSample] = []
+    cursor = start_ms if start_ms is not None else (ordered[0].t_ms if ordered else None)
+    for s in ordered:
+        if cursor is not None and s.t_ms > cursor:
+            out.append(GazeSample(cursor, s.t_ms - cursor, UNMEASURED))
+        out.append(s)
+        cursor = s.end_ms
+    if end_ms is not None and cursor is not None and end_ms > cursor:
+        out.append(GazeSample(cursor, end_ms - cursor, UNMEASURED))
+    return GazeTimeline(out)

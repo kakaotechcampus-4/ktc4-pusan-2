@@ -12,9 +12,10 @@ API 응답 · 계약 문서 · 계약 테스트(tests/unit/test_schemas.py)에 �
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .core import GazeSample
 
@@ -104,6 +105,23 @@ class GazeSampleRecord(BaseModel):
 
     def to_sample(self) -> GazeSample:
         return GazeSample.from_dict(self.model_dump())
+
+
+def parse_records(raw: Iterable[Any]) -> tuple[list[GazeSample], int]:
+    """요청 본문의 1초 기록 목록 → 코어의 GazeSample 목록과 버린 기록 수.
+
+    뜻을 읽을 수 없는 기록(모르는 상태, 범위 밖 값 등)은 그 1초만 버리고 나머지는 쓴다.
+    버린 시간은 ``core.normalize_samples`` 가 '측정 못 함'으로 채운다. 기록 하나 때문에
+    테이크 전체의 시선 정보를 잃지 않게 하기 위해서다. 버린 수는 로그 · 응답에 남긴다.
+    """
+    samples: list[GazeSample] = []
+    dropped = 0
+    for item in raw:
+        try:
+            samples.append(GazeSampleRecord.model_validate(item).to_sample())
+        except ValidationError:
+            dropped += 1
+    return samples, dropped
 
 
 # --------------------------------------------------------------------------
