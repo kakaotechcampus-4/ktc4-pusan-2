@@ -1,10 +1,9 @@
 import uuid
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from pitch_coach_backend.module.pitch.dto import PitchDTO
-from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.dto import (
@@ -21,8 +20,8 @@ from pitch_coach_backend.module.pitch.dto import (
     ScriptSlideDTO,
     UploadPresentationResultDTO,
     VersionDTO,
-    VersionSummaryDTO,
     Versioned,
+    VersionSummaryDTO,
 )
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
@@ -34,16 +33,16 @@ from pitch_coach_backend.module.pitch.entity import (
 from pitch_coach_backend.module.pitch.exception import (
     InvalidScript,
     NonExistentPitch,
+    NonExistentPresentationVersion,
     NonExistentScript,
     ScriptAlreadyParsed,
     ScriptParseInProgress,
     ScriptReuploadRequired,
-    NonExistentPresentationVersion,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import generate_presigned_url, upload
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
-from typing import Iterable
+from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 
 # 대본 한 편의 글자 수 상한. 1시간 발표도 2만 자 안팎이라 넉넉하고, LLM 한 번에 넣을 수 있는 크기다
 MAX_SCRIPT_CHARS = 50_000
@@ -407,7 +406,9 @@ def fail_parse(db: Session, ticket: ParseTicket, error_code: ScriptParseErrorCod
 # 각 발표자료 버전의 상세 정보.
 def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID):
     pitch_repository = PitchRepository(db)
-    presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_version_id)
+    presentation_version = pitch_repository.get_presentation_detail(
+        pitch_id, presentation_version_id
+    )
 
     if not presentation_version:
         raise NonExistentPresentationVersion()
@@ -422,8 +423,8 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
     )
 
 def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_dto):
-    pitch_repository = PitchRepository(db)
     # 평가 기준 분할 로직
+    # pitch_repository = PitchRepository(db)
     # standards_result =
 
     # for standard in standards_result.standards:
@@ -434,3 +435,4 @@ def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_d
     #     standards=[{"standard": standard} for standard in standards_result.standards],
     #     except_standard=standards_result.except_standard
     # )
+    return None
