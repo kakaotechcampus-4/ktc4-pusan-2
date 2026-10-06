@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
-import type { PracticeCombo, PrepareResponse } from '@/types/api';
+import type { PracticeCombo, PrepareResponse, RehearsalTicket } from '@/types/api';
 import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
-import { setTakeId, startSession } from '../lib/db';
+import { setSessionTicket, setTakeId, startSession } from '../lib/db';
 import { toMessage } from '@/shared/api/errorMessage';
 import { CameraPreview } from './CameraPreview';
 import { CheckCard } from './CheckCard';
@@ -123,6 +123,28 @@ function calibrationLabel(
  * 시선을 못 잡겠으면 '소리만으로 계속하기'로 빠집니다 — 그 Take의 시선은
  * USER_DECLINED로 제외되고, 말하기 지표만으로 리포트가 나옵니다.
  */
+/**
+ * Take 에 박을 버전과 목표 시간. 피치 생성에서 고른 조합이 먼저이고, 없으면 준비 화면 응답입니다.
+ * 둘 다 없으면 null — Take 를 만들 수 없습니다.
+ */
+function takeVersions(combo: PracticeCombo | null, data: PrepareResponse | undefined) {
+  if (combo) {
+    return {
+      presentation_version_id: combo.presentationVersionId,
+      script_version_id: combo.scriptVersionId,
+      goal_time_sec: combo.goalTimeSec,
+    };
+  }
+  if (data) {
+    return {
+      presentation_version_id: data.presentationVersionId,
+      script_version_id: data.scriptVersionId,
+      goal_time_sec: data.timeLimitSec,
+    };
+  }
+  return null;
+}
+
 /** 화면 위 부제목. 피치 생성에서 고른 조합이 있으면 그 번호를 씁니다 — 실제로 연습할 조합입니다 */
 function versionLabel(combo: PracticeCombo | null, data: PrepareResponse | undefined): string {
   if (combo) return `자료 v${combo.slideVersion} · 대본 v${combo.scriptVersion}`;
@@ -207,13 +229,17 @@ export function DeviceCheckPage() {
 
   // 저장된 기준을 확인하는 중에는 열지 않습니다 — "완료"로 보이는데 기준이 없으면
   // 리허설에서 시선이 조용히 빠집니다
+  //
+  // ★ 피치 생성에서 조합을 받았으면 준비 화면 응답(`/prepare`)을 기다리지 않습니다.
+  //   Take 에 필요한 값(버전 id · 목표 시간)이 조합에 다 있고, `/prepare` 는 BE 에 아직 없습니다
+  const versions = takeVersions(combo, data);
   const ready =
     live &&
     micOk &&
     cal.points === 2 &&
     !cal.verifying &&
     !cal.saveFailed &&
-    data !== undefined &&
+    versions !== null &&
     !starting;
 
   /**
@@ -223,7 +249,7 @@ export function DeviceCheckPage() {
    * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
    */
   const start = async ({ withGaze }: { withGaze: boolean }) => {
-    if (!data || starting) return;
+    if (!versions || starting) return;
     setStarting(true);
     setStartError(null);
 
@@ -245,27 +271,41 @@ export function DeviceCheckPage() {
 
       const clientSessionId = await startSession();
 
-      // ★ 이번 연습의 슬라이드 + 대본 조합이 Take 에 박힙니다 (BE TakeInitRequestDTO).
-      //   피치 생성에서 고른 조합이 먼저이고, 없으면 준비 화면 응답의 현재 버전입니다
+      // ★ 이번 연습의 슬라이드 + 대본 조합이 Take 에 박힙니다 (BE TakeInitRequestDTO)
       const take = await createTake.mutateAsync({
-        pitchId: data.pitchId,
-        body: {
-          mode: practiceMode,
-          script_mode: scriptMode,
-          presentation_version_id: combo?.presentationVersionId ?? data.presentationVersionId,
-          script_version_id: combo?.scriptVersionId ?? data.scriptVersionId,
-          goal_time_sec: combo?.goalTimeSec ?? data.timeLimitSec,
-        },
+        pitchId,
+        body: { mode: practiceMode, script_mode: scriptMode, ...versions },
       });
       await setTakeId(clientSessionId, take.takeId);
 
+      // 리허설이 무대를 열 때 쓸 값. 새로고침해도 남도록 세션에도 적어 둡니다
+      const ticket: RehearsalTicket = {
+        pitchId,
+        title: combo?.title ?? data?.title ?? '',
+        presentationVersionId: versions.presentation_version_id,
+        scriptVersionId: versions.script_version_id,
+        timeLimitSec: versions.goal_time_sec,
+        mode: practiceMode,
+        scriptMode,
+        takeNumber: data?.nextTakeNumber ?? null,
+      };
+      await setSessionTicket(clientSessionId, ticket);
+
       // 품질 요약만 갑니다. 기준 벡터는 브라우저에 남습니다 (CLAUDE.md 1번)
-      if (calibration) await postCalibration(take.takeId, calibration);
+      //
+      // ★ 여기서 실패해도 연습은 엽니다. Take 는 이미 만들어졌으니, 여기서 멈추면 연습 없이
+      //   빈 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다. 요약은 리포트의 참고값이라
+      //   빠져도 발표 기록은 온전합니다 — 원인은 콘솔에 남깁니다
+      if (calibration) {
+        await postCalibration(pitchId, take.takeId, calibration).catch((err: unknown) => {
+          console.error('[장치 점검] 보정 요약을 보내지 못했습니다', err);
+        });
+      }
 
       navigate(
         practiceMode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`,
         {
-          state: { clientSessionId, scriptMode },
+          state: { clientSessionId, scriptMode, ticket },
         },
       );
     } catch (e) {
@@ -299,7 +339,7 @@ export function DeviceCheckPage() {
       screenNo="09"
       screenName="시작 전 세팅 (Take 준비)"
       entry="진입 · 피치 생성 완료 / 리포트의 다시 연습하기"
-      title={data?.title ?? '불러오는 중…'}
+      title={data?.title ?? combo?.title ?? '불러오는 중…'}
       subtitle={versionLabel(combo, data)}
       badge={`TAKE ${data?.nextTakeNumber || '—'} · 시작 전 세팅`}
       onBack={() => navigate(-1)}
@@ -311,7 +351,7 @@ export function DeviceCheckPage() {
             말하기 지표만으로 리포트가 나옵니다 - 막는 것보다 반쪽이라도 남기는 것이 낫습니다.
           */}
           <StageButton
-            disabled={!micOk || starting || data === undefined}
+            disabled={!micOk || starting || versions === null}
             onClick={() => {
               declineGaze();
               start({ withGaze: false }).catch(() => undefined);

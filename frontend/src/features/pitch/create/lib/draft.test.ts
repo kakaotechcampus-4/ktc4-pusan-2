@@ -59,6 +59,7 @@ describe('장치 점검에 넘길 연습 조합 — BE Take 에 박히는 값', 
 
   it('저장한 조합의 서버 id 와 목표 시간을 넘긴다 — 최신(V2)이 아니라 고른 V1', () => {
     expect(toPracticeCombo(draft, { ...CHOOSE_LATEST, slides: 1, script: 3 })).toEqual({
+      title: '캡스톤',
       presentationVersionId: 'pv1',
       scriptVersionId: 'sv3',
       slideVersion: 1,

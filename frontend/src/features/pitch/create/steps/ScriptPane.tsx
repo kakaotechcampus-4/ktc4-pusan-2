@@ -1,3 +1,4 @@
+import { scanSlideMarkers, type MarkerScan } from '@/shared/lib/slideMarkers';
 import { useCreateStore } from '../createStore';
 import { CheckIcon, DocIcon, LinkIcon } from '../icons';
 import {
@@ -8,9 +9,9 @@ import {
   type SlideVersion,
 } from '../lib/draft';
 import { computeGate } from '../lib/gate';
-import { PdfPage } from '../PdfPage';
+import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
-import { usePdfDocument } from '../usePdfDocument';
+import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import { NeedPitch } from './NeedPitch';
 import { PaneHeading } from './PaneHeading';
 
@@ -33,6 +34,24 @@ const PLACEHOLDER = [
   '슬라이드 2',
   '처음에 저희가 마주한 문제는 …',
 ].join('\n');
+
+/**
+ * 입력 중 안내. 지금 대본대로 매핑하면 어떻게 나뉠지 미리 알려 줍니다.
+ * 막지는 않습니다 — 실제 AI 는 조금 다른 표기도 알아들을 수 있습니다 (`shared/lib/slideMarkers`).
+ */
+function markerHint(scan: MarkerScan, pageCount: number): string | null {
+  if (scan.numbers.length === 0) {
+    return '“슬라이드 1”처럼 슬라이드마다 구분해 주세요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.';
+  }
+  if (scan.leadingText) {
+    return '첫 구분 앞에 쓴 글이 있으면 나뉘지 않아요. 맨 앞에 “슬라이드 1”을 넣어 주세요.';
+  }
+  const last = Math.max(...scan.numbers);
+  if (pageCount > 0 && last !== pageCount) {
+    return `구분은 ${last}번까지, 슬라이드는 ${pageCount}장이에요. 장수를 맞춰야 연습을 시작할 수 있어요.`;
+  }
+  return null;
+}
 
 function mapLabel(pending: boolean): string {
   return pending ? '나누는 중…' : '대본 매핑';
@@ -95,13 +114,31 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
   const pending = script.parse.status === 'pending';
   const failure = script.parse.status === 'failed' ? script.parse.message : null;
   const lineCount = Math.max(script.text.split('\n').length, MIN_GUTTER_LINES);
+  const pageCount = linked?.pageCount ?? 0;
+  const scan = scanSlideMarkers(script.text);
+  const hint = chars > 0 ? markerHint(scan, pageCount) : null;
+  // 나뉠 장수 = 마지막 구분 번호 (건너뛴 번호는 빈 자리로 남습니다 — beAdapter)
+  const markerCount = scan.leadingText || scan.numbers.length === 0 ? 0 : Math.max(...scan.numbers);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PaneHeading title="대본 입력" subtitle="선택한 슬라이드에 맞춰 대본을 준비해 주세요." />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <SlideLink script={script} linked={linked} />
+        <div className="flex items-center gap-3">
+          <SlideLink script={script} linked={linked} />
+          {pageCount > 0 && (
+            <span
+              aria-live="polite"
+              className={[
+                'tabular rounded-lg px-3 py-2 text-sm font-bold',
+                markerCount === pageCount ? 'bg-panel text-ink' : 'bg-coral-wash text-coral-deep',
+              ].join(' ')}
+            >
+              구분 {markerCount} / {pageCount}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-4">
           <span className="tabular text-sm text-stone">
             {chars.toLocaleString()}자 · 예상 {estimate}
@@ -116,6 +153,15 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
           </button>
         </div>
       </div>
+
+      {hint && !failure && (
+        <p
+          role="status"
+          className="mb-3 rounded-lg border border-coral/40 bg-coral-wash px-4 py-2 text-sm"
+        >
+          {hint}
+        </p>
+      )}
 
       {failure && (
         <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-coral">
@@ -214,6 +260,32 @@ function MappingNotice({
   );
 }
 
+/** 저장 전 안내. 장수가 맞지 않으면 저장이 막힌 이유와 고칠 방법을 그 자리에서 말합니다 */
+function SaveHint({
+  countsMatch,
+  blockCount,
+  pageCount,
+}: {
+  countsMatch: boolean;
+  blockCount: number;
+  pageCount: number;
+}) {
+  if (countsMatch) return <p className="text-sm text-stone">매핑 결과를 확인하고 저장해 주세요.</p>;
+  if (pageCount === 0) {
+    return <p className="text-sm font-bold text-coral">연결할 슬라이드를 먼저 골라 주세요.</p>;
+  }
+  return (
+    <p className="text-sm">
+      <span className="block font-bold text-coral">
+        대본은 {blockCount}장, 슬라이드는 {pageCount}장이라 저장할 수 없어요.
+      </span>
+      <span className="block text-xs text-stone">
+        ← 대본 수정에서 “슬라이드 1”처럼 장마다 구분을 넣고 다시 매핑해 주세요.
+      </span>
+    </p>
+  );
+}
+
 function MappingReview({
   script,
   linked,
@@ -239,6 +311,9 @@ function MappingReview({
   const gate = computeGate(draft, chosen);
   // 저장한 이 조합으로 넘어갑니다. 저장 뒤에 다른 버전을 고쳤으면 진행 조건이 다시 막습니다
   const canStart = script.saved && gate.ready;
+  // ★ 장수가 맞아야 저장합니다. 맞지 않는 조합을 저장하면 "저장 완료"인데 "다음"이 막혀 헷갈립니다
+  const countsMatch = pageCount > 0 && blocks.length === pageCount;
+  const canSave = !script.saved && countsMatch;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -329,14 +404,14 @@ function MappingReview({
             </span>
           </p>
         ) : (
-          <p className="text-sm text-stone">매핑 결과를 확인하고 저장해 주세요.</p>
+          <SaveHint countsMatch={countsMatch} blockCount={blocks.length} pageCount={pageCount} />
         )}
 
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex gap-3">
             <button
               type="button"
-              disabled={script.saved}
+              disabled={!canSave}
               onClick={() => saveMapping(script.version)}
               className="h-12 w-36 rounded-lg border border-ink bg-white text-sm font-bold hover:bg-panel disabled:cursor-not-allowed disabled:border-line disabled:text-stone disabled:hover:bg-white"
             >

@@ -19,7 +19,7 @@ import type { InfoForm } from './draft';
  */
 
 /* ------------------------------------------------------------------ */
-/* 피치 — POST /pitches/add · PUT /pitches/update/{id}                   */
+/* 피치 — POST /pitches/add · PATCH /pitches/update/{id}                 */
 /* ------------------------------------------------------------------ */
 
 /** 발표정보 화면 값 → `PitchDTO`. 날짜를 안 골랐으면 null 입니다 (BE `date | None`) */

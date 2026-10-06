@@ -1,5 +1,5 @@
 /**
- * 피치 생성 · 수정 — `POST /api/pitches/add` · `PUT /api/pitches/update/{pitch_id}`.
+ * 피치 생성 · 수정 — `POST /api/pitches/add` · `PATCH /api/pitches/update/{pitch_id}` (BE #70).
  * BE 그대로 snake_case 입니다 (`PitchDTO`).
  */
 export interface PitchRequest {

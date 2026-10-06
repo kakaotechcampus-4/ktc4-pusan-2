@@ -6,15 +6,9 @@ import { presentationHandlers } from './presentation';
 import { standardsHandlers } from './standards';
 import { pitchHandlers } from './pitch';
 import { scriptHandlers } from './scripts';
-import type { TakeCreateRequest, TakeCreated } from '@/types/take';
-import type {
-  AnalysisStatus,
-  HomeResponse,
-  PitchDetail,
-  PrepareResponse,
-  TakeContext,
-  TakeReport,
-} from '@/types/api';
+import type { TakeCreated } from '@/types/take';
+import type { ScriptDetail } from '@/types/script';
+import type { AnalysisStatus, HomeResponse, PrepareResponse, TakeReport } from '@/types/api';
 
 /**
  * 인터페이스 명세 8-4의 JSON을 그대로 옮긴 목.
@@ -150,15 +144,9 @@ const prepare: PrepareResponse = {
 let issuedTakes = 0;
 
 /**
- * 발표 자료와 대본. 리허설 화면이 **시작 전에 한 번에 다 받아 둡니다** —
- * 발표 중에 네트워크를 타면 그 순간 화면이 빕니다 (CLAUDE.md 4번).
- *
- * imageUrl 은 빈 문자열입니다. 목에는 실제 이미지가 없고, 화면은 빈 값일 때
- * 자리표시(SLIDE n · 16:9)를 그립니다 — 없는 URL 을 지어내면 깨진 이미지가 뜹니다.
+ * 목 데모 대본 — 슬라이드당 한 문단. 아래 `sampleScript` 가 BE 모양으로 묶어 리허설에 줍니다.
+ * 발표자료(PDF)는 목에 없어서, 이 데모로 들어온 리허설은 슬라이드 자리표시를 그립니다.
  */
-const SLIDE_COUNT = 12;
-
-/** 슬라이드당 한 문단. 대본은 여기서 이어 붙이고, 앵커는 길이로 계산합니다 */
 const SCRIPT_PARAGRAPHS = [
   '안녕하세요. 저희가 만든 서비스는 발표 연습을 도와주는 피치코치입니다.',
   '발표 연습은 혼자 합니다. 그런데 혼자서는 자기 말하기가 어떤지 알 수 없습니다.',
@@ -189,53 +177,31 @@ const SLIDE_KEYWORDS = [
   ['목표 2억', '6개월'],
 ];
 
-const scriptContent = SCRIPT_PARAGRAPHS.join('\n\n');
-
-/** 각 슬라이드가 시작되는 글자 위치. 대본 자동 스크롤이 이 값을 씁니다 */
-const slideAnchors = SCRIPT_PARAGRAPHS.map((_, i) => ({
-  slideNumber: i + 1,
-  charOffset: SCRIPT_PARAGRAPHS.slice(0, i).reduce((n, p) => n + p.length + 2, 0),
-}));
-
-// 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
-// prettier-ignore
-const pitchDetail: PitchDetail = {
-  id: 'p1', title: '캡스톤 최종 발표', timeLimitSec: 600,
-  presentationDate: '2026-09-18', bestTakeId: null,
-  presentation: {
-    id: 'pres1', version: 2, pageCount: SLIDE_COUNT, convertStatus: 'COMPLETED',
-    slides: Array.from({ length: SLIDE_COUNT }, (_, i) => ({
-      slideNumber: i + 1,
-      imageUrl: '',
-      // 발표 중에 만료되면 화면이 깨집니다. 목은 넉넉히 둡니다
-      imageUrlExpiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-      keywords: (SLIDE_KEYWORDS[i] ?? []).map((text, k) => ({ text, required: k === 0 })),
-    })),
-  },
-  script: {
-    id: 'scr1', version: 2, content: scriptContent,
-    charCount: scriptContent.length, estDurationSec: 585, estBasisWpm: 150,
-    emphasisSpans: [], slideAnchors,
-  },
+/**
+ * 준비 화면(`prepare.scriptVersionId`)이 가리키는 대본. 홈 → 준비 → 리허설로 들어오는 목 데모가
+ * 피치 생성을 거치지 않아도 대본이 보이게, BE 의 `GET /scripts/{id}` 모양으로 둡니다.
+ */
+const sampleScript: ScriptDetail = {
+  script_version_id: prepare.scriptVersionId,
+  version: prepare.scriptVersion,
+  original_content: SCRIPT_PARAGRAPHS.map((p, i) => `슬라이드 ${i + 1}\n${p}`).join('\n'),
+  parse_status: 'DONE',
+  segmented: true,
+  slides: SCRIPT_PARAGRAPHS.map((content, i) => ({
+    slide_number: i + 1,
+    content,
+    keywords: SLIDE_KEYWORDS[i] ?? [],
+    highlights: [],
+  })),
+  terms: [],
+  error_code: null,
 };
-
-/** 발급된 Take 가 없으면(목을 새로 켠 직후) 이 값으로 답합니다 */
-const fallbackTake: TakeContext = {
-  takeId: 't4',
-  takeNumber: prepare.nextTakeNumber,
-  pitchId: prepare.pitchId,
-  pitchTitle: prepare.title,
-  mode: 'COACHING',
-  scriptMode: prepare.defaultScriptMode,
-  timeLimitSec: prepare.timeLimitSec,
-  status: 'READY',
-  mission: prepare.lastMission,
-};
-
-/** POST /takes 로 발급할 때 화면이 고른 값을 기억해 둡니다 (새로고침 복귀용) */
-const takeContexts = new Map<string, TakeContext>();
 
 export const handlers = [
+  // ★ 대본 목(scriptHandlers)보다 먼저 와야 합니다 — 그쪽은 모르는 id 에 404 를 돌려줍니다
+  http.get(`*/api/pitches/:pitchId/scripts/${prepare.scriptVersionId}`, () =>
+    HttpResponse.json(sampleScript),
+  ),
   ...homeHandlers,
   ...authHandlers,
   ...sttHandlers,
@@ -255,7 +221,10 @@ export const handlers = [
     HttpResponse.json({ takeId: params.takeId, status: 'ANALYZING' }, { status: 202 }),
   ),
 
-  http.post('*/api/takes/:takeId/calibration', () => new HttpResponse(null, { status: 204 })),
+  // BE 모양 그대로 — POST /pitches/{id}/takes/{take_id}/calibration, 응답 {message, calibration_id}
+  http.post('*/api/pitches/:pitchId/takes/:takeId/calibration', () =>
+    HttpResponse.json({ message: 'Calibration created successfully', calibration_id: 'cal1' }),
+  ),
 
   http.get('*/api/pitches/:pitchId/prepare', ({ params }) =>
     HttpResponse.json({ ...prepare, pitchId: String(params.pitchId) }),
@@ -263,33 +232,14 @@ export const handlers = [
 
   // ★ Take는 여기서만 생깁니다 (CLAUDE.md 8번). 홈·리포트의 'Take N 시작'은 이동만 합니다.
   //   BE 모양 그대로입니다 — POST /pitches/{id}/takes/ 에 TakeInitRequestDTO, 응답은 {message, take_id}
-  http.post('*/api/pitches/:pitchId/takes/', async ({ request, params }) => {
-    const body = (await request.json()) as TakeCreateRequest;
-    const takeNumber = prepare.nextTakeNumber + issuedTakes;
-    const takeId = `t${takeNumber}`;
+  http.post('*/api/pitches/:pitchId/takes/', async ({ request }) => {
+    // 본문은 BE 와 같은 모양(TakeCreateRequest)이어야 합니다 — 목은 값을 쓰지 않습니다
+    await request.json();
+    const takeId = `t${prepare.nextTakeNumber + issuedTakes}`;
     issuedTakes += 1;
-    takeContexts.set(takeId, {
-      ...fallbackTake,
-      takeId,
-      takeNumber,
-      pitchId: String(params.pitchId),
-      mode: body.mode,
-      scriptMode: body.script_mode,
-      status: 'READY',
-    });
     const res: TakeCreated = { message: 'Take created successfully', take_id: takeId };
     return HttpResponse.json(res);
   }),
 
-  // ★ :takeId 보다 먼저 와야 합니다 — 안 그러면 in-progress 가 takeId 로 잡힙니다
   http.get('*/api/takes/in-progress', () => HttpResponse.json(null)),
-
-  http.get('*/api/takes/:takeId', ({ params }) => {
-    const takeId = String(params.takeId);
-    return HttpResponse.json(takeContexts.get(takeId) ?? { ...fallbackTake, takeId });
-  }),
-
-  http.get('*/api/pitches/:pitchId', ({ params }) =>
-    HttpResponse.json({ ...pitchDetail, id: String(params.pitchId) }),
-  ),
 ];

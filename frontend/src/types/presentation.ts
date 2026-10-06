@@ -12,6 +12,20 @@ export interface UploadedPresentation {
   file_url: string;
 }
 
+/**
+ * GET /api/pitches/{pitch_id}/presentations/{presentation_version_id} — 발표자료 한 버전.
+ * BE 그대로 snake_case 입니다 (`PresentationDetailDTO`). 부를 때마다 새 presigned URL 을 줍니다.
+ */
+export interface PresentationDetail {
+  pitch_id: string;
+  presentation_version_id: string;
+  version: number;
+  /** S3 presigned GET URL. 1시간 뒤 만료됩니다 */
+  file_url: string;
+  description: string | null;
+  created_at: string;
+}
+
 export interface UploadPresentationResponse {
   message: string;
   presentation: UploadedPresentation;

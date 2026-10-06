@@ -263,6 +263,7 @@ export function toPracticeCombo(draft: PitchDraft, chosen: Chosen): PracticeComb
   const { slides, script } = resolveChosen(draft, chosen);
   if (!slides?.presentationVersionId || !script?.remote) return null;
   return {
+    title: draft.title,
     presentationVersionId: slides.presentationVersionId,
     scriptVersionId: script.remote.id,
     slideVersion: slides.version,
@@ -279,7 +280,7 @@ export function toPracticeCombo(draft: PitchDraft, chosen: Chosen): PracticeComb
  * 한국어 발표의 분당 글자 수.
  *
  * ★ 잠정값입니다. 목업의 "1,284자 · 예상 04:52" 에서 역산했습니다
- *   (1,284 ÷ 292초 × 60 ≈ 264). 서버가 `PitchDetail.script.estBasisWpm` 을
+ *   (1,284 ÷ 292초 × 60 ≈ 264). 서버가 분당 글자 수 기준(`estBasisWpm`)을
  *   내려주므로, 그 값이 정해지면 **서버 값을 쓰고 이 상수는 지웁니다.**
  *   두 곳에서 다른 기준으로 계산하면 준비 화면과 생성 화면의 숫자가 어긋납니다.
  */

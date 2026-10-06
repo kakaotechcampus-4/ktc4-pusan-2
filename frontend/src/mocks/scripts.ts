@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
+import { markerNumber, SLIDE_MARKER } from '@/shared/lib/slideMarkers';
 import type {
   ParseRequested,
   ScriptCreateRequest,
@@ -18,15 +19,13 @@ import type {
 /** 이만큼 지나야 DONE. "나누는 중" 화면을 눈으로 확인할 수 있게 */
 const PARSE_MS = 1500;
 
-const SEPARATOR = /^\s*(?:(?:slide|슬라이드)\s*(\d+)|(\d+)\s*[.)])\s*[:.\-–)]?\s*/i;
-
 export function splitScript(text: string): { segmented: boolean; slides: ScriptSlide[] } {
   // AI 처럼 원문에 적힌 번호를 그대로 씁니다 — "슬라이드 4" 는 4번입니다
   const sections: { number: number; lines: string[] }[] = [];
   let lead = '';
   for (const line of text.split('\n')) {
-    const m = SEPARATOR.exec(line);
-    if (m) sections.push({ number: Number(m[1] ?? m[2]), lines: [line.replace(SEPARATOR, '')] });
+    const n = markerNumber(line);
+    if (n !== null) sections.push({ number: n, lines: [line.replace(SLIDE_MARKER, '')] });
     else if (sections.length > 0) sections.at(-1)!.lines.push(line);
     else lead += line;
   }

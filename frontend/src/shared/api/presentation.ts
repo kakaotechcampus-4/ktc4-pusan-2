@@ -1,5 +1,5 @@
 import { apiRequest } from './client';
-import type { UploadPresentationResponse } from '@/types/presentation';
+import type { PresentationDetail, UploadPresentationResponse } from '@/types/presentation';
 
 /**
  * 발표자료 업로드. 서버는 S3 에 올리고 presigned URL 을 돌려줍니다 — 변환은 하지 않습니다.
@@ -16,4 +16,11 @@ export function uploadPresentation(pitchId: string, file: File) {
     method: 'POST',
     body,
   });
+}
+
+/** 발표자료 한 버전. 리허설이 시작 전에 이걸로 새 PDF URL 을 받아 미리 열어 둡니다 */
+export function getPresentation(pitchId: string, presentationVersionId: string) {
+  return apiRequest<PresentationDetail>(
+    `/api/pitches/${pitchId}/presentations/${presentationVersionId}`,
+  );
 }

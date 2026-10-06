@@ -5,7 +5,8 @@ import { useCameraStream } from '../media/useCameraStream';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 import { usePrepareStore } from '../prepare/prepareStore';
-import { usePitchDetail, useCompleteTake, useTakeContext } from '@/shared/api/take';
+import { useCompleteTake } from '@/shared/api/take';
+import { PdfPage } from '@/shared/ui/PdfPage';
 import { buildGazePayload } from '../lib/gazePayload';
 import {
   beat,
@@ -24,10 +25,11 @@ import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/
 import { toMessage } from '@/shared/api/errorMessage';
 import { ScreenLabel } from '@/shared/ui/ScreenLabel';
 import { TemporalVoter } from '@/workers/temporalVoter';
-import type { CompleteRequest, GazeExcludedReason, Ms } from '@/types/api';
+import type { CompleteRequest, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
 import { useCoach } from './useCoach';
 import { useLiveGaze } from './useLiveGaze';
+import { useRehearsalMaterials } from './useRehearsalMaterials';
 import { useRehearsalStore } from './rehearsalStore';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
@@ -64,8 +66,15 @@ export function RehearsalPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const take = useTakeContext(takeId);
-  const pitch = usePitchDetail(take.data?.pitchId);
+  /**
+   * 무대를 여는 데 필요한 값. 장치 점검이 넘겨주고, 새로고침이면 IndexedDB 세션에서 꺼냅니다.
+   * BE 에 Take 를 읽는 API 가 없어서 서버에서 다시 받을 길이 없습니다.
+   * `undefined` 는 아직 찾는 중, `null` 은 어디에도 없음입니다.
+   */
+  const [ticket, setTicket] = useState<RehearsalTicket | null | undefined>(
+    () => (location.state as { ticket?: RehearsalTicket } | null)?.ticket,
+  );
+  const materials = useRehearsalMaterials(ticket ?? null);
   const complete = useCompleteTake(takeId);
 
   const phase = useRehearsalStore((s) => s.phase);
@@ -103,12 +112,12 @@ export function RehearsalPage() {
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
   const { meterRef, statsRef, audioState } = useMicLevel(stream);
 
-  const ready = take.data !== undefined && pitch.data !== undefined;
+  const ready = materials.ready;
   const running = ready && phase === 'RUNNING';
-  const limitSec = take.data?.timeLimitSec ?? pitch.data?.timeLimitSec ?? 600;
-  const scriptMode = take.data?.scriptMode ?? 'HIGHLIGHT';
-  const mode = take.data?.mode ?? 'COACHING';
-  const slides = pitch.data?.presentation.slides ?? [];
+  const limitSec = ticket?.timeLimitSec ?? 600;
+  const scriptMode = ticket?.scriptMode ?? 'HIGHLIGHT';
+  const mode = ticket?.mode ?? 'COACHING';
+  const pageCount = materials.pageCount;
 
   const { elapsedRef, limitRef, barRef, fillRef, remainRef, elapsedMs } = useStageClock(
     limitSec,
@@ -135,7 +144,7 @@ export function RehearsalPage() {
     enabled: running && !gazeDeclined && live,
   });
   const { slideNumber, slideStartedAtRef } = useSlideDeck({
-    total: slides.length,
+    total: pageCount,
     clientSessionId: sessionId,
     elapsedMs,
     enabled: running,
@@ -184,6 +193,8 @@ export function RehearsalPage() {
       }
       const row = await findSessionByTakeId(takeId);
       setSessionId(row ? row.clientSessionId : await startSession(takeId));
+      // 새로고침 — 라우터 state 는 사라졌지만 장치 점검이 세션에 남긴 값이 있습니다
+      setTicket((current) => current ?? row?.ticket ?? null);
     })().catch(() => undefined);
   }, [takeId, location.state]);
 
@@ -276,30 +287,24 @@ export function RehearsalPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  /**
+   * 장마다 한 문단. 대본은 AI 가 이미 슬라이드별로 나눠 주므로 n번째 문단이 곧 n번 슬라이드입니다.
+   * 대본이 없는 장은 빈 문단으로 자리를 지킵니다 — 그래야 번호와 문단이 어긋나지 않습니다.
+   */
   const paragraphs = useMemo(
-    () => (pitch.data?.script.content ?? '').split('\n\n').filter((p) => p.trim() !== ''),
-    [pitch.data?.script.content],
+    () =>
+      Array.from(
+        { length: pageCount },
+        (_, i) => materials.scriptBySlide.get(i + 1)?.content ?? '',
+      ),
+    [pageCount, materials.scriptBySlide],
   );
-
-  /** 지금 슬라이드의 문단. 앵커가 없으면 슬라이드 번호를 그대로 씁니다 */
-  const currentIndex = useMemo(() => {
-    const anchors = pitch.data?.script.slideAnchors ?? [];
-    const anchor = anchors.find((a) => a.slideNumber === slideNumber);
-    if (!anchor) return Math.min(slideNumber - 1, paragraphs.length - 1);
-    let acc = 0;
-    for (let i = 0; i < paragraphs.length; i++) {
-      if (acc >= anchor.charOffset) return i;
-      acc += paragraphs[i]!.length + 2;
-    }
-    return paragraphs.length - 1;
-  }, [pitch.data?.script.slideAnchors, slideNumber, paragraphs]);
-
-  const currentSlide = slides.find((s) => s.slideNumber === slideNumber);
-  const nextSlideNumber = Math.min(slideNumber + 1, slides.length);
+  const currentKeywords = materials.scriptBySlide.get(slideNumber)?.keywords ?? [];
+  const nextSlideNumber = Math.min(slideNumber + 1, pageCount);
 
   // ── 종료 ─────────────────────────────────────────────────────────
   const finish = async () => {
-    if (!running || !sessionId || !take.data) return;
+    if (!running || !sessionId || !ticket) return;
 
     // 시간을 먼저 붙잡습니다. 아래 await들이 도는 동안에도 시계는 갑니다.
     // ★ 끝난 시각도 여기서 찍습니다 — STT 정리는 최대 3초까지 걸리는데,
@@ -403,7 +408,7 @@ export function RehearsalPage() {
         <ScreenLabel
           screenNo="07"
           screenName="발표 연습"
-          entry={`진입 · 리허설 준비의 Take ${take.data?.takeNumber ?? ''} 시작하기`}
+          entry={`진입 · 리허설 준비의 Take ${ticket?.takeNumber ?? ''} 시작하기`}
         />
 
         <div className="h-[calc(100vh-7rem)] min-h-[560px] overflow-hidden rounded-2xl shadow-lg">
@@ -432,19 +437,29 @@ export function RehearsalPage() {
                 남은 —
               </span>
               <span className="slide-no">
-                SLIDE {slideNumber} / {slides.length || '—'}
+                SLIDE {slideNumber} / {pageCount || '—'}
               </span>
             </header>
 
             <div className="viewport">
               <div className="slide">
-                {currentSlide?.imageUrl ? (
-                  <img src={currentSlide.imageUrl} alt={`슬라이드 ${slideNumber}`} />
+                {/* PDF 한 장을 상자에 맞춰 그립니다. 못 열었으면 자리표시 — 깨진 화면보다 낫습니다 */}
+                {materials.doc ? (
+                  <PdfPage
+                    doc={materials.doc}
+                    pageNumber={slideNumber}
+                    fit="contain"
+                    className="h-full w-full"
+                  />
                 ) : (
                   <span className="placeholder">SLIDE {slideNumber} · 16:9</span>
                 )}
-                {!currentSlide?.imageUrl && (
-                  <span className="note">자료 이미지가 아직 없습니다</span>
+                {!materials.doc && (
+                  <span className="note">
+                    {materials.presentationFailed
+                      ? '발표자료를 불러오지 못했어요'
+                      : '발표자료를 여는 중…'}
+                  </span>
                 )}
               </div>
 
@@ -460,7 +475,18 @@ export function RehearsalPage() {
                 </section>
 
                 <section className="next">
-                  <div className="thumb">SLIDE {nextSlideNumber} · 16:9</div>
+                  <div className="thumb">
+                    {materials.doc && nextSlideNumber > 0 ? (
+                      <PdfPage
+                        doc={materials.doc}
+                        pageNumber={nextSlideNumber}
+                        fit="contain"
+                        className="h-full w-full"
+                      />
+                    ) : (
+                      `SLIDE ${nextSlideNumber} · 16:9`
+                    )}
+                  </div>
                   <div className="label">
                     <b>다음 슬라이드</b>
                     <span>→ 키로 이동</span>
@@ -486,8 +512,8 @@ export function RehearsalPage() {
             <ScriptPane
               mode={scriptMode}
               paragraphs={paragraphs}
-              currentIndex={currentIndex}
-              keywords={(currentSlide?.keywords ?? []).map((k) => k.text)}
+              currentIndex={slideNumber - 1}
+              keywords={currentKeywords}
             />
 
             <div className="stage-foot">
@@ -504,6 +530,9 @@ export function RehearsalPage() {
                 <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
               )}
               {mode === 'EXAM' && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
+              {ticket === null && (
+                <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
+              )}
               {endError && <span>{endError}</span>}
 
               <button

@@ -12,9 +12,9 @@ import {
   PdfUploadIcon,
 } from '../icons';
 import { MAX_SLIDE_BYTES, type SlideUpload, type SlideVersion } from '../lib/draft';
-import { PdfPage } from '../PdfPage';
+import { PdfPage } from '@/shared/ui/PdfPage';
 import { startSlideUpload } from '../slideUpload';
-import { usePdfDocument } from '../usePdfDocument';
+import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import { NeedPitch } from './NeedPitch';
 import { PaneHeading } from './PaneHeading';
 
