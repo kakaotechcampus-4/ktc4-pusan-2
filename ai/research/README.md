@@ -2,7 +2,11 @@
 
 기능별 **실험** 폴더입니다. 비교 실험, 평가, 보고용 노트북이 여기에 있고, **배포하지 않습니다.**
 
-지금은 비어 있습니다. 기능을 [archive](../archive/README.md)에서 새 구조로 옮길 때 `research/<feature>/`가 하나씩 생깁니다. 이전 계획은 [../README.md](../README.md)의 이전 현황 표를 보세요.
+기능을 [archive](../archive/README.md)에서 새 구조로 옮길 때 `research/<feature>/`가 하나씩 생깁니다. 이전 계획은 [../README.md](../README.md)의 이전 현황 표를 보세요.
+
+현재 기능 폴더:
+
+- [script-coverage-evaluation/](script-coverage-evaluation/README.md) — 대본 기준 생성 · STT 전달도 채점 (담당 jewon-kim)
 
 ---
 
