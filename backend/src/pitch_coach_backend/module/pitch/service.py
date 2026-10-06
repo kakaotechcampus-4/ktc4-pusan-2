@@ -150,10 +150,10 @@ def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     if not existing_pitch:
         raise NonExistentPitch()
 
-    existing_pitch.title = pitch_dto.title
-    existing_pitch.time_limit_sec = pitch_dto.time_limit_sec
-    existing_pitch.presentation_date = pitch_dto.presentation_date
-
+    # 보내지 않은 필드는 제거하고, existing_pitch 객체에 덮어쓴다.
+    for field, value in pitch_dto.model_dump(exclude_unset=True).items():
+        setattr(existing_pitch, field, value)
+    
     updated_pitch = pitch_repository.save(existing_pitch)
     db.commit()
 

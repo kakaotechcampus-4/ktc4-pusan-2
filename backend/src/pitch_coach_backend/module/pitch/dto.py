@@ -5,17 +5,32 @@ from datetime import date, datetime
 from enum import StrEnum
 
 from fastapi import File, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints, field_validator
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
-from typing import Protocol
+from typing import Protocol, Annotated
 
 class PitchDTO(BaseModel):
-    title: str
+    title: Annotated[str, StringConstraints(min_length=1, max_length=50)]
     time_limit_sec: int
     upper_deviation: int = 0
     lower_deviation: int = 0
     presentation_date: date | None = None
+
+# 수정에 사용할 DTO
+class PitchUpdateDTO(BaseModel):
+    title: Annotated[str, StringConstraints(min_length=1, max_length=50)]
+    time_limit_sec: int | None = None
+    upper_deviation: int | None = None
+    lower_deviation: int | None = None
+    presentation_date: date | None = None
+
+    @field_validator("time_limit_sec", "title", "upper_deviation", "lower_deviation")
+    @classmethod
+    def not_null(cls, v):
+        if v is None:
+            raise ValueError("Field cannot be null")
+        return v
 
 class PitchesDTO(BaseModel):
     pitch_id: uuid.UUID

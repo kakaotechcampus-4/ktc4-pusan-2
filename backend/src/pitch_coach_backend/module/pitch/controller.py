@@ -13,6 +13,7 @@ from pitch_coach_backend.module.pitch.dependencies import OwnedPitch, ScriptPars
 from pitch_coach_backend.module.pitch.dto import (
     ParseRequestedDTO,
     PitchDTO,
+    PitchUpdateDTO,
     ScriptCreatedDTO,
     ScriptCreateDTO,
     ScriptDetailDTO,
@@ -79,11 +80,11 @@ def add_pitch(
     result = add_pitch_service(db, current_user.id, pitch_dto)
     return {"message": "Pitch added successfully", "pitch_id": result}
 
-@router.put("/update/{pitch_id}")
+@router.patch("/update/{pitch_id}")
 def update_pitch(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
-    pitch_dto: PitchDTO
+    pitch_dto: PitchUpdateDTO
 ):
     result = update_pitch_service(db, pitch_id, pitch_dto)
     return {"message": "Pitch updated successfully", "pitch_id": result}
