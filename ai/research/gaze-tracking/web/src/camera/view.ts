@@ -34,7 +34,13 @@ import type { PlacementResultDict } from '../engine/placement';
 import type { PreconditionReport } from '../engine/preconditions';
 import type { SweepStatus } from '../engine/sweep';
 import { GAZE_DIRECTIONS, type Cue, type GazeDirection, type StateClass } from '../engine/types';
-import type { FrameMode, FrameSummary, FromWorker, ToWorker } from '../worker/protocol';
+import type {
+  EngineFailure,
+  FrameMode,
+  FrameSummary,
+  FromWorker,
+  ToWorker,
+} from '../worker/protocol';
 import { FaceTrackView } from './facetrack';
 import { RingView } from './ring';
 import {
@@ -102,9 +108,13 @@ export interface SetupResult {
   notes: string[];
 }
 
+/** What the view reports as failed: the worker's reasons, or the camera stream ending. */
+export type ViewFailure = EngineFailure | 'CAMERA_LOST';
+
 export interface CameraViewEvents {
   ready: { version: string; isolated: boolean };
-  error: { message: string };
+  /** `reason` when known: the engine did not start, one frame failed, or the camera went away. */
+  error: { message: string; reason?: ViewFailure };
   phase: { phase: CameraPhase; previous: CameraPhase };
   /** Every analysed frame: timing, face found or why not, head angles, face guide. */
   frame: FrameSummary;
@@ -450,7 +460,7 @@ export class GazeCameraView {
         this.#emit('ready', { version: msg.version, isolated: msg.isolated });
         break;
       case 'failed':
-        this.#emit('error', { message: msg.message });
+        this.#emit('error', { message: msg.message, reason: msg.reason });
         this.#toast(`엔진 오류: ${msg.message}`);
         break;
       case 'frame':

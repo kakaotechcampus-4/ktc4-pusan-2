@@ -19,21 +19,92 @@
  */
 import { makeConfig } from './config';
 import { GazeEngine, type EngineSettings } from './engine';
-import { createFaceDetector, warmUp } from './landmarker';
+import { createFaceDetector, warmUp, type FaceDetector } from './landmarker';
 import { canvasLumaSampler } from './luma';
 
 export interface CreateOptions extends EngineSettings {
   /** Where `face_landmarker.task` and the MediaPipe wasm files are served. */
   assetDir: string;
+  /** CPU in production: Python parity is verified on CPU only. GPU is for benchmarks. */
   delegate?: 'CPU' | 'GPU';
+  /** Give up loading the model and runtime after this long. Default `DEFAULT_INIT_TIMEOUT_MS`. */
+  initTimeoutMs?: number;
+}
+
+/** The first load fetches about 16 MB (wasm runtime + model), so the default is generous. */
+export const DEFAULT_INIT_TIMEOUT_MS = 60_000;
+
+/**
+ * Why the engine could not start.  The host maps every reason to "gaze unavailable" and
+ * carries on (the presentation never waits for gaze); the reason is for logs.
+ */
+export type EngineInitFailure = 'UNSUPPORTED_BROWSER' | 'TIMEOUT' | 'INIT_FAILED';
+
+export class EngineInitError extends Error {
+  readonly reason: EngineInitFailure;
+
+  constructor(reason: EngineInitFailure, message: string) {
+    super(message);
+    this.name = 'EngineInitError';
+    this.reason = reason;
+  }
+}
+
+export interface SupportCheck {
+  ok: boolean;
+  /** Browser features the engine cannot run without. */
+  missing: string[];
+}
+
+/**
+ * What the engine needs from the browser, cheap enough to call before asking for the camera.
+ * Only what it cannot run without is required: without OffscreenCanvas, for one, the brightness
+ * checks are skipped and everything else works.  The host checks `Worker` itself.
+ */
+export function checkSupport(): SupportCheck {
+  const missing: string[] = [];
+  if (typeof WebAssembly !== 'object') missing.push('WebAssembly');
+  if (typeof createImageBitmap !== 'function') missing.push('createImageBitmap');
+  return { ok: missing.length === 0, missing };
 }
 
 export async function createClassifier(opts: CreateOptions): Promise<GazeEngine<ImageBitmap>> {
+  const support = checkSupport();
+  if (!support.ok) {
+    throw new EngineInitError('UNSUPPORTED_BROWSER', `missing ${support.missing.join(', ')}`);
+  }
   const cfg = makeConfig(opts.config);
-  const detector = await createFaceDetector({
-    assetDir: opts.assetDir,
-    numFaces: cfg.preprocess.num_faces,
-    delegate: opts.delegate,
+  const timeoutMs = opts.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS;
+  const detector = await new Promise<FaceDetector>((resolve, reject) => {
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      reject(new EngineInitError('TIMEOUT', `model and runtime did not load in ${timeoutMs} ms`));
+    }, timeoutMs);
+    createFaceDetector({
+      assetDir: opts.assetDir,
+      numFaces: cfg.preprocess.num_faces,
+      delegate: opts.delegate,
+    }).then(
+      (d) => {
+        clearTimeout(timer);
+        if (!timedOut) resolve(d);
+        else {
+          // loaded after the host gave up: release it (nobody is waiting for an error)
+          try {
+            d.close();
+          } catch {
+            /* already unusable */
+          }
+        }
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(
+          new EngineInitError('INIT_FAILED', err instanceof Error ? err.message : String(err)),
+        );
+      },
+    );
   });
   warmUp(detector);
   return new GazeEngine<ImageBitmap>({ detector, luma: canvasLumaSampler }, opts);

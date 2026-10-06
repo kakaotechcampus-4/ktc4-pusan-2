@@ -8,7 +8,7 @@
  * answer is the main thread's back-pressure signal, so at most one frame is
  * ever in flight.
  */
-import { createClassifier, type GazeEngine } from '../engine';
+import { createClassifier, EngineInitError, type GazeEngine } from '../engine';
 import type { Observation } from '../engine/types';
 import { toDeg } from '../engine/types';
 import type { FrameSummary, FromWorker, ToWorker } from './protocol';
@@ -37,11 +37,21 @@ scope.onmessage = async (event: MessageEvent<ToWorker>) => {
   try {
     switch (msg.type) {
       case 'init': {
-        engine = await createClassifier({
-          assetDir: msg.assetDir,
-          otherAs: msg.otherAs,
-          delegate: msg.delegate,
-        });
+        try {
+          engine = await createClassifier({
+            assetDir: msg.assetDir,
+            otherAs: msg.otherAs,
+            delegate: msg.delegate,
+          });
+        } catch (err) {
+          const reason = err instanceof EngineInitError ? err.reason : 'INIT_FAILED';
+          post({
+            type: 'failed',
+            message: err instanceof Error ? err.message : String(err),
+            reason,
+          });
+          return;
+        }
         const v = engine.version;
         post({
           type: 'ready',
