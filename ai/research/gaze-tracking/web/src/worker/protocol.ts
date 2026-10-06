@@ -4,7 +4,7 @@
  * set-up check, the head circle, the calibration gauge and a face guide, which
  * the frontend contract keeps inside the worker.
  */
-import type { CalibrationQualityDict, StoredModel } from '../engine';
+import type { CalibrationQualityDict, CalibrationModel } from '../engine';
 import type { FrameDecision, OtherMapping } from '../engine/contract';
 import type { BaselineCheck, ReanchorStatus } from '../engine/engine';
 import type { GaugeStatus } from '../engine/gauge';
@@ -26,7 +26,7 @@ export type ToWorker =
   | { type: 'resetCalibration' }
   | { type: 'resetPreconditions' }
   | { type: 'reanchor'; tMs: number }
-  /** Adopt a stored calibration (`StoredModel` from an earlier `calibrated`). */
+  /** Adopt this session's calibration (`CalibrationModel` from an earlier `calibrated`; memory only). */
   | { type: 'restore'; model: unknown };
 
 export interface FrameSummary {
@@ -61,7 +61,7 @@ export type FromWorker =
   | {
       type: 'calibrated';
       quality: CalibrationQualityDict;
-      model: StoredModel | null;
+      model: CalibrationModel | null;
       placement: PlacementResultDict | null;
       classes: StateClass[];
     }

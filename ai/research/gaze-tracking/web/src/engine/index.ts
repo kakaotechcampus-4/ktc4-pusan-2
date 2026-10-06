@@ -14,7 +14,8 @@
  *     impl.dispose();
  *
  * Runs without DOM (worker-safe); the calibration `model` is plain data and
- * survives `structuredClone` / IndexedDB.
+ * survives `structuredClone`.  It holds face measurements: keep it in memory for the
+ * session, never store it (see `CalibrationModel`).
  */
 import { makeConfig } from './config';
 import { GazeEngine, type EngineSettings } from './engine';
@@ -45,7 +46,7 @@ export type {
   EngineDeps,
   EngineSettings,
   ReanchorStatus,
-  StoredModel,
+  CalibrationModel,
 } from './engine';
 export type {
   AiCalibrationQuality,

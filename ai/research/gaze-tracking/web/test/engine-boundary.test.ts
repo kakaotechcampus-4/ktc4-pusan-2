@@ -6,6 +6,11 @@
  * `index.ts` and `contract.ts`; everything else stays behind that boundary.
  *
  * DOM use is caught by the compiler instead (tsconfig.engine.json: worker globals only).
+ *
+ * Nothing face-derived may be stored or sent from here either: the engine uses no storage
+ * (localStorage, IndexedDB, Cache API), no network (fetch, XHR, WebSocket, beacons) and no
+ * console.  What leaves the device is the 1 s record the host posts on, nothing else.
+ * (MediaPipe loads its own model and wasm files; that happens inside the library.)
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -24,6 +29,9 @@ function sources(dir: string): string[] {
 }
 
 const FILES = sources(ENGINE);
+const FORBIDDEN =
+  /\b(localStorage|sessionStorage|indexedDB|caches|fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\b|\bconsole\./g;
+const code = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 const SPECIFIER = /(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)['"]([^'"]+)['"]/gm;
 
 describe('engine boundary', () => {
@@ -39,6 +47,13 @@ describe('engine boundary', () => {
         .map((m) => m[1]!)
         .filter((spec) => !(spec.startsWith('./') || ALLOWED_PACKAGES.has(spec)));
       expect(bad).toEqual([]);
+    },
+  );
+
+  it.each(FILES.map((f) => [relative(ENGINE, f), f]))(
+    '%s stores, sends and logs nothing',
+    (_, file) => {
+      expect(code(readFileSync(file, 'utf8')).match(FORBIDDEN) ?? []).toEqual([]);
     },
   );
 });

@@ -25,7 +25,7 @@
  * calibration model goes to the host (`calibrated`) to keep or drop.
  */
 import './camera.css';
-import type { CalibrationQualityDict, StoredModel } from '../engine';
+import type { CalibrationQualityDict, CalibrationModel } from '../engine';
 import { makeConfig } from '../engine/config';
 import type { FrameDecision, OtherMapping } from '../engine/contract';
 import type { BaselineCheck, ReanchorStatus } from '../engine/engine';
@@ -84,8 +84,8 @@ export interface CameraViewOptions {
 export interface SetupResult {
   /** `status` OK or FAIL with `reason`, the anchors, separations and warnings. */
   quality: CalibrationQualityDict;
-  /** Plain data (structuredClone / IndexedDB): give it back with `useCalibration`. Null when none was built. */
-  model: StoredModel | null;
+  /** Plain data, memory only (face measurements inside): give it back with `useCalibration` in this session, never store it. Null when none was built. */
+  model: CalibrationModel | null;
   placement: PlacementResultDict | null;
   /** What live tells apart: CAMERA, SCREEN, BOTTOM, OTHER (fewer when an anchor is missing). */
   classes: StateClass[];
@@ -372,8 +372,8 @@ export class GazeCameraView {
     this.#track.showArrow(false);
   }
 
-  /** Adopt a stored calibration (`SetupResult.model`) and go live; false when it does not fit this engine. */
-  useCalibration(model: StoredModel): Promise<boolean> {
+  /** Adopt this session's calibration (`SetupResult.model`) and go live; false when it does not fit this engine. */
+  useCalibration(model: CalibrationModel): Promise<boolean> {
     return new Promise((resolve) => {
       this.#restoring?.(false);
       this.#restoring = (ok) => {
