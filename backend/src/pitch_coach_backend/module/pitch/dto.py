@@ -143,7 +143,10 @@ class StandardTextDTO(BaseModel):
 
 class StandardDTO(BaseModel):
     standard: str
-      
+
+class StandardParseResponseDTO(BaseModel):
+    standards: list[str]
+    except_standard: str | None = None
 class StandardTextResponseDTO(BaseModel):
     pitch_id: uuid.UUID
     standards: list[StandardDTO]

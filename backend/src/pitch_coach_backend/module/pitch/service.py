@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from pitch_coach_backend.module.pitch.dto import PitchDTO, StandardTextDTO
+from pitch_coach_backend.module.pitch.dto import PitchDTO, StandardParseResponseDTO, StandardTextDTO
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from sqlalchemy.orm import Session
 
@@ -441,10 +441,17 @@ def divide_standard_text(standard_text_dto: StandardTextDTO) -> list[str]:
     """평가 기준 텍스트를 문장 단위로 나눈다. LLM 호출이므로 async."""
     with httpx2.AsyncClient() as client:
         response = client.post(
-            "http://localhost:8001/divide_standard_text",
+            "http://localhost:8001/evaluation-criteria/parse",
             json={"standard_text": standard_text_dto.standard_text}
         )
         response.raise_for_status()
         result = response.json()
-        return result.get("display_criteria", [])
+
+        standards = result.get("display_criteria", [])
+        except_standard = result.get("except_criteria", "")
+
+        return StandardParseResponseDTO(
+            standards=standards,
+            except_standard=except_standard
+        )
     
