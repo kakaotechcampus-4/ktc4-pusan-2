@@ -79,6 +79,7 @@ const state = {
 const smoke = {
   done: false,
   error: null as string | null,
+  errorReason: null as string | null,
   ready: false,
   isolated: false,
   version: '',
@@ -109,8 +110,9 @@ view.on('ready', ({ version, isolated }) => {
   Object.assign(smoke, { ready: true, version, isolated });
   renderPanel();
 });
-view.on('error', ({ message }) => {
+view.on('error', ({ message, reason }) => {
   smoke.error = message;
+  smoke.errorReason = reason ?? null;
 });
 view.on('frame', (f) => {
   state.processMs.push(f.processMs);
