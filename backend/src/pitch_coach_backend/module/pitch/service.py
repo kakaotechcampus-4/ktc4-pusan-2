@@ -1,15 +1,15 @@
 import uuid
+import httpx2
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from pitch_coach_backend.module.pitch.dto import PitchDTO
+from pitch_coach_backend.module.pitch.dto import PitchDTO, StandardTextDTO
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.dto import (
     AllPitchesDTO,
-    EachPresentationDTO,
     HighlightDTO,
     ParseRequestedDTO,
     ParseTicket,
@@ -20,6 +20,7 @@ from pitch_coach_backend.module.pitch.dto import (
     ScriptDetailDTO,
     ScriptParseErrorCode,
     ScriptSlideDTO,
+    StandardTextResponseDTO,
     UploadPresentationResultDTO,
     VersionDTO,
     VersionSummaryDTO,
@@ -422,16 +423,28 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         created_at=presentation_version.created_at.date()
     )
 
-def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_dto):
+def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO):
     pitch_repository = PitchRepository(db)
     # 평가 기준 분할 로직
-    # standards_result =
+    standards_result = divide_standard_text(standard_text_dto)
 
-    # for standard in standards_result.standards:
-    #    pitch_repository.save_standard(pitch_id, standard)
+    for standard in standards_result.standards:
+        pitch_repository.save_standard(pitch_id, standard)
 
-    # return StandardTextResponseDTO(
-    #     pitch_id=pitch_id,
-    #     standards=[{"standard": standard} for standard in standards_result.standards],
-    #     except_standard=standards_result.except_standard
-    # )
+    return StandardTextResponseDTO(
+         pitch_id=pitch_id,
+         standards=[{"standard": standard} for standard in standards_result.standards],
+         except_standard=standards_result.except_standard
+    )
+
+def divide_standard_text(standard_text_dto: StandardTextDTO) -> list[str]:
+    """평가 기준 텍스트를 문장 단위로 나눈다. LLM 호출이므로 async."""
+    with httpx2.AsyncClient() as client:
+        response = client.post(
+            "http://localhost:8001/divide_standard_text",
+            json={"standard_text": standard_text_dto.standard_text}
+        )
+        response.raise_for_status()
+        result = response.json()
+        return result.get("display_criteria", [])
+    
