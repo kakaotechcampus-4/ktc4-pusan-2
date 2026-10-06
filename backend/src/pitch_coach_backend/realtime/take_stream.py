@@ -33,7 +33,7 @@ import contextlib
 import logging
 import uuid
 from collections.abc import Awaitable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import anyio
 from fastapi import WebSocket
@@ -60,6 +60,7 @@ from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
     SttAdapter,
     SttConfig,
+    SttConfigRejected,
     SttConnectError,
     SttError,
     SttSession,
@@ -437,6 +438,20 @@ class TakeStream:
     async def _connect(self) -> SttSession | None:
         try:
             return await self._adapter.connect(self._config)
+        except SttConfigRejected as e:
+            fallback = self._config.fallback_keyterms
+            if fallback is None:
+                logger.error("Deepgram 이 설정을 거절했다 take=%s %s", self.take_id, e)
+                return None
+            # 같은 설정으로 다시 붙으면 또 거절된다. 대본 용어를 빼고 filler 만으로 붙는다
+            logger.warning(
+                "Deepgram 이 keyterm 을 거절해 %d개로 줄인다 take=%s %s",
+                len(fallback),
+                self.take_id,
+                e,
+            )
+            self._config = replace(self._config, keyterms=fallback, fallback_keyterms=None)
+            return None
         except SttConnectError as e:
             logger.warning("Deepgram 연결 실패 take=%s %s", self.take_id, e)
             return None

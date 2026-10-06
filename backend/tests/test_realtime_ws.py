@@ -43,6 +43,7 @@ from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
     SttConfig,
+    SttConfigRejected,
     SttConnectError,
     SttEvent,
     Transcript,
@@ -154,14 +155,18 @@ class FakeSttSession:
 
 
 class FakeSttAdapter:
-    def __init__(self, *plan: Plan, fail_times: int = 0) -> None:
+    def __init__(self, *plan: Plan, fail_times: int = 0, reject_times: int = 0) -> None:
         self.plan = list(plan)
         self.fail_times = fail_times
+        # 처음 이만큼은 Deepgram 이 설정을 400 으로 거절한 것처럼 군다
+        self.reject_times = reject_times
         self.configs: list[SttConfig] = []
         self.sessions: list[FakeSttSession] = []
 
     async def connect(self, config: SttConfig) -> FakeSttSession:
         self.configs.append(config)
+        if len(self.configs) <= self.reject_times:
+            raise SttConfigRejected("400 Keyterm limit exceeded.")
         if len(self.configs) <= self.fail_times:
             raise SttConnectError("boom")
         index = len(self.sessions)
@@ -422,6 +427,39 @@ def test_script_terms_follow_fillers_in_keyterms(
     (config,) = stt.configs
     # filler 가 먼저, 대본 용어가 뒤. filler 와 겹치는 "음" 은 한 번만
     assert config.keyterms == (*KEYTERM_FILLERS, "SeatFlow", "좌석 예측")
+    assert config.fallback_keyterms == KEYTERM_FILLERS
+
+
+def test_rejected_keyterms_fall_back_to_fillers_only(
+    client: TestClient, token: str, take: Take, db_session: Session
+):
+    # 토큰 추정이 빗나가 Deepgram 이 거절해도 STT 는 filler 만으로 붙어야 한다.
+    # 같은 설정으로 계속 재시도하면 그 Take 는 전사가 하나도 안 남는다
+    script = db_session.get(ScriptVersion, take.script_version_id)
+    script.parse_status = ScriptParseStatus.DONE
+    script.terms = ["SeatFlow"]
+    db_session.commit()
+    adapter = use(FakeSttAdapter(reject_times=1))
+
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        assert wait_state(ws, "ok")["stt_session_no"] == 1
+
+    first, second = adapter.configs
+    assert "SeatFlow" in first.keyterms
+    assert second.keyterms == KEYTERM_FILLERS
+    assert second.fallback_keyterms is None
+
+
+def test_fillers_only_config_has_no_fallback(client: TestClient, stt: FakeSttAdapter, token: str):
+    # 대본 용어가 없으면 줄일 것도 없다
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+
+    (config,) = stt.configs
+    assert config.keyterms == KEYTERM_FILLERS
+    assert config.fallback_keyterms is None
 
 
 def test_script_term_lookup_failure_still_connects(

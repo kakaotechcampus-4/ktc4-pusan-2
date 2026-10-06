@@ -261,7 +261,13 @@ class RealtimeSession:
                 len(keyterms),
                 dropped,
             )
-        return SttConfig(keyterms=keyterms, tag=f"take:{self.take_id}")
+        # 토큰 추정이 빗나가 Deepgram 이 거절하면 filler 만으로 다시 붙는다
+        filler_only = build_keyterms(KEYTERM_FILLERS)
+        return SttConfig(
+            keyterms=keyterms,
+            fallback_keyterms=filler_only if keyterms != filler_only else None,
+            tag=f"take:{self.take_id}",
+        )
 
     # ── 펌프 ──────────────────────────────────────────────────────────
 
