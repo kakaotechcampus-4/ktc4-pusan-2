@@ -140,8 +140,11 @@ export interface GazeSegment {
 }
 
 export interface CalibrationSummary {
-  /** 2점 캘리브레이션 — 카메라 한 번, 화면 한 번 */
-  points: 2;
+  /**
+   * 기준점 수. AI v1.1 은 3점입니다 — 화면 가운데 · 렌즈 · 대본 자리.
+   * (v1.0 은 렌즈 · 대본 2점이었습니다)
+   */
+  points: 3;
   /**
    * GOOD 검사 통과 · FAIR 통과했지만 경고 · POOR 검사 불합격이지만 모델은 있어 진행함.
    * POOR 인 Take 의 시선 숫자는 믿음이 낮습니다 — 리포트가 그 점을 알려야 합니다.
