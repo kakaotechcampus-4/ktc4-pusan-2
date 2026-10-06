@@ -16,3 +16,6 @@ artifacts/gaze/backbone/*
 # 실행 결과 (평가 리포트 · 데모 이벤트 · 실험 로그)
 outputs/*
 !outputs/.gitkeep
+
+# 테스트 얼굴 사진 · 영상은 git 에 올리지 않는다 (tests/fixtures/README.md)
+tests/fixtures/local/
