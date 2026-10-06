@@ -10,7 +10,7 @@
 | 기능 버전 | `1.0` (`src/script_coverage/version.py`의 `FEATURE_VERSION`), 평가 기준 스키마 `1.1` |
 | 검증한 LLM | OpenAI 호환 API, 모델 `openai/gpt-5.6-luna` |
 | 상태 | v1. **가상 데이터로만 측정했습니다.** 실제 Deepgram 결과와 실제 발표자의 말투로는 아직 측정하지 않았습니다 |
-| 이전 | 코어(`src/script_coverage/`)는 나중에 `ai/service/src/pitch_coach_ai/features/script_coverage/` 로 그대로 옮깁니다 ([service 로 옮기는 법](#service-로-옮기는-법)) |
+| 이전 | 코어(`src/script_coverage/`)는 나중에 `ai/service/src/pitch_coach_ai/features/script_coverage/` 로 그대로 옮깁니다 ([배포 가이드](DEPLOY.md)) |
 
 > 이 프로젝트는 `ai/archive/workspaces/jewon-kim/script-coverage-evaluation/v1/local/` 의 노트북 2개를 구조만 바꿔 옮긴 것입니다.
 > 판정 로직과 프롬프트는 같고, 같은 LLM 응답 캐시로 돌리면 결과가 바이트 단위로 같습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
@@ -60,6 +60,7 @@
 
 ```
 script-coverage-evaluation/
+├── README.md · DEPLOY.md        # 이 문서, 배포 가이드
 ├── pyproject.toml, uv.lock
 ├── src/
 │   ├── script_coverage/            # 코어. 나중에 service 로 폴더째 옮긴다
@@ -397,19 +398,9 @@ v1 을 "완료"라고 부르려면 실제 슬라이드별 Deepgram 결과와 녹
 
 ---
 
-## service 로 옮기는 법
+## 배포
 
-1. `src/script_coverage/` 를 `ai/service/src/pitch_coach_ai/features/script_coverage/` 로 **그대로** 복사합니다. 코어 안의 import 는 상대 import 라 고칠 것이 없습니다.
-2. `tests/unit/` 를 `ai/service/tests/unit/script_coverage/` 로 복사하고, import 접두사만 `script_coverage.` → `pitch_coach_ai.features.script_coverage.` 로 바꿉니다.
-   (`test_core_boundary.py` 는 코어 폴더 위치를 상대 경로로 찾으므로 그 경로 계산도 새 위치에 맞춥니다.)
-3. 코어 의존성(`pydantic`, `kiwipiepy>=0.23,<0.24`, `scikit-learn>=1.8,<1.9`)을 service 의 `pyproject.toml` 에 더합니다. 이 세 개가 전부입니다.
-4. LLM 클라이언트는 service 의 `common/llm.py` 에서 만듭니다. `coverage_lab/llm.py` 의 `script_llms` · `stt_llms` 가 어떤 스키마로 몇 개를 만드는지 참고합니다.
-   service 는 상태가 없으므로 `cache=None` 으로 부릅니다.
-5. `api/` 에 라우터를 추가합니다: 대본 → 평가 기준(`analyze_script`), STT + 평가 기준 → 평가 결과(`evaluate_take`), 평가 결과 + 사용자 확인 → 다시 계산(`rescore_evaluation`).
-   평가 기준 · 평가 결과의 저장과 읽기는 BE 가 하고, service 는 요청에 담긴 평가 기준을 받아 씁니다.
-6. 계약(`contracts/`)은 pydantic 모델에서 생성합니다. `ai/README.md` 규칙에 따라 스키마와 예시를 먼저 바꾸고 BE 가 검토합니다.
-7. 옮긴 뒤 research 는 `coverage_lab` 만 남기고 코어를 service 에서 import 합니다 (`pyproject.toml` 에 `pitch-coach-ai` 를 editable 로 추가하고 `src/script_coverage/` 는 지웁니다). 이후 코어는 service 에서만 고칩니다.
-8. 옮기기 전후에 같은 캐시로 평가 기준 · 평가 결과를 재생해 결과가 같은지 확인합니다.
+AI 서버에 올리는 데 필요한 작업(서버 · 인프라 · BE 연동)과 순서, API, 비용, 결정해야 할 것은 [DEPLOY.md](DEPLOY.md) 에 있습니다.
 
 ---
 
