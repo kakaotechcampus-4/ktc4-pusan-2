@@ -1753,6 +1753,34 @@ async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.Monk
     assert not take_stream._attach_locks, "다 쓴 락은 남기지 않는다"
 
 
+@pytest.mark.anyio
+async def test_frames_from_a_taken_over_connection_are_ignored():
+    """다른 탭이 이어받은 뒤 쫓겨난 연결이 닫히기 전에 보낸 프레임은 버린다.
+    섞이면 새 탭의 seq 를 앞질러 새 탭 오디오가 역행으로 버려진다."""
+    adapter = FakeSttAdapter()
+    stream = TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    old_tab, new_tab = FakeWebSocket(), FakeWebSocket()
+    await stream.attach(old_tab)
+    stream.push(frame(1, 0), source=old_tab)
+    stream.push(frame(2, 100), source=old_tab)
+
+    await stream.attach(new_tab)
+    stream.push(frame(3, 200), source=old_tab)  # 쫓겨난 탭이 마지막으로 보낸 것
+    stream.push(frame(1, 0), source=new_tab)
+    stream.push(frame(2, 100), source=new_tab)
+
+    assert stream.sequencer.frames == 4
+    assert stream.sequencer.dropped == 0
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
 # ── 그 밖의 예외 케이스 ───────────────────────────────────────────────
 
 

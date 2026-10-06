@@ -301,7 +301,7 @@ class RealtimeSession:
 
     async def _push_audio(self, stream: TakeStream, data: bytes) -> None:
         try:
-            stream.push(data)
+            stream.push(data, source=self.ws)
         except InvalidAudioFrame as e:
             self.invalid_frames += 1
             if self.invalid_frames == 1:

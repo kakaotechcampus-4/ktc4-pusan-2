@@ -351,11 +351,17 @@ class TakeStream:
 
     # ── 오디오 투입 ───────────────────────────────────────────────────
 
-    def push(self, data: bytes) -> None:
-        """FE 프레임 하나. InvalidAudioFrame 은 호출자가 처리한다."""
+    def push(self, data: bytes, *, source: WebSocket | None = None) -> None:
+        """FE 프레임 하나. InvalidAudioFrame 은 호출자가 처리한다.
+
+        `source` 는 프레임을 보낸 연결. 다른 탭이 이어받아 쫓겨난 연결이 닫히기 전에 보낸
+        프레임은 버린다 — 섞이면 새 연결의 seq 를 앞질러 그쪽 오디오가 역행으로 버려진다.
+        """
         frame = parse_audio_frame(data)
         if self._stopping:
             # stop 신호 뒤의 오디오는 아무도 소비하지 않는다. 큐에 넣으면 통계만 더럽힌다
+            return
+        if source is not None and source is not self._client:
             return
         accepted = self.sequencer.accept(frame)
         if accepted is None:
