@@ -541,7 +541,6 @@ class TakeStream:
     async def _on_transcript(self, event: Transcript) -> None:
         base = self._base_offset_ms or 0
         if event.transcript or event.words:
-            # 다음 PR: is_final 이면 여기서 take_transcript_segments 에 저장한다
             message = TranscriptMessage(
                 segment_id=f"{self.stt_session_no}-{self.segment_no}",
                 is_final=event.is_final,
