@@ -221,11 +221,17 @@ class RealtimeSession:
             # 한 번 더** 날린다 — 커넥션을 돌려준 의미가 없어진다. user 도 같은 이유로
             # id 를 안 읽고 이미 아는 user_id 를 그대로 쓴다
             status = take.status if take is not None else None
-            terms = (
-                pitch_service.stt_keyterm_candidates(self.db, take.pitch_id, take.script_version_id)
-                if status in STREAMABLE_TAKE_STATUSES
-                else []
-            )
+            terms: list[str] = []
+            if status in STREAMABLE_TAKE_STATUSES:
+                # 용어는 부가 기능이다. 조회가 실패해도 filler 만으로 STT 는 돈다 — 여기서
+                # 예외를 흘리면 연결이 1011 로 닫히고 FE 재연결이 같은 실패를 되풀이한다.
+                # 실패한 트랜잭션은 아래 rollback() 이 정리한다
+                try:
+                    terms = pitch_service.stt_keyterm_candidates(
+                        self.db, take.pitch_id, take.script_version_id
+                    )
+                except Exception:
+                    logger.exception("대본 용어 조회 실패, filler 만 쓴다 take=%s", self.take_id)
             # 조회가 끝나면 커넥션을 풀에 돌려준다. 이 연결은 몇 분씩 살아 있는데
             # 트랜잭션을 연 채로 두면 Take 수만큼 풀이 마른다
             self.db.rollback()

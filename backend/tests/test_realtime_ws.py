@@ -424,6 +424,23 @@ def test_script_terms_follow_fillers_in_keyterms(
     assert config.keyterms == (*KEYTERM_FILLERS, "SeatFlow", "좌석 예측")
 
 
+def test_script_term_lookup_failure_still_connects(
+    client: TestClient, stt: FakeSttAdapter, token: str, monkeypatch: pytest.MonkeyPatch
+):
+    # 용어 조회는 부가 기능이다. 실패해도 연결을 닫지 않고 filler 만으로 STT 를 연다
+    def broken(*args, **kwargs):
+        raise RuntimeError("statement timeout")
+
+    monkeypatch.setattr(service.pitch_service, "stt_keyterm_candidates", broken)
+
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        assert wait_state(ws, "ok")["stt_session_no"] == 1
+
+    (config,) = stt.configs
+    assert config.keyterms == KEYTERM_FILLERS
+
+
 def test_deepgram_outage_degrades_instead_of_closing(client: TestClient, token: str):
     # 3번 실패하면 degraded 를 알리고 그래도 재시도를 이어간다
     use(FakeSttAdapter(fail_times=3))
