@@ -17,12 +17,18 @@ dependencies = [
     "kiwipiepy>=0.23,<0.24",
     # v1 결과(TF-IDF 키워드)를 만든 버전대. 올릴 때는 캐시 재생 비교로 평가 기준이 같은지 먼저 확인한다
     "scikit-learn>=1.8,<1.9",
+    # ── research 전용 (coverage_lab · experiments · reports)
+    "langchain-openai>=1.3",
+    "python-dotenv>=1.0",
+    "pandas>=3.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9",
     "ruff>=0.16",
+    "ipykernel",
+    "nbconvert",
 ]
 
 [tool.setuptools.packages.find]

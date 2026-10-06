@@ -1,0 +1,428 @@
+{
+  "take_id": "가상대본2_take1",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "'매일 아침 그날 팔릴 양을 감으로 정해 굽는다'를 '아침마다 몇 개가 나갈지 경험으로 짐작해서 굽는다'로 바꿔 말함"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "15~20%를 '십오에서 이십 퍼센트'로 읽음"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "형식이 달라 포스기 데이터를 맞추는 데 가장 많은 시간을 썼다는 내용을 '제각각인 포스기 데이터를 하나로 통일하는 작업에 시간이 제일 많이 들었다'로 재구성"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "Prophet, LightGBM을 '프로펫', '라이트지비엠'으로 음차 전사"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "'남았을 때/모자랐을 때의 손해가 다르다'를 '남아서 버리는 손실/부족해서 못 파는 손실이 빵 종류별로 똑같지 않다'로 바꿔 말함"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "오전 9시를 '오전 아홉 시'로 읽음"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "1만 9천 원을 '만 구천 원'으로 읽음"
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 10,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 11,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "'근거를 함께 보여 주는 설계가 예측만큼 중요했다'를 '왜 이런 숫자가 나왔는지 이유까지 보여 주도록 만드는 게 예측을 잘하는 것만큼 중요했다'로 바꿔 말함"
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 6,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}

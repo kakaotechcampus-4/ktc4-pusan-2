@@ -1,0 +1,519 @@
+{
+  "take_id": "가상대본1_take9",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "동의어 교체: '늘 붐빕니다'를 '항상 붐빕니다'로 바꿔 말함. 뜻은 같음"
+        },
+        {
+          "index": 3,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "대학생",
+              "stt": "고등학생"
+            }
+          ],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "발표자 실수: 설문 대상 '대학생'을 발음이 전혀 다른 '고등학생'으로 말해 조사 대상이 달라짐. 312명과 평균 23분(이십삼 분)은 맞음"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 6,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "좌석",
+              "stt": "자석"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '좌석 예약 키오스크'라고 말했는데 엔진이 '좌'의 이중모음을 놓쳐 '자석'(magnet)으로 적음. 앞뒤 단어는 대본 그대로"
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "약 18퍼센트",
+              "stt": "약 팔 퍼센트"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '약 십팔 퍼센트'라고 맞게 말했는데 엔진이 '약' 뒤의 '십'을 놓쳐 '약 팔 퍼센트'로 적음. 같은 값 18%는 슬라이드 6 S3 에서 맞게 인식됨"
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "동의어 교체: '기다리는 시간이 길어집니다'를 '대기 시간이 길어집니다'로 바꿔 말함. 뜻은 같음"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "30분",
+              "stt": "삼 분"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '삼십 분 뒤'라고 맞게 말했는데 엔진이 '십'을 놓쳐 '삼 분 뒤'로 적음. 같은 슬라이드 S0 의 '삼십 분'은 맞게 인식됨"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "센서",
+              "stt": "센터"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '별도의 센서를'이라고 말했는데 엔진이 '센터'로 적어 '센터를 새로 설치'라는 다른 뜻이 됨"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "XGBoost",
+              "stt": "엑스지부스터"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 모델 이름 '엑스지부스트(XGBoost)'라고 말했는데 엔진이 끝소리를 '부스터'로 잘못 들어 '엑스지부스터'로 적음"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "막대그래프",
+              "stt": "원그래프"
+            }
+          ],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "발표자 실수: 첫 화면의 '막대그래프'를 발음이 다른 '원그래프'로 말해 화면 구성이 대본과 달라짐. 30분은 맞음"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "이용률",
+              "stt": "이용료"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '이용률'이라고 말했는데 발음이 [이용뉼]로 거의 같아 엔진이 '이용료'(요금)로 적음. 조사도 '과'→'와'로 따라 바뀜. 노쇼 비율은 맞음"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "노쇼",
+              "stt": "노소"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '노쇼 비율도'라고 말했는데 엔진이 '쇼'를 '소'로 적어 '노소(老少) 비율'이 됨. 18%와 7%는 맞음"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "동의어 교체: '추산했습니다'를 '추정했습니다'로 바꿔 말함. 약 900곳, 약 24억 원, 36억 원 모두 맞음"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "학습 통계 리포트",
+              "stt": "학습 통계 리포터"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 추가 상품 '학습 통계 리포트'라고 말했는데 엔진이 '리포터'(기자)로 적음. 좌석 배치 컨설팅은 맞음"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "대전",
+              "stt": "대천"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '서울과 대전의'라고 말했는데 엔진이 '전'을 거센소리로 들어 다른 지명 '대천'으로 적음. 대전은 슬라이드 7 S2 에서 맞게 인식됨. 2026년 상반기, 20곳, 서울은 맞음"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}

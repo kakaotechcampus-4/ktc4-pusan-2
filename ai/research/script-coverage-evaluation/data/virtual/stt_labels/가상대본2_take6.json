@@ -1,0 +1,567 @@
+{
+  "take_id": "가상대본2_take6",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "20%",
+              "stt": "삼십 퍼센트"
+            }
+          ],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "발표자 실수: 폐기 비율 15~20%의 위쪽 값을 30%(삼십 퍼센트)로 잘못 기억해 말함. 15는 맞음. '폐기한다고'를 '버린다고'로 말함"
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'품절돼'를 '다 떨어져서'로 바꿔 말함"
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "12곳",
+              "stt": "11곳"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '십이 곳'이라고 맞게 말했는데 엔진이 이→일로 잘못 들어 11곳으로 적음. 2년은 맞음"
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'식빵 판매가 늘고'를 '식빵이 더 많이 팔리고'로 바꿔 말함. 두 배는 맞음"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "30% 이상",
+              "stt": "사십 퍼센트 이상"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '삼십 퍼센트 이상'이라고 맞게 말했는데 엔진이 삼→사로 잘못 들어 '사십 퍼센트'로 적음"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'예를 들어서'를 붙이고 '원가가 싸고 인기 있는 식빵'을 '원가가 싸면서 잘 팔리는 식빵'으로 바꿔 말함"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'내일 예정된 단체 주문'을 '내일 잡혀 있는 단체 주문'으로 바꿔 말함"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": [
+        "이 부분이 저희가 제일 공들인 기능인데요"
+      ]
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "오후 6시",
+              "stt": "오후 다섯 시"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '오후 여섯 시'라고 맞게 말했는데 엔진이 여섯→다섯으로 잘못 들어 '오후 다섯 시'로 적음"
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "3개월",
+              "stt": "넉 달"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '첫 석 달'이라고 맞게 말했는데 엔진이 석→넉으로 잘못 들어 '넉 달'(4개월)로 적음"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [
+            {
+              "script": "약 120만 원",
+              "stt": "약 110만 원"
+            }
+          ],
+          "approximated_values": [],
+          "note": "인식 오류: 발표자는 '약 백이십만 원'이라고 말했는데 엔진이 가운데 '이'를 빠뜨려 110만 원으로 적음. 10%, 여섯 배는 맞음"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 10,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "오후 6시",
+              "stt": "오후 일곱 시"
+            }
+          ],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "발표자 실수: 마감 할인 알림 시각 오후 6시를 오후 7시(일곱 시)로 잘못 말함"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 11,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'믿지 못하면 쓰이지 않았습니다'를 '못 믿으시면 안 쓰시더라고요'로 바꿔 말함"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 6,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}
