@@ -3,11 +3,11 @@
 순서 = 우선순위: filler(고정) → 대본 용어(가변). 한도를 넘는 용어는 건너뛰고 다음 것을 본다.
 
 한도는 둘이다.
-- 개수 100개 (실측, docs/stt-streaming-plan.md §5-1)
+- 개수 100개 (실측. 기록은 docs/stt-streaming-plan.md §5-1, 로컬 문서)
 - 전체 500 토큰. **넘으면 Deepgram 이 연결 자체를 거절한다** — HTTP 400
   "Keyterm limit exceeded. The maximum number of tokens across all keyterms is 500."
 
-토큰을 어떻게 세는지는 문서에 없어서 실측했다 (2026-10-06, nova-3 · ko, §5-1).
+토큰을 어떻게 세는지는 Deepgram 문서에 없어서 실측했다 (2026-10-06, nova-3 · ko).
 가장 비싸게 나온 모양이 "한글·ASCII 글자 수 + 용어당 2" 였다 (흔한 음절을 이어 붙인
 "가나다라" 꼴). 실제 단어는 이보다 훨씬 싸다 — 20개 90자가 약 68 토큰.
 측정 못 한 문자(한자·이모지 등)는 바이트 단위로 쪼개진다고 보고 UTF-8 바이트 수로 센다.
