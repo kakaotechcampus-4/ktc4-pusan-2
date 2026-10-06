@@ -15,6 +15,7 @@ from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.keyterms import (
     MAX_KEYTERM_TOKENS,
     MAX_KEYTERMS,
+    TOKEN_HEADROOM,
     build_keyterms,
     estimate_tokens,
 )
@@ -43,16 +44,33 @@ def test_blank_duplicate_and_filler_overlap_are_dropped():
 
 
 def test_token_budget_is_never_exceeded_and_small_terms_still_fit():
-    long_term = "가" * 200  # 601 토큰 상한 — 혼자서 예산을 넘는다
-    many = [f"용어{i:02d}" for i in range(60)]  # 하나에 12 토큰
+    long_term = "가" * 500  # 502 토큰 — 혼자서 예산을 넘는다
+    many = [f"용어{i:02d}" for i in range(100)]  # 하나에 6 토큰
     keyterms = build_keyterms(KEYTERM_FILLERS, [long_term, *many])
 
     assert long_term not in keyterms
     # 긴 용어 하나 때문에 뒤의 짧은 용어까지 버리지 않는다
     assert "용어00" in keyterms
-    assert _tokens(keyterms) <= MAX_KEYTERM_TOKENS
+    assert _tokens(keyterms) <= MAX_KEYTERM_TOKENS - TOKEN_HEADROOM
     # 예산이 모자라 뒤쪽은 빠진다
-    assert "용어59" not in keyterms
+    assert "용어99" not in keyterms
+
+
+def test_estimate_follows_the_measured_worst_case():
+    """실측(§5-1): 가장 비싼 모양이 "한글·ASCII 글자 수 + 2" 였다."""
+    assert estimate_tokens("가나다라") == 6
+    assert estimate_tokens("abcdefgh") == 10
+    assert estimate_tokens("피치 코치") == 7  # 공백도 한 글자로 센다
+    # 측정하지 못한 문자는 바이트로 쪼개진다고 본다
+    assert estimate_tokens("漢字") == 6 + 2
+
+
+def test_korean_terms_get_about_twice_the_room_of_byte_counting():
+    # 예전(UTF-8 바이트 + 1) 에는 4글자 한글 용어가 filler 뒤에 32개 들어갔다
+    terms = [f"한글용{chr(0xAC00 + i)}" for i in range(85)]
+    keyterms = build_keyterms(KEYTERM_FILLERS, terms)
+
+    assert len(keyterms) - len(KEYTERM_FILLERS) >= 60
 
 
 def test_count_limit():
