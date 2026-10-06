@@ -22,7 +22,6 @@ import {
   DIRECTION_ARROW,
   DIRECTION_NAME,
   GAUGE_REASON,
-  GAZE_ISSUE_NAME,
   ISSUE,
   STATE_NAME,
   UNCERTAIN_REASON,
@@ -32,18 +31,20 @@ import type { CalibrationQualityDict } from '../engine';
 import { makeConfig } from '../engine/config';
 import type { ConditionState } from '../engine/condition';
 import type { FrameDecision } from '../engine/contract';
-import {
-  GazeEvidenceRecorder,
-  sampleToDict,
-  type GazeIssue,
-  type GazeSample,
-} from '../engine/evidence';
+import { GazeEvidenceRecorder, sampleToDict, type GazeSample } from '../engine/evidence';
 import type { GaugeStatus } from '../engine/gauge';
 import type { PlacementResultDict } from '../engine/placement';
 import type { PreconditionReport } from '../engine/preconditions';
 import { aimOffset, screenRegion, type ReferenceModelData } from '../engine/reference';
 import type { SweepStatus } from '../engine/sweep';
 import { GAZE_DIRECTIONS, type GazeDirection, type StateClass } from '../engine/types';
+import {
+  GAZE_ISSUE_NAME,
+  GazeTimeline,
+  issuesNow,
+  takeSummary,
+  type GazeIssue,
+} from './evidence-preview';
 
 type Stage = 'intro' | 'flow' | 'live';
 
@@ -466,8 +467,8 @@ function renderDrift(drift: ConditionState['drift'], unusable: boolean): void {
 /** Once per completed 1 s record: the coach's issues now and the take so far. */
 function renderEvidence(): void {
   const rec = state.evidence;
-  const issues = rec.issues();
-  const summary = rec.summary() as {
+  const issues = issuesNow(rec.samples, EVIDENCE);
+  const summary = takeSummary(new GazeTimeline(rec.samples), EVIDENCE) as {
     eye_contact_ratio?: number | null;
     coverage?: number;
     measured_ms?: number;
@@ -488,7 +489,7 @@ function renderEvidence(): void {
   $('#take-dirs').textContent = dirs.length
     ? `다른 곳을 본 방향 · ${dirs.map(([g, ms]) => `${DIRECTION_NAME[g]} ${Math.round(ms / 1000)}초`).join(' · ')}`
     : '';
-  const last = rec.timeline.samples.at(-1);
+  const last = rec.samples.at(-1);
   $('#agent-json').textContent = JSON.stringify(
     {
       last_sample: last ? sampleToDict(last) : null,
@@ -500,7 +501,7 @@ function renderEvidence(): void {
   );
   if (SMOKE) {
     smoke.evidence = {
-      samples: rec.timeline.samples.map(sampleToDict),
+      samples: rec.samples.map(sampleToDict),
       issues,
       summary,
     };

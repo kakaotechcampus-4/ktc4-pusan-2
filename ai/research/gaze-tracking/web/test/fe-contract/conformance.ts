@@ -5,7 +5,7 @@
  * before anyone touches the frontend.
  *
  * In the frontend the factory is
- *     () => import('./vendor/gaze').then((m) => m.createClassifier({ assetDir: '/models/' }))
+ *     () => import('./gaze/engine').then((m) => m.createClassifier({ assetDir: '/models/' }))
  * Tests pass a factory that builds the engine around a fake face detector.
  */
 import {

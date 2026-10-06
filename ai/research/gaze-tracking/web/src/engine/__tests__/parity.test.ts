@@ -1,13 +1,13 @@
 /**
  * Parity with the Python engine: every expectation below was produced by the
- * real Python code (`scripts/make_fixtures.py`), never typed by hand.  When a
+ * real Python code (`tools/make_fixtures.py`), never typed by hand.  When a
  * test fails, either the port drifted or the fixtures are stale -- regenerate
  * them first (`npm run fixtures`) and look again.
  */
 import { describe, expect, it } from 'vitest';
-import { ConditionMonitor, SceneBaselineAccumulator } from '../src/engine/condition';
-import { CONFIG_HASH, makeConfig } from '../src/engine/config';
-import { CalibrationGauge } from '../src/engine/gauge';
+import { ConditionMonitor, SceneBaselineAccumulator } from '../condition';
+import { CONFIG_HASH, makeConfig } from '../config';
+import { CalibrationGauge } from '../gauge';
 import {
   bboxFromLandmarks,
   eyeAspectRatio,
@@ -15,25 +15,13 @@ import {
   irisDiameterPx,
   secondFaceRatio,
   selectMainFace,
-} from '../src/engine/geometry';
-import { headPoseFromMatrix } from '../src/engine/headpose';
-import { logNdtr } from '../src/engine/math';
-import { placementFromSamples } from '../src/engine/placement';
-import { PreconditionChecker } from '../src/engine/preconditions';
-import { HeadSweep } from '../src/engine/sweep';
-import {
-  compareSummaries,
-  evaluateGaze,
-  GazeSlicer,
-  GazeTimeline,
-  interventionOutcome,
-  r4,
-  sampleToDict,
-  takeSummary,
-  type GazeFrame,
-  type GazeIssueType,
-  type GazeSample,
-} from '../src/engine/evidence';
+} from '../geometry';
+import { headPoseFromMatrix } from '../headpose';
+import { logNdtr } from '../math';
+import { placementFromSamples } from '../placement';
+import { PreconditionChecker } from '../preconditions';
+import { HeadSweep } from '../sweep';
+import { GazeSlicer, sampleToDict, type GazeFrame, type GazeSample } from '../evidence';
 import {
   decideFrame,
   directionOf,
@@ -41,8 +29,8 @@ import {
   gazeOffset,
   aimOffset,
   softBoxLogDensity,
-} from '../src/engine/reference';
-import type { Bbox, Cue, Sample } from '../src/engine/types';
+} from '../reference';
+import type { Bbox, Cue, Sample } from '../types';
 import { close, FX, makeObs, type ObsSpec } from './helpers';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -453,7 +441,7 @@ function sameDict(actual: unknown, expected: unknown, path = '$'): void {
   close(actual, expected, 1e-12, path);
 }
 
-describe('agent evidence', () => {
+describe('1 s records', () => {
   const ev = FX.evidence;
   const cfg = CFG.evidence;
   const toFrame = (d: Row): GazeFrame => ({
@@ -468,47 +456,14 @@ describe('agent evidence', () => {
     const out = frames.flatMap((d) => slicer.push(toFrame(d)));
     return [...out, ...slicer.flush(tEnd)];
   };
-  const samples = slice(ev.frames, ev.t_end);
-  const tl = new GazeTimeline(samples);
 
   it('frames -> 1 s slices (vote, UNCERTAIN, UNMEASURED gaps, OTHER direction)', () => {
-    sameDict(samples.map(sampleToDict), ev.samples);
+    sameDict(slice(ev.frames, ev.t_end).map(sampleToDict), ev.samples);
   });
 
-  it('runs', () => {
-    sameDict(
-      tl.runs().map((r) => ({
-        ...r,
-        mean_confidence: r4(r.mean_confidence),
-        mean_reliability: r4(r.mean_reliability),
-      })),
-      ev.runs,
-    );
-  });
-
-  it.each(rows(ev.stats))('window stats at $t over $window ms', (c) => {
-    sameDict(tl.stats(c.t, c.window), c.out);
-  });
-
-  it.each(rows(ev.issues))('coach issues at $t', (c) => {
-    sameDict(evaluateGaze(tl, c.t, cfg), c.out);
-  });
-
-  it('review summary and previous-take delta', () => {
-    sameDict(takeSummary(tl, cfg), ev.summary);
+  it('a second take', () => {
     const take2 = slice(ev.take2.frames, ev.take2.frames.at(-1).t_ms + 125);
     sameDict(take2.map(sampleToDict), ev.take2.samples);
-    const summary2 = takeSummary(new GazeTimeline(take2), cfg);
-    sameDict(summary2, ev.take2.summary);
-    sameDict(compareSummaries(summary2, takeSummary(tl, cfg)), ev.compare);
-    sameDict(
-      compareSummaries(takeSummary(new GazeTimeline(), cfg), takeSummary(tl, cfg)),
-      ev.compare_empty,
-    );
-  });
-
-  it.each(rows(ev.outcomes))('intervention outcome: $issue at $t', (c) => {
-    sameDict(interventionOutcome(tl, c.t, c.issue as GazeIssueType, cfg), c.out);
   });
 });
 

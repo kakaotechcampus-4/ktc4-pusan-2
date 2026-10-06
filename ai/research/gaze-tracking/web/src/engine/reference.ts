@@ -363,6 +363,13 @@ export function screenRegion(m: ReferenceModelData, minHalfwidthDeg = 0): SoftBo
  * Presenter-centric: in the raw frame a gaze toward the image right (yaw > 0)
  * is toward the presenter's LEFT, so the horizontal sign flips.
  */
+/** How far `v` lies outside `[lo, hi]` (signed), 0 inside. */
+function beyond(v: number, lo: number, hi: number): number {
+  if (v > hi) return v - hi;
+  if (v < lo) return v - lo;
+  return 0;
+}
+
 export function gazeOffset(
   m: ReferenceModelData,
   yawDeg: number,
@@ -370,9 +377,8 @@ export function gazeOffset(
   minHalfwidthDeg = 0,
 ): [number, number] {
   const r = screenRegion(m, minHalfwidthDeg);
-  const ex = yawDeg > r.yawHi ? yawDeg - r.yawHi : yawDeg < r.yawLo ? yawDeg - r.yawLo : 0;
-  const ey =
-    pitchDeg > r.pitchHi ? pitchDeg - r.pitchHi : pitchDeg < r.pitchLo ? pitchDeg - r.pitchLo : 0;
+  const ex = beyond(yawDeg, r.yawLo, r.yawHi);
+  const ey = beyond(pitchDeg, r.pitchLo, r.pitchHi);
   return [ex ? -ex : 0, ey];
 }
 

@@ -105,7 +105,8 @@ web/
 │   ├── ring.ts · arrow3d.ts · cross3d.ts · guide.ts   고개 원 눈금 · 코끝 화살표 · 휘는 십자선 · 얼굴 가이드
 │   └── text.ts                    화면 문구 (한국어)
 ├── src/worker/                    카메라 화면의 Worker (gaze.worker.ts) + 메시지 형식 (protocol.ts)
-├── index.html, src/demo/          데모 페이지 = 프론트엔드 페이지 대역 (main.ts 시작 카드 · 개발 패널 · styles.css)
+├── index.html, src/demo/          데모 페이지 = 프론트엔드 페이지 대역 (main.ts 시작 카드 · 개발 패널 · styles.css,
+│                                  evidence-preview.ts = 서버 코어의 이슈 · 요약 TS 사본, 미리보기 전용)
 ├── src/engine/                    ★ 엔진 — 프론트엔드에 넣을 폴더
 │   ├── index.ts                   createClassifier({ assetDir }) — 진입점
 │   ├── engine.ts                  GazeEngine: FE 계약 메서드 + 게이지 흐름 + 다시 맞추기
@@ -119,17 +120,18 @@ web/
 │   ├── sweep.ts                   고개 원 확인 (방향별 칸, 놓친 방향, 힌트)
 │   ├── gauge.ts                   보정 게이지
 │   ├── reference.ts               기준점 분류기 + 품질 판정 + SCREEN 합치기 + OTHER 방향
-│   ├── evidence.ts                에이전트 입력: 1초 기록 → 코치 이슈 · 테이크 요약 · 이전 테이크 차이 · 개입 효과
+│   ├── evidence.ts                프레임 판정 → 1초 기록 (기기 밖으로 나가는 유일한 값)
 │   ├── placement.ts               카메라 배치 판정
 │   ├── condition.ts               촬영 중 조건 감시 (신뢰도)
 │   ├── math.ts                    log Φ(scipy log_ndtr 동일 분기), logsumexp, median
-│   ├── config.ts, defaults.ts     설정. defaults.ts는 Python 설정에서 생성
-│   └── types.ts
-├── test/                          vitest — parity(Python 기준 답) · engine · fe-contract
+│   ├── config.ts, defaults.generated.ts  설정. defaults.generated.ts는 Python 설정에서 생성
+│   ├── types.ts
+│   └── __tests__/                 엔진 테스트(engine · parity · scenarios)와 Python 기준 답(fixtures/parity.json). 엔진과 같이 옮긴다
+├── test/                          vitest — fe-contract · 미리보기(evidence-preview, fixtures/evidence.json) · 엔진 import 경계
 │   └── fe-contract/conformance.ts FE의 modelClassifier.ts가 될 코드 (FE 계약 파일을 읽기 전용으로 import)
 ├── scripts/                       copy-assets · smoke · bench (Node) (Python 생성기는 `../tools/`)
 ├── bench.html, src/bench.ts       화면 없는 성능 측정 페이지
-└── tsconfig.json / tsconfig.fe.json (FE 컴파일러 옵션 그대로) / tsconfig.node.json
+└── tsconfig.json / tsconfig.fe.json (FE 컴파일러 옵션 그대로) / tsconfig.engine.json (DOM 없이 Worker 전역만) / tsconfig.node.json
 ```
 
 ### Python에서 옮기지 않은 것
@@ -146,22 +148,23 @@ web/
 ## 검증
 
 ```bash
-npm test             # vitest 197개
-npm run typecheck    # tsc 3번: 전체 / 설정 파일 / FE 컴파일러 옵션(tsconfig.fe.json: 엔진·Worker·카메라 화면)
+npm test             # vitest 219개
+npm run typecheck    # tsc 4번: 전체 / 설정 파일 / FE 컴파일러 옵션(tsconfig.fe.json: 엔진·Worker·카메라 화면) / DOM 없는 엔진(tsconfig.engine.json)
+npm run lint         # FE 와 같은 oxlint 규칙(--max-warnings=0)으로 엔진 · Worker
 npm run smoke        # 헤드리스 Chrome + 가짜 카메라로 데모 전체 (검사 23개, 화면 캡처 .cache/screens/)
 npm run bench        # Worker 프레임당 ms (CPU·GPU delegate), -- --no-isolation 으로 격리 헤더 없이
-npm run fixtures     # Python에서 defaults.ts와 기준 답 다시 생성 (Python 쪽을 바꾼 뒤)
+npm run fixtures     # Python에서 defaults.generated.ts와 기준 답 다시 생성 (Python 쪽을 바꾼 뒤)
 ```
 
 | 무엇을 | 어떻게 | 결과 |
 |---|---|---|
-| Python과 같은 답 | Python 코드가 만든 기준 답(`test/fixtures/parity.json`)과 비교 — log Φ, 소프트 박스 밀도, 헤드포즈(두 메모리 순서), 랜드마크 기하, 분류기 시나리오 11개(SCREEN 합치기·각 실패 사유·OTHER 방향 포함), 배치 8개, 준비 점검·조건 감시(눈 기반 / 고개 기준 / 얼굴 메시 거리 / 다른 사람·얼굴 바뀜 규칙 / 고개 방향 흔들림)·별개의 얼굴 판정·게이지(큐별 목표·늘리기)·큐 방향 확인·고개 원 시퀀스(1초 중심과 흔들림), 에이전트 입력(66초 테이크의 1초 기록·창 통계·코치 이슈·테이크 요약·이전 테이크 차이·개입 효과, **키 이름까지**) | 136개 통과. 수치는 1e-9 ~ 1e-12 안에서 일치 |
+| Python과 같은 답 | Python 코드가 만든 기준 답(`src/engine/__tests__/fixtures/parity.json`, 미리보기는 `test/fixtures/evidence.json`)과 비교 — log Φ, 소프트 박스 밀도, 헤드포즈(두 메모리 순서), 랜드마크 기하, 분류기 시나리오 11개(SCREEN 합치기·각 실패 사유·OTHER 방향 포함), 배치 8개, 준비 점검·조건 감시(눈 기반 / 고개 기준 / 얼굴 메시 거리 / 다른 사람·얼굴 바뀜 규칙 / 고개 방향 흔들림)·별개의 얼굴 판정·게이지(큐별 목표·늘리기)·큐 방향 확인·고개 원 시퀀스(1초 중심과 흔들림), 에이전트 입력(66초 테이크의 1초 기록·창 통계·코치 이슈·테이크 요약·이전 테이크 차이·개입 효과, **키 이름까지**. 1초 기록까지는 엔진 테스트, 이슈 · 요약은 데모 미리보기 테스트) | 엔진 139개 통과. 수치는 1e-9 ~ 1e-12 안에서 일치 |
 | 엔진 흐름 | 가짜 얼굴 검출기로 FE 순서(배치 → 보정 → 판정), 게이지 흐름, 조건 감시, 다시 맞추기, 준비 점검, 고개 원(채우기·얼굴 손실), 원 중심 기준 큐 방향 확인, 화면 가운데가 원의 중심을 확인·합침 / 자세가 바뀌었으면 새로 재고 렌즈·대본 기준도 갱신, 고개를 돌려도 신뢰도 유지, 너무 멀리 움직이면 측정 불가와 이동 cm, 조금 들거나 돌린 고개는 가장 가까운 대상, 눈꺼풀이 내려간 숙인 고개도 판정(고개 방향은 눈 없이), OTHER 방향, 판정 → 에이전트 입력 | 28개 통과 |
 | 판별 시나리오 | v1 README §7-13의 시나리오 28개를 가짜 얼굴 검출기로 엔진 전체에 — 렌즈·화면·대본, 화면 가장자리(좌우 값), 옆·위·아래의 다른 곳, 고개를 많이 드는 사람의 좌우, 눈이 안 보이는 고개, 혼자 물러나기·중복 검출·배경 오검출은 다른 사람 아님, 다른 사람 1초(참고 신호), 얼굴 바뀜(보정 직후 포함), 자리 이동, 얼굴 사라짐, 조명 변화는 신뢰도 그대로, 고개 방향 흔들림, 고개 원 기준 확인·자세가 바뀐 뒤 다시 재기, 준비 점검 | 28개 통과 |
 | FE 계약 | `conformance.ts`(FE `modelClassifier.ts`의 TODO를 채운 모양)를 FE의 `aiAdapter.ts`로 실제 실행 | 5개 통과 |
 | FE에서 컴파일되는가 | `tsconfig.fe.json` = FE `tsconfig.app.json` 옵션(`erasableSyntaxOnly`, `noUnusedLocals/Parameters`, JSON import 없음 …)으로 엔진·Worker·카메라 화면 모듈 | 통과 |
-| 실제 브라우저 | `npm run smoke`: 모듈 Worker 안 MediaPipe 로드, ImageBitmap 입력, OffscreenCanvas 밝기, 격리 헤더, 지연, 하나로 이어진 흐름(얼굴 맞추기 → 고개 원 → 보정 → 결과), 고개 원의 중심 측정, 고개를 움직이지 않는 얼굴은 렌즈·대본 진행도가 0(`LOOK_HIGHER`/`LOOK_LOWER`), 위치 기준선(정지 얼굴은 이동 0°), 실제 MediaPipe의 정지 얼굴 흔들림(0.06°), 실시간 판정에서 1초 기록·코치 이슈·테이크 요약 생성, **카메라 화면이 창이 아니라 받은 상자(16:9 카드)를 채움** | 23개 통과. 테스트 영상에서 yaw 6.9°·pitch −4.4°·밝기 146.5 (Python 6.8°·−4.8°·147.4) |
-| Python 쪽이 바뀌면 | `../tests/test_web_engine_sources.py`가 defaults.ts·기준 답이 낡았는지 검사 | pytest에 포함 |
+| 실제 브라우저 | `npm run smoke`: 모듈 Worker 안 MediaPipe 로드, ImageBitmap 입력, OffscreenCanvas 밝기, 격리 헤더, 지연, 하나로 이어진 흐름(얼굴 맞추기 → 고개 원 → 보정 → 결과), 고개 원의 중심 측정, 고개를 움직이지 않는 얼굴은 렌즈·대본 진행도가 0(`LOOK_HIGHER`/`LOOK_LOWER`), 위치 기준선(정지 얼굴은 이동 0°), 실제 MediaPipe의 정지 얼굴 흔들림(0.01°), 실시간 판정에서 1초 기록·코치 이슈·테이크 요약 생성, **카메라 화면이 창이 아니라 받은 상자(16:9 카드)를 채움** | 23개 통과. 테스트 영상(합성 얼굴)에서 yaw 0.3°·pitch 1.6°·밝기 138 (Python 0.53°·1.52°) |
+| Python 쪽이 바뀌면 | `../tests/lab/test_web_engine_sources.py`가 defaults.generated.ts·기준 답이 낡았는지 검사 | pytest에 포함 |
 
 **지연 시간** (이 PC, 헤드리스 Chrome, 640×480 테스트 영상): Worker 한 프레임 중앙값 약 40~90 ms이고
 대부분이 MediaPipe 검출입니다. 엔진 계산은 약 5 ms입니다. 같은 설정도 PC 부하에 따라 40~80 ms로 흔들려,
@@ -177,8 +180,11 @@ npm run fixtures     # Python에서 defaults.ts와 기준 답 다시 생성 (Pyt
 
 ## 에이전트 입력 (코치·리뷰)
 
-코치 에이전트와 리뷰 에이전트는 프레임을 읽지 않고 **1초 기록**과 그 요약을 읽습니다. `evidence.ts`가
-Python `../src/gaze/core.py`(1초 기록 이후) · `../src/gaze_lab/evidence/gaze.py`(1초 기록까지)와 같은 값을 냅니다(규칙과 수치는 archive `v1/README.md` §7-11).
+코치 에이전트와 리뷰 에이전트는 프레임을 읽지 않고 **1초 기록**과 그 요약을 읽습니다. 엔진(`evidence.ts`)은
+프레임 판정을 1초 기록으로 만들기까지만 하고(Python `../src/gaze_lab/evidence/gaze.py`와 같은 값), 1초 기록을 읽어
+이슈 · 요약을 만드는 것은 서버 코어(`../src/gaze/core.py`)입니다. 데모 페이지는 그 결과를 미리 보여 주려고
+서버 코어의 TS 사본(`src/demo/evidence-preview.ts`)을 씁니다. 이 사본은 엔진에 들어 있지 않고 frontend로 가지 않습니다
+(규칙과 수치는 archive `v1/README.md` §7-11).
 
 ```ts
 import { GazeEvidenceRecorder, makeConfig, sampleToDict } from './vendor/gaze';
@@ -187,9 +193,9 @@ const rec = new GazeEvidenceRecorder(makeConfig().evidence);   // 테이크마�
 const decision = impl.classify(bitmap, tMs);                     // FrameDecision (direction 포함)
 for (const sample of rec.record(decision)) post(sampleToDict(sample));  // 1초가 끝날 때마다 하나
 
-rec.issues();     // 코치: 지금의 시선 이슈 (공통 평가기 형식, 심각도 순)
-rec.summary();    // 리뷰: 테이크 통계 · 문제 구간 · OTHER 방향별 시간
-// compareSummaries(prev, cur), interventionOutcome(rec.timeline, tMs, issueType, cfg) 도 같은 모듈에
+rec.samples;      // 지금까지의 1초 기록. 이슈 · 요약은 서버가 이 기록으로 만든다
+// 데모의 미리보기: issuesNow(rec.samples, cfg), takeSummary(new GazeTimeline(rec.samples), cfg)
+//                  (src/demo/evidence-preview.ts)
 ```
 
 | 값 | 모양 | 쓰는 곳 |

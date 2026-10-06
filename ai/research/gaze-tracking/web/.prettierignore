@@ -4,5 +4,6 @@ public/models
 .cache
 package-lock.json
 *.md
-src/engine/defaults.ts
+src/engine/defaults.generated.ts
+src/engine/__tests__/fixtures
 test/fixtures

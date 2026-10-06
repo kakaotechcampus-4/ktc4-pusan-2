@@ -4,7 +4,7 @@
  * The frontend loads this module inside its gaze worker and delegates to it
  * (`frontend/src/workers/modelClassifier.ts`, "A안"):
  *
- *     const { createClassifier } = await import('./vendor/gaze');
+ *     const { createClassifier } = await import('./gaze/engine');
  *     const impl = await createClassifier({ assetDir: '/models/' });
  *     engineVersion(impl.version);                                 // aiAdapter
  *     toCalibrationResult(...impl.fitCalibration(camera, bottom))   // { quality, model }
@@ -67,24 +67,13 @@ export { GAZE_DIRECTIONS } from './types';
 export { CONFIG_HASH, makeConfig, VERSION } from './config';
 export type { EngineConfig, EvidenceConfig, SweepConfig } from './config';
 
-// Agent evidence: 1 s gaze records, coach issues, review summary, intervention outcome.
+// 1 s gaze records: what leaves the device (no image, no landmark).  Reading them
+// (coach issues, take summary) is the server's job, not the engine's.
 export {
-  compareSummaries,
-  evaluateGaze,
   frameFromDecision,
-  GAZE_COACH_ACTION,
   GazeEvidenceRecorder,
   GazeSlicer,
-  GazeTimeline,
-  interventionOutcome,
+  SAMPLE_STATES,
   sampleToDict,
-  takeSummary,
 } from './evidence';
-export type {
-  GazeFrame,
-  GazeIssue,
-  GazeIssueType,
-  GazeSample,
-  SampleState,
-  WindowStats,
-} from './evidence';
+export type { GazeFrame, GazeSample, SampleState } from './evidence';

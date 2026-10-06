@@ -1,4 +1,4 @@
-"""Write the engine defaults the browser port reads (src/engine/defaults.ts).
+"""Write the engine defaults the browser port reads (web/src/engine/defaults.generated.ts).
 
 The Python package is the single source of truth: every threshold the web
 engine uses is copied from ``gaze_lab.config.load_config()`` here, never typed by
@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 PROJECT = Path(__file__).resolve().parents[1]
-OUT = PROJECT / "web" / "src" / "engine" / "defaults.ts"
+OUT = PROJECT / "web" / "src" / "engine" / "defaults.generated.ts"
 
 #: Only what the head-pose path needs; eye-backbone and offline keys stay in Python.
 _KEEP = {

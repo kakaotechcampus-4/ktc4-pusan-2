@@ -484,7 +484,9 @@ export class ConditionMonitor {
     }
 
     const values = Object.values(components);
-    const reliability = severe.length ? 0 : values.length ? Math.min(...values) : 1;
+    let reliability = 1;
+    if (severe.length) reliability = 0;
+    else if (values.length) reliability = Math.min(...values);
     const state: ConditionState = {
       t_ms: t,
       reliability,

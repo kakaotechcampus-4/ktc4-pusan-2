@@ -6,7 +6,7 @@
  * the image right = the presenter's left); directions are presenter-centric.
  */
 import { describe, expect, it } from 'vitest';
-import { GazeEngine } from '../src/engine/engine';
+import { GazeEngine } from '../engine';
 import { FakeDetector, frame, lumaOf, type FakeFrame } from './helpers';
 
 const lumaStub = lumaOf;

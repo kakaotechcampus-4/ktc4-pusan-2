@@ -1,9 +1,9 @@
 /**
  * Engine thresholds.  The values are generated from the Python configs
- * (`tools/export_config.py` -> `defaults.ts`); keys keep the YAML
+ * (`tools/export_config.py` -> `defaults.generated.ts`); keys keep the YAML
  * spelling so a reader can grep one name across both implementations.
  */
-import { DEFAULTS as GENERATED } from './defaults';
+import { DEFAULTS as GENERATED } from './defaults.generated';
 
 export interface PreprocessConfig {
   analysis_fps: number;

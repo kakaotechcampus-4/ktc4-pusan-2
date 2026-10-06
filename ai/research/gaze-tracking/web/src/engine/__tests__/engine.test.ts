@@ -3,10 +3,10 @@
  * the demo's gauge flow, decisions, conditions and re-anchoring.
  */
 import { describe, expect, it } from 'vitest';
-import { makeConfig } from '../src/engine/config';
-import { GazeEngine, type EngineSettings } from '../src/engine/engine';
-import { GazeEvidenceRecorder } from '../src/engine/evidence';
-import { observe } from '../src/engine/observe';
+import { makeConfig } from '../config';
+import { GazeEngine, type EngineSettings } from '../engine';
+import { GazeEvidenceRecorder, sampleToDict } from '../evidence';
+import { observe } from '../observe';
 import { FakeDetector, frame, type FakeFrame } from './helpers';
 
 /** Lens, screen centre and script postures (head pitch, degrees; a laptop camera sees ~18 at the lens). */
@@ -219,21 +219,31 @@ describe('direction and agent evidence', () => {
     };
     feed(LENS, 0.5, 4);
     feed(SCRIPT, 0.5, 5);
-    const script = rec.issues();
-    expect(script[0]).toMatchObject({
-      evaluator: 'gaze',
-      issue_type: 'GAZE_ON_SCRIPT',
-      actionable: true,
-    });
-    expect(script[0]!.persistence_sec).toBeGreaterThanOrEqual(4);
     feed(LENS, -50, 3);
-    const away = rec.issues().find((i) => i.issue_type === 'GAZE_AWAY')!;
-    expect(away.evidence.direction).toBe('RIGHT');
     rec.flush(t + 125);
-    const summary = rec.summary() as { problem_segments: { issue_type: string }[] };
-    expect(summary.problem_segments.map((p) => p.issue_type)).toEqual([
-      'GAZE_ON_SCRIPT',
-      'GAZE_AWAY',
+
+    const records = rec.samples.map(sampleToDict);
+    const runs: [string, number][] = [];
+    for (const r of records) {
+      const last = runs.at(-1);
+      if (last && last[0] === r.state) last[1] += 1;
+      else runs.push([r.state, 1]);
+    }
+    expect(runs.map(([state]) => state)).toEqual(['CAMERA', 'BOTTOM', 'OTHER']);
+    expect(runs[1]![1]).toBeGreaterThanOrEqual(4);
+    expect(records.filter((r) => r.state === 'OTHER').map((r) => r.direction)).toEqual(
+      Array(runs[2]![1]).fill('RIGHT'),
+    );
+    // The record is all that leaves the device: eight keys, no image or landmark.
+    expect(Object.keys(records[0]!).sort()).toEqual([
+      'confidence',
+      'direction',
+      'duration_ms',
+      'frames',
+      'issues',
+      'reliability',
+      'state',
+      't_ms',
     ]);
   });
 });

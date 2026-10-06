@@ -16,5 +16,5 @@ export default defineConfig({
   preview: { headers: isolation, port: 5180, strictPort: true },
   worker: { format: 'es' },
   resolve: { alias: { '@fe': frontendSrc } },
-  test: { include: ['test/**/*.test.ts'] },
+  test: { include: ['src/**/__tests__/**/*.test.ts', 'test/**/*.test.ts'] },
 });

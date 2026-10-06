@@ -1,12 +1,12 @@
 /**
  * Test helpers: fixture decoding, the shared observation format of
- * `scripts/make_fixtures.py::make_obs`, and a fake face detector.
+ * `tools/make_fixtures.py::make_obs`, and a fake face detector.
  */
 import { expect } from 'vitest';
-import { focalLengthPx } from '../src/engine/headpose';
-import type { LandmarkerResult } from '../src/engine/observe';
-import type { FaceDetector } from '../src/engine/landmarker';
-import { toRad, type Observation } from '../src/engine/types';
+import { focalLengthPx } from '../headpose';
+import type { LandmarkerResult } from '../observe';
+import type { FaceDetector } from '../landmarker';
+import { toRad, type Observation } from '../types';
 import fixture from './fixtures/parity.json';
 
 /** JSON cannot hold NaN/Infinity; the generator writes them as strings. */

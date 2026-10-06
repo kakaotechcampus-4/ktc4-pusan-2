@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { GazeEngine, type EngineSettings } from '../src/engine/engine';
 import { EngineBackedClassifier } from './fe-contract/conformance';
-import { FakeDetector, frame, type FakeFrame } from './helpers';
+import { FakeDetector, frame, type FakeFrame } from '../src/engine/__tests__/helpers';
 
 const bitmaps = (frames: FakeFrame[]) => frames as unknown as ImageBitmap[];
 const look = (pitch: number, n = 16) =>

@@ -1,7 +1,7 @@
 """Parity fixtures: the Python engine's answers for the TypeScript tests.
 
 Every case here runs the real Python code (``gaze_lab.*``) and records inputs and
-outputs as JSON; ``web/test/parity.test.ts`` feeds the same inputs to the
+outputs as JSON; ``web/src/engine/__tests__/parity.test.ts`` feeds the same inputs to the
 TypeScript port and compares.  Nothing is hand-computed.
 
 Run after changing either implementation (``tests/lab/test_web_engine_sources.py``
@@ -58,7 +58,11 @@ from gaze_lab.schemas import (
     HeadPose,
 )
 
-OUT = PROJECT / "web" / "test" / "fixtures" / "parity.json"
+OUT = PROJECT / "web" / "src" / "engine" / "__tests__" / "fixtures" / "parity.json"
+#: What the server core makes of the 1 s records, for the demo page's preview copy
+#: (web/src/demo/evidence-preview.ts).  Kept out of the engine's fixture because
+#: that logic is not part of the engine.
+OUT_PREVIEW = PROJECT / "web" / "test" / "fixtures" / "evidence.json"
 CFG = load_config()
 RNG = np.random.default_rng(20261003)
 
@@ -683,13 +687,13 @@ def gate_sequences() -> List[Dict[str, Any]]:
     return out
 
 
-def build() -> Dict[str, Any]:
-    """Every fixture, JSON-safe.
+def build() -> Dict[str, Dict[str, Any]]:
+    """Every fixture, JSON-safe, by output file: ``parity`` (engine) and ``evidence`` (preview).
 
     Deterministic only from a fresh RNG: the generator is seeded once at import
     and every case draws from it in order, so call this once per import.
     """
-    return clean({
+    full = clean({
         "_generated_by": "tools/make_fixtures.py -- do not edit by hand",
         "config_hash": CFG.hash(),
         "math": math_cases(),
@@ -707,12 +711,31 @@ def build() -> Dict[str, Any]:
         "sweep": sweep_sequences(),
         "gate": gate_sequences(),
     })
+    ev = full["evidence"]
+    # The engine slices frames into 1 s records; reading the records is the server's.
+    full["evidence"] = {
+        "frames": ev["frames"], "t_end": ev["t_end"], "samples": ev["samples"],
+        "take2": {"frames": ev["take2"]["frames"], "samples": ev["take2"]["samples"]},
+    }
+    preview = {
+        "_generated_by": full["_generated_by"],
+        "config_hash": full["config_hash"],
+        "evidence": {
+            "frames": ev["frames"], "t_end": ev["t_end"], "runs": ev["runs"], "stats": ev["stats"],
+            "issues": ev["issues"], "summary": ev["summary"],
+            "take2": {"frames": ev["take2"]["frames"], "summary": ev["take2"]["summary"]},
+            "compare": ev["compare"], "compare_empty": ev["compare_empty"], "outcomes": ev["outcomes"],
+        },
+    }
+    return {"parity": full, "evidence": preview}
 
 
 def main() -> None:
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(build(), ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    print(f"wrote {OUT} ({OUT.stat().st_size // 1024} KB)")
+    built = build()
+    for out, data in ((OUT, built["parity"]), (OUT_PREVIEW, built["evidence"])):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+        print(f"wrote {out} ({out.stat().st_size // 1024} KB)")
 
 
 if __name__ == "__main__":

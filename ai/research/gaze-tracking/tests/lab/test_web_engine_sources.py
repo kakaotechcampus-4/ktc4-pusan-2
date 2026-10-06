@@ -1,8 +1,9 @@
 """The browser port's generated inputs must match the Python engine.
 
 ``web/`` holds a TypeScript port of the head-pose engine.  It reads its
-thresholds from ``web/src/engine/defaults.ts`` and is tested against
-``web/test/fixtures/parity.json`` -- both generated from this package.  These
+thresholds from ``web/src/engine/defaults.generated.ts`` and is tested against
+``web/src/engine/__tests__/fixtures/parity.json`` (and the demo's preview of the server
+core against ``web/test/fixtures/evidence.json``) -- all generated from this package.  These
 tests fail when either is stale, so a change here cannot silently leave the
 browser behind (regenerate with ``npm run fixtures`` in ``web/``, then run the
 web tests).  The generators live in ``tools/``.
@@ -33,11 +34,14 @@ pytestmark = pytest.mark.skipif(not WEB.exists(), reason="web/ port not present"
 
 def test_the_web_engine_defaults_are_generated_from_the_current_config():
     exporter = _load("export_config")
-    committed = (WEB / "src" / "engine" / "defaults.ts").read_text(encoding="utf-8")
+    committed = (WEB / "src" / "engine" / "defaults.generated.ts").read_text(encoding="utf-8")
     assert committed == exporter.render(), "run `npm run fixtures` in web/"
 
 
 def test_the_web_parity_fixtures_match_the_current_python_engine():
     fixtures = _load("make_fixtures")
-    committed = json.loads((WEB / "test" / "fixtures" / "parity.json").read_text(encoding="utf-8"))
-    assert committed == json.loads(json.dumps(fixtures.build())), "run `npm run fixtures` in web/"
+    built = json.loads(json.dumps(fixtures.build()))
+    engine = WEB / "src" / "engine" / "__tests__" / "fixtures" / "parity.json"
+    preview = WEB / "test" / "fixtures" / "evidence.json"
+    assert json.loads(engine.read_text(encoding="utf-8")) == built["parity"], "run `npm run fixtures` in web/"
+    assert json.loads(preview.read_text(encoding="utf-8")) == built["evidence"], "run `npm run fixtures` in web/"
