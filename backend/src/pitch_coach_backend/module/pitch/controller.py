@@ -1,10 +1,8 @@
 
+import uuid
 from typing import Annotated
 
-import uuid
-
 from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, status
-from pitch_coach_backend.module.pitch.repository import PitchRepository
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
@@ -19,21 +17,20 @@ from pitch_coach_backend.module.pitch.dto import (
     StandardTextDTO,
     UploadPresentationDTO,
 )
+from pitch_coach_backend.module.pitch.exception import NonExistentPresentationVersion
 from pitch_coach_backend.module.pitch.service import (
     add_pitch_service,
     add_pitch_standard_service,
     create_script_service,
     delete_pitch_service,
-    get_each_presentation_service,
-    get_pitch_datas,
     get_all_pitches_service,
+    get_pitch_datas,
     get_presentation_detail,
     get_script_detail,
     request_reparse,
     update_pitch_service,
     upload_presentation_service,
 )
-from pitch_coach_backend.module.pitch.exception import NonExistentPresentationVersion, NotExistPresentationVersion
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 

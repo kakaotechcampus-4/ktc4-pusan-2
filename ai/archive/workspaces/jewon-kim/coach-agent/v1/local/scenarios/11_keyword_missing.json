@@ -1,0 +1,61 @@
+{
+  "name": "11_keyword_missing",
+  "description": "3번 장 필수 키워드 '로컬 처리'를 빠뜨림 (기본은 꺼진 기능을 켜서 확인). 알려주면 말한다",
+  "take_id": "sim-11_keyword_missing",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "config": {
+    "features": {
+      "keyword_missing": true
+    }
+  },
+  "reactions": {
+    "MENTION_KEYWORD": {
+      "delay_ms": 1500,
+      "duration_ms": null,
+      "say": "로컬 처리"
+    }
+  },
+  "expect": {
+    "types": {
+      "CONTENT": {
+        "min": 1
+      }
+    },
+    "instructions_include": [
+      "MENTION_KEYWORD"
+    ],
+    "outcomes_include": [
+      "EFFECTIVE"
+    ]
+  }
+}

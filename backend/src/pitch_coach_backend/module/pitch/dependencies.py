@@ -1,10 +1,8 @@
-from select import select
 import uuid
 from typing import Annotated
 
 from fastapi import Depends
 from sqlalchemy import select
-from pitch_coach_backend.module.take.entity import Take
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
@@ -14,6 +12,7 @@ from pitch_coach_backend.module.pitch.exception import NonExistentPitch, NonExis
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.script_parse_runner import ScriptParseRunner
 from pitch_coach_backend.module.pitch.script_parser import HttpScriptParser
+from pitch_coach_backend.module.take.entity import Take
 
 # 상태가 없다 — AI 를 부를 때마다 HTTP 클라이언트를, 저장할 때마다 DB 세션을 새로 연다.
 # 테스트는 get_script_parse_runner 를 가짜 파서를 끼운 것으로 바꿔 끼운다
@@ -33,7 +32,9 @@ def get_owned_pitch(
 
 OwnedPitch = Annotated[uuid.UUID, Depends(get_owned_pitch)]
 
-def get_in_pitch(take_id: uuid.UUID, pitch_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> Take | None:
+def get_in_pitch(
+    take_id: uuid.UUID, pitch_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]
+) -> Take | None:
     take = db.scalar(
         select(Take).where(Take.id == take_id, Take.pitch_id == pitch_id)
     )
