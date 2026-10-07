@@ -2,7 +2,6 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pitch_coach_backend.module.take.entity import Take, TakeSummary
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
@@ -14,6 +13,7 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptVersion,
     Standards,
 )
+from pitch_coach_backend.module.take.entity import Take, TakeSummary
 
 
 class PitchRepository:
@@ -110,13 +110,21 @@ class PitchRepository:
         self.db.flush()
         return script_version
 
-    def get_presentation_detail(self, pitch_id: uuid.UUID, presentation_version_id: int) -> PresentationVersion | None:
+    def get_presentation_detail(
+        self, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID
+    ) -> PresentationVersion | None:
         return self.db.scalar(
             select(PresentationVersion).where(
                 PresentationVersion.pitch_id == pitch_id,
                 PresentationVersion.id == presentation_version_id
             )
         )
+
+    def save_standard(self, pitch_id: uuid.UUID, standard: Standards) -> Standards:
+        standard.pitch_id = pitch_id
+        self.db.add(standard)
+        self.db.flush()
+        return standard
  
     def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
         return self.db.scalars(

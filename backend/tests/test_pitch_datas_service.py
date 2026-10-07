@@ -2,8 +2,10 @@ import uuid
 from datetime import date
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch import service
 from pitch_coach_backend.module.pitch.dto import PitchDTO
 from pitch_coach_backend.module.pitch.entity import (
@@ -60,9 +62,15 @@ def pitch_id(db_session: Session, user_id: uuid.UUID) -> uuid.UUID:
     return _make_pitch(db_session, user_id)
 
 
-def test_raises_when_pitch_does_not_exist(db_session: Session) -> None:
-    with pytest.raises(NonExistentPitch):
-        service.get_pitch_datas(db_session, uuid.uuid4())
+def test_missing_pitch_is_not_found(client: TestClient, user_id: uuid.UUID) -> None:
+    # 존재·소유 확인은 service 가 아니라 OwnedPitch 의존성이 한다
+    response = client.get(
+        f"/api/pitches/{uuid.uuid4()}/resources",
+        headers={"Authorization": f"Bearer {create_access_token(user_id)}"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == NonExistentPitch.code
 
 
 def test_returns_the_pitch_id(db_session: Session, pitch_id: uuid.UUID) -> None:

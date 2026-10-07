@@ -3,12 +3,14 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Protocol
 
 from fastapi import File, UploadFile
 from pydantic import BaseModel
+
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
-from typing import Protocol
+
 
 class PitchDTO(BaseModel):
     title: str
@@ -143,7 +145,10 @@ class StandardTextDTO(BaseModel):
 
 class StandardDTO(BaseModel):
     standard: str
-      
+
+class StandardParseResponseDTO(BaseModel):
+    standards: list[str]
+    except_standard: str | None = None
 class StandardTextResponseDTO(BaseModel):
     pitch_id: uuid.UUID
     standards: list[StandardDTO]

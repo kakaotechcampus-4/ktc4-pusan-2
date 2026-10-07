@@ -4,6 +4,8 @@
 DB 는 진짜 트랜잭션, Redis 도 진짜다. 검증 로직을 통째로 패치하지 않는다.
 """
 
+import threading
+import uuid
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -11,7 +13,7 @@ from urllib.parse import urlparse
 
 import pytest
 import redis
-from sqlalchemy import select
+from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core import security
@@ -369,6 +371,108 @@ def test_reuse_does_not_touch_other_devices(
         service.rotate(db_session, laptop.refresh_token)
 
     assert service.rotate(db_session, phone.refresh_token).user.id == phone.user.id
+
+
+def test_token_rotated_after_it_was_read_counts_as_reuse(
+    db_session: Session,
+    redis_client: redis.Redis,
+    fake_google: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """읽은 뒤 쓰기 전에 다른 요청이 먼저 회전했다. 새 토큰을 또 내주면 계보가 갈라진다."""
+    issued = login(db_session, redis_client)
+    original_get = repository.get_refresh_token
+
+    def get_then_lose_the_race(db: Session, token_hash: str) -> RefreshToken | None:
+        token = original_get(db, token_hash)
+        assert token is not None
+        # 다른 요청의 회전이 이 사이에 커밋됐다. ORM 객체는 모른 채 revoked_at=None 으로 남는다
+        db.execute(
+            text("UPDATE refresh_tokens SET revoked_at = now() WHERE id = :id"),
+            {"id": token.id},
+        )
+        return token
+
+    monkeypatch.setattr(repository, "get_refresh_token", get_then_lose_the_race)
+
+    with pytest.raises(RefreshTokenReused):
+        service.rotate(db_session, issued.refresh_token)
+
+    monkeypatch.undo()
+    device_tokens = db_session.scalars(
+        select(RefreshToken).where(RefreshToken.device_id == issued.device_id)
+    ).all()
+    # 진 쪽은 새 토큰을 받지 않고, 그 세션은 통째로 끊긴다
+    assert len(device_tokens) == 1
+    assert all(t.revoked_at is not None for t in device_tokens)
+
+
+def test_concurrent_rotation_lets_only_one_request_win(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """같은 Refresh 로 요청 둘이 동시에 온다 (탈취한 쪽과 정상 사용자가 겹치는 경우).
+
+    잠금이 없으면 둘 다 revoked_at IS NULL 을 보고 각자 새 토큰을 받는다. 트랜잭션 두 개가
+    실제로 겹쳐야 해서 테스트 세션(savepoint) 대신 진짜 세션 둘을 쓰고, 만든 데이터는 지운다.
+    """
+    with Session(engine) as setup:
+        user = User(email=f"{uuid.uuid4()}@example.com", name="동시 회전")
+        setup.add(user)
+        setup.flush()
+        refresh_token = security.create_refresh_token()
+        device_id = uuid.uuid7()
+        repository.create_refresh_token(
+            setup,
+            user_id=user.id,
+            token_hash=security.hash_refresh_token(refresh_token),
+            device_id=device_id,
+            expires_at=security.refresh_token_expires_at(),
+        )
+        setup.commit()
+        user_id = user.id
+
+    # 둘 다 토큰을 읽은 뒤에야 폐기로 넘어가게 해서 경쟁을 확실히 만든다
+    both_read = threading.Barrier(2, timeout=5)
+    original_get = repository.get_refresh_token
+
+    def get_then_wait(db: Session, token_hash: str) -> RefreshToken | None:
+        token = original_get(db, token_hash)
+        both_read.wait()
+        return token
+
+    monkeypatch.setattr(repository, "get_refresh_token", get_then_wait)
+    results: dict[str, Any] = {}
+
+    def rotate(name: str) -> None:
+        with Session(engine, expire_on_commit=False) as db:
+            try:
+                results[name] = service.rotate(db, refresh_token)
+            except Exception as exc:
+                results[name] = exc
+
+    try:
+        threads = [threading.Thread(target=rotate, args=(name,)) for name in ("a", "b")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(10)
+
+        won = [v for v in results.values() if isinstance(v, service.IssuedSession)]
+        lost = [v for v in results.values() if isinstance(v, RefreshTokenReused)]
+        assert len(won) == 1 and len(lost) == 1, results
+
+        with Session(engine) as check:
+            alive = check.scalars(
+                select(RefreshToken).where(
+                    RefreshToken.device_id == device_id, RefreshToken.revoked_at.is_(None)
+                )
+            ).all()
+        # 진 쪽이 재사용으로 처리하며 이긴 쪽의 새 토큰까지 끊는다
+        assert alive == []
+    finally:
+        with Session(engine) as cleanup:
+            cleanup.delete(cleanup.get(User, user_id))  # 토큰은 CASCADE
+            cleanup.commit()
 
 
 def test_unknown_refresh_token_is_rejected(db_session: Session) -> None:

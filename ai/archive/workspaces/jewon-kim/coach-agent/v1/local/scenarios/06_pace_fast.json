@@ -1,0 +1,67 @@
+{
+  "name": "06_pace_fast",
+  "description": "40초부터 420 CPM 으로 빨라짐. '천천히' 뒤 속도를 낮춘다 → 효과 있음",
+  "take_id": "sim-06_pace_fast",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "segments": [
+    {
+      "from_ms": 40000,
+      "to_ms": 110000,
+      "set": {
+        "cpm": 420
+      }
+    }
+  ],
+  "reactions": {
+    "SLOW_DOWN": {
+      "delay_ms": 2000,
+      "duration_ms": null,
+      "set": {
+        "cpm": 300
+      }
+    }
+  },
+  "expect": {
+    "types": {
+      "SPEED": {
+        "min": 1
+      }
+    },
+    "instructions_include": [
+      "SLOW_DOWN"
+    ],
+    "outcomes_include": [
+      "EFFECTIVE"
+    ]
+  }
+}

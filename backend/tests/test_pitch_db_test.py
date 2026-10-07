@@ -28,6 +28,7 @@ def pitch_id(db_session: Session, user_id: uuid.UUID) -> uuid.UUID:
 def upload_mock(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     mock = MagicMock(side_effect=lambda file, key: key)
     monkeypatch.setattr(service, "upload", mock)
+    monkeypatch.setattr(service, "generate_presigned_url", lambda key: f"https://fake/{key}")
     return mock
 
 
@@ -76,14 +77,13 @@ def test_upload_presentation_persists_version_one(
 ) -> None:
     dto = UploadPresentationDTO(
         presentation_file=UploadFile(file=BytesIO(b"fake-bytes"), filename="deck.pdf"),
-        description="초안",
     )
 
-    presentation_id = service.upload_presentation_service(db_session, pitch_id, dto)
+    result = service.upload_presentation_service(db_session, pitch_id, dto)
 
     expected_key = f"pitches/{pitch_id}/presentations/1.pdf"
     upload_mock.assert_called_once_with(dto.presentation_file, expected_key)
-    saved = db_session.get(PresentationVersion, presentation_id)
+    saved = db_session.get(PresentationVersion, result.presentation_version_id)
     assert saved is not None
     assert saved.pitch_id == pitch_id
     assert saved.version == 1
