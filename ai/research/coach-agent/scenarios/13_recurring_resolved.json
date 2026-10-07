@@ -1,0 +1,86 @@
+{
+  "name": "13_recurring_resolved",
+  "description": "이전 Take 에서 2번 장 시선이 문제였고 이번 미션도 그것. 이번엔 대본을 보지 않는다 → 기억 RESOLVED, 미션 ACHIEVED, 시선 IMPROVED",
+  "take_id": "sim-13_recurring_resolved",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "missions": [
+    {
+      "mission_id": "m-gaze-2",
+      "type": "GAZE",
+      "slide_number": 2,
+      "priority": 1,
+      "description": "2번 장 대본 응시 30% 이하",
+      "target": {
+        "metric": "script_ratio",
+        "operator": "LTE",
+        "value": 0.3
+      }
+    }
+  ],
+  "memory": {
+    "recurring_issues": [
+      {
+        "type": "GAZE",
+        "slide_number": 2
+      }
+    ]
+  },
+  "expect": {
+    "interventions": {
+      "max": 0
+    },
+    "memory_labels": [
+      {
+        "type": "GAZE",
+        "slide_number": 2,
+        "label": "RESOLVED"
+      }
+    ],
+    "mission_status": {
+      "m-gaze-2": "ACHIEVED"
+    },
+    "type_status": {
+      "GAZE": "IMPROVED"
+    },
+    "strengths_include": [
+      {
+        "kind": "RESOLVED_RECURRING",
+        "type": "GAZE"
+      },
+      {
+        "kind": "MISSION_ACHIEVED",
+        "type": "GAZE"
+      }
+    ]
+  }
+}
