@@ -43,6 +43,9 @@ _SENTENCE_GAP_MS = 600
 _FINAL_LAG_MS = 1_200  # Deepgram 확정 결과가 늦게 오는 만큼
 _FILLER_MS = 350
 _GAZE_WINDOW_MS = 10_000
+#: 원자료 모드에서 가상 발표자의 평소 목소리 레벨 (A 가중 dBFS).
+#: 코치는 이 값을 모르고 첫 발화로 잡는다
+_VOICE_LEVEL_DBFS = -24.0
 _PHI = 0.6180339887498949  # 저불일치 수열 — 잡음 없이도 라벨이 비율대로 고르게 섞인다
 _PSI = 0.7548776662466927
 
@@ -202,7 +205,8 @@ class Presenter:
         raw: bool = False,
     ) -> None:
         self.sc = sc
-        #: True 면 FE 의 요약 대신 원자료(시선 1초 기록)를 보낸다. 발표 자체는 똑같다
+        #: True 면 FE · BE 의 요약 대신 원자료를 보낸다: 시선 1초 기록, 음량 레벨(dBFS, 기준 없이),
+        #: 군더더기 표시가 없는 단어. 발표 자체는 똑같다
         self.raw = raw
         self.noise = noise or sc.noise
         self.rng = random.Random(sc.seed if seed is None else seed)
@@ -443,7 +447,11 @@ class Presenter:
                     }
                 ),
                 "voice": {
-                    "relative_db": round(db, 2) if silence < 300 else None,
+                    **(
+                        {"level_db": round(_VOICE_LEVEL_DBFS + db, 2) if silence < 300 else None}
+                        if self.raw
+                        else {"relative_db": round(db, 2) if silence < 300 else None}
+                    ),
                     "silence_ms": silence,
                     "audio_live": p.audio_live,
                 },
@@ -456,7 +464,8 @@ class Presenter:
                             "start_ms": w.start_ms,
                             "end_ms": w.end_ms,
                             "final": w.final_at_ms <= t,
-                            "filler": w.filler,
+                            # 원자료 모드: BE 처럼 군더더기 표시 없이 보낸다 (코치가 단어로 판단)
+                            **({} if self.raw else {"filler": w.filler}),
                         }
                         for w in window
                     ],

@@ -3,7 +3,7 @@
     python -m coach_lab.replay                       # scenarios/*.json 전부
     python -m coach_lab.replay scenarios/05_time_behind.json -v
     python -m coach_lab.replay --config my_override.json --out outputs/tuned
-    python -m coach_lab.replay --raw                 # FE 요약 대신 원자료(1초 기록)를 입력으로
+    python -m coach_lab.replay --raw                 # FE · BE 요약 대신 원자료를 입력으로
 
 각 시나리오마다 개입 타임라인, 지표(개입 수 · 효과 · 지연), expect 검사 결과를 출력하고
 outputs/replay/<시나리오>.json 에 이벤트 전체와 리뷰 근거를 씁니다.
@@ -98,7 +98,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=str(REPLAY_DIR), help="결과 JSON 을 쓸 폴더")
     parser.add_argument("-v", "--verbose", action="store_true", help="WAIT 아닌 판단을 전부 출력")
     parser.add_argument(
-        "--raw", action="store_true", help="FE 요약 대신 원자료(시선 1초 기록)를 입력으로 재생"
+        "--raw",
+        action="store_true",
+        help="FE · BE 요약 대신 원자료(시선 1초 기록 · 음량 dBFS · 표시 없는 단어)로 재생",
     )
     args = parser.parse_args(argv)
 

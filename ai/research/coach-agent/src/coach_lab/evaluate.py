@@ -290,7 +290,7 @@ def evaluate(
     variants: dict[str, dict[str, Any]],
     raw: bool = False,
 ) -> dict[str, dict[str, Score]]:
-    """{noise: {variant: Score}}. raw 면 FE 요약 대신 원자료 입력으로 재생한다"""
+    """{noise: {variant: Score}}. raw 면 FE · BE 요약 대신 원자료 입력으로 재생한다"""
     out: dict[str, dict[str, Score]] = {n: {v: Score() for v in variants} for n in noises}
     for noise_name in noises:
         noise = NOISE_PRESETS[noise_name]
@@ -425,7 +425,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=str(OUTPUTS_DIR / "evaluation.json"))
     parser.add_argument("--explain", default=None, help="이 변형의 틀린 사례를 출력 (예: D)")
     parser.add_argument(
-        "--raw", action="store_true", help="FE 요약 대신 원자료(시선 1초 기록)를 입력으로 재생"
+        "--raw",
+        action="store_true",
+        help="FE · BE 요약 대신 원자료(시선 1초 기록 · 음량 dBFS · 표시 없는 단어)로 재생",
     )
     args = parser.parse_args(argv)
 
