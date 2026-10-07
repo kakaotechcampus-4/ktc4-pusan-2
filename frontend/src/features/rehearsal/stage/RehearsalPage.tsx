@@ -8,6 +8,7 @@ import { usePrepareStore } from '../prepare/prepareStore';
 import { useCompleteTake } from '@/shared/api/take';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { buildGazePayload } from '../lib/gazePayload';
+import { stopTakeStream } from '../lib/sttSocket';
 import {
   beat,
   endSession,
@@ -458,8 +459,7 @@ export function RehearsalPage() {
    * 기록을 모아 `/complete` 로 보냅니다. 끝내기 버튼과 **종료 중 새로고침**이 같이 씁니다.
    *
    * 새로고침으로 들어왔으면 메모리에 남은 것이 없습니다. 그래서 행(IndexedDB)이 먼저이고
-   * 메모리 값은 행을 못 적었을 때만 받습니다. `stop` 은 다시 보내지 않습니다 — 대개 이미
-   * 나갔고, 못 나갔어도 서버가 끊긴 연결을 30초 뒤에 정리하며 마지막 전사까지 저장합니다.
+   * 메모리 값은 행을 못 적었을 때만 받습니다.
    */
   const submit = async (id: string, { durationMs, endedAtIso }: Ending) => {
     if (!ticket) return;
@@ -556,7 +556,13 @@ export function RehearsalPage() {
     setPhase('ENDING');
     // 시계는 돌지 않으므로 머리줄에 발표 길이를 직접 적습니다
     if (elapsedRef.current) elapsedRef.current.textContent = formatDuration(ending.durationMs);
-    submit(sessionId, ending).catch((e: unknown) => {
+    (async () => {
+      // 새로고침 전에 `stop` 이 서버에 못 닿았을 수 있습니다. 그러면 서버는 끊긴 연결을 30초
+      // 기다린 뒤에야 마지막 전사를 정리하고, 그 사이 `/complete` 가 먼저 갑니다.
+      // 붙어서 stop 만 보냅니다 (최대 3초). 이미 닿았으면 서버가 열었다 바로 닫습니다
+      await stopTakeStream(takeId);
+      await submit(sessionId, ending);
+    })().catch((e: unknown) => {
       console.error('[rehearsal] 종료 처리 실패', e);
       setEndError(toMessage(e));
     });

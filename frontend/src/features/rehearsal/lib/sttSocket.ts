@@ -144,6 +144,8 @@ export class SttSocket {
 
   private retries = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 토큰을 받아 소켓을 만드는 중. 이때 끝내면 소켓이 생기기를 기다렸다가 `stop` 을 보냅니다 */
+  private connecting = false;
   /** 마지막으로 끊긴 시각. 다시 붙으면(`ready`) 비웁니다 */
   private disconnectedAt: number | null = null;
 
@@ -228,8 +230,10 @@ export class SttSocket {
         this.clearRetry();
         this.armStopTimer(STOP_WAIT_MS);
         this.sendStop();
-      } else if (this.pending.length > 0 && this.retryTimer !== null) {
-        // 예약된 재연결을 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다
+      } else if (this.connecting || (this.pending.length > 0 && this.retryTimer !== null)) {
+        // 붙는 중이거나 예약된 재연결이 있으면 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다.
+        // 붙는 중이면 버퍼가 비어 있어도 기다립니다 — `stop` 이 가야 서버가 끊긴 연결을
+        // 30초 기다리지 않고 바로 마지막 전사를 정리합니다 (`stopTakeStream`)
         this.armStopTimer(STOP_WAIT_MS);
       } else {
         this.dispose();
@@ -293,6 +297,15 @@ export class SttSocket {
   }
 
   private async connect(): Promise<void> {
+    this.connecting = true;
+    try {
+      await this.open();
+    } finally {
+      this.connecting = false;
+    }
+  }
+
+  private async open(): Promise<void> {
     const getToken = this.options.getToken ?? defaultGetToken;
     const renew = this.renewToken;
     this.renewToken = false;
@@ -456,4 +469,26 @@ export class SttSocket {
     this.stopResolvers = [];
     resolvers.forEach((resolve) => resolve());
   }
+}
+
+/**
+ * 소켓을 잠깐 열어 `stop` 만 보내고 `closed` 를 기다립니다. 오디오는 보내지 않습니다.
+ *
+ * 종료 중에 새로고침했을 때 씁니다. 새로고침 전에 `stop` 이 서버에 못 닿았으면 서버는 끊긴
+ * 연결을 30초 기다린 뒤에야 마지막 전사를 정리하는데, 그 사이 `/complete` 가 먼저 갑니다.
+ * 이미 닿았으면 서버가 스트림을 새로 열었다가 바로 닫습니다. 기다리는 시간은 `stop()` 과 같이
+ * 3초까지이고, 실패해도 던지지 않습니다 — 종료는 이것 없이도 이어갑니다.
+ */
+export function stopTakeStream(
+  takeId: string,
+  options: Pick<SttSocketOptions, 'createSocket' | 'getToken'> = {},
+): Promise<void> {
+  const socket = new SttSocket({
+    takeId,
+    onTranscript: () => undefined,
+    onState: () => undefined,
+    ...options,
+  });
+  socket.start();
+  return socket.stop();
 }
