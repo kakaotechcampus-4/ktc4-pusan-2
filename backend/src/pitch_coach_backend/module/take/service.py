@@ -2,6 +2,11 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.pitch.exception import (
+    NonExistentPresentationVersion,
+    NonExistentScript,
+)
+from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     MissionDTO,
@@ -18,7 +23,17 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
 def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequestDTO):
     take_repository = TakeRepository(db)
-    
+    pitch_repository = PitchRepository(db)
+
+    # 버전 ID 가 이 pitch 의 것인지 확인한다. 없으면 다른 pitch 의 버전도 저장되고,
+    # 아예 없는 ID 는 FK 위반(500)이 된다
+    if pitch_repository.get_presentation_detail(pitch_id, take_dto.presentation_version_id) is None:
+        raise NonExistentPresentationVersion()
+    if pitch_repository.get_script_in_pitch(pitch_id, take_dto.script_version_id) is None:
+        raise NonExistentScript()
+
+    # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금)
+    pitch_repository.lock_for_new_version(pitch_id)
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,

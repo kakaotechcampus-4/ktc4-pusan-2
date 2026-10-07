@@ -73,13 +73,16 @@ class PitchRepository:
         그 경로끼리는 여전히 같은 번호를 받을 수 있다.
           - 잡는 곳: service.create_script_service (next_script_version),
             service.upload_presentation_service (next_presentation_version),
-            service.add_pitch_standard_service (next_standard_version)
-          - 아직 안 잡는 곳: take/service.create_take_service (next_take_number)
+            service.add_pitch_standard_service (next_standard_version),
+            take/service.create_take_service (next_take_number)
         pitch 안에서 max + 1 로 번호를 매기는 경로에 잠금을 걸면 위 목록도 같이 고친다.
 
-        FOR UPDATE 가 아니라 FOR NO KEY UPDATE (key_share=True) 다. 자식 행 INSERT(Take 생성 등)는
+        FOR UPDATE 가 아니라 FOR NO KEY UPDATE (key_share=True) 다. 자식 행 INSERT 는
         FK 검사로 pitch 행에 KEY SHARE 를 거는데, FOR UPDATE 는 그것과 충돌해 잠금을 쥔 동안
-        같은 pitch 의 Take 생성까지 멈춘다. NO KEY UPDATE 는 버전을 만드는 요청끼리만 막는다.
+        같은 pitch 의 자식 행 쓰기(번호를 안 매기는 것까지)를 전부 멈춘다.
+        NO KEY UPDATE 는 위 목록처럼 이 잠금을 잡는 요청끼리만 막는다.
+        그래서 Take 생성은 같은 pitch 의 발표자료 업로드(S3 업로드 동안 잠금을 쥠)가
+        끝날 때까지 기다린다.
         """
         # key_share=True 는 이름과 달리 KEY SHARE 가 아니라 FOR NO KEY UPDATE 로 나간다
         # (KEY SHARE 는 read=True 를 같이 줄 때). tests/test_script_parse.py 가 확인한다
