@@ -28,9 +28,8 @@ import { useVideoStream } from '../media/useVideoStream';
  * **쓴 순서가 곧 우선순위입니다.** 여럿이 동시에 어긋나 있어도 사용자가 지금 할 수 있는
  * 일은 하나뿐이라, 가장 앞을 막고 있는 것만 말합니다.
  *
- * 마이크가 시선 기준보다 앞인 이유 — 마이크가 없으면 '소리만으로 계속하기'까지 잠깁니다.
- * 그 상태에서 시선 기준을 잡아 봐야 열리는 버튼이 없습니다. 반대로 시선을 못 잡아도
- * 마이크만 되면 소리만으로 갈 수 있습니다. 그래서 마이크가 먼저입니다.
+ * 마이크가 시선 기준보다 앞인 이유 — 시선 기준은 몇 초 동안 화면을 보며 잡아야 하는데,
+ * 마이크가 안 되면 기준을 다 잡아도 시작할 수 없습니다. 바로 고칠 수 있는 것부터 말합니다.
  */
 function deviceCheckHint({
   deviceError,
@@ -59,7 +58,7 @@ function deviceCheckHint({
   if (calPhase === 'PLACE_WARN') return '카메라 위치를 확인해 주세요';
   if (calPoints < 2) return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
   if (calSaveFailed) {
-    return "시선 기준을 저장하지 못했어요. 다시 잡거나 '소리만으로 계속하기'를 눌러 주세요";
+    return '시선 기준을 저장하지 못했어요. 다시 잡아 주세요';
   }
   if (calPoor) return '시선 기준이 흐릿해요. 다시 잡으면 더 정확해지지만, 이대로 시작해도 됩니다';
   return '점검이 끝났어요';
@@ -119,9 +118,7 @@ function calibrationLabel(
  *   만들지 않습니다 — 점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 실제
  *   연습 횟수와 어긋납니다. 이 함수를 다른 화면으로 복사하지 마세요.
  *
- * 점검 셋 중 둘은 장치(카메라·마이크)고 하나는 시선 기준점입니다.
- * 시선을 못 잡겠으면 '소리만으로 계속하기'로 빠집니다 — 그 Take의 시선은
- * USER_DECLINED로 제외되고, 말하기 지표만으로 리포트가 나옵니다.
+ * 점검 셋 중 둘은 장치(카메라·마이크)고 하나는 시선 기준점입니다. 셋 다 통과해야 시작합니다.
  */
 /**
  * Take 에 박을 버전과 목표 시간. 피치 생성에서 고른 조합이 먼저이고, 없으면 준비 화면 응답입니다.
@@ -165,23 +162,16 @@ export function DeviceCheckPage() {
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
   // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
   // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
-  const {
-    declineGaze,
-    scriptMode,
-    setScriptMode,
-    calibration,
-    scriptModeTouched,
-    setChosenDevices,
-  } = usePrepareStore(
-    useShallow((s) => ({
-      declineGaze: s.declineGaze,
-      scriptMode: s.scriptMode,
-      setScriptMode: s.setScriptMode,
-      calibration: s.calibration,
-      scriptModeTouched: s.scriptModeTouched,
-      setChosenDevices: s.setDevices,
-    })),
-  );
+  const { scriptMode, setScriptMode, calibration, scriptModeTouched, setChosenDevices } =
+    usePrepareStore(
+      useShallow((s) => ({
+        scriptMode: s.scriptMode,
+        setScriptMode: s.setScriptMode,
+        calibration: s.calibration,
+        scriptModeTouched: s.scriptModeTouched,
+        setChosenDevices: s.setDevices,
+      })),
+    );
   const cal = useGazeCalibration({ videoRef, live });
   const createTake = useCreateTake();
 
@@ -248,7 +238,7 @@ export function DeviceCheckPage() {
    * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
    * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
    */
-  const start = async ({ withGaze }: { withGaze: boolean }) => {
+  const start = async () => {
     if (!versions || starting) return;
     setStarting(true);
     setStartError(null);
@@ -267,7 +257,7 @@ export function DeviceCheckPage() {
     try {
       // 리허설은 다른 워커라 기준을 IndexedDB 에서 꺼내 씁니다. **Take 를 만들기 전에** 확인합니다 —
       // 뒤에서 실패하면 연습 없이 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다
-      if (withGaze) await cal.saved();
+      await cal.saved();
 
       const clientSessionId = await startSession();
 
@@ -346,23 +336,10 @@ export function DeviceCheckPage() {
       hint={hint}
       actions={
         <>
-          {/*
-            시선을 못 잡아도 연습은 갑니다. 그 Take 의 시선은 USER_DECLINED 로 제외되고
-            말하기 지표만으로 리포트가 나옵니다 - 막는 것보다 반쪽이라도 남기는 것이 낫습니다.
-          */}
-          <StageButton
-            disabled={!micOk || starting || versions === null}
-            onClick={() => {
-              declineGaze();
-              start({ withGaze: false }).catch(() => undefined);
-            }}
-          >
-            소리만으로 계속하기
-          </StageButton>
           <StageButton
             variant="primary"
             disabled={!ready}
-            onClick={() => start({ withGaze: true }).catch(() => undefined)}
+            onClick={() => start().catch(() => undefined)}
           >
             {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
           </StageButton>

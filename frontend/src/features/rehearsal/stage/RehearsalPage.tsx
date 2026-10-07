@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { LevelBar } from '../media/LevelBar';
 import { useCameraStream } from '../media/useCameraStream';
@@ -34,10 +34,15 @@ import { useRehearsalStore } from './rehearsalStore';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
 import { useSttStream } from './useSttStream';
+import type { TextRange } from '../lib/scriptMarks';
 import './stage.css';
 
 /** 하트비트 주기. 탭이 죽으면 이 값이 멈춘 시각이 마지막 흔적입니다 */
 const BEAT_MS = 5_000;
+
+/** 대본이 없는 장의 기본값. 매 렌더 새 배열을 만들면 대본 칸의 강조 계산이 매번 다시 돕니다 */
+const NO_KEYWORDS: string[] = [];
+const NO_HIGHLIGHTS: TextRange[] = [];
 
 /**
  * 07 발표 연습 (P5 · P5x) — 리허설 무대.
@@ -84,7 +89,6 @@ export function RehearsalPage() {
 
   /** 준비 화면에서 잡은 기준. 새로고침으로 돌아왔으면 없습니다(= null로 보냅니다) */
   const calibration = usePrepareStore((s) => s.calibration);
-  const gazeDeclined = usePrepareStore((s) => s.gazeDeclined);
   /** 점검을 통과한 장치. 새로고침으로 돌아왔으면 비어 있고, 기본 장치를 엽니다 */
   const devices = usePrepareStore((s) => s.devices);
 
@@ -141,7 +145,7 @@ export function RehearsalPage() {
     onExcluded: noteExclusion,
     // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
     // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다
-    enabled: running && !gazeDeclined && live,
+    enabled: running && live,
   });
   const { slideNumber, slideStartedAtRef } = useSlideDeck({
     total: pageCount,
@@ -206,7 +210,7 @@ export function RehearsalPage() {
   // 내장 마이크로 녹음하는 일이 생깁니다
   const askedRef = useRef(false);
   useEffect(() => {
-    if (askedRef.current || gazeDeclined) return;
+    if (askedRef.current) return;
     askedRef.current = true;
 
     (async () => {
@@ -217,7 +221,7 @@ export function RehearsalPage() {
         await request();
       }
     })().catch(() => undefined);
-  }, [request, gazeDeclined, devices]);
+  }, [request, devices]);
 
   // ── 제외 사유 배선 ───────────────────────────────────────────────
   // 한 번 정해지면 되돌리지 않습니다. 발표 도중 엔진이 죽었다면 그 Take의
@@ -231,11 +235,6 @@ export function RehearsalPage() {
     },
     [noteExclusion],
   );
-
-  useEffect(() => {
-    if (!sessionId) return;
-    if (gazeDeclined) excludeGaze(sessionId, 'USER_DECLINED');
-  }, [sessionId, gazeDeclined, excludeGaze]);
 
   useEffect(() => {
     if (!sessionId || !deviceError) return;
@@ -288,18 +287,13 @@ export function RehearsalPage() {
   }, []);
 
   /**
-   * 장마다 한 문단. 대본은 AI 가 이미 슬라이드별로 나눠 주므로 n번째 문단이 곧 n번 슬라이드입니다.
-   * 대본이 없는 장은 빈 문단으로 자리를 지킵니다 — 그래야 번호와 문단이 어긋나지 않습니다.
+   * 지금 슬라이드에 매핑된 대본만 보여 줍니다. 대본은 AI 가 이미 슬라이드별로 나눠 주므로
+   * n번 슬라이드의 대본이 곧 대본 매핑 n번입니다. 매핑이 없는 장은 빈 문자열입니다.
    */
-  const paragraphs = useMemo(
-    () =>
-      Array.from(
-        { length: pageCount },
-        (_, i) => materials.scriptBySlide.get(i + 1)?.content ?? '',
-      ),
-    [pageCount, materials.scriptBySlide],
-  );
-  const currentKeywords = materials.scriptBySlide.get(slideNumber)?.keywords ?? [];
+  const currentSlideScript = materials.scriptBySlide.get(slideNumber);
+  const currentScript = currentSlideScript?.content ?? '';
+  const currentKeywords = currentSlideScript?.keywords ?? NO_KEYWORDS;
+  const currentHighlights = currentSlideScript?.highlights ?? NO_HIGHLIGHTS;
   const nextSlideNumber = Math.min(slideNumber + 1, pageCount);
 
   // ── 종료 ─────────────────────────────────────────────────────────
@@ -395,7 +389,6 @@ export function RehearsalPage() {
   };
 
   const gazeNote = gazeNoteText({
-    declined: gazeDeclined,
     cameraLost: deviceError !== null,
     missingCalibration,
     error: gazeError,
@@ -511,9 +504,10 @@ export function RehearsalPage() {
 
             <ScriptPane
               mode={scriptMode}
-              paragraphs={paragraphs}
-              currentIndex={slideNumber - 1}
+              slideNumber={slideNumber}
+              text={currentScript}
               keywords={currentKeywords}
+              highlights={currentHighlights}
             />
 
             <div className="stage-foot">
@@ -566,17 +560,14 @@ export function RehearsalPage() {
 }
 
 /**
- * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다 —
- * 사용자가 거절했으면 카메라가 끊겼든 말든 "거절"이 이유입니다.
+ * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다.
  */
 function gazeNoteText(state: {
-  declined: boolean;
   cameraLost: boolean;
   missingCalibration: boolean;
   error: GazeExcludedReason | null;
   ready: boolean;
 }): string {
-  if (state.declined) return '시선 측정 제외 · 소리만으로 진행 중';
   if (state.cameraLost) return '카메라가 끊겼습니다 — 발표는 계속됩니다';
   if (state.missingCalibration) return '시선 기준이 없어 측정 제외 — 발표는 계속됩니다';
   if (state.error) return `시선 측정 제외 · ${state.error}`;

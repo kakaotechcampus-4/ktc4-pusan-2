@@ -5,6 +5,7 @@ import { getPresentation } from '@/shared/api/presentation';
 import { getScript } from '@/shared/api/script';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import type { RehearsalTicket } from '@/types/api';
+import type { TextRange } from '../lib/scriptMarks';
 
 /**
  * 무대에 올릴 발표자료와 대본. **시작 전에 한 번에 다 받아 둡니다** —
@@ -23,7 +24,10 @@ import type { RehearsalTicket } from '@/types/api';
 
 export interface SlideScript {
   content: string;
+  /** AI 가 뽑은 낱말 (대본에 있는 표현 그대로). 핵심 키워드 모드에서 칩으로 보입니다 */
   keywords: string[];
+  /** 그 낱말이 content 안에 있는 자리 (end 미포함). 하이라이트 모드에서 강조합니다 */
+  highlights: TextRange[];
 }
 
 export interface RehearsalMaterials {
@@ -65,7 +69,11 @@ export function useRehearsalMaterials(ticket: RehearsalTicket | null): Rehearsal
     // 나누기가 끝난 대본만 씁니다. PENDING · FAILED 면 대본 칸은 비워 둡니다
     if (script.data?.parse_status !== 'DONE') return map;
     for (const s of script.data.slides) {
-      map.set(s.slide_number, { content: s.content, keywords: s.keywords });
+      map.set(s.slide_number, {
+        content: s.content,
+        keywords: s.keywords,
+        highlights: s.highlights,
+      });
     }
     return map;
   }, [script.data]);

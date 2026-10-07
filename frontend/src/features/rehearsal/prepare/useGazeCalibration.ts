@@ -218,7 +218,7 @@ export function useGazeCalibration({
       setPhase('DONE');
       // 기준은 브라우저에만 남습니다. 다음 Take 가 같은 기기·배치·엔진이면 되살려 씁니다
       // 실패는 삼키지 않습니다 — 화면은 '완료'인데 리허설에서 시선이 조용히 빠지기 때문입니다.
-      // 시작은 막고, 다시 잡거나 '소리만으로 계속하기'로 가게 합니다
+      // 시작은 막고, 다시 잡게 합니다
       savingRef.current = saveZoneRef(layoutSignature, ref, engineVersion);
       savingRef.current.catch(() => {
         // 그사이 다시 잡기를 눌렀으면 옛 시도의 실패로 새 시도를 막지 않습니다
@@ -524,7 +524,7 @@ export function useGazeCalibration({
     continueAnyway,
     /** 기준 저장이 끝날 때까지 기다립니다. 리허설로 넘어가기 직전에 부릅니다 */
     saved,
-    /** 기준을 저장하지 못함. 시작을 막고 다시 잡기나 소리만으로 계속하기를 안내합니다 */
+    /** 기준을 저장하지 못함. 시작을 막고 다시 잡기를 안내합니다 */
     saveFailed,
     /** 워커가 떴나 · 엔진이 없으면 사유 */
     engineReady: ready,
