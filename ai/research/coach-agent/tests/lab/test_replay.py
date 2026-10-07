@@ -27,6 +27,15 @@ def test_scenario_meets_expectations(path: Path):
     assert check_expect(result) == []
 
 
+@pytest.mark.parametrize("path", SCENARIOS, ids=lambda p: p.stem)
+def test_raw_inputs_meet_expectations_and_decide_the_same(path: Path):
+    """FE 요약 대신 원자료(시선 1초 기록)를 보내도 기대 결과를 만족하고, 개입 시점 · 내용이 같다."""
+    sc = Scenario.load(path)
+    raw = run(sc, raw=True)
+    assert check_expect(raw) == []
+    assert raw.timeline == run(sc).timeline
+
+
 def test_same_input_same_decisions():
     sc = Scenario.load(SCENARIOS[2])
     a, b = run(sc), run(sc)

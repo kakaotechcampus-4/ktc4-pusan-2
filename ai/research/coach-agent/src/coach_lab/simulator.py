@@ -194,8 +194,16 @@ class _ActiveReaction:
 class Presenter:
     """시나리오대로 말하고, 코치의 말에 반응하는 가상 발표자."""
 
-    def __init__(self, sc: Scenario, noise: Noise | None = None, seed: int | None = None) -> None:
+    def __init__(
+        self,
+        sc: Scenario,
+        noise: Noise | None = None,
+        seed: int | None = None,
+        raw: bool = False,
+    ) -> None:
         self.sc = sc
+        #: True 면 FE 의 요약 대신 원자료(시선 1초 기록)를 보낸다. 발표 자체는 똑같다
+        self.raw = raw
         self.noise = noise or sc.noise
         self.rng = random.Random(sc.seed if seed is None else seed)
         self.base = Params.model_validate(sc.baseline)
@@ -214,6 +222,9 @@ class Presenter:
         self.pending_advance: list[int] = []
         self.pending_utterances = sorted(sc.utterances, key=lambda u: u.at_ms)
         self.labels: deque[str] = deque(maxlen=max(1, _GAZE_WINDOW_MS // sc.tick_ms))
+        #: 원자료 모드의 시선 1초 기록 (최근 창만)
+        window = max(1, _GAZE_WINDOW_MS // sc.tick_ms)
+        self.gaze_records: deque[dict[str, Any]] = deque(maxlen=window)
         self.label_k = 0
         #: 정답 기록
         self.truth: list[dict[str, Any]] = []
@@ -367,7 +378,14 @@ class Presenter:
         mid_word = p.audio_live and p.speaking and self.finished_at is None and self.cursor <= t
         silence = 0 if mid_word else max(0, t - last_end)
 
-        self.labels.append(self._gaze_label(p))
+        label = self._gaze_label(p)
+        self.labels.append(label)
+        if t >= self.sc.tick_ms:
+            # 이 틱의 라벨은 지난 1초(t − tick ~ t)의 판정이다.
+            # Take 시작 순간(t = 0)에는 지난 1초가 없다
+            self.gaze_records.append(
+                {"t_ms": t - self.sc.tick_ms, "duration_ms": self.sc.tick_ms, "state": label}
+            )
         n = len(self.labels)
         ratios = {
             k: round(sum(1 for x in self.labels if x == k) / n, 4)
@@ -414,12 +432,16 @@ class Presenter:
                     "slide_number": self.slide_number,
                     "slide_elapsed_ms": t - self.slide_start_ms,
                 },
-                "gaze": {
-                    "window_ms": _GAZE_WINDOW_MS,
-                    "ratios": ratios,
-                    "current_label": current,
-                    "current_label_ms": streak * self.sc.tick_ms,
-                },
+                "gaze": (
+                    {"window_ms": _GAZE_WINDOW_MS, "records": list(self.gaze_records)}
+                    if self.raw
+                    else {
+                        "window_ms": _GAZE_WINDOW_MS,
+                        "ratios": ratios,
+                        "current_label": current,
+                        "current_label_ms": streak * self.sc.tick_ms,
+                    }
+                ),
                 "voice": {
                     "relative_db": round(db, 2) if silence < 300 else None,
                     "silence_ms": silence,
@@ -494,9 +516,10 @@ def run(
     *,
     noise: Noise | None = None,
     seed: int | None = None,
+    raw: bool = False,
 ) -> RunResult:
     cfg = config if config is not None else scenario_config(sc)
-    presenter = Presenter(sc, noise, seed)
+    presenter = Presenter(sc, noise, seed, raw)
     result = RunResult(
         scenario=sc,
         noise=presenter.noise,
