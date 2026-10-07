@@ -128,7 +128,6 @@ const prepare: PrepareResponse = {
   pitchId: 'p1', title: '캡스톤 최종 발표',
   presentationVersion: 2, scriptVersion: 2, timeLimitSec: 600,
   nextTakeNumber: 4,
-  lastMission: { id: 'm1', description: 'Slide 6을 Keyword Mode로 설명하기' },
   criteria: {
     version: 1, readOnly: true,
     items: [
@@ -229,7 +228,6 @@ const fallbackTake: TakeContext = {
   scriptMode: prepare.defaultScriptMode,
   timeLimitSec: prepare.timeLimitSec,
   status: 'READY',
-  mission: prepare.lastMission,
 };
 
 /** POST /takes 로 발급할 때 화면이 고른 값을 기억해 둡니다 (새로고침 복귀용) */
