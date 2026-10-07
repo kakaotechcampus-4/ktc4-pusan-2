@@ -130,7 +130,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 | 요청 필드 | 출처 | 비고 |
 |---|---|---|
 | `current.timing` · `gaze` · `voice` | FE의 1초 신호 | 슬라이드 번호와 체류 시간, 시선 1초 기록(또는 FE가 만든 최근 창 요약), 음량 · 침묵 · 오디오 상태 |
-| `current.speech` | BE의 STT | 최근 15초 단어. 군더더기(`filler`) 표시도 BE가 합니다 (목록의 단일 소스가 BE의 `fillers.py`) |
+| `current.speech` | BE의 STT | 최근 15초 단어. 군더더기(`filler`) 표시는 BE가 하면 그대로 쓰고, 없으면 코치가 소리뿐인 간투사(음 · 어 · 으 · 엄 · 흠 · 아 · 에)만 셉니다 |
 | `plan` | 대본 분석 계획 | 목표 시간 · 허용 범위, 장별 목표 시간 · 글자 수 · 필수 키워드. Take 동안 바뀌지 않습니다 |
 | `missions` | 직전 리뷰의 `next_missions` | 그대로 넘깁니다 |
 | `memory` | 직전 리뷰가 '아직 남은 문제'로 꼽은 것 | 영역 · 장 |
@@ -251,13 +251,17 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 {"window_ms": 10000, "records": [{"t_ms": 41000, "duration_ms": 1000, "state": "CAMERA"}, {"t_ms": 42000, "duration_ms": 1000, "state": "BOTTOM"}]}
 ```
 
-**`VoiceInput`**
+**`VoiceInput`** — 음량은 기준 대비 값(`relative_db`)이나 측정한 레벨(`level_db`) 중 하나를 보냅니다
 
 | 필드 | 타입 | 기본값 | 뜻 |
 |---|---|---|---|
 | `relative_db` | float \| null | `null` | 캘리브레이션(평소 목소리) 대비 dB. 음수가 작은 소리. 말하지 않는 중이면 null |
+| `level_db` | float \| null | `null` | 지난 1초 동안 말한 소리의 레벨 (A 가중 dBFS). 말하지 않았으면 null. `relative_db`가 없을 때 쓴다 (1.1) |
+| `baseline_db` | float \| null | `null` | 이 발표자의 평소 목소리 레벨 (dBFS, 캘리브레이션). 없으면 코치가 Take 첫 발화로 잡는다 (1.1) |
 | `silence_ms` | int (>=0) | `0` | 지금 몇 ms 째 조용한가 |
 | `audio_live` | bool | `true` | 오디오가 실제로 흐르는가. False 면 소리 판단을 전부 끈다 |
+
+'작은 목소리'는 평소 목소리 대비로 판단합니다. `relative_db`가 오면 그대로 쓰고, `level_db`가 오면 `level_db − baseline_db`를 씁니다. `baseline_db`도 없으면 이번 Take에서 **말한 1초 15개(`baseline_samples`)의 레벨 중앙값**을 평소 목소리로 잡아 `coach_state`에 두고, 그 전까지는 음량을 판단하지 않습니다. 개인 캘리브레이션이 없어도 '평소보다 작아짐'을 잴 수 있습니다.
 
 **`SpeechInput`**
 
@@ -275,7 +279,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 | `start_ms` | int | 필수 | 단어 시작 (ms) |
 | `end_ms` | int | 필수 | 단어 끝 (ms) |
 | `final` | bool | `true` | 확정 단어만 누적(진행도 · 군더더기)에 쓴다. 중간 결과는 CPM 에만 쓴다 |
-| `filler` | bool | `false` | BE 의 fillers.py 목록에 있는 말인가. 군더더기 목록의 단일 소스가 BE 라서 BE 가 표시한다 |
+| `filler` | bool \| null | `null` | 군더더기인가. BE 가 표시하면 그대로 쓰고, 없으면(null) 코치가 소리뿐인 간투사(음 · 어 · 으 · 엄 · 흠 · 아 · 에, 길게 끈 것)만 군더더기로 센다. '그' · '이제'처럼 문맥이 필요한 말은 BE 표시가 있어야 센다 (1.1) |
 
 ### 2-3. 예시
 
@@ -372,7 +376,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 | `gaze` | GazeLevel | `"UNKNOWN"` | 시선 상태 (`GazeLevel`) |
 | `volume` | VolumeLevel | `"UNKNOWN"` | 음량 상태 (`VolumeLevel`) |
 
-`pace`는 `cpm` < 275 이면 `SLOW`, > 350 이면 `FAST`, 그 사이는 `NORMAL`입니다. `gaze`는 측정하지 못한 비율(지금 값과 최근 10초 평균 중 큰 쪽)이 50%를 넘으면 `UNCERTAIN`, Take 시작 뒤 5초 안이면 `UNKNOWN`, 보인 시간 중 대본 응시가 50% 이상이면 `SCRIPT`, 아니면 `AUDIENCE`(대본을 보지 않음)입니다. `volume`은 `relative_db` < -6 이면 `LOW`입니다 (기준값은 `config.py`의 `fast_cpm` · `slow_cpm` · `max_uncertain_ratio` · `indicator_script_ratio` · `low_relative_db`).
+`pace`는 `cpm` < 275 이면 `SLOW`, > 350 이면 `FAST`, 그 사이는 `NORMAL`입니다. `gaze`는 측정하지 못한 비율(지금 값과 최근 10초 평균 중 큰 쪽)이 50%를 넘으면 `UNCERTAIN`, Take 시작 뒤 5초 안이면 `UNKNOWN`, 보인 시간 중 대본 응시가 50% 이상이면 `SCRIPT`, 아니면 `AUDIENCE`(대본을 보지 않음)입니다. `volume`은 말하는 동안의 최근 5초 평균(평소 목소리 대비)이 -6 dB 미만이면 `LOW`, 아직 잴 수 없으면(말하지 않음 · 음량 기준을 잡는 중) `UNKNOWN`입니다 (기준값은 `config.py`의 `fast_cpm` · `slow_cpm` · `max_uncertain_ratio` · `indicator_script_ratio` · `low_relative_db`).
 
 ### 3-2. `action`
 
@@ -405,7 +409,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 {
   "schema_version": "1.1",
   "policy_version": "coach-v1.1",
-  "config_hash": "e09c97ac28d2",
+  "config_hash": "dbe162df2a38",
   "take_id": "sim-05_time_behind",
   "t_ms": 52000,
   "action": "INTERVENE",
@@ -1027,7 +1031,7 @@ finalize() 응답의 events ─┘
 {
   "schema_version": "1.1",
   "policy_version": "coach-v1.1",
-  "config_hash": "e09c97ac28d2",
+  "config_hash": "dbe162df2a38",
   "take_id": "sim-14_recurring_persists",
   "summary": {
     "interventions": 1,
@@ -1233,6 +1237,7 @@ finalize() 응답의 events ─┘
 | 효과를 잴 개입, 문제별 전략 단계 · 포기 여부, 격려 후보, 문장 끝을 기다리는 후보 | 되돌아보기 |
 | 장별 말한 글자 수, 찾은 키워드, STT가 끊긴 장, 오디오 · STT 복귀 시각, 최근 장 전환 기록 | 진행도 · 키워드 · 침묵 · 늦게 온 단어의 장 |
 | 지금 장의 누적 (시선 · CPM · dB의 '값 × 시간', 군더더기, 데이터 덮개) | 장을 떠날 때 `SLIDE` 이벤트 |
+| 평소 목소리 레벨과, 잡기 전까지 모은 말한 1초의 레벨 (`level_db` 입력에서 `baseline_db`가 없을 때) | 음량 기준 |
 | 이벤트 번호(`seq`), 마지막 처리 시각(`last_t_ms`), 참은 기록 시각 | `event_id` · `STALE_TICK` · `SUPPRESSED` 간격 |
 | 코칭 계획 (v1은 기본값) | focus · relax · 개입 상한 |
 
@@ -1339,11 +1344,11 @@ finalize() 응답의 events ─┘
 
 | 값 | 현재 | 올리는 때 |
 |---|---|---|
-| `SCHEMA_VERSION` | `"1.1"` | 요청 · 응답 · 이벤트 · 리뷰 근거의 **모양**이 바뀔 때. 1.1: 시선 1초 기록 입력 |
-| `POLICY_VERSION` | `"coach-v1.1"` | 판단 규칙의 의미가 바뀔 때(기능 버전). 같은 입력에 다른 판단이 나오게 바꾸면 올립니다. coach-v1.1: 원자료 입력, 측정하지 못한 1초 · Take 시작 직후의 시선 판단 |
+| `SCHEMA_VERSION` | `"1.1"` | 요청 · 응답 · 이벤트 · 리뷰 근거의 **모양**이 바뀔 때. 1.1: 시선 1초 기록 · 음량 레벨 · 표시 없는 단어 입력 |
+| `POLICY_VERSION` | `"coach-v1.1"` | 판단 규칙의 의미가 바뀔 때(기능 버전). 같은 입력에 다른 판단이 나오게 바꾸면 올립니다. coach-v1.1: 원자료 입력(시선 1초 기록 · 음량 레벨과 기준 · 군더더기 판단), 측정하지 못한 1초 · Take 시작 직후의 시선 판단 |
 | `STATE_VERSION` | `1` | `coach_state` 모양이 바뀔 때. 다른 버전의 state가 오면 버리고 새로 시작합니다 |
 
-- **기준값 · 가중치 같은 설정 조정은 버전을 올리지 않습니다.** 대신 응답과 리뷰 근거의 `config_hash`(예: `"e09c97ac28d2"`)가 어떤 설정으로 판단했는지 남깁니다. 같은 `config_hash` · `POLICY_VERSION`이면 같은 입력에 같은 판단이 나옵니다.
+- **기준값 · 가중치 같은 설정 조정은 버전을 올리지 않습니다.** 대신 응답과 리뷰 근거의 `config_hash`(예: `"dbe162df2a38"`)가 어떤 설정으로 판단했는지 남깁니다. 같은 `config_hash` · `POLICY_VERSION`이면 같은 입력에 같은 판단이 나옵니다.
 - **입력은 관대하게, 출력은 엄격하게.** 입력 모델(`CoachRequest`와 그 안의 모델, `FinalizeRequest`, `ReviewEvidenceRequest`)은 모르는 필드를 무시합니다(`extra="ignore"`). 그래서 BE가 필드를 먼저 추가해도 깨지지 않습니다. 출력 모델(`CoachResponse`, 이벤트, `CoachReviewEvidence`와 그 안의 모델)은 `extra="forbid"`라 정해진 필드만 나가고, 소비자가 모르는 필드를 만날 일이 없습니다. 반대로 BE가 이벤트를 저장했다가 `build_review_evidence`에 돌려줄 때 필드를 더하거나 바꾸면 거부되니 이벤트는 받은 그대로 보관합니다.
 - **호환 규칙**: 입력 모델에 선택 필드를 **추가**하는 것은 스키마 버전 안에서 가능합니다 (입력은 모르는 필드를 무시). 출력 · 이벤트 모델에 필드를 추가하면, 그 필드가 담긴 이벤트를 옛 버전의 `build_review_evidence`가 받을 때 거부하므로(`extra="forbid"`) AI 서버를 먼저 배포한 뒤 쓰는 쪽을 바꿉니다. enum 값 추가는 받는 쪽이 모든 경우를 처리하고 있으면 깨질 수 있어 받는 쪽과 먼저 맞춥니다. 필드 · 값의 이름을 바꾸거나 빼면 `SCHEMA_VERSION`을 올립니다. 요청의 `schema_version`은 기본값이 `"1.1"`이고 코드가 비교하지는 않으므로, 버전별 처리가 필요해지면 서버 쪽에 검사를 추가해야 합니다.
 - **필드 이름은 snake_case**입니다 (BE DTO · 리뷰 DTO와 같게).
