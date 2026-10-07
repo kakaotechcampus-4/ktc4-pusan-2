@@ -2,9 +2,9 @@
 
 코어(`src/coach/`)가 무엇을 받아 무엇을 돌려주는지 정리합니다. 나중에 AI 서버의 API 요청 · 응답을 정할 때 이 문서를 기준으로 삼습니다. 판단 규칙(문제와 행동 표, 평가기, 우선순위)은 [README.md](README.md)에 있고, 이 문서는 **주고받는 모양**만 다룹니다.
 
-- **필드의 원본은 코드의 pydantic 모델입니다.** 요청 · 응답 · 이벤트 · 리뷰 근거는 `src/coach/schemas.py`, 고정 어휘(enum)는 `src/coach/vocab.py`, 버전 값은 `src/coach/version.py`에 있습니다. 문서와 코드가 다르면 코드가 맞습니다.
+- **필드의 원본은 코드의 pydantic 모델입니다.** 요청 · 응답 · 이벤트 · 리뷰 근거 · 코칭 계획은 `src/coach/schemas.py`, 고정 어휘(enum)는 `src/coach/vocab.py`, 버전 값은 `src/coach/version.py`에 있습니다. 문서와 코드가 다르면 코드가 맞습니다.
 - 아래 필드 표와 enum 표는 그 모델에서 뽑아 만들었습니다. 모델을 바꾸면 이 문서도 함께 고칩니다.
-- 예시 JSON은 코드를 실제로 돌려 얻은 결과입니다. 요청 · 응답은 `scenarios/05_time_behind.json`을 재생해 처음 `INTERVENE`가 나온 틱(`t_ms` 52000)이고, 이벤트는 시나리오 재생에서 처음 나온 것이며, 리뷰 근거는 `scenarios/14_recurring_persists.json` 한 판 전체의 이벤트로 만든 것입니다. 길어서 목록은 앞의 몇 개만 남기고 그 사실을 적었습니다. `null` 필드는 보내지 않는 형태(`exclude_none`)로 실었고, 필수 필드의 `null`만 남겼습니다. 모든 예시는 모델 검증을 통과합니다.
+- 예시 JSON은 코드를 실제로 돌려 얻은 결과입니다. 요청 · 응답은 `scenarios/05_time_behind.json`을 재생해 처음 `INTERVENE`가 나온 틱(`t_ms` 52000)이고, 이벤트는 시나리오 재생에서 처음 나온 것이며, 리뷰 근거는 `scenarios/14_recurring_persists.json` 한 판 전체의 이벤트로 만든 것이며, 코칭 계획은 `scenarios/plan/17_plan_numbers_slide.json`을 실제 LLM에 물은 답입니다. 길어서 목록은 앞의 몇 개만 남기고 그 사실을 적었습니다. `null` 필드는 보내지 않는 형태(`exclude_none`)로 실었고, 필수 필드의 `null`만 남겼습니다. 모든 예시는 모델 검증을 통과합니다.
 
 ## 목차
 
@@ -22,10 +22,11 @@
 
 ## 1. 진입점
 
-`from coach import decide, decide_safe, finalize, build_review_evidence, initial_state` 로 가져옵니다. 다섯 개 모두 파일 · DB · 네트워크 · 시계를 쓰지 않고 LLM도 없습니다. 시간은 요청의 `t_ms`뿐이라서 같은 요청에는 언제나 같은 응답이 나옵니다. 기억은 `coach_state`로 요청과 응답에 실려 오가고, 저장은 BE가 합니다 ([7절](#7-coach_state)).
+`from coach import decide, decide_safe, finalize, build_review_evidence, initial_state, plan_coaching` 로 가져옵니다. 여섯 개 모두 파일 · DB · 네트워크 · 시계를 쓰지 않습니다. 시간은 요청의 `t_ms`뿐이라서 같은 요청에는 언제나 같은 응답이 나옵니다. `plan_coaching`만 인자로 받은 LLM을 부르므로, 캐시에 없는 질문은 부를 때마다 답이 다를 수 있습니다. 기억은 `coach_state`로 요청과 응답에 실려 오가고, 저장은 BE가 합니다 ([7절](#7-coach_state)).
 
 | 진입점 | 언제 | 입력 | 출력 |
 |---|---|---|---|
+| `plan_coaching` | Take 시작 전 한 번 (선택) | `PlanRequest` (dict도 됨) + LLM · 캐시 | `PlanResponse` |
 | `decide` | 연습 중 1초마다 | `CoachRequest` (dict도 됨) | `CoachResponse` |
 | `decide_safe` | 연습 중 1초마다 (API가 부르는 판) | `CoachRequest` (dict도 됨) | `CoachResponse` |
 | `finalize` | 연습 종료 때 한 번 | `FinalizeRequest` (dict도 됨) | `FinalizeResponse` |
@@ -39,9 +40,11 @@
 | `POST /coach/evaluate` | `decide_safe` |
 | `POST /coach/finalize` | `finalize` |
 | `/takes/analyze` (연습 종료 분석) | 그 안에서 `build_review_evidence`를 부릅니다. 리뷰 근거만을 위한 API는 따로 두지 않습니다 |
-| `POST /coach/plan` | v1.2 계획입니다. LLM이 Take 시작 전에 코칭 계획을 만들어 `initial_state(plan)`의 `coach_state`를 돌려줍니다. v1.1까지는 기본 계획이라 첫 요청의 `coach_state`를 `null`로 보내면 됩니다 |
+| `POST /coach/plan` | `plan_coaching` (v1.2). LLM이 Take 시작 전에 코칭 계획을 세워 계획이 든 첫 `coach_state`를 돌려줍니다. 부르지 않으면 첫 요청의 `coach_state`를 `null`로 보내면 됩니다 (계획 없이 판단) |
 
 ```
+Take 시작 전:  plan_coaching(장별 대본 · 미션 · 기억 · 직전 리뷰, LLM) ─▶ 계획이 든 첫 coach_state
+
 FE  시선 · 음량 · 슬라이드 요약 ─┐
 BE  최근 15초 STT 단어 · 모드 · 미션 ─┼─▶ decide_safe() ─▶ WAIT / IGNORE / INTERVENE
 지난 응답의 coach_state ──────────┘        + 이벤트 + 새 coach_state + 상태 표시
@@ -117,7 +120,99 @@ build_review_evidence(
 initial_state(plan: CoachingPlan | None = None) -> CoachState
 ```
 
-Take의 첫 기억을 만듭니다. v1.1까지 BE는 부를 필요가 없습니다 — 첫 요청의 `coach_state`를 `null`로 보내면 `decide`가 알아서 `initial_state()`로 시작합니다. v1.2의 `/coach/plan`이 LLM 계획을 담아 이것을 돌려줄 예정입니다. 쓰려면 `dump_state`(`src/coach/state.py`)로 dict로 바꿔 요청에 실어야 합니다.
+Take의 첫 기억을 만듭니다. BE는 부를 필요가 없습니다 — 계획 없이 시작하면 첫 요청의 `coach_state`를 `null`로 보내고(`decide`가 알아서 `initial_state()`로 시작), 계획이 있으면 `plan_coaching`이 `initial_state(plan)`을 dict로 바꿔(`dump_state`) 돌려줍니다.
+
+### 1-5. `plan_coaching`
+
+```python
+plan_coaching(
+    request: PlanRequest | dict[str, Any],
+    *,
+    llm: Any = None,               # .invoke(messages) → PlanDraft (구조화 출력 LLM)
+    model: str = "",               # 계획 해시 · 캐시 키에 들어간다
+    cache: PlanCache | None = None,  # get(key, planner_hash) / put(key, planner_hash, output_json)
+    config: CoachConfig | None = None,
+) -> PlanResponse
+```
+
+Take 시작 전에 한 번 부릅니다. LLM이 장별 대본 · 미션 · 반복 문제 · 직전 리뷰를 읽고 이번 Take에서 먼저 챙길 영역(`focus`)과 장 단위로 봐줄 영역(`relax`), 개입 상한을 냅니다.
+코치는 그 초안(`PlanDraft`)을 검증하고 잘라 `CoachingPlan`으로 만들고, 그 계획이 든 첫 `coach_state`를 돌려줍니다. BE는 이것을 첫 `decide` 요청에 붙입니다. 검증 규칙은 [README 5-6](README.md#5-6-코칭-계획-규칙-plannerpy)에 있습니다.
+
+코어는 LLM 클라이언트를 만들지 않습니다. 출력 모양이 `PlanDraft`로 고정된 LLM(`messages`는 `[("system", 지시문), ("user", 입력 JSON)]`)과 캐시를 인자로 받습니다.
+캐시 키는 입력 JSON의 해시이고, `planner_hash`(지시문 · `PlanDraft` 스키마 · 모델의 해시)가 다르면 캐시를 쓰지 않습니다.
+
+| 상황 | 동작 |
+|---|---|
+| 요청 형식 오류 | `ValidationError`를 그대로 올립니다 (API는 422) |
+| 실전 모드 (`mode=EXAM`) | LLM을 부르지 않고 기본 계획, `fallback_reason="EXAM_MODE"` (말하지 않으니 계획이 쓸모없음) |
+| `llm`이 `None` | 기본 계획, `fallback_reason="NO_LLM"` |
+| LLM 예외 (시간 초과 · 출력 형식 오류 …) | 예외를 삼키고 기본 계획, `fallback_reason="LLM_ERROR"`. 계획이 없다고 코칭이 멈추면 안 됩니다 |
+| 초안에 범위 밖 항목 | 그 항목만 빼고 `dropped`에 이유를 남깁니다 (예: `"relax TIME 3: 봐줄 수 없는 영역"`) |
+
+기본 계획(`source="DEFAULT"`, 비어 있음)의 `coach_state`로 시작한 판단은 `coach_state=null`로 시작한 것과 같습니다.
+
+**`PlanRequest`** (입력, 모르는 필드는 무시)
+
+| 필드 | 타입 | 기본값 | 뜻 |
+|---|---|---|---|
+| `schema_version` | str | `"1.2"` | |
+| `take_id` | str | 필수 | |
+| `mode` | Mode | `"PRACTICE"` | `EXAM`이면 LLM을 부르지 않습니다 |
+| `plan` | Plan | 빈 계획 | 이번 Take의 장별 목표 시간 · 글자 수 · 필수 키워드 (`CoachRequest.plan`과 같은 것) |
+| `scripts` | list[`SlideScript`] | `[]` | 장별 대본 `{slide_number, script}`. 장마다 앞 1,500자(`max_script_chars`)만 LLM에 넘기고, 대본 속 숫자 개수를 함께 셉니다 |
+| `missions` | list[Mission] | `[]` | 이번 Take 미션 (`CoachRequest.missions`와 같은 것). 미션 영역은 봐줄 수 없습니다 |
+| `memory` | Memory | 빈 기억 | 여러 Take에 걸쳐 반복된 문제 |
+| `previous_review` | dict \| null | `null` | 직전 Take의 리뷰 근거(`build_review_evidence` 결과) 그대로. 순위 매긴 문제 앞 5개(`max_previous_issues`) · 영역 상태 · 개입 수 · 효과율만 LLM에 넘깁니다. 없으면 개입 상한을 두지 않습니다 |
+
+**`PlanDraft`** (LLM 출력 스키마. 모든 필드가 필수라 구조화 출력이 빠뜨리지 않습니다)
+
+| 필드 | 타입 | 뜻 |
+|---|---|---|
+| `focus` | list[{`type`, `slide_number` (int \| null), `weight`, `why`}] | 먼저 챙길 영역. `slide_number`가 null이면 Take 전체 |
+| `relax` | list[{`type`, `slide_number` (int), `why`}] | 그 장에서 지적하지 않아도 되는 영역 |
+| `max_interventions` | int \| null | 이번 Take에서 말할 최대 횟수 |
+
+**`PlanResponse`** (출력)
+
+| 필드 | 타입 | 뜻 |
+|---|---|---|
+| `schema_version` · `policy_version` | str | 버전 ([9절](#9-버전과-호환)) |
+| `planner_hash` | str | 지시문 · 출력 스키마 · 모델의 해시. 계획을 어떤 지시문으로 냈는지 남깁니다 |
+| `take_id` | str | |
+| `plan` | `CoachingPlan` | 검증한 계획: `source`(`LLM` · `DEFAULT`), `focus[]`(`type` · `slide_number` · `weight` 0.5~2.0 · `why`), `relax[]`(`type` · `slide_number` · `why`), `max_interventions` |
+| `fallback_reason` | str \| null | 기본 계획으로 돌아간 이유 (`EXAM_MODE` · `NO_LLM` · `LLM_ERROR`). LLM 계획이면 null |
+| `dropped` | list[str] | 검증에서 뺀 항목과 이유 |
+| `coach_state` | dict | 첫 `decide` 요청에 붙일 `coach_state` (계획이 `plan` 칸에 들어 있음) |
+
+예시 — 3번 장이 수치 표인 발표 (`scenarios/plan/17_plan_numbers_slide.json`). 요청의 3번 장:
+
+```json
+{"slide_number": 3, "script": "시범 운영 결과를 표로 정리했습니다. 2025년 3월부터 8주 동안 참여자는 1,240명, 연습 횟수는 9,860회였습니다. 평균 발표 시간은 6분 42초에서 5분 18초로 21% 줄었고, 대본 응시 비율은 0.61에서 0.34로, 분당 군더더기는 4.7회에서 2.1회로 낮아졌습니다. 만족도는 5점 만점에 4.6점입니다."}
+```
+
+응답 (`coach_state`는 732바이트라 줄였습니다):
+
+```json
+{
+  "schema_version": "1.2",
+  "policy_version": "coach-v1.2",
+  "planner_hash": "84aecb2e2a2a",
+  "take_id": "sim-17_plan_numbers_slide",
+  "plan": {
+    "source": "LLM",
+    "focus": [],
+    "relax": [
+      {
+        "type": "GAZE",
+        "slide_number": 3,
+        "why": "3장은 다른 장보다 숫자가 뚜렷이 많아 정확한 수치를 읽기 위해 대본을 보며 말하는 것이 적절합니다."
+      }
+    ]
+  },
+  "dropped": [],
+  "coach_state": {"…": "initial_state(plan) 을 dump_state 한 것"}
+}
+```
 
 ---
 
@@ -407,9 +502,9 @@ Take의 첫 기억을 만듭니다. v1.1까지 BE는 부를 필요가 없습니�
 
 ```json
 {
-  "schema_version": "1.1",
-  "policy_version": "coach-v1.1",
-  "config_hash": "dbe162df2a38",
+  "schema_version": "1.2",
+  "policy_version": "coach-v1.2",
+  "config_hash": "d96ea5e7cecf",
   "take_id": "sim-05_time_behind",
   "t_ms": 52000,
   "action": "INTERVENE",
@@ -1029,9 +1124,9 @@ finalize() 응답의 events ─┘
 
 ```json
 {
-  "schema_version": "1.1",
-  "policy_version": "coach-v1.1",
-  "config_hash": "dbe162df2a38",
+  "schema_version": "1.2",
+  "policy_version": "coach-v1.2",
+  "config_hash": "d96ea5e7cecf",
   "take_id": "sim-14_recurring_persists",
   "summary": {
     "interventions": 1,
@@ -1344,13 +1439,13 @@ finalize() 응답의 events ─┘
 
 | 값 | 현재 | 올리는 때 |
 |---|---|---|
-| `SCHEMA_VERSION` | `"1.1"` | 요청 · 응답 · 이벤트 · 리뷰 근거의 **모양**이 바뀔 때. 1.1: 시선 1초 기록 · 음량 레벨 · 표시 없는 단어 입력 |
-| `POLICY_VERSION` | `"coach-v1.1"` | 판단 규칙의 의미가 바뀔 때(기능 버전). 같은 입력에 다른 판단이 나오게 바꾸면 올립니다. coach-v1.1: 원자료 입력(시선 1초 기록 · 음량 레벨과 기준 · 군더더기 판단), 측정하지 못한 1초 · Take 시작 직후의 시선 판단 |
+| `SCHEMA_VERSION` | `"1.2"` | 요청 · 응답 · 이벤트 · 리뷰 근거 · 코칭 계획의 **모양**이 바뀔 때. 1.1: 시선 1초 기록 · 음량 레벨 · 표시 없는 단어 입력. 1.2: 코칭 계획 요청 · 응답(`PlanRequest` · `PlanResponse`) |
+| `POLICY_VERSION` | `"coach-v1.2"` | 판단 규칙의 의미가 바뀔 때(기능 버전). 같은 입력에 다른 판단이 나오게 바꾸면 올립니다. coach-v1.1: 원자료 입력(시선 1초 기록 · 음량 레벨과 기준 · 군더더기 판단), 측정하지 못한 1초 · Take 시작 직후의 시선 판단. coach-v1.2: Take 시작 전 LLM 코칭 계획 (계획이 없으면 coach-v1.1 과 같은 판단) |
 | `STATE_VERSION` | `1` | `coach_state` 모양이 바뀔 때. 다른 버전의 state가 오면 버리고 새로 시작합니다 |
 
-- **기준값 · 가중치 같은 설정 조정은 버전을 올리지 않습니다.** 대신 응답과 리뷰 근거의 `config_hash`(예: `"dbe162df2a38"`)가 어떤 설정으로 판단했는지 남깁니다. 같은 `config_hash` · `POLICY_VERSION`이면 같은 입력에 같은 판단이 나옵니다.
-- **입력은 관대하게, 출력은 엄격하게.** 입력 모델(`CoachRequest`와 그 안의 모델, `FinalizeRequest`, `ReviewEvidenceRequest`)은 모르는 필드를 무시합니다(`extra="ignore"`). 그래서 BE가 필드를 먼저 추가해도 깨지지 않습니다. 출력 모델(`CoachResponse`, 이벤트, `CoachReviewEvidence`와 그 안의 모델)은 `extra="forbid"`라 정해진 필드만 나가고, 소비자가 모르는 필드를 만날 일이 없습니다. 반대로 BE가 이벤트를 저장했다가 `build_review_evidence`에 돌려줄 때 필드를 더하거나 바꾸면 거부되니 이벤트는 받은 그대로 보관합니다.
-- **호환 규칙**: 입력 모델에 선택 필드를 **추가**하는 것은 스키마 버전 안에서 가능합니다 (입력은 모르는 필드를 무시). 출력 · 이벤트 모델에 필드를 추가하면, 그 필드가 담긴 이벤트를 옛 버전의 `build_review_evidence`가 받을 때 거부하므로(`extra="forbid"`) AI 서버를 먼저 배포한 뒤 쓰는 쪽을 바꿉니다. enum 값 추가는 받는 쪽이 모든 경우를 처리하고 있으면 깨질 수 있어 받는 쪽과 먼저 맞춥니다. 필드 · 값의 이름을 바꾸거나 빼면 `SCHEMA_VERSION`을 올립니다. 요청의 `schema_version`은 기본값이 `"1.1"`이고 코드가 비교하지는 않으므로, 버전별 처리가 필요해지면 서버 쪽에 검사를 추가해야 합니다.
+- **기준값 · 가중치 같은 설정 조정은 버전을 올리지 않습니다.** 대신 응답과 리뷰 근거의 `config_hash`(예: `"d96ea5e7cecf"`)가 어떤 설정으로 판단했는지 남깁니다. 같은 `config_hash` · `POLICY_VERSION`이면 같은 입력에 같은 판단이 나옵니다.
+- **입력은 관대하게, 출력은 엄격하게.** 입력 모델(`CoachRequest`와 그 안의 모델, `FinalizeRequest`, `ReviewEvidenceRequest`, `PlanRequest`)은 모르는 필드를 무시합니다(`extra="ignore"`). 그래서 BE가 필드를 먼저 추가해도 깨지지 않습니다. 출력 모델(`CoachResponse`, 이벤트, `CoachReviewEvidence`와 그 안의 모델, `PlanResponse`)은 `extra="forbid"`라 정해진 필드만 나가고, 소비자가 모르는 필드를 만날 일이 없습니다. 반대로 BE가 이벤트를 저장했다가 `build_review_evidence`에 돌려줄 때 필드를 더하거나 바꾸면 거부되니 이벤트는 받은 그대로 보관합니다.
+- **호환 규칙**: 입력 모델에 선택 필드를 **추가**하는 것은 스키마 버전 안에서 가능합니다 (입력은 모르는 필드를 무시). 출력 · 이벤트 모델에 필드를 추가하면, 그 필드가 담긴 이벤트를 옛 버전의 `build_review_evidence`가 받을 때 거부하므로(`extra="forbid"`) AI 서버를 먼저 배포한 뒤 쓰는 쪽을 바꿉니다. enum 값 추가는 받는 쪽이 모든 경우를 처리하고 있으면 깨질 수 있어 받는 쪽과 먼저 맞춥니다. 필드 · 값의 이름을 바꾸거나 빼면 `SCHEMA_VERSION`을 올립니다. 요청의 `schema_version`은 기본값이 `"1.2"`이고 코드가 비교하지는 않으므로, 버전별 처리가 필요해지면 서버 쪽에 검사를 추가해야 합니다.
 - **필드 이름은 snake_case**입니다 (BE DTO · 리뷰 DTO와 같게).
 - **시간은 전부 ms**이고, 모든 시각(`t_ms` · `start_ms` · `end_ms` · `onset_ms` …)은 **Take 시작 기준 경과 시간**입니다. 예외로 `*_s` 접미사가 붙은 `burden_s`는 초 단위입니다.
 - **비율 · 신뢰도는 0~1**입니다 (`confidence`, `script_ratio`, `*_coverage`, `effective_rate` …). `feedback` · `candidates[]` · 이벤트의 `priority`는 0~100 점수이고, `next_missions[].priority`는 순위(1이 먼저), `missions[].priority`는 받은 값 그대로입니다. `required_ratio`는 배수라 1 이상일 수 있습니다.
