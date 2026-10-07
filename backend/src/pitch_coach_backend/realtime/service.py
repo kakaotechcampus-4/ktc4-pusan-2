@@ -5,7 +5,8 @@
 이 클래스는 **연결만큼만** 산다. 오디오 파이프라인과 Deepgram 세션은 `take_stream.TakeStream`
 이 들고 있고 연결보다 오래 남는다 — 탭을 새로 고쳐도 세그먼트 번호와 타임라인이 이어지도록.
 
-연결 하나의 순서: Origin → auth(JWT) → 인가(DB 1회: 사용자·Take 존재·소유·상태) → ready → 오디오.
+연결 하나의 순서: Origin → auth(JWT) → 인가(DB 1회: 사용자·Take 존재·소유·상태·대본 용어)
+→ ready → 오디오.
 """
 
 import contextlib
@@ -23,6 +24,7 @@ from starlette.concurrency import run_in_threadpool
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import UnauthorizedException
 from pitch_coach_backend.core.security import decode_access_token
+from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.realtime import take_stream
@@ -35,6 +37,7 @@ from pitch_coach_backend.realtime.dto import (
 )
 from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
+from pitch_coach_backend.realtime.keyterms import build_keyterms, normalize_term
 from pitch_coach_backend.realtime.stt_adapter import SttAdapter, SttConfig
 from pitch_coach_backend.realtime.take_stream import StreamOwnerMismatch, TakeStream
 from pitch_coach_backend.realtime.transcript_store import TranscriptStore
@@ -101,6 +104,8 @@ class RealtimeSession:
 
         # entity 가 아니라 id 만 들고 있는다. realtime 은 다른 도메인의 service 만 부른다
         self.user_id: uuid.UUID | None = None
+        # Take 대본의 STT 용어 (우선순위 순, 자르기 전). 인가 때 같은 DB 왕복에서 읽는다
+        self.script_terms: list[str] = []
         self.invalid_frames = 0
 
     # ── 수명 ──────────────────────────────────────────────────────────
@@ -196,11 +201,13 @@ class RealtimeSession:
     async def _authorize(self, user_id: uuid.UUID) -> bool:
         """사용자 존재 · Take 존재·소유 · Take 상태를 DB 왕복 한 번으로 검사한다.
 
+        통과하면 keyterm 에 쓸 대본 용어도 같이 읽어 둔다 (`self.script_terms`).
+
         없거나 남의 Take 는 `TAKE_NOT_FOUND` 하나로 답한다 (REST 의 `get_owned_pitch` 와
         같은 규칙 — 존재 여부를 흘리지 않는다). 끝난 Take 는 `TAKE_ENDED`.
         """
 
-        def load() -> tuple[bool, bool, str | None]:
+        def load() -> tuple[bool, bool, str | None, list[str]]:
             # 동기 SQLAlchemy 를 이벤트 루프에서 직접 부르면 다른 Take 의 오디오까지 멈춘다.
             # 그래서 threadpool 이고, 왕복을 아끼려 한 함수에서 전부 읽는다
             user = user_service.find(self.db, user_id)
@@ -214,12 +221,23 @@ class RealtimeSession:
             # 한 번 더** 날린다 — 커넥션을 돌려준 의미가 없어진다. user 도 같은 이유로
             # id 를 안 읽고 이미 아는 user_id 를 그대로 쓴다
             status = take.status if take is not None else None
+            terms: list[str] = []
+            if status in STREAMABLE_TAKE_STATUSES:
+                # 용어는 부가 기능이다. 조회가 실패해도 filler 만으로 STT 는 돈다 — 여기서
+                # 예외를 흘리면 연결이 1011 로 닫히고 FE 재연결이 같은 실패를 되풀이한다.
+                # 실패한 트랜잭션은 아래 rollback() 이 정리한다
+                try:
+                    terms = pitch_service.stt_keyterm_candidates(
+                        self.db, take.pitch_id, take.script_version_id
+                    )
+                except Exception:
+                    logger.exception("대본 용어 조회 실패, filler 만 쓴다 take=%s", self.take_id)
             # 조회가 끝나면 커넥션을 풀에 돌려준다. 이 연결은 몇 분씩 살아 있는데
             # 트랜잭션을 연 채로 두면 Take 수만큼 풀이 마른다
             self.db.rollback()
-            return user is not None, take is not None, status
+            return user is not None, take is not None, status, terms
 
-        user_found, take_found, status = await run_in_threadpool(load)
+        user_found, take_found, status, terms = await run_in_threadpool(load)
         if not user_found:
             await self._reject(WsErrorCode.UNAUTHORIZED, "유효하지 않은 토큰입니다.")
             return False
@@ -229,11 +247,26 @@ class RealtimeSession:
         if status not in STREAMABLE_TAKE_STATUSES:
             await self._reject(WsErrorCode.TAKE_ENDED, "이미 끝난 연습입니다.")
             return False
+        self.script_terms = terms
         return True
 
     def _stt_config(self) -> SttConfig:
-        # 다음 PR: Pitch 대본 키워드를 filler 뒤에 붙인다 (keyterm 100개·500토큰 상한)
-        return SttConfig(keyterms=KEYTERM_FILLERS, tag=f"take:{self.take_id}")
+        # filler 가 먼저다 — 군더더기 지표가 filler boosting 에 달려 있다. 대본 용어는 남는 자리에
+        keyterms = build_keyterms(KEYTERM_FILLERS, self.script_terms)
+        dropped = len({normalize_term(t) for t in self.script_terms} - {""} - set(keyterms))
+        if dropped:
+            logger.info(
+                "keyterm 한도로 대본 용어를 뺐다 take=%s kept=%d dropped=%d",
+                self.take_id,
+                len(keyterms),
+                dropped,
+            )
+        # 토큰 추정이 빗나가 Deepgram 이 거절하면 뒤쪽 대본 용어부터 줄인다. filler 는 남긴다
+        return SttConfig(
+            keyterms=keyterms,
+            min_keyterms=len(build_keyterms(KEYTERM_FILLERS)),
+            tag=f"take:{self.take_id}",
+        )
 
     # ── 펌프 ──────────────────────────────────────────────────────────
 

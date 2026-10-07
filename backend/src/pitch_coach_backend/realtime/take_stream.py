@@ -33,7 +33,7 @@ import contextlib
 import logging
 import uuid
 from collections.abc import Awaitable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import anyio
 from fastapi import WebSocket
@@ -60,6 +60,7 @@ from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
     SttAdapter,
     SttConfig,
+    SttConfigRejected,
     SttConnectError,
     SttError,
     SttSession,
@@ -77,6 +78,9 @@ QUEUE_MAX_FRAMES = 50
 BACKOFF_SEC = (0.5, 1.0, 2.0, 5.0, 10.0)
 # 이 횟수만큼 실패하면 FE 에 degraded 를 알린다. 재시도는 계속한다
 FAST_ATTEMPTS = 3
+# Deepgram 이 keyterm 을 거절할 때마다 뒤에서 빼는 개수. 몇 토큰 넘쳤는지 알려 주지 않아서,
+# 한 번에 반씩 버리는 대신 조금씩 빼 우선순위 높은 용어를 최대한 남긴다
+KEYTERM_TRIM_STEP = 5
 # CloseStream 뒤 남은 결과와 Metadata 를 기다리는 상한
 DRAIN_TIMEOUT_SEC = 10.0
 # 취소·오류로 세션을 버릴 때 Deepgram 소켓 닫기(abort) 를 기다리는 상한. 이게 없으면
@@ -435,11 +439,30 @@ class TakeStream:
             self._finish()
 
     async def _connect(self) -> SttSession | None:
-        try:
-            return await self._adapter.connect(self._config)
-        except SttConnectError as e:
-            logger.warning("Deepgram 연결 실패 take=%s %s", self.take_id, e)
-            return None
+        while True:
+            try:
+                return await self._adapter.connect(self._config)
+            except SttConfigRejected as e:
+                keyterms = self._config.keyterms
+                floor = self._config.min_keyterms
+                if len(keyterms) <= floor:
+                    logger.error("Deepgram 이 설정을 거절했다 take=%s %s", self.take_id, e)
+                    return None
+                # 같은 설정으로 다시 붙으면 또 거절된다. 우선순위가 낮은 뒤쪽 용어부터 빼고
+                # 기다리지 않고 바로 다시 붙는다 — 실패로 세서 backoff 하면 몇 번만 줄여도
+                # 수십 초 동안 전사가 안 나온다. 줄인 설정은 이후 재접속에도 그대로 쓴다
+                trimmed = keyterms[: max(floor, len(keyterms) - KEYTERM_TRIM_STEP)]
+                logger.warning(
+                    "Deepgram 이 keyterm 을 거절해 %d개 → %d개로 줄인다 take=%s %s",
+                    len(keyterms),
+                    len(trimmed),
+                    self.take_id,
+                    e,
+                )
+                self._config = replace(self._config, keyterms=trimmed)
+            except SttConnectError as e:
+                logger.warning("Deepgram 연결 실패 take=%s %s", self.take_id, e)
+                return None
 
     async def _sleep_or_stop(self, delay: float) -> bool:
         """delay 만큼 쉰다. 그 사이 stop 이 오면 True 를 돌려 즉시 끝낸다."""
@@ -541,7 +564,6 @@ class TakeStream:
     async def _on_transcript(self, event: Transcript) -> None:
         base = self._base_offset_ms or 0
         if event.transcript or event.words:
-            # 다음 PR: is_final 이면 여기서 take_transcript_segments 에 저장한다
             message = TranscriptMessage(
                 segment_id=f"{self.stt_session_no}-{self.segment_no}",
                 is_final=event.is_final,
