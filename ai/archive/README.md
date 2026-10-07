@@ -5,7 +5,7 @@
 
 | 기능 | 경로 | 담당 | 비고 |
 |---|---|---|---|
-| 시선 | `workspaces/jewon-kim/gaze-tracking/` | jewon-kim | |
+| 시선 | `workspaces/jewon-kim/gaze-tracking/` | jewon-kim | [`research/gaze-tracking/`](../research/gaze-tracking/README.md)로 옮김 |
 | 실시간 코치 | `workspaces/jewon-kim/coach-agent/` | jewon-kim | |
 | 대본 전달도 | `workspaces/jewon-kim/script-coverage-evaluation/` | jewon-kim | [`research/script-coverage-evaluation/`](../research/script-coverage-evaluation/README.md)로 옮김 |
 | 대본 파싱 | `workspaces/seojin-lee/script-parser/` | seojin-lee | |
