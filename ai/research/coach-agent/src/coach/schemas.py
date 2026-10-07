@@ -128,8 +128,18 @@ class GazeInput(_In):
 
 
 class VoiceInput(_In):
+    """음량은 relative_db(FE 가 기준 대비로 계산한 값)나 level_db(측정한 레벨) 중 하나를 보낸다.
+
+    level_db 를 보내면 기준은 baseline_db, 없으면 이번 Take 첫 발화로 코치가 잡는다.
+    """
+
     #: 캘리브레이션(평소 목소리) 대비 dB. 음수가 작은 소리. 말하지 않는 중이면 null
     relative_db: float | None = None
+    #: 지난 1초 동안 말한 소리의 레벨 (A 가중 dBFS). 말하지 않았으면 null.
+    #: relative_db 가 없을 때 쓴다
+    level_db: float | None = None
+    #: 이 발표자의 평소 목소리 레벨 (dBFS, 캘리브레이션). 없으면 코치가 Take 첫 발화로 잡는다
+    baseline_db: float | None = None
     #: 지금 몇 ms 째 조용한가
     silence_ms: int = Field(default=0, ge=0)
     #: 오디오가 실제로 흐르는가. False 면 소리 판단을 전부 끈다
@@ -142,8 +152,9 @@ class Word(_In):
     end_ms: int
     #: 확정 단어만 누적(진행도 · 군더더기)에 쓴다. 중간 결과는 CPM 에만 쓴다
     final: bool = True
-    #: BE 의 fillers.py 목록에 있는 말인가. 군더더기 목록의 단일 소스가 BE 라서 BE 가 표시한다
-    filler: bool = False
+    #: 군더더기인가. BE 가 표시하면 그대로 쓰고, 없으면(null) 코치가 소리뿐인 간투사
+    #: (음 · 어 · 으 · 엄 · 흠 · 아 · 에)만 군더더기로 센다
+    filler: bool | None = None
 
 
 class SpeechInput(_In):

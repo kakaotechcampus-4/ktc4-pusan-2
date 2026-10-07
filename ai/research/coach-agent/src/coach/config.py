@@ -89,6 +89,9 @@ class VoiceConfig(_Section):
     #: 평균에 들어갈 '말하는 중' 표본이 이보다 적으면 음량을 판단하지 않는다 (표본 1~2개 평균은
     #: 잡음)
     min_samples: int = 3
+    #: level_db 만 오고 baseline_db 가 없으면, Take 첫 발화의 말한 1초 이만큼의 중앙값을 평소
+    #: 목소리로 본다. 기준을 잡기 전에는 음량을 판단하지 않는다
+    baseline_samples: int = 15
     long_silence_ms: int = 5_000
     long_silence_bad_ms: int = 15_000
 

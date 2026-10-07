@@ -49,6 +49,8 @@ class Tick:
     detections: list[Detection] = field(default_factory=list)
     filler_new: int = 0
     speaking: bool | None = None
+    #: 이번 1초의 기준 대비 음량 (dB). 말하지 않았거나 아직 기준이 없으면 None
+    relative_db: float | None = None
     #: 이번 판단이 대표하는 시간. 직전 요청과의 간격 (첫 요청 · 긴 공백은 config 로 제한)
     dt_ms: int = 1_000
 

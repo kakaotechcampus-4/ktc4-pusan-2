@@ -302,7 +302,6 @@ def _log_suppressed(tick: Tick, cands: list[Candidate], sink: EventSink) -> None
 
 def _append_history(tick: Tick) -> None:
     st = tick.state
-    voice = tick.req.current.voice
     sample = HistorySample(
         t_ms=tick.t,
         slide_number=tick.slide_number,
@@ -310,7 +309,7 @@ def _append_history(tick: Tick) -> None:
         gaze_uncertain=tick.metrics.get("gaze_uncertain_ratio"),
         cpm=tick.metrics.get("cpm"),
         cpm_recent=tick.metrics.get("cpm_recent"),
-        relative_db=voice.relative_db if voice is not None and tick.speaking else None,
+        relative_db=tick.relative_db,
         speaking=tick.speaking,
         filler_new=tick.filler_new,
         required_ratio=tick.metrics.get("required_ratio"),

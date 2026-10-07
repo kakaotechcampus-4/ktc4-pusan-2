@@ -2,14 +2,40 @@
 
 음량은 순간값이 크게 흔들리므로(volume-analysis v1 의 알려진 한계) 말하는 동안의
 최근 smoothing_ms 평균으로 판단합니다.
+
+'작음'은 평소 목소리 대비입니다. FE 가 기준 대비 값(relative_db)을 보내면 그대로 쓰고, 측정한
+레벨(level_db)을 보내면 baseline_db 와의 차이를 씁니다. baseline_db 도 없으면 이번 Take 첫 발화
+baseline_samples 초의 중앙값을 평소 목소리로 잡아 coach_state 에 둡니다 — 개인 캘리브레이션이
+없어도 '평소보다 작아짐'을 잴 수 있습니다.
 """
 
 from __future__ import annotations
 
-from statistics import fmean
+from statistics import fmean, median
 
+from ..schemas import VoiceInput
 from ..vocab import Issue
 from .base import Detection, Tick, ramp
+
+
+def relative_db(tick: Tick, voice: VoiceInput, speaking: bool) -> float | None:
+    """이번 1초의 기준 대비 음량. 말하지 않았거나 기준을 아직 못 잡았으면 None."""
+    if not speaking:
+        return None
+    if voice.relative_db is not None:
+        return voice.relative_db
+    if voice.level_db is None:
+        return None
+    if voice.baseline_db is not None:
+        return round(voice.level_db - voice.baseline_db, 2)
+    st = tick.state
+    if st.voice_baseline_db is None:
+        st.voice_baseline_samples.append(voice.level_db)
+        if len(st.voice_baseline_samples) < tick.cfg.voice.baseline_samples:
+            return None
+        st.voice_baseline_db = round(median(st.voice_baseline_samples), 2)
+        st.voice_baseline_samples = []
+    return round(voice.level_db - st.voice_baseline_db, 2)
 
 
 def evaluate(tick: Tick) -> None:
@@ -32,6 +58,7 @@ def evaluate(tick: Tick) -> None:
     if voice.audio_live and st.audio_live_since_ms is not None:
         silence = min(silence, tick.t - st.audio_live_since_ms)
 
+    tick.relative_db = relative_db(tick, voice, speaking) if voice.audio_live else None
     db: float | None = None
     if voice.audio_live:
         since = tick.t - cfg.smoothing_ms
@@ -40,8 +67,8 @@ def evaluate(tick: Tick) -> None:
             for s in tick.history_since(since)
             if s.speaking and s.relative_db is not None
         ]
-        if speaking and voice.relative_db is not None:
-            values.append(voice.relative_db)
+        if tick.relative_db is not None:
+            values.append(tick.relative_db)
         db = round(fmean(values), 2) if len(values) >= cfg.min_samples else None
 
     tick.metrics["relative_db"] = db
