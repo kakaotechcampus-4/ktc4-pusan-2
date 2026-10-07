@@ -454,8 +454,9 @@ def test_a_malformed_referer_is_rejected_not_crashed(
 
 
 def test_replaying_an_old_refresh_cookie_is_rejected(
-    client: TestClient, fake_google: dict[str, Any]
+    client: TestClient, fake_google: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(settings, "refresh_token_reuse_grace_seconds", 0)
     do_login(client)
     stolen = client.cookies[REFRESH_COOKIE_NAME]
     client.post(REFRESH, headers=csrf_headers(client))
@@ -464,6 +465,19 @@ def test_replaying_an_old_refresh_cookie_is_rejected(
     res = client.post(REFRESH, headers=csrf_headers(client))
 
     assert res.status_code == 401
+
+
+def test_refresh_retried_with_the_cookie_it_just_rotated_keeps_the_session(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """회전 응답을 받기 전에 새로고침하면 브라우저는 옛 쿠키를 다시 보낸다."""
+    do_login(client)
+    before = client.cookies[REFRESH_COOKIE_NAME]
+    client.post(REFRESH, headers=csrf_headers(client))
+    client.cookies.set(REFRESH_COOKIE_NAME, before, path="/api/auth")  # 응답을 버렸다
+
+    assert client.post(REFRESH, headers=csrf_headers(client)).status_code == 200
+    assert client.post(REFRESH, headers=csrf_headers(client)).status_code == 200
 
 
 # --- logout -------------------------------------------------------------
