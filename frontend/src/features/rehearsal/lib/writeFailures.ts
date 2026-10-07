@@ -23,7 +23,8 @@ export type WriteKind =
   | 'gazeExcluded'
   | 'engineVersion'
   | 'gazePerf'
-  | 'prepare';
+  | 'prepare'
+  | 'ending';
 
 const ledger = new Map<string, Map<WriteKind, number>>();
 

@@ -60,6 +60,17 @@ export interface SessionRow {
    * 키가 없으므로 읽을 때 `?? null` 로 받습니다.
    */
   prepare: PrepareContext | null;
+  /**
+   * 끝내기를 누른 순간 고정한 값. **있으면 종료 중이던 Take 입니다** — 그 뒤에 새로고침하면
+   * 무대를 다시 열지 않고 이 값으로 종료를 이어갑니다. 새로 재면 정리하는 동안과
+   * 새로고침한 시간이 발표 길이에 얹힙니다.
+   */
+  ending: { durationMs: Ms; endedAtIso: string } | null;
+  /**
+   * `/complete` 가 성공한 시각. 있으면 이 Take 는 끝났습니다 — 서버에서 Take 상태를 읽을
+   * API 가 없어서 다시 들어왔을 때(새로고침 · 뒤로 가기) 무대를 열지 않을 근거가 이것뿐입니다.
+   */
+  submittedAt: number | null;
 }
 
 export interface PrepareContext {
@@ -227,6 +238,8 @@ export async function startSession(takeId: string | null = null): Promise<string
     gazeAvgFps: null,
     gazeDroppedFrames: 0,
     prepare: null,
+    ending: null,
+    submittedAt: null,
   });
   return clientSessionId;
 }
@@ -263,6 +276,21 @@ export async function setPrepareContext(
   prepare: PrepareContext,
 ): Promise<void> {
   await patchSession(clientSessionId, { prepare });
+}
+
+/** 끝내기를 눌렀다 (`SessionRow.ending`). 처음 고정한 값을 지킵니다 */
+export async function markEnding(
+  clientSessionId: string,
+  ending: NonNullable<SessionRow['ending']>,
+): Promise<void> {
+  const row = await getSession(clientSessionId);
+  if (row?.ending) return;
+  await patchSession(clientSessionId, { ending });
+}
+
+/** `/complete` 가 성공했다 (`SessionRow.submittedAt`) */
+export async function markSubmitted(clientSessionId: string): Promise<void> {
+  await patchSession(clientSessionId, { submittedAt: Date.now() });
 }
 
 export async function endSession(

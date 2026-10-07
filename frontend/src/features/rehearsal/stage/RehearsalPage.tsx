@@ -13,6 +13,8 @@ import {
   endSession,
   findSessionByTakeId,
   getSession,
+  markEnding,
+  markSubmitted,
   markGazeExcluded,
   readCoachLog,
   readGazeDecisions,
@@ -25,6 +27,7 @@ import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/
 import { toMessage } from '@/shared/api/errorMessage';
 import { ScreenLabel } from '@/shared/ui/ScreenLabel';
 import { TemporalVoter } from '@/workers/temporalVoter';
+import { formatDuration } from '@/shared/lib/clock';
 import type { CompleteRequest, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
 import { useCoach } from './useCoach';
@@ -53,6 +56,11 @@ const BEAT_MS = 5_000;
 const NO_KEYWORDS: string[] = [];
 const NO_HIGHLIGHTS: TextRange[] = [];
 
+interface Ending {
+  durationMs: Ms;
+  endedAtIso: string;
+}
+
 /**
  * 이 Take 를 어디서부터 여나. 세션 행을 읽어야 정해지고, 그 전에는 무대를 시작하지 않습니다 —
  * 시계가 0 으로 먼저 출발하면 새로고침 전 기록과 시간대가 겹칩니다 (`resume.ts`).
@@ -65,6 +73,10 @@ interface Resume {
   /** 이어받은 슬라이드로 넘어온 시각. 처음이면 null */
   slideAt: Ms | null;
   coach: CoachHistory | null;
+  /** 끝내기를 누른 뒤에 새로고침했으면 그때 고정한 값. 무대를 열지 않고 종료를 이어갑니다 */
+  ending: Ending | null;
+  /** `/complete` 까지 보낸 Take. 무대를 열지 않고 처리 화면으로 보냅니다 */
+  submitted: boolean;
 }
 
 const freshResume = (sessionId: string | null): Resume => ({
@@ -72,6 +84,8 @@ const freshResume = (sessionId: string | null): Resume => ({
   fromMs: 0,
   slideAt: null,
   coach: null,
+  ending: null,
+  submitted: false,
 });
 
 /**
@@ -142,6 +156,7 @@ export function RehearsalPage() {
   }, []);
   const [resume, setResume] = useState<Resume | null>(null);
   const sessionId = resume?.sessionId ?? null;
+  const ending = resume?.ending ?? null;
   const [confirming, setConfirming] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
   /**
@@ -155,7 +170,11 @@ export function RehearsalPage() {
   const { meterRef, statsRef, audioState } = useMicLevel(stream);
 
   const ready = materials.ready && resume !== null;
-  const running = ready && phase === 'RUNNING';
+  /** 이미 `/complete` 까지 보낸 Take 입니다 (끝낸 뒤 새로고침 · 뒤로 가기). 무대를 열지 않습니다 */
+  const submitted = resume?.submitted ?? false;
+  /** 무대를 열 수 있나. 종료 중에 새로고침했으면 열지 않고 종료만 이어갑니다 */
+  const stageReady = ready && ending === null && !submitted;
+  const running = stageReady && phase === 'RUNNING';
   const limitSec = ticket?.timeLimitSec ?? 600;
   const scriptMode = ticket?.scriptMode ?? 'HIGHLIGHT';
   const mode = ticket?.mode ?? 'COACHING';
@@ -206,7 +225,7 @@ export function RehearsalPage() {
   } = useSttStream({
     takeId,
     stream,
-    enabled: ready && (phase === 'RUNNING' || phase === 'ENDING'),
+    enabled: stageReady && (phase === 'RUNNING' || phase === 'ENDING'),
     elapsedMs,
   });
 
@@ -228,8 +247,8 @@ export function RehearsalPage() {
   // IndexedDB를 뒤지고, 그래도 없으면 새로 엽니다.
   //
   // ★ 새로고침해도 location.state 는 남습니다. 그래서 막 넘어왔는지 새로고침했는지는
-  //   행을 읽어야 압니다 — 두 길 모두 행을 읽고, 이어받을 것(시계·슬라이드·코치·준비 값)을
-  //   모은 뒤에 무대를 엽니다.
+  //   행을 읽어야 압니다 — 두 길 모두 행을 읽고, 이어받을 것(시계·슬라이드·코치·준비 값·
+  //   종료 중이었나)을 모은 뒤에 무대를 엽니다.
   const resolvedRef = useRef(false);
   useEffect(() => {
     if (resolvedRef.current || takeId === '') return;
@@ -262,6 +281,13 @@ export function RehearsalPage() {
         fromMs: resumeFromMs(row, readClock(takeId), Date.now(), BEAT_MS),
         slideAt: slide?.atMs ?? null,
         coach: coachHistory(coachRows),
+        ending:
+          row.ending ??
+          // ending 을 남기기 전에 끝낸 행입니다. 마지막 하트비트가 가장 가까운 값입니다
+          (row.status === 'RUNNING'
+            ? null
+            : { durationMs: row.elapsedMs, endedAtIso: new Date(row.lastBeatAt).toISOString() }),
+        submitted: (row.submittedAt ?? null) !== null,
       });
       // IndexedDB 를 못 열면(사생활 보호 모드 · 저장 공간 부족) 여기로 옵니다
     })().catch((err: unknown) => {
@@ -277,6 +303,12 @@ export function RehearsalPage() {
     });
   }, [takeId, location.state, restorePrepare, setSlide]);
 
+  // 이미 끝낸 Take 입니다 (끝낸 뒤 새로고침 · 뒤로 가기). 무대를 다시 열면 같은 Take 를
+  // 한 번 더 하게 됩니다. 서버에서 Take 상태를 읽을 길이 없어서 세션 행의 표시로 압니다
+  useEffect(() => {
+    if (submitted) navigate(`/takes/${takeId}/processing`, { replace: true });
+  }, [submitted, takeId, navigate]);
+
   // 화면을 떠날 때 다음 Take를 위해 무대 상태를 비웁니다
   useEffect(() => resetStore, [resetStore]);
 
@@ -284,10 +316,11 @@ export function RehearsalPage() {
   // 점검에서 쓴 장치를 그대로 엽니다 — 기본 장치를 열면 USB 마이크로 점검하고
   // 내장 마이크로 녹음하는 일이 생깁니다
   //
-  // 세션 행을 읽은 뒤에 엽니다 — 새로고침이면 점검한 장치를 거기서 되살립니다
+  // 세션 행을 읽은 뒤에 엽니다 — 새로고침이면 점검한 장치를 거기서 되살립니다.
+  // 종료 중에 새로고침했으면 열지 않습니다. 남은 일은 기록을 보내는 것뿐입니다
   const askedRef = useRef(false);
   useEffect(() => {
-    if (askedRef.current || !resume) return;
+    if (askedRef.current || !resume || resume.ending || resume.submitted) return;
     askedRef.current = true;
 
     (async () => {
@@ -394,35 +427,53 @@ export function RehearsalPage() {
     // 시간을 먼저 붙잡습니다. 아래 await들이 도는 동안에도 시계는 갑니다.
     // ★ 끝난 시각도 여기서 찍습니다 — STT 정리는 최대 3초까지 걸리는데,
     //   그 시간을 endedAt에 얹으면 endedAt - startedAt이 durationMs와 어긋납니다
-    const durationMs: Ms = elapsedMs();
-    const endedAtIso = new Date().toISOString();
+    const ended: Ending = { durationMs: elapsedMs(), endedAtIso: new Date().toISOString() };
 
     setPhase('ENDING');
+
+    // ★ 종료 중에 새로고침해도 무대로 돌아가지 않고 이 값으로 종료를 이어가도록 먼저 적습니다.
+    //   못 적어도 막지 않습니다 — 그때 새로고침하면 발표 중으로 돌아갈 뿐입니다
+    await markEnding(sessionId, ended).catch((err: unknown) =>
+      noteWriteFailure(sessionId, 'ending', err),
+    );
+
+    // 서버가 남은 오디오를 Deepgram에 흘리고 `closed`를 줄 때까지 기다립니다.
+    // 보통 1초, 최대 3초입니다. 그 사이 버튼은 '정리하는 중…'을 보여 줍니다
+    // ★ 3초에서 끊겨도 서버는 마지막 전사까지 저장합니다. 그래서 아래 `/complete`가
+    //   그 저장보다 먼저 도착할 수 있습니다 — 분석이 저장을 기다리는 것은 BE 몫입니다
+    await stopStt();
+    await submit(sessionId, ended);
+  };
+
+  /**
+   * 기록을 모아 `/complete` 로 보냅니다. 끝내기 버튼과 **종료 중 새로고침**이 같이 씁니다.
+   *
+   * 새로고침으로 들어왔으면 메모리에 남은 것이 없습니다. 그래서 행(IndexedDB)이 먼저이고
+   * 메모리 값은 행을 못 적었을 때만 받습니다. `stop` 은 다시 보내지 않습니다 — 대개 이미
+   * 나갔고, 못 나갔어도 서버가 끊긴 연결을 30초 뒤에 정리하며 마지막 전사까지 저장합니다.
+   */
+  const submit = async (id: string, { durationMs, endedAtIso }: Ending) => {
+    if (!ticket) return;
 
     // ★ 여기서부터 끝까지 한 try 입니다. 중간이 실패해도 **무대를 되살리면 안 됩니다** —
     //   phase 가 RUNNING 으로 돌아가면 clock.start() 가 t0 를 다시 잡아 durationMs 가
     //   어긋나고, useSlideDeck 이 0ms 행을 덮어씁니다 (rehearsalStore 주석 참고).
     //   기록은 IndexedDB 에 그대로 있으므로 재시도 화면으로 보냅니다.
     try {
-      // 서버가 남은 오디오를 Deepgram에 흘리고 `closed`를 줄 때까지 기다립니다.
-      // 보통 1초, 최대 3초입니다. 그 사이 버튼은 '정리하는 중…'을 보여 줍니다
-      // ★ 3초에서 끊겨도 서버는 마지막 전사까지 저장합니다. 그래서 아래 `/complete`가
-      //   그 저장보다 먼저 도착할 수 있습니다 — 분석이 저장을 기다리는 것은 BE 몫입니다
-      await stopStt();
-      await endSession(sessionId);
+      await endSession(id);
 
       // ── 대조 ────────────────────────────────────────────────────────
       // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패를 봅니다.
       // ★ 지금은 알리는 곳이 콘솔뿐입니다.
-      const failures = readWriteFailures(sessionId);
+      const failures = readWriteFailures(id);
       if (Object.keys(failures).length > 0) {
         console.error('[rehearsal] 기록이 불완전합니다', { 실패: failures });
       }
 
-      const row = await getSession(sessionId);
-      const decisions = await readGazeDecisions(sessionId);
-      const changes = await readSlideChanges(sessionId);
-      const coachRows = await readCoachLog(sessionId);
+      const row = await getSession(id);
+      const decisions = await readGazeDecisions(id);
+      const changes = await readSlideChanges(id);
+      const coachRows = await readCoachLog(id);
 
       const gazePayload = buildGazePayload({
         decisions,
@@ -438,7 +489,7 @@ export function RehearsalPage() {
       });
 
       const body: CompleteRequest = {
-        clientSessionId: sessionId,
+        clientSessionId: id,
         startedAt: row?.startedAtIso ?? new Date(Date.now() - durationMs).toISOString(),
         endedAt: endedAtIso,
         durationMs,
@@ -468,17 +519,39 @@ export function RehearsalPage() {
       };
 
       await complete.mutateAsync(body);
-      clearWriteFailures(sessionId);
+      // 보냈다는 표시. 이 주소로 다시 들어오면(새로고침 · 뒤로 가기) 무대를 열지 않습니다.
+      // 못 적으면 다시 들어왔을 때 종료를 한 번 더 이어가는데, `/complete` 가 멱등이라 괜찮습니다
+      await markSubmitted(id).catch((err: unknown) => noteWriteFailure(id, 'ending', err));
+      clearWriteFailures(id);
       clearClock(takeId);
-      navigate(`/takes/${takeId}/processing`);
+      // 기록을 쌓지 않고 바꿉니다. 뒤로 가기로 리허설 화면에 돌아오지 않게 합니다
+      navigate(`/takes/${takeId}/processing`, { replace: true });
     } catch (e) {
       // 기록은 브라우저에 그대로 있습니다. 여기서 잃는 것은 없고,
       // 재시도 화면이 같은 clientSessionId로 다시 보냅니다
       console.error('[rehearsal] 종료 처리 실패', e);
       setEndError(toMessage(e));
-      navigate(`/takes/${takeId}/retry`, { state: { clientSessionId: sessionId } });
+      navigate(`/takes/${takeId}/retry`, { state: { clientSessionId: id } });
     }
   };
+
+  // 종료 중에 새로고침했습니다. 무대는 열지 않고 끝내기를 누른 순간 고정한 값으로 종료를 이어갑니다.
+  // `/complete` 는 clientSessionId 로 멱등이라 새로고침 전에 이미 갔어도 다시 보내도 됩니다.
+  // 의존성 배열을 두지 않습니다 — submit 이 매 렌더 새로 만들어지는 함수라 넣으면 매번 돌고,
+  // 빼면 오래된 submit 을 잡습니다. 한 번만 도는 것은 ref 가 지킵니다
+  const resumedEndingRef = useRef(false);
+  useEffect(() => {
+    if (resumedEndingRef.current || !ending || !sessionId || !ticket || submitted) return;
+    resumedEndingRef.current = true;
+
+    setPhase('ENDING');
+    // 시계는 돌지 않으므로 머리줄에 발표 길이를 직접 적습니다
+    if (elapsedRef.current) elapsedRef.current.textContent = formatDuration(ending.durationMs);
+    submit(sessionId, ending).catch((e: unknown) => {
+      console.error('[rehearsal] 종료 처리 실패', e);
+      setEndError(toMessage(e));
+    });
+  });
 
   const gazeNote = gazeNoteText({
     cameraLost: deviceError !== null,
