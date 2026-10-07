@@ -1,4 +1,4 @@
-"""Take API — 캘리브레이션 저장."""
+"""Take API — 이전 미션 조회, 캘리브레이션 저장."""
 
 import uuid
 
@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
-from pitch_coach_backend.module.take.entity import Take
+from pitch_coach_backend.module.take.entity import Mission, Take
 
 Versions = tuple[uuid.UUID, uuid.UUID]
 
@@ -48,6 +48,80 @@ def _make_take(db: Session, pitch_id: uuid.UUID, versions: Versions, take_number
     db.add(take)
     db.flush()
     return take
+
+
+def _missions(client: TestClient, pitch_id: uuid.UUID, headers: dict[str, str]):
+    return client.get(f"/api/pitches/{pitch_id}/takes/previous-missions", headers=headers)
+
+
+# ── 이전 미션 ──────────────────────────────────────────────────────
+
+
+def test_previous_missions_without_take_is_empty(
+    client: TestClient, auth_headers: dict[str, str], pitch_id: uuid.UUID
+) -> None:
+    response = _missions(client, pitch_id, auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["missions"] == {
+        "source_take_id": None,
+        "next_take_number": 1,
+        "missions": [],
+    }
+
+
+def test_previous_missions_come_from_latest_take(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    old = _make_take(db_session, pitch_id, versions, 1)
+    latest = _make_take(db_session, pitch_id, versions, 2)
+    db_session.add(Mission(source_take_id=old.id, slide_number=1, description="옛것", priority=1))
+    second = Mission(source_take_id=latest.id, slide_number=3, description="시선", priority=2)
+    first = Mission(source_take_id=latest.id, slide_number=5, description="속도", priority=1)
+    db_session.add_all([second, first])
+    db_session.flush()
+
+    response = _missions(client, pitch_id, auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()["missions"]
+    assert body["source_take_id"] == str(latest.id)
+    assert body["next_take_number"] == 3
+    assert body["missions"] == [
+        {
+            "mission_id": str(first.id),
+            "slide_number": 5,
+            "description": "속도",
+            "priority": 1,
+            "completed": False,
+        },
+        {
+            "mission_id": str(second.id),
+            "slide_number": 3,
+            "description": "시선",
+            "priority": 2,
+            "completed": False,
+        },
+    ]
+
+
+def test_previous_missions_of_take_without_missions_is_empty_list(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    _make_take(db_session, pitch_id, versions, 1)
+
+    response = _missions(client, pitch_id, auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["missions"]["missions"] == []
 
 def test_calibration_is_saved(
     client: TestClient,

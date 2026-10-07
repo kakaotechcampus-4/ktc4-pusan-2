@@ -111,14 +111,14 @@ def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
     latest_take = take_repository.get_latest_take_in_pitch(pitch_id)
 
     if latest_take is None:
-        return None
+        return PreviousMissionsDTO(source_take_id=None, next_take_number=1, missions=[])
 
     return PreviousMissionsDTO(
         source_take_id=latest_take.id,
         next_take_number=latest_take.take_number + 1,
         missions = [
             MissionDTO(
-                mission_id=mission.source_take_id,
+                mission_id=mission.id,
                 slide_number=mission.slide_number,
                 description=mission.description,
                 priority=mission.priority,

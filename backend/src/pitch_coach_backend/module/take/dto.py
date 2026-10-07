@@ -41,7 +41,8 @@ class MissionDTO(BaseModel):
     completed: bool
 
 class PreviousMissionsDTO(BaseModel):
-    source_take_id: uuid.UUID
+    # Take 가 아직 없으면 None (next_take_number 는 1, missions 는 빈 목록)
+    source_take_id: uuid.UUID | None
     next_take_number: int
     missions: list[MissionDTO]
 
