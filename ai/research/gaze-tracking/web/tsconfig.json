@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "types": ["vite/client"],
+    // Read-only views of the frontend's contract files, for the conformance check
+    // (test/fe-contract). Nothing under frontend/ is modified.
+    "paths": {
+      "@fe/*": ["../../../../frontend/src/*"],
+      "@/*": ["../../../../frontend/src/*"]
+    }
+  },
+  "include": ["src", "test"]
+}

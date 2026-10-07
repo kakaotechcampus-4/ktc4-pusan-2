@@ -1,0 +1,23 @@
+{
+  // The engine runs inside a Web Worker and moves to the frontend as one folder, so it must not
+  // touch the DOM (document, window, HTMLVideoElement ...). This config compiles it against the
+  // worker globals only: any DOM use fails here. The tests next to it (__tests__) run in Node.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023", "WebWorker"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": [],
+    "skipLibCheck": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true
+  },
+  "include": ["src/engine"],
+  "exclude": ["src/engine/__tests__"]
+}

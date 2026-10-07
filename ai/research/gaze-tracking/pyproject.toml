@@ -82,6 +82,8 @@ ignore = ["E501"]
 "src/gaze_lab/**" = ["E", "I", "UP", "B", "SIM"]
 "tools/pipeline_demo.py" = ["E", "I", "UP", "B", "SIM"]
 "tools/download_checkpoints.py" = ["E", "I", "UP", "B", "SIM"]
+"tools/export_config.py" = ["E", "I", "UP", "B", "SIM"]
+"tools/make_fixtures.py" = ["E", "I", "UP", "B", "SIM"]
 "experiments/**" = ["E", "I", "UP", "B", "SIM"]
 "tests/lab/**" = ["E", "I", "UP", "B", "SIM"]
 
