@@ -15,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-from coach.config import load_config
+from coach.config import CoachConfig, load_config
 from coach.renderer import format_duration
 
 from .paths import REPLAY_DIR, SCENARIOS_DIR
@@ -79,6 +79,11 @@ def _write_report(result: RunResult, out_dir: Path) -> Path:
     return path
 
 
+def load_config_file(path: str | Path) -> CoachConfig:
+    """설정 덮어쓰기 JSON 을 읽어 코치 설정을 만든다. 코어는 파일을 읽지 않으므로 여기서 읽는다."""
+    return load_config(**json.loads(Path(path).read_text(encoding="utf-8")))
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(
@@ -94,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     paths = [Path(p) for p in args.scenarios] or sorted(SCENARIOS_DIR.glob("*.json"))
-    config = load_config(args.config) if args.config else None
+    config = load_config_file(args.config) if args.config else None
 
     failed = 0
     for path in paths:
