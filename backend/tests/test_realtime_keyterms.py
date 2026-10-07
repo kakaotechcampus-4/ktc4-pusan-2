@@ -103,22 +103,16 @@ def _slide(db: Session, script: ScriptVersion, number: int, keywords: list[str] 
     db.flush()
 
 
-def test_candidates_are_terms_then_keywords_round_robin(db_session: Session, user_id: uuid.UUID):
+def test_candidates_are_terms_only(db_session: Session, user_id: uuid.UUID):
     script = _script(
         db_session, user_id, parse_status=ScriptParseStatus.DONE, terms=["SeatFlow", "XGBoost"]
     )
-    # 넣는 순서와 상관없이 slide_number 순으로 본다
-    _slide(db_session, script, 2, ["둘-1"])
-    _slide(db_session, script, 1, ["하나-1", "하나-2", "하나-3"])
-    _slide(db_session, script, 3, None)
+    # 슬라이드 keywords 는 발음 잡기용이 아니라 넣지 않는다
+    _slide(db_session, script, 1, ["좌석 예측"])
 
     assert pitch_service.stt_keyterm_candidates(db_session, script.pitch_id, script.id) == [
         "SeatFlow",
         "XGBoost",
-        "하나-1",
-        "둘-1",
-        "하나-2",
-        "하나-3",
     ]
 
 

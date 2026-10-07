@@ -425,8 +425,9 @@ def test_script_terms_follow_fillers_in_keyterms(
         wait_state(ws, "ok")
 
     (config,) = stt.configs
-    # filler 가 먼저, 대본 용어가 뒤. filler 와 겹치는 "음" 은 한 번만
-    assert config.keyterms == (*KEYTERM_FILLERS, "SeatFlow", "좌석 예측")
+    # filler 가 먼저, 대본 terms 가 뒤. filler 와 겹치는 "음" 은 한 번만.
+    # 슬라이드 keywords 는 넣지 않는다
+    assert config.keyterms == (*KEYTERM_FILLERS, "SeatFlow")
     assert config.min_keyterms == len(KEYTERM_FILLERS)
 
 

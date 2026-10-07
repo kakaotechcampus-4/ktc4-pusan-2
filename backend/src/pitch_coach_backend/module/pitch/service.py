@@ -2,7 +2,6 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
-from itertools import zip_longest
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -413,20 +412,14 @@ def stt_keyterm_candidates(
     realtime 이 WebSocket 인가 중에 부른다 (호출자가 run_in_threadpool 로 감싼다).
     파싱이 끝나지 않은 대본은 빈 목록 — 용어가 없어도 STT 는 돈다.
 
-    순서: terms(STT 가 틀리기 쉬운 고유명사, 파서가 우선순위대로 준다) → 슬라이드 keywords.
-    keywords 는 슬라이드마다 하나씩 번갈아 담는다. 한도가 모자랄 때 뒤 슬라이드가 통째로
-    빠지지 않게 하려는 것이다.
+    terms 만 쓴다 — STT 가 틀리기 쉬운 고유명사로, 파서가 우선순위 순으로 준다.
+    슬라이드 keywords 는 발음 잡기용이 아니라 넣지 않는다. 이미 잘 받아 적는 일반 단어라
+    boosting 하면 말하지 않은 단어가 전사에 끼어든다 (fillers.py 의 T3 와 같은 이유).
     """
-    pitch_repository = PitchRepository(db)
-    script = pitch_repository.get_script_in_pitch(pitch_id, script_version_id)
+    script = PitchRepository(db).get_script_in_pitch(pitch_id, script_version_id)
     if script is None or script.parse_status != ScriptParseStatus.DONE:
         return []
-
-    per_slide = [slide.keywords or [] for slide in pitch_repository.get_slides(script.id)]
-    keywords = [
-        keyword for rank in zip_longest(*per_slide) for keyword in rank if keyword is not None
-    ]
-    return [term for term in [*(script.terms or []), *keywords] if isinstance(term, str)]
+    return [term for term in script.terms or [] if isinstance(term, str)]
 
 
 # 각 발표자료 버전의 상세 정보.

@@ -276,8 +276,9 @@ WS /api/ws/takes/{take_id}
   어긋나면 로그에 남긴다.
 - 한국어 군더더기("음", "어", "그", "이제")는 Deepgram 이 기본으로 버리므로 `realtime/fillers.py` 의
   목록을 `keyterm` 으로 넘겨 전사에 남긴다. `filler_words` 옵션은 영어 전용이다.
-- filler 뒤에 Take 대본의 용어를 `keyterm` 으로 붙인다 (고유명사 오인식 방지). 순서는 파싱된 `terms` →
-  슬라이드 `keywords`(슬라이드마다 번갈아). 인가 때 같은 DB 왕복에서 읽고, 파싱이 안 끝난 대본이면 filler 만 보낸다.
+- filler 뒤에 Take 대본의 용어를 `keyterm` 으로 붙인다 (고유명사 오인식 방지). 파싱된 `terms` 만
+  우선순위 순으로 쓰고, 슬라이드 `keywords` 는 발음 잡기용이 아니라 넣지 않는다. 인가 때 같은 DB 왕복에서
+  읽고, 파싱이 안 끝난 대본이면 filler 만 보낸다.
   Deepgram 한도는 **100개·전체 500 토큰**이고 넘으면 연결 자체가 거절된다. 토큰 수는 실측으로 정한 상한
   (한글·ASCII 글자당 1, 그 밖 문자는 UTF-8 바이트, 용어당 +2)으로 세고 50 토큰을 남긴다 (`realtime/keyterms.py`).
   한도로 빠진 개수는 로그에 남는다. 그래도 추정이 빗나가 Deepgram 이 400 으로 거절하면 뒤쪽 대본 용어를
