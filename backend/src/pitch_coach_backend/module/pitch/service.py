@@ -436,13 +436,13 @@ def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_d
     #     except_standard=standards_result.except_standard
     # )
 
-def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_id: uuid.UUID):
+def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: int):
     pitch_repository = PitchRepository(db)
-    standards = pitch_repository.get_evaluations_by_version(pitch_id, evaluation_id)
+    standards = pitch_repository.get_evaluations_by_version(pitch_id, evaluation_version)
 
     return {
         "pitch_id": pitch_id,
-        "evaluation_id": evaluation_id,
+        "evaluation_version": evaluation_version,
         "evaluations": 
         [{
             "order": s+1,

@@ -171,11 +171,11 @@ def reparse_script(
     background_tasks.add_task(parse_runner.run, parse_ticket)
     return result
 
-@router.get("/{pitch_id}/evaluations/{evaluation_id}")
+@router.get("/{pitch_id}/evaluations/{evaluation_version}")
 def get_evaluation(
     pitch_id: OwnedPitch,
-    evaluation_id: uuid.UUID,
+    evaluation_version: int,
     db: Annotated[Session, Depends(get_db)],
 ):
-    evaluation = get_standard_detail(db, pitch_id, evaluation_id)
+    evaluation = get_standard_detail(db, pitch_id, evaluation_version)
     return evaluation
