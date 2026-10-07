@@ -22,7 +22,7 @@ import type { InfoForm } from './draft';
 /* 피치 — POST /pitches/add · PATCH /pitches/update/{id}                 */
 /* ------------------------------------------------------------------ */
 
-/** 발표정보 화면 값 → `PitchDTO`. 날짜를 안 골랐으면 null 입니다 (BE `date | None`) */
+/** 발표정보 화면 값 → `PitchSaveRequestDTO`. 날짜를 안 골랐으면 null 입니다 (BE `date | None`) */
 export function toPitchRequest(form: InfoForm): PitchRequest {
   return {
     title: form.title.trim(),

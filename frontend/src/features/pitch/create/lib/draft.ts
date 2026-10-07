@@ -28,7 +28,7 @@ export const MAX_TIME_LIMIT_MIN = 60;
 
 /**
  * 허용 오차(초). 목표보다 **짧게**(하한) · **길게**(상한) 발표해도 되는 시간을 따로 둡니다 —
- * 목업의 "−30초 / +1분". 서버의 `PitchDTO.lower_deviation` · `upper_deviation` 과 같은 모양입니다.
+ * 목업의 "−30초 / +1분". 서버의 `PitchSaveRequestDTO.lower_deviation` · `upper_deviation` 과 같은 모양입니다.
  */
 export const TOLERANCE_STEP_SEC = 30;
 export const MAX_TOLERANCE_SEC = 5 * 60;
