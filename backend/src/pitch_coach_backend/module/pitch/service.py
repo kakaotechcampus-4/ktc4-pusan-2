@@ -134,12 +134,6 @@ def to_version_dtos(rows: Iterable[Versioned]) -> list[VersionDTO]:
     return [VersionDTO(id=row.id, version=row.version) for row in rows]
 
 
-# 존재 확인
-def ensure_pitch_exists(pitch_repository: PitchRepository, pitch_id: uuid.UUID) -> None:
-    if not pitch_repository.get_by_id(pitch_id):
-        raise NonExistentPitch()
-
-
 # 발표 자료 버전 들고오기
 def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
     pitch_repository = PitchRepository(db)

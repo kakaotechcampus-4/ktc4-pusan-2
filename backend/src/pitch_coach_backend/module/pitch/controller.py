@@ -17,7 +17,6 @@ from pitch_coach_backend.module.pitch.dto import (
     StandardTextDTO,
     UploadPresentationDTO,
 )
-from pitch_coach_backend.module.pitch.exception import NonExistentPresentationVersion
 from pitch_coach_backend.module.pitch.service import (
     add_pitch_service,
     add_pitch_standard_service,
@@ -61,12 +60,8 @@ def get_presentation(
     presentation_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)]
 ):
-    presentation_version = get_presentation_detail(db, pitch_id, presentation_id)
-
-    if not presentation_version:
-        raise NonExistentPresentationVersion()
-
-    return presentation_version
+    # 없으면 service 가 NonExistentPresentationVersion(404) 을 던진다
+    return get_presentation_detail(db, pitch_id, presentation_id)
 
 @router.post("/add")
 def add_pitch(
