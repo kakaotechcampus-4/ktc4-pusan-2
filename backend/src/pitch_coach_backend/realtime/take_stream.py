@@ -12,9 +12,9 @@
 - **WS-1** (FE↔BE): 연결만 떨어진다. Deepgram 세션은 `GRACE_SEC` 동안 살려 두고 그 안에
   다시 붙으면 같은 세션에 이어 붙인다. 떨어져 있는 동안 온 final 은 모아 두었다가 재연결 때
   다시 보낸다. 못 붙으면 `CloseStream` 으로 정리한다.
-  탭을 새로고침하면 FE 는 무대 시계와 함께 seq·offset 을 1·0 부터 다시 센다. 새 연결의 첫
-  프레임이 뒤로 가면 그렇게 보고(`Accepted.restart`) 세션을 갈아 새 offset 으로 base 를 잡는다.
-  grace 가 지난 뒤 새 스트림이 열리는 경우와 같은 결과다.
+  탭을 새로고침하면 FE 는 seq 를 1 부터 다시 세고 offset 은 이어받은 무대 시계부터 보낸다.
+  새 연결의 첫 프레임이 뒤로 가면(seq 또는 offset) 그렇게 보고(`Accepted.restart`) 세션을 갈아
+  그 offset 으로 base 를 잡는다. grace 가 지난 뒤 새 스트림이 열리는 경우와 같은 결과다.
 - **WS-2** (BE↔Deepgram): 큐에 담아 두고 백오프로 재접속한다. 새 세션은 타임스탬프가 다시
   0 부터라 `base_offset_ms` 를 새로 잡고 `stt_session_no` 를 올린다. 재접속이 이어서 실패해도
   **연결을 끊지 않는다** — FE 1단 코치는 계속 돌아야 하므로 `degraded` 만 알리고 재시도한다.

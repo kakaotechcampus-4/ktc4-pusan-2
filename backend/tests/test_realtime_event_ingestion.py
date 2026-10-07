@@ -54,6 +54,32 @@ def test_new_connection_starting_over_is_a_restart_and_breaks_the_timeline():
     assert sequencer.accept(frame(2, 100)) is None
 
 
+def test_reload_that_resumes_the_stage_clock_is_a_restart():
+    """새로고침하면 seq 만 1 부터다. offset 은 이어받은 무대 시계라 앞으로 간다."""
+    sequencer = FrameSequencer()
+    sequencer.new_connection()
+    for i in range(30):
+        sequencer.accept(frame(i + 1, i * 100))
+
+    sequencer.new_connection()
+    first = sequencer.accept(frame(1, 4_000))
+    assert first is not None and first.restart
+    # 새로고침하는 동안의 공백을 무음으로 채우지 않는다. 세션을 갈아 base 를 다시 잡는다
+    assert (first.silence_ms, first.lost_ms) == (0, 0)
+
+
+def test_new_connection_with_forward_seq_but_backward_offset_is_a_restart():
+    """이전 탭이 몇 프레임만 보냈으면 새 탭의 첫 seq 가 더 클 수 있다. offset 으로 가린다."""
+    sequencer = FrameSequencer()
+    sequencer.new_connection()
+    for i in range(5):
+        sequencer.accept(frame(i + 1, 3_000 + i * 100))
+
+    sequencer.new_connection()
+    first = sequencer.accept(frame(12, 1_500))
+    assert first is not None and first.restart
+
+
 def test_only_the_first_frame_of_a_connection_can_restart():
     sequencer = FrameSequencer()
     sequencer.new_connection()

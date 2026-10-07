@@ -71,14 +71,14 @@ class Accepted:
     silence_ms: int
     # 무음으로 메우기에는 너무 긴 갭이라 받지 못한 길이
     lost_ms: int
-    # FE 가 seq·offset 을 처음부터 다시 센 첫 프레임 (탭 새로고침)
+    # FE 가 처음부터 다시 센 새 연결의 첫 프레임 (탭 새로고침)
     restart: bool = False
 
     @property
     def timeline_break(self) -> bool:
         """이 프레임부터는 지금 Deepgram 세션의 타임라인에 이어 붙일 수 없다.
 
-        갭을 무음으로 메우지 않았거나(lost_ms) offset 이 0 부터 다시 시작했다(restart).
+        갭을 무음으로 메우지 않았거나(lost_ms) FE 가 처음부터 다시 셌다(restart).
         그대로 보내면 이후 전사 시각이 어긋난다. 보내는 쪽(take_stream)이 세션을 갈아
         base 를 다시 잡아야 한다.
         """
@@ -105,10 +105,15 @@ class FrameSequencer:
         restart = False
         if self._new_connection:
             self._new_connection = False
-            # 재연결은 seq 를 이어 보낸다 (FE 는 보낸 프레임을 다시 보내지 않는다). 새 연결의
-            # 첫 프레임이 뒤로 갔다면 탭을 새로고침해 FE 가 seq·offset 을 1·0 부터 다시 센 것이다.
-            # 역행으로 버리면 그 뒤 오디오가 예전 seq 를 넘을 때까지 통째로 사라진다
-            restart = self._last is not None and frame.seq <= self._last.seq
+            # 재연결은 seq·offset 을 이어 보낸다 (FE 는 보낸 프레임을 다시 보내지 않는다). 새 연결의
+            # 첫 프레임이 뒤로 갔다면 FE 가 처음부터 다시 센 것이다 — 탭을 새로고침하면 seq 는
+            # 1 부터, offset 은 이어받은 무대 시계부터 다시 센다. 역행으로 버리면 그 뒤 오디오가
+            # 예전 seq 를 넘을 때까지 통째로 사라진다.
+            # offset 도 보는 이유: 이전 탭이 보낸 프레임이 적으면 새 탭의 첫 seq 가 더 클 수 있고,
+            # 이어받은 시점이 추정값이면(탭이 죽은 경우) 이전 탭이 보낸 시각보다 앞설 수 있다
+            restart = self._last is not None and (
+                frame.seq <= self._last.seq or frame.offset_ms < self._last.offset_ms
+            )
             if restart:
                 self._last = None
 
