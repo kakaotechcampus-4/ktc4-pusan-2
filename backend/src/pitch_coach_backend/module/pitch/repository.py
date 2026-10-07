@@ -119,6 +119,12 @@ class PitchRepository:
                 PresentationVersion.id == presentation_version_id
             )
         )
+
+    def save_standard(self, pitch_id: uuid.UUID, standard: Standards) -> Standards:
+        standard.pitch_id = pitch_id
+        self.db.add(standard)
+        self.db.flush()
+        return standard
  
     def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
         return self.db.scalars(
