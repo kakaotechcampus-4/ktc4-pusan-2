@@ -34,7 +34,7 @@ class GazeConfig(_Section):
     unmeasured_label: str = "UNMEASURED"
     #: 1초 기록 입력에서 마지막 기록이 지금보다 이만큼 넘게 오래됐으면 지금 라벨을 측정 불가로 본다
     record_stale_ms: int = 2_000
-    #: 창이 이보다 짧으면(Take 시작 직후) 비율로 지적하지 않는다. 1~3초의 표본으로는 두 번만
+    #: Take 경과 시간이 이보다 짧으면 비율로 지적하지 않는다. 1~3초의 표본으로는 두 번만
     #: 대본을 봐도 70% 를 넘었다 (1초 기록 입력 실험, harsh). FE 코치도 표본 5개 미만이면
     #: 비율을 내지 않는다
     min_window_ms: int = 5_000

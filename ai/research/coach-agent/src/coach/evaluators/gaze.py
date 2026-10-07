@@ -33,35 +33,37 @@ def window_summary(
         return gaze.ratios, span, gaze.current_label, gaze.current_label_ms or 0
     if span <= 0:
         return {}, 0, None, 0
-    records = sorted(gaze.records, key=lambda r: r.t_ms)
-    by_label: dict[str, float] = {}
+
+    # 창 안으로 자르고 겹침을 뺀 구간 (시작, 끝, 라벨). 창 밖(미래 포함) 기록과 앞 기록에 덮인
+    # 시간은 버린다 — 같은 시간을 두 번 세거나 아직 오지 않은 시간을 지금 라벨로 쓰지 않게
+    segments: list[tuple[int, int, str]] = []
     covered_until = start
-    for r in records:
-        # 겹친 기록은 앞 기록이 덮은 시간을 빼고 센다 — 같은 시간을 두 번 세지 않게
+    for r in sorted(gaze.records, key=lambda r: r.t_ms):
         lo, hi = max(r.t_ms, covered_until), min(r.t_ms + r.duration_ms, end)
         if hi <= lo:
             continue
         label = cfg.uncertain_label if r.state == cfg.unmeasured_label else r.state
-        by_label[label] = by_label.get(label, 0.0) + (hi - lo)
+        segments.append((lo, hi, label))
         covered_until = hi
+
+    by_label: dict[str, float] = {}
+    for lo, hi, label in segments:
+        by_label[label] = by_label.get(label, 0.0) + (hi - lo)
     missing = span - sum(by_label.values())
     if missing > 0:
         by_label[cfg.uncertain_label] = by_label.get(cfg.uncertain_label, 0.0) + missing
     ratios = {label: ms / span for label, ms in by_label.items()}
 
-    if not records or t_ms - (records[-1].t_ms + records[-1].duration_ms) > cfg.record_stale_ms:
+    last_end = segments[-1][1] if segments else start
+    if not segments or end - last_end > cfg.record_stale_ms:
         # 최근 기록이 끊겼다 — 지금 라벨은 측정하지 못한 것이다
-        last_end = records[-1].t_ms + records[-1].duration_ms if records else start
-        return ratios, span, cfg.uncertain_label, max(0, t_ms - last_end)
-    current = records[-1].state
-    run_start = records[-1].t_ms
-    for prev in reversed(records[:-1]):
-        if prev.state != current or prev.t_ms + prev.duration_ms < run_start:
+        return ratios, span, cfg.uncertain_label, end - last_end
+    run_start, current = segments[-1][0], segments[-1][2]
+    for lo, hi, label in reversed(segments[:-1]):
+        if label != current or hi != run_start:
             break
-        run_start = prev.t_ms
-    if current == cfg.unmeasured_label:
-        current = cfg.uncertain_label
-    return ratios, span, current, min(t_ms, records[-1].t_ms + records[-1].duration_ms) - run_start
+        run_start = lo
+    return ratios, span, current, last_end - run_start
 
 
 def evaluate(tick: Tick) -> None:
@@ -70,7 +72,9 @@ def evaluate(tick: Tick) -> None:
         return
     cfg = tick.cfg.gaze
     ratios, span_ms, current_label, current_label_ms = window_summary(gaze, tick.t, cfg)
-    if not ratios:
+    if gaze.records is not None and span_ms <= 0:
+        # Take 시작 순간(t=0) — 기록으로 잴 시간이 아직 없다
+        tick.metrics["gaze_window_short"] = True
         return
 
     # ratios 는 측정하지 못한 시간까지 합쳐 1 이다. script_ratio 는 '보이던 시간 중 대본을 본
@@ -103,9 +107,10 @@ def evaluate(tick: Tick) -> None:
     # 틀린 숫자로 '효과 없음'을 판정하면 멀쩡한 전략을 포기하게 된다
     tick.metrics["script_ratio"] = round(script_ratio, 4) if sensor_ok else None
     tick.metrics["continuous_script_gaze_ms"] = continuous
-    if span_ms < cfg.min_window_ms:
+    if tick.t < cfg.min_window_ms:
         # Take 시작 직후 — 몇 초의 표본으로 낸 비율은 한두 번의 판정에 크게 흔들려 지적하지 않는다.
-        # 장별 누적에는 그대로 쓴다
+        # 장별 누적에는 그대로 쓴다. 창 길이가 아니라 Take 경과 시간으로 본다 — FE 가 짧은 창을
+        # 보내도 지적이 영영 막히지 않게
         tick.metrics["gaze_window_short"] = True
         return
 
