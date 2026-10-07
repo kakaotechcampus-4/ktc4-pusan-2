@@ -144,6 +144,15 @@ class PitchRepository:
             .order_by(Standards.version.asc())
         ).all()
 
+    def get_evaluations_by_version(self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
+        return self.db.scalars(
+            select(Standards).where(
+                Standards.pitch_id == pitch_id,
+                Standards.version == version
+            )
+            .order_by(Standards.position.asc())
+        ).all()
+
     # ── 대본 파싱 ────────────────────────────────────────────────────
     # 상태 전이는 전부 조건부 UPDATE 한 번으로 한다. "읽고 → 검사하고 → 쓰기" 로 나누면
     # 그 사이에 다른 요청(재시도 버튼 두 번)이나 늦게 끝난 옛 작업이 끼어들 수 있다.
