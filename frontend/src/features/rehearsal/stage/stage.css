@@ -384,8 +384,9 @@
   font-weight: 700;
 }
 
-/* Highlight 모드는 지금 문단만 남기고 더 죽인다 */
-.stage[data-script-mode='HIGHLIGHT'] .script p {
+/* Highlight 모드는 지금 문단만 남기고 더 죽인다.
+   :not 이 없으면 이 규칙이 더 구체적이라 지금 문단까지 죽는다 */
+.stage[data-script-mode='HIGHLIGHT'] .script p:not([data-current='true']) {
   color: color-mix(in srgb, var(--color-ink-stage) 35%, transparent);
 }
 

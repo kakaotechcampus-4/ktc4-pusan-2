@@ -1,38 +1,39 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router';
-import { ScreenLabel } from '@/shared/ui/ScreenLabel';
-import { MetaBar } from './MetaBar';
-import { NextGate } from './NextGate';
-import { StartConfirm } from './StartConfirm';
+import { useEffect } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
+import { InfoBar } from './InfoBar';
 import { VersionRail } from './VersionRail';
-import { useCreateStore } from './createStore';
-import { latestCriteria, latestScript, latestSlides } from './lib/draft';
+import { selectBusy, selectInfoUnsaved, useCreateStore } from './createStore';
+import {
+  latestCriteria,
+  latestScript,
+  latestSlides,
+  toPracticeCombo,
+  type PaneNode,
+  type ScriptVersion,
+} from './lib/draft';
 import { CriteriaPane } from './steps/CriteriaPane';
+import { InfoPane } from './steps/InfoPane';
 import { ScriptPane } from './steps/ScriptPane';
 import { SlidePane } from './steps/SlidePane';
 
 /**
- * P3 피치 생성. 목업 04~08 이 **한 라우트**입니다.
+ * P3 피치 생성. 목업의 발표정보 · 평가기준 · 슬라이드 · 대본 입력 · 매핑 확인이 **한 라우트**입니다.
  *
  * 마법사(다음 → 다음)가 아닌 이유 — 사이드바가 버전 트리라 아무 때나 지난
  * 버전으로 돌아갈 수 있고, 목업에서 대본만 세 번 고친 흔적(V3)이 그 증거입니다.
- * "다음" 버튼은 단계 이동이 아니라 **연습 시작**입니다.
+ * "다음" 버튼은 단계 이동이 아니라 **연습 시작**이고, 매핑 확인 화면에만 있습니다.
  *
  * 본문은 사이드바에서 고른 것(`node` + `version`)이 정합니다.
  */
-function PitchCoachMark() {
-  return (
-    <svg aria-hidden="true" className="h-6 w-8" viewBox="0 0 34 26" shapeRendering="crispEdges">
-      <rect className="fill-coral" x="2" y="0" width="6" height="4" />
-      <rect className="fill-coral" x="18" y="0" width="6" height="4" />
-      <rect className="fill-coral" x="0" y="4" width="26" height="16" />
-      <rect className="fill-coral" x="26" y="8" width="8" height="4" />
-      <rect className="fill-coral" x="3" y="20" width="5" height="4" />
-      <rect className="fill-coral" x="15" y="20" width="5" height="4" />
-      <rect className="fill-ink" x="5" y="9" width="5" height="5" />
-      <rect className="fill-ink" x="15" y="9" width="5" height="5" />
-    </svg>
-  );
+
+/** 사이드바 아래 치치의 말풍선. 지금 화면에서 할 일을 한마디로 */
+function mascotLine(node: PaneNode, script: ScriptVersion | null): string {
+  if (node === 'criteria') return '기준을 정하면\n피드백이 선명해져!';
+  if (node === 'slides') return '발표할 자료를\n확인해 봐!';
+  if (node === 'script' && script?.saved) return '저장 완료!\n이제 연습하자.';
+  if (node === 'script') return '한 문장씩\n준비해 보자!';
+  return '준비부터\n차근차근!';
 }
 
 export function PitchCreatePage() {
@@ -40,69 +41,97 @@ export function PitchCreatePage() {
   const node = useCreateStore((s) => s.node);
   const version = useCreateStore((s) => s.version);
   const pitchId = useCreateStore((s) => s.pitchId);
-  const draftId = useCreateStore((s) => s.draftId);
+  const chosen = useCreateStore((s) => s.chosen);
   const navigate = useNavigate();
-  const [locked, setLocked] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const unsaved = useCreateStore(selectInfoUnsaved);
+  const busy = useCreateStore(selectBusy);
 
-  const slideCount = latestSlides(draft)?.pageCount ?? 0;
+  // 탭을 닫거나 새로고침하면 저장하지 않은 발표정보와 진행 중인 업로드 · 나누기가 사라집니다.
+  // 브라우저 기본 확인 창만 띄웁니다 — 문구는 브라우저가 정하고 바꿀 수 없습니다
+  useEffect(() => {
+    if (!unsaved && !busy) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved, busy]);
 
-  // 고른 버전이 없으면 그 갈래의 최신을 봅니다 — 사이드바가 굵게 표시한 것
+  const pickedScript =
+    node === 'script'
+      ? (draft.scripts.find((v) => v.version === version) ?? latestScript(draft))
+      : null;
+
+  /*
+    매핑 확인의 "다음" — 장치 점검 → 준비 화면 → 시작 CTA 순서입니다.
+
+    ★ 여기서 POST /takes 를 부르지 않습니다 (CLAUDE.md 8번) —
+      Take 는 준비 화면의 시작 CTA 에서만 생깁니다. 여기서 만들면
+      점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 어긋납니다.
+
+    ★ 매핑을 저장하며 고른 조합(슬라이드 + 대본)을 장치 점검에 넘깁니다. BE 는 이 조합을
+      Take 에 박아 두므로(TakeInitRequestDTO), "어느 슬라이드에 맞춘 대본인가"가 남는 곳은 거기뿐입니다.
+  */
+  const start = () => {
+    const practice = toPracticeCombo(draft, chosen);
+    if (pitchId && practice) navigate(`/pitch/${pitchId}/device-check`, { state: { practice } });
+  };
+
+  // 고른 버전이 없으면 그 갈래의 최신을 봅니다 — 사이드바가 강조한 것
   const pane = (() => {
+    if (node === 'info') return <InfoPane />;
     if (node === 'slides') {
       const picked = draft.slides.find((v) => v.version === version) ?? latestSlides(draft);
       return <SlidePane slide={picked} />;
     }
-    if (node === 'script') {
-      const picked = draft.scripts.find((v) => v.version === version) ?? latestScript(draft);
-      return <ScriptPane script={picked} slideCount={slideCount} />;
-    }
+    if (node === 'script') return <ScriptPane script={pickedScript} onStart={start} />;
     const picked = draft.criteria.find((v) => v.version === version) ?? latestCriteria(draft);
     return <CriteriaPane criteria={picked} />;
   })();
 
   return (
-    <main className="flex h-dvh flex-col gap-3 bg-greige p-4">
-      {/* 시안 대조용. 걷어낼 때는 이 줄만 지웁니다 */}
-      <ScreenLabel screenNo="04" screenName="피치 생성" entry="진입 · 홈의 새 피치 만들기" />
+    <div className="flex h-dvh flex-col bg-panel text-ink">
+      <header className="flex shrink-0 items-center justify-between border-b border-line-strong px-8 py-4">
+        <Link to="/" aria-label="PITCH COACH 홈">
+          <PitchCoachWordmark />
+        </Link>
+        <Link to="/" className="text-sm font-bold hover:text-coral-deep">
+          ← 내 피치
+        </Link>
+      </header>
 
-      <div className="flex min-h-0 flex-1 gap-0 rounded border border-line bg-cream">
-        {/* ── 좌측: 로고 · 버전 트리 · 진행 조건 ─────────────────── */}
-        <aside className="flex w-sidebar shrink-0 flex-col gap-5 border-r border-line-strong p-4">
-          <div className="flex items-center gap-2 font-bold">
-            <PitchCoachMark />
-            <span className="text-sm tracking-tight">PITCH COACH</span>
-          </div>
-
+      <div className="flex min-h-0 flex-1 gap-6 px-6 py-5">
+        {/* ── 좌측: 발표 자료 트리 · 치치 ─────────────────────────── */}
+        <aside className="flex w-sidebar shrink-0 flex-col gap-4 rounded-lg border border-line bg-cream/60 p-4">
           <VersionRail />
 
-          {/* 바로 넘어가지 않습니다 — 어떤 버전이 고정되는지 먼저 확인시킵니다 */}
-          <NextGate onStart={() => setConfirming(true)} />
+          <div className="flex items-end gap-1">
+            <img
+              src="/onboarding/chichi-portrait-longsleeve.png"
+              alt=""
+              className="h-20 w-20 shrink-0 object-contain [image-rendering:pixelated]"
+            />
+            {/* 말풍선. 꼬리는 치치 쪽(왼쪽 아래)으로 */}
+            <p className="relative mb-8 whitespace-pre-line rounded-lg border border-ink bg-white px-3 py-2 text-xs font-bold leading-snug before:absolute before:-left-1.5 before:bottom-2 before:h-2.5 before:w-2.5 before:rotate-45 before:border-b before:border-l before:border-ink before:bg-white">
+              {mascotLine(node, pickedScript)}
+            </p>
+          </div>
         </aside>
 
-        {/* ── 우측: 상단 메타 + 본문 ──────────────────────────────── */}
-        <section className="flex min-w-0 flex-1 flex-col gap-4 p-4">
-          <MetaBar locked={locked} onToggleLock={() => setLocked((v) => !v)} />
-          {pane}
-        </section>
-      </div>
+        {/* ── 우측: 경로 · 발표 정보 줄 · 본문 ────────────────────── */}
+        <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-2">
+          <nav aria-label="경로" className="flex items-center gap-2 text-xs text-stone">
+            <Link to="/" className="hover:text-ink">
+              내 피치
+            </Link>
+            <span aria-hidden="true">›</span>
+            <span aria-current="page" className="text-ink">
+              {draft.title.trim() || '새 피치'}
+            </span>
+          </nav>
 
-      {confirming && (
-        <StartConfirm
-          onClose={() => setConfirming(false)}
-          onGo={() => {
-            // 장치 점검 → 준비 화면 → 시작 CTA 순서입니다.
-            // ★ 여기서 POST /takes 를 부르지 않습니다 (CLAUDE.md 8번) —
-            //   Take 는 준비 화면의 시작 CTA 에서만 생깁니다. 여기서 만들면
-            //   점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 어긋납니다.
-            //
-            // ★ pitchId 가 null 인 것은 생성 API 가 아직 없어서입니다.
-            //   그동안은 draftId 로 이동합니다 — 목은 어떤 id 로도 답하므로
-            //   화면 흐름은 확인되지만 서버에 저장된 것은 없습니다.
-            navigate(`/pitch/${pitchId ?? draftId}/device-check`);
-          }}
-        />
-      )}
-    </main>
+          <InfoBar />
+          {pane}
+        </main>
+      </div>
+    </div>
   );
 }

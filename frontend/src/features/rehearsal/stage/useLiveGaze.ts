@@ -189,7 +189,7 @@ export function useLiveGaze({
   }, [pumping, stream, videoRef, startPump, stopPump]);
 
   // 기준이 없는 것은 발표를 시작한 뒤에만 사유가 됩니다 — enabled 가 false 인
-  // 동안(소리만으로 진행 등)은 다른 사유가 이미 정해져 있으니 덮지 않습니다
+  // 동안(카메라 권한 거부 등)은 다른 사유가 이미 정해져 있으니 덮지 않습니다
   const missingCalibration = enabled && refState === 'MISSING';
   const error = workerError ?? (missingCalibration ? 'ENGINE_UNAVAILABLE' : null);
 

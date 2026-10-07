@@ -30,7 +30,7 @@ export const CALIBRATION_FAIL_MESSAGE: Record<CalibrationFailReason, string> = {
  * 화면이 보는 시선 기준 상태.
  *
  *   LOADING      엔진(MediaPipe)을 불러오는 중
- *   UNAVAILABLE  엔진이 못 떴음 — `/models/` 에 자산이 없을 때가 대표적. 소리만으로 갑니다
+ *   UNAVAILABLE  엔진이 못 떴음 — `/models/` 에 자산이 없을 때가 대표적. 시작할 수 없습니다
  *   IDLE         아직 안 잡음
  *   RUNNING      준비 점검 · 고개 원 · 3점 보정 중 (전체 화면)
  *   DONE         기준이 있음 (품질이 낮으면 `advice`)
@@ -196,7 +196,7 @@ export function useGazeSetup({
       setFailReason(null);
       // 기준은 브라우저에만 남습니다. 다음 Take 가 같은 기기·배치·엔진이면 되살려 씁니다.
       // 실패는 삼키지 않습니다 — 화면은 '완료'인데 리허설에서 시선이 조용히 빠지기 때문입니다.
-      // 시작은 막고, 다시 잡거나 '소리만으로 계속하기'로 가게 합니다
+      // 시작은 막고, 다시 잡게 합니다
       savingRef.current = saveZoneRef(layoutSignature, ref, takeEngineVersion(engine));
       savingRef.current.catch(() => {
         // 그사이 다시 잡기를 눌렀으면 옛 시도의 실패로 새 시도를 막지 않습니다
@@ -436,7 +436,7 @@ export function useGazeSetup({
     cancel,
     /** 기준 저장이 끝날 때까지 기다립니다. 리허설로 넘어가기 직전에 부릅니다 */
     saved,
-    /** 기준을 저장하지 못함. 시작을 막고 다시 잡기나 소리만으로 계속하기를 안내합니다 */
+    /** 기준을 저장하지 못함. 시작을 막고 다시 잡기를 안내합니다 */
     saveFailed,
   };
 }

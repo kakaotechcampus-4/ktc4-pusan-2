@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
+import type { PracticeCombo, PrepareResponse, RehearsalTicket } from '@/types/api';
 import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
-import { setTakeId, startSession } from '../lib/db';
+import { setSessionTicket, setTakeId, startSession } from '../lib/db';
 import { toMessage } from '@/shared/api/errorMessage';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
@@ -21,9 +22,8 @@ import { useVideoStream } from '../media/useVideoStream';
  * **쓴 순서가 곧 우선순위입니다.** 여럿이 동시에 어긋나 있어도 사용자가 지금 할 수 있는
  * 일은 하나뿐이라, 가장 앞을 막고 있는 것만 말합니다.
  *
- * 마이크가 시선 기준보다 앞인 이유 — 마이크가 없으면 '소리만으로 계속하기'까지 잠깁니다.
- * 그 상태에서 시선 기준을 잡아 봐야 열리는 버튼이 없습니다. 반대로 시선을 못 잡아도
- * 마이크만 되면 소리만으로 갈 수 있습니다. 그래서 마이크가 먼저입니다.
+ * 마이크가 시선 기준보다 앞인 이유 — 시선 기준은 몇 초 동안 화면을 보며 잡아야 하는데,
+ * 마이크가 안 되면 기준을 다 잡아도 시작할 수 없습니다. 바로 고칠 수 있는 것부터 말합니다.
  */
 function deviceCheckHint({
   deviceError,
@@ -46,14 +46,14 @@ function deviceCheckHint({
   if (!live) return '카메라를 켜야 점검을 시작할 수 있습니다';
   if (!micOk) return '마이크에 대고 한 마디 해보세요';
   if (calStatus === 'UNAVAILABLE') {
-    return "시선 분석을 켤 수 없어요. '소리만으로 계속하기'로 연습할 수 있습니다";
+    return '시선 분석을 켤 수 없어요. 새로고침해도 그대로면 팀에 알려 주세요';
   }
   if (calStatus === 'LOADING') return '시선 분석을 준비하는 중…';
   if (calStatus === 'FAILED')
     return '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요';
   if (calStatus !== 'DONE') return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
   if (calSaveFailed) {
-    return "시선 기준을 저장하지 못했어요. 다시 잡거나 '소리만으로 계속하기'를 눌러 주세요";
+    return '시선 기준을 저장하지 못했어요. 다시 잡아 주세요';
   }
   if (calPoor) return '시선 기준이 흐릿해요. 다시 잡으면 더 정확해지지만, 이대로 시작해도 됩니다';
   return '점검이 끝났어요';
@@ -113,12 +113,41 @@ function calibrationLabel(
  *   만들지 않습니다 — 점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 실제
  *   연습 횟수와 어긋납니다. 이 함수를 다른 화면으로 복사하지 마세요.
  *
- * 점검 셋 중 둘은 장치(카메라·마이크)고 하나는 시선 기준점입니다.
- * 시선을 못 잡겠으면 '소리만으로 계속하기'로 빠집니다 — 그 Take의 시선은
- * USER_DECLINED로 제외되고, 말하기 지표만으로 리포트가 나옵니다.
+ * 점검 셋 중 둘은 장치(카메라·마이크)고 하나는 시선 기준점입니다. 셋 다 통과해야 시작합니다.
  */
+/**
+ * Take 에 박을 버전과 목표 시간. 피치 생성에서 고른 조합이 먼저이고, 없으면 준비 화면 응답입니다.
+ * 둘 다 없으면 null — Take 를 만들 수 없습니다.
+ */
+function takeVersions(combo: PracticeCombo | null, data: PrepareResponse | undefined) {
+  if (combo) {
+    return {
+      presentation_version_id: combo.presentationVersionId,
+      script_version_id: combo.scriptVersionId,
+      goal_time_sec: combo.goalTimeSec,
+    };
+  }
+  if (data) {
+    return {
+      presentation_version_id: data.presentationVersionId,
+      script_version_id: data.scriptVersionId,
+      goal_time_sec: data.timeLimitSec,
+    };
+  }
+  return null;
+}
+
+/** 화면 위 부제목. 피치 생성에서 고른 조합이 있으면 그 번호를 씁니다 — 실제로 연습할 조합입니다 */
+function versionLabel(combo: PracticeCombo | null, data: PrepareResponse | undefined): string {
+  if (combo) return `자료 v${combo.slideVersion} · 대본 v${combo.scriptVersion}`;
+  if (data) return `자료 v${data.presentationVersion} · 대본 v${data.scriptVersion}`;
+  return '';
+}
+
 export function DeviceCheckPage() {
   const { pitchId = '' } = useParams();
+  // 피치 생성에서 매핑을 저장하며 고른 조합. 홈에서 바로 왔거나 새로고침했으면 없습니다
+  const combo = (useLocation().state as { practice?: PracticeCombo } | null)?.practice ?? null;
   const navigate = useNavigate();
   const { data } = usePrepare(pitchId);
 
@@ -128,23 +157,16 @@ export function DeviceCheckPage() {
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
   // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
   // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
-  const {
-    declineGaze,
-    scriptMode,
-    setScriptMode,
-    calibration,
-    scriptModeTouched,
-    setChosenDevices,
-  } = usePrepareStore(
-    useShallow((s) => ({
-      declineGaze: s.declineGaze,
-      scriptMode: s.scriptMode,
-      setScriptMode: s.setScriptMode,
-      calibration: s.calibration,
-      scriptModeTouched: s.scriptModeTouched,
-      setChosenDevices: s.setDevices,
-    })),
-  );
+  const { scriptMode, setScriptMode, calibration, scriptModeTouched, setChosenDevices } =
+    usePrepareStore(
+      useShallow((s) => ({
+        scriptMode: s.scriptMode,
+        setScriptMode: s.setScriptMode,
+        calibration: s.calibration,
+        scriptModeTouched: s.scriptModeTouched,
+        setChosenDevices: s.setDevices,
+      })),
+    );
   const cal = useGazeSetup({ stream, videoRef, live });
   const createTake = useCreateTake();
 
@@ -192,13 +214,17 @@ export function DeviceCheckPage() {
 
   // 저장된 기준을 확인하는 중에는 열지 않습니다 — "완료"로 보이는데 기준이 없으면
   // 리허설에서 시선이 조용히 빠집니다
+  //
+  // ★ 피치 생성에서 조합을 받았으면 준비 화면 응답(`/prepare`)을 기다리지 않습니다.
+  //   Take 에 필요한 값(버전 id · 목표 시간)이 조합에 다 있고, `/prepare` 는 BE 에 아직 없습니다
+  const versions = takeVersions(combo, data);
   const ready =
     live &&
     micOk &&
     cal.status === 'DONE' &&
     !cal.verifying &&
     !cal.saveFailed &&
-    data !== undefined &&
+    versions !== null &&
     !starting;
 
   /**
@@ -207,8 +233,8 @@ export function DeviceCheckPage() {
    * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
    * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
    */
-  const start = async ({ withGaze }: { withGaze: boolean }) => {
-    if (!data || starting) return;
+  const start = async () => {
+    if (!versions || starting) return;
     setStarting(true);
     setStartError(null);
 
@@ -226,28 +252,45 @@ export function DeviceCheckPage() {
     try {
       // 리허설은 다른 워커라 기준을 IndexedDB 에서 꺼내 씁니다. **Take 를 만들기 전에** 확인합니다 —
       // 뒤에서 실패하면 연습 없이 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다
-      if (withGaze) await cal.saved();
+      await cal.saved();
 
       const clientSessionId = await startSession();
 
+      // ★ 이번 연습의 슬라이드 + 대본 조합이 Take 에 박힙니다 (BE TakeInitRequestDTO)
       const take = await createTake.mutateAsync({
-        pitchId: data.pitchId,
-        clientSessionId,
-        mode: practiceMode,
-        scriptMode,
-        presentationVersion: data.presentationVersion,
-        scriptVersion: data.scriptVersion,
-        criteriaVersion: data.criteria.version,
+        pitchId,
+        body: { mode: practiceMode, script_mode: scriptMode, ...versions },
       });
       await setTakeId(clientSessionId, take.takeId);
 
+      // 리허설이 무대를 열 때 쓸 값. 새로고침해도 남도록 세션에도 적어 둡니다
+      const ticket: RehearsalTicket = {
+        pitchId,
+        title: combo?.title ?? data?.title ?? '',
+        presentationVersionId: versions.presentation_version_id,
+        scriptVersionId: versions.script_version_id,
+        timeLimitSec: versions.goal_time_sec,
+        mode: practiceMode,
+        scriptMode,
+        takeNumber: data?.nextTakeNumber ?? null,
+      };
+      await setSessionTicket(clientSessionId, ticket);
+
       // 품질 요약만 갑니다. 기준 벡터는 브라우저에 남습니다 (CLAUDE.md 1번)
-      if (calibration) await postCalibration(take.takeId, calibration);
+      //
+      // ★ 여기서 실패해도 연습은 엽니다. Take 는 이미 만들어졌으니, 여기서 멈추면 연습 없이
+      //   빈 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다. 요약은 리포트의 참고값이라
+      //   빠져도 발표 기록은 온전합니다 — 원인은 콘솔에 남깁니다
+      if (calibration) {
+        await postCalibration(pitchId, take.takeId, calibration).catch((err: unknown) => {
+          console.error('[장치 점검] 보정 요약을 보내지 못했습니다', err);
+        });
+      }
 
       navigate(
         practiceMode === 'EXAM' ? `/takes/${take.takeId}/exam` : `/takes/${take.takeId}/rehearsal`,
         {
-          state: { clientSessionId, scriptMode },
+          state: { clientSessionId, scriptMode, ticket },
         },
       );
     } catch (e) {
@@ -280,30 +323,17 @@ export function DeviceCheckPage() {
       screenNo="09"
       screenName="시작 전 세팅 (Take 준비)"
       entry="진입 · 피치 생성 완료 / 리포트의 다시 연습하기"
-      title={data?.title ?? '불러오는 중…'}
-      subtitle={data ? `자료 v${data.presentationVersion} · 대본 v${data.scriptVersion}` : ''}
+      title={data?.title ?? combo?.title ?? '불러오는 중…'}
+      subtitle={versionLabel(combo, data)}
       badge={`TAKE ${data?.nextTakeNumber || '—'} · 시작 전 세팅`}
       onBack={() => navigate(-1)}
       hint={hint}
       actions={
         <>
-          {/*
-            시선을 못 잡아도 연습은 갑니다. 그 Take 의 시선은 USER_DECLINED 로 제외되고
-            말하기 지표만으로 리포트가 나옵니다 - 막는 것보다 반쪽이라도 남기는 것이 낫습니다.
-          */}
-          <StageButton
-            disabled={!micOk || starting || data === undefined}
-            onClick={() => {
-              declineGaze();
-              start({ withGaze: false }).catch(() => undefined);
-            }}
-          >
-            소리만으로 계속하기
-          </StageButton>
           <StageButton
             variant="primary"
             disabled={!ready}
-            onClick={() => start({ withGaze: true }).catch(() => undefined)}
+            onClick={() => start().catch(() => undefined)}
           >
             {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
           </StageButton>

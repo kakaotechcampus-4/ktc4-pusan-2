@@ -86,8 +86,7 @@ export function GazeSetupView({
           <div className="absolute inset-x-4 bottom-4 rounded-lg bg-stage/90 p-3 text-xs">
             <p className="font-bold text-coral">시선 분석을 켤 수 없어요</p>
             <p className="mt-1 text-stone">
-              시선 모델 파일을 불러오지 못했어요. &lsquo;소리만으로 계속하기&rsquo;로 연습할 수
-              있어요.
+              시선 모델 파일을 불러오지 못했어요. 새로고침해도 그대로면 팀에 알려 주세요.
             </p>
           </div>
         )}

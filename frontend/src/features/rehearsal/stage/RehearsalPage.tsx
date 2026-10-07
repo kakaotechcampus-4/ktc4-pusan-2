@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { LevelBar } from '../media/LevelBar';
 import { useCameraStream } from '../media/useCameraStream';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 import { usePrepareStore } from '../prepare/prepareStore';
-import { usePitchDetail, useCompleteTake, useTakeContext } from '@/shared/api/take';
+import { useCompleteTake } from '@/shared/api/take';
+import { PdfPage } from '@/shared/ui/PdfPage';
 import { buildGazePayload } from '../lib/gazePayload';
 import {
   beat,
@@ -24,18 +25,24 @@ import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/
 import { toMessage } from '@/shared/api/errorMessage';
 import { ScreenLabel } from '@/shared/ui/ScreenLabel';
 import { TemporalVoter } from '@/workers/temporalVoter';
-import type { CompleteRequest, GazeExcludedReason, Ms } from '@/types/api';
+import type { CompleteRequest, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
 import { useCoach } from './useCoach';
 import { useLiveGaze } from './useLiveGaze';
+import { useRehearsalMaterials } from './useRehearsalMaterials';
 import { useRehearsalStore } from './rehearsalStore';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
 import { useSttStream } from './useSttStream';
+import type { TextRange } from '../lib/scriptMarks';
 import './stage.css';
 
 /** 하트비트 주기. 탭이 죽으면 이 값이 멈춘 시각이 마지막 흔적입니다 */
 const BEAT_MS = 5_000;
+
+/** 대본이 없는 장의 기본값. 매 렌더 새 배열을 만들면 대본 칸의 강조 계산이 매번 다시 돕니다 */
+const NO_KEYWORDS: string[] = [];
+const NO_HIGHLIGHTS: TextRange[] = [];
 
 /**
  * 07 발표 연습 (P5 · P5x) — 리허설 무대.
@@ -64,8 +71,15 @@ export function RehearsalPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const take = useTakeContext(takeId);
-  const pitch = usePitchDetail(take.data?.pitchId);
+  /**
+   * 무대를 여는 데 필요한 값. 장치 점검이 넘겨주고, 새로고침이면 IndexedDB 세션에서 꺼냅니다.
+   * BE 에 Take 를 읽는 API 가 없어서 서버에서 다시 받을 길이 없습니다.
+   * `undefined` 는 아직 찾는 중, `null` 은 어디에도 없음입니다.
+   */
+  const [ticket, setTicket] = useState<RehearsalTicket | null | undefined>(
+    () => (location.state as { ticket?: RehearsalTicket } | null)?.ticket,
+  );
+  const materials = useRehearsalMaterials(ticket ?? null);
   const complete = useCompleteTake(takeId);
 
   const phase = useRehearsalStore((s) => s.phase);
@@ -75,7 +89,6 @@ export function RehearsalPage() {
 
   /** 준비 화면에서 잡은 기준. 새로고침으로 돌아왔으면 없습니다(= null로 보냅니다) */
   const calibration = usePrepareStore((s) => s.calibration);
-  const gazeDeclined = usePrepareStore((s) => s.gazeDeclined);
   /** 점검을 통과한 장치. 새로고침으로 돌아왔으면 비어 있고, 기본 장치를 엽니다 */
   const devices = usePrepareStore((s) => s.devices);
 
@@ -108,12 +121,12 @@ export function RehearsalPage() {
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
   const { meterRef, statsRef, audioState } = useMicLevel(stream);
 
-  const ready = take.data !== undefined && pitch.data !== undefined;
+  const ready = materials.ready;
   const running = ready && phase === 'RUNNING';
-  const limitSec = take.data?.timeLimitSec ?? pitch.data?.timeLimitSec ?? 600;
-  const scriptMode = take.data?.scriptMode ?? 'HIGHLIGHT';
-  const mode = take.data?.mode ?? 'COACHING';
-  const slides = pitch.data?.presentation.slides ?? [];
+  const limitSec = ticket?.timeLimitSec ?? 600;
+  const scriptMode = ticket?.scriptMode ?? 'HIGHLIGHT';
+  const mode = ticket?.mode ?? 'COACHING';
+  const pageCount = materials.pageCount;
 
   const { elapsedRef, limitRef, barRef, fillRef, remainRef, elapsedMs } = useStageClock(
     limitSec,
@@ -137,10 +150,10 @@ export function RehearsalPage() {
     onExcluded: noteExclusion,
     // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
     // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다
-    enabled: running && !gazeDeclined && live,
+    enabled: running && live,
   });
   const { slideNumber, slideStartedAtRef } = useSlideDeck({
-    total: slides.length,
+    total: pageCount,
     clientSessionId: sessionId,
     elapsedMs,
     enabled: running,
@@ -189,6 +202,8 @@ export function RehearsalPage() {
       }
       const row = await findSessionByTakeId(takeId);
       setSessionId(row ? row.clientSessionId : await startSession(takeId));
+      // 새로고침 — 라우터 state 는 사라졌지만 장치 점검이 세션에 남긴 값이 있습니다
+      setTicket((current) => current ?? row?.ticket ?? null);
       // IndexedDB 를 못 열면(사생활 보호 모드 · 저장 공간 부족) 여기로 옵니다.
       // 준비 화면을 거쳐 온 길은 위에서 끝나므로, 새로고침·직접 진입일 때만 탑니다
     })().catch((err: unknown) => {
@@ -207,7 +222,7 @@ export function RehearsalPage() {
   // 내장 마이크로 녹음하는 일이 생깁니다
   const askedRef = useRef(false);
   useEffect(() => {
-    if (askedRef.current || gazeDeclined) return;
+    if (askedRef.current) return;
     askedRef.current = true;
 
     (async () => {
@@ -223,7 +238,7 @@ export function RehearsalPage() {
     })().catch((err: unknown) => {
       console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
     });
-  }, [request, gazeDeclined, devices]);
+  }, [request, devices]);
 
   // ── 제외 사유 배선 ───────────────────────────────────────────────
   // 한 번 정해지면 되돌리지 않습니다. 발표 도중 엔진이 죽었다면 그 Take의
@@ -237,11 +252,6 @@ export function RehearsalPage() {
     },
     [noteExclusion],
   );
-
-  useEffect(() => {
-    if (!sessionId) return;
-    if (gazeDeclined) excludeGaze(sessionId, 'USER_DECLINED');
-  }, [sessionId, gazeDeclined, excludeGaze]);
 
   useEffect(() => {
     if (!sessionId || !deviceError) return;
@@ -293,30 +303,19 @@ export function RehearsalPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const paragraphs = useMemo(
-    () => (pitch.data?.script.content ?? '').split('\n\n').filter((p) => p.trim() !== ''),
-    [pitch.data?.script.content],
-  );
-
-  /** 지금 슬라이드의 문단. 앵커가 없으면 슬라이드 번호를 그대로 씁니다 */
-  const currentIndex = useMemo(() => {
-    const anchors = pitch.data?.script.slideAnchors ?? [];
-    const anchor = anchors.find((a) => a.slideNumber === slideNumber);
-    if (!anchor) return Math.min(slideNumber - 1, paragraphs.length - 1);
-    let acc = 0;
-    for (let i = 0; i < paragraphs.length; i++) {
-      if (acc >= anchor.charOffset) return i;
-      acc += paragraphs[i]!.length + 2;
-    }
-    return paragraphs.length - 1;
-  }, [pitch.data?.script.slideAnchors, slideNumber, paragraphs]);
-
-  const currentSlide = slides.find((s) => s.slideNumber === slideNumber);
-  const nextSlideNumber = Math.min(slideNumber + 1, slides.length);
+  /**
+   * 지금 슬라이드에 매핑된 대본만 보여 줍니다. 대본은 AI 가 이미 슬라이드별로 나눠 주므로
+   * n번 슬라이드의 대본이 곧 대본 매핑 n번입니다. 매핑이 없는 장은 빈 문자열입니다.
+   */
+  const currentSlideScript = materials.scriptBySlide.get(slideNumber);
+  const currentScript = currentSlideScript?.content ?? '';
+  const currentKeywords = currentSlideScript?.keywords ?? NO_KEYWORDS;
+  const currentHighlights = currentSlideScript?.highlights ?? NO_HIGHLIGHTS;
+  const nextSlideNumber = Math.min(slideNumber + 1, pageCount);
 
   // ── 종료 ─────────────────────────────────────────────────────────
   const finish = async () => {
-    if (!running || !sessionId || !take.data) return;
+    if (!running || !sessionId || !ticket) return;
 
     // 시간을 먼저 붙잡습니다. 아래 await들이 도는 동안에도 시계는 갑니다.
     // ★ 끝난 시각도 여기서 찍습니다 — STT 정리는 최대 3초까지 걸리는데,
@@ -407,7 +406,6 @@ export function RehearsalPage() {
   };
 
   const gazeNote = gazeNoteText({
-    declined: gazeDeclined,
     cameraLost: deviceError !== null,
     missingCalibration,
     error: gazeError,
@@ -420,7 +418,7 @@ export function RehearsalPage() {
         <ScreenLabel
           screenNo="07"
           screenName="발표 연습"
-          entry={`진입 · 리허설 준비의 Take ${take.data?.takeNumber ?? ''} 시작하기`}
+          entry={`진입 · 리허설 준비의 Take ${ticket?.takeNumber ?? ''} 시작하기`}
         />
 
         <div className="h-[calc(100vh-7rem)] min-h-[560px] overflow-hidden rounded-2xl shadow-lg">
@@ -449,19 +447,29 @@ export function RehearsalPage() {
                 남은 —
               </span>
               <span className="slide-no">
-                SLIDE {slideNumber} / {slides.length || '—'}
+                SLIDE {slideNumber} / {pageCount || '—'}
               </span>
             </header>
 
             <div className="viewport">
               <div className="slide">
-                {currentSlide?.imageUrl ? (
-                  <img src={currentSlide.imageUrl} alt={`슬라이드 ${slideNumber}`} />
+                {/* PDF 한 장을 상자에 맞춰 그립니다. 못 열었으면 자리표시 — 깨진 화면보다 낫습니다 */}
+                {materials.doc ? (
+                  <PdfPage
+                    doc={materials.doc}
+                    pageNumber={slideNumber}
+                    fit="contain"
+                    className="h-full w-full"
+                  />
                 ) : (
                   <span className="placeholder">SLIDE {slideNumber} · 16:9</span>
                 )}
-                {!currentSlide?.imageUrl && (
-                  <span className="note">자료 이미지가 아직 없습니다</span>
+                {!materials.doc && (
+                  <span className="note">
+                    {materials.presentationFailed
+                      ? '발표자료를 불러오지 못했어요'
+                      : '발표자료를 여는 중…'}
+                  </span>
                 )}
               </div>
 
@@ -477,7 +485,18 @@ export function RehearsalPage() {
                 </section>
 
                 <section className="next">
-                  <div className="thumb">SLIDE {nextSlideNumber} · 16:9</div>
+                  <div className="thumb">
+                    {materials.doc && nextSlideNumber > 0 ? (
+                      <PdfPage
+                        doc={materials.doc}
+                        pageNumber={nextSlideNumber}
+                        fit="contain"
+                        className="h-full w-full"
+                      />
+                    ) : (
+                      `SLIDE ${nextSlideNumber} · 16:9`
+                    )}
+                  </div>
                   <div className="label">
                     <b>다음 슬라이드</b>
                     <span>→ 키로 이동</span>
@@ -502,9 +521,10 @@ export function RehearsalPage() {
 
             <ScriptPane
               mode={scriptMode}
-              paragraphs={paragraphs}
-              currentIndex={currentIndex}
-              keywords={(currentSlide?.keywords ?? []).map((k) => k.text)}
+              slideNumber={slideNumber}
+              text={currentScript}
+              keywords={currentKeywords}
+              highlights={currentHighlights}
             />
 
             <div className="stage-foot">
@@ -521,6 +541,9 @@ export function RehearsalPage() {
                 <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
               )}
               {mode === 'EXAM' && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
+              {ticket === null && (
+                <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
+              )}
               {sessionError && <span>{sessionError}</span>}
               {endError && <span>{endError}</span>}
 
@@ -555,17 +578,14 @@ export function RehearsalPage() {
 }
 
 /**
- * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다 —
- * 사용자가 거절했으면 카메라가 끊겼든 말든 "거절"이 이유입니다.
+ * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다.
  */
 function gazeNoteText(state: {
-  declined: boolean;
   cameraLost: boolean;
   missingCalibration: boolean;
   error: GazeExcludedReason | null;
   ready: boolean;
 }): string {
-  if (state.declined) return '시선 측정 제외 · 소리만으로 진행 중';
   if (state.cameraLost) return '카메라가 끊겼습니다 — 발표는 계속됩니다';
   if (state.missingCalibration) return '시선 기준이 없어 측정 제외 — 발표는 계속됩니다';
   if (state.error) return `시선 측정 제외 · ${state.error}`;

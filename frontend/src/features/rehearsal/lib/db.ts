@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { GazeExcludedReason, Ms } from '@/types/api';
+import type { GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import type { ZoneDecision, ZoneReference } from '@/workers/gaze.contract';
 
 /**
@@ -43,6 +43,12 @@ export interface SessionRow {
   /** clientPerf 용 누적. 1초마다 갱신됩니다 */
   gazeAvgFps: number | null;
   gazeDroppedFrames: number;
+
+  /**
+   * 리허설이 무대를 열 때 쓰는 값. 새로고침하면 라우터 state 가 사라지므로 여기서 다시 꺼냅니다.
+   * 이 필드가 생기기 전에 만든 세션에는 없습니다 — 그래서 선택 필드입니다 (스키마 변경 없음).
+   */
+  ticket?: RehearsalTicket;
 }
 
 interface PitchDb extends DBSchema {
@@ -298,6 +304,14 @@ export async function readGazeDecisions(clientSessionId: string): Promise<ZoneDe
  */
 export async function setTakeId(clientSessionId: string, takeId: string): Promise<void> {
   await patchSession(clientSessionId, { takeId });
+}
+
+/** 리허설이 무대를 열 때 쓸 값을 남깁니다. 장치 점검이 Take 를 만든 직후에 부릅니다 */
+export async function setSessionTicket(
+  clientSessionId: string,
+  ticket: RehearsalTicket,
+): Promise<void> {
+  await patchSession(clientSessionId, { ticket });
 }
 
 /**
