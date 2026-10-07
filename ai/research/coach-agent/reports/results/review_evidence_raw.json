@@ -48,7 +48,7 @@
       }
     }
   },
-  "config_hash": "e09c97ac28d2",
+  "config_hash": "dbe162df2a38",
   "policy_version": "coach-v1.1",
   "inputs": "raw",
   "results": {
@@ -162,7 +162,7 @@
         "top_issue_type_agreement": 0.7125,
         "next_mission_agreement": 0.7125,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9792,
         "false_intervention_rate": 0.0213
       },
       "B +신뢰도 필터": {
@@ -184,7 +184,7 @@
         "top_issue_type_agreement": 0.9,
         "next_mission_agreement": 0.9,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9792,
         "false_intervention_rate": 0.0213
       },
       "C +구간 병합": {
@@ -206,7 +206,7 @@
         "top_issue_type_agreement": 0.9,
         "next_mission_agreement": 0.9,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9792,
         "false_intervention_rate": 0.0213
       },
       "D +지연 보정": {
@@ -214,8 +214,8 @@
         "segment_precision": 0.9839,
         "segment_f1": 0.9585,
         "unsupported_claims_per_take": 0.0125,
-        "segment_iou": 0.8317,
-        "onset_error_s": 2.53,
+        "segment_iou": 0.8309,
+        "onset_error_s": 2.54,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
           "cpm": 3.686,
@@ -228,7 +228,7 @@
         "top_issue_type_agreement": 0.9125,
         "next_mission_agreement": 0.9125,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9792,
         "false_intervention_rate": 0.0213
       }
     },
@@ -247,7 +247,7 @@
           "script_ratio": 0.1026
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9357,
+        "type_status_accuracy": 0.9339,
         "memory_accuracy": 1.0,
         "top_issue_type_agreement": 0.7,
         "next_mission_agreement": 0.7,
@@ -304,8 +304,8 @@
         "segment_precision": 0.8732,
         "segment_f1": 0.9107,
         "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.8032,
-        "onset_error_s": 2.86,
+        "segment_iou": 0.8017,
+        "onset_error_s": 2.9,
         "fragments_per_problem": 1.1356,
         "slide_mae": {
           "cpm": 6.4077,
