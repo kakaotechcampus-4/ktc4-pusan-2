@@ -19,12 +19,15 @@ class NonExistentTake(AppException):
      code = "TAKE_NOT_FOUND"
      message = "존재하지 않는 테이크입니다."
 
-class NotExistPresentationVersion(AppException):
+class NonExistentPresentationVersion(AppException):
     status_code = 404
     code = "PRESENTATION_VERSION_NOT_FOUND"
     message = "존재하지 않는 발표자료 버전입니다."
 
-
+class NonExistentEvaluation(AppException):
+    status_code = 404
+    code = "EVALUATION_NOT_FOUND"
+    message = "존재하지 않는 평가 기준 버전입니다."
 class InvalidScript(AppException):
     code = "INVALID_SCRIPT"
     message = "대본이 올바르지 않습니다."

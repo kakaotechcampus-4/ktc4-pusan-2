@@ -2,7 +2,6 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pitch_coach_backend.module.take.entity import Take, TakeSummary
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
@@ -14,6 +13,7 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptVersion,
     Standards,
 )
+from pitch_coach_backend.module.take.entity import Take, TakeSummary
 
 
 class PitchRepository:
@@ -69,6 +69,13 @@ class PitchRepository:
         번호를 받아 unique(pitch_id, version) 에 걸리고 하나가 500 이 된다. pitch 행을 잠그면
         두 번째 요청은 첫 번째가 커밋할 때까지 기다렸다가 다음 번호를 받는다.
 
+        보장 범위는 이 잠금을 먼저 잡는 경로까지다. 같은 번호를 매기는 경로가 잠금을 건너뛰면
+        그 경로끼리는 여전히 같은 번호를 받을 수 있다.
+          - 잡는 곳: service.create_script_service (next_script_version),
+            service.upload_presentation_service (next_presentation_version)
+          - 아직 안 잡는 곳: take/service.create_take_service (next_take_number)
+        pitch 안에서 max + 1 로 번호를 매기는 경로에 잠금을 걸면 위 목록도 같이 고친다.
+
         FOR UPDATE 가 아니라 FOR NO KEY UPDATE (key_share=True) 다. 자식 행 INSERT(Take 생성 등)는
         FK 검사로 pitch 행에 KEY SHARE 를 거는데, FOR UPDATE 는 그것과 충돌해 잠금을 쥔 동안
         같은 pitch 의 Take 생성까지 멈춘다. NO KEY UPDATE 는 버전을 만드는 요청끼리만 막는다.
@@ -103,14 +110,21 @@ class PitchRepository:
         self.db.flush()
         return script_version
 
-    def get_presentation_detail(self, pitch_id: uuid.UUID, presentation_version_id: int) -> PresentationVersion | None:
+    def get_presentation_detail(
+        self, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID
+    ) -> PresentationVersion | None:
         return self.db.scalar(
             select(PresentationVersion).where(
                 PresentationVersion.pitch_id == pitch_id,
                 PresentationVersion.id == presentation_version_id
             )
         )
-        
+
+    def save_standard(self, standard: Standards) -> Standards:
+        self.db.add(standard)
+        self.db.flush()
+        return standard
+ 
     def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
         return self.db.scalars(
             select(PresentationVersion).where(PresentationVersion.pitch_id == pitch_id)
@@ -126,7 +140,18 @@ class PitchRepository:
     def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
         return self.db.scalars(
             select(Standards).where(Standards.pitch_id == pitch_id)
+            .distinct(Standards.version)
             .order_by(Standards.version.asc())
+        ).all()
+
+    def get_evaluations_by_version(
+            self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
+        return self.db.scalars(
+            select(Standards).where(
+                Standards.pitch_id == pitch_id,
+                Standards.version == version
+            )
+            .order_by(Standards.position.asc())
         ).all()
 
     # ── 대본 파싱 ────────────────────────────────────────────────────

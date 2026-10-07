@@ -111,6 +111,11 @@ export function RehearsalPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
+  /**
+   * 세션을 못 연 이유. 이게 있으면 이 Take 의 기록(시선·슬라이드·코치)이 하나도 쌓이지 않고
+   * 종료 버튼도 아무것도 하지 않습니다 — 조용히 넘어가면 발표를 다 하고 나서야 압니다.
+   */
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
@@ -199,7 +204,14 @@ export function RehearsalPage() {
       setSessionId(row ? row.clientSessionId : await startSession(takeId));
       // 새로고침 — 라우터 state 는 사라졌지만 장치 점검이 세션에 남긴 값이 있습니다
       setTicket((current) => current ?? row?.ticket ?? null);
-    })().catch(() => undefined);
+      // IndexedDB 를 못 열면(사생활 보호 모드 · 저장 공간 부족) 여기로 옵니다.
+      // 준비 화면을 거쳐 온 길은 위에서 끝나므로, 새로고침·직접 진입일 때만 탑니다
+    })().catch((err: unknown) => {
+      console.error('[rehearsal] 세션을 열지 못했습니다', err);
+      setSessionError(
+        '연습 기록을 저장할 수 없어요. 새로고침하거나 준비 화면에서 다시 시작해 주세요',
+      );
+    });
   }, [takeId, location.state]);
 
   // 화면을 떠날 때 다음 Take를 위해 무대 상태를 비웁니다
@@ -220,7 +232,12 @@ export function RehearsalPage() {
       if (!opened && (devices.videoDeviceId || devices.audioDeviceId)) {
         await request();
       }
-    })().catch(() => undefined);
+      // 장치를 못 연 이유(권한 거부 · 장치 없음)는 request 가 deviceError 로 올립니다 —
+      // 시선 제외와 화면 표시는 그쪽이 맡습니다. 여기로 오는 건 예상 밖의 오류뿐이라
+      // 버리지 않고 남깁니다
+    })().catch((err: unknown) => {
+      console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
+    });
   }, [request, devices]);
 
   // ── 제외 사유 배선 ───────────────────────────────────────────────
@@ -527,6 +544,7 @@ export function RehearsalPage() {
               {ticket === null && (
                 <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
               )}
+              {sessionError && <span>{sessionError}</span>}
               {endError && <span>{endError}</span>}
 
               <button

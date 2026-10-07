@@ -126,7 +126,6 @@ const prepare: PrepareResponse = {
   presentationVersion: 2, scriptVersion: 2, timeLimitSec: 600,
   presentationVersionId: 'pv2', scriptVersionId: 'sv2',
   nextTakeNumber: 4,
-  lastMission: { id: 'm1', description: 'Slide 6을 Keyword Mode로 설명하기' },
   criteria: {
     version: 1, readOnly: true,
     items: [

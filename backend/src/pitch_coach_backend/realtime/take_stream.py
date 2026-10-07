@@ -2,7 +2,7 @@
 
     FE ──(WS-1)── RealtimeSession ──push──▶ TakeStream ──(WS-2)── Deepgram
 
-연결(`RealtimeSession`)은 탭을 새로 고치면 바뀌지만 `TakeStream` 은 남는다. 그래서
+연결(`RealtimeSession`)은 탭을 새로고침하면 바뀌지만 `TakeStream` 은 남는다. 그래서
 세그먼트 번호·프레임 순서·Deepgram 세션 번호가 재연결 뒤에도 이어진다. 이 값들이 연결 객체
 안에 있으면 재연결마다 1 로 리셋되고, `segment_id` 가 `"1-1"` 부터 다시 나와 FE 가
 **발표 앞부분 전사를 뒷부분으로 덮어쓴다.**
@@ -12,6 +12,9 @@
 - **WS-1** (FE↔BE): 연결만 떨어진다. Deepgram 세션은 `GRACE_SEC` 동안 살려 두고 그 안에
   다시 붙으면 같은 세션에 이어 붙인다. 떨어져 있는 동안 온 final 은 모아 두었다가 재연결 때
   다시 보낸다. 못 붙으면 `CloseStream` 으로 정리한다.
+  탭을 새로고침하면 FE 는 seq 를 1 부터 다시 세고 offset 은 이어받은 무대 시계부터 보낸다.
+  새 연결의 첫 프레임이 뒤로 가면(seq 또는 offset) 그렇게 보고(`Accepted.restart`) 세션을 갈아
+  그 offset 으로 base 를 잡는다. grace 가 지난 뒤 새 스트림이 열리는 경우와 같은 결과다.
 - **WS-2** (BE↔Deepgram): 큐에 담아 두고 백오프로 재접속한다. 새 세션은 타임스탬프가 다시
   0 부터라 `base_offset_ms` 를 새로 잡고 `stt_session_no` 를 올린다. 재접속이 이어서 실패해도
   **연결을 끊지 않는다** — FE 1단 코치는 계속 돌아야 하므로 `degraded` 만 알리고 재시도한다.
@@ -33,7 +36,7 @@ import contextlib
 import logging
 import uuid
 from collections.abc import Awaitable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import anyio
 from fastapi import WebSocket
@@ -60,6 +63,7 @@ from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
     SttAdapter,
     SttConfig,
+    SttConfigRejected,
     SttConnectError,
     SttError,
     SttSession,
@@ -77,6 +81,9 @@ QUEUE_MAX_FRAMES = 50
 BACKOFF_SEC = (0.5, 1.0, 2.0, 5.0, 10.0)
 # 이 횟수만큼 실패하면 FE 에 degraded 를 알린다. 재시도는 계속한다
 FAST_ATTEMPTS = 3
+# Deepgram 이 keyterm 을 거절할 때마다 뒤에서 빼는 개수. 몇 토큰 넘쳤는지 알려 주지 않아서,
+# 한 번에 반씩 버리는 대신 조금씩 빼 우선순위 높은 용어를 최대한 남긴다
+KEYTERM_TRIM_STEP = 5
 # CloseStream 뒤 남은 결과와 Metadata 를 기다리는 상한
 DRAIN_TIMEOUT_SEC = 10.0
 # 취소·오류로 세션을 버릴 때 Deepgram 소켓 닫기(abort) 를 기다리는 상한. 이게 없으면
@@ -140,6 +147,9 @@ class TakeStream:
         self._bytes_sent = 0
         # 드롭된 오디오만큼 다음 프레임 앞에 채울 무음. 타임라인을 밀리지 않게 한다
         self._pending_silence_ms = 0
+        # 드롭된 프레임이 타임라인 단절(`Accepted.timeline_break`)이었다. 그 프레임과 함께 사라지면
+        # 세션을 갈지 않고 이어 붙여 전사 시각이 어긋난다 — 다음 프레임이 대신 세션을 간다
+        self._pending_break = False
         # 세션을 갈면서 넘긴 프레임. 새 세션의 첫 프레임이 된다
         self._carry: Accepted | None = None
 
@@ -190,6 +200,7 @@ class TakeStream:
 
         previous = self._client
         self._client = ws
+        self.sequencer.new_connection()
         if previous is not None and previous is not ws:
             await _quiet(
                 previous.send_text(
@@ -227,12 +238,22 @@ class TakeStream:
                 self._missed_finals.pop(0)
             logger.info("재연결 중 놓친 final 을 모두 다시 보냈다 take=%s", self.take_id)
 
+    def is_client(self, ws: WebSocket) -> bool:
+        """지금 붙어 있는 연결인가. 다른 탭이 이어받아 쫓겨난 연결이면 False."""
+        return self._client is ws
+
     def detach(self, ws: WebSocket) -> None:
         """연결이 끊겼다. 이미 다른 연결이 붙었으면 아무것도 하지 않는다."""
         if self._client is not ws:
             return
         self._client = None
         if self._stopping:
+            return
+        if self.sequencer.frames == 0:
+            # 오디오가 한 번도 안 왔다. 살려 둘 전사가 없으니 grace 동안 Deepgram 세션만 붙들고
+            # 있을 이유가 없다 — 종료 중에 새로고침한 FE 가 stop 만 보내러 붙었다가 기다리지
+            # 못하고 끊은 경우가 이렇다. 다시 붙으면 저장된 마지막 번호에서 새 스트림을 연다
+            self.request_stop()
             return
         self._grace_task = asyncio.create_task(self._expire_grace())
 
@@ -343,15 +364,29 @@ class TakeStream:
 
     # ── 오디오 투입 ───────────────────────────────────────────────────
 
-    def push(self, data: bytes) -> None:
-        """FE 프레임 하나. InvalidAudioFrame 은 호출자가 처리한다."""
+    def push(self, data: bytes, *, source: WebSocket | None = None) -> None:
+        """FE 프레임 하나. InvalidAudioFrame 은 호출자가 처리한다.
+
+        `source` 는 프레임을 보낸 연결. 다른 탭이 이어받아 쫓겨난 연결이 닫히기 전에 보낸
+        프레임은 버린다 — 섞이면 새 연결의 seq 를 앞질러 그쪽 오디오가 역행으로 버려진다.
+        """
         frame = parse_audio_frame(data)
         if self._stopping:
             # stop 신호 뒤의 오디오는 아무도 소비하지 않는다. 큐에 넣으면 통계만 더럽힌다
             return
+        if source is not None and source is not self._client:
+            return
         accepted = self.sequencer.accept(frame)
         if accepted is None:
             return
+        if accepted.restart:
+            logger.info(
+                "새 연결이 seq 를 처음부터 보낸다(탭 새로고침). 타임라인을 다시 잡는다 "
+                "take=%s seq=%d offset_ms=%d",
+                self.take_id,
+                accepted.frame.seq,
+                accepted.frame.offset_ms,
+            )
         self._put(accepted)
 
     def _put(self, item: Accepted | None) -> None:
@@ -374,6 +409,8 @@ class TakeStream:
         lost = item.silence_ms + item.frame.duration_ms
         self.dropped_audio_ms += lost
         self._pending_silence_ms += lost
+        if item.timeline_break:
+            self._pending_break = True
 
     # ── Deepgram 세션 루프 ────────────────────────────────────────────
 
@@ -405,7 +442,10 @@ class TakeStream:
                 self.stt_session_no += 1
                 self._base_offset_ms = None
                 self._bytes_sent = 0
-                self._pending_silence_ms = 0
+                if self._carry is None:
+                    # 넘겨받은 프레임이 있으면 지우지 않는다. 세션을 가는 동안 드롭된 것은 그
+                    # 프레임 **뒤**의 오디오라 새 세션에서 무음으로 메워야 한다 (_send_frame)
+                    self._pending_silence_ms = 0
                 await self._set_state("ok")
 
                 try:
@@ -435,11 +475,30 @@ class TakeStream:
             self._finish()
 
     async def _connect(self) -> SttSession | None:
-        try:
-            return await self._adapter.connect(self._config)
-        except SttConnectError as e:
-            logger.warning("Deepgram 연결 실패 take=%s %s", self.take_id, e)
-            return None
+        while True:
+            try:
+                return await self._adapter.connect(self._config)
+            except SttConfigRejected as e:
+                keyterms = self._config.keyterms
+                floor = self._config.min_keyterms
+                if len(keyterms) <= floor:
+                    logger.error("Deepgram 이 설정을 거절했다 take=%s %s", self.take_id, e)
+                    return None
+                # 같은 설정으로 다시 붙으면 또 거절된다. 우선순위가 낮은 뒤쪽 용어부터 빼고
+                # 기다리지 않고 바로 다시 붙는다 — 실패로 세서 backoff 하면 몇 번만 줄여도
+                # 수십 초 동안 전사가 안 나온다. 줄인 설정은 이후 재접속에도 그대로 쓴다
+                trimmed = keyterms[: max(floor, len(keyterms) - KEYTERM_TRIM_STEP)]
+                logger.warning(
+                    "Deepgram 이 keyterm 을 거절해 %d개 → %d개로 줄인다 take=%s %s",
+                    len(keyterms),
+                    len(trimmed),
+                    self.take_id,
+                    e,
+                )
+                self._config = replace(self._config, keyterms=trimmed)
+            except SttConnectError as e:
+                logger.warning("Deepgram 연결 실패 take=%s %s", self.take_id, e)
+                return None
 
     async def _sleep_or_stop(self, delay: float) -> bool:
         """delay 만큼 쉰다. 그 사이 stop 이 오면 True 를 돌려 즉시 끝낸다."""
@@ -485,6 +544,7 @@ class TakeStream:
 
     async def _pump_audio(self, session: SttSession) -> str:
         while True:
+            carried = self._carry is not None
             item = self._carry or await self._queue.get()
             self._carry = None
             if item is None:
@@ -493,7 +553,7 @@ class TakeStream:
 
             gap_ms = item.silence_ms + self._pending_silence_ms
             if self._base_offset_ms is not None and (
-                item.timeline_break or gap_ms > MAX_SILENCE_FILL_MS
+                item.timeline_break or self._pending_break or gap_ms > MAX_SILENCE_FILL_MS
             ):
                 # 무음으로 메우기엔 너무 긴 갭이다. 이대로 보내면 이후 전사 시각이
                 # 갭만큼 앞당겨진다. 세션을 갈아 base 를 다시 잡는다
@@ -503,16 +563,26 @@ class TakeStream:
                     gap_ms + item.lost_ms,
                 )
                 self._carry = item
+                # 여기까지 드롭된 것은 이 프레임 **앞**의 오디오다. 새 세션의 base 가 흡수한다.
+                # 이 뒤로 드롭되는 것(새 세션이 열리기를 기다리는 동안 큐가 넘침)은 남긴다
+                self._pending_silence_ms = 0
+                self._pending_break = False
                 await session.close_stream()
                 return _ROTATE
 
-            await self._send_frame(session, item, gap_ms)
+            await self._send_frame(session, item, gap_ms, carried=carried)
 
-    async def _send_frame(self, session: SttSession, item: Accepted, gap_ms: int) -> None:
+    async def _send_frame(
+        self, session: SttSession, item: Accepted, gap_ms: int, *, carried: bool = False
+    ) -> None:
         if self._base_offset_ms is None:
-            # 세션의 첫 프레임. 앞의 갭·드롭은 base 가 흡수하므로 무음을 보내지 않는다
+            # 세션의 첫 프레임. 앞의 갭·드롭은 base 가 흡수하므로 무음을 보내지 않는다.
+            # 단 세션을 갈며 넘겨받은 프레임이면 드롭은 그 **뒤**에서 일어났다 — 지우면 그만큼
+            # 이후 전사 시각이 앞당겨진다. 남겨 두면 다음 프레임 앞에 무음으로 들어간다
             self._base_offset_ms = item.frame.offset_ms
-            self._pending_silence_ms = 0
+            if not carried:
+                self._pending_silence_ms = 0
+                self._pending_break = False
         else:
             self._pending_silence_ms = 0
             if gap_ms:
@@ -541,7 +611,6 @@ class TakeStream:
     async def _on_transcript(self, event: Transcript) -> None:
         base = self._base_offset_ms or 0
         if event.transcript or event.words:
-            # 다음 PR: is_final 이면 여기서 take_transcript_segments 에 저장한다
             message = TranscriptMessage(
                 segment_id=f"{self.stt_session_no}-{self.segment_no}",
                 is_final=event.is_final,

@@ -112,8 +112,11 @@ export interface GazeSegment {
 }
 
 export interface CalibrationSummary {
-  /** 2점 캘리브레이션 — 카메라 한 번, 화면 한 번 */
-  points: 2;
+  /**
+   * 기준점 수. AI v1.1 은 3점입니다 — 화면 가운데 · 렌즈 · 대본 자리.
+   * (v1.0 은 렌즈 · 대본 2점이었습니다)
+   */
+  points: 3;
   /**
    * GOOD 검사 통과 · FAIR 통과했지만 경고 · POOR 검사 불합격이지만 모델은 있어 진행함.
    * POOR 인 Take 의 시선 숫자는 믿음이 낮습니다 — 리포트가 그 점을 알려야 합니다.
@@ -343,8 +346,6 @@ export interface PrepareResponse {
   timeLimitSec: number;
   /** 이번에 만들어질 Take 번호. POST /takes의 응답과 같아야 합니다 */
   nextTakeNumber: number;
-  /** 지난 Take가 남긴 다음 과제. 없으면 null — 배너를 그리지 않습니다 */
-  lastMission: { id: string; description: string } | null;
   criteria: { version: number; readOnly: boolean; items: EvalCriterion[] };
   /** 지난 Take에서 고른 Script Mode. 화면의 초기 선택값입니다 */
   defaultScriptMode: ScriptMode;

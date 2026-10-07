@@ -1,0 +1,993 @@
+/* The camera view (view.ts): the camera picture and everything drawn inside it.
+
+   Everything is scoped under .gzc and named gzc-*, so the view can sit in the
+   frontend's page (Tailwind) without either side's styles leaking into the
+   other.  The view fills the box the host gives it and sizes itself from that
+   box (container units and container queries), not from the window: the host
+   decides how big it is, full screen included.
+
+   Colours are the frontend's tokens (frontend/src/index.css); the three gaze
+   colours appear only on the live border, as on the rehearsal stage. */
+.gzc {
+  --greige: #ede6dd;
+  --cream: #e6dfd5;
+  --panel: #f5f0e9;
+  --line: #ddd4c7;
+  --line-strong: #c6bcac;
+  --ink: #2a2723;
+  --stone: #8c8375;
+  --coral: #e8532a;
+  --coral-deep: #c9421c;
+  --coral-wash: #f3ded5;
+  --gaze-audience: #6b9e78;
+  --gaze-screen: #d9a441;
+  --gaze-unknown: #c0392b;
+  --radius: 20px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --sans:
+    'Pretendard', 'Noto Sans KR', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  /* behind the picture (letterbox), and the glass the UI floats on */
+  --backdrop: #161412;
+  --glass: rgba(245, 240, 233, 0.86);
+  --glass-edge: rgba(255, 255, 255, 0.55);
+  --glass-blur: blur(18px) saturate(1.15);
+  --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 18px 40px -16px rgba(0, 0, 0, 0.45);
+
+  container: gzc / size;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--backdrop);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.5;
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
+}
+.gzc *,
+.gzc *::before,
+.gzc *::after {
+  box-sizing: border-box;
+}
+.gzc button {
+  font: inherit;
+}
+.gzc :focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+/* a card floating over the picture */
+.gzc-card,
+.gzc-steps,
+.gzc-status,
+.gzc-skip {
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+/* ---------------------------------------------------------------- picture */
+.gzc-video {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: contain;
+  transform: scaleX(-1); /* selfie view; the engine always gets the raw frame */
+  opacity: 0;
+  transition:
+    opacity 0.5s var(--ease),
+    filter 0.5s var(--ease);
+}
+.gzc[data-fit='cover'] .gzc-video {
+  object-fit: cover;
+}
+.gzc[data-on='1'] .gzc-video {
+  opacity: 1;
+}
+/* out of position: the picture softens until the set-up holds again */
+.gzc[data-phase='align'][data-align='off'] .gzc-video {
+  filter: saturate(0.6) brightness(0.92);
+}
+/* the verdict: the picture stays, dimmed behind the card */
+.gzc[data-phase='result'] .gzc-video {
+  filter: brightness(0.45) blur(3px);
+}
+.gzc-off {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  color: rgba(245, 240, 233, 0.55);
+  transition: opacity 0.4s;
+}
+.gzc-off p {
+  margin: 0;
+  font-size: 14px;
+}
+.gzc[data-on='1'] .gzc-off {
+  opacity: 0;
+  pointer-events: none;
+}
+.gzc-cam-icon {
+  width: 46px;
+  height: 32px;
+  border-radius: 9px;
+  border: 2px solid var(--line-strong);
+  position: relative;
+}
+.gzc-cam-icon::after {
+  content: '';
+  position: absolute;
+  inset: 7px 15px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+}
+
+/* the live border: the host's 1 s decision (setZone), as on the rehearsal stage */
+.gzc::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  border: 0 solid transparent;
+  transition:
+    border-color 0.4s var(--ease),
+    border-width 0.4s var(--ease);
+}
+.gzc[data-phase='live'][data-zone='CAMERA']::after {
+  border: 2px solid var(--gaze-audience);
+}
+.gzc[data-phase='live'][data-zone='BOTTOM']::after {
+  border: 5px solid var(--gaze-screen);
+}
+.gzc[data-phase='live'][data-zone='UNCERTAIN']::after {
+  border: 5px dashed var(--gaze-unknown);
+}
+
+/* ---------------------------------------------------------------- over the face */
+.gzc-guide,
+.gzc-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  transition: opacity 0.3s;
+}
+.gzc[data-on='0'] .gzc-guide,
+.gzc[data-phase='result'] .gzc-guide,
+.gzc[data-phase='result'] .gzc-overlay {
+  opacity: 0;
+}
+.gzc-guide-oval,
+.gzc-guide-line,
+.gzc-guide-placeholder {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+.gzc-guide-line {
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 1.4;
+}
+
+/* the ring round the face: set-up only */
+.gzc-ring {
+  opacity: 0;
+  transition: opacity 0.4s var(--ease);
+}
+.gzc[data-phase='align'] .gzc-ring,
+.gzc[data-phase='sweep'] .gzc-ring,
+.gzc[data-phase='swept'] .gzc-ring,
+.gzc[data-phase='calib'] .gzc-ring {
+  opacity: 1;
+}
+.gzc[data-phase='align'] .gzc-ring.is-waiting,
+.gzc[data-phase='sweep'] .gzc-ring.is-waiting,
+.gzc[data-phase='calib'] .gzc-ring.is-waiting {
+  opacity: 0.45;
+}
+.gzc-ring circle,
+.gzc-ring path,
+.gzc-ring line {
+  vector-effect: non-scaling-stroke;
+}
+.gzc-ring-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 2;
+  transition: stroke 0.4s var(--ease);
+}
+.gzc-ring-fg {
+  fill: none;
+  stroke: var(--coral);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset 0.2s linear,
+    opacity 0.3s;
+}
+.gzc[data-phase='sweep'] .gzc-ring-fg,
+.gzc[data-phase='swept'] .gzc-ring-fg,
+.gzc[data-phase='calib']:not([data-cue='SCREEN']) .gzc-ring-fg {
+  opacity: 0;
+}
+/* the screen-centre look: the ring round your face is its target */
+.gzc[data-phase='calib'][data-cue='SCREEN'] .gzc-ring-fg {
+  stroke-width: 5;
+}
+.gzc[data-phase='calib'][data-cue='SCREEN'][data-cue-state='done'] .gzc-ring-fg {
+  stroke: var(--ink);
+}
+/* one gauge per direction, outside the ticks */
+.gzc-sector-bg,
+.gzc-sector-fill {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 6;
+  opacity: 0;
+  transition:
+    opacity 0.4s var(--ease),
+    stroke 0.3s;
+}
+.gzc-sector-bg {
+  stroke: rgba(255, 255, 255, 0.4);
+}
+.gzc-sector-fill {
+  stroke: var(--coral);
+}
+.gzc-sector-fill.is-full {
+  stroke: var(--gaze-audience);
+}
+.gzc[data-phase='sweep'] :is(.gzc-sector-bg, .gzc-sector-fill),
+.gzc[data-phase='swept'] :is(.gzc-sector-bg, .gzc-sector-fill) {
+  opacity: 1;
+}
+.gzc[data-phase='swept'] .gzc-ring-bg {
+  stroke: var(--gaze-audience);
+  stroke-width: 3;
+}
+.gzc-veil {
+  fill: rgba(245, 240, 233, 0.62);
+  opacity: 0;
+  transition: opacity 0.4s var(--ease);
+}
+.gzc[data-phase='swept'] .gzc-veil {
+  opacity: 1;
+}
+.gzc-tick {
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  opacity: 0;
+  transition:
+    stroke 0.25s,
+    opacity 0.4s var(--ease);
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
+}
+.gzc[data-phase='sweep'] .gzc-tick,
+.gzc[data-phase='swept'] .gzc-tick {
+  opacity: 1;
+}
+.gzc-tick.is-lit,
+.gzc[data-phase='swept'] .gzc-tick {
+  stroke: var(--gaze-audience);
+  stroke-width: 3.4;
+}
+.gzc-tick.is-cur {
+  stroke: var(--coral);
+}
+.gzc-check {
+  fill: none;
+  stroke: var(--gaze-audience);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  opacity: 0;
+  transition:
+    stroke-dashoffset 0.5s var(--ease) 0.1s,
+    opacity 0.2s;
+}
+.gzc-ring .gzc-check {
+  stroke-width: 5;
+  stroke-dasharray: 60;
+  stroke-dashoffset: 60;
+}
+.gzc[data-phase='swept'] .gzc-ring .gzc-check {
+  opacity: 1;
+  stroke-dashoffset: 0;
+}
+/* a hint arrow outside the ring, toward the gap still to fill */
+.gzc-nudge path {
+  fill: var(--coral);
+  opacity: 0;
+  transition: opacity 0.3s var(--ease);
+  animation: gzc-push 1s var(--ease) infinite;
+}
+.gzc-nudge.is-on path {
+  opacity: 1;
+}
+@keyframes gzc-push {
+  50% {
+    transform: translateX(5px);
+  }
+}
+
+/* the 3D head arrow (arrow3d.ts) */
+.gzc-arrow {
+  pointer-events: none;
+  transition: opacity 0.3s;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+}
+.gzc-a3-root {
+  fill: rgba(255, 255, 255, 0.85);
+  stroke: rgba(201, 66, 28, 0.9);
+  stroke-width: 1.5;
+}
+.gzc-a3-shaft {
+  stroke: #c9421c;
+  stroke-linecap: round;
+}
+.gzc-a3-base {
+  fill: #9c3416;
+}
+.gzc-a3-side {
+  stroke: rgba(120, 40, 15, 0.25);
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+}
+
+/* ---------------------------------------------------------------- set-up UI */
+.gzc-steps,
+.gzc-lens,
+.gzc-script,
+.gzc-target,
+.gzc-card,
+.gzc-skip,
+.gzc-status,
+.gzc-badge {
+  position: absolute;
+  z-index: 2;
+}
+.gzc-steps {
+  left: 18px;
+  top: 16px;
+  display: none;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 5px;
+  font-size: 12.5px;
+  color: var(--stone);
+  border-radius: 999px;
+}
+.gzc:is(
+    [data-phase='align'],
+    [data-phase='sweep'],
+    [data-phase='swept'],
+    [data-phase='calib'],
+    [data-phase='result']
+  )
+  .gzc-steps {
+  display: flex;
+}
+.gzc-steps li {
+  padding: 5px 11px;
+  border-radius: 999px;
+  transition:
+    background 0.3s var(--ease),
+    color 0.3s var(--ease);
+}
+.gzc-steps li.is-active {
+  background: var(--ink);
+  color: var(--panel);
+}
+.gzc-steps li.is-done {
+  color: var(--ink);
+}
+.gzc-steps li.is-done::before {
+  content: '✓ ';
+}
+
+/* the calibration target: lens (top) and script (bottom); the screen centre is the ring */
+.gzc-target {
+  left: 50%;
+  top: 50%;
+  width: 92px;
+  height: 92px;
+  transform: translate(-50%, -50%) scale(0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    top 0.6s var(--ease),
+    opacity 0.45s var(--ease),
+    transform 0.45s var(--ease);
+}
+.gzc-target svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.gzc[data-phase='calib']:is([data-cue='CAMERA'], [data-cue='BOTTOM']) .gzc-target {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.gzc[data-phase='calib'][data-cue='CAMERA'] .gzc-target {
+  top: 104px;
+}
+.gzc[data-phase='calib'][data-cue='BOTTOM'] .gzc-target {
+  top: calc(100% - 90px);
+}
+.gzc-target-bg {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 9;
+}
+.gzc-target-fg {
+  fill: none;
+  stroke: var(--coral);
+  stroke-width: 9;
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset 0.2s linear,
+    stroke 0.3s;
+}
+.gzc-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px;
+  border-radius: 50%;
+  background: var(--coral);
+  box-shadow: 0 0 0 6px var(--coral-wash);
+  transition: background 0.3s;
+}
+.gzc[data-cue-state='ready'] .gzc-dot {
+  animation: gzc-breathe 1.2s var(--ease) infinite;
+}
+.gzc[data-cue-state='done'] .gzc-dot {
+  background: var(--ink);
+  box-shadow: 0 0 0 6px var(--cream);
+}
+.gzc[data-cue-state='done'] .gzc-target-fg {
+  stroke: var(--ink);
+}
+@keyframes gzc-breathe {
+  50% {
+    transform: scale(1.25);
+  }
+}
+.gzc-lens {
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  color: var(--coral);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+}
+.gzc[data-phase='calib'][data-cue='CAMERA'] .gzc-lens {
+  display: flex;
+}
+.gzc-lens span {
+  width: 0;
+  height: 0;
+  border: 9px solid transparent;
+  border-bottom: 12px solid currentColor;
+  border-top: 0;
+  animation: gzc-nudge 1.2s var(--ease) infinite;
+}
+.gzc-lens em,
+.gzc-script em {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
+}
+.gzc-lens em {
+  margin-top: 4px;
+}
+@keyframes gzc-nudge {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+.gzc-script {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 180px; /* frontend --spacing-script-highlight: where the script will sit */
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12px;
+  background:
+    repeating-linear-gradient(0deg, rgba(42, 39, 35, 0.05) 0 1px, transparent 1px 26px),
+    rgba(230, 223, 213, 0.62);
+  border-top: 1px dashed rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.gzc-script em {
+  color: var(--stone);
+  font-weight: 500;
+}
+.gzc[data-phase='calib'][data-cue='BOTTOM'] .gzc-script {
+  display: flex;
+}
+
+/* the instruction card: under the face, beside it while calibrating, centred for the verdict */
+.gzc-card {
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100cqw - 32px));
+  max-height: calc(100cqh - 140px);
+  overflow-y: auto;
+  display: none;
+  text-align: center;
+  padding: 18px 22px 16px;
+  border-radius: var(--radius);
+  animation: gzc-rise 0.45s var(--ease);
+}
+.gzc:is(
+    [data-phase='align'],
+    [data-phase='sweep'],
+    [data-phase='swept'],
+    [data-phase='calib'],
+    [data-phase='result']
+  )
+  .gzc-card {
+  display: block;
+}
+@keyframes gzc-rise {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* calibrating: beside the face, clear of the lens target above and the script band below */
+.gzc[data-phase='calib'] .gzc-card {
+  left: auto;
+  right: 24px;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  width: min(400px, calc(100cqw - 32px));
+}
+.gzc[data-phase='result'] .gzc-card {
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  max-height: calc(100cqh - 48px);
+}
+@container gzc (max-width: 900px) {
+  /* no room beside the face: back under it (over it while the script band holds the bottom) */
+  .gzc[data-phase='calib'] .gzc-card {
+    left: 50%;
+    right: auto;
+    top: auto;
+    bottom: 24px;
+    transform: translateX(-50%);
+    width: min(560px, calc(100cqw - 32px));
+  }
+  .gzc[data-phase='calib'][data-cue='BOTTOM'] .gzc-card {
+    top: 64px;
+    bottom: auto;
+  }
+}
+.gzc-title {
+  margin: 0 0 6px;
+  font-size: 23px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+.gzc-sub {
+  margin: 0;
+  color: var(--stone);
+  font-size: 14.5px;
+}
+/* the calibration gauge, big enough to read from the corner of the eye */
+.gzc-meter {
+  display: none;
+  margin: 12px auto 0;
+}
+.gzc[data-phase='calib'] .gzc-meter {
+  display: block;
+}
+.gzc-meter-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.gzc-meter-steps li {
+  font-size: 12px;
+  color: var(--stone);
+  text-align: left;
+}
+.gzc-meter-steps li[data-state='now'] {
+  color: var(--ink);
+  font-weight: 700;
+}
+.gzc-meter-steps li[data-state='done'] {
+  color: var(--ink);
+}
+.gzc-meter-steps b {
+  display: block;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.gzc-meter-steps i,
+.gzc-meter-bar i {
+  display: block;
+  height: 100%;
+  background: var(--coral);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition:
+    transform 0.2s linear,
+    background 0.3s;
+}
+.gzc-meter-steps li[data-state='done'] i {
+  background: var(--ink);
+}
+.gzc-meter-bar {
+  height: 14px;
+  border-radius: 7px;
+  background: var(--line);
+  overflow: hidden;
+}
+.gzc-meter[data-paused='1'] .gzc-meter-bar i {
+  background: var(--line-strong);
+}
+.gzc[data-cue-state='done'] .gzc-meter-bar i {
+  background: var(--ink);
+}
+.gzc-meter-count {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--stone);
+  font-variant-numeric: tabular-nums;
+}
+.gzc-meter-count strong {
+  font-size: 20px;
+  color: var(--ink);
+}
+.gzc-hint {
+  min-height: 22px;
+  margin: 10px 0 0;
+  color: var(--coral-deep);
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.gzc-checks {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+  display: none;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.gzc[data-phase='align'] .gzc-checks {
+  display: flex;
+}
+.gzc-checks li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 8px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--stone);
+  transition:
+    background 0.3s,
+    color 0.3s;
+}
+.gzc-checks li i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  transition: background 0.3s;
+}
+.gzc-checks li.is-ok {
+  color: var(--ink);
+}
+.gzc-checks li.is-ok i {
+  background: var(--gaze-audience);
+}
+.gzc-checks li.is-fail {
+  background: var(--coral-wash);
+  color: var(--coral-deep);
+}
+.gzc-checks li.is-fail i {
+  background: var(--coral);
+}
+.gzc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 14px;
+}
+.gzc-actions:empty {
+  display: none;
+}
+.gzc-btn {
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 18px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    transform 0.15s var(--ease);
+}
+.gzc-btn:active {
+  transform: scale(0.98);
+}
+.gzc-btn.is-primary {
+  background: var(--coral);
+  color: #fff;
+  box-shadow: 0 6px 16px -8px rgba(232, 83, 42, 0.7);
+}
+.gzc-btn.is-primary:hover {
+  background: var(--coral-deep);
+}
+.gzc-btn.is-ghost {
+  background: transparent;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+}
+.gzc-btn.is-ghost:hover {
+  background: var(--cream);
+}
+/* top right: free at every step (steps top left, lens target and live status top centre) */
+.gzc-skip {
+  right: 18px;
+  top: 16px;
+  border-radius: 999px;
+  padding: 7px 14px;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.gzc-skip[hidden] {
+  display: none;
+}
+/* the verdict's numbers and notes */
+.gzc-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  max-width: 460px;
+  margin: 16px auto 4px;
+  text-align: left;
+}
+.gzc-metrics div {
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  padding: 12px;
+}
+.gzc-metrics dt {
+  font-size: 12px;
+  color: var(--stone);
+}
+.gzc-metrics dd {
+  margin: 6px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.gzc-metrics dd.is-text {
+  font-size: 15px;
+}
+.gzc-metrics small {
+  font-size: 13px;
+  color: var(--stone);
+  margin-left: 2px;
+}
+.gzc-note {
+  max-width: 460px;
+  margin: 8px auto 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.55;
+  text-align: left;
+}
+
+/* ---------------------------------------------------------------- live */
+/* where the presenter looks now (this frame), top centre */
+.gzc-status {
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px 8px;
+  max-width: calc(100cqw - 32px);
+  padding: 8px 16px;
+  border-radius: 999px;
+  text-align: center;
+}
+.gzc[data-phase='live'] .gzc-status:not([data-state='']) {
+  display: flex;
+}
+.gzc-status i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  transition: background 0.3s;
+}
+.gzc-status b {
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+.gzc-status span {
+  font-size: 13px;
+  color: var(--stone);
+}
+.gzc-status span:empty {
+  display: none;
+}
+.gzc-status[data-state='CAMERA'] i {
+  background: var(--gaze-audience);
+}
+.gzc-status[data-state='SCREEN'] i,
+.gzc-status[data-state='BOTTOM'] i {
+  background: var(--gaze-screen);
+}
+.gzc-status[data-state='OTHER'] i {
+  background: var(--coral);
+}
+.gzc-status[data-state='UNCERTAIN'] i {
+  background: var(--gaze-unknown);
+}
+
+/* the face found, or why not: always, once the camera is on */
+.gzc-badge {
+  left: 18px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: #fff;
+  background: rgba(42, 38, 34, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: opacity 0.3s;
+}
+.gzc[data-on='0'] .gzc-badge,
+.gzc[data-phase='result'] .gzc-badge {
+  opacity: 0;
+}
+.gzc-badge i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  transition: background 0.3s;
+}
+.gzc-badge[data-ok='1'] i {
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
+
+.gzc-toast {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 20px);
+  max-width: min(640px, calc(100cqw - 32px));
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--panel);
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.35s var(--ease);
+}
+.gzc-toast.is-on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ---------------------------------------------------------------- small boxes */
+@container gzc (max-width: 560px) {
+  .gzc-steps {
+    left: 10px;
+    top: 10px;
+    font-size: 11.5px;
+  }
+  .gzc-card,
+  .gzc[data-phase='calib'] .gzc-card {
+    width: calc(100cqw - 20px);
+    padding: 14px 14px 12px;
+  }
+  .gzc-title {
+    font-size: 18px;
+  }
+  .gzc-sub,
+  .gzc-hint {
+    font-size: 13px;
+  }
+  .gzc-metrics {
+    grid-template-columns: 1fr;
+  }
+  .gzc-badge {
+    left: 10px;
+    bottom: 10px;
+  }
+  .gzc-skip {
+    right: 10px;
+    top: 10px;
+  }
+}
+@container gzc (max-height: 560px) {
+  .gzc-script {
+    height: 110px;
+  }
+  .gzc[data-phase='calib'][data-cue='CAMERA'] .gzc-target {
+    top: 84px;
+  }
+  .gzc[data-phase='calib'][data-cue='BOTTOM'] .gzc-target {
+    top: calc(100% - 60px);
+  }
+  .gzc-target {
+    width: 72px;
+    height: 72px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gzc *,
+  .gzc *::before,
+  .gzc *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

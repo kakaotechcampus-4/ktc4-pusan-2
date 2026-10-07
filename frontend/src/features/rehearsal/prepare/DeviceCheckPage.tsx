@@ -6,19 +6,13 @@ import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../medi
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
 import { setSessionTicket, setTakeId, startSession } from '../lib/db';
 import { toMessage } from '@/shared/api/errorMessage';
-import { CameraPreview } from './CameraPreview';
+import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
 import { LevelBar } from '../media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
-import { MissionCard } from './MissionCard';
 import { ScriptModeChoice } from './ScriptModeChoice';
 import { normalizeScriptMode, practiceModeFor, usePrepareStore } from './prepareStore';
-import {
-  CALIBRATION_FAIL_MESSAGE,
-  placementMessage,
-  useGazeCalibration,
-  type CalibrationPhase,
-} from './useGazeCalibration';
+import { CALIBRATION_FAIL_MESSAGE, useGazeSetup, type GazeSetupStatus } from './useGazeSetup';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 
@@ -35,16 +29,14 @@ function deviceCheckHint({
   deviceError,
   live,
   micOk,
-  calPhase,
-  calPoints,
+  calStatus,
   calPoor,
   calSaveFailed,
 }: {
   deviceError: DeviceError | null;
   live: boolean;
   micOk: boolean;
-  calPhase: CalibrationPhase;
-  calPoints: number;
+  calStatus: GazeSetupStatus;
   /** 기준은 잡혔지만 품질이 낮음 — 막지 않고 권하기만 합니다 */
   calPoor: boolean;
   /** 기준은 잡혔지만 브라우저에 저장하지 못함 — 리허설이 못 쓰므로 막습니다 */
@@ -53,10 +45,13 @@ function deviceCheckHint({
   if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
   if (!live) return '카메라를 켜야 점검을 시작할 수 있습니다';
   if (!micOk) return '마이크에 대고 한 마디 해보세요';
-  if (calPhase === 'FAILED')
+  if (calStatus === 'UNAVAILABLE') {
+    return '시선 분석을 켤 수 없어요. 새로고침해도 그대로면 팀에 알려 주세요';
+  }
+  if (calStatus === 'LOADING') return '시선 분석을 준비하는 중…';
+  if (calStatus === 'FAILED')
     return '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요';
-  if (calPhase === 'PLACE_WARN') return '카메라 위치를 확인해 주세요';
-  if (calPoints < 2) return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
+  if (calStatus !== 'DONE') return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
   if (calSaveFailed) {
     return '시선 기준을 저장하지 못했어요. 다시 잡아 주세요';
   }
@@ -67,52 +62,52 @@ function deviceCheckHint({
 /**
  * 시선 기준점 항목의 버튼 문구.
  *
- * `cal.running` 을 보지 않고 phase 만 봅니다 — running 이 phase 에서 파생된 값이라
- * (CAMERA·BOTTOM·EVALUATING) 둘을 같이 보면 같은 사실을 두 번 묻는 셈입니다.
- *
- * 상태 하나에 대한 분기라 switch 로 둡니다. phase 가 늘면 **여기서 컴파일이 깨져서**
+ * 상태 하나에 대한 분기라 switch 로 둡니다. 상태가 늘면 **여기서 컴파일이 깨져서**
  * 빠뜨린 갈래가 바로 드러납니다 — 삼항으로 이어 붙이면 조용히 마지막 갈래로 떨어집니다.
  *
- * IDLE·FAILED·PLACE_WARN 만 `live` 를 함께 봅니다. 카메라가 없으면 눌러도 시작되지 않는데
+ * IDLE·FAILED 만 `live` 를 함께 봅니다. 카메라가 없으면 눌러도 시작되지 않는데
  * 버튼이 '누르면 시작'이라고 말하면 안 됩니다.
  */
-function calibrationActionText(phase: CalibrationPhase, live: boolean): string {
-  switch (phase) {
+function calibrationActionText(status: GazeSetupStatus, live: boolean): string {
+  switch (status) {
     case 'DONE':
       return '다시 잡기';
-    case 'EVALUATING':
-      return '확인 중…';
-    case 'PLACE_CAMERA':
-    case 'PLACE_SCREEN':
-    case 'PLACE_EVALUATING':
-      return '위치 확인 중…';
-    case 'CAMERA':
-    case 'BOTTOM':
+    case 'RUNNING':
       return '잡는 중…';
-    case 'PLACE_WARN':
-      return live ? '다시 확인' : '카메라 먼저';
+    case 'LOADING':
+      return '준비 중…';
+    case 'UNAVAILABLE':
+      return '사용 불가';
     case 'IDLE':
     case 'FAILED':
       return live ? '누르면 시작' : '카메라 먼저';
   }
 }
 
-/** 시선 기준점 항목의 문구. 확인 중이면 phase 보다 그게 먼저입니다 */
+/** 시선 기준점 항목의 문구. 확인 중이면 상태보다 그게 먼저입니다 */
 function calibrationLabel(
-  cal: Pick<ReturnType<typeof useGazeCalibration>, 'verifying' | 'phase' | 'advice' | 'points'>,
+  cal: Pick<ReturnType<typeof useGazeSetup>, 'verifying' | 'status' | 'advice'>,
 ): string {
-  if (cal.verifying) return '시선 기준점 · 저장된 기준 확인 중';
-  if (cal.phase === 'FAILED') return '시선 기준점 · 다시 필요';
-  if (cal.phase === 'PLACE_WARN') return '시선 기준점 · 카메라 위치 확인';
-  if (cal.advice) return '시선 기준점 2 / 2 · 품질 낮음';
-  return `시선 기준점 ${cal.points} / 2`;
+  if (cal.verifying) return '시선 기준 · 저장된 기준 확인 중';
+  switch (cal.status) {
+    case 'UNAVAILABLE':
+      return '시선 기준 · 시선 분석 사용 불가';
+    case 'FAILED':
+      return '시선 기준 · 다시 필요';
+    case 'DONE':
+      return cal.advice ? '시선 기준 3 / 3 · 품질 낮음' : '시선 기준 3 / 3';
+    case 'LOADING':
+    case 'IDLE':
+    case 'RUNNING':
+      return '시선 기준 · 화면 가운데 · 렌즈 · 대본';
+  }
 }
 
 /**
  * 09 시작 전 세팅 — 리허설 바로 앞. **Take가 생기는 유일한 화면입니다.**
  *
  * 전에는 장치 점검(05)과 리허설 준비(06)가 따로였는데, 시안 09 가 둘을 한 화면으로
- * 그리면서 합쳤습니다. 미션·대본 표시·평가기준이 준비 화면에만 있던 것들입니다.
+ * 그리면서 합쳤습니다. 대본 표시·평가기준이 준비 화면에만 있던 것들입니다.
  *
  * ★ Take 는 아래 `start()` 에서만 생깁니다 (CLAUDE.md 8번). 화면에 들어오는 것만으로는
  *   만들지 않습니다 — 점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 실제
@@ -172,7 +167,7 @@ export function DeviceCheckPage() {
         setChosenDevices: s.setDevices,
       })),
     );
-  const cal = useGazeCalibration({ videoRef, live });
+  const cal = useGazeSetup({ stream, videoRef, live });
   const createTake = useCreateTake();
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -226,7 +221,7 @@ export function DeviceCheckPage() {
   const ready =
     live &&
     micOk &&
-    cal.points === 2 &&
+    cal.status === 'DONE' &&
     !cal.verifying &&
     !cal.saveFailed &&
     versions !== null &&
@@ -315,8 +310,7 @@ export function DeviceCheckPage() {
           deviceError,
           live,
           micOk,
-          calPhase: cal.phase,
-          calPoints: cal.points,
+          calStatus: cal.status,
           calPoor: cal.advice !== null,
           calSaveFailed: cal.saveFailed,
         }));
@@ -348,18 +342,21 @@ export function DeviceCheckPage() {
     >
       {/*
         목업 09 의 구성 — 왼쪽은 "지금 보이는 것"(카메라와 그 아래 점검), 오른쪽은
-        "이번 Take 를 어떻게 할지"(미션 · 대본 표시)입니다. 장치와 결정을 갈라 두면
+        "이번 Take 를 어떻게 할지"(대본 표시)입니다. 장치와 결정을 갈라 두면
         발표 직전에 눈이 한쪽만 훑어도 됩니다.
       */}
       <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <div className="flex flex-col gap-4">
           <div className="aspect-video w-full">
-            <CameraPreview
+            <GazeSetupView
+              frameRef={cal.frameRef}
+              boxRef={cal.boxRef}
               videoRef={videoRef}
               live={live}
-              phase={cal.phase}
-              countdownRef={cal.countdownRef}
+              status={cal.status}
+              overlay={cal.overlay}
               onEnable={() => request().catch(() => undefined)}
+              onCancel={cal.cancel}
             />
           </div>
 
@@ -406,16 +403,15 @@ export function DeviceCheckPage() {
                   trailing: <LevelBar variant="segments" meterRef={meterRef} />,
                 },
                 {
-                  // 먼저 카메라 위치를 4초 보고, 이어서 카메라 2초 · 대본 자리 2초.
-                  // 모은 프레임은 분류기가 받아 판정합니다 (A안) — 여기서는 순서와 안내만 합니다.
+                  // 준비 점검 → 고개 원 → 3점 보정(화면 가운데 · 렌즈 · 대본 자리)을
+                  // 전체 화면에서 AI 카메라 화면 모듈이 진행합니다. 여기서는 열고 결과만 받습니다.
+                  // 전체 화면은 사용자 클릭 안에서만 열리므로 이 onClick 에서 바로 엽니다
                   id: 'gaze',
                   label: calibrationLabel(cal),
-                  done: cal.phase === 'DONE',
+                  done: cal.status === 'DONE',
                   action: {
-                    text: calibrationActionText(cal.phase, live),
-                    onClick: () => {
-                      if (live && !cal.running) cal.start();
-                    },
+                    text: calibrationActionText(cal.status, live),
+                    onClick: cal.start,
                   },
                 },
               ]}
@@ -424,8 +420,6 @@ export function DeviceCheckPage() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <MissionCard description={data?.lastMission?.description ?? null} />
-
           <ScriptModeChoice value={scriptMode} onChange={(m) => setScriptMode(m)} />
 
           {/* 권한·무입력 안내. 문구는 useCameraStream이 들고 있는 것을 그대로 씁니다 —
@@ -461,36 +455,7 @@ export function DeviceCheckPage() {
               </div>
             )}
 
-            {/* 배치 경고. 참고용 추정이라 막지 않습니다 — 옮기고 다시 재거나, 그대로 갑니다 */}
-            {cal.placementWarning && (
-              <div className="mt-2 rounded-lg border border-coral bg-coral/10 p-3">
-                <p className="font-bold text-coral">카메라가 화면 위에 있지 않은 것 같아요</p>
-                <p className="mt-1 text-stone">{placementMessage(cal.placementWarning)}</p>
-                <p className="mt-1 text-stone">
-                  참고용 결과예요. 두 지점을 제대로 보지 않았을 때도 이렇게 나올 수 있어요.
-                </p>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={cal.start}
-                    className="rounded-full bg-coral px-3 py-1 font-semibold text-white
-                               hover:bg-coral-deep"
-                  >
-                    다시 확인
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cal.continueAnyway}
-                    className="rounded-full border border-coral px-3 py-1 font-semibold text-coral
-                               hover:bg-coral/10"
-                  >
-                    이대로 계속
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {cal.phase === 'FAILED' && (
+            {cal.status === 'FAILED' && (
               <div className="mt-2 rounded-lg border border-coral bg-coral/10 p-3">
                 <p className="font-bold text-coral">기준을 잡지 못했어요</p>
                 <p className="mt-1 text-stone">

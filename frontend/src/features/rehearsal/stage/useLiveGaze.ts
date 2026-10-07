@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useGazeWorker } from '../media/useGazeWorker';
 import { appendGazeDecision, loadZoneRef, markGazeExcluded } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
+import { fitsCurrentEngine } from '@/workers/calibrationModel';
 import type { ZoneDecision } from '@/workers/gaze.contract';
 import type { GazeExcludedReason, GazeZone, Ms } from '@/types/api';
 
@@ -45,7 +46,7 @@ function zoneRefState(
  *
  * ── 기준을 먼저 넣습니다 ────────────────────────────────────────────
  * 분류기는 그 사람의 캘리브레이션 기준이 없으면 판정하지 않습니다 (AI v1 도 같습니다).
- * 기준은 장치 점검 화면의 다른 워커에서 계산되어 IndexedDB 에 있으므로,
+ * 기준은 장치 점검 화면의 카메라 화면 모듈(다른 워커)에서 계산되어 IndexedDB 에 있으므로,
  * 꺼내서 이 워커에 넣은 **뒤에** 펌프를 켭니다.
  *
  * 기준을 못 찾으면(새로고침으로 요약이 사라짐 · 오래됨 · 저장 실패) 시선은
@@ -132,9 +133,10 @@ export function useLiveGaze({
   } = useGazeWorker(
     onDecision,
     0,
-    // 실모델은 /models 에 가중치가 들어오는 날 'model'로 바뀝니다 (I-03).
-    // 그때 이 파일에서 바뀌는 건 이 한 글자뿐입니다 — 그게 계약 파일을 따로 둔 이유입니다.
-    'dummy',
+    // AI 시선 엔진 v1.1 (`vendor/gaze/engine`). 바뀐 건 이 한 단어뿐입니다 —
+    // 그게 계약 파일을 따로 둔 이유입니다. `/models/` 에 자산이 없으면 워커가
+    // ENGINE_UNAVAILABLE 을 내고 시선만 제외된 채 발표는 계속됩니다
+    'model',
   );
 
   /**
@@ -157,8 +159,11 @@ export function useLiveGaze({
 
     // 엔진이 다르면 null 입니다 — 다른 모델이 만든 기준은 넣지 않습니다
     loadZoneRef(layoutSignature, engineVersion)
-      .then((ref) => {
+      .then((stored) => {
         if (cancelled) return;
+        // 설정이 바뀐 엔진의 기준은 없는 것으로 봅니다 — 버전 문자열은 같아도 판정 기준이 다릅니다.
+        // 넣어 두면 판정이 하나도 안 나오는데 '기록 중'으로 보이므로, 여기서 MISSING 으로 돌립니다
+        const ref = stored && fitsCurrentEngine(stored.model) ? stored : null;
         // 펌프보다 먼저 들어가야 합니다 — READY 가 되어야 아래 효과가 펌프를 켭니다
         if (ref) calibrate(ref);
         setLoaded({ key: loadKey, found: ref !== null });

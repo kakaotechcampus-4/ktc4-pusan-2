@@ -1,10 +1,8 @@
 
+import uuid
 from typing import Annotated
 
-import uuid
-
 from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, status
-from pitch_coach_backend.module.pitch.repository import PitchRepository
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
@@ -19,19 +17,21 @@ from pitch_coach_backend.module.pitch.dto import (
     StandardTextDTO,
     UploadPresentationDTO,
 )
+from pitch_coach_backend.module.pitch.exception import NonExistentPresentationVersion
 from pitch_coach_backend.module.pitch.service import (
     add_pitch_service,
     add_pitch_standard_service,
     create_script_service,
     delete_pitch_service,
-    get_pitch_datas,
     get_all_pitches_service,
+    get_pitch_datas,
+    get_presentation_detail,
     get_script_detail,
+    get_standard_detail,
     request_reparse,
     update_pitch_service,
     upload_presentation_service,
 )
-from pitch_coach_backend.module.pitch.exception import NotExistPresentationVersion
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 
@@ -61,11 +61,10 @@ def get_presentation(
     presentation_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)]
 ):
-    pitch_repository = PitchRepository(db)
-    presentation_version = pitch_repository.get_presentation_detail(pitch_id, presentation_id)
+    presentation_version = get_presentation_detail(db, pitch_id, presentation_id)
 
     if not presentation_version:
-        raise NotExistPresentationVersion()
+        raise NonExistentPresentationVersion()
 
     return presentation_version
 
@@ -168,3 +167,12 @@ def reparse_script(
     result, parse_ticket = request_reparse(db, pitch_id, script_version_id)
     background_tasks.add_task(parse_runner.run, parse_ticket)
     return result
+
+@router.get("/{pitch_id}/evaluations/{evaluation_version}")
+def get_evaluation(
+    pitch_id: OwnedPitch,
+    evaluation_version: int,
+    db: Annotated[Session, Depends(get_db)],
+):
+    evaluation = get_standard_detail(db, pitch_id, evaluation_version)
+    return evaluation
