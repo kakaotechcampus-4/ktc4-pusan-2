@@ -1,0 +1,81 @@
+{
+  "name": "21_plan_quoted_notice",
+  "description": "3번 장은 개인정보 처리 고지 원문을 그대로 읽어야 하는 장이다 (숫자가 거의 없음). 계획 프롬프트를 고친 뒤 처음 잰 시나리오로, 숫자 개수만 보고 봐주는지 확인한다",
+  "take_id": "sim-21_plan_quoted_notice",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "scripts": [
+    {
+      "slide_number": 1,
+      "script": "안녕하세요, 피치코치 팀입니다. 오늘은 발표 연습을 도와주는 실시간 코치를 소개하겠습니다."
+    },
+    {
+      "slide_number": 2,
+      "script": "발표를 준비하는 사람들은 혼자 연습할 때 무엇이 문제인지 알기 어렵습니다. 녹화를 다시 보는 데도 시간이 오래 걸립니다. 그래서 연습하는 동안 바로 알려 주는 코치가 필요합니다."
+    },
+    {
+      "slide_number": 3,
+      "script": "이 서비스를 쓰기 전에 꼭 알려 드려야 할 고지가 있어 원문 그대로 읽겠습니다. \"회사는 이용자의 발표 영상과 음성을 연습 피드백 제공 목적으로만 처리하며, 이용자의 별도 동의 없이 제삼자에게 제공하지 않습니다. 이용자는 언제든지 저장된 영상과 음성의 열람, 정정, 삭제를 요청할 수 있으며, 회사는 지체 없이 이를 처리합니다. 자세한 내용은 개인정보 처리방침을 따릅니다.\" 이상입니다."
+    },
+    {
+      "slide_number": 4,
+      "script": "정리하면, 피치코치는 연습하는 그 순간에 한 가지씩 알려 주어 발표를 더 빠르게 다듬게 합니다. 감사합니다."
+    }
+  ],
+  "segments": [
+    {
+      "from_ms": 88000,
+      "to_ms": 140000,
+      "set": {
+        "script_ratio": 0.85
+      }
+    }
+  ],
+  "expect": {
+    "types": {
+      "GAZE": {
+        "min": 1
+      }
+    }
+  },
+  "plan_expect": {
+    "relax_includes": [
+      {
+        "type": "GAZE",
+        "slide_number": 3
+      }
+    ],
+    "with_plan_no_interventions": [
+      {
+        "type": "GAZE",
+        "slide_number": 3
+      }
+    ]
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "name": "20_plan_overcoached",
+  "description": "직전 Take 에서 14번 말했는데 효과는 2번뿐이고 세 영역을 그만뒀다. 코칭이 지나쳤다는 근거가 있으니 계획이 개입 상한을 정해야 한다",
+  "take_id": "sim-20_plan_overcoached",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "scripts": [
+    {
+      "slide_number": 1,
+      "script": "안녕하세요, 피치코치 팀입니다. 오늘은 발표 연습을 도와주는 실시간 코치를 소개하겠습니다."
+    },
+    {
+      "slide_number": 2,
+      "script": "발표를 준비하는 사람들은 혼자 연습할 때 무엇이 문제인지 알기 어렵습니다. 녹화를 다시 보는 데도 시간이 오래 걸립니다. 그래서 연습하는 동안 바로 알려 주는 코치가 필요합니다."
+    },
+    {
+      "slide_number": 3,
+      "script": "코치는 시선, 말 속도, 목소리 크기를 1초마다 보고, 지금 고치면 좋을 것 하나만 짧게 알려 줍니다. 알려 준 뒤에는 실제로 나아졌는지 보고 다음 방법을 고릅니다."
+    },
+    {
+      "slide_number": 4,
+      "script": "정리하면, 피치코치는 연습하는 그 순간에 한 가지씩 알려 주어 발표를 더 빠르게 다듬게 합니다. 감사합니다."
+    }
+  ],
+  "expect": {
+    "interventions": {
+      "max": 0
+    }
+  },
+  "previous_review": {
+    "issues": [
+      {
+        "rank": 1,
+        "type": "GAZE",
+        "slide_number": 2,
+        "burden_s": 22.0,
+        "memory": "NEW",
+        "gave_up": true
+      },
+      {
+        "rank": 2,
+        "type": "SPEED",
+        "slide_number": null,
+        "burden_s": 18.0,
+        "memory": "NEW",
+        "gave_up": true
+      },
+      {
+        "rank": 3,
+        "type": "FILLER",
+        "slide_number": null,
+        "burden_s": 9.0,
+        "memory": "NEW",
+        "gave_up": true
+      }
+    ],
+    "type_status": [
+      {
+        "type": "GAZE",
+        "status": "PRIORITY"
+      },
+      {
+        "type": "SPEED",
+        "status": "PRIORITY"
+      },
+      {
+        "type": "FILLER",
+        "status": "STABLE"
+      }
+    ],
+    "summary": {
+      "interventions": 14,
+      "effective_rate": 0.14
+    }
+  },
+  "plan_expect": {
+    "budget_set": true
+  }
+}
