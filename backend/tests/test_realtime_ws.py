@@ -49,7 +49,7 @@ from pitch_coach_backend.realtime.stt_adapter import (
     Transcript,
     Word,
 )
-from pitch_coach_backend.realtime.take_stream import TakeStream
+from pitch_coach_backend.realtime.take_stream import FAST_ATTEMPTS, TakeStream
 from pitch_coach_backend.realtime.transcript_store import DbTranscriptStore
 
 TAKE_ID = uuid.uuid7()
@@ -427,31 +427,57 @@ def test_script_terms_follow_fillers_in_keyterms(
     (config,) = stt.configs
     # filler 가 먼저, 대본 용어가 뒤. filler 와 겹치는 "음" 은 한 번만
     assert config.keyterms == (*KEYTERM_FILLERS, "SeatFlow", "좌석 예측")
-    assert config.fallback_keyterms == KEYTERM_FILLERS
+    assert config.min_keyterms == len(KEYTERM_FILLERS)
 
 
-def test_rejected_keyterms_fall_back_to_fillers_only(
+def test_rejected_keyterms_drop_five_from_the_end_without_backoff(
     client: TestClient, token: str, take: Take, db_session: Session
 ):
-    # 토큰 추정이 빗나가 Deepgram 이 거절해도 STT 는 filler 만으로 붙어야 한다.
-    # 같은 설정으로 계속 재시도하면 그 Take 는 전사가 하나도 안 남는다
+    # 토큰 추정이 빗나가 Deepgram 이 거절하면 우선순위 낮은 뒤쪽 용어부터 5개씩 뺀다.
+    # 거절은 Deepgram 장애가 아니라 바로 다시 붙는다 — 실패로 세면 backoff·degraded 가 끼어든다
+    terms = [f"용어{i:02d}" for i in range(12)]
+    script = db_session.get(ScriptVersion, take.script_version_id)
+    script.parse_status = ScriptParseStatus.DONE
+    script.terms = terms
+    db_session.commit()
+    adapter = use(FakeSttAdapter(reject_times=FAST_ATTEMPTS))
+
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        first_status = ws.receive_json()
+        assert first_status["state"] == "ok", first_status
+        assert first_status["stt_session_no"] == 1
+
+    assert [config.keyterms for config in adapter.configs] == [
+        (*KEYTERM_FILLERS, *terms),
+        (*KEYTERM_FILLERS, *terms[:7]),
+        (*KEYTERM_FILLERS, *terms[:2]),
+        KEYTERM_FILLERS,
+    ]
+
+
+def test_rejected_keyterms_never_drop_fillers(
+    client: TestClient, token: str, take: Take, db_session: Session
+):
+    # 대본 용어를 다 빼고도 거절되면 filler 는 그대로 두고 평소처럼 backoff 재시도한다
     script = db_session.get(ScriptVersion, take.script_version_id)
     script.parse_status = ScriptParseStatus.DONE
     script.terms = ["SeatFlow"]
     db_session.commit()
-    adapter = use(FakeSttAdapter(reject_times=1))
+    adapter = use(FakeSttAdapter(reject_times=2))
 
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         assert wait_state(ws, "ok")["stt_session_no"] == 1
 
-    first, second = adapter.configs
-    assert "SeatFlow" in first.keyterms
-    assert second.keyterms == KEYTERM_FILLERS
-    assert second.fallback_keyterms is None
+    first, *rest = adapter.configs
+    assert first.keyterms == (*KEYTERM_FILLERS, "SeatFlow")
+    assert [config.keyterms for config in rest] == [KEYTERM_FILLERS, KEYTERM_FILLERS]
 
 
-def test_fillers_only_config_has_no_fallback(client: TestClient, stt: FakeSttAdapter, token: str):
+def test_fillers_only_config_has_nothing_to_trim(
+    client: TestClient, stt: FakeSttAdapter, token: str
+):
     # 대본 용어가 없으면 줄일 것도 없다
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
@@ -459,7 +485,7 @@ def test_fillers_only_config_has_no_fallback(client: TestClient, stt: FakeSttAda
 
     (config,) = stt.configs
     assert config.keyterms == KEYTERM_FILLERS
-    assert config.fallback_keyterms is None
+    assert config.min_keyterms == len(KEYTERM_FILLERS)
 
 
 def test_script_term_lookup_failure_still_connects(

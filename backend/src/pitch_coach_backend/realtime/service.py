@@ -261,11 +261,10 @@ class RealtimeSession:
                 len(keyterms),
                 dropped,
             )
-        # 토큰 추정이 빗나가 Deepgram 이 거절하면 filler 만으로 다시 붙는다
-        filler_only = build_keyterms(KEYTERM_FILLERS)
+        # 토큰 추정이 빗나가 Deepgram 이 거절하면 뒤쪽 대본 용어부터 줄인다. filler 는 남긴다
         return SttConfig(
             keyterms=keyterms,
-            fallback_keyterms=filler_only if keyterms != filler_only else None,
+            min_keyterms=len(build_keyterms(KEYTERM_FILLERS)),
             tag=f"take:{self.take_id}",
         )
 

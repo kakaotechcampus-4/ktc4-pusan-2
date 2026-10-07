@@ -50,8 +50,9 @@ class SttConfig:
     """연결마다 달라질 수 있는 값만. 모델·언어·인코딩은 위 상수다."""
 
     keyterms: tuple[str, ...] = ()
-    # Deepgram 이 이 설정을 거절(SttConfigRejected)하면 keyterms 대신 쓸 목록. None 이면 대안 없음
-    fallback_keyterms: tuple[str, ...] | None = None
+    # Deepgram 이 이 설정을 거절(SttConfigRejected)하면 keyterms 를 뒤에서부터 줄여 다시 붙는다.
+    # 앞에서 이만큼(filler)은 끝까지 남긴다. keyterms 개수와 같으면 줄일 것이 없다
+    min_keyterms: int = 0
     endpointing_ms: int = 300
     utterance_end_ms: int = 1000
     # Deepgram 콘솔에서 사용량을 Take 별로 볼 수 있게 붙이는 표식
