@@ -431,6 +431,7 @@ def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_d
     for standard in standards_result.standards:
         pitch_repository.save_standard(pitch_id, standard)
 
+    db.commit()
     return StandardTextResponseDTO(
          pitch_id=pitch_id,
          standards=[{"standard": standard} for standard in standards_result.standards],
