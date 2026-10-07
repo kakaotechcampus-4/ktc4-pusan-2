@@ -40,6 +40,7 @@ import {
   coachHistory,
   lastSlide,
   readClock,
+  recordedUntilMs,
   resumeFromMs,
   saveClock,
   type CoachHistory,
@@ -272,23 +273,34 @@ export function RehearsalPage() {
       // 메모리 스토어는 새로고침하면 비어 있습니다. 시선 기준·장치를 되살립니다
       if (row.prepare) restorePrepare(row.prepare);
 
-      // 행은 읽었으니 세션은 잇습니다. 슬라이드·코치 기록을 못 읽으면 그 둘만 처음부터입니다 —
+      // 행은 읽었으니 세션은 잇습니다. 기록을 못 읽으면 슬라이드·코치만 처음부터입니다 —
       // 아래 catch 로 보내면 행까지 버려 기록이 하나도 안 쌓이고 시계도 0 부터 돕니다
       let slide: ReturnType<typeof lastSlide> = null;
       let coach: CoachHistory | null = null;
+      let recordedUntil: Ms = 0;
       try {
-        const [changes, coachRows] = await Promise.all([readSlideChanges(id), readCoachLog(id)]);
+        const [changes, coachRows, decisions] = await Promise.all([
+          readSlideChanges(id),
+          readCoachLog(id),
+          readGazeDecisions(id),
+        ]);
         slide = lastSlide(changes);
         coach = coachHistory(coachRows);
+        recordedUntil = recordedUntilMs({
+          gazeTMs: decisions.map((d) => d.tMs),
+          gazeIntervalMs: TemporalVoter.INTERVAL_MS,
+          slideAtMs: changes.map((c) => c.atMs),
+          coachAtMs: coachRows.map((c) => c.atMs),
+        });
       } catch (err) {
-        console.error('[rehearsal] 슬라이드·코치 기록을 읽지 못했습니다', err);
+        console.error('[rehearsal] 슬라이드·코치·시선 기록을 읽지 못했습니다', err);
       }
       // 무대보다 먼저 되살립니다. 시작하고 나서 바꾸면 1번 슬라이드가 잠깐 보이고 전환으로 기록됩니다
       if (slide) setSlide(slide.slideNumber);
 
       setResume({
         sessionId: id,
-        fromMs: resumeFromMs(row, readClock(takeId), Date.now(), BEAT_MS),
+        fromMs: resumeFromMs(row, readClock(takeId), Date.now(), BEAT_MS, recordedUntil),
         slideAt: slide?.atMs ?? null,
         coach,
         ending:

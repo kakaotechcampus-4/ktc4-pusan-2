@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PresentationClock } from '@/shared/lib/clock';
-import { coachHistory, lastSlide, resumeFromMs } from './resume';
+import { coachHistory, lastSlide, recordedUntilMs, resumeFromMs } from './resume';
 
 const BEAT_MS = 5_000;
 const row = (elapsedMs: number, lastBeatAt: number) => ({
@@ -36,6 +36,31 @@ describe('무대 시계를 어디서부터 다시 돌릴까', () => {
    */
   it('하트비트가 한 번도 안 찍혔으면 0 부터다', () => {
     expect(resumeFromMs(row(0, 1_000), null, 1_000 + 2_500, BEAT_MS)).toBe(0);
+  });
+
+  /**
+   * 하트비트 추정은 실제보다 작을 수 있습니다 (첫 하트비트 전에 탭이 죽음 · 가려진 탭의 밀린 하트비트).
+   * 그 앞에서 다시 돌리면 시선 구간이 겹쳐 종료 때 Take 전체 시선이 VALIDATION_FAILED 로 빠집니다.
+   */
+  it('이미 쌓인 기록보다 앞에서는 시작하지 않는다', () => {
+    expect(resumeFromMs(row(0, 1_000), null, 1_000 + 2_500, BEAT_MS, 4_000)).toBe(4_000);
+    expect(resumeFromMs(row(60_000, 1_000), null, 1_000 + 3_000, BEAT_MS, 90_000)).toBe(90_000);
+    // 기록보다 뒤면 추정값 그대로다
+    expect(resumeFromMs(row(60_000, 1_000), null, 1_000 + 3_000, BEAT_MS, 50_000)).toBe(63_000);
+  });
+
+  it('기록이 덮는 마지막 시각 — 시선 판정은 판정 주기만큼 뒤까지 덮는다', () => {
+    expect(
+      recordedUntilMs({
+        gazeTMs: [1_000, 2_000, 3_000],
+        gazeIntervalMs: 1_000,
+        slideAtMs: [0, 2_500],
+        coachAtMs: [3_500],
+      }),
+    ).toBe(4_000);
+    expect(
+      recordedUntilMs({ gazeTMs: [], gazeIntervalMs: 1_000, slideAtMs: [], coachAtMs: [] }),
+    ).toBe(0);
   });
 });
 

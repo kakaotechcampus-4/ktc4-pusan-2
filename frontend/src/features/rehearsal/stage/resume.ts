@@ -67,8 +67,23 @@ export function clearClock(takeId: string): void {
  *    탭이 죽었으면 앞 5초가 겹칠 뿐입니다.
  *
  * 적어 둔 값과 하트비트 중 큰 쪽을 씁니다. 적어 둔 값이 더 작을 일은 없지만, 작으면 기록이 겹칩니다.
+ *
+ * 마지막으로 **이미 쌓인 기록이 덮는 시각(`recordedUntil`)보다 앞에서는 시작하지 않습니다.**
+ * 하트비트 추정은 실제보다 작을 수 있습니다 — 첫 하트비트 전에 탭이 죽었거나(0 부터가 됨),
+ * 가려진 탭이라 하트비트가 밀렸던 경우. 그대로 돌리면 시선 구간이 앞 기록과 겹치고, 종료 때
+ * 검증에 걸려 Take 전체 시선이 VALIDATION_FAILED 로 빠집니다.
  */
 export function resumeFromMs(
+  row: { clientSessionId: string; elapsedMs: Ms; lastBeatAt: number },
+  saved: SavedClock | null,
+  now: number,
+  beatMs: Ms,
+  recordedUntil: Ms = 0,
+): Ms {
+  return Math.max(estimate(row, saved, now, beatMs), recordedUntil);
+}
+
+function estimate(
   row: { clientSessionId: string; elapsedMs: Ms; lastBeatAt: number },
   saved: SavedClock | null,
   now: number,
@@ -79,6 +94,27 @@ export function resumeFromMs(
   }
   if (row.elapsedMs === 0) return 0;
   return row.elapsedMs + Math.min(Math.max(0, now - row.lastBeatAt), beatMs);
+}
+
+/**
+ * 이미 쌓인 기록이 덮는 마지막 시각. 시선 판정 하나는 `[tMs, tMs + 판정 주기]` 를 덮고,
+ * 슬라이드 전환과 코치 기록은 그 시각 한 점입니다. 기록이 없으면 0 입니다.
+ */
+export function recordedUntilMs({
+  gazeTMs,
+  gazeIntervalMs,
+  slideAtMs,
+  coachAtMs,
+}: {
+  gazeTMs: Ms[];
+  gazeIntervalMs: Ms;
+  slideAtMs: Ms[];
+  coachAtMs: Ms[];
+}): Ms {
+  let until = 0;
+  for (const t of gazeTMs) until = Math.max(until, t + gazeIntervalMs);
+  for (const t of [...slideAtMs, ...coachAtMs]) until = Math.max(until, t);
+  return until;
 }
 
 /** 마지막으로 보던 슬라이드. 전환 기록이 없으면 null — 처음부터 시작합니다 */
