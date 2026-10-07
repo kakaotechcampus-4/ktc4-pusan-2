@@ -129,7 +129,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 
 | 요청 필드 | 출처 | 비고 |
 |---|---|---|
-| `current.timing` · `gaze` · `voice` | FE의 1초 요약 | 슬라이드 번호와 체류 시간, 시선 최근 창, 음량 · 침묵 · 오디오 상태 |
+| `current.timing` · `gaze` · `voice` | FE의 1초 신호 | 슬라이드 번호와 체류 시간, 시선 1초 기록(또는 FE가 만든 최근 창 요약), 음량 · 침묵 · 오디오 상태 |
 | `current.speech` | BE의 STT | 최근 15초 단어. 군더더기(`filler`) 표시도 BE가 합니다 (목록의 단일 소스가 BE의 `fillers.py`) |
 | `plan` | 대본 분석 계획 | 목표 시간 · 허용 범위, 장별 목표 시간 · 글자 수 · 필수 키워드. Take 동안 바뀌지 않습니다 |
 | `missions` | 직전 리뷰의 `next_missions` | 그대로 넘깁니다 |
@@ -143,7 +143,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 
 | 필드 | 타입 | 기본값 | 뜻 |
 |---|---|---|---|
-| `schema_version` | str | `"1.0"` | 스키마 버전 (`version.py`의 `SCHEMA_VERSION`) |
+| `schema_version` | str | `"1.1"` | 스키마 버전 (`version.py`의 `SCHEMA_VERSION`) |
 | `take_id` | str | 필수 | Take ID. 응답 · 리뷰 근거에 그대로 돌아옵니다 |
 | `t_ms` | int (>=0) | 필수 | Take 시작 기준 경과 ms. 모든 시각이 이 시간축이다 |
 | `mode` | Mode | `"PRACTICE"` | `PRACTICE`(연습) 또는 `EXAM`(실전). 실전에서는 개입하지 않고 기록만 남긴다 |
@@ -219,14 +219,37 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 | `slide_number` | int \| null | `null` | 장 번호. `null`이면 장 정보가 없는 경우 |
 | `slide_elapsed_ms` | int \| null (>=0) | `null` | 지금 장에 머문 시간 (ms) |
 
-**`GazeInput`** — FE 시선 모듈의 최근 창 요약. 라벨 이름이 늘어도 모양은 그대로입니다
+**`GazeInput`** — FE 시선 모듈의 최근 창. 1초 기록(`records`)이나 FE가 만든 요약(`ratios` · `current_label` · `current_label_ms`) 중 하나를 보냅니다. `records`가 있으면 요약은 쓰지 않습니다
 
 | 필드 | 타입 | 기본값 | 뜻 |
 |---|---|---|---|
-| `window_ms` | int | `10000` | 요약한 창 길이 (ms) |
+| `window_ms` | int | `10000` | 창 길이 (ms) |
 | `ratios` | dict[str, float] | `{}` | 시선 라벨 → 비율. `UNCERTAIN` 포함 합 1 |
 | `current_label` | str \| null | `null` | 지금 시선 라벨 |
 | `current_label_ms` | int \| null (>=0) | `null` | current_label 이 이어진 시간 |
+| `records` | list[`GazeRecord`] \| null | `null` | 최근 window_ms 의 1초 기록. 기록이 없는 시간은 측정하지 못한 것으로 본다 (1.1) |
+
+**`GazeRecord`** — 시선 1초 기록 하나. 시선 모듈의 1초 기록과 같은 이름을 쓰고, 모르는 필드(`confidence` · `reliability` · `direction` …)는 무시합니다
+
+| 필드 | 타입 | 기본값 | 뜻 |
+|---|---|---|---|
+| `t_ms` | int (>=0) | 필수 | 이 기록이 덮는 시간의 시작 (Take 시작 기준 ms) |
+| `duration_ms` | int (>0) | `1000` | 덮는 시간 길이 (ms) |
+| `state` | str | 필수 | `CAMERA` · `BOTTOM` · `UNCERTAIN` (FE 3구역) 또는 `SCREEN` · `OTHER` · `UNMEASURED`를 더한 6상태 |
+
+`records`로 받으면 코치가 최근 창의 요약을 직접 계산합니다 (`evaluators/gaze.py`의 `window_summary`).
+
+- 창은 `[max(0, t_ms − window_ms), t_ms)`이고, 기록마다 창과 겹친 시간을 상태별로 더합니다. 겹치는 기록은 한 번만 셉니다.
+- 기록이 덮지 못한 시간과 `UNMEASURED`는 `UNCERTAIN`처럼 **측정하지 못한 시간**으로 셉니다. 대본 응시 비율은 측정한 시간 중 `BOTTOM`의 비율입니다 (시선 모듈의 비율과 같은 분모).
+- `SCREEN` · `OTHER`는 측정한 시간이지만 대본이 아닌 곳으로 셉니다.
+- 지금 라벨은 마지막 기록의 상태이고, 이어진 시간은 같은 상태로 빈틈없이 이어진 기록의 길이입니다. 마지막 기록이 지금보다 2초(`record_stale_ms`) 넘게 오래됐으면 지금 라벨은 측정하지 못한 것으로 봅니다.
+- 두 입력 모두 Take 시작 뒤 5초(`min_window_ms`)까지는 시선 비율로 지적하지 않습니다. 몇 초의 표본은 한두 번의 판정에 크게 흔들립니다.
+
+1초 기록 예시 (FE 3구역):
+
+```json
+{"window_ms": 10000, "records": [{"t_ms": 41000, "duration_ms": 1000, "state": "CAMERA"}, {"t_ms": 42000, "duration_ms": 1000, "state": "BOTTOM"}]}
+```
 
 **`VoiceInput`**
 
@@ -256,7 +279,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 
 ### 2-3. 예시
 
-`05_time_behind`의 `t_ms` 52000 요청입니다. `speech.words`는 15개 중 2개만, `coach_state`는 줄여 실었습니다 (실제로는 지난 응답의 `coach_state` 전체). 시뮬레이터가 만든 요청이라 단어는 자리표시(`가나다`)이고 `schema_version`은 생략(기본값 `"1.0"`)되어 있습니다.
+`05_time_behind`의 `t_ms` 52000 요청입니다. `speech.words`는 15개 중 2개만, `coach_state`는 줄여 실었습니다 (실제로는 지난 응답의 `coach_state` 전체). 시뮬레이터가 만든 요청이라 단어는 자리표시(`가나다`)이고 `schema_version`은 생략(기본값 `"1.1"`)되어 있습니다.
 
 ```json
 {
@@ -300,7 +323,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 
 | 필드 | 타입 | 기본값 | 뜻 |
 |---|---|---|---|
-| `schema_version` | str | `"1.0"` | 스키마 버전 (`version.py`의 `SCHEMA_VERSION`) |
+| `schema_version` | str | `"1.1"` | 스키마 버전 (`version.py`의 `SCHEMA_VERSION`) |
 | `policy_version` | str | 필수 | 판단 규칙 버전 (`POLICY_VERSION`) |
 | `config_hash` | str | 필수 | 판단에 쓴 설정의 해시. 재현용 |
 | `take_id` | str | 필수 | Take ID. 응답 · 리뷰 근거에 그대로 돌아옵니다 |
@@ -349,7 +372,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 | `gaze` | GazeLevel | `"UNKNOWN"` | 시선 상태 (`GazeLevel`) |
 | `volume` | VolumeLevel | `"UNKNOWN"` | 음량 상태 (`VolumeLevel`) |
 
-`pace`는 `cpm` < 275 이면 `SLOW`, > 350 이면 `FAST`, 그 사이는 `NORMAL`입니다. `gaze`는 UNCERTAIN 비율(지금 값과 최근 10초 평균 중 큰 쪽)이 50%를 넘으면 `UNCERTAIN`, 보인 시간 중 대본 응시가 50% 이상이면 `SCRIPT`, 아니면 `AUDIENCE`입니다. 다만 지금 1초의 UNCERTAIN이 100%면 시선 평가기가 판단을 건너뛰어 `AUDIENCE`로 나옵니다 (알려진 한계). `volume`은 `relative_db` < -6 이면 `LOW`입니다 (기준값은 `config.py`의 `fast_cpm` · `slow_cpm` · `max_uncertain_ratio` · `indicator_script_ratio` · `low_relative_db`).
+`pace`는 `cpm` < 275 이면 `SLOW`, > 350 이면 `FAST`, 그 사이는 `NORMAL`입니다. `gaze`는 측정하지 못한 비율(지금 값과 최근 10초 평균 중 큰 쪽)이 50%를 넘으면 `UNCERTAIN`, Take 시작 뒤 5초 안이면 `UNKNOWN`, 보인 시간 중 대본 응시가 50% 이상이면 `SCRIPT`, 아니면 `AUDIENCE`(대본을 보지 않음)입니다. `volume`은 `relative_db` < -6 이면 `LOW`입니다 (기준값은 `config.py`의 `fast_cpm` · `slow_cpm` · `max_uncertain_ratio` · `indicator_script_ratio` · `low_relative_db`).
 
 ### 3-2. `action`
 
@@ -380,9 +403,9 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 
 ```json
 {
-  "schema_version": "1.0",
-  "policy_version": "coach-v1",
-  "config_hash": "0f4bc4102193",
+  "schema_version": "1.1",
+  "policy_version": "coach-v1.1",
+  "config_hash": "e09c97ac28d2",
   "take_id": "sim-05_time_behind",
   "t_ms": 52000,
   "action": "INTERVENE",
@@ -426,7 +449,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 
 | 필드 | 타입 | 기본값 | 뜻 |
 |---|---|---|---|
-| `schema_version` | str | `"1.0"` | 스키마 버전 (`version.py`의 `SCHEMA_VERSION`) |
+| `schema_version` | str | `"1.1"` | 스키마 버전 (`version.py`의 `SCHEMA_VERSION`) |
 | `take_id` | str | 필수 | Take ID. 응답 · 리뷰 근거에 그대로 돌아옵니다 |
 | `t_ms` | int (>=0) | 필수 | Take 시작 기준 경과 ms |
 | `coach_state` | dict[str, Any] \| null | `null` | 마지막 응답의 `coach_state` 그대로 |
@@ -435,7 +458,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 
 | 필드 | 타입 | 기본값 | 뜻 |
 |---|---|---|---|
-| `schema_version` | str | `"1.0"` | 스키마 버전 (`version.py`의 `SCHEMA_VERSION`) |
+| `schema_version` | str | `"1.1"` | 스키마 버전 (`version.py`의 `SCHEMA_VERSION`) |
 | `policy_version` | str | 필수 | 판단 규칙 버전 |
 | `take_id` | str | 필수 | Take ID. 응답 · 리뷰 근거에 그대로 돌아옵니다 |
 | `events` | list[`CoachEvent`] | `[]` | 이벤트 목록 (4절) |
@@ -739,7 +762,7 @@ finalize() 응답의 events ─┘
 
 | 필드 | 타입 | 기본값 | 뜻 |
 |---|---|---|---|
-| `schema_version` | str | `"1.0"` | 스키마 버전 (`version.py`의 `SCHEMA_VERSION`) |
+| `schema_version` | str | `"1.1"` | 스키마 버전 (`version.py`의 `SCHEMA_VERSION`) |
 | `policy_version` | str | 필수 | 판단 규칙 버전 |
 | `config_hash` | str | 필수 | 판단에 쓴 설정의 해시 |
 | `take_id` | str | 필수 | Take ID. 응답 · 리뷰 근거에 그대로 돌아옵니다 |
@@ -1002,9 +1025,9 @@ finalize() 응답의 events ─┘
 
 ```json
 {
-  "schema_version": "1.0",
-  "policy_version": "coach-v1",
-  "config_hash": "0f4bc4102193",
+  "schema_version": "1.1",
+  "policy_version": "coach-v1.1",
+  "config_hash": "e09c97ac28d2",
   "take_id": "sim-14_recurring_persists",
   "summary": {
     "interventions": 1,
@@ -1316,13 +1339,13 @@ finalize() 응답의 events ─┘
 
 | 값 | 현재 | 올리는 때 |
 |---|---|---|
-| `SCHEMA_VERSION` | `"1.0"` | 요청 · 응답 · 이벤트 · 리뷰 근거의 **모양**이 바뀔 때 |
-| `POLICY_VERSION` | `"coach-v1"` | 판단 규칙의 의미가 바뀔 때(기능 버전). 같은 입력에 다른 판단이 나오게 바꾸면 올립니다 |
+| `SCHEMA_VERSION` | `"1.1"` | 요청 · 응답 · 이벤트 · 리뷰 근거의 **모양**이 바뀔 때. 1.1: 시선 1초 기록 입력 |
+| `POLICY_VERSION` | `"coach-v1.1"` | 판단 규칙의 의미가 바뀔 때(기능 버전). 같은 입력에 다른 판단이 나오게 바꾸면 올립니다. coach-v1.1: 원자료 입력, 측정하지 못한 1초 · Take 시작 직후의 시선 판단 |
 | `STATE_VERSION` | `1` | `coach_state` 모양이 바뀔 때. 다른 버전의 state가 오면 버리고 새로 시작합니다 |
 
-- **기준값 · 가중치 같은 설정 조정은 버전을 올리지 않습니다.** 대신 응답과 리뷰 근거의 `config_hash`(예: `"0f4bc4102193"`)가 어떤 설정으로 판단했는지 남깁니다. 같은 `config_hash` · `POLICY_VERSION`이면 같은 입력에 같은 판단이 나옵니다.
+- **기준값 · 가중치 같은 설정 조정은 버전을 올리지 않습니다.** 대신 응답과 리뷰 근거의 `config_hash`(예: `"e09c97ac28d2"`)가 어떤 설정으로 판단했는지 남깁니다. 같은 `config_hash` · `POLICY_VERSION`이면 같은 입력에 같은 판단이 나옵니다.
 - **입력은 관대하게, 출력은 엄격하게.** 입력 모델(`CoachRequest`와 그 안의 모델, `FinalizeRequest`, `ReviewEvidenceRequest`)은 모르는 필드를 무시합니다(`extra="ignore"`). 그래서 BE가 필드를 먼저 추가해도 깨지지 않습니다. 출력 모델(`CoachResponse`, 이벤트, `CoachReviewEvidence`와 그 안의 모델)은 `extra="forbid"`라 정해진 필드만 나가고, 소비자가 모르는 필드를 만날 일이 없습니다. 반대로 BE가 이벤트를 저장했다가 `build_review_evidence`에 돌려줄 때 필드를 더하거나 바꾸면 거부되니 이벤트는 받은 그대로 보관합니다.
-- **호환 규칙**: 입력 모델에 선택 필드를 **추가**하는 것은 스키마 버전 안에서 가능합니다 (입력은 모르는 필드를 무시). 출력 · 이벤트 모델에 필드를 추가하면, 그 필드가 담긴 이벤트를 옛 버전의 `build_review_evidence`가 받을 때 거부하므로(`extra="forbid"`) AI 서버를 먼저 배포한 뒤 쓰는 쪽을 바꿉니다. enum 값 추가는 받는 쪽이 모든 경우를 처리하고 있으면 깨질 수 있어 받는 쪽과 먼저 맞춥니다. 필드 · 값의 이름을 바꾸거나 빼면 `SCHEMA_VERSION`을 올립니다. 요청의 `schema_version`은 기본값이 `"1.0"`이고 코드가 비교하지는 않으므로, 버전별 처리가 필요해지면 서버 쪽에 검사를 추가해야 합니다.
+- **호환 규칙**: 입력 모델에 선택 필드를 **추가**하는 것은 스키마 버전 안에서 가능합니다 (입력은 모르는 필드를 무시). 출력 · 이벤트 모델에 필드를 추가하면, 그 필드가 담긴 이벤트를 옛 버전의 `build_review_evidence`가 받을 때 거부하므로(`extra="forbid"`) AI 서버를 먼저 배포한 뒤 쓰는 쪽을 바꿉니다. enum 값 추가는 받는 쪽이 모든 경우를 처리하고 있으면 깨질 수 있어 받는 쪽과 먼저 맞춥니다. 필드 · 값의 이름을 바꾸거나 빼면 `SCHEMA_VERSION`을 올립니다. 요청의 `schema_version`은 기본값이 `"1.1"`이고 코드가 비교하지는 않으므로, 버전별 처리가 필요해지면 서버 쪽에 검사를 추가해야 합니다.
 - **필드 이름은 snake_case**입니다 (BE DTO · 리뷰 DTO와 같게).
 - **시간은 전부 ms**이고, 모든 시각(`t_ms` · `start_ms` · `end_ms` · `onset_ms` …)은 **Take 시작 기준 경과 시간**입니다. 예외로 `*_s` 접미사가 붙은 `burden_s`는 초 단위입니다.
 - **비율 · 신뢰도는 0~1**입니다 (`confidence`, `script_ratio`, `*_coverage`, `effective_rate` …). `feedback` · `candidates[]` · 이벤트의 `priority`는 0~100 점수이고, `next_missions[].priority`는 순위(1이 먼저), `missions[].priority`는 받은 값 그대로입니다. `required_ratio`는 배수라 1 이상일 수 있습니다.
