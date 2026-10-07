@@ -32,6 +32,8 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     if pitch_repository.get_script_in_pitch(pitch_id, take_dto.script_version_id) is None:
         raise NonExistentScript()
 
+    # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금)
+    pitch_repository.lock_for_new_version(pitch_id)
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,

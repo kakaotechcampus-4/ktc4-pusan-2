@@ -809,11 +809,12 @@ def test_concurrent_script_creates_on_one_pitch_get_distinct_versions(
             cleanup.commit()
 
 
-def test_version_lock_does_not_block_take_creation_on_the_same_pitch(engine: Engine) -> None:
-    """버전 잠금(lock_for_new_version)을 쥔 동안에도 같은 pitch 에 Take 를 만들 수 있다.
+def test_version_lock_does_not_block_child_inserts_on_the_same_pitch(engine: Engine) -> None:
+    """버전 잠금(lock_for_new_version)을 쥔 동안에도 같은 pitch 의 자식 행은 넣을 수 있다.
 
-    Take INSERT 는 FK 검사로 pitch 행에 KEY SHARE 를 건다. 잠금이 FOR UPDATE 면 그것과 충돌해
-    Take 생성이 커밋까지 멈추고, FOR NO KEY UPDATE 면 지나간다. 멈추면 lock_timeout 에 걸려 실패한다.
+    자식 행 INSERT 는 FK 검사로 pitch 행에 KEY SHARE 를 건다. 잠금이 FOR UPDATE 면 그것과 충돌해
+    커밋까지 멈추고, FOR NO KEY UPDATE 면 지나간다. 멈추면 lock_timeout 에 걸려 실패한다.
+    Take 는 서비스 없이 직접 넣는다 — create_take_service 는 이 잠금을 직접 잡아 기다린다.
     """
     from sqlalchemy import text
 
