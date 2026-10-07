@@ -271,8 +271,17 @@ export function RehearsalPage() {
       // 메모리 스토어는 새로고침하면 비어 있습니다. 시선 기준·장치를 되살립니다
       if (row.prepare) restorePrepare(row.prepare);
 
-      const [changes, coachRows] = await Promise.all([readSlideChanges(id), readCoachLog(id)]);
-      const slide = lastSlide(changes);
+      // 행은 읽었으니 세션은 잇습니다. 슬라이드·코치 기록을 못 읽으면 그 둘만 처음부터입니다 —
+      // 아래 catch 로 보내면 행까지 버려 기록이 하나도 안 쌓이고 시계도 0 부터 돕니다
+      let slide: ReturnType<typeof lastSlide> = null;
+      let coach: CoachHistory | null = null;
+      try {
+        const [changes, coachRows] = await Promise.all([readSlideChanges(id), readCoachLog(id)]);
+        slide = lastSlide(changes);
+        coach = coachHistory(coachRows);
+      } catch (err) {
+        console.error('[rehearsal] 슬라이드·코치 기록을 읽지 못했습니다', err);
+      }
       // 무대보다 먼저 되살립니다. 시작하고 나서 바꾸면 1번 슬라이드가 잠깐 보이고 전환으로 기록됩니다
       if (slide) setSlide(slide.slideNumber);
 
@@ -280,7 +289,7 @@ export function RehearsalPage() {
         sessionId: id,
         fromMs: resumeFromMs(row, readClock(takeId), Date.now(), BEAT_MS),
         slideAt: slide?.atMs ?? null,
-        coach: coachHistory(coachRows),
+        coach,
         ending:
           row.ending ??
           // ending 을 남기기 전에 끝낸 행입니다. 마지막 하트비트가 가장 가까운 값입니다
