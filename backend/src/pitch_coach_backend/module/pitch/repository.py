@@ -140,6 +140,7 @@ class PitchRepository:
     def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
         return self.db.scalars(
             select(Standards).where(Standards.pitch_id == pitch_id)
+            .distinct(Standards.version)
             .order_by(Standards.version.asc())
         ).all()
 
