@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TakeInitRequestDTO(BaseModel):
@@ -9,11 +9,12 @@ class TakeInitRequestDTO(BaseModel):
     script_mode: str
     presentation_version_id: uuid.UUID
     script_version_id: uuid.UUID
-    goal_time_sec: int
+    goal_time_sec: int = Field(gt=0)
 
+# 보낸 필드만 반영한다 (service 가 exclude_unset 으로 읽는다)
 class TakeUpdateRequestDTO(BaseModel):
-    started_at: str | None = None
-    ended_at: str | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
     event_logs: list[dict] | None = None
 
 class TakeSummaryDTO(BaseModel):
@@ -29,7 +30,8 @@ class TakeSummaryDTO(BaseModel):
 class CalibrationDTO(BaseModel):
     face_detected: bool = False
     mic_detected: bool = False
-    base_volume: float = 0.0
+    # DB 는 Numeric(5, 2) — 999.99 까지
+    base_volume: float = Field(default=0.0, ge=0, lt=1000)
     # DB 는 Float. bool 을 넘기면 psycopg 가 타입이 안 맞는다고 거절해 저장이 항상 500 이었다
     gaze_confidence: float = 0.0
 

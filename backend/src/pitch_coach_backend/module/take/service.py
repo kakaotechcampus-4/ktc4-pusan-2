@@ -57,9 +57,9 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
     if not existing_take:
         raise NonExistentTake()
 
-    existing_take.started_at = take_update_dto.started_at
-    existing_take.ended_at = take_update_dto.ended_at
-    existing_take.event_logs = take_update_dto.event_logs
+    # 보낸 필드만 바꾼다. 빠진 필드를 None 으로 덮으면 ended_at 만 보낼 때 started_at 이 지워진다
+    for field, value in take_update_dto.model_dump(exclude_unset=True).items():
+        setattr(existing_take, field, value)
 
     updated_take = take_repository.save(existing_take)
     db.commit()

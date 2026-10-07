@@ -1,6 +1,7 @@
-"""Take API — 이전 미션 조회, 캘리브레이션 저장."""
+"""Take API — 이전 미션 조회, 부분 수정(PUT), 입력 검증."""
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -122,6 +123,111 @@ def test_previous_missions_of_take_without_missions_is_empty_list(
 
     assert response.status_code == 200
     assert response.json()["missions"]["missions"] == []
+
+
+# ── PUT /takes/{take_id} ────────────────────────────────────────────
+
+
+def _put(client: TestClient, take: Take, headers: dict[str, str], body: dict):
+    return client.put(f"/api/pitches/{take.pitch_id}/takes/{take.id}", json=body, headers=headers)
+
+
+def test_put_keeps_fields_that_were_not_sent(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    take = _make_take(db_session, pitch_id, versions, 1)
+    started = "2026-10-07T10:00:00+09:00"
+    ended = "2026-10-07T10:05:00+09:00"
+    logs = [{"type": "slide", "at_ms": 0}]
+
+    assert _put(client, take, auth_headers, {"started_at": started, "event_logs": logs}).is_success
+    assert _put(client, take, auth_headers, {"ended_at": ended}).is_success
+
+    db_session.refresh(take)
+    assert take.started_at == datetime.fromisoformat(started)
+    assert take.ended_at == datetime.fromisoformat(ended)
+    assert take.event_logs == logs
+
+
+def test_put_with_bad_datetime_is_422_not_500(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    take = _make_take(db_session, pitch_id, versions, 1)
+
+    response = _put(client, take, auth_headers, {"started_at": "어제 저녁"})
+
+    assert response.status_code == 422
+
+
+def test_put_accepts_utc_z_suffix(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    take = _make_take(db_session, pitch_id, versions, 1)
+
+    assert _put(client, take, auth_headers, {"ended_at": "2026-10-07T01:05:00Z"}).is_success
+
+    db_session.refresh(take)
+    assert take.ended_at == datetime(2026, 10, 7, 1, 5, tzinfo=UTC)
+
+
+# ── 입력 검증 ───────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("goal_time_sec", [0, -60])
+def test_create_with_non_positive_goal_time_is_422(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    goal_time_sec: int,
+) -> None:
+    response = client.post(
+        f"/api/pitches/{pitch_id}/takes/",
+        json={
+            "mode": "COACHING",
+            "script_mode": "HIGHLIGHT",
+            "presentation_version_id": str(versions[0]),
+            "script_version_id": str(versions[1]),
+            "goal_time_sec": goal_time_sec,
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(("base_volume", "status"), [(999.99, 200), (1000, 422), (-1, 422)])
+def test_calibration_base_volume_range(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    base_volume: float,
+    status: int,
+) -> None:
+    take = _make_take(db_session, pitch_id, versions, 1)
+
+    response = client.post(
+        f"/api/pitches/{pitch_id}/takes/{take.id}/calibration",
+        json={"base_volume": base_volume},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == status
+
 
 def test_calibration_is_saved(
     client: TestClient,
