@@ -1781,6 +1781,107 @@ async def test_frames_from_a_taken_over_connection_are_ignored():
     await stream.wait_closed(timeout=1.0)
 
 
+def _slow_after_first(adapter: FakeSttAdapter, delay: float) -> None:
+    """첫 세션 뒤로는 Deepgram 연결이 delay 초 걸린다 (세션을 가는 동안 오디오가 큐에 쌓인다)."""
+    connect = adapter.connect
+
+    async def slow(config: SttConfig) -> FakeSttSession:
+        if adapter.sessions:
+            await asyncio.sleep(delay)
+        return await connect(config)
+
+    adapter.connect = slow  # type: ignore[method-assign]
+
+
+@pytest.mark.anyio
+async def test_audio_dropped_while_rotating_is_filled_with_silence(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """세션을 가는 동안 큐가 넘쳐 드롭된 것은 넘겨받은 프레임 **뒤**의 오디오다. 새 세션의
+    base 가 흡수하면 안 된다 — 그만큼 이후 전사 시각이 앞당겨진다. 새로고침할 때마다 세션을 간다."""
+    monkeypatch.setattr(take_stream, "QUEUE_MAX_FRAMES", 10)
+    adapter = FakeSttAdapter()
+    _slow_after_first(adapter, 0.3)
+    stream = TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    stream.start()
+    old_tab, new_tab = FakeWebSocket(), FakeWebSocket()
+    await stream.attach(old_tab)
+    for i in range(30):
+        stream.push(frame(i + 1, i * 100), source=old_tab)
+        await asyncio.sleep(0)
+    await _wait_for(lambda: adapter.sessions[0].audio_ms == 3000)
+
+    # 새로고침. seq 는 1 부터, offset 은 이어받은 무대 시계부터
+    await stream.attach(new_tab)
+    for i in range(5):
+        stream.push(frame(i + 1, 3000 + i * 100), source=new_tab)
+    await _wait_for(lambda: "CloseStream" in adapter.sessions[0].controls)
+    # 새 세션이 붙기를 기다리는 동안 들어온 실시간 프레임. 큐(10)를 넘는다
+    for i in range(5, 30):
+        stream.push(frame(i + 1, 3000 + i * 100), source=new_tab)
+    await _wait_for(lambda: len(adapter.sessions) == 2 and adapter.sessions[1].audio_ms > 0)
+    await asyncio.sleep(0.05)
+
+    assert stream.dropped_audio_ms > 0
+    # 마지막 프레임 끝은 Take 기준 6000ms. take_ms = base + deepgram_ms 가 성립해야 한다
+    assert stream._base_offset_ms == 3000
+    assert stream._base_offset_ms + adapter.sessions[1].audio_ms == 6000
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_dropped_restart_frame_still_rotates(monkeypatch: pytest.MonkeyPatch):
+    """새로고침 뒤 첫 프레임(restart)이 큐가 넘쳐 드롭돼도 세션을 간다. 표시가 프레임과 함께
+    사라지면 새 탭 오디오가 옛 세션에 이어 붙는다."""
+    monkeypatch.setattr(take_stream, "QUEUE_MAX_FRAMES", 5)
+    adapter = FakeSttAdapter()
+    stream = TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    stream.start()
+    old_tab, new_tab = FakeWebSocket(), FakeWebSocket()
+    await stream.attach(old_tab)
+    for i in range(10):
+        stream.push(frame(i + 1, i * 100), source=old_tab)
+        await asyncio.sleep(0)
+    await _wait_for(lambda: adapter.sessions[0].audio_ms == 1000)
+
+    # 펌프가 돌기 전에 몰려 들어와 restart 프레임(seq 1)부터 세 개가 드롭된다
+    await stream.attach(new_tab)
+    for i in range(8):
+        stream.push(frame(i + 1, 1000 + i * 100), source=new_tab)
+    await _wait_for(lambda: len(adapter.sessions) == 2 and adapter.sessions[1].audio_ms == 500)
+
+    assert adapter.sessions[0].audio_ms == 1000, "옛 세션에 이어 붙지 않는다"
+    # 살아남은 첫 프레임(seq 4, 1300ms)이 새 세션의 base 다
+    assert stream._base_offset_ms == 1300
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
+async def _wait_for(condition, timeout: float = 2.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if condition():
+                return
+        except IndexError:
+            pass
+        await asyncio.sleep(0.01)
+    raise AssertionError("시간 안에 조건이 안 됐다")
+
+
 # ── 그 밖의 예외 케이스 ───────────────────────────────────────────────
 
 

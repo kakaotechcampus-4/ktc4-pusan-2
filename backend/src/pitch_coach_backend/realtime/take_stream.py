@@ -147,6 +147,9 @@ class TakeStream:
         self._bytes_sent = 0
         # 드롭된 오디오만큼 다음 프레임 앞에 채울 무음. 타임라인을 밀리지 않게 한다
         self._pending_silence_ms = 0
+        # 드롭된 프레임이 타임라인 단절(`Accepted.timeline_break`)이었다. 그 프레임과 함께 사라지면
+        # 세션을 갈지 않고 이어 붙여 전사 시각이 어긋난다 — 다음 프레임이 대신 세션을 간다
+        self._pending_break = False
         # 세션을 갈면서 넘긴 프레임. 새 세션의 첫 프레임이 된다
         self._carry: Accepted | None = None
 
@@ -396,6 +399,8 @@ class TakeStream:
         lost = item.silence_ms + item.frame.duration_ms
         self.dropped_audio_ms += lost
         self._pending_silence_ms += lost
+        if item.timeline_break:
+            self._pending_break = True
 
     # ── Deepgram 세션 루프 ────────────────────────────────────────────
 
@@ -427,7 +432,10 @@ class TakeStream:
                 self.stt_session_no += 1
                 self._base_offset_ms = None
                 self._bytes_sent = 0
-                self._pending_silence_ms = 0
+                if self._carry is None:
+                    # 넘겨받은 프레임이 있으면 지우지 않는다. 세션을 가는 동안 드롭된 것은 그
+                    # 프레임 **뒤**의 오디오라 새 세션에서 무음으로 메워야 한다 (_send_frame)
+                    self._pending_silence_ms = 0
                 await self._set_state("ok")
 
                 try:
@@ -526,6 +534,7 @@ class TakeStream:
 
     async def _pump_audio(self, session: SttSession) -> str:
         while True:
+            carried = self._carry is not None
             item = self._carry or await self._queue.get()
             self._carry = None
             if item is None:
@@ -534,7 +543,7 @@ class TakeStream:
 
             gap_ms = item.silence_ms + self._pending_silence_ms
             if self._base_offset_ms is not None and (
-                item.timeline_break or gap_ms > MAX_SILENCE_FILL_MS
+                item.timeline_break or self._pending_break or gap_ms > MAX_SILENCE_FILL_MS
             ):
                 # 무음으로 메우기엔 너무 긴 갭이다. 이대로 보내면 이후 전사 시각이
                 # 갭만큼 앞당겨진다. 세션을 갈아 base 를 다시 잡는다
@@ -544,16 +553,26 @@ class TakeStream:
                     gap_ms + item.lost_ms,
                 )
                 self._carry = item
+                # 여기까지 드롭된 것은 이 프레임 **앞**의 오디오다. 새 세션의 base 가 흡수한다.
+                # 이 뒤로 드롭되는 것(새 세션이 열리기를 기다리는 동안 큐가 넘침)은 남긴다
+                self._pending_silence_ms = 0
+                self._pending_break = False
                 await session.close_stream()
                 return _ROTATE
 
-            await self._send_frame(session, item, gap_ms)
+            await self._send_frame(session, item, gap_ms, carried=carried)
 
-    async def _send_frame(self, session: SttSession, item: Accepted, gap_ms: int) -> None:
+    async def _send_frame(
+        self, session: SttSession, item: Accepted, gap_ms: int, *, carried: bool = False
+    ) -> None:
         if self._base_offset_ms is None:
-            # 세션의 첫 프레임. 앞의 갭·드롭은 base 가 흡수하므로 무음을 보내지 않는다
+            # 세션의 첫 프레임. 앞의 갭·드롭은 base 가 흡수하므로 무음을 보내지 않는다.
+            # 단 세션을 갈며 넘겨받은 프레임이면 드롭은 그 **뒤**에서 일어났다 — 지우면 그만큼
+            # 이후 전사 시각이 앞당겨진다. 남겨 두면 다음 프레임 앞에 무음으로 들어간다
             self._base_offset_ms = item.frame.offset_ms
-            self._pending_silence_ms = 0
+            if not carried:
+                self._pending_silence_ms = 0
+                self._pending_break = False
         else:
             self._pending_silence_ms = 0
             if gap_ms:
