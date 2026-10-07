@@ -24,7 +24,8 @@ class PitchesDTO(BaseModel):
     pitch_title: str
     pitch_time: int
     thumbnail_url: str | None = None
-    pitch_deadline: date
+    # 발표일은 생성 때 비워 둘 수 있다 (PitchDTO.presentation_date)
+    pitch_deadline: date | None = None
     takes: list[TakeSummaryDTO]
 
 class AllPitchesDTO(BaseModel):
