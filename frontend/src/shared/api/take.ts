@@ -1,5 +1,6 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, postJson } from './client';
+import { pitchesKey } from './home';
 import type { CompleteRequest, PitchDetail, TakeContext } from '@/types/api';
 
 export const takeKey = (takeId: string) => ['take', takeId] as const;
@@ -36,8 +37,10 @@ export function usePitchDetail(pitchId: string | undefined) {
  * `clientSessionId`가 멱등키라 같은 값으로 다시 보내도 Take가 늘지 않습니다.
  */
 export function useCompleteTake(takeId: string) {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CompleteRequest) =>
       postJson<{ takeId: string; status: string }>(`/api/takes/${takeId}/complete`, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: pitchesKey }),
   });
 }

@@ -1,5 +1,6 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, postJson } from './client';
+import { pitchesKey } from './home';
 import type {
   CalibrationSummary,
   CreateTakeRequest,
@@ -28,8 +29,10 @@ export function usePrepare(pitchId: string) {
  * 서버는 같은 Take를 돌려줍니다.
  */
 export function useCreateTake() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateTakeRequest) => postJson<CreateTakeResponse>('/api/takes', body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: pitchesKey }),
   });
 }
 
