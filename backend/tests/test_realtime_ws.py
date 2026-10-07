@@ -1139,10 +1139,11 @@ def test_authenticate_does_not_touch_user_after_rollback(
 
 @pytest.mark.anyio
 async def test_ready_send_failure_still_detaches_from_the_stream(
-    db_session: Session, user: User, token: str
+    db_session: Session, user: User, token: str, monkeypatch: pytest.MonkeyPatch
 ):
     """ready 전송·resend_missed·pump_client 가 하나의 try/finally 로 묶여야 한다.
-    그중 아무거나 먼저 실패해도 detach() 가 불려야 스트림에 grace 타이머가 걸린다.
+    그중 아무거나 먼저 실패해도 detach() 가 불려야 스트림에 grace 타이머가 걸린다
+    (오디오를 한 번도 안 받았으면 바로 정리된다).
     안 그러면 죽은 self.ws 가 "현재 클라이언트" 로 영원히 남아 Deepgram 세션이
     다시는 정리되지 않는다. 그리고 run() 은 이 예외를 밖으로 내보내지 않는다 — 클라이언트가
     사라진 건 오류가 아니라 흔한 종료라, 새면 uvicorn 이 연결마다 트레이스를 남긴다."""
@@ -1160,10 +1161,20 @@ async def test_ready_send_failure_still_detaches_from_the_stream(
         stt_adapter=adapter,
         transcript_store=FakeTranscriptStore(),
     )
+    # 붙인 스트림을 잡아 둔다. 오디오 없이 끊기면 바로 정리돼 레지스트리에서 빠질 수 있다
+    attached: list[TakeStream] = []
+    attach = take_stream.attach
+
+    async def spy(*args, **kwargs) -> TakeStream:
+        stream = await attach(*args, **kwargs)
+        attached.append(stream)
+        return stream
+
+    monkeypatch.setattr(take_stream, "attach", spy)
 
     await realtime.run()  # 예외가 새지 않는다
 
-    stream = take_stream._streams[TAKE_ID]
+    stream = attached[0]
     assert stream._client is None, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
     stream.cancel()
 
@@ -1462,6 +1473,9 @@ def test_reconnect_is_authorized_again_even_while_the_stream_is_alive(
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
+        # 오디오를 한 번도 안 받은 스트림은 끊기면 바로 정리된다. grace 에 들어가려면
+        # 받은 오디오가 있어야 한다
+        ws.send_bytes(frame(1, 0))
     assert take_stream.active_count() == 1, "grace 중이라 스트림은 살아 있다"
 
     take.status = "COMPLETED"
@@ -1812,6 +1826,37 @@ async def test_stop_from_a_taken_over_connection_is_ignored():
     assert not stream.is_stopping
     stream.cancel()
     await stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_stream_without_audio_stops_on_detach_instead_of_waiting_grace():
+    """오디오를 한 번도 안 받은 스트림은 끊기면 바로 정리한다. 살려 둘 전사가 없는데 grace 동안
+    Deepgram 세션만 붙든다 — 종료 중에 새로고침한 FE 가 stop 만 보내러 붙었다 끊은 경우."""
+    adapter = FakeSttAdapter()
+
+    def make() -> TakeStream:
+        return TakeStream(
+            uuid.uuid7(),
+            owner_id=uuid.uuid7(),
+            stt_adapter=adapter,
+            config=SttConfig(),
+            store=FakeTranscriptStore(),
+        )
+
+    silent, spoken = make(), make()
+    silent_tab, spoken_tab = FakeWebSocket(), FakeWebSocket()
+    await silent.attach(silent_tab)
+    await spoken.attach(spoken_tab)
+    spoken.push(frame(1, 0), source=spoken_tab)
+
+    silent.detach(silent_tab)
+    spoken.detach(spoken_tab)
+
+    assert silent.is_stopping
+    assert not spoken.is_stopping, "오디오를 받은 스트림은 grace 동안 재연결을 기다린다"
+    for stream in (silent, spoken):
+        stream.cancel()
+        await stream.wait_closed(timeout=1.0)
 
 
 def _slow_after_first(adapter: FakeSttAdapter, delay: float) -> None:

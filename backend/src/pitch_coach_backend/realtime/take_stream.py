@@ -249,6 +249,12 @@ class TakeStream:
         self._client = None
         if self._stopping:
             return
+        if self.sequencer.frames == 0:
+            # 오디오가 한 번도 안 왔다. 살려 둘 전사가 없으니 grace 동안 Deepgram 세션만 붙들고
+            # 있을 이유가 없다 — 종료 중에 새로고침한 FE 가 stop 만 보내러 붙었다가 기다리지
+            # 못하고 끊은 경우가 이렇다. 다시 붙으면 저장된 마지막 번호에서 새 스트림을 연다
+            self.request_stop()
+            return
         self._grace_task = asyncio.create_task(self._expire_grace())
 
     async def _expire_grace(self) -> None:
