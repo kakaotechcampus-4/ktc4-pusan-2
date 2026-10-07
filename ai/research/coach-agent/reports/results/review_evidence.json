@@ -48,8 +48,9 @@
       }
     }
   },
-  "config_hash": "0f4bc4102193",
-  "policy_version": "coach-v1",
+  "config_hash": "e09c97ac28d2",
+  "policy_version": "coach-v1.1",
+  "inputs": "summary",
   "results": {
     "clean": {
       "A 기준선(v1.0)": {
@@ -243,7 +244,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9357,
@@ -265,7 +266,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.975,
@@ -287,7 +288,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.975,
@@ -309,7 +310,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9768,
@@ -801,7 +802,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.975,
@@ -823,7 +824,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9696,
@@ -845,7 +846,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9768,
@@ -867,7 +868,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9732,
@@ -889,7 +890,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.975,
@@ -911,7 +912,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9696,
@@ -933,7 +934,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9768,
@@ -955,7 +956,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9732,
@@ -977,7 +978,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.975,
@@ -999,7 +1000,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9696,
@@ -1021,7 +1022,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9768,
@@ -1043,7 +1044,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9732,
@@ -1065,7 +1066,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.975,
@@ -1087,7 +1088,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9696,
@@ -1109,7 +1110,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9768,
@@ -1131,7 +1132,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9732,
@@ -1155,7 +1156,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9768,
@@ -1177,7 +1178,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9768,
@@ -1199,7 +1200,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9768,
@@ -1221,7 +1222,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9768,
@@ -1243,7 +1244,7 @@
         "slide_mae": {
           "cpm": 6.4077,
           "duration_ms": 0.5326,
-          "script_ratio": 0.1068
+          "script_ratio": 0.1066
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9804,
