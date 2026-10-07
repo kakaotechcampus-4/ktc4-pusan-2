@@ -34,7 +34,7 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptParseStatus,
     ScriptSlide,
     ScriptVersion,
-    Standards
+    Standards,
 )
 from pitch_coach_backend.module.pitch.exception import (
     InvalidScript,
@@ -44,8 +44,6 @@ from pitch_coach_backend.module.pitch.exception import (
     ScriptAlreadyParsed,
     ScriptParseInProgress,
     ScriptReuploadRequired,
-    NonExistentPresentationVersion,
-    NonExistentEvaluation
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import generate_presigned_url, upload

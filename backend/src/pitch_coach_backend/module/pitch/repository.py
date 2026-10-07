@@ -143,7 +143,8 @@ class PitchRepository:
             .order_by(Standards.version.asc())
         ).all()
 
-    def get_evaluations_by_version(self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
+    def get_evaluations_by_version(
+            self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
         return self.db.scalars(
             select(Standards).where(
                 Standards.pitch_id == pitch_id,

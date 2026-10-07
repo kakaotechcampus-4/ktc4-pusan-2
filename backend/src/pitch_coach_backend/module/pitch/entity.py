@@ -58,7 +58,9 @@ class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "standards"
     __table_args__ = (
-        UniqueConstraint("pitch_id", "version", "position", name="uq_standards_pitch_version_position"),
+        UniqueConstraint(
+            "pitch_id", "version", "position", name="uq_standards_pitch_version_position"
+        ),
     )
 
     # 자식 쪽에 외래키를 건다. 
