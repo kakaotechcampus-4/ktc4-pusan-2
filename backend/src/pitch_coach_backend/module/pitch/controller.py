@@ -171,7 +171,7 @@ def reparse_script(
     background_tasks.add_task(parse_runner.run, parse_ticket)
     return result
 
-@router.get("{pitch_id}/evaluations/{evaluation_id}")
+@router.get("/{pitch_id}/evaluations/{evaluation_id}")
 def get_evaluation(
     pitch_id: OwnedPitch,
     evaluation_id: uuid.UUID,
