@@ -13,6 +13,8 @@ description = "Pitch Coach gaze tracking - research (server core + Python refere
 # service 가 쓸 Python 버전(3.12)에서 검증한다. mediapipe · torch 때문에 3.13 미만으로 둔다
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    # ── 서버 코어(gaze)가 쓰는 것. service 로 옮길 때 이 목록만 가져간다
+    "pydantic>=2.13",
     # ── research 전용 (gaze_lab · tools · experiments)
     # 브라우저 엔진의 @mediapipe/tasks-vision 과 같은 버전으로 정확히 고정한다.
     # 버전이 바뀌면 랜드마크가 조금 달라져 보정값과 parity 기준 답이 틀어진다
