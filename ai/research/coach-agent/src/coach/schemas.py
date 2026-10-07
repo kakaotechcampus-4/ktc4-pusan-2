@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .config import SCHEMA_VERSION
+from .version import SCHEMA_VERSION
 from .vocab import (
     Action,
     CandidateStatus,

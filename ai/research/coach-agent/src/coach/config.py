@@ -21,11 +21,6 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from .vocab import Instruction, Issue
 
-SCHEMA_VERSION = "1.0"
-POLICY_VERSION = "coach-v1"
-#: coach_state 모양이 바뀌면 올린다. 다른 버전의 state 가 오면 버리고 새로 시작한다.
-STATE_VERSION = 1
-
 
 class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid")

@@ -8,9 +8,10 @@ import pytest
 from pydantic import ValidationError
 
 from coach import decide
-from coach.config import POLICY_VERSION, SCHEMA_VERSION, STATE_VERSION, load_config
+from coach.config import load_config
 from coach.schemas import CoachRequest, CoachResponse
 from coach.state import CoachState, dump_state, load_state
+from coach.version import POLICY_VERSION, SCHEMA_VERSION, STATE_VERSION
 from coach.vocab import FeedbackType, Instruction
 
 from .conftest import make_request
