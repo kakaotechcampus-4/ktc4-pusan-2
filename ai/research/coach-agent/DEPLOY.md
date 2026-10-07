@@ -87,8 +87,9 @@ Take 종료: BE ── POST /coach/finalize ──▶ AI   남은 문제 구간 
 ### FE (제안)
 
 - [ ] 1초마다 BE로 보냅니다.
-  - 시선: FE가 이미 만드는 1초 판정을 `{t_ms, duration_ms, state}`로 (`ZoneDecision`의 `tMs` · `zone`). 3구역(CAMERA · BOTTOM · UNCERTAIN) 그대로 보내도 되고, 6상태(SCREEN · OTHER · UNMEASURED)를 보내도 코치가 받습니다. 최근 창 비율을 FE가 계산할 필요는 없습니다
-  - 음량: 지난 1초 동안 말한 소리의 레벨 `level_db`(A 가중 dBFS, `useMicLevel`이 이미 재는 값. 말하지 않았으면 null) · `silence_ms` · `audio_live`. 평소 목소리 캘리브레이션이 있으면 `baseline_db`도 보내고, 없으면 코치가 첫 발화로 기준을 잡는다
+  - 시선: FE가 이미 만드는 1초 판정(`ZoneDecision`)을 `{t_ms, duration_ms, state}`로. `state` = `zone`, `t_ms` = `tMs` − 1000 (Take 시작 기준 ms로 바꾼 값). `tMs`는 지난 1초의 프레임을 모아 낸 판정 시각이라 그 판정이 덮는 시간은 앞 1초입니다. 사후 구간을 만드는 `gazeSegments`는 `tMs`를 구간 시작으로 쓰니 그 값을 그대로 넣지 않습니다. `tMs`는 1초 격자에 맞춰 올라가므로 이렇게 바꾼 기록은 빈틈없이 이어집니다. 3구역(CAMERA · BOTTOM · UNCERTAIN) 그대로 보내도 되고, 6상태(SCREEN · OTHER · UNMEASURED)를 보내도 코치가 받습니다. 최근 창 비율을 FE가 계산할 필요는 없습니다
+  - 음량: 지난 1초 동안 말한 소리의 레벨 `level_db`(A 가중 dBFS. 말하지 않았으면 null) · `silence_ms` · `audio_live`. 평소 목소리 캘리브레이션이 있으면 `baseline_db`도 보내고, 없으면 코치가 첫 발화로 기준을 잡는다.
+    `useMicLevel`에는 이 값이 아직 없어 1초 집계를 더해야 합니다 — `db`는 순간 레벨(Fast 가중)이고 `speechLeqDb`는 Take 처음부터 말한 구간 전체의 평균입니다. `speechLeqDb` · `speechMs`를 1초마다 읽어 두면 지난 1초의 발화 레벨은 10·log10((E₁ − E₀) / (ms₁ − ms₀)), E = 10^(Leq/10) × ms 로 구할 수 있습니다 (ms₁ = ms₀ 이면 null)
   - 슬라이드 번호 · 체류 시간
 - [ ] `feedback.message`를 화면에 띄웁니다. 한 번에 하나만 옵니다. `indicators`(시간 진행 · 속도 · 시선 · 음량 상태)는 띄울지 FE가 정합니다.
 

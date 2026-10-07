@@ -239,11 +239,11 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 
 `records`로 받으면 코치가 최근 창의 요약을 직접 계산합니다 (`evaluators/gaze.py`의 `window_summary`).
 
-- 창은 `[max(0, t_ms − window_ms), t_ms)`이고, 기록마다 창과 겹친 시간을 상태별로 더합니다. 겹치는 기록은 한 번만 셉니다.
+- 창은 `[max(0, t_ms − window_ms), t_ms)`이고, 기록마다 창과 겹친 시간을 상태별로 더합니다. 겹치는 기록은 한 번만 세고, 창 밖의 기록(아직 오지 않은 시간 포함)은 버립니다.
 - 기록이 덮지 못한 시간과 `UNMEASURED`는 `UNCERTAIN`처럼 **측정하지 못한 시간**으로 셉니다. 대본 응시 비율은 측정한 시간 중 `BOTTOM`의 비율입니다 (시선 모듈의 비율과 같은 분모).
 - `SCREEN` · `OTHER`는 측정한 시간이지만 대본이 아닌 곳으로 셉니다.
-- 지금 라벨은 마지막 기록의 상태이고, 이어진 시간은 같은 상태로 빈틈없이 이어진 기록의 길이입니다. 마지막 기록이 지금보다 2초(`record_stale_ms`) 넘게 오래됐으면 지금 라벨은 측정하지 못한 것으로 봅니다.
-- 두 입력 모두 Take 시작 뒤 5초(`min_window_ms`)까지는 시선 비율로 지적하지 않습니다. 몇 초의 표본은 한두 번의 판정에 크게 흔들립니다.
+- 지금 라벨 · 이어진 시간도 창 안으로 자르고 겹침을 뺀 기록으로 계산합니다. 지금 라벨은 마지막 기록의 상태이고, 이어진 시간은 같은 상태로 빈틈없이 이어진 기록의 길이입니다. 마지막 기록이 지금보다 2초(`record_stale_ms`) 넘게 오래됐으면 지금 라벨은 측정하지 못한 것으로 봅니다.
+- 두 입력 모두 Take 시작 뒤 5초(`min_window_ms`)까지는 시선 비율로 지적하지 않고 상태 표시는 `UNKNOWN`입니다. 몇 초의 표본은 한두 번의 판정에 크게 흔들립니다. 창 길이가 아니라 Take 경과 시간으로 보므로, FE가 짧은 창을 보내도 그 뒤에는 지적합니다.
 
 1초 기록 예시 (FE 3구역):
 
@@ -376,7 +376,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 | `gaze` | GazeLevel | `"UNKNOWN"` | 시선 상태 (`GazeLevel`) |
 | `volume` | VolumeLevel | `"UNKNOWN"` | 음량 상태 (`VolumeLevel`) |
 
-`pace`는 `cpm` < 275 이면 `SLOW`, > 350 이면 `FAST`, 그 사이는 `NORMAL`입니다. `gaze`는 측정하지 못한 비율(지금 값과 최근 10초 평균 중 큰 쪽)이 50%를 넘으면 `UNCERTAIN`, Take 시작 뒤 5초 안이면 `UNKNOWN`, 보인 시간 중 대본 응시가 50% 이상이면 `SCRIPT`, 아니면 `AUDIENCE`(대본을 보지 않음)입니다. `volume`은 말하는 동안의 최근 5초 평균(평소 목소리 대비)이 -6 dB 미만이면 `LOW`, 아직 잴 수 없으면(말하지 않음 · 음량 기준을 잡는 중) `UNKNOWN`입니다 (기준값은 `config.py`의 `fast_cpm` · `slow_cpm` · `max_uncertain_ratio` · `indicator_script_ratio` · `low_relative_db`).
+`pace`는 `cpm` < 275 이면 `SLOW`, > 350 이면 `FAST`, 그 사이는 `NORMAL`입니다. `gaze`는 측정하지 못한 비율(지금 값과 최근 10초 평균 중 큰 쪽)이 50%를 넘으면 `UNCERTAIN`, Take 시작 뒤 5초 안이면 `UNKNOWN`, 보인 시간 중 대본 응시가 50% 이상이면 `SCRIPT`, 아니면 `AUDIENCE`(대본을 보지 않음)입니다. `volume`은 최근 5초 동안 말하며 잰 음량의 평균(평소 목소리 대비)이 -6 dB 미만이면 `LOW`, 그 표본이 3개 미만이면(한동안 말하지 않음 · 음량 기준을 잡는 중) `UNKNOWN`입니다. 말을 멈춘 직후에는 5초 안의 표본으로 앞 상태가 이어집니다 (기준값은 `config.py`의 `fast_cpm` · `slow_cpm` · `max_uncertain_ratio` · `indicator_script_ratio` · `low_relative_db`).
 
 ### 3-2. `action`
 
@@ -1013,7 +1013,7 @@ finalize() 응답의 events ─┘
 
 - **키워드**: 실시간 `MENTION_KEYWORD` 개입은 기본으로 꺼져 있습니다(`Features.keyword_missing`, STT가 고유명사를 잘못 적어 오탐이 나기 때문). 리뷰 근거의 CONTENT 문제는 별개로 `SLIDE` 이벤트의 필수 · 찾은 키워드 집계로 계산합니다.
 - **미션 판정**: 목표를 달성하면 `ACHIEVED`, 놓친 정도가 지표별 허용치(`partial_tolerance`) 이내면 `PARTIAL`, 그 밖은 `FAILED`입니다. 판정에 쓴 데이터 덮개가 `min_coverage`(기본 0.5) 미만이면 `NOT_EVALUABLE`입니다.
-- **영역 판단 가능 여부**(`data_quality.evaluable`): GAZE는 시선 덮개, SPEED · FILLER는 STT 덮개, VOLUME · PAUSE는 오디오 덮개가 `min_coverage` 이상이어야 하고, CONTENT는 필수 키워드가 있고 STT 덮개가 충분해야 합니다.
+- **영역 판단 가능 여부**(`data_quality.evaluable`): GAZE는 시선 덮개, SPEED · FILLER는 STT 덮개, PAUSE는 오디오 덮개가 `min_coverage` 이상이어야 하고, CONTENT는 필수 키워드가 있고 STT 덮개가 충분해야 합니다. VOLUME은 오디오 덮개와 '말한 시간 중 음량을 잰 비율' 중 작은 쪽을 봅니다 — 음량 레벨 입력은 기준을 잡기 전에 말한 시간을 재지 못하므로, 오디오만 살아 있었다고 음량 문제가 해결됐다고 하지 않습니다. `relative_db` 미션도 같은 덮개를 씁니다.
 
 ### 5-6. 리뷰 에이전트 프롬프트에 넣을 규칙
 
