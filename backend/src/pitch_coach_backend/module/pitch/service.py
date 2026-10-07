@@ -120,7 +120,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
             pitch_title=pitch.title,
             pitch_time=pitch.time_limit_sec,
             thumbnail_url=None,
-            pitch_deadline=pitch.presentation_date,
+            presentation_date=pitch.presentation_date,
             takes=take_summaries
         )
 
