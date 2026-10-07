@@ -148,27 +148,32 @@ web/
 ## 검증
 
 ```bash
-npm test             # vitest 219개
+npm test             # vitest 249개
 npm run typecheck    # tsc 4번: 전체 / 설정 파일 / FE 컴파일러 옵션(tsconfig.fe.json: 엔진·Worker·카메라 화면) / DOM 없는 엔진(tsconfig.engine.json)
 npm run lint         # FE 와 같은 oxlint 규칙(--max-warnings=0)으로 엔진 · Worker
-npm run smoke        # 헤드리스 Chrome + 가짜 카메라로 데모 전체 (검사 23개, 화면 캡처 .cache/screens/)
+npm run smoke        # 헤드리스 Chrome + 가짜 카메라로 데모 전체 (검사 24개, 화면 캡처 .cache/screens/)
+npm run smoke:prod   # 같은 검사를 운영처럼 격리 헤더(COOP/COEP) 없이
 npm run bench        # Worker 프레임당 ms (CPU·GPU delegate), -- --no-isolation 으로 격리 헤더 없이
 npm run fixtures     # Python에서 defaults.generated.ts와 기준 답 다시 생성 (Python 쪽을 바꾼 뒤)
 ```
 
 | 무엇을 | 어떻게 | 결과 |
 |---|---|---|
-| Python과 같은 답 | Python 코드가 만든 기준 답(`src/engine/__tests__/fixtures/parity.json`, 미리보기는 `test/fixtures/evidence.json`)과 비교 — log Φ, 소프트 박스 밀도, 헤드포즈(두 메모리 순서), 랜드마크 기하, 분류기 시나리오 11개(SCREEN 합치기·각 실패 사유·OTHER 방향 포함), 배치 8개, 준비 점검·조건 감시(눈 기반 / 고개 기준 / 얼굴 메시 거리 / 다른 사람·얼굴 바뀜 규칙 / 고개 방향 흔들림)·별개의 얼굴 판정·게이지(큐별 목표·늘리기)·큐 방향 확인·고개 원 시퀀스(1초 중심과 흔들림), 에이전트 입력(66초 테이크의 1초 기록·창 통계·코치 이슈·테이크 요약·이전 테이크 차이·개입 효과, **키 이름까지**. 1초 기록까지는 엔진 테스트, 이슈 · 요약은 데모 미리보기 테스트) | 엔진 139개 통과. 수치는 1e-9 ~ 1e-12 안에서 일치 |
+| Python과 같은 답 | Python 코드가 만든 기준 답(`src/engine/__tests__/fixtures/parity.json`, 미리보기는 `test/fixtures/evidence.json`)과 비교 — log Φ, 소프트 박스 밀도, 헤드포즈(두 메모리 순서), 랜드마크 기하, 분류기 시나리오 11개(SCREEN 합치기·각 실패 사유·OTHER 방향 포함), 배치 8개, 준비 점검·조건 감시(눈 기반 / 고개 기준 / 얼굴 메시 거리 / 다른 사람·얼굴 바뀜 규칙 / 고개 방향 흔들림)·별개의 얼굴 판정·게이지(큐별 목표·늘리기)·큐 방향 확인·고개 원 시퀀스(1초 중심과 흔들림), 에이전트 입력(66초 테이크의 1초 기록·창 통계·코치 이슈·테이크 요약·이전 테이크 차이·개입 효과, **키 이름까지**. 1초 기록까지는 엔진 테스트, 이슈 · 요약은 데모 미리보기 테스트) | 엔진 83개 · 미리보기 55개 통과. 수치는 1e-9 ~ 1e-12 안에서 일치 |
 | 엔진 흐름 | 가짜 얼굴 검출기로 FE 순서(배치 → 보정 → 판정), 게이지 흐름, 조건 감시, 다시 맞추기, 준비 점검, 고개 원(채우기·얼굴 손실), 원 중심 기준 큐 방향 확인, 화면 가운데가 원의 중심을 확인·합침 / 자세가 바뀌었으면 새로 재고 렌즈·대본 기준도 갱신, 고개를 돌려도 신뢰도 유지, 너무 멀리 움직이면 측정 불가와 이동 cm, 조금 들거나 돌린 고개는 가장 가까운 대상, 눈꺼풀이 내려간 숙인 고개도 판정(고개 방향은 눈 없이), OTHER 방향, 판정 → 에이전트 입력 | 28개 통과 |
 | 판별 시나리오 | v1 README §7-13의 시나리오 28개를 가짜 얼굴 검출기로 엔진 전체에 — 렌즈·화면·대본, 화면 가장자리(좌우 값), 옆·위·아래의 다른 곳, 고개를 많이 드는 사람의 좌우, 눈이 안 보이는 고개, 혼자 물러나기·중복 검출·배경 오검출은 다른 사람 아님, 다른 사람 1초(참고 신호), 얼굴 바뀜(보정 직후 포함), 자리 이동, 얼굴 사라짐, 조명 변화는 신뢰도 그대로, 고개 방향 흔들림, 고개 원 기준 확인·자세가 바뀐 뒤 다시 재기, 준비 점검 | 28개 통과 |
 | FE 계약 | `conformance.ts`(FE `modelClassifier.ts`의 TODO를 채운 모양)를 FE의 `aiAdapter.ts`로 실제 실행 | 5개 통과 |
+| 엔진 시작 · 실패 | 지원 확인, 지원하지 않는 브라우저, 제한 시간(늦게 온 검출기는 닫음), 로딩 실패 사유 (MediaPipe를 가짜로 바꿔 Node에서) | 6개 통과 |
+| 엔진 경계 | 엔진 폴더가 바깥(React · DOM · 카메라 화면 · 데모)을 import하지 않고, 저장 · 전송 · 로그 API(`localStorage` · `indexedDB` · `fetch` · `console` …)를 쓰지 않음 | 39개 통과 |
+| Worker | 프레임 처리 중 예외에도 그 프레임에 답하고 오류는 연속 실패당 한 번, 시작 실패 사유 | 2개 통과 |
+| 자산 | `npm run assets`가 모델 sha256 · MediaPipe 버전이 `../artifacts/face_landmarker.task.json`과 같을 때만 복사 | 3개 통과 |
 | FE에서 컴파일되는가 | `tsconfig.fe.json` = FE `tsconfig.app.json` 옵션(`erasableSyntaxOnly`, `noUnusedLocals/Parameters`, JSON import 없음 …)으로 엔진·Worker·카메라 화면 모듈 | 통과 |
-| 실제 브라우저 | `npm run smoke`: 모듈 Worker 안 MediaPipe 로드, ImageBitmap 입력, OffscreenCanvas 밝기, 격리 헤더, 지연, 하나로 이어진 흐름(얼굴 맞추기 → 고개 원 → 보정 → 결과), 고개 원의 중심 측정, 고개를 움직이지 않는 얼굴은 렌즈·대본 진행도가 0(`LOOK_HIGHER`/`LOOK_LOWER`), 위치 기준선(정지 얼굴은 이동 0°), 실제 MediaPipe의 정지 얼굴 흔들림(0.01°), 실시간 판정에서 1초 기록·코치 이슈·테이크 요약 생성, **카메라 화면이 창이 아니라 받은 상자(16:9 카드)를 채움** | 23개 통과. 테스트 영상(합성 얼굴)에서 yaw 0.3°·pitch 1.6°·밝기 138 (Python 0.53°·1.52°) |
+| 실제 브라우저 | `npm run smoke`: 모듈 Worker 안 MediaPipe 로드, ImageBitmap 입력, OffscreenCanvas 밝기, 격리 헤더, 지연, 하나로 이어진 흐름(얼굴 맞추기 → 고개 원 → 보정 → 결과), 고개 원의 중심 측정, 고개를 움직이지 않는 얼굴은 렌즈·대본 진행도가 0(`LOOK_HIGHER`/`LOOK_LOWER`), 위치 기준선(정지 얼굴은 이동 0°), 실제 MediaPipe의 정지 얼굴 흔들림(0.01°), 실시간 판정에서 1초 기록·코치 이슈·테이크 요약 생성, **카메라 화면이 창이 아니라 받은 상자(16:9 카드)를 채움**, 실시간 중 카메라 트랙을 끊으면 `CAMERA_LOST`를 한 번 내고 캡처를 멈춤. `smoke:prod`는 같은 검사를 격리 헤더 없이 | 24개 통과 (`smoke` · `smoke:prod` 모두, Chrome. Edge는 이 PC에서 띄우지 못해 확인 못 함). 테스트 영상(합성 얼굴)에서 yaw 0.3°·pitch 1.6°·밝기 138 (Python 0.53°·1.52°) |
 | Python 쪽이 바뀌면 | `../tests/lab/test_web_engine_sources.py`가 defaults.generated.ts·기준 답이 낡았는지 검사 | pytest에 포함 |
 
-**지연 시간** (이 PC, 헤드리스 Chrome, 640×480 테스트 영상): Worker 한 프레임 중앙값 약 40~90 ms이고
-대부분이 MediaPipe 검출입니다. 엔진 계산은 약 5 ms입니다. 같은 설정도 PC 부하에 따라 40~80 ms로 흔들려,
-실제 사용자 기기에서 `npm run bench`로 다시 재야 합니다. 예산은 프레임당 125 ms(8 FPS)입니다.
+**지연 시간** (개발 PC, 헤드리스 Chrome, 640×480 테스트 영상): Worker 한 프레임 중앙값 약 22 ms(MediaPipe 검출 약 19 ms),
+p95 약 30~38 ms(격리 헤더 있음 · 없음)입니다. 같은 설정도 PC 부하에 따라 흔들려, 저사양 기기에서는
+`npm run bench`로 다시 재야 합니다. 예산은 프레임당 125 ms(8 FPS)입니다.
 
 - 첫 프레임들은 초기화 비용이 100~200 ms라, 엔진을 만들 때 빈 이미지로 두 번 검출해 미리 치릅니다(`warmUp`).
 - MediaPipe GPU delegate도 Worker에서 돕니다(`createClassifier({ delegate: 'GPU' })`). 기본값은 Python과
@@ -187,7 +192,7 @@ npm run fixtures     # Python에서 defaults.generated.ts와 기준 답 다시 �
 (규칙과 수치는 archive `v1/README.md` §7-11).
 
 ```ts
-import { GazeEvidenceRecorder, makeConfig, sampleToDict } from './vendor/gaze';
+import { GazeEvidenceRecorder, makeConfig, sampleToDict } from './gaze/engine';
 
 const rec = new GazeEvidenceRecorder(makeConfig().evidence);   // 테이크마다 새로 (또는 rec.reset())
 const decision = impl.classify(bitmap, tMs);                     // FrameDecision (direction 포함)
@@ -201,7 +206,7 @@ rec.samples;      // 지금까지의 1초 기록. 이슈 · 요약은 서버가 
 | 값 | 모양 | 쓰는 곳 |
 |---|---|---|
 | 1초 기록 | `{t_ms, duration_ms, state, direction, confidence, reliability, issues, frames}` | 저장·전송 단위. `state`는 CAMERA / SCREEN / BOTTOM / OTHER / UNCERTAIN / UNMEASURED |
-| 코치 이슈 | `{evaluator: "gaze", issue_type, t_ms, severity, confidence, persistence_sec, evidence, actionable}` | `GAZE_ON_SCRIPT` · `GAZE_ON_SCREEN` · `GAZE_AWAY`(+`direction`) · `GAZE_LOW_EYE_CONTACT` → `LOOK_AT_CAMERA`. `GAZE_UNMEASURABLE`은 `actionable: false` = 시선 피드백 금지 |
+| 코치 이슈 | `{evaluator: "gaze", issue_type, t_ms, severity, confidence, persistence_sec, evidence, actionable}` | `GAZE_ON_SCRIPT` · `GAZE_ON_SCREEN` · `GAZE_AWAY`(+`direction`) · `GAZE_LOW_EYE_CONTACT` → `LOOK_AT_CAMERA`. `GAZE_UNMEASURABLE`은 `actionable: false` = 시선 피드백 보류 신호 |
 | 테이크 요약 | 측정 시간, `coverage`, 상태별 비율, `eye_contact_ratio`, `other_direction_ms`, 가장 긴 구간, 구간 목록, 문제 구간 | 리뷰 근거 |
 | 이전 테이크 차이 | `{previous, current, delta}` | 리뷰의 "지난번보다" |
 | 개입 효과 | `{intervention, before, after_5s, effective}` | 코치 피드백이 먹혔는지 |
@@ -214,7 +219,7 @@ rec.samples;      // 지금까지의 1초 기록. 이슈 · 요약은 서버가 
 
 프론트엔드 코드는 이 폴더에서 고치지 않았습니다. 붙일 때 할 일은 셋입니다.
 
-1. **엔진 복사** — `src/engine/` 폴더를 통째로 `frontend/src/workers/vendor/gaze/`로 복사합니다.
+1. **엔진 복사** — `src/engine/` 폴더를 통째로 `frontend/src/workers/gaze/engine/`으로 복사합니다(`__tests__` 포함).
    (`@mediapipe/tasks-vision` 1.0.1은 프론트엔드에 이미 의존성으로 있습니다.)
 2. **자산** — `frontend/public/models/`에 아래 파일을 둡니다. `npm run assets`가 만드는 `public/models/`와 같은 구성입니다.
 
@@ -226,19 +231,21 @@ rec.samples;      // 지금까지의 1초 기록. 이슈 · 요약은 서버가 
    프론트엔드 `public/models/README.md`에는 `vision_wasm_internal.*`이 적혀 있지만, **모듈 Worker에서는
    `vision_wasm_module_internal.*`이 필요합니다**(나머지 wasm 파일은 함께 두어도 무방).
 3. **`modelClassifier.ts`** — TODO 자리를 `test/fe-contract/conformance.ts`와 같은 모양으로 채웁니다.
-   팩토리만 `() => import('./vendor/gaze').then((m) => m.createClassifier({ assetDir: '/models/' }))`입니다.
+   팩토리만 `() => import('./gaze/engine').then((m) => m.createClassifier({ assetDir: '/models/' }))`입니다.
+   카메라 권한을 묻기 전에 `checkSupport()`로 확인하고, 시작이 실패하면 `EngineInitError`의 `reason`
+   (`UNSUPPORTED_BROWSER` · `TIMEOUT` · `INIT_FAILED`)과 상관없이 시선만 빼고 발표를 계속합니다(사유는 로그용).
 
 위 셋은 프론트엔드의 지금 계약(2점 보정, 3구역)에 엔진만 붙이는 길입니다. 준비 점검, 고개 원, 3점 보정 화면까지 그대로 쓰려면
 아래 카메라 화면 모듈을 붙입니다.
 
 ### 카메라 화면 붙이기
 
-`src/camera/`, `src/worker/`, `src/engine/`을 함께 복사합니다(예: `frontend/src/features/gaze/camera`, `…/worker`, `…/engine`.
+`src/camera/`, `src/worker/`, `src/engine/`을 함께 복사합니다(예: `frontend/src/workers/gaze/camera`, `…/worker`, `…/engine`.
 서로 상대 경로로 부르므로 세 폴더를 나란히 둡니다). 프론트엔드가 할 일은 **상자, 카메라 스트림, 결과 처리** 셋입니다.
 상자 안은 모듈이 그립니다.
 
 ```tsx
-import { GazeCameraView, type SetupResult } from '@/features/gaze/camera';
+import { GazeCameraView, type SetupResult } from '@/workers/gaze/camera';
 
 function GazeCamera({ stream, onCalibrated }: { stream: MediaStream; onCalibrated: (r: SetupResult) => void }) {
   const box = useRef<HTMLDivElement>(null);
@@ -276,7 +283,7 @@ function GazeCamera({ stream, onCalibrated }: { stream: MediaStream; onCalibrate
 | `attach(stream)` / `detach()` | 스트림을 보여 주고 분석 시작 / 멈춤 (`idle`에서도 얼굴 십자선과 인식 상태는 보임) |
 | `startSetup('align' \| 'calib')` | ① 준비 점검부터, 또는 고개 원을 둔 채 ③ 세 지점부터 |
 | `goLive()` / `cancel()` | 실시간 / 영상만 (`idle`) |
-| `useCalibration(model)` | 저장해 둔 `SetupResult.model`을 Worker에 넣고 바로 실시간. 다른 엔진·설정의 값이면 `false` |
+| `useCalibration(model)` | 이번 세션에서 받은 `SetupResult.model`을 (새) Worker에 넣고 바로 실시간. 다른 엔진·설정의 값이면 `false` |
 | `reanchor()` | 실시간에서 렌즈를 1초 보면 기준점을 옮김(결과는 화면 알림과 `reanchor` 이벤트) |
 | `setZone(zone)` | 프론트엔드 1초 판정(`TemporalVoter`)을 테두리로 (`CAMERA` / `BOTTOM` / `UNCERTAIN` / `null`) |
 | `destroy()` | 타이머·Worker·DOM 정리 |
@@ -293,11 +300,15 @@ function GazeCamera({ stream, onCalibrated }: { stream: MediaStream; onCalibrate
 | `calibrated` | `SetupResult` | 보정이 끝날 때(성공이든 아니든) |
 | `decision` | `FrameDecision`(4분류, 방향, 좌우·상하, 확률, 신뢰도와 이유, 처음 위치에서 이동) | 실시간 프레임마다 |
 | `reanchor` | 다시 맞추기 상태 | 상태가 바뀔 때 |
-| `error` | `{message}` | Worker 오류 |
+| `error` | `{message, reason?}` | 엔진 시작 실패(`UNSUPPORTED_BROWSER` · `TIMEOUT` · `INIT_FAILED`), 프레임 처리 실패(`FRAME_FAILED`, 연속 실패당 한 번), Worker 종료(`WORKER_FAILED`, 한 번), 카메라 끊김(`CAMERA_LOST`, 한 번. 캡처를 멈춤). 무엇을 보여 줄지는 프론트엔드가 정함 |
 
-`SetupResult`는 보정 품질(`quality`), 저장할 모델(`model`, 순수 데이터라 `structuredClone`·IndexedDB 가능), 카메라 위치(`placement`),
+`SetupResult`는 보정 품질(`quality`), 보정 모델(`model`, 아래), 카메라 위치(`placement`),
 판정할 수 있는 곳(`classes`), ①의 마지막 점검(`preconditions`), ②의 고개 원(`sweep`, `sweepSkipped`), ③의 정면 기준 확인(`baseline`),
 경고를 무시하고 넘어갔는지(`forced`), 결과 카드 문구(`notes`)를 담습니다. 영상이나 프레임은 들어 있지 않습니다.
+
+**보정 모델은 메모리 전용입니다.** `model.scene`에 얼굴 측정값(얼굴 위치 · 면적, 홍채 픽셀 크기, 카메라까지 거리)이 들어 있어
+IndexedDB · localStorage · 서버 어디에도 저장하거나 보내지 않습니다. 순수 데이터라 같은 세션 안에서는 `structuredClone`으로
+새 Worker에 넘길 수 있고, 다음 세션에서는 다시 보정합니다(지점마다 약 2초). 기기 밖으로 나가는 것은 1초 기록뿐입니다.
 
 `decision`은 엔진의 프레임 판정 그대로입니다. 프론트엔드 1초 판정은 지금처럼 `aiAdapter`의 규칙(얼굴 없음은 표 없음)으로
 `TemporalVoter`에 넣고, 그 결과를 `setZone()`으로 돌려주면 테두리가 맞춰집니다. 데모 페이지(`src/demo/main.ts`)가 이 모양 그대로입니다.
@@ -309,12 +320,12 @@ function GazeCamera({ stream, onCalibrated }: { stream: MediaStream; onCalibrate
 | Worker 안에서 동작 (DOM 없음) | ✅ 모듈 Worker에서 MediaPipe 로드·검출, OffscreenCanvas 밝기 |
 | Vite 개발 서버 | ✅ 동적 import에 `?import`가 붙어 막히는 문제를 자산 경로를 절대 URL로 바꿔 해결 (엔진 안에서 처리) |
 | 입력 | ✅ `ImageBitmap`. 엔진은 비트맵을 닫지 않습니다(FE 규칙대로 호출부가 닫음) |
-| 보정 기준값 저장 | ✅ `model`은 순수 데이터라 `structuredClone`·IndexedDB 가능. 스키마가 다르면 `calibrate()`가 거절 |
+| 보정 모델 | ✅ 메모리 전용(저장 · 전송 안 함). 순수 데이터라 같은 세션의 새 Worker에 `structuredClone`으로 넘김. 스키마나 설정이 다르면 `calibrate()`가 거절 |
 | 출력 키 | ✅ Python `to_dict()`와 같은 이름이라 FE `aiAdapter.ts`가 그대로 변환 |
 | FE 컴파일러 옵션 | ✅ `tsconfig.fe.json`으로 검사 |
-| 격리 헤더 없이 | ✅ 운영 서버(Caddy)에 COOP/COEP가 없어도 동작 (`crossOriginIsolated=false`에서 측정) |
+| 격리 헤더 없이 | ✅ 운영 서버(Caddy)에 COOP/COEP가 없어도 동작 (`npm run smoke:prod`, `crossOriginIsolated=false`) |
 | 타임스탬프 | ✅ 배치 프레임과 실시간 프레임이 섞여도 MediaPipe VIDEO 모드용으로 단조 증가 |
-| 버전 문자열 | `gaze_v1.1.0+head_pose+reference_anchor_v1` (FE가 Take에 고정, 엔진이 바뀌면 저장된 기준을 버림) |
+| 버전 문자열 | `gaze_v1.1.0+head_pose+reference_anchor_v1` (FE가 Take에 고정. 1초 기록과 함께 저장해 어느 엔진의 기록인지 남김) |
 | 카메라 화면 모듈 | ✅ FE 컴파일러 옵션으로 타입 검사(`src/camera`·`src/worker`), 헤드리스 Chrome에서 창 전체와 16:9 카드 둘 다에서 흐름 확인, 받은 상자를 정확히 채움 |
 
 ### FE 연동 시 확인할 것
@@ -344,3 +355,5 @@ function GazeCamera({ stream, onCalibrated }: { stream: MediaStream; onCalibrate
    `GazeEvidenceRecorder`의 1초 기록을 함께 내보내는 메시지와 저장 자리가 필요합니다(계약 변경).
    기록 하나는 약 150바이트이고 영상은 들어가지 않습니다. 1초 다수결 기준(프레임 4개, 60%)은 FE `TemporalVoter`와 같지만,
    격자 시작점이 달라 경계의 1초는 서로 다르게 나올 수 있습니다.
+9. **보정 모델 저장 중단** — FE는 지금 보정 모델을 IndexedDB(`zoneRefs`)에 저장합니다. 모델에 얼굴 측정값이 있으므로
+   저장하지 않고 세션 메모리에만 두도록 바꿔야 합니다([DEPLOY.md](../DEPLOY.md)).
