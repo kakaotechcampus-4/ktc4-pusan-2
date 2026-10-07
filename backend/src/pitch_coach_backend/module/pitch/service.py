@@ -440,7 +440,7 @@ def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_d
 
 def divide_standard_text(standard_text_dto: StandardTextDTO) -> list[str]:
     """평가 기준 텍스트를 문장 단위로 나눈다. LLM 호출이므로 async."""
-    with httpx2.AsyncClient() as client:
+    with httpx2.Client() as client:
         response = client.post(
             "http://localhost:8001/evaluation-criteria/parse",
             json={"standard_text": standard_text_dto.standard_text}
