@@ -28,6 +28,14 @@ class NonExistentEvaluation(AppException):
     status_code = 404
     code = "EVALUATION_NOT_FOUND"
     message = "존재하지 않는 평가 기준 버전입니다."
+
+
+class StandardParseFailed(AppException):
+    status_code = 502
+    code = "STANDARD_PARSE_FAILED"
+    message = "평가 기준을 나누지 못했습니다. 잠시 후 다시 시도해 주세요."
+
+
 class InvalidScript(AppException):
     code = "INVALID_SCRIPT"
     message = "대본이 올바르지 않습니다."
