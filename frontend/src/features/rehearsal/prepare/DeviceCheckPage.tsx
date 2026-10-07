@@ -4,7 +4,8 @@ import type { PracticeCombo, PrepareResponse, RehearsalTicket } from '@/types/ap
 import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
-import { setSessionTicket, setTakeId, startSession } from '../lib/db';
+import { setPrepareContext, setSessionTicket, setTakeId, startSession } from '../lib/db';
+import { noteWriteFailure } from '../lib/writeFailures';
 import { toMessage } from '@/shared/api/errorMessage';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
@@ -262,6 +263,13 @@ export function DeviceCheckPage() {
         body: { mode: practiceMode, script_mode: scriptMode, ...versions },
       });
       await setTakeId(clientSessionId, take.takeId);
+      // 리허설을 새로고침하면 이 스토어가 비어서 세션 행에서 되살립니다. 못 적어도 발표는
+      // 할 수 있으니 막지 않습니다 — 새로고침했을 때 시선이 빠지고 기본 장치가 열릴 뿐입니다
+      const { calibration: savedCalibration, devices } = usePrepareStore.getState();
+      await setPrepareContext(clientSessionId, {
+        calibration: savedCalibration,
+        devices,
+      }).catch((err: unknown) => noteWriteFailure(clientSessionId, 'prepare', err));
 
       // 리허설이 무대를 열 때 쓸 값. 새로고침해도 남도록 세션에도 적어 둡니다
       const ticket: RehearsalTicket = {
