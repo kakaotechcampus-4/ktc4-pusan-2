@@ -148,6 +148,7 @@ export function RehearsalPage() {
     layoutSignature: calibration?.layoutSignature ?? null,
     // 판정 저장이 실패해 제외가 정해지면 메모리에도 받아 둡니다
     onExcluded: noteExclusion,
+    elapsedMs,
     // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
     // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다
     enabled: running && live,

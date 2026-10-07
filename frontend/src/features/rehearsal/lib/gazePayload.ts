@@ -25,7 +25,7 @@ export const ENGINE_VERSION_UNAVAILABLE = 'unavailable';
 
 export interface BuildGazePayloadInput {
   decisions: ZoneDecision[];
-  /** 발표 전체 길이. 구간이 이걸 넘으면 검증에서 걸립니다 */
+  /** 발표 전체 길이. 이걸 넘는 판정은 버립니다 */
   durationMs: Ms;
   /** 워커의 ready 에서 받은 값. 엔진이 못 떴으면 null */
   engineVersion: string | null;
@@ -77,7 +77,10 @@ export function buildGazePayload(input: BuildGazePayloadInput): BuildGazePayload
     };
   }
 
-  const segments = compressToSegments(decisions, decisionIntervalMs);
+  // 발표 길이를 넘는 판정은 버립니다. 판정 하나가 [tMs, tMs + 1초] 를 덮고 시각은 무대 시계라,
+  // 끝내기를 누른 순간에 걸친 마지막 판정은 발표 길이를 넘습니다 — 보내면 서버가 422 로 되돌립니다
+  const inTake = decisions.filter((d) => d.tMs + decisionIntervalMs <= durationMs);
+  const segments = compressToSegments(inTake, decisionIntervalMs);
   const validationErrors = validate(segments, durationMs);
 
   // 보내기 전에 스스로 걸러냅니다. 서버가 422 INVALID_SEGMENTS 로 되돌려주기 전에

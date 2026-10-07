@@ -49,7 +49,7 @@ function zoneRefState(
  * 기준은 장치 점검 화면의 카메라 화면 모듈(다른 워커)에서 계산되어 IndexedDB 에 있으므로,
  * 꺼내서 이 워커에 넣은 **뒤에** 펌프를 켭니다.
  *
- * 기준을 못 찾으면(새로고침으로 요약이 사라짐 · 오래됨 · 저장 실패) 시선은
+ * 기준을 못 찾으면(점검 결과를 못 넘겨받음 · 오래됨 · 저장 실패) 시선은
  * `ENGINE_UNAVAILABLE` 로 제외되고 발표는 계속됩니다 — 엔진이 판정할 수 없는 상태라서입니다.
  */
 export function useLiveGaze({
@@ -60,6 +60,7 @@ export function useLiveGaze({
   layoutSignature,
   enabled,
   onExcluded,
+  elapsedMs,
 }: {
   stream: MediaStream | null;
   videoRef: RefObject<HTMLVideoElement>;
@@ -79,6 +80,11 @@ export function useLiveGaze({
    * 그때 이 값이 종료 페이로드의 마지막 근거가 됩니다.
    */
   onExcluded: (reason: GazeExcludedReason) => void;
+  /**
+   * 무대 시계. 판정 시각(tMs)을 이걸로 잽니다 — 펌프를 켠 시각으로 재면 엔진이 준비되는
+   * 동안만큼 시선 구간이 슬라이드·전사보다 앞당겨지고, 새로고침해 이어받으면 앞 기록과 겹칩니다.
+   */
+  elapsedMs: () => Ms;
 }) {
   const recentRef = useRef<ZoneDecision[]>([]);
   // 판정 콜백이 읽을 세션 키. 이펙트에서 옮깁니다 — 렌더에서 ref 에 쓰면
@@ -184,9 +190,9 @@ export function useLiveGaze({
     const video = videoRef.current;
     if (!video || !stream) return;
 
-    startPump(video);
+    startPump(video, elapsedMs);
     return () => stopPump();
-  }, [pumping, stream, videoRef, startPump, stopPump]);
+  }, [pumping, stream, videoRef, startPump, stopPump, elapsedMs]);
 
   // 기준이 없는 것은 발표를 시작한 뒤에만 사유가 됩니다 — enabled 가 false 인
   // 동안(카메라 권한 거부 등)은 다른 사유가 이미 정해져 있으니 덮지 않습니다
