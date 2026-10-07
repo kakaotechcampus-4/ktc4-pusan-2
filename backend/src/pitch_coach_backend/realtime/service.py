@@ -295,6 +295,11 @@ class RealtimeSession:
                 )
                 continue
             if isinstance(parsed, StopMessage):
+                if not stream.is_client(self.ws):
+                    # 다른 탭이 이어받아 쫓겨난 연결이 닫히기 전에 보냈다. 받으면 스트림이 멈추고
+                    # 이어받은 탭의 오디오는 멈춘 스트림에 알림 없이 버려진다 (오디오와 같은 규칙)
+                    logger.info("쫓겨난 연결의 stop 을 무시한다 take=%s", self.take_id)
+                    return
                 await self._stop(stream)
                 return
             # auth 가 또 오면 무시한다. 이미 인증됐다

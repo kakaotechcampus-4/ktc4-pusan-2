@@ -1781,6 +1781,39 @@ async def test_frames_from_a_taken_over_connection_are_ignored():
     await stream.wait_closed(timeout=1.0)
 
 
+@pytest.mark.anyio
+async def test_stop_from_a_taken_over_connection_is_ignored():
+    """쫓겨난 연결이 닫히기 전에 보낸 stop 도 버린다. 받으면 스트림이 멈추고, 이어받은 탭의
+    오디오는 멈춘 스트림에 아무 알림 없이 버려진다."""
+    adapter = FakeSttAdapter()
+    stream = TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    old_tab = FakeWebSocket(
+        inbound=[{"type": "websocket.receive", "text": json.dumps({"type": "stop"})}]
+    )
+    new_tab = FakeWebSocket()
+    await stream.attach(old_tab)
+    await stream.attach(new_tab)
+
+    realtime = service.RealtimeSession(
+        old_tab,
+        take_id=stream.take_id,
+        db=None,  # type: ignore[arg-type] - 펌프는 DB 를 안 본다
+        stt_adapter=adapter,
+        transcript_store=FakeTranscriptStore(),
+    )
+    await realtime._pump_client(stream)
+
+    assert not stream.is_stopping
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
 def _slow_after_first(adapter: FakeSttAdapter, delay: float) -> None:
     """첫 세션 뒤로는 Deepgram 연결이 delay 초 걸린다 (세션을 가는 동안 오디오가 큐에 쌓인다)."""
     connect = adapter.connect

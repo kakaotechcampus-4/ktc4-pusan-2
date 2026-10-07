@@ -238,6 +238,10 @@ class TakeStream:
                 self._missed_finals.pop(0)
             logger.info("재연결 중 놓친 final 을 모두 다시 보냈다 take=%s", self.take_id)
 
+    def is_client(self, ws: WebSocket) -> bool:
+        """지금 붙어 있는 연결인가. 다른 탭이 이어받아 쫓겨난 연결이면 False."""
+        return self._client is ws
+
     def detach(self, ws: WebSocket) -> None:
         """연결이 끊겼다. 이미 다른 연결이 붙었으면 아무것도 하지 않는다."""
         if self._client is not ws:
