@@ -6,7 +6,7 @@ BE 가 할 일을 그대로 흉내 냅니다: 최근 15초 STT 단어를 모으�
 발표자는 코치의 말에 반응할 수 있습니다(scenario.reactions). 반응이 있으면 개입 효과가
 EFFECTIVE 로, 없으면 INEFFECTIVE 로 나와 되돌아보기(사다리 · 포기)를 재생할 수 있습니다.
 
-실험(tools/evaluate.py)을 위해 두 가지를 더 합니다.
+실험(coach_lab/evaluate.py)을 위해 두 가지를 더 합니다.
 
 - **측정 잡음** (Noise) — 시선 라벨 흔들림, UNCERTAIN 섞임, 말 속도 흔들림, 음량 흔들림,
   STT 단어 누락, 확정 지연 흔들림. seed 로 재현됩니다

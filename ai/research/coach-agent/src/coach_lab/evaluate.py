@@ -1,8 +1,8 @@
 """리뷰 근거 실험 — 코치가 만든 리뷰 근거를 정답과 비교해 채점하고, 설정 변형을 비교한다.
 
-    python -m tools.evaluate                      # clean 1회 + noisy · harsh 각 5 seed
-    python -m tools.evaluate --seeds 10 --sweep   # seed 를 늘리고 병합 간격 × 지연 보정 격자도
-    python -m tools.evaluate --noise noisy        # 잡음 수준 하나만
+    python -m coach_lab.evaluate                      # clean 1회 + noisy · harsh 각 5 seed
+    python -m coach_lab.evaluate --seeds 10 --sweep   # seed 를 늘리고 병합 간격 × 지연 보정 격자도
+    python -m coach_lab.evaluate --noise noisy        # 잡음 수준 하나만
 
 리뷰 설정(config.review)은 실시간 판단에 쓰이지 않습니다. 그래서 발표는 (시나리오 × 잡음 × seed)마다
 한 번만 재생하고, 변형마다 리뷰 근거만 다시 만들어 채점합니다.
@@ -40,6 +40,7 @@ from coach.config import load_config
 from coach.schemas import CoachReviewEvidence
 from coach.vocab import FeedbackType, Issue, SegmentHint, TypeStatus
 
+from .paths import OUTPUTS_DIR, SCENARIOS_DIR
 from .simulator import NOISE_PRESETS, RunResult, Scenario, run, scenario_config
 from .truth import (
     PROBLEM_TYPES,
@@ -48,8 +49,6 @@ from .truth import (
     truth_assessment,
     truth_outcome,
 )
-
-ROOT = Path(__file__).resolve().parent.parent
 
 #: 비교할 리뷰 근거 변형. A 가 첫 구현(v1.0)과 같은 리뷰 근거 규칙이다
 VARIANTS: dict[str, dict[str, Any]] = {
@@ -421,11 +420,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--seeds", type=int, default=5, help="잡음이 있을 때 seed 수")
     parser.add_argument("--sweep", action="store_true", help="리뷰 근거 규칙 격자 (noisy · harsh)")
-    parser.add_argument("--out", default=str(ROOT / "reports" / "evaluation.json"))
+    parser.add_argument("--out", default=str(OUTPUTS_DIR / "evaluation.json"))
     parser.add_argument("--explain", default=None, help="이 변형의 틀린 사례를 출력 (예: D)")
     args = parser.parse_args(argv)
 
-    paths = [Path(p) for p in args.scenarios] or sorted((ROOT / "scenarios").glob("*.json"))
+    paths = [Path(p) for p in args.scenarios] or sorted(SCENARIOS_DIR.glob("*.json"))
     scenarios = [Scenario.load(p) for p in paths]
     noises = [n.strip() for n in args.noise.split(",") if n.strip()]
     report: dict[str, Any] = {

@@ -9,9 +9,10 @@ from typing import Any
 
 import pytest
 
-from tools.simulator import Scenario, check_expect, run
+from coach_lab.paths import SCENARIOS_DIR
+from coach_lab.simulator import Scenario, check_expect, run
 
-SCENARIOS = sorted((Path(__file__).resolve().parent.parent / "scenarios").glob("*.json"))
+SCENARIOS = sorted(SCENARIOS_DIR.glob("*.json"))
 
 
 def test_there_are_scenarios():

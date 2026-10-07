@@ -1,11 +1,11 @@
 """시나리오 재생 — 가상 발표를 코치에 흘려보내고 결과를 요약한다.
 
-    python -m tools.replay                       # scenarios/*.json 전부
-    python -m tools.replay scenarios/05_time_behind.json -v
-    python -m tools.replay --config my_override.json --out reports
+    python -m coach_lab.replay                       # scenarios/*.json 전부
+    python -m coach_lab.replay scenarios/05_time_behind.json -v
+    python -m coach_lab.replay --config my_override.json --out outputs/tuned
 
 각 시나리오마다 개입 타임라인, 지표(개입 수 · 효과 · 지연), expect 검사 결과를 출력하고
-reports/<시나리오>.json 에 이벤트 전체와 리뷰 근거를 씁니다.
+outputs/replay/<시나리오>.json 에 이벤트 전체와 리뷰 근거를 씁니다.
 """
 
 from __future__ import annotations
@@ -18,9 +18,8 @@ from pathlib import Path
 from coach.config import load_config
 from coach.renderer import format_duration
 
+from .paths import REPLAY_DIR, SCENARIOS_DIR
 from .simulator import RunResult, Scenario, check_expect, run
-
-ROOT = Path(__file__).resolve().parent.parent
 
 
 def _print_run(result: RunResult, failures: list[str], verbose: bool) -> None:
@@ -90,11 +89,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("scenarios", nargs="*", help="시나리오 JSON. 없으면 scenarios/*.json")
     parser.add_argument("--config", help="코치 설정 덮어쓰기 JSON (시나리오의 config 보다 우선)")
-    parser.add_argument("--out", default=str(ROOT / "reports"), help="결과 JSON 을 쓸 폴더")
+    parser.add_argument("--out", default=str(REPLAY_DIR), help="결과 JSON 을 쓸 폴더")
     parser.add_argument("-v", "--verbose", action="store_true", help="WAIT 아닌 판단을 전부 출력")
     args = parser.parse_args(argv)
 
-    paths = [Path(p) for p in args.scenarios] or sorted((ROOT / "scenarios").glob("*.json"))
+    paths = [Path(p) for p in args.scenarios] or sorted(SCENARIOS_DIR.glob("*.json"))
     config = load_config(args.config) if args.config else None
 
     failed = 0

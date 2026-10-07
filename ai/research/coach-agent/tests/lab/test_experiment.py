@@ -6,16 +6,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from tools.evaluate import VARIANTS, evaluate
-from tools.simulator import NOISE_PRESETS, Scenario, run
-from tools.truth import truth_assessment, truth_intervals
+from coach_lab.evaluate import VARIANTS, evaluate
+from coach_lab.paths import SCENARIOS_DIR
+from coach_lab.simulator import NOISE_PRESETS, Scenario, run
+from coach_lab.truth import truth_assessment, truth_intervals
 
-ROOT = Path(__file__).resolve().parent.parent
-SCENARIOS = [Scenario.load(p) for p in sorted((ROOT / "scenarios").glob("*.json"))]
+SCENARIOS = [Scenario.load(p) for p in sorted(SCENARIOS_DIR.glob("*.json"))]
 
 
 def _sc(name: str) -> Scenario:
