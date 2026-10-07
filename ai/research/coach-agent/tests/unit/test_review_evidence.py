@@ -318,6 +318,33 @@ def test_no_data_means_not_evaluable_not_strength():
     assert ("CLEAN", "GAZE") not in {(s.kind.value, s.type.value) for s in ev.strengths}
 
 
+def test_volume_without_measured_speech_is_not_evaluable():
+    # 오디오는 살아 있었지만 말한 시간 중 음량을 잰 것은 20% — 음량 레벨 입력에서 기준이
+    # 잡히기 전이다. 이 표본으로 지난 음량 문제가 '해결됐다'거나 미션을 이뤘다고 하지 않는다
+    events = three_slides(
+        **{str(n): {"db_ms": 12_000, "db_weighted": -8.0 * 12_000} for n in (1, 2, 3)}
+    )
+    ev = build_review_evidence(
+        "t",
+        events,
+        plan=PLAN,
+        memory={"recurring_issues": [{"type": "VOLUME", "slide_number": None}]},
+        missions=[
+            {
+                "mission_id": "m",
+                "type": "VOLUME",
+                "slide_number": None,
+                "target": {"metric": "relative_db", "operator": "GTE", "value": -10.0},
+            }
+        ],
+    )
+    status = {t.type.value: t.status.value for t in ev.type_status}
+    assert status["VOLUME"] == "NOT_EVALUABLE"
+    assert ev.memory_check[0].label.value == "UNKNOWN"
+    m = ev.mission_results[0]
+    assert (m.status, m.reason) == (MissionStatus.NOT_EVALUABLE, "LOW_DATA_COVERAGE")
+
+
 # ── 순위 · 다음 미션 ──────────────────────────────────────────────────────
 
 

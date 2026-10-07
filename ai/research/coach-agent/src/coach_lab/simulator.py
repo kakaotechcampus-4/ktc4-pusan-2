@@ -390,6 +390,7 @@ class Presenter:
             self.gaze_records.append(
                 {"t_ms": t - self.sc.tick_ms, "duration_ms": self.sc.tick_ms, "state": label}
             )
+        # 두 모드는 같은 라벨 열에서 만든다. 요약 모드는 v1 결과와 같게 t = 0 라벨까지 표본으로 센다
         n = len(self.labels)
         ratios = {
             k: round(sum(1 for x in self.labels if x == k) / n, 4)
@@ -402,6 +403,8 @@ class Presenter:
                 break
             streak += 1
 
+        # 원자료 모드의 음량 레벨은 지난 1초의 발화 레벨이다 — Take 시작 순간에는 지난 1초가 없다
+        voiced = silence < 300 and t >= self.sc.tick_ms
         db = p.relative_db
         if self.noise.db_sigma:
             db += self.rng.gauss(0.0, self.noise.db_sigma)
@@ -448,7 +451,7 @@ class Presenter:
                 ),
                 "voice": {
                     **(
-                        {"level_db": round(_VOICE_LEVEL_DBFS + db, 2) if silence < 300 else None}
+                        {"level_db": round(_VOICE_LEVEL_DBFS + db, 2) if voiced else None}
                         if self.raw
                         else {"relative_db": round(db, 2) if silence < 300 else None}
                     ),

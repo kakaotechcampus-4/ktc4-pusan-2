@@ -184,6 +184,17 @@ class Agg:
         return _div(self.audio_live_ms, self.total_ms)
 
     @property
+    def volume_coverage(self) -> float | None:
+        """오디오가 살아 있던 비율과 말한 시간 중 음량을 잰 비율 중 작은 쪽.
+
+        음량 레벨 입력은 기준이 잡히기 전(Take 시작 직후) 말한 시간을 재지 못한다 —
+        오디오만 살아 있었다고 음량을 평가하면 표본 없이 '해결됨'을 판정하게 된다.
+        """
+        measured = _div(self.db_ms, self.speaking_ms)
+        audio = self.audio_coverage
+        return None if measured is None or audio is None else min(audio, measured)
+
+    @property
     def keyword_coverage(self) -> float | None:
         if not self.kw_required:
             return None
@@ -387,7 +398,7 @@ def evaluable_types(take: Agg, plan: Plan | None, cfg: CoachConfig) -> dict[Feed
         FeedbackType.GAZE: ok(take.gaze_coverage),
         FeedbackType.SPEED: ok(take.speech_coverage),
         FeedbackType.FILLER: ok(take.speech_coverage),
-        FeedbackType.VOLUME: ok(take.audio_coverage),
+        FeedbackType.VOLUME: ok(take.volume_coverage),
         FeedbackType.PAUSE: ok(take.audio_coverage),
         FeedbackType.CONTENT: bool(take.kw_required) and ok(take.speech_coverage),
         FeedbackType.TIME: has_time or has_slide_targets or take.duration_ms > 0,
@@ -526,7 +537,7 @@ def mission_status(value: float, operator: str, target: float, tolerance: float)
 _SCOPE_METRICS = {
     "script_ratio": ("script_ratio", "gaze_coverage"),
     "cpm": ("cpm", "speech_coverage"),
-    "relative_db": ("relative_db", "audio_coverage"),
+    "relative_db": ("relative_db", "volume_coverage"),
     "filler_per_min": ("filler_per_min", "speech_coverage"),
     "keyword_coverage": ("keyword_coverage", "speech_coverage"),
 }

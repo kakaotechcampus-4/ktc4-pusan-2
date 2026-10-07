@@ -12,7 +12,7 @@ import pytest
 from coach.config import load_config
 from coach_lab.paths import SCENARIOS_DIR
 from coach_lab.replay import load_config_file
-from coach_lab.simulator import Scenario, check_expect, run
+from coach_lab.simulator import Presenter, Scenario, check_expect, run
 
 SCENARIOS = sorted(SCENARIOS_DIR.glob("*.json"))
 
@@ -34,6 +34,13 @@ def test_raw_inputs_meet_expectations_and_decide_the_same(path: Path):
     raw = run(sc, raw=True)
     assert check_expect(raw) == []
     assert raw.timeline == run(sc).timeline
+
+
+def test_raw_take_start_has_no_past_second():
+    """원자료 모드의 Take 시작 순간에는 지난 1초가 없다 — 시선 기록도 음량 레벨도 보내지 않는다."""
+    current = Presenter(Scenario.load(SCENARIOS[0]), raw=True).request(0, None)["current"]
+    assert current["gaze"]["records"] == []
+    assert current["voice"]["level_db"] is None
 
 
 def test_same_input_same_decisions():
