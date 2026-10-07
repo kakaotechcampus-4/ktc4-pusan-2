@@ -14,7 +14,6 @@ from pitch_coach_backend.module.pitch.dto import (
     HighlightDTO,
     ParseRequestedDTO,
     ParseTicket,
-    PitchDTO,
     PitchesDTO,
     PresentationDetailDTO,
     ScriptCreatedDTO,
@@ -424,7 +423,8 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         created_at=presentation_version.created_at.date()
     )
 
-def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO):
+def add_pitch_standard_service(
+        db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO):
     pitch_repository = PitchRepository(db)
     # 평가 기준 분할 로직
     standards_result = divide_standard_text(standard_text_dto)
