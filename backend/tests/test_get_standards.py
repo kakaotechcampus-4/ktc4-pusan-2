@@ -1,5 +1,5 @@
 from datetime import date
-from pitch_coach_backend.module.pitch.dto import PitchDTO
+from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO
 from pitch_coach_backend.module.pitch import service
 from sqlalchemy.orm import Session
 import pytest
@@ -10,7 +10,7 @@ def pitch_id(db_session: Session, user_id) -> uuid.UUID:
     return service.add_pitch_service(
         db_session,
         user_id,
-        PitchDTO(title="기존 발표", time_limit_sec=300, presentation_date=date(2026, 3, 1)),
+        PitchSaveRequestDTO(title="기존 발표", time_limit_sec=300, presentation_date=date(2026, 3, 1)),
     )
 
 def _make_standards(db_session: Session, pitch_id, version, position=1, title="평가 기준"):

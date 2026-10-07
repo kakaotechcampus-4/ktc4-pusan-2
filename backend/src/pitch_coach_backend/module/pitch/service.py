@@ -9,12 +9,12 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.dto import (
-    AllPitchesDTO,
     HighlightDTO,
     ParseRequestedDTO,
     ParseTicket,
-    PitchDTO,
-    PitchesDTO,
+    PitchListItemDTO,
+    PitchListResponseDTO,
+    PitchSaveRequestDTO,
     PresentationDetailDTO,
     ScriptCreatedDTO,
     ScriptDetailDTO,
@@ -61,7 +61,7 @@ MAX_SCRIPT_CHARS = 50_000
 # 약 71초)보다 길어야 한다 — 짧으면 아직 도는 작업을 만료로 보여주고 재시도를 열어 버린다
 PARSE_EXPIRE_AFTER = timedelta(seconds=90)
 
-def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchDTO):
+def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveRequestDTO):
     new_pitch = Pitch(
         user_id=user_id,
         title=pitch_dto.title,
@@ -78,7 +78,7 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchDTO):
     return saved_pitch.id
 
 # 홈 화면 : pitches 목록 조회
-def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
+def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListResponseDTO:
     pitch_repository = PitchRepository(db)
     pitches = pitch_repository.get_all_by_user(user_id)
 
@@ -115,7 +115,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
 
             take_summaries.append(take_summary)
 
-        pitch_dto = PitchesDTO(
+        pitch_dto = PitchListItemDTO(
             pitch_id=pitch.id,
             pitch_title=pitch.title,
             pitch_time=pitch.time_limit_sec,
@@ -126,7 +126,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
 
         results.append(pitch_dto)
 
-    return AllPitchesDTO(pitches=results)
+    return PitchListResponseDTO(pitches=results)
 
 # Protocol(해당 타입만 가지고 있다면 Versioned 타입으로 간주)로 통일
 # Versioned 타입을 가진 객체들을 VersionDTO로 변환

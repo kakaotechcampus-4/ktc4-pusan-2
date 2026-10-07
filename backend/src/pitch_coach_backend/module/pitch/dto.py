@@ -13,7 +13,7 @@ from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 
 
 # 생성·수정이 같이 쓴다. 범위를 벗어나면 DB 에러(500) 대신 422
-class PitchDTO(BaseModel):
+class PitchSaveRequestDTO(BaseModel):
     # DB 는 String(50). FE 도 50자에서 입력을 막는다 (MAX_TITLE_CHARS)
     title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
     time_limit_sec: int = Field(gt=0)
@@ -21,17 +21,17 @@ class PitchDTO(BaseModel):
     lower_deviation: int = Field(default=0, ge=0)
     presentation_date: date | None = None
 
-class PitchesDTO(BaseModel):
+class PitchListItemDTO(BaseModel):
     pitch_id: uuid.UUID
     pitch_title: str
     pitch_time: int
     thumbnail_url: str | None = None
     # 발표일은 생성 때 비워 둘 수 있다 (PitchDTO.presentation_date)
-    pitch_deadline: date | None = None
+    presentation_date: date | None = None
     takes: list[TakeSummaryDTO]
 
-class AllPitchesDTO(BaseModel):
-    pitches: list[PitchesDTO]
+class PitchListResponseDTO(BaseModel):
+    pitches: list[PitchListItemDTO]
       
 class UploadPresentationDTO(BaseModel):
     presentation_file: UploadFile = File(...)

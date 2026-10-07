@@ -10,7 +10,7 @@ from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch, ScriptParseRunnerDep
 from pitch_coach_backend.module.pitch.dto import (
     ParseRequestedDTO,
-    PitchDTO,
+    PitchSaveRequestDTO,
     ScriptCreatedDTO,
     ScriptCreateDTO,
     ScriptDetailDTO,
@@ -67,7 +67,7 @@ def get_presentation(
 def add_pitch(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
-    pitch_dto: PitchDTO
+    pitch_dto: PitchSaveRequestDTO
 ):
     result = add_pitch_service(db, current_user.id, pitch_dto)
     return {"message": "Pitch added successfully", "pitch_id": result}
@@ -76,7 +76,7 @@ def add_pitch(
 def update_pitch(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
-    pitch_dto: PitchDTO
+    pitch_dto: PitchSaveRequestDTO
 ):
     result = update_pitch_service(db, pitch_id, pitch_dto)
     return {"message": "Pitch updated successfully", "pitch_id": result}

@@ -8,7 +8,7 @@ from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch import service
-from pitch_coach_backend.module.pitch.dto import PitchDTO, UploadPresentationDTO
+from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO, UploadPresentationDTO
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
 
 # user-id는 conftest.py에서 fixture를 이용, 공통으로 받아옴
@@ -19,7 +19,7 @@ def pitch_id(db_session: Session, user_id: uuid.UUID) -> uuid.UUID:
     return service.add_pitch_service(
         db_session,
         user_id,
-        PitchDTO(title="기존 발표", time_limit_sec=300, presentation_date=date(2026, 3, 1)),
+        PitchSaveRequestDTO(title="기존 발표", time_limit_sec=300, presentation_date=date(2026, 3, 1)),
     )
 
 
@@ -36,7 +36,7 @@ def upload_mock(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 def test_add_pitch_persists_the_row_and_returns_its_id(
     db_session: Session, user_id: uuid.UUID
 ) -> None:
-    dto = PitchDTO(title="중간 발표", time_limit_sec=420, presentation_date=date(2026, 5, 20))
+    dto = PitchSaveRequestDTO(title="중간 발표", time_limit_sec=420, presentation_date=date(2026, 5, 20))
 
     new_id = service.add_pitch_service(db_session, user_id, dto)
 
@@ -51,7 +51,7 @@ def test_add_pitch_persists_the_row_and_returns_its_id(
 def test_update_pitch_overwrites_every_editable_field(
     db_session: Session, pitch_id: uuid.UUID
 ) -> None:
-    dto = PitchDTO(title="수정된 발표", time_limit_sec=600, presentation_date=date(2026, 7, 7))
+    dto = PitchSaveRequestDTO(title="수정된 발표", time_limit_sec=600, presentation_date=date(2026, 7, 7))
 
     returned = service.update_pitch_service(db_session, pitch_id, dto)
 
