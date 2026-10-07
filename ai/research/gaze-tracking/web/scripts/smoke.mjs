@@ -4,10 +4,12 @@
 //
 // Verifies what unit tests cannot: MediaPipe loading inside a module worker
 // (wasm via an absolute URL), ImageBitmap frames, OffscreenCanvas brightness,
-// crossOriginIsolated under COOP/COEP, and per-frame latency.  Screenshots of
-// each stage land in .cache/screens/ for a visual check.
+// crossOriginIsolated under COOP/COEP, per-frame latency, and what happens when
+// the camera goes away mid-take.  Screenshots of each stage land in .cache/screens/.
 //
-//   npm run smoke            (needs Chrome or Edge installed)
+//   npm run smoke             with COOP/COEP, like the dev server
+//   npm run smoke:prod        without them, as production serves today (Caddy sets none)
+//   CHROME=/path/to/msedge npm run smoke   another Chromium browser
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -33,8 +35,17 @@ if (!existsSync(y4m)) {
 }
 mkdirSync('.cache/screens', { recursive: true });
 
-const server = await createServer({ configFile: resolve('vite.config.ts'), logLevel: 'warn' });
+const isolation = !process.argv.includes('--no-isolation');
+const server = await createServer({
+  configFile: resolve('vite.config.ts'),
+  logLevel: 'warn',
+  server: isolation ? {} : { headers: {} },
+});
+if (!isolation) server.config.server.headers = {};
 await server.listen();
+console.log(
+  `browser: ${executablePath}\nisolation headers: ${isolation ? 'on (COOP/COEP)' : 'off'}`,
+);
 const browser = await puppeteer.launch({
   executablePath,
   headless: true,
@@ -140,7 +151,12 @@ try {
   );
   check(!s.error, `no engine error (${s.error ?? 'none'})`);
   check(s.ready, `worker ready: ${s.version}`);
-  check(s.isolated, 'crossOriginIsolated inside the worker (COOP/COEP)');
+  check(
+    s.isolated === isolation,
+    isolation
+      ? 'crossOriginIsolated inside the worker (COOP/COEP)'
+      : 'runs without cross-origin isolation, as production serves today',
+  );
   check(
     s.frames > 40 && s.faces / s.frames > 0.9,
     `frames analysed ${s.frames}, face found in ${s.faces}`,
@@ -235,6 +251,23 @@ try {
   check(
     s.processMsP95 > 0 && s.processMsP95 < 125,
     `worker p95 ${s.processMsP95.toFixed(1)} ms < 125 ms budget`,
+  );
+
+  // The camera goes away mid-take (unplugged, taken by another app): the view reports
+  // CAMERA_LOST once and stops grabbing frames instead of retrying silently.
+  await page.evaluate(() => {
+    for (const t of document.querySelector('video').srcObject.getTracks()) t.stop();
+  });
+  await new Promise((r) => setTimeout(r, 1000));
+  const lost = await page.evaluate(() => ({
+    reason: window.__smoke.errorReason,
+    frames: window.__smoke.frames,
+  }));
+  await new Promise((r) => setTimeout(r, 1000));
+  const later = await page.evaluate(() => window.__smoke.frames);
+  check(
+    lost.reason === 'CAMERA_LOST' && later === lost.frames,
+    `camera lost mid-take: reported (${lost.reason}) and frame grabbing stopped (${lost.frames} -> ${later})`,
   );
 } finally {
   await browser.close();

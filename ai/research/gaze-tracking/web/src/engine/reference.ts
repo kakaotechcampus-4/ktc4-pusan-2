@@ -5,8 +5,8 @@
  * a region in gaze space blurred by the pooled measurement noise (a "soft
  * box"), OTHER is a constant floor, and the posterior comes from Bayes in log
  * space.  The model is plain data (`ReferenceModelData`) so it survives
- * `structuredClone` / IndexedDB, which the frontend needs to restore a
- * calibration in a later Take.
+ * `structuredClone`, which a new worker needs to take over this session's
+ * calibration.  It is kept in memory only (`CalibrationModel` in engine.ts).
  */
 import type { CalibrationConfig } from './config';
 import { logNdtr, logsumexp, MAD_TO_SIGMA, median } from './math';

@@ -13,6 +13,7 @@
     "test": "vitest run",
     "fixtures": "cd .. && uv run python tools/export_config.py && uv run python tools/make_fixtures.py",
     "smoke": "npm run assets && node scripts/smoke.mjs",
+    "smoke:prod": "npm run assets && node scripts/smoke.mjs --no-isolation",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "bench": "npm run assets && node scripts/bench.mjs"

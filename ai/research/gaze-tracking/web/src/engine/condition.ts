@@ -52,7 +52,7 @@ export type ConditionIssue =
   | 'FACE_REPLACED'
   | 'MOVED_TOO_FAR';
 
-/** Plain data so it can ride inside the stored calibration model. */
+/** Plain data so it can ride inside the calibration model (memory only: face measurements). */
 export interface SceneBaseline {
   centre: [number, number];
   faceArea: number;
