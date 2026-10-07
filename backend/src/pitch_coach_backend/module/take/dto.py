@@ -30,7 +30,8 @@ class CalibrationDTO(BaseModel):
     face_detected: bool = False
     mic_detected: bool = False
     base_volume: float = 0.0
-    gaze_confidence: bool = False
+    # DB 는 Float. bool 을 넘기면 psycopg 가 타입이 안 맞는다고 거절해 저장이 항상 500 이었다
+    gaze_confidence: float = 0.0
 
 class MissionDTO(BaseModel):
     mission_id: uuid.UUID
