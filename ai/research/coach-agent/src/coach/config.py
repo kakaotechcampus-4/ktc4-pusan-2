@@ -177,7 +177,8 @@ class ReflectionConfig(_Section):
 class ReviewConfig(_Section):
     """Take 종료 뒤 리뷰 에이전트 근거를 만드는 규칙 (review.py).
 
-    기본값은 tools/evaluate.py 실험으로 고른 것입니다 — v1/README.md §9.
+    기본값은 리뷰 근거 실험(research 의 coach_lab.evaluate)으로 고른 것입니다.
+    결과는 ai/research/coach-agent/reports/results/review_evidence.json 에 있습니다.
     """
 
     #: 센서를 믿을 수 있던 시간이 이 비율보다 적은 구간은 문제로 보지 않는다 (UNRELIABLE)
@@ -201,7 +202,7 @@ class ReviewConfig(_Section):
     #: 실제로 잡힌 시간(지연 보정 전)이 이보다 짧고 개입도 없던 구간은 리뷰에 넘기지 않는다 (잡음
     #: 깜빡임).
     #: 3초: 깨끗한 데이터의 짧은 실제 문제를 놓치지 않는 가장 큰 값. 6초면 harsh 잡음의 근거 없는
-    #: 지적이 0.11 → 0.06 으로 줄지만 깨끗한 데이터에서 실제 문제 하나를 놓친다 (v1/README.md §9)
+    #: 지적이 0.11 → 0.06 으로 줄지만 깨끗한 데이터에서 실제 문제 하나를 놓친다 (실험 결과의 sweep)
     min_segment_ms: int = 3_000
     #: 이보다 작은 부담(심각도 × 초)은 문제로 보지 않는다
     min_burden_s: float = 3.0

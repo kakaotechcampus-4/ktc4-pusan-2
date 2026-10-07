@@ -1,7 +1,7 @@
 """실험 장치와 성능 하한선.
 
-하한선은 실험(v1/README.md §9)에서 잰 값보다 조금 낮게 둡니다. 규칙을 고쳐 리뷰 근거가
-나빠지면 여기서 걸립니다. seed 2개만 돌려 빠르게 봅니다.
+하한선은 실험(reports/results/review_evidence.json)에서 잰 값보다 조금 낮게 둡니다.
+규칙을 고쳐 리뷰 근거가 나빠지면 여기서 걸립니다. seed 2개만 돌려 빠르게 봅니다.
 """
 
 from __future__ import annotations
