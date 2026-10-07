@@ -186,7 +186,7 @@ class CoachState(_S):
 
 
 def initial_state(plan: CoachingPlan | None = None) -> CoachState:
-    """Take 의 첫 기억. v1.1 의 /coach/plan 은 LLM 이 만든 계획을 넣어 이걸 돌려준다."""
+    """Take 의 첫 기억. v1.2 의 /coach/plan 은 LLM 이 만든 계획을 넣어 이걸 돌려준다."""
     return CoachState(plan=plan or CoachingPlan())
 
 

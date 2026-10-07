@@ -39,7 +39,7 @@
 | `POST /coach/evaluate` | `decide_safe` |
 | `POST /coach/finalize` | `finalize` |
 | `/takes/analyze` (연습 종료 분석) | 그 안에서 `build_review_evidence`를 부릅니다. 리뷰 근거만을 위한 API는 따로 두지 않습니다 |
-| `POST /coach/plan` | v1.1 계획입니다. LLM이 Take 시작 전에 코칭 계획을 만들어 `initial_state(plan)`의 `coach_state`를 돌려줍니다. v1은 기본 계획이라 첫 요청의 `coach_state`를 `null`로 보내면 됩니다 |
+| `POST /coach/plan` | v1.2 계획입니다. LLM이 Take 시작 전에 코칭 계획을 만들어 `initial_state(plan)`의 `coach_state`를 돌려줍니다. v1.1까지는 기본 계획이라 첫 요청의 `coach_state`를 `null`로 보내면 됩니다 |
 
 ```
 FE  시선 · 음량 · 슬라이드 요약 ─┐
@@ -117,7 +117,7 @@ build_review_evidence(
 initial_state(plan: CoachingPlan | None = None) -> CoachState
 ```
 
-Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다 — 첫 요청의 `coach_state`를 `null`로 보내면 `decide`가 알아서 `initial_state()`로 시작합니다. v1.1의 `/coach/plan`이 LLM 계획을 담아 이것을 돌려줄 예정입니다. 쓰려면 `dump_state`(`src/coach/state.py`)로 dict로 바꿔 요청에 실어야 합니다.
+Take의 첫 기억을 만듭니다. v1.1까지 BE는 부를 필요가 없습니다 — 첫 요청의 `coach_state`를 `null`로 보내면 `decide`가 알아서 `initial_state()`로 시작합니다. v1.2의 `/coach/plan`이 LLM 계획을 담아 이것을 돌려줄 예정입니다. 쓰려면 `dump_state`(`src/coach/state.py`)로 dict로 바꿔 요청에 실어야 합니다.
 
 ---
 
@@ -243,7 +243,7 @@ Take의 첫 기억을 만듭니다. v1에서 BE는 부를 필요가 없습니다
 - 기록이 덮지 못한 시간과 `UNMEASURED`는 `UNCERTAIN`처럼 **측정하지 못한 시간**으로 셉니다. 대본 응시 비율은 측정한 시간 중 `BOTTOM`의 비율입니다 (시선 모듈의 비율과 같은 분모).
 - `SCREEN` · `OTHER`는 측정한 시간이지만 대본이 아닌 곳으로 셉니다.
 - 지금 라벨 · 이어진 시간도 창 안으로 자르고 겹침을 뺀 기록으로 계산합니다. 지금 라벨은 마지막 기록의 상태이고, 이어진 시간은 같은 상태로 빈틈없이 이어진 기록의 길이입니다. 마지막 기록이 지금보다 2초(`record_stale_ms`) 넘게 오래됐으면 지금 라벨은 측정하지 못한 것으로 봅니다.
-- 두 입력 모두 Take 시작 뒤 5초(`min_window_ms`)까지는 시선 비율로 지적하지 않고 상태 표시는 `UNKNOWN`입니다. 몇 초의 표본은 한두 번의 판정에 크게 흔들립니다. 창 길이가 아니라 Take 경과 시간으로 보므로, FE가 짧은 창을 보내도 그 뒤에는 지적합니다.
+- 두 입력 모두 Take 시작 뒤 5초(`min_window_ms`)까지는 시선 비율로 지적하지 않습니다. 그동안 상태 표시는 측정하지 못한 비율이 50%를 넘으면 `UNCERTAIN`, 아니면 `UNKNOWN`입니다. 몇 초의 표본은 한두 번의 판정에 크게 흔들립니다. 창 길이가 아니라 Take 경과 시간으로 보므로, FE가 짧은 창을 보내도 그 뒤에는 지적합니다.
 
 1초 기록 예시 (FE 3구역):
 
@@ -1214,7 +1214,7 @@ finalize() 응답의 events ─┘
 |---|---|---|---|
 | `script_ratio` | GAZE | 시선 | |
 | `cpm` | SPEED | STT | |
-| `relative_db` | VOLUME | 오디오 | |
+| `relative_db` | VOLUME | 음량 (오디오 덮개와 '말한 시간 중 음량을 잰 비율' 중 작은 쪽) | |
 | `filler_per_min` | FILLER | STT | |
 | `keyword_coverage` | CONTENT | STT | |
 | `slide_duration_ms` | TIME | (항상 1.0) | 장을 지정해야 합니다 (`slide_number` 없으면 `UNSUPPORTED_METRIC`) |

@@ -158,7 +158,7 @@ class PolicyConfig(_Section):
             "filler_count_60s": 3.0,
         }
     )
-    #: 계획(v1.1 LLM)이 주는 가중치를 이 범위로 자른다
+    #: 계획(v1.2 LLM)이 주는 가중치를 이 범위로 자른다
     plan_weight_min: float = 0.5
     plan_weight_max: float = 2.0
     #: 유지 격려(CONTINUE)는 다른 어떤 지적보다 낮게
