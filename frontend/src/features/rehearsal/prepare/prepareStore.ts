@@ -88,6 +88,11 @@ interface PrepareState {
   setPlacement: (placement: PrepareState['placement']) => void;
   setScriptMode: (mode: ScriptMode, byUser?: boolean) => void;
   setDevices: (devices: DeviceChoice) => void;
+  /**
+   * 리허설을 새로고침했을 때 세션 행에 남겨 둔 값으로 되살립니다 (`SessionRow.prepare`).
+   * 이 스토어는 메모리에만 있어서 새로고침하면 비어 있습니다.
+   */
+  restore: (prepare: Pick<PrepareState, 'calibration' | 'devices'>) => void;
   reset: () => void;
 }
 
@@ -109,5 +114,6 @@ export const usePrepareStore = create<PrepareState>((set) => ({
   setScriptMode: (mode, byUser = true) =>
     set((s) => ({ scriptMode: mode, scriptModeTouched: s.scriptModeTouched || byUser })),
   setDevices: (devices) => set({ devices }),
+  restore: ({ calibration, devices }) => set({ calibration, devices }),
   reset: () => set(INITIAL),
 }));

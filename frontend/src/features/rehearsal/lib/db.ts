@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
+import type { DeviceChoice } from '../media/useCameraStream';
+import type { CalibrationSummary, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import type { ZoneDecision, ZoneReference } from '@/workers/gaze.contract';
 
 /**
@@ -49,6 +50,21 @@ export interface SessionRow {
    * 이 필드가 생기기 전에 만든 세션에는 없습니다 — 그래서 선택 필드입니다 (스키마 변경 없음).
    */
   ticket?: RehearsalTicket;
+
+  /**
+   * 장치 점검에서 정한 것들. 리허설은 이 값을 메모리 스토어(`prepareStore`)에서 읽는데,
+   * 새로고침하면 그 스토어가 비어서 여기서 되살립니다. 없으면 시선 기준을 못 찾아
+   * Take 전체의 시선이 빠지고, 점검하지 않은 기본 장치가 열립니다.
+   *
+   * 값 필드라 DB 버전을 올리지 않습니다 (인덱스가 없습니다). 이 필드가 생기기 전에 만든 행에는
+   * 키가 없으므로 읽을 때 `?? null` 로 받습니다.
+   */
+  prepare: PrepareContext | null;
+}
+
+export interface PrepareContext {
+  calibration: CalibrationSummary | null;
+  devices: DeviceChoice;
 }
 
 interface PitchDb extends DBSchema {
@@ -210,6 +226,7 @@ export async function startSession(takeId: string | null = null): Promise<string
     engineVersion: null,
     gazeAvgFps: null,
     gazeDroppedFrames: 0,
+    prepare: null,
   });
   return clientSessionId;
 }
@@ -238,6 +255,14 @@ async function patchSession(
 /** 하트비트. 5초마다. 벽시계로 찍습니다 — SessionRow.lastBeatAt 주석 참고 */
 export async function beat(clientSessionId: string, elapsedMs: Ms): Promise<void> {
   await patchSession(clientSessionId, { lastBeatAt: Date.now(), elapsedMs });
+}
+
+/** 장치 점검에서 정한 것들을 남깁니다 (`SessionRow.prepare`) */
+export async function setPrepareContext(
+  clientSessionId: string,
+  prepare: PrepareContext,
+): Promise<void> {
+  await patchSession(clientSessionId, { prepare });
 }
 
 export async function endSession(
@@ -315,8 +340,8 @@ export async function setSessionTicket(
 }
 
 /**
- * takeId 로 세션을 찾습니다. 리허설 화면을 새로고침했을 때 쓰는 길입니다 —
- * 라우터 state 는 새로고침으로 사라지지만 기록은 IndexedDB 에 남아 있어야 합니다.
+ * takeId 로 세션을 찾습니다. 리허설 주소를 다른 탭에서 열었을 때 쓰는 길입니다 —
+ * 라우터 state 는 새로고침하면 남지만 탭을 옮기면 없습니다. 기록은 IndexedDB 에 남아 있습니다.
  * 같은 Take 로 두 번 시작된 세션이 있으면 **가장 최근 것**을 잇습니다.
  */
 export async function findSessionByTakeId(takeId: string): Promise<SessionRow | null> {
