@@ -368,8 +368,6 @@ export interface PrepareResponse {
   timeLimitSec: number;
   /** 이번에 만들어질 Take 번호. POST /takes의 응답과 같아야 합니다 */
   nextTakeNumber: number;
-  /** 지난 Take가 남긴 다음 과제. 없으면 null — 배너를 그리지 않습니다 */
-  lastMission: { id: string; description: string } | null;
   criteria: { version: number; readOnly: boolean; items: EvalCriterion[] };
   /** 지난 Take에서 고른 Script Mode. 화면의 초기 선택값입니다 */
   defaultScriptMode: ScriptMode;
@@ -410,6 +408,4 @@ export interface TakeContext {
   scriptMode: ScriptMode;
   timeLimitSec: number;
   status: TakeStatus;
-  /** 이번 Take의 과제. 없으면 null */
-  mission: { id: string; description: string } | null;
 }

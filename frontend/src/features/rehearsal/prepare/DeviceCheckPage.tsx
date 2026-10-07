@@ -9,7 +9,6 @@ import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
 import { LevelBar } from '../media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
-import { MissionCard } from './MissionCard';
 import { ScriptModeChoice } from './ScriptModeChoice';
 import { normalizeScriptMode, practiceModeFor, usePrepareStore } from './prepareStore';
 import { CALIBRATION_FAIL_MESSAGE, useGazeSetup, type GazeSetupStatus } from './useGazeSetup';
@@ -108,7 +107,7 @@ function calibrationLabel(
  * 09 시작 전 세팅 — 리허설 바로 앞. **Take가 생기는 유일한 화면입니다.**
  *
  * 전에는 장치 점검(05)과 리허설 준비(06)가 따로였는데, 시안 09 가 둘을 한 화면으로
- * 그리면서 합쳤습니다. 미션·대본 표시·평가기준이 준비 화면에만 있던 것들입니다.
+ * 그리면서 합쳤습니다. 대본 표시·평가기준이 준비 화면에만 있던 것들입니다.
  *
  * ★ Take 는 아래 `start()` 에서만 생깁니다 (CLAUDE.md 8번). 화면에 들어오는 것만으로는
  *   만들지 않습니다 — 점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 실제
@@ -313,7 +312,7 @@ export function DeviceCheckPage() {
     >
       {/*
         목업 09 의 구성 — 왼쪽은 "지금 보이는 것"(카메라와 그 아래 점검), 오른쪽은
-        "이번 Take 를 어떻게 할지"(미션 · 대본 표시)입니다. 장치와 결정을 갈라 두면
+        "이번 Take 를 어떻게 할지"(대본 표시)입니다. 장치와 결정을 갈라 두면
         발표 직전에 눈이 한쪽만 훑어도 됩니다.
       */}
       <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
@@ -391,8 +390,6 @@ export function DeviceCheckPage() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <MissionCard description={data?.lastMission?.description ?? null} />
-
           <ScriptModeChoice value={scriptMode} onChange={(m) => setScriptMode(m)} />
 
           {/* 권한·무입력 안내. 문구는 useCameraStream이 들고 있는 것을 그대로 씁니다 —
