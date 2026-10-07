@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# tools/replay.py 가 쓰는 재생 결과. 다시 만들 수 있으므로 커밋하지 않는다
+reports/*
+!reports/.gitkeep

@@ -11,6 +11,7 @@ DB 를 아는 것은 이 파일과 repository 뿐이다.
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import NoReturn
 
 import redis
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core import security
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.auth import google, repository, state_store
+from pitch_coach_backend.module.auth.entity import RefreshToken
 from pitch_coach_backend.module.auth.exception import (
     EmailAlreadyRegistered,
     InvalidAuthorizationRequest,
@@ -184,10 +186,7 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
 
     if stored.revoked_at is not None:
         # 이미 회전된 토큰이 다시 들어왔다. 정상 흐름에서는 일어나지 않는다.
-        # 유출로 보고 이 세션의 살아 있는 토큰을 전부 끊는다 (공격자·피해자 양쪽 로그아웃).
-        repository.revoke_device(db, user_id=stored.user_id, device_id=stored.device_id)
-        db.commit()
-        raise RefreshTokenReused()
+        _reject_reuse(db, stored)
 
     if stored.expires_at <= datetime.now(UTC):
         repository.revoke(db, stored)
@@ -204,10 +203,22 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
         raise InvalidRefreshToken()
 
     # 폐기와 신규 발급이 한 트랜잭션이다. 중간에 실패하면 둘 다 없던 일이 된다.
-    repository.revoke(db, stored)
+    # 위에서 읽은 뒤 같은 토큰으로 온 다른 요청이 먼저 회전했을 수 있다. 그대로 두면 둘 다
+    # 새 토큰을 받아 계보가 갈라진다. 조건부 폐기로 한 요청만 이기게 하고, 진 쪽은 이미 쓰인
+    # 토큰을 쓴 것이므로 재사용과 같게 다룬다. FE 는 refresh 를 탭 간 잠금으로 한 줄로 세우므로
+    # 정상 사용자가 여기에 걸리지는 않는다 (frontend/src/shared/api/tokenStore.ts)
+    if not repository.revoke_if_active(db, stored.id):
+        _reject_reuse(db, stored)
     session = _issue_session(db, user=user, device_id=stored.device_id)
     db.commit()
     return session
+
+
+def _reject_reuse(db: Session, stored: RefreshToken) -> NoReturn:
+    """유출로 보고 이 세션의 살아 있는 토큰을 전부 끊는다 (공격자·피해자 양쪽 로그아웃)."""
+    repository.revoke_device(db, user_id=stored.user_id, device_id=stored.device_id)
+    db.commit()
+    raise RefreshTokenReused()
 
 
 def logout(db: Session, refresh_token: str | None) -> None:

@@ -1,13 +1,16 @@
-from typing import Annotated
 import uuid
+from typing import Annotated
+
 from fastapi import Depends
-from pitch_coach_backend.core.database import get_db
-from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from pitch_coach_backend.module.take.exception import NonExistentTake
+
+from pitch_coach_backend.core.database import get_db
+from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
 from pitch_coach_backend.module.take.entity import Take
-    
+from pitch_coach_backend.module.take.exception import NonExistentTake
+
+
 def get_owned_take(
     db: Annotated[Session, Depends(get_db)],
     pitch_id: OwnedPitch,

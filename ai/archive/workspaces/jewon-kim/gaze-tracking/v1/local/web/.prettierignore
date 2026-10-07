@@ -1,0 +1,8 @@
+node_modules
+dist
+public/models
+.cache
+package-lock.json
+*.md
+src/engine/defaults.ts
+test/fixtures
