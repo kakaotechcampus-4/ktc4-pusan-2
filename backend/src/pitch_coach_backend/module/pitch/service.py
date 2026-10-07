@@ -40,6 +40,7 @@ from pitch_coach_backend.module.pitch.exception import (
     ScriptParseInProgress,
     ScriptReuploadRequired,
     NonExistentPresentationVersion,
+    NonExistentEvaluation
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import generate_presigned_url, upload
@@ -445,7 +446,7 @@ def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: in
         "evaluation_version": evaluation_version,
         "evaluations": 
         [{
-            "order": s+1,
-            "standard": standards[s].standard
+            "order": standards[s].position,
+            "standard": standards[s].title
         } for s in range(len(standards))],
     }

@@ -136,13 +136,14 @@ class PitchRepository:
             .order_by(Standards.version.asc())
         ).all()
 
-    def get_evaluations_by_version(self, pitch_id: uuid.UUID, version: int) -> Standards | None:
-        return self.db.scalar(
+    def get_evaluations_by_version(self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
+        return self.db.scalars(
             select(Standards).where(
                 Standards.pitch_id == pitch_id,
                 Standards.version == version
             )
-        )
+            .order_by(Standards.position.asc())
+        ).all()
 
     # ── 대본 파싱 ────────────────────────────────────────────────────
     # 상태 전이는 전부 조건부 UPDATE 한 번으로 한다. "읽고 → 검사하고 → 쓰기" 로 나누면
