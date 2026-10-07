@@ -30,6 +30,14 @@ class GazeConfig(_Section):
     #: 대본을 본다고 볼 라벨. 시선 모듈이 방향을 세분화하면 여기에 이름만 더한다
     script_labels: list[str] = ["BOTTOM", "SCRIPT"]
     uncertain_label: str = "UNCERTAIN"
+    #: 얼굴이 없거나 기록이 빈 시간. 판정을 보류한 UNCERTAIN 과 같이 '측정하지 못함'으로 센다
+    unmeasured_label: str = "UNMEASURED"
+    #: 1초 기록 입력에서 마지막 기록이 지금보다 이만큼 넘게 오래됐으면 지금 라벨을 측정 불가로 본다
+    record_stale_ms: int = 2_000
+    #: 창이 이보다 짧으면(Take 시작 직후) 비율로 지적하지 않는다. 1~3초의 표본으로는 두 번만
+    #: 대본을 봐도 70% 를 넘었다 (1초 기록 입력 실험, harsh). FE 코치도 표본 5개 미만이면
+    #: 비율을 내지 않는다
+    min_window_ms: int = 5_000
     #: 최근 창(기본 10초)에서 대본 응시 비율. FE 코치의 BOTTOM_RATIO 와 같은 값
     script_ratio: float = 0.7
     script_ratio_bad: float = 0.95

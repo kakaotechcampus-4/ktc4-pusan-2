@@ -337,6 +337,8 @@ def _indicators(tick: Tick) -> Indicators:
         gaze = GazeLevel.UNKNOWN
     elif (m.get("gaze_uncertain_smoothed") or 0.0) > cfg.gaze.max_uncertain_ratio:
         gaze = GazeLevel.UNCERTAIN
+    elif m.get("gaze_window_short"):
+        gaze = GazeLevel.UNKNOWN
     elif (m.get("script_ratio") or 0.0) >= cfg.gaze.indicator_script_ratio:
         gaze = GazeLevel.SCRIPT
     else:

@@ -101,14 +101,30 @@ class TimingInput(_In):
     slide_elapsed_ms: int | None = Field(default=None, ge=0)
 
 
+class GazeRecord(_In):
+    """시선 1초 기록 하나. 시선 모듈의 1초 기록과 같은 이름을 쓴다 (모르는 필드는 무시)."""
+
+    #: 이 기록이 덮는 시간의 시작 (Take 시작 기준 ms)
+    t_ms: int = Field(ge=0)
+    duration_ms: int = Field(default=1_000, gt=0)
+    #: CAMERA · BOTTOM · UNCERTAIN (FE 3구역) 또는 SCREEN · OTHER · UNMEASURED 를 더한 6상태
+    state: str
+
+
 class GazeInput(_In):
-    """FE 시선 모듈의 최근 창 요약. 라벨 이름이 늘어도 모양은 그대로다."""
+    """FE 시선 모듈의 최근 창. 요약(ratios …)이나 1초 기록(records) 중 하나를 보낸다.
+
+    records 가 있으면 코치가 그것으로 창 비율과 지금 라벨을 계산하고 ratios 는 쓰지 않는다.
+    라벨 이름이 늘어도 모양은 그대로다.
+    """
 
     window_ms: int = 10_000
     ratios: dict[str, float] = Field(default_factory=dict)
     current_label: str | None = None
     #: current_label 이 이어진 시간
     current_label_ms: int | None = Field(default=None, ge=0)
+    #: 최근 window_ms 의 1초 기록. 기록이 없는 시간은 측정하지 못한 것으로 본다
+    records: list[GazeRecord] | None = None
 
 
 class VoiceInput(_In):
