@@ -58,7 +58,9 @@ class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "standards"
     __table_args__ = (
-        UniqueConstraint("pitch_id", "version", name="uq_standards_pitch_version"),
+        UniqueConstraint(
+            "pitch_id", "version", "position", name="uq_standards_pitch_version_position"
+        ),
     )
 
     # 자식 쪽에 외래키를 건다. 
@@ -66,6 +68,7 @@ class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(50), nullable=False)
 
 class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):

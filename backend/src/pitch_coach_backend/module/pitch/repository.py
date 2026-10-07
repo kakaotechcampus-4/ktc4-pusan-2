@@ -119,6 +119,11 @@ class PitchRepository:
                 PresentationVersion.id == presentation_version_id
             )
         )
+
+    def save_standard(self, standard: Standards) -> Standards:
+        self.db.add(standard)
+        self.db.flush()
+        return standard
  
     def get_presentations(self, pitch_id: uuid.UUID) -> list[PresentationVersion]:
         return self.db.scalars(
@@ -135,7 +140,18 @@ class PitchRepository:
     def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
         return self.db.scalars(
             select(Standards).where(Standards.pitch_id == pitch_id)
+            .distinct(Standards.version)
             .order_by(Standards.version.asc())
+        ).all()
+
+    def get_evaluations_by_version(
+            self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
+        return self.db.scalars(
+            select(Standards).where(
+                Standards.pitch_id == pitch_id,
+                Standards.version == version
+            )
+            .order_by(Standards.position.asc())
         ).all()
 
     # ── 대본 파싱 ────────────────────────────────────────────────────

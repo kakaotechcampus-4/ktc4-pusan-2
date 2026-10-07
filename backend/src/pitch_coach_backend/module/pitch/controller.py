@@ -27,6 +27,7 @@ from pitch_coach_backend.module.pitch.service import (
     get_pitch_datas,
     get_presentation_detail,
     get_script_detail,
+    get_standard_detail,
     request_reparse,
     update_pitch_service,
     upload_presentation_service,
@@ -166,3 +167,12 @@ def reparse_script(
     result, parse_ticket = request_reparse(db, pitch_id, script_version_id)
     background_tasks.add_task(parse_runner.run, parse_ticket)
     return result
+
+@router.get("/{pitch_id}/evaluations/{evaluation_version}")
+def get_evaluation(
+    pitch_id: OwnedPitch,
+    evaluation_version: int,
+    db: Annotated[Session, Depends(get_db)],
+):
+    evaluation = get_standard_detail(db, pitch_id, evaluation_version)
+    return evaluation

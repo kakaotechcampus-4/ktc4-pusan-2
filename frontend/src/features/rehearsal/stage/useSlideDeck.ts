@@ -18,11 +18,17 @@ export function useSlideDeck({
   clientSessionId,
   elapsedMs,
   enabled,
+  resumedAt,
 }: {
   total: number;
   clientSessionId: string | null;
   elapsedMs: () => Ms;
   enabled: boolean;
+  /**
+   * 새로고침한 Take 를 이어받았으면 지금 슬라이드로 넘어온 시각입니다. 슬라이드 번호는
+   * 무대가 시작되기 전에 스토어에 되살려 둡니다 (`resume.ts`). 처음 시작이면 null 입니다.
+   */
+  resumedAt: Ms | null;
 }) {
   const slideNumber = useRehearsalStore((s) => s.slideNumber);
   const setSlide = useRehearsalStore((s) => s.setSlide);
@@ -55,13 +61,19 @@ export function useSlideDeck({
   // 서버가 알 수 없습니다 (0ms 행이 그 구간의 시작입니다)
   useEffect(() => {
     if (!enabled || !clientSessionId) return;
+    // 이어받았으면 첫 행은 이미 있습니다. 여기서 0ms 행을 쓰면 그 행을 덮어쓰고,
+    // 지금 시각에 쓰면 같은 슬라이드가 구간 두 개로 쪼개집니다
+    if (resumedAt !== null) {
+      slideStartedAtRef.current = resumedAt;
+      return;
+    }
     slideStartedAtRef.current = 0;
     // 이 0ms 행이 타임라인의 시작점입니다. 빠지면 첫 전환 전까지가
     // 어느 슬라이드였는지 서버가 알 방법이 없습니다
     appendSlideChange(clientSessionId, 0, useRehearsalStore.getState().slideNumber).catch(
       (err: unknown) => noteWriteFailure(clientSessionId, 'slideChange', err),
     );
-  }, [enabled, clientSessionId]);
+  }, [enabled, clientSessionId, resumedAt]);
 
   useEffect(() => {
     if (!enabled) return;

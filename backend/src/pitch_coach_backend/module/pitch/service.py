@@ -4,8 +4,10 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx2
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.dto import (
     AllPitchesDTO,
     HighlightDTO,
@@ -18,6 +20,9 @@ from pitch_coach_backend.module.pitch.dto import (
     ScriptDetailDTO,
     ScriptParseErrorCode,
     ScriptSlideDTO,
+    StandardParseResponseDTO,
+    StandardTextDTO,
+    StandardTextResponseDTO,
     UploadPresentationResultDTO,
     VersionDTO,
     Versioned,
@@ -29,6 +34,7 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptParseStatus,
     ScriptSlide,
     ScriptVersion,
+    Standards,
 )
 from pitch_coach_backend.module.pitch.exception import (
     InvalidScript,
@@ -403,6 +409,25 @@ def fail_parse(db: Session, ticket: ParseTicket, error_code: ScriptParseErrorCod
     db.commit()
     return True
 
+
+def stt_keyterm_candidates(
+    db: Session, pitch_id: uuid.UUID, script_version_id: uuid.UUID
+) -> list[str]:
+    """리허설 STT 에 넘길 대본 용어. 우선순위 순이고, 한도에 맞춰 자르는 건 호출자 몫이다.
+
+    realtime 이 WebSocket 인가 중에 부른다 (호출자가 run_in_threadpool 로 감싼다).
+    파싱이 끝나지 않은 대본은 빈 목록 — 용어가 없어도 STT 는 돈다.
+
+    terms 만 쓴다 — STT 가 틀리기 쉬운 고유명사로, 파서가 우선순위 순으로 준다.
+    슬라이드 keywords 는 발음 잡기용이 아니라 넣지 않는다. 이미 잘 받아 적는 일반 단어라
+    boosting 하면 말하지 않은 단어가 전사에 끼어든다 (fillers.py 의 T3 와 같은 이유).
+    """
+    script = PitchRepository(db).get_script_in_pitch(pitch_id, script_version_id)
+    if script is None or script.parse_status != ScriptParseStatus.DONE:
+        return []
+    return [term for term in script.terms or [] if isinstance(term, str)]
+
+
 # 각 발표자료 버전의 상세 정보.
 def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID):
     pitch_repository = PitchRepository(db)
@@ -422,17 +447,56 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         created_at=presentation_version.created_at.date()
     )
 
-def add_pitch_standard_service(db: Session, pitch_id: uuid.UUID, standard_text_dto):
+def add_pitch_standard_service(
+        db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO):
+    pitch_repository = PitchRepository(db)
     # 평가 기준 분할 로직
-    # pitch_repository = PitchRepository(db)
-    # standards_result =
+    standards_result = divide_standard_text(standard_text_dto)
 
-    # for standard in standards_result.standards:
-    #    pitch_repository.save_standard(pitch_id, standard)
+    standards_list = standards_result.standards
+    for s in len(standards_list):
+        standard = Standards(
+            pitch_id=pitch_id,
+            standard=standards_list[s],
+            position=s + 1
+        )   
+        pitch_repository.save_standard(standard)
+    db.commit()
 
-    # return StandardTextResponseDTO(
-    #     pitch_id=pitch_id,
-    #     standards=[{"standard": standard} for standard in standards_result.standards],
-    #     except_standard=standards_result.except_standard
-    # )
-    return None
+    return StandardTextResponseDTO(
+         pitch_id=pitch_id,
+         standards=[{"standard": standard} for standard in standards_result.standards],
+         except_standard=standards_result.except_standard
+    )
+
+def divide_standard_text(standard_text_dto: StandardTextDTO) -> list[str]:
+    """평가 기준 텍스트를 문장 단위로 나눈다. LLM 호출이므로 async."""
+    with httpx2.Client() as client:
+        response = client.post(
+            f"{settings.ai_base_url}/evaluation-criteria/parse",
+            json={"standard_text": standard_text_dto.standard_text}
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        standards = result.get("display_criteria", [])
+        except_standard = result.get("except_criteria", "")
+
+        return StandardParseResponseDTO(
+            standards=standards,
+            except_standard=except_standard
+        )
+    
+def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: int):
+    pitch_repository = PitchRepository(db)
+    standards = pitch_repository.get_evaluations_by_version(pitch_id, evaluation_version)
+
+    return {
+        "pitch_id": pitch_id,
+        "evaluation_version": evaluation_version,
+        "evaluations":
+        [{
+            "order": standards[s].position,
+            "standard": standards[s].title
+        } for s in range(len(standards))],
+    }

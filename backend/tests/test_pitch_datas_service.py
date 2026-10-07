@@ -49,9 +49,9 @@ def _make_script(db: Session, pitch_id: uuid.UUID, version: int) -> ScriptVersio
 
 
 def _make_standard(
-    db: Session, pitch_id: uuid.UUID, version: int, title: str = "평가 기준"
+    db: Session, pitch_id: uuid.UUID, version: int, position: int = 1, title: str = "평가 기준"
 ) -> Standards:
-    standard = Standards(pitch_id=pitch_id, version=version, title=title)
+    standard = Standards(pitch_id=pitch_id, version=version, position=position, title=title)
     db.add(standard)
     db.flush()
     return standard
