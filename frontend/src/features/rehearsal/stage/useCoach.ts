@@ -3,6 +3,7 @@ import { appendCoachLog } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
 import type { Ms, PracticeMode } from '@/types/api';
 import { useRehearsalStore } from './rehearsalStore';
+import type { CoachHistory } from './resume';
 
 /**
  * 1단 코치 — **브라우저가 혼자 판단할 수 있는 것만** 있습니다.
@@ -113,6 +114,7 @@ export function useCoach({
   statsRef,
   audioLive,
   slideStartedAtRef,
+  history,
 }: {
   /** 발표가 도는 동안만 true. 종료 뒤에는 규칙을 돌리지 않습니다 */
   enabled: boolean;
@@ -125,6 +127,11 @@ export function useCoach({
   /** AudioContext가 running인가. 아니면 소리 규칙을 건너뜁니다 */
   audioLive: boolean;
   slideStartedAtRef: RefObject<Ms>;
+  /**
+   * 새로고침 전에 코치가 말한 기록. 없으면 새로고침 직전에 띄운 말이 바로 다시 뜹니다 —
+   * 간격·쿨다운이 메모리에만 있기 때문입니다. 처음 시작이면 null 입니다.
+   */
+  history: CoachHistory | null;
 }) {
   const showCoach = useRehearsalStore((s) => s.showCoach);
   const clearCoach = useRehearsalStore((s) => s.clearCoach);
@@ -133,6 +140,12 @@ export function useCoach({
   const lastByTypeRef = useRef<Record<string, Ms>>({});
   const lastSuppressLogRef = useRef<Record<string, Ms>>({});
   const hideTimerRef = useRef(0);
+
+  useEffect(() => {
+    if (!history) return;
+    lastFiredAtRef.current = history.lastFiredAt;
+    lastByTypeRef.current = { ...history.lastByType };
+  }, [history]);
 
   useEffect(() => {
     if (!enabled) return;

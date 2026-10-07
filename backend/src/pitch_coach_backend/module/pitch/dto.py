@@ -3,20 +3,22 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Protocol
+from typing import Annotated, Protocol
 
 from fastapi import File, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StringConstraints
 
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 
 
+# 생성·수정이 같이 쓴다. 범위를 벗어나면 DB 에러(500) 대신 422
 class PitchDTO(BaseModel):
-    title: str
-    time_limit_sec: int
-    upper_deviation: int = 0
-    lower_deviation: int = 0
+    # DB 는 String(50). FE 도 50자에서 입력을 막는다 (MAX_TITLE_CHARS)
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
+    time_limit_sec: int = Field(gt=0)
+    upper_deviation: int = Field(default=0, ge=0)
+    lower_deviation: int = Field(default=0, ge=0)
     presentation_date: date | None = None
 
 class PitchesDTO(BaseModel):
@@ -24,7 +26,8 @@ class PitchesDTO(BaseModel):
     pitch_title: str
     pitch_time: int
     thumbnail_url: str | None = None
-    pitch_deadline: date
+    # 발표일은 생성 때 비워 둘 수 있다 (PitchDTO.presentation_date)
+    pitch_deadline: date | None = None
     takes: list[TakeSummaryDTO]
 
 class AllPitchesDTO(BaseModel):

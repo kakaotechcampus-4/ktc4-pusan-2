@@ -110,6 +110,18 @@ def test_maps_pitch_fields(db_session: Session, user_id: uuid.UUID, pitch_id: uu
     assert result.pitches[0].pitch_time == 300
     assert result.pitches[0].thumbnail_url is None
 
+# 발표일 없이 만든 pitch 도 목록에 나오고 pitch_deadline 은 null
+def test_pitch_without_presentation_date_has_null_deadline(
+    db_session: Session, user_id: uuid.UUID
+) -> None:
+    service.add_pitch_service(
+        db_session, user_id, PitchDTO(title="날짜 없는 발표", time_limit_sec=300)
+    )
+
+    result = service.get_all_pitches_service(db_session, user_id)
+
+    assert [p.pitch_deadline for p in result.pitches] == [None]
+
 # pitch에 take가 없는 경우 takes가 빈 리스트로 나오는지 확인
 def test_pitch_without_takes_has_empty_takes(
     db_session: Session, user_id: uuid.UUID, pitch_id: uuid.UUID

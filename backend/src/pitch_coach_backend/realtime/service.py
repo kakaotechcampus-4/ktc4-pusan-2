@@ -3,7 +3,7 @@
     FE ──(WS-1)── RealtimeSession ──push──▶ TakeStream ──(WS-2)── Deepgram
 
 이 클래스는 **연결만큼만** 산다. 오디오 파이프라인과 Deepgram 세션은 `take_stream.TakeStream`
-이 들고 있고 연결보다 오래 남는다 — 탭을 새로 고쳐도 세그먼트 번호와 타임라인이 이어지도록.
+이 들고 있고 연결보다 오래 남는다 — 탭을 새로고침해도 세그먼트 번호가 이어지도록.
 
 연결 하나의 순서: Origin → auth(JWT) → 인가(DB 1회: 사용자·Take 존재·소유·상태·대본 용어)
 → ready → 오디오.
@@ -295,13 +295,18 @@ class RealtimeSession:
                 )
                 continue
             if isinstance(parsed, StopMessage):
+                if not stream.is_client(self.ws):
+                    # 다른 탭이 이어받아 쫓겨난 연결이 닫히기 전에 보냈다. 받으면 스트림이 멈추고
+                    # 이어받은 탭의 오디오는 멈춘 스트림에 알림 없이 버려진다 (오디오와 같은 규칙)
+                    logger.info("쫓겨난 연결의 stop 을 무시한다 take=%s", self.take_id)
+                    return
                 await self._stop(stream)
                 return
             # auth 가 또 오면 무시한다. 이미 인증됐다
 
     async def _push_audio(self, stream: TakeStream, data: bytes) -> None:
         try:
-            stream.push(data)
+            stream.push(data, source=self.ws)
         except InvalidAudioFrame as e:
             self.invalid_frames += 1
             if self.invalid_frames == 1:
