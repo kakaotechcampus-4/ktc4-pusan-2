@@ -19,7 +19,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
-from .vocab import Instruction, Issue
+from .vocab import FeedbackType, Instruction, Issue
 
 
 class _Section(BaseModel):
@@ -369,6 +369,23 @@ _TEMPLATES: dict[str, str] = {
 }
 
 
+class PlannerConfig(_Section):
+    """Take 시작 전 코칭 계획(planner.py). LLM 이 낸 계획은 이 범위로 자른다."""
+
+    #: 장 단위로 봐줄 수 있는 영역. 시간 · 속도 · 음량 · 침묵은 늘 챙긴다
+    relax_types: list[FeedbackType] = Field(
+        default_factory=lambda: [FeedbackType.GAZE, FeedbackType.FILLER, FeedbackType.CONTENT]
+    )
+    max_focus: int = 3
+    max_relax: int = 3
+    #: 개입 상한을 이보다 작게 잡지 못한다 — 코칭을 지나치게 아끼지 않게
+    min_interventions: int = 5
+    #: LLM 에 넘길 장 대본 글자 수 상한 (장마다)
+    max_script_chars: int = 1_500
+    #: 직전 리뷰 근거에서 넘길 문제 수
+    max_previous_issues: int = 5
+
+
 class CoachConfig(_Section):
     gaze: GazeConfig = Field(default_factory=GazeConfig)
     speech: SpeechConfig = Field(default_factory=SpeechConfig)
@@ -378,6 +395,7 @@ class CoachConfig(_Section):
     reflection: ReflectionConfig = Field(default_factory=ReflectionConfig)
     features: Features = Field(default_factory=Features)
     review: ReviewConfig = Field(default_factory=ReviewConfig)
+    planner: PlannerConfig = Field(default_factory=PlannerConfig)
     issues: dict[Issue, IssueRule] = Field(default_factory=_default_issue_rules)
     templates: dict[str, str] = Field(default_factory=lambda: dict(_TEMPLATES))
 
