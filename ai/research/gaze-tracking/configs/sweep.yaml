@@ -1,0 +1,28 @@
+# Head circle check between the set-up check and calibration (vision.runtime.sweep).
+# Look straight ahead for a moment, then turn the head slowly around in a circle;
+# a ring of ticks fills in the directions reached while the face stayed tracked.
+# It checks tracking in every direction and never blocks. All values are initial.
+
+# Ring resolution: a multiple of 8, so each of the 8 directions owns whole ticks.
+ticks: 32
+
+# Centre of the circle = median head pose of the first valid frames (1 s): the presenter
+# looking at the screen, which the calibration's screen-centre look then confirms.
+neutral_frames: 8
+
+# A tick lights when the head turned this far from the centre (ellipse half-axes).
+reach_yaw_deg: 14.0
+reach_pitch_deg: 9.0
+
+# Faster than this between two frames lights nothing ("turn more slowly").
+max_speed_deg_s: 150.0
+
+# Two turned frames in a row fill the ticks between them (8 FPS skips ticks otherwise).
+max_gap_ms: 400
+max_fill_arc_deg: 90.0
+
+# No new tick for this long: point at the largest gap still to fill.
+hint_after_ms: 3000
+
+# Stop after this long; the result names the directions still missing.
+timeout_ms: 25000
