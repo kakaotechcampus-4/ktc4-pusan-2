@@ -120,8 +120,7 @@ class PitchRepository:
             )
         )
 
-    def save_standard(self, pitch_id: uuid.UUID, standard: Standards) -> Standards:
-        standard.pitch_id = pitch_id
+    def save_standard(self, standard: Standards) -> Standards:
         self.db.add(standard)
         self.db.flush()
         return standard

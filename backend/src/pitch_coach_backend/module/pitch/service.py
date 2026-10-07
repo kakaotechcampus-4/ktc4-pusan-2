@@ -34,6 +34,7 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptParseStatus,
     ScriptSlide,
     ScriptVersion,
+    Standards
 )
 from pitch_coach_backend.module.pitch.exception import (
     InvalidScript,
@@ -454,10 +455,16 @@ def add_pitch_standard_service(
     # 평가 기준 분할 로직
     standards_result = divide_standard_text(standard_text_dto)
 
-    for standard in standards_result.standards:
-        pitch_repository.save_standard(pitch_id, standard)
-
+    standards_list = standards_result.standards
+    for s in len(standards_list):
+        standard = Standards(
+            pitch_id=pitch_id,
+            standard=standards_list[s],
+            position=s + 1
+        )   
+        pitch_repository.save_standard(standard)
     db.commit()
+
     return StandardTextResponseDTO(
          pitch_id=pitch_id,
          standards=[{"standard": standard} for standard in standards_result.standards],
