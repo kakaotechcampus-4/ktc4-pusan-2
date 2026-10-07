@@ -151,17 +151,27 @@ def _find_or_create_user(db: Session, identity: google.GoogleIdentity) -> User:
 
 
 def _issue_session(
-    db: Session, *, user: User, device_id: uuid.UUID, return_to: str = "/"
+    db: Session,
+    *,
+    user: User,
+    device_id: uuid.UUID,
+    return_to: str = "/",
+    replaces: RefreshToken | None = None,
 ) -> IssuedSession:
-    """Refresh 난수를 만들어 해시만 저장하고, 원문은 반환값으로만 내보낸다."""
+    """Refresh 난수를 만들어 해시만 저장하고, 원문은 반환값으로만 내보낸다.
+
+    replaces 는 회전으로 폐기한 토큰이다. 새 토큰을 거기에 이어 둔다.
+    """
     refresh_token = security.create_refresh_token()
-    repository.create_refresh_token(
+    issued = repository.create_refresh_token(
         db,
         user_id=user.id,
         token_hash=security.hash_refresh_token(refresh_token),
         device_id=device_id,
         expires_at=security.refresh_token_expires_at(),
     )
+    if replaces is not None:
+        replaces.replaced_by_id = issued.id
     return IssuedSession(
         user=user,
         access_token=security.create_access_token(user.id),
@@ -209,7 +219,7 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
     # 정상 사용자가 여기에 걸리지는 않는다 (frontend/src/shared/api/tokenStore.ts)
     if not repository.revoke_if_active(db, stored.id):
         _reject_reuse(db, stored)
-    session = _issue_session(db, user=user, device_id=stored.device_id)
+    session = _issue_session(db, user=user, device_id=stored.device_id, replaces=stored)
     db.commit()
     return session
 

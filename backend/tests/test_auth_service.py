@@ -334,6 +334,23 @@ def test_rotate_revokes_the_used_token(
     assert old.revoked_at is not None
 
 
+def test_rotate_links_the_used_token_to_the_new_one(
+    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+) -> None:
+    issued = login(db_session, redis_client)
+    rotated = service.rotate(db_session, issued.refresh_token)
+
+    old = repository.get_refresh_token(
+        db_session, security.hash_refresh_token(issued.refresh_token)
+    )
+    new = repository.get_refresh_token(
+        db_session, security.hash_refresh_token(rotated.refresh_token)
+    )
+    assert old is not None and new is not None
+    assert old.replaced_by_id == new.id
+    assert new.replaced_by_id is None
+
+
 def test_rotated_token_cannot_be_used_again(
     db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
 ) -> None:
