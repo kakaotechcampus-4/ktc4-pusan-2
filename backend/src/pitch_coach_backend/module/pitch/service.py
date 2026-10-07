@@ -1,26 +1,27 @@
 import uuid
-import httpx2
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from pitch_coach_backend.module.pitch.dto import PitchDTO, StandardParseResponseDTO, StandardTextDTO
-from pitch_coach_backend.module.take.dto import TakeSummaryDTO
-from pitch_coach_backend.core.config import settings
+import httpx2
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.dto import (
     AllPitchesDTO,
     HighlightDTO,
     ParseRequestedDTO,
     ParseTicket,
+    PitchDTO,
     PitchesDTO,
     PresentationDetailDTO,
     ScriptCreatedDTO,
     ScriptDetailDTO,
     ScriptParseErrorCode,
     ScriptSlideDTO,
+    StandardParseResponseDTO,
+    StandardTextDTO,
     StandardTextResponseDTO,
     UploadPresentationResultDTO,
     VersionDTO,
@@ -46,6 +47,7 @@ from pitch_coach_backend.module.pitch.exception import (
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import generate_presigned_url, upload
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
+from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 
 # 대본 한 편의 글자 수 상한. 1시간 발표도 2만 자 안팎이라 넉넉하고, LLM 한 번에 넣을 수 있는 크기다
 MAX_SCRIPT_CHARS = 50_000
