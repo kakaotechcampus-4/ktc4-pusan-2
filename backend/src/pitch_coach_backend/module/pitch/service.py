@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pitch_coach_backend.module.pitch.dto import PitchDTO, StandardParseResponseDTO, StandardTextDTO
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
+from pitch_coach_backend.core.config import settings
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.dto import (
@@ -442,7 +443,7 @@ def divide_standard_text(standard_text_dto: StandardTextDTO) -> list[str]:
     """평가 기준 텍스트를 문장 단위로 나눈다. LLM 호출이므로 async."""
     with httpx2.Client() as client:
         response = client.post(
-            "http://localhost:8001/evaluation-criteria/parse",
+            f"{settings.ai_base_url}/evaluation-criteria/parse",
             json={"standard_text": standard_text_dto.standard_text}
         )
         response.raise_for_status()
