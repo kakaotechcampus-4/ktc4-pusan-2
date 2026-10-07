@@ -487,3 +487,16 @@ def divide_standard_text(standard_text_dto: StandardTextDTO) -> list[str]:
             except_standard=except_standard
         )
     
+def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: int):
+    pitch_repository = PitchRepository(db)
+    standards = pitch_repository.get_evaluations_by_version(pitch_id, evaluation_version)
+
+    return {
+        "pitch_id": pitch_id,
+        "evaluation_version": evaluation_version,
+        "evaluations":
+        [{
+            "order": standards[s].position,
+            "standard": standards[s].title
+        } for s in range(len(standards))],
+    }
