@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useGazeWorker } from '../media/useGazeWorker';
 import { appendGazeDecision, loadZoneRef, markGazeExcluded } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
+import { fitsCurrentEngine } from '@/workers/calibrationModel';
 import type { ZoneDecision } from '@/workers/gaze.contract';
 import type { GazeExcludedReason, GazeZone, Ms } from '@/types/api';
 
@@ -158,8 +159,11 @@ export function useLiveGaze({
 
     // 엔진이 다르면 null 입니다 — 다른 모델이 만든 기준은 넣지 않습니다
     loadZoneRef(layoutSignature, engineVersion)
-      .then((ref) => {
+      .then((stored) => {
         if (cancelled) return;
+        // 설정이 바뀐 엔진의 기준은 없는 것으로 봅니다 — 버전 문자열은 같아도 판정 기준이 다릅니다.
+        // 넣어 두면 판정이 하나도 안 나오는데 '기록 중'으로 보이므로, 여기서 MISSING 으로 돌립니다
+        const ref = stored && fitsCurrentEngine(stored.model) ? stored : null;
         // 펌프보다 먼저 들어가야 합니다 — READY 가 되어야 아래 효과가 펌프를 켭니다
         if (ref) calibrate(ref);
         setLoaded({ key: loadKey, found: ref !== null });

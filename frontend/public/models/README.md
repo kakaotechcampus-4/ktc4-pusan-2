@@ -5,6 +5,10 @@
 
 시선 엔진 v1.1(`src/vendor/gaze`)이 읽는 파일입니다. `npm run models` 가 채웁니다.
 
+`npm run models` 는 `face_landmarker.task` 의 크기·sha256(`64184e22…`)과 `@mediapipe/tasks-vision` 버전(`1.0.1`)이
+AI 가 검증한 값과 같은지 확인하고, 다르면 복사하지 않고 실패합니다. 다른 모델·런타임이면 에러 없이 판정만 틀어지기 때문입니다.
+`package.json` 의 `@mediapipe/tasks-vision` 을 `^` 없이 고정해 둔 것도 같은 이유입니다.
+
 | 파일 | 무엇 | 어디서 |
 | --- | --- | --- |
 | `face_landmarker.task` | MediaPipe Face Landmarker (3.6 MB) | AI 리그 `ai/models/` · 팀 드라이브 |

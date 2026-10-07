@@ -3,6 +3,7 @@ import { GazeCameraView, type CameraPhase, type SetupResult } from '@/vendor/gaz
 import { CALIBRATION_HINT } from '@/vendor/gaze/camera/text';
 import type { StoredModel } from '@/vendor/gaze/engine';
 import { takeEngineVersion, toCalibrationResult, toPlacementResult } from '@/workers/aiAdapter';
+import { fitsCurrentEngine } from '@/workers/calibrationModel';
 import type { CalibrationFailReason } from '@/workers/gaze.contract';
 import { loadZoneRef, saveZoneRef } from '../lib/db';
 import { readLayoutSignature } from '../lib/layoutSignature';
@@ -334,9 +335,13 @@ export function useGazeSetup({
       .then(async (ref) => {
         if (cancelled) return;
         const view = viewRef.current;
-        // 다른 엔진·설정의 모델이면 모듈이 거절합니다 (false)
+        // 설정이 바뀐 엔진의 보정이면 쓰지 않습니다. 모듈은 모양(schema)만 보고 설정은 확인하지 않아,
+        // 그대로 넘기면 옛 기준으로 판정합니다 (fitsCurrentEngine). 모양이 다르면 모듈이 false 를 줍니다
         const ok =
-          ref !== null && view !== null && (await view.useCalibration(ref.model as StoredModel));
+          ref !== null &&
+          fitsCurrentEngine(ref.model) &&
+          view !== null &&
+          (await view.useCalibration(ref.model as StoredModel));
         if (cancelled) return;
         if (ok) setVerifying(false);
         else invalidate();

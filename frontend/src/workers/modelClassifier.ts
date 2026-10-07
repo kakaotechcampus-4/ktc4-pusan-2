@@ -8,6 +8,7 @@ import type {
 import type { Ms } from '@/types/api';
 import type { GazeEngine } from '@/vendor/gaze/engine';
 import { engineVersion, toCalibrationResult, toFrameVerdict, toPlacementResult } from './aiAdapter';
+import { fitsCurrentEngine } from './calibrationModel';
 
 /**
  * AI 시선 엔진 v1.1 (A안).
@@ -29,7 +30,8 @@ import { engineVersion, toCalibrationResult, toFrameVerdict, toPlacementResult }
  *   2. 초기화 자산    — `/models/` 의 `face_landmarker.task` + `vision_wasm_module_internal.*`
  *   3. 워커에서 도나  — 돕니다. DOM 없이 OffscreenCanvas 로 밝기를 잽니다
  *   4. `model` 복제   — 순수 데이터라 structuredClone · IndexedDB 에 그대로 들어갑니다.
- *                        다른 엔진·설정의 값이면 `calibrate` 가 거절합니다
+ *                        엔진의 `calibrate` 는 모양(schema)만 봅니다. 설정이 바뀐 엔진의 보정인지는
+ *                        `fitsCurrentEngine`(설정 해시)으로 우리가 따로 거릅니다
  *
  * ── 엔진이 내지만 여기서 버리는 것 ──────────────────────────────────
  *
@@ -88,10 +90,14 @@ export class ModelGazeClassifier implements GazeClassifier {
   }
 
   calibrate(ref: ZoneReference): void {
-    this.#ref = ref;
-    // 다른 엔진·설정의 기준이면 false 입니다. 그때 #ref 를 남기면 기준 없는 엔진에
-    // 프레임이 들어가므로 비웁니다 — 판정이 없으면 다수결이 '측정 못 함'으로 셉니다
-    if (this.#impl && !this.#impl.calibrate(ref.model)) this.#ref = null;
+    // 맞지 않는 기준이면 넣지 않습니다. 모양이 다르면 엔진이 false 를 돌려주고,
+    // 설정이 바뀐 엔진의 기준이면 엔진은 받아들이므로 여기서 먼저 거릅니다
+    // (`fitsCurrentEngine`). #ref 를 비워 두면 판정이 없어 다수결이 '측정 못 함'으로 셉니다 —
+    // 틀린 기준으로 판정하는 것보다 낫습니다. 보통은 꺼내는 쪽(useLiveGaze)이 미리 걸러서
+    // 여기까지 오지 않습니다
+    this.#ref = null;
+    if (!this.#impl || !fitsCurrentEngine(ref.model)) return;
+    if (this.#impl.calibrate(ref.model)) this.#ref = ref;
   }
 
   classify(frame: ImageBitmap, tMs: Ms): FrameVerdict | null {
