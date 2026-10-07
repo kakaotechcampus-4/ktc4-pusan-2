@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# 배포 이름. import 패키지는 두 개다.
+#   coach     — 판단 코어. 나중에 ai/service 의 features/coach/ 로 폴더째 옮긴다
+#   coach_lab — research 전용 재생 · 실험 도구. 옮기지 않는다
+name = "coach-agent"
+version = "1.0.0"
+description = "Pitch Coach realtime coach agent - research (core + lab)"
+# service 가 쓸 Python 버전(3.12)에서 검증한다
+requires-python = ">=3.12"
+dependencies = [
+    # 코어(coach)가 쓰는 것은 pydantic 하나뿐이다. service 로 옮길 때 이것만 가져간다.
+    # coach_lab 도 표준 라이브러리 밖으로는 pydantic 만 쓴다
+    "pydantic>=2.13",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "ruff>=0.16",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# backend/pyproject.toml 과 같은 규칙
+[tool.ruff]
+line-length = 100
+src = ["src", "."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["coach", "coach_lab"]
