@@ -257,7 +257,10 @@ export function resolveChosen(draft: PitchDraft, chosen: Chosen): Resolved {
  * 매핑을 저장할 수 있나 — 서버가 나눈 대본이고, 나누는 중이 아니며,
  * 서버에 올라간 슬라이드와 장수가 맞아야 합니다. 저장 버튼 · store · 연습 조합이 함께 씁니다.
  */
-export function canSaveMapping(script: ScriptVersion, slide: SlideVersion | null | undefined): boolean {
+export function canSaveMapping(
+  script: ScriptVersion,
+  slide: SlideVersion | null | undefined,
+): boolean {
   return (
     script.remote !== null &&
     script.parse.status === 'idle' &&
