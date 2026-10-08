@@ -2,9 +2,11 @@ import { scanSlideMarkers, type MarkerScan } from '@/shared/lib/slideMarkers';
 import { useCreateStore } from '../createStore';
 import { CheckIcon, DocIcon, LinkIcon } from '../icons';
 import {
+  canSaveMapping,
   countChars,
   estimateDurationMs,
   formatEstimate,
+  toPracticeCombo,
   type ScriptVersion,
   type SlideVersion,
 } from '../lib/draft';
@@ -220,7 +222,7 @@ function SlideThumb({ slide, pageNumber }: { slide: SlideVersion | null; pageNum
   const opened = usePdfDocument(slide?.fileUrl);
   return (
     <div className="flex h-20 w-36 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-panel">
-      {opened && 'doc' in opened ? (
+      {opened && 'doc' in opened && pageNumber <= opened.doc.numPages ? (
         <PdfPage doc={opened.doc} pageNumber={pageNumber} fit="width" className="w-full" />
       ) : (
         <span className="tabular text-xs text-stone">{pageNumber}</span>
@@ -296,6 +298,7 @@ function MappingReview({
   onStart: () => void;
 }) {
   const unmapScript = useCreateStore((s) => s.unmapScript);
+  const editMappingBlock = useCreateStore((s) => s.editMappingBlock);
   const saveMapping = useCreateStore((s) => s.saveMapping);
   const draft = useCreateStore((s) => s.draft);
   const chosen = useCreateStore((s) => s.chosen);
@@ -308,12 +311,14 @@ function MappingReview({
     (_, i) => blocks[i] ?? '',
   );
   const filled = rows.filter((b) => b.trim() !== '').length;
-  const gate = computeGate(draft, chosen);
+  const currentChoice = { ...chosen, slides: script.slideVersion, script: script.version };
+  const gate = computeGate(draft, currentChoice);
+  const pending = script.parse.status === 'pending';
   // 저장한 이 조합으로 넘어갑니다. 저장 뒤에 다른 버전을 고쳤으면 진행 조건이 다시 막습니다
-  const canStart = script.saved && gate.ready;
+  const canStart = toPracticeCombo(draft, currentChoice) !== null;
   // ★ 장수가 맞아야 저장합니다. 맞지 않는 조합을 저장하면 "저장 완료"인데 "다음"이 막혀 헷갈립니다
   const countsMatch = pageCount > 0 && blocks.length === pageCount;
-  const canSave = !script.saved && countsMatch;
+  const canSave = !script.saved && canSaveMapping(script, linked);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -324,6 +329,7 @@ function MappingReview({
           <button
             type="button"
             onClick={() => unmapScript(script.version)}
+            disabled={pending}
             className="h-11 rounded-lg border border-line-strong bg-white px-5 text-sm font-bold hover:bg-panel"
           >
             ← 대본 수정
@@ -341,6 +347,16 @@ function MappingReview({
         </span>
       </div>
 
+      {!script.remote && (
+        <p role="status" className="mb-3 text-sm text-coral-deep">
+          수정한 문장은 원문에도 반영됩니다. 수정 대본을 다시 매핑한 뒤 저장해 주세요.
+        </p>
+      )}
+      {script.parse.status === 'failed' && (
+        <p role="alert" className="mb-3 text-sm text-coral-deep">
+          {script.parse.message}
+        </p>
+      )}
       <MappingNotice
         segmented={script.segmented}
         blockCount={blocks.length}
@@ -359,14 +375,18 @@ function MappingReview({
               <span className="tabular w-20 shrink-0 text-sm font-bold">
                 SLIDE {String(i + 1).padStart(2, '0')}
               </span>
-              <p
+              <textarea
+                aria-label={`슬라이드 ${i + 1} 대본`}
+                value={block}
+                readOnly={pending || i >= blocks.length}
+                onChange={(e) => editMappingBlock(script.version, i, e.target.value)}
+                placeholder="이 슬라이드에 연결된 대본이 없어요"
+                rows={3}
                 className={[
                   'min-w-0 flex-1 whitespace-pre-line rounded-md border px-4 py-3 text-sm leading-relaxed',
                   empty ? 'border-dashed border-line-strong text-stone' : 'border-line',
                 ].join(' ')}
-              >
-                {empty ? '이 슬라이드에 연결된 대본이 없어요' : block}
-              </p>
+              />
               {empty ? (
                 <span className="w-20 shrink-0 text-center text-xs font-bold text-coral">
                   비어 있음
@@ -409,6 +429,20 @@ function MappingReview({
 
         <div className="flex flex-col items-end gap-1.5">
           <div className="flex gap-3">
+            {(!script.remote || script.parse.status !== 'idle') && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() =>
+                  script.parse.status === 'failed'
+                    ? retryScriptMapping(script.version)
+                    : startScriptMapping(script.version)
+                }
+                className="rounded-lg border border-coral px-4 text-sm font-bold text-coral-deep disabled:opacity-50"
+              >
+                {pending ? '매핑 중…' : '수정 대본 매핑'}
+              </button>
+            )}
             <button
               type="button"
               disabled={!canSave}
@@ -420,7 +454,11 @@ function MappingReview({
             <button
               type="button"
               disabled={!canStart}
-              onClick={onStart}
+              onClick={() => {
+                // 확인 창이 볼 조합(chosen)을 지금 화면의 대본으로 맞춥니다
+                saveMapping(script.version);
+                onStart();
+              }}
               className="h-12 w-40 rounded-lg bg-coral text-sm font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
             >
               다음 →

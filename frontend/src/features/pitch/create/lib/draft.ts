@@ -254,6 +254,23 @@ export function resolveChosen(draft: PitchDraft, chosen: Chosen): Resolved {
 }
 
 /**
+ * 매핑을 저장할 수 있나 — 서버가 나눈 대본이고, 나누는 중이 아니며,
+ * 서버에 올라간 슬라이드와 장수가 맞아야 합니다. 저장 버튼 · store · 연습 조합이 함께 씁니다.
+ */
+export function canSaveMapping(
+  script: ScriptVersion,
+  slide: SlideVersion | null | undefined,
+): boolean {
+  return (
+    script.remote !== null &&
+    script.parse.status === 'idle' &&
+    !!slide?.presentationVersionId &&
+    !!slide.pageCount &&
+    script.blocks?.length === slide.pageCount
+  );
+}
+
+/**
  * 장치 점검에 넘길 이번 연습의 조합. BE 는 이 조합을 Take 에 박아 둡니다 (`TakeInitRequestDTO`).
  *
  * 서버 id 가 하나라도 없으면 null 입니다 — 올리지 않은 슬라이드나 서버에서 나누지 않은 대본으로는
@@ -261,7 +278,15 @@ export function resolveChosen(draft: PitchDraft, chosen: Chosen): Resolved {
  */
 export function toPracticeCombo(draft: PitchDraft, chosen: Chosen): PracticeCombo | null {
   const { slides, script } = resolveChosen(draft, chosen);
-  if (!slides?.presentationVersionId || !script?.remote) return null;
+  // 앞의 두 조건은 아래에서 서버 id 를 꺼내려는 타입 좁히기입니다
+  if (
+    !slides?.presentationVersionId ||
+    !script?.remote ||
+    !canSaveMapping(script, slides) ||
+    !script.saved ||
+    script.slideVersion !== slides.version
+  )
+    return null;
   return {
     title: draft.title,
     presentationVersionId: slides.presentationVersionId,

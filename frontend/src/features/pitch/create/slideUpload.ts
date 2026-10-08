@@ -21,6 +21,8 @@ import { fromUploadedPresentation } from './lib/beAdapter';
 export async function uploadSlides(file: File, replace: number | null = null): Promise<void> {
   const store = useCreateStore.getState();
   const { pitchId } = store;
+  // 업로드가 끝나기 전에 다른 빈 버전을 만들어도 시작한 자리에 채웁니다.
+  const targetVersion = store.version ?? store.draft.slides.at(-1)?.version ?? null;
   // 두 번 눌러도 한 번만 올립니다. 피치가 없으면 올릴 곳이 없습니다 — 화면이 먼저 막습니다
   if (store.slideUpload.status === 'uploading' || !pitchId) return;
   const set = store.setSlideUpload;
@@ -53,7 +55,7 @@ export async function uploadSlides(file: File, replace: number | null = null): P
     fileName: file.name,
   };
   const latest = useCreateStore.getState();
-  if (replace === null) latest.attachSlides(result);
+  if (replace === null) latest.attachSlides(result, targetVersion);
   else latest.replaceSlides(replace, result);
   set({ status: 'idle' });
 }

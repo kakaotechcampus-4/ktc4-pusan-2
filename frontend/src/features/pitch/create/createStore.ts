@@ -12,6 +12,7 @@ import type {
 } from './lib/draft';
 import {
   CHOOSE_LATEST,
+  canSaveMapping,
   MAX_CRITERIA,
   infoChanged,
   infoOf,
@@ -79,13 +80,15 @@ interface CreateState {
    * 한 동작으로 묶은 이유 — 나눠 부르면 "버전을 만들었는데 장수는 다음 렌더에
    * 들어오는" 중간 상태가 생기고, 그 틈에 진행 조건이 한 번 잘못 계산됩니다.
    */
-  attachSlides: (uploaded: UploadedSlides) => void;
+  attachSlides: (uploaded: UploadedSlides, targetVersion?: number | null) => void;
   /** "파일 교체" — 이 버전의 파일만 바꿉니다. 버전 번호는 그대로입니다 */
   replaceSlides: (version: number, uploaded: UploadedSlides) => void;
 
   /** 대본 새 버전. 직전 글을 물려받고, 마지막으로 올린 슬라이드에 연결합니다 */
   addScriptVersion: (text?: string) => void;
   editScript: (version: number, text: string) => void;
+  /** 매핑 편집은 원문에도 반영하고 서버 버전은 다시 올릴 때까지 분리합니다. */
+  editMappingBlock: (version: number, index: number, text: string) => void;
   /**
    * 대본을 맞춰 볼 슬라이드 버전을 바꿉니다. 서버는 슬라이드를 모르고 구분자로만 나누므로
    * 나눈 결과는 그대로 두고, 장수가 맞는지는 진행 조건이 다시 봅니다.
@@ -181,9 +184,12 @@ export const useCreateStore = create<CreateState>((set) => ({
   slideUpload: { status: 'idle' },
   setSlideUpload: (next) => set({ slideUpload: next }),
 
-  attachSlides: (uploaded) =>
+  attachSlides: (uploaded, targetVersion) =>
     set((s) => {
-      const pending = s.draft.slides.at(-1);
+      const pending =
+        targetVersion === undefined
+          ? s.draft.slides.at(-1)
+          : s.draft.slides.find((v) => v.version === targetVersion);
       // 파일을 기다리던 빈 버전이 있으면 그것을 채웁니다 — "+ 새 버전" 뒤의 경로
       if (pending && pending.pageCount === null) {
         return {
@@ -235,6 +241,21 @@ export const useCreateStore = create<CreateState>((set) => ({
   editScript: (version, text) =>
     set((s) => ({ draft: mapScripts(s.draft, version, (v) => ({ ...v, text, ...DETACHED })) })),
 
+  editMappingBlock: (version, index, text) =>
+    set((s) => ({
+      draft: mapScripts(s.draft, version, (v) => {
+        if (!v.blocks || index < 0 || index >= v.blocks.length || v.parse.status === 'pending')
+          return v;
+        const blocks = v.blocks.map((block, i) => (i === index ? text : block));
+        return {
+          ...v,
+          ...DETACHED,
+          blocks,
+          text: blocks.map((block, i) => `슬라이드 ${i + 1}\n${block}`).join('\n\n'),
+        };
+      }),
+    })),
+
   linkSlides: (version, slideVersion) =>
     set((s) => ({
       draft: mapScripts(s.draft, version, (v) => ({ ...v, slideVersion, saved: false })),
@@ -249,7 +270,8 @@ export const useCreateStore = create<CreateState>((set) => ({
   saveMapping: (version) =>
     set((s) => {
       const script = s.draft.scripts.find((v) => v.version === version);
-      if (!script) return s;
+      const slide = s.draft.slides.find((v) => v.version === script?.slideVersion);
+      if (!script || !canSaveMapping(script, slide)) return s;
       return {
         draft: {
           ...s.draft,
