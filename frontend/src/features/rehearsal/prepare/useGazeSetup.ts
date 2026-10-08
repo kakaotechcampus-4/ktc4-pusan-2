@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { GazeCameraView, type CameraPhase, type SetupResult } from '@/vendor/gaze/camera';
 import { CALIBRATION_HINT } from '@/vendor/gaze/camera/text';
-import type { StoredModel } from '@/vendor/gaze/engine';
+import type { CalibrationModel } from '@/vendor/gaze/engine';
 import { takeEngineVersion, toCalibrationResult, toPlacementResult } from '@/workers/aiAdapter';
 import { fitsCurrentEngine } from '@/workers/calibrationModel';
 import type { CalibrationFailReason } from '@/workers/gaze.contract';
@@ -341,7 +341,7 @@ export function useGazeSetup({
           ref !== null &&
           fitsCurrentEngine(ref.model) &&
           view !== null &&
-          (await view.useCalibration(ref.model as StoredModel));
+          (await view.useCalibration(ref.model as CalibrationModel));
         if (cancelled) return;
         if (ok) setVerifying(false);
         else invalidate();

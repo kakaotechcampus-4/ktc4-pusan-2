@@ -74,8 +74,16 @@ export interface BaselineCheck {
   seeded: number;
 }
 
-/** The calibration as the caller stores it: the model plus the scene it was taken in. */
-export interface StoredModel extends ReferenceModelData {
+/**
+ * A calibration: the reference model plus the scene it was taken in.
+ *
+ * **Memory only.** `scene` holds face measurements (face position and area, iris size in
+ * pixels, head distance), so this object must not be stored or sent anywhere -- not to
+ * IndexedDB or localStorage, not to the server.  Keep it for the session (it survives
+ * `structuredClone`, so it can go back to a new worker through `calibrate`) and
+ * calibrate again in the next session.  What leaves the device is the 1 s record only.
+ */
+export interface CalibrationModel extends ReferenceModelData {
   scene: SceneBaseline | null;
   configHash: string;
 }
@@ -83,7 +91,7 @@ export interface StoredModel extends ReferenceModelData {
 export interface CalibrationOutput {
   quality: CalibrationQualityDict;
   /** `null` when no model could be built (the frontend then asks for a retry). */
-  model: StoredModel | null;
+  model: CalibrationModel | null;
 }
 
 export type ReanchorState =
@@ -302,10 +310,10 @@ export class GazeEngine<F extends { width: number; height: number } = ImageBitma
     return this.#fit(samples, scene.build());
   }
 
-  /** `GazeClassifier.calibrate`: adopt a model from `fitCalibration` or storage. */
+  /** `GazeClassifier.calibrate`: adopt a model from `fitCalibration` earlier in this session (never from storage). */
   calibrate(model: unknown): boolean {
     if (!isReferenceModel(model)) return false;
-    const stored = model as Partial<StoredModel> & ReferenceModelData;
+    const stored = model as Partial<CalibrationModel> & ReferenceModelData;
     this.#model = stripStored(stored);
     // The head direction IS the gaze here: turning away is a direction, not a worse measurement.
     this.#monitor = stored.scene
@@ -595,7 +603,7 @@ export class GazeEngine<F extends { width: number; height: number } = ImageBitma
     const { model, quality } = fitReference(samples, this.cfg.calibration);
     this.#quality = quality;
     if (!model) return { quality, model: null };
-    const stored: StoredModel = { ...model, scene, configHash: CONFIG_HASH };
+    const stored: CalibrationModel = { ...model, scene, configHash: CONFIG_HASH };
     this.calibrate(stored);
     return { quality, model: stored };
   }

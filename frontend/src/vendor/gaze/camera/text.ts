@@ -1,6 +1,5 @@
 /** Korean wording for the camera view (and the demo page). The engine stays English; the screen speaks Korean. */
 import type { ConditionIssue } from '../engine/condition';
-import type { GazeIssueType } from '../engine/evidence';
 import type { PreconditionReason } from '../engine/preconditions';
 import type { GazeDirection, State } from '../engine/types';
 
@@ -101,15 +100,6 @@ export const DIRECTION_ARROW: Record<GazeDirection, string> = {
   DOWN_LEFT: '↙',
   DOWN: '↓',
   DOWN_RIGHT: '↘',
-};
-
-/** Coach-input issues (the agents read the English `issue_type`). */
-export const GAZE_ISSUE_NAME: Record<GazeIssueType, string> = {
-  GAZE_ON_SCRIPT: '대본을 오래 보고 있어요',
-  GAZE_ON_SCREEN: '화면을 오래 보고 있어요',
-  GAZE_AWAY: '다른 곳을 오래 보고 있어요',
-  GAZE_LOW_EYE_CONTACT: '청중을 보는 시간이 적어요',
-  GAZE_UNMEASURABLE: '시선을 잴 수 없어요',
 };
 
 /** Short class names for compact lists. */

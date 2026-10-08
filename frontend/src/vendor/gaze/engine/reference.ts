@@ -5,8 +5,8 @@
  * a region in gaze space blurred by the pooled measurement noise (a "soft
  * box"), OTHER is a constant floor, and the posterior comes from Bayes in log
  * space.  The model is plain data (`ReferenceModelData`) so it survives
- * `structuredClone` / IndexedDB, which the frontend needs to restore a
- * calibration in a later Take.
+ * `structuredClone`, which a new worker needs to take over this session's
+ * calibration.  It is kept in memory only (`CalibrationModel` in engine.ts).
  */
 import type { CalibrationConfig } from './config';
 import { logNdtr, logsumexp, MAD_TO_SIGMA, median } from './math';
@@ -363,6 +363,13 @@ export function screenRegion(m: ReferenceModelData, minHalfwidthDeg = 0): SoftBo
  * Presenter-centric: in the raw frame a gaze toward the image right (yaw > 0)
  * is toward the presenter's LEFT, so the horizontal sign flips.
  */
+/** How far `v` lies outside `[lo, hi]` (signed), 0 inside. */
+function beyond(v: number, lo: number, hi: number): number {
+  if (v > hi) return v - hi;
+  if (v < lo) return v - lo;
+  return 0;
+}
+
 export function gazeOffset(
   m: ReferenceModelData,
   yawDeg: number,
@@ -370,9 +377,8 @@ export function gazeOffset(
   minHalfwidthDeg = 0,
 ): [number, number] {
   const r = screenRegion(m, minHalfwidthDeg);
-  const ex = yawDeg > r.yawHi ? yawDeg - r.yawHi : yawDeg < r.yawLo ? yawDeg - r.yawLo : 0;
-  const ey =
-    pitchDeg > r.pitchHi ? pitchDeg - r.pitchHi : pitchDeg < r.pitchLo ? pitchDeg - r.pitchLo : 0;
+  const ex = beyond(yawDeg, r.yawLo, r.yawHi);
+  const ey = beyond(pitchDeg, r.pitchLo, r.pitchHi);
   return [ex ? -ex : 0, ey];
 }
 

@@ -130,13 +130,9 @@ export function placementFromAnchors(
   if (Math.abs(axisDelta) < cfg.min_delta_deg) return inconclusive('DISPLACEMENT_TOO_SMALL');
   // pitch > 0 is UP: the screen centre below the lens means the camera is on top.
   // Raw frame: the presenter's right appears on the image left.
-  const placement: Exclude<CameraPlacement, 'INCONCLUSIVE'> = vertical
-    ? axisDelta < 0
-      ? 'TOP'
-      : 'BOTTOM'
-    : axisDelta > 0
-      ? 'SIDE_RIGHT'
-      : 'SIDE_LEFT';
+  let placement: Exclude<CameraPlacement, 'INCONCLUSIVE'>;
+  if (vertical) placement = axisDelta < 0 ? 'TOP' : 'BOTTOM';
+  else placement = axisDelta > 0 ? 'SIDE_RIGHT' : 'SIDE_LEFT';
   return {
     ...base,
     placement,
