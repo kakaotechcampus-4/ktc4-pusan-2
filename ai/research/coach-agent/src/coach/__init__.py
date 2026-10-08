@@ -5,7 +5,7 @@
 입출력은 ai/research/coach-agent/INTERFACE.md, 구조와 판단 흐름은 같은 폴더의 README.md 를 보세요.
 """
 
-from .engine import decide, decide_safe, finalize
+from .core import decide, decide_safe, finalize
 from .planner import plan_coaching
 from .review import build_review_evidence
 from .state import initial_state
