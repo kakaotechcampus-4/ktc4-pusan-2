@@ -17,7 +17,8 @@ ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
 def build_llm() -> Runnable:
     """ai/.env의 OPENAI_* 값으로 Structured Output LLM을 만듭니다.
 
-    자유 키 dict 없이 고정 필드만 쓰므로 json_schema strict 모드(기본값)를 그대로 사용합니다.
+    자유 키 dict 없이 고정 필드를 사용하여 json_schema 방식으로
+    구조화된 출력을 생성합니다.
     (function tools가 아니라 response_format 기반이라 reasoning_effort와 충돌하지 않음)
     """
     load_dotenv(ENV_PATH)
