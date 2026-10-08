@@ -1,0 +1,24 @@
+[project]
+name = "evaluation-criteria"
+version = "1.0.0"
+description = "자연어 발표 평가 기준에서 측정 가능 요소 · 기준 값 추출 (research)"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv",
+    "pydantic>=2",
+    "langchain-openai",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["evaluation_criteria"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
