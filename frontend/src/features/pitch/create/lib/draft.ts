@@ -261,7 +261,16 @@ export function resolveChosen(draft: PitchDraft, chosen: Chosen): Resolved {
  */
 export function toPracticeCombo(draft: PitchDraft, chosen: Chosen): PracticeCombo | null {
   const { slides, script } = resolveChosen(draft, chosen);
-  if (!slides?.presentationVersionId || !script?.remote) return null;
+  if (
+    !slides?.presentationVersionId ||
+    !script?.remote ||
+    !script.saved ||
+    script.parse.status !== 'idle' ||
+    script.slideVersion !== slides.version ||
+    !slides.pageCount ||
+    script.blocks?.length !== slides.pageCount
+  )
+    return null;
   return {
     title: draft.title,
     presentationVersionId: slides.presentationVersionId,

@@ -51,7 +51,7 @@ export function InfoBar() {
   const openInfo = () => select('info');
 
   return (
-    <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1.3fr)] gap-3">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1.3fr)]">
       <Card
         icon={<DocIcon className="h-4 w-4 shrink-0 stroke-stone" />}
         label="발표 제목"

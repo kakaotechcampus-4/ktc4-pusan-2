@@ -1,6 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
+import { Mascot } from './Mascot';
+import { StartConfirm } from './StartConfirm';
 import { InfoBar } from './InfoBar';
 import { VersionRail } from './VersionRail';
 import { selectBusy, selectInfoUnsaved, useCreateStore } from './createStore';
@@ -31,6 +33,12 @@ import { SlidePane } from './steps/SlidePane';
 function mascotLine(node: PaneNode, script: ScriptVersion | null): string {
   if (node === 'criteria') return '기준을 정하면\n피드백이 선명해져!';
   if (node === 'slides') return '발표할 자료를\n확인해 봐!';
+  if (node === 'script' && script?.parse.status === 'pending')
+    return '수정한 대본을\n연결하고 있어!';
+  if (node === 'script' && script?.blocks && !script.remote)
+    return '수정한 문장을\n다시 매핑해 줘!';
+  if (node === 'script' && script?.blocks && !script.saved)
+    return '슬라이드와 대본을\n확인하고 저장해 줘!';
   if (node === 'script' && script?.saved) return '저장 완료!\n이제 연습하자.';
   if (node === 'script') return '한 문장씩\n준비해 보자!';
   return '준비부터\n차근차근!';
@@ -43,6 +51,7 @@ export function PitchCreatePage() {
   const pitchId = useCreateStore((s) => s.pitchId);
   const chosen = useCreateStore((s) => s.chosen);
   const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
   const unsaved = useCreateStore(selectInfoUnsaved);
   const busy = useCreateStore(selectBusy);
 
@@ -82,14 +91,15 @@ export function PitchCreatePage() {
       const picked = draft.slides.find((v) => v.version === version) ?? latestSlides(draft);
       return <SlidePane slide={picked} />;
     }
-    if (node === 'script') return <ScriptPane script={pickedScript} onStart={start} />;
+    if (node === 'script')
+      return <ScriptPane script={pickedScript} onStart={() => setConfirming(true)} />;
     const picked = draft.criteria.find((v) => v.version === version) ?? latestCriteria(draft);
     return <CriteriaPane criteria={picked} />;
   })();
 
   return (
-    <div className="flex h-dvh flex-col bg-panel text-ink">
-      <header className="flex shrink-0 items-center justify-between border-b border-line-strong px-8 py-4">
+    <div className="pitch-create flex h-dvh flex-col bg-greige text-ink">
+      <header className="flex shrink-0 items-center justify-between border-b border-line-strong bg-panel px-6 py-4">
         <Link to="/" aria-label="PITCH COACH 홈">
           <PitchCoachWordmark />
         </Link>
@@ -98,26 +108,16 @@ export function PitchCreatePage() {
         </Link>
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-6 px-6 py-5">
+      <div className="flex min-h-0 flex-1">
         {/* ── 좌측: 발표 자료 트리 · 치치 ─────────────────────────── */}
-        <aside className="flex w-sidebar shrink-0 flex-col gap-4 rounded-lg border border-line bg-cream/60 p-4">
+        <aside className="flex w-sidebar shrink-0 flex-col gap-4 overflow-y-auto border-r border-line-strong bg-cream/60 p-4">
           <VersionRail />
 
-          <div className="flex items-end gap-1">
-            <img
-              src="/onboarding/chichi-portrait-longsleeve.png"
-              alt=""
-              className="h-20 w-20 shrink-0 object-contain [image-rendering:pixelated]"
-            />
-            {/* 말풍선. 꼬리는 치치 쪽(왼쪽 아래)으로 */}
-            <p className="relative mb-8 whitespace-pre-line rounded-lg border border-ink bg-white px-3 py-2 text-xs font-bold leading-snug before:absolute before:-left-1.5 before:bottom-2 before:h-2.5 before:w-2.5 before:rotate-45 before:border-b before:border-l before:border-ink before:bg-white">
-              {mascotLine(node, pickedScript)}
-            </p>
-          </div>
+          <Mascot message={mascotLine(node, pickedScript)} />
         </aside>
 
         {/* ── 우측: 경로 · 발표 정보 줄 · 본문 ────────────────────── */}
-        <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pb-2">
+        <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-4 xl:p-6">
           <nav aria-label="경로" className="flex items-center gap-2 text-xs text-stone">
             <Link to="/" className="hover:text-ink">
               내 피치
@@ -129,9 +129,12 @@ export function PitchCreatePage() {
           </nav>
 
           <InfoBar />
-          {pane}
+          <section className="flex min-h-[32rem] flex-1 flex-col rounded-lg border border-line bg-panel p-5 xl:p-7">
+            {pane}
+          </section>
         </main>
       </div>
+      {confirming && <StartConfirm onClose={() => setConfirming(false)} onGo={start} />}
     </div>
   );
 }
