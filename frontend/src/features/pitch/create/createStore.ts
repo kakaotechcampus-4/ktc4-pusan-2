@@ -12,6 +12,7 @@ import type {
 } from './lib/draft';
 import {
   CHOOSE_LATEST,
+  canSaveMapping,
   MAX_CRITERIA,
   infoChanged,
   infoOf,
@@ -270,14 +271,7 @@ export const useCreateStore = create<CreateState>((set) => ({
     set((s) => {
       const script = s.draft.scripts.find((v) => v.version === version);
       const slide = s.draft.slides.find((v) => v.version === script?.slideVersion);
-      if (
-        !script?.remote ||
-        script.parse.status !== 'idle' ||
-        !slide?.presentationVersionId ||
-        !slide.pageCount ||
-        script.blocks?.length !== slide.pageCount
-      )
-        return s;
+      if (!script || !canSaveMapping(script, slide)) return s;
       return {
         draft: {
           ...s.draft,

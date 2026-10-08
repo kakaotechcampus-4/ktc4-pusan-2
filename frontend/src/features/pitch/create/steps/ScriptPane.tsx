@@ -2,6 +2,7 @@ import { scanSlideMarkers, type MarkerScan } from '@/shared/lib/slideMarkers';
 import { useCreateStore } from '../createStore';
 import { CheckIcon, DocIcon, LinkIcon } from '../icons';
 import {
+  canSaveMapping,
   countChars,
   estimateDurationMs,
   formatEstimate,
@@ -314,11 +315,10 @@ function MappingReview({
   const gate = computeGate(draft, currentChoice);
   const pending = script.parse.status === 'pending';
   // 저장한 이 조합으로 넘어갑니다. 저장 뒤에 다른 버전을 고쳤으면 진행 조건이 다시 막습니다
-  const canStart = gate.ready && toPracticeCombo(draft, currentChoice) !== null;
+  const canStart = toPracticeCombo(draft, currentChoice) !== null;
   // ★ 장수가 맞아야 저장합니다. 맞지 않는 조합을 저장하면 "저장 완료"인데 "다음"이 막혀 헷갈립니다
   const countsMatch = pageCount > 0 && blocks.length === pageCount;
-  const canSave =
-    !script.saved && countsMatch && script.remote !== null && script.parse.status === 'idle';
+  const canSave = !script.saved && canSaveMapping(script, linked);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -455,6 +455,7 @@ function MappingReview({
               type="button"
               disabled={!canStart}
               onClick={() => {
+                // 확인 창이 볼 조합(chosen)을 지금 화면의 대본으로 맞춥니다
                 saveMapping(script.version);
                 onStart();
               }}
