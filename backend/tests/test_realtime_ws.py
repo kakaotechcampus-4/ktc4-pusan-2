@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from websockets.exceptions import ConnectionClosedError
 
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.main import app
 from pitch_coach_backend.module.pitch.entity import (
@@ -378,7 +379,7 @@ def test_foreign_origin_is_closed_before_accept(client: TestClient, stt: FakeStt
 
 
 def test_frontend_origin_is_allowed(client: TestClient, stt: FakeSttAdapter, token: str):
-    with client.websocket_connect(WS_PATH, headers={"origin": "http://localhost:3000"}) as ws:
+    with client.websocket_connect(WS_PATH, headers={"origin": settings.frontend_base_url}) as ws:
         assert handshake(ws, token)["type"] == "ready"
 
 
