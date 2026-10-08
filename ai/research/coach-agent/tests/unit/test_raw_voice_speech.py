@@ -19,7 +19,7 @@ def voice(level: float | None = None, **kw) -> dict:
 
 
 def _cands(resp):
-    return {c.issue.value: c for c in resp.candidates}
+    return {c.issue_type.value: c for c in resp.candidates}
 
 
 # ── 음량 ─────────────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ def test_level_is_compared_with_the_given_baseline():
     for t in range(1000, 4001, 1000):
         resp = s.step(t, voice=voice(-32.0, baseline_db=-24.0))
     assert "VOLUME_LOW" in _cands(resp)
-    assert s.state["history"][-1]["relative_db"] == -8.0
+    assert s.state["history"][-1]["voice_diff_db"] == -8.0
 
 
 def test_without_a_baseline_the_first_speech_becomes_the_baseline():

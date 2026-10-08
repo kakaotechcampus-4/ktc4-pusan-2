@@ -14,7 +14,7 @@ from .conftest import IN_PAUSE, Session, gaze_script, make_request, words
 
 
 def _cands(resp):
-    return {c.issue.value: c for c in resp.candidates}
+    return {c.issue_type.value: c for c in resp.candidates}
 
 
 # ── 말 속도 ───────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ def test_cpm_ignores_fillers():
 def test_pace_fast_is_detected_above_350():
     resp = decide(make_request(20_000, speech={"words": words(20_000, cpm=420)}))
     c = _cands(resp)["PACE_FAST"]
-    assert c.type.value == "SPEED" and c.instruction.value == "SLOW_DOWN"
+    assert c.area.value == "SPEED" and c.instruction.value == "SLOW_DOWN"
     assert resp.indicators.pace.value == "FAST"
 
 
@@ -65,27 +65,27 @@ def test_degraded_stt_keeps_pace_out():
 def test_gaze_script_ratio_counts_only_visible_time():
     # 보인 시간의 85% 를 대본에 — UNCERTAIN 이 30% 여도 대본 응시로 잡는다
     resp = decide(make_request(20_000, gaze=gaze_script(0.85, uncertain=0.3)))
-    c = _cands(resp)["GAZE_SCRIPT"]
+    c = _cands(resp)["GAZE_ON_SCRIPT"]
     assert c.status.value == "WAITING"  # 지속 3초 미달
     assert resp.indicators.gaze.value == "SCRIPT"
 
 
 def test_gaze_with_mostly_uncertain_frames_is_not_trusted():
     resp = decide(make_request(20_000, gaze=gaze_script(0.85, uncertain=0.6)))
-    c = _cands(resp)["GAZE_SCRIPT"]
+    c = _cands(resp)["GAZE_ON_SCRIPT"]
     assert c.status.value == "IGNORED" and "SENSOR_UNUSABLE" in c.reasons
     assert resp.indicators.gaze.value == "UNCERTAIN"
 
 
 def test_long_continuous_script_gaze_triggers_even_with_moderate_ratio():
     resp = decide(make_request(20_000, gaze=gaze_script(0.62, streak_ms=6000)))
-    assert "GAZE_SCRIPT" in _cands(resp)
+    assert "GAZE_ON_SCRIPT" in _cands(resp)
 
 
 def test_streak_alone_with_low_ratio_is_noise():
     # 라벨이 흔들리면 5초 연속이 우연히 생긴다 — 창 비율이 0.6 미만이면 연속 응시로 잡지 않는다
     resp = decide(make_request(20_000, gaze=gaze_script(0.5, streak_ms=6000)))
-    assert "GAZE_SCRIPT" not in _cands(resp)
+    assert "GAZE_ON_SCRIPT" not in _cands(resp)
 
 
 # ── 음량 · 침묵 ───────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ def test_volume_uses_recent_average_while_speaking():
     for t in range(1000, 8001, 1000):
         s.step(t, voice={"relative_db": -9.0, "silence_ms": 0, "audio_live": True})
     c = _cands(s.responses[-1])["VOLUME_LOW"]
-    assert c.type.value == "VOLUME"
+    assert c.area.value == "VOLUME"
     assert s.responses[-1].indicators.volume.value == "LOW"
 
 

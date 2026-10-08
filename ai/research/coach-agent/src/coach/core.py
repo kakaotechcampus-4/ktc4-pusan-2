@@ -167,8 +167,8 @@ def finalize(
             t_ms=req.t_ms,
             intervention_id=p.intervention_id,
             candidate_id=p.candidate_id,
-            issue=p.issue,
-            type=p.type,
+            issue_type=p.issue_type,
+            area=p.area,
             instruction=p.instruction,
             slide_number=p.slide_number,
             outcome=Outcome.NOT_MEASURED,
@@ -239,8 +239,8 @@ def _intervene(tick: Tick, c: Candidate, reason_codes: list[str], sink: EventSin
         InterventionEvent,
         t_ms=tick.t,
         candidate_id=c.candidate_id,
-        issue=c.issue,
-        type=c.type,
+        issue_type=c.issue_type,
+        area=c.area,
         instruction=c.instruction,
         variant=c.variant,
         message=message,
@@ -252,7 +252,7 @@ def _intervene(tick: Tick, c: Candidate, reason_codes: list[str], sink: EventSin
     )
     st.last_fired_ms = tick.t
     st.last_by_instruction[c.instruction.value] = tick.t
-    st.fires_by_issue[c.issue.value] = st.fires_by_issue.get(c.issue.value, 0) + 1
+    st.fires_by_issue[c.issue_type.value] = st.fires_by_issue.get(c.issue_type.value, 0) + 1
     st.interventions += 1
 
     if c.praise is None:
@@ -264,7 +264,7 @@ def _intervene(tick: Tick, c: Candidate, reason_codes: list[str], sink: EventSin
         st.praise = [p for p in st.praise if p.intervention_id != c.praise.intervention_id]
 
     return Feedback(
-        type=c.type,
+        area=c.area,
         instruction=c.instruction,
         message=message,
         priority=c.priority,
@@ -291,8 +291,8 @@ def _log_suppressed(tick: Tick, cands: list[Candidate], sink: EventSink) -> None
             SuppressedEvent,
             t_ms=tick.t,
             candidate_id=c.candidate_id,
-            issue=c.issue,
-            type=c.type,
+            issue_type=c.issue_type,
+            area=c.area,
             instruction=c.instruction,
             status=c.status,
             priority=c.priority,
@@ -308,8 +308,8 @@ def _append_history(tick: Tick) -> None:
         script_ratio=tick.metrics.get("script_ratio"),
         gaze_uncertain=tick.metrics.get("gaze_uncertain_ratio"),
         cpm=tick.metrics.get("cpm"),
-        cpm_recent=tick.metrics.get("cpm_recent"),
-        relative_db=tick.relative_db,
+        cpm_short=tick.metrics.get("cpm_short"),
+        voice_diff_db=tick.voice_diff_db,
         speaking=tick.speaking,
         filler_new=tick.filler_new,
         required_ratio=tick.metrics.get("required_ratio"),
@@ -343,13 +343,13 @@ def _indicators(tick: Tick) -> Indicators:
     else:
         gaze = GazeLevel.AUDIENCE
 
-    db = m.get("relative_db")
+    db = m.get("voice_diff_db")
     if db is None:
         volume = VolumeLevel.UNKNOWN
     elif db < cfg.voice.low_relative_db:
         volume = VolumeLevel.LOW
     else:
-        volume = VolumeLevel.OK
+        volume = VolumeLevel.NORMAL
 
     return Indicators(
         schedule=m.get("schedule", Schedule.UNKNOWN),
@@ -381,8 +381,8 @@ def _response(
         outs.append(
             CandidateOut(
                 candidate_id=c.candidate_id,
-                issue=c.issue,
-                type=c.type,
+                issue_type=c.issue_type,
+                area=c.area,
                 instruction=c.instruction,
                 priority=c.priority,
                 confidence=round(min(1.0, max(0.0, c.confidence)), 3),

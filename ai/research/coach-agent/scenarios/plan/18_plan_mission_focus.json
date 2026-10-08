@@ -54,7 +54,7 @@
   "missions": [
     {
       "mission_id": "mission-9",
-      "type": "TIME",
+      "area": "TIME",
       "slide_number": 3,
       "priority": 1,
       "description": "3번 장을 1분 안에 마치기",
@@ -68,7 +68,7 @@
   "memory": {
     "recurring_issues": [
       {
-        "type": "TIME",
+        "area": "TIME",
         "slide_number": 3
       }
     ]
@@ -77,7 +77,7 @@
     "issues": [
       {
         "rank": 1,
-        "type": "TIME",
+        "area": "TIME",
         "slide_number": 3,
         "burden_s": 48.0,
         "memory": "RECURRING",
@@ -86,11 +86,11 @@
     ],
     "type_status": [
       {
-        "type": "TIME",
+        "area": "TIME",
         "status": "PRIORITY"
       },
       {
-        "type": "GAZE",
+        "area": "GAZE",
         "status": "STABLE"
       }
     ],
@@ -116,7 +116,7 @@
     }
   },
   "expect": {
-    "types": {
+    "areas": {
       "TIME": {
         "min": 1
       }
@@ -126,10 +126,10 @@
     ]
   },
   "plan_expect": {
-    "focus_includes_types": [
+    "focus_includes_areas": [
       "TIME"
     ],
-    "relax_excludes_types": [
+    "relax_excludes_areas": [
       "TIME"
     ],
     "no_budget": true

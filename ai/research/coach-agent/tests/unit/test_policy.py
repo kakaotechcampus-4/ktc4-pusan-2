@@ -12,7 +12,7 @@ SPEAKING = {"relative_db": 0.0, "silence_ms": 0, "audio_live": True}
 
 
 def _cand(resp, issue):
-    return next(c for c in resp.candidates if c.issue.value == issue)
+    return next(c for c in resp.candidates if c.issue_type.value == issue)
 
 
 def test_waits_until_problem_persists_then_intervenes(session: Session):
@@ -20,11 +20,11 @@ def test_waits_until_problem_persists_then_intervenes(session: Session):
     assert [r.action.value for r in out] == ["WAIT", "WAIT", "WAIT", "INTERVENE"]
     assert out[0].reason_codes == ["NOT_PERSISTENT"]
     fb = out[-1].feedback
-    assert fb.type.value == "GAZE" and fb.instruction.value == "LOOK_AT_CAMERA"
+    assert fb.area.value == "GAZE" and fb.instruction.value == "LOOK_AT_CAMERA"
     assert fb.message == "대본보다 청중을 조금 더 바라보세요"
     assert fb.evidence["start_ms"] == 10_000 and fb.evidence["end_ms"] == 13_000
     assert fb.evidence["script_ratio"] == 0.9
-    assert out[-1].candidate_id == "GAZE_SCRIPT-10000"
+    assert out[-1].candidate_id == "GAZE_ON_SCRIPT-10000"
 
 
 def test_one_instruction_at_a_time():
@@ -70,7 +70,7 @@ def test_cooldown_per_instruction(session: Session):
     session.run(10_000, 13_000, gaze=gaze_script(0.9))
     out = session.run(14_000, 40_000, gaze=gaze_script(0.9))
     assert all(r.feedback is None for r in out)
-    assert "COOLDOWN" in _cand(out[-1], "GAZE_SCRIPT").reasons
+    assert "COOLDOWN" in _cand(out[-1], "GAZE_ON_SCRIPT").reasons
 
 
 def test_low_priority_is_ignored(session: Session):
@@ -113,16 +113,16 @@ def test_does_not_wait_forever_for_a_pause():
 
 def test_plan_relax_and_focus():
     relaxed = dump_state(
-        initial_state(CoachingPlan(source="LLM", relax=[RelaxItem(type="GAZE", slide_number=1)]))
+        initial_state(CoachingPlan(source="LLM", relax=[RelaxItem(area="GAZE", slide_number=1)]))
     )
     s = Session()
     s.state = relaxed
     out = s.run(10_000, 14_000, gaze=gaze_script(0.9))
     assert all(r.feedback is None for r in out)
-    assert "PLAN_RELAXED" in _cand(out[-1], "GAZE_SCRIPT").reasons
+    assert "PLAN_RELAXED" in _cand(out[-1], "GAZE_ON_SCRIPT").reasons
 
     focus = dump_state(
-        initial_state(CoachingPlan(source="LLM", focus=[FocusItem(type="GAZE", weight=1.8)]))
+        initial_state(CoachingPlan(source="LLM", focus=[FocusItem(area="GAZE", weight=1.8)]))
     )
     plain = Session().run(10_000, 13_000, gaze=gaze_script(0.75))[-1]
     f = Session()
@@ -134,7 +134,7 @@ def test_plan_relax_and_focus():
 
 def test_plan_weight_is_clamped():
     wild = dump_state(
-        initial_state(CoachingPlan(source="LLM", focus=[FocusItem(type="GAZE", weight=50)]))
+        initial_state(CoachingPlan(source="LLM", focus=[FocusItem(area="GAZE", weight=50)]))
     )
     s = Session()
     s.state = wild
@@ -147,19 +147,19 @@ def test_budget_from_plan():
     s = Session()
     s.state = capped
     out = s.run(10_000, 14_000, gaze=gaze_script(0.9))
-    assert "BUDGET_EXHAUSTED" in _cand(out[-1], "GAZE_SCRIPT").reasons
+    assert "BUDGET_EXHAUSTED" in _cand(out[-1], "GAZE_ON_SCRIPT").reasons
 
 
 def test_mission_and_memory_raise_priority_with_reasons():
     mission = [
         {
             "mission_id": "m1",
-            "type": "GAZE",
+            "area": "GAZE",
             "slide_number": 1,
             "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.3},
         }
     ]
-    memory = {"recurring_issues": [{"type": "GAZE", "slide_number": 1}]}
+    memory = {"recurring_issues": [{"area": "GAZE", "slide_number": 1}]}
     plain = Session().run(10_000, 13_000, gaze=gaze_script(0.75))[-1]
     s = Session(missions=mission, memory=memory)
     resp = s.run(10_000, 13_000, gaze=gaze_script(0.75))[-1]
@@ -168,6 +168,6 @@ def test_mission_and_memory_raise_priority_with_reasons():
 
 
 def test_mission_on_other_slide_does_not_apply():
-    mission = [{"mission_id": "m1", "type": "GAZE", "slide_number": 6}]
+    mission = [{"mission_id": "m1", "area": "GAZE", "slide_number": 6}]
     resp = Session(missions=mission).run(10_000, 13_000, gaze=gaze_script(0.75))[-1]
     assert "MISSION_RELEVANT" not in resp.reason_codes

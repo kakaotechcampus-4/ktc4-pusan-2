@@ -46,7 +46,7 @@
     }
   },
   "expect": {
-    "types": {
+    "areas": {
       "CONTENT": {
         "min": 1
       }

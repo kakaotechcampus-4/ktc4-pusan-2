@@ -42,7 +42,7 @@ def test_review_evidence_labels_segments():
     events, _ = _finish(session, 41_000)
     ev = build_review_evidence("test-take", events)
 
-    hints = [(s.type.value, s.hint.value) for s in ev.segments]
+    hints = [(s.area.value, s.hint.value) for s in ev.segments]
     assert hints == [("GAZE", "COACHED_EFFECTIVE"), ("GAZE", "UNADDRESSED")]
     unaddressed = ev.segments[1]
     assert "EXAM_MODE" in unaddressed.suppressed_reasons
@@ -52,7 +52,7 @@ def test_review_evidence_labels_segments():
     assert (s.interventions, s.praises, s.effective, s.ineffective) == (2, 1, 1, 0)
     assert s.effective_rate == 1.0
     assert s.episodes == 2 and s.episodes_unaddressed == 1
-    gaze = next(t for t in ev.by_type if t.type.value == "GAZE")
+    gaze = next(t for t in ev.by_type if t.area.value == "GAZE")
     assert (gaze.interventions, gaze.effective, gaze.episodes) == (1, 1, 2)
     iv = ev.interventions[0]
     assert iv.outcome.value == "EFFECTIVE" and iv.outcome_metric == "script_ratio"

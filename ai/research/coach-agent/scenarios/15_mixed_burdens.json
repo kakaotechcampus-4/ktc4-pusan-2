@@ -54,7 +54,7 @@
   ],
   "expect": {
     "top_issue": {
-      "type": "SPEED"
+      "area": "SPEED"
     },
     "next_mission_types_include": [
       "SPEED"

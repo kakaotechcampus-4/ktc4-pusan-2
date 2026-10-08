@@ -136,32 +136,32 @@ def _overlap(a0: int, a1: int, b0: int, b1: int) -> int:
 
 def score_segments(score: Score, review: CoachReviewEvidence, truth: list[TruthInterval]) -> None:
     claims = [
-        s for s in review.segments if s.type in PROBLEM_TYPES and s.hint != SegmentHint.UNRELIABLE
+        s for s in review.segments if s.area in PROBLEM_TYPES and s.hint != SegmentHint.UNRELIABLE
     ]
     seen = [t for t in truth if t.observable]
     score.truth_intervals += len(seen)
     score.claims += len(claims)
     for c in claims:
         if any(
-            t.type == c.type and _overlap(c.onset_ms, c.offset_ms, t.start_ms, t.end_ms) > 0
+            t.area == c.area and _overlap(c.onset_ms, c.offset_ms, t.start_ms, t.end_ms) > 0
             for t in seen
         ):
             score.claims_supported += 1
         else:
             score.unsupported += 1
             score.notes.append(
-                f"근거 없는 지적 {review.take_id}: {c.type.value} 장{c.slide_number}"
+                f"근거 없는 지적 {review.take_id}: {c.area.value} 장{c.slide_number}"
                 f" {c.onset_ms // 1000}~{c.offset_ms // 1000}s (신뢰도 {c.reliability})"
             )
     for t in seen:
         hits = [
             c
             for c in claims
-            if c.type == t.type and _overlap(c.onset_ms, c.offset_ms, t.start_ms, t.end_ms) > 0
+            if c.area == t.area and _overlap(c.onset_ms, c.offset_ms, t.start_ms, t.end_ms) > 0
         ]
         if not hits:
             score.notes.append(
-                f"놓친 구간 {review.take_id}: {t.type.value} 장{t.slide_number}"
+                f"놓친 구간 {review.take_id}: {t.area.value} 장{t.slide_number}"
                 f" {t.start_ms // 1000}~{t.end_ms // 1000}s"
             )
             continue
@@ -210,21 +210,21 @@ def score_review(
     for m in review.mission_results:
         score.missions.append(want_m.get(m.mission_id) == m.status)
 
-    want_t = {t.type: t.status for t in truth.assessment.type_status}
+    want_t = {t.area: t.status for t in truth.assessment.type_status}
     for t in review.type_status:
-        score.type_status.append(want_t.get(t.type) == t.status)
-        if t.status == TypeStatus.STRENGTH and want_t.get(t.type) in (
+        score.type_status.append(want_t.get(t.area) == t.status)
+        if t.status == TypeStatus.STRENGTH and want_t.get(t.area) in (
             TypeStatus.PRIORITY,
             TypeStatus.STABLE,
         ):
             score.false_strengths += 1
 
-    want_mem = {(m.type, m.slide_number): m.label for m in truth.assessment.memory}
+    want_mem = {(m.area, m.slide_number): m.label for m in truth.assessment.memory}
     for m in review.memory_check:
-        score.memory.append(want_mem.get((m.type, m.slide_number)) == m.label)
+        score.memory.append(want_mem.get((m.area, m.slide_number)) == m.label)
 
-    got_top = review.issues[0].type if review.issues else None
-    want_top = truth.assessment.issues[0].type if truth.assessment.issues else None
+    got_top = review.issues[0].area if review.issues else None
+    want_top = truth.assessment.issues[0].area if truth.assessment.issues else None
     score.top_type.append(got_top == want_top)
     got_nm = review.next_missions[0] if review.next_missions else None
     want_nm = truth.assessment.next_missions[0] if truth.assessment.next_missions else None
@@ -233,7 +233,7 @@ def score_review(
         or (
             got_nm is not None
             and want_nm is not None
-            and got_nm.type == want_nm.type
+            and got_nm.area == want_nm.area
             and got_nm.target.metric == want_nm.target.metric
         )
     )
@@ -250,7 +250,7 @@ def score_review(
             continue
         want = truth_outcome(
             result,
-            Issue(iv["issue"]),
+            Issue(iv["issue_type"]),
             iv["t_ms"],
             oc["t_ms"],
             iv["slide_number"],
@@ -262,13 +262,13 @@ def score_review(
         score.outcomes.append(ok)
         if not ok:
             score.notes.append(
-                f"효과 {tag}: {iv['issue']}@{iv['t_ms'] // 1000}s"
+                f"효과 {tag}: {iv['issue_type']}@{iv['t_ms'] // 1000}s"
                 f" 코치 {oc['outcome']} · 정답 {want}"
                 f" (before {oc.get('before')} → after {oc.get('after')})"
             )
 
     for iv in result.interventions:
-        ftype = FeedbackType(iv["type"])
+        ftype = FeedbackType(iv["area"])
         if ftype not in PROBLEM_TYPES or iv["instruction"] == "CONTINUE":
             continue
         score.rt_interventions += 1
@@ -276,11 +276,11 @@ def score_review(
         recent = [
             i
             for i in intervals
-            if i.type == ftype and i.observable and i.start_ms <= t and i.end_ms >= t - 20_000
+            if i.area == ftype and i.observable and i.start_ms <= t and i.end_ms >= t - 20_000
         ]
         if not recent:
             score.rt_false += 1
-            score.notes.append(f"불필요한 개입 {tag}: {iv['issue']}@{t // 1000}s")
+            score.notes.append(f"불필요한 개입 {tag}: {iv['issue_type']}@{t // 1000}s")
 
 
 def evaluate(

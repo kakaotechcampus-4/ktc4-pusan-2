@@ -162,7 +162,7 @@ class Agg:
         return _div(self.cpm_weighted, self.cpm_ms, 1)
 
     @property
-    def relative_db(self) -> float | None:
+    def voice_diff_db(self) -> float | None:
         return _div(self.db_weighted, self.db_ms, 2)
 
     @property
@@ -214,9 +214,9 @@ class Agg:
 class Seg:
     """문제 구간. start/end 는 탐지 구간, onset/offset 은 창 지연을 되돌린 추정 구간 (끝은 배타)."""
 
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None
-    issues: list[Issue]
+    issue_types: list[Issue]
     start_ms: int
     end_ms: int
     onset_ms: int
@@ -259,13 +259,13 @@ def _lag(ep: EpisodeEvent, cfg: CoachConfig) -> tuple[int, int]:
     if not cfg.review.lag_compensation:
         return 0, 0
     k = cfg.review.lag_scale
-    if ep.issue == Issue.GAZE_SCRIPT:
+    if ep.issue_type == Issue.GAZE_ON_SCRIPT:
         # 창 비율이 기준 thr 을 넘으려면 창의 thr 만큼을 대본에 써야 하고, 내려오려면 1-thr 만큼을
         # 떠나야 한다
         window = int(ep.peak_evidence.get("window_ms") or 10_000)
         thr = cfg.gaze.script_ratio
         return round(k * thr * window), round(k * (1 - thr) * window)
-    onset, offset = cfg.review.lag_ms.get(ep.issue, (0, 0))
+    onset, offset = cfg.review.lag_ms.get(ep.issue_type, (0, 0))
     return round(k * onset), round(k * offset)
 
 
@@ -279,9 +279,9 @@ def segments_from_episodes(episodes: list[EpisodeEvent], cfg: CoachConfig) -> li
         offset = max(onset + tick, end - lag_off)
         out.append(
             Seg(
-                type=ep.type,
+                area=ep.area,
                 slide_number=ep.slide_number,
-                issues=[ep.issue],
+                issue_types=[ep.issue_type],
                 start_ms=start,
                 end_ms=end,
                 onset_ms=onset,
@@ -311,7 +311,7 @@ def merge_segments(segs: list[Seg], cfg: CoachConfig) -> list[Seg]:
     gap = cfg.review.merge_gap_ms
 
     def key(s: Seg) -> tuple[int, int, bool]:
-        return (TYPE_ORDER.index(s.type), s.slide_number or -1, is_reliable(s, cfg))
+        return (TYPE_ORDER.index(s.area), s.slide_number or -1, is_reliable(s, cfg))
 
     out: list[Seg] = []
     for seg in sorted(segs, key=lambda s: (key(s), s.onset_ms)):
@@ -332,7 +332,7 @@ def merge_segments(segs: list[Seg], cfg: CoachConfig) -> list[Seg]:
                 ) / total
             last.reliable_ms += seg.reliable_ms
             last.unreliable_ms += seg.unreliable_ms
-            for name in ("issues", "candidate_ids", "intervention_ids", "suppressed_reasons"):
+            for name in ("issue_types", "candidate_ids", "intervention_ids", "suppressed_reasons"):
                 items = getattr(last, name)
                 for item in getattr(seg, name):
                     if item not in items:
@@ -342,7 +342,7 @@ def merge_segments(segs: list[Seg], cfg: CoachConfig) -> list[Seg]:
             Seg(
                 **{
                     **seg.__dict__,
-                    "issues": list(seg.issues),
+                    "issue_types": list(seg.issue_types),
                     "candidate_ids": list(seg.candidate_ids),
                     "intervention_ids": list(seg.intervention_ids),
                     "suppressed_reasons": list(seg.suppressed_reasons),
@@ -355,7 +355,7 @@ def merge_segments(segs: list[Seg], cfg: CoachConfig) -> list[Seg]:
     out = [
         s for s in out if s.intervention_ids or s.end_ms - s.start_ms >= cfg.review.min_segment_ms
     ]
-    return sorted(out, key=lambda s: (s.onset_ms, TYPE_ORDER.index(s.type)))
+    return sorted(out, key=lambda s: (s.onset_ms, TYPE_ORDER.index(s.area)))
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -365,9 +365,9 @@ def merge_segments(segs: list[Seg], cfg: CoachConfig) -> list[Seg]:
 
 @dataclass
 class IssueAgg:
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None
-    issues: list[Issue]
+    issue_types: list[Issue]
     burden_s: float
     duration_ms: int
     segments: int
@@ -417,20 +417,20 @@ def collect_issues(
     groups: dict[tuple[FeedbackType, int | None], IssueAgg] = {}
 
     for seg in segs:
-        if seg.type in (FeedbackType.TIME, FeedbackType.CONTENT):
+        if seg.area in (FeedbackType.TIME, FeedbackType.CONTENT):
             continue  # 시간 · 키워드는 아래에서 장별 누적으로 정확히 잰다
         if rc.exclude_unreliable and not is_reliable(seg, cfg):
             continue
-        k = (seg.type, seg.slide_number)
+        k = (seg.area, seg.slide_number)
         agg = groups.get(k)
         if agg is None:
-            agg = groups[k] = IssueAgg(seg.type, seg.slide_number, [], 0.0, 0, 0, 0.0)
+            agg = groups[k] = IssueAgg(seg.area, seg.slide_number, [], 0.0, 0, 0, 0.0)
         agg.burden_s += seg.burden_s
         agg.duration_ms += seg.span_ms
         agg.segments += 1
-        for code in seg.issues:
-            if code not in agg.issues:
-                agg.issues.append(code)
+        for code in seg.issue_types:
+            if code not in agg.issue_types:
+                agg.issue_types.append(code)
         agg.intervention_ids += [i for i in seg.intervention_ids if i not in agg.intervention_ids]
         if seg.peak_severity >= agg.peak_severity:
             agg.peak_severity = seg.peak_severity
@@ -537,7 +537,7 @@ def mission_status(value: float, operator: str, target: float, tolerance: float)
 _SCOPE_METRICS = {
     "script_ratio": ("script_ratio", "gaze_coverage"),
     "cpm": ("cpm", "speech_coverage"),
-    "relative_db": ("relative_db", "volume_coverage"),
+    "voice_diff_db": ("voice_diff_db", "volume_coverage"),
     "filler_per_min": ("filler_per_min", "speech_coverage"),
     "keyword_coverage": ("keyword_coverage", "speech_coverage"),
 }
@@ -575,7 +575,7 @@ def observe_metric(
         n = sum(
             1
             for s in segs
-            if s.type == FeedbackType.PAUSE
+            if s.area == FeedbackType.PAUSE
             and is_reliable(s, cfg)
             and (slide_number is None or s.slide_number == slide_number)
         )
@@ -600,7 +600,7 @@ def evaluate_missions(
     for m in missions:
         base: dict[str, Any] = {
             "mission_id": m.mission_id,
-            "type": m.type,
+            "area": m.area,
             "slide_number": m.slide_number,
             "metric": m.target.metric if m.target else "",
             "operator": m.target.operator if m.target else None,
@@ -646,7 +646,7 @@ def evaluate_missions(
 
 def _memory_matches(memory: Memory, ftype: FeedbackType, slide_number: int | None) -> bool:
     return any(
-        r.type == ftype and (r.slide_number is None or r.slide_number == slide_number)
+        r.area == ftype and (r.slide_number is None or r.slide_number == slide_number)
         for r in memory.recurring_issues
     )
 
@@ -655,7 +655,7 @@ def _mission_failed(
     missions: list[MissionReview], ftype: FeedbackType, slide_number: int | None
 ) -> bool:
     return any(
-        m.type == ftype
+        m.area == ftype
         and m.status in (MissionStatus.FAILED, MissionStatus.PARTIAL)
         and (m.slide_number is None or m.slide_number == slide_number)
         for m in missions
@@ -678,14 +678,14 @@ def assess(
     outcome_of = outcome_of or {}
     gave_up_ids = gave_up_ids or set()
     evaluable = evaluable_types(take, plan, cfg)
-    raw = [i for i in collect_issues(slides, take, segs, plan, cfg) if evaluable[i.type]]
+    raw = [i for i in collect_issues(slides, take, segs, plan, cfg) if evaluable[i.area]]
     mission_reviews = evaluate_missions(missions, slides, take, segs, cfg)
 
     reviews: list[IssueReview] = []
     for i in raw:
-        recurring = _memory_matches(memory, i.type, i.slide_number)
+        recurring = _memory_matches(memory, i.area, i.slide_number)
         gave_up = any(iv in gave_up_ids for iv in i.intervention_ids)
-        failed = _mission_failed(mission_reviews, i.type, i.slide_number)
+        failed = _mission_failed(mission_reviews, i.area, i.slide_number)
         score = i.burden_s
         score *= rc.recurring_weight if recurring else 1.0
         score *= rc.gave_up_weight if gave_up else 1.0
@@ -694,9 +694,9 @@ def assess(
         reviews.append(
             IssueReview(
                 rank=0,
-                type=i.type,
+                area=i.area,
                 slide_number=i.slide_number,
-                issues=i.issues,
+                issue_types=i.issue_types,
                 burden_s=round(i.burden_s, 2),
                 score=round(score, 2),
                 duration_ms=i.duration_ms,
@@ -715,11 +715,11 @@ def assess(
     # '다음에 먼저 고칠 영역'이 흔들리지 않게 — rank 1 은 1순위 영역에서 가장 큰 장
     type_score: dict[FeedbackType, float] = {}
     for r in reviews:
-        type_score[r.type] = type_score.get(r.type, 0.0) + r.score
+        type_score[r.area] = type_score.get(r.area, 0.0) + r.score
     reviews.sort(
         key=lambda r: (
-            -type_score[r.type],
-            TYPE_ORDER.index(r.type),
+            -type_score[r.area],
+            TYPE_ORDER.index(r.area),
             -r.score,
             r.slide_number or 0,
         )
@@ -732,19 +732,19 @@ def assess(
         hits = [
             r
             for r in reviews
-            if r.type == item.type
+            if r.area == item.area
             and (item.slide_number is None or r.slide_number == item.slide_number)
         ]
         reached = item.slide_number is None or item.slide_number in slides
         if hits:
             label = MemoryLabel.RECURRING
-        elif evaluable[item.type] and reached:
+        elif evaluable[item.area] and reached:
             label = MemoryLabel.RESOLVED
         else:
             label = MemoryLabel.UNKNOWN
         memory_reviews.append(
             MemoryReview(
-                type=item.type,
+                area=item.area,
                 slide_number=item.slide_number,
                 label=label,
                 burden_s=round(sum(r.burden_s for r in hits), 2),
@@ -762,7 +762,7 @@ def _take_metric(ftype: FeedbackType, take: Agg) -> dict[str, Any]:
     return {
         FeedbackType.GAZE: {"script_ratio": take.script_ratio, "coverage": take.gaze_coverage},
         FeedbackType.SPEED: {"cpm": take.cpm, "coverage": take.speech_coverage},
-        FeedbackType.VOLUME: {"relative_db": take.relative_db, "coverage": take.audio_coverage},
+        FeedbackType.VOLUME: {"voice_diff_db": take.voice_diff_db, "coverage": take.audio_coverage},
         FeedbackType.PAUSE: {"long_silence_ms": take.long_silence_ms},
         FeedbackType.FILLER: {"filler_per_min": take.filler_per_min},
         FeedbackType.CONTENT: {"keyword_coverage": take.keyword_coverage},
@@ -781,14 +781,14 @@ def _type_status(
     scores: dict[FeedbackType, float] = {}
     burdens: dict[FeedbackType, float] = {}
     for r in issues:
-        scores[r.type] = scores.get(r.type, 0.0) + r.score
-        burdens[r.type] = burdens.get(r.type, 0.0) + r.burden_s
+        scores[r.area] = scores.get(r.area, 0.0) + r.score
+        burdens[r.area] = burdens.get(r.area, 0.0) + r.burden_s
     ranked = sorted(scores, key=lambda t: (-scores[t], TYPE_ORDER.index(t)))
     priority = set(ranked[: cfg.review.priority_types])
 
     out: list[TypeStatusReview] = []
     for ftype in TYPE_ORDER:
-        mem = [m for m in memory if m.type == ftype]
+        mem = [m for m in memory if m.area == ftype]
         mem_label = None
         if mem:
             labels = {m.label for m in mem}
@@ -799,7 +799,7 @@ def _type_status(
                 if MemoryLabel.RESOLVED in labels
                 else MemoryLabel.UNKNOWN
             )
-        achieved = any(m.type == ftype and m.status == MissionStatus.ACHIEVED for m in missions)
+        achieved = any(m.area == ftype and m.status == MissionStatus.ACHIEVED for m in missions)
         if not evaluable[ftype]:
             status = TypeStatus.NOT_EVALUABLE
         elif ftype in priority:
@@ -812,7 +812,7 @@ def _type_status(
             status = TypeStatus.STABLE
         out.append(
             TypeStatusReview(
-                type=ftype,
+                area=ftype,
                 status=status,
                 burden_s=round(burdens.get(ftype, 0.0), 2),
                 memory=mem_label,
@@ -842,8 +842,8 @@ def _next_target(
             ), scope.cpm
         case FeedbackType.VOLUME:
             return NextMissionTarget(
-                metric="relative_db", operator="GTE", value=cfg.voice.low_relative_db
-            ), scope.relative_db
+                metric="voice_diff_db", operator="GTE", value=cfg.voice.low_relative_db
+            ), scope.voice_diff_db
         case FeedbackType.FILLER:
             obs = scope.filler_per_min
             value = rc.filler_goal if obs is None else max(rc.filler_goal, round(obs / 2, 1))
@@ -861,7 +861,7 @@ def _next_target(
                 return NextMissionTarget(
                     metric="slide_duration_ms", operator="LTE", value=value
                 ), float(scope.duration_ms)
-            if Issue.AHEAD_OF_SCHEDULE in issue.issues and plan is not None and plan.min_ms:
+            if Issue.AHEAD_OF_SCHEDULE in issue.issue_types and plan is not None and plan.min_ms:
                 return NextMissionTarget(
                     metric="duration_ms", operator="GTE", value=plan.min_ms
                 ), float(scope.duration_ms)
@@ -882,24 +882,24 @@ def _next_missions(
     cfg: CoachConfig,
 ) -> list[NextMission]:
     rc = cfg.review
-    status = {t.type: t.status for t in type_status}
+    status = {t.area: t.status for t in type_status}
     type_burden: dict[FeedbackType, float] = {}
     for r in issues:
-        type_burden[r.type] = type_burden.get(r.type, 0.0) + r.burden_s
+        type_burden[r.area] = type_burden.get(r.area, 0.0) + r.burden_s
 
     out: list[NextMission] = []
     seen: set[FeedbackType] = set()
     for r in issues:
-        if r.type in seen or status.get(r.type) == TypeStatus.NOT_EVALUABLE:
+        if r.area in seen or status.get(r.area) == TypeStatus.NOT_EVALUABLE:
             continue
-        seen.add(r.type)
-        share = r.burden_s / type_burden[r.type] if type_burden[r.type] else 0.0
+        seen.add(r.area)
+        share = r.burden_s / type_burden[r.area] if type_burden[r.area] else 0.0
         slide_scoped = r.slide_number is not None and (
-            r.type in (FeedbackType.TIME, FeedbackType.CONTENT) or share >= rc.slide_mission_share
+            r.area in (FeedbackType.TIME, FeedbackType.CONTENT) or share >= rc.slide_mission_share
         )
         slide_number = r.slide_number if slide_scoped else None
         scope = slides[slide_number] if slide_number is not None else take
-        built = _next_target(r.type, slide_number, r, scope, plan, cfg)
+        built = _next_target(r.area, slide_number, r, scope, plan, cfg)
         if built is None:
             continue
         target, observed = built
@@ -915,12 +915,12 @@ def _next_missions(
         out.append(
             NextMission(
                 priority=len(out) + 1,
-                type=r.type,
+                area=r.area,
                 slide_number=slide_number,
                 target=target,
                 observed=observed,
                 reason_codes=reasons,
-                evidence={"burden_s": r.burden_s, "issues": [i.value for i in r.issues]},
+                evidence={"burden_s": r.burden_s, "issue_types": [i.value for i in r.issue_types]},
             )
         )
         if len(out) >= rc.max_next_missions:
@@ -1021,8 +1021,8 @@ def build_review_evidence(
         strategy_changes=[
             StrategyReview(
                 t_ms=s.t_ms,
-                type=s.type,
-                issue=s.issue,
+                area=s.area,
+                issue_type=s.issue_type,
                 slide_number=s.slide_number,
                 change=s.change,
                 from_instruction=s.from_instruction,
@@ -1039,7 +1039,7 @@ def _intervention_review(iv: InterventionEvent, oc: OutcomeEvent | None) -> Inte
         intervention_id=iv.event_id,
         t_ms=iv.t_ms,
         slide_number=iv.slide_number,
-        type=iv.type,
+        area=iv.area,
         instruction=iv.instruction,
         message=iv.message,
         reason_codes=iv.reason_codes,
@@ -1076,9 +1076,9 @@ def _segment(
         end_ms=seg.end_ms,
         onset_ms=seg.onset_ms,
         offset_ms=seg.offset_ms,
-        type=seg.type,
-        issue=seg.issues[0],
-        issues=seg.issues,
+        area=seg.area,
+        issue_type=seg.issue_types[0],
+        issue_types=seg.issue_types,
         peak_severity=seg.peak_severity,
         mean_severity=round(seg.mean_severity or seg.peak_severity, 4),
         reliability=seg.reliability,
@@ -1100,7 +1100,7 @@ def _slide_review(s: Agg, issues: list[IssueReview]) -> SlideReview:
         over_ms=s.over_ms,
         script_ratio=s.script_ratio,
         cpm=s.cpm,
-        relative_db=s.relative_db,
+        voice_diff_db=s.voice_diff_db,
         filler_count=s.filler_count,
         filler_per_min=s.filler_per_min,
         long_silence_ms=s.long_silence_ms,
@@ -1109,8 +1109,8 @@ def _slide_review(s: Agg, issues: list[IssueReview]) -> SlideReview:
         gaze_coverage=s.gaze_coverage,
         speech_coverage=s.speech_coverage,
         audio_coverage=s.audio_coverage,
-        issue_types=sorted(
-            {r.type for r in issues if r.slide_number == s.slide_number}, key=TYPE_ORDER.index
+        areas=sorted(
+            {r.area for r in issues if r.slide_number == s.slide_number}, key=TYPE_ORDER.index
         ),
     )
 
@@ -1121,13 +1121,13 @@ def _strengths(
     out: list[StrengthReview] = []
     for t in result.type_status:
         if t.status == TypeStatus.STRENGTH:
-            out.append(StrengthReview(kind=StrengthKind.CLEAN, type=t.type, evidence=t.evidence))
+            out.append(StrengthReview(kind=StrengthKind.CLEAN, area=t.area, evidence=t.evidence))
     for m in result.memory:
         if m.label == MemoryLabel.RESOLVED:
             out.append(
                 StrengthReview(
                     kind=StrengthKind.RESOLVED_RECURRING,
-                    type=m.type,
+                    area=m.area,
                     slide_number=m.slide_number,
                     evidence={"memory": "RECURRING_IN_PREVIOUS_TAKE", "burden_s": m.burden_s},
                 )
@@ -1137,7 +1137,7 @@ def _strengths(
             out.append(
                 StrengthReview(
                     kind=StrengthKind.MISSION_ACHIEVED,
-                    type=m.type,
+                    area=m.area,
                     slide_number=m.slide_number,
                     evidence={
                         "mission_id": m.mission_id,
@@ -1152,13 +1152,13 @@ def _strengths(
         if (
             iv.outcome == Outcome.EFFECTIVE
             and iv.instruction != Instruction.CONTINUE
-            and iv.type not in seen
+            and iv.area not in seen
         ):
-            seen.add(iv.type)
+            seen.add(iv.area)
             out.append(
                 StrengthReview(
                     kind=StrengthKind.RESPONDED_TO_COACHING,
-                    type=iv.type,
+                    area=iv.area,
                     slide_number=iv.slide_number,
                     evidence={
                         "intervention_id": iv.intervention_id,
@@ -1175,7 +1175,7 @@ def _strengths(
             out.append(
                 StrengthReview(
                     kind=StrengthKind.ON_TIME,
-                    type=FeedbackType.TIME,
+                    area=FeedbackType.TIME,
                     evidence={"duration_ms": take.duration_ms, "min_ms": lo, "max_ms": hi},
                 )
             )
@@ -1187,13 +1187,13 @@ def _by_type(
 ) -> list[TypeSummary]:
     out: list[TypeSummary] = []
     for ftype in FeedbackType:
-        ivs = [r for r in corrections if r.type == ftype]
-        segs = [s for s in segments if s.type == ftype]
+        ivs = [r for r in corrections if r.area == ftype]
+        segs = [s for s in segments if s.area == ftype]
         if not ivs and not segs:
             continue
         out.append(
             TypeSummary(
-                type=ftype,
+                area=ftype,
                 interventions=len(ivs),
                 effective=sum(r.outcome == Outcome.EFFECTIVE for r in ivs),
                 ineffective=sum(r.outcome == Outcome.INEFFECTIVE for r in ivs),

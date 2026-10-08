@@ -125,7 +125,7 @@ def evaluate(tick: Tick) -> None:
     )
     tick.detections.append(
         Detection(
-            issue=Issue.GAZE_SCRIPT,
+            issue_type=Issue.GAZE_ON_SCRIPT,
             severity=severity,
             confidence=max(0.0, 1.0 - smoothed),
             sensor_ok=sensor_ok,

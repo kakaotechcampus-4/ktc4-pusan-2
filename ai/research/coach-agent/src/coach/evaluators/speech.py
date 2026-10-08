@@ -102,7 +102,7 @@ def evaluate(tick: Tick) -> None:
     cfg = tick.cfg.speech
 
     filler_60 = _filler_count(tick, cfg.filler_window_ms)
-    tick.metrics["filler_count_60s"] = filler_60 if tick.stt_ok else None
+    tick.metrics["recent_filler_count"] = filler_60 if tick.stt_ok else None
     tick.metrics["filler_count_30s"] = _filler_count(tick, 30_000) if tick.stt_ok else None
     observed = min(cfg.filler_window_ms, tick.t)
     tick.metrics["filler_per_min"] = (
@@ -123,7 +123,7 @@ def evaluate(tick: Tick) -> None:
     recent, recent_ms, recent_n = compute_cpm(
         speech.words, tick.t, min(window, cfg.recent_window_ms)
     )
-    tick.metrics["cpm_recent"] = (
+    tick.metrics["cpm_short"] = (
         round(recent, 1)
         if tick.stt_ok
         and recent is not None
@@ -139,7 +139,7 @@ def evaluate(tick: Tick) -> None:
     if cpm is not None and cpm > cfg.fast_cpm:
         tick.detections.append(
             Detection(
-                issue=Issue.PACE_FAST,
+                issue_type=Issue.PACE_FAST,
                 severity=ramp(cpm, cfg.fast_cpm, cfg.fast_cpm_bad),
                 confidence=confidence,
                 sensor_ok=tick.stt_ok,
@@ -152,14 +152,14 @@ def evaluate(tick: Tick) -> None:
     if filler_60 >= cfg.filler_threshold:
         tick.detections.append(
             Detection(
-                issue=Issue.FILLER_FREQUENT,
+                issue_type=Issue.FILLER_FREQUENT,
                 severity=ramp(filler_60, cfg.filler_threshold, cfg.filler_bad),
                 confidence=1.0,
                 sensor_ok=tick.stt_ok,
                 slide_number=tick.slide_number,
-                metric="filler_count_60s",
+                metric="recent_filler_count",
                 evidence={
-                    "filler_count_60s": filler_60,
+                    "recent_filler_count": filler_60,
                     "filler_per_min": tick.metrics["filler_per_min"],
                 },
             )
@@ -189,7 +189,7 @@ def _keyword_missing(tick: Tick) -> None:
     keyword = missing[0]
     tick.detections.append(
         Detection(
-            issue=Issue.KEYWORD_MISSING,
+            issue_type=Issue.KEYWORD_MISSING,
             severity=0.6,
             confidence=tick.cfg.speech.keyword_confidence,
             sensor_ok=tick.stt_ok,

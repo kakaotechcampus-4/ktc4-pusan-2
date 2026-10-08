@@ -150,7 +150,7 @@ class Scenario(BaseModel):
     name: str
     description: str = ""
     take_id: str = "sim-take"
-    mode: str = "PRACTICE"
+    mode: str = "COACHING"
     duration_ms: int
     tick_ms: int = 1_000
     #: 마지막 장을 다 말하면 끝낸다
@@ -421,7 +421,7 @@ class Presenter:
                 "cpm": p.cpm,
                 "script_ratio": p.script_ratio,
                 "uncertain_ratio": p.uncertain_ratio,
-                "relative_db": p.relative_db,
+                "voice_diff_db": p.relative_db,
                 "filler_per_min": p.filler_per_min,
                 "speaking": speaking_now,
                 "audio_live": p.audio_live,
@@ -566,7 +566,7 @@ def run(
                     "t_ms": t,
                     "slide": presenter.slide_number,
                     "action": resp.action.value,
-                    "type": resp.feedback.type.value if resp.feedback else None,
+                    "area": resp.feedback.area.value if resp.feedback else None,
                     "instruction": resp.feedback.instruction.value if resp.feedback else None,
                     "message": resp.feedback.message if resp.feedback else None,
                     "reason_codes": resp.reason_codes,
@@ -614,8 +614,8 @@ def check_expect(result: RunResult) -> list[str]:
             failures.append(f"개입 {len(ivs)}회 < 최소 {lo}")
         if hi is not None and len(ivs) > hi:
             failures.append(f"개입 {len(ivs)}회 > 최대 {hi}")
-    for ftype, bound in exp.get("types", {}).items():
-        n = sum(e["type"] == ftype for e in ivs)
+    for ftype, bound in exp.get("areas", {}).items():
+        n = sum(e["area"] == ftype for e in ivs)
         if "min" in bound and n < bound["min"]:
             failures.append(f"{ftype} 개입 {n}회 < 최소 {bound['min']}")
         if "max" in bound and n > bound["max"]:
@@ -644,7 +644,7 @@ def check_expect(result: RunResult) -> list[str]:
             failures.append(f"참은 이유 {name} 이 없음")
 
     # ── 리뷰 근거 ────────────────────────────────────────────────────────
-    status = {t.type.value: t.status.value for t in review.type_status}
+    status = {t.area.value: t.status.value for t in review.type_status}
     for ftype, want in exp.get("type_status", {}).items():
         if status.get(ftype) != want:
             failures.append(f"영역 상태 {ftype}: {status.get(ftype)} ≠ {want}")
@@ -652,33 +652,33 @@ def check_expect(result: RunResult) -> list[str]:
     for mid, want in exp.get("mission_status", {}).items():
         if missions.get(mid) != want:
             failures.append(f"미션 {mid}: {missions.get(mid)} ≠ {want}")
-    labels = {(m.type.value, m.slide_number): m.label.value for m in review.memory_check}
+    labels = {(m.area.value, m.slide_number): m.label.value for m in review.memory_check}
     for item in exp.get("memory_labels", []):
-        got = labels.get((item["type"], item.get("slide_number")))
+        got = labels.get((item["area"], item.get("slide_number")))
         if got != item["label"]:
             failures.append(
-                f"기억 비교 {item['type']}/{item.get('slide_number')}: {got} ≠ {item['label']}"
+                f"기억 비교 {item['area']}/{item.get('slide_number')}: {got} ≠ {item['label']}"
             )
     if "top_issue" in exp:
         top = review.issues[0] if review.issues else None
         want = exp["top_issue"]
         if (
             top is None
-            or top.type.value != want["type"]
+            or top.area.value != want["area"]
             or ("slide_number" in want and top.slide_number != want["slide_number"])
         ):
-            got = f"{top.type.value}/{top.slide_number}" if top else None
+            got = f"{top.area.value}/{top.slide_number}" if top else None
             failures.append(f"1순위 문제 {got} ≠ {want}")
-    next_types = [m.type.value for m in review.next_missions]
+    next_types = [m.area.value for m in review.next_missions]
     for name in exp.get("next_mission_types_include", []):
         if name not in next_types:
             failures.append(f"다음 미션에 {name} 이 없음 ({next_types})")
-    claimed = {s.type.value for s in review.segments if s.hint.value != "UNRELIABLE"}
+    claimed = {s.area.value for s in review.segments if s.hint.value != "UNRELIABLE"}
     for name in exp.get("no_claims", []):
         if name in claimed:
             failures.append(f"{name} 를 문제로 말하면 안 됨 (센서를 믿을 수 없던 구간)")
-    kinds = {(s.kind.value, s.type.value) for s in review.strengths}
+    kinds = {(s.kind.value, s.area.value) for s in review.strengths}
     for item in exp.get("strengths_include", []):
-        if (item["kind"], item["type"]) not in kinds:
-            failures.append(f"강점 {item['kind']}/{item['type']} 이 없음")
+        if (item["kind"], item["area"]) not in kinds:
+            failures.append(f"강점 {item['kind']}/{item['area']} 이 없음")
     return failures

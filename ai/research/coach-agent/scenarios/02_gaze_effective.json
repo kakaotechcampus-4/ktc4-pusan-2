@@ -52,7 +52,7 @@
     }
   },
   "expect": {
-    "types": {
+    "areas": {
       "GAZE": {
         "min": 1
       }

@@ -87,7 +87,7 @@ def evaluate(tick: Tick) -> None:
     if t > limit:
         tick.detections.append(
             Detection(
-                issue=Issue.TIME_OVER,
+                issue_type=Issue.TIME_OVER,
                 severity=1.0,
                 confidence=1.0,
                 slide_number=tick.slide_number,
@@ -106,7 +106,7 @@ def evaluate(tick: Tick) -> None:
     ):
         tick.detections.append(
             Detection(
-                issue=Issue.FINAL_MINUTE,
+                issue_type=Issue.FINAL_MINUTE,
                 severity=0.8,
                 confidence=1.0,
                 slide_number=tick.slide_number,
@@ -126,7 +126,7 @@ def evaluate(tick: Tick) -> None:
     ):
         tick.detections.append(
             Detection(
-                issue=Issue.AHEAD_OF_SCHEDULE,
+                issue_type=Issue.AHEAD_OF_SCHEDULE,
                 severity=ramp(early_limit - projected_end, 0, cfg.early_end_bad_ratio * target),
                 confidence=confidence,
                 slide_number=tick.slide_number,
@@ -150,7 +150,7 @@ def evaluate(tick: Tick) -> None:
         over = slide_elapsed - current.target_ms
         tick.detections.append(
             Detection(
-                issue=Issue.SLIDE_OVER,
+                issue_type=Issue.SLIDE_OVER,
                 severity=ramp(
                     slide_elapsed / current.target_ms,
                     cfg.slide_over_factor,
@@ -189,7 +189,7 @@ def _behind(
         min_step = 1 if r > cfg.condense_ratio_without_pace else 0
     tick.detections.append(
         Detection(
-            issue=Issue.BEHIND_SCHEDULE,
+            issue_type=Issue.BEHIND_SCHEDULE,
             severity=ramp(r, cfg.behind_ratio, cfg.behind_ratio_bad),
             confidence=confidence,
             slide_number=tick.slide_number,

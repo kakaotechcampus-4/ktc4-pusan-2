@@ -63,7 +63,7 @@
       "GAZE",
       "SPEED"
     ],
-    "types": {
+    "areas": {
       "GAZE": {
         "max": 0
       },
@@ -72,7 +72,7 @@
       }
     },
     "top_issue": {
-      "type": "VOLUME"
+      "area": "VOLUME"
     }
   }
 }

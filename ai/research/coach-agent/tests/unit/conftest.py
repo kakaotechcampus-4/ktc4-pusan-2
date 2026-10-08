@@ -63,7 +63,7 @@ def make_request(
     t_ms: int,
     *,
     state: dict[str, Any] | None = None,
-    mode: str = "PRACTICE",
+    mode: str = "COACHING",
     plan: dict[str, Any] | None = None,
     slide: int | None = 1,
     slide_elapsed: int | None = None,

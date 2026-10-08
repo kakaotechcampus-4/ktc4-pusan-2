@@ -32,7 +32,7 @@ PROBLEM_TYPES: tuple[FeedbackType, ...] = (
 )
 
 _ISSUE_OF = {
-    FeedbackType.GAZE: Issue.GAZE_SCRIPT,
+    FeedbackType.GAZE: Issue.GAZE_ON_SCRIPT,
     FeedbackType.SPEED: Issue.PACE_FAST,
     FeedbackType.VOLUME: Issue.VOLUME_LOW,
     FeedbackType.PAUSE: Issue.LONG_SILENCE,
@@ -42,7 +42,7 @@ _ISSUE_OF = {
 
 @dataclass
 class TruthInterval:
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None
     start_ms: int
     end_ms: int  # 배타
@@ -74,7 +74,7 @@ def _severity(ftype: FeedbackType, row: dict[str, Any], cfg: CoachConfig) -> flo
             else None
         )
     if ftype == FeedbackType.VOLUME:
-        d = row["relative_db"]
+        d = row["voice_diff_db"]
         low = cfg.voice.low_relative_db
         return ramp(d, low, cfg.voice.low_relative_db_bad) if d < low else None
     if ftype == FeedbackType.FILLER:
@@ -143,7 +143,7 @@ def truth_intervals(
             peak = max(s for _, s in r)
             out.append(
                 TruthInterval(
-                    type=ftype,
+                    area=ftype,
                     slide_number=r[0][0]["slide"],
                     start_ms=start,
                     end_ms=end,
@@ -152,7 +152,7 @@ def truth_intervals(
                     burden_s=sum(s for _, s in r) * tick / 1000,
                 )
             )
-    return sorted(out, key=lambda i: (i.start_ms, i.type.value))
+    return sorted(out, key=lambda i: (i.start_ms, i.area.value))
 
 
 def truth_aggs(run: RunResult) -> tuple[dict[int, Agg], Agg]:
@@ -195,7 +195,7 @@ def truth_aggs(run: RunResult) -> tuple[dict[int, Agg], Agg]:
                 if row["speaking"]:
                     a.speaking_ms += tick
                     a.db_ms += tick
-                    a.db_weighted += row["relative_db"] * tick
+                    a.db_weighted += row["voice_diff_db"] * tick
                 if silence_run > cfg.voice.long_silence_ms:
                     a.long_silence_ms += tick
 
@@ -225,9 +225,9 @@ def truth_aggs(run: RunResult) -> tuple[dict[int, Agg], Agg]:
 def truth_segments(intervals: list[TruthInterval]) -> list[Seg]:
     return [
         Seg(
-            type=i.type,
+            area=i.area,
             slide_number=i.slide_number,
-            issues=[_ISSUE_OF[i.type]],
+            issue_types=[_ISSUE_OF[i.area]],
             start_ms=i.start_ms,
             end_ms=i.end_ms,
             onset_ms=i.start_ms,
@@ -293,7 +293,7 @@ def truth_outcome(
     if before is None or after is None:
         return None
     match issue:
-        case Issue.GAZE_SCRIPT:
+        case Issue.GAZE_ON_SCRIPT:
             # 실제 값은 잡음이 없으니 여유폭 없이 탐지 기준 아래로 내려왔는지만 본다
             return after["script_ratio"] < cfg.gaze.script_ratio
         case Issue.PACE_FAST:
@@ -304,7 +304,7 @@ def truth_outcome(
         case Issue.VOLUME_LOW:
             if not after["speaking"]:
                 return None
-            a, b = after["relative_db"], before["relative_db"]
+            a, b = after["voice_diff_db"], before["voice_diff_db"]
             return a >= cfg.voice.low_relative_db or a >= b + rc.volume_gain_db
         case Issue.FILLER_FREQUENT:
             a, b = after["filler_per_min"], before["filler_per_min"]

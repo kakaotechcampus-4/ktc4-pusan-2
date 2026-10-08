@@ -20,7 +20,7 @@ def apply(tick: Tick, candidates: list[Candidate]) -> None:
 
     for c in candidates:
         against: list[Reason] = []
-        rule = tick.cfg.issues[c.issue]
+        rule = tick.cfg.issues[c.issue_type]
 
         if tick.req.mode == Mode.EXAM:
             against.append(Reason.EXAM_MODE)
@@ -38,7 +38,7 @@ def apply(tick: Tick, candidates: list[Candidate]) -> None:
             if rule.max_fires is not None and strat is not None and strat.fires >= rule.max_fires:
                 against.append(Reason.ALREADY_DELIVERED)
         if any(
-            r.type == c.type and (r.slide_number is None or r.slide_number == tick.slide_number)
+            r.area == c.area and (r.slide_number is None or r.slide_number == tick.slide_number)
             for r in plan.relax
         ):
             against.append(Reason.PLAN_RELAXED)

@@ -35,14 +35,14 @@ def test_truth_of_a_good_presenter_matches_the_review():
     result = run(_sc("01_baseline_good"))
     truth, intervals = truth_assessment(result)
     assert intervals == []
-    want = [(i.type.value, i.slide_number) for i in truth.issues]
+    want = [(i.area.value, i.slide_number) for i in truth.issues]
     assert want == [("CONTENT", 3)]
-    assert [(i.type.value, i.slide_number) for i in result.review.issues] == want
+    assert [(i.area.value, i.slide_number) for i in result.review.issues] == want
 
 
 def test_truth_marks_unobservable_problems():
     result = run(_sc("16_noisy_sensors"))
-    seen = {(i.type.value, i.observable) for i in truth_intervals(result)}
+    seen = {(i.area.value, i.observable) for i in truth_intervals(result)}
     assert ("GAZE", False) in seen and ("SPEED", False) in seen and ("VOLUME", True) in seen
 
 

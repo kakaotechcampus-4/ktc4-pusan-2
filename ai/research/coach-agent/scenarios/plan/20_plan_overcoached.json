@@ -57,7 +57,7 @@
     "issues": [
       {
         "rank": 1,
-        "type": "GAZE",
+        "area": "GAZE",
         "slide_number": 2,
         "burden_s": 22.0,
         "memory": "NEW",
@@ -65,7 +65,7 @@
       },
       {
         "rank": 2,
-        "type": "SPEED",
+        "area": "SPEED",
         "slide_number": null,
         "burden_s": 18.0,
         "memory": "NEW",
@@ -73,7 +73,7 @@
       },
       {
         "rank": 3,
-        "type": "FILLER",
+        "area": "FILLER",
         "slide_number": null,
         "burden_s": 9.0,
         "memory": "NEW",
@@ -82,15 +82,15 @@
     ],
     "type_status": [
       {
-        "type": "GAZE",
+        "area": "GAZE",
         "status": "PRIORITY"
       },
       {
-        "type": "SPEED",
+        "area": "SPEED",
         "status": "PRIORITY"
       },
       {
-        "type": "FILLER",
+        "area": "FILLER",
         "status": "STABLE"
       }
     ],

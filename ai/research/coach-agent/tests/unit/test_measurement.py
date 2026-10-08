@@ -9,7 +9,7 @@ from .conftest import IN_PAUSE, Session, gaze_script, make_request, words
 
 
 def _cand(resp, issue):
-    return next((c for c in resp.candidates if c.issue.value == issue), None)
+    return next((c for c in resp.candidates if c.issue_type.value == issue), None)
 
 
 def test_persistence_counts_only_reliable_time():
@@ -25,14 +25,14 @@ def test_one_good_window_after_a_bad_stretch_is_not_trusted():
     s = Session(plan={})
     s.run(10_000, 20_000, gaze=gaze_script(0.9, uncertain=0.7))
     resp = s.step(21_000, gaze=gaze_script(0.9, uncertain=0.3))
-    assert "SENSOR_UNUSABLE" in _cand(resp, "GAZE_SCRIPT").reasons
+    assert "SENSOR_UNUSABLE" in _cand(resp, "GAZE_ON_SCRIPT").reasons
 
 
 def test_streak_needs_a_minimum_ratio():
     cfg = load_config()
     assert cfg.gaze.streak_min_ratio == 0.6
     resp = decide(make_request(20_000, plan={}, gaze=gaze_script(0.55, streak_ms=8_000)))
-    assert _cand(resp, "GAZE_SCRIPT") is None
+    assert _cand(resp, "GAZE_ON_SCRIPT") is None
 
 
 def test_volume_needs_enough_speaking_samples():
@@ -103,5 +103,5 @@ def test_speed_outcome_uses_the_recent_window():
         ws += words(t, cpm=300, seconds=(t - slow_since) / 1000) if t > slow_since else []
         s.step(t, speech={"words": ws})
     outcome = next(e for e in s.events if e.kind == "OUTCOME")
-    assert outcome.metric == "cpm_recent"
+    assert outcome.metric == "cpm_short"
     assert outcome.outcome.value == "EFFECTIVE"

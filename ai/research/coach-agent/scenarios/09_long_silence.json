@@ -52,7 +52,7 @@
     }
   },
   "expect": {
-    "types": {
+    "areas": {
       "PAUSE": {
         "min": 1
       }

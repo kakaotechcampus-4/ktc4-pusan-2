@@ -71,7 +71,7 @@ def plan_request(sc: Scenario) -> PlanRequest:
 
 
 def _scopes(items: list[Any]) -> set[tuple[str, int | None]]:
-    return {(i.type.value, i.slide_number) for i in items}
+    return {(i.area.value, i.slide_number) for i in items}
 
 
 def check_plan(plan: CoachingPlan, exp: dict[str, Any]) -> list[str]:
@@ -79,12 +79,12 @@ def check_plan(plan: CoachingPlan, exp: dict[str, Any]) -> list[str]:
     out: list[str] = []
     relax, focus = _scopes(plan.relax), _scopes(plan.focus)
     for item in exp.get("relax_includes", []):
-        if (item["type"], item.get("slide_number")) not in relax:
-            out.append(f"봐주기에 {item['type']} {item.get('slide_number')} 가 없다")
-    for t in exp.get("focus_includes_types", []):
+        if (item["area"], item.get("slide_number")) not in relax:
+            out.append(f"봐주기에 {item['area']} {item.get('slide_number')} 가 없다")
+    for t in exp.get("focus_includes_areas", []):
         if t not in {f[0] for f in focus}:
             out.append(f"집중에 {t} 가 없다")
-    for t in exp.get("relax_excludes_types", []):
+    for t in exp.get("relax_excludes_areas", []):
         if t in {r[0] for r in relax}:
             out.append(f"봐주기에 {t} 가 있다")
     if exp.get("relax_empty") and relax:
@@ -101,7 +101,7 @@ def interventions_by_scope(result: RunResult) -> dict[str, int]:
     out: dict[str, int] = {}
     for row in result.timeline:
         if row["action"] == "INTERVENE" and row["instruction"] != "CONTINUE":
-            key = f"{row['type']} {row['slide']}"
+            key = f"{row['area']} {row['slide']}"
             out[key] = out.get(key, 0) + 1
     return out
 
@@ -143,7 +143,7 @@ def evaluate_plans(
         before, after = interventions_by_scope(base), interventions_by_scope(with_plan)
         failures = [check_plan(r.plan, sc.plan_expect) for r in responses]
         for item in sc.plan_expect.get("with_plan_no_interventions", []):
-            key = f"{item['type']} {item['slide_number']}"
+            key = f"{item['area']} {item['slide_number']}"
             if after.get(key):
                 failures[0].append(f"계획으로 재생해도 {key} 개입 {after[key]}번")
         scopes = [(_scopes(r.plan.focus), _scopes(r.plan.relax)) for r in responses]
@@ -188,9 +188,9 @@ def _print(report: dict[str, Any]) -> None:
         print(f"\n━━ {row['scenario']}  [{'PASS' if ok else 'FAIL'}]")
         plan = row["plans"][0]
         for f in plan["focus"]:
-            print(f"   집중  {f['type']} 장{f['slide_number']} ×{f['weight']}  {f['why']}")
+            print(f"   집중  {f['area']} 장{f['slide_number']} ×{f['weight']}  {f['why']}")
         for r in plan["relax"]:
-            print(f"   봐줌  {r['type']} 장{r['slide_number']}  {r['why']}")
+            print(f"   봐줌  {r['area']} 장{r['slide_number']}  {r['why']}")
         if plan.get("max_interventions") is not None:
             print(f"   개입 상한 {plan['max_interventions']}")
         print(f"   ── 일관성 {row['consistent']} · 대체 {row['fallback_reasons']}")

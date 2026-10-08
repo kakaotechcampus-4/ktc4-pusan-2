@@ -153,9 +153,9 @@ class PolicyConfig(_Section):
         default_factory=lambda: {
             "script_ratio": 0.15,
             "cpm": 30.0,
-            "relative_db": -3.0,
+            "voice_diff_db": -3.0,
             "required_ratio": 0.1,
-            "filler_count_60s": 3.0,
+            "recent_filler_count": 3.0,
         }
     )
     #: 계획(v1.2 LLM)이 주는 가중치를 이 범위로 자른다
@@ -199,7 +199,7 @@ class ReviewConfig(_Section):
     lag_compensation: bool = True
     #: 되돌리는 정도 (1.0 = 아래 lag_ms 그대로). 실험으로 고른다
     lag_scale: float = 1.0
-    #: (시작 지연, 끝 지연) ms. GAZE_SCRIPT 는 창 길이 × 기준으로 따로 계산한다
+    #: (시작 지연, 끝 지연) ms. GAZE_ON_SCRIPT 는 창 길이 × 기준으로 따로 계산한다
     lag_ms: dict[Issue, tuple[int, int]] = Field(
         default_factory=lambda: {
             Issue.PACE_FAST: (7_500, 7_500),  # 15초 CPM 창의 절반
@@ -229,7 +229,7 @@ class ReviewConfig(_Section):
         default_factory=lambda: {
             "script_ratio": 0.05,
             "cpm": 20.0,
-            "relative_db": 2.0,
+            "voice_diff_db": 2.0,
             "filler_per_min": 1.0,
             "slide_duration_ms": 5_000.0,
             "duration_ms": 5_000.0,
@@ -288,7 +288,7 @@ def _default_issue_rules() -> dict[Issue, IssueRule]:
     return {
         # 시선 비율은 FE 의 10초 창이라 반응(약 2초 뒤)이 창을 다 채우는 12초 뒤에 잰다 (실험 03 ·
         # 14)
-        Issue.GAZE_SCRIPT: IssueRule(
+        Issue.GAZE_ON_SCRIPT: IssueRule(
             ladder=_ladder((I.LOOK_AT_CAMERA, "default"), (I.LOOK_AT_CAMERA, "sentence_start")),
             persistence_ms=3_000,
             outcome_delay_ms=12_000,

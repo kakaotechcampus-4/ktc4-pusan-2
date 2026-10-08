@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from coach import decide, decide_safe
 from coach import core as core_mod
+from coach import decide, decide_safe
 
 from .conftest import gaze_script, make_request
 

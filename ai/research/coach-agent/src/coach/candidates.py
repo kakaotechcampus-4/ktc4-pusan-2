@@ -25,8 +25,8 @@ from .vocab import (
 @dataclass
 class Candidate:
     candidate_id: str
-    issue: Issue
-    type: FeedbackType
+    issue_type: Issue
+    area: FeedbackType
     instruction: Instruction
     variant: str
     #: 사다리에서 쓴 칸
@@ -61,9 +61,9 @@ def build(tick: Tick) -> list[Candidate]:
     out: list[Candidate] = []
     st = tick.state
     for det in tick.detections:
-        key = strategy_key(det.issue, det.slide_number, det.issue in SLIDE_SCOPED)
+        key = strategy_key(det.issue_type, det.slide_number, det.issue_type in SLIDE_SCOPED)
         episode = st.episodes[key]  # episodes.observe() 가 먼저 열어 둔다
-        rule = tick.cfg.issues[det.issue]
+        rule = tick.cfg.issues[det.issue_type]
         strat = st.strategy.get(key) or StrategyState()
         step = min(max(strat.step, det.min_step), len(rule.ladder) - 1)
         chosen = rule.ladder[step]
@@ -77,8 +77,8 @@ def build(tick: Tick) -> list[Candidate]:
         out.append(
             Candidate(
                 candidate_id=episode.candidate_id,
-                issue=det.issue,
-                type=ISSUE_TYPE[det.issue],
+                issue_type=det.issue_type,
+                area=ISSUE_TYPE[det.issue_type],
                 instruction=chosen.instruction,
                 variant=chosen.variant,
                 step=step,
@@ -118,8 +118,8 @@ def _praise_candidates(tick: Tick) -> list[Candidate]:
         out.append(
             Candidate(
                 candidate_id=f"{Issue.IMPROVED_AFTER_FEEDBACK.value}-{praise.intervention_id}",
-                issue=Issue.IMPROVED_AFTER_FEEDBACK,
-                type=praise.type,
+                issue_type=Issue.IMPROVED_AFTER_FEEDBACK,
+                area=praise.area,
                 instruction=Instruction.CONTINUE,
                 variant="default",
                 step=0,

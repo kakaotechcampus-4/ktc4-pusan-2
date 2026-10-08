@@ -52,7 +52,7 @@
     }
   },
   "expect": {
-    "types": {
+    "areas": {
       "SPEED": {
         "min": 1
       }

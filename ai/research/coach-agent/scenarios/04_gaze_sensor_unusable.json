@@ -44,7 +44,7 @@
     }
   ],
   "expect": {
-    "types": {
+    "areas": {
       "GAZE": {
         "max": 0
       }
