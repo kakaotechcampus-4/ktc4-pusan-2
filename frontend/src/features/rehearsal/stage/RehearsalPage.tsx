@@ -19,7 +19,7 @@ import {
   markSubmitted,
   markGazeExcluded,
   readCoachLog,
-  readGazeDecisions,
+  readGazeSamples,
   readSlideChanges,
   setEngineVersion,
   setGazePerf,
@@ -28,7 +28,6 @@ import {
 import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/writeFailures';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ScreenLabel } from '@/shared/ui/ScreenLabel';
-import { TemporalVoter } from '@/workers/temporalVoter';
 import { formatDuration } from '@/shared/lib/clock';
 import type { CompleteRequest, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
@@ -280,16 +279,15 @@ export function RehearsalPage() {
       let coach: CoachHistory | null = null;
       let recordedUntil: Ms = 0;
       try {
-        const [changes, coachRows, decisions] = await Promise.all([
+        const [changes, coachRows, samples] = await Promise.all([
           readSlideChanges(id),
           readCoachLog(id),
-          readGazeDecisions(id),
+          readGazeSamples(id),
         ]);
         slide = lastSlide(changes);
         coach = coachHistory(coachRows);
         recordedUntil = recordedUntilMs({
-          gazeTMs: decisions.map((d) => d.tMs),
-          gazeIntervalMs: TemporalVoter.INTERVAL_MS,
+          gaze: samples,
           slideAtMs: changes.map((c) => c.atMs),
           coachAtMs: coachRows.map((c) => c.atMs),
         });
@@ -500,17 +498,16 @@ export function RehearsalPage() {
       }
 
       const row = await getSession(id);
-      const decisions = await readGazeDecisions(id);
+      const samples = await readGazeSamples(id);
       const changes = await readSlideChanges(id);
       const coachRows = await readCoachLog(id);
 
       const gazePayload = buildGazePayload({
-        decisions,
+        samples,
         durationMs,
         // DB 쓰기가 실패했어도 값 자체는 메모리에 있습니다. 행을 못 읽었다고
         // ENGINE_VERSION_UNAVAILABLE 로 보내면 없는 사실을 만들어 내는 셈입니다
         engineVersion: row?.engineVersion ?? engineVersion,
-        decisionIntervalMs: TemporalVoter.INTERVAL_MS,
         // 행이 우선이고, 못 적혔으면 ref 가 받습니다. 제외를 놓치는 쪽이
         // 잘못 제외하는 쪽보다 나쁩니다 — 틀린 숫자가 정상인 척 실리니까요
         excludedReason: row?.gazeExcluded ? row.gazeExcludedReason : excludedRef.current,

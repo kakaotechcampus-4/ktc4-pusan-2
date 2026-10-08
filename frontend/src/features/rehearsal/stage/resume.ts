@@ -97,22 +97,20 @@ function estimate(
 }
 
 /**
- * 이미 쌓인 기록이 덮는 마지막 시각. 시선 판정 하나는 `[tMs, tMs + 판정 주기]` 를 덮고,
+ * 이미 쌓인 기록이 덮는 마지막 시각. 시선 1초 기록 하나는 `[t_ms, t_ms + duration_ms]` 를 덮고,
  * 슬라이드 전환과 코치 기록은 그 시각 한 점입니다. 기록이 없으면 0 입니다.
  */
 export function recordedUntilMs({
-  gazeTMs,
-  gazeIntervalMs,
+  gaze,
   slideAtMs,
   coachAtMs,
 }: {
-  gazeTMs: Ms[];
-  gazeIntervalMs: Ms;
+  gaze: { t_ms: Ms; duration_ms: Ms }[];
   slideAtMs: Ms[];
   coachAtMs: Ms[];
 }): Ms {
   let until = 0;
-  for (const t of gazeTMs) until = Math.max(until, t + gazeIntervalMs);
+  for (const s of gaze) until = Math.max(until, s.t_ms + s.duration_ms);
   for (const t of [...slideAtMs, ...coachAtMs]) until = Math.max(until, t);
   return until;
 }

@@ -1,9 +1,14 @@
 import { compressToSegments, summarize, validate } from './gazeSegments';
 import type { CalibrationSummary, GazeExcludedReason, GazePayload, Ms } from '@/types/api';
-import type { ZoneDecision } from '@/workers/gaze.contract';
+import type { GazeSampleRecord } from '@/workers/gaze.contract';
+import { makeConfig } from '@/vendor/gaze/engine/config';
 
 /**
- * 1초 판정들을 서버로 보낼 `GazePayload` 로 조립합니다.
+ * 1초 기록들을 서버로 보낼 `GazePayload` 로 조립합니다.
+ *
+ * ── 지금은 옛 형식입니다 ────────────────────────────────────────────
+ * 저장은 엔진 1초 기록(`GazeSampleRecord`) 그대로이고, 여기서 3구역 구간으로 접어 보냅니다.
+ * 1초 기록을 그대로 보내는 형식(AI `INTERFACE.md` 3절)은 BE 와 받는 쪽을 정한 뒤 바꿉니다.
  *
  * ★ 이 값은 **종료 시점에 영구 고정됩니다.** 카메라 영상이 서버로 가지 않으므로
  *   서버는 시선을 재계산할 수 없고, 과거 Take 를 다시 분석할 수도 없습니다
@@ -23,13 +28,16 @@ import type { ZoneDecision } from '@/workers/gaze.contract';
 /** 엔진 버전을 모를 때 보낼 값 — 로드 자체가 실패한 경우입니다. */
 export const ENGINE_VERSION_UNAVAILABLE = 'unavailable';
 
+/** 1초 기록의 길이 — 엔진의 묶는 단위(`slice_ms`)입니다. 구간의 최소 길이이기도 합니다 */
+const SLICE_MS = makeConfig().evidence.slice_ms;
+
 export interface BuildGazePayloadInput {
-  decisions: ZoneDecision[];
-  /** 발표 전체 길이. 이걸 넘는 판정은 버립니다 */
+  /** 저장된 1초 기록. 시작 시각 순이어야 합니다 (`readGazeSamples`) */
+  samples: readonly GazeSampleRecord[];
+  /** 발표 전체 길이. 이걸 넘는 기록은 버립니다 */
   durationMs: Ms;
   /** 워커의 ready 에서 받은 값. 엔진이 못 떴으면 null */
   engineVersion: string | null;
-  decisionIntervalMs: Ms;
   /** 이미 정해진 제외 사유 (엔진 실패·카메라 소실·권한 거부 등) */
   excludedReason: GazeExcludedReason | null;
   calibration: CalibrationSummary | null;
@@ -50,12 +58,12 @@ export interface BuildGazePayloadResult {
  * 임의로 확정하지 않습니다.
  */
 export function buildGazePayload(input: BuildGazePayloadInput): BuildGazePayloadResult {
-  const { decisions, durationMs, engineVersion, decisionIntervalMs, calibration } = input;
+  const { samples, durationMs, engineVersion, calibration } = input;
 
   const excludedPayload = (reason: GazeExcludedReason): GazePayload => ({
     engineVersion: engineVersion ?? ENGINE_VERSION_UNAVAILABLE,
     engineProfile: 'NORMAL',
-    decisionIntervalMs,
+    decisionIntervalMs: SLICE_MS,
     excluded: true,
     excludedReason: reason,
     // 측정한 구간이 없다는 뜻입니다. "0% 봤다"가 아닙니다 — excluded 가 그 구분을 합니다.
@@ -77,10 +85,10 @@ export function buildGazePayload(input: BuildGazePayloadInput): BuildGazePayload
     };
   }
 
-  // 발표 길이를 넘는 판정은 버립니다. 판정 하나가 [tMs, tMs + 1초] 를 덮고 시각은 무대 시계라,
-  // 끝내기를 누른 순간에 걸친 마지막 판정은 발표 길이를 넘습니다 — 보내면 서버가 422 로 되돌립니다
-  const inTake = decisions.filter((d) => d.tMs + decisionIntervalMs <= durationMs);
-  const segments = compressToSegments(inTake, decisionIntervalMs);
+  // 발표 길이를 넘는 기록은 버립니다. 기록 하나가 [t_ms, t_ms + duration_ms] 를 덮고 시각은 무대 시계라,
+  // 끝내기를 누른 순간에 걸친 기록은 발표 길이를 넘습니다 — 보내면 서버가 422 로 되돌립니다
+  const inTake = samples.filter((s) => s.t_ms + s.duration_ms <= durationMs);
+  const segments = compressToSegments(inTake);
   const validationErrors = validate(segments, durationMs);
 
   // 보내기 전에 스스로 걸러냅니다. 서버가 422 INVALID_SEGMENTS 로 되돌려주기 전에
@@ -100,7 +108,7 @@ export function buildGazePayload(input: BuildGazePayloadInput): BuildGazePayload
     payload: {
       engineVersion: engineVersion ?? ENGINE_VERSION_UNAVAILABLE,
       engineProfile: 'NORMAL',
-      decisionIntervalMs,
+      decisionIntervalMs: SLICE_MS,
       excluded: false,
       excludedReason: null,
       trackedMs: totals.trackedMs,

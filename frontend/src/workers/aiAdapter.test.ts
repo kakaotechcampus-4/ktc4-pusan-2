@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   engineVersion,
   toCalibrationResult,
-  toFrameVerdict,
   toPlacementResult,
   type AiCalibrationQuality,
 } from './aiAdapter';
@@ -65,26 +64,6 @@ describe('캘리브레이션 품질 → CalibrationResult', () => {
       model,
     );
     expect(r).toMatchObject({ ok: true, advice: 'ENGINE_ERROR' });
-  });
-});
-
-describe('프레임 판정 → FrameVerdict', () => {
-  it('얼굴이 없으면 null — 표본에서 뺀다', () => {
-    expect(
-      toFrameVerdict({ label: 'UNCERTAIN', p_camera: 0.5, p_bottom: 0.5, face_valid: false }),
-    ).toBeNull();
-  });
-
-  it('기권은 UNCERTAIN 표본이다 — null 이 아니다', () => {
-    expect(
-      toFrameVerdict({ label: 'UNCERTAIN', p_camera: 0.55, p_bottom: 0.45, face_valid: true }),
-    ).toEqual({ zone: 'UNCERTAIN', confidence: 0.55 });
-  });
-
-  it('CAMERA·BOTTOM 은 그대로, confidence 는 큰 쪽 확률이다', () => {
-    expect(
-      toFrameVerdict({ label: 'BOTTOM', p_camera: 0.1, p_bottom: 0.9, face_valid: true }),
-    ).toEqual({ zone: 'BOTTOM', confidence: 0.9 });
   });
 });
 

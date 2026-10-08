@@ -2,7 +2,6 @@ import type {
   CalibrationFailReason,
   CalibrationResult,
   CameraPlacement,
-  FrameVerdict,
   PlacementReason,
   PlacementResult,
 } from './gaze.contract';
@@ -37,14 +36,6 @@ export interface AiPlacementCheckResult {
   placement: string;
   supported: boolean;
   reason: string;
-}
-
-/** AI `GazeDecision.to_dict()` — 평활화 **전** 프레임 판정 */
-export interface AiGazeDecision {
-  label: 'CAMERA' | 'BOTTOM' | 'UNCERTAIN';
-  p_camera: number;
-  p_bottom: number;
-  face_valid: boolean;
 }
 
 /** AI `AiVersion` 과 `MODEL_VERSION` 에서 버전 문자열에 담는 것 */
@@ -112,24 +103,11 @@ export function toCalibrationResult(q: AiCalibrationQuality, model: unknown): Ca
 }
 
 /**
- * 프레임 판정 → `FrameVerdict`.
- *
- *   얼굴 없음(face_valid false)  → null        표본에서 뺍니다
- *   분류기 기권(UNCERTAIN)        → UNCERTAIN   표본으로 셉니다
- *   CAMERA · BOTTOM              → 그대로
- *
- * 둘을 나누는 이유 — 얼굴이 없는 1초는 "측정 못 함"이고, 기권이 많은 1초는
- * "봤지만 어느 쪽인지 모름"입니다. 다수결은 앞의 것을 MIN_SAMPLES 로,
- * 뒤의 것을 표 비율로 거릅니다.
- */
-export function toFrameVerdict(d: AiGazeDecision): FrameVerdict | null {
-  if (!d.face_valid) return null;
-  return { zone: d.label, confidence: Math.max(d.p_camera, d.p_bottom) };
-}
-
-/**
  * 버전 문자열. Take 에 영구 고정되므로 순서를 바꾸지 마세요.
- * `vote-v1` 은 여기서 붙이지 않습니다 — 워커가 `takeEngineVersion` 으로 붙입니다.
+ *
+ * AI 카메라 화면 모듈의 `ready.version` 과 **같은 문자열**입니다 (AI `INTERFACE.md` 8절).
+ * 장치 점검은 그 값으로 기준을 저장하고 리허설 워커는 이 값으로 꺼내므로,
+ * 둘이 한 글자라도 다르면 방금 잡은 기준을 못 찾습니다.
  */
 export function engineVersion(v: AiVersionParts): string {
   return `${v.modelVersion}+${v.gazeBackbone}+${v.gazeClassifier}`;
@@ -162,18 +140,4 @@ export function toPlacementResult(r: AiPlacementCheckResult): PlacementResult {
   const placement = PLACEMENTS.find((p) => p === r.placement) ?? 'INCONCLUSIVE';
   const reason = PLACEMENT_REASONS.find((x) => x === r.reason) ?? 'ENGINE_ERROR';
   return { placement, supported: r.supported && placement === 'TOP', reason };
-}
-
-/** FE 1초 다수결 규칙 (`TemporalVoter`). 분류기 버전과 별개의 부품입니다 */
-export const VOTE_RULE = 'vote-v1';
-
-/**
- * Take 에 고정되는 엔진 버전 — 분류기 버전 뒤에 다수결 규칙을 붙입니다.
- *
- * 리허설 워커(`gaze.worker.ts`)와 장치 점검의 카메라 화면 모듈이 **같은 함수**로 만듭니다.
- * 기준은 장치 점검에서 이 문자열을 붙여 저장되고 리허설이 같은 문자열로 꺼내므로,
- * 둘이 한 글자라도 다르면 방금 잡은 기준을 못 찾습니다.
- */
-export function takeEngineVersion(classifierVersion: string): string {
-  return `${classifierVersion}+${VOTE_RULE}`;
 }

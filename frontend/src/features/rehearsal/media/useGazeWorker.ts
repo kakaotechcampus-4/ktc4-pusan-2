@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   CalibrationResult,
+  GazeSampleRecord,
   GazeWorkerIn,
   GazeWorkerOut,
   PlacementResult,
-  ZoneDecision,
   ZoneReference,
 } from '@/workers/gaze.contract';
 
@@ -99,11 +99,12 @@ const freshState = (loadMs: number, impl: GazeImpl): WorkerState => ({
  * 그리고 **초당 `maxFps` 장을 넘기지 않는다** (기본 8, AI 분석 속도).
  * 백프레셔는 "처리한 만큼만" 보내게 할 뿐이라, 처리가 빠르면 초당 수십 장을 돈다.
  *
- * @param onDecision 1초 판정 콜백. **React 상태로 올리지 않는다** — 받는 쪽이 처리한다
- * @param loadMs     가짜 부하. 바뀌면 워커를 새로 만든다 (앞 측정이 다음에 안 섞이게)
+ * @param onSamples 1초 기록 콜백. 끝난 조각이 시각 순으로 온다 (보통 하나).
+ *                  **React 상태로 올리지 않는다** — 받는 쪽이 처리한다
+ * @param loadMs    가짜 부하. 바뀌면 워커를 새로 만든다 (앞 측정이 다음에 안 섞이게)
  */
 export function useGazeWorker(
-  onDecision: (d: ZoneDecision) => void,
+  onSamples: (samples: GazeSampleRecord[]) => void,
   loadMs: number,
   impl: GazeImpl = 'dummy',
   {
@@ -166,10 +167,10 @@ export function useGazeWorker(
   const zoneRefRef = useRef<ZoneReference | null>(null);
 
   // 콜백을 ref 에 담는다 — 콜백이 바뀔 때마다 워커를 다시 만들면 안 된다.
-  const onDecisionRef = useRef(onDecision);
+  const onSamplesRef = useRef(onSamples);
   useEffect(() => {
-    onDecisionRef.current = onDecision;
-  }, [onDecision]);
+    onSamplesRef.current = onSamples;
+  }, [onSamples]);
 
   const onCalibratedRef = useRef(onCalibrated);
   useEffect(() => {
@@ -205,8 +206,8 @@ export function useGazeWorker(
           rttCountRef.current += 1;
           inFlightRef.current = false;
           return;
-        case 'decision':
-          onDecisionRef.current(msg.decision);
+        case 'samples':
+          onSamplesRef.current(msg.samples);
           return;
         case 'calibrated':
           onCalibratedRef.current?.(msg.result, msg.engineVersion);

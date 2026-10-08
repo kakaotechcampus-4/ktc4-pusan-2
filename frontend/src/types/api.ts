@@ -9,7 +9,6 @@
  * 이 파일은 **타입만** 있고, API 를 거치지 않는 곳에서도 씁니다:
  *
  *   workers/gaze.contract.ts     워커. shared/api 를 참조하면 안 되는 곳
- *   workers/temporalVoter.ts     워커
  *   features/rehearsal/lib/db.ts IndexedDB. 서버 통신과 무관
  *   mocks/handlers.ts            목 서버. 쿼리 훅의 반대편
  *

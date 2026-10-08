@@ -2,20 +2,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEVICE_ERROR_MESSAGE, useCameraStream } from './useCameraStream';
 import { useGazeWorker, type GazeImpl } from './useGazeWorker';
 import { createLevelMeter, type LevelMeter } from './level';
-import { TemporalVoter } from '@/workers/temporalVoter';
 import { buildGazePayload } from '../lib/gazePayload';
 import {
-  appendGazeDecision,
+  appendGazeSamples,
   countAll,
   endSession,
   getSession,
   markGazeExcluded,
-  readGazeDecisions,
+  readGazeSamples,
   setEngineVersion,
   setGazePerf,
   startSession,
 } from '../lib/db';
-import type { ZoneDecision } from '@/workers/gaze.contract';
+import type { GazeSampleRecord } from '@/workers/gaze.contract';
 import type { GazeExcludedReason } from '@/types/api';
 
 /** 재볼 부하 값. 15fps 가 나오는 지점이 모델 예산이다. */
@@ -121,15 +120,17 @@ export function MediaDevPage() {
     return id;
   }, []);
 
-  const onDecision = useCallback((d: ZoneDecision) => {
-    decisionCountRef.current += 1;
+  const onSamples = useCallback((samples: GazeSampleRecord[]) => {
+    const last = samples.at(-1);
+    if (!last) return;
+    decisionCountRef.current += samples.length;
     if (countCellRef.current) countCellRef.current.textContent = String(decisionCountRef.current);
     if (zoneCellRef.current) {
-      zoneCellRef.current.textContent = `${d.zone} (표본 ${d.sampleCount}, conf ${d.confidence.toFixed(2)})`;
+      zoneCellRef.current.textContent = `${last.state} (프레임 ${last.frames}, conf ${last.confidence.toFixed(2)})`;
     }
-    // ★ 판정을 붙잡아 둔다. 이게 없으면 파이프라인의 산출물이 화면에 찍히고 사라진다.
+    // ★ 기록을 붙잡아 둔다. 이게 없으면 파이프라인의 산출물이 화면에 찍히고 사라진다.
     const id = sessionIdRef.current;
-    if (id) appendGazeDecision(id, d).catch(() => undefined);
+    if (id) appendGazeSamples(id, samples).catch(() => undefined);
   }, []);
 
   const {
@@ -140,7 +141,7 @@ export function MediaDevPage() {
     startPump,
     stopPump,
     // 이 화면은 파이프라인이 낼 수 있는 최대 fps 를 잽니다. 제품의 8fps 제한을 풀어 둡니다
-  } = useGazeWorker(onDecision, loadMs, impl, { maxFps: Infinity });
+  } = useGazeWorker(onSamples, loadMs, impl, { maxFps: Infinity });
 
   // 스트림이 붙으면 비디오에 물리고 펌프를 시작한다.
   useEffect(() => {
@@ -257,15 +258,15 @@ export function MediaDevPage() {
     await endSession(id);
 
     const row = await getSession(id);
-    const decisions = await readGazeDecisions(id);
-    const durationMs =
-      decisions.length === 0 ? 0 : decisions.at(-1)!.tMs + TemporalVoter.INTERVAL_MS;
+    // 이 화면은 무대 시계가 없어 마지막 기록이 끝난 시각을 발표 길이로 봅니다
+    const samples = await readGazeSamples(id);
+    const last = samples.at(-1);
+    const durationMs = last ? last.t_ms + last.duration_ms : 0;
 
     const result = buildGazePayload({
-      decisions,
+      samples,
       durationMs,
       engineVersion: row?.engineVersion ?? null,
-      decisionIntervalMs: TemporalVoter.INTERVAL_MS,
       excludedReason: row?.gazeExcluded ? row.gazeExcludedReason : null,
       // Calibration 은 아직 만드는 코드가 없다 (W3 · AI팀 4번 답 대기)
       calibration: null,
@@ -448,7 +449,7 @@ export function MediaDevPage() {
           <Cell label="기록 (IndexedDB)">
             {counts ? (
               <span>
-                시선 <b>{counts.gazeSegments}</b>건
+                시선 <b>{counts.gazeSamples}</b>건
                 <span className="ml-2 text-stone">· 슬라이드 {counts.slideChanges}</span>
               </span>
             ) : (

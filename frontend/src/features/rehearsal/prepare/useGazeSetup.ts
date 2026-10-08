@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { GazeCameraView, type CameraPhase, type SetupResult } from '@/vendor/gaze/camera';
 import { CALIBRATION_HINT } from '@/vendor/gaze/camera/text';
-import { takeEngineVersion, toCalibrationResult, toPlacementResult } from '@/workers/aiAdapter';
+import { toCalibrationResult, toPlacementResult } from '@/workers/aiAdapter';
 import type { CalibrationFailReason } from '@/workers/gaze.contract';
 import { clearZoneRefs, saveZoneRef } from '../lib/db';
 import { readLayoutSignature } from '../lib/layoutSignature';
@@ -65,8 +65,9 @@ const OVERLAY_PHASES: ReadonlySet<CameraPhase> = new Set([...RUNNING_PHASES, 're
  *                      품질 요약을 스토어에 (시작 CTA 가 서버로 보냄)
  *   배치             → 스토어에. 경고를 보고 "이대로 계속"을 눌렀으면 `overridden`
  *
- * 저장 키는 `layoutSignature` + 엔진 버전입니다. 엔진 버전은 리허설 워커와 **같은 함수**
- * (`takeEngineVersion`)로 만듭니다 — 다르면 리허설이 기준을 못 찾습니다.
+ * 저장 키는 `layoutSignature` + 엔진 버전입니다. 엔진 버전은 카메라 화면 모듈의 `ready.version` 을
+ * 그대로 씁니다. 리허설 워커도 같은 모양(`aiAdapter.ts` `engineVersion`)으로 만듭니다 —
+ * 다르면 리허설이 기준을 못 찾습니다.
  *
  * ── 기준은 Take 마다 새로 잡습니다 ────────────────────────────────
  * 기준에는 얼굴 측정값이 들어 있어 AI 엔진은 메모리에만 두라고 합니다 (`CalibrationModel`).
@@ -192,7 +193,7 @@ export function useGazeSetup({
       // 기준은 브라우저에만, 이번 Take 동안만 남습니다. 리허설 워커가 꺼내 쓰고 Take 를 끝내면 지웁니다.
       // 실패는 삼키지 않습니다 — 화면은 '완료'인데 리허설에서 시선이 조용히 빠지기 때문입니다.
       // 시작은 막고, 다시 잡게 합니다
-      savingRef.current = saveZoneRef(layoutSignature, ref, takeEngineVersion(engine));
+      savingRef.current = saveZoneRef(layoutSignature, ref, engine);
       savingRef.current.catch(() => {
         // 그사이 다시 잡기를 눌렀으면 옛 시도의 실패로 새 시도를 막지 않습니다
         if (attemptRef.current === id) setSaveFailed(true);

@@ -1,16 +1,16 @@
 import type {
   CalibrationResult,
-  FrameVerdict,
   GazeClassifier,
+  GazeFrame,
   PlacementResult,
   ZoneReference,
 } from './gaze.contract';
-import type { GazeZone, Ms } from '@/types/api';
+import type { Ms } from '@/types/api';
 
 /**
  * AI 모듈이 오기 전까지 쓰는 더미 분류기.
  *
- * 하는 일은 진짜와 같은 모양입니다 — 프레임 하나를 받아 zone 하나를 냅니다.
+ * 하는 일은 진짜와 같은 모양입니다 — 프레임 하나를 받아 프레임 근거(`GazeFrame`) 하나를 냅니다.
  * **판정 근거만 가짜입니다.**
  *
  * ── 왜 프레임을 보지 않는가 ─────────────────────────────────────────
@@ -18,15 +18,14 @@ import type { GazeZone, Ms } from '@/types/api';
  * A안에서 전처리·얼굴검출·특징추출은 분류기 몫입니다. 더미는 그걸 할 수
  * 없으므로 프레임을 무시하고 **시각(tMs)으로 판정을 만듭니다.**
  *
- * 그래도 검증하려는 것은 다 검증됩니다 — 프레임 펌프·백프레셔·1초 다수결·
- * 구간 압축·저장·조립·종료 흐름은 zone 값이 어디서 왔는지 모릅니다.
+ * 그래도 검증하려는 것은 다 검증됩니다 — 프레임 펌프·백프레셔·1초 묶기·
+ * 저장·조립·종료 흐름은 판정이 어디서 왔는지 모릅니다.
  *
  * 이전 더미는 항상 `null` 을 내서 판정이 전부 UNCERTAIN 이었습니다.
- * 그러면 구간 압축과 합계 검증을 눈으로 볼 수 없어서, 번갈아 내도록 했습니다.
+ * 그러면 구간과 합계를 눈으로 볼 수 없어서, 번갈아 내도록 했습니다.
  *
- * 1초 다수결은 여기 없습니다 — TemporalVoter 가 맡습니다.
- * 그게 계약을 나눈 이유입니다. 다수결이 분류기 안에 있으면
- * 모델을 갈아끼울 때 우리 정책이 같이 사라집니다.
+ * 1초 묶기는 여기 없습니다 — 워커가 엔진의 `GazeSlicer` 에 넣습니다.
+ * 더미도 같은 묶는 도구를 거치므로 1초 기록의 모양은 실모듈과 같습니다.
  *
  * 실모듈로 바꿀 때: 생성자만 ModelGazeClassifier 로 갈아끼웁니다.
  * 화면 코드는 한 줄도 안 바뀝니다.
@@ -35,7 +34,7 @@ import type { GazeZone, Ms } from '@/types/api';
 /** 이 주기로 CAMERA ↔ BOTTOM 을 번갈아 냅니다. 1초 판정보다 길어야 구간이 생깁니다 */
 const SWITCH_MS = 4000;
 
-/** 전환 직후 이만큼은 UNCERTAIN 을 냅니다 — 실제로도 시선이 옮겨가는 동안은 판정이 흔들립니다 */
+/** 전환 직후 이만큼은 얼굴을 놓친 것으로 냅니다 — 실제로도 시선이 옮겨가는 동안은 판정이 흔들립니다 */
 const BLUR_MS = 400;
 
 export class DummyGazeClassifier implements GazeClassifier {
@@ -95,28 +94,21 @@ export class DummyGazeClassifier implements GazeClassifier {
     this.ref = ref;
   }
 
-  classify(_frame: ImageBitmap, tMs: Ms): FrameVerdict | null {
+  classify(_frame: ImageBitmap, tMs: Ms): GazeFrame | null {
     // 캘리브레이션 전에는 판단하지 않습니다. 진짜도 같습니다 —
     // 그 사람의 기준이 없으면 각도만으로는 아무것도 못 정합니다.
-    //
-    // null 은 버려지고, 그 1초의 표본이 모자라면
-    // TemporalVoter 의 MIN_SAMPLES 규칙이 UNCERTAIN 을 냅니다.
     if (!this.ref) return null;
 
     const phase = tMs % (SWITCH_MS * 2);
     const intoHalf = phase % SWITCH_MS;
 
-    // 전환 직후는 판정 불가로 둡니다.
-    if (intoHalf < BLUR_MS) return null;
+    // 촬영 조건은 모르니 믿을 만하다고 둡니다 (엔진도 조건을 모르면 1 입니다)
+    const frame = { t_ms: tMs, direction: null, reliability: 1, issues: [] };
 
-    const zone: GazeZone = phase < SWITCH_MS ? 'CAMERA' : 'BOTTOM';
-
-    // 전환에서 멀어질수록 확신이 올라갑니다 — 0.6 에서 0.95 까지.
-    // 실모듈은 여기에 분류기 확률이 들어옵니다.
-    const settled = (intoHalf - BLUR_MS) / (SWITCH_MS - BLUR_MS);
-    const confidence = 0.6 + 0.35 * settled;
-
-    return { zone, confidence };
+    // 전환 직후는 얼굴을 놓친 프레임으로 둡니다. 그 1초에 얼굴 있는 프레임이 모자라면
+    // 엔진의 묶는 도구가 UNMEASURED 로 셉니다
+    if (intoHalf < BLUR_MS) return { ...frame, state: 'UNMEASURED' };
+    return { ...frame, state: phase < SWITCH_MS ? 'CAMERA' : 'BOTTOM' };
   }
 
   dispose(): void {

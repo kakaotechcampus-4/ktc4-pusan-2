@@ -10,22 +10,46 @@
  *   W4 스파이크의 진짜 목적이 fps 측정이 아니라 이겁니다.
  *
  * 지켜야 할 경계:
- *   프레임은 워커로 들어가고, 1초 판정만 나옵니다.
+ *   프레임은 워커로 들어가고, 1초 기록만 나옵니다.
  *   원시 좌표를 메인 스레드로 넘기기 시작하면 그 순간 성능이 끝납니다.
  *
  * ── 분업 (A안) ──────────────────────────────────────────────────────
  *
- *   AI  전처리 · 얼굴검출 · 특징추출 · 프레임 판정 · 캘리브레이션 계산
- *   FE  카메라 · 프레임 펌프 · 1초 다수결 · 저장 · 4초 안내 화면
+ *   AI  전처리 · 얼굴검출 · 특징추출 · 프레임 판정 · 1초 묶기 · 캘리브레이션 계산
+ *   FE  카메라 · 프레임 펌프 · 저장 · 전송 · 4초 안내 화면
  *
  * 그래서 `classify` 가 특징 벡터가 아니라 **ImageBitmap** 을 받고,
  * `fitCalibration` 이 기준값을 **돌려줍니다**(받지 않습니다).
  *
- * 1초 다수결을 AI 쪽에도 두면 이중 평활이 걸려 반응이 두 배로 느려집니다.
- * 분류기는 프레임 단위 판정만 냅니다.
+ * 1초 묶기는 AI 엔진의 `GazeSlicer` 가 합니다 (AI `INTERFACE.md` 2-5). 그 결과인 1초 기록이
+ * 서버(AI 시선 코어 · 실시간 코치)가 읽는 단위라, FE 가 따로 다수결을 두면 서버와 규칙이 갈립니다.
+ * 분류기는 프레임 하나의 근거(`GazeFrame`)만 내고, 워커가 그것을 엔진의 묶는 도구에 넣습니다.
  */
 
-import type { GazeZone, Ms } from '@/types/api';
+import type { Ms } from '@/types/api';
+import type { GazeFrame, GazeSample } from '@/vendor/gaze/engine';
+
+/**
+ * 프레임 하나의 근거 — 엔진 `frameFromDecision` 의 결과입니다.
+ * 4구역 판정(`CAMERA`·`SCREEN`·`BOTTOM`·`OTHER`, 판정 보류는 `UNCERTAIN`, 얼굴 없음은 `UNMEASURED`),
+ * OTHER 의 방향, 촬영 조건 신뢰도와 이슈가 들어 있습니다.
+ */
+export type { GazeFrame };
+
+/**
+ * 1초 기록 — **기기 밖으로 나가는 것은 이것뿐입니다** (AI `INTERFACE.md` 3절, `GazeSampleRecord`).
+ * 엔진 `sampleToDict` 의 결과를 고치지 않고 그대로 저장하고 보냅니다. 필드 이름도 서버와 같은 snake_case 입니다.
+ *
+ *   t_ms         테이크 시작 기준 이 1초의 시작 (무대 시계)
+ *   duration_ms  1000 (엔진의 묶는 단위)
+ *   state        CAMERA · SCREEN · BOTTOM · OTHER · UNCERTAIN · UNMEASURED
+ *   direction    OTHER 일 때만 8방향
+ *   confidence   이긴 상태에 투표한 프레임 비율
+ *   reliability  촬영 조건 신뢰도 평균
+ *   issues       프레임의 절반 이상에 나온 촬영 조건 이슈
+ *   frames       이 1초에 들어온 프레임 수
+ */
+export type GazeSampleRecord = GazeSample;
 
 /**
  * 캘리브레이션 결과. **서버로 보내지 않습니다** — IndexedDB 에만 둡니다.
@@ -138,35 +162,6 @@ export interface PlacementResult {
 }
 
 /**
- * 프레임 **하나**에 대한 판단. 1초 다수결은 여기서 하지 않습니다.
- *
- * 왜 나눴는가 — 1초 다수결은 모델의 일이 아니라 우리 정책입니다.
- * 분류기 안에 두면 모델을 갈아끼울 때 정책이 같이 사라집니다.
- * 엔진 버전 문자열에 `vote-v1`이 별도 부품으로 적히는 것도 같은 이유입니다.
- * 다수결은 workers/temporalVoter.ts 가 맡습니다.
- *
- * AI v1 에서는 **평활화 전** 프레임 판정(`GazeDecision`)이 여기로 옵니다.
- * AI 의 `TemporalSmoother`(`GAZE_STATE` 이벤트)는 쓰지 않습니다 —
- * 두 번 평활하면 반응이 두 배로 느려집니다. 옮기는 규칙은 `aiAdapter.ts` 에 있습니다.
- *
- *   zone        CAMERA · BOTTOM · UNCERTAIN(분류기가 기권한 프레임)
- *   confidence  두 클래스 확률 중 큰 쪽 (AI `p_max`)
- */
-export interface FrameVerdict {
-  zone: GazeZone;
-  confidence: number;
-}
-
-/** 1초마다 워커가 메인으로 보내는 것. 이것만 나갑니다. */
-export interface ZoneDecision {
-  tMs: Ms;
-  zone: GazeZone;
-  confidence: number;
-  /** 이 1초 동안 실제로 얼굴이 잡힌 프레임 수 — 신뢰도의 근거 */
-  sampleCount: number;
-}
-
-/**
  * 실모델이 오면 이 인터페이스만 구현하면 됩니다.
  * 지금은 DummyGazeClassifier가, 나중에는 OnnxGazeClassifier가 들어옵니다.
  */
@@ -200,22 +195,20 @@ export interface GazeClassifier {
    * 프레임 하나를 판단합니다. **전처리·얼굴검출·특징추출까지 이 안에서 합니다** —
    * FE 는 프레임만 넘깁니다.
    *
-   * 판단할 수 없으면 null — 얼굴이 없거나(AI `face_valid: false`) 캘리브레이션이
-   * 없는 경우입니다. 얼굴은 있는데 분류기가 기권했으면 null 이 아니라
-   * `zone: 'UNCERTAIN'` 입니다 — 그 프레임은 표본으로 셉니다.
-   * null 은 버려지고 TemporalVoter 의 MIN_SAMPLES 규칙이 그 1초를
-   * UNCERTAIN 으로 만듭니다.
+   * 얼굴이 없는 프레임은 null 이 아니라 `state: 'UNMEASURED'` 입니다 — 그 프레임도 1초 기록의
+   * `frames` 로 셉니다. null 은 캘리브레이션이 없어 **아예 판단하지 않는** 경우뿐이고,
+   * 그 프레임은 1초 기록에 들어가지 않습니다.
    *
-   * 1초 다수결은 여기서 하지 않습니다. FrameVerdict 주석 참고.
+   * 1초 묶기는 여기서 하지 않습니다 — 워커가 엔진의 `GazeSlicer` 에 넣습니다.
    *
    * ★ 비트맵은 **호출부가 닫습니다.** 이 함수 안에서 close() 하지 마세요.
    */
-  classify(frame: ImageBitmap, tMs: Ms): FrameVerdict | null;
+  classify(frame: ImageBitmap, tMs: Ms): GazeFrame | null;
   dispose(): void;
   /**
    * Take 에 기록할 버전 문자열. AI 모델 버전 · 백본 · 분류기를 `+` 로 잇습니다
    * (예: `gaze_v1.1.0+head_pose+reference_anchor_v1`, `aiAdapter.ts`).
-   * 다수결 규칙(`vote-v1`)은 FE 정책이라 워커가 뒤에 붙입니다.
+   * 1초 묶기도 엔진 안의 규칙이라 이 문자열이 그것까지 가리킵니다.
    */
   readonly version: string;
 }
@@ -237,7 +230,7 @@ export type GazeWorkerOut =
    * (2) **보낸 수로 센 fps 가 처리 속도와 갈라져 측정이 거짓이 됩니다.**
    *
    * 메인은 이 신호를 받고서야 다음 프레임을 만듭니다. 그래서 우체통에 항상 1장 이하입니다.
-   * decision·perf 는 1초에 하나라 이 역할을 할 수 없습니다.
+   * samples·perf 는 1초에 하나라 이 역할을 할 수 없습니다.
    *
    * 담는 것은 방금 처리한 프레임의 tMs 하나뿐입니다.
    */
@@ -254,7 +247,11 @@ export type GazeWorkerOut =
   | { type: 'calibrated'; result: CalibrationResult; engineVersion: string }
   /** `checkPlacement` 결과. 참고용이라 화면은 경고만 합니다 */
   | { type: 'placementChecked'; result: PlacementResult }
-  | { type: 'decision'; decision: ZoneDecision }
+  /**
+   * 끝난 1초 조각들. 보통 하나이고, 프레임 사이가 1초 넘게 비었으면 그 사이의
+   * `UNMEASURED` 조각이 함께 옵니다. 시각 순입니다.
+   */
+  | { type: 'samples'; samples: GazeSampleRecord[] }
   | { type: 'perf'; avgFps: number; droppedFrames: number }
   | { type: 'error'; reason: 'ENGINE_UNAVAILABLE' | 'CAMERA_LOST' };
 

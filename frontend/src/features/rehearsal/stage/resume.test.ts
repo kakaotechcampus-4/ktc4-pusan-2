@@ -49,18 +49,16 @@ describe('무대 시계를 어디서부터 다시 돌릴까', () => {
     expect(resumeFromMs(row(60_000, 1_000), null, 1_000 + 3_000, BEAT_MS, 50_000)).toBe(63_000);
   });
 
-  it('기록이 덮는 마지막 시각 — 시선 판정은 판정 주기만큼 뒤까지 덮는다', () => {
+  it('기록이 덮는 마지막 시각 — 시선 1초 기록은 자기 길이만큼 뒤까지 덮는다', () => {
+    const s = (t_ms: number) => ({ t_ms, duration_ms: 1_000 });
     expect(
       recordedUntilMs({
-        gazeTMs: [1_000, 2_000, 3_000],
-        gazeIntervalMs: 1_000,
+        gaze: [s(1_000), s(2_000), s(3_000)],
         slideAtMs: [0, 2_500],
         coachAtMs: [3_500],
       }),
     ).toBe(4_000);
-    expect(
-      recordedUntilMs({ gazeTMs: [], gazeIntervalMs: 1_000, slideAtMs: [], coachAtMs: [] }),
-    ).toBe(0);
+    expect(recordedUntilMs({ gaze: [], slideAtMs: [], coachAtMs: [] })).toBe(0);
   });
 });
 

@@ -1,9 +1,11 @@
 /// <reference lib="webworker" />
 
-import { takeEngineVersion } from './aiAdapter';
 import { DummyGazeClassifier } from './dummyClassifier';
 import { ModelGazeClassifier } from './modelClassifier';
-import { TemporalVoter } from './temporalVoter';
+// 진입점(index)이 아니라 파일을 직접 엽니다 — 진입점은 MediaPipe 까지 끌고 와서
+// dummy 워커에도 실립니다. 두 파일은 MediaPipe 를 부르지 않습니다
+import { makeConfig } from '@/vendor/gaze/engine/config';
+import { GazeSlicer, sampleToDict, type GazeSample } from '@/vendor/gaze/engine/evidence';
 import type {
   CalibrationResult,
   GazeClassifier,
@@ -13,16 +15,19 @@ import type {
 } from './gaze.contract';
 
 /**
- * 시선 워커 — 프레임을 받아 1초 판정을 낸다.
+ * 시선 워커 — 프레임을 받아 1초 기록을 낸다.
  *
  * ┌ frame 도착
  * │   가짜 부하 N ms  (모델이 들어올 자리)
- * │   classifier.classify()  →  voter.push()
- * │   voter.decide()         →  1초마다 decision 전송
+ * │   classifier.classify()  →  프레임 근거 (GazeFrame)
+ * │   slicer.push()          →  1초가 끝날 때마다 samples 전송
  * └ frameDone 전송 → 메인이 다음 프레임을 만든다 (백프레셔)
  *
- * ★ 이번 주에 만드는 건 "관"이고, 목적은 그 관의 비용을 재는 것이다.
- *   모델은 없다. 그 자리에 가짜 부하가 들어가 있다.
+ * 1초 묶기는 AI 엔진의 `GazeSlicer` 가 한다 (AI `INTERFACE.md` 2-5). 1초 격자는
+ * **첫 프레임 시각**에서 시작하고, 프레임 사이가 1초 넘게 비면 그 사이를 UNMEASURED 조각으로 채운다.
+ *
+ * 테이크 끝에서 1초가 안 찬 마지막 조각은 닫지 않고 버린다 (엔진 `flush` 를 부르지 않는다).
+ * 잃는 것은 1초 미만이고, 서버는 기록이 없는 시간을 측정 못 함으로 채운다 (AI `INTERFACE.md` 4-1).
  *
  * MediaPipe 는 이 파일이 아니라 분류기(`modelClassifier.ts` → `vendor/gaze/engine`) 안에서 돈다.
  * AI팀이 전처리까지 한다.
@@ -72,14 +77,23 @@ const IMPL = new URLSearchParams(self.location.search).get('impl') === 'model' ?
 
 const classifier: GazeClassifier =
   IMPL === 'model' ? new ModelGazeClassifier() : new DummyGazeClassifier();
-const voter = new TemporalVoter();
+
+/** 엔진 기본 설정의 1초 묶기 규칙 (1초 · 프레임 4개 · 득표율 0.6). 서버 코어와 같은 값입니다 */
+const EVIDENCE = makeConfig().evidence;
+/**
+ * 1초 묶는 도구. 워커 하나가 Take 하나를 맡으므로 워커가 뜰 때 새로 만들고 `stop` 에서 비웁니다.
+ * 새로고침하면 워커가 새로 떠서 이어받은 시각의 첫 프레임부터 다시 자릅니다.
+ */
+let slicer = new GazeSlicer(EVIDENCE);
+
+/** 엔진이 만든 조각을 서버로 나가는 모양(소수 4자리)으로 바꿉니다 */
+const toRecords = (samples: GazeSample[]) => samples.map(sampleToDict);
 
 /**
- * Take 에 고정되는 엔진 버전. 분류기 버전 뒤에 다수결 규칙을 붙입니다.
- * `ready` 와 `calibrated` 가 **같은 문자열**을 내야 저장한 기준의 버전 비교가 맞습니다.
- * 모델 분류기는 init 이 끝나야 버전이 정해지므로 매번 읽습니다.
+ * Take 에 고정되는 엔진 버전. `ready` 와 `calibrated` 가 **같은 문자열**을 내야
+ * 저장한 기준의 버전 비교가 맞습니다. 모델 분류기는 init 이 끝나야 버전이 정해지므로 매번 읽습니다.
  */
-const engineVersion = () => takeEngineVersion(classifier.version);
+const engineVersion = () => classifier.version;
 
 let running = false;
 let lastFrameTMs = -1;
@@ -115,7 +129,7 @@ function reportPerf(nowMs: number): void {
 function handleFrame(bitmap: ImageBitmap, tMs: number): void {
   const started = performance.now();
   try {
-    // 타임스탬프가 뒤로 가면 버린다. 1초 창 계산이 깨지기 때문이다.
+    // 타임스탬프가 뒤로 가면 버린다. 1초 격자가 깨지기 때문이다.
     if (tMs <= lastFrameTMs) {
       droppedFrames++;
       return;
@@ -127,11 +141,12 @@ function handleFrame(bitmap: ImageBitmap, tMs: number): void {
 
     // ★ 비트맵을 그대로 넘긴다 (A안) — 전처리·얼굴검출은 분류기 안에서 한다.
     //   더미는 프레임을 보지 않고 시간으로 가짜 판정을 낸다.
-    const verdict = classifier.classify(bitmap, tMs);
-    if (verdict) voter.push(verdict, tMs);
-
-    const decision = voter.decide(tMs);
-    if (decision) post({ type: 'decision', decision });
+    // null 은 캘리브레이션이 없어 판단하지 않은 프레임이다. 1초 기록에 넣지 않는다.
+    const frame = classifier.classify(bitmap, tMs);
+    if (frame) {
+      const done = slicer.push(frame);
+      if (done.length > 0) post({ type: 'samples', samples: toRecords(done) });
+    }
 
     processed++;
     spentMs += performance.now() - started;
@@ -224,7 +239,7 @@ self.onmessage = (e: MessageEvent<GazeWorkerIn>) => {
     case 'stop':
       running = false;
       classifier.dispose();
-      voter.reset();
+      slicer = new GazeSlicer(EVIDENCE);
       lastFrameTMs = -1;
       processed = 0;
       droppedFrames = 0;
