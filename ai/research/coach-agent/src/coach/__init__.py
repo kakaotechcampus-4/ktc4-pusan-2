@@ -2,7 +2,7 @@
 
     from coach import decide, finalize, build_review_evidence
 
-전체 계약과 로직은 coach-agent/v1/README.md 를 보세요.
+입출력은 ai/research/coach-agent/INTERFACE.md, 구조와 판단 흐름은 같은 폴더의 README.md 를 보세요.
 """
 
 from .engine import decide, decide_safe, finalize

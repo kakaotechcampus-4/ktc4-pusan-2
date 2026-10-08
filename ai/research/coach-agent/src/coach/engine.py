@@ -3,7 +3,7 @@
     decide(request)   1초마다. 지금 상황 + coach_state → 행동 + 이벤트 + 새 coach_state
     finalize(request) Take 종료 때 한 번. 열린 문제 구간과 재지 못한 효과를 닫는다
 
-순서 (v1/README.md §4):
+순서:
     ① 기록 갱신 — 장 추적, 새 확정 단어 누적
     ② 평가기     — 측정값 → 문제(Detection)
        되돌아보기 — 잴 때가 된 개입의 효과 판정 → 전략 수정
@@ -12,7 +12,7 @@
     ⑦ 문구 렌더링 → ⑧ 이벤트 · 기록 · coach_state
 
 이 함수는 시계 · 파일 · 네트워크를 쓰지 않습니다. 시간은 요청의 t_ms 뿐이라서
-같은 요청에는 언제나 같은 응답이 나오고, local 재생 결과가 배포 결과와 같습니다.
+같은 요청에는 언제나 같은 응답이 나오고, research 의 재생 결과가 배포 결과와 같습니다.
 """
 
 from __future__ import annotations

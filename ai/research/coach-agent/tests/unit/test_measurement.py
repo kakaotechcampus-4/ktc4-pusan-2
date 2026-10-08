@@ -1,4 +1,4 @@
-"""측정 — 실험(tools/evaluate.py)에서 찾아 고친 것들의 회귀 테스트."""
+"""측정 — 리뷰 근거 실험(coach_lab.evaluate)에서 찾아 고친 것들의 회귀 테스트."""
 
 from __future__ import annotations
 
