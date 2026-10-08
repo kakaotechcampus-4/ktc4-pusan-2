@@ -85,11 +85,8 @@ function calibrationActionText(status: GazeSetupStatus, live: boolean): string {
   }
 }
 
-/** 시선 기준점 항목의 문구. 확인 중이면 상태보다 그게 먼저입니다 */
-function calibrationLabel(
-  cal: Pick<ReturnType<typeof useGazeSetup>, 'verifying' | 'status' | 'advice'>,
-): string {
-  if (cal.verifying) return '시선 기준 · 저장된 기준 확인 중';
+/** 시선 기준점 항목의 문구 */
+function calibrationLabel(cal: Pick<ReturnType<typeof useGazeSetup>, 'status' | 'advice'>): string {
   switch (cal.status) {
     case 'UNAVAILABLE':
       return '시선 기준 · 시선 분석 사용 불가';
@@ -220,13 +217,7 @@ export function DeviceCheckPage() {
   //   Take 에 필요한 값(버전 id · 목표 시간)이 조합에 다 있고, `/prepare` 는 BE 에 아직 없습니다
   const versions = takeVersions(combo, data);
   const ready =
-    live &&
-    micOk &&
-    cal.status === 'DONE' &&
-    !cal.verifying &&
-    !cal.saveFailed &&
-    versions !== null &&
-    !starting;
+    live && micOk && cal.status === 'DONE' && !cal.saveFailed && versions !== null && !starting;
 
   /**
    * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.

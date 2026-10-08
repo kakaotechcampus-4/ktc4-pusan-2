@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { GazeCameraView, type CameraPhase, type SetupResult } from '@/vendor/gaze/camera';
 import { CALIBRATION_HINT } from '@/vendor/gaze/camera/text';
-import type { CalibrationModel } from '@/vendor/gaze/engine';
 import { takeEngineVersion, toCalibrationResult, toPlacementResult } from '@/workers/aiAdapter';
-import { fitsCurrentEngine } from '@/workers/calibrationModel';
 import type { CalibrationFailReason } from '@/workers/gaze.contract';
-import { loadZoneRef, saveZoneRef } from '../lib/db';
+import { clearZoneRefs, saveZoneRef } from '../lib/db';
 import { readLayoutSignature } from '../lib/layoutSignature';
 import { usePrepareStore } from './prepareStore';
 
@@ -63,19 +61,20 @@ const OVERLAY_PHASES: ReadonlySet<CameraPhase> = new Set([...RUNNING_PHASES, 're
  * ── 결과 처리 (FE 몫) ───────────────────────────────────────────────
  * `calibrated` 가 오면 —
  *   모델 없음        → FAILED. 사유에 맞춰 안내
- *   모델 있음        → `ZoneReference` 를 IndexedDB 에 저장(리허설 워커가 꺼내 씀),
+ *   모델 있음        → `ZoneReference` 를 IndexedDB 에 저장(리허설 워커가 꺼내 씀, 이번 Take 동안만),
  *                      품질 요약을 스토어에 (시작 CTA 가 서버로 보냄)
  *   배치             → 스토어에. 경고를 보고 "이대로 계속"을 눌렀으면 `overridden`
  *
  * 저장 키는 `layoutSignature` + 엔진 버전입니다. 엔진 버전은 리허설 워커와 **같은 함수**
  * (`takeEngineVersion`)로 만듭니다 — 다르면 리허설이 기준을 못 찾습니다.
  *
- * ── 잡아 둔 기준이 틀려지는 두 경우를 막습니다 ────────────────────
- * 1. **배치가 바뀜** — 카메라를 바꾸거나 해상도·화면이 달라지면 버리고 처음부터 받습니다.
- *    진행 중이었으면 멈춥니다.
- * 2. **다시 들어왔는데 저장된 기준이 없음** — 들어올 때 IndexedDB 에서 실제로 꺼내 보고,
- *    있으면 모듈에 되돌려 실시간 확인을 켜고, 없으면 처음부터 받습니다.
- *    확인이 끝나기 전에는 시작하지 못하게 `verifying` 을 둡니다.
+ * ── 기준은 Take 마다 새로 잡습니다 ────────────────────────────────
+ * 기준에는 얼굴 측정값이 들어 있어 AI 엔진은 메모리에만 두라고 합니다 (`CalibrationModel`).
+ * 리허설 새로고침 때문에 IndexedDB 에 두되 이번 Take 동안만 둡니다 (`ZONE_REF_TTL_MS`).
+ * 그래서 들어올 때 지난 Take 의 요약과 기준을 지우고 처음부터 받습니다.
+ *
+ * 배치가 바뀌면(카메라 교체 · 해상도 · 화면) 잡은 기준을 버리고 처음부터 받습니다.
+ * 진행 중이었으면 멈춥니다.
  */
 export function useGazeSetup({
   stream,
@@ -112,8 +111,6 @@ export function useGazeSetup({
   const [phase, setPhase] = useState<CameraPhase>('idle');
   /** 마지막 실패 사유. 화면이 사유별 안내를 고릅니다 */
   const [failReason, setFailReason] = useState<CalibrationFailReason | null>(null);
-  /** 들어올 때 있던 요약이 IndexedDB 의 기준과 맞는지 아직 확인 중 */
-  const [verifying, setVerifying] = useState(summary !== null);
   /** 기준을 IndexedDB 에 저장하지 못함. 리허설이 기준을 못 찾으므로 시작을 막습니다 */
   const [saveFailed, setSaveFailed] = useState(false);
 
@@ -144,7 +141,6 @@ export function useGazeSetup({
     pendingRef.current = false;
     clearCalibration();
     setFailReason(null);
-    setVerifying(false);
     const view = viewRef.current;
     if (view && view.phase !== 'idle') view.cancel();
   }, [clearCalibration]);
@@ -158,7 +154,6 @@ export function useGazeSetup({
     clearCalibration();
     setFailReason(null);
     setSaveFailed(false);
-    setVerifying(false);
   }, [videoRef, clearCalibration]);
 
   const onCalibrated = useCallback(
@@ -194,7 +189,7 @@ export function useGazeSetup({
       }
 
       setFailReason(null);
-      // 기준은 브라우저에만 남습니다. 다음 Take 가 같은 기기·배치·엔진이면 되살려 씁니다.
+      // 기준은 브라우저에만, 이번 Take 동안만 남습니다. 리허설 워커가 꺼내 쓰고 Take 를 끝내면 지웁니다.
       // 실패는 삼키지 않습니다 — 화면은 '완료'인데 리허설에서 시선이 조용히 빠지기 때문입니다.
       // 시작은 막고, 다시 잡게 합니다
       savingRef.current = saveZoneRef(layoutSignature, ref, takeEngineVersion(engine));
@@ -321,38 +316,18 @@ export function useGazeSetup({
     };
   }, [videoRef, invalidate]);
 
-  // ── 2. 다시 들어왔으면 저장된 기준이 실제로 있는지 봅니다 ────────────
+  // ── 2. 들어오면 지난 Take 의 기준을 지웁니다 ──────────────────────────
   //
-  // 엔진 버전을 알아야 비교할 수 있어 모듈이 뜬 뒤에 봅니다. 찾으면 모듈에 되돌려
-  // 실시간 확인을 켭니다 — 사용자가 기준이 살아 있는 것을 눈으로 봅니다.
-  // 엔진이 못 떴으면 확인할 방법이 없으니 확인을 끝냅니다 — 리허설이 어차피 제외합니다.
+  // 기준은 Take 마다 새로 잡습니다. 메모리의 요약(스토어)은 화면을 옮겨도 남아 있어서,
+  // 지우지 않으면 지난 Take 의 기준으로 '완료'가 보입니다. 저장소에 남은 기준도 함께 지웁니다
+  // (Take 를 끝내지 않고 떠났을 때). 못 지워도 막지 않습니다 — 새로 잡으면 덮어쓰고,
+  // 오래된 것은 리허설이 쓰지 않습니다 (`ZONE_REF_TTL_MS`)
   useEffect(() => {
-    if (!verifying || engineFailed) return;
-    if (!summary || !version) return;
-
-    let cancelled = false;
-    loadZoneRef(summary.layoutSignature, takeEngineVersion(version))
-      .then(async (ref) => {
-        if (cancelled) return;
-        const view = viewRef.current;
-        // 설정이 바뀐 엔진의 보정이면 쓰지 않습니다. 모듈은 모양(schema)만 보고 설정은 확인하지 않아,
-        // 그대로 넘기면 옛 기준으로 판정합니다 (fitsCurrentEngine). 모양이 다르면 모듈이 false 를 줍니다
-        const ok =
-          ref !== null &&
-          fitsCurrentEngine(ref.model) &&
-          view !== null &&
-          (await view.useCalibration(ref.model as CalibrationModel));
-        if (cancelled) return;
-        if (ok) setVerifying(false);
-        else invalidate();
-      })
-      .catch(() => {
-        if (!cancelled) invalidate();
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [verifying, engineFailed, summary, version, invalidate]);
+    clearCalibration();
+    clearZoneRefs().catch((err: unknown) => {
+      console.error('[device-check] 지난 시선 기준을 지우지 못했습니다', err);
+    });
+  }, [clearCalibration]);
 
   // ── 전체 화면 ──────────────────────────────────────────────────────
   //
@@ -423,11 +398,6 @@ export function useGazeSetup({
     failReason: status === 'FAILED' ? failReason : null,
     /** DONE 이지만 품질이 낮을 때(POOR) 다시 잡기를 권하는 이유. 그 외에는 null */
     advice: status === 'DONE' ? advice : null,
-    /**
-     * 들어올 때 있던 기준을 확인 중. 끝나기 전에는 시작하지 않습니다.
-     * 엔진이 못 떴으면 확인할 방법이 없어 끝난 것으로 봅니다 — 리허설이 어차피 제외합니다
-     */
-    verifying: verifying && !engineFailed,
     /** 상자를 화면 전체로 띄울지 — 보정 중과 결과 카드 */
     overlay,
     boxRef,

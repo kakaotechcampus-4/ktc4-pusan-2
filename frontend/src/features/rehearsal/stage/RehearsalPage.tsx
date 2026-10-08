@@ -11,6 +11,7 @@ import { buildGazePayload } from '../lib/gazePayload';
 import { stopTakeStream } from '../lib/sttSocket';
 import {
   beat,
+  clearZoneRefs,
   endSession,
   findSessionByTakeId,
   getSession,
@@ -475,6 +476,13 @@ export function RehearsalPage() {
    */
   const submit = async (id: string, { durationMs, endedAtIso }: Ending) => {
     if (!ticket) return;
+
+    // 무대는 다시 열리지 않으니 시선 기준은 더 쓸 데가 없습니다. 얼굴 측정값이 들어 있어
+    // 이번 Take 동안만 두기로 했습니다 (db.ts `ZONE_REF_TTL_MS`). 못 지워도 종료는 막지 않습니다 —
+    // 다음 장치 점검이 다시 지우고, 오래된 것은 쓰지 않습니다
+    clearZoneRefs().catch((err: unknown) => {
+      console.error('[rehearsal] 시선 기준을 지우지 못했습니다', err);
+    });
 
     // ★ 여기서부터 끝까지 한 try 입니다. 중간이 실패해도 **무대를 되살리면 안 됩니다** —
     //   phase 가 RUNNING 으로 돌아가면 clock.start() 가 t0 를 다시 잡아 durationMs 가
