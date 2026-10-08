@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Access 토큰은 짧게. 폐기 수단이 없으므로 만료가 유일한 방어선이다.
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 14
+    # 방금 회전된 Refresh 가 이 시간 안에 다시 오면 재사용으로 보지 않는다.
+    # 회전 응답을 받기 전에 새로고침한 브라우저는 새 쿠키를 못 받아 옛 토큰을 다시 보낸다.
+    refresh_token_reuse_grace_seconds: int = 10
 
     google_client_id: str
     google_client_secret: str

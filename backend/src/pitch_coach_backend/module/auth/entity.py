@@ -55,5 +55,9 @@ class RefreshToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # NULL 이면 살아 있는 토큰. 회전·로그아웃·재사용 탐지 시 시각이 찍힌다.
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 회전으로 폐기됐을 때 이어받은 토큰. 로그아웃·재사용 탐지로 폐기됐으면 NULL 이다.
+    replaced_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("refresh_tokens.id", ondelete="SET NULL")
+    )
 
 

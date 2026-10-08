@@ -18,7 +18,7 @@ import {
  * BE 가 응답을 바꾸면 이 테스트부터 깨지고, 고칠 곳은 `beAdapter.ts` 하나입니다.
  */
 
-describe('피치 — PitchDTO', () => {
+describe('피치 — PitchSaveRequestDTO', () => {
   it('하한 · 상한 허용오차를 따로 보낸다', () => {
     expect(
       toPitchRequest({

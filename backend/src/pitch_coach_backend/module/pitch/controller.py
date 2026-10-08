@@ -10,14 +10,13 @@ from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch, ScriptParseRunnerDep
 from pitch_coach_backend.module.pitch.dto import (
     ParseRequestedDTO,
-    PitchDTO,
+    PitchSaveRequestDTO,
     ScriptCreatedDTO,
     ScriptCreateDTO,
     ScriptDetailDTO,
     StandardTextDTO,
     UploadPresentationDTO,
 )
-from pitch_coach_backend.module.pitch.exception import NonExistentPresentationVersion
 from pitch_coach_backend.module.pitch.service import (
     add_pitch_service,
     add_pitch_standard_service,
@@ -61,27 +60,23 @@ def get_presentation(
     presentation_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)]
 ):
-    presentation_version = get_presentation_detail(db, pitch_id, presentation_id)
-
-    if not presentation_version:
-        raise NonExistentPresentationVersion()
-
-    return presentation_version
+    # 없으면 service 가 NonExistentPresentationVersion(404) 을 던진다
+    return get_presentation_detail(db, pitch_id, presentation_id)
 
 @router.post("/add")
 def add_pitch(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
-    pitch_dto: PitchDTO
+    pitch_dto: PitchSaveRequestDTO
 ):
     result = add_pitch_service(db, current_user.id, pitch_dto)
     return {"message": "Pitch added successfully", "pitch_id": result}
 
-@router.put("/update/{pitch_id}")
+@router.patch("/update/{pitch_id}")
 def update_pitch(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
-    pitch_dto: PitchDTO
+    pitch_dto: PitchSaveRequestDTO
 ):
     result = update_pitch_service(db, pitch_id, pitch_dto)
     return {"message": "Pitch updated successfully", "pitch_id": result}

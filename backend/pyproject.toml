@@ -1,7 +1,7 @@
 [project]
 name = "pitch-coach-backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "Pitch Coach 백엔드 API"
 readme = "README.md"
 authors = [
     { name = "myeowon", email = "myw7931@gmail.com" }

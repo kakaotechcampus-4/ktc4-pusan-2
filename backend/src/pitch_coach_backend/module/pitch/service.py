@@ -9,12 +9,12 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.dto import (
-    AllPitchesDTO,
     HighlightDTO,
     ParseRequestedDTO,
     ParseTicket,
-    PitchDTO,
-    PitchesDTO,
+    PitchListItemDTO,
+    PitchListResponseDTO,
+    PitchSaveRequestDTO,
     PresentationDetailDTO,
     ScriptCreatedDTO,
     ScriptDetailDTO,
@@ -44,11 +44,15 @@ from pitch_coach_backend.module.pitch.exception import (
     ScriptAlreadyParsed,
     ScriptParseInProgress,
     ScriptReuploadRequired,
+    StandardParseFailed,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import generate_presigned_url, upload
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
+
+# 평가 기준 나누기는 LLM 한 번 호출이라 기본값(5초)으로는 모자라다. 대본 파싱과 같은 값
+STANDARD_PARSE_TIMEOUT = httpx2.Timeout(30.0, connect=5.0)
 
 # 대본 한 편의 글자 수 상한. 1시간 발표도 2만 자 안팎이라 넉넉하고, LLM 한 번에 넣을 수 있는 크기다
 MAX_SCRIPT_CHARS = 50_000
@@ -57,7 +61,7 @@ MAX_SCRIPT_CHARS = 50_000
 # 약 71초)보다 길어야 한다 — 짧으면 아직 도는 작업을 만료로 보여주고 재시도를 열어 버린다
 PARSE_EXPIRE_AFTER = timedelta(seconds=90)
 
-def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchDTO):
+def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveRequestDTO):
     new_pitch = Pitch(
         user_id=user_id,
         title=pitch_dto.title,
@@ -74,7 +78,7 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchDTO):
     return saved_pitch.id
 
 # 홈 화면 : pitches 목록 조회
-def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
+def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListResponseDTO:
     pitch_repository = PitchRepository(db)
     pitches = pitch_repository.get_all_by_user(user_id)
 
@@ -111,29 +115,23 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> AllPitchesDTO:
 
             take_summaries.append(take_summary)
 
-        pitch_dto = PitchesDTO(
+        pitch_dto = PitchListItemDTO(
             pitch_id=pitch.id,
             pitch_title=pitch.title,
             pitch_time=pitch.time_limit_sec,
             thumbnail_url=None,
-            pitch_deadline=pitch.presentation_date,
+            presentation_date=pitch.presentation_date,
             takes=take_summaries
         )
 
         results.append(pitch_dto)
 
-    return AllPitchesDTO(pitches=results)
+    return PitchListResponseDTO(pitches=results)
 
 # Protocol(해당 타입만 가지고 있다면 Versioned 타입으로 간주)로 통일
 # Versioned 타입을 가진 객체들을 VersionDTO로 변환
 def to_version_dtos(rows: Iterable[Versioned]) -> list[VersionDTO]:
     return [VersionDTO(id=row.id, version=row.version) for row in rows]
-
-
-# 존재 확인
-def ensure_pitch_exists(pitch_repository: PitchRepository, pitch_id: uuid.UUID) -> None:
-    if not pitch_repository.get_by_id(pitch_id):
-        raise NonExistentPitch()
 
 
 # 발표 자료 버전 들고오기
@@ -449,18 +447,16 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
 
 def add_pitch_standard_service(
         db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO):
-    pitch_repository = PitchRepository(db)
-    # 평가 기준 분할 로직
+    # AI 를 먼저 부르고 잠금은 그 뒤에 잡는다 — LLM 을 기다리는 동안 pitch 행을 쥐고 있지 않게
     standards_result = divide_standard_text(standard_text_dto)
 
-    standards_list = standards_result.standards
-    for s in len(standards_list):
-        standard = Standards(
-            pitch_id=pitch_id,
-            standard=standards_list[s],
-            position=s + 1
-        )   
-        pitch_repository.save_standard(standard)
+    pitch_repository = PitchRepository(db)
+    pitch_repository.lock_for_new_version(pitch_id)
+    version = pitch_repository.next_standard_version(pitch_id)
+    for position, title in enumerate(standards_result.standards, start=1):
+        pitch_repository.save_standard(
+            Standards(pitch_id=pitch_id, version=version, position=position, title=title)
+        )
     db.commit()
 
     return StandardTextResponseDTO(
@@ -469,24 +465,30 @@ def add_pitch_standard_service(
          except_standard=standards_result.except_standard
     )
 
-def divide_standard_text(standard_text_dto: StandardTextDTO) -> list[str]:
-    """평가 기준 텍스트를 문장 단위로 나눈다. LLM 호출이므로 async."""
-    with httpx2.Client() as client:
-        response = client.post(
-            f"{settings.ai_base_url}/evaluation-criteria/parse",
-            json={"standard_text": standard_text_dto.standard_text}
-        )
-        response.raise_for_status()
-        result = response.json()
+def divide_standard_text(standard_text_dto: StandardTextDTO) -> StandardParseResponseDTO:
+    """평가 기준 텍스트를 AI 서버로 보내 항목으로 나눈다.
 
-        standards = result.get("display_criteria", [])
-        except_standard = result.get("except_criteria", "")
+    AI 응답(ai/research/evaluation-criteria 의 스키마)에서 display_criteria 를 항목으로,
+    excluded(기준으로 쓰지 못한 항목 이름 목록)를 쉼표로 이어 except_standard 로 쓴다.
+    AI 가 실패하거나 응답 모양이 다르면 StandardParseFailed(502).
+    """
+    try:
+        with httpx2.Client(timeout=STANDARD_PARSE_TIMEOUT) as client:
+            response = client.post(
+                f"{settings.ai_base_url}/evaluation-criteria/parse",
+                json={"standard_text": standard_text_dto.standard_text}
+            )
+            response.raise_for_status()
+            result = response.json()
 
         return StandardParseResponseDTO(
-            standards=standards,
-            except_standard=except_standard
+            standards=result["display_criteria"],
+            except_standard=", ".join(result.get("excluded") or []) or None,
         )
-    
+    # ValueError: JSON 이 아님·pydantic 검증 실패, KeyError·TypeError: 응답 모양이 다름
+    except (httpx2.HTTPError, ValueError, KeyError, TypeError) as e:
+        raise StandardParseFailed() from e
+
 def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: int):
     pitch_repository = PitchRepository(db)
     standards = pitch_repository.get_evaluations_by_version(pitch_id, evaluation_version)

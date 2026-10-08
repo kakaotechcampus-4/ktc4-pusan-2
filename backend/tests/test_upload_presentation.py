@@ -7,7 +7,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from fastapi import UploadFile
-from pitch_coach_backend.module.pitch.dto import PitchDTO, UploadPresentationDTO
+from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO, UploadPresentationDTO
 from pitch_coach_backend.module.pitch import service
 import pytest
 from sqlalchemy import Engine
@@ -26,7 +26,7 @@ def _make_pitch(db: Session, user_id: uuid.UUID, title: str = "기존 발표") -
     return service.add_pitch_service(
         db,
         user_id,
-        PitchDTO(title=title, time_limit_sec=300, presentation_date=date(2026, 3, 1)),
+        PitchSaveRequestDTO(title=title, time_limit_sec=300, presentation_date=date(2026, 3, 1)),
     )
 
 def test_upload_presentation_service(db_session: Session, user_id: uuid.UUID, upload_mock: MagicMock):

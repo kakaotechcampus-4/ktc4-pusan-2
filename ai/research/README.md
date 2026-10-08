@@ -4,6 +4,7 @@
 
 | 기능 | 폴더 | 담당 |
 |---|---|---|
+| 시선 | [gaze-tracking/](gaze-tracking/README.md) | jewon-kim |
 | 대본 전달도 | [script-coverage-evaluation/](script-coverage-evaluation/README.md) | jewon-kim |
 
 아직 옮기지 않은 기능은 [archive/](../archive/README.md)에 있습니다.
