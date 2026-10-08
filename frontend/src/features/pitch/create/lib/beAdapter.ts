@@ -64,14 +64,13 @@ export interface ParsedStandards {
 }
 
 /**
- * 나눈 결과. BE 가 아직 나누지 못해 결과 자리가 비어 오면 null 입니다.
+ * 나눈 결과.
  *
  * ★ 컨트롤러가 결과(`StandardTextResponseDTO`)를 `pitch_id` 키 **안에** 감싸 돌려줍니다.
  *   BE 가 감싸기를 풀면 여기 한 줄만 바꾸면 됩니다.
  */
-export function fromStandardsPosted(res: StandardsPosted): ParsedStandards | null {
+export function fromStandardsPosted(res: StandardsPosted): ParsedStandards {
   const result = res.pitch_id;
-  if (!result) return null;
   return {
     standards: result.standards.map((s) => s.standard),
     exceptText: result.except_standard ?? null,

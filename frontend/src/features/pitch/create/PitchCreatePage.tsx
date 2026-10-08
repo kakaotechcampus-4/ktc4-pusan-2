@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { Mascot } from './Mascot';
-import { StartConfirm } from './StartConfirm';
 import { InfoBar } from './InfoBar';
 import { VersionRail } from './VersionRail';
 import { selectBusy, selectInfoUnsaved, useCreateStore } from './createStore';
@@ -51,7 +50,6 @@ export function PitchCreatePage() {
   const pitchId = useCreateStore((s) => s.pitchId);
   const chosen = useCreateStore((s) => s.chosen);
   const navigate = useNavigate();
-  const [confirming, setConfirming] = useState(false);
   const unsaved = useCreateStore(selectInfoUnsaved);
   const busy = useCreateStore(selectBusy);
 
@@ -91,8 +89,9 @@ export function PitchCreatePage() {
       const picked = draft.slides.find((v) => v.version === version) ?? latestSlides(draft);
       return <SlidePane slide={picked} />;
     }
-    if (node === 'script')
-      return <ScriptPane script={pickedScript} onStart={() => setConfirming(true)} />;
+    // 확인 창 없이 바로 장치 점검으로 갑니다. 조합은 매핑 확인 화면에 이미 보이고,
+    // 조합이 맞지 않으면 "다음" 이 막혀 있습니다 (ScriptPane `canStart`)
+    if (node === 'script') return <ScriptPane script={pickedScript} onStart={start} />;
     const picked = draft.criteria.find((v) => v.version === version) ?? latestCriteria(draft);
     return <CriteriaPane criteria={picked} />;
   })();
@@ -134,7 +133,6 @@ export function PitchCreatePage() {
           </section>
         </main>
       </div>
-      {confirming && <StartConfirm onClose={() => setConfirming(false)} onGo={start} />}
     </div>
   );
 }

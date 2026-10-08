@@ -24,6 +24,9 @@ const MESSAGE: Record<string, string> = {
   /** 대본이 비었거나 50,000자를 넘었거나 쓸 수 없는 문자가 있을 때 */
   INVALID_SCRIPT: '대본을 올리지 못했어요. 비어 있거나 너무 길지 않은지 확인해 주세요.',
   SCRIPT_NOT_FOUND: '대본을 찾을 수 없어요. 대본 매핑을 다시 눌러 주세요.',
+  /** 평가기준 정리를 맡은 AI 가 실패했거나 답이 이상할 때 (502) */
+  STANDARD_PARSE_FAILED:
+    '평가기준을 정리하는 서버가 잠시 응답하지 않아요. 잠시 뒤 다시 정리해 주세요.',
   SCRIPT_ALREADY_PARSED: '이미 나눈 대본이에요. 잠시 뒤 결과가 보여요.',
   PRESENTATION_VERSION_NOT_FOUND: '발표자료를 찾을 수 없어요. 다시 올려 주세요.',
   TAKE_NOT_FOUND: '연습 기록을 찾을 수 없어요. 처음부터 다시 시작해 주세요.',

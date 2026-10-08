@@ -24,17 +24,21 @@ export interface MarkerScan {
   /**
    * 첫 구분자 **앞에** 구분되지 않은 글이 있나. 있으면 AI 는 대본 전체를 나누지 않습니다
    * ("일부 구간에만 구분이 있으면 fail").
+   *
+   * 맨 위 **한 줄**은 세지 않습니다 — AI 는 "대본 최상단에 제목이 있으면 제거"하고 나눕니다
+   * (`ai/research/script-parser/script_parser/prompt.py` 전처리 규칙). 두 줄 이상이면 제목이 아니라
+   * 구분 없는 본문으로 봅니다.
    */
   leadingText: boolean;
 }
 
 export function scanSlideMarkers(text: string): MarkerScan {
   const numbers: number[] = [];
-  let leadingText = false;
+  let leadingLines = 0;
   for (const line of text.split('\n')) {
     const n = markerNumber(line);
     if (n !== null) numbers.push(n);
-    else if (numbers.length === 0 && line.trim() !== '') leadingText = true;
+    else if (numbers.length === 0 && line.trim() !== '') leadingLines++;
   }
-  return { numbers, leadingText };
+  return { numbers, leadingText: leadingLines > 1 };
 }

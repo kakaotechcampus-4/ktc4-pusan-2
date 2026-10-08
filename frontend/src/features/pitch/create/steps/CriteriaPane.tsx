@@ -20,11 +20,7 @@ import { PaneHeading } from './PaneHeading';
  * 발표시간은 여기가 아니라 발표정보에서 정합니다.
  */
 
-/** BE 가 아직 나누지 못해 결과 자리가 비어 온 경우 (`add_pitch_standard_service` 미구현) */
-class StandardsNotReady extends Error {}
-
 function parseErrorMessage(error: unknown): string {
-  if (error instanceof StandardsNotReady) return '서버가 아직 평가기준을 나누지 못해요.';
   return `기준을 정리하지 못했어요. ${toMessage(error)}`;
 }
 
@@ -45,17 +41,23 @@ function parseButtonTone(hasItems: boolean): string {
   return 'bg-coral text-white hover:bg-coral-deep';
 }
 
-/** 왼쪽 아래 상자. 서버가 넣지 못한 내용이 있으면 그것을, 없으면 작성 요령을 보여 줍니다 */
+/**
+ * 왼쪽 아래 상자. 서버가 넣지 않은 내용이 있으면 그것을, 없으면 작성 요령을 보여 줍니다.
+ *
+ * `except_standard` 는 AI 의 `excluded` — **연습에서 측정할 수 없는 항목**입니다 (자료 디자인 ·
+ * 질의응답 · 발표 시간 등, AI `evaluation-criteria/prompt.py`). 글이 모호해서 빠진 게 아니므로
+ * 경고가 아니라 안내로 보여 줍니다. 정상 입력에도 자주 나옵니다.
+ */
 function Guide({ except }: { except: string | null }) {
   if (except) {
     return (
-      <div role="status" className="rounded-lg border border-coral/40 bg-coral-wash px-4 py-3">
-        <p className="flex items-center gap-2 text-sm font-bold text-coral-deep">
-          <AlertIcon className="h-4 w-4 fill-coral" />
-          다시 확인해 주세요
+      <div role="status" className="rounded-lg border border-line bg-panel px-4 py-3">
+        <p className="flex items-center gap-2 text-sm font-bold">
+          <AlertIcon />
+          평가기준에 넣지 않은 내용
         </p>
-        <p className="mt-1.5 pl-6 text-sm leading-relaxed">
-          아래 내용은 평가할 행동이 구체적이지 않아 반영하지 못했어요.
+        <p className="mt-1.5 pl-6 text-sm leading-relaxed text-stone">
+          연습 중에 측정할 수 없는 항목이라 평가기준에서 뺐어요. 발표 시간은 발표정보에서 정해요.
         </p>
         <p className="mt-1 pl-6 text-sm font-bold leading-relaxed">“{except}”</p>
       </div>
@@ -81,11 +83,8 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
   const [text, setText] = useState(criteria?.sourceText ?? '');
 
   const parse = useMutation({
-    mutationFn: async (source: string) => {
-      const parsed = fromStandardsPosted(await parseStandards(pitchId, source));
-      if (!parsed) throw new StandardsNotReady();
-      return parsed;
-    },
+    mutationFn: async (source: string) =>
+      fromStandardsPosted(await parseStandards(pitchId, source)),
     // 결과는 버전에 담습니다. 처음 정리하면 버전이 새로 생기며 이 칸이 다시 그려지는데,
     // 응답을 여기(useMutation)에만 두면 그 순간 "넣지 못한 내용"이 사라집니다
     onSuccess: (res, source) =>
@@ -133,7 +132,11 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
       )}
 
       <Guide except={except} />
-      {except && <p className="text-xs text-stone">위 입력문을 수정한 뒤 다시 정리해 주세요.</p>}
+      {except && (
+        <p className="text-xs text-stone">
+          측정할 수 있는 행동(속도 · 음량 · 시선 등)으로 바꿔 적으면 기준에 넣을 수 있어요.
+        </p>
+      )}
     </section>
   );
 }
@@ -164,7 +167,9 @@ function Result({ criteria }: { criteria: CriteriaVersion | null }) {
           <p className="text-sm text-stone">왼쪽에 기준을 작성하고 정리 버튼을 눌러 주세요.</p>
         </div>
       ) : (
-        <ol className="mt-4 flex flex-1 flex-col gap-2.5 overflow-y-auto">
+        // 개수 제한이 없어 높이를 잡아 둡니다 — 항목 5개쯤 보이고 나머지는 이 안에서 스크롤합니다.
+        // 높이가 없으면 목록이 카드를 늘려 화면 아래로 밀려납니다
+        <ol className="mt-4 flex max-h-88 flex-col gap-2.5 overflow-y-auto pr-1">
           {items.map((item, i) => (
             <li
               key={item.id}
