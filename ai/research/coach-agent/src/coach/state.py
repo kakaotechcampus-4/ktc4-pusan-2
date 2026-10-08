@@ -13,8 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .config import STATE_VERSION
 from .schemas import CoachingPlan
+from .version import STATE_VERSION
 from .vocab import FeedbackType, Instruction, Issue
 
 

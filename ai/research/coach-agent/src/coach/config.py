@@ -4,9 +4,10 @@
 
 - FE 1단 코치(`frontend/.../useCoach.ts`)의 값 — 침묵 5초, 대본 응시 70%, 15초 간격, 60초 쿨다운
 - stt-live v1 노트북 — CPM 275 / 350
-- 그 밖의 값 — 손으로 고른 시작점. 재생 평가(tools/replay.py)로 조정합니다
+- 그 밖의 값 — 손으로 고른 시작점. 재생 평가(coach_lab.replay)로 조정합니다
 
-기본값은 이 파일에만 있습니다. 바꿀 때는 코드를 고치지 말고 JSON 으로 덮어쓰세요 (load_config).
+기본값은 이 파일에만 있습니다. 바꿀 때는 코드를 고치지 말고 바꿀 값만 덮어쓰세요 (load_config).
+코어는 설정 파일을 읽지 않습니다 — research 에서는 coach_lab.replay --config 가 JSON 을 읽습니다.
 응답의 config_hash 가 어떤 설정으로 판단했는지를 기록합니다.
 """
 
@@ -14,17 +15,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from .vocab import Instruction, Issue
-
-SCHEMA_VERSION = "1.0"
-POLICY_VERSION = "coach-v1"
-#: coach_state 모양이 바뀌면 올린다. 다른 버전의 state 가 오면 버리고 새로 시작한다.
-STATE_VERSION = 1
 
 
 class _Section(BaseModel):
@@ -397,14 +392,13 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return out
 
 
-def load_config(path: str | Path | None = None, **override: Any) -> CoachConfig:
-    """기본값 위에 JSON 파일과 키워드 인자를 차례로 덮어쓴다.
+def load_config(**override: Any) -> CoachConfig:
+    """기본값 위에 키워드 인자를 덮어쓴다.
 
     덮어쓰지 않은 값은 기본값이 남는다 — 바꾸고 싶은 값만 적으면 된다.
+    파일은 읽지 않는다. 설정 JSON 은 부르는 쪽이 dict 로 읽어 ``load_config(**data)`` 로 넘긴다.
     """
     merged = CoachConfig().model_dump(mode="json")
-    if path is not None:
-        merged = _deep_merge(merged, json.loads(Path(path).read_text(encoding="utf-8")))
     if override:
         merged = _deep_merge(merged, override)
     return CoachConfig.model_validate(merged)

@@ -9,7 +9,9 @@ from typing import Any
 
 import pytest
 
+from coach.config import load_config
 from coach_lab.paths import SCENARIOS_DIR
+from coach_lab.replay import load_config_file
 from coach_lab.simulator import Scenario, check_expect, run
 
 SCENARIOS = sorted(SCENARIOS_DIR.glob("*.json"))
@@ -62,3 +64,12 @@ def test_review_evidence_numbers_are_finite_and_json():
     blob = result.review.model_dump(mode="json")
     assert all(math.isfinite(v) for v in _walk(blob))
     json.dumps(blob)
+
+
+def test_config_file_is_read_outside_the_core(tmp_path: Path):
+    """설정 덮어쓰기 JSON 은 coach_lab 이 읽고, 코어는 같은 값을 키워드로 받는다."""
+    path = tmp_path / "override.json"
+    path.write_text(json.dumps({"policy": {"cooldown_ms": 45_000}}), encoding="utf-8")
+    from_file = load_config_file(path)
+    assert from_file.policy.cooldown_ms == 45_000
+    assert from_file.config_hash() == load_config(policy={"cooldown_ms": 45_000}).config_hash()

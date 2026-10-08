@@ -23,7 +23,7 @@ from typing import Any
 from . import candidates as candidates_mod
 from . import eligibility, episodes, priority, reflection, slides
 from .candidates import Candidate
-from .config import DEFAULT_CONFIG, POLICY_VERSION, CoachConfig
+from .config import DEFAULT_CONFIG, CoachConfig
 from .evaluators import run_all
 from .evaluators import speech as speech_eval
 from .evaluators.base import Tick
@@ -50,6 +50,7 @@ from .state import (
     initial_state,
     load_state,
 )
+from .version import POLICY_VERSION
 from .vocab import (
     Action,
     CandidateStatus,

@@ -49,6 +49,7 @@
     }
   },
   "config_hash": "0f4bc4102193",
+  "policy_version": "coach-v1",
   "results": {
     "clean": {
       "A 기준선(v1.0)": {
