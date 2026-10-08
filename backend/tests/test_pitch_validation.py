@@ -62,7 +62,7 @@ def test_update_rejects_title_over_50_with_422(
 ) -> None:
     pitch_id = _add(client, auth_headers).json()["pitch_id"]
 
-    response = client.put(
+    response = client.patch(
         f"/api/pitches/update/{pitch_id}", json={**VALID, "title": "가" * 51}, headers=auth_headers
     )
 
