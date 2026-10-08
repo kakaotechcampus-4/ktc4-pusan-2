@@ -1,0 +1,37 @@
+# Gaze evidence for the coach and review agents (vision.evidence.gaze).
+# Frame decisions -> 1 s slices -> timeline -> issues / take summary / intervention outcome.
+# All values are initial, not measured.
+
+# One record per slice: decided by majority of its frames (UNMEASURED below min_frames).
+slice_ms: 1000
+min_frames_per_slice: 4
+slice_vote_threshold: 0.6
+
+# Realtime windows (the coach reads the recent 5-30 s).
+short_window_ms: 5000
+long_window_ms: 30000
+
+# Continuous-run issues: an issue from *_min_ms, severity 1.0 at *_full_ms.
+script_min_ms: 3000
+script_full_ms: 10000
+screen_min_ms: 5000
+screen_full_ms: 15000
+away_min_ms: 2000
+away_full_ms: 8000
+
+# Eye contact below this share of the measured time over the long window.
+low_eye_contact_ratio: 0.30
+low_eye_contact_min_measured_ms: 15000
+
+# Gaze not usable (coach must not give gaze feedback) over the short window.
+unmeasurable_coverage: 0.5
+unmeasurable_reliability: 0.5
+
+# Runs shorter than this are not reported as segments.
+segment_min_ms: 1000
+
+# Intervention outcome: target ratio over [t-before, t) vs [t+delay, t+delay+after).
+outcome_before_ms: 5000
+outcome_delay_ms: 5000
+outcome_after_ms: 5000
+outcome_min_change: 0.2

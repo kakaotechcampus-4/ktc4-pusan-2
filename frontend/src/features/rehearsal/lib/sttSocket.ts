@@ -26,6 +26,9 @@ import {
  *      (OPEN 만 보고 보내면 새 프레임이 버퍼를 앞질러 나가고, 서버는 역행한
  *       seq 를 버린다 — 그만큼 전사가 사라진다)
  *   2. `seq` 는 Take 안에서 단조 증가한다. **재연결해도 리셋하지 않는다.**
+ *      탭을 새로고침하면 이 인스턴스가 새로 생겨 1 부터 다시 센다. offset 은 이어받은 무대
+ *      시계를 따라 이어진다. 서버는 새 연결의 첫 프레임 seq 가 뒤로 간 것을 보고 Deepgram
+ *      세션을 갈아 그 offset 으로 새 구간을 받는다 (새로고침하는 동안의 공백을 무음으로 메우지 않는다).
  *   3. close 1000·1008 이면 재연결하지 않는다. 그 외에는 백오프 3회, 그 뒤로는
  *      4~6초마다 다시 붙어 본다. 횟수로는 포기하지 않고, 끊긴 지 30분이 지나야 멈춘다.
  *   4. `stop` 을 보낸 뒤 `stt_status.state === 'closed'` 를 기다리되 **3초까지만** 기다린다.
@@ -141,6 +144,8 @@ export class SttSocket {
 
   private retries = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 토큰을 받아 소켓을 만드는 중. 이때 끝내면 소켓이 생기기를 기다렸다가 `stop` 을 보냅니다 */
+  private connecting = false;
   /** 마지막으로 끊긴 시각. 다시 붙으면(`ready`) 비웁니다 */
   private disconnectedAt: number | null = null;
 
@@ -225,8 +230,10 @@ export class SttSocket {
         this.clearRetry();
         this.armStopTimer(STOP_WAIT_MS);
         this.sendStop();
-      } else if (this.pending.length > 0 && this.retryTimer !== null) {
-        // 예약된 재연결을 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다
+      } else if (this.connecting || (this.pending.length > 0 && this.retryTimer !== null)) {
+        // 붙는 중이거나 예약된 재연결이 있으면 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다.
+        // 붙는 중이면 버퍼가 비어 있어도 기다립니다 — `stop` 이 가야 서버가 끊긴 연결을
+        // 30초 기다리지 않고 바로 마지막 전사를 정리합니다 (`stopTakeStream`)
         this.armStopTimer(STOP_WAIT_MS);
       } else {
         this.dispose();
@@ -290,6 +297,15 @@ export class SttSocket {
   }
 
   private async connect(): Promise<void> {
+    this.connecting = true;
+    try {
+      await this.open();
+    } finally {
+      this.connecting = false;
+    }
+  }
+
+  private async open(): Promise<void> {
     const getToken = this.options.getToken ?? defaultGetToken;
     const renew = this.renewToken;
     this.renewToken = false;
@@ -453,4 +469,26 @@ export class SttSocket {
     this.stopResolvers = [];
     resolvers.forEach((resolve) => resolve());
   }
+}
+
+/**
+ * 소켓을 잠깐 열어 `stop` 만 보내고 `closed` 를 기다립니다. 오디오는 보내지 않습니다.
+ *
+ * 종료 중에 새로고침했을 때 씁니다. 새로고침 전에 `stop` 이 서버에 못 닿았으면 서버는 끊긴
+ * 연결을 30초 기다린 뒤에야 마지막 전사를 정리하는데, 그 사이 `/complete` 가 먼저 갑니다.
+ * 이미 닿았으면 서버가 스트림을 새로 열었다가 바로 닫습니다. 기다리는 시간은 `stop()` 과 같이
+ * 3초까지이고, 실패해도 던지지 않습니다 — 종료는 이것 없이도 이어갑니다.
+ */
+export function stopTakeStream(
+  takeId: string,
+  options: Pick<SttSocketOptions, 'createSocket' | 'getToken'> = {},
+): Promise<void> {
+  const socket = new SttSocket({
+    takeId,
+    onTranscript: () => undefined,
+    onState: () => undefined,
+    ...options,
+  });
+  socket.start();
+  return socket.stop();
 }

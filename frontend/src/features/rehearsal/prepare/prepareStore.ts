@@ -69,8 +69,6 @@ interface PrepareState {
    * 배치 확인을 건너뜁니다 — 카메라를 바꾸면 키가 달라져 다시 확인합니다.
    */
   placement: (PlacementResult & { overridden: boolean; layoutSignature: string }) | null;
-  /** '소리만으로 계속하기' — 시선 없이 진행합니다 (excludedReason: USER_DECLINED) */
-  gazeDeclined: boolean;
   scriptMode: ScriptMode;
   /** 사용자가 직접 골랐나. 서버 기본값으로 덮어쓰지 않기 위한 표시입니다 */
   scriptModeTouched: boolean;
@@ -88,9 +86,13 @@ interface PrepareState {
    */
   clearCalibration: () => void;
   setPlacement: (placement: PrepareState['placement']) => void;
-  declineGaze: () => void;
   setScriptMode: (mode: ScriptMode, byUser?: boolean) => void;
   setDevices: (devices: DeviceChoice) => void;
+  /**
+   * 리허설을 새로고침했을 때 세션 행에 남겨 둔 값으로 되살립니다 (`SessionRow.prepare`).
+   * 이 스토어는 메모리에만 있어서 새로고침하면 비어 있습니다.
+   */
+  restore: (prepare: Pick<PrepareState, 'calibration' | 'devices'>) => void;
   reset: () => void;
 }
 
@@ -98,7 +100,6 @@ const INITIAL = {
   calibration: null,
   calibrationAdvice: null,
   placement: null,
-  gazeDeclined: false,
   scriptMode: 'HIGHLIGHT' as ScriptMode,
   scriptModeTouched: false,
   devices: {} as DeviceChoice,
@@ -107,12 +108,12 @@ const INITIAL = {
 export const usePrepareStore = create<PrepareState>((set) => ({
   ...INITIAL,
   setCalibration: (summary, advice = null) =>
-    set({ calibration: summary, calibrationAdvice: advice, gazeDeclined: false }),
+    set({ calibration: summary, calibrationAdvice: advice }),
   clearCalibration: () => set({ calibration: null, calibrationAdvice: null, placement: null }),
   setPlacement: (placement) => set({ placement }),
-  declineGaze: () => set({ gazeDeclined: true, calibration: null, calibrationAdvice: null }),
   setScriptMode: (mode, byUser = true) =>
     set((s) => ({ scriptMode: mode, scriptModeTouched: s.scriptModeTouched || byUser })),
   setDevices: (devices) => set({ devices }),
+  restore: ({ calibration, devices }) => set({ calibration, devices }),
   reset: () => set(INITIAL),
 }));

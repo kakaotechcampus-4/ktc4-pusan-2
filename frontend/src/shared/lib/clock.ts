@@ -14,8 +14,12 @@ export class PresentationClock {
   private t0: number | null = null;
   private stoppedAt: number | null = null;
 
-  start(): void {
-    this.t0 = performance.now();
+  /**
+   * @param fromMs 이 시점부터 잽니다. 새로고침한 Take 를 이어받을 때 씁니다 —
+   *   0 부터 다시 재면 시선·슬라이드·코치·전사 기록이 새로고침 전 기록과 시간대가 겹칩니다.
+   */
+  start(fromMs: Ms = 0): void {
+    this.t0 = performance.now() - fromMs;
     this.stoppedAt = null;
   }
 

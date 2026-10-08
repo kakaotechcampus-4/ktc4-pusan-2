@@ -18,7 +18,7 @@
 
 | 기능 | 하는 일 | 상태 | 위치 | 담당 |
 |---|---|---|---|---|
-| 시선 | 웹캠으로 발표자가 카메라 · 화면 · 대본 · 기타 중 어디를 보는지 판정 | v1.1 · 브라우저 엔진 + 테스트 | `archive/…/gaze-tracking/` | jewon-kim |
+| 시선 | 웹캠으로 발표자가 카메라 · 화면 · 대본 · 기타 중 어디를 보는지 브라우저에서 판정하고, 1초 기록으로 코치 이슈 · 테이크 요약을 만든다 | v1.1 · 브라우저 엔진 + 서버 코어 + 테스트 | [`research/gaze-tracking/`](research/gaze-tracking/README.md) | jewon-kim |
 | 실시간 코치 | 1초마다 말을 걸지, 무엇을 말할지 정하고 연습 뒤 리뷰 근거를 만든다 | v1 · 패키지 + 테스트 | [`research/coach-agent/`](research/coach-agent/README.md) | jewon-kim |
 | 대본 전달도 | 대본으로 슬라이드별 평가 기준을 만들고, STT가 그 내용을 얼마나 전달했는지 채점 | v1 · 패키지 + 테스트 | [`research/script-coverage-evaluation/`](research/script-coverage-evaluation/README.md) | jewon-kim |
 | 대본 파싱 | 대본을 슬라이드별로 나누고 키워드를 뽑는다 | v1 · 노트북 | `archive/…/script-parser/` | seojin-lee |

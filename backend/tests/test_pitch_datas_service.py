@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch import service
-from pitch_coach_backend.module.pitch.dto import PitchDTO
+from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO
 from pitch_coach_backend.module.pitch.entity import (
     PresentationVersion,
     ScriptVersion,
@@ -20,7 +20,7 @@ def _make_pitch(db: Session, user_id: uuid.UUID, title: str = "기존 발표") -
     return service.add_pitch_service(
         db,
         user_id,
-        PitchDTO(title=title, time_limit_sec=300, presentation_date=date(2026, 3, 1)),
+        PitchSaveRequestDTO(title=title, time_limit_sec=300, presentation_date=date(2026, 3, 1)),
     )
 
 
@@ -49,9 +49,9 @@ def _make_script(db: Session, pitch_id: uuid.UUID, version: int) -> ScriptVersio
 
 
 def _make_standard(
-    db: Session, pitch_id: uuid.UUID, version: int, title: str = "평가 기준"
+    db: Session, pitch_id: uuid.UUID, version: int, position: int = 1, title: str = "평가 기준"
 ) -> Standards:
-    standard = Standards(pitch_id=pitch_id, version=version, title=title)
+    standard = Standards(pitch_id=pitch_id, version=version, position=position, title=title)
     db.add(standard)
     db.flush()
     return standard

@@ -1,0 +1,36 @@
+{
+  "name": "gaze-local-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Browser port of the gaze v1 head-pose engine, plus a local demo page. Shaped for the frontend GazeClassifier contract.",
+  "scripts": {
+    "assets": "node scripts/copy-assets.mjs",
+    "dev": "npm run assets && vite",
+    "build": "npm run assets && npm run typecheck && vite build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.fe.json && tsc --noEmit -p tsconfig.engine.json",
+    "lint": "oxlint --max-warnings=0 src/engine src/worker",
+    "test": "vitest run",
+    "fixtures": "cd .. && uv run python tools/export_config.py && uv run python tools/make_fixtures.py",
+    "smoke": "npm run assets && node scripts/smoke.mjs",
+    "smoke:prod": "npm run assets && node scripts/smoke.mjs --no-isolation",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "bench": "npm run assets && node scripts/bench.mjs"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "1.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "oxlint": "^1.87.0",
+    "prettier": "^3.9.9",
+    "puppeteer-core": "^25.12.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
