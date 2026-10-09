@@ -176,6 +176,62 @@ class Current(_In):
     speech: SpeechInput | None = None
 
 
+class GazeRecordIn(_In):
+    """FE 가 보내는 시선 1초 기록(#153)."""
+
+    t_ms: int = Field(ge=0)
+    duration_ms: int = Field(default=1000, gt=0)
+    state: str
+    direction: str | None = None
+    confidence: float | None = None
+    reliability: float | None = None
+    issues: list[str] = Field(default_factory=list)
+    frames: int | None = None
+
+
+class VoiceRecordIn(_In):
+    """FE 가 보내는 음량 1초 기록(#155). 시선 판정도 같은 1초들의 voiced_ms 를 쓴다."""
+
+    t_ms: int = Field(ge=0)
+    duration_ms: int = Field(default=1000, gt=0)
+    level_db: float | None = None
+    voiced_ms: int = 0
+    silence_ms: int = 0
+    audio_live: bool = True
+
+
+class WordIn(_In):
+    """STT 확정 단어."""
+
+    word: str
+    start_ms: int
+    end_ms: int
+
+
+class SlideNow(_In):
+    """지금 장과 그 장이 시작된 시각."""
+
+    number: int
+    started_ms: int
+
+
+class CoachInputs(_In):
+    """판정 모듈에 넘길 원자료. 창 길이는 judges.py 의 GAZE_VOICE_WINDOW_MS · WORDS_WINDOW_MS."""
+
+    gaze_records: list[GazeRecordIn] = Field(default_factory=list)
+    voice_records: list[VoiceRecordIn] = Field(default_factory=list)
+    words: list[WordIn] = Field(default_factory=list)
+    utterance_ends: list[int] = Field(default_factory=list)
+    stt_status: str = "ok"
+    slide: SlideNow | None = None
+
+
+class Calibration(_In):
+    """Take 밖에서 잡아 둔 값. base_level_db 가 null 이면 코치가 Take 첫 발화로 잡는다."""
+
+    base_level_db: float | None = None
+
+
 class CoachRequest(_In):
     schema_version: str = SCHEMA_VERSION
     take_id: str
@@ -186,6 +242,9 @@ class CoachRequest(_In):
     missions: list[Mission] = Field(default_factory=list)
     memory: Memory = Field(default_factory=Memory)
     current: Current = Field(default_factory=Current)
+    #: 판정 모듈에 넘길 원자료와 보정 값. 다음 PR 에서 current 를 대신한다
+    inputs: CoachInputs | None = None
+    calibration: Calibration = Field(default_factory=Calibration)
     #: 지난 응답의 coach_state 그대로. 첫 요청이면 null. BE 는 내용을 몰라도 된다
     coach_state: dict[str, Any] | None = None
 

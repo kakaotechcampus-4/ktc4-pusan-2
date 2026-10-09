@@ -134,6 +134,13 @@ class Hold(_S):
     since_ms: int
 
 
+class Cursor(_S):
+    """판정 모듈 하나의 커서. 여기까지는 이미 셌다."""
+
+    since_ms: int = 0
+    words_since_ms: int = -1
+
+
 class CoachState(_S):
     v: int = STATE_VERSION
     plan: CoachingPlan = Field(default_factory=CoachingPlan)
@@ -180,6 +187,22 @@ class CoachState(_S):
     #: level_db 입력에서 코치가 잡은 평소 목소리 레벨(dBFS)과, 잡기 전까지 모은 말한 1초의 레벨
     voice_baseline_db: float | None = None
     voice_baseline_samples: list[float] = Field(default_factory=list)
+    #: 모듈 이름(gaze · pace · volume · filler · timing) → 커서
+    cursors: dict[str, Cursor] = Field(default_factory=dict)
+    #: 판정 결과 tally 의 누적: 영역 → 이름 → 합. slide_totals 는 장 번호(문자열)별 같은 모양
+    totals: dict[str, dict[str, float]] = Field(default_factory=dict)
+    slide_totals: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
+    #: 장 번호별로 STT 를 믿을 수 있던 시간 (timing 이 글자 수로 진행도를 쟤도 되는지 정한다)
+    slide_stt_ok_ms: dict[str, int] = Field(default_factory=dict)
+    #: 기준 음량(dBFS)과 출처(CALIBRATION · TAKE), 잡기 전까지 모은 말한 1초의 레벨
+    base_level_db: float | None = None
+    base_level_source: str | None = None
+    baseline_samples: list[float] = Field(default_factory=list)
+    #: 모듈별 criteria_version. 처음 본 것과 가장 최근 것
+    criteria_versions: dict[str, str] = Field(default_factory=dict)
+    latest_criteria_versions: dict[str, str] = Field(default_factory=dict)
+    #: 코치가 센 시간 구간 [시작, 끝] (합쳐 둠). 비면 Take 복구(#151)가 그 시간을 다시 요청한다
+    covered: list[list[int]] = Field(default_factory=list)
     #: 지금 장의 누적. 필드 추가는 기본값이 있으면 STATE_VERSION 을 올리지 않는다 (이전 state 도
     #: 읽힌다)
     slide_acc: SlideAcc | None = None
