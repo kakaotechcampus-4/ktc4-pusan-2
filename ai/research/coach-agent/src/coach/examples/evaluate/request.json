@@ -1663,12 +1663,6 @@
         "start_ms": 60000,
         "last_seen_ms": 91000,
         "peak_severity": 1.0,
-        "peak_evidence": {
-          "projected_end_ms": 105000,
-          "early_limit_ms": 270000,
-          "target_ms": 300000,
-          "projected_end_ratio": 0.3889
-        },
         "intervention_ids": [
           "iv-73000"
         ],
@@ -1692,12 +1686,6 @@
         "start_ms": 88000,
         "last_seen_ms": 91000,
         "peak_severity": 0.6,
-        "peak_evidence": {
-          "script_ratio": 0.7,
-          "script_run_ms": 7000,
-          "uncertain_ratio": 0.0,
-          "window_ms": 10000
-        },
         "intervention_ids": [],
         "suppressed_reasons": [
           "NOT_PERSISTENT",
@@ -1995,25 +1983,55 @@
         91000
       ]
     ],
-    "slide_acc": {
-      "slide_number": 3,
-      "start_ms": 60000,
-      "target_ms": 90000,
-      "script_chars": 450,
-      "total_ms": 32000,
-      "gaze_valid_ms": 32000,
-      "gaze_script_ms": 7555.5,
-      "gaze_unusable_ms": 0,
-      "speech_ok_ms": 32000,
-      "cpm_ms": 32000,
-      "cpm_weighted": 9600000.0,
-      "filler_count": 1,
-      "audio_live_ms": 32000,
-      "speaking_ms": 32000,
-      "db_ms": 32000,
-      "db_weighted": 0.0,
-      "long_silence_ms": 0
-    }
+    "visits": [
+      {
+        "slide_number": 3,
+        "start_ms": 59390,
+        "target_ms": 90000,
+        "tally": {
+          "TIME": {
+            "elapsed_ms": 31610.0,
+            "planned_ms": 31610.0
+          },
+          "GAZE": {
+            "camera_ms": 21000.0,
+            "total_ms": 31000.0,
+            "measured_ms": 31000.0,
+            "speaking_ms": 31000.0,
+            "script_ms": 10000.0,
+            "reading_ms": 10000.0,
+            "reading_runs": 1.0
+          },
+          "SPEED": {
+            "ok_ms": 31000.0,
+            "total_ms": 31000.0,
+            "chars": 111.0,
+            "speak_ms": 22550.0
+          },
+          "VOLUME": {
+            "voiced_ms": 23320.0,
+            "voiced_energy": 26.165470354321776,
+            "low_ms": 0.0,
+            "level_voiced_ms": 23320.0,
+            "base_db_ms": -687940.0,
+            "audio_live_ms": 31000.0,
+            "total_ms": 31000.0
+          },
+          "PAUSE": {
+            "long_silence_count": 0.0,
+            "audio_live_ms": 31000.0,
+            "total_ms": 31000.0
+          },
+          "FILLER": {
+            "elapsed_ms": 31000.0,
+            "total_ms": 31000.0,
+            "filler_count": 1.0,
+            "filler_t1": 1.0,
+            "filler_word:음": 1.0
+          }
+        }
+      }
+    ]
   },
   "script_used": null
 }

@@ -115,7 +115,7 @@ def test_last_window_failure_still_closes_the_slide_it_switched_to(
     monkeypatch.setattr(core_mod, "_round", boom)
     fin = finish(s, 11_000, inputs={"slide": {"number": 2, "started_ms": 10_500}})
     closed = [(e.slide_number, e.start_ms, e.end_ms) for e in fin.events if e.kind == "SLIDE"]
-    assert closed == [(1, 1_000, 10_500), (2, 10_500, 11_000)]  # 1번 장 누적은 첫 요청부터
+    assert closed == [(1, 0, 10_500), (2, 10_500, 11_000)]  # 방문은 장이 시작된 시각부터
     assert [x.slide_number for x in fin.take_result.areas["GAZE"].slides] == [1, 2]
 
 

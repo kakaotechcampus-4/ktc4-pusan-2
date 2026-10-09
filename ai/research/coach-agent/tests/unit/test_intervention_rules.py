@@ -75,11 +75,8 @@ def _pending(
 ) -> PendingOutcome:
     return PendingOutcome(
         intervention_id="iv-1",
-        candidate_id="c-1",
         issue_type=issue,
         area=ISSUE_TYPE[issue],
-        instruction=Instruction.CONTINUE,
-        variant="default",
         step=0,
         strategy_key=issue.value,
         slide_number=slide,

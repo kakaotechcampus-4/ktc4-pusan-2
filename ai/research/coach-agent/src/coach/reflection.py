@@ -60,11 +60,8 @@ def register(tick: Tick, c: Candidate, intervention_id: str) -> None:
     tick.state.pending.append(
         PendingOutcome(
             intervention_id=intervention_id,
-            candidate_id=c.candidate_id,
             issue_type=c.issue_type,
             area=c.area,
-            instruction=c.instruction,
-            variant=c.variant,
             step=c.step,
             strategy_key=c.strategy_key,
             slide_number=c.slide_number,
@@ -90,11 +87,6 @@ def resolve(tick: Tick, sink: EventSink) -> None:
             OutcomeEvent,
             t_ms=tick.t,
             intervention_id=pending.intervention_id,
-            candidate_id=pending.candidate_id,
-            issue_type=pending.issue_type,
-            area=pending.area,
-            instruction=pending.instruction,
-            slide_number=pending.slide_number,
             outcome=outcome,
             metric=pending.metric,
             before=measured.before,
@@ -305,7 +297,6 @@ def _update_strategy(tick: Tick, p: PendingOutcome, measured: Measured, sink: Ev
             from_variant=current.variant,
             to_instruction=to.instruction,
             to_variant=to.variant,
-            failures=strat.failures,
             intervention_id=p.intervention_id,
         )
     elif rule.exhaustible and not strat.exhausted:
@@ -319,6 +310,5 @@ def _update_strategy(tick: Tick, p: PendingOutcome, measured: Measured, sink: Ev
             change=StrategyChange.GAVE_UP,
             from_instruction=current.instruction,
             from_variant=current.variant,
-            failures=strat.failures,
             intervention_id=p.intervention_id,
         )

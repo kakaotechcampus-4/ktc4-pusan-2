@@ -18,7 +18,7 @@ def test_waits_until_problem_persists_then_intervenes(session: Session):
     assert fb.evidence["start_ms"] == 10_000 and fb.evidence["end_ms"] == 13_000
     assert fb.evidence["script_ratio"] == 0.9
     shown = [e for e in session.events if e.kind == "INTERVENTION"]
-    assert shown[-1].candidate_id == "GAZE_ON_SCRIPT-10000"
+    assert shown[-1].issue_type.value == "GAZE_ON_SCRIPT" and shown[-1].t_ms == 13_000
 
 
 def test_one_instruction_at_a_time():

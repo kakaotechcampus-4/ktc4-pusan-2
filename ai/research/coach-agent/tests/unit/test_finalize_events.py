@@ -22,7 +22,6 @@ def test_finalize_closes_open_episodes_and_pending_outcomes(session: Session):
     outcome = next(e for e in fin.events if e.kind == "OUTCOME")
     assert outcome.outcome.value == "NOT_MEASURED"
     episode = next(e for e in fin.events if e.kind == "EPISODE")
-    assert episode.closed_by == "TAKE_END"
     assert (episode.start_ms, episode.end_ms) == (10_000, 15_000)
 
 

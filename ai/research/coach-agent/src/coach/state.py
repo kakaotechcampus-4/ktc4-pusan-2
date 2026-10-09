@@ -14,7 +14,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .version import STATE_VERSION
-from .vocab import SHARED_LADDER, SLIDE_SCOPED, FeedbackType, Instruction, Issue
+from .vocab import SHARED_LADDER, SLIDE_SCOPED, FeedbackType, Issue
 
 
 class _S(BaseModel):
@@ -45,7 +45,6 @@ class EpisodeState(_S):
     start_ms: int
     last_seen_ms: int
     peak_severity: float = 0.0
-    peak_evidence: dict[str, Any] = Field(default_factory=dict)
     intervention_ids: list[str] = Field(default_factory=list)
     suppressed_reasons: list[str] = Field(default_factory=list)
     #: 센서를 믿을 수 있던 / 없던 시간. 리뷰가 근거 없는 지적을 하지 않게 한다
@@ -57,32 +56,20 @@ class EpisodeState(_S):
     severity_ms: float = 0.0
 
 
-class SlideAcc(_S):
-    """지금 장에 머무는 동안의 누적. 장이 바뀌면 SLIDE 이벤트가 되어 리뷰의 장별 표가 된다.
+class SlideVisit(_S):
+    """장 방문 하나. 방문이 끝나고 그 장의 단어가 다 확정되면 SLIDE 이벤트가 되고 여기서 빠진다.
 
-    평균은 '값 × 시간'의 합으로 남긴다 — 요청 간격이 흔들려도 시간 가중 평균이 된다.
-    장 정보가 없는 발표면 slide_number 가 null 인 누적 하나가 Take 전체를 덮는다.
+    tally 는 그 방문에 속한 조각의 합이다(영역 → 이름 → 합). 단어 조각은 말한 시각의 방문에
+    들어가므로, 확정이 늦은 단어도 말한 장 방문에 붙는다.
     """
 
-    #: null 필드는 보내지 않으므로(dump_state) null 이 될 수 있는 필드는 모두 기본값이 있어야 한다
-    slide_number: int | None = None
+    slide_number: int
     start_ms: int
-    #: 대본 분석이 준 이 장의 계획. 종료 처리(finalize)에는 계획이 오지 않아 여기 담아 둔다
+    #: 지금 방문 중이면 null (null 은 보내지 않으므로 기본값이 있어야 한다)
+    end_ms: int | None = None
+    #: 대본 분석이 준 이 장의 목표 시간. 계획에 없으면 null
     target_ms: int | None = None
-    script_chars: int | None = None
-    total_ms: int = 0
-    gaze_valid_ms: int = 0
-    gaze_script_ms: float = 0.0
-    gaze_unusable_ms: int = 0
-    speech_ok_ms: int = 0
-    cpm_ms: int = 0
-    cpm_weighted: float = 0.0
-    filler_count: int = 0
-    audio_live_ms: int = 0
-    speaking_ms: int = 0
-    db_ms: int = 0
-    db_weighted: float = 0.0
-    long_silence_ms: int = 0
+    tally: dict[str, dict[str, float]] = Field(default_factory=dict)
 
 
 class StrategyState(_S):
@@ -97,11 +84,8 @@ class PendingOutcome(_S):
     """효과를 재기로 한 개입."""
 
     intervention_id: str
-    candidate_id: str
     issue_type: Issue
     area: FeedbackType
-    instruction: Instruction
-    variant: str
     step: int
     strategy_key: str
     slide_number: int | None = None
@@ -192,9 +176,8 @@ class CoachState(_S):
     latest_criteria_versions: dict[str, str] = Field(default_factory=dict)
     #: 코치가 센 시간 구간 [시작, 끝] (합쳐 둠). 비면 Take 복구(#151)가 그 시간을 다시 요청한다
     covered: list[list[int]] = Field(default_factory=list)
-    #: 지금 장의 누적. 필드 추가는 기본값이 있으면 STATE_VERSION 을 올리지 않는다 (이전 state 도
-    #: 읽힌다)
-    slide_acc: SlideAcc | None = None
+    #: 아직 SLIDE 이벤트를 내지 않은 장 방문(시간순). 마지막이 지금 방문 중인 장이다
+    visits: list[SlideVisit] = Field(default_factory=list)
 
 
 def initial_state() -> CoachState:
