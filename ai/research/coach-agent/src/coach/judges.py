@@ -223,7 +223,7 @@ def _per_slide(state: CoachState, area: str, name: str) -> dict[str, int]:
 
 
 def _track_stt(state: CoachState, inputs: CoachInputs, t: int, out: JudgeRun) -> None:
-    """STT 를 믿을 수 있는지 정하고 stt_gap · stt_ok_since_ms 를 갱신한다(core._open_tick 과 같다).
+    """STT 를 믿을 수 있는지 정하고 stt_gap · stt_ok_since_ms 를 갱신한다.
 
     오디오가 멈추면 STT 도 못 듣는다 — 상태가 ok 여도 그동안의 단어는 믿지 않는다. 모듈에는
     BE 의 stt_status 를 그대로 넘기고, 오디오 정지는 코치의 slide_stt_ok_ms 계산에만 쓴다.

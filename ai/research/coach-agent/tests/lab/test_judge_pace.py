@@ -49,7 +49,7 @@ def test_pace_not_measurable_cases():
     assert not few.measurable and few.state == "UNKNOWN" and few.metrics["cpm"] is None
     bad = pace.judge({"words": steady_words(30_000, 420), "stt_status": "degraded"}, 30_000)[0]
     assert not bad.measurable and bad.state == "UNKNOWN" and bad.metrics["cpm"] is None
-    # 현재 평가기처럼 후보는 만들되 쓸 수 없게 둔다
+    # 옛 평가기처럼 후보는 만들되 쓸 수 없게 둔다
     assert bad.issues and not bad.issues[0].actionable
     assert merged([bad]).get("ok_ms", 0) == 0
 

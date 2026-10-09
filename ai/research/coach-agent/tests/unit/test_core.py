@@ -34,6 +34,12 @@ def test_internal_error_on_first_tick_still_returns_a_state(monkeypatch: pytest.
     assert resp.coach_state["v"] == STATE_VERSION
 
 
+def test_internal_error_with_an_old_state_returns_a_new_state(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(core_mod.measure, "build_tick", lambda *a: 1 / 0)
+    resp = decide_safe(make_request(2000, state={"v": STATE_VERSION - 1}), fake_judges())
+    assert resp.coach_state["v"] == STATE_VERSION
+
+
 def test_bad_request_is_not_swallowed():
     """형식 오류는 API 가 422 로 바꾼다. 코치가 삼키면 BE 가 원인을 모른다."""
     with pytest.raises(ValidationError):

@@ -6,8 +6,6 @@ from typing import Any
 
 from coach.schemas import JudgmentResult
 
-IN_PAUSE = {"relative_db": None, "silence_ms": 400, "audio_live": True}
-
 
 def check_shape(result: JudgmentResult, since: int = 0) -> None:
     """계약 모양: 검증을 통과하고, 문제 영역 · 심각도 범위 · 집계 시각 · 커서가 맞다."""

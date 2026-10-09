@@ -34,7 +34,8 @@ class Detection:
 
 @dataclass
 class Tick:
-    """decide() 한 번이 들고 다니는 맥락. 평가기는 metrics 를 채우고 detections 를 더한다."""
+    """decide() 한 번이 들고 다니는 맥락. measure.build_tick 이 판정 결과로 metrics 와 detections 를
+    채운다."""
 
     req: CoachRequest
     cfg: CoachConfig
