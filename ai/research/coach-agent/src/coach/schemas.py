@@ -401,6 +401,33 @@ class CoachResponse(_Out):
 # ══════════════════════════════════════════════════════════════════════════
 
 
+class ReplayWord(WordIn):
+    """Take 전체 원자료의 확정 단어. 확정된 시각이 지난 요청에만 싣는다."""
+
+    final_at_ms: int
+
+
+class SttStatusChange(_In):
+    """STT 상태가 바뀐 시각과 바뀐 상태."""
+
+    t_ms: int
+    status: str
+
+
+class ReplayInput(_In):
+    """Take 전체 원자료. 409 REPLAY_REQUIRED 를 받았거나 coach_state 를 잃었을 때만 싣는다.
+
+    코치는 이것으로 BE 가 1초마다 보냈을 /coach/evaluate 요청을 다시 만들어 처음부터 판정한다.
+    """
+
+    gaze_records: list[GazeRecordIn] = Field(default_factory=list)
+    voice_records: list[VoiceRecordIn] = Field(default_factory=list)
+    stt_status_changes: list[SttStatusChange] = Field(default_factory=list)
+    words: list[ReplayWord] = Field(default_factory=list)
+    utterance_ends: list[int] = Field(default_factory=list)
+    slides: list[SlideNow] = Field(default_factory=list)
+
+
 class FinalizeRequest(_In):
     """Take 종료. /coach/evaluate 와 같은 Take 상수에 마지막 창 · 이벤트 · coach_state 를 더한다."""
 
@@ -423,6 +450,8 @@ class FinalizeRequest(_In):
     events: list[CoachEvent] = Field(default_factory=list)
     #: 마지막 창. /coach/evaluate 의 inputs 와 같은 모양
     inputs: CoachInputs = Field(default_factory=CoachInputs)
+    #: Take 전체 원자료. 있으면 처음부터 다시 판정해 Take 결과를 만든다(replayed)
+    replay: ReplayInput | None = None
 
 
 class SlideResult(_Out):

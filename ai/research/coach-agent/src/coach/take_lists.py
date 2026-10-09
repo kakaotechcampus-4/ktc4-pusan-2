@@ -21,7 +21,7 @@ from .schemas import (
     StrategyEvent,
     TakeIntervention,
 )
-from .vocab import FeedbackType, Issue, StrategyChange
+from .vocab import SLIDE_SCOPED, FeedbackType, Issue, StrategyChange
 
 
 def merge_events(received: list[CoachEvent], new: list[CoachEvent]) -> list[CoachEvent]:
@@ -70,6 +70,9 @@ def problem_segments(
     duration_ms: int,
     slide_spans: dict[str, list[int]],
     tick_ms: int,
+    *,
+    actual: list[InterventionEvent] | None = None,
+    min_episode_ms: int = 0,
 ) -> list[ProblemSegment]:
     """EPISODE 이벤트 → 문제 구간.
 
@@ -83,6 +86,12 @@ def problem_segments(
     ③ 짧은 잡음: 합친 구간이 min_segment_ms 보다 짧고 말을 건 적이 없으면 뺀다.
     ④ 보정: 시작 · 끝을 그 문제의 판정 지연만큼 앞으로 당기고(기준이 없으면 그대로) Take 와
        그 장이 보이던 시간 안으로 자른다. 자른 뒤 길이가 0 이하면 뺀다.
+
+    coached 는 그 구간에 그 문제로 말을 걸었는지다. actual(원자료로 다시 판정한 경우의 실제
+    개입)이 있으면 EPISODE 의 개입 대신, 같은 문제(장 단위 문제면 같은 장)의 실제 개입 시각이
+    보정 전 구간 안에 드는지로 정한다. 다시 판정할 때는 개입이 없어 짧은 EPISODE 를 거르지 않고
+    내므로, 실제 진행과 같게 실제 개입과 겹치지 않는 짧은 EPISODE(min_episode_ms 미만)를 여기서
+    뺀다.
     """
     lags = {key: c for module in criteria.values() for key, c in module.items()}
     groups: dict[tuple[Issue, int | None, bool], list[_Part]] = {}
@@ -91,6 +100,15 @@ def problem_segments(
     )
     for ep in episodes:
         ep_end = ep.end_ms + tick_ms
+        if (
+            actual is not None
+            and ep.end_ms - ep.start_ms < min_episode_ms
+            and not any(
+                _coached_by(iv, ep.issue_type, ep.slide_number, ep.start_ms, ep_end)
+                for iv in actual
+            )
+        ):
+            continue
         seen = ep.reliable_ms + ep.unreliable_ms
         # 믿을 수 있던 시간 비율을 기준과 바로 비교한다 (1 − 기준 은 부동소수점 오차가 난다)
         reliable = seen == 0 or ep.reliable_ms / seen >= cfg.min_reliability
@@ -105,6 +123,14 @@ def problem_segments(
         last.weight_ms += seen
         last.fallback.append(ep.mean_severity)
         last.coached = last.coached or bool(ep.intervention_ids)
+
+    if actual is not None:
+        for parts in groups.values():
+            for part in parts:
+                part.coached = any(
+                    _coached_by(iv, part.issue_type, part.slide_number, part.start_ms, part.end_ms)
+                    for iv in actual
+                )
 
     out: list[ProblemSegment] = []
     for parts in groups.values():
@@ -137,6 +163,16 @@ def problem_segments(
                 )
             )
     return sorted(out, key=lambda s: (s.start_ms, s.issue_type.value))
+
+
+def _coached_by(
+    iv: InterventionEvent, issue: Issue, slide: int | None, start_ms: int, end_ms: int
+) -> bool:
+    """실제 개입이 이 구간에 이 문제로 말을 건 것인가. 장은 장 단위 문제일 때만 맞춘다(그 밖의
+    문제는 구간이 시작된 장만 적혀 있고 장이 바뀌어도 이어진다)."""
+    if iv.issue_type != issue or not start_ms <= iv.t_ms <= end_ms:
+        return False
+    return issue not in SLIDE_SCOPED or slide is None or iv.slide_number == slide
 
 
 def _lag(criteria: IssueCriteria | dict[str, Any] | None, name: str) -> int:

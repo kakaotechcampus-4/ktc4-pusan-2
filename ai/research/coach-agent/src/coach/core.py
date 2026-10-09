@@ -22,7 +22,17 @@ import logging
 from typing import Any
 
 from . import candidates as candidates_mod
-from . import eligibility, episodes, measure, priority, reflection, slides, take_lists, tally
+from . import (
+    eligibility,
+    episodes,
+    measure,
+    priority,
+    recovery,
+    reflection,
+    slides,
+    take_lists,
+    tally,
+)
 from . import judges as judges_mod
 from .candidates import Candidate
 from .config import DEFAULT_CONFIG, CoachConfig
@@ -56,7 +66,17 @@ from .state import (
 )
 from .tick import Tick
 from .version import FEATURE_VERSION
-from .vocab import ISSUE_TYPE, Action, CandidateStatus, FeedbackType, Issue, Outcome, Reason
+from .vocab import (
+    ISSUE_TYPE,
+    Action,
+    CandidateStatus,
+    FeedbackType,
+    Instruction,
+    Issue,
+    Mode,
+    Outcome,
+    Reason,
+)
 
 log = logging.getLogger(__name__)
 
@@ -181,11 +201,15 @@ def finalize(
     ③ 센 구간이 [0, t_ms) 를 덮지 못하면 ReplayRequired.
     ④ 합계(Take · 장 번호별)를 영역 모듈의 summarize 에 넣어 areas 를 만들고, 판정 기준을 남긴다.
     ⑤ 받은 이벤트 + 이번 이벤트(event_id 로 중복을 거른 것)로 문제 구간 · 개입 · 포기를 만든다.
+
+    replay(Take 전체 원자료)가 있으면 처음부터 다시 판정해 만든다(_finalize_replay).
     """
     cfg = config or DEFAULT_CONFIG
     req = (
         request if isinstance(request, FinalizeRequest) else FinalizeRequest.model_validate(request)
     )
+    if req.replay is not None:
+        return _finalize_replay(req, judges, cfg)
     t = req.t_ms
     state, reset = load_state(req.coach_state)
     if req.coach_state is None or reset:
@@ -196,7 +220,66 @@ def finalize(
     run: JudgeRun | None = None
     if state.last_t_ms is None or t > state.last_t_ms:
         state, sink, run = _last_window(req, judges, cfg, state, sink)
+    _close(state, t, sink, cfg)
 
+    missing = _missing_spans(state.covered, t)
+    if missing:
+        spans = ", ".join(f"[{lo}, {hi})" for lo, hi in missing)
+        raise ReplayRequired(f"센 구간이 Take 를 덮지 못했다. 빠진 구간 {spans}", missing)
+
+    # 받은 이벤트와 이번에 만든 이벤트를 event_id 로 거르며 합쳐 목록을 만든다
+    all_events = take_lists.merge_events(req.events, sink.events)
+    result = _take_result(req, judges, cfg, state, run, all_events, all_events, replayed=False)
+    return FinalizeResponse(take_result=result, events=sink.events, meta=_meta(cfg, state))
+
+
+def _finalize_replay(req: FinalizeRequest, judges: Judges, cfg: CoachConfig) -> FinalizeResponse:
+    """Take 전체 원자료로 처음부터 다시 판정해 Take 결과를 만든다(replayed).
+
+    BE 가 1초마다 보냈을 요청을 다시 만들어 실전 모드로 판정하고(새 개입은 만들지 않는다), 끝에
+    평소처럼 마지막 창을 판정하고 닫는다. 지표 · 문제 구간 · 판정 기준은 다시 판정한 결과에서,
+    개입 · 효과 · 포기는 받은 이벤트(실제로 한 코칭)에서 가져온다. 다시 판정한 이벤트는 응답에
+    내지 않는다 — 효과를 재는 실제 개입 중 효과 기록이 없는 것만 NOT_MEASURED 로 낸다.
+    """
+    raw = req.replay
+    assert raw is not None
+    t = req.t_ms
+    # 다시 판정할 때는 개입이 없으니 짧은 EPISODE 도 거르지 않고 낸다. 실제 개입과 겹치는지 보고
+    # 문제 구간에서 거른다(take_lists.problem_segments 의 min_episode_ms)
+    rebuild_cfg = cfg.model_copy(
+        update={"policy": cfg.policy.model_copy(update={"min_episode_ms": 0})}
+    )
+    coach_state: dict[str, Any] | None = None
+    rebuilt: list[Any] = []
+    for t_ms in recovery.ticks(t):
+        resp = decide(recovery.request_at(req, raw, t_ms, coach_state), judges, rebuild_cfg)
+        coach_state = resp.coach_state
+        rebuilt.extend(resp.events)
+
+    last = req.model_copy(
+        update={
+            "inputs": recovery.inputs_at(raw, t),
+            "mode": Mode.EXAM,
+            "coach_state": coach_state,
+        }
+    )
+    state, _ = load_state(coach_state)
+    sink = EventSink(state)
+    run: JudgeRun | None = None
+    if state.last_t_ms is None or t > state.last_t_ms:
+        state, sink, run = _last_window(last, judges, rebuild_cfg, state, sink)
+    _close(state, t, sink, rebuild_cfg)
+
+    out = EventSink(state)
+    _missing_outcomes(req, cfg, t, out)
+    replayed = take_lists.merge_events(rebuilt, sink.events)
+    coaching = take_lists.merge_events(req.events, out.events)
+    result = _take_result(req, judges, cfg, state, run, replayed, coaching, replayed=True)
+    return FinalizeResponse(take_result=result, events=out.events, meta=_meta(cfg, state))
+
+
+def _close(state: CoachState, t: int, sink: EventSink, cfg: CoachConfig) -> None:
+    """재지 못한 효과는 NOT_MEASURED, 열린 문제 구간은 닫고, 남은 장 방문은 SLIDE 로 낸다."""
     for p in state.pending:
         sink.emit(
             OutcomeEvent,
@@ -212,32 +295,72 @@ def finalize(
     slides.finish(state, t, sink)
     tally.extend_slide_span(state, t)
 
-    missing = _missing_spans(state.covered, t)
-    if missing:
-        spans = ", ".join(f"[{lo}, {hi})" for lo, hi in missing)
-        raise ReplayRequired(f"센 구간이 Take 를 덮지 못했다. 빠진 구간 {spans}", missing)
 
+def _missing_outcomes(req: FinalizeRequest, cfg: CoachConfig, t: int, out: EventSink) -> None:
+    """효과를 재는 실제 개입 중 OUTCOME 이 없는 것을 NOT_MEASURED 로 낸다(마무리 · 격려는 빼고)."""
+    events = take_lists.merge_events(req.events, [])
+    measured = {e.intervention_id for e in events if isinstance(e, OutcomeEvent)}
+    for iv in (e for e in events if isinstance(e, InterventionEvent)):
+        rule = cfg.issues.get(iv.issue_type)
+        if (
+            iv.instruction == Instruction.CONTINUE
+            or rule is None
+            or rule.outcome_delay_ms is None
+            or iv.intervention_id in measured
+        ):
+            continue
+        out.emit(
+            OutcomeEvent,
+            t_ms=t,
+            intervention_id=iv.intervention_id,
+            outcome=Outcome.NOT_MEASURED,
+            metric=reflection.OUTCOME_METRIC.get(iv.issue_type),
+        )
+
+
+def _take_result(
+    req: FinalizeRequest,
+    judges: Judges,
+    cfg: CoachConfig,
+    state: CoachState,
+    run: JudgeRun | None,
+    segment_events: list[Any],
+    coaching_events: list[Any],
+    *,
+    replayed: bool,
+) -> TakeResult:
+    """Take 결과. 문제 구간은 segment_events 의 EPISODE 에서, 개입 · 포기는 coaching_events 에서.
+
+    replayed 면 다시 판정한 구간에는 개입이 없으므로, 그 문제로 실제로 말을 걸었는지(coached)를
+    받은 INTERVENTION 이 구간과 겹치는지로 정한다.
+    """
+    t = req.t_ms
     criteria = run.criteria if run is not None else judges_mod.criteria_of(judges, cfg)
-    # 받은 이벤트와 이번에 만든 이벤트를 event_id 로 거르며 합쳐 목록을 만든다
-    all_events = take_lists.merge_events(req.events, sink.events)
-    result = TakeResult(
+    actual = [e for e in coaching_events if isinstance(e, InterventionEvent)] if replayed else None
+    return TakeResult(
         take_id=req.take_id,
         duration_ms=t,
         script_mode=req.script_mode,
-        replayed=False,
+        replayed=replayed,
         criteria_changed=any(
             v != state.latest_criteria_versions.get(name)
             for name, v in state.criteria_versions.items()
         ),
         areas=_areas(req, judges, cfg, state),
         problem_segments=take_lists.problem_segments(
-            all_events, cfg.take_result, criteria, t, state.slide_spans, cfg.policy.default_tick_ms
+            segment_events,
+            cfg.take_result,
+            criteria,
+            t,
+            state.slide_spans,
+            cfg.policy.default_tick_ms,
+            actual=actual,
+            min_episode_ms=cfg.policy.min_episode_ms,
         ),
-        interventions=take_lists.interventions(all_events),
-        gave_up=take_lists.gave_up(all_events),
+        interventions=take_lists.interventions(coaching_events),
+        gave_up=take_lists.gave_up(coaching_events),
         criteria=_criteria_snapshot(state, criteria),
     )
-    return FinalizeResponse(take_result=result, events=sink.events, meta=_meta(cfg, state))
 
 
 # ── 내부 ──────────────────────────────────────────────────────────────────

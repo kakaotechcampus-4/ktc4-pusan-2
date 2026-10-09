@@ -230,6 +230,10 @@ class Presenter:
         #: 정답 기록
         self.truth: list[dict[str, Any]] = []
         self.visits: list[dict[str, Any]] = [{"slide": self.slide_number, "start_ms": 0}]
+        #: Take 전체 원자료 (BE 가 보관해 replay 로 싣는 것): 1초 기록 전부와 STT 상태가 바뀐 시각
+        self.all_gaze_records: list[dict[str, Any]] = []
+        self.all_voice_records: list[dict[str, Any]] = []
+        self.stt_changes: list[dict[str, Any]] = []
         self.reaction_log: list[dict[str, Any]] = []
 
     # ── 상태 ────────────────────────────────────────────────────────────
@@ -381,6 +385,7 @@ class Presenter:
         if t >= self.sc.tick_ms:
             tick = self.sc.tick_ms
             self.gaze_records.append({"t_ms": t - tick, "duration_ms": tick, "state": label})
+            self.all_gaze_records.append(self.gaze_records[-1])
             # FE 는 그 1초 동안 소리를 낸 시간을 잰다 — 마이크가 들은 단어가 그 1초와 겹친 만큼.
             # 1초 끝에 말하던 단어(다음 틱에 마저 말한다)도 넣는다
             voiced_ms = self._voiced_ms(t - tick, t, self.cursor if mid_word else None)
@@ -394,6 +399,9 @@ class Presenter:
                     "audio_live": p.audio_live,
                 }
             )
+            self.all_voice_records.append(self.voice_records[-1])
+        if not self.stt_changes or self.stt_changes[-1]["status"] != p.stt_status:
+            self.stt_changes.append({"t_ms": t, "status": p.stt_status})
 
         speaking_now = p.speaking and self.finished_at is None
         self.truth.append(
@@ -438,6 +446,29 @@ class Presenter:
             # 기준 음량은 코치가 첫 발화로 잡는다
             "calibration": {"base_level_db": None},
             "coach_state": coach_state,
+        }
+
+    def replay_payload(self) -> dict[str, Any]:
+        """Take 전체 원자료 — finalize 의 replay. 단어는 확정된 시각과 함께 싣는다."""
+        return {
+            "gaze_records": list(self.all_gaze_records),
+            "voice_records": list(self.all_voice_records),
+            "stt_status_changes": list(self.stt_changes),
+            "words": [
+                {
+                    "word": w.w,
+                    "start_ms": w.start_ms,
+                    "end_ms": w.end_ms,
+                    "final_at_ms": w.final_at_ms,
+                }
+                for w in self.heard_words
+            ],
+            "utterance_ends": list(self.utterance_ends),
+            "slides": [
+                {"number": v["slide"], "started_ms": v["start_ms"]}
+                for v in self.visits
+                if v["slide"] is not None
+            ],
         }
 
     def _voiced_ms(self, lo: int, hi: int, speaking_from: int | None) -> int:
