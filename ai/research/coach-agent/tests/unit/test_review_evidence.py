@@ -15,7 +15,7 @@ from coach.review import mission_status, satisfies
 from coach.schemas import EpisodeEvent, SlideEvent
 from coach.vocab import MissionStatus
 
-from .conftest import Session, gaze_script
+from .conftest import Session, gaze_off, gaze_on
 
 _N = iter(range(10_000))
 
@@ -96,9 +96,9 @@ def three_slides(**per_slide: dict[str, Any]) -> list[SlideEvent]:
 def test_slide_events_summarise_each_slide():
     s = Session()
     for t in range(1_000, 20_001, 1_000):
-        s.step(t, slide=1, slide_elapsed=t, gaze=gaze_script(0.9))
+        s.step(t, slide=1, slide_started=0, **gaze_on(0.9))
     for t in range(21_000, 40_001, 1_000):
-        s.step(t, slide=2, slide_elapsed=t - 20_000, gaze=gaze_script(0.1))
+        s.step(t, slide=2, slide_started=20_000, **gaze_off(0.1))
     fin = finalize({"take_id": "test-take", "t_ms": 41_000, "coach_state": s.state})
     events = s.events + list(fin.events)
     slides = [e for e in events if e.kind == "SLIDE"]

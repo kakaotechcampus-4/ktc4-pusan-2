@@ -12,7 +12,8 @@ from coach.config import load_config
 from coach.planner import plan_message, planner_hash
 from coach.schemas import PlanDraft, PlanRequest
 
-from .conftest import PLAN, gaze_script, make_request
+from .conftest import PLAN, make_request
+from .fakes import ScriptedJudge, fake_issue, fake_judges
 
 SCRIPTS = [
     {"slide_number": 1, "script": "안녕하세요. 오늘은 로컬 처리 기반 코칭을 소개합니다."},
@@ -72,13 +73,19 @@ def test_llm_plan_is_validated_and_goes_into_the_first_coach_state():
     assert len(llm.calls) == 1
 
 
+def _gaze_judges():
+    issue = fake_issue("GAZE", "GAZE_ON_SCRIPT", 0.9)
+    gaze = ScriptedJudge("gaze", lambda t: {"issues": [issue], "metrics": {"script_ratio": 0.9}})
+    return fake_judges(gaze=gaze)
+
+
 def test_relaxed_gaze_is_not_coached_on_that_slide_only():
     resp = plan_coaching(request(), llm=FakeLLM(draft(relax=[GAZE_3])), model="m")
     state = resp.coach_state
-    on_3 = decide(make_request(20_000, slide=3, gaze=gaze_script(0.9), state=state))
+    on_3 = decide(make_request(20_000, slide=3, state=state), _gaze_judges())
     c = {c.issue_type.value: c for c in on_3.candidates}["GAZE_ON_SCRIPT"]
     assert c.status.value == "IGNORED" and "PLAN_RELAXED" in c.reasons
-    on_2 = decide(make_request(20_000, slide=2, gaze=gaze_script(0.9), state=state))
+    on_2 = decide(make_request(20_000, slide=2, state=state), _gaze_judges())
     c = {c.issue_type.value: c for c in on_2.candidates}["GAZE_ON_SCRIPT"]
     assert "PLAN_RELAXED" not in c.reasons
 
@@ -160,8 +167,8 @@ def test_fallback_is_the_default_plan(kw, llm, reason):
     assert resp.fallback_reason == reason
     assert resp.plan.source == "DEFAULT" and resp.plan.focus == [] and resp.plan.relax == []
     # 기본 계획의 coach_state 로 하는 판단은 계획 없이 시작한 것과 같다
-    with_plan = decide(make_request(20_000, gaze=gaze_script(0.9), state=resp.coach_state))
-    without = decide(make_request(20_000, gaze=gaze_script(0.9)))
+    with_plan = decide(make_request(20_000, state=resp.coach_state), _gaze_judges())
+    without = decide(make_request(20_000), _gaze_judges())
     assert with_plan.candidates == without.candidates
 
 

@@ -7,7 +7,7 @@ import json
 from coach import build_review_evidence, finalize
 from coach.config import load_config
 
-from .conftest import Session, gaze_script
+from .conftest import Session, gaze_off, gaze_on
 
 
 def _finish(s: Session, t_ms: int):
@@ -16,7 +16,7 @@ def _finish(s: Session, t_ms: int):
 
 
 def test_finalize_closes_open_episodes_and_pending_outcomes(session: Session):
-    session.run(10_000, 15_000, gaze=gaze_script(0.9))  # 13초 개입, 효과 재기 전에 끝남
+    session.run(10_000, 15_000, **gaze_on(0.9))  # 13초 개입, 효과 재기 전에 끝남
     events, fin = _finish(session, 16_000)
     kinds = [e.kind for e in fin.events]
     assert kinds.count("OUTCOME") == 1 and kinds.count("EPISODE") == 1
@@ -28,7 +28,7 @@ def test_finalize_closes_open_episodes_and_pending_outcomes(session: Session):
 
 
 def test_event_ids_are_unique_across_decide_and_finalize(session: Session):
-    session.run(10_000, 40_000, gaze=gaze_script(0.9))
+    session.run(10_000, 40_000, **gaze_on(0.9))
     events, _ = _finish(session, 41_000)
     ids = [e.event_id for e in events]
     assert len(ids) == len(set(ids))
@@ -36,9 +36,9 @@ def test_event_ids_are_unique_across_decide_and_finalize(session: Session):
 
 def test_review_evidence_labels_segments():
     session = Session(plan={})  # 시선 구간만 보려고 시간 계획은 뺀다
-    session.run(10_000, 13_000, gaze=gaze_script(0.9))  # 개입
-    session.run(14_000, 30_000, gaze=gaze_script(0.1))  # 효과 있음 → 구간 닫힘
-    session.run(31_000, 40_000, mode="EXAM", gaze=gaze_script(0.9))  # 실전 모드에서 다시
+    session.run(10_000, 13_000, **gaze_on(0.9))  # 개입
+    session.run(14_000, 30_000, **gaze_off(0.1))  # 효과 있음 → 구간 닫힘
+    session.run(31_000, 40_000, mode="EXAM", **gaze_on(0.9))  # 실전 모드에서 다시
     events, _ = _finish(session, 41_000)
     ev = build_review_evidence("test-take", events)
 
@@ -60,7 +60,7 @@ def test_review_evidence_labels_segments():
 
 def test_gave_up_segment_is_flagged_for_review():
     s = Session(load_config(policy={"cooldown_ms": 20_000}), slide=2, plan={})
-    s.run(10_000, 70_000, gaze=gaze_script(0.9))
+    s.run(10_000, 70_000, **gaze_on(0.9))
     events, _ = _finish(s, 71_000)
     ev = build_review_evidence("test-take", events)
     assert [seg.hint.value for seg in ev.segments] == ["GAVE_UP"]
@@ -70,7 +70,7 @@ def test_gave_up_segment_is_flagged_for_review():
 
 def test_accepts_events_as_stored_json(session: Session):
     """BE 는 이벤트를 JSON 으로 저장했다가 넘긴다."""
-    session.run(10_000, 30_000, gaze=gaze_script(0.9))
+    session.run(10_000, 30_000, **gaze_on(0.9))
     events, _ = _finish(session, 31_000)
     stored = json.loads(json.dumps([e.model_dump(mode="json") for e in events]))
     assert build_review_evidence("test-take", stored) == build_review_evidence("test-take", events)

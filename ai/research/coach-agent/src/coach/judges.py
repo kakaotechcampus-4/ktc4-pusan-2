@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 from . import tally
 from .config import CoachConfig
-from .schemas import CoachInputs, CoachRequest, IssueCriteria, JudgmentResult, TallyItem
+from .schemas import CoachInputs, CoachRequest, IssueCriteria, JudgmentResult, SlideNow, TallyItem
 from .state import CoachState, Cursor
 from .timing import criteria as timing_criteria
 from .timing import judge as timing_judge
@@ -84,13 +84,17 @@ class JudgeRun:
 def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) -> JudgeRun:
     """요청 시각 t 의 판정 라운드. state 에 커서 · 합계 · STT 상태를 반영한다."""
     inputs = req.inputs
-    if inputs is None:
-        raise ValueError("inputs 가 없는 요청은 판정할 수 없다")
     t = req.t_ms
     out = JudgeRun()
     prev_ms = min(_cursor(state, n).since_ms for n in ("gaze", "volume", "timing"))
 
-    tally.note_slide(state, inputs.slide)
+    # 장 정보가 이번 요청에 없으면 마지막으로 알던 장으로 본다
+    # (시간 판정 · 장 귀속 · 개입 규칙이 같은 장을 쓰게)
+    slide = inputs.slide
+    if slide is None and state.slide_log:
+        number, started = state.slide_log[-1]
+        slide = SlideNow(number=number, started_ms=started)
+    tally.note_slide(state, slide)
     _track_stt(state, inputs, t, out)
 
     words = [w.model_dump() for w in inputs.words]
@@ -152,21 +156,32 @@ def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) 
     }
     call("volume", judges.volume.judge, volume_in)
 
-    # 5. timing: 판정 전 합계(이번 라운드 몫을 더하기 전)를 넘긴다
+    # 5. timing: 장별 합계를 넘긴다. 말한 글자 수는 이번 라운드에 말 속도가 센 몫까지 더한다 —
+    #    말 속도를 시간 판정보다 먼저 부르는 이유다(진행도가 한 박자 늦지 않게). 머문 시간 · STT 를
+    #    믿은 시간은 이번 몫을 시간 판정이 직접 더하므로 판정 전 합계를 넘긴다
     pace_result = by_module["pace"][0]
     out.criteria = _criteria(judges, cfg)
     fast = out.criteria["pace"].get("PACE_FAST")
+    slide_chars = _per_slide(state, "SPEED", "chars")
+    for piece in pace_result.tally:
+        chars = int(piece.values.get("chars", 0))
+        spoken_in = tally.slide_at(state, piece.t_ms)
+        if chars and spoken_in is not None:
+            slide_chars[str(spoken_in)] = slide_chars.get(str(spoken_in), 0) + chars
     timing_in = {
         "t_ms": t,
         "since_ms": _cursor(state, "timing").since_ms,
         "plan": req.plan.model_dump(mode="json"),
-        "slide": inputs.slide.model_dump() if inputs.slide else None,
-        "slide_chars": _per_slide(state, "SPEED", "chars"),
+        "slide": slide.model_dump() if slide else None,
+        "slide_chars": slide_chars,
         "slide_dwell_ms": _per_slide(state, "TIME", "elapsed_ms"),
         "slide_stt_ok_ms": dict(state.slide_stt_ok_ms),
         "pace": {
             "cpm": pace_result.metrics.get("cpm"),
-            "measurable": pace_result.measurable,
+            # 오디오가 멈췄거나 군더더기 · 말 속도 판정이 실패하면 속도를 모르는 것으로 넘긴다
+            "measurable": pace_result.measurable
+            and out.stt_ok
+            and not {"filler", "pace"} & out.failed,
             "fast_threshold": fast.threshold if fast else None,
         },
     }

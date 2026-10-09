@@ -6,12 +6,9 @@ from typing import Any
 
 import pytest
 
-from coach import decide
 from coach.config import load_config
 from coach.evaluators.gaze import window_summary
 from coach.schemas import GazeInput
-
-from .conftest import gaze_script, make_request
 
 CFG = load_config().gaze
 
@@ -58,115 +55,3 @@ def test_screen_and_other_are_visible_but_not_script():
     assert ratios == pytest.approx(
         {"SCREEN": 0.1, "OTHER": 0.1, "CAMERA": 0.1, "UNCERTAIN": 0.1, "BOTTOM": 0.6}
     )
-    # 보인 시간 중 대본 6 / 9 = 0.67 — 비율로는 0.7 미만이지만 6초 연속이라 연속 응시로 잡힌다
-    resp = decide(make_request(20_000, gaze=records(20_000, states)))
-    assert _cands(resp)["GAZE_ON_SCRIPT"].status.value == "WAITING"  # 지속 3초 미달
-    assert resp.indicators.gaze.value == "SCRIPT"
-
-
-def test_run_breaks_at_a_gap():
-    gaze = records(20_000, ["BOTTOM"] * 3, start_ms=10_000)
-    gaze["records"] += [
-        {"t_ms": 15_000 + i * 1000, "duration_ms": 1000, "state": "BOTTOM"} for i in range(5)
-    ]
-    _, _, current, run = summary(20_000, gaze)
-    assert (current, run) == ("BOTTOM", 5000)
-
-
-def test_stale_records_mean_the_current_label_is_unknown():
-    # 마지막 기록이 5초 전에 끝났다 — 카메라 · 전송이 끊긴 것이다
-    _, _, current, run = summary(20_000, records(15_000, ["BOTTOM"] * 5))
-    assert (current, run) == ("UNCERTAIN", 5000)
-
-
-def test_overlapping_records_are_not_counted_twice():
-    gaze = records(20_000, ["BOTTOM"] * 10)
-    gaze["records"].append({"t_ms": 18_000, "duration_ms": 1000, "state": "BOTTOM"})
-    ratios, _, _, _ = summary(20_000, gaze)
-    assert sum(ratios.values()) == pytest.approx(1.0)
-    assert ratios["BOTTOM"] == pytest.approx(1.0)
-
-
-def test_records_outside_the_window_or_covered_are_ignored():
-    gaze = records(20_000, ["BOTTOM"] * 10)
-    gaze["records"] += [
-        # 아직 오지 않은 시간의 기록 — 지금 라벨로 쓰면 이어진 시간이 음수가 된다
-        {"t_ms": 21_000, "duration_ms": 1000, "state": "CAMERA"},
-        # 앞 기록 안에 들어간 기록 — 이미 센 시간이다
-        {"t_ms": 18_500, "duration_ms": 500, "state": "CAMERA"},
-    ]
-    ratios, _, current, run = summary(20_000, gaze)
-    assert ratios == pytest.approx({"BOTTOM": 1.0})
-    assert (current, run) == ("BOTTOM", 10_000)
-
-
-def test_same_answer_as_the_summary_input():
-    states = ["CAMERA", "BOTTOM", "BOTTOM", "UNCERTAIN", "BOTTOM"] * 2
-    from_records = decide(make_request(30_000, gaze=records(30_000, states)))
-    from_summary = decide(
-        make_request(
-            30_000,
-            gaze={
-                "window_ms": 10_000,
-                "ratios": {"CAMERA": 0.2, "BOTTOM": 0.6, "UNCERTAIN": 0.2},
-                "current_label": "BOTTOM",
-                "current_label_ms": 1000,
-            },
-        )
-    )
-    assert from_records.candidates == from_summary.candidates
-    assert from_records.indicators == from_summary.indicators
-
-
-def test_no_gaze_judgement_right_after_the_take_starts():
-    # 3초 동안 모두 대본 — 표본이 너무 적어 지적하지 않고 상태 표시는 '모름'
-    resp = decide(make_request(3000, gaze=records(3000, ["BOTTOM"] * 3)))
-    assert "GAZE_ON_SCRIPT" not in _cands(resp)
-    assert resp.indicators.gaze.value == "UNKNOWN"
-
-
-def test_take_start_shows_unknown_until_there_is_a_record():
-    resp = decide(make_request(0, gaze={"window_ms": 10_000, "records": []}))
-    assert "GAZE_ON_SCRIPT" not in _cands(resp)
-    assert resp.indicators.gaze.value == "UNKNOWN"
-
-
-def test_a_short_window_from_fe_does_not_block_gaze_coaching():
-    # FE 가 3초 창을 보내도 Take 시작 5초가 지났으면 지적한다 (창 길이가 아니라 경과 시간)
-    gaze = records(20_000, ["BOTTOM"] * 3) | {"window_ms": 3000}
-    resp = decide(make_request(20_000, gaze=gaze))
-    assert "GAZE_ON_SCRIPT" in _cands(resp)
-    assert resp.indicators.gaze.value == "SCRIPT"
-
-
-def test_empty_summary_is_read_as_before():
-    # 요약 입력의 빈 비율은 v1 처럼 '대본 0' 으로 읽는다 (기록 입력에서만 '잴 시간 없음')
-    resp = decide(make_request(20_000, gaze={"window_ms": 10_000, "ratios": {}}))
-    assert "GAZE_ON_SCRIPT" not in _cands(resp)
-    assert resp.indicators.gaze.value == "AUDIENCE"
-    assert resp.coach_state["history"][-1]["gaze_uncertain"] == 0.0
-
-
-@pytest.mark.parametrize(
-    "gaze",
-    [
-        records(20_000, ["UNCERTAIN"] * 10),
-        records(20_000, []),
-        {"window_ms": 10_000, "ratios": {"UNCERTAIN": 1.0}, "current_label": "UNCERTAIN"},
-        {"window_ms": 10_000, "ratios": {"UNMEASURED": 1.0}},
-    ],
-    ids=["uncertain-records", "no-records", "uncertain-ratios", "unmeasured-ratios"],
-)
-def test_nothing_measured_shows_uncertain_and_stays_in_the_sensor_history(gaze):
-    resp = decide(make_request(20_000, gaze=gaze))
-    assert resp.feedback is None
-    assert resp.indicators.gaze.value == "UNCERTAIN"
-    assert resp.coach_state["history"][-1]["gaze_uncertain"] == 1.0
-
-
-def test_unmeasured_ratio_counts_against_the_sensor():
-    ratios = gaze_script(0.85, uncertain=0.0)["ratios"]
-    ratios = {k: v * 0.4 for k, v in ratios.items()} | {"UNMEASURED": 0.6}
-    resp = decide(make_request(20_000, gaze={"window_ms": 10_000, "ratios": ratios}))
-    c = _cands(resp)["GAZE_ON_SCRIPT"]
-    assert c.status.value == "IGNORED" and "SENSOR_UNUSABLE" in c.reasons

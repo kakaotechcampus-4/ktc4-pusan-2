@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..config import CoachConfig
-from ..schemas import CoachRequest, SlidePlan
+from ..schemas import CoachRequest, IssueCriteria, SlidePlan
 from ..state import CoachState, HistorySample
 from ..vocab import Issue
 
@@ -52,6 +52,8 @@ class Tick:
     voice_diff_db: float | None = None
     #: 이번 판단이 대표하는 시간. 직전 요청과의 간격 (첫 요청 · 긴 공백은 config 로 제한)
     dt_ms: int = 1_000
+    #: 모듈 이름 → issue_type → 판정 기준 (되돌아보기가 기준값을 읽는다)
+    criteria: dict[str, dict[str, IssueCriteria]] = field(default_factory=dict)
 
     def history_since(self, since_ms: int) -> list[HistorySample]:
         return [s for s in self.state.history if s.t_ms > since_ms]

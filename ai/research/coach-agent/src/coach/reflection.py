@@ -125,6 +125,12 @@ def _metric_avg(tick: Tick, metric: str | None) -> Any:
     return round(sum(values) / len(values), 4)
 
 
+def _threshold(tick: Tick, module: str, issue: str) -> float | None:
+    """판정 모듈이 공개한 문제의 기준값. 못 읽었으면 None — 그 효과는 재지 못한 것으로 둔다."""
+    found = tick.criteria.get(module, {}).get(issue)
+    return found.threshold if found is not None else None
+
+
 def judge(tick: Tick, p: PendingOutcome) -> tuple[Outcome, float | None]:
     cfg = tick.cfg
     rc = cfg.reflection
@@ -157,14 +163,23 @@ def judge(tick: Tick, p: PendingOutcome) -> tuple[Outcome, float | None]:
             # 14)
             ok = after < rc.gaze_back_ratio
         case Issue.PACE_FAST:
-            back = after <= cfg.speech.fast_cpm - rc.cpm_back_margin
+            fast = _threshold(tick, "pace", "PACE_FAST")
+            if fast is None:
+                return Outcome.NOT_MEASURED, float(after)
+            back = after <= fast - rc.cpm_back_margin
             ok = back or after <= before * (1 - rc.cpm_drop_ratio)
         case Issue.VOLUME_LOW:
-            ok = after >= cfg.voice.low_relative_db or after >= before + rc.volume_gain_db
+            low = _threshold(tick, "volume", "VOLUME_LOW")
+            if low is None:
+                return Outcome.NOT_MEASURED, float(after)
+            ok = after >= low or after >= before + rc.volume_gain_db
         case Issue.FILLER_FREQUENT:
             ok = after <= before * (1 - rc.filler_drop_ratio)
         case Issue.BEHIND_SCHEDULE:
-            ok = after < cfg.timing.behind_ratio or after <= before - rc.schedule_delta
+            behind = _threshold(tick, "timing", "BEHIND_SCHEDULE")
+            if behind is None:
+                return Outcome.NOT_MEASURED, float(after)
+            ok = after < behind or after <= before - rc.schedule_delta
         case Issue.AHEAD_OF_SCHEDULE:
             end = tick.metrics.get("projected_end_ms")
             limit = tick.metrics.get("early_limit_ms")

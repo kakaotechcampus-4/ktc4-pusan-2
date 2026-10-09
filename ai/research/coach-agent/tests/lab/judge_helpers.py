@@ -10,10 +10,41 @@ from coach.evaluators import gaze as old_gaze
 from coach.evaluators import speech as old_speech
 from coach.evaluators import voice as old_voice
 from coach.evaluators.base import Tick
-from coach.schemas import CoachRequest, JudgmentResult
+from coach.schemas import CoachRequest, Current, JudgmentResult
 from coach.state import CoachState
 from coach.vocab import Issue
-from tests.unit.conftest import make_request
+
+IN_PAUSE = {"relative_db": None, "silence_ms": 400, "audio_live": True}
+
+
+class OldRequest(CoachRequest):
+    """이전 평가기가 읽던 요청(current 가 있다). 평가기와 함께 다음 PR 에서 지운다."""
+
+    current: Current = Current()
+
+
+def old_request(
+    t_ms: int,
+    *,
+    gaze: dict[str, Any] | None = None,
+    voice: dict[str, Any] | None = None,
+    speech: dict[str, Any] | None = None,
+    slide: int | None = 1,
+    slide_elapsed: int | None = None,
+) -> OldRequest:
+    timing = None
+    if slide is not None:
+        timing = {
+            "slide_number": slide,
+            "slide_elapsed_ms": t_ms if slide_elapsed is None else slide_elapsed,
+        }
+    current = {
+        "timing": timing,
+        "gaze": gaze,
+        "voice": IN_PAUSE if voice is None else voice,
+        "speech": speech,
+    }
+    return OldRequest.model_validate({"take_id": "test-take", "t_ms": t_ms, "current": current})
 
 
 class OldRun:
@@ -24,7 +55,7 @@ class OldRun:
         self.cfg = load_config()
 
     def step(self, t: int, *, stt_ok: bool = True, **current: Any) -> Tick:
-        req = CoachRequest.model_validate(make_request(t, **current))
+        req = old_request(t, **current)
         tick = Tick(
             req=req,
             cfg=self.cfg,
