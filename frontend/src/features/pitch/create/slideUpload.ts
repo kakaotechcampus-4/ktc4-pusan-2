@@ -1,6 +1,6 @@
 import { uploadPresentation } from '@/shared/api/presentation';
 import { openPdf } from '@/shared/lib/pdf';
-import { useCreateStore } from './createStore';
+import { isCurrentDraft, useCreateStore } from './createStore';
 import { fromUploadedPresentation } from './lib/beAdapter';
 
 /**
@@ -20,7 +20,7 @@ import { fromUploadedPresentation } from './lib/beAdapter';
  */
 export async function uploadSlides(file: File, replace: number | null = null): Promise<void> {
   const store = useCreateStore.getState();
-  const { pitchId } = store;
+  const { pitchId, draftId } = store;
   // 업로드가 끝나기 전에 다른 빈 버전을 만들어도 시작한 자리에 채웁니다.
   const targetVersion = store.version ?? store.draft.slides.at(-1)?.version ?? null;
   // 두 번 눌러도 한 번만 올립니다. 피치가 없으면 올릴 곳이 없습니다 — 화면이 먼저 막습니다
@@ -33,6 +33,8 @@ export async function uploadSlides(file: File, replace: number | null = null): P
   try {
     uploaded = fromUploadedPresentation(await uploadPresentation(pitchId, file));
   } catch (error) {
+    // 그사이 새 피치를 시작했으면 앞 피치의 실패를 새 작성에 띄우지 않습니다
+    if (!isCurrentDraft(draftId)) return;
     // 화면에는 한 줄만 보이므로 원인은 콘솔에 남깁니다 (404 피치 없음 · 네트워크 · 413 크기 …)
     console.error('[슬라이드] 업로드 실패', { pitchId, file: file.name, error });
     set({ status: 'failed', file, replace, reason: 'upload' });
@@ -43,6 +45,7 @@ export async function uploadSlides(file: File, replace: number | null = null): P
   try {
     pageCount = (await openPdf(uploaded.fileUrl)).numPages;
   } catch (error) {
+    if (!isCurrentDraft(draftId)) return;
     // 실서버에서는 대개 S3 CORS 입니다 — 브라우저가 URL 의 바이트를 읽지 못합니다
     console.error('[슬라이드] PDF 열기 실패', { url: uploaded.fileUrl, error });
     set({ status: 'failed', file, replace, reason: 'open' });
@@ -54,6 +57,8 @@ export async function uploadSlides(file: File, replace: number | null = null): P
     ...uploaded,
     fileName: file.name,
   };
+  // 그사이 새 피치를 시작했으면 버립니다. 파일은 앞 피치(pitchId) 아래에 올라가 있으니 거기 남습니다
+  if (!isCurrentDraft(draftId)) return;
   const latest = useCreateStore.getState();
   if (replace === null) latest.attachSlides(result, targetVersion);
   else latest.replaceSlides(replace, result);

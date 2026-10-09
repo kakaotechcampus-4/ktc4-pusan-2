@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toMessage } from '@/shared/api/errorMessage';
 import { createPitch, updatePitch } from '@/shared/api/pitch';
 import type { PitchRequest } from '@/types/pitch';
-import { useCreateStore } from '../createStore';
+import { isCurrentDraft, useCreateStore } from '../createStore';
 import { fromPitchSaved, toPitchRequest } from '../lib/beAdapter';
 import { dotDate } from '../lib/date';
 import {
@@ -147,9 +147,14 @@ export function InfoPane() {
     });
   };
 
+  const draftId = useCreateStore((s) => s.draftId);
+  // 저장을 시작한 작성(draftId)을 함께 넘깁니다. 응답이 오기 전에 새 피치를 시작했으면
+  // 앞 피치의 id 를 새 작성에 넣지 않습니다 — 넣으면 새 피치의 저장이 앞 피치 수정(PATCH)이 됩니다
   const save = useMutation({
-    mutationFn: (body: PitchRequest) => (pitchId ? updatePitch(pitchId, body) : createPitch(body)),
-    onSuccess: (res, body) => {
+    mutationFn: ({ body }: { body: PitchRequest; draftId: string }) =>
+      pitchId ? updatePitch(pitchId, body) : createPitch(body),
+    onSuccess: (res, { body, draftId: from }) => {
+      if (!isCurrentDraft(from)) return;
       setPitchId(fromPitchSaved(res));
       setMeta({ ...form, title: body.title });
     },
@@ -247,7 +252,7 @@ export function InfoPane() {
               <button
                 type="button"
                 disabled={!dirty || titleMissing || save.isPending}
-                onClick={() => save.mutate(toPitchRequest(form))}
+                onClick={() => save.mutate({ body: toPitchRequest(form), draftId })}
                 title={titleMissing ? '발표 제목을 먼저 입력해 주세요' : undefined}
                 className="h-12 w-44 shrink-0 rounded-md bg-coral text-base font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
               >

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { Mascot } from './Mascot';
 import { StartConfirm } from './StartConfirm';
@@ -44,7 +44,30 @@ function mascotLine(node: PaneNode, script: ScriptVersion | null): string {
   return '준비부터\n차근차근!';
 }
 
+/**
+ * 새로 시작한 작성인지 보고, 그렇다면 앞 피치를 비운 뒤에 화면을 그립니다.
+ *
+ * 스토어는 앱 전체에 하나라 화면을 떠나도 남습니다. 피치 A 를 저장하고 홈에서 "새 피치 만들기"로
+ * 들어오면 A 가 그대로 열려, 저장이 새 피치(POST) 대신 A 수정(PATCH)으로 갑니다.
+ * 기록 항목(`location.key`)이 다르면 새로 시작한 것으로 봅니다 — `createStore` 의 `entryKey`.
+ *
+ * 비우기 전에 그리면 발표정보 칸이 A 의 값으로 한 번 그려지므로, 비울 때까지 아무것도 그리지 않습니다.
+ * `useLayoutEffect` 라 화면에 A 가 비치지 않습니다.
+ */
 export function PitchCreatePage() {
+  const { key } = useLocation();
+  const entryKey = useCreateStore((s) => s.entryKey);
+  const beginEntry = useCreateStore((s) => s.beginEntry);
+
+  useLayoutEffect(() => {
+    beginEntry(key);
+  }, [key, beginEntry]);
+
+  if (entryKey !== key) return null;
+  return <PitchCreateScreen />;
+}
+
+function PitchCreateScreen() {
   const draft = useCreateStore((s) => s.draft);
   const node = useCreateStore((s) => s.node);
   const version = useCreateStore((s) => s.version);
