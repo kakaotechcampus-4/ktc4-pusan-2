@@ -46,8 +46,8 @@
     "interventions": {
       "max": 0
     },
-    "suppressed_reasons_include": [
-      "SENSOR_UNUSABLE"
+    "episodes_exclude": [
+      "LONG_SILENCE"
     ]
   }
 }

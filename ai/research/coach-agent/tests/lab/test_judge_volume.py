@@ -57,7 +57,11 @@ def test_volume_unknown_cases():
     vol, pause = vjudge(dead, 10_000)
     assert not vol.measurable and not pause.measurable and pause.state == "UNKNOWN"
     assert pause.metrics["silence_ms"] is None
-    assert pause.issues and not pause.issues[0].actionable  # 옛 평가기처럼 쓸 수 없게 낸다
+    # 오디오가 죽어 있으면 이슈를 내지 않는다
+    assert not vol.issues and not pause.issues
+    dead_quiet = [vrec(i, -40.0, audio_live=False) for i in range(10)]
+    vol, pause = vjudge(dead_quiet, 10_000)
+    assert not vol.issues and not pause.issues
 
 
 def test_volume_level_db_is_kept_when_the_last_second_has_no_audio():

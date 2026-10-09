@@ -234,10 +234,10 @@ def _log_suppressed(tick: Tick, cands: list[Candidate], sink: EventSink) -> None
     for c in sorted(cands, key=rank_key):
         if c.status not in (CandidateStatus.WAITING, CandidateStatus.IGNORED):
             continue
-        last = st.suppress_log.get(c.strategy_key)
+        last = st.suppress_log.get(c.episode_key)
         if last is not None and tick.t - last < gap:
             continue
-        st.suppress_log[c.strategy_key] = tick.t
+        st.suppress_log[c.episode_key] = tick.t
         sink.emit(
             SuppressedEvent,
             t_ms=tick.t,

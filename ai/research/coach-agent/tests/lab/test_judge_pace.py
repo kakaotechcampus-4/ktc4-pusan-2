@@ -37,7 +37,8 @@ def test_pace_result_shape_and_states():
         r = pace.judge({"words": steady_words(30_000, cpm), "fillers": []}, 30_000)[0]
         check_shape(r)
         assert r.state == state and r.measurable and r.area == "SPEED"
-        assert bool(r.issues) == (state == "FAST")
+        expected = {"SLOW": Issue.PACE_SLOW, "FAST": Issue.PACE_FAST}.get(state)
+        assert [i.issue_type for i in r.issues] == ([expected] if expected else [])
     fast = pace.judge({"words": steady_words(30_000, 420)}, 30_000)[0]
     assert fast.issues[0].issue_type == Issue.PACE_FAST
     assert fast.issues[0].threshold == 350 and fast.issues[0].bad == 450
@@ -49,9 +50,25 @@ def test_pace_not_measurable_cases():
     assert not few.measurable and few.state == "UNKNOWN" and few.metrics["cpm"] is None
     bad = pace.judge({"words": steady_words(30_000, 420), "stt_status": "degraded"}, 30_000)[0]
     assert not bad.measurable and bad.state == "UNKNOWN" and bad.metrics["cpm"] is None
-    # 옛 평가기처럼 후보는 만들되 쓸 수 없게 둔다
-    assert bad.issues and not bad.issues[0].actionable
+    # STT 를 믿을 수 없으면 이슈를 내지 않는다
+    assert not bad.issues
     assert merged([bad]).get("ok_ms", 0) == 0
+    slow_bad = pace.judge({"words": steady_words(30_000, 200), "stt_status": "degraded"}, 30_000)[0]
+    check_shape(slow_bad)
+    assert not slow_bad.issues
+
+
+def test_pace_slow_issue():
+    r = pace.judge({"words": steady_words(30_000, 240), "fillers": []}, 30_000)[0]
+    check_shape(r)
+    [issue] = r.issues
+    assert issue.issue_type == Issue.PACE_SLOW and issue.actionable
+    assert (issue.threshold, issue.bad) == (275, 200)
+    # 275 에서 0.5, 200 에서 1.0 — 느릴수록 심각하다
+    assert issue.severity == pytest.approx(0.5 + 0.5 * (275 - r.metrics["cpm"]) / 75, abs=1e-3)
+    far = pace.judge({"words": steady_words(30_000, 150), "fillers": []}, 30_000)[0]
+    assert far.issues[0].severity == 1.0
+    assert not pace.judge({"words": steady_words(30_000, 300)}, 30_000)[0].issues
 
 
 def test_pace_fillers_none_counts_nothing():
@@ -167,3 +184,11 @@ def test_pace_summarize_and_criteria():
         7500,
         7500,
     )
+    slow = pace.criteria()["PACE_SLOW"]
+    assert (slow.metric, slow.direction, slow.threshold, slow.bad) == (
+        "cpm",
+        "LOWER_IS_WORSE",
+        275,
+        200,
+    )
+    assert (slow.onset_lag_ms, slow.offset_lag_ms) == (7500, 7500)

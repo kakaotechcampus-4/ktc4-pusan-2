@@ -593,6 +593,13 @@ def check_expect(result: RunResult) -> list[str]:
     for name in exp.get("outcomes_include", []):
         if name not in outcomes:
             failures.append(f"효과 판정 {name} 이 없음")
+    episodes = {e["issue_type"] for e in result.events if e["kind"] == "EPISODE"}
+    for name in exp.get("episodes_include", []):
+        if name not in episodes:
+            failures.append(f"문제 구간 {name} 이 없음")
+    for name in exp.get("episodes_exclude", []):
+        if name in episodes:
+            failures.append(f"문제 구간 {name} 이 있으면 안 됨")
     hints = {s.hint.value for s in review.segments}
     for name in exp.get("segment_hints_include", []):
         if name not in hints:

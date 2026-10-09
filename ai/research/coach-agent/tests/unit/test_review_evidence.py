@@ -155,6 +155,23 @@ def test_lag_compensation_moves_window_detections_back():
     assert (raw.onset_ms, raw.offset_ms) == (raw.start_ms, raw.end_ms)
 
 
+def test_record_only_episodes_are_not_burdens_and_new_gaze_issues_use_the_script_lag():
+    record_only = [
+        episode_ev("GAZE_ON_SCREEN", "GAZE", 2, 70_000, 90_000),
+        episode_ev(
+            "GAZE_UNMEASURABLE", "GAZE", 2, 70_000, 90_000, reliable_ms=0, unreliable_ms=21_000
+        ),
+        episode_ev("PACE_SLOW", "SPEED", 2, 70_000, 90_000),
+    ]
+    ev = build_review_evidence("t", [*three_slides(), *record_only], plan=PLAN)
+    assert ev.segments == [] and ev.summary.episodes == 0
+
+    for issue in ("GAZE_AWAY", "GAZE_LOW_EYE_CONTACT"):
+        events = [*three_slides(), episode_ev(issue, "GAZE", 2, 70_000, 90_000)]
+        seg = build_review_evidence("t", events, plan=PLAN).segments[0]
+        assert (seg.onset_ms, seg.offset_ms) == (63_000, 88_000)
+
+
 def test_flicker_is_merged_into_one_segment():
     events = [
         *three_slides(),

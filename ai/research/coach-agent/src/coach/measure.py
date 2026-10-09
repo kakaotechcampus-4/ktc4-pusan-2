@@ -21,7 +21,12 @@ log = logging.getLogger(__name__)
 #: 문제 → 효과 비교 · 악화 판단에 쓰는 대표 지표 (tick.metrics 의 키)
 ISSUE_METRIC: dict[Issue, str | None] = {
     Issue.GAZE_ON_SCRIPT: "script_ratio",
+    Issue.GAZE_AWAY: None,
+    Issue.GAZE_LOW_EYE_CONTACT: None,
+    Issue.GAZE_ON_SCREEN: None,
+    Issue.GAZE_UNMEASURABLE: None,
     Issue.PACE_FAST: "cpm",
+    Issue.PACE_SLOW: None,
     Issue.VOLUME_LOW: "voice_diff_db",
     Issue.FILLER_FREQUENT: "recent_filler_count",
     Issue.LONG_SILENCE: "silence_ms",

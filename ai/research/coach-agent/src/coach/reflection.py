@@ -162,6 +162,9 @@ def judge(tick: Tick, p: PendingOutcome) -> tuple[Outcome, float | None]:
             # 그래서 '줄었다'만으로는 인정하지 않고 탐지 기준 아래로 내려와야 인정한다 (실험 03 ·
             # 14)
             ok = after < rc.gaze_back_ratio
+        case Issue.GAZE_AWAY | Issue.GAZE_LOW_EYE_CONTACT:
+            # 다음 PR 에서 *_short 지표로 잰다
+            return Outcome.NOT_MEASURED, float(after)
         case Issue.PACE_FAST:
             fast = _threshold(tick, "pace", "PACE_FAST")
             if fast is None:

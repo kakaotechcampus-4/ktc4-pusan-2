@@ -21,7 +21,7 @@ from coach.vocab import FeedbackType, Issue
 
 from ._common import HIGHER, LOWER, In, Section, parse, ramp, ratio
 
-VERSION = "volume-0.1"
+VERSION = "volume-0.2"
 """연구용 대역 버전."""
 
 
@@ -150,7 +150,7 @@ def judge(
     # 음량: 말하는 동안의 최근 smoothing_ms 평균
     level_db, diff = _smoothed(seen, t_ms, base, cfg)
     volume_issues: list[JudgmentIssue] = []
-    if diff is not None and diff < cfg.low_relative_db:
+    if live and diff is not None and diff < cfg.low_relative_db:
         volume_issues.append(
             JudgmentIssue(
                 issue_type=Issue.VOLUME_LOW,
@@ -160,7 +160,6 @@ def judge(
                 persistence_sec=0.0,
                 threshold=cfg.low_relative_db,
                 bad=cfg.low_relative_db_bad,
-                actionable=live,
                 evidence={"voice_diff_db": diff, "smoothing_ms": cfg.smoothing_ms},
             )
         )
@@ -177,10 +176,10 @@ def judge(
         issues=volume_issues,
     )
 
-    # 침묵: 되살아난 뒤의 침묵만 센다. 오디오가 죽어 있어도 긴 침묵 후보는 만들되 쓸 수 없게 둔다
+    # 침묵: 되살아난 뒤의 침묵만 센다. 오디오가 죽어 있으면 이슈를 내지 않는다
     silence = _silence(seen, t_ms)
     pause_issues: list[JudgmentIssue] = []
-    if silence is not None and silence > cfg.long_silence_ms:
+    if live and silence is not None and silence > cfg.long_silence_ms:
         pause_issues.append(
             JudgmentIssue(
                 issue_type=Issue.LONG_SILENCE,
@@ -190,8 +189,6 @@ def judge(
                 persistence_sec=silence / 1000,
                 threshold=cfg.long_silence_ms,
                 bad=cfg.long_silence_bad_ms,
-                # 오디오가 멈췄는데 '말이 멈췄어요'가 뜨는 것이 가장 나쁜 오탐이라 쓸 수 없게 둔다
-                actionable=live,
                 evidence={"silence_ms": silence},
             )
         )

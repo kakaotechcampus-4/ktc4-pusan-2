@@ -9,11 +9,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .state import Praise, StrategyState, strategy_key
+from .state import Praise, StrategyState, episode_key, strategy_key
 from .tick import Tick
 from .vocab import (
     ISSUE_TYPE,
-    SLIDE_SCOPED,
     CandidateStatus,
     FeedbackType,
     Instruction,
@@ -31,7 +30,10 @@ class Candidate:
     variant: str
     #: 사다리에서 쓴 칸
     step: int
+    #: 사다리 단계 · 포기 · 개입 횟수의 키. 사다리를 나눠 쓰는 문제는 같다
     strategy_key: str
+    #: 문제 구간 · 참은 기록의 키. 문제마다 다르다
+    episode_key: str
     severity: float
     confidence: float
     persistence_ms: int
@@ -60,9 +62,12 @@ def build(tick: Tick) -> list[Candidate]:
     out: list[Candidate] = []
     st = tick.state
     for det in tick.detections:
-        key = strategy_key(det.issue_type, det.slide_number, det.issue_type in SLIDE_SCOPED)
-        episode = st.episodes[key]  # episodes.observe() 가 먼저 열어 둔다
         rule = tick.cfg.issues[det.issue_type]
+        if rule.record_only:
+            continue  # 문제 구간(episodes)에만 남기고 말하지 않는다
+        ekey = episode_key(det.issue_type, det.slide_number)
+        key = strategy_key(det.issue_type, det.slide_number)
+        episode = st.episodes[ekey]  # episodes.observe() 가 먼저 열어 둔다
         strat = st.strategy.get(key) or StrategyState()
         step = min(max(strat.step, det.min_step), len(rule.ladder) - 1)
         chosen = rule.ladder[step]
@@ -82,6 +87,7 @@ def build(tick: Tick) -> list[Candidate]:
                 variant=chosen.variant,
                 step=step,
                 strategy_key=key,
+                episode_key=ekey,
                 severity=det.severity,
                 confidence=det.confidence,
                 # 믿을 수 있는 상태로 이어진 시간. 믿을 수 없으면 0 이라 NOT_PERSISTENT 로 기다린다
@@ -122,6 +128,7 @@ def _praise_candidates(tick: Tick) -> list[Candidate]:
                 variant="default",
                 step=0,
                 strategy_key=Issue.IMPROVED_AFTER_FEEDBACK.value,
+                episode_key=Issue.IMPROVED_AFTER_FEEDBACK.value,
                 severity=tick.cfg.policy.praise_severity,
                 confidence=1.0,
                 persistence_ms=0,

@@ -241,11 +241,18 @@ def aggregate_slides(events: list[SlideEvent]) -> tuple[dict[int, Agg], Agg]:
     return slides, take
 
 
+#: 대본 응시의 창 지연을 그대로 쓰는 문제 (다른 시선 문제는 지연을 따로 재지 않았다)
+_GAZE_WINDOW_ISSUES = (Issue.GAZE_ON_SCRIPT, Issue.GAZE_AWAY, Issue.GAZE_LOW_EYE_CONTACT)
+
+#: 말하지 않고 기록만 하는 문제 — 리뷰의 부담이 아니다
+_RECORD_ONLY_ISSUES = (Issue.GAZE_ON_SCREEN, Issue.GAZE_UNMEASURABLE, Issue.PACE_SLOW)
+
+
 def _lag(ep: EpisodeEvent, cfg: CoachConfig) -> tuple[int, int]:
     if not cfg.review.lag_compensation:
         return 0, 0
     k = cfg.review.lag_scale
-    if ep.issue_type == Issue.GAZE_ON_SCRIPT:
+    if ep.issue_type in _GAZE_WINDOW_ISSUES:
         # 창 비율이 기준 thr 을 넘으려면 창의 thr 만큼을 대본에 써야 하고, 내려오려면 1-thr 만큼을
         # 떠나야 한다
         window = int(ep.peak_evidence.get("window_ms") or 10_000)
@@ -259,6 +266,8 @@ def segments_from_episodes(episodes: list[EpisodeEvent], cfg: CoachConfig) -> li
     tick = cfg.policy.default_tick_ms
     out: list[Seg] = []
     for ep in episodes:
+        if ep.issue_type in _RECORD_ONLY_ISSUES:
+            continue
         start, end = ep.start_ms, ep.end_ms + tick
         lag_on, lag_off = _lag(ep, cfg)
         onset = max(0, start - lag_on)
