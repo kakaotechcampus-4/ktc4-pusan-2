@@ -18,7 +18,7 @@ from .vocab import FeedbackType, Issue
 
 log = logging.getLogger(__name__)
 
-#: 문제 → 효과 비교 · 악화 판단에 쓰는 대표 지표 (tick.metrics 의 키)
+#: 문제 → 악화 판단에 쓰는 대표 지표 (tick.metrics 의 키). 없으면 악화를 보지 않는다
 ISSUE_METRIC: dict[Issue, str | None] = {
     Issue.GAZE_ON_SCRIPT: "script_ratio",
     Issue.GAZE_AWAY: None,
@@ -29,10 +29,10 @@ ISSUE_METRIC: dict[Issue, str | None] = {
     Issue.PACE_SLOW: None,
     Issue.VOLUME_LOW: "voice_diff_db",
     Issue.FILLER_FREQUENT: "recent_filler_count",
-    Issue.LONG_SILENCE: "silence_ms",
+    Issue.LONG_SILENCE: None,
     Issue.BEHIND_SCHEDULE: "required_ratio",
-    Issue.AHEAD_OF_SCHEDULE: "projected_end_ms",
-    Issue.SLIDE_OVER: "slide_elapsed_ms",
+    Issue.AHEAD_OF_SCHEDULE: None,
+    Issue.SLIDE_OVER: None,
     Issue.FINAL_MINUTE: None,
     Issue.TIME_OVER: None,
 }
@@ -80,6 +80,7 @@ def build_tick(req: CoachRequest, cfg: CoachConfig, state: CoachState, run: Judg
         stt_ok=stt_ok,
         dt_ms=dt,
         criteria=run.criteria,
+        summarize=run.summarize,
     )
 
     # 지표: 모든 결과의 metrics 를 한 dict 로 (이름은 모듈 사이에서 겹치지 않는다). STT 를 믿을 수
@@ -89,16 +90,6 @@ def build_tick(req: CoachRequest, cfg: CoachConfig, state: CoachState, run: Judg
             tick.metrics.update(dict.fromkeys(result.metrics))
         else:
             tick.metrics.update(result.metrics)
-    # 장 미션의 지금 값: 그 장에 머문 시간. 개입 규칙 PR 에서 장 합계의 summarize 값으로 바뀐다
-    if tick.metrics.get("slide_elapsed_ms") is not None:
-        tick.metrics["slide_duration_ms"] = tick.metrics["slide_elapsed_ms"]
-    plan = req.plan
-    if plan.target_ms is not None:
-        tick.metrics["early_limit_ms"] = (
-            plan.min_ms
-            if plan.min_ms is not None
-            else round(plan.target_ms * cfg.timing.early_end_ratio)
-        )
 
     # 말하는 중 · 기준 대비 음량: 가장 최근 1초 기록
     latest = max(inputs.voice_records, key=lambda r: r.t_ms, default=None)
@@ -110,6 +101,13 @@ def build_tick(req: CoachRequest, cfg: CoachConfig, state: CoachState, run: Judg
     filler = run.results.get(FeedbackType.FILLER)
     if filler is not None and stt_ok:
         tick.filler_new = int(sum(p.values.get("filler_count", 0) for p in filler.tally))
+        # 효과를 잴 때 구간별로 다시 세려고 말한 시각과 함께 남긴다
+        state.filler_times.extend(
+            [p.t_ms, int(p.values["filler_count"])]
+            for p in filler.tally
+            if p.values.get("filler_count", 0) > 0
+        )
+    _prune_filler_times(tick)
 
     for result in run.results.values():
         for issue in result.issues:
@@ -118,6 +116,20 @@ def build_tick(req: CoachRequest, cfg: CoachConfig, state: CoachState, run: Judg
                 continue
             tick.detections.append(_detection(tick, result, issue))
     return tick
+
+
+def _prune_filler_times(tick: Tick) -> None:
+    """군더더기 효과를 재는 데 필요한 만큼만 남긴다: 재기로 한 개입의 앞 구간부터, 그리고 지금
+    개입해도 앞 구간이 되는 최근 구간."""
+    state = tick.state
+    window = tick.cfg.issues[Issue.FILLER_FREQUENT].outcome_delay_ms
+    if window is None:
+        state.filler_times = []
+        return
+    horizon = min(
+        [tick.t - window, *(p.t_ms - window for p in state.pending if p.metric == "filler_count")]
+    )
+    state.filler_times = [e for e in state.filler_times if e[0] > horizon]
 
 
 def indicators(run: JudgeRun) -> dict[str, str]:

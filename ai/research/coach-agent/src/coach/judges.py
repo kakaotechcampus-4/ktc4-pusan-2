@@ -21,6 +21,7 @@ from .schemas import CoachInputs, CoachRequest, IssueCriteria, JudgmentResult, S
 from .state import CoachState, Cursor
 from .timing import criteria as timing_criteria
 from .timing import judge as timing_judge
+from .timing import summarize as timing_summarize
 from .vocab import FeedbackType
 
 log = logging.getLogger(__name__)
@@ -37,6 +38,20 @@ _AREAS: dict[str, tuple[FeedbackType, ...]] = {
     "filler": (FeedbackType.FILLER,),
     "timing": (FeedbackType.TIME,),
 }
+
+
+#: 영역 → 그 영역 합계를 지표로 바꾸는 모듈 (summarize 가 있는 쪽)
+_SUMMARY_MODULE: dict[FeedbackType, str] = {
+    FeedbackType.GAZE: "gaze",
+    FeedbackType.SPEED: "pace",
+    FeedbackType.VOLUME: "volume",
+    FeedbackType.PAUSE: "volume",
+    FeedbackType.FILLER: "filler",
+}
+
+
+#: 영역 합계(영역 → 이름 → 합) → 그 영역 모듈이 계산한 지표. 못 읽으면 None
+Summarizer = Callable[[FeedbackType, dict[str, dict[str, float]]], dict[str, Any] | None]
 
 
 class Judge(Protocol):
@@ -79,6 +94,8 @@ class JudgeRun:
     criteria: dict[str, dict[str, IssueCriteria]] = field(default_factory=dict)
     #: filler 결과의 words (단어별 판정)
     filler_words: list[dict[str, Any]] = field(default_factory=list)
+    #: 영역 합계(영역 → 이름 → 합) → 그 영역의 지표. 읽을 수 없으면 None (개입 규칙의 미션 값)
+    summarize: Summarizer | None = None
 
 
 def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) -> JudgeRun:
@@ -86,6 +103,7 @@ def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) 
     inputs = req.inputs
     t = req.t_ms
     out = JudgeRun()
+    out.summarize = lambda area, totals: summarize(judges, area, totals, cfg)
     prev_ms = _round_start(state)
     slide = _note_slide(req, state)
     _track_stt(state, inputs, t, out)
@@ -380,6 +398,19 @@ def _advance(
     version = results[0].criteria_version
     state.criteria_versions.setdefault(name, version)
     state.latest_criteria_versions[name] = version
+
+
+def summarize(
+    judges: Judges, area: FeedbackType, totals: dict[str, dict[str, float]], cfg: CoachConfig
+) -> dict[str, Any] | None:
+    """합계를 그 영역 모듈의 summarize 로 지표로 바꾼다. 못 읽었으면 None."""
+    try:
+        if area == FeedbackType.TIME:
+            return timing_summarize(totals, cfg.timing)
+        return dict(getattr(judges, _SUMMARY_MODULE[area]).summarize(totals))
+    except Exception:  # noqa: BLE001 — 지표를 못 읽어도 미션 가중만 빠진다
+        log.warning("summarize failed: %s", area, exc_info=True)
+        return None
 
 
 def _criteria(judges: Judges, cfg: CoachConfig) -> dict[str, dict[str, IssueCriteria]]:

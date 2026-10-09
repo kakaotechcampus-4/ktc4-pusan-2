@@ -265,6 +265,11 @@ class Session:
         return [r for r in self.responses if r.feedback is not None]
 
 
+def _script_metrics(ratio: float | None) -> dict[str, Any]:
+    """시선 모듈이 내는 대본 응시 비율 지표: 지금 값과 효과를 재는 짧은 평균."""
+    return {"script_ratio": ratio, "script_ratio_short": ratio}
+
+
 def gaze_on(
     script_ratio: float = 0.9, *, severity: float | None = None, confidence: float = 1.0
 ) -> dict[str, Any]:
@@ -280,18 +285,18 @@ def gaze_on(
         confidence=confidence,
         evidence={"script_ratio": script_ratio, "window_ms": 10_000},
     )
-    return {"issues": [issue], "metrics": {"script_ratio": script_ratio}}
+    return {"issues": [issue], "metrics": _script_metrics(script_ratio)}
 
 
 def gaze_off(script_ratio: float = 0.1) -> dict[str, Any]:
     """대본을 거의 안 보는 중(문제 없음)."""
-    return {"metrics": {"script_ratio": script_ratio}}
+    return {"metrics": _script_metrics(script_ratio)}
 
 
 def gaze_blind() -> dict[str, Any]:
     """얼굴이 안 잡혀 시선을 잴 수 없다: 문제 후보는 나오지만 믿을 수 없고 지표는 비어 있다."""
     issue = gaze_on(0.9)["issues"][0]
-    return {"issues": [issue], "metrics": {"script_ratio": None}, "unmeasurable": ("GAZE",)}
+    return {"issues": [issue], "metrics": _script_metrics(None), "unmeasurable": ("GAZE",)}
 
 
 def mid_slide_state(slide: int, started_ms: int, chars: int, now_ms: int) -> dict[str, Any]:

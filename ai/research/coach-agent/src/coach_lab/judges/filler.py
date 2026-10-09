@@ -32,8 +32,6 @@ class Config(Section):
     filler_window_ms: int = 60_000
     filler_threshold: int = 6
     filler_bad: int = 15
-    #: 개입 효과를 잴 때 코치가 쓰는 짧은 창의 개수(filler_count_30s). 다음 PR 에서 정리한다
-    compat_window_ms: int = 30_000
     onset_lag_ms: int = 30_000
     offset_lag_ms: int = 30_000
 
@@ -116,9 +114,7 @@ def judge(
         for w in words
     ]
 
-    metrics: dict[str, float | None] = dict.fromkeys(
-        ("recent_filler_count", "filler_count_30s", "filler_per_min")
-    )
+    metrics: dict[str, float | None] = dict.fromkeys(("recent_filler_count", "filler_per_min"))
     issues: list[JudgmentIssue] = []
     state = "UNKNOWN"
     if stt_ok:
@@ -126,7 +122,6 @@ def judge(
         observed = min(cfg.filler_window_ms, t_ms)
         metrics.update(
             recent_filler_count=recent,
-            filler_count_30s=_count(judged, t_ms, cfg.compat_window_ms),
             filler_per_min=round(recent * 60_000 / observed, 2) if observed >= 10_000 else None,
         )
         state = "HIGH" if recent >= cfg.filler_threshold else "NORMAL"

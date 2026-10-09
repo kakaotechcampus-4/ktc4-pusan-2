@@ -55,7 +55,7 @@ def test_review_evidence_labels_segments():
     gaze = next(t for t in ev.by_type if t.area.value == "GAZE")
     assert (gaze.interventions, gaze.effective, gaze.episodes) == (1, 1, 2)
     iv = ev.interventions[0]
-    assert iv.outcome.value == "EFFECTIVE" and iv.outcome_metric == "script_ratio"
+    assert iv.outcome.value == "EFFECTIVE" and iv.outcome_metric == "script_ratio_short"
 
 
 def test_gave_up_segment_is_flagged_for_review():

@@ -25,14 +25,16 @@ class HistorySample(_S):
     """최근 60초를 1초 단위로 남긴 것. 지속 · 악화 · 개입 전후 비교에 쓴다."""
 
     t_ms: int
-    slide_number: int | None = None
     script_ratio: float | None = None
+    script_ratio_short: float | None = None
+    away_ratio_short: float | None = None
+    audience_ratio_short: float | None = None
     cpm: float | None = None
     cpm_short: float | None = None
     voice_diff_db: float | None = None
     speaking: bool | None = None
-    filler_new: int = 0
     required_ratio: float | None = None
+    recent_filler_count: float | None = None
 
 
 class EpisodeState(_S):
@@ -163,6 +165,9 @@ class CoachState(_S):
     #: 아니다
     stt_gap: bool = False
     stt_ok_since_ms: int | None = None
+    #: 군더더기 효과를 재려고 남기는 최근 군더더기 수 [[말한 시각, 수]]. 단어는 늦게 확정되므로
+    #: 효과를 잴 때 구간별로 다시 센다. 효과 판정에 필요한 만큼만 남긴다
+    filler_times: list[list[int]] = Field(default_factory=list)
 
     #: 문제별 마지막 '참은 기록' 시각
     suppress_log: dict[str, int] = Field(default_factory=dict)

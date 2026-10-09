@@ -136,17 +136,6 @@ def test_stt_issues_are_unusable_while_audio_is_dead():
     assert c.status.value == "IGNORED" and "SENSOR_UNUSABLE" in c.reasons
 
 
-def test_slide_mission_current_value_is_the_slide_dwell():
-    """장 미션(slide_duration_ms)의 지금 값은 그 장에 머문 시간이다."""
-    req = CoachRequest.model_validate(
-        make_request(40_000, plan=PLAN, slide=2, slide_started=30_000)
-    )
-    state = initial_state()
-    run = judges_mod.run(req, state, fake_judges(), load_config())
-    tick = measure.build_tick(req, load_config(), state, run)
-    assert tick.metrics["slide_duration_ms"] == tick.metrics["slide_elapsed_ms"] == 10_000
-
-
 def test_time_critical_reason_with_float_remaining():
     s = Session(plan=PLAN)
     out = s.run(170_000, 172_000)

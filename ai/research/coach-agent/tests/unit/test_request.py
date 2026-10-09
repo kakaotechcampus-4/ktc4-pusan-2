@@ -56,11 +56,14 @@ def test_recurring_issues_from_the_request_give_recurring():
 
 
 @pytest.mark.parametrize("value", [True, False, None])
-def test_script_used_is_accepted_without_effect(value):
+def test_script_used_is_accepted(value):
     assert CoachRequest.model_validate(make_request(1_000, script_used=value)).script_used is value
+
+
+@pytest.mark.parametrize("value", [False, None])
+def test_script_not_used_does_not_change_decisions(value):
     base = Session().run(10_000, 13_000, **gaze_on(0.9))
-    with_flag = Session(script_used=value).run(10_000, 13_000, **gaze_on(0.9))
-    assert with_flag == base
+    assert Session(script_used=value).run(10_000, 13_000, **gaze_on(0.9)) == base
 
 
 def test_eq_operator_is_rejected():

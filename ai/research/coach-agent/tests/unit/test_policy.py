@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from coach.state import CoachState, dump_state
+
 from .conftest import SPEAKING, Session, gaze_on
 from .fakes import fake_issue
 
@@ -132,6 +134,9 @@ def test_mission_and_memory_raise_priority_with_reasons():
     recurring = [{"area": "GAZE", "slide_number": 1}]
     plain = Session().run(10_000, 13_000, **gaze_on(0.75))[-1]
     s = Session(missions=mission, recurring_issues=recurring)
+    # 미션의 지금 값은 그 장의 합계를 모듈이 계산한 값이다 (가짜 모듈은 합계를 그대로 돌려준다)
+    totals = {"GAZE": {"script_ratio": 0.75}}
+    s.state = dump_state(CoachState(totals=totals, slide_totals={"1": totals}))
     resp = s.run(10_000, 13_000, **gaze_on(0.75))[-1]
     assert resp.feedback.priority > plain.feedback.priority
     assert {"MISSION_RELEVANT", "MISSION_AT_RISK", "RECURRING"} <= set(resp.reason_codes)

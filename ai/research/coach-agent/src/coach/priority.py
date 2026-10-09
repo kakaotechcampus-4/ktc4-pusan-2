@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from .candidates import Candidate
-from .schemas import MissionTarget
+from .schemas import Mission, MissionTarget
 from .tick import Tick
 from .vocab import FeedbackType, Reason
 
@@ -56,12 +56,32 @@ def _mission(tick: Tick, c: Candidate) -> float:
             continue
         weight = max(weight, pc.mission_weight)
         _add(c, Reason.MISSION_RELEVANT)
-        if mission.target is not None and violates(
-            tick.metrics.get(mission.target.metric), mission.target
-        ):
+        if mission.target is not None and violates(_mission_value(tick, mission), mission.target):
             weight = max(weight, pc.mission_at_risk_weight)
             _add(c, Reason.MISSION_AT_RISK)
     return weight
+
+
+def _mission_value(tick: Tick, mission: Mission) -> object:
+    """미션 지표의 지금 값: 지금까지의 Take 합계(장 미션이면 그 장 합계)를 그 영역 모듈의
+    summarize 로 바꾼 값. 리뷰의 미션 판정과 같은 값이다. 못 구하면 None."""
+    if tick.summarize is None or mission.target is None:
+        return None
+    if mission.slide_number is None:
+        totals = tick.state.totals
+    else:
+        totals = tick.state.slide_totals.get(str(mission.slide_number))
+        if totals is None:
+            return None
+    summary = tick.summarize(mission.area, totals)
+    if summary is None:
+        return None
+    metric = mission.target.metric
+    # 시간의 장 미션은 그 장의 duration_ms 를 slide_duration_ms 라는 이름으로 찾는다
+    if mission.area == FeedbackType.TIME and metric == "slide_duration_ms":
+        metric = "duration_ms"
+    values = summary.get(mission.area.value)
+    return values.get(metric) if isinstance(values, dict) else None
 
 
 def violates(value: object, target: MissionTarget) -> bool:

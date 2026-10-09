@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from .candidates import Candidate
@@ -21,12 +22,16 @@ from .state import PendingOutcome, Praise, StrategyState, ladder_name
 from .tick import Tick
 from .vocab import Issue, Outcome, StrategyChange
 
+#: 군더더기는 지표가 아니라 개입 앞 · 뒤 구간의 수라서 이름만 쓴다
+FILLER_METRIC = "filler_count"
 #: 효과를 잴 때 비교하는 지표 (tick.metrics 의 키)
 OUTCOME_METRIC: dict[Issue, str | None] = {
-    Issue.GAZE_ON_SCRIPT: "script_ratio",
+    Issue.GAZE_ON_SCRIPT: "script_ratio_short",
+    Issue.GAZE_AWAY: "away_ratio_short",
+    Issue.GAZE_LOW_EYE_CONTACT: "audience_ratio_short",
     Issue.PACE_FAST: "cpm_short",
     Issue.VOLUME_LOW: "voice_diff_db",
-    Issue.FILLER_FREQUENT: "filler_count_30s",
+    Issue.FILLER_FREQUENT: FILLER_METRIC,
     Issue.LONG_SILENCE: "silence_ms",
     Issue.BEHIND_SCHEDULE: "required_ratio",
     # 예상 종료는 누적값이라 10초 안에 거의 안 움직인다. '천천히'에 따라 말 속도가 줄었는지를 본다
@@ -35,13 +40,23 @@ OUTCOME_METRIC: dict[Issue, str | None] = {
 }
 
 
+@dataclass(frozen=True)
+class Measured:
+    """효과 판정 한 건: 결과와, 이벤트에 싣는 개입 전후 값."""
+
+    outcome: Outcome
+    before: float | None = None
+    after: float | None = None
+
+
 def register(tick: Tick, c: Candidate, intervention_id: str) -> None:
     """방금 한 개입의 효과를 나중에 재도록 예약한다."""
     rule = tick.cfg.issues[c.issue_type]
     if c.praise is not None or rule.outcome_delay_ms is None:
         return
     metric = OUTCOME_METRIC.get(c.issue_type)
-    before = _metric_avg(tick, metric)
+    # 군더더기는 효과를 잴 때 구간별로 센다 — 단어가 늦게 확정되어 지금은 끝부분이 비어 있다
+    before = None if metric == FILLER_METRIC else _metric_avg(tick, metric)
     tick.state.pending.append(
         PendingOutcome(
             intervention_id=intervention_id,
@@ -69,7 +84,8 @@ def resolve(tick: Tick, sink: EventSink) -> None:
         return
     st.pending = [p for p in st.pending if p.check_at_ms > tick.t]
     for pending in due:
-        outcome, after = judge(tick, pending)
+        measured = judge(tick, pending)
+        outcome = measured.outcome
         sink.emit(
             OutcomeEvent,
             t_ms=tick.t,
@@ -81,10 +97,10 @@ def resolve(tick: Tick, sink: EventSink) -> None:
             slide_number=pending.slide_number,
             outcome=outcome,
             metric=pending.metric,
-            before=pending.before,
-            after=after,
+            before=measured.before,
+            after=measured.after,
         )
-        _update_strategy(tick, pending, outcome, after, sink)
+        _update_strategy(tick, pending, measured, sink)
 
 
 def prune_praise(tick: Tick) -> None:
@@ -110,7 +126,14 @@ def _metric_now(tick: Tick, metric: str | None) -> Any:
 
 #: 최근 기록에 남는 지표 — 효과 전후를 순간값이 아니라 최근 평균으로 잴 수 있다
 _HISTORY_METRICS = frozenset(
-    {"script_ratio", "cpm", "cpm_short", "voice_diff_db", "required_ratio"}
+    {
+        "script_ratio_short",
+        "away_ratio_short",
+        "audience_ratio_short",
+        "cpm_short",
+        "voice_diff_db",
+        "required_ratio",
+    }
 )
 
 
@@ -135,29 +158,62 @@ def _threshold(tick: Tick, module: str, issue: str) -> float | None:
     return found.threshold if found is not None else None
 
 
-def judge(tick: Tick, p: PendingOutcome) -> tuple[Outcome, float | None]:
-    cfg = tick.cfg
-    rc = cfg.reflection
+def _count_fillers(tick: Tick, lo_ms: int, hi_ms: int) -> int:
+    """말한 시각이 (lo, hi] 인 군더더기 수."""
+    return sum(n for at, n in tick.state.filler_times if lo_ms < at <= hi_ms)
+
+
+def _judge_filler(tick: Tick, p: PendingOutcome) -> Measured:
+    """개입 앞 · 뒤 같은 길이 구간의 군더더기 수를 잴 때 센다.
+
+    단어는 늦게 확정되어 개입 순간에는 앞 구간의 끝이 덜 들어와 있다. 그래서 둘 다 잴 때 센다.
+    그 시간 동안 STT 를 믿지 못한 적이 있으면 수가 모자란 것이라 재지 못한 것으로 둔다.
+    """
+    st = tick.state
+    window = p.check_at_ms - p.t_ms
+    since = st.stt_ok_since_ms
+    if st.stt_gap or not tick.stt_ok or (since is not None and since > p.t_ms - window):
+        return Measured(Outcome.NOT_MEASURED, p.before)
+    before = _count_fillers(tick, p.t_ms - window, p.t_ms)
+    after = _count_fillers(tick, p.t_ms, p.t_ms + window)
+    ok = after <= before * (1 - tick.cfg.reflection.filler_drop_ratio)
+    return Measured(Outcome.EFFECTIVE if ok else Outcome.INEFFECTIVE, float(before), float(after))
+
+
+def judge(tick: Tick, p: PendingOutcome) -> Measured:
+    rc = tick.cfg.reflection
 
     if p.issue_type == Issue.SLIDE_OVER:
         moved = tick.slide_number is not None and tick.slide_number != p.slide_number
-        return (Outcome.EFFECTIVE if moved else Outcome.INEFFECTIVE), tick.slide_number
+        outcome = Outcome.EFFECTIVE if moved else Outcome.INEFFECTIVE
+        return Measured(outcome, p.before, tick.slide_number)
+
+    if p.issue_type == Issue.FILLER_FREQUENT:
+        return _judge_filler(tick, p)
 
     if p.issue_type == Issue.LONG_SILENCE:
         after = tick.metrics.get("silence_ms")
         samples = [s.speaking for s in tick.state.history if s.t_ms > p.t_ms] + [tick.speaking]
         known = [s for s in samples if s is not None]
         if after is None and not known:
-            return Outcome.NOT_MEASURED, None
+            return Measured(Outcome.NOT_MEASURED, p.before)
         # 지금 침묵이 개입 뒤에 시작됐으면 그 사이에 말을 했다. 단어 누락으로 '말하는 중' 표본이
         # 한 번도 안 잡혀도 알 수 있다 (실험 09)
         resumed = any(known) or (after is not None and after < tick.t - p.t_ms)
-        return (Outcome.EFFECTIVE if resumed else Outcome.INEFFECTIVE), after
+        outcome = Outcome.EFFECTIVE if resumed else Outcome.INEFFECTIVE
+        return Measured(outcome, p.before, after)
 
-    after = _metric_avg(tick, p.metric)
-    if not isinstance(after, (int, float)) or p.before is None:
-        return Outcome.NOT_MEASURED, None
-    before = p.before
+    value = _metric_avg(tick, p.metric)
+    if not isinstance(value, (int, float)) or p.before is None:
+        return Measured(Outcome.NOT_MEASURED, p.before)
+    before, after = p.before, float(value)
+
+    def result(ok: bool) -> Measured:
+        return Measured(Outcome.EFFECTIVE if ok else Outcome.INEFFECTIVE, before, after)
+
+    def unmeasured() -> Measured:
+        # 기준값을 못 읽어 재지 못했다. 잰 값은 남긴다
+        return Measured(Outcome.NOT_MEASURED, before, after)
 
     match p.issue_type:
         case Issue.GAZE_ON_SCRIPT:
@@ -165,43 +221,36 @@ def judge(tick: Tick, p: PendingOutcome) -> tuple[Outcome, float | None]:
             # 내려온다(평균으로의 회귀).
             # 그래서 '줄었다'만으로는 인정하지 않고 탐지 기준 아래로 내려와야 인정한다 (실험 03 ·
             # 14)
-            ok = after < rc.gaze_back_ratio
-        case Issue.GAZE_AWAY | Issue.GAZE_LOW_EYE_CONTACT:
-            # 다음 PR 에서 *_short 지표로 잰다
-            return Outcome.NOT_MEASURED, float(after)
+            return result(after < rc.gaze_back_ratio)
+        case Issue.GAZE_AWAY:
+            return result(after < rc.gaze_away_back_ratio)
+        case Issue.GAZE_LOW_EYE_CONTACT:
+            contact = _threshold(tick, "gaze", "GAZE_LOW_EYE_CONTACT")
+            if contact is None:
+                return unmeasured()
+            return result(after >= contact + rc.gaze_contact_margin)
         case Issue.PACE_FAST:
             fast = _threshold(tick, "pace", "PACE_FAST")
             if fast is None:
-                return Outcome.NOT_MEASURED, float(after)
-            back = after <= fast - rc.cpm_back_margin
-            ok = back or after <= before * (1 - rc.cpm_drop_ratio)
+                return unmeasured()
+            return result(after < fast)
         case Issue.VOLUME_LOW:
             low = _threshold(tick, "volume", "VOLUME_LOW")
             if low is None:
-                return Outcome.NOT_MEASURED, float(after)
-            ok = after >= low or after >= before + rc.volume_gain_db
-        case Issue.FILLER_FREQUENT:
-            ok = after <= before * (1 - rc.filler_drop_ratio)
+                return unmeasured()
+            return result(after >= low)
         case Issue.BEHIND_SCHEDULE:
             behind = _threshold(tick, "timing", "BEHIND_SCHEDULE")
             if behind is None:
-                return Outcome.NOT_MEASURED, float(after)
-            ok = after < behind or after <= before - rc.schedule_delta
+                return unmeasured()
+            return result(after < behind or after <= before - rc.schedule_delta)
         case Issue.AHEAD_OF_SCHEDULE:
-            end = tick.metrics.get("projected_end_ms")
-            limit = tick.metrics.get("early_limit_ms")
-            back_in_range = (
-                isinstance(end, (int, float)) and isinstance(limit, (int, float)) and end >= limit
-            )
-            ok = back_in_range or after <= before * (1 - rc.cpm_drop_ratio)
-        case _:
-            return Outcome.NOT_MEASURED, float(after)
-    return (Outcome.EFFECTIVE if ok else Outcome.INEFFECTIVE), float(after)
+            return result(after <= before * (1 - rc.cpm_drop_ratio))
+    return unmeasured()
 
 
-def _update_strategy(
-    tick: Tick, p: PendingOutcome, outcome: Outcome, after: float | None, sink: EventSink
-) -> None:
+def _update_strategy(tick: Tick, p: PendingOutcome, measured: Measured, sink: EventSink) -> None:
+    outcome = measured.outcome
     st = tick.state
     cfg = tick.cfg
     rule = cfg.issues[p.issue_type]
@@ -219,8 +268,8 @@ def _update_strategy(
                     intervention_t_ms=p.t_ms,
                     expires_ms=tick.t + cfg.policy.praise_ttl_ms,
                     metric=p.metric,
-                    before=p.before,
-                    after=after,
+                    before=measured.before,
+                    after=measured.after,
                 )
             )
         return
