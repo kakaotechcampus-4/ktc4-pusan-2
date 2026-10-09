@@ -199,8 +199,9 @@ def test_mission_status(value, op, target, want):
     assert mission_status(value, op, target, tol) == want
 
 
-def test_satisfies_eq_and_strict():
-    assert satisfies(1.0, "EQ", 1.0) and not satisfies(1.0, "LT", 1.0)
+def test_satisfies_is_strict_for_lt_and_gt():
+    assert satisfies(1.0, "LTE", 1.0) and not satisfies(1.0, "LT", 1.0)
+    assert satisfies(1.0, "GTE", 1.0) and not satisfies(1.0, "GT", 1.0)
 
 
 def test_missions_read_the_right_scope_and_say_why_not():

@@ -15,7 +15,8 @@ SCHEMA_VERSION = "1.2"
 #: coach-v1.2: Take 시작 전 LLM 코칭 계획 (계획이 없으면 coach-v1.1 과 같은 판단)
 POLICY_VERSION = "coach-v1.2"
 #: coach_state 모양이 바뀌면 올린다. 다른 버전의 state 가 오면 버리고 새로 시작한다.
-#: 2: 판정 모듈 커서 · tally 합계 · 기준 음량 · 센 구간을 두고, 옛 평가기 상태를 뺐다
+#: 2: 판정 모듈 커서 · tally 합계 · 기준 음량 · 센 구간을 두고, 옛 평가기 상태를 뺐다.
+#: 코칭 계획도 뺐다 (요청의 coaching_plan 으로 받는다)
 STATE_VERSION = 2
 #: 시간 판정(timing) 기능 버전. 출력의 뜻이 바뀌면 올린다
 TIMING_VERSION = "timing-1.0"

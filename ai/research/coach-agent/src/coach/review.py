@@ -22,7 +22,6 @@ BE 가 쌓아 두고, Take 가 끝나면 이 함수가 그 이벤트를 요약�
 
 from __future__ import annotations
 
-import math
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
@@ -486,8 +485,6 @@ def satisfies(value: float, operator: str, target: float) -> bool:
             return value > target
         case "GTE":
             return value >= target
-        case "EQ":
-            return math.isclose(value, target, abs_tol=1e-9)
     return False
 
 

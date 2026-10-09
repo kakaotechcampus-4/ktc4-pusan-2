@@ -27,13 +27,12 @@ from .schemas import (
     PlanResponse,
     RelaxItem,
 )
-from .state import dump_state, initial_state
 from .version import POLICY_VERSION
 from .vocab import Mode
 
 log = logging.getLogger(__name__)
 
-#: why 문장 길이 상한 — 계획은 coach_state 에 실려 매초 오간다
+#: why 문장 길이 상한 — 계획은 요청의 coaching_plan 으로 매초 오간다
 _WHY_CHARS = 200
 #: 대본 속 수치 (12억 · 18.2% · 2024년 · 1,240명 → 숫자 하나씩)
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
@@ -210,7 +209,9 @@ def plan_coaching(
     cache: PlanCache | None = None,
     config: CoachConfig | None = None,
 ) -> PlanResponse:
-    """Take 시작 전 한 번. 계획을 담은 첫 coach_state 를 돌려준다.
+    """Take 시작 전 한 번. 코칭 계획을 plan 으로 돌려준다.
+
+    BE 가 plan 을 저장해 두었다가 매 /coach/evaluate 요청의 coaching_plan 에 싣는다.
 
     llm 이 None 이거나 실전 모드면 LLM 을 부르지 않고 기본 계획을 돌려준다.
     LLM 이 예외를 내면 기본 계획 + fallback_reason="LLM_ERROR".
@@ -230,7 +231,6 @@ def plan_coaching(
             plan=plan,
             fallback_reason=reason,
             dropped=dropped or [],
-            coach_state=dump_state(initial_state(plan)),
         )
 
     # 실전 모드는 말하지 않으니 계획이 쓸모없다 — 비용을 들이지 않는다

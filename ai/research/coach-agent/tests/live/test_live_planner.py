@@ -22,4 +22,3 @@ def test_real_llm_returns_a_valid_plan():
     resp = plan_coaching(plan_request(sc), llm=plan_llm(settings), model=settings.model)
     assert resp.fallback_reason is None, "LLM 호출 또는 출력 형식이 실패했다"
     assert resp.plan.source == "LLM"
-    assert resp.coach_state["plan"]["source"] == "LLM"

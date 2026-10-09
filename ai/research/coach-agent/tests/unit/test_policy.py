@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from coach.schemas import CoachingPlan, FocusItem, RelaxItem
-from coach.state import dump_state, initial_state
-
 from .conftest import SPEAKING, Session, gaze_on
 from .fakes import fake_issue
 
@@ -98,40 +95,29 @@ def test_does_not_wait_forever_for_a_pause():
 
 
 def test_plan_relax_and_focus():
-    relaxed = dump_state(
-        initial_state(CoachingPlan(source="LLM", relax=[RelaxItem(area="GAZE", slide_number=1)]))
-    )
-    s = Session()
-    s.state = relaxed
+    relaxed = {"source": "LLM", "relax": [{"area": "GAZE", "slide_number": 1}]}
+    s = Session(coaching_plan=relaxed)
     out = s.run(10_000, 14_000, **gaze_on(0.9))
     assert all(r.feedback is None for r in out)
     assert "PLAN_RELAXED" in _cand(out[-1], "GAZE_ON_SCRIPT").reasons
 
-    focus = dump_state(
-        initial_state(CoachingPlan(source="LLM", focus=[FocusItem(area="GAZE", weight=1.8)]))
-    )
+    focus = {"source": "LLM", "focus": [{"area": "GAZE", "weight": 1.8}]}
     plain = Session().run(10_000, 13_000, **gaze_on(0.75))[-1]
-    f = Session()
-    f.state = focus
+    f = Session(coaching_plan=focus)
     boosted = f.run(10_000, 13_000, **gaze_on(0.75))[-1]
     assert boosted.feedback.priority > plain.feedback.priority
     assert "PLAN_FOCUS" in boosted.reason_codes
 
 
 def test_plan_weight_is_clamped():
-    wild = dump_state(
-        initial_state(CoachingPlan(source="LLM", focus=[FocusItem(area="GAZE", weight=50)]))
-    )
-    s = Session()
-    s.state = wild
+    wild = {"source": "LLM", "focus": [{"area": "GAZE", "weight": 50}]}
+    s = Session(coaching_plan=wild)
     resp = s.run(10_000, 13_000, **gaze_on(0.75))[-1]
     assert resp.feedback.priority <= 100
 
 
 def test_budget_from_plan():
-    capped = dump_state(initial_state(CoachingPlan(max_interventions=0)))
-    s = Session()
-    s.state = capped
+    s = Session(coaching_plan={"max_interventions": 0})
     out = s.run(10_000, 14_000, **gaze_on(0.9))
     assert "BUDGET_EXHAUSTED" in _cand(out[-1], "GAZE_ON_SCRIPT").reasons
 
@@ -145,9 +131,9 @@ def test_mission_and_memory_raise_priority_with_reasons():
             "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.3},
         }
     ]
-    memory = {"recurring_issues": [{"area": "GAZE", "slide_number": 1}]}
+    recurring = [{"area": "GAZE", "slide_number": 1}]
     plain = Session().run(10_000, 13_000, **gaze_on(0.75))[-1]
-    s = Session(missions=mission, memory=memory)
+    s = Session(missions=mission, recurring_issues=recurring)
     resp = s.run(10_000, 13_000, **gaze_on(0.75))[-1]
     assert resp.feedback.priority > plain.feedback.priority
     assert {"MISSION_RELEVANT", "MISSION_AT_RISK", "RECURRING"} <= set(resp.reason_codes)
