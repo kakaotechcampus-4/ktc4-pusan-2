@@ -132,34 +132,6 @@ IGNORE_REASONS: frozenset[Reason] = frozenset(
 )
 
 
-class Schedule(StrEnum):
-    AHEAD = "AHEAD"
-    ON_TRACK = "ON_TRACK"
-    BEHIND = "BEHIND"
-    OVER = "OVER"
-    UNKNOWN = "UNKNOWN"
-
-
-class PaceLevel(StrEnum):
-    SLOW = "SLOW"
-    NORMAL = "NORMAL"
-    FAST = "FAST"
-    UNKNOWN = "UNKNOWN"
-
-
-class GazeLevel(StrEnum):
-    AUDIENCE = "AUDIENCE"
-    SCRIPT = "SCRIPT"
-    UNCERTAIN = "UNCERTAIN"
-    UNKNOWN = "UNKNOWN"
-
-
-class VolumeLevel(StrEnum):
-    LOW = "LOW"
-    NORMAL = "NORMAL"
-    UNKNOWN = "UNKNOWN"
-
-
 class StrategyChange(StrEnum):
     ESCALATED = "ESCALATED"  # 같은 말이 안 통해서 다른 방법으로 바꿈
     GAVE_UP = "GAVE_UP"  # 방법을 다 써서 그 범위에서는 그만둠

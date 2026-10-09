@@ -57,7 +57,6 @@ from .schemas import (
     TypeStatusReview,
     TypeSummary,
 )
-from .tick import ramp
 from .version import POLICY_VERSION
 from .vocab import (
     FeedbackType,
@@ -89,6 +88,14 @@ TYPE_ORDER: tuple[FeedbackType, ...] = (
 # ══════════════════════════════════════════════════════════════════════════
 # 측정 정리
 # ══════════════════════════════════════════════════════════════════════════
+
+
+def _ramp(value: float, start: float, bad: float) -> float:
+    """start 에서 0.5, bad 에서 1.0 이 되도록 선형으로 올린다. bad < start 면 작을수록 나쁘다."""
+    if bad == start:
+        return 1.0
+    frac = (value - start) / (bad - start)
+    return 0.5 + 0.5 * min(1.0, max(0.0, frac))
 
 
 def _div(a: float, b: float, digits: int = 4) -> float | None:
@@ -419,7 +426,7 @@ def collect_issues(
     for number, s in slides.items():
         if s.target_ms and s.duration_ms > s.target_ms * rc.time_over_ratio:
             ratio = s.duration_ms / s.target_ms
-            severity = ramp(ratio, rc.time_over_ratio, rc.time_bad_ratio)
+            severity = _ramp(ratio, rc.time_over_ratio, rc.time_bad_ratio)
             over = s.duration_ms - s.target_ms
             groups[(FeedbackType.TIME, number)] = IssueAgg(
                 FeedbackType.TIME,

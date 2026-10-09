@@ -26,70 +26,6 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class GazeConfig(_Section):
-    #: 대본을 본다고 볼 라벨. 시선 모듈이 방향을 세분화하면 여기에 이름만 더한다
-    script_labels: list[str] = ["BOTTOM", "SCRIPT"]
-    uncertain_label: str = "UNCERTAIN"
-    #: 얼굴이 없거나 기록이 빈 시간. 판정을 보류한 UNCERTAIN 과 같이 '측정하지 못함'으로 센다
-    unmeasured_label: str = "UNMEASURED"
-    #: 1초 기록 입력에서 마지막 기록이 지금보다 이만큼 넘게 오래됐으면 지금 라벨을 측정 불가로 본다
-    record_stale_ms: int = 2_000
-    #: Take 경과 시간이 이보다 짧으면 비율로 지적하지 않는다. 1~3초의 표본으로는 두 번만
-    #: 대본을 봐도 70% 를 넘었다 (1초 기록 입력 실험, harsh). FE 코치도 표본 5개 미만이면
-    #: 비율을 내지 않는다
-    min_window_ms: int = 5_000
-    #: 최근 창(기본 10초)에서 대본 응시 비율. FE 코치의 BOTTOM_RATIO 와 같은 값
-    script_ratio: float = 0.7
-    script_ratio_bad: float = 0.95
-    #: 대본을 연속으로 본 시간
-    continuous_ms: int = 5_000
-    continuous_bad_ms: int = 15_000
-    #: UNCERTAIN 이 이보다 많으면 시선 판단을 버린다 (SENSOR_UNUSABLE)
-    max_uncertain_ratio: float = 0.5
-    #: 센서 판단은 지금 UNCERTAIN 비율과 최근 이만큼의 평균 중 나쁜 쪽으로 한다. 10초 창 하나는
-    #: 잡음으로 잠깐 기준 아래로 내려가, 얼굴이 대부분 안 잡히는데도 '믿을 만한 1초'가 생긴다 (실험
-    #: 04 · 16)
-    sensor_smoothing_ms: int = 10_000
-    #: 연속 응시만으로 잡을 때도 창 비율이 이 이상이어야 한다. 라벨이 15% 흔들리면 5초 연속이
-    #: 우연히 생겨 발표 끝 무렵 근거 없는 시선 지적이 났다 (실험 06 · 08 · 09, harsh)
-    streak_min_ratio: float = 0.6
-    #: indicators.gaze 를 SCRIPT 로 보여줄 비율
-    indicator_script_ratio: float = 0.5
-
-
-class SpeechConfig(_Section):
-    #: CPM 을 재는 창. stt-live v1 과 같은 15초
-    window_ms: int = 15_000
-    slow_cpm: float = 275.0
-    fast_cpm: float = 350.0
-    fast_cpm_bad: float = 450.0
-    #: 창 안에서 실제로 말한 시간이 이보다 짧으면 CPM 을 내지 않는다
-    min_speak_ms: int = 4_000
-    min_words: int = 5
-    filler_window_ms: int = 60_000
-    filler_threshold: int = 6
-    filler_bad: int = 15
-    #: 개입 효과를 잴 때 쓰는 짧은 CPM 창. 15초 창에는 개입 전 단어가 남아 효과를 못 본다 (실험 06)
-    recent_window_ms: int = 6_000
-    recent_min_speak_ms: int = 2_500
-
-
-class VoiceConfig(_Section):
-    #: 캘리브레이션(평소 목소리) 대비 dB. 음수가 작은 소리. FE 와 단위 합의 전 임시값
-    low_relative_db: float = -6.0
-    low_relative_db_bad: float = -15.0
-    #: 음량은 순간값이 크게 흔들려서 말하는 동안의 최근 평균으로 본다
-    smoothing_ms: int = 5_000
-    #: 평균에 들어갈 '말하는 중' 표본이 이보다 적으면 음량을 판단하지 않는다 (표본 1~2개 평균은
-    #: 잡음)
-    min_samples: int = 3
-    #: level_db 만 오고 baseline_db 가 없으면, Take 첫 발화의 말한 1초 이만큼의 중앙값을 평소
-    #: 목소리로 본다. 기준을 잡기 전에는 음량을 판단하지 않는다
-    baseline_samples: int = 15
-    long_silence_ms: int = 5_000
-    long_silence_bad_ms: int = 15_000
-
-
 class TimingConfig(_Section):
     #: r = 남은 내용 시간 / 남은 시간. 1 에 딱 붙어 깜빡이지 않게 약간 띄운다
     behind_ratio: float = 1.05
@@ -98,15 +34,11 @@ class TimingConfig(_Section):
     condense_ratio_without_pace: float = 1.3
     #: 허용 최소 시간(min_ms)이 없을 때 '너무 일찍 끝남'의 기준 = 목표 × 이 값
     early_end_ratio: float = 0.85
-    #: 예상 종료가 기준보다 '목표 × 이 값'만큼 이르면 심각도 1.0
-    early_end_bad_ratio: float = 0.15
     #: 초반에는 진행도 추정이 흔들려서 '빠르다' 판단을 미룬다
     ahead_min_elapsed_ratio: float = 0.2
     slide_over_factor: float = 1.5
     slide_over_bad_factor: float = 2.5
     final_minute_ms: int = 60_000
-    #: 진행도가 이보다 작으면 '이 장이 몇 초 걸릴지' 추정하지 않는다
-    projection_min_progress: float = 0.1
     #: 진행도를 말한 글자 수로 쟀을 때 / 시간으로 대신 쟀을 때의 신뢰도
     progress_confidence_chars: float = 0.9
     progress_confidence_time: float = 0.6
@@ -389,9 +321,6 @@ class PlannerConfig(_Section):
 
 
 class CoachConfig(_Section):
-    gaze: GazeConfig = Field(default_factory=GazeConfig)
-    speech: SpeechConfig = Field(default_factory=SpeechConfig)
-    voice: VoiceConfig = Field(default_factory=VoiceConfig)
     timing: TimingConfig = Field(default_factory=TimingConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
     reflection: ReflectionConfig = Field(default_factory=ReflectionConfig)

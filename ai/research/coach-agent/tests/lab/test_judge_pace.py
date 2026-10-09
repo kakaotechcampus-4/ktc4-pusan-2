@@ -1,8 +1,4 @@
-"""연구용 판정 대역 pace — 계약 모양, 커서, 그리고 지금 평가기와의 같음.
-
-같음 검사는 대역이 지금 코치 평가기(`coach.evaluators.*`)를 옮긴 것임을 남긴다. 평가기를 지울 때
-함께 지운다.
-"""
+"""연구용 판정 대역 pace — 계약 모양과 커서."""
 
 from __future__ import annotations
 
@@ -13,9 +9,7 @@ import pytest
 from coach.vocab import Issue
 from coach_lab.judges import filler, pace
 from tests.lab.judge_helpers import (
-    OldRun,
     check_shape,
-    detection,
     merged,
     pace_words,
     plain,
@@ -173,27 +167,3 @@ def test_pace_summarize_and_criteria():
         7500,
         7500,
     )
-
-
-@pytest.mark.parametrize(
-    ("cpm", "filler_every", "recovery"),
-    [(300, 0, None), (420, 0, None), (400, 4, None), (440, 0, 24_000), (380, 5, 28_000)],
-)
-def test_pace_equals_the_current_evaluator(cpm, filler_every, recovery):
-    """CPM · 짧은 창 CPM · 말한 시간 · 심각도 · 신뢰도가 지금 평가기와 같다 (군더더기는 뺀다)."""
-    for t in (20_000, 25_000, 30_000):
-        raw = make_words(t, cpm=cpm, seconds=15, filler_every=filler_every)
-        old = OldRun()
-        old.state.stt_ok_since_ms = recovery
-        tick = old.step(t, speech={"stt_status": "ok", "words": raw})
-        new = pace.judge(
-            {"words": pace_words(raw), "fillers": marks(raw), "stt_ok_since_ms": recovery}, t
-        )[0]
-        assert new.metrics["cpm"] == tick.metrics["cpm"], t
-        assert new.metrics["cpm_short"] == tick.metrics["cpm_short"], t
-        d = detection(tick, Issue.PACE_FAST)
-        assert bool(new.issues) == (d is not None), t
-        if d is not None:
-            assert new.issues[0].severity == pytest.approx(d.severity)
-            assert new.issues[0].confidence == pytest.approx(d.confidence)
-            assert new.issues[0].evidence["speak_ms"] == d.evidence["speak_ms"]

@@ -1,8 +1,4 @@
-"""연구용 판정 대역 gaze — 계약 모양, 커서, 그리고 지금 평가기와의 같음.
-
-같음 검사는 대역이 지금 코치 평가기(`coach.evaluators.*`)를 옮긴 것임을 남긴다. 평가기를 지울 때
-함께 지운다.
-"""
+"""연구용 판정 대역 gaze — 계약 모양과 커서."""
 
 from __future__ import annotations
 
@@ -12,7 +8,7 @@ import pytest
 
 from coach.vocab import Issue
 from coach_lab.judges import gaze
-from tests.lab.judge_helpers import OldRun, check_shape, detection, merged, total
+from tests.lab.judge_helpers import check_shape, merged, total
 
 
 def gaze_records(states: list[str], *, start: int = 0) -> list[dict[str, Any]]:
@@ -53,7 +49,7 @@ def test_gaze_no_issue_right_after_take_start():
 
 
 def test_gaze_issue_when_sensor_unusable_is_not_actionable():
-    # 대본 4초 + 얼굴 없음 6초 → 지금 평가기도 낸다 (코치가 센서 불량으로 남긴다)
+    # 대본 4초 + 얼굴 없음 6초 → 옛 평가기도 낸다 (코치가 센서 불량으로 남긴다)
     states = ["UNCERTAIN"] * 6 + ["BOTTOM"] * 4
     r = gaze.judge({"records": gaze_records(states)}, 10_000)[0]
     assert r.metrics["script_ratio"] is None and not r.measurable
@@ -179,38 +175,3 @@ def test_gaze_summarize_and_criteria():
     assert (c.metric, c.threshold, c.bad) == ("script_run_ms", 5000, 15000)
     assert (c.onset_lag_ms, c.offset_lag_ms) == (7000, 3000)
     assert c.direction == "HIGHER_IS_WORSE"
-
-
-def test_gaze_equals_the_current_evaluator():
-    """대본 비율 · 연속 · 센서 평활 · 심각도 · 신뢰도가 지금 평가기와 같다."""
-    states: list[str] = (
-        ["CAMERA"] * 12
-        + ["BOTTOM"] * 9
-        + ["UNCERTAIN"] * 4
-        + ["BOTTOM"] * 3
-        + ["UNMEASURED"] * 6
-        + ["CAMERA"] * 3
-        + ["SCREEN"] * 2
-        + ["BOTTOM"] * 14
-    )
-    recs = gaze_records(states)
-    old = OldRun()
-    compared = issues = 0
-    for t in range(1000, len(states) * 1000 + 1, 1000):
-        have = [r for r in recs if r["t_ms"] < t][-30:]
-        tick = old.step(t, gaze={"window_ms": 10_000, "records": have})
-        new = gaze.judge({"records": have}, t)[0]
-        m = tick.metrics
-        assert new.metrics["script_ratio"] == m["script_ratio"], t
-        assert new.metrics["uncertain_ratio"] == m["gaze_uncertain_smoothed"], t
-        assert new.metrics["script_run_ms"] == m["continuous_script_gaze_ms"], t
-        d = detection(tick, Issue.GAZE_ON_SCRIPT)
-        assert bool(new.issues) == (d is not None), t
-        if d is not None:
-            issue = new.issues[0]
-            assert issue.severity == pytest.approx(d.severity)
-            assert issue.confidence == pytest.approx(d.confidence)
-            assert issue.actionable == d.sensor_ok
-            issues += 1
-        compared += 1
-    assert compared == len(states) and issues > 10

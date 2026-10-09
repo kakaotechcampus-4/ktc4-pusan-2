@@ -84,9 +84,6 @@ def build_tick(req: CoachRequest, cfg: CoachConfig, state: CoachState, run: Judg
             tick.metrics.update(dict.fromkeys(result.metrics))
         else:
             tick.metrics.update(result.metrics)
-    gaze = run.results.get(FeedbackType.GAZE)
-    if gaze is not None:
-        tick.metrics["gaze_uncertain_ratio"] = gaze.metrics.get("uncertain_ratio")
     # 장 미션의 지금 값: 그 장에 머문 시간. 개입 규칙 PR 에서 장 합계의 summarize 값으로 바뀐다
     if tick.metrics.get("slide_elapsed_ms") is not None:
         tick.metrics["slide_duration_ms"] = tick.metrics["slide_elapsed_ms"]

@@ -1,19 +1,14 @@
-"""연구용 판정 대역 volume — 계약 모양, 커서, 그리고 지금 평가기와의 같음.
-
-같음 검사는 대역이 지금 코치 평가기(`coach.evaluators.*`)를 옮긴 것임을 남긴다. 평가기를 지울 때
-함께 지운다.
-"""
+"""연구용 판정 대역 volume — 계약 모양과 커서."""
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 import pytest
 
 from coach.vocab import Issue
 from coach_lab.judges import volume
-from tests.lab.judge_helpers import OldRun, check_shape, detection, total
+from tests.lab.judge_helpers import check_shape, total
 
 
 def vrec(i: int, level: float | None = -30.0, **kw: Any) -> dict[str, Any]:
@@ -62,7 +57,7 @@ def test_volume_unknown_cases():
     vol, pause = vjudge(dead, 10_000)
     assert not vol.measurable and not pause.measurable and pause.state == "UNKNOWN"
     assert pause.metrics["silence_ms"] is None
-    assert pause.issues and not pause.issues[0].actionable  # 지금 평가기처럼 쓸 수 없게 낸다
+    assert pause.issues and not pause.issues[0].actionable  # 옛 평가기처럼 쓸 수 없게 낸다
 
 
 def test_volume_level_db_is_kept_when_the_last_second_has_no_audio():
@@ -170,50 +165,3 @@ def test_volume_summarize_and_criteria():
     assert c["VOLUME_LOW"].direction == "LOWER_IS_WORSE"
     assert (c["VOLUME_LOW"].threshold, c["VOLUME_LOW"].bad) == (-6.0, -15.0)
     assert (c["LONG_SILENCE"].onset_lag_ms, c["LONG_SILENCE"].offset_lag_ms) == (5000, 0)
-
-
-def test_volume_equals_the_current_evaluator():
-    """음량 평활 · 침묵 · 오디오 재개 자르기 · 심각도가 지금 평가기와 같다."""
-    recs: list[dict[str, Any]] = []
-    for i in range(80):
-        if i < 20:
-            r = vrec(i, -30.0)
-        elif i < 30:
-            r = vrec(i, -40.0)
-        elif i < 35:
-            r = vrec(i, None, silence_ms=(i - 29) * 1000)
-        elif i < 45:
-            r = vrec(i, None, audio_live=False, silence_ms=50_000)
-        elif i < 51:
-            r = vrec(i, None, silence_ms=60_000)  # 되살아난 뒤에도 FE 침묵은 길게 온다
-        elif i < 56:
-            r = vrec(i, -40.0)
-        else:
-            r = vrec(i, None, silence_ms=(i - 55) * 1000)
-        recs.append(r)
-    old = OldRun()
-    seen_low = seen_silence = seen_dead = 0
-    for t in range(1000, 80_001, 1000):
-        sec = recs[t // 1000 - 1]
-        voice = {
-            "level_db": sec["level_db"],
-            "baseline_db": -30.0,
-            "silence_ms": sec["silence_ms"],
-            "audio_live": sec["audio_live"],
-        }
-        tick = old.step(t, voice=voice)
-        have = [r for r in recs if t - 30_000 <= r["t_ms"] < t]
-        vol, pause = vjudge(have, t)
-        assert vol.metrics["voice_diff_db"] == tick.metrics["voice_diff_db"], t
-        assert pause.metrics["silence_ms"] == tick.metrics["silence_ms"], t
-        for result, issue in ((vol, Issue.VOLUME_LOW), (pause, Issue.LONG_SILENCE)):
-            d = detection(tick, issue)
-            assert bool(result.issues) == (d is not None), (t, issue)
-            if d is not None:
-                assert result.issues[0].severity == pytest.approx(d.severity)
-                assert result.issues[0].actionable == d.sensor_ok
-        seen_low += bool(vol.issues)
-        seen_silence += bool(pause.issues)
-        seen_dead += not sec["audio_live"]
-    assert seen_low > 5 and seen_silence > 5 and seen_dead == 10
-    assert math.isclose(volume.baseline([-30.0] * 15), -30.0)

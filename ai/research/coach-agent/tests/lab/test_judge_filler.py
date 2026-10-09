@@ -1,8 +1,4 @@
-"""연구용 판정 대역 filler — 계약 모양, 커서, 그리고 지금 평가기와의 같음.
-
-같음 검사는 대역이 지금 코치 평가기(`coach.evaluators.*`)를 옮긴 것임을 남긴다. 평가기를 지울 때
-함께 지운다.
-"""
+"""연구용 판정 대역 filler — 계약 모양과 커서."""
 
 from __future__ import annotations
 
@@ -10,7 +6,7 @@ import pytest
 
 from coach.vocab import Issue
 from coach_lab.judges import filler
-from tests.lab.judge_helpers import OldRun, check_shape, detection, merged, pace_words, plain
+from tests.lab.judge_helpers import check_shape, merged, plain
 
 
 def filler_words(n: int, *, start: int = 1000, step: int = 1500, word: str = "음"):
@@ -120,25 +116,3 @@ def test_filler_summarize_and_criteria():
         30000,
         30000,
     )
-
-
-def test_filler_equals_the_current_evaluator_in_the_first_minute():
-    """한 판 안에서(60초 창이 Take 시작에 걸쳐 있을 때) 개수 · 분당 수 · 심각도가 같다."""
-    words = []
-    for i in range(1, 57):  # 1초 간격, 3개 중 하나는 군더더기
-        word = ["음", "어어", "으음."][i % 3] if i % 3 != 0 else "지난"
-        words.append(
-            {"w": word, "start_ms": i * 1000 - 600, "end_ms": i * 1000 - 200, "final": True}
-        )
-    old = OldRun()
-    for t in range(1000, 60_001, 1000):
-        have = [w for w in words if w["end_ms"] <= t]
-        tick = old.step(t, speech={"stt_status": "ok", "words": have})
-        new = filler.judge({"words": pace_words(have)}, t)[0]
-        assert new.metrics["recent_filler_count"] == tick.metrics["recent_filler_count"], t
-        assert new.metrics["filler_count_30s"] == tick.metrics["filler_count_30s"], t
-        assert new.metrics["filler_per_min"] == tick.metrics["filler_per_min"], t
-        d = detection(tick, Issue.FILLER_FREQUENT)
-        assert bool(new.issues) == (d is not None), t
-        if d is not None:
-            assert new.issues[0].severity == pytest.approx(d.severity)

@@ -250,7 +250,6 @@ def _append_history(tick: Tick) -> None:
         t_ms=tick.t,
         slide_number=tick.slide_number,
         script_ratio=tick.metrics.get("script_ratio"),
-        gaze_uncertain=tick.metrics.get("gaze_uncertain_ratio"),
         cpm=tick.metrics.get("cpm"),
         cpm_short=tick.metrics.get("cpm_short"),
         voice_diff_db=tick.voice_diff_db,

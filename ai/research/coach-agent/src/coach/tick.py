@@ -75,15 +75,3 @@ class Tick:
 
     def detected(self, issue: Issue) -> bool:
         return any(d.issue_type == issue for d in self.detections)
-
-
-def ramp(value: float, start: float, bad: float) -> float:
-    """start 에서 0.5, bad 에서 1.0 이 되도록 선형으로 올린다. bad < start 면 작을수록 나쁘다."""
-    if bad == start:
-        return 1.0
-    frac = (value - start) / (bad - start)
-    return 0.5 + 0.5 * min(1.0, max(0.0, frac))
-
-
-def nonspace_len(text: str) -> int:
-    return len("".join(text.split()))
