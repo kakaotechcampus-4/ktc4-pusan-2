@@ -56,7 +56,7 @@ from .schemas import (
     TypeStatusReview,
     TypeSummary,
 )
-from .version import POLICY_VERSION
+from .version import FEATURE_VERSION
 from .vocab import (
     FeedbackType,
     Instruction,
@@ -953,7 +953,7 @@ def build_review_evidence(
     real_segments = [s for s in seg_reviews if s.hint != SegmentHint.UNRELIABLE]
 
     return CoachReviewEvidence(
-        policy_version=POLICY_VERSION,
+        policy_version=FEATURE_VERSION,
         config_hash=cfg.config_hash(),
         take_id=take_id,
         summary=CoachingSummary(

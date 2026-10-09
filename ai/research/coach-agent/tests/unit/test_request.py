@@ -40,11 +40,11 @@ def test_coaching_plan_is_read_from_every_request():
     s = Session()
     s.state = None
     first = s.step(10_000, coaching_plan=RELAX_GAZE, **gaze_on(0.9))
-    assert "PLAN_RELAXED" in {r for c in first.candidates for r in c.reasons}
+    assert "PLAN_RELAXED" in {r for c in s.candidates_of(first) for r in c.reasons}
     assert "plan" not in first.coach_state
     # 이후 요청이 null 을 보내면 첫 요청의 봐주기가 남아 있지 않다
     later = [s.step(t, coaching_plan=None, **gaze_on(0.9)) for t in range(11_000, 15_000, 1_000)]
-    assert all("PLAN_RELAXED" not in c.reasons for r in later for c in r.candidates)
+    assert all("PLAN_RELAXED" not in c.reasons for r in later for c in s.candidates_of(r))
     assert any(r.feedback is not None for r in later)
 
 

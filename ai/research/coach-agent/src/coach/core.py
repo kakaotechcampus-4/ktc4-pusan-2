@@ -30,13 +30,13 @@ from .judges import Judges
 from .policy import RULE_POLICY, Policy, rank_key
 from .renderer import render
 from .schemas import (
-    CandidateOut,
     CoachRequest,
     CoachResponse,
     Feedback,
     FinalizeRequest,
     FinalizeResponse,
     InterventionEvent,
+    Meta,
     OutcomeEvent,
     SuppressedEvent,
 )
@@ -49,7 +49,7 @@ from .state import (
     load_state,
 )
 from .tick import Tick
-from .version import POLICY_VERSION
+from .version import FEATURE_VERSION
 from .vocab import Action, CandidateStatus, Outcome, Reason
 
 log = logging.getLogger(__name__)
@@ -102,9 +102,7 @@ def decide(
         selection.action,
         reasons,
         state,
-        candidate_id=selection.candidate_id,
         feedback=feedback,
-        candidates=cands,
         indicators=measure.indicators(run),
         events=sink.events,
     )
@@ -116,8 +114,12 @@ def decide_safe(
     config: CoachConfig | None = None,
     policy: Policy | None = None,
 ) -> CoachResponse:
-    """API 가 부르는 판. 코치 안에서 예외가 나면 WAIT 와 이전 coach_state 를 돌려준다
-    (버전이 다르거나 깨진 state 였으면 새 state).
+    """API 가 부르는 판. 코치 안에서 예외가 나면 WAIT(INTERNAL_ERROR) 를 돌려준다.
+
+    coach_state 는 받은 상태에서 이번 시간을 잴 수 없던 것으로 넘긴 상태다(모든 커서가 이번 창
+    끝으로 가고, 같은 요청이 다시 오면 STALE_TICK). 순수 코드라 같은 요청을 되돌려 다시 하면
+    같은 예외에서 빠져나오지 못하기 때문이다. 버전이 다르거나 깨진 state 였으면 새 state 에서
+    시작하고 STATE_RESET 도 남긴다.
 
     요청 형식 오류는 그대로 올린다 — API 가 422 로 바꾸고, BE 는 그 1초를 건너뛴다.
     """
@@ -128,16 +130,19 @@ def decide_safe(
     except Exception:  # noqa: BLE001 — 실시간 경로는 어떤 예외로도 발표를 방해하면 안 된다
         log.exception("coach decide failed take_id=%s t_ms=%s", req.take_id, req.t_ms)
         state, reset = load_state(req.coach_state)
-        kept = req.coach_state is not None and not reset
-        return CoachResponse(
-            policy_version=POLICY_VERSION,
-            config_hash=cfg.config_hash(),
-            take_id=req.take_id,
-            t_ms=req.t_ms,
-            action=Action.WAIT,
-            reason_codes=[Reason.INTERNAL_ERROR.value],
-            coach_state=req.coach_state if kept else dump_state(state),
-        )
+        reasons = [Reason.INTERNAL_ERROR.value]
+        if reset:
+            reasons.append(Reason.STATE_RESET.value)
+        try:
+            judges_mod.skip(req, state)
+            state.last_t_ms = req.t_ms
+        except Exception:  # noqa: BLE001 — 넘기지 못해도 발표를 방해하지 않는다
+            log.exception("coach skip failed take_id=%s t_ms=%s", req.take_id, req.t_ms)
+            # 일부만 반영된 state 를 버리고 받은 상태 그대로 돌려준다
+            state, _ = load_state(req.coach_state)
+            if req.coach_state is not None and not reset:
+                return _response(req, cfg, Action.WAIT, reasons, state, coach_state=req.coach_state)
+        return _response(req, cfg, Action.WAIT, reasons, state)
 
 
 def finalize(
@@ -171,7 +176,7 @@ def finalize(
     for key in list(state.episodes):
         episodes.close(state, key, req.t_ms, "TAKE_END", sink, cfg)
     slides.close(state, req.t_ms, sink)
-    return FinalizeResponse(policy_version=POLICY_VERSION, take_id=req.take_id, events=sink.events)
+    return FinalizeResponse(policy_version=FEATURE_VERSION, take_id=req.take_id, events=sink.events)
 
 
 # ── 내부 ──────────────────────────────────────────────────────────────────
@@ -270,41 +275,21 @@ def _response(
     reasons: list[str],
     state: CoachState,
     *,
-    candidate_id: str | None = None,
     feedback: Feedback | None = None,
-    candidates: list[Candidate] | None = None,
     indicators: dict[str, str] | None = None,
     events: list[Any] | None = None,
+    coach_state: dict[str, Any] | None = None,
 ) -> CoachResponse:
-    outs = []
-    for c in sorted(candidates or [], key=rank_key):
-        status = c.status or CandidateStatus.IGNORED
-        shown = c.reasons_for if status == CandidateStatus.SELECTED else c.reasons_against
-        outs.append(
-            CandidateOut(
-                candidate_id=c.candidate_id,
-                issue_type=c.issue_type,
-                area=c.area,
-                instruction=c.instruction,
-                priority=c.priority,
-                confidence=round(min(1.0, max(0.0, c.confidence)), 3),
-                status=status,
-                reasons=[r.value for r in shown],
-            )
-        )
+    # 기능 모듈의 기준 버전은 이번 라운드까지 state 가 아는 것, coach 는 기능 버전 + 설정 해시
+    versions = {**state.latest_criteria_versions, "coach": f"{FEATURE_VERSION}+{cfg.config_hash()}"}
     return CoachResponse(
-        policy_version=POLICY_VERSION,
-        config_hash=cfg.config_hash(),
-        take_id=req.take_id,
-        t_ms=req.t_ms,
         action=action,
-        candidate_id=candidate_id,
-        reason_codes=reasons,
         feedback=feedback,
-        candidates=outs,
         indicators=indicators or {},
+        reason_codes=reasons,
         events=events or [],
-        coach_state=dump_state(state),
+        coach_state=dump_state(state) if coach_state is None else coach_state,
+        meta=Meta(criteria_versions=versions),
     )
 
 

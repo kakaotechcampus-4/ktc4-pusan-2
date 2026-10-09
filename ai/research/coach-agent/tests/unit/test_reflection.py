@@ -22,7 +22,10 @@ def test_effective_feedback_earns_one_praise(session: Session):
     assert len(praise) == 1
     assert praise[0].feedback.area.value == "GAZE"
     assert praise[0].feedback.message == "좋아요, 지금처럼 이어가세요"
-    assert praise[0].t_ms >= 13_000 + 15_000  # 메시지 사이 15초
+    said = next(
+        e for e in session.events if e.kind == "INTERVENTION" and e.instruction.value == "CONTINUE"
+    )
+    assert said.t_ms >= 13_000 + 15_000  # 메시지 사이 15초
 
 
 def test_praise_is_dropped_if_problem_returns(session: Session):
@@ -43,7 +46,7 @@ def test_ineffective_escalates_then_gives_up_per_slide():
     ]
     changes = [(e.change.value, e.to_variant) for e in _of(s, "STRATEGY")]
     assert changes == [("ESCALATED", "sentence_start"), ("GAVE_UP", None)]
-    assert "STRATEGY_EXHAUSTED" in s.responses[-1].candidates[0].reasons
+    assert "STRATEGY_EXHAUSTED" in s.candidates_of(s.responses[-1])[0].reasons
     assert "ESCALATED" in s.interventions[1].reason_codes
 
     # 3번 장에서는 처음부터 다시 시도한다

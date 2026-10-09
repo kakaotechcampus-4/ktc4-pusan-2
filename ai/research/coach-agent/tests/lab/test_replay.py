@@ -56,6 +56,15 @@ def test_same_input_same_decisions():
     assert a.timeline == b.timeline
 
 
+@pytest.mark.parametrize("path", SCENARIOS, ids=lambda p: p.stem)
+def test_event_ids_are_unique_within_a_take(path: Path):
+    """Take 의 이벤트 id 는 finalize 가 낸 것까지 겹치지 않고, 같은 재생에서는 같다."""
+    sc = Scenario.load(path)
+    ids = [e["event_id"] for e in run(sc).events]
+    assert len(set(ids)) == len(ids)
+    assert ids == [e["event_id"] for e in run(sc).events]
+
+
 def test_state_stays_small_over_a_long_take():
     """기록은 최근 60초만 남는다 — 10분 발표에서도 coach_state 가 커지지 않는다."""
     sc = Scenario.load(SCENARIOS[0]).model_copy(
