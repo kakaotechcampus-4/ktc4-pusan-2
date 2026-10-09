@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from coach import build_review_evidence, decide, finalize
 from coach.config import CoachConfig, load_config
 from coach.judges import Judges
-from coach.schemas import CoachResponse, CoachReviewEvidence
+from coach.schemas import CoachResponse, CoachReviewEvidence, TakeResult
 
 from .judges import lab_judges
 
@@ -478,6 +478,8 @@ class RunResult:
     ticks: int = 0
     end_ms: int = 0
     final_state_bytes: int = 0
+    #: finalize 가 합계로 만든 Take 결과
+    take_result: TakeResult | None = None
 
     @property
     def interventions(self) -> list[dict[str, Any]]:
@@ -494,6 +496,19 @@ class RunResult:
             "decide_p95_ms": round(p95, 3) if p95 is not None else None,
             "coach_state_bytes": self.final_state_bytes,
         }
+
+
+#: /coach/evaluate 요청에서 Take 동안 바뀌지 않는 값 (finalize 요청에도 같이 싣는다)
+_TAKE_CONSTANTS = (
+    "take_id",
+    "mode",
+    "plan",
+    "missions",
+    "recurring_issues",
+    "coaching_plan",
+    "script_used",
+    "calibration",
+)
 
 
 def scenario_config(sc: Scenario, override: dict[str, Any] | None = None) -> CoachConfig:
@@ -528,10 +543,12 @@ def run(
         presenter=presenter,
     )
     state: dict[str, Any] | None = None
+    last_req: dict[str, Any] = {}
 
     t = 0
     while t <= sc.duration_ms:
         req = presenter.request(t, state)
+        last_req = req
         started = time.perf_counter()
         resp: CoachResponse = decide(req, judges, cfg)
         result.latencies_ms.append((time.perf_counter() - started) * 1000)
@@ -562,7 +579,19 @@ def run(
         t += sc.tick_ms
 
     presenter.close(result.end_ms)
-    fin = finalize({"take_id": sc.take_id, "t_ms": result.end_ms, "coach_state": state}, cfg)
+    # 마지막 틱이 Take 끝이라 마지막 창은 이미 처리했다(finalize 가 건너뛴다)
+    fin = finalize(
+        {
+            **{k: last_req[k] for k in _TAKE_CONSTANTS if k in last_req},
+            "t_ms": result.end_ms,
+            "events": result.events,
+            "inputs": last_req["inputs"],
+            "coach_state": state,
+        },
+        judges,
+        cfg,
+    )
+    result.take_result = fin.take_result
     result.events.extend(e.model_dump(mode="json") for e in fin.events)
     result.final_state_bytes = (
         len(json.dumps(state, ensure_ascii=False).encode("utf-8")) if state else 0

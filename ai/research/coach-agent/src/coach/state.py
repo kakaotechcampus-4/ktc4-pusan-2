@@ -179,6 +179,8 @@ class CoachState(_S):
     #: 판정 결과 tally 의 누적: 영역 → 이름 → 합. slide_totals 는 장 번호(문자열)별 같은 모양
     totals: dict[str, dict[str, float]] = Field(default_factory=dict)
     slide_totals: dict[str, dict[str, dict[str, float]]] = Field(default_factory=dict)
+    #: 장 번호(문자열) → [첫 방문 시작, 마지막 방문 끝]. 다시 온 장은 하나로 합친다
+    slide_spans: dict[str, list[int]] = Field(default_factory=dict)
     #: 장 번호별로 STT 를 믿을 수 있던 시간 (timing 이 글자 수로 진행도를 쟤도 되는지 정한다)
     slide_stt_ok_ms: dict[str, int] = Field(default_factory=dict)
     #: 기준 음량(dBFS)과 출처(CALIBRATION · TAKE), 잡기 전까지 모은 말한 1초의 레벨

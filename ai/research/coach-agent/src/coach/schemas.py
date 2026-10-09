@@ -437,17 +437,77 @@ class CoachResponse(_Out):
 
 
 class FinalizeRequest(_In):
+    """Take 종료. /coach/evaluate 와 같은 Take 상수에 마지막 창 · 이벤트 · coach_state 를 더한다."""
+
     schema_version: str = SCHEMA_VERSION
     take_id: str
+    #: Take 가 끝난 시각
     t_ms: int = Field(ge=0)
+    mode: Mode = Mode.COACHING
+    plan: Plan = Field(default_factory=Plan)
+    missions: list[Mission] = Field(default_factory=list)
+    recurring_issues: list[RecurringIssue] = Field(default_factory=list)
+    coaching_plan: CoachingPlan | None = None
+    script_used: bool | None = None
+    calibration: Calibration = Field(default_factory=Calibration)
+    #: 대본 보기. 판정은 바꾸지 않고 Take 결과에 남긴다
+    script_mode: Literal["HIGHLIGHT", "KEYWORD", "OFF"] | None = None
+    #: 마지막 응답의 coach_state. 잃었으면 null
     coach_state: dict[str, Any] | None = None
+    #: 이 Take 에서 BE 가 쌓은 코치 이벤트 전부(받은 순서대로)
+    events: list[CoachEvent] = Field(default_factory=list)
+    #: 마지막 창. /coach/evaluate 의 inputs 와 같은 모양
+    inputs: CoachInputs = Field(default_factory=CoachInputs)
+
+
+class SlideResult(_Out):
+    """장 하나의 값. 다시 온 장은 합친다. start_ms · end_ms 는 첫 방문 시작 · 마지막 방문 끝."""
+
+    slide_number: int
+    start_ms: int | None = None
+    end_ms: int | None = None
+    target_ms: int | None = None
+    measured_ratio: float | None = None
+    #: 영역 모듈의 summarize 결과(measured_ratio 제외). 측정 비율이 기준 미만이면 null
+    metrics: dict[str, Any] | None = None
+
+
+class AreaResult(_Out):
+    measured_ratio: float | None = None
+    #: 영역 모듈의 summarize 결과(measured_ratio 제외, 묶음 값 포함). 기준 미만이면 null
+    take: dict[str, Any] | None = None
+    slides: list[SlideResult] | None = None
+    unmeasured_reason: Literal["LOW_MEASURED_RATIO"] | None = None
+
+
+class AreaCriteria(_Out):
+    """영역 하나의 판정 기준: 모듈의 기준 버전과 그 영역 문제의 criteria()."""
+
+    criteria_version: str | None = None
+    issues: dict[str, IssueCriteria] = Field(default_factory=dict)
+
+
+class TakeResult(_Out):
+    """Take 의 사실(지표 · 판정 기준). 결론은 담지 않는다."""
+
+    take_id: str
+    duration_ms: int
+    script_mode: Literal["HIGHLIGHT", "KEYWORD", "OFF"] | None = None
+    replayed: bool = False
+    criteria_changed: bool = False
+    #: 영역(GAZE · SPEED · VOLUME · PAUSE · FILLER · TIME) → 값
+    areas: dict[str, AreaResult]
+    problem_segments: list[dict[str, Any]] = Field(default_factory=list)
+    interventions: list[dict[str, Any]] = Field(default_factory=list)
+    gave_up: list[dict[str, Any]] = Field(default_factory=list)
+    criteria: dict[str, AreaCriteria]
 
 
 class FinalizeResponse(_Out):
-    schema_version: str = SCHEMA_VERSION
-    policy_version: str
-    take_id: str
+    take_result: TakeResult
+    #: 이번에 닫은 문제 구간 · 효과 · 장 이벤트
     events: list[CoachEvent] = Field(default_factory=list)
+    meta: Meta
 
 
 # ══════════════════════════════════════════════════════════════════════════

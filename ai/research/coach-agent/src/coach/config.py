@@ -339,6 +339,14 @@ class PlannerConfig(_Section):
     max_previous_issues: int = 5
 
 
+class TakeResultConfig(_Section):
+    """Take 결과(finalize)를 만드는 규칙."""
+
+    #: 영역의 Take 측정 비율이 이보다 낮으면 그 영역의 값을 비우고 이유를 단다. 장도 같은 기준으로
+    #: 그 장의 값만 비운다
+    min_measured_ratio: float = 0.5
+
+
 class CoachConfig(_Section):
     timing: TimingConfig = Field(default_factory=TimingConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
@@ -346,6 +354,7 @@ class CoachConfig(_Section):
     features: Features = Field(default_factory=Features)
     review: ReviewConfig = Field(default_factory=ReviewConfig)
     planner: PlannerConfig = Field(default_factory=PlannerConfig)
+    take_result: TakeResultConfig = Field(default_factory=TakeResultConfig)
     issues: dict[Issue, IssueRule] = Field(default_factory=_default_issue_rules)
     templates: dict[str, str] = Field(default_factory=lambda: dict(_TEMPLATES))
 

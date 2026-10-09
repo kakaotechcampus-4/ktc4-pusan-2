@@ -99,7 +99,7 @@ def test_slide_events_summarise_each_slide():
         s.step(t, slide=1, slide_started=0, **gaze_on(0.9))
     for t in range(21_000, 40_001, 1_000):
         s.step(t, slide=2, slide_started=20_000, **gaze_off(0.1))
-    fin = finalize({"take_id": "test-take", "t_ms": 41_000, "coach_state": s.state})
+    fin = finalize({"take_id": "test-take", "t_ms": 41_000, "coach_state": s.state}, s.judges)
     events = s.events + list(fin.events)
     slides = [e for e in events if e.kind == "SLIDE"]
     assert [e.slide_number for e in slides] == [1, 2]
@@ -118,7 +118,7 @@ def test_take_without_slide_numbers_keeps_state_and_totals():
     assert all(
         "STATE_RESET" not in r.reason_codes for r in out
     )  # null 장 누적이 state 를 깨지 않는다
-    fin = finalize({"take_id": "test-take", "t_ms": 31_000, "coach_state": s.state})
+    fin = finalize({"take_id": "test-take", "t_ms": 31_000, "coach_state": s.state}, s.judges)
     slides = [e for e in fin.events if e.kind == "SLIDE"]
     assert len(slides) == 1 and slides[0].slide_number is None
     ev = build_review_evidence("test-take", s.events + list(fin.events), plan={"target_ms": 60_000})
