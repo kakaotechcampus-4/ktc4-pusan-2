@@ -105,7 +105,8 @@ class FrameSequencer:
         restart = False
         if self._new_connection:
             self._new_connection = False
-            # 재연결은 seq·offset 을 이어 보낸다 (FE 는 보낸 프레임을 다시 보내지 않는다). 새 연결의
+            # 재연결은 seq·offset 을 이어 보낸다 (FE 는 보낸 프레임을 다시 보내지 않는다 — README 의
+            # STT 규약. 이 약속이 깨지면 다시 보낸 프레임을 새로고침으로 오인한다). 새 연결의
             # 첫 프레임이 뒤로 갔다면 FE 가 처음부터 다시 센 것이다 — 탭을 새로고침하면 seq 는
             # 1 부터, offset 은 이어받은 무대 시계부터 다시 센다. 역행으로 버리면 그 뒤 오디오가
             # 예전 seq 를 넘을 때까지 통째로 사라진다.
