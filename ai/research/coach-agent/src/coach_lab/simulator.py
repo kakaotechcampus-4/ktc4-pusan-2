@@ -381,13 +381,15 @@ class Presenter:
         if t >= self.sc.tick_ms:
             tick = self.sc.tick_ms
             self.gaze_records.append({"t_ms": t - tick, "duration_ms": tick, "state": label})
-            voiced = silence < 300
+            # FE 는 그 1초 동안 소리를 낸 시간을 잰다 — 마이크가 들은 단어가 그 1초와 겹친 만큼.
+            # 1초 끝에 말하던 단어(다음 틱에 마저 말한다)도 넣는다
+            voiced_ms = self._voiced_ms(t - tick, t, self.cursor if mid_word else None)
             self.voice_records.append(
                 {
                     "t_ms": t - tick,
                     "duration_ms": tick,
-                    "level_db": round(_VOICE_LEVEL_DBFS + db, 2) if voiced else None,
-                    "voiced_ms": tick if voiced else 0,
+                    "level_db": round(_VOICE_LEVEL_DBFS + db, 2) if voiced_ms else None,
+                    "voiced_ms": voiced_ms,
                     "silence_ms": silence,
                     "audio_live": p.audio_live,
                 }
@@ -437,6 +439,24 @@ class Presenter:
             "calibration": {"base_level_db": None},
             "coach_state": coach_state,
         }
+
+    def _voiced_ms(self, lo: int, hi: int, speaking_from: int | None) -> int:
+        """[lo, hi) 동안 마이크가 들은 말의 시간. 단어끼리 겹치지 않는다.
+
+        speaking_from: hi 에 말하던 단어가 시작된 시각(다 말한 단어 목록에는 아직 없다). 이 단어는
+        다음 틱에 길이를 다시 정해 말하므로, 1초 경계에 걸친 몫은 근사다(말 속도가 흔들리는 잡음,
+        1초 안에서 마이크 · 말하기 상태가 바뀐 경우). 단어 생성을 바꾸면 말과 함께 쓰는 잡음
+        난수 순서가 바뀌어 시선 잡음까지 달라지므로 그대로 둔다.
+        """
+        total = 0
+        for w in reversed(self.words):
+            if w.end_ms <= lo:
+                break
+            if w.mic:
+                total += max(0, min(w.end_ms, hi) - max(w.start_ms, lo))
+        if speaking_from is not None:
+            total += max(0, hi - max(speaking_from, lo))
+        return min(total, hi - lo)
 
     def close(self, t: int) -> None:
         self.visits[-1].setdefault("end_ms", t)
