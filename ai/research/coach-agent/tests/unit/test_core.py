@@ -93,6 +93,21 @@ def test_internal_error_when_skipping_fails_returns_the_received_state(
     assert fresh.coach_state["v"] == STATE_VERSION
 
 
+def test_internal_error_keeps_the_last_criteria_versions(monkeypatch: pytest.MonkeyPatch):
+    """예외 뒤 건너뛴 결과는 모듈이 낸 것이 아니라 기준 버전을 바꾸지 않는다."""
+    judges = fake_judges()
+    original = core_mod.measure.build_tick
+    monkeypatch.setattr(core_mod.measure, "build_tick", _boom)
+    first = decide_safe(make_request(1000), judges)
+    assert first.meta.criteria_versions.keys() == {"coach"}
+    monkeypatch.setattr(core_mod.measure, "build_tick", original)
+    ok = decide_safe(make_request(2000, state=first.coach_state), judges)
+    monkeypatch.setattr(core_mod.measure, "build_tick", _boom)
+    again = decide_safe(make_request(3000, state=ok.coach_state), judges)
+    assert again.meta.criteria_versions["gaze"] == "gaze-fake-1"
+    assert again.coach_state["criteria_versions"]["gaze"] == "gaze-fake-1"
+
+
 def test_internal_error_on_first_tick_still_returns_a_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(core_mod.measure, "build_tick", lambda *a: 1 / 0)
     resp = decide_safe(make_request(1000), fake_judges())

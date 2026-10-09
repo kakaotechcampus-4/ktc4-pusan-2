@@ -6,6 +6,9 @@ from typing import Any
 
 from coach import finalize
 from coach.config import load_config
+from coach.events import EventSink
+from coach.schemas import StrategyEvent, SuppressedEvent
+from coach.state import initial_state
 
 from .conftest import Session, gaze_off, gaze_on
 
@@ -75,3 +78,39 @@ def test_same_requests_give_the_same_event_ids():
     _, first = _take()
     _, second = _take()
     assert [e.event_id for e in first] == [e.event_id for e in second]
+
+
+def test_same_shaped_ids_in_one_response_get_a_suffix():
+    """요청이 오래 빠져 같은 문제의 효과 둘을 한 번에 재면 사다리 이벤트가 같은 시각에 둘 나온다."""
+    sink = EventSink(initial_state())
+    strategy = {
+        "t_ms": 61_000,
+        "issue_type": "FILLER_FREQUENT",
+        "area": "FILLER",
+        "slide_number": 2,
+        "change": "ESCALATED",
+        "from_instruction": "REDUCE_FILLER",
+        "from_variant": "default",
+        "failures": 1,
+    }
+    a = sink.emit(StrategyEvent, **strategy, intervention_id="iv-10000")
+    b = sink.emit(StrategyEvent, **strategy, intervention_id="iv-30000")
+    suppressed = {
+        "t_ms": 38_000,
+        "candidate_id": "c",
+        "issue_type": "IMPROVED_AFTER_FEEDBACK",
+        "instruction": "CONTINUE",
+        "status": "WAITING",
+        "priority": 30,
+        "reasons": ["MIN_GAP"],
+    }
+    c = sink.emit(SuppressedEvent, **suppressed, area="GAZE")
+    d = sink.emit(SuppressedEvent, **suppressed, area="SPEED")
+    assert [a.event_id, b.event_id] == [
+        "st-FILLER_FREQUENT-2-61000",
+        "st-FILLER_FREQUENT-2-61000-2",
+    ]
+    assert [c.event_id, d.event_id] == [
+        "su-IMPROVED_AFTER_FEEDBACK-38000",
+        "su-IMPROVED_AFTER_FEEDBACK-38000-2",
+    ]

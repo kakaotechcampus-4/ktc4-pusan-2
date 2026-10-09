@@ -182,7 +182,7 @@ def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) 
 
     # 누적 → 커서 · 기준 버전. 결과는 영역 순서(GAZE … TIME)로 담는다
     trusted = out.stt_ok and not {"filler", "pace"} & out.failed
-    all_results = _commit(state, by_module, prev_ms, t, trusted)
+    all_results = _commit(state, by_module, prev_ms, t, trusted, out.failed)
     out.results = {r.area: r for r in all_results}
     return out
 
@@ -199,7 +199,7 @@ def skip(req: CoachRequest, state: CoachState) -> None:
     _note_slide(req, state)
     max_end = max((w.end_ms for w in req.inputs.words), default=None)
     by_module = {name: _fallback(name, state, t, max_end) for name in _AREAS}
-    _commit(state, by_module, prev_ms, t, trusted=False)
+    _commit(state, by_module, prev_ms, t, trusted=False, failed=set(_AREAS))
 
 
 def _round_start(state: CoachState) -> int:
@@ -227,13 +227,17 @@ def _commit(
     prev_ms: int,
     t: int,
     trusted: bool,
+    failed: set[str],
 ) -> list[JudgmentResult]:
-    """모듈별 결과를 합계에 더하고 센 구간을 표시하고 커서를 넘긴다. 영역 순서의 결과를 돌려준다."""
+    """모듈별 결과를 합계에 더하고 센 구간을 표시하고 커서를 넘긴다. 영역 순서의 결과를 돌려준다.
+
+    실패한 모듈의 결과는 기준 버전을 기록하지 않는다 — 모듈이 낸 버전이 아니다.
+    """
     all_results = [r for name in _AREAS for r in by_module[name]]
     tally.accumulate(state, all_results, stt_trusted=trusted)
     tally.mark_covered(state, prev_ms, t, GAZE_VOICE_WINDOW_MS)
     for name, results in by_module.items():
-        _advance(state, name, results)
+        _advance(state, name, results, record_version=name not in failed)
     return all_results
 
 
@@ -344,7 +348,8 @@ def _fallback(
         words_until = (
             cur.words_since_ms if max_word_end is None else max(cur.words_since_ms, max_word_end)
         )
-    version = state.criteria_versions.get(name, f"{name}-unknown")
+    # 모듈이 낸 결과가 아니라 버전은 마지막으로 알던 것(모르면 unknown)을 싣기만 한다
+    version = state.latest_criteria_versions.get(name, f"{name}-unknown")
     return [
         JudgmentResult(
             evaluator=name,
@@ -361,13 +366,17 @@ def _fallback(
     ]
 
 
-def _advance(state: CoachState, name: str, results: list[JudgmentResult]) -> None:
+def _advance(
+    state: CoachState, name: str, results: list[JudgmentResult], record_version: bool = True
+) -> None:
     """커서를 결과의 counted_until 로 옮기고 criteria_version 을 기록한다."""
     cur = state.cursors.setdefault(name, Cursor())
     for r in results:
         cur.since_ms = max(cur.since_ms, r.counted_until_ms)
         if r.words_counted_until_ms is not None:
             cur.words_since_ms = max(cur.words_since_ms, r.words_counted_until_ms)
+    if not record_version:
+        return
     version = results[0].criteria_version
     state.criteria_versions.setdefault(name, version)
     state.latest_criteria_versions[name] = version

@@ -6,6 +6,10 @@
 
 <장> 은 장 번호이고 장이 없으면 none 이다. 번호를 세지 않으므로 같은 이벤트는 다시 만들어도
 같은 id 가 된다 — BE 가 두 번 저장해도 finalize 가 거른다.
+
+한 응답 안에서 같은 모양의 id 가 또 나오면(요청이 오래 빠져 같은 문제의 효과 둘을 한 번에 재
+사다리를 두 번 옮길 때, 격려 후보 여럿이 함께 참을 때) 뒤의 것에 -2, -3 … 을 붙인다. 같은 요청이면
+이벤트 순서가 같으므로 다시 처리해도 같은 id 다. 시각이 다른 응답끼리는 겹치지 않는다.
 """
 
 from __future__ import annotations
@@ -49,9 +53,14 @@ class EventSink:
     def __init__(self, state: CoachState) -> None:
         self.state = state
         self.events: list[Any] = []
+        self._seen: dict[str, int] = {}
 
     def emit(self, cls: type[E], **fields: Any) -> E:
         eid = event_id(cls, fields)
+        n = self._seen.get(eid, 0) + 1
+        self._seen[eid] = n
+        if n > 1:
+            eid = f"{eid}-{n}"
         if cls.model_fields["kind"].default == "INTERVENTION":
             # 개입 이벤트의 intervention_id 는 event_id 와 같다
             fields = {**fields, "intervention_id": eid}
