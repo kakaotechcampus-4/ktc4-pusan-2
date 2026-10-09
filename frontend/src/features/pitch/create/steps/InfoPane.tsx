@@ -163,7 +163,7 @@ export function InfoPane() {
     <div className="flex flex-1 flex-col">
       <PaneHeading title="발표정보" subtitle="발표의 기본 정보를 설정해 주세요." />
 
-      <div className="flex flex-col gap-6 rounded-lg border border-line bg-white p-7">
+      <div className="flex flex-col gap-4 rounded-lg border border-line bg-white px-7 py-5">
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between">
             <label htmlFor={`${id}-title`} className="text-sm font-bold">
@@ -187,21 +187,20 @@ export function InfoPane() {
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-0">
           {/* ── 왼쪽: 발표 날짜 ── */}
           <div className="flex flex-col gap-3 lg:border-r lg:border-line lg:pr-8">
-            <p className="text-sm font-bold">발표 날짜</p>
+            <div className="flex items-baseline justify-between">
+              <p className="text-sm font-bold">발표 날짜</p>
+              <span className="tabular text-sm font-bold" aria-live="polite">
+                {form.presentationDate ? dotDate(form.presentationDate) : '—'}
+              </span>
+            </div>
             <DatePicker
               value={form.presentationDate}
               onChange={(iso) => patch({ presentationDate: iso })}
             />
-            <p className="flex items-baseline gap-4 text-sm">
-              <span className="text-stone">선택한 날짜</span>
-              <span className="tabular text-lg font-bold">
-                {form.presentationDate ? dotDate(form.presentationDate) : '—'}
-              </span>
-            </p>
           </div>
 
           {/* ── 오른쪽: 발표시간 ── */}
-          <div className="flex flex-col gap-8 lg:pl-8">
+          <div className="flex flex-col gap-6 lg:pl-8">
             <div className="flex flex-col gap-2">
               <p className="text-sm font-bold">목표 발표시간</p>
               <Stepper
