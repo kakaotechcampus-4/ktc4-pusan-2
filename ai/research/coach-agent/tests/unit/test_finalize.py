@@ -103,6 +103,22 @@ def test_last_window_failure_is_counted_as_unmeasured_time(monkeypatch: pytest.M
     assert fin.take_result.areas["GAZE"].take["total_ms"] == 11_000
 
 
+def test_last_window_failure_still_closes_the_slide_it_switched_to(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    s = session()
+    s.run(1_000, 10_000)  # 1번 장
+
+    def boom(*a: Any, **k: Any):
+        raise RuntimeError("가짜 예외")
+
+    monkeypatch.setattr(core_mod, "_round", boom)
+    fin = finish(s, 11_000, inputs={"slide": {"number": 2, "started_ms": 10_500}})
+    closed = [(e.slide_number, e.start_ms, e.end_ms) for e in fin.events if e.kind == "SLIDE"]
+    assert closed == [(1, 1_000, 10_500), (2, 10_500, 11_000)]  # 1번 장 누적은 첫 요청부터
+    assert [x.slide_number for x in fin.take_result.areas["GAZE"].slides] == [1, 2]
+
+
 # ── 센 구간 ──────────────────────────────────────────────────────────────
 
 
@@ -158,6 +174,27 @@ def test_finalize_closes_what_is_open_like_before():
 
 
 # ── areas ───────────────────────────────────────────────────────────────
+
+
+class OwnAreas(SummaryJudge):
+    """자기 영역의 합계만 지표로 바꾸고, 어느 모듈이 바꿨는지 남긴다."""
+
+    def summarize(self, tally: dict[str, dict[str, float]]) -> dict[str, Any]:
+        mine = {a: v for a, v in super().summarize(tally).items() if a in AREAS[self.name]}
+        return {a: {**v, "by": self.name} for a, v in mine.items()}
+
+
+def test_each_area_is_summarized_by_its_module():
+    totals = {a: {"measured_ratio": 1.0} for a in ("GAZE", "SPEED", "VOLUME", "PAUSE", "FILLER")}
+    fin = from_state(totals=totals, judges_=judges(**{n: OwnAreas(n) for n in AREAS}))
+    by = {a: r.take["by"] for a, r in fin.take_result.areas.items() if a != "TIME"}
+    assert by == {
+        "GAZE": "gaze",
+        "SPEED": "pace",
+        "VOLUME": "volume",
+        "PAUSE": "volume",
+        "FILLER": "filler",
+    }
 
 
 def test_areas_come_from_totals_through_summarize():

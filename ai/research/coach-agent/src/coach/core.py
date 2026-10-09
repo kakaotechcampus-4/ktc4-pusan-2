@@ -286,6 +286,9 @@ def _last_window(
     sink = EventSink(state)
     try:
         judges_mod.skip(creq, state)
+        slide = req.inputs.slide
+        plan = next((s for s in req.plan.slides if slide and s.slide_number == slide.number), None)
+        slides.follow(state, slide, plan, sink)
         state.last_t_ms = t
     except Exception:  # noqa: BLE001
         log.exception("coach finalize skip failed take_id=%s t_ms=%s", req.take_id, t)
