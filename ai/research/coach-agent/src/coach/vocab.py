@@ -30,7 +30,6 @@ class Instruction(StrEnum):
     SPEAK_LOUDER = "SPEAK_LOUDER"
     RESUME = "RESUME"
     REDUCE_FILLER = "REDUCE_FILLER"
-    MENTION_KEYWORD = "MENTION_KEYWORD"
     CONDENSE = "CONDENSE"
     MOVE_ON = "MOVE_ON"
     WRAP_UP = "WRAP_UP"
@@ -56,7 +55,6 @@ class Issue(StrEnum):
     VOLUME_LOW = "VOLUME_LOW"
     LONG_SILENCE = "LONG_SILENCE"
     FILLER_FREQUENT = "FILLER_FREQUENT"
-    KEYWORD_MISSING = "KEYWORD_MISSING"
     BEHIND_SCHEDULE = "BEHIND_SCHEDULE"
     AHEAD_OF_SCHEDULE = "AHEAD_OF_SCHEDULE"
     SLIDE_OVER = "SLIDE_OVER"
@@ -222,7 +220,6 @@ ISSUE_TYPE: dict[Issue, FeedbackType] = {
     Issue.VOLUME_LOW: FeedbackType.VOLUME,
     Issue.LONG_SILENCE: FeedbackType.PAUSE,
     Issue.FILLER_FREQUENT: FeedbackType.FILLER,
-    Issue.KEYWORD_MISSING: FeedbackType.CONTENT,
     Issue.BEHIND_SCHEDULE: FeedbackType.TIME,
     Issue.AHEAD_OF_SCHEDULE: FeedbackType.TIME,
     Issue.SLIDE_OVER: FeedbackType.TIME,
@@ -232,9 +229,7 @@ ISSUE_TYPE: dict[Issue, FeedbackType] = {
 
 #: 슬라이드마다 따로 보는 문제. 전략(사다리 단계 · 포기)도 슬라이드마다 새로 시작한다.
 #: 4번 장에서 시선 지적을 포기했어도 5번 장에서는 다시 시도한다.
-SLIDE_SCOPED: frozenset[Issue] = frozenset(
-    {Issue.GAZE_ON_SCRIPT, Issue.SLIDE_OVER, Issue.KEYWORD_MISSING}
-)
+SLIDE_SCOPED: frozenset[Issue] = frozenset({Issue.GAZE_ON_SCRIPT, Issue.SLIDE_OVER})
 
 #: 점수가 같을 때의 순서. 앞일수록 먼저다 — 결과가 실행마다 달라지지 않게 하려는 것뿐이다.
 ISSUE_ORDER: tuple[Issue, ...] = (
@@ -247,7 +242,6 @@ ISSUE_ORDER: tuple[Issue, ...] = (
     Issue.VOLUME_LOW,
     Issue.LONG_SILENCE,
     Issue.FILLER_FREQUENT,
-    Issue.KEYWORD_MISSING,
     Issue.AHEAD_OF_SCHEDULE,
     Issue.IMPROVED_AFTER_FEEDBACK,
 )

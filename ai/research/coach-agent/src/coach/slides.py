@@ -1,6 +1,6 @@
 """장별 누적 — 한 장에 머무는 동안의 측정값을 모아, 장이 바뀌면 SLIDE 이벤트로 내보낸다.
 
-리뷰 에이전트의 장별 표(시선 · 속도 · 군더더기 · 음량 · 시간 · 키워드)와
+리뷰 에이전트의 장별 표(시선 · 속도 · 군더더기 · 음량 · 시간)와
 미션 판정(예: "6번 장 대본 응시 30% 이하")의 원천입니다.
 
 평균은 '값 × 시간'의 합으로 남깁니다. 요청 간격이 흔들려도 시간 가중 평균이 됩니다.
@@ -29,7 +29,6 @@ def switch(tick: Tick, sink: EventSink) -> None:
         start_ms=tick.t,
         target_ms=plan.target_ms if plan else None,
         script_chars=plan.script_chars if plan else None,
-        keywords_required=list(plan.required_keywords) if plan else [],
     )
 
 
@@ -84,6 +83,5 @@ def close(st: CoachState, t_ms: int, sink: EventSink) -> None:
         start_ms=acc.start_ms,
         end_ms=t_ms,
         chars_total=st.slide_chars.get(key, 0),
-        keywords_found=list(st.keywords_found.get(key, [])),
         **fields,
     )

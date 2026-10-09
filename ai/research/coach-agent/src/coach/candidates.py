@@ -40,7 +40,6 @@ class Candidate:
     params: dict[str, Any]
     metric: str | None
     sensor_ok: bool = True
-    keyword: str | None = None
     #: 유지 격려 후보면 그 근거가 된 개입
     praise: Praise | None = None
     reasons_for: list[Reason] = field(default_factory=list)
@@ -101,7 +100,6 @@ def build(tick: Tick) -> list[Candidate]:
                 params=dict(det.params),
                 metric=det.metric,
                 sensor_ok=det.sensor_ok,
-                keyword=det.keyword,
                 reasons_for=reasons,
             )
         )

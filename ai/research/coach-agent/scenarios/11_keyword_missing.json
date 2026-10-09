@@ -1,6 +1,6 @@
 {
   "name": "11_keyword_missing",
-  "description": "3번 장 필수 키워드 '로컬 처리'를 빠뜨림 (기본은 꺼진 기능을 켜서 확인). 알려주면 말한다",
+  "description": "3번 장 핵심 키워드 '로컬 처리'를 빠뜨림. 발표 중에는 내용을 지적하지 않는다 (내용 전달은 Take 뒤 대본 전달도가 채점한다)",
   "take_id": "sim-11_keyword_missing",
   "duration_ms": 200000,
   "plan": {
@@ -33,29 +33,14 @@
       }
     ]
   },
-  "config": {
-    "features": {
-      "keyword_missing": true
-    }
-  },
-  "reactions": {
-    "MENTION_KEYWORD": {
-      "delay_ms": 1500,
-      "duration_ms": null,
-      "say": "로컬 처리"
-    }
-  },
   "expect": {
+    "interventions": {
+      "max": 0
+    },
     "areas": {
       "CONTENT": {
-        "min": 1
+        "max": 0
       }
-    },
-    "instructions_include": [
-      "MENTION_KEYWORD"
-    ],
-    "outcomes_include": [
-      "EFFECTIVE"
-    ]
+    }
   }
 }

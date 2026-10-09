@@ -30,14 +30,12 @@ def test_noise_is_reproducible_by_seed():
 
 
 def test_truth_of_a_good_presenter_matches_the_review():
-    # 전달 습관에는 문제가 없다. 다만 계획의 3번 장 필수 키워드를 말하지 않아 내용(CONTENT) 문제만
-    # 남는다
+    # 전달 습관에 문제가 없는 발표자는 정답에도 코치 리뷰에도 문제가 없다
     result = run(_sc("01_baseline_good"))
     truth, intervals = truth_assessment(result)
     assert intervals == []
-    want = [(i.area.value, i.slide_number) for i in truth.issues]
-    assert want == [("CONTENT", 3)]
-    assert [(i.area.value, i.slide_number) for i in result.review.issues] == want
+    assert truth.issues == []
+    assert result.review.issues == []
 
 
 def test_truth_marks_unobservable_problems():

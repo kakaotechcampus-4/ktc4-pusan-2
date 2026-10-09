@@ -200,8 +200,6 @@ def _open_tick(req: CoachRequest, cfg: CoachConfig, state: CoachState) -> Tick:
         if slide is not None:
             start = slide_start if slide_start is not None else req.t_ms
             state.slide_log = [*state.slide_log, (slide, start)][-6:]
-            keep = {str(s) for s, _ in state.slide_log}
-            state.keyword_tails = {k: v for k, v in state.keyword_tails.items() if k in keep}
     speech = req.current.speech
     voice = req.current.voice
     audio_dead = voice is not None and not voice.audio_live

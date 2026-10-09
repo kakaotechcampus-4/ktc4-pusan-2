@@ -22,7 +22,7 @@ from coach.vocab import FeedbackType, Issue
 
 from .simulator import RunResult
 
-#: 정답 구간을 만드는 영역. TIME · CONTENT 는 장별 누적에서 정확히 계산되므로 구간 비교에서 뺀다
+#: 정답 구간을 만드는 영역. TIME 은 장별 누적에서 정확히 계산되므로 구간 비교에서 뺀다
 PROBLEM_TYPES: tuple[FeedbackType, ...] = (
     FeedbackType.GAZE,
     FeedbackType.SPEED,
@@ -171,7 +171,6 @@ def truth_aggs(run: RunResult) -> tuple[dict[int, Agg], Agg]:
             slides[n] = Agg(
                 slide_number=n,
                 target_ms=sp.target_ms if sp else None,
-                kw_required=list(sp.required_keywords) if sp else [],
             )
         return [slides[n], take]
 
@@ -207,18 +206,10 @@ def truth_aggs(run: RunResult) -> tuple[dict[int, Agg], Agg]:
             a.duration_ms += dur
     take.visits = len(run.presenter.visits)
 
-    spoken: dict[int | None, str] = {}
     for w in run.presenter.words:
         if w.filler:
             for a in agg_for(w.slide):
                 a.filler_count += 1
-        else:
-            spoken[w.slide] = spoken.get(w.slide, "") + w.w
-    for n, a in slides.items():
-        text = spoken.get(n, "")
-        a.kw_found = [k for k in a.kw_required if "".join(k.split()) in text]
-        take.kw_required += [f"{n}:{k}" for k in a.kw_required]
-        take.kw_found += [f"{n}:{k}" for k in a.kw_found]
     return slides, take
 
 
@@ -279,7 +270,6 @@ def truth_outcome(
     t_ms: int,
     check_ms: int,
     slide: int | None,
-    keyword: str | None = None,
 ) -> bool | None:
     """개입 효과의 정답 — 코치와 같은 효과 규칙을 잡음 없는 실제 상태에 적용한다.
 
@@ -313,11 +303,4 @@ def truth_outcome(
             return any(r["speaking"] for r in rows if t_ms < r["t_ms"] <= check_ms)
         case Issue.SLIDE_OVER:
             return after["slide"] != slide
-        case Issue.KEYWORD_MISSING:
-            if keyword is None:
-                return None
-            said = "".join(
-                w.w for w in run.presenter.words if t_ms <= w.start_ms <= check_ms and not w.filler
-            )
-            return "".join(keyword.split()) in said
     return None

@@ -32,7 +32,6 @@ OUTCOME_METRIC: dict[Issue, str | None] = {
     # 예상 종료는 누적값이라 10초 안에 거의 안 움직인다. '천천히'에 따라 말 속도가 줄었는지를 본다
     Issue.AHEAD_OF_SCHEDULE: "cpm_short",
     Issue.SLIDE_OVER: "slide_number",
-    Issue.KEYWORD_MISSING: None,
 }
 
 
@@ -58,7 +57,6 @@ def register(tick: Tick, c: Candidate, intervention_id: str) -> None:
             check_at_ms=tick.t + rule.outcome_delay_ms,
             metric=metric,
             before=before if isinstance(before, (int, float)) else None,
-            keyword=c.keyword,
         )
     )
 
@@ -134,12 +132,6 @@ def judge(tick: Tick, p: PendingOutcome) -> tuple[Outcome, float | None]:
     if p.issue_type == Issue.SLIDE_OVER:
         moved = tick.slide_number is not None and tick.slide_number != p.slide_number
         return (Outcome.EFFECTIVE if moved else Outcome.INEFFECTIVE), tick.slide_number
-
-    if p.issue_type == Issue.KEYWORD_MISSING:
-        if not tick.stt_ok:
-            return Outcome.NOT_MEASURED, None
-        found = p.keyword in tick.state.keywords_found.get(str(p.slide_number), [])
-        return (Outcome.EFFECTIVE if found else Outcome.INEFFECTIVE), None
 
     if p.issue_type == Issue.LONG_SILENCE:
         after = tick.metrics.get("silence_ms")

@@ -72,12 +72,6 @@ class SpeechConfig(_Section):
     #: 개입 효과를 잴 때 쓰는 짧은 CPM 창. 15초 창에는 개입 전 단어가 남아 효과를 못 본다 (실험 06)
     recent_window_ms: int = 6_000
     recent_min_speak_ms: int = 2_500
-    #: 이 장을 이만큼 말했는데 필수 키워드가 없으면 KEYWORD_MISSING
-    keyword_progress: float = 0.8
-    #: STT 가 고유명사를 잘못 적는 일이 잦아 키워드 판단 신뢰도를 낮춰 둔다
-    keyword_confidence: float = 0.7
-    #: 키워드가 단어 경계를 걸쳐도 찾도록 남겨 두는 최근 글자 수
-    keyword_tail_chars: int = 40
 
 
 class VoiceConfig(_Section):
@@ -248,14 +242,11 @@ class ReviewConfig(_Section):
             "slide_duration_ms": 5_000.0,
             "duration_ms": 5_000.0,
             "long_silence_count": 0.0,
-            "keyword_coverage": 0.0,
         }
     )
     #: 장 시간이 목표의 이 배를 넘으면 TIME 문제, 이 배에서 심각도 1.0
     time_over_ratio: float = 1.1
     time_bad_ratio: float = 2.0
-    #: 빠뜨린 키워드 하나의 부담 (초)
-    keyword_burden_s: float = 10.0
     max_next_missions: int = 3
     #: 한 장에 그 영역 부담의 이 비율 이상이 몰려 있으면 장 단위 미션, 아니면 Take 단위
     slide_mission_share: float = 0.6
@@ -267,8 +258,6 @@ class ReviewConfig(_Section):
 
 
 class Features(_Section):
-    #: STT 가 고유명사를 자주 잘못 적어 '말했는데 언급하라'는 오탐이 난다. 기본은 끔
-    keyword_missing: bool = False
     praise: bool = True
     pause_wait: bool = True
 
@@ -330,11 +319,6 @@ def _default_issue_rules() -> dict[Issue, IssueRule]:
             outcome_delay_ms=30_000,
             praise=True,
         ),
-        Issue.KEYWORD_MISSING: IssueRule(
-            ladder=_ladder((I.MENTION_KEYWORD, "default")),
-            outcome_delay_ms=15_000,
-            max_fires=1,
-        ),
         Issue.BEHIND_SCHEDULE: IssueRule(
             ladder=_ladder(
                 (I.SPEED_UP, "default"), (I.CONDENSE, "default"), (I.WRAP_UP, "default")
@@ -371,7 +355,6 @@ _TEMPLATES: dict[str, str] = {
     "RESUME.default": "다음 문장으로 이어가 보세요",
     "REDUCE_FILLER.default": "'음' 대신 잠시 호흡하고 이어가세요",
     "REDUCE_FILLER.breathe": "말을 고를 땐 소리 내지 말고 잠깐 멈춰 보세요",
-    "MENTION_KEYWORD.default": "이 슬라이드의 핵심인 '{keyword}'를 언급해 보세요",
     "SPEED_UP.default": "조금만 빠르게 — 남은 {remaining_slides}장, {remaining_time}",
     "CONDENSE.default": "핵심만 말하고 넘어가세요 — 남은 {remaining_slides}장, {remaining_time}",
     "MOVE_ON.default": "이 장은 목표보다 {over_time} 넘었어요 — 정리하고 다음 장으로",
