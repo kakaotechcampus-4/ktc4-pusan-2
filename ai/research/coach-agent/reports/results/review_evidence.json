@@ -48,7 +48,7 @@
       }
     }
   },
-  "config_hash": "bc4f39a50ed2",
+  "config_hash": "b13797d14b3d",
   "policy_version": "coach-v1.2",
   "inputs": "summary",
   "results": {
@@ -63,11 +63,11 @@
         "fragments_per_problem": 1.0,
         "slide_mae": {
           "cpm": 1.6183,
-          "duration_ms": 0.4313,
+          "duration_ms": 0.428,
           "script_ratio": 0.0339
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9375,
+        "type_status_accuracy": 0.9286,
         "memory_accuracy": 1.0,
         "top_issue_type_agreement": 0.75,
         "next_mission_agreement": 0.75,
@@ -85,11 +85,11 @@
         "fragments_per_problem": 1.0,
         "slide_mae": {
           "cpm": 1.6183,
-          "duration_ms": 0.4313,
+          "duration_ms": 0.428,
           "script_ratio": 0.0339
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9821,
+        "type_status_accuracy": 0.9732,
         "memory_accuracy": 1.0,
         "top_issue_type_agreement": 0.9375,
         "next_mission_agreement": 0.9375,
@@ -107,11 +107,11 @@
         "fragments_per_problem": 1.0,
         "slide_mae": {
           "cpm": 1.6183,
-          "duration_ms": 0.4313,
+          "duration_ms": 0.428,
           "script_ratio": 0.0339
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9821,
+        "type_status_accuracy": 0.9732,
         "memory_accuracy": 1.0,
         "top_issue_type_agreement": 0.9375,
         "next_mission_agreement": 0.9375,
@@ -129,7 +129,7 @@
         "fragments_per_problem": 1.0833,
         "slide_mae": {
           "cpm": 1.6183,
-          "duration_ms": 0.4313,
+          "duration_ms": 0.428,
           "script_ratio": 0.0339
         },
         "mission_accuracy": 1.0,
@@ -152,17 +152,17 @@
         "onset_error_s": 8.51,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9375,
+        "type_status_accuracy": 0.9321,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.7125,
-        "next_mission_agreement": 0.7125,
+        "top_issue_type_agreement": 0.6875,
+        "next_mission_agreement": 0.6875,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "B +신뢰도 필터": {
@@ -174,17 +174,17 @@
         "onset_error_s": 8.51,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9804,
+        "type_status_accuracy": 0.975,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "C +구간 병합": {
@@ -196,17 +196,17 @@
         "onset_error_s": 8.51,
         "fragments_per_problem": 1.0,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9804,
+        "type_status_accuracy": 0.975,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "D +지연 보정": {
@@ -218,107 +218,107 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9893,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.95,
+        "next_mission_agreement": 0.95,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       }
     },
     "harsh": {
       "A 기준선(v1.0)": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.5868,
-        "segment_f1": 0.7259,
-        "unsupported_claims_per_take": 0.625,
+        "segment_precision": 0.5917,
+        "segment_f1": 0.7297,
+        "unsupported_claims_per_take": 0.6125,
         "segment_iou": 0.5033,
         "onset_error_s": 9.47,
         "fragments_per_problem": 1.2034,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9357,
+        "type_status_accuracy": 0.9339,
         "memory_accuracy": 1.0,
         "top_issue_type_agreement": 0.7,
         "next_mission_agreement": 0.7,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "B +신뢰도 필터": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8659,
-        "segment_f1": 0.9067,
-        "unsupported_claims_per_take": 0.1375,
+        "segment_precision": 0.8765,
+        "segment_f1": 0.9125,
+        "unsupported_claims_per_take": 0.125,
         "segment_iou": 0.5033,
         "onset_error_s": 9.47,
         "fragments_per_problem": 1.2034,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.975,
+        "type_status_accuracy": 0.9732,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.875,
-        "next_mission_agreement": 0.875,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "C +구간 병합": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8514,
-        "segment_f1": 0.8987,
-        "unsupported_claims_per_take": 0.1375,
+        "segment_precision": 0.863,
+        "segment_f1": 0.9051,
+        "unsupported_claims_per_take": 0.125,
         "segment_iou": 0.5193,
         "onset_error_s": 9.47,
         "fragments_per_problem": 1.0678,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.975,
+        "type_status_accuracy": 0.9732,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.875,
-        "next_mission_agreement": 0.875,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "D +지연 보정": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8732,
-        "segment_f1": 0.9107,
-        "unsupported_claims_per_take": 0.1125,
+        "segment_precision": 0.8857,
+        "segment_f1": 0.9175,
+        "unsupported_claims_per_take": 0.1,
         "segment_iou": 0.8032,
         "onset_error_s": 2.86,
         "fragments_per_problem": 1.1356,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9768,
+        "type_status_accuracy": 0.9786,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       }
     }
@@ -334,17 +334,17 @@
         "onset_error_s": 8.51,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9804,
+        "type_status_accuracy": 0.975,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap  0s · lag ×0.5": {
@@ -356,17 +356,17 @@
         "onset_error_s": 4.9,
         "fragments_per_problem": 1.3158,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9804,
+        "type_status_accuracy": 0.975,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.925,
-        "next_mission_agreement": 0.925,
+        "top_issue_type_agreement": 0.8875,
+        "next_mission_agreement": 0.8875,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap  0s · lag ×1.0": {
@@ -378,17 +378,17 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.2456,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9893,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.95,
+        "next_mission_agreement": 0.95,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap  0s · lag ×1.5": {
@@ -400,17 +400,17 @@
         "onset_error_s": 5.08,
         "fragments_per_problem": 1.2105,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9857,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.925,
-        "next_mission_agreement": 0.925,
+        "top_issue_type_agreement": 0.975,
+        "next_mission_agreement": 0.975,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap  5s · lag ×0.0": {
@@ -422,17 +422,17 @@
         "onset_error_s": 8.51,
         "fragments_per_problem": 1.0526,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9804,
+        "type_status_accuracy": 0.975,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap  5s · lag ×0.5": {
@@ -444,17 +444,17 @@
         "onset_error_s": 4.9,
         "fragments_per_problem": 1.1754,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9804,
+        "type_status_accuracy": 0.975,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.925,
-        "next_mission_agreement": 0.925,
+        "top_issue_type_agreement": 0.8875,
+        "next_mission_agreement": 0.8875,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap  5s · lag ×1.0": {
@@ -466,17 +466,17 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.1754,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9893,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.95,
+        "next_mission_agreement": 0.95,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap  5s · lag ×1.5": {
@@ -488,17 +488,17 @@
         "onset_error_s": 5.08,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9857,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.925,
-        "next_mission_agreement": 0.925,
+        "top_issue_type_agreement": 0.975,
+        "next_mission_agreement": 0.975,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap 10s · lag ×0.0": {
@@ -510,17 +510,17 @@
         "onset_error_s": 8.51,
         "fragments_per_problem": 1.0,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9804,
+        "type_status_accuracy": 0.975,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap 10s · lag ×0.5": {
@@ -532,17 +532,17 @@
         "onset_error_s": 4.9,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9804,
+        "type_status_accuracy": 0.975,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.925,
-        "next_mission_agreement": 0.925,
+        "top_issue_type_agreement": 0.8875,
+        "next_mission_agreement": 0.8875,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap 10s · lag ×1.0": {
@@ -554,17 +554,17 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9893,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.95,
+        "next_mission_agreement": 0.95,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap 10s · lag ×1.5": {
@@ -576,17 +576,17 @@
         "onset_error_s": 5.08,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9857,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.925,
-        "next_mission_agreement": 0.925,
+        "top_issue_type_agreement": 0.975,
+        "next_mission_agreement": 0.975,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap 20s · lag ×0.0": {
@@ -598,17 +598,17 @@
         "onset_error_s": 8.51,
         "fragments_per_problem": 1.0,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9804,
+        "type_status_accuracy": 0.975,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap 20s · lag ×0.5": {
@@ -620,17 +620,17 @@
         "onset_error_s": 4.9,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9804,
+        "type_status_accuracy": 0.975,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.925,
-        "next_mission_agreement": 0.925,
+        "top_issue_type_agreement": 0.8875,
+        "next_mission_agreement": 0.8875,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap 20s · lag ×1.0": {
@@ -642,17 +642,17 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9893,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.95,
+        "next_mission_agreement": 0.95,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "gap 20s · lag ×1.5": {
@@ -664,17 +664,17 @@
         "onset_error_s": 5.08,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9857,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.925,
-        "next_mission_agreement": 0.925,
+        "top_issue_type_agreement": 0.975,
+        "next_mission_agreement": 0.975,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       }
     },
@@ -688,17 +688,17 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9893,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.95,
+        "next_mission_agreement": 0.95,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "최소 구간 2s": {
@@ -710,17 +710,17 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9893,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.95,
+        "next_mission_agreement": 0.95,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "최소 구간 3s": {
@@ -732,17 +732,17 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.1579,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9893,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.95,
+        "next_mission_agreement": 0.95,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "최소 구간 4s": {
@@ -754,17 +754,17 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.1404,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9893,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.95,
+        "next_mission_agreement": 0.95,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       },
       "최소 구간 6s": {
@@ -776,439 +776,439 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.1053,
         "slide_mae": {
-          "cpm": 3.686,
-          "duration_ms": 0.5233,
-          "script_ratio": 0.0609
+          "cpm": 3.6943,
+          "duration_ms": 0.5277,
+          "script_ratio": 0.0602
         },
         "mission_accuracy": 1.0,
-        "type_status_accuracy": 0.9893,
+        "type_status_accuracy": 0.9839,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.95,
+        "next_mission_agreement": 0.95,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9796,
+        "outcome_accuracy": 0.9773,
         "false_intervention_rate": 0.0213
       }
     },
     "harsh/lag": {
       "gap  0s · lag ×0.0": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8659,
-        "segment_f1": 0.9067,
-        "unsupported_claims_per_take": 0.1375,
+        "segment_precision": 0.8765,
+        "segment_f1": 0.9125,
+        "unsupported_claims_per_take": 0.125,
         "segment_iou": 0.5033,
         "onset_error_s": 9.47,
         "fragments_per_problem": 1.2034,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.975,
+        "type_status_accuracy": 0.9732,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.875,
-        "next_mission_agreement": 0.875,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap  0s · lag ×0.5": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.878,
-        "segment_f1": 0.9133,
-        "unsupported_claims_per_take": 0.125,
+        "segment_precision": 0.8889,
+        "segment_f1": 0.9192,
+        "unsupported_claims_per_take": 0.1125,
         "segment_iou": 0.6527,
         "onset_error_s": 5.7,
         "fragments_per_problem": 1.2881,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9696,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.1125,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap  0s · lag ×1.0": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8875,
-        "segment_f1": 0.9184,
-        "unsupported_claims_per_take": 0.1125,
+        "segment_precision": 0.8987,
+        "segment_f1": 0.9244,
+        "unsupported_claims_per_take": 0.1,
         "segment_iou": 0.7908,
         "onset_error_s": 2.86,
         "fragments_per_problem": 1.2881,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9768,
+        "type_status_accuracy": 0.9786,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
+        "top_issue_type_agreement": 0.9125,
+        "next_mission_agreement": 0.9125,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap  0s · lag ×1.5": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8831,
-        "segment_f1": 0.9161,
-        "unsupported_claims_per_take": 0.1125,
+        "segment_precision": 0.8947,
+        "segment_f1": 0.9223,
+        "unsupported_claims_per_take": 0.1,
         "segment_iou": 0.7308,
         "onset_error_s": 4.42,
         "fragments_per_problem": 1.2373,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9732,
+        "type_status_accuracy": 0.9786,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap  5s · lag ×0.0": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8608,
-        "segment_f1": 0.9039,
-        "unsupported_claims_per_take": 0.1375,
+        "segment_precision": 0.8718,
+        "segment_f1": 0.91,
+        "unsupported_claims_per_take": 0.125,
         "segment_iou": 0.5076,
         "onset_error_s": 9.47,
         "fragments_per_problem": 1.1525,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.975,
+        "type_status_accuracy": 0.9732,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.875,
-        "next_mission_agreement": 0.875,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap  5s · lag ×0.5": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8649,
-        "segment_f1": 0.9062,
-        "unsupported_claims_per_take": 0.125,
+        "segment_precision": 0.8767,
+        "segment_f1": 0.9126,
+        "unsupported_claims_per_take": 0.1125,
         "segment_iou": 0.6622,
         "onset_error_s": 5.7,
         "fragments_per_problem": 1.1525,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9696,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.1125,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap  5s · lag ×1.0": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8784,
-        "segment_f1": 0.9135,
-        "unsupported_claims_per_take": 0.1125,
+        "segment_precision": 0.8904,
+        "segment_f1": 0.92,
+        "unsupported_claims_per_take": 0.1,
         "segment_iou": 0.7952,
         "onset_error_s": 2.86,
         "fragments_per_problem": 1.1864,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9768,
+        "type_status_accuracy": 0.9786,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap  5s · lag ×1.5": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8767,
-        "segment_f1": 0.9126,
-        "unsupported_claims_per_take": 0.1125,
+        "segment_precision": 0.8889,
+        "segment_f1": 0.9192,
+        "unsupported_claims_per_take": 0.1,
         "segment_iou": 0.7332,
         "onset_error_s": 4.42,
         "fragments_per_problem": 1.1695,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9732,
+        "type_status_accuracy": 0.9786,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap 10s · lag ×0.0": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8514,
-        "segment_f1": 0.8987,
-        "unsupported_claims_per_take": 0.1375,
+        "segment_precision": 0.863,
+        "segment_f1": 0.9051,
+        "unsupported_claims_per_take": 0.125,
         "segment_iou": 0.5193,
         "onset_error_s": 9.47,
         "fragments_per_problem": 1.0678,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.975,
+        "type_status_accuracy": 0.9732,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.875,
-        "next_mission_agreement": 0.875,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap 10s · lag ×0.5": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8611,
-        "segment_f1": 0.9041,
-        "unsupported_claims_per_take": 0.125,
+        "segment_precision": 0.8732,
+        "segment_f1": 0.9107,
+        "unsupported_claims_per_take": 0.1125,
         "segment_iou": 0.6682,
         "onset_error_s": 5.7,
         "fragments_per_problem": 1.1186,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9696,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
         "false_strengths_per_take": 0.1125,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap 10s · lag ×1.0": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8732,
-        "segment_f1": 0.9107,
-        "unsupported_claims_per_take": 0.1125,
+        "segment_precision": 0.8857,
+        "segment_f1": 0.9175,
+        "unsupported_claims_per_take": 0.1,
         "segment_iou": 0.8032,
         "onset_error_s": 2.86,
         "fragments_per_problem": 1.1356,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9768,
+        "type_status_accuracy": 0.9786,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap 10s · lag ×1.5": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8732,
-        "segment_f1": 0.9107,
-        "unsupported_claims_per_take": 0.1125,
+        "segment_precision": 0.8857,
+        "segment_f1": 0.9175,
+        "unsupported_claims_per_take": 0.1,
         "segment_iou": 0.7376,
         "onset_error_s": 4.42,
         "fragments_per_problem": 1.1356,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9732,
+        "type_status_accuracy": 0.9786,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "gap 20s · lag ×0.0": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8429,
-        "segment_f1": 0.894,
-        "unsupported_claims_per_take": 0.1375,
+        "segment_precision": 0.8551,
+        "segment_f1": 0.9008,
+        "unsupported_claims_per_take": 0.125,
         "segment_iou": 0.5369,
         "onset_error_s": 9.47,
         "fragments_per_problem": 1.0,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
-        },
-        "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.975,
-        "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.875,
-        "next_mission_agreement": 0.875,
-        "false_strengths_per_take": 0.125,
-        "outcome_accuracy": 0.9362,
-        "false_intervention_rate": 0.0417
-      },
-      "gap 20s · lag ×0.5": {
-        "segment_recall": 0.9516,
-        "segment_precision": 0.8571,
-        "segment_f1": 0.9019,
-        "unsupported_claims_per_take": 0.125,
-        "segment_iou": 0.6777,
-        "onset_error_s": 5.7,
-        "fragments_per_problem": 1.0847,
-        "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
-        },
-        "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9696,
-        "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9,
-        "next_mission_agreement": 0.9,
-        "false_strengths_per_take": 0.1125,
-        "outcome_accuracy": 0.9362,
-        "false_intervention_rate": 0.0417
-      },
-      "gap 20s · lag ×1.0": {
-        "segment_recall": 0.9516,
-        "segment_precision": 0.8714,
-        "segment_f1": 0.9097,
-        "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.808,
-        "onset_error_s": 2.86,
-        "fragments_per_problem": 1.1186,
-        "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
-        },
-        "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9768,
-        "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
-        "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
-        "false_intervention_rate": 0.0417
-      },
-      "gap 20s · lag ×1.5": {
-        "segment_recall": 0.9516,
-        "segment_precision": 0.8714,
-        "segment_f1": 0.9097,
-        "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.7419,
-        "onset_error_s": 4.42,
-        "fragments_per_problem": 1.1186,
-        "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9732,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
+        "false_strengths_per_take": 0.125,
+        "outcome_accuracy": 0.9318,
+        "false_intervention_rate": 0.0417
+      },
+      "gap 20s · lag ×0.5": {
+        "segment_recall": 0.9516,
+        "segment_precision": 0.8696,
+        "segment_f1": 0.9088,
+        "unsupported_claims_per_take": 0.1125,
+        "segment_iou": 0.6777,
+        "onset_error_s": 5.7,
+        "fragments_per_problem": 1.0847,
+        "slide_mae": {
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
+        },
+        "mission_accuracy": 0.8667,
+        "type_status_accuracy": 0.9696,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.8625,
+        "next_mission_agreement": 0.8625,
+        "false_strengths_per_take": 0.1125,
+        "outcome_accuracy": 0.9318,
+        "false_intervention_rate": 0.0417
+      },
+      "gap 20s · lag ×1.0": {
+        "segment_recall": 0.9516,
+        "segment_precision": 0.8841,
+        "segment_f1": 0.9166,
+        "unsupported_claims_per_take": 0.1,
+        "segment_iou": 0.808,
+        "onset_error_s": 2.86,
+        "fragments_per_problem": 1.1186,
+        "slide_mae": {
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
+        },
+        "mission_accuracy": 0.8667,
+        "type_status_accuracy": 0.9786,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
+        "false_intervention_rate": 0.0417
+      },
+      "gap 20s · lag ×1.5": {
+        "segment_recall": 0.9516,
+        "segment_precision": 0.8841,
+        "segment_f1": 0.9166,
+        "unsupported_claims_per_take": 0.1,
+        "segment_iou": 0.7419,
+        "onset_error_s": 4.42,
+        "fragments_per_problem": 1.1186,
+        "slide_mae": {
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
+        },
+        "mission_accuracy": 0.8667,
+        "type_status_accuracy": 0.9786,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
+        "false_strengths_per_take": 0.05,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       }
     },
     "harsh/min_segment": {
       "최소 구간 0s": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8732,
-        "segment_f1": 0.9107,
-        "unsupported_claims_per_take": 0.1125,
+        "segment_precision": 0.8857,
+        "segment_f1": 0.9175,
+        "unsupported_claims_per_take": 0.1,
         "segment_iou": 0.8032,
         "onset_error_s": 2.86,
         "fragments_per_problem": 1.1356,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9768,
+        "type_status_accuracy": 0.9786,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "최소 구간 2s": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8732,
-        "segment_f1": 0.9107,
-        "unsupported_claims_per_take": 0.1125,
+        "segment_precision": 0.8857,
+        "segment_f1": 0.9175,
+        "unsupported_claims_per_take": 0.1,
         "segment_iou": 0.8032,
         "onset_error_s": 2.86,
         "fragments_per_problem": 1.1356,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9768,
+        "type_status_accuracy": 0.9786,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "최소 구간 3s": {
         "segment_recall": 0.9516,
-        "segment_precision": 0.8732,
-        "segment_f1": 0.9107,
-        "unsupported_claims_per_take": 0.1125,
+        "segment_precision": 0.8857,
+        "segment_f1": 0.9175,
+        "unsupported_claims_per_take": 0.1,
         "segment_iou": 0.8032,
         "onset_error_s": 2.86,
         "fragments_per_problem": 1.1356,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
-        "type_status_accuracy": 0.9768,
+        "type_status_accuracy": 0.9786,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.05,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "최소 구간 4s": {
@@ -1220,17 +1220,17 @@
         "onset_error_s": 2.9,
         "fragments_per_problem": 1.1034,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9768,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       },
       "최소 구간 6s": {
@@ -1242,17 +1242,17 @@
         "onset_error_s": 2.9,
         "fragments_per_problem": 1.1034,
         "slide_mae": {
-          "cpm": 6.4077,
-          "duration_ms": 0.5326,
-          "script_ratio": 0.1066
+          "cpm": 6.4243,
+          "duration_ms": 0.5299,
+          "script_ratio": 0.1071
         },
         "mission_accuracy": 0.8667,
         "type_status_accuracy": 0.9804,
         "memory_accuracy": 1.0,
-        "top_issue_type_agreement": 0.9125,
-        "next_mission_agreement": 0.9125,
+        "top_issue_type_agreement": 0.925,
+        "next_mission_agreement": 0.925,
         "false_strengths_per_take": 0.0625,
-        "outcome_accuracy": 0.9362,
+        "outcome_accuracy": 0.9318,
         "false_intervention_rate": 0.0417
       }
     }
