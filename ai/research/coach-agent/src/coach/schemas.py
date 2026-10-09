@@ -487,6 +487,46 @@ class AreaCriteria(_Out):
     issues: dict[str, IssueCriteria] = Field(default_factory=dict)
 
 
+class ProblemSegment(_Out):
+    """문제 구간 하나. 같은 문제의 끊긴 조각은 합치고, 판정 지연만큼 되돌려 Take 안으로 자른다."""
+
+    area: FeedbackType
+    issue_type: Issue
+    #: null 이면 Take 전체에 걸친 문제
+    slide_number: int | None = None
+    start_ms: int
+    end_ms: int
+    #: 구간 평균 심각도(0~1)
+    mean_severity: float
+    #: 센서를 믿을 수 있던 시간 비율이 기준 이상이면 true
+    reliable: bool
+    #: 이 구간에서 말을 걸었는가
+    coached: bool
+
+
+class TakeIntervention(_Out):
+    """말을 건 기록 하나와 그 효과."""
+
+    intervention_id: str
+    t_ms: int
+    area: FeedbackType
+    issue_type: Issue
+    instruction: Instruction
+    message: str
+    #: 효과를 재지 못했거나 아직 안 쟀으면 null
+    outcome: Outcome | None = None
+    metric: str | None = None
+    before: float | None = None
+    after: float | None = None
+
+
+class GaveUp(_Out):
+    """효과가 없어 더 말하지 않기로 한 문제."""
+
+    issue_type: Issue
+    slide_number: int | None = None
+
+
 class TakeResult(_Out):
     """Take 의 사실(지표 · 판정 기준). 결론은 담지 않는다."""
 
@@ -497,9 +537,9 @@ class TakeResult(_Out):
     criteria_changed: bool = False
     #: 영역(GAZE · SPEED · VOLUME · PAUSE · FILLER · TIME) → 값
     areas: dict[str, AreaResult]
-    problem_segments: list[dict[str, Any]] = Field(default_factory=list)
-    interventions: list[dict[str, Any]] = Field(default_factory=list)
-    gave_up: list[dict[str, Any]] = Field(default_factory=list)
+    problem_segments: list[ProblemSegment] = Field(default_factory=list)
+    interventions: list[TakeIntervention] = Field(default_factory=list)
+    gave_up: list[GaveUp] = Field(default_factory=list)
     criteria: dict[str, AreaCriteria]
 
 

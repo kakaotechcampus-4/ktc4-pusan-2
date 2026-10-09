@@ -397,7 +397,7 @@ def test_response_shape_and_determinism():
     result = first.take_result
     assert (result.take_id, result.duration_ms) == ("test-take", 21_000)
     assert result.script_mode == "HIGHLIGHT" and result.replayed is False
-    assert result.problem_segments == result.interventions == result.gave_up == []
+    assert result.interventions == result.gave_up == []
     assert set(out["take_result"]["areas"]["GAZE"]) == {
         "measured_ratio",
         "take",

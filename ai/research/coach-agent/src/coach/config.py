@@ -345,6 +345,13 @@ class TakeResultConfig(_Section):
     #: 영역의 Take 측정 비율이 이보다 낮으면 그 영역의 값을 비우고 이유를 단다. 장도 같은 기준으로
     #: 그 장의 값만 비운다
     min_measured_ratio: float = 0.5
+    #: 센서를 믿을 수 있던 시간 비율이 이보다 낮은 문제 구간은 reliable=false 로 표시한다
+    min_reliability: float = 0.5
+    #: 같은 문제 · 같은 장 · 같은 신뢰도의 구간이 이 간격 안에서 다시 시작되면 한 구간으로 합친다
+    merge_gap_ms: int = 10_000
+    #: 합친 구간이 이보다 짧고 개입도 없었으면 잡음 깜빡임으로 보고 뺀다 (판정 기준 시각 보정 전
+    #: 길이로 잰다)
+    min_segment_ms: int = 3_000
 
 
 class CoachConfig(_Section):
