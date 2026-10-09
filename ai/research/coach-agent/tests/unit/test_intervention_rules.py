@@ -9,8 +9,9 @@ from typing import Any
 
 import pytest
 
+from coach import core as core_mod
+from coach import decide_safe, measure, priority, reflection
 from coach import judges as judges_mod
-from coach import measure, priority, reflection
 from coach.candidates import Candidate
 from coach.config import load_config
 from coach.schemas import CoachRequest, IssueCriteria, Mission
@@ -195,9 +196,23 @@ L = 30_000  # 군더더기 효과를 재는 구간 길이 (outcome_delay_ms)
 class TalliedFiller(ScriptedJudge):
     """군더더기 모듈: 단어가 확정되는 틱(finalized_at)에 말한 시각(start)의 몫을 낸다."""
 
-    def __init__(self, issue_at: int, finalized_at: dict[int, list[int]]) -> None:
+    def __init__(
+        self,
+        issue_at: int,
+        finalized_at: dict[int, list[int]],
+        *,
+        raise_at: set[int] | None = None,
+        unmeasurable_at: tuple[int, ...] = (),
+    ) -> None:
         issue = fake_issue("FILLER", "FILLER_FREQUENT", 0.9)
-        super().__init__("filler", lambda t: {"issues": [issue] if t == issue_at else []})
+
+        def spec(t: int) -> dict[str, Any]:
+            return {
+                "issues": [issue] if t == issue_at else [],
+                "unmeasurable": {"FILLER"} if t in unmeasurable_at else set(),
+            }
+
+        super().__init__("filler", spec, raise_at=raise_at)
         self.finalized_at = finalized_at
 
     def judge(self, inputs: dict[str, Any], t_ms: int) -> list[dict[str, Any]]:
@@ -208,10 +223,14 @@ class TalliedFiller(ScriptedJudge):
 
 
 def _filler_take(
-    finalized_at: dict[int, list[int]], *, t0: int = 40_000, gap_at: tuple[int, ...] = ()
+    finalized_at: dict[int, list[int]],
+    *,
+    t0: int = 40_000,
+    gap_at: tuple[int, ...] = (),
+    **filler: Any,
 ) -> Session:
     """t0 에 군더더기 지적을 하고 t0 + L 에 효과를 잰다. gap_at 의 틱에서는 STT 가 불량이다."""
-    s = Session(judges=fake_judges(filler=TalliedFiller(t0, finalized_at)))
+    s = Session(judges=fake_judges(filler=TalliedFiller(t0, finalized_at, **filler)))
     for t in range(1_000, t0 + L + 2_000, 1_000):
         s.step(t, stt_status="error" if t in gap_at else "ok")
     said = [
@@ -252,6 +271,34 @@ def test_filler_outcome_not_measured_after_an_stt_gap_inside_the_window():
 
 def test_filler_outcome_not_measured_while_stt_is_down_at_check_time():
     s = _filler_take({20_000: [15_000]}, gap_at=(70_000,))
+    assert _filler_outcome(s).outcome.value == "NOT_MEASURED"
+
+
+def test_filler_outcome_not_measured_after_a_filler_exception_inside_the_window():
+    s = _filler_take({20_000: [15_000]}, raise_at={50_000})  # 뒤 구간 안에서 모듈 예외
+    assert _filler_outcome(s).outcome.value == "NOT_MEASURED"
+
+
+def test_filler_outcome_not_measured_when_filler_was_unmeasurable_inside_the_window():
+    s = _filler_take({20_000: [15_000]}, unmeasurable_at=(30_000,))
+    assert _filler_outcome(s).outcome.value == "NOT_MEASURED"
+
+
+def test_filler_outcome_not_measured_after_an_internal_error_inside_the_window(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """코치 예외로 건너뛴 시간도 군더더기 수를 믿을 수 없던 시간이다."""
+    judges = fake_judges(filler=TalliedFiller(40_000, {20_000: [15_000]}))
+    s = Session(judges=judges)
+    for t in range(1_000, 40_000 + L + 2_000, 1_000):
+        if t != 55_000:
+            s.step(t)
+            continue
+        with monkeypatch.context() as m:
+            m.setattr(core_mod.measure, "build_tick", lambda *a: 1 / 0)
+            resp = decide_safe(make_request(t, state=s.state), judges, s.config)
+        assert resp.reason_codes == ["INTERNAL_ERROR"]
+        s.state = resp.coach_state
     assert _filler_outcome(s).outcome.value == "NOT_MEASURED"
 
 
@@ -378,22 +425,42 @@ def test_mission_value_comes_from_totals_through_summarize():
     assert _value(state, other) is None  # 아직 오지 않은 장
 
 
+class OwnAreas(FakeJudge):
+    """자기 영역의 합계만 지표로 바꾸고, 어느 모듈이 바꿨는지 남기는 가짜 모듈."""
+
+    AREAS = {
+        "gaze": ("GAZE",),
+        "pace": ("SPEED",),
+        "volume": ("VOLUME", "PAUSE"),
+        "filler": ("FILLER",),
+    }
+
+    def summarize(self, tally):
+        return {a: {**tally.get(a, {}), "module": self.name} for a in self.AREAS[self.name]}
+
+
 def test_mission_value_for_each_area_uses_its_module():
     totals = {
+        "GAZE": {"script_ratio": 0.3},
         "SPEED": {"cpm": 310.0},
         "VOLUME": {"voice_diff_db": -4.0},
         "PAUSE": {"long_silence_count": 2},
         "FILLER": {"filler_per_min": 5.5},
     }
     state = CoachState(totals=totals)
-    for area, metric, expected in [
-        ("SPEED", "cpm", 310.0),
-        ("VOLUME", "voice_diff_db", -4.0),
-        ("PAUSE", "long_silence_count", 2),
-        ("FILLER", "filler_per_min", 5.5),
+    judges = fake_judges(**{n: OwnAreas(n) for n in ("gaze", "pace", "volume", "filler")})
+    for area, metric, expected, module in [
+        ("GAZE", "script_ratio", 0.3, "gaze"),
+        ("SPEED", "cpm", 310.0, "pace"),
+        ("VOLUME", "voice_diff_db", -4.0, "volume"),
+        ("PAUSE", "long_silence_count", 2, "volume"),
+        ("FILLER", "filler_per_min", 5.5, "filler"),
     ]:
-        mission = {**_mission(area, None), "target": _target(metric)}
-        assert _value(state, mission) == expected
+        assert (
+            _value(state, {**_mission(area, None), "target": _target(metric)}, judges) == expected
+        )
+        by = {**_mission(area, None), "target": _target("module")}
+        assert _value(state, by, judges) == module
 
 
 def test_time_mission_value_is_the_duration_from_the_timing_summary():
@@ -405,6 +472,19 @@ def test_time_mission_value_is_the_duration_from_the_timing_summary():
     assert _value(state, slide) == 7_000  # 그 장의 duration_ms
     take = {**_mission("TIME", None), "target": _target("duration_ms")}
     assert _value(state, take) == 9_000
+    # slide_duration_ms 는 장 미션의 이름이다 — Take 미션은 Take 시간으로 바꿔 읽지 않는다
+    take_named_slide = {**_mission("TIME", None), "target": _target("slide_duration_ms")}
+    assert _value(state, take_named_slide) is None
+
+
+def test_a_config_without_the_filler_rule_still_decides():
+    issues = {k: v for k, v in CFG.issues.items() if k != Issue.FILLER_FREQUENT}
+    cfg = CFG.model_copy(update={"issues": issues})
+    s = Session(cfg, judges=fake_judges(filler=TalliedFiller(3_000, {3_000: [2_500]})))
+    for t in range(1_000, 6_000, 1_000):
+        resp = s.step(t)
+        assert "INTERNAL_ERROR" not in resp.reason_codes
+    assert CoachState.model_validate(s.state).filler_times == []
 
 
 def test_mission_value_is_missing_when_summarize_raises():

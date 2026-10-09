@@ -78,7 +78,11 @@ def _mission_value(tick: Tick, mission: Mission) -> object:
         return None
     metric = mission.target.metric
     # 시간의 장 미션은 그 장의 duration_ms 를 slide_duration_ms 라는 이름으로 찾는다
-    if mission.area == FeedbackType.TIME and metric == "slide_duration_ms":
+    if (
+        mission.area == FeedbackType.TIME
+        and mission.slide_number is not None
+        and metric == "slide_duration_ms"
+    ):
         metric = "duration_ms"
     values = summary.get(mission.area.value)
     return values.get(metric) if isinstance(values, dict) else None

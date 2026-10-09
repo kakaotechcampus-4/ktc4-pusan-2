@@ -158,6 +158,18 @@ def _threshold(tick: Tick, module: str, issue: str) -> float | None:
     return found.threshold if found is not None else None
 
 
+def _covered(spans: list[list[int]], lo_ms: int, hi_ms: int) -> bool:
+    """[lo, hi] 가 합쳐 둔 구간들 안에 빈틈 없이 드는가."""
+    at = lo_ms
+    for a, b in spans:
+        if a > at:
+            break
+        at = max(at, b)
+        if at >= hi_ms:
+            return True
+    return at >= hi_ms
+
+
 def _count_fillers(tick: Tick, lo_ms: int, hi_ms: int) -> int:
     """말한 시각이 (lo, hi] 인 군더더기 수."""
     return sum(n for at, n in tick.state.filler_times if lo_ms < at <= hi_ms)
@@ -167,12 +179,11 @@ def _judge_filler(tick: Tick, p: PendingOutcome) -> Measured:
     """개입 앞 · 뒤 같은 길이 구간의 군더더기 수를 잴 때 센다.
 
     단어는 늦게 확정되어 개입 순간에는 앞 구간의 끝이 덜 들어와 있다. 그래서 둘 다 잴 때 센다.
-    그 시간 동안 STT 를 믿지 못한 적이 있으면 수가 모자란 것이라 재지 못한 것으로 둔다.
+    두 구간 중 군더더기 수를 믿을 수 없던 시간(STT 불량 · 군더더기 판정 실패 · 잴 수 없음 · 코치
+    예외로 건너뜀)이 있으면 수가 모자란 것이라 재지 못한 것으로 둔다.
     """
-    st = tick.state
     window = p.check_at_ms - p.t_ms
-    since = st.stt_ok_since_ms
-    if st.stt_gap or not tick.stt_ok or (since is not None and since > p.t_ms - window):
+    if not _covered(tick.state.filler_ok, max(0, p.t_ms - window), p.t_ms + window):
         return Measured(Outcome.NOT_MEASURED, p.before)
     before = _count_fillers(tick, p.t_ms - window, p.t_ms)
     after = _count_fillers(tick, p.t_ms, p.t_ms + window)

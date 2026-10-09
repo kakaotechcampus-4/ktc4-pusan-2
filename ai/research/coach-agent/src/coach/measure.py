@@ -107,6 +107,8 @@ def build_tick(req: CoachRequest, cfg: CoachConfig, state: CoachState, run: Judg
             for p in filler.tally
             if p.values.get("filler_count", 0) > 0
         )
+        if filler.measurable:
+            _note_filler_ok(state, filler)
     _prune_filler_times(tick)
 
     for result in run.results.values():
@@ -118,18 +120,35 @@ def build_tick(req: CoachRequest, cfg: CoachConfig, state: CoachState, run: Judg
     return tick
 
 
+def _note_filler_ok(state: CoachState, filler: JudgmentResult) -> None:
+    """군더더기 수를 믿을 수 있던 시간(이번 결과의 시간 몫)을 합쳐 남긴다."""
+    for piece in filler.tally:
+        span = piece.values.get("total_ms")
+        if not span:
+            continue
+        lo, hi = piece.t_ms, piece.t_ms + int(span)
+        last = state.filler_ok[-1] if state.filler_ok else None
+        if last is not None and lo <= last[1]:
+            last[1] = max(last[1], hi)
+        else:
+            state.filler_ok.append([lo, hi])
+
+
 def _prune_filler_times(tick: Tick) -> None:
     """군더더기 효과를 재는 데 필요한 만큼만 남긴다: 재기로 한 개입의 앞 구간부터, 그리고 지금
     개입해도 앞 구간이 되는 최근 구간."""
     state = tick.state
-    window = tick.cfg.issues[Issue.FILLER_FREQUENT].outcome_delay_ms
+    rule = tick.cfg.issues.get(Issue.FILLER_FREQUENT)
+    window = rule.outcome_delay_ms if rule is not None else None
     if window is None:
         state.filler_times = []
+        state.filler_ok = []
         return
     horizon = min(
         [tick.t - window, *(p.t_ms - window for p in state.pending if p.metric == "filler_count")]
     )
     state.filler_times = [e for e in state.filler_times if e[0] > horizon]
+    state.filler_ok = [s for s in state.filler_ok if s[1] > horizon]
 
 
 def indicators(run: JudgeRun) -> dict[str, str]:

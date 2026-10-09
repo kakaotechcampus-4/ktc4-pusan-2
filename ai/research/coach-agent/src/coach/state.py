@@ -168,6 +168,9 @@ class CoachState(_S):
     #: 군더더기 효과를 재려고 남기는 최근 군더더기 수 [[말한 시각, 수]]. 단어는 늦게 확정되므로
     #: 효과를 잴 때 구간별로 다시 센다. 효과 판정에 필요한 만큼만 남긴다
     filler_times: list[list[int]] = Field(default_factory=list)
+    #: 군더더기 수를 믿을 수 있던 시간 [[시작, 끝]] (합쳐 둠). STT 를 믿을 수 있고 군더더기 판정이
+    #: 성공해 잴 수 있던 1초들이다. 효과를 재는 구간이 이 안에 다 들지 않으면 재지 못한 것으로 둔다
+    filler_ok: list[list[int]] = Field(default_factory=list)
 
     #: 문제별 마지막 '참은 기록' 시각
     suppress_log: dict[str, int] = Field(default_factory=dict)
