@@ -149,6 +149,8 @@ class StandardTextDTO(BaseModel):
 class StandardDTO(BaseModel):
     standard: str
 
+class StandardsSaveDTO(BaseModel):
+    standards: list[StandardDTO]
 class StandardParseResponseDTO(BaseModel):
     standards: list[str]
     except_standard: str | None = None

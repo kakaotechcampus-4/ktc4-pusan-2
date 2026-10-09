@@ -15,6 +15,7 @@ from pitch_coach_backend.module.pitch.dto import (
     ScriptCreateDTO,
     ScriptDetailDTO,
     StandardTextDTO,
+    StandardsSaveDTO,
     UploadPresentationDTO,
 )
 from pitch_coach_backend.module.pitch.service import (
@@ -115,6 +116,14 @@ def post_pitch_standard_text(
     result = add_pitch_standard_service(db, pitch_id, standard_text)
     return {"message": "Pitch standard text added successfully", "pitch_id": result}
 
+@router.post("/{pitch_id}/standards")
+def post_final_standards(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)],
+    standard_text: StandardsSaveDTO 
+):
+    result = add_pitch_standard_service(db, pitch_id, standard_text)
+    return {"message": "Final standards added successfully", "pitch_id": result}
 
 # 대본 새 버전. 202: 원문 저장까지만 하고 돌려준다. 슬라이드 분리(AI)는 응답 뒤 백그라운드에서
 # 돌고, FE 는 받은 script_version_id 로 GET /{pitch_id}/scripts/{id} 를 폴링한다
