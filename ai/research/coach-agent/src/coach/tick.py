@@ -1,14 +1,14 @@
-"""평가기 공통 — 한 번의 판단(Tick)이 들고 다니는 것과 평가기 출력(Detection)."""
+"""한 번의 판단(Tick)이 들고 다니는 것과, 판정 결과의 문제를 코치 규칙이 읽는 모양(Detection)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..config import CoachConfig
-from ..schemas import CoachRequest, IssueCriteria, SlidePlan
-from ..state import CoachState, HistorySample
-from ..vocab import Issue
+from .config import CoachConfig
+from .schemas import CoachRequest, IssueCriteria, SlidePlan
+from .state import CoachState, HistorySample
+from .vocab import Issue
 
 
 @dataclass

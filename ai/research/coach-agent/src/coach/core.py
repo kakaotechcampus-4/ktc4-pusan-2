@@ -25,7 +25,6 @@ from . import eligibility, episodes, measure, priority, reflection, slides
 from . import judges as judges_mod
 from .candidates import Candidate
 from .config import DEFAULT_CONFIG, CoachConfig
-from .evaluators.base import Tick
 from .events import EventSink
 from .judges import Judges
 from .policy import RULE_POLICY, Policy, rank_key
@@ -49,6 +48,7 @@ from .state import (
     initial_state,
     load_state,
 )
+from .tick import Tick
 from .version import POLICY_VERSION
 from .vocab import Action, CandidateStatus, Outcome, Reason
 

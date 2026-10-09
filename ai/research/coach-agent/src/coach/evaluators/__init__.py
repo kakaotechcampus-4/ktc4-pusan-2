@@ -5,8 +5,8 @@
 
 from __future__ import annotations
 
+from ..tick import Detection, Tick
 from . import gaze, speech, timing, voice
-from .base import Detection, Tick
 
 __all__ = ["Detection", "Tick", "run_all"]
 

@@ -9,8 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .evaluators.base import Tick
 from .state import Praise, StrategyState, strategy_key
+from .tick import Tick
 from .vocab import (
     ISSUE_TYPE,
     SLIDE_SCOPED,

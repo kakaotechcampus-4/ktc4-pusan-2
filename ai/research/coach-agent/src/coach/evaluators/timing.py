@@ -13,8 +13,8 @@
 
 from __future__ import annotations
 
+from ..tick import Detection, Tick, ramp
 from ..vocab import Issue, Schedule
-from .base import Detection, Tick, ramp
 
 
 def evaluate(tick: Tick) -> None:

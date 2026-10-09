@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from .candidates import Candidate
-from .evaluators.base import Tick
 from .state import Hold
+from .tick import Tick
 from .vocab import (
     IGNORE_REASONS,
     ISSUE_ORDER,

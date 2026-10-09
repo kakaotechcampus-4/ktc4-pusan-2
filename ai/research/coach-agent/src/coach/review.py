@@ -30,7 +30,6 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from .config import DEFAULT_CONFIG, CoachConfig
-from .evaluators.base import ramp
 from .schemas import (
     CoachEvent,
     CoachingSummary,
@@ -58,6 +57,7 @@ from .schemas import (
     TypeStatusReview,
     TypeSummary,
 )
+from .tick import ramp
 from .version import POLICY_VERSION
 from .vocab import (
     FeedbackType,

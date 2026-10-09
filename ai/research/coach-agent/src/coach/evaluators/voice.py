@@ -14,8 +14,8 @@ from __future__ import annotations
 from statistics import fmean, median
 
 from ..schemas import VoiceInput
+from ..tick import Detection, Tick, ramp
 from ..vocab import Issue
-from .base import Detection, Tick, ramp
 
 
 def relative_db(tick: Tick, voice: VoiceInput, speaking: bool) -> float | None:

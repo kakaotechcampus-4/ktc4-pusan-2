@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from ..config import GazeConfig
 from ..schemas import GazeInput
+from ..tick import Detection, Tick, ramp
 from ..vocab import Issue
-from .base import Detection, Tick, ramp
 
 
 def window_summary(

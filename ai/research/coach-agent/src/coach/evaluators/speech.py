@@ -11,8 +11,8 @@ from __future__ import annotations
 import re
 
 from ..schemas import Word
+from ..tick import Detection, Tick, nonspace_len, ramp
 from ..vocab import Issue
-from .base import Detection, Tick, nonspace_len, ramp
 
 #: 단어 하나가 소리뿐인 간투사인가: 음 · 어 · 으 · 엄 · 흠 · 아 · 에, 길게 끈 것 · 으음,
 #: 뒤에 붙은 문장부호. BE fillers.py 의 T1(항상 군더더기)과 같은 소리다.

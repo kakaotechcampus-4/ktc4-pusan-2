@@ -9,9 +9,9 @@ from coach.core import _append_history
 from coach.evaluators import gaze as old_gaze
 from coach.evaluators import speech as old_speech
 from coach.evaluators import voice as old_voice
-from coach.evaluators.base import Tick
 from coach.schemas import CoachRequest, Current, JudgmentResult
 from coach.state import CoachState
+from coach.tick import Tick
 from coach.vocab import Issue
 
 IN_PAUSE = {"relative_db": None, "silence_ms": 400, "audio_live": True}

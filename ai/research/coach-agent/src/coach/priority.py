@@ -8,8 +8,8 @@
 from __future__ import annotations
 
 from .candidates import Candidate
-from .evaluators.base import Tick
 from .schemas import MissionTarget
+from .tick import Tick
 from .vocab import FeedbackType, Reason
 
 

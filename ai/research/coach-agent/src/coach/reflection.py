@@ -15,10 +15,10 @@ from __future__ import annotations
 from typing import Any
 
 from .candidates import Candidate
-from .evaluators.base import Tick
 from .events import EventSink
 from .schemas import OutcomeEvent, StrategyEvent
 from .state import PendingOutcome, Praise, StrategyState
+from .tick import Tick
 from .vocab import Issue, Outcome, StrategyChange
 
 #: 효과를 잴 때 비교하는 지표 (tick.metrics 의 키)

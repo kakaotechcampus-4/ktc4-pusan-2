@@ -9,10 +9,10 @@
 
 from __future__ import annotations
 
-from .evaluators.base import Tick
 from .events import EventSink
 from .schemas import SlideEvent
 from .state import CoachState, SlideAcc
+from .tick import Tick
 
 
 def switch(tick: Tick, sink: EventSink) -> None:

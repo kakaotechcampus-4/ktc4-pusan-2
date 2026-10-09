@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 
 from .config import CoachConfig
-from .evaluators.base import Detection, Tick
 from .judges import JudgeRun
 from .schemas import CoachRequest, JudgmentResult
 from .state import CoachState
+from .tick import Detection, Tick
 from .vocab import FeedbackType, Issue
 
 log = logging.getLogger(__name__)
