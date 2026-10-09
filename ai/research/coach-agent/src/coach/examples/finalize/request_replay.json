@@ -52,10 +52,13 @@
     "relax": [],
     "max_interventions": null
   },
+  "script_used": null,
   "calibration": {
-    "base_level_db": null
+    "base_level_db": -29.5
   },
   "t_ms": 92000,
+  "script_mode": "HIGHLIGHT",
+  "coach_state": null,
   "events": [
     {
       "event_id": "ep-GAZE_UNMEASURABLE-1-1000",
@@ -101,8 +104,8 @@
           "voiced_ms": 22680.0,
           "voiced_energy": 25.44737854356853,
           "low_ms": 0.0,
-          "level_voiced_ms": 11880.0,
-          "base_db_ms": -350460.0,
+          "level_voiced_ms": 22680.0,
+          "base_db_ms": -669060.0,
           "audio_live_ms": 30000.0,
           "total_ms": 30000.0
         },
@@ -283,26 +286,6 @@
         "STRATEGY_EXHAUSTED",
         "COOLDOWN"
       ]
-    },
-    {
-      "event_id": "iv-92000",
-      "t_ms": 92000,
-      "kind": "INTERVENTION",
-      "intervention_id": "iv-92000",
-      "issue_type": "GAZE_ON_SCRIPT",
-      "area": "GAZE",
-      "instruction": "LOOK_AT_CAMERA",
-      "message": "대본보다 청중을 조금 더 바라보세요",
-      "priority": 100,
-      "confidence": 1.0,
-      "reason_codes": [
-        "GAZE_ON_SCRIPT",
-        "MISSION_RELEVANT",
-        "RECURRING",
-        "PLAN_FOCUS",
-        "WORSENING"
-      ],
-      "slide_number": 3
     }
   ],
   "inputs": {
@@ -310,152 +293,302 @@
       {
         "t_ms": 62000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 63000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 64000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 65000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 66000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 67000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 68000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 69000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 70000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 71000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 72000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 73000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 74000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 75000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 76000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 77000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 78000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 79000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 80000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 81000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 82000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 83000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 84000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 85000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 86000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 87000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 88000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 89000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 90000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 91000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       }
     ],
     "voice_records": [
@@ -1070,6 +1203,16 @@
         "word": "가나다",
         "start_ms": 89500,
         "end_ms": 90100
+      },
+      {
+        "word": "가나다",
+        "start_ms": 90220,
+        "end_ms": 90820
+      },
+      {
+        "word": "가나다",
+        "start_ms": 90940,
+        "end_ms": 91540
       }
     ],
     "utterance_ends": [
@@ -1093,469 +1236,927 @@
       "started_ms": 59390
     }
   },
-  "coach_state": null,
-  "script_mode": "HIGHLIGHT",
   "replay": {
     "gaze_records": [
       {
         "t_ms": 0,
         "duration_ms": 1000,
-        "state": "UNCERTAIN"
+        "state": "UNCERTAIN",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 1000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 2000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 3000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 4000,
         "duration_ms": 1000,
-        "state": "UNCERTAIN"
+        "state": "UNCERTAIN",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 5000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 6000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 7000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 8000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 9000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 10000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 11000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 12000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 13000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 14000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 15000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 16000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 17000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 18000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 19000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 20000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 21000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 22000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 23000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 24000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 25000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 26000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 27000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 28000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 29000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 30000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 31000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 32000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 33000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 34000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 35000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 36000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 37000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 38000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 39000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 40000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 41000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 42000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 43000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 44000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 45000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 46000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 47000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 48000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 49000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 50000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 51000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 52000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 53000,
         "duration_ms": 1000,
-        "state": "UNCERTAIN"
+        "state": "UNCERTAIN",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 54000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 55000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 56000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 57000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 58000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 59000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 60000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 61000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 62000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 63000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 64000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 65000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 66000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 67000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 68000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 69000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 70000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 71000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 72000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 73000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 74000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 75000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 76000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 77000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 78000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 79000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 80000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 81000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 82000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 83000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 84000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 85000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 86000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 87000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 88000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 89000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 90000,
         "duration_ms": 1000,
-        "state": "CAMERA"
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       },
       {
         "t_ms": 91000,
         "duration_ms": 1000,
-        "state": "BOTTOM"
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
       }
     ],
     "voice_records": [
@@ -2991,13 +3592,13 @@
         "word": "가나다",
         "start_ms": 90220,
         "end_ms": 90820,
-        "final_at_ms": 92020
+        "final_at_ms": 92000
       },
       {
         "word": "가나다",
         "start_ms": 90940,
         "end_ms": 91540,
-        "final_at_ms": 92740
+        "final_at_ms": 92000
       }
     ],
     "utterance_ends": [

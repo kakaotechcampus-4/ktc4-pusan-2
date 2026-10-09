@@ -27,10 +27,32 @@ def _load(name: str) -> Any:
     return json.loads((FINALIZE / name).read_text(encoding="utf-8"))
 
 
+EXPECTED = {
+    "evaluate/request.json",
+    "evaluate/judge_results.json",
+    "evaluate/response.json",
+    "finalize/request.json",
+    "finalize/response.json",
+    "finalize/request_replay.json",
+    "finalize/response_replay.json",
+}
+
+
 def test_examples_are_rebuilt_unchanged(tmp_path: Path) -> None:
-    for path in write(tmp_path):
+    written = write(tmp_path)
+    assert {p.relative_to(tmp_path).as_posix() for p in written} == EXPECTED
+    for path in written:
         rel = path.relative_to(tmp_path)
         assert _text(path) == _text(EXAMPLES_DIR / rel), str(rel)
+
+
+def test_finalize_example_judges_the_last_window_with_stt_closed():
+    request = _load("request.json")
+    assert request["coach_state"]["last_t_ms"] < request["t_ms"]  # 마지막 창을 판정한다
+    assert request["calibration"] == {"base_level_db": -29.5}  # evaluate 예시와 같은 Take 상수
+    last_word_end = max(w["end_ms"] for w in request["inputs"]["words"])
+    replay_words = _load("request_replay.json")["replay"]["words"]
+    assert last_word_end == max(w["end_ms"] for w in replay_words)
 
 
 @pytest.mark.parametrize("suffix", ["", "_replay"])

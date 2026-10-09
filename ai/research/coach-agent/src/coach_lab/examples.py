@@ -27,7 +27,7 @@ from coach import decide, finalize
 from coach.judges import Judges
 
 from .judges import filler, gaze, lab_judges, pace, volume
-from .simulator import Presenter, Scenario, run
+from .simulator import Presenter, Scenario
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "coach" / "examples"
 OUT_DIR = EXAMPLES_DIR / "evaluate"
@@ -150,18 +150,60 @@ def build() -> dict[str, Any]:
     }
 
 
+def _evaluate_request(presenter: Presenter, t: int, state: dict[str, Any] | None) -> dict:
+    """evaluate 예시와 같은 Take 상수(기준 음량 · 대본 사용 설정)와 1초 기록 모양의 요청."""
+    request = _full_records(presenter.request(t, state))
+    request["calibration"] = {"base_level_db": BASE_LEVEL_DB}
+    request["script_used"] = None
+    return request
+
+
 def build_finalize() -> dict[str, Any]:
-    """같은 가상 발표를 Take 끝까지 재생한 finalize 요청 · 응답 (정상 · replay)."""
-    result = run(Scenario.model_validate(SCENARIO), coaching_plan=COACHING_PLAN)
-    assert result.final_request is not None
+    """같은 가상 발표가 92초에 끝났을 때의 finalize 요청 · 응답 (정상 · replay).
+
+    BE 처럼 91초까지 evaluate 응답의 coach_state 를 이어 받고, Take 끝(92초)의 마지막 1초 조각과
+    STT 를 닫은 뒤 확정된 단어까지 마지막 창(inputs)에 담는다. replay 는 coach_state 없이 같은
+    Take 의 원자료 전체를 싣는다(STT 를 닫을 때 확정된 단어는 Take 끝에 확정된 것으로 본다).
+    """
+    presenter = Presenter(Scenario.model_validate(SCENARIO), coaching_plan=COACHING_PLAN)
     judges = lab_judges()
-    request = {**result.final_request, "script_mode": "HIGHLIGHT"}
-    replay = {**request, "coach_state": None, "replay": result.presenter.replay_payload()}
+    state: dict[str, Any] | None = None
+    events: list[dict[str, Any]] = []
+    for t in range(0, FINAL_MS, 1_000):
+        response = decide(_evaluate_request(presenter, t, state), judges)
+        state = response.coach_state
+        events.extend(e.model_dump(mode="json") for e in response.events)
+    last = _evaluate_request(presenter, FINAL_MS, state)
+    # STT 를 닫으면 아직 확정되지 않았던 단어도 확정되어 온다 — Take 끝 전에 끝난 단어 전부
+    closed = [
+        {"word": w.w, "start_ms": w.start_ms, "end_ms": w.end_ms}
+        for w in presenter.heard_words
+        if FINAL_MS - 60_000 < w.end_ms <= FINAL_MS
+    ]
+    request = {
+        **{k: last[k] for k in ("take_id", "mode", "plan", "missions", "recurring_issues")},
+        **{k: last[k] for k in ("coaching_plan", "script_used", "calibration")},
+        "t_ms": FINAL_MS,
+        "script_mode": "HIGHLIGHT",
+        "coach_state": state,
+        "events": events,
+        "inputs": {**last["inputs"], "words": closed},
+    }
+    payload = presenter.replay_payload()
+    payload["gaze_records"] = _full_records({"inputs": {"gaze_records": payload["gaze_records"]}})[
+        "inputs"
+    ]["gaze_records"]
+    payload["words"] = [
+        {**w, "final_at_ms": min(w["final_at_ms"], FINAL_MS)}
+        for w in payload["words"]
+        if w["end_ms"] <= FINAL_MS
+    ]
+    replay = {**request, "coach_state": None, "replay": payload}
     return {
         "request": request,
-        "response": finalize(request, judges, result.config).model_dump(mode="json"),
+        "response": finalize(request, judges).model_dump(mode="json"),
         "request_replay": replay,
-        "response_replay": finalize(replay, judges, result.config).model_dump(mode="json"),
+        "response_replay": finalize(replay, judges).model_dump(mode="json"),
     }
 
 
