@@ -49,7 +49,7 @@ def evaluate(tick: Tick) -> None:
             progress = min(1.0, said / current.script_chars)
             confidence = cfg.progress_confidence_chars
         elif slide_elapsed is not None:
-            progress = min(1.0, slide_elapsed / current.target_ms)
+            progress = min(1.0, slide_elapsed / current.target_ms) if current.target_ms > 0 else 1.0
         else:
             progress = 0.0
         earlier = [s for s in slides if s.slide_number < current.slide_number]
@@ -142,6 +142,7 @@ def evaluate(tick: Tick) -> None:
     # 마지막 장에서는 '다음 장으로'가 말이 안 된다 — 그때는 FINAL_MINUTE / TIME_OVER 가 맡는다
     if (
         current is not None
+        and current.target_ms > 0
         and slide_elapsed is not None
         and remaining_slides is not None
         and remaining_slides >= 2
