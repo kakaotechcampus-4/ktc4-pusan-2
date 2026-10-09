@@ -1,6 +1,6 @@
 {
   "name": "14_recurring_persists",
-  "description": "이전 Take 의 3번 장 시선 문제가 그대로. 지적해도 안 바뀜 → 기억 RECURRING, 미션 FAILED, 1순위 · 다음 미션이 3번 장 시선",
+  "description": "이전 Take 의 3번 장 시선 문제가 그대로. 지적해도 안 바뀜 → 3번 장에 믿을 수 있는 시선 문제 구간이 남고, 3번 장 대본 응시가 미션 목표를 못 지킨다",
   "take_id": "sim-14_recurring_persists",
   "duration_ms": 200000,
   "plan": {
@@ -65,25 +65,22 @@
     ]
   },
   "expect": {
-    "memory_labels": [
+    "segments_include": [
+      {
+        "issue_type": "GAZE_ON_SCRIPT",
+        "slide_number": 3,
+        "coached": true,
+        "reliable": true
+      }
+    ],
+    "slide_metrics": [
       {
         "area": "GAZE",
         "slide_number": 3,
-        "label": "RECURRING"
+        "metric": "script_ratio",
+        "operator": "GT",
+        "value": 0.3
       }
-    ],
-    "mission_status": {
-      "m-gaze-3": "FAILED"
-    },
-    "type_status": {
-      "GAZE": "PRIORITY"
-    },
-    "top_issue": {
-      "area": "GAZE",
-      "slide_number": 3
-    },
-    "next_mission_types_include": [
-      "GAZE"
     ]
   }
 }

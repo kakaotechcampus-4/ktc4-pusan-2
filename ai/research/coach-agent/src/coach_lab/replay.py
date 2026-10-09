@@ -5,7 +5,7 @@
     python -m coach_lab.replay --config my_override.json --out outputs/tuned
 
 각 시나리오마다 개입 타임라인, 지표(개입 수 · 효과 · 지연), expect 검사 결과를 출력하고
-outputs/replay/<시나리오>.json 에 이벤트 전체와 리뷰 근거를 씁니다.
+outputs/replay/<시나리오>.json 에 이벤트 전체와 Take 결과를 씁니다.
 """
 
 from __future__ import annotations
@@ -13,10 +13,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 from coach.config import CoachConfig, load_config
 from coach.renderer import format_duration
+from coach.schemas import TakeResult
+from coach.vocab import Instruction, Outcome
 
 from .paths import REPLAY_DIR, SCENARIOS_DIR
 from .simulator import RunResult, Scenario, check_expect, run
@@ -24,8 +27,8 @@ from .simulator import RunResult, Scenario, check_expect, run
 
 def _print_run(result: RunResult, failures: list[str], verbose: bool) -> None:
     sc = result.scenario
-    review = result.review
-    assert review is not None
+    take = result.take_result
+    assert take is not None
     status = "PASS" if not failures else "FAIL"
     print(f"\n━━ {sc.name}  [{status}]")
     if sc.description:
@@ -47,22 +50,52 @@ def _print_run(result: RunResult, failures: list[str], verbose: bool) -> None:
                 f"   {format_duration(e['t_ms']):>7} 전략  {e['change']} {e['issue_type']}"
                 f" (장{e['slide_number']}) {e['from_instruction']}.{e['from_variant']}{to}"
             )
-    s = review.summary
+    _print_take_result(take)
     stats = result.stats()
-    rate = f"{s.effective_rate:.0%}" if s.effective_rate is not None else "-"
-    print(
-        f"   ── 개입 {s.interventions} (격려 {s.praises})"
-        f" · 효과 {s.effective}/{s.effective + s.ineffective}"
-        f" ({rate}) · 포기 {s.gave_up} · 문제 구간 {s.episodes} (미대응 {s.episodes_unaddressed})"
-    )
     print(
         f"   ── {stats['ticks']}틱 · decide p50 {stats['decide_p50_ms']}ms"
         f" / p95 {stats['decide_p95_ms']}ms · coach_state {stats['coach_state_bytes']}B"
     )
-    if s.suppressed_by_reason:
-        print(f"   ── 참은 이유 {s.suppressed_by_reason}")
+    suppressed = Counter(
+        r for e in result.events if e["kind"] == "SUPPRESSED" for r in e["reasons"]
+    )
+    if suppressed:
+        print(f"   ── 참은 이유 {dict(sorted(suppressed.items()))}")
     for f in failures:
         print(f"   ✗ {f}")
+
+
+def _print_take_result(take: TakeResult) -> None:
+    """Take 결과의 사실을 줄여서 보여 준다: 문제 구간, 개입과 효과, 포기."""
+    corrections = [i for i in take.interventions if i.instruction != Instruction.CONTINUE]
+    effective = sum(i.outcome == Outcome.EFFECTIVE for i in take.interventions)
+    measured = sum(
+        i.outcome in (Outcome.EFFECTIVE, Outcome.INEFFECTIVE) for i in take.interventions
+    )
+    print(
+        f"   ── 개입 {len(take.interventions)} (격려 {len(take.interventions) - len(corrections)})"
+        f" · 효과 {effective}/{measured} · 포기 {len(take.gave_up)}"
+        f" · 문제 구간 {len(take.problem_segments)}"
+    )
+    for s in take.problem_segments:
+        tags = [
+            "믿을 수 있음" if s.reliable else "믿을 수 없음",
+            "개입함" if s.coached else "개입 없음",
+        ]
+        slide = f"장{s.slide_number}" if s.slide_number is not None else "전체"
+        print(
+            f"   {'':>7} 구간  {s.issue_type.value:<18}{slide:<5}"
+            f" {format_duration(s.start_ms)}~{format_duration(s.end_ms)}  {' · '.join(tags)}"
+        )
+    for i in take.interventions:
+        outcome = i.outcome.value if i.outcome else "-"
+        print(
+            f"   {format_duration(i.t_ms):>7} 개입  {i.issue_type.value:<18}"
+            f"{i.instruction.value:<15} 효과 {outcome}"
+        )
+    for g in take.gave_up:
+        slide = f"장{g.slide_number}" if g.slide_number is not None else "전체"
+        print(f"   {'':>7} 포기  {g.issue_type.value} ({slide})")
 
 
 def _write_report(result: RunResult, out_dir: Path) -> Path:
@@ -72,7 +105,7 @@ def _write_report(result: RunResult, out_dir: Path) -> Path:
         "scenario": result.scenario.name,
         "stats": result.stats(),
         "timeline": result.timeline,
-        "review_evidence": result.review.model_dump(mode="json") if result.review else None,
+        "take_result": result.take_result.model_dump(mode="json") if result.take_result else None,
         "events": result.events,
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

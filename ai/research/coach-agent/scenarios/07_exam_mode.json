@@ -1,6 +1,6 @@
 {
   "name": "07_exam_mode",
-  "description": "실전 모드. 시선 · 속도 문제가 있어도 발표 중엔 말하지 않고, 문제 구간만 리뷰로 넘긴다",
+  "description": "실전 모드. 시선 · 속도 문제가 있어도 발표 중엔 말하지 않고, 문제 구간만 Take 결과에 남긴다",
   "take_id": "sim-07_exam_mode",
   "duration_ms": 200000,
   "plan": {
@@ -57,8 +57,19 @@
     "suppressed_reasons_include": [
       "EXAM_MODE"
     ],
-    "segment_hints_include": [
-      "UNADDRESSED"
+    "segments_include": [
+      {
+        "issue_type": "GAZE_ON_SCRIPT",
+        "slide_number": 2,
+        "coached": false,
+        "reliable": true
+      },
+      {
+        "issue_type": "PACE_FAST",
+        "slide_number": 2,
+        "coached": false,
+        "reliable": true
+      }
     ]
   }
 }

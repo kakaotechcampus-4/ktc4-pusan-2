@@ -1,6 +1,6 @@
 {
   "name": "15_mixed_burdens",
-  "description": "문제가 여럿 — 2번 장 내내 빠름(크고 김), 3번 장 잠깐 대본 응시(작음), 군더더기 조금. 1순위는 속도여야 한다",
+  "description": "문제가 여럿 — 2번 장 내내 빠름(크고 김), 3번 장 잠깐 대본 응시(작음), 군더더기 조금. 속도 문제가 믿을 수 있는 구간으로 남아야 한다",
   "take_id": "sim-15_mixed_burdens",
   "duration_ms": 200000,
   "plan": {
@@ -53,11 +53,12 @@
     }
   ],
   "expect": {
-    "top_issue": {
-      "area": "SPEED"
-    },
-    "next_mission_types_include": [
-      "SPEED"
+    "segments_include": [
+      {
+        "issue_type": "PACE_FAST",
+        "slide_number": 2,
+        "reliable": true
+      }
     ]
   }
 }

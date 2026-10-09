@@ -1,6 +1,6 @@
 {
   "name": "13_recurring_resolved",
-  "description": "이전 Take 에서 2번 장 시선이 문제였고 이번 미션도 그것. 이번엔 대본을 보지 않는다 → 기억 RESOLVED, 미션 ACHIEVED, 시선 IMPROVED",
+  "description": "이전 Take 에서 2번 장 시선이 문제였고 이번 미션도 그것. 이번엔 대본을 보지 않는다 → 2번 장에 시선 문제 구간이 없고, 2번 장 대본 응시가 미션 목표 안",
   "take_id": "sim-13_recurring_resolved",
   "duration_ms": 200000,
   "plan": {
@@ -59,27 +59,19 @@
     "interventions": {
       "max": 0
     },
-    "memory_labels": [
+    "no_segments": [
+      {
+        "area": "GAZE",
+        "slide_number": 2
+      }
+    ],
+    "slide_metrics": [
       {
         "area": "GAZE",
         "slide_number": 2,
-        "label": "RESOLVED"
-      }
-    ],
-    "mission_status": {
-      "m-gaze-2": "ACHIEVED"
-    },
-    "type_status": {
-      "GAZE": "IMPROVED"
-    },
-    "strengths_include": [
-      {
-        "kind": "RESOLVED_RECURRING",
-        "area": "GAZE"
-      },
-      {
-        "kind": "MISSION_ACHIEVED",
-        "area": "GAZE"
+        "metric": "script_ratio",
+        "operator": "LTE",
+        "value": 0.3
       }
     ]
   }

@@ -480,6 +480,8 @@ class RunResult:
     final_state_bytes: int = 0
     #: finalize 가 합계로 만든 Take 결과
     take_result: TakeResult | None = None
+    #: finalize 에 넣은 요청. 설정만 바꿔 Take 결과를 다시 만들 때 쓴다(실험)
+    final_request: dict[str, Any] | None = None
 
     @property
     def interventions(self) -> list[dict[str, Any]]:
@@ -580,17 +582,14 @@ def run(
 
     presenter.close(result.end_ms)
     # 마지막 틱이 Take 끝이라 마지막 창은 이미 처리했다(finalize 가 건너뛴다)
-    fin = finalize(
-        {
-            **{k: last_req[k] for k in _TAKE_CONSTANTS if k in last_req},
-            "t_ms": result.end_ms,
-            "events": result.events,
-            "inputs": last_req["inputs"],
-            "coach_state": state,
-        },
-        judges,
-        cfg,
-    )
+    result.final_request = {
+        **{k: last_req[k] for k in _TAKE_CONSTANTS if k in last_req},
+        "t_ms": result.end_ms,
+        "events": list(result.events),
+        "inputs": last_req["inputs"],
+        "coach_state": state,
+    }
+    fin = finalize(result.final_request, judges, cfg)
     result.take_result = fin.take_result
     result.events.extend(e.model_dump(mode="json") for e in fin.events)
     result.final_state_bytes = (
@@ -613,8 +612,8 @@ def check_expect(result: RunResult) -> list[str]:
     failures: list[str] = []
     ivs = result.interventions
     instructions = {e["instruction"] for e in ivs}
-    review = result.review
-    assert review is not None
+    take = result.take_result
+    assert take is not None
 
     if "interventions" in exp:
         lo, hi = exp["interventions"].get("min"), exp["interventions"].get("max")
@@ -649,51 +648,71 @@ def check_expect(result: RunResult) -> list[str]:
     for name in exp.get("episodes_exclude", []):
         if name in episodes:
             failures.append(f"문제 구간 {name} 이 있으면 안 됨")
-    hints = {s.hint.value for s in review.segments}
-    for name in exp.get("segment_hints_include", []):
-        if name not in hints:
-            failures.append(f"리뷰 구간 꼬리표 {name} 이 없음")
-    reasons = set(review.summary.suppressed_by_reason)
+    reasons = {r for e in result.events if e["kind"] == "SUPPRESSED" for r in e["reasons"]}
     for name in exp.get("suppressed_reasons_include", []):
         if name not in reasons:
             failures.append(f"참은 이유 {name} 이 없음")
 
-    # ── 리뷰 근거 ────────────────────────────────────────────────────────
-    status = {t.area.value: t.status.value for t in review.type_status}
-    for ftype, want in exp.get("type_status", {}).items():
-        if status.get(ftype) != want:
-            failures.append(f"영역 상태 {ftype}: {status.get(ftype)} ≠ {want}")
-    missions = {m.mission_id: m.status.value for m in review.mission_results}
-    for mid, want in exp.get("mission_status", {}).items():
-        if missions.get(mid) != want:
-            failures.append(f"미션 {mid}: {missions.get(mid)} ≠ {want}")
-    labels = {(m.area.value, m.slide_number): m.label.value for m in review.memory_check}
-    for item in exp.get("memory_labels", []):
-        got = labels.get((item["area"], item.get("slide_number")))
-        if got != item["label"]:
-            failures.append(
-                f"기억 비교 {item['area']}/{item.get('slide_number')}: {got} ≠ {item['label']}"
-            )
-    if "top_issue" in exp:
-        top = review.issues[0] if review.issues else None
-        want = exp["top_issue"]
-        if (
-            top is None
-            or top.area.value != want["area"]
-            or ("slide_number" in want and top.slide_number != want["slide_number"])
+    # ── Take 결과의 사실 ─────────────────────────────────────────────────
+    failures.extend(_check_take_result(exp, take))
+    return failures
+
+
+def _compare(value: float, operator: str, target: float) -> bool:
+    match operator:
+        case "LT":
+            return value < target
+        case "LTE":
+            return value <= target
+        case "GT":
+            return value > target
+        case "GTE":
+            return value >= target
+    raise ValueError(f"알 수 없는 비교 연산자 {operator}")
+
+
+def slide_metric(take: TakeResult, area: str, slide_number: int, metric: str) -> float | None:
+    """Take 결과에서 영역 · 장의 지표 하나. 없거나 재지 못했으면 None."""
+    result = take.areas.get(area)
+    for s in (result.slides or []) if result else []:
+        if s.slide_number == slide_number:
+            return (s.metrics or {}).get(metric)
+    return None
+
+
+def _check_take_result(exp: dict[str, Any], take: TakeResult) -> list[str]:
+    """expect 의 Take 결과 키를 확인한다. 항목의 필드는 적은 것만 맞는지 본다."""
+    failures: list[str] = []
+    segments = take.problem_segments
+    for item in exp.get("segments_include", []):
+        if not any(
+            s.issue_type.value == item["issue_type"]
+            and ("slide_number" not in item or s.slide_number == item["slide_number"])
+            and ("coached" not in item or s.coached == item["coached"])
+            and ("reliable" not in item or s.reliable == item["reliable"])
+            for s in segments
         ):
-            got = f"{top.area.value}/{top.slide_number}" if top else None
-            failures.append(f"1순위 문제 {got} ≠ {want}")
-    next_types = [m.area.value for m in review.next_missions]
-    for name in exp.get("next_mission_types_include", []):
-        if name not in next_types:
-            failures.append(f"다음 미션에 {name} 이 없음 ({next_types})")
-    claimed = {s.area.value for s in review.segments if s.hint.value != "UNRELIABLE"}
-    for name in exp.get("no_claims", []):
-        if name in claimed:
-            failures.append(f"{name} 를 문제로 말하면 안 됨 (센서를 믿을 수 없던 구간)")
-    kinds = {(s.kind.value, s.area.value) for s in review.strengths}
-    for item in exp.get("strengths_include", []):
-        if (item["kind"], item["area"]) not in kinds:
-            failures.append(f"강점 {item['kind']}/{item['area']} 이 없음")
+            failures.append(f"문제 구간 {item} 이 없음")
+    for item in exp.get("no_segments", []):
+        if any(
+            s.reliable
+            and s.area.value == item["area"]
+            and ("slide_number" not in item or s.slide_number == item["slide_number"])
+            for s in segments
+        ):
+            failures.append(f"{item['area']} 를 문제 구간으로 말하면 안 됨 {item}")
+    for item in exp.get("gave_up_include", []):
+        if not any(
+            g.issue_type.value == item["issue_type"]
+            and ("slide_number" not in item or g.slide_number == item["slide_number"])
+            for g in take.gave_up
+        ):
+            failures.append(f"포기한 문제 {item} 이 없음")
+    for item in exp.get("slide_metrics", []):
+        got = slide_metric(take, item["area"], item["slide_number"], item["metric"])
+        if got is None or not _compare(got, item["operator"], item["value"]):
+            failures.append(
+                f"장 지표 {item['area']}/{item['slide_number']} {item['metric']}: {got}"
+                f" ≠ {item['operator']} {item['value']}"
+            )
     return failures
