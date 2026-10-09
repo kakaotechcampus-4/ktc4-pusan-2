@@ -18,13 +18,16 @@ TICK_MS = 1_000
 
 
 def ticks(t_end_ms: int) -> range:
-    """다시 판정할 요청 시각: 1초마다, Take 끝 직전까지. Take 끝은 finalize 의 마지막 창이다."""
-    return range(TICK_MS, t_end_ms, TICK_MS)
+    """다시 판정할 요청 시각: Take 시작(0)부터 1초마다, Take 끝 직전까지. Take 끝은 finalize 의
+    마지막 창이다. 0초 요청은 기록이 없지만 Take 시작 때의 장 · STT 상태를 남긴다(첫 1초 안에 장이
+    바뀌거나 STT 가 돌아와도 실제 진행과 같게)."""
+    return range(0, t_end_ms, TICK_MS)
 
 
 def inputs_at(raw: ReplayInput, t_ms: int) -> CoachInputs:
     """t_ms 요청에 BE 가 실었을 창: 시선 · 음량은 끝난 지 30초 안의 1초 기록, 단어는 확정된 시각이
-    지났고 60초 안에 끝난 것, 문장 끝은 60초 안의 것, STT 상태와 장은 그때의 것."""
+    지났고 60초 안에 끝난 것, 문장 끝은 60초 안의 것, STT 상태와 장은 그때의 것. STT 상태 이력이
+    그 시각보다 늦게 시작하면 그 전은 연결 중(connecting)으로 본다."""
     lo_rec = t_ms - GAZE_VOICE_WINDOW_MS
     gaze = [r for r in raw.gaze_records if lo_rec <= r.t_ms and r.t_ms + r.duration_ms <= t_ms]
     voice = [r for r in raw.voice_records if lo_rec <= r.t_ms and r.t_ms + r.duration_ms <= t_ms]
@@ -35,7 +38,8 @@ def inputs_at(raw: ReplayInput, t_ms: int) -> CoachInputs:
         if w.final_at_ms <= t_ms and lo_word < w.end_ms <= t_ms
     ]
     ends = [u for u in raw.utterance_ends if lo_word <= u <= t_ms]
-    status = "ok"
+    # 처음 알려진 상태 전(이력이 없으면 Take 내내)은 연결 중 — 믿을 수 있다고 가정하지 않는다
+    status = "connecting"
     for change in sorted(raw.stt_status_changes, key=lambda c: c.t_ms):
         if change.t_ms <= t_ms:
             status = change.status

@@ -252,7 +252,9 @@ def _finalize_replay(req: FinalizeRequest, judges: Judges, cfg: CoachConfig) -> 
     coach_state: dict[str, Any] | None = None
     rebuilt: list[Any] = []
     for t_ms in recovery.ticks(t):
-        resp = decide(recovery.request_at(req, raw, t_ms, coach_state), judges, rebuild_cfg)
+        # 실제 진행처럼 decide_safe 로 — 코치 안 예외가 난 1초는 잴 수 없던 시간으로 넘기고 계속한다
+        creq = recovery.request_at(req, raw, t_ms, coach_state)
+        resp = decide_safe(creq, judges, rebuild_cfg)
         coach_state = resp.coach_state
         rebuilt.extend(resp.events)
 

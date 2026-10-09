@@ -105,7 +105,40 @@ def test_rebuild_requests_are_exam_mode_every_second(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(core_mod, "decide", spy)
     finalize(request(t_ms=5_000), fake_judges())
-    assert seen == [(t, "EXAM") for t in (1_000, 2_000, 3_000, 4_000)]
+    # Take 시작(0초)부터 1초마다, Take 끝(5초)은 finalize 의 마지막 창
+    assert seen == [(t, "EXAM") for t in (0, 1_000, 2_000, 3_000, 4_000)]
+
+
+def test_slide_change_inside_the_first_second_is_kept():
+    slides = [{"number": 1, "started_ms": 0}, {"number": 2, "started_ms": 600}]
+    r = finalize(request(replay=raw(10_000, slides=slides), t_ms=10_000), fake_judges())
+    durations = {
+        s.slide_number: s.metrics["slide_duration_ms"] for s in r.take_result.areas["TIME"].slides
+    }
+    assert durations == {1: 600, 2: 9_400}
+
+
+def test_stt_before_the_first_known_status_is_not_trusted():
+    none = ReplayInput.model_validate(raw(10_000, stt_status_changes=[]))
+    late = ReplayInput.model_validate(
+        raw(10_000, stt_status_changes=[{"t_ms": 3_000, "status": "ok"}])
+    )
+    assert recovery.inputs_at(none, 5_000).stt_status == "connecting"
+    assert recovery.inputs_at(late, 2_000).stt_status == "connecting"
+    assert recovery.inputs_at(late, 3_000).stt_status == "ok"
+
+
+def test_internal_error_while_rebuilding_skips_that_second(monkeypatch: pytest.MonkeyPatch):
+    real = core_mod.measure.build_tick
+
+    def flaky(req, *args):
+        if req.t_ms == 3_000:
+            raise RuntimeError("가짜 예외")
+        return real(req, *args)
+
+    monkeypatch.setattr(core_mod.measure, "build_tick", flaky)
+    r = finalize(request(t_ms=10_000), fake_judges()).take_result
+    assert r.replayed is True and r.areas["TIME"].take["duration_ms"] == 10_000
 
 
 # ── Take 결과 ───────────────────────────────────────────────────────────
