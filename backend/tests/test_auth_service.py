@@ -566,6 +566,38 @@ def test_token_pushed_out_by_a_retry_counts_as_reuse(
     assert _alive(db_session, issued.device_id) == []
 
 
+def test_thief_in_the_grace_window_is_caught_when_the_user_refreshes(
+    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+) -> None:
+    """사용자가 회전한 직후 탈취한 쪽이 옛 토큰을 쓴다. 사용자가 다시 갱신할 때 둘 다 끊긴다."""
+    stolen = login(db_session, redis_client)
+    user = service.rotate(db_session, stolen.refresh_token)
+    thief = service.rotate(db_session, stolen.refresh_token)
+
+    with pytest.raises(RefreshTokenReused):
+        service.rotate(db_session, user.refresh_token)
+
+    assert _alive(db_session, stolen.device_id) == []
+    with pytest.raises(UnauthorizedException):
+        service.rotate(db_session, thief.refresh_token)
+
+
+def test_thief_in_the_grace_window_keeps_the_session_if_the_user_never_returns(
+    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+) -> None:
+    """한계: 밀려난 사용자가 다시 갱신하지 않으면 탈취한 쪽은 계속 갱신할 수 있다."""
+    stolen = login(db_session, redis_client)
+    service.rotate(db_session, stolen.refresh_token)
+    thief = service.rotate(db_session, stolen.refresh_token)
+    _past_grace(db_session, stolen.refresh_token)
+
+    renewed = service.rotate(db_session, thief.refresh_token)
+
+    assert _alive(db_session, stolen.device_id) == [
+        security.hash_refresh_token(renewed.refresh_token)
+    ]
+
+
 def test_no_retry_once_the_new_token_was_used(
     db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
 ) -> None:
