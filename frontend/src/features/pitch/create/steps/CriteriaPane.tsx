@@ -97,7 +97,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
   const except = criteria?.exceptText ?? null;
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border border-line bg-white p-6">
+    <section className="flex min-w-0 flex-col gap-3 rounded-lg border border-line bg-white p-4 xl:p-5">
       <div>
         <h3 className="text-lg font-bold">평가기준 작성</h3>
         <p className="mt-1 text-sm text-stone">문장이나 목록으로 자유롭게 작성해 주세요.</p>
@@ -108,8 +108,8 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={PLACEHOLDER}
-        rows={6}
-        className="min-h-40 resize-y rounded-lg border border-line-strong bg-white p-4 text-sm leading-relaxed outline-none placeholder:text-stone focus:border-ink"
+        rows={5}
+        className="min-h-32 w-full resize-y rounded-lg border border-line-strong bg-white p-3 text-sm leading-relaxed outline-none placeholder:text-stone focus:border-ink"
       />
 
       <button
@@ -117,7 +117,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         disabled={text.trim() === '' || parse.isPending}
         onClick={() => parse.mutate(text)}
         className={[
-          'flex h-12 items-center justify-center gap-2 rounded-lg text-sm font-bold',
+          'flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg text-sm font-bold',
           'disabled:cursor-not-allowed disabled:border-transparent disabled:bg-line disabled:text-stone',
           parseButtonTone(hasItems),
         ].join(' ')}
@@ -142,9 +142,9 @@ function Result({ criteria }: { criteria: CriteriaVersion | null }) {
   const items = criteria?.items ?? [];
 
   return (
-    <section className="flex min-h-96 flex-col rounded-lg border border-line bg-white p-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
+    <section className="flex min-w-0 flex-col rounded-lg border border-line bg-white p-4 xl:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <h3 className="text-lg font-bold">정리된 평가기준</h3>
           <span className="tabular rounded-md bg-panel px-2.5 py-1 text-xs font-bold text-stone">
             {items.length}개 항목
@@ -158,13 +158,13 @@ function Result({ criteria }: { criteria: CriteriaVersion | null }) {
       </div>
 
       {items.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
-          <DocIcon className="mb-2 h-12 w-12 stroke-stone" />
+        <div className="flex min-h-48 flex-1 flex-col items-center justify-center gap-2 py-6 text-center">
+          <DocIcon className="mb-2 h-9 w-9 stroke-stone" />
           <p className="font-bold">아직 정리된 평가기준이 없어요</p>
-          <p className="text-sm text-stone">왼쪽에 기준을 작성하고 정리 버튼을 눌러 주세요.</p>
+          <p className="text-sm text-stone">기준을 작성하고 정리 버튼을 눌러 주세요.</p>
         </div>
       ) : (
-        <ol className="mt-4 flex flex-1 flex-col gap-2.5 overflow-y-auto">
+        <ol className="mt-4 flex flex-1 flex-col gap-2.5">
           {items.map((item, i) => (
             <li
               key={item.id}
@@ -173,7 +173,7 @@ function Result({ criteria }: { criteria: CriteriaVersion | null }) {
               <span className="tabular flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-panel text-sm font-bold">
                 {String(i + 1).padStart(2, '0')}
               </span>
-              <span className="text-sm">{item.text}</span>
+              <span className="min-w-0 text-sm [overflow-wrap:anywhere]">{item.text}</span>
             </li>
           ))}
         </ol>
@@ -182,7 +182,7 @@ function Result({ criteria }: { criteria: CriteriaVersion | null }) {
       <p className="mt-4 border-t border-line pt-4 text-xs text-stone">
         {items.length === 0
           ? '정리하면 바로 저장돼요.'
-          : '고치려면 왼쪽을 수정해 다시 정리해 주세요. 새 버전으로 저장돼요.'}
+          : '입력한 기준을 수정해 다시 정리하면 새 버전으로 저장돼요.'}
       </p>
     </section>
   );
@@ -199,7 +199,7 @@ export function CriteriaPane({ criteria }: { criteria: CriteriaVersion | null })
       {pitchId === null ? (
         <NeedPitch what="평가기준" />
       ) : (
-        <div className="grid flex-1 grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
           {/* 버전을 바꾸면 그 버전의 원문으로 다시 채웁니다 */}
           <Writer key={criteria?.version ?? 'none'} criteria={criteria} pitchId={pitchId} />
           <Result criteria={criteria} />
