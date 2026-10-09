@@ -221,6 +221,11 @@ def episode_key(issue: Issue, slide_number: int | None) -> str:
     return _scoped(issue.value, issue, slide_number)
 
 
+def ladder_name(issue: Issue) -> str:
+    """문제가 쓰는 사다리 이름. 사다리를 나눠 쓰는 문제는 같은 이름이다."""
+    return SHARED_LADDER.get(issue, issue.value)
+
+
 def strategy_key(issue: Issue, slide_number: int | None) -> str:
     """사다리 단계 · 포기 · 개입 횟수의 키. 사다리를 나눠 쓰는 문제는 같은 키를 쓴다."""
-    return _scoped(SHARED_LADDER.get(issue, issue.value), issue, slide_number)
+    return _scoped(ladder_name(issue), issue, slide_number)

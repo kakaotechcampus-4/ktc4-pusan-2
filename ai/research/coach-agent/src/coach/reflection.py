@@ -17,7 +17,7 @@ from typing import Any
 from .candidates import Candidate
 from .events import EventSink
 from .schemas import OutcomeEvent, StrategyEvent
-from .state import PendingOutcome, Praise, StrategyState
+from .state import PendingOutcome, Praise, StrategyState, ladder_name
 from .tick import Tick
 from .vocab import Issue, Outcome, StrategyChange
 
@@ -88,11 +88,15 @@ def resolve(tick: Tick, sink: EventSink) -> None:
 
 
 def prune_praise(tick: Tick) -> None:
-    """만료됐거나, 교정했던 문제가 다시 나타난 격려 후보는 버린다."""
+    """만료됐거나, 교정했던 문제(사다리를 같이 쓰는 문제 포함)가 다시 나타난 격려 후보는 버린다.
+
+    대본 응시를 고친 뒤 다른 곳을 보기 시작했는데 '지금처럼'이라고 하지 않게 한다.
+    """
+    seen = {ladder_name(d.issue_type) for d in tick.detections}
     tick.state.praise = [
         p
         for p in tick.state.praise
-        if tick.t <= p.expires_ms and not tick.detected(p.source_issue_type)
+        if tick.t <= p.expires_ms and ladder_name(p.source_issue_type) not in seen
     ]
 
 
