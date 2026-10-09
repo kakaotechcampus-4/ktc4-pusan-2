@@ -148,6 +148,23 @@ def test_revisit_makes_two_slide_events_while_slide_totals_merge():
     assert last[0].target_ms == 30_000 and first[1].target_ms == 60_000
 
 
+def test_pieces_before_the_first_slide_stay_out_of_its_visit():
+    """장 정보가 5초에야 왔다: 그 전 몫은 장 번호별 합계에는 첫 장으로 들지만 방문에는 안 든다."""
+    s = Session(plan=PLAN)
+    for t in range(1_000, 5_000, 1_000):
+        s.step(t, slide=None)
+    s.step(6_000, slide=1, slide_started=5_000, words=[word(3_500, 3_800)])
+    fin = finalize(
+        {"take_id": "test-take", "t_ms": 6_000, "coach_state": s.state}, s.judges, s.config
+    )
+    (slide,) = [e for e in fin.events if e.kind == "SLIDE"]
+    assert (slide.start_ms, slide.end_ms) == (5_000, 6_000)
+    assert slide.tally["TIME"]["elapsed_ms"] == 1_000  # [5000, 6000) 만
+    assert "chars" not in slide.tally.get("SPEED", {})  # 3.5초에 한 말은 장이 보이기 전
+    totals = s.state["slide_totals"]["1"]
+    assert totals["TIME"]["elapsed_ms"] == 2_000 and totals["SPEED"]["chars"] == 3
+
+
 def test_target_ms_is_null_for_a_slide_outside_the_plan():
     s = Session(plan=PLAN)
     s.run(1_000, 2_000, slide=9, slide_started=0)

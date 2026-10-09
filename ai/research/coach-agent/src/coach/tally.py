@@ -70,14 +70,15 @@ def time_pieces(state: CoachState, since_ms: int, t_ms: int) -> list[tuple[int, 
 
 
 def visit_at(state: CoachState, t_ms: int) -> SlideVisit | None:
-    """t_ms 가 속한 방문(시작 ≤ t_ms < 끝, 지금 방문이면 끝 없음). 어느 방문에도 안 들면 가장
-    이른 방문보다 이른 조각은 그 방문, 아니면 마지막 방문."""
+    """t_ms 가 속한 방문(시작 ≤ t_ms < 끝, 지금 방문이면 끝 없음). 어느 방문에도 안 들면 None.
+
+    SLIDE 의 합계는 그 장이 보이던 동안의 몫만이다. 첫 장 시작보다 이른 몫(장 정보가 늦게 온
+    경우)은 장 번호별 합계에서는 첫 장에 들지만(slide_at) 방문에는 넣지 않는다.
+    """
     for visit in reversed(state.visits):
         if visit.start_ms <= t_ms and (visit.end_ms is None or t_ms < visit.end_ms):
             return visit
-    if not state.visits:
-        return None
-    return state.visits[0] if t_ms < state.visits[0].start_ms else state.visits[-1]
+    return None
 
 
 def add(
