@@ -1,6 +1,6 @@
 """BE ↔ 코치 계약 (pydantic).
 
-이 파일이 요청 · 응답 · 이벤트 · 리뷰 근거 모양의 단일 진실 원천입니다.
+이 파일이 요청 · 응답 · 이벤트 · Take 결과 모양의 단일 진실 원천입니다.
 
 입력 모델은 모르는 필드를 무시합니다(extra="ignore") — BE 가 필드를 먼저 추가해도 깨지지 않게.
 필드 이름은 snake_case 입니다 (BE DTO · 리뷰 DTO 와 같게).
@@ -61,7 +61,7 @@ class Plan(_In):
 
 
 class MissionTarget(_In):
-    #: 지표 이름. 응답 evidence · 리뷰 evidence 와 같은 이름을 쓴다 (INTERFACE.md 의 공통 지표 이름)
+    #: 지표 이름. 판정 모듈 summarize 의 지표 이름과 같다 (장 단위 시간은 slide_duration_ms)
     metric: str
     operator: Literal["LT", "LTE", "GT", "GTE"]
     value: float
@@ -156,7 +156,7 @@ class CoachRequest(_In):
     recurring_issues: list[RecurringIssue] = Field(default_factory=list)
     #: 코칭 계획. null 이면 계획 없음. why · source 는 와도 쓰지 않는다
     coaching_plan: CoachingPlan | None = None
-    #: 사용자 평가 기준의 대본 사용 설정. 개입 규칙에서 쓴다 (아직 쓰지 않는다)
+    #: 사용자 평가 기준의 대본 사용 설정. true 면 대본 응시를 지적하지 않는다 (SCRIPT_ALLOWED)
     script_used: bool | None = None
     #: 판정 모듈에 넘길 원자료
     inputs: CoachInputs = Field(default_factory=CoachInputs)
