@@ -14,7 +14,7 @@ from coach import decide_safe, measure, priority, reflection
 from coach import judges as judges_mod
 from coach.candidates import Candidate
 from coach.config import load_config
-from coach.schemas import CoachRequest, IssueCriteria, Mission
+from coach.schemas import CoachRequest, IssueCriteria, JudgmentResult, Mission
 from coach.state import CoachState, Cursor, HistorySample, PendingOutcome, dump_state, initial_state
 from coach.tick import Tick
 from coach.timing import criteria as timing_criteria
@@ -300,6 +300,34 @@ def test_filler_outcome_not_measured_after_an_internal_error_inside_the_window(
         assert resp.reason_codes == ["INTERNAL_ERROR"]
         s.state = resp.coach_state
     assert _filler_outcome(s).outcome.value == "NOT_MEASURED"
+
+
+def test_filler_outcome_not_measured_when_stt_came_back_inside_the_window():
+    # 25초 불량 → 26초 복구: 25~26초는 아직 믿을 수 없던 시간이다. 개입 55초의 앞 구간 (25, 55]
+    s = _filler_take({40_000: [35_000]}, t0=55_000, gap_at=(25_000,))
+    assert _filler_outcome(s).outcome.value == "NOT_MEASURED"
+
+
+def test_trusted_filler_time_is_merged_in_any_piece_order():
+    state = CoachState(stt_ok_since_ms=None)
+    pieces = [
+        {"t_ms": 1_000, "values": {"total_ms": 1_000}},
+        {"t_ms": 0, "values": {"total_ms": 1_000}},
+    ]
+    result = JudgmentResult.model_validate(
+        {
+            "evaluator": "filler",
+            "area": "FILLER",
+            "t_ms": 2_000,
+            "counted_until_ms": 2_000,
+            "criteria_version": "filler-fake-1",
+            "measurable": True,
+            "state": "NORMAL",
+            "tally": pieces,
+        }
+    )
+    measure._note_filler_ok(state, result)
+    assert state.filler_ok == [[0, 2_000]]
 
 
 def test_filler_outcome_measured_when_the_gap_was_before_the_window():

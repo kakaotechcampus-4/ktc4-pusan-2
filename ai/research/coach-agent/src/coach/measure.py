@@ -121,17 +121,26 @@ def build_tick(req: CoachRequest, cfg: CoachConfig, state: CoachState, run: Judg
 
 
 def _note_filler_ok(state: CoachState, filler: JudgmentResult) -> None:
-    """군더더기 수를 믿을 수 있던 시간(이번 결과의 시간 몫)을 합쳐 남긴다."""
+    """군더더기 수를 믿을 수 있던 시간(이번 결과의 시간 몫)을 합쳐 남긴다.
+
+    STT 가 다시 믿을 만해진 시각 전은 뺀다 — 막 돌아온 1초는 아직 믿을 수 없던 시간이다.
+    """
+    trusted_from = state.stt_ok_since_ms or 0
+    spans = [list(s) for s in state.filler_ok]
     for piece in filler.tally:
         span = piece.values.get("total_ms")
         if not span:
             continue
-        lo, hi = piece.t_ms, piece.t_ms + int(span)
-        last = state.filler_ok[-1] if state.filler_ok else None
-        if last is not None and lo <= last[1]:
-            last[1] = max(last[1], hi)
+        lo, hi = max(piece.t_ms, trusted_from), piece.t_ms + int(span)
+        if hi > lo:
+            spans.append([lo, hi])
+    merged: list[list[int]] = []
+    for lo, hi in sorted(spans):
+        if merged and lo <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], hi)
         else:
-            state.filler_ok.append([lo, hi])
+            merged.append([lo, hi])
+    state.filler_ok = merged
 
 
 def _prune_filler_times(tick: Tick) -> None:
