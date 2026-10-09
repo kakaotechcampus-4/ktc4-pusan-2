@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from coach.config import CoachConfig
-from coach.review import Agg
 from coach.schemas import Plan
 from coach.vocab import FeedbackType, Issue
 
@@ -25,6 +24,81 @@ from .judges import pace as pace_judge
 from .judges import volume as volume_judge
 from .judges._common import ramp
 from .simulator import RunResult
+
+
+def _div(a: float, b: float, digits: int = 4) -> float | None:
+    return round(a / b, digits) if b > 0 else None
+
+
+@dataclass
+class Agg:
+    """한 장(slide_number) 또는 Take 전체(slide_number=None)의 누적."""
+
+    slide_number: int | None
+    visits: int = 0
+    start_ms: int = 0
+    duration_ms: int = 0
+    total_ms: int = 0
+    target_ms: int | None = None
+    gaze_valid_ms: int = 0
+    gaze_script_ms: float = 0.0
+    gaze_unusable_ms: int = 0
+    speech_ok_ms: int = 0
+    cpm_ms: int = 0
+    cpm_weighted: float = 0.0
+    filler_count: int = 0
+    audio_live_ms: int = 0
+    speaking_ms: int = 0
+    db_ms: int = 0
+    db_weighted: float = 0.0
+    long_silence_ms: int = 0
+
+    # ── 파생 값 ──────────────────────────────────────────────────────────
+    @property
+    def script_ratio(self) -> float | None:
+        return _div(self.gaze_script_ms, self.gaze_valid_ms)
+
+    @property
+    def cpm(self) -> float | None:
+        return _div(self.cpm_weighted, self.cpm_ms, 1)
+
+    @property
+    def voice_diff_db(self) -> float | None:
+        return _div(self.db_weighted, self.db_ms, 2)
+
+    @property
+    def filler_per_min(self) -> float | None:
+        if self.speech_ok_ms <= 0 or self.duration_ms < 10_000:
+            return None
+        return round(self.filler_count * 60_000 / self.duration_ms, 2)
+
+    @property
+    def gaze_coverage(self) -> float | None:
+        return _div(self.gaze_valid_ms, self.total_ms)
+
+    @property
+    def speech_coverage(self) -> float | None:
+        return _div(self.speech_ok_ms, self.total_ms)
+
+    @property
+    def audio_coverage(self) -> float | None:
+        return _div(self.audio_live_ms, self.total_ms)
+
+    @property
+    def volume_coverage(self) -> float | None:
+        """오디오가 살아 있던 비율과 말한 시간 중 음량을 잰 비율 중 작은 쪽.
+
+        음량 레벨 입력은 기준이 잡히기 전(Take 시작 직후) 말한 시간을 재지 못한다 —
+        오디오만 살아 있었다고 음량을 평가하면 표본 없이 '해결됨'을 판정하게 된다.
+        """
+        measured = _div(self.db_ms, self.speaking_ms)
+        audio = self.audio_coverage
+        return None if measured is None or audio is None else min(audio, measured)
+
+    @property
+    def over_ms(self) -> int | None:
+        return self.duration_ms - self.target_ms if self.target_ms else None
+
 
 #: 정답 구간을 만드는 영역. TIME 은 장별 누적에서 정확히 계산되므로 구간 비교에서 뺀다
 PROBLEM_TYPES: tuple[FeedbackType, ...] = (

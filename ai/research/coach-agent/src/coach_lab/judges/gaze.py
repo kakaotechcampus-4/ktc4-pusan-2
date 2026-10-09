@@ -105,7 +105,7 @@ class Seg(NamedTuple):
 
 
 def criteria(config: Config = DEFAULT) -> dict[str, IssueCriteria]:
-    """문제별 판정 기준. 지연은 `review._lag` 와 같다."""
+    """문제별 판정 기준. 지연은 옛 리뷰 근거 설정의 지연 값과 같다."""
     return {
         Issue.GAZE_ON_SCRIPT: IssueCriteria(
             metric="script_run_ms",

@@ -128,75 +128,6 @@ class ReflectionConfig(_Section):
     schedule_delta: float = 0.05
 
 
-class ReviewConfig(_Section):
-    """Take 종료 뒤 리뷰 에이전트 근거를 만드는 규칙 (review.py).
-
-    기본값은 리뷰 근거 실험(research 의 coach_lab.evaluate)으로 고른 것입니다.
-    결과는 ai/research/coach-agent/reports/results/review_evidence.json 에 있습니다.
-    """
-
-    #: 센서를 믿을 수 있던 시간이 이 비율보다 적은 구간은 문제로 보지 않는다 (UNRELIABLE)
-    #: 판정 모듈의 기준값 사본 (같은 값). 미션 목표와 지연 보정에 쓴다. #151 에서 리뷰 근거와 함께
-    #: 지운다
-    script_ratio: float = 0.7
-    fast_cpm: float = 350.0
-    low_relative_db: float = -6.0
-    min_reliability: float = 0.5
-    exclude_unreliable: bool = True
-    #: 평가기의 창 때문에 탐지가 실제보다 늦게 시작 · 끝나는 만큼을 되돌린다
-    lag_compensation: bool = True
-    #: 되돌리는 정도 (1.0 = 아래 lag_ms 그대로). 실험으로 고른다
-    lag_scale: float = 1.0
-    #: (시작 지연, 끝 지연) ms. GAZE_ON_SCRIPT 는 창 길이 × 기준으로 따로 계산한다
-    lag_ms: dict[Issue, tuple[int, int]] = Field(
-        default_factory=lambda: {
-            Issue.PACE_FAST: (7_500, 7_500),  # 15초 CPM 창의 절반
-            Issue.VOLUME_LOW: (2_500, 2_500),  # 5초 평균의 절반
-            Issue.FILLER_FREQUENT: (30_000, 30_000),  # 60초 개수 창의 절반
-            Issue.LONG_SILENCE: (5_000, 0),  # 5초 침묵 뒤에야 잡힌다
-        }
-    )
-    #: 같은 영역 · 같은 장의 구간이 이 간격 안에서 다시 시작되면 한 구간으로 합친다
-    merge_gap_ms: int = 10_000
-    #: 실제로 잡힌 시간(지연 보정 전)이 이보다 짧고 개입도 없던 구간은 리뷰에 넘기지 않는다 (잡음
-    #: 깜빡임).
-    #: 3초: 깨끗한 데이터의 짧은 실제 문제를 놓치지 않는 가장 큰 값. 6초면 harsh 잡음의 근거 없는
-    #: 지적이 0.11 → 0.06 으로 줄지만 깨끗한 데이터에서 실제 문제 하나를 놓친다 (실험 결과의 sweep)
-    min_segment_ms: int = 3_000
-    #: 이보다 작은 부담(심각도 × 초)은 문제로 보지 않는다
-    min_burden_s: float = 3.0
-    #: 상위 몇 개 영역을 PRIORITY 로 볼지
-    priority_types: int = 2
-    recurring_weight: float = 1.5
-    gave_up_weight: float = 1.3
-    mission_failed_weight: float = 1.2
-    #: 데이터가 이 비율보다 적으면 미션 · 영역을 NOT_EVALUABLE 로 둔다
-    min_coverage: float = 0.5
-    #: 목표를 이만큼 이내로 놓치면 FAILED 가 아니라 PARTIAL
-    partial_tolerance: dict[str, float] = Field(
-        default_factory=lambda: {
-            "script_ratio": 0.05,
-            "cpm": 20.0,
-            "voice_diff_db": 2.0,
-            "filler_per_min": 1.0,
-            "slide_duration_ms": 5_000.0,
-            "duration_ms": 5_000.0,
-            "long_silence_count": 0.0,
-        }
-    )
-    #: 장 시간이 목표의 이 배를 넘으면 TIME 문제, 이 배에서 심각도 1.0
-    time_over_ratio: float = 1.1
-    time_bad_ratio: float = 2.0
-    max_next_missions: int = 3
-    #: 한 장에 그 영역 부담의 이 비율 이상이 몰려 있으면 장 단위 미션, 아니면 Take 단위
-    slide_mission_share: float = 0.6
-    #: 다음 미션 목표 — 한 번에 도달할 만큼만 낮춘다
-    gaze_goal: float = 0.3
-    gaze_step: float = 0.2
-    filler_goal: float = 2.0
-    slide_time_margin: float = 1.1
-
-
 class Features(_Section):
     praise: bool = True
     pause_wait: bool = True
@@ -359,7 +290,6 @@ class CoachConfig(_Section):
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
     reflection: ReflectionConfig = Field(default_factory=ReflectionConfig)
     features: Features = Field(default_factory=Features)
-    review: ReviewConfig = Field(default_factory=ReviewConfig)
     planner: PlannerConfig = Field(default_factory=PlannerConfig)
     take_result: TakeResultConfig = Field(default_factory=TakeResultConfig)
     issues: dict[Issue, IssueRule] = Field(default_factory=_default_issue_rules)
