@@ -243,6 +243,9 @@ def test_short_is_measured_before_the_shift():
     # 본 시간 3초(마지막 1초 포함)면 보정으로 앞당겨져도 남는다 (길이는 보정 전으로 잰다)
     e = episode("PACE_FAST", 30_000, 32_000, area="SPEED")
     assert segs(result([e])) == [("PACE_FAST", 1, 25_000, 31_000)]
+    # 본 시간 2초는 보정 뒤 5초가 되어도 뺀다
+    short = episode("PACE_FAST", 30_000, 31_000, area="SPEED")
+    assert segs(result([short])) == []
 
 
 def test_merged_segment_is_coached_if_any_part_is_coached():
@@ -312,3 +315,24 @@ def test_episode_closed_by_this_finalize_joins_the_received_events():
     assert len(finalize(again, s.judges, s.config).take_result.interventions) == len(
         [e for e in s.events if e.kind == "INTERVENTION"]
     )
+
+
+def test_received_event_wins_over_the_same_event_made_again():
+    """finalize 를 다시 부르면 같은 EPISODE 를 또 만든다 — id 가 같아 하나만, 받은 것을 쓴다."""
+    s = Session()
+    s.run(1_000, 9_000, **gaze_on())
+    req = {"take_id": "t", "t_ms": 10_000, "coach_state": s.state, "events": []}
+    first = finalize(req, s.judges, s.config)
+    ep = next(e for e in first.events if e.kind == "EPISODE").model_dump(mode="json")
+    received = [*(e.model_dump(mode="json") for e in s.events), {**ep, "mean_severity": 0.99}]
+    again = finalize({**req, "events": received}, s.judges, s.config)
+    assert [e.event_id for e in again.events if e.kind == "EPISODE"] == [ep["event_id"]]
+    (seg,) = again.take_result.problem_segments
+    assert seg.mean_severity == 0.99
+
+
+def test_reliability_boundary_counts_as_reliable():
+    cfg = load_config(take_result={"min_reliability": 0.8})
+    e = episode(reliable=8_000, unreliable=2_000)  # 믿을 수 있던 비율이 기준과 같다
+    (s,) = result([e], config=cfg).problem_segments
+    assert s.reliable is True

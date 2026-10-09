@@ -92,7 +92,8 @@ def problem_segments(
     for ep in episodes:
         ep_end = ep.end_ms + tick_ms
         seen = ep.reliable_ms + ep.unreliable_ms
-        reliable = not (seen > 0 and ep.unreliable_ms / seen > 1 - cfg.min_reliability)
+        # 믿을 수 있던 시간 비율을 기준과 바로 비교한다 (1 − 기준 은 부동소수점 오차가 난다)
+        reliable = seen == 0 or ep.reliable_ms / seen >= cfg.min_reliability
         key = (ep.issue_type, ep.slide_number, reliable)
         parts = groups.setdefault(key, [])
         last = parts[-1] if parts else None
