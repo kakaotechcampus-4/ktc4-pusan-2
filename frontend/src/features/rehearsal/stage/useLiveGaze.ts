@@ -91,6 +91,8 @@ export function useLiveGaze({
   elapsedMs: () => Ms;
 }) {
   const recentRef = useRef<GazeSampleRecord[]>([]);
+  /** 아직 끝나지 않은 1초 기록 저장. Take 끝에서 마지막 조각까지 저장된 뒤 기록을 읽게 합니다 */
+  const pendingWritesRef = useRef(new Set<Promise<unknown>>());
   // 기록 콜백이 읽을 세션 키. 이펙트에서 옮깁니다 — 렌더에서 ref 에 쓰면
   // 그것도 "렌더 중 ref 접근"입니다
   const sessionRef = useRef(clientSessionId);
@@ -114,17 +116,22 @@ export function useLiveGaze({
       //   그래서 실패를 감추는 대신 **믿을 수 없다는 사실을 기록에 고정**합니다.
       const id = sessionRef.current;
       if (id) {
-        appendGazeSamples(id, samples).catch((err: unknown) => {
-          // 한 건이라도 빠지면 이 Take 의 시선 비율은 이미 틀렸습니다 —
-          // 분모(발표 길이)는 그대로인데 분자에서만 빠지기 때문입니다.
-          if (noteWriteFailure(id, 'gazeSample', err)) {
-            onExcluded('STORAGE_FAILED');
-            // 이 표시까지 실패하면 호출부의 메모리 폴백이 받습니다
-            markGazeExcluded(id, 'STORAGE_FAILED').catch((e: unknown) =>
-              noteWriteFailure(id, 'gazeExcluded', e),
-            );
-          }
-        });
+        const write = appendGazeSamples(id, samples)
+          .catch((err: unknown) => {
+            // 한 건이라도 빠지면 이 Take 의 시선 비율은 이미 틀렸습니다 —
+            // 분모(발표 길이)는 그대로인데 분자에서만 빠지기 때문입니다.
+            if (noteWriteFailure(id, 'gazeSample', err)) {
+              onExcluded('STORAGE_FAILED');
+              // 이 표시까지 실패하면 호출부의 메모리 폴백이 받습니다
+              markGazeExcluded(id, 'STORAGE_FAILED').catch((e: unknown) =>
+                noteWriteFailure(id, 'gazeExcluded', e),
+              );
+            }
+          })
+          .finally(() => pendingWritesRef.current.delete(write));
+        // 끝내기가 마지막 조각의 저장까지 기다릴 수 있게 쥐고 있습니다 (`flushGaze`).
+        // 위 catch 가 실패를 기록하므로 이 약속은 거절되지 않습니다
+        pendingWritesRef.current.add(write);
       }
 
       // 3. 최근 창
@@ -142,6 +149,7 @@ export function useLiveGaze({
     perf,
     startPump,
     stopPump,
+    flush,
     calibrate,
   } = useGazeWorker(
     onSamples,
@@ -228,5 +236,18 @@ export function useLiveGaze({
     return bottomMs / measuredMs;
   }, []);
 
-  return { ready, engineVersion, error, perf, bottomRatio, missingCalibration };
+  /**
+   * Take 끝 — 1초가 안 찬 마지막 조각을 발표 길이(`tEndMs`)까지로 닫아 저장하고, 저장이 끝날 때까지
+   * 기다립니다. 끝내기 처리가 IndexedDB 의 1초 기록을 읽기 **전에** 부릅니다.
+   * 실패하지 않습니다 — 워커가 늦으면 마지막 조각 없이 넘어가고, 저장 실패는 기록이 맡습니다.
+   */
+  const flushGaze = useCallback(
+    async (tEndMs: Ms) => {
+      await flush(tEndMs);
+      await Promise.all(pendingWritesRef.current);
+    },
+    [flush],
+  );
+
+  return { ready, engineVersion, error, perf, bottomRatio, missingCalibration, flushGaze };
 }

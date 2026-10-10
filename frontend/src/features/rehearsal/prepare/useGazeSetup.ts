@@ -6,6 +6,7 @@ import type { CalibrationFailReason } from '@/workers/gaze.contract';
 import { clearZoneRefs, saveZoneRef } from '../lib/db';
 import { readLayoutSignature } from '../lib/layoutSignature';
 import { usePrepareStore } from './prepareStore';
+import { checkGazeSupport } from './gazeSupport';
 
 /**
  * 재시도 안내. **사유마다 할 일이 다르므로** 문구도 다릅니다.
@@ -14,7 +15,13 @@ import { usePrepareStore } from './prepareStore';
  * 카드와 옆 안내가 다른 말을 하면 사용자가 무엇을 고칠지 헷갈립니다.
  * `ENGINE_ERROR` 만 FE 몫입니다.
  */
-export const CALIBRATION_FAIL_MESSAGE: Record<CalibrationFailReason, string> = {
+/**
+ * 보정이 끝나지 못한 이유. 엔진의 판정 사유(`CalibrationFailReason`)에 FE 가 보는
+ * 중단 사유 하나를 더합니다 — 보정 도중 카메라가 끊기면 모듈이 `CAMERA_LOST` 를 알립니다.
+ */
+export type SetupFailReason = CalibrationFailReason | 'CAMERA_LOST';
+
+export const CALIBRATION_FAIL_MESSAGE: Record<SetupFailReason, string> = {
   NOT_ENOUGH_SAMPLES: CALIBRATION_HINT.NOT_ENOUGH_SAMPLES!,
   DEGENERATE_FEATURES: CALIBRATION_HINT.DEGENERATE_FEATURES!,
   CLASS_NOT_SEPARABLE: CALIBRATION_HINT.CLASS_NOT_SEPARABLE!,
@@ -22,7 +29,16 @@ export const CALIBRATION_FAIL_MESSAGE: Record<CalibrationFailReason, string> = {
   CENTROIDS_TOO_CLOSE: CALIBRATION_HINT.CENTROIDS_TOO_CLOSE!,
   ANCHOR_AMBIGUOUS: CALIBRATION_HINT.ANCHOR_AMBIGUOUS!,
   ENGINE_ERROR: '시선 분석이 잠시 멈췄어요. 다시 시도해도 안 되면 페이지를 새로고침해 주세요.',
+  CAMERA_LOST: '카메라 연결이 끊겨 기준을 잡지 못했어요. 카메라를 다시 켜고 다시 잡아 주세요.',
 };
+
+/** 시선 분석을 켤 수 없는 이유별 안내 — 브라우저 · 워커 · 엔진(모델 파일) 순으로 봅니다 */
+function unavailableMessage(unsupported: boolean, workerFailed: boolean): string {
+  if (unsupported)
+    return '이 브라우저에서는 시선 분석을 쓸 수 없어요. 최신 Chrome 이나 Edge 에서 열어 주세요.';
+  if (workerFailed) return '시선 분석이 멈췄어요. 페이지를 새로고침해 주세요.';
+  return '시선 모델 파일을 불러오지 못했어요. 새로고침해도 그대로면 팀에 알려 주세요.';
+}
 
 /**
  * 화면이 보는 시선 기준 상태.
@@ -111,7 +127,19 @@ export function useGazeSetup({
   const [engineFailed, setEngineFailed] = useState(false);
   const [phase, setPhase] = useState<CameraPhase>('idle');
   /** 마지막 실패 사유. 화면이 사유별 안내를 고릅니다 */
-  const [failReason, setFailReason] = useState<CalibrationFailReason | null>(null);
+  const [failReason, setFailReason] = useState<SetupFailReason | null>(null);
+  /**
+   * 엔진이 뜬 뒤 워커가 죽음(`WORKER_FAILED`). 이 화면에서는 다시 보정할 수 없습니다 —
+   * 모듈이 더는 프레임을 보내지 않습니다. 이미 잡아 저장한 기준은 리허설이 자기 워커로 쓰므로 그대로 둡니다
+   */
+  const [workerFailed, setWorkerFailed] = useState(false);
+  /** 브라우저가 엔진을 못 돌림. 카메라를 켜기 전에 압니다 (`checkGazeSupport`) */
+  const [unsupported] = useState(() => {
+    const support = checkGazeSupport();
+    if (!support.ok)
+      console.error('[device-check] 시선 엔진을 돌릴 수 없는 브라우저', support.missing);
+    return !support.ok;
+  });
   /** 기준을 IndexedDB 에 저장하지 못함. 리허설이 기준을 못 찾으므로 시작을 막습니다 */
   const [saveFailed, setSaveFailed] = useState(false);
 
@@ -215,11 +243,24 @@ export function useGazeSetup({
     [setCalibration, setPlacement],
   );
 
+  /**
+   * 보정 도중 끊겼습니다(워커 · 카메라). 이 시도의 결과는 받지 않고, 전체 화면을 닫고 이유를 띄웁니다.
+   * 보정 중이 아니었으면(카드 화면) 할 일이 없습니다 — 잡아 둔 기준은 그대로 둡니다.
+   */
+  const interrupt = useCallback((reason: SetupFailReason) => {
+    const view = viewRef.current;
+    if (!view || !OVERLAY_PHASES.has(view.phase)) return;
+    attemptRef.current++;
+    pendingRef.current = false;
+    view.cancel();
+    setFailReason(reason);
+  }, []);
+
   // 콜백을 ref 로 — 바뀔 때마다 모듈을 다시 만들면 카메라 화면이 깜빡이고 엔진을 다시 띄웁니다
-  const handlersRef = useRef({ onCalibrated, beginAttempt });
+  const handlersRef = useRef({ onCalibrated, beginAttempt, interrupt });
   useEffect(() => {
-    handlersRef.current = { onCalibrated, beginAttempt };
-  }, [onCalibrated, beginAttempt]);
+    handlersRef.current = { onCalibrated, beginAttempt, interrupt };
+  }, [onCalibrated, beginAttempt, interrupt]);
 
   // ── 모듈 생명주기 ──────────────────────────────────────────────────
   useEffect(() => {
@@ -234,10 +275,26 @@ export function useGazeSetup({
         versionRef.current = v;
         setVersion(v);
       }),
-      // ready 전의 오류는 엔진이 못 뜬 것입니다. 뒤의 오류는 프레임 하나의 실패라
-      // 모듈이 알림으로 띄우고 계속 돕니다
-      view.on('error', () => {
-        if (!view.ready) setEngineFailed(true);
+      // 사유마다 할 일이 다릅니다 (AI web README `error` 이벤트).
+      //   FRAME_FAILED   프레임 하나의 실패. 모듈이 알림으로 띄우고 계속 돕니다
+      //   WORKER_FAILED  워커가 죽음. 진행 중인 보정을 멈추고 이 화면에서는 더 잡지 않습니다
+      //   CAMERA_LOST    카메라가 끊김. 진행 중인 보정을 멈춥니다 — 전체 화면에 갇히지 않게
+      //   그 밖(UNSUPPORTED_BROWSER · TIMEOUT · INIT_FAILED) 엔진이 못 뜸. 사유는 로그에만 남깁니다
+      view.on('error', ({ message, reason }) => {
+        console.error('[device-check] 시선 엔진 오류', { reason, message });
+        switch (reason) {
+          case 'FRAME_FAILED':
+            return;
+          case 'WORKER_FAILED':
+            setWorkerFailed(true);
+            handlersRef.current.interrupt('ENGINE_ERROR');
+            return;
+          case 'CAMERA_LOST':
+            handlersRef.current.interrupt('CAMERA_LOST');
+            return;
+          default:
+            if (!view.ready) setEngineFailed(true);
+        }
       }),
       view.on('phase', ({ phase: next, previous }) => {
         // 준비 점검부터, 또는 결과·실시간에서 [다시 보정]으로 들어오면 새 시도입니다.
@@ -365,8 +422,11 @@ export function useGazeSetup({
   }, [overlay]);
 
   const status: GazeSetupStatus = (() => {
+    if (unsupported) return 'UNAVAILABLE';
     if (engineFailed && !version) return 'UNAVAILABLE';
     if (!version) return 'LOADING';
+    // 워커가 죽으면 다시 잡을 수 없습니다. 이미 잡은 기준은 리허설이 쓸 수 있어 DONE 으로 둡니다
+    if (workerFailed && !summary) return 'UNAVAILABLE';
     if (RUNNING_PHASES.has(phase)) return 'RUNNING';
     if (failReason) return 'FAILED';
     if (summary) return 'DONE';
@@ -397,6 +457,12 @@ export function useGazeSetup({
     status,
     /** FAILED 일 때 왜 실패했는지. 그 외에는 null */
     failReason: status === 'FAILED' ? failReason : null,
+    /**
+     * UNAVAILABLE 일 때 사용자에게 보일 이유와 할 일. 원인마다 할 일이 달라 문구를 나눕니다.
+     * 그 외에는 null
+     */
+    unavailableMessage:
+      status === 'UNAVAILABLE' ? unavailableMessage(unsupported, workerFailed) : null,
     /** DONE 이지만 품질이 낮을 때(POOR) 다시 잡기를 권하는 이유. 그 외에는 null */
     advice: status === 'DONE' ? advice : null,
     /** 상자를 화면 전체로 띄울지 — 보정 중과 결과 카드 */

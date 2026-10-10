@@ -7,6 +7,7 @@ import type {
   PlacementResult,
   ZoneReference,
 } from '@/workers/gaze.contract';
+import type { Ms } from '@/types/api';
 
 export interface GazePerf {
   /** 실제로 끝낸 프레임 수 기준. 보낸 수가 아니다 — 이게 진짜 숫자 */
@@ -103,6 +104,9 @@ const freshState = (loadMs: number, impl: GazeImpl): WorkerState => ({
  *                  **React 상태로 올리지 않는다** — 받는 쪽이 처리한다
  * @param loadMs    가짜 부하. 바뀌면 워커를 새로 만든다 (앞 측정이 다음에 안 섞이게)
  */
+/** Take 끝 마지막 조각을 기다리는 최대 시간. 워커 왕복은 보통 몇 ms 입니다 */
+const FLUSH_WAIT_MS = 500;
+
 export function useGazeWorker(
   onSamples: (samples: GazeSampleRecord[]) => void,
   loadMs: number,
@@ -208,6 +212,10 @@ export function useGazeWorker(
           return;
         case 'samples':
           onSamplesRef.current(msg.samples);
+          return;
+        case 'flushed':
+          flushDoneRef.current?.();
+          flushDoneRef.current = null;
           return;
         case 'calibrated':
           onCalibratedRef.current?.(msg.result, msg.engineVersion);
@@ -356,6 +364,32 @@ export function useGazeWorker(
     [tick],
   );
 
+  /** `flush` 를 기다리는 쪽. `flushed` 가 오면 부릅니다 */
+  const flushDoneRef = useRef<(() => void) | null>(null);
+
+  /**
+   * Take 끝 — 1초가 안 찬 마지막 조각을 `tEndMs` 까지로 닫아 받습니다 (`samples` 로 먼저 옵니다).
+   *
+   * 끝내기 처리가 기록을 읽기 **전에** 부르고 기다립니다. 워커가 없거나 답이 늦으면
+   * `FLUSH_WAIT_MS` 뒤에 그냥 넘어갑니다 — 마지막 1초 미만을 잃는 것이 종료를 막는 것보다 낫습니다.
+   */
+  const flush = useCallback((tEndMs: Ms): Promise<void> => {
+    const worker = workerRef.current;
+    if (!worker) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const timer = window.setTimeout(() => {
+        flushDoneRef.current = null;
+        resolve();
+      }, FLUSH_WAIT_MS);
+      flushDoneRef.current = () => {
+        window.clearTimeout(timer);
+        resolve();
+      };
+      const msg: GazeWorkerIn = { type: 'flush', tEndMs };
+      worker.postMessage(msg);
+    });
+  }, []);
+
   const stopPump = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
@@ -416,6 +450,7 @@ export function useGazeWorker(
     perf,
     startPump,
     stopPump,
+    flush,
     fitCalibration,
     checkPlacement,
     calibrate,

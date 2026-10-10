@@ -31,6 +31,7 @@ function deviceCheckHint({
   live,
   micOk,
   calStatus,
+  calUnavailable,
   calPoor,
   calSaveFailed,
 }: {
@@ -38,17 +39,18 @@ function deviceCheckHint({
   live: boolean;
   micOk: boolean;
   calStatus: GazeSetupStatus;
+  /** 시선 분석을 켤 수 없는 이유와 할 일. UNAVAILABLE 일 때만 있습니다 */
+  calUnavailable: string | null;
   /** 기준은 잡혔지만 품질이 낮음 — 막지 않고 권하기만 합니다 */
   calPoor: boolean;
   /** 기준은 잡혔지만 브라우저에 저장하지 못함 — 리허설이 못 쓰므로 막습니다 */
   calSaveFailed: boolean;
 }): string {
   if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
+  // 카메라 권한을 묻기 전에 알립니다 — 시선 분석을 못 쓰면 카메라를 켜도 시작할 수 없습니다
+  if (calStatus === 'UNAVAILABLE' && calUnavailable) return calUnavailable;
   if (!live) return '카메라를 켜야 점검을 시작할 수 있습니다';
   if (!micOk) return '마이크에 대고 한 마디 해보세요';
-  if (calStatus === 'UNAVAILABLE') {
-    return '시선 분석을 켤 수 없어요. 새로고침해도 그대로면 팀에 알려 주세요';
-  }
   if (calStatus === 'LOADING') return '시선 분석을 준비하는 중…';
   if (calStatus === 'FAILED')
     return '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요';
@@ -310,6 +312,7 @@ export function DeviceCheckPage() {
           live,
           micOk,
           calStatus: cal.status,
+          calUnavailable: cal.unavailableMessage,
           calPoor: cal.advice !== null,
           calSaveFailed: cal.saveFailed,
         }));
@@ -353,6 +356,7 @@ export function DeviceCheckPage() {
               videoRef={videoRef}
               live={live}
               status={cal.status}
+              unavailableMessage={cal.unavailableMessage}
               overlay={cal.overlay}
               onEnable={() => request().catch(() => undefined)}
               onCancel={cal.cancel}

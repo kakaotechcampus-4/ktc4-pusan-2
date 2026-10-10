@@ -22,6 +22,7 @@ export function GazeSetupView({
   videoRef,
   live,
   status,
+  unavailableMessage,
   overlay,
   onEnable,
   onCancel,
@@ -33,6 +34,8 @@ export function GazeSetupView({
   videoRef: RefObject<HTMLVideoElement>;
   live: boolean;
   status: GazeSetupStatus;
+  /** UNAVAILABLE 일 때의 이유와 할 일 (`useGazeSetup`) */
+  unavailableMessage: string | null;
   overlay: boolean;
   /** 아직 스트림이 없을 때 켜는 버튼. 브라우저 권한은 사용자 조작 안에서만 열립니다 */
   onEnable: () => void;
@@ -85,9 +88,7 @@ export function GazeSetupView({
         {live && status === 'UNAVAILABLE' && (
           <div className="absolute inset-x-4 bottom-4 rounded-lg bg-stage/90 p-3 text-xs">
             <p className="font-bold text-coral">시선 분석을 켤 수 없어요</p>
-            <p className="mt-1 text-stone">
-              시선 모델 파일을 불러오지 못했어요. 새로고침해도 그대로면 팀에 알려 주세요.
-            </p>
+            <p className="mt-1 text-stone">{unavailableMessage}</p>
           </div>
         )}
 

@@ -194,6 +194,7 @@ export function RehearsalPage() {
     perf,
     bottomRatio,
     missingCalibration,
+    flushGaze,
   } = useLiveGaze({
     stream,
     videoRef,
@@ -451,6 +452,10 @@ export function RehearsalPage() {
     const ended: Ending = { durationMs: elapsedMs(), endedAtIso: new Date().toISOString() };
 
     setPhase('ENDING');
+
+    // 1초가 안 찬 마지막 시선 조각을 발표 길이까지로 닫아 저장합니다. 아래 submit 이 기록을
+    // 읽기 전에 끝나야 해서 기다립니다 (최대 0.5초, 실패하지 않습니다)
+    await flushGaze(ended.durationMs);
 
     // ★ 종료 중에 새로고침해도 무대로 돌아가지 않고 이 값으로 종료를 이어가도록 먼저 적습니다.
     //   못 적어도 막지 않습니다 — 그때 새로고침하면 발표 중으로 돌아갈 뿐입니다

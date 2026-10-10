@@ -26,8 +26,8 @@ import type {
  * 1초 묶기는 AI 엔진의 `GazeSlicer` 가 한다 (AI `INTERFACE.md` 2-5). 1초 격자는
  * **첫 프레임 시각**에서 시작하고, 프레임 사이가 1초 넘게 비면 그 사이를 UNMEASURED 조각으로 채운다.
  *
- * 테이크 끝에서 1초가 안 찬 마지막 조각은 닫지 않고 버린다 (엔진 `flush` 를 부르지 않는다).
- * 잃는 것은 1초 미만이고, 서버는 기록이 없는 시간을 측정 못 함으로 채운다 (AI `INTERFACE.md` 4-1).
+ * 테이크 끝에서 1초가 안 찬 마지막 조각은 `flush` 메시지로 닫는다. 끝난 시각(발표 길이)까지를
+ * 실제 길이(`duration_ms`)로 낸다 — AI 계약은 마지막 조각을 버리지 않고 보내라고 한다.
  *
  * MediaPipe 는 이 파일이 아니라 분류기(`modelClassifier.ts` → `vendor/gaze/engine`) 안에서 돈다.
  * AI팀이 전처리까지 한다.
@@ -235,6 +235,14 @@ self.onmessage = (e: MessageEvent<GazeWorkerIn>) => {
       handleFrame(msg.bitmap, msg.tMs);
       reportPerf(performance.now());
       return;
+
+    case 'flush': {
+      // 엔진의 flush 는 쌓인 프레임이 없으면 빈 목록을 돌려준다 (마지막 조각이 없음)
+      const last = slicer.flush(msg.tEndMs);
+      if (last.length > 0) post({ type: 'samples', samples: toRecords(last) });
+      post({ type: 'flushed' });
+      return;
+    }
 
     case 'stop':
       running = false;

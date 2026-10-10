@@ -252,6 +252,11 @@ export type GazeWorkerOut =
    * `UNMEASURED` 조각이 함께 옵니다. 시각 순입니다.
    */
   | { type: 'samples'; samples: GazeSampleRecord[] }
+  /**
+   * `flush` 를 다 처리했다는 신호. 마지막 조각이 있었으면 바로 앞의 `samples` 로 이미 나갔습니다 —
+   * 메시지는 순서대로 오므로, 이걸 받았으면 마지막 조각까지 받은 것입니다.
+   */
+  | { type: 'flushed' }
   | { type: 'perf'; avgFps: number; droppedFrames: number }
   | { type: 'error'; reason: 'ENGINE_UNAVAILABLE' | 'CAMERA_LOST' };
 
@@ -265,4 +270,9 @@ export type GazeWorkerIn =
   /** 저장해 둔 기준을 되살릴 때 */
   | { type: 'calibrate'; ref: ZoneReference }
   | { type: 'frame'; bitmap: ImageBitmap; tMs: Ms }
+  /**
+   * Take 가 끝났습니다. 1초가 안 찬 마지막 조각을 `tEndMs`(무대 시계의 발표 길이)까지로 닫아
+   * 실제 길이(`duration_ms`)로 냅니다 — AI 계약 "stop 직전에 마지막 1초 조각을 실제 duration_ms 로".
+   */
+  | { type: 'flush'; tEndMs: Ms }
   | { type: 'stop' };
