@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 
+import { takeEngineVersion } from './aiAdapter';
 import { DummyGazeClassifier } from './dummyClassifier';
 import { ModelGazeClassifier } from './modelClassifier';
 import { TemporalVoter } from './temporalVoter';
@@ -23,7 +24,8 @@ import type {
  * ★ 이번 주에 만드는 건 "관"이고, 목적은 그 관의 비용을 재는 것이다.
  *   모델은 없다. 그 자리에 가짜 부하가 들어가 있다.
  *
- * MediaPipe 를 쓰지 않는다 — AI팀이 전처리까지 한다. 붙이면 버린다.
+ * MediaPipe 는 이 파일이 아니라 분류기(`modelClassifier.ts` → `vendor/gaze/engine`) 안에서 돈다.
+ * AI팀이 전처리까지 한다.
  */
 
 const post = (msg: GazeWorkerOut, transfer?: Transferable[]) => {
@@ -77,7 +79,7 @@ const voter = new TemporalVoter();
  * `ready` 와 `calibrated` 가 **같은 문자열**을 내야 저장한 기준의 버전 비교가 맞습니다.
  * 모델 분류기는 init 이 끝나야 버전이 정해지므로 매번 읽습니다.
  */
-const engineVersion = () => `${classifier.version}+vote-v1`;
+const engineVersion = () => takeEngineVersion(classifier.version);
 
 let running = false;
 let lastFrameTMs = -1;

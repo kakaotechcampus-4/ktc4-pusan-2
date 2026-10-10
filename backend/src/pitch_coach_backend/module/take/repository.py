@@ -63,14 +63,20 @@ class TakeRepository:
         return self.db.scalar(
             select(Take)
             .where(Take.pitch_id == pitch_id)
-            .order_by(Take.created_at.desc())
+            # created_at 은 같은 트랜잭션 안에서 같아질 수 있다. 번호는 pitch 안에서 유일하다
+            .order_by(Take.take_number.desc())
             .limit(1)
         )
 
-    def get_missions_in_take(self, take_id: uuid.UUID) -> list[Mission] | None:
-        return self.db.execute(
-            select(Calibration.mission).where(Calibration.take_id == take_id)
-        ).scalars().all()
+    def get_missions_in_take(self, take_id: uuid.UUID) -> list[Mission]:
+        """take_id 의 Take 를 보고 만든 미션 (다음 Take 에서 보여 줄 것)."""
+        return list(
+            self.db.scalars(
+                select(Mission)
+                .where(Mission.source_take_id == take_id)
+                .order_by(Mission.priority, Mission.slide_number)
+            )
+        )
 
     def save_missions(self, missions: list[Mission]) -> list[Mission]:
         self.db.add_all(missions)
