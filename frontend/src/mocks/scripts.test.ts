@@ -24,7 +24,13 @@ describe('대본 목 — AI 처럼 명시적 구분자로만 나눈다', () => {
     expect(slides).toHaveLength(1);
   });
 
-  it('앞부분이 구분되지 않았으면 일부만 나누지 않는다', () => {
-    expect(splitScript('인사말\n슬라이드 1\n가').segmented).toBe(false);
+  it('맨 위 제목 한 줄은 지우고 나눈다 — AI 전처리 규칙', () => {
+    const result = splitScript('피치코치 소개\n슬라이드 1\n가\n슬라이드 2\n나');
+    expect(result.segmented).toBe(true);
+    expect(result.slides.map((s) => s.content)).toEqual(['가', '나']);
+  });
+
+  it('앞부분이 두 줄 이상 구분되지 않았으면 일부만 나누지 않는다', () => {
+    expect(splitScript('제목\n인사말\n슬라이드 1\n가').segmented).toBe(false);
   });
 });

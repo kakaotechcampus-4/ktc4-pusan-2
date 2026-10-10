@@ -22,12 +22,13 @@ const PARSE_MS = 1500;
 export function splitScript(text: string): { segmented: boolean; slides: ScriptSlide[] } {
   // AI 처럼 원문에 적힌 번호를 그대로 씁니다 — "슬라이드 4" 는 4번입니다
   const sections: { number: number; lines: string[] }[] = [];
-  let lead = '';
+  // 첫 구분자 앞의 글. AI 처럼 제목 한 줄은 지우고, 두 줄 이상이면 나누지 않습니다 (slideMarkers)
+  const lead: string[] = [];
   for (const line of text.split('\n')) {
     const n = markerNumber(line);
     if (n !== null) sections.push({ number: n, lines: [line.replace(SLIDE_MARKER, '')] });
     else if (sections.length > 0) sections.at(-1)!.lines.push(line);
-    else lead += line;
+    else if (line.trim() !== '') lead.push(line);
   }
 
   const whole = (content: string): ScriptSlide => ({
@@ -37,7 +38,7 @@ export function splitScript(text: string): { segmented: boolean; slides: ScriptS
     highlights: [],
   });
 
-  if (sections.length === 0 || lead.trim() !== '') {
+  if (sections.length === 0 || lead.length > 1) {
     return { segmented: false, slides: [whole(text)] };
   }
   return {

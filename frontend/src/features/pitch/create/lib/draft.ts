@@ -55,8 +55,16 @@ export function formatAllowedRange(limitSec: number, lowerSec: number, upperSec:
   return `${formatDuration(from)} ~ ${formatDuration(limitSec + upperSec)}`;
 }
 
-/** 목업 하단 — "기준은 최대 5개까지. 적을수록 피드백이 선명해져요." */
-export const MAX_CRITERIA = 5;
+/**
+ * 대본 한 버전의 최대 글자 수. BE `MAX_SCRIPT_CHARS` 와 같습니다 (`pitch/service.py`).
+ * BE 는 공백까지 센 길이(Python `len`)로 자르므로 `scriptLength` 로 셉니다 — 화면의 "N자"(공백 제외)와 다릅니다.
+ */
+export const MAX_SCRIPT_CHARS = 50_000;
+
+/** BE 와 같은 방식의 길이. 이모지 같은 글자도 한 글자로 셉니다 (Python 은 코드포인트 단위) */
+export function scriptLength(text: string): number {
+  return [...text].length;
+}
 
 /** 업로드 제한. 목업의 "최대 40MB" */
 export const MAX_SLIDE_BYTES = 40 * 1024 * 1024;
@@ -156,7 +164,7 @@ export interface CriteriaVersion {
    * 손으로만 만든 버전에는 없습니다.
    */
   sourceText?: string;
-  /** 서버가 기준으로 넣지 못한 부분(`except_standard`). 5개를 넘었거나 평가할 수 없는 문장 */
+  /** 서버가 기준으로 넣지 못한 부분(`except_standard`). AI 가 평가 요소로 읽지 못한 문장 */
   exceptText?: string | null;
 }
 

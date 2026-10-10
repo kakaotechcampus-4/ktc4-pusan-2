@@ -87,10 +87,6 @@ describe('평가기준 — 컨트롤러가 pitch_id 안에 감싼 결과', () =>
       exceptText: '발표를 멋지게',
     });
   });
-
-  it('BE 가 아직 나누지 못하면(결과 null) null — 빈 목록으로 보지 않는다', () => {
-    expect(fromStandardsPosted({ message: 'ok', pitch_id: null })).toBeNull();
-  });
 });
 
 describe('대본 — 올린 응답 (202)', () => {

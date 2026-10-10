@@ -13,7 +13,6 @@ import type {
 import {
   CHOOSE_LATEST,
   canSaveMapping,
-  MAX_CRITERIA,
   infoChanged,
   infoOf,
   latestUploadedSlides,
@@ -305,9 +304,9 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   applyParsedCriteria: (version, { sourceText, standards, exceptText }) =>
     set((s) => {
-      const items = standards
-        .slice(0, MAX_CRITERIA)
-        .map((text) => ({ id: crypto.randomUUID(), text }));
+      // 개수를 자르지 않습니다. BE 는 받은 기준을 모두 저장해 채점에 쓰므로,
+      // 화면에서만 자르면 보이지 않는 기준으로 채점됩니다. 많으면 목록이 스크롤됩니다
+      const items = standards.map((text) => ({ id: crypto.randomUUID(), text }));
       const target = s.draft.criteria.find((v) => v.version === version);
 
       if (!target || target.saved) {
