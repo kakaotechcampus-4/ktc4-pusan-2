@@ -112,7 +112,7 @@ def _time(tick: Tick, c: Candidate) -> float:
     if c.area != FeedbackType.TIME or not target:
         return 1.0
     remaining = tick.metrics.get("remaining_ms")
-    if isinstance(remaining, int) and remaining <= tick.cfg.timing.final_minute_ms:
+    if isinstance(remaining, (int, float)) and remaining <= tick.cfg.timing.final_minute_ms:
         _add(c, Reason.TIME_CRITICAL)
     frac = min(1.0, max(0.0, tick.t / target))
     return 1.0 + (tick.cfg.policy.time_weight_max - 1.0) * frac

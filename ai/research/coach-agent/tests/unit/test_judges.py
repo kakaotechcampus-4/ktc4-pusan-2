@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from coach import judges as judges_mod
 from coach.config import DEFAULT_CONFIG
 from coach.judges import Judges, run
@@ -69,10 +67,10 @@ def inputs_of(judge: Any, call: int = -1) -> dict[str, Any]:
     return judge.calls[call][0]
 
 
-def test_requires_inputs():
+def test_missing_inputs_are_an_empty_request():
     r = CoachRequest.model_validate({"take_id": "t", "t_ms": 1000})
-    with pytest.raises(ValueError):
-        go(r, initial_state(), fake_judges())
+    out = go(r, initial_state(), fake_judges())
+    assert out.failed == set() and out.stt_ok
 
 
 def test_call_order_and_module_inputs():
@@ -329,7 +327,9 @@ def test_timing_receives_totals_and_pace_threshold(monkeypatch):
     go(req(2_000), state, judges)
 
     first, second = seen
-    assert first["slide_chars"] == {} and first["slide_dwell_ms"] == {}
+    # 말한 글자 수는 이번 라운드에 말 속도가 센 몫까지 받는다(진행도가 한 박자 늦지 않게).
+    # 머문 시간은 시간 판정이 이번 몫을 직접 더하므로 판정 전 합계다
+    assert first["slide_chars"] == {"1": 5} and first["slide_dwell_ms"] == {}
     assert second["since_ms"] == 1_000 and second["t_ms"] == 2_000
     assert second["slide_chars"] == {"1": 5}
     assert second["slide_dwell_ms"] == {"1": 1_000}

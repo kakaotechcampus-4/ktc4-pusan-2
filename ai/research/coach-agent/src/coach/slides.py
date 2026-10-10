@@ -40,13 +40,13 @@ def accumulate(tick: Tick) -> None:
     m = tick.metrics
     acc.total_ms += dt
 
-    if tick.req.current.gaze is not None:
-        ratio = m.get("script_ratio")
-        if ratio is not None:
-            acc.gaze_valid_ms += dt
-            acc.gaze_script_ms += ratio * dt
-        else:
-            acc.gaze_unusable_ms += dt
+    # 시선은 늘 들어온다 — 비율이 없으면 '믿을 수 없던 시간'으로 센다
+    ratio = m.get("script_ratio")
+    if ratio is not None:
+        acc.gaze_valid_ms += dt
+        acc.gaze_script_ms += ratio * dt
+    else:
+        acc.gaze_unusable_ms += dt
 
     if tick.stt_ok:
         acc.speech_ok_ms += dt
@@ -56,8 +56,9 @@ def accumulate(tick: Tick) -> None:
         acc.cpm_weighted += cpm * dt
     acc.filler_count += tick.filler_new
 
-    voice = tick.req.current.voice
-    if voice is not None and voice.audio_live:
+    voices = tick.req.inputs.voice_records
+    latest = max(voices, key=lambda r: r.t_ms, default=None)
+    if latest is not None and latest.audio_live:
         acc.audio_live_ms += dt
         if tick.speaking:
             acc.speaking_ms += dt
@@ -65,7 +66,8 @@ def accumulate(tick: Tick) -> None:
                 acc.db_ms += dt
                 acc.db_weighted += tick.voice_diff_db * dt
         silence = m.get("silence_ms")
-        if silence is not None and silence > tick.cfg.voice.long_silence_ms:
+        long_silence = tick.criteria.get("volume", {}).get("LONG_SILENCE")
+        if silence is not None and long_silence is not None and silence > long_silence.threshold:
             acc.long_silence_ms += dt
 
 
@@ -75,6 +77,7 @@ def close(st: CoachState, t_ms: int, sink: EventSink) -> None:
         return
     st.slide_acc = None
     key = str(acc.slide_number) if acc.slide_number is not None else ""
+    chars = st.slide_totals.get(key, {}).get("SPEED", {}).get("chars", 0)
     fields = acc.model_dump()
     fields.pop("start_ms")
     sink.emit(
@@ -82,6 +85,6 @@ def close(st: CoachState, t_ms: int, sink: EventSink) -> None:
         t_ms=t_ms,
         start_ms=acc.start_ms,
         end_ms=t_ms,
-        chars_total=st.slide_chars.get(key, 0),
+        chars_total=int(chars),
         **fields,
     )

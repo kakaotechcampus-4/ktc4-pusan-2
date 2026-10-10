@@ -201,6 +201,11 @@ class ReviewConfig(_Section):
     """
 
     #: 센서를 믿을 수 있던 시간이 이 비율보다 적은 구간은 문제로 보지 않는다 (UNRELIABLE)
+    #: 판정 모듈의 기준값 사본 (같은 값). 미션 목표와 지연 보정에 쓴다. #151 에서 리뷰 근거와 함께
+    #: 지운다
+    script_ratio: float = 0.7
+    fast_cpm: float = 350.0
+    low_relative_db: float = -6.0
     min_reliability: float = 0.5
     exclude_unreliable: bool = True
     #: 평가기의 창 때문에 탐지가 실제보다 늦게 시작 · 끝나는 만큼을 되돌린다

@@ -17,20 +17,16 @@ from .vocab import (
     Action,
     CandidateStatus,
     FeedbackType,
-    GazeLevel,
     Instruction,
     Issue,
     MemoryLabel,
     MissionStatus,
     Mode,
     Outcome,
-    PaceLevel,
-    Schedule,
     SegmentHint,
     StrategyChange,
     StrengthKind,
     TypeStatus,
-    VolumeLevel,
 )
 
 
@@ -96,6 +92,65 @@ class Memory(_In):
     """이전 Take 기억. 직전 리뷰가 '아직 남은 문제'로 꼽은 것."""
 
     recurring_issues: list[RecurringIssue] = Field(default_factory=list)
+
+
+class GazeRecordIn(_In):
+    """FE 가 보내는 시선 1초 기록(#153)."""
+
+    t_ms: int = Field(ge=0)
+    duration_ms: int = Field(default=1000, gt=0)
+    state: str
+    direction: str | None = None
+    confidence: float | None = None
+    reliability: float | None = None
+    issues: list[str] = Field(default_factory=list)
+    frames: int | None = None
+
+
+class VoiceRecordIn(_In):
+    """FE 가 보내는 음량 1초 기록(#155). 시선 판정도 같은 1초들의 voiced_ms 를 쓴다."""
+
+    t_ms: int = Field(ge=0)
+    duration_ms: int = Field(default=1000, gt=0)
+    level_db: float | None = None
+    voiced_ms: int = 0
+    silence_ms: int = 0
+    audio_live: bool = True
+
+
+class WordIn(_In):
+    """STT 확정 단어."""
+
+    word: str
+    start_ms: int
+    end_ms: int
+
+
+class SlideNow(_In):
+    """지금 장과 그 장이 시작된 시각."""
+
+    number: int
+    started_ms: int
+
+
+class CoachInputs(_In):
+    """판정 모듈에 넘길 원자료. 창 길이는 judges.py 의 GAZE_VOICE_WINDOW_MS · WORDS_WINDOW_MS."""
+
+    gaze_records: list[GazeRecordIn] = Field(default_factory=list)
+    voice_records: list[VoiceRecordIn] = Field(default_factory=list)
+    words: list[WordIn] = Field(default_factory=list)
+    utterance_ends: list[int] = Field(default_factory=list)
+    stt_status: str = "ok"
+    slide: SlideNow | None = None
+
+
+class Calibration(_In):
+    """Take 밖에서 잡아 둔 값. base_level_db 가 null 이면 코치가 Take 첫 발화로 잡는다."""
+
+    base_level_db: float | None = None
+
+
+# 옛 평가기(coach.evaluators)가 쓰는 입력 모델. 요청에서는 inputs 로 바뀌었고, 평가기와 함께 지운다
 
 
 class TimingInput(_In):
@@ -177,62 +232,6 @@ class Current(_In):
     speech: SpeechInput | None = None
 
 
-class GazeRecordIn(_In):
-    """FE 가 보내는 시선 1초 기록(#153)."""
-
-    t_ms: int = Field(ge=0)
-    duration_ms: int = Field(default=1000, gt=0)
-    state: str
-    direction: str | None = None
-    confidence: float | None = None
-    reliability: float | None = None
-    issues: list[str] = Field(default_factory=list)
-    frames: int | None = None
-
-
-class VoiceRecordIn(_In):
-    """FE 가 보내는 음량 1초 기록(#155). 시선 판정도 같은 1초들의 voiced_ms 를 쓴다."""
-
-    t_ms: int = Field(ge=0)
-    duration_ms: int = Field(default=1000, gt=0)
-    level_db: float | None = None
-    voiced_ms: int = 0
-    silence_ms: int = 0
-    audio_live: bool = True
-
-
-class WordIn(_In):
-    """STT 확정 단어."""
-
-    word: str
-    start_ms: int
-    end_ms: int
-
-
-class SlideNow(_In):
-    """지금 장과 그 장이 시작된 시각."""
-
-    number: int
-    started_ms: int
-
-
-class CoachInputs(_In):
-    """판정 모듈에 넘길 원자료. 창 길이는 judges.py 의 GAZE_VOICE_WINDOW_MS · WORDS_WINDOW_MS."""
-
-    gaze_records: list[GazeRecordIn] = Field(default_factory=list)
-    voice_records: list[VoiceRecordIn] = Field(default_factory=list)
-    words: list[WordIn] = Field(default_factory=list)
-    utterance_ends: list[int] = Field(default_factory=list)
-    stt_status: str = "ok"
-    slide: SlideNow | None = None
-
-
-class Calibration(_In):
-    """Take 밖에서 잡아 둔 값. base_level_db 가 null 이면 코치가 Take 첫 발화로 잡는다."""
-
-    base_level_db: float | None = None
-
-
 class CoachRequest(_In):
     schema_version: str = SCHEMA_VERSION
     take_id: str
@@ -242,9 +241,8 @@ class CoachRequest(_In):
     plan: Plan = Field(default_factory=Plan)
     missions: list[Mission] = Field(default_factory=list)
     memory: Memory = Field(default_factory=Memory)
-    current: Current = Field(default_factory=Current)
-    #: 판정 모듈에 넘길 원자료와 보정 값. 다음 PR 에서 current 를 대신한다
-    inputs: CoachInputs | None = None
+    #: 판정 모듈에 넘길 원자료
+    inputs: CoachInputs = Field(default_factory=CoachInputs)
     calibration: Calibration = Field(default_factory=Calibration)
     #: 지난 응답의 coach_state 그대로. 첫 요청이면 null. BE 는 내용을 몰라도 된다
     coach_state: dict[str, Any] | None = None
@@ -363,17 +361,6 @@ class CandidateOut(_Out):
     confidence: float = Field(ge=0.0, le=1.0)
     status: CandidateStatus
     reasons: list[str] = Field(default_factory=list)
-
-
-class Indicators(_Out):
-    """읽지 않아도 되는 상태 표시. 지시(feedback)는 1개지만 이건 여러 개를 함께 띄워도 된다."""
-
-    schedule: Schedule = Schedule.UNKNOWN
-    required_ratio: float | None = None
-    pace: PaceLevel = PaceLevel.UNKNOWN
-    cpm: float | None = None
-    gaze: GazeLevel = GazeLevel.UNKNOWN
-    volume: VolumeLevel = VolumeLevel.UNKNOWN
 
 
 # ── 이벤트 — BE 가 그대로 쌓아 두는 기록. 리뷰 에이전트 근거의 원천 ──────────
@@ -518,7 +505,9 @@ class CoachResponse(_Out):
     #: INTERVENE 일 때만
     feedback: Feedback | None = None
     candidates: list[CandidateOut] = Field(default_factory=list)
-    indicators: Indicators = Field(default_factory=Indicators)
+    #: 영역(GAZE · SPEED · VOLUME · PAUSE · FILLER · TIME) → 판정 모듈이 준 상태. 읽지 않아도 되는
+    #: 상태 표시라 여러 개를 함께 띄워도 된다
+    indicators: dict[str, str] = Field(default_factory=dict)
     events: list[CoachEvent] = Field(default_factory=list)
     #: 다음 요청에 그대로 붙인다
     coach_state: dict[str, Any]

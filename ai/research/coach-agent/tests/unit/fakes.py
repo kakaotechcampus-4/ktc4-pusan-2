@@ -17,6 +17,8 @@ AREAS = {
     "volume": ["VOLUME", "PAUSE"],
     "filler": ["FILLER"],
 }
+#: 영역 → 그 영역을 내는 모듈
+MODULE_OF = {a: n for n, areas in AREAS.items() for a in areas}
 FILLER_WORDS = {"음": True, "어": None}  # 음 = 군더더기, 어 = 보류, 그 밖의 단어 = 아님
 
 
@@ -90,13 +92,18 @@ class FakeJudge:
     def criteria(self) -> dict[str, Any]:
         if self.name == "pace":
             return {"PACE_FAST": _criteria("cpm", 350.0, 450.0)}
+        if self.name == "volume":
+            return {
+                "VOLUME_LOW": _criteria("voice_diff_db", -6.0, -15.0, lower=True),
+                "LONG_SILENCE": _criteria("silence_ms", 5_000.0, 15_000.0),
+            }
         return {}
 
 
-def _criteria(metric: str, threshold: float, bad: float) -> dict[str, Any]:
+def _criteria(metric: str, threshold: float, bad: float, *, lower: bool = False) -> dict[str, Any]:
     return {
         "metric": metric,
-        "direction": "HIGHER_IS_WORSE",
+        "direction": "LOWER_IS_WORSE" if lower else "HIGHER_IS_WORSE",
         "threshold": threshold,
         "bad": bad,
         "onset_lag_ms": 0,
@@ -118,3 +125,48 @@ def fake_judges(
     """네 모듈을 가짜로 묶는다. overrides 로 모듈 하나를 바꾼다(예: filler=FakeJudge(...))."""
     mods = {n: overrides.get(n) or FakeJudge(n, order=order) for n in AREAS}
     return Judges(**mods, baseline=baseline)
+
+
+def fake_issue(
+    area: str,
+    issue_type: str,
+    severity: float = 0.8,
+    *,
+    confidence: float = 1.0,
+    actionable: bool = True,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """판정 결과 안의 문제 하나(#158 모양)."""
+    return {
+        "issue_type": issue_type,
+        "area": area,
+        "severity": severity,
+        "confidence": confidence,
+        "persistence_sec": 0.0,
+        "threshold": 0.0,
+        "bad": 1.0,
+        "evidence": evidence or {},
+        "actionable": actionable,
+    }
+
+
+class ScriptedJudge(FakeJudge):
+    """시각마다 문제 · 지표를 정해 주는 가짜 모듈.
+
+    fn(t_ms) 가 {"issues": [...], "metrics": {...}, "unmeasurable": {영역, ...}} 를 돌려준다.
+    issues 는 이 모듈의 영역 것만 담는다. unmeasurable 영역은 measurable=False 로 낸다.
+    """
+
+    def __init__(self, name: str, fn: Callable[[int], dict[str, Any]], **kw: Any) -> None:
+        super().__init__(name, **kw)
+        self.fn = fn
+
+    def judge(self, inputs: dict[str, Any], t_ms: int) -> list[dict[str, Any]]:
+        results = super().judge(inputs, t_ms)
+        spec = self.fn(t_ms) or {}
+        for r in results:
+            r["metrics"] = {**r["metrics"], **spec.get("metrics", {})}
+            r["issues"] = [i for i in spec.get("issues", []) if i["area"] == r["area"]]
+            if r["area"] in spec.get("unmeasurable", ()):
+                r["measurable"], r["state"] = False, "UNMEASURABLE"
+        return results

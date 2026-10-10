@@ -243,7 +243,7 @@ def _lag(ep: EpisodeEvent, cfg: CoachConfig) -> tuple[int, int]:
         # 창 비율이 기준 thr 을 넘으려면 창의 thr 만큼을 대본에 써야 하고, 내려오려면 1-thr 만큼을
         # 떠나야 한다
         window = int(ep.peak_evidence.get("window_ms") or 10_000)
-        thr = cfg.gaze.script_ratio
+        thr = cfg.review.script_ratio
         return round(k * thr * window), round(k * (1 - thr) * window)
     onset, offset = cfg.review.lag_ms.get(ep.issue_type, (0, 0))
     return round(k * onset), round(k * offset)
@@ -805,11 +805,11 @@ def _next_target(
             return NextMissionTarget(metric="script_ratio", operator="LTE", value=value), obs
         case FeedbackType.SPEED:
             return NextMissionTarget(
-                metric="cpm", operator="LTE", value=cfg.speech.fast_cpm
+                metric="cpm", operator="LTE", value=cfg.review.fast_cpm
             ), scope.cpm
         case FeedbackType.VOLUME:
             return NextMissionTarget(
-                metric="voice_diff_db", operator="GTE", value=cfg.voice.low_relative_db
+                metric="voice_diff_db", operator="GTE", value=cfg.review.low_relative_db
             ), scope.voice_diff_db
         case FeedbackType.FILLER:
             obs = scope.filler_per_min

@@ -1,11 +1,11 @@
 """코치의 유일한 진입점.
 
-    decide(request)   1초마다. 지금 상황 + coach_state → 행동 + 이벤트 + 새 coach_state
+    decide(request, judges)   1초마다. 지금 상황 + coach_state → 행동 + 이벤트 + 새 coach_state
     finalize(request) Take 종료 때 한 번. 열린 문제 구간과 재지 못한 효과를 닫는다
 
 순서:
-    ① 기록 갱신 — 장 추적, 새 확정 단어 누적
-    ② 평가기     — 측정값 → 문제(Detection)
+    ① 판정 라운드 — 판정 모듈(judges.run)이 센 합계와 1초 판정 결과
+    ② 측정 정리   — 판정 결과 → Tick (지표 · 문제 Detection)
        되돌아보기 — 잴 때가 된 개입의 효과 판정 → 전략 수정
        문제 구간  — 열기 · 이어가기 · 닫기
     ③ 후보 생성 → ④ 적격성 필터 → ⑤ 우선순위 → ⑥ 행동 선택
@@ -21,13 +21,13 @@ import logging
 from typing import Any
 
 from . import candidates as candidates_mod
-from . import eligibility, episodes, priority, reflection, slides
+from . import eligibility, episodes, measure, priority, reflection, slides
+from . import judges as judges_mod
 from .candidates import Candidate
 from .config import DEFAULT_CONFIG, CoachConfig
-from .evaluators import run_all
-from .evaluators import speech as speech_eval
 from .evaluators.base import Tick
 from .events import EventSink
+from .judges import Judges
 from .policy import RULE_POLICY, Policy, rank_key
 from .renderer import render
 from .schemas import (
@@ -37,7 +37,6 @@ from .schemas import (
     Feedback,
     FinalizeRequest,
     FinalizeResponse,
-    Indicators,
     InterventionEvent,
     OutcomeEvent,
     SuppressedEvent,
@@ -51,22 +50,14 @@ from .state import (
     load_state,
 )
 from .version import POLICY_VERSION
-from .vocab import (
-    Action,
-    CandidateStatus,
-    GazeLevel,
-    Outcome,
-    PaceLevel,
-    Reason,
-    Schedule,
-    VolumeLevel,
-)
+from .vocab import Action, CandidateStatus, Outcome, Reason
 
 log = logging.getLogger(__name__)
 
 
 def decide(
     request: CoachRequest | dict[str, Any],
+    judges: Judges,
     config: CoachConfig | None = None,
     policy: Policy | None = None,
 ) -> CoachResponse:
@@ -79,11 +70,9 @@ def decide(
         return _response(req, cfg, Action.WAIT, [Reason.STALE_TICK.value], state)
 
     sink = EventSink(state)
-    tick = _open_tick(req, cfg, state)
+    run = judges_mod.run(req, state, judges, cfg)
+    tick = measure.build_tick(req, cfg, state, run)
     slides.switch(tick, sink)
-
-    speech_eval.ingest(tick)
-    run_all(tick)
     slides.accumulate(tick)
     reflection.resolve(tick, sink)
     reflection.prune_praise(tick)
@@ -116,13 +105,14 @@ def decide(
         candidate_id=selection.candidate_id,
         feedback=feedback,
         candidates=cands,
-        indicators=_indicators(tick),
+        indicators=measure.indicators(run),
         events=sink.events,
     )
 
 
 def decide_safe(
     request: CoachRequest | dict[str, Any],
+    judges: Judges,
     config: CoachConfig | None = None,
     policy: Policy | None = None,
 ) -> CoachResponse:
@@ -133,7 +123,7 @@ def decide_safe(
     cfg = config or DEFAULT_CONFIG
     req = request if isinstance(request, CoachRequest) else CoachRequest.model_validate(request)
     try:
-        return decide(req, cfg, policy)
+        return decide(req, judges, cfg, policy)
     except Exception:  # noqa: BLE001 — 실시간 경로는 어떤 예외로도 발표를 방해하면 안 된다
         log.exception("coach decide failed take_id=%s t_ms=%s", req.take_id, req.t_ms)
         state, _ = load_state(req.coach_state)
@@ -183,50 +173,6 @@ def finalize(
 
 
 # ── 내부 ──────────────────────────────────────────────────────────────────
-
-
-def _open_tick(req: CoachRequest, cfg: CoachConfig, state: CoachState) -> Tick:
-    timing = req.current.timing
-    slide = (
-        timing.slide_number if timing and timing.slide_number is not None else state.slide_number
-    )
-    slide_start = (
-        req.t_ms - timing.slide_elapsed_ms
-        if timing is not None and timing.slide_elapsed_ms is not None
-        else None
-    )
-    if slide != state.slide_number:
-        state.slide_number = slide
-        if slide is not None:
-            start = slide_start if slide_start is not None else req.t_ms
-            state.slide_log = [*state.slide_log, (slide, start)][-6:]
-    speech = req.current.speech
-    voice = req.current.voice
-    audio_dead = voice is not None and not voice.audio_live
-    # 오디오가 멈추면 STT 도 못 듣는다 — 상태가 "ok" 여도 그동안의 단어는 믿지 않는다
-    stt_ok = speech is not None and speech.stt_status == "ok" and not audio_dead
-    heard_gap = audio_dead or (speech is not None and speech.stt_status != "ok")
-    if heard_gap and slide is not None and slide not in state.slides_unheard:
-        state.slides_unheard.append(slide)
-    if heard_gap:
-        state.stt_gap = True
-    elif state.stt_gap:
-        state.stt_gap = False
-        state.stt_ok_since_ms = req.t_ms
-    if state.last_t_ms is None:
-        dt = cfg.policy.default_tick_ms
-    else:
-        dt = min(cfg.policy.max_tick_gap_ms, req.t_ms - state.last_t_ms)
-    return Tick(
-        req=req,
-        cfg=cfg,
-        state=state,
-        t=req.t_ms,
-        slide_number=slide,
-        slide_start_ms=slide_start,
-        stt_ok=stt_ok,
-        dt_ms=dt,
-    )
 
 
 def _intervene(tick: Tick, c: Candidate, reason_codes: list[str], sink: EventSink) -> Feedback:
@@ -316,49 +262,6 @@ def _append_history(tick: Tick) -> None:
     st.history = [s for s in st.history if s.t_ms > since] + [sample]
 
 
-def _indicators(tick: Tick) -> Indicators:
-    m = tick.metrics
-    cfg = tick.cfg
-
-    cpm = m.get("cpm")
-    if cpm is None:
-        pace = PaceLevel.UNKNOWN
-    elif cpm < cfg.speech.slow_cpm:
-        pace = PaceLevel.SLOW
-    elif cpm > cfg.speech.fast_cpm:
-        pace = PaceLevel.FAST
-    else:
-        pace = PaceLevel.NORMAL
-
-    if tick.req.current.gaze is None:
-        gaze = GazeLevel.UNKNOWN
-    elif (m.get("gaze_uncertain_smoothed") or 0.0) > cfg.gaze.max_uncertain_ratio:
-        gaze = GazeLevel.UNCERTAIN
-    elif m.get("gaze_window_short"):
-        gaze = GazeLevel.UNKNOWN
-    elif (m.get("script_ratio") or 0.0) >= cfg.gaze.indicator_script_ratio:
-        gaze = GazeLevel.SCRIPT
-    else:
-        gaze = GazeLevel.AUDIENCE
-
-    db = m.get("voice_diff_db")
-    if db is None:
-        volume = VolumeLevel.UNKNOWN
-    elif db < cfg.voice.low_relative_db:
-        volume = VolumeLevel.LOW
-    else:
-        volume = VolumeLevel.NORMAL
-
-    return Indicators(
-        schedule=m.get("schedule", Schedule.UNKNOWN),
-        required_ratio=m.get("required_ratio"),
-        pace=pace,
-        cpm=cpm,
-        gaze=gaze,
-        volume=volume,
-    )
-
-
 def _response(
     req: CoachRequest,
     cfg: CoachConfig,
@@ -369,7 +272,7 @@ def _response(
     candidate_id: str | None = None,
     feedback: Feedback | None = None,
     candidates: list[Candidate] | None = None,
-    indicators: Indicators | None = None,
+    indicators: dict[str, str] | None = None,
     events: list[Any] | None = None,
 ) -> CoachResponse:
     outs = []
@@ -398,7 +301,7 @@ def _response(
         reason_codes=reasons,
         feedback=feedback,
         candidates=outs,
-        indicators=indicators or Indicators(),
+        indicators=indicators or {},
         events=events or [],
         coach_state=dump_state(state),
     )

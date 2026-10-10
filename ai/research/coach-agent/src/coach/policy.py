@@ -109,16 +109,17 @@ class RulePolicy:
 def in_pause(tick: Tick) -> bool:
     """발표자가 지금 말이 끊긴 틈인가. 판단할 신호가 없으면 기다릴 근거도 없으니 True."""
     pc = tick.cfg.policy
-    voice = tick.req.current.voice
-    speech = tick.req.current.speech
+    inputs = tick.req.inputs
     has_signal = False
-    if voice is not None and voice.audio_live:
+    latest = max(inputs.voice_records, key=lambda r: r.t_ms, default=None)
+    if latest is not None and latest.audio_live:
         has_signal = True
-        if voice.silence_ms >= pc.pause_silence_ms:
+        if latest.silence_ms >= pc.pause_silence_ms:
             return True
-    if speech is not None and speech.utterance_end_ms is not None:
+    if inputs.utterance_ends:
         has_signal = True
-        if 0 <= tick.t - speech.utterance_end_ms <= pc.utterance_end_recent_ms:
+        last = max(inputs.utterance_ends)
+        if 0 <= tick.t - last <= pc.utterance_end_recent_ms:
             return True
     return not has_signal
 

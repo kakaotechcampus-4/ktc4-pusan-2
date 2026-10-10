@@ -15,10 +15,11 @@ from coach.version import POLICY_VERSION, SCHEMA_VERSION, STATE_VERSION
 from coach.vocab import FeedbackType, Instruction
 
 from .conftest import make_request
+from .fakes import fake_judges
 
 
 def test_first_request_without_state_starts_fresh():
-    resp = decide(make_request(1000))
+    resp = decide(make_request(1000), fake_judges())
     assert resp.schema_version == SCHEMA_VERSION
     assert resp.policy_version == POLICY_VERSION
     assert resp.coach_state["v"] == STATE_VERSION
@@ -28,7 +29,7 @@ def test_first_request_without_state_starts_fresh():
 
 
 def test_response_is_plain_json_round_trip():
-    resp = decide(make_request(1000))
+    resp = decide(make_request(1000), fake_judges())
     blob = json.dumps(resp.model_dump(mode="json"), ensure_ascii=False)
     again = CoachResponse.model_validate_json(blob)
     assert again == resp
@@ -37,14 +38,14 @@ def test_response_is_plain_json_round_trip():
 def test_unknown_request_fields_are_ignored():
     req = make_request(1000)
     req["something_new_from_be"] = {"x": 1}
-    req["current"]["voice"]["new_meter"] = 3
-    decide(req)  # 깨지지 않는다
+    req["inputs"]["voice_records"][0]["new_meter"] = 3
+    decide(req, fake_judges())  # 깨지지 않는다
 
 
 def test_missing_areas_skip_only_that_area():
-    req = make_request(1000, slide=None, voice={"silence_ms": 0, "audio_live": True})
-    req["current"] = {"voice": None, "gaze": None, "speech": None, "timing": None}
-    resp = decide(req)
+    req = make_request(1000, slide=None)
+    req["inputs"] = {}
+    resp = decide(req, fake_judges())
     assert resp.action.value == "WAIT"
 
 
@@ -57,7 +58,7 @@ def test_state_round_trips_without_loss():
     state, reset = load_state(None)
     assert not reset
     state.history = []
-    state.slide_chars = {"3": 150}
+    state.slide_totals = {"3": {"SPEED": {"chars": 150}}}
     raw = dump_state(state)
     again, reset = load_state(json.loads(json.dumps(raw)))
     assert not reset
@@ -69,15 +70,18 @@ def test_state_dump_keeps_version_even_though_it_is_default():
 
 
 def test_foreign_state_is_reset_and_reported():
-    resp = decide(make_request(1000, state={"v": 999, "whatever": 1}))
+    resp = decide(make_request(1000, state={"v": 999, "whatever": 1}), fake_judges())
     assert "STATE_RESET" in resp.reason_codes
-    resp = decide(make_request(1000, state={"v": STATE_VERSION, "history": "broken"}))
+    resp = decide(
+        make_request(1000, state={"v": STATE_VERSION, "history": "broken"}), fake_judges()
+    )
     assert "STATE_RESET" in resp.reason_codes
 
 
 def test_old_tick_does_not_change_state():
-    first = decide(make_request(5000))
-    again = decide(make_request(5000, state=first.coach_state))
+    judges = fake_judges()
+    first = decide(make_request(5000), judges)
+    again = decide(make_request(5000, state=first.coach_state), judges)
     assert again.reason_codes == ["STALE_TICK"]
     assert again.coach_state == first.coach_state
 

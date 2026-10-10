@@ -15,11 +15,15 @@ from dataclasses import dataclass
 from typing import Any
 
 from coach.config import CoachConfig, load_config
-from coach.evaluators.base import ramp
 from coach.review import Agg, Assessment, Seg, assess
 from coach.schemas import Memory, Mission, Plan
 from coach.vocab import FeedbackType, Issue
 
+from .judges import filler as filler_judge
+from .judges import gaze as gaze_judge
+from .judges import pace as pace_judge
+from .judges import volume as volume_judge
+from .judges._common import ramp
 from .simulator import RunResult
 
 #: 정답 구간을 만드는 영역. TIME 은 장별 누적에서 정확히 계산되므로 구간 비교에서 뺀다
@@ -60,8 +64,8 @@ def _severity(ftype: FeedbackType, row: dict[str, Any], cfg: CoachConfig) -> flo
     if ftype == FeedbackType.GAZE:
         r = row["script_ratio"]
         return (
-            ramp(r, cfg.gaze.script_ratio, cfg.gaze.script_ratio_bad)
-            if r >= cfg.gaze.script_ratio
+            ramp(r, gaze_judge.DEFAULT.script_ratio, gaze_judge.DEFAULT.script_ratio_bad)
+            if r >= gaze_judge.DEFAULT.script_ratio
             else None
         )
     if not row["speaking"]:
@@ -69,18 +73,18 @@ def _severity(ftype: FeedbackType, row: dict[str, Any], cfg: CoachConfig) -> flo
     if ftype == FeedbackType.SPEED:
         c = row["cpm"]
         return (
-            ramp(c, cfg.speech.fast_cpm, cfg.speech.fast_cpm_bad)
-            if c > cfg.speech.fast_cpm
+            ramp(c, pace_judge.DEFAULT.fast_cpm, pace_judge.DEFAULT.fast_cpm_bad)
+            if c > pace_judge.DEFAULT.fast_cpm
             else None
         )
     if ftype == FeedbackType.VOLUME:
         d = row["voice_diff_db"]
-        low = cfg.voice.low_relative_db
-        return ramp(d, low, cfg.voice.low_relative_db_bad) if d < low else None
+        low = volume_judge.DEFAULT.low_relative_db
+        return ramp(d, low, volume_judge.DEFAULT.low_relative_db_bad) if d < low else None
     if ftype == FeedbackType.FILLER:
         f = row["filler_per_min"]
-        thr = cfg.speech.filler_threshold
-        return ramp(f, thr, cfg.speech.filler_bad) if f >= thr else None
+        thr = filler_judge.DEFAULT.filler_threshold
+        return ramp(f, thr, filler_judge.DEFAULT.filler_bad) if f >= thr else None
     return None
 
 
@@ -114,7 +118,7 @@ def truth_intervals(
                     cur = []
             if cur:
                 runs.append(cur)
-            runs = [r for r in runs if len(r) * tick > cfg.voice.long_silence_ms]
+            runs = [r for r in runs if len(r) * tick > volume_judge.DEFAULT.long_silence_ms]
         else:
             cur = []
             last_t = None
@@ -156,7 +160,6 @@ def truth_intervals(
 
 
 def truth_aggs(run: RunResult) -> tuple[dict[int, Agg], Agg]:
-    cfg = run.config
     tick = run.scenario.tick_ms
     plan = Plan.model_validate(run.scenario.plan)
     targets = {s.slide_number: s for s in plan.slides}
@@ -195,7 +198,7 @@ def truth_aggs(run: RunResult) -> tuple[dict[int, Agg], Agg]:
                     a.speaking_ms += tick
                     a.db_ms += tick
                     a.db_weighted += row["voice_diff_db"] * tick
-                if silence_run > cfg.voice.long_silence_ms:
+                if silence_run > volume_judge.DEFAULT.long_silence_ms:
                     a.long_silence_ms += tick
 
     for v in run.presenter.visits:
@@ -285,17 +288,17 @@ def truth_outcome(
     match issue:
         case Issue.GAZE_ON_SCRIPT:
             # 실제 값은 잡음이 없으니 여유폭 없이 탐지 기준 아래로 내려왔는지만 본다
-            return after["script_ratio"] < cfg.gaze.script_ratio
+            return after["script_ratio"] < gaze_judge.DEFAULT.script_ratio
         case Issue.PACE_FAST:
             if not after["speaking"]:
                 return None
             a, b = after["cpm"], before["cpm"]
-            return a <= cfg.speech.fast_cpm or a <= b * (1 - rc.cpm_drop_ratio)
+            return a <= pace_judge.DEFAULT.fast_cpm or a <= b * (1 - rc.cpm_drop_ratio)
         case Issue.VOLUME_LOW:
             if not after["speaking"]:
                 return None
             a, b = after["voice_diff_db"], before["voice_diff_db"]
-            return a >= cfg.voice.low_relative_db or a >= b + rc.volume_gain_db
+            return a >= volume_judge.DEFAULT.low_relative_db or a >= b + rc.volume_gain_db
         case Issue.FILLER_FREQUENT:
             a, b = after["filler_per_min"], before["filler_per_min"]
             return a <= b * (1 - rc.filler_drop_ratio)

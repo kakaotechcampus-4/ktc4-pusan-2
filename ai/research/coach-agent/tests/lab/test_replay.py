@@ -27,20 +27,26 @@ def test_scenario_meets_expectations(path: Path):
     assert check_expect(result) == []
 
 
-@pytest.mark.parametrize("path", SCENARIOS, ids=lambda p: p.stem)
-def test_raw_inputs_meet_expectations_and_decide_the_same(path: Path):
-    """FE 요약 대신 원자료(시선 1초 기록)를 보내도 기대 결과를 만족하고, 개입 시점 · 내용이 같다."""
-    sc = Scenario.load(path)
-    raw = run(sc, raw=True)
-    assert check_expect(raw) == []
-    assert raw.timeline == run(sc).timeline
+def test_take_start_has_no_past_second():
+    """Take 시작 순간(t=0)에는 지난 1초가 없다 — 시선 · 음량 기록을 보내지 않는다."""
+    inputs = Presenter(Scenario.load(SCENARIOS[0])).request(0, None)["inputs"]
+    assert inputs["gaze_records"] == []
+    assert inputs["voice_records"] == []
 
 
-def test_raw_take_start_has_no_past_second():
-    """원자료 모드의 Take 시작 순간에는 지난 1초가 없다 — 시선 기록도 음량 레벨도 보내지 않는다."""
-    current = Presenter(Scenario.load(SCENARIOS[0]), raw=True).request(0, None)["current"]
-    assert current["gaze"]["records"] == []
-    assert current["voice"]["level_db"] is None
+def test_request_carries_raw_inputs_only():
+    """코치에는 원자료만 간다: 1초 기록, 확정 단어(군더더기 표시 없이), 문장 끝 시각."""
+    presenter = Presenter(Scenario.load(SCENARIOS[0]))
+    for t in range(0, 41_000, 1_000):
+        req = presenter.request(t, None)
+    inputs = req["inputs"]
+    assert "current" not in req
+    assert len(inputs["gaze_records"]) == len(inputs["voice_records"]) == 30
+    assert inputs["gaze_records"][-1]["t_ms"] == 39_000
+    assert inputs["words"] and set(inputs["words"][0]) == {"word", "start_ms", "end_ms"}
+    assert all(w["end_ms"] <= 40_000 for w in inputs["words"])
+    assert all(40_000 - 60_000 <= u <= 40_000 for u in inputs["utterance_ends"])
+    assert req["calibration"] == {"base_level_db": None}
 
 
 def test_same_input_same_decisions():

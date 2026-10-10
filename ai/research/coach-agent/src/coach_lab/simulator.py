@@ -12,8 +12,9 @@ EFFECTIVE 로, 없으면 INEFFECTIVE 로 나와 되돌아보기(사다리 · 포
   STT 단어 누락, 확정 지연 흔들림. seed 로 재현됩니다
 - **정답 기록** — 매 초 발표자가 '실제로' 어땠는지(잡음 전의 상태), 장 방문, 코치 말에 반응했는지
 
-시선은 FE 처럼 최근 10초의 1초 라벨로 비율을 냅니다. 잡음이 없을 때도 라벨은 비율대로 고르게
-섞이므로(저불일치 수열) 창 안 비율이 실제 비율 근처에서 조금 흔들립니다.
+코치에는 FE · BE 가 가공하지 않은 원자료를 보냅니다: 시선 1초 기록, 음량 1초 기록(dBFS 레벨),
+STT 확정 단어, 문장 끝 시각. 잡음이 없을 때도 시선 라벨은 비율대로 고르게 섞이므로(저불일치 수열)
+창 안 비율이 실제 비율 근처에서 조금 흔들립니다.
 
 실제 데이터가 아닙니다. 기준값이 '맞는지'가 아니라 로직이 '의도대로 도는지'를 봅니다.
 """
@@ -33,7 +34,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from coach import build_review_evidence, decide, finalize
 from coach.config import CoachConfig, load_config
+from coach.judges import Judges
 from coach.schemas import CoachResponse, CoachReviewEvidence
+
+from .judges import lab_judges
 
 _SYLLABLE_WORD = "가나다"  # 3글자 단어. 내용은 상관없고 글자 수만 쓴다
 _FILLER = "음"
@@ -42,8 +46,9 @@ _SENTENCE_WORDS = 6
 _SENTENCE_GAP_MS = 600
 _FINAL_LAG_MS = 1_200  # Deepgram 확정 결과가 늦게 오는 만큼
 _FILLER_MS = 350
-_GAZE_WINDOW_MS = 10_000
-#: 원자료 모드에서 가상 발표자의 평소 목소리 레벨 (A 가중 dBFS).
+_INPUT_WINDOW_MS = 30_000  # 시선 · 음량 1초 기록을 싣는 창 (코치의 입력 창과 같다)
+_WORDS_WINDOW_MS = 60_000  # 확정 단어 · 문장 끝 신호를 싣는 창
+#: 가상 발표자의 평소 목소리 레벨 (A 가중 dBFS).
 #: 코치는 이 값을 모르고 첫 발화로 잡는다
 _VOICE_LEVEL_DBFS = -24.0
 _PHI = 0.6180339887498949  # 저불일치 수열 — 잡음 없이도 라벨이 비율대로 고르게 섞인다
@@ -196,12 +201,8 @@ class Presenter:
         sc: Scenario,
         noise: Noise | None = None,
         seed: int | None = None,
-        raw: bool = False,
     ) -> None:
         self.sc = sc
-        #: True 면 FE · BE 의 요약 대신 원자료를 보낸다: 시선 1초 기록, 음량 레벨(dBFS, 기준 없이),
-        #: 군더더기 표시가 없는 단어. 발표 자체는 똑같다
-        self.raw = raw
         self.noise = noise or sc.noise
         self.rng = random.Random(sc.seed if seed is None else seed)
         self.base = Params.model_validate(sc.baseline)
@@ -215,13 +216,14 @@ class Presenter:
         self.cursor = 0
         self.sentence_words = 0
         self.filler_acc = 0.0
-        self.utterance_end_ms: int | None = None
+        #: 지금까지 나온 문장 끝 시각
+        self.utterance_ends: list[int] = []
         self.reactions: list[_ActiveReaction] = []
         self.pending_advance: list[int] = []
-        self.labels: deque[str] = deque(maxlen=max(1, _GAZE_WINDOW_MS // sc.tick_ms))
-        #: 원자료 모드의 시선 1초 기록 (최근 창만)
-        window = max(1, _GAZE_WINDOW_MS // sc.tick_ms)
+        #: 시선 · 음량 1초 기록 (최근 창만)
+        window = max(1, _INPUT_WINDOW_MS // sc.tick_ms)
         self.gaze_records: deque[dict[str, Any]] = deque(maxlen=window)
+        self.voice_records: deque[dict[str, Any]] = deque(maxlen=window)
         self.label_k = 0
         #: 정답 기록
         self.truth: list[dict[str, Any]] = []
@@ -321,7 +323,7 @@ class Presenter:
             self.filler_acc += p.filler_per_min * (dur + _WORD_GAP_MS) / 60_000
             self.sentence_words += 1
             if self.sentence_words % _SENTENCE_WORDS == 0:
-                self.utterance_end_ms = self.cursor
+                self.utterance_ends.append(self.cursor)
                 gap = _SENTENCE_GAP_MS
             else:
                 gap = _WORD_GAP_MS
@@ -354,13 +356,14 @@ class Presenter:
     def request(self, t: int, coach_state: dict[str, Any] | None) -> dict[str, Any]:
         self.speak_until(t)
         p = self.params_at(t)
-        window: list[_Word] = []
+        # 확정된 단어만 보낸다 (확정은 1~3초 늦게 온다)
+        words: list[dict[str, Any]] = []
         for w in reversed(self.heard_words):
-            if w.start_ms < t - 15_000:
+            if w.end_ms <= t - _WORDS_WINDOW_MS:
                 break
-            if w.end_ms <= t:
-                window.append(w)
-        window.reverse()
+            if w.end_ms <= t and w.final_at_ms <= t:
+                words.append({"word": w.w, "start_ms": w.start_ms, "end_ms": w.end_ms})
+        words.reverse()
         # FE 의 침묵은 소리 에너지로 잰다 — 단어를 말하는 도중이면 0 이고, STT 가 단어를 놓쳐도
         # 상관없다.
         # 오디오가 멈추면 소리가 안 들어오니 침묵이 계속 늘어난다 (FE 코치 주석의 실제 동작)
@@ -369,31 +372,24 @@ class Presenter:
         silence = 0 if mid_word else max(0, t - last_end)
 
         label = self._gaze_label(p)
-        self.labels.append(label)
-        if t >= self.sc.tick_ms:
-            # 이 틱의 라벨은 지난 1초(t − tick ~ t)의 판정이다.
-            # Take 시작 순간(t = 0)에는 지난 1초가 없다
-            self.gaze_records.append(
-                {"t_ms": t - self.sc.tick_ms, "duration_ms": self.sc.tick_ms, "state": label}
-            )
-        # 두 모드는 같은 라벨 열에서 만든다. 요약 모드는 v1 결과와 같게 t = 0 라벨까지 표본으로 센다
-        n = len(self.labels)
-        ratios = {
-            k: round(sum(1 for x in self.labels if x == k) / n, 4)
-            for k in ("CAMERA", "BOTTOM", "UNCERTAIN")
-        }
-        current = self.labels[-1]
-        streak = 0
-        for x in reversed(self.labels):
-            if x != current:
-                break
-            streak += 1
-
-        # 원자료 모드의 음량 레벨은 지난 1초의 발화 레벨이다 — Take 시작 순간에는 지난 1초가 없다
-        voiced = silence < 300 and t >= self.sc.tick_ms
         db = p.relative_db
         if self.noise.db_sigma:
             db += self.rng.gauss(0.0, self.noise.db_sigma)
+        # 이 틱의 기록은 지난 1초(t − tick ~ t)의 판정이다. Take 시작 순간(t = 0)에는 없다
+        if t >= self.sc.tick_ms:
+            tick = self.sc.tick_ms
+            self.gaze_records.append({"t_ms": t - tick, "duration_ms": tick, "state": label})
+            voiced = silence < 300
+            self.voice_records.append(
+                {
+                    "t_ms": t - tick,
+                    "duration_ms": tick,
+                    "level_db": round(_VOICE_LEVEL_DBFS + db, 2) if voiced else None,
+                    "voiced_ms": tick if voiced else 0,
+                    "silence_ms": silence,
+                    "audio_live": p.audio_live,
+                }
+            )
 
         speaking_now = p.speaking and self.finished_at is None
         self.truth.append(
@@ -420,46 +416,22 @@ class Presenter:
             "plan": self.sc.plan,
             "missions": self.sc.missions,
             "memory": self.sc.memory,
-            "current": {
-                "timing": {
-                    "slide_number": self.slide_number,
-                    "slide_elapsed_ms": t - self.slide_start_ms,
-                },
-                "gaze": (
-                    {"window_ms": _GAZE_WINDOW_MS, "records": list(self.gaze_records)}
-                    if self.raw
-                    else {
-                        "window_ms": _GAZE_WINDOW_MS,
-                        "ratios": ratios,
-                        "current_label": current,
-                        "current_label_ms": streak * self.sc.tick_ms,
-                    }
+            "inputs": {
+                "gaze_records": list(self.gaze_records),
+                "voice_records": list(self.voice_records),
+                "words": words,
+                "utterance_ends": [
+                    u for u in self.utterance_ends if t - _WORDS_WINDOW_MS <= u <= t
+                ],
+                "stt_status": p.stt_status,
+                "slide": (
+                    {"number": self.slide_number, "started_ms": self.slide_start_ms}
+                    if self.slide_number is not None
+                    else None
                 ),
-                "voice": {
-                    **(
-                        {"level_db": round(_VOICE_LEVEL_DBFS + db, 2) if voiced else None}
-                        if self.raw
-                        else {"relative_db": round(db, 2) if silence < 300 else None}
-                    ),
-                    "silence_ms": silence,
-                    "audio_live": p.audio_live,
-                },
-                "speech": {
-                    "stt_status": p.stt_status,
-                    "utterance_end_ms": self.utterance_end_ms,
-                    "words": [
-                        {
-                            "w": w.w,
-                            "start_ms": w.start_ms,
-                            "end_ms": w.end_ms,
-                            "final": w.final_at_ms <= t,
-                            # 원자료 모드: BE 처럼 군더더기 표시 없이 보낸다 (코치가 단어로 판단)
-                            **({} if self.raw else {"filler": w.filler}),
-                        }
-                        for w in window
-                    ],
-                },
             },
+            # 기준 음량은 코치가 첫 발화로 잡는다
+            "calibration": {"base_level_db": None},
             "coach_state": coach_state,
         }
 
@@ -514,7 +486,7 @@ def run(
     *,
     noise: Noise | None = None,
     seed: int | None = None,
-    raw: bool = False,
+    judges: Judges | None = None,
     coach_state: dict[str, Any] | None = None,
 ) -> RunResult:
     """시나리오 하나를 재생한다.
@@ -522,7 +494,8 @@ def run(
     coach_state 를 주면 그 상태(예: 코칭 계획이 든 첫 상태)로 시작한다.
     """
     cfg = config if config is not None else scenario_config(sc)
-    presenter = Presenter(sc, noise, seed, raw)
+    presenter = Presenter(sc, noise, seed)
+    judges = judges or lab_judges()
     result = RunResult(
         scenario=sc,
         noise=presenter.noise,
@@ -536,7 +509,7 @@ def run(
     while t <= sc.duration_ms:
         req = presenter.request(t, state)
         started = time.perf_counter()
-        resp: CoachResponse = decide(req, cfg)
+        resp: CoachResponse = decide(req, judges, cfg)
         result.latencies_ms.append((time.perf_counter() - started) * 1000)
         state = resp.coach_state
         result.events.extend(e.model_dump(mode="json") for e in resp.events)
