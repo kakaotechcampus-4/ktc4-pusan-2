@@ -117,8 +117,6 @@ class Agg:
     db_ms: int = 0
     db_weighted: float = 0.0
     long_silence_ms: int = 0
-    kw_required: list[str] = field(default_factory=list)
-    kw_found: list[str] = field(default_factory=list)
 
     def add(self, ev: SlideEvent) -> None:
         if self.visits == 0:
@@ -144,13 +142,6 @@ class Agg:
             "long_silence_ms",
         ):
             setattr(self, name, getattr(self, name) + getattr(ev, name))
-        prefix = "" if self.slide_number is not None else f"{ev.slide_number}:"
-        for k in ev.keywords_required:
-            if prefix + k not in self.kw_required:
-                self.kw_required.append(prefix + k)
-        for k in ev.keywords_found:
-            if prefix + k not in self.kw_found:
-                self.kw_found.append(prefix + k)
 
     # ── 파생 값 ──────────────────────────────────────────────────────────
     @property
@@ -193,17 +184,6 @@ class Agg:
         measured = _div(self.db_ms, self.speaking_ms)
         audio = self.audio_coverage
         return None if measured is None or audio is None else min(audio, measured)
-
-    @property
-    def keyword_coverage(self) -> float | None:
-        if not self.kw_required:
-            return None
-        found = sum(1 for k in self.kw_required if k in self.kw_found)
-        return round(found / len(self.kw_required), 4)
-
-    @property
-    def keywords_missing(self) -> list[str]:
-        return [k for k in self.kw_required if k not in self.kw_found]
 
     @property
     def over_ms(self) -> int | None:
@@ -400,7 +380,7 @@ def evaluable_types(take: Agg, plan: Plan | None, cfg: CoachConfig) -> dict[Feed
         FeedbackType.FILLER: ok(take.speech_coverage),
         FeedbackType.VOLUME: ok(take.volume_coverage),
         FeedbackType.PAUSE: ok(take.audio_coverage),
-        FeedbackType.CONTENT: bool(take.kw_required) and ok(take.speech_coverage),
+        FeedbackType.CONTENT: False,
         FeedbackType.TIME: has_time or has_slide_targets or take.duration_ms > 0,
     }
 
@@ -412,13 +392,13 @@ def collect_issues(
     plan: Plan | None,
     cfg: CoachConfig,
 ) -> list[IssueAgg]:
-    """문제 구간 · 장별 누적 → (영역 × 장) 문제. 시간 · 키워드는 장별 누적에서 바로 계산한다."""
+    """문제 구간 · 장별 누적 → (영역 × 장) 문제. 시간은 장별 누적에서 바로 계산한다."""
     rc = cfg.review
     groups: dict[tuple[FeedbackType, int | None], IssueAgg] = {}
 
     for seg in segs:
         if seg.area in (FeedbackType.TIME, FeedbackType.CONTENT):
-            continue  # 시간 · 키워드는 아래에서 장별 누적으로 정확히 잰다
+            continue  # 시간은 아래에서 장별 누적으로 정확히 잰다
         if rc.exclude_unreliable and not is_reliable(seg, cfg):
             continue
         k = (seg.area, seg.slide_number)
@@ -450,18 +430,6 @@ def collect_issues(
                 1,
                 round(severity, 4),
                 evidence={"duration_ms": s.duration_ms, "target_ms": s.target_ms, "over_ms": over},
-            )
-        missing = s.keywords_missing
-        if missing and (s.speech_coverage or 0) >= rc.min_coverage:
-            groups[(FeedbackType.CONTENT, number)] = IssueAgg(
-                FeedbackType.CONTENT,
-                number,
-                [Issue.KEYWORD_MISSING],
-                len(missing) * rc.keyword_burden_s,
-                0,
-                len(missing),
-                0.6,
-                evidence={"keywords_missing": missing, "keyword_coverage": s.keyword_coverage},
             )
 
     if plan is not None and plan.target_ms and take.duration_ms > 0:
@@ -539,7 +507,6 @@ _SCOPE_METRICS = {
     "cpm": ("cpm", "speech_coverage"),
     "voice_diff_db": ("voice_diff_db", "volume_coverage"),
     "filler_per_min": ("filler_per_min", "speech_coverage"),
-    "keyword_coverage": ("keyword_coverage", "speech_coverage"),
 }
 SUPPORTED_MISSION_METRICS = frozenset(
     {*_SCOPE_METRICS, "slide_duration_ms", "duration_ms", "long_silence_count"}
@@ -765,7 +732,7 @@ def _take_metric(ftype: FeedbackType, take: Agg) -> dict[str, Any]:
         FeedbackType.VOLUME: {"voice_diff_db": take.voice_diff_db, "coverage": take.audio_coverage},
         FeedbackType.PAUSE: {"long_silence_ms": take.long_silence_ms},
         FeedbackType.FILLER: {"filler_per_min": take.filler_per_min},
-        FeedbackType.CONTENT: {"keyword_coverage": take.keyword_coverage},
+        FeedbackType.CONTENT: {},
         FeedbackType.TIME: {"duration_ms": take.duration_ms},
     }[ftype]
 
@@ -851,10 +818,6 @@ def _next_target(
         case FeedbackType.PAUSE:
             n = float(issue.segments)
             return NextMissionTarget(metric="long_silence_count", operator="LTE", value=0), n
-        case FeedbackType.CONTENT:
-            return NextMissionTarget(
-                metric="keyword_coverage", operator="GTE", value=1.0
-            ), scope.keyword_coverage
         case FeedbackType.TIME:
             if slide_number is not None and scope.target_ms:
                 value = round(scope.target_ms * rc.slide_time_margin)
@@ -1104,8 +1067,6 @@ def _slide_review(s: Agg, issues: list[IssueReview]) -> SlideReview:
         filler_count=s.filler_count,
         filler_per_min=s.filler_per_min,
         long_silence_ms=s.long_silence_ms,
-        keyword_coverage=s.keyword_coverage,
-        keywords_missing=s.keywords_missing,
         gaze_coverage=s.gaze_coverage,
         speech_coverage=s.speech_coverage,
         audio_coverage=s.audio_coverage,

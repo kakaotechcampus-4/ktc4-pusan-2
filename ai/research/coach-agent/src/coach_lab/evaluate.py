@@ -254,7 +254,6 @@ def score_review(
             iv["t_ms"],
             oc["t_ms"],
             iv["slide_number"],
-            iv["evidence"].get("keyword"),
         )
         if want is None:
             continue

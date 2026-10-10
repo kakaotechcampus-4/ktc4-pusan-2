@@ -55,6 +55,7 @@ class SlidePlan(_In):
     target_ms: int = Field(ge=0)
     #: 이 장 대본 글자 수 (공백 제외). 진행도 = 이 장에서 말한 글자 수 / script_chars
     script_chars: int = Field(default=0, ge=0)
+    #: 코칭 계획(LLM) 입력에만 쓴다. 발표 중 코치는 보지 않는다
     required_keywords: list[str] = Field(default_factory=list)
 
 
@@ -467,8 +468,6 @@ class SlideEvent(_Event):
     long_silence_ms: int
     #: 이 장에서 지금까지 말한 글자 수 (다시 돌아온 장이면 누적)
     chars_total: int
-    keywords_required: list[str] = Field(default_factory=list)
-    keywords_found: list[str] = Field(default_factory=list)
 
 
 class SuppressedEvent(_Event):
@@ -598,7 +597,7 @@ class DataQuality(_Out):
 
 
 class SlideReview(_Out):
-    """장별 표 한 줄. 리뷰의 구간 표(CAMERA/BOTTOM · Pace · Filler · Keyword)와 같은 축."""
+    """장별 표 한 줄. 리뷰의 구간 표(CAMERA/BOTTOM · Pace · Filler)와 같은 축."""
 
     slide_number: int
     visits: int
@@ -614,8 +613,6 @@ class SlideReview(_Out):
     filler_count: int
     filler_per_min: float | None
     long_silence_ms: int
-    keyword_coverage: float | None
-    keywords_missing: list[str]
     gaze_coverage: float | None
     speech_coverage: float | None
     audio_coverage: float | None

@@ -30,7 +30,6 @@ class Detection:
     params: dict[str, Any] = field(default_factory=dict)
     #: 사다리를 최소 이 칸부터 쓴다 (늦었는데 속도로 못 따라잡으면 SPEED_UP 을 건너뛴다)
     min_step: int = 0
-    keyword: str | None = None
 
 
 @dataclass

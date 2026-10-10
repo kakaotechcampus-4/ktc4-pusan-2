@@ -1,4 +1,4 @@
-"""말 — BE 가 보낸 최근 STT 단어로 속도(CPM) · 군더더기 · 장별 진행도 · 키워드를 본다.
+"""말 — BE 가 보낸 최근 STT 단어로 속도(CPM) · 군더더기 · 장별 진행도를 본다.
 
 CPM 공식은 stt-live v1 과 같습니다: 글자 수(공백 제외) ÷ 실제로 말한 시간(단어별
 end - start 의 합, 침묵 제외) × 60초. 군더더기는 글자 수와 말한 시간에서 모두 뺍니다.
@@ -29,7 +29,7 @@ def is_filler(word: Word) -> bool:
 
 
 def ingest(tick: Tick) -> None:
-    """새로 확정된 단어를 coach_state 에 누적한다 — 장별 글자 수, 군더더기 수, 키워드."""
+    """새로 확정된 단어를 coach_state 에 누적한다 — 장별 글자 수, 군더더기 수."""
     speech = tick.req.current.speech
     if speech is None:
         return
@@ -41,7 +41,7 @@ def ingest(tick: Tick) -> None:
     for word in finals:
         st.last_final_end_ms = max(st.last_final_end_ms, word.end_ms)
         if not tick.stt_ok or _before_recovery(tick, word):
-            continue  # STT 를 믿을 수 없던 때의 단어는 진행도 · 군더더기 · 키워드에 넣지 않는다
+            continue  # STT 를 믿을 수 없던 때의 단어는 진행도 · 군더더기에 넣지 않는다
         if is_filler(word):
             tick.filler_new += 1
             continue
@@ -51,7 +51,6 @@ def ingest(tick: Tick) -> None:
             continue
         key = str(slide)
         st.slide_chars[key] = st.slide_chars.get(key, 0) + len(text)
-        _track_keywords(tick, slide, text)
 
 
 def _before_recovery(tick: Tick, word: Word) -> bool:
@@ -65,25 +64,6 @@ def _slide_of(tick: Tick, word: Word) -> int | None:
         if word.start_ms >= start:
             return slide
     return tick.slide_number
-
-
-def _track_keywords(tick: Tick, slide: int, text: str) -> None:
-    st = tick.state
-    key = str(slide)
-    tail = (st.keyword_tails.get(key, "") + text)[-tick.cfg.speech.keyword_tail_chars :]
-    st.keyword_tails[key] = tail
-    plan = tick.slide_plan(slide)
-    if plan is not None and plan.required_keywords:
-        found = st.keywords_found.setdefault(key, [])
-        for keyword in plan.required_keywords:
-            if keyword not in found and "".join(keyword.split()) in tail:
-                found.append(keyword)
-    # '이 장 핵심 키워드를 말해 보세요' 뒤에 다음 장으로 넘어가서 말해도 말한 것으로 친다
-    for p in st.pending:
-        if p.keyword and "".join(p.keyword.split()) in tail:
-            done = st.keywords_found.setdefault(str(p.slide_number), [])
-            if p.keyword not in done:
-                done.append(p.keyword)
 
 
 def compute_cpm(words: list[Word], t: int, window_ms: int) -> tuple[float | None, int, int]:
@@ -165,37 +145,7 @@ def evaluate(tick: Tick) -> None:
             )
         )
 
-    if tick.cfg.features.keyword_missing:
-        _keyword_missing(tick)
-
 
 def _filler_count(tick: Tick, window_ms: int) -> int:
     since = tick.t - window_ms
     return sum(s.filler_new for s in tick.history_since(since)) + tick.filler_new
-
-
-def _keyword_missing(tick: Tick) -> None:
-    plan = tick.slide_plan(tick.slide_number)
-    if plan is None or not plan.required_keywords or plan.script_chars <= 0:
-        return
-    said = tick.state.slide_chars.get(str(tick.slide_number), 0)
-    progress = min(1.0, said / plan.script_chars)
-    if progress < tick.cfg.speech.keyword_progress:
-        return
-    found = tick.state.keywords_found.get(str(tick.slide_number), [])
-    missing = [k for k in plan.required_keywords if k not in found]
-    if not missing:
-        return
-    keyword = missing[0]
-    tick.detections.append(
-        Detection(
-            issue_type=Issue.KEYWORD_MISSING,
-            severity=0.6,
-            confidence=tick.cfg.speech.keyword_confidence,
-            sensor_ok=tick.stt_ok,
-            slide_number=tick.slide_number,
-            keyword=keyword,
-            params={"keyword": keyword},
-            evidence={"keyword": keyword, "slide_progress": round(progress, 3)},
-        )
-    )

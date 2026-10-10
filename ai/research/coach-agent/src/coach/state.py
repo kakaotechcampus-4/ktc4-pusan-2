@@ -70,7 +70,6 @@ class SlideAcc(_S):
     #: 대본 분석이 준 이 장의 계획. 종료 처리(finalize)에는 계획이 오지 않아 여기 담아 둔다
     target_ms: int | None = None
     script_chars: int | None = None
-    keywords_required: list[str] = Field(default_factory=list)
     total_ms: int = 0
     gaze_valid_ms: int = 0
     gaze_script_ms: float = 0.0
@@ -110,7 +109,6 @@ class PendingOutcome(_S):
     check_at_ms: int
     metric: str | None = None
     before: float | None = None
-    keyword: str | None = None
 
 
 class Praise(_S):
@@ -165,9 +163,6 @@ class CoachState(_S):
     slide_number: int | None = None
     #: 장별로 말한 글자 수 (확정 단어, 군더더기 제외). JSON 이라 키가 문자열이다
     slide_chars: dict[str, int] = Field(default_factory=dict)
-    keywords_found: dict[str, list[str]] = Field(default_factory=dict)
-    #: 장별 최근 글자 — 키워드가 단어 경계를 걸쳐도 찾는다. 최근 몇 장만 남긴다
-    keyword_tails: dict[str, str] = Field(default_factory=dict)
     #: 최근 장 전환 [(장, 시작 시각)]. 확정이 늦게 온 단어를 말한 시각의 장에 붙인다
     slide_log: list[tuple[int, int]] = Field(default_factory=list)
     last_final_end_ms: int = -1

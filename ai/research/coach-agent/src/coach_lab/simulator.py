@@ -133,15 +133,6 @@ class Reaction(BaseModel):
     duration_ms: int | None = 30_000
     set: dict[str, Any] = Field(default_factory=dict)
     advance_slide: bool = False
-    #: 반응으로 이 말을 한다 (예: 빠뜨린 키워드)
-    say: str | None = None
-
-
-class Utterance(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    at_ms: int
-    text: str
 
 
 class Scenario(BaseModel):
@@ -161,7 +152,6 @@ class Scenario(BaseModel):
     baseline: dict[str, Any] = Field(default_factory=dict)
     segments: list[Segment] = Field(default_factory=list)
     reactions: dict[str, Reaction] = Field(default_factory=dict)
-    utterances: list[Utterance] = Field(default_factory=list)
     #: 코치 설정 덮어쓰기 (load_config 와 같은 모양)
     config: dict[str, Any] = Field(default_factory=dict)
     noise: Noise = Field(default_factory=Noise)
@@ -228,7 +218,6 @@ class Presenter:
         self.utterance_end_ms: int | None = None
         self.reactions: list[_ActiveReaction] = []
         self.pending_advance: list[int] = []
-        self.pending_utterances = sorted(sc.utterances, key=lambda u: u.at_ms)
         self.labels: deque[str] = deque(maxlen=max(1, _GAZE_WINDOW_MS // sc.tick_ms))
         #: 원자료 모드의 시선 1초 기록 (최근 창만)
         window = max(1, _GAZE_WINDOW_MS // sc.tick_ms)
@@ -268,9 +257,6 @@ class Presenter:
             self.reactions.append(_ActiveReaction(start, end, dict(reaction.set)))
         if reaction.advance_slide:
             self.pending_advance.append(start)
-        if reaction.say:
-            self.pending_utterances.append(Utterance(at_ms=start, text=reaction.say))
-            self.pending_utterances.sort(key=lambda u: u.at_ms)
 
     # ── 말하기 ──────────────────────────────────────────────────────────
 
@@ -298,10 +284,8 @@ class Presenter:
                 self.cursor = min(t, self.cursor + 100)
                 continue
 
-            text, filler, uttered = _SYLLABLE_WORD, False, False
-            if self.pending_utterances and self.pending_utterances[0].at_ms <= self.cursor:
-                text, uttered = self.pending_utterances[0].text.replace(" ", ""), True
-            elif self.filler_acc >= 1.0:
+            text, filler = _SYLLABLE_WORD, False
+            if self.filler_acc >= 1.0:
                 text, filler = _FILLER, True
             cpm = p.cpm
             if nz.cpm_jitter:
@@ -309,10 +293,8 @@ class Presenter:
             dur = _FILLER_MS if filler else round(len(text) * 60_000 / max(1.0, cpm))
             if self.cursor + dur > t:
                 break  # 이번 1초 안에 다 말하지 못하는 단어는 다음 틱에 말한다
-            if uttered:
-                self.pending_utterances.pop(0)
 
-            dropped = nz.word_drop > 0 and self.rng.random() < nz.word_drop and not uttered
+            dropped = nz.word_drop > 0 and self.rng.random() < nz.word_drop
             lag = _FINAL_LAG_MS + (
                 self.rng.randint(0, nz.final_lag_jitter_ms) if nz.final_lag_jitter_ms else 0
             )
