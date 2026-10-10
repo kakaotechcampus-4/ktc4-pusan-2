@@ -202,19 +202,14 @@ def finalize(
             OutcomeEvent,
             t_ms=t,
             intervention_id=p.intervention_id,
-            candidate_id=p.candidate_id,
-            issue_type=p.issue_type,
-            area=p.area,
-            instruction=p.instruction,
-            slide_number=p.slide_number,
             outcome=Outcome.NOT_MEASURED,
             metric=p.metric,
             before=p.before,
         )
     state.pending = []
     for key in list(state.episodes):
-        episodes.close(state, key, t, "TAKE_END", sink, cfg)
-    slides.close(state, t, sink)
+        episodes.close(state, key, t, sink, cfg)
+    slides.finish(state, t, sink)
     tally.extend_slide_span(state, t)
 
     missing = _missing_spans(state.covered, t)
@@ -254,8 +249,7 @@ def _round(
     """판정 라운드 · 측정 정리 · 되돌아보기 · 문제 구간(① ②). decide 와 finalize 가 같이 쓴다."""
     run = judges_mod.run(req, state, judges, cfg)
     tick = measure.build_tick(req, cfg, state, run)
-    slides.switch(tick, sink)
-    slides.accumulate(tick)
+    slides.emit_ready(state, req.t_ms, sink)
     reflection.resolve(tick, sink)
     reflection.prune_praise(tick)
     episodes.observe(tick, sink)
@@ -294,9 +288,6 @@ def _last_window(
     sink = EventSink(state)
     try:
         judges_mod.skip(creq, state)
-        slide = req.inputs.slide
-        plan = next((s for s in req.plan.slides if slide and s.slide_number == slide.number), None)
-        slides.follow(state, slide, plan, sink)
         state.last_t_ms = t
     except Exception:  # noqa: BLE001
         log.exception("coach finalize skip failed take_id=%s t_ms=%s", req.take_id, t)
@@ -406,17 +397,14 @@ def _intervene(tick: Tick, c: Candidate, reason_codes: list[str], sink: EventSin
     event = sink.emit(
         InterventionEvent,
         t_ms=tick.t,
-        candidate_id=c.candidate_id,
         issue_type=c.issue_type,
         area=c.area,
         instruction=c.instruction,
-        variant=c.variant,
         message=message,
         priority=c.priority,
         confidence=confidence,
         reason_codes=reason_codes,
         slide_number=c.slide_number,
-        evidence=c.evidence,
     )
     st.last_fired_ms = tick.t
     st.last_by_instruction[c.instruction.value] = tick.t
@@ -458,9 +446,9 @@ def _log_suppressed(tick: Tick, cands: list[Candidate], sink: EventSink) -> None
         sink.emit(
             SuppressedEvent,
             t_ms=tick.t,
-            candidate_id=c.candidate_id,
             issue_type=c.issue_type,
             area=c.area,
+            slide_number=c.slide_number,
             instruction=c.instruction,
             status=c.status,
             priority=c.priority,

@@ -41,7 +41,6 @@ def episode(
         "kind": "EPISODE",
         "event_id": event_id or f"ep-{issue}-{slide}-{start}",
         "t_ms": end,
-        "candidate_id": f"{issue}@{slide}",
         "issue_type": issue,
         "area": area,
         "slide_number": slide,
@@ -49,7 +48,6 @@ def episode(
         "end_ms": end,
         "peak_severity": 1.0,
         "intervention_ids": ivs or [],
-        "closed_by": "RESOLVED",
         "reliable_ms": reliable,
         "unreliable_ms": unreliable,
         "mean_severity": severity,
@@ -62,17 +60,14 @@ def intervention(t_ms: int, issue: str = "GAZE_AWAY", area: str = "GAZE") -> dic
         "event_id": f"iv-{t_ms}",
         "t_ms": t_ms,
         "intervention_id": f"iv-{t_ms}",
-        "candidate_id": f"{issue}@1",
         "issue_type": issue,
         "area": area,
         "instruction": "LOOK_AT_CAMERA",
-        "variant": "v1",
         "message": "카메라를 보세요",
         "priority": 50,
         "confidence": 0.9,
         "reason_codes": [],
         "slide_number": 1,
-        "evidence": {},
     }
 
 
@@ -82,11 +77,6 @@ def outcome(iv: str, result: str = "EFFECTIVE") -> dict[str, Any]:
         "event_id": f"oc-{iv}",
         "t_ms": 30_000,
         "intervention_id": iv,
-        "candidate_id": "GAZE_AWAY@1",
-        "issue_type": "GAZE_AWAY",
-        "area": "GAZE",
-        "instruction": "LOOK_AT_CAMERA",
-        "slide_number": 1,
         "outcome": result,
         "metric": "script_ratio",
         "before": 0.2,
@@ -105,7 +95,6 @@ def strategy(change: str, t_ms: int, issue: str = "GAZE_AWAY", slide: int | None
         "change": change,
         "from_instruction": "LOOK_AT_CAMERA",
         "from_variant": "v1",
-        "failures": 2,
         "intervention_id": "iv-1",
     }
 

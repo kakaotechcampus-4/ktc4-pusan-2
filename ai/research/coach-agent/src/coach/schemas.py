@@ -268,8 +268,6 @@ class Feedback(_Out):
 
 
 # ── 이벤트 — BE 가 그대로 쌓아 두는 기록. 리뷰 에이전트 근거의 원천 ──────────
-# 임시: 리뷰 근거가 읽는 옛 필드(candidate_id · variant · evidence · SLIDE 합계 …)는 #151 까지 둔다
-# (#151 에서 문서의 필드만 남긴다)
 
 
 class _Event(_Out):
@@ -281,17 +279,14 @@ class InterventionEvent(_Event):
     kind: Literal["INTERVENTION"] = "INTERVENTION"
     #: event_id 와 같은 값 (효과 · 사다리 이벤트가 가리킨다)
     intervention_id: str
-    candidate_id: str
     issue_type: Issue
     area: FeedbackType
     instruction: Instruction
-    variant: str
     message: str
     priority: int
     confidence: float
     reason_codes: list[str]
     slide_number: int | None = None
-    evidence: dict[str, Any]
 
 
 class OutcomeEvent(_Event):
@@ -299,11 +294,6 @@ class OutcomeEvent(_Event):
 
     kind: Literal["OUTCOME"] = "OUTCOME"
     intervention_id: str
-    candidate_id: str
-    issue_type: Issue
-    area: FeedbackType
-    instruction: Instruction
-    slide_number: int | None = None
     outcome: Outcome
     metric: str | None = None
     before: float | None = None
@@ -314,7 +304,6 @@ class EpisodeEvent(_Event):
     """문제 구간 하나가 끝났다. 개입했든 안 했든 남긴다 — 리뷰의 '문제 구간'이 된다."""
 
     kind: Literal["EPISODE"] = "EPISODE"
-    candidate_id: str
     issue_type: Issue
     area: FeedbackType
     slide_number: int | None = None
@@ -324,9 +313,6 @@ class EpisodeEvent(_Event):
     intervention_ids: list[str] = Field(default_factory=list)
     #: 이 구간에서 말하지 못한 이유들 (EXAM_MODE, MIN_GAP …)
     suppressed_reasons: list[str] = Field(default_factory=list)
-    closed_by: Literal["RESOLVED", "TAKE_END"]
-    #: 구간 동안 가장 나빴을 때의 지표
-    peak_evidence: dict[str, Any] = Field(default_factory=dict)
     #: 센서를 믿을 수 있던 / 없던 시간. 대부분 믿을 수 없었다면 리뷰는 이 구간을 문제로 말하지
     #: 않는다
     reliable_ms: int = 0
@@ -336,42 +322,27 @@ class EpisodeEvent(_Event):
 
 
 class SlideEvent(_Event):
-    """한 장에 머문 동안의 누적. 장을 떠날 때(또는 Take 종료 때) 하나씩. 다시 돌아오면 또 하나.
+    """한 장 방문의 영역별 합계. 장을 떠나고 그 장의 단어가 다 확정되면(또는 Take 가 끝나면) 하나.
 
-    평균은 *_weighted / *_ms 로 낸다 (예: CPM = cpm_weighted / cpm_ms).
+    다시 돌아온 장은 방문마다 하나씩 낸다. 평균은 합계에서 모듈의 summarize 로 낸다.
     """
 
     kind: Literal["SLIDE"] = "SLIDE"
-    #: null 이면 장 정보가 없는 발표 (Take 전체 누적에만 들어간다)
-    slide_number: int | None
+    slide_number: int
     start_ms: int
     end_ms: int
     target_ms: int | None = None
-    script_chars: int | None = None
-    total_ms: int
-    gaze_valid_ms: int
-    gaze_script_ms: float
-    gaze_unusable_ms: int
-    speech_ok_ms: int
-    cpm_ms: int
-    cpm_weighted: float
-    filler_count: int
-    audio_live_ms: int
-    speaking_ms: int
-    db_ms: int
-    db_weighted: float
-    long_silence_ms: int
-    #: 이 장에서 지금까지 말한 글자 수 (다시 돌아온 장이면 누적)
-    chars_total: int
+    #: 영역(GAZE · SPEED · VOLUME · PAUSE · FILLER · TIME) → 이름 → 이 방문의 합
+    tally: dict[str, dict[str, float]] = Field(default_factory=dict)
 
 
 class SuppressedEvent(_Event):
     """걸렸지만 말하지 않은 기록. 같은 문제는 suppress_log_gap_ms 에 한 번만 남는다."""
 
     kind: Literal["SUPPRESSED"] = "SUPPRESSED"
-    candidate_id: str
     issue_type: Issue
     area: FeedbackType
+    slide_number: int | None = None
     instruction: Instruction
     status: CandidateStatus
     priority: int
@@ -390,7 +361,6 @@ class StrategyEvent(_Event):
     from_variant: str
     to_instruction: Instruction | None = None
     to_variant: str | None = None
-    failures: int
     intervention_id: str
 
 

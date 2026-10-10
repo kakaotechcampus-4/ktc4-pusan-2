@@ -235,7 +235,8 @@ def _note_slide(req: CoachRequest, state: CoachState) -> SlideNow | None:
     if slide is None and state.slide_log:
         number, started = state.slide_log[-1]
         slide = SlideNow(number=number, started_ms=started)
-    tally.note_slide(state, slide)
+    plan = next((s for s in req.plan.slides if slide and s.slide_number == slide.number), None)
+    tally.note_slide(state, slide, plan.target_ms if plan else None)
     return slide
 
 

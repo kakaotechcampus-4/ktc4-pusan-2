@@ -10,8 +10,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from .candidates import Candidate
 from .config import CoachConfig
 from .events import EventSink
@@ -31,7 +29,7 @@ def observe(tick: Tick, sink: EventSink) -> None:
         seen.add(key)
         episode = st.episodes.get(key)
         if episode is not None and tick.t - episode.last_seen_ms > gap:
-            close(st, key, tick.t, "RESOLVED", sink, tick.cfg)
+            close(st, key, tick.t, sink, tick.cfg)
             episode = None
         if episode is None:
             episode = EpisodeState(
@@ -56,11 +54,10 @@ def observe(tick: Tick, sink: EventSink) -> None:
             episode.reliable_since_ms = None
         if det.severity > episode.peak_severity:
             episode.peak_severity = round(det.severity, 4)
-            episode.peak_evidence = dict(det.evidence)
 
     for key in list(st.episodes):
         if key not in seen and tick.t - st.episodes[key].last_seen_ms > gap:
-            close(st, key, tick.t, "RESOLVED", sink, tick.cfg)
+            close(st, key, tick.t, sink, tick.cfg)
 
 
 def note_candidates(tick: Tick, candidates: list[Candidate]) -> None:
@@ -89,7 +86,6 @@ def close(
     st: CoachState,
     key: str,
     t_ms: int,
-    closed_by: Literal["RESOLVED", "TAKE_END"],
     sink: EventSink,
     cfg: CoachConfig,
 ) -> None:
@@ -101,7 +97,6 @@ def close(
     sink.emit(
         EpisodeEvent,
         t_ms=t_ms,
-        candidate_id=episode.candidate_id,
         issue_type=episode.issue_type,
         area=episode.area,
         slide_number=episode.slide_number,
@@ -110,8 +105,6 @@ def close(
         peak_severity=episode.peak_severity,
         intervention_ids=list(episode.intervention_ids),
         suppressed_reasons=list(episode.suppressed_reasons),
-        closed_by=closed_by,
-        peak_evidence=dict(episode.peak_evidence),
         reliable_ms=episode.reliable_ms,
         unreliable_ms=episode.unreliable_ms,
         mean_severity=round(episode.severity_ms / seen, 4)

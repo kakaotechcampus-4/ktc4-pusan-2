@@ -37,11 +37,9 @@
       "t_ms": 92000,
       "kind": "INTERVENTION",
       "intervention_id": "iv-92000",
-      "candidate_id": "GAZE_ON_SCRIPT-88000",
       "issue_type": "GAZE_ON_SCRIPT",
       "area": "GAZE",
       "instruction": "LOOK_AT_CAMERA",
-      "variant": "default",
       "message": "대본보다 청중을 조금 더 바라보세요",
       "priority": 100,
       "confidence": 1.0,
@@ -52,16 +50,7 @@
         "PLAN_FOCUS",
         "WORSENING"
       ],
-      "slide_number": 3,
-      "evidence": {
-        "start_ms": 88000,
-        "end_ms": 92000,
-        "slide_number": 3,
-        "script_ratio": 0.8,
-        "script_run_ms": 1000,
-        "uncertain_ratio": 0.0,
-        "window_ms": 10000
-      }
+      "slide_number": 3
     }
   ],
   "coach_state": {
@@ -732,12 +721,6 @@
         "start_ms": 60000,
         "last_seen_ms": 92000,
         "peak_severity": 1.0,
-        "peak_evidence": {
-          "projected_end_ms": 105000,
-          "early_limit_ms": 270000,
-          "target_ms": 300000,
-          "projected_end_ratio": 0.3889
-        },
         "intervention_ids": [
           "iv-73000"
         ],
@@ -761,12 +744,6 @@
         "start_ms": 88000,
         "last_seen_ms": 92000,
         "peak_severity": 0.7,
-        "peak_evidence": {
-          "script_ratio": 0.8,
-          "script_run_ms": 1000,
-          "uncertain_ratio": 0.0,
-          "window_ms": 10000
-        },
         "intervention_ids": [
           "iv-92000"
         ],
@@ -793,11 +770,8 @@
     "pending": [
       {
         "intervention_id": "iv-92000",
-        "candidate_id": "GAZE_ON_SCRIPT-88000",
         "issue_type": "GAZE_ON_SCRIPT",
         "area": "GAZE",
-        "instruction": "LOOK_AT_CAMERA",
-        "variant": "default",
         "step": 0,
         "strategy_key": "GAZE:3",
         "slide_number": 3,
@@ -1086,25 +1060,55 @@
         92000
       ]
     ],
-    "slide_acc": {
-      "slide_number": 3,
-      "start_ms": 60000,
-      "target_ms": 90000,
-      "script_chars": 450,
-      "total_ms": 33000,
-      "gaze_valid_ms": 33000,
-      "gaze_script_ms": 8355.5,
-      "gaze_unusable_ms": 0,
-      "speech_ok_ms": 33000,
-      "cpm_ms": 33000,
-      "cpm_weighted": 9900000.0,
-      "filler_count": 1,
-      "audio_live_ms": 33000,
-      "speaking_ms": 32000,
-      "db_ms": 32000,
-      "db_weighted": 0.0,
-      "long_silence_ms": 0
-    }
+    "visits": [
+      {
+        "slide_number": 3,
+        "start_ms": 59390,
+        "target_ms": 90000,
+        "tally": {
+          "TIME": {
+            "elapsed_ms": 32610.0,
+            "planned_ms": 32610.0
+          },
+          "GAZE": {
+            "camera_ms": 21000.0,
+            "total_ms": 32000.0,
+            "measured_ms": 32000.0,
+            "speaking_ms": 32000.0,
+            "script_ms": 11000.0,
+            "reading_ms": 11000.0,
+            "reading_runs": 1.0
+          },
+          "SPEED": {
+            "ok_ms": 32000.0,
+            "total_ms": 32000.0,
+            "chars": 114.0,
+            "speak_ms": 23150.0
+          },
+          "VOLUME": {
+            "voiced_ms": 23860.0,
+            "voiced_energy": 26.771360319644835,
+            "low_ms": 0.0,
+            "level_voiced_ms": 23860.0,
+            "base_db_ms": -703870.0,
+            "audio_live_ms": 32000.0,
+            "total_ms": 32000.0
+          },
+          "PAUSE": {
+            "long_silence_count": 0.0,
+            "audio_live_ms": 32000.0,
+            "total_ms": 32000.0
+          },
+          "FILLER": {
+            "elapsed_ms": 32000.0,
+            "total_ms": 32000.0,
+            "filler_count": 1.0,
+            "filler_t1": 1.0,
+            "filler_word:음": 1.0
+          }
+        }
+      }
+    ]
   },
   "meta": {
     "schema_version": "1.0",

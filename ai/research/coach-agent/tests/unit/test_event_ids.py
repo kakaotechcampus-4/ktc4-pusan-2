@@ -93,13 +93,11 @@ def test_same_shaped_ids_in_one_response_get_a_suffix():
         "change": "ESCALATED",
         "from_instruction": "REDUCE_FILLER",
         "from_variant": "default",
-        "failures": 1,
     }
     a = sink.emit(StrategyEvent, **strategy, intervention_id="iv-10000")
     b = sink.emit(StrategyEvent, **strategy, intervention_id="iv-30000")
     suppressed = {
         "t_ms": 38_000,
-        "candidate_id": "c",
         "issue_type": "IMPROVED_AFTER_FEEDBACK",
         "instruction": "CONTINUE",
         "status": "WAITING",

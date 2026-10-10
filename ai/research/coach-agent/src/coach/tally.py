@@ -8,19 +8,29 @@
 from __future__ import annotations
 
 from .schemas import JudgmentResult, SlideNow
-from .state import CoachState
+from .state import CoachState, SlideVisit
 
 #: 남겨 둘 최근 장 전환 수
 SLIDE_LOG_KEEP = 10
 TICK_MS = 1_000
 
 
-def note_slide(state: CoachState, slide: SlideNow | None) -> None:
-    """지금 장이 마지막 기록과 다르면 전환을 남긴다."""
+def note_slide(state: CoachState, slide: SlideNow | None, target_ms: int | None = None) -> None:
+    """지금 장이 마지막 기록과 다르면 전환을 남기고, 앞 방문을 끝내고 새 방문을 연다.
+
+    target_ms 는 대본 분석이 준 새 장의 목표 시간(계획에 없으면 null)이다.
+    """
     if slide is None:
         return
     if state.slide_log and state.slide_log[-1][0] == slide.number:
         return
+    if state.visits and state.visits[-1].end_ms is None:
+        # 앞 방문은 새 장이 시작된 시각에 끝난다
+        last = state.visits[-1]
+        last.end_ms = max(last.start_ms, slide.started_ms)
+    state.visits.append(
+        SlideVisit(slide_number=slide.number, start_ms=slide.started_ms, target_ms=target_ms)
+    )
     if state.slide_log:
         # 앞 장은 새 장이 시작된 시각에 끝난다
         span = state.slide_spans.get(str(state.slide_log[-1][0]))
@@ -59,11 +69,28 @@ def time_pieces(state: CoachState, since_ms: int, t_ms: int) -> list[tuple[int, 
     return pieces
 
 
-def add(state: CoachState, area: str, values: dict[str, float], slide: int | None) -> None:
-    """Take 합계에 더하고, 장을 알면 그 장 합계에도 더한다."""
+def visit_at(state: CoachState, t_ms: int) -> SlideVisit | None:
+    """t_ms 가 속한 방문(시작 ≤ t_ms < 끝, 지금 방문이면 끝 없음). 어느 방문에도 안 들면 None.
+
+    SLIDE 의 합계는 그 장이 보이던 동안의 몫만이다. 첫 장 시작보다 이른 몫(장 정보가 늦게 온
+    경우)은 장 번호별 합계에서는 첫 장에 들지만(slide_at) 방문에는 넣지 않는다.
+    """
+    for visit in reversed(state.visits):
+        if visit.start_ms <= t_ms and (visit.end_ms is None or t_ms < visit.end_ms):
+            return visit
+    return None
+
+
+def add(
+    state: CoachState, area: str, values: dict[str, float], slide: int | None, t_ms: int
+) -> None:
+    """Take 합계에 더하고, 장을 알면 그 장 합계와 t_ms 가 속한 방문에도 더한다."""
     targets = [state.totals.setdefault(area, {})]
     if slide is not None:
         targets.append(state.slide_totals.setdefault(str(slide), {}).setdefault(area, {}))
+        visit = visit_at(state, t_ms)
+        if visit is not None:
+            targets.append(visit.tally.setdefault(area, {}))
     for name, value in values.items():
         for target in targets:
             target[name] = target.get(name, 0) + value
@@ -81,7 +108,7 @@ def accumulate(state: CoachState, results: list[JudgmentResult], *, stt_trusted:
         area = result.area.value
         for piece in result.tally:
             slide = slide_at(state, piece.t_ms)
-            add(state, area, piece.values, slide)
+            add(state, area, piece.values, slide, piece.t_ms)
             if area == "TIME" and slide is not None and stt_trusted and piece.t_ms >= since_ok:
                 key = str(slide)
                 elapsed = int(piece.values.get("elapsed_ms", 0))
