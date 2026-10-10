@@ -1,0 +1,326 @@
+{
+  "scenarios": [
+    "01_baseline_good",
+    "02_gaze_effective",
+    "03_gaze_gave_up",
+    "04_gaze_sensor_unusable",
+    "05_time_behind",
+    "06_pace_fast",
+    "07_exam_mode",
+    "08_filler_frequent",
+    "09_long_silence",
+    "10_audio_dead",
+    "11_keyword_missing",
+    "12_no_slide_plan",
+    "13_recurring_resolved",
+    "14_recurring_persists",
+    "15_mixed_burdens",
+    "16_noisy_sensors"
+  ],
+  "seeds": 5,
+  "variants": {
+    "A 기준선(v1.0)": {
+      "review": {
+        "exclude_unreliable": false,
+        "lag_compensation": false,
+        "merge_gap_ms": 0
+      }
+    },
+    "B +신뢰도 필터": {
+      "review": {
+        "exclude_unreliable": true,
+        "lag_compensation": false,
+        "merge_gap_ms": 0
+      }
+    },
+    "C +구간 병합": {
+      "review": {
+        "exclude_unreliable": true,
+        "lag_compensation": false,
+        "merge_gap_ms": 10000
+      }
+    },
+    "D +지연 보정": {
+      "review": {
+        "exclude_unreliable": true,
+        "lag_compensation": true,
+        "merge_gap_ms": 10000
+      }
+    }
+  },
+  "config_hash": "dbe162df2a38",
+  "policy_version": "coach-v1.1",
+  "inputs": "raw",
+  "results": {
+    "clean": {
+      "A 기준선(v1.0)": {
+        "segment_recall": 1.0,
+        "segment_precision": 0.6667,
+        "segment_f1": 0.8,
+        "unsupported_claims_per_take": 0.375,
+        "segment_iou": 0.5903,
+        "onset_error_s": 7.25,
+        "fragments_per_problem": 1.0,
+        "slide_mae": {
+          "cpm": 1.6183,
+          "duration_ms": 0.4313,
+          "script_ratio": 0.0328
+        },
+        "mission_accuracy": 1.0,
+        "type_status_accuracy": 0.9375,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.75,
+        "next_mission_agreement": 0.75,
+        "false_strengths_per_take": 0.125,
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0
+      },
+      "B +신뢰도 필터": {
+        "segment_recall": 1.0,
+        "segment_precision": 1.0,
+        "segment_f1": 1.0,
+        "unsupported_claims_per_take": 0.0,
+        "segment_iou": 0.5903,
+        "onset_error_s": 7.25,
+        "fragments_per_problem": 1.0,
+        "slide_mae": {
+          "cpm": 1.6183,
+          "duration_ms": 0.4313,
+          "script_ratio": 0.0328
+        },
+        "mission_accuracy": 1.0,
+        "type_status_accuracy": 0.9821,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.9375,
+        "next_mission_agreement": 0.9375,
+        "false_strengths_per_take": 0.125,
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0
+      },
+      "C +구간 병합": {
+        "segment_recall": 1.0,
+        "segment_precision": 1.0,
+        "segment_f1": 1.0,
+        "unsupported_claims_per_take": 0.0,
+        "segment_iou": 0.5903,
+        "onset_error_s": 7.25,
+        "fragments_per_problem": 1.0,
+        "slide_mae": {
+          "cpm": 1.6183,
+          "duration_ms": 0.4313,
+          "script_ratio": 0.0328
+        },
+        "mission_accuracy": 1.0,
+        "type_status_accuracy": 0.9821,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.9375,
+        "next_mission_agreement": 0.9375,
+        "false_strengths_per_take": 0.125,
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0
+      },
+      "D +지연 보정": {
+        "segment_recall": 1.0,
+        "segment_precision": 1.0,
+        "segment_f1": 1.0,
+        "unsupported_claims_per_take": 0.0,
+        "segment_iou": 0.8696,
+        "onset_error_s": 1.58,
+        "fragments_per_problem": 1.0833,
+        "slide_mae": {
+          "cpm": 1.6183,
+          "duration_ms": 0.4313,
+          "script_ratio": 0.0328
+        },
+        "mission_accuracy": 1.0,
+        "type_status_accuracy": 1.0,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 1.0,
+        "next_mission_agreement": 1.0,
+        "false_strengths_per_take": 0.0,
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0
+      }
+    },
+    "noisy": {
+      "A 기준선(v1.0)": {
+        "segment_recall": 0.9344,
+        "segment_precision": 0.6226,
+        "segment_f1": 0.7473,
+        "unsupported_claims_per_take": 0.5,
+        "segment_iou": 0.5755,
+        "onset_error_s": 8.49,
+        "fragments_per_problem": 1.1579,
+        "slide_mae": {
+          "cpm": 3.686,
+          "duration_ms": 0.5233,
+          "script_ratio": 0.0647
+        },
+        "mission_accuracy": 1.0,
+        "type_status_accuracy": 0.9375,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.7125,
+        "next_mission_agreement": 0.7125,
+        "false_strengths_per_take": 0.125,
+        "outcome_accuracy": 0.9796,
+        "false_intervention_rate": 0.0213
+      },
+      "B +신뢰도 필터": {
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9296,
+        "segment_f1": 0.932,
+        "unsupported_claims_per_take": 0.0625,
+        "segment_iou": 0.5755,
+        "onset_error_s": 8.49,
+        "fragments_per_problem": 1.1579,
+        "slide_mae": {
+          "cpm": 3.686,
+          "duration_ms": 0.5233,
+          "script_ratio": 0.0647
+        },
+        "mission_accuracy": 1.0,
+        "type_status_accuracy": 0.9804,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.9,
+        "next_mission_agreement": 0.9,
+        "false_strengths_per_take": 0.125,
+        "outcome_accuracy": 0.9796,
+        "false_intervention_rate": 0.0213
+      },
+      "C +구간 병합": {
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9194,
+        "segment_f1": 0.9268,
+        "unsupported_claims_per_take": 0.0625,
+        "segment_iou": 0.5945,
+        "onset_error_s": 8.49,
+        "fragments_per_problem": 1.0,
+        "slide_mae": {
+          "cpm": 3.686,
+          "duration_ms": 0.5233,
+          "script_ratio": 0.0647
+        },
+        "mission_accuracy": 1.0,
+        "type_status_accuracy": 0.9804,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.9,
+        "next_mission_agreement": 0.9,
+        "false_strengths_per_take": 0.125,
+        "outcome_accuracy": 0.9796,
+        "false_intervention_rate": 0.0213
+      },
+      "D +지연 보정": {
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9839,
+        "segment_f1": 0.9585,
+        "unsupported_claims_per_take": 0.0125,
+        "segment_iou": 0.831,
+        "onset_error_s": 2.54,
+        "fragments_per_problem": 1.1579,
+        "slide_mae": {
+          "cpm": 3.686,
+          "duration_ms": 0.5233,
+          "script_ratio": 0.0647
+        },
+        "mission_accuracy": 1.0,
+        "type_status_accuracy": 0.9893,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.9125,
+        "next_mission_agreement": 0.9125,
+        "false_strengths_per_take": 0.0625,
+        "outcome_accuracy": 0.9796,
+        "false_intervention_rate": 0.0213
+      }
+    },
+    "harsh": {
+      "A 기준선(v1.0)": {
+        "segment_recall": 0.9516,
+        "segment_precision": 0.5868,
+        "segment_f1": 0.7259,
+        "unsupported_claims_per_take": 0.625,
+        "segment_iou": 0.5026,
+        "onset_error_s": 9.49,
+        "fragments_per_problem": 1.2034,
+        "slide_mae": {
+          "cpm": 6.4077,
+          "duration_ms": 0.5326,
+          "script_ratio": 0.1026
+        },
+        "mission_accuracy": 0.8667,
+        "type_status_accuracy": 0.9339,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.7,
+        "next_mission_agreement": 0.7,
+        "false_strengths_per_take": 0.125,
+        "outcome_accuracy": 0.9362,
+        "false_intervention_rate": 0.0417
+      },
+      "B +신뢰도 필터": {
+        "segment_recall": 0.9516,
+        "segment_precision": 0.8659,
+        "segment_f1": 0.9067,
+        "unsupported_claims_per_take": 0.1375,
+        "segment_iou": 0.5026,
+        "onset_error_s": 9.49,
+        "fragments_per_problem": 1.2034,
+        "slide_mae": {
+          "cpm": 6.4077,
+          "duration_ms": 0.5326,
+          "script_ratio": 0.1026
+        },
+        "mission_accuracy": 0.8667,
+        "type_status_accuracy": 0.975,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.875,
+        "next_mission_agreement": 0.875,
+        "false_strengths_per_take": 0.125,
+        "outcome_accuracy": 0.9362,
+        "false_intervention_rate": 0.0417
+      },
+      "C +구간 병합": {
+        "segment_recall": 0.9516,
+        "segment_precision": 0.8514,
+        "segment_f1": 0.8987,
+        "unsupported_claims_per_take": 0.1375,
+        "segment_iou": 0.5186,
+        "onset_error_s": 9.49,
+        "fragments_per_problem": 1.0678,
+        "slide_mae": {
+          "cpm": 6.4077,
+          "duration_ms": 0.5326,
+          "script_ratio": 0.1026
+        },
+        "mission_accuracy": 0.8667,
+        "type_status_accuracy": 0.975,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.875,
+        "next_mission_agreement": 0.875,
+        "false_strengths_per_take": 0.125,
+        "outcome_accuracy": 0.9362,
+        "false_intervention_rate": 0.0417
+      },
+      "D +지연 보정": {
+        "segment_recall": 0.9516,
+        "segment_precision": 0.8732,
+        "segment_f1": 0.9107,
+        "unsupported_claims_per_take": 0.1125,
+        "segment_iou": 0.8025,
+        "onset_error_s": 2.88,
+        "fragments_per_problem": 1.1356,
+        "slide_mae": {
+          "cpm": 6.4077,
+          "duration_ms": 0.5326,
+          "script_ratio": 0.1026
+        },
+        "mission_accuracy": 0.8667,
+        "type_status_accuracy": 0.9768,
+        "memory_accuracy": 1.0,
+        "top_issue_type_agreement": 0.9125,
+        "next_mission_agreement": 0.9125,
+        "false_strengths_per_take": 0.05,
+        "outcome_accuracy": 0.9362,
+        "false_intervention_rate": 0.0417
+      }
+    }
+  }
+}

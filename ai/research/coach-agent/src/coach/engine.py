@@ -302,7 +302,6 @@ def _log_suppressed(tick: Tick, cands: list[Candidate], sink: EventSink) -> None
 
 def _append_history(tick: Tick) -> None:
     st = tick.state
-    voice = tick.req.current.voice
     sample = HistorySample(
         t_ms=tick.t,
         slide_number=tick.slide_number,
@@ -310,7 +309,7 @@ def _append_history(tick: Tick) -> None:
         gaze_uncertain=tick.metrics.get("gaze_uncertain_ratio"),
         cpm=tick.metrics.get("cpm"),
         cpm_recent=tick.metrics.get("cpm_recent"),
-        relative_db=voice.relative_db if voice is not None and tick.speaking else None,
+        relative_db=tick.relative_db,
         speaking=tick.speaking,
         filler_new=tick.filler_new,
         required_ratio=tick.metrics.get("required_ratio"),
@@ -337,6 +336,8 @@ def _indicators(tick: Tick) -> Indicators:
         gaze = GazeLevel.UNKNOWN
     elif (m.get("gaze_uncertain_smoothed") or 0.0) > cfg.gaze.max_uncertain_ratio:
         gaze = GazeLevel.UNCERTAIN
+    elif m.get("gaze_window_short"):
+        gaze = GazeLevel.UNKNOWN
     elif (m.get("script_ratio") or 0.0) >= cfg.gaze.indicator_script_ratio:
         gaze = GazeLevel.SCRIPT
     else:

@@ -43,6 +43,9 @@ _SENTENCE_GAP_MS = 600
 _FINAL_LAG_MS = 1_200  # Deepgram 확정 결과가 늦게 오는 만큼
 _FILLER_MS = 350
 _GAZE_WINDOW_MS = 10_000
+#: 원자료 모드에서 가상 발표자의 평소 목소리 레벨 (A 가중 dBFS).
+#: 코치는 이 값을 모르고 첫 발화로 잡는다
+_VOICE_LEVEL_DBFS = -24.0
 _PHI = 0.6180339887498949  # 저불일치 수열 — 잡음 없이도 라벨이 비율대로 고르게 섞인다
 _PSI = 0.7548776662466927
 
@@ -194,8 +197,17 @@ class _ActiveReaction:
 class Presenter:
     """시나리오대로 말하고, 코치의 말에 반응하는 가상 발표자."""
 
-    def __init__(self, sc: Scenario, noise: Noise | None = None, seed: int | None = None) -> None:
+    def __init__(
+        self,
+        sc: Scenario,
+        noise: Noise | None = None,
+        seed: int | None = None,
+        raw: bool = False,
+    ) -> None:
         self.sc = sc
+        #: True 면 FE · BE 의 요약 대신 원자료를 보낸다: 시선 1초 기록, 음량 레벨(dBFS, 기준 없이),
+        #: 군더더기 표시가 없는 단어. 발표 자체는 똑같다
+        self.raw = raw
         self.noise = noise or sc.noise
         self.rng = random.Random(sc.seed if seed is None else seed)
         self.base = Params.model_validate(sc.baseline)
@@ -214,6 +226,9 @@ class Presenter:
         self.pending_advance: list[int] = []
         self.pending_utterances = sorted(sc.utterances, key=lambda u: u.at_ms)
         self.labels: deque[str] = deque(maxlen=max(1, _GAZE_WINDOW_MS // sc.tick_ms))
+        #: 원자료 모드의 시선 1초 기록 (최근 창만)
+        window = max(1, _GAZE_WINDOW_MS // sc.tick_ms)
+        self.gaze_records: deque[dict[str, Any]] = deque(maxlen=window)
         self.label_k = 0
         #: 정답 기록
         self.truth: list[dict[str, Any]] = []
@@ -367,7 +382,15 @@ class Presenter:
         mid_word = p.audio_live and p.speaking and self.finished_at is None and self.cursor <= t
         silence = 0 if mid_word else max(0, t - last_end)
 
-        self.labels.append(self._gaze_label(p))
+        label = self._gaze_label(p)
+        self.labels.append(label)
+        if t >= self.sc.tick_ms:
+            # 이 틱의 라벨은 지난 1초(t − tick ~ t)의 판정이다.
+            # Take 시작 순간(t = 0)에는 지난 1초가 없다
+            self.gaze_records.append(
+                {"t_ms": t - self.sc.tick_ms, "duration_ms": self.sc.tick_ms, "state": label}
+            )
+        # 두 모드는 같은 라벨 열에서 만든다. 요약 모드는 v1 결과와 같게 t = 0 라벨까지 표본으로 센다
         n = len(self.labels)
         ratios = {
             k: round(sum(1 for x in self.labels if x == k) / n, 4)
@@ -380,6 +403,8 @@ class Presenter:
                 break
             streak += 1
 
+        # 원자료 모드의 음량 레벨은 지난 1초의 발화 레벨이다 — Take 시작 순간에는 지난 1초가 없다
+        voiced = silence < 300 and t >= self.sc.tick_ms
         db = p.relative_db
         if self.noise.db_sigma:
             db += self.rng.gauss(0.0, self.noise.db_sigma)
@@ -414,14 +439,22 @@ class Presenter:
                     "slide_number": self.slide_number,
                     "slide_elapsed_ms": t - self.slide_start_ms,
                 },
-                "gaze": {
-                    "window_ms": _GAZE_WINDOW_MS,
-                    "ratios": ratios,
-                    "current_label": current,
-                    "current_label_ms": streak * self.sc.tick_ms,
-                },
+                "gaze": (
+                    {"window_ms": _GAZE_WINDOW_MS, "records": list(self.gaze_records)}
+                    if self.raw
+                    else {
+                        "window_ms": _GAZE_WINDOW_MS,
+                        "ratios": ratios,
+                        "current_label": current,
+                        "current_label_ms": streak * self.sc.tick_ms,
+                    }
+                ),
                 "voice": {
-                    "relative_db": round(db, 2) if silence < 300 else None,
+                    **(
+                        {"level_db": round(_VOICE_LEVEL_DBFS + db, 2) if voiced else None}
+                        if self.raw
+                        else {"relative_db": round(db, 2) if silence < 300 else None}
+                    ),
                     "silence_ms": silence,
                     "audio_live": p.audio_live,
                 },
@@ -434,7 +467,8 @@ class Presenter:
                             "start_ms": w.start_ms,
                             "end_ms": w.end_ms,
                             "final": w.final_at_ms <= t,
-                            "filler": w.filler,
+                            # 원자료 모드: BE 처럼 군더더기 표시 없이 보낸다 (코치가 단어로 판단)
+                            **({} if self.raw else {"filler": w.filler}),
                         }
                         for w in window
                     ],
@@ -494,9 +528,10 @@ def run(
     *,
     noise: Noise | None = None,
     seed: int | None = None,
+    raw: bool = False,
 ) -> RunResult:
     cfg = config if config is not None else scenario_config(sc)
-    presenter = Presenter(sc, noise, seed)
+    presenter = Presenter(sc, noise, seed, raw)
     result = RunResult(
         scenario=sc,
         noise=presenter.noise,

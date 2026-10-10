@@ -8,9 +8,24 @@ end - start 의 합, 침묵 제외) × 60초. 군더더기는 글자 수와 말�
 
 from __future__ import annotations
 
+import re
+
 from ..schemas import Word
 from ..vocab import Issue
 from .base import Detection, Tick, nonspace_len, ramp
+
+#: 단어 하나가 소리뿐인 간투사인가: 음 · 어 · 으 · 엄 · 흠 · 아 · 에, 길게 끈 것 · 으음,
+#: 뒤에 붙은 문장부호. BE fillers.py 의 T1(항상 군더더기)과 같은 소리다.
+#: 늘 군더더기인 소리만 센다. '그' · '이제'처럼 뜻이 있을 수 있는 말은 문맥이 필요해
+#: BE 표시에 맡긴다
+_FILLER_SOUND = re.compile(r"(?:음+|어+|으+음*|엄+|흠+|아+|에+)[.,?!~…]*")
+
+
+def is_filler(word: Word) -> bool:
+    """BE 가 표시했으면 그대로, 없으면 소리뿐인 간투사인지로 판단한다."""
+    if word.filler is not None:
+        return word.filler
+    return _FILLER_SOUND.fullmatch(word.w.strip()) is not None
 
 
 def ingest(tick: Tick) -> None:
@@ -27,7 +42,7 @@ def ingest(tick: Tick) -> None:
         st.last_final_end_ms = max(st.last_final_end_ms, word.end_ms)
         if not tick.stt_ok or _before_recovery(tick, word):
             continue  # STT 를 믿을 수 없던 때의 단어는 진행도 · 군더더기 · 키워드에 넣지 않는다
-        if word.filler:
+        if is_filler(word):
             tick.filler_new += 1
             continue
         text = "".join(word.w.split())
@@ -74,7 +89,7 @@ def _track_keywords(tick: Tick, slide: int, text: str) -> None:
 def compute_cpm(words: list[Word], t: int, window_ms: int) -> tuple[float | None, int, int]:
     """(cpm, 말한 ms, 단어 수). 창 안의 군더더기 아닌 단어만 센다."""
     lo = t - window_ms
-    chosen = [w for w in words if not w.filler and w.start_ms >= lo and w.end_ms <= t]
+    chosen = [w for w in words if not is_filler(w) and w.start_ms >= lo and w.end_ms <= t]
     chars = sum(nonspace_len(w.w) for w in chosen)
     speak_ms = sum(max(0, w.end_ms - w.start_ms) for w in chosen)
     if speak_ms <= 0:

@@ -288,15 +288,16 @@ def evaluate(
     noises: list[str],
     seeds: int,
     variants: dict[str, dict[str, Any]],
+    raw: bool = False,
 ) -> dict[str, dict[str, Score]]:
-    """{noise: {variant: Score}}"""
+    """{noise: {variant: Score}}. raw 면 FE · BE 요약 대신 원자료 입력으로 재생한다"""
     out: dict[str, dict[str, Score]] = {n: {v: Score() for v in variants} for n in noises}
     for noise_name in noises:
         noise = NOISE_PRESETS[noise_name]
         seed_list = [0] if noise_name == "clean" else list(range(1, seeds + 1))
         for sc in scenarios:
             for seed in seed_list:
-                result = run(sc, noise=noise, seed=seed)
+                result = run(sc, noise=noise, seed=seed, raw=raw)
                 truth = Truth.of(result)
                 for vname, override in variants.items():
                     cfg = scenario_config(sc, override)
@@ -376,7 +377,7 @@ def _print_grid(title: str, res: dict[str, Score]) -> dict[str, Any]:
     return out
 
 
-def sweep(scenarios: list[Scenario], seeds: int) -> dict[str, Any]:
+def sweep(scenarios: list[Scenario], seeds: int, raw: bool = False) -> dict[str, Any]:
     """리뷰 근거 규칙 격자. 실시간 판단은 그대로라 발표는 한 번만 재생한다."""
     base = {"exclude_unreliable": True, "lag_compensation": True}
     lag_grid = {
@@ -397,7 +398,7 @@ def sweep(scenarios: list[Scenario], seeds: int) -> dict[str, Any]:
     }
     out: dict[str, Any] = {}
     for noise in ("noisy", "harsh"):
-        res = evaluate(scenarios, [noise], seeds, {**lag_grid, **min_grid})[noise]
+        res = evaluate(scenarios, [noise], seeds, {**lag_grid, **min_grid}, raw)[noise]
         out[f"{noise}/lag"] = _print_grid(
             f"격자 — 병합 간격 × 지연 보정 ({noise}, seed {seeds})",
             {k: v for k, v in res.items() if k in lag_grid},
@@ -423,6 +424,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sweep", action="store_true", help="리뷰 근거 규칙 격자 (noisy · harsh)")
     parser.add_argument("--out", default=str(OUTPUTS_DIR / "evaluation.json"))
     parser.add_argument("--explain", default=None, help="이 변형의 틀린 사례를 출력 (예: D)")
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="FE · BE 요약 대신 원자료(시선 1초 기록 · 음량 dBFS · 표시 없는 단어)로 재생",
+    )
     args = parser.parse_args(argv)
 
     paths = [Path(p) for p in args.scenarios] or sorted(SCENARIOS_DIR.glob("*.json"))
@@ -434,8 +440,9 @@ def main(argv: list[str] | None = None) -> int:
         "variants": VARIANTS,
         "config_hash": load_config().config_hash(),
         "policy_version": POLICY_VERSION,
+        "inputs": "raw" if args.raw else "summary",
     }
-    results = evaluate(scenarios, noises, args.seeds, VARIANTS)
+    results = evaluate(scenarios, noises, args.seeds, VARIANTS, args.raw)
     report["results"] = print_table(results)
     if args.explain:
         for noise, by_variant in results.items():
@@ -445,7 +452,7 @@ def main(argv: list[str] | None = None) -> int:
                     for note in score.notes:
                         print(f"   {note}")
     if args.sweep:
-        report["sweep"] = sweep(scenarios, args.seeds)
+        report["sweep"] = sweep(scenarios, args.seeds, args.raw)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

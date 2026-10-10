@@ -6,7 +6,7 @@
 ## 배포 구성
 
 ```
-FE ── 시선 · 음량 · 슬라이드 요약 ──▶ BE ── POST /coach/evaluate (1초마다) ──▶ AI 서버 (상태 없음)
+FE ── 시선 기록 · 음량 · 슬라이드 ──▶ BE ── POST /coach/evaluate (1초마다) ──▶ AI 서버 (상태 없음)
                                      │       지금 측정값 + plan · missions · memory + 지난 coach_state
 FE ◀── feedback · indicators ─────── BE ◀── action · feedback · indicators · events · coach_state
                                      │
@@ -76,7 +76,8 @@ Take 종료: BE ── POST /coach/finalize ──▶ AI   남은 문제 구간 
   - `coach_state` → Take 동안 보관했다가 다음 요청에 그대로 붙이기. Take마다 한 개씩 있는 `TakeStream`이 들고 있기 좋습니다. 내용은 몰라도 됩니다
 - [ ] **Take 종료**: `/coach/finalize`의 events까지 쌓은 뒤, 종료 분석 요청에 코치 이벤트 전체와 이 Take의 plan · missions · memory를 넣습니다.
 - [ ] **요청 만들기**
-  - STT 단어: 최근 15초, 단어마다 `final`(확정 여부) · `filler`(군더더기 목록에 있는 말인가) 표시. 문장 끝 신호 `utterance_end_ms`
+  - 시선: FE가 보낸 1초 기록을 Take마다 최근 10초만 들고 있다가 `gaze.records`에 넣습니다. 가공하지 않고 그대로 넣으면 됩니다
+  - STT 단어: 최근 15초. `w` ← Deepgram `word`, `final` ← 그 transcript 의 `is_final`. `filler` 표시는 선택이다 — 없으면 코치가 소리뿐인 간투사(음 · 어 …)만 센다. '그' · '이제' 같은 말까지 세려면 BE 가 문맥으로 판단해 `filler: true`를 붙인다. 문장 끝 신호 `utterance_end_ms`(마지막 `speech_final`의 `end_ms`)
   - 계획: 대본 분석의 장별 목표 시간 · 글자 수 · 필수 키워드, 전체 허용 범위(`min_ms` · `max_ms`)
   - 미션 · 기억: 직전 리뷰의 다음 미션과 '아직 남은 문제'
 - [ ] **저장 공간**
@@ -85,7 +86,11 @@ Take 종료: BE ── POST /coach/finalize ──▶ AI   남은 문제 구간 
 
 ### FE (제안)
 
-- [ ] 1초 요약을 BE로 보냅니다: 시선 최근 창 비율(`gaze.ratios`, UNCERTAIN 포함 합 1) · 지금 라벨과 이어진 시간, 음량(`voice.relative_db` · `silence_ms` · `audio_live`), 슬라이드 번호 · 체류 시간.
+- [ ] 1초마다 BE로 보냅니다.
+  - 시선: FE가 이미 만드는 1초 판정(`ZoneDecision`)을 `{t_ms, duration_ms, state}`로. `state` = `zone`, `t_ms` = `tMs` − 1000 (Take 시작 기준 ms로 바꾼 값). `tMs`는 지난 1초의 프레임을 모아 낸 판정 시각이라 그 판정이 덮는 시간은 앞 1초입니다. 사후 구간을 만드는 `gazeSegments`는 `tMs`를 구간 시작으로 쓰니 그 값을 그대로 넣지 않습니다. `tMs`는 1초 격자에 맞춰 올라가므로 이렇게 바꾼 기록은 빈틈없이 이어집니다. 3구역(CAMERA · BOTTOM · UNCERTAIN) 그대로 보내도 되고, 6상태(SCREEN · OTHER · UNMEASURED)를 보내도 코치가 받습니다. 최근 창 비율을 FE가 계산할 필요는 없습니다
+  - 음량: 지난 1초 동안 말한 소리의 레벨 `level_db`(A 가중 dBFS. 말하지 않았으면 null) · `silence_ms` · `audio_live`. 평소 목소리 캘리브레이션이 있으면 `baseline_db`도 보내고, 없으면 코치가 첫 발화로 기준을 잡는다.
+    `useMicLevel`에는 이 값이 아직 없어 1초 집계를 더해야 합니다 — `db`는 순간 레벨(Fast 가중)이고 `speechLeqDb`는 Take 처음부터 말한 구간 전체의 평균입니다. `speechLeqDb` · `speechMs`를 1초마다 읽어 두면 지난 1초의 발화 레벨은 10·log10((E₁ − E₀) / (ms₁ − ms₀)), E = 10^(Leq/10) × ms 로 구할 수 있습니다 (ms₁ = ms₀ 이면 null)
+  - 슬라이드 번호 · 체류 시간
 - [ ] `feedback.message`를 화면에 띄웁니다. 한 번에 하나만 옵니다. `indicators`(시간 진행 · 속도 · 시선 · 음량 상태)는 띄울지 FE가 정합니다.
 
 ## 비용과 시간
@@ -99,10 +104,8 @@ Take 종료: BE ── POST /coach/finalize ──▶ AI   남은 문제 구간 
 
 ## 결정해야 할 것
 
-- **시선 입력 형식**: 코치는 지금 FE가 만든 최근 창 요약(`gaze.ratios` · `current_label` · `current_label_ms`)을 받습니다.
-  시선 1초 기록 계약(#105)이 merge되면, 그 기록으로 누가 이 요약을 만들지와 `UNMEASURED` · `SCREEN` · `OTHER`를 코치가 어떻게 볼지를 정합니다.
-  그 전까지 코치 입력 형식은 바꾸지 않습니다.
-- **음량 `relative_db`의 기준**: 코치는 캘리브레이션(평소 목소리) 대비 dB를 기대합니다. FE가 지금 재는 값과의 대응을 FE와 정합니다.
+- **시선 1초 기록을 FE → BE로 보내는 메시지**: 지금 FE는 시선을 종료 때 구간 요약으로만 보냅니다. 1초마다 보낼 WS 메시지 이름과 묶음 단위(1초마다 하나 · 몇 초씩 묶어서)를 FE · BE가 정합니다. 코치는 `gaze.records`에 최근 10초가 들어오기만 하면 됩니다.
+- **평소 목소리 캘리브레이션을 둘지**: 없어도 코치가 첫 발화 15초로 기준을 잡습니다. 다만 처음부터 작게 말하면 기준도 낮게 잡혀 '작음'을 놓치므로, 발표 전 점검 화면에서 평소 목소리를 재 `baseline_db`로 보내면 더 정확합니다. BE `calibrations.base_volume`(지금은 '조용한 환경의 기준 음량')을 이 값으로 쓸지 FE · BE와 정합니다.
 - `coach_state` · 이벤트를 BE 어디에 둘지, `live_feedbacks`를 넓힐지
 - `indicators`를 FE에 띄울지와 모양
 - 기준값(대본 응시 70% · 350 CPM · −6dB 등): 실제 연습 데이터로 다시 고를 값입니다. 바꿔도 버전은 그대로이고 `config_hash`가 달라집니다.

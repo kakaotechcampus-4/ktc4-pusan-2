@@ -177,13 +177,16 @@ class CoachState(_S):
 
     #: 문제별 마지막 '참은 기록' 시각
     suppress_log: dict[str, int] = Field(default_factory=dict)
+    #: level_db 입력에서 코치가 잡은 평소 목소리 레벨(dBFS)과, 잡기 전까지 모은 말한 1초의 레벨
+    voice_baseline_db: float | None = None
+    voice_baseline_samples: list[float] = Field(default_factory=list)
     #: 지금 장의 누적. 필드 추가는 기본값이 있으면 STATE_VERSION 을 올리지 않는다 (이전 state 도
     #: 읽힌다)
     slide_acc: SlideAcc | None = None
 
 
 def initial_state(plan: CoachingPlan | None = None) -> CoachState:
-    """Take 의 첫 기억. v1.1 의 /coach/plan 은 LLM 이 만든 계획을 넣어 이걸 돌려준다."""
+    """Take 의 첫 기억. v1.2 의 /coach/plan 은 LLM 이 만든 계획을 넣어 이걸 돌려준다."""
     return CoachState(plan=plan or CoachingPlan())
 
 
