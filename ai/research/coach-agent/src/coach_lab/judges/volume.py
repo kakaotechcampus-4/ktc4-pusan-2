@@ -37,7 +37,7 @@ class Config(Section):
     long_silence_bad_ms: int = 15_000
     #: 이보다 조용한 시간이 짧으면 말하는 중으로 본다
     pause_silence_ms: int = 300
-    #: 리뷰가 되돌리는 지연 (`ReviewConfig.lag_ms`)
+    #: 옛 리뷰 근거 설정의 지연 값과 같다
     volume_lag_ms: int = 2_500
     silence_onset_lag_ms: int = 5_000
     silence_offset_lag_ms: int = 0

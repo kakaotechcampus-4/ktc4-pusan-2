@@ -145,54 +145,6 @@ class StrategyChange(StrEnum):
     GAVE_UP = "GAVE_UP"  # 방법을 다 써서 그 범위에서는 그만둠
 
 
-class SegmentHint(StrEnum):
-    """리뷰 에이전트에게 주는 구간 꼬리표. 문장은 리뷰가 쓴다."""
-
-    COACHED_EFFECTIVE = "COACHED_EFFECTIVE"
-    COACHED_INEFFECTIVE = "COACHED_INEFFECTIVE"
-    COACHED_NOT_MEASURED = "COACHED_NOT_MEASURED"
-    GAVE_UP = "GAVE_UP"
-    UNADDRESSED = "UNADDRESSED"
-    #: 센서를 믿을 수 없던 구간. 문제로 말하면 근거 없는 지적이 된다
-    UNRELIABLE = "UNRELIABLE"
-
-
-class MissionStatus(StrEnum):
-    """이전 Mission 판정. 리뷰의 previous_mission_result.status 와 같다."""
-
-    ACHIEVED = "ACHIEVED"
-    PARTIAL = "PARTIAL"
-    FAILED = "FAILED"
-    NOT_EVALUABLE = "NOT_EVALUABLE"
-
-
-class TypeStatus(StrEnum):
-    """영역별 이번 Take 상태. 리뷰 dimension 의 IMPROVED / PRIORITY / STABLE / STRENGTH 와 같다."""
-
-    PRIORITY = "PRIORITY"  # 다음에 먼저 고칠 것
-    IMPROVED = "IMPROVED"  # 이전 Take 의 문제가 사라졌거나 미션을 달성
-    STABLE = "STABLE"  # 작은 문제는 있지만 우선은 아님
-    STRENGTH = "STRENGTH"  # 문제가 없음
-    NOT_EVALUABLE = "NOT_EVALUABLE"  # 센서 · 데이터가 모자라 판단하지 않음
-
-
-class MemoryLabel(StrEnum):
-    """이전 Take 기억과 비교. 리뷰의 remaining_issues / improved / new_issues 와 이어진다."""
-
-    RECURRING = "RECURRING"  # 이전에도 있었고 이번에도 있음
-    RESOLVED = "RESOLVED"  # 이전에 있었는데 이번엔 없음
-    NEW = "NEW"  # 이번에 새로 생김
-    UNKNOWN = "UNKNOWN"  # 이번 데이터로는 판단할 수 없음
-
-
-class StrengthKind(StrEnum):
-    CLEAN = "CLEAN"  # 그 영역에 문제가 없었다
-    RESOLVED_RECURRING = "RESOLVED_RECURRING"  # 이전 Take 의 문제를 고쳤다
-    MISSION_ACHIEVED = "MISSION_ACHIEVED"
-    RESPONDED_TO_COACHING = "RESPONDED_TO_COACHING"  # 실시간 코칭에 바로 반응했다
-    ON_TIME = "ON_TIME"  # 허용 시간 안에 끝냈다
-
-
 #: 문제 → 원인 영역. IMPROVED_AFTER_FEEDBACK 는 교정했던 영역을 그대로 물려받는다.
 ISSUE_TYPE: dict[Issue, FeedbackType] = {
     Issue.GAZE_ON_SCRIPT: FeedbackType.GAZE,

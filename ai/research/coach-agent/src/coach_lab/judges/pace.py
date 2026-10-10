@@ -23,7 +23,7 @@ VERSION = "pace-0.2"
 
 
 class Config(Section):
-    """옛 `SpeechConfig` 의 CPM 값 그대로. onset · offset 은 `ReviewConfig.lag_ms[PACE_FAST]`."""
+    """옛 `SpeechConfig` 의 CPM 값 그대로. onset · offset 은 옛 리뷰 근거 설정의 지연 값과 같다."""
 
     window_ms: int = 15_000
     slow_cpm: float = 275.0

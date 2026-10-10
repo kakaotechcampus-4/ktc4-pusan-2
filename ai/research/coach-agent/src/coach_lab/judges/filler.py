@@ -27,7 +27,7 @@ _FILLER_SOUND = re.compile(r"(?:음+|어+|으+음*|엄+|흠+|아+|에+)[.,?!~…
 
 
 class Config(Section):
-    """옛 `SpeechConfig` 의 군더더기 값 그대로. onset · offset 은 `ReviewConfig.lag_ms`."""
+    """옛 `SpeechConfig` 의 군더더기 값 그대로. onset · offset 은 옛 리뷰 근거 지연 값."""
 
     filler_window_ms: int = 60_000
     filler_threshold: int = 6

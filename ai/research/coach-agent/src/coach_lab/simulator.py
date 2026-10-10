@@ -1,7 +1,7 @@
 """가상 발표 시뮬레이터 — 시나리오 JSON 을 1초 단위 CoachRequest 로 바꿔 코치에 흘려보낸다.
 
 BE 가 할 일을 그대로 흉내 냅니다: 최근 15초 STT 단어를 모으고, coach_state 를 받아 두었다가
-다음 요청에 붙이고, 응답의 이벤트를 쌓고, 끝나면 finalize → build_review_evidence.
+다음 요청에 붙이고, 응답의 이벤트를 쌓고, 끝나면 finalize.
 
 발표자는 코치의 말에 반응할 수 있습니다(scenario.reactions). 반응이 있으면 개입 효과가
 EFFECTIVE 로, 없으면 INEFFECTIVE 로 나와 되돌아보기(사다리 · 포기)를 재생할 수 있습니다.
@@ -32,10 +32,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from coach import build_review_evidence, decide, finalize
+from coach import decide, finalize
 from coach.config import CoachConfig, load_config
 from coach.judges import Judges
-from coach.schemas import CoachResponse, CoachReviewEvidence, TakeResult
+from coach.schemas import CoachResponse, TakeResult
 
 from .judges import lab_judges
 
@@ -473,7 +473,6 @@ class RunResult:
     presenter: Presenter
     timeline: list[dict[str, Any]] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
-    review: CoachReviewEvidence | None = None
     latencies_ms: list[float] = field(default_factory=list)
     ticks: int = 0
     end_ms: int = 0
@@ -594,14 +593,6 @@ def run(
     result.events.extend(e.model_dump(mode="json") for e in fin.events)
     result.final_state_bytes = (
         len(json.dumps(state, ensure_ascii=False).encode("utf-8")) if state else 0
-    )
-    result.review = build_review_evidence(
-        sc.take_id,
-        result.events,
-        plan=sc.plan,
-        missions=sc.missions,
-        memory=sc.memory,
-        config=cfg,
     )
     return result
 
