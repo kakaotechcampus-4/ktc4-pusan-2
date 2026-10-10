@@ -28,7 +28,6 @@ class HistorySample(_S):
     t_ms: int
     slide_number: int | None = None
     script_ratio: float | None = None
-    gaze_uncertain: float | None = None
     cpm: float | None = None
     cpm_short: float | None = None
     voice_diff_db: float | None = None
@@ -161,16 +160,8 @@ class CoachState(_S):
     hold: Hold | None = None
 
     slide_number: int | None = None
-    #: 장별로 말한 글자 수 (확정 단어, 군더더기 제외). JSON 이라 키가 문자열이다
-    slide_chars: dict[str, int] = Field(default_factory=dict)
     #: 최근 장 전환 [(장, 시작 시각)]. 확정이 늦게 온 단어를 말한 시각의 장에 붙인다
     slide_log: list[tuple[int, int]] = Field(default_factory=list)
-    last_final_end_ms: int = -1
-    #: 이 장을 말하는 동안 STT 가 끊긴 적이 있다 → 말한 글자 수가 모자라니 진행도를 시간으로 잰다
-    slides_unheard: list[int] = Field(default_factory=list)
-    #: 오디오가 마지막으로 되살아난 시각. 그 전의 침묵은 침묵으로 치지 않는다
-    audio_live: bool = True
-    audio_live_since_ms: int | None = None
     #: STT 가 불량(상태 ≠ ok 또는 오디오 정지)인 중인가, 그리고 불량에서 마지막으로 돌아온 시각.
     #: 돌아오기 전 단어는 속도 · 군더더기 계산에 쓰지 않는다. STT 입력이 아예 없던 것은 불량이
     #: 아니다
@@ -179,9 +170,6 @@ class CoachState(_S):
 
     #: 문제별 마지막 '참은 기록' 시각
     suppress_log: dict[str, int] = Field(default_factory=dict)
-    #: level_db 입력에서 코치가 잡은 평소 목소리 레벨(dBFS)과, 잡기 전까지 모은 말한 1초의 레벨
-    voice_baseline_db: float | None = None
-    voice_baseline_samples: list[float] = Field(default_factory=list)
     #: 모듈 이름(gaze · pace · volume · filler · timing) → 커서
     cursors: dict[str, Cursor] = Field(default_factory=dict)
     #: 판정 결과 tally 의 누적: 영역 → 이름 → 합. slide_totals 는 장 번호(문자열)별 같은 모양

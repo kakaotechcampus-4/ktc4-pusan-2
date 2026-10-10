@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from coach import core as core_mod
 from coach import decide, decide_safe
+from coach.version import STATE_VERSION
 
 from .conftest import make_request
 from .fakes import fake_judges
@@ -30,7 +31,13 @@ def test_internal_error_returns_wait_and_previous_state(monkeypatch: pytest.Monk
 def test_internal_error_on_first_tick_still_returns_a_state(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(core_mod.measure, "build_tick", lambda *a: 1 / 0)
     resp = decide_safe(make_request(1000), fake_judges())
-    assert resp.coach_state["v"] == 1
+    assert resp.coach_state["v"] == STATE_VERSION
+
+
+def test_internal_error_with_an_old_state_returns_a_new_state(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(core_mod.measure, "build_tick", lambda *a: 1 / 0)
+    resp = decide_safe(make_request(2000, state={"v": STATE_VERSION - 1}), fake_judges())
+    assert resp.coach_state["v"] == STATE_VERSION
 
 
 def test_bad_request_is_not_swallowed():

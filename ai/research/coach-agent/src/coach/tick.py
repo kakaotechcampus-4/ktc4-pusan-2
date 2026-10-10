@@ -1,14 +1,14 @@
-"""평가기 공통 — 한 번의 판단(Tick)이 들고 다니는 것과 평가기 출력(Detection)."""
+"""한 번의 판단(Tick)이 들고 다니는 것과, 판정 결과의 문제를 코치 규칙이 읽는 모양(Detection)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..config import CoachConfig
-from ..schemas import CoachRequest, IssueCriteria, SlidePlan
-from ..state import CoachState, HistorySample
-from ..vocab import Issue
+from .config import CoachConfig
+from .schemas import CoachRequest, IssueCriteria, SlidePlan
+from .state import CoachState, HistorySample
+from .vocab import Issue
 
 
 @dataclass
@@ -34,7 +34,8 @@ class Detection:
 
 @dataclass
 class Tick:
-    """decide() 한 번이 들고 다니는 맥락. 평가기는 metrics 를 채우고 detections 를 더한다."""
+    """decide() 한 번이 들고 다니는 맥락. measure.build_tick 이 판정 결과로 metrics 와 detections 를
+    채운다."""
 
     req: CoachRequest
     cfg: CoachConfig
@@ -75,15 +76,3 @@ class Tick:
 
     def detected(self, issue: Issue) -> bool:
         return any(d.issue_type == issue for d in self.detections)
-
-
-def ramp(value: float, start: float, bad: float) -> float:
-    """start 에서 0.5, bad 에서 1.0 이 되도록 선형으로 올린다. bad < start 면 작을수록 나쁘다."""
-    if bad == start:
-        return 1.0
-    frac = (value - start) / (bad - start)
-    return 0.5 + 0.5 * min(1.0, max(0.0, frac))
-
-
-def nonspace_len(text: str) -> int:
-    return len("".join(text.split()))

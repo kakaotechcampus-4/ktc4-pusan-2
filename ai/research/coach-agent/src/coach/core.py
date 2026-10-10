@@ -25,7 +25,6 @@ from . import eligibility, episodes, measure, priority, reflection, slides
 from . import judges as judges_mod
 from .candidates import Candidate
 from .config import DEFAULT_CONFIG, CoachConfig
-from .evaluators.base import Tick
 from .events import EventSink
 from .judges import Judges
 from .policy import RULE_POLICY, Policy, rank_key
@@ -49,6 +48,7 @@ from .state import (
     initial_state,
     load_state,
 )
+from .tick import Tick
 from .version import POLICY_VERSION
 from .vocab import Action, CandidateStatus, Outcome, Reason
 
@@ -116,7 +116,8 @@ def decide_safe(
     config: CoachConfig | None = None,
     policy: Policy | None = None,
 ) -> CoachResponse:
-    """API 가 부르는 판. 코치 안에서 예외가 나면 WAIT 와 이전 coach_state 를 돌려준다.
+    """API 가 부르는 판. 코치 안에서 예외가 나면 WAIT 와 이전 coach_state 를 돌려준다
+    (버전이 다르거나 깨진 state 였으면 새 state).
 
     요청 형식 오류는 그대로 올린다 — API 가 422 로 바꾸고, BE 는 그 1초를 건너뛴다.
     """
@@ -126,7 +127,8 @@ def decide_safe(
         return decide(req, judges, cfg, policy)
     except Exception:  # noqa: BLE001 — 실시간 경로는 어떤 예외로도 발표를 방해하면 안 된다
         log.exception("coach decide failed take_id=%s t_ms=%s", req.take_id, req.t_ms)
-        state, _ = load_state(req.coach_state)
+        state, reset = load_state(req.coach_state)
+        kept = req.coach_state is not None and not reset
         return CoachResponse(
             policy_version=POLICY_VERSION,
             config_hash=cfg.config_hash(),
@@ -134,7 +136,7 @@ def decide_safe(
             t_ms=req.t_ms,
             action=Action.WAIT,
             reason_codes=[Reason.INTERNAL_ERROR.value],
-            coach_state=req.coach_state if req.coach_state is not None else dump_state(state),
+            coach_state=req.coach_state if kept else dump_state(state),
         )
 
 
@@ -250,7 +252,6 @@ def _append_history(tick: Tick) -> None:
         t_ms=tick.t,
         slide_number=tick.slide_number,
         script_ratio=tick.metrics.get("script_ratio"),
-        gaze_uncertain=tick.metrics.get("gaze_uncertain_ratio"),
         cpm=tick.metrics.get("cpm"),
         cpm_short=tick.metrics.get("cpm_short"),
         voice_diff_db=tick.voice_diff_db,

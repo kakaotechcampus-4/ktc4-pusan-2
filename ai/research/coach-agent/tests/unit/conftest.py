@@ -74,7 +74,7 @@ def words(
     chars: int = 3,
     filler_every: int = 0,
 ) -> list[dict[str, Any]]:
-    """이전 요청 모양(w · final · filler)의 단어. 이전 평가기를 직접 시험하는 테스트 전용."""
+    """이전 요청 모양(w · final · filler)의 단어. 말 속도 대역 테스트가 계약 모양으로 바꿔 쓴다."""
     dur = round(chars * 60_000 / cpm)
     out: list[dict[str, Any]] = []
     t = int(end_ms - seconds * 1000)

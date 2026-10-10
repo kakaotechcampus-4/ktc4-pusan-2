@@ -1,7 +1,8 @@
 """말 속도 판정 — 연구용 대역.
 
-지금 코치 평가기(`coach.evaluators.speech`)의 CPM 규칙 · 기준값을 #154 계약 모양으로 옮긴 것이다.
-기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. CPM 은 지금과 같게 두고 출력 모양과 집계만 더했다.
+옛 코치 평가기(PR #131 의 `coach.evaluators.speech`)의 CPM 규칙 · 기준값을 #154 계약 모양으로
+옮긴 것이다. 기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. CPM 은 옛 평가기와 같게 두고
+출력 모양과 집계만 더했다.
 
 CPM = 글자 수(공백 · 군더더기 제외) ÷ 단어 발화 시간(군더더기 단어도 시간에는 넣는다) × 60초.
 군더더기 판정은 같은 요청의 `fillers`(군더더기 모듈의 결과)로 받는다. 상태를 갖지 않는다.
@@ -22,7 +23,7 @@ VERSION = "pace-0.1"
 
 
 class Config(Section):
-    """지금 `SpeechConfig` 의 CPM 값 그대로. onset · offset 은 `ReviewConfig.lag_ms[PACE_FAST]`."""
+    """옛 `SpeechConfig` 의 CPM 값 그대로. onset · offset 은 `ReviewConfig.lag_ms[PACE_FAST]`."""
 
     window_ms: int = 15_000
     slow_cpm: float = 275.0

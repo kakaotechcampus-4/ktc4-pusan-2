@@ -1,9 +1,10 @@
 """음량 · 침묵 판정 — 연구용 대역.
 
-지금 코치 평가기(`coach.evaluators.voice`)의 규칙 · 기준값을 #155 계약 모양으로 옮긴 것이다.
-기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. 숫자는 지금 평가기와 같게 두고 출력 모양만 바꿨다.
+옛 코치 평가기(PR #131 의 `coach.evaluators.voice`)의 규칙 · 기준값을 #155 계약 모양으로
+옮긴 것이다.
+기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. 숫자는 옛 평가기와 같게 두고 출력 모양만 바꿨다.
 
-결과는 둘이다 — 작은 목소리(VOLUME)와 긴 침묵(PAUSE). 상태를 갖지 않는다. 지금 평가기가
+결과는 둘이다 — 작은 목소리(VOLUME)와 긴 침묵(PAUSE). 상태를 갖지 않는다. 옛 평가기가
 history 에 둔 최근 음량 값과 오디오 재개 시각은 입력 기록 30초에서 다시 계산한다.
 기준 음량은 호출하는 쪽이 `baseline()` 으로 잡아 `base_level_db` 로 넘긴다.
 """
@@ -25,7 +26,7 @@ VERSION = "volume-0.1"
 
 
 class Config(Section):
-    """지금 `VoiceConfig` 의 값 그대로. pause_silence_ms 는 `PolicyConfig` 에서 가져왔다."""
+    """옛 `VoiceConfig` 의 값 그대로. pause_silence_ms 는 `PolicyConfig` 에서 가져왔다."""
 
     low_relative_db: float = -6.0
     low_relative_db_bad: float = -15.0
@@ -233,7 +234,7 @@ def _smoothed(
     levels = [r.level_db for r in window if r.level_db is not None]
     level = round(fmean(levels), 2) if levels else None
     # level_db 는 마지막 1초의 오디오와 상관없이 구하고, 기준 대비는 오디오가 흐를 때만 낸다.
-    # 기준 음량이 Take 중간에 생기면 대역은 창 전체에 쓴다 — 지금 평가기는 기준을 잡기 전 1초를
+    # 기준 음량이 Take 중간에 생기면 대역은 창 전체에 쓴다 — 옛 평가기는 기준을 잡기 전 1초를
     # 평균에서 뺐다(기준이 생긴 직후 1~2초만 다를 수 있다)
     if not seen[-1].audio_live or base is None or len(levels) < cfg.min_samples:
         return level, None
@@ -250,7 +251,7 @@ def _silence(seen: list[Record], end_ms: int) -> int | None:
     dead = [i for i, r in enumerate(seen) if not r.audio_live]
     if not dead:
         return last.silence_ms
-    # 되살아난 첫 1초가 끝난 시각부터 센다 (지금 평가기는 되살아난 첫 판단 시각부터 센다)
+    # 되살아난 첫 1초가 끝난 시각부터 센다 (옛 평가기는 되살아난 첫 판단 시각부터 센다)
     revived_at = seen[dead[-1] + 1].end_ms
     return min(last.silence_ms, max(0, end_ms - revived_at))
 

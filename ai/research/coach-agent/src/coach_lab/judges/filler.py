@@ -1,6 +1,6 @@
 """군더더기 판정 — 연구용 대역.
 
-지금 코치 평가기(`coach.evaluators.speech`)의 군더더기 규칙 · 기준값을 #152 계약 모양으로
+옛 코치 평가기(PR #131 의 `coach.evaluators.speech`)의 군더더기 규칙 · 기준값을 #152 계약 모양으로
 옮긴 것이다.
 기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. 규칙은 소리뿐인 간투사(음 · 어 · 으 …)만 T1 로
 셀 뿐이고, 사전(T2 · T3)과 판정 보류는 진짜 모듈의 일이라 여기에는 없다. 단어마다 바로 정한다.
@@ -22,12 +22,12 @@ from ._common import HIGHER, In, Section, clean, parse, ramp, ratio
 VERSION = "filler-0.1"
 """연구용 대역 버전."""
 
-#: 단어 하나가 소리뿐인 간투사인가 (지금 `speech._FILLER_SOUND` 와 같다)
+#: 단어 하나가 소리뿐인 간투사인가 (옛 `speech._FILLER_SOUND` 와 같다)
 _FILLER_SOUND = re.compile(r"(?:음+|어+|으+음*|엄+|흠+|아+|에+)[.,?!~…]*")
 
 
 class Config(Section):
-    """지금 `SpeechConfig` 의 군더더기 값 그대로. onset · offset 은 `ReviewConfig.lag_ms`."""
+    """옛 `SpeechConfig` 의 군더더기 값 그대로. onset · offset 은 `ReviewConfig.lag_ms`."""
 
     filler_window_ms: int = 60_000
     filler_threshold: int = 6

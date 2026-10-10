@@ -1,9 +1,9 @@
 """시선 판정 — 연구용 대역.
 
-지금 코치 평가기(`coach.evaluators.gaze`)의 규칙 · 기준값을 #153 계약 모양으로 옮긴 것이다.
-기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. 숫자는 지금 평가기와 같게 두고 출력 모양만 바꿨다.
+옛 코치 평가기(PR #131 의 `coach.evaluators.gaze`)의 규칙 · 기준값을 #153 계약 모양으로 옮긴 것이다.
+기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. 숫자는 옛 평가기와 같게 두고 출력 모양만 바꿨다.
 
-상태를 갖지 않는다. 지금 평가기가 coach_state 의 history 에 둔 센서 평활용 값은 입력 기록에서
+상태를 갖지 않는다. 옛 평가기가 coach_state 의 history 에 둔 센서 평활용 값은 입력 기록에서
 창마다 다시 계산한다(시뮬레이터가 1초마다 부르므로 같은 값이 된다).
 """
 
@@ -43,7 +43,7 @@ _METRICS = (
 
 
 class Config(Section):
-    """지금 `GazeConfig` 의 값 그대로. 뒤의 둘은 계약의 대본 의존 집계에 쓰는 값이다."""
+    """옛 `GazeConfig` 의 값 그대로. 뒤의 둘은 계약의 대본 의존 집계에 쓰는 값이다."""
 
     window_ms: int = 10_000
     script_labels: list[str] = ["BOTTOM", "SCRIPT"]
@@ -101,7 +101,7 @@ class Seg(NamedTuple):
 
 
 def criteria(config: Config = DEFAULT) -> dict[str, IssueCriteria]:
-    """문제별 판정 기준. 지연은 지금 `review._lag` 와 같다."""
+    """문제별 판정 기준. 지연은 `review._lag` 와 같다."""
     return {
         Issue.GAZE_ON_SCRIPT: IssueCriteria(
             metric="script_run_ms",
@@ -242,7 +242,7 @@ def _window(
 ) -> tuple[dict[str, float], int, str | None, int]:
     """(라벨 → 비율, 창 길이 ms, 지금 라벨, 지금 라벨이 이어진 ms).
 
-    지금 `evaluators.gaze.window_summary` 의 records 경로와 같다. 기록이 없는 시간과 UNMEASURED
+    옛 평가기의 `window_summary` records 경로와 같다. 기록이 없는 시간과 UNMEASURED
     는 UNCERTAIN 으로 센다.
     """
     start, end = max(0, t_ms - cfg.window_ms), t_ms

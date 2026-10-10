@@ -5,7 +5,7 @@
     "t_ms": 240000,
     "counted_until_ms": 240000,
     "words_counted_until_ms": null,
-    "criteria_version": "timing-1.0+8563d0402db4",
+    "criteria_version": "timing-1.0+305f8e44237d",
     "measurable": true,
     "state": "BEHIND",
     "metrics": {

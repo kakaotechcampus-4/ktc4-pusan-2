@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from .candidates import Candidate
-from .evaluators.base import Tick
+from .tick import Tick
 from .vocab import IGNORE_REASONS, WAIT_REASONS, CandidateStatus, Instruction, Issue, Mode, Reason
 
 

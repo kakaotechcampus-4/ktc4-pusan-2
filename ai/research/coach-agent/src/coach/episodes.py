@@ -14,10 +14,10 @@ from typing import Literal
 
 from .candidates import Candidate
 from .config import CoachConfig
-from .evaluators.base import Tick
 from .events import EventSink
 from .schemas import EpisodeEvent
 from .state import CoachState, EpisodeState, strategy_key
+from .tick import Tick
 from .vocab import ISSUE_TYPE, SLIDE_SCOPED, CandidateStatus
 
 
