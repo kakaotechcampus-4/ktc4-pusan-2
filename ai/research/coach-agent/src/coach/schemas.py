@@ -215,6 +215,69 @@ class CoachingPlan(_In):
     max_interventions: int | None = Field(default=None, ge=0)
 
 
+class SlideScript(_In):
+    """장 하나의 대본. 계획을 세울 때만 쓴다 (1초 판단에는 글자 수만 쓴다)."""
+
+    slide_number: int
+    script: str = ""
+
+
+class PlanRequest(_In):
+    """Take 시작 전 코칭 계획 요청. 이번 Take 의 계획 · 장별 대본 · 미션 · 기억 · 직전 리뷰 근거."""
+
+    schema_version: str = SCHEMA_VERSION
+    take_id: str
+    mode: Mode = Mode.PRACTICE
+    plan: Plan = Field(default_factory=Plan)
+    scripts: list[SlideScript] = Field(default_factory=list)
+    missions: list[Mission] = Field(default_factory=list)
+    memory: Memory = Field(default_factory=Memory)
+    #: 직전 Take 의 리뷰 근거(build_review_evidence 결과) 그대로. 없으면 null
+    previous_review: dict[str, Any] | None = None
+
+
+class PlanFocusDraft(BaseModel):
+    """LLM 출력 — 집중할 영역. 출력 스키마는 프롬프트와 함께 계획 해시에 들어간다."""
+
+    type: FeedbackType
+    slide_number: int | None = Field(description="장 번호. Take 전체면 null")
+    weight: float = Field(description="우선순위 가중치 1.2 ~ 2.0. 클수록 먼저 챙긴다")
+    why: str = Field(description="대본 · 미션 · 이전 리뷰에서 찾은 짧은 근거 한 문장")
+
+
+class PlanRelaxDraft(BaseModel):
+    """LLM 출력 — 이 장에서는 지적하지 않아도 되는 영역."""
+
+    type: FeedbackType
+    slide_number: int = Field(description="장 번호. 장 단위로만 봐줄 수 있다")
+    why: str = Field(description="대본에서 찾은 짧은 근거 한 문장")
+
+
+class PlanDraft(BaseModel):
+    """LLM 이 내는 코칭 계획 초안. 코치가 검증하고 값을 잘라 CoachingPlan 으로 만든다."""
+
+    focus: list[PlanFocusDraft]
+    relax: list[PlanRelaxDraft]
+    max_interventions: int | None = Field(
+        description="이번 Take 에서 말할 최대 횟수. 제한할 이유가 없으면 null"
+    )
+
+
+class PlanResponse(_Out):
+    schema_version: str = SCHEMA_VERSION
+    policy_version: str
+    #: 프롬프트 · 출력 스키마 · 모델로 만든 해시. 같은 해시 · 같은 입력이면 같은 질문이다
+    planner_hash: str
+    take_id: str
+    plan: CoachingPlan
+    #: 기본 계획으로 돌아간 이유 (EXAM_MODE · NO_LLM · LLM_ERROR). LLM 계획을 썼으면 null
+    fallback_reason: str | None = None
+    #: 검증에서 뺀 항목과 이유 (예: "relax TIME 3: 봐줄 수 없는 영역")
+    dropped: list[str] = Field(default_factory=list)
+    #: 첫 decide 요청에 붙일 coach_state (이 계획이 들어 있다)
+    coach_state: dict[str, Any]
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # 응답
 # ══════════════════════════════════════════════════════════════════════════
