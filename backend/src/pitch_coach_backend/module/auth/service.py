@@ -10,7 +10,7 @@ DB 를 아는 것은 이 파일과 repository 뿐이다.
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import NoReturn
 
 import redis
@@ -151,17 +151,27 @@ def _find_or_create_user(db: Session, identity: google.GoogleIdentity) -> User:
 
 
 def _issue_session(
-    db: Session, *, user: User, device_id: uuid.UUID, return_to: str = "/"
+    db: Session,
+    *,
+    user: User,
+    device_id: uuid.UUID,
+    return_to: str = "/",
+    replaces: RefreshToken | None = None,
 ) -> IssuedSession:
-    """Refresh 난수를 만들어 해시만 저장하고, 원문은 반환값으로만 내보낸다."""
+    """Refresh 난수를 만들어 해시만 저장하고, 원문은 반환값으로만 내보낸다.
+
+    replaces 는 회전으로 폐기한 토큰이다. 새 토큰을 거기에 이어 둔다.
+    """
     refresh_token = security.create_refresh_token()
-    repository.create_refresh_token(
+    issued = repository.create_refresh_token(
         db,
         user_id=user.id,
         token_hash=security.hash_refresh_token(refresh_token),
         device_id=device_id,
         expires_at=security.refresh_token_expires_at(),
     )
+    if replaces is not None:
+        replaces.replaced_by_id = issued.id
     return IssuedSession(
         user=user,
         access_token=security.create_access_token(user.id),
@@ -185,8 +195,8 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
         raise InvalidRefreshToken()
 
     if stored.revoked_at is not None:
-        # 이미 회전된 토큰이 다시 들어왔다. 정상 흐름에서는 일어나지 않는다.
-        _reject_reuse(db, stored)
+        # 이미 폐기된 토큰이 다시 들어왔다
+        return _rotate_again(db, stored)
 
     if stored.expires_at <= datetime.now(UTC):
         repository.revoke(db, stored)
@@ -204,12 +214,41 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
 
     # 폐기와 신규 발급이 한 트랜잭션이다. 중간에 실패하면 둘 다 없던 일이 된다.
     # 위에서 읽은 뒤 같은 토큰으로 온 다른 요청이 먼저 회전했을 수 있다. 그대로 두면 둘 다
-    # 새 토큰을 받아 계보가 갈라진다. 조건부 폐기로 한 요청만 이기게 하고, 진 쪽은 이미 쓰인
-    # 토큰을 쓴 것이므로 재사용과 같게 다룬다. FE 는 refresh 를 탭 간 잠금으로 한 줄로 세우므로
-    # 정상 사용자가 여기에 걸리지는 않는다 (frontend/src/shared/api/tokenStore.ts)
+    # 새 토큰을 받아 계보가 갈라진다. 조건부 폐기로 한 요청만 이기게 하고, 진 쪽은 이미 폐기된
+    # 토큰이 들어온 것과 같게 다룬다
     if not repository.revoke_if_active(db, stored.id):
+        db.refresh(stored)
+        return _rotate_again(db, stored)
+    session = _issue_session(db, user=user, device_id=stored.device_id, replaces=stored)
+    db.commit()
+    return session
+
+
+def _rotate_again(db: Session, stored: RefreshToken) -> IssuedSession:
+    """이미 폐기된 토큰을 받았다. 방금 회전된 토큰이면 한 번 더 회전하고, 아니면 재사용이다.
+
+    회전 응답을 받기 전에 새로고침한 브라우저는 새 쿠키를 버리고 옛 토큰을 다시 보낸다.
+    회전한 지 얼마 안 됐고 그때 이어받은 토큰이 아직 안 쓰였으면, 그 토큰을 폐기하고 새로 하나
+    이어 준다. 기기당 살아 있는 토큰은 계속 하나다. 탈취한 쪽이 이 틈에 끼어들면 정상 사용자가
+    밀려나고, 그 사용자가 다음에 갱신할 때 폐기된 토큰을 내게 되어 재사용으로 걸린다.
+
+    한계: 밀려난 사용자가 다시 갱신하러 와야 걸린다. 돌아오지 않으면 탈취한 쪽은 Refresh 가
+    만료되거나(기본 14일) 로그아웃할 때까지 세션을 이어 간다. 이 틈은 회전 직후 유예 시간 안에
+    옛 토큰을 쓴 경우로 좁고, 응답을 못 받은 새로고침을 로그아웃시키지 않는 쪽을 택했다.
+    """
+    assert stored.revoked_at is not None
+    grace = timedelta(seconds=settings.refresh_token_reuse_grace_seconds)
+    if (
+        # 로그아웃·재사용 탐지로 폐기됐다
+        stored.replaced_by_id is None
+        or datetime.now(UTC) - stored.revoked_at > grace
+        # 이어받은 토큰이 이미 쓰였거나 폐기됐다
+        or not repository.revoke_if_active(db, stored.replaced_by_id)
+    ):
         _reject_reuse(db, stored)
-    session = _issue_session(db, user=user, device_id=stored.device_id)
+
+    user = user_service.get(db, stored.user_id)
+    session = _issue_session(db, user=user, device_id=stored.device_id, replaces=stored)
     db.commit()
     return session
 

@@ -123,6 +123,7 @@ backend/
     │   ├── dto.py                # BE ↔ FE 메시지
     │   ├── dependencies.py       # get_stt_adapter · get_transcript_store (테스트가 가짜로 바꿔 끼운다)
     │   ├── fillers.py            # 한국어 군더더기 목록. keyterm boosting + 후처리 사전의 단일 소스
+    │   ├── keyterms.py           # filler + 대본 용어를 Deepgram keyterm 한도(100개·500토큰) 안에서 조립
     │   ├── state_aggregator.py   # (예정) 시간 정렬/sliding window/state 생성
     │   └── session_store.py      # (예정) take_stream 의 레지스트리를 Redis 로 옮길 때 분리한다
     │
@@ -233,6 +234,11 @@ WS /api/ws/takes/{take_id}
 | 5 | FE → BE | text | `{"type":"stop"}` — BE 가 Deepgram 을 정리(`CloseStream` → `Metadata`)하고 |
 | 6 | BE → FE | text | `{"type":"stt_status","state":"closed",…}` 를 보낸 뒤 `1000` 으로 닫는다. **FE 는 이걸 받기 전에 닫지 않는다** |
 
+- **한 번 보낸 오디오 프레임은 재연결 뒤에도 다시 보내지 않는다.** `seq` 는 Take 안에서 계속 오르고 재연결해도
+  이어 센다. FE 는 아직 못 보낸 프레임만 들고 있다가 `ready` 뒤에 순서대로 보낸다. BE 는 새 연결의 첫 프레임이
+  뒤로 가면 탭을 새로고침해 처음부터 다시 센 것으로 본다 — 보낸 프레임을 다시 보내면 중복이 아니라 재시작으로
+  읽힌다. 확인 응답이 없을 때 다시 보내는 기능을 넣으려면 먼저 이어 보내는지 처음부터 다시 세는지를 FE 가
+  첫 메시지에서 알려 주도록 이 규약부터 바꾼다.
 - `stt_status` 는 상태가 바뀔 때마다 온다. `connecting` → `ok` → (`reconnecting` → `degraded`) → `closed`.
   숫자(`frames`·`dropped_frames`·`silence_ms`·`lost_ms`)는 연결 단위가 아니라 **Take 누적**이다.
 - **Deepgram 이 죽어도 연결을 끊지 않는다.** 오디오를 최대 5초 큐에 담고 백오프로 재접속하며
@@ -264,21 +270,32 @@ WS /api/ws/takes/{take_id}
   화면에 못 간 final 은 모아 두었다가 `ready` 직후 순서대로 다시 보낸다 (DB 에는 이미 있다).
   번호가 리셋되면 FE 가 같은 `segment_id` 를 덮어써 **발표 앞부분 전사가 사라진다** — 그래서
   30초가 지나 스트림이 사라진 뒤 다시 붙어도 **저장된 마지막 `seq`·`stt_session_no` 에서 이어 받는다.**
+  오디오를 한 번도 안 받은 스트림은 살려 둘 전사가 없어서 끊기면 바로 정리한다.
 - 스트림은 만든 사용자에게 묶인다 (`FORBIDDEN`). 위 DB 검사의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
 - 같은 사용자의 두 번째 연결이 오면 **기존 것을 `TAKE_TAKEN_OVER` 로 쫓아낸다** (탭 복구).
-  반대로 하면 재연결 레이스에서 사용자가 영영 못 붙는다. 정리 중인 스트림에는 붙이지 않고
+  반대로 하면 재연결 레이스에서 사용자가 영영 못 붙는다. 쫓겨난 연결이 닫히기 전에 보낸 프레임과 `stop` 은 버린다.
+  정리 중인 스트림에는 붙이지 않고
   끝나기를 기다렸다가 새로 만든다.
 - Deepgram 타임스탬프는 "그 연결의 첫 바이트 = 0" 이라 BE 가 그 세션 첫 프레임의 `offset_ms` 를 더한다.
   프레임 사이 갭(> 50 ms) 은 **무음으로 채워** 두 타임라인을 맞추고, 5초를 넘는 갭은 무음 대신
   **Deepgram 세션을 갈아** base 를 다시 잡는다 — 일부만 채우면 그 뒤 전사 시각이 통째로 앞당겨진다.
-  역행·중복 `seq` 는 버린다. 세션이 끝나면 Deepgram 이 보고한 길이와 우리가 보낸 길이를 대조해
+  역행·중복 `seq` 는 버린다. 단 **새 연결의 첫 프레임**이 뒤로 가면(`seq` 또는 `offset_ms`) FE 가 처음부터
+  다시 센 것이므로 버리지 않고 세션을 갈아 그 offset 으로 base 를 잡는다. 탭을 새로고침하면 FE 는 `seq` 를
+  1 부터 다시 세고 `offset_ms` 는 이어받은 무대 시계부터 보낸다 (grace 가 지나 새 스트림이 열린 경우와 같은 결과). 세션이 끝나면 Deepgram 이 보고한 길이와 우리가 보낸 길이를 대조해
   어긋나면 로그에 남긴다.
 - 한국어 군더더기("음", "어", "그", "이제")는 Deepgram 이 기본으로 버리므로 `realtime/fillers.py` 의
   목록을 `keyterm` 으로 넘겨 전사에 남긴다. `filler_words` 옵션은 영어 전용이다.
+- filler 뒤에 Take 대본의 용어를 `keyterm` 으로 붙인다 (고유명사 오인식 방지). 파싱된 `terms` 만
+  우선순위 순으로 쓰고, 슬라이드 `keywords` 는 발음 잡기용이 아니라 넣지 않는다. 인가 때 같은 DB 왕복에서
+  읽고, 파싱이 안 끝난 대본이면 filler 만 보낸다.
+  Deepgram 한도는 **100개·전체 500 토큰**이고 넘으면 연결 자체가 거절된다. 토큰 수는 실측으로 정한 상한
+  (한글·ASCII 글자당 1, 그 밖 문자는 UTF-8 바이트, 용어당 +2)으로 세고 50 토큰을 남긴다 (`realtime/keyterms.py`).
+  한도로 빠진 개수는 로그에 남는다. 그래도 추정이 빗나가 Deepgram 이 400 으로 거절하면 뒤쪽 대본 용어를
+  5개씩 빼며 기다리지 않고 바로 다시 붙는다 (filler 는 남긴다). 용어 조회가 실패해도 연결은 닫지 않고 filler 만 쓴다.
 - 정리가 늦어도 FE 를 붙잡아 두지 않는다. `stop` 뒤 Deepgram drain 이 12초 안에 안 끝나면 태스크를
   끊고, 그마저 2초 안에 안 끝나면 닫힌 것으로 확정해 `closed` 를 보낸다. Deepgram 소켓 닫기 자체도
   3초 상한이 있다. `stop` 을 보낸 직후 FE 가 사라져도(탭 닫힘) 서버 쪽 종료·저장 절차는 같다.
-- 아직 없는 것: Pitch 대본 키워드 → `keyterm`, `metrics`/`coach` 메시지 (AI 팀 규칙 확정 후).
+- 아직 없는 것: `metrics`/`coach` 메시지 (AI 팀 규칙 확정 후).
 
 FE 없이 확인하는 두 가지 —
 
@@ -323,7 +340,7 @@ POST /api/pitches/add/{pitch_id}/presentation                     발표자료(P
   `FAILED (PARSE_EXPIRED)` 로 보여주고 재시도를 연다. 90초는 어댑터 최악 소요(35 × 2 + 1 = 71초)보다 길어야 한다 (테스트가 확인한다).
 - 테스트는 `conftest.py` 가 파싱 작업을 기본으로 끈다(실제 AI 를 부르지 않게). 흐름 테스트는 가짜 파서를 끼운
   실제 runner 로 바꿔 끼운다 (`tests/test_script_parse.py`).
-- 아직 없는 것: 파싱된 `terms` → 리허설 STT `keyterm` (다음 PR).
+- 파싱된 `terms`(STT 가 틀리기 쉬운 용어)는 리허설 STT `keyterm` 으로 쓰인다 (위 실시간 STT 절).
 
 ## 에러 응답 형식
 

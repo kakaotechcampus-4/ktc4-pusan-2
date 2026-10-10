@@ -1,0 +1,21 @@
+# 로컬 환경 (uv sync 가 만든다)
+.venv/
+
+# 모델 파일은 git 밖에 둔다. 출처 · 크기 · 해시를 적은 manifest(*.json)만 커밋한다
+artifacts/*
+!artifacts/*.json
+!artifacts/gaze/
+artifacts/gaze/*
+!artifacts/gaze/backbone/
+artifacts/gaze/backbone/*
+!artifacts/gaze/backbone/*.json
+
+# 데이터는 커밋하지 않는다 (얼굴 영상 · 특징 테이블은 생체 데이터라 git 에 올리지 않는다)
+/data/
+
+# 실행 결과 (평가 리포트 · 데모 이벤트 · 실험 로그)
+outputs/*
+!outputs/.gitkeep
+
+# 테스트 얼굴 사진 · 영상은 git 에 올리지 않는다 (tests/fixtures/README.md)
+tests/fixtures/local/
