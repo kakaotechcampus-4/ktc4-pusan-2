@@ -5,6 +5,7 @@ import {
   toPlacementResult,
   type AiCalibrationQuality,
 } from './aiAdapter';
+import { SCREEN_MERGED_WARNING } from '@/vendor/gaze/engine/reference';
 
 const passed: AiCalibrationQuality = {
   status: 'OK',
@@ -28,6 +29,27 @@ describe('캘리브레이션 품질 → CalibrationResult', () => {
   it('합격이어도 INVERTED_PITCH 경고가 있으면 FAIR 다 — 문구 중간에 있어도 잡는다', () => {
     const r = toCalibrationResult({ ...passed, hint: 'Note. INVERTED_PITCH: reversed?' }, model);
     expect(r).toMatchObject({ ok: true, ref: { quality: 'FAIR' }, advice: null });
+  });
+
+  it('합격이어도 화면이 렌즈에 합쳐졌으면(SCREEN_MERGED) FAIR 다 — 화면 본 시간이 청중으로 세진다', () => {
+    // 엔진이 실제로 붙이는 문구 그대로 넣습니다. 엔진이 문구를 바꾸면 여기서 깨집니다
+    expect(toCalibrationResult({ ...passed, hint: SCREEN_MERGED_WARNING }, model)).toMatchObject({
+      ok: true,
+      ref: { quality: 'FAIR' },
+      advice: null,
+    });
+    // 다른 안내 뒤에 붙어 와도 잡습니다 (엔진이 hint 뒤에 이어 붙입니다)
+    const appended = toCalibrationResult(
+      { ...passed, hint: `Some note. ${SCREEN_MERGED_WARNING}` },
+      model,
+    );
+    expect(appended).toMatchObject({ ref: { quality: 'FAIR' } });
+  });
+
+  it('경고가 없으면 GOOD 이다', () => {
+    expect(toCalibrationResult({ ...passed, hint: null }, model)).toMatchObject({
+      ref: { quality: 'GOOD' },
+    });
   });
 
   it('불합격이어도 모델이 있으면 POOR 로 진행하고, 사유는 권고로 온다 — AI 정책', () => {

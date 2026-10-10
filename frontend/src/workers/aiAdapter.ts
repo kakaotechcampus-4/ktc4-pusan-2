@@ -57,6 +57,17 @@ export interface AiVersionParts {
  */
 const INVERTED_PITCH_MARKER = 'INVERTED_PITCH';
 
+/**
+ * 합격이지만 화면이 렌즈에 합쳐진 경우의 표식 (AI `SCREEN_MERGED_WARNING`).
+ * 렌즈와 화면 가운데를 고개로 구분하지 못해, 이 보정에서는 **화면을 본 시간도 청중으로** 셉니다.
+ * 청중 비율이 부풀 수 있어 품질을 낮춥니다 — AI `web/README.md` 가 "GOOD 으로 보인다"고 짚은 부분입니다.
+ * 막지는 않습니다(낮은 품질도 진행하는 AI 정책). 사용자에게는 카메라 화면의 결과 카드가 이미 알립니다.
+ */
+const SCREEN_MERGED_MARKER = 'SCREEN_MERGED';
+
+/** 합격이지만 판정이 덜 믿을 만한 경고. 하나라도 있으면 FAIR 입니다 */
+const FAIR_MARKERS = [INVERTED_PITCH_MARKER, SCREEN_MERGED_MARKER] as const;
+
 const AI_FAIL_REASONS: readonly CalibrationFailReason[] = [
   'NOT_ENOUGH_SAMPLES',
   'CLASS_NOT_SEPARABLE',
@@ -94,7 +105,7 @@ export function toCalibrationResult(q: AiCalibrationQuality, model: unknown): Ca
   return {
     ok: true,
     ref: {
-      quality: q.hint?.includes(INVERTED_PITCH_MARKER) ? 'FAIR' : 'GOOD',
+      quality: FAIR_MARKERS.some((m) => q.hint?.includes(m)) ? 'FAIR' : 'GOOD',
       metrics,
       model,
     },

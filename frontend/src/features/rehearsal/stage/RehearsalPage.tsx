@@ -8,6 +8,7 @@ import { usePrepareStore } from '../prepare/prepareStore';
 import { useCompleteTake } from '@/shared/api/take';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { buildGazePayload } from '../lib/gazePayload';
+import { exclusionForDeviceError, exclusionForGazeError } from '../lib/gazeExclusion';
 import { stopTakeStream } from '../lib/sttSocket';
 import {
   beat,
@@ -363,6 +364,8 @@ export function RehearsalPage() {
   // ── 제외 사유 배선 ───────────────────────────────────────────────
   // 한 번 정해지면 되돌리지 않습니다. 발표 도중 엔진이 죽었다면 그 Take의
   // 시선 숫자는 앞뒤가 다른 조건에서 나온 것이라 믿을 수 없습니다.
+  // 카메라가 끊긴 것은 제외하지 않고 기록만 멈춥니다 — 빈 시간은 서버가 측정 못 함으로
+  // 채우므로 끊기기 전 기록을 살립니다 (`lib/gazeExclusion.ts`)
   const excludeGaze = useCallback(
     (id: string, reason: GazeExcludedReason) => {
       noteExclusion(reason);
@@ -375,12 +378,14 @@ export function RehearsalPage() {
 
   useEffect(() => {
     if (!sessionId || !deviceError) return;
-    excludeGaze(sessionId, deviceError === 'PERMISSION_DENIED' ? 'USER_DECLINED' : 'CAMERA_LOST');
+    const reason = exclusionForDeviceError(deviceError);
+    if (reason) excludeGaze(sessionId, reason);
   }, [sessionId, deviceError, excludeGaze]);
 
   useEffect(() => {
     if (!sessionId || !gazeError) return;
-    excludeGaze(sessionId, gazeError);
+    const reason = exclusionForGazeError(gazeError);
+    if (reason) excludeGaze(sessionId, reason);
   }, [sessionId, gazeError, excludeGaze]);
 
   // 엔진 버전은 종료 시점에 영구 고정됩니다 — 받는 즉시 기록해 둡니다
@@ -591,7 +596,9 @@ export function RehearsalPage() {
   });
 
   const gazeNote = gazeNoteText({
-    cameraLost: deviceError !== null,
+    declined: deviceError === 'PERMISSION_DENIED',
+    cameraLost:
+      (deviceError !== null && deviceError !== 'PERMISSION_DENIED') || gazeError === 'CAMERA_LOST',
     missingCalibration,
     error: gazeError,
     ready: gazeReady,
@@ -766,12 +773,15 @@ export function RehearsalPage() {
  * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다.
  */
 function gazeNoteText(state: {
+  declined: boolean;
   cameraLost: boolean;
   missingCalibration: boolean;
   error: GazeExcludedReason | null;
   ready: boolean;
 }): string {
-  if (state.cameraLost) return '카메라가 끊겼습니다 — 발표는 계속됩니다';
+  if (state.declined) return '카메라 권한이 없어 시선은 기록하지 않아요 — 발표는 계속됩니다';
+  // 끊기기 전 기록은 남습니다. 이후 시간은 서버가 측정 못 함으로 셉니다
+  if (state.cameraLost) return '카메라가 끊겨 이후 시선은 기록하지 않아요 — 발표는 계속됩니다';
   if (state.missingCalibration) return '시선 기준이 없어 측정 제외 — 발표는 계속됩니다';
   if (state.error) return `시선 측정 제외 · ${state.error}`;
   if (state.ready) return '시선 기록 중';
