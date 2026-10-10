@@ -49,6 +49,27 @@ def test_request_carries_raw_inputs_only():
     assert req["calibration"] == {"base_level_db": None}
 
 
+def test_voice_record_has_the_voiced_time_of_that_second():
+    """FE 처럼 지난 1초 동안 소리를 낸 시간을 잰다 — 1초 경계에 걸친 단어도 그 1초 몫만큼 든다.
+
+    잡음 없는 발표에서는 정확하다(잡음이 있으면 경계 몫은 근사다. simulator._voiced_ms).
+    """
+    presenter = Presenter(Scenario.load(SCENARIOS[0]))
+    for t in range(1_000, 61_000, 1_000):
+        presenter.request(t, None)
+    # 기대값은 Take 를 다 돌린 뒤의 단어로 따로 센다 (1초 끝에 말하던 단어는 다음 틱에 목록에 든다)
+    heard = [w for w in presenter.words if w.mic]
+    records = list(presenter.voice_records)[:-1]  # 마지막 1초 끝에 말하던 단어는 아직 없다
+    partial = False
+    for rec in records:
+        lo, hi = rec["t_ms"], rec["t_ms"] + rec["duration_ms"]
+        spoken = sum(max(0, min(w.end_ms, hi) - max(w.start_ms, lo)) for w in heard)
+        assert rec["voiced_ms"] == min(spoken, hi - lo), rec
+        assert (rec["level_db"] is None) == (rec["voiced_ms"] == 0)
+        partial = partial or 0 < rec["voiced_ms"] < 1_000
+    assert partial
+
+
 def test_same_input_same_decisions():
     sc = Scenario.load(SCENARIOS[2])
     a, b = run(sc), run(sc)
