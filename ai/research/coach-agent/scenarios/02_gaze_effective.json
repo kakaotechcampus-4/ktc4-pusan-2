@@ -64,8 +64,13 @@
     "outcomes_include": [
       "EFFECTIVE"
     ],
-    "segment_hints_include": [
-      "COACHED_EFFECTIVE"
+    "segments_include": [
+      {
+        "issue_type": "GAZE_ON_SCRIPT",
+        "slide_number": 2,
+        "coached": true,
+        "reliable": true
+      }
     ]
   }
 }

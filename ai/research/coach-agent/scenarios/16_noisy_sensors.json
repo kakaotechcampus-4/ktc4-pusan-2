@@ -59,9 +59,13 @@
     }
   ],
   "expect": {
-    "no_claims": [
-      "GAZE",
-      "SPEED"
+    "no_segments": [
+      {
+        "area": "GAZE"
+      },
+      {
+        "area": "SPEED"
+      }
     ],
     "areas": {
       "GAZE": {
@@ -71,8 +75,12 @@
         "max": 0
       }
     },
-    "top_issue": {
-      "area": "VOLUME"
-    }
+    "segments_include": [
+      {
+        "issue_type": "VOLUME_LOW",
+        "slide_number": 4,
+        "reliable": true
+      }
+    ]
   }
 }

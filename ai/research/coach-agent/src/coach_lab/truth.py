@@ -1,12 +1,12 @@
-"""정답 — 시뮬레이터가 기록한 '발표자가 실제로 어땠는지'로 리뷰 근거의 정답을 만든다.
+"""정답 — 시뮬레이터가 기록한 '발표자가 실제로 어땠는지'로 Take 결과의 사실에 대한 정답을 만든다.
 
-정답 리뷰 = 잡음 없는 실제 상태 × 코치와 **같은 판정 규칙**(coach.review.assess).
-그래서 실험에서 코치 리뷰 근거와 정답이 다르면,
-그 차이는 측정(잡음 · 창 지연 · 구간 처리)에서 온 것입니다.
+정답 = 잡음 없는 실제 상태 × 코치와 같은 기준값. 정답은 사실만 갖는다: 문제 구간, 장별 지표,
+개입 효과. 그래서 실험에서 Take 결과와 정답이 다르면, 그 차이는 측정(잡음 · 창 지연 · 구간
+처리)에서 온 것입니다.
 
-정답이 지키는 원칙: 센서가 볼 수 없던 문제는 정답 리뷰도 말하지 않는다.
-이상적인 리뷰 에이전트는 '대본을 봤을 것 같다'가 아니라
-'믿을 수 있는 데이터로 봤다'만 말해야 하기 때문입니다.
+정답이 지키는 원칙: 센서가 볼 수 없던 문제는 정답도 '볼 수 있던 것'으로 치지 않는다.
+이상적인 Take 결과는 '대본을 봤을 것 같다'가 아니라 '믿을 수 있는 데이터로 봤다'만 말해야
+하기 때문입니다.
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from coach.config import CoachConfig, load_config
-from coach.review import Agg, Assessment, Seg, assess
-from coach.schemas import Memory, Mission, Plan
+from coach.config import CoachConfig
+from coach.review import Agg
+from coach.schemas import Plan
 from coach.vocab import FeedbackType, Issue
 
 from .judges import filler as filler_judge
@@ -34,14 +34,6 @@ PROBLEM_TYPES: tuple[FeedbackType, ...] = (
     FeedbackType.PAUSE,
     FeedbackType.FILLER,
 )
-
-_ISSUE_OF = {
-    FeedbackType.GAZE: Issue.GAZE_ON_SCRIPT,
-    FeedbackType.SPEED: Issue.PACE_FAST,
-    FeedbackType.VOLUME: Issue.VOLUME_LOW,
-    FeedbackType.PAUSE: Issue.LONG_SILENCE,
-    FeedbackType.FILLER: Issue.FILLER_FREQUENT,
-}
 
 
 @dataclass
@@ -214,57 +206,6 @@ def truth_aggs(run: RunResult) -> tuple[dict[int, Agg], Agg]:
             for a in agg_for(w.slide):
                 a.filler_count += 1
     return slides, take
-
-
-def truth_segments(intervals: list[TruthInterval]) -> list[Seg]:
-    return [
-        Seg(
-            area=i.area,
-            slide_number=i.slide_number,
-            issue_types=[_ISSUE_OF[i.area]],
-            start_ms=i.start_ms,
-            end_ms=i.end_ms,
-            onset_ms=i.start_ms,
-            offset_ms=i.end_ms,
-            peak_severity=i.peak_severity,
-            # 정답 구간의 부담은 초마다의 실제 심각도 합 = 평균 심각도 × 길이
-            mean_severity=i.burden_s * 1000 / i.span_ms if i.span_ms else i.peak_severity,
-            reliable_ms=i.span_ms if i.observable else 0,
-            unreliable_ms=0 if i.observable else i.span_ms,
-        )
-        for i in intervals
-    ]
-
-
-def truth_config(run: RunResult) -> CoachConfig:
-    """정답 판정 설정 — 정답 구간은 이미 정확하므로 지연 보정 · 병합을 하지 않는다."""
-    return load_config(
-        **{
-            **run.config.model_dump(mode="json"),
-            "review": {
-                **run.config.review.model_dump(mode="json"),
-                "lag_compensation": False,
-                "exclude_unreliable": True,
-                "merge_gap_ms": 0,
-            },
-        }
-    )
-
-
-def truth_assessment(run: RunResult) -> tuple[Assessment, list[TruthInterval]]:
-    intervals = truth_intervals(run)
-    slides, take = truth_aggs(run)
-    sc = run.scenario
-    result = assess(
-        slides,
-        take,
-        truth_segments(intervals),
-        Plan.model_validate(sc.plan),
-        [Mission.model_validate(m) for m in sc.missions],
-        Memory.model_validate(sc.memory),
-        truth_config(run),
-    )
-    return result, intervals
 
 
 def truth_outcome(

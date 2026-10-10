@@ -109,13 +109,91 @@ def _walk(x: Any) -> list[float]:
     return [x] if isinstance(x, float) else []
 
 
-def test_review_evidence_numbers_are_finite_and_json():
-    """리뷰 근거의 숫자는 모두 유한하고 JSON 으로 나간다 — 리뷰 에이전트가 그대로 인용한다."""
+def test_take_result_numbers_are_finite_and_json():
+    """Take 결과의 숫자는 모두 유한하고 JSON 으로 나간다."""
     path = next(p for p in SCENARIOS if p.stem == "14_recurring_persists")
     result = run(Scenario.load(path))
-    blob = result.review.model_dump(mode="json")
+    blob = result.take_result.model_dump(mode="json")
     assert all(math.isfinite(v) for v in _walk(blob))
     json.dumps(blob)
+
+
+def _with_expect(name: str, expect: dict[str, Any]):
+    """시나리오의 expect 만 바꿔 재생한다."""
+    path = next(p for p in SCENARIOS if p.stem == name)
+    sc = Scenario.load(path)
+    return run(sc.model_copy(update={"expect": expect}))
+
+
+def test_expect_segments_include_checks_every_given_field():
+    ok = {"issue_type": "GAZE_ON_SCRIPT", "slide_number": 3, "coached": True, "reliable": True}
+    assert check_expect(_with_expect("14_recurring_persists", {"segments_include": [ok]})) == []
+    for wrong in ({"coached": False}, {"slide_number": 2}, {"issue_type": "PACE_FAST"}):
+        failures = check_expect(
+            _with_expect("14_recurring_persists", {"segments_include": [{**ok, **wrong}]})
+        )
+        assert len(failures) == 1 and "문제 구간" in failures[0]
+
+
+def test_expect_no_segments_ignores_unreliable_segments():
+    # 16 번은 GAZE 구간이 있지만 센서를 믿을 수 없어 reliable=false 다
+    result = _with_expect("16_noisy_sensors", {"no_segments": [{"area": "GAZE"}]})
+    assert any(
+        s.area.value == "GAZE" and not s.reliable for s in result.take_result.problem_segments
+    )
+    assert check_expect(result) == []
+    failures = check_expect(
+        _with_expect(
+            "14_recurring_persists", {"no_segments": [{"area": "GAZE", "slide_number": 3}]}
+        )
+    )
+    assert len(failures) == 1 and "GAZE" in failures[0]
+    other = {"no_segments": [{"area": "GAZE", "slide_number": 2}]}
+    assert check_expect(_with_expect("14_recurring_persists", other)) == []
+
+
+def test_expect_gave_up_include():
+    ok = {"gave_up_include": [{"issue_type": "GAZE_ON_SCRIPT", "slide_number": 2}]}
+    assert check_expect(_with_expect("03_gaze_gave_up", ok)) == []
+    wrong = {"gave_up_include": [{"issue_type": "GAZE_ON_SCRIPT", "slide_number": 3}]}
+    assert len(check_expect(_with_expect("03_gaze_gave_up", wrong))) == 1
+    assert len(check_expect(_with_expect("02_gaze_effective", ok))) == 1
+
+
+@pytest.mark.parametrize(
+    ("operator", "value", "passes"),
+    [
+        ("LT", 0.9, True),
+        ("LT", 0.8, False),
+        ("LTE", 0.8, True),
+        ("LTE", 0.79, False),
+        ("GT", 0.7, True),
+        ("GTE", 0.9, False),
+    ],
+)
+def test_expect_slide_metrics_compare_the_slide_value(operator: str, value: float, passes: bool):
+    # 14 번 3번 장의 대본 응시 비율은 0.8
+    item = {
+        "area": "GAZE",
+        "slide_number": 3,
+        "metric": "script_ratio",
+        "operator": operator,
+        "value": value,
+    }
+    failures = check_expect(_with_expect("14_recurring_persists", {"slide_metrics": [item]}))
+    assert (failures == []) is passes
+
+
+def test_expect_slide_metrics_fail_when_the_slide_was_not_measured():
+    # 16 번 2번 장은 얼굴이 안 잡혀 시선 지표가 비어 있다
+    item = {
+        "area": "GAZE",
+        "slide_number": 2,
+        "metric": "script_ratio",
+        "operator": "LTE",
+        "value": 1.0,
+    }
+    assert len(check_expect(_with_expect("16_noisy_sensors", {"slide_metrics": [item]}))) == 1
 
 
 def test_config_file_is_read_outside_the_core(tmp_path: Path):
