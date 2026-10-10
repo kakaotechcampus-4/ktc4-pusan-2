@@ -58,32 +58,32 @@ def evaluate(tick: Tick) -> None:
     if voice.audio_live and st.audio_live_since_ms is not None:
         silence = min(silence, tick.t - st.audio_live_since_ms)
 
-    tick.relative_db = relative_db(tick, voice, speaking) if voice.audio_live else None
+    tick.voice_diff_db = relative_db(tick, voice, speaking) if voice.audio_live else None
     db: float | None = None
     if voice.audio_live:
         since = tick.t - cfg.smoothing_ms
         values = [
-            s.relative_db
+            s.voice_diff_db
             for s in tick.history_since(since)
-            if s.speaking and s.relative_db is not None
+            if s.speaking and s.voice_diff_db is not None
         ]
-        if tick.relative_db is not None:
-            values.append(tick.relative_db)
+        if tick.voice_diff_db is not None:
+            values.append(tick.voice_diff_db)
         db = round(fmean(values), 2) if len(values) >= cfg.min_samples else None
 
-    tick.metrics["relative_db"] = db
+    tick.metrics["voice_diff_db"] = db
     tick.metrics["silence_ms"] = silence if voice.audio_live else None
 
     if db is not None and db < cfg.low_relative_db:
         tick.detections.append(
             Detection(
-                issue=Issue.VOLUME_LOW,
+                issue_type=Issue.VOLUME_LOW,
                 severity=ramp(db, cfg.low_relative_db, cfg.low_relative_db_bad),
                 confidence=1.0,
                 sensor_ok=voice.audio_live,
                 slide_number=tick.slide_number,
-                metric="relative_db",
-                evidence={"relative_db": db, "smoothing_ms": cfg.smoothing_ms},
+                metric="voice_diff_db",
+                evidence={"voice_diff_db": db, "smoothing_ms": cfg.smoothing_ms},
             )
         )
 
@@ -92,7 +92,7 @@ def evaluate(tick: Tick) -> None:
     if silence > cfg.long_silence_ms:
         tick.detections.append(
             Detection(
-                issue=Issue.LONG_SILENCE,
+                issue_type=Issue.LONG_SILENCE,
                 severity=ramp(silence, cfg.long_silence_ms, cfg.long_silence_bad_ms),
                 confidence=1.0,
                 sensor_ok=voice.audio_live,

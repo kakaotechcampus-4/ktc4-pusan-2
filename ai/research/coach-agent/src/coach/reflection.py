@@ -23,14 +23,14 @@ from .vocab import Issue, Outcome, StrategyChange
 
 #: 효과를 잴 때 비교하는 지표 (tick.metrics 의 키)
 OUTCOME_METRIC: dict[Issue, str | None] = {
-    Issue.GAZE_SCRIPT: "script_ratio",
-    Issue.PACE_FAST: "cpm_recent",
-    Issue.VOLUME_LOW: "relative_db",
+    Issue.GAZE_ON_SCRIPT: "script_ratio",
+    Issue.PACE_FAST: "cpm_short",
+    Issue.VOLUME_LOW: "voice_diff_db",
     Issue.FILLER_FREQUENT: "filler_count_30s",
     Issue.LONG_SILENCE: "silence_ms",
     Issue.BEHIND_SCHEDULE: "required_ratio",
     # 예상 종료는 누적값이라 10초 안에 거의 안 움직인다. '천천히'에 따라 말 속도가 줄었는지를 본다
-    Issue.AHEAD_OF_SCHEDULE: "cpm_recent",
+    Issue.AHEAD_OF_SCHEDULE: "cpm_short",
     Issue.SLIDE_OVER: "slide_number",
     Issue.KEYWORD_MISSING: None,
 }
@@ -38,17 +38,17 @@ OUTCOME_METRIC: dict[Issue, str | None] = {
 
 def register(tick: Tick, c: Candidate, intervention_id: str) -> None:
     """방금 한 개입의 효과를 나중에 재도록 예약한다."""
-    rule = tick.cfg.issues[c.issue]
+    rule = tick.cfg.issues[c.issue_type]
     if c.praise is not None or rule.outcome_delay_ms is None:
         return
-    metric = OUTCOME_METRIC.get(c.issue)
+    metric = OUTCOME_METRIC.get(c.issue_type)
     before = _metric_avg(tick, metric)
     tick.state.pending.append(
         PendingOutcome(
             intervention_id=intervention_id,
             candidate_id=c.candidate_id,
-            issue=c.issue,
-            type=c.type,
+            issue_type=c.issue_type,
+            area=c.area,
             instruction=c.instruction,
             variant=c.variant,
             step=c.step,
@@ -77,8 +77,8 @@ def resolve(tick: Tick, sink: EventSink) -> None:
             t_ms=tick.t,
             intervention_id=pending.intervention_id,
             candidate_id=pending.candidate_id,
-            issue=pending.issue,
-            type=pending.type,
+            issue_type=pending.issue_type,
+            area=pending.area,
             instruction=pending.instruction,
             slide_number=pending.slide_number,
             outcome=outcome,
@@ -92,7 +92,9 @@ def resolve(tick: Tick, sink: EventSink) -> None:
 def prune_praise(tick: Tick) -> None:
     """만료됐거나, 교정했던 문제가 다시 나타난 격려 후보는 버린다."""
     tick.state.praise = [
-        p for p in tick.state.praise if tick.t <= p.expires_ms and not tick.detected(p.source_issue)
+        p
+        for p in tick.state.praise
+        if tick.t <= p.expires_ms and not tick.detected(p.source_issue_type)
     ]
 
 
@@ -105,7 +107,9 @@ def _metric_now(tick: Tick, metric: str | None) -> Any:
 
 
 #: 최근 기록에 남는 지표 — 효과 전후를 순간값이 아니라 최근 평균으로 잴 수 있다
-_HISTORY_METRICS = frozenset({"script_ratio", "cpm", "cpm_recent", "relative_db", "required_ratio"})
+_HISTORY_METRICS = frozenset(
+    {"script_ratio", "cpm", "cpm_short", "voice_diff_db", "required_ratio"}
+)
 
 
 def _metric_avg(tick: Tick, metric: str | None) -> Any:
@@ -127,17 +131,17 @@ def judge(tick: Tick, p: PendingOutcome) -> tuple[Outcome, float | None]:
     cfg = tick.cfg
     rc = cfg.reflection
 
-    if p.issue == Issue.SLIDE_OVER:
+    if p.issue_type == Issue.SLIDE_OVER:
         moved = tick.slide_number is not None and tick.slide_number != p.slide_number
         return (Outcome.EFFECTIVE if moved else Outcome.INEFFECTIVE), tick.slide_number
 
-    if p.issue == Issue.KEYWORD_MISSING:
+    if p.issue_type == Issue.KEYWORD_MISSING:
         if not tick.stt_ok:
             return Outcome.NOT_MEASURED, None
         found = p.keyword in tick.state.keywords_found.get(str(p.slide_number), [])
         return (Outcome.EFFECTIVE if found else Outcome.INEFFECTIVE), None
 
-    if p.issue == Issue.LONG_SILENCE:
+    if p.issue_type == Issue.LONG_SILENCE:
         after = tick.metrics.get("silence_ms")
         samples = [s.speaking for s in tick.state.history if s.t_ms > p.t_ms] + [tick.speaking]
         known = [s for s in samples if s is not None]
@@ -153,8 +157,8 @@ def judge(tick: Tick, p: PendingOutcome) -> tuple[Outcome, float | None]:
         return Outcome.NOT_MEASURED, None
     before = p.before
 
-    match p.issue:
-        case Issue.GAZE_SCRIPT:
+    match p.issue_type:
+        case Issue.GAZE_ON_SCRIPT:
             # 개입은 측정값이 잡음으로 높게 튄 순간에 일어나기 쉬워 그 뒤엔 저절로
             # 내려온다(평균으로의 회귀).
             # 그래서 '줄었다'만으로는 인정하지 않고 탐지 기준 아래로 내려와야 인정한다 (실험 03 ·
@@ -186,7 +190,7 @@ def _update_strategy(
 ) -> None:
     st = tick.state
     cfg = tick.cfg
-    rule = cfg.issues[p.issue]
+    rule = cfg.issues[p.issue_type]
     strat = st.strategy.setdefault(p.strategy_key, StrategyState())
 
     if outcome == Outcome.EFFECTIVE:
@@ -195,8 +199,8 @@ def _update_strategy(
             st.praise.append(
                 Praise(
                     intervention_id=p.intervention_id,
-                    source_issue=p.issue,
-                    type=p.type,
+                    source_issue_type=p.issue_type,
+                    area=p.area,
                     slide_number=p.slide_number,
                     intervention_t_ms=p.t_ms,
                     expires_ms=tick.t + cfg.policy.praise_ttl_ms,
@@ -219,8 +223,8 @@ def _update_strategy(
         sink.emit(
             StrategyEvent,
             t_ms=tick.t,
-            issue=p.issue,
-            type=p.type,
+            issue_type=p.issue_type,
+            area=p.area,
             slide_number=p.slide_number,
             change=StrategyChange.ESCALATED,
             from_instruction=current.instruction,
@@ -235,8 +239,8 @@ def _update_strategy(
         sink.emit(
             StrategyEvent,
             t_ms=tick.t,
-            issue=p.issue,
-            type=p.type,
+            issue_type=p.issue_type,
+            area=p.area,
             slide_number=p.slide_number,
             change=StrategyChange.GAVE_UP,
             from_instruction=current.instruction,

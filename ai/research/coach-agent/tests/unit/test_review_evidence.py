@@ -55,8 +55,8 @@ def episode_ev(
         "event_id": f"e{next(_N)}",
         "t_ms": end + 3000,
         "candidate_id": f"{issue}-{start}",
-        "issue": issue,
-        "type": ftype,
+        "issue_type": issue,
+        "area": ftype,
         "slide_number": slide,
         "start_ms": start,
         "end_ms": end,
@@ -132,17 +132,19 @@ def test_take_without_slide_numbers_keeps_state_and_totals():
 def test_unreliable_segment_is_not_a_problem():
     events = [
         *three_slides(),
-        episode_ev("GAZE_SCRIPT", "GAZE", 2, 70_000, 90_000, reliable_ms=0, unreliable_ms=21_000),
+        episode_ev(
+            "GAZE_ON_SCRIPT", "GAZE", 2, 70_000, 90_000, reliable_ms=0, unreliable_ms=21_000
+        ),
     ]
     ev = build_review_evidence("t", events, plan=PLAN)
     assert [s.hint.value for s in ev.segments] == ["UNRELIABLE"]
-    assert not [i for i in ev.issues if i.type.value == "GAZE"]
+    assert not [i for i in ev.issues if i.area.value == "GAZE"]
     assert ev.data_quality.unreliable_segments == 1
     assert ev.summary.episodes == 0
 
 
 def test_lag_compensation_moves_window_detections_back():
-    events = [*three_slides(), episode_ev("GAZE_SCRIPT", "GAZE", 2, 70_000, 90_000)]
+    events = [*three_slides(), episode_ev("GAZE_ON_SCRIPT", "GAZE", 2, 70_000, 90_000)]
     seg = build_review_evidence("t", events, plan=PLAN).segments[0]
     # 10초 창, 기준 0.7 → 시작은 7초, 끝은 3초 앞으로
     assert (seg.start_ms, seg.end_ms) == (70_000, 91_000)
@@ -206,33 +208,33 @@ def test_missions_read_the_right_scope_and_say_why_not():
     missions = [
         {
             "mission_id": "slide2",
-            "type": "GAZE",
+            "area": "GAZE",
             "slide_number": 2,
             "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.3},
         },
         {
             "mission_id": "take",
-            "type": "SPEED",
+            "area": "SPEED",
             "target": {"metric": "cpm", "operator": "LTE", "value": 350},
         },
         {
             "mission_id": "time3",
-            "type": "TIME",
+            "area": "TIME",
             "slide_number": 3,
             "target": {"metric": "slide_duration_ms", "operator": "LTE", "value": 66_000},
         },
         {
             "mission_id": "never",
-            "type": "GAZE",
+            "area": "GAZE",
             "slide_number": 9,
             "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.3},
         },
         {
             "mission_id": "weird",
-            "type": "GAZE",
+            "area": "GAZE",
             "target": {"metric": "eyebrow_height", "operator": "LTE", "value": 1},
         },
-        {"mission_id": "vague", "type": "GAZE"},
+        {"mission_id": "vague", "area": "GAZE"},
     ]
     got = {
         m.mission_id: m
@@ -262,7 +264,7 @@ def test_mission_on_unreliable_data_is_not_evaluable():
         missions=[
             {
                 "mission_id": "m",
-                "type": "GAZE",
+                "area": "GAZE",
                 "slide_number": 2,
                 "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.3},
             }
@@ -279,12 +281,12 @@ def test_resolved_recurring_issue_becomes_improved_and_a_strength():
         "t",
         three_slides(),
         plan=PLAN,
-        memory={"recurring_issues": [{"type": "GAZE", "slide_number": 2}]},
+        memory={"recurring_issues": [{"area": "GAZE", "slide_number": 2}]},
     )
     assert ev.memory_check[0].label.value == "RESOLVED"
-    status = {t.type.value: t.status.value for t in ev.type_status}
+    status = {t.area.value: t.status.value for t in ev.type_status}
     assert status["GAZE"] == "IMPROVED"
-    kinds = {(s.kind.value, s.type.value) for s in ev.strengths}
+    kinds = {(s.kind.value, s.area.value) for s in ev.strengths}
     assert ("RESOLVED_RECURRING", "GAZE") in kinds and ("CLEAN", "SPEED") in kinds
 
 
@@ -292,15 +294,15 @@ def test_recurring_issue_is_ranked_higher():
     # 부담만 보면 속도(31초)가 시선(25초)보다 크다. 이전 Take 에도 있던 시선이면 순위가 뒤집힌다
     events = [
         *three_slides(),
-        episode_ev("GAZE_SCRIPT", "GAZE", 2, 70_000, 90_000),
+        episode_ev("GAZE_ON_SCRIPT", "GAZE", 2, 70_000, 90_000),
         episode_ev("PACE_FAST", "SPEED", 3, 130_000, 160_000),
     ]
     plain = build_review_evidence("t", events, plan=PLAN)
-    assert plain.issues[0].type.value == "SPEED"
+    assert plain.issues[0].area.value == "SPEED"
     remembered = build_review_evidence(
-        "t", events, plan=PLAN, memory={"recurring_issues": [{"type": "GAZE", "slide_number": 2}]}
+        "t", events, plan=PLAN, memory={"recurring_issues": [{"area": "GAZE", "slide_number": 2}]}
     )
-    assert remembered.issues[0].type.value == "GAZE"
+    assert remembered.issues[0].area.value == "GAZE"
     assert remembered.issues[0].memory.value == "RECURRING"
     assert remembered.memory_check[0].label.value == "RECURRING"
 
@@ -313,9 +315,9 @@ def test_no_data_means_not_evaluable_not_strength():
         }
     )
     ev = build_review_evidence("t", events, plan=PLAN)
-    status = {t.type.value: t.status.value for t in ev.type_status}
+    status = {t.area.value: t.status.value for t in ev.type_status}
     assert status["GAZE"] == "NOT_EVALUABLE"
-    assert ("CLEAN", "GAZE") not in {(s.kind.value, s.type.value) for s in ev.strengths}
+    assert ("CLEAN", "GAZE") not in {(s.kind.value, s.area.value) for s in ev.strengths}
 
 
 def test_volume_without_measured_speech_is_not_evaluable():
@@ -328,17 +330,17 @@ def test_volume_without_measured_speech_is_not_evaluable():
         "t",
         events,
         plan=PLAN,
-        memory={"recurring_issues": [{"type": "VOLUME", "slide_number": None}]},
+        memory={"recurring_issues": [{"area": "VOLUME", "slide_number": None}]},
         missions=[
             {
                 "mission_id": "m",
-                "type": "VOLUME",
+                "area": "VOLUME",
                 "slide_number": None,
-                "target": {"metric": "relative_db", "operator": "GTE", "value": -10.0},
+                "target": {"metric": "voice_diff_db", "operator": "GTE", "value": -10.0},
             }
         ],
     )
-    status = {t.type.value: t.status.value for t in ev.type_status}
+    status = {t.area.value: t.status.value for t in ev.type_status}
     assert status["VOLUME"] == "NOT_EVALUABLE"
     assert ev.memory_check[0].label.value == "UNKNOWN"
     m = ev.mission_results[0]
@@ -352,23 +354,23 @@ def test_type_total_decides_the_first_priority():
     # 시선은 장마다 나뉘어 하나하나는 속도보다 작지만, 합치면 더 크다
     events = [
         *three_slides(),
-        episode_ev("GAZE_SCRIPT", "GAZE", 2, 70_000, 85_000),
-        episode_ev("GAZE_SCRIPT", "GAZE", 3, 125_000, 140_000),
+        episode_ev("GAZE_ON_SCRIPT", "GAZE", 2, 70_000, 85_000),
+        episode_ev("GAZE_ON_SCRIPT", "GAZE", 3, 125_000, 140_000),
         episode_ev("PACE_FAST", "SPEED", 2, 90_000, 110_000),
     ]
     ev = build_review_evidence("t", events, plan=PLAN)
-    assert [i.type.value for i in ev.issues][:2] == ["GAZE", "GAZE"]
-    status = {t.type.value: t.status.value for t in ev.type_status}
+    assert [i.area.value for i in ev.issues][:2] == ["GAZE", "GAZE"]
+    status = {t.area.value: t.status.value for t in ev.type_status}
     assert status["GAZE"] == status["SPEED"] == "PRIORITY"
     first = ev.next_missions[0]
-    assert first.type.value == "GAZE" and first.target.metric == "script_ratio"
+    assert first.area.value == "GAZE" and first.target.metric == "script_ratio"
     assert "TOP_BURDEN" in first.reason_codes
 
 
 def test_next_mission_targets_are_reachable_and_checkable():
     events = [
         *three_slides(**{"3": {"gaze_script_ms": 0.9 * 60_000}}),
-        episode_ev("GAZE_SCRIPT", "GAZE", 3, 125_000, 170_000),
+        episode_ev("GAZE_ON_SCRIPT", "GAZE", 3, 125_000, 170_000),
     ]
     nm = build_review_evidence("t", events, plan=PLAN).next_missions[0]
     # 0.9 에서 한 번에 0.3 까지가 아니라 0.7 로 — 도달할 만큼만
@@ -388,10 +390,10 @@ def test_time_issue_comes_from_slide_durations():
         slide_ev(3, 150_000, 200_000, target_ms=60_000),
     ]
     ev = build_review_evidence("t", events, plan=PLAN)
-    time_issues = [i for i in ev.issues if i.type.value == "TIME"]
-    assert {(i.slide_number, i.issues[0].value) for i in time_issues} == {
+    time_issues = [i for i in ev.issues if i.area.value == "TIME"]
+    assert {(i.slide_number, i.issue_types[0].value) for i in time_issues} == {
         (2, "SLIDE_OVER"),
         (None, "TIME_OVER"),
     }
-    nm = next(m for m in ev.next_missions if m.type.value == "TIME")
+    nm = next(m for m in ev.next_missions if m.area.value == "TIME")
     assert nm.target.metric in ("slide_duration_ms", "duration_ms")

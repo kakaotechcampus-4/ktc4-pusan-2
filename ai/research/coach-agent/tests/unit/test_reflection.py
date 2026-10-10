@@ -19,7 +19,7 @@ def test_effective_feedback_earns_one_praise(session: Session):
     assert (outcome.before, outcome.after) == (0.9, 0.1)
     praise = [r for r in session.interventions if r.feedback.instruction.value == "CONTINUE"]
     assert len(praise) == 1
-    assert praise[0].feedback.type.value == "GAZE"
+    assert praise[0].feedback.area.value == "GAZE"
     assert praise[0].feedback.message == "좋아요, 지금처럼 이어가세요"
     assert praise[0].t_ms >= 13_000 + 15_000  # 메시지 사이 15초
 
@@ -80,7 +80,7 @@ def test_time_ladder_escalates_when_still_behind():
     # 3번 장 시작이 80초. 말한 글자가 늘지 않으니 계속 늦어진다
     for t in range(115_000, 141_001, 1000):
         s.step(t, slide_elapsed=t - 80_000, speech={"words": []})
-    time_fb = [r.feedback for r in s.interventions if r.feedback.type.value == "TIME"]
+    time_fb = [r.feedback for r in s.interventions if r.feedback.area.value == "TIME"]
     assert time_fb[0].instruction.value in ("SPEED_UP", "CONDENSE")
-    changes = [e for e in _of(s, "STRATEGY") if e.issue.value == "BEHIND_SCHEDULE"]
+    changes = [e for e in _of(s, "STRATEGY") if e.issue_type.value == "BEHIND_SCHEDULE"]
     assert changes and changes[0].change.value == "ESCALATED"

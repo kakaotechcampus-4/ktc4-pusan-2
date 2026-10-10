@@ -78,7 +78,7 @@ class Mission(_In):
     """직전 리뷰의 next_missions 그대로."""
 
     mission_id: str
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None = None
     priority: int = 1
     description: str | None = None
@@ -86,7 +86,7 @@ class Mission(_In):
 
 
 class RecurringIssue(_In):
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None = None
 
 
@@ -180,7 +180,7 @@ class CoachRequest(_In):
     take_id: str
     #: Take 시작 기준 경과 ms. 모든 시각이 이 시간축이다
     t_ms: int = Field(ge=0)
-    mode: Mode = Mode.PRACTICE
+    mode: Mode = Mode.COACHING
     plan: Plan = Field(default_factory=Plan)
     missions: list[Mission] = Field(default_factory=list)
     memory: Memory = Field(default_factory=Memory)
@@ -195,7 +195,7 @@ class CoachRequest(_In):
 
 
 class FocusItem(_In):
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None = None
     #: config.policy.plan_weight_min ~ max 로 잘린다
     weight: float = 1.0
@@ -203,7 +203,7 @@ class FocusItem(_In):
 
 
 class RelaxItem(_In):
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None = None
     why: str = ""
 
@@ -227,7 +227,7 @@ class PlanRequest(_In):
 
     schema_version: str = SCHEMA_VERSION
     take_id: str
-    mode: Mode = Mode.PRACTICE
+    mode: Mode = Mode.COACHING
     plan: Plan = Field(default_factory=Plan)
     scripts: list[SlideScript] = Field(default_factory=list)
     missions: list[Mission] = Field(default_factory=list)
@@ -284,7 +284,7 @@ class PlanResponse(_Out):
 
 
 class Feedback(_Out):
-    type: FeedbackType
+    area: FeedbackType
     instruction: Instruction
     message: str
     priority: int = Field(ge=0, le=100)
@@ -295,8 +295,8 @@ class Feedback(_Out):
 
 class CandidateOut(_Out):
     candidate_id: str
-    issue: Issue
-    type: FeedbackType
+    issue_type: Issue
+    area: FeedbackType
     instruction: Instruction
     priority: int = Field(ge=0, le=100)
     confidence: float = Field(ge=0.0, le=1.0)
@@ -326,8 +326,8 @@ class _Event(_Out):
 class InterventionEvent(_Event):
     kind: Literal["INTERVENTION"] = "INTERVENTION"
     candidate_id: str
-    issue: Issue
-    type: FeedbackType
+    issue_type: Issue
+    area: FeedbackType
     instruction: Instruction
     variant: str
     message: str
@@ -344,8 +344,8 @@ class OutcomeEvent(_Event):
     kind: Literal["OUTCOME"] = "OUTCOME"
     intervention_id: str
     candidate_id: str
-    issue: Issue
-    type: FeedbackType
+    issue_type: Issue
+    area: FeedbackType
     instruction: Instruction
     slide_number: int | None = None
     outcome: Outcome
@@ -359,8 +359,8 @@ class EpisodeEvent(_Event):
 
     kind: Literal["EPISODE"] = "EPISODE"
     candidate_id: str
-    issue: Issue
-    type: FeedbackType
+    issue_type: Issue
+    area: FeedbackType
     slide_number: int | None = None
     start_ms: int
     end_ms: int
@@ -416,8 +416,8 @@ class SuppressedEvent(_Event):
 
     kind: Literal["SUPPRESSED"] = "SUPPRESSED"
     candidate_id: str
-    issue: Issue
-    type: FeedbackType
+    issue_type: Issue
+    area: FeedbackType
     instruction: Instruction
     status: CandidateStatus
     priority: int
@@ -428,8 +428,8 @@ class StrategyEvent(_Event):
     """효과가 없어 방법을 바꿨거나(ESCALATED) 그만뒀다(GAVE_UP)."""
 
     kind: Literal["STRATEGY"] = "STRATEGY"
-    issue: Issue
-    type: FeedbackType
+    issue_type: Issue
+    area: FeedbackType
     slide_number: int | None = None
     change: StrategyChange
     from_instruction: Instruction
@@ -550,7 +550,7 @@ class SlideReview(_Out):
     #: 보인 시간 중 대본 응시 비율
     script_ratio: float | None
     cpm: float | None
-    relative_db: float | None
+    voice_diff_db: float | None
     filler_count: int
     filler_per_min: float | None
     long_silence_ms: int
@@ -560,17 +560,17 @@ class SlideReview(_Out):
     speech_coverage: float | None
     audio_coverage: float | None
     #: 이 장에서 문제로 본 영역
-    issue_types: list[FeedbackType]
+    areas: list[FeedbackType]
 
 
 class IssueReview(_Out):
     """문제 하나 (영역 × 장). rank 1 이 다음에 먼저 고칠 것."""
 
     rank: int
-    type: FeedbackType
+    area: FeedbackType
     #: null 이면 Take 전체에 걸친 문제
     slide_number: int | None
-    issues: list[Issue]
+    issue_types: list[Issue]
     #: 심각도 × 초. 얼마나 크게 · 오래 문제였나
     burden_s: float
     #: 순위 점수 = 부담 × 반복 · 포기 · 미션 실패 가중치
@@ -590,7 +590,7 @@ class IssueReview(_Out):
 class TypeStatusReview(_Out):
     """영역별 상태. 리뷰 dimension(audience_gaze …)의 IMPROVED / PRIORITY / STABLE / STRENGTH."""
 
-    type: FeedbackType
+    area: FeedbackType
     status: TypeStatus
     burden_s: float
     #: 이전 Take 기억에 이 영역이 있었으면 그 결과
@@ -600,7 +600,7 @@ class TypeStatusReview(_Out):
 
 class StrengthReview(_Out):
     kind: StrengthKind
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None = None
     evidence: dict[str, Any]
 
@@ -609,7 +609,7 @@ class MissionReview(_Out):
     """이전 Mission 판정. 리뷰의 previous_mission_result / MissionResult 로 그대로 옮긴다."""
 
     mission_id: str
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None
     status: MissionStatus
     achieved: bool
@@ -628,7 +628,7 @@ class MissionReview(_Out):
 class MemoryReview(_Out):
     """이전 Take 기억 한 줄과 이번 Take 비교."""
 
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None
     label: MemoryLabel
     burden_s: float
@@ -644,7 +644,7 @@ class NextMission(_Out):
     """다음 Take 미션 후보. target 은 Mission.target 그대로라 다음 Take 에서 기계로 판정된다."""
 
     priority: int
-    type: FeedbackType
+    area: FeedbackType
     slide_number: int | None
     target: NextMissionTarget
     #: 이번 Take 에서 잰 값 (목표는 여기서 한 번에 도달할 만큼만 낮춘다)
@@ -654,7 +654,7 @@ class NextMission(_Out):
 
 
 class TypeSummary(_Out):
-    type: FeedbackType
+    area: FeedbackType
     interventions: int
     effective: int
     ineffective: int
@@ -667,7 +667,7 @@ class InterventionReview(_Out):
     intervention_id: str
     t_ms: int
     slide_number: int | None
-    type: FeedbackType
+    area: FeedbackType
     instruction: Instruction
     message: str
     reason_codes: list[str]
@@ -680,8 +680,8 @@ class InterventionReview(_Out):
 
 class StrategyReview(_Out):
     t_ms: int
-    type: FeedbackType
-    issue: Issue
+    area: FeedbackType
+    issue_type: Issue
     slide_number: int | None
     change: StrategyChange
     from_instruction: Instruction
@@ -689,7 +689,7 @@ class StrategyReview(_Out):
 
 
 class SegmentReview(_Out):
-    """리뷰의 SegmentReview 와 같은 축(slide_number · start_ms · end_ms · type · evidence).
+    """리뷰의 SegmentReview 와 같은 축(slide_number · start_ms · end_ms · area · evidence).
 
     start_ms / end_ms 는 코치가 실제로 문제를 잡은 구간, onset_ms / offset_ms 는 평가기 창의
     지연을 되돌린 추정 구간입니다. 리뷰가 "몇 분 몇 초부터"를 말할 때는 onset / offset 을 쓰세요.
@@ -702,9 +702,9 @@ class SegmentReview(_Out):
     end_ms: int
     onset_ms: int
     offset_ms: int
-    type: FeedbackType
-    issue: Issue
-    issues: list[Issue]
+    area: FeedbackType
+    issue_type: Issue
+    issue_types: list[Issue]
     peak_severity: float
     mean_severity: float
     #: 센서를 믿을 수 있던 시간 비율

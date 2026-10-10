@@ -58,7 +58,7 @@
     }
   ],
   "expect": {
-    "types": {
+    "areas": {
       "GAZE": {
         "min": 1
       }
@@ -67,13 +67,13 @@
   "plan_expect": {
     "relax_includes": [
       {
-        "type": "GAZE",
+        "area": "GAZE",
         "slide_number": 3
       }
     ],
     "with_plan_no_interventions": [
       {
-        "type": "GAZE",
+        "area": "GAZE",
         "slide_number": 3
       }
     ]

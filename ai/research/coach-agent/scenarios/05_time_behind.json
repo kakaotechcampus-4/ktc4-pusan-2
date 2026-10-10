@@ -39,7 +39,7 @@
   "missions": [
     {
       "mission_id": "mission-9",
-      "type": "TIME",
+      "area": "TIME",
       "slide_number": 3,
       "priority": 1,
       "target": {
@@ -52,7 +52,7 @@
   "memory": {
     "recurring_issues": [
       {
-        "type": "TIME",
+        "area": "TIME",
         "slide_number": 3
       }
     ]
@@ -74,7 +74,7 @@
     }
   },
   "expect": {
-    "types": {
+    "areas": {
       "TIME": {
         "min": 1
       }

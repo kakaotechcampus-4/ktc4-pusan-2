@@ -25,7 +25,7 @@ def score(tick: Tick, c: Candidate) -> None:
         weight *= _time(tick, c)
         weight *= _worsening(tick, c)
 
-    fired = tick.state.fires_by_issue.get(c.issue.value, 0)
+    fired = tick.state.fires_by_issue.get(c.issue_type.value, 0)
     weight *= max(pc.novelty_floor, 1.0 - pc.novelty_decay * fired)
 
     c.score = c.severity * c.confidence * weight
@@ -38,7 +38,7 @@ def _add(c: Candidate, reason: Reason) -> None:
 
 def _persistence(tick: Tick, c: Candidate) -> float:
     pc = tick.cfg.policy
-    extra = c.persistence_ms - tick.cfg.issues[c.issue].persistence_ms
+    extra = c.persistence_ms - tick.cfg.issues[c.issue_type].persistence_ms
     if extra <= 0:
         return 1.0
     if extra >= pc.persistence_bonus_full_ms / 3:
@@ -50,7 +50,7 @@ def _mission(tick: Tick, c: Candidate) -> float:
     pc = tick.cfg.policy
     weight = 1.0
     for mission in tick.req.missions:
-        if mission.type != c.type:
+        if mission.area != c.area:
             continue
         if mission.slide_number is not None and mission.slide_number != tick.slide_number:
             continue
@@ -84,7 +84,7 @@ def violates(value: object, target: MissionTarget) -> bool:
 
 def _recurrence(tick: Tick, c: Candidate) -> float:
     for issue in tick.req.memory.recurring_issues:
-        if issue.type == c.type and (
+        if issue.area == c.area and (
             issue.slide_number is None or issue.slide_number == tick.slide_number
         ):
             _add(c, Reason.RECURRING)
@@ -96,7 +96,7 @@ def _plan_focus(tick: Tick, c: Candidate) -> float:
     pc = tick.cfg.policy
     weight = 1.0
     for focus in tick.state.plan.focus:
-        if focus.type == c.type and (
+        if focus.area == c.area and (
             focus.slide_number is None or focus.slide_number == tick.slide_number
         ):
             w = min(pc.plan_weight_max, max(pc.plan_weight_min, focus.weight))
@@ -109,7 +109,7 @@ def _plan_focus(tick: Tick, c: Candidate) -> float:
 def _time(tick: Tick, c: Candidate) -> float:
     """발표 막바지일수록 시간 안내가 다른 지적보다 앞선다."""
     target = tick.req.plan.target_ms
-    if c.type != FeedbackType.TIME or not target:
+    if c.area != FeedbackType.TIME or not target:
         return 1.0
     remaining = tick.metrics.get("remaining_ms")
     if isinstance(remaining, int) and remaining <= tick.cfg.timing.final_minute_ms:

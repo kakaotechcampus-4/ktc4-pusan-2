@@ -62,9 +62,9 @@ def accumulate(tick: Tick) -> None:
         acc.audio_live_ms += dt
         if tick.speaking:
             acc.speaking_ms += dt
-            if tick.relative_db is not None:
+            if tick.voice_diff_db is not None:
                 acc.db_ms += dt
-                acc.db_weighted += tick.relative_db * dt
+                acc.db_weighted += tick.voice_diff_db * dt
         silence = m.get("silence_ms")
         if silence is not None and silence > tick.cfg.voice.long_silence_ms:
             acc.long_silence_ms += dt

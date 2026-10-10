@@ -67,7 +67,7 @@ def test_llm_plan_is_validated_and_goes_into_the_first_coach_state():
     resp = plan_coaching(request(), llm=llm, model="m")
     assert resp.fallback_reason is None and resp.dropped == []
     assert resp.plan.source == "LLM"
-    assert [(f.type.value, f.slide_number, f.weight) for f in resp.plan.focus] == [("TIME", 3, 1.5)]
+    assert [(f.area.value, f.slide_number, f.weight) for f in resp.plan.focus] == [("TIME", 3, 1.5)]
     assert resp.coach_state["plan"]["relax"][0]["slide_number"] == 3
     assert len(llm.calls) == 1
 
@@ -76,10 +76,10 @@ def test_relaxed_gaze_is_not_coached_on_that_slide_only():
     resp = plan_coaching(request(), llm=FakeLLM(draft(relax=[GAZE_3])), model="m")
     state = resp.coach_state
     on_3 = decide(make_request(20_000, slide=3, gaze=gaze_script(0.9), state=state))
-    c = {c.issue.value: c for c in on_3.candidates}["GAZE_SCRIPT"]
+    c = {c.issue_type.value: c for c in on_3.candidates}["GAZE_ON_SCRIPT"]
     assert c.status.value == "IGNORED" and "PLAN_RELAXED" in c.reasons
     on_2 = decide(make_request(20_000, slide=2, gaze=gaze_script(0.9), state=state))
-    c = {c.issue.value: c for c in on_2.candidates}["GAZE_SCRIPT"]
+    c = {c.issue_type.value: c for c in on_2.candidates}["GAZE_ON_SCRIPT"]
     assert "PLAN_RELAXED" not in c.reasons
 
 
@@ -92,7 +92,7 @@ def test_relaxed_gaze_is_not_coached_on_that_slide_only():
     ],
 )
 def test_unsafe_relax_is_dropped_with_a_reason(relax, why):
-    missions = [{"mission_id": "m1", "type": "FILLER", "slide_number": None}]
+    missions = [{"mission_id": "m1", "area": "FILLER", "slide_number": None}]
     resp = plan_coaching(request(missions=missions), llm=FakeLLM(draft(relax=[relax])), model="m")
     assert resp.plan.relax == []
     assert len(resp.dropped) == 1 and why in resp.dropped[0]
@@ -112,7 +112,7 @@ def test_weights_counts_and_budget_are_clamped():
         llm=FakeLLM(draft(focus, relax, max_interventions=1)),
         model="m",
     )
-    assert [(f.type.value, f.weight) for f in resp.plan.focus] == [
+    assert [(f.area.value, f.weight) for f in resp.plan.focus] == [
         ("GAZE", 2.0),
         ("SPEED", 0.5),
         ("VOLUME", 1.3),
@@ -196,12 +196,12 @@ def test_broken_cache_is_a_miss_not_a_failure():
 
 def test_message_carries_scripts_missions_and_previous_issues():
     review = {
-        "issues": [{"rank": 1, "type": "GAZE", "slide_number": 3, "burden_s": 40.0}],
-        "type_status": [{"type": "GAZE", "status": "PRIORITY"}],
+        "issues": [{"rank": 1, "area": "GAZE", "slide_number": 3, "burden_s": 40.0}],
+        "type_status": [{"area": "GAZE", "status": "PRIORITY"}],
         "summary": {"interventions": 9, "effective_rate": 0.2},
     }
     req = request(
-        missions=[{"mission_id": "m1", "type": "TIME", "slide_number": 3}],
+        missions=[{"mission_id": "m1", "area": "TIME", "slide_number": 3}],
         previous_review=review,
     )
     llm = FakeLLM(draft())

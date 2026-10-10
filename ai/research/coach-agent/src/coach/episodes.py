@@ -27,7 +27,7 @@ def observe(tick: Tick, sink: EventSink) -> None:
     seen: set[str] = set()
 
     for det in tick.detections:
-        key = strategy_key(det.issue, det.slide_number, det.issue in SLIDE_SCOPED)
+        key = strategy_key(det.issue_type, det.slide_number, det.issue_type in SLIDE_SCOPED)
         seen.add(key)
         episode = st.episodes.get(key)
         if episode is not None and tick.t - episode.last_seen_ms > gap:
@@ -35,9 +35,9 @@ def observe(tick: Tick, sink: EventSink) -> None:
             episode = None
         if episode is None:
             episode = EpisodeState(
-                candidate_id=f"{det.issue.value}-{tick.t}",
-                issue=det.issue,
-                type=ISSUE_TYPE[det.issue],
+                candidate_id=f"{det.issue_type.value}-{tick.t}",
+                issue_type=det.issue_type,
+                area=ISSUE_TYPE[det.issue_type],
                 slide_number=det.slide_number,
                 start_ms=tick.t,
                 last_seen_ms=tick.t,
@@ -102,8 +102,8 @@ def close(
         EpisodeEvent,
         t_ms=t_ms,
         candidate_id=episode.candidate_id,
-        issue=episode.issue,
-        type=episode.type,
+        issue_type=episode.issue_type,
+        area=episode.area,
         slide_number=episode.slide_number,
         start_ms=episode.start_ms,
         end_ms=episode.last_seen_ms,

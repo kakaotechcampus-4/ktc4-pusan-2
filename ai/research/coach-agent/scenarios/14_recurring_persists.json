@@ -45,7 +45,7 @@
   "missions": [
     {
       "mission_id": "m-gaze-3",
-      "type": "GAZE",
+      "area": "GAZE",
       "slide_number": 3,
       "priority": 1,
       "description": "3번 장 대본 응시 30% 이하",
@@ -59,7 +59,7 @@
   "memory": {
     "recurring_issues": [
       {
-        "type": "GAZE",
+        "area": "GAZE",
         "slide_number": 3
       }
     ]
@@ -67,7 +67,7 @@
   "expect": {
     "memory_labels": [
       {
-        "type": "GAZE",
+        "area": "GAZE",
         "slide_number": 3,
         "label": "RECURRING"
       }
@@ -79,7 +79,7 @@
       "GAZE": "PRIORITY"
     },
     "top_issue": {
-      "type": "GAZE",
+      "area": "GAZE",
       "slide_number": 3
     },
     "next_mission_types_include": [

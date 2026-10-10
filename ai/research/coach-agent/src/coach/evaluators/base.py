@@ -15,7 +15,7 @@ from ..vocab import Issue
 class Detection:
     """평가기가 찾은 문제 하나. 판단(말할지)은 하지 않는다 — 측정과 판단의 분리."""
 
-    issue: Issue
+    issue_type: Issue
     #: 기준에서 벗어난 정도. 기준선에서 0.5, '아주 나쁨'에서 1.0
     severity: float
     #: 이 측정을 믿을 수 있는 정도
@@ -50,7 +50,7 @@ class Tick:
     filler_new: int = 0
     speaking: bool | None = None
     #: 이번 1초의 기준 대비 음량 (dB). 말하지 않았거나 아직 기준이 없으면 None
-    relative_db: float | None = None
+    voice_diff_db: float | None = None
     #: 이번 판단이 대표하는 시간. 직전 요청과의 간격 (첫 요청 · 긴 공백은 config 로 제한)
     dt_ms: int = 1_000
 
@@ -73,7 +73,7 @@ class Tick:
         return None
 
     def detected(self, issue: Issue) -> bool:
-        return any(d.issue == issue for d in self.detections)
+        return any(d.issue_type == issue for d in self.detections)
 
 
 def ramp(value: float, start: float, bad: float) -> float:

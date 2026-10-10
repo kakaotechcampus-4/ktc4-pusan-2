@@ -38,7 +38,7 @@ class Policy(Protocol):
 
 
 def rank_key(c: Candidate) -> tuple[float, int, str]:
-    return (-c.score, ISSUE_ORDER.index(c.issue), c.candidate_id)
+    return (-c.score, ISSUE_ORDER.index(c.issue_type), c.candidate_id)
 
 
 def _unique(reasons: list[Reason], allowed: frozenset[Reason]) -> list[str]:
@@ -102,7 +102,7 @@ class RulePolicy:
         top.status = CandidateStatus.SELECTED
         for c in eligible[1:]:
             c.status = CandidateStatus.OUTRANKED
-        reasons = [top.issue.value] + [r.value for r in top.reasons_for]
+        reasons = [top.issue_type.value] + [r.value for r in top.reasons_for]
         return Selection(Action.INTERVENE, top, reasons, top.candidate_id)
 
 

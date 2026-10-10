@@ -77,7 +77,7 @@ def plan_message(req: PlanRequest, cfg: PlannerConfig) -> str:
         "slides": slides,
         "missions": [
             {
-                "type": m.type.value,
+                "type": m.area.value,
                 "slide_number": m.slide_number,
                 "description": m.description,
                 "target": m.target.model_dump() if m.target else None,
@@ -85,7 +85,7 @@ def plan_message(req: PlanRequest, cfg: PlannerConfig) -> str:
             for m in req.missions
         ],
         "recurring_issues": [
-            {"type": r.type.value, "slide_number": r.slide_number}
+            {"type": r.area.value, "slide_number": r.slide_number}
             for r in req.memory.recurring_issues
         ],
         "previous_review": _previous_review(req.previous_review, cfg),
@@ -98,12 +98,19 @@ def _previous_review(review: dict[str, Any] | None, cfg: PlannerConfig) -> dict[
     if not review:
         return None
     issues = [
-        {k: issue.get(k) for k in ("rank", "type", "slide_number", "burden_s", "memory", "gave_up")}
+        {
+            "rank": issue.get("rank"),
+            "type": issue.get("area"),
+            "slide_number": issue.get("slide_number"),
+            "burden_s": issue.get("burden_s"),
+            "memory": issue.get("memory"),
+            "gave_up": issue.get("gave_up"),
+        }
         for issue in (review.get("issues") or [])[: cfg.max_previous_issues]
         if isinstance(issue, dict)
     ]
     status = {
-        s.get("type"): s.get("status")
+        s.get("area"): s.get("status")
         for s in (review.get("type_status") or [])
         if isinstance(s, dict)
     }
@@ -129,7 +136,7 @@ def validate_draft(
         label = f"focus {f.type.value} {f.slide_number if f.slide_number is not None else '전체'}"
         if f.slide_number is not None and f.slide_number not in slides:
             dropped.append(f"{label}: 계획에 없는 장")
-        elif any(x.type == f.type and x.slide_number == f.slide_number for x in focus):
+        elif any(x.area == f.type and x.slide_number == f.slide_number for x in focus):
             dropped.append(f"{label}: 중복")
         elif len(focus) >= pc.max_focus:
             dropped.append(f"{label}: {pc.max_focus}개 초과")
@@ -137,14 +144,14 @@ def validate_draft(
             weight = min(pol.plan_weight_max, max(pol.plan_weight_min, f.weight))
             focus.append(
                 FocusItem(
-                    type=f.type,
+                    area=f.type,
                     slide_number=f.slide_number,
                     weight=round(weight, 2),
                     why=f.why[:_WHY_CHARS],
                 )
             )
 
-    mission_scopes = {(m.type, m.slide_number) for m in req.missions}
+    mission_scopes = {(m.area, m.slide_number) for m in req.missions}
     relax: list[RelaxItem] = []
     for r in draft.relax:
         label = f"relax {r.type.value} {r.slide_number}"
@@ -154,15 +161,15 @@ def validate_draft(
             dropped.append(f"{label}: 계획에 없는 장")
         elif (r.type, r.slide_number) in mission_scopes or (r.type, None) in mission_scopes:
             dropped.append(f"{label}: 이번 미션 영역")
-        elif any(f.type == r.type and f.slide_number in (None, r.slide_number) for f in focus):
+        elif any(f.area == r.type and f.slide_number in (None, r.slide_number) for f in focus):
             dropped.append(f"{label}: 집중 영역과 겹침")
-        elif any(x.type == r.type and x.slide_number == r.slide_number for x in relax):
+        elif any(x.area == r.type and x.slide_number == r.slide_number for x in relax):
             dropped.append(f"{label}: 중복")
         elif len(relax) >= pc.max_relax:
             dropped.append(f"{label}: {pc.max_relax}개 초과")
         else:
             relax.append(
-                RelaxItem(type=r.type, slide_number=r.slide_number, why=r.why[:_WHY_CHARS])
+                RelaxItem(area=r.type, slide_number=r.slide_number, why=r.why[:_WHY_CHARS])
             )
 
     budget = _budget(draft.max_interventions, req, pc, dropped)

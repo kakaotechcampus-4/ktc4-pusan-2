@@ -44,14 +44,14 @@ class Action(StrEnum):
 
 
 class Mode(StrEnum):
-    PRACTICE = "PRACTICE"
+    COACHING = "COACHING"
     EXAM = "EXAM"
 
 
 class Issue(StrEnum):
     """평가기가 찾는 문제. 후보 하나는 문제 하나에서 나온다."""
 
-    GAZE_SCRIPT = "GAZE_SCRIPT"
+    GAZE_ON_SCRIPT = "GAZE_ON_SCRIPT"
     PACE_FAST = "PACE_FAST"
     VOLUME_LOW = "VOLUME_LOW"
     LONG_SILENCE = "LONG_SILENCE"
@@ -158,7 +158,7 @@ class GazeLevel(StrEnum):
 
 class VolumeLevel(StrEnum):
     LOW = "LOW"
-    OK = "OK"
+    NORMAL = "NORMAL"
     UNKNOWN = "UNKNOWN"
 
 
@@ -217,7 +217,7 @@ class StrengthKind(StrEnum):
 
 #: 문제 → 원인 영역. IMPROVED_AFTER_FEEDBACK 는 교정했던 영역을 그대로 물려받는다.
 ISSUE_TYPE: dict[Issue, FeedbackType] = {
-    Issue.GAZE_SCRIPT: FeedbackType.GAZE,
+    Issue.GAZE_ON_SCRIPT: FeedbackType.GAZE,
     Issue.PACE_FAST: FeedbackType.SPEED,
     Issue.VOLUME_LOW: FeedbackType.VOLUME,
     Issue.LONG_SILENCE: FeedbackType.PAUSE,
@@ -233,7 +233,7 @@ ISSUE_TYPE: dict[Issue, FeedbackType] = {
 #: 슬라이드마다 따로 보는 문제. 전략(사다리 단계 · 포기)도 슬라이드마다 새로 시작한다.
 #: 4번 장에서 시선 지적을 포기했어도 5번 장에서는 다시 시도한다.
 SLIDE_SCOPED: frozenset[Issue] = frozenset(
-    {Issue.GAZE_SCRIPT, Issue.SLIDE_OVER, Issue.KEYWORD_MISSING}
+    {Issue.GAZE_ON_SCRIPT, Issue.SLIDE_OVER, Issue.KEYWORD_MISSING}
 )
 
 #: 점수가 같을 때의 순서. 앞일수록 먼저다 — 결과가 실행마다 달라지지 않게 하려는 것뿐이다.
@@ -242,7 +242,7 @@ ISSUE_ORDER: tuple[Issue, ...] = (
     Issue.FINAL_MINUTE,
     Issue.BEHIND_SCHEDULE,
     Issue.SLIDE_OVER,
-    Issue.GAZE_SCRIPT,
+    Issue.GAZE_ON_SCRIPT,
     Issue.PACE_FAST,
     Issue.VOLUME_LOW,
     Issue.LONG_SILENCE,

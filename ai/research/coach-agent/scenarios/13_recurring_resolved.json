@@ -36,7 +36,7 @@
   "missions": [
     {
       "mission_id": "m-gaze-2",
-      "type": "GAZE",
+      "area": "GAZE",
       "slide_number": 2,
       "priority": 1,
       "description": "2번 장 대본 응시 30% 이하",
@@ -50,7 +50,7 @@
   "memory": {
     "recurring_issues": [
       {
-        "type": "GAZE",
+        "area": "GAZE",
         "slide_number": 2
       }
     ]
@@ -61,7 +61,7 @@
     },
     "memory_labels": [
       {
-        "type": "GAZE",
+        "area": "GAZE",
         "slide_number": 2,
         "label": "RESOLVED"
       }
@@ -75,11 +75,11 @@
     "strengths_include": [
       {
         "kind": "RESOLVED_RECURRING",
-        "type": "GAZE"
+        "area": "GAZE"
       },
       {
         "kind": "MISSION_ACHIEVED",
-        "type": "GAZE"
+        "area": "GAZE"
       }
     ]
   }

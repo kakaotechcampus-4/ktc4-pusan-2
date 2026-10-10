@@ -33,7 +33,7 @@ def summary(t_ms: int, gaze: dict[str, Any]) -> tuple[dict[str, float], int, str
 
 
 def _cands(resp):
-    return {c.issue.value: c for c in resp.candidates}
+    return {c.issue_type.value: c for c in resp.candidates}
 
 
 def test_records_become_window_ratios_and_current_run():
@@ -60,7 +60,7 @@ def test_screen_and_other_are_visible_but_not_script():
     )
     # 보인 시간 중 대본 6 / 9 = 0.67 — 비율로는 0.7 미만이지만 6초 연속이라 연속 응시로 잡힌다
     resp = decide(make_request(20_000, gaze=records(20_000, states)))
-    assert _cands(resp)["GAZE_SCRIPT"].status.value == "WAITING"  # 지속 3초 미달
+    assert _cands(resp)["GAZE_ON_SCRIPT"].status.value == "WAITING"  # 지속 3초 미달
     assert resp.indicators.gaze.value == "SCRIPT"
 
 
@@ -121,13 +121,13 @@ def test_same_answer_as_the_summary_input():
 def test_no_gaze_judgement_right_after_the_take_starts():
     # 3초 동안 모두 대본 — 표본이 너무 적어 지적하지 않고 상태 표시는 '모름'
     resp = decide(make_request(3000, gaze=records(3000, ["BOTTOM"] * 3)))
-    assert "GAZE_SCRIPT" not in _cands(resp)
+    assert "GAZE_ON_SCRIPT" not in _cands(resp)
     assert resp.indicators.gaze.value == "UNKNOWN"
 
 
 def test_take_start_shows_unknown_until_there_is_a_record():
     resp = decide(make_request(0, gaze={"window_ms": 10_000, "records": []}))
-    assert "GAZE_SCRIPT" not in _cands(resp)
+    assert "GAZE_ON_SCRIPT" not in _cands(resp)
     assert resp.indicators.gaze.value == "UNKNOWN"
 
 
@@ -135,14 +135,14 @@ def test_a_short_window_from_fe_does_not_block_gaze_coaching():
     # FE 가 3초 창을 보내도 Take 시작 5초가 지났으면 지적한다 (창 길이가 아니라 경과 시간)
     gaze = records(20_000, ["BOTTOM"] * 3) | {"window_ms": 3000}
     resp = decide(make_request(20_000, gaze=gaze))
-    assert "GAZE_SCRIPT" in _cands(resp)
+    assert "GAZE_ON_SCRIPT" in _cands(resp)
     assert resp.indicators.gaze.value == "SCRIPT"
 
 
 def test_empty_summary_is_read_as_before():
     # 요약 입력의 빈 비율은 v1 처럼 '대본 0' 으로 읽는다 (기록 입력에서만 '잴 시간 없음')
     resp = decide(make_request(20_000, gaze={"window_ms": 10_000, "ratios": {}}))
-    assert "GAZE_SCRIPT" not in _cands(resp)
+    assert "GAZE_ON_SCRIPT" not in _cands(resp)
     assert resp.indicators.gaze.value == "AUDIENCE"
     assert resp.coach_state["history"][-1]["gaze_uncertain"] == 0.0
 
@@ -168,5 +168,5 @@ def test_unmeasured_ratio_counts_against_the_sensor():
     ratios = gaze_script(0.85, uncertain=0.0)["ratios"]
     ratios = {k: v * 0.4 for k, v in ratios.items()} | {"UNMEASURED": 0.6}
     resp = decide(make_request(20_000, gaze={"window_ms": 10_000, "ratios": ratios}))
-    c = _cands(resp)["GAZE_SCRIPT"]
+    c = _cands(resp)["GAZE_ON_SCRIPT"]
     assert c.status.value == "IGNORED" and "SENSOR_UNUSABLE" in c.reasons

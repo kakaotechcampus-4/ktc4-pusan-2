@@ -45,7 +45,7 @@ def _print_run(result: RunResult, failures: list[str], verbose: bool) -> None:
         if e["kind"] == "STRATEGY":
             to = f" → {e['to_instruction']}.{e['to_variant']}" if e.get("to_instruction") else ""
             print(
-                f"   {format_duration(e['t_ms']):>7} 전략  {e['change']} {e['issue']}"
+                f"   {format_duration(e['t_ms']):>7} 전략  {e['change']} {e['issue_type']}"
                 f" (장{e['slide_number']}) {e['from_instruction']}.{e['from_variant']}{to}"
             )
     s = review.summary

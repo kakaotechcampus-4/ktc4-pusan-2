@@ -83,7 +83,7 @@ def test_old_tick_does_not_change_state():
 
 
 def test_feedback_type_enum_matches_review_and_mission_types():
-    # 리뷰의 ReviewPoint.type · Mission.type 과 같은 7개
+    # 리뷰의 ReviewPoint.type · Mission.area 과 같은 7개
     assert {t.value for t in FeedbackType} == {
         "GAZE",
         "SPEED",

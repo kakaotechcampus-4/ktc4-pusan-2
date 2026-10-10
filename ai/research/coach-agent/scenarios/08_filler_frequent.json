@@ -52,7 +52,7 @@
     }
   },
   "expect": {
-    "types": {
+    "areas": {
       "FILLER": {
         "min": 1
       }

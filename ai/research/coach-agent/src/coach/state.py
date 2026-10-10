@@ -30,8 +30,8 @@ class HistorySample(_S):
     script_ratio: float | None = None
     gaze_uncertain: float | None = None
     cpm: float | None = None
-    cpm_recent: float | None = None
-    relative_db: float | None = None
+    cpm_short: float | None = None
+    voice_diff_db: float | None = None
     speaking: bool | None = None
     filler_new: int = 0
     required_ratio: float | None = None
@@ -39,8 +39,8 @@ class HistorySample(_S):
 
 class EpisodeState(_S):
     candidate_id: str
-    issue: Issue
-    type: FeedbackType
+    issue_type: Issue
+    area: FeedbackType
     slide_number: int | None = None
     start_ms: int
     last_seen_ms: int
@@ -99,8 +99,8 @@ class PendingOutcome(_S):
 
     intervention_id: str
     candidate_id: str
-    issue: Issue
-    type: FeedbackType
+    issue_type: Issue
+    area: FeedbackType
     instruction: Instruction
     variant: str
     step: int
@@ -117,8 +117,8 @@ class Praise(_S):
     """효과가 있던 개입 — 유지 격려(CONTINUE) 후보가 된다."""
 
     intervention_id: str
-    source_issue: Issue
-    type: FeedbackType
+    source_issue_type: Issue
+    area: FeedbackType
     slide_number: int | None = None
     intervention_t_ms: int
     expires_ms: int

@@ -9,7 +9,7 @@
   },
   "end_on_finish": false,
   "expect": {
-    "types": {
+    "areas": {
       "TIME": {
         "min": 2
       }
