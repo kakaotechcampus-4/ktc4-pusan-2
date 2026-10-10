@@ -1,0 +1,67 @@
+{
+  "name": "08_filler_frequent",
+  "description": "30초부터 군더더기가 분당 14회. 지적 뒤 줄어든다 → 효과 있음",
+  "take_id": "sim-08_filler_frequent",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "segments": [
+    {
+      "from_ms": 30000,
+      "to_ms": 150000,
+      "set": {
+        "filler_per_min": 14
+      }
+    }
+  ],
+  "reactions": {
+    "REDUCE_FILLER": {
+      "delay_ms": 2000,
+      "duration_ms": null,
+      "set": {
+        "filler_per_min": 1
+      }
+    }
+  },
+  "expect": {
+    "areas": {
+      "FILLER": {
+        "min": 1
+      }
+    },
+    "instructions_include": [
+      "REDUCE_FILLER"
+    ],
+    "outcomes_include": [
+      "EFFECTIVE"
+    ]
+  }
+}

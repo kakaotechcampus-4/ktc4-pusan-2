@@ -93,40 +93,12 @@ export interface ApiError {
 
 /* ------------------------------------------------------------------ */
 /* Pitch · 자료 · 대본                                                  */
+/*                                                                     */
+/* 슬라이드와 대본은 BE 가 나눠서 줍니다 — 발표자료는 `types/presentation.ts`  */
+/* (PDF URL 하나, FE 가 pdf.js 로 장마다 그림), 대본은 `types/script.ts`      */
+/* (슬라이드별 본문 · 키워드). 장마다 이미지를 받던 옛 명세(8-4)의             */
+/* `PitchDetail` · `Slide` 는 BE 에 없어 걷어냈습니다.                         */
 /* ------------------------------------------------------------------ */
-
-export interface Slide {
-  slideNumber: number;
-  imageUrl: string;
-  /** 발표 중 만료되면 화면이 깨집니다. 최소 2시간 */
-  imageUrlExpiresAt: string;
-  keywords: { text: string; required: boolean }[];
-}
-
-export interface PitchDetail {
-  id: string;
-  title: string;
-  timeLimitSec: number;
-  presentationDate: string;
-  bestTakeId: string | null;
-  presentation: {
-    id: string;
-    version: number;
-    pageCount: number;
-    convertStatus: 'PROCESSING' | 'COMPLETED' | 'FAILED';
-    slides: Slide[];
-  };
-  script: {
-    id: string;
-    version: number;
-    content: string;
-    charCount: number;
-    estDurationSec: number;
-    estBasisWpm: number;
-    emphasisSpans: { start: number; end: number; type: string }[];
-    slideAnchors: { slideNumber: number; charOffset: number }[];
-  };
-}
 
 /* ------------------------------------------------------------------ */
 /* 발표 종료 — POST /takes/{id}/complete                                */
@@ -140,8 +112,11 @@ export interface GazeSegment {
 }
 
 export interface CalibrationSummary {
-  /** 2점 캘리브레이션 — 카메라 한 번, 화면 한 번 */
-  points: 2;
+  /**
+   * 기준점 수. AI v1.1 은 3점입니다 — 화면 가운데 · 렌즈 · 대본 자리.
+   * (v1.0 은 렌즈 · 대본 2점이었습니다)
+   */
+  points: 3;
   /**
    * GOOD 검사 통과 · FAIR 통과했지만 경고 · POOR 검사 불합격이지만 모델은 있어 진행함.
    * POOR 인 Take 의 시선 숫자는 믿음이 낮습니다 — 리포트가 그 점을 알려야 합니다.
@@ -362,51 +337,53 @@ export interface PrepareResponse {
   /** Take가 스냅샷하는 값 — 준비 화면에서 고정됩니다 (CLAUDE.md 8번) */
   presentationVersion: number;
   scriptVersion: number;
+  /**
+   * 위 두 버전의 서버 id. BE 의 Take 생성(`TakeInitRequestDTO`)은 번호가 아니라 id 를 받습니다.
+   * ★ `/prepare` 는 BE 에 아직 없습니다 — 생기면 이 둘도 함께 내려 달라고 요청할 값입니다.
+   */
+  presentationVersionId: string;
+  scriptVersionId: string;
   timeLimitSec: number;
   /** 이번에 만들어질 Take 번호. POST /takes의 응답과 같아야 합니다 */
   nextTakeNumber: number;
-  /** 지난 Take가 남긴 다음 과제. 없으면 null — 배너를 그리지 않습니다 */
-  lastMission: { id: string; description: string } | null;
   criteria: { version: number; readOnly: boolean; items: EvalCriterion[] };
   /** 지난 Take에서 고른 Script Mode. 화면의 초기 선택값입니다 */
   defaultScriptMode: ScriptMode;
 }
 
-export interface CreateTakeRequest {
+/**
+ * 리허설 화면이 무대를 여는 데 필요한 것. 장치 점검이 Take 를 만들며 묶어 넘기고,
+ * 새로고침에 대비해 IndexedDB 세션에도 남깁니다 (`setSessionTicket`).
+ *
+ * BE 에는 Take 를 읽는 API 가 없어서(`GET /takes/{id}` 없음) 리허설은 이 값으로
+ * 발표자료(`GET /presentations/{id}`)와 대본(`GET /scripts/{id}`)을 받습니다.
+ */
+export interface RehearsalTicket {
   pitchId: string;
-  /** 멱등키. IndexedDB 세션 키와 **같은 값**입니다 */
-  clientSessionId: string;
-  mode: PracticeMode;
-  scriptMode: ScriptMode;
-  presentationVersion: number;
-  scriptVersion: number;
-  criteriaVersion: number;
-}
-
-export interface CreateTakeResponse {
-  takeId: string;
-  takeNumber: number;
-  status: TakeStatus;
-}
-
-/* ------------------------------------------------------------------ */
-/* 리허설 화면 (P5 · P5x)                                               */
-/*                                                                     */
-/* ★ 명세 8-4에 아직 없습니다. 준비 화면과 같은 이유로 잠정 형태입니다.  */
-/*   리허설은 URL에 takeId 하나만 들고 들어옵니다 — 새로고침으로 돌아와도 */
-/*   화면이 서야 해서, 그 하나로 필요한 걸 다 받아올 곳이 필요합니다.    */
-/* ------------------------------------------------------------------ */
-
-export interface TakeContext {
-  takeId: string;
-  takeNumber: number;
-  pitchId: string;
-  pitchTitle: string;
-  /** Take가 시작될 때 고정된 값입니다. 화면이 임의로 바꾸지 않습니다 */
-  mode: PracticeMode;
-  scriptMode: ScriptMode;
+  title: string;
+  presentationVersionId: string;
+  scriptVersionId: string;
   timeLimitSec: number;
-  status: TakeStatus;
-  /** 이번 Take의 과제. 없으면 null */
-  mission: { id: string; description: string } | null;
+  mode: PracticeMode;
+  scriptMode: ScriptMode;
+  /** 몇 번째 Take 인가. BE 가 돌려주지 않아 준비 화면 응답에 있을 때만 압니다 */
+  takeNumber: number | null;
+}
+
+/**
+ * 피치 생성에서 매핑을 저장하며 정한 **이번 연습의 조합**. "다음 →" 이 장치 점검에
+ * `location.state.practice` 로 넘깁니다. 장치 점검은 이 값으로 Take 를 만들고,
+ * 없으면(홈에서 바로 들어옴 · 새로고침) `/prepare` 의 버전을 씁니다.
+ *
+ * 두 화면이 서로 다른 feature 라 직접 import 하지 않고 이 타입만 함께 씁니다.
+ */
+export interface PracticeCombo {
+  /** 장치 점검 머리말. `/prepare` 없이 들어와도 무슨 발표인지 보이게 */
+  title: string;
+  presentationVersionId: string;
+  scriptVersionId: string;
+  /** 화면에 보여 줄 번호 — "자료 v1 · 대본 v3" */
+  slideVersion: number;
+  scriptVersion: number;
+  goalTimeSec: number;
 }

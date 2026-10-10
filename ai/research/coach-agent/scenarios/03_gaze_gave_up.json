@@ -1,0 +1,71 @@
+{
+  "name": "03_gaze_gave_up",
+  "description": "2번 장 내내 대본만 봄, 지적해도 안 바뀜 → 다른 방법 → 그 장에서 포기 → Take 결과에 포기로 남는다. 사다리를 3분 안에 다 보려고 쿨다운을 20초로 줄였다",
+  "take_id": "sim-03_gaze_gave_up",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "segments": [
+    {
+      "from_ms": 30000,
+      "to_ms": 84000,
+      "set": {
+        "script_ratio": 0.9
+      }
+    }
+  ],
+  "config": {
+    "policy": {
+      "cooldown_ms": 20000
+    }
+  },
+  "expect": {
+    "areas": {
+      "GAZE": {
+        "min": 2,
+        "max": 2
+      }
+    },
+    "strategy_changes_include": [
+      "ESCALATED",
+      "GAVE_UP"
+    ],
+    "gave_up_include": [
+      {
+        "issue_type": "GAZE_ON_SCRIPT",
+        "slide_number": 2
+      }
+    ],
+    "suppressed_reasons_include": [
+      "STRATEGY_EXHAUSTED"
+    ]
+  }
+}

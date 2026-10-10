@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# 배포 이름. import 패키지는 ``coach`` 입니다 (ai/src/coach).
+# 배포할 때는 ai/src/coach/ 폴더를 ai/releases/ 로 그대로 옮깁니다 — v1/README.md §8.
+name = "coach-agent"
+version = "1.0.0"
+description = "Pitch Coach realtime coach agent v1 (rule executor + reflection) - local rig"
+requires-python = ">=3.11"
+# 코치 코어의 의존성은 pydantic 하나뿐입니다. 시계 · 파일 · 네트워크를 쓰지 않습니다.
+dependencies = ["pydantic>=2.6"]
+
+[tool.setuptools.packages.find]
+where = ["ai/src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["ai/src", "."]
+
+# backend/pyproject.toml 과 같은 규칙
+[tool.ruff]
+line-length = 100
+src = ["ai/src", "."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["coach", "tools"]

@@ -1,0 +1,92 @@
+{
+  "name": "05_time_behind",
+  "description": "느린 발표자(240 CPM) + 3번 장 시간 미션. 늦어지면 '조금만 빠르게', 반응하면 따라잡는다. '천천히'는 나오면 안 된다",
+  "take_id": "sim-05_time_behind",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "baseline": {
+    "cpm": 240
+  },
+  "missions": [
+    {
+      "mission_id": "mission-9",
+      "area": "TIME",
+      "slide_number": 3,
+      "priority": 1,
+      "target": {
+        "metric": "slide_duration_ms",
+        "operator": "LTE",
+        "value": 60000
+      }
+    }
+  ],
+  "memory": {
+    "recurring_issues": [
+      {
+        "area": "TIME",
+        "slide_number": 3
+      }
+    ]
+  },
+  "reactions": {
+    "SPEED_UP": {
+      "delay_ms": 2000,
+      "duration_ms": null,
+      "set": {
+        "cpm": 330
+      }
+    },
+    "CONDENSE": {
+      "delay_ms": 2000,
+      "duration_ms": null,
+      "set": {
+        "completion": 0.6
+      }
+    }
+  },
+  "expect": {
+    "areas": {
+      "TIME": {
+        "min": 1
+      }
+    },
+    "instructions_include": [
+      "SPEED_UP"
+    ],
+    "instructions_exclude": [
+      "SLOW_DOWN"
+    ],
+    "outcomes_include": [
+      "EFFECTIVE"
+    ]
+  }
+}

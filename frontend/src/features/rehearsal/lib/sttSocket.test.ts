@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FRAME_SAMPLES } from './sttProtocol';
-import { SttSocket, type SocketLike } from './sttSocket';
+import { SttSocket, stopTakeStream, type SocketLike } from './sttSocket';
 
 /** 서버 흉내. 테스트가 직접 열고·보내고·닫습니다 */
 class FakeSocket implements SocketLike {
@@ -556,5 +556,54 @@ describe('종료', () => {
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(done).toBe(true);
+  });
+
+  /**
+   * 붙기도 전에 끝냈습니다 (종료 중 새로고침에서 stop 만 보내러 붙는 경우).
+   * 버퍼가 비었다고 바로 정리하면 stop 이 안 가고, 서버는 끊긴 연결을 30초 기다립니다.
+   */
+  it('붙는 중에 끝내면 소켓이 생기기를 기다렸다가 stop 을 보낸다', async () => {
+    const stt = makeSocket();
+    stt.start();
+    const stopped = stt.stop();
+
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    expect(JSON.parse(sockets[0]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
+
+    sockets[0]!.emit(status('closed'));
+    await expect(stopped).resolves.toBeUndefined();
+  });
+});
+
+describe('stop 만 보내기 (종료 중 새로고침)', () => {
+  it('인증하고 stop 만 보낸 뒤 closed 를 받으면 끝난다 — 오디오는 없다', async () => {
+    const stopped = stopTakeStream('t1', {
+      getToken: () => Promise.resolve('access-token'),
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    expect(sockets[0]!.sent.map((m) => JSON.parse(m as string).type)).toEqual(['auth', 'stop']);
+
+    sockets[0]!.emit(status('closed'));
+    await expect(stopped).resolves.toBeUndefined();
+  });
+
+  it('토큰을 못 받아도 던지지 않고 끝난다 — 종료는 이것 없이도 이어간다', async () => {
+    const stopped = stopTakeStream('t1', {
+      getToken: () => Promise.resolve(null),
+      createSocket: () => {
+        throw new Error('붙으면 안 됩니다');
+      },
+    });
+    await expect(stopped).resolves.toBeUndefined();
   });
 });

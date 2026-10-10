@@ -1,0 +1,53 @@
+{
+  "name": "10_audio_dead",
+  "description": "70~100초 오디오가 멈춤 (발표자는 계속 말하지만 STT 는 못 들음). 침묵이 길게 잡혀도 '말이 멈췄어요'는 나오면 안 되고, 못 들은 만큼 '늦다'고 오판해도 안 된다",
+  "take_id": "sim-10_audio_dead",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "segments": [
+    {
+      "from_ms": 70000,
+      "to_ms": 100000,
+      "set": {
+        "audio_live": false
+      }
+    }
+  ],
+  "expect": {
+    "interventions": {
+      "max": 0
+    },
+    "suppressed_reasons_include": [
+      "SENSOR_UNUSABLE"
+    ]
+  }
+}

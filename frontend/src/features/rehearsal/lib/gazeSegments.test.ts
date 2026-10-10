@@ -66,7 +66,7 @@ describe('TemporalVoter 판정 → 구간 압축', () => {
         const d = voter.decide(t);
         if (d) decisions.push(d);
       }
-      // 초당 하나 — 첫 판정이 첫 프레임 시각에 앉으므로 10초 창에 9개다.
+      // 초당 하나 — 첫 프레임 시각에서 1초씩 채우므로 10초 창에 10개다.
       // (밀림 유무로는 개수가 갈리지 않는다. 아래 두 단정이 밀림을 잡는다.)
       expect(decisions.length, `frameGap=${frameGap}`).toBeGreaterThanOrEqual(9);
       // ① 판정 간격이 **정확히** 1000ms. 밀리면 1008·1040 이 섞인다.

@@ -1,0 +1,11 @@
+{
+  "backbone": "l2cs",
+  "filename": "L2CSNet_gaze360.pkl",
+  "installed_at_ms": 1788685095301,
+  "key": "l2cs",
+  "pinned_sha256": "8a7f3480d868dd48261e1d59f915b0ef0bb33ea12ea00938fb2168f212080665",
+  "sha256": "8a7f3480d868dd48261e1d59f915b0ef0bb33ea12ea00938fb2168f212080665",
+  "size_bytes": 95849977,
+  "source": "existing",
+  "trained_on": "Gaze360"
+}

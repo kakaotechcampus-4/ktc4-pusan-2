@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch import service
-from pitch_coach_backend.module.pitch.dto import AllPitchesDTO, PitchDTO
+from pitch_coach_backend.module.pitch.dto import PitchListResponseDTO, PitchSaveRequestDTO
 from pitch_coach_backend.module.pitch.entity import PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Take, TakeSummary
 from pitch_coach_backend.module.user.entity import User
@@ -22,7 +22,8 @@ def _make_pitch(db: Session, user_id: uuid.UUID, title: str, time_limit_sec: int
     return service.add_pitch_service(
         db,
         user_id,
-        PitchDTO(title=title, time_limit_sec=time_limit_sec, presentation_date=date(2026, 3, 1)),
+        PitchSaveRequestDTO(
+            title=title, time_limit_sec=time_limit_sec, presentation_date=date(2026, 3, 1)),
     )
 
 
@@ -98,17 +99,29 @@ def versions(db_session: Session, pitch_id: uuid.UUID) -> tuple[uuid.UUID, uuid.
 def test_returns_empty_list_when_user_has_no_pitch(
     db_session: Session, user_id: uuid.UUID
 ) -> None:
-    assert service.get_all_pitches_service(db_session, user_id) == AllPitchesDTO(pitches=[])
+    assert service.get_all_pitches_service(db_session, user_id) == PitchListResponseDTO(pitches=[])
 
 # pitch 필드가 잘 매핑되는지 확인
 def test_maps_pitch_fields(db_session: Session, user_id: uuid.UUID, pitch_id: uuid.UUID) -> None:
     result = service.get_all_pitches_service(db_session, user_id)
 
-    assert isinstance(result, AllPitchesDTO)
+    assert isinstance(result, PitchListResponseDTO)
     assert len(result.pitches) == 1
     assert result.pitches[0].pitch_title == "기존 발표"
     assert result.pitches[0].pitch_time == 300
     assert result.pitches[0].thumbnail_url is None
+
+# 발표일 없이 만든 pitch 도 목록에 나오고 pitch_deadline 은 null
+def test_pitch_without_presentation_date_has_null_deadline(
+    db_session: Session, user_id: uuid.UUID
+) -> None:
+    service.add_pitch_service(
+        db_session, user_id, PitchSaveRequestDTO(title="날짜 없는 발표", time_limit_sec=300)
+    )
+
+    result = service.get_all_pitches_service(db_session, user_id)
+
+    assert [p.presentation_date for p in result.pitches] == [None]
 
 # pitch에 take가 없는 경우 takes가 빈 리스트로 나오는지 확인
 def test_pitch_without_takes_has_empty_takes(
