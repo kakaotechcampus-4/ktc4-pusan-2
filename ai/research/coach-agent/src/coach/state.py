@@ -13,7 +13,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .schemas import CoachingPlan
 from .version import STATE_VERSION
 from .vocab import FeedbackType, Instruction, Issue
 
@@ -140,7 +139,6 @@ class Cursor(_S):
 
 class CoachState(_S):
     v: int = STATE_VERSION
-    plan: CoachingPlan = Field(default_factory=CoachingPlan)
     last_t_ms: int | None = None
     #: 이벤트 번호
     seq: int = 0
@@ -191,9 +189,9 @@ class CoachState(_S):
     slide_acc: SlideAcc | None = None
 
 
-def initial_state(plan: CoachingPlan | None = None) -> CoachState:
-    """Take 의 첫 기억. 코칭 계획(planner.plan_coaching)은 LLM 이 만든 계획을 넣어 이걸 돌려준다."""
-    return CoachState(plan=plan or CoachingPlan())
+def initial_state() -> CoachState:
+    """Take 의 첫 기억. 코칭 계획은 state 에 두지 않고 요청의 coaching_plan 으로 받는다."""
+    return CoachState()
 
 
 def load_state(raw: dict[str, Any] | None) -> tuple[CoachState, bool]:

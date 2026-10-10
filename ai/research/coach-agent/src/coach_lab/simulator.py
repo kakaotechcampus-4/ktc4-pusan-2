@@ -201,8 +201,10 @@ class Presenter:
         sc: Scenario,
         noise: Noise | None = None,
         seed: int | None = None,
+        coaching_plan: dict[str, Any] | None = None,
     ) -> None:
         self.sc = sc
+        self.coaching_plan = coaching_plan
         self.noise = noise or sc.noise
         self.rng = random.Random(sc.seed if seed is None else seed)
         self.base = Params.model_validate(sc.baseline)
@@ -415,7 +417,8 @@ class Presenter:
             "mode": self.sc.mode,
             "plan": self.sc.plan,
             "missions": self.sc.missions,
-            "memory": self.sc.memory,
+            "recurring_issues": self.sc.memory.get("recurring_issues", []),
+            "coaching_plan": self.coaching_plan,
             "inputs": {
                 "gaze_records": list(self.gaze_records),
                 "voice_records": list(self.voice_records),
@@ -487,14 +490,15 @@ def run(
     noise: Noise | None = None,
     seed: int | None = None,
     judges: Judges | None = None,
-    coach_state: dict[str, Any] | None = None,
+    coaching_plan: dict[str, Any] | None = None,
 ) -> RunResult:
     """시나리오 하나를 재생한다.
 
-    coach_state 를 주면 그 상태(예: 코칭 계획이 든 첫 상태)로 시작한다.
+    coaching_plan 을 주면 매 요청에 그 계획을 싣는다(BE 가 저장해 둔 코칭 계획). Take 첫 요청의
+    coach_state 는 늘 null 이다.
     """
     cfg = config if config is not None else scenario_config(sc)
-    presenter = Presenter(sc, noise, seed)
+    presenter = Presenter(sc, noise, seed, coaching_plan)
     judges = judges or lab_judges()
     result = RunResult(
         scenario=sc,
@@ -503,7 +507,7 @@ def run(
         config=cfg,
         presenter=presenter,
     )
-    state: dict[str, Any] | None = coach_state
+    state: dict[str, Any] | None = None
 
     t = 0
     while t <= sc.duration_ms:

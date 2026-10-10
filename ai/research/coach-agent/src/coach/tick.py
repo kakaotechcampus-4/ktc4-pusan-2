@@ -6,9 +6,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .config import CoachConfig
-from .schemas import CoachRequest, IssueCriteria, SlidePlan
+from .schemas import CoachingPlan, CoachRequest, IssueCriteria, SlidePlan
 from .state import CoachState, HistorySample
 from .vocab import Issue
+
+#: 요청에 코칭 계획이 없을 때 쓰는 빈 계획
+_NO_PLAN = CoachingPlan()
 
 
 @dataclass
@@ -55,6 +58,11 @@ class Tick:
     dt_ms: int = 1_000
     #: 모듈 이름 → issue_type → 판정 기준 (되돌아보기가 기준값을 읽는다)
     criteria: dict[str, dict[str, IssueCriteria]] = field(default_factory=dict)
+
+    @property
+    def plan(self) -> CoachingPlan:
+        """이번 요청의 코칭 계획. 매 요청에서 읽고 state 에 두지 않는다. null 이면 빈 계획."""
+        return self.req.coaching_plan or _NO_PLAN
 
     def history_since(self, since_ms: int) -> list[HistorySample]:
         return [s for s in self.state.history if s.t_ms > since_ms]

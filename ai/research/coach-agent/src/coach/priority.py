@@ -77,13 +77,11 @@ def violates(value: object, target: MissionTarget) -> bool:
             return not value > target.value
         case "GTE":
             return not value >= target.value
-        case "EQ":
-            return value != target.value
     return False
 
 
 def _recurrence(tick: Tick, c: Candidate) -> float:
-    for issue in tick.req.memory.recurring_issues:
+    for issue in tick.req.recurring_issues:
         if issue.area == c.area and (
             issue.slide_number is None or issue.slide_number == tick.slide_number
         ):
@@ -95,7 +93,7 @@ def _recurrence(tick: Tick, c: Candidate) -> float:
 def _plan_focus(tick: Tick, c: Candidate) -> float:
     pc = tick.cfg.policy
     weight = 1.0
-    for focus in tick.state.plan.focus:
+    for focus in tick.plan.focus:
         if focus.area == c.area and (
             focus.slide_number is None or focus.slide_number == tick.slide_number
         ):

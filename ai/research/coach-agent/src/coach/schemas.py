@@ -68,7 +68,7 @@ class Plan(_In):
 class MissionTarget(_In):
     #: 지표 이름. 응답 evidence · 리뷰 evidence 와 같은 이름을 쓴다 (INTERFACE.md 의 공통 지표 이름)
     metric: str
-    operator: Literal["LT", "LTE", "GT", "GTE", "EQ"]
+    operator: Literal["LT", "LTE", "GT", "GTE"]
     value: float
 
 
@@ -151,14 +151,18 @@ class Calibration(_In):
 
 
 class CoachRequest(_In):
-    schema_version: str = SCHEMA_VERSION
     take_id: str
     #: Take 시작 기준 경과 ms. 모든 시각이 이 시간축이다
     t_ms: int = Field(ge=0)
     mode: Mode = Mode.COACHING
     plan: Plan = Field(default_factory=Plan)
     missions: list[Mission] = Field(default_factory=list)
-    memory: Memory = Field(default_factory=Memory)
+    #: 직전 리뷰의 반복 문제
+    recurring_issues: list[RecurringIssue] = Field(default_factory=list)
+    #: 코칭 계획. null 이면 계획 없음. why · source 는 와도 쓰지 않는다
+    coaching_plan: CoachingPlan | None = None
+    #: 사용자 평가 기준의 대본 사용 설정. 개입 규칙에서 쓴다 (아직 쓰지 않는다)
+    script_used: bool | None = None
     #: 판정 모듈에 넘길 원자료
     inputs: CoachInputs = Field(default_factory=CoachInputs)
     calibration: Calibration = Field(default_factory=Calibration)
@@ -251,8 +255,6 @@ class PlanResponse(_Out):
     fallback_reason: str | None = None
     #: 검증에서 뺀 항목과 이유 (예: "relax TIME 3: 봐줄 수 없는 영역")
     dropped: list[str] = Field(default_factory=list)
-    #: 첫 decide 요청에 붙일 coach_state (이 계획이 들어 있다)
-    coach_state: dict[str, Any]
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -600,7 +602,7 @@ class MemoryReview(_Out):
 
 class NextMissionTarget(_Out):
     metric: str
-    operator: Literal["LT", "LTE", "GT", "GTE", "EQ"]
+    operator: Literal["LT", "LTE", "GT", "GTE"]
     value: float
 
 

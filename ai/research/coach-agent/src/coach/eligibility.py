@@ -15,7 +15,7 @@ from .vocab import IGNORE_REASONS, WAIT_REASONS, CandidateStatus, Instruction, I
 def apply(tick: Tick, candidates: list[Candidate]) -> None:
     st = tick.state
     pc = tick.cfg.policy
-    plan = st.plan
+    plan = tick.plan
     behind = tick.detected(Issue.BEHIND_SCHEDULE)
 
     for c in candidates:

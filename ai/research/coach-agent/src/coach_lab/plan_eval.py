@@ -139,7 +139,7 @@ def evaluate_plans(
         ]
         first = responses[0]
         base = run(sc)
-        with_plan = run(sc, coach_state=first.coach_state)
+        with_plan = run(sc, coaching_plan=first.plan.model_dump(mode="json"))
         before, after = interventions_by_scope(base), interventions_by_scope(with_plan)
         failures = [check_plan(r.plan, sc.plan_expect) for r in responses]
         for item in sc.plan_expect.get("with_plan_no_interventions", []):

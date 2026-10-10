@@ -106,7 +106,9 @@ def make_request(
     stt_status: str = "ok",
     base_level_db: float | None = None,
     missions: list[dict[str, Any]] | None = None,
-    memory: dict[str, Any] | None = None,
+    recurring_issues: list[dict[str, Any]] | None = None,
+    coaching_plan: dict[str, Any] | None = None,
+    script_used: bool | None = None,
 ) -> dict[str, Any]:
     """voice 는 지난 1초의 음량 기록 하나(silence_ms · audio_live · level_db …)."""
     record = {"t_ms": max(0, t_ms - 1000), **(IN_PAUSE if voice is None else voice)}
@@ -116,7 +118,9 @@ def make_request(
         "mode": mode,
         "plan": {} if plan is None else plan,
         "missions": missions or [],
-        "memory": memory or {},
+        "recurring_issues": recurring_issues or [],
+        "coaching_plan": coaching_plan,
+        "script_used": script_used,
         "inputs": {
             "voice_records": [record],
             "words": words or [],
