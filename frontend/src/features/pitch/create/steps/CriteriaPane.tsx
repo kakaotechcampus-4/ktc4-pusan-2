@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toMessage } from '@/shared/api/errorMessage';
 import { parseStandards } from '@/shared/api/standards';
-import { useCreateStore } from '../createStore';
+import { isCurrentDraft, useCreateStore } from '../createStore';
 import { AlertIcon, CheckIcon, DocIcon, RefreshIcon } from '../icons';
 import { fromStandardsPosted } from '../lib/beAdapter';
 import type { CriteriaVersion } from '../lib/draft';
@@ -78,18 +78,22 @@ function Guide({ except }: { except: string | null }) {
 
 function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitchId: string }) {
   const applyParsedCriteria = useCreateStore((s) => s.applyParsedCriteria);
+  const draftId = useCreateStore((s) => s.draftId);
   const [text, setText] = useState(criteria?.sourceText ?? '');
 
   const parse = useMutation({
-    mutationFn: async (source: string) => {
+    // 정리를 시작한 작성(draftId)을 함께 넘깁니다. 그사이 새 피치를 시작했으면 결과를 버립니다
+    mutationFn: async ({ source }: { source: string; draftId: string }) => {
       const parsed = fromStandardsPosted(await parseStandards(pitchId, source));
       if (!parsed) throw new StandardsNotReady();
       return parsed;
     },
     // 결과는 버전에 담습니다. 처음 정리하면 버전이 새로 생기며 이 칸이 다시 그려지는데,
     // 응답을 여기(useMutation)에만 두면 그 순간 "넣지 못한 내용"이 사라집니다
-    onSuccess: (res, source) =>
-      applyParsedCriteria(criteria?.version ?? null, { sourceText: source, ...res }),
+    onSuccess: (res, { source, draftId: from }) => {
+      if (!isCurrentDraft(from)) return;
+      applyParsedCriteria(criteria?.version ?? null, { sourceText: source, ...res });
+    },
     onError: (error) => console.error('[평가기준] 정리하지 못했습니다', error),
   });
 
@@ -115,7 +119,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
       <button
         type="button"
         disabled={text.trim() === '' || parse.isPending}
-        onClick={() => parse.mutate(text)}
+        onClick={() => parse.mutate({ source: text, draftId })}
         className={[
           'flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg text-sm font-bold',
           'disabled:cursor-not-allowed disabled:border-transparent disabled:bg-line disabled:text-stone',
