@@ -16,3 +16,5 @@ SCHEMA_VERSION = "1.2"
 POLICY_VERSION = "coach-v1.2"
 #: coach_state 모양이 바뀌면 올린다. 다른 버전의 state 가 오면 버리고 새로 시작한다.
 STATE_VERSION = 1
+#: 시간 판정(timing) 기능 버전. 출력의 뜻이 바뀌면 올린다
+TIMING_VERSION = "timing-1.0"

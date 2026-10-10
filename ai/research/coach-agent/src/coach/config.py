@@ -116,6 +116,20 @@ class TimingConfig(_Section):
     #: 진행도를 말한 글자 수로 쟀을 때 / 시간으로 대신 쟀을 때의 신뢰도
     progress_confidence_chars: float = 0.9
     progress_confidence_time: float = 0.6
+    #: projected_end_ratio(예상 종료 ÷ 이르다고 볼 시각)가 이 값이면 심각도 1.0
+    ahead_bad_ratio: float = 0.82
+    #: 남은 시간이 이 값이면 심각도 1.0
+    final_minute_bad_ms: int = 0
+    #: 경과 ÷ 허용 최대가 이 값이면 심각도 1.0
+    time_over_bad_ratio: float = 1.05
+    #: 남은 장이 이만큼 이상일 때만 마무리 안내한다 (모르면 통과)
+    final_minute_min_slides: int = 2
+
+
+def criteria_version(feature_version: str, section: BaseModel) -> str:
+    """<feature_version>+<설정 해시 12자리>. 기준값을 바꾸면 해시가 바뀐다."""
+    blob = json.dumps(section.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
+    return f"{feature_version}+{hashlib.sha256(blob.encode('utf-8')).hexdigest()[:12]}"
 
 
 class PolicyConfig(_Section):

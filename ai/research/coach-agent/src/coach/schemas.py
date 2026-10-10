@@ -51,7 +51,8 @@ class SlidePlan(_In):
     """대본 분석이 주는 장별 계획."""
 
     slide_number: int
-    target_ms: int = Field(gt=0)
+    #: 0 이면 그 장의 장별 문제(SLIDE_OVER)를 내지 않는다
+    target_ms: int = Field(ge=0)
     #: 이 장 대본 글자 수 (공백 제외). 진행도 = 이 장에서 말한 글자 수 / script_chars
     script_chars: int = Field(default=0, ge=0)
     required_keywords: list[str] = Field(default_factory=list)
@@ -741,3 +742,64 @@ class CoachReviewEvidence(_Out):
     interventions: list[InterventionReview]
     strategy_changes: list[StrategyReview]
     by_type: list[TypeSummary]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 공통 1초 판정 결과 (#158 정의의 복사본)
+#
+# 판정 모듈(시선 · 속도 · 음량 · 군더더기 · 시간)이 같은 모양으로 낸다.
+# 코치는 외부 모듈의 결과도 이 모양으로 읽는다 — 그래서 모르는 필드는 무시한다.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class JudgmentIssue(_In):
+    """판정 결과 안의 문제 하나."""
+
+    issue_type: Issue
+    area: FeedbackType
+    #: 기준값에서 0.5, 아주 나쁨 값에서 1.0
+    severity: float = Field(ge=0.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0)
+    persistence_sec: float = Field(ge=0.0)
+    threshold: float
+    bad: float
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    actionable: bool = True
+
+
+class TallyItem(_In):
+    """집계 조각. 구간마다 값을 남겨 두면 소비자가 원하는 구간으로 합친다."""
+
+    t_ms: int
+    values: dict[str, float]
+
+
+class JudgmentResult(_In):
+    """한 판정 모듈의 1초 판정 결과."""
+
+    #: gaze · pace · volume · filler · timing
+    evaluator: str
+    area: FeedbackType
+    t_ms: int
+    #: 여기까지 집계(tally)에 셌다. 다음 호출의 since_ms 로 쓴다
+    counted_until_ms: int
+    words_counted_until_ms: int | None = None
+    criteria_version: str
+    measurable: bool
+    state: str
+    metrics: dict[str, float | None] = Field(default_factory=dict)
+    tally: list[TallyItem] = Field(default_factory=list)
+    issues: list[JudgmentIssue] = Field(default_factory=list)
+    #: filler 모듈만 쓰는 확장 필드
+    words: list[dict[str, Any]] | None = None
+
+
+class IssueCriteria(_In):
+    """문제 하나의 판정 기준. 소비자가 같은 기준으로 다시 셀 수 있게 공개한다."""
+
+    metric: str
+    direction: Literal["HIGHER_IS_WORSE", "LOWER_IS_WORSE"]
+    threshold: float
+    bad: float
+    onset_lag_ms: int = 0
+    offset_lag_ms: int = 0

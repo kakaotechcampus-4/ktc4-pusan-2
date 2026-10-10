@@ -1,0 +1,42 @@
+{
+  "TIME_OVER": {
+    "metric": "elapsed_ratio",
+    "direction": "HIGHER_IS_WORSE",
+    "threshold": 1.0,
+    "bad": 1.05,
+    "onset_lag_ms": 0,
+    "offset_lag_ms": 0
+  },
+  "FINAL_MINUTE": {
+    "metric": "remaining_ms",
+    "direction": "LOWER_IS_WORSE",
+    "threshold": 60000.0,
+    "bad": 0.0,
+    "onset_lag_ms": 0,
+    "offset_lag_ms": 0
+  },
+  "BEHIND_SCHEDULE": {
+    "metric": "required_ratio",
+    "direction": "HIGHER_IS_WORSE",
+    "threshold": 1.05,
+    "bad": 1.5,
+    "onset_lag_ms": 0,
+    "offset_lag_ms": 0
+  },
+  "SLIDE_OVER": {
+    "metric": "slide_time_ratio",
+    "direction": "HIGHER_IS_WORSE",
+    "threshold": 1.5,
+    "bad": 2.5,
+    "onset_lag_ms": 0,
+    "offset_lag_ms": 0
+  },
+  "AHEAD_OF_SCHEDULE": {
+    "metric": "projected_end_ratio",
+    "direction": "LOWER_IS_WORSE",
+    "threshold": 1.0,
+    "bad": 0.82,
+    "onset_lag_ms": 0,
+    "offset_lag_ms": 0
+  }
+}
