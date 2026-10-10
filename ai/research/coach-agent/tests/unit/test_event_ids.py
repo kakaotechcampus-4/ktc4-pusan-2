@@ -39,7 +39,9 @@ def _take() -> tuple[Session, list[Any]]:
     s = Session(load_config(policy={"cooldown_ms": 20_000}), slide=2, plan={})
     s.run(10_000, 70_000, **gaze_on(0.9))
     s.run(71_000, 80_000, slide=3, slide_started=71_000, **gaze_off(0.1))
-    fin = finalize({"take_id": "test-take", "t_ms": 81_000, "coach_state": s.state}, s.config)
+    fin = finalize(
+        {"take_id": "test-take", "t_ms": 81_000, "coach_state": s.state}, s.judges, s.config
+    )
     return s, [*s.events, *fin.events]
 
 

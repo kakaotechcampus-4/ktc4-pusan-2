@@ -21,7 +21,22 @@ def note_slide(state: CoachState, slide: SlideNow | None) -> None:
         return
     if state.slide_log and state.slide_log[-1][0] == slide.number:
         return
+    if state.slide_log:
+        # 앞 장은 새 장이 시작된 시각에 끝난다
+        span = state.slide_spans.get(str(state.slide_log[-1][0]))
+        if span is not None:
+            span[1] = max(span[1], slide.started_ms)
+    state.slide_spans.setdefault(str(slide.number), [slide.started_ms, slide.started_ms])
     state.slide_log = [*state.slide_log, (slide.number, slide.started_ms)][-SLIDE_LOG_KEEP:]
+
+
+def extend_slide_span(state: CoachState, t_ms: int) -> None:
+    """지금 장의 방문이 t_ms 까지 이어졌다고 남긴다. 시작은 처음 방문한 시각이다."""
+    if not state.slide_log:
+        return
+    number, started = state.slide_log[-1]
+    span = state.slide_spans.setdefault(str(number), [started, t_ms])
+    span[1] = max(span[1], t_ms)
 
 
 def slide_at(state: CoachState, t_ms: int) -> int | None:

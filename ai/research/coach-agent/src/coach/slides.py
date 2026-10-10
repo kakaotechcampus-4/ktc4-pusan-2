@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from .events import EventSink
-from .schemas import SlideEvent
+from .schemas import SlideEvent, SlideNow, SlidePlan
 from .state import CoachState, SlideAcc
 from .tick import Tick
 
@@ -27,6 +27,25 @@ def switch(tick: Tick, sink: EventSink) -> None:
     st.slide_acc = SlideAcc(
         slide_number=tick.slide_number,
         start_ms=tick.t,
+        target_ms=plan.target_ms if plan else None,
+        script_chars=plan.script_chars if plan else None,
+    )
+
+
+def follow(st: CoachState, slide: SlideNow | None, plan: SlidePlan | None, sink: EventSink) -> None:
+    """판정을 건너뛴 창에서 장이 바뀌었으면, 앞 장을 새 장이 시작된 시각에 닫고 새 장을 연다.
+
+    Take 의 마지막 창을 건너뛴 경우에도 마지막 장의 SLIDE 이벤트가 남게 한다.
+    """
+    acc = st.slide_acc
+    if slide is None or (acc is not None and acc.slide_number == slide.number):
+        return
+    start = slide.started_ms if acc is None else max(acc.start_ms, slide.started_ms)
+    if acc is not None:
+        close(st, start, sink)
+    st.slide_acc = SlideAcc(
+        slide_number=slide.number,
+        start_ms=start,
         target_ms=plan.target_ms if plan else None,
         script_chars=plan.script_chars if plan else None,
     )

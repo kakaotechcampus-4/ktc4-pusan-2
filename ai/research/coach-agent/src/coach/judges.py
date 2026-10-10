@@ -171,7 +171,7 @@ def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) 
     #    말 속도를 시간 판정보다 먼저 부르는 이유다(진행도가 한 박자 늦지 않게). 머문 시간 · STT 를
     #    믿은 시간은 이번 몫을 시간 판정이 직접 더하므로 판정 전 합계를 넘긴다
     pace_result = by_module["pace"][0]
-    out.criteria = _criteria(judges, cfg)
+    out.criteria = criteria_of(judges, cfg)
     fast = out.criteria["pace"].get("PACE_FAST")
     slide_chars = _per_slide(state, "SPEED", "chars")
     for piece in pace_result.tally:
@@ -254,6 +254,7 @@ def _commit(
     all_results = [r for name in _AREAS for r in by_module[name]]
     tally.accumulate(state, all_results, stt_trusted=trusted)
     tally.mark_covered(state, prev_ms, t, GAZE_VOICE_WINDOW_MS)
+    tally.extend_slide_span(state, t)
     for name, results in by_module.items():
         _advance(state, name, results, record_version=name not in failed)
     return all_results
@@ -413,7 +414,7 @@ def summarize(
         return None
 
 
-def _criteria(judges: Judges, cfg: CoachConfig) -> dict[str, dict[str, IssueCriteria]]:
+def criteria_of(judges: Judges, cfg: CoachConfig) -> dict[str, dict[str, IssueCriteria]]:
     """모듈별 판정 기준. 기준을 못 읽은 모듈은 빈 dict."""
     sources: dict[str, Callable[[], dict[str, Any]]] = {
         "gaze": judges.gaze.criteria,
