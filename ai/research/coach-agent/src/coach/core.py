@@ -255,14 +255,16 @@ def _append_history(tick: Tick) -> None:
     st = tick.state
     sample = HistorySample(
         t_ms=tick.t,
-        slide_number=tick.slide_number,
         script_ratio=tick.metrics.get("script_ratio"),
+        script_ratio_short=tick.metrics.get("script_ratio_short"),
+        away_ratio_short=tick.metrics.get("away_ratio_short"),
+        audience_ratio_short=tick.metrics.get("audience_ratio_short"),
         cpm=tick.metrics.get("cpm"),
         cpm_short=tick.metrics.get("cpm_short"),
         voice_diff_db=tick.voice_diff_db,
         speaking=tick.speaking,
-        filler_new=tick.filler_new,
         required_ratio=tick.metrics.get("required_ratio"),
+        recent_filler_count=tick.metrics.get("recent_filler_count"),
     )
     since = tick.t - tick.cfg.policy.history_ms
     st.history = [s for s in st.history if s.t_ms > since] + [sample]

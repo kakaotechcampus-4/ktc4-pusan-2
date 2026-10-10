@@ -116,11 +116,14 @@ class ReflectionConfig(_Section):
     #: '얼마나 줄었나'는 쓰지 않는다 — 개입은 측정값이 잡음으로 튄 순간에 일어나기 쉬워
     #: 그 뒤엔 저절로 내려오기 때문이다(평균으로의 회귀, 실험 03 · 14)
     gaze_back_ratio: float = 0.6
-    cpm_back_margin: float = 20.0
+    #: 다른 곳 보기(GAZE_AWAY)는 이 비율 아래로 내려와야 효과로 본다. 판정 모듈이 생기면 실험으로
+    #: 정한다
+    gaze_away_back_ratio: float = 0.2
+    #: 청중 응시(GAZE_LOW_EYE_CONTACT)는 탐지 기준보다 이만큼 더 올라와야 효과로 본다
+    gaze_contact_margin: float = 0.1
     #: 효과 전후 값은 이 시간의 평균으로 잰다
     average_ms: int = 3_000
     cpm_drop_ratio: float = 0.1
-    volume_gain_db: float = 3.0
     filler_drop_ratio: float = 0.5
     schedule_delta: float = 0.05
 

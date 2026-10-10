@@ -292,13 +292,11 @@ def truth_outcome(
         case Issue.PACE_FAST:
             if not after["speaking"]:
                 return None
-            a, b = after["cpm"], before["cpm"]
-            return a <= pace_judge.DEFAULT.fast_cpm or a <= b * (1 - rc.cpm_drop_ratio)
+            return after["cpm"] < pace_judge.DEFAULT.fast_cpm
         case Issue.VOLUME_LOW:
             if not after["speaking"]:
                 return None
-            a, b = after["voice_diff_db"], before["voice_diff_db"]
-            return a >= volume_judge.DEFAULT.low_relative_db or a >= b + rc.volume_gain_db
+            return after["voice_diff_db"] >= volume_judge.DEFAULT.low_relative_db
         case Issue.FILLER_FREQUENT:
             a, b = after["filler_per_min"], before["filler_per_min"]
             return a <= b * (1 - rc.filler_drop_ratio)

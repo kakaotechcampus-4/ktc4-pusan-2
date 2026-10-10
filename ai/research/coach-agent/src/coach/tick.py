@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .config import CoachConfig
+from .judges import Summarizer
 from .schemas import CoachingPlan, CoachRequest, IssueCriteria, SlidePlan
 from .state import CoachState, HistorySample
 from .vocab import Issue
@@ -58,6 +59,8 @@ class Tick:
     dt_ms: int = 1_000
     #: 모듈 이름 → issue_type → 판정 기준 (되돌아보기가 기준값을 읽는다)
     criteria: dict[str, dict[str, IssueCriteria]] = field(default_factory=dict)
+    #: 영역 합계 → 지표 (판정 모듈의 summarize). 미션의 지금 값을 구한다. 없으면 None
+    summarize: Summarizer | None = None
 
     @property
     def plan(self) -> CoachingPlan:

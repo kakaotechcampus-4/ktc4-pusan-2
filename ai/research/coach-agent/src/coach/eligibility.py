@@ -8,8 +8,25 @@
 from __future__ import annotations
 
 from .candidates import Candidate
+from .schemas import Mission, RelaxItem
 from .tick import Tick
 from .vocab import IGNORE_REASONS, WAIT_REASONS, CandidateStatus, Instruction, Issue, Mode, Reason
+
+#: 개입 수 상한에서 빼는 시간 마무리
+_WRAP_UP_ISSUES = frozenset({Issue.FINAL_MINUTE, Issue.TIME_OVER})
+
+
+def _overlaps_mission(relax: RelaxItem, missions: list[Mission]) -> bool:
+    """봐주기가 요청의 미션과 겹치는가. 장 번호가 null 이면 Take 전체라 모든 장과 겹친다."""
+    return any(
+        m.area == relax.area
+        and (
+            m.slide_number is None
+            or relax.slide_number is None
+            or m.slide_number == relax.slide_number
+        )
+        for m in missions
+    )
 
 
 def apply(tick: Tick, candidates: list[Candidate]) -> None:
@@ -28,6 +45,9 @@ def apply(tick: Tick, candidates: list[Candidate]) -> None:
             against.append(Reason.SENSOR_UNUSABLE)
         if c.confidence < pc.min_confidence:
             against.append(Reason.LOW_CONFIDENCE)
+        # 대본을 보며 발표해도 되는 발표라고 알려 줬으면 대본 응시는 문제가 아니다
+        if tick.req.script_used and c.issue_type == Issue.GAZE_ON_SCRIPT:
+            against.append(Reason.SCRIPT_ALLOWED)
         # 늦는 중인데 '천천히'는 시간을 더 모자라게 만든다
         if behind and c.instruction == Instruction.SLOW_DOWN:
             against.append(Reason.TIME_PRESSURE)
@@ -38,11 +58,18 @@ def apply(tick: Tick, candidates: list[Candidate]) -> None:
             if rule.max_fires is not None and strat is not None and strat.fires >= rule.max_fires:
                 against.append(Reason.ALREADY_DELIVERED)
         if any(
-            r.area == c.area and (r.slide_number is None or r.slide_number == tick.slide_number)
+            r.area == c.area
+            and (r.slide_number is None or r.slide_number == tick.slide_number)
+            and not _overlaps_mission(r, tick.req.missions)
             for r in plan.relax
         ):
             against.append(Reason.PLAN_RELAXED)
-        if plan.max_interventions is not None and st.interventions >= plan.max_interventions:
+        # 시간 마무리는 개입 상한에서 뺀다 (개입 수에는 센다)
+        if (
+            plan.max_interventions is not None
+            and st.interventions >= plan.max_interventions
+            and c.issue_type not in _WRAP_UP_ISSUES
+        ):
             against.append(Reason.BUDGET_EXHAUSTED)
 
         if c.persistence_ms < rule.persistence_ms:
