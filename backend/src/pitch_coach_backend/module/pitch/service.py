@@ -155,6 +155,8 @@ def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     existing_pitch.title = pitch_dto.title
     existing_pitch.time_limit_sec = pitch_dto.time_limit_sec
     existing_pitch.presentation_date = pitch_dto.presentation_date
+    existing_pitch.upper_deviation = pitch_dto.upper_deviation
+    existing_pitch.lower_deviation = pitch_dto.lower_deviation
 
     updated_pitch = pitch_repository.save(existing_pitch)
     db.commit()

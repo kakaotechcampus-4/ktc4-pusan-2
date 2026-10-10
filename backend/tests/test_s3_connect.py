@@ -1,12 +1,12 @@
 
+import pytest
 from botocore.exceptions import (
     ClientError,
+    CredentialRetrievalError,
     NoCredentialsError,
     SSOError,
     TokenRetrievalError,
-    CredentialRetrievalError
 )
-import pytest
 
 MISSING_CREDENTIALS = (
     ClientError,

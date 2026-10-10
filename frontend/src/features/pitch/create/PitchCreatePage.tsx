@@ -116,7 +116,7 @@ export function PitchCreatePage() {
         </aside>
 
         {/* ── 우측: 경로 · 발표 정보 줄 · 본문 ────────────────────── */}
-        <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-4 xl:p-6">
+        <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-auto p-4 xl:p-6">
           <nav aria-label="경로" className="flex items-center gap-2 text-xs text-stone">
             <Link to="/" className="hover:text-ink">
               내 피치
@@ -128,7 +128,7 @@ export function PitchCreatePage() {
           </nav>
 
           <InfoBar />
-          <section className="flex min-h-[32rem] flex-1 flex-col rounded-lg border border-line bg-panel p-5 xl:p-7">
+          <section className="flex min-h-[32rem] flex-auto shrink-0 flex-col rounded-lg border border-line bg-panel p-5 xl:p-6">
             {pane}
           </section>
         </main>

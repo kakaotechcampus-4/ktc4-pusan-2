@@ -19,6 +19,15 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
+_dotenv = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
+for _target, _source in (
+    ("DATABASE_URL", "LOCAL_DATABASE_URL"),
+    ("REDIS_URL", "LOCAL_REDIS_URL"),
+):
+    _value = os.environ.get(_source) or _dotenv.get(_source)
+    if _value:
+        os.environ[_target] = _value
+
 # 테스트 토큰은 항상 같은 키로 서명된다 (.env 값보다 우선)
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-do-not-use-in-production")
 
@@ -29,17 +38,7 @@ os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
 # Deepgram 도 마찬가지. 실제 연결은 가짜 서버로 대체한다.
 os.environ.setdefault("DEEPGRAM_API_KEY", "test-deepgram-key")
 # S3 도 마찬가지. 업로드는 테스트에서 모킹한다.
-os.environ.setdefault("S3_BUCKET_NAME", "test-bucket")
-
-_dotenv = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
-for _target, _source in (
-    ("DATABASE_URL", "LOCAL_DATABASE_URL"),
-    ("REDIS_URL", "LOCAL_REDIS_URL"),
-):
-    _value = os.environ.get(_source) or _dotenv.get(_source)
-    if _value:
-        os.environ[_target] = _value
-
+os.environ.setdefault("S3_BUCKET_NAME", _dotenv.get("S3_BUCKET_NAME", "test-bucket"))
 
 def _test_database_url() -> str:
     from pitch_coach_backend.core.config import settings

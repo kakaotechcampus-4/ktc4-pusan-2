@@ -22,7 +22,8 @@ def _make_pitch(db: Session, user_id: uuid.UUID, title: str, time_limit_sec: int
     return service.add_pitch_service(
         db,
         user_id,
-        PitchSaveRequestDTO(title=title, time_limit_sec=time_limit_sec, presentation_date=date(2026, 3, 1)),
+        PitchSaveRequestDTO(
+            title=title, time_limit_sec=time_limit_sec, presentation_date=date(2026, 3, 1)),
     )
 
 

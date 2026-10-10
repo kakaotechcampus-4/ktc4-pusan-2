@@ -51,8 +51,8 @@ export function DatePicker({
   const today = toIsoDate(new Date());
 
   return (
-    <div className="rounded-lg border border-line bg-white px-4 py-3">
-      <div className="mb-2 flex items-center justify-between">
+    <div className="rounded-lg border border-line bg-white px-4 py-2">
+      <div className="mb-1 flex items-center justify-between">
         <button
           type="button"
           onClick={() => move(-1)}
@@ -76,7 +76,7 @@ export function DatePicker({
         </button>
       </div>
 
-      <div role="grid" aria-label="발표 날짜" className="grid grid-cols-7 gap-y-1 text-center">
+      <div role="grid" aria-label="발표 날짜" className="grid grid-cols-7 gap-y-0.5 text-center">
         {WEEKDAYS.map((w, i) => (
           <span key={w} role="columnheader" className={`py-1 text-xs font-bold ${weekdayTone(i)}`}>
             {w}
@@ -94,7 +94,7 @@ export function DatePicker({
               aria-label={cell.iso}
               aria-current={cell.iso === today ? 'date' : undefined}
               onClick={() => onChange(cell.iso)}
-              className={`tabular mx-auto flex h-8 w-10 items-center justify-center rounded-md text-sm ${dayTone(cell, selected)}`}
+              className={`tabular mx-auto flex h-7 w-10 items-center justify-center rounded-md text-sm ${dayTone(cell, selected)}`}
             >
               {cell.day}
             </button>

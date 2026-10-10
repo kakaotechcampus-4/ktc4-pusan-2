@@ -1,0 +1,604 @@
+{
+  "model": "openai/gpt-5.6-luna",
+  "planner_hash": "84aecb2e2a2a",
+  "policy_version": "coach-v1.2",
+  "samples": 5,
+  "summary": {
+    "plans": 25,
+    "valid_rate": 1.0,
+    "expect_pass_rate": 0.96,
+    "dropped_rate": 0.0,
+    "consistency": 0.9,
+    "llm_calls": 25,
+    "latency_ms_median": 2552,
+    "latency_ms_mean": 3069,
+    "latency_ms_max": 8114
+  },
+  "scenarios": [
+    {
+      "scenario": "17_plan_numbers_slide",
+      "valid": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "fallback_reasons": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "expect_failures": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "consistent": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "plans": [
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [
+            {
+              "type": "GAZE",
+              "slide_number": 3,
+              "why": "3장은 다른 장보다 숫자가 뚜렷이 많아 정확한 수치를 읽기 위해 대본을 보며 말하는 것이 적절합니다."
+            }
+          ],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [
+            {
+              "type": "GAZE",
+              "slide_number": 3,
+              "why": "3장은 2025년 3월, 8주, 1,240명 등 수치가 16개로 다른 장보다 뚜렷이 많아 대본을 보며 정확히 읽어도 됩니다."
+            }
+          ],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [
+            {
+              "type": "GAZE",
+              "slide_number": 3,
+              "why": "3장은 수치가 16개 포함된 시범 운영 결과 표를 정확히 읽어야 하는 장입니다."
+            }
+          ],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [
+            {
+              "type": "GAZE",
+              "slide_number": 3,
+              "why": "3장은 2025년 3월, 8주, 1,240명, 9,860회 등 다른 장보다 숫자가 뚜렷이 많아 대본을 보며 정확히 읽는 것이 적절합니다."
+            }
+          ],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [
+            {
+              "type": "GAZE",
+              "slide_number": 3,
+              "why": "3장은 다른 장보다 숫자가 뚜렷하게 많아 정확한 수치를 읽기 위해 대본을 보며 발표하는 것이 적절합니다."
+            }
+          ],
+          "max_interventions": null
+        }
+      ],
+      "dropped": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "interventions_without_plan": {
+        "GAZE 3": 1
+      },
+      "interventions_with_plan": {},
+      "plan_reasons_with_plan": {
+        "PLAN_FOCUS": 0,
+        "PLAN_RELAXED": 5,
+        "BUDGET_EXHAUSTED": 0
+      }
+    },
+    {
+      "scenario": "18_plan_mission_focus",
+      "valid": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "fallback_reasons": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "expect_failures": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "consistent": [
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "plans": [
+        {
+          "source": "LLM",
+          "focus": [
+            {
+              "type": "TIME",
+              "slide_number": 3,
+              "weight": 2.0,
+              "why": "이번 미션이 3번 장을 1분 안에 마치는 것이고, 직전 리뷰에서도 3번 장의 TIME 문제가 1순위로 반복되었습니다."
+            }
+          ],
+          "relax": [],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [
+            {
+              "type": "TIME",
+              "slide_number": 3,
+              "weight": 2.0,
+              "why": "이번 미션이 3번 장을 1분 안에 마치는 것이고, 이전 리뷰에서도 3번 장의 TIME 문제가 반복되어 최우선이다."
+            }
+          ],
+          "relax": [],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [
+            {
+              "type": "TIME",
+              "slide_number": 3,
+              "weight": 2.0,
+              "why": "이번 미션이 3번 장을 1분 안에 마치는 것이고, 직전 리뷰와 반복 이슈에서도 3번 장의 TIME 문제가 최우선으로 나타났습니다."
+            }
+          ],
+          "relax": [],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [
+            {
+              "type": "TIME",
+              "slide_number": 3,
+              "weight": 2.0,
+              "why": "이번 미션이 3번 장을 1분 안에 마치는 것이고, 직전 리뷰에서도 3번 장의 TIME 문제가 1순위로 반복되었습니다."
+            }
+          ],
+          "relax": [
+            {
+              "type": "GAZE",
+              "slide_number": 3,
+              "why": "3번 장에는 다른 장에 없는 수치 표현인 ‘1초마다’가 있어 정확히 읽기 위해 대본을 보는 것이 허용됩니다."
+            }
+          ],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [
+            {
+              "type": "TIME",
+              "slide_number": 3,
+              "weight": 2.0,
+              "why": "이번 미션이 3번 장을 1분 안에 마치는 것이고, 직전 리뷰에서도 3번 장의 TIME 문제가 1순위 반복 문제로 기록되었습니다."
+            }
+          ],
+          "relax": [],
+          "max_interventions": null
+        }
+      ],
+      "dropped": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "interventions_without_plan": {
+        "TIME 2": 1
+      },
+      "interventions_with_plan": {
+        "TIME 2": 1
+      },
+      "plan_reasons_with_plan": {
+        "PLAN_FOCUS": 0,
+        "PLAN_RELAXED": 0,
+        "BUDGET_EXHAUSTED": 0
+      }
+    },
+    {
+      "scenario": "19_plan_nothing_special",
+      "valid": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "fallback_reasons": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "expect_failures": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "consistent": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "plans": [
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [],
+          "max_interventions": null
+        }
+      ],
+      "dropped": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "interventions_without_plan": {},
+      "interventions_with_plan": {},
+      "plan_reasons_with_plan": {
+        "PLAN_FOCUS": 0,
+        "PLAN_RELAXED": 0,
+        "BUDGET_EXHAUSTED": 0
+      }
+    },
+    {
+      "scenario": "20_plan_overcoached",
+      "valid": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "fallback_reasons": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "expect_failures": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "consistent": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "plans": [
+        {
+          "source": "LLM",
+          "focus": [
+            {
+              "type": "GAZE",
+              "slide_number": 2,
+              "weight": 2.0,
+              "why": "직전 리뷰에서 2장의 GAZE가 1순위였고 지적 후에도 포기했으며 효과도 낮았습니다."
+            },
+            {
+              "type": "SPEED",
+              "slide_number": null,
+              "weight": 1.8,
+              "why": "직전 리뷰에서 전체 SPEED가 2순위이자 반복 우선 문제였고 지적 후 포기했습니다."
+            },
+            {
+              "type": "FILLER",
+              "slide_number": null,
+              "weight": 1.4,
+              "why": "직전 리뷰에서 전체 FILLER가 3순위였고 지적 후 포기했지만 다른 문제보다 부담이 낮았습니다."
+            }
+          ],
+          "relax": [],
+          "max_interventions": 8
+        },
+        {
+          "source": "LLM",
+          "focus": [
+            {
+              "type": "GAZE",
+              "slide_number": 2,
+              "weight": 2.0,
+              "why": "직전 리뷰에서 2장의 GAZE가 1순위였고 22초의 부담 뒤 포기되었으며 효과도 낮았습니다."
+            },
+            {
+              "type": "SPEED",
+              "slide_number": null,
+              "weight": 1.8,
+              "why": "직전 리뷰에서 전체 SPEED가 우선 문제로 18초의 부담 뒤 포기되었고 효과가 낮았습니다."
+            },
+            {
+              "type": "FILLER",
+              "slide_number": null,
+              "weight": 1.4,
+              "why": "직전 리뷰에서 전체 FILLER가 3순위 문제였고 9초의 부담 뒤 포기되었지만 다른 두 문제보다 우선도는 낮습니다."
+            }
+          ],
+          "relax": [],
+          "max_interventions": 7
+        },
+        {
+          "source": "LLM",
+          "focus": [
+            {
+              "type": "GAZE",
+              "slide_number": 2,
+              "weight": 2.0,
+              "why": "직전 리뷰에서 2장의 GAZE가 1순위 문제였고 지적을 22초 동안 유지하다가 포기했다."
+            },
+            {
+              "type": "SPEED",
+              "slide_number": null,
+              "weight": 1.9,
+              "why": "직전 리뷰에서 전체 SPEED가 우선 문제로 반복되었고 18초 동안 지적한 뒤 포기했다."
+            },
+            {
+              "type": "FILLER",
+              "slide_number": null,
+              "weight": 1.5,
+              "why": "직전 리뷰에서 전체 FILLER가 3순위 문제였고 9초 동안 지적한 뒤 포기했다."
+            }
+          ],
+          "relax": [],
+          "max_interventions": 6
+        },
+        {
+          "source": "LLM",
+          "focus": [
+            {
+              "type": "GAZE",
+              "slide_number": 2,
+              "weight": 2.0,
+              "why": "직전 리뷰에서 2장의 GAZE가 1순위이자 PRIORITY였고 22초의 부담으로 포기했다."
+            },
+            {
+              "type": "SPEED",
+              "slide_number": null,
+              "weight": 1.8,
+              "why": "직전 리뷰에서 SPEED가 전체 Take의 2순위이자 PRIORITY였고 18초의 부담으로 포기했다."
+            },
+            {
+              "type": "FILLER",
+              "slide_number": null,
+              "weight": 1.3,
+              "why": "직전 리뷰에서 FILLER가 3순위 문제로 9초의 부담을 보였지만 STABLE 상태였다."
+            }
+          ],
+          "relax": [],
+          "max_interventions": 8
+        },
+        {
+          "source": "LLM",
+          "focus": [
+            {
+              "type": "GAZE",
+              "slide_number": 2,
+              "weight": 2.0,
+              "why": "직전 리뷰에서 1순위 문제로 기록되었고 22초의 부담과 함께 포기되었다."
+            },
+            {
+              "type": "SPEED",
+              "slide_number": null,
+              "weight": 1.8,
+              "why": "직전 리뷰에서 우선 문제로 기록되었고 18초의 부담과 함께 포기되었다."
+            },
+            {
+              "type": "FILLER",
+              "slide_number": null,
+              "weight": 1.4,
+              "why": "직전 리뷰에서 반복 관찰된 문제이며 9초의 부담과 함께 포기되었다."
+            }
+          ],
+          "relax": [],
+          "max_interventions": 6
+        }
+      ],
+      "dropped": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "interventions_without_plan": {},
+      "interventions_with_plan": {},
+      "plan_reasons_with_plan": {
+        "PLAN_FOCUS": 0,
+        "PLAN_RELAXED": 0,
+        "BUDGET_EXHAUSTED": 0
+      }
+    },
+    {
+      "scenario": "21_plan_quoted_notice",
+      "valid": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "fallback_reasons": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "expect_failures": [
+        [],
+        [],
+        [],
+        [],
+        [
+          "봐주기에 GAZE 3 가 없다"
+        ]
+      ],
+      "consistent": [
+        true,
+        true,
+        true,
+        true,
+        false
+      ],
+      "plans": [
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [
+            {
+              "type": "GAZE",
+              "slide_number": 3,
+              "why": "3장은 개인정보 처리 고지를 원문 그대로 읽도록 대본에 명시되어 있습니다."
+            }
+          ],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [
+            {
+              "type": "GAZE",
+              "slide_number": 3,
+              "why": "3장은 개인정보 처리 관련 고지를 원문 그대로 읽도록 대본에 명시되어 있습니다."
+            }
+          ],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [
+            {
+              "type": "GAZE",
+              "slide_number": 3,
+              "why": "3장은 개인정보 처리 고지를 원문 그대로 읽는 장이라고 대본에 명시되어 있습니다."
+            }
+          ],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [
+            {
+              "type": "GAZE",
+              "slide_number": 3,
+              "why": "3장은 개인정보 처리 고지를 원문 그대로 읽도록 대본에 명시되어 있다."
+            }
+          ],
+          "max_interventions": null
+        },
+        {
+          "source": "LLM",
+          "focus": [],
+          "relax": [],
+          "max_interventions": null
+        }
+      ],
+      "dropped": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "interventions_without_plan": {
+        "GAZE 3": 1
+      },
+      "interventions_with_plan": {},
+      "plan_reasons_with_plan": {
+        "PLAN_FOCUS": 0,
+        "PLAN_RELAXED": 5,
+        "BUDGET_EXHAUSTED": 0
+      }
+    }
+  ]
+}

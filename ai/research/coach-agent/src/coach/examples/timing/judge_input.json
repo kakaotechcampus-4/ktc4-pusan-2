@@ -1,0 +1,50 @@
+{
+  "t_ms": 240000,
+  "since_ms": 239000,
+  "plan": {
+    "target_ms": 300000,
+    "min_ms": 270000,
+    "max_ms": 330000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 90000,
+        "script_chars": 450
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 90000,
+        "script_chars": 450
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 120000,
+        "script_chars": 600
+      }
+    ]
+  },
+  "slide": {
+    "number": 3,
+    "started_ms": 200000
+  },
+  "slide_chars": {
+    "1": 450,
+    "2": 450,
+    "3": 150
+  },
+  "slide_stt_ok_ms": {
+    "1": 90000,
+    "2": 110000,
+    "3": 39000
+  },
+  "slide_dwell_ms": {
+    "1": 90000,
+    "2": 110000,
+    "3": 39000
+  },
+  "pace": {
+    "cpm": 318.5,
+    "measurable": true,
+    "fast_threshold": 350.0
+  }
+}
