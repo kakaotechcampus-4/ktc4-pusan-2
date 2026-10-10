@@ -11,7 +11,7 @@ from coach import decide
 from coach.config import load_config
 from coach.schemas import CoachRequest, CoachResponse
 from coach.state import CoachState, dump_state, load_state
-from coach.version import POLICY_VERSION, SCHEMA_VERSION, STATE_VERSION
+from coach.version import FEATURE_VERSION, SCHEMA_VERSION, STATE_VERSION
 from coach.vocab import FeedbackType, Instruction
 
 from .conftest import make_request
@@ -20,12 +20,40 @@ from .fakes import fake_judges
 
 def test_first_request_without_state_starts_fresh():
     resp = decide(make_request(1000), fake_judges())
-    assert resp.schema_version == SCHEMA_VERSION
-    assert resp.policy_version == POLICY_VERSION
+    assert resp.meta.schema_version == SCHEMA_VERSION
     assert resp.coach_state["v"] == STATE_VERSION
     assert resp.action.value == "WAIT"
     assert resp.reason_codes == ["NO_CANDIDATE"]
     assert resp.feedback is None
+
+
+def test_response_has_exactly_the_contract_fields():
+    cfg = load_config()
+    resp = decide(make_request(1000), fake_judges(), cfg)
+    blob = resp.model_dump(mode="json")
+    assert set(blob) == {
+        "action",
+        "feedback",
+        "indicators",
+        "reason_codes",
+        "events",
+        "coach_state",
+        "meta",
+    }
+    assert set(blob["meta"]) == {"schema_version", "feature_version", "criteria_versions", "model"}
+    meta = resp.meta
+    assert meta.schema_version == SCHEMA_VERSION == "1.0"
+    assert meta.feature_version == FEATURE_VERSION == "coach-1.2"
+    assert meta.model is None
+    assert set(meta.criteria_versions) == {"gaze", "pace", "volume", "filler", "timing", "coach"}
+    assert meta.criteria_versions["coach"] == f"coach-1.2+{cfg.config_hash()}"
+
+
+def test_stale_tick_response_has_meta_too():
+    judges = fake_judges()
+    first = decide(make_request(5000), judges)
+    again = decide(make_request(5000, state=first.coach_state), judges)
+    assert again.meta == first.meta
 
 
 def test_response_is_plain_json_round_trip():

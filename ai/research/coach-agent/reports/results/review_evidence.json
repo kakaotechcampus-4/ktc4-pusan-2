@@ -49,7 +49,7 @@
     }
   },
   "config_hash": "07b73c510ab6",
-  "policy_version": "coach-v1.2",
+  "feature_version": "coach-1.2",
   "results": {
     "clean": {
       "A 기준선(v1.0)": {

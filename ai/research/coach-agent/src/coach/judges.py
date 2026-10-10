@@ -86,15 +86,8 @@ def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) 
     inputs = req.inputs
     t = req.t_ms
     out = JudgeRun()
-    prev_ms = min(_cursor(state, n).since_ms for n in ("gaze", "volume", "timing"))
-
-    # 장 정보가 이번 요청에 없으면 마지막으로 알던 장으로 본다
-    # (시간 판정 · 장 귀속 · 개입 규칙이 같은 장을 쓰게)
-    slide = inputs.slide
-    if slide is None and state.slide_log:
-        number, started = state.slide_log[-1]
-        slide = SlideNow(number=number, started_ms=started)
-    tally.note_slide(state, slide)
+    prev_ms = _round_start(state)
+    slide = _note_slide(req, state)
     _track_stt(state, inputs, t, out)
 
     words = [w.model_dump() for w in inputs.words]
@@ -188,14 +181,64 @@ def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) 
     call("timing", lambda i, t_ms: timing_judge(i, t_ms, cfg.timing), timing_in)
 
     # 누적 → 커서 · 기준 버전. 결과는 영역 순서(GAZE … TIME)로 담는다
-    all_results = [r for name in _AREAS for r in by_module[name]]
     trusted = out.stt_ok and not {"filler", "pace"} & out.failed
+    all_results = _commit(state, by_module, prev_ms, t, trusted, out.failed)
+    out.results = {r.area: r for r in all_results}
+    return out
+
+
+def skip(req: CoachRequest, state: CoachState) -> None:
+    """코치 안의 예외 뒤에 이번 시간을 잴 수 없던 것으로 넘긴다.
+
+    모든 모듈이 예외를 낸 것과 같다: 잴 수 없음으로 두고, 커서는 이번 창 끝까지 넘기고, 그 시간은
+    영역 합계의 total_ms(timing 은 elapsed_ms)에만 센다. 같은 요청이 같은 예외를 되풀이해도
+    빠져나오게 하려는 것이다.
+    """
+    t = req.t_ms
+    prev_ms = _round_start(state)
+    _note_slide(req, state)
+    max_end = max((w.end_ms for w in req.inputs.words), default=None)
+    by_module = {name: _fallback(name, state, t, max_end) for name in _AREAS}
+    _commit(state, by_module, prev_ms, t, trusted=False, failed=set(_AREAS))
+
+
+def _round_start(state: CoachState) -> int:
+    """이번 라운드가 시작하는 시각: 시각을 세는 모듈 커서 중 가장 이른 것."""
+    return min(_cursor(state, n).since_ms for n in ("gaze", "volume", "timing"))
+
+
+def _note_slide(req: CoachRequest, state: CoachState) -> SlideNow | None:
+    """장 전환을 기록하고 지금 장을 돌려준다.
+
+    장 정보가 이번 요청에 없으면 마지막으로 알던 장으로 본다
+    (시간 판정 · 장 귀속 · 개입 규칙이 같은 장을 쓰게).
+    """
+    slide = req.inputs.slide
+    if slide is None and state.slide_log:
+        number, started = state.slide_log[-1]
+        slide = SlideNow(number=number, started_ms=started)
+    tally.note_slide(state, slide)
+    return slide
+
+
+def _commit(
+    state: CoachState,
+    by_module: dict[str, list[JudgmentResult]],
+    prev_ms: int,
+    t: int,
+    trusted: bool,
+    failed: set[str],
+) -> list[JudgmentResult]:
+    """모듈별 결과를 합계에 더하고 센 구간을 표시하고 커서를 넘긴다. 영역 순서의 결과를 돌려준다.
+
+    실패한 모듈의 결과는 기준 버전을 기록하지 않는다 — 모듈이 낸 버전이 아니다.
+    """
+    all_results = [r for name in _AREAS for r in by_module[name]]
     tally.accumulate(state, all_results, stt_trusted=trusted)
     tally.mark_covered(state, prev_ms, t, GAZE_VOICE_WINDOW_MS)
     for name, results in by_module.items():
-        _advance(state, name, results)
-    out.results = {r.area: r for r in all_results}
-    return out
+        _advance(state, name, results, record_version=name not in failed)
+    return all_results
 
 
 def _cursor(state: CoachState, name: str) -> Cursor:
@@ -305,7 +348,8 @@ def _fallback(
         words_until = (
             cur.words_since_ms if max_word_end is None else max(cur.words_since_ms, max_word_end)
         )
-    version = state.criteria_versions.get(name, f"{name}-unknown")
+    # 모듈이 낸 결과가 아니라 버전은 마지막으로 알던 것(모르면 unknown)을 싣기만 한다
+    version = state.latest_criteria_versions.get(name, f"{name}-unknown")
     return [
         JudgmentResult(
             evaluator=name,
@@ -322,13 +366,17 @@ def _fallback(
     ]
 
 
-def _advance(state: CoachState, name: str, results: list[JudgmentResult]) -> None:
+def _advance(
+    state: CoachState, name: str, results: list[JudgmentResult], record_version: bool = True
+) -> None:
     """커서를 결과의 counted_until 로 옮기고 criteria_version 을 기록한다."""
     cur = state.cursors.setdefault(name, Cursor())
     for r in results:
         cur.since_ms = max(cur.since_ms, r.counted_until_ms)
         if r.words_counted_until_ms is not None:
             cur.words_since_ms = max(cur.words_since_ms, r.words_counted_until_ms)
+    if not record_version:
+        return
     version = results[0].criteria_version
     state.criteria_versions.setdefault(name, version)
     state.latest_criteria_versions[name] = version

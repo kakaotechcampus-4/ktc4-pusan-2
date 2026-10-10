@@ -27,7 +27,7 @@ from .schemas import (
     PlanResponse,
     RelaxItem,
 )
-from .version import POLICY_VERSION
+from .version import FEATURE_VERSION
 from .vocab import Mode
 
 log = logging.getLogger(__name__)
@@ -225,7 +225,7 @@ def plan_coaching(
         plan: CoachingPlan, reason: str | None = None, dropped: list[str] | None = None
     ) -> PlanResponse:
         return PlanResponse(
-            policy_version=POLICY_VERSION,
+            policy_version=FEATURE_VERSION,
             planner_hash=phash,
             take_id=req.take_id,
             plan=plan,

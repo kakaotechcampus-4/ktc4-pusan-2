@@ -8,7 +8,7 @@
 
 기본값은 이 파일에만 있습니다. 바꿀 때는 코드를 고치지 말고 바꿀 값만 덮어쓰세요 (load_config).
 코어는 설정 파일을 읽지 않습니다 — research 에서는 coach_lab.replay --config 가 JSON 을 읽습니다.
-응답의 config_hash 가 어떤 설정으로 판단했는지를 기록합니다.
+응답 meta 의 criteria_versions.coach 가 어떤 설정으로 판단했는지를 기록합니다.
 """
 
 from __future__ import annotations

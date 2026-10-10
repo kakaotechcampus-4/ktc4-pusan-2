@@ -140,8 +140,6 @@ class Cursor(_S):
 class CoachState(_S):
     v: int = STATE_VERSION
     last_t_ms: int | None = None
-    #: 이벤트 번호
-    seq: int = 0
 
     history: list[HistorySample] = Field(default_factory=list)
     #: 열린 문제 구간. 키 = 전략 키 (문제코드, 슬라이드 단위면 "문제코드:장번호")

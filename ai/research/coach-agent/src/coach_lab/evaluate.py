@@ -38,7 +38,7 @@ from typing import Any
 from coach import build_review_evidence
 from coach.config import load_config
 from coach.schemas import CoachReviewEvidence
-from coach.version import POLICY_VERSION
+from coach.version import FEATURE_VERSION
 from coach.vocab import FeedbackType, Issue, SegmentHint, TypeStatus
 
 from .paths import OUTPUTS_DIR, SCENARIOS_DIR
@@ -432,7 +432,7 @@ def main(argv: list[str] | None = None) -> int:
         "seeds": args.seeds,
         "variants": VARIANTS,
         "config_hash": load_config().config_hash(),
-        "policy_version": POLICY_VERSION,
+        "feature_version": FEATURE_VERSION,
     }
     results = evaluate(scenarios, noises, args.seeds, VARIANTS)
     report["results"] = print_table(results)

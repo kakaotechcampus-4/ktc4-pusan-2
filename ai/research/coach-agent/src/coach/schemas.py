@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .version import SCHEMA_VERSION
+from .version import FEATURE_VERSION, SCHEMA_VERSION
 from .vocab import (
     Action,
     CandidateStatus,
@@ -272,18 +272,9 @@ class Feedback(_Out):
     evidence: dict[str, Any]
 
 
-class CandidateOut(_Out):
-    candidate_id: str
-    issue_type: Issue
-    area: FeedbackType
-    instruction: Instruction
-    priority: int = Field(ge=0, le=100)
-    confidence: float = Field(ge=0.0, le=1.0)
-    status: CandidateStatus
-    reasons: list[str] = Field(default_factory=list)
-
-
 # ── 이벤트 — BE 가 그대로 쌓아 두는 기록. 리뷰 에이전트 근거의 원천 ──────────
+# 임시: 리뷰 근거가 읽는 옛 필드(candidate_id · variant · evidence · SLIDE 합계 …)는 #151 까지 둔다
+# (#151 에서 문서의 필드만 남긴다)
 
 
 class _Event(_Out):
@@ -293,6 +284,8 @@ class _Event(_Out):
 
 class InterventionEvent(_Event):
     kind: Literal["INTERVENTION"] = "INTERVENTION"
+    #: event_id 와 같은 값 (효과 · 사다리 이벤트가 가리킨다)
+    intervention_id: str
     candidate_id: str
     issue_type: Issue
     area: FeedbackType
@@ -412,25 +405,30 @@ CoachEvent = Annotated[
 ]
 
 
-class CoachResponse(_Out):
+class Meta(_Out):
+    """응답을 만든 버전. BE 가 결과와 함께 저장한다."""
+
     schema_version: str = SCHEMA_VERSION
-    policy_version: str
-    config_hash: str
-    take_id: str
-    t_ms: int
+    feature_version: str = FEATURE_VERSION
+    #: 모듈 이름(gaze · pace · volume · filler · timing) → criteria_version.
+    #: coach 는 `<feature_version>+<설정 해시>`
+    criteria_versions: dict[str, str]
+    #: LLM 을 쓰지 않으므로 null
+    model: str | None = None
+
+
+class CoachResponse(_Out):
     action: Action
-    #: 이번 판단의 대상이 된 문제. "문제코드-시작시각" 이라 문제가 이어지는 동안 같다
-    candidate_id: str | None = None
-    reason_codes: list[str] = Field(default_factory=list)
     #: INTERVENE 일 때만
     feedback: Feedback | None = None
-    candidates: list[CandidateOut] = Field(default_factory=list)
     #: 영역(GAZE · SPEED · VOLUME · PAUSE · FILLER · TIME) → 판정 모듈이 준 상태. 읽지 않아도 되는
     #: 상태 표시라 여러 개를 함께 띄워도 된다
     indicators: dict[str, str] = Field(default_factory=dict)
+    reason_codes: list[str] = Field(default_factory=list)
     events: list[CoachEvent] = Field(default_factory=list)
     #: 다음 요청에 그대로 붙인다
     coach_state: dict[str, Any]
+    meta: Meta
 
 
 # ══════════════════════════════════════════════════════════════════════════

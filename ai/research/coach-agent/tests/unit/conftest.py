@@ -6,15 +6,20 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import pytest
 
 from coach import decide
+from coach.candidates import Candidate
 from coach.config import CoachConfig, load_config
 from coach.judges import Judges
+from coach.policy import RULE_POLICY, Selection
 from coach.schemas import CoachResponse
 from coach.state import CoachState, Cursor, dump_state
+from coach.tick import Tick
+from coach.vocab import CandidateStatus, Instruction, Issue
 
 from .fakes import MODULE_OF, ScriptedJudge, fake_issue, fake_judges
 
@@ -133,6 +138,58 @@ def make_request(
     }
 
 
+@dataclass
+class CandidateView:
+    """한 틱의 후보 하나가 어떻게 판단됐는가 (응답에는 실리지 않아 정책을 거쳐 본다)."""
+
+    candidate_id: str
+    issue_type: Issue
+    instruction: Instruction
+    status: CandidateStatus
+    #: 고른 후보면 고른 이유, 아니면 걸린 이유
+    reasons: list[str]
+
+
+class RecordingPolicy:
+    """규칙 정책을 그대로 쓰면서 그 틱의 후보와 판단 결과를 남긴다."""
+
+    name = "recording"
+
+    def __init__(self) -> None:
+        self._seen: list[Candidate] = []
+
+    def select(self, tick: Tick, candidates: list[Candidate]) -> Selection:
+        self._seen = candidates
+        return RULE_POLICY.select(tick, candidates)
+
+    def take(self) -> list[CandidateView]:
+        """마지막 select 의 후보. select 를 거치지 않은 틱(STALE_TICK 등)이면 빈 목록."""
+        seen, self._seen = self._seen, []
+        views = []
+        for c in seen:
+            status = c.status or CandidateStatus.IGNORED
+            shown = c.reasons_for if status == CandidateStatus.SELECTED else c.reasons_against
+            views.append(
+                CandidateView(
+                    candidate_id=c.candidate_id,
+                    issue_type=c.issue_type,
+                    instruction=c.instruction,
+                    status=status,
+                    reasons=[r.value for r in shown],
+                )
+            )
+        return views
+
+
+def decide_seen(
+    request: dict[str, Any], judges: Judges, config: CoachConfig | None = None
+) -> tuple[CoachResponse, list[CandidateView]]:
+    """decide 한 번과 그 틱의 후보."""
+    policy = RecordingPolicy()
+    resp = decide(request, judges, config, policy)
+    return resp, policy.take()
+
+
 class Session:
     """BE 처럼 coach_state 를 받아 두었다가 다음 요청에 붙인다.
 
@@ -147,6 +204,7 @@ class Session:
         self.defaults = defaults
         self.state: dict[str, Any] | None = None
         self.responses: list[CoachResponse] = []
+        self._candidates: list[list[CandidateView]] = []
         self.board: dict[str, Any] = {}
         self.judges = judges or fake_judges(
             **{n: ScriptedJudge(n, self._spec(n)) for n in ("gaze", "pace", "volume", "filler")}
@@ -178,10 +236,20 @@ class Session:
             "metrics": metrics or {},
             "unmeasurable": unmeasurable,
         }
-        resp = decide(make_request(t_ms, state=self.state, **args), self.judges, self.config)
+        resp, views = decide_seen(
+            make_request(t_ms, state=self.state, **args), self.judges, self.config
+        )
         self.state = resp.coach_state
         self.responses.append(resp)
+        self._candidates.append(views)
         return resp
+
+    def candidates_of(self, resp: CoachResponse) -> list[CandidateView]:
+        """이 세션이 돌려준 응답 하나의 틱에서 후보들이 어떻게 판단됐는가."""
+        return next(c for r, c in zip(self.responses, self._candidates, strict=True) if r is resp)
+
+    def cand(self, resp: CoachResponse, issue: str) -> CandidateView | None:
+        return next((c for c in self.candidates_of(resp) if c.issue_type.value == issue), None)
 
     def run(
         self, start_ms: int, end_ms: int, step_ms: int = 1000, **kw: Any

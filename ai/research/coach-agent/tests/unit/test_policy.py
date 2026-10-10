@@ -6,10 +6,6 @@ from .conftest import SPEAKING, Session, gaze_on
 from .fakes import fake_issue
 
 
-def _cand(resp, issue):
-    return next(c for c in resp.candidates if c.issue_type.value == issue)
-
-
 def test_waits_until_problem_persists_then_intervenes(session: Session):
     out = session.run(10_000, 13_000, **gaze_on(0.9))
     assert [r.action.value for r in out] == ["WAIT", "WAIT", "WAIT", "INTERVENE"]
@@ -19,7 +15,8 @@ def test_waits_until_problem_persists_then_intervenes(session: Session):
     assert fb.message == "대본보다 청중을 조금 더 바라보세요"
     assert fb.evidence["start_ms"] == 10_000 and fb.evidence["end_ms"] == 13_000
     assert fb.evidence["script_ratio"] == 0.9
-    assert out[-1].candidate_id == "GAZE_ON_SCRIPT-10000"
+    shown = [e for e in session.events if e.kind == "INTERVENTION"]
+    assert shown[-1].candidate_id == "GAZE_ON_SCRIPT-10000"
 
 
 def test_one_instruction_at_a_time():
@@ -31,9 +28,10 @@ def test_one_instruction_at_a_time():
         # 시선(지속 3초)은 12초에, 속도 · 음량(지속 5초)은 10초에 시작해 15초에 함께 걸린다
         gaze = gaze_on(0.9)["issues"] if t >= 12_000 else []
         resp = s.step(t, issues=[*gaze, pace, volume])
-    selected = [c for c in resp.candidates if c.status.value == "SELECTED"]
+    seen = s.candidates_of(resp)
+    selected = [c for c in seen if c.status.value == "SELECTED"]
     assert len(selected) == 1 and resp.feedback is not None
-    assert {c.status.value for c in resp.candidates} >= {"SELECTED", "OUTRANKED"}
+    assert {c.status.value for c in seen} >= {"SELECTED", "OUTRANKED"}
 
 
 def test_exam_mode_never_speaks_but_records(session: Session):
@@ -47,7 +45,7 @@ def test_exam_mode_never_speaks_but_records(session: Session):
 def test_min_gap_between_any_two_messages(session: Session):
     session.run(10_000, 13_000, **gaze_on(0.9))  # 13초에 시선 지적
     resp = session.step(14_000, issues=[fake_issue("SPEED", "PACE_FAST", 0.8)])
-    pace = _cand(resp, "PACE_FAST")
+    pace = session.cand(resp, "PACE_FAST")
     assert "MIN_GAP" in pace.reasons
 
 
@@ -55,7 +53,7 @@ def test_cooldown_per_instruction(session: Session):
     session.run(10_000, 13_000, **gaze_on(0.9))
     out = session.run(14_000, 40_000, **gaze_on(0.9))
     assert all(r.feedback is None for r in out)
-    assert "COOLDOWN" in _cand(out[-1], "GAZE_ON_SCRIPT").reasons
+    assert "COOLDOWN" in session.cand(out[-1], "GAZE_ON_SCRIPT").reasons
 
 
 def test_low_priority_is_ignored(session: Session):
@@ -99,7 +97,7 @@ def test_plan_relax_and_focus():
     s = Session(coaching_plan=relaxed)
     out = s.run(10_000, 14_000, **gaze_on(0.9))
     assert all(r.feedback is None for r in out)
-    assert "PLAN_RELAXED" in _cand(out[-1], "GAZE_ON_SCRIPT").reasons
+    assert "PLAN_RELAXED" in s.cand(out[-1], "GAZE_ON_SCRIPT").reasons
 
     focus = {"source": "LLM", "focus": [{"area": "GAZE", "weight": 1.8}]}
     plain = Session().run(10_000, 13_000, **gaze_on(0.75))[-1]
@@ -119,7 +117,7 @@ def test_plan_weight_is_clamped():
 def test_budget_from_plan():
     s = Session(coaching_plan={"max_interventions": 0})
     out = s.run(10_000, 14_000, **gaze_on(0.9))
-    assert "BUDGET_EXHAUSTED" in _cand(out[-1], "GAZE_ON_SCRIPT").reasons
+    assert "BUDGET_EXHAUSTED" in s.cand(out[-1], "GAZE_ON_SCRIPT").reasons
 
 
 def test_mission_and_memory_raise_priority_with_reasons():

@@ -32,7 +32,7 @@ from typing import Any
 from coach import plan_coaching
 from coach.planner import planner_hash
 from coach.schemas import CoachingPlan, PlanRequest, PlanResponse
-from coach.version import POLICY_VERSION
+from coach.version import FEATURE_VERSION
 
 from .cache import SqlitePlanCache
 from .paths import OUTPUTS_DIR, SCENARIOS_DIR
@@ -228,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "model": settings.model,
         "planner_hash": planner_hash(settings.model),
-        "policy_version": POLICY_VERSION,
+        "policy_version": FEATURE_VERSION,
         "samples": args.samples,
         **evaluate_plans(scenarios, plan_llm(settings), settings.model, cache, args.samples),
     }
