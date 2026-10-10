@@ -35,10 +35,17 @@ def test_gaze_unmeasurable_cases():
     t0 = gaze.judge({"records": []}, 0)[0]
     assert not t0.measurable and t0.state == "UNMEASURABLE" and not t0.issues
     all_uncertain = gaze.judge({"records": gaze_records(["UNCERTAIN"] * 10)}, 10_000)[0]
+    check_shape(all_uncertain)
     assert not all_uncertain.measurable and all_uncertain.state == "UNMEASURABLE"
     assert all_uncertain.metrics["script_ratio"] is None
+    # 창 전체를 측정하지 못했으면 가장 나쁜 측정 불가 신호 하나뿐이다
+    [issue] = all_uncertain.issues
+    assert issue.issue_type == Issue.GAZE_UNMEASURABLE and not issue.actionable
+    assert issue.severity == 1.0 and issue.confidence == 1.0
+    assert issue.evidence["measured_ratio"] == 0.0
     no_records = gaze.judge({"records": []}, 10_000)[0]
     assert not no_records.measurable
+    assert [i.issue_type for i in no_records.issues] == [Issue.GAZE_UNMEASURABLE]
 
 
 def test_gaze_no_issue_right_after_take_start():
@@ -48,12 +55,30 @@ def test_gaze_no_issue_right_after_take_start():
     assert r.issues
 
 
-def test_gaze_issue_when_sensor_unusable_is_not_actionable():
-    # 대본 4초 + 얼굴 없음 6초 → 옛 평가기도 낸다 (코치가 센서 불량으로 남긴다)
+def test_gaze_unusable_sensor_gives_only_the_unmeasurable_signal():
+    # 대본 4초 + 얼굴 없음 6초 → 대본 응시 문제는 내지 않고 측정 불가 신호만 낸다
     states = ["UNCERTAIN"] * 6 + ["BOTTOM"] * 4
     r = gaze.judge({"records": gaze_records(states)}, 10_000)[0]
+    check_shape(r)
     assert r.metrics["script_ratio"] is None and not r.measurable
-    assert r.issues and not r.issues[0].actionable
+    [issue] = r.issues
+    assert issue.issue_type == Issue.GAZE_UNMEASURABLE and not issue.actionable
+    assert issue.confidence == 1.0
+    # 측정 비율은 지금과 최근 평균 중 나쁜 쪽(평활)이고, 기준 0.5 와 아주 나쁨 0.0 사이의 직선이다
+    measured = issue.evidence["measured_ratio"]
+    assert measured == pytest.approx(1 - r.metrics["uncertain_ratio"], abs=1e-4)
+    assert measured < 0.4
+    assert issue.evidence["mean_reliability"] == 1.0
+    assert (issue.threshold, issue.bad) == (0.5, 0.0)
+    assert issue.severity == pytest.approx(0.5 + 0.5 * (0.5 - measured) / 0.5)
+    assert not any(i.issue_type == Issue.GAZE_ON_SCRIPT for i in r.issues)
+
+
+def test_gaze_usable_sensor_has_no_unmeasurable_signal():
+    r = gaze.judge({"records": gaze_records(["BOTTOM"] * 10)}, 10_000)[0]
+    assert r.measurable
+    assert [i.issue_type for i in r.issues] == [Issue.GAZE_ON_SCRIPT]
+    assert all(i.actionable for i in r.issues)
 
 
 def test_gaze_tally_by_state_and_cursor():
@@ -175,3 +200,7 @@ def test_gaze_summarize_and_criteria():
     assert (c.metric, c.threshold, c.bad) == ("script_run_ms", 5000, 15000)
     assert (c.onset_lag_ms, c.offset_lag_ms) == (7000, 3000)
     assert c.direction == "HIGHER_IS_WORSE"
+    u = gaze.criteria()["GAZE_UNMEASURABLE"]
+    assert (u.metric, u.direction) == ("measured_ratio", "LOWER_IS_WORSE")
+    assert (u.threshold, u.bad) == (0.5, 0.0)
+    assert (u.onset_lag_ms, u.offset_lag_ms) == (c.onset_lag_ms, c.offset_lag_ms)

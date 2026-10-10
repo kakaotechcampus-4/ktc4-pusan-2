@@ -19,7 +19,11 @@ def check_shape(result: JudgmentResult, since: int = 0) -> None:
         assert issue.area == result.area
         assert 0.0 <= issue.severity <= 1.0
         assert 0.0 <= issue.confidence <= 1.0
-    assert result.criteria_version.startswith(result.evaluator + "-0.1+")
+        # 측정할 수 없으면 이슈는 측정 불가 신호(actionable false)뿐이다
+        if not result.measurable:
+            assert not issue.actionable
+    version, plus, _ = result.criteria_version.partition("+")
+    assert plus and version.startswith(result.evaluator + "-0.")
 
 
 def total(tally, key: str) -> float:

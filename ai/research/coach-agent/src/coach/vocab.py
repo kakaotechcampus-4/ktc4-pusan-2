@@ -51,7 +51,13 @@ class Issue(StrEnum):
     """평가기가 찾는 문제. 후보 하나는 문제 하나에서 나온다."""
 
     GAZE_ON_SCRIPT = "GAZE_ON_SCRIPT"
+    GAZE_AWAY = "GAZE_AWAY"
+    GAZE_LOW_EYE_CONTACT = "GAZE_LOW_EYE_CONTACT"
+    #: 아래 둘과 PACE_SLOW 는 말하지 않고 문제 구간에만 남긴다 (config 의 빈 사다리)
+    GAZE_ON_SCREEN = "GAZE_ON_SCREEN"
+    GAZE_UNMEASURABLE = "GAZE_UNMEASURABLE"
     PACE_FAST = "PACE_FAST"
+    PACE_SLOW = "PACE_SLOW"
     VOLUME_LOW = "VOLUME_LOW"
     LONG_SILENCE = "LONG_SILENCE"
     FILLER_FREQUENT = "FILLER_FREQUENT"
@@ -188,7 +194,12 @@ class StrengthKind(StrEnum):
 #: 문제 → 원인 영역. IMPROVED_AFTER_FEEDBACK 는 교정했던 영역을 그대로 물려받는다.
 ISSUE_TYPE: dict[Issue, FeedbackType] = {
     Issue.GAZE_ON_SCRIPT: FeedbackType.GAZE,
+    Issue.GAZE_AWAY: FeedbackType.GAZE,
+    Issue.GAZE_LOW_EYE_CONTACT: FeedbackType.GAZE,
+    Issue.GAZE_ON_SCREEN: FeedbackType.GAZE,
+    Issue.GAZE_UNMEASURABLE: FeedbackType.GAZE,
     Issue.PACE_FAST: FeedbackType.SPEED,
+    Issue.PACE_SLOW: FeedbackType.SPEED,
     Issue.VOLUME_LOW: FeedbackType.VOLUME,
     Issue.LONG_SILENCE: FeedbackType.PAUSE,
     Issue.FILLER_FREQUENT: FeedbackType.FILLER,
@@ -201,7 +212,24 @@ ISSUE_TYPE: dict[Issue, FeedbackType] = {
 
 #: 슬라이드마다 따로 보는 문제. 전략(사다리 단계 · 포기)도 슬라이드마다 새로 시작한다.
 #: 4번 장에서 시선 지적을 포기했어도 5번 장에서는 다시 시도한다.
-SLIDE_SCOPED: frozenset[Issue] = frozenset({Issue.GAZE_ON_SCRIPT, Issue.SLIDE_OVER})
+SLIDE_SCOPED: frozenset[Issue] = frozenset(
+    {
+        Issue.GAZE_ON_SCRIPT,
+        Issue.GAZE_AWAY,
+        Issue.GAZE_LOW_EYE_CONTACT,
+        Issue.GAZE_ON_SCREEN,
+        Issue.GAZE_UNMEASURABLE,
+        Issue.SLIDE_OVER,
+    }
+)
+
+#: 사다리를 나눠 쓰는 문제 → 사다리 이름. 세 문제가 함께 걸려 같은 말을 두 갈래로 올리지 않게
+#: 장마다 사다리 하나를 같이 쓴다. 문제 구간(episode)은 문제마다 따로 센다.
+SHARED_LADDER: dict[Issue, str] = {
+    Issue.GAZE_ON_SCRIPT: "GAZE",
+    Issue.GAZE_AWAY: "GAZE",
+    Issue.GAZE_LOW_EYE_CONTACT: "GAZE",
+}
 
 #: 점수가 같을 때의 순서. 앞일수록 먼저다 — 결과가 실행마다 달라지지 않게 하려는 것뿐이다.
 ISSUE_ORDER: tuple[Issue, ...] = (
@@ -210,10 +238,15 @@ ISSUE_ORDER: tuple[Issue, ...] = (
     Issue.BEHIND_SCHEDULE,
     Issue.SLIDE_OVER,
     Issue.GAZE_ON_SCRIPT,
+    Issue.GAZE_AWAY,
+    Issue.GAZE_LOW_EYE_CONTACT,
     Issue.PACE_FAST,
     Issue.VOLUME_LOW,
     Issue.LONG_SILENCE,
     Issue.FILLER_FREQUENT,
     Issue.AHEAD_OF_SCHEDULE,
+    Issue.GAZE_ON_SCREEN,
+    Issue.GAZE_UNMEASURABLE,
+    Issue.PACE_SLOW,
     Issue.IMPROVED_AFTER_FEEDBACK,
 )

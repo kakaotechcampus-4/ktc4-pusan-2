@@ -205,7 +205,7 @@ class Step(_Section):
 
 
 class IssueRule(_Section):
-    #: 효과가 없을 때마다 한 칸씩 내려간다
+    #: 효과가 없을 때마다 한 칸씩 내려간다. 비어 있으면 말하지 않고 문제 구간에만 남긴다
     ladder: list[Step]
     #: 사다리 끝에서도 효과가 없으면 그 범위에서 그만둔다. False 면 마지막 칸에 머문다
     exhaustible: bool = True
@@ -218,6 +218,11 @@ class IssueRule(_Section):
     #: 효과가 있으면 CONTINUE 로 격려한다
     praise: bool = False
 
+    @property
+    def record_only(self) -> bool:
+        """사다리가 비어 있다 — 후보를 만들지 않고 기록만 한다."""
+        return not self.ladder
+
 
 def _ladder(*steps: tuple[Instruction, str]) -> list[Step]:
     return [Step(instruction=i, variant=v) for i, v in steps]
@@ -225,15 +230,26 @@ def _ladder(*steps: tuple[Instruction, str]) -> list[Step]:
 
 def _default_issue_rules() -> dict[Issue, IssueRule]:
     I = Instruction  # noqa: E741 — 표가 한눈에 들어오게
-    return {
+
+    def gaze() -> IssueRule:
         # 시선 비율은 FE 의 10초 창이라 반응(약 2초 뒤)이 창을 다 채우는 12초 뒤에 잰다 (실험 03 ·
-        # 14)
-        Issue.GAZE_ON_SCRIPT: IssueRule(
+        # 14). 코치가 말하는 세 시선 문제는 같은 정의에서 만들어 서로 어긋나지 않게 한다
+        return IssueRule(
             ladder=_ladder((I.LOOK_AT_CAMERA, "default"), (I.LOOK_AT_CAMERA, "sentence_start")),
             persistence_ms=3_000,
             outcome_delay_ms=12_000,
             praise=True,
-        ),
+        )
+
+    return {
+        Issue.GAZE_ON_SCRIPT: gaze(),
+        Issue.GAZE_AWAY: gaze(),
+        Issue.GAZE_LOW_EYE_CONTACT: gaze(),
+        # 아래 셋은 말하지 않고 문제 구간에만 남긴다. GAZE_ON_SCREEN 은 슬라이드를 가리키며 설명하는
+        # 정상 행동과 가릴 근거가 없고, GAZE_UNMEASURABLE 은 측정 불가 신호다
+        Issue.GAZE_ON_SCREEN: IssueRule(ladder=[]),
+        Issue.GAZE_UNMEASURABLE: IssueRule(ladder=[]),
+        Issue.PACE_SLOW: IssueRule(ladder=[]),
         Issue.PACE_FAST: IssueRule(
             ladder=_ladder((I.SLOW_DOWN, "default"), (I.SLOW_DOWN, "pause_at_end")),
             persistence_ms=5_000,

@@ -35,6 +35,14 @@ def test_praise_is_dropped_if_problem_returns(session: Session):
     assert not [r for r in session.interventions if r.feedback.instruction.value == "CONTINUE"]
 
 
+def test_praise_is_dropped_if_another_gaze_issue_of_the_ladder_appears(session: Session):
+    session.run(10_000, 13_000, **gaze_on(0.9))
+    session.run(14_000, 25_000, **gaze_off(0.1))  # 25초에 효과 있음 → 격려 후보
+    away = fake_issue("GAZE", "GAZE_AWAY", 0.8)
+    session.run(26_000, 45_000, issues=[away], metrics={"script_ratio": 0.1})
+    assert not [r for r in session.interventions if r.feedback.instruction.value == "CONTINUE"]
+
+
 def test_ineffective_escalates_then_gives_up_per_slide():
     # 시간 규칙이 끼지 않게 계획 없이 시선만 본다
     s = Session(load_config(policy={"cooldown_ms": 20_000}), slide=2, plan={})

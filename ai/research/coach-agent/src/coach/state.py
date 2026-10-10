@@ -14,7 +14,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .version import STATE_VERSION
-from .vocab import FeedbackType, Instruction, Issue
+from .vocab import SHARED_LADDER, SLIDE_SCOPED, FeedbackType, Instruction, Issue
 
 
 class _S(BaseModel):
@@ -142,7 +142,7 @@ class CoachState(_S):
     last_t_ms: int | None = None
 
     history: list[HistorySample] = Field(default_factory=list)
-    #: 열린 문제 구간. 키 = 전략 키 (문제코드, 슬라이드 단위면 "문제코드:장번호")
+    #: 열린 문제 구간. 키 = episode_key (문제코드, 슬라이드 단위면 "문제코드:장번호")
     episodes: dict[str, EpisodeState] = Field(default_factory=dict)
 
     last_fired_ms: int | None = None
@@ -210,7 +210,22 @@ def dump_state(state: CoachState) -> dict[str, Any]:
     return state.model_dump(mode="json", exclude_none=True)
 
 
-def strategy_key(issue: Issue, slide_number: int | None, slide_scoped: bool) -> str:
-    if slide_scoped and slide_number is not None:
-        return f"{issue.value}:{slide_number}"
-    return issue.value
+def _scoped(name: str, issue: Issue, slide_number: int | None) -> str:
+    if issue in SLIDE_SCOPED and slide_number is not None:
+        return f"{name}:{slide_number}"
+    return name
+
+
+def episode_key(issue: Issue, slide_number: int | None) -> str:
+    """문제 구간 · 참은 기록의 키. 문제마다 따로다 (슬라이드 단위 문제면 "문제코드:장번호")."""
+    return _scoped(issue.value, issue, slide_number)
+
+
+def ladder_name(issue: Issue) -> str:
+    """문제가 쓰는 사다리 이름. 사다리를 나눠 쓰는 문제는 같은 이름이다."""
+    return SHARED_LADDER.get(issue, issue.value)
+
+
+def strategy_key(issue: Issue, slide_number: int | None) -> str:
+    """사다리 단계 · 포기 · 개입 횟수의 키. 사다리를 나눠 쓰는 문제는 같은 키를 쓴다."""
+    return _scoped(ladder_name(issue), issue, slide_number)

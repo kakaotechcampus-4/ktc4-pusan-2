@@ -16,9 +16,9 @@ from coach.config import criteria_version as _criteria_version
 from coach.schemas import IssueCriteria, JudgmentIssue, JudgmentResult, TallyItem
 from coach.vocab import FeedbackType, Issue
 
-from ._common import HIGHER, In, Section, clean, parse, ramp, ratio
+from ._common import HIGHER, LOWER, In, Section, clean, parse, ramp, ratio
 
-VERSION = "pace-0.1"
+VERSION = "pace-0.2"
 """연구용 대역 버전."""
 
 
@@ -27,6 +27,8 @@ class Config(Section):
 
     window_ms: int = 15_000
     slow_cpm: float = 275.0
+    #: 옛 평가기에 없던 값. 코치는 PACE_SLOW 를 기록만 한다
+    slow_cpm_bad: float = 200.0
     fast_cpm: float = 350.0
     fast_cpm_bad: float = 450.0
     min_speak_ms: int = 4_000
@@ -75,7 +77,15 @@ def criteria(config: Config = DEFAULT) -> dict[str, IssueCriteria]:
             bad=config.fast_cpm_bad,
             onset_lag_ms=config.onset_lag_ms,
             offset_lag_ms=config.offset_lag_ms,
-        )
+        ),
+        Issue.PACE_SLOW: IssueCriteria(
+            metric="cpm",
+            direction=LOWER,
+            threshold=config.slow_cpm,
+            bad=config.slow_cpm_bad,
+            onset_lag_ms=config.onset_lag_ms,
+            offset_lag_ms=config.offset_lag_ms,
+        ),
     }
 
 
@@ -153,7 +163,8 @@ def judge(
         state = "NORMAL"
 
     issues: list[JudgmentIssue] = []
-    if cpm is not None and cpm > cfg.fast_cpm:
+    # STT 를 믿을 수 없으면 이슈를 내지 않는다 (measurable 이 false 면 측정 불가 신호뿐이어야 한다)
+    if stt_ok and cpm is not None and cpm > cfg.fast_cpm:
         issues.append(
             JudgmentIssue(
                 issue_type=Issue.PACE_FAST,
@@ -163,8 +174,21 @@ def judge(
                 persistence_sec=0.0,
                 threshold=cfg.fast_cpm,
                 bad=cfg.fast_cpm_bad,
-                # STT 를 믿을 수 없어도 낸다 — 코치가 SENSOR_UNUSABLE 로 남기게 (다음 PR 에서 바꿈)
-                actionable=stt_ok,
+                actionable=True,
+                evidence={"cpm": cpm, "window_ms": cfg.window_ms, "speak_ms": speak_ms},
+            )
+        )
+    elif stt_ok and cpm is not None and cpm < cfg.slow_cpm:
+        issues.append(
+            JudgmentIssue(
+                issue_type=Issue.PACE_SLOW,
+                area=FeedbackType.SPEED,
+                severity=ramp(cpm, cfg.slow_cpm, cfg.slow_cpm_bad),
+                confidence=0.6 + 0.4 * min(1.0, speak_ms / (2 * cfg.min_speak_ms)),
+                persistence_sec=0.0,
+                threshold=cfg.slow_cpm,
+                bad=cfg.slow_cpm_bad,
+                actionable=True,
                 evidence={"cpm": cpm, "window_ms": cfg.window_ms, "speak_ms": speak_ms},
             )
         )

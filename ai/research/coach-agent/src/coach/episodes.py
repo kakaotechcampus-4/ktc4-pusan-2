@@ -16,9 +16,9 @@ from .candidates import Candidate
 from .config import CoachConfig
 from .events import EventSink
 from .schemas import EpisodeEvent
-from .state import CoachState, EpisodeState, strategy_key
+from .state import CoachState, EpisodeState, episode_key
 from .tick import Tick
-from .vocab import ISSUE_TYPE, SLIDE_SCOPED, CandidateStatus
+from .vocab import ISSUE_TYPE, CandidateStatus
 
 
 def observe(tick: Tick, sink: EventSink) -> None:
@@ -27,7 +27,7 @@ def observe(tick: Tick, sink: EventSink) -> None:
     seen: set[str] = set()
 
     for det in tick.detections:
-        key = strategy_key(det.issue_type, det.slide_number, det.issue_type in SLIDE_SCOPED)
+        key = episode_key(det.issue_type, det.slide_number)
         seen.add(key)
         episode = st.episodes.get(key)
         if episode is not None and tick.t - episode.last_seen_ms > gap:
@@ -71,7 +71,7 @@ def note_candidates(tick: Tick, candidates: list[Candidate]) -> None:
             CandidateStatus.IGNORED,
         ):
             continue
-        episode = tick.state.episodes.get(c.strategy_key)
+        episode = tick.state.episodes.get(c.episode_key)
         if episode is None:
             continue
         for reason in c.reasons_against:
@@ -80,7 +80,7 @@ def note_candidates(tick: Tick, candidates: list[Candidate]) -> None:
 
 
 def note_intervention(tick: Tick, c: Candidate, intervention_id: str) -> None:
-    episode = tick.state.episodes.get(c.strategy_key)
+    episode = tick.state.episodes.get(c.episode_key)
     if episode is not None:
         episode.intervention_ids.append(intervention_id)
 

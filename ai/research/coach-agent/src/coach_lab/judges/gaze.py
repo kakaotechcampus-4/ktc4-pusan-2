@@ -3,6 +3,10 @@
 옛 코치 평가기(PR #131 의 `coach.evaluators.gaze`)의 규칙 · 기준값을 #153 계약 모양으로 옮긴 것이다.
 기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. 숫자는 옛 평가기와 같게 두고 출력 모양만 바꿨다.
 
+센서를 쓸 수 없으면 `GAZE_ON_SCRIPT` 대신 측정 불가 신호 `GAZE_UNMEASURABLE`(actionable false)
+하나만 낸다 (#158: measurable 이 false 면 이슈는 측정 불가 신호뿐). 옛 평가기에는 `GAZE_AWAY` ·
+`GAZE_LOW_EYE_CONTACT` · `GAZE_ON_SCREEN` 규칙이 없어서 이 대역도 내지 않는다.
+
 상태를 갖지 않는다. 옛 평가기가 coach_state 의 history 에 둔 센서 평활용 값은 입력 기록에서
 창마다 다시 계산한다(시뮬레이터가 1초마다 부르므로 같은 값이 된다).
 """
@@ -15,9 +19,9 @@ from coach.config import criteria_version as _criteria_version
 from coach.schemas import IssueCriteria, JudgmentIssue, JudgmentResult, TallyItem
 from coach.vocab import FeedbackType, Issue
 
-from ._common import HIGHER, TICK_MS, In, Section, clean, parse, ramp, ratio
+from ._common import HIGHER, LOWER, TICK_MS, In, Section, clean, parse, ramp, ratio
 
-VERSION = "gaze-0.1"
+VERSION = "gaze-0.2"
 """연구용 대역 버전."""
 
 #: 1초 상태 → 집계 키
@@ -110,7 +114,15 @@ def criteria(config: Config = DEFAULT) -> dict[str, IssueCriteria]:
             bad=config.continuous_bad_ms,
             onset_lag_ms=round(config.script_ratio * config.window_ms),
             offset_lag_ms=round((1 - config.script_ratio) * config.window_ms),
-        )
+        ),
+        Issue.GAZE_UNMEASURABLE: IssueCriteria(
+            metric="measured_ratio",
+            direction=LOWER,
+            threshold=1 - config.max_uncertain_ratio,
+            bad=0.0,
+            onset_lag_ms=round(config.script_ratio * config.window_ms),
+            offset_lag_ms=round((1 - config.script_ratio) * config.window_ms),
+        ),
     }
 
 
@@ -172,7 +184,15 @@ def judge(
     if valid <= 0.0:
         # 창 전체를 측정하지 못했다
         metrics["script_run_ms"] = 0
-        return [JudgmentResult(**common, measurable=False, state="UNMEASURABLE", metrics=metrics)]
+        return [
+            JudgmentResult(
+                **common,
+                measurable=False,
+                state="UNMEASURABLE",
+                metrics=metrics,
+                issues=[_unmeasurable(smoothed, metrics["mean_reliability"], cfg)],
+            )
+        ]
 
     script_ratio = min(1.0, sum(ratios.get(lab, 0.0) for lab in cfg.script_labels) / valid)
     run_ms = label_ms if label in cfg.script_labels else 0
@@ -192,10 +212,13 @@ def judge(
         state = "AUDIENCE"
 
     issues: list[JudgmentIssue] = []
+    if not sensor_ok:
+        # 센서를 믿을 수 없으면 시선 문제를 내지 않는다. 측정 불가 신호만 남긴다
+        issues.append(_unmeasurable(smoothed, metrics["mean_reliability"], cfg))
     by_ratio = script_ratio >= cfg.script_ratio
     by_streak = run_ms >= cfg.continuous_ms and script_ratio >= cfg.streak_min_ratio
     # Take 시작 직후에는 몇 초의 표본으로 낸 비율이 크게 흔들려 지적하지 않는다
-    if t_ms >= cfg.min_window_ms and (by_ratio or by_streak):
+    if sensor_ok and t_ms >= cfg.min_window_ms and (by_ratio or by_streak):
         severity = max(
             ramp(script_ratio, cfg.script_ratio, cfg.script_ratio_bad) if by_ratio else 0.0,
             ramp(run_ms, cfg.continuous_ms, cfg.continuous_bad_ms) if by_streak else 0.0,
@@ -209,8 +232,7 @@ def judge(
                 persistence_sec=run_ms / 1000,
                 threshold=cfg.continuous_ms,
                 bad=cfg.continuous_bad_ms,
-                # 센서를 믿을 수 없어도 낸다 — 코치가 SENSOR_UNUSABLE 로 남기게 (다음 PR 에서 바꿈)
-                actionable=sensor_ok,
+                actionable=True,
                 evidence={
                     "script_ratio": round(script_ratio, 4),
                     "script_run_ms": run_ms,
@@ -222,6 +244,24 @@ def judge(
     return [
         JudgmentResult(**common, measurable=sensor_ok, state=state, metrics=metrics, issues=issues)
     ]
+
+
+def _unmeasurable(
+    smoothed_uncertain: float, mean_reliability: float | None, cfg: Config
+) -> JudgmentIssue:
+    """측정 불가 신호. 측정 비율은 지금과 최근 평균 중 나쁜 쪽(smoothed)으로 잰다."""
+    measured = round(1.0 - smoothed_uncertain, 4)
+    return JudgmentIssue(
+        issue_type=Issue.GAZE_UNMEASURABLE,
+        area=FeedbackType.GAZE,
+        severity=ramp(measured, 1 - cfg.max_uncertain_ratio, 0.0),
+        confidence=1.0,
+        persistence_sec=0.0,
+        threshold=1 - cfg.max_uncertain_ratio,
+        bad=0.0,
+        actionable=False,
+        evidence={"measured_ratio": measured, "mean_reliability": mean_reliability},
+    )
 
 
 def _segments(records: list[GazeRecord], start: int, end: int) -> list[Seg]:
