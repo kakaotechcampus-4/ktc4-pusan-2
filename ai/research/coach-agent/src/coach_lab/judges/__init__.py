@@ -7,11 +7,11 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from . import gaze
+from . import filler, gaze, pace
 
-__all__ = ["gaze", "lab_judges"]
+__all__ = ["filler", "gaze", "lab_judges", "pace"]
 
 
 def lab_judges() -> dict[str, ModuleType]:
     """영역 이름 → 판정 모듈. judge · summarize · criteria 를 갖는다(volume 은 baseline 도)."""
-    return {"gaze": gaze}
+    return {"gaze": gaze, "pace": pace, "filler": filler}
