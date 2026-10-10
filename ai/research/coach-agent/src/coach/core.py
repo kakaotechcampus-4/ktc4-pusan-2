@@ -22,7 +22,7 @@ import logging
 from typing import Any
 
 from . import candidates as candidates_mod
-from . import eligibility, episodes, measure, priority, reflection, slides, tally
+from . import eligibility, episodes, measure, priority, reflection, slides, take_lists, tally
 from . import judges as judges_mod
 from .candidates import Candidate
 from .config import DEFAULT_CONFIG, CoachConfig
@@ -180,6 +180,7 @@ def finalize(
     ② 닫기: 재지 못한 효과는 NOT_MEASURED, 열린 문제 구간은 TAKE_END, 마지막 장은 SLIDE.
     ③ 센 구간이 [0, t_ms) 를 덮지 못하면 ReplayRequired.
     ④ 합계(Take · 장 번호별)를 영역 모듈의 summarize 에 넣어 areas 를 만들고, 판정 기준을 남긴다.
+    ⑤ 받은 이벤트 + 이번 이벤트(event_id 로 중복을 거른 것)로 문제 구간 · 개입 · 포기를 만든다.
     """
     cfg = config or DEFAULT_CONFIG
     req = (
@@ -222,6 +223,8 @@ def finalize(
         raise ReplayRequired(f"센 구간이 Take 를 덮지 못했다. 빠진 구간 {spans}", missing)
 
     criteria = run.criteria if run is not None else judges_mod.criteria_of(judges, cfg)
+    # 받은 이벤트와 이번에 만든 이벤트를 event_id 로 거르며 합쳐 목록을 만든다
+    all_events = take_lists.merge_events(req.events, sink.events)
     result = TakeResult(
         take_id=req.take_id,
         duration_ms=t,
@@ -232,6 +235,11 @@ def finalize(
             for name, v in state.criteria_versions.items()
         ),
         areas=_areas(req, judges, cfg, state),
+        problem_segments=take_lists.problem_segments(
+            all_events, cfg.take_result, criteria, t, state.slide_spans, cfg.policy.default_tick_ms
+        ),
+        interventions=take_lists.interventions(all_events),
+        gave_up=take_lists.gave_up(all_events),
         criteria=_criteria_snapshot(state, criteria),
     )
     return FinalizeResponse(take_result=result, events=sink.events, meta=_meta(cfg, state))
