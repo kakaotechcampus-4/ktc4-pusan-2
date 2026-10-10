@@ -8,9 +8,9 @@ Take가 끝나면 판단 기록을 묶어 리뷰 에이전트가 쓸 근거(문�
 | | |
 |---|---|
 | 담당 | jewon-kim |
-| 판단 방식 | 규칙 + 되돌아보기. LLM을 쓰지 않습니다 |
-| 기능 버전 | 판단 규칙 `coach-v1.1`, 요청 · 응답 스키마 `1.1`, `coach_state` 모양 `1` (`src/coach/version.py`) |
-| 상태 | v1. **가상 발표자로만 확인했습니다.** 기준값은 실제 발표 데이터로 검증하지 않았습니다 |
+| 판단 방식 | 규칙 + 되돌아보기. 1초 판단에는 LLM을 쓰지 않고, Take 시작 전 코칭 계획에만 LLM을 한 번 씁니다 |
+| 기능 버전 | 판단 규칙 `coach-v1.2`, 요청 · 응답 스키마 `1.2`, `coach_state` 모양 `1` (`src/coach/version.py`) |
+| 상태 | v1.2. **가상 발표자로만 확인했습니다.** 기준값은 실제 발표 데이터로 검증하지 않았습니다 |
 | 배포 | 판단 코어(`src/coach/`)는 나중에 AI 서버로 그대로 옮깁니다 → [DEPLOY.md](DEPLOY.md) |
 
 > 이 프로젝트는 `ai/archive/workspaces/jewon-kim/coach-agent/v1/local/`을 구조만 바꿔 옮긴 것입니다.
@@ -39,12 +39,15 @@ Take가 끝나면 판단 기록을 묶어 리뷰 에이전트가 쓸 근거(문�
 
 | 단계 | 하는 일 | 언제 | 진입점 |
 |---|---|---|---|
+| 0 | 대본 · 미션 · 직전 리뷰를 읽고 **이번 Take 에서 먼저 챙길 것 · 봐줄 것**을 정한다 (LLM) | Take 시작 전 한 번 | `plan_coaching` |
 | 1 | 지금 상황을 보고 **말할지, 무엇을 말할지** 정한다 | 발표 중 1초마다 | `decide` · `decide_safe` |
 | 2 | 열린 문제 구간과 아직 재지 못한 개입 효과를 **닫는다** | Take 종료 직후 한 번 | `finalize` |
 | 3 | 쌓인 판단 기록을 **리뷰 근거**로 묶는다 | Take 종료 분석 | `build_review_evidence` |
 | 4 | 가상 발표로 재생하고, 리뷰 근거를 정답과 비교해 **채점**한다 | 연구할 때만 (배포에는 없음) | `coach_lab` |
 
 ```
+Take 시작 전:  plan_coaching(장별 대본 · 미션 · 기억 · 직전 리뷰, LLM) ─▶ 코칭 계획이 든 첫 coach_state
+
 FE  시선 기록 · 음량 · 슬라이드 ─┐
 BE  최근 15초 STT 단어 · 계획 · 미션 ─┼─▶ decide() ─▶ WAIT / IGNORE / INTERVENE
 지난 응답의 coach_state ───────────┘        + 이벤트 + 새 coach_state + 상태 표시
@@ -54,6 +57,8 @@ Take 종료:  finalize() ─▶ 남은 이벤트 ─▶ build_review_evidence(�
 
 **하는 것**
 
+- Take 시작 전 LLM 이 **코칭 계획**을 세웁니다: 먼저 챙길 영역(가중치), 장 단위로 봐줄 영역(예: 수치를 읽어야 하는 장의 시선), 개입 상한.
+  LLM 이 낸 계획은 코드가 검증하고 자르며, 실패하면 계획 없이 판단합니다
 - 1초마다 측정값과 지난 기억(`coach_state`)을 받아 **행동 하나, 또는 말하지 않음**을 정합니다
 - 7개 영역을 봅니다: 시선 · 말 속도 · 음량 · 침묵 · 군더더기 · 시간(장별 계획 대비) · 핵심 키워드(기본 꺼짐)
 - **한 번에 하나만** 말합니다. 메시지 사이 15초, 같은 지시는 60초 쿨다운, 말하는 도중이면 문장이 끝날 때까지 최대 3초 기다립니다
@@ -69,6 +74,7 @@ Take 종료:  finalize() ─▶ 남은 이벤트 ─▶ build_review_evidence(�
 - 문장 생성: 화면 문구는 템플릿입니다. 리뷰 근거도 꼬리표 · 상태 · 순위 · 목표값까지만 주고 문장은 리뷰 에이전트가 씁니다
 - 대본 내용 전달 판정: 실시간으로는 필수 키워드 언급만 봅니다(기본 꺼짐). 문장 단위 전달은 [대본 전달도](../script-coverage-evaluation/README.md)가 합니다
 - HTTP API: 함수만 있습니다. 서버에 붙이는 방법은 [DEPLOY.md](DEPLOY.md)
+- LLM 클라이언트 만들기: 코어는 LLM 과 캐시를 인자로 받기만 합니다. research 는 `coach_lab.llm`, 서버는 service 의 LLM 설정으로 만들어 넘깁니다
 
 ---
 
@@ -77,15 +83,15 @@ Take 종료:  finalize() ─▶ 남은 이벤트 ─▶ build_review_evidence(�
 코드는 두 층이고, import는 위에서 아래로만 합니다.
 
 ```
-src/coach_lab/     재생 · 실험: 가상 발표자 · 정답 리뷰 · 채점    → research 에만 남음
+src/coach_lab/     재생 · 실험: 가상 발표자 · 정답 리뷰 · 채점 · 계획 실험(LLM)    → research 에만 남음
       │ import
 src/coach/         판단 코어: 1초 판단 · Take 종료 · 리뷰 근거      → 나중에 AI 서버로 폴더째 복사
 ```
 
 | 층 | 하는 일 | 배포 때 |
 |---|---|---|
-| 코어 `coach` | 1초마다 판단, Take 종료 정리, 리뷰 근거 만들기 | AI 서버로 그대로 옮김 |
-| 재생 · 실험 `coach_lab` | 가상 발표 시나리오 재생, 정답과 비교한 리뷰 근거 채점, 결과 파일 쓰기 | 옮기지 않음 |
+| 코어 `coach` | Take 시작 전 코칭 계획, 1초마다 판단, Take 종료 정리, 리뷰 근거 만들기 | AI 서버로 그대로 옮김 |
+| 재생 · 실험 `coach_lab` | 가상 발표 시나리오 재생, 정답과 비교한 리뷰 근거 채점, 실제 LLM 으로 계획 실험, 결과 파일 쓰기 | 옮기지 않음 |
 
 ### 코어의 규칙
 
@@ -99,6 +105,7 @@ src/coach/         판단 코어: 1초 판단 · Take 종료 · 리뷰 근거   
 | **시계 · 난수를 쓰지 않음.** 시간은 요청의 `t_ms`뿐 | 같은 요청에 같은 응답이 나와야 재생 결과와 배포 결과가 같다 |
 | **기억은 `coach_state`로 주고받음** | 코치는 지난 기억을 응답에 담아 돌려주고, BE가 보관했다가 다음 요청에 그대로 붙인다. AI 서버를 재시작하거나 늘려도 판단이 같다 |
 | 의존성은 **pydantic 하나**. 표준 모듈은 계산만 하는 것(허용 목록) | 서버로 옮길 때 가져갈 라이브러리가 하나뿐이다 |
+| **LLM · 캐시는 인자로 받음** (`.invoke(messages)` · `get` / `put`) | 코어는 키 · 네트워크를 모른다. LLM 라이브러리(langchain-openai)는 `coach_lab` 만 쓴다 |
 | 로그는 표준 `logging`으로 **남기기만** | 어디로 보낼지(형식 · request_id · 출력)는 service 공통 로깅이 정한다 |
 
 ---
@@ -122,18 +129,22 @@ coach-agent/
 │   ├── evaluators/          ② 측정값 → 문제: gaze · voice · speech · timing
 │   ├── candidates.py · eligibility.py · priority.py · policy.py · renderer.py    ③ ~ ⑦
 │   ├── reflection.py · episodes.py · slides.py · events.py                       되돌아보기 · 기록
-│   └── review.py            Take 종료 뒤 리뷰 근거
+│   ├── review.py            Take 종료 뒤 리뷰 근거
+│   └── planner.py · prompts/plan.py    Take 시작 전 코칭 계획 (LLM 초안 → 검증)
 │
 ├── src/coach_lab/           ── 재생 · 실험 도구 ──
 │   ├── paths.py · simulator.py · truth.py
-│   └── replay.py · evaluate.py    실행 CLI (python -m coach_lab.replay / .evaluate)
+│   ├── llm.py · cache.py    코칭 계획용 LLM 클라이언트 (ai/.env) · 응답 캐시 (SQLite)
+│   └── replay.py · evaluate.py · plan_eval.py    실행 CLI (python -m coach_lab.replay / .evaluate / .plan_eval)
 │
 ├── scenarios/               재생 시나리오 16개: 가상 발표 하나 + 기대 결과 (JSON)
-├── reports/results/         리뷰 근거 실험 결과 JSON (버전별로 커밋)
-├── outputs/                 재생 결과 · 임시 실험 결과 (git 제외)
+│   └── plan/                코칭 계획 시나리오 5개: 장별 대본 · 직전 리뷰 + 계획에 대한 기대
+├── reports/results/         리뷰 근거 · 코칭 계획 실험 결과 JSON (버전별로 커밋)
+├── outputs/                 재생 결과 · 임시 실험 결과 · LLM 응답 캐시 (git 제외)
 └── tests/
     ├── unit/                코어 테스트. 코어와 함께 서버로 간다
-    └── lab/                 재생 · 실험 도구 테스트. research 에만 남는다
+    ├── lab/                 재생 · 실험 도구 테스트. research 에만 남는다
+    └── live/                실제 LLM 을 부르는 테스트 (기본 실행에서 빠짐, `-m live`)
 ```
 
 ### 3-2. 판단 코어 `src/coach/`
@@ -164,6 +175,13 @@ coach-agent/
 | ⑦ | `renderer.py` | instruction + 사다리 칸 → 템플릿 → 화면 문장 |
 | ⑧ | `events.py` · `engine.py` | 이벤트 번호 매기기, 최근 60초 기록, 상태 표시, 새 `coach_state` |
 
+**Take 시작 전 (v1.2)**
+
+| 파일 | 하는 일 |
+|---|---|
+| `planner.py`(`plan_coaching`) | 계획 · 장별 대본 · 미션 · 기억 · 직전 리뷰 → LLM 메시지 → 캐시 확인 → LLM 초안(`PlanDraft`) → 검증(`validate_draft`) → 계획이 든 첫 `coach_state`. 실전 모드 · LLM 없음 · LLM 실패면 기본 계획 |
+| `prompts/plan.py` | 계획 지시문 (`PLAN_SYSTEM_PROMPT`). 지시문 · 출력 스키마 · 모델로 계획 해시(`planner_hash`)를 만들어 캐시 키로 쓴다 |
+
 **Take 종료 뒤**
 
 | 파일 | 하는 일 |
@@ -180,22 +198,38 @@ coach-agent/
 | `truth.py` | 정답: 실제 상태로 만든 문제 구간 · 장별 누적 · 효과, 그리고 코치와 **같은 판정**(`assess`)으로 만든 정답 리뷰 |
 | `replay.py` | 재생 CLI: 콘솔 요약 + `outputs/replay/<시나리오>.json`. `--config` 설정 JSON 은 여기서 읽는다 |
 | `evaluate.py` | 리뷰 근거 실험 CLI: 채점, 규칙 변형 비교, 격자(`--sweep`), 틀린 사례(`--explain`) |
+| `llm.py` | `ai/.env`(대본 전달도와 같은 변수)로 `PlanDraft` 구조화 출력 LLM 을 만든다. 재시도 없이 한 번, 요청 제한 20초 |
+| `cache.py` | 코어의 `PlanCache` 를 `outputs/llm_cache.sqlite` 로. 반복 번호(sample)마다 따로 저장해 같은 질문을 여러 번 물을 수 있다 |
+| `plan_eval.py` | 코칭 계획 실험 CLI: 계획 시나리오마다 여러 번 계획을 세워 채점하고, 계획으로 재생해 계획 없는 재생과 비교 ([6-8](#6-8-코칭-계획-실험)) |
 
 ### 3-4. 나머지
 
 | 폴더 | 내용 |
 |---|---|
-| `scenarios/` | 가상 발표 16개. 형식과 목록은 [6-5](#6-5-재생-시나리오) |
-| `reports/results/` | `review_evidence.json`: 리뷰 근거 실험 지표와 격자. `config_hash` · `policy_version` 이 함께 들어 있다. 같은 코드면 같은 결과가 나와 커밋해 두고, 규칙을 바꾸면 `git diff` 로 비교한다 |
+| `scenarios/` | 가상 발표 16개. 형식과 목록은 [6-5](#6-5-재생-시나리오). `plan/` 은 코칭 계획 시나리오 5개 ([6-8](#6-8-코칭-계획-실험)) |
+| `reports/results/` | `review_evidence.json`: 리뷰 근거 실험 지표와 격자. `config_hash` · `policy_version` 이 함께 들어 있다. 같은 코드면 같은 결과가 나와 커밋해 두고, 규칙을 바꾸면 `git diff` 로 비교한다. `coaching_plan.json`: 실제 LLM 으로 낸 코칭 계획 실험 결과 (LLM 답이라 다시 부르면 달라질 수 있어, 처음 부른 결과를 커밋한다) |
 | `outputs/` | 재생 결과와 임시 실험 결과. 실행할 때마다 달라지는 판단 시간이 들어 있어 git 에 올리지 않는다 |
 | `tests/unit/` | 코어 테스트: 계약 · 평가기 · 판단 · 되돌아보기 · 측정 수정 · 리뷰 근거 규칙 · 예외 · 코어 경계. `conftest.py` 의 `make_request` · `Session` 이 요청과 `coach_state` 왕복을 줄여 준다 |
-| `tests/lab/` | 재생(시나리오 기대 결과 · 재현성 · state 크기 · 판단 시간), 실험(잡음 재현 · 성능 하한선), 경로 · 설정 파일 |
+| `tests/lab/` | 재생(시나리오 기대 결과 · 재현성 · state 크기 · 판단 시간), 실험(잡음 재현 · 성능 하한선), 경로 · 설정 파일, 계획 실험(가짜 LLM) |
+| `tests/live/` | 실제 LLM 으로 계획 한 번 (과금). `pytest -m live` 로만 돈다 |
 
 ---
 
 ## 4. 실행 흐름 따라가기
 
-### 4-1. 1초 판단 (`decide`)
+### 4-1. Take 시작 전: 코칭 계획 (`plan_coaching`)
+
+`scenarios/plan/17_plan_numbers_slide.json`(3번 장이 수치 표)으로 따라가 보면:
+
+1. **메시지**: 장마다 목표 시간 · 필수 키워드 · 대본(1,500자까지)과 대본 속 숫자 개수를 JSON 으로 만든다. 3번 장은 숫자 16개, 다른 장은 0개.
+   미션 · 반복 문제 · 직전 리뷰 요약(순위 매긴 문제 · 영역 상태 · 개입 수 · 효과율)도 함께 넣는다
+2. **캐시**: 메시지 해시와 계획 해시(지시문 · 출력 스키마 · 모델)가 같으면 저장된 답을 쓴다
+3. **LLM**: 지시문 + 메시지 → `PlanDraft` 모양의 초안. 예: `relax: [{type: GAZE, slide_number: 3, why: "3장은 수치가 16개 …"}]`
+4. **검증**: 장이 계획에 있나, 봐줄 수 있는 영역인가(시선 · 군더더기 · 키워드), 이번 미션 영역은 아닌가, 개수 · 가중치 · 개입 상한 범위 ([5-6](#5-6-코칭-계획-규칙-plannerpy)). 뺀 항목은 `dropped` 에 이유와 함께 남긴다
+5. **응답**: 검증한 계획을 담은 첫 `coach_state`. BE 는 이것을 첫 `decide` 요청에 붙인다
+6. **1초 판단에서**: 3번 장에서 시선 문제가 나와도 후보가 `IGNORED`(`PLAN_RELAXED`)가 되어 말하지 않는다. 다른 장의 시선은 그대로 지적한다
+
+### 4-2. 1초 판단 (`decide`)
 
 ```
 decide(request, config=None, policy=None)            engine.py
@@ -223,7 +257,7 @@ decide(request, config=None, policy=None)            engine.py
 5. **행동 선택**: 40점을 넘고 문장 사이라 `INTERVENE` 입니다.
 6. **문장**: "조금만 빠르게 — 남은 3장, 2분 8초". 15초 뒤 효과를 잴 예약을 하고, 응답의 `events` 에 `INTERVENTION` 이 실립니다.
 
-### 4-2. Take 종료 → 리뷰 근거
+### 4-3. Take 종료 → 리뷰 근거
 
 ```
 finalize(request)                                    request = take_id · 종료 t_ms · 마지막 coach_state
@@ -241,7 +275,7 @@ build_review_evidence(take_id, events, plan=, missions=, memory=)
 판정 층(`assess`)은 순수 함수라, 실험에서 정답 데이터에 **같은 판정**을 돌립니다. 그래서 리뷰 근거가 정답과 다르면
 그 차이가 측정(잡음 · 창 지연 · 구간 처리)에서 왔는지 판정 규칙에서 왔는지 나눠 볼 수 있습니다.
 
-### 4-3. research: 재생과 실험
+### 4-4. research: 재생과 실험
 
 ```
 python -m coach_lab.replay
@@ -316,7 +350,7 @@ r 이 크게 내려갑니다. 허용 범위 안에 끝날 발표자에게 "천�
 | | `TIME_PRESSURE` | 늦는 중에 `SLOW_DOWN` |
 | | `STRATEGY_EXHAUSTED` | 그 범위에서 사다리를 다 써 봄 |
 | | `ALREADY_DELIVERED` | 1회만 하는 안내를 이미 함 |
-| | `PLAN_RELAXED` · `BUDGET_EXHAUSTED` | 코칭 계획이 참으라고 함 · 개입 횟수 상한 (v1.2 계획용 자리) |
+| | `PLAN_RELAXED` · `BUDGET_EXHAUSTED` | 코칭 계획이 참으라고 함 · 개입 횟수 상한 ([5-6](#5-6-코칭-계획-규칙-plannerpy)) |
 | WAITING (나중에 다시) | `NOT_PERSISTENT` | 지속시간 미달 |
 | | `MIN_GAP` | 직전 메시지 뒤 15초 안 |
 | | `COOLDOWN` | 같은 instruction 을 한 지 60초 안 |
@@ -434,6 +468,21 @@ priority = round( min(1, 심각도 × 신뢰도 × 지속 × 미션 × 반복 ×
 | 키워드 | `keyword_coverage` ≥ 1.0 |
 | 시간 | 장: `slide_duration_ms` ≤ 장 목표 × 1.1 · Take: `duration_ms` ≤ `max_ms` (일찍 끝났으면 ≥ `min_ms`) |
 
+### 5-6. 코칭 계획 규칙 (`planner.py`)
+
+LLM 은 초안만 냅니다. 코치가 쓸 계획은 아래 규칙으로 검증하고 자른 것입니다 (`config.planner` · `config.policy`).
+
+| 항목 | 규칙 | 어기면 |
+|---|---|---|
+| 집중 (focus) | 계획에 있는 장이거나 Take 전체, 같은 (영역, 장) 한 번, 3개까지. 가중치는 0.5 ~ 2.0 으로 자른다 | 빼고 `dropped` 에 이유 |
+| 봐주기 (relax) | 장을 지정해야 하고, 시선 · 군더더기 · 키워드만 (시간 · 속도 · 음량 · 침묵은 늘 챙긴다). 이번 미션 영역 · 집중 영역과 겹치면 안 된다. 3개까지 | 빼고 `dropped` 에 이유 |
+| 개입 상한 | 직전 Take 보다 적게 말하게 할 때만. 5 보다 작으면 5 로 올리고, 그 값이 직전 Take 개입 수 이상이거나 직전 리뷰가 없으면 상한을 두지 않는다 | 빼고 `dropped` 에 이유 |
+| 이유 (why) | 200자까지 (`coach_state` 에 실려 매초 오간다) | 자른다 |
+| 실패 | 실전 모드(`EXAM_MODE`), LLM 없음(`NO_LLM`), LLM 예외 · 출력 형식 오류(`LLM_ERROR`) | 기본 계획 + `fallback_reason` |
+
+계획은 1초 판단에 두 곳으로만 들어갑니다: 우선순위의 '계획' 가중치(`PLAN_FOCUS`, [5-3](#5-3-적격성--우선순위--행동-선택))와
+적격성의 참을 이유(`PLAN_RELAXED` · `BUDGET_EXHAUSTED`). 계획이 없으면(기본 계획) 판단은 coach-v1.1 과 같습니다.
+
 ---
 
 ## 6. 실행법
@@ -446,7 +495,8 @@ uv sync                          # Python 3.12, 라이브러리 + 개발 도구(
 ```
 
 - `.venv`는 git에 없습니다. 클론하거나 폴더를 옮긴 뒤에는 `uv sync`로 다시 만듭니다.
-- 코치는 LLM을 쓰지 않으므로 `ai/.env`가 필요 없습니다.
+- 1초 판단 · 재생 · 리뷰 근거 실험은 LLM을 쓰지 않아 `ai/.env`가 필요 없습니다. 코칭 계획 실험([6-8](#6-8-코칭-계획-실험))과 live 테스트만
+  `ai/.env`의 `OPENAI_API_KEY` · `OPENAI_MODEL` · `OPENAI_BASE_URL`(대본 전달도와 같은 변수)을 씁니다.
 - **Windows**: 이 PC에서는 `pytest.exe` 같은 실행 파일이 앱 제어로 막혀 있어 `uv run python -m …` 형태로 부릅니다.
   콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`을 설정하세요.
 
@@ -456,6 +506,7 @@ uv sync                          # Python 3.12, 라이브러리 + 개발 도구(
 uv run python -m pytest                 # 전부 (약 10초)
 uv run python -m pytest tests/unit      # 코어만 (코어 경계 검사 포함)
 uv run python -m pytest tests/lab       # 재생 · 실험 도구 (실험 하한선 포함)
+uv run python -m pytest -m live         # 실제 LLM 으로 계획 한 번 (과금, 기본 실행에서 빠짐)
 uv run ruff check . && uv run ruff format --check .   # backend 와 같은 규칙
 ```
 
@@ -569,9 +620,11 @@ uv run python -m coach_lab.replay --config my_override.json
 ### 6-7. 파이썬에서 직접
 
 ```python
-from coach import build_review_evidence, decide, finalize
+from coach import build_review_evidence, decide, finalize, plan_coaching
 
-state, events = None, []
+# Take 시작 전 (선택). llm 없이 부르면 기본 계획 — 첫 coach_state 를 None 으로 시작하는 것과 같다
+plan = plan_coaching({"take_id": "t1", "plan": {...}, "scripts": [...]}, llm=llm, model=model)
+state, events = plan.coach_state, []
 for t in range(0, 180_001, 1000):
     resp = decide(
         {"take_id": "t1", "t_ms": t, "plan": {...}, "current": {...}, "coach_state": state}
@@ -583,6 +636,41 @@ for t in range(0, 180_001, 1000):
 events += finalize({"take_id": "t1", "t_ms": 180_000, "coach_state": state}).events
 evidence = build_review_evidence("t1", events)  # → 리뷰 에이전트
 ```
+
+`llm` 은 `.invoke(messages)` 가 `PlanDraft` 를 돌려주는 객체입니다. research 에서는
+`coach_lab.llm.plan_llm(load_settings())` 로 만들고, 캐시는 `coach_lab.cache.SqlitePlanCache()` 를 `cache=` 로 넘깁니다.
+
+### 6-8. 코칭 계획 실험
+
+```bash
+uv run python -m coach_lab.plan_eval              # scenarios/plan/*.json, 시나리오마다 5번 (실제 LLM, 캐시에 없는 것만 부른다)
+uv run python -m coach_lab.plan_eval --samples 1  # 한 번씩만
+uv run python -m coach_lab.plan_eval --out reports/results/coaching_plan.json   # 커밋하는 결과
+```
+
+응답은 `outputs/llm_cache.sqlite` 에 저장돼 같은 지시문 · 모델 · 입력이면 다시 부르지 않습니다(지연은 실제로 부른 호출만 잽니다).
+지시문이나 출력 스키마를 바꾸면 계획 해시가 바뀌어 새로 부릅니다.
+
+| 지표 | 뜻 |
+|---|---|
+| 유효 | LLM 이 답했고 기본 계획으로 돌아가지 않았다 |
+| 기대 통과 | 검증을 거친 계획이 시나리오의 `plan_expect` 를 만족한다 |
+| 검증에서 뺌 | LLM 초안에 범위 밖 · 근거 없는 항목이 있어 코치가 뺀 계획의 비율 |
+| 일관성 | 같은 입력을 여러 번 물었을 때 집중 · 봐주기 (영역, 장) 묶음이 첫 답과 같은 비율 |
+| 재생 효과 | 첫 답의 계획으로 재생한 영역 · 장별 개입 수를 계획 없이 재생한 것과 비교 |
+| 지연 | 실제로 부른 호출의 시간 |
+
+계획 시나리오는 재생 시나리오에 세 필드를 더한 것입니다: `scripts`(장별 대본), `previous_review`(직전 리뷰 근거),
+`plan_expect`(`relax_includes` · `relax_excludes_types` · `relax_empty` · `focus_includes_types` · `no_budget` · `budget_set` · `with_plan_no_interventions`).
+계획 없이 재생한 행동은 일반 시나리오처럼 `expect` 로 고정합니다 (`tests/lab/test_plan_eval.py` 가 검사).
+
+| 시나리오 | 확인하는 것 |
+|---|---|
+| `17_plan_numbers_slide` | 수치 표를 읽는 3번 장의 시선을 봐준다 → 계획으로 재생하면 그 장의 시선 지적이 없다 |
+| `18_plan_mission_focus` | 이번 미션(3번 장 시간)을 집중에 넣고 봐주지 않는다. 코칭이 잦았다는 근거가 없으니 개입 상한을 두지 않는다 |
+| `19_plan_nothing_special` | 근거가 없으면 봐주기도 개입 상한도 두지 않는다 |
+| `20_plan_overcoached` | 직전 Take 에서 14번 말했는데 효과는 2번뿐 → 개입 상한을 둔다 |
+| `21_plan_quoted_notice` | 숫자 없이 고지 원문을 그대로 읽는 3번 장의 시선을 봐준다 (지시문을 고친 뒤 처음 잰 시나리오) |
 
 ---
 
@@ -597,12 +685,13 @@ evidence = build_review_evidence("t1", events)  # → 리뷰 에이전트
 5. `src/coach/policy.py` · `reflection.py`: 말할지 정하기, 효과를 보고 방법 바꾸기
 6. `src/coach/review.py`: `build_review_evidence` → `assess`
 7. `src/coach_lab/simulator.py` · `scenarios/02_gaze_effective.json`: 가상 발표가 어떻게 요청이 되는지
+8. `src/coach/planner.py` · `prompts/plan.py`: Take 시작 전 계획 (LLM 초안 → 검증)
 
 ### 자주 묻는 것
 
 **왜 LLM 이 아니라 규칙인가요?**
 매초 LLM 을 부르면 지연(수백 ms ~ 수 초) · 비용(10분에 600회) · 흔들림 문제가 있습니다. 규칙 코치가 에이전트답지 않은 이유는
-규칙이어서가 아니라 결과를 보고 행동을 바꾸지 않아서라, 개입 효과를 재고 방법을 바꾸는 되돌아보기로 그 부분을 채웠습니다. LLM 은 v1.2 · v2 에서 붙입니다 ([13](#13-다음-버전)).
+규칙이어서가 아니라 결과를 보고 행동을 바꾸지 않아서라, 개입 효과를 재고 방법을 바꾸는 되돌아보기로 그 부분을 채웠습니다. LLM 은 Take 시작 전 코칭 계획(v1.2)에 한 번 쓰고, 애매할 때 고르는 선택기는 v2 입니다 ([13](#13-다음-버전)).
 
 **`coach_state` 는 왜 BE 가 들고 있나요?**
 AI 서버가 저장하지 않아야 재시작 · 재배포 · worker 증설에도 발표 중 기억이 사라지지 않고, 같은 요청에 같은 응답이 나옵니다.
@@ -663,6 +752,28 @@ BE · 리뷰와 맞닿는 곳은 넷입니다: 1초 요청 · 응답, Take 종�
 
 > **모두 가상 발표자 기준입니다.** 리뷰 근거가 '정답에 가깝게' 만들어지는 것은 확인했지만, 정답은 시뮬레이터가 아는 발표자 상태이고
 > 잡음 모델은 실제 FE · Deepgram 의 오차와 다를 수 있습니다. **기준값(70% · 350 CPM · −6dB 등)과 코칭의 실제 효과는 검증하지 않았습니다.**
+
+### v1.2 (판단 규칙 `coach-v1.2`, `config_hash` `d96ea5e7cecf`)
+
+Take 시작 전 LLM 코칭 계획을 더했습니다. 계획이 없으면 판단은 v1.1 과 같습니다.
+커밋된 결과는 `reports/results/coaching_plan.json`(모델 `openai/gpt-5.6-luna`, 계획 해시 `84aecb2e2a2a`)입니다.
+
+| 비교 | 결과 |
+|---|---|
+| 계획 없이 재생 16개 (요약 · 원자료 입력) | 결과 JSON 이 v1.1 과 같다 (`config_hash` · 버전만 다름). 리뷰 근거 실험 지표도 같다 |
+| 코칭 계획 (시나리오 5개 × 5번) | 유효 25/25, 기대 통과 24/25 (0.96), 검증에서 뺌 0, 일관성 0.90, 지연 중앙값 2.6초 · 평균 3.1초 · 최대 8.1초 |
+| 계획으로 재생 | 17 · 21: 3번 장 시선 지적 1번 → 0번 (`PLAN_RELAXED` 로 참은 기록 5번). 18: 집중한 3번 장 시간 문제가 나오기 전에 2번 장에서 이미 말해 개입이 같다. 20: 개입 상한 6 ~ 8 (직전 14번) |
+| 틀린 것 | 21 의 5번째 답이 3번 장 봐주기를 빠뜨림. 빠뜨리면 계획 없는 판단과 같다 (그 장 시선을 지적) |
+
+지시문 · 입력 · 개입 상한 규칙을 고치기 전과 비교 (시나리오 17 ~ 20 × 5번, 같은 모델):
+
+| | 기대 통과 | 검증에서 뺌 | 일관성 | 틀린 것 |
+|---|---|---|---|---|
+| 고치기 전 | 14/20 (0.70) | 0.25 | 0.94 | 18: 근거 없는 개입 상한 2 ~ 3 (하한 5 로 올려 그대로 씀) 4번, 17: 수치 장 봐주기 빠뜨림 1번, 20: 개입 상한 없음 1번 |
+| 고친 뒤 | 20/20 (1.00) | 0 | 0.94 | — |
+
+고친 것: 개입 상한은 직전 Take 보다 적게 말하게 할 때만 둔다(코드), 장별 숫자 개수를 입력에 넣는다, 지시문에 입력 설명과 개입 상한의 근거를 적는다.
+같은 시나리오로 고치고 쟀으므로, 고친 뒤 처음 잰 `21_plan_quoted_notice`(숫자 없는 원문 고지 장)를 따로 봤습니다: 5번 중 4번 봐줌.
 
 ### v1.1 (판단 규칙 `coach-v1.1`, `config_hash` `dbe162df2a38`)
 
@@ -837,12 +948,23 @@ AI 서버에 올리는 데 필요한 작업(서버 · BE · FE)과 순서, API, 
 | **음량 기준이 없으면 첫 발화로 잡는다** | FE 에는 개인 캘리브레이션이 없고 절대 레벨(dBFS)은 마이크마다 다르다. '평소보다 작아짐'은 첫 발화 중앙값만으로도 잴 수 있다. 기준이 오면(`baseline_db`) 그것을 쓴다 |
 | **표시가 없을 때 군더더기는 소리뿐인 말만 센다** | 음 · 어 같은 소리는 늘 군더더기지만 '그' · '이제'는 뜻이 있을 수 있어 문맥이 필요하다. 오탐보다 놓침이 낫다고 보고, 문맥 판단은 BE 표시에 맡긴다 |
 | **Take 시작 뒤 5초는 시선을 지적하지 않는다** | 1초 기록 입력으로 재생해 보니 첫 1~3초의 표본으로 근거 없는 시선 구간이 생겼다 (harsh 근거 없는 지적 0.113 → 0.300). FE 코치도 표본 5개 미만이면 비율을 내지 않는다 |
+| **LLM 은 Take 시작 전 한 번, 계획에만** | 매초 부르면 지연 · 비용 · 흔들림 문제가 있다. 계획은 이미 있던 자리(우선순위 가중치 · 참을 이유)로만 들어가 1초 판단 · 문장은 그대로 규칙이다 |
+| **LLM 초안은 코드가 검증하고 자른다** | LLM 이 시간 · 음량처럼 늘 챙겨야 할 것을 봐주거나, 이번 미션을 봐주거나, 없는 장을 말하면 안 된다. 뺀 항목은 이유와 함께 응답에 남겨 실험에서 센다 |
+| **개입 상한은 직전 Take 보다 적게 말하게 할 때만** | 실험에서 LLM 이 코칭이 잦았다는 근거 없이 상한 2 ~ 3 을 냈다 (시나리오 18, 5번 중 4번). 지시문만으로 막지 않고 규칙으로 막는다 |
+| **장별 숫자 개수를 함께 준다** | 수치 표 장의 시선 봐주기를 5번 중 1번 빠뜨렸다. 센 값을 주면 대본을 읽다 놓치지 않는다. 숫자 없는 원문 고지 장(21)으로 숫자만 보고 봐주는 것은 아닌지 확인했다 |
+| **계획을 못 세우면 기본 계획** | 계획이 없다고 코칭이 멈추면 안 된다. 실전 모드는 말하지 않으니 부르지 않는다 |
+| **LLM · 캐시는 인자로 받는다** | 코어 규칙(파일 · 네트워크 없음)을 지키고, 가짜 LLM 으로 테스트한다. 대본 전달도 코어와 같은 방식이다 |
 | **실험 결과 JSON 은 커밋하고 재생 결과는 커밋하지 않는다** | 실험은 같은 코드면 바이트 단위로 같아 `git diff` 로 비교할 수 있다. 재생 결과에는 실행마다 달라지는 판단 시간이 들어 있다 |
 
 ---
 
 ## 12. 알려진 한계
 
+- **코칭 계획은 시나리오 5개로만 확인**: 17 ~ 20 으로 지시문을 고쳤고 21 만 고친 뒤 처음 쟀습니다. 계획이 실제 발표자의 개선을 돕는지는 재지 않았습니다
+- **LLM 이 가끔 봐주기를 빠뜨림**: 25번 중 1번. 빠뜨리면 계획 없는 판단과 같아 지적이 늘 뿐, 늘 챙길 것을 놓치지는 않습니다
+- **개입 상한은 재생에서 걸린 적이 없음**: 시나리오의 개입이 많아야 2번이라 하한 5 에 닿지 않습니다. 상한으로 참는 동작은 단위 테스트로만 확인했습니다
+- **계획에 2.5 ~ 8초**: Take 시작 전 기다림입니다. LLM 은 재시도 없이 한 번 부르고(요청 제한 20초), 실패하면 기본 계획으로 시작합니다.
+  요청 제한은 연결 · 읽기마다 걸리는 값이라 전체 시간의 상한은 부르는 쪽(BE) 타임아웃이 맡습니다
 - **실제 데이터 없음**: 가상 발표자로만 확인했습니다. 실제 Deepgram 출력의 확정 지연, 실제 FE 시선 판정의 오차, 실제 발표자의 반응은 다를 수 있습니다
 - **Take 시작 뒤 5초는 시선을 지적하지 않음**: 표본이 적은 비율로 근거 없는 지적이 나지 않게 한 대가입니다
 - **음량 기준을 첫 발화로 잡으면 처음부터 작게 말한 발표자는 놓침**: 기준도 낮게 잡히기 때문입니다. 평소 목소리를 캘리브레이션해 `baseline_db` 로 보내면 해결됩니다. 기준을 잡는 첫 발화 15초 동안은 음량을 판단하지 않습니다
@@ -863,13 +985,12 @@ AI 서버에 올리는 데 필요한 작업(서버 · BE · FE)과 순서, API, 
 | 버전 | 무엇 | LLM |
 |---|---|---|
 | v1 | 규칙 실행 + 되돌아보기 + 문장 끝 기다리기 + 상태 표시 + 리뷰 근거 | 없음 |
-| **v1.1 (지금)** | v1 + FE · BE 원자료 입력(시선 1초 기록 · 음량 레벨과 기준 · 군더더기 판단) | 없음 |
-| v1.2 | **코칭 계획**: Take 시작 전 LLM 이 미션 · 이전 리뷰 · 장별 대본을 읽고 `CoachingPlan`(focus · relax · 개입 상한)을 만든다. 예: "4번 장은 수치가 많아 대본을 봐도 괜찮다". 스키마 검증 + 가중치 0.5~2.0 으로 자름, 실패하면 기본 계획 | Take 당 1회 |
+| v1.1 | v1 + FE · BE 원자료 입력(시선 1초 기록 · 음량 레벨과 기준 · 군더더기 판단) | 없음 |
+| **v1.2 (지금)** | **코칭 계획**: Take 시작 전 LLM 이 미션 · 이전 리뷰 · 장별 대본을 읽고 `CoachingPlan`(focus · relax · 개입 상한)을 만든다. 예: "3번 장은 수치가 많아 대본을 봐도 괜찮다". 코드가 검증하고 자름, 실패하면 기본 계획 | Take 당 1회 |
 | v2 | **선택기**: 적격 후보가 2개 이상이고 점수 차가 작을 때만 LLM 이 고른다. 후보 밖은 못 고르고, 1초 안에 답이 없으면 `RulePolicy` 결과. 그림자 모드(기록만)로 시작해 재생 평가에서 나을 때 켠다 | 애매할 때만 |
 | 이후 | 쌓인 `OUTCOME` 으로 사람마다 잘 통하는 방법을 고르는 학습형 정책 | — |
 
-v1.2 · v2 를 위한 자리는 이미 있습니다. `CoachingPlan` 은 `coach_state` 안에 있고(`initial_state(plan)`),
-선택기는 `policy.Policy` 인터페이스(`select(tick, candidates)`)로 `RulePolicy` 를 바꿔 끼웁니다.
+v2 를 위한 자리도 이미 있습니다. 선택기는 `policy.Policy` 인터페이스(`select(tick, candidates)`)로 `RulePolicy` 를 바꿔 끼웁니다.
 
 ---
 

@@ -9,9 +9,10 @@
 응답의 `config_hash` 가 어떤 설정으로 판단했는지 남긴다.
 """
 
-#: 1.1: 시선 1초 기록 입력(gaze.records)
-SCHEMA_VERSION = "1.1"
-#: coach-v1.1: 원자료 입력, 측정하지 못한 1초 · Take 시작 직후의 시선 판단
-POLICY_VERSION = "coach-v1.1"
+#: 1.1: 시선 1초 기록 입력(gaze.records). 1.2: 코칭 계획 요청 · 응답(PlanRequest · PlanResponse)
+SCHEMA_VERSION = "1.2"
+#: coach-v1.1: 원자료 입력, 측정하지 못한 1초 · Take 시작 직후의 시선 판단.
+#: coach-v1.2: Take 시작 전 LLM 코칭 계획 (계획이 없으면 coach-v1.1 과 같은 판단)
+POLICY_VERSION = "coach-v1.2"
 #: coach_state 모양이 바뀌면 올린다. 다른 버전의 state 가 오면 버리고 새로 시작한다.
 STATE_VERSION = 1

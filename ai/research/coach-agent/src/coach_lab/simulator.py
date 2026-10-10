@@ -167,6 +167,10 @@ class Scenario(BaseModel):
     noise: Noise = Field(default_factory=Noise)
     seed: int = 0
     expect: dict[str, Any] = Field(default_factory=dict)
+    #: 코칭 계획 실험용 (scenarios/plan/): 장별 대본, 직전 리뷰 근거, 계획에 대한 기대
+    scripts: list[dict[str, Any]] = Field(default_factory=list)
+    previous_review: dict[str, Any] | None = None
+    plan_expect: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
     def load(cls, path: str | Path) -> Scenario:
@@ -529,7 +533,12 @@ def run(
     noise: Noise | None = None,
     seed: int | None = None,
     raw: bool = False,
+    coach_state: dict[str, Any] | None = None,
 ) -> RunResult:
+    """시나리오 하나를 재생한다.
+
+    coach_state 를 주면 그 상태(예: 코칭 계획이 든 첫 상태)로 시작한다.
+    """
     cfg = config if config is not None else scenario_config(sc)
     presenter = Presenter(sc, noise, seed, raw)
     result = RunResult(
@@ -539,7 +548,7 @@ def run(
         config=cfg,
         presenter=presenter,
     )
-    state: dict[str, Any] | None = None
+    state: dict[str, Any] | None = coach_state
 
     t = 0
     while t <= sc.duration_ms:

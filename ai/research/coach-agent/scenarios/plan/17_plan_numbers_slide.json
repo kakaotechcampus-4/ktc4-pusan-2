@@ -1,0 +1,81 @@
+{
+  "name": "17_plan_numbers_slide",
+  "description": "3번 장은 수치 표를 정확히 읽어야 하는 장이라 대본을 보며 읽는다. 계획이 없으면 시선을 지적하고, 계획이 그 장의 시선을 봐주면 지적하지 않아야 한다",
+  "take_id": "sim-17_plan_numbers_slide",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "scripts": [
+    {
+      "slide_number": 1,
+      "script": "안녕하세요, 피치코치 팀입니다. 오늘은 발표 연습을 도와주는 실시간 코치를 소개하겠습니다."
+    },
+    {
+      "slide_number": 2,
+      "script": "발표를 준비하는 사람들은 혼자 연습할 때 무엇이 문제인지 알기 어렵습니다. 녹화를 다시 보는 데도 시간이 오래 걸립니다. 그래서 연습하는 동안 바로 알려 주는 코치가 필요합니다."
+    },
+    {
+      "slide_number": 3,
+      "script": "시범 운영 결과를 표로 정리했습니다. 2025년 3월부터 8주 동안 참여자는 1,240명, 연습 횟수는 9,860회였습니다. 평균 발표 시간은 6분 42초에서 5분 18초로 21% 줄었고, 대본 응시 비율은 0.61에서 0.34로, 분당 군더더기는 4.7회에서 2.1회로 낮아졌습니다. 만족도는 5점 만점에 4.6점입니다."
+    },
+    {
+      "slide_number": 4,
+      "script": "정리하면, 피치코치는 연습하는 그 순간에 한 가지씩 알려 주어 발표를 더 빠르게 다듬게 합니다. 감사합니다."
+    }
+  ],
+  "segments": [
+    {
+      "from_ms": 88000,
+      "to_ms": 140000,
+      "set": {
+        "script_ratio": 0.85
+      }
+    }
+  ],
+  "expect": {
+    "types": {
+      "GAZE": {
+        "min": 1
+      }
+    }
+  },
+  "plan_expect": {
+    "relax_includes": [
+      {
+        "type": "GAZE",
+        "slide_number": 3
+      }
+    ],
+    "with_plan_no_interventions": [
+      {
+        "type": "GAZE",
+        "slide_number": 3
+      }
+    ]
+  }
+}

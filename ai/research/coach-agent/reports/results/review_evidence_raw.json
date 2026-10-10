@@ -48,8 +48,8 @@
       }
     }
   },
-  "config_hash": "dbe162df2a38",
-  "policy_version": "coach-v1.1",
+  "config_hash": "d96ea5e7cecf",
+  "policy_version": "coach-v1.2",
   "inputs": "raw",
   "results": {
     "clean": {
