@@ -23,6 +23,7 @@ from pitch_coach_backend.module.pitch.dto import (
     StandardParseResponseDTO,
     StandardTextDTO,
     StandardTextResponseDTO,
+    StandardsSaveDTO,
     UploadPresentationResultDTO,
     VersionDTO,
     Versioned,
@@ -156,7 +157,7 @@ def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
     existing_pitch.time_limit_sec = pitch_dto.time_limit_sec
     existing_pitch.presentation_date = pitch_dto.presentation_date
     existing_pitch.upper_deviation = pitch_dto.upper_deviation
-    existing_pitch.lower_deviation = pitch_dto.lower_deviation
+    
 
     updated_pitch = pitch_repository.save(existing_pitch)
     db.commit()
@@ -427,6 +428,18 @@ def stt_keyterm_candidates(
         return []
     return [term for term in script.terms or [] if isinstance(term, str)]
 
+def save_final_standards_service(
+    db: Session, pitch_id: uuid.UUID, standards_dto: StandardsSaveDTO
+):
+    pitch_repository = PitchRepository(db)
+    for i in range(len(standards_dto.standards)):
+        standard = Standards(
+            pitch_id=pitch_id,
+            position=i+1,
+            title=standards_dto.standards[i].standard
+        )
+        pitch_repository.save_standard(standard)
+    db.commit()
 
 # 각 발표자료 버전의 상세 정보.
 def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_version_id: uuid.UUID):
@@ -451,15 +464,6 @@ def add_pitch_standard_service(
         db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO):
     # AI 를 먼저 부르고 잠금은 그 뒤에 잡는다 — LLM 을 기다리는 동안 pitch 행을 쥐고 있지 않게
     standards_result = divide_standard_text(standard_text_dto)
-
-    pitch_repository = PitchRepository(db)
-    pitch_repository.lock_for_new_version(pitch_id)
-    version = pitch_repository.next_standard_version(pitch_id)
-    for position, title in enumerate(standards_result.standards, start=1):
-        pitch_repository.save_standard(
-            Standards(pitch_id=pitch_id, version=version, position=position, title=title)
-        )
-    db.commit()
 
     return StandardTextResponseDTO(
          pitch_id=pitch_id,
