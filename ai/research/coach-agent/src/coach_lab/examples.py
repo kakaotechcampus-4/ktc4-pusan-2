@@ -1,4 +1,4 @@
-"""evaluate 요청 · 응답 예시 만들기 — BE 개발자가 읽는 `src/coach/examples/evaluate/` 세 파일.
+"""evaluate · finalize 요청 · 응답 예시 만들기 — BE 개발자가 읽는 `src/coach/examples/` 파일.
 
     python -m coach_lab.examples [--out 폴더]
 
@@ -6,6 +6,11 @@
   request.json        92000 시점 evaluate 요청 (coach_state 는 91000 응답의 것)
   judge_results.json  그 요청에서 판정 모듈이 낸 결과 · 기준 · 지표 (대역이 낸 계약 모양 값)
   response.json       그 요청에 코치가 준 응답
+
+같은 가상 발표를 Take 끝(92초)까지 재생해 finalize 예시도 만든다 (`finalize/`).
+  request.json · response.json                Take 끝 요청(마지막 창 · 이벤트 · coach_state)과 응답
+  request_replay.json · response_replay.json  coach_state 없이 Take 전체 원자료(replay)로 부른
+                                              요청과 응답 (409 를 받은 BE 가 다시 부르는 경우)
 
 세 파일은 시계 · 난수 없이 만들어서 다시 돌려도 바이트까지 같다. 계약 테스트
 (tests/unit/test_examples.py)가 request + judge_results 를 코치에 넣어 response 와 맞는지 본다.
@@ -18,13 +23,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from coach import decide
+from coach import decide, finalize
 from coach.judges import Judges
 
 from .judges import filler, gaze, lab_judges, pace, volume
 from .simulator import Presenter, Scenario
 
-OUT_DIR = Path(__file__).resolve().parents[1] / "coach" / "examples" / "evaluate"
+EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "coach" / "examples"
+OUT_DIR = EXAMPLES_DIR / "evaluate"
 FINAL_MS = 92_000
 BASE_LEVEL_DB = -29.5
 #: 발표자의 평소 목소리 레벨이 BASE_LEVEL_DB 가 되도록 하는 상대 음량 (시뮬레이터 기준 -24.0)
@@ -144,21 +150,84 @@ def build() -> dict[str, Any]:
     }
 
 
-def write(out_dir: Path = OUT_DIR) -> list[Path]:
-    out_dir.mkdir(parents=True, exist_ok=True)
+def _evaluate_request(presenter: Presenter, t: int, state: dict[str, Any] | None) -> dict:
+    """evaluate 예시와 같은 Take 상수(기준 음량 · 대본 사용 설정)와 1초 기록 모양의 요청."""
+    request = _full_records(presenter.request(t, state))
+    request["calibration"] = {"base_level_db": BASE_LEVEL_DB}
+    request["script_used"] = None
+    return request
+
+
+def build_finalize() -> dict[str, Any]:
+    """같은 가상 발표가 92초에 끝났을 때의 finalize 요청 · 응답 (정상 · replay).
+
+    BE 처럼 91초까지 evaluate 응답의 coach_state 를 이어 받고, Take 끝(92초)의 마지막 1초 조각과
+    STT 를 닫은 뒤 확정된 단어까지 마지막 창(inputs)에 담는다. replay 는 coach_state 없이 같은
+    Take 의 원자료 전체를 싣는다(STT 를 닫을 때 확정된 단어는 Take 끝에 확정된 것으로 본다).
+    """
+    presenter = Presenter(Scenario.model_validate(SCENARIO), coaching_plan=COACHING_PLAN)
+    judges = lab_judges()
+    state: dict[str, Any] | None = None
+    events: list[dict[str, Any]] = []
+    for t in range(0, FINAL_MS, 1_000):
+        response = decide(_evaluate_request(presenter, t, state), judges)
+        state = response.coach_state
+        events.extend(e.model_dump(mode="json") for e in response.events)
+    last = _evaluate_request(presenter, FINAL_MS, state)
+    # STT 를 닫으면 아직 확정되지 않았던 단어도 확정되어 온다 — Take 끝 전에 끝난 단어 전부
+    closed = [
+        {"word": w.w, "start_ms": w.start_ms, "end_ms": w.end_ms}
+        for w in presenter.heard_words
+        if FINAL_MS - 60_000 < w.end_ms <= FINAL_MS
+    ]
+    request = {
+        **{k: last[k] for k in ("take_id", "mode", "plan", "missions", "recurring_issues")},
+        **{k: last[k] for k in ("coaching_plan", "script_used", "calibration")},
+        "t_ms": FINAL_MS,
+        "script_mode": "HIGHLIGHT",
+        "coach_state": state,
+        "events": events,
+        "inputs": {**last["inputs"], "words": closed},
+    }
+    payload = presenter.replay_payload()
+    payload["gaze_records"] = _full_records({"inputs": {"gaze_records": payload["gaze_records"]}})[
+        "inputs"
+    ]["gaze_records"]
+    payload["words"] = [
+        {**w, "final_at_ms": min(w["final_at_ms"], FINAL_MS)}
+        for w in payload["words"]
+        if w["end_ms"] <= FINAL_MS
+    ]
+    replay = {**request, "coach_state": None, "replay": payload}
+    return {
+        "request": request,
+        "response": finalize(request, judges).model_dump(mode="json"),
+        "request_replay": replay,
+        "response_replay": finalize(replay, judges).model_dump(mode="json"),
+    }
+
+
+def _write(path: Path, data: Any) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    path.write_bytes(text.encode("utf-8"))  # 줄바꿈을 OS 에 맡기지 않는다
+    return path
+
+
+def write(root: Path = EXAMPLES_DIR) -> list[Path]:
+    """root/evaluate/ 와 root/finalize/ 에 예시를 쓴다."""
     built = build()
-    paths = []
-    for name in ("request", "judge_results", "response"):
-        path = out_dir / f"{name}.json"
-        text = json.dumps(built[name], ensure_ascii=False, indent=2) + "\n"
-        path.write_bytes(text.encode("utf-8"))  # 줄바꿈을 OS 에 맡기지 않는다
-        paths.append(path)
+    paths = [_write(root / "evaluate" / f"{n}.json", built[n]) for n in built]
+    fin = build_finalize()
+    paths += [_write(root / "finalize" / f"{n}.json", fin[n]) for n in fin]
     return paths
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--out", default=str(OUT_DIR), help="파일을 쓸 폴더")
+    parser.add_argument(
+        "--out", default=str(EXAMPLES_DIR), help="예시 폴더(evaluate · finalize 위)"
+    )
     for path in write(Path(parser.parse_args(argv).out)):
         print(path)
     return 0
