@@ -140,7 +140,7 @@ class Mission(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     source_take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    slide_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    slide_number: Mapped[int] = mapped_column(Integer, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False)
     complete: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)

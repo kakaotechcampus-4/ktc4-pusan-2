@@ -1,4 +1,5 @@
 import uuid
+import httpx2
 
 from sqlalchemy.orm import Session
 
@@ -14,11 +15,12 @@ from pitch_coach_backend.module.take.dto import (
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
     TranscriptSegmentCreateDTO,
+    NextMissionDTO
 )
-from pitch_coach_backend.module.take.entity import Calibration, Take, TakeTranscriptSegment
+from pitch_coach_backend.module.take.entity import Calibration, Mission, Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import TakeRepository
-
+from pitch_coach_backend.core.config import settings
 
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
 def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequestDTO):
@@ -164,3 +166,27 @@ def append_transcript_segment(
     saved = TakeRepository(db).save_transcript_segment(segment)
     db.commit()
     return saved.id
+
+def get_review_result(db: Session, take_id: uuid.UUID):
+
+    with httpx2.Client() as client:
+        response = client.post(f"{settings.AI_BASE_URL}/takes/review", json={"take_id": str(take_id)})
+        response.raise_for_status()
+        review_data = response.json()
+
+    next_missions = save_missions(db, review_data.next_missions, take_id)
+    return review_data
+
+def save_missions(db: Session, mission_dtos: list[NextMissionDTO], source_take_id: uuid.UUID):
+    missions = [
+        Mission(
+            source_take_id=source_take_id,
+            slide_number=mission_dto.slide_number,
+            description=mission_dto.description,
+            priority=mission_dto.priority
+        )
+        for mission_dto in mission_dtos
+    ]
+    saved_missions = TakeRepository(db).save_missions(missions)
+    db.commit()
+    return [mission.id for mission in saved_missions]

@@ -76,3 +76,32 @@ class TranscriptSegmentCreateDTO(BaseModel):
     words: list[TranscriptWordDTO]
     confidence: float
     speech_final: bool
+class DetailDTO(BaseModel):
+    area: str
+    slide_number: int
+    text: str
+
+class StandardResultDTO(BaseModel):
+    display: str
+    status: bool = False
+class MissionResultDTO(BaseModel):
+    mission_id: uuid.UUID
+    completed: bool
+    completed_at: datetime | None = None
+    strengths: list[DetailDTO] = []
+    improvements: list[DetailDTO] = []
+
+class NextMissionDTO(BaseModel):
+    area: str
+    slide_number: int
+    description: str
+    priority: int
+class ReviewResultDTO(BaseModel):
+    take_id: uuid.UUID
+    overall_summary: str
+    score: int
+    strengths: list[DetailDTO] = []
+    improvements: list[DetailDTO] = []
+    criteria_results: list[StandardResultDTO] = []
+    mission_results: list[MissionResultDTO] = []
+    next_missions: list[NextMissionDTO] = []
