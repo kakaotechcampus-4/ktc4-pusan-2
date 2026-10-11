@@ -170,12 +170,20 @@ def append_transcript_segment(
 
 def get_review_result(db: Session, take_id: uuid.UUID, coach_final_result: dict[str, any]):
 
+    take_repository = TakeRepository(db)
+    pitch_repository = PitchRepository(db)
+
+    missions = take_repository.get_missions_in_take(take_id)
+
+    pitch_id = take_repository.get_pitch_id_of_take(take_id)
+    user_criterias = pitch_repository.get_evaluations(pitch_id)
+
     review_request = ReviewRequestDTO(
         take_result=coach_final_result,
         script_coverage=coach_final_result.get("script_coverage"),
         previous_takes=None,
-        missions=None,
-        user_criteria=None
+        missions=missions,
+        user_criteria=user_criterias
     )
 
     with httpx2.Client() as client:

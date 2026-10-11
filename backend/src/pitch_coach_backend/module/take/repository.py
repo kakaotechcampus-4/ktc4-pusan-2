@@ -23,6 +23,11 @@ class TakeRepository:
             select(Take).where(Take.id == take_id)
         )
 
+    def get_pitch_id_of_take(self, take_id: uuid.UUID) -> uuid.UUID | None:
+        return self.db.scalar(
+            select(Take.pitch_id).where(Take.id == take_id)
+        )
+
     def get_owned(self, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | None:
         """사용자의 pitch 에 속한 take. 없거나 남의 것이면 None — 둘을 구분하지 않는다."""
         return self.db.scalar(
