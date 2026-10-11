@@ -1,0 +1,78 @@
+{
+  "name": "16_noisy_sensors",
+  "description": "센서가 나쁜 동안의 문제는 말하지 않는다 — 얼굴이 자주 안 잡힐 때 대본 응시, STT 가 불량일 때 빠름. 오디오가 멀쩡한 4번 장의 작은 목소리만 문제로",
+  "take_id": "sim-16_noisy_sensors",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "segments": [
+    {
+      "from_ms": 40000,
+      "to_ms": 100000,
+      "set": {
+        "uncertain_ratio": 0.65,
+        "script_ratio": 0.85
+      }
+    },
+    {
+      "from_ms": 105000,
+      "to_ms": 135000,
+      "set": {
+        "stt_status": "degraded",
+        "cpm": 420
+      }
+    },
+    {
+      "from_ms": 140000,
+      "to_ms": 200000,
+      "set": {
+        "relative_db": -11
+      }
+    }
+  ],
+  "expect": {
+    "no_claims": [
+      "GAZE",
+      "SPEED"
+    ],
+    "types": {
+      "GAZE": {
+        "max": 0
+      },
+      "SPEED": {
+        "max": 0
+      }
+    },
+    "top_issue": {
+      "type": "VOLUME"
+    }
+  }
+}

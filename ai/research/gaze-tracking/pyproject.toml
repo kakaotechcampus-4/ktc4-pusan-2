@@ -1,0 +1,91 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# 배포 이름. import 패키지는 두 개다.
+#   gaze      — 서버 코어 (1초 기록 → 이슈 · 요약). 나중에 ai/service 의 features/gaze/ 로 폴더째 옮긴다
+#   gaze_lab  — Python 기준 구현 · 평가. research 전용이라 옮기지 않는다
+# 브라우저에서 실제로 도는 TS 엔진은 web/ 에 있다 (npm 프로젝트).
+name = "gaze-tracking"
+version = "1.1.0"
+description = "Pitch Coach gaze tracking - research (server core + Python reference implementation)"
+# service 가 쓸 Python 버전(3.12)에서 검증한다. mediapipe · torch 때문에 3.13 미만으로 둔다
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # ── 서버 코어(gaze)가 쓰는 것. service 로 옮길 때 이 목록만 가져간다
+    "pydantic>=2.13",
+    # ── research 전용 (gaze_lab · tools · experiments)
+    # 브라우저 엔진의 @mediapipe/tasks-vision 과 같은 버전으로 정확히 고정한다.
+    # 버전이 바뀌면 랜드마크가 조금 달라져 보정값과 parity 기준 답이 틀어진다
+    "mediapipe==1.0.1",
+    "numpy>=2.0",
+    "opencv-python>=4.9",
+    "scikit-learn>=1.4",
+    "scipy>=1.11",
+    "pandas>=2.0",
+    "pyarrow>=15.0",
+    "matplotlib>=3.8",
+    "PyYAML>=6.0",
+    "tqdm>=4.66",
+    "joblib>=1.3",
+    # 데모 화면의 한글 (cv2.putText 는 한글을 못 그린다)
+    "Pillow>=10.0",
+    # kiwisolver 1.5.x 는 Windows 에서 DLL 을 못 읽어 matplotlib → mediapipe import 가 통째로 깨진다
+    "kiwisolver>=1.4,<1.5",
+]
+
+[project.optional-dependencies]
+# 눈 기반 백본(l2cs · gazetr) 비교 실험에만 쓴다. 기본 백본(head_pose)은 torch 없이 돈다.
+# CPU 판만 받는다 (아래 tool.uv.sources). PyPI 기본판은 CUDA 판이라 수 GB 이고 Windows 에서 DLL 로딩이 깨질 수 있다
+torch = [
+    "torch>=2.2",
+    "torchvision>=0.17",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "ruff>=0.16",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# tests/lab 이 tools/pipeline_demo.py 를 import 한다
+pythonpath = ["tools"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+# backend/pyproject.toml 과 같은 규칙
+[tool.ruff]
+line-length = 100
+src = ["src", "tools", "."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# archive 에서 옮긴 코드는 서식을 바꾸지 않는다 (archive 와 diff 가 import · 경로뿐이어야 리뷰 · 동등성 검증이 쉽다).
+# pyflakes(F) 만 검사한다
+"src/gaze_lab/**" = ["E", "I", "UP", "B", "SIM"]
+"tools/pipeline_demo.py" = ["E", "I", "UP", "B", "SIM"]
+"tools/download_checkpoints.py" = ["E", "I", "UP", "B", "SIM"]
+"tools/export_config.py" = ["E", "I", "UP", "B", "SIM"]
+"tools/make_fixtures.py" = ["E", "I", "UP", "B", "SIM"]
+"experiments/**" = ["E", "I", "UP", "B", "SIM"]
+"tests/lab/**" = ["E", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["gaze", "gaze_lab"]

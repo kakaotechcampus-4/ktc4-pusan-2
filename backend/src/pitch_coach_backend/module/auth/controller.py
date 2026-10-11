@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import get_db
+from pitch_coach_backend.core.exceptions import AppException
 from pitch_coach_backend.core.redis import get_redis
 from pitch_coach_backend.module.auth import service, state_store
 from pitch_coach_backend.module.auth.dependencies import (
@@ -32,6 +33,12 @@ from pitch_coach_backend.module.auth.dependencies import (
     CsrfProtected,
 )
 from pitch_coach_backend.module.auth.dto import LogoutResponse, TokenResponse
+from pitch_coach_backend.module.auth.exception import (
+    EmailAlreadyRegistered,
+    GoogleIdentityRejected,
+    GoogleTokenExchangeFailed,
+    InvalidAuthorizationRequest,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -80,6 +87,19 @@ def _clear_session_cookies(response: Response) -> None:
 
 # 구글이 돌려주는 오류 코드는 소문자와 밑줄뿐이다. 그 밖의 값은 URL 에 싣지 않는다.
 _ERROR_CODE = re.compile(r"\A[a-z_]{1,40}\Z")
+
+# 콜백 처리 중 난 도메인 예외 -> 프론트로 넘기는 auth_error. 구글 오류 코드와 같은 모양이다.
+# 프론트는 access_denied 외에는 같은 문구를 보여주므로 원인 추적용이다
+_CALLBACK_ERROR_CODES: dict[type[AppException], str] = {
+    InvalidAuthorizationRequest: "invalid_request",
+    GoogleTokenExchangeFailed: "token_exchange_failed",
+    GoogleIdentityRejected: "identity_rejected",
+    EmailAlreadyRegistered: "email_already_registered",
+}
+
+
+def _callback_error_code(exc: AppException) -> str:
+    return _CALLBACK_ERROR_CODES.get(type(exc), "login_failed")
 
 
 def _safe_return_to(value: str | None) -> str:
@@ -169,9 +189,19 @@ def google_callback(
         response.delete_cookie(BROWSER_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
         return response
 
-    issued = service.complete_login(
-        db, redis_client, code=code, state=state, browser_token=oauth_browser
-    )
+    try:
+        issued = service.complete_login(
+            db, redis_client, code=code, state=state, browser_token=oauth_browser
+        )
+    except AppException as e:
+        # 브라우저가 최상위로 이동해 온 요청이라 JSON 을 돌려주면 사용자가 그대로 본다.
+        # 취소했을 때와 같이 프론트로 돌려보내고 원인은 auth_error 코드로만 알린다
+        response = RedirectResponse(
+            _frontend_url("/", auth_error=_callback_error_code(e)),
+            status_code=status.HTTP_302_FOUND,
+        )
+        response.delete_cookie(BROWSER_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+        return response
 
     response = RedirectResponse(_frontend_url(issued.return_to), status_code=status.HTTP_302_FOUND)
     _set_session_cookies(response, issued)

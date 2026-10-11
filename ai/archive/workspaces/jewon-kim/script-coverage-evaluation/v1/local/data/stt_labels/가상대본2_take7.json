@@ -1,0 +1,534 @@
+{
+  "take_id": "가상대본2_take7",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "단어 자기 수정: '대화형 챗봇'이라고 했다가 '대화형 에이전트'로 바로 고침. 최종 내용은 대본과 같음"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "판매 기록 형식이 달라 포스기 데이터를 하나로 맞추는 데 시간이 가장 많이 들었다는 내용을 다른 말로 전달"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "단어 자기 수정: '요일과 날씨'라고 했다가 '요일과 계절'로 바로 고침. 최종 내용은 대본과 같음"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "숫자 자기 수정: 14.1%라고 했다가 바로 11.4%로 고침. 최종 값이 대본과 같으므로 verbatim"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "예측이 불안정한 품목을 화면에 따로 표시한다는 문장을 건너뜀"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "비싼 케이크는 적게, 싸고 인기 있는 식빵은 넉넉하게 굽는 편이 이득이라는 내용을 다른 말로 전달"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": [
+        "이게 저희가 제일 자랑하고 싶은 기능인데요"
+      ]
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "단어 자기 수정: '금요일'이라고 했다가 '월요일'로 바로 고침. 최종 요일과 시각은 대본과 같음"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "partial",
+          "dropped_values": [
+            "여섯 배"
+          ],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "'요금의 여섯 배가 넘는'을 '요금보다 훨씬 많은'이라고만 말함"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 10,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "품목별 예측·실제 판매량 비교 그래프 설명을 하지 않음"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 11,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": "예측이 정확해도 숫자를 믿지 못하면 쓰이지 않았다는 내용을 다른 말로 전달"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        },
+        {
+          "index": 6,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "asr_errors": [],
+          "approximated_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}

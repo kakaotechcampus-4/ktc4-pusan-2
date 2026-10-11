@@ -2,27 +2,29 @@ from pitch_coach_backend.core.exceptions import (
     AppException,
     ConflictException,
     NotFoundException,
-    UnauthorizedException,
 )
 
-
-class InvalidAuthorizationRequest(UnauthorizedException):
-     message = "로그인 후 다시 시도해 주세요."
 
 class NonExistentPitch(AppException):
     status_code = 404
     code = "PITCH_NOT_FOUND"
     message = "존재하지 않는 발표자료입니다."
 
-class NonExistentTake(AppException):
-     status_code = 404
-     code = "TAKE_NOT_FOUND"
-     message = "존재하지 않는 테이크입니다."
-
 class NonExistentPresentationVersion(AppException):
     status_code = 404
     code = "PRESENTATION_VERSION_NOT_FOUND"
     message = "존재하지 않는 발표자료 버전입니다."
+
+class NonExistentEvaluation(AppException):
+    status_code = 404
+    code = "EVALUATION_NOT_FOUND"
+    message = "존재하지 않는 평가 기준 버전입니다."
+
+
+class StandardParseFailed(AppException):
+    status_code = 502
+    code = "STANDARD_PARSE_FAILED"
+    message = "평가 기준을 나누지 못했습니다. 잠시 후 다시 시도해 주세요."
 
 
 class InvalidScript(AppException):

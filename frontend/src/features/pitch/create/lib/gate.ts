@@ -45,13 +45,9 @@ export function computeGate(draft: PitchDraft, chosen: Chosen = CHOOSE_LATEST): 
   const mappingStale = mapped && slidesDone && blocks.length !== pageCount;
   const mappingDone = mapped && !mappingStale;
 
-  // 추가 버튼은 빈 항목부터 만듭니다. 개수만 세면 누르기만 해도 통과합니다.
-  // 빈 칸이 남아 있으면 막습니다 — 그대로 넘기면 빈 기준이 저장되고,
-  // 몰래 빼면 하나가 왜 없어졌는지 모릅니다
-  const items = criteria?.items ?? [];
-  const filledCount = items.filter((it) => it.text.trim() !== '').length;
-  const blankCount = items.length - filledCount;
-  const criteriaDone = filledCount > 0 && blankCount === 0;
+  // ★ 평가기준은 **선택**입니다 (시안 04 — "평가기준 (선택)"). 없어도 시작할 수 있습니다.
+  //   항목은 서버가 나눠 준 것만 들어오므로 빈 칸이 생기지 않습니다 (직접 입력은 없습니다)
+  const criteriaCount = criteria?.items.length ?? 0;
 
   const slidesRow: GateRow = {
     key: 'slides',
@@ -74,26 +70,21 @@ export function computeGate(draft: PitchDraft, chosen: Chosen = CHOOSE_LATEST): 
       ? {
           key: 'mapping',
           label: mappingStale
-            ? `매핑 다시 필요 (${blocks.length}블록 / ${pageCount}장)`
+            ? `장수 다름 (대본 ${blocks.length} / 슬라이드 ${pageCount}장)`
             : '매핑 미실행',
           done: false,
         }
       : {
           key: 'criteria',
-          label:
-            blankCount > 0
-              ? `평가기준 ${filledCount}개 · 빈 칸 ${blankCount}개`
-              : `평가기준 ${filledCount}개`,
-          done: criteriaDone,
+          label: criteriaCount === 0 ? '평가기준 (선택)' : `평가기준 ${criteriaCount}개`,
+          done: criteriaCount > 0,
         };
 
-  const ready = slidesDone && mappingDone && criteriaDone;
+  const ready = slidesDone && mappingDone;
 
   return {
     heading: ready ? '준비 완료' : '다음으로 넘어가려면',
-    message: ready
-      ? '바로 연습을 시작할 수 있어요'
-      : nextAction({ slidesDone, scriptWritten, mappingDone, mappingStale, blankCount }),
+    message: nextAction({ slidesDone, scriptWritten, mappingDone, mappingStale }),
     rows: [slidesRow, scriptRow, thirdRow],
     ready,
   };
@@ -105,21 +96,19 @@ function nextAction({
   scriptWritten,
   mappingDone,
   mappingStale,
-  blankCount,
 }: {
   slidesDone: boolean;
   scriptWritten: boolean;
   mappingDone: boolean;
   mappingStale: boolean;
-  blankCount: number;
 }): string {
-  if (!slidesDone && !scriptWritten) return '슬라이드와 대본을 입력해주세요';
+  if (!slidesDone && !scriptWritten) return '슬라이드와 대본을 준비해 주세요';
   if (!slidesDone) return '슬라이드를 올려주세요';
   if (!scriptWritten) return '대본을 입력해주세요';
-  if (mappingStale) return '슬라이드 장수가 바뀌었어요. 매핑을 다시 실행해주세요';
+  // 서버(AI)는 구분자대로만 나눕니다 — 다시 눌러도 같으니, 고칠 곳은 대본의 구분입니다
+  if (mappingStale) return '대본과 슬라이드 장수가 달라요. 대본의 구분을 확인해 주세요';
   if (!mappingDone) return '매핑을 실행해주세요';
-  if (blankCount > 0) return '비어 있는 평가기준을 채우거나 지워주세요';
-  return '평가기준을 1개 이상 추가해주세요';
+  return '바로 연습을 시작할 수 있어요';
 }
 
 function scriptLabel(

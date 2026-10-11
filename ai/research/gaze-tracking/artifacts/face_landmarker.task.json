@@ -1,0 +1,11 @@
+{
+  "name": "face_landmarker.task",
+  "description": "MediaPipe Face Landmarker (float16, v1). Python 기준 구현과 브라우저 엔진이 같은 파일을 쓴다",
+  "url": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+  "size_bytes": 3758596,
+  "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+  "runtime": {
+    "python": "mediapipe==1.0.1",
+    "web": "@mediapipe/tasks-vision@1.0.1"
+  }
+}

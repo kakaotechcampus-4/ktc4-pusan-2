@@ -100,7 +100,13 @@ export function useMicLevel(stream: MediaStream | null) {
         meter?.stop();
         return;
       }
-      if (meter) setAudio({ stream, state: meter.state });
+      if (meter) {
+        setAudio({ stream, state: meter.state });
+        // 멈춘 채로 시작했다가 첫 제스처에서 풀리면 "소리가 흐르지 않습니다" 를 치웁니다
+        meter.onStateChange((state) => {
+          if (!cancelled) setAudio({ stream, state });
+        });
+      }
 
       const loop = () => {
         raf = requestAnimationFrame(loop);

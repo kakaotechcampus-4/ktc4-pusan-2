@@ -101,3 +101,15 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .landing-float, .landing-wave { animation: none; }
 }
+
+/* 피치 생성 화면의 밝은 지면. */
+.pitch-create {
+  --color-greige: #faf9f6;
+  --color-cream: #f1f0eb;
+  --color-panel: #ffffff;
+  --color-line: #e3e3e3;
+  --color-line-strong: #d0d1d4;
+  --color-ink: #17191e;
+  --color-stone: #6b7280;
+  --color-coral-wash: #fff0e9;
+}

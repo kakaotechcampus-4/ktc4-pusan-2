@@ -22,21 +22,30 @@ export class TemporalVoter {
   static readonly MIN_SAMPLES = 4;
 
   private buffer: FrameVerdict[] = [];
-  private lastDecisionAt = 0;
+  /**
+   * 지금 1초 창이 시작된 시각. **첫 프레임 시각에서 출발합니다.**
+   *
+   * 프레임 시각은 무대 시계라 0 이 아닌 데서 시작합니다 (엔진이 준비되는 동안 · 새로고침해
+   * 이어받은 Take). 0 에서 출발하면 첫 프레임에서 바로 판정이 나와 표본 1장짜리 UNCERTAIN 이 남습니다.
+   */
+  private lastDecisionAt: Ms | null = null;
 
   /**
    * 프레임 판단 하나를 넣습니다. 분류기가 null 을 냈으면 부르지 않습니다 —
    * 그 프레임은 표본이 아니고, 표본이 모자라면 MIN_SAMPLES 규칙이 걸립니다.
    *
-   * tMs 는 지금 쓰지 않습니다. 나중에 1초 창을 시간으로 자를 때 필요합니다
+   * tMs 는 첫 창의 시작으로만 씁니다. 나중에 1초 창을 시간으로 자를 때도 필요합니다
    * (지금은 decide 호출 사이를 창으로 봅니다).
    */
-  push(verdict: FrameVerdict, _tMs: Ms): void {
+  push(verdict: FrameVerdict, tMs: Ms): void {
+    this.lastDecisionAt ??= tMs;
     this.buffer.push(verdict);
   }
 
   /** 1초가 안 지났으면 null. 지났으면 그동안 쌓인 것으로 하나를 냅니다. */
   decide(nowMs: Ms): ZoneDecision | null {
+    // 분류기가 아직 판단을 못 낸 프레임(얼굴 없음)이어도 창은 그 시각에서 시작합니다
+    this.lastDecisionAt ??= nowMs;
     if (nowMs - this.lastDecisionAt < TemporalVoter.INTERVAL_MS) return null;
 
     // ★ 격자에 고정한다. `= nowMs` 로 맞추면 안 된다.
@@ -50,11 +59,10 @@ export class TemporalVoter {
     // 600개를 몇 개로 줄이는 압축이 아예 일어나지 않는다.**
     // 10분 발표에서 판정 수도 600이 아니라 595쯤으로 모자라진다.
     //
-    // 첫 판정만 실제 시각에 맞추고, 그다음부터는 정확히 INTERVAL_MS 씩 올린다.
+    // 첫 프레임 시각에서 출발해 정확히 INTERVAL_MS 씩 올린다.
     // 프레임이 한동안 끊겼다면 이후 호출들이 한 칸씩 따라잡으며 빈 초를
     // UNCERTAIN 으로 메운다 — 측정하지 않은 초를 그대로 기록하는 것이 맞다.
-    this.lastDecisionAt =
-      this.lastDecisionAt === 0 ? nowMs : this.lastDecisionAt + TemporalVoter.INTERVAL_MS;
+    this.lastDecisionAt += TemporalVoter.INTERVAL_MS;
     const tMs = this.lastDecisionAt;
 
     const verdicts = this.buffer;
@@ -94,6 +102,8 @@ export class TemporalVoter {
   /** 측정을 새로 시작할 때. 앞 측정이 다음에 섞이지 않게 합니다. */
   reset(): void {
     this.buffer = [];
-    this.lastDecisionAt = 0;
+    // 0 이 아니라 null 입니다. 0 이면 다음 프레임(무대 시계라 큰 값)부터 1000, 2000… 지난 시각의
+    // 판정을 한 칸씩 쏟아내 앞 기록을 덮어씁니다. null 이면 첫 프레임에서 창을 새로 엽니다
+    this.lastDecisionAt = null;
   }
 }

@@ -1,0 +1,47 @@
+# Live measurement-condition monitor: deviations from the calibration scene
+# lower reliability (SESSION_CONDITION) instead of stopping the take.
+window_ms: 3000
+heartbeat_ms: 2000
+emit_delta: 0.10
+fail_reliability: 0.30
+head_warn_deg: 12.0
+head_fail_deg: 30.0
+# Position drift from the calibration position, as the head-angle error it causes:
+# atan(move / distance) sideways/up-down, the farthest cue's angle change closer/further.
+# Fails at drift_fail_share x the smallest separation between calibrated cue postures
+# (a move that carries a look all the way to the next target; clamped to min..max), warns
+# at drift_warn_share x that; beyond it for drift_confirm_ms the measurement is unusable
+# (MOVED_TOO_FAR). Lenient on purpose: presenters shift in their seat.
+# Head turns are taken out (head_radius_cm).
+drift_fail_share: 1.0
+drift_fail_min_deg: 6.0
+drift_fail_max_deg: 12.0
+drift_warn_share: 0.6
+drift_confirm_ms: 2000
+drift_default_span_deg: 7.0
+head_radius_cm: 8.0
+# A distinct second face this large (vs the main face), seen for 1 s: a notice, not a reliability cut.
+second_face_area_ratio: 0.35
+second_face_confirm_ms: 1000
+# Head-direction noise over the last 2 s (robust second difference); fails at half the
+# smallest cue-posture gap (3-6 deg), warns at half of that.
+jitter_window_ms: 2000
+jitter_max_gap_ms: 300
+jitter_min_samples: 6
+jitter_fail_share: 0.5
+jitter_fail_min_deg: 3.0
+jitter_fail_max_deg: 6.0
+jitter_warn_share: 0.5
+valid_warn_ratio: 0.90
+valid_fail_ratio: 0.50
+# Face size against the recognition floor (preprocess.min_face_area_ratio 0.010):
+# shrinking (moving away) or filling the frame (moving very close).
+small_face_warn_area: 0.016
+small_face_fail_area: 0.011
+large_face_warn_height: 0.70
+large_face_fail_height: 0.85
+# Replacement = the face JUMPED between two sightings (not a gradual move) and stayed away.
+replace_center_offset: 0.30
+replace_area_ratio: 2.0
+replace_confirm_ms: 500
+face_lost_ms: 1500

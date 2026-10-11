@@ -1,0 +1,24 @@
+[project]
+name = "script-parser"
+version = "1.0.0"
+description = "발표 대본 슬라이드 분리 · 키워드 · terms 추출 (research)"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv",
+    "pydantic>=2",
+    "langchain-openai",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["script_parser"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

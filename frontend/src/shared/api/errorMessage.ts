@@ -18,6 +18,18 @@ const MESSAGE: Record<string, string> = {
   SESSION_CHANGED: '다른 곳에서 로그인했어요. 다시 로그인해 주세요.',
   /** 시선 구간의 형식이 어긋났을 때. 서버는 값을 재계산할 수 없어 형식만 봅니다 */
   INVALID_SEGMENTS: '시선 기록 형식이 올바르지 않아 서버가 받지 못했어요.',
+  /** 요청 값이 BE 의 DTO 검사를 통과하지 못함 (예: 발표 제목 50자 초과) */
+  VALIDATION_ERROR: '입력값을 확인해 주세요.',
+  PITCH_NOT_FOUND: '발표를 찾을 수 없어요. 발표정보를 다시 저장해 주세요.',
+  /** 대본이 비었거나 50,000자를 넘었거나 쓸 수 없는 문자가 있을 때 */
+  INVALID_SCRIPT: '대본을 올리지 못했어요. 비어 있거나 너무 길지 않은지 확인해 주세요.',
+  SCRIPT_NOT_FOUND: '대본을 찾을 수 없어요. 대본 매핑을 다시 눌러 주세요.',
+  SCRIPT_ALREADY_PARSED: '이미 나눈 대본이에요. 잠시 뒤 결과가 보여요.',
+  PRESENTATION_VERSION_NOT_FOUND: '발표자료를 찾을 수 없어요. 다시 올려 주세요.',
+  TAKE_NOT_FOUND: '연습 기록을 찾을 수 없어요. 처음부터 다시 시작해 주세요.',
+  INTERNAL_SERVER_ERROR: '서버에 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요.',
+  SCRIPT_PARSE_IN_PROGRESS: '대본을 나누는 중이에요. 잠시만 기다려 주세요.',
+  SCRIPT_REUPLOAD_REQUIRED: '이 대본은 다시 올려야 해요. 대본 매핑을 다시 눌러 주세요.',
   REQUEST_FAILED: '요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.',
 };
 

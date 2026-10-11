@@ -1,0 +1,29 @@
+{
+  // Compiles the engine, the camera view with its worker, and the conformance shim
+  // with the frontend's own compiler options (frontend/tsconfig.app.json): if this
+  // passes, src/engine, src/worker and src/camera can be copied into the frontend
+  // and type-check there unchanged.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "paths": {
+      "@fe/*": ["../../../../../../../../frontend/src/*"],
+      "@/*": ["../../../../../../../../frontend/src/*"]
+    }
+  },
+  "include": ["src/engine", "src/worker", "src/camera", "test/fe-contract/conformance.ts"]
+}

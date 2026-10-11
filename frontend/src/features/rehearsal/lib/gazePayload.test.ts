@@ -70,17 +70,34 @@ describe('GazePayload 조립', () => {
   });
 
   it('자체 검증에 걸리면 VALIDATION_FAILED 로 제외한다', () => {
-    // 발표 5초인데 구간이 10초까지 있다 — 보내면 서버가 422 로 되돌린다
+    // 시간대가 겹친 기록 — 보내면 서버가 422 로 되돌린다
     const { payload, validationErrors } = buildGazePayload({
       ...base,
-      durationMs: 5000,
-      decisions: [d(0, 'CAMERA'), d(9000, 'CAMERA')],
+      decisions: [d(0, 'CAMERA'), d(500, 'BOTTOM')],
     });
 
     expect(validationErrors.length).toBeGreaterThan(0);
     expect(payload.excluded).toBe(true);
     expect(payload.excludedReason).toBe('VALIDATION_FAILED');
     expect(payload.segments).toHaveLength(0);
+  });
+
+  /**
+   * 판정 시각은 무대 시계라 끝내기를 누른 순간에 걸친 마지막 판정이 발표 길이를 넘습니다.
+   * 그 하나 때문에 Take 전체의 시선이 VALIDATION_FAILED 로 빠지면 안 됩니다.
+   */
+  it('발표 길이를 넘는 마지막 판정은 버리고 나머지를 보낸다', () => {
+    const { payload, validationErrors } = buildGazePayload({
+      ...base,
+      durationMs: 3_500,
+      decisions: [d(1000, 'CAMERA'), d(2000, 'CAMERA'), d(3000, 'CAMERA')],
+    });
+
+    expect(validationErrors).toHaveLength(0);
+    expect(payload.excluded).toBe(false);
+    expect(payload.segments).toEqual([
+      expect.objectContaining({ startMs: 1000, endMs: 3000, zone: 'CAMERA' }),
+    ]);
   });
 
   it('판정이 하나도 없어도 제외가 아니다 — 측정은 했고 결론이 없는 것', () => {

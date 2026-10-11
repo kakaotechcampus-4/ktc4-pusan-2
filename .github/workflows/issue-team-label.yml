@@ -1,0 +1,82 @@
+name: Issue team label
+# 이슈 제목 맨 앞 팀 태그를 읽어 같은 이름의 팀 라벨을 붙인다.
+#   [FE] → FE, [BE] → BE, [AI] → AI, [Common] → Common, [FE/BE] → FE + BE (대소문자 무시)
+#
+# - 이슈 생성 · 제목 수정 때만 돈다. 본문만 고치면 돌지 않는다.
+# - 태그가 바뀌면 라벨도 맞춘다: 제목 태그에 없는 팀 라벨은 뗀다.
+# - 맨 앞 태그가 팀 태그가 아니면([팀] 그대로, [Bug] 등) 라벨을 건드리지 않는다.
+#
+# ⚠️ 제목은 env 로만 넘긴다. run 안에 ${{ github.event.issue.title }} 를 직접 쓰면
+#   제목에 넣은 셸 명령이 그대로 실행된다.
+# ⚠️ `gh issue edit` 대신 REST(`gh api`)를 쓴다. `gh issue edit` 는 GITHUB_TOKEN 으로
+#   접근할 수 없는 Projects(classic) 정보를 함께 조회하다 실패하는 경우가 있다.
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened' || github.event.changes.title
+    steps:
+      - name: Sync team labels from title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          TITLE: ${{ github.event.issue.title }}
+          CURRENT: ${{ join(github.event.issue.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          TEAMS=(FE BE AI Common)
+
+          # 제목 맨 앞 [..] 하나만 본다. 예) "[FE/BE][Bug] 요약" → "FE/BE"
+          re='^[[:space:]]*\[([^]]+)\]'
+          if [[ ! "$TITLE" =~ $re ]]; then
+            echo "제목 맨 앞에 [..] 태그가 없습니다. 라벨을 건드리지 않습니다."
+            exit 0
+          fi
+
+          want=()
+          IFS='/' read -ra parts <<< "${BASH_REMATCH[1]}"
+          for part in "${parts[@]}"; do
+            part="${part//[[:space:]]/}"
+            match=""
+            for team in "${TEAMS[@]}"; do
+              [[ "${part,,}" == "${team,,}" ]] && match="$team"
+            done
+            if [[ -z "$match" ]]; then
+              echo "'${BASH_REMATCH[1]}' 는 팀 태그가 아닙니다. 라벨을 건드리지 않습니다."
+              exit 0
+            fi
+            want+=("$match")
+          done
+
+          add=()
+          remove=()
+          for team in "${TEAMS[@]}"; do
+            wanted=false
+            for w in "${want[@]}"; do [[ "$w" == "$team" ]] && wanted=true; done
+            has=false
+            [[ ",$CURRENT," == *",$team,"* ]] && has=true
+            if $wanted && ! $has; then add+=("$team"); fi
+            if ! $wanted && $has; then remove+=("$team"); fi
+          done
+
+          if (( ${#add[@]} > 0 )); then
+            args=()
+            for l in "${add[@]}"; do args+=(-f "labels[]=$l"); done
+            gh api -X POST "repos/$GH_REPO/issues/$ISSUE/labels" "${args[@]}" > /dev/null
+            echo "추가: ${add[*]}"
+          fi
+          for l in "${remove[@]}"; do
+            gh api -X DELETE "repos/$GH_REPO/issues/$ISSUE/labels/$l" > /dev/null
+            echo "제거: $l"
+          done
+          if (( ${#add[@]} + ${#remove[@]} == 0 )); then
+            echo "팀 라벨이 이미 제목과 맞습니다: ${want[*]}"
+          fi

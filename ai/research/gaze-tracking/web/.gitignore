@@ -1,0 +1,5 @@
+# MediaPipe wasm + face_landmarker.task are copied here by `npm run assets` (never committed)
+public/models/
+dist/
+# fake-camera video for the headless smoke test (generated)
+.cache/

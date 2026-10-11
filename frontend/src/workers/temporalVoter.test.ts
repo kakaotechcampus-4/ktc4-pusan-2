@@ -62,4 +62,28 @@ describe('1초 다수결 (vote-v1)', () => {
     pushMany(clear, v('BOTTOM'), 3);
     expect(clear.decide(1000)).toMatchObject({ zone: 'CAMERA', confidence: 0.7 });
   });
+
+  /**
+   * 프레임 시각은 무대 시계라 0 이 아닌 데서 시작합니다 (엔진 준비 · 새로고침해 이어받은 Take).
+   * 첫 프레임에서 바로 판정하면 표본 1장짜리 UNCERTAIN 이 첫 1초를 차지합니다.
+   */
+  it('첫 프레임 시각에서 1초를 채운 뒤에 처음 판정한다', () => {
+    const voter = new TemporalVoter();
+    for (let t = 0; t < 1000; t += 100) {
+      voter.push(v('CAMERA'), 42_000 + t);
+      expect(voter.decide(42_000 + t)).toBeNull();
+    }
+    expect(voter.decide(43_000)).toMatchObject({ tMs: 43_000, zone: 'CAMERA', sampleCount: 10 });
+  });
+
+  /** reset() 뒤의 첫 프레임은 무대 시계라 큰 값입니다. 0 에서 다시 세면 지난 시각의 판정을 쏟아냅니다 */
+  it('reset() 뒤에는 다음 첫 프레임에서 창을 새로 연다', () => {
+    const voter = new TemporalVoter();
+    voter.push(v('CAMERA'), 10_000);
+    voter.reset();
+
+    voter.push(v('CAMERA'), 120_000);
+    expect(voter.decide(120_000)).toBeNull();
+    expect(voter.decide(121_000)).toMatchObject({ tMs: 121_000 });
+  });
 });

@@ -27,6 +27,7 @@
 
 import { aWeightingSections } from './aWeighting';
 import { createLoudness, type SpeechLevel } from './loudness';
+import { resumeOnGesture } from './resumeOnGesture';
 
 /** 이 값 미만이면 "소리가 없다"로 봅니다. 완전한 0 만 보면 미세한 노이즈에 속습니다. */
 const SILENCE_RMS = 0.005;
@@ -46,8 +47,10 @@ export interface LevelMeter {
    * 발표 중에 이 값이 계속 커지면 사용자에게 알려야 합니다.
    */
   silentMs(): number;
-  /** `suspended` 면 오디오가 흐르지 않습니다 — 아래 createLevelMeter 주석 참고 */
+  /** `suspended` 면 오디오가 흐르지 않습니다 — 아래 createLevelMeter 주석 참고. 부를 때의 값입니다 */
   readonly state: AudioContextState;
+  /** 상태가 바뀌면 부릅니다. 멈춘 채로 시작했다가 첫 제스처에서 풀리면 화면 문구를 치워야 합니다 */
+  onStateChange(listener: (state: AudioContextState) => void): void;
   stop(): void;
 }
 
@@ -60,16 +63,18 @@ export interface LevelMeter {
  * 클릭 핸들러에서 `await getUserMedia()` 를 거친 뒤라면 이미 제스처 밖이지만,
  * 페이지에 한 번이라도 상호작용이 있었으면 resume() 이 통합니다(sticky activation).
  * 그래서 만들자마자 resume() 을 시도하고, 그래도 안 되면 `state` 로 알립니다 —
- * 조용히 실패하지 않게 하는 것이 이 함수의 절반입니다.
+ * 조용히 실패하지 않게 하는 것이 이 함수의 절반입니다. 그리고 첫 클릭·키 입력에서 다시
+ * 켭니다 (`resumeOnGesture` — 새로고침한 리허설 화면이 이 경우입니다).
  */
 export async function createLevelMeter(stream: MediaStream): Promise<LevelMeter | null> {
   if (stream.getAudioTracks().length === 0) return null;
 
   const ctx = new AudioContext();
-  if (ctx.state === 'suspended') {
-    // 실패해도 계속 갑니다 — state 로 드러내는 것이 목적입니다.
-    await ctx.resume().catch(() => undefined);
-  }
+  // ★ resume() 을 기다리지 않습니다. 재생이 허용되지 않은 컨텍스트의 resume() 은 거절되지 않고
+  //   제스처가 올 때까지 대기합니다 (Web Audio 명세) — 기다리면 이 함수가 끝나지 않아
+  //   "소리가 흐르지 않습니다" 안내도, 제스처 리스너도 생기지 않습니다. state 로 드러냅니다
+  const stopResume = resumeOnGesture(ctx);
+  if (ctx.state === 'suspended') ctx.resume().catch(() => undefined);
 
   const source = ctx.createMediaStreamSource(stream);
   const analyser = ctx.createAnalyser();
@@ -96,7 +101,13 @@ export async function createLevelMeter(stream: MediaStream): Promise<LevelMeter 
   let stopped = false;
 
   return {
-    state: ctx.state,
+    get state() {
+      return ctx.state;
+    },
+
+    onStateChange(listener) {
+      ctx.addEventListener('statechange', () => listener(ctx.state));
+    },
 
     read() {
       if (stopped) return 0;
@@ -133,6 +144,7 @@ export async function createLevelMeter(stream: MediaStream): Promise<LevelMeter 
 
     stop() {
       stopped = true;
+      stopResume();
       source.disconnect();
       analyser.disconnect();
       filters.forEach((f) => f.disconnect());

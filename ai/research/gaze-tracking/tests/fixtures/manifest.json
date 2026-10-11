@@ -1,0 +1,21 @@
+{
+  "source": {
+    "file": "sfhq_pt4_00000645.jpg",
+    "description": "SFHQ part 4 합성 얼굴 (실존 인물 아님). 정면 · 두 눈 뜸 · 안경 없음 · 단색 배경",
+    "dataset": "https://www.kaggle.com/datasets/selfishgene/synthetic-faces-high-quality-sfhq-part-4",
+    "path_in_dataset": "images/images/SFHQ_pt4_00000645.jpg",
+    "license": "CC0-1.0",
+    "url": "https://www.kaggle.com/api/v1/datasets/download/selfishgene/synthetic-faces-high-quality-sfhq-part-4/images%2Fimages%2FSFHQ_pt4_00000645.jpg",
+    "size_bytes": 147984,
+    "sha256": "7c59c3f6220de285f716c58467672b5b27ed2fd4de091139816073b7aad76c22"
+  },
+  "photo": {
+    "file": "face.png",
+    "built_by": "tools/make_static_video.py (1280×960, 무손실)",
+    "sha256": "948e9a386548de8571c2347d0673fda6b3baec9646bb10ba18de25aec64d1bcb"
+  },
+  "video": {
+    "file": "static_face_30fps.mp4",
+    "built_by": "tools/make_static_video.py (640×480 · 30 fps · 420 프레임, mp4v)"
+  }
+}

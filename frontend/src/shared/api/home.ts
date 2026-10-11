@@ -2,13 +2,17 @@ import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from './client';
 import type { PitchListResponse } from '@/types/home';
 
-export function fetchHome() {
+export const pitchesKey = ['pitches'] as const;
+export const pitchListKey = [...pitchesKey, 'list'] as const;
+
+export function fetchPitchList() {
   return apiRequest<PitchListResponse>('/api/pitches/');
 }
 
-export function useHome() {
+export function usePitchList() {
   return useQuery({
-    queryKey: ['pitches', 'home'],
-    queryFn: fetchHome,
+    queryKey: pitchListKey,
+    queryFn: fetchPitchList,
+    refetchOnMount: 'always',
   });
 }

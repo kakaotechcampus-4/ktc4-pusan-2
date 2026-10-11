@@ -1,0 +1,63 @@
+{
+  "name": "15_mixed_burdens",
+  "description": "문제가 여럿 — 2번 장 내내 빠름(크고 김), 3번 장 잠깐 대본 응시(작음), 군더더기 조금. 1순위는 속도여야 한다",
+  "take_id": "sim-15_mixed_burdens",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "baseline": {
+    "filler_per_min": 4
+  },
+  "segments": [
+    {
+      "from_ms": 32000,
+      "to_ms": 80000,
+      "set": {
+        "cpm": 420
+      }
+    },
+    {
+      "from_ms": 100000,
+      "to_ms": 110000,
+      "set": {
+        "script_ratio": 0.85
+      }
+    }
+  ],
+  "expect": {
+    "top_issue": {
+      "type": "SPEED"
+    },
+    "next_mission_types_include": [
+      "SPEED"
+    ]
+  }
+}

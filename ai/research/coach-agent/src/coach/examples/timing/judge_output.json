@@ -1,0 +1,54 @@
+[
+  {
+    "evaluator": "timing",
+    "area": "TIME",
+    "t_ms": 240000,
+    "counted_until_ms": 240000,
+    "words_counted_until_ms": null,
+    "criteria_version": "timing-1.0+305f8e44237d",
+    "measurable": true,
+    "state": "BEHIND",
+    "metrics": {
+      "required_ratio": 1.5,
+      "projected_end_ms": 342857.0,
+      "required_cpm": 477.8,
+      "slide_elapsed_ms": 40000.0,
+      "slide_expected_ms": 120000.0,
+      "remaining_ms": 60000.0,
+      "elapsed_ratio": 0.7273,
+      "projected_end_ratio": 1.2698,
+      "slide_time_ratio": 0.3333
+    },
+    "tally": [
+      {
+        "t_ms": 239000,
+        "values": {
+          "elapsed_ms": 1000.0,
+          "planned_ms": 1000.0
+        }
+      }
+    ],
+    "issues": [
+      {
+        "issue_type": "BEHIND_SCHEDULE",
+        "area": "TIME",
+        "severity": 1.0,
+        "confidence": 0.9,
+        "persistence_sec": 0.0,
+        "threshold": 1.05,
+        "bad": 1.5,
+        "evidence": {
+          "required_ratio": 1.5,
+          "projected_end_ms": 342857,
+          "required_cpm": 477.8,
+          "speed_limit_exceeded": true,
+          "remaining_ms": 60000,
+          "remaining_slides": 1,
+          "remaining_content_ms": 90000
+        },
+        "actionable": true
+      }
+    ],
+    "words": null
+  }
+]

@@ -1,0 +1,26 @@
+# Camera placement check.  The runtime reads the placement off the calibration's
+# CAMERA and SCREEN anchors (anchor_* keys); the stand-alone two-cue check below
+# (camera_seconds .. min_separation) is kept for the collector and --check.
+# Turns doc 19's "webcam이 화면 아래/옆에 위치" failure bucket into an up-front
+# check, because that geometry inverts CAMERA/BOTTOM rather than degrading it.
+camera_seconds: 2.0
+screen_seconds: 2.0
+min_samples_per_target: 8
+min_sample_confidence: 0.30
+
+# learned: fit the same LogisticRegression family as doc 5-3 and read the
+#          placement off the decision boundary (default).
+# geometric: fixed angular thresholds.
+mode: learned
+min_loo_accuracy: 0.85
+C: 1.0
+max_iter: 1000
+random_seed: 42
+min_axis_dominance: 1.30
+
+min_delta_deg: 4.0
+min_separation: 1.00
+
+# Placement read off the calibration anchors (top-centre needs
+# |delta_yaw| <= |delta_pitch| / 2.5).
+anchor_min_axis_dominance: 2.5

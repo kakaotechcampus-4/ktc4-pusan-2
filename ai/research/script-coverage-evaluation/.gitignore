@@ -1,0 +1,7 @@
+# 실험이 만드는 로컬 DB (LLM 응답 캐시 + 평가 기준 · 평가 결과)
+outputs/
+*.sqlite
+
+# 데이터는 커밋하지 않는다. 팀이 직접 만든 가상 데이터(data/virtual/)만 예외
+data/*
+!data/virtual/

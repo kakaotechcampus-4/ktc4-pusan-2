@@ -140,8 +140,12 @@ export function useGazeWorker(
   const rafRef = useRef(0);
   /** ★ 백프레셔 깃발 — 워커에 프레임이 떠 있는 동안 true */
   const inFlightRef = useRef(false);
-  /** 펌프 시작 시각. tMs 는 이 시각 기준 경과 시간이다 */
-  const pumpStartRef = useRef(0);
+  /**
+   * 프레임 시각(tMs)을 읽는 시계. 리허설은 무대 시계를 넘긴다 — 그래야 시선 구간이
+   * 슬라이드·코치·전사와 같은 타임라인에 놓이고, 새로고침해 이어받아도 앞 기록과 겹치지 않는다.
+   * 넘기지 않으면(장치 점검·dev 페이지) 펌프를 켠 시각이 0 이다.
+   */
+  const clockRef = useRef<() => number>(() => 0);
   /** 왕복 시간 실측 — 보낸 시각과 frameDone 도착 시각의 차이를 1초 창으로 평균낸다 */
   const sentAtRef = useRef(0);
   const rttSumRef = useRef(0);
@@ -315,7 +319,7 @@ export function useGazeWorker(
     dueRef.current = nextFrameDue(dueRef.current, now, intervalRef.current);
 
     inFlightRef.current = true;
-    const tMs = Math.round(performance.now() - pumpStartRef.current);
+    const tMs = Math.round(clockRef.current());
 
     createImageBitmap(video)
       .then((bitmap) => {
@@ -338,9 +342,10 @@ export function useGazeWorker(
   }, []);
 
   const startPump = useCallback(
-    (video: HTMLVideoElement) => {
+    (video: HTMLVideoElement, clock?: () => number) => {
       videoRef.current = video;
-      pumpStartRef.current = performance.now();
+      const startedAt = performance.now();
+      clockRef.current = clock ?? (() => performance.now() - startedAt);
       cancelAnimationFrame(rafRef.current);
       inFlightRef.current = false;
       cameraLostRef.current = false;

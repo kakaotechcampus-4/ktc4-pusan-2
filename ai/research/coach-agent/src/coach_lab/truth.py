@@ -1,0 +1,322 @@
+"""정답 — 시뮬레이터가 기록한 '발표자가 실제로 어땠는지'로 Take 결과의 사실에 대한 정답을 만든다.
+
+정답 = 잡음 없는 실제 상태 × 코치와 같은 기준값. 정답은 사실만 갖는다: 문제 구간, 장별 지표,
+개입 효과. 그래서 실험에서 Take 결과와 정답이 다르면, 그 차이는 측정(잡음 · 창 지연 · 구간
+처리)에서 온 것입니다.
+
+정답이 지키는 원칙: 센서가 볼 수 없던 문제는 정답도 '볼 수 있던 것'으로 치지 않는다.
+이상적인 Take 결과는 '대본을 봤을 것 같다'가 아니라 '믿을 수 있는 데이터로 봤다'만 말해야
+하기 때문입니다.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from coach.config import CoachConfig
+from coach.schemas import Plan
+from coach.vocab import FeedbackType, Issue
+
+from .judges import filler as filler_judge
+from .judges import gaze as gaze_judge
+from .judges import pace as pace_judge
+from .judges import volume as volume_judge
+from .judges._common import ramp
+from .simulator import RunResult
+
+
+def _div(a: float, b: float, digits: int = 4) -> float | None:
+    return round(a / b, digits) if b > 0 else None
+
+
+@dataclass
+class Agg:
+    """한 장(slide_number) 또는 Take 전체(slide_number=None)의 누적."""
+
+    slide_number: int | None
+    visits: int = 0
+    start_ms: int = 0
+    duration_ms: int = 0
+    total_ms: int = 0
+    target_ms: int | None = None
+    gaze_valid_ms: int = 0
+    gaze_script_ms: float = 0.0
+    gaze_unusable_ms: int = 0
+    speech_ok_ms: int = 0
+    cpm_ms: int = 0
+    cpm_weighted: float = 0.0
+    filler_count: int = 0
+    audio_live_ms: int = 0
+    speaking_ms: int = 0
+    db_ms: int = 0
+    db_weighted: float = 0.0
+    long_silence_ms: int = 0
+
+    # ── 파생 값 ──────────────────────────────────────────────────────────
+    @property
+    def script_ratio(self) -> float | None:
+        return _div(self.gaze_script_ms, self.gaze_valid_ms)
+
+    @property
+    def cpm(self) -> float | None:
+        return _div(self.cpm_weighted, self.cpm_ms, 1)
+
+    @property
+    def voice_diff_db(self) -> float | None:
+        return _div(self.db_weighted, self.db_ms, 2)
+
+    @property
+    def filler_per_min(self) -> float | None:
+        if self.speech_ok_ms <= 0 or self.duration_ms < 10_000:
+            return None
+        return round(self.filler_count * 60_000 / self.duration_ms, 2)
+
+    @property
+    def gaze_coverage(self) -> float | None:
+        return _div(self.gaze_valid_ms, self.total_ms)
+
+    @property
+    def speech_coverage(self) -> float | None:
+        return _div(self.speech_ok_ms, self.total_ms)
+
+    @property
+    def audio_coverage(self) -> float | None:
+        return _div(self.audio_live_ms, self.total_ms)
+
+    @property
+    def volume_coverage(self) -> float | None:
+        """오디오가 살아 있던 비율과 말한 시간 중 음량을 잰 비율 중 작은 쪽.
+
+        음량 레벨 입력은 기준이 잡히기 전(Take 시작 직후) 말한 시간을 재지 못한다 —
+        오디오만 살아 있었다고 음량을 평가하면 표본 없이 '해결됨'을 판정하게 된다.
+        """
+        measured = _div(self.db_ms, self.speaking_ms)
+        audio = self.audio_coverage
+        return None if measured is None or audio is None else min(audio, measured)
+
+    @property
+    def over_ms(self) -> int | None:
+        return self.duration_ms - self.target_ms if self.target_ms else None
+
+
+#: 정답 구간을 만드는 영역. TIME 은 장별 누적에서 정확히 계산되므로 구간 비교에서 뺀다
+PROBLEM_TYPES: tuple[FeedbackType, ...] = (
+    FeedbackType.GAZE,
+    FeedbackType.SPEED,
+    FeedbackType.VOLUME,
+    FeedbackType.PAUSE,
+    FeedbackType.FILLER,
+)
+
+
+@dataclass
+class TruthInterval:
+    area: FeedbackType
+    slide_number: int | None
+    start_ms: int
+    end_ms: int  # 배타
+    observable: bool
+    peak_severity: float
+    burden_s: float
+
+    @property
+    def span_ms(self) -> int:
+        return self.end_ms - self.start_ms
+
+
+def _severity(ftype: FeedbackType, row: dict[str, Any], cfg: CoachConfig) -> float | None:
+    """이 초에 그 영역 문제가 실제로 있었으면 심각도, 없으면 None. 기준은 코치 설정과 같다."""
+    if ftype == FeedbackType.GAZE:
+        r = row["script_ratio"]
+        return (
+            ramp(r, gaze_judge.DEFAULT.script_ratio, gaze_judge.DEFAULT.script_ratio_bad)
+            if r >= gaze_judge.DEFAULT.script_ratio
+            else None
+        )
+    if not row["speaking"]:
+        return None
+    if ftype == FeedbackType.SPEED:
+        c = row["cpm"]
+        return (
+            ramp(c, pace_judge.DEFAULT.fast_cpm, pace_judge.DEFAULT.fast_cpm_bad)
+            if c > pace_judge.DEFAULT.fast_cpm
+            else None
+        )
+    if ftype == FeedbackType.VOLUME:
+        d = row["voice_diff_db"]
+        low = volume_judge.DEFAULT.low_relative_db
+        return ramp(d, low, volume_judge.DEFAULT.low_relative_db_bad) if d < low else None
+    if ftype == FeedbackType.FILLER:
+        f = row["filler_per_min"]
+        thr = filler_judge.DEFAULT.filler_threshold
+        return ramp(f, thr, filler_judge.DEFAULT.filler_bad) if f >= thr else None
+    return None
+
+
+def _observable(ftype: FeedbackType, row: dict[str, Any]) -> bool:
+    if ftype == FeedbackType.GAZE:
+        return bool(row["gaze_ok"])
+    if ftype in (FeedbackType.SPEED, FeedbackType.FILLER):
+        return bool(row["stt_ok"])
+    return bool(row["audio_live"])
+
+
+def truth_intervals(
+    run: RunResult, *, min_len_ms: int = 3_000, merge_gap_ms: int = 2_000
+) -> list[TruthInterval]:
+    cfg = run.config
+    tick = run.scenario.tick_ms
+    rows = run.presenter.truth
+    out: list[TruthInterval] = []
+
+    for ftype in PROBLEM_TYPES:
+        runs: list[list[tuple[dict[str, Any], float]]] = []
+        if ftype == FeedbackType.PAUSE:
+            # 말을 멈춘 구간 전체. long_silence_ms 이상 이어졌을 때만 문제
+            cur: list[tuple[dict[str, Any], float]] = []
+            for row in rows:
+                silent = not row["speaking"] and row["t_ms"] < (run.presenter.finished_at or 10**12)
+                if silent:
+                    cur.append((row, 0.75))
+                elif cur:
+                    runs.append(cur)
+                    cur = []
+            if cur:
+                runs.append(cur)
+            runs = [r for r in runs if len(r) * tick > volume_judge.DEFAULT.long_silence_ms]
+        else:
+            cur = []
+            last_t = None
+            for row in rows:
+                sev = _severity(ftype, row, cfg)
+                if sev is None:
+                    continue
+                gap = cur and last_t is not None and row["t_ms"] - last_t > merge_gap_ms
+                new_slide = (
+                    cur and ftype == FeedbackType.GAZE and row["slide"] != cur[-1][0]["slide"]
+                )
+                if gap or new_slide:
+                    runs.append(cur)
+                    cur = []
+                cur.append((row, sev))
+                last_t = row["t_ms"]
+            if cur:
+                runs.append(cur)
+
+        for r in runs:
+            start = r[0][0]["t_ms"]
+            end = r[-1][0]["t_ms"] + tick
+            if end - start < min_len_ms:
+                continue
+            seen = sum(1 for row, _ in r if _observable(ftype, row))
+            peak = max(s for _, s in r)
+            out.append(
+                TruthInterval(
+                    area=ftype,
+                    slide_number=r[0][0]["slide"],
+                    start_ms=start,
+                    end_ms=end,
+                    observable=seen * 2 > len(r),
+                    peak_severity=peak,
+                    burden_s=sum(s for _, s in r) * tick / 1000,
+                )
+            )
+    return sorted(out, key=lambda i: (i.start_ms, i.area.value))
+
+
+def truth_aggs(run: RunResult) -> tuple[dict[int, Agg], Agg]:
+    tick = run.scenario.tick_ms
+    plan = Plan.model_validate(run.scenario.plan)
+    targets = {s.slide_number: s for s in plan.slides}
+    slides: dict[int, Agg] = {}
+    take = Agg(slide_number=None)
+
+    def agg_for(n: int | None) -> list[Agg]:
+        if n is None:
+            return [take]
+        if n not in slides:
+            sp = targets.get(n)
+            slides[n] = Agg(
+                slide_number=n,
+                target_ms=sp.target_ms if sp else None,
+            )
+        return [slides[n], take]
+
+    silence_run = 0
+    for row in run.presenter.truth:
+        silence_run = silence_run + tick if not row["speaking"] else 0
+        for a in agg_for(row["slide"]):
+            a.total_ms += tick
+            if row["gaze_ok"]:
+                a.gaze_valid_ms += tick
+                a.gaze_script_ms += row["script_ratio"] * tick
+            else:
+                a.gaze_unusable_ms += tick
+            if row["stt_ok"]:
+                a.speech_ok_ms += tick
+                if row["speaking"]:
+                    a.cpm_ms += tick
+                    a.cpm_weighted += row["cpm"] * tick
+            if row["audio_live"]:
+                a.audio_live_ms += tick
+                if row["speaking"]:
+                    a.speaking_ms += tick
+                    a.db_ms += tick
+                    a.db_weighted += row["voice_diff_db"] * tick
+                if silence_run > volume_judge.DEFAULT.long_silence_ms:
+                    a.long_silence_ms += tick
+
+    for v in run.presenter.visits:
+        n = v["slide"]
+        dur = v.get("end_ms", run.end_ms) - v["start_ms"]
+        for a in agg_for(n):
+            a.visits += 1 if a is not take else 0
+            a.duration_ms += dur
+    take.visits = len(run.presenter.visits)
+
+    for w in run.presenter.words:
+        if w.filler:
+            for a in agg_for(w.slide):
+                a.filler_count += 1
+    return slides, take
+
+
+def truth_outcome(
+    run: RunResult,
+    issue: Issue,
+    t_ms: int,
+    check_ms: int,
+    slide: int | None,
+) -> bool | None:
+    """개입 효과의 정답 — 코치와 같은 효과 규칙을 잡음 없는 실제 상태에 적용한다.
+
+    판단할 수 없으면 None.
+    """
+    cfg = run.config
+    rc = cfg.reflection
+    rows = run.presenter.truth
+    by_t = {r["t_ms"]: r for r in rows}
+    before, after = by_t.get(t_ms), by_t.get(check_ms)
+    if before is None or after is None:
+        return None
+    match issue:
+        case Issue.GAZE_ON_SCRIPT:
+            # 실제 값은 잡음이 없으니 여유폭 없이 탐지 기준 아래로 내려왔는지만 본다
+            return after["script_ratio"] < gaze_judge.DEFAULT.script_ratio
+        case Issue.PACE_FAST:
+            if not after["speaking"]:
+                return None
+            return after["cpm"] < pace_judge.DEFAULT.fast_cpm
+        case Issue.VOLUME_LOW:
+            if not after["speaking"]:
+                return None
+            return after["voice_diff_db"] >= volume_judge.DEFAULT.low_relative_db
+        case Issue.FILLER_FREQUENT:
+            a, b = after["filler_per_min"], before["filler_per_min"]
+            return a <= b * (1 - rc.filler_drop_ratio)
+        case Issue.LONG_SILENCE:
+            return any(r["speaking"] for r in rows if t_ms < r["t_ms"] <= check_ms)
+        case Issue.SLIDE_OVER:
+            return after["slide"] != slide
+    return None

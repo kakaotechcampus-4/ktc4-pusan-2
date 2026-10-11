@@ -52,6 +52,11 @@ type GazeZone = 'CAMERA' | 'BOTTOM' | 'UNCERTAIN';
 STT 전사와 대본 원문의 유사도. "아래를 봤다"는 간접 증거지만
 "말한 내용이 대본과 91% 같다"는 직접 증거입니다.
 
+AI 엔진 v1.1은 안에서 넷(CAMERA · SCREEN · BOTTOM · OTHER)으로 나눈 뒤 **이 셋으로 접어서** 냅니다 —
+SCREEN·BOTTOM → `BOTTOM`, OTHER → `UNCERTAIN` (AI 기본값). 계약은 그대로입니다.
+렌즈와 화면 가운데를 같은 고개 자세로 보는 사람은 둘이 합쳐져(`SCREEN_MERGED`) 화면 보기가
+`CAMERA`로 셉니다 — 고개 방향으로 판정하기 때문입니다. 장치 점검 결과 카드가 이를 알립니다.
+
 ### 3. 판정 주기는 1초입니다
 
 Temporal Voting/EMA가 1초 단위라서:
@@ -236,6 +241,7 @@ src/
     rehearsal/  ★ 리허설. 난이도 최상 (Track A)
     report/     리포트·비교·Best Take
   workers/      시선 워커. 메인 스레드에서 격리
+  vendor/gaze/  AI 시선 엔진 v1.1 복사본 — 고치지 않습니다 (그 폴더 README)
   mocks/        MSW. 명세 8-4의 JSON 그대로
   types/        API 타입. 명세가 바뀌면 여기부터
 ```
@@ -284,6 +290,8 @@ src/
 
 **모델 파일을 CDN에서 받지 마세요.** MediaPipe WASM과 gaze 가중치는 `public/models/`에
 두고 Cache API로 캐싱합니다. 시연장 와이파이가 느리면 발표가 안 됩니다.
+`npm run models`가 채웁니다 (`face_landmarker.task`는 따로 받아야 하면 받는 명령을 알려 줍니다).
+없으면 장치 점검은 '소리만으로 계속하기'만 열리고, 리허설은 시선을 `ENGINE_UNAVAILABLE`로 뺍니다.
 
 **타이머는 `performance.now()` 기준으로.** `setInterval` 카운트를 올리면
 백그라운드 탭에서 시간이 실제보다 적게 흐릅니다. `shared/lib/clock.ts` 참고.
@@ -324,11 +332,17 @@ npm run lint         # oxlint
 
 | ID | 내용 | 막히면 |
 | --- | --- | --- |
-| I-03 | Gaze 모델 백본·프레임당 ms | 경량 모드 임계값을 못 정합니다 |
+| I-03 | ~~Gaze 모델 백본~~ AI v1.1: `head_pose`(가중치 없음). 프레임당 ms는 AI 실측 40~90ms(헤드리스 Chrome) — 실기기 재측정 필요 | 경량 모드 임계값을 못 정합니다 |
 | I-17 | `UNCERTAIN` 비율 임계값 | 측정 제외 화면이 동작 안 합니다 |
 | I-18 | `scriptSimilarity` 정의 (구간별 계산 가능?) | 구간 Finding을 못 만듭니다 |
 | I-19 | gaze 모델만 실패했을 때 head pose로 축소 판정? | — |
 
 **AI 모델은 `workers/gaze.contract.ts`의 `GazeClassifier`만 구현하면 됩니다.**
 `DummyGazeClassifier`를 실모델로 교체할 때 화면 코드는 한 줄도 안 바뀌어야 합니다.
-그게 이 계약 파일이 따로 있는 이유입니다.
+그게 이 계약 파일이 따로 있는 이유입니다. 리허설은 실제로 그렇게 바뀌었습니다
+(`useLiveGaze`의 `'dummy'` → `'model'` 한 단어, `modelClassifier.ts`가 `vendor/gaze/engine`에 위임).
+
+**장치 점검의 시선 기준만은 예외입니다** — AI 카메라 화면 모듈(`GazeCameraView`)이 상자 안을
+직접 그립니다 (준비 점검 → 고개 원 → 3점 보정, 전체 화면). FE는 상자 · 스트림 · 결과 처리만
+맡습니다 (`prepare/useGazeSetup.ts`). 보정 화면의 문구와 단계는 AI 쪽에서 고칩니다.
+기준은 IndexedDB를 거쳐 리허설 워커로 가고, 둘이 같은 `takeEngineVersion()`으로 키를 맞춥니다.

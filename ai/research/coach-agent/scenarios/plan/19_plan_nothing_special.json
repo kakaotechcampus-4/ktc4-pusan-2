@@ -1,0 +1,60 @@
+{
+  "name": "19_plan_nothing_special",
+  "description": "미션도 이전 리뷰도 없고 대본도 평범하다. 근거 없이 봐주거나 개입 상한을 정하지 않아야 한다",
+  "take_id": "sim-19_plan_nothing_special",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "scripts": [
+    {
+      "slide_number": 1,
+      "script": "안녕하세요, 피치코치 팀입니다. 오늘은 발표 연습을 도와주는 실시간 코치를 소개하겠습니다."
+    },
+    {
+      "slide_number": 2,
+      "script": "발표를 준비하는 사람들은 혼자 연습할 때 무엇이 문제인지 알기 어렵습니다. 녹화를 다시 보는 데도 시간이 오래 걸립니다. 그래서 연습하는 동안 바로 알려 주는 코치가 필요합니다."
+    },
+    {
+      "slide_number": 3,
+      "script": "코치는 시선, 말 속도, 목소리 크기를 1초마다 보고, 지금 고치면 좋을 것 하나만 짧게 알려 줍니다. 알려 준 뒤에는 실제로 나아졌는지 보고 다음 방법을 고릅니다."
+    },
+    {
+      "slide_number": 4,
+      "script": "정리하면, 피치코치는 연습하는 그 순간에 한 가지씩 알려 주어 발표를 더 빠르게 다듬게 합니다. 감사합니다."
+    }
+  ],
+  "expect": {
+    "interventions": {
+      "max": 0
+    }
+  },
+  "plan_expect": {
+    "relax_empty": true,
+    "no_budget": true
+  }
+}

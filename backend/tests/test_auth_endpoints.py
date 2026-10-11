@@ -20,6 +20,11 @@ from pitch_coach_backend.module.auth.controller import (
     REFRESH_COOKIE_NAME,
 )
 from pitch_coach_backend.module.auth.dependencies import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
+from pitch_coach_backend.module.auth.exception import (
+    EmailAlreadyRegistered,
+    GoogleIdentityRejected,
+    GoogleTokenExchangeFailed,
+)
 
 TEST_REDIS_DB = 15
 START = "/api/auth/google/start"
@@ -204,8 +209,10 @@ def test_callback_with_unknown_state_is_rejected(
         CALLBACK, params={"code": "c", "state": "never-issued"}, follow_redirects=False
     )
 
-    assert res.status_code == 400
-    assert res.json()["code"] == "BAD_REQUEST"
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=invalid_request" in res.headers["location"]
+    assert REFRESH_COOKIE_NAME not in res.cookies
 
 
 def test_callback_without_the_browser_cookie_is_rejected(
@@ -217,7 +224,43 @@ def test_callback_without_the_browser_cookie_is_rejected(
 
     res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
 
-    assert res.status_code == 400
+    assert res.status_code == 302
+    assert "auth_error=invalid_request" in res.headers["location"]
+    assert REFRESH_COOKIE_NAME not in res.cookies
+
+
+@pytest.mark.parametrize(
+    ("raised", "expected_code"),
+    [
+        (GoogleTokenExchangeFailed, "token_exchange_failed"),
+        (GoogleIdentityRejected, "identity_rejected"),
+        (EmailAlreadyRegistered, "email_already_registered"),
+    ],
+)
+def test_callback_failure_redirects_with_a_code_instead_of_json(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    raised: type[Exception],
+    expected_code: str,
+) -> None:
+    """브라우저가 최상위로 이동해 온 요청이다. JSON 을 주면 사용자가 그대로 본다."""
+    from pitch_coach_backend.module.auth import service
+
+    def fail(**kwargs: Any) -> None:
+        raise raised()
+
+    monkeypatch.setattr(service.google, "exchange_code_for_id_token", fail)
+    started = client.get(START, follow_redirects=False)
+    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+
+    res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert f"auth_error={expected_code}" in res.headers["location"]
+    assert REFRESH_COOKIE_NAME not in res.cookies
+    # 실패해도 임시 쿠키는 정리한다
+    assert client.cookies.get(BROWSER_COOKIE_NAME) is None
 
 
 def test_cancelled_consent_redirects_to_the_frontend(client: TestClient) -> None:
@@ -411,8 +454,9 @@ def test_a_malformed_referer_is_rejected_not_crashed(
 
 
 def test_replaying_an_old_refresh_cookie_is_rejected(
-    client: TestClient, fake_google: dict[str, Any]
+    client: TestClient, fake_google: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(settings, "refresh_token_reuse_grace_seconds", 0)
     do_login(client)
     stolen = client.cookies[REFRESH_COOKIE_NAME]
     client.post(REFRESH, headers=csrf_headers(client))
@@ -421,6 +465,19 @@ def test_replaying_an_old_refresh_cookie_is_rejected(
     res = client.post(REFRESH, headers=csrf_headers(client))
 
     assert res.status_code == 401
+
+
+def test_refresh_retried_with_the_cookie_it_just_rotated_keeps_the_session(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """회전 응답을 받기 전에 새로고침하면 브라우저는 옛 쿠키를 다시 보낸다."""
+    do_login(client)
+    before = client.cookies[REFRESH_COOKIE_NAME]
+    client.post(REFRESH, headers=csrf_headers(client))
+    client.cookies.set(REFRESH_COOKIE_NAME, before, path="/api/auth")  # 응답을 버렸다
+
+    assert client.post(REFRESH, headers=csrf_headers(client)).status_code == 200
+    assert client.post(REFRESH, headers=csrf_headers(client)).status_code == 200
 
 
 # --- logout -------------------------------------------------------------
@@ -533,4 +590,5 @@ def test_non_ascii_browser_cookie_is_rejected_not_crashed(
         follow_redirects=False,
     )
 
-    assert res.status_code == 400
+    assert res.status_code == 302
+    assert "auth_error=invalid_request" in res.headers["location"]

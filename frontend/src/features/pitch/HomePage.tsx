@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { HomeHelpDialog } from './HomeHelpDialog';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { useLogout } from '@/shared/api/useLogout';
-import { useHome } from '@/shared/api/home';
+import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { duration } from './homeFormat';
 
@@ -11,7 +11,7 @@ const primary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-coral-deep active:translate-y-1 active:shadow-none';
 export function HomePage() {
   const [helpOpen, setHelpOpen] = useState(false);
-  const home = useHome();
+  const home = usePitchList();
   const logout = useLogout();
   const data = home.data;
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;

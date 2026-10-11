@@ -1,0 +1,16 @@
+# 줄바꿈을 LF 로 맞춘다. 실험 로그 · 매니페스트 JSONL 은 newline="\n" 으로 쓰고,
+# 생성 파일(defaults.generated.ts · parity fixture)은 테스트가 다시 생성해 바이트 단위로 비교한다.
+* text=auto eol=lf
+
+# 바이너리: 줄바꿈을 건드리지 않고 diff 하지 않는다
+*.jpg     binary
+*.png     binary
+*.mp4     binary
+*.task    binary
+*.pkl     binary
+*.pt      binary
+*.parquet binary
+*.gz      binary
+
+# cmd.exe 는 여러 줄 배치 파일을 CRLF 로 읽어야 안전하다
+*.bat     text eol=crlf

@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# 배포 이름. import 패키지는 두 개다.
+#   coach     — 판단 코어. 나중에 ai/service 의 features/coach/ 로 폴더째 옮긴다
+#   coach_lab — research 전용 재생 · 실험 도구. 옮기지 않는다
+name = "coach-agent"
+version = "1.0.0"
+description = "Pitch Coach realtime coach agent - research (core + lab)"
+# service 가 쓸 Python 버전(3.12)에서 검증한다
+requires-python = ">=3.12"
+dependencies = [
+    # ── 코어(coach)가 쓰는 것은 pydantic 하나뿐이다. service 로 옮길 때 이것만 가져간다.
+    #    코칭 계획의 LLM 클라이언트는 코어가 만들지 않고 인자로 받는다
+    "pydantic>=2.13",
+    # ── research 전용 (coach_lab 의 코칭 계획 실험 plan_eval · llm). 재생 · 리뷰 근거 실험은 쓰지 않는다
+    "langchain-openai>=1.3",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "ruff>=0.16",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# live: 실제 LLM API 를 부르는 테스트 (과금). 기본 실행에서 빼고 `pytest -m live` 로 따로 돌린다
+markers = ["live: 실제 LLM API 를 호출한다 (과금)"]
+addopts = "-m 'not live'"
+
+# backend/pyproject.toml 과 같은 규칙
+[tool.ruff]
+line-length = 100
+src = ["src", "."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["coach", "coach_lab"]

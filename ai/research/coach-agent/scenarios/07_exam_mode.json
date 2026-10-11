@@ -1,0 +1,75 @@
+{
+  "name": "07_exam_mode",
+  "description": "실전 모드. 시선 · 속도 문제가 있어도 발표 중엔 말하지 않고, 문제 구간만 Take 결과에 남긴다",
+  "take_id": "sim-07_exam_mode",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "mode": "EXAM",
+  "segments": [
+    {
+      "from_ms": 40000,
+      "to_ms": 100000,
+      "set": {
+        "script_ratio": 0.9
+      }
+    },
+    {
+      "from_ms": 60000,
+      "to_ms": 120000,
+      "set": {
+        "cpm": 420
+      }
+    }
+  ],
+  "expect": {
+    "interventions": {
+      "max": 0
+    },
+    "suppressed_reasons_include": [
+      "EXAM_MODE"
+    ],
+    "segments_include": [
+      {
+        "issue_type": "GAZE_ON_SCRIPT",
+        "slide_number": 2,
+        "coached": false,
+        "reliable": true
+      },
+      {
+        "issue_type": "PACE_FAST",
+        "slide_number": 2,
+        "coached": false,
+        "reliable": true
+      }
+    ]
+  }
+}

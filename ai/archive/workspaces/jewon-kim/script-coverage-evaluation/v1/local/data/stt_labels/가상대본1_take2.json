@@ -1,0 +1,378 @@
+{
+  "take_id": "가상대본1_take2",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "안녕하십니까를 안녕하세요로 말함(어미 변화)"
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "팀 소개와 서비스 소개 순서를 바꿔 말함, SeatFlow는 시트플로우로 전사"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "S5와 합쳐 '자리가 부족해서만 그런 게 아니라'로 말함"
+        },
+        {
+          "index": 5,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "S4와 한 문장으로 합쳐 말함"
+        },
+        {
+          "index": 6,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "SeatFlow는 시트플로우로 전사"
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "partial",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "센서 없이 기존 기록만 쓴다는 부분은 말했지만 도입 비용이 거의 들지 않는다는 결론은 생략"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "XGBoost는 엑스지부스트로 전사"
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "3:1을 삼 대 일로 말함"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "partial",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "관리 화면에서 이용률과 노쇼 비율 확인은 말했지만 오래 비워 둔 자리를 정리하는 기능은 생략"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "숫자를 한글로 읽음"
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "85퍼센트 이상을 85퍼센트가 넘는으로 말함"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "partial",
+          "dropped_values": [
+            "약 430곳"
+          ],
+          "changed_values": [],
+          "note": "대학 도서관 수를 '꽤 많습니다'로 뭉뚱그려 430곳을 말하지 않음"
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "partial",
+          "dropped_values": [
+            "좌석 배치 컨설팅"
+          ],
+          "changed_values": [],
+          "note": "추가 상품 중 학습 통계 리포트만 말하고 좌석 배치 컨설팅은 빠뜨림"
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "3개월을 석 달로 말함"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "20곳을 스무 곳으로 말함"
+        },
+        {
+          "index": 2,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "이상으로 발표를 마치겠습니다를 여기까지입니다로 말함"
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}

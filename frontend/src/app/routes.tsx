@@ -86,7 +86,7 @@ export const router = createBrowserRouter(
           path: route.path,
           element: (
             <PageTitle title={route.title}>
-              <RequireSession showHeader={!['/', '/pitches'].includes(route.path)} />
+              <RequireSession showHeader={!['/', '/pitches', '/pitch/new'].includes(route.path)} />
             </PageTitle>
           ),
           children: [{ index: true, element: route.element }],

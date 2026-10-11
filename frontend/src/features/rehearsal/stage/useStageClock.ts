@@ -17,7 +17,11 @@ import type { Ms } from '@/types/api';
  */
 const TICK_MS = 250;
 
-export function useStageClock(limitSec: number, running: boolean) {
+/**
+ * @param fromMs 시계를 이 시점부터 돌립니다. 새로고침한 Take 를 이어받으면 0 이 아닙니다
+ *   (`resume.ts`). 무대가 시작되기 전에 정해져야 합니다 — 도는 중에 바뀌면 시계가 튑니다.
+ */
+export function useStageClock(limitSec: number, running: boolean, fromMs: Ms = 0) {
   const [clock] = useState(() => new PresentationClock());
 
   const elapsedRef = useRef<HTMLSpanElement>(null);
@@ -32,7 +36,7 @@ export function useStageClock(limitSec: number, running: boolean) {
 
   useEffect(() => {
     if (!running) return;
-    clock.start();
+    clock.start(fromMs);
 
     const paint = () => {
       const elapsed = clock.elapsedMs();
@@ -58,7 +62,7 @@ export function useStageClock(limitSec: number, running: boolean) {
       window.clearInterval(id);
       clock.stop();
     };
-  }, [clock, limitSec, running]);
+  }, [clock, limitSec, running, fromMs]);
 
   // 다른 층(코치 규칙·슬라이드 기록·종료 페이로드)이 같은 기준으로 읽습니다.
   // ★ 함수 정체성을 고정합니다 — 매 렌더 새로 만들면 이걸 의존성으로 쓰는

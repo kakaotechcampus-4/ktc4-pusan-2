@@ -1,0 +1,315 @@
+{
+  "config_hash": "9d82f5b1d7bb",
+  "drops": {
+    "long_drop": [
+      60000,
+      100000
+    ],
+    "short_drop": [
+      60000,
+      80000
+    ]
+  },
+  "feature_version": "coach-1.2",
+  "results": {
+    "clean": {
+      "long_drop": {
+        "area_mae": {
+          "FILLER": {
+            "by_tier.T1": 0.0,
+            "by_tier.T2": 0.0,
+            "by_tier.T3": 0.0,
+            "by_word.음": 0.0,
+            "filler_count": 0.0,
+            "filler_per_min": 0.0,
+            "measured_ratio": 0.0
+          },
+          "GAZE": {
+            "audience_ratio": 0.0,
+            "away_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "reading_ratio": 0.0,
+            "reading_runs": 0.0,
+            "screen_ratio": 0.0,
+            "script_ratio": 0.0
+          },
+          "PAUSE": {
+            "long_silence_count": 0.0,
+            "measured_ratio": 0.0
+          },
+          "SPEED": {
+            "cpm": 0.0,
+            "measured_ratio": 0.0,
+            "pause_count": 0.0
+          },
+          "TIME": {
+            "duration_ms": 0.0,
+            "measured_ratio": 0.0
+          },
+          "VOLUME": {
+            "level_db": 0.0,
+            "low_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "voice_diff_db": 0.0
+          }
+        },
+        "needed_replay_rate": 1.0,
+        "runs": 16,
+        "segments_extra": 1.0,
+        "segments_found": 0.9688,
+        "values_missing": 0
+      },
+      "replay": {
+        "area_mae": {
+          "FILLER": {
+            "by_tier.T1": 0.0,
+            "by_tier.T2": 0.0,
+            "by_tier.T3": 0.0,
+            "by_word.음": 0.0,
+            "filler_count": 0.0,
+            "filler_per_min": 0.0,
+            "measured_ratio": 0.0
+          },
+          "GAZE": {
+            "audience_ratio": 0.0,
+            "away_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "reading_ratio": 0.0,
+            "reading_runs": 0.0,
+            "screen_ratio": 0.0,
+            "script_ratio": 0.0
+          },
+          "PAUSE": {
+            "long_silence_count": 0.0,
+            "measured_ratio": 0.0
+          },
+          "SPEED": {
+            "cpm": 0.0,
+            "measured_ratio": 0.0,
+            "pause_count": 0.0
+          },
+          "TIME": {
+            "duration_ms": 0.0,
+            "measured_ratio": 0.0
+          },
+          "VOLUME": {
+            "level_db": 0.0,
+            "low_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "voice_diff_db": 0.0
+          }
+        },
+        "needed_replay_rate": 1.0,
+        "runs": 16,
+        "segments_extra": 1.0,
+        "segments_found": 1.0,
+        "values_missing": 0
+      },
+      "short_drop": {
+        "area_mae": {
+          "FILLER": {
+            "by_tier.T1": 0.0,
+            "by_tier.T2": 0.0,
+            "by_tier.T3": 0.0,
+            "by_word.음": 0.0,
+            "filler_count": 0.0,
+            "filler_per_min": 0.0,
+            "measured_ratio": 0.0
+          },
+          "GAZE": {
+            "audience_ratio": 0.0,
+            "away_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "reading_ratio": 0.0,
+            "reading_runs": 0.0,
+            "screen_ratio": 0.0,
+            "script_ratio": 0.0
+          },
+          "PAUSE": {
+            "long_silence_count": 0.0,
+            "measured_ratio": 0.0
+          },
+          "SPEED": {
+            "cpm": 0.0,
+            "measured_ratio": 0.0,
+            "pause_count": 0.0
+          },
+          "TIME": {
+            "duration_ms": 0.0,
+            "measured_ratio": 0.0
+          },
+          "VOLUME": {
+            "level_db": 0.0,
+            "low_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "voice_diff_db": 0.0
+          }
+        },
+        "needed_replay_rate": 0.0,
+        "runs": 16,
+        "segments_extra": 0.9542,
+        "segments_found": 0.9437,
+        "values_missing": 0
+      }
+    },
+    "noisy": {
+      "long_drop": {
+        "area_mae": {
+          "FILLER": {
+            "by_tier.T1": 0.0,
+            "by_tier.T2": 0.0,
+            "by_tier.T3": 0.0,
+            "by_word.음": 0.0,
+            "filler_count": 0.0,
+            "filler_per_min": 0.0,
+            "measured_ratio": 0.0
+          },
+          "GAZE": {
+            "audience_ratio": 0.0,
+            "away_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "reading_ratio": 0.0,
+            "reading_runs": 0.0,
+            "screen_ratio": 0.0,
+            "script_ratio": 0.0
+          },
+          "PAUSE": {
+            "long_silence_count": 0.0,
+            "measured_ratio": 0.0
+          },
+          "SPEED": {
+            "cpm": 0.0,
+            "measured_ratio": 0.0,
+            "pause_count": 0.0
+          },
+          "TIME": {
+            "duration_ms": 0.0,
+            "measured_ratio": 0.0
+          },
+          "VOLUME": {
+            "level_db": 0.0,
+            "low_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "voice_diff_db": 0.0
+          }
+        },
+        "needed_replay_rate": 1.0,
+        "runs": 32,
+        "segments_extra": 1.0,
+        "segments_found": 0.9375,
+        "values_missing": 0
+      },
+      "replay": {
+        "area_mae": {
+          "FILLER": {
+            "by_tier.T1": 0.0,
+            "by_tier.T2": 0.0,
+            "by_tier.T3": 0.0,
+            "by_word.음": 0.0,
+            "filler_count": 0.0,
+            "filler_per_min": 0.0,
+            "measured_ratio": 0.0
+          },
+          "GAZE": {
+            "audience_ratio": 0.0,
+            "away_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "reading_ratio": 0.0,
+            "reading_runs": 0.0,
+            "screen_ratio": 0.0,
+            "script_ratio": 0.0
+          },
+          "PAUSE": {
+            "long_silence_count": 0.0,
+            "measured_ratio": 0.0
+          },
+          "SPEED": {
+            "cpm": 0.0,
+            "measured_ratio": 0.0,
+            "pause_count": 0.0
+          },
+          "TIME": {
+            "duration_ms": 0.0,
+            "measured_ratio": 0.0
+          },
+          "VOLUME": {
+            "level_db": 0.0,
+            "low_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "voice_diff_db": 0.0
+          }
+        },
+        "needed_replay_rate": 1.0,
+        "runs": 32,
+        "segments_extra": 1.0,
+        "segments_found": 1.0,
+        "values_missing": 0
+      },
+      "short_drop": {
+        "area_mae": {
+          "FILLER": {
+            "by_tier.T1": 0.0,
+            "by_tier.T2": 0.0,
+            "by_tier.T3": 0.0,
+            "by_word.음": 0.0,
+            "filler_count": 0.0,
+            "filler_per_min": 0.0,
+            "measured_ratio": 0.0
+          },
+          "GAZE": {
+            "audience_ratio": 0.0,
+            "away_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "reading_ratio": 0.0,
+            "reading_runs": 0.0,
+            "screen_ratio": 0.0,
+            "script_ratio": 0.0
+          },
+          "PAUSE": {
+            "long_silence_count": 0.0,
+            "measured_ratio": 0.0
+          },
+          "SPEED": {
+            "cpm": 0.0,
+            "measured_ratio": 0.0,
+            "pause_count": 0.0
+          },
+          "TIME": {
+            "duration_ms": 0.0,
+            "measured_ratio": 0.0
+          },
+          "VOLUME": {
+            "level_db": 0.0,
+            "low_ratio": 0.0,
+            "measured_ratio": 0.0,
+            "voice_diff_db": 0.0
+          }
+        },
+        "needed_replay_rate": 0.0,
+        "runs": 32,
+        "segments_extra": 0.913,
+        "segments_found": 0.8958,
+        "values_missing": 0
+      }
+    }
+  },
+  "scenarios": [
+    "01_baseline_good",
+    "02_gaze_effective",
+    "03_gaze_gave_up",
+    "04_gaze_sensor_unusable",
+    "05_time_behind",
+    "06_pace_fast",
+    "07_exam_mode",
+    "08_filler_frequent",
+    "09_long_silence",
+    "10_audio_dead",
+    "11_keyword_missing",
+    "12_no_slide_plan",
+    "13_recurring_resolved",
+    "14_recurring_persists",
+    "15_mixed_burdens",
+    "16_noisy_sensors"
+  ],
+  "seeds": 2
+}

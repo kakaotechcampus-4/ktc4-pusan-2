@@ -79,7 +79,8 @@ export interface ZoneReference {
 /**
  * 캘리브레이션을 다시 받아야 하는 이유.
  *
- * 앞의 다섯은 AI v1 `CalibrationFailReason` 에서 실제로 나오는 값과 같은 문자열입니다.
+ * 앞의 여섯은 AI v1.1 `FailReason` 에서 실제로 나오는 값과 같은 문자열입니다
+ * (`ANCHOR_AMBIGUOUS` 는 v1.1 에서 생겼습니다 — 3점 기준 중 하나가 주변과 구분되지 않음).
  * `ENGINE_ERROR` 만 FE 몫입니다 — 분류기가 예외를 던졌거나 워커가 없을 때입니다.
  *
  * AI 는 영어 `hint` 도 주지만 받지 않습니다. 문구는 화면이 사유별로 가집니다.
@@ -90,6 +91,7 @@ export type CalibrationFailReason =
   | 'LOW_LOO_ACCURACY'
   | 'CENTROIDS_TOO_CLOSE'
   | 'DEGENERATE_FEATURES'
+  | 'ANCHOR_AMBIGUOUS'
   | 'ENGINE_ERROR';
 
 /**
@@ -212,7 +214,7 @@ export interface GazeClassifier {
   dispose(): void;
   /**
    * Take 에 기록할 버전 문자열. AI 모델 버전 · 백본 · 분류기를 `+` 로 잇습니다
-   * (예: `gaze_v1.0.0+mediapipe_geom+per_user_lr_v1`, `aiAdapter.ts`).
+   * (예: `gaze_v1.1.0+head_pose+reference_anchor_v1`, `aiAdapter.ts`).
    * 다수결 규칙(`vote-v1`)은 FE 정책이라 워커가 뒤에 붙입니다.
    */
   readonly version: string;

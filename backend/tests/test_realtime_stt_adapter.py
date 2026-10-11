@@ -5,6 +5,7 @@
 
 import asyncio
 import json
+from http import HTTPStatus
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -16,6 +17,7 @@ from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
     SpeechStarted,
     SttConfig,
+    SttConfigRejected,
     SttConnectError,
     SttError,
     Transcript,
@@ -237,3 +239,24 @@ async def test_connect_failure_is_one_exception_type():
     adapter = DeepgramSttAdapter("test-key", base_url="ws://127.0.0.1:1/v1/listen")
     with pytest.raises(SttConnectError):
         await adapter.connect(SttConfig())
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status", "rejected"),
+    [(HTTPStatus.BAD_REQUEST, True), (HTTPStatus.UNAUTHORIZED, False)],
+)
+async def test_http_400_on_handshake_is_config_rejected(status: HTTPStatus, rejected: bool):
+    # 400 만 "설정 문제" 다. 401(키 오류) 같은 건 그대로 SttConnectError
+    def refuse(conn, request):
+        return conn.respond(status, "Keyterm limit exceeded.")
+
+    async with serve(lambda conn: None, "127.0.0.1", 0, process_request=refuse) as server:
+        port = server.sockets[0].getsockname()[1]
+        adapter = DeepgramSttAdapter("test-key", base_url=f"ws://127.0.0.1:{port}/v1/listen")
+        with pytest.raises(SttConnectError) as info:
+            await adapter.connect(SttConfig(keyterms=("음",)))
+
+    assert isinstance(info.value, SttConfigRejected) is rejected
+    if rejected:
+        assert "Keyterm limit exceeded." in str(info.value)

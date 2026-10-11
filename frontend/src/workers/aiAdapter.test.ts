@@ -51,6 +51,14 @@ describe('캘리브레이션 품질 → CalibrationResult', () => {
     expect(r).toEqual({ ok: false, reason: 'NOT_ENOUGH_SAMPLES' });
   });
 
+  it('v1.1 의 ANCHOR_AMBIGUOUS 는 그대로 옮긴다 — ENGINE_ERROR 로 뭉개지 않는다', () => {
+    const r = toCalibrationResult(
+      { ...passed, status: 'RETRY_REQUIRED', reason: 'ANCHOR_AMBIGUOUS' },
+      model,
+    );
+    expect(r).toMatchObject({ ok: true, ref: { quality: 'POOR' }, advice: 'ANCHOR_AMBIGUOUS' });
+  });
+
   it('모르는 사유는 ENGINE_ERROR 로 둔다 — 재시도 안내는 나가야 한다', () => {
     const r = toCalibrationResult(
       { ...passed, status: 'RETRY_REQUIRED', reason: 'SOMETHING_NEW' },
@@ -84,11 +92,11 @@ describe('버전 문자열', () => {
   it('모델 버전 · 백본 · 분류기 순서로 잇는다', () => {
     expect(
       engineVersion({
-        modelVersion: 'gaze_v1.0.0',
-        gazeBackbone: 'mediapipe_geom',
-        gazeClassifier: 'per_user_lr_v1',
+        modelVersion: 'gaze_v1.1.0',
+        gazeBackbone: 'head_pose',
+        gazeClassifier: 'reference_anchor_v1',
       }),
-    ).toBe('gaze_v1.0.0+mediapipe_geom+per_user_lr_v1');
+    ).toBe('gaze_v1.1.0+head_pose+reference_anchor_v1');
   });
 });
 

@@ -12,9 +12,10 @@ import type {
  *
  * ── 왜 따로 있나 ────────────────────────────────────────────────────
  *
- * 아래 `Ai*` 타입은 AI 저장소(`ai/workspaces/jewon-kim/gaze-tracking/v1`)의
+ * 아래 `Ai*` 타입은 AI 저장소(`ai/archive/workspaces/jewon-kim/gaze-tracking/v1`)의
  * Python 출력(`to_dict()`)을 필드 이름 그대로 옮긴 것입니다.
- * AI 가 모듈을 JS 로 옮길 때 같은 키로 내 달라고 요청할 모양이기도 합니다.
+ * 브라우저 엔진(`src/vendor/gaze/engine`)도 같은 키로 냅니다 — 그쪽 `contract.ts` 가
+ * 이 모양을 다시 적어 두고 타입 검사합니다.
  *
  * 규칙을 여기 모아 두면 AI 쪽 값이 바뀌었을 때 고칠 곳이 한 군데이고,
  * 워커 없이 테스트로 고정할 수 있습니다 (aiAdapter.test.ts).
@@ -48,11 +49,11 @@ export interface AiGazeDecision {
 
 /** AI `AiVersion` 과 `MODEL_VERSION` 에서 버전 문자열에 담는 것 */
 export interface AiVersionParts {
-  /** `MODEL_VERSION` — 예: `gaze_v1.0.0` */
+  /** `MODEL_VERSION` — 예: `gaze_v1.1.0` */
   modelVersion: string;
-  /** `AiVersion.gaze_backbone` — 예: `mediapipe_geom` */
+  /** `AiVersion.gaze_backbone` — 예: `head_pose` */
   gazeBackbone: string;
-  /** `AiVersion.gaze_classifier` — 예: `per_user_lr_v1` */
+  /** `AiVersion.gaze_classifier` — 예: `reference_anchor_v1` */
   gazeClassifier: string;
 }
 
@@ -71,6 +72,7 @@ const AI_FAIL_REASONS: readonly CalibrationFailReason[] = [
   'LOW_LOO_ACCURACY',
   'CENTROIDS_TOO_CLOSE',
   'DEGENERATE_FEATURES',
+  'ANCHOR_AMBIGUOUS',
 ];
 
 /**
@@ -127,7 +129,7 @@ export function toFrameVerdict(d: AiGazeDecision): FrameVerdict | null {
 
 /**
  * 버전 문자열. Take 에 영구 고정되므로 순서를 바꾸지 마세요.
- * `vote-v1` 은 여기서 붙이지 않습니다 — 워커가 붙입니다.
+ * `vote-v1` 은 여기서 붙이지 않습니다 — 워커가 `takeEngineVersion` 으로 붙입니다.
  */
 export function engineVersion(v: AiVersionParts): string {
   return `${v.modelVersion}+${v.gazeBackbone}+${v.gazeClassifier}`;
@@ -160,4 +162,18 @@ export function toPlacementResult(r: AiPlacementCheckResult): PlacementResult {
   const placement = PLACEMENTS.find((p) => p === r.placement) ?? 'INCONCLUSIVE';
   const reason = PLACEMENT_REASONS.find((x) => x === r.reason) ?? 'ENGINE_ERROR';
   return { placement, supported: r.supported && placement === 'TOP', reason };
+}
+
+/** FE 1초 다수결 규칙 (`TemporalVoter`). 분류기 버전과 별개의 부품입니다 */
+export const VOTE_RULE = 'vote-v1';
+
+/**
+ * Take 에 고정되는 엔진 버전 — 분류기 버전 뒤에 다수결 규칙을 붙입니다.
+ *
+ * 리허설 워커(`gaze.worker.ts`)와 장치 점검의 카메라 화면 모듈이 **같은 함수**로 만듭니다.
+ * 기준은 장치 점검에서 이 문자열을 붙여 저장되고 리허설이 같은 문자열로 꺼내므로,
+ * 둘이 한 글자라도 다르면 방금 잡은 기준을 못 찾습니다.
+ */
+export function takeEngineVersion(classifierVersion: string): string {
+  return `${classifierVersion}+${VOTE_RULE}`;
 }

@@ -1,0 +1,10 @@
+# Local rig for Windows 11, Python 3.11.9. Verified with pydantic 2.13.4, pytest 9.1.1.
+#
+# These are FLOORS, not pins. The coach core needs only pydantic; pytest is for the tests.
+#
+#   python -m venv .venv
+#   ./.venv/Scripts/python.exe -m pip install -r requirements.txt
+#   ./.venv/Scripts/python.exe -m pip install -e .
+
+pydantic>=2.6
+pytest>=8.0

@@ -1,0 +1,71 @@
+{
+  "name": "02_gaze_effective",
+  "description": "35~90초 대본만 봄. '청중을 보세요' 뒤 고개를 든다 → 효과 있음 → 유지 격려",
+  "take_id": "sim-02_gaze_effective",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "segments": [
+    {
+      "from_ms": 35000,
+      "to_ms": 90000,
+      "set": {
+        "script_ratio": 0.85
+      }
+    }
+  ],
+  "reactions": {
+    "LOOK_AT_CAMERA": {
+      "delay_ms": 2000,
+      "duration_ms": 40000,
+      "set": {
+        "script_ratio": 0.15
+      }
+    }
+  },
+  "expect": {
+    "types": {
+      "GAZE": {
+        "min": 1
+      }
+    },
+    "instructions_include": [
+      "LOOK_AT_CAMERA",
+      "CONTINUE"
+    ],
+    "outcomes_include": [
+      "EFFECTIVE"
+    ],
+    "segment_hints_include": [
+      "COACHED_EFFECTIVE"
+    ]
+  }
+}

@@ -1,0 +1,2037 @@
+{
+  "take_id": "take-123",
+  "t_ms": 92000,
+  "mode": "COACHING",
+  "plan": {
+    "target_ms": 300000,
+    "min_ms": 270000,
+    "max_ms": 330000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 60000,
+        "script_chars": 300
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 300
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 90000,
+        "script_chars": 450
+      }
+    ]
+  },
+  "missions": [
+    {
+      "mission_id": "m-2",
+      "area": "GAZE",
+      "slide_number": 3,
+      "target": {
+        "metric": "script_ratio",
+        "operator": "LTE",
+        "value": 0.4
+      }
+    }
+  ],
+  "recurring_issues": [
+    {
+      "area": "GAZE",
+      "slide_number": 3
+    }
+  ],
+  "coaching_plan": {
+    "focus": [
+      {
+        "area": "GAZE",
+        "slide_number": 3,
+        "weight": 1.5
+      }
+    ],
+    "relax": [],
+    "max_interventions": null
+  },
+  "inputs": {
+    "gaze_records": [
+      {
+        "t_ms": 62000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 63000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 64000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 65000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 66000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 67000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 68000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 69000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 70000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 71000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 72000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 73000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 74000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 75000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 76000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 77000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 78000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 79000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 80000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 81000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 82000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 83000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 84000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 85000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 86000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 87000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 88000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 89000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 90000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 91000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      }
+    ],
+    "voice_records": [
+      {
+        "t_ms": 62000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 63000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 64000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 790,
+        "silence_ms": 90,
+        "audio_live": true
+      },
+      {
+        "t_ms": 65000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 850,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 66000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 67000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 68000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 69000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 70000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 780,
+        "silence_ms": 100,
+        "audio_live": true
+      },
+      {
+        "t_ms": 71000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 860,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 72000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 73000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 74000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 860,
+        "silence_ms": 20,
+        "audio_live": true
+      },
+      {
+        "t_ms": 75000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 780,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 76000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 77000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 78000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 79000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 80000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 81000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 820,
+        "silence_ms": 60,
+        "audio_live": true
+      },
+      {
+        "t_ms": 82000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 460,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 83000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 84000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 85000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 86000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 620,
+        "silence_ms": 260,
+        "audio_live": true
+      },
+      {
+        "t_ms": 87000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 600,
+        "silence_ms": 60,
+        "audio_live": true
+      },
+      {
+        "t_ms": 88000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 820,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 89000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 90000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 91000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 540,
+        "silence_ms": 460,
+        "audio_live": true
+      }
+    ],
+    "words": [
+      {
+        "word": "가나다",
+        "start_ms": 31680,
+        "end_ms": 32280
+      },
+      {
+        "word": "가나다",
+        "start_ms": 32400,
+        "end_ms": 33000
+      },
+      {
+        "word": "음",
+        "start_ms": 33600,
+        "end_ms": 33950
+      },
+      {
+        "word": "가나다",
+        "start_ms": 34070,
+        "end_ms": 34670
+      },
+      {
+        "word": "가나다",
+        "start_ms": 34790,
+        "end_ms": 35390
+      },
+      {
+        "word": "가나다",
+        "start_ms": 35510,
+        "end_ms": 36110
+      },
+      {
+        "word": "가나다",
+        "start_ms": 36230,
+        "end_ms": 36830
+      },
+      {
+        "word": "가나다",
+        "start_ms": 36950,
+        "end_ms": 37550
+      },
+      {
+        "word": "가나다",
+        "start_ms": 37670,
+        "end_ms": 38270
+      },
+      {
+        "word": "가나다",
+        "start_ms": 38870,
+        "end_ms": 39470
+      },
+      {
+        "word": "가나다",
+        "start_ms": 39590,
+        "end_ms": 40190
+      },
+      {
+        "word": "가나다",
+        "start_ms": 40310,
+        "end_ms": 40910
+      },
+      {
+        "word": "가나다",
+        "start_ms": 41030,
+        "end_ms": 41630
+      },
+      {
+        "word": "가나다",
+        "start_ms": 41750,
+        "end_ms": 42350
+      },
+      {
+        "word": "가나다",
+        "start_ms": 42470,
+        "end_ms": 43070
+      },
+      {
+        "word": "가나다",
+        "start_ms": 43670,
+        "end_ms": 44270
+      },
+      {
+        "word": "가나다",
+        "start_ms": 44390,
+        "end_ms": 44990
+      },
+      {
+        "word": "가나다",
+        "start_ms": 45110,
+        "end_ms": 45710
+      },
+      {
+        "word": "가나다",
+        "start_ms": 45830,
+        "end_ms": 46430
+      },
+      {
+        "word": "가나다",
+        "start_ms": 46550,
+        "end_ms": 47150
+      },
+      {
+        "word": "가나다",
+        "start_ms": 47270,
+        "end_ms": 47870
+      },
+      {
+        "word": "가나다",
+        "start_ms": 48470,
+        "end_ms": 49070
+      },
+      {
+        "word": "가나다",
+        "start_ms": 49190,
+        "end_ms": 49790
+      },
+      {
+        "word": "가나다",
+        "start_ms": 49910,
+        "end_ms": 50510
+      },
+      {
+        "word": "가나다",
+        "start_ms": 50630,
+        "end_ms": 51230
+      },
+      {
+        "word": "가나다",
+        "start_ms": 51350,
+        "end_ms": 51950
+      },
+      {
+        "word": "가나다",
+        "start_ms": 52070,
+        "end_ms": 52670
+      },
+      {
+        "word": "가나다",
+        "start_ms": 53270,
+        "end_ms": 53870
+      },
+      {
+        "word": "가나다",
+        "start_ms": 53990,
+        "end_ms": 54590
+      },
+      {
+        "word": "가나다",
+        "start_ms": 54710,
+        "end_ms": 55310
+      },
+      {
+        "word": "가나다",
+        "start_ms": 55430,
+        "end_ms": 56030
+      },
+      {
+        "word": "가나다",
+        "start_ms": 56150,
+        "end_ms": 56750
+      },
+      {
+        "word": "가나다",
+        "start_ms": 56870,
+        "end_ms": 57470
+      },
+      {
+        "word": "가나다",
+        "start_ms": 58070,
+        "end_ms": 58670
+      },
+      {
+        "word": "가나다",
+        "start_ms": 58790,
+        "end_ms": 59390
+      },
+      {
+        "word": "가나다",
+        "start_ms": 59510,
+        "end_ms": 60110
+      },
+      {
+        "word": "가나다",
+        "start_ms": 60230,
+        "end_ms": 60830
+      },
+      {
+        "word": "가나다",
+        "start_ms": 60950,
+        "end_ms": 61550
+      },
+      {
+        "word": "가나다",
+        "start_ms": 61670,
+        "end_ms": 62270
+      },
+      {
+        "word": "가나다",
+        "start_ms": 62870,
+        "end_ms": 63470
+      },
+      {
+        "word": "가나다",
+        "start_ms": 63590,
+        "end_ms": 64190
+      },
+      {
+        "word": "가나다",
+        "start_ms": 64310,
+        "end_ms": 64910
+      },
+      {
+        "word": "가나다",
+        "start_ms": 65030,
+        "end_ms": 65630
+      },
+      {
+        "word": "가나다",
+        "start_ms": 65750,
+        "end_ms": 66350
+      },
+      {
+        "word": "가나다",
+        "start_ms": 66470,
+        "end_ms": 67070
+      },
+      {
+        "word": "음",
+        "start_ms": 67670,
+        "end_ms": 68020
+      },
+      {
+        "word": "가나다",
+        "start_ms": 68140,
+        "end_ms": 68740
+      },
+      {
+        "word": "가나다",
+        "start_ms": 68860,
+        "end_ms": 69460
+      },
+      {
+        "word": "가나다",
+        "start_ms": 69580,
+        "end_ms": 70180
+      },
+      {
+        "word": "가나다",
+        "start_ms": 70300,
+        "end_ms": 70900
+      },
+      {
+        "word": "가나다",
+        "start_ms": 71020,
+        "end_ms": 71620
+      },
+      {
+        "word": "가나다",
+        "start_ms": 71740,
+        "end_ms": 72340
+      },
+      {
+        "word": "가나다",
+        "start_ms": 72940,
+        "end_ms": 73540
+      },
+      {
+        "word": "가나다",
+        "start_ms": 73660,
+        "end_ms": 74260
+      },
+      {
+        "word": "가나다",
+        "start_ms": 74380,
+        "end_ms": 74980
+      },
+      {
+        "word": "가나다",
+        "start_ms": 75100,
+        "end_ms": 75700
+      },
+      {
+        "word": "가나다",
+        "start_ms": 75820,
+        "end_ms": 76420
+      },
+      {
+        "word": "가나다",
+        "start_ms": 76540,
+        "end_ms": 77140
+      },
+      {
+        "word": "가나다",
+        "start_ms": 77740,
+        "end_ms": 78340
+      },
+      {
+        "word": "가나다",
+        "start_ms": 78460,
+        "end_ms": 79060
+      },
+      {
+        "word": "가나다",
+        "start_ms": 79180,
+        "end_ms": 79780
+      },
+      {
+        "word": "가나다",
+        "start_ms": 79900,
+        "end_ms": 80500
+      },
+      {
+        "word": "가나다",
+        "start_ms": 80620,
+        "end_ms": 81220
+      },
+      {
+        "word": "가나다",
+        "start_ms": 81340,
+        "end_ms": 81940
+      },
+      {
+        "word": "가나다",
+        "start_ms": 82540,
+        "end_ms": 83140
+      },
+      {
+        "word": "가나다",
+        "start_ms": 83260,
+        "end_ms": 83860
+      },
+      {
+        "word": "가나다",
+        "start_ms": 83980,
+        "end_ms": 84580
+      },
+      {
+        "word": "가나다",
+        "start_ms": 84700,
+        "end_ms": 85300
+      },
+      {
+        "word": "가나다",
+        "start_ms": 85420,
+        "end_ms": 86020
+      },
+      {
+        "word": "가나다",
+        "start_ms": 86140,
+        "end_ms": 86740
+      },
+      {
+        "word": "가나다",
+        "start_ms": 87340,
+        "end_ms": 87940
+      },
+      {
+        "word": "가나다",
+        "start_ms": 88060,
+        "end_ms": 88660
+      },
+      {
+        "word": "가나다",
+        "start_ms": 88780,
+        "end_ms": 89380
+      },
+      {
+        "word": "가나다",
+        "start_ms": 89500,
+        "end_ms": 90100
+      }
+    ],
+    "utterance_ends": [
+      33000,
+      38270,
+      43070,
+      47870,
+      52670,
+      57470,
+      62270,
+      67070,
+      72340,
+      77140,
+      81940,
+      86740,
+      91540
+    ],
+    "stt_status": "ok",
+    "slide": {
+      "number": 3,
+      "started_ms": 59390
+    }
+  },
+  "calibration": {
+    "base_level_db": -29.5
+  },
+  "coach_state": {
+    "v": 2,
+    "last_t_ms": 91000,
+    "history": [
+      {
+        "t_ms": 32000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7964,
+        "recent_filler_count": 0.0
+      },
+      {
+        "t_ms": 33000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7929,
+        "recent_filler_count": 0.0
+      },
+      {
+        "t_ms": 34000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7927,
+        "recent_filler_count": 0.0
+      },
+      {
+        "t_ms": 35000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7925,
+        "recent_filler_count": 0.0
+      },
+      {
+        "t_ms": 36000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7922,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 37000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.792,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 38000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7917,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 39000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7882,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 40000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7879,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 41000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7876,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 42000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7874,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 43000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7838,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 44000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7835,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 45000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7832,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 46000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7829,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 47000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7792,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 48000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7789,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 49000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7786,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 50000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7783,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 51000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7745,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 52000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7742,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 53000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "speaking": false,
+        "required_ratio": 0.7739,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 54000,
+        "script_ratio": 0.2222,
+        "script_ratio_short": 0.2222,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.77,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 55000,
+        "script_ratio": 0.2222,
+        "script_ratio_short": 0.2222,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7732,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 56000,
+        "script_ratio": 0.1111,
+        "script_ratio_short": 0.1111,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7693,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 57000,
+        "script_ratio": 0.1111,
+        "script_ratio_short": 0.1111,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.769,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 58000,
+        "script_ratio": 0.1111,
+        "script_ratio_short": 0.1111,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "speaking": false,
+        "required_ratio": 0.7651,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 59000,
+        "script_ratio": 0.2222,
+        "script_ratio_short": 0.2222,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.7647,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 60000,
+        "script_ratio": 0.2222,
+        "script_ratio_short": 0.2222,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5357,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 61000,
+        "script_ratio": 0.1111,
+        "script_ratio_short": 0.1111,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.538,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 62000,
+        "script_ratio": 0.1111,
+        "script_ratio_short": 0.1111,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5366,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 63000,
+        "script_ratio": 0.1111,
+        "script_ratio_short": 0.1111,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5316,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 64000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5303,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 65000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5289,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 66000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5275,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 67000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5224,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 68000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5209,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 69000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5195,
+        "recent_filler_count": 1.0
+      },
+      {
+        "t_ms": 70000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.518,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 71000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5165,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 72000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.515,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 73000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5098,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 74000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5082,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 75000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5067,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 76000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.5051,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 77000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4997,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 78000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4981,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 79000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4964,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 80000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4948,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 81000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4892,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 82000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4875,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 83000,
+        "script_ratio": 0.1,
+        "script_ratio_short": 0.1,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4858,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 84000,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.2,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4841,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 85000,
+        "script_ratio": 0.3,
+        "script_ratio_short": 0.3,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4824,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 86000,
+        "script_ratio": 0.4,
+        "script_ratio_short": 0.4,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4766,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 87000,
+        "script_ratio": 0.5,
+        "script_ratio_short": 0.5,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4748,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 88000,
+        "script_ratio": 0.6,
+        "script_ratio_short": 0.6,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.469,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 89000,
+        "script_ratio": 0.7,
+        "script_ratio_short": 0.7,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4712,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 90000,
+        "script_ratio": 0.7,
+        "script_ratio_short": 0.7,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4653,
+        "recent_filler_count": 2.0
+      },
+      {
+        "t_ms": 91000,
+        "script_ratio": 0.7,
+        "script_ratio_short": 0.7,
+        "cpm": 300.0,
+        "cpm_short": 300.0,
+        "voice_diff_db": 0.0,
+        "speaking": true,
+        "required_ratio": 0.4634,
+        "recent_filler_count": 2.0
+      }
+    ],
+    "episodes": {
+      "AHEAD_OF_SCHEDULE": {
+        "candidate_id": "AHEAD_OF_SCHEDULE-60000",
+        "issue_type": "AHEAD_OF_SCHEDULE",
+        "area": "TIME",
+        "slide_number": 3,
+        "start_ms": 60000,
+        "last_seen_ms": 91000,
+        "peak_severity": 1.0,
+        "intervention_ids": [
+          "iv-73000"
+        ],
+        "suppressed_reasons": [
+          "NOT_PERSISTENT",
+          "WAITING_FOR_PAUSE",
+          "MIN_GAP",
+          "COOLDOWN",
+          "STRATEGY_EXHAUSTED"
+        ],
+        "reliable_ms": 32000,
+        "unreliable_ms": 0,
+        "reliable_since_ms": 60000,
+        "severity_ms": 32000.0
+      },
+      "GAZE_ON_SCRIPT:3": {
+        "candidate_id": "GAZE_ON_SCRIPT-88000",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "area": "GAZE",
+        "slide_number": 3,
+        "start_ms": 88000,
+        "last_seen_ms": 91000,
+        "peak_severity": 0.6,
+        "intervention_ids": [],
+        "suppressed_reasons": [
+          "NOT_PERSISTENT",
+          "WAITING_FOR_PAUSE"
+        ],
+        "reliable_ms": 4000,
+        "unreliable_ms": 0,
+        "reliable_since_ms": 88000,
+        "severity_ms": 2150.0
+      }
+    },
+    "last_fired_ms": 73000,
+    "last_by_instruction": {
+      "SLOW_DOWN": 73000
+    },
+    "fires_by_issue": {
+      "AHEAD_OF_SCHEDULE": 1
+    },
+    "interventions": 1,
+    "pending": [],
+    "strategy": {
+      "AHEAD_OF_SCHEDULE": {
+        "step": 0,
+        "failures": 1,
+        "exhausted": true,
+        "fires": 1
+      }
+    },
+    "praise": [],
+    "hold": {
+      "candidate_id": "GAZE_ON_SCRIPT-88000",
+      "since_ms": 91000
+    },
+    "slide_number": 3,
+    "slide_log": [
+      [
+        1,
+        0
+      ],
+      [
+        2,
+        29400
+      ],
+      [
+        3,
+        59390
+      ]
+    ],
+    "stt_gap": false,
+    "filler_times": [
+      [
+        67670,
+        1
+      ]
+    ],
+    "filler_ok": [
+      [
+        0,
+        91000
+      ]
+    ],
+    "suppress_log": {
+      "AHEAD_OF_SCHEDULE": 90000,
+      "GAZE_ON_SCRIPT:3": 88000
+    },
+    "cursors": {
+      "filler": {
+        "since_ms": 91000,
+        "words_since_ms": 89380
+      },
+      "pace": {
+        "since_ms": 91000,
+        "words_since_ms": 89380
+      },
+      "gaze": {
+        "since_ms": 91000,
+        "words_since_ms": -1
+      },
+      "volume": {
+        "since_ms": 91000,
+        "words_since_ms": -1
+      },
+      "timing": {
+        "since_ms": 91000,
+        "words_since_ms": -1
+      }
+    },
+    "totals": {
+      "GAZE": {
+        "uncertain_ms": 3000.0,
+        "total_ms": 91000.0,
+        "speaking_ms": 91000.0,
+        "camera_ms": 69000.0,
+        "measured_ms": 88000.0,
+        "script_ms": 19000.0,
+        "reading_ms": 19000.0,
+        "reading_runs": 1.0
+      },
+      "SPEED": {
+        "ok_ms": 91000.0,
+        "total_ms": 91000.0,
+        "chars": 333.0,
+        "speak_ms": 67300.0
+      },
+      "VOLUME": {
+        "voiced_ms": 68560.0,
+        "voiced_energy": 76.92558522694262,
+        "low_ms": 0.0,
+        "level_voiced_ms": 68560.0,
+        "base_db_ms": -2022520.0,
+        "audio_live_ms": 91000.0,
+        "total_ms": 91000.0
+      },
+      "PAUSE": {
+        "long_silence_count": 0.0,
+        "audio_live_ms": 91000.0,
+        "total_ms": 91000.0
+      },
+      "FILLER": {
+        "elapsed_ms": 91000.0,
+        "total_ms": 91000.0,
+        "filler_count": 2.0,
+        "filler_t1": 2.0,
+        "filler_word:음": 2.0
+      },
+      "TIME": {
+        "elapsed_ms": 91000.0,
+        "planned_ms": 91000.0
+      }
+    },
+    "slide_totals": {
+      "1": {
+        "GAZE": {
+          "uncertain_ms": 2000.0,
+          "total_ms": 30000.0,
+          "speaking_ms": 30000.0,
+          "camera_ms": 24000.0,
+          "measured_ms": 28000.0,
+          "script_ms": 4000.0,
+          "reading_ms": 4000.0
+        },
+        "SPEED": {
+          "ok_ms": 30000.0,
+          "total_ms": 30000.0,
+          "chars": 111.0,
+          "speak_ms": 22200.0
+        },
+        "VOLUME": {
+          "voiced_ms": 22680.0,
+          "voiced_energy": 25.44737854356853,
+          "low_ms": 0.0,
+          "level_voiced_ms": 22680.0,
+          "base_db_ms": -669060.0,
+          "audio_live_ms": 30000.0,
+          "total_ms": 30000.0
+        },
+        "PAUSE": {
+          "long_silence_count": 0.0,
+          "audio_live_ms": 30000.0,
+          "total_ms": 30000.0
+        },
+        "FILLER": {
+          "elapsed_ms": 30000.0,
+          "total_ms": 30000.0
+        },
+        "TIME": {
+          "elapsed_ms": 29400.0,
+          "planned_ms": 29400.0
+        }
+      },
+      "2": {
+        "TIME": {
+          "elapsed_ms": 29990.0,
+          "planned_ms": 29990.0
+        },
+        "GAZE": {
+          "camera_ms": 24000.0,
+          "total_ms": 30000.0,
+          "measured_ms": 29000.0,
+          "speaking_ms": 30000.0,
+          "script_ms": 5000.0,
+          "reading_ms": 5000.0,
+          "uncertain_ms": 1000.0
+        },
+        "SPEED": {
+          "ok_ms": 30000.0,
+          "total_ms": 30000.0,
+          "chars": 111.0,
+          "speak_ms": 22550.0
+        },
+        "VOLUME": {
+          "voiced_ms": 22560.0,
+          "voiced_energy": 25.312736329052292,
+          "low_ms": 0.0,
+          "level_voiced_ms": 22560.0,
+          "base_db_ms": -665520.0,
+          "audio_live_ms": 30000.0,
+          "total_ms": 30000.0
+        },
+        "PAUSE": {
+          "long_silence_count": 0.0,
+          "audio_live_ms": 30000.0,
+          "total_ms": 30000.0
+        },
+        "FILLER": {
+          "elapsed_ms": 30000.0,
+          "total_ms": 30000.0,
+          "filler_count": 1.0,
+          "filler_t1": 1.0,
+          "filler_word:음": 1.0
+        }
+      },
+      "3": {
+        "TIME": {
+          "elapsed_ms": 31610.0,
+          "planned_ms": 31610.0
+        },
+        "GAZE": {
+          "camera_ms": 21000.0,
+          "total_ms": 31000.0,
+          "measured_ms": 31000.0,
+          "speaking_ms": 31000.0,
+          "script_ms": 10000.0,
+          "reading_ms": 10000.0,
+          "reading_runs": 1.0
+        },
+        "SPEED": {
+          "ok_ms": 31000.0,
+          "total_ms": 31000.0,
+          "chars": 111.0,
+          "speak_ms": 22550.0
+        },
+        "VOLUME": {
+          "voiced_ms": 23320.0,
+          "voiced_energy": 26.165470354321776,
+          "low_ms": 0.0,
+          "level_voiced_ms": 23320.0,
+          "base_db_ms": -687940.0,
+          "audio_live_ms": 31000.0,
+          "total_ms": 31000.0
+        },
+        "PAUSE": {
+          "long_silence_count": 0.0,
+          "audio_live_ms": 31000.0,
+          "total_ms": 31000.0
+        },
+        "FILLER": {
+          "elapsed_ms": 31000.0,
+          "total_ms": 31000.0,
+          "filler_count": 1.0,
+          "filler_t1": 1.0,
+          "filler_word:음": 1.0
+        }
+      }
+    },
+    "slide_spans": {
+      "1": [
+        0,
+        29400
+      ],
+      "2": [
+        29400,
+        59390
+      ],
+      "3": [
+        59390,
+        91000
+      ]
+    },
+    "slide_stt_ok_ms": {
+      "1": 29400,
+      "2": 29990,
+      "3": 31610
+    },
+    "base_level_db": -29.5,
+    "base_level_source": "CALIBRATION",
+    "baseline_samples": [],
+    "criteria_versions": {
+      "filler": "filler-0.1+4b2747c2be03",
+      "pace": "pace-0.2+685bb58a4c67",
+      "gaze": "gaze-0.2+b6f8b464a3ee",
+      "volume": "volume-0.2+06b3417cd48b",
+      "timing": "timing-1.0+305f8e44237d"
+    },
+    "latest_criteria_versions": {
+      "filler": "filler-0.1+4b2747c2be03",
+      "pace": "pace-0.2+685bb58a4c67",
+      "gaze": "gaze-0.2+b6f8b464a3ee",
+      "volume": "volume-0.2+06b3417cd48b",
+      "timing": "timing-1.0+305f8e44237d"
+    },
+    "covered": [
+      [
+        0,
+        91000
+      ]
+    ],
+    "visits": [
+      {
+        "slide_number": 3,
+        "start_ms": 59390,
+        "target_ms": 90000,
+        "tally": {
+          "TIME": {
+            "elapsed_ms": 31610.0,
+            "planned_ms": 31610.0
+          },
+          "GAZE": {
+            "camera_ms": 21000.0,
+            "total_ms": 31000.0,
+            "measured_ms": 31000.0,
+            "speaking_ms": 31000.0,
+            "script_ms": 10000.0,
+            "reading_ms": 10000.0,
+            "reading_runs": 1.0
+          },
+          "SPEED": {
+            "ok_ms": 31000.0,
+            "total_ms": 31000.0,
+            "chars": 111.0,
+            "speak_ms": 22550.0
+          },
+          "VOLUME": {
+            "voiced_ms": 23320.0,
+            "voiced_energy": 26.165470354321776,
+            "low_ms": 0.0,
+            "level_voiced_ms": 23320.0,
+            "base_db_ms": -687940.0,
+            "audio_live_ms": 31000.0,
+            "total_ms": 31000.0
+          },
+          "PAUSE": {
+            "long_silence_count": 0.0,
+            "audio_live_ms": 31000.0,
+            "total_ms": 31000.0
+          },
+          "FILLER": {
+            "elapsed_ms": 31000.0,
+            "total_ms": 31000.0,
+            "filler_count": 1.0,
+            "filler_t1": 1.0,
+            "filler_word:음": 1.0
+          }
+        }
+      }
+    ]
+  },
+  "script_used": null
+}

@@ -1,0 +1,400 @@
+{
+  "take_id": "가상대본1_take4",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "평균 23분",
+              "stt": "평균 삼십이 분"
+            }
+          ],
+          "note": "하루 평균 23분을 32분(삼십이 분)으로 잘못 말함. 312명은 맞게 말함"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 6,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": [
+        "저도 시험 기간에 자리 찾느라 열람실을 몇 바퀴씩 돌았던 기억이 있는데요"
+      ]
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "'센서를 새로 설치하지 않고 이미 가진 기록만 쓴다'를 '센서를 새로 설치해서 기존 기록과 같이 쓴다'로 반대로 말함"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "시험 기간에도 오차가 크게 늘지 않았다는 주장을 '오차가 꽤 크게 늘었다'로 반대로 말함. 3:1(삼 대 일)은 맞게 말함"
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "관리자 화면(열람실별 이용률, 노쇼 비율, 오래 비워 둔 자리 정리)을 자기 말로 풀어 말함. 내용은 모두 전달"
+        }
+      ],
+      "additions": [
+        "이 화면은 저희 팀 디자이너가 정말 고생해서 만들었습니다"
+      ]
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "42퍼센트를 '이십사 퍼센트'로 잘못 말했다가 '아 아니 사십이 퍼센트'로 바로 정정함. 최종 값 기준 verbatim"
+        },
+        {
+          "index": 2,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "76%",
+              "stt": "67퍼센트"
+            }
+          ],
+          "note": "10분 안에 자리를 잡은 비율 76%를 67퍼센트로 잘못 말함"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "약 430곳",
+              "stt": "약 340곳"
+            }
+          ],
+          "note": "대학 도서관 수 약 430곳을 약 340곳으로 잘못 말함. 공공도서관 약 1,200곳은 맞게 말함"
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "contradicted",
+          "dropped_values": [],
+          "changed_values": [
+            {
+              "script": "600만 원",
+              "stt": "팔백만 원"
+            }
+          ],
+          "note": "대학 도서관 연간 구독료 하한 600만 원을 팔백만 원으로 잘못 말함. 49만 원, 1,200만 원은 맞게 말함"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": [
+        "사실 이 무료 기간 얘기를 했을 때 도서관 쪽 반응이 제일 좋았습니다"
+      ]
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "'기다리는 시간을 줄이고 좌석을 더 공정하게 운영'을 '기다리는 일이 줄어들고 좌석을 더 공평하게 나눠 줄 수 있다'로 바꿔 말함. SeatFlow는 말함"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}

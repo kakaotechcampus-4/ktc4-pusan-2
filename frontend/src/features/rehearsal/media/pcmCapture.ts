@@ -1,4 +1,5 @@
 import { STT_SAMPLE_RATE } from '../lib/sttProtocol';
+import { resumeOnGesture } from './resumeOnGesture';
 import type { Ms } from '@/types/api';
 
 /**
@@ -85,7 +86,7 @@ export async function startPcmCapture(
    * 전사가 통째로 앞당겨집니다. 워클릿이 주는 `startFrame` 은 컨텍스트를 만든
    * 시점부터 세므로, 이 값에 더하면 준비 시간이 저절로 들어갑니다.
    */
-  const audioClockStartedAtMs = elapsedMs();
+  let audioClockStartedAtMs = elapsedMs();
 
   /**
    * 브라우저가 16kHz 를 거절하면 장치 기본 레이트로 열립니다. 그대로 보내면
@@ -97,14 +98,31 @@ export async function startPcmCapture(
     return { capture: null, error: 'RATE_UNSUPPORTED' };
   }
 
-  // getUserMedia 를 이미 통과한 시점이라 대개 바로 흐릅니다. 안 되면 state 로 드러냅니다
-  if (context.state === 'suspended') await context.resume().catch(() => undefined);
+  /**
+   * ★ 멈춘(suspended) 동안은 오디오 시계도 멈춥니다. 다시 흐르기 시작한 순간 기준점을 새로
+   *   잡습니다 — 그대로 두면 멈춰 있던 만큼 offset 이 뒤처져 전사가 통째로 앞당겨집니다.
+   *   새로고침한 화면은 제스처가 없어 멈춘 채로 시작하고 첫 클릭·키 입력에서 풀립니다.
+   */
+  const onStateChange = () => {
+    if (context.state === 'running') {
+      audioClockStartedAtMs = elapsedMs() - Math.round(context.currentTime * 1000);
+    }
+  };
+  context.addEventListener('statechange', onStateChange);
+
+  // getUserMedia 를 이미 통과한 시점이라 대개 바로 흐릅니다. 안 되면 첫 제스처에서 풉니다.
+  // ★ resume() 을 기다리지 않습니다. 재생이 허용되지 않은 컨텍스트의 resume() 은 거절되지 않고
+  //   제스처가 올 때까지 대기합니다 (Web Audio 명세) — 기다리면 제스처 리스너가 영영 안 붙습니다
+  const stopResume = resumeOnGesture(context);
+  if (context.state === 'suspended') context.resume().catch(() => undefined);
 
   let node: AudioWorkletNode;
   try {
     await context.audioWorklet.addModule(WORKLET_URL);
     node = new AudioWorkletNode(context, 'pcm-framer', { numberOfOutputs: 1 });
   } catch {
+    stopResume();
+    context.removeEventListener('statechange', onStateChange);
     await context.close().catch(() => undefined);
     return { capture: null, error: 'WORKLET_FAILED' };
   }
@@ -127,8 +145,12 @@ export async function startPcmCapture(
   return {
     capture: {
       sampleRate: context.sampleRate,
-      state: context.state,
+      get state() {
+        return context.state;
+      },
       async stop() {
+        stopResume();
+        context.removeEventListener('statechange', onStateChange);
         node.port.onmessage = null;
         source.disconnect();
         node.disconnect();

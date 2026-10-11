@@ -1,0 +1,442 @@
+{
+  "take_id": "가상대본2_take3",
+  "slides": [
+    {
+      "slide_number": 1,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "partial",
+          "dropped_values": [
+            "15%",
+            "20%"
+          ],
+          "changed_values": [],
+          "note": "'15~20%'를 '꽤 많은 양'으로 뭉뚱그림"
+        },
+        {
+          "index": 4,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 2,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "서민재 팀원 역할 소개 전체 누락"
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 3,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "partial",
+          "dropped_values": [
+            "12곳"
+          ],
+          "changed_values": [],
+          "note": "'12곳'을 '여러 곳'으로 말함, 2년은 말함"
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 4,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "claim 누락: '두 단계'라는 말 없이 S1('먼저 ...')부터 시작"
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "Prophet/LightGBM을 '프로펫', '라이트지비엠'으로 전사"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 5,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [
+            "약 18퍼센트"
+          ],
+          "changed_values": [],
+          "note": "'약 18퍼센트'를 '꽤 많이'로 말함"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "11.4%를 '십일 점 사 퍼센트'로 읽음"
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 6,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 7,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "partial",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "크루아상 질문 예시까지만 말하고, 버터 주문 질문과 재료 양 계산 부분은 생략"
+        },
+        {
+          "index": 1,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 8,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "partial",
+          "dropped_values": [
+            "오후 6시"
+          ],
+          "changed_values": [],
+          "note": "'오후 6시'를 '가게 문 닫기 전에'로 뭉뚱그림"
+        },
+        {
+          "index": 1,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "'남을 것 같은 빵', '할인가', '승인을 누르면 ... 올라가는 방식'으로 바꿔 말함, 의미 동일"
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 9,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "1만 9천 원을 '만 구천 원'으로 읽음"
+        },
+        {
+          "index": 1,
+          "status": "partial",
+          "dropped_values": [
+            "3개월"
+          ],
+          "changed_values": [],
+          "note": "'첫 3개월'을 '처음 몇 달'로 말함"
+        },
+        {
+          "index": 2,
+          "status": "partial",
+          "dropped_values": [
+            "약 120만 원",
+            "10%"
+          ],
+          "changed_values": [],
+          "note": "'평균 약 120만 원'을 '꽤 커서', '10%만'을 '조금만'으로 말함; 한 곳, 여섯 배는 말함"
+        },
+        {
+          "index": 3,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 10,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    },
+    {
+      "slide_number": 11,
+      "sentences": [
+        {
+          "index": 0,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 1,
+          "status": "missing",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 2,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 3,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 4,
+          "status": "paraphrased",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": "'예측을 잘하는 것만큼 ... 근거를 보여 주는 게 중요했습니다'로 바꿔 말함, 의미 동일"
+        },
+        {
+          "index": 5,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        },
+        {
+          "index": 6,
+          "status": "verbatim",
+          "dropped_values": [],
+          "changed_values": [],
+          "note": ""
+        }
+      ],
+      "additions": []
+    }
+  ]
+}

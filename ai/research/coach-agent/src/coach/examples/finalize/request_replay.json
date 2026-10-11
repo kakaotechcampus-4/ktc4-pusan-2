@@ -1,0 +1,3640 @@
+{
+  "take_id": "take-123",
+  "mode": "COACHING",
+  "plan": {
+    "target_ms": 300000,
+    "min_ms": 270000,
+    "max_ms": 330000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 60000,
+        "script_chars": 300
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 300
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 90000,
+        "script_chars": 450
+      }
+    ]
+  },
+  "missions": [
+    {
+      "mission_id": "m-2",
+      "area": "GAZE",
+      "slide_number": 3,
+      "target": {
+        "metric": "script_ratio",
+        "operator": "LTE",
+        "value": 0.4
+      }
+    }
+  ],
+  "recurring_issues": [
+    {
+      "area": "GAZE",
+      "slide_number": 3
+    }
+  ],
+  "coaching_plan": {
+    "focus": [
+      {
+        "area": "GAZE",
+        "slide_number": 3,
+        "weight": 1.5
+      }
+    ],
+    "relax": [],
+    "max_interventions": null
+  },
+  "script_used": null,
+  "calibration": {
+    "base_level_db": -29.5
+  },
+  "t_ms": 92000,
+  "script_mode": "HIGHLIGHT",
+  "coach_state": null,
+  "events": [
+    {
+      "event_id": "ep-GAZE_UNMEASURABLE-1-1000",
+      "t_ms": 8000,
+      "kind": "EPISODE",
+      "issue_type": "GAZE_UNMEASURABLE",
+      "area": "GAZE",
+      "slide_number": 1,
+      "start_ms": 1000,
+      "end_ms": 4000,
+      "peak_severity": 1.0,
+      "intervention_ids": [],
+      "suppressed_reasons": [],
+      "reliable_ms": 0,
+      "unreliable_ms": 4000,
+      "mean_severity": 0.7205
+    },
+    {
+      "event_id": "sl-1-0",
+      "t_ms": 31000,
+      "kind": "SLIDE",
+      "slide_number": 1,
+      "start_ms": 0,
+      "end_ms": 29400,
+      "target_ms": 60000,
+      "tally": {
+        "GAZE": {
+          "uncertain_ms": 2000.0,
+          "total_ms": 30000.0,
+          "speaking_ms": 30000.0,
+          "camera_ms": 24000.0,
+          "measured_ms": 28000.0,
+          "script_ms": 4000.0,
+          "reading_ms": 4000.0
+        },
+        "SPEED": {
+          "ok_ms": 30000.0,
+          "total_ms": 30000.0,
+          "chars": 111.0,
+          "speak_ms": 22200.0
+        },
+        "VOLUME": {
+          "voiced_ms": 22680.0,
+          "voiced_energy": 25.44737854356853,
+          "low_ms": 0.0,
+          "level_voiced_ms": 22680.0,
+          "base_db_ms": -669060.0,
+          "audio_live_ms": 30000.0,
+          "total_ms": 30000.0
+        },
+        "PAUSE": {
+          "long_silence_count": 0.0,
+          "audio_live_ms": 30000.0,
+          "total_ms": 30000.0
+        },
+        "FILLER": {
+          "elapsed_ms": 30000.0,
+          "total_ms": 30000.0
+        },
+        "TIME": {
+          "elapsed_ms": 29400.0,
+          "planned_ms": 29400.0
+        }
+      }
+    },
+    {
+      "event_id": "su-AHEAD_OF_SCHEDULE-60000",
+      "t_ms": 60000,
+      "kind": "SUPPRESSED",
+      "issue_type": "AHEAD_OF_SCHEDULE",
+      "area": "TIME",
+      "slide_number": 3,
+      "instruction": "SLOW_DOWN",
+      "status": "WAITING",
+      "priority": 99,
+      "reasons": [
+        "NOT_PERSISTENT"
+      ]
+    },
+    {
+      "event_id": "sl-2-29400",
+      "t_ms": 61000,
+      "kind": "SLIDE",
+      "slide_number": 2,
+      "start_ms": 29400,
+      "end_ms": 59390,
+      "target_ms": 60000,
+      "tally": {
+        "TIME": {
+          "elapsed_ms": 29990.0,
+          "planned_ms": 29990.0
+        },
+        "GAZE": {
+          "camera_ms": 24000.0,
+          "total_ms": 30000.0,
+          "measured_ms": 29000.0,
+          "speaking_ms": 30000.0,
+          "script_ms": 5000.0,
+          "reading_ms": 5000.0,
+          "uncertain_ms": 1000.0
+        },
+        "SPEED": {
+          "ok_ms": 30000.0,
+          "total_ms": 30000.0,
+          "chars": 111.0,
+          "speak_ms": 22550.0
+        },
+        "VOLUME": {
+          "voiced_ms": 22560.0,
+          "voiced_energy": 25.312736329052292,
+          "low_ms": 0.0,
+          "level_voiced_ms": 22560.0,
+          "base_db_ms": -665520.0,
+          "audio_live_ms": 30000.0,
+          "total_ms": 30000.0
+        },
+        "PAUSE": {
+          "long_silence_count": 0.0,
+          "audio_live_ms": 30000.0,
+          "total_ms": 30000.0
+        },
+        "FILLER": {
+          "elapsed_ms": 30000.0,
+          "total_ms": 30000.0,
+          "filler_count": 1.0,
+          "filler_t1": 1.0,
+          "filler_word:음": 1.0
+        }
+      }
+    },
+    {
+      "event_id": "su-AHEAD_OF_SCHEDULE-70000",
+      "t_ms": 70000,
+      "kind": "SUPPRESSED",
+      "issue_type": "AHEAD_OF_SCHEDULE",
+      "area": "TIME",
+      "slide_number": 3,
+      "instruction": "SLOW_DOWN",
+      "status": "WAITING",
+      "priority": 100,
+      "reasons": [
+        "WAITING_FOR_PAUSE"
+      ]
+    },
+    {
+      "event_id": "iv-73000",
+      "t_ms": 73000,
+      "kind": "INTERVENTION",
+      "intervention_id": "iv-73000",
+      "issue_type": "AHEAD_OF_SCHEDULE",
+      "area": "TIME",
+      "instruction": "SLOW_DOWN",
+      "message": "시간 여유가 있어요. 천천히 말해도 돼요",
+      "priority": 100,
+      "confidence": 0.9,
+      "reason_codes": [
+        "AHEAD_OF_SCHEDULE"
+      ],
+      "slide_number": 3
+    },
+    {
+      "event_id": "su-AHEAD_OF_SCHEDULE-80000",
+      "t_ms": 80000,
+      "kind": "SUPPRESSED",
+      "issue_type": "AHEAD_OF_SCHEDULE",
+      "area": "TIME",
+      "slide_number": 3,
+      "instruction": "SLOW_DOWN",
+      "status": "WAITING",
+      "priority": 100,
+      "reasons": [
+        "MIN_GAP",
+        "COOLDOWN"
+      ]
+    },
+    {
+      "event_id": "oc-iv-73000",
+      "t_ms": 83000,
+      "kind": "OUTCOME",
+      "intervention_id": "iv-73000",
+      "outcome": "INEFFECTIVE",
+      "metric": "cpm_short",
+      "before": 300.0,
+      "after": 300.0
+    },
+    {
+      "event_id": "st-AHEAD_OF_SCHEDULE-3-83000",
+      "t_ms": 83000,
+      "kind": "STRATEGY",
+      "issue_type": "AHEAD_OF_SCHEDULE",
+      "area": "TIME",
+      "slide_number": 3,
+      "change": "GAVE_UP",
+      "from_instruction": "SLOW_DOWN",
+      "from_variant": "time_ahead",
+      "to_instruction": null,
+      "to_variant": null,
+      "intervention_id": "iv-73000"
+    },
+    {
+      "event_id": "su-GAZE_ON_SCRIPT-88000",
+      "t_ms": 88000,
+      "kind": "SUPPRESSED",
+      "issue_type": "GAZE_ON_SCRIPT",
+      "area": "GAZE",
+      "slide_number": 3,
+      "instruction": "LOOK_AT_CAMERA",
+      "status": "WAITING",
+      "priority": 100,
+      "reasons": [
+        "NOT_PERSISTENT"
+      ]
+    },
+    {
+      "event_id": "su-AHEAD_OF_SCHEDULE-90000",
+      "t_ms": 90000,
+      "kind": "SUPPRESSED",
+      "issue_type": "AHEAD_OF_SCHEDULE",
+      "area": "TIME",
+      "slide_number": 3,
+      "instruction": "SLOW_DOWN",
+      "status": "IGNORED",
+      "priority": 100,
+      "reasons": [
+        "STRATEGY_EXHAUSTED",
+        "COOLDOWN"
+      ]
+    }
+  ],
+  "inputs": {
+    "gaze_records": [
+      {
+        "t_ms": 62000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 63000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 64000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 65000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 66000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 67000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 68000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 69000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 70000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 71000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 72000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 73000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 74000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 75000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 76000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 77000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 78000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 79000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 80000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 81000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 82000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 83000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 84000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 85000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 86000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 87000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 88000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 89000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 90000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 91000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      }
+    ],
+    "voice_records": [
+      {
+        "t_ms": 62000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 63000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 64000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 790,
+        "silence_ms": 90,
+        "audio_live": true
+      },
+      {
+        "t_ms": 65000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 850,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 66000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 67000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 68000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 69000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 70000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 780,
+        "silence_ms": 100,
+        "audio_live": true
+      },
+      {
+        "t_ms": 71000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 860,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 72000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 73000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 74000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 860,
+        "silence_ms": 20,
+        "audio_live": true
+      },
+      {
+        "t_ms": 75000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 780,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 76000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 77000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 78000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 79000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 80000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 81000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 820,
+        "silence_ms": 60,
+        "audio_live": true
+      },
+      {
+        "t_ms": 82000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 460,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 83000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 84000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 85000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 86000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 620,
+        "silence_ms": 260,
+        "audio_live": true
+      },
+      {
+        "t_ms": 87000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 600,
+        "silence_ms": 60,
+        "audio_live": true
+      },
+      {
+        "t_ms": 88000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 820,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 89000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 90000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 91000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 540,
+        "silence_ms": 460,
+        "audio_live": true
+      }
+    ],
+    "words": [
+      {
+        "word": "가나다",
+        "start_ms": 31680,
+        "end_ms": 32280
+      },
+      {
+        "word": "가나다",
+        "start_ms": 32400,
+        "end_ms": 33000
+      },
+      {
+        "word": "음",
+        "start_ms": 33600,
+        "end_ms": 33950
+      },
+      {
+        "word": "가나다",
+        "start_ms": 34070,
+        "end_ms": 34670
+      },
+      {
+        "word": "가나다",
+        "start_ms": 34790,
+        "end_ms": 35390
+      },
+      {
+        "word": "가나다",
+        "start_ms": 35510,
+        "end_ms": 36110
+      },
+      {
+        "word": "가나다",
+        "start_ms": 36230,
+        "end_ms": 36830
+      },
+      {
+        "word": "가나다",
+        "start_ms": 36950,
+        "end_ms": 37550
+      },
+      {
+        "word": "가나다",
+        "start_ms": 37670,
+        "end_ms": 38270
+      },
+      {
+        "word": "가나다",
+        "start_ms": 38870,
+        "end_ms": 39470
+      },
+      {
+        "word": "가나다",
+        "start_ms": 39590,
+        "end_ms": 40190
+      },
+      {
+        "word": "가나다",
+        "start_ms": 40310,
+        "end_ms": 40910
+      },
+      {
+        "word": "가나다",
+        "start_ms": 41030,
+        "end_ms": 41630
+      },
+      {
+        "word": "가나다",
+        "start_ms": 41750,
+        "end_ms": 42350
+      },
+      {
+        "word": "가나다",
+        "start_ms": 42470,
+        "end_ms": 43070
+      },
+      {
+        "word": "가나다",
+        "start_ms": 43670,
+        "end_ms": 44270
+      },
+      {
+        "word": "가나다",
+        "start_ms": 44390,
+        "end_ms": 44990
+      },
+      {
+        "word": "가나다",
+        "start_ms": 45110,
+        "end_ms": 45710
+      },
+      {
+        "word": "가나다",
+        "start_ms": 45830,
+        "end_ms": 46430
+      },
+      {
+        "word": "가나다",
+        "start_ms": 46550,
+        "end_ms": 47150
+      },
+      {
+        "word": "가나다",
+        "start_ms": 47270,
+        "end_ms": 47870
+      },
+      {
+        "word": "가나다",
+        "start_ms": 48470,
+        "end_ms": 49070
+      },
+      {
+        "word": "가나다",
+        "start_ms": 49190,
+        "end_ms": 49790
+      },
+      {
+        "word": "가나다",
+        "start_ms": 49910,
+        "end_ms": 50510
+      },
+      {
+        "word": "가나다",
+        "start_ms": 50630,
+        "end_ms": 51230
+      },
+      {
+        "word": "가나다",
+        "start_ms": 51350,
+        "end_ms": 51950
+      },
+      {
+        "word": "가나다",
+        "start_ms": 52070,
+        "end_ms": 52670
+      },
+      {
+        "word": "가나다",
+        "start_ms": 53270,
+        "end_ms": 53870
+      },
+      {
+        "word": "가나다",
+        "start_ms": 53990,
+        "end_ms": 54590
+      },
+      {
+        "word": "가나다",
+        "start_ms": 54710,
+        "end_ms": 55310
+      },
+      {
+        "word": "가나다",
+        "start_ms": 55430,
+        "end_ms": 56030
+      },
+      {
+        "word": "가나다",
+        "start_ms": 56150,
+        "end_ms": 56750
+      },
+      {
+        "word": "가나다",
+        "start_ms": 56870,
+        "end_ms": 57470
+      },
+      {
+        "word": "가나다",
+        "start_ms": 58070,
+        "end_ms": 58670
+      },
+      {
+        "word": "가나다",
+        "start_ms": 58790,
+        "end_ms": 59390
+      },
+      {
+        "word": "가나다",
+        "start_ms": 59510,
+        "end_ms": 60110
+      },
+      {
+        "word": "가나다",
+        "start_ms": 60230,
+        "end_ms": 60830
+      },
+      {
+        "word": "가나다",
+        "start_ms": 60950,
+        "end_ms": 61550
+      },
+      {
+        "word": "가나다",
+        "start_ms": 61670,
+        "end_ms": 62270
+      },
+      {
+        "word": "가나다",
+        "start_ms": 62870,
+        "end_ms": 63470
+      },
+      {
+        "word": "가나다",
+        "start_ms": 63590,
+        "end_ms": 64190
+      },
+      {
+        "word": "가나다",
+        "start_ms": 64310,
+        "end_ms": 64910
+      },
+      {
+        "word": "가나다",
+        "start_ms": 65030,
+        "end_ms": 65630
+      },
+      {
+        "word": "가나다",
+        "start_ms": 65750,
+        "end_ms": 66350
+      },
+      {
+        "word": "가나다",
+        "start_ms": 66470,
+        "end_ms": 67070
+      },
+      {
+        "word": "음",
+        "start_ms": 67670,
+        "end_ms": 68020
+      },
+      {
+        "word": "가나다",
+        "start_ms": 68140,
+        "end_ms": 68740
+      },
+      {
+        "word": "가나다",
+        "start_ms": 68860,
+        "end_ms": 69460
+      },
+      {
+        "word": "가나다",
+        "start_ms": 69580,
+        "end_ms": 70180
+      },
+      {
+        "word": "가나다",
+        "start_ms": 70300,
+        "end_ms": 70900
+      },
+      {
+        "word": "가나다",
+        "start_ms": 71020,
+        "end_ms": 71620
+      },
+      {
+        "word": "가나다",
+        "start_ms": 71740,
+        "end_ms": 72340
+      },
+      {
+        "word": "가나다",
+        "start_ms": 72940,
+        "end_ms": 73540
+      },
+      {
+        "word": "가나다",
+        "start_ms": 73660,
+        "end_ms": 74260
+      },
+      {
+        "word": "가나다",
+        "start_ms": 74380,
+        "end_ms": 74980
+      },
+      {
+        "word": "가나다",
+        "start_ms": 75100,
+        "end_ms": 75700
+      },
+      {
+        "word": "가나다",
+        "start_ms": 75820,
+        "end_ms": 76420
+      },
+      {
+        "word": "가나다",
+        "start_ms": 76540,
+        "end_ms": 77140
+      },
+      {
+        "word": "가나다",
+        "start_ms": 77740,
+        "end_ms": 78340
+      },
+      {
+        "word": "가나다",
+        "start_ms": 78460,
+        "end_ms": 79060
+      },
+      {
+        "word": "가나다",
+        "start_ms": 79180,
+        "end_ms": 79780
+      },
+      {
+        "word": "가나다",
+        "start_ms": 79900,
+        "end_ms": 80500
+      },
+      {
+        "word": "가나다",
+        "start_ms": 80620,
+        "end_ms": 81220
+      },
+      {
+        "word": "가나다",
+        "start_ms": 81340,
+        "end_ms": 81940
+      },
+      {
+        "word": "가나다",
+        "start_ms": 82540,
+        "end_ms": 83140
+      },
+      {
+        "word": "가나다",
+        "start_ms": 83260,
+        "end_ms": 83860
+      },
+      {
+        "word": "가나다",
+        "start_ms": 83980,
+        "end_ms": 84580
+      },
+      {
+        "word": "가나다",
+        "start_ms": 84700,
+        "end_ms": 85300
+      },
+      {
+        "word": "가나다",
+        "start_ms": 85420,
+        "end_ms": 86020
+      },
+      {
+        "word": "가나다",
+        "start_ms": 86140,
+        "end_ms": 86740
+      },
+      {
+        "word": "가나다",
+        "start_ms": 87340,
+        "end_ms": 87940
+      },
+      {
+        "word": "가나다",
+        "start_ms": 88060,
+        "end_ms": 88660
+      },
+      {
+        "word": "가나다",
+        "start_ms": 88780,
+        "end_ms": 89380
+      },
+      {
+        "word": "가나다",
+        "start_ms": 89500,
+        "end_ms": 90100
+      },
+      {
+        "word": "가나다",
+        "start_ms": 90220,
+        "end_ms": 90820
+      },
+      {
+        "word": "가나다",
+        "start_ms": 90940,
+        "end_ms": 91540
+      }
+    ],
+    "utterance_ends": [
+      33000,
+      38270,
+      43070,
+      47870,
+      52670,
+      57470,
+      62270,
+      67070,
+      72340,
+      77140,
+      81940,
+      86740,
+      91540
+    ],
+    "stt_status": "ok",
+    "slide": {
+      "number": 3,
+      "started_ms": 59390
+    }
+  },
+  "replay": {
+    "gaze_records": [
+      {
+        "t_ms": 0,
+        "duration_ms": 1000,
+        "state": "UNCERTAIN",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 1000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 2000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 3000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 4000,
+        "duration_ms": 1000,
+        "state": "UNCERTAIN",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 5000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 6000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 7000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 8000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 9000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 10000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 11000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 12000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 13000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 14000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 15000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 16000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 17000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 18000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 19000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 20000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 21000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 22000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 23000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 24000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 25000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 26000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 27000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 28000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 29000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 30000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 31000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 32000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 33000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 34000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 35000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 36000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 37000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 38000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 39000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 40000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 41000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 42000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 43000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 44000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 45000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 46000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 47000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 48000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 49000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 50000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 51000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 52000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 53000,
+        "duration_ms": 1000,
+        "state": "UNCERTAIN",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 54000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 55000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 56000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 57000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 58000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 59000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 60000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 61000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 62000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 63000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 64000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 65000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 66000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 67000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 68000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 69000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 70000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 71000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 72000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 73000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 74000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 75000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 76000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 77000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 78000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 79000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 80000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 81000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 82000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 83000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 84000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 85000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 86000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 87000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 88000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 89000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 90000,
+        "duration_ms": 1000,
+        "state": "CAMERA",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      },
+      {
+        "t_ms": 91000,
+        "duration_ms": 1000,
+        "state": "BOTTOM",
+        "direction": null,
+        "confidence": 0.88,
+        "reliability": 0.95,
+        "issues": [],
+        "frames": 12
+      }
+    ],
+    "voice_records": [
+      {
+        "t_ms": 0,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 1000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 2000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 3000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 4000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 5000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 6000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 7000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 8000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 9000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 10000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 800,
+        "silence_ms": 80,
+        "audio_live": true
+      },
+      {
+        "t_ms": 11000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 840,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 12000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 13000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 680,
+        "silence_ms": 200,
+        "audio_live": true
+      },
+      {
+        "t_ms": 14000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 600,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 15000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 16000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 17000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 18000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 600,
+        "silence_ms": 400,
+        "audio_live": true
+      },
+      {
+        "t_ms": 19000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 680,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 20000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 21000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 840,
+        "silence_ms": 40,
+        "audio_live": true
+      },
+      {
+        "t_ms": 22000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 800,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 23000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 24000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 25000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 26000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 27000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 28000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 29000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 30000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 31000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 32000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 33000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 350,
+        "silence_ms": 50,
+        "audio_live": true
+      },
+      {
+        "t_ms": 34000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 810,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 35000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 36000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 37000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 38000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 39000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 40000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 790,
+        "silence_ms": 90,
+        "audio_live": true
+      },
+      {
+        "t_ms": 41000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 850,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 42000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 43000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 44000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 870,
+        "silence_ms": 10,
+        "audio_live": true
+      },
+      {
+        "t_ms": 45000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 770,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 46000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 47000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 750,
+        "silence_ms": 130,
+        "audio_live": true
+      },
+      {
+        "t_ms": 48000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 530,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 49000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 50000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 51000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 830,
+        "silence_ms": 50,
+        "audio_live": true
+      },
+      {
+        "t_ms": 52000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 600,
+        "silence_ms": 330,
+        "audio_live": true
+      },
+      {
+        "t_ms": 53000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 610,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 54000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 55000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 56000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 57000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 470,
+        "silence_ms": 530,
+        "audio_live": true
+      },
+      {
+        "t_ms": 58000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 810,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 59000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 60000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 61000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 62000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 63000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 64000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 790,
+        "silence_ms": 90,
+        "audio_live": true
+      },
+      {
+        "t_ms": 65000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 850,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 66000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 67000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 68000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 69000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 70000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 780,
+        "silence_ms": 100,
+        "audio_live": true
+      },
+      {
+        "t_ms": 71000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 860,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 72000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 73000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 74000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 860,
+        "silence_ms": 20,
+        "audio_live": true
+      },
+      {
+        "t_ms": 75000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 780,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 76000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 77000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 400,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 78000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 79000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 80000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 81000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 820,
+        "silence_ms": 60,
+        "audio_live": true
+      },
+      {
+        "t_ms": 82000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 460,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 83000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 84000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 85000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 86000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 620,
+        "silence_ms": 260,
+        "audio_live": true
+      },
+      {
+        "t_ms": 87000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 600,
+        "silence_ms": 60,
+        "audio_live": true
+      },
+      {
+        "t_ms": 88000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 820,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 89000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 880,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 90000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 760,
+        "silence_ms": 0,
+        "audio_live": true
+      },
+      {
+        "t_ms": 91000,
+        "duration_ms": 1000,
+        "level_db": -29.5,
+        "voiced_ms": 540,
+        "silence_ms": 460,
+        "audio_live": true
+      }
+    ],
+    "stt_status_changes": [
+      {
+        "t_ms": 0,
+        "status": "ok"
+      }
+    ],
+    "words": [
+      {
+        "word": "가나다",
+        "start_ms": 0,
+        "end_ms": 600,
+        "final_at_ms": 1800
+      },
+      {
+        "word": "가나다",
+        "start_ms": 720,
+        "end_ms": 1320,
+        "final_at_ms": 2520
+      },
+      {
+        "word": "가나다",
+        "start_ms": 1440,
+        "end_ms": 2040,
+        "final_at_ms": 3240
+      },
+      {
+        "word": "가나다",
+        "start_ms": 2160,
+        "end_ms": 2760,
+        "final_at_ms": 3960
+      },
+      {
+        "word": "가나다",
+        "start_ms": 2880,
+        "end_ms": 3480,
+        "final_at_ms": 4680
+      },
+      {
+        "word": "가나다",
+        "start_ms": 3600,
+        "end_ms": 4200,
+        "final_at_ms": 5400
+      },
+      {
+        "word": "가나다",
+        "start_ms": 4800,
+        "end_ms": 5400,
+        "final_at_ms": 6600
+      },
+      {
+        "word": "가나다",
+        "start_ms": 5520,
+        "end_ms": 6120,
+        "final_at_ms": 7320
+      },
+      {
+        "word": "가나다",
+        "start_ms": 6240,
+        "end_ms": 6840,
+        "final_at_ms": 8040
+      },
+      {
+        "word": "가나다",
+        "start_ms": 6960,
+        "end_ms": 7560,
+        "final_at_ms": 8760
+      },
+      {
+        "word": "가나다",
+        "start_ms": 7680,
+        "end_ms": 8280,
+        "final_at_ms": 9480
+      },
+      {
+        "word": "가나다",
+        "start_ms": 8400,
+        "end_ms": 9000,
+        "final_at_ms": 10200
+      },
+      {
+        "word": "가나다",
+        "start_ms": 9600,
+        "end_ms": 10200,
+        "final_at_ms": 11400
+      },
+      {
+        "word": "가나다",
+        "start_ms": 10320,
+        "end_ms": 10920,
+        "final_at_ms": 12120
+      },
+      {
+        "word": "가나다",
+        "start_ms": 11040,
+        "end_ms": 11640,
+        "final_at_ms": 12840
+      },
+      {
+        "word": "가나다",
+        "start_ms": 11760,
+        "end_ms": 12360,
+        "final_at_ms": 13560
+      },
+      {
+        "word": "가나다",
+        "start_ms": 12480,
+        "end_ms": 13080,
+        "final_at_ms": 14280
+      },
+      {
+        "word": "가나다",
+        "start_ms": 13200,
+        "end_ms": 13800,
+        "final_at_ms": 15000
+      },
+      {
+        "word": "가나다",
+        "start_ms": 14400,
+        "end_ms": 15000,
+        "final_at_ms": 16200
+      },
+      {
+        "word": "가나다",
+        "start_ms": 15120,
+        "end_ms": 15720,
+        "final_at_ms": 16920
+      },
+      {
+        "word": "가나다",
+        "start_ms": 15840,
+        "end_ms": 16440,
+        "final_at_ms": 17640
+      },
+      {
+        "word": "가나다",
+        "start_ms": 16560,
+        "end_ms": 17160,
+        "final_at_ms": 18360
+      },
+      {
+        "word": "가나다",
+        "start_ms": 17280,
+        "end_ms": 17880,
+        "final_at_ms": 19080
+      },
+      {
+        "word": "가나다",
+        "start_ms": 18000,
+        "end_ms": 18600,
+        "final_at_ms": 19800
+      },
+      {
+        "word": "가나다",
+        "start_ms": 19200,
+        "end_ms": 19800,
+        "final_at_ms": 21000
+      },
+      {
+        "word": "가나다",
+        "start_ms": 19920,
+        "end_ms": 20520,
+        "final_at_ms": 21720
+      },
+      {
+        "word": "가나다",
+        "start_ms": 20640,
+        "end_ms": 21240,
+        "final_at_ms": 22440
+      },
+      {
+        "word": "가나다",
+        "start_ms": 21360,
+        "end_ms": 21960,
+        "final_at_ms": 23160
+      },
+      {
+        "word": "가나다",
+        "start_ms": 22080,
+        "end_ms": 22680,
+        "final_at_ms": 23880
+      },
+      {
+        "word": "가나다",
+        "start_ms": 22800,
+        "end_ms": 23400,
+        "final_at_ms": 24600
+      },
+      {
+        "word": "가나다",
+        "start_ms": 24000,
+        "end_ms": 24600,
+        "final_at_ms": 25800
+      },
+      {
+        "word": "가나다",
+        "start_ms": 24720,
+        "end_ms": 25320,
+        "final_at_ms": 26520
+      },
+      {
+        "word": "가나다",
+        "start_ms": 25440,
+        "end_ms": 26040,
+        "final_at_ms": 27240
+      },
+      {
+        "word": "가나다",
+        "start_ms": 26160,
+        "end_ms": 26760,
+        "final_at_ms": 27960
+      },
+      {
+        "word": "가나다",
+        "start_ms": 26880,
+        "end_ms": 27480,
+        "final_at_ms": 28680
+      },
+      {
+        "word": "가나다",
+        "start_ms": 27600,
+        "end_ms": 28200,
+        "final_at_ms": 29400
+      },
+      {
+        "word": "가나다",
+        "start_ms": 28800,
+        "end_ms": 29400,
+        "final_at_ms": 30600
+      },
+      {
+        "word": "가나다",
+        "start_ms": 29520,
+        "end_ms": 30120,
+        "final_at_ms": 31320
+      },
+      {
+        "word": "가나다",
+        "start_ms": 30240,
+        "end_ms": 30840,
+        "final_at_ms": 32040
+      },
+      {
+        "word": "가나다",
+        "start_ms": 30960,
+        "end_ms": 31560,
+        "final_at_ms": 32760
+      },
+      {
+        "word": "가나다",
+        "start_ms": 31680,
+        "end_ms": 32280,
+        "final_at_ms": 33480
+      },
+      {
+        "word": "가나다",
+        "start_ms": 32400,
+        "end_ms": 33000,
+        "final_at_ms": 34200
+      },
+      {
+        "word": "음",
+        "start_ms": 33600,
+        "end_ms": 33950,
+        "final_at_ms": 35150
+      },
+      {
+        "word": "가나다",
+        "start_ms": 34070,
+        "end_ms": 34670,
+        "final_at_ms": 35870
+      },
+      {
+        "word": "가나다",
+        "start_ms": 34790,
+        "end_ms": 35390,
+        "final_at_ms": 36590
+      },
+      {
+        "word": "가나다",
+        "start_ms": 35510,
+        "end_ms": 36110,
+        "final_at_ms": 37310
+      },
+      {
+        "word": "가나다",
+        "start_ms": 36230,
+        "end_ms": 36830,
+        "final_at_ms": 38030
+      },
+      {
+        "word": "가나다",
+        "start_ms": 36950,
+        "end_ms": 37550,
+        "final_at_ms": 38750
+      },
+      {
+        "word": "가나다",
+        "start_ms": 37670,
+        "end_ms": 38270,
+        "final_at_ms": 39470
+      },
+      {
+        "word": "가나다",
+        "start_ms": 38870,
+        "end_ms": 39470,
+        "final_at_ms": 40670
+      },
+      {
+        "word": "가나다",
+        "start_ms": 39590,
+        "end_ms": 40190,
+        "final_at_ms": 41390
+      },
+      {
+        "word": "가나다",
+        "start_ms": 40310,
+        "end_ms": 40910,
+        "final_at_ms": 42110
+      },
+      {
+        "word": "가나다",
+        "start_ms": 41030,
+        "end_ms": 41630,
+        "final_at_ms": 42830
+      },
+      {
+        "word": "가나다",
+        "start_ms": 41750,
+        "end_ms": 42350,
+        "final_at_ms": 43550
+      },
+      {
+        "word": "가나다",
+        "start_ms": 42470,
+        "end_ms": 43070,
+        "final_at_ms": 44270
+      },
+      {
+        "word": "가나다",
+        "start_ms": 43670,
+        "end_ms": 44270,
+        "final_at_ms": 45470
+      },
+      {
+        "word": "가나다",
+        "start_ms": 44390,
+        "end_ms": 44990,
+        "final_at_ms": 46190
+      },
+      {
+        "word": "가나다",
+        "start_ms": 45110,
+        "end_ms": 45710,
+        "final_at_ms": 46910
+      },
+      {
+        "word": "가나다",
+        "start_ms": 45830,
+        "end_ms": 46430,
+        "final_at_ms": 47630
+      },
+      {
+        "word": "가나다",
+        "start_ms": 46550,
+        "end_ms": 47150,
+        "final_at_ms": 48350
+      },
+      {
+        "word": "가나다",
+        "start_ms": 47270,
+        "end_ms": 47870,
+        "final_at_ms": 49070
+      },
+      {
+        "word": "가나다",
+        "start_ms": 48470,
+        "end_ms": 49070,
+        "final_at_ms": 50270
+      },
+      {
+        "word": "가나다",
+        "start_ms": 49190,
+        "end_ms": 49790,
+        "final_at_ms": 50990
+      },
+      {
+        "word": "가나다",
+        "start_ms": 49910,
+        "end_ms": 50510,
+        "final_at_ms": 51710
+      },
+      {
+        "word": "가나다",
+        "start_ms": 50630,
+        "end_ms": 51230,
+        "final_at_ms": 52430
+      },
+      {
+        "word": "가나다",
+        "start_ms": 51350,
+        "end_ms": 51950,
+        "final_at_ms": 53150
+      },
+      {
+        "word": "가나다",
+        "start_ms": 52070,
+        "end_ms": 52670,
+        "final_at_ms": 53870
+      },
+      {
+        "word": "가나다",
+        "start_ms": 53270,
+        "end_ms": 53870,
+        "final_at_ms": 55070
+      },
+      {
+        "word": "가나다",
+        "start_ms": 53990,
+        "end_ms": 54590,
+        "final_at_ms": 55790
+      },
+      {
+        "word": "가나다",
+        "start_ms": 54710,
+        "end_ms": 55310,
+        "final_at_ms": 56510
+      },
+      {
+        "word": "가나다",
+        "start_ms": 55430,
+        "end_ms": 56030,
+        "final_at_ms": 57230
+      },
+      {
+        "word": "가나다",
+        "start_ms": 56150,
+        "end_ms": 56750,
+        "final_at_ms": 57950
+      },
+      {
+        "word": "가나다",
+        "start_ms": 56870,
+        "end_ms": 57470,
+        "final_at_ms": 58670
+      },
+      {
+        "word": "가나다",
+        "start_ms": 58070,
+        "end_ms": 58670,
+        "final_at_ms": 59870
+      },
+      {
+        "word": "가나다",
+        "start_ms": 58790,
+        "end_ms": 59390,
+        "final_at_ms": 60590
+      },
+      {
+        "word": "가나다",
+        "start_ms": 59510,
+        "end_ms": 60110,
+        "final_at_ms": 61310
+      },
+      {
+        "word": "가나다",
+        "start_ms": 60230,
+        "end_ms": 60830,
+        "final_at_ms": 62030
+      },
+      {
+        "word": "가나다",
+        "start_ms": 60950,
+        "end_ms": 61550,
+        "final_at_ms": 62750
+      },
+      {
+        "word": "가나다",
+        "start_ms": 61670,
+        "end_ms": 62270,
+        "final_at_ms": 63470
+      },
+      {
+        "word": "가나다",
+        "start_ms": 62870,
+        "end_ms": 63470,
+        "final_at_ms": 64670
+      },
+      {
+        "word": "가나다",
+        "start_ms": 63590,
+        "end_ms": 64190,
+        "final_at_ms": 65390
+      },
+      {
+        "word": "가나다",
+        "start_ms": 64310,
+        "end_ms": 64910,
+        "final_at_ms": 66110
+      },
+      {
+        "word": "가나다",
+        "start_ms": 65030,
+        "end_ms": 65630,
+        "final_at_ms": 66830
+      },
+      {
+        "word": "가나다",
+        "start_ms": 65750,
+        "end_ms": 66350,
+        "final_at_ms": 67550
+      },
+      {
+        "word": "가나다",
+        "start_ms": 66470,
+        "end_ms": 67070,
+        "final_at_ms": 68270
+      },
+      {
+        "word": "음",
+        "start_ms": 67670,
+        "end_ms": 68020,
+        "final_at_ms": 69220
+      },
+      {
+        "word": "가나다",
+        "start_ms": 68140,
+        "end_ms": 68740,
+        "final_at_ms": 69940
+      },
+      {
+        "word": "가나다",
+        "start_ms": 68860,
+        "end_ms": 69460,
+        "final_at_ms": 70660
+      },
+      {
+        "word": "가나다",
+        "start_ms": 69580,
+        "end_ms": 70180,
+        "final_at_ms": 71380
+      },
+      {
+        "word": "가나다",
+        "start_ms": 70300,
+        "end_ms": 70900,
+        "final_at_ms": 72100
+      },
+      {
+        "word": "가나다",
+        "start_ms": 71020,
+        "end_ms": 71620,
+        "final_at_ms": 72820
+      },
+      {
+        "word": "가나다",
+        "start_ms": 71740,
+        "end_ms": 72340,
+        "final_at_ms": 73540
+      },
+      {
+        "word": "가나다",
+        "start_ms": 72940,
+        "end_ms": 73540,
+        "final_at_ms": 74740
+      },
+      {
+        "word": "가나다",
+        "start_ms": 73660,
+        "end_ms": 74260,
+        "final_at_ms": 75460
+      },
+      {
+        "word": "가나다",
+        "start_ms": 74380,
+        "end_ms": 74980,
+        "final_at_ms": 76180
+      },
+      {
+        "word": "가나다",
+        "start_ms": 75100,
+        "end_ms": 75700,
+        "final_at_ms": 76900
+      },
+      {
+        "word": "가나다",
+        "start_ms": 75820,
+        "end_ms": 76420,
+        "final_at_ms": 77620
+      },
+      {
+        "word": "가나다",
+        "start_ms": 76540,
+        "end_ms": 77140,
+        "final_at_ms": 78340
+      },
+      {
+        "word": "가나다",
+        "start_ms": 77740,
+        "end_ms": 78340,
+        "final_at_ms": 79540
+      },
+      {
+        "word": "가나다",
+        "start_ms": 78460,
+        "end_ms": 79060,
+        "final_at_ms": 80260
+      },
+      {
+        "word": "가나다",
+        "start_ms": 79180,
+        "end_ms": 79780,
+        "final_at_ms": 80980
+      },
+      {
+        "word": "가나다",
+        "start_ms": 79900,
+        "end_ms": 80500,
+        "final_at_ms": 81700
+      },
+      {
+        "word": "가나다",
+        "start_ms": 80620,
+        "end_ms": 81220,
+        "final_at_ms": 82420
+      },
+      {
+        "word": "가나다",
+        "start_ms": 81340,
+        "end_ms": 81940,
+        "final_at_ms": 83140
+      },
+      {
+        "word": "가나다",
+        "start_ms": 82540,
+        "end_ms": 83140,
+        "final_at_ms": 84340
+      },
+      {
+        "word": "가나다",
+        "start_ms": 83260,
+        "end_ms": 83860,
+        "final_at_ms": 85060
+      },
+      {
+        "word": "가나다",
+        "start_ms": 83980,
+        "end_ms": 84580,
+        "final_at_ms": 85780
+      },
+      {
+        "word": "가나다",
+        "start_ms": 84700,
+        "end_ms": 85300,
+        "final_at_ms": 86500
+      },
+      {
+        "word": "가나다",
+        "start_ms": 85420,
+        "end_ms": 86020,
+        "final_at_ms": 87220
+      },
+      {
+        "word": "가나다",
+        "start_ms": 86140,
+        "end_ms": 86740,
+        "final_at_ms": 87940
+      },
+      {
+        "word": "가나다",
+        "start_ms": 87340,
+        "end_ms": 87940,
+        "final_at_ms": 89140
+      },
+      {
+        "word": "가나다",
+        "start_ms": 88060,
+        "end_ms": 88660,
+        "final_at_ms": 89860
+      },
+      {
+        "word": "가나다",
+        "start_ms": 88780,
+        "end_ms": 89380,
+        "final_at_ms": 90580
+      },
+      {
+        "word": "가나다",
+        "start_ms": 89500,
+        "end_ms": 90100,
+        "final_at_ms": 91300
+      },
+      {
+        "word": "가나다",
+        "start_ms": 90220,
+        "end_ms": 90820,
+        "final_at_ms": 92000
+      },
+      {
+        "word": "가나다",
+        "start_ms": 90940,
+        "end_ms": 91540,
+        "final_at_ms": 92000
+      }
+    ],
+    "utterance_ends": [
+      4200,
+      9000,
+      13800,
+      18600,
+      23400,
+      28200,
+      33000,
+      38270,
+      43070,
+      47870,
+      52670,
+      57470,
+      62270,
+      67070,
+      72340,
+      77140,
+      81940,
+      86740,
+      91540
+    ],
+    "slides": [
+      {
+        "number": 1,
+        "started_ms": 0
+      },
+      {
+        "number": 2,
+        "started_ms": 29400
+      },
+      {
+        "number": 3,
+        "started_ms": 59390
+      }
+    ]
+  }
+}

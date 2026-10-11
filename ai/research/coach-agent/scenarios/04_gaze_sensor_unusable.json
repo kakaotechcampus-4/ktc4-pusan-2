@@ -1,0 +1,56 @@
+{
+  "name": "04_gaze_sensor_unusable",
+  "description": "얼굴이 자주 안 잡히는 중에 대본 응시가 높게 나옴 → 믿을 수 없으니 시선 지적 없음",
+  "take_id": "sim-04_gaze_sensor_unusable",
+  "duration_ms": 200000,
+  "plan": {
+    "target_ms": 180000,
+    "min_ms": 165000,
+    "max_ms": 195000,
+    "slides": [
+      {
+        "slide_number": 1,
+        "target_ms": 30000,
+        "script_chars": 105
+      },
+      {
+        "slide_number": 2,
+        "target_ms": 60000,
+        "script_chars": 210
+      },
+      {
+        "slide_number": 3,
+        "target_ms": 60000,
+        "script_chars": 210,
+        "required_keywords": [
+          "로컬 처리"
+        ]
+      },
+      {
+        "slide_number": 4,
+        "target_ms": 30000,
+        "script_chars": 105
+      }
+    ]
+  },
+  "segments": [
+    {
+      "from_ms": 40000,
+      "to_ms": 100000,
+      "set": {
+        "script_ratio": 0.85,
+        "uncertain_ratio": 0.6
+      }
+    }
+  ],
+  "expect": {
+    "areas": {
+      "GAZE": {
+        "max": 0
+      }
+    },
+    "episodes_include": [
+      "GAZE_UNMEASURABLE"
+    ]
+  }
+}

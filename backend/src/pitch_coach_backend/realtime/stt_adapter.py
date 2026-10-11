@@ -21,7 +21,12 @@ from typing import Any, Protocol
 from urllib.parse import urlencode
 
 from websockets.asyncio.client import ClientConnection, connect
-from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK, WebSocketException
+from websockets.exceptions import (
+    ConnectionClosedError,
+    ConnectionClosedOK,
+    InvalidStatus,
+    WebSocketException,
+)
 
 from pitch_coach_backend.realtime.audio import CHANNELS, ENCODING, SAMPLE_RATE
 
@@ -45,6 +50,9 @@ class SttConfig:
     """연결마다 달라질 수 있는 값만. 모델·언어·인코딩은 위 상수다."""
 
     keyterms: tuple[str, ...] = ()
+    # Deepgram 이 이 설정을 거절(SttConfigRejected)하면 keyterms 를 뒤에서부터 줄여 다시 붙는다.
+    # 앞에서 이만큼(filler)은 끝까지 남긴다. keyterms 개수와 같으면 줄일 것이 없다
+    min_keyterms: int = 0
     endpointing_ms: int = 300
     utterance_end_ms: int = 1000
     # Deepgram 콘솔에서 사용량을 Take 별로 볼 수 있게 붙이는 표식
@@ -199,6 +207,13 @@ class SttConnectError(Exception):
     """연결 자체가 안 된 경우. 키 오류·네트워크·타임아웃을 구분하지 않는다."""
 
 
+class SttConfigRejected(SttConnectError):
+    """Deepgram 이 요청 값을 HTTP 400 으로 거절했다 (예: keyterm 토큰 한도 초과).
+
+    같은 설정으로는 몇 번을 다시 붙어도 또 거절된다.
+    """
+
+
 class SttSession(Protocol):
     """service 가 의존하는 최소 인터페이스. 테스트는 이걸 가짜로 바꿔 끼운다."""
 
@@ -291,6 +306,12 @@ class DeepgramSttAdapter:
                 open_timeout=CONNECT_TIMEOUT_SEC,
                 # 우리가 보내는 건 100ms 프레임, 받는 건 JSON 이라 기본 1MiB 면 충분하다
             )
+        except InvalidStatus as e:
+            if e.response.status_code == 400:
+                # 거절 이유는 본문에 있다. 사용자 발화가 아니라 우리가 보낸 설정에 대한 설명이다
+                body = bytes(e.response.body[:200]).decode(errors="replace")
+                raise SttConfigRejected(f"{e} {body}") from e
+            raise SttConnectError(str(e)) from e
         except (OSError, TimeoutError, WebSocketException) as e:
             raise SttConnectError(str(e)) from e
         return DeepgramSession(conn)

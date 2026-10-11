@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
-import { fetchHome } from '@/shared/api/home';
+import { fetchPitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { homeFixture } from '@/mocks/home';
 import { clearTokens } from '@/shared/api/tokenStore';
@@ -14,14 +14,14 @@ afterEach(() => {
 it('uses the authenticated client and the #47 trailing-slash endpoint', async () => {
   const fetch = vi.fn().mockResolvedValue(Response.json(homeFixture));
   vi.stubGlobal('fetch', fetch);
-  expect(await fetchHome()).toEqual(homeFixture);
+  expect(await fetchPitchList()).toEqual(homeFixture);
   expect(fetch.mock.calls[0][0]).toMatch(/\/api\/pitches\/$/);
   expect(fetch.mock.calls[0][1]).toMatchObject({ credentials: 'include' });
 });
 
 it('accepts an empty pitch list without fabricating records', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ pitches: [] })));
-  expect(await fetchHome()).toEqual({ pitches: [] });
+  expect(await fetchPitchList()).toEqual({ pitches: [] });
 });
 
 it('keeps request errors as failures instead of showing an empty home', async () => {
@@ -29,7 +29,7 @@ it('keeps request errors as failures instead of showing an empty home', async ()
     'fetch',
     vi.fn().mockResolvedValue(Response.json({ code: 'FAILED' }, { status: 500 })),
   );
-  await expect(fetchHome()).rejects.toMatchObject({ status: 500 });
+  await expect(fetchPitchList()).rejects.toMatchObject({ status: 500 });
 });
 
 it('uses server UUIDs for editor and report URLs instead of version numbers', () => {

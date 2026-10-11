@@ -15,16 +15,20 @@ type FramePort = {
 function stubWebAudio({
   sampleRate = STT_SAMPLE_RATE,
   onAddModule,
+  startSuspended = false,
 }: {
   sampleRate?: number;
   onAddModule?: () => void;
+  /** 제스처 없이 만든 경우 — 멈춘 채로 시작하고, 제스처 안에서만 resume() 이 통합니다 */
+  startSuspended?: boolean;
 } = {}): FramePort {
   const port: FramePort = { onmessage: null };
   const passThrough = <T>(node: T) => node;
 
-  class FakeAudioContext {
+  class FakeAudioContext extends EventTarget {
     sampleRate = sampleRate;
-    state: AudioContextState = 'running';
+    state: AudioContextState = startSuspended ? 'suspended' : 'running';
+    currentTime = 0;
     destination = {};
     audioWorklet = {
       addModule: () => {
@@ -35,7 +39,13 @@ function stubWebAudio({
 
     createMediaStreamSource = () => ({ connect: passThrough, disconnect: () => undefined });
     createGain = () => ({ gain: { value: 1 }, connect: passThrough, disconnect: () => undefined });
-    resume = () => Promise.resolve();
+    resume = () => {
+      // 명세대로 거절하지 않고 제스처가 올 때까지 대기합니다 (끝나지 않는 promise)
+      if (startSuspended && !inGesture) return new Promise<void>(() => undefined);
+      this.state = 'running';
+      this.dispatchEvent(new Event('statechange'));
+      return Promise.resolve();
+    };
     close = () => Promise.resolve();
   }
 
@@ -52,6 +62,9 @@ function stubWebAudio({
 }
 
 const micStream = { getAudioTracks: () => [{}] } as unknown as MediaStream;
+
+/** 지금 사용자 제스처 안인가 (가짜 resume() 이 봅니다) */
+let inGesture = false;
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -101,5 +114,37 @@ describe('오디오 캡처', () => {
     );
 
     expect(error).toBe('NO_AUDIO_TRACK');
+  });
+
+  /**
+   * 새로고침한 리허설 화면은 제스처가 없어 멈춘 채로 시작합니다. 첫 키 입력(→ 로 슬라이드 넘기기)
+   * 에서 풀려야 하고, 멈춰 있던 동안은 오디오 시계도 멈추므로 기준점을 그때 다시 잡아야 합니다.
+   */
+  it('멈춘 채로 시작하면 첫 키 입력에서 풀리고, 풀린 시각을 기준으로 offset 을 잰다', async () => {
+    const target = new EventTarget();
+    vi.stubGlobal('window', target);
+    let takeElapsedMs = 5_000;
+    const port = stubWebAudio({ startSuspended: true });
+    const offsets: number[] = [];
+
+    const { capture } = await startPcmCapture(micStream, {
+      elapsedMs: () => takeElapsedMs,
+      onFrame: ({ offsetMs }) => offsets.push(offsetMs),
+    });
+    expect(capture?.state).toBe('suspended');
+
+    // 4초 동안 멈춰 있다가 → 키를 누릅니다
+    takeElapsedMs = 9_000;
+    inGesture = true;
+    target.dispatchEvent(new Event('keydown'));
+    inGesture = false;
+    await Promise.resolve();
+    expect(capture?.state).toBe('running');
+
+    // 풀리고 100ms 뒤의 프레임. 기준점을 그대로 두면 5,100 이 되어 전사가 4초 앞당겨집니다
+    port.onmessage?.({ data: { pcm: new ArrayBuffer(3_200), startFrame: STT_SAMPLE_RATE / 10 } });
+    expect(offsets).toEqual([9_100]);
+
+    await capture?.stop();
   });
 });
