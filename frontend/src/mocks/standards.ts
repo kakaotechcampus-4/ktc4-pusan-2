@@ -1,5 +1,11 @@
 import { delay, http, HttpResponse } from 'msw';
-import type { StandardTextRequest, StandardTextResponse, StandardsPosted } from '@/types/standards';
+import type {
+  StandardTextRequest,
+  StandardTextResponse,
+  StandardsPosted,
+  StandardsSaveRequest,
+  StandardsSaved,
+} from '@/types/standards';
 
 /**
  * 평가기준 나누기 목. 실서버는 AI 로 나눌 예정이고, 목은 **줄 · 문장 단위**로 자릅니다.
@@ -37,6 +43,20 @@ export const standardsHandlers = [
       message: 'Pitch standard text added successfully',
       pitch_id: result,
     };
+    return HttpResponse.json(body);
+  }),
+
+  // 확정 저장 (BE #192). 나누기와 달리 받은 목록을 그대로 저장합니다 — 목은 저장한 척만 합니다
+  http.post('*/api/pitches/:pitchId/standards', async ({ request }) => {
+    const { standards } = (await request.json()) as StandardsSaveRequest;
+    await delay(400);
+    if (standards.length === 0 || standards.some((s) => s.standard.trim() === '')) {
+      return HttpResponse.json(
+        { code: 'VALIDATION_ERROR', message: '빈 평가기준은 저장할 수 없습니다.' },
+        { status: 422 },
+      );
+    }
+    const body: StandardsSaved = { message: 'Final standards added successfully' };
     return HttpResponse.json(body);
   }),
 ];

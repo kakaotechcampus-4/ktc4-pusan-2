@@ -153,9 +153,9 @@ export interface CriteriaVersion {
   version: number;
   items: DraftCriterion[];
   /**
-   * 서버에 저장됐나. BE 는 나누면서 바로 저장하므로(`POST /standards`) 정리가 끝나면 true 입니다.
-   * "+ 새 버전"으로 만든 빈 버전만 false 이고, 그런 버전은 연습에 쓰지 않습니다.
-   * 저장한 버전은 고치지 않고, 다시 정리하면 새 버전이 됩니다.
+   * 서버에 저장됐나. BE 는 나누기만 하고 저장하지 않습니다 (#192) — 사용자가 목록을 고친 뒤
+   * "저장"을 눌러야 true 가 됩니다. 저장 안 한 버전은 연습에 쓰지 않습니다.
+   * 저장한 버전은 고치지 않고, 다시 고치려면 "수정하기"로 새 버전을 만듭니다.
    */
   saved: boolean;
   /**
@@ -205,6 +205,35 @@ export const latestScript = (d: PitchDraft): ScriptVersion | null => d.scripts.a
 export const latestCriteria = (d: PitchDraft): CriteriaVersion | null => d.criteria.at(-1) ?? null;
 
 /** 저장까지 끝난 마지막 평가기준. 정리만 해 둔 버전은 연습에 들고 가지 않습니다 */
+/**
+ * 그 갈래에서 아직 저장하지 않은 버전. 없으면 null 입니다.
+ *
+ * ── 저장 안 한 버전이 있으면 새 버전을 만들지 않습니다 ─────────────────
+ * 버전은 지우지 않습니다 — Take 가 자기가 쓴 버전을 가리키므로 지난 연습 결과를 보려면 남아 있어야 합니다.
+ * 대신 빈 버전이 끝없이 쌓이지 않게, 저장 안 한 버전이 있는 동안에는 새 버전을 만들지 못하게 합니다.
+ *
+ *   평가기준  정리했거나 비어 있는데 아직 저장하지 않음
+ *   슬라이드  파일을 아직 올리지 않음 (올리면 그 자체로 저장입니다)
+ *   대본      매핑을 아직 저장하지 않음
+ */
+export function pendingVersion(draft: PitchDraft, node: DraftNode): number | null {
+  const pending = (() => {
+    switch (node) {
+      case 'criteria':
+        return draft.criteria.findLast((v) => !v.saved);
+      case 'slides':
+        return draft.slides.findLast((v) => v.pageCount === null);
+      case 'script':
+        return draft.scripts.findLast((v) => !v.saved);
+    }
+  })();
+  return pending?.version ?? null;
+}
+
+/** 저장할 평가기준 — 빈 항목은 빼고 앞뒤 공백을 걷어 냅니다 */
+export const criteriaToSave = (v: CriteriaVersion): string[] =>
+  v.items.map((i) => i.text.trim()).filter((t) => t !== '');
+
 export const latestSavedCriteria = (d: PitchDraft): CriteriaVersion | null =>
   d.criteria.findLast((v) => v.saved) ?? null;
 

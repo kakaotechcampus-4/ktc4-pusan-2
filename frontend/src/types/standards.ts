@@ -1,5 +1,6 @@
 /**
- * POST /api/pitches/add/{pitch_id}/standards — 자연어 평가기준을 항목으로 나누고 **저장까지** 합니다.
+ * POST /api/pitches/add/{pitch_id}/standards — 자연어 평가기준을 항목으로 나눕니다. **저장하지 않습니다** (BE #192).
+ * 사용자가 고친 뒤 `POST /api/pitches/{pitch_id}/standards` 로 확정해야 저장됩니다 (`StandardsSaveRequest`).
  * BE 응답 그대로 snake_case 입니다.
  *
  * ★ 컨트롤러가 서비스 결과(`StandardTextResponseDTO`)를 `{"message", "pitch_id": <DTO>}` 로
@@ -23,4 +24,16 @@ export interface StandardsPosted {
   message: string;
   /** 이름은 pitch_id 지만 나눈 결과가 들어 있습니다 */
   pitch_id: StandardTextResponse;
+}
+
+/**
+ * POST /api/pitches/{pitch_id}/standards — 사용자가 고친 평가기준을 확정해 저장합니다 (BE #192 `StandardsSaveDTO`).
+ * 순서대로 저장되고(`position`), 문장만 보냅니다.
+ */
+export interface StandardsSaveRequest {
+  standards: { standard: string }[];
+}
+
+export interface StandardsSaved {
+  message: string;
 }

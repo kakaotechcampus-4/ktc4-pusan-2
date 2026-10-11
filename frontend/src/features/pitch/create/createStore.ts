@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   Chosen,
+  CriteriaVersion,
   DraftNode,
   InfoForm,
   PaneNode,
@@ -12,6 +13,7 @@ import type {
 } from './lib/draft';
 import {
   CHOOSE_LATEST,
+  pendingVersion,
   canSaveMapping,
   infoChanged,
   infoOf,
@@ -113,6 +115,14 @@ interface CreateState {
     version: number | null,
     parsed: { sourceText: string; standards: string[]; exceptText: string | null },
   ) => void;
+  /** 저장 전 목록 고치기. 저장한 버전은 바꾸지 않습니다 */
+  editCriterion: (version: number, id: string, text: string) => void;
+  addCriterion: (version: number) => void;
+  removeCriterion: (version: number, id: string) => void;
+  /** 확정 저장이 끝났습니다. 빈 항목은 빼고 저장한 그대로 둡니다 */
+  markCriteriaSaved: (version: number, standards: string[]) => void;
+  /** 저장한 버전을 고치려면 — 같은 목록으로 새 버전(저장 안 됨)을 만듭니다 */
+  reviseCriteria: (version: number) => void;
 
   reset: () => void;
 }
@@ -150,6 +160,16 @@ const mapScripts = (
   scripts: draft.scripts.map((v) => (v.version === version ? update(v) : v)),
 });
 
+/** 저장 안 한 평가기준 버전만 고칩니다. 저장한 버전은 그대로 돌려줍니다 */
+const mapUnsavedCriteria = (
+  draft: PitchDraft,
+  version: number,
+  update: (v: CriteriaVersion) => CriteriaVersion,
+): PitchDraft => ({
+  ...draft,
+  criteria: draft.criteria.map((v) => (v.version === version && !v.saved ? update(v) : v)),
+});
+
 export const useCreateStore = create<CreateState>((set) => ({
   draft: EMPTY_DRAFT,
   // 목업의 순서대로 발표정보부터 엽니다
@@ -172,6 +192,9 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   addSlideVersion: () =>
     set((s) => {
+      // 파일을 기다리는 빈 버전이 있으면 새로 만들지 않고 그 버전을 엽니다 (`pendingVersion`)
+      const pending = pendingVersion(s.draft, 'slides');
+      if (pending !== null) return { node: 'slides' as const, version: pending };
       const version = nextVersion(s.draft.slides);
       return {
         draft: { ...s.draft, slides: [...s.draft.slides, { version, pageCount: null }] },
@@ -224,6 +247,9 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   addScriptVersion: (text = '') =>
     set((s) => {
+      // 매핑을 저장하지 않은 버전이 있으면 새로 만들지 않고 그 버전을 엽니다
+      const pending = pendingVersion(s.draft, 'script');
+      if (pending !== null) return { node: 'script' as const, version: pending };
       const version = nextVersion(s.draft.scripts);
       const slideVersion = latestUploadedSlides(s.draft)?.version ?? null;
       return {
@@ -283,6 +309,9 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   addCriteriaVersion: () =>
     set((s) => {
+      // 저장하지 않은 버전이 있으면 새로 만들지 않고 그 버전을 엽니다
+      const pending = pendingVersion(s.draft, 'criteria');
+      if (pending !== null) return { node: 'criteria' as const, version: pending };
       const version = nextVersion(s.draft.criteria);
       return {
         draft: {
@@ -316,7 +345,8 @@ export const useCreateStore = create<CreateState>((set) => ({
             ...s.draft,
             criteria: [
               ...s.draft.criteria,
-              { version: next, items, saved: true, sourceText, exceptText },
+              // 정리만 했습니다. 고친 뒤 "저장"을 눌러야 서버에 남습니다 (BE #192)
+              { version: next, items, saved: false, sourceText, exceptText },
             ],
           },
           node: 'criteria' as const,
@@ -327,9 +357,70 @@ export const useCreateStore = create<CreateState>((set) => ({
         draft: {
           ...s.draft,
           criteria: s.draft.criteria.map((v) =>
-            v.version === target.version ? { ...v, items, saved: true, sourceText, exceptText } : v,
+            v.version === target.version
+              ? { ...v, items, saved: false, sourceText, exceptText }
+              : v,
           ),
         },
+      };
+    }),
+
+  editCriterion: (version, id, text) =>
+    set((s) => ({
+      draft: mapUnsavedCriteria(s.draft, version, (v) => ({
+        ...v,
+        items: v.items.map((i) => (i.id === id ? { ...i, text } : i)),
+      })),
+    })),
+
+  addCriterion: (version) =>
+    set((s) => ({
+      draft: mapUnsavedCriteria(s.draft, version, (v) => ({
+        ...v,
+        items: [...v.items, { id: crypto.randomUUID(), text: '' }],
+      })),
+    })),
+
+  removeCriterion: (version, id) =>
+    set((s) => ({
+      draft: mapUnsavedCriteria(s.draft, version, (v) => ({
+        ...v,
+        items: v.items.filter((i) => i.id !== id),
+      })),
+    })),
+
+  markCriteriaSaved: (version, standards) =>
+    set((s) => ({
+      draft: mapUnsavedCriteria(s.draft, version, (v) => ({
+        ...v,
+        saved: true,
+        // 서버에 보낸 그대로 남깁니다 — 빈 항목과 공백은 이미 걸러 보냈습니다
+        items: standards.map((text) => ({ id: crypto.randomUUID(), text })),
+      })),
+    })),
+
+  reviseCriteria: (version) =>
+    set((s) => {
+      const pending = pendingVersion(s.draft, 'criteria');
+      if (pending !== null) return { node: 'criteria' as const, version: pending };
+      const from = s.draft.criteria.find((v) => v.version === version);
+      if (!from) return s;
+      const next = nextVersion(s.draft.criteria);
+      return {
+        draft: {
+          ...s.draft,
+          criteria: [
+            ...s.draft.criteria,
+            {
+              ...from,
+              version: next,
+              saved: false,
+              items: from.items.map((i) => ({ ...i, id: crypto.randomUUID() })),
+            },
+          ],
+        },
+        node: 'criteria' as const,
+        version: next,
       };
     }),
 
@@ -350,5 +441,9 @@ export const selectInfoUnsaved = (s: CreateState): boolean =>
   s.infoEdits !== null && infoChanged(s.infoEdits, infoOf(s.draft));
 
 /** 서버로 가는 중인 일이 있나 — 슬라이드 업로드 · 대본 나누기. 지금 떠나면 결과를 받을 곳이 없습니다 */
+/** 정리하거나 고친 평가기준을 아직 저장하지 않았나. 떠나기 경고가 봅니다 */
+export const selectCriteriaUnsaved = (s: CreateState): boolean =>
+  s.draft.criteria.some((v) => !v.saved && v.items.length > 0);
+
 export const selectBusy = (s: CreateState): boolean =>
   s.slideUpload.status === 'uploading' || s.draft.scripts.some((v) => v.parse.status === 'pending');
