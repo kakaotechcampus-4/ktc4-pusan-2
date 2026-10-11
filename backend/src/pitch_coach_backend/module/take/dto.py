@@ -84,12 +84,15 @@ class DetailDTO(BaseModel):
 class StandardResultDTO(BaseModel):
     display: str
     status: bool = False
+    target: int
+    observed: int
+    
 class MissionResultDTO(BaseModel):
     mission_id: uuid.UUID
-    completed: bool
-    completed_at: datetime | None = None
-    strengths: list[DetailDTO] = []
-    improvements: list[DetailDTO] = []
+    status: str
+    slide_number: int
+    target: int
+    observed: int
 
 class NextMissionDTO(BaseModel):
     area: str
