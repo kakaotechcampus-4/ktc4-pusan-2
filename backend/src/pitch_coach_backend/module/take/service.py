@@ -12,6 +12,7 @@ from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     MissionDTO,
     PreviousMissionsDTO,
+    ReviewRequestDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
     TranscriptSegmentCreateDTO,
@@ -167,10 +168,18 @@ def append_transcript_segment(
     db.commit()
     return saved.id
 
-def get_review_result(db: Session, take_id: uuid.UUID):
+def get_review_result(db: Session, take_id: uuid.UUID, coach_final_result: dict[str, any]):
+
+    review_request = ReviewRequestDTO(
+        take_result=coach_final_result,
+        script_coverage=coach_final_result.get("script_coverage"),
+        previous_takes=None,
+        missions=None,
+        user_criteria=None
+    )
 
     with httpx2.Client() as client:
-        response = client.post(f"{settings.AI_BASE_URL}/takes/review", json={"take_id": str(take_id)})
+        response = client.post(f"{settings.AI_BASE_URL}/takes/review", json=review_request.model_dump())
         response.raise_for_status()
         review_data = response.json()
 

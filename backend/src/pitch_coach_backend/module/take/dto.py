@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-
+from typing import Any
 from pydantic import BaseModel, Field
 
 
@@ -86,14 +86,19 @@ class StandardResultDTO(BaseModel):
     status: bool = False
     target: int
     observed: int
-    
+
+class TargetInfoDTO(BaseModel):
+    display: str | None = None
+    metric: str
+    operator: str
+    value: int
+
 class MissionResultDTO(BaseModel):
     mission_id: uuid.UUID
     status: str
     slide_number: int
-    target: int
+    target: TargetInfoDTO
     observed: int
-
 class NextMissionDTO(BaseModel):
     area: str
     slide_number: int
@@ -108,3 +113,18 @@ class ReviewResultDTO(BaseModel):
     criteria_results: list[StandardResultDTO] = []
     mission_results: list[MissionResultDTO] = []
     next_missions: list[NextMissionDTO] = []
+
+class PreviousTakeDTO(BaseModel):
+    take_result: dict[str, Any]
+    take_scores: list[int] | None = None
+class UserCriteriaDTO(BaseModel):
+    display_criteria: list[str] = []
+    targets: list[TargetInfoDTO] = []
+    script_used: str | None = None
+class ReviewRequestDTO(BaseModel):
+    take_result: dict[str, Any]
+    script_coverage: int | None = None
+    previous_takes: list[PreviousTakeDTO] | None = None
+    missions: list[MissionDTO] | None = None
+    user_criteria: UserCriteriaDTO | None = None
+
