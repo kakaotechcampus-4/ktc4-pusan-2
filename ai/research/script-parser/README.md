@@ -4,6 +4,8 @@
 
 원본: [archive/workspaces/seojin-lee/script-parser/v1/local/script_slide_analysis.ipynb](../../archive/workspaces/seojin-lee/script-parser/v1/local/script_slide_analysis.ipynb) (노트북 → 모듈로 옮김)
 
+설계(목표 계약 · 처리 · 배포): [`docs/ai/features/script-parser.md`](../../../docs/ai/features/script-parser.md)
+
 ```
 대본 텍스트 ──▶ LLM (SYSTEM_PROMPT + with_structured_output(SeparatedSlides))
                  │
