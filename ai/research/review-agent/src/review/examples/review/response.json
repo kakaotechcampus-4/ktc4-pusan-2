@@ -1,0 +1,110 @@
+{
+  "take_id": "take-123",
+  "overall_summary": "좋았던 점은 청중 응시, 말 속도와 시간 배분, 목소리 크기입니다. 먼저 다듬을 점은 3번 장 대본 의존도입니다.",
+  "score": 82,
+  "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STABLE",
+    "content_delivery": "NOT_EVALUABLE"
+  },
+  "strengths": [
+    {
+      "area": "GAZE",
+      "text": "청중을 고르게 바라봤습니다",
+      "evidence": {
+        "audience_ratio": 0.58
+      }
+    },
+    {
+      "area": "SPEED",
+      "text": "말 속도와 시간 배분이 안정적이었습니다",
+      "evidence": {
+        "cpm": 318.5
+      }
+    },
+    {
+      "area": "VOLUME",
+      "text": "목소리 크기가 안정적이었습니다",
+      "evidence": {
+        "voice_diff_db": -2.1
+      }
+    }
+  ],
+  "improvements": [
+    {
+      "area": "GAZE",
+      "slide_number": 3,
+      "text": "3번 장에서 대본을 이어 읽기보다 문장 끝에서 고개를 들어 보세요",
+      "evidence": {
+        "script_ratio": 0.62
+      }
+    }
+  ],
+  "comparison": [],
+  "mission_results": [
+    {
+      "mission_id": "m-1",
+      "status": "PARTIAL",
+      "metric": "filler_per_min",
+      "operator": "LTE",
+      "slide_number": null,
+      "target": 2,
+      "observed": 2.4
+    }
+  ],
+  "criteria_results": [
+    {
+      "display": "추임새 5번 이하",
+      "metric": "filler_count",
+      "operator": "LTE",
+      "target": 5,
+      "observed": 7,
+      "status": "FAILED"
+    }
+  ],
+  "next_missions": [
+    {
+      "area": "FILLER",
+      "slide_number": null,
+      "description": "추임새 5번 이하",
+      "target": {
+        "metric": "filler_count",
+        "operator": "LTE",
+        "value": 5
+      },
+      "priority": 1,
+      "reason": "직접 정한 기준인데 이번 Take 7"
+    },
+    {
+      "area": "GAZE",
+      "slide_number": 3,
+      "description": "3번 장 대본 응시 비율 52% 이하",
+      "target": {
+        "metric": "script_ratio",
+        "operator": "LTE",
+        "value": 0.52
+      },
+      "priority": 2,
+      "reason": "3번 장 이번 Take 0.62"
+    }
+  ],
+  "recurring_issues": [
+    {
+      "area": "GAZE",
+      "slide_number": 3,
+      "dimension": "script_independence"
+    }
+  ],
+  "fallback_reason": "LLM_UNAVAILABLE",
+  "meta": {
+    "schema_version": "1.0",
+    "feature_version": "review-1.0",
+    "criteria_versions": {
+      "review": "review-1.0+b4fae7a13fcb"
+    },
+    "model": null
+  }
+}
