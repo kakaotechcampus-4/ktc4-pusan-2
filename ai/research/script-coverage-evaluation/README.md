@@ -10,7 +10,7 @@
 | 기능 버전 | `1.0` (`src/script_coverage/version.py`의 `FEATURE_VERSION`), 평가 기준 형식 `1.1` |
 | 검증한 LLM | OpenAI 호환 API, 모델 `openai/gpt-5.6-luna` |
 | 상태 | v1. **가상 데이터로만 측정했습니다.** 실제 Deepgram 결과와 실제 발표자의 말투로는 아직 측정하지 않았습니다 |
-| 배포 | 코어(`src/script_coverage/`)는 나중에 AI 서버로 그대로 옮깁니다 → [DEPLOY.md](DEPLOY.md) |
+| 설계 | API 계약 · 평가 기준과 채점 필드 · 처리 · 배포 → [`docs/ai/features/script-coverage-evaluation.md`](../../../docs/ai/features/script-coverage-evaluation.md) |
 
 > 이 프로젝트는 `ai/archive/workspaces/jewon-kim/script-coverage-evaluation/v1/local/`의 노트북 2개를 구조만 바꿔 옮긴 것입니다.
 > 판정 로직과 프롬프트는 같고, 같은 LLM 응답 캐시로 돌리면 결과가 바이트 단위로 같습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
@@ -71,7 +71,7 @@ LLM은 판정만 하고 **점수는 매기지 않습니다.**
 
 - 음성 인식 (Deepgram 결과를 입력으로 받는다), 슬라이드 경계 추정 (슬라이드별 STT를 받는다고 전제)
 - 발표자 실수인지 인식 오류인지 **최종 판단** (비슷한 말은 위치와 함께 넘기고, 사용자 답이 오면 다시 계산만 한다)
-- 전달력(말 속도 · 간투사 빈도 · 시선) 평가, 코칭 문구 생성, HTTP API · DB 저장 (배포는 [DEPLOY.md](DEPLOY.md))
+- 전달력(말 속도 · 간투사 빈도 · 시선) 평가, 코칭 문구 생성, HTTP API · DB 저장 (배포는 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 11절)
 
 ---
 
@@ -120,8 +120,6 @@ src/script_coverage/        코어: 실제 판정 로직                     →
 ```
 script-coverage-evaluation/
 ├── README.md                      이 문서
-├── INTERFACE.md                   코어의 입출력 (API 를 만들 때 기준)
-├── DEPLOY.md                      배포 가이드
 ├── pyproject.toml · uv.lock       라이브러리 목록 (코어용 / research 전용 구분) · 버전 고정
 ├── .gitignore                     outputs/ 와 data/ 제외 (data/virtual/ 만 커밋)
 │
@@ -328,6 +326,8 @@ store.confirm_similar_item()                 답 저장
    → DB confirmed_evaluations 에 저장 (처음 채점은 그대로 둔다)
 ```
 
+다시 채점하면 비슷한 말의 `item_id`가 바뀔 수 있어서, `store.confirm_similar_item`은 답과 함께 그 항목의 `script_text` · `stt_text`를 저장하고, 답을 다시 적용할 때 표현이 같은지 확인합니다.
+
 | 답 | 뜻 | 결과 |
 |---|---|---|
 | `as_script` (대본대로 말함) | 음성 인식이 틀린 것 | 판정을 그대로 둔다 |
@@ -473,17 +473,7 @@ uv run python -m pytest -m live            # 실제 API 를 부르는 테스트�
 
 ## 7. 입출력
 
-코어가 무엇을 받아 무엇을 돌려주는지는 **[INTERFACE.md](INTERFACE.md)**에 정리했습니다. API 요청 · 응답을 정할 때 기준이 되는 문서입니다.
-
-| 내용 | INTERFACE.md |
-|---|---|
-| 진입점 3개(`analyze_script` · `evaluate_take` · `rescore_evaluation`)의 입력 · 출력 · 실패 처리와 실제 JSON 예시 | 1절 |
-| 데이터 모델 필드: 입력, 평가 기준(`EvaluationRubric`), 평가 결과(`SlideEvaluation`), 판정 값의 뜻 | 2절 |
-| 단계 모듈마다 주고받는 것 | 3절 |
-| LLM에 보내는 것과 받는 스키마 5종 | 4절 |
-| 버전 값과 호환 규칙 | 5절 |
-
-다운스트림(BE · 리뷰 agent)과의 접점은 네 가지입니다: 평가 기준, 슬라이드 평가, 비슷한 말, 사용자 확인. 필드의 원본은 pydantic 모델이고, 문서와 코드가 다르면 코드가 맞습니다.
+코어가 무엇을 받아 무엇을 돌려주는지(API 요청 · 응답, 평가 기준 · 채점 필드, 단계별 함수, LLM 출력 스키마)는 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 5 · 6절에 있습니다. 필드의 원본은 pydantic 모델이고, 문서와 코드가 다르면 코드가 맞습니다.
 
 ### research의 SQLite 표 (`coverage_lab/store.py`, `outputs/rubrics.sqlite`)
 
@@ -574,7 +564,7 @@ v1을 "완료"라고 부르려면 실제 슬라이드별 Deepgram 결과와 녹�
 
 ## 9. 배포
 
-AI 서버에 올리는 데 필요한 작업(서버 · 인프라 · BE 연동)과 순서, API, 비용, 결정해야 할 것은 [DEPLOY.md](DEPLOY.md)에 있습니다.
+AI 서버로 옮기는 방법과 옮긴 뒤 확인은 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 11절에 있습니다.
 
 ---
 
@@ -599,14 +589,7 @@ AI 서버에 올리는 데 필요한 작업(서버 · 인프라 · BE 연동)과
 
 ### 점수
 
-LLM은 점수를 매기지 않습니다. 모두 `stt_evaluation/scoring.py`가 계산하고, 발표 전체 점수는 슬라이드 점수의 가중 평균(개수는 합)입니다.
-
-| 점수 | 계산 |
-|---|---|
-| `content_coverage` | Σ(Key Point 판정 점수 × 중요도 가중치) / Σ(가중치). `covered` 1 / `partial` 0.5 / `missing` 0 / `contradicted` −0.5, 가중치 critical 3 / high 2 / normal 1. 음수면 0 |
-| `critical_fact_accuracy` | Σ(사실 점수 × 가중치) / Σ(가중치). `matched` 1, `approximate` 0.5, 나머지 0. **`sound_alike`는 분자 · 분모에서 뺌** |
-| `script_fidelity` | 순서를 지킨 형태소 일치의 recall · precision 조화평균. **비슷한 말 자리의 형태소는 양쪽에서 뺌** |
-| `similar_words` / `similar_numbers` | 비율에서 뺀 비슷한 단어 · 수치의 개수 |
+LLM은 점수를 매기지 않습니다. 모두 `stt_evaluation/scoring.py`가 계산합니다. 계산 방법은 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 6-4에 있습니다.
 
 임계값은 가상 STT와 정답 라벨로 맞춘 값이라(`stt_evaluation/config.py`) 바꾸면 채점 결과가 달라집니다. 바꾸기 전에 기준값을 고정한 채 먼저 재고, 그다음에 조정하세요.
 
