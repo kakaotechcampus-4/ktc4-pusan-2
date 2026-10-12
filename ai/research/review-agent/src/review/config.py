@@ -1,0 +1,180 @@
+"""리뷰 설정 — 판단 기준값 · 가중치 · 다음 미션 규칙.
+
+**모든 숫자는 잠정입니다.** 명세에는 숫자가 없고(config 에만 둔다),
+실제 발표 데이터로 검증하지 않았습니다.
+손으로 고른 시작점이며 공통 기준 Take 로 조정합니다.
+
+기본값은 이 파일에만 있습니다. 바꿀 때는 코드를 고치지 말고 바꿀 값만 덮어쓰세요 (load_config).
+코어는 설정 파일을 읽지 않습니다.
+응답 meta 의 criteria_versions.review 가 어떤 설정으로 판단했는지 기록합니다.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+
+from .version import FEATURE_VERSION
+
+
+class _Section(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class EvaluableConfig(_Section):
+    """1단계: 판단 가능 여부"""
+
+    #: 차원에 속한 영역 중 하나라도 measured_ratio 가 이 값 미만이면 NOT_EVALUABLE
+    min_measured_ratio: float = 0.5
+    #: 대본 전달도 take_scores.scored_ratio 가 이 값 미만이면 content_delivery 가 NOT_EVALUABLE
+    min_scored_ratio: float = 0.5
+
+
+class BurdenConfig(_Section):
+    """2단계: 문제 부담 (mean_severity × 초)"""
+
+    #: missing · contradicted 핵심 내용 하나의 부담. content_coverage 가중치와 같은 3:2:1
+    content_burden: dict[str, float] = Field(
+        default_factory=lambda: {"critical": 9.0, "high": 6.0, "normal": 3.0}
+    )
+    #: importance 가 없거나 모르는 값일 때 쓰는 중요도
+    content_burden_fallback: str = "normal"
+    #: 직전 반복 문제였던 차원의 부담 배수
+    recurring_weight: float = 1.2
+    #: 코치가 포기한 문제(gave_up)의 차원 부담 배수 (1차: 가중 없음)
+    gave_up_weight: float = 1.0
+    #: 미션을 이루지 못한(FAILED · PARTIAL) 지표의 차원 부담 배수 (1차: 가중 없음)
+    mission_failed_weight: float = 1.0
+
+
+class DimensionConfig(_Section):
+    """3단계: 차원 상태"""
+
+    #: PRIORITY 후보가 되는 최소 부담. 반복 문제였던 차원은 이 값 미만으로 내려와야 IMPROVED
+    priority_burden_min: float = 10.0
+    #: PRIORITY 최대 개수 (부담 큰 순)
+    priority_max_count: int = 3
+
+
+class MissionConfig(_Section):
+    """4 · 6단계: 미션 · 사용자 기준 판정"""
+
+    #: 못 미친 정도(절대값)가 이 안이면 PARTIAL. 개수 지표 · 목록에 없는 지표는 허용치가 없다
+    tolerance: dict[str, float] = Field(
+        default_factory=lambda: {
+            "audience_ratio": 0.05,
+            "script_ratio": 0.05,
+            "reading_ratio": 0.05,
+            "cpm": 20.0,
+            "voice_diff_db": 1.0,
+            "low_ratio": 0.05,
+            "filler_per_min": 0.5,
+            "content_coverage": 0.05,
+        }
+    )
+
+
+class NextMissionConfig(_Section):
+    """7단계: 다음 미션"""
+
+    #: PRIORITY 차원의 다음 미션을 거는 지표.
+    #: None 이면 다음 미션을 만들지 않고 반복 문제로만 넘긴다.
+    #: pacing_rhythm 은 문제마다 좋아지는 방향이 달라(빠름 · 느림) 지표 하나로 정하지 못한다
+    mission_metric: dict[str, str | None] = Field(
+        default_factory=lambda: {
+            "audience_gaze": "audience_ratio",
+            "script_independence": "script_ratio",
+            "pacing_rhythm": None,
+            "vocal_delivery": "voice_diff_db",
+            "fluency": "filler_per_min",
+            "content_delivery": "content_coverage",
+        }
+    )
+    #: 지금 값에서 나아질 폭. 부호가 좋아지는 방향이다 (음수 → LTE, 양수 → GTE)
+    step: dict[str, int | float] = Field(
+        default_factory=lambda: {
+            "audience_ratio": 0.1,
+            "script_ratio": -0.1,
+            "voice_diff_db": 1.0,
+            "filler_per_min": -0.5,
+            "filler_count": -2,
+            "content_coverage": 0.1,
+        }
+    )
+    #: 지표별 최종 목표. 다음 목표는 이 값을 넘지 않고, 이미 넘었으면 그 지표로 미션을 만들지 않는다
+    final: dict[str, int | float] = Field(
+        default_factory=lambda: {
+            "audience_ratio": 0.8,
+            "script_ratio": 0.2,
+            "voice_diff_db": 0.0,
+            "filler_per_min": 1.0,
+            "filler_count": 3,
+            "content_coverage": 0.9,
+        }
+    )
+    #: 부담이 한 장에 이 비율을 넘게 몰리면 장 미션 (반복 문제의 장도 같은 규칙)
+    slide_concentration: float = 0.5
+    #: 규칙 단계가 만드는 후보 수 (Take · 장 미션 합쳐서)
+    candidate_max: int = 5
+    #: 최종 다음 미션 수 (Take · 장 미션 합쳐서). 2차에서는 LLM 이 후보 중 이만큼 고른다
+    max_count: int = 3
+
+
+class ScoreConfig(_Section):
+    """9단계: 점수. NOT_EVALUABLE 을 뺀 평균"""
+
+    state_score: dict[str, int] = Field(
+        default_factory=lambda: {"STRENGTH": 100, "IMPROVED": 85, "STABLE": 70, "PRIORITY": 40}
+    )
+
+
+class ReviewConfig(_Section):
+    evaluable: EvaluableConfig = Field(default_factory=EvaluableConfig)
+    burden: BurdenConfig = Field(default_factory=BurdenConfig)
+    dimension: DimensionConfig = Field(default_factory=DimensionConfig)
+    mission: MissionConfig = Field(default_factory=MissionConfig)
+    next_mission: NextMissionConfig = Field(default_factory=NextMissionConfig)
+    score: ScoreConfig = Field(default_factory=ScoreConfig)
+
+    _hash: str | None = PrivateAttr(default=None)
+
+    def config_hash(self) -> str:
+        """재현성 키. 같은 hash 면 같은 입력에 같은 결론이 나온다.
+
+        설정은 만든 뒤 바꾸지 않는다는 전제로 한 번만 계산한다.
+        """
+        if self._hash is None:
+            blob = json.dumps(self.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
+            self._hash = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
+        return self._hash
+
+    def criteria_version(self) -> str:
+        """<feature_version>+<설정 해시 12자리>. 응답 meta.criteria_versions.review"""
+        return f"{FEATURE_VERSION}+{self.config_hash()}"
+
+
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def load_config(**override: Any) -> ReviewConfig:
+    """기본값 위에 키워드 인자를 덮어쓴다. 예: ``load_config(dimension={"priority_max_count": 2})``
+
+    덮어쓰지 않은 값은 기본값이 남는다. 파일은 읽지 않는다.
+    """
+    merged = ReviewConfig().model_dump(mode="json")
+    if override:
+        merged = _deep_merge(merged, override)
+    return ReviewConfig.model_validate(merged)
+
+
+DEFAULT_CONFIG = ReviewConfig()
