@@ -56,7 +56,7 @@ flowchart LR
 ```
 1. **BE**: 사용자가 기준 글을 보내면 요청 안에서 `/evaluation-criteria/parse`를 부른다(DB 세션을 쥐지 않고 기다린다). 결과를 FE에 보여 주고, 사용자가 표시 기준을 고쳐 저장하면 고친 글로 한 번 더 분석해 같은 버전으로 저장한다.
 2. **LLM 한 번**: 표시 기준 · 요소 값 · 숫자 목표 · 뺀 기준을 고정 필드 스키마로 낸다.
-3. **검사** (코드): 지표 이름 · 연산자는 LLM 출력 스키마의 정해진 목록(enum)이라, 목록에 없는 값이 나오면 출력 스키마 위반이다. 값 범위 · `display` 짝 · 중복은 코드가 보고 맞지 않는 목표를 뺀다(표시 기준은 남는다).
+3. **검사** (코드): 지표 이름 · 연산자가 정해진 목록(enum)에 있는지는 스키마가 막는다. 값 범위 · `display` 짝을 코드가 다시 보고 맞지 않는 목표를 뺀다(표시 기준은 남는다).
 4. **쓰는 곳**: 리뷰가 `targets`를 미션처럼 판정해 `criteria_results`에 싣고, 코치는 `script_used`가 true면 대본 응시(`GAZE_ON_SCRIPT`)를 말하지 않는다.
 
 # 4. 구성과 폴더
@@ -87,7 +87,7 @@ ai/research/evaluation-criteria/
 ## 4-3. 규칙과 이유
 | 규칙 | 이유 |
 |---|---|
-| LLM 출력 스키마는 고정 필드다(요소마다 필드, 자유 키 dict 없음). 지표 · 연산자는 enum이다 | 자유 키를 쓰면 같은 요소가 매번 다른 이름("말하기 속도" · "발표 속도")으로 나와 BE · 리뷰가 받아 쓸 수 없다. 없는 지표 이름 · 연산자는 출력 스키마 위반으로 잡는다 |
+| LLM 출력 스키마는 고정 필드다(요소마다 필드, 자유 키 dict 없음). 지표 · 연산자는 enum이다 | 구조화 출력의 strict 모드가 자유 키 dict를 받지 않고, 없는 지표 이름이 나오지 않게 |
 | 숫자 목표는 코드가 다시 검사하고, 맞지 않으면 빼되 표시 기준은 남긴다 | 판정할 수 없는 목표가 리뷰에 들어가지 않게, 사용자는 기준을 그대로 본다 |
 | 코어는 상대 import와 pydantic만 쓰고 파일 · 환경변수 · 네트워크 · 시계를 쓰지 않는다 (`architecture.md` 8절) | 서비스로 옮겨도 코드를 고치지 않는다 |
 | 지표 이름은 `architecture.md` 6-3 그대로 쓴다 | 리뷰가 지표 이름으로 Take 결과에서 값을 찾는다 |
@@ -179,9 +179,8 @@ ai/research/evaluation-criteria/
 # 6. 처리 — 안에서 어떻게 도는가
 1. **LLM 한 번**: 요소 표 · 단위 규칙 · 예시가 든 프롬프트와 기준 문장으로 출력 스키마 `{display_criteria, values, targets, excluded}`를 받는다. 규칙: 언급이 없는 요소는 null, 추측 금지. `script_used`는 "대본 없이 · 보면 안 된다" → false, "봐도 된다 · 참고만" → true, 단서가 없으면 null. 같은 요소가 여러 번 나오면 더 구체적인 기준을 쓴다(프롬프트 규칙이고 계약에는 없다). 표시 기준은 사용자 표현을 그대로 살리고 요소 이름(영어)을 쓰지 않는다.
 2. **검사** (코드, `check_targets`):
-   - 표시 기준이 10개를 넘으면 앞에서부터 10개만 두고, 그 뒤에 아래 검사를 한다.
-   - `metric` · `operator`는 다시 보지 않는다. enum에 없는 값이 나오면 응답이 출력 스키마를 통과하지 못해 이 단계까지 오지 않고, 공통 재시도 뒤에도 그러면 502 `LLM_INVALID_OUTPUT`이다(구조화 출력의 strict 모드는 쓰지 않으므로 생성 단계에서 막히지 않는다).
-   - `value` 범위: 비율 지표(`audience_ratio` · `reading_ratio` · `content_coverage`)는 0–1, 개수 지표(`pause_count` · `long_silence_count` · `filler_count`)와 `filler_per_min`은 0 이상, `cpm`은 0보다 큼. 범위 밖이면 뺀다. `voice_diff_db`는 음수(평소보다 작게)도 맞는 값이라 범위를 보지 않는다.
+   - `metric` · `operator`가 enum에 없으면 그 목표를 뺀다(스키마가 막지만 다시 확인).
+   - `value` 범위: 비율 지표(`audience_ratio` · `reading_ratio` · `content_coverage`)는 0–1, 개수 지표는 0 이상, `cpm`은 0보다 큼. 범위 밖이면 뺀다.
    - `display`가 `display_criteria` 중 하나와 같아야 한다. 아니면 뺀다.
    - 같은 `display` · `metric` · `operator`의 목표가 둘 이상이면 앞의 것만 둔다. 다 거른 뒤 20개를 넘으면 앞에서부터 20개만 두고 뺀 수를 로그에 남긴다(리뷰 입력 한도 `targets` 20).
    - 표시 기준이 50자를 넘으면 자르지 않고 출력 스키마 위반으로 본다(숫자 · 조건이 잘리거나 `targets[].display` 짝이 깨지지 않게). 공통 재시도 뒤에도 넘으면 502 `LLM_INVALID_OUTPUT`이다.
@@ -222,7 +221,7 @@ uv sync
 | 문장 실행 | `uv run python run.py --all` | `results/` (과금) |
 | 평가 | `uv run python run.py --eval --out reports/results/evaluation_criteria_eval.json` | 요소 분류 정확도 · 숫자 목표 추출 정확도 (13절, 과금) |
 
-- 테스트가 볼 것: 요소마다 · 단위 바꾸기(% · 분당 · 초당), 숫자 없는 기준은 목표 없음, `display` 짝이 틀린 목표 빼기, 값 범위, `script_used` 세 값, 50자 넘는 표시 기준 · enum에 없는 지표 · 연산자는 스키마 위반(502 `LLM_INVALID_OUTPUT`), 측정할 수 없는 기준만 있을 때.
+- 테스트가 볼 것: 요소마다 · 단위 바꾸기(% · 분당 · 초당), 숫자 없는 기준은 목표 없음, `display` 짝이 틀린 목표 빼기, 값 범위, `script_used` 세 값, 50자 넘는 표시 기준은 스키마 위반(502 `LLM_INVALID_OUTPUT`), 측정할 수 없는 기준만 있을 때.
 
 # 11. 배포
 **어디서 도는가**: 코어 `src/evaluation_criteria/`(`prompts/` · `examples/` 포함)를 AI 서비스의 `features/evaluation_criteria/`로 폴더째 옮기고, 라우터가 `POST /evaluation-criteria/parse`를 연다. 라우터는 요청 마감 시각을 만들고 `structured_llm(LLM 출력 스키마, deadline)`을 넘긴다. LLM 에러는 `common/errors.py`가 상태 코드로 바꾼다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
