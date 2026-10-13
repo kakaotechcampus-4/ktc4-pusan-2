@@ -110,7 +110,7 @@ def build_default_text(
         else:
             continue
         area, evidence = _evidence(dim, take_result, script_coverage, measured, cfg)
-        strengths.append({"area": area, "text": text, "evidence": evidence})
+        strengths.append({"area": area, "slide_number": None, "text": text, "evidence": evidence})
 
     # PRIORITY 차원 목록은 반복 문제와 같다 (부담 큰 순 · 영역 · 몰린 장)
     priority_issues = build_recurring_issues(dimension_states, burden, cfg)

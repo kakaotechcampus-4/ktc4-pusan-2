@@ -49,6 +49,23 @@ def _validate(request: ReviewRequest | dict[str, Any]) -> ReviewRequest:
     return request if isinstance(request, ReviewRequest) else ReviewRequest.model_validate(request)
 
 
+def criteria_versions(take_result: dict[str, Any], cfg: ReviewConfig) -> dict[str, str]:
+    """meta.criteria_versions (명세 5-3).
+
+    Take 결과 criteria 의 기능별 기준 버전 + 리뷰 자체 규칙 버전.
+
+    키는 기준 버전의 기능 이름(``gaze-1.1+…`` → ``gaze``). 한 모듈의 기준이 여러 영역에 실려도
+    (volume → VOLUME · PAUSE) 한 번만 싣는다. 영역 이름순으로 처음 본 버전을 쓴다.
+    """
+    versions: dict[str, str] = {}
+    for area in sorted(take_result.get("criteria") or {}):
+        version = (take_result["criteria"][area] or {}).get("criteria_version")
+        if isinstance(version, str) and version:
+            versions.setdefault(version.split("-", 1)[0], version)
+    versions["review"] = cfg.criteria_version()
+    return versions
+
+
 def apply_rules(
     request: ReviewRequest | dict[str, Any], config: ReviewConfig | None = None
 ) -> RuleResult:
@@ -132,7 +149,7 @@ def review_take(
             "meta": {
                 "schema_version": SCHEMA_VERSION,
                 "feature_version": FEATURE_VERSION,
-                "criteria_versions": {"review": cfg.criteria_version()},
+                "criteria_versions": criteria_versions(rules.take_result, cfg),
                 "model": None,
             },
         }

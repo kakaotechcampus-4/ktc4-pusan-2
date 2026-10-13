@@ -13,6 +13,7 @@
   "strengths": [
     {
       "area": "GAZE",
+      "slide_number": null,
       "text": "청중을 고르게 바라봤습니다",
       "evidence": {
         "audience_ratio": 0.58
@@ -20,6 +21,7 @@
     },
     {
       "area": "SPEED",
+      "slide_number": null,
       "text": "말 속도와 시간 배분이 안정적이었습니다",
       "evidence": {
         "cpm": 318.5
@@ -27,6 +29,7 @@
     },
     {
       "area": "VOLUME",
+      "slide_number": null,
       "text": "목소리 크기가 안정적이었습니다",
       "evidence": {
         "voice_diff_db": -2.1
@@ -103,6 +106,7 @@
     "schema_version": "1.0",
     "feature_version": "review-1.0",
     "criteria_versions": {
+      "gaze": "gaze-1.1+000000000000",
       "review": "review-1.0+a40a85054255"
     },
     "model": null

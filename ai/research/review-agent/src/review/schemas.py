@@ -71,6 +71,8 @@ class TakeResult(_In):
     areas: dict[str, AreaResult]
     problem_segments: list[ProblemSegment] = Field(default_factory=list)
     gave_up: list[GaveUp] = Field(default_factory=list)
+    #: 영역 → {criteria_version, issues}. 리뷰는 criteria_version 만 meta 에 옮겨 싣는다
+    criteria: dict[str, Any] = Field(default_factory=dict)
 
 
 class KeyPoint(_In):
@@ -152,6 +154,8 @@ class ReviewRequest(_In):
 
 class Strength(_Out):
     area: str
+    #: 장이 없으면 null
+    slide_number: int | None
     text: str
     evidence: dict[str, Number]
 
@@ -163,12 +167,20 @@ class Improvement(_Out):
     evidence: dict[str, Number]
 
 
+class ScriptMode(_Out):
+    previous: str
+    current: str
+
+
 class Comparison(_Out):
     metric: str
     slide_number: int | None = None
     previous: Number
     current: Number
-    improved: bool
+    #: 좋아진 방향인지. 방향을 정할 수 없으면(기준 없음) null
+    improved: bool | None
+    #: 두 Take 의 대본 보기가 다를 때만 {previous, current}, 같으면 null
+    script_mode: ScriptMode | None = None
 
 
 class MissionResult(_Out):

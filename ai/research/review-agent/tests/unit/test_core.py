@@ -105,3 +105,36 @@ def test_bad_request_raises_validation_error(req):
     del req["take_result"]["take_id"]
     with pytest.raises(ValidationError):
         review_take(req)
+
+
+def test_criteria_versions_carry_take_result_criteria(req):
+    # 한 모듈의 기준이 여러 영역에 실려도(volume → VOLUME · PAUSE) 한 번만
+    req["take_result"]["criteria"].update(
+        {
+            "VOLUME": {"criteria_version": "volume-1.0+aaaaaaaaaaaa", "issues": {}},
+            "PAUSE": {"criteria_version": "volume-1.0+aaaaaaaaaaaa", "issues": {}},
+            "SPEED": {"issues": {}},  # 버전이 없으면 싣지 않는다
+        }
+    )
+    versions = review_take(req).meta.criteria_versions
+    assert versions.keys() == {"gaze", "volume", "review"}
+    assert versions["gaze"] == "gaze-1.1+000000000000"
+    assert versions["volume"] == "volume-1.0+aaaaaaaaaaaa"
+    assert versions["review"].startswith("review-1.0+")
+
+
+def test_comparison_shape():
+    from review.schemas import Comparison
+
+    c = Comparison.model_validate(
+        {
+            "metric": "cpm",
+            "slide_number": None,
+            "previous": 300,
+            "current": 320,
+            "improved": None,
+            "script_mode": {"previous": "SCRIPT", "current": "NO_SCRIPT"},
+        }
+    )
+    assert c.improved is None
+    assert c.script_mode.current == "NO_SCRIPT"
