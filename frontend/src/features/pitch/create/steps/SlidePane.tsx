@@ -11,7 +11,7 @@ import {
   PaperclipIcon,
   PdfUploadIcon,
 } from '../icons';
-import { MAX_SLIDE_BYTES, type SlideUpload, type SlideVersion } from '../lib/draft';
+import { MAX_SLIDE_BYTES, pendingVersion, type SlideUpload, type SlideVersion } from '../lib/draft';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { startSlideUpload } from '../slideUpload';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
@@ -350,6 +350,8 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
 
 function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload }) {
   const addSlideVersion = useCreateStore((s) => s.addSlideVersion);
+  // 파일을 기다리는 빈 버전이 있으면 새 버전을 막습니다 (`pendingVersion`)
+  const pendingSlide = useCreateStore((s) => pendingVersion(s.draft, 'slides'));
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const opened = usePdfDocument(slide.fileUrl);
@@ -411,7 +413,10 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
             </button>
             <button
               type="button"
-              disabled={replacing}
+              disabled={replacing || pendingSlide !== null}
+              title={
+                pendingSlide !== null ? `V${pendingSlide}에 파일을 먼저 올려 주세요` : undefined
+              }
               onClick={addSlideVersion}
               className="flex h-11 items-center gap-2 rounded-lg border border-coral bg-white px-5 text-sm font-bold text-coral hover:bg-coral-wash disabled:cursor-not-allowed disabled:opacity-50"
             >

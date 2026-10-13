@@ -4,7 +4,12 @@ import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { Mascot } from './Mascot';
 import { InfoBar } from './InfoBar';
 import { VersionRail } from './VersionRail';
-import { selectBusy, selectInfoUnsaved, useCreateStore } from './createStore';
+import {
+  selectBusy,
+  selectCriteriaUnsaved,
+  selectInfoUnsaved,
+  useCreateStore,
+} from './createStore';
 import {
   latestCriteria,
   latestScript,
@@ -78,12 +83,13 @@ function PitchCreateScreen() {
 
   // 탭을 닫거나 새로고침하면 저장하지 않은 발표정보와 진행 중인 업로드 · 나누기가 사라집니다.
   // 브라우저 기본 확인 창만 띄웁니다 — 문구는 브라우저가 정하고 바꿀 수 없습니다
+  const criteriaUnsaved = useCreateStore(selectCriteriaUnsaved);
   useEffect(() => {
-    if (!unsaved && !busy) return;
+    if (!unsaved && !busy && !criteriaUnsaved) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [unsaved, busy]);
+  }, [unsaved, busy, criteriaUnsaved]);
 
   const pickedScript =
     node === 'script'
