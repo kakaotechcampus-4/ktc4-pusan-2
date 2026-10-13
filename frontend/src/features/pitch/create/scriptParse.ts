@@ -1,7 +1,7 @@
 import { toMessage } from '@/shared/api/errorMessage';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { createScript, getScript, reparseScript } from '@/shared/api/script';
-import { useCreateStore } from './createStore';
+import { isCurrentDraft, useCreateStore } from './createStore';
 import { fromScriptCreated, fromScriptDetail } from './lib/beAdapter';
 
 /**
@@ -36,19 +36,29 @@ const KEEP_POLLING = new Set(['SCRIPT_PARSE_IN_PROGRESS', 'SCRIPT_ALREADY_PARSED
 const shouldKeepPolling = (error: unknown) =>
   error instanceof ApiFailure && error.status === 409 && KEEP_POLLING.has(error.code);
 
-/** 그사이 글을 고쳤거나 다시 올렸으면, 이 서버 버전의 결과는 더 이상 그 대본의 것이 아닙니다 */
-function stillCurrent(version: number, remoteId: string): boolean {
+/**
+ * 그사이 글을 고쳤거나 다시 올렸으면, 이 서버 버전의 결과는 더 이상 그 대본의 것이 아닙니다.
+ * 새 피치를 시작했어도 마찬가지입니다 — 새 작성에도 같은 번호(V1)의 대본이 있을 수 있어
+ * 번호만 보면 앞 피치의 결과가 들어갑니다 (`draftId`).
+ */
+function stillCurrent(draftId: string, version: number, remoteId: string): boolean {
+  if (!isCurrentDraft(draftId)) return false;
   const script = useCreateStore.getState().draft.scripts.find((v) => v.version === version);
   return script?.remote?.id === remoteId;
 }
 
-async function poll(pitchId: string, version: number, remoteId: string): Promise<void> {
+async function poll(
+  draftId: string,
+  pitchId: string,
+  version: number,
+  remoteId: string,
+): Promise<void> {
   const { patchScript } = useCreateStore.getState();
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < GIVE_UP_MS) {
     await sleep(POLL_MS);
-    if (!stillCurrent(version, remoteId)) return;
+    if (!stillCurrent(draftId, version, remoteId)) return;
 
     let progress;
     try {
@@ -58,7 +68,7 @@ async function poll(pitchId: string, version: number, remoteId: string): Promise
       console.error('[대본] 나누기 상태를 받지 못했습니다', { remoteId, error });
       continue;
     }
-    if (!stillCurrent(version, remoteId)) return;
+    if (!stillCurrent(draftId, version, remoteId)) return;
 
     if (progress.status === 'done') {
       patchScript(version, {
@@ -76,12 +86,13 @@ async function poll(pitchId: string, version: number, remoteId: string): Promise
       return;
     }
   }
+  if (!stillCurrent(draftId, version, remoteId)) return;
   patchScript(version, { parse: failed('나누는 데 너무 오래 걸려요. 다시 시도해 주세요.') });
 }
 
 /** "대본 매핑" — 이 대본을 서버에 새 버전으로 올리고 나눈 결과를 기다립니다 */
 async function upload(version: number): Promise<void> {
-  const { pitchId, draft, patchScript } = useCreateStore.getState();
+  const { pitchId, draftId, draft, patchScript } = useCreateStore.getState();
   const script = draft.scripts.find((v) => v.version === version);
   if (!pitchId || !script || script.parse.status === 'pending') return;
 
@@ -92,19 +103,21 @@ async function upload(version: number): Promise<void> {
     created = fromScriptCreated(await createScript(pitchId, script.text));
   } catch (error) {
     console.error('[대본] 올리지 못했습니다', { pitchId, version, error });
-    patchScript(version, { parse: failed(toMessage(error)) });
+    if (isCurrentDraft(draftId)) patchScript(version, { parse: failed(toMessage(error)) });
     return;
   }
 
+  // 그사이 새 피치를 시작했으면 새 작성의 같은 번호 대본에 앞 피치의 서버 버전을 붙이지 않습니다
+  if (!isCurrentDraft(draftId)) return;
   patchScript(version, {
     remote: created,
   });
-  await poll(pitchId, version, created.id);
+  await poll(draftId, pitchId, version, created.id);
 }
 
 /** FAILED 였던 서버 버전을 다시 나눕니다. 원문은 서버가 들고 있습니다 */
 async function retry(version: number): Promise<void> {
-  const { pitchId, draft, patchScript } = useCreateStore.getState();
+  const { pitchId, draftId, draft, patchScript } = useCreateStore.getState();
   const remote = draft.scripts.find((v) => v.version === version)?.remote;
   if (!pitchId) return;
   // 올리기부터 실패했으면 서버에 아무것도 없습니다 — 처음부터 올립니다
@@ -116,11 +129,11 @@ async function retry(version: number): Promise<void> {
   } catch (error) {
     if (!shouldKeepPolling(error)) {
       console.error('[대본] 다시 나누기를 요청하지 못했습니다', { remoteId: remote.id, error });
-      patchScript(version, { parse: failed(toMessage(error)) });
+      if (isCurrentDraft(draftId)) patchScript(version, { parse: failed(toMessage(error)) });
       return;
     }
   }
-  await poll(pitchId, version, remote.id);
+  await poll(draftId, pitchId, version, remote.id);
 }
 
 /** 화면에서 부르는 입구. 위 함수들은 실패를 스토어로 올리므로, 여기까지 오는 건 예상 밖의 오류뿐입니다 */

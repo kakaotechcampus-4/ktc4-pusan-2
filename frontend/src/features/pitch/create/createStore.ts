@@ -50,6 +50,25 @@ interface CreateState {
   setPitchId: (id: string) => void;
 
   /**
+   * 지금 작성의 회차 id. `reset` 때마다 새로 만듭니다.
+   *
+   * 업로드 · 매핑 · 정리 · 저장은 시작할 때 이 값을 쥐고 있다가, 끝나고 결과를 쓰기 직전에
+   * 아직 같은지 봅니다 (`isCurrentDraft`). 그사이 새 피치를 시작했으면 앞 피치의 결과를 버립니다 —
+   * 안 버리면 A 의 PDF · 대본 · 기준 · pitchId 가 새로 시작한 B 에 들어갑니다.
+   */
+  draftId: string;
+  /**
+   * 이 작성을 연 브라우저 기록 항목(`location.key`). 피치 생성 화면에 들어올 때 이 값과 다르면
+   * 새로 시작한 것이라 비웁니다 (`beginEntry`).
+   *
+   * 홈의 "새 피치 만들기"는 새 기록 항목이라 키가 새로 생기고, 장치 점검에서 뒤로 가기로 돌아오면
+   * 같은 항목이라 키가 같습니다. 그래서 "새로 시작"과 "작성 중 복귀"가 플래그 없이 갈립니다.
+   */
+  entryKey: string | null;
+  /** 피치 생성 화면에 들어올 때 부릅니다. 다른 기록 항목에서 왔으면 비우고 새로 시작합니다 */
+  beginEntry: (key: string) => void;
+
+  /**
    * 이번 연습에 들고 갈 버전. 슬라이드와 대본은 매핑을 저장할 때 함께 정해집니다.
    * `null` 은 최신입니다 — 고르지 않은 것을 번호로 박아 두면 새 버전을 올려도
    * 옛것으로 계속 연습하게 됩니다.
@@ -159,6 +178,10 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   pitchId: null,
   setPitchId: (id) => set({ pitchId: id }),
+
+  draftId: crypto.randomUUID(),
+  entryKey: null,
+  beginEntry: (key) => set((s) => (s.entryKey === key ? s : { ...freshDraft(), entryKey: key })),
 
   chosen: CHOOSE_LATEST,
   chooseVersion: (node, version) => set((s) => ({ chosen: { ...s.chosen, [node]: version } })),
@@ -334,17 +357,29 @@ export const useCreateStore = create<CreateState>((set) => ({
       };
     }),
 
-  reset: () =>
-    set({
-      draft: EMPTY_DRAFT,
-      node: 'info',
-      version: null,
-      pitchId: null,
-      infoEdits: null,
-      chosen: CHOOSE_LATEST,
-      slideUpload: { status: 'idle' },
-    }),
+  reset: () => set(freshDraft()),
 }));
+
+/** 비운 작성. 회차 id 를 새로 만들어 앞 작성에서 시작한 비동기 결과가 들어오지 못하게 합니다 */
+function freshDraft() {
+  return {
+    draft: EMPTY_DRAFT,
+    node: 'info' as const,
+    version: null,
+    pitchId: null,
+    infoEdits: null,
+    chosen: CHOOSE_LATEST,
+    slideUpload: { status: 'idle' as const },
+    draftId: crypto.randomUUID(),
+  };
+}
+
+/**
+ * 비동기 작업이 시작할 때의 작성이 아직 지금 작성인가. 결과를 스토어에 쓰기 직전에 봅니다.
+ * 아니면 그 결과는 앞 피치의 것이라 버립니다 (`draftId`).
+ */
+export const isCurrentDraft = (draftId: string): boolean =>
+  useCreateStore.getState().draftId === draftId;
 
 /** 발표정보를 고치고 아직 저장하지 않았나. 사이드바 표시와 떠나기 경고가 함께 봅니다 */
 export const selectInfoUnsaved = (s: CreateState): boolean =>
