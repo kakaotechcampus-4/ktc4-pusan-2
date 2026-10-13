@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from review import load_config
+from review.schemas import MAX_CRITERIA_TARGETS, MAX_DESCRIPTION_CHARS, MAX_NEXT_MISSIONS
+
 from .conftest import run, sample_coverage, segment, target
 
 
@@ -59,7 +62,8 @@ def busy_request(req):
     return req
 
 
-def test_candidates_and_final_count(req):
+def test_candidates_and_final_are_same_without_llm(req):
+    # LLM 없이는 후보 전부가 다음 미션 (사용자 기준 FAILED 1 + PRIORITY 3)
     resp, trace = run(busy_request(req))
     assert descriptions(trace.next_mission_candidates) == [
         "추임새 5번 이하",
@@ -67,8 +71,31 @@ def test_candidates_and_final_count(req):
         "3번 장 핵심 내용 전달률 70% 이상",  # 내용은 늘 장 미션
         "분당 군더더기 1.9 이하",  # 3번 장에 58% 몰렸지만 장 값이 없어 Take 미션
     ]
-    assert descriptions(resp.next_missions) == descriptions(trace.next_mission_candidates)[:3]
-    assert [m.priority for m in resp.next_missions] == [1, 2, 3]
+    assert descriptions(resp.next_missions) == descriptions(trace.next_mission_candidates)
+    assert [m.priority for m in resp.next_missions] == [1, 2, 3, 4]
+
+
+def test_all_failed_criteria_kept_and_priority_capped(req):
+    # 실패한 사용자 목표는 개수와 상관없이 모두, PRIORITY 후보는 priority_candidate_max 개까지
+    req = busy_request(req)
+    req["user_criteria"]["targets"] = [
+        target(f"추임새 {n}번 이하", "filler_count", "LTE", n) for n in range(5)
+    ]
+    resp, _ = run(req, load_config(next_mission={"priority_candidate_max": 1}))
+    assert descriptions(resp.next_missions) == [
+        *(f"추임새 {n}번 이하" for n in range(5)),
+        "3번 장 대본 응시 비율 52% 이하",
+    ]
+
+
+def test_next_missions_capped_at_contract_limit(req):
+    req = busy_request(req)
+    req["user_criteria"]["targets"] = [
+        target("가" * 600, "filler_count", "LTE", 0) for _ in range(MAX_CRITERIA_TARGETS)
+    ]
+    resp, _ = run(req)
+    assert len(resp.next_missions) == MAX_NEXT_MISSIONS  # PRIORITY 후보가 들어갈 자리가 없다
+    assert all(len(m.description) == MAX_DESCRIPTION_CHARS for m in resp.next_missions)
 
 
 def test_pacing_rhythm_makes_no_mission(req):

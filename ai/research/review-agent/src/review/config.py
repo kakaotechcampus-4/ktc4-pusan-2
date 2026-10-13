@@ -116,10 +116,9 @@ class NextMissionConfig(_Section):
     )
     #: 부담이 한 장에 이 비율을 넘게 몰리면 장 미션 (반복 문제의 장도 같은 규칙)
     slide_concentration: float = 0.5
-    #: 규칙 단계가 만드는 후보 수 (Take · 장 미션 합쳐서)
-    candidate_max: int = 5
-    #: 최종 다음 미션 수 (Take · 장 미션 합쳐서). 2차에서는 LLM 이 후보 중 이만큼 고른다
-    max_count: int = 3
+    #: PRIORITY 차원에서 만드는 후보 수 (Take · 장 미션 합쳐서).
+    #: 실패한 사용자 목표 미션은 이 수와 상관없이 모두 넣고, 합계 상한은 schemas.MAX_NEXT_MISSIONS
+    priority_candidate_max: int = 3
 
 
 class ScoreConfig(_Section):

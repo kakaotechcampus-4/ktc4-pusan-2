@@ -107,7 +107,7 @@
     "feature_version": "review-1.0",
     "criteria_versions": {
       "gaze": "gaze-1.1+000000000000",
-      "review": "review-1.0+a40a85054255"
+      "review": "review-1.0+7047f0dca754"
     },
     "model": null
   }

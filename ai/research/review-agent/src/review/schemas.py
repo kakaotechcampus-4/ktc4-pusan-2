@@ -15,6 +15,16 @@ from .vocab import DimensionState, FallbackReason, JudgeStatus, Operator
 
 Number = int | float
 
+# 개수 · 길이 한도 (명세 5-2 · 5-3). BE · 코치와 맞춘 계약 값이라 config.py 가 아니라 여기에 둔다.
+# 입력이 넘으면 ValidationError (라우터가 422 VALIDATION_ERROR 로 바꾼다)
+MAX_PREVIOUS_TAKES = 3
+MAX_MISSIONS = 20
+MAX_RECURRING_ISSUES = 20
+MAX_CRITERIA_TARGETS = 20
+#: 다음 미션 개수 · 설명 길이 (코칭 계획 입력 한도, coach-agent.md 5-2)
+MAX_NEXT_MISSIONS = 20
+MAX_DESCRIPTION_CHARS = 500
+
 
 class _In(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -131,7 +141,7 @@ class CriteriaTarget(_In):
 
 class UserCriteria(_In):
     display_criteria: list[str] = Field(default_factory=list)
-    targets: list[CriteriaTarget] = Field(default_factory=list)
+    targets: list[CriteriaTarget] = Field(default_factory=list, max_length=MAX_CRITERIA_TARGETS)
     #: true 면 대본 응시(GAZE_ON_SCRIPT)를 문제로 보지 않는다
     script_used: bool | None = None
 
@@ -141,9 +151,11 @@ class ReviewRequest(_In):
     #: 모든 장이 실패했으면 null
     script_coverage: ScriptCoverage | None = None
     #: 같은 발표의 이전 Take (최근 3개). 1차는 이전 Take 비교를 하지 않아 받기만 한다
-    previous_takes: list[Any] | None = None
-    previous_recurring_issues: list[RecurringIssueIn] | None = None
-    missions: list[Mission] | None = None
+    previous_takes: list[Any] | None = Field(default=None, max_length=MAX_PREVIOUS_TAKES)
+    previous_recurring_issues: list[RecurringIssueIn] | None = Field(
+        default=None, max_length=MAX_RECURRING_ISSUES
+    )
+    missions: list[Mission] | None = Field(default=None, max_length=MAX_MISSIONS)
     user_criteria: UserCriteria | None = None
 
 
@@ -213,7 +225,7 @@ class NextMission(_Out):
 
     area: str | None
     slide_number: int | None
-    description: str | None
+    description: str | None = Field(max_length=MAX_DESCRIPTION_CHARS)
     target: MissionTarget
     priority: int
     reason: str
@@ -245,7 +257,7 @@ class ReviewResponse(_Out):
     comparison: list[Comparison]
     mission_results: list[MissionResult]
     criteria_results: list[CriteriaResult]
-    next_missions: list[NextMission]
-    recurring_issues: list[RecurringIssue]
+    next_missions: list[NextMission] = Field(max_length=MAX_NEXT_MISSIONS)
+    recurring_issues: list[RecurringIssue] = Field(max_length=MAX_RECURRING_ISSUES)
     fallback_reason: FallbackReason | None
     meta: Meta

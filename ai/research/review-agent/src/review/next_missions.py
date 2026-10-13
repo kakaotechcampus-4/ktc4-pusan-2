@@ -1,8 +1,8 @@
-"""7단계: 다음 미션. 규칙 단계가 후보와 목표 숫자를 만들고, 최종 몇 개를 고른다.
+"""7단계: 다음 미션. 규칙 단계가 후보와 목표 숫자를 만든다.
 
-2차에서는 LLM 이 후보 중 고르고 설명을 붙인다.
+2차에서는 LLM 이 PRIORITY 후보 중 고르고 설명을 붙인다.
 사용자 기준 FAILED 미션은 LLM 이 빼거나 순서를 바꾸지 못한다.
-LLM 이 없거나 실패하면 select_next_missions 가 후보 상위를 쓴다.
+LLM 이 없거나 실패하면 select_next_missions 가 후보를 그대로 쓴다.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import Any
 from .burden import Burden, focus_slide
 from .config import ReviewConfig
 from .metrics import find_metric
+from .schemas import MAX_DESCRIPTION_CHARS, MAX_NEXT_MISSIONS
 from .text import METRIC_LABELS, OPERATOR_WORDS
 from .vocab import METRIC_TO_DIMENSION, SLIDE_ONLY_DIMENSIONS
 
@@ -53,11 +54,15 @@ def build_next_missions(
     script_coverage: dict[str, Any] | None,
     cfg: ReviewConfig,
 ) -> list[dict[str, Any]]:
-    """다음 미션 후보 (candidate_max 개까지, priority 1부터).
+    """다음 미션 후보 (priority 1부터).
 
-    1) 사용자 기준 FAILED: 사용자가 정한 목표 그대로.
+    합계 MAX_NEXT_MISSIONS 개 이하, 설명 MAX_DESCRIPTION_CHARS 자 이하 (명세 5-3 · 6-1 7번).
+
+    1) 사용자 기준 FAILED: 사용자가 정한 목표 그대로, 모두 넣는다
+       (targets 한도가 상한 이하라 다 들어간다).
        지표가 속한 차원의 부담 큰 순, 같으면 targets 순서
-    2) PRIORITY 차원마다 하나 (부담 큰 순, 같으면 이름순).
+    2) PRIORITY 차원마다 하나, priority_candidate_max 개까지이고 합계 상한을 넘지 않게
+       (부담 큰 순, 같으면 이름순).
        mission_metric 이 None 인 차원은 건너뛴다.
        목표 = 지금 값 + step (final 을 넘지 않음).
        부담이 몰린 장이 있으면 장 미션, 그 장 값이 없으면 Take 미션.
@@ -88,9 +93,12 @@ def build_next_missions(
         taken.add((r["metric"], None))
 
     # 2) PRIORITY 차원
+    room = min(c.priority_candidate_max, MAX_NEXT_MISSIONS - len(missions))
     priority_dims = [d for d, s in dimension_states.items() if s == "PRIORITY"]
     priority_dims.sort(key=lambda d: (-burden[d]["total"], d))
     for dim in priority_dims:
+        if room <= 0:
+            break
         metric = c.mission_metric.get(dim)
         if metric is None:
             continue
@@ -117,18 +125,24 @@ def build_next_missions(
             }
         )
         taken.add((metric, slide))
+        room -= 1
 
-    missions = missions[: c.candidate_max]
+    missions = missions[:MAX_NEXT_MISSIONS]
     for i, m in enumerate(missions, 1):
         m["priority"] = i
+        if m["description"] is not None:
+            m["description"] = m["description"][:MAX_DESCRIPTION_CHARS]
     return missions
 
 
 def select_next_missions(
     candidates: list[dict[str, Any]], cfg: ReviewConfig
 ) -> list[dict[str, Any]]:
-    """LLM 없이 고르기 (1차 · LLM 실패 시): 후보 상위 max_count 개, priority 를 1부터 다시 매긴다"""
-    picked = copy.deepcopy(candidates[: cfg.next_mission.max_count])
+    """LLM 없이 고르기 (1차 · LLM 실패 시): 후보 전부 (이미 상한 안).
+
+    priority 를 1부터 다시 매긴다.
+    """
+    picked = copy.deepcopy(candidates)
     for i, m in enumerate(picked, 1):
         m["priority"] = i
     return picked

@@ -138,3 +138,27 @@ def test_comparison_shape():
     )
     assert c.improved is None
     assert c.script_mode.current == "NO_SCRIPT"
+
+
+@pytest.mark.parametrize(
+    ("field", "limit"),
+    [("previous_takes", 3), ("missions", 20), ("previous_recurring_issues", 20)],
+)
+def test_input_count_limits(req, field, limit):
+    item = {
+        "previous_takes": {"take_result": None, "take_scores": None},
+        "missions": req["missions"][0],
+        "previous_recurring_issues": req["previous_recurring_issues"][0],
+    }[field]
+    req[field] = [item] * limit
+    review_take(req)  # 한도까지는 받는다
+    req[field] = [item] * (limit + 1)
+    with pytest.raises(ValidationError):  # 라우터가 422 로 바꾼다
+        review_take(req)
+
+
+def test_criteria_targets_limit(req):
+    t = req["user_criteria"]["targets"][0]
+    req["user_criteria"]["targets"] = [t] * 21
+    with pytest.raises(ValidationError):
+        review_take(req)
