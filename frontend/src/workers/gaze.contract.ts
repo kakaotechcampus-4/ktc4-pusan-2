@@ -52,7 +52,7 @@ export type { GazeFrame };
 export type GazeSampleRecord = GazeSample;
 
 /**
- * 캘리브레이션 결과. **서버로 보내지 않습니다** — IndexedDB 에만 둡니다.
+ * 캘리브레이션 결과. **서버로 보내지 않습니다** — 탭 메모리에만 둡니다 (`zoneRefMemory.ts`).
  * 서버에는 품질 요약(`CalibrationSummary`)만 갑니다.
  *
  * ── 왜 이 모양인가 ──────────────────────────────────────────────────
@@ -96,7 +96,7 @@ export interface ZoneReference {
   /**
    * 분류기가 학습한 것. **FE 는 해석하지 않습니다** — 저장하고 되돌려주기만 합니다.
    *
-   * IndexedDB 에 넣고 다음 Take 에서 되살려야 하므로
+   * 장치 점검 워커에서 리허설 워커로 메시지에 실어 넘기므로
    * **구조화 복제(structured clone)가 되는 값**이어야 합니다.
    */
   model: unknown;
@@ -190,7 +190,7 @@ export interface GazeClassifier {
   checkPlacement(camera: readonly ImageBitmap[], screen: readonly ImageBitmap[]): PlacementResult;
   /**
    * 기준을 적용합니다. `fitCalibration` 이 방금 낸 값이거나,
-   * IndexedDB 에서 되살린 지난 Take 의 값입니다.
+   * 장치 점검이 탭 메모리에 둔 이번 Take 의 값입니다.
    */
   calibrate(ref: ZoneReference): void;
   /**
@@ -239,10 +239,10 @@ export type GazeWorkerOut =
   | { type: 'frameDone'; tMs: Ms }
   /**
    * `fitCalibration` 결과. `ok: false` 면 모델이 없어 재시도해야 합니다.
-   * 화면은 기준을 IndexedDB 에 저장하고 다음 Take 에서 되살립니다.
+   * 화면은 기준을 탭 메모리에 두고 리허설이 꺼내 씁니다 (`zoneRefMemory.ts`).
    *
    * `engineVersion` 은 이 기준을 만든 엔진입니다 (`ready` 의 version 과 같은 문자열).
-   * 기준과 함께 저장해 두었다가, 되살릴 때 엔진이 바뀌었으면 버립니다 —
+   * 기준과 함께 두었다가, 꺼낼 때 엔진이 바뀌었으면 버립니다 —
    * 다른 모델이 만든 기준을 넣으면 분류기가 그걸 거부할 방법이 없습니다
    * (`calibrate()` 는 반환값이 없습니다). AI 도 스키마가 다른 기준은 거부합니다.
    */

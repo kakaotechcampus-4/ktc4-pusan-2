@@ -34,7 +34,6 @@ function deviceCheckHint({
   calStatus,
   calUnavailable,
   calPoor,
-  calSaveFailed,
 }: {
   deviceError: DeviceError | null;
   live: boolean;
@@ -44,8 +43,6 @@ function deviceCheckHint({
   calUnavailable: string | null;
   /** 기준은 잡혔지만 품질이 낮음 — 막지 않고 권하기만 합니다 */
   calPoor: boolean;
-  /** 기준은 잡혔지만 브라우저에 저장하지 못함 — 리허설이 못 쓰므로 막습니다 */
-  calSaveFailed: boolean;
 }): string {
   if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
   // 카메라 권한을 묻기 전에 알립니다 — 시선 분석을 못 쓰면 카메라를 켜도 시작할 수 없습니다
@@ -56,9 +53,6 @@ function deviceCheckHint({
   if (calStatus === 'FAILED')
     return '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요';
   if (calStatus !== 'DONE') return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
-  if (calSaveFailed) {
-    return '시선 기준을 저장하지 못했어요. 다시 잡아 주세요';
-  }
   if (calPoor) return '시선 기준이 흐릿해요. 다시 잡으면 더 정확해지지만, 이대로 시작해도 됩니다';
   return '점검이 끝났어요';
 }
@@ -219,8 +213,7 @@ export function DeviceCheckPage() {
   // ★ 피치 생성에서 조합을 받았으면 준비 화면 응답(`/prepare`)을 기다리지 않습니다.
   //   Take 에 필요한 값(버전 id · 목표 시간)이 조합에 다 있고, `/prepare` 는 BE 에 아직 없습니다
   const versions = takeVersions(combo, data);
-  const ready =
-    live && micOk && cal.status === 'DONE' && !cal.saveFailed && versions !== null && !starting;
+  const ready = live && micOk && cal.status === 'DONE' && versions !== null && !starting;
 
   /**
    * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
@@ -245,10 +238,6 @@ export function DeviceCheckPage() {
     const practiceMode = practiceModeFor(scriptMode);
 
     try {
-      // 리허설은 다른 워커라 기준을 IndexedDB 에서 꺼내 씁니다. **Take 를 만들기 전에** 확인합니다 —
-      // 뒤에서 실패하면 연습 없이 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다
-      await cal.saved();
-
       const clientSessionId = await startSession();
 
       // ★ 이번 연습의 슬라이드 + 대본 조합이 Take 에 박힙니다 (BE TakeInitRequestDTO)
@@ -316,7 +305,6 @@ export function DeviceCheckPage() {
           calStatus: cal.status,
           calUnavailable: cal.unavailableMessage,
           calPoor: cal.advice !== null,
-          calSaveFailed: cal.saveFailed,
         }));
 
   const takeNumber = data?.nextTakeNumber ?? 0;

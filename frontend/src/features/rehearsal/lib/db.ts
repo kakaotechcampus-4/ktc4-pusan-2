@@ -1,7 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { DeviceChoice } from '../media/useCameraStream';
 import type { CalibrationSummary, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
-import type { GazeSampleRecord, ZoneReference } from '@/workers/gaze.contract';
+import type { GazeSampleRecord } from '@/workers/gaze.contract';
 
 /**
  * 리허설 중 쌓이는 모든 기록. **브라우저가 원본입니다** (CLAUDE.md 4번).
@@ -15,7 +15,7 @@ import type { GazeSampleRecord, ZoneReference } from '@/workers/gaze.contract';
  */
 
 const DB_NAME = 'pitchcoach';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 /** 세션 상태. 서버의 TakeStatus 와 다릅니다 — 이건 브라우저 쪽 진행 상태입니다. */
 export type SessionStatus = 'RUNNING' | 'ENDED' | 'ABORTED';
@@ -114,22 +114,6 @@ interface PitchDb extends DBSchema {
       suppressedReason: string | null;
     };
   };
-  /**
-   * 캘리브레이션 기준. **서버로 보내지 않습니다** (CLAUDE.md 1번) —
-   * 서버에는 품질 요약(`CalibrationSummary`)만 갑니다.
-   *
-   * 키가 `layoutSignature` 인 이유 — 해상도·배율·카메라 위치가 바뀌면
-   * 시선 각도가 달라져 지난 기준을 쓸 수 없습니다. 키로 두면
-   * "다른 기기에서는 자동으로 재사용되지 않는" 동작이 그냥 나옵니다.
-   */
-  zoneRefs: {
-    key: string;
-    /**
-     * `layoutSignature` 는 FE 가 만든 키입니다 — 분류기는 모릅니다 (layoutSignature.ts).
-     * `engineVersion` 은 이 기준을 만든 엔진입니다. 다른 엔진에는 넣지 않습니다.
-     */
-    value: ZoneReference & { layoutSignature: string; engineVersion: string; fittedAt: number };
-  };
 }
 
 let dbPromise: Promise<IDBPDatabase<PitchDb>> | null = null;
@@ -176,7 +160,7 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
 
       // ── v2 · 캘리브레이션 기준. 세션이 아니라 기기(layoutSignature)에 매입니다 ──
       if (oldVersion < 2) {
-        db.createObjectStore('zoneRefs', { keyPath: 'layoutSignature' });
+        untyped.createObjectStore('zoneRefs', { keyPath: 'layoutSignature' });
       }
 
       // ── v3 · 로컬 녹음 폐기. 음성은 WebSocket 으로만 갑니다 (CLAUDE.md 4번) ──
@@ -193,7 +177,14 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
         db.createObjectStore('gazeSamples', { keyPath: ['clientSessionId', 't_ms'] });
       }
 
-      // ── v5 를 만들 때는 여기에 블록을 덧붙입니다. 위는 절대 고치지 않습니다 ──
+      // ── v5 · 시선 기준을 브라우저 저장소에 두지 않습니다 (AI 시선 문서 12-2) ──
+      //   기준에는 얼굴 측정값이 들어 있어 이제 탭 메모리에만 둡니다 (zoneRefMemory.ts).
+      //   남아 있던 기준까지 지우도록 스토어째 지웁니다.
+      if (oldVersion < 5) {
+        untyped.deleteObjectStore('zoneRefs');
+      }
+
+      // ── v6 을 만들 때는 여기에 블록을 덧붙입니다. 위는 절대 고치지 않습니다 ──
       //   이미 그 단계를 지나온 브라우저는 다시 밟지 않으므로, 위를 고치면
       //   새로 여는 사람에게만 반영되고 기존 사용자와 구조가 갈립니다.
       //
@@ -202,7 +193,7 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
       //   이름에 ConstraintError 를 냅니다.
       //
       //   upgrade(db, oldVersion, _newVersion, tx) {
-      //     if (oldVersion < 5) tx.objectStore('session').createIndex('byTakeId', 'takeId');
+      //     if (oldVersion < 6) tx.objectStore('session').createIndex('byTakeId', 'takeId');
       //   }
     },
   })
@@ -466,69 +457,4 @@ export async function findAbandonedSessions(staleAfterMs = 10_000): Promise<Sess
   const running = await db.getAllFromIndex('session', 'byStatus', 'RUNNING');
   const now = Date.now();
   return running.filter((s) => now - s.lastBeatAt > staleAfterMs);
-}
-
-/* ------------------------------------------------------------------ */
-/* 캘리브레이션 기준 — 이번 Take 동안만 둡니다                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * 기준을 얼마나 믿나. 리허설 새로고침에서 되살리는 데만 쓰므로 Take 한 번이면 충분합니다.
- *
- * 기준(`model`)에는 얼굴 측정값(얼굴 위치·크기, 홍채 크기, 머리 거리)이 들어 있어
- * AI 엔진은 메모리에만 두라고 합니다 (`CalibrationModel`). 장치 점검과 리허설이 서로 다른
- * 워커라 넘겨 줄 곳이 필요하고, 리허설을 새로고침해도 시선이 이어져야 해서 IndexedDB 에 둡니다.
- * 대신 **Take 가 끝나면 지우고**(`clearZoneRefs`), 다음 Take 에서 다시 쓰지 않습니다.
- * 이 시간은 지우지 못하고 떠났을 때(탭을 닫음 · 종료를 누르지 않음)의 안전장치입니다.
- */
-export const ZONE_REF_TTL_MS = 3 * 60 * 60 * 1000;
-
-/**
- * 기준을 저장합니다. `fitCalibration` 이 낸 값을 그대로 넣고, 키는 FE 가 붙입니다.
- *
- * `model` 안에 무엇이 들었는지 FE 는 모릅니다 — 분류기가 정하고,
- * IndexedDB 는 구조화 복제로 그대로 보관합니다. 서버로는 보내지 않습니다.
- */
-export async function saveZoneRef(
-  layoutSignature: string,
-  ref: ZoneReference,
-  engineVersion: string,
-): Promise<void> {
-  const db = await openPitchDb();
-  await db.put('zoneRefs', { ...ref, layoutSignature, engineVersion, fittedAt: Date.now() });
-}
-
-/**
- * 이번 Take 의 기준을 꺼냅니다. 없으면 `null` — 리허설은 시선을 제외합니다.
- *
- * `layoutSignature` 가 다르면 애초에 키가 달라 안 잡힙니다.
- * `ZONE_REF_TTL_MS` 보다 오래된 기준은 지우지 못하고 남은 것이라 쓰지 않습니다.
- *
- * **엔진이 바뀌었으면 버립니다.** 모델이 업데이트되면 `model` 안의 모양과 뜻이 달라질 수
- * 있는데, 분류기의 `calibrate()` 는 반환값이 없어 "이건 못 쓴다"고 말할 수 없습니다.
- * 그대로 넣으면 판정이 조용히 틀어집니다. AI 도 스키마가 다른 기준은 거부합니다.
- * 버전이 없는 옛 행도 같은 이유로 버립니다.
- */
-export async function loadZoneRef(
-  layoutSignature: string,
-  engineVersion: string,
-  maxAgeMs = ZONE_REF_TTL_MS,
-): Promise<ZoneReference | null> {
-  const db = await openPitchDb();
-  const row = await db.get('zoneRefs', layoutSignature);
-  if (!row) return null;
-  if (row.engineVersion !== engineVersion) return null;
-  if (Date.now() - row.fittedAt > maxAgeMs) return null;
-
-  const { fittedAt: _fittedAt, layoutSignature: _key, engineVersion: _engine, ...ref } = row;
-  return ref;
-}
-
-/**
- * 저장된 기준을 모두 지웁니다. 장치 점검에 들어올 때(지난 Take 가 남긴 것)와
- * Take 를 끝낼 때 부릅니다. 한 기기에서 동시에 도는 Take 는 하나라 키를 가리지 않습니다.
- */
-export async function clearZoneRefs(): Promise<void> {
-  const db = await openPitchDb();
-  await db.clear('zoneRefs');
 }

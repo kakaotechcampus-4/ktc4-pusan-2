@@ -3,7 +3,7 @@ import { GazeCameraView, type CameraPhase, type SetupResult } from '@/vendor/gaz
 import { CALIBRATION_HINT } from '@/vendor/gaze/camera/text';
 import { toCalibrationResult, toPlacementResult } from '@/workers/aiAdapter';
 import type { CalibrationFailReason } from '@/workers/gaze.contract';
-import { clearZoneRefs, saveZoneRef } from '../lib/db';
+import { forgetZoneRef, keepZoneRef } from '../lib/zoneRefMemory';
 import { readLayoutSignature } from '../lib/layoutSignature';
 import { usePrepareStore } from './prepareStore';
 import { checkGazeSupport } from './gazeSupport';
@@ -77,7 +77,7 @@ const OVERLAY_PHASES: ReadonlySet<CameraPhase> = new Set([...RUNNING_PHASES, 're
  * ── 결과 처리 (FE 몫) ───────────────────────────────────────────────
  * `calibrated` 가 오면 —
  *   모델 없음        → FAILED. 사유에 맞춰 안내
- *   모델 있음        → `ZoneReference` 를 IndexedDB 에 저장(리허설 워커가 꺼내 씀, 이번 Take 동안만),
+ *   모델 있음        → `ZoneReference` 를 탭 메모리에 둠(리허설 워커가 꺼내 씀, `zoneRefMemory.ts`),
  *                      품질 요약을 스토어에 (시작 CTA 가 서버로 보냄)
  *   배치             → 스토어에. 경고를 보고 "이대로 계속"을 눌렀으면 `overridden`
  *
@@ -86,8 +86,7 @@ const OVERLAY_PHASES: ReadonlySet<CameraPhase> = new Set([...RUNNING_PHASES, 're
  * 다르면 리허설이 기준을 못 찾습니다.
  *
  * ── 기준은 Take 마다 새로 잡습니다 ────────────────────────────────
- * 기준에는 얼굴 측정값이 들어 있어 AI 엔진은 메모리에만 두라고 합니다 (`CalibrationModel`).
- * 리허설 새로고침 때문에 IndexedDB 에 두되 이번 Take 동안만 둡니다 (`ZONE_REF_TTL_MS`).
+ * 기준에는 얼굴 측정값이 들어 있어 탭 메모리에만 둡니다 (AI 시선 문서 12-2, `zoneRefMemory.ts`).
  * 그래서 들어올 때 지난 Take 의 요약과 기준을 지우고 처음부터 받습니다.
  *
  * 배치가 바뀌면(카메라 교체 · 해상도 · 화면) 잡은 기준을 버리고 처음부터 받습니다.
@@ -140,12 +139,9 @@ export function useGazeSetup({
       console.error('[device-check] 시선 엔진을 돌릴 수 없는 브라우저', support.missing);
     return !support.ok;
   });
-  /** 기준을 IndexedDB 에 저장하지 못함. 리허설이 기준을 못 찾으므로 시작을 막습니다 */
-  const [saveFailed, setSaveFailed] = useState(false);
 
   /**
    * 지금 살아 있는 시도의 번호. 시작할 때 올리고, 무효화할 때도 올립니다.
-   * 저장 실패가 늦게 와도 자기 시도의 것일 때만 반영합니다.
    */
   const attemptRef = useRef(0);
   /**
@@ -155,11 +151,6 @@ export function useGazeSetup({
   const pendingRef = useRef(false);
   /** 이번 시도의 저장 키. 시도가 시작될 때 정하고 결과가 오면 씁니다 */
   const signatureRef = useRef('');
-  /**
-   * 기준 저장이 끝나는 시점. 리허설이 IndexedDB 에서 꺼내 쓰므로
-   * 저장이 끝나기 전에 넘어가면 방금 잡은 기준을 못 찾습니다.
-   */
-  const savingRef = useRef<Promise<void>>(Promise.resolve());
   const versionRef = useRef<string | null>(null);
 
   /**
@@ -182,7 +173,6 @@ export function useGazeSetup({
     signatureRef.current = video ? readLayoutSignature(video) : '';
     clearCalibration();
     setFailReason(null);
-    setSaveFailed(false);
   }, [videoRef, clearCalibration]);
 
   const onCalibrated = useCallback(
@@ -192,7 +182,6 @@ export function useGazeSetup({
       pendingRef.current = false;
 
       const layoutSignature = signatureRef.current;
-      const id = attemptRef.current;
 
       // 배치는 모델이 없어도 남깁니다. 다음 시도에서 같은 경고가 왜 뜨는지의 단서입니다.
       // 모듈은 TOP 이 아닌 위치에서 멈추고 묻습니다 — 그때 진행했으면 forced 입니다
@@ -218,14 +207,8 @@ export function useGazeSetup({
       }
 
       setFailReason(null);
-      // 기준은 브라우저에만, 이번 Take 동안만 남습니다. 리허설 워커가 꺼내 쓰고 Take 를 끝내면 지웁니다.
-      // 실패는 삼키지 않습니다 — 화면은 '완료'인데 리허설에서 시선이 조용히 빠지기 때문입니다.
-      // 시작은 막고, 다시 잡게 합니다
-      savingRef.current = saveZoneRef(layoutSignature, ref, engine);
-      savingRef.current.catch(() => {
-        // 그사이 다시 잡기를 눌렀으면 옛 시도의 실패로 새 시도를 막지 않습니다
-        if (attemptRef.current === id) setSaveFailed(true);
-      });
+      // 기준은 이 탭의 메모리에만 둡니다. 리허설 워커가 꺼내 쓰고 Take 를 끝내면 버립니다
+      keepZoneRef(layoutSignature, ref, engine);
       setCalibration(
         {
           points: 3,
@@ -380,14 +363,11 @@ export function useGazeSetup({
   // ── 2. 들어오면 지난 Take 의 기준을 지웁니다 ──────────────────────────
   //
   // 기준은 Take 마다 새로 잡습니다. 메모리의 요약(스토어)은 화면을 옮겨도 남아 있어서,
-  // 지우지 않으면 지난 Take 의 기준으로 '완료'가 보입니다. 저장소에 남은 기준도 함께 지웁니다
-  // (Take 를 끝내지 않고 떠났을 때). 못 지워도 막지 않습니다 — 새로 잡으면 덮어쓰고,
-  // 오래된 것은 리허설이 쓰지 않습니다 (`ZONE_REF_TTL_MS`)
+  // 지우지 않으면 지난 Take 의 기준으로 '완료'가 보입니다. 기준도 함께 버립니다
+  // (Take 를 끝내지 않고 떠났을 때)
   useEffect(() => {
     clearCalibration();
-    clearZoneRefs().catch((err: unknown) => {
-      console.error('[device-check] 지난 시선 기준을 지우지 못했습니다', err);
-    });
+    forgetZoneRef();
   }, [clearCalibration]);
 
   // ── 전체 화면 ──────────────────────────────────────────────────────
@@ -454,8 +434,6 @@ export function useGazeSetup({
     if (view && OVERLAY_PHASES.has(view.phase)) view.cancel();
   }, []);
 
-  const saved = useCallback(() => savingRef.current, []);
-
   return {
     status,
     /** FAILED 일 때 왜 실패했는지. 그 외에는 null */
@@ -474,9 +452,5 @@ export function useGazeSetup({
     frameRef,
     start,
     cancel,
-    /** 기준 저장이 끝날 때까지 기다립니다. 리허설로 넘어가기 직전에 부릅니다 */
-    saved,
-    /** 기준을 저장하지 못함. 시작을 막고 다시 잡기를 안내합니다 */
-    saveFailed,
   };
 }

@@ -70,6 +70,11 @@ export type GazeExcludedReason =
   | 'LOW_CONFIDENCE'
   | 'ENGINE_UNAVAILABLE'
   | 'CAMERA_LOST'
+  /**
+   * 시선 기준(보정)을 잃었습니다 — 리허설 중 새로고침 등. 기준은 탭 메모리에만 있어서입니다.
+   * 카메라 끊김처럼 **제외하지 않고** 그 뒤 기록만 멈춥니다 (`gazeExclusion.ts`).
+   */
+  | 'CALIBRATION_LOST'
   | 'USER_DECLINED'
   | 'VALIDATION_FAILED'
   | 'UNCERTAIN_RATIO_EXCEEDED'

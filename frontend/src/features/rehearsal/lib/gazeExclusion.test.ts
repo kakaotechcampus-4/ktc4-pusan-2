@@ -9,6 +9,10 @@ describe('발표 중 문제 — Take 시선을 통째로 뺄지, 기록만 멈�
     expect(exclusionForDeviceError('UNKNOWN')).toBeNull();
   });
 
+  it('시선 기준을 잃어도(리허설 중 새로고침) 제외하지 않는다 — 그 전 기록은 살린다', () => {
+    expect(exclusionForGazeError('CALIBRATION_LOST')).toBeNull();
+  });
+
   it('카메라 권한을 거부했으면 그 이유로 제외한다', () => {
     expect(exclusionForDeviceError('PERMISSION_DENIED')).toBe('USER_DECLINED');
   });

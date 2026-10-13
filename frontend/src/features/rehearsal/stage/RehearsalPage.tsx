@@ -10,9 +10,9 @@ import { PdfPage } from '@/shared/ui/PdfPage';
 import { buildGazePayload } from '../lib/gazePayload';
 import { exclusionForDeviceError, exclusionForGazeError } from '../lib/gazeExclusion';
 import { stopTakeStream } from '../lib/sttSocket';
+import { forgetZoneRef } from '../lib/zoneRefMemory';
 import {
   beat,
-  clearZoneRefs,
   endSession,
   findSessionByTakeId,
   getSession,
@@ -485,12 +485,8 @@ export function RehearsalPage() {
   const submit = async (id: string, { durationMs, endedAtIso }: Ending) => {
     if (!ticket) return;
 
-    // 무대는 다시 열리지 않으니 시선 기준은 더 쓸 데가 없습니다. 얼굴 측정값이 들어 있어
-    // 이번 Take 동안만 두기로 했습니다 (db.ts `ZONE_REF_TTL_MS`). 못 지워도 종료는 막지 않습니다 —
-    // 다음 장치 점검이 다시 지우고, 오래된 것은 쓰지 않습니다
-    clearZoneRefs().catch((err: unknown) => {
-      console.error('[rehearsal] 시선 기준을 지우지 못했습니다', err);
-    });
+    // 무대는 다시 열리지 않으니 시선 기준은 더 쓸 데가 없습니다. 얼굴 측정값이 들어 있어 버립니다
+    forgetZoneRef();
 
     // ★ 여기서부터 끝까지 한 try 입니다. 중간이 실패해도 **무대를 되살리면 안 됩니다** —
     //   phase 가 RUNNING 으로 돌아가면 clock.start() 가 t0 를 다시 잡아 durationMs 가
@@ -782,7 +778,9 @@ function gazeNoteText(state: {
   if (state.declined) return '카메라 권한이 없어 시선은 기록하지 않아요 — 발표는 계속됩니다';
   // 끊기기 전 기록은 남습니다. 이후 시간은 서버가 측정 못 함으로 셉니다
   if (state.cameraLost) return '카메라가 끊겨 이후 시선은 기록하지 않아요 — 발표는 계속됩니다';
-  if (state.missingCalibration) return '시선 기준이 없어 측정 제외 — 발표는 계속됩니다';
+  // 새로고침하면 기준(탭 메모리)이 사라집니다. 그 전 기록은 남고, 이후는 측정 못 함으로 셉니다
+  if (state.missingCalibration)
+    return '시선 기준이 없어 이후 시선은 기록하지 않아요 — 발표는 계속됩니다';
   if (state.error) return `시선 측정 제외 · ${state.error}`;
   if (state.ready) return '시선 기록 중';
   return '시선 엔진 준비 중';

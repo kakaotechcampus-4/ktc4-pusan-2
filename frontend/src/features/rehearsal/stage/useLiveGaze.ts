@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react';
 import { useGazeWorker } from '../media/useGazeWorker';
-import { appendGazeSamples, loadZoneRef, markGazeExcluded } from '../lib/db';
+import { appendGazeSamples, markGazeExcluded } from '../lib/db';
+import { takeZoneRef } from '../lib/zoneRefMemory';
 import { zoneOf } from '../lib/gazeSegments';
 import { noteWriteFailure } from '../lib/writeFailures';
 import { fitsCurrentEngine } from '@/workers/calibrationModel';
-import type { GazeSampleRecord } from '@/workers/gaze.contract';
+import type { GazeSampleRecord, ZoneReference } from '@/workers/gaze.contract';
 import type { GazeExcludedReason, GazeZone, Ms } from '@/types/api';
 
 /** contract의 Zone → 테두리 상태. 엔진 상태는 `zoneOf` 가 먼저 3구역으로 접습니다 */
@@ -21,17 +22,16 @@ const WINDOW_MS = 10_000;
 const MIN_MEASURED_MS = 5_000;
 
 /**
- * 저장된 기준을 불러온 상태. 결과가 지금 키에 대한 것이 아니면 아직 불러오는 중입니다 —
- * 레이아웃이나 엔진이 바뀌면 이전 결과는 저절로 LOADING 으로 읽힙니다.
+ * 기준을 꺼낸 상태. 엔진 버전은 워커가 ready 를 보내야 알므로, 그 전에는 꺼낼 수 없어 LOADING 입니다.
  */
 function zoneRefState(
   layoutSignature: string | null,
-  loadKey: string | null,
-  loaded: { key: string; found: boolean } | null,
+  engineVersion: string | null,
+  ref: ZoneReference | null,
 ): 'LOADING' | 'READY' | 'MISSING' {
   if (layoutSignature === null) return 'MISSING';
-  if (loadKey === null || loaded?.key !== loadKey) return 'LOADING';
-  return loaded.found ? 'READY' : 'MISSING';
+  if (engineVersion === null) return 'LOADING';
+  return ref ? 'READY' : 'MISSING';
 }
 
 /**
@@ -50,11 +50,11 @@ function zoneRefState(
  *
  * ── 기준을 먼저 넣습니다 ────────────────────────────────────────────
  * 분류기는 그 사람의 캘리브레이션 기준이 없으면 판정하지 않습니다 (AI v1 도 같습니다).
- * 기준은 장치 점검 화면의 카메라 화면 모듈(다른 워커)에서 계산되어 IndexedDB 에 있으므로,
- * 꺼내서 이 워커에 넣은 **뒤에** 펌프를 켭니다.
+ * 기준은 장치 점검 화면의 카메라 화면 모듈(다른 워커)에서 계산되어 탭 메모리에 있으므로
+ * (`zoneRefMemory.ts`), 꺼내서 이 워커에 넣은 **뒤에** 펌프를 켭니다.
  *
- * 기준을 못 찾으면(점검 결과를 못 넘겨받음 · 오래됨 · 저장 실패) 시선은
- * `ENGINE_UNAVAILABLE` 로 제외되고 발표는 계속됩니다 — 엔진이 판정할 수 없는 상태라서입니다.
+ * 기준을 못 찾으면(리허설 중 새로고침 · 점검을 거치지 않음) 그 뒤 시선은 기록하지 않습니다
+ * (`CALIBRATION_LOST`). 카메라 끊김처럼 그 전까지 잰 1초 기록은 그대로 쓰고, 발표는 계속됩니다.
  */
 export function useLiveGaze({
   stream,
@@ -161,42 +161,24 @@ export function useLiveGaze({
   );
 
   /**
-   * 기준을 불러온 결과. 어느 키·엔진에 대한 결과인지 함께 둡니다 —
-   * 둘 중 하나가 바뀌면 이전 결과는 저절로 무효가 되어 LOADING 으로 읽힙니다.
+   * 이번 Take 의 기준 (탭 메모리, `zoneRefMemory.ts`). 배치 · 엔진이 정해질 때 한 번 꺼냅니다 —
+   * Take 를 끝내며 메모리를 비워도, 이미 꺼낸 기준으로 무대가 끝까지 돕니다.
    *
-   * 엔진 버전은 워커가 ready 를 보내야 압니다. 그 전에는 비교할 수 없으니 기다립니다 —
-   * 엔진이 끝내 못 뜨면 워커가 ENGINE_UNAVAILABLE 을 내고, 그게 제외 사유가 됩니다.
+   * 엔진이 다르면 null 입니다 — 다른 모델이 만든 기준은 넣지 않습니다.
+   * 설정이 바뀐 엔진의 기준도 없는 것으로 봅니다 — 버전 문자열은 같아도 판정 기준이 다릅니다.
+   * 넣어 두면 판정이 하나도 안 나오는데 '기록 중'으로 보이므로, 여기서 MISSING 으로 돌립니다.
    */
-  const [loaded, setLoaded] = useState<{ key: string; found: boolean } | null>(null);
-  const loadKey =
-    layoutSignature !== null && engineVersion !== null
-      ? `${layoutSignature}#${engineVersion}`
-      : null;
-  const refState = zoneRefState(layoutSignature, loadKey, loaded);
+  const ref = useMemo(() => {
+    if (layoutSignature === null || engineVersion === null) return null;
+    const kept = takeZoneRef(layoutSignature, engineVersion);
+    return kept && fitsCurrentEngine(kept.model) ? kept : null;
+  }, [layoutSignature, engineVersion]);
+  const refState = zoneRefState(layoutSignature, engineVersion, ref);
 
+  // 펌프보다 먼저 들어가야 합니다 — 아래 효과가 같은 커밋에서 펌프를 켭니다
   useEffect(() => {
-    if (layoutSignature === null || engineVersion === null || loadKey === null) return;
-    let cancelled = false;
-
-    // 엔진이 다르면 null 입니다 — 다른 모델이 만든 기준은 넣지 않습니다
-    loadZoneRef(layoutSignature, engineVersion)
-      .then((stored) => {
-        if (cancelled) return;
-        // 설정이 바뀐 엔진의 기준은 없는 것으로 봅니다 — 버전 문자열은 같아도 판정 기준이 다릅니다.
-        // 넣어 두면 판정이 하나도 안 나오는데 '기록 중'으로 보이므로, 여기서 MISSING 으로 돌립니다
-        const ref = stored && fitsCurrentEngine(stored.model) ? stored : null;
-        // 펌프보다 먼저 들어가야 합니다 — READY 가 되어야 아래 효과가 펌프를 켭니다
-        if (ref) calibrate(ref);
-        setLoaded({ key: loadKey, found: ref !== null });
-      })
-      .catch(() => {
-        if (!cancelled) setLoaded({ key: loadKey, found: false });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [layoutSignature, engineVersion, loadKey, calibrate]);
+    if (ref) calibrate(ref);
+  }, [ref, calibrate]);
 
   const pumping = enabled && refState === 'READY';
 
@@ -212,7 +194,8 @@ export function useLiveGaze({
   // 기준이 없는 것은 발표를 시작한 뒤에만 사유가 됩니다 — enabled 가 false 인
   // 동안(카메라 권한 거부 등)은 다른 사유가 이미 정해져 있으니 덮지 않습니다
   const missingCalibration = enabled && refState === 'MISSING';
-  const error = workerError ?? (missingCalibration ? 'ENGINE_UNAVAILABLE' : null);
+  const error: GazeExcludedReason | null =
+    workerError ?? (missingCalibration ? 'CALIBRATION_LOST' : null);
 
   /**
    * 최근 창에서 화면(아래)을 본 비율. 재지 못한 시간을 빼고 시간으로 나눕니다.
