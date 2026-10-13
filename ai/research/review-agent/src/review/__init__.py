@@ -10,7 +10,7 @@
 """
 
 from .config import DEFAULT_CONFIG, ReviewConfig, load_config
-from .core import ReviewTrace, review_take, review_take_traced
+from .core import RuleResult, apply_rules, review_take
 from .schemas import ReviewRequest, ReviewResponse
 
 __all__ = [
@@ -18,8 +18,8 @@ __all__ = [
     "ReviewConfig",
     "ReviewRequest",
     "ReviewResponse",
-    "ReviewTrace",
+    "RuleResult",
     "load_config",
+    "apply_rules",
     "review_take",
-    "review_take_traced",
 ]

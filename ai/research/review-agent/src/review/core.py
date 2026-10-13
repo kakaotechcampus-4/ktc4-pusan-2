@@ -1,7 +1,10 @@
-"""리뷰의 유일한 진입점: review_take (POST /takes/review).
+"""리뷰 진입점.
 
-규칙 단계는 LLM 없이 돌고, 같은 입력이면 같은 결과다. 1차는 LLM 단계가 없어
-기본 문장과 후보 상위 다음 미션을 내고 fallback_reason 을 LLM_UNAVAILABLE 로 단다.
+- apply_rules: 규칙 단계만 (LLM 없음, 문장 없음). 같은 입력이면 같은 결과다.
+- review_take: 최종 진입점 (POST /takes/review). 규칙 단계 결과에
+  LLM 단계(문장 · 다음 미션 고르기)를 붙여 응답을 만든다.
+  1차는 LLM 단계가 없어 기본 문장과 후보 상위 다음 미션을 내고
+  fallback_reason 을 LLM_UNAVAILABLE 로 단다.
 """
 
 from __future__ import annotations
@@ -23,27 +26,41 @@ from .version import FEATURE_VERSION, SCHEMA_VERSION
 
 
 @dataclass(frozen=True)
-class ReviewTrace:
-    """규칙 단계의 중간 값. 응답에는 없고 research · 테스트에서 근거를 볼 때 쓴다"""
+class RuleResult:
+    """규칙 단계 결과 (문장 없음).
 
+    review_take 가 이것으로 응답을 만들고, 테스트 · 연구 평가가 근거를 본다.
+    """
+
+    take_result: dict[str, Any]
+    script_coverage: dict[str, Any] | None
     evaluable: dict[str, bool]
+    mission_results: list[dict[str, Any]]
+    criteria_results: list[dict[str, Any]]
     burden: Burden
+    dimensions: dict[str, str]
     next_mission_candidates: list[dict[str, Any]]
+    recurring_issues: list[dict[str, Any]]
+    score: int | None
 
 
-def review_take_traced(
+def _validate(request: ReviewRequest | dict[str, Any]) -> ReviewRequest:
+    """요청 형식이 틀리면 pydantic ValidationError (라우터가 422 로 바꾼다)"""
+    return request if isinstance(request, ReviewRequest) else ReviewRequest.model_validate(request)
+
+
+def apply_rules(
     request: ReviewRequest | dict[str, Any], config: ReviewConfig | None = None
-) -> tuple[ReviewResponse, ReviewTrace]:
-    """review_take 와 같고 중간 값을 함께 돌려준다.
+) -> RuleResult:
+    """규칙 단계 (명세 6-1). LLM · 문장 없이 숫자 · 상태 · 점수 · 미션 판정 ·
+    다음 미션 후보 · 반복 문제를 정한다.
 
-    실행 순서: 판단 가능 → 미션 판정 → 부담 → 차원 상태 → 사용자 기준 → 다음 미션 → 반복 문제
-    → 점수 → 기본 문장. 부담 · 차원 상태가 미션 결과를 쓰므로 미션 판정을 먼저 한다
-    (명세 단계 번호와 다르다).
-    요청 형식이 틀리면 pydantic ValidationError (라우터가 422 로 바꾼다).
+    실행 순서: 판단 가능 → 미션 판정 → 부담 → 차원 상태 → 사용자 기준 → 다음 미션 후보 → 반복 문제
+    → 점수. 부담 · 차원 상태가 미션 결과를 쓰므로 미션 판정을 먼저 한다.
+    1차: 이전 Take 비교(6번)는 없다.
     """
     cfg = config or DEFAULT_CONFIG
-    req = request if isinstance(request, ReviewRequest) else ReviewRequest.model_validate(request)
-    data = req.model_dump()
+    data = _validate(request).model_dump()
 
     take_result = data["take_result"]
     script_coverage = data["script_coverage"]
@@ -61,25 +78,56 @@ def review_take_traced(
     candidates = build_next_missions(
         criteria_results, states, burden, take_result, script_coverage, cfg
     )
-    # 2차: LLM 이 후보 중 고른다 (사용자 기준 FAILED 는 고정). 지금은 후보 상위
-    next_missions = select_next_missions(candidates, cfg)
-    recurring_issues = build_recurring_issues(states, burden, cfg)
-    score = compute_score(states, cfg)
-    text = build_default_text(states, burden, take_result, script_coverage, cfg)
 
-    response = ReviewResponse.model_validate(
+    return RuleResult(
+        take_result=take_result,
+        script_coverage=script_coverage,
+        evaluable=evaluable,
+        mission_results=mission_results,
+        criteria_results=criteria_results,
+        burden=burden,
+        dimensions=states,
+        next_mission_candidates=candidates,
+        recurring_issues=build_recurring_issues(states, burden, cfg),
+        score=compute_score(states, cfg),
+    )
+
+
+def review_take(
+    request: ReviewRequest | dict[str, Any],
+    llm: Any = None,
+    *,
+    model: str | None = None,
+    config: ReviewConfig | None = None,
+) -> ReviewResponse:
+    """Take 하나를 리뷰한다 (명세 4-2). 응답을 dict 로: ``.model_dump(mode="json")``
+
+    ``llm`` 은 LLM 출력 스키마가 걸린 객체(``.invoke`` 만 씀), 없으면 None.
+    1차는 LLM 단계가 없어 ``llm`` · ``model`` 을 쓰지 않고 늘 기본 결과를 낸다.
+    """
+    cfg = config or DEFAULT_CONFIG
+    rules = apply_rules(_validate(request), cfg)
+
+    # 2차: LLM 이 문장을 쓰고 후보 중 고른다 (사용자 기준 FAILED 는 고정).
+    # 지금은 기본 문장 · 후보 상위
+    text = build_default_text(
+        rules.dimensions, rules.burden, rules.take_result, rules.script_coverage, cfg
+    )
+    next_missions = select_next_missions(rules.next_mission_candidates, cfg)
+
+    return ReviewResponse.model_validate(
         {
-            "take_id": take_result["take_id"],
+            "take_id": rules.take_result["take_id"],
             "overall_summary": text["overall_summary"],
-            "score": score,
-            "dimensions": states,
+            "score": rules.score,
+            "dimensions": rules.dimensions,
             "strengths": text["strengths"],
             "improvements": text["improvements"],
-            "comparison": [],  # 1차: 이전 Take 비교(5단계) 없음
-            "mission_results": mission_results,
-            "criteria_results": criteria_results,
+            "comparison": [],  # 1차: 이전 Take 비교 없음
+            "mission_results": rules.mission_results,
+            "criteria_results": rules.criteria_results,
             "next_missions": next_missions,
-            "recurring_issues": recurring_issues,
+            "recurring_issues": rules.recurring_issues,
             "fallback_reason": "LLM_UNAVAILABLE",  # 1차: LLM 단계 없음
             "meta": {
                 "schema_version": SCHEMA_VERSION,
@@ -89,12 +137,3 @@ def review_take_traced(
             },
         }
     )
-    trace = ReviewTrace(evaluable=evaluable, burden=burden, next_mission_candidates=candidates)
-    return response, trace
-
-
-def review_take(
-    request: ReviewRequest | dict[str, Any], config: ReviewConfig | None = None
-) -> ReviewResponse:
-    """Take 하나를 리뷰한다 (명세 3). 응답을 dict 로: ``.model_dump(mode="json")``"""
-    return review_take_traced(request, config)[0]
