@@ -13,8 +13,7 @@ Take 시작 전에는 LLM이 이번 Take의 **코칭 계획**(먼저 챙길 것 
 | 판정 | 시선 · 속도 · 음량 · 군더더기 판정은 코치가 하지 않습니다. 판정 모듈(#152~#155)이 하고 코치는 결과를 받습니다 |
 | 기능 버전 | `coach-1.2`, 요청 · 응답 스키마 `1.0`, `coach_state` 모양 `2` (`src/coach/version.py`) |
 | 상태 | 판정 모듈 계약 · 패키지 + 테스트. **가상 발표자와 대역 판정 모듈로만 확인했습니다.** 기준값은 실제 발표 데이터로 검증하지 않았습니다 |
-| 배포 | 판단 코어(`src/coach/`)는 나중에 AI 서버로 그대로 옮깁니다 → [DEPLOY.md](DEPLOY.md) |
-| 입출력 | BE ↔ 코치 계약 → [INTERFACE.md](INTERFACE.md) |
+| 설계 | 목적 · BE ↔ 코치 계약 · 처리 · 배포 → [`docs/ai/features/coach-agent.md`](../../../docs/ai/features/coach-agent.md) |
 
 ## 1. 이 기능이 하는 일
 
@@ -61,7 +60,7 @@ src/coach/         판단 코어: 1초 판단 · Take 종료 · 코칭 계획   
 
 ```
 coach-agent/
-├─ README.md · INTERFACE.md · DEPLOY.md
+├─ README.md
 ├─ pyproject.toml              패키지 두 개: coach(코어) · coach_lab(실험)
 ├─ src/coach/                  판단 코어 (3-1)
 │   ├─ examples/               BE 개발자용 실행 가능한 예시 (evaluate · finalize · timing)
@@ -131,7 +130,7 @@ coach-agent/
 
 - `t_ms`가 이미 처리한 시각 이하면 아무것도 바꾸지 않고 `WAIT` + `STALE_TICK`.
 - `decide_safe`는 코치 안의 예외를 `WAIT` + `INTERNAL_ERROR`로 바꾸고 그 시간을 잴 수 없던 것으로 넘긴다. 요청 형식 오류(`ValidationError`)는 그대로 올린다.
-- 판정 모듈 하나가 실패하면 그 영역만 잴 수 없음으로 두고 계속한다 ([INTERFACE.md](INTERFACE.md) 2-3).
+- 판정 모듈 하나가 실패하면 그 영역만 잴 수 없음으로 두고 계속한다 ([설계 문서](../../../docs/ai/features/coach-agent.md) 7절).
 
 ### 4-2. Take 종료 (`finalize`)
 
@@ -146,34 +145,7 @@ LLM이 `focus`(가중치) · `relax`(장 단위로 봐줄 영역) · `max_interv
 
 ## 5. 판단 규칙
 
-### 5-1. 문제별 사다리
-
-효과가 없으면 사다리를 한 칸씩 내려가고, 끝까지 가면 그 범위에서 그만둡니다(`GAVE_UP`). 값은 `config.py`의 `_default_issue_rules`가 원본입니다.
-
-| 문제 | 사다리 (행동 · 문구 종류) | 말하는 조건 | 효과를 재는 시점 |
-|---|---|---|---|
-| `GAZE_ON_SCRIPT` `GAZE_AWAY` `GAZE_LOW_EYE_CONTACT` | `LOOK_AT_CAMERA` → `LOOK_AT_CAMERA`(문장 시작) | 3초 이어짐 | 12초 뒤 |
-| `PACE_FAST` | `SLOW_DOWN` → `SLOW_DOWN`(문장 끝 쉬기) | 5초 이어짐 | 10초 뒤 |
-| `VOLUME_LOW` | `SPEAK_LOUDER` → `SPEAK_LOUDER`(멀리) | 5초 이어짐 | 8초 뒤 |
-| `LONG_SILENCE` | `RESUME` | | 5초 뒤 |
-| `FILLER_FREQUENT` | `REDUCE_FILLER` → `REDUCE_FILLER`(호흡) | | 30초 뒤 |
-| `BEHIND_SCHEDULE` | `SPEED_UP` → `CONDENSE` → `WRAP_UP` | | 15초 뒤 |
-| `AHEAD_OF_SCHEDULE` | `SLOW_DOWN`(시간 여유) | 10초 이어짐 | 10초 뒤 |
-| `SLIDE_OVER` | `MOVE_ON` → `MOVE_ON`(단호) | | 15초 뒤 |
-| `FINAL_MINUTE` `TIME_OVER` | `WRAP_UP` (각 1번만) | | |
-| `GAZE_ON_SCREEN` `GAZE_UNMEASURABLE` `PACE_SLOW` | 말하지 않고 문제 구간에만 남긴다 | | |
-
-효과가 있으면 `CONTINUE`("지금처럼")로 격려합니다(시선 · 속도 · 음량 · 군더더기). 시선 문제 셋은 장마다 사다리 하나를 같이 씁니다.
-
-### 5-2. 말하지 않는 이유 (적격성)
-
-하나라도 `IGNORE` 이유면 버리고(`IGNORED`), 아니고 `WAIT` 이유가 있으면 보류(`WAITING`)합니다. 걸린 이유는 전부 `SUPPRESSED` 이벤트와 `EPISODE.suppressed_reasons`에 남습니다.
-- 버림: 실전 모드, 센서 불량, 낮은 신뢰도, 대본 사용 허용, 늦는 중에 "천천히", 사다리 소진, 이미 전했음, 계획이 봐주기로 함, 개입 상한, 낮은 점수.
-- 보류: 지속시간 미달, 직전 개입과의 간격, 같은 행동의 쿨다운, 말하는 도중이라 문장 끝 대기.
-
-### 5-3. Take 결과 규칙
-
-문제 구간의 신뢰도 · 합치기 · 보정 규칙과 `areas`의 비움 규칙은 [INTERFACE.md](INTERFACE.md) 3-3 · 3-5에 있습니다. 설정값은 `config.take_result`에 있고 실시간 판단에는 쓰이지 않습니다.
+판단 규칙(문제별 사다리 · 말하지 않는 이유 · Take 결과 규칙)은 [설계 문서](../../../docs/ai/features/coach-agent.md) 6-1 · 6-3에 있습니다. 값의 원본은 `src/coach/config.py`(`_default_issue_rules` · `config.take_result`)입니다.
 
 ## 6. 실행법
 
