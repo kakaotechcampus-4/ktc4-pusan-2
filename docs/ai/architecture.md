@@ -1,10 +1,10 @@
 # 피치코치 아키텍처
-> **이 문서는** 전체 기능 구성, 기능 사이 입출력 계약, 공통 데이터 모양, DB 저장 지도의 기준이다. 기능 문서(`features/<기능>.md`)와 다르면 이 문서가 이긴다. 이 문서를 바꾸면 모든 기능이 영향을 받으므로 12절의 승인 규칙을 따른다.
+> **이 문서는** 전체 기능 구성, 기능 사이 입출력 계약, 공통 데이터 모양, DB 저장 지도의 기준이다. 기능 문서(`features/<기능>.md`)나 서비스 문서(`ai-service.md`)와 다르면 이 문서가 이긴다. 이 문서를 바꾸면 모든 기능이 영향을 받으므로 12절의 승인 규칙을 따른다.
 > **한 줄 요약**: BE만 AI를 부르고, AI는 아무것도 저장하지 않으며, 모든 판정 모듈은 같은 1초 판정 결과를 내고, 기능의 성공 응답은 `meta`를, 모든 에러는 `{"error": {"code", "message"}}`를 싣는다.
 > **기준값**: 이 문서에 남은 숫자는 BE와 맞춰야 하는 통신 · 운영 값(시간 예산 · 창 길이 · 포트)과 예시뿐이다. 판정 기준값 · 아주 나쁨 값 · 판정 창 길이는 각 모듈 `config.py`에만 두고, 바꾸면 그 모듈의 `criteria_version`이 바뀐다. JSON 예시의 `<...>`는 실제 값이 들어갈 자리다.
 
 # 0. 목적과 범위
-이 문서는 피치코치 AI 기능 모두가 따르는 공통 흐름 · 통신 규칙 · 단위 · 1초 판정 결과 · 에러 · `meta` · 시간 예산 · 환경변수 · 저장 지도 · 담당을 정한다. 기능마다의 입력 · 출력과 처리는 각 기능 문서(`features/<기능>.md`, 13절 담당 지도)에 있다.
+이 문서는 피치코치 AI 기능 모두가 따르는 공통 흐름 · 통신 규칙 · 단위 · 1초 판정 결과 · 에러 · `meta` · 시간 예산 · 환경변수 · 저장 지도 · 담당을 정한다. 기능마다의 입력 · 출력과 처리는 각 기능 문서(`features/<기능>.md`, 13절 담당 지도)에 있다. 모든 기능이 올라가는 AI 서비스의 폴더 · 앱 구성 · 이미지 · compose · 운영은 서비스 문서 [ai-service.md](ai-service.md)에 있다.
 
 | 이 문서에 있는 것 | 기능 문서에 있는 것 |
 |---|---|
@@ -600,6 +600,7 @@ features/<모듈>/
 |---|---|
 | 이 문서 | 모든 기능이 영향을 받으므로 크기 · 배포 여부와 상관없이 AI 팀 회의에서 정하고, JWK0395 · jinn-ie 두 사람이 모두 승인한 뒤 merge한다. FE · BE와 주고받는 값이 걸리면 그 팀과도 합의한다 ([문서 수정 규칙](README.md#수정-규칙)) |
 | 기능 문서 (`features/`) | 기능 안에서 끝나는 변경은 담당이 바로 고친다. FE · BE와 주고받는 값이 바뀌면 그 팀과 Issue에서 합의한다(배포 전 기능은 고치고 알린다). 다른 팀은 바꿀 곳을 Issue로 남긴다 ([문서 수정 규칙](README.md#수정-규칙)) |
+| 서비스 문서 (`ai-service.md`) | 서비스 안에서 끝나는 변경은 서비스 담당이 바로 고친다. 모든 기능 담당이 따르는 것(기능을 붙이는 순서 · 공통 모듈 쓰는 법)이 바뀌면 jinn-ie를 PR 리뷰어로 넣는다. BE · 인프라가 하는 일(compose · 배포 워크플로 · 시크릿 · 헬스체크 · AI 주소)이 바뀌면 그 팀과 Issue에서 합의한다. 공통 계약이 바뀌면 이 문서를 먼저 바꾼다 ([문서 수정 규칙](README.md#수정-규칙)) |
 | 기능 계약(`schemas.py`) — 선택 필드 추가 | 그냥 한다(받는 쪽은 모르는 필드를 무시한다). 받는 쪽이 모르는 필드를 거부하면 큰 변경이다 |
 | 기능 계약 — 이름 변경 · 삭제 · 뜻 변경 · 필수 입력 추가 | 받는 쪽(BE · 다른 기능)과 먼저 맞추고, 기능 버전과 `meta.schema_version`을 올리고, 1절 모듈 표의 '쓰는 곳' 담당을 PR 리뷰어로 지정한다. BE 호출 코드는 같은 PR이나 바로 다음 PR에서 함께 바꾼다 |
 | 기준값(`config.py`) | `criteria_version`이 바뀐다. 그 모듈의 결과 JSON을 다시 만들어 같은 PR에 넣는다 |
@@ -616,7 +617,7 @@ features/<모듈>/
 |---|---|---|---|
 | 공통 계약 (공통 1초 판정 결과 포함) | 모든 판정 모듈 · `ai/service` | JWK0395 | 이 문서 |
 | 실시간 코치 `coach` (시간 판정 `timing` 포함) | `ai/research/coach-agent` | JWK0395 | [coach-agent.md](features/coach-agent.md) |
-| AI 서비스 · Docker `service` | `ai/service` | JWK0395 | [ai-service.md](features/ai-service.md) |
+| AI 서비스 · Docker `service` | `ai/service` | JWK0395 | [ai-service.md](ai-service.md) |
 | 시선 `gaze` | `ai/research/gaze-tracking` | JWK0395 | [gaze-tracking.md](features/gaze-tracking.md) |
 | 군더더기 `filler` | — | JWK0395 | [filler.md](features/filler.md) |
 | 대본 전달도 `script_coverage` | `ai/research/script-coverage-evaluation` | JWK0395 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) |
