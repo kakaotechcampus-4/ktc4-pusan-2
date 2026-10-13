@@ -47,7 +47,7 @@ DIMENSIONS: dict[str, DimensionSpec] = {
     ),
     "pacing_rhythm": DimensionSpec(
         areas=("SPEED", "PAUSE", "TIME"),
-        metrics=("cpm", "pause_count", "long_silence_count"),
+        metrics=("cpm", "pause_count", "long_silence_count", "duration_ms", "slide_duration_ms"),
         issues=(
             "PACE_FAST",
             "PACE_SLOW",
