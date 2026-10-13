@@ -329,6 +329,9 @@ uv run python -m uvicorn pitch_coach_ai.main:app --reload --port 8001
 ```powershell
 docker build -t pitch-coach-ai:local ai/service
 docker run --rm -p 8001:8000 --env-file ai/.env pitch-coach-ai:local
+```
+`docker run`은 창을 차지한 채 로그를 낸다(`Uvicorn running on http://0.0.0.0:8000`). 다른 창에서:
+```powershell
 curl.exe http://localhost:8001/health                               # {"status":"ok"}
 ```
 - `-p 8001:8000`은 내 PC의 8001번을 컨테이너의 8000번에 연결한다. 컨테이너는 자기 네트워크를 쓰므로 이 연결이 없으면 밖에서 들어갈 수 없다.
@@ -387,12 +390,12 @@ CMD ["uvicorn", "pitch_coach_ai.main:app", "--host", "0.0.0.0", "--port", "8000"
 # 로컬 가상환경. 크고, Windows용이라 Linux 이미지에서 못 쓴다
 .venv/
 **/__pycache__/
-*.py[cod]
+**/*.py[cod]
 .pytest_cache/
 .ruff_cache/
-# 비밀값은 이미지에 넣지 않는다
-.env
-.env.*
+# 비밀값은 이미지에 넣지 않는다. 패턴은 맨 위 폴더에만 맞으므로 src/ 아래 .env 까지 거르려고 **/ 를 붙인다
+**/.env
+**/.env.*
 # 테스트 · 계약 파일은 이미지에 필요 없다
 tests/
 contracts/

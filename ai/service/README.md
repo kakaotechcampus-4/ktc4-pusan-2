@@ -59,12 +59,12 @@ ai/service/
 | `src/pitch_coach_ai/main.py` | 앱을 만들고 라우터를 붙인다 (`create_app()`, `app`) | — → FastAPI 앱 | uvicorn, 테스트 `client` | 새 라우터를 `create_app`에 `include_router` |
 | `src/pitch_coach_ai/api/health.py` | `GET /health` | — → 200 `{"status": "ok"}` | compose 헬스체크, 배포 확인 | LLM을 부르지 않게 둔다 |
 | `tests/conftest.py` | `client` fixture (테스트마다 새 앱) | — → `TestClient` | 모든 앱 테스트 | — |
-| `tests/test_health.py` | `/health` 200, `/api` 접두어 없음 | — | pytest | — |
+| `tests/test_health.py` | `/health` 200(fixture 앱 · uvicorn 이 쓰는 `app` 둘 다), 등록된 경로에 `/api` 접두어 없음 | — | pytest | — |
 
 ## 테스트
 ```powershell
 uv run python -m pytest
 ```
 ```
-2 passed
+3 passed
 ```

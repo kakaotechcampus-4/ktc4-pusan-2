@@ -3,12 +3,12 @@
 # 로컬 가상환경. 크고, Windows용이라 Linux 이미지에서 못 쓴다
 .venv/
 **/__pycache__/
-*.py[cod]
+**/*.py[cod]
 .pytest_cache/
 .ruff_cache/
-# 비밀값은 이미지에 넣지 않는다
-.env
-.env.*
+# 비밀값은 이미지에 넣지 않는다. 패턴은 맨 위 폴더에만 맞으므로 src/ 아래 .env 까지 거르려고 **/ 를 붙인다
+**/.env
+**/.env.*
 # 테스트 · 계약 파일은 이미지에 필요 없다
 tests/
 contracts/
