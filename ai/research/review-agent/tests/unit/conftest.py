@@ -14,7 +14,14 @@ from typing import Any
 
 import pytest
 
-from review import ReviewConfig, ReviewResponse, ReviewTrace, load_config, review_take_traced
+from review import (
+    ReviewConfig,
+    ReviewResponse,
+    RuleResult,
+    apply_rules,
+    load_config,
+    review_take,
+)
 
 EXAMPLES = Path(__file__).parents[2] / "src" / "review" / "examples" / "review"
 _REQUEST = json.loads((EXAMPLES / "request.json").read_text(encoding="utf-8"))
@@ -63,14 +70,24 @@ def segment(
     }
 
 
+def unmeasured(measured_ratio: float = 0.0) -> dict[str, Any]:
+    """코치가 측정 비율 미달로 본 영역 (coach-agent.md 5-3)"""
+    return {
+        "measured_ratio": measured_ratio,
+        "unmeasured_reason": "LOW_MEASURED_RATIO",
+        "take": None,
+        "slides": None,
+    }
+
+
 def target(display: str, metric: str, operator: str, value: float) -> dict[str, Any]:
     return {"display": display, "metric": metric, "operator": operator, "value": value}
 
 
 def run(
     request: dict[str, Any], config: ReviewConfig | None = None
-) -> tuple[ReviewResponse, ReviewTrace]:
-    return review_take_traced(request, config)
+) -> tuple[ReviewResponse, RuleResult]:
+    return review_take(request, config=config), apply_rules(request, config)
 
 
 @pytest.fixture

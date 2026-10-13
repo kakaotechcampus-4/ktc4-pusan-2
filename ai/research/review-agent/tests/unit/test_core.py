@@ -9,7 +9,7 @@ from review import ReviewRequest, load_config, review_take
 from review.score import compute_score
 from review.vocab import DIMENSIONS
 
-from .conftest import run, segment
+from .conftest import run, segment, unmeasured
 
 
 def test_sample_recurring_issues(req):
@@ -27,6 +27,25 @@ def test_pacing_recurring_area_is_largest_burden_area(req):
     resp, _ = run(req)
     pacing = [r for r in resp.recurring_issues if r.dimension == "pacing_rhythm"]
     assert [(r.area, r.slide_number) for r in pacing] == [("TIME", 3)]
+
+
+def test_improvement_evidence_comes_from_its_area(req):
+    req["take_result"]["problem_segments"].append(
+        segment("SLIDE_OVER", "TIME", 3, 110_000, 125_000, 0.8)
+    )
+    resp, _ = run(req)
+    pacing = [i for i in resp.improvements if i.area == "TIME"]
+    assert [i.evidence for i in pacing] == [{"slide_duration_ms": 60000}]
+
+
+def test_strength_skips_unmeasured_area(req):
+    # SPEED · PAUSE 를 못 재고 TIME 만 쟀으면 pacing_rhythm 강점은 TIME 지표로
+    for area in ("SPEED", "PAUSE"):
+        req["take_result"]["areas"][area] = unmeasured()
+    resp, _ = run(req)
+    assert resp.dimensions["pacing_rhythm"] == "STRENGTH"
+    pacing = [s for s in resp.strengths if s.area in ("SPEED", "PAUSE", "TIME")]
+    assert [(s.area, s.evidence) for s in pacing] == [("TIME", {"duration_ms": 182000})]
 
 
 def test_sample_score_and_text(req):
@@ -61,9 +80,9 @@ def test_same_input_same_output(req):
 
 def test_config_change_changes_criteria_version(req):
     a = review_take(req).meta.criteria_versions["review"]
-    b = review_take(req, load_config(burden={"recurring_weight": 1.5})).meta.criteria_versions[
-        "review"
-    ]
+    b = review_take(
+        req, config=load_config(burden={"recurring_weight": 1.5})
+    ).meta.criteria_versions["review"]
     assert a != b
 
 

@@ -9,6 +9,7 @@ from typing import Any
 
 from .burden import Burden
 from .config import ReviewConfig
+from .evaluable import measured_areas
 from .metrics import find_metric
 from .recurring import build_recurring_issues
 from .vocab import DIMENSIONS
@@ -57,15 +58,31 @@ def _evidence(
     dim: str,
     take_result: dict[str, Any],
     script_coverage: dict[str, Any] | None,
+    measured: set[str],
     cfg: ReviewConfig,
+    area: str | None = None,
     slide_number: int | None = None,
-) -> dict[str, Any]:
-    """차원 대표 지표(다음 미션 지표, 없으면 차원 표의 첫 지표)의 입력 값. 없으면 빈 dict"""
-    metric = cfg.next_mission.mission_metric.get(dim) or DIMENSIONS[dim].metrics[0]
-    _, value, _ = find_metric(take_result, script_coverage, metric, slide_number)
-    if value is None and slide_number is not None:
-        _, value, _ = find_metric(take_result, script_coverage, metric)
-    return {metric: value} if value is not None else {}
+) -> tuple[str, dict[str, Any]]:
+    """(영역, 근거). 잰 영역의 지표 중 값이 있는 첫 지표를 근거로 싣는다.
+
+    - 지표 순서: 다음 미션 지표 → 차원 표의 지표 순
+    - area 가 있으면(개선점) 그 영역의 지표만, 없으면(강점) 잰 영역 어디든
+    - 장 개선점이면 그 장 값이 있는 지표를 먼저 찾고, 없으면 Take 값
+    - 못 찾으면 (area 또는 잰 영역 중 첫 영역, {})
+    """
+    spec = DIMENSIONS[dim]
+    metrics = dict.fromkeys(
+        m for m in (cfg.next_mission.mission_metric.get(dim), *spec.metrics) if m
+    )
+    slides = (slide_number, None) if slide_number is not None else (None,)
+    for slide in slides:
+        for metric in metrics:
+            found, value, _ = find_metric(take_result, script_coverage, metric, slide)
+            if value is None or found not in measured or (area and found != area):
+                continue
+            return found, {metric: value}
+    fallback = area or next((a for a in spec.areas if a in measured), spec.areas[0])
+    return fallback, {}
 
 
 def build_default_text(
@@ -77,9 +94,13 @@ def build_default_text(
 ) -> dict[str, Any]:
     """{overall_summary, strengths, improvements}
 
-    - strengths: STRENGTH · IMPROVED 차원 (차원 표 순서)
-    - improvements: PRIORITY 차원 (부담 큰 순), 부담이 몰린 장이 있으면 장 번호
+    - strengths: STRENGTH · IMPROVED 차원 (차원 표 순서). area 는 근거 지표를 찾은 잰 영역
+    - improvements: PRIORITY 차원 (부담 큰 순), 부담이 몰린 장이 있으면 장 번호.
+      area 는 부담이 가장 큰 영역이고 근거도 그 영역의 지표
+    - 못 잰 영역(측정 비율 기준 미만)은 area · 근거에 쓰지 않는다
     """
+    # 판단 가능한 content_delivery 만 강점 · 개선점에 오므로 CONTENT 는 잰 영역으로 본다
+    measured = measured_areas(take_result) | {"CONTENT"}
     strengths = []
     for dim, state in dimension_states.items():
         if state == "STRENGTH":
@@ -88,13 +109,8 @@ def build_default_text(
             text = IMPROVED_TEXT.format(label=DIMENSION_LABELS[dim])
         else:
             continue
-        strengths.append(
-            {
-                "area": DIMENSIONS[dim].areas[0],
-                "text": text,
-                "evidence": _evidence(dim, take_result, script_coverage, cfg),
-            }
-        )
+        area, evidence = _evidence(dim, take_result, script_coverage, measured, cfg)
+        strengths.append({"area": area, "text": text, "evidence": evidence})
 
     # PRIORITY 차원 목록은 반복 문제와 같다 (부담 큰 순 · 영역 · 몰린 장)
     priority_issues = build_recurring_issues(dimension_states, burden, cfg)
@@ -107,7 +123,9 @@ def build_default_text(
                 "area": it["area"],
                 "slide_number": slide,
                 "text": where + IMPROVEMENT_TEXT[dim],
-                "evidence": _evidence(dim, take_result, script_coverage, cfg, slide),
+                "evidence": _evidence(
+                    dim, take_result, script_coverage, measured, cfg, it["area"], slide
+                )[1],
             }
         )
 

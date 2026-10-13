@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from .config import ReviewConfig
+from .evaluable import measured_areas
 from .vocab import (
     AREA_TO_DIMENSIONS,
     CONTENT_BURDEN_STATUSES,
@@ -57,7 +58,8 @@ def compute_burden(
 ) -> Burden:
     """차원별 부담.
 
-    - reliable 이 아닌 구간 · NON_BURDEN_ISSUES · 판단 불가 차원은 세지 않는다
+    - reliable 이 아닌 구간 · NON_BURDEN_ISSUES · 판단 불가 차원 · 판단 불가 영역은 세지 않는다
+      (pacing_rhythm 은 TIME 만 못 재도 SPEED · PAUSE 구간은 센다)
     - script_used 가 true 면 GAZE_ON_SCRIPT 를 세지 않는다
     - content_delivery: missing · contradicted 핵심 내용(key_points)을 importance 별 부담으로
     - 반복 문제 · gave_up · 미션을 이루지 못한 차원은 이유마다 배수를 한 번씩 곱한다
@@ -66,6 +68,7 @@ def compute_burden(
     burden: Burden = {dim: {"total": 0.0, "by_slide": {}, "by_area": {}} for dim in DIMENSIONS}
 
     # 1) 문제 구간
+    measured = measured_areas(take_result)
     for seg in take_result.get("problem_segments") or []:
         issue = seg["issue_type"]
         if not seg.get("reliable"):
@@ -77,6 +80,8 @@ def compute_burden(
         dim = ISSUE_TO_DIMENSION.get(issue)
         if dim is None or not evaluable[dim]:
             continue
+        if seg["area"] not in measured:
+            continue  # 차원은 판단 가능해도 이 영역은 못 잼
         seconds = max(0, seg["end_ms"] - seg["start_ms"]) / 1000
         _add(burden, dim, seg["area"], seg.get("slide_number"), seg["mean_severity"] * seconds)
 

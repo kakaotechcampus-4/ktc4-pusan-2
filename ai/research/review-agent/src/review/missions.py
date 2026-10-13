@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .config import ReviewConfig
+from .evaluable import measured_areas
 from .metrics import compare, find_metric
 
 
@@ -17,7 +18,9 @@ def judge_target(
 ) -> tuple[str, Any]:
     """target{metric, operator, value} 를 지표 이름으로 찾아 판정한다. 반환: (상태, 관측값)
 
-    - NOT_EVALUABLE: 관측값이 없거나 측정 비율 미달 (대본 전달도는 min_scored_ratio 기준)
+    - NOT_EVALUABLE: 관측값이 없거나 못 잰 영역 (코치의 unmeasured_reason).
+      장 미션은 코치가 그 장의 metrics 를 null 로 둬 관측값이 없다.
+      대본 전달도는 scored_ratio < min_scored_ratio (장 미션은 채점 실패한 장)
     - ACHIEVED: 목표 달성
     - PARTIAL: 목표 쪽으로 모자란 정도가 허용치 이내. 허용치가 없는 지표(개수 등)는 없다
     - FAILED: 그 밖
@@ -25,11 +28,12 @@ def judge_target(
     metric, operator, value = target["metric"], target["operator"], target["value"]
     area, observed, ratio = find_metric(take_result, script_coverage, metric, slide_number)
 
+    if observed is None:
+        return "NOT_EVALUABLE", observed
     if area == "CONTENT":
-        min_ratio = cfg.evaluable.min_scored_ratio
-    else:
-        min_ratio = cfg.evaluable.min_measured_ratio
-    if observed is None or ratio is None or ratio < min_ratio:
+        if ratio is None or ratio < cfg.evaluable.min_scored_ratio:
+            return "NOT_EVALUABLE", observed
+    elif area not in measured_areas(take_result):
         return "NOT_EVALUABLE", observed
 
     if compare(observed, operator, value):

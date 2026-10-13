@@ -38,9 +38,11 @@ class SlideValues(_In):
 
 
 class AreaResult(_In):
-    """Take 결과의 영역 하나. 측정 비율 미달 영역은 take · slides 가 null"""
+    """Take 결과의 영역 하나. 코치가 측정 비율 미달로 본 영역은
+    unmeasured_reason 이 LOW_MEASURED_RATIO 이고 take · slides 가 null"""
 
     measured_ratio: float | None = None
+    unmeasured_reason: str | None = None
     take: dict[str, Any] | None = None
     slides: list[SlideValues] | None = None
 

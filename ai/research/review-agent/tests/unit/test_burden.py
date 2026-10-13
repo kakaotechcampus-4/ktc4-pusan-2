@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from .conftest import run, sample_coverage, segment
+from review import load_config
+
+from .conftest import run, sample_coverage, segment, unmeasured
 
 
 def test_sample_evaluable(req):
@@ -20,7 +22,7 @@ def test_sample_evaluable(req):
 
 
 def test_unmeasured_area_is_not_evaluable(req):
-    req["take_result"]["areas"]["GAZE"] = {"measured_ratio": 0.3, "take": None, "slides": None}
+    req["take_result"]["areas"]["GAZE"] = unmeasured(0.3)
     resp, trace = run(req)
     assert not trace.evaluable["audience_gaze"]
     assert not trace.evaluable["script_independence"]
@@ -84,3 +86,64 @@ def test_recurring_weight_follows_dimension(req):
     _, trace = run(req)
     assert trace.burden["audience_gaze"]["total"] == pytest.approx(6.0)
     assert trace.burden["script_independence"]["total"] == pytest.approx(15.696)
+
+
+def test_time_mission_not_achieved_weights_pacing(req):
+    # TIME 지표(slide_duration_ms) 미션도 pacing_rhythm 차원으로 가중된다
+    req["take_result"]["problem_segments"].append(
+        segment("SLIDE_OVER", "TIME", 3, 110_000, 125_000, 0.8)  # 12.0
+    )
+    req["missions"] = [
+        {
+            "mission_id": "m-time",
+            "area": "TIME",
+            "slide_number": 3,
+            "target": {"metric": "slide_duration_ms", "operator": "LTE", "value": 50_000},
+        }
+    ]
+    resp, trace = run(req, load_config(burden={"mission_failed_weight": 1.5}))
+    assert resp.mission_results[0].status in ("FAILED", "PARTIAL")
+    assert trace.burden["pacing_rhythm"]["total"] == pytest.approx(18.0)
+
+
+def test_pacing_partial_unmeasured_uses_measured_areas(req):
+    # TIME 만 못 재면 pacing_rhythm 은 SPEED · PAUSE 로 판단하고, TIME 구간은 세지 않는다
+    req["take_result"]["areas"]["TIME"] = unmeasured()
+    req["take_result"]["problem_segments"] += [
+        segment("SLIDE_OVER", "TIME", 3, 110_000, 125_000, 0.8),  # 세지 않음
+        segment("PACE_FAST", "SPEED", 2, 30_000, 40_000, 0.5),  # 5.0
+    ]
+    resp, trace = run(req)
+    assert trace.evaluable["pacing_rhythm"]
+    assert resp.dimensions["pacing_rhythm"] != "NOT_EVALUABLE"
+    assert trace.burden["pacing_rhythm"]["total"] == pytest.approx(5.0)
+    assert trace.burden["pacing_rhythm"]["by_area"] == {"SPEED": pytest.approx(5.0)}
+
+
+def test_pacing_all_unmeasured_is_not_evaluable(req):
+    for area in ("SPEED", "PAUSE", "TIME"):
+        req["take_result"]["areas"][area] = unmeasured()
+    resp, trace = run(req)
+    assert not trace.evaluable["pacing_rhythm"]
+    assert resp.dimensions["pacing_rhythm"] == "NOT_EVALUABLE"
+
+
+def test_follows_coach_marking_not_ratio(req):
+    # 리뷰는 measured_ratio 를 따로 비교하지 않는다: 코치가 표시하지 않았으면 잰 영역
+    req["take_result"]["areas"]["GAZE"]["measured_ratio"] = 0.1
+    _, trace = run(req)
+    assert trace.evaluable["audience_gaze"]
+
+
+def test_mission_in_unmeasured_area_is_not_evaluable(req):
+    req["take_result"]["areas"]["FILLER"] = unmeasured(0.3)
+    req["missions"] = [
+        {
+            "mission_id": "m-1",
+            "area": "FILLER",
+            "slide_number": None,
+            "target": {"metric": "filler_per_min", "operator": "LTE", "value": 2},
+        }
+    ]
+    resp, _ = run(req)
+    assert resp.mission_results[0].status == "NOT_EVALUABLE"

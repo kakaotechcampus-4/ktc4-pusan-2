@@ -27,8 +27,7 @@ class _Section(BaseModel):
 class EvaluableConfig(_Section):
     """1단계: 판단 가능 여부"""
 
-    #: 차원에 속한 영역 중 하나라도 measured_ratio 가 이 값 미만이면 NOT_EVALUABLE
-    min_measured_ratio: float = 0.5
+    # 영역 측정 비율 기준은 두지 않는다: 코치의 areas.<영역>.unmeasured_reason 을 따른다
     #: 대본 전달도 take_scores.scored_ratio 가 이 값 미만이면 content_delivery 가 NOT_EVALUABLE
     min_scored_ratio: float = 0.5
 

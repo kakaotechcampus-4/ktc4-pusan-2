@@ -8,16 +8,31 @@ from .config import ReviewConfig
 from .vocab import DIMENSIONS
 
 
+def measured_areas(take_result: dict[str, Any]) -> set[str]:
+    """잰 영역: Take 결과에 있고 코치가 unmeasured_reason 을 달지 않은 영역.
+
+    측정 비율 기준은 코치가 정하고 리뷰는 따로 두지 않는다 (명세 6-1 1번).
+    포함 여부 확인에만 쓴다 (순서를 정하지 않는다).
+    """
+    return {
+        area
+        for area, data in take_result["areas"].items()
+        if data is not None and data.get("unmeasured_reason") is None
+    }
+
+
 def check_evaluable(
     take_result: dict[str, Any], script_coverage: dict[str, Any] | None, cfg: ReviewConfig
 ) -> dict[str, bool]:
     """차원마다 판단 가능한지.
 
-    - 차원에 속한 영역 중 하나라도 measured_ratio < min_measured_ratio (또는 없음) → False
+    - 차원에 속한 영역이 모두 못 잰 영역(unmeasured_reason 있음 · 없는 영역) → False.
+      영역이 여럿인 차원(pacing_rhythm)은 일부만 판단 불가면 잰 영역으로만 본다 (부담도 잰 영역만)
     - content_delivery: 대본 전달도가 없거나 scored_ratio < min_scored_ratio → False
       (일부 장만 채점된 점수로 강점이라 하지 않게)
     """
     c = cfg.evaluable
+    measured = measured_areas(take_result)
     evaluable: dict[str, bool] = {}
     for dim, spec in DIMENSIONS.items():
         if dim == "content_delivery":
@@ -28,11 +43,5 @@ def check_evaluable(
             evaluable[dim] = scored_ratio is not None and scored_ratio >= c.min_scored_ratio
             continue
 
-        ok = True
-        for area in spec.areas:
-            ratio = (take_result["areas"].get(area) or {}).get("measured_ratio")
-            if ratio is None or ratio < c.min_measured_ratio:
-                ok = False
-                break
-        evaluable[dim] = ok
+        evaluable[dim] = any(area in measured for area in spec.areas)
     return evaluable
