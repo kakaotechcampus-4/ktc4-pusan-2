@@ -30,6 +30,22 @@ def test_unmeasured_area_is_not_evaluable(req):
     assert trace.burden["script_independence"]["total"] == 0
 
 
+def test_no_content_coverage_is_not_evaluable(req):
+    # 채점할 핵심 내용이 없는 대본: 다 채점됐어도 강점이라 하지 않는다
+    coverage = sample_coverage()
+    coverage["take_scores"]["content_coverage"] = None
+    req["script_coverage"] = coverage
+    resp, trace = run(req)
+    assert not trace.evaluable["content_delivery"]
+    assert resp.dimensions["content_delivery"] == "NOT_EVALUABLE"
+
+
+def test_scored_coverage_is_evaluable(req):
+    req["script_coverage"] = sample_coverage()
+    _, trace = run(req)
+    assert trace.evaluable["content_delivery"]
+
+
 def test_low_scored_ratio_is_not_evaluable(req):
     coverage = sample_coverage()
     coverage["take_scores"]["scored_ratio"] = 0.3

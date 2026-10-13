@@ -29,7 +29,8 @@ def check_evaluable(
     - 차원에 속한 영역이 모두 못 잰 영역(unmeasured_reason 있음 · 없는 영역) → False.
       영역이 여럿인 차원(pacing_rhythm)은 일부만 판단 불가면 잰 영역으로만 본다 (부담도 잰 영역만)
     - content_delivery: 대본 전달도가 없거나 scored_ratio < min_scored_ratio → False
-      (일부 장만 채점된 점수로 강점이라 하지 않게)
+      (일부 장만 채점된 점수로 강점이라 하지 않게).
+      take_scores.content_coverage 가 null 이어도 False (채점할 핵심 내용이 없는 대본)
     """
     c = cfg.evaluable
     measured = measured_areas(take_result)
@@ -39,8 +40,13 @@ def check_evaluable(
             if script_coverage is None:
                 evaluable[dim] = False
                 continue
-            scored_ratio = (script_coverage.get("take_scores") or {}).get("scored_ratio")
-            evaluable[dim] = scored_ratio is not None and scored_ratio >= c.min_scored_ratio
+            take_scores = script_coverage.get("take_scores") or {}
+            scored_ratio = take_scores.get("scored_ratio")
+            evaluable[dim] = (
+                scored_ratio is not None
+                and scored_ratio >= c.min_scored_ratio
+                and take_scores.get("content_coverage") is not None
+            )
             continue
 
         evaluable[dim] = any(area in measured for area in spec.areas)
