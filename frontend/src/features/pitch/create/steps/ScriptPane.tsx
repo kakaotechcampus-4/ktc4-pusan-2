@@ -6,6 +6,8 @@ import {
   countChars,
   estimateDurationMs,
   formatEstimate,
+  MAX_SCRIPT_CHARS,
+  scriptLength,
   toPracticeCombo,
   type ScriptVersion,
   type SlideVersion,
@@ -41,12 +43,15 @@ const PLACEHOLDER = [
  * 입력 중 안내. 지금 대본대로 매핑하면 어떻게 나뉠지 미리 알려 줍니다.
  * 막지는 않습니다 — 실제 AI 는 조금 다른 표기도 알아들을 수 있습니다 (`shared/lib/slideMarkers`).
  */
-function markerHint(scan: MarkerScan, pageCount: number): string | null {
+function markerHint(scan: MarkerScan, pageCount: number, tooLong: boolean): string | null {
+  if (tooLong) {
+    return `대본은 ${MAX_SCRIPT_CHARS.toLocaleString()}자(공백 포함)까지 매핑할 수 있어요. 조금 줄여 주세요.`;
+  }
   if (scan.numbers.length === 0) {
     return '“슬라이드 1”처럼 슬라이드마다 구분해 주세요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.';
   }
   if (scan.leadingText) {
-    return '첫 구분 앞에 쓴 글이 있으면 나뉘지 않아요. 맨 앞에 “슬라이드 1”을 넣어 주세요.';
+    return '첫 구분 앞에는 제목 한 줄만 둘 수 있어요. 그보다 많으면 나뉘지 않으니 “슬라이드 1”을 앞으로 옮겨 주세요.';
   }
   const last = Math.max(...scan.numbers);
   if (pageCount > 0 && last !== pageCount) {
@@ -118,7 +123,8 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
   const lineCount = Math.max(script.text.split('\n').length, MIN_GUTTER_LINES);
   const pageCount = linked?.pageCount ?? 0;
   const scan = scanSlideMarkers(script.text);
-  const hint = chars > 0 ? markerHint(scan, pageCount) : null;
+  const tooLong = scriptLength(script.text) > MAX_SCRIPT_CHARS;
+  const hint = chars > 0 ? markerHint(scan, pageCount, tooLong) : null;
   // 나뉠 장수 = 마지막 구분 번호 (건너뛴 번호는 빈 자리로 남습니다 — beAdapter)
   const markerCount = scan.leadingText || scan.numbers.length === 0 ? 0 : Math.max(...scan.numbers);
 
@@ -147,7 +153,7 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
           </span>
           <button
             type="button"
-            disabled={chars === 0 || pending}
+            disabled={chars === 0 || pending || tooLong}
             onClick={() => startScriptMapping(script.version)}
             className="h-11 rounded-lg bg-coral px-6 text-sm font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
           >

@@ -10,9 +10,6 @@ import type { StandardTextRequest, StandardTextResponse, StandardsPosted } from 
  * ★ 응답은 BE 컨트롤러 모양 그대로 `{"message", "pitch_id": <결과>}` 로 감쌉니다.
  */
 
-/** 서버가 받아 주는 개수. FE 의 MAX_CRITERIA 와 같습니다 */
-const MAX_STANDARDS = 5;
-
 export function splitStandards(text: string): string[] {
   return (
     text
@@ -30,12 +27,11 @@ export const standardsHandlers = [
     const { standard_text } = (await request.json()) as StandardTextRequest;
     await delay(900);
 
-    const all = splitStandards(standard_text);
-    const rest = all.slice(MAX_STANDARDS);
+    // BE 처럼 개수를 자르지 않고 모두 돌려줍니다. 목은 나누지 못한 문장을 따로 가리지 않습니다
     const result: StandardTextResponse = {
       pitch_id: String(params.pitchId),
-      standards: all.slice(0, MAX_STANDARDS).map((standard) => ({ standard })),
-      except_standard: rest.length > 0 ? rest.join(' / ') : null,
+      standards: splitStandards(standard_text).map((standard) => ({ standard })),
+      except_standard: null,
     };
     const body: StandardsPosted = {
       message: 'Pitch standard text added successfully',

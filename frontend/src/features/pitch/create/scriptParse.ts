@@ -37,6 +37,18 @@ const shouldKeepPolling = (error: unknown) =>
   error instanceof ApiFailure && error.status === 409 && KEEP_POLLING.has(error.code);
 
 /**
+ * 다시 물어봐도 답이 바뀌지 않는 실패. 대본이 없어졌거나(404) 로그인이 풀렸거나(401 — 갱신까지
+ * 실패한 뒤) 권한이 없으면, 100초를 채워 기다려도 "너무 오래 걸려요"만 보게 됩니다.
+ * 408(시간 초과) · 429(요청 과다)는 잠시 뒤 다시 물으면 되니 이어 갑니다. 네트워크 오류도 그렇습니다.
+ */
+const isFinalFailure = (error: unknown) =>
+  error instanceof ApiFailure &&
+  error.status >= 400 &&
+  error.status < 500 &&
+  error.status !== 408 &&
+  error.status !== 429;
+
+/**
  * 그사이 글을 고쳤거나 다시 올렸으면, 이 서버 버전의 결과는 더 이상 그 대본의 것이 아닙니다.
  * 새 피치를 시작했어도 마찬가지입니다 — 새 작성에도 같은 번호(V1)의 대본이 있을 수 있어
  * 번호만 보면 앞 피치의 결과가 들어갑니다 (`draftId`).
@@ -64,8 +76,13 @@ async function poll(
     try {
       progress = fromScriptDetail(await getScript(pitchId, remoteId));
     } catch (error) {
-      // 한 번 못 받은 것으로 멈추지 않습니다 — 다음 폴링이 받으면 됩니다
       console.error('[대본] 나누기 상태를 받지 못했습니다', { remoteId, error });
+      if (isFinalFailure(error)) {
+        if (stillCurrent(draftId, version, remoteId))
+          patchScript(version, { parse: failed(toMessage(error)) });
+        return;
+      }
+      // 일시적인 실패(네트워크 · 5xx)는 한 번으로 멈추지 않습니다 — 다음 폴링이 받으면 됩니다
       continue;
     }
     if (!stillCurrent(draftId, version, remoteId)) return;
