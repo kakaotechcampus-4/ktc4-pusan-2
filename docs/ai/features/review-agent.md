@@ -40,9 +40,9 @@ LLM에게 결론을 맡기면 숫자를 지어내거나 같은 입력에 다른 
 | 차원 | 리뷰가 결론을 내는 여섯 묶음. 영역 · 지표 · 문제가 정해져 있다(5-3 표) | `script_independence` |
 | 부담 | 차원의 문제 크기. 믿을 수 있는(`reliable`) 문제 구간마다 `mean_severity × 초`를 더한다. 대본 전달도는 빠진 · 다르게 말한 핵심 내용을 중요도별 부담으로 바꿔 더한다 | `7.4` |
 | 차원 상태 | `PRIORITY`(먼저 고칠 것) · `IMPROVED`(나아짐) · `STRENGTH`(강점) · `STABLE`(보통) · `NOT_EVALUABLE`(판단 불가) | `PRIORITY` |
-| 미션 | 이번 Take에 실린 목표 `{mission_id, area, slide_number, target{metric, operator, value}, priority, reason}`. 리뷰의 다음 미션에 BE가 `mission_id`를 붙인 것. `priority` · `reason`은 선택이고 리뷰는 판정에 쓰지 않는다 | `{"mission_id": "m-1", "area": "FILLER", "slide_number": null, "target": {"metric": "filler_per_min", "operator": "LTE", "value": 2}, "priority": 1, "reason": "이번 Take 2.4"}` |
+| 미션 | 이번 Take에 실린 목표 `{mission_id, area, slide_number, target{metric, operator, value}}`. 직전 리뷰의 다음 미션에 BE가 `mission_id`를 붙인 것 | `filler_per_min LTE 2` |
 | 미션 · 기준 상태 | `ACHIEVED`(이룸) · `PARTIAL`(허용치 안에서 못 미침) · `FAILED` · `NOT_EVALUABLE` | `PARTIAL` |
-| 사용자 기준 | 평가 기준 분석의 `targets` · `script_used` (`evaluation-criteria.md` 5-3) | `{"targets": [{"display": "추임새 5번 이하", "metric": "filler_count", "operator": "LTE", "value": 5}], "script_used": false}` |
+| 사용자 기준 | 평가 기준 분석의 `targets` · `script_used` (`evaluation-criteria.md` 5-3) | `filler_count LTE 5` |
 | 반복 문제 | 다음 Take에도 먼저 챙길 `{area, slide_number, dimension}` | `{"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}` |
 | 규칙 단계 · LLM 단계 | 숫자 · 상태 · 점수를 정하는 코드(LLM 없음) · 문장을 쓰는 LLM 한 번 | — |
 | 기본 문장 | LLM이 없거나 숫자 검사에 걸린 문장 대신 규칙 단계가 만드는 템플릿 문장 | "3번 장 대본 응시 비율이 0.62입니다" |
@@ -71,21 +71,12 @@ ai/research/review-agent/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
 ├─ pyproject.toml · uv.lock                 Python 3.12. 코어는 pydantic 하나, 연구 도구만 LLM 라이브러리
 ├─ src/review/                              리뷰 코어 → 서비스 features/review/로 폴더째 옮긴다
-│   ├─ __init__.py                          review_take 공개
-│   ├─ schemas.py                           요청 · 응답 pydantic 모델 = 계약
-│   ├─ core.py                              review_take(): 단계를 차례로 부르는 유일한 진입점
-│   ├─ evaluable.py                         1단계: 판단 가능 여부
-│   ├─ burden.py                            2단계: 차원 · 장 · 영역별 문제 부담
-│   ├─ dimensions.py                        3단계: 차원 상태 (PRIORITY 순위)
-│   ├─ missions.py                          4 · 6단계: 미션 판정 · 사용자 기준 판정
-│   ├─ next_missions.py                     7단계: 다음 미션 후보 · 선택
-│   ├─ recurring.py                         8단계: 반복 문제
-│   ├─ score.py                             9단계: 점수
-│   ├─ metrics.py                           지표 찾기 · 비교 (미션 판정 · 다음 미션 · 문장이 같이 씀)
-│   ├─ text.py                              기본 문장 (LLM 없이)
-│   ├─ vocab.py                             고정 어휘 · 차원 표
+│   ├─ schemas.py                           요청 · 응답 · LLM 출력 pydantic 모델 = 계약
+│   ├─ core.py                              review_take(): 규칙 단계 → LLM 단계 → 숫자 검사
+│   ├─ rules.py                             규칙 단계 (LLM 없는 순수 함수)
+│   ├─ text.py                              기본 문장 · 숫자 검사
 │   ├─ config.py · version.py               부담 · 허용치 · 한 걸음 폭 · 점수 · 개수 한도, 기능 버전
-│   ├─ prompts/                             문장 쓰기 · 다음 미션 고르기 프롬프트 (2차 예정)
+│   ├─ prompts/                             문장 쓰기 · 다음 미션 고르기 프롬프트
 │   └─ examples/                            요청 · 응답 예시 (계약 테스트가 읽는다)
 ├─ src/review_lab/                          연구 전용(정답 리뷰 평가 · 실제 LLM 실행). 옮기지 않는다
 ├─ data/                                    공통 기준 Take의 저장 결과 묶음과 정답 리뷰
@@ -125,7 +116,7 @@ ai/research/review-agent/
 | `script_coverage` | object · null | 아니오 | 대본 전달도 채점 `{take_id, evaluations, take_scores, confirmations, failed}`(사용자가 확인했으면 확인 반영본). 대본이 없거나 모든 장이 실패했으면 null |
 | `previous_takes` | list | 아니오 | 같은 발표의 이전 Take 최근 3개까지, 최근 것부터 `[{take_result, take_scores}]`. `take_scores`는 그 Take의 대본 전달도 Take 값(없으면 null) |
 | `previous_recurring_issues` | list | 아니오 | 직전 리뷰의 반복 문제 `[{area, slide_number, dimension}]`(직전 리뷰의 `recurring_issues` 그대로, 없으면 빈 목록). `dimension`이 없거나 차원 이름이 아닌 항목은 반복 판정(6-1 4 · 5번)에 쓰지 않고 로그에 남긴다(그 항목 때문에 리뷰 전체를 거절하지 않는다) |
-| `missions` | list | 아니오 | 이번 Take에 실린 미션 `[{mission_id, area, slide_number, target{metric, operator, value}, priority, reason}]` (`slide_number`가 null이면 Take 전체) |
+| `missions` | list | 아니오 | 이번 Take에 실린 미션 `[{mission_id, area, slide_number, target{metric, operator, value}}]` (`slide_number`가 null이면 Take 전체) |
 | `user_criteria` | object · null | 아니오 | 사용자 평가 기준 `{display_criteria, targets, script_used}` (없으면 null). BE는 평가 기준 분석 결과의 `display_criteria` · `targets`를 그대로 싣고, `values.script_used`(저장 칸 `standard_analyses.script_used`)를 `script_used`로 옮긴다. `script_used`는 bool 또는 null(언급이 없으면 null) |
 
 - 입력 개수 한도: `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `user_criteria.targets` 20. 넘으면 422 `VALIDATION_ERROR`이고 BE는 다시 부르지 않는다. `targets` 20은 평가 기준 분석의 표시 기준 10개 × 범위 목표 2개다. `take_result` · `script_coverage` 크기는 요청 본문 크기 상한(`ai-service.md` 15절 열린 질문)으로 정한다.
