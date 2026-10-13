@@ -12,8 +12,7 @@
 | 기능 버전 | 서버 코어 `1.1` (`src/gaze/version.py`), 브라우저 엔진 `gaze_v1.1.0+head_pose+reference_anchor_v1` |
 | 판정 신호 | 고개 방향 (MediaPipe Face Landmarker의 변환 행렬). 눈 기반 백본은 비교 실험용으로 보관 |
 | 상태 | 테스트 영상 · 합성 얼굴로만 검증했습니다. **실제 발표자 녹화로 정확도를 잰 적은 아직 없습니다** |
-| 입출력 | [INTERFACE.md](INTERFACE.md) — 엔진 계약, 1초 기록, 서버 코어의 입력 · 출력 |
-| 배포 | [DEPLOY.md](DEPLOY.md) — 서버 코어를 AI 서버로, TS 엔진을 frontend로 옮기는 방법 |
+| 설계 | 엔진 계약 · 1초 기록 · 서버 판정 · 배포 → [`docs/ai/features/gaze-tracking.md`](../../../docs/ai/features/gaze-tracking.md) |
 
 > `ai/archive/workspaces/jewon-kim/gaze-tracking/v1/local/`을 구조를 바꿔 옮긴 프로젝트입니다.
 > 판정 로직은 같고, 같은 입력이면 archive와 결과가 같습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
@@ -87,7 +86,7 @@ tools/export_config.py · make_fixtures.py  ──생성──▶  web/src/engin
 
 ```
 gaze-tracking/
-├── README.md · INTERFACE.md · DEPLOY.md
+├── README.md
 ├── pyproject.toml · uv.lock · .python-version   Python 3.12, mediapipe==1.0.1 고정 (uv)
 ├── .gitignore · .gitattributes                  artifacts · data · outputs · fixtures/local 제외, LF
 ├── run_demo.bat                                 Windows 더블클릭으로 Python 데모
@@ -314,12 +313,10 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
 
 ## 8. 설계 결정
 
+기능 사이 경계(기기에 남는 값 · 서버 판정 · 받는 쪽 규칙)를 정한 이유는 [설계 문서](../../../docs/ai/features/gaze-tracking.md) 4-3에 있습니다. 아래는 연구 폴더의 개발 방식에 관한 결정입니다.
+
 | 결정 | 이유 |
 |---|---|
-| 서버 코어는 1초 기록 이후만 | 프레임은 기기를 떠나지 않으므로 서버가 받는 첫 데이터가 1초 기록이다. 프레임 → 1초 기록은 기기 쪽(TS 엔진 · `gaze_lab`) |
-| TS 엔진에서 이슈 · 요약 계산을 뺌 | 서버 몫이다. 엔진에 사본이 있으면 frontend로 서버 로직이 같이 가서 두 벌을 맞춰야 한다. 데모는 미리보기 사본(`src/demo/evidence-preview.ts`)을 쓴다 |
-| 공백 처리는 서버 입구 한 곳 | 카메라 끊김 · 탭 숨김 · 전송 유실을 원인마다 막지 않고 `normalize_samples`가 같이 처리한다. 기존 계산 함수는 그대로라 parity가 유지된다 |
-| 입력 계약은 읽을 수 있는 건 버리지 않음 | 정보를 얻는 기능이라, 모르는 방향 · 빠진 값 때문에 기록을 거절하지 않는다. 뜻을 읽을 수 없는 기록만 그 1초를 버린다 |
 | 생성 파일에 `.generated.` | 손으로 고치지 않는 파일 표시. FE의 prettier · lint에서 패턴 하나로 뺄 수 있다 |
 | 엔진 테스트는 엔진 폴더 안(`__tests__`) | 폴더째 옮길 때 테스트와 기준 답이 같이 간다 |
 | PnP 상수는 그대로 | 상수를 바꾸면 판정이 바뀐다. 여러 얼굴로 유도 · 평가한 뒤 기능 버전을 올리는 별도 변경으로 다룬다 ([9장](#9-알려진-한계)) |
@@ -365,4 +362,4 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
 | `tests/` | `tests/lab/` (+ 서버 코어 테스트는 `tests/unit/`) |
 | `tests/fixtures/{face.jpg,static_face_30fps.mp4}` | 합성 얼굴로 교체, git 밖 (`tests/fixtures/`) |
 | `web/` (+ `web/scripts/*.py`) | `web/` (+ `tools/`) |
-| `v1/README.md` 등 문서 4벌 | 이 문서 · INTERFACE.md · DEPLOY.md · `web/README.md` |
+| `v1/README.md` 등 문서 4벌 | 이 문서 · `web/README.md` · 설계 문서(`docs/ai/features/gaze-tracking.md`) |

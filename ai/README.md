@@ -47,5 +47,6 @@ LLM을 쓰는 기능(대본 전달도 · 대본 파싱 · 평가 기준 분류)�
 
 ## 더 읽을 것
 
+- [../docs/ai/README.md](../docs/ai/README.md) — AI 기술 문서 (아키텍처 · 기능별 설계)
 - [research/README.md](research/README.md) — 옮겨 온 기능 목록
 - [archive/README.md](archive/README.md) — 동결본 목차와 실행할 때 주의점
