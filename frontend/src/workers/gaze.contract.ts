@@ -90,6 +90,8 @@ export interface ZoneReference {
     separability: number;
     /** 캘리브레이션 프레임 leave-one-out 정확도 (AI `loo_accuracy`) */
     looAccuracy: number;
+    /** 합격이어도 붙는 경고 (AI `warnings`). 해석하지 않고 서버 요약에 옮깁니다 */
+    warnings: string[];
   } | null;
   /**
    * 분류기가 학습한 것. **FE 는 해석하지 않습니다** — 저장하고 되돌려주기만 합니다.

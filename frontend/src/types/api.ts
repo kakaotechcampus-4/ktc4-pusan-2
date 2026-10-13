@@ -127,6 +127,12 @@ export interface CalibrationSummary {
    * 0 으로 채우면 "분리도가 0" 이라는 뜻이 되어 리포트가 거짓말을 합니다.
    */
   separability: number | null;
+  /** 보정 표본을 하나씩 빼고 맞힌 비율 0–1 (AI `loo_accuracy`). 모르면 null */
+  looAccuracy: number | null;
+  /** 합격이어도 붙는 경고 (AI `warnings`, 예: `SCREEN_MERGED: …`) */
+  warnings: string[];
+  /** 이 보정을 만든 엔진. Take 끼리 비교할 때 같은 엔진인지 봅니다 */
+  engineVersion: string;
   coordinateSpace: 'raw' | 'mirrored';
   /** 해상도·배율·카메라 위치. 이게 다르면 다른 기기의 값이라 재사용 불가 */
   layoutSignature: string;

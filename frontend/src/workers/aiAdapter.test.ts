@@ -13,6 +13,7 @@ const passed: AiCalibrationQuality = {
   hint: null,
   separability: 2.4,
   loo_accuracy: 0.97,
+  warnings: [],
 };
 
 describe('캘리브레이션 품질 → CalibrationResult', () => {
@@ -21,7 +22,11 @@ describe('캘리브레이션 품질 → CalibrationResult', () => {
   it('합격에 경고가 없으면 GOOD 이고 수치를 옮겨 담는다', () => {
     expect(toCalibrationResult(passed, model)).toEqual({
       ok: true,
-      ref: { quality: 'GOOD', metrics: { separability: 2.4, looAccuracy: 0.97 }, model },
+      ref: {
+        quality: 'GOOD',
+        metrics: { separability: 2.4, looAccuracy: 0.97, warnings: [] },
+        model,
+      },
       advice: null,
     });
   });
@@ -29,6 +34,11 @@ describe('캘리브레이션 품질 → CalibrationResult', () => {
   it('합격이어도 INVERTED_PITCH 경고가 있으면 FAIR 다 — 문구 중간에 있어도 잡는다', () => {
     const r = toCalibrationResult({ ...passed, hint: 'Note. INVERTED_PITCH: reversed?' }, model);
     expect(r).toMatchObject({ ok: true, ref: { quality: 'FAIR' }, advice: null });
+  });
+
+  it('엔진 경고 목록은 해석하지 않고 그대로 옮긴다 — 서버 보정 결과 요약에 갑니다', () => {
+    const r = toCalibrationResult({ ...passed, warnings: [SCREEN_MERGED_WARNING] }, model);
+    expect(r.ok && r.ref.metrics?.warnings).toEqual([SCREEN_MERGED_WARNING]);
   });
 
   it('합격이어도 화면이 렌즈에 합쳐졌으면(SCREEN_MERGED) FAIR 다 — 화면 본 시간이 청중으로 세진다', () => {

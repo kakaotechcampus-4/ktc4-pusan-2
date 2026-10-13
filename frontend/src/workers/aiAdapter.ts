@@ -29,6 +29,8 @@ export interface AiCalibrationQuality {
   hint: string | null;
   separability: number;
   loo_accuracy: number;
+  /** 합격이어도 붙는 경고 (예: `SCREEN_MERGED: …`). 서버 보정 결과 요약에 그대로 갑니다 */
+  warnings: string[];
 }
 
 /** AI `PlacementCheckResult.to_dict()` 에서 FE 가 읽는 것만 */
@@ -97,7 +99,11 @@ export function toCalibrationResult(q: AiCalibrationQuality, model: unknown): Ca
   const reason = AI_FAIL_REASONS.find((r) => r === q.reason) ?? 'ENGINE_ERROR';
   if (model === null) return { ok: false, reason: q.status === 'OK' ? 'ENGINE_ERROR' : reason };
 
-  const metrics = { separability: q.separability, looAccuracy: q.loo_accuracy };
+  const metrics = {
+    separability: q.separability,
+    looAccuracy: q.loo_accuracy,
+    warnings: q.warnings,
+  };
   if (q.status !== 'OK') {
     return { ok: true, ref: { quality: 'POOR', metrics, model }, advice: reason };
   }

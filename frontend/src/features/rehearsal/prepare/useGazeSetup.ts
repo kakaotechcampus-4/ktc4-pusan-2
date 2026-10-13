@@ -231,6 +231,9 @@ export function useGazeSetup({
           points: 3,
           quality: ref.quality,
           separability: ref.metrics?.separability ?? null,
+          looAccuracy: ref.metrics?.looAccuracy ?? null,
+          warnings: ref.metrics?.warnings ?? [],
+          engineVersion: engine,
           // 엔진에는 원본 프레임이 갑니다. 화면의 거울상은 모듈의 CSS 변환이라
           // createImageBitmap 결과에는 반영되지 않습니다
           coordinateSpace: 'raw',

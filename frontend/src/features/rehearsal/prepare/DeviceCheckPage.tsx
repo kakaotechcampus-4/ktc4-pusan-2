@@ -6,6 +6,7 @@ import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../medi
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
 import { setPrepareContext, setSessionTicket, setTakeId, startSession } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
+import { toCalibrationRequest } from '../lib/calibrationRequest';
 import { toMessage } from '@/shared/api/errorMessage';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
@@ -277,13 +278,14 @@ export function DeviceCheckPage() {
       };
       await setSessionTicket(clientSessionId, ticket);
 
-      // 품질 요약만 갑니다. 기준 벡터는 브라우저에 남습니다 (CLAUDE.md 1번)
+      // 요약 수치만 갑니다. 보정 모델은 브라우저에 남습니다 (CLAUDE.md 1번)
       //
       // ★ 여기서 실패해도 연습은 엽니다. Take 는 이미 만들어졌으니, 여기서 멈추면 연습 없이
       //   빈 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다. 요약은 리포트의 참고값이라
       //   빠져도 발표 기록은 온전합니다 — 원인은 콘솔에 남깁니다
       if (calibration) {
-        await postCalibration(pitchId, take.takeId, calibration).catch((err: unknown) => {
+        const body = toCalibrationRequest(calibration, { micDetected: micOk });
+        await postCalibration(pitchId, take.takeId, body).catch((err: unknown) => {
           console.error('[장치 점검] 보정 요약을 보내지 못했습니다', err);
         });
       }
