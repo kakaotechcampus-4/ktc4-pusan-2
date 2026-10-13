@@ -180,7 +180,7 @@ ai/research/evaluation-criteria/
 1. **LLM 한 번**: 요소 표 · 단위 규칙 · 예시가 든 프롬프트와 기준 문장으로 출력 스키마 `{display_criteria, values, targets, excluded}`를 받는다. 규칙: 언급이 없는 요소는 null, 추측 금지. `script_used`는 "대본 없이 · 보면 안 된다" → false, "봐도 된다 · 참고만" → true, 단서가 없으면 null. 같은 요소가 여러 번 나오면 더 구체적인 기준을 쓴다(프롬프트 규칙이고 계약에는 없다). 표시 기준은 사용자 표현을 그대로 살리고 요소 이름(영어)을 쓰지 않는다.
 2. **검사** (코드, `check_targets`):
    - `metric` · `operator`는 다시 보지 않는다. enum에 없는 값이 나오면 응답이 출력 스키마를 통과하지 못해 이 단계까지 오지 않고, 공통 재시도 뒤에도 그러면 502 `LLM_INVALID_OUTPUT`이다(구조화 출력의 strict 모드는 쓰지 않으므로 생성 단계에서 막히지 않는다).
-   - `value` 범위: 비율 지표(`audience_ratio` · `reading_ratio` · `content_coverage`)는 0–1, 개수 지표는 0 이상, `cpm`은 0보다 큼. 범위 밖이면 뺀다.
+   - `value` 범위: 비율 지표(`audience_ratio` · `reading_ratio` · `content_coverage`)는 0–1, 개수 지표(`pause_count` · `long_silence_count` · `filler_count`)와 `filler_per_min`은 0 이상, `cpm`은 0보다 큼. 범위 밖이면 뺀다. `voice_diff_db`는 음수(평소보다 작게)도 맞는 값이라 범위를 보지 않는다.
    - `display`가 `display_criteria` 중 하나와 같아야 한다. 아니면 뺀다.
    - 같은 `display` · `metric` · `operator`의 목표가 둘 이상이면 앞의 것만 둔다. 다 거른 뒤 20개를 넘으면 앞에서부터 20개만 두고 뺀 수를 로그에 남긴다(리뷰 입력 한도 `targets` 20).
    - 표시 기준이 50자를 넘으면 자르지 않고 출력 스키마 위반으로 본다(숫자 · 조건이 잘리거나 `targets[].display` 짝이 깨지지 않게). 공통 재시도 뒤에도 넘으면 502 `LLM_INVALID_OUTPUT`이다.
