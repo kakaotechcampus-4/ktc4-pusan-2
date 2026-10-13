@@ -257,11 +257,16 @@ function EditableItem({
 function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: string }) {
   const addCriterion = useCreateStore((s) => s.addCriterion);
   const markCriteriaSaved = useCreateStore((s) => s.markCriteriaSaved);
+  const draftId = useCreateStore((s) => s.draftId);
   const standards = criteriaToSave(criteria);
 
   const save = useMutation({
-    mutationFn: (list: string[]) => saveStandards(pitchId, list),
-    onSuccess: (_res, list) => markCriteriaSaved(criteria.version, list),
+    // 정리와 같습니다 — 저장하는 사이 새 피치를 시작했으면 결과를 새 작성에 넣지 않습니다
+    mutationFn: ({ list }: { list: string[]; draftId: string }) => saveStandards(pitchId, list),
+    onSuccess: (_res, { list, draftId: from }) => {
+      if (!isCurrentDraft(from)) return;
+      markCriteriaSaved(criteria.version, list);
+    },
     onError: (error) => console.error('[평가기준] 저장하지 못했습니다', error),
   });
 
@@ -288,7 +293,7 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
         <button
           type="button"
           disabled={standards.length === 0 || save.isPending}
-          onClick={() => save.mutate(standards)}
+          onClick={() => save.mutate({ list: standards, draftId })}
           className="h-10 shrink-0 rounded-lg bg-coral px-5 text-sm font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
         >
           {save.isPending ? '저장하는 중…' : '평가기준 저장'}
