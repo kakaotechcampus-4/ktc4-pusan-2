@@ -2,7 +2,8 @@
 
     from review import review_take
 
-입출력은 ai/research/review-agent/INTERFACE.md, 구조와 판단 흐름은 같은 폴더의 README.md 를 보세요.
+계약 · 판단 흐름은 docs/ai/features/review-agent.md,
+실행법은 ai/research/review-agent/README.md 를 보세요.
 
 코어는 파일 · DB · 네트워크 · 환경변수 · 시계 · 난수를 쓰지 않고,
 패키지 안에서는 상대 import 만 쓴다.
