@@ -2,7 +2,7 @@
 
     from coach import decide, finalize, plan_coaching
 
-입출력은 ai/research/coach-agent/INTERFACE.md, 구조와 판단 흐름은 같은 폴더의 README.md 를 보세요.
+입출력은 docs/ai/features/coach-agent.md, 구조와 판단 흐름은 같은 폴더의 README.md 를 보세요.
 """
 
 from .core import ReplayRequired, decide, decide_safe, finalize
