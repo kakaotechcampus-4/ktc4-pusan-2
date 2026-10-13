@@ -137,7 +137,7 @@ ai/research/review-agent/
 | `overall_summary` | string | 요약 문장 |
 | `score` | int · null | 차원 상태 점수의 평균(0–100, `NOT_EVALUABLE` 제외)을 정수로 반올림한 값. 모든 차원이 판단 불가면 null |
 | `dimensions` | object | 차원 여섯 개 → 상태 |
-| `strengths[]` | list | `{area, slide_number, text, evidence}`. 개선점과 같은 모양이고, 장이 없으면 `slide_number` null. `evidence`는 지표 이름 → 숫자 |
+| `strengths[]` | list | `{area, slide_number, text, evidence}`. 개선점과 같은 모양이고, 장이 없으면 `slide_number` null. `evidence`는 지표 이름 → 숫자. `area` · `evidence`를 고르는 법은 6-2 |
 | `improvements[]` | list | `{area, slide_number, text, evidence}`. 장이 없으면 `slide_number` null |
 | `comparison[]` | list | 바로 앞 Take(`previous_takes[0]`)와 같은 지표 비교 `{metric, slide_number, previous, current, improved, script_mode}`. `improved`는 좋아진 방향인지(bool, 방향을 정할 수 없으면 null). `script_mode`는 두 Take의 대본 보기가 다를 때 `{previous, current}`, 같으면 null |
 | `mission_results[]` | list | `{mission_id, status, metric, operator, slide_number, target, observed}`. `observed`는 판정에 쓴 관측값(float), 없으면 null |
@@ -234,6 +234,10 @@ ai/research/review-agent/
 - **규칙**: 대본 전달도는 점수보다 장별 판정 · 근거로 말한다(같은 입력에서도 장 점수가 흔들린다). 사용자 기준이 `FAILED`인 다음 미션은 늘 앞에 둔다(코드가 다시 맞춘다). `description`은 500자에서 자른다.
 - **숫자 검사**: 코드가 문장마다 숫자를 규칙 단계 결과 · 근거 숫자와 대조한다. 숫자 뽑기와 예시 표는 `architecture.md` 0-2를 따른다. 같은 값으로 보는 표기는 ① 비율과 퍼센트(0.62 ↔ 62% ↔ 62퍼센트. 단위 없는 62는 같은 값이 아니다) ② 시간 ms ↔ 초 ↔ 분(88000 ↔ 88초 ↔ 1분 28초. 이어 쓴 "N분 M초"는 한 값이다) ③ 보여 준 자리까지 반올림한 값(0.6248 ↔ 0.62 ↔ 62%) ④ 정수 개수 · 점수는 그대로이고, ⑤ 음수는 크기로 본다(`voice_diff_db` −1.5 ↔ "1.5dB 작게". "작게 · 줄었다" 같은 방향 말은 검사하지 않는다). 장 번호 · Take 번호 · 날짜는 입력에 있으면 입력에 있는 숫자로 본다. 한글로 쓴 수("세 번")는 검사하지 않으므로 프롬프트가 숫자를 아라비아 숫자로 쓰게 한다(`architecture.md` 0-2를 구체화한 것). 없는 숫자가 든 문장은 규칙 단계의 기본 문장으로 바꾼다. 문장 단위로 바꾸므로 `fallback_reason`은 달지 않고 바꾼 문장 수를 로그에 남긴다.
 - **실패**: LLM이 없거나 실패하면 기본 문장과 규칙 단계 결과(다음 미션은 후보 상위)를 200으로 돌려주고 `fallback_reason`을 단다.
+- **강점 · 개선점의 `area` · `evidence`**: 규칙 단계가 후보마다 정하고, 기본 문장과 LLM 문장이 같이 쓴다. 측정 비율이 기준 미만인 영역(6-1 1번)은 고르지 않는다. 지표는 그 차원의 다음 미션 지표 → 5-3 차원 표의 지표 순으로 보고, 값이 있는 첫 지표를 `evidence`에 싣는다.
+  - 강점: 잰 영역 어디서든 찾고, 찾은 지표의 영역이 `area`다(예: SPEED · PAUSE를 못 잰 Take의 `pacing_rhythm` 강점 → `TIME`, `duration_ms`).
+  - 개선점: `area`는 그 차원에서 부담이 가장 큰 영역(6-1 8번과 같다)이고, 근거도 그 영역의 지표다. 장 개선점이면 그 장 값을 먼저 찾고 없으면 Take 값을 쓴다(예: 3번 장 `SLIDE_OVER` → `slide_duration_ms`).
+  - 근거 지표를 찾지 못하면 `evidence`는 `{}`다.
 
 # 7. 실패할 때
 | 상황 | 동작 | 응답 | 이유 |
