@@ -150,14 +150,13 @@ ai/research/volume-analysis/
 | 필드 | `VOLUME` | `PAUSE` |
 |---|---|---|
 | `metrics` | `level_db`(짧은 창의 말한 1초들의 Leq), `voice_diff_db`(`level_db − base_level_db`) | `silence_ms`(마지막 1초 끝의 잘린 연속 무음) |
-| `tally` (새 1초마다 그 1초의 `t_ms`) | `voiced_ms` · `voiced_energy`(`10^(level_db/10) × voiced_ms`) · `low_ms`(그 1초에서 끝나는 짧은 창의 `voice_diff_db`가 작음 기준 미만이면 그 1초의 `voiced_ms`) · `level_voiced_ms`(기준 음량이 있을 때 그 1초의 `voiced_ms`) · `base_db_ms`(`base_level_db × level_voiced_ms`) · `audio_live_ms` · `total_ms` | `long_silence_count`(그 1초의 잘린 `silence_ms`가 긴 침묵 기준을 넘고, 같은 침묵 안의 앞선 기록 중 이미 기준을 넘은 것이 없으면 1. 아래 목록) · `audio_live_ms` · `total_ms` |
+| `tally` (새 1초마다 그 1초의 `t_ms`) | `voiced_ms` · `voiced_energy`(`10^(level_db/10) × voiced_ms`) · `low_ms`(그 1초에서 끝나는 짧은 창의 `voice_diff_db`가 작음 기준 미만이면 그 1초의 `voiced_ms`) · `level_voiced_ms`(기준 음량이 있을 때 그 1초의 `voiced_ms`) · `base_db_ms`(`base_level_db × level_voiced_ms`) · `audio_live_ms` · `total_ms` | `long_silence_count`(그 1초 안에서 잘린 `silence_ms`가 긴 침묵 기준을 처음 넘으면 1: `silence_ms − duration_ms ≤ 기준 < silence_ms`) · `audio_live_ms` · `total_ms` |
 | `state` | `LOW` · `NORMAL`. 잴 수 없으면 `UNKNOWN` | `SILENT` · `NORMAL`. 잴 수 없으면 `UNKNOWN` |
 | `measurable` | 마지막 1초에 오디오가 흐르고, 기준 음량이 있고, 짧은 창에 말한 1초가 기준 개수 이상 | 마지막 1초에 오디오가 흐름 |
 | `issues[].confidence` | 잴 수 있으면 1 | 잴 수 있으면 1 |
 
 - `tally`는 '말한 1초'로 거르지 않고 기록이 있는 모든 1초를 더한다. 에너지에 `voiced_ms`로 무게를 주므로 짧은 발화는 무게가 작고, '말한 1초' 기준(2절)은 평활 창 · 기준 음량 표본에만 쓴다.
 - 기록이 없는 1초(빈 구간)는 `total_ms`만 센다.
-- `long_silence_count`는 한 침묵을 한 번만 센다. 이 1초 기록의 무음 시작은 `t_ms + duration_ms − silence_ms`(잘린 값)이고, 받은 창 안의 앞선 기록 중 끝(`t_ms + duration_ms`)이 이 무음 시작보다 뒤이며 잘린 `silence_ms`가 기준을 넘은 기록이 있으면 같은 침묵을 이미 센 것이다. 기준을 넘는 바로 그 1초의 기록이 빠져도 다음 기록에서 센다(`silence_ms − duration_ms ≤ 기준` 같은 '처음 넘음' 조건만 쓰면 그 1초가 빠질 때 놓친다).
 - `base_db_ms`는 `summarize`가 `voice_diff_db`를 내는 데 필요해 둔다.
 
 **`summarize(tally)` → 두 영역** (분모가 0이면 null. `measured_ratio`만 분모가 0이면 0, `architecture.md` 7절)
@@ -166,7 +165,7 @@ ai/research/volume-analysis/
 |---|---|---|
 | `VOLUME` | `level_db` | `10·log10(voiced_energy ÷ voiced_ms)` |
 |  | `voice_diff_db` | `level_db − base_db_ms ÷ level_voiced_ms` |
-|  | `low_ratio` | `low_ms ÷ level_voiced_ms` (기준 음량이 없던 동안의 발화는 작다고 판정될 수 없으므로 분모에서 뺀다) |
+|  | `low_ratio` | `low_ms ÷ voiced_ms` |
 |  | `measured_ratio` | `audio_live_ms ÷ total_ms`와 `level_voiced_ms ÷ voiced_ms` 중 작은 값(기준 음량이 없던 동안의 발화는 잰 것으로 보지 않는다). `voiced_ms`가 0이면(말한 소리가 없음) 0이다 |
 | `PAUSE` | `long_silence_count` | 합 |
 |  | `measured_ratio` | `audio_live_ms ÷ total_ms` |
@@ -248,7 +247,7 @@ ai/research/volume-analysis/
 # 7. 실패할 때
 | 상황 | 동작 | 결과 | 이유 |
 |---|---|---|---|
-| 마지막 1초에 오디오가 흐르지 않음 | 두 영역 모두 잴 수 없음 | `UNKNOWN`, 문제 없음. `tally`는 1초마다 그 기록의 `audio_live`로 세므로, 오디오가 흐르지 않은 1초만 `total_ms`에 들고 `audio_live_ms`에는 들지 않는다 | 마이크가 끊긴 것을 작은 목소리 · 침묵으로 보지 않는다 |
+| 마지막 1초에 오디오가 흐르지 않음 | 두 영역 모두 잴 수 없음 | `UNKNOWN`, 문제 없음. 시간은 `total_ms`만(`audio_live_ms` 0) | 마이크가 끊긴 것을 작은 목소리 · 침묵으로 보지 않는다 |
 | 기준 음량 없음 | `VOLUME`만 잴 수 없음 | `VOLUME` `UNKNOWN`, `PAUSE`는 그대로 | 비교할 기준이 없다 |
 | 기록이 오지 않은 1초 | 그 1초는 `total_ms`만 | 측정 비율이 줄어든다 | 없는 값을 추측하지 않는다 |
 | 오디오가 다시 흐른 직후 | `silence_ms`를 다시 흐른 뒤로 자른다 | 끊긴 시간은 침묵이 아니다 | 같음 |
@@ -285,7 +284,7 @@ uv sync
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 
 - 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역에 있다. 대역 테스트(`tests/lab/test_judge_volume.py`와 코치 쪽 연결 `tests/unit/test_judges.py`의 기준 음량 · 실패 시험)는 말 속도와 같은 명령으로 돈다(`pace.md` 10절).
-- 테스트가 볼 것: 작음 · 기준과 같을 때, 기준 음량 없음 · 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기와 창 안에 끊김이 없을 때, 긴 침묵을 한 번만 셈 · 기준을 넘는 1초의 기록이 빠져도 셈, `low_ratio` 분모에서 기준 음량 전 발화 빼기, 같은 1초 두 번(먼저 온 것), `baseline` 표본 부족 · 충분, 마지막 조각(1000 미만).
+- 테스트가 볼 것: 작음 · 기준과 같을 때, 기준 음량 없음 · 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기와 창 안에 끊김이 없을 때, 긴 침묵을 한 번만 셈, 같은 1초 두 번(먼저 온 것), `baseline` 표본 부족 · 충분, 마지막 조각(1000 미만).
 
 # 11. 배포
 **어디서 도는가**: 판정 모듈 `src/volume/`(`examples/` 포함)를 AI 서비스의 `features/volume/`로 폴더째 옮기고, 테스트는 `tests/unit/volume/`로 옮긴다. 자기 HTTP 엔드포인트는 없고, 라우터가 `Judges` 묶음에 `judge` · `summarize` · `criteria` · `speaking_levels` · `baseline`을 넣어 코치에 넘긴다(`architecture.md` 8절). 의존성은 pydantic 하나다.
@@ -362,7 +361,7 @@ sequenceDiagram
 - **`voice_diff_db`** (판정 결과): `level_db − base_level_db`.
 - **`level_db`** (Take · 장): `10·log10(voiced_energy ÷ voiced_ms)`.
 - **`voice_diff_db`** (Take · 장): `level_db − base_db_ms ÷ level_voiced_ms`.
-- **`low_ratio`**: 작다고 판정된 1초의 발화 시간 ÷ 기준 음량이 있던 동안의 발화 시간(`level_voiced_ms`).
+- **`low_ratio`**: 작다고 판정된 1초의 발화 시간 ÷ 전체 발화 시간.
 - **`long_silence_count`**: 오디오가 흐르는 동안 연속 무음이 긴 침묵 기준을 넘은 횟수(한 침묵은 한 번).
 - **`measured_ratio`**: 5-3 표.
 - **침묵 감지 지연**: 정답 침묵이 긴 침묵 기준 길이에 닿은 시각부터 `LONG_SILENCE`가 처음 나온 판정 시각까지의 차이 평균.
