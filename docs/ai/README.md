@@ -7,7 +7,7 @@
 | 문서 | 담는 것 |
 |---|---|
 | [architecture.md](architecture.md) | 전체 기능 구성 · 호출 흐름, 기능 사이 입출력 계약, 공통 데이터 모양(1초 원자료 · 1초 판정 결과 · 에러 · `meta`), 시간 예산, DB 저장 지도, 환경변수, 담당 |
-| [ai-service.md](ai-service.md) | AI 서비스(`ai/service/`) 하나. 폴더 구조, 기능 · 모델을 붙이는 순서, 공통 모듈(LLM · 에러 · `meta`), 이미지 · compose · 환경별 구성, CI · 배포, 운영과 문제 해결 |
+| [ai-service.md](ai-service.md) | AI 서비스(`ai/service/`) 하나. 폴더 구조, 기능 · 모델을 붙이는 순서, 공통 모듈(`common/llm.py` · `common/errors.py`), 이미지 · compose · 환경별 구성, CI · 배포, 운영과 문제 해결 |
 | [features/](features/) | 기능마다 하나. 목적, 구성, 입력 · 출력 계약(필드 · 예시 · 오류), 처리 흐름, 실패 처리, 배포, DB 저장 상세, 품질 검증 |
 | [`ai/research/<기능>/README.md`](../../ai/research/README.md) | 연구 코드의 폴더 · 파일, 실행법, 실험 결과 |
 
@@ -61,4 +61,4 @@
 - **다른 팀이 고칠 곳을 찾으면** 문서를 직접 고치지 않고 Issue로 남깁니다(기능 이름과 문서 절 번호를 적습니다). 그 기능 담당이 위 절차대로 반영합니다.
 - **연구 폴더 README**(`ai/research/<기능>/README.md`)는 실행법 · 실험 결과만 담으므로 그 기능 담당이 고칩니다(일반 PR 리뷰).
 - 기능 문서나 서비스 문서가 `architecture.md`와 다르면 `architecture.md`가 기준입니다. 기능 문서나 서비스 문서에서 공통 계약을 바꿔야 하면 `architecture.md`를 먼저 바꿉니다.
-- 같은 내용은 한 곳에만 씁니다. 공통 계약은 `architecture.md`, 서비스 구성 · 배포 · 운영은 `ai-service.md`, 기능 계약은 기능 문서 5절, 실행법은 연구 폴더 README이고, 다른 곳에서는 절 번호로 가리킵니다.
+- 같은 내용은 한 곳에만 씁니다. 공통 계약은 `architecture.md`, 서비스 구성 · 실행 · 배포 · 운영은 `ai-service.md`, 기능 계약은 기능 문서 5절, 연구 코드 실행법은 연구 폴더 README이고, 다른 곳에서는 절 번호로 가리킵니다.
