@@ -4,7 +4,8 @@
      "criteria_versions": {"sample": "sample-0.1+3f2a9c1d0b7e"}, "model": null}
 
 - 부르는 곳: 라우터. 기능 결과 옆에 `meta=build_meta(...)` 로 싣는다
-- `feature_version`: `<모듈>-<기능 version.py 의 FEATURE_VERSION>`
+- `feature_version`: 기능 `version.py` 의 `FEATURE_VERSION` 그대로. 값 자체가 `<모듈>-<버전>`
+  꼴이다(예: `"coach-1.2"`, `architecture.md` 5절). 여기서 접두어를 붙이지 않는다
 - `criteria_versions`: 판정이 들어간 응답만(`JudgeMeta`). 모듈마다
   `<feature_version>+<config 해시 12자리>`. 기준값(config.py)을 바꾸면 해시가 바뀐다.
   해시는 코치 연구 코드(`coach/config.py` 의 `criteria_version`)와 같은 방식이다:
@@ -38,20 +39,15 @@ class JudgeMeta(Meta):
     criteria_versions: dict[str, str]
 
 
-def feature_version(module: str, version: str) -> str:
-    """예: `feature_version("gaze", "1.1")` → `"gaze-1.1"`."""
-    return f"{module}-{version}"
-
-
 def config_hash(config: BaseModel) -> str:
     """기준값 설정의 해시 12자리. 같은 해시면 같은 기준이다."""
     blob = json.dumps(config.model_dump(mode="json"), sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
 
 
-def criteria_version(module: str, version: str, config: BaseModel) -> str:
-    """예: `"sample-0.1+3f2a9c1d0b7e"`."""
-    return f"{feature_version(module, version)}+{config_hash(config)}"
+def criteria_version(feature_version: str, config: BaseModel) -> str:
+    """예: `criteria_version("sample-0.1", SampleConfig())` → `"sample-0.1+3f2a9c1d0b7e"`."""
+    return f"{feature_version}+{config_hash(config)}"
 
 
 def responded_model(llm: StructuredLlm | None, *, fallback: bool = False) -> str | None:
@@ -62,22 +58,23 @@ def responded_model(llm: StructuredLlm | None, *, fallback: bool = False) -> str
 
 
 def build_meta(
-    module: str,
-    version: str,
+    feature_version: str,
     *,
     llm: StructuredLlm | None = None,
     fallback: bool = False,
 ) -> Meta:
-    """판정이 없는 응답의 meta. `fallback=True` 는 기본 결과를 낸 응답(`fallback_reason` 있음)."""
+    """판정이 없는 응답의 meta. `fallback=True` 는 기본 결과를 낸 응답(`fallback_reason` 있음).
+
+    예: `build_meta(FEATURE_VERSION, llm=llm)` (FEATURE_VERSION = "script_parser-1.0")
+    """
     return Meta(
-        feature_version=feature_version(module, version),
+        feature_version=feature_version,
         model=responded_model(llm, fallback=fallback),
     )
 
 
 def build_judge_meta(
-    module: str,
-    version: str,
+    feature_version: str,
     criteria_versions: dict[str, str],
     *,
     llm: StructuredLlm | None = None,
@@ -85,7 +82,7 @@ def build_judge_meta(
 ) -> JudgeMeta:
     """판정이 들어간 응답의 meta. `criteria_versions` 는 모듈 → `criteria_version(...)`."""
     return JudgeMeta(
-        feature_version=feature_version(module, version),
+        feature_version=feature_version,
         criteria_versions=criteria_versions,
         model=responded_model(llm, fallback=fallback),
     )

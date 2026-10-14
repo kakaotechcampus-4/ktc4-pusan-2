@@ -36,12 +36,14 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Any
 
+import httpx2
 import openai
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.exceptions import OutputParserException
 from langchain_core.outputs import LLMResult
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_openai import ChatOpenAI
+from langchain_openai.chat_models.base import OpenAIRefusalError
 from pydantic import BaseModel, ValidationError
 
 from pitch_coach_ai.common.errors import (
@@ -112,6 +114,11 @@ def _classify(exc: BaseException) -> tuple[LlmError, bool]:
         return LlmTimeout(), True
     if isinstance(exc, openai.APIConnectionError):
         return LlmCallFailed(), True
+    # 스트리밍으로 받는 도중의 전송 오류는 openai 예외로 감싸지지 않고 그대로 올라온다
+    if isinstance(exc, httpx2.TimeoutException):
+        return LlmTimeout(), True
+    if isinstance(exc, httpx2.TransportError):
+        return LlmCallFailed(), True
     if isinstance(exc, openai.RateLimitError):
         return LlmUnavailable(), True
     if isinstance(exc, openai.APIStatusError):
@@ -125,6 +132,7 @@ def _classify(exc: BaseException) -> tuple[LlmError, bool]:
         exc,
         openai.LengthFinishReasonError
         | openai.ContentFilterFinishReasonError
+        | OpenAIRefusalError
         | OutputParserException
         | ValidationError,
     ):
@@ -171,7 +179,6 @@ class StructuredLlm:
     def invoke(self, input: Any) -> Any:  # noqa: A002  # LangChain 과 같은 이름
         last_error: LlmError | None = None
         for attempt in range(1, self._max_retries + 2):
-            wait = self._timeout
             if self._deadline is not None:
                 remaining = self._deadline - self._clock()
                 if remaining < self._timeout:
@@ -183,6 +190,10 @@ class StructuredLlm:
             future = _executor.submit(
                 self._runnable.invoke, input, RunnableConfig(callbacks=[recorder])
             )
+            # 제출에 걸린 시간까지 마감에서 뺀다 (마감을 넘겨 기다리지 않게)
+            wait = self._timeout
+            if self._deadline is not None:
+                wait = min(wait, max(0.0, self._deadline - self._clock()))
             try:
                 result = future.result(timeout=wait)
             except FutureTimeout:

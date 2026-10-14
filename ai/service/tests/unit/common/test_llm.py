@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
+from langchain_openai.chat_models.base import OpenAIRefusalError
 from openai.types.chat import ChatCompletion
 from pydantic import BaseModel, ValidationError
 
@@ -96,6 +97,29 @@ def ok(
     return step
 
 
+class FakeClock:
+    """마감 계산에 쓰는 시계. `advance` 로만 흐른다 (CI 가 느려도 결과가 같다)."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def spend(clock: FakeClock, seconds: float, then: Step) -> Step:
+    """가짜 시계로 `seconds` 를 쓴 뒤 `then` 을 한다."""
+
+    def step(config: Any) -> Any:
+        clock.advance(seconds)
+        return then(config)
+
+    return step
+
+
 def fail(exc: BaseException, *, delay: float = 0) -> Step:
     def step(config: Any) -> Any:
         time.sleep(delay)
@@ -105,11 +129,21 @@ def fail(exc: BaseException, *, delay: float = 0) -> Step:
 
 
 def make(
-    *steps: Step, timeout: float = 0.2, retries: int = 1, deadline: float | None = None
+    *steps: Step,
+    timeout: float = 0.2,
+    retries: int = 1,
+    deadline: float | None = None,
+    clock: FakeClock | None = None,
 ) -> tuple[StructuredLlm, FakeRunnable]:
     fake = FakeRunnable(*steps)
+    extra = {"clock": clock} if clock is not None else {}
     llm = StructuredLlm(
-        fake, role="default", timeout_seconds=timeout, max_retries=retries, deadline=deadline
+        fake,
+        role="default",
+        timeout_seconds=timeout,
+        max_retries=retries,
+        deadline=deadline,
+        **extra,
     )
     return llm, fake
 
@@ -157,7 +191,7 @@ def test_call_longer_than_timeout_is_cut_and_retried_once() -> None:
     llm, fake = make(ok(delay=1.0), ok(model="retry-model"), timeout=0.2)
     started = time.monotonic()
     assert llm.invoke("q") == Answer(answer=2)
-    assert time.monotonic() - started < 0.8  # 첫 호출은 1초를 다 기다리지 않고 0.2초에 끊었다
+    assert time.monotonic() - started < 1.0  # 첫 호출(1초)을 끝까지 기다리지 않고 끊었다
     assert fake.calls == 2
     assert llm.responded_model == "retry-model"
 
@@ -170,27 +204,73 @@ def test_retries_at_most_once_then_raises_timeout() -> None:
 
 
 def test_no_new_call_when_remaining_time_is_shorter_than_timeout() -> None:
-    llm, fake = make(ok(), timeout=0.5, deadline=deadline_after(0.3))
+    clock = FakeClock()
+    llm, fake = make(ok(), timeout=12, deadline=clock.now + 11.9, clock=clock)
     with pytest.raises(LlmTimeout):
         llm.invoke("q")
     assert fake.calls == 0
 
 
 def test_retry_is_skipped_when_deadline_runs_out() -> None:
-    # 시간 제한 0.2초, 마감 0.3초: 첫 호출이 0.2초에 끊기면 남은 0.1초 < 0.2초라 다시 부르지 않는다
-    llm, fake = make(ok(delay=1.0), ok(), timeout=0.2, deadline=deadline_after(0.3))
-    with pytest.raises(LlmTimeout):
+    # 마감 25초 · 시간 제한 12초: 첫 호출이 14초를 쓰고 실패하면
+    # 남은 11초 < 12초라 다시 부르지 않는다
+    clock = FakeClock()
+    llm, fake = make(
+        spend(clock, 14, fail(openai.APIConnectionError(request=_REQ))),
+        ok(),
+        timeout=12,
+        deadline=clock.now + 25,
+        clock=clock,
+    )
+    with pytest.raises(LlmCallFailed):  # 마지막 실패를 그대로 올린다
         llm.invoke("q")
     assert fake.calls == 1
 
 
+def test_retry_happens_when_enough_time_remains() -> None:
+    clock = FakeClock()
+    llm, fake = make(
+        spend(clock, 3, fail(openai.APIConnectionError(request=_REQ))),
+        ok(),
+        timeout=12,
+        deadline=clock.now + 25,
+        clock=clock,
+    )
+    assert llm.invoke("q") == Answer(answer=2)  # 남은 22초 >= 12초
+    assert fake.calls == 2
+
+
 def test_later_calls_share_the_same_deadline() -> None:
     """장별 · 단계별로 여러 번 부를 때도 같은 마감을 쓴다."""
-    llm, fake = make(ok(delay=0.15), ok(), timeout=0.2, deadline=deadline_after(0.3))
+    clock = FakeClock()
+    llm, fake = make(spend(clock, 14, ok()), ok(), timeout=12, deadline=clock.now + 25, clock=clock)
     llm.invoke("1번째 장")
     with pytest.raises(LlmTimeout):
-        llm.invoke("2번째 장")  # 남은 0.15초 < 0.2초
+        llm.invoke("2번째 장")  # 남은 11초 < 12초
     assert fake.calls == 1
+
+
+def test_wait_is_cut_at_the_deadline_not_after_it() -> None:
+    """호출을 시작한 뒤에는 제출까지 쓴 시간만큼 덜 기다려, 마감을 넘겨 기다리지 않는다.
+
+    시계를 읽을 때마다 0.2초씩 흐르게 한다. 마감 0.5초 · 시간 제한 0.3초면 시작 검사(남은 0.5초)는
+    통과하고, 기다리기 직전에는 남은 시간이 0.1초라 0.1초만 기다린다. 시간 제한(0.3초)을 그대로
+    기다리면 0.25초를 넘는다.
+    """
+
+    class TickingClock(FakeClock):
+        def __call__(self) -> float:
+            value = self.now
+            self.advance(0.2)
+            return value
+
+    clock = TickingClock()
+    deadline = clock.now + 0.5
+    llm, _ = make(ok(delay=1.0), timeout=0.3, retries=0, deadline=deadline, clock=clock)
+    started = time.monotonic()
+    with pytest.raises(LlmTimeout):
+        llm.invoke("q")
+    assert time.monotonic() - started < 0.25
 
 
 # ── 실패 분류: 코드와 재시도 여부 ───────────────────────────────────
@@ -205,6 +285,10 @@ def test_later_calls_share_the_same_deadline() -> None:
         (_status(openai.InternalServerError, 503), LlmUnavailable, True),
         (_status(openai.InternalServerError, 500), LlmCallFailed, True),
         (_status(openai.AuthenticationError, 401), LlmCallFailed, False),
+        # 스트리밍 도중의 전송 오류는 openai 예외로 감싸지지 않는다
+        (httpx2.ReadTimeout("read", request=_REQ), LlmTimeout, True),
+        (httpx2.RemoteProtocolError("closed", request=_REQ), LlmCallFailed, True),
+        (OpenAIRefusalError("refused"), LlmInvalidOutput, False),
         (_status(openai.BadRequestError, 400), LlmCallFailed, False),
         (
             openai.LengthFinishReasonError(completion=ChatCompletion.model_construct(usage=None)),
@@ -263,7 +347,9 @@ def test_client_uses_role_limits_and_defaults(monkeypatch: pytest.MonkeyPatch) -
             return FakeRunnable(ok())
 
     monkeypatch.setattr(llm_module, "ChatOpenAI", SpyChatOpenAI)
-    llm = structured_llm(Answer, app_settings=_full_settings())
+    deadline = deadline_after(25)
+    llm = structured_llm(Answer, deadline=deadline, app_settings=_full_settings())
+    assert llm._deadline == deadline  # 라우터가 만든 마감을 그대로 쓴다
     assert seen["model"] == "openai/gpt-6-luna"
     assert seen["max_completion_tokens"] == 4096  # LLM_ROLES["default"]
     assert seen["timeout"] == 12  # LLM_TIMEOUT_SECONDS 기본값

@@ -39,4 +39,4 @@ def test_real_llm_answers_in_schema_and_reports_model() -> None:
     assert result == Sum(answer=2)
     assert llm.responded_model
     assert seconds < s.llm_timeout_seconds * (s.llm_max_retries + 1)
-    assert build_meta("live", "0", llm=llm).model == llm.responded_model
+    assert build_meta("live-0", llm=llm).model == llm.responded_model
