@@ -111,9 +111,27 @@ class RepositoryTests(unittest.TestCase):
         self.write('docs/ai/README.md', '[구성](architecture.md#1-%EA%B5%AC%EC%84%B1)\n')
         self.assertEqual(self.scan(), [])
 
+    def test_duplicate_headings_have_unique_anchors(self):
+        self.write('docs/ai/details.md', '# 설명\n# 설명\n')
+        self.write('docs/ai/README.md', '[둘째](details.md#설명-1)\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_explicit_html_anchor(self):
+        self.write('docs/ai/details.md', '<a id="custom"></a>\n# 설명\n')
+        self.write('docs/ai/README.md', '[고정](details.md#custom)\n')
+        self.assertEqual(self.scan(), [])
+
     def test_directory_link_uses_readme(self):
         self.write('ai/tools/docs-check/README.md', '# 검사\n')
         self.write('docs/ai/README.md', '[검사](../../ai/tools/docs-check/)\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_reference_style_link_definition(self):
+        self.write('docs/ai/README.md', '[문서][guide]\n\n[guide]: architecture.md#1-구성\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_link_with_title(self):
+        self.write('docs/ai/README.md', '[문서](architecture.md "안내")\n')
         self.assertEqual(self.scan(), [])
 
     def test_fences_comments_quotes_are_not_references(self):
@@ -125,6 +143,162 @@ class RepositoryTests(unittest.TestCase):
     def test_feature_can_use_short_common_filename(self):
         self.write('docs/ai/features/sample.md', FEATURE + '\n`architecture.md` 1-1절\n')
         self.assertEqual(self.scan(), [])
+
+    def test_link_can_be_followed_by_section_reference(self):
+        self.write('docs/ai/README.md', '[구성](architecture.md) 1-1절\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_named_section_followed_by_korean_particle(self):
+        self.write('docs/ai/README.md', '`architecture.md` 0절의 목적\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_missing_named_section_without_suffix_with_particle(self):
+        self.write('docs/ai/README.md', '`architecture.md` 99의 설명\n`architecture.md` 99는 없음\n')
+        self.assertEqual([p.value for p in self.scan()], ['99절', '99절'])
+
+    def test_inline_code_angle_brackets_in_heading_anchor(self):
+        self.write('docs/ai/details.md', '# `<key>`\n')
+        self.write('docs/ai/README.md', '[키](details.md#key)\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_html_entity_in_heading_uses_rendered_anchor(self):
+        self.write('docs/ai/details.md', '# A &amp; B\n')
+        self.write('docs/ai/README.md', '[제목](details.md#a--b)\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_comment_quote_does_not_hide_contract_after_comment_end(self):
+        content = '<!--\n> example\n-->\n' + FEATURE
+        self.assert_contract_change(content, content.replace('입력 설명', '다른 입력'))
+
+    def test_balanced_parentheses_in_link_destination(self):
+        self.write('docs/ai/details(v2).md', '# 설명\n')
+        self.write('docs/ai/README.md', '[문서](details(v2).md#설명)\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_multiline_inline_code_does_not_contain_references(self):
+        self.write('docs/ai/README.md', '`example\n[missing](missing.md)\n99절\nend`\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_explicit_html_anchor_does_not_advance_heading_duplicate_suffix(self):
+        self.write('docs/ai/details.md', '<a id="intro"></a>\n# intro\n# intro\n')
+        self.write('docs/ai/README.md', '[없는 앵커](details.md#intro-2)\n')
+        self.assertEqual(self.scan()[0].kind, 'anchor')
+
+    def test_comment_in_multiline_inline_code_does_not_hide_later_contract(self):
+        content = '`example\n<!--\nend`\n\n' + FEATURE
+        self.assert_contract_change(content, content.replace('입력 설명', '다른 입력'))
+
+    def test_link_in_list_body_is_checked_but_list_indented_code_is_not(self):
+        self.write('docs/ai/README.md', '- 안내\n\n    [문서](missing.md)\n\n      [코드](code.md)\n')
+        found = self.scan()
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].target, 'missing.md')
+
+    def test_inline_code_examples_are_not_links_or_section_references(self):
+        self.write('docs/ai/README.md', '예시: `[없음](missing.md) 99절`\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_removed_inline_code_does_not_join_status_and_section_numbers(self):
+        self.write('docs/ai/features/sample.md', FEATURE +
+            '\n# 7. 에러\n없으면 422 `ERROR`, 7절\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_heading_link_is_checked(self):
+        self.write('docs/ai/README.md', '# 안내 [문서](missing.md)\n')
+        self.assertEqual(self.scan()[0].kind, 'link')
+
+    def test_named_section_reference_in_heading_is_checked(self):
+        self.write('docs/ai/README.md', '# 안내: `architecture.md` 99절\n')
+        self.assertEqual(self.scan()[0].kind, 'section')
+
+    def test_comment_delimiter_inside_fence_does_not_hide_contracts(self):
+        content = '```html\n<!--\n```\n' + FEATURE
+        self.assert_contract_change(content, content.replace('입력 설명', '다른 입력'))
+
+    def test_comment_delimiter_inside_inline_code_does_not_hide_contracts(self):
+        content = '`<!--`\n' + FEATURE
+        self.assert_contract_change(content, content.replace('입력 설명', '다른 입력'))
+
+    def test_comment_delimiter_inside_indented_code_does_not_hide_contracts(self):
+        content = '    <!--\n\n' + FEATURE
+        self.assert_contract_change(content, content.replace('입력 설명', '다른 입력'))
+
+    def test_inline_html_anchor_example_is_not_real_anchor(self):
+        self.write('docs/ai/details.md', '`<a id="intro"></a>`\n# intro\n# intro\n')
+        self.write('docs/ai/README.md', '[없는 앵커](details.md#intro-2)\n')
+        self.assertEqual(self.scan()[0].kind, 'anchor')
+
+    def test_escaped_bracket_is_not_a_link(self):
+        self.write('docs/ai/README.md', '\\[예시](missing.md)\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_link_in_list_fence_is_not_checked(self):
+        self.write('docs/ai/README.md', '- ```md\n  [예시](missing.md)\n  ```\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_same_level_numbered_child_contract_is_checked(self):
+        content = '# 5. 계약\n# 5-1. 입력\n입력 설명\n# 12. 저장\n'
+        self.assert_contract_change(content, content.replace('입력 설명', '새 입력'))
+
+    def test_contract_child_without_parent_heading_is_checked(self):
+        content = '## 5-1. 입력\n입력 설명\n'
+        self.assert_contract_change(content, content.replace('입력 설명', '새 입력'))
+
+    def test_removing_fences_cannot_offset_deleted_baseline_error(self):
+        original = '# Guide\nstart1\n[없음](missing.md)\nend1\nstart2\n```\n[없음](missing.md)\n```\nend2\n'
+        self.write('docs/ai/README.md', original)
+        base = self.save()
+        self.write('docs/ai/README.md', '# Guide\nstart1\nend1\nstart2\n[없음](missing.md)\nend2\n')
+        self.save()
+        self.assertEqual(len(self.compare(base=base)[1]), 1)
+
+    def test_ambiguous_line_match_cannot_offset_activated_code_example(self):
+        self.write('docs/ai/README.md', '# Guide\nA\n[bad](missing.md)\nB\n```\n[bad](missing.md)\n```\n')
+        base = self.save()
+        self.write('docs/ai/README.md', '# Guide\nA\nB\n[bad](missing.md)\n')
+        self.save()
+        self.assertEqual(len(self.compare(base=base)[1]), 1)
+
+    def test_duplicate_section_number_keeps_first_contract_change(self):
+        content = FEATURE + '\n# 5. 추가 계약\n바꾸지 않은 계약\n'
+        self.assert_contract_change(content, content.replace('입력 설명', '다른 입력'))
+
+    def test_emphasis_heading_anchor_and_literal_code_underscores(self):
+        self.write('docs/ai/details.md', '# _설명_\n# 설명\n# `key_name`\n')
+        self.write('docs/ai/README.md', '[둘째](details.md#설명-1)\n[키](details.md#key_name)\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_named_external_section_does_not_capture_later_local_section(self):
+        self.write('docs/ai/features/sample.md', FEATURE +
+            '\n`architecture.md` 1-1의 안내를 보고, 이 문서 15절의 한계를 확인한다.\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_root_relative_code_readme_section_reference(self):
+        self.write('ai/research/sample/README.md', '# 3. 파일 지도\n')
+        self.write('docs/ai/features/sample.md', FEATURE +
+            '\n`ai/research/sample/README.md` 3절\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_short_research_readme_in_feature_document(self):
+        self.write('ai/research/sample/README.md', '# 3. 파일 지도\n')
+        self.write('docs/ai/features/sample.md', FEATURE + '\n저장소 `README.md` 3절\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_generic_feature_sections_in_document_map(self):
+        self.write('docs/ai/README.md', '계약은 기능 문서 5 · 12절에 있다.\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_link_to_existing_directory_without_readme(self):
+        self.write('docs/ai/README.md', '[기능](features/)\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_list_and_range_sections(self):
+        self.write('docs/ai/README.md', '`architecture.md` 0~2절\n`sample.md` 5-1 · 12-1절\n')
+        self.assertEqual(self.scan(), [])
+
+    def test_missing_inside_range_is_reported(self):
+        self.write('docs/ai/README.md', '`architecture.md` 0~3절\n')
+        self.assertEqual([p.value for p in self.scan()], ['3절'])
 
     def test_deleted_target_breaks_unchanged_inbound_link(self):
         self.write('docs/ai/README.md', '[저장](architecture.md#1-1-저장)\n')
@@ -145,10 +319,24 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(introduced, [])
         self.assertFalse(missing)
 
+    def test_deleting_old_error_does_not_offset_new_error(self):
+        self.write('docs/ai/README.md', '# 처음\n[없음](missing.md)\n')
+        base = self.save()
+        self.write('docs/ai/README.md', '# 다른 위치\n[없음](missing.md)\n')
+        self.save()
+        self.assertEqual(len(self.compare(base=base)[1]), 1)
+
     def test_new_occurrence_of_same_error_is_blocking(self):
         self.write('docs/ai/README.md', '[없음](missing.md)\n')
         base = self.save()
         self.write('docs/ai/README.md', '[없음](missing.md)\n[없음](missing.md)\n')
+        self.save()
+        self.assertEqual(len(self.compare(base=base)[1]), 1)
+
+    def test_replacing_error_line_with_same_error_is_not_offset(self):
+        self.write('docs/ai/README.md', '전 설명 [없음](missing.md)\n')
+        base = self.save()
+        self.write('docs/ai/README.md', '새 설명 [없음](missing.md)\n')
         self.save()
         self.assertEqual(len(self.compare(base=base)[1]), 1)
 
@@ -163,6 +351,10 @@ class RepositoryTests(unittest.TestCase):
         self.save()
         self.assertTrue(self.compare(body='')[3])
 
+    def test_contract_code_example_change_requires_issue(self):
+        initial = FEATURE.replace('입력 설명', '```json\n{"a": 1}\n```')
+        self.assert_contract_change(initial, initial.replace('"a": 1', '"a": 2'))
+
     def test_feature_storage_child_change_requires_issue(self):
         self.write('docs/ai/features/sample.md', FEATURE.replace('저장 설명', '새 저장'))
         self.save()
@@ -173,6 +365,16 @@ class RepositoryTests(unittest.TestCase):
         self.save()
         self.assertFalse(self.compare(body='')[3])
 
+    def test_deleted_contract_document_requires_issue(self):
+        (self.repo / 'docs/ai/features/sample.md').unlink()
+        self.save()
+        self.assertTrue(self.compare(body='')[3])
+
+    def test_new_contract_document_requires_issue(self):
+        self.write('docs/ai/features/new.md', FEATURE)
+        self.save()
+        self.assertTrue(self.compare(body='')[3])
+
     def test_base_advance_requires_explicit_merge_snapshot(self):
         self.git('checkout', '-b', 'feature')
         self.write('other.txt', 'head')
@@ -182,6 +384,56 @@ class RepositoryTests(unittest.TestCase):
         base = self.save()
         with self.assertRaises(check.CheckError):
             self.compare(base=base, head=head)
+
+    def test_merge_snapshot_must_include_both_inputs(self):
+        self.git('checkout', '-b', 'feature')
+        self.write('other.txt', 'head')
+        head = self.save()
+        self.git('checkout', 'main')
+        self.write('base.txt', 'advanced')
+        base = self.save()
+        with self.assertRaises(check.CheckError):
+            self.compare(base=base, head=head, merge=head)
+
+    def test_followup_fix_cannot_replace_actual_merge_snapshot(self):
+        self.git('checkout', '-b', 'feature')
+        self.write('other.txt', 'head')
+        head = self.save()
+        self.git('checkout', 'main')
+        self.write('base.txt', 'advanced')
+        base = self.save()
+        self.git('merge', '--no-edit', '--no-ff', 'feature')
+        self.write('later.txt', 'fix after merge')
+        descendant = self.save()
+        with self.assertRaises(check.CheckError):
+            self.compare(base=base, head=head, merge=descendant)
+
+    def test_crisscross_history_with_multiple_merge_bases_is_execution_error(self):
+        self.git('checkout', '-b', 'x')
+        self.write('docs/ai/architecture.md', ARCH + '\nX\n')
+        x = self.save()
+        self.git('checkout', '-b', 'y', self.base)
+        self.write('docs/ai/architecture.md', ARCH + '\nY\n')
+        y = self.save()
+        base = self.git('commit-tree', x + '^{tree}', '-p', x, '-p', y, '-m', 'B')
+        head = self.git('commit-tree', y + '^{tree}', '-p', y, '-p', x, '-m', 'H')
+        merged = self.git('commit-tree', head + '^{tree}', '-p', base, '-p', head, '-m', 'R')
+        with self.assertRaises(check.CheckError):
+            self.compare(base=base, head=head, merge=merged)
+
+    def test_base_contract_change_is_not_attributed_to_head(self):
+        self.git('checkout', '-b', 'feature')
+        self.write('other.txt', 'head')
+        head = self.save()
+        self.git('checkout', 'main')
+        self.write('docs/ai/architecture.md', ARCH + '\nbase의 변경\n')
+        base = self.save()
+        self.git('merge', '--no-edit', '--no-ff', 'feature')
+        merged = self.git('rev-parse', 'HEAD')
+        _, introduced, changes, missing = self.compare(body='', base=base, head=head, merge=merged)
+        self.assertEqual(introduced, [])
+        self.assertEqual(changes, [])
+        self.assertFalse(missing)
 
     def test_real_merged_tree_is_used_for_reference_integrity(self):
         self.git('checkout', '-b', 'feature')
@@ -202,6 +454,10 @@ class RepositoryTests(unittest.TestCase):
         after = (self.git('rev-parse', 'HEAD'), self.git('status', '--porcelain'),
                  (self.repo / '.git/index').read_bytes())
         self.assertEqual(before, after)
+
+    def test_uncommitted_changes_do_not_enter_snapshot(self):
+        self.write('docs/ai/README.md', '[없음](missing.md)\n')
+        self.assertEqual(self.compare()[1], [])
 
     def test_cli_reads_body_from_environment(self):
         self.write('docs/ai/architecture.md', ARCH + '\n새 계약\n')
