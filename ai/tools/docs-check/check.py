@@ -101,6 +101,32 @@ def mask_inline_code(text: str, keep_file_names: bool = False) -> str:
     """문단의 코드스팬을 가리되 HTML 주석 안의 backtick은 짝짓지 않는다."""
     output, position = [], 0
     while position < len(text):
+        if position == 0 or text[position - 1] == '\n':
+            end = text.find('\n', position)
+            end = len(text) if end < 0 else end + 1
+            line = text[position:end]
+            item = re.match(r'^ {0,3}(?:[-*+]|\d+[.)])\s+', line)
+            indent = item.end() if item else 0
+            marker = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line[indent:].rstrip('\n'))
+            if marker:
+                cursor = end
+                while cursor < len(text):
+                    stop = text.find('\n', cursor)
+                    stop = len(text) if stop < 0 else stop + 1
+                    following = text[cursor:stop]
+                    if indent and following.strip() and len(following) - len(following.lstrip(' ')) < indent:
+                        break
+                    closing = re.match(r'^ {0,3}(' + re.escape(marker[1][0]) + r'{'+ str(len(marker[1])) + r',})\s*$', following[indent:])
+                    cursor = stop
+                    if closing:
+                        break
+                output.append(text[position:cursor])
+                position = cursor
+                continue
+            if line.startswith(('    ', '\t')) or re.match(r'^ {0,3}>', line):
+                output.append(line)
+                position = end
+                continue
         if text.startswith('<!--', position):
             stop = text.find('-->', position + 4)
             stop = len(text) if stop < 0 else stop + 3
@@ -109,7 +135,7 @@ def mask_inline_code(text: str, keep_file_names: bool = False) -> str:
         elif text[position] == '`':
             delimiter = re.match(r'`+', text[position:])[0]
             start = position + len(delimiter)
-            boundary = re.search(r'\n[ \t]*\n', text[start:])
+            boundary = re.search(r'\n(?:[ \t]*\n| {0,3}(?:#{1,6}\s|`{3,}|~{3,}|>|[-*+]\s|\d+[.)]\s))', text[start:])
             limit = start + boundary.start() if boundary else len(text)
             closing = re.compile(r'(?<!`)' + re.escape(delimiter) + r'(?!`)').search(text, start, limit)
             if closing:
@@ -141,6 +167,8 @@ def visible_lines(text: str) -> list[str]:
     masked_lines = mask_inline_code(text).splitlines()
     for number, line in enumerate(text.splitlines()):
         marker = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line)
+        if fence is not None and fence_indent and line.strip() and len(line) - len(line.lstrip(' ')) < fence_indent:
+            fence = None
         if fence is not None:
             closing_line = line[fence_indent:] if line.startswith(' ' * fence_indent) else line
             closing = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', closing_line)
@@ -488,8 +516,10 @@ def increased_problems(base: Snapshot, merged: Snapshot,
             old, new = base.document(path), merged.document(path)
             raw_before, raw_after = old.text.splitlines(), new.text.splitlines()
             statement = raw_before[previous[0] - 1]
-            if old.text != new.text and raw_before.count(statement) > 1:
-                anchored = any(
+            occurrences = [i + 1 for i, line in enumerate(raw_before) if line == statement]
+            if old.text != new.text and len(occurrences) > 1 and any(
+                    (line, problem.key) not in remaining for line in occurrences):
+                anchored = all(
                     1 <= adjacent <= len(raw_after)
                     and matches[path].get(adjacent) == previous[0] + adjacent - problem.line
                     and matches[path].get(adjacent) not in baseline_lines.get(path, set())
