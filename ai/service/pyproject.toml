@@ -1,0 +1,35 @@
+[project]
+name = "pitch-coach-ai"
+version = "0.1.0"
+description = "Pitch Coach AI 서비스 — AI 기능을 BE에 HTTP API로 연다"
+readme = "README.md"
+# 연구 환경(일부는 3.13 미만)이 이 서비스를 설치해 코어를 import 하므로 3.12 에 맞춘다
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.143.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+# 로컬 uv sync 가 이 프로젝트를 .venv 에 편집 가능 설치해 `import pitch_coach_ai` 가 되게 한다.
+# 이미지에서는 설치하지 않고 PYTHONPATH 로 찾는다 (Dockerfile)
+[build-system]
+requires = ["uv_build>=0.11.14,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.13.1",
+    "pytest>=9.1.1",
+    "ruff>=0.17.0",
+]
+
+# backend/pyproject.toml 과 같은 규칙
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# E/F: pyflakes·pycodestyle, I: import 정렬, UP: 최신 문법, B: 흔한 버그, SIM: 단순화
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
