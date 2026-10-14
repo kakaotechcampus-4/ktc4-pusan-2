@@ -5,7 +5,7 @@
       deadline = deadline_after(25)                       # 요청마다 마감 하나 (AI 예산, 3절)
       llm = structured_llm(ParsedScript, deadline=deadline)
       result = parse_script(req, llm=llm)                 # 코어 안에서 llm.invoke(...)
-      meta = build_meta("script_parser", FEATURE_VERSION, llm=llm)
+      meta = build_meta(FEATURE_VERSION, llm=llm)         # 예: "script_parser-1.0"
 
 - 하는 일 (호출 한 번마다)
   1. 마감까지 남은 시간이 호출 한 번의 시간 제한(`LLM_TIMEOUT_SECONDS`, 기본 12초)보다
@@ -52,6 +52,7 @@ from pitch_coach_ai.common.errors import (
     LlmInvalidOutput,
     LlmTimeout,
     LlmUnavailable,
+    log_safe,
 )
 from pitch_coach_ai.common.request_log import current_request_id
 from pitch_coach_ai.settings import LLM_ROLES, Settings, settings
@@ -230,7 +231,7 @@ class StructuredLlm:
         logger.info(
             "llm_call request_id=%s role=%s model=%s attempt=%d outcome=%s cause=%s "
             "tokens_in=%s tokens_out=%s duration_ms=%.1f",
-            current_request_id() or "-",
+            log_safe(current_request_id() or "-"),
             self._role,
             _or_dash(rec.model if rec else None),
             attempt,

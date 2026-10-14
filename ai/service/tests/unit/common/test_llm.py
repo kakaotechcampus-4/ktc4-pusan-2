@@ -401,3 +401,21 @@ def test_failed_attempts_are_logged_with_code(log_records: list[logging.LogRecor
     outcomes = [r.getMessage() for r in log_records if r.name == "pitch_coach_ai.llm"]
     assert "attempt=1 outcome=LLM_TIMEOUT cause=APITimeoutError" in outcomes[0]
     assert "attempt=2 outcome=ok" in outcomes[1]
+
+
+def test_request_id_in_llm_log_cannot_forge_fields(log_records: list[logging.LogRecord]) -> None:
+    """요청 ID 는 밖에서 온 값이다. 공백을 이스케이프해 LLM 로그에 가짜 필드를 끼우지 못한다."""
+    router = APIRouter()
+
+    @router.post("/_probe/llm-forge")
+    def call() -> dict[str, str]:
+        llm, _ = make(ok())
+        llm.invoke("q")
+        return {}
+
+    app = create_app()
+    app.include_router(router)
+    with TestClient(app) as client:
+        client.post("/_probe/llm-forge", headers={"X-Request-ID": "fake outcome=ok"})
+    line = next(r.getMessage() for r in log_records if r.name == "pitch_coach_ai.llm")
+    assert r"request_id=fake\x20outcome=ok " in line
