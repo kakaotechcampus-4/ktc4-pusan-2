@@ -135,7 +135,7 @@ def mask_inline_code(text: str, keep_file_names: bool = False) -> str:
         elif text[position] == '`':
             delimiter = re.match(r'`+', text[position:])[0]
             start = position + len(delimiter)
-            boundary = re.search(r'\n(?:[ \t]*\n| {0,3}(?:#{1,6}\s|`{3,}|~{3,}|>|[-*+]\s|\d+[.)]\s))', text[start:])
+            boundary = re.search(r'\n(?:[ \t]*\n| {0,3}(?:#{1,6}\s|`{3,}|~{3,}|>|[-*+]\s|1[.)]\s))', text[start:])
             limit = start + boundary.start() if boundary else len(text)
             closing = re.compile(r'(?<!`)' + re.escape(delimiter) + r'(?!`)').search(text, start, limit)
             if closing:
