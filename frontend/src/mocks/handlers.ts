@@ -5,6 +5,7 @@ import { sttHandlers } from './stt';
 import { presentationHandlers } from './presentation';
 import { standardsHandlers } from './standards';
 import { pitchHandlers } from './pitch';
+import { pitchEditHandlers } from './pitchEdit';
 import { scriptHandlers } from './scripts';
 import type { TakeCreated } from '@/types/take';
 import type { ScriptDetail } from '@/types/script';
@@ -201,6 +202,8 @@ export const handlers = [
   http.get(`*/api/pitches/:pitchId/scripts/${prepare.scriptVersionId}`, () =>
     HttpResponse.json(sampleScript),
   ),
+  // 수정 화면 목 — 업로드 · 대본 목보다 먼저 와야 합니다 (그쪽은 모르는 id 에 404)
+  ...pitchEditHandlers,
   ...homeHandlers,
   ...authHandlers,
   ...sttHandlers,

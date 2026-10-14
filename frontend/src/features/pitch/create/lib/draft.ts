@@ -42,15 +42,28 @@ export function formatDuration(sec: number): string {
   return `${minutes}분 ${seconds}초`;
 }
 
-/** 정보 줄의 "5분 (−30초 / +1분)". 오차가 둘 다 0 이면 괄호를 붙이지 않습니다 */
-export function formatTimeLimit(limitSec: number, lowerSec: number, upperSec: number): string {
+/**
+ * 정보 줄의 "5분 (−30초 / +1분)". 오차가 둘 다 0 이면 괄호를 붙이지 않습니다.
+ * 오차를 모르면(수정 화면 — `PitchDraft.lowerToleranceSec`) 모른다고 적습니다.
+ */
+export function formatTimeLimit(
+  limitSec: number,
+  lowerSec: number | null,
+  upperSec: number | null,
+): string {
   const limit = formatDuration(limitSec);
+  if (lowerSec === null || upperSec === null) return `${limit} (허용오차 확인 필요)`;
   if (lowerSec === 0 && upperSec === 0) return limit;
   return `${limit} (−${formatDuration(lowerSec)} / +${formatDuration(upperSec)})`;
 }
 
-/** "4분 30초 ~ 6분". 하한이 목표보다 길면 0 에서 멈춥니다 */
-export function formatAllowedRange(limitSec: number, lowerSec: number, upperSec: number): string {
+/** "4분 30초 ~ 6분". 하한이 목표보다 길면 0 에서 멈춥니다. 오차를 모르면 범위도 모릅니다 */
+export function formatAllowedRange(
+  limitSec: number,
+  lowerSec: number | null,
+  upperSec: number | null,
+): string {
+  if (lowerSec === null || upperSec === null) return '허용오차를 정해 주세요';
   const from = Math.max(0, limitSec - lowerSec);
   return `${formatDuration(from)} ~ ${formatDuration(limitSec + upperSec)}`;
 }
@@ -173,10 +186,16 @@ export interface PitchDraft {
   /** ISO yyyy-mm-dd. 안 정했으면 빈 문자열 */
   presentationDate: string;
   timeLimitSec: number;
-  /** 목표보다 짧게 발표해도 되는 시간(초) */
-  lowerToleranceSec: number;
-  /** 목표보다 길게 발표해도 되는 시간(초) */
-  upperToleranceSec: number;
+  /**
+   * 목표보다 짧게 발표해도 되는 시간(초).
+   *
+   * **null 은 모른다는 뜻입니다.** 수정 화면은 피치를 목록 API(`GET /pitches`)에서 읽는데, 거기에
+   * 허용오차가 없습니다 (BE 에 단건 조회를 요청해 둠). 모르는 값을 0 으로 채우면 저장할 때
+   * 서버의 원래 값을 0 으로 덮어쓰므로, 사용자가 정할 때까지 저장을 막습니다 (`infoReady`).
+   */
+  lowerToleranceSec: number | null;
+  /** 목표보다 길게 발표해도 되는 시간(초). null 은 모름 — `lowerToleranceSec` 와 같습니다 */
+  upperToleranceSec: number | null;
   slides: SlideVersion[];
   scripts: ScriptVersion[];
   criteria: CriteriaVersion[];
@@ -198,6 +217,13 @@ export const infoOf = (d: PitchDraft): InfoForm => ({
 
 export const infoChanged = (a: InfoForm, b: InfoForm): boolean =>
   (Object.keys(a) as (keyof InfoForm)[]).some((k) => a[k] !== b[k]);
+
+/** 저장할 수 있는 발표정보 — 허용오차까지 아는 것 */
+export type KnownInfo = InfoForm & { lowerToleranceSec: number; upperToleranceSec: number };
+
+/** 허용오차를 아나. 모르면 저장하지 않습니다 — 서버의 원래 값을 덮어쓰게 됩니다 */
+export const infoReady = (form: InfoForm): form is KnownInfo =>
+  form.lowerToleranceSec !== null && form.upperToleranceSec !== null;
 
 /** 각 갈래의 **최신** 버전. 사이드바가 굵게 보여 주는 그것입니다 */
 export const latestSlides = (d: PitchDraft): SlideVersion | null => d.slides.at(-1) ?? null;
