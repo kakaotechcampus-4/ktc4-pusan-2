@@ -5,6 +5,11 @@ import check
 
 
 class BoundaryTests(unittest.TestCase):
+    def test_noninitial_ordered_item_does_not_interrupt_multiline_code_span(self):
+        document = check.Document('설명 `첫 줄\n2. <!--\n마지막 줄`\n'
+                                  '# 5. 계약\n값 A\n# 12. 저장\n값 B\n')
+        self.assertEqual(document.sections, {'5', '12'})
+
     def test_backtick_inside_tilde_fence_does_not_open_external_code_span(self):
         document = check.Document('# 5. 계약\n~~~\n`\n~~~\n<!--\n# 15. 예시\n-->\n'
                                   '`\n입력 A\n# 12. 저장\n저장 A\n')
