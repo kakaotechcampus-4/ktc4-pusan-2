@@ -18,7 +18,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ai/ 폴더 (이 파일에서 3단계 위). 로컬은 ai/.env 하나를 research 와 함께 쓴다
@@ -84,12 +84,13 @@ class Settings(BaseSettings):
     openai_sol_model: str | None = None
 
     # LLM 호출 한 번의 시간 제한(초)과 재시도 횟수 (architecture.md 9 · 10절)
-    llm_timeout_seconds: float = 12
-    llm_max_retries: int = 1
-    # uvicorn 워커 수. uvicorn 이 직접 읽고, 여기서는 형식만 검사한다
-    web_concurrency: int = 1
-    # 규약 확인용 대역 POST /sample/judge 를 켠다. 서버에는 넣지 않는다
-    ai_enable_sample: bool = False
+    # 범위 밖(0 이하 · nan · 음수)이면 시작 오류
+    llm_timeout_seconds: float = Field(12, gt=0, allow_inf_nan=False)
+    llm_max_retries: int = Field(1, ge=0)
+    # uvicorn 워커 수. uvicorn 이 시작할 때 프로세스 환경변수에서 직접 읽고, 여기서는 형식만
+    # 검사한다. 그래서 ai/.env 에만 적으면 로컬 `uv run uvicorn` 에는 먹지 않는다
+    # (compose env_file · docker run --env-file 은 진짜 환경변수로 넣어 먹는다)
+    web_concurrency: int = Field(1, ge=1)
 
     @field_validator(
         "openai_base_url",

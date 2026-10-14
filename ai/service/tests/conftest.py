@@ -23,6 +23,10 @@ for _name in (
     "OPENAI_SOL_MODEL",
 ):
     os.environ[_name] = ""
+# 실행하는 셸에 값이 있어도 기본값으로 테스트한다 (진짜 환경변수가 .env 보다 앞선다)
+os.environ["LLM_TIMEOUT_SECONDS"] = "12"
+os.environ["LLM_MAX_RETRIES"] = "1"
+os.environ["WEB_CONCURRENCY"] = "1"
 
 import logging  # noqa: E402  # 위 환경변수를 먼저 넣어야 한다
 from collections.abc import Iterator  # noqa: E402
@@ -47,6 +51,10 @@ class _ProbeBody(BaseModel):
     count: int
 
 
+class _ProbeScores(BaseModel):
+    scores: dict[str, int]
+
+
 _LLM_ERRORS: dict[str, type[errors.LlmError]] = {
     "timeout": errors.LlmTimeout,
     "error": errors.LlmCallFailed,
@@ -61,6 +69,10 @@ def _probe_router() -> APIRouter:
     @router.post("/echo")
     def echo(body: _ProbeBody) -> dict[str, int]:
         return {"length": len(body.text)}
+
+    @router.post("/scores")
+    def scores(body: _ProbeScores) -> dict[str, int]:
+        return {"count": len(body.scores)}
 
     @router.get("/llm/{kind}")
     def llm_error(kind: str) -> None:

@@ -23,7 +23,9 @@
 
 import logging
 import re
+import traceback
 from http import HTTPStatus
+from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -75,6 +77,40 @@ class LlmUnavailable(LlmError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "LLM_UNAVAILABLE"
     message = "지금은 LLM 을 쓸 수 없습니다."
+
+
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def log_safe(value: object, limit: int = 200) -> str:
+    """로그 한 줄에 넣을 값. 공백 · 제어 문자를 이스케이프하고 길이를 자른다.
+
+    요청 경로 · 요청 ID 는 밖에서 온 값이라, 그대로 두면 `key=value` 로그에 가짜 필드를
+    끼워 넣거나(`X-Request-ID: x status=200`) 터미널 제어 문자를 보낼 수 있다.
+    """
+    text = str(value)
+    cleaned = "".join(
+        ch if ch.isprintable() and not ch.isspace() else f"\\x{ord(ch):02x}" for ch in text
+    )
+    return cleaned if len(cleaned) <= limit else cleaned[:limit] + "..."
+
+
+def exception_summary(exc: BaseException) -> str:
+    """예외 종류와 위치(파일:줄:함수)만. 예외 메시지 · 지역 변수는 넣지 않는다.
+
+    예외 메시지에는 대본 · STT 같은 사용자 원문이 섞일 수 있다(`architecture.md` 11절).
+    예: `RuntimeError at core.py:42:judge <- sample.py:30:judge_route`
+    """
+    frames = traceback.extract_tb(exc.__traceback__)[-5:]
+    where = " <- ".join(f"{Path(f.filename).name}:{f.lineno}:{f.name}" for f in reversed(frames))
+    return f"{type(exc).__name__} at {where or '-'}"
+
+
+def _loc(parts: tuple[object, ...]) -> str:
+    """422 위치. 칸 이름 · 순번만 남기고, 식별자가 아닌 사전 키(사용자가 보낸 값)는 <key> 로."""
+    return ".".join(
+        str(p) if isinstance(p, int) or _IDENTIFIER.match(str(p)) else "<key>" for p in parts
+    )
 
 
 # 라우터가 만드는 HTTP 오류의 메시지. 없는 상태 코드는 HTTP 표준 문구를 쓴다
@@ -129,7 +165,7 @@ async def _validation_error_handler(request: Request, exc: Exception) -> JSONRes
     assert isinstance(exc, RequestValidationError)
     _remember_code(request, "VALIDATION_ERROR")
     # 어느 칸이 어떤 종류로 틀렸는지만 남긴다. 입력값(input)은 사용자 원문일 수 있어 남기지 않는다
-    where = [(".".join(str(p) for p in e.get("loc", ())), e.get("type")) for e in exc.errors()]
+    where = [(_loc(tuple(e.get("loc", ()))), e.get("type")) for e in exc.errors()]
     logger.info("validation_error fields=%s", where)
     return error_response(
         status.HTTP_422_UNPROCESSABLE_CONTENT, "VALIDATION_ERROR", "요청 형식이 올바르지 않습니다."
@@ -145,7 +181,9 @@ async def _http_error_handler(request: Request, exc: Exception) -> JSONResponse:
 
 
 async def _unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("unhandled_error path=%s", request.url.path, exc_info=exc)
+    logger.error(
+        "unhandled_error path=%s error=%s", log_safe(request.url.path), exception_summary(exc)
+    )
     return internal_error_response()
 
 

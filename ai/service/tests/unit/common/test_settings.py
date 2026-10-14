@@ -27,7 +27,6 @@ def test_defaults_without_any_value() -> None:
     assert s.llm_timeout_seconds == 12
     assert s.llm_max_retries == 1
     assert s.web_concurrency == 1
-    assert s.ai_enable_sample is False
     assert s.bundle("default") is None
     assert s.bundle("sol") is None
 
@@ -70,6 +69,20 @@ def test_startup_error_does_not_show_other_keys() -> None:
     # 입력값 칸(input_value) 자체가 없는지 본다
     assert "input_value" not in str(err.value)
     assert "sk-test-secret" not in str(err.value)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"llm_timeout_seconds": 0},
+        {"llm_timeout_seconds": "nan"},
+        {"llm_max_retries": -1},
+        {"web_concurrency": 0},
+    ],
+)
+def test_out_of_range_numbers_are_rejected(values: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        _settings(**values)
 
 
 def test_every_role_points_to_a_known_bundle() -> None:

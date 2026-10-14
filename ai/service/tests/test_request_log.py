@@ -68,3 +68,16 @@ def test_request_body_and_query_are_not_logged(
     assert "대본 원문 비밀" not in logged
     assert "쿼리비밀" not in logged
     assert "path=/_probe/echo " in logged
+
+
+def test_outside_values_cannot_forge_log_fields(
+    client: TestClient, log_records: list[logging.LogRecord]
+) -> None:
+    """요청 ID 의 공백 · 경로의 제어 문자를 이스케이프해 가짜 key=value 를 끼워 넣지 못한다."""
+    res = client.get("/no%1B%5B2J", headers={"X-Request-ID": "fake status=200"})
+    assert res.headers["X-Request-ID"] == "fake status=200"  # 응답 헤더는 받은 그대로
+    line = _request_lines(log_records)[0]
+    assert r"request_id=fake\x20status=200 " in line
+    assert r"path=/no\x1b[2J " in line
+    assert "\x1b" not in line  # 진짜 ESC 문자는 없다
+    assert "status=404" in line

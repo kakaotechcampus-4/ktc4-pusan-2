@@ -61,8 +61,35 @@ def test_unhandled_error_is_500_without_internal_text(
     assert res.status_code == 500
     assert _error(res) == {"code": "INTERNAL_ERROR", "message": "서버 오류가 발생했습니다."}
     assert "대본 원문" not in res.text
-    # 원인(stack trace)은 로그에만
-    assert any(r.exc_info for r in log_records)
+    # 로그에는 예외 종류와 위치(파일:줄:함수)만. 예외 메시지(사용자 원문일 수 있음)는 없다
+    formatted = "\n".join(logging.Formatter().format(r) for r in log_records)
+    assert "RuntimeError at conftest.py:" in formatted
+    assert "대본 원문" not in formatted
+    assert not any(r.exc_info for r in log_records)
+
+
+@pytest.mark.parametrize(
+    ("kind", "message"),
+    [
+        ("timeout", "LLM 응답 시간이 초과되었습니다."),
+        ("error", "LLM 호출에 실패했습니다."),
+        ("invalid", "LLM 출력이 정해진 형식과 다릅니다."),
+        ("unavailable", "지금은 LLM 을 쓸 수 없습니다."),
+    ],
+)
+def test_llm_error_messages_are_fixed_korean_text(
+    probe_client: TestClient, kind: str, message: str
+) -> None:
+    assert _error(probe_client.get(f"/_probe/llm/{kind}"))["message"] == message
+
+
+def test_validation_log_hides_user_supplied_dict_keys(
+    probe_client: TestClient, log_records: list[logging.LogRecord]
+) -> None:
+    probe_client.post("/_probe/scores", json={"scores": {"비밀 대본 문장": "숫자 아님"}})
+    logged = " ".join(r.getMessage() for r in log_records)
+    assert "body.scores.<key>" in logged
+    assert "비밀 대본 문장" not in logged
 
 
 def test_validation_log_names_fields_but_not_values(

@@ -9,7 +9,8 @@
   3. 응답 헤더에 같은 `X-Request-ID` 를 싣는다
   4. `request_id=… method=… path=… status=… code=… duration_ms=…` 한 줄을 남긴다
 - 로그 규칙 (`docs/ai/architecture.md` 11절): 표준 출력으로만 낸다. 요청 본문 · 쿼리 문자열 ·
-  키는 남기지 않는다. `code` 는 에러 응답일 때 공통 에러 코드, 아니면 `-`
+  키 · 예외 메시지는 남기지 않는다(예외는 종류와 위치만). 경로 · 요청 ID 는 밖에서 온 값이라
+  공백 · 제어 문자를 이스케이프한다. `code` 는 에러 응답일 때 공통 에러 코드, 아니면 `-`
 - 로거: `pitch_coach_ai` 와 그 아래(`pitch_coach_ai.request` · `.errors` · `.llm`)에만 출력기를
   단다. root 에 달면 LLM 라이브러리(httpx)의 INFO 로그까지 찍혀 게이트웨이 주소가 남는다
 """
@@ -23,7 +24,11 @@ from contextvars import ContextVar
 
 from fastapi import FastAPI, Request, Response
 
-from pitch_coach_ai.common.errors import internal_error_response
+from pitch_coach_ai.common.errors import (
+    exception_summary,
+    internal_error_response,
+    log_safe,
+)
 
 REQUEST_ID_HEADER = "X-Request-ID"
 
@@ -64,18 +69,21 @@ def register_request_log(app: FastAPI) -> None:
         try:
             try:
                 response = await call_next(request)
-            except Exception:
-                logger.exception(
-                    "unhandled_error request_id=%s path=%s", request_id, request.url.path
+            except Exception as exc:  # noqa: BLE001  # 모든 예외를 공통 500 으로
+                logger.error(
+                    "unhandled_error request_id=%s path=%s error=%s",
+                    log_safe(request_id),
+                    log_safe(request.url.path),
+                    exception_summary(exc),
                 )
                 response = internal_error_response()
                 request.state.error_code = "INTERNAL_ERROR"
             response.headers[REQUEST_ID_HEADER] = request_id
             logger.info(
                 "request_id=%s method=%s path=%s status=%s code=%s duration_ms=%.1f",
-                request_id,
+                log_safe(request_id),
                 request.method,
-                request.url.path,
+                log_safe(request.url.path),
                 response.status_code,
                 request.state.error_code or "-",
                 (time.perf_counter() - started) * 1000,
