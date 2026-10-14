@@ -98,13 +98,35 @@ class Snapshot:
 
 
 def mask_inline_code(text: str, keep_file_names: bool = False) -> str:
-    """같은 길이의 backtick 쌍을 문단 안에서 찾고 줄·위치를 보존한다."""
-    pattern = re.compile(r'(?<!`)(`+)(?!`)(.*?)(?<!`)\1(?!`)', re.S)
-    def mask(match: re.Match) -> str:
-        if keep_file_names and FILE_REFERENCE.fullmatch(match[2]):
-            return match[0]
-        return ''.join('\n' if char == '\n' else '\uFFFC' for char in match[0])
-    return ''.join(pattern.sub(mask, paragraph) for paragraph in re.split(r'(\n\s*\n)', text))
+    """문단의 코드스팬을 가리되 HTML 주석 안의 backtick은 짝짓지 않는다."""
+    output, position = [], 0
+    while position < len(text):
+        if text.startswith('<!--', position):
+            stop = text.find('-->', position + 4)
+            stop = len(text) if stop < 0 else stop + 3
+            output.append(text[position:stop])
+            position = stop
+        elif text[position] == '`':
+            delimiter = re.match(r'`+', text[position:])[0]
+            start = position + len(delimiter)
+            boundary = re.search(r'\n[ \t]*\n', text[start:])
+            limit = start + boundary.start() if boundary else len(text)
+            closing = re.compile(r'(?<!`)' + re.escape(delimiter) + r'(?!`)').search(text, start, limit)
+            if closing:
+                stop = closing.end()
+                content = text[start:closing.start()]
+                span = text[position:stop]
+                if not (keep_file_names and FILE_REFERENCE.fullmatch(content)):
+                    span = ''.join('\n' if char == '\n' else '\uFFFC' for char in span)
+                output.append(span)
+                position = stop
+            else:
+                output.append(delimiter)
+                position = start
+        else:
+            output.append(text[position])
+            position += 1
+    return ''.join(output)
 
 
 def visible_lines(text: str) -> list[str]:
@@ -293,8 +315,9 @@ class Document:
         headings: list[tuple[int, int, str | None]] = []
         context = ''
         heading_anchors: set[str] = set()
+        anchor_lines = mask_inline_code('\n'.join(self.lines)).split('\n')
         for i, line in enumerate(self.lines, 1):
-            anchor_line = re.sub(r'(`+)(.*?)\1', lambda match: '\uFFFC' * len(match[0]), line)
+            anchor_line = anchor_lines[i - 1]
             for anchor in re.findall(r'<a\s+[^>]*(?:id|name)=["\']([^"\']+)["\']', anchor_line):
                 self.anchors.add(anchor)
             heading = HEADING.match(line)
@@ -472,6 +495,8 @@ def increased_problems(base: Snapshot, merged: Snapshot,
                     and matches[path].get(adjacent) not in baseline_lines.get(path, set())
                     and old.lines[matches[path][adjacent] - 1].strip()
                     and new.lines[adjacent - 1].strip()
+                    and raw_before.count(raw_before[matches[path][adjacent] - 1]) == 1
+                    and raw_after.count(raw_after[adjacent - 1]) == 1
                     for adjacent in (problem.line - 1, problem.line + 1))
                 ambiguous = not anchored
         if remaining[previous] == 0 or ambiguous:
