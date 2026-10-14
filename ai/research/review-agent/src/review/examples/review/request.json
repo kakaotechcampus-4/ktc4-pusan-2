@@ -1,0 +1,215 @@
+{
+  "take_result": {
+    "take_id": "take-123",
+    "duration_ms": 182000,
+    "script_mode": "HIGHLIGHT",
+    "replayed": false,
+    "criteria_changed": false,
+    "areas": {
+      "GAZE": {
+        "measured_ratio": 0.93,
+        "take": {
+          "audience_ratio": 0.58,
+          "script_ratio": 0.31,
+          "reading_ratio": 0.22,
+          "reading_runs": 4
+        },
+        "slides": [
+          {
+            "slide_number": 3,
+            "start_ms": 60000,
+            "end_ms": 120000,
+            "target_ms": 60000,
+            "measured_ratio": 0.95,
+            "metrics": {
+              "script_ratio": 0.62
+            }
+          }
+        ]
+      },
+      "SPEED": {
+        "measured_ratio": 0.97,
+        "take": {
+          "cpm": 318.5,
+          "pause_count": 2
+        },
+        "slides": []
+      },
+      "VOLUME": {
+        "measured_ratio": 0.99,
+        "take": {
+          "level_db": -31.6,
+          "voice_diff_db": -2.1,
+          "low_ratio": 0.08,
+          "base_level_source": "CALIBRATION"
+        },
+        "slides": []
+      },
+      "PAUSE": {
+        "measured_ratio": 1.0,
+        "take": {
+          "long_silence_count": 1
+        },
+        "slides": []
+      },
+      "FILLER": {
+        "measured_ratio": 0.97,
+        "take": {
+          "filler_count": 7,
+          "filler_per_min": 2.4,
+          "by_tier": {
+            "T1": 4,
+            "T2": 0,
+            "T3": 3
+          },
+          "by_word": {
+            "음": 4,
+            "그니까": 2,
+            "좀": 1
+          }
+        },
+        "slides": []
+      },
+      "TIME": {
+        "measured_ratio": 1.0,
+        "take": {
+          "duration_ms": 182000
+        },
+        "slides": [
+          {
+            "slide_number": 3,
+            "start_ms": 60000,
+            "end_ms": 120000,
+            "target_ms": 60000,
+            "measured_ratio": 1.0,
+            "metrics": {
+              "slide_duration_ms": 60000
+            }
+          }
+        ]
+      }
+    },
+    "problem_segments": [
+      {
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "slide_number": 3,
+        "start_ms": 88000,
+        "end_ms": 101000,
+        "mean_severity": 0.71,
+        "reliable": true,
+        "coached": true
+      },
+      {
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "slide_number": 3,
+        "start_ms": 105000,
+        "end_ms": 112000,
+        "mean_severity": 0.55,
+        "reliable": true,
+        "coached": false
+      },
+      {
+        "area": "FILLER",
+        "issue_type": "FILLER_FREQUENT",
+        "slide_number": 2,
+        "start_ms": 40000,
+        "end_ms": 52000,
+        "mean_severity": 0.5,
+        "reliable": true,
+        "coached": false
+      },
+      {
+        "area": "VOLUME",
+        "issue_type": "VOLUME_LOW",
+        "slide_number": 1,
+        "start_ms": 5000,
+        "end_ms": 20000,
+        "mean_severity": 0.8,
+        "reliable": false,
+        "coached": false
+      },
+      {
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCREEN",
+        "slide_number": 2,
+        "start_ms": 30000,
+        "end_ms": 45000,
+        "mean_severity": 0.6,
+        "reliable": true,
+        "coached": false
+      }
+    ],
+    "interventions": [
+      {
+        "intervention_id": "iv-92000",
+        "t_ms": 92000,
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "instruction": "LOOK_AT_CAMERA",
+        "message": "대본보다 청중을 조금 더 바라보세요",
+        "outcome": "EFFECTIVE",
+        "metric": "script_ratio_short",
+        "before": 0.91,
+        "after": 0.35
+      }
+    ],
+    "gave_up": [
+      {
+        "issue_type": "PACE_FAST",
+        "slide_number": null
+      }
+    ],
+    "criteria": {
+      "GAZE": {
+        "criteria_version": "gaze-1.1+000000000000",
+        "issues": {
+          "GAZE_ON_SCRIPT": {
+            "metric": "script_run_ms",
+            "direction": "HIGHER_IS_WORSE",
+            "threshold": 3000,
+            "bad": 8000,
+            "onset_lag_ms": 1000,
+            "offset_lag_ms": 1000
+          }
+        }
+      }
+    }
+  },
+  "script_coverage": null,
+  "previous_takes": [],
+  "previous_recurring_issues": [
+    {
+      "area": "GAZE",
+      "slide_number": 3,
+      "dimension": "script_independence"
+    }
+  ],
+  "missions": [
+    {
+      "mission_id": "m-1",
+      "area": "FILLER",
+      "slide_number": null,
+      "target": {
+        "metric": "filler_per_min",
+        "operator": "LTE",
+        "value": 2
+      }
+    }
+  ],
+  "user_criteria": {
+    "display_criteria": [
+      "추임새 5번 이하"
+    ],
+    "targets": [
+      {
+        "display": "추임새 5번 이하",
+        "metric": "filler_count",
+        "operator": "LTE",
+        "value": 5
+      }
+    ],
+    "script_used": null
+  }
+}
