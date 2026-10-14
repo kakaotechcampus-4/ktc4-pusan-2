@@ -126,7 +126,9 @@ ai/service/
 │   │   └── <이름>.py            #   기능 엔드포인트 (coach.py 는 판정 모듈을 묶어 코치에 넘긴다)
 │   ├── common/                  # 기능들이 같이 쓰는 코드
 │   │   ├── llm.py               #   LLM 객체는 여기서만 만든다
-│   │   └── errors.py            #   예외 → 상태 코드 · 에러 본문
+│   │   ├── errors.py            #   예외 → 상태 코드 · 에러 본문
+│   │   ├── request_log.py       #   X-Request-ID · 요청마다 한 줄 로그
+│   │   └── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
 │   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다
 │       ├── sample/              #   규약 확인용 대역 판정 모듈 (`architecture.md` 7 · 8절 모양 그대로, 실제 판정 없음)
 │       └── <기능>/              #   schemas.py · core.py · config.py · version.py · examples/ · prompts/ (`architecture.md` 8절)
@@ -136,7 +138,7 @@ ai/service/
     └── live/                    # 실제 LLM 호출 (live 표시, 기본 실행에서 제외)
 ```
 - 패키지 이름은 BE의 `pitch_coach_backend`에 맞춰 `pitch_coach_ai`, 실행은 `uvicorn pitch_coach_ai.main:app`이다.
-- 처음 뼈대에는 `/health`, 공통(`settings.py` · `common/llm.py` · `common/errors.py`), 규약 확인용 대역(`features/sample/` · `api/sample.py`)이 있다. `contracts/` · `/ready`는 그것이 필요한 첫 기능과 함께 만든다. 파일마다의 역할은 서비스가 생기면 `ai/service/README.md`의 파일 지도에 둔다.
+- 처음 뼈대에는 `/health`, 공통(`settings.py` · `common/llm.py` · `common/errors.py` · `common/request_log.py` · `common/meta.py`), 규약 확인용 대역(`features/sample/` · `api/sample.py`)이 있다. `contracts/` · `/ready`는 그것이 필요한 첫 기능과 함께 만든다. 파일마다의 역할은 서비스가 생기면 `ai/service/README.md`의 파일 지도에 둔다.
 - **규약 확인용 대역**: 실제 기능을 옮기기 전에, 판정 모듈 · 에이전트가 같은 규약(요청 검사 · 결과와 `meta` · 공통 에러 본문 · `X-Request-ID` · 처리 시간 로그)으로 붙는지 로컬 컨테이너에서 확인하는 가짜 판정 모듈이다. `architecture.md` 7 · 8절 모양(`schemas.py` · `core.py` · `config.py` · `version.py` · `examples/`, `judge` · `summarize` · `criteria`)을 그대로 따르고 실제 판정은 하지 않는다. `AI_ENABLE_SAMPLE=true`일 때만 라우터를 등록하므로 서버(기본 `false`)에서는 경로가 없다(404). 첫 실제 기능 엔드포인트가 붙으면 대역과 그 테스트를 지운다(그 기능의 계약 테스트가 대신한다).
 
 ## 4-2. 진입 함수
@@ -238,7 +240,8 @@ def run(req: ExampleRequest) -> ExampleResponse:   # 코어가 동기라 async d
 LLM 공통 규칙(모델 고르기 · 시간 제한 · 재시도 · 요청 마감 · 실패 처리 · 예비 모델 · 테스트)은 `architecture.md` 9절이다. 서비스가 맡는 구현은 다음과 같다.
 - `common/llm.py`의 `structured_llm(schema)`에 출력 pydantic 스키마를 넘기면 `with_structured_output(schema)`가 적용된 객체를 돌려준다. 기능은 역할로 모델 묶음(이름 · 주소 · 키)을 고르고, 역할 → 묶음 연결은 `settings.py` 한 곳에 둔다(`architecture.md` 9 · 10절). 기능 코드는 묶음 이름을 모른다.
 - 라우터는 요청마다 마감 시각(deadline) 하나를 만들어 `structured_llm(schema, deadline=...)`으로 넘긴다. 시간 제한은 연결 · 읽기마다가 아니라 호출 하나 전체에 건다.
-- `structured_llm`은 역할마다 출력 토큰 상한(필요하면 추론 강도)을 `settings.py` 상수(역할 → 묶음과 같은 곳)에서 읽어 명시한다. 게이트웨이 기본값에 기대지 않는다. 값은 그 기능 PR에서 잰 출력 길이로 정하고, 출력이 상한에서 잘리면(`LengthFinishReasonError`) `LLM_INVALID_OUTPUT`이다(`architecture.md` 9절).
+- `structured_llm`은 역할마다 출력 토큰 상한(필요하면 추론 강도)을 `settings.py` 상수(역할 → 묶음과 같은 곳)에서 읽어 명시한다. 게이트웨이 기본값에 기대지 않는다. 값은 그 기능 PR에서 잰 출력 길이로 정하고, 출력이 상한에서 잘리면(`LengthFinishReasonError` · 끝난 이유 `length`) `LLM_INVALID_OUTPUT`이다(`architecture.md` 9절).
+- `structured_llm`은 스트리밍으로 부른다. 지금 LLM 게이트웨이는 스트리밍이 아닌 요청의 출력 상한을 2,000토큰 이하로만 받고(넘으면 400), 긴 비스트리밍 답은 생성 중에 끊는다. 결과는 다 모은 뒤 한 번에 돌려주므로 기능 코어가 받는 값은 같다.
 - 실제로 응답한 모델 이름은 LangChain 콜백으로 잡아 로그에 남기고 응답 `meta.model`에 싣는다. 결과가 기본 결과(`fallback_reason`이 있음)면 `meta.model`은 null이다(`architecture.md` 5절). 코어가 받는 반환값은 바뀌지 않는다.
 - 예비 모델은 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
 - LLM 에러(시간 초과 · 연결 실패 · 잘못된 출력)는 기능 코드에서 잡지 않고 `common/errors.py`가 상태 코드 · 에러 코드로 바꾼다. 예외는 둘이다. LLM이 결과를 보태기만 하는 기능(코칭 계획 · 리뷰 문장)은 실패를 잡아 기본 결과를 200으로 돌려준다(`fallback_reason`). 장별로 LLM을 부르는 기능(평가 기준 만들기 · 대본 전달도 채점)은 장마다 실패를 잡아 `failed`에 담고, 한 장이라도 성공하면 200을 돌려준다.
