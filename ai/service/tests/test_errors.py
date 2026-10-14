@@ -100,3 +100,11 @@ def test_validation_log_names_fields_but_not_values(
     assert "body.count" in logged
     assert "비밀 대본 문장" not in logged
     assert "많이" not in logged
+
+
+def test_dict_key_with_trailing_newline_is_hidden(
+    probe_client: TestClient, log_records: list[logging.LogRecord]
+) -> None:
+    probe_client.post("/_probe/scores", json={"scores": {"token\n": "숫자 아님"}})
+    logged = " ".join(r.getMessage() for r in log_records)
+    assert "body.scores.<key>" in logged

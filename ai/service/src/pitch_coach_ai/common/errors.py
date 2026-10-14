@@ -79,7 +79,7 @@ class LlmUnavailable(LlmError):
     message = "지금은 LLM 을 쓸 수 없습니다."
 
 
-_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def log_safe(value: object, limit: int = 200) -> str:
@@ -107,9 +107,13 @@ def exception_summary(exc: BaseException) -> str:
 
 
 def _loc(parts: tuple[object, ...]) -> str:
-    """422 위치. 칸 이름 · 순번만 남기고, 식별자가 아닌 사전 키(사용자가 보낸 값)는 <key> 로."""
+    """422 위치. 칸 이름 · 순번만 남기고, 식별자가 아닌 사전 키(사용자가 보낸 값)는 <key> 로.
+
+    식별자 모양의 사전 키(예: `private_token`)는 칸 이름과 구분하지 않고 남긴다. 이 서비스의
+    입력에서 사용자 원문이 사전 키가 되는 경우는 문장(공백 · 한글)이라 여기서 걸러진다.
+    """
     return ".".join(
-        str(p) if isinstance(p, int) or _IDENTIFIER.match(str(p)) else "<key>" for p in parts
+        str(p) if isinstance(p, int) or _IDENTIFIER.fullmatch(str(p)) else "<key>" for p in parts
     )
 
 

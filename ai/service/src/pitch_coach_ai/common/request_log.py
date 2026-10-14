@@ -44,7 +44,13 @@ def current_request_id() -> str | None:
 
 
 def configure_logging() -> None:
-    """`pitch_coach_ai` 로거가 INFO 이상을 표준 출력으로 내게 한다. 여러 번 불러도 한 번만 단다."""
+    """`pitch_coach_ai` 로거가 INFO 이상을 표준 출력으로 내게 한다. 여러 번 불러도 한 번만 단다.
+
+    uvicorn 의 접근 로그(`"GET /health?x=1 HTTP/1.1" 200`)는 끈다. 요청마다 아래 요청 로그와
+    겹치고, 쿼리 문자열을 그대로 싣고, 요청 ID 가 없다. uvicorn 은 앱을 불러오기 전에 로그를
+    설정하므로 여기서 끈 것이 유지된다(시작 · 오류 로그는 그대로 나온다).
+    """
+    logging.getLogger("uvicorn.access").disabled = True
     root = logging.getLogger("pitch_coach_ai")
     if root.handlers:
         return

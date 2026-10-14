@@ -81,3 +81,8 @@ def test_outside_values_cannot_forge_log_fields(
     assert r"path=/no\x1b[2J " in line
     assert "\x1b" not in line  # 진짜 ESC 문자는 없다
     assert "status=404" in line
+
+
+def test_uvicorn_access_log_is_turned_off(client: TestClient) -> None:
+    """uvicorn 접근 로그는 쿼리 문자열을 싣고 요청 로그와 겹쳐서 끈다."""
+    assert logging.getLogger("uvicorn.access").disabled is True
