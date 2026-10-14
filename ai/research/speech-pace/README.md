@@ -6,7 +6,7 @@
 - 공통 계약: [docs/ai/architecture.md](../../../docs/ai/architecture.md) 7절
 - Issue: #154
 
-> **진행 중**: 판정 코어(`src/pace/`)까지 있습니다. `examples/`, 테스트, 평가 데이터 · 스크립트는 아직 없습니다.
+> **진행 중**: 판정 코어(`src/pace/`) · 예시(`src/pace/examples/`) · 테스트(`tests/`)까지 있습니다. 평가 데이터 · 스크립트는 아직 없습니다.
 
 ## 폴더 · 파일 지도
 | 위치 | 하는 일 |
@@ -15,6 +15,8 @@
 | `src/pace/schemas.py` | 입력 · 출력 pydantic 모델 (= 계약) |
 | `src/pace/config.py` | 기준값 `PaceConfig`. 값의 해시가 `criteria_version`에 들어갑니다 |
 | `src/pace/version.py` | 기능 버전 `pace-1.0` |
+| `src/pace/examples/` | `judge` · `summarize` · `criteria` 입력 · 출력 예시 JSON. 계약 테스트가 읽습니다 (아래 '예시') |
+| `tests/` | 판정 규칙 · 커서 · 보류 · 계약 테스트 (아래 '테스트') |
 
 `src/pace/`는 나중에 AI 서비스의 `features/pace/`로 폴더째 옮깁니다. 코어는 pydantic 말고는 외부 패키지를 쓰지 않고, 다른 판정 모듈을 import하지 않습니다.
 
@@ -24,7 +26,7 @@ Python 3.12. LLM을 쓰지 않아 `ai/.env`가 필요 없습니다.
 cd ai/research/speech-pace
 uv sync
 uv run ruff check . && uv run ruff format --check .
-uv run python -m pytest   # 테스트가 아직 없어 0개 실행(종료 코드 5)
+uv run python -m pytest
 ```
 
 직접 불러 보기:
@@ -42,6 +44,66 @@ judge(
     t_ms=41000,
 )
 ```
+
+## 예시
+`src/pace/examples/`에 입력 · 출력 JSON이 있습니다. 세 `judge` 예시는 한 발표(단어 68개)를 41초 · 52초에 판정한 것이고, 출력은 지금 코드로 돌린 값입니다. `judge` 입력에는 `t_ms`도 실려 있습니다(입력 모델은 모르는 필드를 무시합니다).
+
+| 파일 | 보여 주는 것 |
+|---|---|
+| `judge_input.json` · `judge_output.json` | pace.md 5-5 예시. 41초, 새 단어 "분기" · "매출은"만 세고 `NORMAL` |
+| `judge_input_pending.json` · `judge_output_pending.json` | 52초, 마지막 "그"가 보류 단어라 단어 커서가 그 앞에서 멈춤. 말이 빨라져 `FAST` · `PACE_FAST` |
+| `judge_input_fillers_null.json` · `judge_output_fillers_null.json` | 52초, 군더더기 판정 실패(`fillers: null`). 단어를 세지 않고 단어 커서 그대로, `UNKNOWN` |
+| `criteria.json` | `PACE_FAST` · `PACE_SLOW` 판정 기준 |
+| `summarize_input.json` · `summarize_output.json` | Take `tally` 합계 → `cpm` · `pause_count` · `measured_ratio` (pace.md 5-5 값) |
+
+```python
+import json
+from pathlib import Path
+
+from pace.core import judge
+
+inputs = json.loads(Path("src/pace/examples/judge_input.json").read_text(encoding="utf-8"))
+judge(inputs, inputs["t_ms"])  # = judge_output.json
+```
+
+기준값(`config.py`)을 바꾸면 출력과 `criteria_version`이 달라져 `tests/test_examples.py`가 깨집니다. 그때는 출력 JSON을 다시 만들어 같은 PR에 넣습니다(architecture.md 12절). 입력은 그대로 두고 출력만 다시 만듭니다.
+```bash
+uv run python - <<'EOF'
+import json
+from pathlib import Path
+
+from pace.core import criteria, judge, summarize
+
+ex = Path("src/pace/examples")
+
+def load(name):
+    return json.loads((ex / name).read_text(encoding="utf-8"))
+
+def save(name, data):
+    (ex / name).write_bytes((json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+
+for case in ("", "_pending", "_fillers_null"):
+    inputs = load(f"judge_input{case}.json")
+    save(f"judge_output{case}.json", [r.model_dump(mode="json") for r in judge(inputs, inputs["t_ms"])])
+save("criteria.json", {k: v.model_dump(mode="json") for k, v in criteria().items()})
+save("summarize_output.json", summarize(load("summarize_input.json")))
+EOF
+```
+다시 만든 뒤에도 `test_examples.py`의 문서 대조 테스트(상태 · 보류 등)가 깨지면, 새 기준값에서 예시가 보여 주려던 상황이 달라진 것이므로 입력을 고칩니다.
+
+## 테스트
+`uv run python -m pytest`로 모두 돕니다.
+
+| 파일 | 보는 것 |
+|---|---|
+| `test_examples.py` | 예시 출력이 지금 코드 출력과 같음, 공통 계약, 같은 입력이면 같은 결과, 돌려받은 커서로 다시 부르면 새 몫 없음, 예시가 pace.md 5-5 설명과 맞음 |
+| `test_judge.py` | 빠름 · 보통 · 느림, 기준과 같으면 `NORMAL`, 심각도 · 신뢰도, 최근 창 · 짧은 창, 측정 최소 기준, STT 끊김 · 회복, `fillers: null` |
+| `test_tally.py` | 단어 몫 · 커서, 군더더기 · 보류 단어, 멈춤, 시각이 거꾸로이거나 겹친 단어, 1초마다 시간 몫, 겹친 창을 1초마다 보내도 단어마다 한 번씩만 셈 |
+| `test_contract.py` | 입력 · 출력 모델(모르는 필드 · 필수 필드 · `stt_status` enum), `criteria_version`, `summarize` · `criteria` |
+| `test_core_boundary.py` | 코어가 상대 import와 표준 모듈 · pydantic만 쓰고 파일 · 출력을 다루지 않음 (어기면 실패) |
+| `helpers.py` | 입력 도우미와 공통 계약 검사. `run()`은 판정할 때마다 공통 계약도 봅니다 |
+
+규칙 테스트는 `helpers.CFG`(지금 기본값을 따로 적은 것)로 돕니다. 기준값을 다시 골라도 규칙 테스트는 그대로이고, 예시만 다시 만들면 됩니다.
 
 ## 기준값
 모두 잠정값입니다. 평가 데이터가 생기면 다시 고릅니다(pace.md 13절).
