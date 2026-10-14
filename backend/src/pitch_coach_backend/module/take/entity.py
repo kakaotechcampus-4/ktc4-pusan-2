@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -44,6 +45,12 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     __table_args__ = (
         # 같은 pitch 안에서 take 번호가 겹치지 않게 한다.
         UniqueConstraint("pitch_id", "take_number", name="uq_takes_pitch_take_number"),
+    )
+
+    check_constraint = (
+        CheckConstraint("status IN ('READY', 'RUNNING', 'ANALYZING', 'COMPLETED', 'FAILED')", name="check_take_status"),
+        CheckConstraint("mode IN ('COACHING', 'EXAM')", name="check_take_mode"),
+        CheckConstraint("script_mode IN ('HIGHLIGHT', 'KEYWORD', 'OFF')", name="check_take_script_mode"),
     )
 
     pitch_id: Mapped[uuid.UUID] = mapped_column(
