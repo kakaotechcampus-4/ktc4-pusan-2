@@ -140,7 +140,7 @@ ai/research/coach-agent/
 | `t_ms` | int | 예 | 이 판단의 시각(FE `metrics`의 `t_ms`). 0 이상 3,660,000 이하(Take 최대 1시간 + 60초, `architecture.md` 1-3. 넘으면 422. 상한은 evaluate · finalize가 상수 하나를 함께 쓴다). 이미 처리한 시각 이하면 처리하지 않고(`STALE_TICK`), 지난 처리 시각보다 60,000 ms 넘게 앞서도 처리하지 않는다(`T_MS_JUMP`, 아래) | `92000` |
 | `mode` | enum | 아니오 | `COACHING`(말을 건다) · `EXAM`(기록만 하고 말하지 않는다). 없으면 `COACHING` | `COACHING` |
 | `plan` | object | 아니오 | 시간 계획 `{target_ms, min_ms, max_ms, slides[{slide_number, target_ms, script_chars}]}`. `target_ms`는 Take 목표 시간, `min_ms` = 발표 제한 시간 − 허용 미달(0 이하가 되면 BE가 null로 싣는다), `max_ms` = 발표 제한 시간 + 허용 초과, 장별 `target_ms`는 대본 파싱 `expected_ms`. 장마다 `slide_number` · `target_ms`는 필수, `script_chars`는 그 장 대본의 글자 수(공백 · 문장부호를 뺀 코드 포인트 수, `architecture.md` 6-1)이고 없으면 0. 장 목표가 `0`이면 그 장의 `SLIDE_OVER`를 내지 않는다. `target_ms`가 없으면 시간 판정은 잴 수 없음 | `{"target_ms": 300000, "min_ms": 270000, "max_ms": 330000, "slides": [...]}` |
-| `missions` | list | 아니오 | 이번 Take 미션 `[{mission_id, area, slide_number, target{metric, operator, value}, priority, description}]`(`priority` · `description`은 선택). `operator`는 `LT` · `LTE` · `GT` · `GTE`, `slide_number`가 null이면 Take 전체. `area`는 `GAZE` · `SPEED` · `VOLUME` · `PAUSE` · `FILLER` · `TIME` · `CONTENT`(`architecture.md` 6-3) | `[{"mission_id": "m-2", "area": "GAZE", ...}]` |
+| `missions` | list | 아니오 | 이번 Take 미션 `[{mission_id, area, slide_number, target{metric, operator, value}, priority, description}]`(`priority` · `description`은 선택). priority는 누락하면 1, 명시적 null은 허용하지 않는다. description은 누락·null 모두 설명 없음으로 처리하고 영역·대상·목표를 사용한다. `operator`는 `LT` · `LTE` · `GT` · `GTE`, `slide_number`가 null이면 Take 전체. `area`는 `GAZE` · `SPEED` · `VOLUME` · `PAUSE` · `FILLER` · `TIME` · `CONTENT`(`architecture.md` 6-3) | `[{"mission_id": "m-2", "area": "GAZE", ...}]` |
 | `recurring_issues` | list | 아니오 | 직전 리뷰가 꼽은 반복 문제 `[{area, slide_number, dimension}]`(`review-agent.md` 5-3. `area`는 미션과 같은 일곱 값). 코치는 `area` · `slide_number`로 가중을 걸고, `dimension`(리뷰 차원 이름)은 쓰지 않는다 | `[{"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}]` |
 | `coaching_plan` | object · null | 아니오 | `/coach/plan` 응답의 `coaching_plan`(`why`는 빼고 싣는다, 와도 쓰지 않음). 오래된 계획 막기(12-2)를 통과했을 때만 싣고 아니면 null | `{"focus": [{"area": "GAZE", "slide_number": 3, "weight": 1.5}], "relax": [], "max_interventions": null}` |
 | `script_used` | bool · null | 아니오 | 사용자 평가 기준의 대본 사용 설정. `true`면 대본 응시(`GAZE_ON_SCRIPT`)는 말하지 않는다 | `true` |
@@ -185,7 +185,7 @@ ai/research/coach-agent/
 | `previous_review` | object · null | 아니오 | 직전 Take 리뷰 결과(리뷰 에이전트의 출력). 쓰는 필드: `overall_summary` · `dimensions`(차원 → `IMPROVED` · `PRIORITY` · `STABLE` · `STRENGTH` · `NOT_EVALUABLE`) · `improvements[{area, slide_number, text}]` · `mission_results[{mission_id, status, metric, slide_number}]` · `recurring_issues` | |
 
 - 요청에 모드가 없다. 계획은 Take가 시작되기 전에 만들고, 실전 모드 Take는 evaluate에서 말하지 않으므로 계획이 영향을 주지 않는다.
-- **입력 크기 상한**: `plan.slides` · `scripts` 100개, `missions` 20개, `recurring_issues` 20개, `missions[].description` 500자. 넘으면 422 `VALIDATION_ERROR`이고 BE는 다시 부르지 않는다(계획 없이 코칭한다). 대본은 장마다 1,500자까지만 LLM에 넘긴다(`config.py`의 `PlannerConfig`, 요청 크기 상한이 아니라 LLM 입력을 자르는 것이다). `previous_take_result` · `previous_review` · 대본 원문의 크기는 따로 묶지 않고, 요청 본문 크기 상한으로 정한다(아직 정하지 않았다, 15절 열린 질문). 이 상한은 plan 요청에만 건다(공유 모델 `Plan` · `Mission`은 그대로 두고, plan 요청 전용 하위 모델이나 plan 요청의 검증 함수로 건다. 검증 오류는 `ValidationError` → 422). 리뷰의 다음 미션이 20개 · 설명 500자를 넘으면 계획이 없으므로, `review-agent.md` 5-3이 같은 한도로 낸다. evaluate · finalize의 같은 필드 한도는 요청 배열 한도와 함께 정한다(15절 열린 질문. evaluate에서 거절하면 그 Take의 코칭이 멈추므로 같은 값을 그대로 걸지 않는다). BE에는 장 수 상한이 없으므로(대본 전체 50,000자 이하) 100장을 넘는 발표는 계획 없이 코칭한다.
+- **입력 크기 상한**: `plan.slides` · `scripts` 100개, `missions` 20개, `recurring_issues` 20개, `missions[].description` 500자. 넘으면 422 `VALIDATION_ERROR`이고 BE는 다시 부르지 않는다(계획 없이 코칭한다). 대본은 장마다 1,500자까지만 LLM에 넘긴다(`config.py`의 `PlannerConfig`, 요청 크기 상한이 아니라 LLM 입력을 자르는 것이다). `previous_take_result` · `previous_review` · 대본 원문의 크기는 따로 묶지 않고, 요청 본문 크기 상한으로 정한다(아직 정하지 않았다, 15절 열린 질문). 문자열 description의 500자는 Python `len`의 코드 포인트 수다. 누락·null은 길이 검사 대상이 아니다. 현재 연구 PlanRequest에는 500자 검사가 없어 서비스에 붙일 때 구현·확인한다. 현재 planner는 priority를 LLM 입력에 싣지 않으며 순위 반영 알고리즘 추가는 이번 문서 정비 범위가 아니다. 이 상한은 plan 요청에만 건다(공유 모델 `Plan` · `Mission`은 그대로 두고, plan 요청 전용 하위 모델이나 plan 요청의 검증 함수로 건다. 검증 오류는 `ValidationError` → 422). 리뷰의 다음 미션이 20개 · 설명 500자를 넘으면 계획이 없으므로, `review-agent.md` 5-3이 같은 한도로 낸다. evaluate · finalize의 같은 필드 한도는 요청 배열 한도와 함께 정한다(15절 열린 질문. evaluate에서 거절하면 그 Take의 코칭이 멈추므로 같은 값을 그대로 걸지 않는다). BE에는 장 수 상한이 없으므로(대본 전체 50,000자 이하) 100장을 넘는 발표는 계획 없이 코칭한다.
 
 ## 5-3. 출력
 **`/coach/evaluate`**
@@ -685,7 +685,7 @@ sequenceDiagram
 BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3 · 2절에 있다.
 
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고 AI 리드가 정하며, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 아래는 코치가 만드는 것만이다.
+저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 아래는 코치가 만드는 것만이다.
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기 상한) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
