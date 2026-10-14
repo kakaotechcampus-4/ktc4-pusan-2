@@ -106,7 +106,7 @@ class Calibration(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     __tablename__ = "calibrations"
 
     take_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
+        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), unique=True, nullable=False
     )
     face_detected: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
     mic_detected: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
