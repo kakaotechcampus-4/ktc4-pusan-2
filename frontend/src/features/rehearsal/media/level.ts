@@ -42,6 +42,8 @@ export interface LevelMeter {
   levelDb(): number;
   /** 말한 구간만 모은 평균 크기. 침묵은 빠집니다 */
   speech(): SpeechLevel;
+  /** 지금 말하는 중인가 — 마지막 read() 의 판정입니다. 음량 1초 기록이 이 한 기준을 씁니다 */
+  speaking(): boolean;
   /**
    * 연속으로 조용한 시간. 권한은 있는데 입력이 없는 상황의 근거입니다.
    * 발표 중에 이 값이 계속 커지면 사용자에게 알려야 합니다.
@@ -136,6 +138,8 @@ export async function createLevelMeter(stream: MediaStream): Promise<LevelMeter 
     levelDb: () => (stopped ? -100 : loudness.levelDb()),
 
     speech: () => loudness.speech(),
+
+    speaking: () => !stopped && loudness.speaking(),
 
     silentMs() {
       if (silentSince === null) return 0;

@@ -172,7 +172,6 @@ export function RehearsalPage() {
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
-  const { meterRef, statsRef, audioState } = useMicLevel(stream);
 
   const ready = materials.ready && resume !== null;
   /** 이미 종료까지 보낸 Take 입니다 (끝낸 뒤 새로고침 · 뒤로 가기). 무대를 열지 않습니다 */
@@ -190,6 +189,9 @@ export function RehearsalPage() {
     running,
     resume?.fromMs ?? 0,
   );
+  // 음량 1초 기록을 무대 시계로 쌓습니다 — 시선 1초 기록과 같은 시계라야 같은 1초를 가리킵니다.
+  // 기록은 `voiceRecord(t_ms, t_ms + duration_ms)` 로 꺼내고, WS `metrics` 가 붙으면 시선 기록과 함께 보냅니다
+  const { meterRef, statsRef, audioState } = useMicLevel(stream, { clock: elapsedMs });
   const {
     ready: gazeReady,
     engineVersion,
