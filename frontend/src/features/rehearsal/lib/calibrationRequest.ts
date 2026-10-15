@@ -13,16 +13,18 @@ import type { CalibrationRequest } from '@/types/take';
  * GOOD · FAIR 는 통과(OK)입니다 — FAIR 는 통과에 경고가 붙은 것입니다 (`aiAdapter.ts`).
  *
  * 얼굴은 보정을 마쳤으니 잡힌 것이고, 마이크는 장치 점검이 확인한 값을 받습니다.
+ * 평소 목소리 크기는 장치 점검의 "평소 목소리로 읽기"가 잰 값을 그대로 옮깁니다 (안 쟀으면 null).
  */
 export function toCalibrationRequest(
   summary: CalibrationSummary,
-  { micDetected }: { micDetected: boolean },
+  { micDetected, baseLevelDb }: { micDetected: boolean; baseLevelDb: number | null },
 ): CalibrationRequest {
   const status = summary.quality === 'POOR' ? 'RETRY_REQUIRED' : 'OK';
   return {
     face_detected: true,
     mic_detected: micDetected,
     gaze_confidence: status === 'OK' ? (summary.looAccuracy ?? 0) : 0,
+    base_level_db: baseLevelDb,
     result: {
       engine_version: summary.engineVersion,
       status,

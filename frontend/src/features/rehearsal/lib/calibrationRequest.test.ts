@@ -15,10 +15,11 @@ const summary: CalibrationSummary = {
 
 describe('보정 요약 → 발표 전 점검 결과 (AI 시선 문서 12-1)', () => {
   it('통과한 보정은 loo_accuracy 를 시선 신뢰도로 보내고 result 에 요약을 담는다', () => {
-    expect(toCalibrationRequest(summary, { micDetected: true })).toEqual({
+    expect(toCalibrationRequest(summary, { micDetected: true, baseLevelDb: null })).toEqual({
       face_detected: true,
       mic_detected: true,
       gaze_confidence: 0.93,
+      base_level_db: null,
       result: {
         engine_version: 'gaze_v1.1.0+head_pose+reference_anchor_v1',
         status: 'OK',
@@ -33,7 +34,7 @@ describe('보정 요약 → 발표 전 점검 결과 (AI 시선 문서 12-1)', (
     const warnings = ['SCREEN_MERGED: looking at the lens and at the screen centre …'];
     const body = toCalibrationRequest(
       { ...summary, quality: 'FAIR', warnings },
-      { micDetected: true },
+      { micDetected: true, baseLevelDb: null },
     );
     expect(body.result.status).toBe('OK');
     expect(body.result.warnings).toEqual(warnings);
@@ -41,7 +42,10 @@ describe('보정 요약 → 발표 전 점검 결과 (AI 시선 문서 12-1)', (
   });
 
   it('검사에 떨어진 보정(POOR)은 RETRY_REQUIRED 이고 시선 신뢰도는 0 이다', () => {
-    const body = toCalibrationRequest({ ...summary, quality: 'POOR' }, { micDetected: false });
+    const body = toCalibrationRequest(
+      { ...summary, quality: 'POOR' },
+      { micDetected: false, baseLevelDb: null },
+    );
     expect(body.result.status).toBe('RETRY_REQUIRED');
     expect(body.gaze_confidence).toBe(0);
     expect(body.mic_detected).toBe(false);
@@ -50,9 +54,18 @@ describe('보정 요약 → 발표 전 점검 결과 (AI 시선 문서 12-1)', (
   it('수치를 모르면(null) 0 으로 채우지 않고 null 로 보낸다', () => {
     const body = toCalibrationRequest(
       { ...summary, separability: null, looAccuracy: null },
-      { micDetected: true },
+      { micDetected: true, baseLevelDb: null },
     );
     expect(body.result).toMatchObject({ separability: null, loo_accuracy: null });
     expect(body.gaze_confidence).toBe(0);
+  });
+
+  it('평소 목소리 크기는 잰 값을 그대로, 안 쟀으면 null 로 보낸다 — 0 으로 채우지 않는다', () => {
+    expect(
+      toCalibrationRequest(summary, { micDetected: true, baseLevelDb: -28.5 }).base_level_db,
+    ).toBe(-28.5);
+    expect(
+      toCalibrationRequest(summary, { micDetected: true, baseLevelDb: null }).base_level_db,
+    ).toBeNull();
   });
 });
