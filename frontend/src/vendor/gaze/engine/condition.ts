@@ -52,7 +52,7 @@ export type ConditionIssue =
   | 'FACE_REPLACED'
   | 'MOVED_TOO_FAR';
 
-/** Plain data so it can ride inside the stored calibration model. */
+/** Plain data so it can ride inside the calibration model (memory only: face measurements). */
 export interface SceneBaseline {
   centre: [number, number];
   faceArea: number;
@@ -484,7 +484,9 @@ export class ConditionMonitor {
     }
 
     const values = Object.values(components);
-    const reliability = severe.length ? 0 : values.length ? Math.min(...values) : 1;
+    let reliability = 1;
+    if (severe.length) reliability = 0;
+    else if (values.length) reliability = Math.min(...values);
     const state: ConditionState = {
       t_ms: t,
       reliability,

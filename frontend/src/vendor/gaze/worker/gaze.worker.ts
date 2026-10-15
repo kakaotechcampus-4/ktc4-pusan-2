@@ -8,13 +8,15 @@
  * answer is the main thread's back-pressure signal, so at most one frame is
  * ever in flight.
  */
-import { createClassifier, type GazeEngine } from '../engine';
+import { createClassifier, EngineInitError, type GazeEngine } from '../engine';
 import type { Observation } from '../engine/types';
 import { toDeg } from '../engine/types';
 import type { FrameSummary, FromWorker, ToWorker } from './protocol';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 let engine: GazeEngine<ImageBitmap> | null = null;
+/** Frames that failed in a row: the error is reported once per streak, not at 8 per second. */
+let frameFailures = 0;
 
 const post = (msg: FromWorker) => scope.postMessage(msg);
 
@@ -32,16 +34,43 @@ function summary(obs: Observation, started: number): FrameSummary {
   };
 }
 
+/** A frame the engine threw on: no face, no angles, nothing measured. */
+function failedSummary(bitmap: ImageBitmap, tMs: number, started: number): FrameSummary {
+  return {
+    tMs,
+    processMs: performance.now() - started,
+    detectMs: 0,
+    faceValid: false,
+    invalidReason: null,
+    guide: null,
+    headYawDeg: 0,
+    headPitchDeg: 0,
+    imageSize: [bitmap.width, bitmap.height],
+  };
+}
+
+const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
 scope.onmessage = async (event: MessageEvent<ToWorker>) => {
   const msg = event.data;
   try {
     switch (msg.type) {
       case 'init': {
-        engine = await createClassifier({
-          assetDir: msg.assetDir,
-          otherAs: msg.otherAs,
-          delegate: msg.delegate,
-        });
+        try {
+          engine = await createClassifier({
+            assetDir: msg.assetDir,
+            otherAs: msg.otherAs,
+            delegate: msg.delegate,
+          });
+        } catch (err) {
+          const reason = err instanceof EngineInitError ? err.reason : 'INIT_FAILED';
+          post({
+            type: 'failed',
+            message: err instanceof Error ? err.message : String(err),
+            reason,
+          });
+          return;
+        }
         const v = engine.version;
         post({
           type: 'ready',
@@ -79,6 +108,15 @@ scope.onmessage = async (event: MessageEvent<ToWorker>) => {
             });
           } else {
             post({ type: 'frame', frame: summary(engine.observe(msg.bitmap, msg.tMs), started) });
+          }
+          frameFailures = 0;
+        } catch (err) {
+          // Every frame message is answered, also when the engine throws on it: the answer is
+          // the main thread's back-pressure signal, and a missing one stalls analysis for good.
+          // The frame counts as one without a face; analysis goes on with the next one.
+          post({ type: 'frame', frame: failedSummary(msg.bitmap, msg.tMs, started) });
+          if (frameFailures++ === 0) {
+            post({ type: 'failed', message: errorText(err), reason: 'FRAME_FAILED' });
           }
         } finally {
           msg.bitmap.close();
