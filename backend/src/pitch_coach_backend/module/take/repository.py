@@ -1,6 +1,7 @@
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.entity import Pitch
@@ -49,9 +50,17 @@ class TakeRepository:
         self.db.flush()
 
     def save_calibration(self, calibration: Calibration) -> Calibration:
-        self.db.add(calibration)
-        self.db.flush()
-        return calibration
+        values = {
+            column.key: getattr(calibration, column.key)
+            for column in Calibration.__table__.columns
+            if column.key not in ("id", "created_at")
+        }
+        stmt = insert(Calibration).values(**values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Calibration.take_id],
+            set_={key: stmt.excluded[key] for key in values if key != "take_id"},
+        ).returning(Calibration)
+        return self.db.scalars(stmt, execution_options={"populate_existing": True}).one()
 
     def next_take_number(self, pitch_id: uuid.UUID) -> int:
         current = self.db.scalar(

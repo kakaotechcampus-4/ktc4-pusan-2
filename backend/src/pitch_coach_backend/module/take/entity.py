@@ -112,6 +112,7 @@ class Calibration(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     mic_detected: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
     # 조용한 환경의 기준 음량. 이후 측정값을 여기에 상대적으로 해석한다.
     base_volume: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    base_level_db: Mapped[float | None] = mapped_column(Float)
     gaze_confidence: Mapped[float] = mapped_column(Float, nullable=False)
     result: Mapped[Any | None] = mapped_column(JSONB)
 

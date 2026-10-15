@@ -27,7 +27,16 @@ class TakeSummaryDTO(BaseModel):
     delta: int | None = None
     created_at: datetime | None = None
 
+class CalibrationResultDTO(BaseModel):
+    engine_version: str | None = None
+    status: str | None = None
+    separability: float | None = None
+    loo_accuracy: float | None = None
+    warnings: list[str] | None = None
+
 class CalibrationDTO(BaseModel):
+    base_level_db: float | None = None
+    result: CalibrationResultDTO | None = None
     face_detected: bool = False
     mic_detected: bool = False
     # DB 는 Numeric(5, 2) — 999.99 까지

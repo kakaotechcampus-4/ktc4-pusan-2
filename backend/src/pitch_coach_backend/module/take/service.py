@@ -91,6 +91,8 @@ def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto:
 
     calibration_data = Calibration(
         take_id=take_id,
+        base_level_db=calibration_dto.base_level_db,
+        result=calibration_dto.result.model_dump() if calibration_dto.result else None,
         face_detected=calibration_dto.face_detected,
         mic_detected=calibration_dto.mic_detected,
         base_volume=calibration_dto.base_volume,
