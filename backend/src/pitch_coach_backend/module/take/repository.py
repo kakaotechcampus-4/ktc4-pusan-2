@@ -9,8 +9,10 @@ from pitch_coach_backend.module.take.entity import (
     Calibration,
     Mission,
     Take,
+    TakeAIResults,
     TakeSummary,
     TakeTranscriptSegment,
+    TakeAIResult,
 )
 
 
@@ -89,6 +91,16 @@ class TakeRepository:
                 select(Mission)
                 .where(Mission.source_take_id == take_id)
                 .order_by(Mission.priority, Mission.slide_number)
+            )
+        )
+
+    def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResult | None:
+        kind_filter = True if kind is None else (TakeAIResults.kind == kind)
+        
+        return self.db.scalar(
+            select(TakeAIResult.payload).where(
+                TakeAIResults.take_id == take_id,
+                kind_filter
             )
         )
 

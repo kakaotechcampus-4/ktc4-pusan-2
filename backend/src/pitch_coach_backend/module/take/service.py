@@ -168,19 +168,23 @@ def append_transcript_segment(
     db.commit()
     return saved.id
 
-def get_review_result(db: Session, take_id: uuid.UUID, coach_final_result: dict[str, any]):
+def get_review_result(db: Session, take_id: uuid.UUID):
 
     take_repository = TakeRepository(db)
     pitch_repository = PitchRepository(db)
 
     missions = take_repository.get_missions_in_take(take_id)
 
+    # take_result
+    take_ai_result = take_repository.get_take_infos(take_id, "TAKE_RESULT")
+    # script_coverage
+    script_coverage = take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE")
     pitch_id = take_repository.get_pitch_id_of_take(take_id)
     user_criterias = pitch_repository.get_evaluations(pitch_id)
 
     review_request = ReviewRequestDTO(
-        take_result=coach_final_result,
-        script_coverage=coach_final_result.get("script_coverage"),
+        take_result=take_ai_result,
+        script_coverage=script_coverage,
         previous_takes=None,
         missions=missions,
         user_criteria=user_criterias

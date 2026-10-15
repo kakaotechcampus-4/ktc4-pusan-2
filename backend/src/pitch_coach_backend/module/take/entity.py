@@ -76,6 +76,17 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     event_logs: Mapped[Any | None] = mapped_column(JSONB)
 
 
+class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+
+    __tablename__ = "take_ai_results"
+    __table_args__ = (
+        UniqueConstraint("take_id", "kind", name="uq_take_ai_results_take_version"),
+    )
+
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    payload: Mapped[Any | None] = mapped_column(JSONB, nullable=False)
+    meta: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+
 class TakeSummary(Base):
     """take 의 분석 집계. take 당 1행이라 take_id 를 그대로 PK 로 쓴다."""
 
