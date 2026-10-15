@@ -70,8 +70,8 @@ jobs:
       - name: Build & push
         working-directory: infra
         run: |
-          docker compose $FILES build be fe
-          docker compose $FILES push be fe
+          docker compose $FILES build be fe ai
+          docker compose $FILES push be fe ai
 
       # ── 여기부터 EC2 접속 (22번 포트 대신 SSM 터널 사용) ──
 
