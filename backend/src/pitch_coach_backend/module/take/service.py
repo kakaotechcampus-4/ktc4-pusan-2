@@ -12,11 +12,14 @@ from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     MissionDTO,
     PreviousMissionsDTO,
+    PreviousTakeDTO,
     ReviewRequestDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
     TranscriptSegmentCreateDTO,
-    NextMissionDTO
+    NextMissionDTO,
+    MissionInputDTO,
+    TargetInfoDTO
 )
 from pitch_coach_backend.module.take.entity import Calibration, Mission, Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import NonExistentTake
@@ -173,19 +176,37 @@ def get_review_result(db: Session, take_id: uuid.UUID):
     take_repository = TakeRepository(db)
     pitch_repository = PitchRepository(db)
 
-    missions = take_repository.get_missions_in_take(take_id)
+    missions = [
+        MissionInputDTO(
+            mission_id=mission.id,
+            area=mission.area,
+            slide_number=mission.slide_number,
+            target=TargetInfoDTO(**mission.target) if mission.target else None
+        )
+        for mission in take_repository.get_missions_in_take(take_id)
+    ]
 
     # take_result
     take_ai_result = take_repository.get_take_infos(take_id, "TAKE_RESULT")
     # script_coverage
     script_coverage = take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE")
+
+    # 이전 take 들
+    previous_takes = [
+        PreviousTakeDTO(
+            take_result=result,
+            take_scores=coverage.get("take_scores") if coverage else None
+        )
+        for result, coverage in take_repository.get_previous_take_results(take_id, take_repository.get_take_number(take_id))
+    ]
+
     pitch_id = take_repository.get_pitch_id_of_take(take_id)
     user_criterias = pitch_repository.get_evaluations(pitch_id)
 
     review_request = ReviewRequestDTO(
         take_result=take_ai_result,
         script_coverage=script_coverage,
-        previous_takes=None,
+        previous_takes=previous_takes,
         missions=missions,
         user_criteria=user_criterias
     )

@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import (
@@ -83,6 +83,25 @@ class TakeRepository:
             .order_by(Take.take_number.desc())
             .limit(1)
         )
+
+    def get_previous_take_results(self, take_id: uuid.UUID, standard_take_num: int, limit:int = 3):
+        result = aliased(TakeAIResults)
+        coverage = aliased(TakeAIResults)
+
+        rows = self.db.execute(
+            select(result.payload, coverage.payload)
+            .select_from(Take)
+            .join(result, (result.take_id == Take.id) & (result.kind == "TAKE_RESULT"))
+            .outerjoin(coverage, (coverage.take_id == Take.id) & (coverage.kind == "SCRIPT_COVERAGE"))
+            .where(
+                Take.pitch_id == self.get_pitch_id_of_take(take_id),
+                Take.take_number < standard_take_num
+            )
+            .order_by(Take.take_number.desc())
+            .limit(limit)
+        ).all()
+
+        return [(take_result, script_coverage) for take_result, script_coverage in rows]
 
     def get_missions_in_take(self, take_id: uuid.UUID) -> list[Mission]:
         """take_id 의 Take 를 보고 만든 미션 (다음 Take 에서 보여 줄 것)."""

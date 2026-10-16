@@ -44,6 +44,11 @@ class CalibrationDTO(BaseModel):
     # DB 는 Float. bool 을 넘기면 psycopg 가 타입이 안 맞는다고 거절해 저장이 항상 500 이었다
     gaze_confidence: float = 0.0
 
+class MissionInputDTO(BaseModel):
+    mission_id: uuid.UUID
+    area: str
+    slide_number: int | None = None
+    target: TargetInfoDTO
 class MissionDTO(BaseModel):
     mission_id: uuid.UUID
     slide_number: int
@@ -51,6 +56,9 @@ class MissionDTO(BaseModel):
     priority: int
     completed: bool
 
+class PreviousTakeDTO(BaseModel):
+    take_result: dict[str, Any]
+    take_scores: list[int] | None = None
 class PreviousMissionsDTO(BaseModel):
     # Take 가 아직 없으면 None (next_take_number 는 1, missions 는 빈 목록)
     source_take_id: uuid.UUID | None
@@ -91,7 +99,7 @@ class TargetInfoDTO(BaseModel):
     display: str | None = None
     metric: str
     operator: str
-    value: int
+    value: float
 
 class MissionResultDTO(BaseModel):
     mission_id: uuid.UUID

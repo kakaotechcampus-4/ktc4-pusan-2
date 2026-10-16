@@ -147,13 +147,28 @@ class Mission(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """지난 take 에서 뽑아낸 다음 연습 과제."""
 
     __tablename__ = "missions"
+    __table_args__ = (
+        UniqueConstraint("source_take_id", "priority", name="uq_missions_source_take_priority"),
+        CheckConstraint(
+            "status IN ('ACTIVE', 'ACHIEVED', 'PARTIAL', 'FAILED', 'NOT_EVALUABLE')",
+            name="check_mission_status",
+        ),
+    )
 
     source_take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    slide_number: Mapped[int] = mapped_column(Integer, nullable=True)
+    take_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("takes.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    area: Mapped[str] = mapped_column(String(16), nullable=False)
+    slide_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target: Mapped[Any] = mapped_column(JSONB, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), server_default="ACTIVE", nullable=False)
+    observed: Mapped[float | None] = mapped_column(Float, nullable=True)
     complete: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
 
 
