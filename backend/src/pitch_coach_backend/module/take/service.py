@@ -19,7 +19,8 @@ from pitch_coach_backend.module.take.dto import (
     TranscriptSegmentCreateDTO,
     NextMissionDTO,
     MissionInputDTO,
-    TargetInfoDTO
+    TargetInfoDTO,
+    UserCriteriaDTO
 )
 from pitch_coach_backend.module.take.entity import Calibration, Mission, Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import NonExistentTake
@@ -201,7 +202,17 @@ def get_review_result(db: Session, take_id: uuid.UUID):
     ]
 
     pitch_id = take_repository.get_pitch_id_of_take(take_id)
-    user_criterias = pitch_repository.get_evaluations(pitch_id)
+    version = pitch_repository.get_latest_standard_version(pitch_id)
+
+    user_criterias = None
+    if version is not None:
+        standards = pitch_repository.get_standards_in_version(pitch_id, version)
+        analysis = pitch_repository.get_standard_analysis(pitch_id, version)
+        user_criterias = UserCriteriaDTO(
+            display_criteria=[s.title for s in standards],
+            targets=[TargetInfoDTO(**t) for t in analysis.targets] if analysis else [],
+            script_used=analysis.script_used if analysis else None
+        )
 
     review_request = ReviewRequestDTO(
         take_result=take_ai_result,

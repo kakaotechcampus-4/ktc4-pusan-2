@@ -65,6 +65,7 @@ class PreviousMissionsDTO(BaseModel):
     next_take_number: int
     missions: list[MissionDTO]
 
+
 class TranscriptWordDTO(BaseModel):
     word: str
     punctuated_word: str
@@ -95,6 +96,10 @@ class StandardResultDTO(BaseModel):
     target: int
     observed: int
 
+class UserCriteriaDTO(BaseModel):
+    display_criteria: list[str] = []
+    targets: list[TargetInfoDTO] = []
+    script_used: str | None = None
 class TargetInfoDTO(BaseModel):
     display: str | None = None
     metric: str
