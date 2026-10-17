@@ -113,7 +113,7 @@ class TakeRepository:
             )
         )
 
-    def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResult | None:
+    def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResults | None:
         kind_filter = True if kind is None else (TakeAIResults.kind == kind)
         
         return self.db.scalar(
@@ -146,7 +146,7 @@ class TakeRepository:
         self.db.flush()
         return segment
 
-    def save_total_result(self, take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None) -> TakeAIResult:
+    def save_total_result(self, take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None) -> TakeAIResults:
         values = {
             "take_id": take_id,
             "kind": "REVIEW",
