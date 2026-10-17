@@ -14,6 +14,7 @@ from pitch_coach_backend.module.take.dto import (
     PreviousMissionsDTO,
     PreviousTakeDTO,
     ReviewRequestDTO,
+    ReviewResponseDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
     TranscriptSegmentCreateDTO,
@@ -225,21 +226,26 @@ def get_review_result(db: Session, take_id: uuid.UUID):
     with httpx2.Client() as client:
         response = client.post(f"{settings.AI_BASE_URL}/takes/review", json=review_request.model_dump())
         response.raise_for_status()
-        review_data = response.json()
+        review_data = ReviewResponseDTO.model_validate(response.json())
 
-    next_missions = save_missions(db, review_data.next_missions, take_id)
-    return review_data
+    take_repository.save_total_result(take_id, review_data.model_dump(mode="json", exclude={"meta"}), review_data.meta.model_dump() if review_data.meta else None)
+    take_repository.upsert_next_missions([
+        {   
+            "source_take_id": take_id,
+            "area": mission.area,
+            "slide_number": mission.slide_number,
+            "target": mission.target.model_dump(exclude={"display"}),
+            "description": mission.description,
+            "priority": mission.priority,
+            "reason": mission.reason,
+            "status": "ACTIVE"
+        }
+        for mission in review_data.next_missions])
 
-def save_missions(db: Session, mission_dtos: list[NextMissionDTO], source_take_id: uuid.UUID):
-    missions = [
-        Mission(
-            source_take_id=source_take_id,
-            slide_number=mission_dto.slide_number,
-            description=mission_dto.description,
-            priority=mission_dto.priority
-        )
-        for mission_dto in mission_dtos
-    ]
-    saved_missions = TakeRepository(db).save_missions(missions)
+    for result in review_data.mission_results:
+        take_repository.update_mission_result(result.mission_id, take_id, result.status, result.observed)
+
+    take_repository.update_summary_review(take_id, review_data.overall_summary, review_data.score)
+    take_repository.complete_take(take_id)
     db.commit()
-    return [mission.id for mission in saved_missions]
+    return review_data

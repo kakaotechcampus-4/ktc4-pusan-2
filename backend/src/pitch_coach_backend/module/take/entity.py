@@ -83,6 +83,9 @@ class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         UniqueConstraint("take_id", "kind", name="uq_take_ai_results_take_version"),
     )
 
+    take_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     payload: Mapped[Any | None] = mapped_column(JSONB, nullable=False)
     meta: Mapped[Any | None] = mapped_column(JSONB, nullable=True)

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -87,7 +87,7 @@ class TranscriptSegmentCreateDTO(BaseModel):
     speech_final: bool
 class DetailDTO(BaseModel):
     area: str
-    slide_number: int
+    slide_number: int | None = None
     text: str
 
 class StandardResultDTO(BaseModel):
@@ -140,4 +140,80 @@ class ReviewRequestDTO(BaseModel):
     previous_takes: list[PreviousTakeDTO] | None = None
     missions: list[MissionDTO] | None = None
     user_criteria: UserCriteriaDTO | None = None
+
+class DimensionStatus(BaseModel):
+    audience_gaze: str
+    script_independence: str
+    pacing_rhythm: str
+    vocal_delivery: str
+    fluency: str
+    content_delivery: str
+
+class ScriptModeChangeDTO(BaseModel):
+    previous: str
+    current: str
+
+class ComparisonDTO(BaseModel):
+    metric: str
+    slide_number: int | None = None
+    previous: float
+    current: float
+    improved: bool | None = None
+    script_mode: ScriptModeChangeDTO | None = None
+
+class ReviewMissionResultDTO(BaseModel):
+    mission_id: uuid.UUID
+    status: Literal["ACHIEVED", "PARTIAL", "FAILED", "NOT_EVALUABLE"]
+    metric: str
+    operator: str
+    slide_number: int | None = None
+    target: float
+    observed: float | None = None
+
+class ReviewCriteriaResultDTO(BaseModel):
+    display: str
+    metric: str
+    operator: str
+    target: float
+    observed: float | None = None
+    status: Literal["ACHIEVED", "PARTIAL", "FAILED", "NOT_EVALUABLE"]
+
+class ReviewNextMissionDTO(BaseModel):
+    area: str
+    slide_number: int | None = None
+    description: str = Field(max_length=500)
+    target: TargetInfoDTO
+    priority: int
+    reason: str | None = None
+
+class ReviewRecurringIssueDTO(BaseModel):
+    area: str
+    slide_number: int | None = None
+    dimension: Literal[
+        "audience_gaze", "script_independence", "pacing_rhythm",
+        "vocal_delivery", "fluency", "content_delivery",
+    ]
+
+class ReviewMetaDTO(BaseModel):
+    schema_version: str
+    feature_version: str
+    criteria_versions: dict[str, str]
+    model: str | None = None
+
+class ReviewResponseDTO(BaseModel):
+    take_id: uuid.UUID
+    overall_summary: str
+    score: int | None = None
+    dimensions: DimensionStatus
+    strengths: list[DetailDTO] = []
+    improvements: list[DetailDTO] = []
+    comparison: list[ComparisonDTO] = []
+    mission_results: list[ReviewMissionResultDTO] = []
+    criteria_results: list[ReviewCriteriaResultDTO] = []
+    next_missions: list[ReviewNextMissionDTO] = []
+    recurring_issues: list[ReviewRecurringIssueDTO] = []
+    fallback_reason: Literal["LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"] | None = None
+    meta: ReviewMetaDTO
+
+
 

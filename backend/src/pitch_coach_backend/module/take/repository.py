@@ -1,6 +1,7 @@
 import uuid
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -11,8 +12,7 @@ from pitch_coach_backend.module.take.entity import (
     Take,
     TakeAIResults,
     TakeSummary,
-    TakeTranscriptSegment,
-    TakeAIResult,
+    TakeTranscriptSegment
 )
 
 
@@ -117,7 +117,7 @@ class TakeRepository:
         kind_filter = True if kind is None else (TakeAIResults.kind == kind)
         
         return self.db.scalar(
-            select(TakeAIResult.payload).where(
+            select(TakeAIResults.payload).where(
                 TakeAIResults.take_id == take_id,
                 kind_filter
             )
@@ -145,3 +145,51 @@ class TakeRepository:
         self.db.add(segment)
         self.db.flush()
         return segment
+
+    def save_total_result(self, take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None) -> TakeAIResult:
+        values = {
+            "take_id": take_id,
+            "kind": "REVIEW",
+            "payload": total_result_json,
+            "meta": meta_json
+        }
+        stmt = insert(TakeAIResults).values(**values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[TakeAIResults.take_id, TakeAIResults.kind],
+            set_={key: stmt.excluded[key] for key in values if key not in ("take_id", "kind")},
+        ).returning(TakeAIResults)
+        return self.db.scalars(stmt, execution_options={"populate_existing": True}).one()
+
+    def upsert_next_missions(self, missions: list[dict[str, Any]]) -> list[Mission]:
+        """다음 Take 에서 보여 줄 미션을 upsert 한다. source_take_id 는 take_id 로 고정이다."""
+        if not missions:
+            return []
+
+        stmt = insert(Mission).values(missions)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Mission.source_take_id, Mission.priority],
+            set_={key: stmt.excluded[key] for key in ("area", "slide_number", "target", "description", "reason")},
+            where=Mission.status == "ACTIVE",
+        ).returning(Mission)
+        return self.db.scalars(stmt, execution_options={"populate_existing": True}).all()
+
+    def update_mission_result(self, mission_id: uuid.UUID, take_id: uuid.UUID, status: str, observed: float | None) -> Mission:
+        self.db.execute(
+            update(Mission)
+            .where(Mission.id == mission_id, Mission.take_id == take_id)
+            .values(status=status, observed=observed, complete=(status == "ACHIEVED"))
+        )
+
+    def update_summary_review(self, take_id: uuid.UUID, summary: str, score: int | None) -> TakeSummary:
+        self.db.execute(
+            update(TakeSummary)
+            .where(TakeSummary.take_id == take_id)
+            .values(summary=summary, score=score)
+        )
+
+    def complete_take(self, take_id: uuid.UUID) -> None:
+        self.db.execute(
+            update(Take)
+            .where(Take.id == take_id)
+            .values(status="COMPLETED")
+        )
