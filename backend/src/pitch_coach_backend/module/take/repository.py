@@ -103,6 +103,19 @@ class TakeRepository:
 
         return [(take_result, script_coverage) for take_result, script_coverage in rows]
 
+    def get_previous_review_payload(self, take_id: uuid.UUID, standard_take_num: int) -> dict | None:
+        return self.db.scalar(
+            select(TakeAIResults.payload)
+            .join(Take, TakeAIResults.take_id == Take.id)
+            .where(
+                Take.pitch_id == self.get_pitch_id_of_take(take_id),
+                Take.take_number < standard_take_num,
+                TakeAIResults.kind == "REVIEW",
+            )
+            .order_by(Take.take_number.desc())
+            .limit(1)
+        )
+
     def get_missions_in_take(self, take_id: uuid.UUID) -> list[Mission]:
         """take_id 의 Take 를 보고 만든 미션 (다음 Take 에서 보여 줄 것)."""
         return list(

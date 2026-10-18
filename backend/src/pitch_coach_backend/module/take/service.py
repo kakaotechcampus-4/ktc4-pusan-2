@@ -202,6 +202,9 @@ def get_review_result(db: Session, take_id: uuid.UUID):
         for result, coverage in take_repository.get_previous_take_results(take_id, take_repository.get_take_number(take_id))
     ]
 
+    previous_review = take_repository.get_previous_review_payload(take_id, take_repository.get_take_number(take_id))
+    previous_recurring_issues = previous_review.get("recurring_issues", []) if previous_review else []
+
     pitch_id = take_repository.get_pitch_id_of_take(take_id)
     version = pitch_repository.get_latest_standard_version(pitch_id)
 
@@ -219,6 +222,7 @@ def get_review_result(db: Session, take_id: uuid.UUID):
         take_result=take_ai_result,
         script_coverage=script_coverage,
         previous_takes=previous_takes,
+        previous_recurring_issues=previous_recurring_issues,
         missions=missions,
         user_criteria=user_criterias
     )

@@ -138,7 +138,8 @@ class ReviewRequestDTO(BaseModel):
     take_result: dict[str, Any]
     script_coverage: int | None = None
     previous_takes: list[PreviousTakeDTO] | None = None
-    missions: list[MissionDTO] | None = None
+    previous_recurring_issues: list[ReviewRecurringIssueInputDTO] = []
+    missions: list[MissionInputDTO] | None = None
     user_criteria: UserCriteriaDTO | None = None
 
 class DimensionStatus(BaseModel):
@@ -186,6 +187,10 @@ class ReviewNextMissionDTO(BaseModel):
     priority: int
     reason: str | None = None
 
+class ReviewRecurringIssueInputDTO(BaseModel):
+    area: str
+    slide_number: int | None = None
+    dimension: str | None = None
 class ReviewRecurringIssueDTO(BaseModel):
     area: str
     slide_number: int | None = None
