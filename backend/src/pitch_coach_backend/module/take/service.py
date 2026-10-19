@@ -173,74 +173,77 @@ def append_transcript_segment(
     db.commit()
     return saved.id
 
-def get_review_result(db: Session, take_id: uuid.UUID):
-
-    take_repository = TakeRepository(db)
-    pitch_repository = PitchRepository(db)
-
-    missions = [
+def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list[MissionInputDTO]:
+    return [
         MissionInputDTO(
             mission_id=mission.id,
             area=mission.area,
             slide_number=mission.slide_number,
-            target=TargetInfoDTO(**mission.target) if mission.target else None
+            target=TargetInfoDTO(**mission.target),
         )
         for mission in take_repository.get_missions_in_take(take_id)
     ]
 
-    # take_result
-    take_ai_result = take_repository.get_take_infos(take_id, "TAKE_RESULT")
-    # script_coverage
-    script_coverage = take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE")
-
-    # 이전 take 들
-    previous_takes = [
+def _build_previous_takes(
+    take_repository: TakeRepository, take_id: uuid.UUID, take_number: int
+) -> list[PreviousTakeDTO]:
+    return [
         PreviousTakeDTO(
             take_result=result,
-            take_scores=coverage.get("take_scores") if coverage else None
+            take_scores=coverage.get("take_scores") if coverage else None,
         )
-        for result, coverage in take_repository.get_previous_take_results(take_id,
-                                                                           take_repository.get_take_number(take_id))
+        for result, coverage in take_repository.get_previous_take_results(take_id, take_number)
     ]
 
-    previous_review = take_repository.get_previous_review_payload(take_id, 
-                                                                  take_repository.get_take_number(take_id))
-    previous_recurring_issues = previous_review.get("recurring_issues", 
-                                                    []) if previous_review else []
+def _build_previous_recurring_issues(
+    take_repository: TakeRepository, take_id: uuid.UUID, take_number: int
+) -> list[dict]:
+    previous_review = take_repository.get_previous_review_payload(take_id, take_number)
+    return previous_review.get("recurring_issues", []) if previous_review else []
 
-    pitch_id = take_repository.get_pitch_id_of_take(take_id)
+def _build_user_criteria(db: Session, pitch_id: uuid.UUID) -> UserCriteriaDTO | None:
+    pitch_repository = PitchRepository(db)
     version = pitch_repository.get_latest_standard_version(pitch_id)
-
-    user_criterias = None
-    if version is not None:
-        standards = pitch_repository.get_standards_in_version(pitch_id, version)
-        analysis = pitch_repository.get_standard_analysis(pitch_id, version)
-        user_criterias = UserCriteriaDTO(
-            display_criteria=[s.title for s in standards],
-            targets=[TargetInfoDTO(**t) for t in analysis.targets] if analysis else [],
-            script_used=analysis.script_used if analysis else None
-        )
-
-    review_request = ReviewRequestDTO(
-        take_result=take_ai_result,
-        script_coverage=script_coverage,
-        previous_takes=previous_takes,
-        previous_recurring_issues=previous_recurring_issues,
-        missions=missions,
-        user_criteria=user_criterias
+    if version is None:
+        return None
+    standards = pitch_repository.get_standards_in_version(pitch_id, version)
+    analysis = pitch_repository.get_standard_analysis(pitch_id, version)
+    return UserCriteriaDTO(
+        display_criteria=[s.title for s in standards],
+        targets=[TargetInfoDTO(**t) for t in analysis.targets] if analysis else [],
+        script_used=analysis.script_used if analysis else None,
     )
 
-    with httpx2.Client(timeout=30.0) as client:
-        response = client.post(f"{settings.AI_BASE_URL}/takes/review", 
-                               json=review_request.model_dump(mode="json"))
-        response.raise_for_status()
-        review_data = ReviewResponseDTO.model_validate(response.json())
+def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
+    take_repository = TakeRepository(db)
+    take_number = take_repository.get_take_number(take_id)
+    return ReviewRequestDTO(
+        take_result=take_repository.get_take_infos(take_id, "TAKE_RESULT"),
+        script_coverage=take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE"),
+        previous_takes=_build_previous_takes(take_repository, take_id, take_number),
+        previous_recurring_issues=_build_previous_recurring_issues(take_repository, take_id, take_number),
+        missions=_build_missions(take_repository, take_id),
+        user_criteria=_build_user_criteria(db, take_repository.get_pitch_id_of_take(take_id)),
+    )
 
-    take_repository.save_total_result(take_id, 
-                                      review_data.model_dump(mode="json", exclude={"meta"}), 
-                                      review_data.meta.model_dump() if review_data.meta else None)
+def request_review(review_request: ReviewRequestDTO) -> ReviewResponseDTO:
+    with httpx2.Client(timeout=30.0) as client:
+        response = client.post(
+            f"{settings.AI_BASE_URL}/takes/review",
+            json=review_request.model_dump(mode="json"),
+        )
+        response.raise_for_status()
+        return ReviewResponseDTO.model_validate(response.json())
+
+def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO) -> None:
+    take_repository = TakeRepository(db)
+    take_repository.save_total_result(
+        take_id,
+        review_data.model_dump(mode="json", exclude={"meta"}),
+        review_data.meta.model_dump(mode="json"),
+    )
     take_repository.upsert_next_missions([
-        {   
+        {
             "source_take_id": take_id,
             "area": mission.area,
             "slide_number": mission.slide_number,
@@ -248,15 +251,18 @@ def get_review_result(db: Session, take_id: uuid.UUID):
             "description": mission.description,
             "priority": mission.priority,
             "reason": mission.reason,
-            "status": "ACTIVE"
+            "status": "ACTIVE",
         }
-        for mission in review_data.next_missions])
-
+        for mission in review_data.next_missions
+    ])
     for result in review_data.mission_results:
-        take_repository.update_mission_result(result.mission_id, take_id,
-                                               result.status, result.observed)
-
+        take_repository.update_mission_result(result.mission_id, take_id, result.status, result.observed)
     take_repository.update_summary_review(take_id, review_data.overall_summary, review_data.score)
     take_repository.complete_take(take_id)
     db.commit()
+
+def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
+    review_request = build_review_request(db, take_id)
+    review_data = request_review(review_request)
+    save_review(db, take_id, review_data)
     return review_data

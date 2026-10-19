@@ -132,7 +132,7 @@ class ReviewRequestDTO(BaseModel):
     script_coverage: int | None = None
     previous_takes: list[PreviousTakeDTO] | None = None
     previous_recurring_issues: list[ReviewRecurringIssueInputDTO] = []
-    missions: list[MissionInputDTO] | None = None
+    missions: list[MissionInputDTO] = []
     user_criteria: UserCriteriaDTO | None = None
 
 class DimensionStatus(BaseModel):
