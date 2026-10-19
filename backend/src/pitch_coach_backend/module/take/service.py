@@ -257,7 +257,7 @@ def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO)
     ])
     for result in review_data.mission_results:
         take_repository.update_mission_result(result.mission_id, take_id, result.status, result.observed)
-    take_repository.update_summary_review(take_id, review_data.overall_summary, review_data.score)
+    take_repository.upsert_summary_review(take_id, review_data.overall_summary, review_data.score)
     take_repository.set_analysis_stage(take_id, "DONE")
     take_repository.complete_take(take_id, "DONE")
     db.commit()

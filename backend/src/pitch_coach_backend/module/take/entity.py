@@ -112,19 +112,19 @@ class TakeSummary(Base):
     take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), primary_key=True
     )
-    average_wpm: Mapped[float] = mapped_column(Float, nullable=False)
-    filler_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    average_wpm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    filler_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # 시선이 청중·슬라이드·대본에 머문 정도. 셋을 합쳐 시선 배분을 본다.
-    audience_gaze: Mapped[int] = mapped_column(Integer, nullable=False)
-    slide_gaze: Mapped[int] = mapped_column(Integer, nullable=False)
-    script_gaze: Mapped[int] = mapped_column(Integer, nullable=False)
-    script_dependency_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    audience_gaze: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    slide_gaze: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    script_gaze: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    script_dependency_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    overall_confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    speak_accuracy: Mapped[float] = mapped_column(Float, nullable=False)
+    overall_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speak_accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
     # dB 값이라 소수점이 의미가 있고 반올림 오차를 피해야 해서 Numeric 을 쓴다.
-    volume: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
-    total_intermission: Mapped[int] = mapped_column(Integer, nullable=False)
+    volume: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    total_intermission: Mapped[int | None] = mapped_column(Integer, nullable=True)
     score: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 

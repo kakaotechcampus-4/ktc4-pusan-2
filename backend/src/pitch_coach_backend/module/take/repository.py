@@ -43,7 +43,8 @@ class TakeRepository:
             select(TakeSummary.take_id)
             .join(Take, TakeSummary.take_id == Take.id)
             .where(Take.pitch_id == pitch_id)
-            .order_by(TakeSummary.score.desc())
+            # null인 score는 제일 뒤로 변경. 가장 낮은 점수로 취급한다.
+            .order_by(TakeSummary.score.desc().nulls_last())
             .limit(1)
         )
     
@@ -202,13 +203,17 @@ class TakeRepository:
             .values(status=status, observed=observed, complete=(status == "ACHIEVED"))
         )
 
-    def update_summary_review(self, 
+    def upsert_summary_review(self, 
                               take_id: uuid.UUID, summary: str, score: int | None) -> TakeSummary:
-        self.db.execute(
-            update(TakeSummary)
-            .where(TakeSummary.take_id == take_id)
-            .values(summary=summary, score=score)
+        stmt = insert(TakeSummary).values(
+            take_id=take_id, summary=summary, score=score
         )
+
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[TakeSummary.take_id],
+            set_={"summary": stmt.excluded.summary, "score": stmt.excluded.score},
+        )
+        self.db.execute(stmt)
 
     def set_analysis_stage(self, take_id: uuid.UUID, stage: str) -> None:
         self.db.execute(
