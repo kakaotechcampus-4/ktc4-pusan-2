@@ -1,8 +1,9 @@
 import uuid
-import httpx2
 
+import httpx2
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.exception import (
     NonExistentPresentationVersion,
     NonExistentScript,
@@ -11,22 +12,21 @@ from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     MissionDTO,
+    MissionInputDTO,
     PreviousMissionsDTO,
     PreviousTakeDTO,
     ReviewRequestDTO,
     ReviewResponseDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
-    TranscriptSegmentCreateDTO,
-    NextMissionDTO,
-    MissionInputDTO,
     TargetInfoDTO,
-    UserCriteriaDTO
+    TranscriptSegmentCreateDTO,
+    UserCriteriaDTO,
 )
-from pitch_coach_backend.module.take.entity import Calibration, Mission, Take, TakeTranscriptSegment
+from pitch_coach_backend.module.take.entity import Calibration, Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import TakeRepository
-from pitch_coach_backend.core.config import settings
+
 
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
 def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequestDTO):
@@ -199,11 +199,14 @@ def get_review_result(db: Session, take_id: uuid.UUID):
             take_result=result,
             take_scores=coverage.get("take_scores") if coverage else None
         )
-        for result, coverage in take_repository.get_previous_take_results(take_id, take_repository.get_take_number(take_id))
+        for result, coverage in take_repository.get_previous_take_results(take_id,
+                                                                           take_repository.get_take_number(take_id))
     ]
 
-    previous_review = take_repository.get_previous_review_payload(take_id, take_repository.get_take_number(take_id))
-    previous_recurring_issues = previous_review.get("recurring_issues", []) if previous_review else []
+    previous_review = take_repository.get_previous_review_payload(take_id, 
+                                                                  take_repository.get_take_number(take_id))
+    previous_recurring_issues = previous_review.get("recurring_issues", 
+                                                    []) if previous_review else []
 
     pitch_id = take_repository.get_pitch_id_of_take(take_id)
     version = pitch_repository.get_latest_standard_version(pitch_id)
@@ -233,7 +236,9 @@ def get_review_result(db: Session, take_id: uuid.UUID):
         response.raise_for_status()
         review_data = ReviewResponseDTO.model_validate(response.json())
 
-    take_repository.save_total_result(take_id, review_data.model_dump(mode="json", exclude={"meta"}), review_data.meta.model_dump() if review_data.meta else None)
+    take_repository.save_total_result(take_id, 
+                                      review_data.model_dump(mode="json", exclude={"meta"}), 
+                                      review_data.meta.model_dump() if review_data.meta else None)
     take_repository.upsert_next_missions([
         {   
             "source_take_id": take_id,
@@ -248,7 +253,8 @@ def get_review_result(db: Session, take_id: uuid.UUID):
         for mission in review_data.next_missions])
 
     for result in review_data.mission_results:
-        take_repository.update_mission_result(result.mission_id, take_id, result.status, result.observed)
+        take_repository.update_mission_result(result.mission_id, take_id,
+                                               result.status, result.observed)
 
     take_repository.update_summary_review(take_id, review_data.overall_summary, review_data.score)
     take_repository.complete_take(take_id)

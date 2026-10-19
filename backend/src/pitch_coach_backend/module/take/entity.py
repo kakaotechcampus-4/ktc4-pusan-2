@@ -48,9 +48,12 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
 
     check_constraint = (
-        CheckConstraint("status IN ('READY', 'RUNNING', 'ANALYZING', 'COMPLETED', 'FAILED')", name="check_take_status"),
-        CheckConstraint("mode IN ('COACHING', 'EXAM')", name="check_take_mode"),
-        CheckConstraint("script_mode IN ('HIGHLIGHT', 'KEYWORD', 'OFF')", name="check_take_script_mode"),
+        CheckConstraint("status IN ('READY', 'RUNNING', 'ANALYZING', 'COMPLETED', 'FAILED')", 
+                        name="check_take_status"),
+        CheckConstraint("mode IN ('COACHING', 'EXAM')", 
+                        name="check_take_mode"),
+        CheckConstraint("script_mode IN ('HIGHLIGHT', 'KEYWORD', 'OFF')", 
+                        name="check_take_script_mode"),
     )
 
     pitch_id: Mapped[uuid.UUID] = mapped_column(

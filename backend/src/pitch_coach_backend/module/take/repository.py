@@ -12,7 +12,7 @@ from pitch_coach_backend.module.take.entity import (
     Take,
     TakeAIResults,
     TakeSummary,
-    TakeTranscriptSegment
+    TakeTranscriptSegment,
 )
 
 
@@ -92,7 +92,8 @@ class TakeRepository:
             select(result.payload, coverage.payload)
             .select_from(Take)
             .join(result, (result.take_id == Take.id) & (result.kind == "TAKE_RESULT"))
-            .outerjoin(coverage, (coverage.take_id == Take.id) & (coverage.kind == "SCRIPT_COVERAGE"))
+            .outerjoin(coverage, (coverage.take_id == Take.id) 
+                       & (coverage.kind == "SCRIPT_COVERAGE"))
             .where(
                 Take.pitch_id == self.get_pitch_id_of_take(take_id),
                 Take.take_number < standard_take_num
@@ -103,7 +104,8 @@ class TakeRepository:
 
         return [(take_result, script_coverage) for take_result, script_coverage in rows]
 
-    def get_previous_review_payload(self, take_id: uuid.UUID, standard_take_num: int) -> dict | None:
+    def get_previous_review_payload(self, 
+                                    take_id: uuid.UUID, standard_take_num: int) -> dict | None:
         return self.db.scalar(
             select(TakeAIResults.payload)
             .join(Take, TakeAIResults.take_id == Take.id)
@@ -159,7 +161,9 @@ class TakeRepository:
         self.db.flush()
         return segment
 
-    def save_total_result(self, take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None) -> TakeAIResults:
+    def save_total_result(self, 
+                          take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None
+                          ) -> TakeAIResults:
         values = {
             "take_id": take_id,
             "kind": "REVIEW",
@@ -181,19 +185,25 @@ class TakeRepository:
         stmt = insert(Mission).values(missions)
         stmt = stmt.on_conflict_do_update(
             index_elements=[Mission.source_take_id, Mission.priority],
-            set_={key: stmt.excluded[key] for key in ("area", "slide_number", "target", "description", "reason")},
+            set_={
+                key: stmt.excluded[key] 
+                for key in ("area", "slide_number", "target", "description", "reason")
+                },
             where=Mission.status == "ACTIVE",
         ).returning(Mission)
         return self.db.scalars(stmt, execution_options={"populate_existing": True}).all()
 
-    def update_mission_result(self, mission_id: uuid.UUID, take_id: uuid.UUID, status: str, observed: float | None) -> Mission:
+    def update_mission_result(self,
+                               mission_id: uuid.UUID, take_id: uuid.UUID, status: str, 
+                               observed: float | None) -> Mission:
         self.db.execute(
             update(Mission)
             .where(Mission.id == mission_id, Mission.take_id == take_id)
             .values(status=status, observed=observed, complete=(status == "ACHIEVED"))
         )
 
-    def update_summary_review(self, take_id: uuid.UUID, summary: str, score: int | None) -> TakeSummary:
+    def update_summary_review(self, 
+                              take_id: uuid.UUID, summary: str, score: int | None) -> TakeSummary:
         self.db.execute(
             update(TakeSummary)
             .where(TakeSummary.take_id == take_id)

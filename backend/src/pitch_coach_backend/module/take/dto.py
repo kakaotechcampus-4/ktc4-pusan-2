@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -126,14 +127,6 @@ class ReviewResultDTO(BaseModel):
     criteria_results: list[StandardResultDTO] = []
     mission_results: list[MissionResultDTO] = []
     next_missions: list[NextMissionDTO] = []
-
-class PreviousTakeDTO(BaseModel):
-    take_result: dict[str, Any]
-    take_scores: list[int] | None = None
-class UserCriteriaDTO(BaseModel):
-    display_criteria: list[str] = []
-    targets: list[TargetInfoDTO] = []
-    script_used: str | None = None
 class ReviewRequestDTO(BaseModel):
     take_result: dict[str, Any]
     script_coverage: int | None = None
@@ -217,7 +210,9 @@ class ReviewResponseDTO(BaseModel):
     criteria_results: list[ReviewCriteriaResultDTO] = []
     next_missions: list[ReviewNextMissionDTO] = []
     recurring_issues: list[ReviewRecurringIssueDTO] = []
-    fallback_reason: Literal["LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"] | None = None
+    fallback_reason: Literal[
+        "LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"
+        ] | None = None
     meta: ReviewMetaDTO
 
 
