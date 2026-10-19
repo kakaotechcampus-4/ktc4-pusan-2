@@ -227,8 +227,9 @@ def get_review_result(db: Session, take_id: uuid.UUID):
         user_criteria=user_criterias
     )
 
-    with httpx2.Client() as client:
-        response = client.post(f"{settings.AI_BASE_URL}/takes/review", json=review_request.model_dump())
+    with httpx2.Client(timeout=30.0) as client:
+        response = client.post(f"{settings.AI_BASE_URL}/takes/review", 
+                               json=review_request.model_dump(mode="json"))
         response.raise_for_status()
         review_data = ReviewResponseDTO.model_validate(response.json())
 
