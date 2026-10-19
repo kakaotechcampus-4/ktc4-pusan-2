@@ -45,6 +45,14 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     __table_args__ = (
         # 같은 pitch 안에서 take 번호가 겹치지 않게 한다.
         UniqueConstraint("pitch_id", "take_number", name="uq_takes_pitch_take_number"),
+        CheckConstraint(
+            "review_status IN ('DONE', 'FAILED', 'SKIPPED')",
+            name="check_take_review_status",
+        ),
+        CheckConstraint(
+            "analysis_stage IN ('FINALIZING', 'SCORING', 'AWAITING_CONFIRMATION', 'REVIEWING', 'DONE')",
+            name="check_take_analysis_stage",
+        ),
     )
 
     check_constraint = (
@@ -70,6 +78,9 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
     script_mode: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="READY")
+    analysis_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    analysis_stage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # 시작 전이거나 중단된 take 는 아래가 비어 있다.
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -258,11 +258,25 @@ def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO)
     for result in review_data.mission_results:
         take_repository.update_mission_result(result.mission_id, take_id, result.status, result.observed)
     take_repository.update_summary_review(take_id, review_data.overall_summary, review_data.score)
-    take_repository.complete_take(take_id)
+    take_repository.set_analysis_stage(take_id, "DONE")
+    take_repository.complete_take(take_id, "DONE")
     db.commit()
 
 def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
-    review_request = build_review_request(db, take_id)
-    review_data = request_review(review_request)
-    save_review(db, take_id, review_data)
+    take_repository = TakeRepository(db)
+    TakeRepository(db).set_analysis_stage(take_id, "REVIEWING")
+    db.commit()
+
+    try:
+        review_request = build_review_request(db, take_id)
+        review_data = request_review(review_request)
+        save_review(db, take_id, review_data)
+    except Exception as e:
+        db.rollback() # 분석 실패 시 상태를 FAILED로 바꿈.
+        # 이때, 성공을 가정하고 save_review를 실행한 경우 데이터가 꼬일 위험이 있어 rollback 후 다시 set_analysis_stage, complete_take를 실행한다.
+        take_repository.set_analysis_stage(take_id, "DONE")
+        take_repository.complete_take(take_id, "FAILED")
+        db.commit()
+        raise e
+    
     return review_data

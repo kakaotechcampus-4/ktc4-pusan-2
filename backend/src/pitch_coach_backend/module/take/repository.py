@@ -210,9 +210,16 @@ class TakeRepository:
             .values(summary=summary, score=score)
         )
 
-    def complete_take(self, take_id: uuid.UUID) -> None:
+    def set_analysis_stage(self, take_id: uuid.UUID, stage: str) -> None:
         self.db.execute(
             update(Take)
             .where(Take.id == take_id)
-            .values(status="COMPLETED")
+            .values(analysis_stage=stage, analysis_stage_at=func.now())
+        )
+
+    def complete_take(self, take_id: uuid.UUID, review_status: str) -> None:
+        self.db.execute(
+            update(Take)
+            .where(Take.id == take_id)
+            .values(status="COMPLETED", review_status=review_status)
         )
