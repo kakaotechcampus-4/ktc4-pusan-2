@@ -71,4 +71,4 @@ def review_take(
     take_id: OwnedTake,
 ):
     result = get_review_result(db, take_id)
-    return {"message": "Take reviewed successfully", "review_id": result}
+    return result
