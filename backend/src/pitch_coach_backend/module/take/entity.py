@@ -119,13 +119,13 @@ class TakeSummary(Base):
     slide_gaze: Mapped[int] = mapped_column(Integer, nullable=False)
     script_gaze: Mapped[int] = mapped_column(Integer, nullable=False)
     script_dependency_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     overall_confidence: Mapped[float] = mapped_column(Float, nullable=False)
     speak_accuracy: Mapped[float] = mapped_column(Float, nullable=False)
     # dB 값이라 소수점이 의미가 있고 반올림 오차를 피해야 해서 Numeric 을 쓴다.
     volume: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
     total_intermission: Mapped[int] = mapped_column(Integer, nullable=False)
-    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Calibration(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
