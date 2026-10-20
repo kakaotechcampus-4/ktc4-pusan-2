@@ -37,14 +37,49 @@ const DRAFTS: { name: string; id: string; title: string; element: ReactElement }
   { name: 'not-found', id: '404', title: '찾을 수 없음', element: <NotFoundDraft /> },
 ];
 
+/**
+ * 이미 구현된 화면 — 시안으로 다시 그리지 않고 **실제 화면으로 바로 갑니다** (복사본은 금방 어긋납니다).
+ * 접근성 점검도 실제 화면을 봅니다. 목 데이터(`mocks/handlers.ts`)의 피치 `p1` · Take `t3` 으로 열립니다.
+ */
+const LIVE: { path: string; id: string; title: string; note?: string }[] = [
+  { path: '/welcome', id: '—', title: '웰컴 · 서비스 소개' },
+  { path: '/login', id: 'P11', title: '로그인', note: '목 로그인이 켜져 있으면 홈으로 넘어가요' },
+  { path: '/', id: '—', title: '홈 · 내 피치' },
+  { path: '/pitch/new', id: '—', title: 'Pitch 생성' },
+  { path: '/pitch/p1/device-check', id: '09', title: '시작 전 세팅 (장치 점검)' },
+  { path: '/takes/t3/rehearsal', id: '07', title: '리허설 · 실시간 코칭' },
+  { path: '/takes/t3/exam', id: '07', title: '리허설 · 실전 모드' },
+  { path: '/privacy', id: '—', title: '개인정보 처리방침' },
+  { path: '/terms', id: '—', title: '이용약관' },
+];
+
 export function DesignIndex() {
   return (
     <DraftPage
       title="디자인 시안"
-      eyebrow="아직 구현하지 않은 화면"
-      questions={['피치 수정(P13)은 Kjun03이 feat/fe-pitch-edit 에서 작업 중이라 시안에서 뺐어요.']}
+      eyebrow="화면 모아 보기"
+      questions={[
+        '피치 수정(P13)은 Kjun03이 feat/fe-pitch-edit 에서 작업 중이라 시안에서 뺐어요.',
+        '구현된 화면은 로그인이 필요해요. 목 모드에서는 브라우저 콘솔에 mockSession.on() 을 입력하면 로그인한 상태가 돼요.',
+      ]}
     >
-      <Card>
+      <Card title="구현된 화면">
+        <ul className="grid gap-x-8 sm:grid-cols-2">
+          {LIVE.map((d) => (
+            <li key={d.path} className="border-b border-line">
+              <Link to={d.path} className="flex items-center gap-4 py-3 hover:text-coral-deep">
+                <span className="tabular w-12 font-mono text-sm text-stone">{d.id}</span>
+                <span>
+                  <span className="font-bold">{d.title}</span>
+                  {d.note && <span className="block text-xs text-stone">{d.note}</span>}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      <Card title="아직 구현하지 않은 화면 (시안)">
         <ul className="grid gap-x-8 sm:grid-cols-2">
           {DRAFTS.map((d) => (
             <li key={d.name} className="border-b border-line">
