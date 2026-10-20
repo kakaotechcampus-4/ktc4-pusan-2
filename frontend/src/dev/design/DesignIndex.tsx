@@ -5,6 +5,7 @@ import { Card } from '@/shared/ui/Panel';
 import { DraftPage } from './ui';
 import { ReportDraft } from './report/ReportDraft';
 import { ProcessingDraft } from './processing/ProcessingDraft';
+import { StageDraft } from './stage/StageDraft';
 import { PrepareMissionDraft } from './prepare/PrepareMissionDraft';
 import { RetryDraft } from './retry/RetryDraft';
 import { ComparisonDraft } from './comparison/ComparisonDraft';
@@ -25,6 +26,7 @@ const DRAFTS: { name: string; id: string; title: string; element: ReactElement }
     title: '시작 전 세팅 · 이번 Take 미션',
     element: <PrepareMissionDraft />,
   },
+  { name: 'stage', id: '07', title: '리허설 무대 · 스타일', element: <StageDraft /> },
   { name: 'processing', id: 'P6-0', title: '분석 대기', element: <ProcessingDraft /> },
   { name: 'report', id: 'P6', title: 'Take 리포트', element: <ReportDraft /> },
   { name: 'comparison', id: 'P7', title: 'Take 비교', element: <ComparisonDraft /> },
