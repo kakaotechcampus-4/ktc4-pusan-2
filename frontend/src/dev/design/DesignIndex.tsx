@@ -5,6 +5,7 @@ import { Card } from '@/shared/ui/Panel';
 import { DraftPage } from './ui';
 import { ReportDraft } from './report/ReportDraft';
 import { ProcessingDraft } from './processing/ProcessingDraft';
+import { PrepareMissionDraft } from './prepare/PrepareMissionDraft';
 import { RetryDraft } from './retry/RetryDraft';
 import { ComparisonDraft } from './comparison/ComparisonDraft';
 import { BestTakeDraft } from './best/BestTakeDraft';
@@ -18,6 +19,12 @@ import { AboutDraft, NotFoundDraft, UnsupportedDraft } from './static/StaticDraf
  */
 const DRAFTS: { name: string; id: string; title: string; element: ReactElement }[] = [
   { name: 'components', id: 'UI', title: '공용 컴포넌트', element: <ComponentsDraft /> },
+  {
+    name: 'prepare-mission',
+    id: '09',
+    title: '시작 전 세팅 · 이번 Take 미션',
+    element: <PrepareMissionDraft />,
+  },
   { name: 'processing', id: 'P6-0', title: '분석 대기', element: <ProcessingDraft /> },
   { name: 'report', id: 'P6', title: 'Take 리포트', element: <ReportDraft /> },
   { name: 'comparison', id: 'P7', title: 'Take 비교', element: <ComparisonDraft /> },
