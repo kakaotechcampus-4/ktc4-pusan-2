@@ -129,6 +129,22 @@ class TakeRepository:
             )
         )
 
+    def get_missions_for_take(self, take_id: uuid.UUID) -> list[Mission]:
+        return list(
+            self.db.scalars(
+                select(Mission)
+                .where(Mission.take_id == take_id)
+                .order_by(Mission.priority, Mission.slide_number)
+            )
+        )
+
+    def assign_missions_to_take(self, source_take_id: uuid.UUID, take_id: uuid.UUID) -> None:
+        self.db.execute(
+            update(Mission)
+            .where(Mission.source_take_id == source_take_id, Mission.status == "ACTIVE")
+            .values(take_id=take_id)
+        )
+
     def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResults | None:
         kind_filter = True if kind is None else (TakeAIResults.kind == kind)
         

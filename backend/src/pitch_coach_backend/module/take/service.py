@@ -42,6 +42,7 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
 
     # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금)
     pitch_repository.lock_for_new_version(pitch_id)
+    previous_take = take_repository.get_latest_take_in_pitch(pitch_id)
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,
@@ -54,6 +55,8 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     )
 
     saved_take = take_repository.save(new_take)
+    if previous_take is not None:
+        take_repository.assign_missions_to_take(previous_take.id, saved_take.id)
     db.commit()
 
     return saved_take.id
@@ -181,7 +184,7 @@ def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list
             slide_number=mission.slide_number,
             target=TargetInfoDTO(**mission.target),
         )
-        for mission in take_repository.get_missions_in_take(take_id)
+        for mission in take_repository.get_missions_for_take(take_id)
     ]
 
 def _build_previous_takes(
@@ -221,7 +224,8 @@ def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
         take_result=take_repository.get_take_infos(take_id, "TAKE_RESULT"),
         script_coverage=take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE"),
         previous_takes=_build_previous_takes(take_repository, take_id, take_number),
-        previous_recurring_issues=_build_previous_recurring_issues(take_repository, take_id, take_number),
+        previous_recurring_issues=_build_previous_recurring_issues(take_repository, 
+                                                                   take_id, take_number),
         missions=_build_missions(take_repository, take_id),
         user_criteria=_build_user_criteria(db, take_repository.get_pitch_id_of_take(take_id)),
     )
@@ -256,7 +260,8 @@ def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO)
         for mission in review_data.next_missions
     ])
     for result in review_data.mission_results:
-        take_repository.update_mission_result(result.mission_id, take_id, result.status, result.observed)
+        take_repository.update_mission_result(result.mission_id, take_id, 
+                                              result.status, result.observed)
     take_repository.upsert_summary_review(take_id, review_data.overall_summary, review_data.score)
     take_repository.set_analysis_stage(take_id, "DONE")
     take_repository.complete_take(take_id, "DONE")
@@ -273,7 +278,8 @@ def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
         save_review(db, take_id, review_data)
     except Exception as e:
         db.rollback() # 분석 실패 시 상태를 FAILED로 바꿈.
-        # 이때, 성공을 가정하고 save_review를 실행한 경우 데이터가 꼬일 위험이 있어 rollback 후 다시 set_analysis_stage, complete_take를 실행한다.
+        # 이때, 성공을 가정하고 save_review를 실행한 경우
+        # 데이터가 꼬일 위험이 있어 rollback 후 다시 set_analysis_stage, complete_take를 실행한다.
         take_repository.set_analysis_stage(take_id, "DONE")
         take_repository.complete_take(take_id, "FAILED")
         db.commit()

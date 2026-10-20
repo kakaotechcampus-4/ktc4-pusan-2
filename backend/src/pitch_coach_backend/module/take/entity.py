@@ -50,7 +50,8 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             name="check_take_review_status",
         ),
         CheckConstraint(
-            "analysis_stage IN ('FINALIZING', 'SCORING', 'AWAITING_CONFIRMATION', 'REVIEWING', 'DONE')",
+            "analysis_stage IN (" \
+            "'FINALIZING', 'SCORING', 'AWAITING_CONFIRMATION', 'REVIEWING', 'DONE')",
             name="check_take_analysis_stage",
         ),
     )
@@ -78,8 +79,10 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
     script_mode: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="READY")
-    analysis_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    analysis_stage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    analysis_stage: Mapped[str | None] = mapped_column(String(32), 
+                                                       nullable=True)
+    analysis_stage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), 
+                                                               nullable=True)
     review_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # 시작 전이거나 중단된 take 는 아래가 비어 있다.
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -172,9 +175,11 @@ class Mission(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         ),
     )
 
+    # Mission을 등록한 take의 id
     source_take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
     )
+    # Mission을 수행하는 take의 id
     take_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="SET NULL"), index=True, nullable=True
     )
