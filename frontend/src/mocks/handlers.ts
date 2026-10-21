@@ -25,7 +25,7 @@ import type { AnalysisStatus, HomeResponse, PrepareResponse, TakeReport } from '
 //   .env 의 VITE_API_BASE 가 채워져 있으면 요청이 http://localhost:8000/api/... 로
 //   나갑니다. 상대 경로 핸들러는 **같은 origin 요청만** 잡으므로 그때 목이 통째로
 //   새고, 화면에는 네트워크 오류만 뜹니다. mocks/auth.ts 가 같은 이유로 그렇게 씁니다.
-const ENGINE = 'face-landmarker@0.10.3+mobileone-s0@1.0+vote-v1';
+const ENGINE = 'gaze_v1.1.0+head_pose+reference_anchor_v1';
 
 // 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
 // prettier-ignore

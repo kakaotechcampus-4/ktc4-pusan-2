@@ -17,6 +17,29 @@ export interface TakeCreateRequest {
   goal_time_sec: number;
 }
 
+/**
+ * 발표 전 점검 결과 — `POST /api/pitches/{pitch_id}/takes/{take_id}/calibration`.
+ *
+ * 앞의 넷은 BE `CalibrationDTO` 그대로이고, `result` 는 AI 시선 문서(`docs/ai/features/gaze-tracking.md`
+ * 12-1)가 정한 `calibrations.result` 입니다 (BE `CalibrationResultDTO`).
+ *
+ * ★ 보정 모델(얼굴 측정값)은 보내지 않습니다. 요약 수치만 갑니다.
+ * ★ `base_volume` 은 보내지 않습니다. 평소 목소리 크기(`base_level_db`)는 아직 재지 않습니다.
+ */
+export interface CalibrationRequest {
+  face_detected: boolean;
+  mic_detected: boolean;
+  /** 보정이 OK 면 `loo_accuracy`, 아니면 0 (AI 문서 추천) */
+  gaze_confidence: number;
+  result: {
+    engine_version: string;
+    status: 'OK' | 'RETRY_REQUIRED';
+    separability: number | null;
+    loo_accuracy: number | null;
+    warnings: string[];
+  };
+}
+
 /** 컨트롤러가 `{"message", "take_id"}` 만 돌려줍니다. Take 번호 · 상태는 오지 않습니다 */
 export interface TakeCreated {
   message: string;

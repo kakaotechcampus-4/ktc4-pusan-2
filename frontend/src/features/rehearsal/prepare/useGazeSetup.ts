@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { GazeCameraView, type CameraPhase, type SetupResult } from '@/vendor/gaze/camera';
 import { CALIBRATION_HINT } from '@/vendor/gaze/camera/text';
-import type { StoredModel } from '@/vendor/gaze/engine';
-import { takeEngineVersion, toCalibrationResult, toPlacementResult } from '@/workers/aiAdapter';
-import { fitsCurrentEngine } from '@/workers/calibrationModel';
+import { toCalibrationResult, toPlacementResult } from '@/workers/aiAdapter';
 import type { CalibrationFailReason } from '@/workers/gaze.contract';
-import { loadZoneRef, saveZoneRef } from '../lib/db';
+import { forgetZoneRef, keepZoneRef } from '../lib/zoneRefMemory';
 import { readLayoutSignature } from '../lib/layoutSignature';
 import { usePrepareStore } from './prepareStore';
+import { checkGazeSupport } from './gazeSupport';
 
 /**
  * 재시도 안내. **사유마다 할 일이 다르므로** 문구도 다릅니다.
@@ -16,7 +15,13 @@ import { usePrepareStore } from './prepareStore';
  * 카드와 옆 안내가 다른 말을 하면 사용자가 무엇을 고칠지 헷갈립니다.
  * `ENGINE_ERROR` 만 FE 몫입니다.
  */
-export const CALIBRATION_FAIL_MESSAGE: Record<CalibrationFailReason, string> = {
+/**
+ * 보정이 끝나지 못한 이유. 엔진의 판정 사유(`CalibrationFailReason`)에 FE 가 보는
+ * 중단 사유 하나를 더합니다 — 보정 도중 카메라가 끊기면 모듈이 `CAMERA_LOST` 를 알립니다.
+ */
+export type SetupFailReason = CalibrationFailReason | 'CAMERA_LOST';
+
+export const CALIBRATION_FAIL_MESSAGE: Record<SetupFailReason, string> = {
   NOT_ENOUGH_SAMPLES: CALIBRATION_HINT.NOT_ENOUGH_SAMPLES!,
   DEGENERATE_FEATURES: CALIBRATION_HINT.DEGENERATE_FEATURES!,
   CLASS_NOT_SEPARABLE: CALIBRATION_HINT.CLASS_NOT_SEPARABLE!,
@@ -24,7 +29,16 @@ export const CALIBRATION_FAIL_MESSAGE: Record<CalibrationFailReason, string> = {
   CENTROIDS_TOO_CLOSE: CALIBRATION_HINT.CENTROIDS_TOO_CLOSE!,
   ANCHOR_AMBIGUOUS: CALIBRATION_HINT.ANCHOR_AMBIGUOUS!,
   ENGINE_ERROR: '시선 분석이 잠시 멈췄어요. 다시 시도해도 안 되면 페이지를 새로고침해 주세요.',
+  CAMERA_LOST: '카메라 연결이 끊겨 기준을 잡지 못했어요. 카메라를 다시 켜고 다시 잡아 주세요.',
 };
+
+/** 시선 분석을 켤 수 없는 이유별 안내 — 브라우저 · 워커 · 엔진(모델 파일) 순으로 봅니다 */
+function unavailableMessage(unsupported: boolean, workerFailed: boolean): string {
+  if (unsupported)
+    return '이 브라우저에서는 시선 분석을 쓸 수 없어요. 최신 Chrome 이나 Edge 에서 열어 주세요.';
+  if (workerFailed) return '시선 분석이 멈췄어요. 페이지를 새로고침해 주세요.';
+  return '시선 모델 파일을 불러오지 못했어요. 새로고침해도 그대로면 팀에 알려 주세요.';
+}
 
 /**
  * 화면이 보는 시선 기준 상태.
@@ -63,19 +77,20 @@ const OVERLAY_PHASES: ReadonlySet<CameraPhase> = new Set([...RUNNING_PHASES, 're
  * ── 결과 처리 (FE 몫) ───────────────────────────────────────────────
  * `calibrated` 가 오면 —
  *   모델 없음        → FAILED. 사유에 맞춰 안내
- *   모델 있음        → `ZoneReference` 를 IndexedDB 에 저장(리허설 워커가 꺼내 씀),
+ *   모델 있음        → `ZoneReference` 를 탭 메모리에 둠(리허설 워커가 꺼내 씀, `zoneRefMemory.ts`),
  *                      품질 요약을 스토어에 (시작 CTA 가 서버로 보냄)
  *   배치             → 스토어에. 경고를 보고 "이대로 계속"을 눌렀으면 `overridden`
  *
- * 저장 키는 `layoutSignature` + 엔진 버전입니다. 엔진 버전은 리허설 워커와 **같은 함수**
- * (`takeEngineVersion`)로 만듭니다 — 다르면 리허설이 기준을 못 찾습니다.
+ * 저장 키는 `layoutSignature` + 엔진 버전입니다. 엔진 버전은 카메라 화면 모듈의 `ready.version` 을
+ * 그대로 씁니다. 리허설 워커도 같은 모양(`aiAdapter.ts` `engineVersion`)으로 만듭니다 —
+ * 다르면 리허설이 기준을 못 찾습니다.
  *
- * ── 잡아 둔 기준이 틀려지는 두 경우를 막습니다 ────────────────────
- * 1. **배치가 바뀜** — 카메라를 바꾸거나 해상도·화면이 달라지면 버리고 처음부터 받습니다.
- *    진행 중이었으면 멈춥니다.
- * 2. **다시 들어왔는데 저장된 기준이 없음** — 들어올 때 IndexedDB 에서 실제로 꺼내 보고,
- *    있으면 모듈에 되돌려 실시간 확인을 켜고, 없으면 처음부터 받습니다.
- *    확인이 끝나기 전에는 시작하지 못하게 `verifying` 을 둡니다.
+ * ── 기준은 Take 마다 새로 잡습니다 ────────────────────────────────
+ * 기준에는 얼굴 측정값이 들어 있어 탭 메모리에만 둡니다 (AI 시선 문서 12-2, `zoneRefMemory.ts`).
+ * 그래서 들어올 때 지난 Take 의 요약과 기준을 지우고 처음부터 받습니다.
+ *
+ * 배치가 바뀌면(카메라 교체 · 해상도 · 화면) 잡은 기준을 버리고 처음부터 받습니다.
+ * 진행 중이었으면 멈춥니다.
  */
 export function useGazeSetup({
   stream,
@@ -111,15 +126,22 @@ export function useGazeSetup({
   const [engineFailed, setEngineFailed] = useState(false);
   const [phase, setPhase] = useState<CameraPhase>('idle');
   /** 마지막 실패 사유. 화면이 사유별 안내를 고릅니다 */
-  const [failReason, setFailReason] = useState<CalibrationFailReason | null>(null);
-  /** 들어올 때 있던 요약이 IndexedDB 의 기준과 맞는지 아직 확인 중 */
-  const [verifying, setVerifying] = useState(summary !== null);
-  /** 기준을 IndexedDB 에 저장하지 못함. 리허설이 기준을 못 찾으므로 시작을 막습니다 */
-  const [saveFailed, setSaveFailed] = useState(false);
+  const [failReason, setFailReason] = useState<SetupFailReason | null>(null);
+  /**
+   * 엔진이 뜬 뒤 워커가 죽음(`WORKER_FAILED`). 이 화면에서는 다시 보정할 수 없습니다 —
+   * 모듈이 더는 프레임을 보내지 않습니다. 이미 잡아 저장한 기준은 리허설이 자기 워커로 쓰므로 그대로 둡니다
+   */
+  const [workerFailed, setWorkerFailed] = useState(false);
+  /** 브라우저가 엔진을 못 돌림. 카메라를 켜기 전에 압니다 (`checkGazeSupport`) */
+  const [unsupported] = useState(() => {
+    const support = checkGazeSupport();
+    if (!support.ok)
+      console.error('[device-check] 시선 엔진을 돌릴 수 없는 브라우저', support.missing);
+    return !support.ok;
+  });
 
   /**
    * 지금 살아 있는 시도의 번호. 시작할 때 올리고, 무효화할 때도 올립니다.
-   * 저장 실패가 늦게 와도 자기 시도의 것일 때만 반영합니다.
    */
   const attemptRef = useRef(0);
   /**
@@ -129,11 +151,6 @@ export function useGazeSetup({
   const pendingRef = useRef(false);
   /** 이번 시도의 저장 키. 시도가 시작될 때 정하고 결과가 오면 씁니다 */
   const signatureRef = useRef('');
-  /**
-   * 기준 저장이 끝나는 시점. 리허설이 IndexedDB 에서 꺼내 쓰므로
-   * 저장이 끝나기 전에 넘어가면 방금 잡은 기준을 못 찾습니다.
-   */
-  const savingRef = useRef<Promise<void>>(Promise.resolve());
   const versionRef = useRef<string | null>(null);
 
   /**
@@ -144,7 +161,6 @@ export function useGazeSetup({
     pendingRef.current = false;
     clearCalibration();
     setFailReason(null);
-    setVerifying(false);
     const view = viewRef.current;
     if (view && view.phase !== 'idle') view.cancel();
   }, [clearCalibration]);
@@ -157,8 +173,6 @@ export function useGazeSetup({
     signatureRef.current = video ? readLayoutSignature(video) : '';
     clearCalibration();
     setFailReason(null);
-    setSaveFailed(false);
-    setVerifying(false);
   }, [videoRef, clearCalibration]);
 
   const onCalibrated = useCallback(
@@ -168,7 +182,6 @@ export function useGazeSetup({
       pendingRef.current = false;
 
       const layoutSignature = signatureRef.current;
-      const id = attemptRef.current;
 
       // 배치는 모델이 없어도 남깁니다. 다음 시도에서 같은 경고가 왜 뜨는지의 단서입니다.
       // 모듈은 TOP 이 아닌 위치에서 멈추고 묻습니다 — 그때 진행했으면 forced 입니다
@@ -194,19 +207,16 @@ export function useGazeSetup({
       }
 
       setFailReason(null);
-      // 기준은 브라우저에만 남습니다. 다음 Take 가 같은 기기·배치·엔진이면 되살려 씁니다.
-      // 실패는 삼키지 않습니다 — 화면은 '완료'인데 리허설에서 시선이 조용히 빠지기 때문입니다.
-      // 시작은 막고, 다시 잡게 합니다
-      savingRef.current = saveZoneRef(layoutSignature, ref, takeEngineVersion(engine));
-      savingRef.current.catch(() => {
-        // 그사이 다시 잡기를 눌렀으면 옛 시도의 실패로 새 시도를 막지 않습니다
-        if (attemptRef.current === id) setSaveFailed(true);
-      });
+      // 기준은 이 탭의 메모리에만 둡니다. 리허설 워커가 꺼내 쓰고 Take 를 끝내면 버립니다
+      keepZoneRef(layoutSignature, ref, engine);
       setCalibration(
         {
           points: 3,
           quality: ref.quality,
           separability: ref.metrics?.separability ?? null,
+          looAccuracy: ref.metrics?.looAccuracy ?? null,
+          warnings: ref.metrics?.warnings ?? [],
+          engineVersion: engine,
           // 엔진에는 원본 프레임이 갑니다. 화면의 거울상은 모듈의 CSS 변환이라
           // createImageBitmap 결과에는 반영되지 않습니다
           coordinateSpace: 'raw',
@@ -219,11 +229,24 @@ export function useGazeSetup({
     [setCalibration, setPlacement],
   );
 
+  /**
+   * 보정 도중 끊겼습니다(워커 · 카메라). 이 시도의 결과는 받지 않고, 전체 화면을 닫고 이유를 띄웁니다.
+   * 보정 중이 아니었으면(카드 화면) 할 일이 없습니다 — 잡아 둔 기준은 그대로 둡니다.
+   */
+  const interrupt = useCallback((reason: SetupFailReason) => {
+    const view = viewRef.current;
+    if (!view || !OVERLAY_PHASES.has(view.phase)) return;
+    attemptRef.current++;
+    pendingRef.current = false;
+    view.cancel();
+    setFailReason(reason);
+  }, []);
+
   // 콜백을 ref 로 — 바뀔 때마다 모듈을 다시 만들면 카메라 화면이 깜빡이고 엔진을 다시 띄웁니다
-  const handlersRef = useRef({ onCalibrated, beginAttempt });
+  const handlersRef = useRef({ onCalibrated, beginAttempt, interrupt });
   useEffect(() => {
-    handlersRef.current = { onCalibrated, beginAttempt };
-  }, [onCalibrated, beginAttempt]);
+    handlersRef.current = { onCalibrated, beginAttempt, interrupt };
+  }, [onCalibrated, beginAttempt, interrupt]);
 
   // ── 모듈 생명주기 ──────────────────────────────────────────────────
   useEffect(() => {
@@ -238,10 +261,26 @@ export function useGazeSetup({
         versionRef.current = v;
         setVersion(v);
       }),
-      // ready 전의 오류는 엔진이 못 뜬 것입니다. 뒤의 오류는 프레임 하나의 실패라
-      // 모듈이 알림으로 띄우고 계속 돕니다
-      view.on('error', () => {
-        if (!view.ready) setEngineFailed(true);
+      // 사유마다 할 일이 다릅니다 (AI web README `error` 이벤트).
+      //   FRAME_FAILED   프레임 하나의 실패. 모듈이 알림으로 띄우고 계속 돕니다
+      //   WORKER_FAILED  워커가 죽음. 진행 중인 보정을 멈추고 이 화면에서는 더 잡지 않습니다
+      //   CAMERA_LOST    카메라가 끊김. 진행 중인 보정을 멈춥니다 — 전체 화면에 갇히지 않게
+      //   그 밖(UNSUPPORTED_BROWSER · TIMEOUT · INIT_FAILED) 엔진이 못 뜸. 사유는 로그에만 남깁니다
+      view.on('error', ({ message, reason }) => {
+        console.error('[device-check] 시선 엔진 오류', { reason, message });
+        switch (reason) {
+          case 'FRAME_FAILED':
+            return;
+          case 'WORKER_FAILED':
+            setWorkerFailed(true);
+            handlersRef.current.interrupt('ENGINE_ERROR');
+            return;
+          case 'CAMERA_LOST':
+            handlersRef.current.interrupt('CAMERA_LOST');
+            return;
+          default:
+            if (!view.ready) setEngineFailed(true);
+        }
       }),
       view.on('phase', ({ phase: next, previous }) => {
         // 준비 점검부터, 또는 결과·실시간에서 [다시 보정]으로 들어오면 새 시도입니다.
@@ -321,38 +360,15 @@ export function useGazeSetup({
     };
   }, [videoRef, invalidate]);
 
-  // ── 2. 다시 들어왔으면 저장된 기준이 실제로 있는지 봅니다 ────────────
+  // ── 2. 들어오면 지난 Take 의 기준을 지웁니다 ──────────────────────────
   //
-  // 엔진 버전을 알아야 비교할 수 있어 모듈이 뜬 뒤에 봅니다. 찾으면 모듈에 되돌려
-  // 실시간 확인을 켭니다 — 사용자가 기준이 살아 있는 것을 눈으로 봅니다.
-  // 엔진이 못 떴으면 확인할 방법이 없으니 확인을 끝냅니다 — 리허설이 어차피 제외합니다.
+  // 기준은 Take 마다 새로 잡습니다. 메모리의 요약(스토어)은 화면을 옮겨도 남아 있어서,
+  // 지우지 않으면 지난 Take 의 기준으로 '완료'가 보입니다. 기준도 함께 버립니다
+  // (Take 를 끝내지 않고 떠났을 때)
   useEffect(() => {
-    if (!verifying || engineFailed) return;
-    if (!summary || !version) return;
-
-    let cancelled = false;
-    loadZoneRef(summary.layoutSignature, takeEngineVersion(version))
-      .then(async (ref) => {
-        if (cancelled) return;
-        const view = viewRef.current;
-        // 설정이 바뀐 엔진의 보정이면 쓰지 않습니다. 모듈은 모양(schema)만 보고 설정은 확인하지 않아,
-        // 그대로 넘기면 옛 기준으로 판정합니다 (fitsCurrentEngine). 모양이 다르면 모듈이 false 를 줍니다
-        const ok =
-          ref !== null &&
-          fitsCurrentEngine(ref.model) &&
-          view !== null &&
-          (await view.useCalibration(ref.model as StoredModel));
-        if (cancelled) return;
-        if (ok) setVerifying(false);
-        else invalidate();
-      })
-      .catch(() => {
-        if (!cancelled) invalidate();
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [verifying, engineFailed, summary, version, invalidate]);
+    clearCalibration();
+    forgetZoneRef();
+  }, [clearCalibration]);
 
   // ── 전체 화면 ──────────────────────────────────────────────────────
   //
@@ -389,8 +405,11 @@ export function useGazeSetup({
   }, [overlay]);
 
   const status: GazeSetupStatus = (() => {
+    if (unsupported) return 'UNAVAILABLE';
     if (engineFailed && !version) return 'UNAVAILABLE';
     if (!version) return 'LOADING';
+    // 워커가 죽으면 다시 잡을 수 없습니다. 이미 잡은 기준은 리허설이 쓸 수 있어 DONE 으로 둡니다
+    if (workerFailed && !summary) return 'UNAVAILABLE';
     if (RUNNING_PHASES.has(phase)) return 'RUNNING';
     if (failReason) return 'FAILED';
     if (summary) return 'DONE';
@@ -415,28 +434,23 @@ export function useGazeSetup({
     if (view && OVERLAY_PHASES.has(view.phase)) view.cancel();
   }, []);
 
-  const saved = useCallback(() => savingRef.current, []);
-
   return {
     status,
     /** FAILED 일 때 왜 실패했는지. 그 외에는 null */
     failReason: status === 'FAILED' ? failReason : null,
+    /**
+     * UNAVAILABLE 일 때 사용자에게 보일 이유와 할 일. 원인마다 할 일이 달라 문구를 나눕니다.
+     * 그 외에는 null
+     */
+    unavailableMessage:
+      status === 'UNAVAILABLE' ? unavailableMessage(unsupported, workerFailed) : null,
     /** DONE 이지만 품질이 낮을 때(POOR) 다시 잡기를 권하는 이유. 그 외에는 null */
     advice: status === 'DONE' ? advice : null,
-    /**
-     * 들어올 때 있던 기준을 확인 중. 끝나기 전에는 시작하지 않습니다.
-     * 엔진이 못 떴으면 확인할 방법이 없어 끝난 것으로 봅니다 — 리허설이 어차피 제외합니다
-     */
-    verifying: verifying && !engineFailed,
     /** 상자를 화면 전체로 띄울지 — 보정 중과 결과 카드 */
     overlay,
     boxRef,
     frameRef,
     start,
     cancel,
-    /** 기준 저장이 끝날 때까지 기다립니다. 리허설로 넘어가기 직전에 부릅니다 */
-    saved,
-    /** 기준을 저장하지 못함. 시작을 막고 다시 잡기를 안내합니다 */
-    saveFailed,
   };
 }

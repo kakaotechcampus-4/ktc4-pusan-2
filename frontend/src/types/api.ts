@@ -9,7 +9,6 @@
  * 이 파일은 **타입만** 있고, API 를 거치지 않는 곳에서도 씁니다:
  *
  *   workers/gaze.contract.ts     워커. shared/api 를 참조하면 안 되는 곳
- *   workers/temporalVoter.ts     워커
  *   features/rehearsal/lib/db.ts IndexedDB. 서버 통신과 무관
  *   mocks/handlers.ts            목 서버. 쿼리 훅의 반대편
  *
@@ -71,6 +70,11 @@ export type GazeExcludedReason =
   | 'LOW_CONFIDENCE'
   | 'ENGINE_UNAVAILABLE'
   | 'CAMERA_LOST'
+  /**
+   * 시선 기준(보정)을 잃었습니다 — 리허설 중 새로고침 등. 기준은 탭 메모리에만 있어서입니다.
+   * 카메라 끊김처럼 **제외하지 않고** 그 뒤 기록만 멈춥니다 (`gazeExclusion.ts`).
+   */
+  | 'CALIBRATION_LOST'
   | 'USER_DECLINED'
   | 'VALIDATION_FAILED'
   | 'UNCERTAIN_RATIO_EXCEEDED'
@@ -128,6 +132,12 @@ export interface CalibrationSummary {
    * 0 으로 채우면 "분리도가 0" 이라는 뜻이 되어 리포트가 거짓말을 합니다.
    */
   separability: number | null;
+  /** 보정 표본을 하나씩 빼고 맞힌 비율 0–1 (AI `loo_accuracy`). 모르면 null */
+  looAccuracy: number | null;
+  /** 합격이어도 붙는 경고 (AI `warnings`, 예: `SCREEN_MERGED: …`) */
+  warnings: string[];
+  /** 이 보정을 만든 엔진. Take 끼리 비교할 때 같은 엔진인지 봅니다 */
+  engineVersion: string;
   coordinateSpace: 'raw' | 'mirrored';
   /** 해상도·배율·카메라 위치. 이게 다르면 다른 기기의 값이라 재사용 불가 */
   layoutSignature: string;

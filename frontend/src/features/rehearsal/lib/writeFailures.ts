@@ -17,7 +17,7 @@
 
 /** 무엇을 쓰다 실패했나. 종료 로그에 이 이름 그대로 나옵니다 */
 export type WriteKind =
-  | 'gazeDecision'
+  | 'gazeSample'
   | 'slideChange'
   | 'coachLog'
   | 'gazeExcluded'

@@ -6,6 +6,7 @@ import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../medi
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
 import { setPrepareContext, setSessionTicket, setTakeId, startSession } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
+import { toCalibrationRequest } from '../lib/calibrationRequest';
 import { toMessage } from '@/shared/api/errorMessage';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
@@ -31,31 +32,27 @@ function deviceCheckHint({
   live,
   micOk,
   calStatus,
+  calUnavailable,
   calPoor,
-  calSaveFailed,
 }: {
   deviceError: DeviceError | null;
   live: boolean;
   micOk: boolean;
   calStatus: GazeSetupStatus;
+  /** 시선 분석을 켤 수 없는 이유와 할 일. UNAVAILABLE 일 때만 있습니다 */
+  calUnavailable: string | null;
   /** 기준은 잡혔지만 품질이 낮음 — 막지 않고 권하기만 합니다 */
   calPoor: boolean;
-  /** 기준은 잡혔지만 브라우저에 저장하지 못함 — 리허설이 못 쓰므로 막습니다 */
-  calSaveFailed: boolean;
 }): string {
   if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
+  // 카메라 권한을 묻기 전에 알립니다 — 시선 분석을 못 쓰면 카메라를 켜도 시작할 수 없습니다
+  if (calStatus === 'UNAVAILABLE' && calUnavailable) return calUnavailable;
   if (!live) return '카메라를 켜야 점검을 시작할 수 있습니다';
   if (!micOk) return '마이크에 대고 한 마디 해보세요';
-  if (calStatus === 'UNAVAILABLE') {
-    return '시선 분석을 켤 수 없어요. 새로고침해도 그대로면 팀에 알려 주세요';
-  }
   if (calStatus === 'LOADING') return '시선 분석을 준비하는 중…';
   if (calStatus === 'FAILED')
     return '기준을 잡지 못했어요. 얼굴이 화면 안에 있는지 보고 다시 해주세요';
   if (calStatus !== 'DONE') return '시선 기준을 먼저 잡아야 연습을 시작할 수 있습니다';
-  if (calSaveFailed) {
-    return '시선 기준을 저장하지 못했어요. 다시 잡아 주세요';
-  }
   if (calPoor) return '시선 기준이 흐릿해요. 다시 잡으면 더 정확해지지만, 이대로 시작해도 됩니다';
   return '점검이 끝났어요';
 }
@@ -85,11 +82,8 @@ function calibrationActionText(status: GazeSetupStatus, live: boolean): string {
   }
 }
 
-/** 시선 기준점 항목의 문구. 확인 중이면 상태보다 그게 먼저입니다 */
-function calibrationLabel(
-  cal: Pick<ReturnType<typeof useGazeSetup>, 'verifying' | 'status' | 'advice'>,
-): string {
-  if (cal.verifying) return '시선 기준 · 저장된 기준 확인 중';
+/** 시선 기준점 항목의 문구 */
+function calibrationLabel(cal: Pick<ReturnType<typeof useGazeSetup>, 'status' | 'advice'>): string {
   switch (cal.status) {
     case 'UNAVAILABLE':
       return '시선 기준 · 시선 분석 사용 불가';
@@ -219,14 +213,7 @@ export function DeviceCheckPage() {
   // ★ 피치 생성에서 조합을 받았으면 준비 화면 응답(`/prepare`)을 기다리지 않습니다.
   //   Take 에 필요한 값(버전 id · 목표 시간)이 조합에 다 있고, `/prepare` 는 BE 에 아직 없습니다
   const versions = takeVersions(combo, data);
-  const ready =
-    live &&
-    micOk &&
-    cal.status === 'DONE' &&
-    !cal.verifying &&
-    !cal.saveFailed &&
-    versions !== null &&
-    !starting;
+  const ready = live && micOk && cal.status === 'DONE' && versions !== null && !starting;
 
   /**
    * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
@@ -251,10 +238,6 @@ export function DeviceCheckPage() {
     const practiceMode = practiceModeFor(scriptMode);
 
     try {
-      // 리허설은 다른 워커라 기준을 IndexedDB 에서 꺼내 씁니다. **Take 를 만들기 전에** 확인합니다 —
-      // 뒤에서 실패하면 연습 없이 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다
-      await cal.saved();
-
       const clientSessionId = await startSession();
 
       // ★ 이번 연습의 슬라이드 + 대본 조합이 Take 에 박힙니다 (BE TakeInitRequestDTO)
@@ -284,13 +267,14 @@ export function DeviceCheckPage() {
       };
       await setSessionTicket(clientSessionId, ticket);
 
-      // 품질 요약만 갑니다. 기준 벡터는 브라우저에 남습니다 (CLAUDE.md 1번)
+      // 요약 수치만 갑니다. 보정 모델은 브라우저에 남습니다 (CLAUDE.md 1번)
       //
       // ★ 여기서 실패해도 연습은 엽니다. Take 는 이미 만들어졌으니, 여기서 멈추면 연습 없이
       //   빈 Take 만 남고 takeNumber 가 실제 횟수와 어긋납니다. 요약은 리포트의 참고값이라
       //   빠져도 발표 기록은 온전합니다 — 원인은 콘솔에 남깁니다
       if (calibration) {
-        await postCalibration(pitchId, take.takeId, calibration).catch((err: unknown) => {
+        const body = toCalibrationRequest(calibration, { micDetected: micOk });
+        await postCalibration(pitchId, take.takeId, body).catch((err: unknown) => {
           console.error('[장치 점검] 보정 요약을 보내지 못했습니다', err);
         });
       }
@@ -319,8 +303,8 @@ export function DeviceCheckPage() {
           live,
           micOk,
           calStatus: cal.status,
+          calUnavailable: cal.unavailableMessage,
           calPoor: cal.advice !== null,
-          calSaveFailed: cal.saveFailed,
         }));
 
   const takeNumber = data?.nextTakeNumber ?? 0;
@@ -362,6 +346,7 @@ export function DeviceCheckPage() {
               videoRef={videoRef}
               live={live}
               status={cal.status}
+              unavailableMessage={cal.unavailableMessage}
               overlay={cal.overlay}
               onEnable={() => request().catch(() => undefined)}
               onCancel={cal.cancel}

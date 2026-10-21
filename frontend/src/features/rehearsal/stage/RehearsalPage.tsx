@@ -8,7 +8,9 @@ import { usePrepareStore } from '../prepare/prepareStore';
 import { useCompleteTake } from '@/shared/api/take';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { buildGazePayload } from '../lib/gazePayload';
+import { exclusionForDeviceError, exclusionForGazeError } from '../lib/gazeExclusion';
 import { stopTakeStream } from '../lib/sttSocket';
+import { forgetZoneRef } from '../lib/zoneRefMemory';
 import {
   beat,
   endSession,
@@ -18,7 +20,7 @@ import {
   markSubmitted,
   markGazeExcluded,
   readCoachLog,
-  readGazeDecisions,
+  readGazeSamples,
   readSlideChanges,
   setEngineVersion,
   setGazePerf,
@@ -27,7 +29,6 @@ import {
 import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/writeFailures';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ScreenLabel } from '@/shared/ui/ScreenLabel';
-import { TemporalVoter } from '@/workers/temporalVoter';
 import { formatDuration } from '@/shared/lib/clock';
 import type { CompleteRequest, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
@@ -194,6 +195,7 @@ export function RehearsalPage() {
     perf,
     bottomRatio,
     missingCalibration,
+    flushGaze,
   } = useLiveGaze({
     stream,
     videoRef,
@@ -279,16 +281,15 @@ export function RehearsalPage() {
       let coach: CoachHistory | null = null;
       let recordedUntil: Ms = 0;
       try {
-        const [changes, coachRows, decisions] = await Promise.all([
+        const [changes, coachRows, samples] = await Promise.all([
           readSlideChanges(id),
           readCoachLog(id),
-          readGazeDecisions(id),
+          readGazeSamples(id),
         ]);
         slide = lastSlide(changes);
         coach = coachHistory(coachRows);
         recordedUntil = recordedUntilMs({
-          gazeTMs: decisions.map((d) => d.tMs),
-          gazeIntervalMs: TemporalVoter.INTERVAL_MS,
+          gaze: samples,
           slideAtMs: changes.map((c) => c.atMs),
           coachAtMs: coachRows.map((c) => c.atMs),
         });
@@ -363,6 +364,8 @@ export function RehearsalPage() {
   // ── 제외 사유 배선 ───────────────────────────────────────────────
   // 한 번 정해지면 되돌리지 않습니다. 발표 도중 엔진이 죽었다면 그 Take의
   // 시선 숫자는 앞뒤가 다른 조건에서 나온 것이라 믿을 수 없습니다.
+  // 카메라가 끊긴 것은 제외하지 않고 기록만 멈춥니다 — 빈 시간은 서버가 측정 못 함으로
+  // 채우므로 끊기기 전 기록을 살립니다 (`lib/gazeExclusion.ts`)
   const excludeGaze = useCallback(
     (id: string, reason: GazeExcludedReason) => {
       noteExclusion(reason);
@@ -375,12 +378,14 @@ export function RehearsalPage() {
 
   useEffect(() => {
     if (!sessionId || !deviceError) return;
-    excludeGaze(sessionId, deviceError === 'PERMISSION_DENIED' ? 'USER_DECLINED' : 'CAMERA_LOST');
+    const reason = exclusionForDeviceError(deviceError);
+    if (reason) excludeGaze(sessionId, reason);
   }, [sessionId, deviceError, excludeGaze]);
 
   useEffect(() => {
     if (!sessionId || !gazeError) return;
-    excludeGaze(sessionId, gazeError);
+    const reason = exclusionForGazeError(gazeError);
+    if (reason) excludeGaze(sessionId, reason);
   }, [sessionId, gazeError, excludeGaze]);
 
   // 엔진 버전은 종료 시점에 영구 고정됩니다 — 받는 즉시 기록해 둡니다
@@ -453,6 +458,10 @@ export function RehearsalPage() {
 
     setPhase('ENDING');
 
+    // 1초가 안 찬 마지막 시선 조각을 발표 길이까지로 닫아 저장합니다. 아래 submit 이 기록을
+    // 읽기 전에 끝나야 해서 기다립니다 (최대 0.5초, 실패하지 않습니다)
+    await flushGaze(ended.durationMs);
+
     // ★ 종료 중에 새로고침해도 무대로 돌아가지 않고 이 값으로 종료를 이어가도록 먼저 적습니다.
     //   못 적어도 막지 않습니다 — 그때 새로고침하면 발표 중으로 돌아갈 뿐입니다
     await markEnding(sessionId, ended).catch((err: unknown) =>
@@ -476,6 +485,9 @@ export function RehearsalPage() {
   const submit = async (id: string, { durationMs, endedAtIso }: Ending) => {
     if (!ticket) return;
 
+    // 무대는 다시 열리지 않으니 시선 기준은 더 쓸 데가 없습니다. 얼굴 측정값이 들어 있어 버립니다
+    forgetZoneRef();
+
     // ★ 여기서부터 끝까지 한 try 입니다. 중간이 실패해도 **무대를 되살리면 안 됩니다** —
     //   phase 가 RUNNING 으로 돌아가면 clock.start() 가 t0 를 다시 잡아 durationMs 가
     //   어긋나고, useSlideDeck 이 0ms 행을 덮어씁니다 (rehearsalStore 주석 참고).
@@ -492,17 +504,16 @@ export function RehearsalPage() {
       }
 
       const row = await getSession(id);
-      const decisions = await readGazeDecisions(id);
+      const samples = await readGazeSamples(id);
       const changes = await readSlideChanges(id);
       const coachRows = await readCoachLog(id);
 
       const gazePayload = buildGazePayload({
-        decisions,
+        samples,
         durationMs,
         // DB 쓰기가 실패했어도 값 자체는 메모리에 있습니다. 행을 못 읽었다고
         // ENGINE_VERSION_UNAVAILABLE 로 보내면 없는 사실을 만들어 내는 셈입니다
         engineVersion: row?.engineVersion ?? engineVersion,
-        decisionIntervalMs: TemporalVoter.INTERVAL_MS,
         // 행이 우선이고, 못 적혔으면 ref 가 받습니다. 제외를 놓치는 쪽이
         // 잘못 제외하는 쪽보다 나쁩니다 — 틀린 숫자가 정상인 척 실리니까요
         excludedReason: row?.gazeExcluded ? row.gazeExcludedReason : excludedRef.current,
@@ -581,7 +592,9 @@ export function RehearsalPage() {
   });
 
   const gazeNote = gazeNoteText({
-    cameraLost: deviceError !== null,
+    declined: deviceError === 'PERMISSION_DENIED',
+    cameraLost:
+      (deviceError !== null && deviceError !== 'PERMISSION_DENIED') || gazeError === 'CAMERA_LOST',
     missingCalibration,
     error: gazeError,
     ready: gazeReady,
@@ -756,13 +769,18 @@ export function RehearsalPage() {
  * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다.
  */
 function gazeNoteText(state: {
+  declined: boolean;
   cameraLost: boolean;
   missingCalibration: boolean;
   error: GazeExcludedReason | null;
   ready: boolean;
 }): string {
-  if (state.cameraLost) return '카메라가 끊겼습니다 — 발표는 계속됩니다';
-  if (state.missingCalibration) return '시선 기준이 없어 측정 제외 — 발표는 계속됩니다';
+  if (state.declined) return '카메라 권한이 없어 시선은 기록하지 않아요 — 발표는 계속됩니다';
+  // 끊기기 전 기록은 남습니다. 이후 시간은 서버가 측정 못 함으로 셉니다
+  if (state.cameraLost) return '카메라가 끊겨 이후 시선은 기록하지 않아요 — 발표는 계속됩니다';
+  // 새로고침하면 기준(탭 메모리)이 사라집니다. 그 전 기록은 남고, 이후는 측정 못 함으로 셉니다
+  if (state.missingCalibration)
+    return '시선 기준이 없어 이후 시선은 기록하지 않아요 — 발표는 계속됩니다';
   if (state.error) return `시선 측정 제외 · ${state.error}`;
   if (state.ready) return '시선 기록 중';
   return '시선 엔진 준비 중';

@@ -23,7 +23,8 @@ export function LevelBar({
 
       {variant === 'segments' ? (
         <div className="relative h-4 flex-1">
-          <div className="absolute inset-0 flex gap-1">
+          {/* 빈 칸. 놓이는 곳의 바탕에 따라 색을 바꿀 수 있게 표시를 둡니다 (무대: stage.css) */}
+          <div data-meter-track className="absolute inset-0 flex gap-1">
             {Array.from({ length: SEGMENT_COUNT }, (_, i) => (
               <span key={i} className="h-full flex-1 rounded-xs bg-stage-panel" />
             ))}
