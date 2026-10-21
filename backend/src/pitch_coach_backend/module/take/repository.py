@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,9 @@ from pitch_coach_backend.module.take.entity import (
     TakeSummary,
     TakeTranscriptSegment,
 )
+
+# 아직 끝나지 않은 Take. 실시간 STT 가 붙을 수 있는 상태와 같다 (realtime/service.py)
+_IN_PROGRESS_STATUSES = ("READY", "RUNNING")
 
 
 class TakeRepository:
@@ -109,3 +112,30 @@ class TakeRepository:
         self.db.add(segment)
         self.db.flush()
         return segment
+
+    def mark_running(self, take_id: uuid.UUID) -> bool:
+        """`READY` 인 Take 를 `RUNNING` 으로 바꾼다. 바꿨으면 True.
+
+        이미 `RUNNING` 이거나(다시 붙은 연결) 끝났으면 아무것도 바꾸지 않고 False.
+        """
+        result = self.db.execute(
+            update(Take)
+            .where(Take.id == take_id, Take.status == "READY")
+            .values(status="RUNNING")
+        )
+        return result.rowcount > 0
+
+    def mark_ended(self, take_id: uuid.UUID) -> bool:
+        """진행 중인 Take 를 끝난 상태(`ANALYZING`)로 바꾼다. 바꿨으면 True.
+
+        Take 가 없거나 이미 끝났으면 아무것도 바꾸지 않고 False. 읽고 쓰지 않고 UPDATE 하나로
+        한다 — 같은 Take 를 두 번 끝내도 한 번만 바뀐다.
+        `ended_at` 은 FE 가 종료 흐름에서 PUT 으로 적는다. 그게 실패해도 남도록 비어 있을 때만
+        지금 시각으로 채운다 (뒤에 온 FE 값은 그대로 덮는다).
+        """
+        result = self.db.execute(
+            update(Take)
+            .where(Take.id == take_id, Take.status.in_(_IN_PROGRESS_STATUSES))
+            .values(status="ANALYZING", ended_at=func.coalesce(Take.ended_at, func.now()))
+        )
+        return result.rowcount > 0

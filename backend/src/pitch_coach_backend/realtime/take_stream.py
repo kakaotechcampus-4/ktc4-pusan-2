@@ -27,6 +27,10 @@ final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). �
 저장된 마지막 번호를 이어 받는다 — grace 가 만료돼 스트림이 사라진 뒤 다시 붙어도 `segment_id`
 가 `"1-1"` 부터 다시 나오지 않아야 FE 가 앞부분을 덮어쓰지 않고, `UNIQUE(take_id, seq)` 도 지켜진다.
 
+스트림 정리와 Take 종료는 다르다. 사용자가 stop 을 보내면(`end`) Take 가 끝나 같은 Take 로 다시
+붙지 못한다. grace 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리한다 — FE 는 끊긴 뒤에도
+다시 붙고, 새 스트림이 번호를 이어 받는다.
+
 MVP 는 uvicorn 1 프로세스라 레지스트리가 in-process dict 다. 워커를 늘리려면 sticky 라우팅이나
 Redis 가 필요한데 그때는 어차피 재설계다 (계획 문서 §8-6).
 """
@@ -35,6 +39,7 @@ import asyncio
 import contextlib
 import logging
 import uuid
+from collections import OrderedDict
 from collections.abc import Awaitable
 from dataclasses import dataclass, field, replace
 
@@ -95,6 +100,8 @@ HANDOVER_TIMEOUT_SEC = 3.0
 DURATION_TOLERANCE_MS = 50
 # FE 가 떨어져 있는 동안 모아 둘 final 개수. 10분 발표가 200개 안팎이다
 MAX_MISSED_FINALS = 200
+# 끝낸 Take 를 프로세스 안에서 기억하는 개수. 오래된 것부터 버린다
+MAX_REMEMBERED_TAKES = 10_000
 
 # _run_session 이 끝난 이유
 _STOPPED = "stopped"  # CloseStream 을 보냈다. Take 가 끝났다
@@ -104,6 +111,10 @@ _LOST = "lost"  # Deepgram 이 끊었다
 
 class StreamOwnerMismatch(Exception):
     """다른 사용자가 이미 쓰고 있는 Take 다."""
+
+
+class TakeEnded(Exception):
+    """이 프로세스에서 사용자가 끝낸 Take 다. DB 에 적히기 전이라도 다시 붙지 못한다."""
 
 
 def _backoff(attempt: int) -> float:
@@ -272,6 +283,15 @@ class TakeStream:
         self._stopping = True
         self._stop_event.set()
         self._put(None)
+
+    def end(self) -> None:
+        """사용자가 Take 를 끝냈다. 스트림을 정리하고, 같은 Take 로 다시 붙지 못하게 한다.
+
+        `request_stop` 만으로는 Take 가 끝나지 않는다 — grace 만료나 오디오 없는 연결도 스트림을
+        정리하지만, 그 뒤 FE 가 다시 붙으면 새 스트림으로 이어 가야 한다.
+        """
+        _ended[self.take_id] = None
+        self.request_stop()
 
     async def wait_closed(self, timeout: float | None = None) -> bool:
         try:
@@ -771,6 +791,25 @@ class _KeyedLock:
 _attach_locks: dict[uuid.UUID, _KeyedLock] = {}
 
 
+class _BoundedDict[K, V](OrderedDict[K, V]):
+    """`MAX_REMEMBERED_TAKES` 개까지만 둔다. 넣거나 고친 것이 가장 새것이고, 오래된 것부터 버린다.
+
+    값은 `d[k] = v` 로만 넣는다 — `setdefault` · `update` 는 C 구현이라 여기를 거치지 않는다.
+    """
+
+    def __setitem__(self, key: K, value: V) -> None:
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        while len(self) > MAX_REMEMBERED_TAKES:
+            self.popitem(last=False)
+
+
+# 사용자가 끝낸 Take (값은 쓰지 않는다). DB(`takes.status`)가 원본이고 이건 그게 적히기 전의 틈을
+# 막는다 — 마지막 확정 전사를 저장하고 DB 에 적기 전에 FE 가 다시 붙으면 새 스트림이 열린다.
+# 프로세스가 다시 뜨면 비지만 그때는 DB 가 막는다
+_ended: _BoundedDict[uuid.UUID, None] = _BoundedDict()
+
+
 @contextlib.asynccontextmanager
 async def _attach_lock(take_id: uuid.UUID):
     entry = _attach_locks.setdefault(take_id, _KeyedLock())
@@ -797,8 +836,13 @@ async def attach(
 
     Take 존재·소유·상태는 호출자(service)가 DB 로 먼저 검사한다. 여기서는 스트림을
     만든 사용자와 다르면 `StreamOwnerMismatch` — 그 검사의 이중 안전장치다.
+    이 프로세스에서 사용자가 끝낸 Take 면 `TakeEnded`.
     """
     async with _attach_lock(take_id):
+        # 정리 중인 스트림을 기다리기 전에 본다. 끝낸 Take 라면 기다렸다 새로 열 이유가 없다
+        if take_id in _ended:
+            raise TakeEnded
+
         stream = _streams.get(take_id)
 
         if stream is not None and stream.is_stopping:

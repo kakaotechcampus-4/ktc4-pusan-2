@@ -258,8 +258,8 @@ WS /api/ws/takes/{take_id}
 
 - `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
 - **인증 뒤 Take 를 검사한다.** 사용자 존재 → Take 존재·소유(`takes` → `pitches.user_id`) → 상태
-  (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 도 받는 이유는 `READY→RUNNING`
-  전이가 take 모듈(FE 의 `started_at` 갱신) 몫이라 WebSocket 을 여는 순서를 FE 에 강제하지 않기 위해서다.
+  (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 는 첫 연결이라 받고, 통과하면
+  `RUNNING` 으로 바꾼다 (`docs/ai/architecture.md` 1-3). 못 바꿔도 STT 는 그대로 돈다.
 - **final 은 `take_transcript_segments` 에 저장한다** (interim 은 저장하지 않는다). 리포트의 유일한
   원천이다. 시각은 Take 기준(ms), `words` 는 `[{word, punctuated_word, start_ms, end_ms, confidence}]`
   JSONB. 저장은 realtime 이 아니라 `take/service.py` 가 하고(`append_transcript_segment`), 스트림이
@@ -295,6 +295,11 @@ WS /api/ws/takes/{take_id}
 - 정리가 늦어도 FE 를 붙잡아 두지 않는다. `stop` 뒤 Deepgram drain 이 12초 안에 안 끝나면 태스크를
   끊고, 그마저 2초 안에 안 끝나면 닫힌 것으로 확정해 `closed` 를 보낸다. Deepgram 소켓 닫기 자체도
   3초 상한이 있다. `stop` 을 보낸 직후 FE 가 사라져도(탭 닫힘) 서버 쪽 종료·저장 절차는 같다.
+- **`stop` 이 Take 를 끝낸다.** 마지막 확정 전사까지 저장한 뒤 Take 를 `ANALYZING` 으로 바꾸고 `closed` 를
+  보낸다 (`ended_at` 이 비어 있으면 지금 시각으로 채운다). `stop` 을 받은 순간부터 같은 Take 로 붙는 연결은
+  `TAKE_ENDED` 로 거절한다 — DB 에 적기 전의 틈은 프로세스 안의 기록이 막는다. 종료를 DB 에 못 적어도
+  `closed` 는 보낸다. 30초 대기 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리하고 Take 는 끝내지 않는다
+  (FE 는 끊긴 뒤에도 다시 붙는다).
 - 아직 없는 것: `metrics`/`coach` 메시지 (AI 팀 규칙 확정 후).
 
 FE 없이 확인하는 두 가지 —

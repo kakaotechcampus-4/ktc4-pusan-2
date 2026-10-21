@@ -132,7 +132,7 @@ def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
 
 # ── 실시간 STT (realtime 모듈이 부른다) ──────────────────────────────
 #
-# realtime 은 entity 를 갖지 않고 저장을 여기에 위임한다. 아래 셋은 WebSocket 연결·
+# realtime 은 entity 를 갖지 않고 저장을 여기에 위임한다. 아래 다섯은 WebSocket 연결·
 # 백그라운드 스트림에서 불리므로 **호출자가 run_in_threadpool 로 감싼다** (동기 SQLAlchemy).
 
 
@@ -164,3 +164,20 @@ def append_transcript_segment(
     saved = TakeRepository(db).save_transcript_segment(segment)
     db.commit()
     return saved.id
+
+
+def mark_running(db: Session, take_id: uuid.UUID) -> bool:
+    """첫 실시간 연결이 붙었다. `READY` 면 `RUNNING` 으로 바꾸고 커밋한다. 바꿨으면 True."""
+    marked = TakeRepository(db).mark_running(take_id)
+    db.commit()
+    return marked
+
+
+def mark_ended(db: Session, take_id: uuid.UUID) -> bool:
+    """사용자가 Take 를 끝냈다. 상태를 `ANALYZING` 으로 바꾸고 커밋한다.
+
+    Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
+    """
+    marked = TakeRepository(db).mark_ended(take_id)
+    db.commit()
+    return marked
