@@ -33,6 +33,7 @@ export function useSttStream({
   stream,
   enabled,
   elapsedMs,
+  onAutoEnd,
 }: {
   takeId: string;
   stream: MediaStream | null;
@@ -40,6 +41,8 @@ export function useSttStream({
   enabled: boolean;
   /** 캡처를 시작한 시점의 Take 경과 시간 — offset_ms 의 기준점입니다 */
   elapsedMs: () => Ms;
+  /** 서버가 Take 를 자동으로 끝냈습니다 (말 없음 · 최대 시간). 무대가 종료 흐름을 탑니다 */
+  onAutoEnd?: () => void;
 }) {
   /** 전사 한 줄이 들어갈 자리. 이 훅이 textContent 로 직접 씁니다 */
   const transcriptRef = useRef<HTMLSpanElement>(null);
@@ -52,6 +55,12 @@ export function useSttStream({
 
   const [sttState, setSttState] = useState<SttState | null>(null);
   const [errorNote, setErrorNote] = useState<string | null>(null);
+
+  /** 소켓은 effect 안에서 한 번 만들어집니다. 그 뒤에 바뀐 콜백을 부르려고 ref 로 넘깁니다 */
+  const onAutoEndRef = useRef(onAutoEnd);
+  useEffect(() => {
+    onAutoEndRef.current = onAutoEnd;
+  });
 
   useEffect(() => {
     if (!enabled || !stream || takeId === '') return;
@@ -86,6 +95,12 @@ export function useSttStream({
       },
       onError: (code) => {
         if (!cancelled) setErrorNote(STT_ERROR_MESSAGE[code]);
+      },
+      onAutoEnd: (_reason, message) => {
+        if (cancelled) return;
+        // 서버가 보낸 문구가 이유를 말합니다 ("2분 넘게 말이 없어 …")
+        setErrorNote(message);
+        onAutoEndRef.current?.();
       },
       onGiveUp: (reason) => {
         // 보낼 곳이 없어졌습니다. 마이크 캡처를 계속 돌리면 남은 발표 내내
