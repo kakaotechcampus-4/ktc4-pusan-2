@@ -217,6 +217,7 @@ class PitchRepository:
         expired_before: datetime,
         segmented: bool,
         terms: list[str],
+        parse_meta: dict[str, Any] | None,
     ) -> bool:
         return self._finish_parse(
             script_version_id,
@@ -225,6 +226,7 @@ class PitchRepository:
             parse_status=ScriptParseStatus.DONE,
             segmented=segmented,
             terms=terms,
+            parse_meta=parse_meta,
             parse_error=None,
         )
 
