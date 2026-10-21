@@ -78,6 +78,9 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_sec: Mapped[int | None] = mapped_column(Integer)
     goal_time_sec: Mapped[int] = mapped_column(Integer)
+    # BE 가 자동으로 끝낸 이유 (SILENCE·TIME_LIMIT). 사용자가 끝냈거나 아직 진행 중이면 비어 있다.
+    # 자동으로 끝낼 때 status 도 ANALYZING 으로 바뀐다 (실시간 STT 재연결은 status 가 막는다).
+    end_reason: Mapped[str | None] = mapped_column(String(20))
     # 슬라이드 넘김·일시정지 같은 원본 이벤트열. 재생과 재분석에 쓴다.
     event_logs: Mapped[Any | None] = mapped_column(JSONB)
 

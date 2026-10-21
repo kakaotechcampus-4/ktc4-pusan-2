@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,9 @@ from pitch_coach_backend.module.take.entity import (
     TakeSummary,
     TakeTranscriptSegment,
 )
+
+# 아직 끝나지 않은 Take. 실시간 STT 가 붙을 수 있는 상태와 같다 (realtime/service.py)
+_IN_PROGRESS_STATUSES = ("READY", "RUNNING")
 
 
 class TakeRepository:
@@ -109,3 +112,27 @@ class TakeRepository:
         self.db.add(segment)
         self.db.flush()
         return segment
+
+    def mark_auto_ended(self, take_id: uuid.UUID, reason: str) -> bool:
+        """진행 중인 Take 를 끝난 상태(`ANALYZING`)로 바꾸고 이유를 적는다. 적었으면 True.
+
+        Take 가 없거나 이미 끝났으면(다른 이유로 끝났거나 이미 자동 종료됨) 아무것도 바꾸지 않고
+        False. 읽고 쓰지 않고 UPDATE 하나로 한다 — 같은 Take 를 두 번 끝내도 먼저 적힌 이유가
+        남는다.
+        `ended_at` 은 FE 가 종료 흐름에서 적지만, FE 가 떨어져 있으면 아무도 안 적으므로 비어
+        있을 때만 지금 시각으로 채운다.
+        """
+        result = self.db.execute(
+            update(Take)
+            .where(
+                Take.id == take_id,
+                Take.status.in_(_IN_PROGRESS_STATUSES),
+                Take.end_reason.is_(None),
+            )
+            .values(
+                status="ANALYZING",
+                end_reason=reason,
+                ended_at=func.coalesce(Take.ended_at, func.now()),
+            )
+        )
+        return result.rowcount > 0
