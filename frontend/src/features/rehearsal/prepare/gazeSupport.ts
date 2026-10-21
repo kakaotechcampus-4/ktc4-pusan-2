@@ -1,5 +1,5 @@
 /**
- * 이 브라우저에서 시선 엔진이 돌 수 있나. 카메라 권한을 묻기 **전에** 봅니다 (AI `DEPLOY.md`).
+ * 이 브라우저에서 시선 엔진이 돌 수 있나. 카메라 권한을 묻기 **전에** 봅니다 (AI 시선 문서 `docs/ai/features/gaze-tracking.md` 5-6 · 7절).
  *
  * 조건은 AI 엔진의 `checkSupport()`(`vendor/gaze/engine/index.ts`)와 같습니다. 그 함수를 직접
  * 부르지 않는 이유는 엔진 진입점이 MediaPipe 를 함께 끌고 와서, 메인 화면 번들이 약 150KB

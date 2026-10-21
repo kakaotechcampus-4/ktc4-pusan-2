@@ -23,7 +23,7 @@ import type {
  * │   slicer.push()          →  1초가 끝날 때마다 samples 전송
  * └ frameDone 전송 → 메인이 다음 프레임을 만든다 (백프레셔)
  *
- * 1초 묶기는 AI 엔진의 `GazeSlicer` 가 한다 (AI `INTERFACE.md` 2-5). 1초 격자는
+ * 1초 묶기는 AI 엔진의 `GazeSlicer` 가 한다 (AI 시선 문서 `docs/ai/features/gaze-tracking.md` 5-6 · 6-1). 1초 격자는
  * **첫 프레임 시각**에서 시작하고, 프레임 사이가 1초 넘게 비면 그 사이를 UNMEASURED 조각으로 채운다.
  *
  * 테이크 끝에서 1초가 안 찬 마지막 조각은 `flush` 메시지로 닫는다. 끝난 시각(발표 길이)까지를

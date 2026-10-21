@@ -122,7 +122,7 @@ export function toCalibrationResult(q: AiCalibrationQuality, model: unknown): Ca
 /**
  * 버전 문자열. Take 에 영구 고정되므로 순서를 바꾸지 마세요.
  *
- * AI 카메라 화면 모듈의 `ready.version` 과 **같은 문자열**입니다 (AI `INTERFACE.md` 8절).
+ * AI 카메라 화면 모듈의 `ready.version` 과 **같은 문자열**입니다 (AI 시선 문서 5-6 의 `ready` · 9절).
  * 장치 점검은 그 값으로 기준을 저장하고 리허설 워커는 이 값으로 꺼내므로,
  * 둘이 한 글자라도 다르면 방금 잡은 기준을 못 찾습니다.
  */

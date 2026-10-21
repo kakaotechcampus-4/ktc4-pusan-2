@@ -21,7 +21,7 @@
  * 그래서 `classify` 가 특징 벡터가 아니라 **ImageBitmap** 을 받고,
  * `fitCalibration` 이 기준값을 **돌려줍니다**(받지 않습니다).
  *
- * 1초 묶기는 AI 엔진의 `GazeSlicer` 가 합니다 (AI `INTERFACE.md` 2-5). 그 결과인 1초 기록이
+ * 1초 묶기는 AI 엔진의 `GazeSlicer` 가 합니다 (AI 시선 문서 `docs/ai/features/gaze-tracking.md` 5-6 · 6-1). 그 결과인 1초 기록이
  * 서버(AI 시선 코어 · 실시간 코치)가 읽는 단위라, FE 가 따로 다수결을 두면 서버와 규칙이 갈립니다.
  * 분류기는 프레임 하나의 근거(`GazeFrame`)만 내고, 워커가 그것을 엔진의 묶는 도구에 넣습니다.
  */
@@ -37,7 +37,7 @@ import type { GazeFrame, GazeSample } from '@/vendor/gaze/engine';
 export type { GazeFrame };
 
 /**
- * 1초 기록 — **기기 밖으로 나가는 것은 이것뿐입니다** (AI `INTERFACE.md` 3절, `GazeSampleRecord`).
+ * 1초 기록 — **기기 밖으로 나가는 것은 이것뿐입니다** (AI 시선 문서 5-2 · 16절, `GazeSampleRecord`).
  * 엔진 `sampleToDict` 의 결과를 고치지 않고 그대로 저장하고 보냅니다. 필드 이름도 서버와 같은 snake_case 입니다.
  *
  *   t_ms         테이크 시작 기준 이 1초의 시작 (무대 시계)

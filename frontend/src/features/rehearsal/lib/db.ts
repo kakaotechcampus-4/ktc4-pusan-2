@@ -169,7 +169,7 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
         untyped.deleteObjectStore('audioChunks');
       }
 
-      // ── v4 · 시선을 엔진 1초 기록으로 저장합니다 (AI INTERFACE.md 3절) ──
+      // ── v4 · 시선을 엔진 1초 기록으로 저장합니다 (AI 시선 문서 5-2 · 12-2) ──
       //   FE 다수결로 만든 3구역 판정(gazeSegments)은 더 읽지 않으므로 스토어째 지웁니다.
       //   키는 [clientSessionId, t_ms] — 1초 기록의 시작 시각입니다.
       if (oldVersion < 4) {
