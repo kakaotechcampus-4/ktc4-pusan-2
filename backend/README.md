@@ -79,7 +79,8 @@ backend/
 │   ├── test_auth_service.py      # 가입·재로그인·회전·재사용 탐지
 │   ├── test_auth_endpoints.py    # 쿠키·CSRF·리다이렉트
 │   ├── test_realtime_stt_adapter.py  # Deepgram 파싱 + 가짜 서버 왕복
-│   ├── test_realtime_ws.py       # WS 인증·프레임·offset·재연결·종료 순서 (Deepgram 은 가짜)
+│   ├── test_realtime_ws.py       # WS 인증·프레임·offset·재연결·종료 순서·자동 종료 (Deepgram 은 가짜)
+│   ├── test_realtime_auto_end.py # 말 없음 판단과 자동 종료 조건 (숫자만)
 │   └── test_<domain>.py          # 도메인이 늘면 같은 이름 규칙으로
 │
 └── src/pitch_coach_backend/
@@ -116,7 +117,8 @@ backend/
     │   ├── controller.py         # /ws/takes/{take_id} 엔드포인트
     │   ├── service.py            # 연결 하나의 수명: Origin → 인증 → Take 검사 → 스트림에 붙이기 → 프레임 전달
     │   ├── take_stream.py        # Take 의 STT 파이프라인 + 레지스트리. **연결보다 오래 산다**
-    │   ├── transcript_store.py   # final 저장. 짧은 DB 세션을 열어 take/service 에 넘긴다
+    │   ├── transcript_store.py   # final·자동 종료 이유 저장. 짧은 DB 세션을 열어 take/service 에 넘긴다
+    │   ├── auto_end.py           # Take 자동 종료 조건(말 없음·최대 시간). 네트워크를 모른다
     │   ├── stt_adapter.py        # Deepgram WebSocket 어댑터. DB 를 모른다 (auth/google.py 와 같은 위치)
     │   ├── event_ingestion.py    # 오디오 프레임 헤더 검증, 순서·중복, 갭 계산
     │   ├── audio.py              # 오디오 규격(16 kHz·mono·16-bit)과 무음 생성. 잎 모듈
@@ -250,7 +252,7 @@ WS /api/ws/takes/{take_id}
   |---|---|
   | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
   | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다) |
-  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`). FE 는 **재연결하지 않는다** |
+  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다** |
   | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
   | `BAD_MESSAGE` | 유지 |
   | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
@@ -295,6 +297,22 @@ WS /api/ws/takes/{take_id}
 - 정리가 늦어도 FE 를 붙잡아 두지 않는다. `stop` 뒤 Deepgram drain 이 12초 안에 안 끝나면 태스크를
   끊고, 그마저 2초 안에 안 끝나면 닫힌 것으로 확정해 `closed` 를 보낸다. Deepgram 소켓 닫기 자체도
   3초 상한이 있다. `stop` 을 보낸 직후 FE 가 사라져도(탭 닫힘) 서버 쪽 종료·저장 절차는 같다.
+- **Take 를 자동으로 끝낸다** (`realtime/auto_end.py`). 둘 중 하나라도 맞으면 `{"type":"auto_end","reason","message"}`
+  를 보내고 `stop` 과 같은 순서로 정리한다 (drain → `closed` → `1000`). 오디오는 그 자리에서 끊는다.
+  FE 는 끝내기 버튼과 같은 종료 흐름을 타고 `message` 를 보여 준다.
+  - `SILENCE` — 최근 2분 동안 말이 없고 직전 5분 중 80% 이상이 말 없음. **전사로 판단한다** (소리 크기는
+    소음에도 커진다). 시간은 벽시계가 아니라 Deepgram 이 final(빈 final 포함)로 "들었다" 고 확인한 오디오로
+    잰다 — STT 가 죽어 있거나 오디오가 유실된 구간, BE 가 타임라인을 맞추려고 메워 보낸 무음(프레임 사이 틈 ·
+    큐가 넘쳐 버린 오디오)을 말 없음으로 세면 STT · 네트워크 장애가 곧 강제 종료가 된다. 기록은 Take 에
+    붙어 있어 30초 넘게 끊겼다 새 스트림으로 붙어도 이어진다.
+  - `TIME_LIMIT` — 1시간. 기준은 프레임의 `offset_ms`(FE 무대 시계)다. offset 이 가지 않는 Take(오디오 없이
+    연결만 붙여 둠)는 서버 시계가 막는다 — **이 Take 의 스트림이 열려 있던 시간의 합**이 1시간 + 60초를
+    넘으면 끝낸다. 스트림이 없던 시간(탭이 죽어 있던 동안)은 세지 않는다. FE 가 떨어져 있는 동안(grace)에도 끝낸다.
+  - Take 를 `ANALYZING` 으로 바꾸고 `takes.end_reason` 에 이유를 남긴다 (`ended_at` 이 비어 있으면 지금 시각).
+    다시 붙으면 `auto_end` 를 한 번 더 보내고 `TAKE_ENDED` 로 거절한다 — 자동 종료 순간 떨어져 있던 FE 도
+    종료 흐름을 탄다. DB 에 적히기 전의 재연결은 프로세스 메모리가 막는다. 이유를 못 적어도(DB 장애) 종료는 그대로 한다.
+  - 판단 코드가 예외를 내도 STT 는 계속 돈다 (로그만). 값은 `TAKE_SILENCE_*`·`TAKE_MAX_DURATION_SEC` 로 바꾸고,
+    틀린 값이면 앱이 시작할 때 실패한다.
 - 아직 없는 것: `metrics`/`coach` 메시지 (AI 팀 규칙 확정 후).
 
 FE 없이 확인하는 두 가지 —

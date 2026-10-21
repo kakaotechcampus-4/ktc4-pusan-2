@@ -28,7 +28,10 @@ from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.realtime import take_stream
+from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.dto import (
+    AutoEndMessage,
+    AutoEndReason,
     ErrorMessage,
     ReadyMessage,
     StopMessage,
@@ -39,7 +42,11 @@ from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.keyterms import build_keyterms, normalize_term
 from pitch_coach_backend.realtime.stt_adapter import SttAdapter, SttConfig
-from pitch_coach_backend.realtime.take_stream import StreamOwnerMismatch, TakeStream
+from pitch_coach_backend.realtime.take_stream import (
+    StreamOwnerMismatch,
+    TakeAutoEnded,
+    TakeStream,
+)
 from pitch_coach_backend.realtime.transcript_store import TranscriptStore
 
 logger = logging.getLogger(__name__)
@@ -134,6 +141,9 @@ class RealtimeSession:
         except StreamOwnerMismatch:
             await self._reject(WsErrorCode.FORBIDDEN, "다른 사용자가 사용 중인 연습입니다.")
             return
+        except TakeAutoEnded as e:
+            await self._reject_ended(e.reason)
+            return
 
         # attach() 가 성공한 순간부터는 반드시 detach() 로 짝을 맞춘다. ready 전송이나
         # resend_missed 중간에 클라이언트가 사라져 예외가 나도 detach() 없이 빠져나가면
@@ -204,10 +214,11 @@ class RealtimeSession:
         통과하면 keyterm 에 쓸 대본 용어도 같이 읽어 둔다 (`self.script_terms`).
 
         없거나 남의 Take 는 `TAKE_NOT_FOUND` 하나로 답한다 (REST 의 `get_owned_pitch` 와
-        같은 규칙 — 존재 여부를 흘리지 않는다). 끝난 Take 는 `TAKE_ENDED`.
+        같은 규칙 — 존재 여부를 흘리지 않는다). 끝난 Take 는 `TAKE_ENDED`. BE 가 자동으로 끝낸
+        Take 는 상태가 `ANALYZING` 이라 같이 걸리고, 이유(`end_reason`)는 알림에만 쓴다.
         """
 
-        def load() -> tuple[bool, bool, str | None, list[str]]:
+        def load() -> tuple[bool, bool, str | None, str | None, list[str]]:
             # 동기 SQLAlchemy 를 이벤트 루프에서 직접 부르면 다른 Take 의 오디오까지 멈춘다.
             # 그래서 threadpool 이고, 왕복을 아끼려 한 함수에서 전부 읽는다
             user = user_service.find(self.db, user_id)
@@ -221,6 +232,7 @@ class RealtimeSession:
             # 한 번 더** 날린다 — 커넥션을 돌려준 의미가 없어진다. user 도 같은 이유로
             # id 를 안 읽고 이미 아는 user_id 를 그대로 쓴다
             status = take.status if take is not None else None
+            end_reason = take.end_reason if take is not None else None
             terms: list[str] = []
             if status in STREAMABLE_TAKE_STATUSES:
                 # 용어는 부가 기능이다. 조회가 실패해도 filler 만으로 STT 는 돈다 — 여기서
@@ -235,9 +247,9 @@ class RealtimeSession:
             # 조회가 끝나면 커넥션을 풀에 돌려준다. 이 연결은 몇 분씩 살아 있는데
             # 트랜잭션을 연 채로 두면 Take 수만큼 풀이 마른다
             self.db.rollback()
-            return user is not None, take is not None, status, terms
+            return user is not None, take is not None, status, end_reason, terms
 
-        user_found, take_found, status, terms = await run_in_threadpool(load)
+        user_found, take_found, status, end_reason, terms = await run_in_threadpool(load)
         if not user_found:
             await self._reject(WsErrorCode.UNAUTHORIZED, "유효하지 않은 토큰입니다.")
             return False
@@ -245,7 +257,7 @@ class RealtimeSession:
             await self._reject(WsErrorCode.TAKE_NOT_FOUND, "연습을 찾을 수 없습니다.")
             return False
         if status not in STREAMABLE_TAKE_STATUSES:
-            await self._reject(WsErrorCode.TAKE_ENDED, "이미 끝난 연습입니다.")
+            await self._reject_ended(end_reason)
             return False
         self.script_terms = terms
         return True
@@ -344,6 +356,24 @@ class RealtimeSession:
         """인증 단계 거절. 에러를 한 번 보내고 1008 로 닫는다."""
         await self._quiet(self._send(ErrorMessage(code=code, message=message)))
         await self._quiet(self.ws.close(code=CLOSE_POLICY_VIOLATION, reason=code))
+
+    async def _reject_ended(self, end_reason: str | None) -> None:
+        """끝난 Take 라 `TAKE_ENDED` 로 거절한다.
+
+        BE 가 자동으로 끝낸 Take 면 그 앞에 `auto_end` 를 한 번 더 보낸다. 자동 종료 순간 떨어져
+        있던 FE 는 `auto_end` 를 못 받았다 — 다시 붙을 때 받아야 무대가 종료 흐름을 탄다. 이유가
+        이 버전이 모르는 값(나중에 늘어남)이면 FE 도 분기할 수 없으니 일반 문구만 보낸다.
+        """
+        try:
+            reason = AutoEndReason(end_reason) if end_reason is not None else None
+        except ValueError:
+            reason = None
+        if reason is None:
+            await self._reject(WsErrorCode.TAKE_ENDED, "이미 끝난 연습입니다.")
+            return
+        message = AutoEndPolicy.from_settings().message(reason)
+        await self._quiet(self._send(AutoEndMessage(reason=reason, message=message)))
+        await self._reject(WsErrorCode.TAKE_ENDED, message)
 
     @staticmethod
     async def _quiet(awaitable: Awaitable[object]) -> None:
