@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest, postJson } from './client';
-import type { CalibrationSummary, PrepareResponse } from '@/types/api';
-import type { TakeCreateRequest, TakeCreated } from '@/types/take';
+import type { PrepareResponse } from '@/types/api';
+import type { CalibrationRequest, TakeCreateRequest, TakeCreated } from '@/types/take';
 
 export const prepareKey = (pitchId: string) => ['prepare', pitchId] as const;
 
@@ -34,15 +34,11 @@ export function useCreateTake() {
 }
 
 /**
- * 캘리브레이션 **품질 요약만** 보냅니다.
- * 기준 벡터는 브라우저(IndexedDB)에 남고 서버로 가지 않습니다 (CLAUDE.md 1번).
+ * 발표 전 점검 결과를 보냅니다. **요약 수치만** 갑니다 — 보정 모델은 브라우저를 떠나지 않습니다.
+ * 본문은 `toCalibrationRequest` 가 만듭니다 (`features/rehearsal/lib/calibrationRequest.ts`).
  *
  * 경로는 BE 그대로입니다 — #69 부터 Take 경로는 전부 `pitch_id` 를 품습니다.
- *
- * ★ 본문은 아직 BE 와 맞지 않습니다. BE `CalibrationDTO` 는 `face_detected` · `mic_detected` ·
- *   `base_volume` · `gaze_confidence` 를 받고, 아래 요약(`quality` · `separability` …)과 겹치는
- *   필드가 없어 지금은 기본값만 저장됩니다. 필드는 BE 와 합의한 뒤 맞춥니다.
  */
-export function postCalibration(pitchId: string, takeId: string, summary: CalibrationSummary) {
-  return postJson<unknown>(`/api/pitches/${pitchId}/takes/${takeId}/calibration`, summary);
+export function postCalibration(pitchId: string, takeId: string, body: CalibrationRequest) {
+  return postJson<unknown>(`/api/pitches/${pitchId}/takes/${takeId}/calibration`, body);
 }

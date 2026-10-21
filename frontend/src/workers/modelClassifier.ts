@@ -1,13 +1,15 @@
 import type {
   CalibrationResult,
-  FrameVerdict,
   GazeClassifier,
+  GazeFrame,
   PlacementResult,
   ZoneReference,
 } from './gaze.contract';
 import type { Ms } from '@/types/api';
 import type { GazeEngine } from '@/vendor/gaze/engine';
-import { engineVersion, toCalibrationResult, toFrameVerdict, toPlacementResult } from './aiAdapter';
+// 진입점(index)이 아니라 파일을 직접 엽니다 — 진입점은 MediaPipe 까지 끌고 옵니다
+import { frameFromDecision } from '@/vendor/gaze/engine/evidence';
+import { engineVersion, toCalibrationResult, toPlacementResult } from './aiAdapter';
 import { fitsCurrentEngine } from './calibrationModel';
 
 /**
@@ -33,12 +35,12 @@ import { fitsCurrentEngine } from './calibrationModel';
  *                        엔진의 `calibrate` 는 모양(schema)만 봅니다. 설정이 바뀐 엔진의 보정인지는
  *                        `fitsCurrentEngine`(설정 해시)으로 우리가 따로 거릅니다
  *
- * ── 엔진이 내지만 여기서 버리는 것 ──────────────────────────────────
+ * ── 엔진 판정을 접지 않습니다 ───────────────────────────────────────
  *
  * v1.1 은 4분류(CAMERA · SCREEN · BOTTOM · OTHER)와 OTHER 의 방향, 촬영 조건(신뢰도)을
- * 함께 냅니다. 계약은 3구역이라(CLAUDE.md 2번) 엔진이 직접 접어서 냅니다 —
- * SCREEN·BOTTOM → BOTTOM, OTHER → UNCERTAIN (AI 기본값, `otherAs`).
- * AI 의 `TemporalSmoother` 출력(`GAZE_STATE`)은 받지 않습니다 — 다수결은 FE 몫입니다.
+ * 함께 냅니다. 서버(AI 시선 코어 · 실시간 코치)가 그대로 읽으므로 여기서 3구역으로 접지 않고
+ * 엔진의 `frameFromDecision` 으로 프레임 근거만 뽑아 넘깁니다. 1초 묶기는 워커가 엔진의
+ * `GazeSlicer` 로 합니다. 화면에 3구역이 필요하면 1초 기록을 받은 쪽이 접습니다.
  */
 
 /**
@@ -92,7 +94,7 @@ export class ModelGazeClassifier implements GazeClassifier {
   calibrate(ref: ZoneReference): void {
     // 맞지 않는 기준이면 넣지 않습니다. 모양이 다르면 엔진이 false 를 돌려주고,
     // 설정이 바뀐 엔진의 기준이면 엔진은 받아들이므로 여기서 먼저 거릅니다
-    // (`fitsCurrentEngine`). #ref 를 비워 두면 판정이 없어 다수결이 '측정 못 함'으로 셉니다 —
+    // (`fitsCurrentEngine`). #ref 를 비워 두면 판정이 없어 1초 기록이 나가지 않습니다 —
     // 틀린 기준으로 판정하는 것보다 낫습니다. 보통은 꺼내는 쪽(useLiveGaze)이 미리 걸러서
     // 여기까지 오지 않습니다
     this.#ref = null;
@@ -100,10 +102,11 @@ export class ModelGazeClassifier implements GazeClassifier {
     if (this.#impl.calibrate(ref.model)) this.#ref = ref;
   }
 
-  classify(frame: ImageBitmap, tMs: Ms): FrameVerdict | null {
+  classify(frame: ImageBitmap, tMs: Ms): GazeFrame | null {
     if (!this.#ref || !this.#impl) return null;
     // ★ 비트맵을 여기서 닫지 마세요. 워커가 finally 에서 닫습니다 (엔진도 닫지 않습니다)
-    return toFrameVerdict(this.#impl.classify(frame, tMs));
+    // 얼굴이 없으면 엔진이 face_valid: false 를 내고, 그 프레임은 UNMEASURED 로 셉니다
+    return frameFromDecision(this.#impl.classify(frame, tMs));
   }
 
   dispose(): void {
