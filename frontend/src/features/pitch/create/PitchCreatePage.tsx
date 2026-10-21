@@ -102,6 +102,9 @@ export function PitchEditPage() {
     enabled: !ready && id !== '',
     // 한 번 읽어 채운 뒤에는 화면이 고치는 값이 맞습니다. 다시 읽어 덮지 않습니다
     staleTime: Infinity,
+    // 화면을 떠나면 바로 버립니다. 다시 들어오면 그사이 올린 버전까지 서버에서 새로 읽어야 합니다 —
+    // 남겨 두면 옛 결과로 채워져 사이드바 번호가 서버와 어긋납니다
+    gcTime: 0,
     retry: false,
   });
 
