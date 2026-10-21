@@ -21,12 +21,11 @@ export interface TakeCreateRequest {
  * 발표 전 점검 결과 — `POST /api/pitches/{pitch_id}/takes/{take_id}/calibration`.
  *
  * 앞의 넷은 BE `CalibrationDTO` 그대로이고, `result` 는 AI 시선 문서(`docs/ai/features/gaze-tracking.md`
- * 12-1)가 정한 `calibrations.result` 입니다. BE 는 아직 `result` 칸이 없어 받아도 버립니다 (BE 요청).
+ * 12-1)가 정한 `calibrations.result` 입니다 (BE `CalibrationResultDTO`).
  *
  * ★ 보정 모델(얼굴 측정값)은 보내지 않습니다. 요약 수치만 갑니다.
  * ★ `base_volume` 은 보내지 않습니다. 뜻이 다른 옛 칸(조용한 환경의 소음 기준)이고 AI 가 쓰지 않습니다
- *   (`docs/ai/features/volume.md` 12-1). 평소 목소리 크기는 `base_level_db` 입니다.
- *   BE 에 아직 `base_level_db` 칸이 없어 받아도 버립니다 (BE 요청) — 모르는 칸은 무시하므로 오류는 아닙니다.
+ *   (`docs/ai/features/volume.md` 12-1). 평소 목소리 크기는 `base_level_db` 입니다 (BE `CalibrationDTO.base_level_db`).
  */
 export interface CalibrationRequest {
   face_detected: boolean;
