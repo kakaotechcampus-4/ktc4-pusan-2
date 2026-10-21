@@ -249,7 +249,7 @@ WS /api/ws/takes/{take_id}
   | code | 연결 |
   |---|---|
   | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
-  | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다) |
+  | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다). 연결 중에 Take 나 발표가 지워져도 이 코드로 닫는다 |
   | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`). FE 는 **재연결하지 않는다** |
   | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
   | `BAD_MESSAGE` | 유지 |
@@ -264,7 +264,11 @@ WS /api/ws/takes/{take_id}
   원천이다. 시각은 Take 기준(ms), `words` 는 `[{word, punctuated_word, start_ms, end_ms, confidence}]`
   JSONB. 저장은 realtime 이 아니라 `take/service.py` 가 하고(`append_transcript_segment`), 스트림이
   DB 를 직접 만지지 않도록 `realtime/transcript_store.py` 가 저장할 때마다 짧은 세션을 연다.
-  **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다.
+  **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다. 단 Take 가 지워져
+  저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
+- **Take 나 발표를 지우면 그 Take 의 스트림을 바로 끊는다.** 지우는 요청이 커밋한 뒤 Deepgram 을
+  닫고, 붙어 있는 FE 에는 `TAKE_NOT_FOUND` 를 보낸다. 저장할 곳이 없으니 `stop` 처럼 남은 전사를
+  기다리지 않는다. 끊기 전에 온 final 이 저장에 실패해도 스트림이 그걸 보고 스스로 끊는다.
 - **STT 파이프라인은 연결보다 오래 산다** (`take_stream.py`). 연결이 끊겨도 30초 동안 Deepgram
   세션을 살려 두고, 그 안에 다시 붙으면 세그먼트 번호와 프레임 수가 이어진다. 떨어져 있는 동안
   화면에 못 간 final 은 모아 두었다가 `ready` 직후 순서대로 다시 보낸다 (DB 에는 이미 있다).

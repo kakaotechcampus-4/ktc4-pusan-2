@@ -1,5 +1,7 @@
 import uuid
 
+from psycopg.errors import ForeignKeyViolation
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.exception import (
@@ -149,7 +151,10 @@ def transcript_cursor(db: Session, take_id: uuid.UUID) -> tuple[int, int]:
 def append_transcript_segment(
     db: Session, take_id: uuid.UUID, segment_dto: TranscriptSegmentCreateDTO
 ) -> uuid.UUID:
-    """final 구간 하나를 저장하고 커밋한다. 짧은 트랜잭션 하나로 끝난다."""
+    """final 구간 하나를 저장하고 커밋한다. 짧은 트랜잭션 하나로 끝난다.
+
+    Take 가 그 사이 지워졌으면 `NonExistentTake`. 스트림은 이걸 보고 더 돌지 않는다.
+    """
     segment = TakeTranscriptSegment(
         take_id=take_id,
         seq=segment_dto.seq,
@@ -161,6 +166,12 @@ def append_transcript_segment(
         confidence=segment_dto.confidence,
         speech_final=segment_dto.speech_final,
     )
-    saved = TakeRepository(db).save_transcript_segment(segment)
+    try:
+        saved = TakeRepository(db).save_transcript_segment(segment)
+    except IntegrityError as e:
+        # 이 표의 외래 키는 take_id 하나다. 번호 중복(UNIQUE) 같은 다른 위반은 그대로 올린다
+        if isinstance(e.orig, ForeignKeyViolation):
+            raise NonExistentTake() from e
+        raise
     db.commit()
     return saved.id
