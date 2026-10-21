@@ -14,6 +14,7 @@ import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
 import { PitchCreatePage } from '@/features/pitch/create/PitchCreatePage';
 import { RehearsalPage } from '@/features/rehearsal/stage/RehearsalPage';
+import { DesignDraftRoute, DesignIndex } from '@/dev/design/DesignIndex';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -59,6 +60,9 @@ const routes = [
   { path: '/dev/media',   title: '미디어 성능 검증 | 피치코치', element: <MediaDevPage /> },
   // 실시간 STT WebSocket 검증. takeId 를 손으로 넣어 WS 경로만 실서버에 붙인다.
   { path: '/dev/stt',     title: '실시간 STT 검증 | 피치코치', element: <SttDevPage /> },
+  // 디자인 시안. 실제 화면이 아니라 검토용이다 (docs/fe/design)
+  { path: '/dev/design',       title: '디자인 시안 | 피치코치', element: <DesignIndex /> },
+  { path: '/dev/design/:name', title: '디자인 시안 | 피치코치', element: <DesignDraftRoute /> },
   { path: '*',            title: '찾을 수 없음 | 피치코치', element: <Stub id="404"  name="찾을 수 없음" track="B" /> },
 ] satisfies { path: string; title: string; element: ReactElement }[];
 
@@ -72,6 +76,8 @@ const publicPaths = [
   '/dev/stage',
   '/dev/media',
   '/dev/stt',
+  '/dev/design',
+  '/dev/design/:name',
   '*',
 ];
 
