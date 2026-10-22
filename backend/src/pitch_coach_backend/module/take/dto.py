@@ -100,7 +100,7 @@ class StandardResultDTO(BaseModel):
 class UserCriteriaDTO(BaseModel):
     display_criteria: list[str] = []
     targets: list[TargetInfoDTO] = []
-    script_used: str | None = None
+    script_used: bool | None = None
 class TargetInfoDTO(BaseModel):
     display: str | None = None
     metric: str
@@ -129,7 +129,7 @@ class ReviewResultDTO(BaseModel):
     next_missions: list[NextMissionDTO] = []
 class ReviewRequestDTO(BaseModel):
     take_result: dict[str, Any]
-    script_coverage: int | None = None
+    script_coverage: dict[str, Any] | None = None
     previous_takes: list[PreviousTakeDTO] | None = None
     previous_recurring_issues: list[ReviewRecurringIssueInputDTO] = []
     missions: list[MissionInputDTO] = []

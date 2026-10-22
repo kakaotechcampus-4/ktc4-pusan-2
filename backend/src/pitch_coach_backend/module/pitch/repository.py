@@ -12,6 +12,7 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptSlide,
     ScriptVersion,
     Standards,
+    StandardAnalyses,
 )
 from pitch_coach_backend.module.take.entity import Take, TakeSummary
 
@@ -152,6 +153,23 @@ class PitchRepository:
             select(Standards).where(Standards.pitch_id == pitch_id)
             .distinct(Standards.version)
             .order_by(Standards.version.asc())
+        ).all()
+
+    def get_standards_in_version(self, pitch_id: uuid.UUID, version: int) -> list[Standards]:
+        return self.db.scalars(
+            select(Standards).where(
+                Standards.pitch_id == pitch_id,
+                Standards.version == version
+            )
+            .order_by(Standards.position.asc())
+        ).all()
+
+    def get_standard_analysis(self, pitch_id: uuid.UUID, version: int) -> list[StandardAnalyses]:
+        return self.db.scalars(
+            select(StandardAnalyses).where(
+                StandardAnalyses.pitch_id == pitch_id,
+                StandardAnalyses.version == version,
+            )
         ).all()
 
     def get_evaluations_by_version(

@@ -79,10 +79,16 @@ class TakeRepository:
     def get_latest_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
         return self.db.scalar(
             select(Take)
-            .where(Take.pitch_id == pitch_id)
+            .where(Take.pitch_id == pitch_id,
+                   Take.review_status == "DONE")  # 완료된 take 중 가장 최근 것.
             # created_at 은 같은 트랜잭션 안에서 같아질 수 있다. 번호는 pitch 안에서 유일하다
             .order_by(Take.take_number.desc())
             .limit(1)
+        )
+
+    def get_take_number(self, take_id: uuid.UUID) -> int | None:
+        return self.db.scalar(
+            select(Take.take_number).where(Take.id == take_id)
         )
 
     def get_previous_take_results(self, take_id: uuid.UUID, standard_take_num: int, limit:int = 3):

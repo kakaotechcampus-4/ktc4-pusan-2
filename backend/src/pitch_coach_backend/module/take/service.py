@@ -269,11 +269,12 @@ def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO)
 
 def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
     take_repository = TakeRepository(db)
-    TakeRepository(db).set_analysis_stage(take_id, "REVIEWING")
+    take_repository.set_analysis_stage(take_id, "REVIEWING")
     db.commit()
 
     try:
         review_request = build_review_request(db, take_id)
+        db.commit()
         review_data = request_review(review_request)
         save_review(db, take_id, review_data)
     except Exception as e:
