@@ -143,6 +143,10 @@ class PresentationVersionDTO(VersionDTO):
     # 쪽수를 아직 채우지 않은 옛 발표자료는 None
     page_count: int | None
 
+class ParsedScriptDTO(VersionDTO):
+    # 슬라이드로 나눈 장 수. 발표자료 쪽수와 같아야 짝이다
+    slide_count: int
+
 class VersionSummaryDTO(BaseModel):
     pitch_id: uuid.UUID
     presentation_versions: list[PresentationVersionDTO]
@@ -164,10 +168,11 @@ class PrepareDTO(BaseModel):
     pitch_id: uuid.UUID
     title: str
     time_limit_sec: int
-    # 가장 최근 발표자료. 없으면 None
-    presentation: VersionDTO | None
     # 파싱이 끝난 가장 최근 대본. 슬라이드가 없으면 리허설을 열 수 없어 PENDING · FAILED 는 건너뛴다
-    script: VersionDTO | None
+    script: ParsedScriptDTO | None
+    # script 의 장 수와 쪽수가 같은 가장 최근 발표자료. 맞는 것이 없으면 가장 최근 발표자료라
+    # 쪽수가 다를 수 있다 (FE 가 둘을 비교해 막는다). 발표자료가 없으면 None
+    presentation: PresentationVersionDTO | None
     # script 보다 새 대본이 있는데 파싱 중이거나 실패했으면 그 대본. 없으면 None
     newer_script: NewerScriptDTO | None
     # 지금 기준 다음 번호. 그사이 다른 Take 가 생기면 달라져서 실제 번호는 Take 생성 응답을 본다

@@ -11,7 +11,12 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.entity import (
+    Pitch,
+    PresentationVersion,
+    ScriptSlide,
+    ScriptVersion,
+)
 from pitch_coach_backend.module.take import service
 from pitch_coach_backend.module.take.dto import TakeInitRequestDTO
 from pitch_coach_backend.module.take.entity import Take
@@ -204,6 +209,35 @@ def test_new_take_abandons_takes_left_ready(
     # 연결된 Take 는 떠난 Take 타이머가 맡는다
     assert _take(db_session, running).status == "RUNNING"
     assert _take(db_session, new).status == "READY"
+
+
+@pytest.mark.parametrize(("slides", "status_code"), [(3, 200), (2, 409)])
+def test_page_count_must_match_slide_count(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    slides: int,
+    status_code: int,
+) -> None:
+    presentation = PresentationVersion(
+        pitch_id=pitch_id, version=1, file_key=f"{pitch_id}/1.pdf", page_count=3
+    )
+    script = ScriptVersion(pitch_id=pitch_id, version=1, content="대본", parse_status="DONE")
+    db_session.add_all([presentation, script])
+    db_session.flush()
+    db_session.add_all(
+        ScriptSlide(script_version_id=script.id, slide_number=n, full_content=f"{n}장")
+        for n in range(1, slides + 1)
+    )
+    db_session.flush()
+
+    response = _create(client, pitch_id, auth_headers, presentation.id, script.id)
+
+    assert response.status_code == status_code
+    if status_code == 409:
+        assert response.json()["code"] == "SLIDE_COUNT_MISMATCH"
+        assert _take_numbers(db_session, pitch_id) == []
 
 
 @pytest.mark.parametrize("parse_status", ["PENDING", "FAILED"])

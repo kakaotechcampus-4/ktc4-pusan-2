@@ -51,6 +51,11 @@ class ScriptNotParsed(ConflictException):
     message = "슬라이드로 나누지 않은 대본으로는 연습할 수 없습니다."
 
 
+class SlideCountMismatch(ConflictException):
+    code = "SLIDE_COUNT_MISMATCH"
+    message = "발표자료 쪽수와 대본 장 수가 다릅니다."
+
+
 class ScriptAlreadyParsed(ConflictException):
     code = "SCRIPT_ALREADY_PARSED"
     message = "이미 분석이 끝난 대본입니다."

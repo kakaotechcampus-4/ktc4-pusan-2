@@ -11,6 +11,7 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.dto import (
     HighlightDTO,
     NewerScriptDTO,
+    ParsedScriptDTO,
     ParseRequestedDTO,
     ParseTicket,
     PitchListItemDTO,
@@ -161,10 +162,6 @@ def _presentation_dto(row: PresentationVersion) -> PresentationVersionDTO:
     return PresentationVersionDTO(id=row.id, version=row.version, page_count=row.page_count)
 
 
-def _version_dto(row: Versioned | None) -> VersionDTO | None:
-    return VersionDTO(id=row.id, version=row.version) if row else None
-
-
 # 장치 점검 화면. 홈에서 바로 들어오거나 새로고침해도 Take 에 넣을 버전을 알 수 있게 한다
 def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
     pitch_repository = PitchRepository(db)
@@ -173,8 +170,14 @@ def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
     if not pitch:
         raise NonExistentPitch()
 
-    presentation = pitch_repository.get_latest_presentation(pitch_id)
     script = pitch_repository.get_latest_parsed_script(pitch_id)
+    slide_count = pitch_repository.count_slides(script.id) if script else None
+    # FE 매핑 확인과 같은 규칙이다. 장 수와 쪽수가 같은 가장 최근 발표자료, 없으면 가장 최근 것
+    presentation = None
+    if slide_count:
+        presentation = pitch_repository.get_latest_presentation(pitch_id, page_count=slide_count)
+    if presentation is None:
+        presentation = pitch_repository.get_latest_presentation(pitch_id)
     latest_script = pitch_repository.get_latest_script(pitch_id)
     latest_take = TakeRepository(db).get_latest_take_in_pitch(pitch_id)
 
@@ -192,8 +195,12 @@ def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
         pitch_id=pitch.id,
         title=pitch.title,
         time_limit_sec=pitch.time_limit_sec,
-        presentation=_version_dto(presentation),
-        script=_version_dto(script),
+        script=(
+            ParsedScriptDTO(id=script.id, version=script.version, slide_count=slide_count or 0)
+            if script
+            else None
+        ),
+        presentation=_presentation_dto(presentation) if presentation else None,
         newer_script=newer_script,
         next_take_number=latest_take.take_number + 1 if latest_take else 1,
         default_script_mode=latest_take.script_mode if latest_take else "HIGHLIGHT",
