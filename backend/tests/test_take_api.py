@@ -182,6 +182,107 @@ def test_put_accepts_utc_z_suffix(
     assert take.ended_at == datetime(2026, 10, 7, 1, 5, tzinfo=UTC)
 
 
+def test_put_with_naive_datetime_is_422(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """시간대가 없으면 저장된 시각과 앞뒤를 비교할 수 없다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+
+    response = _put(client, take, auth_headers, {"started_at": "2026-10-07T10:00:00"})
+
+    assert response.status_code == 422
+
+
+def test_put_rejects_end_before_start(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """한 요청 안에서도, 저장된 시작 시각과 비교해도 막는다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    started = "2026-10-07T10:00:00+09:00"
+    before_start = "2026-10-07T09:59:00+09:00"
+
+    together = _put(client, take, auth_headers, {"started_at": started, "ended_at": before_start})
+    assert _put(client, take, auth_headers, {"started_at": started}).is_success
+    separately = _put(client, take, auth_headers, {"ended_at": before_start})
+
+    for response in (together, separately):
+        assert response.status_code == 400
+        assert response.json()["code"] == "INVALID_TAKE_TIME"
+    db_session.refresh(take)
+    assert take.ended_at is None
+
+
+def test_put_null_does_not_erase_a_field(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    take = _make_take(db_session, pitch_id, versions, 1)
+    started = "2026-10-07T10:00:00+09:00"
+
+    assert _put(client, take, auth_headers, {"started_at": started}).is_success
+    assert _put(client, take, auth_headers, {"started_at": None}).is_success
+
+    db_session.refresh(take)
+    assert take.started_at == datetime.fromisoformat(started)
+
+
+@pytest.mark.parametrize("status", ["COMPLETED", "FAILED"])
+def test_put_on_finished_take_is_409(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    status: str,
+) -> None:
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = status
+    db_session.flush()
+
+    response = _put(client, take, auth_headers, {"ended_at": "2026-10-07T10:05:00+09:00"})
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TAKE_ENDED"
+
+
+def test_put_on_analyzing_take_takes_times_only(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """FE 는 WS stop 으로 Take 를 끝낸 뒤 시각을 보낸다. 기록은 분석이 읽고 있어 받지 않는다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = "ANALYZING"
+    db_session.flush()
+    started = "2026-10-07T10:00:00+09:00"
+    ended = "2026-10-07T10:05:00+09:00"
+
+    logs = _put(client, take, auth_headers, {"event_logs": [{"type": "slide", "at_ms": 0}]})
+    times = _put(client, take, auth_headers, {"started_at": started, "ended_at": ended})
+
+    assert logs.status_code == 409
+    assert times.is_success
+    db_session.refresh(take)
+    assert (take.status, take.ended_at, take.event_logs) == (
+        "ANALYZING",
+        datetime.fromisoformat(ended),
+        None,
+    )
+
+
 # ── 입력 검증 ───────────────────────────────────────────────────────
 
 
@@ -227,6 +328,33 @@ def test_calibration_base_volume_range(
     )
 
     assert response.status_code == status
+
+
+@pytest.mark.parametrize("status", ["RUNNING", "ANALYZING", "COMPLETED"])
+def test_calibration_after_start_is_409(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    status: str,
+) -> None:
+    """점검 결과는 발표 전에만 받는다. 시작한 Take 의 기준값을 바꾸면 분석 기준이 바뀐다."""
+    from pitch_coach_backend.module.take.entity import Calibration
+
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = status
+    db_session.flush()
+
+    response = client.post(
+        f"/api/pitches/{pitch_id}/takes/{take.id}/calibration",
+        json={"base_level_db": -30.0},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TAKE_STARTED"
+    assert db_session.query(Calibration).filter_by(take_id=take.id).count() == 0
 
 
 def test_calibration_is_saved(

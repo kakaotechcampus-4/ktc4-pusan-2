@@ -16,8 +16,13 @@ from pitch_coach_backend.module.take.dto import (
     TranscriptSegmentCreateDTO,
 )
 from pitch_coach_backend.module.take.entity import Calibration, Take, TakeTranscriptSegment
-from pitch_coach_backend.module.take.exception import NonExistentTake
-from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.exception import (
+    InvalidTakeTime,
+    NonExistentTake,
+    TakeAlreadyEnded,
+    TakeAlreadyStarted,
+)
+from pitch_coach_backend.module.take.repository import IN_PROGRESS_STATUSES, TakeRepository
 
 
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
@@ -58,7 +63,21 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
         raise NonExistentTake()
 
     # 보낸 필드만 바꾼다. 빠진 필드를 None 으로 덮으면 ended_at 만 보낼 때 started_at 이 지워진다
-    for field, value in take_update_dto.model_dump(exclude_unset=True).items():
+    changes = take_update_dto.model_dump(exclude_none=True)
+
+    # 끝난 Take 는 분석이 읽고 있거나 이미 읽었다. ANALYZING 일 때 시각만 받는다 — FE 는
+    # WS stop 으로 Take 를 끝낸 뒤 시각을 보내고, 종료 중 새로고침하면 같은 값을 다시 보낸다
+    if existing_take.status not in IN_PROGRESS_STATUSES and (
+        existing_take.status != "ANALYZING" or "event_logs" in changes
+    ):
+        raise TakeAlreadyEnded()
+
+    started_at = changes.get("started_at", existing_take.started_at)
+    ended_at = changes.get("ended_at", existing_take.ended_at)
+    if started_at is not None and ended_at is not None and ended_at < started_at:
+        raise InvalidTakeTime()
+
+    for field, value in changes.items():
         setattr(existing_take, field, value)
 
     updated_take = take_repository.save(existing_take)
@@ -85,6 +104,10 @@ def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto:
 
     if not existing_take:
         raise NonExistentTake()
+    # 점검은 발표 전에 한다. 시작한 Take 의 기준값(평소 목소리 크기 등)을 바꾸면
+    # 이미 잰 발표를 다른 기준으로 분석하게 된다
+    if existing_take.status != "READY":
+        raise TakeAlreadyStarted()
 
     ## calibration result 로직
     ...

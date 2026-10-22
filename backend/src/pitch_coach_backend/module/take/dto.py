@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 
 class TakeInitRequestDTO(BaseModel):
@@ -11,10 +11,11 @@ class TakeInitRequestDTO(BaseModel):
     script_version_id: uuid.UUID
     goal_time_sec: int = Field(gt=0)
 
-# 보낸 필드만 반영한다 (service 가 exclude_unset 으로 읽는다)
+# 보낸 필드만 반영한다 (service 가 exclude_none 으로 읽는다).
+# 시각은 시간대가 있어야 한다. 없으면 DB 의 시각과 앞뒤를 비교할 수 없다
 class TakeUpdateRequestDTO(BaseModel):
-    started_at: datetime | None = None
-    ended_at: datetime | None = None
+    started_at: AwareDatetime | None = None
+    ended_at: AwareDatetime | None = None
     event_logs: list[dict] | None = None
 
 class TakeSummaryDTO(BaseModel):
