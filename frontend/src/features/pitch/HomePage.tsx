@@ -5,7 +5,7 @@ import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { useLogout } from '@/shared/api/useLogout';
 import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
-import { duration } from './homeFormat';
+import { duration, totalElapsed } from './homeFormat';
 
 const primary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-coral-deep active:translate-y-1 active:shadow-none';
@@ -106,14 +106,7 @@ export function HomePage() {
                 <div className="p-5">
                   <p className="text-xs text-stone">누적 발표 시간</p>
                   <p className="mt-3 flex items-center gap-3 text-sm font-bold">
-                    {duration(
-                      data.pitches.reduce(
-                        (total, pitch) =>
-                          total +
-                          pitch.takes.reduce((sum, take) => sum + (take.take_elapsed ?? 0), 0),
-                        0,
-                      ),
-                    )}
+                    {duration(totalElapsed(data.pitches.flatMap((pitch) => pitch.takes)))}
                   </p>
                 </div>
               </div>
