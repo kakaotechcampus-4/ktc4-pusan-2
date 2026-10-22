@@ -148,7 +148,15 @@ def google_start(
     redis_client: Annotated[redis.Redis, Depends(get_redis)],
     return_to: Annotated[str | None, Query(description="로그인 후 돌아갈 프론트 경로")] = None,
 ) -> RedirectResponse:
-    started = service.start_login(redis_client, return_to=_safe_return_to(return_to))
+    try:
+        started = service.start_login(redis_client, return_to=_safe_return_to(return_to))
+    except Exception:
+        # 로그인 버튼이 화면째 이 주소로 옮겨 온다. Redis 오류 등으로 500 JSON 을 주면
+        # 사용자가 그대로 보므로 콜백 실패와 같이 프론트로 돌려보낸다
+        logger.exception("구글 로그인 시작 중 예상하지 못한 오류")
+        return RedirectResponse(
+            _frontend_url("/", auth_error="login_failed"), status_code=status.HTTP_302_FOUND
+        )
 
     response = RedirectResponse(started.authorization_url, status_code=status.HTTP_302_FOUND)
     # state 를 훔쳐도 이 쿠키가 없으면 콜백을 완성할 수 없다.

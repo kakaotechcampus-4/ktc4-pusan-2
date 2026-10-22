@@ -111,6 +111,25 @@ def test_start_sets_the_temporary_browser_cookie(client: TestClient) -> None:
     assert "HttpOnly" in cookie
 
 
+def test_start_failure_redirects_with_login_failed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Redis 오류 등으로 시작을 못 해도 500 JSON 대신 프론트로 보낸다."""
+    from pitch_coach_backend.module.auth import state_store
+
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise redis.ConnectionError("down")
+
+    monkeypatch.setattr(state_store, "save", fail)
+
+    res = client.get(START, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=login_failed" in res.headers["location"]
+    assert BROWSER_COOKIE_NAME not in res.cookies
+
+
 @pytest.mark.parametrize(
     "hostile",
     [
