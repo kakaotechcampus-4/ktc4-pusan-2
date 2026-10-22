@@ -90,6 +90,7 @@ class DetailDTO(BaseModel):
     area: str
     slide_number: int | None = None
     text: str
+    evidence: dict[str, float] = {}
 
 class StandardResultDTO(BaseModel):
     display: str
