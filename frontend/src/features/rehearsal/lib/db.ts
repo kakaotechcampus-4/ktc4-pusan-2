@@ -14,7 +14,6 @@ import { PITCH_DB_NAME } from '@/shared/lib/localData';
  * 키는 `clientSessionId` 입니다. 재시도 화면(P15)이 이 값으로 같은 세션을 다시 찾습니다.
  */
 
-const DB_NAME = PITCH_DB_NAME;
 const DB_VERSION = 5;
 
 /** 세션 상태. 서버의 TakeStatus 와 다릅니다 — 이건 브라우저 쪽 진행 상태입니다. */
@@ -119,7 +118,7 @@ interface PitchDb extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<PitchDb>> | null = null;
 
 export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
-  dbPromise ??= openDB<PitchDb>(DB_NAME, DB_VERSION, {
+  dbPromise ??= openDB<PitchDb>(PITCH_DB_NAME, DB_VERSION, {
     /**
      * ★ 버전별 장부입니다. 위에서부터 순서대로, 각 블록은 브라우저마다 **평생 한 번만** 돕니다.
      *

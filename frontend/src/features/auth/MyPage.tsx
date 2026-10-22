@@ -8,10 +8,10 @@ import { useWithdraw } from '@/shared/api/useWithdraw';
 import { useSession } from './useSession';
 
 /**
- * P9 마이페이지 — 시안 `/dev/design/me`.
+ * P9 마이페이지.
  *
  * 로그아웃은 헤더에, 연습 요약은 홈에 있어서 여기 두지 않습니다.
- * 탈퇴 확인은 브라우저 confirm 입니다. 시안의 "확인 방식" 질문이 정해지면 바꿉니다.
+ * 탈퇴 확인은 브라우저 confirm 입니다. 확인 방식(공용 모달 등)이 정해지면 바꿉니다.
  */
 export function MyPage() {
   const user = useSession().data;

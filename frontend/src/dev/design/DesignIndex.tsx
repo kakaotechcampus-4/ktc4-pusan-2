@@ -11,7 +11,6 @@ import { RetryDraft } from './retry/RetryDraft';
 import { ComparisonDraft } from './comparison/ComparisonDraft';
 import { BestTakeDraft } from './best/BestTakeDraft';
 import { TakesDraft } from './takes/TakesDraft';
-import { MyPageDraft } from './me/MyPageDraft';
 
 /**
  * 디자인 시안 목록 — `/dev/design`, 각 시안은 `/dev/design/:name`.
@@ -30,7 +29,6 @@ const DRAFTS: { name: string; id: string; title: string; element: ReactElement }
   { name: 'report', id: 'P6', title: 'Take 리포트', element: <ReportDraft /> },
   { name: 'comparison', id: 'P7', title: 'Take 비교', element: <ComparisonDraft /> },
   { name: 'best', id: 'P8', title: 'Best Take 선택', element: <BestTakeDraft /> },
-  { name: 'me', id: 'P9', title: '마이페이지', element: <MyPageDraft /> },
   { name: 'retry', id: 'P15', title: '업로드 실패 · 재시도', element: <RetryDraft /> },
   { name: 'takes', id: 'P16', title: 'Take 기록', element: <TakesDraft /> },
 ];
