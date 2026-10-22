@@ -95,8 +95,6 @@ DRAIN_TIMEOUT_SEC = 10.0
 # 취소·오류로 세션을 버릴 때 Deepgram 소켓 닫기(abort) 를 기다리는 상한. 이게 없으면
 # 상대가 close 핸드셰이크에 답하지 않을 때 shield 안에서 영영 기다린다
 ABORT_TIMEOUT_SEC = 3.0
-# 정리 중인 스트림에 재연결이 왔을 때 그 정리를 기다리는 상한
-HANDOVER_TIMEOUT_SEC = 3.0
 # Deepgram 이 받았다는 길이와 우리가 보낸 길이의 허용 오차
 DURATION_TOLERANCE_MS = 50
 # FE 가 떨어져 있는 동안 모아 둘 final 개수. 10분 발표가 200개 안팎이다
@@ -579,8 +577,9 @@ class TakeStream:
                     try:
                         reason = await self._pump_audio(session)
                     except ConnectionClosed:
+                        # Deepgram 이 닫았다. 이벤트 쪽은 끊지 않는다 — 이미 받아 둔 final 을
+                        # 마저 읽고, 닫힌 소켓이라 읽을 것이 떨어지면 스스로 끝난다
                         reason = _LOST
-                        tg.cancel_scope.cancel()
                         return
                     # CloseStream 을 보냈다. 이벤트 펌프가 Metadata 까지 받을 시간을 준다
                     await anyio.sleep(DRAIN_TIMEOUT_SEC)
@@ -691,16 +690,22 @@ class TakeStream:
                     for w in event.words
                 ],
             )
-            if event.is_final and self._client is None:
-                # FE 가 떨어져 있다. interim 은 어차피 다음 것이 덮으니 버리고 final 만 모은다
-                self._missed_finals.append(message)
-                del self._missed_finals[:-MAX_MISSED_FINALS]
-            else:
+            if not event.is_final:
                 await self._send(message)
-            if event.is_final:
-                # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
-                # 리포트의 원천은 이 행이지 화면이 아니다
-                await self._persist(message)
+            else:
+                # 받은 final 은 정리(취소)가 와도 끝까지 처리한다. 중간에 끊기면 화면에도 DB 에도
+                # 남지 않는다. 화면 전송은 상대가 멈춰 있을 수 있어 상한을 둔다
+                with anyio.CancelScope(shield=True):
+                    if self._client is None:
+                        # FE 가 떨어져 있다. interim 은 다음 것이 덮으니 버리고 final 만 모은다
+                        self._missed_finals.append(message)
+                        del self._missed_finals[:-MAX_MISSED_FINALS]
+                    else:
+                        with anyio.move_on_after(ABORT_TIMEOUT_SEC):
+                            await self._send(message)
+                    # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
+                    # 리포트의 원천은 이 행이지 화면이 아니다
+                    await self._persist(message)
         if event.is_final:
             # 빈 final 도 구간을 닫는다. 다음 interim 은 새 번호로
             self.segment_no += 1
@@ -824,8 +829,8 @@ _streams: dict[uuid.UUID, TakeStream] = {}
 # 보고 각자 TakeStream·Deepgram 세션을 만든다. 그러면 하나는 `_streams` 덮어쓰기로
 # 레지스트리에서 밀려나 고아가 되고, Deepgram 연결은 둘 생긴다.
 #
-# 락은 **take_id 별**이다. 프로세스 전체 락 하나면 is_stopping 핸드오버(최대
-# HANDOVER_TIMEOUT_SEC) 나 커서 조회(DB 왕복) 동안 다른 Take 의 연결까지 같이 멈춘다 —
+# 락은 **take_id 별**이다. 프로세스 전체 락 하나면 is_stopping 핸드오버(최대 DRAIN_TIMEOUT_SEC
+# + ABORT_TIMEOUT_SEC) 나 커서 조회(DB 왕복) 동안 다른 Take 의 연결까지 같이 멈춘다 —
 # 동시 사용자가 늘면 그 지연이 체감된다 (코드 리뷰 지적). 다른 Take 끼리는 공유하는
 # 상태가 없으니 서로 기다릴 이유가 없다. 락 객체는 쓰는 동안만 살아 있고 마지막으로
 # 나가는 쪽이 치운다 — Take 마다 락이 영영 남지 않게.
@@ -897,14 +902,14 @@ async def attach(
 
         if stream is not None and stream.is_stopping:
             # 정리 중인 스트림에 붙이면 곧 사라질 객체에 오디오를 밀어 넣게 된다.
-            # 끝나기를 기다렸다가 새로 만든다
-            if not await stream.wait_closed(timeout=HANDOVER_TIMEOUT_SEC):
-                # 정상 drain 은 최대 DRAIN_TIMEOUT_SEC(10s) 까지 걸릴 수 있는데
-                # 핸드오버는 HANDOVER_TIMEOUT_SEC(3s) 만 기다린다. 여기서 그냥
-                # forget() 만 하면 옛 스트림은 레지스트리에서만 사라질 뿐 Deepgram
-                # 연결을 붙든 채 자기 페이스대로 계속 돈다 — "정리" 가 아니라 "방치" 다.
-                # 강제로 끊는다
+            # 끝나기를 기다렸다가 새로 만든다. 정상 종료(stop)와 같은 시간을 기다린다 —
+            # 더 일찍 끊으면 Deepgram 이 아직 보내지 않은 마지막 문장이 사라진다
+            if not await stream.wait_closed():
+                # 그래도 안 끝나면 강제로 끊고, 끊긴 스트림이 실제로 끝나기를 기다린다.
+                # forget() 만 하면 옛 스트림은 Deepgram 연결을 붙든 채 계속 돈다. 끝나기 전에
+                # 아래에서 번호를 읽으면 옛 스트림이 저장 중인 seq 를 새 스트림이 또 쓴다
                 stream.cancel()
+                await stream.wait_cancelled(ABORT_TIMEOUT_SEC)
             forget(stream)
             stream = None
 
