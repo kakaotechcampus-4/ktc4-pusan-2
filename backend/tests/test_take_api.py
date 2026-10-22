@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
@@ -351,6 +352,46 @@ def test_create_with_out_of_range_goal_time_is_422(
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("mode", "PRACTICE"), ("mode", "coaching"), ("script_mode", "FULL")]
+)
+def test_create_with_unknown_mode_is_422(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    field: str,
+    value: str,
+) -> None:
+    body = {
+        "mode": "COACHING",
+        "script_mode": "HIGHLIGHT",
+        "presentation_version_id": str(versions[0]),
+        "script_version_id": str(versions[1]),
+        "goal_time_sec": 300,
+    }
+    body[field] = value
+
+    response = client.post(f"/api/pitches/{pitch_id}/takes/", json=body, headers=auth_headers)
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [("status", "DONE"), ("mode", "PRACTICE"), ("script_mode", "FULL"), ("end_reason", "STOP")],
+)
+def test_takes_table_rejects_unknown_values(
+    db_session: Session, pitch_id: uuid.UUID, versions: Versions, column: str, value: str
+) -> None:
+    """DTO 를 거치지 않는 저장도 테이블의 CHECK 가 막는다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    setattr(take, column, value)
+
+    with pytest.raises(IntegrityError):
+        db_session.flush()
 
 
 @pytest.mark.parametrize(

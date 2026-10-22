@@ -10,9 +10,8 @@
 `SlideTracker` 하나로 정한다.
 
 BE 가 값을 고치거나 빼는 곳은 아래뿐이다. 나머지(미션 · 반복 문제 · 1초 기록)는 받은 그대로 싣는다.
-  - `mode` · `script_mode`: 계약에 없는 값이면 `COACHING` · null 로 둔다. takes 에 CHECK 가 아직
-    없어 옛 값(`PRACTICE` · `FULL`)이 남아 있을 수 있는데, 그대로 보내면 AI 가 그 Take 의 요청을
-    전부 422 로 거절한다
+  - `mode` · `script_mode`: 계약에 없는 값이면 `COACHING` · null 로 둔다. takes CHECK 가 막지만,
+    계약에 없는 값을 그대로 보내면 AI 가 그 Take 의 요청을 전부 422 로 거절해서 한 번 더 막는다
   - `plan.min_ms`: 0 이하면 null (5-2)
   - `calibration.base_level_db`: 유한한 수가 아니면 null
   - 코칭 계획 요청: 입력 크기 상한(5-2 plan)을 넘으면 AI 가 422 를 준다. 부르지 않는다. 미션 설명만

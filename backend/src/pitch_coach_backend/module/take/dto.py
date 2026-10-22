@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -10,9 +10,14 @@ from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_js
 MAX_TIME_LIMIT_SEC = 60 * 60
 
 
+# takes 의 CHECK 와 같은 값이다. FE types/api.ts 의 PracticeMode · ScriptMode 와도 같다
+TakeMode = Literal["COACHING", "EXAM"]
+ScriptMode = Literal["HIGHLIGHT", "KEYWORD", "OFF"]
+
+
 class TakeInitRequestDTO(BaseModel):
-    mode: str
-    script_mode: str
+    mode: TakeMode
+    script_mode: ScriptMode
     presentation_version_id: uuid.UUID
     script_version_id: uuid.UUID
     # FE 는 발표 제한 시간을 그대로 보낸다

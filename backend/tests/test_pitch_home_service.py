@@ -45,7 +45,7 @@ def _make_take(
     *,
     duration_sec: int = 280,
     goal_time_sec: int = 300,
-    script_mode: str = "FULL",
+    script_mode: str = "HIGHLIGHT",
     score: int | None = None,
 ) -> uuid.UUID:
     presentation_version_id, script_version_id = versions
@@ -54,7 +54,7 @@ def _make_take(
         take_number=take_number,
         presentation_version_id=presentation_version_id,
         script_version_id=script_version_id,
-        mode="PRACTICE",
+        mode="COACHING",
         script_mode=script_mode,
         status="COMPLETED",
         duration_sec=duration_sec,
@@ -219,8 +219,8 @@ def test_take_that_has_not_finished_has_null_elapsed(
         take_number=1,
         presentation_version_id=versions[0],
         script_version_id=versions[1],
-        mode="PRACTICE",
-        script_mode="FULL",
+        mode="COACHING",
+        script_mode="HIGHLIGHT",
         status="READY",
         goal_time_sec=300,
     )

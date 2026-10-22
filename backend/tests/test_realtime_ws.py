@@ -19,7 +19,7 @@ from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import delete as sql_delete
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from websockets.exceptions import ConnectionClosedError
 
@@ -330,7 +330,7 @@ def make_take(
         presentation_version_id=presentation.id,
         script_version_id=script.id,
         mode="COACHING",
-        script_mode="FULL",
+        script_mode="HIGHLIGHT",
         status=status,
         goal_time_sec=300,
     )
@@ -2801,6 +2801,8 @@ def test_unknown_end_reason_in_the_database_is_still_rejected(
 ):
     """이유가 나중에 늘어 이 버전이 모르는 값이어도 끝난 Take 다. FE 가 분기할 수 없으니
     auto_end 없이 일반 문구로."""
+    # CHECK 를 넓힌 새 버전에서 이 버전으로 되돌린 DB 다. 테스트 트랜잭션과 함께 롤백된다
+    db_session.execute(text("ALTER TABLE takes DROP CONSTRAINT check_take_end_reason"))
     ended = make_take(db_session, user.id, status="ANALYZING")
     ended.end_reason = "SOMETHING_NEW"
     db_session.commit()

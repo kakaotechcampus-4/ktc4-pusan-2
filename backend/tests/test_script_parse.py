@@ -970,8 +970,8 @@ def test_version_lock_does_not_block_child_inserts_on_the_same_pitch(engine: Eng
                     take_number=1,
                     presentation_version_id=presentation_id,
                     script_version_id=script_id,
-                    mode="PRACTICE",
-                    script_mode="FULL",
+                    mode="COACHING",
+                    script_mode="HIGHLIGHT",
                     goal_time_sec=60,
                 )
             )
