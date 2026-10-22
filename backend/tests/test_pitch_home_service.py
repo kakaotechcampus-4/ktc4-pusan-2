@@ -111,8 +111,8 @@ def test_maps_pitch_fields(db_session: Session, user_id: uuid.UUID, pitch_id: uu
     assert result.pitches[0].pitch_time == 300
     assert result.pitches[0].thumbnail_url is None
 
-# 발표일 없이 만든 pitch 도 목록에 나오고 pitch_deadline 은 null
-def test_pitch_without_presentation_date_has_null_deadline(
+# 발표일 없이 만든 pitch 도 목록에 나오고 presentation_date 는 null
+def test_pitch_without_presentation_date_lists_null_date(
     db_session: Session, user_id: uuid.UUID
 ) -> None:
     service.add_pitch_service(

@@ -34,7 +34,7 @@ class PitchListItemDTO(BaseModel):
     pitch_title: str
     pitch_time: int
     thumbnail_url: str | None = None
-    # 발표일은 생성 때 비워 둘 수 있다 (PitchDTO.presentation_date)
+    # 발표일은 생성 때 비워 둘 수 있다 (PitchSaveRequestDTO.presentation_date)
     presentation_date: date | None = None
     takes: list[TakeSummaryDTO]
 
