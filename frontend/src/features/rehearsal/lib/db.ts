@@ -2,6 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { DeviceChoice } from '../media/useCameraStream';
 import type { CalibrationSummary, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import type { GazeSampleRecord } from '@/workers/gaze.contract';
+import { PITCH_DB_NAME } from '@/shared/lib/localData';
 
 /**
  * 리허설 중 쌓이는 모든 기록. **브라우저가 원본입니다** (CLAUDE.md 4번).
@@ -13,7 +14,7 @@ import type { GazeSampleRecord } from '@/workers/gaze.contract';
  * 키는 `clientSessionId` 입니다. 재시도 화면(P15)이 이 값으로 같은 세션을 다시 찾습니다.
  */
 
-const DB_NAME = 'pitchcoach';
+const DB_NAME = PITCH_DB_NAME;
 const DB_VERSION = 5;
 
 /** 세션 상태. 서버의 TakeStatus 와 다릅니다 — 이건 브라우저 쪽 진행 상태입니다. */
@@ -194,6 +195,13 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
       //   upgrade(db, oldVersion, _newVersion, tx) {
       //     if (oldVersion < 6) tx.objectStore('session').createIndex('byTakeId', 'takeId');
       //   }
+    },
+    // 다른 곳이 DB 를 지우거나(마이페이지 기록 지우기 · 탈퇴) 버전을 올리려 하면 연결을 닫아
+    // 막지 않습니다. 다음 호출이 다시 엽니다.
+    blocking(_current, _blocked, event) {
+      // 이벤트 안에서 바로 닫아야 삭제가 blocked 로 넘어가지 않습니다
+      (event.target as IDBDatabase).close();
+      dbPromise = null;
     },
   })
     // 실패한 약속을 캐시하면 새로고침 전까지 영원히 실패합니다.

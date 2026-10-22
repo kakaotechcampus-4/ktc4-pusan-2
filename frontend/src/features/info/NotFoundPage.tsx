@@ -1,7 +1,7 @@
 import { ButtonLink } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { Mascot } from '@/shared/ui/Mascot';
-import { InfoPage } from './InfoPage';
+import { InfoPage } from '@/shared/ui/InfoPage';
 
 /** 404 찾을 수 없음 — 시안 `/dev/design/not-found` */
 export function NotFoundPage() {

@@ -55,6 +55,7 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
     note: '이 브라우저에 맞는 사유 하나만 보여요',
   },
   { path: '/없는-주소', id: '404', title: '찾을 수 없음' },
+  { path: '/me', id: 'P9', title: '마이페이지' },
   { path: '/privacy', id: '—', title: '개인정보 처리방침' },
   { path: '/terms', id: '—', title: '이용약관' },
 ];
