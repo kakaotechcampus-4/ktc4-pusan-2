@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/ 디렉터리 (core/config.py 기준 3단계 위)
@@ -38,7 +38,11 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
 
     # Deepgram 스트리밍 STT. 서버만 알고 브라우저에는 절대 내려보내지 않는다.
-    deepgram_api_key: str
+    # 키가 여럿이면 DEEPGRAM_API_KEYS 에 쉼표로 잇는다. 앞에서부터 쓰고, 크레딧이 떨어지거나
+    # 키가 틀려 거절되면 다음 키로 넘어간다 (realtime/stt_adapter.py). 둘 다 있으면
+    # DEEPGRAM_API_KEY 가 맨 앞이다. 실제 목록은 deepgram_keys 로 읽는다
+    deepgram_api_key: str = ""
+    deepgram_api_keys: str = ""
 
     # Take 자동 종료. 말 없이 켜 둔 Take 가 STT 비용을 계속 쓰지 않게 한다.
     # 말 없음 — 최근 take_silence_end_sec 동안 말이 없고, 직전 take_silence_window_sec 중
@@ -80,6 +84,19 @@ class Settings(BaseSettings):
                 "openssl rand -hex 32 로 만드세요."
             )
         return value
+
+    @model_validator(mode="after")
+    def _has_deepgram_key(self) -> Settings:
+        # 키가 없으면 STT 가 하나도 안 된다. 예전처럼 시작할 때 막는다
+        if not self.deepgram_keys:
+            raise ValueError("DEEPGRAM_API_KEY 나 DEEPGRAM_API_KEYS 에 키를 하나 이상 넣으세요.")
+        return self
+
+    @property
+    def deepgram_keys(self) -> tuple[str, ...]:
+        keys = [self.deepgram_api_key, *self.deepgram_api_keys.split(",")]
+        # 같은 키를 두 번 넣어도 한 번만 시도한다
+        return tuple(dict.fromkeys(key.strip() for key in keys if key.strip()))
 
 
 settings = Settings()

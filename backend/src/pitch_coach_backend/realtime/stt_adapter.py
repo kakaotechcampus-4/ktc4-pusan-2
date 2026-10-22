@@ -3,7 +3,7 @@
 하는 일은 셋뿐이다.
 
 1. 연결 URL 을 만들고 API 키를 헤더로 붙인다. 브라우저 WebSocket 은 헤더를 못 붙이므로
-   FE → BE → Deepgram 구조가 필요한 이유가 이것이다.
+   FE → BE → Deepgram 구조가 필요한 이유가 이것이다. 키가 여럿이면 거절된 키를 건너뛴다.
 2. PCM 을 흘리고 KeepAlive / Finalize / CloseStream 을 보낸다.
 3. Deepgram JSON 을 우리 이벤트로 바꾼다. 초(float) 는 ms 정수로. 단 기준은 여전히
    "이 Deepgram 연결에 보낸 첫 바이트 = 0" 이다. Take 기준으로 옮기는 건 service 의 몫.
@@ -15,7 +15,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlencode
@@ -43,6 +43,10 @@ KEEPALIVE_INTERVAL_SEC = 3.0
 # keepalive_loop 가 유휴 여부를 확인하는 주기
 KEEPALIVE_POLL_SEC = 1.0
 CONNECT_TIMEOUT_SEC = 10.0
+# 연결 요청에 이 코드로 답하면 그 키는 다시 붙어도 안 된다. 401 은 틀린 키, 402 는 크레딧 부족
+# (ASR_PAYMENT_REQUIRED). 발표 도중 크레딧이 떨어져 끊기는 경우는 닫힘 코드가 문서에 없다.
+# 끊기면 어차피 다시 붙으므로 그 재접속이 402 로 거절될 때 다음 키로 넘어간다
+KEY_REJECTED_STATUSES = frozenset({401, 402})
 
 
 @dataclass(frozen=True)
@@ -214,6 +218,10 @@ class SttConfigRejected(SttConnectError):
     """
 
 
+class _SttKeyRejected(SttConnectError):
+    """이 키를 Deepgram 이 받아 주지 않는다 (KEY_REJECTED_STATUSES). 다른 키로는 붙을 수 있다."""
+
+
 class SttSession(Protocol):
     """service 가 의존하는 최소 인터페이스. 테스트는 이걸 가짜로 바꿔 끼운다."""
 
@@ -293,25 +301,56 @@ class DeepgramSession:
 
 
 class DeepgramSttAdapter:
-    def __init__(self, api_key: str, *, base_url: str = DEEPGRAM_LISTEN_URL) -> None:
-        self._api_key = api_key
+    """키를 앞에서부터 쓰고, 거절된 키는 소진으로 표시해 다음 연결부터 건너뛴다.
+
+    소진 표시는 프로세스 메모리에만 둔다. 재시작하면 첫 키부터 다시 확인한다.
+    로그에는 키 값 대신 몇 번째 키인지만 남긴다.
+    """
+
+    def __init__(self, api_keys: Sequence[str], *, base_url: str = DEEPGRAM_LISTEN_URL) -> None:
+        # 문자열도 Sequence 라 그대로 받으면 글자 하나하나가 키가 된다
+        if isinstance(api_keys, str) or not api_keys:
+            raise ValueError("Deepgram 키 목록이 필요합니다")
+        self._api_keys = tuple(api_keys)
         self._base_url = base_url
+        self._exhausted: set[int] = set()
 
     async def connect(self, config: SttConfig) -> DeepgramSession:
         url = build_listen_url(self._base_url, config)
+        if len(self._exhausted) == len(self._api_keys):
+            # 전부 소진이면 첫 키부터 다시 확인한다. 그사이 누가 크레딧을 채웠을 수 있다.
+            # 그대로 두면 재시작할 때까지 재시도가 Deepgram 에 닿지도 않는다
+            self._exhausted.clear()
+        for index, api_key in enumerate(self._api_keys):
+            if index in self._exhausted:
+                continue
+            try:
+                conn = await self._open(url, api_key)
+            except _SttKeyRejected as e:
+                # 기다리지 않고 바로 다음 키로 붙는다. 다른 Take 도 이 키를 건너뛴다
+                self._exhausted.add(index)
+                logger.warning("Deepgram %d번째 키가 거절됐다 %s", index + 1, e)
+                continue
+            return DeepgramSession(conn)
+        logger.error("Deepgram 키 %d개가 모두 거절됐다", len(self._api_keys))
+        raise SttConnectError("모든 Deepgram 키가 거절됐다")
+
+    async def _open(self, url: str, api_key: str) -> ClientConnection:
         try:
-            conn = await connect(
+            return await connect(
                 url,
-                additional_headers={"Authorization": f"Token {self._api_key}"},
+                additional_headers={"Authorization": f"Token {api_key}"},
                 open_timeout=CONNECT_TIMEOUT_SEC,
                 # 우리가 보내는 건 100ms 프레임, 받는 건 JSON 이라 기본 1MiB 면 충분하다
             )
         except InvalidStatus as e:
-            if e.response.status_code == 400:
+            status = e.response.status_code
+            if status == 400:
                 # 거절 이유는 본문에 있다. 사용자 발화가 아니라 우리가 보낸 설정에 대한 설명이다
                 body = bytes(e.response.body[:200]).decode(errors="replace")
                 raise SttConfigRejected(f"{e} {body}") from e
+            if status in KEY_REJECTED_STATUSES:
+                raise _SttKeyRejected(str(e)) from e
             raise SttConnectError(str(e)) from e
         except (OSError, TimeoutError, WebSocketException) as e:
             raise SttConnectError(str(e)) from e
-        return DeepgramSession(conn)
