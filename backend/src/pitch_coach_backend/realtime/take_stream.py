@@ -35,7 +35,7 @@ import asyncio
 import contextlib
 import logging
 import uuid
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Iterable
 from dataclasses import dataclass, field, replace
 
 import anyio
@@ -44,6 +44,7 @@ from pydantic import BaseModel
 from websockets.exceptions import ConnectionClosed
 
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO, TranscriptWordDTO
+from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS, silence
 from pitch_coach_backend.realtime.dto import (
     ErrorMessage,
@@ -168,6 +169,9 @@ class TakeStream:
         # 태스크를 약하게만 잡고 있어서, 아무도 참조하지 않는 태스크는 GC 에 끝나기 전에
         # 사라질 수 있다 (asyncio.create_task 문서의 경고)
         self._reaper: asyncio.Task[None] | None = None
+        # Take 가 지워져 끊었다 (`discard`). 붙어 있던 연결에 알리는 태스크도 위와 같은 이유로 든다
+        self._discarded = False
+        self._closer: asyncio.Task[None] | None = None
         self._ever_connected = False
         self._stopping = False
         self._stop_event = asyncio.Event()
@@ -337,6 +341,38 @@ class TakeStream:
         )
         self._finish()
         return False
+
+    def discard(self) -> None:
+        """Take 가 지워졌다. 남은 전사를 기다리지 않고 끊고, 붙어 있는 연결에 알린 뒤 닫는다.
+
+        저장할 행이 없으니 정상 종료(`request_stop`)처럼 남은 오디오를 흘려 전사를 받을 이유가
+        없다. FE 에는 다시 붙을 때 받을 것과 같은 `TAKE_NOT_FOUND` 를 보낸다 — FE 는 이걸 받으면
+        다시 붙지 않는다.
+
+        스트림 태스크 안(`_persist`)에서도 부른다. 연결을 닫는 일을 따로 태스크로 돌리는 이유다 —
+        여기서 기다리면 `cancel()` 이 그 자리를 끊어 알림이 안 나간다.
+        """
+        if self._discarded:
+            return
+        self._discarded = True
+        client = self._client
+        # 끊은 스트림의 전사·상태가 이 연결로 더 나가지 않게 먼저 뗀다
+        self._client = None
+        self.cancel()
+        if client is not None:
+            self._closer = asyncio.create_task(
+                self._close_deleted_client(client), name=f"take-stream-discard:{self.take_id}"
+            )
+
+    async def _close_deleted_client(self, client: WebSocket) -> None:
+        await _quiet(
+            client.send_text(
+                ErrorMessage(
+                    code=WsErrorCode.TAKE_NOT_FOUND, message="연습을 찾을 수 없습니다."
+                ).model_dump_json()
+            )
+        )
+        await _quiet(client.close(code=1008, reason=WsErrorCode.TAKE_NOT_FOUND))
 
     def _finish(self) -> None:
         if self._closed.is_set():
@@ -666,6 +702,15 @@ class TakeStream:
         )
         try:
             await self._store.append(self.take_id, segment)
+        except NonExistentTake:
+            # Take 가 지워졌다. 지운 요청이 이 스트림을 끊기 직전에 온 final 이거나, 그 요청이
+            # 이 스트림을 보지 못했다. 저장할 곳이 없으니 더 돌 이유가 없다
+            logger.warning(
+                "Take 가 지워져 final 을 저장하지 못했다. 스트림을 끊는다 take=%s seq=%d",
+                self.take_id,
+                segment.seq,
+            )
+            self.discard()
         except Exception:
             # DB 장애로 스트림까지 멈추면 안 된다 — 화면 전사는 이미 나갔고 발표는 계속된다.
             # 전사 원문은 로그에 남기지 않는다 (seq 와 길이만)
@@ -842,6 +887,21 @@ async def attach(
 def forget(stream: TakeStream) -> None:
     if _streams.get(stream.take_id) is stream:
         del _streams[stream.take_id]
+
+
+async def discard(take_ids: Iterable[uuid.UUID]) -> None:
+    """지운 Take 들의 스트림을 끊는다(`TakeStream.discard`). 스트림이 없는 Take 는 건너뛴다.
+
+    Take 를 지우는 요청이 커밋한 뒤에 부른다. 먼저 끊으면 커밋이 실패했을 때 지워지지도 않은
+    연습의 STT 만 끊긴다.
+    """
+    for take_id in take_ids:
+        # attach() 가 이 Take 의 스트림을 만드는 중이면 끝나기를 기다린다. 안 그러면 방금 만든
+        # 스트림을 못 보고 지나간다
+        async with _attach_lock(take_id):
+            stream = _streams.get(take_id)
+        if stream is not None:
+            stream.discard()
 
 
 def active_count() -> int:

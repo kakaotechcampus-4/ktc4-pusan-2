@@ -182,6 +182,25 @@ def test_put_accepts_utc_z_suffix(
     assert take.ended_at == datetime(2026, 10, 7, 1, 5, tzinfo=UTC)
 
 
+# ── DELETE /takes/{take_id} ─────────────────────────────────────────
+
+
+def test_delete_take_without_a_live_stream(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """실시간 STT 가 붙어 있지 않은 Take 도 그대로 지워진다 (스트림 끊기는 건너뛴다)."""
+    take_id = _make_take(db_session, pitch_id, versions, 1).id
+
+    response = client.delete(f"/api/pitches/{pitch_id}/takes/{take_id}", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert db_session.get(Take, take_id) is None
+
+
 # ── 입력 검증 ───────────────────────────────────────────────────────
 
 
