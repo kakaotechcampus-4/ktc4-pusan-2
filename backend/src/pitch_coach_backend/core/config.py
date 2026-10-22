@@ -1,9 +1,13 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/ 디렉터리 (core/config.py 기준 3단계 위)
 BACKEND_DIR = Path(__file__).resolve().parents[3]
+
+# HS256 키는 해시 출력 길이(32바이트) 이상이어야 추측으로 서명을 깨기 어렵다
+JWT_SECRET_KEY_MIN_BYTES = 32
 
 
 class Settings(BaseSettings):
@@ -47,6 +51,17 @@ class Settings(BaseSettings):
     s3_region: str = "ap-northeast-2"
     # AWS_PROFILE 환경변수로 SSO 프로필 지정
     aws_profile: str | None = None
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def _jwt_secret_key_is_long_enough(cls, value: str) -> str:
+        # .env.example 의 change-me 그대로 운영에 올라가는 것을 시작할 때 막는다
+        if len(value.encode()) < JWT_SECRET_KEY_MIN_BYTES:
+            raise ValueError(
+                f"JWT_SECRET_KEY 는 {JWT_SECRET_KEY_MIN_BYTES}바이트 이상이어야 합니다. "
+                "openssl rand -hex 32 로 만드세요."
+            )
+        return value
 
 
 settings = Settings()
