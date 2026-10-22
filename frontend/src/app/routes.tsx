@@ -12,7 +12,7 @@ import { PolicyPage } from '@/features/onboarding/PolicyPage';
 import { HomePage } from '@/features/pitch/HomePage';
 import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
-import { PitchCreatePage } from '@/features/pitch/create/PitchCreatePage';
+import { PitchCreatePage, PitchEditPage } from '@/features/pitch/create/PitchCreatePage';
 import { RehearsalPage } from '@/features/rehearsal/stage/RehearsalPage';
 import { DesignDraftRoute, DesignIndex } from '@/dev/design/DesignIndex';
 
@@ -32,7 +32,7 @@ const routes = [
   { path: '/about',       title: '분석 방식 설명 | 피치코치', element: <Stub id="P14"  name="분석 방식 설명" track="B" /> },
   { path: '/pitches',     title: 'Pitch 목록 | 피치코치', element: <HomePage /> },
   { path: '/pitch/new',   title: 'Pitch 생성 | 피치코치', element: <PitchCreatePage /> },
-  { path: '/pitch/:id/edit', title: 'Pitch 수정 | 피치코치', element: <Stub id="P13" name="Pitch 수정" track="B" /> },
+  { path: '/pitch/:id/edit', title: 'Pitch 수정 | 피치코치', element: <PitchEditPage /> },
   { path: '/takes',       title: 'Take 기록 | 피치코치', element: <Stub id="P16"  name="Take 기록" track="B" /> },
   // ★ Take는 준비 화면의 시작 CTA에서 생긴다.
   //    그래서 준비는 pitchId, 리허설은 takeId를 받는다. 이 경계를 흐리지 말 것.

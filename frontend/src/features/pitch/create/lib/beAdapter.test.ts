@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { UploadPresentationResponse } from '@/types/presentation';
 import type { ScriptDetail } from '@/types/script';
 import type { StandardsPosted } from '@/types/standards';
+import type { HomePitch } from '@/types/home';
+import type { EvaluationDetail } from '@/types/standards';
 import {
+  fromEvaluation,
+  fromPitchListItem,
   fromPitchSaved,
   fromScriptCreated,
   fromScriptDetail,
@@ -173,5 +177,42 @@ describe('대본 — 폴링 응답', () => {
     expect(fromScriptDetail({ ...base, parse_status: 'FAILED', error_code: 'AI_TIMEOUT' })).toEqual(
       { status: 'failed', errorCode: 'AI_TIMEOUT' },
     );
+  });
+});
+
+describe('수정 화면 — 목록 한 항목 · 저장된 평가기준', () => {
+  const item: HomePitch = {
+    pitch_id: 'p1',
+    pitch_title: '캡스톤 최종 발표',
+    pitch_time: 600,
+    thumbnail_url: null,
+    presentation_date: '2026-10-30',
+    takes: [],
+  };
+
+  it('목록에는 허용오차가 없어 모른다(null)로 둔다 — 0 으로 채우면 저장 때 원래 값을 덮어쓴다', () => {
+    expect(fromPitchListItem(item)).toEqual({
+      title: '캡스톤 최종 발표',
+      presentationDate: '2026-10-30',
+      timeLimitSec: 600,
+      lowerToleranceSec: null,
+      upperToleranceSec: null,
+    });
+  });
+
+  it('발표일이 없으면 빈 문자열이다 (생성 화면과 같은 "안 정함")', () => {
+    expect(fromPitchListItem({ ...item, presentation_date: null }).presentationDate).toBe('');
+  });
+
+  it('평가기준은 저장한 순서(order)대로 둔다', () => {
+    const detail: EvaluationDetail = {
+      pitch_id: 'p1',
+      evaluation_version: 2,
+      evaluations: [
+        { order: 2, standard: '청중 보기' },
+        { order: 1, standard: '추임새 3번 이하' },
+      ],
+    };
+    expect(fromEvaluation(detail)).toEqual(['추임새 3번 이하', '청중 보기']);
   });
 });

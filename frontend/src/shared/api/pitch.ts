@@ -1,5 +1,5 @@
 import { apiRequest, postJson } from './client';
-import type { PitchRequest, PitchSavedResponse } from '@/types/pitch';
+import type { PitchRequest, PitchResources, PitchSavedResponse } from '@/types/pitch';
 
 /** 피치를 만듭니다. 발표자료 · 대본 · 평가기준은 전부 이 응답의 pitch_id 아래에 올라갑니다 */
 export function createPitch(body: PitchRequest) {
@@ -17,4 +17,9 @@ export function updatePitch(pitchId: string, body: PitchRequest) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+/** 피치의 버전 목록 — 수정 화면이 사이드바를 채울 때 씁니다 */
+export function getPitchResources(pitchId: string) {
+  return apiRequest<PitchResources>(`/api/pitches/${pitchId}/resources`);
 }
