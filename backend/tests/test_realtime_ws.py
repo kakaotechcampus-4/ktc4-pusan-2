@@ -12,7 +12,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import WebSocketDisconnect
@@ -206,6 +206,10 @@ class FakeTranscriptStore:
         self.ended: list[uuid.UUID] = []
         # 자동 종료로 적은 (Take, 이유)
         self.auto_ended: list[tuple[uuid.UUID, str]] = []
+        # 떠난 것으로 적은 (Take, 끝난 시각)
+        self.abandoned: list[tuple[uuid.UUID, datetime]] = []
+        # running_takes() 가 돌려줄 (Take, 마지막 활동 시각)
+        self.running: list[tuple[uuid.UUID, datetime]] = []
         # 저장한 순서. 종료를 마지막 전사 뒤에 적는지 본다
         self.calls: list[str] = []
         # cursor 를 읽을 때마다 그때까지 저장된 구간 수. 새 스트림이 저장 뒤에 번호를 읽는지 본다
@@ -247,6 +251,20 @@ class FakeTranscriptStore:
             self.auto_ended.append((take_id, end_reason))
         return True
 
+    async def mark_abandoned(self, take_id: uuid.UUID, ended_at: datetime) -> bool:
+        await asyncio.sleep(0)
+        if self.fail_mark:
+            raise RuntimeError("db down")
+        if not self.marks or take_id in self.ended:
+            return False
+        self.ended.append(take_id)
+        self.calls.append("mark_abandoned")
+        self.abandoned.append((take_id, ended_at))
+        return True
+
+    async def running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
+        return list(self.running)
+
 
 # ── fixture ───────────────────────────────────────────────────────────
 
@@ -261,6 +279,9 @@ def _no_leftover_streams():
     take_stream._attach_locks.clear()
     take_stream._ended.clear()
     take_stream._takes.clear()
+    for timer in take_stream._abandon_timers.values():
+        timer.cancel()
+    take_stream._abandon_timers.clear()
     app.dependency_overrides.pop(get_stt_adapter, None)
     app.dependency_overrides.pop(get_transcript_store, None)
 
@@ -856,6 +877,8 @@ def test_grace_expiry_closes_the_stream(
     # 스트림만 정리한다. FE 는 끊긴 뒤에도 다시 붙으니 Take 는 끝내지 않는다
     assert store.ended == []
     assert TAKE_ID not in take_stream._ended
+    # 대신 아무도 다시 붙지 않으면 끝낼 타이머를 건다
+    assert TAKE_ID in take_stream._abandon_timers
 
 
 def test_reconnect_after_grace_expiry_resumes_on_a_new_stream(
@@ -3228,3 +3251,253 @@ async def test_shutdown_cancels_cleanup_that_does_not_finish_and_says_which(
 
     assert f"take-auto-end:{stream.take_id}" in caplog.text
     assert not take_stream._background
+
+
+# ── 떠난 Take ─────────────────────────────────────────────────────────
+
+
+def make_plain_stream(take_id: uuid.UUID, store: FakeTranscriptStore) -> TakeStream:
+    return TakeStream(
+        take_id,
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=store,
+    )
+
+
+async def open_and_leave(stream: TakeStream) -> None:
+    """레지스트리에 올리고 오디오를 한 번 보낸 뒤 탭이 사라진다. grace 가 지나면 스트림만 닫힌다."""
+    tab = FakeWebSocket()
+    take_stream._streams[stream.take_id] = stream
+    stream.start()
+    await stream.attach(tab)
+    await _wait_until_ok(stream)
+    stream.push(frame(1, 0), source=tab)
+    stream.detach(tab)
+    assert await stream.wait_closed(timeout=2.0)
+
+
+@pytest.mark.anyio
+async def test_take_left_without_reconnect_is_ended_as_abandoned(monkeypatch: pytest.MonkeyPatch):
+    """탭을 닫으면 grace 뒤 스트림만 닫히고 Take 는 진행 중으로 남는다. 정해진 시간 동안 아무도 다시
+    붙지 않으면 떠난 것으로 끝낸다. 끝난 시각은 끝내는 지금이 아니라 연결이 끊긴 시각이다."""
+    monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
+    monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 0.2)
+    store = FakeTranscriptStore()
+    stream = make_plain_stream(uuid.uuid7(), store)
+
+    await open_and_leave(stream)
+    closed_at = datetime.now(UTC)
+    assert store.abandoned == [], "grace 만료는 스트림만 정리한다"
+
+    await _wait_for(lambda: store.abandoned)
+    [(take_id, ended_at)] = store.abandoned
+    assert take_id == stream.take_id
+    assert abs((ended_at - closed_at).total_seconds()) < 0.1
+    assert store.calls == ["mark_abandoned"]
+
+    # 그 뒤로 다시 붙으면 거절한다. 자동 종료가 아니라 이유 없이
+    with pytest.raises(take_stream.TakeEnded) as info:
+        await take_stream.attach(
+            stream.take_id,
+            FakeWebSocket(),
+            owner_id=stream.owner_id,
+            stt_adapter=FakeSttAdapter(),
+            config=SttConfig(),
+            store=store,
+        )
+    assert info.value.reason is None
+
+
+@pytest.mark.anyio
+async def test_reconnect_before_the_wait_is_over_keeps_the_take(monkeypatch: pytest.MonkeyPatch):
+    """그 안에 다시 붙으면(탭이 살아 있던 FE, 리허설 주소를 다시 연 사용자) 이어서 연습한다."""
+    monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
+    monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 0.2)
+    store = FakeTranscriptStore()
+    stream = make_plain_stream(uuid.uuid7(), store)
+    await open_and_leave(stream)
+
+    resumed = await take_stream.attach(
+        stream.take_id,
+        FakeWebSocket(),
+        owner_id=stream.owner_id,
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=store,
+    )
+    assert resumed is not stream
+    assert stream.take_id not in take_stream._abandon_timers
+
+    await asyncio.sleep(0.3)
+    assert store.abandoned == []
+    assert stream.take_id not in take_stream._ended
+
+
+@pytest.mark.anyio
+async def test_ended_or_deleted_take_is_not_waited_for():
+    """사용자가 끝냈거나(stop · 자동 종료 · Take PUT) Take 가 지워졌으면 기다릴 것이 없다."""
+    store = FakeTranscriptStore()
+
+    stopped = make_plain_stream(uuid.uuid7(), store)
+    stopped.start()
+    await _wait_until_ok(stopped)
+    stopped.end()
+    assert await stopped.wait_closed(timeout=2.0)
+
+    deleted = make_plain_stream(uuid.uuid7(), store)
+    deleted.start()
+    await _wait_until_ok(deleted)
+    deleted.discard()
+    assert await deleted.wait_closed(timeout=2.0)
+
+    assert take_stream._abandon_timers == {}
+
+    # 떠난 뒤(스트림이 닫혀 타이머만 남음) 지운 Take
+    left = uuid.uuid7()
+    take_stream.arm_abandon(left, store, closed_at=datetime.now(UTC))
+    await take_stream.discard([left])
+    assert take_stream._abandon_timers == {}
+
+
+@pytest.mark.anyio
+async def test_timer_that_fires_while_a_stream_is_open_does_not_end_the_take():
+    """옛 스트림의 정리가 새 스트림이 열린 뒤에 끝나 타이머가 남을 수 있다. 울릴 때 다시 본다."""
+    store = FakeTranscriptStore()
+    stream = make_plain_stream(uuid.uuid7(), store)
+    take_stream._streams[stream.take_id] = stream
+    stream.start()
+    await _wait_until_ok(stream)
+
+    take_stream.arm_abandon(stream.take_id, store, closed_at=datetime.now(UTC), delay_sec=0)
+    await asyncio.sleep(0.1)
+
+    assert store.abandoned == []
+    assert not stream.is_stopping
+
+
+@pytest.mark.anyio
+async def test_abandon_write_failure_leaves_the_take_open(caplog: pytest.LogCaptureFixture):
+    """DB 에 못 적었으면 이 프로세스에서도 끝난 것으로 치지 않는다. 다음에 뜰 때 다시 건다."""
+    store = FakeTranscriptStore(fail_mark=True)
+    take_id = uuid.uuid7()
+
+    with caplog.at_level("ERROR"):
+        take_stream.arm_abandon(take_id, store, closed_at=datetime.now(UTC), delay_sec=0)
+        await _wait_for(lambda: "떠난 Take 를 끝내지 못했다" in caplog.text)
+
+    assert take_id not in take_stream._ended
+
+
+@pytest.mark.anyio
+async def test_startup_rearms_timers_from_the_last_activity(monkeypatch: pytest.MonkeyPatch):
+    """앱이 다시 뜨면 메모리의 타이머가 없다. 진행 중으로 남은 Take 를 DB 에서 읽어 마지막 활동에서
+    잰 남은 시간으로 다시 건다. 이미 지난 Take 는 바로 끝낸다."""
+    monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 60.0)
+    store = FakeTranscriptStore()
+    now = datetime.now(UTC)
+    stale, recent = uuid.uuid7(), uuid.uuid7()
+    store.running = [(stale, now - timedelta(seconds=61)), (recent, now - timedelta(seconds=20))]
+
+    await take_stream.arm_abandoned_takes(store)
+
+    await _wait_for(lambda: store.abandoned)
+    assert store.abandoned == [(stale, now - timedelta(seconds=61))]
+    remaining = take_stream._abandon_timers[recent].when() - asyncio.get_running_loop().time()
+    assert 39 < remaining <= 40
+
+
+@pytest.mark.anyio
+async def test_startup_does_not_fail_when_the_running_takes_cannot_be_read(
+    caplog: pytest.LogCaptureFixture,
+):
+    class BrokenStore(FakeTranscriptStore):
+        async def running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
+            raise RuntimeError("db down")
+
+    with caplog.at_level("ERROR"):
+        await take_stream.arm_abandoned_takes(BrokenStore())
+
+    assert "떠난 Take 타이머를 걸지 못했다" in caplog.text
+    assert take_stream._abandon_timers == {}
+
+
+def test_abandoned_take_is_failed_from_its_close_time(db_session: Session, take: Take):
+    """떠난 Take 는 분석하지 않는다 (FAILED). 진행 중일 때만 바꾸고, 지워진 Take 는 넘어간다."""
+    closed_at = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
+    assert take_service.mark_abandoned(db_session, TAKE_ID, closed_at) is True
+    assert take_service.mark_abandoned(db_session, TAKE_ID, datetime.now(UTC)) is False
+    db_session.refresh(take)
+    assert (take.status, take.end_reason, take.ended_at) == ("FAILED", "ABANDONED", closed_at)
+    assert take_service.mark_abandoned(db_session, uuid.uuid7(), closed_at) is False
+
+
+def test_abandon_does_not_touch_a_take_that_already_ended(db_session: Session, user: User):
+    ended = make_take(db_session, user.id, status="ANALYZING")
+    assert take_service.mark_abandoned(db_session, ended.id, datetime.now(UTC)) is False
+    db_session.refresh(ended)
+    assert (ended.status, ended.end_reason) == ("ANALYZING", None)
+
+
+def test_running_takes_report_their_last_activity(db_session: Session, user: User):
+    """만든 시각 · 시작 시각 · 마지막 전사를 저장한 시각 중 가장 늦은 것. 진행 중인 Take 만."""
+    created = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
+    idle = make_take(db_session, user.id)
+    started = make_take(db_session, user.id)
+    spoken = make_take(db_session, user.id)
+    ended = make_take(db_session, user.id, status="ANALYZING")
+    for t in (idle, started, spoken, ended):
+        t.created_at = created
+    started.started_at = created + timedelta(minutes=1)
+    spoken.started_at = created + timedelta(minutes=1)
+    db_session.add_all(
+        TakeTranscriptSegment(
+            take_id=spoken.id,
+            seq=seq,
+            stt_session_no=1,
+            start_ms=0,
+            end_ms=100,
+            transcript="말",
+            words=[],
+            confidence=0.9,
+            speech_final=True,
+            created_at=created + timedelta(minutes=minutes),
+        )
+        for seq, minutes in ((1, 2), (2, 5))
+    )
+    db_session.commit()
+
+    running = dict(take_service.running_takes(db_session))
+
+    assert running == {
+        idle.id: created,
+        started.id: created + timedelta(minutes=1),
+        spoken.id: created + timedelta(minutes=5),
+    }
+
+
+@pytest.mark.anyio
+async def test_db_store_marks_abandoned(db_session: Session, take: Take):
+    store = DbTranscriptStore(session_factory=lambda: db_session)
+    assert await store.running_takes() == [(TAKE_ID, take.created_at)]
+    assert await store.mark_abandoned(TAKE_ID, datetime.now(UTC)) is True
+    assert db_session.scalar(select(Take.status).where(Take.id == TAKE_ID)) == "FAILED"
+    assert await store.running_takes() == []
+
+
+def test_abandoned_take_in_the_database_is_rejected(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User
+):
+    """프로세스가 다시 떠도 DB 가 막는다. 자동 종료가 아니라 auto_end 없이 일반 문구로."""
+    left = make_take(db_session, user.id, status="FAILED")
+    left.end_reason = "ABANDONED"
+    db_session.commit()
+
+    with client.websocket_connect(f"/api/ws/takes/{left.id}") as ws:
+        auth(ws, create_access_token(user.id))
+        rejected = ws.receive_json()
+        assert closed_with(ws) == 1008
+
+    assert rejected == {"type": "error", "code": "TAKE_ENDED", "message": "이미 끝난 연습입니다."}
+    assert stt.configs == []

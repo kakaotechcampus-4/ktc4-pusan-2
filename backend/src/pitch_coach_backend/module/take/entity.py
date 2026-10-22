@@ -54,8 +54,10 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             "script_mode IN ('HIGHLIGHT', 'KEYWORD', 'OFF')",
             name="check_take_script_mode",
         ),
-        # realtime AutoEndReason 과 같은 값이다
-        CheckConstraint("end_reason IN ('SILENCE', 'TIME_LIMIT')", name="check_take_end_reason"),
+        # SILENCE · TIME_LIMIT 은 realtime AutoEndReason 과 같은 값이다. ABANDONED 는 떠난 Take
+        CheckConstraint(
+            "end_reason IN ('SILENCE', 'TIME_LIMIT', 'ABANDONED')", name="check_take_end_reason"
+        ),
     )
 
     pitch_id: Mapped[uuid.UUID] = mapped_column(
@@ -77,8 +79,11 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_sec: Mapped[int | None] = mapped_column(Integer)
     goal_time_sec: Mapped[int] = mapped_column(Integer)
-    # BE 가 자동으로 끝낸 이유 (SILENCE·TIME_LIMIT). 사용자가 끝냈거나 아직 진행 중이면 비어 있다.
-    # 자동으로 끝낼 때 status 도 ANALYZING 으로 바뀐다 (실시간 STT 재연결은 status 가 막는다).
+    # BE 가 끝낸 이유. 사용자가 끝냈거나 아직 진행 중이면 비어 있다.
+    # 실시간 STT 재연결은 이 값이 아니라 status 가 막는다.
+    #   SILENCE·TIME_LIMIT : 자동 종료. status 는 ANALYZING 으로 바뀐다
+    #   ABANDONED          : 탭을 닫고 30분 동안 돌아오지 않았다. 시선 기록 등을 못 받아
+    #                        분석하지 않고 status 를 FAILED 로 둔다
     end_reason: Mapped[str | None] = mapped_column(String(20))
     # 슬라이드 넘김·일시정지 같은 원본 이벤트열. 재생과 재분석에 쓴다.
     event_logs: Mapped[Any | None] = mapped_column(JSONB)
