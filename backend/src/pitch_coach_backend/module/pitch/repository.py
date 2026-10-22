@@ -62,6 +62,18 @@ class PitchRepository:
     def get_take_ids(self, pitch_id: uuid.UUID) -> list[uuid.UUID]:
         return list(self.db.scalars(select(Take.id).where(Take.pitch_id == pitch_id)))
 
+    def get_ids_by_user(self, user_id: uuid.UUID) -> list[uuid.UUID]:
+        return list(self.db.scalars(select(Pitch.id).where(Pitch.user_id == user_id)))
+
+    def get_take_ids_by_user(self, user_id: uuid.UUID) -> list[uuid.UUID]:
+        return list(
+            self.db.scalars(
+                select(Take.id)
+                .join(Pitch, Pitch.id == Take.pitch_id)
+                .where(Pitch.user_id == user_id)
+            )
+        )
+
     def delete(self, pitch: Pitch) -> None:
         self.db.delete(pitch)
         self.db.flush()

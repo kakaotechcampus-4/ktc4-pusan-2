@@ -116,9 +116,12 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[Te
     from pitch_coach_backend import main
     from pitch_coach_backend.core.database import get_db
     from pitch_coach_backend.main import app
+    from pitch_coach_backend.module.pitch import service as pitch_service
     from pitch_coach_backend.module.pitch.dependencies import get_script_parse_runner
 
     monkeypatch.setattr(main, "get_s3", lambda: None)
+    # 발표 삭제·회원 탈퇴 뒤 S3 파일 정리가 실제 버킷을 부르지 않게 막는다
+    monkeypatch.setattr(pitch_service, "delete_prefix", lambda prefix: None)
     # 앱이 뜰 때 진행 중인 Take 를 SessionLocal(테스트 DB 가 아니다)로 읽고 타이머를 건다. 막는다
     monkeypatch.setattr(main, "arm_abandoned_takes", _no_abandon_timers)
     app.dependency_overrides[get_db] = lambda: db_session

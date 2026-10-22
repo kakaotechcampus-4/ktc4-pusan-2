@@ -22,3 +22,8 @@ def create(db: Session, *, email: str, name: str) -> User:
     # PK 와 타임스탬프를 이 자리에서 확정한다. 호출자가 user.id 를 바로 쓴다.
     db.flush()
     return user
+
+
+def delete(db: Session, user: User) -> None:
+    db.delete(user)
+    db.flush()
