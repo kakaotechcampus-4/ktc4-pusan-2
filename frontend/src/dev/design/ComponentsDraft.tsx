@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button, ButtonLink } from '@/shared/ui/Button';
 import { Badge, type Tone } from '@/shared/ui/Badge';
 import { Card, Stat } from '@/shared/ui/Panel';
+import { Mascot } from '@/shared/ui/Mascot';
 import { DraftPage } from './ui';
 
 export function ComponentsDraft() {
@@ -93,6 +94,11 @@ export function ComponentsDraft() {
           측정하지 않은 값은 0으로 표시하지 않습니다.
         </Stat>
       </section>
+
+      <Card title="마스코트" action={<Badge tone="plain">Mascot</Badge>}>
+        <Mascot who="chichi">치치는 연습생이에요. 길 안내나 가벼운 말을 해요.</Mascot>
+        <Mascot who="pico">피코는 교수예요. 분석 방식처럼 설명하는 자리에 나와요.</Mascot>
+      </Card>
     </DraftPage>
   );
 }
