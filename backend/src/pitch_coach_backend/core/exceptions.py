@@ -14,6 +14,7 @@
 """
 
 import logging
+import math
 import re
 from http import HTTPStatus
 from typing import Any
@@ -107,13 +108,25 @@ async def app_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     return _error_response(exc.status_code, exc.code, exc.message, exc.detail)
 
 
+def _finite_only(value: Any) -> Any:
+    """NaN · Infinity 를 문자열로 바꾼다. JSON 응답은 이 값을 담지 못한다."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _finite_only(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_finite_only(item) for item in value]
+    return value
+
+
 async def validation_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
+    # 받은 값이 detail 의 input 으로 그대로 돌아간다. NaN 을 보냈으면 422 를 만들다 500 이 된다
     return _error_response(
         status.HTTP_422_UNPROCESSABLE_CONTENT,
         "VALIDATION_ERROR",
         "요청 형식이 올바르지 않습니다.",
-        exc.errors(),
+        _finite_only(jsonable_encoder(exc.errors())),
     )
 
 

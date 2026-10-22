@@ -6,19 +6,27 @@ from enum import StrEnum
 from typing import Annotated, Protocol
 
 from fastapi import File, UploadFile
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
+from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
-from pitch_coach_backend.module.take.dto import TakeSummaryDTO
+from pitch_coach_backend.module.take.dto import MAX_TIME_LIMIT_SEC, TakeSummaryDTO
+
+# FE 의 허용 오차 상한(MAX_TOLERANCE_SEC)과 같다
+MAX_DEVIATION_SEC = 5 * 60
 
 
 # 생성·수정이 같이 쓴다. 범위를 벗어나면 DB 에러(500) 대신 422
 class PitchSaveRequestDTO(BaseModel):
     # DB 는 String(50). FE 도 50자에서 입력을 막는다 (MAX_TITLE_CHARS)
-    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
-    time_limit_sec: int = Field(gt=0)
-    upper_deviation: int = Field(default=0, ge=0)
-    lower_deviation: int = Field(default=0, ge=0)
+    title: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=50),
+        AfterValidator(reject_nul),
+    ]
+    time_limit_sec: int = Field(gt=0, le=MAX_TIME_LIMIT_SEC)
+    upper_deviation: int = Field(default=0, ge=0, le=MAX_DEVIATION_SEC)
+    lower_deviation: int = Field(default=0, ge=0, le=MAX_DEVIATION_SEC)
     presentation_date: date | None = None
 
 class PitchListItemDTO(BaseModel):

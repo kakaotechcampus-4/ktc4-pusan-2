@@ -1,9 +1,13 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/ 디렉터리 (core/config.py 기준 3단계 위)
 BACKEND_DIR = Path(__file__).resolve().parents[3]
+
+# HS256 키는 해시 출력 길이(32바이트) 이상이어야 추측으로 서명을 깨기 어렵다
+JWT_SECRET_KEY_MIN_BYTES = 32
 
 
 class Settings(BaseSettings):
@@ -19,6 +23,9 @@ class Settings(BaseSettings):
     # Access 토큰은 짧게. 폐기 수단이 없으므로 만료가 유일한 방어선이다.
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 14
+    # 회전할 때마다 만료가 다시 잡혀도 로그인한 지 이만큼 지나면 다시 로그인해야 한다.
+    # 없으면 14일 안에 한 번씩만 갱신해도 세션이 끝없이 이어진다
+    refresh_session_max_days: int = 30
     # 방금 회전된 Refresh 가 이 시간 안에 다시 오면 재사용으로 보지 않는다.
     # 회전 응답을 받기 전에 새로고침한 브라우저는 새 쿠키를 못 받아 옛 토큰을 다시 보낸다.
     refresh_token_reuse_grace_seconds: int = 10
@@ -59,6 +66,17 @@ class Settings(BaseSettings):
     s3_region: str = "ap-northeast-2"
     # AWS_PROFILE 환경변수로 SSO 프로필 지정
     aws_profile: str | None = None
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def _jwt_secret_key_is_long_enough(cls, value: str) -> str:
+        # .env.example 의 change-me 그대로 운영에 올라가는 것을 시작할 때 막는다
+        if len(value.encode()) < JWT_SECRET_KEY_MIN_BYTES:
+            raise ValueError(
+                f"JWT_SECRET_KEY 는 {JWT_SECRET_KEY_MIN_BYTES}바이트 이상이어야 합니다. "
+                "openssl rand -hex 32 로 만드세요."
+            )
+        return value
 
 
 settings = Settings()

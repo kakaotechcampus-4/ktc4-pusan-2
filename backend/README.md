@@ -251,7 +251,7 @@ WS /api/ws/takes/{take_id}
   | code | 연결 |
   |---|---|
   | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
-  | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다) |
+  | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다). 연결 중에 Take 나 발표가 지워져도 이 코드로 닫는다 |
   | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다** |
   | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
   | `BAD_MESSAGE` | 유지 |
@@ -260,13 +260,17 @@ WS /api/ws/takes/{take_id}
 
 - `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
 - **인증 뒤 Take 를 검사한다.** 사용자 존재 → Take 존재·소유(`takes` → `pitches.user_id`) → 상태
-  (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 도 받는 이유는 `READY→RUNNING`
-  전이가 take 모듈(FE 의 `started_at` 갱신) 몫이라 WebSocket 을 여는 순서를 FE 에 강제하지 않기 위해서다.
+  (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 는 첫 연결이라 받고, 통과하면
+  `RUNNING` 으로 바꾼다 (`docs/ai/architecture.md` 1-3). 못 바꿔도 STT 는 그대로 돈다.
 - **final 은 `take_transcript_segments` 에 저장한다** (interim 은 저장하지 않는다). 리포트의 유일한
   원천이다. 시각은 Take 기준(ms), `words` 는 `[{word, punctuated_word, start_ms, end_ms, confidence}]`
   JSONB. 저장은 realtime 이 아니라 `take/service.py` 가 하고(`append_transcript_segment`), 스트림이
   DB 를 직접 만지지 않도록 `realtime/transcript_store.py` 가 저장할 때마다 짧은 세션을 연다.
-  **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다.
+  **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다. 단 Take 가 지워져
+  저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
+- **Take 나 발표를 지우면 그 Take 의 스트림을 바로 끊는다.** 지우는 요청이 커밋한 뒤 Deepgram 을
+  닫고, 붙어 있는 FE 에는 `TAKE_NOT_FOUND` 를 보낸다. 저장할 곳이 없으니 `stop` 처럼 남은 전사를
+  기다리지 않는다. 끊기 전에 온 final 이 저장에 실패해도 스트림이 그걸 보고 스스로 끊는다.
 - **STT 파이프라인은 연결보다 오래 산다** (`take_stream.py`). 연결이 끊겨도 30초 동안 Deepgram
   세션을 살려 두고, 그 안에 다시 붙으면 세그먼트 번호와 프레임 수가 이어진다. 떨어져 있는 동안
   화면에 못 간 final 은 모아 두었다가 `ready` 직후 순서대로 다시 보낸다 (DB 에는 이미 있다).
@@ -297,8 +301,20 @@ WS /api/ws/takes/{take_id}
 - 정리가 늦어도 FE 를 붙잡아 두지 않는다. `stop` 뒤 Deepgram drain 이 12초 안에 안 끝나면 태스크를
   끊고, 그마저 2초 안에 안 끝나면 닫힌 것으로 확정해 `closed` 를 보낸다. Deepgram 소켓 닫기 자체도
   3초 상한이 있다. `stop` 을 보낸 직후 FE 가 사라져도(탭 닫힘) 서버 쪽 종료·저장 절차는 같다.
+- **`stop` 이 Take 를 끝낸다.** 마지막 확정 전사까지 저장한 뒤 Take 를 `ANALYZING` 으로 바꾸고 `closed` 를
+  보낸다 (`ended_at` 이 비어 있으면 지금 시각으로 채운다). `stop` 을 받은 순간부터 같은 Take 로 붙는 연결은
+  `TAKE_ENDED` 로 거절한다 — DB 에 적기 전의 틈은 프로세스 안의 기록이 막는다. 종료를 DB 에 못 적어도
+  `closed` 는 보낸다. 30초 대기 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리하고 Take 는 끝내지 않는다
+  (FE 는 끊긴 뒤에도 다시 붙는다).
+- **STT 없이 끝낸 Take 는 Take PUT 이 끝낸다.** 마이크를 못 열었거나 재연결을 포기한 FE 는 `stop` 을 보내지 못한다.
+  종료 흐름의 `PUT /api/pitches/{pitch_id}/takes/{take_id}` 에 `ended_at` 이 있으면 BE 가 `ANALYZING` 으로 바꾼다.
+  연결이 붙어 있거나 `stop` 으로 끝내는 중이면 그 연결에 맡긴다. 끊긴 뒤 30초 안이라 스트림이 남아 있으면
+  `stop` 처럼 남은 전사까지 저장한 뒤 바꾼다.
+- Take PUT 은 상태와 순서를 본다. `COMPLETED`·`FAILED` 는 `409 TAKE_ENDED`, `ANALYZING` 은 시각만 받는다
+  (`event_logs` 는 409). `ended_at` 이 `started_at` 보다 앞서면 `400 INVALID_TAKE_TIME`, 시간대가 없는 시각은 422.
+  `null` 은 보내지 않은 것으로 본다. 점검 결과(`calibration`)는 `READY` 일 때만 받는다 (아니면 `409 TAKE_STARTED`).
 - **Take 를 자동으로 끝낸다** (`realtime/auto_end.py`). 둘 중 하나라도 맞으면 `{"type":"auto_end","reason","message"}`
-  를 보내고 `stop` 과 같은 순서로 정리한다 (drain → `closed` → `1000`). 오디오는 그 자리에서 끊는다.
+  를 보내고 `stop` 과 같은 순서로 정리한다 (drain → `ANALYZING` → `closed` → `1000`). 오디오는 그 자리에서 끊는다.
   FE 는 끝내기 버튼과 같은 종료 흐름을 타고 `message` 를 보여 준다.
   - `SILENCE` — 최근 2분 동안 말이 없고 직전 5분 중 80% 이상이 말 없음. **전사로 판단한다** (소리 크기는
     소음에도 커진다). 시간은 벽시계가 아니라 Deepgram 이 final(빈 final 포함)로 "들었다" 고 확인한 오디오로
@@ -308,9 +324,9 @@ WS /api/ws/takes/{take_id}
   - `TIME_LIMIT` — 1시간. 기준은 프레임의 `offset_ms`(FE 무대 시계)다. offset 이 가지 않는 Take(오디오 없이
     연결만 붙여 둠)는 서버 시계가 막는다 — **이 Take 의 스트림이 열려 있던 시간의 합**이 1시간 + 60초를
     넘으면 끝낸다. 스트림이 없던 시간(탭이 죽어 있던 동안)은 세지 않는다. FE 가 떨어져 있는 동안(grace)에도 끝낸다.
-  - Take 를 `ANALYZING` 으로 바꾸고 `takes.end_reason` 에 이유를 남긴다 (`ended_at` 이 비어 있으면 지금 시각).
-    다시 붙으면 `auto_end` 를 한 번 더 보내고 `TAKE_ENDED` 로 거절한다 — 자동 종료 순간 떨어져 있던 FE 도
-    종료 흐름을 탄다. DB 에 적히기 전의 재연결은 프로세스 메모리가 막는다. 이유를 못 적어도(DB 장애) 종료는 그대로 한다.
+  - `stop` 처럼 Take 를 `ANALYZING` 으로 바꾸고, `takes.end_reason` 에 이유를 남긴다. `auto_end` 를 받은 FE 가
+    `stop` 을 보내도 이유는 그대로 남는다. 다시 붙으면 `auto_end` 를 한 번 더 보내고 `TAKE_ENDED` 로 거절한다 —
+    자동 종료 순간 떨어져 있던 FE 도 종료 흐름을 탄다. 이유를 못 적어도(DB 장애) 종료는 그대로 한다.
   - 판단 코드가 예외를 내도 STT 는 계속 돈다 (로그만). 값은 `TAKE_SILENCE_*`·`TAKE_MAX_DURATION_SEC` 로 바꾸고,
     틀린 값이면 앱이 시작할 때 실패한다.
 - 아직 없는 것: `metrics`/`coach` 메시지 (AI 팀 규칙 확정 후).

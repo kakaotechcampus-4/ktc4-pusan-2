@@ -27,6 +27,10 @@ final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). �
 저장된 마지막 번호를 이어 받는다 — grace 가 만료돼 스트림이 사라진 뒤 다시 붙어도 `segment_id`
 가 `"1-1"` 부터 다시 나오지 않아야 FE 가 앞부분을 덮어쓰지 않고, `UNIQUE(take_id, seq)` 도 지켜진다.
 
+스트림 정리와 Take 종료는 다르다. 사용자가 stop 을 보내면(`end`) Take 가 끝나 같은 Take 로 다시
+붙지 못한다. grace 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리한다 — FE 는 끊긴 뒤에도
+다시 붙고, 새 스트림이 번호를 이어 받는다.
+
 자동 종료(`auto_end.py`): 말 없음이나 최대 시간에 걸리면 사용자가 stop 을 보낸 것과 같은 순서로
 정리한다 — `auto_end` 를 알리고, 남은 오디오를 흘리고, `stt_status` closed 를 보내고 1000 으로
 닫는다. Take 를 `ANALYZING` 으로 바꾸고 이유를 DB 에 남겨 같은 Take 로 다시 붙지 못하게 한다.
@@ -43,7 +47,7 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
-from collections.abc import Awaitable, Coroutine
+from collections.abc import Awaitable, Coroutine, Iterable
 from dataclasses import dataclass, field, replace
 
 import anyio
@@ -52,6 +56,7 @@ from pydantic import BaseModel
 from websockets.exceptions import ConnectionClosed
 
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO, TranscriptWordDTO
+from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS, silence
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.dto import (
@@ -101,15 +106,13 @@ DRAIN_TIMEOUT_SEC = 10.0
 # 취소·오류로 세션을 버릴 때 Deepgram 소켓 닫기(abort) 를 기다리는 상한. 이게 없으면
 # 상대가 close 핸드셰이크에 답하지 않을 때 shield 안에서 영영 기다린다
 ABORT_TIMEOUT_SEC = 3.0
-# 정리 중인 스트림에 재연결이 왔을 때 그 정리를 기다리는 상한
-HANDOVER_TIMEOUT_SEC = 3.0
 # Deepgram 이 받았다는 길이와 우리가 보낸 길이의 허용 오차
 DURATION_TOLERANCE_MS = 50
 # FE 가 떨어져 있는 동안 모아 둘 final 개수. 10분 발표가 200개 안팎이다
 MAX_MISSED_FINALS = 200
-# 자동 종료 이유를 DB 에 적는 상한. DB 가 늦어도 연결 정리까지 붙잡히지 않게 한다
+# 자동 종료를 DB 에 적는 상한. DB 가 늦어도 연결 정리까지 붙잡히지 않게 한다
 MARK_AUTO_END_TIMEOUT_SEC = 5.0
-# 자동 종료한 Take · Take 별 자동 종료 상태를 프로세스 안에서 기억하는 개수. 오래된 것부터 버린다
+# 끝낸 Take · Take 별 자동 종료 상태를 프로세스 안에서 기억하는 개수. 오래된 것부터 버린다
 MAX_REMEMBERED_TAKES = 10_000
 
 # _run_session 이 끝난 이유
@@ -122,10 +125,13 @@ class StreamOwnerMismatch(Exception):
     """다른 사용자가 이미 쓰고 있는 Take 다."""
 
 
-class TakeAutoEnded(Exception):
-    """BE 가 이미 자동으로 끝낸 Take 다. 다시 붙이면 끝난 연습에 전사가 더 붙는다."""
+class TakeEnded(Exception):
+    """이 프로세스에서 끝낸 Take 다. DB 에 적히기 전이라도 다시 붙지 못한다.
 
-    def __init__(self, reason: AutoEndReason) -> None:
+    BE 가 자동으로 끝냈으면 `reason` 에 이유가 있다. 사용자가 끝냈으면 None.
+    """
+
+    def __init__(self, reason: AutoEndReason | None = None) -> None:
         super().__init__(reason)
         self.reason = reason
 
@@ -203,8 +209,13 @@ class TakeStream:
         # 태스크를 약하게만 잡고 있어서, 아무도 참조하지 않는 태스크는 GC 에 끝나기 전에
         # 사라질 수 있다 (asyncio.create_task 문서의 경고)
         self._reaper: asyncio.Task[None] | None = None
+        # Take 가 지워져 끊었다 (`discard`). 붙어 있던 연결에 알리는 태스크도 위와 같은 이유로 든다
+        self._discarded = False
+        self._closer: asyncio.Task[None] | None = None
         self._ever_connected = False
         self._stopping = False
+        # BE 가 자동으로 끝냈으면 그 이유. 사용자가 그 뒤에 보낸 stop 도 같은 이유로 적는다
+        self.auto_end_reason: AutoEndReason | None = None
         self._stop_event = asyncio.Event()
         self._closed = asyncio.Event()
 
@@ -216,6 +227,11 @@ class TakeStream:
     @property
     def is_finished(self) -> bool:
         return self._closed.is_set()
+
+    @property
+    def has_client(self) -> bool:
+        """연결이 붙어 있다. 끊긴 뒤 다시 붙기를 기다리는 동안은 False."""
+        return self._client is not None
 
     # ── 수명 ──────────────────────────────────────────────────────────
 
@@ -328,6 +344,17 @@ class TakeStream:
         self._stop_event.set()
         self._put(None)
 
+    def end(self) -> None:
+        """사용자가 Take 를 끝냈다. 스트림을 정리하고, 같은 Take 로 다시 붙지 못하게 한다.
+
+        `request_stop` 만으로는 Take 가 끝나지 않는다 — grace 만료나 오디오 없는 연결도 스트림을
+        정리하지만, 그 뒤 FE 가 다시 붙으면 새 스트림으로 이어 가야 한다.
+        이미 자동으로 끝낸 뒤 온 stop(FE 가 `auto_end` 를 받고 보낸 것)이면 그 이유를 지우지 않는다.
+        """
+        if self.take_id not in _ended:
+            _ended[self.take_id] = None
+        self.request_stop()
+
     async def wait_closed(self, timeout: float | None = None) -> bool:
         try:
             await asyncio.wait_for(
@@ -392,6 +419,38 @@ class TakeStream:
         )
         self._finish()
         return False
+
+    def discard(self) -> None:
+        """Take 가 지워졌다. 남은 전사를 기다리지 않고 끊고, 붙어 있는 연결에 알린 뒤 닫는다.
+
+        저장할 행이 없으니 정상 종료(`request_stop`)처럼 남은 오디오를 흘려 전사를 받을 이유가
+        없다. FE 에는 다시 붙을 때 받을 것과 같은 `TAKE_NOT_FOUND` 를 보낸다 — FE 는 이걸 받으면
+        다시 붙지 않는다.
+
+        스트림 태스크 안(`_persist`)에서도 부른다. 연결을 닫는 일을 따로 태스크로 돌리는 이유다 —
+        여기서 기다리면 `cancel()` 이 그 자리를 끊어 알림이 안 나간다.
+        """
+        if self._discarded:
+            return
+        self._discarded = True
+        client = self._client
+        # 끊은 스트림의 전사·상태가 이 연결로 더 나가지 않게 먼저 뗀다
+        self._client = None
+        self.cancel()
+        if client is not None:
+            self._closer = asyncio.create_task(
+                self._close_deleted_client(client), name=f"take-stream-discard:{self.take_id}"
+            )
+
+    async def _close_deleted_client(self, client: WebSocket) -> None:
+        await _quiet(
+            client.send_text(
+                ErrorMessage(
+                    code=WsErrorCode.TAKE_NOT_FOUND, message="연습을 찾을 수 없습니다."
+                ).model_dump_json()
+            )
+        )
+        await _quiet(client.close(code=1008, reason=WsErrorCode.TAKE_NOT_FOUND))
 
     def _finish(self) -> None:
         if self._closed.is_set():
@@ -589,8 +648,9 @@ class TakeStream:
                     try:
                         reason = await self._pump_audio(session)
                     except ConnectionClosed:
+                        # Deepgram 이 닫았다. 이벤트 쪽은 끊지 않는다 — 이미 받아 둔 final 을
+                        # 마저 읽고, 닫힌 소켓이라 읽을 것이 떨어지면 스스로 끝난다
                         reason = _LOST
-                        tg.cancel_scope.cancel()
                         return
                     # CloseStream 을 보냈다. 이벤트 펌프가 Metadata 까지 받을 시간을 준다
                     await anyio.sleep(DRAIN_TIMEOUT_SEC)
@@ -703,16 +763,22 @@ class TakeStream:
                     for w in event.words
                 ],
             )
-            if event.is_final and self._client is None:
-                # FE 가 떨어져 있다. interim 은 어차피 다음 것이 덮으니 버리고 final 만 모은다
-                self._missed_finals.append(message)
-                del self._missed_finals[:-MAX_MISSED_FINALS]
-            else:
+            if not event.is_final:
                 await self._send(message)
-            if event.is_final:
-                # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
-                # 리포트의 원천은 이 행이지 화면이 아니다
-                await self._persist(message)
+            else:
+                # 받은 final 은 정리(취소)가 와도 끝까지 처리한다. 중간에 끊기면 화면에도 DB 에도
+                # 남지 않는다. 화면 전송은 상대가 멈춰 있을 수 있어 상한을 둔다
+                with anyio.CancelScope(shield=True):
+                    if self._client is None:
+                        # FE 가 떨어져 있다. interim 은 다음 것이 덮으니 버리고 final 만 모은다
+                        self._missed_finals.append(message)
+                        del self._missed_finals[:-MAX_MISSED_FINALS]
+                    else:
+                        with anyio.move_on_after(ABORT_TIMEOUT_SEC):
+                            await self._send(message)
+                    # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
+                    # 리포트의 원천은 이 행이지 화면이 아니다
+                    await self._persist(message)
         if event.is_final:
             # 빈 final 도 구간을 닫는다. 다음 interim 은 새 번호로
             self.segment_no += 1
@@ -759,6 +825,15 @@ class TakeStream:
         )
         try:
             await self._store.append(self.take_id, segment)
+        except NonExistentTake:
+            # Take 가 지워졌다. 지운 요청이 이 스트림을 끊기 직전에 온 final 이거나, 그 요청이
+            # 이 스트림을 보지 못했다. 저장할 곳이 없으니 더 돌 이유가 없다
+            logger.warning(
+                "Take 가 지워져 final 을 저장하지 못했다. 스트림을 끊는다 take=%s seq=%d",
+                self.take_id,
+                segment.seq,
+            )
+            self.discard()
         except Exception:
             # DB 장애로 스트림까지 멈추면 안 된다 — 화면 전사는 이미 나갔고 발표는 계속된다.
             # 전사 원문은 로그에 남기지 않는다 (seq 와 길이만)
@@ -797,8 +872,9 @@ class TakeStream:
         """
         if self._stopping:
             return
+        self.auto_end_reason = reason
         # DB 에 적히기 전에 다시 붙으려는 연결도 막는다
-        _auto_ended[self.take_id] = reason
+        _ended[self.take_id] = reason
         if self._grace_task is not None:
             # 떨어져 있는 동안 끝났다. 기다릴 재연결이 없다
             self._grace_task.cancel()
@@ -822,26 +898,27 @@ class TakeStream:
         await self._send(
             AutoEndMessage(reason=reason, message=self.auto_end_policy.message(reason))
         )
+        if not await self.wait_closed(DRAIN_TIMEOUT_SEC + ABORT_TIMEOUT_SEC):
+            logger.warning("자동 종료 drain 타임아웃 take=%s. 스트림을 끊는다", self.take_id)
+            self.cancel()
+            await self.wait_cancelled(ABORT_TIMEOUT_SEC)
+
+        # 마지막 확정 전사를 저장한 뒤에 끝난 것으로 적는다 (`RealtimeSession._stop` 과 같은 이유)
         try:
             marked = await asyncio.wait_for(
-                self._store.mark_auto_ended(self.take_id, reason.value), MARK_AUTO_END_TIMEOUT_SEC
+                self._store.mark_ended(self.take_id, reason.value), MARK_AUTO_END_TIMEOUT_SEC
             )
         except Exception:
-            # 못 적어도 정리는 계속한다. 이 프로세스 안에서는 _auto_ended 가 재연결을 막는다
+            # 못 적어도 정리는 계속한다. 이 프로세스 안에서는 _ended 가 재연결을 막는다
             logger.exception("자동 종료 이유 저장 실패 take=%s reason=%s", self.take_id, reason)
         else:
             if not marked:
-                # 그 사이 Take 가 지워졌거나 이미 끝난 상태였다. 정리는 그대로 한다
+                # 그 사이 Take 가 지워졌거나 이미 끝난 상태였다 (FE 의 stop 이 먼저 적은 것 포함)
                 logger.warning(
                     "자동 종료를 적지 않았다 (Take 가 없거나 이미 끝남) take=%s reason=%s",
                     self.take_id,
                     reason,
                 )
-
-        if not await self.wait_closed(DRAIN_TIMEOUT_SEC + ABORT_TIMEOUT_SEC):
-            logger.warning("자동 종료 drain 타임아웃 take=%s. 스트림을 끊는다", self.take_id)
-            self.cancel()
-            await self.wait_cancelled(ABORT_TIMEOUT_SEC)
 
         client = self._client
         if client is None:
@@ -932,8 +1009,8 @@ _streams: dict[uuid.UUID, TakeStream] = {}
 # 보고 각자 TakeStream·Deepgram 세션을 만든다. 그러면 하나는 `_streams` 덮어쓰기로
 # 레지스트리에서 밀려나 고아가 되고, Deepgram 연결은 둘 생긴다.
 #
-# 락은 **take_id 별**이다. 프로세스 전체 락 하나면 is_stopping 핸드오버(최대
-# HANDOVER_TIMEOUT_SEC) 나 커서 조회(DB 왕복) 동안 다른 Take 의 연결까지 같이 멈춘다 —
+# 락은 **take_id 별**이다. 프로세스 전체 락 하나면 is_stopping 핸드오버(최대 DRAIN_TIMEOUT_SEC
+# + ABORT_TIMEOUT_SEC) 나 커서 조회(DB 왕복) 동안 다른 Take 의 연결까지 같이 멈춘다 —
 # 동시 사용자가 늘면 그 지연이 체감된다 (코드 리뷰 지적). 다른 Take 끼리는 공유하는
 # 상태가 없으니 서로 기다릴 이유가 없다. 락 객체는 쓰는 동안만 살아 있고 마지막으로
 # 나가는 쪽이 치운다 — Take 마다 락이 영영 남지 않게.
@@ -962,10 +1039,10 @@ class _BoundedDict[K, V](OrderedDict[K, V]):
             self.popitem(last=False)
 
 
-# 자동 종료한 Take. DB(`takes.status` · `end_reason`)가 원본이고 이건 그게 적히기 전의 틈을 막는다 —
-# 정리가 끝나 레지스트리에서 빠진 뒤 DB 쓰기가 끝나기 전에 FE 가 다시 붙으면 새 스트림이
-# 열린다. 프로세스가 다시 뜨면 비지만 그때는 DB 가 막는다
-_auto_ended: _BoundedDict[uuid.UUID, AutoEndReason] = _BoundedDict()
+# 끝낸 Take. 값은 자동 종료 이유고, 사용자가 끝냈으면 None 이다. DB(`takes.status` · `end_reason`)가
+# 원본이고 이건 그게 적히기 전의 틈을 막는다 — 마지막 확정 전사를 저장하고 DB 에 적기 전에 FE 가
+# 다시 붙으면 새 스트림이 열린다. 프로세스가 다시 뜨면 비지만 그때는 DB 가 막는다
+_ended: _BoundedDict[uuid.UUID, AutoEndReason | None] = _BoundedDict()
 
 
 @dataclass
@@ -1016,27 +1093,26 @@ async def attach(
 
     Take 존재·소유·상태는 호출자(service)가 DB 로 먼저 검사한다. 여기서는 스트림을
     만든 사용자와 다르면 `StreamOwnerMismatch` — 그 검사의 이중 안전장치다.
-    이 프로세스가 자동으로 끝낸 Take 면 `TakeAutoEnded`.
+    이 프로세스에서 끝낸 Take 면 `TakeEnded`.
     """
     async with _attach_lock(take_id):
-        # 정리 중인 스트림은 자동 종료되지 않는다(`_auto_end` 가 무시한다). 그래서 아래에서
-        # 정리를 기다리는 동안 새로 끝나는 일은 없고, 여기 한 번만 보면 된다
-        reason = _auto_ended.get(take_id)
-        if reason is not None:
-            raise TakeAutoEnded(reason)
+        # 정리 중인 스트림을 기다리기 전에 본다. 끝낸 Take 라면 기다렸다 새로 열 이유가 없다.
+        # 정리 중인 스트림은 새로 끝나지 않으므로(끝낼 때 정리보다 먼저 적는다) 한 번이면 된다
+        if take_id in _ended:
+            raise TakeEnded(_ended[take_id])
 
         stream = _streams.get(take_id)
 
         if stream is not None and stream.is_stopping:
             # 정리 중인 스트림에 붙이면 곧 사라질 객체에 오디오를 밀어 넣게 된다.
-            # 끝나기를 기다렸다가 새로 만든다
-            if not await stream.wait_closed(timeout=HANDOVER_TIMEOUT_SEC):
-                # 정상 drain 은 최대 DRAIN_TIMEOUT_SEC(10s) 까지 걸릴 수 있는데
-                # 핸드오버는 HANDOVER_TIMEOUT_SEC(3s) 만 기다린다. 여기서 그냥
-                # forget() 만 하면 옛 스트림은 레지스트리에서만 사라질 뿐 Deepgram
-                # 연결을 붙든 채 자기 페이스대로 계속 돈다 — "정리" 가 아니라 "방치" 다.
-                # 강제로 끊는다
+            # 끝나기를 기다렸다가 새로 만든다. 정상 종료(stop)와 같은 시간을 기다린다 —
+            # 더 일찍 끊으면 Deepgram 이 아직 보내지 않은 마지막 문장이 사라진다
+            if not await stream.wait_closed():
+                # 그래도 안 끝나면 강제로 끊고, 끊긴 스트림이 실제로 끝나기를 기다린다.
+                # forget() 만 하면 옛 스트림은 Deepgram 연결을 붙든 채 계속 돈다. 끝나기 전에
+                # 아래에서 번호를 읽으면 옛 스트림이 저장 중인 seq 를 새 스트림이 또 쓴다
                 stream.cancel()
+                await stream.wait_cancelled(ABORT_TIMEOUT_SEC)
             forget(stream)
             stream = None
 
@@ -1068,6 +1144,49 @@ async def attach(
 def forget(stream: TakeStream) -> None:
     if _streams.get(stream.take_id) is stream:
         del _streams[stream.take_id]
+
+
+async def end_without_stop(take_id: uuid.UUID) -> bool:
+    """WS `stop` 없이 Take 를 끝낸다 (FE 종료 흐름의 Take PUT). 지금 DB 에 적어도 되면 True.
+
+    마이크를 못 열었거나 재연결을 포기한 FE 는 소켓을 정리해 `stop` 을 보내지 못한다. 그래도
+    발표는 끝까지 가므로 REST 로 끝낼 때 여기를 거친다. 전사 순서를 지키려고 셋으로 나눈다.
+
+    - `stop` 으로 끝내는 중이거나 연결이 붙어 있으면 False. 그 연결이 마지막 전사를 저장한 뒤 적는다
+    - 연결 없이 남은 스트림(끊긴 뒤 30초)은 `stop` 처럼 남은 전사까지 저장하고 정리한 뒤 True
+    - 스트림이 없으면 바로 True
+
+    True 면 이 뒤로 같은 Take 로 붙는 연결은 `TakeEnded` 로 거절한다.
+    """
+    # attach() 와 같은 락이다. 정리하는 동안 붙으려는 연결은 기다렸다가 TakeEnded 를 받는다
+    async with _attach_lock(take_id):
+        stream = _streams.get(take_id)
+        if stream is not None and (take_id in _ended or stream.has_client):
+            return False
+        _ended[take_id] = None
+        if stream is None:
+            return True
+        stream.end()
+        if not await stream.wait_closed():
+            logger.warning("Deepgram drain 타임아웃 take=%s. 스트림을 끊는다", take_id)
+            stream.cancel()
+            await stream.wait_cancelled(ABORT_TIMEOUT_SEC)
+        return True
+
+
+async def discard(take_ids: Iterable[uuid.UUID]) -> None:
+    """지운 Take 들의 스트림을 끊는다(`TakeStream.discard`). 스트림이 없는 Take 는 건너뛴다.
+
+    Take 를 지우는 요청이 커밋한 뒤에 부른다. 먼저 끊으면 커밋이 실패했을 때 지워지지도 않은
+    연습의 STT 만 끊긴다.
+    """
+    for take_id in take_ids:
+        # attach() 가 이 Take 의 스트림을 만드는 중이면 끝나기를 기다린다. 안 그러면 방금 만든
+        # 스트림을 못 보고 지나간다
+        async with _attach_lock(take_id):
+            stream = _streams.get(take_id)
+        if stream is not None:
+            stream.discard()
 
 
 def active_count() -> int:

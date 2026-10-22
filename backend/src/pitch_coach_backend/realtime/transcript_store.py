@@ -1,4 +1,4 @@
-"""final 전사 구간과 자동 종료 이유의 저장소. TakeStream 이 DB 를 직접 만지지 않게 하는 얇은 층이다.
+"""final 전사 구간과 Take 종료의 저장소. TakeStream 이 DB 를 직접 만지지 않게 하는 얇은 층이다.
 
 TakeStream 은 WebSocket 요청보다 오래 사는 백그라운드 태스크라 `Depends(get_db)` 의
 요청 스코프 세션을 쓸 수 없다 — 그 세션은 엔드포인트가 돌아오는 순간 닫힌다. 그래서
@@ -30,8 +30,8 @@ class TranscriptStore(Protocol):
 
     async def append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None: ...
 
-    async def mark_auto_ended(self, take_id: uuid.UUID, reason: str) -> bool:
-        """BE 가 Take 를 자동으로 끝냈다 (상태 `ANALYZING` + 이유). 다시 붙으려는 연결을 막는 근거가
+    async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+        """Take 를 끝냈다 (상태 `ANALYZING`, 자동 종료면 이유도). 다시 붙으려는 연결을 막는 근거가
         된다. 적었으면 True, Take 가 없거나 이미 끝나 있었으면 False."""
         ...
 
@@ -46,8 +46,8 @@ class DbTranscriptStore:
     async def append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None:
         await run_in_threadpool(self._append, take_id, segment)
 
-    async def mark_auto_ended(self, take_id: uuid.UUID, reason: str) -> bool:
-        return await run_in_threadpool(self._mark_auto_ended, take_id, reason)
+    async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+        return await run_in_threadpool(self._mark_ended, take_id, end_reason)
 
     def _cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
         db = self._session_factory()
@@ -63,9 +63,9 @@ class DbTranscriptStore:
         finally:
             db.close()
 
-    def _mark_auto_ended(self, take_id: uuid.UUID, reason: str) -> bool:
+    def _mark_ended(self, take_id: uuid.UUID, end_reason: str | None) -> bool:
         db = self._session_factory()
         try:
-            return take_service.mark_auto_ended(db, take_id, reason)
+            return take_service.mark_ended(db, take_id, end_reason)
         finally:
             db.close()

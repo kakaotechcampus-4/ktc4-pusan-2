@@ -1,5 +1,7 @@
 import uuid
 
+from psycopg.errors import ForeignKeyViolation
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.exception import (
@@ -16,8 +18,13 @@ from pitch_coach_backend.module.take.dto import (
     TranscriptSegmentCreateDTO,
 )
 from pitch_coach_backend.module.take.entity import Calibration, Take, TakeTranscriptSegment
-from pitch_coach_backend.module.take.exception import NonExistentTake
-from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.exception import (
+    InvalidTakeTime,
+    NonExistentTake,
+    TakeAlreadyEnded,
+    TakeAlreadyStarted,
+)
+from pitch_coach_backend.module.take.repository import IN_PROGRESS_STATUSES, TakeRepository
 
 
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
@@ -58,7 +65,21 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
         raise NonExistentTake()
 
     # 보낸 필드만 바꾼다. 빠진 필드를 None 으로 덮으면 ended_at 만 보낼 때 started_at 이 지워진다
-    for field, value in take_update_dto.model_dump(exclude_unset=True).items():
+    changes = take_update_dto.model_dump(exclude_none=True)
+
+    # 끝난 Take 는 분석이 읽고 있거나 이미 읽었다. ANALYZING 일 때 시각만 받는다 — FE 는
+    # WS stop 으로 Take 를 끝낸 뒤 시각을 보내고, 종료 중 새로고침하면 같은 값을 다시 보낸다
+    if existing_take.status not in IN_PROGRESS_STATUSES and (
+        existing_take.status != "ANALYZING" or "event_logs" in changes
+    ):
+        raise TakeAlreadyEnded()
+
+    started_at = changes.get("started_at", existing_take.started_at)
+    ended_at = changes.get("ended_at", existing_take.ended_at)
+    if started_at is not None and ended_at is not None and ended_at < started_at:
+        raise InvalidTakeTime()
+
+    for field, value in changes.items():
         setattr(existing_take, field, value)
 
     updated_take = take_repository.save(existing_take)
@@ -85,6 +106,10 @@ def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto:
 
     if not existing_take:
         raise NonExistentTake()
+    # 점검은 발표 전에 한다. 시작한 Take 의 기준값(평소 목소리 크기 등)을 바꾸면
+    # 이미 잰 발표를 다른 기준으로 분석하게 된다
+    if existing_take.status != "READY":
+        raise TakeAlreadyStarted()
 
     ## calibration result 로직
     ...
@@ -132,7 +157,7 @@ def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
 
 # ── 실시간 STT (realtime 모듈이 부른다) ──────────────────────────────
 #
-# realtime 은 entity 를 갖지 않고 저장을 여기에 위임한다. 아래 넷은 WebSocket 연결·
+# realtime 은 entity 를 갖지 않고 저장을 여기에 위임한다. 아래 다섯은 WebSocket 연결·
 # 백그라운드 스트림에서 불리므로 **호출자가 run_in_threadpool 로 감싼다** (동기 SQLAlchemy).
 
 
@@ -149,7 +174,10 @@ def transcript_cursor(db: Session, take_id: uuid.UUID) -> tuple[int, int]:
 def append_transcript_segment(
     db: Session, take_id: uuid.UUID, segment_dto: TranscriptSegmentCreateDTO
 ) -> uuid.UUID:
-    """final 구간 하나를 저장하고 커밋한다. 짧은 트랜잭션 하나로 끝난다."""
+    """final 구간 하나를 저장하고 커밋한다. 짧은 트랜잭션 하나로 끝난다.
+
+    Take 가 그 사이 지워졌으면 `NonExistentTake`. 스트림은 이걸 보고 더 돌지 않는다.
+    """
     segment = TakeTranscriptSegment(
         take_id=take_id,
         seq=segment_dto.seq,
@@ -161,16 +189,31 @@ def append_transcript_segment(
         confidence=segment_dto.confidence,
         speech_final=segment_dto.speech_final,
     )
-    saved = TakeRepository(db).save_transcript_segment(segment)
+    try:
+        saved = TakeRepository(db).save_transcript_segment(segment)
+    except IntegrityError as e:
+        # 이 표의 외래 키는 take_id 하나다. 번호 중복(UNIQUE) 같은 다른 위반은 그대로 올린다
+        if isinstance(e.orig, ForeignKeyViolation):
+            raise NonExistentTake() from e
+        raise
     db.commit()
     return saved.id
 
 
-def mark_auto_ended(db: Session, take_id: uuid.UUID, reason: str) -> bool:
-    """BE 가 Take 를 자동으로 끝냈다. 상태를 `ANALYZING` 으로 바꾸고 이유를 남긴다.
+def mark_running(db: Session, take_id: uuid.UUID) -> bool:
+    """첫 실시간 연결이 붙었다. `READY` 면 `RUNNING` 으로 바꾸고 커밋한다. 바꿨으면 True."""
+    marked = TakeRepository(db).mark_running(take_id)
+    db.commit()
+    return marked
 
-    처음 적은 이유가 남는다. Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
+
+def mark_ended(db: Session, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+    """Take 를 끝냈다. 상태를 `ANALYZING` 으로 바꾸고 커밋한다.
+
+    WS stop 이 부르고, STT 없이 끝낸 Take 는 Take PUT(`ended_at`)이 부른다. BE 가 자동으로
+    끝냈으면 `end_reason` 에 이유를 남긴다 (처음 적은 이유가 남는다).
+    Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
     """
-    marked = TakeRepository(db).mark_auto_ended(take_id, reason)
+    marked = TakeRepository(db).mark_ended(take_id, end_reason)
     db.commit()
     return marked
