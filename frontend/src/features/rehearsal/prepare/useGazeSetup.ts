@@ -6,7 +6,7 @@ import type { CalibrationFailReason } from '@/workers/gaze.contract';
 import { forgetZoneRef, keepZoneRef } from '../lib/zoneRefMemory';
 import { readLayoutSignature } from '../lib/layoutSignature';
 import { usePrepareStore } from './prepareStore';
-import { checkGazeSupport } from './gazeSupport';
+import { checkGazeSupport } from '@/shared/lib/gazeSupport';
 
 /**
  * 재시도 안내. **사유마다 할 일이 다르므로** 문구도 다릅니다.

@@ -10,6 +10,7 @@
 | Card | 제목과 내용을 묶는 패널 | title, action |
 | Stat | 표시용 숫자 지표 | label, value |
 | Badge | 짧은 상태 표시 | tone: bad / good / strong / plain / muted |
+| Mascot | 마스코트 한마디 (안내 · 빈 화면) | who: chichi / pico |
 
 ## 규칙
 
