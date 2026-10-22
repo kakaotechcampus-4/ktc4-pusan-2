@@ -6,15 +6,20 @@ import type { PracticeMode, ScriptMode } from './api';
  * ★ BE 는 이번 연습의 **슬라이드 + 대본 조합을 Take 에 같이 박아 둡니다.**
  *   대본 버전 자체는 어느 슬라이드에 맞춘 것인지 모르므로, 그 연결이 남는 곳은 여기뿐입니다.
  * ★ 평가기준 버전은 받지 않습니다. 어떤 기준으로 채점했는지 남기려면 BE 에 필드 추가가 필요합니다.
- * ★ 멱등키가 없습니다. 같은 요청을 두 번 보내면 Take 가 두 개 생깁니다 — FE 가 시작 버튼을 한 번만 받습니다.
+ * ★ 목표 시간은 보내지 않습니다. BE 가 발표 제한 시간으로 채웁니다 (#296).
+ * ★ 대본 장 수와 발표자료 쪽수가 다르면 `409 SLIDE_COUNT_MISMATCH`, 나누기가 안 끝난 대본이면
+ *   `409 SCRIPT_NOT_PARSED` 입니다.
  */
 export interface TakeCreateRequest {
   mode: PracticeMode;
   script_mode: ScriptMode;
   presentation_version_id: string;
   script_version_id: string;
-  /** 목표 발표시간(초) — 피치의 time_limit_sec */
-  goal_time_sec: number;
+  /**
+   * 멱등 키 — 장치 점검이 Take 보다 먼저 만드는 연습 세션 id(`startSession()`).
+   * 응답을 잃고 같은 값으로 다시 보내면 BE 가 새로 만들지 않고 처음 Take 를 돌려줍니다.
+   */
+  client_session_id: string;
 }
 
 /**
@@ -46,10 +51,11 @@ export interface CalibrationRequest {
   };
 }
 
-/** 컨트롤러가 `{"message", "take_id"}` 만 돌려줍니다. Take 번호 · 상태는 오지 않습니다 */
+/** Take 생성 응답. `take_number` 는 BE 가 실제로 매긴 번호입니다 (#296) */
 export interface TakeCreated {
   message: string;
   take_id: string;
+  take_number: number;
 }
 
 /**
