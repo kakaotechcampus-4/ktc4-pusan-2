@@ -193,7 +193,9 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
     if not refresh_token:
         raise InvalidRefreshToken()
 
-    stored = repository.get_refresh_token(db, security.hash_refresh_token(refresh_token))
+    # 같은 토큰으로 요청이 여럿 동시에 와도 하나씩 처리한다. 잠그지 않으면 셋째 요청이
+    # 둘째가 이미 폐기한 토큰을 이어받으려다 재사용으로 걸려 그 브라우저가 로그아웃된다
+    stored = repository.get_refresh_token_for_update(db, security.hash_refresh_token(refresh_token))
     if stored is None:
         raise InvalidRefreshToken()
 
@@ -216,9 +218,9 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
         raise InvalidRefreshToken()
 
     # 폐기와 신규 발급이 한 트랜잭션이다. 중간에 실패하면 둘 다 없던 일이 된다.
-    # 위에서 읽은 뒤 같은 토큰으로 온 다른 요청이 먼저 회전했을 수 있다. 그대로 두면 둘 다
-    # 새 토큰을 받아 계보가 갈라진다. 조건부 폐기로 한 요청만 이기게 하고, 진 쪽은 이미 폐기된
-    # 토큰이 들어온 것과 같게 다룬다
+    # 행을 잠갔으니 읽은 뒤 다른 요청이 먼저 폐기하는 일은 없어야 한다. 그래도 그렇게 되면
+    # 둘 다 새 토큰을 받아 계보가 갈라진다. 조건부 폐기로 한 요청만 이기게 하고, 진 쪽은
+    # 이미 폐기된 토큰이 들어온 것과 같게 다룬다
     if not repository.revoke_if_active(db, stored.id):
         db.refresh(stored)
         return _rotate_again(db, stored)
