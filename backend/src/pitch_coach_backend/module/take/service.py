@@ -57,6 +57,7 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
         if existing_take is not None:
             return existing_take
 
+    take_repository.abandon_ready_takes(pitch_id)
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,

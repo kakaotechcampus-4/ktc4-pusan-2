@@ -75,6 +75,24 @@ class TakeRepository:
             .options(defer(Take.event_logs))
         )
 
+    def abandon_ready_takes(self, pitch_id: uuid.UUID) -> int:
+        """이 pitch 에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 바꾼다. 바꾼 수를 돌려준다.
+
+        새 Take 를 만들 때 부른다. FE 는 가장 최근 Take 로만 발표하므로 앞의 `READY` 는 다시 쓰이지
+        않는다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지
+        `READY` 다. 끝난 시각은 알 수 없어 만든 시각으로 적는다.
+        """
+        result = self.db.execute(
+            update(Take)
+            .where(Take.pitch_id == pitch_id, Take.status == "READY")
+            .values(
+                status="FAILED",
+                end_reason="ABANDONED",
+                ended_at=func.coalesce(Take.ended_at, Take.created_at),
+            )
+        )
+        return result.rowcount
+
     def next_take_number(self, pitch_id: uuid.UUID) -> int:
         current = self.db.scalar(
             select(func.max(Take.take_number)).where(Take.pitch_id == pitch_id)

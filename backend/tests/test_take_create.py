@@ -171,6 +171,28 @@ def test_same_client_session_returns_the_first_take(
     assert _take(db_session, first.json()["take_id"]).status == "READY"
 
 
+def test_new_take_abandons_takes_left_ready(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    left = _create(client, pitch_id, auth_headers, *versions).json()["take_id"]
+    running = _create(client, pitch_id, auth_headers, *versions).json()["take_id"]
+    _take(db_session, running).status = "RUNNING"
+    db_session.flush()
+
+    new = _create(client, pitch_id, auth_headers, *versions).json()["take_id"]
+
+    abandoned = _take(db_session, left)
+    assert (abandoned.status, abandoned.end_reason) == ("FAILED", "ABANDONED")
+    assert abandoned.ended_at == abandoned.created_at
+    # 연결된 Take 는 떠난 Take 타이머가 맡는다
+    assert _take(db_session, running).status == "RUNNING"
+    assert _take(db_session, new).status == "READY"
+
+
 @pytest.mark.parametrize("parse_status", ["PENDING", "FAILED"])
 def test_script_not_parsed_yet_is_409(
     client: TestClient,
