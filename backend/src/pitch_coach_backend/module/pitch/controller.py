@@ -12,6 +12,7 @@ from pitch_coach_backend.module.pitch.dependencies import OwnedPitch, ScriptPars
 from pitch_coach_backend.module.pitch.dto import (
     ParseRequestedDTO,
     PitchSaveRequestDTO,
+    PrepareDTO,
     ScriptCreatedDTO,
     ScriptCreateDTO,
     ScriptDetailDTO,
@@ -25,6 +26,7 @@ from pitch_coach_backend.module.pitch.service import (
     delete_pitch_service,
     get_all_pitches_service,
     get_pitch_datas,
+    get_prepare_service,
     get_presentation_detail,
     get_script_detail,
     get_standard_detail,
@@ -54,6 +56,14 @@ def get_pitch_summaries(
 ):
     pitch_summaries = get_pitch_datas(db, pitch_id)
     return pitch_summaries
+
+# 장치 점검 화면. 이번 연습에 쓸 버전 · 다음 Take 번호 · 지난번 대본 표시 방식
+@router.get("/{pitch_id}/prepare", response_model=PrepareDTO)
+def get_prepare(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)]
+):
+    return get_prepare_service(db, pitch_id)
 
 @router.get("/{pitch_id}/presentations/{presentation_id}")
 def get_presentation(

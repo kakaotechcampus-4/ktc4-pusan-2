@@ -153,6 +153,36 @@ class PitchRepository:
             .order_by(ScriptVersion.version.asc())
         ).all()
 
+    def get_latest_presentation(self, pitch_id: uuid.UUID) -> PresentationVersion | None:
+        return self.db.scalar(
+            select(PresentationVersion)
+            .where(PresentationVersion.pitch_id == pitch_id)
+            .order_by(PresentationVersion.version.desc())
+            .limit(1)
+        )
+
+    def get_latest_script(self, pitch_id: uuid.UUID) -> ScriptVersion | None:
+        return self.db.scalar(
+            select(ScriptVersion)
+            .where(ScriptVersion.pitch_id == pitch_id)
+            .options(defer(ScriptVersion.content), defer(ScriptVersion.terms))
+            .order_by(ScriptVersion.version.desc())
+            .limit(1)
+        )
+
+    def get_latest_parsed_script(self, pitch_id: uuid.UUID) -> ScriptVersion | None:
+        """파싱이 끝난(DONE) 가장 최근 대본."""
+        return self.db.scalar(
+            select(ScriptVersion)
+            .where(
+                ScriptVersion.pitch_id == pitch_id,
+                ScriptVersion.parse_status == ScriptParseStatus.DONE,
+            )
+            .options(defer(ScriptVersion.content), defer(ScriptVersion.terms))
+            .order_by(ScriptVersion.version.desc())
+            .limit(1)
+        )
+
     def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
         return self.db.scalars(
             select(Standards).where(Standards.pitch_id == pitch_id)

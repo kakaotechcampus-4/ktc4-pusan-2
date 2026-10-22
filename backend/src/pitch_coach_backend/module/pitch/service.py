@@ -11,11 +11,13 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.dto import (
     HighlightDTO,
+    NewerScriptDTO,
     ParseRequestedDTO,
     ParseTicket,
     PitchListItemDTO,
     PitchListResponseDTO,
     PitchSaveRequestDTO,
+    PrepareDTO,
     PresentationDetailDTO,
     ScriptCreatedDTO,
     ScriptDetailDTO,
@@ -51,6 +53,7 @@ from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import generate_presigned_url, upload
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
+from pitch_coach_backend.module.take.repository import TakeRepository
 
 # 평가 기준 나누기는 LLM 한 번 호출이라 기본값(5초)으로는 모자라다. 대본 파싱과 같은 값
 STANDARD_PARSE_TIMEOUT = httpx2.Timeout(30.0, connect=5.0)
@@ -144,6 +147,44 @@ def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
         presentation_versions=to_version_dtos(pitch_repository.get_presentations(pitch_id)),
         script_versions=to_version_dtos(pitch_repository.get_scripts(pitch_id)),
         evaluation_versions=to_version_dtos(pitch_repository.get_evaluations(pitch_id)),
+    )
+
+def _version_dto(row: Versioned | None) -> VersionDTO | None:
+    return VersionDTO(id=row.id, version=row.version) if row else None
+
+
+# 장치 점검 화면. 홈에서 바로 들어오거나 새로고침해도 Take 에 넣을 버전을 알 수 있게 한다
+def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
+    pitch_repository = PitchRepository(db)
+    pitch = pitch_repository.get_by_id(pitch_id)
+
+    if not pitch:
+        raise NonExistentPitch()
+
+    presentation = pitch_repository.get_latest_presentation(pitch_id)
+    script = pitch_repository.get_latest_parsed_script(pitch_id)
+    latest_script = pitch_repository.get_latest_script(pitch_id)
+    latest_take = TakeRepository(db).get_latest_take_in_pitch(pitch_id)
+
+    newer_script = None
+    if latest_script is not None and (script is None or latest_script.version > script.version):
+        status, error = _effective_status(latest_script, datetime.now(UTC))
+        newer_script = NewerScriptDTO(
+            id=latest_script.id,
+            version=latest_script.version,
+            parse_status=status,
+            error_code=error,
+        )
+
+    return PrepareDTO(
+        pitch_id=pitch.id,
+        title=pitch.title,
+        time_limit_sec=pitch.time_limit_sec,
+        presentation=_version_dto(presentation),
+        script=_version_dto(script),
+        newer_script=newer_script,
+        next_take_number=latest_take.take_number + 1 if latest_take else 1,
+        default_script_mode=latest_take.script_mode if latest_take else "HIGHLIGHT",
     )
 
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
