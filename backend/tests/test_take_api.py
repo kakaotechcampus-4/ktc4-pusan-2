@@ -5,12 +5,14 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Mission, Take
+from pitch_coach_backend.module.take.repository import TakeRepository
 
 Versions = tuple[uuid.UUID, uuid.UUID]
 
@@ -109,6 +111,21 @@ def test_previous_missions_come_from_latest_take(
             "completed": False,
         },
     ]
+
+
+def test_latest_take_lookup_leaves_event_logs_unloaded(
+    db_session: Session, pitch_id: uuid.UUID, versions: Versions
+) -> None:
+    """장치 점검 · 이전 미션은 번호만 본다. 시선 1초 기록이 쌓인 event_logs 는 읽지 않는다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.event_logs = [{"type": "gaze"}]
+    db_session.flush()
+    db_session.expire_all()
+
+    latest = TakeRepository(db_session).get_latest_take_in_pitch(pitch_id)
+
+    assert latest is not None
+    assert "event_logs" in inspect(latest).unloaded
 
 
 def test_previous_missions_of_take_without_missions_is_empty_list(

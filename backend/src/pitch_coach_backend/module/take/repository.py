@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import (
@@ -73,9 +73,12 @@ class TakeRepository:
         return (current or 0) + 1
 
     def get_latest_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
+        # 부르는 곳(장치 점검 · 이전 미션)은 번호 · 대본 표시 방식만 본다. 시선 1초 기록이 쌓이는
+        # event_logs 는 읽지 않는다
         return self.db.scalar(
             select(Take)
             .where(Take.pitch_id == pitch_id)
+            .options(defer(Take.event_logs))
             # created_at 은 같은 트랜잭션 안에서 같아질 수 있다. 번호는 pitch 안에서 유일하다
             .order_by(Take.take_number.desc())
             .limit(1)
