@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.pitch.exception import (
+    NonExistentPitch,
     NonExistentPresentationVersion,
     NonExistentScript,
     ScriptNotParsed,
@@ -57,6 +58,10 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
         if existing_take is not None:
             return existing_take
 
+    pitch = pitch_repository.get_by_id(pitch_id)
+    if pitch is None:
+        raise NonExistentPitch()
+
     take_repository.abandon_ready_takes(pitch_id)
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
@@ -66,7 +71,7 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
         presentation_version_id=take_dto.presentation_version_id,
         script_version_id=take_dto.script_version_id,
         take_number=next_take_number,
-        goal_time_sec=take_dto.goal_time_sec,
+        goal_time_sec=pitch.time_limit_sec,
         client_session_id=take_dto.client_session_id,
     )
 

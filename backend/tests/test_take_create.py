@@ -71,7 +71,6 @@ def _create(
             "script_mode": "HIGHLIGHT",
             "presentation_version_id": str(presentation_version_id),
             "script_version_id": str(script_version_id),
-            "goal_time_sec": 300,
             **extra,
         },
         headers=headers,
@@ -148,6 +147,20 @@ def test_unknown_version_id_is_404_not_500(
 
     assert response.status_code == 404
     assert response.json()["code"] == "PRESENTATION_VERSION_NOT_FOUND"
+
+
+def test_goal_time_is_the_pitch_time_limit(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """FE 가 다른 값을 보내도 발표 제한 시간을 박는다."""
+    response = _create(client, pitch_id, auth_headers, *versions, goal_time_sec=10)
+
+    assert response.status_code == 200
+    assert _take(db_session, response.json()["take_id"]).goal_time_sec == 300
 
 
 def test_same_client_session_returns_the_first_take(
@@ -251,7 +264,6 @@ def test_concurrent_creates_on_one_pitch_get_distinct_numbers(
         script_mode="HIGHLIGHT",
         presentation_version_id=presentation_id,
         script_version_id=script_id,
-        goal_time_sec=300,
     )
     results: dict[str, Any] = {}
 

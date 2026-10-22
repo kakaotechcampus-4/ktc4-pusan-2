@@ -10,8 +10,10 @@ from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
 from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
-from pitch_coach_backend.module.take.dto import MAX_TIME_LIMIT_SEC, ScriptMode, TakeSummaryDTO
+from pitch_coach_backend.module.take.dto import ScriptMode, TakeSummaryDTO
 
+# 발표 시간 상한. FE 의 MAX_TIME_LIMIT_MIN(60분)과 같다. Take 목표 시간도 이 값을 그대로 쓴다
+MAX_TIME_LIMIT_SEC = 60 * 60
 # FE 의 허용 오차 상한(MAX_TOLERANCE_SEC)과 같다
 MAX_DEVIATION_SEC = 5 * 60
 

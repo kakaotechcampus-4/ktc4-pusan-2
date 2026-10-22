@@ -348,29 +348,6 @@ def test_delete_take_without_a_live_stream(
 # ── 입력 검증 ───────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("goal_time_sec", [0, -60, 3601, 2**31])
-def test_create_with_out_of_range_goal_time_is_422(
-    client: TestClient,
-    auth_headers: dict[str, str],
-    pitch_id: uuid.UUID,
-    versions: Versions,
-    goal_time_sec: int,
-) -> None:
-    response = client.post(
-        f"/api/pitches/{pitch_id}/takes/",
-        json={
-            "mode": "COACHING",
-            "script_mode": "HIGHLIGHT",
-            "presentation_version_id": str(versions[0]),
-            "script_version_id": str(versions[1]),
-            "goal_time_sec": goal_time_sec,
-        },
-        headers=auth_headers,
-    )
-
-    assert response.status_code == 422
-
-
 @pytest.mark.parametrize(
     ("field", "value"), [("mode", "PRACTICE"), ("mode", "coaching"), ("script_mode", "FULL")]
 )
@@ -387,7 +364,6 @@ def test_create_with_unknown_mode_is_422(
         "script_mode": "HIGHLIGHT",
         "presentation_version_id": str(versions[0]),
         "script_version_id": str(versions[1]),
-        "goal_time_sec": 300,
     }
     body[field] = value
 

@@ -6,22 +6,17 @@ from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field
 
 from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_json
 
-# 발표 시간 상한. FE 의 MAX_TIME_LIMIT_MIN(60분)과 같다. 발표 DTO 도 이 값을 쓴다
-MAX_TIME_LIMIT_SEC = 60 * 60
-
-
 # takes 의 CHECK 와 같은 값이다. FE types/api.ts 의 PracticeMode · ScriptMode 와도 같다
 TakeMode = Literal["COACHING", "EXAM"]
 ScriptMode = Literal["HIGHLIGHT", "KEYWORD", "OFF"]
 
 
+# 목표 시간은 받지 않는다. 발표 제한 시간을 그대로 박는다 (FE 가 보내도 무시한다)
 class TakeInitRequestDTO(BaseModel):
     mode: TakeMode
     script_mode: ScriptMode
     presentation_version_id: uuid.UUID
     script_version_id: uuid.UUID
-    # FE 는 발표 제한 시간을 그대로 보낸다
-    goal_time_sec: int = Field(gt=0, le=MAX_TIME_LIMIT_SEC)
     # 응답을 잃고 같은 값으로 다시 보내면 새로 만들지 않고 처음 만든 Take 를 돌려준다
     client_session_id: uuid.UUID | None = None
 
