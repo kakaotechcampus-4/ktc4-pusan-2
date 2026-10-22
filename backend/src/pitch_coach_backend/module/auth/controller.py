@@ -13,6 +13,7 @@
     oauth_browser   start~callback 동안만 사는 임시 쿠키
 """
 
+import logging
 import re
 import secrets
 from typing import Annotated
@@ -41,6 +42,8 @@ from pitch_coach_backend.module.auth.exception import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+logger = logging.getLogger(__name__)
 
 REFRESH_COOKIE_NAME = "refresh_token"
 BROWSER_COOKIE_NAME = "oauth_browser"
@@ -89,8 +92,9 @@ def _clear_session_cookies(response: Response) -> None:
 _ERROR_CODE = re.compile(r"\A[a-z_]{1,40}\Z")
 
 # 콜백 처리 중 난 도메인 예외 -> 프론트로 넘기는 auth_error. 구글 오류 코드와 같은 모양이다.
-# 프론트는 access_denied 외에는 같은 문구를 보여주므로 원인 추적용이다
-_CALLBACK_ERROR_CODES: dict[type[AppException], str] = {
+# 프론트는 access_denied 외에는 같은 문구를 보여주므로 원인 추적용이다.
+# 표에 없는 예외(DB 오류 등)는 login_failed 다
+_CALLBACK_ERROR_CODES: dict[type[Exception], str] = {
     InvalidAuthorizationRequest: "invalid_request",
     GoogleTokenExchangeFailed: "token_exchange_failed",
     GoogleIdentityRejected: "identity_rejected",
@@ -98,7 +102,7 @@ _CALLBACK_ERROR_CODES: dict[type[AppException], str] = {
 }
 
 
-def _callback_error_code(exc: AppException) -> str:
+def _callback_error_code(exc: Exception) -> str:
     return _CALLBACK_ERROR_CODES.get(type(exc), "login_failed")
 
 
@@ -193,9 +197,12 @@ def google_callback(
         issued = service.complete_login(
             db, redis_client, code=code, state=state, browser_token=oauth_browser
         )
-    except AppException as e:
+    except Exception as e:
         # 브라우저가 최상위로 이동해 온 요청이라 JSON 을 돌려주면 사용자가 그대로 본다.
-        # 취소했을 때와 같이 프론트로 돌려보내고 원인은 auth_error 코드로만 알린다
+        # 취소했을 때와 같이 프론트로 돌려보내고 원인은 auth_error 코드로만 알린다.
+        # 예상하지 못한 예외도 500 JSON 대신 같은 길로 보내고, 원인은 서버 로그에 남긴다
+        if not isinstance(e, AppException):
+            logger.exception("구글 로그인 콜백 처리 중 예상하지 못한 오류")
         response = RedirectResponse(
             _frontend_url("/", auth_error=_callback_error_code(e)),
             status_code=status.HTTP_302_FOUND,

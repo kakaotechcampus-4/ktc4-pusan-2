@@ -29,7 +29,7 @@ from pitch_coach_backend.module.auth.exception import (
 )
 from pitch_coach_backend.module.auth.state_store import AuthorizationRequest
 from pitch_coach_backend.module.user import service as user_service
-from pitch_coach_backend.module.user.entity import User
+from pitch_coach_backend.module.user.entity import NAME_MAX_LENGTH, User
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +127,10 @@ def _find_or_create_user(db: Session, identity: google.GoogleIdentity) -> User:
 
     try:
         with db.begin_nested():
-            user = user_service.create(db, email=identity.email, name=identity.name)
+            # 구글 이름은 길이 제한이 없다. 컬럼보다 길면 INSERT 가 DataError 로 실패한다.
+            user = user_service.create(
+                db, email=identity.email, name=identity.name[:NAME_MAX_LENGTH]
+            )
             repository.create_account(
                 db,
                 user_id=user.id,
