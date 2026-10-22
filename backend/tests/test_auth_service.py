@@ -484,6 +484,7 @@ def _committed_token(engine: Engine) -> tuple[str, uuid.UUID, uuid.UUID]:
             token_hash=security.hash_refresh_token(refresh_token),
             device_id=device_id,
             expires_at=security.refresh_token_expires_at(),
+            session_expires_at=security.refresh_session_expires_at(),
         )
         setup.commit()
         return refresh_token, device_id, user.id
@@ -709,6 +710,39 @@ def test_expired_refresh_token_is_rejected(
 
     db_session.refresh(stored)
     assert stored.revoked_at is not None
+
+
+def _stored(db: Session, refresh_token: str) -> RefreshToken:
+    stored = repository.get_refresh_token(db, security.hash_refresh_token(refresh_token))
+    assert stored is not None
+    return stored
+
+
+def test_login_sets_the_end_of_the_whole_session(
+    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+) -> None:
+    issued = login(db_session, redis_client)
+    stored = _stored(db_session, issued.refresh_token)
+
+    expected = datetime.now(UTC) + timedelta(days=settings.refresh_session_max_days)
+    assert abs((stored.session_expires_at - expected).total_seconds()) < 5
+    assert stored.expires_at <= stored.session_expires_at
+
+
+def test_rotation_never_extends_past_the_end_of_the_session(
+    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+) -> None:
+    """로그인한 지 오래돼 세션의 끝이 하루 남았다. 회전해도 14일이 아니라 그때까지만 산다."""
+    issued = login(db_session, redis_client)
+    session_end = datetime.now(UTC) + timedelta(days=1)
+    stored = _stored(db_session, issued.refresh_token)
+    stored.session_expires_at = session_end
+    db_session.commit()
+
+    rotated = _stored(db_session, service.rotate(db_session, issued.refresh_token).refresh_token)
+
+    assert rotated.session_expires_at == session_end
+    assert rotated.expires_at == session_end
 
 
 def test_deleting_a_user_kills_their_refresh_tokens(

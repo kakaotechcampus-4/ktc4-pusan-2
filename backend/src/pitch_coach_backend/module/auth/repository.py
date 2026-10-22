@@ -47,12 +47,14 @@ def create_refresh_token(
     token_hash: str,
     device_id: uuid.UUID,
     expires_at: datetime,
+    session_expires_at: datetime,
 ) -> RefreshToken:
     token = RefreshToken(
         user_id=user_id,
         token_hash=token_hash,
         device_id=device_id,
         expires_at=expires_at,
+        session_expires_at=session_expires_at,
     )
     db.add(token)
     db.flush()
