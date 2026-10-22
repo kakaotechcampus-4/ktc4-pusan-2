@@ -37,6 +37,18 @@ class Settings(BaseSettings):
     # Deepgram 스트리밍 STT. 서버만 알고 브라우저에는 절대 내려보내지 않는다.
     deepgram_api_key: str
 
+    # Take 자동 종료. 말 없이 켜 둔 Take 가 STT 비용을 계속 쓰지 않게 한다.
+    # 말 없음 — 최근 take_silence_end_sec 동안 말이 없고, 직전 take_silence_window_sec 중
+    # take_silence_ratio 이상이 말 없음이면 끝낸다. 시간은 전사가 확인된 오디오 기준이다.
+    # 값 검사는 realtime/auto_end.py 의 AutoEndPolicy 한 곳에서 한다 (앱 시작 때)
+    take_silence_end_sec: int = 120
+    take_silence_window_sec: int = 300
+    take_silence_ratio: float = 0.8
+    # 강의 녹음처럼 원래 용도와 다르게 오래 쓰는 것을 막는 상한.
+    # AI 요청 시각의 상한(1시간 + 60초, docs/ai/architecture.md 1-3)이
+    # 이 값에 맞춰져 있다. 늘리려면 AI 와 먼저 맞춘다
+    take_max_duration_sec: int = 3600
+
     # 콜백이 끝난 뒤 브라우저를 돌려보낼 프론트 주소. CORS 허용 origin 으로도 쓴다.
     frontend_base_url: str = "http://localhost:3000"
 

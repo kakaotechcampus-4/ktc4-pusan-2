@@ -6,6 +6,7 @@ import {
   parseServerMessage,
   WS_CLOSE_NORMAL,
   WS_CLOSE_POLICY,
+  type AutoEndReason,
   type SttErrorCode,
   type SttState,
   type SttStatusMessage,
@@ -101,6 +102,11 @@ export interface SttSocketOptions {
   onError?: (code: SttErrorCode, message: string) => void;
   /** 더 붙지 않습니다. 화면은 이 시점에 "말하기 분석 없이 계속"으로 넘어갑니다 */
   onGiveUp?: (reason: GiveUpReason) => void;
+  /**
+   * 서버가 Take 를 자동으로 끝냈습니다 (말 없음 · 최대 시간). 무대는 여기서 종료 흐름을 탑니다.
+   * 한 번만 옵니다. 이 뒤로는 다시 붙지 않습니다
+   */
+  onAutoEnd?: (reason: AutoEndReason, message: string) => void;
   createSocket?: (url: string) => SocketLike;
   getToken?: (options: { renew: boolean }) => Promise<string | null>;
   /** 느린 재시도 간격을 고르는 난수 [0, 1). 테스트에서 간격을 고정하려고 둡니다 */
@@ -151,6 +157,8 @@ export class SttSocket {
 
   /** 닫혀도 다시 붙지 않는 상태. 에러 코드가 정합니다 */
   private fatal = false;
+  /** 서버가 Take 를 자동으로 끝냈다고 알렸습니다 (`auto_end`) */
+  private autoEnded = false;
 
   /** 토큰을 새로 받아 한 번 더 붙어 볼 것인가 (만료된 토큰과 진짜 인증 실패를 가릅니다) */
   private renewToken = false;
@@ -364,7 +372,22 @@ export class SttSocket {
         if (message.state === 'closed') this.dispose();
         break;
 
+      case 'auto_end':
+        // 서버는 이 Take 를 다시 받지 않습니다. 재연결해 봐야 TAKE_ENDED 로 닫힙니다
+        this.fatal = true;
+        if (!this.autoEnded) {
+          this.autoEnded = true;
+          this.options.onAutoEnd?.(message.reason, message.message);
+        }
+        break;
+
       case 'error':
+        // 끊겨 있다 다시 붙으면 auto_end 뒤에 TAKE_ENDED 가 옵니다. 이유는 이미 알렸으니
+        // "이미 끝난 연습이라…" 로 덮지 않습니다
+        if (this.autoEnded && message.code === 'TAKE_ENDED') {
+          this.fatal = true;
+          break;
+        }
         this.options.onError?.(message.code, message.message);
 
         // 토큰이 만료된 것뿐일 수 있습니다. 새로 받아 **한 번만** 다시 붙어 봅니다 —

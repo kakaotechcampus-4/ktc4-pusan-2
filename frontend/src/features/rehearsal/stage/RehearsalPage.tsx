@@ -218,6 +218,17 @@ export function RehearsalPage() {
     resumedAt: resume?.slideAt ?? null,
   });
   /**
+   * 서버가 Take 를 자동으로 끝냈을 때(말 없음 · 최대 시간) 끝내기 버튼과 같은 흐름을 탑니다.
+   * `finish` 는 아래에서 매 렌더 새로 만들어지는 함수라 ref 로 최신 것을 부릅니다.
+   */
+  const finishRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const onAutoEnd = useCallback(() => {
+    finishRef.current().catch((e: unknown) => {
+      console.error('[rehearsal] 자동 종료 처리 실패', e);
+      setEndError(toMessage(e));
+    });
+  }, []);
+  /**
    * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
    * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
    */
@@ -231,6 +242,7 @@ export function RehearsalPage() {
     stream,
     enabled: stageReady && (phase === 'RUNNING' || phase === 'ENDING'),
     elapsedMs,
+    onAutoEnd,
   });
 
   useCoach({
@@ -566,6 +578,11 @@ export function RehearsalPage() {
       navigate(`/takes/${takeId}/retry`, { state: { clientSessionId: id } });
     }
   };
+
+  // 자동 종료(onAutoEnd)가 최신 finish 를 부르게 합니다. finish 가 쓰는 submit 보다 뒤에 둡니다
+  useEffect(() => {
+    finishRef.current = finish;
+  });
 
   // 종료 중에 새로고침했습니다. 무대는 열지 않고 끝내기를 누른 순간 고정한 값으로 종료를 이어갑니다.
   // `/complete` 는 clientSessionId 로 멱등이라 새로고침 전에 이미 갔어도 다시 보내도 됩니다.

@@ -110,7 +110,8 @@ class WsErrorCode(StrEnum):
     | `TAKE_TAKEN_OVER` | 1008 로 닫는다. FE 는 **재연결하지 않는다** |
 
     - `TAKE_NOT_FOUND` 는 REST 의 404 와 같은 규칙으로 "없음" 과 "남의 것" 을 구분하지 않는다.
-    - `TAKE_ENDED` 는 ANALYZING·COMPLETED·FAILED. 끝난 연습에 전사를 더 붙이면 리포트가 오염된다.
+    - `TAKE_ENDED` 는 ANALYZING·COMPLETED·FAILED 이거나 BE 가 자동 종료한 Take(`AutoEndMessage`).
+      끝난 연습에 전사를 더 붙이면 리포트가 오염된다.
     - `FORBIDDEN` 은 소유권 검사(DB) 뒤의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
     """
 
@@ -121,6 +122,28 @@ class WsErrorCode(StrEnum):
     BAD_MESSAGE = "BAD_MESSAGE"
     BAD_AUDIO_FRAME = "BAD_AUDIO_FRAME"
     TAKE_TAKEN_OVER = "TAKE_TAKEN_OVER"
+
+
+class AutoEndReason(StrEnum):
+    """BE 가 Take 를 스스로 끝낸 이유. FE 가 분기하는 값이다."""
+
+    SILENCE = "SILENCE"  # 오래 말이 없었다
+    TIME_LIMIT = "TIME_LIMIT"  # 최대 시간이 지났다
+
+
+class AutoEndMessage(BaseModel):
+    """BE 가 Take 를 자동으로 끝낸다. 이 메시지 뒤로는 오디오를 받지 않는다.
+
+    순서: `auto_end` → (남은 오디오 정리) → `stt_status` closed → 1000 close.
+    FE 는 사용자가 끝내기를 누른 것과 같은 종료 흐름을 타고 `message` 를 보여 준다.
+    `stop` 을 보내도 되고 안 보내도 된다 — 서버는 이미 정리하고 있다.
+    같은 Take 로 다시 붙으면 이 메시지를 한 번 더 보내고 `TAKE_ENDED` 로 거절한다 (자동 종료 순간
+    떨어져 있던 FE 도 종료 흐름을 타게).
+    """
+
+    type: Literal["auto_end"] = "auto_end"
+    reason: AutoEndReason
+    message: str
 
 
 class ErrorMessage(BaseModel):
