@@ -344,16 +344,20 @@ POST /api/pitches/add/{pitch_id}/presentation                     발표자료(P
   `script_slides.full_content` 는 AI 가 구분자·제목을 빼고 공백을 합친 글이라 원문을 대신하지 못한다.
 - 이 기능 전에 올라온 대본은 원문이 S3 파일(`pitches/{pitch_id}/scripts/{version}.<확장자>`)로만 있어 migration 이 `FAILED (LEGACY_UNPARSED)` 로 두고,
   재시도하면 `409 SCRIPT_REUPLOAD_REQUIRED` — 새로 올려야 한다.
-- BE → AI 는 `POST {AI_BASE_URL}/v1/scripts/parse` `{"script_text"}`. 응답은 AI 노트북의 `SeperatedSlides`
-  그대로이고 `script_parser.py` 가 바꾼다 (`status` → `segmented`, `"0:6"` → `[0, 6]`, 틀린 highlight 는 그 항목만 버림).
-  시도 한 번 전체 35초(httpx 의 읽기 30초·연결 5초는 단계별 상한이라 따로 묶는다). 타임아웃·연결 실패·5xx·429·408·계약 위반은
+- BE → AI 는 `POST {AI_BASE_URL}/scripts/parse` `{"script_text", "target_ms"}`. `target_ms` 는 발표 제한 시간(`time_limit_sec` × 1000)이고,
+  다시 파싱할 때는 그때의 제한 시간을 싣는다. 응답 모양은 [`docs/ai/features/script-parser.md`](../docs/ai/features/script-parser.md) 5절이고
+  `script_parser.py` 가 바꾼다 (`status` → `segmented`, highlight `{"start": 0, "end": 6}` · `"0:6"` → `[0, 6]`, 틀린 highlight 는 그 항목만 버림).
+  highlight 는 AI 가 새 모양으로 바꾸는 동안 두 모양을 다 받는다.
+  시도 한 번 전체 30초(httpx 의 읽기 30초·연결 5초는 단계별 상한이라 따로 묶는다). 타임아웃·연결 실패·5xx·429·408·계약 위반은
   1초 뒤 1회 재시도, 그 밖의 4xx 는 바로 실패. 결과 저장이 실패하면 `FAILED (INTERNAL_ERROR)` 로 남긴다 (PENDING 으로 두지 않는다).
+- 장별 `script_chars` · `expected_ms` 는 `script_slides` 에, 응답의 `meta` 에 요청한 `target_ms` 를 더한 것은 `script_versions.parse_meta` 에 둔다.
+  이 값들을 주지 않는 응답(지금 AI 연구 코드)이면 비워 둔다. 제한 시간만 바뀌면 다시 파싱하지 않는다 — 쓰는 쪽이 `expected_ms` 를 `parse_meta.target_ms` 에 대한 비율로 읽는다.
 - 작업은 `BackgroundTasks` + `async`. **AI 를 기다리는 동안 DB 세션을 쥐지 않고**, 저장만 threadpool 의
   짧은 세션으로 한다 (`transcript_store.py` 와 같은 이유 — 같은 이벤트 루프에서 STT 가 돈다).
 - 상태 전이는 전부 **조건부 UPDATE** 다. 재시도 두 번 눌러도 작업은 하나, 늦게 끝난 옛 작업은
   `parse_requested_at` 이 달라 새 결과를 못 덮는다. 만료가 지난 작업도 쓰지 못한다 (FAILED 가 DONE 으로 뒤집히지 않게).
 - BE 가 재시작돼 작업이 사라지면 PENDING 이 남는다. 요청 후 **90초**가 지난 PENDING 은 읽을 때
-  `FAILED (PARSE_EXPIRED)` 로 보여주고 재시도를 연다. 90초는 어댑터 최악 소요(35 × 2 + 1 = 71초)보다 길어야 한다 (테스트가 확인한다).
+  `FAILED (PARSE_EXPIRED)` 로 보여주고 재시도를 연다. 90초는 어댑터 최악 소요(30 × 2 + 1 = 61초)보다 길어야 한다 (테스트가 확인한다).
 - 테스트는 `conftest.py` 가 파싱 작업을 기본으로 끈다(실제 AI 를 부르지 않게). 흐름 테스트는 가짜 파서를 끼운
   실제 runner 로 바꿔 끼운다 (`tests/test_script_parse.py`).
 - 파싱된 `terms`(STT 가 틀리기 쉬운 용어)는 리허설 STT `keyterm` 으로 쓰인다 (위 실시간 STT 절).

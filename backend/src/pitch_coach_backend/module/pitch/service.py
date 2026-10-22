@@ -1,6 +1,7 @@
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -58,7 +59,7 @@ STANDARD_PARSE_TIMEOUT = httpx2.Timeout(30.0, connect=5.0)
 MAX_SCRIPT_CHARS = 50_000
 # 요청 후 이만큼 지나도 PENDING 이면 만료(FAILED)로 본다. BE 가 재시작되면 백그라운드 작업이
 # 사라져 PENDING 이 영원히 남기 때문이다. 작업의 최악 소요(script_parser 의 타임아웃 × 재시도,
-# 약 71초)보다 길어야 한다 — 짧으면 아직 도는 작업을 만료로 보여주고 재시도를 열어 버린다
+# 약 61초)보다 길어야 한다 — 짧으면 아직 도는 작업을 만료로 보여주고 재시도를 열어 버린다
 PARSE_EXPIRE_AFTER = timedelta(seconds=90)
 
 def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveRequestDTO):
@@ -221,6 +222,16 @@ def validate_script_text(content: str) -> str:
     return content
 
 
+def _target_ms(pitch_repository: PitchRepository, pitch_id: uuid.UUID) -> int | None:
+    """AI 에 실을 발표 제한 시간(ms). 다시 파싱할 때도 그때의 제한 시간을 싣는다."""
+    pitch = pitch_repository.get_by_id(pitch_id)
+    if pitch is None:
+        raise NonExistentPitch()
+    # 계약은 1 이상이다. 입력 검증(#147) 전에 0 이하로 저장된 발표는 AI 가 422 로 거절하지 않게
+    # 목표 없이 부른다
+    return pitch.time_limit_sec * 1000 if pitch.time_limit_sec > 0 else None
+
+
 def create_script_service(
     db: Session, pitch_id: uuid.UUID, content: str
 ) -> tuple[ScriptCreatedDTO, ParseTicket]:
@@ -232,6 +243,7 @@ def create_script_service(
     pitch_repository = PitchRepository(db)
     # 같은 pitch 에 동시에 올려도 같은 버전 번호를 받지 않게 커밋까지 줄을 세운다
     pitch_repository.lock_for_new_version(pitch_id)
+    target_ms = _target_ms(pitch_repository, pitch_id)
 
     script = ScriptVersion(
         pitch_id=pitch_id,
@@ -253,6 +265,7 @@ def create_script_service(
         script_version_id=script.id,
         requested_at=script.parse_requested_at,
         script_text=content,
+        target_ms=target_ms,
     )
     return created, ticket
 
@@ -347,6 +360,7 @@ def request_reparse(
     # 파싱 기능 전에 올라온 대본은 원문이 S3 파일로만 있어(.docx 도 있음) 다시 올려야 한다
     if script.content is None:
         raise ScriptReuploadRequired()
+    target_ms = _target_ms(pitch_repository, pitch_id)
 
     # 위 검사는 빠른 거절용이고, 실제 판정은 이 조건부 UPDATE 다.
     # 버튼을 두 번 눌러 요청 둘이 동시에 여기까지 와도 하나만 1행을 바꾼다
@@ -364,13 +378,21 @@ def request_reparse(
 
     return (
         ParseRequestedDTO(script_version_id=script.id, parse_status=ScriptParseStatus.PENDING),
-        ParseTicket(script_version_id=script.id, requested_at=now, script_text=script.content),
+        ParseTicket(
+            script_version_id=script.id,
+            requested_at=now,
+            script_text=script.content,
+            target_ms=target_ms,
+        ),
     )
 
 
 def complete_parse(db: Session, ticket: ParseTicket, parsed: ParsedScript) -> bool:
     """AI 결과를 저장하고 DONE. 이 작업이 이미 무효(재시도로 교체·만료 후 재시작)면 False."""
     pitch_repository = PitchRepository(db)
+    parse_meta = None
+    if parsed.meta is not None:
+        parse_meta = {**asdict(parsed.meta), "target_ms": ticket.target_ms}
 
     # 상태 UPDATE 를 먼저 한다. 이기면 이 행이 잠겨서 슬라이드를 넣는 동안 다른 작업이 못 끼어든다.
     # PENDING → DONE 은 이 한 번뿐이고 DONE 은 다시 파싱하지 않으므로,
@@ -381,6 +403,7 @@ def complete_parse(db: Session, ticket: ParseTicket, parsed: ParsedScript) -> bo
         expired_before=datetime.now(UTC) - PARSE_EXPIRE_AFTER,
         segmented=parsed.segmented,
         terms=list(parsed.terms),
+        parse_meta=parse_meta,
     ):
         db.rollback()
         return False
@@ -393,6 +416,8 @@ def complete_parse(db: Session, ticket: ParseTicket, parsed: ParsedScript) -> bo
                 full_content=slide.content,
                 keywords=list(slide.keywords),
                 highlights=[list(span) for span in slide.highlights],
+                script_chars=slide.script_chars,
+                expected_ms=slide.expected_ms,
             )
             for slide in parsed.slides
         ],

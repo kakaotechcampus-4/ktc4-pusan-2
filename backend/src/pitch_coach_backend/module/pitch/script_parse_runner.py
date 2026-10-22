@@ -45,7 +45,7 @@ class ScriptParseRunner:
     async def run(self, ticket: ParseTicket) -> None:
         script_id = ticket.script_version_id
         try:
-            parsed = await self._parser.parse(ticket.script_text)
+            parsed = await self._parser.parse(ticket.script_text, ticket.target_ms)
         except ScriptParseError as exc:
             # 대본 원문은 로그에 남기지 않는다 (사용자 콘텐츠)
             logger.warning("대본 파싱 실패 script_version_id=%s: %s", script_id, exc)

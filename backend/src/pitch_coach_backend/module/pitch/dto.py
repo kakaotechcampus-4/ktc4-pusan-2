@@ -94,6 +94,8 @@ class ParseTicket:
     script_version_id: uuid.UUID
     requested_at: datetime
     script_text: str
+    # 발표 제한 시간(ms). AI 가 장별 예상 시간을 이 합에 맞춰 나눈다. parse_meta 에도 남긴다
+    target_ms: int | None
 
 
 class HighlightDTO(BaseModel):
