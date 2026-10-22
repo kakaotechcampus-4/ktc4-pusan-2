@@ -192,21 +192,27 @@ class FakeTranscriptStore:
         cursor: tuple[int, int] = (0, 0),
         fail: bool = False,
         fail_mark: bool = False,
+        append_delay: float = 0.0,
     ) -> None:
         self.segments: list[TranscriptSegmentCreateDTO] = []
         self.take_ids: list[uuid.UUID] = []
         self.ended: list[uuid.UUID] = []
         # 저장한 순서. 종료를 마지막 전사 뒤에 적는지 본다
         self.calls: list[str] = []
+        # cursor 를 읽을 때마다 그때까지 저장된 구간 수. 새 스트림이 저장 뒤에 번호를 읽는지 본다
+        self.cursor_reads: list[int] = []
         self._cursor = cursor
         self.fail = fail
         self.fail_mark = fail_mark
+        # 저장이 이만큼 걸린다 (저장 도중 정리가 오는 경우 재현)
+        self.append_delay = append_delay
 
     async def cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
+        self.cursor_reads.append(len(self.segments))
         return self._cursor
 
     async def append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None:
-        await asyncio.sleep(0)  # 실제 저장은 threadpool 왕복이라 한 번은 양보한다
+        await asyncio.sleep(self.append_delay)  # 실제 저장은 threadpool 왕복이라 한 번은 양보한다
         if self.fail:
             raise RuntimeError("db down")
         self.take_ids.append(take_id)
@@ -1245,7 +1251,7 @@ async def test_concurrent_attach_during_handover_does_not_duplicate_stream(
     """확인(get) -> 생성(TakeStream) 이 원자적이지 않으면, 정리 중인 스트림에
     두 연결이 동시에 오는 순간 둘 다 "없다" 를 보고 각자 새 스트림·Deepgram 세션을
     만든다. 하나는 레지스트리에서 밀려나 고아로 남는다."""
-    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.05)
     take_id = uuid.uuid7()
     owner_id = uuid.uuid7()
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
@@ -1355,11 +1361,10 @@ async def test_stop_immediately_after_long_gap_still_flushes_carried_audio():
 async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """DRAIN_TIMEOUT_SEC(정상 drain 상한, 10s) 이 HANDOVER_TIMEOUT_SEC(핸드오버 유예, 3s)
-    보다 길어서, 옛 스트림이 아직 정상적으로 정리되는 중이어도 핸드오버는 먼저 포기한다.
-    그때 그냥 forget() 만 하면 옛 스트림은 레지스트리에서만 사라질 뿐 자기 페이스대로
+    """옛 스트림의 정리가 정상 종료 상한(DRAIN_TIMEOUT_SEC)을 넘기면 핸드오버는 기다리기를
+    포기한다. 그때 그냥 forget() 만 하면 옛 스트림은 레지스트리에서만 사라질 뿐 자기 페이스대로
     계속 돈다 — Deepgram 연결이 안 끊긴다. cancel() 로 강제로 끊어야 한다."""
-    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.05)
     take_id = uuid.uuid7()
     owner_id = uuid.uuid7()
     # swallow_close: CloseStream 을 보내도 스스로는 절대 안 끝난다 (느린 정상 drain 재현)
@@ -1391,6 +1396,55 @@ async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
         "핸드오버 타임아웃 뒤에도 옛 스트림이 스스로 안 끝나면 강제로 끊어야 한다"
     )
     assert adapter.sessions[0].aborted is True
+    await _wait_until_ok(new_stream)
+    await asyncio.sleep(0.01)  # 세션 태스크가 뜨기 전에 끊으면 "never awaited" 경고가 난다
+    new_stream.cancel()
+    await new_stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_handover_waits_for_the_old_stream_to_finish_saving(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """정리 중인 스트림이 final 을 저장하는 도중에 끊겨도 그 저장은 끝까지 간다. 새 스트림은
+    그 저장이 끝난 뒤 번호를 읽는다 — 먼저 읽으면 같은 seq 로 저장하다 UNIQUE 위반으로 버려진다."""
+    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.05)
+    take_id = uuid.uuid7()
+    owner_id = uuid.uuid7()
+    adapter = FakeSttAdapter(
+        Plan(replies=[transcript(0, 200, "마지막 말", is_final=True)], swallow_close=True),
+        Plan(),
+    )
+    store = FakeTranscriptStore(append_delay=0.3)
+
+    old_stream = await take_stream.attach(
+        take_id,
+        FakeWebSocket(),
+        owner_id=owner_id,
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=store,
+    )
+    await _wait_until_ok(old_stream)
+    old_stream.push(frame(1, 0))
+    await _wait_for(lambda: adapter.sessions[0].audio)
+    old_stream.request_stop()  # final 저장(0.3s) 중에 drain 상한(0.05s)이 지나 끊긴다
+
+    new_stream = await take_stream.attach(
+        take_id,
+        FakeWebSocket(),
+        owner_id=owner_id,
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=store,
+    )
+
+    assert [seg.transcript for seg in store.segments] == ["마지막 말"]
+    assert store.cursor_reads == [0, 1], "새 스트림이 옛 스트림의 저장보다 먼저 번호를 읽었다"
+    await _wait_until_ok(new_stream)
+    await asyncio.sleep(0.01)  # 세션 태스크가 뜨기 전에 끊으면 "never awaited" 경고가 난다
+    new_stream.cancel()
+    await new_stream.wait_closed(timeout=1.0)
 
 
 @pytest.mark.anyio
@@ -2128,9 +2182,9 @@ async def test_wait_cancelled_gives_up_and_reports_closed(monkeypatch: pytest.Mo
 
 @pytest.mark.anyio
 async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.MonkeyPatch):
-    """attach 락이 프로세스 전역이면 한 Take 의 핸드오버 대기(HANDOVER_TIMEOUT_SEC) 동안
+    """attach 락이 프로세스 전역이면 한 Take 의 핸드오버 대기(DRAIN_TIMEOUT_SEC) 동안
     다른 모든 Take 의 연결이 같이 멈춘다 (코드 리뷰 지적). take_id 별 락이어야 한다."""
-    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 0.5)
+    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.5)
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
     take_a, take_b, owner = uuid.uuid7(), uuid.uuid7(), uuid.uuid7()
 
