@@ -29,6 +29,7 @@ def _refresh(user_id: uuid.UUID, token_hash: str, **kw: object) -> RefreshToken:
         token_hash=token_hash,
         device_id=kw.pop("device_id", uuid.uuid7()),
         expires_at=kw.pop("expires_at", datetime.now(UTC) + timedelta(days=14)),
+        session_expires_at=kw.pop("session_expires_at", datetime.now(UTC) + timedelta(days=30)),
         **kw,
     )
 

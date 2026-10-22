@@ -577,6 +577,54 @@ describe('종료', () => {
   });
 });
 
+describe('서버의 자동 종료', () => {
+  const AUTO_END = { type: 'auto_end', reason: 'TIME_LIMIT', message: '연습은 최대 1시간까지예요' };
+
+  it('auto_end 를 알리고, 닫혀도 다시 붙지 않는다', async () => {
+    const onAutoEnd = vi.fn();
+    const onError = vi.fn();
+    const stt = makeSocket({ onAutoEnd, onError });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    sockets[0]!.emit(AUTO_END);
+    expect(onAutoEnd).toHaveBeenCalledExactlyOnceWith('TIME_LIMIT', '연습은 최대 1시간까지예요');
+
+    // 무대가 종료 흐름에서 stop 을 보내도 됩니다. 서버는 이미 정리하고 있습니다
+    const stopped = stt.stop();
+    sockets[0]!.emit(status('closed'));
+    await stopped;
+    sockets[0]!.serverClose(1000);
+    await settle();
+
+    expect(sockets).toHaveLength(1);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('끊겼다 다시 붙을 때 받은 auto_end 도 알리고, 뒤따른 TAKE_ENDED 로 덮지 않는다', async () => {
+    const onAutoEnd = vi.fn();
+    const onError = vi.fn();
+    const onGiveUp = vi.fn();
+    const stt = makeSocket({ onAutoEnd, onError, onGiveUp });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+
+    // 인증 직후 서버가 거절합니다: auto_end → error TAKE_ENDED → 1008
+    sockets[0]!.emit(AUTO_END);
+    sockets[0]!.emit({ type: 'error', code: 'TAKE_ENDED', message: '연습은 최대 1시간까지예요' });
+    sockets[0]!.serverClose(1008);
+    await settle();
+
+    expect(onAutoEnd).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
+    expect(onGiveUp).toHaveBeenCalledWith('FATAL');
+    expect(sockets).toHaveLength(1);
+  });
+});
+
 describe('stop 만 보내기 (종료 중 새로고침)', () => {
   it('인증하고 stop 만 보낸 뒤 closed 를 받으면 끝난다 — 오디오는 없다', async () => {
     const stopped = stopTakeStream('t1', {

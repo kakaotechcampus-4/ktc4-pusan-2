@@ -1,15 +1,18 @@
 """AI 대본 파서 어댑터. DB 를 모른다 (auth/google.py, realtime/stt_adapter.py 와 같은 자리).
 
-    BE ──POST /v1/scripts/parse {script_text}──▶ AI ──▶ SeperatedSlides
+    BE ──POST /scripts/parse {script_text, target_ms}──▶ AI ──▶ status · slides · terms · meta
 
-AI 는 노트북의 `SeperatedSlides` 모양을 그대로 돌려준다. 그 모양은 BE ↔ AI 사이 계약일 뿐이라
+AI 응답 모양(docs/ai/features/script-parser.md 5절)은 BE ↔ AI 사이 계약일 뿐이라
 여기서 BE 의 `ParsedScript` 로 바꾼다 — AI 쪽 모양이 바뀌어도 고칠 곳이 이 파일 하나로 끝난다.
 
 바꾸는 것
   status "success"/"fail"   → segmented True/False. AI 의 "fail" 은 "구분자가 없다"는 정상 결과라
                               우리 parse_status=FAILED(처리 실패) 와 이름이 겹친다
   slide_number null ("fail") → 1. script_slides.slide_number 가 NOT NULL 이다
-  highlights ["0:6"]         → [(0, 6)]. FE 가 매번 문자열을 쪼개지 않게
+  highlights                 → [(0, 6)]. 계약의 {"start": 0, "end": 6} 과 지금 AI 연구 코드의
+                              "0:6" 을 둘 다 받는다. AI 가 언제 새 모양으로 바꿔도 깨지지 않게
+
+script_chars · expected_ms · meta 는 계약에서 새로 생긴 값이다. 없는 응답(옛 모양)도 받고 비워 둔다.
 
 LLM structured output 이라 스키마는 맞아도 값이 틀릴 수 있다. 그래서 구조가 깨진 응답
 (슬라이드 없음·번호 중복)은 통째로 거절하고, 위치 하나가 틀린 highlight 는 그 항목만 버린다 —
@@ -25,24 +28,25 @@ import re
 import ssl
 from dataclasses import dataclass
 from functools import cache
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
 
 logger = logging.getLogger(__name__)
 
-PARSE_PATH = "/v1/scripts/parse"
+PARSE_PATH = "/scripts/parse"
 
-# AI 는 보통 3~5초. compose 내부망이라 연결은 금방 끝난다.
+# 계약의 BE 시간 제한은 호출 한 번 30초다 (AI 예산은 25초, script-parser.md 8절).
+# compose 내부망이라 연결은 금방 끝난다.
 # httpx 의 타임아웃은 단계별(연결·바이트 사이 간격) 상한이라, AI 가 응답을 조금씩 흘리면
 # 한 번의 호출이 얼마든지 길어질 수 있다. 그래서 시도 한 번 전체를 ATTEMPT_TIMEOUT_SEC 로 묶는다.
-# 최악 소요 = 35 × 2 + 1 = 71초. 서비스의 만료 시간(PARSE_EXPIRE_AFTER, 90초)보다 짧아야
+# 최악 소요 = 30 × 2 + 1 = 61초. 서비스의 만료 시간(PARSE_EXPIRE_AFTER, 90초)보다 짧아야
 # "만료"로 보인 작업이 뒤에서 아직 도는 일이 없다 (tests/test_script_parser.py 가 확인한다)
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
-ATTEMPT_TIMEOUT_SEC = 35.0
+ATTEMPT_TIMEOUT_SEC = 30.0
 DEFAULT_ATTEMPTS = 2
 DEFAULT_RETRY_DELAY_SEC = 1.0
 
@@ -51,8 +55,9 @@ _RETRYABLE_CLIENT_STATUSES = frozenset({408, 429})
 _HIGHLIGHT_RE = re.compile(r"^(\d+):(\d+)$")
 # 로그에 AI 응답 본문을 남길 때의 상한. 사용자 대본이 되돌아올 수 있어 짧게 자른다
 _LOG_BODY_LIMIT = 200
-# script_slides.slide_number 는 PostgreSQL integer(int4). 넘으면 저장에서 터지므로 받을 때 거절한다
-_MAX_SLIDE_NUMBER = 2_147_483_647
+# script_slides 의 slide_number · script_chars · expected_ms 는 PostgreSQL integer(int4).
+# 넘으면 저장에서 터지므로 받을 때 거절한다
+_PG_INTEGER_MAX = 2_147_483_647
 
 
 @cache
@@ -70,8 +75,20 @@ class ParsedSlide:
     slide_number: int
     content: str
     keywords: tuple[str, ...]
-    # content 안의 [start, end) 위치
+    # content 안의 [start, end) 위치 (코드 포인트)
     highlights: tuple[tuple[int, int], ...]
+    # 공백·문장부호를 뺀 글자 수, 이 장의 예상 발표 시간. 옛 모양 응답에는 없다
+    script_chars: int | None = None
+    expected_ms: int | None = None
+
+
+@dataclass(frozen=True)
+class ParseMeta:
+    """응답의 meta (architecture.md 5절). 결과가 어느 버전·모델에서 나왔는지 같이 저장한다."""
+
+    schema_version: str
+    feature_version: str
+    model: str | None
 
 
 @dataclass(frozen=True)
@@ -79,6 +96,7 @@ class ParsedScript:
     segmented: bool
     slides: tuple[ParsedSlide, ...]
     terms: tuple[str, ...]
+    meta: ParseMeta | None = None
 
 
 class ScriptParseError(Exception):
@@ -92,10 +110,10 @@ class ScriptParseError(Exception):
 class ScriptParser(Protocol):
     """파싱 작업이 의존하는 최소 인터페이스. 테스트는 가짜로 바꿔 끼운다."""
 
-    async def parse(self, script_text: str) -> ParsedScript: ...
+    async def parse(self, script_text: str, target_ms: int | None) -> ParsedScript: ...
 
 
-# ── AI 응답 (SeperatedSlides) ──────────────────────────────────────────
+# ── AI 응답 (script-parser.md 5-3) ─────────────────────────────────────
 # extra 필드는 무시한다 (pydantic 기본). AI 가 필드를 더해도 BE 가 깨지지 않게
 
 
@@ -103,29 +121,49 @@ class _WireSlide(BaseModel):
     slide_number: int | None
     script: str
     keywords: list[str]
-    highlights: list[str] = []
+    # 모양은 항목마다 _span 이 본다. 여기서 정하면 하나만 틀려도 응답 전체가 실패한다
+    highlights: list[Any] = []
+    script_chars: int | None = Field(default=None, ge=0, le=_PG_INTEGER_MAX)
+    expected_ms: int | None = Field(default=None, ge=0, le=_PG_INTEGER_MAX)
+
+
+class _WireMeta(BaseModel):
+    schema_version: str
+    feature_version: str
+    model: str | None = None
 
 
 class _WireResult(BaseModel):
     status: Literal["success", "fail"]
     slides: list[_WireSlide]
     terms: list[str] = []
+    meta: _WireMeta | None = None
 
 
-def _highlights(raw: list[str], content: str) -> tuple[tuple[int, int], ...]:
-    """'start:end' 중 content 안을 가리키는 것만 남긴다.
+def _span(item: Any) -> tuple[int, int] | None:
+    """highlight 한 항목을 (start, end) 로. 계약의 {start, end} 와 옛 "start:end" 를 다 받는다."""
+    if isinstance(item, str):
+        match = _HIGHLIGHT_RE.match(item.strip())
+        return None if match is None else (int(match[1]), int(match[2]))
+    if isinstance(item, dict):
+        start, end = item.get("start"), item.get("end")
+        # bool 은 int 의 하위 타입이라 isinstance 대신 type 으로 본다
+        if type(start) is int and type(end) is int:
+            return start, end
+    return None
+
+
+def _highlights(raw: list[Any], content: str) -> tuple[tuple[int, int], ...]:
+    """content 안을 가리키는 것만 남긴다.
 
     노트북은 키워드가 본문에 없으면 find() 의 -1 로 "-1:5" 를 만들고, 시스템 프롬프트 없이
     부르면 LLM 이 위치 대신 단어("멸종위기청년")를 넣기도 했다. 둘 다 여기서 걸러진다.
     """
     spans: list[tuple[int, int]] = []
     for item in raw:
-        match = _HIGHLIGHT_RE.match(item.strip())
-        if match is None:
-            continue
-        start, end = int(match[1]), int(match[2])
-        if start < end <= len(content):
-            spans.append((start, end))
+        span = _span(item)
+        if span is not None and 0 <= span[0] < span[1] <= len(content):
+            spans.append(span)
     return tuple(spans)
 
 
@@ -146,6 +184,8 @@ def _has_nul(wire: _WireResult) -> bool:
     for slide in wire.slides:
         texts.append(slide.script)
         texts.extend(slide.keywords)
+    if wire.meta is not None:
+        texts += [wire.meta.schema_version, wire.meta.feature_version, wire.meta.model or ""]
     return any("\x00" in text for text in texts)
 
 
@@ -159,7 +199,7 @@ def to_parsed_script(wire: _WireResult) -> ParsedScript:
         if not wire.slides:
             raise _invalid("success 인데 slides 가 비었다")
         numbers = [slide.slide_number for slide in wire.slides]
-        if any(number is None or not 1 <= number <= _MAX_SLIDE_NUMBER for number in numbers):
+        if any(number is None or not 1 <= number <= _PG_INTEGER_MAX for number in numbers):
             raise _invalid(f"success 인데 slide_number 가 올바르지 않다: {numbers}")
         if len(set(numbers)) != len(numbers):
             raise _invalid(f"slide_number 가 겹친다: {numbers}")
@@ -173,10 +213,15 @@ def to_parsed_script(wire: _WireResult) -> ParsedScript:
             content=slide.script,
             keywords=tuple(slide.keywords),
             highlights=_highlights(slide.highlights, slide.script),
+            script_chars=slide.script_chars,
+            expected_ms=slide.expected_ms,
         )
         for slide in wire.slides
     )
-    return ParsedScript(segmented=segmented, slides=slides, terms=_terms(wire.terms))
+    meta = None
+    if wire.meta is not None:
+        meta = ParseMeta(wire.meta.schema_version, wire.meta.feature_version, wire.meta.model)
+    return ParsedScript(segmented=segmented, slides=slides, terms=_terms(wire.terms), meta=meta)
 
 
 class HttpScriptParser:
@@ -207,10 +252,12 @@ class HttpScriptParser:
         # 테스트가 httpx.MockTransport 를 끼운다
         self._transport = transport
 
-    async def parse(self, script_text: str) -> ParsedScript:
+    async def parse(self, script_text: str, target_ms: int | None) -> ParsedScript:
+        # target_ms 가 있으면 AI 가 장별 expected_ms 를 합이 이 값이 되게 나눈다
+        payload = {"script_text": script_text, "target_ms": target_ms}
         for attempt in range(1, self._attempts + 1):
             try:
-                return await self._attempt(script_text)
+                return await self._attempt(payload)
             except ScriptParseError as exc:
                 if not exc.retryable or attempt == self._attempts:
                     raise
@@ -218,17 +265,17 @@ class HttpScriptParser:
                 await asyncio.sleep(self._retry_delay_sec)
         raise AssertionError("unreachable")  # attempts >= 1 이면 위에서 반드시 끝난다
 
-    async def _attempt(self, script_text: str) -> ParsedScript:
+    async def _attempt(self, payload: dict[str, Any]) -> ParsedScript:
         """시도 한 번. 전체를 ATTEMPT_TIMEOUT_SEC 로 묶는다 (httpx 타임아웃은 단계별이라)."""
         try:
             async with asyncio.timeout(self._attempt_timeout_sec):
-                return await self._parse_once(script_text)
+                return await self._parse_once(payload)
         except TimeoutError as exc:
             raise ScriptParseError(
                 ScriptParseErrorCode.AI_TIMEOUT, "시도 전체 시간 초과", retryable=True
             ) from exc
 
-    async def _parse_once(self, script_text: str) -> ParsedScript:
+    async def _parse_once(self, payload: dict[str, Any]) -> ParsedScript:
         try:
             async with httpx.AsyncClient(
                 base_url=self._base_url,
@@ -236,7 +283,7 @@ class HttpScriptParser:
                 transport=self._transport,
                 verify=_ssl_context(),
             ) as client:
-                response = await client.post(PARSE_PATH, json={"script_text": script_text})
+                response = await client.post(PARSE_PATH, json=payload)
         except httpx.TimeoutException as exc:
             raise ScriptParseError(
                 ScriptParseErrorCode.AI_TIMEOUT, type(exc).__name__, retryable=True

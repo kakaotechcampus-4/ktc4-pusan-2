@@ -137,6 +137,10 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     segmented: Mapped[bool | None] = mapped_column(Boolean)
     # STT 가 잘못 알아듣기 쉬운 고유명사·전문 용어. Deepgram keyterm 으로 넘긴다
     terms: Mapped[Any | None] = mapped_column(JSONB)
+    # AI 응답의 meta {schema_version, feature_version, model} 에 요청한 target_ms 를 더한 것.
+    # 제한 시간이 바뀌어도 다시 파싱하지 않고, 쓰는 쪽이 expected_ms 를 이 target_ms 에 대한 비율로
+    # 읽는다 (docs/ai/features/script-parser.md 12-2). meta 를 주지 않은 AI 응답이면 비어 있다
+    parse_meta: Mapped[Any | None] = mapped_column(JSONB)
     # FAILED 원인 코드 (dto.ScriptParseErrorCode). 상세 원인은 서버 로그에만 남긴다
     parse_error: Mapped[str | None] = mapped_column(String(32))
 
@@ -165,3 +169,7 @@ class ScriptSlide(UUIDPrimaryKeyMixin, Base):
     # keywords  : ["키워드", ...] — 대본에 나온 표현 그대로
     highlights: Mapped[Any | None] = mapped_column(JSONB)
     keywords: Mapped[Any | None] = mapped_column(JSONB)
+    # 공백·문장부호를 뺀 글자 수와 이 장의 예상 발표 시간(ms). 코치 계획의 장별 목표 시간에 쓴다.
+    # 이 칸이 생기기 전에 파싱한 행과, 이 값을 주지 않은 AI 응답이면 비어 있다
+    script_chars: Mapped[int | None] = mapped_column(Integer)
+    expected_ms: Mapped[int | None] = mapped_column(Integer)

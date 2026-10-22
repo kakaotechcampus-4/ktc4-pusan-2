@@ -2,6 +2,7 @@
 import uuid
 from typing import Annotated
 
+import anyio
 from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -31,6 +32,7 @@ from pitch_coach_backend.module.pitch.service import (
     update_pitch_service,
     upload_presentation_service,
 )
+from pitch_coach_backend.realtime import take_stream
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 
@@ -86,8 +88,11 @@ def delete_pitch(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)]
 ):
-    result = delete_pitch_service(db, pitch_id)
-    return {"message": "Pitch deleted successfully", "pitch_id": result}
+    take_ids = delete_pitch_service(db, pitch_id)
+    # 진행 중이던 Take 가 있으면 실시간 STT(Deepgram)도 끊는다. 스트림은 이벤트 루프에 있어서
+    # 이 함수(스레드 풀)에서 바로 만지지 않고 루프로 넘긴다
+    anyio.from_thread.run(take_stream.discard, take_ids)
+    return {"message": "Pitch deleted successfully", "pitch_id": pitch_id}
 
 @router.post("/add/{pitch_id}/presentation")
 def upload_presentation(
