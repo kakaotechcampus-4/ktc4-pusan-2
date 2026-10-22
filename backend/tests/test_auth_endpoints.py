@@ -263,6 +263,28 @@ def test_callback_failure_redirects_with_a_code_instead_of_json(
     assert client.cookies.get(BROWSER_COOKIE_NAME) is None
 
 
+def test_unexpected_callback_error_redirects_with_login_failed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """도메인 예외가 아닌 오류(DB 오류 등)도 500 JSON 대신 프론트로 보낸다."""
+    from pitch_coach_backend.module.auth import service
+
+    def fail(**kwargs: Any) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service.google, "exchange_code_for_id_token", fail)
+    started = client.get(START, follow_redirects=False)
+    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+
+    res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=login_failed" in res.headers["location"]
+    assert REFRESH_COOKIE_NAME not in res.cookies
+    assert client.cookies.get(BROWSER_COOKIE_NAME) is None
+
+
 def test_cancelled_consent_redirects_to_the_frontend(client: TestClient) -> None:
     """동의 화면에서 취소하면 구글이 code 없이 error 만 보낸다.
 

@@ -220,6 +220,19 @@ def test_first_login_creates_user_and_oauth_account(
     assert account.provider_subject == "sub-1"
 
 
+def test_long_google_name_is_cut_to_fit_the_column(
+    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+) -> None:
+    """구글 이름에는 길이 제한이 없다. 그대로 넣으면 DataError 로 로그인이 실패한다."""
+    fake_google["identity"] = google.GoogleIdentity(
+        subject="sub-1", email="new@example.com", name="가" * 150
+    )
+
+    issued = login(db_session, redis_client)
+
+    assert issued.user.name == "가" * 100
+
+
 def test_second_login_reuses_the_same_user(
     db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
 ) -> None:
