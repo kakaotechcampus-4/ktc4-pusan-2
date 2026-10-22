@@ -1,6 +1,6 @@
 import uuid
 
-from psycopg.errors import ForeignKeyViolation
+from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from pitch_coach_backend.module.take.dto import (
 )
 from pitch_coach_backend.module.take.entity import Calibration, Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import (
+    DuplicateTranscriptSegment,
     InvalidTakeTime,
     NonExistentTake,
     TakeAlreadyEnded,
@@ -177,6 +178,7 @@ def append_transcript_segment(
     """final 구간 하나를 저장하고 커밋한다. 짧은 트랜잭션 하나로 끝난다.
 
     Take 가 그 사이 지워졌으면 `NonExistentTake`. 스트림은 이걸 보고 더 돌지 않는다.
+    같은 번호가 이미 있으면 `DuplicateTranscriptSegment`. 스트림은 저장된 것으로 보고 넘어간다.
     """
     segment = TakeTranscriptSegment(
         take_id=take_id,
@@ -192,9 +194,11 @@ def append_transcript_segment(
     try:
         saved = TakeRepository(db).save_transcript_segment(segment)
     except IntegrityError as e:
-        # 이 표의 외래 키는 take_id 하나다. 번호 중복(UNIQUE) 같은 다른 위반은 그대로 올린다
+        # 이 표의 외래 키는 take_id 하나, UNIQUE 는 (take_id, seq) 하나다
         if isinstance(e.orig, ForeignKeyViolation):
             raise NonExistentTake() from e
+        if isinstance(e.orig, UniqueViolation):
+            raise DuplicateTranscriptSegment() from e
         raise
     db.commit()
     return saved.id
