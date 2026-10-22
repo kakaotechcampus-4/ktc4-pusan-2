@@ -66,8 +66,8 @@ def _create(
     return client.post(
         f"/api/pitches/{pitch_id}/takes/",
         json={
-            "mode": "PRACTICE",
-            "script_mode": "FULL",
+            "mode": "COACHING",
+            "script_mode": "HIGHLIGHT",
             "presentation_version_id": str(presentation_version_id),
             "script_version_id": str(script_version_id),
             "goal_time_sec": 300,
@@ -170,8 +170,8 @@ def test_concurrent_creates_on_one_pitch_get_distinct_numbers(
         user_id = user.id
 
     dto = TakeInitRequestDTO(
-        mode="PRACTICE",
-        script_mode="FULL",
+        mode="COACHING",
+        script_mode="HIGHLIGHT",
         presentation_version_id=presentation_id,
         script_version_id=script_id,
         goal_time_sec=300,
