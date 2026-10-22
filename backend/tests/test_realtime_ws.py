@@ -1393,6 +1393,32 @@ async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
     assert adapter.sessions[0].aborted is True
 
 
+@pytest.mark.anyio
+async def test_finals_received_before_deepgram_closes_are_saved():
+    """Deepgram 이 먼저 끊으면 오디오 쪽이 그걸 먼저 알 수 있다. 그때 이벤트 쪽을 바로 끊으면
+    이미 받아 둔 final 이 화면에도 DB 에도 남지 않는다. 이벤트 쪽이 남은 것을 다 읽게 둔다."""
+    adapter = FakeSttAdapter(
+        Plan(replies=[transcript(0, 200, "끊기 전 말", is_final=True)], die_after=1),
+        Plan(),
+    )
+    store = FakeTranscriptStore()
+    stream = TakeStream(
+        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=adapter, config=SttConfig(), store=store
+    )
+    stream.start()
+    await _wait_until_ok(stream)
+
+    # 두 프레임을 한 번에 넣는다. 첫 프레임 뒤 Deepgram 이 final 을 주고 끊기고, 두 번째 프레임을
+    # 보내다 오디오 쪽이 끊긴 것을 안다 — 이벤트 쪽이 final 을 읽기 전이다
+    stream.push(frame(1, 0))
+    stream.push(frame(2, 100))
+    await _wait_for(lambda: len(adapter.sessions) == 2)
+
+    assert [seg.transcript for seg in store.segments] == ["끊기 전 말"]
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
 # ── final 재전송이 겹치면 IndexError 나는 문제 ──────────────────────────
 
 

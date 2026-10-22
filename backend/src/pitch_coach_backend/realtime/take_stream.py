@@ -579,8 +579,9 @@ class TakeStream:
                     try:
                         reason = await self._pump_audio(session)
                     except ConnectionClosed:
+                        # Deepgram 이 닫았다. 이벤트 쪽은 끊지 않는다 — 이미 받아 둔 final 을
+                        # 마저 읽고, 닫힌 소켓이라 읽을 것이 떨어지면 스스로 끝난다
                         reason = _LOST
-                        tg.cancel_scope.cancel()
                         return
                     # CloseStream 을 보냈다. 이벤트 펌프가 Metadata 까지 받을 시간을 준다
                     await anyio.sleep(DRAIN_TIMEOUT_SEC)
@@ -691,16 +692,22 @@ class TakeStream:
                     for w in event.words
                 ],
             )
-            if event.is_final and self._client is None:
-                # FE 가 떨어져 있다. interim 은 어차피 다음 것이 덮으니 버리고 final 만 모은다
-                self._missed_finals.append(message)
-                del self._missed_finals[:-MAX_MISSED_FINALS]
-            else:
+            if not event.is_final:
                 await self._send(message)
-            if event.is_final:
-                # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
-                # 리포트의 원천은 이 행이지 화면이 아니다
-                await self._persist(message)
+            else:
+                # 받은 final 은 정리(취소)가 와도 끝까지 처리한다. 중간에 끊기면 화면에도 DB 에도
+                # 남지 않는다. 화면 전송은 상대가 멈춰 있을 수 있어 상한을 둔다
+                with anyio.CancelScope(shield=True):
+                    if self._client is None:
+                        # FE 가 떨어져 있다. interim 은 다음 것이 덮으니 버리고 final 만 모은다
+                        self._missed_finals.append(message)
+                        del self._missed_finals[:-MAX_MISSED_FINALS]
+                    else:
+                        with anyio.move_on_after(ABORT_TIMEOUT_SEC):
+                            await self._send(message)
+                    # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
+                    # 리포트의 원천은 이 행이지 화면이 아니다
+                    await self._persist(message)
         if event.is_final:
             # 빈 final 도 구간을 닫는다. 다음 interim 은 새 번호로
             self.segment_no += 1
