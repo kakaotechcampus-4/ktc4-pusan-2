@@ -15,6 +15,9 @@ import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
 import { PitchCreatePage, PitchEditPage } from '@/features/pitch/create/PitchCreatePage';
 import { RehearsalPage } from '@/features/rehearsal/stage/RehearsalPage';
 import { DesignDraftRoute, DesignIndex } from '@/dev/design/DesignIndex';
+import { AboutPage } from '@/features/info/AboutPage';
+import { UnsupportedPage } from '@/features/info/UnsupportedPage';
+import { NotFoundPage } from '@/features/info/NotFoundPage';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -29,7 +32,7 @@ const routes = [
   { path: '/',            title: '홈 대시보드 | 피치코치', element: <HomePage /> },
   { path: '/welcome',     title: '피치코치 | AI 발표 코치', element: <WelcomePage /> },
   { path: '/login',       title: '로그인 | 피치코치', element: <LoginPage /> },
-  { path: '/about',       title: '분석 방식 설명 | 피치코치', element: <Stub id="P14"  name="분석 방식 설명" track="B" /> },
+  { path: '/about',       title: '분석 방식 설명 | 피치코치', element: <AboutPage /> },
   { path: '/pitches',     title: 'Pitch 목록 | 피치코치', element: <HomePage /> },
   { path: '/pitch/new',   title: 'Pitch 생성 | 피치코치', element: <PitchCreatePage /> },
   { path: '/pitch/:id/edit', title: 'Pitch 수정 | 피치코치', element: <PitchEditPage /> },
@@ -53,7 +56,7 @@ const routes = [
   { path: '/me',          title: '마이페이지 | 피치코치', element: <Stub id="P9"   name="마이페이지" track="B" /> },
   { path: '/privacy',     title: '개인정보 처리방침 | 피치코치', element: <PolicyPage kind="privacy" /> },
   { path: '/terms',       title: '이용약관 | 피치코치', element: <PolicyPage kind="terms" /> },
-  { path: '/unsupported', title: '미지원 브라우저 | 피치코치', element: <Stub id="P18"  name="미지원 브라우저" track="B" /> },
+  { path: '/unsupported', title: '미지원 브라우저 | 피치코치', element: <UnsupportedPage /> },
   // 제품 화면이 아니다. 무대 레이아웃·시선 테두리 검증용.
   { path: '/dev/stage',   title: '무대 레이아웃 검증 | 피치코치', element: <StageDemo /> },
   // 프레임 예산 계기판. 부하별 처리 fps 를 읽는 곳.
@@ -63,7 +66,7 @@ const routes = [
   // 디자인 시안. 실제 화면이 아니라 검토용이다 (docs/fe/design)
   { path: '/dev/design',       title: '디자인 시안 | 피치코치', element: <DesignIndex /> },
   { path: '/dev/design/:name', title: '디자인 시안 | 피치코치', element: <DesignDraftRoute /> },
-  { path: '*',            title: '찾을 수 없음 | 피치코치', element: <Stub id="404"  name="찾을 수 없음" track="B" /> },
+  { path: '*',            title: '찾을 수 없음 | 피치코치', element: <NotFoundPage /> },
 ] satisfies { path: string; title: string; element: ReactElement }[];
 
 const publicPaths = [
