@@ -34,7 +34,8 @@ const ANALYSES = [
 
 export function AboutPage() {
   return (
-    <InfoPage title="분석 방식 설명" eyebrow="피치코치는 무엇을 어떻게 보나요?">
+    <InfoPage title="분석 방식 설명">
+      <p className="border-b border-line pb-4 font-bold">피치코치는 무엇을 어떻게 보나요?</p>
       <Card>
         <Mascot who="pico">
           점수를 매기려는 게 아니에요. 지난번보다 무엇이 나아졌는지 보려는 거예요.

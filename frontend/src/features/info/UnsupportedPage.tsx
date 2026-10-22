@@ -29,7 +29,7 @@ const COPY: Record<UnsupportedReason, { title: string; body: string }> = {
 };
 
 function detect(): UnsupportedReason {
-  const touchOnly = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const touchOnly = window.matchMedia('(pointer: coarse)').matches;
   return unsupportedReason(checkGazeSupport().ok, touchOnly);
 }
 

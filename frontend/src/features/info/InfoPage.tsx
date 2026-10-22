@@ -7,15 +7,7 @@ import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
  * 로그인 없이 열리는 화면이라 앱 머리(RequireSession)가 없어서 로고 줄을 직접 둡니다.
  * 모양은 디자인 시안(`dev/design/ui.tsx` DraftPage)과 같습니다.
  */
-export function InfoPage({
-  title,
-  eyebrow,
-  children,
-}: {
-  title: string;
-  eyebrow?: ReactNode;
-  children: ReactNode;
-}) {
+export function InfoPage({ title, children }: { title: string; children: ReactNode }) {
   return (
     // 밝은 지면(시안 10–12 기준). 토큰만 바꾸는 클래스입니다 (index.css)
     <div className="pitch-create min-h-dvh bg-greige text-ink">
@@ -28,7 +20,6 @@ export function InfoPage({
       </header>
 
       <main className="mx-auto flex max-w-7xl flex-col gap-6 px-5 pb-12 pt-5 sm:px-8">
-        {eyebrow && <p className="border-b border-line pb-4 font-bold">{eyebrow}</p>}
         {children}
       </main>
     </div>
