@@ -5,6 +5,7 @@ DB 는 진짜 트랜잭션, Redis 도 진짜다. 검증 로직을 통째로 패�
 """
 
 import threading
+import time
 import uuid
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
@@ -438,9 +439,12 @@ def test_token_revoked_after_it_was_read_is_rejected(
     fake_google: dict[str, Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """읽은 뒤 쓰기 전에 로그아웃이 먼저 폐기했다. 새 토큰을 내주면 끊은 세션이 되살아난다."""
+    """읽은 뒤 쓰기 전에 로그아웃이 먼저 폐기했다. 새 토큰을 내주면 끊은 세션이 되살아난다.
+
+    행을 잠그므로 실제로는 일어나지 않아야 하지만, 조건부 폐기가 마지막 방어선으로 남아 있다.
+    """
     issued = login(db_session, redis_client)
-    original_get = repository.get_refresh_token
+    original_get = repository.get_refresh_token_for_update
 
     def get_then_lose_the_race(db: Session, token_hash: str) -> RefreshToken | None:
         token = original_get(db, token_hash)
@@ -452,7 +456,7 @@ def test_token_revoked_after_it_was_read_is_rejected(
         )
         return token
 
-    monkeypatch.setattr(repository, "get_refresh_token", get_then_lose_the_race)
+    monkeypatch.setattr(repository, "get_refresh_token_for_update", get_then_lose_the_race)
 
     with pytest.raises(RefreshTokenReused):
         service.rotate(db_session, issued.refresh_token)
@@ -466,16 +470,8 @@ def test_token_revoked_after_it_was_read_is_rejected(
     assert all(t.revoked_at is not None for t in device_tokens)
 
 
-def test_concurrent_rotation_keeps_one_live_token(
-    engine: Engine, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """같은 Refresh 로 요청 둘이 동시에 온다 (회전 중에 새로고침했거나 탈취한 쪽과 겹친 경우).
-
-    잠금이 없으면 둘 다 revoked_at IS NULL 을 보고 각자 새 토큰을 받아 계보가 갈라진다.
-    늦은 쪽은 먼저 회전한 쪽의 새 토큰을 폐기하고 이어받아, 살아 있는 토큰은 하나만 남는다.
-    트랜잭션 두 개가 실제로 겹쳐야 해서 테스트 세션(savepoint) 대신 진짜 세션 둘을 쓰고,
-    만든 데이터는 지운다.
-    """
+def _committed_token(engine: Engine) -> tuple[str, uuid.UUID, uuid.UUID]:
+    """동시성 테스트용. 트랜잭션이 실제로 겹쳐야 해서 테스트 세션(savepoint) 대신 커밋한다."""
     with Session(engine) as setup:
         user = User(email=f"{uuid.uuid4()}@example.com", name="동시 회전")
         setup.add(user)
@@ -488,47 +484,94 @@ def test_concurrent_rotation_keeps_one_live_token(
             token_hash=security.hash_refresh_token(refresh_token),
             device_id=device_id,
             expires_at=security.refresh_token_expires_at(),
+            session_expires_at=security.refresh_session_expires_at(),
         )
         setup.commit()
-        user_id = user.id
+        return refresh_token, device_id, user.id
 
-    # 둘 다 토큰을 읽은 뒤에야 폐기로 넘어가게 해서 경쟁을 확실히 만든다
-    both_read = threading.Barrier(2, timeout=5)
-    original_get = repository.get_refresh_token
 
-    def get_then_wait(db: Session, token_hash: str) -> RefreshToken | None:
-        token = original_get(db, token_hash)
-        both_read.wait()
-        return token
+def _rotate_together(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch, refresh_token: str, count: int
+) -> list[service.IssuedSession | Exception]:
+    """같은 토큰으로 count 개를 함께 출발시킨다. 회전마다 커밋을 늦춰 요청이 서로 겹치게 한다."""
+    start = threading.Barrier(count, timeout=5)
+    original_create = security.create_refresh_token
 
-    monkeypatch.setattr(repository, "get_refresh_token", get_then_wait)
-    results: dict[str, Any] = {}
+    def create_slowly() -> str:
+        time.sleep(0.3)
+        return original_create()
 
-    def rotate(name: str) -> None:
+    monkeypatch.setattr(security, "create_refresh_token", create_slowly)
+    results: list[service.IssuedSession | Exception] = []
+
+    def rotate() -> None:
         with Session(engine, expire_on_commit=False) as db:
+            start.wait()
             try:
-                results[name] = service.rotate(db, refresh_token)
+                results.append(service.rotate(db, refresh_token))
             except Exception as exc:
-                results[name] = exc
+                results.append(exc)
 
+    threads = [threading.Thread(target=rotate) for _ in range(count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+    monkeypatch.undo()
+    return results
+
+
+def _delete_user(engine: Engine, user_id: uuid.UUID) -> None:
+    with Session(engine) as cleanup:
+        cleanup.delete(cleanup.get(User, user_id))  # 토큰은 CASCADE
+        cleanup.commit()
+
+
+def test_concurrent_rotation_keeps_one_live_token(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """같은 Refresh 로 요청 둘이 동시에 온다 (회전 중에 새로고침했거나 탈취한 쪽과 겹친 경우).
+
+    둘 다 revoked_at IS NULL 을 보고 각자 새 토큰을 받으면 계보가 갈라진다.
+    늦은 쪽은 먼저 회전한 쪽의 새 토큰을 폐기하고 이어받아, 살아 있는 토큰은 하나만 남는다.
+    """
+    refresh_token, device_id, user_id = _committed_token(engine)
     try:
-        threads = [threading.Thread(target=rotate, args=(name,)) for name in ("a", "b")]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join(10)
+        results = _rotate_together(engine, monkeypatch, refresh_token, 2)
 
-        issued = [v for v in results.values() if isinstance(v, service.IssuedSession)]
+        issued = [r for r in results if isinstance(r, service.IssuedSession)]
         assert len(issued) == 2, results
-
         with Session(engine) as check:
             alive = _alive(check, device_id)
         assert len(alive) == 1
         assert alive[0] in {security.hash_refresh_token(v.refresh_token) for v in issued}
     finally:
-        with Session(engine) as cleanup:
-            cleanup.delete(cleanup.get(User, user_id))  # 토큰은 CASCADE
-            cleanup.commit()
+        _delete_user(engine, user_id)
+
+
+def test_retries_arriving_together_after_a_rotation_all_succeed(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """한 요청이 회전을 마친 뒤 같은 옛 토큰으로 요청 둘이 함께 온다 (같은 토큰으로 셋째 요청).
+
+    잠그지 않으면 둘 다 "첫 회전의 새 토큰" 을 이어받으려 한다. 한쪽이 먼저 폐기하면 다른 쪽은
+    재사용으로 걸려 그 브라우저가 로그아웃된다. 옛 토큰 행을 잠가 차례로 이어받게 한다.
+    """
+    refresh_token, device_id, user_id = _committed_token(engine)
+    try:
+        with Session(engine, expire_on_commit=False) as first:
+            service.rotate(first, refresh_token)
+
+        results = _rotate_together(engine, monkeypatch, refresh_token, 2)
+
+        issued = [r for r in results if isinstance(r, service.IssuedSession)]
+        assert len(issued) == 2, results
+        with Session(engine) as check:
+            alive = _alive(check, device_id)
+        assert len(alive) == 1
+        assert alive[0] in {security.hash_refresh_token(v.refresh_token) for v in issued}
+    finally:
+        _delete_user(engine, user_id)
 
 
 # --- 회전 응답을 못 받은 재시도 --------------------------------------------
@@ -667,6 +710,39 @@ def test_expired_refresh_token_is_rejected(
 
     db_session.refresh(stored)
     assert stored.revoked_at is not None
+
+
+def _stored(db: Session, refresh_token: str) -> RefreshToken:
+    stored = repository.get_refresh_token(db, security.hash_refresh_token(refresh_token))
+    assert stored is not None
+    return stored
+
+
+def test_login_sets_the_end_of_the_whole_session(
+    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+) -> None:
+    issued = login(db_session, redis_client)
+    stored = _stored(db_session, issued.refresh_token)
+
+    expected = datetime.now(UTC) + timedelta(days=settings.refresh_session_max_days)
+    assert abs((stored.session_expires_at - expected).total_seconds()) < 5
+    assert stored.expires_at <= stored.session_expires_at
+
+
+def test_rotation_never_extends_past_the_end_of_the_session(
+    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+) -> None:
+    """로그인한 지 오래돼 세션의 끝이 하루 남았다. 회전해도 14일이 아니라 그때까지만 산다."""
+    issued = login(db_session, redis_client)
+    session_end = datetime.now(UTC) + timedelta(days=1)
+    stored = _stored(db_session, issued.refresh_token)
+    stored.session_expires_at = session_end
+    db_session.commit()
+
+    rotated = _stored(db_session, service.rotate(db_session, issued.refresh_token).refresh_token)
+
+    assert rotated.session_expires_at == session_end
+    assert rotated.expires_at == session_end
 
 
 def test_deleting_a_user_kills_their_refresh_tokens(

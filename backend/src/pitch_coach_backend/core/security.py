@@ -95,3 +95,8 @@ def refresh_token_matches(token: str, token_hash: str) -> bool:
 
 def refresh_token_expires_at() -> datetime:
     return datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
+
+
+def refresh_session_expires_at() -> datetime:
+    """로그인할 때 한 번 정하는 세션 전체의 끝. 회전해도 바뀌지 않는다."""
+    return datetime.now(UTC) + timedelta(days=settings.refresh_session_max_days)

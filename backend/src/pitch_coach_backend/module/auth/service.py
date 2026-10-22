@@ -6,6 +6,7 @@ DB 를 아는 것은 이 파일과 repository 뿐이다.
 토큰 두 종류의 역할이 다르다.
 - Access(JWT): 매 요청 인증. DB 를 보지 않는 대신 폐기할 수 없어 15분.
 - Refresh(난수): Access 재발급. DB 조회로 즉시 폐기할 수 있어 14일.
+  회전할 때마다 14일이 다시 잡히지만 로그인한 지 30일이 지나면 끝난다.
 """
 
 import uuid
@@ -163,15 +164,21 @@ def _issue_session(
 ) -> IssuedSession:
     """Refresh 난수를 만들어 해시만 저장하고, 원문은 반환값으로만 내보낸다.
 
-    replaces 는 회전으로 폐기한 토큰이다. 새 토큰을 거기에 이어 둔다.
+    replaces 는 회전으로 폐기한 토큰이다. 새 토큰을 거기에 이어 두고 세션의 끝도 이어받는다.
+    만료는 지금부터 14일과 세션의 끝 중 이른 쪽이다.
     """
+    if replaces is None:
+        session_expires_at = security.refresh_session_expires_at()
+    else:
+        session_expires_at = replaces.session_expires_at
     refresh_token = security.create_refresh_token()
     issued = repository.create_refresh_token(
         db,
         user_id=user.id,
         token_hash=security.hash_refresh_token(refresh_token),
         device_id=device_id,
-        expires_at=security.refresh_token_expires_at(),
+        expires_at=min(security.refresh_token_expires_at(), session_expires_at),
+        session_expires_at=session_expires_at,
     )
     if replaces is not None:
         replaces.replaced_by_id = issued.id
@@ -193,7 +200,9 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
     if not refresh_token:
         raise InvalidRefreshToken()
 
-    stored = repository.get_refresh_token(db, security.hash_refresh_token(refresh_token))
+    # 같은 토큰으로 요청이 여럿 동시에 와도 하나씩 처리한다. 잠그지 않으면 셋째 요청이
+    # 둘째가 이미 폐기한 토큰을 이어받으려다 재사용으로 걸려 그 브라우저가 로그아웃된다
+    stored = repository.get_refresh_token_for_update(db, security.hash_refresh_token(refresh_token))
     if stored is None:
         raise InvalidRefreshToken()
 
@@ -216,9 +225,9 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
         raise InvalidRefreshToken()
 
     # 폐기와 신규 발급이 한 트랜잭션이다. 중간에 실패하면 둘 다 없던 일이 된다.
-    # 위에서 읽은 뒤 같은 토큰으로 온 다른 요청이 먼저 회전했을 수 있다. 그대로 두면 둘 다
-    # 새 토큰을 받아 계보가 갈라진다. 조건부 폐기로 한 요청만 이기게 하고, 진 쪽은 이미 폐기된
-    # 토큰이 들어온 것과 같게 다룬다
+    # 행을 잠갔으니 읽은 뒤 다른 요청이 먼저 폐기하는 일은 없어야 한다. 그래도 그렇게 되면
+    # 둘 다 새 토큰을 받아 계보가 갈라진다. 조건부 폐기로 한 요청만 이기게 하고, 진 쪽은
+    # 이미 폐기된 토큰이 들어온 것과 같게 다룬다
     if not repository.revoke_if_active(db, stored.id):
         db.refresh(stored)
         return _rotate_again(db, stored)
@@ -236,8 +245,9 @@ def _rotate_again(db: Session, stored: RefreshToken) -> IssuedSession:
     밀려나고, 그 사용자가 다음에 갱신할 때 폐기된 토큰을 내게 되어 재사용으로 걸린다.
 
     한계: 밀려난 사용자가 다시 갱신하러 와야 걸린다. 돌아오지 않으면 탈취한 쪽은 Refresh 가
-    만료되거나(기본 14일) 로그아웃할 때까지 세션을 이어 간다. 이 틈은 회전 직후 유예 시간 안에
-    옛 토큰을 쓴 경우로 좁고, 응답을 못 받은 새로고침을 로그아웃시키지 않는 쪽을 택했다.
+    만료되거나(기본 14일, 로그인 뒤 최대 30일) 로그아웃할 때까지 세션을 이어 간다.
+    이 틈은 회전 직후 유예 시간 안에 옛 토큰을 쓴 경우로 좁고, 응답을 못 받은 새로고침을
+    로그아웃시키지 않는 쪽을 택했다.
     """
     assert stored.revoked_at is not None
     grace = timedelta(seconds=settings.refresh_token_reuse_grace_seconds)
