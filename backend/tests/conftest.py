@@ -9,7 +9,8 @@
 
 import os
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -100,6 +101,22 @@ def user_id(db_session: Session) -> uuid.UUID:
     db_session.add(user)
     db_session.flush()
     return user.id
+
+
+@pytest.fixture
+def make_pdf() -> Callable[[int], bytes]:
+    """쪽수가 pages 인 빈 PDF. 발표자료 업로드는 파일을 직접 열어 쪽수를 센다."""
+    from pypdf import PdfWriter
+
+    def make(pages: int = 1) -> bytes:
+        writer = PdfWriter()
+        for _ in range(pages):
+            writer.add_blank_page(width=200, height=200)
+        buffer = BytesIO()
+        writer.write(buffer)
+        return buffer.getvalue()
+
+    return make
 
 
 class _NoopParseRunner:

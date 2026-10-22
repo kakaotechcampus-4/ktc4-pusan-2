@@ -50,6 +50,7 @@ class UploadPresentationResultDTO(BaseModel):
     pitch_id: uuid.UUID
     presentation_version_id: uuid.UUID
     file_url: str
+    page_count: int
 
 
 class ScriptCreateDTO(BaseModel):
@@ -138,9 +139,13 @@ class VersionDTO(BaseModel):
     id: uuid.UUID
     version: int
 
+class PresentationVersionDTO(VersionDTO):
+    # 쪽수를 아직 채우지 않은 옛 발표자료는 None
+    page_count: int | None
+
 class VersionSummaryDTO(BaseModel):
     pitch_id: uuid.UUID
-    presentation_versions: list[VersionDTO]
+    presentation_versions: list[PresentationVersionDTO]
     script_versions: list[VersionDTO]
     evaluation_versions: list[VersionDTO]
 
@@ -179,6 +184,7 @@ class PresentationDetailDTO(BaseModel):
     presentation_version_id: uuid.UUID
     version: int
     file_url: str
+    page_count: int | None
     description: str | None = None
     created_at: date
 class StandardTextDTO(BaseModel):

@@ -15,6 +15,10 @@ class NonExistentPresentationVersion(AppException):
     code = "PRESENTATION_VERSION_NOT_FOUND"
     message = "존재하지 않는 발표자료 버전입니다."
 
+class InvalidPresentation(AppException):
+    code = "INVALID_PRESENTATION"
+    message = "40MB 이하의 PDF 만 올릴 수 있습니다. 암호가 걸린 PDF 는 풀어서 올려 주세요."
+
 class NonExistentEvaluation(AppException):
     status_code = 404
     code = "EVALUATION_NOT_FOUND"
