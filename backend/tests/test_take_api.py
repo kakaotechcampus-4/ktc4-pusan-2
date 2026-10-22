@@ -283,6 +283,31 @@ def test_put_on_analyzing_take_takes_times_only(
     )
 
 
+@pytest.mark.parametrize("status", ["READY", "RUNNING"])
+def test_put_end_finishes_a_take_that_never_sent_stop(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    status: str,
+) -> None:
+    """마이크를 못 열었거나 재연결을 포기한 FE 는 WS stop 을 못 보낸다. 시각을 보내는 PUT 이
+    Take 를 끝내야 리포트 분석이 시작된다. 인증 전에 끊겼으면 READY 그대로다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = status
+    db_session.flush()
+    ended = "2026-10-07T10:05:00+09:00"
+
+    response = _put(
+        client, take, auth_headers, {"started_at": "2026-10-07T10:00:00+09:00", "ended_at": ended}
+    )
+
+    assert response.is_success
+    db_session.refresh(take)
+    assert (take.status, take.ended_at) == ("ANALYZING", datetime.fromisoformat(ended))
+
+
 # ── 입력 검증 ───────────────────────────────────────────────────────
 
 

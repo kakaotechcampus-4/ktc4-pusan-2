@@ -193,6 +193,11 @@ class TakeStream:
     def is_finished(self) -> bool:
         return self._closed.is_set()
 
+    @property
+    def has_client(self) -> bool:
+        """연결이 붙어 있다. 끊긴 뒤 다시 붙기를 기다리는 동안은 False."""
+        return self._client is not None
+
     # ── 수명 ──────────────────────────────────────────────────────────
 
     def start(self) -> None:
@@ -886,6 +891,34 @@ async def attach(
 def forget(stream: TakeStream) -> None:
     if _streams.get(stream.take_id) is stream:
         del _streams[stream.take_id]
+
+
+async def end_without_stop(take_id: uuid.UUID) -> bool:
+    """WS `stop` 없이 Take 를 끝낸다 (FE 종료 흐름의 Take PUT). 지금 DB 에 적어도 되면 True.
+
+    마이크를 못 열었거나 재연결을 포기한 FE 는 소켓을 정리해 `stop` 을 보내지 못한다. 그래도
+    발표는 끝까지 가므로 REST 로 끝낼 때 여기를 거친다. 전사 순서를 지키려고 셋으로 나눈다.
+
+    - `stop` 으로 끝내는 중이거나 연결이 붙어 있으면 False. 그 연결이 마지막 전사를 저장한 뒤 적는다
+    - 연결 없이 남은 스트림(끊긴 뒤 30초)은 `stop` 처럼 남은 전사까지 저장하고 정리한 뒤 True
+    - 스트림이 없으면 바로 True
+
+    True 면 이 뒤로 같은 Take 로 붙는 연결은 `TakeEnded` 로 거절한다.
+    """
+    # attach() 와 같은 락이다. 정리하는 동안 붙으려는 연결은 기다렸다가 TakeEnded 를 받는다
+    async with _attach_lock(take_id):
+        stream = _streams.get(take_id)
+        if stream is not None and (take_id in _ended or stream.has_client):
+            return False
+        _ended[take_id] = None
+        if stream is None:
+            return True
+        stream.end()
+        if not await stream.wait_closed():
+            logger.warning("Deepgram drain 타임아웃 take=%s. 스트림을 끊는다", take_id)
+            stream.cancel()
+            await stream.wait_cancelled(ABORT_TIMEOUT_SEC)
+        return True
 
 
 def active_count() -> int:

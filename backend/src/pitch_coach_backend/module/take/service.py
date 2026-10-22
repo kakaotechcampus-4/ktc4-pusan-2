@@ -199,6 +199,7 @@ def mark_running(db: Session, take_id: uuid.UUID) -> bool:
 def mark_ended(db: Session, take_id: uuid.UUID) -> bool:
     """사용자가 Take 를 끝냈다. 상태를 `ANALYZING` 으로 바꾸고 커밋한다.
 
+    WS stop 이 부르고, STT 없이 끝낸 Take 는 Take PUT(`ended_at`)이 부른다.
     Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
     """
     marked = TakeRepository(db).mark_ended(take_id)
