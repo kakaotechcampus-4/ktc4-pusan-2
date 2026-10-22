@@ -5,10 +5,11 @@
 이 클래스는 **연결만큼만** 산다. 오디오 파이프라인과 Deepgram 세션은 `take_stream.TakeStream`
 이 들고 있고 연결보다 오래 남는다 — 탭을 새로고침해도 세그먼트 번호가 이어지도록.
 
-연결 하나의 순서: Origin → auth(JWT) → 인가(DB 1회: 사용자·Take 존재·소유·상태·대본 용어)
-→ ready → 오디오.
+연결 하나의 순서: Origin → auth(JWT) → 인가(DB 1회: 사용자·Take 존재·소유·상태·대본 용어.
+READY 면 RUNNING 으로) → ready → 오디오 → stop(마지막 전사까지 저장한 뒤 ANALYZING 으로).
 """
 
+import asyncio
 import contextlib
 import logging
 import uuid
@@ -39,7 +40,7 @@ from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.keyterms import build_keyterms, normalize_term
 from pitch_coach_backend.realtime.stt_adapter import SttAdapter, SttConfig
-from pitch_coach_backend.realtime.take_stream import StreamOwnerMismatch, TakeStream
+from pitch_coach_backend.realtime.take_stream import StreamOwnerMismatch, TakeEnded, TakeStream
 from pitch_coach_backend.realtime.transcript_store import TranscriptStore
 
 logger = logging.getLogger(__name__)
@@ -54,11 +55,12 @@ AUTH_TIMEOUT_SEC = 5.0
 STOP_TIMEOUT_SEC = 12.0
 # 정상 종료가 실패해 태스크를 끊은 뒤 정리를 기다리는 상한
 CANCEL_TIMEOUT_SEC = 2.0
+# 사용자가 끝낸 Take 를 DB 에 적는 상한. DB 가 늦어도 FE 에 closed 를 보내는 게 붙잡히지 않게 한다
+MARK_ENDED_TIMEOUT_SEC = 5.0
 
 # 오디오를 받아도 되는 Take 상태 (FE `TakeStatus` 와 같은 값). 나머지(ANALYZING·COMPLETED·
 # FAILED)는 이미 끝난 연습이라 전사를 더 붙이면 리포트가 오염된다.
-# READY 도 받는다 — READY→RUNNING 전이는 take 모듈(FE 의 started_at 갱신)이 맡고, WebSocket 이
-# 열리는 시점과 그 전이 시점의 순서를 FE 에 강제하지 않기 위해서다.
+# READY 는 첫 연결이다. 인가를 통과하면 RUNNING 으로 바꾼다 (`docs/ai/architecture.md` 1-3).
 STREAMABLE_TAKE_STATUSES = frozenset({"READY", "RUNNING"})
 
 
@@ -134,6 +136,10 @@ class RealtimeSession:
         except StreamOwnerMismatch:
             await self._reject(WsErrorCode.FORBIDDEN, "다른 사용자가 사용 중인 연습입니다.")
             return
+        except TakeEnded:
+            # 방금 끝낸 Take 다. DB 에 적히기 전이라 인가는 통과했다
+            await self._reject(WsErrorCode.TAKE_ENDED, "이미 끝난 연습입니다.")
+            return
 
         # attach() 가 성공한 순간부터는 반드시 detach() 로 짝을 맞춘다. ready 전송이나
         # resend_missed 중간에 클라이언트가 사라져 예외가 나도 detach() 없이 빠져나가면
@@ -205,6 +211,7 @@ class RealtimeSession:
 
         없거나 남의 Take 는 `TAKE_NOT_FOUND` 하나로 답한다 (REST 의 `get_owned_pitch` 와
         같은 규칙 — 존재 여부를 흘리지 않는다). 끝난 Take 는 `TAKE_ENDED`.
+        `READY` 면 `RUNNING` 으로 바꾼다. 다시 붙은 연결(이미 `RUNNING`)은 그대로 둔다.
         """
 
         def load() -> tuple[bool, bool, str | None, list[str]]:
@@ -235,6 +242,15 @@ class RealtimeSession:
             # 조회가 끝나면 커넥션을 풀에 돌려준다. 이 연결은 몇 분씩 살아 있는데
             # 트랜잭션을 연 채로 두면 Take 수만큼 풀이 마른다
             self.db.rollback()
+            if status == "READY":
+                # 첫 연결이다. 위 조회와 따로 짧은 트랜잭션 하나로 쓴다 — 용어 조회가 실패해
+                # 트랜잭션이 깨졌어도 적히고, 커밋하면 커넥션도 돌려준다. 못 적어도 STT 는 돈다.
+                # 끝낼 때는 READY 에서도 ANALYZING 으로 바꾼다
+                try:
+                    take_service.mark_running(self.db, self.take_id)
+                except Exception:
+                    logger.exception("Take 를 RUNNING 으로 못 바꿨다 take=%s", self.take_id)
+                    self.db.rollback()
             return user is not None, take is not None, status, terms
 
         user_found, take_found, status, terms = await run_in_threadpool(load)
@@ -314,12 +330,13 @@ class RealtimeSession:
                 await self._send(ErrorMessage(code=WsErrorCode.BAD_AUDIO_FRAME, message=str(e)))
 
     async def _stop(self, stream: TakeStream) -> None:
-        """큐에 남은 오디오까지 보내고 Deepgram 을 정리한 뒤 닫는다.
+        """큐에 남은 오디오까지 보내고 Deepgram 을 정리한 뒤 Take 를 끝내고 닫는다.
 
         FE 는 stt_status=closed 를 받기 전에 연결을 닫지 않는다 — 먼저 닫으면
         마지막 1~2초 전사가 사라진다.
         """
-        stream.request_stop()
+        # 이 순간부터 같은 Take 로 새로 붙는 연결은 거절된다. DB 는 아래에서 적는다
+        stream.end()
         if not await stream.wait_closed(STOP_TIMEOUT_SEC):
             # Deepgram 이 CloseStream 에 응답하지 않았다. 그냥 잊으면 스트림은 계속 돌면서
             # 레지스트리에서만 사라진다 — 태스크를 끊고 소켓을 닫은 뒤에 보낸다
@@ -329,11 +346,33 @@ class RealtimeSession:
             # 쪽에서 닫힌 것으로 확정한다. FE 를 더 붙잡아 둘 이유가 없다 — final 은 이미
             # 저장됐고, 남은 소켓 정리는 reaper 가 마저 한다
             await stream.wait_cancelled(CANCEL_TIMEOUT_SEC)
+        # 마지막 확정 전사를 저장한 뒤에 끝난 것으로 적는다. Take 뒤 분석은 ANALYZING 을 보고
+        # 시작하므로 그때 전사가 다 있어야 한다
+        await self._mark_ended()
         take_stream.forget(stream)
         # FE 가 그 사이 끊겼어도(탭 닫힘) 아래 둘은 조용히 실패하고, 스트림 정리와 저장은
         # 이미 끝났다 — FE 가 있든 없든 서버 쪽 종료 절차는 같다
         await stream.send_status()
         await self._quiet(self.ws.close(code=CLOSE_NORMAL))
+
+    async def _mark_ended(self) -> None:
+        """Take 를 끝난 상태(`ANALYZING`)로 적는다. 못 적어도 종료는 계속한다.
+
+        못 적으면 DB 에는 진행 중으로 남지만, 이 프로세스 안에서는 `TakeStream.end` 가 다시 붙는
+        연결을 막는다.
+        """
+        try:
+            marked = await asyncio.wait_for(
+                self.transcript_store.mark_ended(self.take_id), MARK_ENDED_TIMEOUT_SEC
+            )
+        except Exception:
+            logger.exception("Take 종료 저장 실패 take=%s", self.take_id)
+            return
+        if not marked:
+            # 그 사이 Take 가 지워졌거나 이미 끝난 상태였다
+            logger.warning(
+                "Take 종료를 적지 않았다 (Take 가 없거나 이미 끝남) take=%s", self.take_id
+            )
 
     # ── 보조 ──────────────────────────────────────────────────────────
 

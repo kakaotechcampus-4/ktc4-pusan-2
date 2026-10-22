@@ -6,13 +6,13 @@
 """
 
 import asyncio
-import contextlib
 import json
 import struct
 import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import pytest
 from fastapi import WebSocketDisconnect
@@ -186,11 +186,21 @@ class FakeSttAdapter:
 class FakeTranscriptStore:
     """final 을 메모리에 모은다. cursor 는 "이미 저장된 마지막 번호" 를 흉내 낸다."""
 
-    def __init__(self, *, cursor: tuple[int, int] = (0, 0), fail: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        cursor: tuple[int, int] = (0, 0),
+        fail: bool = False,
+        fail_mark: bool = False,
+    ) -> None:
         self.segments: list[TranscriptSegmentCreateDTO] = []
         self.take_ids: list[uuid.UUID] = []
+        self.ended: list[uuid.UUID] = []
+        # 저장한 순서. 종료를 마지막 전사 뒤에 적는지 본다
+        self.calls: list[str] = []
         self._cursor = cursor
         self.fail = fail
+        self.fail_mark = fail_mark
 
     async def cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
         return self._cursor
@@ -201,6 +211,15 @@ class FakeTranscriptStore:
             raise RuntimeError("db down")
         self.take_ids.append(take_id)
         self.segments.append(segment)
+        self.calls.append("append")
+
+    async def mark_ended(self, take_id: uuid.UUID) -> bool:
+        await asyncio.sleep(0)
+        if self.fail_mark:
+            raise RuntimeError("db down")
+        self.ended.append(take_id)
+        self.calls.append("mark_ended")
+        return True
 
 
 # ── fixture ───────────────────────────────────────────────────────────
@@ -214,6 +233,7 @@ def _no_leftover_streams():
         stream.cancel()
     take_stream._streams.clear()
     take_stream._attach_locks.clear()
+    take_stream._ended.clear()
     app.dependency_overrides.pop(get_stt_adapter, None)
     app.dependency_overrides.pop(get_transcript_store, None)
 
@@ -789,7 +809,7 @@ def test_reload_within_grace_restarts_the_timeline_instead_of_dropping_audio(
 
 
 def test_grace_expiry_closes_the_stream(
-    client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch, store: FakeTranscriptStore
 ):
     monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
     adapter = use(FakeSttAdapter())
@@ -806,6 +826,9 @@ def test_grace_expiry_closes_the_stream(
     assert adapter.session is not None
     # 그냥 버리지 않고 CloseStream 으로 마지막 전사까지 받아 둔다
     assert adapter.session.controls == ["CloseStream"]
+    # 스트림만 정리한다. FE 는 끊긴 뒤에도 다시 붙으니 Take 는 끝내지 않는다
+    assert store.ended == []
+    assert TAKE_ID not in take_stream._ended
 
 
 def test_reconnect_after_grace_expiry_resumes_on_a_new_stream(
@@ -922,33 +945,31 @@ def test_stop_timeout_cancels_the_stream_instead_of_leaking_it(
     assert adapter.session.aborted
 
 
-def test_reconnect_while_stopping_gets_a_fresh_stream(
+def test_reconnect_while_stopping_is_rejected(
     client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
 ):
-    """정리 중인 스트림에 붙으면 소비되지 않는 큐에 오디오가 쌓인다."""
-    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 2.0)
+    """사용자가 끝낸 Take 다. 마지막 전사를 정리하는 동안(DB 에 적기 전) 붙는 연결도 받지 않는다 —
+    받으면 새 스트림이 열려 끝난 연습 뒤에 전사가 더 붙는다. 종료 중 새로고침한 FE 가 stop 만
+    보내러 붙어도 이렇게 거절되고, FE 는 stop 을 보낸 상태에서 닫히면 종료를 그대로 이어 간다."""
     monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.3)
-    adapter = use(FakeSttAdapter(Plan(swallow_close=True), Plan()))
+    adapter = use(FakeSttAdapter(Plan(swallow_close=True)))
 
-    first = client.websocket_connect(WS_PATH)
-    ws1 = first.__enter__()
-    handshake(ws1, token)
-    wait_state(ws1, "ok")
-    ws1.send_text(json.dumps({"type": "stop"}))  # 응답을 기다리지 않는다
+    with client.websocket_connect(WS_PATH) as first:
+        handshake(first, token)
+        wait_state(first, "ok")
+        first.send_text(json.dumps({"type": "stop"}))  # 응답을 기다리지 않는다
+        deadline = time.monotonic() + 3.0
+        while TAKE_ID not in take_stream._ended and time.monotonic() < deadline:
+            time.sleep(0.01)
 
-    with client.websocket_connect(WS_PATH) as ws2:
-        ready = handshake(ws2, token)
-        wait_state(ws2, "ok")
-        ws2.send_bytes(frame(1, 0))
-        status = stop(ws2)
+        with client.websocket_connect(WS_PATH) as second:
+            auth(second, token)
+            assert second.receive_json()["code"] == "TAKE_ENDED"
+            assert closed_with(second) == 1008
 
-    with contextlib.suppress(Exception):
-        first.__exit__(None, None, None)
+        wait_state(first, "closed")
 
-    # 정리 중인 스트림을 재사용하지 않고 새로 만든다
-    assert ready["stt_session_no"] in (0, 1)
-    assert len(adapter.sessions) == 2
-    assert status["frames"] == 1, "새 스트림의 통계는 처음부터 센다"
+    assert len(adapter.sessions) == 1, "새 Deepgram 세션을 열지 않는다"
 
 
 def test_long_gap_rotates_the_session_and_keeps_take_timeline(client: TestClient, token: str):
@@ -1492,14 +1513,157 @@ def test_reconnect_is_authorized_again_even_while_the_stream_is_alive(
     assert len(stt.sessions) == 1, "재연결이 거절돼 새 Deepgram 세션이 생기지 않는다"
 
 
-def test_ready_take_is_accepted(
+def test_ready_take_becomes_running_on_auth(
     client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User
 ):
-    """READY→RUNNING 전이는 take 모듈(FE 의 started_at 갱신) 몫이라 순서를 강제하지 않는다."""
+    """첫 연결이 Take 를 시작한다 — 인가를 통과하면 READY 를 RUNNING 으로 바꾼다."""
     ready_take = make_take(db_session, user.id, status="READY")
     with client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
         assert handshake(ws, create_access_token(user.id))["take_id"] == str(ready_take.id)
         stop(ws)
+
+    db_session.refresh(ready_take)
+    assert ready_take.status == "RUNNING"
+
+
+def test_running_write_failure_still_connects(
+    client: TestClient,
+    stt: FakeSttAdapter,
+    db_session: Session,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    """RUNNING 을 못 적어도 STT 는 돈다."""
+
+    def fail(db: Session, take_id: uuid.UUID) -> bool:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(take_service, "mark_running", fail)
+    ready_take = make_take(db_session, user.id, status="READY")
+    with caplog.at_level("ERROR"), client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
+        handshake(ws, create_access_token(user.id))
+        wait_state(ws, "ok")
+        stop(ws)
+
+    assert "RUNNING 으로 못 바꿨다" in caplog.text
+
+
+# ── Take 종료 ─────────────────────────────────────────────────────────
+
+
+def test_stop_ends_the_take_after_the_last_final(
+    client: TestClient, token: str, store: FakeTranscriptStore
+):
+    """끝내기는 마지막 확정 전사를 저장한 뒤에 Take 를 끝난 것으로 적는다. Take 뒤 분석은 그걸 보고
+    시작하므로 전사가 다 있어야 한다."""
+    use(FakeSttAdapter(Plan(replies=[transcript(0, 100, "마지막 문장", is_final=True)])))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        # 답을 기다리지 않고 바로 끝낸다 — 마지막 final 은 정리하는 동안 온다
+        ws.send_bytes(frame(1, 0))
+        ws.send_text(json.dumps({"type": "stop"}))
+        seen = []
+        while True:
+            message = ws.receive_json()
+            seen.append(message["type"])
+            if message.get("state") == "closed":
+                break
+        assert closed_with(ws) == 1000
+
+    assert seen == ["transcript", "stt_status"]
+    assert store.calls == ["append", "mark_ended"]
+    assert store.ended == [TAKE_ID]
+
+
+def test_reconnect_after_stop_is_rejected(client: TestClient, token: str):
+    """끝낸 Take 에 다시 붙으면 새 STT 세션을 열지 않는다. DB 에 적히기 전이어도 막는다 — 가짜
+    저장소는 DB 를 바꾸지 않아 Take 가 RUNNING 그대로다."""
+    adapter = use(FakeSttAdapter())
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        stop(ws)
+
+    with client.websocket_connect(WS_PATH) as ws:
+        auth(ws, token)
+        assert ws.receive_json() == {
+            "type": "error",
+            "code": "TAKE_ENDED",
+            "message": "이미 끝난 연습입니다.",
+        }
+        assert closed_with(ws) == 1008
+    assert len(adapter.sessions) == 1
+
+
+def test_end_write_failure_still_closes_the_take(
+    client: TestClient, token: str, caplog: pytest.LogCaptureFixture
+):
+    """DB 가 죽어 종료를 못 적어도 FE 에는 평소처럼 closed 를 보내고 닫는다. 이 프로세스 안에서는
+    다시 붙는 연결을 계속 막는다."""
+    use_store(FakeTranscriptStore(fail_mark=True))
+    adapter = use(FakeSttAdapter())
+    with caplog.at_level("ERROR"), client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        stop(ws)
+        assert closed_with(ws) == 1000
+    assert "Take 종료 저장 실패" in caplog.text
+
+    with client.websocket_connect(WS_PATH) as ws:
+        auth(ws, token)
+        assert ws.receive_json()["code"] == "TAKE_ENDED"
+        assert closed_with(ws) == 1008
+    assert len(adapter.sessions) == 1
+
+
+def test_take_status_moves_ready_running_analyzing_in_the_database(
+    db_session: Session, user: User
+):
+    """연결이 READY 를 RUNNING 으로, 끝내기가 ANALYZING 으로 바꾼다. 두 번 불러도 한 번만 바뀐다."""
+    take = make_take(db_session, user.id, status="READY")
+    assert take_service.mark_running(db_session, take.id) is True
+    assert take_service.mark_running(db_session, take.id) is False, "다시 붙은 연결은 그대로 둔다"
+    db_session.refresh(take)
+    assert take.status == "RUNNING"
+
+    assert take_service.mark_ended(db_session, take.id) is True
+    assert take_service.mark_ended(db_session, take.id) is False
+    db_session.refresh(take)
+    assert take.status == "ANALYZING"
+    assert take.ended_at is not None, "FE 가 종료 시각을 못 적어도 남는다"
+    assert take_service.mark_running(db_session, take.id) is False, "끝난 Take 는 다시 열지 않는다"
+    assert take_service.mark_ended(db_session, uuid.uuid7()) is False
+
+    # 연결 때 RUNNING 을 못 적었어도 끝낼 수 있다
+    never_started = make_take(db_session, user.id, status="READY")
+    assert take_service.mark_ended(db_session, never_started.id) is True
+
+
+def test_end_leaves_a_finished_take_and_the_fe_end_time(db_session: Session, user: User):
+    """이미 끝난 Take 는 바꾸지 않는다. FE 가 먼저 적은 종료 시각도 덮지 않는다."""
+    completed = make_take(db_session, user.id, status="COMPLETED")
+    assert take_service.mark_ended(db_session, completed.id) is False
+    db_session.refresh(completed)
+    assert completed.status == "COMPLETED"
+
+    running = make_take(db_session, user.id)
+    fe_end = datetime(2026, 10, 22, 10, 5, tzinfo=UTC)
+    running.ended_at = fe_end
+    db_session.commit()
+    assert take_service.mark_ended(db_session, running.id) is True
+    db_session.refresh(running)
+    assert running.ended_at == fe_end
+
+
+@pytest.mark.anyio
+async def test_db_store_marks_the_take_ended(db_session: Session, take: Take):
+    store = DbTranscriptStore(session_factory=lambda: db_session)
+    assert await store.mark_ended(TAKE_ID) is True
+    assert db_session.scalar(select(Take.status).where(Take.id == TAKE_ID)) == "ANALYZING"
+    assert await store.mark_ended(TAKE_ID) is False
 
 
 # ── final 저장 ─────────────────────────────────────────────────────────
