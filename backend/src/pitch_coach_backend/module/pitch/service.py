@@ -163,17 +163,23 @@ def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
 
     return updated_pitch.id
 
-def delete_pitch_service(db: Session, pitch_id: uuid.UUID):
+def delete_pitch_service(db: Session, pitch_id: uuid.UUID) -> list[uuid.UUID]:
+    """pitch 를 지운다. Take 와 그 아래 행은 CASCADE 로 같이 지워진다.
+
+    지운 Take 의 id 를 돌려준다. 진행 중이던 Take 의 실시간 STT 는 호출자가 끊는다.
+    """
     pitch_repository = PitchRepository(db)
     existing_pitch = pitch_repository.get_by_id(pitch_id)
 
     if not existing_pitch:
         raise NonExistentPitch()
 
+    # 지운 뒤에는 CASCADE 로 사라져 읽을 수 없다
+    take_ids = pitch_repository.get_take_ids(pitch_id)
     pitch_repository.delete(existing_pitch)
     db.commit()
 
-    return pitch_id
+    return take_ids
 
 def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     pitch_repository = PitchRepository(db)
