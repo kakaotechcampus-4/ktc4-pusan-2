@@ -47,8 +47,16 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     if script.parse_status != ScriptParseStatus.DONE:
         raise ScriptNotParsed()
 
-    # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금)
+    # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금).
+    # 같은 세션으로 동시에 온 재시도도 여기서 줄을 서서 뒤의 요청이 앞의 Take 를 찾는다
     pitch_repository.lock_for_new_version(pitch_id)
+    if take_dto.client_session_id is not None:
+        existing_take = take_repository.get_by_client_session(
+            pitch_id, take_dto.client_session_id
+        )
+        if existing_take is not None:
+            return existing_take
+
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,
@@ -57,7 +65,8 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
         presentation_version_id=take_dto.presentation_version_id,
         script_version_id=take_dto.script_version_id,
         take_number=next_take_number,
-        goal_time_sec=take_dto.goal_time_sec
+        goal_time_sec=take_dto.goal_time_sec,
+        client_session_id=take_dto.client_session_id,
     )
 
     saved_take = take_repository.save(new_take)

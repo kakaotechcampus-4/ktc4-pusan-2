@@ -62,6 +62,7 @@ def _create(
     headers: dict[str, str],
     presentation_version_id: uuid.UUID,
     script_version_id: uuid.UUID,
+    **extra: Any,
 ):
     return client.post(
         f"/api/pitches/{pitch_id}/takes/",
@@ -71,9 +72,17 @@ def _create(
             "presentation_version_id": str(presentation_version_id),
             "script_version_id": str(script_version_id),
             "goal_time_sec": 300,
+            **extra,
         },
         headers=headers,
     )
+
+
+def _take(db: Session, take_id: str) -> Take:
+    take = db.get(Take, uuid.UUID(take_id))
+    assert take is not None
+    db.refresh(take)
+    return take
 
 
 def _take_numbers(db: Session, pitch_id: uuid.UUID) -> list[int]:
@@ -139,6 +148,27 @@ def test_unknown_version_id_is_404_not_500(
 
     assert response.status_code == 404
     assert response.json()["code"] == "PRESENTATION_VERSION_NOT_FOUND"
+
+
+def test_same_client_session_returns_the_first_take(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """응답을 잃고 다시 보낸 요청. 새로 만들지 않고 처음 Take 를 돌려준다."""
+    session_id = str(uuid.uuid4())
+
+    first = _create(client, pitch_id, auth_headers, *versions, client_session_id=session_id)
+    retry = _create(client, pitch_id, auth_headers, *versions, client_session_id=session_id)
+
+    assert retry.status_code == 200
+    assert retry.json()["take_id"] == first.json()["take_id"]
+    assert retry.json()["take_number"] == 1
+    assert _take_numbers(db_session, pitch_id) == [1]
+    # 다시 보낸 요청이 처음 Take 를 버린 것으로 끝내지 않는다
+    assert _take(db_session, first.json()["take_id"]).status == "READY"
 
 
 @pytest.mark.parametrize("parse_status", ["PENDING", "FAILED"])

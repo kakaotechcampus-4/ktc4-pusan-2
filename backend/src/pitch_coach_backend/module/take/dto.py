@@ -22,6 +22,8 @@ class TakeInitRequestDTO(BaseModel):
     script_version_id: uuid.UUID
     # FE 는 발표 제한 시간을 그대로 보낸다
     goal_time_sec: int = Field(gt=0, le=MAX_TIME_LIMIT_SEC)
+    # 응답을 잃고 같은 값으로 다시 보내면 새로 만들지 않고 처음 만든 Take 를 돌려준다
+    client_session_id: uuid.UUID | None = None
 
 # 보낸 필드만 반영한다 (service 가 exclude_none 으로 읽는다).
 # 시각은 시간대가 있어야 한다. 없으면 DB 의 시각과 앞뒤를 비교할 수 없다

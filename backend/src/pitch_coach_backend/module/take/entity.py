@@ -45,6 +45,8 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     __table_args__ = (
         # 같은 pitch 안에서 take 번호가 겹치지 않게 한다.
         UniqueConstraint("pitch_id", "take_number", name="uq_takes_pitch_take_number"),
+        # 같은 연습 세션으로 다시 온 생성 요청을 알아본다. NULL 끼리는 겹쳐도 된다
+        UniqueConstraint("pitch_id", "client_session_id", name="uq_takes_pitch_client_session"),
         CheckConstraint(
             "status IN ('READY', 'RUNNING', 'ANALYZING', 'COMPLETED', 'FAILED')",
             name="check_take_status",
@@ -87,6 +89,8 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     end_reason: Mapped[str | None] = mapped_column(String(20))
     # 슬라이드 넘김·일시정지 같은 원본 이벤트열. 재생과 재분석에 쓴다.
     event_logs: Mapped[Any | None] = mapped_column(JSONB)
+    # FE 가 Take 를 만들기 전에 정한 연습 세션 id (IndexedDB 기록의 키). 생성 요청의 멱등 키다
+    client_session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
 
 
 class TakeSummary(Base):

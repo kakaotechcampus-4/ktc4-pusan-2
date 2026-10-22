@@ -66,6 +66,15 @@ class TakeRepository:
         ).returning(Calibration)
         return self.db.scalars(stmt, execution_options={"populate_existing": True}).one()
 
+    def get_by_client_session(
+        self, pitch_id: uuid.UUID, client_session_id: uuid.UUID
+    ) -> Take | None:
+        return self.db.scalar(
+            select(Take)
+            .where(Take.pitch_id == pitch_id, Take.client_session_id == client_session_id)
+            .options(defer(Take.event_logs))
+        )
+
     def next_take_number(self, pitch_id: uuid.UUID) -> int:
         current = self.db.scalar(
             select(func.max(Take.take_number)).where(Take.pitch_id == pitch_id)
