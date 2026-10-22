@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pitch_coach_backend import entities  # noqa: F401  # 모든 entity 를 매퍼에 등록
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
+from pitch_coach_backend.core.logging import configure_logging
 from pitch_coach_backend.core.s3 import get_s3
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
@@ -27,6 +28,8 @@ API_PREFIX = "/api"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # 아래에서 남기는 로그부터 나오도록 맨 먼저 건다. 레벨이 틀렸으면 지금 실패한다
+    configure_logging(settings.log_level)
     get_s3()
     # 자동 종료 설정이 틀렸으면 첫 연습이 아니라 지금 실패한다
     AutoEndPolicy.from_settings()

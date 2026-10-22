@@ -94,6 +94,7 @@ backend/
     │   ├── database.py           # 엔진, 세션, Base, get_db, UUIDPrimaryKeyMixin, TimestampMixin
     │   ├── security.py           # JWT 발급/검증
     │   ├── exceptions.py         # 공통 예외 베이스 + 에러 응답 핸들러
+    │   ├── logging.py            # 앱 로거(pitch_coach_backend.*) 레벨 · 형식. 앱이 뜰 때 건다
     │   └── redis.py              # Redis 클라이언트 + get_redis 의존성
     │
     ├── module/                   # 도메인. 폴더마다 아래 6 파일을 같은 이름으로 둔다

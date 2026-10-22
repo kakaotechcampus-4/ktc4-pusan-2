@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
 
+    # 앱 로거(pitch_coach_backend.*)의 레벨. DEBUG · INFO · WARNING · ERROR (core/logging.py)
+    log_level: str = "INFO"
+
     jwt_secret_key: str
     # Access 토큰은 짧게. 폐기 수단이 없으므로 만료가 유일한 방어선이다.
     access_token_expire_minutes: int = 15
