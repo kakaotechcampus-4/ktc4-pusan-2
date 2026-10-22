@@ -58,6 +58,9 @@ class PitchRepository:
         self.db.flush()
         return pitch
 
+    def get_take_ids(self, pitch_id: uuid.UUID) -> list[uuid.UUID]:
+        return list(self.db.scalars(select(Take.id).where(Take.pitch_id == pitch_id)))
+
     def delete(self, pitch: Pitch) -> None:
         self.db.delete(pitch)
         self.db.flush()

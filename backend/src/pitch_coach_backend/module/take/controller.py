@@ -39,6 +39,9 @@ def delete_take(
     db: Annotated[Session, Depends(get_db)]
 ):
     result = delete_take_service(db, take_id)
+    # 진행 중이던 연습이면 실시간 STT(Deepgram)도 끊는다. 스트림은 이벤트 루프에 있어서
+    # 이 함수(스레드 풀)에서 바로 만지지 않고 루프로 넘긴다
+    anyio.from_thread.run(take_stream.discard, [take_id])
     return {"message": "Take deleted successfully", "take_id": result}
 
 @router.put("/{take_id}")

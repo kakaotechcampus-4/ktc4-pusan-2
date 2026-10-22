@@ -18,7 +18,9 @@ import pytest
 from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from websockets.exceptions import ConnectionClosedError
 
@@ -35,6 +37,7 @@ from pitch_coach_backend.module.pitch.entity import (
 from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
+from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import service, take_stream
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
@@ -1908,6 +1911,119 @@ async def test_stop_persists_the_last_final_even_if_the_client_dies_during_drain
     assert [seg.transcript for seg in store.segments] == ["마지막 말"]
     assert adapter.sessions[0].controls == ["CloseStream"]
     assert take_stream.active_count() == 0
+
+
+# ── Take 삭제 ─────────────────────────────────────────────────────────
+
+
+def wait_until(condition, timeout: float = 3.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not condition() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert condition()
+
+
+def test_deleting_the_take_cuts_its_live_stream(
+    client: TestClient, stt: FakeSttAdapter, token: str, take: Take
+):
+    """진행 중인 Take 를 지우면 Deepgram 세션도 바로 끊는다. 두면 FE 가 떠날 때까지 요금이 나가고
+    final 마다 저장이 외래 키 위반으로 실패한다. 저장할 곳이 없으니 남은 전사도 기다리지 않는다."""
+    pitch_id = take.pitch_id
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+
+        response = client.delete(
+            f"/api/pitches/{pitch_id}/takes/{TAKE_ID}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        # 다시 붙을 때 받을 것과 같은 코드다. FE 는 이걸 받으면 다시 붙지 않는다
+        assert ws.receive_json()["code"] == "TAKE_NOT_FOUND"
+        assert closed_with(ws) == 1008
+
+    session = stt.session
+    assert session is not None
+    wait_until(lambda: session.aborted)
+    assert session.controls == [], "CloseStream 으로 남은 전사를 기다리지 않는다"
+    assert take_stream.active_count() == 0
+
+
+def test_deleting_the_pitch_cuts_the_live_streams_of_its_takes(
+    client: TestClient, stt: FakeSttAdapter, token: str, take: Take
+):
+    """발표를 지우면 Take 가 CASCADE 로 같이 지워진다. 그 Take 의 스트림도 같이 끊는다."""
+    pitch_id = take.pitch_id
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+
+        response = client.delete(
+            f"/api/pitches/delete/{pitch_id}", headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 200
+        assert ws.receive_json()["code"] == "TAKE_NOT_FOUND"
+        assert closed_with(ws) == 1008
+
+    session = stt.session
+    assert session is not None
+    wait_until(lambda: session.aborted)
+    assert take_stream.active_count() == 0
+
+
+def test_final_for_a_deleted_take_cuts_the_stream(
+    client: TestClient, db_session: Session, token: str, caplog: pytest.LogCaptureFixture
+):
+    """지운 요청이 스트림을 못 끊었어도(커밋과 끊기 사이에 온 final, 다른 프로세스) 저장하다 Take 가
+    없다는 걸 알면 스스로 끊는다. final 마다 외래 키 오류를 ERROR 로 남기지 않는다."""
+    adapter = use(FakeSttAdapter(Plan(replies=[transcript(0, 200, "지운 뒤", is_final=True)])))
+    use_store(DbTranscriptStore(session_factory=lambda: db_session))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        # REST 를 거치지 않고 지운다. 스트림은 지워진 줄 모른다
+        db_session.execute(sql_delete(Take).where(Take.id == TAKE_ID))
+        db_session.commit()
+
+        with caplog.at_level("WARNING"):
+            ws.send_bytes(frame(1, 0))
+            final = ws.receive_json()
+            error = ws.receive_json()
+            code = closed_with(ws)
+
+    assert final["text"] == "지운 뒤", "화면에는 저장보다 먼저 나간다"
+    assert (error["code"], code) == ("TAKE_NOT_FOUND", 1008)
+    assert "Take 가 지워져" in caplog.text
+    assert "final 저장 실패" not in caplog.text
+    session = adapter.session
+    assert session is not None
+    wait_until(lambda: session.aborted)
+    assert take_stream.active_count() == 0
+
+
+def test_only_a_missing_take_is_reported_as_deleted(db_session: Session, take: Take):
+    """외래 키 위반만 'Take 가 없다' 로 바꾼다. 번호가 겹친 것(UNIQUE)까지 바꾸면 스트림이
+    살아 있는 Take 를 지워진 것으로 알고 끊는다."""
+    segment = TranscriptSegmentCreateDTO(
+        seq=1,
+        stt_session_no=1,
+        start_ms=0,
+        end_ms=100,
+        transcript="하나",
+        words=[],
+        confidence=0.9,
+        speech_final=True,
+    )
+    with pytest.raises(NonExistentTake):
+        take_service.append_transcript_segment(db_session, uuid.uuid7(), segment)
+    db_session.rollback()
+
+    take_service.append_transcript_segment(db_session, TAKE_ID, segment)
+    with pytest.raises(IntegrityError):
+        take_service.append_transcript_segment(db_session, TAKE_ID, segment)
 
 
 # ── 코드 리뷰 반영: cancel 정리 상한 · reaper 참조 · take 별 락 ─────────

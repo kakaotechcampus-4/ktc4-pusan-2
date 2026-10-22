@@ -308,11 +308,30 @@ def test_put_end_finishes_a_take_that_never_sent_stop(
     assert (take.status, take.ended_at) == ("ANALYZING", datetime.fromisoformat(ended))
 
 
+# ── DELETE /takes/{take_id} ─────────────────────────────────────────
+
+
+def test_delete_take_without_a_live_stream(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """실시간 STT 가 붙어 있지 않은 Take 도 그대로 지워진다 (스트림 끊기는 건너뛴다)."""
+    take_id = _make_take(db_session, pitch_id, versions, 1).id
+
+    response = client.delete(f"/api/pitches/{pitch_id}/takes/{take_id}", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert db_session.get(Take, take_id) is None
+
+
 # ── 입력 검증 ───────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("goal_time_sec", [0, -60])
-def test_create_with_non_positive_goal_time_is_422(
+@pytest.mark.parametrize("goal_time_sec", [0, -60, 3601, 2**31])
+def test_create_with_out_of_range_goal_time_is_422(
     client: TestClient,
     auth_headers: dict[str, str],
     pitch_id: uuid.UUID,
@@ -334,7 +353,9 @@ def test_create_with_non_positive_goal_time_is_422(
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize(("base_volume", "status"), [(999.99, 200), (1000, 422), (-1, 422)])
+@pytest.mark.parametrize(
+    ("base_volume", "status"), [(999.99, 200), (999.995, 422), (1000, 422), (-1, 422)]
+)
 def test_calibration_base_volume_range(
     client: TestClient,
     db_session: Session,
@@ -353,6 +374,65 @@ def test_calibration_base_volume_range(
     )
 
     assert response.status_code == status
+
+
+# PostgreSQL 이 JSONB 에 넣지 못하는 값. httpx 는 NaN 을 직렬화하지 않아 본문을 문자열로 보낸다
+_UNSTORABLE_EVENT_LOGS = [
+    '[{"type": "slide", "note": "\\u0000"}]',
+    '[{"\\u0000": 1}]',
+    '[{"type": "slide", "at_ms": NaN}]',
+    '[{"type": "slide", "nested": [{"value": Infinity}]}]',
+]
+
+
+@pytest.mark.parametrize("event_logs", _UNSTORABLE_EVENT_LOGS)
+def test_put_with_unstorable_event_logs_is_422(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    event_logs: str,
+) -> None:
+    take = _make_take(db_session, pitch_id, versions, 1)
+
+    response = client.put(
+        f"/api/pitches/{pitch_id}/takes/{take.id}",
+        content=f'{{"event_logs": {event_logs}}}',
+        headers={**auth_headers, "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        '{"engine_version": "1.0\\u0000"}',
+        '{"status": "\\u0000"}',
+        '{"warnings": ["ok", "\\u0000"]}',
+        '{"separability": NaN}',
+        '{"loo_accuracy": Infinity}',
+        '{"loo_accuracy": -Infinity}',
+    ],
+)
+def test_calibration_with_unstorable_result_is_422(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    result: str,
+) -> None:
+    take = _make_take(db_session, pitch_id, versions, 1)
+
+    response = client.post(
+        f"/api/pitches/{pitch_id}/takes/{take.id}/calibration",
+        content=f'{{"result": {result}}}',
+        headers={**auth_headers, "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize("status", ["RUNNING", "ANALYZING", "COMPLETED"])

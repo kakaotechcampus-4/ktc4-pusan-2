@@ -1,7 +1,13 @@
 import uuid
 from datetime import datetime
+from typing import Annotated, Any
 
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field
+
+from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_json
+
+# 발표 시간 상한. FE 의 MAX_TIME_LIMIT_MIN(60분)과 같다. 발표 DTO 도 이 값을 쓴다
+MAX_TIME_LIMIT_SEC = 60 * 60
 
 
 class TakeInitRequestDTO(BaseModel):
@@ -9,14 +15,18 @@ class TakeInitRequestDTO(BaseModel):
     script_mode: str
     presentation_version_id: uuid.UUID
     script_version_id: uuid.UUID
-    goal_time_sec: int = Field(gt=0)
+    # FE 는 발표 제한 시간을 그대로 보낸다
+    goal_time_sec: int = Field(gt=0, le=MAX_TIME_LIMIT_SEC)
 
 # 보낸 필드만 반영한다 (service 가 exclude_none 으로 읽는다).
 # 시각은 시간대가 있어야 한다. 없으면 DB 의 시각과 앞뒤를 비교할 수 없다
 class TakeUpdateRequestDTO(BaseModel):
     started_at: AwareDatetime | None = None
     ended_at: AwareDatetime | None = None
-    event_logs: list[dict] | None = None
+    # takes.event_logs(JSONB) 에 그대로 들어간다
+    event_logs: (
+        Annotated[list[dict[str, Any]], AfterValidator(reject_unstorable_json)] | None
+    ) = None
 
 class TakeSummaryDTO(BaseModel):
     take_id: uuid.UUID
@@ -28,20 +38,23 @@ class TakeSummaryDTO(BaseModel):
     delta: int | None = None
     created_at: datetime | None = None
 
+# calibrations.result(JSONB) 에 그대로 들어가서 NUL 문자열과 NaN · Infinity 를 받지 않는다
 class CalibrationResultDTO(BaseModel):
-    engine_version: str | None = None
-    status: str | None = None
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    engine_version: NulFreeStr | None = None
+    status: NulFreeStr | None = None
     separability: float | None = None
     loo_accuracy: float | None = None
-    warnings: list[str] | None = None
+    warnings: list[NulFreeStr] | None = None
 
 class CalibrationDTO(BaseModel):
     base_level_db: float | None = None
     result: CalibrationResultDTO | None = None
     face_detected: bool = False
     mic_detected: bool = False
-    # DB 는 Numeric(5, 2) — 999.99 까지
-    base_volume: float = Field(default=0.0, ge=0, lt=1000)
+    # DB 는 Numeric(5, 2) — 999.99 까지. lt=1000 이면 999.995 가 반올림돼 1000.00 이 되어 넘친다
+    base_volume: float = Field(default=0.0, ge=0, le=999.99)
     # DB 는 Float. bool 을 넘기면 psycopg 가 타입이 안 맞는다고 거절해 저장이 항상 500 이었다
     gaze_confidence: float = 0.0
 

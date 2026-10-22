@@ -18,6 +18,7 @@ from pitch_coach_backend.module.auth import google
 from pitch_coach_backend.module.auth.controller import (
     BROWSER_COOKIE_NAME,
     REFRESH_COOKIE_NAME,
+    browser_cookie_name,
 )
 from pitch_coach_backend.module.auth.dependencies import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
 from pitch_coach_backend.module.auth.exception import (
@@ -75,10 +76,15 @@ def fake_google(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return box
 
 
+def start_login(client: TestClient) -> str:
+    """start 를 부르고 구글로 보낸 state 를 돌려준다."""
+    started = client.get(START, follow_redirects=False)
+    return parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+
+
 def do_login(client: TestClient) -> None:
     """start -> callback 을 브라우저처럼 통과시킨다. 이후 client 는 쿠키를 갖는다."""
-    started = client.get(START, follow_redirects=False)
-    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+    state = start_login(client)
     done = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
     assert done.status_code == 302, done.text
 
@@ -109,6 +115,48 @@ def test_start_sets_the_temporary_browser_cookie(client: TestClient) -> None:
     cookie = res.headers["set-cookie"]
     assert BROWSER_COOKIE_NAME in cookie
     assert "HttpOnly" in cookie
+
+
+def test_start_failure_redirects_with_login_failed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Redis 오류 등으로 시작을 못 해도 500 JSON 대신 프론트로 보낸다."""
+    from pitch_coach_backend.module.auth import state_store
+
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise redis.ConnectionError("down")
+
+    monkeypatch.setattr(state_store, "save", fail)
+
+    res = client.get(START, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=login_failed" in res.headers["location"]
+    assert not any(name.startswith(BROWSER_COOKIE_NAME) for name in res.cookies)
+
+
+def test_login_started_in_two_tabs_completes_in_both(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """나중 탭의 임시 쿠키가 먼저 탭의 것을 덮어쓰지 않는다."""
+    first = start_login(client)
+    second = start_login(client)
+
+    for state in (first, second):
+        res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
+        assert "auth_error" not in res.headers["location"]
+        assert REFRESH_COOKIE_NAME in res.cookies
+        assert client.cookies.get(browser_cookie_name(state)) is None
+
+
+def test_hostile_state_in_the_callback_does_not_crash(client: TestClient) -> None:
+    """state 는 쿠키 이름에 들어간다. 쿠키 이름에 못 쓰는 글자가 와도 500 이 아니다."""
+    for params in ({"code": "c", "state": "a b;c"}, {"error": "access_denied", "state": "a b;c"}):
+        res = client.get(CALLBACK, params=params, follow_redirects=False)
+
+        assert res.status_code == 302
+        assert "auth_error=" in res.headers["location"]
 
 
 @pytest.mark.parametrize(
@@ -218,9 +266,8 @@ def test_callback_with_unknown_state_is_rejected(
 def test_callback_without_the_browser_cookie_is_rejected(
     client: TestClient, fake_google: dict[str, Any]
 ) -> None:
-    started = client.get(START, follow_redirects=False)
-    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
-    client.cookies.delete(BROWSER_COOKIE_NAME)
+    state = start_login(client)
+    client.cookies.delete(browser_cookie_name(state))
 
     res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
 
@@ -260,7 +307,29 @@ def test_callback_failure_redirects_with_a_code_instead_of_json(
     assert f"auth_error={expected_code}" in res.headers["location"]
     assert REFRESH_COOKIE_NAME not in res.cookies
     # 실패해도 임시 쿠키는 정리한다
-    assert client.cookies.get(BROWSER_COOKIE_NAME) is None
+    assert client.cookies.get(browser_cookie_name(state)) is None
+
+
+def test_unexpected_callback_error_redirects_with_login_failed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """도메인 예외가 아닌 오류(DB 오류 등)도 500 JSON 대신 프론트로 보낸다."""
+    from pitch_coach_backend.module.auth import service
+
+    def fail(**kwargs: Any) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service.google, "exchange_code_for_id_token", fail)
+    started = client.get(START, follow_redirects=False)
+    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+
+    res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=login_failed" in res.headers["location"]
+    assert REFRESH_COOKIE_NAME not in res.cookies
+    assert client.cookies.get(browser_cookie_name(state)) is None
 
 
 def test_cancelled_consent_redirects_to_the_frontend(client: TestClient) -> None:
@@ -285,12 +354,12 @@ def test_callback_without_any_parameter_redirects_too(client: TestClient) -> Non
 
 
 def test_cancelled_consent_clears_the_temporary_cookie(client: TestClient) -> None:
-    client.get(START, follow_redirects=False)
-    assert BROWSER_COOKIE_NAME in client.cookies
+    state = start_login(client)
+    assert browser_cookie_name(state) in client.cookies
 
-    client.get(CALLBACK, params={"error": "access_denied"}, follow_redirects=False)
+    client.get(CALLBACK, params={"error": "access_denied", "state": state}, follow_redirects=False)
 
-    assert client.cookies.get(BROWSER_COOKIE_NAME) is None
+    assert client.cookies.get(browser_cookie_name(state)) is None
 
 
 def test_google_error_code_is_not_reflected_verbatim(client: TestClient) -> None:
@@ -580,13 +649,12 @@ def test_non_ascii_csrf_header_is_rejected_not_crashed(
 def test_non_ascii_browser_cookie_is_rejected_not_crashed(
     client: TestClient, fake_google: dict[str, Any]
 ) -> None:
-    started = client.get(START, follow_redirects=False)
-    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+    state = start_login(client)
 
     res = client.get(
         CALLBACK,
         params={"code": "c", "state": state},
-        headers={"Cookie": b"%s=%s" % (BROWSER_COOKIE_NAME.encode(), NON_ASCII)},
+        headers={"Cookie": b"%s=%s" % (browser_cookie_name(state).encode(), NON_ASCII)},
         follow_redirects=False,
     )
 
