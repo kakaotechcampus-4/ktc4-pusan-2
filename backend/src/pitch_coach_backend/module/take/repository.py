@@ -14,7 +14,7 @@ from pitch_coach_backend.module.take.entity import (
 )
 
 # 아직 끝나지 않은 Take. 실시간 STT 가 붙을 수 있는 상태와 같다 (realtime/service.py)
-_IN_PROGRESS_STATUSES = ("READY", "RUNNING")
+IN_PROGRESS_STATUSES = ("READY", "RUNNING")
 
 
 class TakeRepository:
@@ -135,7 +135,7 @@ class TakeRepository:
         """
         result = self.db.execute(
             update(Take)
-            .where(Take.id == take_id, Take.status.in_(_IN_PROGRESS_STATUSES))
+            .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
             .values(status="ANALYZING", ended_at=func.coalesce(Take.ended_at, func.now()))
         )
         return result.rowcount > 0

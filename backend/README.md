@@ -304,6 +304,13 @@ WS /api/ws/takes/{take_id}
   `TAKE_ENDED` 로 거절한다 — DB 에 적기 전의 틈은 프로세스 안의 기록이 막는다. 종료를 DB 에 못 적어도
   `closed` 는 보낸다. 30초 대기 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리하고 Take 는 끝내지 않는다
   (FE 는 끊긴 뒤에도 다시 붙는다).
+- **STT 없이 끝낸 Take 는 Take PUT 이 끝낸다.** 마이크를 못 열었거나 재연결을 포기한 FE 는 `stop` 을 보내지 못한다.
+  종료 흐름의 `PUT /api/pitches/{pitch_id}/takes/{take_id}` 에 `ended_at` 이 있으면 BE 가 `ANALYZING` 으로 바꾼다.
+  연결이 붙어 있거나 `stop` 으로 끝내는 중이면 그 연결에 맡긴다. 끊긴 뒤 30초 안이라 스트림이 남아 있으면
+  `stop` 처럼 남은 전사까지 저장한 뒤 바꾼다.
+- Take PUT 은 상태와 순서를 본다. `COMPLETED`·`FAILED` 는 `409 TAKE_ENDED`, `ANALYZING` 은 시각만 받는다
+  (`event_logs` 는 409). `ended_at` 이 `started_at` 보다 앞서면 `400 INVALID_TAKE_TIME`, 시간대가 없는 시각은 422.
+  `null` 은 보내지 않은 것으로 본다. 점검 결과(`calibration`)는 `READY` 일 때만 받는다 (아니면 `409 TAKE_STARTED`).
 - 아직 없는 것: `metrics`/`coach` 메시지 (AI 팀 규칙 확정 후).
 
 FE 없이 확인하는 두 가지 —

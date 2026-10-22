@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field
 
 from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_json
 
@@ -18,10 +18,11 @@ class TakeInitRequestDTO(BaseModel):
     # FE 는 발표 제한 시간을 그대로 보낸다
     goal_time_sec: int = Field(gt=0, le=MAX_TIME_LIMIT_SEC)
 
-# 보낸 필드만 반영한다 (service 가 exclude_unset 으로 읽는다)
+# 보낸 필드만 반영한다 (service 가 exclude_none 으로 읽는다).
+# 시각은 시간대가 있어야 한다. 없으면 DB 의 시각과 앞뒤를 비교할 수 없다
 class TakeUpdateRequestDTO(BaseModel):
-    started_at: datetime | None = None
-    ended_at: datetime | None = None
+    started_at: AwareDatetime | None = None
+    ended_at: AwareDatetime | None = None
     # takes.event_logs(JSONB) 에 그대로 들어간다
     event_logs: (
         Annotated[list[dict[str, Any]], AfterValidator(reject_unstorable_json)] | None
