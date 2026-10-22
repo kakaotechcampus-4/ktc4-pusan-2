@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError
@@ -158,7 +159,7 @@ def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
 
 # ── 실시간 STT (realtime 모듈이 부른다) ──────────────────────────────
 #
-# realtime 은 entity 를 갖지 않고 저장을 여기에 위임한다. 아래 다섯은 WebSocket 연결·
+# realtime 은 entity 를 갖지 않고 저장을 여기에 위임한다. 아래 일곱은 WebSocket 연결·
 # 백그라운드 스트림에서 불리므로 **호출자가 run_in_threadpool 로 감싼다** (동기 SQLAlchemy).
 
 
@@ -221,3 +222,19 @@ def mark_ended(db: Session, take_id: uuid.UUID, end_reason: str | None = None) -
     marked = TakeRepository(db).mark_ended(take_id, end_reason)
     db.commit()
     return marked
+
+
+def mark_abandoned(db: Session, take_id: uuid.UUID, ended_at: datetime) -> bool:
+    """사용자가 떠난 Take 를 `FAILED`(`ABANDONED`)로 바꾸고 커밋한다.
+
+    연결 없이 정리된 스트림에 정해진 시간 동안 다시 붙지 않으면 부른다. `ended_at` 은 마지막으로
+    연결이 끊긴 시각이다. Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
+    """
+    marked = TakeRepository(db).mark_abandoned(take_id, ended_at)
+    db.commit()
+    return marked
+
+
+def running_takes(db: Session) -> list[tuple[uuid.UUID, datetime]]:
+    """`RUNNING` 인 Take 와 마지막으로 활동한 시각. 앱이 다시 뜰 때 떠난 Take 를 찾는다."""
+    return TakeRepository(db).running_takes_last_active()

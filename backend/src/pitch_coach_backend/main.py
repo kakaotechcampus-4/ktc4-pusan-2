@@ -15,6 +15,8 @@ from pitch_coach_backend.module.take.controller import router as take_router
 from pitch_coach_backend.module.user.controller import router as user_router
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.controller import router as realtime_router
+from pitch_coach_backend.realtime.dependencies import get_transcript_store
+from pitch_coach_backend.realtime.take_stream import arm_abandoned_takes
 from pitch_coach_backend.realtime.take_stream import stop_all as stop_all_streams
 
 # Caddy 는 /api/* 만 백엔드로 넘긴다 (infra/Caddyfile). 접두어 없는 경로는 404 도 아니고
@@ -28,6 +30,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     get_s3()
     # 자동 종료 설정이 틀렸으면 첫 연습이 아니라 지금 실패한다
     AutoEndPolicy.from_settings()
+    # 떠난 Take 를 끝내는 타이머는 메모리에 있어 다시 뜨면 사라진다. 진행 중인 Take 에 다시 건다
+    await arm_abandoned_takes(get_transcript_store())
     yield
     # 실시간 STT 스트림은 WebSocket 요청 밖에서 도는 백그라운드 태스크다.
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.

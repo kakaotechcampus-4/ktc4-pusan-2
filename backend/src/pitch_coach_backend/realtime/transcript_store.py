@@ -11,6 +11,7 @@ TakeStream 은 WebSocket 요청보다 오래 사는 백그라운드 태스크라
 
 import uuid
 from collections.abc import Callable
+from datetime import datetime
 from typing import Protocol
 
 from sqlalchemy.orm import Session
@@ -35,6 +36,14 @@ class TranscriptStore(Protocol):
         된다. 적었으면 True, Take 가 없거나 이미 끝나 있었으면 False."""
         ...
 
+    async def mark_abandoned(self, take_id: uuid.UUID, ended_at: datetime) -> bool:
+        """사용자가 떠난 Take 를 끝냈다 (상태 `FAILED`, 이유 `ABANDONED`). 적었으면 True."""
+        ...
+
+    async def running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
+        """`RUNNING` 인 Take 와 마지막으로 활동한 시각."""
+        ...
+
 
 class DbTranscriptStore:
     def __init__(self, session_factory: Callable[[], Session] = SessionLocal) -> None:
@@ -48,6 +57,12 @@ class DbTranscriptStore:
 
     async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
         return await run_in_threadpool(self._mark_ended, take_id, end_reason)
+
+    async def mark_abandoned(self, take_id: uuid.UUID, ended_at: datetime) -> bool:
+        return await run_in_threadpool(self._mark_abandoned, take_id, ended_at)
+
+    async def running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
+        return await run_in_threadpool(self._running_takes)
 
     def _cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
         db = self._session_factory()
@@ -67,5 +82,19 @@ class DbTranscriptStore:
         db = self._session_factory()
         try:
             return take_service.mark_ended(db, take_id, end_reason)
+        finally:
+            db.close()
+
+    def _mark_abandoned(self, take_id: uuid.UUID, ended_at: datetime) -> bool:
+        db = self._session_factory()
+        try:
+            return take_service.mark_abandoned(db, take_id, ended_at)
+        finally:
+            db.close()
+
+    def _running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
+        db = self._session_factory()
+        try:
+            return take_service.running_takes(db)
         finally:
             db.close()
