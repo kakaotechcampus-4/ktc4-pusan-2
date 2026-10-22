@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select, update
-from sqlalchemy.orm import Session, load_only
+from sqlalchemy.orm import Session, defer
 
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
@@ -50,8 +50,7 @@ class PitchRepository:
             select(Take, TakeSummary.score)
             .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
             .where(Take.pitch_id.in_(pitch_ids))
-            .options(load_only(Take.pitch_id, Take.take_number, Take.duration_sec,
-                               Take.goal_time_sec, Take.script_mode, Take.created_at))
+            .options(defer(Take.event_logs))
             .order_by(Take.pitch_id, Take.take_number)
         ).all()
 
@@ -150,10 +149,7 @@ class PitchRepository:
         return self.db.scalars(
             select(ScriptVersion)
             .where(ScriptVersion.pitch_id == pitch_id)
-            .options(load_only(
-                ScriptVersion.id, ScriptVersion.version, ScriptVersion.parse_status,
-                ScriptVersion.parse_requested_at, ScriptVersion.created_at
-            ))
+            .options(defer(ScriptVersion.content), defer(ScriptVersion.terms))
             .order_by(ScriptVersion.version.asc())
         ).all()
 
