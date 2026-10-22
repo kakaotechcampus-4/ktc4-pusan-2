@@ -78,16 +78,31 @@ function renderCards(stats) {
 
 // ---------- 일별 막대 ----------
 
+// '2026-10-22' → '10/22'
+const shortDate = (iso) => iso.slice(5).split('-').map(Number).join('/');
+
 function renderBars(id, daily, key) {
   const max = Math.max(1, ...daily.map((d) => d[key]));
-  const bars = daily.map((d) =>
-    el('div', {
-      className: d[key] ? 'bar' : 'bar empty',
-      title: `${d.date} · ${d[key]}`,
-      style: `height: ${(d[key] / max) * 100}%`,
-    }),
+  const total = daily.reduce((sum, d) => sum + d[key], 0);
+  // 막대 위 숫자(0 이면 비움), 막대, 아래 날짜. 날짜는 오늘부터 7일 간격으로만 적는다
+  const columns = daily.map((d) =>
+    el('div', { className: 'col', title: `${d.date} · ${d[key]}` }, [
+      el('span', { className: 'count', textContent: d[key] ? String(d[key]) : '' }),
+      el('div', {
+        className: d[key] ? 'bar' : 'bar empty',
+        // 위 숫자 칸(14px)을 뺀 높이에서 비율만큼
+        style: `height: calc((100% - 14px) * ${d[key] / max})`,
+      }),
+    ]),
   );
-  document.getElementById(id).replaceChildren(...bars);
+  const labels = daily.map((d, i) =>
+    el('span', { textContent: (daily.length - 1 - i) % 7 === 0 ? shortDate(d.date) : '' }),
+  );
+  document.getElementById(id).replaceChildren(
+    el('div', { className: 'plot' }, columns),
+    el('div', { className: 'axis' }, labels),
+    el('div', { className: 'total', textContent: `${daily.length}일 합계 ${total.toLocaleString()}` }),
+  );
 }
 
 // ---------- 표 ----------

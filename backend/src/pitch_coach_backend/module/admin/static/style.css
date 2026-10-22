@@ -72,10 +72,19 @@ main {
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
 
-.bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; }
-.bars .bar { flex: 1; min-height: 1px; background: var(--accent); border-radius: 2px 2px 0 0; }
+.bars .plot { display: flex; align-items: stretch; gap: 2px; height: 140px; }
+.bars .col { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.bars .count { height: 14px; color: var(--muted); font-size: 10px; line-height: 14px; font-variant-numeric: tabular-nums; }
+.bars .bar { width: 100%; min-height: 1px; background: var(--accent); border-radius: 2px 2px 0 0; }
 .bars .bar.empty { background: var(--line); }
-.bars .bar:hover { background: var(--accent-soft); }
+.bars .col:hover .bar { background: var(--accent-soft); }
+.bars .axis { display: flex; gap: 2px; margin-top: 4px; border-top: 1px solid var(--line); }
+.bars .axis span { flex: 1; min-width: 0; padding-top: 2px; color: var(--muted); font-size: 10px; text-align: center; white-space: nowrap; overflow: visible; }
+.bars .total { margin-top: 6px; color: var(--muted); font-size: 12px; text-align: right; }
+
+@media (max-width: 480px) {
+  .bars .count, .bars .axis span { font-size: 8px; }
+}
 
 .scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
