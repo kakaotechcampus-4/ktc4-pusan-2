@@ -81,6 +81,8 @@ backend/
 │   ├── test_realtime_stt_adapter.py  # Deepgram 파싱 + 가짜 서버 왕복
 │   ├── test_realtime_ws.py       # WS 인증·프레임·offset·재연결·종료 순서·자동 종료 (Deepgram 은 가짜)
 │   ├── test_realtime_auto_end.py # 말 없음 판단과 자동 종료 조건 (숫자만)
+│   ├── test_coach_client.py      # 코치 AI 호출: 응답 읽기·재시도·409·동시 개수 (AI 예시 파일을 읽는다)
+│   ├── test_coach_requests.py    # 코치 요청 만들기: 시간 계획·창·replay·코칭 계획
 │   └── test_<domain>.py          # 도메인이 늘면 같은 이름 규칙으로
 │
 └── src/pitch_coach_backend/
@@ -128,6 +130,11 @@ backend/
     │   ├── keyterms.py           # filler + 대본 용어를 Deepgram keyterm 한도(100개·500토큰) 안에서 조립
     │   ├── state_aggregator.py   # (예정) 시간 정렬/sliding window/state 생성
     │   └── session_store.py      # (예정) take_stream 의 레지스트리를 Redis 로 옮길 때 분리한다
+    │
+    ├── coach/                    # AI 실시간 코치 호출. DB 를 모른다
+    │   ├── client.py             # /coach/evaluate·finalize·plan HTTP. 응답 검증·재시도·409·동시 개수
+    │   ├── requests.py           # 요청 만들기 (시간 계획·미션·창·replay·코칭 계획 고르기). 순수 함수
+    │   └── dependencies.py       # get_coach_client. 프로세스에 하나
     │
     ├── agent/                    # LLM 어댑터. module 을 import 하지 않는다
     │   ├── client.py             # 모델 호출·타임아웃·재시도. 동기 함수로 작성
@@ -379,6 +386,30 @@ POST /api/pitches/add/{pitch_id}/presentation                     발표자료(P
 - 테스트는 `conftest.py` 가 파싱 작업을 기본으로 끈다(실제 AI 를 부르지 않게). 흐름 테스트는 가짜 파서를 끼운
   실제 runner 로 바꿔 끼운다 (`tests/test_script_parse.py`).
 - 파싱된 `terms`(STT 가 틀리기 쉬운 용어)는 리허설 STT `keyterm` 으로 쓰인다 (위 실시간 STT 절).
+
+## 실시간 코치 (AI)
+
+계약은 `docs/ai/features/coach-agent.md` · `docs/ai/architecture.md` 다. 지금은 AI 를 부르는 코드(`coach/client.py`)와
+요청 만들기(`coach/requests.py`)까지 있다. 발표 중 판단(WS `metrics` → evaluate → WS `coach`), 종료 뒤 Take 결과 저장,
+코칭 계획을 부르는 곳은 #187 의 다음 PR 에서 붙인다.
+
+| 호출 | 언제 | 시간 제한 | 다시 부르기 |
+|---|---|---|---|
+| `POST /coach/evaluate` | FE `metrics` 마다 | 0.3초 | 없음. 늦은 응답은 버린다 |
+| `POST /coach/finalize` | Take 종료 뒤 (백그라운드) | 10초, `replay` 를 붙이면 60초 | 일시 오류면 1번. 409 `REPLAY_REQUIRED` 는 부른 쪽이 `replay` 를 붙여 다시 부른다 |
+| `POST /coach/plan` | 대본 파싱 뒤 · 대본/제한 시간 변경 뒤 · 리뷰 저장 뒤 (백그라운드) | 30초 | 일시 오류면 1번. `fallback_reason` 이 있어도 정상 결과 |
+
+- 일시 오류는 연결 실패 · 시간 초과 · 408 · 429 · 5xx 다. 다시 불러도 `X-Request-ID` 는 같다.
+- 백그라운드 호출(finalize · plan)은 프로세스 전체에서 동시에 4개까지다. 긴 요청이 AI 스레드 풀을 채우면 evaluate 가 0.3초를 넘긴다.
+- AI 가 없으면(연결 거부 · 404 · 503) evaluate 를 10초 쉰다. 그동안 발표 · STT 는 그대로고, 쉬는 동안의 1초 기록은 다음 요청의 창에 실린다.
+- 응답은 BE 가 쓰는 칸만 검사한다. `coach_state` · `events` · `take_result` · `coaching_plan` · `meta` 는 받은 그대로 둔다
+  (AI 로 다시 가거나 그대로 저장한다). `meta.schema_version` 의 major 가 1 이 아니면 쓰지 않는다.
+- 로그에는 상태 코드와 `error.code` 만 남긴다. 응답 본문에는 대본 · 전사가 되돌아올 수 있다.
+- 창은 AI 의 replay(`ai/research/coach-agent/src/coach/recovery.py`)와 같은 규칙으로 고른다. 시선 · 음량은 30초 안에 시작해
+  그 시각까지 끝난 1초 기록, 단어 · 문장 끝은 60초다. 그래야 응답이 빠져 replay 로 만든 Take 결과가 정상 진행과 같다.
+- `takes.mode` · `script_mode` 가 계약에 없는 값(`PRACTICE` · `FULL` 등)이면 싣지 않는다. 그대로 보내면 AI 가 422 로 거절한다.
+- 테스트는 AI 예시 파일(`ai/research/coach-agent/src/coach/examples/`)을 직접 읽는다. backend CI 는 `backend/**` 가 바뀔 때만
+  돌아서, AI 가 예시만 바꾼 PR 에서는 이 테스트가 다시 돌지 않는다.
 
 ## 에러 응답 형식
 
