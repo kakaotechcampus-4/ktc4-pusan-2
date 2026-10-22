@@ -105,7 +105,11 @@ export interface ApiError {
 /* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
-/* 발표 종료 — POST /takes/{id}/complete                                */
+/* 시선 구간 요약 — 옛 `/complete` 본문의 `gaze` 모양                    */
+/*                                                                     */
+/* `/complete` 는 BE 가 만들지 않기로 했습니다(#134). 종료는 `types/take.ts` 의 */
+/* `TakeEndRequest`, 기록은 발표 중 WS `metrics` 입니다. 아래 `GazePayload` 는 */
+/* 지금 `/dev/media` 가 저장한 기록을 접어 보여 주는 데만 씁니다.              */
 /* ------------------------------------------------------------------ */
 
 export interface GazeSegment {
@@ -163,31 +167,6 @@ export interface GazePayload {
   uncertainMs: Ms;
   calibration: CalibrationSummary | null;
   segments: GazeSegment[];
-}
-
-export interface CompleteRequest {
-  /** 같은 값으로 재전송하면 서버는 새 Take를 만들지 않습니다 (P15 재시도) */
-  clientSessionId: string;
-  startedAt: string;
-  endedAt: string;
-  durationMs: Ms;
-  mode: PracticeMode;
-  hiddenPanels: string[];
-  slideEvents: { slideNumber: number; startMs: Ms; endMs: Ms }[];
-  gaze: GazePayload;
-  liveFeedbacks: {
-    type: string;
-    message: string;
-    triggeredAtMs: Ms;
-    confidence: number;
-  }[];
-  /** 띄우려다 참은 것과 사유 — 코칭 임계값 조정의 유일한 근거 */
-  suppressedFeedbacks: { type: string; atMs: Ms; reason: string }[];
-  clientPerf: {
-    avgGazeFps: number;
-    droppedFrames: number;
-    degradedToLightAtMs: Ms | null;
-  };
 }
 
 /* ------------------------------------------------------------------ */

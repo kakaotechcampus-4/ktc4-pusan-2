@@ -10,8 +10,7 @@ import type { GazeSampleRecord } from '@/workers/gaze.contract';
  * 비정상 종료를 감지하려면 session·gazeSamples 를 같은 관점에서
  * 봐야 하는데, 접근 경로가 갈리면 "기록이 남아 있는데 진행 중이었다"를 판단할 수 없습니다.
  *
- * 키는 `clientSessionId` 입니다. 업로드 재시도의 멱등 키와 **같은 값**입니다
- * (`CompleteRequest.clientSessionId`) — 그래서 재시도해도 서버가 Take 를 새로 만들지 않습니다.
+ * 키는 `clientSessionId` 입니다. 재시도 화면(P15)이 이 값으로 같은 세션을 다시 찾습니다.
  */
 
 const DB_NAME = 'pitchcoach';
@@ -67,7 +66,7 @@ export interface SessionRow {
    */
   ending: { durationMs: Ms; endedAtIso: string } | null;
   /**
-   * `/complete` 가 성공한 시각. 있으면 이 Take 는 끝났습니다 — 서버에서 Take 상태를 읽을
+   * 종료 전송(`PUT` 시작 · 종료 시각)이 성공한 시각. 있으면 이 Take 는 끝났습니다 — 서버에서 Take 상태를 읽을
    * API 가 없어서 다시 들어왔을 때(새로고침 · 뒤로 가기) 무대를 열지 않을 근거가 이것뿐입니다.
    */
   submittedAt: number | null;
@@ -287,7 +286,7 @@ export async function markEnding(
   await patchSession(clientSessionId, { ending });
 }
 
-/** `/complete` 가 성공했다 (`SessionRow.submittedAt`) */
+/** 종료 전송이 성공했다 (`SessionRow.submittedAt`) */
 export async function markSubmitted(clientSessionId: string): Promise<void> {
   await patchSession(clientSessionId, { submittedAt: Date.now() });
 }
@@ -404,8 +403,8 @@ export async function readSlideChanges(
  * 코치가 **띄운 것과 참은 것 둘 다** 남깁니다.
  *
  * 참은 기록이 없으면 "왜 안 떴나"를 나중에 알 수 없습니다. 임계값을 조정할 근거가
- * 그것뿐이라, 발동 기록만 남기면 다음 Take 에서 같은 문제가 반복됩니다
- * (`CompleteRequest.suppressedFeedbacks`).
+ * 그것뿐이라, 발동 기록만 남기면 다음 Take 에서 같은 문제가 반복됩니다.
+ * 지금은 브라우저에만 남습니다 — 예전 `/complete` 경로가 없어졌습니다(#134).
  */
 export async function appendCoachLog(
   clientSessionId: string,

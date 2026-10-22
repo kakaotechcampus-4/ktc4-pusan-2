@@ -24,13 +24,19 @@ export interface TakeCreateRequest {
  * 12-1)가 정한 `calibrations.result` 입니다 (BE `CalibrationResultDTO`).
  *
  * ★ 보정 모델(얼굴 측정값)은 보내지 않습니다. 요약 수치만 갑니다.
- * ★ `base_volume` 은 보내지 않습니다. 평소 목소리 크기(`base_level_db`)는 아직 재지 않습니다.
+ * ★ `base_volume` 은 보내지 않습니다. 뜻이 다른 옛 칸(조용한 환경의 소음 기준)이고 AI 가 쓰지 않습니다
+ *   (`docs/ai/features/volume.md` 12-1). 평소 목소리 크기는 `base_level_db` 입니다 (BE `CalibrationDTO.base_level_db`).
  */
 export interface CalibrationRequest {
   face_detected: boolean;
   mic_detected: boolean;
   /** 보정이 OK 면 `loo_accuracy`, 아니면 0 (AI 문서 추천) */
   gaze_confidence: number;
+  /**
+   * 평소 목소리 크기 — 말한 구간의 Leq(dBFS, A 가중 · Fast, 음수). 발표 전 점검에서 정해진 문장을 읽게 해
+   * 잽니다. 안 쟀거나 말한 시간이 5초 미만이면 null 이고, AI 가 Take 첫 발화로 잡습니다 (`volume.md` 5-2)
+   */
+  base_level_db: number | null;
   result: {
     engine_version: string;
     status: 'OK' | 'RETRY_REQUIRED';
@@ -42,6 +48,28 @@ export interface CalibrationRequest {
 
 /** 컨트롤러가 `{"message", "take_id"}` 만 돌려줍니다. Take 번호 · 상태는 오지 않습니다 */
 export interface TakeCreated {
+  message: string;
+  take_id: string;
+}
+
+/**
+ * 발표 종료 — `PUT /api/pitches/{pitch_id}/takes/{take_id}` (`TakeUpdateRequestDTO`).
+ * BE 는 **보낸 필드만** 덮어씁니다 (`exclude_unset`). 같은 값을 다시 보내도 결과가 같습니다.
+ *
+ * ★ 시선 · 슬라이드 기록은 여기로 보내지 않습니다. 계약(`docs/ai/architecture.md` 1-4)에서
+ *   발표 중 WS `metrics` 로 1초마다 가는 값입니다 — 그 전송이 붙기 전까지는 서버로 가지 않습니다.
+ * ★ `event_logs` 는 BE 와 담을 것을 정한 뒤 보냅니다 (FE 화면 이벤트 기록용, 같은 문서 1-1).
+ *   보내지 않으면 BE 는 그 칸을 건드리지 않습니다.
+ */
+export interface TakeEndRequest {
+  /** ISO 8601. 리허설 세션을 연 시각 */
+  started_at: string;
+  /** ISO 8601. 끝내기를 누른 순간 */
+  ended_at: string;
+}
+
+/** 컨트롤러가 `{"message", "take_id"}` 만 돌려줍니다 */
+export interface TakeUpdated {
   message: string;
   take_id: string;
 }

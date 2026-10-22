@@ -219,8 +219,10 @@ export const handlers = [
 
   http.get('*/api/takes/:takeId/status', () => HttpResponse.json(analyzing)),
 
-  http.post('*/api/takes/:takeId/complete', async ({ params }) =>
-    HttpResponse.json({ takeId: params.takeId, status: 'ANALYZING' }, { status: 202 }),
+  // BE 모양 그대로 — PUT /pitches/{id}/takes/{take_id} 에 TakeUpdateRequestDTO, 응답 {message, take_id}.
+  // 발표 종료가 시작 · 종료 시각을 여기로 적습니다 (옛 /complete 는 BE 가 만들지 않기로 함, #134)
+  http.put('*/api/pitches/:pitchId/takes/:takeId', ({ params }) =>
+    HttpResponse.json({ message: 'Take updated successfully', take_id: String(params.takeId) }),
   ),
 
   // BE 모양 그대로 — POST /pitches/{id}/takes/{take_id}/calibration, 응답 {message, calibration_id}
