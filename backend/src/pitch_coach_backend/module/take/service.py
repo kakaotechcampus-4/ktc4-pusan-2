@@ -57,7 +57,7 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     saved_take = take_repository.save(new_take)
     db.commit()
 
-    return saved_take.id
+    return saved_take
 
 def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUpdateRequestDTO):
     take_repository = TakeRepository(db)

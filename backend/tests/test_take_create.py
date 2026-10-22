@@ -91,9 +91,14 @@ def test_create_numbers_takes_in_order(
     pitch_id: uuid.UUID,
     versions: Versions,
 ) -> None:
-    assert _create(client, pitch_id, auth_headers, *versions).status_code == 200
-    assert _create(client, pitch_id, auth_headers, *versions).status_code == 200
+    first = _create(client, pitch_id, auth_headers, *versions)
+    second = _create(client, pitch_id, auth_headers, *versions)
 
+    assert first.status_code == 200
+    assert second.status_code == 200
+    # FE 가 리허설에 띄울 번호를 응답에서 바로 읽는다
+    assert first.json()["take_number"] == 1
+    assert second.json()["take_number"] == 2
     assert _take_numbers(db_session, pitch_id) == [1, 2]
 
 
@@ -181,8 +186,7 @@ def test_concurrent_creates_on_one_pitch_get_distinct_numbers(
     def create(name: str) -> None:
         with Session(engine, expire_on_commit=False) as db:
             try:
-                take_id = service.create_take_service(db, target, dto)
-                results[name] = db.get(Take, take_id).take_number
+                results[name] = service.create_take_service(db, target, dto).take_number
             except Exception as exc:  # 잠금이 없으면 여기로 온다
                 results[name] = exc
 
