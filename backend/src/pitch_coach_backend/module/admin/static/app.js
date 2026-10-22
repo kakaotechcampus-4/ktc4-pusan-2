@@ -1,0 +1,184 @@
+// 관리자 콘솔. /admin/api/* 를 불러 화면을 채운다.
+// 로그인은 브라우저가 처리한다 — /admin/ 에서 입력한 계정을 같은 경로 아래 요청에 자동으로 붙인다.
+// 사용자 이름 · 발표 제목은 사용자가 정한 값이라 innerHTML 에 넣지 않고 textContent 로만 넣는다.
+
+const LABELS = {
+  READY: '시작 전',
+  RUNNING: '진행 중',
+  ANALYZING: '분석 중',
+  COMPLETED: '완료',
+  FAILED: '실패',
+  COACHING: '코칭',
+  EXAM: '실전',
+  HIGHLIGHT: '하이라이트',
+  KEYWORD: '키워드',
+  OFF: '끔',
+  SILENCE: '말 없음',
+  TIME_LIMIT: '최대 시간',
+  ABANDONED: '이탈',
+  USER: '직접 종료',
+};
+
+const label = (value) => (value == null ? '—' : LABELS[value] ?? value);
+
+function duration(sec) {
+  if (sec == null) return '—';
+  const s = Math.round(sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}시간 ${m}분`;
+  if (m > 0) return `${m}분 ${s % 60}초`;
+  return `${s}초`;
+}
+
+function dateTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+const percent = (ratio) => (ratio == null ? '—' : `${Math.round(ratio * 100)}%`);
+
+function el(tag, props = {}, children = []) {
+  const node = document.createElement(tag);
+  Object.assign(node, props);
+  node.append(...children);
+  return node;
+}
+
+async function getJSON(path) {
+  const response = await fetch(path, { headers: { Accept: 'application/json' } });
+  if (!response.ok) throw new Error(`${path} — ${response.status}`);
+  return response.json();
+}
+
+// ---------- 요약 카드 ----------
+
+function renderCards(stats) {
+  const { users, takes, practice_time: time } = stats;
+  const card = (name, value, sub = '') =>
+    el('div', { className: 'card' }, [
+      el('div', { className: 'label', textContent: name }),
+      el('div', { className: 'value', textContent: value }),
+      el('div', { className: 'sub', textContent: sub }),
+    ]);
+  document.getElementById('cards').replaceChildren(
+    card('사용자', users.total.toLocaleString(), `오늘 가입 ${users.today}`),
+    card('연습', takes.total.toLocaleString(), `오늘 ${takes.today}`),
+    card('총 연습 시간', duration(time.total_sec), `시간을 잰 연습 ${time.measured_takes}개`),
+    card('평균 연습 시간', duration(time.avg_sec), `중앙값 ${duration(time.median_sec)}`),
+    card('목표 시간 대비', percent(time.avg_goal_ratio), '실제 ÷ 목표 평균'),
+  );
+}
+
+// ---------- 일별 막대 ----------
+
+function renderBars(id, daily, key) {
+  const max = Math.max(1, ...daily.map((d) => d[key]));
+  const bars = daily.map((d) =>
+    el('div', {
+      className: d[key] ? 'bar' : 'bar empty',
+      title: `${d.date} · ${d[key]}`,
+      style: `height: ${(d[key] / max) * 100}%`,
+    }),
+  );
+  document.getElementById(id).replaceChildren(...bars);
+}
+
+// ---------- 표 ----------
+
+// columns: [제목, 값을 꺼내는 함수, 숫자 칸이면 true]
+function renderTable(id, columns, rows, emptyText = '없음') {
+  const head = el('tr', {}, columns.map(([title, , num]) => el('th', { className: num ? 'num' : '', textContent: title })));
+  const body = rows.length
+    ? rows.map((row) =>
+        el('tr', {}, columns.map(([, pick, num]) => {
+          const value = pick(row);
+          const cell = el('td', { className: num ? 'num' : '' });
+          cell.append(value instanceof Node ? value : String(value));
+          return cell;
+        })),
+      )
+    : [el('tr', { className: 'empty' }, [el('td', { colSpan: columns.length, textContent: emptyText })])];
+  document.getElementById(id).replaceChildren(el('thead', {}, [head]), el('tbody', {}, body));
+}
+
+function renderCounts(id, counts) {
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const rows = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  renderTable(id, [
+    ['값', ([key]) => label(key)],
+    ['개수', ([, n]) => n, true],
+    ['비율', ([, n]) => percent(n / total), true],
+  ], rows);
+}
+
+const statusBadge = (status) => el('span', { className: `badge ${status}`, textContent: label(status) });
+
+const TAKE_COLUMNS = [
+  ['만든 시각', (t) => dateTime(t.created_at)],
+  ['사용자', (t) => `${t.user_name} (${t.user_email})`],
+  ['발표', (t) => t.pitch_title],
+  ['회차', (t) => t.take_number, true],
+  ['모드', (t) => label(t.mode)],
+  ['상태', (t) => statusBadge(t.status)],
+  ['종료 이유', (t) => (t.ended_at ? label(t.end_reason ?? 'USER') : '—')],
+  ['연습 시간', (t) => duration(t.elapsed_sec), true],
+  ['목표', (t) => duration(t.goal_time_sec), true],
+];
+
+const USER_COLUMNS = [
+  ['이름', (u) => u.name],
+  ['이메일', (u) => u.email],
+  ['가입', (u) => dateTime(u.created_at)],
+  ['발표', (u) => u.pitch_count, true],
+  ['연습', (u) => u.take_count, true],
+  ['총 연습 시간', (u) => duration(u.total_practice_sec), true],
+  ['마지막 연습', (u) => dateTime(u.last_take_at)],
+];
+
+// ---------- 불러오기 ----------
+
+// 하나가 실패해도 나머지는 그린다. 실패를 보려고 연 화면에서 전부 비면 안 된다
+const SECTIONS = [
+  ['api/stats', (stats) => {
+    renderCards(stats);
+    document.querySelectorAll('.days').forEach((node) => {
+      node.textContent = `최근 ${stats.daily.length}일`;
+    });
+    renderBars('daily-takes', stats.daily, 'takes');
+    renderBars('daily-signups', stats.daily, 'signups');
+    renderCounts('by-status', stats.takes.by_status);
+    renderCounts('by-mode', stats.takes.by_mode);
+    renderCounts('by-script-mode', stats.takes.by_script_mode);
+    renderCounts('by-end-reason', stats.takes.by_end_reason);
+  }],
+  ['api/takes/stuck', (rows) => renderTable('stuck-takes', TAKE_COLUMNS, rows)],
+  ['api/takes?status=FAILED&limit=50', (rows) => renderTable('failed-takes', TAKE_COLUMNS, rows)],
+  ['api/takes?limit=50', (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
+  ['api/users', (rows) => renderTable('users', USER_COLUMNS, rows)],
+];
+
+async function load() {
+  const error = document.getElementById('error');
+  error.hidden = true;
+  const results = await Promise.allSettled(SECTIONS.map(([path]) => getJSON(path)));
+  const failures = [];
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled') SECTIONS[i][1](result.value);
+    else failures.push(result.reason.message);
+  });
+  document.getElementById('updated').textContent = `${dateTime(new Date().toISOString())} 기준`;
+  if (failures.length) {
+    error.textContent = `불러오지 못했습니다: ${failures.join(', ')}`;
+    error.hidden = false;
+  }
+}
+
+document.getElementById('refresh').addEventListener('click', load);
+load();

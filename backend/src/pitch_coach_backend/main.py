@@ -9,6 +9,7 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
 from pitch_coach_backend.core.logging import configure_logging
 from pitch_coach_backend.core.s3 import get_s3
+from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
@@ -23,6 +24,7 @@ from pitch_coach_backend.realtime.take_stream import stop_all as stop_all_stream
 # Caddy 는 /api/* 만 백엔드로 넘긴다 (infra/Caddyfile). 접두어 없는 경로는 404 도 아니고
 # 프론트 화면이 돌아온다. 그래서 /docs·/openapi.json 까지 전부 /api 아래로 옮긴다.
 # 버전 접두어(/v1)는 붙이지 않는다 — 설계 문서 경로에 /api 만 앞에 붙는 형태다.
+# 예외는 관리자 콘솔(/admin) 하나다. 앱 API 가 아니라서 Caddy 가 따로 넘긴다.
 API_PREFIX = "/api"
 
 
@@ -83,3 +85,4 @@ api.include_router(take_router)
 api.include_router(realtime_router)
 
 app.include_router(api)
+app.include_router(admin_router)
