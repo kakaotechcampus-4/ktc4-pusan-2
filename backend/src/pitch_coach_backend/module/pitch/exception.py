@@ -42,6 +42,11 @@ class ScriptParseInProgress(ConflictException):
     message = "대본을 분석하고 있습니다. 잠시 후 다시 확인해 주세요."
 
 
+class ScriptNotParsed(ConflictException):
+    code = "SCRIPT_NOT_PARSED"
+    message = "슬라이드로 나누지 않은 대본으로는 연습할 수 없습니다."
+
+
 class ScriptAlreadyParsed(ConflictException):
     code = "SCRIPT_ALREADY_PARSED"
     message = "이미 분석이 끝난 대본입니다."

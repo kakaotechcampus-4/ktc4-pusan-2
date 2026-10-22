@@ -34,7 +34,7 @@ def _make_pitch(db: Session, user_id: uuid.UUID) -> uuid.UUID:
 
 def _make_versions(db: Session, pitch_id: uuid.UUID) -> Versions:
     presentation = PresentationVersion(pitch_id=pitch_id, version=1, file_key=f"{pitch_id}/1.pdf")
-    script = ScriptVersion(pitch_id=pitch_id, version=1, content="대본")
+    script = ScriptVersion(pitch_id=pitch_id, version=1, content="대본", parse_status="DONE")
     db.add_all([presentation, script])
     db.flush()
     return presentation.id, script.id
@@ -139,6 +139,26 @@ def test_unknown_version_id_is_404_not_500(
 
     assert response.status_code == 404
     assert response.json()["code"] == "PRESENTATION_VERSION_NOT_FOUND"
+
+
+@pytest.mark.parametrize("parse_status", ["PENDING", "FAILED"])
+def test_script_not_parsed_yet_is_409(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    parse_status: str,
+) -> None:
+    script = ScriptVersion(pitch_id=pitch_id, version=2, content="대본", parse_status=parse_status)
+    db_session.add(script)
+    db_session.flush()
+
+    response = _create(client, pitch_id, auth_headers, versions[0], script.id)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SCRIPT_NOT_PARSED"
+    assert _take_numbers(db_session, pitch_id) == []
 
 
 def test_concurrent_creates_on_one_pitch_get_distinct_numbers(

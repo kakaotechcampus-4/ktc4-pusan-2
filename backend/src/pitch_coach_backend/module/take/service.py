@@ -5,9 +5,11 @@ from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.pitch.exception import (
     NonExistentPresentationVersion,
     NonExistentScript,
+    ScriptNotParsed,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import (
@@ -38,8 +40,12 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     # 아예 없는 ID 는 FK 위반(500)이 된다
     if pitch_repository.get_presentation_detail(pitch_id, take_dto.presentation_version_id) is None:
         raise NonExistentPresentationVersion()
-    if pitch_repository.get_script_in_pitch(pitch_id, take_dto.script_version_id) is None:
+    script = pitch_repository.get_script_in_pitch(pitch_id, take_dto.script_version_id)
+    if script is None:
         raise NonExistentScript()
+    # 슬라이드가 없으면 리허설이 대본을 띄울 수 없고 코치 · 분석도 장별로 나눌 수 없다
+    if script.parse_status != ScriptParseStatus.DONE:
+        raise ScriptNotParsed()
 
     # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금)
     pitch_repository.lock_for_new_version(pitch_id)
