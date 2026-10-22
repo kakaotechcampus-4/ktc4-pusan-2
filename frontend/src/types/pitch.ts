@@ -32,7 +32,8 @@ export interface VersionRef {
  */
 export interface PitchResources {
   pitch_id: string;
-  presentation_versions: VersionRef[];
+  /** 발표자료에는 BE 가 센 쪽수가 붙습니다 (#298). 옛 발표자료는 null, #298 전의 BE 는 주지 않습니다 */
+  presentation_versions: (VersionRef & { page_count?: number | null })[];
   script_versions: VersionRef[];
   evaluation_versions: VersionRef[];
 }

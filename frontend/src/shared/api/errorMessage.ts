@@ -28,6 +28,8 @@ const MESSAGE: Record<string, string> = {
   STANDARD_PARSE_FAILED:
     '평가기준을 정리하는 서버가 잠시 응답하지 않아요. 잠시 뒤 다시 정리해 주세요.',
   SCRIPT_ALREADY_PARSED: '이미 나눈 대본이에요. 잠시 뒤 결과가 보여요.',
+  /** 발표자료를 BE 가 열지 못함 — PDF 가 아님 · 깨짐 · 여는 암호 · 40MB 초과 (BE #298) */
+  INVALID_PRESENTATION: 'PDF를 열 수 없어요. 암호가 걸려 있거나 손상되지 않았는지 확인해 주세요.',
   PRESENTATION_VERSION_NOT_FOUND: '발표자료를 찾을 수 없어요. 다시 올려 주세요.',
   TAKE_NOT_FOUND: '연습 기록을 찾을 수 없어요. 처음부터 다시 시작해 주세요.',
   INTERNAL_SERVER_ERROR: '서버에 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요.',

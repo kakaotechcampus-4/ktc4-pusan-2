@@ -25,8 +25,9 @@ import { PaneHeading } from './PaneHeading';
  * 고른 파일을 바로 그리지 않는 이유는 `slideUpload.ts` 에 있습니다.
  */
 
-const FAILURE_MESSAGE: Record<'upload' | 'open', string> = {
+const FAILURE_MESSAGE: Record<'upload' | 'invalid' | 'open', string> = {
   upload: '업로드하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
+  invalid: 'PDF를 열 수 없어요. 암호가 걸려 있거나 손상되지 않았는지 확인해 주세요.',
   open: '올린 PDF를 열지 못했어요. 파일이 손상됐을 수 있어요.',
 };
 
