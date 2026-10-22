@@ -10,7 +10,7 @@ import json
 import struct
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -20,7 +20,6 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from websockets.exceptions import ConnectionClosedError
 
@@ -37,7 +36,7 @@ from pitch_coach_backend.module.pitch.entity import (
 from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
-from pitch_coach_backend.module.take.exception import NonExistentTake
+from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import service, take_stream
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
@@ -197,6 +196,7 @@ class FakeTranscriptStore:
         *,
         cursor: tuple[int, int] = (0, 0),
         fail: bool = False,
+        errors: Iterable[Exception] = (),
         fail_mark: bool = False,
         append_delay: float = 0.0,
         marks: bool = True,
@@ -212,6 +212,8 @@ class FakeTranscriptStore:
         self.cursor_reads: list[int] = []
         self._cursor = cursor
         self.fail = fail
+        # 저장할 때마다 앞에서 하나씩 꺼내 던진다. 다 쓰면 정상으로 저장한다
+        self.errors = list(errors)
         self.fail_mark = fail_mark
         # 저장이 이만큼 걸린다 (저장 도중 정리가 오는 경우 재현)
         self.append_delay = append_delay
@@ -226,6 +228,8 @@ class FakeTranscriptStore:
         await asyncio.sleep(self.append_delay)  # 실제 저장은 threadpool 왕복이라 한 번은 양보한다
         if self.fail:
             raise RuntimeError("db down")
+        if self.errors:
+            raise self.errors.pop(0)
         self.take_ids.append(take_id)
         self.segments.append(segment)
         self.calls.append("append")
@@ -1978,7 +1982,82 @@ def test_persist_failure_keeps_the_stream_alive(
     assert (first["text"], second["text"]) == ("하나", "둘")
     assert status["state"] == "closed" and status["frames"] == 2
     assert "final 저장 실패" in caplog.text
+    assert "저장하지 못한 final 을 버린다" in caplog.text and "count=2 seq=1~2" in caplog.text
     assert "하나" not in caplog.text, "전사 원문은 로그에 남기지 않는다"
+
+
+def test_failed_final_is_saved_with_the_next_one(client: TestClient, token: str):
+    """DB 가 잠깐 죽었다 돌아오면 그사이 저장 못 한 final 을 다음 final 앞에 저장한다."""
+    use(
+        FakeSttAdapter(
+            Plan(
+                replies=[
+                    transcript(0, 100, "하나", is_final=True),
+                    transcript(100, 200, "둘", is_final=True),
+                ]
+            )
+        )
+    )
+    store = use_store(FakeTranscriptStore(errors=[RuntimeError("db down")]))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        ws.receive_json()
+        ws.send_bytes(frame(2, 100))
+        ws.receive_json()
+        stop(ws)
+
+    assert [(seg.seq, seg.transcript) for seg in store.segments] == [(1, "하나"), (2, "둘")]
+
+
+def test_failed_last_final_is_saved_before_the_take_ends(client: TestClient, token: str):
+    """마지막 final 저장이 실패해도 스트림이 끝날 때 한 번 더 저장한다. Take 종료는 그 뒤에
+    적는다."""
+    use(FakeSttAdapter(Plan(replies=[transcript(0, 100, "마지막", is_final=True)])))
+    store = use_store(FakeTranscriptStore(errors=[RuntimeError("db down")]))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        ws.receive_json()
+        stop(ws)
+
+    assert [seg.transcript for seg in store.segments] == ["마지막"]
+    assert store.calls == ["append", "mark_ended"]
+
+
+def test_final_already_committed_does_not_block_the_rest(
+    client: TestClient, token: str, caplog: pytest.LogCaptureFixture
+):
+    """실패로 알았던 저장이 실제로는 커밋됐으면 다시 저장할 때 번호가 겹친다. 저장된 것으로 보고
+    넘어가야 뒤의 final 이 막히지 않는다."""
+    use(
+        FakeSttAdapter(
+            Plan(
+                replies=[
+                    transcript(0, 100, "하나", is_final=True),
+                    transcript(100, 200, "둘", is_final=True),
+                ]
+            )
+        )
+    )
+    store = use_store(
+        FakeTranscriptStore(errors=[RuntimeError("db down"), DuplicateTranscriptSegment()])
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        with caplog.at_level("WARNING"):
+            ws.send_bytes(frame(1, 0))
+            ws.receive_json()
+            ws.send_bytes(frame(2, 100))
+            ws.receive_json()
+            stop(ws)
+
+    assert [(seg.seq, seg.transcript) for seg in store.segments] == [(2, "둘")]
+    assert "이미 저장된 final" in caplog.text
+    assert "저장하지 못한 final 을 버린다" not in caplog.text
 
 
 @pytest.mark.anyio
@@ -2119,7 +2198,7 @@ def test_only_a_missing_take_is_reported_as_deleted(db_session: Session, take: T
     db_session.rollback()
 
     take_service.append_transcript_segment(db_session, TAKE_ID, segment)
-    with pytest.raises(IntegrityError):
+    with pytest.raises(DuplicateTranscriptSegment):
         take_service.append_transcript_segment(db_session, TAKE_ID, segment)
 
 
