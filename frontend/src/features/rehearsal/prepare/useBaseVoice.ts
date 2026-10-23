@@ -89,7 +89,7 @@ export function useBaseVoice({
     const r = runRef.current;
     if (!r) return null;
     const now = clock();
-    r.read = stepRead(r.read, voiceRecord(r.fromMs, now), r.fromMs, now);
+    r.read = stepRead(r.read, voiceRecord(r.fromMs, now));
     r.fromMs = now;
     return { r, now };
   }, [clock, voiceRecord]);

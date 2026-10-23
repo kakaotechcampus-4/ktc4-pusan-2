@@ -101,15 +101,12 @@ function baseVoiceLabel(status: BaseVoiceStatus, reason: ShortReason | null): st
 const SHORT_TITLE: Record<ShortReason, string> = {
   QUIET: '잘 들리지 않았어요',
   BRIEF: '조금 더 읽어 주세요',
-  CHOPPY: '다시 읽어 주세요',
 };
 
 const SHORT_GUIDE: Record<ShortReason, string> = {
   QUIET:
     '말소리로 들리지 않았어요. 목소리가 작거나 주변이 시끄러울 수 있어요. 마이크에 조금 더 가까이에서, 평소 목소리로 다시 읽어 주세요.',
   BRIEF: '말한 시간이 모자랐어요. 문단을 끝까지 다 읽은 뒤에 "다 읽었어요"를 눌러 주세요.',
-  CHOPPY:
-    '중간에 비는 시간이 길었어요. 기침이나 주변 소리였을 수 있어요. 문장을 한 번에 이어서 다시 읽어 주세요.',
 };
 
 /** 평소 목소리 항목의 버튼 문구. 읽는 중에는 그만두기입니다 */
@@ -594,7 +591,7 @@ export function DeviceCheckPage() {
  *           끝은 버튼으로 받습니다 — 소리로 정하면 읽는 도중에 끝나거나 문장이 더 붙었습니다
  *   잡힘     얼마나 들었는지와 어디에 쓰는지. dB 숫자는 보이지 않습니다 — 사용자에게 뜻이 없고,
  *           작아 보이면 다음 읽기에서 일부러 크게 말하게 됩니다
- *   다시     이유에 맞는 안내 (안 들림 · 모자람 · 띄엄띄엄)
+ *   다시     이유에 맞는 안내 (안 들림 · 모자람)
  */
 function BaseVoicePanel({
   status,

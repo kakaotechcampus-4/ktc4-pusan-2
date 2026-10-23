@@ -56,11 +56,14 @@ export function baseLevelDb(run: BaseVoiceRun): number | null {
  *
  *   QUIET  말소리로 거의 들리지 않음 — 목소리가 작거나 주변이 시끄러움. "더 길게"가 아니라 마이크에 가까이
  *   BRIEF  들리긴 했는데 말한 시간이 모자람 — 끝까지 읽기 전에 눌렀거나 쉬는 시간이 길었음
- *   CHOPPY 시간은 채웠지만 말한 사이사이가 너무 비었음 — 기침 · 잡음 · 띄엄띄엄 읽기
  *
  * 나누는 이유: 작게 말해서 안 잡힌 사람에게 "더 길게 읽어 주세요"라고 하면 같은 크기로 다시 읽어 또 실패합니다.
+ *
+ * 말한 사이사이가 비었는지(기침 · 잡음이 띄엄띄엄 들림)는 보지 않습니다. AI 문서(`volume.md` 5-2)의 조건은
+ * "말한 구간만 · 5초 이상" 뿐이고, '말하는 중'은 실제 읽은 시간의 절반 남짓만 잡혀서 쉬어 가며 읽은 사람을
+ * 잘못 다시 읽게 할 위험이 더 컸습니다.
  */
-export type ShortReason = 'QUIET' | 'BRIEF' | 'CHOPPY';
+export type ShortReason = 'QUIET' | 'BRIEF';
 
 /** 이보다 적게 들렸으면 말소리를 거의 못 잡은 것으로 봅니다 */
 export const QUIET_BELOW_MS = 1_500;
@@ -83,38 +86,18 @@ export function readStage(run: BaseVoiceRun): ReadStage {
   return run.voicedMs > 0 ? 'HEARD' : 'WAITING';
 }
 
-/**
- * 처음 말한 때부터 마지막 말한 때까지 중 말한 비율의 하한. '말하는 중'은 실제 읽기의 절반 남짓만 잡혀서
- * 낮게 둡니다 — 이보다 낮으면 문단을 읽은 소리가 아니라 기침 · 잡음이 띄엄띄엄 들린 것입니다.
- * 잠정값입니다 — 실제 읽기로 재서 조정합니다.
- */
-export const MIN_VOICED_RATIO = 0.2;
-
 export interface ReadState {
   run: BaseVoiceRun;
   startedAt: Ms;
-  /** 처음 · 마지막으로 말소리가 들린 때. 아직 안 들렸으면 null */
-  firstVoiceAt: Ms | null;
-  lastVoiceAt: Ms | null;
 }
 
-export const startRead = (now: Ms): ReadState => ({
-  run: EMPTY_RUN,
-  startedAt: now,
-  firstVoiceAt: null,
-  lastVoiceAt: null,
+export const startRead = (now: Ms): ReadState => ({ run: EMPTY_RUN, startedAt: now });
+
+/** 짧은 구간의 음량 기록을 더합니다 */
+export const stepRead = (state: ReadState, rec: VoiceRecord): ReadState => ({
+  ...state,
+  run: addRecord(state.run, rec),
 });
-
-/** 짧은 구간 `[fromMs, now)` 의 음량 기록을 더합니다 */
-export function stepRead(state: ReadState, rec: VoiceRecord, fromMs: Ms, now: Ms): ReadState {
-  const heard = rec.voiced_ms > 0;
-  return {
-    ...state,
-    run: addRecord(state.run, rec),
-    firstVoiceAt: heard ? (state.firstVoiceAt ?? fromMs) : state.firstVoiceAt,
-    lastVoiceAt: heard ? now : state.lastVoiceAt,
-  };
-}
 
 export type ReadResult =
   { kind: 'DONE'; levelDb: number; heardMs: Ms } | { kind: 'SHORT'; reason: ShortReason };
@@ -126,15 +109,12 @@ export type ReadResult =
  * 아니라 "모자람"입니다 — 목소리가 작다고 하면 다음에 일부러 크게 읽습니다. 최대 시간까지 읽었는데
  * 거의 안 잡혔으면 그때는 정말 안 들린 것입니다.
  */
-export function finishRead(state: ReadState, byUser: boolean): ReadResult {
-  const { run, firstVoiceAt, lastVoiceAt } = state;
+export function finishRead({ run }: ReadState, byUser: boolean): ReadResult {
   const levelDb = baseLevelDb(run);
-  if (levelDb === null || firstVoiceAt === null || lastVoiceAt === null) {
+  if (levelDb === null) {
     if (byUser) return { kind: 'SHORT', reason: run.voicedMs > 0 ? 'BRIEF' : 'QUIET' };
     return { kind: 'SHORT', reason: shortReason(run) };
   }
-  const span = Math.max(1, lastVoiceAt - firstVoiceAt);
-  if (run.voicedMs / span < MIN_VOICED_RATIO) return { kind: 'SHORT', reason: 'CHOPPY' };
   return { kind: 'DONE', levelDb, heardMs: run.voicedMs };
 }
 

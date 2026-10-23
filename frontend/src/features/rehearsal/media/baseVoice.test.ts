@@ -76,9 +76,8 @@ function read(pattern: boolean[], level = -30): { state: ReadState; now: number 
   let state = startRead(0);
   let now = 0;
   for (const voiced of pattern) {
-    const from = now;
     now += 250;
-    state = stepRead(state, rec(voiced ? level : null, voiced ? 250 : 0), from, now);
+    state = stepRead(state, rec(voiced ? level : null, voiced ? 250 : 0));
   }
   return { state, now };
 }
@@ -111,10 +110,18 @@ describe('다 읽었어요를 누르면 — 내용은 보지 않고 소리로만
     expect(finishRead(quiet.state, false)).toEqual({ kind: 'SHORT', reason: 'QUIET' });
   });
 
-  it('띄엄띄엄 들린 소리(기침 · 잡음)로 채웠으면 다시 읽게 한다', () => {
-    // 0.25초 소리 · 1.25초 쉼을 20번 — 말한 시간 5초, 그 사이는 대부분 비어 있음 (비율 약 17%)
-    const choppy = Array.from({ length: 20 }, () => [true, ...pause(1250)]).flat();
-    expect(finishRead(read(choppy).state, true)).toEqual({ kind: 'SHORT', reason: 'CHOPPY' });
+  /**
+   * 사이사이가 비었는지는 보지 않습니다 — AI 문서의 조건은 "말한 구간만 · 5초 이상" 뿐입니다.
+   * '말하는 중'은 실제 읽은 시간의 절반 남짓만 잡혀서, 쉬어 가며 읽은 사람을 다시 읽게 하면 안 됩니다.
+   */
+  it('쉬어 가며 읽어 말한 비율이 낮아도, 말한 시간을 채웠으면 잰다', () => {
+    // 0.25초 소리 · 1.25초 쉼을 20번 — 말한 시간 5초, 말한 비율 약 17%
+    const sparse = Array.from({ length: 20 }, () => [true, ...pause(1250)]).flat();
+    expect(finishRead(read(sparse).state, true)).toEqual({
+      kind: 'DONE',
+      levelDb: -30,
+      heardMs: 5000,
+    });
   });
 });
 
