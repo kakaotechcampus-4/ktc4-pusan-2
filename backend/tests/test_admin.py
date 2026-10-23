@@ -12,7 +12,7 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
 from pitch_coach_backend.module.user.entity import User
-from pitch_coach_backend.realtime.take_stream import ABANDON_AFTER_SEC
+from pitch_coach_backend.realtime.take_stream import longest_abandon_wait_sec
 
 ADMIN = ("admin", "console-password")
 
@@ -285,7 +285,7 @@ def test_stuck_takes_are_running_without_activity_past_abandon(
     """
     pitch = _pitch(db_session, _user(db_session, "앨리스"))
     now = datetime.now(UTC)
-    long_ago = now - timedelta(seconds=ABANDON_AFTER_SEC) - timedelta(minutes=11)
+    long_ago = now - timedelta(seconds=longest_abandon_wait_sec()) - timedelta(minutes=11)
     stuck = _take(db_session, pitch, 1, status="RUNNING", created_at=long_ago)
     # 오래전에 만들었지만 확정 전사가 방금 저장됐다 (장치 점검을 오래 했거나 다시 연결해 이어 간다)
     speaking = _take(db_session, pitch, 2, status="RUNNING", created_at=long_ago)

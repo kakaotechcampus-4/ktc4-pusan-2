@@ -3256,14 +3256,22 @@ async def test_shutdown_cancels_cleanup_that_does_not_finish_and_says_which(
 # ── 떠난 Take ─────────────────────────────────────────────────────────
 
 
-def make_plain_stream(take_id: uuid.UUID, store: FakeTranscriptStore) -> TakeStream:
+def make_plain_stream(
+    take_id: uuid.UUID, store: FakeTranscriptStore, policy: AutoEndPolicy | None = None
+) -> TakeStream:
     return TakeStream(
         take_id,
         owner_id=uuid.uuid7(),
         stt_adapter=FakeSttAdapter(),
         config=SttConfig(),
         store=store,
+        auto_end=policy,
     )
+
+
+def abandon_wait_left(take_id: uuid.UUID) -> float:
+    """떠난 것으로 끝낼 때까지 남은 초."""
+    return take_stream._abandon_timers[take_id].when() - asyncio.get_running_loop().time()
 
 
 async def open_and_leave(stream: TakeStream) -> None:
@@ -3285,7 +3293,7 @@ async def test_take_left_without_reconnect_is_ended_as_abandoned(monkeypatch: py
     monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
     monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 0.2)
     store = FakeTranscriptStore()
-    stream = make_plain_stream(uuid.uuid7(), store)
+    stream = make_plain_stream(uuid.uuid7(), store, short_time_limit(500))
 
     await open_and_leave(stream)
     closed_at = datetime.now(UTC)
@@ -3316,7 +3324,7 @@ async def test_reconnect_before_the_wait_is_over_keeps_the_take(monkeypatch: pyt
     monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
     monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 0.2)
     store = FakeTranscriptStore()
-    stream = make_plain_stream(uuid.uuid7(), store)
+    stream = make_plain_stream(uuid.uuid7(), store, short_time_limit(500))
     await open_and_leave(stream)
 
     resumed = await take_stream.attach(
@@ -3333,6 +3341,37 @@ async def test_reconnect_before_the_wait_is_over_keeps_the_take(monkeypatch: pyt
     await asyncio.sleep(0.3)
     assert store.abandoned == []
     assert stream.take_id not in take_stream._ended
+
+
+@pytest.mark.anyio
+async def test_abandon_waits_until_the_talk_could_have_ended(monkeypatch: pytest.MonkeyPatch):
+    """재연결을 포기한 FE 는 STT 없이 발표를 이어 간다. 발표 초반에 끊겼으면 30분이 아니라 최대
+    시간(서버 시계)까지 기다린다 — 먼저 끝내면 발표 중인 Take 가 FAILED 가 된다."""
+    monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
+    stream = make_plain_stream(uuid.uuid7(), FakeTranscriptStore())
+
+    await open_and_leave(stream)
+
+    policy = stream.auto_end_policy
+    talk_limit_sec = (policy.max_duration_ms + policy.server_clock_slack_ms) / 1000
+    assert talk_limit_sec > take_stream.ABANDON_AFTER_SEC
+    talk_left = talk_limit_sec - take_stream._takes[stream.take_id].streamed_sec
+    assert talk_left - 1 < abandon_wait_left(stream.take_id) <= talk_left
+
+
+@pytest.mark.anyio
+async def test_abandon_waits_thirty_minutes_when_little_of_the_talk_is_left(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """남은 발표가 30분보다 짧으면 30분을 기다린다 (탭을 닫았다가 주소를 다시 여는 사용자)."""
+    monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
+    policy = short_time_limit(600_000)
+    stream = make_plain_stream(uuid.uuid7(), FakeTranscriptStore(), policy)
+
+    await open_and_leave(stream)
+
+    wait_sec = take_stream.ABANDON_AFTER_SEC
+    assert wait_sec - 1 < abandon_wait_left(stream.take_id) <= wait_sec
 
 
 @pytest.mark.anyio
@@ -3391,21 +3430,23 @@ async def test_abandon_write_failure_leaves_the_take_open(caplog: pytest.LogCapt
 
 
 @pytest.mark.anyio
-async def test_startup_rearms_timers_from_the_last_activity(monkeypatch: pytest.MonkeyPatch):
+async def test_startup_rearms_timers_from_the_last_activity():
     """앱이 다시 뜨면 메모리의 타이머가 없다. 진행 중으로 남은 Take 를 DB 에서 읽어 마지막 활동에서
-    잰 남은 시간으로 다시 건다. 이미 지난 Take 는 바로 끝낸다."""
-    monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 60.0)
+    잰 남은 시간으로 다시 건다. 남은 발표 시간도 사라져 최대 시간 전체를 기다린다. 이미 지난 Take 는
+    바로 끝낸다."""
+    wait_sec = take_stream.longest_abandon_wait_sec()
+    assert wait_sec > take_stream.ABANDON_AFTER_SEC
     store = FakeTranscriptStore()
     now = datetime.now(UTC)
     stale, recent = uuid.uuid7(), uuid.uuid7()
-    store.running = [(stale, now - timedelta(seconds=61)), (recent, now - timedelta(seconds=20))]
+    stale_at = now - timedelta(seconds=wait_sec + 1)
+    store.running = [(stale, stale_at), (recent, now - timedelta(seconds=20))]
 
     await take_stream.arm_abandoned_takes(store)
 
     await _wait_for(lambda: store.abandoned)
-    assert store.abandoned == [(stale, now - timedelta(seconds=61))]
-    remaining = take_stream._abandon_timers[recent].when() - asyncio.get_running_loop().time()
-    assert 39 < remaining <= 40
+    assert store.abandoned == [(stale, stale_at)]
+    assert wait_sec - 21 < abandon_wait_left(recent) <= wait_sec - 20
 
 
 @pytest.mark.anyio
@@ -3457,6 +3498,27 @@ def test_abandon_does_not_touch_a_take_that_already_ended(db_session: Session, u
     assert take_service.mark_abandoned(db_session, ended.id, datetime.now(UTC)) is False
     db_session.refresh(ended)
     assert (ended.status, ended.end_reason) == ("ANALYZING", None)
+
+
+def test_end_revives_a_take_ended_as_abandoned(db_session: Session, user: User):
+    """재연결을 포기하고 STT 없이 발표를 이어 간 FE 의 끝내기 PUT 이다. 떠난 것으로 끝낸 Take 만
+    되살린다. 끝낸 시각은 PUT 이 먼저 적는다 (여기서는 비어 있을 때만 채운다)."""
+    abandoned = make_take(db_session, user.id)
+    failed = make_take(db_session, user.id, status="FAILED")
+    closed_at = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
+    assert take_service.mark_abandoned(db_session, abandoned.id, closed_at) is True
+
+    assert take_service.mark_ended(db_session, abandoned.id) is True
+    assert take_service.mark_ended(db_session, failed.id) is False
+
+    db_session.refresh(abandoned)
+    db_session.refresh(failed)
+    assert (abandoned.status, abandoned.end_reason, abandoned.ended_at) == (
+        "ANALYZING",
+        None,
+        closed_at,
+    )
+    assert failed.status == "FAILED"
 
 
 def test_running_takes_report_their_last_activity(db_session: Session, user: User):

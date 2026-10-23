@@ -69,10 +69,16 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
     # 보낸 필드만 바꾼다. 빠진 필드를 None 으로 덮으면 ended_at 만 보낼 때 started_at 이 지워진다
     changes = take_update_dto.model_dump(exclude_none=True)
 
+    # 떠난 것으로 끝낸 Take 에 온 끝내기다. 재연결을 포기하고 STT 없이 발표를 이어 간 FE 라
+    # 기록을 받는다. 상태는 뒤이어 mark_ended 가 ANALYZING 으로 되돌린다
+    abandoned_end = existing_take.end_reason == "ABANDONED" and "ended_at" in changes
+
     # 끝난 Take 는 분석이 읽고 있거나 이미 읽었다. ANALYZING 일 때 시각만 받는다 — FE 는
     # WS stop 으로 Take 를 끝낸 뒤 시각을 보내고, 종료 중 새로고침하면 같은 값을 다시 보낸다
-    if existing_take.status not in IN_PROGRESS_STATUSES and (
-        existing_take.status != "ANALYZING" or "event_logs" in changes
+    if (
+        not abandoned_end
+        and existing_take.status not in IN_PROGRESS_STATUSES
+        and (existing_take.status != "ANALYZING" or "event_logs" in changes)
     ):
         raise TakeAlreadyEnded()
 
@@ -216,7 +222,8 @@ def mark_ended(db: Session, take_id: uuid.UUID, end_reason: str | None = None) -
     """Take 를 끝냈다. 상태를 `ANALYZING` 으로 바꾸고 커밋한다.
 
     WS stop 이 부르고, STT 없이 끝낸 Take 는 Take PUT(`ended_at`)이 부른다. BE 가 자동으로
-    끝냈으면 `end_reason` 에 이유를 남긴다 (처음 적은 이유가 남는다).
+    끝냈으면 `end_reason` 에 이유를 남긴다 (처음 적은 이유가 남는다). 떠난 것으로 끝낸 Take 는
+    되살린다 (STT 없이 발표를 이어 간 FE 의 끝내기다).
     Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
     """
     marked = TakeRepository(db).mark_ended(take_id, end_reason)

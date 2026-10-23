@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, func, select, update
+from sqlalchemy import ColumnElement, and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -146,10 +146,14 @@ class TakeRepository:
         한다 — 같은 Take 를 두 번 끝내도 한 번만 바뀌고, 먼저 적힌 이유가 남는다.
         `ended_at` 은 FE 가 종료 흐름에서 PUT 으로 적는다. 그게 실패하거나 FE 가 떨어져 있어도
         남도록 비어 있을 때만 지금 시각으로 채운다 (뒤에 온 FE 값은 그대로 덮는다).
+
+        떠난 것으로 끝낸 Take(`FAILED` · `ABANDONED`)도 되살린다. 재연결을 포기하고 STT 없이
+        발표를 이어 간 FE 가 끝내기 PUT 을 보낸 것이다 — 기다리는 시간보다 길게 발표했다.
         """
+        abandoned = and_(Take.status == "FAILED", Take.end_reason == "ABANDONED")
         result = self.db.execute(
             update(Take)
-            .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
+            .where(Take.id == take_id, or_(Take.status.in_(IN_PROGRESS_STATUSES), abandoned))
             .values(
                 status="ANALYZING",
                 end_reason=end_reason,

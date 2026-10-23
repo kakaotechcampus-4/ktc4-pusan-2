@@ -82,8 +82,10 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     # BE 가 끝낸 이유. 사용자가 끝냈거나 아직 진행 중이면 비어 있다.
     # 실시간 STT 재연결은 이 값이 아니라 status 가 막는다.
     #   SILENCE·TIME_LIMIT : 자동 종료. status 는 ANALYZING 으로 바뀐다
-    #   ABANDONED          : 탭을 닫고 30분 동안 돌아오지 않았다. 시선 기록 등을 못 받아
-    #                        분석하지 않고 status 를 FAILED 로 둔다
+    #   ABANDONED          : 탭을 닫고 돌아오지 않았다 (끊긴 뒤 30분, 발표가 더 남았으면 최대
+    #                        시간까지). 시선 기록 등을 못 받아 분석하지 않고 status 를 FAILED 로
+    #                        둔다. 그 뒤에 끝내기 PUT 이 오면(STT 없이 발표를 이어 간 FE)
+    #                        ANALYZING 으로 되살리고 이유를 지운다
     end_reason: Mapped[str | None] = mapped_column(String(20))
     # 슬라이드 넘김·일시정지 같은 원본 이벤트열. 재생과 재분석에 쓴다.
     event_logs: Mapped[Any | None] = mapped_column(JSONB)
