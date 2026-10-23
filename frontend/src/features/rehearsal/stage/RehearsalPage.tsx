@@ -210,11 +210,9 @@ export function RehearsalPage() {
   // 기록은 `voiceRecord(t_ms, t_ms + duration_ms)` 로 꺼내고, WS `metrics` 가 붙으면 시선 기록과 함께 보냅니다
   const { meterRef, audioState } = useMicLevel(stream, { clock: elapsedMs });
   const {
-    ready: gazeReady,
     engineVersion,
     error: gazeError,
     perf,
-    missingCalibration,
     flushGaze,
   } = useLiveGaze({
     stream,
@@ -259,7 +257,6 @@ export function RehearsalPage() {
    * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
    */
   const {
-    transcriptRef,
     note: sttNote,
     alert: sttAlert,
     stop: stopStt,
@@ -638,14 +635,10 @@ export function RehearsalPage() {
 
   if (left) return <LeftWindowNotice left={left} pitchId={ticket?.pitchId ?? null} />;
 
-  const gazeNote = gazeNoteText({
-    declined: deviceError === 'PERMISSION_DENIED',
-    cameraLost:
-      (deviceError !== null && deviceError !== 'PERMISSION_DENIED') || gazeError === 'CAMERA_LOST',
-    missingCalibration,
-    error: gazeError,
-    ready: gazeReady,
-  });
+  // 카메라를 다시 꽂으면 되는 경우만 알립니다. 권한 거부 · 기준 없음 · 엔진 오류는 발표 중에 할 수 있는
+  // 것이 없어 띄우지 않습니다 — 제외 사유는 그대로 기록되고, 코치 상태 표시도 시선을 '—' 로 둡니다
+  const cameraLost =
+    (deviceError !== null && deviceError !== 'PERMISSION_DENIED') || gazeError === 'CAMERA_LOST';
 
   return (
     <div className="min-h-full bg-greige px-4 py-5">
@@ -771,15 +764,14 @@ export function RehearsalPage() {
             />
 
             <div className="stage-foot">
-              <span>{gazeNote}</span>
+              {cameraLost && <span>카메라가 연결되지 않았어요 — 연결을 확인해 주세요</span>}
               {sttNote && (
                 <span className="stt" data-alert={sttAlert}>
                   {sttNote}
                 </span>
               )}
-              {/* 실전 모드에서는 전사를 숨깁니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
-                  기록은 그대로 서버에 쌓이니 리포트에서는 차이가 없습니다 */}
-              {mode !== 'EXAM' && <span className="stt-text" ref={transcriptRef} />}
+              {/* 실시간 전사는 띄우지 않습니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
+                  전사는 그대로 서버에 쌓이니 리포트에서는 차이가 없습니다 */}
               {audioState !== null && audioState !== 'running' && (
                 <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
               )}
@@ -845,27 +837,6 @@ function LeftWindowNotice({ left, pitchId }: { left: LeftWindow; pitchId: string
       </Card>
     </InfoPage>
   );
-}
-
-/**
- * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다.
- */
-function gazeNoteText(state: {
-  declined: boolean;
-  cameraLost: boolean;
-  missingCalibration: boolean;
-  error: GazeExcludedReason | null;
-  ready: boolean;
-}): string {
-  if (state.declined) return '카메라 권한이 없어 시선은 기록하지 않아요 — 발표는 계속됩니다';
-  // 끊기기 전 기록은 남습니다. 이후 시간은 서버가 측정 못 함으로 셉니다
-  if (state.cameraLost) return '카메라가 끊겨 이후 시선은 기록하지 않아요 — 발표는 계속됩니다';
-  // 새로고침하면 기준(탭 메모리)이 사라집니다. 그 전 기록은 남고, 이후는 측정 못 함으로 셉니다
-  if (state.missingCalibration)
-    return '시선 기준이 없어 이후 시선은 기록하지 않아요 — 발표는 계속됩니다';
-  if (state.error) return `시선 측정 제외 · ${state.error}`;
-  if (state.ready) return '시선 기록 중';
-  return '시선 엔진 준비 중';
 }
 
 function endButtonText(ending: boolean, confirming: boolean): string {

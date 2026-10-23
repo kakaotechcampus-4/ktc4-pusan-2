@@ -596,13 +596,3 @@
   color: var(--color-gaze-screen);
 }
 
-.stage-foot .stt-text {
-  flex: 1;
-  min-width: 0;
-  max-width: 48ch;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--color-ink-stage);
-  opacity: 0.75;
-}
