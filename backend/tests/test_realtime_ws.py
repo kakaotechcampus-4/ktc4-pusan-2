@@ -1794,7 +1794,9 @@ async def test_db_store_marks_the_take_ended(db_session: Session, take: Take):
 
 
 def put_end(client: TestClient, take: Take, token: str) -> int:
-    """FE 종료 흐름의 Take PUT. 마이크를 못 열었거나 재연결을 포기한 FE 는 stop 없이 이것만 보낸다."""
+    """
+    FE 종료 흐름의 Take PUT. 마이크를 못 열었거나 재연결을 포기한 FE 는 stop 없이 이것만 보낸다.
+    """
     response = client.put(
         f"/api/pitches/{take.pitch_id}/takes/{take.id}",
         json={"ended_at": "2026-10-22T10:05:00Z"},
@@ -1806,7 +1808,9 @@ def put_end(client: TestClient, take: Take, token: str) -> int:
 def test_put_end_while_connected_leaves_it_to_stop(
     client: TestClient, db_session: Session, take: Take, token: str, store: FakeTranscriptStore
 ):
-    """연결이 붙어 있으면 그 연결의 stop 이 마지막 전사를 저장한 뒤 끝낸다. PUT 이 먼저 적지 않는다."""
+    """
+    연결이 붙어 있으면 그 연결의 stop 이 마지막 전사를 저장한 뒤 끝낸다. PUT 이 먼저 적지 않는다.
+    """
     use(FakeSttAdapter())
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
@@ -1823,7 +1827,9 @@ def test_put_end_while_connected_leaves_it_to_stop(
 def test_put_end_after_the_connection_dropped_drains_then_ends(
     client: TestClient, db_session: Session, take: Take, token: str, store: FakeTranscriptStore
 ):
-    """끊긴 뒤 30초 안에 PUT 으로 끝내면 stop 처럼 남은 전사를 받아 두고 스트림을 정리한 뒤 끝낸다."""
+    """
+    끊긴 뒤 30초 안에 PUT 으로 끝내면 stop 처럼 남은 전사를 받아 두고 스트림을 정리한 뒤 끝낸다.
+    """
     adapter = use(FakeSttAdapter(Plan(replies=[transcript(0, 100, "마지막", is_final=True)])))
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
