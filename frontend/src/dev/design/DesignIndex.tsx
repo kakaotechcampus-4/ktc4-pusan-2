@@ -9,9 +9,6 @@ import { StageDraft } from './stage/StageDraft';
 import { LoadingDraft } from './loading/LoadingDraft';
 import { PrepareMissionDraft } from './prepare/PrepareMissionDraft';
 import { RetryDraft } from './retry/RetryDraft';
-import { ComparisonDraft } from './comparison/ComparisonDraft';
-import { BestTakeDraft } from './best/BestTakeDraft';
-import { TakesDraft } from './takes/TakesDraft';
 
 /**
  * 디자인 시안 목록 — `/dev/design`, 각 시안은 `/dev/design/:name`.
@@ -34,10 +31,7 @@ const DRAFTS: { name: string; id: string; title: string; element: ReactElement }
     element: <LoadingDraft />,
   },
   { name: 'report', id: 'P6', title: 'Take 리포트', element: <ReportDraft /> },
-  { name: 'comparison', id: 'P7', title: 'Take 비교', element: <ComparisonDraft /> },
-  { name: 'best', id: 'P8', title: 'Best Take 선택', element: <BestTakeDraft /> },
   { name: 'retry', id: 'P15', title: '업로드 실패 · 재시도', element: <RetryDraft /> },
-  { name: 'takes', id: 'P16', title: 'Take 기록', element: <TakesDraft /> },
 ];
 
 /**
@@ -52,6 +46,14 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
   { path: '/pitch/p1/device-check', id: '09', title: '시작 전 세팅 (장치 점검)' },
   { path: '/takes/t3/rehearsal', id: '07', title: '리허설 · 실시간 코칭' },
   { path: '/takes/t3/exam', id: '07', title: '리허설 · 실전 모드' },
+  { path: '/takes', id: 'P16', title: 'Take 기록' },
+  { path: '/pitch/p1/comparison', id: 'P7', title: 'Take 비교' },
+  { path: '/pitch/p1/best', id: 'P8', title: 'Best Take 선택' },
+  {
+    path: '/pitch/p2/comparison',
+    id: 'P7',
+    title: 'Take 비교 · 완료 Take 없음',
+  },
   { path: '/about', id: 'P14', title: '분석 방식 설명' },
   {
     path: '/unsupported',
