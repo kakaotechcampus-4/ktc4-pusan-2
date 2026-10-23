@@ -34,7 +34,9 @@ final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). �
 다시 붙고, 새 스트림이 번호를 이어 받는다. 그렇게 정리된 뒤 `ABANDON_AFTER_SEC` 동안 아무도
 다시 붙지 않으면 사용자가 떠난 것으로 보고 Take 를 `FAILED`(`ABANDONED`)로 끝낸다(`arm_abandon`).
 최대 시간까지 남은 발표가 그보다 길면 그만큼 기다린다 — 재연결을 포기한 FE 는 STT 없이 발표를
-이어 간다. 이 타이머는 메모리에만 있어 앱이 다시 뜨면 DB 를 보고 다시 건다(`arm_abandoned_takes`).
+이어 간다. 창을 닫아(닫힘 코드 1001) 끊겼으면 `CLOSED_TAB_WAIT_SEC` 만 기다리고 이유를 `CLOSED` 로
+적는다 — 창을 닫은 Take 는 이어 가지 않는다. 그 안에 다시 붙는 것은 새로고침이다.
+이 타이머는 메모리에만 있어 앱이 다시 뜨면 DB 를 보고 다시 건다(`arm_abandoned_takes`).
 
 자동 종료(`auto_end.py`): 말 없음이나 최대 시간에 걸리면 사용자가 stop 을 보낸 것과 같은 순서로
 정리한다 — `auto_end` 를 알리고, 남은 오디오를 흘리고, `stt_status` closed 를 보내고 1000 으로
@@ -55,6 +57,7 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Coroutine, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from typing import Literal
 
 import anyio
 from fastapi import WebSocket
@@ -122,13 +125,21 @@ MAX_UNSAVED_FINALS = 200
 MARK_AUTO_END_TIMEOUT_SEC = 5.0
 # 연결 없이 스트림이 정리된 뒤 이만큼 아무도 다시 붙지 않으면 사용자가 떠난 것으로 보고 Take 를
 # 끝낸다. FE 가 끊긴 뒤 다시 붙어 보는 시간(sttSocket `GIVE_UP_AFTER_MS`)과 같다 — 그 안이면 탭이
-# 살아 있는 FE 도, 탭을 닫았다가 리허설 주소를 다시 연 사용자도 이어 갈 수 있다.
+# 살아 있는 FE 가 이어 갈 수 있다.
 # 최대 시간까지 남은 발표가 더 길면 그만큼 기다린다 (`TakeStream._talk_left_sec`)
 ABANDON_AFTER_SEC = 30 * 60.0
+# 창을 닫아(닫힘 코드 1001) 끊긴 스트림이 정리된 뒤 기다리는 시간. 새로고침도 1001 로 끊기므로
+# 다시 붙을 틈을 둔다 — 카메라 · 시선 모델을 다시 띄우느라 grace(30초)를 넘길 수 있다
+CLOSED_TAB_WAIT_SEC = 2 * 60.0
 # 앱이 뜰 때 진행 중인 Take 를 읽는 상한. 이걸 기다리는 동안 앱이 요청을 받지 못한다
 ARM_ABANDONED_TIMEOUT_SEC = 10.0
 # 끝낸 Take · Take 별 자동 종료 상태를 프로세스 안에서 기억하는 개수. 오래된 것부터 버린다
 MAX_REMEMBERED_TAKES = 10_000
+
+# 떠난 것으로 끝낸 Take 의 `end_reason`. 창을 닫았으면 CLOSED, 그 밖은 ABANDONED 다 —
+# ABANDONED 는 FE 가 STT 없이 발표를 이어 가는 중일 수 있어 끝내기 PUT 이 오면 되살린다
+# (take repository `mark_ended`)
+type LeftReason = Literal["ABANDONED", "CLOSED"]
 
 # _run_session 이 끝난 이유
 _STOPPED = "stopped"  # CloseStream 을 보냈다. Take 가 끝났다
@@ -230,6 +241,8 @@ class TakeStream:
         self._discarded = False
         self._closer: asyncio.Task[None] | None = None
         self._ever_connected = False
+        # 마지막 연결이 창을 닫아(닫힘 코드 1001) 끊겼다. 다시 붙으면 지운다
+        self._tab_closed = False
         self._stopping = False
         # BE 가 자동으로 끝냈으면 그 이유. 사용자가 그 뒤에 보낸 stop 도 같은 이유로 적는다
         self.auto_end_reason: AutoEndReason | None = None
@@ -291,6 +304,7 @@ class TakeStream:
 
         previous = self._client
         self._client = ws
+        self._tab_closed = False
         self.sequencer.new_connection()
         if previous is not None and previous is not ws:
             await _quiet(
@@ -333,11 +347,16 @@ class TakeStream:
         """지금 붙어 있는 연결인가. 다른 탭이 이어받아 쫓겨난 연결이면 False."""
         return self._client is ws
 
-    def detach(self, ws: WebSocket) -> None:
-        """연결이 끊겼다. 이미 다른 연결이 붙었으면 아무것도 하지 않는다."""
+    def detach(self, ws: WebSocket, *, tab_closed: bool = False) -> None:
+        """연결이 끊겼다. 이미 다른 연결이 붙었으면 아무것도 하지 않는다.
+
+        `tab_closed` 는 브라우저가 창을 닫거나 새로고침해 끊은 것이다 (닫힘 코드 1001). 아무도 다시
+        붙지 않으면 짧게 기다렸다 끝낸다 (`_finish`).
+        """
         if self._client is not ws:
             return
         self._client = None
+        self._tab_closed = tab_closed
         if self._stopping:
             return
         if self.sequencer.frames == 0:
@@ -450,6 +469,17 @@ class TakeStream:
         스트림 태스크 안(`_persist`)에서도 부른다. 연결을 닫는 일을 따로 태스크로 돌리는 이유다 —
         여기서 기다리면 `cancel()` 이 그 자리를 끊어 알림이 안 나간다.
         """
+        self._cut(WsErrorCode.TAKE_NOT_FOUND, "연습을 찾을 수 없습니다.")
+
+    def drop_closed_tab(self) -> None:
+        """창을 다시 연 FE 가 이 Take 를 실패로 끝냈다. 남은 전사를 기다리지 않고 끊는다.
+
+        분석하지 않는 Take 라 전사를 받을 이유가 없다. 붙어 있는 연결(브라우저는 이미 닫았는데
+        서버가 아직 모르는 연결)에는 다시 붙을 때 받을 것과 같은 `TAKE_ENDED` 를 보낸다.
+        """
+        self._cut(WsErrorCode.TAKE_ENDED, "이미 끝난 연습입니다.")
+
+    def _cut(self, code: WsErrorCode, message: str) -> None:
         if self._discarded:
             return
         self._discarded = True
@@ -459,18 +489,13 @@ class TakeStream:
         self.cancel()
         if client is not None:
             self._closer = asyncio.create_task(
-                self._close_deleted_client(client), name=f"take-stream-discard:{self.take_id}"
+                self._close_cut_client(client, code, message),
+                name=f"take-stream-cut:{self.take_id}",
             )
 
-    async def _close_deleted_client(self, client: WebSocket) -> None:
-        await _quiet(
-            client.send_text(
-                ErrorMessage(
-                    code=WsErrorCode.TAKE_NOT_FOUND, message="연습을 찾을 수 없습니다."
-                ).model_dump_json()
-            )
-        )
-        await _quiet(client.close(code=1008, reason=WsErrorCode.TAKE_NOT_FOUND))
+    async def _close_cut_client(self, client: WebSocket, code: WsErrorCode, message: str) -> None:
+        await _quiet(client.send_text(ErrorMessage(code=code, message=message).model_dump_json()))
+        await _quiet(client.close(code=1008, reason=code))
 
     def _finish(self) -> None:
         if self._closed.is_set():
@@ -510,16 +535,27 @@ class TakeStream:
         self.state = "closed"
         self._closed.set()
         forget(self)
-        if not self._discarded and self.take_id not in _ended:
-            # Take 는 끝나지 않고 스트림만 닫혔다 (grace 만료 등). 아무도 다시 붙지 않으면 끝낸다.
-            # 재연결을 포기한 FE 는 STT 없이 발표를 이어 가므로 최대 시간까지는 기다린다 — 먼저
-            # 끝내면 발표 중인 Take 가 FAILED 로 보인다
+        if self._discarded or self.take_id in _ended:
+            return
+        # Take 는 끝나지 않고 스트림만 닫혔다 (grace 만료 등). 아무도 다시 붙지 않으면 끝낸다
+        if self._tab_closed:
+            # 창을 닫았다. 새로고침이면 그 안에 다시 붙는다
             arm_abandon(
                 self.take_id,
                 self._store,
                 closed_at=datetime.now(UTC),
-                delay_sec=max(ABANDON_AFTER_SEC, self._talk_left_sec()),
+                delay_sec=CLOSED_TAB_WAIT_SEC,
+                end_reason="CLOSED",
             )
+            return
+        # 재연결을 포기한 FE 는 STT 없이 발표를 이어 가므로 최대 시간까지는 기다린다 — 먼저
+        # 끝내면 발표 중인 Take 가 FAILED 로 보인다
+        arm_abandon(
+            self.take_id,
+            self._store,
+            closed_at=datetime.now(UTC),
+            delay_sec=max(ABANDON_AFTER_SEC, self._talk_left_sec()),
+        )
 
     # ── 오디오 투입 ───────────────────────────────────────────────────
 
@@ -1267,11 +1303,12 @@ def arm_abandon(
     *,
     closed_at: datetime,
     delay_sec: float | None = None,
+    end_reason: LeftReason = "ABANDONED",
 ) -> None:
     """`delay_sec`(기본 `ABANDON_AFTER_SEC`) 뒤에 Take 를 떠난 것으로 끝낸다. 걸려 있으면 다시 건다.
 
     `closed_at` 은 마지막으로 연결이 끊긴 시각이다. Take 의 끝난 시각으로 적는다 — 기다린 시간까지
-    연습한 시간에 넣지 않는다.
+    연습한 시간에 넣지 않는다. `end_reason` 은 창을 닫았으면 `CLOSED`, 그 밖은 `ABANDONED` 다.
     """
     _cancel_abandon(take_id)
     try:
@@ -1281,7 +1318,7 @@ def arm_abandon(
         return
     delay = ABANDON_AFTER_SEC if delay_sec is None else delay_sec
     _abandon_timers[take_id] = loop.call_later(
-        max(0.0, delay), _on_abandon, take_id, store, closed_at
+        max(0.0, delay), _on_abandon, take_id, store, closed_at, end_reason
     )
 
 
@@ -1291,13 +1328,17 @@ def _cancel_abandon(take_id: uuid.UUID) -> None:
         timer.cancel()
 
 
-def _on_abandon(take_id: uuid.UUID, store: TranscriptStore, closed_at: datetime) -> None:
+def _on_abandon(
+    take_id: uuid.UUID, store: TranscriptStore, closed_at: datetime, end_reason: LeftReason
+) -> None:
     _abandon_timers.pop(take_id, None)
     # DB 를 기다려야 해서 태스크로 돈다. 타이머 콜백은 await 할 수 없다
-    _spawn(_end_abandoned(take_id, store, closed_at), name=f"take-abandon:{take_id}")
+    _spawn(_end_abandoned(take_id, store, closed_at, end_reason), name=f"take-abandon:{take_id}")
 
 
-async def _end_abandoned(take_id: uuid.UUID, store: TranscriptStore, closed_at: datetime) -> None:
+async def _end_abandoned(
+    take_id: uuid.UUID, store: TranscriptStore, closed_at: datetime, end_reason: LeftReason
+) -> None:
     # attach() 와 같은 락이다. 지금 다시 붙는 연결이 있으면 그쪽이 먼저 스트림을 열고, 끝내는 동안
     # 붙으려는 연결은 기다렸다가 TakeEnded 를 받는다
     async with _attach_lock(take_id):
@@ -1307,7 +1348,7 @@ async def _end_abandoned(take_id: uuid.UUID, store: TranscriptStore, closed_at: 
             return
         try:
             marked = await asyncio.wait_for(
-                store.mark_abandoned(take_id, closed_at), MARK_AUTO_END_TIMEOUT_SEC
+                store.mark_abandoned(take_id, closed_at, end_reason), MARK_AUTO_END_TIMEOUT_SEC
             )
         except Exception:
             # 못 적으면 다음에 앱이 뜰 때 DB 를 보고 다시 건다
@@ -1318,7 +1359,12 @@ async def _end_abandoned(take_id: uuid.UUID, store: TranscriptStore, closed_at: 
             logger.info("떠난 Take 를 적지 않았다 (Take 가 없거나 이미 끝남) take=%s", take_id)
             return
         _ended[take_id] = None
-        logger.info("떠난 Take 를 끝냈다 take=%s closed_at=%s", take_id, closed_at.isoformat())
+        logger.info(
+            "떠난 Take 를 끝냈다 take=%s reason=%s closed_at=%s",
+            take_id,
+            end_reason,
+            closed_at.isoformat(),
+        )
 
 
 async def arm_abandoned_takes(store: TranscriptStore) -> None:
@@ -1341,6 +1387,24 @@ async def arm_abandoned_takes(store: TranscriptStore) -> None:
         arm_abandon(take_id, store, closed_at=last_active_at, delay_sec=wait_sec - idle_sec)
     if takes:
         logger.info("진행 중으로 남은 Take %d개에 떠난 Take 타이머를 걸었다", len(takes))
+
+
+async def end_closed_tab(take_id: uuid.UUID) -> None:
+    """창을 다시 연 FE 가 Take 를 실패(`CLOSED`)로 끝냈다. DB 에 적은 뒤 부른다.
+
+    떠난 것으로 끝낼 타이머를 끄고, 같은 Take 로 다시 붙지 못하게 하고, 남은 스트림을 끊는다.
+    브라우저가 닫힘 프레임 없이 사라졌으면 서버는 아직 그 연결이 붙어 있다고 믿는다 — 그 연결도
+    끊는다.
+    """
+    # attach() 와 같은 락이다. 끊는 동안 붙으려는 연결은 기다렸다가 TakeEnded 를 받는다
+    async with _attach_lock(take_id):
+        # 끝낸 것으로 먼저 적는다. 그래야 지금 닫히는 스트림이 타이머를 다시 걸지 않는다
+        if take_id not in _ended:
+            _ended[take_id] = None
+        _cancel_abandon(take_id)
+        stream = _streams.get(take_id)
+    if stream is not None:
+        stream.drop_closed_tab()
 
 
 async def discard(take_ids: Iterable[uuid.UUID]) -> None:

@@ -50,6 +50,8 @@ logger = logging.getLogger(__name__)
 
 # RFC 6455 close code
 CLOSE_NORMAL = 1000
+# 브라우저가 창을 닫거나 새로고침하며 끊었다. 네트워크가 끊기면 닫힘 프레임이 없어 1006 이 된다
+CLOSE_GOING_AWAY = 1001
 CLOSE_POLICY_VIOLATION = 1008  # 인증·권한·프로토콜 위반
 
 AUTH_TIMEOUT_SEC = 5.0
@@ -112,6 +114,8 @@ class RealtimeSession:
         # Take 대본의 STT 용어 (우선순위 순, 자르기 전). 인가 때 같은 DB 왕복에서 읽는다
         self.script_terms: list[str] = []
         self.invalid_frames = 0
+        # FE 가 끊을 때 보낸 닫힘 코드. 창을 닫았는지(1001) 보고 스트림이 얼마나 기다릴지 정한다
+        self.close_code: int | None = None
 
     # ── 수명 ──────────────────────────────────────────────────────────
 
@@ -167,7 +171,7 @@ class RealtimeSession:
             # 이 연결마다 "Exception in ASGI application" 트레이스를 남긴다
             logger.info("ready/재전송 중 클라이언트가 끊겼다 take=%s", self.take_id)
         finally:
-            stream.detach(self.ws)
+            stream.detach(self.ws, tab_closed=self.close_code == CLOSE_GOING_AWAY)
 
     async def _authenticate(self) -> uuid.UUID | None:
         """첫 메시지가 5초 안에 auth 여야 한다. 아니면 1008 로 닫는다. DB 는 안 본다.
@@ -295,9 +299,11 @@ class RealtimeSession:
         while True:
             try:
                 message = await self.ws.receive()
-            except WebSocketDisconnect:
+            except WebSocketDisconnect as e:
+                self.close_code = e.code
                 return
             if message["type"] == "websocket.disconnect":
+                self.close_code = message.get("code")
                 return
 
             data = message.get("bytes")

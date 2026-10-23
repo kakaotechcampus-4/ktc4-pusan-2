@@ -370,6 +370,98 @@ def test_put_end_revives_a_take_ended_as_abandoned(
     )
 
 
+def test_put_end_does_not_revive_a_take_closed_with_its_tab(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """창을 닫아 끝낸 Take(CLOSED)는 이어 가지 않는다. 닫은 탭을 복원해 끝내기를 눌러도 409 다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = "FAILED"
+    take.end_reason = "CLOSED"
+    db_session.flush()
+
+    response = _put(client, take, auth_headers, {"ended_at": "2026-10-07T10:50:00+09:00"})
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TAKE_ENDED"
+
+
+# ── POST /takes/{take_id}/abandon ───────────────────────────────────
+
+
+def _abandon(client: TestClient, take: Take, headers: dict[str, str]):
+    return client.post(f"/api/pitches/{take.pitch_id}/takes/{take.id}/abandon", headers=headers)
+
+
+@pytest.mark.parametrize("status", ["READY", "RUNNING"])
+def test_abandon_fails_a_take_whose_tab_was_closed(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    status: str,
+) -> None:
+    """창을 닫았다 다시 연 FE 가 부른다. 이어 가지 않고 바로 실패(CLOSED)로 끝낸다. 끝난 시각은
+    마지막 활동 시각이다 (여기서는 만든 시각). 다시 불러도 같다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = status
+    db_session.flush()
+
+    first = _abandon(client, take, auth_headers)
+    again = _abandon(client, take, auth_headers)
+
+    assert first.status_code == 200
+    assert first.json()["status"] == again.json()["status"] == "FAILED"
+    db_session.refresh(take)
+    assert (take.status, take.end_reason, take.ended_at) == ("FAILED", "CLOSED", take.created_at)
+
+
+def test_abandon_leaves_a_take_that_already_ended(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """끝내기가 이미 닿았으면 그대로 두고 지금 상태를 돌려준다. FE 는 처리 중 화면으로 간다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = "ANALYZING"
+    db_session.flush()
+
+    response = _abandon(client, take, auth_headers)
+
+    assert response.json()["status"] == "ANALYZING"
+    db_session.refresh(take)
+    assert (take.status, take.end_reason) == ("ANALYZING", None)
+
+
+def test_abandon_on_someone_elses_take_is_404(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    from pitch_coach_backend.module.user.entity import User
+
+    take = _make_take(db_session, pitch_id, versions, 1)
+    stranger = User(email=f"{uuid.uuid4()}@example.com", name="다른 사용자")
+    db_session.add(stranger)
+    db_session.flush()
+
+    response = _abandon(
+        client, take, {"Authorization": f"Bearer {create_access_token(stranger.id)}"}
+    )
+
+    assert response.status_code == 404
+    db_session.refresh(take)
+    assert take.status == "READY"
+
+
 # ── DELETE /takes/{take_id} ─────────────────────────────────────────
 
 
