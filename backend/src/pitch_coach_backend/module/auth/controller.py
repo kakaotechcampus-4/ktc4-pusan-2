@@ -101,7 +101,8 @@ def _set_session_cookies(response: Response, issued: service.IssuedSession) -> s
     return csrf_token
 
 
-def _clear_session_cookies(response: Response) -> None:
+def clear_session_cookies(response: Response) -> None:
+    """로그아웃과 회원 탈퇴(/users/me)가 쓴다."""
     # 심을 때와 같은 path 로 지워야 실제로 지워진다.
     response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
     response.delete_cookie(CSRF_COOKIE_NAME, path=CSRF_COOKIE_PATH)
@@ -272,5 +273,5 @@ def logout(
 ) -> LogoutResponse:
     """이미 발급된 Access 는 최대 15분 살아 있다. 즉시 무효화는 이번 범위가 아니다."""
     service.logout(db, refresh_token)
-    _clear_session_cookies(response)
+    clear_session_cookies(response)
     return LogoutResponse()
