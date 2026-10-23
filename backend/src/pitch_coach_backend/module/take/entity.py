@@ -54,15 +54,14 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             "'FINALIZING', 'SCORING', 'AWAITING_CONFIRMATION', 'REVIEWING', 'DONE')",
             name="check_take_analysis_stage",
         ),
-    )
-
-    check_constraint = (
-        CheckConstraint("status IN ('READY', 'RUNNING', 'ANALYZING', 'COMPLETED', 'FAILED')", 
-                        name="check_take_status"),
-        CheckConstraint("mode IN ('COACHING', 'EXAM')", 
-                        name="check_take_mode"),
-        CheckConstraint("script_mode IN ('HIGHLIGHT', 'KEYWORD', 'OFF')", 
-                        name="check_take_script_mode"),
+        CheckConstraint(
+            "status IN ('READY', 'RUNNING', 'ANALYZING', 'COMPLETED', 'FAILED')",
+            name="check_take_status",
+        ),
+        CheckConstraint("mode IN ('COACHING', 'EXAM')", name="check_take_mode"),
+        CheckConstraint(
+            "script_mode IN ('HIGHLIGHT', 'KEYWORD', 'OFF')", name="check_take_script_mode"
+        ),
         # SILENCE · TIME_LIMIT 은 realtime AutoEndReason 과 같은 값이다. ABANDONED 는 떠난 Take
         CheckConstraint(
             "end_reason IN ('SILENCE', 'TIME_LIMIT', 'ABANDONED')", name="check_take_end_reason"

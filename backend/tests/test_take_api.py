@@ -81,9 +81,34 @@ def test_previous_missions_come_from_latest_take(
 ) -> None:
     old = _make_take(db_session, pitch_id, versions, 1)
     latest = _make_take(db_session, pitch_id, versions, 2)
-    db_session.add(Mission(source_take_id=old.id, slide_number=1, description="옛것", priority=1))
-    second = Mission(source_take_id=latest.id, slide_number=3, description="시선", priority=2)
-    first = Mission(source_take_id=latest.id, slide_number=5, description="속도", priority=1)
+    old.review_status = "DONE"
+    latest.review_status = "DONE"
+    db_session.add(
+        Mission(
+            source_take_id=old.id,
+            area="FILLER",
+            slide_number=1,
+            target={"metric": "filler_per_min", "operator": "LTE", "value": 2},
+            description="옛것",
+            priority=1,
+        )
+    )
+    second = Mission(
+        source_take_id=latest.id,
+        area="GAZE",
+        slide_number=3,
+        target={"metric": "script_ratio", "operator": "LTE", "value": 0.4},
+        description="시선",
+        priority=2,
+    )
+    first = Mission(
+        source_take_id=latest.id,
+        area="SPEED",
+        slide_number=5,
+        target={"metric": "cpm", "operator": "LTE", "value": 350},
+        description="속도",
+        priority=1,
+    )
     db_session.add_all([second, first])
     db_session.flush()
 
