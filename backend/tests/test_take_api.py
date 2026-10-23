@@ -334,6 +334,42 @@ def test_put_end_finishes_a_take_that_never_sent_stop(
     assert (take.status, take.ended_at) == ("ANALYZING", datetime.fromisoformat(ended))
 
 
+def test_put_end_revives_a_take_ended_as_abandoned(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """재연결을 포기한 FE 는 STT 없이 발표를 이어 간다. 그 사이 BE 가 떠난 것으로 끝냈어도
+    끝내기 PUT 의 기록을 받아 분석으로 넘긴다. 끝낸 시각은 FE 값으로 덮는다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = "FAILED"
+    take.end_reason = "ABANDONED"
+    take.ended_at = datetime(2026, 10, 7, 1, 1, tzinfo=UTC)
+    db_session.flush()
+    ended = "2026-10-07T10:50:00+09:00"
+    logs = [{"type": "slide", "at_ms": 0}]
+
+    early = _put(client, take, auth_headers, {"event_logs": logs})
+    response = _put(
+        client,
+        take,
+        auth_headers,
+        {"started_at": "2026-10-07T10:00:00+09:00", "ended_at": ended, "event_logs": logs},
+    )
+
+    assert early.status_code == 409, "끝내기(ended_at)가 아니면 받지 않는다"
+    assert response.is_success
+    db_session.refresh(take)
+    assert (take.status, take.end_reason, take.ended_at, take.event_logs) == (
+        "ANALYZING",
+        None,
+        datetime.fromisoformat(ended),
+        logs,
+    )
+
+
 # ── DELETE /takes/{take_id} ─────────────────────────────────────────
 
 
