@@ -4,6 +4,7 @@
 필드 이름은 REST DTO 와 같은 snake_case.
 """
 
+import json
 import uuid
 from enum import StrEnum
 from typing import Annotated, Any, Literal, get_args
@@ -15,6 +16,12 @@ from pitch_coach_backend.core.validation import reject_unstorable_json
 # metrics 의 Take 시각 상한. 코치 AI 가 받는 `t_ms` 상한과 같다 (Take 최대 1시간 + 60초 여유,
 # `docs/ai/architecture.md` 1-4)
 MAX_METRICS_T_MS = 3_660_000
+# `take_metric_seconds.slide_number` 는 PostgreSQL integer(int4). 넘으면 저장에서 터지고, 실패한
+# 행이 버퍼에 남아 같은 묶음의 정상 행까지 계속 못 넣는다
+MAX_SLIDE_NUMBER = 2_147_483_647
+# 시선 · 음량 1초 기록 하나의 JSON 크기 상한(바이트). 실제 기록은 200바이트 안팎이다. Take 하나가
+# 저장 못 한 기록을 600초까지 메모리에 들고 있으므로 크기를 묶는다
+MAX_SECOND_RECORD_BYTES = 4_096
 
 # ── FE -> BE ──────────────────────────────────────────────────────────
 
@@ -38,6 +45,8 @@ def _second_record(value: dict[str, Any]) -> dict[str, Any]:
         v = value.get(key)
         if isinstance(v, bool) or not isinstance(v, int | float) or v < 0:
             raise ValueError(f"{key} 는 0 이상의 숫자여야 합니다.")
+    if len(json.dumps(value, ensure_ascii=False).encode()) > MAX_SECOND_RECORD_BYTES:
+        raise ValueError(f"1초 기록은 {MAX_SECOND_RECORD_BYTES}바이트 이하여야 합니다.")
     # 원자료로 JSONB 에 그대로 들어간다
     return reject_unstorable_json(value)
 
@@ -57,7 +66,7 @@ class MetricsMessage(BaseModel):
     t_ms: int = Field(ge=0, le=MAX_METRICS_T_MS)
     gaze: SecondRecord | None
     voice: SecondRecord | None
-    slide_number: Annotated[int, Field(ge=1)] | None
+    slide_number: Annotated[int, Field(ge=1, le=MAX_SLIDE_NUMBER)] | None
 
 
 ClientMessage = Annotated[AuthMessage | StopMessage | MetricsMessage, Field(discriminator="type")]

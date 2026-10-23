@@ -323,6 +323,8 @@ def use_store(fake: FakeTranscriptStore) -> FakeTranscriptStore:
 def _fast_retry(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(take_stream, "BACKOFF_SEC", (0.01,))
     monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 2.0)
+    # 자동 종료 뒤 stop 을 보내지 않는 테스트가 기다리지 않게
+    monkeypatch.setattr(take_stream, "FINAL_METRICS_WAIT_SEC", 0.05)
 
 
 @pytest.fixture
@@ -3801,10 +3803,12 @@ def test_metrics_are_saved_every_few_seconds_with_the_stt_state(
     client: TestClient, stt: FakeSttAdapter, token: str, store: FakeTranscriptStore
 ):
     """1초에 하나씩 오는 측정값은 METRICS_BATCH 개가 모일 때마다 한 번에 저장한다. 시선 · 음량
-    기록은 받은 그대로 두고, 받았을 때의 STT 상태를 같이 남긴다."""
+    기록은 받은 그대로 두고, 그 1초의 STT 상태를 같이 남긴다."""
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
+        for i in range(METRICS_BATCH):
+            ws.send_bytes(frame(i + 1, i * 1000, duration_ms=1000))
         send_metrics(ws, *range(1000, METRICS_BATCH * 1000, 1000))
         time.sleep(0.1)
         assert store.metrics == {}
@@ -3866,6 +3870,34 @@ def test_metrics_resent_after_a_reconnect_keep_the_first_save(
     assert store.metrics[3000].slide_number == 2
 
 
+def test_metrics_without_audio_heard_are_not_stored_as_stt_ok(
+    client: TestClient, stt: FakeSttAdapter, token: str, store: FakeTranscriptStore
+):
+    """STT 가 ok 여도 그 1초의 오디오가 끊김 없이 들어오지 않았으면 ok 로 적지 않는다. FE 는 끊긴
+    동안 쌓아 둔 1초를 다시 붙은 뒤 보내는데, 받았을 때의 상태로 적으면 복구가 STT 가 듣지 못한
+    구간을 '말이 없었다' 로 센다."""
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0, duration_ms=1000))
+        ws.send_bytes(frame(2, 1000, duration_ms=1000))
+        send_metrics(ws, 1000, 2000)
+        # 오디오가 멈춘 뒤의 1초
+        send_metrics(ws, 4000)
+        # 무음으로 메우지 못할 만큼 끊긴 뒤 오디오가 다시 온다. 끊긴 동안의 1초는 그 뒤에 온다
+        ws.send_bytes(frame(3, 20_000, duration_ms=1000))
+        send_metrics(ws, 15_000, 21_000)
+        stop(ws)
+
+    assert {t: m.stt_status for t, m in store.metrics.items()} == {
+        1000: "ok",
+        2000: "ok",
+        4000: "degraded",
+        15_000: "degraded",
+        21_000: "ok",
+    }
+
+
 def test_failed_metrics_save_is_retried_before_ending(
     client: TestClient, stt: FakeSttAdapter, token: str
 ):
@@ -3907,17 +3939,55 @@ def test_auto_end_saves_the_metrics_before_ending(
     assert store.auto_ended == [(TAKE_ID, "SILENCE")]
 
 
+def test_auto_end_waits_for_the_last_metrics_sent_after_the_drain(
+    client: TestClient, token: str, store: FakeTranscriptStore, monkeypatch: pytest.MonkeyPatch
+):
+    """FE 는 auto_end 를 받고 마지막 1초 조각과 stop 을 보낸다. Deepgram 정리가 먼저 끝났어도 그
+    조각을 받아 저장한 뒤에 끝난 것으로 적는다."""
+    use_policy(monkeypatch, SHORT_SILENCE)
+    monkeypatch.setattr(take_stream, "FINAL_METRICS_WAIT_SEC", 2.0)
+    use(
+        FakeSttAdapter(
+            Plan(replies=[empty_final(0, 100), empty_final(100, 200), empty_final(200, 300)])
+        )
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        for i in range(3):
+            ws.send_bytes(frame(i + 1, i * 100))
+        receive_auto_end(ws)
+        wait_until(lambda: TAKE_ID not in take_stream._streams)
+        ws.send_text(json.dumps(metrics(300, duration_ms=300)))
+        stop(ws)
+
+    assert sorted(store.metrics) == [300]
+    assert store.calls.index("append_metrics") < store.calls.index("mark_ended")
+    assert store.auto_ended == [(TAKE_ID, "SILENCE")]
+
+
 @pytest.mark.parametrize(
     "message",
     [
         {**metrics(1000), "t_ms": -1},
         {**metrics(1000), "t_ms": 3_660_001},
         {**metrics(1000), "slide_number": 0},
+        {**metrics(1000), "slide_number": 2**31},
+        {**metrics(1000), "gaze": {"t_ms": 0, "duration_ms": 1000, "pad": "x" * 5000}},
         {**metrics(1000), "gaze": {"duration_ms": 1000}},
         {**metrics(1000), "voice": {"t_ms": 0, "duration_ms": 1000, "level_db": float("nan")}},
         {"type": "metrics", "t_ms": 1000},
     ],
-    ids=["음수 시각", "1시간 넘음", "0번 장", "시작 시각 없음", "NaN", "칸 빠짐"],
+    ids=[
+        "음수 시각",
+        "1시간 넘음",
+        "0번 장",
+        "int4 넘는 장",
+        "너무 큰 기록",
+        "시작 시각 없음",
+        "NaN",
+        "칸 빠짐",
+    ],
 )
 def test_bad_metrics_is_an_error_not_a_close(
     client: TestClient, stt: FakeSttAdapter, token: str, store: FakeTranscriptStore, message: dict
@@ -3975,6 +4045,37 @@ async def test_metric_buffer_drops_the_oldest_when_saves_keep_failing(
     store.metric_errors.clear()
     assert await buffer.flush() is True
     assert sorted(store.metrics) == [2000, 3000, 4000]
+
+
+@pytest.mark.anyio
+async def test_metric_buffer_waits_before_retrying_a_failed_save(monkeypatch: pytest.MonkeyPatch):
+    """저장에 실패하면 행이 더 와도 바로 다시 넣지 않는다. 기다렸다가 한 번에 넣는다."""
+    monkeypatch.setattr("pitch_coach_backend.realtime.metric_buffer.RETRY_DELAYS_SEC", (0.1,))
+    store = FakeTranscriptStore(metric_errors=[RuntimeError("db down")] * 10)
+    buffer = MetricBuffer(TAKE_ID, store)
+    for t in range(1000, (METRICS_BATCH + 3) * 1000, 1000):
+        buffer.add(row(t))
+        await asyncio.sleep(0.01)
+
+    assert len(store.metric_errors) == 9
+    store.metric_errors.clear()
+    await _wait_for(lambda: len(store.metrics) == METRICS_BATCH + 2)
+
+
+@pytest.mark.anyio
+async def test_stop_all_waits_for_a_save_already_running(monkeypatch: pytest.MonkeyPatch):
+    """스트림이 닫히며 시작한 백그라운드 저장은 행을 꺼내 가 버퍼가 비어 보인다. 앱을 내릴 때
+    그 저장도 기다린다 — 안 기다리면 진행 중인 Take 의 마지막 몇 초가 사라진다."""
+    store = FakeTranscriptStore(append_delay=0.1)
+    record = take_stream._take_record(TAKE_ID, SHORT_SILENCE, store)
+    record.metrics.add(row(1000))
+    record.metrics.flush_soon()
+    await asyncio.sleep(0)
+    assert len(record.metrics) == 0
+
+    await take_stream.stop_all()
+
+    assert sorted(store.metrics) == [1000]
 
 
 @pytest.mark.anyio
