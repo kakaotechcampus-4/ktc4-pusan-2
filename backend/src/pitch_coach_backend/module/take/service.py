@@ -13,6 +13,7 @@ from pitch_coach_backend.module.pitch.exception import (
     NonExistentPresentationVersion,
     NonExistentScript,
     ScriptNotParsed,
+    SlideCountMismatch,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import (
@@ -47,7 +48,10 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
 
     # 버전 ID 가 이 pitch 의 것인지 확인한다. 없으면 다른 pitch 의 버전도 저장되고,
     # 아예 없는 ID 는 FK 위반(500)이 된다
-    if pitch_repository.get_presentation_detail(pitch_id, take_dto.presentation_version_id) is None:
+    presentation = pitch_repository.get_presentation_detail(
+        pitch_id, take_dto.presentation_version_id
+    )
+    if presentation is None:
         raise NonExistentPresentationVersion()
     script = pitch_repository.get_script_in_pitch(pitch_id, take_dto.script_version_id)
     if script is None:
@@ -55,6 +59,12 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     # 슬라이드가 없으면 리허설이 대본을 띄울 수 없고 코치 · 분석도 장별로 나눌 수 없다
     if script.parse_status != ScriptParseStatus.DONE:
         raise ScriptNotParsed()
+    # 장마다 슬라이드 한 쪽을 띄운다. 쪽수를 아직 모르는 옛 발표자료는 검사하지 않는다
+    if (
+        presentation.page_count is not None
+        and presentation.page_count != pitch_repository.count_slides(script.id)
+    ):
+        raise SlideCountMismatch()
 
     # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금).
     # 같은 세션으로 동시에 온 재시도도 여기서 줄을 서서 뒤의 요청이 앞의 Take 를 찾는다

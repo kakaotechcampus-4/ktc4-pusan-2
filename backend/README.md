@@ -237,10 +237,12 @@ POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_ver
 - `/prepare` 는 피치 생성을 거치지 않고 장치 점검에 들어왔을 때(홈 · 새로고침) Take 에 넣을 버전을 준다. 발표자료는
   가장 최근 것, 대본은 파싱이 끝난(`DONE`) 가장 최근 것이다. 없으면 `null`. 그보다 새 대본이 파싱 중이거나 실패했으면
   `newer_script` 로 알린다.
-- 발표자료와 대본은 따로 최신을 고른다. BE 는 PDF 쪽수를 몰라서 두 버전이 짝인지(대본 장 수 = 쪽수) 확인하지 못한다.
+- 발표자료는 대본 장 수와 쪽수가 같은 가장 최근 것을 고른다 (FE 매핑 확인과 같은 규칙). 맞는 것이 없으면 가장 최근
+  발표자료를 주고, 응답의 `page_count` · `slide_count` 가 달라 FE 가 시작을 막는다.
 - `next_take_number` 는 미리 보여 주는 값이다. 그사이 다른 Take 가 생기면 달라져서 실제 번호는 Take 생성 응답의
   `take_number` 를 본다.
-- Take 생성은 파싱이 끝난 대본만 받는다 (아니면 `409 SCRIPT_NOT_PARSED`). 목표 시간은 받지 않고 발표 제한 시간을 박는다.
+- Take 생성은 파싱이 끝난 대본만 받는다 (아니면 `409 SCRIPT_NOT_PARSED`). 발표자료 쪽수와 대본 장 수가 다르면
+  `409 SLIDE_COUNT_MISMATCH` 다 (쪽수를 모르는 옛 발표자료는 검사하지 않는다). 목표 시간은 받지 않고 발표 제한 시간을 박는다.
 - `client_session_id`(FE 의 연습 세션 id)가 같으면 새로 만들지 않고 처음 만든 Take 를 돌려준다. 응답을 잃고 다시
   보내도 Take 는 하나다.
 - 새 Take 를 만들면 같은 발표에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 끝낸다. FE 는 가장 최근 Take 로만
@@ -393,6 +395,11 @@ POST /api/pitches/{pitch_id}/scripts/{script_version_id}/parse  202  FAILED 일 
 POST /api/pitches/add/{pitch_id}/presentation                     발표자료(PDF)만. 대본은 받지 않는다
 ```
 
+- **발표자료는 BE 가 PDF 로 열어 본다** (`pitch/presentation_file.py`). 40MB 를 넘거나 열리지 않으면(PDF 가 아님 · 깨짐 ·
+  여는 암호) `400 INVALID_PRESENTATION` 이고 저장하지 않는다. 쓰기 제한만 걸린 PDF 는 받는다. 확장자 · MIME 은 보지 않고,
+  S3 에는 `{version}.pdf` · `application/pdf` 로 올린다. 연 김에 쪽수를 `presentation_versions.page_count` 에 두고
+  업로드 응답 · `/resources` · 발표자료 상세에 싣는다. 이 칸이 생기기 전에 올린 발표자료는
+  `uv run python dev/backfill-presentation-page-count.py` 로 채운다 (`--dry-run` 으로 먼저 본다).
 - **대본은 발표자료와 따로 올린다.** 대본만 여러 번 고치는 게 정상 흐름이라, 발표자료 업로드에 묶으면 PDF 를 매번 다시 올려야 한다.
   버전은 pitch 안에서 자동으로 1, 2, … 로 매기고, 발표자료 버전과는 따로 센다.
 - 대본은 JSON `{"content": "..."}` 로 받는다 (FE 는 textarea 내용 그대로). 비어 있거나 5만 자를 넘거나 NUL 문자가 있으면

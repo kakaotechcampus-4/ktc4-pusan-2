@@ -8,7 +8,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.entity import (
+    Pitch,
+    PresentationVersion,
+    ScriptSlide,
+    ScriptVersion,
+)
 from pitch_coach_backend.module.take.entity import Take
 
 
@@ -35,20 +40,32 @@ def pitch_id(db_session: Session, user_id: uuid.UUID) -> uuid.UUID:
     return pitch.id
 
 
-def _presentation(db: Session, pitch_id: uuid.UUID, version: int) -> PresentationVersion:
+def _presentation(
+    db: Session, pitch_id: uuid.UUID, version: int, page_count: int | None = None
+) -> PresentationVersion:
     row = PresentationVersion(
-        pitch_id=pitch_id, version=version, file_key=f"{pitch_id}/{version}.pdf"
+        pitch_id=pitch_id,
+        version=version,
+        file_key=f"{pitch_id}/{version}.pdf",
+        page_count=page_count,
     )
     db.add(row)
     db.flush()
     return row
 
 
-def _script(db: Session, pitch_id: uuid.UUID, version: int, parse_status: str) -> ScriptVersion:
+def _script(
+    db: Session, pitch_id: uuid.UUID, version: int, parse_status: str, slides: int = 0
+) -> ScriptVersion:
     row = ScriptVersion(
         pitch_id=pitch_id, version=version, content="대본", parse_status=parse_status
     )
     db.add(row)
+    db.flush()
+    db.add_all(
+        ScriptSlide(script_version_id=row.id, slide_number=n, full_content=f"{n}장")
+        for n in range(1, slides + 1)
+    )
     db.flush()
     return row
 
@@ -103,16 +120,55 @@ def test_picks_latest_presentation_and_latest_parsed_script(
     auth_headers: dict[str, str],
     pitch_id: uuid.UUID,
 ) -> None:
-    _presentation(db_session, pitch_id, 1)
-    latest_presentation = _presentation(db_session, pitch_id, 2)
-    _script(db_session, pitch_id, 1, "DONE")
-    parsed = _script(db_session, pitch_id, 2, "DONE")
+    _presentation(db_session, pitch_id, 1, page_count=3)
+    latest_presentation = _presentation(db_session, pitch_id, 2, page_count=3)
+    _script(db_session, pitch_id, 1, "DONE", slides=3)
+    parsed = _script(db_session, pitch_id, 2, "DONE", slides=3)
 
     body = _prepare(client, pitch_id, auth_headers).json()
 
-    assert body["presentation"] == {"id": str(latest_presentation.id), "version": 2}
-    assert body["script"] == {"id": str(parsed.id), "version": 2}
+    assert body["presentation"] == {
+        "id": str(latest_presentation.id),
+        "version": 2,
+        "page_count": 3,
+    }
+    assert body["script"] == {"id": str(parsed.id), "version": 2, "slide_count": 3}
     assert body["newer_script"] is None
+
+
+def test_picks_the_latest_presentation_with_as_many_pages_as_slides(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+) -> None:
+    """FE 매핑 확인과 같은 규칙. 쪽수를 모르는 발표자료는 짝으로 보지 않는다."""
+    _presentation(db_session, pitch_id, 1, page_count=3)
+    matching = _presentation(db_session, pitch_id, 2, page_count=3)
+    _presentation(db_session, pitch_id, 3, page_count=5)
+    _presentation(db_session, pitch_id, 4, page_count=None)
+    _script(db_session, pitch_id, 1, "DONE", slides=3)
+
+    body = _prepare(client, pitch_id, auth_headers).json()
+
+    assert body["presentation"]["id"] == str(matching.id)
+
+
+def test_falls_back_to_the_latest_presentation_when_none_matches(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+) -> None:
+    """쪽수와 장 수를 같이 내려서 FE 가 다르다는 걸 보고 시작을 막는다."""
+    _presentation(db_session, pitch_id, 1, page_count=4)
+    latest = _presentation(db_session, pitch_id, 2, page_count=5)
+    _script(db_session, pitch_id, 1, "DONE", slides=3)
+
+    body = _prepare(client, pitch_id, auth_headers).json()
+
+    assert body["presentation"] == {"id": str(latest.id), "version": 2, "page_count": 5}
+    assert body["script"]["slide_count"] == 3
 
 
 def test_skips_scripts_not_parsed_and_reports_the_newest(
@@ -127,7 +183,7 @@ def test_skips_scripts_not_parsed_and_reports_the_newest(
 
     body = _prepare(client, pitch_id, auth_headers).json()
 
-    assert body["script"] == {"id": str(parsed.id), "version": 1}
+    assert body["script"] == {"id": str(parsed.id), "version": 1, "slide_count": 0}
     assert body["newer_script"] == {
         "id": str(pending.id),
         "version": 3,
