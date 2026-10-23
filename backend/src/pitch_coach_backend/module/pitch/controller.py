@@ -22,6 +22,7 @@ from pitch_coach_backend.module.pitch.service import (
     add_pitch_service,
     add_pitch_standard_service,
     create_script_service,
+    delete_pitch_files,
     delete_pitch_service,
     get_all_pitches_service,
     get_pitch_datas,
@@ -86,12 +87,15 @@ def update_pitch(
 @router.delete("/delete/{pitch_id}")
 def delete_pitch(
     pitch_id: OwnedPitch,
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ):
     take_ids = delete_pitch_service(db, pitch_id)
     # 진행 중이던 Take 가 있으면 실시간 STT(Deepgram)도 끊는다. 스트림은 이벤트 루프에 있어서
     # 이 함수(스레드 풀)에서 바로 만지지 않고 루프로 넘긴다
     anyio.from_thread.run(take_stream.discard, take_ids)
+    # 발표자료 파일은 CASCADE 로 지워지지 않는다. 응답을 늦추지 않게 보낸 뒤 지운다
+    background_tasks.add_task(delete_pitch_files, pitch_id)
     return {"message": "Pitch deleted successfully", "pitch_id": pitch_id}
 
 @router.post("/add/{pitch_id}/presentation")
