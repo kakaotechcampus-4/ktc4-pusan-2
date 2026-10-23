@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { fetchPitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
+import { duration, totalElapsed } from './homeFormat';
 import { homeFixture } from '@/mocks/home';
 import { clearTokens } from '@/shared/api/tokenStore';
 
@@ -72,4 +73,12 @@ it('preserves zero scores and deltas; enables navigation only for supplied IDs',
   expect(markup).toContain('00:00');
   expect(markup).toContain('/pitch/real-pitch/edit');
   expect(markup).toContain('/takes/real-take');
+});
+
+it('누적 발표 시간은 길이를 아는 Take 만 더하고, 하나도 모르면 0 이 아니라 — 로 둔다', () => {
+  expect(totalElapsed([{ take_elapsed: 60 }, { take_elapsed: null }, { take_elapsed: 30 }])).toBe(
+    90,
+  );
+  expect(duration(totalElapsed([{ take_elapsed: null }, { take_elapsed: null }]))).toBe('—');
+  expect(duration(totalElapsed([]))).toBe('—');
 });
