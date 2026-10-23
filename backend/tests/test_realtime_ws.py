@@ -3423,6 +3423,25 @@ async def test_startup_does_not_fail_when_the_running_takes_cannot_be_read(
     assert take_stream._abandon_timers == {}
 
 
+@pytest.mark.anyio
+async def test_startup_does_not_wait_for_a_slow_database(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """진행 중인 Take 를 읽는 동안 앱이 요청을 받지 못한다. 상한을 넘기면 기다리지 않고 뜬다."""
+    monkeypatch.setattr(take_stream, "ARM_ABANDONED_TIMEOUT_SEC", 0.05)
+
+    class SlowStore(FakeTranscriptStore):
+        async def running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
+            await asyncio.sleep(10)
+            return [(uuid.uuid7(), datetime.now(UTC))]
+
+    with caplog.at_level("ERROR"):
+        await asyncio.wait_for(take_stream.arm_abandoned_takes(SlowStore()), 1)
+
+    assert "떠난 Take 타이머를 걸지 못했다" in caplog.text
+    assert take_stream._abandon_timers == {}
+
+
 def test_abandoned_take_is_failed_from_its_close_time(db_session: Session, take: Take):
     """떠난 Take 는 분석하지 않는다 (FAILED). 진행 중일 때만 바꾸고, 지워진 Take 는 넘어간다."""
     closed_at = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)

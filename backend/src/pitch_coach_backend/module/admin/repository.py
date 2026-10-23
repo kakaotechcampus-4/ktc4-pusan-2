@@ -8,7 +8,7 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import Take
-from pitch_coach_backend.module.take.repository import last_active_at, last_final_saved_at
+from pitch_coach_backend.module.take.repository import last_active_at
 from pitch_coach_backend.module.user.entity import User
 
 # 일별 집계의 날짜 기준. 사용자가 모두 한국에 있다.
@@ -121,13 +121,8 @@ def list_stuck_takes(db: Session, active_before: datetime, limit: int) -> list[d
     분석 중(`ANALYZING`)도 넣지 않는다. 아직 `COMPLETED` 로 바꾸는 곳이 없어
     끝난 Take 가 모두 여기 머문다.
     """
-    last_final = last_final_saved_at()
-    active_at = last_active_at(last_final)
-    stmt = (
-        _take_rows()
-        .outerjoin(last_final, last_final.c.take_id == Take.id)
-        .where(Take.status == "RUNNING", active_at < active_before)
-    )
+    active_at = last_active_at()
+    stmt = _take_rows().where(Take.status == "RUNNING", active_at < active_before)
     return _fetch(db, stmt.order_by(active_at).limit(limit))
 
 

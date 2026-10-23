@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, Subquery, func, select, update
+from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -18,22 +18,16 @@ from pitch_coach_backend.module.take.entity import (
 IN_PROGRESS_STATUSES = ("READY", "RUNNING")
 
 
-def last_final_saved_at() -> Subquery:
-    """Take 별로 마지막 확정 전사를 저장한 시각. `take_id` 로 outer join 한다."""
-    return (
-        select(
-            TakeTranscriptSegment.take_id,
-            func.max(TakeTranscriptSegment.created_at).label("saved_at"),
-        )
-        .group_by(TakeTranscriptSegment.take_id)
-        .subquery()
-    )
-
-
-def last_active_at(last_final: Subquery) -> ColumnElement[datetime]:
+def last_active_at() -> ColumnElement[datetime]:
     """만든 시각 · 시작 시각 · 마지막 확정 전사 저장 시각 중 가장 늦은 것."""
+    # Take 마다 `take_id` 인덱스로 찾는다. 전사 표 전체를 묶으면 끝난 Take 의 전사까지 읽는다
+    last_final = (
+        select(func.max(TakeTranscriptSegment.created_at))
+        .where(TakeTranscriptSegment.take_id == Take.id)
+        .scalar_subquery()
+    )
     # GREATEST 는 NULL 을 건너뛴다 (시작 전 · 전사 없음)
-    return func.greatest(Take.created_at, Take.started_at, last_final.c.saved_at)
+    return func.greatest(Take.created_at, Take.started_at, last_final)
 
 
 class TakeRepository:
@@ -188,10 +182,7 @@ class TakeRepository:
         연결이 끊긴 시각은 메모리에만 있어서 다시 뜨면 없다. 그래서 만든 시각 · 시작 시각 ·
         마지막 확정 전사를 저장한 시각 중 가장 늦은 것으로 대신한다.
         """
-        last_final = last_final_saved_at()
         rows = self.db.execute(
-            select(Take.id, last_active_at(last_final))
-            .outerjoin(last_final, last_final.c.take_id == Take.id)
-            .where(Take.status == "RUNNING")
+            select(Take.id, last_active_at()).where(Take.status == "RUNNING")
         ).all()
         return [(take_id, last_active_at) for take_id, last_active_at in rows]
