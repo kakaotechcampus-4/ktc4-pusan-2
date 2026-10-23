@@ -19,6 +19,13 @@ class DuplicateTranscriptSegment(ConflictException):
     message = "이미 저장된 전사 구간입니다."
 
 
+class TakeInProgress(ConflictException):
+    # 창을 다시 연 FE 가 Take 를 실패로 끝내려 했는데 다른 창이 아직 발표 중이다
+    # (실시간 연결이 붙어 있고 오디오가 들어온다)
+    code = "TAKE_IN_PROGRESS"
+    message = "다른 창에서 연습 중입니다."
+
+
 class TakeAlreadyStarted(ConflictException):
     code = "TAKE_STARTED"
     message = "이미 시작한 연습입니다."

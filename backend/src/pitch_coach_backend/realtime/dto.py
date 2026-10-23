@@ -6,7 +6,7 @@
 
 import uuid
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from pydantic import BaseModel, Field, TypeAdapter
 
@@ -111,7 +111,7 @@ class WsErrorCode(StrEnum):
 
     - `TAKE_NOT_FOUND` 는 REST 의 404 와 같은 규칙으로 "없음" 과 "남의 것" 을 구분하지 않는다.
     - `TAKE_ENDED` 는 ANALYZING·COMPLETED·FAILED 이거나 BE 가 자동 종료한 Take(`AutoEndMessage`).
-      끝난 연습에 전사를 더 붙이면 리포트가 오염된다.
+      끝난 연습에 전사를 더 붙이면 리포트가 오염된다. BE 가 끝냈으면 `end_reason` 에 이유를 싣는다.
     - `FORBIDDEN` 은 소유권 검사(DB) 뒤의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
     """
 
@@ -122,6 +122,15 @@ class WsErrorCode(StrEnum):
     BAD_MESSAGE = "BAD_MESSAGE"
     BAD_AUDIO_FRAME = "BAD_AUDIO_FRAME"
     TAKE_TAKEN_OVER = "TAKE_TAKEN_OVER"
+
+
+# BE 가 Take 를 끝낸 이유 (`takes.end_reason` 과 같은 값). `TAKE_ENDED` 에 실어 FE 가 분기한다.
+#   SILENCE · TIME_LIMIT : 자동 종료 (`AutoEndReason`)
+#   ABANDONED            : 창을 닫지 않고 끊긴 채 돌아오지 않았다. FE 가 STT 없이 발표를 이어
+#                          가는 중일 수 있다 — 발표를 마치고 끝내기 PUT 을 보내면 되살아난다
+#   CLOSED               : 창을 닫았다. 이어 가지 않는다
+TakeEndReason = Literal["SILENCE", "TIME_LIMIT", "ABANDONED", "CLOSED"]
+TAKE_END_REASONS: tuple[str, ...] = get_args(TakeEndReason)
 
 
 class AutoEndReason(StrEnum):
@@ -152,3 +161,5 @@ class ErrorMessage(BaseModel):
     type: Literal["error"] = "error"
     code: WsErrorCode
     message: str
+    # `TAKE_ENDED` 일 때 BE 가 끝낸 이유. 사용자가 끝냈거나 다른 코드면 싣지 않는다
+    end_reason: TakeEndReason | None = Field(default=None, exclude_if=lambda v: v is None)

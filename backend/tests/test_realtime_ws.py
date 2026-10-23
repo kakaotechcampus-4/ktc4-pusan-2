@@ -2849,7 +2849,12 @@ def test_reconnect_after_auto_end_is_rejected_before_deepgram(
     message = policy.message(AutoEndReason.TIME_LIMIT)
     # 자동 종료 순간 떨어져 있던 FE 도 auto_end 를 받아 종료 흐름을 탄다
     assert notice == {"type": "auto_end", "reason": "TIME_LIMIT", "message": message}
-    assert rejected == {"type": "error", "code": "TAKE_ENDED", "message": message}
+    assert rejected == {
+        "type": "error",
+        "code": "TAKE_ENDED",
+        "message": message,
+        "end_reason": "TIME_LIMIT",
+    }
     assert len(adapter.configs) == 1, "다시 붙을 때 Deepgram 에 연결하지 않는다"
 
 
@@ -2870,7 +2875,12 @@ def test_auto_ended_take_in_the_database_is_rejected(
 
     message = "2분 넘게 말이 없어 연습을 자동으로 끝냈어요."
     assert notice == {"type": "auto_end", "reason": "SILENCE", "message": message}
-    assert rejected == {"type": "error", "code": "TAKE_ENDED", "message": message}
+    assert rejected == {
+        "type": "error",
+        "code": "TAKE_ENDED",
+        "message": message,
+        "end_reason": "SILENCE",
+    }
     assert stt.configs == []
 
 
@@ -3357,7 +3367,7 @@ async def test_take_left_without_reconnect_is_ended_as_abandoned(monkeypatch: py
     assert abs((ended_at - closed_at).total_seconds()) < 0.1
     assert store.calls == ["mark_abandoned"]
 
-    # 그 뒤로 다시 붙으면 거절한다. 자동 종료가 아니라 이유 없이
+    # 그 뒤로 다시 붙으면 거절한다. 떠난 것으로 끝낸 이유를 싣는다
     with pytest.raises(take_stream.TakeEnded) as info:
         await take_stream.attach(
             stream.take_id,
@@ -3367,7 +3377,7 @@ async def test_take_left_without_reconnect_is_ended_as_abandoned(monkeypatch: py
             config=SttConfig(),
             store=store,
         )
-    assert info.value.reason is None
+    assert info.value.reason == "ABANDONED"
 
 
 @pytest.mark.anyio
@@ -3457,7 +3467,12 @@ async def test_reopened_tab_cuts_the_stream_and_blocks_reconnect():
 
     assert await stream.wait_closed(timeout=2.0)
     await _wait_for(lambda: tab.closed is not None)
-    assert json.loads(tab.sent[-1])["code"] == "TAKE_ENDED"
+    assert json.loads(tab.sent[-1]) == {
+        "type": "error",
+        "code": "TAKE_ENDED",
+        "message": "이미 끝난 연습입니다.",
+        "end_reason": "CLOSED",
+    }
     assert tab.closed == (1008, "TAKE_ENDED")
     assert take_stream._abandon_timers == {}
     with pytest.raises(take_stream.TakeEnded):
@@ -3469,6 +3484,27 @@ async def test_reopened_tab_cuts_the_stream_and_blocks_reconnect():
             config=SttConfig(),
             store=store,
         )
+
+
+@pytest.mark.anyio
+async def test_take_is_live_only_while_audio_keeps_coming(monkeypatch: pytest.MonkeyPatch):
+    """연결이 붙어 있고 최근 오디오가 왔을 때만 발표 중이다. 브라우저가 닫힘 프레임 없이 사라져
+    서버만 연결이 붙어 있다고 믿으면 오디오가 멈춰 발표 중이 아니다."""
+    monkeypatch.setattr(take_stream, "LIVE_AUDIO_SEC", 0.1)
+    stream = make_plain_stream(uuid.uuid7(), FakeTranscriptStore())
+    tab = FakeWebSocket()
+    take_stream._streams[stream.take_id] = stream
+    stream.start()
+    await stream.attach(tab)
+    await _wait_until_ok(stream)
+    assert not take_stream.is_live(stream.take_id), "붙기만 하고 오디오가 없다"
+
+    stream.push(frame(1, 0), source=tab)
+    assert take_stream.is_live(stream.take_id)
+
+    await asyncio.sleep(0.15)
+    assert not take_stream.is_live(stream.take_id), "오디오가 멈췄다"
+    assert not take_stream.is_live(uuid.uuid7()), "스트림이 없다"
 
 
 @pytest.mark.anyio
@@ -3686,12 +3722,15 @@ async def test_db_store_marks_abandoned(db_session: Session, take: Take):
     assert await store.running_takes() == []
 
 
+@pytest.mark.parametrize("end_reason", ["ABANDONED", "CLOSED"])
 def test_abandoned_take_in_the_database_is_rejected(
-    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User, end_reason: str
 ):
-    """프로세스가 다시 떠도 DB 가 막는다. 자동 종료가 아니라 auto_end 없이 일반 문구로."""
+    """프로세스가 다시 떠도 DB 가 막는다. 자동 종료가 아니라 auto_end 없이 일반 문구로. FE 가
+    창을 닫은 Take(CLOSED)와 STT 없이 발표를 이어 가도 되는 Take(ABANDONED)를 가르도록 이유를
+    싣는다."""
     left = make_take(db_session, user.id, status="FAILED")
-    left.end_reason = "ABANDONED"
+    left.end_reason = end_reason
     db_session.commit()
 
     with client.websocket_connect(f"/api/ws/takes/{left.id}") as ws:
@@ -3699,5 +3738,24 @@ def test_abandoned_take_in_the_database_is_rejected(
         rejected = ws.receive_json()
         assert closed_with(ws) == 1008
 
-    assert rejected == {"type": "error", "code": "TAKE_ENDED", "message": "이미 끝난 연습입니다."}
+    assert rejected == {
+        "type": "error",
+        "code": "TAKE_ENDED",
+        "message": "이미 끝난 연습입니다.",
+        "end_reason": end_reason,
+    }
     assert stt.configs == []
+
+
+def test_take_ended_by_the_user_is_rejected_without_a_reason(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User
+):
+    """사용자가 끝낸 Take 는 이유가 없다. end_reason 을 싣지 않는다."""
+    ended = make_take(db_session, user.id, status="ANALYZING")
+    db_session.commit()
+
+    with client.websocket_connect(f"/api/ws/takes/{ended.id}") as ws:
+        auth(ws, create_access_token(user.id))
+        rejected = ws.receive_json()
+
+    assert rejected == {"type": "error", "code": "TAKE_ENDED", "message": "이미 끝난 연습입니다."}

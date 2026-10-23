@@ -14,6 +14,7 @@ import contextlib
 import logging
 import uuid
 from collections.abc import Awaitable
+from typing import cast
 from urllib.parse import urlsplit
 
 import anyio
@@ -31,11 +32,13 @@ from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.dto import (
+    TAKE_END_REASONS,
     AutoEndMessage,
     AutoEndReason,
     ErrorMessage,
     ReadyMessage,
     StopMessage,
+    TakeEndReason,
     WsErrorCode,
     client_message_adapter,
 )
@@ -392,9 +395,13 @@ class RealtimeSession:
     async def _send(self, message: BaseModel) -> None:
         await self.ws.send_text(message.model_dump_json())
 
-    async def _reject(self, code: WsErrorCode, message: str) -> None:
+    async def _reject(
+        self, code: WsErrorCode, message: str, *, end_reason: TakeEndReason | None = None
+    ) -> None:
         """인증 단계 거절. 에러를 한 번 보내고 1008 로 닫는다."""
-        await self._quiet(self._send(ErrorMessage(code=code, message=message)))
+        await self._quiet(
+            self._send(ErrorMessage(code=code, message=message, end_reason=end_reason))
+        )
         await self._quiet(self.ws.close(code=CLOSE_POLICY_VIOLATION, reason=code))
 
     async def _reject_ended(self, end_reason: str | None) -> None:
@@ -403,17 +410,21 @@ class RealtimeSession:
         BE 가 자동으로 끝낸 Take 면 그 앞에 `auto_end` 를 한 번 더 보낸다. 자동 종료 순간 떨어져
         있던 FE 는 `auto_end` 를 못 받았다 — 다시 붙을 때 받아야 무대가 종료 흐름을 탄다. 이유가
         이 버전이 모르는 값(나중에 늘어남)이면 FE 도 분기할 수 없으니 일반 문구만 보낸다.
+
+        `TAKE_ENDED` 에는 BE 가 끝낸 이유(`end_reason`)를 싣는다. FE 는 떠난 것으로 끝낸 Take 중
+        창을 닫은 것(`CLOSED`)과 STT 없이 발표를 이어 가도 되는 것(`ABANDONED`)을 이걸로 가른다.
         """
+        known = cast(TakeEndReason, end_reason) if end_reason in TAKE_END_REASONS else None
         try:
             reason = AutoEndReason(end_reason) if end_reason is not None else None
         except ValueError:
             reason = None
         if reason is None:
-            await self._reject(WsErrorCode.TAKE_ENDED, "이미 끝난 연습입니다.")
+            await self._reject(WsErrorCode.TAKE_ENDED, "이미 끝난 연습입니다.", end_reason=known)
             return
         message = AutoEndPolicy.from_settings().message(reason)
         await self._quiet(self._send(AutoEndMessage(reason=reason, message=message)))
-        await self._reject(WsErrorCode.TAKE_ENDED, message)
+        await self._reject(WsErrorCode.TAKE_ENDED, message, end_reason=known)
 
     @staticmethod
     async def _quiet(awaitable: Awaitable[object]) -> None:

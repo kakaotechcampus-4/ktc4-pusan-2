@@ -12,6 +12,7 @@ from pitch_coach_backend.module.take.dto import (
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
 )
+from pitch_coach_backend.module.take.exception import TakeInProgress
 from pitch_coach_backend.module.take.service import (
     close_take_service,
     create_calibration_service,
@@ -66,7 +67,10 @@ def abandon_take(
     db: Annotated[Session, Depends(get_db)],
     take_id: OwnedTake,
 ):
-    # 창을 닫았다 다시 연 FE 가 부른다. 창을 닫은 Take 는 이어 가지 않고 실패로 끝낸다
+    # 창을 닫았다 다시 연 FE 가 부른다. 창을 닫은 Take 는 이어 가지 않고 실패로 끝낸다.
+    # 다른 창이 아직 발표 중이면 거절한다 — FE 는 하트비트로 보지만 늦을 수 있다
+    if anyio.from_thread.run_sync(take_stream.is_live, take_id):
+        raise TakeInProgress()
     status, closed = close_take_service(db, take_id)
     if closed:
         # 남은 스트림 · 떠난 Take 타이머를 끊는다. 스트림은 이벤트 루프에 있어서 루프로 넘긴다

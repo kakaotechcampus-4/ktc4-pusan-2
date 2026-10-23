@@ -87,10 +87,25 @@ BE 가 0.5 · 1 · 2 · 5 · 10초 백오프로 계속 다시 붙습니다. 이�
 | 새로고침 | `sessionStorage` 에 무대 시계가 남아 있음 | 무대 시계를 이어받아 계속 연습합니다 |
 | 창을 닫았다 다시 엶 | 세션 행은 `RUNNING` 인데 무대 시계가 없음 | 무대를 열지 않고 abandon API 를 부른 뒤 실패 화면 ※ |
 | 다른 창이 아직 발표 중 | 위와 같은데 하트비트가 10초 안 | "다른 창에서 연습 중" 안내만 ※ |
-| 닫은 탭 복원 (Ctrl+Shift+T) | `sessionStorage` 가 살아 새로고침처럼 보임 | 2분 안이면 이어 갑니다. 지났으면 첫 연결이 `TAKE_ENDED` 를 받고 실패 화면 ※ |
+| 닫은 탭 복원 (Ctrl+Shift+T) | `sessionStorage` 가 살아 새로고침처럼 보임 | 2분 안이면 이어 갑니다. 지났으면 첫 연결이 `TAKE_ENDED`(`CLOSED`)를 받고 실패 화면 ※ |
+| 끊긴 지 5분 지나 새로고침 | 첫 연결이 `TAKE_ENDED`(`ABANDONED`) | STT 없이 발표를 이어 가고 끝내기 PUT 으로 되살립니다 ※ |
 
 ※ FE 작업(#309) 전입니다. 지금 FE 는 세션 행이 `RUNNING` 이면 모두 무대를 이어서 엽니다. BE 는 그 연결을
 위 규칙대로 받거나 거절합니다.
+
+끝난 Take 로 붙으면 BE 는 `TAKE_ENDED` 로 거절하고, BE 가 끝냈으면 이유를 `end_reason` 에 싣습니다.
+FE 는 이걸로 무엇을 할지 가릅니다.
+
+```json
+{"type": "error", "code": "TAKE_ENDED", "message": "이미 끝난 연습입니다.", "end_reason": "CLOSED"}
+```
+
+| `end_reason` | FE |
+|---|---|
+| `CLOSED` | 실패 화면. 이어 가지 않습니다 |
+| `ABANDONED` | STT 없이 발표를 이어 가고, 끝내기 PUT 으로 되살립니다 |
+| `SILENCE` · `TIME_LIMIT` | 앞서 `auto_end` 가 옵니다. 끝내기 버튼과 같은 종료 흐름 |
+| 없음 | 사용자가 이미 끝낸 Take. 종료 흐름 |
 
 ### abandon API
 
@@ -104,6 +119,8 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 - 바꿨으면 떠난 Take 타이머를 끄고, 남은 스트림을 끊습니다. 서버가 아직 붙어 있다고 믿는 연결(닫힘 프레임 없이
   사라진 브라우저)에는 `TAKE_ENDED` 를 보내고 1008 로 닫습니다.
 - 이미 끝났으면 바꾸지 않고 지금 상태를 돌려줍니다. `ANALYZING` 이면 끝내기가 이미 닿은 것입니다.
+- 연결이 붙어 있고 최근 10초 안에 오디오가 왔으면 다른 창이 발표 중입니다. 바꾸지 않고
+  409 `TAKE_IN_PROGRESS` 로 거절합니다 — FE 의 하트비트 판정이 늦어도 발표 중인 Take 를 끝내지 않습니다.
 - 다시 불러도 결과가 같습니다. 남의 Take 는 404 입니다.
 
 ## 3. 아무도 다시 붙지 않을 때
@@ -165,6 +182,7 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 |---|---|---|
 | grace 30초 | `GRACE_SEC` | `backend/src/pitch_coach_backend/realtime/take_stream.py` |
 | 창을 닫은 뒤 2분 | `CLOSED_TAB_WAIT_SEC` | 위와 같음 |
+| 발표 중으로 보는 오디오 간격 10초 | `LIVE_AUDIO_SEC` | 위와 같음 |
 | 떠난 Take 5분 | `ABANDON_AFTER_SEC` | 위와 같음 |
 | Deepgram 재접속 백오프 | `BACKOFF_SEC` | 위와 같음 |
 | 최대 시간 1시간 | `take_max_duration_sec` | `backend/src/pitch_coach_backend/core/config.py` |

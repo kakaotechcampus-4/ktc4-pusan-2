@@ -439,6 +439,31 @@ def test_abandon_leaves_a_take_that_already_ended(
     assert (take.status, take.end_reason) == ("ANALYZING", None)
 
 
+def test_abandon_is_refused_while_another_window_is_presenting(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FE 는 하트비트로 다른 창이 살아 있는지 보지만 늦을 수 있다. 연결이 붙어 있고 오디오가
+    들어오면 BE 가 거절한다 — 발표 중인 Take 를 끝내지 않는다."""
+    from pitch_coach_backend.realtime import take_stream
+
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = "RUNNING"
+    db_session.flush()
+    monkeypatch.setattr(take_stream, "is_live", lambda take_id: take_id == take.id)
+
+    response = _abandon(client, take, auth_headers)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TAKE_IN_PROGRESS"
+    db_session.refresh(take)
+    assert (take.status, take.end_reason) == ("RUNNING", None)
+
+
 def test_abandon_on_someone_elses_take_is_404(
     client: TestClient,
     db_session: Session,

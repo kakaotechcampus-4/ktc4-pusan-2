@@ -128,6 +128,9 @@ MARK_AUTO_END_TIMEOUT_SEC = 5.0
 # 끝낸다 (창을 닫은 게 아닌 끊김: 네트워크 장애 · FE 가 재연결을 포기함). 그 안이면 FE 가 다시 붙어
 # 이어 간다. 그 뒤에 STT 없이 발표를 마친 FE 의 끝내기 PUT 은 되살린다
 ABANDON_AFTER_SEC = 5 * 60.0
+# 연결이 붙어 있고 이 시간 안에 오디오가 왔으면 발표 중으로 본다. 창을 다시 연 FE 가 Take 를
+# 실패로 끝내려 해도 거절한다 (`is_live`). FE 가 다른 창이 살아 있다고 보는 하트비트 기준과 같다
+LIVE_AUDIO_SEC = 10.0
 # 창을 닫아(닫힘 코드 1001) 끊긴 스트림이 정리된 뒤 기다리는 시간. 새로고침도 1001 로 끊기므로
 # 다시 붙을 틈을 둔다 — 카메라 · 시선 모델을 다시 띄우느라 grace(30초)를 넘길 수 있다
 CLOSED_TAB_WAIT_SEC = 2 * 60.0
@@ -154,10 +157,10 @@ class StreamOwnerMismatch(Exception):
 class TakeEnded(Exception):
     """이 프로세스에서 끝낸 Take 다. DB 에 적히기 전이라도 다시 붙지 못한다.
 
-    BE 가 자동으로 끝냈으면 `reason` 에 이유가 있다. 사용자가 끝냈으면 None.
+    BE 가 끝냈으면 `reason` 에 이유가 있다 (자동 종료 · 떠남). 사용자가 끝냈으면 None.
     """
 
-    def __init__(self, reason: AutoEndReason | None = None) -> None:
+    def __init__(self, reason: AutoEndReason | LeftReason | None = None) -> None:
         super().__init__(reason)
         self.reason = reason
 
@@ -203,6 +206,8 @@ class TakeStream:
         self._record = _take_record(take_id, self.auto_end_policy)
         # 이 스트림을 연 시각(monotonic). 닫힐 때 열려 있던 시간을 Take 의 서버 시계에 더한다
         self._opened_at: float | None = None
+        # 마지막으로 받은 오디오 프레임 시각(monotonic). 발표 중인지 본다 (`is_live`)
+        self._last_audio_at: float | None = None
         # 최대 시간 타이머. start() 에서 건다
         self._time_limit: asyncio.TimerHandle | None = None
 
@@ -257,6 +262,18 @@ class TakeStream:
     @property
     def is_finished(self) -> bool:
         return self._closed.is_set()
+
+    @property
+    def is_receiving_audio(self) -> bool:
+        """연결이 붙어 있고 최근 `LIVE_AUDIO_SEC` 안에 오디오가 왔다. 어느 창에서 발표 중이다.
+
+        브라우저가 닫힘 프레임 없이 사라진 연결은 붙어 있어도 오디오가 멈춰 있어 False 다.
+        """
+        return (
+            self._client is not None
+            and self._last_audio_at is not None
+            and time.monotonic() - self._last_audio_at < LIVE_AUDIO_SEC
+        )
 
     @property
     def has_client(self) -> bool:
@@ -469,7 +486,7 @@ class TakeStream:
         스트림 태스크 안(`_persist`)에서도 부른다. 연결을 닫는 일을 따로 태스크로 돌리는 이유다 —
         여기서 기다리면 `cancel()` 이 그 자리를 끊어 알림이 안 나간다.
         """
-        self._cut(WsErrorCode.TAKE_NOT_FOUND, "연습을 찾을 수 없습니다.")
+        self._cut(ErrorMessage(code=WsErrorCode.TAKE_NOT_FOUND, message="연습을 찾을 수 없습니다."))
 
     def drop_closed_tab(self) -> None:
         """창을 다시 연 FE 가 이 Take 를 실패로 끝냈다. 남은 전사를 기다리지 않고 끊는다.
@@ -477,9 +494,13 @@ class TakeStream:
         분석하지 않는 Take 라 전사를 받을 이유가 없다. 붙어 있는 연결(브라우저는 이미 닫았는데
         서버가 아직 모르는 연결)에는 다시 붙을 때 받을 것과 같은 `TAKE_ENDED` 를 보낸다.
         """
-        self._cut(WsErrorCode.TAKE_ENDED, "이미 끝난 연습입니다.")
+        self._cut(
+            ErrorMessage(
+                code=WsErrorCode.TAKE_ENDED, message="이미 끝난 연습입니다.", end_reason="CLOSED"
+            )
+        )
 
-    def _cut(self, code: WsErrorCode, message: str) -> None:
+    def _cut(self, error: ErrorMessage) -> None:
         if self._discarded:
             return
         self._discarded = True
@@ -489,13 +510,13 @@ class TakeStream:
         self.cancel()
         if client is not None:
             self._closer = asyncio.create_task(
-                self._close_cut_client(client, code, message),
+                self._close_cut_client(client, error),
                 name=f"take-stream-cut:{self.take_id}",
             )
 
-    async def _close_cut_client(self, client: WebSocket, code: WsErrorCode, message: str) -> None:
-        await _quiet(client.send_text(ErrorMessage(code=code, message=message).model_dump_json()))
-        await _quiet(client.close(code=1008, reason=code))
+    async def _close_cut_client(self, client: WebSocket, error: ErrorMessage) -> None:
+        await _quiet(client.send_text(error.model_dump_json()))
+        await _quiet(client.close(code=1008, reason=error.code))
 
     def _finish(self) -> None:
         if self._closed.is_set():
@@ -564,6 +585,7 @@ class TakeStream:
             return
         if source is not None and source is not self._client:
             return
+        self._last_audio_at = time.monotonic()
         accepted = self.sequencer.accept(frame)
         if accepted is None:
             return
@@ -1141,10 +1163,11 @@ class _BoundedDict[K, V](OrderedDict[K, V]):
             self.popitem(last=False)
 
 
-# 끝낸 Take. 값은 자동 종료 이유고, 사용자가 끝냈으면 None 이다. DB(`takes.status` · `end_reason`)가
-# 원본이고 이건 그게 적히기 전의 틈을 막는다 — 마지막 확정 전사를 저장하고 DB 에 적기 전에 FE 가
-# 다시 붙으면 새 스트림이 열린다. 프로세스가 다시 뜨면 비지만 그때는 DB 가 막는다
-_ended: _BoundedDict[uuid.UUID, AutoEndReason | None] = _BoundedDict()
+# 끝낸 Take. 값은 BE 가 끝낸 이유(자동 종료 · 떠남)고, 사용자가 끝냈으면 None 이다.
+# DB(`takes.status` · `end_reason`)가 원본이고 이건 그게 적히기 전의 틈을 막는다 — 마지막 확정
+# 전사를 저장하고 DB 에 적기 전에 FE 가 다시 붙으면 새 스트림이 열린다. 프로세스가 다시 뜨면
+# 비지만 그때는 DB 가 막는다
+_ended: _BoundedDict[uuid.UUID, AutoEndReason | LeftReason | None] = _BoundedDict()
 
 
 def _talk_limit_sec(policy: AutoEndPolicy) -> float:
@@ -1346,7 +1369,7 @@ async def _end_abandoned(
             # 그 사이 Take 가 지워졌거나 이미 끝나 있었다
             logger.info("떠난 Take 를 적지 않았다 (Take 가 없거나 이미 끝남) take=%s", take_id)
             return
-        _ended[take_id] = None
+        _ended[take_id] = end_reason
         logger.info(
             "떠난 Take 를 끝냈다 take=%s reason=%s closed_at=%s",
             take_id,
@@ -1378,6 +1401,12 @@ async def arm_abandoned_takes(store: TranscriptStore) -> None:
         logger.info("진행 중으로 남은 Take %d개에 떠난 Take 타이머를 걸었다", len(takes))
 
 
+def is_live(take_id: uuid.UUID) -> bool:
+    """이 Take 를 어느 창에서 발표 중이다 (`TakeStream.is_receiving_audio`)."""
+    stream = _streams.get(take_id)
+    return stream is not None and stream.is_receiving_audio
+
+
 async def end_closed_tab(take_id: uuid.UUID) -> None:
     """창을 다시 연 FE 가 Take 를 실패(`CLOSED`)로 끝냈다. DB 에 적은 뒤 부른다.
 
@@ -1389,7 +1418,7 @@ async def end_closed_tab(take_id: uuid.UUID) -> None:
     async with _attach_lock(take_id):
         # 끝낸 것으로 먼저 적는다. 그래야 지금 닫히는 스트림이 타이머를 다시 걸지 않는다
         if take_id not in _ended:
-            _ended[take_id] = None
+            _ended[take_id] = "CLOSED"
         _cancel_abandon(take_id)
         stream = _streams.get(take_id)
     if stream is not None:
