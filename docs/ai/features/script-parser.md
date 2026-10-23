@@ -259,18 +259,19 @@ sequenceDiagram
     BE->>BE: 대본 전달도 /scripts/rubric · /coach/plan (백그라운드)
 ```
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고 AI 리드가 정하며, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
+저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
-| 파싱 결과 (대본 버전) | `/scripts/parse` 응답 | `script_versions` (`parse_status` · `segmented` = `status`가 `success`인가 · `terms` JSONB · 새 칸 `parse_meta` JSONB NULL = 응답의 `meta`) | `terms`: 문자열 배열 50개 이하, 1 KB 안팎. `parse_meta`: 0.1 KB 안팎 | BE가 쓴다 · BE가 STT keyterm을 만들 때 `terms`를 읽음 | 늦게 온 옛 응답은 버린다(BE의 `parse_requested_at` 표식) | 발표와 함께. 대본은 사용자가 쓴 글이다 |
+| 파싱 결과 (대본 버전) | `/scripts/parse` 응답 | `script_versions` (`parse_status` · `segmented` = `status`가 `success`인가 · `terms` JSONB · 새 칸 `parse_meta` JSONB NULL = 응답의 `meta` · 새 칸 `parse_error` String NULL: null = 차이 없음, `REPARSE_MISMATCH` = 같은 버전을 다시 파싱한 결과의 전체 장 번호 · 대본이 저장본과 달라 적용하지 않음) | `terms`: 문자열 배열 50개 이하, 1 KB 안팎. `parse_meta`: 0.1 KB 안팎 | BE가 쓴다 · BE가 STT keyterm을 만들 때 `terms`를 읽음 | 늦게 온 옛 응답은 버린다(BE의 `parse_requested_at` 표식) | 발표와 함께. 대본은 사용자가 쓴 글이다 |
 | 장별 대본 | 같음 | `script_slides` (`slide_number` · `full_content` = `script` · `keywords` JSONB · `highlights` JSONB · 새 칸 `script_chars` Integer NULL · 새 칸 `expected_ms` Integer NULL) | `highlights`는 BE 형식 그대로 `[[start, end], ...]`(코드 포인트). 장 하나에서 대본 글을 뺀 값이 0.3~0.4 KB(`fail`이면 키워드가 많아 약 0.7 KB). 응답 전체는 대본 595~1,125자에 2.3~5.3 KB였고, 대본 글(UTF-8)에 장마다 0.4 KB와 용어 1 KB 안팎을 더한 크기다 | BE가 쓴다 · 코치 `plan.slides`(`expected_ms` → `target_ms`, `script_chars`) · `scripts`, 대본 전달도 `slides[].script`, FE 발표 화면 | `(script_version_id, slide_number)` 유일 제약 | 같음 |
 
-- 새 칸(`script_chars` · `expected_ms` · `parse_meta`)은 BE가 마이그레이션한다. 이미 저장된 대본 버전은 null이고, 다시 파싱하면 채워진다.
+- 새 칸(`script_chars` · `expected_ms` · `parse_meta` · `parse_error`)은 BE가 마이그레이션한다. 이미 저장된 대본 버전은 null이고, 다시 파싱한 결과를 적용할 때 채워진다(적용할지는 `architecture.md` 1-7의 저장본 비교 규칙을 따른다).
 - 잰 크기는 지금 구현의 응답(9개 대본)을 목표 모양(`script_chars` · `expected_ms` · `{start, end}` · `meta`)으로 바꿔 쟀다.
 
 ## 12-2. 저장 규칙
 - 응답의 `meta`를 `parse_meta`에 함께 저장한다(`architecture.md` 1-1).
+- 같은 버전을 다시 파싱한 결과가 저장본과 다르면 새 결과를 적용하지 않고 `parse_error`를 `REPARSE_MISMATCH`로 남긴다(비교 규칙은 `architecture.md` 1-7).
 - `status: fail`은 처리 실패가 아니다. 처리 상태 `DONE`, `segmented` false로 두고 장 1개를 저장한다. 처리 실패(에러 상태 코드 · 시간 초과)만 `FAILED`와 에러 코드다.
 - AI 응답을 BE 형식(`highlights`의 `[[start, end]]` 등)으로 바꾸는 곳은 BE의 AI 호출 코드 한 곳이다(`architecture.md` 2절).
 - 제한 시간만 바뀌면 다시 파싱하지 않는다. 장별 `expected_ms`는 비율로 읽고, 쓰는 쪽이 지금 목표에 맞춰 비율로 늘이거나 줄인다. `parse_meta`에는 파싱 때 요청의 `target_ms`도 함께 남긴다.

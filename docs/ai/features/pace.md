@@ -10,7 +10,7 @@
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
 |---|---|---|---|
 | 발표 중 1초마다 (`pace.judge`, `/coach/evaluate` 안, 군더더기 다음) | 최근 60초 STT 확정 단어, STT 상태 · 마지막으로 `ok`가 된 시각, 같은 요청의 군더더기 판정 `fillers`, 두 커서 | 1초 판정 결과 하나 (영역 `SPEED`): `cpm` · `cpm_short`, 새로 센 글자 수 · 발화 시간 · 멈춤 | 코치: 빠름 지적 · 상태 표시 · 개입 효과. 시간 판정: 장별 글자 수 · 말 속도 |
-| 장 끝 · Take 끝 (`pace.summarize` · `criteria`, `/coach/finalize` 안) | 장 · Take 동안의 `tally` 합계 | `cpm` · `pause_count` · `measured_ratio`, 판정 기준 | Take 결과 → 리뷰(`pacing_rhythm`) · 리포트(`average_wpm` · `total_intermission`) |
+| 장 끝 · Take 끝 (`pace.summarize` · `criteria`, `/coach/finalize` 안) | 장 · Take 동안의 `tally` 합계 | `cpm` · `pause_count` · `measured_ratio`, 판정 기준 | Take 결과 → 리뷰(`pacing_rhythm`) · 리포트(`average_cpm` · `total_intermission`) |
 
 - **하는 것**: 최근 창의 CPM으로 `SLOW` · `NORMAL` · `FAST`를 정하고 `PACE_FAST` · `PACE_SLOW`를 낸다. 군더더기 단어는 글자 수에서 빼고, 군더더기 판정이 보류된 단어부터는 다음 요청에서 센다. 단어 사이 간격이 기준 시간을 넘으면 멈춤 하나로 센다.
 - **하지 않는 것**:
@@ -292,18 +292,18 @@ uv sync
 말 속도는 원자료(STT 단어)를 받기만 하고, 결과는 코치의 Take 결과에 담겨 저장된다. BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3 · 2절, 코치 쪽 저장은 `coach-agent.md` 12절에 있다.
 
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고 AI 리드가 정하며, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
+저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
 | 말 속도 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.SPEED`(`take` · `slides`) · `criteria.SPEED` | 코치가 `summarize` · `criteria` 결과를 고치지 않고 담는다. Take 또는 장 하나에 0.1 KB 안팎(지표 두 개 + 측정 비율) | 코치가 만들고 BE가 쓴다 · 리뷰(`pacing_rhythm`) · 리포트 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
-| 리포트 요약 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.average_wpm`(SPEED `cpm`, 칸 이름은 그대로 두고 CPM을 넣는다) · `take_summaries.total_intermission`(SPEED `pause_count`) | 숫자. 잴 수 없었으면 null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
-| 말 속도 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `SPEED`일 때 | `live_feedbacks` (`type` = `SPEED`) | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
+| 리포트 요약 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.average_cpm`(SPEED `cpm`) · `take_summaries.total_intermission`(SPEED `pause_count`) | 숫자. 잴 수 없었으면 null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
+| 말 속도 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `SPEED`일 때 | `coach_events`의 `INTERVENTION` 이벤트(`area` = `SPEED`). `live_feedbacks`에는 쓰지 않는다 | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
 | STT 확정 단어 (원자료, 이 모듈의 입력) | Take 동안 | `take_transcript_segments.words` | `architecture.md` 1-1, `coach-agent.md` 12-1 | BE가 쓴다 · `replay` | `coach-agent.md` 12-1 | Take와 함께. 사용자 발화다 |
 
 ## 12-2. 저장 규칙
 - 말 속도 결과는 코치 응답의 `meta`(`criteria_versions.pace` 포함)와 함께 저장된다(`coach-agent.md` 12-2).
-- `take_summaries`의 두 칸은 `summarize` 값을 그대로 넣고, 아직 계산하지 않았거나 잴 수 없던 Take는 null이다(0과 구별한다). FE는 `average_wpm`을 '분당 글자 수'로 보인다(`architecture.md` 1-1).
+- `take_summaries`의 두 칸은 `summarize` 값을 그대로 넣고, 아직 계산하지 않았거나 잴 수 없던 Take는 null이다(0과 구별한다). FE는 `average_cpm`을 '분당 글자 수'로 보인다(`architecture.md` 1-1).
 
 # 13. 품질 검증
 평가 데이터에는 가상 발표와 실제 리허설을 함께 둔다(`architecture.md` 12절). 결과 파일은 `reports/results/`에 커밋한다.
@@ -349,5 +349,5 @@ uv sync
 | 판정 결과 | `metrics{cpm, cpm_short, speak_ms}`, `tally` 단어 몫 `{chars, speak_ms, pause_count?, pause_ms?}` · 1초 몫 `{ok_ms, total_ms}` | 5-3 |
 | Take 지표 | `cpm` · `pause_count` · `measured_ratio` | 5-3 |
 | 버전 | `pace-1.0` · `criteria_version` `pace-1.0+<config 해시 12자리>` | 9절 |
-| 저장 | Take 결과 `areas.SPEED`, 리포트 `take_summaries.average_wpm`(CPM) · `total_intermission` | 12-1 |
+| 저장 | Take 결과 `areas.SPEED`, 리포트 `take_summaries.average_cpm` · `total_intermission` | 12-1 |
 | 의존성 | pydantic 하나, Python 3.12, 폴더 `ai/research/speech-pace/` | 4절 · 11절 |
