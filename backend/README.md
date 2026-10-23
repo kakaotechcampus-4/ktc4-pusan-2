@@ -226,6 +226,26 @@ POST /api/auth/logout           현재 세션 폐기
 필요하다. 배포에서는 Caddy 가 같은 origin 으로 묶어 그 문제가 사라진다.
 자세한 흐름과 프론트 연동 코드는 `docs/oauth-architecture.md` 에 있다 (로컬 문서).
 
+## 연습 시작 (장치 점검 · Take 생성)
+
+```
+GET  /api/pitches/{pitch_id}/prepare   이번 연습에 쓸 버전 · 다음 Take 번호 · 지난번 대본 표시 방식
+POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_version_id", "script_version_id", "client_session_id"?}
+                                       → take_id · take_number
+```
+
+- `/prepare` 는 피치 생성을 거치지 않고 장치 점검에 들어왔을 때(홈 · 새로고침) Take 에 넣을 버전을 준다. 발표자료는
+  가장 최근 것, 대본은 파싱이 끝난(`DONE`) 가장 최근 것이다. 없으면 `null`. 그보다 새 대본이 파싱 중이거나 실패했으면
+  `newer_script` 로 알린다.
+- 발표자료와 대본은 따로 최신을 고른다. BE 는 PDF 쪽수를 몰라서 두 버전이 짝인지(대본 장 수 = 쪽수) 확인하지 못한다.
+- `next_take_number` 는 미리 보여 주는 값이다. 그사이 다른 Take 가 생기면 달라져서 실제 번호는 Take 생성 응답의
+  `take_number` 를 본다.
+- Take 생성은 파싱이 끝난 대본만 받는다 (아니면 `409 SCRIPT_NOT_PARSED`). 목표 시간은 받지 않고 발표 제한 시간을 박는다.
+- `client_session_id`(FE 의 연습 세션 id)가 같으면 새로 만들지 않고 처음 만든 Take 를 돌려준다. 응답을 잃고 다시
+  보내도 Take 는 하나다.
+- 새 Take 를 만들면 같은 발표에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 끝낸다. FE 는 가장 최근 Take 로만
+  발표한다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지 `READY` 다.
+
 ## 실시간 STT (WebSocket)
 
 발표 중 마이크 오디오를 Deepgram 으로 흘리고 전사를 FE 로 돌려준다. **BE 가 Deepgram 에 API 키를
