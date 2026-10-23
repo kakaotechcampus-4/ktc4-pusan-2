@@ -10,6 +10,7 @@ import {
   type SttErrorCode,
   type SttState,
   type SttStatusMessage,
+  type TakeEndReason,
   type TranscriptMessage,
 } from './sttProtocol';
 
@@ -31,7 +32,7 @@ import {
  *      시계를 따라 이어진다. 서버는 새 연결의 첫 프레임 seq 가 뒤로 간 것을 보고 Deepgram
  *      세션을 갈아 그 offset 으로 새 구간을 받는다 (새로고침하는 동안의 공백을 무음으로 메우지 않는다).
  *   3. close 1000·1008 이면 재연결하지 않는다. 그 외에는 백오프 3회, 그 뒤로는
- *      4~6초마다 다시 붙어 본다. 횟수로는 포기하지 않고, 끊긴 지 30분이 지나야 멈춘다.
+ *      4~6초마다 다시 붙어 본다. 횟수로는 포기하지 않고, 끊긴 지 5분이 지나야 멈춘다.
  *   4. `stop` 을 보낸 뒤 `stt_status.state === 'closed'` 를 기다리되 **3초까지만** 기다린다.
  *      마지막 전사를 저장하는 것은 서버 몫이다 — `stop` 을 받은 서버는 이 소켓이 먼저
  *      닫혀도 Deepgram 정리와 저장을 끝까지 한다. 그래서 FE 가 더 붙잡고 있을 이유가 없다.
@@ -59,11 +60,12 @@ const SLOW_RETRY_MS = 5_000;
 const SLOW_RETRY_JITTER_MS = 1_000;
 
 /**
- * 끊긴 뒤 이만큼 지나도 못 붙으면 멈춥니다. 발표 중에 걸릴 일은 거의 없는 안전 상한입니다 —
- * 리허설 화면을 열어 둔 채 자리를 떠난 탭이 밤새 5초마다 서버를 두드리지 않게 합니다.
- * 한 번이라도 다시 붙으면(`ready`) 처음부터 다시 셉니다.
+ * 끊긴 뒤 이만큼 지나도 못 붙으면 멈춥니다. 서버가 창을 닫지 않고 끊긴 Take 를 기다리는 시간과
+ * 같습니다 — 그 뒤로는 붙어도 서버가 `TAKE_ENDED`(`ABANDONED`)로 거절합니다. 발표는 STT 없이
+ * 이어 가고, 끝내기(PUT)를 보내면 서버가 되살립니다. 한 번이라도 다시 붙으면(`ready`) 처음부터
+ * 다시 셉니다.
  */
-const GIVE_UP_AFTER_MS = 30 * 60_000;
+const GIVE_UP_AFTER_MS = 5 * 60_000;
 
 /**
  * `stop()` 을 부른 뒤 종료가 풀리기까지의 상한. 끝내기 버튼을 누른 사람이 기다리는 시간입니다.
@@ -90,7 +92,7 @@ export interface SocketLike {
   onerror: (() => void) | null;
 }
 
-/** 네트워크 끊김은 `RETRY_LIMIT` 하나뿐입니다 — 30분 동안은 포기하지 않고 계속 붙어 봅니다 */
+/** 네트워크 끊김은 `RETRY_LIMIT` 하나뿐입니다 — 5분 동안은 포기하지 않고 계속 붙어 봅니다 */
 export type GiveUpReason = 'FATAL' | 'NO_TOKEN' | 'CONNECT_FAILED' | 'RETRY_LIMIT';
 
 export interface SttSocketOptions {
@@ -99,7 +101,8 @@ export interface SttSocketOptions {
   /** 화면에 뜨는 상태. 서버가 알려준 값과 우리가 아는 값(재연결 중)이 함께 옵니다 */
   onState: (state: SttState) => void;
   onStatus?: (message: SttStatusMessage) => void;
-  onError?: (code: SttErrorCode, message: string) => void;
+  /** `endReason` 은 `TAKE_ENDED` 일 때 BE 가 끝낸 이유입니다 (`TakeEndReason`) */
+  onError?: (code: SttErrorCode, message: string, endReason: TakeEndReason | null) => void;
   /** 더 붙지 않습니다. 화면은 이 시점에 "말하기 분석 없이 계속"으로 넘어갑니다 */
   onGiveUp?: (reason: GiveUpReason) => void;
   /**
@@ -388,7 +391,7 @@ export class SttSocket {
           this.fatal = true;
           break;
         }
-        this.options.onError?.(message.code, message.message);
+        this.options.onError?.(message.code, message.message, message.end_reason);
 
         // 토큰이 만료된 것뿐일 수 있습니다. 새로 받아 **한 번만** 다시 붙어 봅니다 —
         // 그래도 거절당하면 진짜 인증 실패이므로 그때 포기합니다

@@ -21,7 +21,7 @@ const clockKey = (takeId: string) => `rehearsal:clock:${takeId}`;
 
 /**
  * `sessionStorage` 인 이유 — `pagehide` 에서 IndexedDB 쓰기는 끝나기 전에 탭이 사라질 수 있습니다.
- * 이건 동기라 새로고침이면 남고, 탭이 바뀌면 사라집니다(다른 탭은 하트비트로 이어받습니다).
+ * 이건 동기라 새로고침이면 남고, 탭이 바뀌면 사라집니다(다른 창에서는 이어 가지 않습니다 — `leftWindow`).
  */
 export function saveClock(takeId: string, clock: SavedClock): void {
   try {
@@ -54,10 +54,44 @@ export function clearClock(takeId: string): void {
 }
 
 /**
+ * 다른 창이 아직 발표 중이라고 보는 하트비트 간격. 하트비트는 5초마다라 두 번 놓칠 만큼 둡니다.
+ * BE 가 발표 중으로 보는 오디오 간격(`LIVE_AUDIO_SEC`)과 같습니다
+ */
+export const LIVE_BEAT_MS = 10_000;
+
+/**
+ * 이 창에서 무대를 열면 안 되는 이유. `CLOSED` 창을 닫았다 다시 열었습니다 — 이어 가지 않고 실패로
+ * 끝냅니다. `OTHER_WINDOW` 다른 창이 아직 발표 중입니다 — 아무것도 바꾸지 않습니다.
+ */
+export type LeftWindow = 'CLOSED' | 'OTHER_WINDOW';
+
+/**
+ * 리허설 주소를 열었을 때 무대를 이어 열어도 되나. 열면 안 되면 그 이유, 되면 null 입니다.
+ *
+ * **같은 탭인지는 라우터 state 로 압니다.** 장치 점검이 `clientSessionId` 를 실어 보내고, 이 값은
+ * 새로고침해도 · 닫은 탭을 복원해도(Ctrl+Shift+T) 남습니다. 주소를 새 창에 직접 열면 비어 있습니다.
+ * 같은 탭이면 새로고침이라 이어 갑니다 — 닫은 탭을 늦게 복원했으면 서버가 첫 연결을
+ * `TAKE_ENDED`(`CLOSED`)로 거절하고, 그때 실패 화면으로 갑니다.
+ *
+ * 다른 창에서 열었으면 이어 가지 않습니다. 하트비트가 최근이면 그 창이 아직 발표 중이고, 아니면
+ * 창을 닫았다 다시 연 것입니다. 끝내기를 누른 뒤의 행(`ending` · 제출함 · 끝남)은 여기서 막지 않습니다 —
+ * 무대를 열지 않고 종료를 마저 보내는 길이 따로 있습니다.
+ */
+export function leftWindow(
+  row: { status: string; ending: unknown; submittedAt: number | null; lastBeatAt: number },
+  sameTab: boolean,
+  now: number,
+): LeftWindow | null {
+  if (sameTab) return null;
+  if (row.status !== 'RUNNING' || row.ending !== null || row.submittedAt !== null) return null;
+  return now - row.lastBeatAt < LIVE_BEAT_MS ? 'OTHER_WINDOW' : 'CLOSED';
+}
+
+/**
  * 무대 시계를 어디서부터 다시 돌릴까.
  *
  * 1. 새로고침이면 `pagehide` 에 적어 둔 값이 있습니다. 정확합니다.
- * 2. 없으면(탭이 죽었다 · 다른 탭에서 열었다) 마지막 하트비트에서 추정합니다 —
+ * 2. 없으면(탭이 죽은 뒤 복원했다 · `pagehide` 에 못 적었다) 마지막 하트비트에서 추정합니다 —
  *    `elapsedMs + min(지금 − lastBeatAt, beatMs)`. 탭이 죽은 건 마지막 하트비트 뒤
  *    한 주기 안이라 대개 이전 탭이 보낸 시각보다 뒤입니다. 가려진 탭은 브라우저가 타이머를
  *    늦춰서 앞설 수도 있는데, 그래도 전사는 서버가 offset 이 뒤로 간 것을 보고 새 구간으로 받습니다.
