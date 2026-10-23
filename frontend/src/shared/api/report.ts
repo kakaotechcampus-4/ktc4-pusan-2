@@ -10,13 +10,16 @@ export function fetchTakeReport(takeId: string) {
 }
 
 /**
- * 더 기다려도 바뀌지 않는 상태인가. 분석에 실패했거나, 리뷰가 끝났거나(실패 · 건너뜀 포함), 단계가 DONE 이면 그렇습니다.
- * 리뷰가 실패해도 측정값은 남아 있어 리포트로 넘어갑니다.
+ * 더 기다려도 바뀌지 않는 상태인가. 분석에 실패했거나, 리뷰가 끝났거나(실패 · 건너뜀 포함), 단계가 DONE 이거나,
+ * 리뷰가 보류됐으면 그렇습니다. 리뷰가 실패해도 측정값은 남아 있어 리포트로 넘어갑니다.
  */
 export function isSettled(report: TakeReport | undefined): boolean {
   if (!report) return false;
   return (
-    report.status === 'FAILED' || report.review_status !== null || report.analysis_stage === 'DONE'
+    report.status === 'FAILED' ||
+    report.review_status !== null ||
+    report.analysis_stage === 'DONE' ||
+    report.analysis_hold_reason !== null
   );
 }
 

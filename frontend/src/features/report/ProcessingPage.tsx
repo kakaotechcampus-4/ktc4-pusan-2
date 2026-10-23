@@ -29,7 +29,9 @@ const STEP_LABEL: Record<StepState, string> = {
   PENDING: '대기',
 };
 
-const WAITING_DETAIL = '비슷하게 들린 말이 있어 확인을 기다려요. 잠시 뒤 그대로 진행돼요.';
+// 확인 화면이 아직 없어 답할 수 없습니다. BE 는 확인을 최대 10분 기다립니다 (`architecture.md` 1-3)
+const WAITING_DETAIL =
+  '비슷하게 들린 말이 있어 확인을 기다려요. 답이 없으면 10분 안에 그대로 진행돼요.';
 
 /**
  * 기다리는 동안 치치가 건네는 팁 — 게임 로딩 화면의 Tip 처럼 몇 초마다 바뀝니다.
@@ -68,11 +70,12 @@ export function ProcessingPage() {
   const navigate = useNavigate();
   const data = report.data;
   const failed = data?.status === 'FAILED';
+  const held = Boolean(data?.analysis_hold_reason);
   const settled = isSettled(data);
 
   useEffect(() => {
-    if (settled && !failed) navigate(`/takes/${takeId}`, { replace: true });
-  }, [settled, failed, navigate, takeId]);
+    if (settled && !failed && !held) navigate(`/takes/${takeId}`, { replace: true });
+  }, [settled, failed, held, navigate, takeId]);
 
   if (!takeId) return <Navigate replace to="/" />;
 
@@ -104,6 +107,7 @@ export function ProcessingPage() {
             isPending={report.isPending}
             error={report.error}
             failed={failed}
+            held={held}
             pitchId={data?.pitch_id}
             states={stepStates(data?.analysis_stage ?? null)}
           />
@@ -126,12 +130,14 @@ function DialogContent({
   isPending,
   error,
   failed,
+  held,
   pitchId,
   states,
 }: {
   isPending: boolean;
   error: Error | null;
   failed: boolean;
+  held: boolean;
   pitchId: string | undefined;
   states: StepState[];
 }) {
@@ -162,6 +168,21 @@ function DialogContent({
             홈으로
           </ButtonLink>
         </div>
+      </div>
+    );
+
+  // 리뷰 보류는 사람이 복구할 때까지 그대로라, 기다리라고 하지 않습니다
+  if (held)
+    return (
+      <div role="alert" className="flex flex-col items-center gap-4">
+        <p className="text-lg font-bold">분석이 잠시 멈췄어요</p>
+        <p className="text-sm leading-relaxed">
+          말한 내용을 채점하다 문제가 생겨 확인하고 있어요. 바로 끝나지 않으니 홈에서 나중에 다시
+          확인해 주세요.
+        </p>
+        <ButtonLink to="/" variant="secondary">
+          홈으로
+        </ButtonLink>
       </div>
     );
 
@@ -228,7 +249,8 @@ function Progress({ states }: { states: StepState[] }) {
       </div>
 
       <p className="text-xs text-dusk-accent">
-        보통 1분 안에 끝나요. 화면을 떠나도 분석은 계속되고, 홈에서 다시 볼 수 있어요.
+        {!waiting && '보통 1분 안에 끝나요. '}화면을 떠나도 분석은 계속되고, 홈에서 다시 볼 수
+        있어요.
       </p>
       <ButtonLink to="/" variant="secondary" size="sm">
         홈으로

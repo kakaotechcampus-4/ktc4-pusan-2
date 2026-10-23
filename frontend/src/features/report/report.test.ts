@@ -19,6 +19,7 @@ const analyzing: TakeReport = {
   status: 'ANALYZING',
   analysis_stage: 'SCORING',
   review_status: null,
+  analysis_hold_reason: null,
   measures: null,
   review: null,
 };
@@ -40,6 +41,8 @@ it('keeps polling until the take fails, the review ends, or the stage is DONE', 
   // 리뷰가 실패해도 측정값은 있어 리포트로 넘어갑니다
   expect(isSettled({ ...analyzing, review_status: 'FAILED' })).toBe(true);
   expect(isSettled({ ...analyzing, analysis_stage: 'DONE' })).toBe(true);
+  // 리뷰 보류는 사람이 복구할 때까지 그대로라 더 묻지 않습니다
+  expect(isSettled({ ...analyzing, analysis_hold_reason: 'COVERAGE_RESCORE_FAILED' })).toBe(true);
 });
 
 it('shows missing measures as — instead of 0%', () => {

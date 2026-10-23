@@ -30,8 +30,9 @@ export function ReportPage() {
   const data = report.data;
 
   if (!takeId) return <Navigate replace to="/" />;
-  // 분석 자체가 실패한 Take 는 보여 줄 측정값이 없습니다. 실패 안내는 분석 대기 화면이 맡습니다
-  if (data?.status === 'FAILED') return <Navigate replace to={`/takes/${takeId}/processing`} />;
+  // 분석 자체가 실패한 Take 는 보여 줄 측정값이 없습니다. 실패 · 리뷰 보류 안내는 분석 대기 화면이 맡습니다
+  if (data?.status === 'FAILED' || data?.analysis_hold_reason)
+    return <Navigate replace to={`/takes/${takeId}/processing`} />;
 
   return (
     <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>

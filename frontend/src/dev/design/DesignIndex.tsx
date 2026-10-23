@@ -56,6 +56,7 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
     note: '몇 초마다 단계가 넘어가고 리포트로 가요',
   },
   { path: '/takes/t-failed/processing', id: 'P6-0', title: '분석 대기 · 분석 실패' },
+  { path: '/takes/t-held/processing', id: 'P6-0', title: '분석 대기 · 리뷰 보류' },
   { path: '/takes/t3', id: 'P6', title: 'Take 리포트' },
   { path: '/takes/t-fallback', id: 'P6', title: 'Take 리포트 · AI 문장 실패' },
   { path: '/takes/t-review-failed', id: 'P6', title: 'Take 리포트 · 리뷰 실패' },

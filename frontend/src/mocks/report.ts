@@ -10,6 +10,7 @@ import type { AnalysisStage, ReviewResult, TakeMeasures, TakeReport } from '@/ty
  *   t-fallback      AI 문장 실패 — 숫자 · 판정은 같고 문장만 기본 문장
  *   t-review-failed 리뷰 실패 — 측정값만
  *   t-failed        분석 실패
+ *   t-held          리뷰 보류 — 사람이 복구할 때까지 멈춤
  *   그 밖의 id      처음 물은 뒤로 몇 초마다 단계가 넘어가 정상으로 끝남 (리허설을 끝내고 온 Take)
  */
 
@@ -117,6 +118,7 @@ const done: TakeReport = {
   status: 'COMPLETED',
   analysis_stage: 'DONE',
   review_status: 'DONE',
+  analysis_hold_reason: null,
   measures: measuresFixture,
   review: reviewFixture,
 };
@@ -151,6 +153,17 @@ const failed: TakeReport = {
   review: null,
 };
 
+/** 리뷰 보류 — 대본 전달도 재채점이 끝내 실패해 사람이 복구할 때까지 멈춤 (`architecture.md` 1-3) */
+const held: TakeReport = {
+  ...done,
+  take_id: 't-held',
+  status: 'ANALYZING',
+  analysis_stage: 'SCORING',
+  review_status: null,
+  analysis_hold_reason: 'COVERAGE_RESCORE_FAILED',
+  review: null,
+};
+
 /** 시선 측정 제외 — 0이 아니라 null (CLAUDE.md 6번). 이 케이스를 목에 꼭 남겨두세요 */
 const gazeExcluded: TakeReport = {
   ...done,
@@ -172,6 +185,7 @@ const FIXED: Record<string, TakeReport> = {
   't-fallback': fallback,
   't-review-failed': reviewFailed,
   't-failed': failed,
+  't-held': held,
 };
 
 /** 단계 하나에 걸리는 시간. 대본 확인 단계도 한 번 거칩니다 */

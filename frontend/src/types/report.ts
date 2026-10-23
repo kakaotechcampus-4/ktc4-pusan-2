@@ -21,6 +21,11 @@ export interface TakeReport {
   analysis_stage: AnalysisStage | null;
   /** `takes.review_status` (#239). 리뷰를 부르기 전이면 null */
   review_status: ReviewStatus | null;
+  /**
+   * `takes.analysis_hold_reason` (`docs/ai/architecture.md` 1-3 '리뷰 보류'). 리뷰를 멈춘 이유이고,
+   * 사람이 복구할 때까지 기다려도 바뀌지 않습니다. null 이면 보류가 아닙니다
+   */
+  analysis_hold_reason: 'COVERAGE_RESCORE_FAILED' | null;
   /** 코치 Take 결과. 발표 기록 정리(`FINALIZING`)가 끝나기 전이면 null */
   measures: TakeMeasures | null;
   /** 리뷰가 아직이거나 실패했으면 null — 측정값만 보입니다 */
