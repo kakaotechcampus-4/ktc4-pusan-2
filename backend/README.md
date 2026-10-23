@@ -244,7 +244,8 @@ POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_ver
 - Take 생성은 파싱이 끝난 대본만 받는다 (아니면 `409 SCRIPT_NOT_PARSED`). 발표자료 쪽수와 대본 장 수가 다르면
   `409 SLIDE_COUNT_MISMATCH` 다 (쪽수를 모르는 옛 발표자료는 검사하지 않는다). 목표 시간은 받지 않고 발표 제한 시간을 박는다.
 - `client_session_id`(FE 의 연습 세션 id)가 같으면 새로 만들지 않고 처음 만든 Take 를 돌려준다. 응답을 잃고 다시
-  보내도 Take 는 하나다.
+  보내도 Take 는 하나다. 모드 · 대본 표시 방식 · 버전이 처음과 다르면 `409 TAKE_SESSION_MISMATCH`, 그 Take 가 이미
+  끝났으면(`ABANDONED` 포함) `409 TAKE_ENDED` 다. 둘 다 새 세션 id 로 다시 만든다.
 - 새 Take 를 만들면 같은 발표에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 끝낸다. FE 는 가장 최근 Take 로만
   발표한다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지 `READY` 다.
 

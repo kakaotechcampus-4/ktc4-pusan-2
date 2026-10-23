@@ -17,7 +17,8 @@ class TakeInitRequestDTO(BaseModel):
     script_mode: ScriptMode
     presentation_version_id: uuid.UUID
     script_version_id: uuid.UUID
-    # 응답을 잃고 같은 값으로 다시 보내면 새로 만들지 않고 처음 만든 Take 를 돌려준다
+    # 응답을 잃고 같은 값으로 다시 보내면 새로 만들지 않고 처음 만든 Take 를 돌려준다.
+    # 본문이 처음과 다르거나 그 Take 가 이미 끝났으면 409
     client_session_id: uuid.UUID | None = None
 
 # 보낸 필드만 반영한다 (service 가 exclude_none 으로 읽는다).
