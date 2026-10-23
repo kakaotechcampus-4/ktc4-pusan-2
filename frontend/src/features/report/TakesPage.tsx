@@ -83,7 +83,6 @@ export function TakesPage() {
                     <p className="mt-0.5 flex items-center gap-2 font-bold">
                       TAKE {t.take_number}
                       <Badge tone={status.tone}>{status.label}</Badge>
-                      {t.is_best && <Badge tone="strong">BEST</Badge>}
                     </p>
                   </div>
                   <dl className="tabular flex flex-wrap gap-x-6 gap-y-1 text-sm">

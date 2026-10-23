@@ -19,7 +19,6 @@ const row = (patch: Partial<TakeHistoryRow>): TakeHistoryRow => ({
   missions_achieved: 0,
   missions_total: 0,
   gaze_engine: 'gaze_v1.1.0',
-  is_best: false,
   ...patch,
 });
 

@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import type { TakeHistoryRow } from '@/types/takeHistory';
 
 /**
- * Take 목록 목 — `GET /api/takes/` · `PUT /api/pitches/{pitch_id}/best-take` (BE 에 아직 없는 API, `types/takeHistory.ts`).
+ * Take 목록 목 — `GET /api/takes/` (BE 에 아직 없는 API, `types/takeHistory.ts`).
  *
  * 화면 상태를 주소만 바꿔 볼 수 있게 피치 id 마다 모양을 고정해 둡니다.
  *   p1        Take 4개 — 시선 측정 제외(t2) · 시선 엔진이 다른 Take(t1) 포함
@@ -27,7 +27,6 @@ const base: TakeHistoryRow = {
   missions_achieved: 0,
   missions_total: 1,
   gaze_engine: 'gaze_v1.1.0',
-  is_best: false,
 };
 
 // prettier-ignore
@@ -37,7 +36,7 @@ const rows: TakeHistoryRow[] = [
   base,
   { ...base, take_id: 't3', take_number: 3, started_at: '2026-10-05T20:40:00+09:00',
     script_mode: 'HIGHLIGHT', duration_ms: 298_000, audience_ratio: 0.66, script_ratio: 0.3,
-    cpm: 331, filler_count: 9, missions_achieved: 1, missions_total: 2, is_best: true },
+    cpm: 331, filler_count: 9, missions_achieved: 1, missions_total: 2 },
   { ...base, take_id: 't2', take_number: 2, started_at: '2026-10-04T22:10:00+09:00',
     script_mode: 'HIGHLIGHT', duration_ms: 342_000, audience_ratio: null, script_ratio: null,
     cpm: 298, filler_count: 12, missions_total: 2, gaze_engine: null },
@@ -53,11 +52,5 @@ export const takeHistoryHandlers = [
   http.get('*/api/takes/', ({ request }) => {
     const pitchId = new URL(request.url).searchParams.get('pitch_id');
     return HttpResponse.json({ takes: rows.filter((r) => !pitchId || r.pitch_id === pitchId) });
-  }),
-
-  http.put('*/api/pitches/:pitchId/best-take', async ({ params, request }) => {
-    const { take_id } = (await request.json()) as { take_id: string };
-    for (const r of rows) if (r.pitch_id === params.pitchId) r.is_best = r.take_id === take_id;
-    return new HttpResponse(null, { status: 204 });
   }),
 ];

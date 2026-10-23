@@ -21,7 +21,6 @@ import { NotFoundPage } from '@/features/info/NotFoundPage';
 import { MyPage } from '@/features/auth/MyPage';
 import { TakesPage } from '@/features/report/TakesPage';
 import { ComparisonPage } from '@/features/report/ComparisonPage';
-import { BestTakePage } from '@/features/report/BestTakePage';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -56,7 +55,7 @@ const routes = [
   { path: '/takes/:takeId/retry',      title: '업로드 실패 · 재시도 | 피치코치', element: <Stub id="P15" name="업로드 실패 · 재시도" track="A" /> },
   { path: '/takes/:takeId',            title: 'Take 리포트 | 피치코치', element: <Stub id="P6"  name="Take 리포트" track="B" /> },
   { path: '/pitch/:id/comparison',     title: 'Take 비교 | 피치코치', element: <ComparisonPage /> },
-  { path: '/pitch/:id/best',           title: 'Best Take 선택 | 피치코치', element: <BestTakePage /> },
+  { path: '/pitch/:id/best',           title: 'Best Take 선택 | 피치코치', element: <Stub id="P8"  name="Best Take 선택" track="B" /> },
   { path: '/me',          title: '마이페이지 | 피치코치', element: <MyPage /> },
   { path: '/privacy',     title: '개인정보 처리방침 | 피치코치', element: <PolicyPage kind="privacy" /> },
   { path: '/terms',       title: '이용약관 | 피치코치', element: <PolicyPage kind="terms" /> },

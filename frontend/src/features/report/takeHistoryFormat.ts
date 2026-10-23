@@ -17,7 +17,7 @@ export function takeDay(iso: string) {
   return `${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** 비교 · Best Take 는 분석이 끝난 Take 만 씁니다 */
+/** 비교는 분석이 끝난 Take 만 씁니다 */
 export function completedTakes(rows: TakeHistoryRow[]) {
   return rows.filter((r) => r.status === 'COMPLETED');
 }

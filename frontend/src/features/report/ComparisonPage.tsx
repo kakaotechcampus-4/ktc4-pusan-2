@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
 import { useTakeHistory } from '@/shared/api/takeHistory';
-import { Badge } from '@/shared/ui/Badge';
 import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
@@ -125,7 +124,6 @@ export function ComparisonPage() {
               {series.map((r) => (
                 <li key={r.take_id} className="flex-1 text-center text-xs font-bold">
                   TAKE {r.take_number}
-                  {r.is_best && <span className="ml-1 text-coral">★</span>}
                 </li>
               ))}
             </ol>
@@ -158,11 +156,6 @@ export function ComparisonPage() {
                         <td className="py-3 pr-4 font-bold">
                           TAKE {r.take_number}{' '}
                           <span className="font-normal text-stone">{takeDay(r.started_at)}</span>
-                          {r.is_best && (
-                            <span className="ml-2">
-                              <Badge tone="strong">BEST</Badge>
-                            </span>
-                          )}
                         </td>
                         <td className="py-3 pr-4">{SCRIPT_MODE_LABEL[r.script_mode]}</td>
                         <td className="py-3 pr-4">

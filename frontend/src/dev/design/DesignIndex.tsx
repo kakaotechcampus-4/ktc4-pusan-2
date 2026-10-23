@@ -9,6 +9,7 @@ import { StageDraft } from './stage/StageDraft';
 import { LoadingDraft } from './loading/LoadingDraft';
 import { PrepareMissionDraft } from './prepare/PrepareMissionDraft';
 import { RetryDraft } from './retry/RetryDraft';
+import { BestTakeDraft } from './best/BestTakeDraft';
 
 /**
  * 디자인 시안 목록 — `/dev/design`, 각 시안은 `/dev/design/:name`.
@@ -31,6 +32,7 @@ const DRAFTS: { name: string; id: string; title: string; element: ReactElement }
     element: <LoadingDraft />,
   },
   { name: 'report', id: 'P6', title: 'Take 리포트', element: <ReportDraft /> },
+  { name: 'best', id: 'P8', title: 'Best Take 선택', element: <BestTakeDraft /> },
   { name: 'retry', id: 'P15', title: '업로드 실패 · 재시도', element: <RetryDraft /> },
 ];
 
@@ -48,7 +50,6 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
   { path: '/takes/t3/exam', id: '07', title: '리허설 · 실전 모드' },
   { path: '/takes', id: 'P16', title: 'Take 기록' },
   { path: '/pitch/p1/comparison', id: 'P7', title: 'Take 비교' },
-  { path: '/pitch/p1/best', id: 'P8', title: 'Best Take 선택' },
   {
     path: '/pitch/p2/comparison',
     id: 'P7',
