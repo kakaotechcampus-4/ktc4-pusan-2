@@ -26,6 +26,12 @@ class TakeInProgress(ConflictException):
     message = "다른 창에서 연습 중입니다."
 
 
+class TakeSessionMismatch(ConflictException):
+    # 같은 연습 세션 id 로 처음과 다른 모드 · 버전을 보냈다. 다시 보낸 요청이 아니다
+    code = "TAKE_SESSION_MISMATCH"
+    message = "이 연습 세션은 다른 설정으로 이미 시작했습니다."
+
+
 class TakeAlreadyStarted(ConflictException):
     code = "TAKE_STARTED"
     message = "이미 시작한 연습입니다."

@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import ColumnElement, and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session, aliased, defer
 
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import (
@@ -86,6 +86,33 @@ class TakeRepository:
         ).returning(Calibration)
         return self.db.scalars(stmt, execution_options={"populate_existing": True}).one()
 
+    def get_by_client_session(
+        self, pitch_id: uuid.UUID, client_session_id: uuid.UUID
+    ) -> Take | None:
+        return self.db.scalar(
+            select(Take)
+            .where(Take.pitch_id == pitch_id, Take.client_session_id == client_session_id)
+            .options(defer(Take.event_logs))
+        )
+
+    def abandon_ready_takes(self, pitch_id: uuid.UUID) -> int:
+        """이 pitch 에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 바꾼다. 바꾼 수를 돌려준다.
+
+        새 Take 를 만들 때 부른다. FE 는 가장 최근 Take 로만 발표하므로 앞의 `READY` 는 다시 쓰이지
+        않는다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지
+        `READY` 다. 끝난 시각은 알 수 없어 만든 시각으로 적는다.
+        """
+        result = self.db.execute(
+            update(Take)
+            .where(Take.pitch_id == pitch_id, Take.status == "READY")
+            .values(
+                status="FAILED",
+                end_reason="ABANDONED",
+                ended_at=func.coalesce(Take.ended_at, Take.created_at),
+            )
+        )
+        return result.rowcount
+
     def next_take_number(self, pitch_id: uuid.UUID) -> int:
         current = self.db.scalar(
             select(func.max(Take.take_number)).where(Take.pitch_id == pitch_id)
@@ -93,11 +120,23 @@ class TakeRepository:
         return (current or 0) + 1
 
     def get_latest_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
+        # 부르는 곳(장치 점검)은 번호 · 대본 표시 방식만 본다. 시선 1초 기록이 쌓이는
+        # event_logs 는 읽지 않는다
         return self.db.scalar(
             select(Take)
-            .where(Take.pitch_id == pitch_id,
-                   Take.review_status == "DONE")  # 완료된 take 중 가장 최근 것.
+            .where(Take.pitch_id == pitch_id)
+            .options(defer(Take.event_logs))
             # created_at 은 같은 트랜잭션 안에서 같아질 수 있다. 번호는 pitch 안에서 유일하다
+            .order_by(Take.take_number.desc())
+            .limit(1)
+        )
+
+    def get_latest_reviewed_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
+        # 이전 미션은 리뷰까지 끝난 Take 중 가장 최근 것에서 가져온다
+        return self.db.scalar(
+            select(Take)
+            .where(Take.pitch_id == pitch_id, Take.review_status == "DONE")
+            .options(defer(Take.event_logs))
             .order_by(Take.take_number.desc())
             .limit(1)
         )

@@ -166,6 +166,37 @@ class PitchRepository:
             .order_by(ScriptVersion.version.asc())
         ).all()
 
+    def get_latest_presentation(
+        self, pitch_id: uuid.UUID, page_count: int | None = None
+    ) -> PresentationVersion | None:
+        """가장 최근 발표자료. page_count 를 주면 그 쪽수인 것 중에서 고른다."""
+        query = select(PresentationVersion).where(PresentationVersion.pitch_id == pitch_id)
+        if page_count is not None:
+            query = query.where(PresentationVersion.page_count == page_count)
+        return self.db.scalar(query.order_by(PresentationVersion.version.desc()).limit(1))
+
+    def get_latest_script(self, pitch_id: uuid.UUID) -> ScriptVersion | None:
+        return self.db.scalar(
+            select(ScriptVersion)
+            .where(ScriptVersion.pitch_id == pitch_id)
+            .options(defer(ScriptVersion.content), defer(ScriptVersion.terms))
+            .order_by(ScriptVersion.version.desc())
+            .limit(1)
+        )
+
+    def get_latest_parsed_script(self, pitch_id: uuid.UUID) -> ScriptVersion | None:
+        """파싱이 끝난(DONE) 가장 최근 대본."""
+        return self.db.scalar(
+            select(ScriptVersion)
+            .where(
+                ScriptVersion.pitch_id == pitch_id,
+                ScriptVersion.parse_status == ScriptParseStatus.DONE,
+            )
+            .options(defer(ScriptVersion.content), defer(ScriptVersion.terms))
+            .order_by(ScriptVersion.version.desc())
+            .limit(1)
+        )
+
     def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
         return self.db.scalars(
             select(Standards).where(Standards.pitch_id == pitch_id)
@@ -225,6 +256,11 @@ class PitchRepository:
             .where(ScriptSlide.script_version_id == script_version_id)
             .order_by(ScriptSlide.slide_number)
         ).all()
+
+    def count_slides(self, script_version_id: uuid.UUID) -> int:
+        return self.db.scalar(
+            select(func.count()).where(ScriptSlide.script_version_id == script_version_id)
+        ) or 0
 
     def restart_parse(
         self, script_version_id: uuid.UUID, now: datetime, expired_before: datetime

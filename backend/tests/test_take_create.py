@@ -11,7 +11,12 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.entity import (
+    Pitch,
+    PresentationVersion,
+    ScriptSlide,
+    ScriptVersion,
+)
 from pitch_coach_backend.module.take import service
 from pitch_coach_backend.module.take.dto import TakeInitRequestDTO
 from pitch_coach_backend.module.take.entity import Take
@@ -34,7 +39,7 @@ def _make_pitch(db: Session, user_id: uuid.UUID) -> uuid.UUID:
 
 def _make_versions(db: Session, pitch_id: uuid.UUID) -> Versions:
     presentation = PresentationVersion(pitch_id=pitch_id, version=1, file_key=f"{pitch_id}/1.pdf")
-    script = ScriptVersion(pitch_id=pitch_id, version=1, content="대본")
+    script = ScriptVersion(pitch_id=pitch_id, version=1, content="대본", parse_status="DONE")
     db.add_all([presentation, script])
     db.flush()
     return presentation.id, script.id
@@ -62,6 +67,7 @@ def _create(
     headers: dict[str, str],
     presentation_version_id: uuid.UUID,
     script_version_id: uuid.UUID,
+    **extra: Any,
 ):
     return client.post(
         f"/api/pitches/{pitch_id}/takes/",
@@ -70,10 +76,17 @@ def _create(
             "script_mode": "HIGHLIGHT",
             "presentation_version_id": str(presentation_version_id),
             "script_version_id": str(script_version_id),
-            "goal_time_sec": 300,
+            **extra,
         },
         headers=headers,
     )
+
+
+def _take(db: Session, take_id: str) -> Take:
+    take = db.get(Take, uuid.UUID(take_id))
+    assert take is not None
+    db.refresh(take)
+    return take
 
 
 def _take_numbers(db: Session, pitch_id: uuid.UUID) -> list[int]:
@@ -91,9 +104,14 @@ def test_create_numbers_takes_in_order(
     pitch_id: uuid.UUID,
     versions: Versions,
 ) -> None:
-    assert _create(client, pitch_id, auth_headers, *versions).status_code == 200
-    assert _create(client, pitch_id, auth_headers, *versions).status_code == 200
+    first = _create(client, pitch_id, auth_headers, *versions)
+    second = _create(client, pitch_id, auth_headers, *versions)
 
+    assert first.status_code == 200
+    assert second.status_code == 200
+    # FE 가 리허설에 띄울 번호를 응답에서 바로 읽는다
+    assert first.json()["take_number"] == 1
+    assert second.json()["take_number"] == 2
     assert _take_numbers(db_session, pitch_id) == [1, 2]
 
 
@@ -136,6 +154,171 @@ def test_unknown_version_id_is_404_not_500(
     assert response.json()["code"] == "PRESENTATION_VERSION_NOT_FOUND"
 
 
+def test_goal_time_is_the_pitch_time_limit(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """FE 가 다른 값을 보내도 발표 제한 시간을 박는다."""
+    response = _create(client, pitch_id, auth_headers, *versions, goal_time_sec=10)
+
+    assert response.status_code == 200
+    assert _take(db_session, response.json()["take_id"]).goal_time_sec == 300
+
+
+def test_same_client_session_returns_the_first_take(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """응답을 잃고 다시 보낸 요청. 새로 만들지 않고 처음 Take 를 돌려준다."""
+    session_id = str(uuid.uuid4())
+
+    first = _create(client, pitch_id, auth_headers, *versions, client_session_id=session_id)
+    retry = _create(client, pitch_id, auth_headers, *versions, client_session_id=session_id)
+
+    assert retry.status_code == 200
+    assert retry.json()["take_id"] == first.json()["take_id"]
+    assert retry.json()["take_number"] == 1
+    assert _take_numbers(db_session, pitch_id) == [1]
+    # 다시 보낸 요청이 처음 Take 를 버린 것으로 끝내지 않는다
+    assert _take(db_session, first.json()["take_id"]).status == "READY"
+
+
+@pytest.mark.parametrize("changed", ["mode", "script_mode", "presentation_version_id"])
+def test_same_client_session_with_another_body_is_409(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    changed: str,
+) -> None:
+    """같은 세션 id 로 처음과 다른 본문을 보냈다. 다시 보낸 요청이 아니다."""
+    session_id = str(uuid.uuid4())
+    _create(client, pitch_id, auth_headers, *versions, client_session_id=session_id)
+
+    presentation_id, script_id = versions
+    extra: dict[str, Any] = {"client_session_id": session_id}
+    if changed == "mode":
+        extra["mode"] = "EXAM"
+    elif changed == "script_mode":
+        extra["script_mode"] = "OFF"
+    else:
+        presentation = PresentationVersion(
+            pitch_id=pitch_id, version=2, file_key=f"{pitch_id}/2.pdf"
+        )
+        db_session.add(presentation)
+        db_session.flush()
+        presentation_id = presentation.id
+    retry = _create(client, pitch_id, auth_headers, presentation_id, script_id, **extra)
+
+    assert retry.status_code == 409
+    assert retry.json()["code"] == "TAKE_SESSION_MISMATCH"
+    assert _take_numbers(db_session, pitch_id) == [1]
+
+
+@pytest.mark.parametrize("status", ["FAILED", "COMPLETED"])
+def test_same_client_session_of_ended_take_is_409(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    status: str,
+) -> None:
+    """돌려줄 Take 가 끝났다. 받아도 실시간 연결이 TAKE_ENDED 로 막는다."""
+    session_id = str(uuid.uuid4())
+    first = _create(client, pitch_id, auth_headers, *versions, client_session_id=session_id)
+    if status == "FAILED":
+        # 그사이 다른 Take 를 만들어 READY 로 남은 처음 Take 가 ABANDONED 로 끝났다
+        _create(client, pitch_id, auth_headers, *versions)
+    else:
+        _take(db_session, first.json()["take_id"]).status = status
+        db_session.flush()
+
+    retry = _create(client, pitch_id, auth_headers, *versions, client_session_id=session_id)
+
+    assert retry.status_code == 409
+    assert retry.json()["code"] == "TAKE_ENDED"
+    assert _take(db_session, first.json()["take_id"]).status == status
+
+
+def test_new_take_abandons_takes_left_ready(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    left = _create(client, pitch_id, auth_headers, *versions).json()["take_id"]
+    running = _create(client, pitch_id, auth_headers, *versions).json()["take_id"]
+    _take(db_session, running).status = "RUNNING"
+    db_session.flush()
+
+    new = _create(client, pitch_id, auth_headers, *versions).json()["take_id"]
+
+    abandoned = _take(db_session, left)
+    assert (abandoned.status, abandoned.end_reason) == ("FAILED", "ABANDONED")
+    assert abandoned.ended_at == abandoned.created_at
+    # 연결된 Take 는 떠난 Take 타이머가 맡는다
+    assert _take(db_session, running).status == "RUNNING"
+    assert _take(db_session, new).status == "READY"
+
+
+@pytest.mark.parametrize(("slides", "status_code"), [(3, 200), (2, 409)])
+def test_page_count_must_match_slide_count(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    slides: int,
+    status_code: int,
+) -> None:
+    presentation = PresentationVersion(
+        pitch_id=pitch_id, version=1, file_key=f"{pitch_id}/1.pdf", page_count=3
+    )
+    script = ScriptVersion(pitch_id=pitch_id, version=1, content="대본", parse_status="DONE")
+    db_session.add_all([presentation, script])
+    db_session.flush()
+    db_session.add_all(
+        ScriptSlide(script_version_id=script.id, slide_number=n, full_content=f"{n}장")
+        for n in range(1, slides + 1)
+    )
+    db_session.flush()
+
+    response = _create(client, pitch_id, auth_headers, presentation.id, script.id)
+
+    assert response.status_code == status_code
+    if status_code == 409:
+        assert response.json()["code"] == "SLIDE_COUNT_MISMATCH"
+        assert _take_numbers(db_session, pitch_id) == []
+
+
+@pytest.mark.parametrize("parse_status", ["PENDING", "FAILED"])
+def test_script_not_parsed_yet_is_409(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    parse_status: str,
+) -> None:
+    script = ScriptVersion(pitch_id=pitch_id, version=2, content="대본", parse_status=parse_status)
+    db_session.add(script)
+    db_session.flush()
+
+    response = _create(client, pitch_id, auth_headers, versions[0], script.id)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "SCRIPT_NOT_PARSED"
+    assert _take_numbers(db_session, pitch_id) == []
+
+
 def test_concurrent_creates_on_one_pitch_get_distinct_numbers(
     engine: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -174,15 +357,13 @@ def test_concurrent_creates_on_one_pitch_get_distinct_numbers(
         script_mode="HIGHLIGHT",
         presentation_version_id=presentation_id,
         script_version_id=script_id,
-        goal_time_sec=300,
     )
     results: dict[str, Any] = {}
 
     def create(name: str) -> None:
         with Session(engine, expire_on_commit=False) as db:
             try:
-                take_id = service.create_take_service(db, target, dto)
-                results[name] = db.get(Take, take_id).take_number
+                results[name] = service.create_take_service(db, target, dto).take_number
             except Exception as exc:  # 잠금이 없으면 여기로 온다
                 results[name] = exc
 

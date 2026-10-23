@@ -226,6 +226,29 @@ POST /api/auth/logout           현재 세션 폐기
 필요하다. 배포에서는 Caddy 가 같은 origin 으로 묶어 그 문제가 사라진다.
 자세한 흐름과 프론트 연동 코드는 `docs/oauth-architecture.md` 에 있다 (로컬 문서).
 
+## 연습 시작 (장치 점검 · Take 생성)
+
+```
+GET  /api/pitches/{pitch_id}/prepare   이번 연습에 쓸 버전 · 다음 Take 번호 · 지난번 대본 표시 방식
+POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_version_id", "script_version_id", "client_session_id"?}
+                                       → take_id · take_number
+```
+
+- `/prepare` 는 피치 생성을 거치지 않고 장치 점검에 들어왔을 때(홈 · 새로고침) Take 에 넣을 버전을 준다. 발표자료는
+  가장 최근 것, 대본은 파싱이 끝난(`DONE`) 가장 최근 것이다. 없으면 `null`. 그보다 새 대본이 파싱 중이거나 실패했으면
+  `newer_script` 로 알린다.
+- 발표자료는 대본 장 수와 쪽수가 같은 가장 최근 것을 고른다 (FE 매핑 확인과 같은 규칙). 맞는 것이 없으면 가장 최근
+  발표자료를 주고, 응답의 `page_count` · `slide_count` 가 달라 FE 가 시작을 막는다.
+- `next_take_number` 는 미리 보여 주는 값이다. 그사이 다른 Take 가 생기면 달라져서 실제 번호는 Take 생성 응답의
+  `take_number` 를 본다.
+- Take 생성은 파싱이 끝난 대본만 받는다 (아니면 `409 SCRIPT_NOT_PARSED`). 발표자료 쪽수와 대본 장 수가 다르면
+  `409 SLIDE_COUNT_MISMATCH` 다 (쪽수를 모르는 옛 발표자료는 검사하지 않는다). 목표 시간은 받지 않고 발표 제한 시간을 박는다.
+- `client_session_id`(FE 의 연습 세션 id)가 같으면 새로 만들지 않고 처음 만든 Take 를 돌려준다. 응답을 잃고 다시
+  보내도 Take 는 하나다. 모드 · 대본 표시 방식 · 버전이 처음과 다르면 `409 TAKE_SESSION_MISMATCH`, 그 Take 가 이미
+  끝났으면(`ABANDONED` 포함) `409 TAKE_ENDED` 다. 둘 다 새 세션 id 로 다시 만든다.
+- 새 Take 를 만들면 같은 발표에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 끝낸다. FE 는 가장 최근 Take 로만
+  발표한다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지 `READY` 다.
+
 ## 실시간 STT (WebSocket)
 
 발표 중 마이크 오디오를 Deepgram 으로 흘리고 전사를 FE 로 돌려준다. **BE 가 Deepgram 에 API 키를
@@ -253,6 +276,10 @@ WS /api/ws/takes/{take_id}
   숫자(`frames`·`dropped_frames`·`silence_ms`·`lost_ms`)는 연결 단위가 아니라 **Take 누적**이다.
 - **Deepgram 이 죽어도 연결을 끊지 않는다.** 오디오를 최대 5초 큐에 담고 백오프로 재접속하며
   `degraded` 만 알린다 — 그동안 FE 1단 코치는 계속 돌아야 하기 때문이다.
+- **키가 거절되면 다음 키로 넘어간다** (`DEEPGRAM_API_KEYS`). 연결 요청이 401(틀린 키) · 402(크레딧 부족)로
+  거절되면 그 키를 소진으로 표시하고 기다리지 않고 다음 키로 붙는다. 발표 도중 크레딧이 떨어져 끊겨도 재접속이
+  402 로 거절되므로 같은 길로 넘어간다. 소진 표시는 서버 메모리에만 있고 모든 Take 가 같이 쓴다. 키가 전부
+  소진이면 에러 로그를 남기고 위처럼 `degraded` 로 재시도하며, 그때는 첫 키부터 다시 확인한다
 - 에러는 `{"type":"error","code","message"}`. **에러가 곧 종료는 아니다** — `code` 마다 다르다
   (`realtime/dto.py` 의 `WsErrorCode`).
 
@@ -375,6 +402,11 @@ POST /api/pitches/{pitch_id}/scripts/{script_version_id}/parse  202  FAILED 일 
 POST /api/pitches/add/{pitch_id}/presentation                     발표자료(PDF)만. 대본은 받지 않는다
 ```
 
+- **발표자료는 BE 가 PDF 로 열어 본다** (`pitch/presentation_file.py`). 40MB 를 넘거나 열리지 않으면(PDF 가 아님 · 깨짐 ·
+  여는 암호) `400 INVALID_PRESENTATION` 이고 저장하지 않는다. 쓰기 제한만 걸린 PDF 는 받는다. 확장자 · MIME 은 보지 않고,
+  S3 에는 `{version}.pdf` · `application/pdf` 로 올린다. 연 김에 쪽수를 `presentation_versions.page_count` 에 두고
+  업로드 응답 · `/resources` · 발표자료 상세에 싣는다. 이 칸이 생기기 전에 올린 발표자료는
+  `uv run python dev/backfill-presentation-page-count.py` 로 채운다 (`--dry-run` 으로 먼저 본다).
 - **대본은 발표자료와 따로 올린다.** 대본만 여러 번 고치는 게 정상 흐름이라, 발표자료 업로드에 묶으면 PDF 를 매번 다시 올려야 한다.
   버전은 pitch 안에서 자동으로 1, 2, … 로 매기고, 발표자료 버전과는 따로 센다.
 - 대본은 JSON `{"content": "..."}` 로 받는다 (FE 는 textarea 내용 그대로). 비어 있거나 5만 자를 넘거나 NUL 문자가 있으면
@@ -484,5 +516,5 @@ POST /api/pitches/add/{pitch_id}/presentation                     발표자료(P
 | 환경변수 목록 | `.env.example` |
 | Google OAuth 리다이렉트 | `/api/auth/google/callback` (운영 도메인 확정 시 Google Console 에 추가 등록 필요) |
 | 추가로 필요한 것 | Redis (`REDIS_URL`). OAuth state 저장에 쓴다 |
-| Deepgram | `DEEPGRAM_API_KEY`. 운영 도메인은 HTTPS 여야 한다 — 브라우저 마이크(`getUserMedia`)는 secure context 에서만 열린다 |
+| Deepgram | `DEEPGRAM_API_KEY` 하나, 또는 `DEEPGRAM_API_KEYS` 에 쉼표로 여러 개. 운영 도메인은 HTTPS 여야 한다 — 브라우저 마이크(`getUserMedia`)는 secure context 에서만 열린다 |
 | AI 서버 | `AI_BASE_URL` (기본 `http://localhost:8001`, 운영은 compose 내부 `http://ai:8000`). 없으면 BE 는 뜨고 대본 파싱만 `AI_UNAVAILABLE` 로 실패한다 |

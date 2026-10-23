@@ -7,9 +7,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
+from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.pitch.exception import (
+    NonExistentPitch,
     NonExistentPresentationVersion,
     NonExistentScript,
+    ScriptNotParsed,
+    SlideCountMismatch,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import (
@@ -33,6 +37,7 @@ from pitch_coach_backend.module.take.exception import (
     NonExistentTake,
     TakeAlreadyEnded,
     TakeAlreadyStarted,
+    TakeSessionMismatch,
 )
 from pitch_coach_backend.module.take.repository import (
     IN_PROGRESS_STATUSES,
@@ -48,14 +53,57 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
 
     # 버전 ID 가 이 pitch 의 것인지 확인한다. 없으면 다른 pitch 의 버전도 저장되고,
     # 아예 없는 ID 는 FK 위반(500)이 된다
-    if pitch_repository.get_presentation_detail(pitch_id, take_dto.presentation_version_id) is None:
+    presentation = pitch_repository.get_presentation_detail(
+        pitch_id, take_dto.presentation_version_id
+    )
+    if presentation is None:
         raise NonExistentPresentationVersion()
-    if pitch_repository.get_script_in_pitch(pitch_id, take_dto.script_version_id) is None:
+    script = pitch_repository.get_script_in_pitch(pitch_id, take_dto.script_version_id)
+    if script is None:
         raise NonExistentScript()
+    # 슬라이드가 없으면 리허설이 대본을 띄울 수 없고 코치 · 분석도 장별로 나눌 수 없다
+    if script.parse_status != ScriptParseStatus.DONE:
+        raise ScriptNotParsed()
+    # 장마다 슬라이드 한 쪽을 띄운다. 쪽수를 아직 모르는 옛 발표자료는 검사하지 않는다
+    if (
+        presentation.page_count is not None
+        and presentation.page_count != pitch_repository.count_slides(script.id)
+    ):
+        raise SlideCountMismatch()
 
-    # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금)
+    # 동시에 두 요청이 같은 max+1 을 받지 않게 한 줄로 세운다 (발표자료·대본 버전과 같은 잠금).
+    # 같은 세션으로 동시에 온 재시도도 여기서 줄을 서서 뒤의 요청이 앞의 Take 를 찾는다
     pitch_repository.lock_for_new_version(pitch_id)
-    previous_take = take_repository.get_latest_take_in_pitch(pitch_id)
+    if take_dto.client_session_id is not None:
+        existing_take = take_repository.get_by_client_session(
+            pitch_id, take_dto.client_session_id
+        )
+        if existing_take is not None:
+            if (
+                existing_take.mode,
+                existing_take.script_mode,
+                existing_take.presentation_version_id,
+                existing_take.script_version_id,
+            ) != (
+                take_dto.mode,
+                take_dto.script_mode,
+                take_dto.presentation_version_id,
+                take_dto.script_version_id,
+            ):
+                raise TakeSessionMismatch()
+            # 그사이 다른 Take 를 만들어 ABANDONED 가 됐거나 이미 끝났다. 돌려줘도 WS 가
+            # TAKE_ENDED 로 막으니 FE 가 새 세션 id 로 다시 만들게 한다
+            if existing_take.status not in IN_PROGRESS_STATUSES:
+                raise TakeAlreadyEnded()
+            return existing_take
+
+    pitch = pitch_repository.get_by_id(pitch_id)
+    if pitch is None:
+        raise NonExistentPitch()
+
+    take_repository.abandon_ready_takes(pitch_id)
+
+    previous_take = take_repository.get_latest_reviewed_take_in_pitch(pitch_id)
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,
@@ -64,7 +112,8 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
         presentation_version_id=take_dto.presentation_version_id,
         script_version_id=take_dto.script_version_id,
         take_number=next_take_number,
-        goal_time_sec=take_dto.goal_time_sec
+        goal_time_sec=pitch.time_limit_sec,
+        client_session_id=take_dto.client_session_id,
     )
 
     saved_take = take_repository.save(new_take)
@@ -72,7 +121,7 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
         take_repository.assign_missions_to_take(previous_take.id, saved_take.id)
     db.commit()
 
-    return saved_take.id
+    return saved_take
 
 def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUpdateRequestDTO):
     take_repository = TakeRepository(db)
@@ -174,7 +223,7 @@ def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
 
 def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
     take_repository = TakeRepository(db)
-    latest_take = take_repository.get_latest_take_in_pitch(pitch_id)
+    latest_take = take_repository.get_latest_reviewed_take_in_pitch(pitch_id)
 
     if latest_take is None:
         return PreviousMissionsDTO(source_take_id=None, next_take_number=1, missions=[])

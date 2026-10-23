@@ -33,8 +33,13 @@ def create_take(
     db: Annotated[Session, Depends(get_db)],
     take_dto: TakeInitRequestDTO
 ):
-    result = create_take_service(db, pitch_id, take_dto)
-    return {"message": "Take created successfully", "take_id": result}
+    take = create_take_service(db, pitch_id, take_dto)
+    # 번호는 FE 가 장치 점검에서 미리 본 next_take_number 와 다를 수 있다. 이 값이 실제 번호다
+    return {
+        "message": "Take created successfully",
+        "take_id": take.id,
+        "take_number": take.take_number,
+    }
 
 @router.delete("/{take_id}")
 def delete_take(

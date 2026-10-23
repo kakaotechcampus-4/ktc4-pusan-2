@@ -5,12 +5,14 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Mission, Take
+from pitch_coach_backend.module.take.repository import TakeRepository
 
 Versions = tuple[uuid.UUID, uuid.UUID]
 
@@ -134,6 +136,21 @@ def test_previous_missions_come_from_latest_take(
             "completed": False,
         },
     ]
+
+
+def test_latest_take_lookup_leaves_event_logs_unloaded(
+    db_session: Session, pitch_id: uuid.UUID, versions: Versions
+) -> None:
+    """장치 점검 · 이전 미션은 번호만 본다. 시선 1초 기록이 쌓인 event_logs 는 읽지 않는다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.event_logs = [{"type": "gaze"}]
+    db_session.flush()
+    db_session.expire_all()
+
+    latest = TakeRepository(db_session).get_latest_take_in_pitch(pitch_id)
+
+    assert latest is not None
+    assert "event_logs" in inspect(latest).unloaded
 
 
 def test_previous_missions_of_take_without_missions_is_empty_list(
@@ -509,29 +526,6 @@ def test_delete_take_without_a_live_stream(
 # ── 입력 검증 ───────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("goal_time_sec", [0, -60, 3601, 2**31])
-def test_create_with_out_of_range_goal_time_is_422(
-    client: TestClient,
-    auth_headers: dict[str, str],
-    pitch_id: uuid.UUID,
-    versions: Versions,
-    goal_time_sec: int,
-) -> None:
-    response = client.post(
-        f"/api/pitches/{pitch_id}/takes/",
-        json={
-            "mode": "COACHING",
-            "script_mode": "HIGHLIGHT",
-            "presentation_version_id": str(versions[0]),
-            "script_version_id": str(versions[1]),
-            "goal_time_sec": goal_time_sec,
-        },
-        headers=auth_headers,
-    )
-
-    assert response.status_code == 422
-
-
 @pytest.mark.parametrize(
     ("field", "value"), [("mode", "PRACTICE"), ("mode", "coaching"), ("script_mode", "FULL")]
 )
@@ -548,7 +542,6 @@ def test_create_with_unknown_mode_is_422(
         "script_mode": "HIGHLIGHT",
         "presentation_version_id": str(versions[0]),
         "script_version_id": str(versions[1]),
-        "goal_time_sec": 300,
     }
     body[field] = value
 

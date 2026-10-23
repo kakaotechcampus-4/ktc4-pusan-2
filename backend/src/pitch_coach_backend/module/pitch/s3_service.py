@@ -6,14 +6,16 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.s3 import get_s3
 
 
-def upload(file: UploadFile, key: str):
+def upload(file: UploadFile, key: str, content_type: str | None = None):
+    # content_type 을 주지 않으면 클라이언트가 보낸 값, 그것도 없으면 octet-stream 으로 처리한다.
     try:
         get_s3().upload_fileobj(
             file.file,
             settings.s3_bucket_name,
             key,
-            # 알려지지 않은 파일의 경우 octet-stream 으로 처리한다.
-            ExtraArgs={"ContentType": file.content_type or "application/octet-stream"},
+            ExtraArgs={
+                "ContentType": content_type or file.content_type or "application/octet-stream"
+            },
         )
     except (ClientError, BotoCoreError) as e:
         raise Exception(f"S3에 파일 업로드 실패: {str(e)}") from e
