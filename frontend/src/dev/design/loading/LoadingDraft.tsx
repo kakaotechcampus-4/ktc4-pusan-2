@@ -6,7 +6,7 @@ import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
  * 분석 대기 · 8비트 로딩 시안 (P6-0) — `/dev/design/processing-loading`.
  *
  * 게임 로딩 화면처럼 화면 전체가 노을 그림입니다. 배경은 확장한 그림(`public/loading/sunset-wide-bird.png`)을 쓰고
- * 움직이지 않습니다. 그림은 키우거나 자르지 않고, 원래 크기를 넘지 않게 가운데 둡니다. 남는 자리는 진한 바탕입니다.
+ * 움직이지 않습니다. 그림은 화면 전체를 채우고, 화면 비율에 따라 가장자리만 잘립니다.
  *
  * ★ 대화 상자 색은 시안 안에만 둡니다. 채택하면 `index.css` 의 `@theme` 에 둘지 정해야 합니다 (CLAUDE.md 7번).
  */
@@ -64,14 +64,14 @@ export function LoadingDraft() {
     >
       <style>{CSS}</style>
 
-      {/* 그림을 키우거나 자르지 않습니다 — 원래 크기를 넘지 않고, 화면이 작으면 통째로 줄여 다 보여 줍니다 */}
+      {/* 화면 전체를 채웁니다. 비율이 다르면 가장자리만 잘리고 중앙 장면을 유지합니다. */}
       <div className="absolute inset-0 flex items-center justify-center">
         <img
           src="/loading/sunset-wide-bird.png"
           alt="노을 진 바닷가 도시 위를 가방을 멘 치치가 날아가는 그림"
           width={1672}
           height={941}
-          className="h-auto max-h-full w-auto max-w-full"
+          className="h-full w-full object-cover object-center"
         />
       </div>
 
@@ -198,7 +198,7 @@ function DraftTools({ variant, onVariant }: { variant: Variant; onVariant: (v: V
           ))}
         </div>
         <ul className="list-disc space-y-1 pl-4 text-xs text-stone">
-          <li>배경은 받은 그림을 그대로 쓰고 움직이지 않아요. 키우거나 자르지 않고 가운데 둬요.</li>
+          <li>배경은 화면을 꽉 채워요. 화면 비율에 따라 가장자리가 조금 잘릴 수 있어요.</li>
           <li>
             대화 상자 색은 시안 안에만 있어요. 채택하면 index.css 의 @theme 에 둘지 정해야 해요.
           </li>
