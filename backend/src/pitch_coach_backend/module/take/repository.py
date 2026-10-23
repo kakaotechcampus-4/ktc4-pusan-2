@@ -341,10 +341,16 @@ class TakeRepository:
         )
         return result.rowcount > 0
 
-    def mark_abandoned(self, take_id: uuid.UUID, ended_at: datetime) -> bool:
-        """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유를 `ABANDONED` 로 적는다. 바꿨으면 True.
+    def mark_abandoned(
+        self,
+        take_id: uuid.UUID,
+        ended_at: datetime | ColumnElement[datetime],
+        end_reason: str = "ABANDONED",
+    ) -> bool:
+        """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유를 `end_reason` 으로 적는다. 바꿨으면 True.
 
-        탭을 닫고 돌아오지 않은 Take 다. 시선 기록 · 끝난 시각을 FE 가 보내지 못해 분석하지 않는다.
+        창을 닫았거나(`CLOSED`) 연결이 끊긴 채 돌아오지 않은(`ABANDONED`) Take 다. 시선 기록 · 끝난
+        시각을 FE 가 보내지 못해 분석하지 않는다.
         `ended_at` 은 이걸 적는 지금이 아니라 마지막으로 연결이 끊긴 시각이다.
         `mark_ended` 처럼 UPDATE 하나로, 진행 중일 때만 바꾼다.
         """
@@ -353,7 +359,7 @@ class TakeRepository:
             .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
             .values(
                 status="FAILED",
-                end_reason="ABANDONED",
+                end_reason=end_reason,
                 ended_at=func.coalesce(Take.ended_at, ended_at),
             )
         )
