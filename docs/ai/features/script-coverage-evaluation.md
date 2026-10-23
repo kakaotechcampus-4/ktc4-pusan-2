@@ -77,10 +77,11 @@ flowchart LR
   C --> BE
   BE -- "채점 결과" --> RV["리뷰 · 리포트"]
 ```
-1. **대본 등록 · 수정 (BE)**: 새 대본 버전(대본 원문을 올릴 때 생긴다)의 파싱이 끝나 장별 대본이 생기면, BE가 그 대본 버전의 모든 장을 실어 백그라운드로 `/scripts/rubric`을 부른다. 키워드 점수와 이름 판정은 발표 전체를 함께 보고 하기 때문에 늘 모든 장을 싣는다. 같은 대본 버전을 다시 파싱해도(예: 제한 시간만 바뀜) 평가 기준은 다시 만들지 않는다(15절 열린 질문).
-2. **평가 기준 만들기 (AI)**: 장마다 1차 분석(LLM) → 코드 초안 → 최종 결론(LLM) → 전달 단위 나누기(LLM)를 차례로 하고, 장은 동시에 처리한다. 실패한 장은 `failed`에 담는다. BE는 장별 평가 기준을 저장하고, 실패한 장만 `slide_numbers`로 한 번 다시 부른다.
-3. **Take 종료 (BE)**: BE가 확정 전사를 슬라이드 전환 시각으로 장 구간으로 나눠, 그 대본 버전의 장마다 STT 텍스트와 평가 기준을 실어 백그라운드로 `/takes/analyze`를 부른다. 발표에서 넘어간 장도 빈 STT로 싣는다(빠뜨린 장으로 채점되게, 15절 열린 질문).
+1. **대본 등록 · 수정 (BE)**: 새 대본 버전(대본 원문을 올릴 때 생긴다)의 파싱이 끝나 장별 대본이 생기면, BE가 그 대본 버전의 모든 장을 실어 백그라운드로 `/scripts/rubric`을 부른다. 키워드 점수와 이름 판정은 발표 전체를 함께 보고 하기 때문에 늘 모든 장을 싣는다. 같은 대본 버전을 다시 파싱해도(예: 제한 시간만 바뀜) 이미 성공한 평가 기준·meta는 다시 만들지 않는다. 유효한 재파싱의 전체 장 번호·대본이 달라지면 새 결과를 적용하지 않고 새 버전 등록을 안내한다(`architecture.md` 1-7).
+2. **평가 기준 만들기 (AI)**: 장마다 1차 분석(LLM) → 코드 초안 → 최종 결론(LLM) → 전달 단위 나누기(LLM)를 차례로 하고, 장은 동시에 처리한다. 실패한 장은 `failed`에 담는다. BE는 장별 평가 기준을 저장하고, 최초 200의 failed 중 네 LLM 오류 코드의 장만 `slide_numbers`로 1회 다시 부른다(8절). 장별 첫 성공 기준·meta를 함께 조건부 저장하며 기존 성공본은 덮지 않는다.
+3. **Take 종료 (BE)**: BE가 확정 전사를 슬라이드 전환 시각으로 장 구간으로 나눠, Take 생성 때 저장한 `script_version_id`의 장마다 STT 텍스트와 저장된 평가 기준을 실어 백그라운드로 `/takes/analyze`를 부른다. 발표에서 넘어간 장도 빈 STT로 싣는다(빠뜨린 장으로 채점되게, 15절 열린 질문).
 4. **채점 (AI)**: 장마다 STT 정규화 → 대본 문장과 짝짓기 → 수치 확인 → 비슷한 말 찾기 → 전달 단위 판정(LLM) → 문장으로 모으기 → 규칙과 어긋난 장만 교차 검증(LLM) → 핵심 내용으로 모으기 → 점수. 그리고 Take 점수 · 채점된 장의 비율 · 확인할 항목을 계산한다.
+4-1. **부분 재시도·저장 (BE)**: 최초 200의 완전한 채점·meta·요약을 먼저 저장한다. 허용 오류 장만 재채점하고 새 성공 장을 병합 후보로 보존한 뒤, 남은 failed 전체·처음 채점에 쓴 기준과 함께 답 없이 rescore를 부른다. 성공할 때만 확정본·meta·요약을 함께 교체하고 후보를 지운다. 끝내 실패하면 확정본·후보를 보존하고 리뷰를 보류한다(12-2).
 5. **확인 (FE · BE)**: 확인할 항목이 있으면 BE가 FE에 알리고, FE 확인 화면이 항목마다 답을 받는다. BE는 답을 모아 `/takes/rescore`를 부르고 결과로 채점을 덮는다. 답은 리뷰를 부르기 전까지만 받는다(채점 · 리뷰 · 미션이 서로 다른 채점을 바탕으로 남지 않게). 사용자가 건너뛰거나 화면을 떠나거나 정해진 시간이 지나면 다시 채점하지 않고 리뷰로 넘어간다.
 6. **리뷰**: 리뷰는 Take 점수와 장별 핵심 내용 · 핵심 수치 판정으로 내용 전달을 판단한다(5-3 '채점을 쓰는 쪽').
 
@@ -524,13 +525,15 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | 처리되지 않은 예외 | — | 500 `INTERNAL_ERROR` | `architecture.md` 4절 |
 
 - 에러 본문은 `{"error": {"code", "message"}}`다(`architecture.md` 4절). `failed`의 `error`도 같은 모양이다. `message`에 대본 · STT 원문을 넣지 않는다.
-- 모든 장이 실패한 뒤 BE가 다시 불러도 실패하면, BE는 이 Take의 대본 전달도를 실패로 두고 리뷰를 `script_coverage: null`로 부른다(리뷰는 내용 전달을 판단 불가로 둔다).
+- 최초 호출과 실제 수행한 허용 재시도가 종료된 뒤 확정 SCRIPT_COVERAGE가 없는 경우에만(재시도하지 않는 입력 오류 포함) 대본 전달도를 실패로 두고 리뷰를 `script_coverage: null`로 부른다. 최초 200 이후 부분 재시도가 모두 실패하거나 에러·무응답이면 최초 확정본·meta·요약을 보존하고 리뷰에 그 확정본을 전달한다. 미해결 병합 후보가 있으면 리뷰를 보류한다.
 
 # 8. 시간 예산과 호출 규칙
 | 호출 | AI 예산 | BE 시간 제한 | 재시도 | 이유 |
 |---|---|---|---|---|
-| `/scripts/rubric` · `/takes/analyze` | 120초 | 130초 | `failed`에 담긴 장만 `slide_numbers`로 1번. 모든 장이 실패해 에러 상태 코드(408 · 429 · 5xx)를 받았거나 응답을 받지 못했으면(연결 끊김 · 시간 초과) 전체 1번. 다시 부른 뒤에는 더 부르지 않는다 | 장별 LLM. AI 예산 안에 끝내지 못한 장은 실패로 돌려준다(`architecture.md` 3절) |
+| `/scripts/rubric` · `/takes/analyze` | 120초 | 130초 | 최초 200의 `failed` 중 `LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT` · `LLM_UNAVAILABLE`인 장만 `slide_numbers`로 1회. `RUBRIC_MISSING` 등 입력 오류 장 제외. 최초 408 · 429 · 5xx 또는 무응답이면 전체 1회. subset·전체는 같은 작업의 1회 한도를 공유하며 서로 추가 호출하지 않는다 | 장별 LLM. AI 예산 안에 끝내지 못한 장은 실패로 돌려준다(`architecture.md` 3절) |
 | `/takes/rescore` | — | 10초 | 연결 실패 · 시간 초과 · 408 · 429 · 5xx면 1번 | LLM 없음 |
+
+최초 rubric·analyze와 허용 재시도는 같은 작업이다. 재시도 전송 때 1회 한도를 쓰고, 전체 문맥 입력은 유지하며 대상 번호만 고른다. 부분 재시도가 에러·무응답이면 최초 응답을 보존한다. AI 내부 재시도와 rescore 재시도는 각각 별도다(`architecture.md` 1-7 · 3절).
 
 - **LLM 호출 한 번**: 기본 12초에서 끊고, 요청 마감 시각 안에 남은 시간이 있을 때만 한 번 더 시도한다. 요청 하나의 모든 호출(장별 · 단계별)이 마감 시각 하나를 같이 쓴다(`architecture.md` 9절). 이것은 코어에 넘기는 LLM 객체가 맡고, 코어는 시계를 쓰지 않는다.
 - **호출 수**: 평가 기준 만들기는 장마다 최대 3번(20장이면 약 60번), 채점은 장마다 1번 + 규칙과 어긋난 장만 1번(가상 데이터에서 장의 약 25%), 다시 계산은 0번.
@@ -613,26 +616,45 @@ sequenceDiagram
     participant FE
     participant BE
     participant A as 대본 전달도 (AI)
-    Note over BE,A: 대본 파싱이 끝난 뒤 (백그라운드)
+    Note over BE,A: 새 버전의 유효한 파싱 결과를 저장한 뒤 (첫 생성만)
     BE->>A: POST /scripts/rubric (대본 버전의 모든 장)
-    A-->>BE: rubrics · failed · meta
-    BE->>BE: script_slides.rubric · rubric_meta 저장
-    opt 실패한 장이 있으면
-        BE->>A: POST /scripts/rubric (slide_numbers = 실패한 장)
-        A-->>BE: rubrics · failed
+    A-->>BE: rubrics · failed · meta (또는 에러·무응답)
+    opt 최초 408·429·5xx 또는 무응답
+        BE->>A: POST /scripts/rubric (전체 1회, subset 추가 없음)
+        A-->>BE: rubrics · failed · meta (또는 최종 실패)
+    end
+    BE->>BE: script_slides.rubric · rubric_meta 첫 성공 조건부 저장
+    opt 최초 호출이 200이고 허용 LLM 오류 장이 있으면 (전체 재시도 뒤에는 없음)
+        BE->>A: POST /scripts/rubric (slide_numbers = 허용 오류 장, 1회)
+        A-->>BE: rubrics · failed · meta
+        BE->>BE: 새 성공 장의 rubric·rubric_meta 조건부 저장 (한 트랜잭션)
     end
     BE->>BE: rubric_status = DONE(모든 장 성공) · PARTIAL(실패한 장 남음) · FAILED(모든 장 실패)
     Note over FE,A: Take 종료 뒤 (백그라운드)
     BE->>BE: 확정 전사를 슬라이드 전환 시각으로 장 구간으로 나눔
     BE->>A: POST /takes/analyze (장별 stt + rubrics)
-    A-->>BE: evaluations · take_scores · confirmations · failed · meta
-    opt LLM 오류로 실패한 장이 있으면
-        BE->>A: POST /takes/analyze (slide_numbers = 실패한 장)
-        A-->>BE: evaluations · failed
-        BE->>A: POST /takes/rescore (합친 evaluations, 답 없이, failed)
-        A-->>BE: Take 값 다시 계산한 결과
+    A-->>BE: evaluations · take_scores · confirmations · failed · meta (또는 에러·무응답)
+    opt 최초 408·429·5xx 또는 무응답
+        BE->>A: POST /takes/analyze (전체 1회, subset 추가 없음)
+        A-->>BE: 채점 결과 (또는 최종 실패)
     end
-    BE->>BE: take_ai_results(SCRIPT_COVERAGE) · take_summaries.speak_accuracy
+    alt 최초 호출 또는 전체 재시도에서 200을 받음
+    BE->>BE: 처음 받은 200의 SCRIPT_COVERAGE · meta · speak_accuracy 조건부 저장
+    opt 최초 호출이 200이고 허용 LLM 오류 장이 있으면 (전체 재시도 뒤에는 없음)
+        BE->>A: POST /takes/analyze (slide_numbers = 허용 오류 장, 1회)
+        A-->>BE: evaluations · failed · meta (에러·무응답이면 최초본 유지)
+        opt 새 성공 장이 있으면
+            BE->>BE: 병합 후보 SCRIPT_COVERAGE_PENDING 저장 (확정본 유지)
+            BE->>A: POST /takes/rescore (병합 evaluations + 남은 failed + 고정 rubrics, 답 없이)
+            alt 허용 재시도 안에 rescore 성공
+                A-->>BE: Take 값 다시 계산한 결과
+                BE->>BE: 최신 확정본 확인 → 확정본·meta·요약 교체 + 후보 삭제
+            else rescore 최종 실패
+                BE->>BE: 확정본·후보 보존, 리뷰 보류 (12-2의 수동 복구)
+            end
+        end
+    end
+    Note over BE,A: 이하 확인·리뷰는 미해결 병합 후보가 없을 때만 진행
     opt confirmations가 있으면
         BE->>FE: 확인할 항목 알림
         FE->>BE: 항목마다 as_script · as_stt 답 (REST)
@@ -641,27 +663,37 @@ sequenceDiagram
         BE->>BE: take_ai_results(SCRIPT_COVERAGE) 덮어씀 · speak_accuracy
     end
     BE->>BE: 리뷰 호출 (/takes/review, script_coverage = 저장된 채점)
+    else 호출 종료 후 확정본 없음 (재시도하지 않는 입력 오류 포함)
+        BE->>BE: script_coverage null로 리뷰 (내용 전달 판단 불가)
+    end
 ```
 BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답을 받는 FE → BE REST 모양은 BE · FE 계약이다.
 
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고 AI 리드가 정하며, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 아래는 대본 전달도가 만드는 것만이다. 잰 크기는 가상 데이터(장마다 대본 평균 205자)의 공백 있는 JSON 기준이고, 실제 대본이 길면 비례해 커진다.
+저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 아래는 대본 전달도가 만드는 것만이다. 잰 크기는 가상 데이터(장마다 대본 평균 205자)의 공백 있는 JSON 기준이고, 실제 대본이 길면 비례해 커진다.
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
-| 장별 평가 기준 | `/scripts/rubric` 응답 | `script_slides.rubric` (JSONB, nullable) | 응답 `rubrics[]`의 그 장 것 그대로. null이면 아직 없거나 만들기가 실패한 장. 잰 크기: 장 하나 평균 약 6.9 KB(5.2–9.4 KB), 10장 약 69 KB · 30장 약 206 KB | BE가 쓴다 · BE가 `/takes/analyze` · `/takes/rescore`의 `rubrics`로 그대로 보낸다 | 대본 버전 · 장마다 하나. 같은 대본 버전에서 다시 만들면 덮는다(실패한 장 다시 부르기) | 대본 버전과 함께. 대본 글에서 나온 값이다 |
+| 장별 평가 기준 | `/scripts/rubric` 응답 | `script_slides.rubric` (JSONB, nullable) | 응답 `rubrics[]`의 그 장 것 그대로. null이면 아직 없거나 만들기가 실패한 장. 잰 크기: 장 하나 평균 약 6.9 KB(5.2–9.4 KB), 10장 약 69 KB · 30장 약 206 KB | BE가 쓴다 · BE가 `/takes/analyze` · `/takes/rescore`의 `rubrics`로 그대로 보낸다 | 대본 버전 · 장마다 하나. 첫 성공 기준과 rubric_meta를 한 트랜잭션에서 조건부 저장한다. 실패 장의 허용 재시도만 채우며 성공본은 덮지 않는다. 종료된 생성 작업의 늦은 출력은 반영하지 않는다 | 대본 버전과 함께. 대본 글에서 나온 값이다 |
 | 평가 기준 응답의 `meta` | 같음 | `script_slides.rubric_meta` (JSONB, nullable) | 그 장을 만든 응답의 `meta` (`schema_version` · `feature_version` · `model`). 0.2 KB 안팎 | BE가 쓴다 · 어느 버전 · 모델로 만들었는지 추적 | 위와 같음 | 같음 |
 | 대본 버전의 평가 기준 상태 | 부르기 전 · 끝난 뒤 | `script_versions.rubric_status` (String(16), nullable) | `PENDING`(만드는 중) · `DONE`(모든 장 성공) · `PARTIAL`(다시 부른 뒤에도 실패한 장이 있음) · `FAILED`(모든 장 실패). null은 아직 부르지 않음 | BE가 쓰고 읽는다 · Take 종료 뒤 채점을 부를 때 (`PENDING`이면 끝날 때까지 기다린다) | 대본 버전마다 하나 | 대본 버전과 함께 |
-| 대본 전달도 채점 | `/takes/analyze` · `/takes/rescore` 응답 | `take_ai_results` (`take_id` · `kind` = `SCRIPT_COVERAGE` · `payload` JSONB · `meta` JSONB) | `payload` = 응답에서 `meta`를 뺀 `{take_id, evaluations, take_scores, confirmations, failed}`, `meta` = 응답의 `meta`. 잰 크기: 장 하나 채점 평균 약 9.8 KB(5.7–14.8 KB), 10장 약 98 KB · 30장 약 293 KB | BE가 쓴다 · 리뷰 `script_coverage` · `previous_takes[].take_scores`, `/takes/rescore`의 `evaluations` | `(take_id, kind)` 유일 제약, 하나만 둔다. 다시 채점하거나 확인을 반영하면 덮는다(실패한 장을 다시 채점한 결과는 합친 뒤 `/takes/rescore`로 Take 값을 다시 받아 덮는다) | Take와 함께. 장별 STT 텍스트(`stt_text` · `stt_sentences`)는 사용자 발화다 |
+| 대본 전달도 채점 | `/takes/analyze` · `/takes/rescore` 응답 | `take_ai_results` (`take_id` · `kind` = `SCRIPT_COVERAGE` · `payload` JSONB · `meta` JSONB) | `payload` = 응답에서 `meta`를 뺀 `{take_id, evaluations, take_scores, confirmations, failed}`, `meta` = 응답의 `meta`. 잰 크기: 장 하나 채점 평균 약 9.8 KB(5.7–14.8 KB), 10장 약 98 KB · 30장 약 293 KB | BE가 쓴다 · 리뷰 `script_coverage` · `previous_takes[].take_scores`, `/takes/rescore`의 `evaluations` | `(take_id, kind)` 유일 제약, 하나만 둔다. 다시 채점하거나 확인을 반영하면 덮는다(최초 200의 완전한 결과를 먼저 저장하고 새 성공 장을 병합 후보로 보존한다. `/takes/rescore` 성공 때만 최신 확정본·meta·요약을 함께 교체한다) | Take와 함께. 장별 STT 텍스트(`stt_text` · `stt_sentences`)는 사용자 발화다 |
+| 대본 전달도 병합 후보 (BE 내부용) | 일부 장 재채점 성공 뒤, rescore 전 | `take_ai_results` (`take_id` · `kind`=`SCRIPT_COVERAGE_PENDING` · `payload` JSONB) | `{script_version_id, base_result_hash, evaluations, failed, retry_meta}`. evaluations는 새 성공 장을 합친 채점, failed는 남은 실패 전체, retry_meta는 재채점 응답 meta. 크기는 evaluations에 비례하며 아직 실측하지 않았다 | BE가 쓴다 · 복구 rescore 입력. FE·리뷰·결과 조회에 확정 채점으로 제공하지 않는다 | Take 버전·최신 확정본 확인 뒤 저장한다. 후보 저장은 확정본을 바꾸지 않는다. rescore 성공 때 확정본 교체와 후보 삭제를 원자적으로 한다 | 기존 Take 결과와 같은 보관·삭제. 원문을 로그에 남기지 않는다 |
 | 확인 답 | FE 확인 화면에서 답할 때 | 따로 두지 않는다. `/takes/rescore` 결과의 장별 `applied_answers`로 위 `payload` 안에 남는다 | `{item_id: as_script · as_stt}`. 답을 받은 뒤 `/takes/rescore`가 실패하면 BE는 답을 다시 보낼 수 있게 요청 처리 동안 들고 있는다 | FE가 보내고 BE가 `/takes/rescore`에 싣는다 | 같은 `(slide_number, item_id)` 답이 두 번 오면 한 번만 반영한다(이미 반영한 답은 코어도 유지). 리뷰를 부른 뒤에는 받지 않는다 | Take와 함께 |
 | 리포트 요약 내용 전달 칸 | 채점을 저장할 때 | `take_summaries.speak_accuracy` (nullable) | `take_scores.content_coverage` × 100 (`architecture.md` 1-1 대응 표). 모든 장이 실패했거나 `content_coverage`가 null이면 null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행, 확인 반영으로 덮는다 | Take와 함께 |
 
 ## 12-2. 저장 규칙
 - 평가 기준 · 채점은 AI가 낸 모양 그대로 저장해 그대로 돌려보낸다. BE는 내용을 해석하지 않고, 필요한 값(`take_scores.content_coverage` · `confirmations`)만 읽는다. 결과는 `meta`와 함께 저장한다.
-- 평가 기준은 대본 버전마다 한 번, 모든 장으로 만든다. 새 대본 버전(대본 원문을 올릴 때 생긴다)이 생기면 부르고, 같은 대본 버전을 다시 파싱해도(제한 시간만 바뀌는 등) 다시 부르지 않는다. `slide_numbers` 일부 장은 같은 대본 버전에서 실패한 장을 다시 부를 때만 쓴다. 같은 대본의 연습끼리 같은 기준으로 비교되게 하고, LLM 비용을 아끼기 위해서다(15절 열린 질문).
-- 채점은 그 Take를 시작할 때의 대본 버전 평가 기준으로 한다. 평가 기준 만들기가 끝나지 않았으면(`PENDING`) 끝난 뒤 채점을 부른다.
-- 확인 답은 리뷰를 부르기 전까지만 받는다. 리뷰는 확인을 반영한 채점이 있으면 그것을, 아니면 처음 채점을 읽는다.
+- 새 대본 버전의 유효한 파싱 결과를 저장한 뒤 모든 장으로 첫 평가 기준 생성 작업을 시작한다. 버전별 작업은 하나만 실행하고 최초 호출·허용 재시도의 한도를 공유한다. 같은 버전의 성공 기준·meta는 보존하며 첫 생성의 허용 오류 장만 일부 재시도한다. 종료된 작업의 늦은 출력은 반영하지 않는다.
+- 재파싱 결과의 전체 `(slide_number, script)`를 번호순으로 저장본과 비교한다(문자열 추가 정규화 없음). 같으면 기존 기준을 재사용한다. 장 추가·삭제·번호·대본이 다르면 새 결과를 적용하거나 rubric을 부르지 않고 새 버전 등록을 사람에게 안내한다. 원문·기존 기준·meta·기존 Take 참조를 보존하고 자동 새 버전을 만들지 않는다. 요청 유효성 확인·비교·적용은 원자적으로 한다. 저장된 유효한 장별 파싱 결과가 없는 최초 파싱 실패의 유효한 복구 응답은 비교 대상 부재로 구분해 최초 결과로 저장한다. 유효한 저장본이 있으면 전체 장 번호·대본 비교 규칙을 적용한다. 기준 생성 이력이 없을 때만 첫 생성 작업을 시작하며 기존 작업의 호출·재시도 한도·성공 기준·meta·종료 상태는 초기화하지 않는다. AI의 `status: fail`만으로 최초 파싱 실패 복구 대상으로 판단하지 않는다. 최초 파싱 복구로 기준 생성 재시도 한도를 새로 만들지 않는다(`architecture.md` 1-7).
+- 채점은 Take 생성 때 저장한 `script_version_id`의 기준으로 한다. rescore에도 저장된 채점에 실제 쓴 기준을 그대로 싣고 같은 rubric_id의 새 출력으로 대신하지 않는다. 평가 기준 만들기가 끝나지 않았으면(`PENDING`) 생성 종료 후 같은 버전의 보존된 기준을 읽어 최초 채점에 사용한다.
+- 확인 답은 리뷰를 부르기 전까지만 받는다. 리뷰는 미해결 병합 후보가 없을 때 최신 확정 SCRIPT_COVERAGE를 읽는다. 성공한 병합 rescore와 확인 답 반영 결과도 포함한다.
 - 한 채점 응답의 `take_ai_results` · `take_summaries.speak_accuracy`는 한 트랜잭션으로 저장한다.
+- 최초 호출 또는 허용된 전체 재시도에서 처음 받은 200의 완전한 payload·meta·요약을 저장한다. 전체 재시도의 200에 추가 subset 호출은 하지 않는다. Take별 최초 analyze·허용 재시도는 하나의 작업이고 최초 저장도 직렬화해 확정본 부재·응답 유효성·리뷰 전 조건에서만 저장한다. 중복·늦은 응답으로 기존 확정본을 덮지 않는다.  재채점한 새 성공 장을 합친 후보와 남은 failed 전체·처음 기준을 rescore에 보낸다. 부분 재시도가 에러·무응답이면 최초 응답을 보존한다. Take별 병합·확인·리뷰 전환을 직렬화하고 입력 저장본이 최신이며 리뷰 전일 때만 반영해 기존 확인 답을 보존한다.
+- rescore 전 병합 후보는 같은 take_id의 `SCRIPT_COVERAGE_PENDING`으로 저장한다. base_result_hash는 입력 확정 payload의 정규 JSON SHA-256(재귀 키 정렬·비ASCII 문자 비이스케이프·UTF-8·불필요 공백 없음)이다. 후보 생성·확정 교체·수동 복구는 DB에서 읽은 확정 payload에 같은 직렬화 함수를 적용하며 숫자 표현도 그 함수의 규칙을 따른다. 후보 저장 시 확정본의 최신성을 확인하고 후보 버전은 Take의 저장 버전과 같아야 한다. 기존 확정 payload·meta·요약은 후보 저장으로 바꾸지 않는다.
+- 확인 답 rescore는 병합 후보 없이 입력 확정본의 최신성·요청 유효성·리뷰 전 조건을 확인해 반영한다.
+- 병합·확인 rescore도 응답 반영 시 요청 유효성을 확인한다. 시간 제한을 넘겼거나 종료된 요청의 늦은 응답은 확정본 교체·후보 삭제·리뷰 재개에 사용하지 않는다.
+- 병합 후보를 확정하는 rescore 성공 시 base_result_hash가 현재 확정본과 일치하는지 확인하고 확정본·meta·요약을 함께 교체하며 후보를 같은 트랜잭션에서 지운다. 병합 rescore의 허용 재시도 뒤 최종 실패하면 확정본·후보를 보존하고 리뷰를 보류한다(`ANALYZING` 유지). 사람이 결정한 복구는 후보와 고정 rubric으로 LLM 없는 rescore부터 재개하며 기존 재시도 한도를 임의로 리셋하지 않는다.
 - JSON 칸은 JSONB이고 DB 크기 제약은 두지 않는다. 12-1의 잰 크기(장 수에 비례)보다 크게 벗어나면 BE가 로그로 남긴다.
 - 테이블 · 칸이 바뀌면 배포 전에 BE가 마이그레이션한다(`script_slides.rubric` · `rubric_meta` · `script_versions.rubric_status` · `take_ai_results` · `take_summaries`의 nullable 칸 포함). 저장 모양이 바뀌면 계약 변경이다.
 
@@ -697,7 +729,6 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 - 평가 결과 기준선: 기본 묶음(6 luna)으로 지금 코드를 다시 재서 바꾸기 전 기준선으로 쓰기(13절).
 - 코어에서 만든 시각(`created_at`)을 빼기: 추천은 빼고 BE 행의 시각을 씀.
 - 장별 '반영한 답' 이름: 추천 `applied_answers`(Take 단위 `confirmations`와 이름을 가른다).
-- 평가 기준을 다시 만드는 범위 · 시점: 추천은 새 대본 버전마다 모든 장, 같은 버전을 다시 파싱하면 다시 만들지 않음, 실패한 장만 일부.
 - 발표에서 넘어간 장을 빈 STT로 싣고 LLM 없이 `missing`.
 - 장 동시 처리 수와 장 수가 많은 대본: 장 수별 시간을 잰 뒤 정한다.
 
