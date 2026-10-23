@@ -1,12 +1,12 @@
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch import service
 from pitch_coach_backend.module.pitch.dto import PitchListResponseDTO, PitchSaveRequestDTO
-from pitch_coach_backend.module.pitch.entity import PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Take, TakeSummary
 from pitch_coach_backend.module.user.entity import User
 
@@ -259,3 +259,81 @@ def test_takes_are_grouped_under_their_own_pitch(
     by_title = {p.pitch_title: p for p in result.pitches}
     assert [t.score for t in by_title["기존 발표"].takes] == [60]
     assert [t.score for t in by_title["두번째 발표"].takes] == [80, 85]
+
+
+def test_pitches_are_upcoming_nearest_first_then_undated_then_past_latest_first(
+    db_session: Session,
+) -> None:
+    """다가오는 발표(오늘 포함)는 가까운 순, 날짜 없는 발표, 지난 발표는 최근에 지난 순이다."""
+    user_id = _make_user(db_session)
+    today = datetime.now(service.KST).date()
+    dates = {
+        "지난달": today - timedelta(days=30),
+        "열흘 뒤": today + timedelta(days=10),
+        "날짜 없음": None,
+        "어제": today - timedelta(days=1),
+        "오늘": today,
+        "내일": today + timedelta(days=1),
+    }
+    for title, presentation_date in dates.items():
+        service.add_pitch_service(
+            db_session,
+            user_id,
+            PitchSaveRequestDTO(
+                title=title, time_limit_sec=300, presentation_date=presentation_date
+            ),
+        )
+
+    result = service.get_all_pitches_service(db_session, user_id)
+
+    assert [p.pitch_title for p in result.pitches] == [
+        "오늘", "내일", "열흘 뒤", "날짜 없음", "어제", "지난달",
+    ]
+
+
+def test_pitches_on_the_same_date_list_latest_created_first(db_session: Session) -> None:
+    user_id = _make_user(db_session)
+    presentation_date = datetime.now(service.KST).date() + timedelta(days=3)
+    # 한 트랜잭션 안에서는 now() 가 같아 만든 시각을 직접 벌린다
+    for title, minutes_ago in (("먼저 만든 발표", 5), ("나중에 만든 발표", 0)):
+        pitch_id = service.add_pitch_service(
+            db_session,
+            user_id,
+            PitchSaveRequestDTO(
+                title=title, time_limit_sec=300, presentation_date=presentation_date
+            ),
+        )
+        db_session.get(Pitch, pitch_id).created_at = datetime.now(UTC) - timedelta(
+            minutes=minutes_ago
+        )
+    db_session.flush()
+
+    result = service.get_all_pitches_service(db_session, user_id)
+
+    assert [p.pitch_title for p in result.pitches] == ["나중에 만든 발표", "먼저 만든 발표"]
+
+
+def test_today_is_korean_date_even_before_9am(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """한국 10/23 00:30 은 UTC 로 아직 10/22 다. 10/23 발표는 지난 발표가 아니다."""
+
+    class KoreanEarlyMorning(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 22, 15, 30, tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setattr(service, "datetime", KoreanEarlyMorning)
+    user_id = _make_user(db_session)
+    for title, presentation_date in (("어제", date(2026, 10, 22)), ("오늘", date(2026, 10, 23))):
+        service.add_pitch_service(
+            db_session,
+            user_id,
+            PitchSaveRequestDTO(
+                title=title, time_limit_sec=300, presentation_date=presentation_date
+            ),
+        )
+
+    result = service.get_all_pitches_service(db_session, user_id)
+
+    assert [p.pitch_title for p in result.pitches] == ["오늘", "어제"]

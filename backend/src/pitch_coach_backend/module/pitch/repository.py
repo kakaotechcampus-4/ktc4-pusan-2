@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.orm import Session, defer
 
 from pitch_coach_backend.module.pitch.entity import (
@@ -29,10 +29,22 @@ class PitchRepository:
             select(Pitch).where(Pitch.id == pitch_id, Pitch.user_id == user_id)
         )
 
-    def get_all_by_user(self, user_id: uuid.UUID) -> list[Pitch]:
+    def get_all_by_user(self, user_id: uuid.UUID, today: date) -> list[Pitch]:
+        """홈 목록 순서. 다가오는 발표(오늘 포함) → 날짜 없는 발표 → 지난 발표.
+
+        다가오는 발표는 가까운 날짜부터, 지난 발표는 최근에 지난 것부터다.
+        같은 날짜면 최근에 만든 발표가 위다.
+        """
+        upcoming = Pitch.presentation_date >= today
         return self.db.execute(
             select(Pitch).where(Pitch.user_id == user_id)
-            .order_by(Pitch.presentation_date.desc()) # 우선 마감일이 빠른 순서대로 정렬
+            .order_by(
+                case((upcoming, 0), (Pitch.presentation_date.is_(None), 1), else_=2),
+                case((upcoming, Pitch.presentation_date)).asc(),
+                Pitch.presentation_date.desc(),
+                Pitch.created_at.desc(),
+                Pitch.id,
+            )
         ).scalars().all()
 
     def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[tuple[Take, int | None]]:
