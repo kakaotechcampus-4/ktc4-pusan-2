@@ -31,8 +31,8 @@ import {
  * 각 저장 지점(발표정보 저장 · 슬라이드 업로드 · 평가기준 정리 · 대본 매핑)에서 서버로 올리고,
  * 서버가 준 id 를 버전 안에 들고 있습니다.
  *
- * ★ 새로고침하면 사라집니다. 서버에는 남아 있지만, 다시 열어 사이드바를 채우는 일
- *   (`GET /pitches/{id}/resources`)은 아직 붙지 않았습니다.
+ * ★ 새로고침하면 사라집니다. 서버에 남은 피치는 수정 화면(`/pitch/:id/edit`)이 다시 읽어
+ *   채웁니다 (`loadPitch.ts` → `hydrate`).
  */
 
 interface CreateState {
@@ -68,6 +68,11 @@ interface CreateState {
   entryKey: string | null;
   /** 피치 생성 화면에 들어올 때 부릅니다. 다른 기록 항목에서 왔으면 비우고 새로 시작합니다 */
   beginEntry: (key: string) => void;
+  /**
+   * 수정 화면 — 서버에서 읽어 온 피치로 새 작성을 시작합니다 (`loadPitch.ts`). `beginEntry` 처럼
+   * 기록 항목 키를 남겨, 장치 점검에서 뒤로 돌아오면 다시 읽지 않고 고치던 그대로 둡니다.
+   */
+  hydrate: (key: string, pitchId: string, draft: PitchDraft) => void;
 
   /**
    * 이번 연습에 들고 갈 버전. 슬라이드와 대본은 매핑을 저장할 때 함께 정해집니다.
@@ -201,6 +206,8 @@ export const useCreateStore = create<CreateState>((set) => ({
   draftId: crypto.randomUUID(),
   entryKey: null,
   beginEntry: (key) => set((s) => (s.entryKey === key ? s : { ...freshDraft(), entryKey: key })),
+  hydrate: (key, pitchId, draft) =>
+    set({ ...freshDraft(), entryKey: key, pitchId, draft, chosen: chosenOf(draft) }),
 
   chosen: CHOOSE_LATEST,
   chooseVersion: (node, version) => set((s) => ({ chosen: { ...s.chosen, [node]: version } })),
@@ -449,6 +456,17 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   reset: () => set(freshDraft()),
 }));
+
+/**
+ * 불러온 피치로 연습할 조합. 최신 대본이 연결된 슬라이드와 맞으면 그 둘을 고릅니다 — "최신"끼리
+ * 고르면 최신 대본이 옛 슬라이드에 맞춘 것일 때 장수가 어긋나 시작할 수 없습니다.
+ */
+function chosenOf(draft: PitchDraft): Chosen {
+  const script = draft.scripts.at(-1);
+  const slide = draft.slides.find((v) => v.version === script?.slideVersion);
+  if (!script || !canSaveMapping(script, slide)) return CHOOSE_LATEST;
+  return { ...CHOOSE_LATEST, slides: script.slideVersion, script: script.version };
+}
 
 /** 비운 작성. 회차 id 를 새로 만들어 앞 작성에서 시작한 비동기 결과가 들어오지 못하게 합니다 */
 function freshDraft() {

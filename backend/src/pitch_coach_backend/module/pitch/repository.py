@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
@@ -51,6 +51,7 @@ class PitchRepository:
             select(Take, TakeSummary.score)
             .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
             .where(Take.pitch_id.in_(pitch_ids))
+            .options(defer(Take.event_logs))
             .order_by(Take.pitch_id, Take.take_number)
         ).all()
 
@@ -58,6 +59,9 @@ class PitchRepository:
         self.db.add(pitch)
         self.db.flush()
         return pitch
+
+    def get_take_ids(self, pitch_id: uuid.UUID) -> list[uuid.UUID]:
+        return list(self.db.scalars(select(Take.id).where(Take.pitch_id == pitch_id)))
 
     def delete(self, pitch: Pitch) -> None:
         self.db.delete(pitch)
@@ -144,7 +148,9 @@ class PitchRepository:
 
     def get_scripts(self, pitch_id: uuid.UUID) -> list[ScriptVersion]:
         return self.db.scalars(
-            select(ScriptVersion).where(ScriptVersion.pitch_id == pitch_id)
+            select(ScriptVersion)
+            .where(ScriptVersion.pitch_id == pitch_id)
+            .options(defer(ScriptVersion.content), defer(ScriptVersion.terms))
             .order_by(ScriptVersion.version.asc())
         ).all()
 
@@ -240,6 +246,7 @@ class PitchRepository:
         expired_before: datetime,
         segmented: bool,
         terms: list[str],
+        parse_meta: dict[str, Any] | None,
     ) -> bool:
         return self._finish_parse(
             script_version_id,
@@ -248,6 +255,7 @@ class PitchRepository:
             parse_status=ScriptParseStatus.DONE,
             segmented=segmented,
             terms=terms,
+            parse_meta=parse_meta,
             parse_error=None,
         )
 

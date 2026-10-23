@@ -37,3 +37,13 @@ export interface StandardsSaveRequest {
 export interface StandardsSaved {
   message: string;
 }
+
+/**
+ * GET /api/pitches/{pitch_id}/evaluations/{evaluation_version} — 저장된 평가기준 한 버전.
+ * `order` 는 저장한 순서(`position`)입니다.
+ */
+export interface EvaluationDetail {
+  pitch_id: string;
+  evaluation_version: number;
+  evaluations: { order: number; standard: string }[];
+}

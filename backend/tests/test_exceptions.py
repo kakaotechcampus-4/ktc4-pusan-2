@@ -98,6 +98,15 @@ def test_validation_error_same_shape(probe: TestClient) -> None:
     assert body["detail"][0]["loc"] == ["body", "n"]
 
 
+def test_validation_error_with_nan_input_is_still_422(probe: TestClient) -> None:
+    # httpx 는 NaN 을 직렬화하지 않아 본문을 문자열로 보낸다
+    res = probe.post(
+        "/validate", content='{"n": NaN}', headers={"Content-Type": "application/json"}
+    )
+    assert res.status_code == 422
+    assert res.json()["detail"][0]["input"] == "nan"
+
+
 def test_unknown_path_same_shape(probe: TestClient) -> None:
     """라우터가 만드는 404 도 code 를 갖는다. HTTPException 을 던지지 않아도 발생한다."""
     res = probe.get("/이런-경로-없음")

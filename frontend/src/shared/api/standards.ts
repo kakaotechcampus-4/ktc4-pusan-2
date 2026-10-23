@@ -1,5 +1,6 @@
-import { postJson } from './client';
+import { apiRequest, postJson } from './client';
 import type {
+  EvaluationDetail,
   StandardTextRequest,
   StandardsPosted,
   StandardsSaveRequest,
@@ -19,4 +20,9 @@ export function parseStandards(pitchId: string, text: string) {
 export function saveStandards(pitchId: string, standards: string[]) {
   const body: StandardsSaveRequest = { standards: standards.map((standard) => ({ standard })) };
   return postJson<StandardsSaved>(`/api/pitches/${pitchId}/standards`, body);
+}
+
+/** 저장된 평가기준 한 버전 — 수정 화면이 버전마다 읽습니다 */
+export function getEvaluation(pitchId: string, version: number) {
+  return apiRequest<EvaluationDetail>(`/api/pitches/${pitchId}/evaluations/${version}`);
 }

@@ -45,7 +45,7 @@ def _make_take(
     *,
     duration_sec: int = 280,
     goal_time_sec: int = 300,
-    script_mode: str = "FULL",
+    script_mode: str = "HIGHLIGHT",
     score: int | None = None,
 ) -> uuid.UUID:
     presentation_version_id, script_version_id = versions
@@ -54,7 +54,7 @@ def _make_take(
         take_number=take_number,
         presentation_version_id=presentation_version_id,
         script_version_id=script_version_id,
-        mode="PRACTICE",
+        mode="COACHING",
         script_mode=script_mode,
         status="COMPLETED",
         duration_sec=duration_sec,
@@ -111,8 +111,8 @@ def test_maps_pitch_fields(db_session: Session, user_id: uuid.UUID, pitch_id: uu
     assert result.pitches[0].pitch_time == 300
     assert result.pitches[0].thumbnail_url is None
 
-# 발표일 없이 만든 pitch 도 목록에 나오고 pitch_deadline 은 null
-def test_pitch_without_presentation_date_has_null_deadline(
+# 발표일 없이 만든 pitch 도 목록에 나오고 presentation_date 는 null
+def test_pitch_without_presentation_date_lists_null_date(
     db_session: Session, user_id: uuid.UUID
 ) -> None:
     service.add_pitch_service(
@@ -219,8 +219,8 @@ def test_take_that_has_not_finished_has_null_elapsed(
         take_number=1,
         presentation_version_id=versions[0],
         script_version_id=versions[1],
-        mode="PRACTICE",
-        script_mode="FULL",
+        mode="COACHING",
+        script_mode="HIGHLIGHT",
         status="READY",
         goal_time_sec=300,
     )

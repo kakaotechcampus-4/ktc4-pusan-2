@@ -5,6 +5,7 @@ import { sttHandlers } from './stt';
 import { presentationHandlers } from './presentation';
 import { standardsHandlers } from './standards';
 import { pitchHandlers } from './pitch';
+import { pitchEditHandlers } from './pitchEdit';
 import { scriptHandlers } from './scripts';
 import type { TakeCreated } from '@/types/take';
 import type { ScriptDetail } from '@/types/script';
@@ -25,7 +26,7 @@ import type { AnalysisStatus, HomeResponse, PrepareResponse, TakeReport } from '
 //   .env 의 VITE_API_BASE 가 채워져 있으면 요청이 http://localhost:8000/api/... 로
 //   나갑니다. 상대 경로 핸들러는 **같은 origin 요청만** 잡으므로 그때 목이 통째로
 //   새고, 화면에는 네트워크 오류만 뜹니다. mocks/auth.ts 가 같은 이유로 그렇게 씁니다.
-const ENGINE = 'face-landmarker@0.10.3+mobileone-s0@1.0+vote-v1';
+const ENGINE = 'gaze_v1.1.0+head_pose+reference_anchor_v1';
 
 // 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
 // prettier-ignore
@@ -201,6 +202,8 @@ export const handlers = [
   http.get(`*/api/pitches/:pitchId/scripts/${prepare.scriptVersionId}`, () =>
     HttpResponse.json(sampleScript),
   ),
+  // 수정 화면 목 — 업로드 · 대본 목보다 먼저 와야 합니다 (그쪽은 모르는 id 에 404)
+  ...pitchEditHandlers,
   ...homeHandlers,
   ...authHandlers,
   ...sttHandlers,
@@ -216,8 +219,10 @@ export const handlers = [
 
   http.get('*/api/takes/:takeId/status', () => HttpResponse.json(analyzing)),
 
-  http.post('*/api/takes/:takeId/complete', async ({ params }) =>
-    HttpResponse.json({ takeId: params.takeId, status: 'ANALYZING' }, { status: 202 }),
+  // BE 모양 그대로 — PUT /pitches/{id}/takes/{take_id} 에 TakeUpdateRequestDTO, 응답 {message, take_id}.
+  // 발표 종료가 시작 · 종료 시각을 여기로 적습니다 (옛 /complete 는 BE 가 만들지 않기로 함, #134)
+  http.put('*/api/pitches/:pitchId/takes/:takeId', ({ params }) =>
+    HttpResponse.json({ message: 'Take updated successfully', take_id: String(params.takeId) }),
   ),
 
   // BE 모양 그대로 — POST /pitches/{id}/takes/{take_id}/calibration, 응답 {message, calibration_id}

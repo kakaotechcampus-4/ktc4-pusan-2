@@ -38,6 +38,14 @@ describe('서버 메시지 파싱', () => {
     expect(transcript).toMatchObject({ type: 'transcript', segment_id: '1-7' });
   });
 
+  it('서버의 자동 종료 알림을 통과시킨다', () => {
+    const ended = parseServerMessage(
+      JSON.stringify({ type: 'auto_end', reason: 'SILENCE', message: '2분 넘게 말이 없어요' }),
+    );
+
+    expect(ended).toEqual({ type: 'auto_end', reason: 'SILENCE', message: '2분 넘게 말이 없어요' });
+  });
+
   it('모르는 메시지와 깨진 입력은 null 이다 — 발표 중에 예외가 나면 그걸로 끝이다', () => {
     expect(parseServerMessage(JSON.stringify({ type: 'metrics', wpm: 120 }))).toBeNull();
     expect(parseServerMessage('{ 이건 JSON 이 아니다')).toBeNull();

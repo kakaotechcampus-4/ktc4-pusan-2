@@ -9,6 +9,7 @@ export const homeFixture: PitchListResponse = {
       pitch_title: '캡스톤 최종 발표',
       pitch_time: 600,
       thumbnail_url: null,
+      presentation_date: '2026-10-30',
       takes: [
         {
           take_id: '20000000-0000-4000-8000-000000000001',

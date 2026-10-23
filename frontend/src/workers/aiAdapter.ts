@@ -2,7 +2,6 @@ import type {
   CalibrationFailReason,
   CalibrationResult,
   CameraPlacement,
-  FrameVerdict,
   PlacementReason,
   PlacementResult,
 } from './gaze.contract';
@@ -30,6 +29,8 @@ export interface AiCalibrationQuality {
   hint: string | null;
   separability: number;
   loo_accuracy: number;
+  /** 합격이어도 붙는 경고 (예: `SCREEN_MERGED: …`). 서버 보정 결과 요약에 그대로 갑니다 */
+  warnings: string[];
 }
 
 /** AI `PlacementCheckResult.to_dict()` 에서 FE 가 읽는 것만 */
@@ -37,14 +38,6 @@ export interface AiPlacementCheckResult {
   placement: string;
   supported: boolean;
   reason: string;
-}
-
-/** AI `GazeDecision.to_dict()` — 평활화 **전** 프레임 판정 */
-export interface AiGazeDecision {
-  label: 'CAMERA' | 'BOTTOM' | 'UNCERTAIN';
-  p_camera: number;
-  p_bottom: number;
-  face_valid: boolean;
 }
 
 /** AI `AiVersion` 과 `MODEL_VERSION` 에서 버전 문자열에 담는 것 */
@@ -65,6 +58,17 @@ export interface AiVersionParts {
  * 다른 문구 뒤에 붙어 올 수 있습니다.
  */
 const INVERTED_PITCH_MARKER = 'INVERTED_PITCH';
+
+/**
+ * 합격이지만 화면이 렌즈에 합쳐진 경우의 표식 (AI `SCREEN_MERGED_WARNING`).
+ * 렌즈와 화면 가운데를 고개로 구분하지 못해, 이 보정에서는 **화면을 본 시간도 청중으로** 셉니다.
+ * 청중 비율이 부풀 수 있어 품질을 낮춥니다 — AI `web/README.md` 가 "GOOD 으로 보인다"고 짚은 부분입니다.
+ * 막지는 않습니다(낮은 품질도 진행하는 AI 정책). 사용자에게는 카메라 화면의 결과 카드가 이미 알립니다.
+ */
+const SCREEN_MERGED_MARKER = 'SCREEN_MERGED';
+
+/** 합격이지만 판정이 덜 믿을 만한 경고. 하나라도 있으면 FAIR 입니다 */
+const FAIR_MARKERS = [INVERTED_PITCH_MARKER, SCREEN_MERGED_MARKER] as const;
 
 const AI_FAIL_REASONS: readonly CalibrationFailReason[] = [
   'NOT_ENOUGH_SAMPLES',
@@ -95,7 +99,11 @@ export function toCalibrationResult(q: AiCalibrationQuality, model: unknown): Ca
   const reason = AI_FAIL_REASONS.find((r) => r === q.reason) ?? 'ENGINE_ERROR';
   if (model === null) return { ok: false, reason: q.status === 'OK' ? 'ENGINE_ERROR' : reason };
 
-  const metrics = { separability: q.separability, looAccuracy: q.loo_accuracy };
+  const metrics = {
+    separability: q.separability,
+    looAccuracy: q.loo_accuracy,
+    warnings: q.warnings,
+  };
   if (q.status !== 'OK') {
     return { ok: true, ref: { quality: 'POOR', metrics, model }, advice: reason };
   }
@@ -103,7 +111,7 @@ export function toCalibrationResult(q: AiCalibrationQuality, model: unknown): Ca
   return {
     ok: true,
     ref: {
-      quality: q.hint?.includes(INVERTED_PITCH_MARKER) ? 'FAIR' : 'GOOD',
+      quality: FAIR_MARKERS.some((m) => q.hint?.includes(m)) ? 'FAIR' : 'GOOD',
       metrics,
       model,
     },
@@ -112,24 +120,11 @@ export function toCalibrationResult(q: AiCalibrationQuality, model: unknown): Ca
 }
 
 /**
- * 프레임 판정 → `FrameVerdict`.
- *
- *   얼굴 없음(face_valid false)  → null        표본에서 뺍니다
- *   분류기 기권(UNCERTAIN)        → UNCERTAIN   표본으로 셉니다
- *   CAMERA · BOTTOM              → 그대로
- *
- * 둘을 나누는 이유 — 얼굴이 없는 1초는 "측정 못 함"이고, 기권이 많은 1초는
- * "봤지만 어느 쪽인지 모름"입니다. 다수결은 앞의 것을 MIN_SAMPLES 로,
- * 뒤의 것을 표 비율로 거릅니다.
- */
-export function toFrameVerdict(d: AiGazeDecision): FrameVerdict | null {
-  if (!d.face_valid) return null;
-  return { zone: d.label, confidence: Math.max(d.p_camera, d.p_bottom) };
-}
-
-/**
  * 버전 문자열. Take 에 영구 고정되므로 순서를 바꾸지 마세요.
- * `vote-v1` 은 여기서 붙이지 않습니다 — 워커가 `takeEngineVersion` 으로 붙입니다.
+ *
+ * AI 카메라 화면 모듈의 `ready.version` 과 **같은 문자열**입니다 (AI 시선 문서 5-6 의 `ready` · 9절).
+ * 장치 점검은 그 값으로 기준을 저장하고 리허설 워커는 이 값으로 꺼내므로,
+ * 둘이 한 글자라도 다르면 방금 잡은 기준을 못 찾습니다.
  */
 export function engineVersion(v: AiVersionParts): string {
   return `${v.modelVersion}+${v.gazeBackbone}+${v.gazeClassifier}`;
@@ -162,18 +157,4 @@ export function toPlacementResult(r: AiPlacementCheckResult): PlacementResult {
   const placement = PLACEMENTS.find((p) => p === r.placement) ?? 'INCONCLUSIVE';
   const reason = PLACEMENT_REASONS.find((x) => x === r.reason) ?? 'ENGINE_ERROR';
   return { placement, supported: r.supported && placement === 'TOP', reason };
-}
-
-/** FE 1초 다수결 규칙 (`TemporalVoter`). 분류기 버전과 별개의 부품입니다 */
-export const VOTE_RULE = 'vote-v1';
-
-/**
- * Take 에 고정되는 엔진 버전 — 분류기 버전 뒤에 다수결 규칙을 붙입니다.
- *
- * 리허설 워커(`gaze.worker.ts`)와 장치 점검의 카메라 화면 모듈이 **같은 함수**로 만듭니다.
- * 기준은 장치 점검에서 이 문자열을 붙여 저장되고 리허설이 같은 문자열로 꺼내므로,
- * 둘이 한 글자라도 다르면 방금 잡은 기준을 못 찾습니다.
- */
-export function takeEngineVersion(classifierVersion: string): string {
-  return `${classifierVersion}+${VOTE_RULE}`;
 }

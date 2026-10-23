@@ -1,0 +1,32 @@
+"""앱 로그 설정.
+
+uvicorn 기본 설정은 `uvicorn.*` 로거만 잡는다. 그대로 두면 앱 로거(`pitch_coach_backend.*`)는
+핸들러가 없어서 INFO 는 버려지고, WARNING 이상은 파이썬 기본 처리로 메시지만(레벨 · 시각 · 이름
+없이) 나간다. 그래서 앱 로거에만 핸들러를 단다. 다른 라이브러리 로그는 건드리지 않는다.
+
+루트가 아니라 앱 로거에 다는 이유: uvicorn 로거는 루트로 올라가지 않아 겹치지 않지만, 루트에 달면
+httpx · websockets 같은 라이브러리의 INFO 까지 같이 나온다. 앱 로그는 그대로 루트로도 올라가서
+pytest `caplog` 는 지금처럼 잡는다.
+"""
+
+import logging
+
+APP_LOGGER = "pitch_coach_backend"
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
+# 이미 단 핸들러를 알아보는 이름. 앱이 여러 번 떠도(테스트) 하나만 단다
+_HANDLER_NAME = "pitch_coach_backend"
+
+
+def configure_logging(level: str) -> None:
+    """앱 로거에 `level` 과 출력 형식을 건다. 여러 번 불러도 핸들러는 하나다.
+
+    모르는 레벨이면 `ValueError` — 앱이 시작할 때 실패한다.
+    """
+    logger = logging.getLogger(APP_LOGGER)
+    logger.setLevel(level.upper())
+    if any(handler.get_name() == _HANDLER_NAME for handler in logger.handlers):
+        return
+    handler = logging.StreamHandler()
+    handler.set_name(_HANDLER_NAME)
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    logger.addHandler(handler)

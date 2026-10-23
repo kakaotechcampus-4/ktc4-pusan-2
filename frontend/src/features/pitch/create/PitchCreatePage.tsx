@@ -1,8 +1,11 @@
-import { useEffect, useLayoutEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { useEffect, useLayoutEffect, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { Mascot } from './Mascot';
 import { InfoBar } from './InfoBar';
+import { loadPitch, PitchNotFound } from './loadPitch';
 import { VersionRail } from './VersionRail';
 import {
   selectBusy,
@@ -71,6 +74,127 @@ export function PitchCreatePage() {
   return <PitchCreateScreen />;
 }
 
+/** 피치가 없거나 남의 것 — 다시 시도해도 같습니다. 그 밖(네트워크 · 5xx · PDF 를 못 엶)은 다시 시도합니다 */
+const isMissing = (error: unknown) =>
+  error instanceof PitchNotFound ||
+  (error instanceof ApiFailure && (error.status === 404 || error.status === 403));
+
+/**
+ * P13 피치 수정. **피치 생성 화면을 그대로 씁니다** — 들어올 때 서버의 피치를 읽어 채우는 것만 다릅니다.
+ *
+ * 생성 화면이 이미 버전 트리라, 수정은 "불러온 버전 위에 새 버전을 만드는 것"입니다. 저장한 버전은
+ * 고치지 않고, 고치면 새 버전이 생기는 규칙도 같습니다. 발표정보는 `PATCH /pitches/update/{id}` 로 고칩니다.
+ *
+ * 생성 화면처럼 기록 항목(`location.key`)으로 "새로 들어옴"과 "장치 점검에서 돌아옴"을 가릅니다.
+ * 돌아왔으면 다시 읽지 않고 고치던 그대로 보여 줍니다 (`createStore.hydrate`).
+ */
+export function PitchEditPage() {
+  const { id = '' } = useParams();
+  const { key } = useLocation();
+  const entryKey = useCreateStore((s) => s.entryKey);
+  const editing = useCreateStore((s) => s.pitchId);
+  const hydrate = useCreateStore((s) => s.hydrate);
+  const ready = entryKey === key && editing === id;
+
+  const pitch = useQuery({
+    queryKey: ['pitch-edit', id, key],
+    queryFn: () => loadPitch(id),
+    enabled: !ready && id !== '',
+    // 한 번 읽어 채운 뒤에는 화면이 고치는 값이 맞습니다. 다시 읽어 덮지 않습니다
+    staleTime: Infinity,
+    // 화면을 떠나면 바로 버립니다. 다시 들어오면 그사이 올린 버전까지 서버에서 새로 읽어야 합니다 —
+    // 남겨 두면 옛 결과로 채워져 사이드바 번호가 서버와 어긋납니다
+    gcTime: 0,
+    retry: false,
+  });
+
+  useLayoutEffect(() => {
+    if (!ready && pitch.data) hydrate(key, id, pitch.data);
+  }, [ready, pitch.data, hydrate, key, id]);
+
+  useEffect(() => {
+    if (pitch.error)
+      console.error('[피치 수정] 피치를 불러오지 못했습니다', { id, error: pitch.error });
+  }, [pitch.error, id]);
+
+  if (ready) return <PitchCreateScreen />;
+  if (pitch.isError) {
+    return isMissing(pitch.error) ? (
+      <EditNotice title="피치를 찾을 수 없어요" body="지워졌거나 열 수 없는 피치예요." />
+    ) : (
+      <EditNotice
+        title="피치를 불러오지 못했어요"
+        body="잠시 후 다시 시도해 주세요."
+        action={
+          <button
+            type="button"
+            onClick={() => {
+              pitch.refetch().catch(() => undefined);
+            }}
+            className="h-11 rounded-md bg-coral px-6 text-sm font-bold text-white hover:bg-coral-deep"
+          >
+            다시 불러오기
+          </button>
+        }
+      />
+    );
+  }
+  return (
+    <EditNotice
+      title="피치를 불러오는 중이에요…"
+      body="슬라이드 · 대본 · 평가기준을 가져오고 있어요."
+      busy
+    />
+  );
+}
+
+/** 수정 화면을 그리기 전의 안내 한 장 — 불러오는 중 · 없음 · 실패 */
+function EditNotice({
+  title,
+  body,
+  action,
+  busy = false,
+}: {
+  title: string;
+  body: string;
+  action?: ReactNode;
+  busy?: boolean;
+}) {
+  return (
+    <div className="flex h-dvh flex-col bg-greige text-ink">
+      <PageHeader />
+      <div className="flex flex-1 items-center justify-center p-6">
+        <div
+          role={busy ? 'status' : 'alert'}
+          className="flex w-full max-w-md flex-col items-center gap-3 rounded-lg border border-line bg-panel p-8 text-center"
+        >
+          <h1 className="text-lg font-bold">{title}</h1>
+          <p className="text-sm text-stone">{body}</p>
+          <div className="mt-2 flex items-center gap-3">
+            {action}
+            <Link to="/" className="text-sm font-bold hover:text-coral-deep">
+              내 피치로
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PageHeader() {
+  return (
+    <header className="flex shrink-0 items-center justify-between border-b border-line-strong bg-panel px-6 py-4">
+      <Link to="/" aria-label="PITCH COACH 홈">
+        <PitchCoachWordmark />
+      </Link>
+      <Link to="/" className="text-sm font-bold hover:text-coral-deep">
+        ← 내 피치
+      </Link>
+    </header>
+  );
+}
+
 function PitchCreateScreen() {
   const draft = useCreateStore((s) => s.draft);
   const node = useCreateStore((s) => s.node);
@@ -127,14 +251,7 @@ function PitchCreateScreen() {
 
   return (
     <div className="pitch-create flex h-dvh flex-col bg-greige text-ink">
-      <header className="flex shrink-0 items-center justify-between border-b border-line-strong bg-panel px-6 py-4">
-        <Link to="/" aria-label="PITCH COACH 홈">
-          <PitchCoachWordmark />
-        </Link>
-        <Link to="/" className="text-sm font-bold hover:text-coral-deep">
-          ← 내 피치
-        </Link>
-      </header>
+      <PageHeader />
 
       <div className="flex min-h-0 flex-1">
         {/* ── 좌측: 발표 자료 트리 · 치치 ─────────────────────────── */}

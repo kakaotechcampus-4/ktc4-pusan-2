@@ -1,9 +1,13 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/ 디렉터리 (core/config.py 기준 3단계 위)
 BACKEND_DIR = Path(__file__).resolve().parents[3]
+
+# HS256 키는 해시 출력 길이(32바이트) 이상이어야 추측으로 서명을 깨기 어렵다
+JWT_SECRET_KEY_MIN_BYTES = 32
 
 
 class Settings(BaseSettings):
@@ -15,10 +19,16 @@ class Settings(BaseSettings):
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
 
+    # 앱 로거(pitch_coach_backend.*)의 레벨. DEBUG · INFO · WARNING · ERROR (core/logging.py)
+    log_level: str = "INFO"
+
     jwt_secret_key: str
     # Access 토큰은 짧게. 폐기 수단이 없으므로 만료가 유일한 방어선이다.
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 14
+    # 회전할 때마다 만료가 다시 잡혀도 로그인한 지 이만큼 지나면 다시 로그인해야 한다.
+    # 없으면 14일 안에 한 번씩만 갱신해도 세션이 끝없이 이어진다
+    refresh_session_max_days: int = 30
     # 방금 회전된 Refresh 가 이 시간 안에 다시 오면 재사용으로 보지 않는다.
     # 회전 응답을 받기 전에 새로고침한 브라우저는 새 쿠키를 못 받아 옛 토큰을 다시 보낸다.
     refresh_token_reuse_grace_seconds: int = 10
@@ -29,6 +39,18 @@ class Settings(BaseSettings):
 
     # Deepgram 스트리밍 STT. 서버만 알고 브라우저에는 절대 내려보내지 않는다.
     deepgram_api_key: str
+
+    # Take 자동 종료. 말 없이 켜 둔 Take 가 STT 비용을 계속 쓰지 않게 한다.
+    # 말 없음 — 최근 take_silence_end_sec 동안 말이 없고, 직전 take_silence_window_sec 중
+    # take_silence_ratio 이상이 말 없음이면 끝낸다. 시간은 전사가 확인된 오디오 기준이다.
+    # 값 검사는 realtime/auto_end.py 의 AutoEndPolicy 한 곳에서 한다 (앱 시작 때)
+    take_silence_end_sec: int = 120
+    take_silence_window_sec: int = 300
+    take_silence_ratio: float = 0.8
+    # 강의 녹음처럼 원래 용도와 다르게 오래 쓰는 것을 막는 상한.
+    # AI 요청 시각의 상한(1시간 + 60초, docs/ai/architecture.md 1-3)이
+    # 이 값에 맞춰져 있다. 늘리려면 AI 와 먼저 맞춘다
+    take_max_duration_sec: int = 3600
 
     # 콜백이 끝난 뒤 브라우저를 돌려보낼 프론트 주소. CORS 허용 origin 으로도 쓴다.
     frontend_base_url: str = "http://localhost:3000"
@@ -47,6 +69,17 @@ class Settings(BaseSettings):
     s3_region: str = "ap-northeast-2"
     # AWS_PROFILE 환경변수로 SSO 프로필 지정
     aws_profile: str | None = None
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def _jwt_secret_key_is_long_enough(cls, value: str) -> str:
+        # .env.example 의 change-me 그대로 운영에 올라가는 것을 시작할 때 막는다
+        if len(value.encode()) < JWT_SECRET_KEY_MIN_BYTES:
+            raise ValueError(
+                f"JWT_SECRET_KEY 는 {JWT_SECRET_KEY_MIN_BYTES}바이트 이상이어야 합니다. "
+                "openssl rand -hex 32 로 만드세요."
+            )
+        return value
 
 
 settings = Settings()
