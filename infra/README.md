@@ -38,6 +38,9 @@ docker logs -f <컨테이너 이름>
 docker logs --tail n <컨테이너 이름>
 ```
 
+서버에 접속하지 않고 브라우저에서 볼 수도 있습니다. `<사이트 주소>/admin/logs/` 에 관리자 콘솔 계정으로 들어가면 모든 컨테이너 로그를 실시간으로 검색 · 필터할 수 있습니다 (Dozzle).
+계정은 `backend/.env` 의 `ADMIN_USERNAME` · `ADMIN_PASSWORD` 입니다. 컨테이너 로그는 서비스마다 10MB × 3개까지만 남습니다.
+
 ## 로컬 서버 작동 방법
 
 1. docker-compose.yml을 실행해 해당 파일에 작성된 컨테이너들을 모두 띄웁니다. 
