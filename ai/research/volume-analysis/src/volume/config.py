@@ -20,9 +20,9 @@ class Config(BaseModel):
     low_diff_bad_db: float = -15.0
     #: 짧은 창(평활) 길이. level_db · voice_diff_db 를 이 창의 말한 1초들로 낸다
     smoothing_ms: int = 5_000
-    #: 말한 1초의 voiced_ms 기준.
-    #: 시선 config 와 같은 값이어야 한다(architecture.md 6-2, 계약 테스트)
-    voiced_min_ms: int = 500
+    #: 말한 1초의 voiced_ms 기준. 시선 판정과 같은 값이어야 한다(architecture.md 6-2, 계약 테스트).
+    #: 지금 시선 값은 대역 coach_lab/judges/gaze.py 의 speaking_min_voiced_ms
+    voiced_min_ms: int = 300
     #: 짧은 창에 말한 1초가 이만큼 있어야 VOLUME 을 잴 수 있다
     min_voiced_seconds: int = 3
     #: 기준 음량을 Take 첫 발화로 잡을 때 쓰는 말한 1초 표본 수. 앞에서 이만큼의 중앙값
