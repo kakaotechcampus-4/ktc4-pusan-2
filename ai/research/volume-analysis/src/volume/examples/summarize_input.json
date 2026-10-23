@@ -1,0 +1,16 @@
+{
+  "VOLUME": {
+    "voiced_ms": 142300,
+    "voiced_energy": 158.9,
+    "low_ms": 11400,
+    "level_voiced_ms": 131800,
+    "base_db_ms": -3888100.0,
+    "audio_live_ms": 178000,
+    "total_ms": 182000
+  },
+  "PAUSE": {
+    "long_silence_count": 2,
+    "audio_live_ms": 178000,
+    "total_ms": 182000
+  }
+}
