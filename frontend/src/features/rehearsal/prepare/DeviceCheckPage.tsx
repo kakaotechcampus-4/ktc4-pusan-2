@@ -87,7 +87,7 @@ function deviceCheckHint({
 function baseVoiceLabel(status: BaseVoiceStatus, reason: ShortReason | null): string {
   switch (status) {
     case 'IDLE':
-      return '평소 목소리 · 문장 읽기';
+      return '평소 목소리 · 문단 읽기';
     case 'READING':
       return '평소 목소리 · 크기 재는 중';
     case 'DONE':
@@ -496,7 +496,7 @@ export function DeviceCheckPage() {
                 },
               ]}
             >
-              {/* 읽을 문장과 진행. 읽는 동안 · 다시 읽어야 할 때 · 잡힌 뒤에 보입니다 */}
+              {/* 읽을 문단과 진행. 읽는 동안 · 다시 읽어야 할 때 · 잡힌 뒤에 보입니다 */}
               {baseVoice.status !== 'IDLE' && (
                 <BaseVoicePanel
                   status={baseVoice.status}
