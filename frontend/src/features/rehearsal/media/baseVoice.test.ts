@@ -5,12 +5,10 @@ import {
   QUIET_BELOW_MS,
   addRecord,
   baseLevelDb,
-  END_SILENCE_MS,
   MAX_READ_MS,
-  MORE_AFTER_SILENCE_MS,
-  askMore,
-  judgeRead,
+  finishRead,
   readStage,
+  readTimedOut,
   shortReason,
   startRead,
   stepRead,
@@ -87,65 +85,44 @@ function read(pattern: boolean[], level = -30): { state: ReadState; now: number 
 const talk = (ms: number) => Array<boolean>(ms / 250).fill(true);
 const pause = (ms: number) => Array<boolean>(ms / 250).fill(false);
 
-describe('문장을 끝까지 읽었는가 — 내용은 보지 않고 소리로만', () => {
-  it('말한 시간을 채워도 아직 말하고 있으면 끝내지 않는다 — 읽는 도중에 끝내지 않는다', () => {
-    const { state, now } = read(talk(6000));
-    expect(judgeRead(state, now, 1)).toEqual({ kind: 'READING' });
+describe('다 읽었어요를 누르면 — 내용은 보지 않고 소리로만', () => {
+  it('충분히 말했으면 들은 시간과 크기를 낸다', () => {
+    const { state } = read(talk(7000));
+    expect(finishRead(state, true)).toEqual({ kind: 'DONE', levelDb: -30, heardMs: 7000 });
   });
 
-  it('채운 뒤 말이 멈추면 끝내고, 들은 시간과 크기를 낸다', () => {
-    const { state, now } = read([...talk(7000), ...pause(END_SILENCE_MS)]);
-    expect(judgeRead(state, now, 1)).toEqual({ kind: 'DONE', levelDb: -30, heardMs: 7000 });
+  it('문장 사이 쉼은 괜찮다 — 쉼은 재는 시간에 넣지 않는다', () => {
+    const pattern = [...talk(2000), ...pause(1500), ...talk(2000), ...pause(1500), ...talk(2000)];
+    expect(finishRead(read(pattern).state, true)).toEqual({
+      kind: 'DONE',
+      levelDb: -30,
+      heardMs: 6000,
+    });
   });
 
-  it('문장 사이 짧은 쉼은 괜찮다', () => {
-    const pattern = [...talk(2000), ...pause(500), ...talk(2000), ...pause(500), ...talk(2000)];
-    const { state, now } = read([...pattern, ...pause(END_SILENCE_MS)]);
-    expect(judgeRead(state, now, 1).kind).toBe('DONE');
+  it('일찍 누르면 조금이라도 들린 이상 BRIEF — 전혀 안 들렸을 때만 QUIET', () => {
+    expect(finishRead(read(talk(3000)).state, true)).toEqual({ kind: 'SHORT', reason: 'BRIEF' });
+    expect(finishRead(read(talk(500)).state, true)).toEqual({ kind: 'SHORT', reason: 'BRIEF' });
+    expect(finishRead(read([]).state, true)).toEqual({ kind: 'SHORT', reason: 'QUIET' });
+  });
+
+  it('최대 시간까지 읽었는데 거의 안 잡혔으면 QUIET', () => {
+    const quiet = read([...talk(500), ...pause(MAX_READ_MS)]);
+    expect(finishRead(quiet.state, false)).toEqual({ kind: 'SHORT', reason: 'QUIET' });
   });
 
   it('띄엄띄엄 들린 소리(기침 · 잡음)로 채웠으면 다시 읽게 한다', () => {
     // 0.25초 소리 · 1.25초 쉼을 20번 — 말한 시간 5초, 그 사이는 대부분 비어 있음 (비율 약 17%)
     const choppy = Array.from({ length: 20 }, () => [true, ...pause(1250)]).flat();
-    const { state, now } = read([...choppy, ...pause(END_SILENCE_MS)]);
-    expect(judgeRead(state, now, 1)).toEqual({ kind: 'SHORT', reason: 'CHOPPY' });
-  });
-
-  it('최대 시간이 지나면 끝낸다 — 채웠으면 결과, 못 채웠으면 이유', () => {
-    const long = read(talk(MAX_READ_MS + 250));
-    expect(judgeRead(long.state, long.now, 1).kind).toBe('DONE');
-    const quiet = read([...talk(500), ...pause(MAX_READ_MS)]);
-    expect(judgeRead(quiet.state, quiet.now, 1)).toEqual({ kind: 'SHORT', reason: 'QUIET' });
+    expect(finishRead(read(choppy).state, true)).toEqual({ kind: 'SHORT', reason: 'CHOPPY' });
   });
 });
 
-describe('채우기 전에 멈추면 — 실패가 아니라 이어 읽기', () => {
-  it('문장을 다 읽고 멈췄는데 모자라면, 다음 문장이 남아 있으면 이어 읽게 한다', () => {
-    const { state, now } = read([...talk(4000), ...pause(MORE_AFTER_SILENCE_MS)]);
-    expect(judgeRead(state, now, 3)).toEqual({ kind: 'MORE' });
-  });
-
-  it('이어 읽기를 청한 바로 뒤에는 다시 청하지 않는다', () => {
-    const { state, now } = read([...talk(4000), ...pause(MORE_AFTER_SILENCE_MS)]);
-    const asked = askMore(state, now);
-    expect(asked.sentences).toBe(2);
-    expect(judgeRead(asked, now + 250, 3)).toEqual({ kind: 'READING' });
-  });
-
-  it('이어 읽어 채우면 멈출 때 끝낸다 — 앞서 잰 시간도 그대로 더한다', () => {
-    const first = read([...talk(4000), ...pause(MORE_AFTER_SILENCE_MS)]);
-    let state = askMore(first.state, first.now);
-    let now = first.now;
-    for (const voiced of [...talk(2000), ...pause(END_SILENCE_MS)]) {
-      const from = now;
-      now += 250;
-      state = stepRead(state, rec(voiced ? -30 : null, voiced ? 250 : 0), from, now);
-    }
-    expect(judgeRead(state, now, 3)).toEqual({ kind: 'DONE', levelDb: -30, heardMs: 6000 });
-  });
-
-  it('준비한 문장을 다 쓰고도 모자라면 그때 끝낸다 — 최대 시간까지 기다리지 않는다', () => {
-    const { state, now } = read([...talk(4000), ...pause(MORE_AFTER_SILENCE_MS)]);
-    expect(judgeRead(state, now, 1)).toEqual({ kind: 'SHORT', reason: 'BRIEF' });
+describe('누르지 않으면', () => {
+  it('최대 시간이 지나야 끝난다 — 읽는 중에 소리로 멋대로 끝내지 않는다', () => {
+    const reading = read([...talk(6000), ...pause(3000)]);
+    expect(readTimedOut(reading.state, reading.now)).toBe(false);
+    const long = read(pause(MAX_READ_MS + 250));
+    expect(readTimedOut(long.state, long.now)).toBe(true);
   });
 });

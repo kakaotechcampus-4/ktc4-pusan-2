@@ -21,14 +21,13 @@ import type { ReadStage, ShortReason } from '../media/baseVoice';
 import { useVideoStream } from '../media/useVideoStream';
 
 /**
- * 평소 목소리로 읽을 문장들. 발표를 여는 말투입니다. 처음엔 첫 문장만 보이고, 다 읽었는데 말한 시간이
- * 모자라면 다음 문장을 보여 줘 이어 읽게 합니다 — '말하는 중'은 실제 읽은 시간의 절반 남짓만 잡혀서
- * 문장 하나로 5초를 못 채울 수 있습니다 (`baseVoice.ts` `MORE_AFTER_SILENCE_MS`).
+ * 평소 목소리로 읽을 문단. 발표를 여는 말투입니다. 처음부터 한 번에 보여 주고, 다 읽으면 사용자가
+ * "다 읽었어요"를 누릅니다. '말하는 중'은 실제 읽은 시간의 절반 남짓만 잡혀서(`loudness.ts`), 문장 하나로는
+ * 5초를 못 채울 수 있어 두 문장(평소 속도로 10초 안팎)으로 둡니다. 더 줄이면 다 읽어도 모자랄 수 있습니다.
  */
 const BASE_VOICE_SENTENCES = [
-  '안녕하세요. 지금부터 발표를 시작하겠습니다. 오늘 준비한 내용을 차근차근 말씀드릴 테니 끝까지 들어 주시면 감사하겠습니다.',
-  '먼저 이번 발표에서 다룰 문제를 짧게 소개하고, 이어서 저희가 준비한 해결 방법을 순서대로 설명드리겠습니다.',
-  '궁금한 점이 생기시면 발표가 끝난 뒤에 편하게 질문해 주세요.',
+  '안녕하세요. 지금부터 발표를 시작하겠습니다. 오늘 준비한 내용을 차근차근 말씀드리겠습니다.',
+  '먼저 이번 발표에서 다룰 문제를 소개하고, 이어서 해결 방법을 설명드리겠습니다.',
 ];
 
 /**
@@ -67,7 +66,8 @@ function deviceCheckHint({
   voiceStatus: BaseVoiceStatus;
 }): string {
   // 읽는 중이면 그 안내가 먼저입니다 — 사용자가 지금 하고 있는 일입니다
-  if (voiceStatus === 'READING') return '아래 문장을 평소 발표하는 목소리로 읽어 주세요';
+  if (voiceStatus === 'READING')
+    return '아래 문단을 평소 발표하는 목소리로 읽고, 다 읽으면 "다 읽었어요"를 눌러 주세요';
   if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
   // 카메라 권한을 묻기 전에 알립니다 — 시선 분석을 못 쓰면 카메라를 켜도 시작할 수 없습니다
   if (calStatus === 'UNAVAILABLE' && calUnavailable) return calUnavailable;
@@ -107,7 +107,7 @@ const SHORT_TITLE: Record<ShortReason, string> = {
 const SHORT_GUIDE: Record<ShortReason, string> = {
   QUIET:
     '말소리로 들리지 않았어요. 목소리가 작거나 주변이 시끄러울 수 있어요. 마이크에 조금 더 가까이에서, 평소 목소리로 다시 읽어 주세요.',
-  BRIEF: '말한 시간이 모자랐어요. 쉬지 말고 문장을 끝까지, 평소 목소리로 다시 읽어 주세요.',
+  BRIEF: '말한 시간이 모자랐어요. 문단을 끝까지 다 읽은 뒤에 "다 읽었어요"를 눌러 주세요.',
   CHOPPY:
     '중간에 비는 시간이 길었어요. 기침이나 주변 소리였을 수 있어요. 문장을 한 번에 이어서 다시 읽어 주세요.',
 };
@@ -219,12 +219,7 @@ export function DeviceCheckPage() {
   const { meterRef, echoMeterRef, rowRef, silentRef, micOk, audioState, meterError, voiceRecord } =
     useMicLevel(stream, { clock: pageClock });
   // 평소 목소리 크기. 선택 단계라 시작을 막지 않습니다 — 안 재면 AI 가 Take 첫 발화로 잡습니다
-  const baseVoice = useBaseVoice({
-    stream,
-    clock: pageClock,
-    voiceRecord,
-    totalSentences: BASE_VOICE_SENTENCES.length,
-  });
+  const baseVoice = useBaseVoice({ stream, clock: pageClock, voiceRecord });
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
   // 한 번에 묶어 꺼내므로 useShallow 가 필요합니다. 없으면 셀렉터가 매번 새 객체를
   // 돌려줘서 값이 그대로여도 바뀐 것으로 보고 무한히 다시 그립니다
@@ -509,8 +504,7 @@ export function DeviceCheckPage() {
                 <BaseVoicePanel
                   status={baseVoice.status}
                   stage={baseVoice.stage}
-                  sentences={baseVoice.sentences}
-                  askedMore={baseVoice.askedMore}
+                  onFinish={baseVoice.finish}
                   reason={baseVoice.reason}
                   heardSec={baseVoice.heardSec}
                   echoMeterRef={echoMeterRef}
@@ -595,8 +589,9 @@ export function DeviceCheckPage() {
  * 평소 목소리 읽기 — **사용자가 "제대로 듣고 있나"를 확인하는 자리**입니다.
  *
  * 말한 내용은 확인하지 않습니다(음성 인식은 Take 를 만든 뒤에만 됩니다). 그래서 소리로 볼 수 있는 것만 보여 줍니다.
- *   읽는 중  문장 · 지금 들리는 음량 막대 · 단계 체크(들림 → 충분히 들음 → 다 읽음). 시간 막대 · 숫자는 두지
- *           않습니다 — "들은 시간 2.5초"로는 잘 되고 있는지 판단할 수 없었습니다
+ *   읽는 중  문단 · 지금 들리는 음량 막대 · 단계 체크(들림 → 충분히 들음) · "다 읽었어요" 버튼. 시간 막대 ·
+ *           숫자는 두지 않습니다 — "들은 시간 2.5초"로는 잘 되고 있는지 판단할 수 없었습니다.
+ *           끝은 버튼으로 받습니다 — 소리로 정하면 읽는 도중에 끝나거나 문장이 더 붙었습니다
  *   잡힘     얼마나 들었는지와 어디에 쓰는지. dB 숫자는 보이지 않습니다 — 사용자에게 뜻이 없고,
  *           작아 보이면 다음 읽기에서 일부러 크게 말하게 됩니다
  *   다시     이유에 맞는 안내 (안 들림 · 모자람 · 띄엄띄엄)
@@ -604,16 +599,14 @@ export function DeviceCheckPage() {
 function BaseVoicePanel({
   status,
   stage,
-  sentences,
-  askedMore,
+  onFinish,
   reason,
   heardSec,
   echoMeterRef,
 }: {
   status: Exclude<BaseVoiceStatus, 'IDLE'>;
   stage: ReadStage;
-  sentences: number;
-  askedMore: boolean;
+  onFinish: () => void;
   reason: ShortReason | null;
   heardSec: number | null;
   echoMeterRef: RefObject<HTMLDivElement>;
@@ -631,8 +624,7 @@ function BaseVoicePanel({
   if (status === 'SHORT') {
     return (
       <div className="rounded-lg border border-line-strong bg-cream p-3">
-        <p className="text-sm leading-relaxed font-semibold">{BASE_VOICE_SENTENCES[0]}</p>
-        <p role="alert" className="mt-2 text-xs leading-relaxed text-stone">
+        <p role="alert" className="text-xs leading-relaxed text-stone">
           {SHORT_GUIDE[reason ?? 'BRIEF']}
         </p>
       </div>
@@ -640,12 +632,7 @@ function BaseVoicePanel({
   }
   return (
     <div className="rounded-lg border border-line-strong bg-cream p-3">
-      <ReadSentences shown={sentences} />
-      {askedMore && stage !== 'ENOUGH' && (
-        <p role="status" className="mt-2 text-xs font-bold text-coral-deep">
-          조금만 더 들려주세요. 아래 문장을 이어서 읽어 주세요.
-        </p>
-      )}
+      <p className="text-sm leading-relaxed font-semibold">{BASE_VOICE_SENTENCES.join(' ')}</p>
       <div className="mt-3">
         <LevelBar variant="segments" meterRef={echoMeterRef} />
       </div>
@@ -654,30 +641,13 @@ function BaseVoicePanel({
           <ReadStep key={step.done} index={i} current={READ_STEP_INDEX[stage]} step={step} />
         ))}
       </ol>
-    </div>
-  );
-}
-
-/**
- * 읽을 문장. 이어 읽기를 청하면 다음 문장이 붙고, 읽어야 할 문장(마지막)만 진하게 둡니다 —
- * 이미 읽은 문장을 다시 읽지 않게 합니다.
- */
-function ReadSentences({ shown }: { shown: number }) {
-  const list = BASE_VOICE_SENTENCES.slice(0, shown);
-  return (
-    <div className="flex flex-col gap-1.5">
-      {list.map((text, i) => (
-        <p
-          key={text}
-          className={
-            i === list.length - 1
-              ? 'text-sm leading-relaxed font-semibold'
-              : 'text-sm leading-relaxed text-stone'
-          }
-        >
-          {text}
-        </p>
-      ))}
+      <button
+        type="button"
+        onClick={onFinish}
+        className="mt-3 h-10 w-full rounded-md bg-coral text-sm font-bold text-white hover:bg-coral-deep"
+      >
+        다 읽었어요
+      </button>
     </div>
   );
 }
@@ -689,7 +659,7 @@ function ReadSentences({ shown }: { shown: number }) {
 const READ_STEPS = [
   { done: '목소리가 들려요', doing: '말소리를 기다리고 있어요' },
   { done: '충분히 들었어요', doing: '계속 읽어 주세요' },
-  { done: '다 읽었어요', doing: '다 읽고 잠깐 멈춰 주세요' },
+  { done: '다 읽었어요', doing: '끝까지 읽고 아래 버튼을 눌러 주세요' },
 ] as const;
 
 const READ_STEP_INDEX: Record<ReadStage, number> = { WAITING: 0, HEARD: 1, ENOUGH: 2 };
