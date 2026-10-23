@@ -19,6 +19,7 @@ stateDiagram-v2
     RUNNING --> CLOSED : 창을 닫음 (1001 뒤 2분) · abandon API
     READY --> CLOSED : abandon API
     RUNNING --> ABANDONED : 창을 닫지 않고 끊긴 뒤 5분
+    READY --> ABANDONED : 같은 발표에서 새 Take 를 만듦
     ABANDONED --> ANALYZING : 끝내기 PUT (되살림)
 
     note right of CLOSED : 되살리지 않는다
@@ -39,7 +40,7 @@ stateDiagram-v2
 | `SILENCE` | `ANALYZING` | 오래 말이 없어 자동 종료 |
 | `TIME_LIMIT` | `ANALYZING` | 최대 시간(1시간)이 지나 자동 종료 |
 | `CLOSED` | `FAILED` | 창을 닫았습니다 |
-| `ABANDONED` | `FAILED` | 창을 닫지 않고 끊긴 채 돌아오지 않았습니다. FE 는 살아 있을 수도 있습니다 |
+| `ABANDONED` | `FAILED` | 창을 닫지 않고 끊긴 채 돌아오지 않았습니다. FE 는 살아 있을 수도 있습니다. 또는 `READY` 인 채 같은 발표에서 새 Take 를 만들었습니다 |
 
 ## 1. 발표 중 연결이 끊기면
 
@@ -155,13 +156,20 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 | 자동 종료 `TIME_LIMIT` | BE | 프레임의 Take 시각이 1시간을 넘음. 시각이 멈춘 Take 는 서버 시계(스트림이 열려 있던 시간의 합)가 1시간 + 60초에서 끝냄 → `ANALYZING` |
 | 창을 닫음 | BE (3절) · FE (abandon) | `FAILED`(`CLOSED`) |
 | 끊긴 채 안 돌아옴 | BE (3절) | `FAILED`(`ABANDONED`) |
+| 새 Take 를 만듦 | BE (Take 생성) | 같은 발표에서 `READY` 로 남은 Take 를 모두 `FAILED`(`ABANDONED`). 끝난 시각은 만든 시각 |
+
+새 Take 를 만들 때 끝내는 것은 장치 점검만 하고 시작하지 않은 Take 입니다. FE 는 가장 최근 Take 로만 발표해서
+앞의 `READY` 는 다시 쓰이지 않습니다. 시간으로 끝내지 않는 이유는 마이크 없이 하는 발표가 실시간 연결 없이 끝날
+때까지 `READY` 이기 때문입니다. 그래서 다른 창에서 마이크 없이 발표하던 Take 도 여기서 끝나고, 그 창이 발표를
+마치고 보내는 끝내기 PUT 이 되살립니다 (아래).
 
 자동 종료는 `auto_end` 를 보내고 `stop` 과 같은 순서로 정리합니다. FE 는 끝내기 버튼과 같은 종료 흐름을 탑니다.
 
 ### 되살리기
 
 `ABANDONED` 로 끝난 Take 에 `ended_at` 이 든 끝내기 PUT 이 오면 기록을 받고 `ANALYZING` 으로 되살립니다
-(`end_reason` 은 지웁니다). 화면은 살아 있는데 STT 만 끊겨 5분 넘게 발표를 이어 간 경우입니다.
+(`end_reason` 은 지웁니다). 화면은 살아 있는데 STT 만 끊겨 5분 넘게 발표를 이어 간 경우와, 마이크 없이 발표하는
+동안 다른 창에서 새 Take 를 만든 경우입니다.
 
 `CLOSED` 는 되살리지 않습니다. 창을 닫은 Take 는 이어 가지 않습니다.
 
