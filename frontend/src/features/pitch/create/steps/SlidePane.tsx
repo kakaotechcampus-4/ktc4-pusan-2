@@ -290,7 +290,9 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
   const [page, setPage] = useState(1);
   const [zoomIndex, setZoomIndex] = useState(ZOOM_STEPS.indexOf(1));
   const [fitWidth, setFitWidth] = useState(false);
-  const total = slide.pageCount ?? 0;
+  // 넘기기 · 썸네일은 실제로 연 문서의 쪽수입니다. BE 숫자(`slide.pageCount`)는 "N장" 배지와
+  // 대본 장 수 맞추기에만 씁니다 — 둘이 다른 PDF 에서 없는 쪽을 열다 오류가 나지 않게
+  const total = doc.numPages;
 
   const goTo = (n: number) => setPage(Math.min(total, Math.max(1, n)));
 
