@@ -29,6 +29,7 @@ from pitch_coach_backend.module.take.exception import (
     NonExistentTake,
     TakeAlreadyEnded,
     TakeAlreadyStarted,
+    TakeSessionMismatch,
 )
 from pitch_coach_backend.module.take.repository import IN_PROGRESS_STATUSES, TakeRepository
 
@@ -66,6 +67,22 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
             pitch_id, take_dto.client_session_id
         )
         if existing_take is not None:
+            if (
+                existing_take.mode,
+                existing_take.script_mode,
+                existing_take.presentation_version_id,
+                existing_take.script_version_id,
+            ) != (
+                take_dto.mode,
+                take_dto.script_mode,
+                take_dto.presentation_version_id,
+                take_dto.script_version_id,
+            ):
+                raise TakeSessionMismatch()
+            # 그사이 다른 Take 를 만들어 ABANDONED 가 됐거나 이미 끝났다. 돌려줘도 WS 가
+            # TAKE_ENDED 로 막으니 FE 가 새 세션 id 로 다시 만들게 한다
+            if existing_take.status not in IN_PROGRESS_STATUSES:
+                raise TakeAlreadyEnded()
             return existing_take
 
     pitch = pitch_repository.get_by_id(pitch_id)

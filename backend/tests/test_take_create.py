@@ -189,6 +189,65 @@ def test_same_client_session_returns_the_first_take(
     assert _take(db_session, first.json()["take_id"]).status == "READY"
 
 
+@pytest.mark.parametrize("changed", ["mode", "script_mode", "presentation_version_id"])
+def test_same_client_session_with_another_body_is_409(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    changed: str,
+) -> None:
+    """같은 세션 id 로 처음과 다른 본문을 보냈다. 다시 보낸 요청이 아니다."""
+    session_id = str(uuid.uuid4())
+    _create(client, pitch_id, auth_headers, *versions, client_session_id=session_id)
+
+    presentation_id, script_id = versions
+    extra: dict[str, Any] = {"client_session_id": session_id}
+    if changed == "mode":
+        extra["mode"] = "EXAM"
+    elif changed == "script_mode":
+        extra["script_mode"] = "OFF"
+    else:
+        presentation = PresentationVersion(
+            pitch_id=pitch_id, version=2, file_key=f"{pitch_id}/2.pdf"
+        )
+        db_session.add(presentation)
+        db_session.flush()
+        presentation_id = presentation.id
+    retry = _create(client, pitch_id, auth_headers, presentation_id, script_id, **extra)
+
+    assert retry.status_code == 409
+    assert retry.json()["code"] == "TAKE_SESSION_MISMATCH"
+    assert _take_numbers(db_session, pitch_id) == [1]
+
+
+@pytest.mark.parametrize("status", ["FAILED", "COMPLETED"])
+def test_same_client_session_of_ended_take_is_409(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    status: str,
+) -> None:
+    """돌려줄 Take 가 끝났다. 받아도 실시간 연결이 TAKE_ENDED 로 막는다."""
+    session_id = str(uuid.uuid4())
+    first = _create(client, pitch_id, auth_headers, *versions, client_session_id=session_id)
+    if status == "FAILED":
+        # 그사이 다른 Take 를 만들어 READY 로 남은 처음 Take 가 ABANDONED 로 끝났다
+        _create(client, pitch_id, auth_headers, *versions)
+    else:
+        _take(db_session, first.json()["take_id"]).status = status
+        db_session.flush()
+
+    retry = _create(client, pitch_id, auth_headers, *versions, client_session_id=session_id)
+
+    assert retry.status_code == 409
+    assert retry.json()["code"] == "TAKE_ENDED"
+    assert _take(db_session, first.json()["take_id"]).status == status
+
+
 def test_new_take_abandons_takes_left_ready(
     client: TestClient,
     db_session: Session,
