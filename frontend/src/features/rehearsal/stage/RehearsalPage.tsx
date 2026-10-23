@@ -41,6 +41,7 @@ import { useLiveGaze } from './useLiveGaze';
 import { useRehearsalMaterials } from './useRehearsalMaterials';
 import { useRehearsalStore } from './rehearsalStore';
 import {
+  abandonOutcome,
   clearClock,
   coachHistory,
   lastSlide,
@@ -49,6 +50,7 @@ import {
   recordedUntilMs,
   resumeFromMs,
   saveClock,
+  type AbandonOutcome,
   type CoachHistory,
   type LeftWindow,
 } from './resume';
@@ -301,6 +303,13 @@ export function RehearsalPage() {
     const passed = (location.state as { clientSessionId?: string } | null)?.clientSessionId;
     (async () => {
       const row = passed ? await getSession(passed) : await findSessionByTakeId(takeId);
+      const leftReason = leftWindow(row ?? null, passed !== undefined, Date.now());
+      if (leftReason) {
+        // 이어 가지 않습니다. 실패로 끝내거나(창을 닫음) 다른 창에 맡깁니다 — 아래 '창을 닫았다 다시 열었다'
+        setTicket((current) => current ?? row?.ticket ?? null);
+        setResume({ ...freshResume(row?.clientSessionId ?? null), left: leftReason });
+        return;
+      }
       if (!row) {
         // 준비 화면을 거쳤는데 행이 없으면(그사이 사이트 데이터를 지웠다) 그 값으로 이어 씁니다 —
         // POST /takes 의 멱등 키가 그 값이라 바꾸면 안 됩니다
@@ -312,12 +321,6 @@ export function RehearsalPage() {
       const id = row.clientSessionId;
       // 새로고침 — 장치 점검이 세션에 남긴 값이 있습니다. 라우터 state 에 있으면 그게 먼저입니다
       setTicket((current) => current ?? row.ticket ?? null);
-
-      const leftReason = leftWindow(row, passed !== undefined, Date.now());
-      if (leftReason) {
-        setResume({ ...freshResume(id), left: leftReason });
-        return;
-      }
       // 메모리 스토어는 새로고침하면 비어 있습니다. 시선 기준·장치를 되살립니다
       if (row.prepare) restorePrepare(row.prepare);
 
@@ -367,9 +370,12 @@ export function RehearsalPage() {
       );
       // 기록은 못 쌓아도 발표는 합니다. 무대를 막으면 이 문구만 남은 빈 화면이 됩니다.
       // 준비 화면이 넘겨준 값은 그대로 씁니다 — POST /takes 의 멱등 키라, 그래야 끝내기를 눌렀을 때
-      // 재시도 화면으로 가서 같은 값으로 다시 보낼 수 있습니다. 없으면 끝내기는 아무것도 하지 않습니다
+      // 재시도 화면으로 가서 같은 값으로 다시 보낼 수 있습니다.
+      // 준비 화면을 거치지 않았으면(다른 창에서 엶) 이어 가지 않습니다 (`leftWindow`)
       setTicket((current) => current ?? null);
-      setResume(freshResume(passed ?? null));
+      setResume(
+        passed !== undefined ? freshResume(passed) : { ...freshResume(null), left: 'CLOSED' },
+      );
     });
   }, [takeId, location.state, restorePrepare, setSlide]);
 
@@ -419,22 +425,24 @@ export function RehearsalPage() {
     stopCamera();
 
     (async () => {
+      // 연습 정보가 없으면(이 브라우저에 기록이 없음) 서버에 알릴 주소를 모릅니다. 타이머가 정리합니다
+      let outcome: AbandonOutcome = 'CLOSED';
       if (ticket) {
         try {
-          const { status } = await abandonTake();
-          // 끝내기가 이미 서버에 닿았습니다. 실패가 아니라 분석 중입니다
-          if (status === 'ANALYZING' || status === 'COMPLETED') {
-            navigate(`/takes/${takeId}/processing`, { replace: true });
-            return;
-          }
+          outcome = abandonOutcome((await abandonTake()).status, null);
         } catch (e) {
-          if (e instanceof ApiFailure && e.code === 'TAKE_IN_PROGRESS') {
-            setResume((current) => current && { ...current, left: 'OTHER_WINDOW' });
-            return;
-          }
-          // 못 알렸어도 화면은 실패로 둡니다. 서버는 떠난 Take 타이머가 정리합니다
-          console.error('[rehearsal] 창을 닫은 Take 를 끝내지 못했습니다', e);
+          outcome = abandonOutcome(null, e instanceof ApiFailure ? e.code : null);
+          if (outcome === 'CLOSED')
+            console.error('[rehearsal] 창을 닫은 Take 를 끝내지 못했습니다', e);
         }
+      }
+      if (outcome === 'PROCESSING') {
+        navigate(`/takes/${takeId}/processing`, { replace: true });
+        return;
+      }
+      if (outcome === 'OTHER_WINDOW') {
+        setResume((current) => current && { ...current, left: 'OTHER_WINDOW' });
+        return;
       }
       // 무대는 다시 열리지 않습니다. 시선 기준은 얼굴 측정값이라 버립니다
       forgetZoneRef();

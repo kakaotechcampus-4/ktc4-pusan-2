@@ -278,8 +278,8 @@ describe('느린 재시도 간격과 상한', () => {
     expect(sockets).toHaveLength(before + 1);
   });
 
-  /** 서버도 창을 닫지 않고 끊긴 Take 를 5분 뒤 끝냅니다. 그 뒤로는 붙어도 TAKE_ENDED 입니다 */
-  it('끊긴 지 5분이 지나면 멈춘다 — 서버가 Take 를 끝낸 뒤로 두드리지 않게', async () => {
+  /** 서버는 끊긴 연결을 30초 살려 둔 뒤 5분을 더 기다려 Take 를 끝냅니다. 그 뒤로는 TAKE_ENDED 입니다 */
+  it('끊긴 지 5분 30초가 지나면 멈춘다 — 서버가 Take 를 끝낸 뒤로 두드리지 않게', async () => {
     vi.useFakeTimers();
     const onGiveUp = vi.fn();
     const stt = makeSocket({ onGiveUp });
@@ -289,7 +289,7 @@ describe('느린 재시도 간격과 상한', () => {
     sockets[0]!.emit(READY);
 
     await exhaustFastBackoff();
-    await keepFailing(4 * 60_000);
+    await keepFailing(5 * 60_000);
     expect(onGiveUp).not.toHaveBeenCalled();
 
     await keepFailing(60_000);
@@ -301,7 +301,7 @@ describe('느린 재시도 간격과 상한', () => {
     expect(sockets).toHaveLength(after);
   });
 
-  it('중간에 한 번 붙으면 5분을 처음부터 다시 센다', async () => {
+  it('중간에 한 번 붙으면 5분 30초를 처음부터 다시 센다', async () => {
     vi.useFakeTimers();
     const onGiveUp = vi.fn();
     const stt = makeSocket({ onGiveUp });
@@ -316,7 +316,7 @@ describe('느린 재시도 간격과 상한', () => {
     sockets.at(-1)!.open();
     sockets.at(-1)!.emit(READY);
 
-    // 처음 끊긴 때부터는 5분이 넘지만, 다시 끊긴 때부터는 아직 4분입니다
+    // 처음 끊긴 때부터는 5분 30초가 넘지만, 다시 끊긴 때부터는 아직 4분입니다
     await exhaustFastBackoff();
     await keepFailing(4 * 60_000);
     expect(onGiveUp).not.toHaveBeenCalled();

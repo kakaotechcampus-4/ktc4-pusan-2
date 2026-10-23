@@ -1,4 +1,4 @@
-import type { Ms } from '@/types/api';
+import type { Ms, TakeStatus } from '@/types/api';
 
 /**
  * 새로고침한 Take 를 이어받는 계산. **React 와 IndexedDB 를 모릅니다** — 값만 받아 값을 돌려줍니다.
@@ -74,17 +74,49 @@ export type LeftWindow = 'CLOSED' | 'OTHER_WINDOW';
  * `TAKE_ENDED`(`CLOSED`)로 거절하고, 그때 실패 화면으로 갑니다.
  *
  * 다른 창에서 열었으면 이어 가지 않습니다. 하트비트가 최근이면 그 창이 아직 발표 중이고, 아니면
- * 창을 닫았다 다시 연 것입니다. 끝내기를 누른 뒤의 행(`ending` · 제출함 · 끝남)은 여기서 막지 않습니다 —
- * 무대를 열지 않고 종료를 마저 보내는 길이 따로 있습니다.
+ * 창을 닫았다 다시 연 것입니다. 이 브라우저에 세션 행이 없어도(다른 브라우저 · 사이트 데이터를 지움)
+ * 이어 가지 않습니다 — 처음부터 열면 서버에 이미 쌓인 Take 시간대와 겹칩니다.
+ * 창을 닫아 이미 끝낸 행(`ABORTED`)은 어느 탭이든 다시 열지 않습니다.
+ * 끝내기를 누른 뒤의 행(`ending` · 제출함 · 끝남)은 여기서 막지 않습니다 — 무대를 열지 않고 종료를
+ * 마저 보내는 길이 따로 있습니다.
+ *
+ * `ending` · `submittedAt` 은 나중에 생긴 필드라 옛 행에는 키가 없습니다. 없음으로 읽습니다.
  */
 export function leftWindow(
-  row: { status: string; ending: unknown; submittedAt: number | null; lastBeatAt: number },
+  row: {
+    status: string;
+    ending?: unknown;
+    submittedAt?: number | null;
+    lastBeatAt: number;
+  } | null,
   sameTab: boolean,
   now: number,
 ): LeftWindow | null {
+  if (row?.status === 'ABORTED') return 'CLOSED';
   if (sameTab) return null;
-  if (row.status !== 'RUNNING' || row.ending !== null || row.submittedAt !== null) return null;
+  if (!row) return 'CLOSED';
+  const ended = (row.ending ?? null) !== null || (row.submittedAt ?? null) !== null;
+  if (row.status !== 'RUNNING' || ended) return null;
   return now - row.lastBeatAt < LIVE_BEAT_MS ? 'OTHER_WINDOW' : 'CLOSED';
+}
+
+/** 창을 닫은 Take 를 서버에 끝내 달라고 한 뒤 어디로 갈지 */
+export type AbandonOutcome = 'CLOSED' | 'OTHER_WINDOW' | 'PROCESSING';
+
+/**
+ * abandon 응답의 상태(`status`)나 실패 코드(`errorCode`)로 어디로 갈지 정합니다.
+ *
+ * - 409 `TAKE_IN_PROGRESS` — 다른 창이 아직 발표 중입니다 (서버가 오디오가 들어오는 걸 봤습니다)
+ * - `ANALYZING` · `COMPLETED` — 끝내기가 이미 서버에 닿았습니다. 실패가 아니라 분석 중입니다
+ * - 그 밖(실패로 바뀜 · 알리지 못함) — 실패 화면. 못 알렸으면 서버의 떠난 Take 타이머가 정리합니다
+ */
+export function abandonOutcome(
+  status: TakeStatus | null,
+  errorCode: string | null,
+): AbandonOutcome {
+  if (errorCode === 'TAKE_IN_PROGRESS') return 'OTHER_WINDOW';
+  if (status === 'ANALYZING' || status === 'COMPLETED') return 'PROCESSING';
+  return 'CLOSED';
 }
 
 /**
