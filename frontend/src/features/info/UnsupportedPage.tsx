@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, ButtonLink } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { checkGazeSupport } from '@/shared/lib/gazeSupport';
-import { InfoPage } from './InfoPage';
+import { InfoPage } from '@/shared/ui/InfoPage';
 import { unsupportedReason, type UnsupportedReason } from './unsupportedReason';
 
 /**

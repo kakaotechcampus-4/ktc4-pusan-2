@@ -341,14 +341,19 @@ WS /api/ws/takes/{take_id}
   다시 붙어 보는 시간과 같다) 아무도 다시 붙지 않으면 `FAILED` 로 바꾸고 `end_reason` 에 `ABANDONED` 를 남긴다.
   시선 기록 · 끝난 시각을 FE 가 보내지 못한 Take 라 분석하지 않는다. `ended_at` 은 마지막으로 연결이 끊긴 시각이다.
   그 안에 다시 붙으면(리허설 주소를 다시 연 경우 포함) 이어서 연습하고, 그 뒤로는 `TAKE_ENDED` 로 거절한다.
+  최대 시간(서버 시계 1시간 + 60초)까지 남은 발표가 30분보다 길면 그만큼 기다린다. 토큰 만료 등으로 재연결을
+  포기한 FE 는 STT 없이 발표를 이어 가기 때문이다. 그래도 먼저 끝냈으면 끝내기 PUT 이 되살린다 (아래).
   타이머는 메모리에 있어서 앱이 다시 뜨면 `RUNNING` Take 의 마지막 활동 시각(만든 시각 · 시작 시각 · 마지막
-  전사 저장 시각 중 가장 늦은 것)에서 30분으로 다시 건다.
+  전사 저장 시각 중 가장 늦은 것)에서 다시 건다. 남은 발표 시간도 사라져 최대 시간 전체를 기다린다.
+  이 Take 들을 10초 안에 읽지 못하면 걸지 않고 앱을 띄운다 (다음에 연결이 붙었다 끊길 때 걸린다).
 - **STT 없이 끝낸 Take 는 Take PUT 이 끝낸다.** 마이크를 못 열었거나 재연결을 포기한 FE 는 `stop` 을 보내지 못한다.
   종료 흐름의 `PUT /api/pitches/{pitch_id}/takes/{take_id}` 에 `ended_at` 이 있으면 BE 가 `ANALYZING` 으로 바꾼다.
   연결이 붙어 있거나 `stop` 으로 끝내는 중이면 그 연결에 맡긴다. 끊긴 뒤 30초 안이라 스트림이 남아 있으면
-  `stop` 처럼 남은 전사까지 저장한 뒤 바꾼다.
+  `stop` 처럼 남은 전사까지 저장한 뒤 바꾼다. 떠난 것으로 끝낸 Take(`ABANDONED`)도 `ANALYZING` 으로 되살리고
+  이유를 지운다.
 - Take PUT 은 상태와 순서를 본다. `COMPLETED`·`FAILED` 는 `409 TAKE_ENDED`, `ANALYZING` 은 시각만 받는다
-  (`event_logs` 는 409). `ended_at` 이 `started_at` 보다 앞서면 `400 INVALID_TAKE_TIME`, 시간대가 없는 시각은 422.
+  (`event_logs` 는 409). `ABANDONED` 로 끝난 Take 는 `ended_at` 이 있는 끝내기만 받는다.
+  `ended_at` 이 `started_at` 보다 앞서면 `400 INVALID_TAKE_TIME`, 시간대가 없는 시각은 422.
   `null` 은 보내지 않은 것으로 본다. 점검 결과(`calibration`)는 `READY` 일 때만 받는다 (아니면 `409 TAKE_STARTED`).
 - **Take 를 자동으로 끝낸다** (`realtime/auto_end.py`). 둘 중 하나라도 맞으면 `{"type":"auto_end","reason","message"}`
   를 보내고 `stop` 과 같은 순서로 정리한다 (drain → `ANALYZING` → `closed` → `1000`). 오디오는 그 자리에서 끊는다.

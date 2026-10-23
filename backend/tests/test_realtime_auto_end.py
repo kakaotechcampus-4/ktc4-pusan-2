@@ -90,7 +90,9 @@ def test_words_are_clipped_to_the_final_and_overlaps_are_not_double_counted():
 
 
 def test_silence_filled_by_the_server_is_not_heard():
-    """BE 가 메워 보낸 무음은 들은 게 아니다. 축에서 빠지고 말 없음 연속을 끊지도 늘리지도 않는다."""
+    """
+    BE 가 메워 보낸 무음은 들은 게 아니다. 축에서 빠지고 말 없음 연속을 끊지도 늘리지도 않는다.
+    """
     tracker = SilenceTracker(POLICY)
     assert feed_silence(tracker, 0, 100_000) is False
     # 5초 final 중 4초가 메운 무음이다. 들은 말 없음은 1초만 더해진다

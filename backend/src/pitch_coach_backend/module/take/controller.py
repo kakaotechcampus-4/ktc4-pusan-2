@@ -17,6 +17,7 @@ from pitch_coach_backend.module.take.service import (
     create_take_service,
     delete_take_service,
     get_previous_missions_service,
+    get_review_result,
     mark_ended,
     update_take_service,
 )
@@ -80,3 +81,11 @@ def get_previous_missions(
 ):
     result = get_previous_missions_service(db, pitch_id)
     return {"message": "Previous missions retrieved successfully", "missions": result}
+
+@router.post("/{take_id}/review")
+def review_take(
+    db: Annotated[Session, Depends(get_db)],
+    take_id: OwnedTake,
+):
+    result = get_review_result(db, take_id)
+    return {"message": "Review result retrieved successfully", "review_result": result}

@@ -33,3 +33,24 @@ def generate_presigned_url(key: str, expiration: int = 3600):
         raise Exception(f"S3 presigned URL 생성 실패: {str(e)}") from e
 
     return url
+
+
+def delete_prefix(prefix: str) -> None:
+    """prefix 아래 파일을 모두 지운다. 목록과 삭제 모두 한 번에 1000개까지라 페이지마다 지운다."""
+    s3 = get_s3()
+    try:
+        pages = s3.get_paginator("list_objects_v2").paginate(
+            Bucket=settings.s3_bucket_name, Prefix=prefix
+        )
+        for page in pages:
+            objects = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+            if not objects:
+                continue
+            result = s3.delete_objects(
+                Bucket=settings.s3_bucket_name, Delete={"Objects": objects, "Quiet": True}
+            )
+            # 요청은 성공해도 파일별 실패는 Errors 로만 온다
+            if result.get("Errors"):
+                raise Exception(f"S3 파일 삭제 실패: {result['Errors']}")
+    except (ClientError, BotoCoreError) as e:
+        raise Exception(f"S3 파일 삭제 실패: {str(e)}") from e

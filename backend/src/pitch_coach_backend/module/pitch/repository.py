@@ -11,6 +11,7 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptParseStatus,
     ScriptSlide,
     ScriptVersion,
+    StandardAnalyses,
     Standards,
 )
 from pitch_coach_backend.module.take.entity import Take, TakeSummary
@@ -61,6 +62,18 @@ class PitchRepository:
 
     def get_take_ids(self, pitch_id: uuid.UUID) -> list[uuid.UUID]:
         return list(self.db.scalars(select(Take.id).where(Take.pitch_id == pitch_id)))
+
+    def get_ids_by_user(self, user_id: uuid.UUID) -> list[uuid.UUID]:
+        return list(self.db.scalars(select(Pitch.id).where(Pitch.user_id == user_id)))
+
+    def get_take_ids_by_user(self, user_id: uuid.UUID) -> list[uuid.UUID]:
+        return list(
+            self.db.scalars(
+                select(Take.id)
+                .join(Pitch, Pitch.id == Take.pitch_id)
+                .where(Pitch.user_id == user_id)
+            )
+        )
 
     def delete(self, pitch: Pitch) -> None:
         self.db.delete(pitch)
@@ -191,6 +204,23 @@ class PitchRepository:
             .order_by(Standards.version.asc())
         ).all()
 
+    def get_standards_in_version(self, pitch_id: uuid.UUID, version: int) -> list[Standards]:
+        return self.db.scalars(
+            select(Standards).where(
+                Standards.pitch_id == pitch_id,
+                Standards.version == version
+            )
+            .order_by(Standards.position.asc())
+        ).all()
+
+    def get_standard_analysis(self, pitch_id: uuid.UUID, version: int) -> list[StandardAnalyses]:
+        return self.db.scalars(
+            select(StandardAnalyses).where(
+                StandardAnalyses.pitch_id == pitch_id,
+                StandardAnalyses.version == version,
+            )
+        ).all()
+
     def get_evaluations_by_version(
             self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
         return self.db.scalars(
@@ -200,6 +230,11 @@ class PitchRepository:
             )
             .order_by(Standards.position.asc())
         ).all()
+
+    def get_latest_standard_version(self, pitch_id: uuid.UUID) -> int | None:
+        return self.db.scalar(
+            select(func.max(Standards.version)).where(Standards.pitch_id == pitch_id)
+        )
 
     # ── 대본 파싱 ────────────────────────────────────────────────────
     # 상태 전이는 전부 조건부 UPDATE 한 번으로 한다. "읽고 → 검사하고 → 쓰기" 로 나누면

@@ -99,4 +99,12 @@ export const authHandlers = [
     signedIn ? HttpResponse.json(mockUser) : HttpResponse.json(unauthorized, { status: 401 }),
   ),
   http.post('*/api/auth/logout', () => HttpResponse.json({ detail: '로그아웃되었습니다.' })),
+  // 탈퇴(#288). 204 와 함께 세션을 끊어, 다시 불러도 로그아웃 상태로 남게 합니다
+  http.delete('*/api/users/me', () => {
+    if (!signedIn) return HttpResponse.json(unauthorized, { status: 401 });
+    signedIn = false;
+    setCsrfCookie(false);
+    document.cookie = `${OVERRIDE_COOKIE}=false; path=/; SameSite=Lax`;
+    return new HttpResponse(null, { status: 204 });
+  }),
 ];
