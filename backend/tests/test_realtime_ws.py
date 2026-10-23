@@ -3475,7 +3475,7 @@ async def test_reopened_tab_cuts_the_stream_and_blocks_reconnect():
     }
     assert tab.closed == (1008, "TAKE_ENDED")
     assert take_stream._abandon_timers == {}
-    with pytest.raises(take_stream.TakeEnded):
+    with pytest.raises(take_stream.TakeEnded) as info:
         await take_stream.attach(
             stream.take_id,
             FakeWebSocket(),
@@ -3484,6 +3484,7 @@ async def test_reopened_tab_cuts_the_stream_and_blocks_reconnect():
             config=SttConfig(),
             store=store,
         )
+    assert info.value.reason == "CLOSED", "다시 붙으면 창을 닫아 끝났다고 알린다"
 
 
 @pytest.mark.anyio

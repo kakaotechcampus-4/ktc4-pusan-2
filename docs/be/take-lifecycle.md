@@ -52,7 +52,7 @@ stateDiagram-v2
 
 - 먼저 0.5초 · 1초 · 2초 간격으로 세 번 붙어 봅니다.
 - 그 뒤로는 횟수로 포기하지 않고 4~6초(5초 ± 1초)마다 붙어 봅니다.
-- 끊긴 지 30분이 지나면 멈춥니다 (열어 두고 떠난 탭).
+- 끊긴 지 5분 30초가 지나면 멈춥니다. 서버가 그때 Take 를 끝내서(3절) 그 뒤로는 붙어도 `TAKE_ENDED` 입니다.
 - 아래 경우는 다시 붙어도 같은 이유로 닫히므로 **바로 포기합니다.** 발표는 STT 없이 이어 갑니다.
   - 에러 `UNAUTHORIZED`(토큰을 한 번 갱신해 다시 붙어 본 뒤) · `TAKE_NOT_FOUND` · `TAKE_ENDED` · `FORBIDDEN` · `TAKE_TAKEN_OVER`
   - 닫힘 코드 1000 · 1008
@@ -82,16 +82,18 @@ BE 가 0.5 · 1 · 2 · 5 · 10초 백오프로 계속 다시 붙습니다. 이�
 
 ## 2. 다시 열었을 때
 
+FE 는 같은 탭인지를 라우터 state 로 압니다. 장치 점검이 넘긴 `clientSessionId` 는 새로고침해도 · 닫은
+탭을 복원해도 남고, 주소를 새 창에 직접 열면 비어 있습니다 (`frontend/src/features/rehearsal/stage/resume.ts`
+`leftWindow`).
+
 | 경우 | FE 가 아는 법 | 동작 |
 |---|---|---|
-| 새로고침 | `sessionStorage` 에 무대 시계가 남아 있음 | 무대 시계를 이어받아 계속 연습합니다 |
-| 창을 닫았다 다시 엶 | 세션 행은 `RUNNING` 인데 무대 시계가 없음 | 무대를 열지 않고 abandon API 를 부른 뒤 실패 화면 ※ |
-| 다른 창이 아직 발표 중 | 위와 같은데 하트비트가 10초 안 | "다른 창에서 연습 중" 안내만 ※ |
-| 닫은 탭 복원 (Ctrl+Shift+T) | `sessionStorage` 가 살아 새로고침처럼 보임 | 2분 안이면 이어 갑니다. 지났으면 첫 연결이 `TAKE_ENDED`(`CLOSED`)를 받고 실패 화면 ※ |
-| 끊긴 지 5분 지나 새로고침 | 첫 연결이 `TAKE_ENDED`(`ABANDONED`) | STT 없이 발표를 이어 가고 끝내기 PUT 으로 되살립니다 ※ |
-
-※ FE 작업(#309) 전입니다. 지금 FE 는 세션 행이 `RUNNING` 이면 모두 무대를 이어서 엽니다. BE 는 그 연결을
-위 규칙대로 받거나 거절합니다.
+| 새로고침 | 라우터 state 가 남아 있음 | 무대 시계를 이어받아 계속 연습합니다 |
+| 창을 닫았다 다시 엶 | 라우터 state 가 없고 하트비트가 멈춤 (이 브라우저에 기록이 없어도) | 무대를 열지 않고 abandon API 를 부른 뒤 실패 화면 |
+| 다른 창이 아직 발표 중 | 라우터 state 가 없고 하트비트가 10초 안, 또는 abandon API 가 409 | "다른 창에서 연습 중" 안내만 |
+| 닫은 탭 복원 (Ctrl+Shift+T) | 라우터 state 가 살아 새로고침처럼 보임 | 2분 안이면 이어 갑니다. 지났으면 첫 연결이 `TAKE_ENDED`(`CLOSED`)를 받고 실패 화면 |
+| 끊긴 지 5분 지나 새로고침 | 첫 연결이 `TAKE_ENDED`(`ABANDONED`) | STT 없이 발표를 이어 가고 끝내기 PUT 으로 되살립니다 |
+| 실패 화면을 본 뒤 새로고침 | 세션 행이 `ABORTED` | 무대를 다시 열지 않고 실패 화면 |
 
 끝난 Take 로 붙으면 BE 는 `TAKE_ENDED` 로 거절하고, BE 가 끝냈으면 이유를 `end_reason` 에 싣습니다.
 FE 는 이걸로 무엇을 할지 가릅니다.
@@ -188,5 +190,6 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 | 최대 시간 1시간 | `take_max_duration_sec` | `backend/src/pitch_coach_backend/core/config.py` |
 | 서버 시계 여유 60초 | `SERVER_CLOCK_SLACK_MS` | `backend/src/pitch_coach_backend/realtime/auto_end.py` |
 | 말 없음 2분 · 5분 · 80% | `take_silence_*` | `backend/src/pitch_coach_backend/core/config.py` |
-| FE 재연결 간격 · 30분 | `RETRY_DELAYS_MS` · `SLOW_RETRY_MS` · `GIVE_UP_AFTER_MS` | `frontend/src/features/rehearsal/lib/sttSocket.ts` |
+| FE 재연결 간격 · 5분 30초 | `RETRY_DELAYS_MS` · `SLOW_RETRY_MS` · `GIVE_UP_AFTER_MS` | `frontend/src/features/rehearsal/lib/sttSocket.ts` |
+| FE 가 다른 창이 발표 중으로 보는 하트비트 10초 | `LIVE_BEAT_MS` | `frontend/src/features/rehearsal/stage/resume.ts` |
 | FE 가 바로 포기하는 에러 | `FATAL_CODES` | `frontend/src/features/rehearsal/lib/sttProtocol.ts` |
