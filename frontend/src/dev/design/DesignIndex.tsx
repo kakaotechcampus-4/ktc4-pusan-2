@@ -49,7 +49,11 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
   { path: '/takes/t3/rehearsal', id: '07', title: '리허설 · 실시간 코칭' },
   { path: '/takes/t3/exam', id: '07', title: '리허설 · 실전 모드' },
   { path: '/takes', id: 'P16', title: 'Take 기록' },
-  { path: '/pitch/p1/comparison', id: 'P7', title: 'Take 비교' },
+  {
+    path: '/pitch/10000000-0000-4000-8000-000000000001/comparison',
+    id: 'P7',
+    title: 'Take 비교',
+  },
   {
     path: '/pitch/p2/comparison',
     id: 'P7',

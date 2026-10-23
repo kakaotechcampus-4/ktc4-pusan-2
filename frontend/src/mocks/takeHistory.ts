@@ -1,25 +1,29 @@
 import { http, HttpResponse } from 'msw';
 import type { TakeHistoryRow } from '@/types/takeHistory';
+import { homeFixture } from './home';
 
 /**
  * Take 목록 목 — `GET /api/takes/` (BE 에 아직 없는 API, `types/takeHistory.ts`).
  *
  * 화면 상태를 주소만 바꿔 볼 수 있게 피치 id 마다 모양을 고정해 둡니다.
- *   p1        Take 4개 — 시선 측정 제외(t2) · 시선 엔진이 다른 Take(t1) 포함
- *   p2        분석 중 · 분석 실패만 — 비교할 완료 Take 가 없음
- *   그 밖의 id Take 없음
+ *   홈 목의 피치  Take 3개 — 번호 · 시간 · 대본 모드는 홈 목 그대로, 시선 엔진이 다른 Take(1) 포함.
+ *                홈의 "Take 비교"가 여기로 옵니다
+ *   p2          분석 중 · 분석 실패만 — 비교할 완료 Take 가 없음
+ *   그 밖의 id  Take 없음
  */
 
+const homePitch = homeFixture.pitches[0]!;
+
 const base: TakeHistoryRow = {
-  take_id: 't4',
-  pitch_id: 'p1',
-  pitch_title: '캡스톤 중간발표',
-  take_number: 4,
-  started_at: '2026-10-06T19:20:00+09:00',
+  take_id: '',
+  pitch_id: homePitch.pitch_id,
+  pitch_title: homePitch.pitch_title,
+  take_number: 0,
+  started_at: '',
   status: 'COMPLETED',
-  script_mode: 'KEYWORD',
-  duration_ms: 278_000,
-  goal_ms: 300_000,
+  script_mode: 'HIGHLIGHT',
+  duration_ms: 0,
+  goal_ms: homePitch.pitch_time * 1000,
   audience_ratio: 0.74,
   script_ratio: 0.22,
   cpm: 352,
@@ -29,23 +33,32 @@ const base: TakeHistoryRow = {
   gaze_engine: 'gaze_v1.1.0',
 };
 
+/** 홈 목의 Take 한 줄을 그대로 옮깁니다. FULL 은 HIGHLIGHT 로 합쳐졌습니다 (CLAUDE.md 7번) */
+function fromHome(take_version: number, patch: Partial<TakeHistoryRow>): TakeHistoryRow {
+  const t = homePitch.takes.find((x) => x.take_version === take_version)!;
+  return {
+    ...base,
+    take_id: t.take_id,
+    take_number: t.take_version,
+    duration_ms: (t.take_elapsed ?? 0) * 1000,
+    goal_ms: t.take_time * 1000,
+    script_mode: t.script_mode === 'KEYWORD' ? 'KEYWORD' : 'HIGHLIGHT',
+    ...patch,
+  };
+}
+
 // prettier-ignore
 const rows: TakeHistoryRow[] = [
   { ...base, take_id: 'x2', pitch_id: 'p2', pitch_title: '투자 설명회', take_number: 2,
-    started_at: '2026-10-07T21:05:00+09:00', status: 'ANALYZING' },
-  base,
-  { ...base, take_id: 't3', take_number: 3, started_at: '2026-10-05T20:40:00+09:00',
-    script_mode: 'HIGHLIGHT', duration_ms: 298_000, audience_ratio: 0.66, script_ratio: 0.3,
-    cpm: 331, filler_count: 9, missions_achieved: 1, missions_total: 2 },
-  { ...base, take_id: 't2', take_number: 2, started_at: '2026-10-04T22:10:00+09:00',
-    script_mode: 'HIGHLIGHT', duration_ms: 342_000, audience_ratio: null, script_ratio: null,
-    cpm: 298, filler_count: 12, missions_total: 2, gaze_engine: null },
-  { ...base, take_id: 't1', take_number: 1, started_at: '2026-10-03T18:30:00+09:00',
-    script_mode: 'HIGHLIGHT', duration_ms: 361_000, audience_ratio: 0.51, script_ratio: 0.44,
-    cpm: 286, filler_count: 15, missions_total: 0, gaze_engine: 'gaze_v1.0.0' },
+    started_at: '2026-10-07T21:05:00+09:00', status: 'ANALYZING', duration_ms: 278_000 },
+  fromHome(3, { started_at: '2026-10-06T19:20:00+09:00' }),
+  fromHome(2, { started_at: '2026-10-05T20:40:00+09:00', audience_ratio: 0.66, script_ratio: 0.3,
+    cpm: 331, filler_count: 9, missions_achieved: 1, missions_total: 2 }),
+  fromHome(1, { started_at: '2026-10-04T22:10:00+09:00', audience_ratio: 0.51, script_ratio: 0.44,
+    cpm: 286, filler_count: 15, missions_total: 0, gaze_engine: 'gaze_v1.0.0' }),
   { ...base, take_id: 'x1', pitch_id: 'p2', pitch_title: '투자 설명회', take_number: 1,
-    started_at: '2026-10-02T17:00:00+09:00', status: 'FAILED', audience_ratio: null,
-    script_ratio: null, cpm: null, filler_count: null, gaze_engine: null },
+    started_at: '2026-10-02T17:00:00+09:00', status: 'FAILED', duration_ms: 278_000,
+    audience_ratio: null, script_ratio: null, cpm: null, filler_count: null, gaze_engine: null },
 ];
 
 export const takeHistoryHandlers = [

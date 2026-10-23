@@ -2,7 +2,7 @@ import type { ScriptMode } from '@/types/api';
 import type { TakeHistoryRow } from '@/types/takeHistory';
 
 export const SCRIPT_MODE_LABEL: Record<ScriptMode, string> = {
-  HIGHLIGHT: '전체 대본',
+  HIGHLIGHT: '전체 대본 + 하이라이트',
   KEYWORD: '핵심 키워드',
   OFF: '대본 없이',
 };
