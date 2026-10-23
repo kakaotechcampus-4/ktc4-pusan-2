@@ -34,6 +34,22 @@ export function openPdf(url: string): Promise<PDFDocumentProxy> {
 }
 
 /**
+ * 쪽수만 세고 닫습니다. `openPdf` 와 달리 캐시에 남기지 않습니다.
+ *
+ * 목(`mocks/presentation.ts`)이 BE 처럼 쪽수를 셀 때 씁니다. 캐시에 남기면 뷰어가 업로드 직후
+ * 바로 그려져, 실서버의 "PDF 여는 중…" 단계를 dev 에서 볼 수 없습니다.
+ */
+export async function countPdfPages(url: string): Promise<number> {
+  const task = getDocument({ url });
+  try {
+    return (await task.promise).numPages;
+  } finally {
+    // 문서를 닫는 것은 여는 작업 쪽입니다 (이 판의 pdf.js 문서에는 destroy 가 없습니다)
+    await task.destroy();
+  }
+}
+
+/**
  * 페이지 하나를 상자 크기에 맞춰 그립니다.
  *
  * `height` 가 0 이면 폭에만 맞춥니다(썸네일). 둘 다 있으면 비율을 지키며 안에 들어가게 합니다(본문).

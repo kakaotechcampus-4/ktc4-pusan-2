@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw';
-import { openPdf } from '@/shared/lib/pdf';
+import { countPdfPages } from '@/shared/lib/pdf';
 import type { PresentationDetail, UploadPresentationResponse } from '@/types/presentation';
 
 /** 올린 파일. 리허설이 버전 id 로 다시 받을 때(GET /presentations/{id}) 같은 파일을 돌려줍니다 */
@@ -32,9 +32,10 @@ export const presentationHandlers = [
     const id = crypto.randomUUID();
     const url = URL.createObjectURL(file);
     // BE 처럼 쪽수를 세서 돌려줍니다 (#298). 열리지 않으면 BE 처럼 400 INVALID_PRESENTATION
+    // 캐시에 남기지 않아 뷰어가 실서버처럼 따로 엽니다. 열기 실패(S3 CORS · 만료)는 목에서 재현되지 않습니다
     let pageCount;
     try {
-      pageCount = (await openPdf(url)).numPages;
+      pageCount = await countPdfPages(url);
     } catch {
       URL.revokeObjectURL(url);
       return HttpResponse.json({ code: 'INVALID_PRESENTATION' }, { status: 400 });
