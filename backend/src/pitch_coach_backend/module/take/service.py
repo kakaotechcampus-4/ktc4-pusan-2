@@ -1,10 +1,12 @@
 import uuid
 from datetime import datetime
 
+import httpx2
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.pitch.exception import (
     NonExistentPitch,
@@ -16,10 +18,16 @@ from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     MissionDTO,
+    MissionInputDTO,
     PreviousMissionsDTO,
+    PreviousTakeDTO,
+    ReviewRequestDTO,
+    ReviewResponseDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
+    TargetInfoDTO,
     TranscriptSegmentCreateDTO,
+    UserCriteriaDTO,
 )
 from pitch_coach_backend.module.take.entity import Calibration, Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import (
@@ -63,6 +71,8 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
         raise NonExistentPitch()
 
     take_repository.abandon_ready_takes(pitch_id)
+
+    previous_take = take_repository.get_latest_reviewed_take_in_pitch(pitch_id)
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,
@@ -76,6 +86,8 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     )
 
     saved_take = take_repository.save(new_take)
+    if previous_take is not None:
+        take_repository.assign_missions_to_take(previous_take.id, saved_take.id)
     db.commit()
 
     return saved_take
@@ -90,10 +102,16 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
     # 보낸 필드만 바꾼다. 빠진 필드를 None 으로 덮으면 ended_at 만 보낼 때 started_at 이 지워진다
     changes = take_update_dto.model_dump(exclude_none=True)
 
+    # 떠난 것으로 끝낸 Take 에 온 끝내기다. 재연결을 포기하고 STT 없이 발표를 이어 간 FE 라
+    # 기록을 받는다. 상태는 뒤이어 mark_ended 가 ANALYZING 으로 되돌린다
+    abandoned_end = existing_take.end_reason == "ABANDONED" and "ended_at" in changes
+
     # 끝난 Take 는 분석이 읽고 있거나 이미 읽었다. ANALYZING 일 때 시각만 받는다 — FE 는
     # WS stop 으로 Take 를 끝낸 뒤 시각을 보내고, 종료 중 새로고침하면 같은 값을 다시 보낸다
-    if existing_take.status not in IN_PROGRESS_STATUSES and (
-        existing_take.status != "ANALYZING" or "event_logs" in changes
+    if (
+        not abandoned_end
+        and existing_take.status not in IN_PROGRESS_STATUSES
+        and (existing_take.status != "ANALYZING" or "event_logs" in changes)
     ):
         raise TakeAlreadyEnded()
 
@@ -158,7 +176,7 @@ def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
 
 def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
     take_repository = TakeRepository(db)
-    latest_take = take_repository.get_latest_take_in_pitch(pitch_id)
+    latest_take = take_repository.get_latest_reviewed_take_in_pitch(pitch_id)
 
     if latest_take is None:
         return PreviousMissionsDTO(source_take_id=None, next_take_number=1, missions=[])
@@ -225,6 +243,117 @@ def append_transcript_segment(
     db.commit()
     return saved.id
 
+def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list[MissionInputDTO]:
+    return [
+        MissionInputDTO(
+            mission_id=mission.id,
+            area=mission.area,
+            slide_number=mission.slide_number,
+            target=TargetInfoDTO(**mission.target),
+        )
+        for mission in take_repository.get_missions_for_take(take_id)
+    ]
+
+def _build_previous_takes(
+    take_repository: TakeRepository, take_id: uuid.UUID, take_number: int
+) -> list[PreviousTakeDTO]:
+    return [
+        PreviousTakeDTO(
+            take_result=result,
+            take_scores=coverage.get("take_scores") if coverage else None,
+        )
+        for result, coverage in take_repository.get_previous_take_results(take_id, take_number)
+    ]
+
+def _build_previous_recurring_issues(
+    take_repository: TakeRepository, take_id: uuid.UUID, take_number: int
+) -> list[dict]:
+    previous_review = take_repository.get_previous_review_payload(take_id, take_number)
+    return previous_review.get("recurring_issues", []) if previous_review else []
+
+def _build_user_criteria(db: Session, pitch_id: uuid.UUID) -> UserCriteriaDTO | None:
+    pitch_repository = PitchRepository(db)
+    version = pitch_repository.get_latest_standard_version(pitch_id)
+    if version is None:
+        return None
+    standards = pitch_repository.get_standards_in_version(pitch_id, version)
+    analysis = pitch_repository.get_standard_analysis(pitch_id, version)
+    return UserCriteriaDTO(
+        display_criteria=[s.title for s in standards],
+        targets=[TargetInfoDTO(**t) for t in analysis.targets] if analysis else [],
+        script_used=analysis.script_used if analysis else None,
+    )
+
+def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
+    take_repository = TakeRepository(db)
+    take_number = take_repository.get_take_number(take_id)
+    return ReviewRequestDTO(
+        take_result=take_repository.get_take_infos(take_id, "TAKE_RESULT"),
+        script_coverage=take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE"),
+        previous_takes=_build_previous_takes(take_repository, take_id, take_number),
+        previous_recurring_issues=_build_previous_recurring_issues(take_repository, 
+                                                                   take_id, take_number),
+        missions=_build_missions(take_repository, take_id),
+        user_criteria=_build_user_criteria(db, take_repository.get_pitch_id_of_take(take_id)),
+    )
+
+def request_review(review_request: ReviewRequestDTO) -> ReviewResponseDTO:
+    with httpx2.Client(timeout=30.0) as client:
+        response = client.post(
+            f"{settings.AI_BASE_URL}/takes/review",
+            json=review_request.model_dump(mode="json"),
+        )
+        response.raise_for_status()
+        return ReviewResponseDTO.model_validate(response.json())
+
+def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO) -> None:
+    take_repository = TakeRepository(db)
+    take_repository.save_total_result(
+        take_id,
+        review_data.model_dump(mode="json", exclude={"meta"}),
+        review_data.meta.model_dump(mode="json"),
+    )
+    take_repository.upsert_next_missions([
+        {
+            "source_take_id": take_id,
+            "area": mission.area,
+            "slide_number": mission.slide_number,
+            "target": mission.target.model_dump(exclude={"display"}),
+            "description": mission.description,
+            "priority": mission.priority,
+            "reason": mission.reason,
+            "status": "ACTIVE",
+        }
+        for mission in review_data.next_missions
+    ])
+    for result in review_data.mission_results:
+        take_repository.update_mission_result(result.mission_id, take_id, 
+                                              result.status, result.observed)
+    take_repository.upsert_summary_review(take_id, review_data.overall_summary, review_data.score)
+    take_repository.set_analysis_stage(take_id, "DONE")
+    take_repository.complete_take(take_id, "DONE")
+    db.commit()
+
+def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
+    take_repository = TakeRepository(db)
+    take_repository.set_analysis_stage(take_id, "REVIEWING")
+    db.commit()
+
+    try:
+        review_request = build_review_request(db, take_id)
+        db.commit()
+        review_data = request_review(review_request)
+        save_review(db, take_id, review_data)
+    except Exception as e:
+        db.rollback() # 분석 실패 시 상태를 FAILED로 바꿈.
+        # 이때, 성공을 가정하고 save_review를 실행한 경우
+        # 데이터가 꼬일 위험이 있어 rollback 후 다시 set_analysis_stage, complete_take를 실행한다.
+        take_repository.set_analysis_stage(take_id, "DONE")
+        take_repository.complete_take(take_id, "FAILED")
+        db.commit()
+        raise e
+    
+    return review_data
 
 def mark_running(db: Session, take_id: uuid.UUID) -> bool:
     """첫 실시간 연결이 붙었다. `READY` 면 `RUNNING` 으로 바꾸고 커밋한다. 바꿨으면 True."""
@@ -237,7 +366,8 @@ def mark_ended(db: Session, take_id: uuid.UUID, end_reason: str | None = None) -
     """Take 를 끝냈다. 상태를 `ANALYZING` 으로 바꾸고 커밋한다.
 
     WS stop 이 부르고, STT 없이 끝낸 Take 는 Take PUT(`ended_at`)이 부른다. BE 가 자동으로
-    끝냈으면 `end_reason` 에 이유를 남긴다 (처음 적은 이유가 남는다).
+    끝냈으면 `end_reason` 에 이유를 남긴다 (처음 적은 이유가 남는다). 떠난 것으로 끝낸 Take 는
+    되살린다 (STT 없이 발표를 이어 간 FE 의 끝내기다).
     Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
     """
     marked = TakeRepository(db).mark_ended(take_id, end_reason)

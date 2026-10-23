@@ -1,3 +1,4 @@
+import logging
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable
@@ -50,10 +51,16 @@ from pitch_coach_backend.module.pitch.exception import (
     StandardParseFailed,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.s3_service import generate_presigned_url, upload
+from pitch_coach_backend.module.pitch.s3_service import (
+    delete_prefix,
+    generate_presigned_url,
+    upload,
+)
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from pitch_coach_backend.module.take.repository import TakeRepository
+
+logger = logging.getLogger(__name__)
 
 # 평가 기준 나누기는 LLM 한 번 호출이라 기본값(5초)으로는 모자라다. 대본 파싱과 같은 값
 STANDARD_PARSE_TIMEOUT = httpx2.Timeout(30.0, connect=5.0)
@@ -222,6 +229,22 @@ def delete_pitch_service(db: Session, pitch_id: uuid.UUID) -> list[uuid.UUID]:
     db.commit()
 
     return take_ids
+
+def delete_pitch_files(pitch_id: uuid.UUID) -> None:
+    """S3 에 올린 이 pitch 의 파일을 지운다. pitch 행을 지운 커밋 뒤 백그라운드로 돈다.
+
+    실패해도 삭제 요청은 이미 성공했다. 남은 파일은 로그의 pitch_id 로 찾아 지운다.
+    """
+    try:
+        delete_prefix(f"pitches/{pitch_id}/")
+    except Exception:
+        logger.exception("pitch 파일 삭제 실패 pitch_id=%s", pitch_id)
+
+def get_pitch_ids_of_user(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
+    return PitchRepository(db).get_ids_by_user(user_id)
+
+def get_take_ids_of_user(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
+    return PitchRepository(db).get_take_ids_by_user(user_id)
 
 def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     pitch_repository = PitchRepository(db)

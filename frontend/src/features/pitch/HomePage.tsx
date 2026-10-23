@@ -33,6 +33,9 @@ export function HomePage() {
             >
               사용방법
             </button>
+            <Link to="/me" className="hover:text-coral-deep">
+              마이페이지
+            </Link>
             <button
               disabled={logout.isPending}
               onClick={() => logout.mutate()}
