@@ -383,14 +383,14 @@ sequenceDiagram
 BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3 · 2절, 코치 쪽 저장은 `coach-agent.md` 12절에 있다.
 
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고 AI 리드가 정하며, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 군더더기 모듈은 원자료(STT 단어 · 문장 끝 신호)를 받기만 하고, 단어별 판정(`words`)은 저장하지 않는다(요청마다 다시 만들고, Take 결과에는 횟수만 남는다).
+저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 군더더기 모듈은 원자료(STT 단어 · 문장 끝 신호)를 받기만 하고, 단어별 판정(`words`)은 저장하지 않는다(요청마다 다시 만들고, Take 결과에는 횟수만 남는다).
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
 | 군더더기 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.FILLER`(`take` · `slides`) · `criteria.FILLER` | 코치가 `summarize` · `criteria` 결과를 고치지 않고 담는다. 잰 크기: 서로 다른 군더더기 단어 20개면 Take 또는 장 하나에 약 0.33 KB(장 10개면 약 3.7 KB). `by_word`의 키는 사전 단어뿐이라 개수에 상한이 있다(사전 55개) | 코치가 만들고 BE가 쓴다 · 리뷰(`fluency`) · 리포트 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
 | 리포트 요약 군더더기 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.filler_count` (Integer, nullable) | FILLER `filler_count`(정수). `filler_per_min` · 층별 · 단어별은 칸이 없고 Take 결과에서 읽는다. STT를 잴 수 없었으면(`measured_ratio`가 0) null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
-| 군더더기 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `FILLER`일 때 | `live_feedbacks` (`type` = `FILLER`) | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
-| STT 확정 단어 · 문장 끝 신호 (원자료, 이 모듈의 입력) | Take 동안 | `take_transcript_segments.words` · `takes.utterance_ends` | `architecture.md` 1-1, `coach-agent.md` 12-1. 문장 끝 신호에는 Deepgram `UtteranceEnd`의 마지막 단어 끝 시각을 넣는다(5-2) | BE가 쓴다 · `replay` · 대본 전달도 | `coach-agent.md` 12-1 | Take와 함께. 사용자 발화다 |
+| 군더더기 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `FILLER`일 때 | `coach_events`의 `INTERVENTION` 이벤트(`area` = `FILLER`). `live_feedbacks`에는 쓰지 않는다 | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
+| STT 확정 단어 · 문장 끝 신호 (원자료, 이 모듈의 입력) | 단어는 Take 동안, 문장 끝 신호는 Take 종료 때 한 번에(`architecture.md` 1-3) | `take_transcript_segments.words` · `takes.utterance_ends` | `architecture.md` 1-1, `coach-agent.md` 12-1. 문장 끝 신호에는 Deepgram `UtteranceEnd`의 마지막 단어 끝 시각을 넣는다(5-2) | BE가 쓴다 · `replay` · 대본 전달도 | `coach-agent.md` 12-1 | Take와 함께. 사용자 발화다 |
 | keyterm 단어 목록 | 사전이 바뀔 때 | DB가 아니다. AI `keyterms.json`(원본, 생성 파일)과 BE 안의 복사본 | `{criteria_version, keyterms[]}`, 0.2 KB 안팎 | AI가 만들고 BE가 복사 · BE가 STT 연결 때 읽는다 | 원본은 사전에서만 만든다 | — |
 
 ## 12-2. 저장 규칙
