@@ -3,8 +3,9 @@ import { Link } from 'react-router';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 
 /**
- * 글 위주 화면의 틀 — 분석 방식 설명(P14) · 미지원 브라우저(P18) · 404.
- * 로그인 없이 열리는 화면이라 앱 머리(RequireSession)가 없어서 로고 줄을 직접 둡니다.
+ * 글 위주 화면의 틀 — 분석 방식 설명(P14) · 미지원 브라우저(P18) · 404 · 마이페이지(P9).
+ * 홈으로 가는 로고 줄을 직접 둡니다. 로그인 없이 열리는 화면에는 앱 머리(RequireSession)가 없어서이고,
+ * 마이페이지는 그 머리(이름 · 로그아웃) 아래에 이 줄이 한 번 더 붙습니다.
  * 모양은 디자인 시안(`dev/design/ui.tsx` DraftPage)과 같습니다.
  */
 export function InfoPage({ title, children }: { title: string; children: ReactNode }) {
