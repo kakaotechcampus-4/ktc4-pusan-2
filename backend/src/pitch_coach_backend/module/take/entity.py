@@ -46,13 +46,21 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         # 같은 pitch 안에서 take 번호가 겹치지 않게 한다.
         UniqueConstraint("pitch_id", "take_number", name="uq_takes_pitch_take_number"),
         CheckConstraint(
+            "review_status IN ('DONE', 'FAILED', 'SKIPPED')",
+            name="check_take_review_status",
+        ),
+        CheckConstraint(
+            "analysis_stage IN (" \
+            "'FINALIZING', 'SCORING', 'AWAITING_CONFIRMATION', 'REVIEWING', 'DONE')",
+            name="check_take_analysis_stage",
+        ),
+        CheckConstraint(
             "status IN ('READY', 'RUNNING', 'ANALYZING', 'COMPLETED', 'FAILED')",
             name="check_take_status",
         ),
         CheckConstraint("mode IN ('COACHING', 'EXAM')", name="check_take_mode"),
         CheckConstraint(
-            "script_mode IN ('HIGHLIGHT', 'KEYWORD', 'OFF')",
-            name="check_take_script_mode",
+            "script_mode IN ('HIGHLIGHT', 'KEYWORD', 'OFF')", name="check_take_script_mode"
         ),
         # SILENCE · TIME_LIMIT 은 realtime AutoEndReason 과 같은 값이다. ABANDONED 는 떠난 Take
         CheckConstraint(
@@ -74,6 +82,11 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
     script_mode: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="READY")
+    analysis_stage: Mapped[str | None] = mapped_column(String(32), 
+                                                       nullable=True)
+    analysis_stage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), 
+                                                               nullable=True)
+    review_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # 시작 전이거나 중단된 take 는 아래가 비어 있다.
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -89,6 +102,20 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     event_logs: Mapped[Any | None] = mapped_column(JSONB)
 
 
+class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+
+    __tablename__ = "take_ai_results"
+    __table_args__ = (
+        UniqueConstraint("take_id", "kind", name="uq_take_ai_results_take_version"),
+    )
+
+    take_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    payload: Mapped[Any | None] = mapped_column(JSONB, nullable=False)
+    meta: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+
 class TakeSummary(Base):
     """take 의 분석 집계. take 당 1행이라 take_id 를 그대로 PK 로 쓴다."""
 
@@ -97,20 +124,20 @@ class TakeSummary(Base):
     take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), primary_key=True
     )
-    average_wpm: Mapped[float] = mapped_column(Float, nullable=False)
-    filler_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    average_wpm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    filler_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # 시선이 청중·슬라이드·대본에 머문 정도. 셋을 합쳐 시선 배분을 본다.
-    audience_gaze: Mapped[int] = mapped_column(Integer, nullable=False)
-    slide_gaze: Mapped[int] = mapped_column(Integer, nullable=False)
-    script_gaze: Mapped[int] = mapped_column(Integer, nullable=False)
-    script_dependency_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    summary: Mapped[str] = mapped_column(Text, nullable=False)
-    overall_confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    speak_accuracy: Mapped[float] = mapped_column(Float, nullable=False)
+    audience_gaze: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    slide_gaze: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    script_gaze: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    script_dependency_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    overall_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speak_accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
     # dB 값이라 소수점이 의미가 있고 반올림 오차를 피해야 해서 Numeric 을 쓴다.
-    volume: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
-    total_intermission: Mapped[int] = mapped_column(Integer, nullable=False)
-    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    volume: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    total_intermission: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Calibration(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
@@ -149,13 +176,30 @@ class Mission(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """지난 take 에서 뽑아낸 다음 연습 과제."""
 
     __tablename__ = "missions"
+    __table_args__ = (
+        UniqueConstraint("source_take_id", "priority", name="uq_missions_source_take_priority"),
+        CheckConstraint(
+            "status IN ('ACTIVE', 'ACHIEVED', 'PARTIAL', 'FAILED', 'NOT_EVALUABLE')",
+            name="check_mission_status",
+        ),
+    )
 
+    # Mission을 등록한 take의 id
     source_take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    slide_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Mission을 수행하는 take의 id
+    take_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("takes.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    area: Mapped[str] = mapped_column(String(16), nullable=False)
+    slide_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target: Mapped[Any] = mapped_column(JSONB, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), server_default="ACTIVE", nullable=False)
+    observed: Mapped[float | None] = mapped_column(Float, nullable=True)
     complete: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
 
 
