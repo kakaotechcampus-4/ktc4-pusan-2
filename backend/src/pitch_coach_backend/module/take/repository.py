@@ -211,13 +211,14 @@ class TakeRepository:
         mission_ids = self.db.scalars(
             update(Mission)
             .where(Mission.source_take_id == source_take_id, Mission.status == "ACTIVE")
-            .values(take_id=take_id)
+            .values(take_id=take_id) # SQL의 set 역할
             .returning(Mission.id)
         ).all()
         self.db.execute(
             update(Take)
             .where(Take.id == take_id)
             .values(mission_ids=[str(mission_id) for mission_id in mission_ids])
+            # missions_ids도 갱신
         )
         return list(mission_ids)
 
