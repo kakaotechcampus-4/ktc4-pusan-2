@@ -7,6 +7,7 @@ import {
   WS_CLOSE_NORMAL,
   WS_CLOSE_POLICY,
   type AutoEndReason,
+  type MetricsMessage,
   type SttErrorCode,
   type SttState,
   type SttStatusMessage,
@@ -41,6 +42,17 @@ import {
 
 /** 재연결될 때까지 들고 있을 프레임 수. 100ms × 20 = 2초 (BE 와 합의한 계약) */
 const MAX_PENDING_FRAMES = 20;
+
+/**
+ * 재연결될 때까지 들고 있을 `metrics` 수. 1초에 하나라 5분입니다.
+ *
+ * 오디오(2초)보다 훨씬 길게 듭니다. `metrics` 는 시선 · 음량 기록이 서버에 가는 **유일한 길**이고
+ * (발표 종료에 기록을 몰아 보내는 `/complete` 는 없어졌습니다, #134), BE 는 이걸 저장해 Take 결과를
+ * 만듭니다. 버리면 리포트에서 그 구간이 빠집니다. 다시 붙으면 몰아 보냅니다 — 같은 1초가 두 번
+ * 가도 BE 는 먼저 받은 것을 씁니다 (`architecture.md` 6-2).
+ * ★ BE 와 확인 필요 (#255): 몰아 온 지난 `metrics` 로 코치를 부르지 않고 원자료로만 쌓는지
+ */
+const MAX_PENDING_METRICS = 300;
 
 /** 빠른 백오프. 이걸 다 쓰면 화면을 `degraded` 로 두고 느린 재시도로 넘어갑니다 */
 const RETRY_DELAYS_MS = [500, 1_000, 2_000];
@@ -146,6 +158,8 @@ export class SttSocket {
   /** Take 단위 누적입니다. 재연결에서 리셋하지 않습니다 (계약 2) */
   private seq = 0;
   private pending: Uint8Array[] = [];
+  /** 아직 못 보낸 `metrics` (JSON 문자열). 다시 붙으면 오디오 다음에 흘립니다 */
+  private pendingMetrics: string[] = [];
   private ready = false;
 
   private retries = 0;
@@ -182,6 +196,11 @@ export class SttSocket {
     return this.pending.length;
   }
 
+  /** 아직 못 보낸 `metrics` 수. 화면 계기판 · 테스트용입니다 */
+  get bufferedMetrics(): number {
+    return this.pendingMetrics.length;
+  }
+
   start(): void {
     if (this.disposed || this.socket) return;
     this.connect().catch(() => this.giveUp('CONNECT_FAILED'));
@@ -206,6 +225,25 @@ export class SttSocket {
 
     this.pending.push(frame);
     while (this.pending.length > MAX_PENDING_FRAMES) this.pending.shift();
+  }
+
+  /**
+   * 1초 측정값 하나 (`metrics`). `ready` 전이거나 끊겨 있으면 쌓았다가 다시 붙을 때 보냅니다.
+   *
+   * 끝내기는 이 함수로 마지막 조각을 보낸 **뒤에** `stop()` 을 부릅니다. `stop` 은 쌓인 것부터
+   * 흘린 다음 `stop` 을 보내므로, 끊겨 있던 중에 끝내도 마지막 조각이 `stop` 보다 먼저 갑니다.
+   */
+  sendMetrics(message: MetricsMessage): void {
+    if (this.disposed || this.stopping) return;
+    const data = JSON.stringify(message);
+
+    if (this.ready && this.socket) {
+      this.socket.send(data);
+      return;
+    }
+
+    this.pendingMetrics.push(data);
+    while (this.pendingMetrics.length > MAX_PENDING_METRICS) this.pendingMetrics.shift();
   }
 
   /**
@@ -238,8 +276,12 @@ export class SttSocket {
         this.clearRetry();
         this.armStopTimer(STOP_WAIT_MS);
         this.sendStop();
-      } else if (this.connecting || (this.pending.length > 0 && this.retryTimer !== null)) {
+      } else if (
+        this.connecting ||
+        ((this.pending.length > 0 || this.pendingMetrics.length > 0) && this.retryTimer !== null)
+      ) {
         // 붙는 중이거나 예약된 재연결이 있으면 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다.
+        // 쌓인 `metrics` 만 있어도 기다립니다 — 마지막 1초 조각이 거기 있습니다.
         // 붙는 중이면 버퍼가 비어 있어도 기다립니다 — `stop` 이 가야 서버가 끊긴 연결을
         // 30초 기다리지 않고 바로 마지막 전사를 정리합니다 (`stopTakeStream`)
         this.armStopTimer(STOP_WAIT_MS);
@@ -300,6 +342,7 @@ export class SttSocket {
     this.socket = null;
     this.ready = false;
     this.pending = [];
+    this.pendingMetrics = [];
 
     this.flushStopResolvers();
   }
@@ -407,12 +450,15 @@ export class SttSocket {
   /**
    * 버퍼를 **먼저** 비우고 그 다음에 실시간을 엽니다 (계약 1).
    * 순서가 뒤집히면 서버가 낮은 seq 를 역행으로 보고 버립니다.
+   * 쌓인 `metrics` 도 여기서 시각 순서대로 흘립니다.
    */
   private flushPending(): void {
     if (!this.socket) return;
 
     for (const frame of this.pending) this.socket.send(frame);
     this.pending = [];
+    for (const data of this.pendingMetrics) this.socket.send(data);
+    this.pendingMetrics = [];
   }
 
   private handleClose(code: number): void {
@@ -469,6 +515,7 @@ export class SttSocket {
    */
   private giveUp(reason: GiveUpReason): void {
     this.pending = [];
+    this.pendingMetrics = [];
     this.options.onState('degraded');
     this.options.onGiveUp?.(reason);
     this.dispose();

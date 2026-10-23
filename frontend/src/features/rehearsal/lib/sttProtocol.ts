@@ -13,6 +13,29 @@
  */
 
 import type { Ms } from '@/types/api';
+import type { GazeSampleRecord } from '@/workers/gaze.contract';
+import type { VoiceRecord } from '../media/voiceRecord';
+
+// ── FE → BE (JSON) ─────────────────────────────────────────────────
+
+/**
+ * 1초마다 보내는 측정값 (`docs/ai/architecture.md` 1-4 · 6-2, BE #255).
+ *
+ *   t_ms          이 1초가 끝난 시각 (Take 시작 기준 ms). 기록의 `t_ms` 는 그 1초의 시작입니다
+ *   gaze          시선 1초 기록 — 엔진 `sampleToDict` 결과 그대로. 잴 수 없었으면 null
+ *   voice         음량 1초 기록 (`voiceRecord.ts`). 시선 기록과 같은 구간입니다
+ *   slide_number  지금 슬라이드 번호 (1부터). 모르면 null
+ *
+ * 받은 BE 는 1초 원자료로 저장하고(Take 결과의 재료) 실시간 코치를 부릅니다.
+ * `stop` 직전에 마지막 1초 조각(1초보다 짧을 수 있음)을 한 번 더 보냅니다.
+ */
+export interface MetricsMessage {
+  type: 'metrics';
+  t_ms: Ms;
+  gaze: GazeSampleRecord | null;
+  voice: VoiceRecord | null;
+  slide_number: number | null;
+}
 
 /**
  * 서버가 가정하는 오디오 규격입니다. **다른 레이트를 보내면 조용히 틀립니다** —

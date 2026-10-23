@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   STT_ERROR_MESSAGE,
   STT_STATE_NOTE,
+  type MetricsMessage,
   type SttState,
   type TranscriptMessage,
 } from '../lib/sttProtocol';
@@ -171,6 +172,14 @@ export function useSttStream({
     await socket?.stop();
   }, []);
 
+  /**
+   * 1초 측정값을 보냅니다. 끊겨 있으면 소켓이 쌓아 두었다가 다시 붙을 때 보냅니다.
+   * STT 를 켜지 않았으면(소켓이 없으면) 버립니다.
+   */
+  const sendMetrics = useCallback((message: MetricsMessage) => {
+    socketRef.current?.sendMetrics(message);
+  }, []);
+
   return {
     transcriptRef,
     sttState,
@@ -179,6 +188,7 @@ export function useSttStream({
     /** 눈에 띄게 할 것인가. 정상으로 도는 동안에는 조용히 둡니다 */
     alert: errorNote !== null || sttState === 'reconnecting' || sttState === 'degraded',
     statsRef,
+    sendMetrics,
     stop,
   };
 }

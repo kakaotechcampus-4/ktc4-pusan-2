@@ -403,6 +403,99 @@ describe('토큰 만료', () => {
   });
 });
 
+describe('1초 측정값 (metrics)', () => {
+  const metrics = (t_ms: number) =>
+    ({ type: 'metrics', t_ms, gaze: null, voice: null, slide_number: 1 }) as const;
+
+  /** 보낸 JSON 중 metrics 의 t_ms 만 */
+  const sentMetrics = (socket: FakeSocket) =>
+    socket.sent
+      .filter((d): d is string => typeof d === 'string')
+      .map((d) => JSON.parse(d) as { type: string; t_ms?: number })
+      .filter((m) => m.type === 'metrics')
+      .map((m) => m.t_ms);
+
+  it('ready 뒤에는 바로 보낸다', async () => {
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    stt.sendMetrics(metrics(1_000));
+    expect(sentMetrics(sockets[0]!)).toEqual([1_000]);
+  });
+
+  it('끊긴 동안 쌓았다가 다시 붙으면 오디오 다음에 보낸다 — 서버로 가는 길이 이것뿐이다', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    sockets[0]!.serverClose(1006);
+    stt.sendFrame(pcm(), 0);
+    stt.sendMetrics(metrics(1_000));
+    stt.sendMetrics(metrics(2_000));
+    expect(stt.bufferedMetrics).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+
+    expect(sentMetrics(sockets[1]!)).toEqual([1_000, 2_000]);
+    // 오디오가 먼저입니다 — 인증(auth) 뒤 첫 전송이 프레임입니다
+    expect(typeof sockets[1]!.sent[1]).not.toBe('string');
+    expect(stt.bufferedMetrics).toBe(0);
+  });
+
+  it('너무 오래 끊기면 오래된 것부터 버린다', async () => {
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+
+    for (let i = 1; i <= 301; i++) stt.sendMetrics(metrics(i * 1_000));
+    expect(stt.bufferedMetrics).toBe(300);
+
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    expect(sentMetrics(sockets[0]!)[0]).toBe(2_000);
+  });
+
+  it('끊긴 채로 끝내면 재연결을 기다렸다가 마지막 조각을 stop 앞에 보낸다', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    sockets[0]!.serverClose(1006);
+    stt.sendMetrics(metrics(3_400));
+    void stt.stop();
+
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+
+    expect(sentMetrics(sockets[1]!)).toEqual([3_400]);
+    expect(JSON.parse(sockets[1]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
+  });
+
+  it('stop 을 보낸 뒤에는 보내지 않는다', async () => {
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    void stt.stop();
+    stt.sendMetrics(metrics(9_000));
+    expect(sentMetrics(sockets[0]!)).toEqual([]);
+  });
+});
+
 describe('종료', () => {
   it('stop 을 보내고 closed 를 받을 때까지 기다린다', async () => {
     const stt = makeSocket();
