@@ -379,8 +379,24 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
   const body = (() => {
     if (!slide.fileUrl) return <ViewerMessage>이 버전에는 파일 주소가 없어요</ViewerMessage>;
     if (opened === null) return <ViewerMessage>PDF 여는 중…</ViewerMessage>;
-    // presigned URL 은 1시간 뒤 만료됩니다. 한 번 연 문서는 메모리에 있어 여기까지 오지 않습니다
-    if ('failed' in opened) return <ViewerMessage>PDF를 열지 못했어요</ViewerMessage>;
+    // BE 가 쪽수를 주면 업로드 때 PDF 를 열지 않아(#298) 처음 여는 곳이 여기입니다. 실서버에서는
+    // S3 CORS · 만료된 presigned URL(1시간)로 못 열 수 있습니다. 버전은 저장돼 있으니 다시 열기만 둡니다
+    if ('failed' in opened)
+      return (
+        <ViewerMessage>
+          <div role="alert" className="flex flex-col items-center gap-2 text-center">
+            <span>PDF를 열지 못했어요. 파일은 저장돼 있어요.</span>
+            <span className="text-xs">계속 안 되면 새로고침해 주세요.</span>
+            <button
+              type="button"
+              onClick={opened.retry}
+              className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-coral-deep hover:bg-coral-wash"
+            >
+              다시 열기
+            </button>
+          </div>
+        </ViewerMessage>
+      );
     // 파일을 바꾸면 첫 장부터 다시 봅니다
     return <Pages key={slide.fileUrl} slide={slide} doc={opened.doc} />;
   })();
