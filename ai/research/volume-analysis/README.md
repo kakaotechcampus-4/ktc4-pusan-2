@@ -42,7 +42,7 @@ volume-analysis/
 │   ├─ core.py                 순수 함수 (judge · summarize · criteria · speaking_levels · baseline)
 │   ├─ config.py               기준값. 해시가 criteria_version 에 들어간다
 │   ├─ version.py              기능 버전
-│   └─ examples/               judge(판정 창 전체) · summarize · criteria 입력 · 출력 예시
+│   └─ examples/               judge(판정 창 전체) · summarize · criteria · speaking_levels · baseline 입력 · 출력 예시
 ├─ data/                       평가 데이터 (아직 없음)
 ├─ tools/                      녹음 → 1초 기록 · 평가 스크립트 (아직 없음)
 ├─ tests/                      판정 규칙 · 기준 음량 · summarize · 예시 계약
@@ -78,7 +78,7 @@ volume.state, volume.metrics.voice_diff_db, pause.metrics.silence_ms
 
 | 파일 | 보는 것 |
 |---|---|
-| `tests/test_judge.py` | 작음 · 기준과 같을 때, 기준 음량 없음 · 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기 · 창 안에 끊김이 없을 때, 긴 침묵 한 번만, 같은 1초 두 번, 마지막 조각, 커서 · `tally` |
+| `tests/test_judge.py` | 작음 · 기준과 같을 때, 기준 음량 없음 · Take 안에서 생김, 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기 · 창 안에 끊김이 없을 때, 긴 침묵 한 번만, 같은 1초 두 번, 마지막 조각(시간 · 에너지 · 커서), 커서 · `tally` |
 | `tests/test_baseline.py` | 말한 1초 고르기, `baseline` 표본 부족 · 충분 · 튀는 값 |
 | `tests/test_summarize.py` | Take 지표 계산, 분모가 0일 때, `criteria`가 config를 따르는지 |
 | `tests/test_examples.py` | `examples/`가 구현 · 계약 모델과 같은지 |
@@ -99,6 +99,8 @@ volume.state, volume.metrics.voice_diff_db, pause.metrics.silence_ms
 | 말한 1초 | `silence_ms` < 300 · 오디오 흐름 · `level_db` 있음 | `voiced_ms` ≥ `voiced_min_ms` · `audio_live` (시선과 같은 기준) |
 | 침묵 자르기 시작점 | 다시 흐른 첫 1초의 끝 | 다시 흐른 첫 1초의 시작 |
 | `VOLUME_LOW`의 `persistence_sec` | 늘 0 | 마지막 1초부터 거꾸로 작음이 이어진 시간 |
+| 기준 음량 표본 고르기 | 없음 (`baseline`만, 표본은 코치가 고름) | `speaking_levels`가 말한 1초의 `level_db`를 고름. 코치가 판정 기준값을 따로 두지 않는다 |
+| 말한 소리가 없는 Take의 `VOLUME.measured_ratio` | null | 0 (코치가 측정 비율 기준 미만으로 본다) |
 
 기준값(작음 −6 dB · 아주 작음 −15 dB · 평활 창 5초 · 말한 1초 3개 · 표본 15개 · 긴 침묵 5초 · 아주 긴 침묵 15초 · 판정 지연 폭)은 대역과 같습니다.
-`voiced_min_ms`(500)만 대역에 없어 새로 정한 임시값이고, 시선 config와 같은 값으로 맞춰야 합니다.
+`voiced_min_ms`(300)는 대역 `volume-0.2`에 없던 값이라, 시선 대역(`coach_lab/judges/gaze.py`의 `speaking_min_voiced_ms`)과 같게 두었습니다.
