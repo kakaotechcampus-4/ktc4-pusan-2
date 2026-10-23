@@ -26,13 +26,17 @@ describe('시선 기록이 오면', () => {
     ]);
   });
 
-  it('엔진이 늦게 떴으면 그 앞 시간을 음량만으로 메워 시선 격자에 맞춘다', () => {
+  it('시작 직후 첫 시선 전의 자투리는 보내지 않는다', () => {
     const clock = createMetricsClock(0);
-    // 엔진 첫 프레임이 2.42초 — 그 앞 2.42초는 시선 없이 보냅니다
+    // 엔진은 발표 전에 떠 있어서 첫 프레임이 곧 옵니다. 0.12초는 버립니다
+    expect(brief(clock.gaze([g(120)]))).toEqual([[120, 1_120, true]]);
+  });
+
+  it('시선이 늦게 오면 그 앞은 꽉 찬 1초만 음량으로 보내고 자투리는 버린다', () => {
+    const clock = createMetricsClock(0);
     expect(brief(clock.gaze([g(2_420)]))).toEqual([
       [0, 1_000, false],
       [1_000, 2_000, false],
-      [2_000, 2_420, false],
       [2_420, 3_420, true],
     ]);
   });

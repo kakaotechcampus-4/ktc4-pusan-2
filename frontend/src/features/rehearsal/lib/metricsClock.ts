@@ -10,7 +10,9 @@
  * ── 구간이 겹치지 않게 ──────────────────────────────────────────────
  * BE 는 1초 원자료를 `t_ms` 로 저장합니다. 두 구간이 겹치면 같은 시간의 음량을 두 번 셉니다.
  *   - 스스로 잇는 1초는 `GAZE_WAIT_MS` 를 기다린 뒤에만 보냅니다. 그 사이에 시선 기록이 오면 그걸 씁니다
- *   - 시선 기록이 이미 보낸 구간 뒤에서 시작하면, 그 사이를 짧은 조각으로 메워 시선 격자에 맞춥니다
+ *   - 시선 기록이 이미 보낸 구간 뒤에서 시작하면, 그 사이는 꽉 찬 1초만 보내고 1초가 안 되는 자투리는
+ *     버립니다. 엔진은 발표 전에 떠 있어서 자투리는 보통 시작 직후 0.1초 안팎이고, 보낸 기록이 없는
+ *     시간은 BE 가 비어 있는 것으로 봅니다(6-2). 그래서 짧은 조각은 Take 끝에만 생깁니다
  *   - 이미 보낸 구간과 겹치는 시선 기록(아주 늦게 온 것)은 보내지 않습니다. 기록은 브라우저에 남습니다
  *
  * 시계와 React 를 모릅니다 — 시각을 받아 구간을 돌려줍니다. 그래서 브라우저 없이 테스트합니다.
@@ -44,7 +46,16 @@ export interface MetricsClock {
   finish(endMs: Ms): MetricsWindow[];
 }
 
-/** `[fromMs, toMs)` 를 1초씩 자릅니다. 마지막 조각은 짧을 수 있습니다 */
+/** `[fromMs, toMs)` 안의 꽉 찬 1초들. 1초가 안 되는 끝 자투리는 내지 않습니다 */
+function wholeSeconds(fromMs: Ms, toMs: Ms): MetricsWindow[] {
+  const out: MetricsWindow[] = [];
+  for (let start = fromMs; start + SLICE_MS <= toMs; start += SLICE_MS) {
+    out.push({ startMs: start, endMs: start + SLICE_MS, gaze: null });
+  }
+  return out;
+}
+
+/** `[fromMs, toMs)` 를 1초씩 자릅니다. 마지막 조각은 짧을 수 있습니다 (Take 끝) */
 function fill(fromMs: Ms, toMs: Ms): MetricsWindow[] {
   const out: MetricsWindow[] = [];
   for (let start = fromMs; start < toMs; start += SLICE_MS) {
@@ -67,7 +78,7 @@ export function createMetricsClock(startMs: Ms): MetricsClock {
         const end = s.t_ms + s.duration_ms;
         // 이미 보낸 구간과 겹칩니다 — 같은 시간을 두 번 보내지 않습니다
         if (s.t_ms < next) continue;
-        out.push(...fill(next, s.t_ms), { startMs: s.t_ms, endMs: end, gaze: s });
+        out.push(...wholeSeconds(next, s.t_ms), { startMs: s.t_ms, endMs: end, gaze: s });
         next = end;
       }
       return out;
