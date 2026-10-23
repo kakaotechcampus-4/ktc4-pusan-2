@@ -1,5 +1,6 @@
 import uuid
 from typing import Any
+from datetime import datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -14,6 +15,9 @@ from pitch_coach_backend.module.take.entity import (
     TakeSummary,
     TakeTranscriptSegment,
 )
+
+# 아직 끝나지 않은 Take. 실시간 STT 가 붙을 수 있는 상태와 같다 (realtime/service.py)
+IN_PROGRESS_STATUSES = ("READY", "RUNNING")
 
 
 class TakeRepository:
@@ -250,3 +254,77 @@ class TakeRepository:
             .where(Take.id == take_id)
             .values(status="COMPLETED", review_status=review_status)
         )
+    def mark_running(self, take_id: uuid.UUID) -> bool:
+        """`READY` 인 Take 를 `RUNNING` 으로 바꾼다. 바꿨으면 True.
+
+        이미 `RUNNING` 이거나(다시 붙은 연결) 끝났으면 아무것도 바꾸지 않고 False.
+        """
+        result = self.db.execute(
+            update(Take)
+            .where(Take.id == take_id, Take.status == "READY")
+            .values(status="RUNNING")
+        )
+        return result.rowcount > 0
+
+    def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+        """진행 중인 Take 를 끝난 상태(`ANALYZING`)로 바꾼다. 바꿨으면 True.
+
+        BE 가 자동으로 끝냈으면 `end_reason` 에 이유를 같이 적는다 (사용자가 끝냈으면 None).
+        Take 가 없거나 이미 끝났으면 아무것도 바꾸지 않고 False. 읽고 쓰지 않고 UPDATE 하나로
+        한다 — 같은 Take 를 두 번 끝내도 한 번만 바뀌고, 먼저 적힌 이유가 남는다.
+        `ended_at` 은 FE 가 종료 흐름에서 PUT 으로 적는다. 그게 실패하거나 FE 가 떨어져 있어도
+        남도록 비어 있을 때만 지금 시각으로 채운다 (뒤에 온 FE 값은 그대로 덮는다).
+        """
+        result = self.db.execute(
+            update(Take)
+            .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
+            .values(
+                status="ANALYZING",
+                end_reason=end_reason,
+                ended_at=func.coalesce(Take.ended_at, func.now()),
+            )
+        )
+        return result.rowcount > 0
+
+    def mark_abandoned(self, take_id: uuid.UUID, ended_at: datetime) -> bool:
+        """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유를 `ABANDONED` 로 적는다. 바꿨으면 True.
+
+        탭을 닫고 돌아오지 않은 Take 다. 시선 기록 · 끝난 시각을 FE 가 보내지 못해 분석하지 않는다.
+        `ended_at` 은 이걸 적는 지금이 아니라 마지막으로 연결이 끊긴 시각이다.
+        `mark_ended` 처럼 UPDATE 하나로, 진행 중일 때만 바꾼다.
+        """
+        result = self.db.execute(
+            update(Take)
+            .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
+            .values(
+                status="FAILED",
+                end_reason="ABANDONED",
+                ended_at=func.coalesce(Take.ended_at, ended_at),
+            )
+        )
+        return result.rowcount > 0
+
+    def running_takes_last_active(self) -> list[tuple[uuid.UUID, datetime]]:
+        """`RUNNING` 인 Take 와 마지막으로 활동한 시각. 앱이 다시 뜰 때 떠난 Take 를 찾는 데 쓴다.
+
+        연결이 끊긴 시각은 메모리에만 있어서 다시 뜨면 없다. 그래서 만든 시각 · 시작 시각 ·
+        마지막 확정 전사를 저장한 시각 중 가장 늦은 것으로 대신한다.
+        """
+        last_final = (
+            select(
+                TakeTranscriptSegment.take_id,
+                func.max(TakeTranscriptSegment.created_at).label("saved_at"),
+            )
+            .group_by(TakeTranscriptSegment.take_id)
+            .subquery()
+        )
+        rows = self.db.execute(
+            select(
+                Take.id,
+                # GREATEST 는 NULL 을 건너뛴다 (시작 전 · 전사 없음)
+                func.greatest(Take.created_at, Take.started_at, last_final.c.saved_at),
+            )
+            .outerjoin(last_final, last_final.c.take_id == Take.id)
+            .where(Take.status == "RUNNING")
+        ).all()
+        return [(take_id, last_active_at) for take_id, last_active_at in rows]

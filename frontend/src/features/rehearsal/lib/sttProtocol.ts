@@ -100,7 +100,25 @@ export interface SttErrorMessage {
   message: string;
 }
 
-export type ServerMessage = ReadyMessage | TranscriptMessage | SttStatusMessage | SttErrorMessage;
+/** `SILENCE` 오래 말이 없었다 · `TIME_LIMIT` 최대 시간(1시간)이 지났다 */
+export type AutoEndReason = 'SILENCE' | 'TIME_LIMIT';
+
+/**
+ * 서버가 Take 를 자동으로 끝냈습니다. 이 뒤로 서버는 오디오를 받지 않고,
+ * `stt_status` closed 를 보낸 뒤 1000 으로 닫습니다.
+ *
+ * 무대는 **끝내기 버튼과 같은 종료 흐름**을 타고 `message` 를 보여 줍니다.
+ * 끊겨 있다가 다시 붙을 때도 옵니다 — 그때는 이 메시지 뒤에 `TAKE_ENDED` 가 따라옵니다.
+ */
+export interface AutoEndMessage {
+  type: 'auto_end';
+  reason: AutoEndReason;
+  /** 화면에 그대로 보여 줄 문구 */
+  message: string;
+}
+
+export type ServerMessage =
+  ReadyMessage | TranscriptMessage | SttStatusMessage | SttErrorMessage | AutoEndMessage;
 
 /**
  * **에러가 곧 종료는 아닙니다.** 여기 있는 것만 1008 로 닫히고, 나머지
@@ -174,6 +192,7 @@ const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   'transcript',
   'stt_status',
   'error',
+  'auto_end',
 ]);
 
 /**

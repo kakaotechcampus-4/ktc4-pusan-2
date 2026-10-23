@@ -6,19 +6,20 @@
 """
 
 import asyncio
-import contextlib
 import json
 import struct
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from websockets.exceptions import ConnectionClosedError
 
@@ -35,11 +36,18 @@ from pitch_coach_backend.module.pitch.entity import (
 from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
+from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import service, take_stream
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
+from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.dependencies import get_stt_adapter, get_transcript_store
-from pitch_coach_backend.realtime.dto import ErrorMessage, TranscriptMessage, WsErrorCode
+from pitch_coach_backend.realtime.dto import (
+    AutoEndReason,
+    ErrorMessage,
+    TranscriptMessage,
+    WsErrorCode,
+)
 from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
@@ -183,21 +191,79 @@ class FakeSttAdapter:
 class FakeTranscriptStore:
     """final 을 메모리에 모은다. cursor 는 "이미 저장된 마지막 번호" 를 흉내 낸다."""
 
-    def __init__(self, *, cursor: tuple[int, int] = (0, 0), fail: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        cursor: tuple[int, int] = (0, 0),
+        fail: bool = False,
+        errors: Iterable[Exception] = (),
+        fail_mark: bool = False,
+        append_delay: float = 0.0,
+        marks: bool = True,
+    ) -> None:
         self.segments: list[TranscriptSegmentCreateDTO] = []
         self.take_ids: list[uuid.UUID] = []
+        self.ended: list[uuid.UUID] = []
+        # 자동 종료로 적은 (Take, 이유)
+        self.auto_ended: list[tuple[uuid.UUID, str]] = []
+        # 떠난 것으로 적은 (Take, 끝난 시각)
+        self.abandoned: list[tuple[uuid.UUID, datetime]] = []
+        # running_takes() 가 돌려줄 (Take, 마지막 활동 시각)
+        self.running: list[tuple[uuid.UUID, datetime]] = []
+        # 저장한 순서. 종료를 마지막 전사 뒤에 적는지 본다
+        self.calls: list[str] = []
+        # cursor 를 읽을 때마다 그때까지 저장된 구간 수. 새 스트림이 저장 뒤에 번호를 읽는지 본다
+        self.cursor_reads: list[int] = []
         self._cursor = cursor
         self.fail = fail
+        # 저장할 때마다 앞에서 하나씩 꺼내 던진다. 다 쓰면 정상으로 저장한다
+        self.errors = list(errors)
+        self.fail_mark = fail_mark
+        # 저장이 이만큼 걸린다 (저장 도중 정리가 오는 경우 재현)
+        self.append_delay = append_delay
+        # False 면 Take 가 없거나 이미 끝나 있어 아무것도 적지 않은 것처럼 군다
+        self.marks = marks
 
     async def cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
+        self.cursor_reads.append(len(self.segments))
         return self._cursor
 
     async def append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None:
-        await asyncio.sleep(0)  # 실제 저장은 threadpool 왕복이라 한 번은 양보한다
+        await asyncio.sleep(self.append_delay)  # 실제 저장은 threadpool 왕복이라 한 번은 양보한다
         if self.fail:
             raise RuntimeError("db down")
+        if self.errors:
+            raise self.errors.pop(0)
         self.take_ids.append(take_id)
         self.segments.append(segment)
+        self.calls.append("append")
+
+    async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+        await asyncio.sleep(0)
+        if self.fail_mark:
+            raise RuntimeError("db down")
+        # DB 처럼 이미 끝난 Take 는 다시 적지 않는다
+        if not self.marks or take_id in self.ended:
+            return False
+        self.ended.append(take_id)
+        self.calls.append("mark_ended")
+        if end_reason is not None:
+            self.auto_ended.append((take_id, end_reason))
+        return True
+
+    async def mark_abandoned(self, take_id: uuid.UUID, ended_at: datetime) -> bool:
+        await asyncio.sleep(0)
+        if self.fail_mark:
+            raise RuntimeError("db down")
+        if not self.marks or take_id in self.ended:
+            return False
+        self.ended.append(take_id)
+        self.calls.append("mark_abandoned")
+        self.abandoned.append((take_id, ended_at))
+        return True
+
+    async def running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
+        return list(self.running)
 
 
 # ── fixture ───────────────────────────────────────────────────────────
@@ -211,6 +277,11 @@ def _no_leftover_streams():
         stream.cancel()
     take_stream._streams.clear()
     take_stream._attach_locks.clear()
+    take_stream._ended.clear()
+    take_stream._takes.clear()
+    for timer in take_stream._abandon_timers.values():
+        timer.cancel()
+    take_stream._abandon_timers.clear()
     app.dependency_overrides.pop(get_stt_adapter, None)
     app.dependency_overrides.pop(get_transcript_store, None)
 
@@ -280,7 +351,7 @@ def make_take(
         presentation_version_id=presentation.id,
         script_version_id=script.id,
         mode="COACHING",
-        script_mode="FULL",
+        script_mode="HIGHLIGHT",
         status=status,
         goal_time_sec=300,
     )
@@ -786,7 +857,7 @@ def test_reload_within_grace_restarts_the_timeline_instead_of_dropping_audio(
 
 
 def test_grace_expiry_closes_the_stream(
-    client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch, store: FakeTranscriptStore
 ):
     monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
     adapter = use(FakeSttAdapter())
@@ -803,6 +874,11 @@ def test_grace_expiry_closes_the_stream(
     assert adapter.session is not None
     # 그냥 버리지 않고 CloseStream 으로 마지막 전사까지 받아 둔다
     assert adapter.session.controls == ["CloseStream"]
+    # 스트림만 정리한다. FE 는 끊긴 뒤에도 다시 붙으니 Take 는 끝내지 않는다
+    assert store.ended == []
+    assert TAKE_ID not in take_stream._ended
+    # 대신 아무도 다시 붙지 않으면 끝낼 타이머를 건다
+    assert TAKE_ID in take_stream._abandon_timers
 
 
 def test_reconnect_after_grace_expiry_resumes_on_a_new_stream(
@@ -919,33 +995,31 @@ def test_stop_timeout_cancels_the_stream_instead_of_leaking_it(
     assert adapter.session.aborted
 
 
-def test_reconnect_while_stopping_gets_a_fresh_stream(
+def test_reconnect_while_stopping_is_rejected(
     client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
 ):
-    """정리 중인 스트림에 붙으면 소비되지 않는 큐에 오디오가 쌓인다."""
-    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 2.0)
+    """사용자가 끝낸 Take 다. 마지막 전사를 정리하는 동안(DB 에 적기 전) 붙는 연결도 받지 않는다 —
+    받으면 새 스트림이 열려 끝난 연습 뒤에 전사가 더 붙는다. 종료 중 새로고침한 FE 가 stop 만
+    보내러 붙어도 이렇게 거절되고, FE 는 stop 을 보낸 상태에서 닫히면 종료를 그대로 이어 간다."""
     monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.3)
-    adapter = use(FakeSttAdapter(Plan(swallow_close=True), Plan()))
+    adapter = use(FakeSttAdapter(Plan(swallow_close=True)))
 
-    first = client.websocket_connect(WS_PATH)
-    ws1 = first.__enter__()
-    handshake(ws1, token)
-    wait_state(ws1, "ok")
-    ws1.send_text(json.dumps({"type": "stop"}))  # 응답을 기다리지 않는다
+    with client.websocket_connect(WS_PATH) as first:
+        handshake(first, token)
+        wait_state(first, "ok")
+        first.send_text(json.dumps({"type": "stop"}))  # 응답을 기다리지 않는다
+        deadline = time.monotonic() + 3.0
+        while TAKE_ID not in take_stream._ended and time.monotonic() < deadline:
+            time.sleep(0.01)
 
-    with client.websocket_connect(WS_PATH) as ws2:
-        ready = handshake(ws2, token)
-        wait_state(ws2, "ok")
-        ws2.send_bytes(frame(1, 0))
-        status = stop(ws2)
+        with client.websocket_connect(WS_PATH) as second:
+            auth(second, token)
+            assert second.receive_json()["code"] == "TAKE_ENDED"
+            assert closed_with(second) == 1008
 
-    with contextlib.suppress(Exception):
-        first.__exit__(None, None, None)
+        wait_state(first, "closed")
 
-    # 정리 중인 스트림을 재사용하지 않고 새로 만든다
-    assert ready["stt_session_no"] in (0, 1)
-    assert len(adapter.sessions) == 2
-    assert status["frames"] == 1, "새 스트림의 통계는 처음부터 센다"
+    assert len(adapter.sessions) == 1, "새 Deepgram 세션을 열지 않는다"
 
 
 def test_long_gap_rotates_the_session_and_keeps_take_timeline(client: TestClient, token: str):
@@ -1221,7 +1295,7 @@ async def test_concurrent_attach_during_handover_does_not_duplicate_stream(
     """확인(get) -> 생성(TakeStream) 이 원자적이지 않으면, 정리 중인 스트림에
     두 연결이 동시에 오는 순간 둘 다 "없다" 를 보고 각자 새 스트림·Deepgram 세션을
     만든다. 하나는 레지스트리에서 밀려나 고아로 남는다."""
-    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.05)
     take_id = uuid.uuid7()
     owner_id = uuid.uuid7()
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
@@ -1331,11 +1405,10 @@ async def test_stop_immediately_after_long_gap_still_flushes_carried_audio():
 async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """DRAIN_TIMEOUT_SEC(정상 drain 상한, 10s) 이 HANDOVER_TIMEOUT_SEC(핸드오버 유예, 3s)
-    보다 길어서, 옛 스트림이 아직 정상적으로 정리되는 중이어도 핸드오버는 먼저 포기한다.
-    그때 그냥 forget() 만 하면 옛 스트림은 레지스트리에서만 사라질 뿐 자기 페이스대로
+    """옛 스트림의 정리가 정상 종료 상한(DRAIN_TIMEOUT_SEC)을 넘기면 핸드오버는 기다리기를
+    포기한다. 그때 그냥 forget() 만 하면 옛 스트림은 레지스트리에서만 사라질 뿐 자기 페이스대로
     계속 돈다 — Deepgram 연결이 안 끊긴다. cancel() 로 강제로 끊어야 한다."""
-    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.05)
     take_id = uuid.uuid7()
     owner_id = uuid.uuid7()
     # swallow_close: CloseStream 을 보내도 스스로는 절대 안 끝난다 (느린 정상 drain 재현)
@@ -1367,6 +1440,81 @@ async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
         "핸드오버 타임아웃 뒤에도 옛 스트림이 스스로 안 끝나면 강제로 끊어야 한다"
     )
     assert adapter.sessions[0].aborted is True
+    await _wait_until_ok(new_stream)
+    await asyncio.sleep(0.01)  # 세션 태스크가 뜨기 전에 끊으면 "never awaited" 경고가 난다
+    new_stream.cancel()
+    await new_stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_handover_waits_for_the_old_stream_to_finish_saving(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """정리 중인 스트림이 final 을 저장하는 도중에 끊겨도 그 저장은 끝까지 간다. 새 스트림은
+    그 저장이 끝난 뒤 번호를 읽는다 — 먼저 읽으면 같은 seq 로 저장하다 UNIQUE 위반으로 버려진다."""
+    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.05)
+    take_id = uuid.uuid7()
+    owner_id = uuid.uuid7()
+    adapter = FakeSttAdapter(
+        Plan(replies=[transcript(0, 200, "마지막 말", is_final=True)], swallow_close=True),
+        Plan(),
+    )
+    store = FakeTranscriptStore(append_delay=0.3)
+
+    old_stream = await take_stream.attach(
+        take_id,
+        FakeWebSocket(),
+        owner_id=owner_id,
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=store,
+    )
+    await _wait_until_ok(old_stream)
+    old_stream.push(frame(1, 0))
+    await _wait_for(lambda: adapter.sessions[0].audio)
+    old_stream.request_stop()  # final 저장(0.3s) 중에 drain 상한(0.05s)이 지나 끊긴다
+
+    new_stream = await take_stream.attach(
+        take_id,
+        FakeWebSocket(),
+        owner_id=owner_id,
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=store,
+    )
+
+    assert [seg.transcript for seg in store.segments] == ["마지막 말"]
+    assert store.cursor_reads == [0, 1], "새 스트림이 옛 스트림의 저장보다 먼저 번호를 읽었다"
+    await _wait_until_ok(new_stream)
+    await asyncio.sleep(0.01)  # 세션 태스크가 뜨기 전에 끊으면 "never awaited" 경고가 난다
+    new_stream.cancel()
+    await new_stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_finals_received_before_deepgram_closes_are_saved():
+    """Deepgram 이 먼저 끊으면 오디오 쪽이 그걸 먼저 알 수 있다. 그때 이벤트 쪽을 바로 끊으면
+    이미 받아 둔 final 이 화면에도 DB 에도 남지 않는다. 이벤트 쪽이 남은 것을 다 읽게 둔다."""
+    adapter = FakeSttAdapter(
+        Plan(replies=[transcript(0, 200, "끊기 전 말", is_final=True)], die_after=1),
+        Plan(),
+    )
+    store = FakeTranscriptStore()
+    stream = TakeStream(
+        uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=adapter, config=SttConfig(), store=store
+    )
+    stream.start()
+    await _wait_until_ok(stream)
+
+    # 두 프레임을 한 번에 넣는다. 첫 프레임 뒤 Deepgram 이 final 을 주고 끊기고, 두 번째 프레임을
+    # 보내다 오디오 쪽이 끊긴 것을 안다 — 이벤트 쪽이 final 을 읽기 전이다
+    stream.push(frame(1, 0))
+    stream.push(frame(2, 100))
+    await _wait_for(lambda: len(adapter.sessions) == 2)
+
+    assert [seg.transcript for seg in store.segments] == ["끊기 전 말"]
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
 
 
 # ── final 재전송이 겹치면 IndexError 나는 문제 ──────────────────────────
@@ -1489,14 +1637,244 @@ def test_reconnect_is_authorized_again_even_while_the_stream_is_alive(
     assert len(stt.sessions) == 1, "재연결이 거절돼 새 Deepgram 세션이 생기지 않는다"
 
 
-def test_ready_take_is_accepted(
+def test_ready_take_becomes_running_on_auth(
     client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User
 ):
-    """READY→RUNNING 전이는 take 모듈(FE 의 started_at 갱신) 몫이라 순서를 강제하지 않는다."""
+    """첫 연결이 Take 를 시작한다 — 인가를 통과하면 READY 를 RUNNING 으로 바꾼다."""
     ready_take = make_take(db_session, user.id, status="READY")
     with client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
         assert handshake(ws, create_access_token(user.id))["take_id"] == str(ready_take.id)
         stop(ws)
+
+    db_session.refresh(ready_take)
+    assert ready_take.status == "RUNNING"
+
+
+def test_running_write_failure_still_connects(
+    client: TestClient,
+    stt: FakeSttAdapter,
+    db_session: Session,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    """RUNNING 을 못 적어도 STT 는 돈다."""
+
+    def fail(db: Session, take_id: uuid.UUID) -> bool:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(take_service, "mark_running", fail)
+    ready_take = make_take(db_session, user.id, status="READY")
+    with caplog.at_level("ERROR"), client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
+        handshake(ws, create_access_token(user.id))
+        wait_state(ws, "ok")
+        stop(ws)
+
+    assert "RUNNING 으로 못 바꿨다" in caplog.text
+
+
+# ── Take 종료 ─────────────────────────────────────────────────────────
+
+
+def test_stop_ends_the_take_after_the_last_final(
+    client: TestClient, token: str, store: FakeTranscriptStore
+):
+    """끝내기는 마지막 확정 전사를 저장한 뒤에 Take 를 끝난 것으로 적는다. Take 뒤 분석은 그걸 보고
+    시작하므로 전사가 다 있어야 한다."""
+    use(FakeSttAdapter(Plan(replies=[transcript(0, 100, "마지막 문장", is_final=True)])))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        # 답을 기다리지 않고 바로 끝낸다 — 마지막 final 은 정리하는 동안 온다
+        ws.send_bytes(frame(1, 0))
+        ws.send_text(json.dumps({"type": "stop"}))
+        seen = []
+        while True:
+            message = ws.receive_json()
+            seen.append(message["type"])
+            if message.get("state") == "closed":
+                break
+        assert closed_with(ws) == 1000
+
+    assert seen == ["transcript", "stt_status"]
+    assert store.calls == ["append", "mark_ended"]
+    assert store.ended == [TAKE_ID]
+
+
+def test_reconnect_after_stop_is_rejected(client: TestClient, token: str):
+    """끝낸 Take 에 다시 붙으면 새 STT 세션을 열지 않는다. DB 에 적히기 전이어도 막는다 — 가짜
+    저장소는 DB 를 바꾸지 않아 Take 가 RUNNING 그대로다."""
+    adapter = use(FakeSttAdapter())
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        stop(ws)
+
+    with client.websocket_connect(WS_PATH) as ws:
+        auth(ws, token)
+        assert ws.receive_json() == {
+            "type": "error",
+            "code": "TAKE_ENDED",
+            "message": "이미 끝난 연습입니다.",
+        }
+        assert closed_with(ws) == 1008
+    assert len(adapter.sessions) == 1
+
+
+def test_end_write_failure_still_closes_the_take(
+    client: TestClient, token: str, caplog: pytest.LogCaptureFixture
+):
+    """DB 가 죽어 종료를 못 적어도 FE 에는 평소처럼 closed 를 보내고 닫는다. 이 프로세스 안에서는
+    다시 붙는 연결을 계속 막는다."""
+    use_store(FakeTranscriptStore(fail_mark=True))
+    adapter = use(FakeSttAdapter())
+    with caplog.at_level("ERROR"), client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        stop(ws)
+        assert closed_with(ws) == 1000
+    assert "Take 종료 저장 실패" in caplog.text
+
+    with client.websocket_connect(WS_PATH) as ws:
+        auth(ws, token)
+        assert ws.receive_json()["code"] == "TAKE_ENDED"
+        assert closed_with(ws) == 1008
+    assert len(adapter.sessions) == 1
+
+
+def test_take_status_moves_ready_running_analyzing_in_the_database(
+    db_session: Session, user: User
+):
+    """연결이 READY 를 RUNNING 으로, 끝내기가 ANALYZING 으로 바꾼다. 두 번 불러도 한 번만 바뀐다."""
+    take = make_take(db_session, user.id, status="READY")
+    assert take_service.mark_running(db_session, take.id) is True
+    assert take_service.mark_running(db_session, take.id) is False, "다시 붙은 연결은 그대로 둔다"
+    db_session.refresh(take)
+    assert take.status == "RUNNING"
+
+    assert take_service.mark_ended(db_session, take.id) is True
+    assert take_service.mark_ended(db_session, take.id) is False
+    db_session.refresh(take)
+    assert take.status == "ANALYZING"
+    assert take.ended_at is not None, "FE 가 종료 시각을 못 적어도 남는다"
+    assert take_service.mark_running(db_session, take.id) is False, "끝난 Take 는 다시 열지 않는다"
+    assert take_service.mark_ended(db_session, uuid.uuid7()) is False
+
+    # 연결 때 RUNNING 을 못 적었어도 끝낼 수 있다
+    never_started = make_take(db_session, user.id, status="READY")
+    assert take_service.mark_ended(db_session, never_started.id) is True
+
+
+def test_end_leaves_a_finished_take_and_the_fe_end_time(db_session: Session, user: User):
+    """이미 끝난 Take 는 바꾸지 않는다. FE 가 먼저 적은 종료 시각도 덮지 않는다."""
+    completed = make_take(db_session, user.id, status="COMPLETED")
+    assert take_service.mark_ended(db_session, completed.id) is False
+    db_session.refresh(completed)
+    assert completed.status == "COMPLETED"
+
+    running = make_take(db_session, user.id)
+    fe_end = datetime(2026, 10, 22, 10, 5, tzinfo=UTC)
+    running.ended_at = fe_end
+    db_session.commit()
+    assert take_service.mark_ended(db_session, running.id) is True
+    db_session.refresh(running)
+    assert running.ended_at == fe_end
+
+
+@pytest.mark.anyio
+async def test_db_store_marks_the_take_ended(db_session: Session, take: Take):
+    store = DbTranscriptStore(session_factory=lambda: db_session)
+    assert await store.mark_ended(TAKE_ID) is True
+    assert db_session.scalar(select(Take.status).where(Take.id == TAKE_ID)) == "ANALYZING"
+    assert await store.mark_ended(TAKE_ID) is False
+
+
+# ── stop 없이 끝내기 (Take PUT) ───────────────────────────────────────
+
+
+def put_end(client: TestClient, take: Take, token: str) -> int:
+    """FE 종료 흐름의 Take PUT. 마이크를 못 열었거나 재연결을 포기한 FE 는 stop 없이 이것만 보낸다."""
+    response = client.put(
+        f"/api/pitches/{take.pitch_id}/takes/{take.id}",
+        json={"ended_at": "2026-10-22T10:05:00Z"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    return response.status_code
+
+
+def test_put_end_while_connected_leaves_it_to_stop(
+    client: TestClient, db_session: Session, take: Take, token: str, store: FakeTranscriptStore
+):
+    """연결이 붙어 있으면 그 연결의 stop 이 마지막 전사를 저장한 뒤 끝낸다. PUT 이 먼저 적지 않는다."""
+    use(FakeSttAdapter())
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        assert put_end(client, take, token) == 200
+        db_session.refresh(take)
+        assert take.status == "RUNNING"
+        stop(ws)
+
+    assert store.ended == [TAKE_ID]
+
+
+def test_put_end_after_the_connection_dropped_drains_then_ends(
+    client: TestClient, db_session: Session, take: Take, token: str, store: FakeTranscriptStore
+):
+    """끊긴 뒤 30초 안에 PUT 으로 끝내면 stop 처럼 남은 전사를 받아 두고 스트림을 정리한 뒤 끝낸다."""
+    adapter = use(FakeSttAdapter(Plan(replies=[transcript(0, 100, "마지막", is_final=True)])))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        ws.receive_json()
+    stream = take_stream._streams[TAKE_ID]
+    deadline = time.monotonic() + 2.0
+    while stream.has_client and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert not stream.has_client
+
+    assert put_end(client, take, token) == 200
+
+    assert take_stream.active_count() == 0
+    assert adapter.session is not None
+    assert adapter.session.controls == ["CloseStream"]
+    assert store.calls == ["append"]
+    db_session.refresh(take)
+    assert take.status == "ANALYZING"
+    with client.websocket_connect(WS_PATH) as ws:
+        auth(ws, token)
+        assert ws.receive_json()["code"] == "TAKE_ENDED"
+        assert closed_with(ws) == 1008
+    assert len(adapter.sessions) == 1
+
+
+@pytest.mark.anyio
+async def test_end_without_stop_leaves_a_stopping_take_to_its_connection():
+    """stop 으로 끝내는 중이면 그 연결이 마지막 전사를 저장한 뒤 적는다. 정리가 끝나 스트림이
+    사라졌으면 PUT 이 다시 적어도 된다 — 같은 Take 를 두 번 끝내도 한 번만 바뀐다."""
+    tab = FakeWebSocket()
+    stream = TakeStream(
+        TAKE_ID,
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(Plan(swallow_close=True)),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    take_stream._streams[TAKE_ID] = stream
+    stream.start()
+    await stream.attach(tab)
+    stream.push(frame(1, 0), source=tab)
+    stream.end()
+    stream.detach(tab)
+
+    assert await take_stream.end_without_stop(TAKE_ID) is False
+
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+    assert await take_stream.end_without_stop(TAKE_ID) is True
 
 
 # ── final 저장 ─────────────────────────────────────────────────────────
@@ -1627,7 +2005,82 @@ def test_persist_failure_keeps_the_stream_alive(
     assert (first["text"], second["text"]) == ("하나", "둘")
     assert status["state"] == "closed" and status["frames"] == 2
     assert "final 저장 실패" in caplog.text
+    assert "저장하지 못한 final 을 버린다" in caplog.text and "count=2 seq=1~2" in caplog.text
     assert "하나" not in caplog.text, "전사 원문은 로그에 남기지 않는다"
+
+
+def test_failed_final_is_saved_with_the_next_one(client: TestClient, token: str):
+    """DB 가 잠깐 죽었다 돌아오면 그사이 저장 못 한 final 을 다음 final 앞에 저장한다."""
+    use(
+        FakeSttAdapter(
+            Plan(
+                replies=[
+                    transcript(0, 100, "하나", is_final=True),
+                    transcript(100, 200, "둘", is_final=True),
+                ]
+            )
+        )
+    )
+    store = use_store(FakeTranscriptStore(errors=[RuntimeError("db down")]))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        ws.receive_json()
+        ws.send_bytes(frame(2, 100))
+        ws.receive_json()
+        stop(ws)
+
+    assert [(seg.seq, seg.transcript) for seg in store.segments] == [(1, "하나"), (2, "둘")]
+
+
+def test_failed_last_final_is_saved_before_the_take_ends(client: TestClient, token: str):
+    """마지막 final 저장이 실패해도 스트림이 끝날 때 한 번 더 저장한다. Take 종료는 그 뒤에
+    적는다."""
+    use(FakeSttAdapter(Plan(replies=[transcript(0, 100, "마지막", is_final=True)])))
+    store = use_store(FakeTranscriptStore(errors=[RuntimeError("db down")]))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        ws.receive_json()
+        stop(ws)
+
+    assert [seg.transcript for seg in store.segments] == ["마지막"]
+    assert store.calls == ["append", "mark_ended"]
+
+
+def test_final_already_committed_does_not_block_the_rest(
+    client: TestClient, token: str, caplog: pytest.LogCaptureFixture
+):
+    """실패로 알았던 저장이 실제로는 커밋됐으면 다시 저장할 때 번호가 겹친다. 저장된 것으로 보고
+    넘어가야 뒤의 final 이 막히지 않는다."""
+    use(
+        FakeSttAdapter(
+            Plan(
+                replies=[
+                    transcript(0, 100, "하나", is_final=True),
+                    transcript(100, 200, "둘", is_final=True),
+                ]
+            )
+        )
+    )
+    store = use_store(
+        FakeTranscriptStore(errors=[RuntimeError("db down"), DuplicateTranscriptSegment()])
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        with caplog.at_level("WARNING"):
+            ws.send_bytes(frame(1, 0))
+            ws.receive_json()
+            ws.send_bytes(frame(2, 100))
+            ws.receive_json()
+            stop(ws)
+
+    assert [(seg.seq, seg.transcript) for seg in store.segments] == [(2, "둘")]
+    assert "이미 저장된 final" in caplog.text
+    assert "저장하지 못한 final 을 버린다" not in caplog.text
 
 
 @pytest.mark.anyio
@@ -1657,6 +2110,119 @@ async def test_stop_persists_the_last_final_even_if_the_client_dies_during_drain
     assert [seg.transcript for seg in store.segments] == ["마지막 말"]
     assert adapter.sessions[0].controls == ["CloseStream"]
     assert take_stream.active_count() == 0
+
+
+# ── Take 삭제 ─────────────────────────────────────────────────────────
+
+
+def wait_until(condition, timeout: float = 3.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not condition() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert condition()
+
+
+def test_deleting_the_take_cuts_its_live_stream(
+    client: TestClient, stt: FakeSttAdapter, token: str, take: Take
+):
+    """진행 중인 Take 를 지우면 Deepgram 세션도 바로 끊는다. 두면 FE 가 떠날 때까지 요금이 나가고
+    final 마다 저장이 외래 키 위반으로 실패한다. 저장할 곳이 없으니 남은 전사도 기다리지 않는다."""
+    pitch_id = take.pitch_id
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+
+        response = client.delete(
+            f"/api/pitches/{pitch_id}/takes/{TAKE_ID}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        # 다시 붙을 때 받을 것과 같은 코드다. FE 는 이걸 받으면 다시 붙지 않는다
+        assert ws.receive_json()["code"] == "TAKE_NOT_FOUND"
+        assert closed_with(ws) == 1008
+
+    session = stt.session
+    assert session is not None
+    wait_until(lambda: session.aborted)
+    assert session.controls == [], "CloseStream 으로 남은 전사를 기다리지 않는다"
+    assert take_stream.active_count() == 0
+
+
+def test_deleting_the_pitch_cuts_the_live_streams_of_its_takes(
+    client: TestClient, stt: FakeSttAdapter, token: str, take: Take
+):
+    """발표를 지우면 Take 가 CASCADE 로 같이 지워진다. 그 Take 의 스트림도 같이 끊는다."""
+    pitch_id = take.pitch_id
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+
+        response = client.delete(
+            f"/api/pitches/delete/{pitch_id}", headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 200
+        assert ws.receive_json()["code"] == "TAKE_NOT_FOUND"
+        assert closed_with(ws) == 1008
+
+    session = stt.session
+    assert session is not None
+    wait_until(lambda: session.aborted)
+    assert take_stream.active_count() == 0
+
+
+def test_final_for_a_deleted_take_cuts_the_stream(
+    client: TestClient, db_session: Session, token: str, caplog: pytest.LogCaptureFixture
+):
+    """지운 요청이 스트림을 못 끊었어도(커밋과 끊기 사이에 온 final, 다른 프로세스) 저장하다 Take 가
+    없다는 걸 알면 스스로 끊는다. final 마다 외래 키 오류를 ERROR 로 남기지 않는다."""
+    adapter = use(FakeSttAdapter(Plan(replies=[transcript(0, 200, "지운 뒤", is_final=True)])))
+    use_store(DbTranscriptStore(session_factory=lambda: db_session))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        # REST 를 거치지 않고 지운다. 스트림은 지워진 줄 모른다
+        db_session.execute(sql_delete(Take).where(Take.id == TAKE_ID))
+        db_session.commit()
+
+        with caplog.at_level("WARNING"):
+            ws.send_bytes(frame(1, 0))
+            final = ws.receive_json()
+            error = ws.receive_json()
+            code = closed_with(ws)
+
+    assert final["text"] == "지운 뒤", "화면에는 저장보다 먼저 나간다"
+    assert (error["code"], code) == ("TAKE_NOT_FOUND", 1008)
+    assert "Take 가 지워져" in caplog.text
+    assert "final 저장 실패" not in caplog.text
+    session = adapter.session
+    assert session is not None
+    wait_until(lambda: session.aborted)
+    assert take_stream.active_count() == 0
+
+
+def test_only_a_missing_take_is_reported_as_deleted(db_session: Session, take: Take):
+    """외래 키 위반만 'Take 가 없다' 로 바꾼다. 번호가 겹친 것(UNIQUE)까지 바꾸면 스트림이
+    살아 있는 Take 를 지워진 것으로 알고 끊는다."""
+    segment = TranscriptSegmentCreateDTO(
+        seq=1,
+        stt_session_no=1,
+        start_ms=0,
+        end_ms=100,
+        transcript="하나",
+        words=[],
+        confidence=0.9,
+        speech_final=True,
+    )
+    with pytest.raises(NonExistentTake):
+        take_service.append_transcript_segment(db_session, uuid.uuid7(), segment)
+    db_session.rollback()
+
+    take_service.append_transcript_segment(db_session, TAKE_ID, segment)
+    with pytest.raises(DuplicateTranscriptSegment):
+        take_service.append_transcript_segment(db_session, TAKE_ID, segment)
 
 
 # ── 코드 리뷰 반영: cancel 정리 상한 · reaper 참조 · take 별 락 ─────────
@@ -1735,9 +2301,9 @@ async def test_wait_cancelled_gives_up_and_reports_closed(monkeypatch: pytest.Mo
 
 @pytest.mark.anyio
 async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.MonkeyPatch):
-    """attach 락이 프로세스 전역이면 한 Take 의 핸드오버 대기(HANDOVER_TIMEOUT_SEC) 동안
+    """attach 락이 프로세스 전역이면 한 Take 의 핸드오버 대기(DRAIN_TIMEOUT_SEC) 동안
     다른 모든 Take 의 연결이 같이 멈춘다 (코드 리뷰 지적). take_id 별 락이어야 한다."""
-    monkeypatch.setattr(take_stream, "HANDOVER_TIMEOUT_SEC", 0.5)
+    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.5)
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
     take_a, take_b, owner = uuid.uuid7(), uuid.uuid7(), uuid.uuid7()
 
@@ -2035,3 +2601,903 @@ async def test_unexpected_exception_in_session_reconnects_instead_of_dying(
     stream.request_stop()
     assert await stream.wait_closed(timeout=2.0)
     assert [len(a) for a in adapter.sessions[1].audio] == [3200]
+
+
+# ── 자동 종료 ─────────────────────────────────────────────────────────
+
+# 테스트용으로 짧게 줄인 조건. 말 없음 300ms (창 1초 중 80%), 최대 시간은 따로 정한다
+SHORT_SILENCE = AutoEndPolicy(
+    silence_end_ms=300, silence_window_ms=1000, silence_ratio=0.8, max_duration_ms=3_600_000
+)
+
+
+def short_time_limit(ms: int) -> AutoEndPolicy:
+    """최대 시간만 짧게. 서버 시계 여유도 0 으로 둬 프레임 시각과 서버 시계가 같은 값에서 끝낸다."""
+    return AutoEndPolicy(
+        silence_end_ms=3_600_000,
+        silence_window_ms=3_600_000,
+        silence_ratio=0.8,
+        max_duration_ms=ms,
+        server_clock_slack_ms=0,
+    )
+
+
+def auto_end_reason(stream: TakeStream) -> AutoEndReason | None:
+    """이 프로세스가 그 Take 를 자동으로 끝냈으면 그 이유."""
+    return take_stream._ended.get(stream.take_id)
+
+
+def use_policy(monkeypatch: pytest.MonkeyPatch, policy: AutoEndPolicy) -> AutoEndPolicy:
+    monkeypatch.setattr(AutoEndPolicy, "from_settings", classmethod(lambda cls: policy))
+    return policy
+
+
+def empty_final(start_ms: int, end_ms: int) -> Transcript:
+    """말 없이 들은 구간. Deepgram 은 말이 없어도 빈 final 로 "여기까지 들었다" 를 알린다."""
+    return Transcript(
+        start_ms=start_ms,
+        end_ms=end_ms,
+        is_final=True,
+        speech_final=False,
+        from_finalize=False,
+        transcript="",
+        confidence=0.0,
+        words=(),
+    )
+
+
+def receive_auto_end(ws) -> dict:
+    """auto_end 가 올 때까지 읽는다 (그 사이 오는 stt_status·transcript 는 건너뛴다)."""
+    while True:
+        message = ws.receive_json()
+        if message["type"] == "auto_end":
+            return message
+
+
+def make_stream(adapter: FakeSttAdapter, store: FakeTranscriptStore, policy: AutoEndPolicy):
+    return TakeStream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=store,
+        auto_end=policy,
+    )
+
+
+def test_silence_ends_the_take_like_a_user_stop(
+    client: TestClient, token: str, store: FakeTranscriptStore, monkeypatch: pytest.MonkeyPatch
+):
+    """말 없이 들은 구간이 쌓이면 사용자가 stop 을 보낸 것과 같은 순서로 끝낸다 —
+    auto_end → 남은 오디오 정리(CloseStream) → stt_status closed → 1000 close."""
+    policy = use_policy(monkeypatch, SHORT_SILENCE)
+    adapter = use(
+        FakeSttAdapter(
+            Plan(replies=[empty_final(0, 100), empty_final(100, 200), empty_final(200, 300)])
+        )
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        for i in range(3):
+            ws.send_bytes(frame(i + 1, i * 100))
+
+        ended = receive_auto_end(ws)
+        status = wait_state(ws, "closed")
+        assert closed_with(ws) == 1000
+
+    assert ended == {
+        "type": "auto_end",
+        "reason": "SILENCE",
+        "message": policy.message(AutoEndReason.SILENCE),
+    }
+    assert status["frames"] == 3
+    assert adapter.session is not None and adapter.session.controls == ["CloseStream"]
+    assert store.auto_ended == [(TAKE_ID, "SILENCE")]
+    assert take_stream.active_count() == 0
+
+
+def test_speech_keeps_the_take_running(
+    client: TestClient, token: str, store: FakeTranscriptStore, monkeypatch: pytest.MonkeyPatch
+):
+    """중간에 말이 한 번이라도 있으면 말 없음은 거기서 다시 센다."""
+    use_policy(monkeypatch, SHORT_SILENCE)
+    use(
+        FakeSttAdapter(
+            Plan(
+                replies=[
+                    empty_final(0, 100),
+                    empty_final(100, 200),
+                    transcript(200, 300, "안녕", is_final=True),
+                    empty_final(300, 400),
+                    empty_final(400, 500),
+                ]
+            )
+        )
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        for i in range(5):
+            ws.send_bytes(frame(i + 1, i * 100))
+        assert ws.receive_json()["text"] == "안녕"
+        status = stop(ws)
+
+    assert status["frames"] == 5
+    assert store.auto_ended == []
+
+
+def test_time_limit_by_take_offset_ends_the_take_and_keeps_the_last_frame(
+    client: TestClient, token: str, store: FakeTranscriptStore, monkeypatch: pytest.MonkeyPatch
+):
+    """최대 시간을 넘긴 프레임에서 끝낸다. 그 프레임까지는 Deepgram 에 보낸다."""
+    policy = use_policy(monkeypatch, short_time_limit(60_000))
+    adapter = use(FakeSttAdapter())
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 59_800))
+        ws.send_bytes(frame(2, 59_900))  # 60_000 에 닿는다
+
+        ended = receive_auto_end(ws)
+        wait_state(ws, "closed")
+        assert closed_with(ws) == 1000
+
+    assert ended["reason"] == "TIME_LIMIT"
+    assert (
+        ended["message"]
+        == policy.message(AutoEndReason.TIME_LIMIT)
+        == ("연습은 최대 1분까지라 자동으로 끝냈어요.")
+    )
+    assert adapter.session is not None and adapter.session.audio_ms == 200
+    assert store.auto_ended == [(TAKE_ID, "TIME_LIMIT")]
+
+
+def test_time_limit_by_server_clock_ends_a_take_whose_offset_stands_still(
+    client: TestClient, token: str, store: FakeTranscriptStore, monkeypatch: pytest.MonkeyPatch
+):
+    """offset 은 FE 가 정한다. 프레임이 끊기거나 offset 이 멈춰 있어도 벽시계로 끝낸다."""
+    use_policy(monkeypatch, short_time_limit(300))
+    use(FakeSttAdapter())
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        # 더 보내지 않는다. 300ms 뒤 타이머가 끝낸다
+        assert receive_auto_end(ws)["reason"] == "TIME_LIMIT"
+        wait_state(ws, "closed")
+        assert closed_with(ws) == 1000
+
+    assert store.auto_ended == [(TAKE_ID, "TIME_LIMIT")]
+
+
+def test_reconnect_after_auto_end_is_rejected_before_deepgram(
+    client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
+):
+    """DB 에 적히기 전이라도(가짜 저장소라 DB 는 그대로다) 같은 프로세스는 다시 붙이지 않는다.
+    다시 붙이면 새 스트림이 열려 끝난 연습에 전사가 더 붙고 STT 비용이 다시 나간다."""
+    policy = use_policy(monkeypatch, short_time_limit(1_000))
+    adapter = use(FakeSttAdapter())
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 950))
+        receive_auto_end(ws)
+        wait_state(ws, "closed")
+
+    with client.websocket_connect(WS_PATH) as ws:
+        auth(ws, token)
+        notice = ws.receive_json()
+        rejected = ws.receive_json()
+        assert closed_with(ws) == 1008
+
+    message = policy.message(AutoEndReason.TIME_LIMIT)
+    # 자동 종료 순간 떨어져 있던 FE 도 auto_end 를 받아 종료 흐름을 탄다
+    assert notice == {"type": "auto_end", "reason": "TIME_LIMIT", "message": message}
+    assert rejected == {"type": "error", "code": "TAKE_ENDED", "message": message}
+    assert len(adapter.configs) == 1, "다시 붙을 때 Deepgram 에 연결하지 않는다"
+
+
+def test_auto_ended_take_in_the_database_is_rejected(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User
+):
+    """프로세스가 다시 떠서 메모리가 비어도 DB 가 막는다 — 자동 종료가 상태를 ANALYZING 으로
+    바꿔 두기 때문이다. 이유는 알림에 쓴다."""
+    ended = make_take(db_session, user.id, status="ANALYZING")
+    ended.end_reason = "SILENCE"
+    db_session.commit()
+
+    with client.websocket_connect(f"/api/ws/takes/{ended.id}") as ws:
+        auth(ws, create_access_token(user.id))
+        notice = ws.receive_json()
+        rejected = ws.receive_json()
+        assert closed_with(ws) == 1008
+
+    message = "2분 넘게 말이 없어 연습을 자동으로 끝냈어요."
+    assert notice == {"type": "auto_end", "reason": "SILENCE", "message": message}
+    assert rejected == {"type": "error", "code": "TAKE_ENDED", "message": message}
+    assert stt.configs == []
+
+
+def test_unknown_end_reason_in_the_database_is_still_rejected(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User
+):
+    """이유가 나중에 늘어 이 버전이 모르는 값이어도 끝난 Take 다. FE 가 분기할 수 없으니
+    auto_end 없이 일반 문구로."""
+    # CHECK 를 넓힌 새 버전에서 이 버전으로 되돌린 DB 다. 테스트 트랜잭션과 함께 롤백된다
+    db_session.execute(text("ALTER TABLE takes DROP CONSTRAINT check_take_end_reason"))
+    ended = make_take(db_session, user.id, status="ANALYZING")
+    ended.end_reason = "SOMETHING_NEW"
+    db_session.commit()
+
+    with client.websocket_connect(f"/api/ws/takes/{ended.id}") as ws:
+        auth(ws, create_access_token(user.id))
+        rejected = ws.receive_json()
+        assert closed_with(ws) == 1008
+
+    assert rejected == {"type": "error", "code": "TAKE_ENDED", "message": "이미 끝난 연습입니다."}
+    assert stt.configs == []
+
+
+def test_stop_sent_after_auto_end_closes_once(
+    client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
+):
+    """FE 가 auto_end 를 받고 평소처럼 stop 을 보내도 된다. Deepgram 정리는 한 번이다."""
+    use_policy(monkeypatch, short_time_limit(1_000))
+    adapter = use(FakeSttAdapter())
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 950))
+        receive_auto_end(ws)
+        ws.send_text(json.dumps({"type": "stop"}))
+        wait_state(ws, "closed")
+
+    assert adapter.session is not None and adapter.session.controls == ["CloseStream"]
+    assert take_stream.active_count() == 0
+
+
+def test_end_reason_write_failure_still_closes_the_take(
+    client: TestClient,
+    token: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    """DB 가 죽어 이유를 못 적어도 Take 는 끝낸다. 비용을 막는 게 먼저다."""
+    use_policy(monkeypatch, short_time_limit(1_000))
+    use_store(FakeTranscriptStore(fail_mark=True))
+    use(FakeSttAdapter())
+    with caplog.at_level("ERROR"), client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 950))
+        receive_auto_end(ws)
+        wait_state(ws, "closed")
+        assert closed_with(ws) == 1000
+
+    assert "자동 종료 이유 저장 실패" in caplog.text
+    assert take_stream._ended == {TAKE_ID: AutoEndReason.TIME_LIMIT}
+
+
+def test_end_reason_is_written_to_the_database_once(db_session: Session, take: Take):
+    """Take 를 끝난 상태로 바꾸고 이유를 적는다. 먼저 적힌 이유가 남고, 그 사이 지워진 Take 는
+    조용히 넘어간다."""
+    assert take.ended_at is None
+    assert take_service.mark_ended(db_session, TAKE_ID, "SILENCE") is True
+    assert take_service.mark_ended(db_session, TAKE_ID, "TIME_LIMIT") is False
+    db_session.refresh(take)
+    assert (take.status, take.end_reason) == ("ANALYZING", "SILENCE")
+    assert take.ended_at is not None, "FE 가 떨어져 있어도 끝난 시각이 남는다"
+    assert take_service.mark_ended(db_session, uuid.uuid7(), "SILENCE") is False
+
+
+def test_end_reason_is_not_written_to_a_take_that_already_ended(db_session: Session, user: User):
+    """이미 끝난 Take(사용자가 끝내 분석 중 등)는 자동 종료로 바꾸지 않는다. FE 가 적은 끝난 시각도
+    덮지 않는다."""
+    ended = make_take(db_session, user.id, status="COMPLETED")
+    assert take_service.mark_ended(db_session, ended.id, "TIME_LIMIT") is False
+    db_session.refresh(ended)
+    assert (ended.status, ended.end_reason) == ("COMPLETED", None)
+
+
+@pytest.mark.anyio
+async def test_db_store_marks_auto_end(db_session: Session, take: Take):
+    store = DbTranscriptStore(session_factory=lambda: db_session)
+    assert await store.mark_ended(TAKE_ID, "TIME_LIMIT") is True
+    assert db_session.scalar(select(Take.end_reason).where(Take.id == TAKE_ID)) == "TIME_LIMIT"
+    assert await store.mark_ended(TAKE_ID, "SILENCE") is False
+
+
+@pytest.mark.anyio
+async def test_user_stop_cancels_the_time_limit():
+    """사용자가 먼저 끝냈으면 타이머가 뒤늦게 울려도 자동 종료로 바꾸지 않는다."""
+    store = FakeTranscriptStore()
+    stream = make_stream(FakeSttAdapter(), store, short_time_limit(200))
+    stream.start()
+    await _wait_until_ok(stream)
+    stream.push(frame(1, 0))
+    stream.request_stop()
+    assert await stream.wait_closed(timeout=2.0)
+
+    await asyncio.sleep(0.3)
+    assert auto_end_reason(stream) is None
+    assert store.auto_ended == []
+
+
+@pytest.mark.anyio
+async def test_time_limit_while_detached_still_ends_and_blocks_reconnect():
+    """FE 가 떨어져 있는 동안(grace) 시간이 다 돼도 끝낸다. 다시 붙으면 거절한다."""
+    store = FakeTranscriptStore()
+    adapter = FakeSttAdapter()
+    stream = make_stream(adapter, store, short_time_limit(200))
+    tab = FakeWebSocket()
+    stream.start()
+    await stream.attach(tab)
+    await _wait_until_ok(stream)
+    stream.push(frame(1, 0), source=tab)
+    stream.detach(tab)
+
+    assert await stream.wait_closed(timeout=2.0)
+    await _wait_for(lambda: store.auto_ended)
+    assert auto_end_reason(stream) == AutoEndReason.TIME_LIMIT
+    assert store.auto_ended == [(stream.take_id, "TIME_LIMIT")]
+    assert not any(json.loads(t)["type"] == "auto_end" for t in tab.sent), (
+        "떨어진 FE 에는 못 보낸다"
+    )
+    assert tab.closed is None
+
+    with pytest.raises(take_stream.TakeEnded) as info:
+        await take_stream.attach(
+            stream.take_id,
+            FakeWebSocket(),
+            owner_id=stream.owner_id,
+            stt_adapter=adapter,
+            config=SttConfig(),
+            store=store,
+        )
+    assert info.value.reason == AutoEndReason.TIME_LIMIT
+    assert len(adapter.sessions) == 1
+
+
+@pytest.mark.anyio
+async def test_silence_is_not_counted_while_deepgram_is_down():
+    """STT 가 죽어 있으면 전사가 안 온다. 그 시간을 말 없음으로 세면 STT 장애가 곧 강제 종료다."""
+    store = FakeTranscriptStore()
+    stream = make_stream(FakeSttAdapter(fail_times=1_000), store, SHORT_SILENCE)
+    stream.start()
+    for i in range(20):
+        stream.push(frame(i + 1, i * 100))
+    await asyncio.sleep(0.2)
+
+    assert auto_end_reason(stream) is None and not stream.is_stopping
+    stream.cancel()
+    assert await stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_silence_tracker_failure_does_not_break_the_stream(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """판단 코드에 버그가 있어도 STT 는 계속 돈다. 예외가 새면 세션이 _LOST 로 재접속한다."""
+
+    def broken(*args, **kwargs):
+        raise ValueError("tracker bug")
+
+    monkeypatch.setattr(SilenceTracker, "observe", broken)
+    store = FakeTranscriptStore()
+    adapter = FakeSttAdapter(Plan(replies=[transcript(0, 100, "하나", is_final=True)]))
+    stream = make_stream(adapter, store, SHORT_SILENCE)
+    stream.start()
+    await _wait_until_ok(stream)
+
+    with caplog.at_level("ERROR"):
+        stream.push(frame(1, 0))
+        await _wait_for(lambda: store.segments)
+
+    assert "말 없음 판단 실패" in caplog.text
+    assert len(adapter.sessions) == 1 and stream.state == "ok"
+    stream.request_stop()
+    assert await stream.wait_closed(timeout=2.0)
+    assert auto_end_reason(stream) is None
+
+
+@pytest.mark.anyio
+async def test_unexpected_error_in_auto_end_cleanup_is_logged_with_the_take(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """정리 태스크는 아무도 await 하지 않는다. 예외가 나면 어느 Take 인지 로그에 남겨야 한다."""
+
+    async def broken(self, reason):
+        raise RuntimeError("cleanup bug")
+
+    monkeypatch.setattr(TakeStream, "_finish_auto_end", broken)
+    stream = make_stream(FakeSttAdapter(), FakeTranscriptStore(), short_time_limit(1_000))
+    stream.start()
+    await _wait_until_ok(stream)
+
+    with caplog.at_level("ERROR"):
+        stream.push(frame(1, 950))
+        assert await stream.wait_closed(timeout=2.0), "정리 태스크가 죽어도 스트림은 닫힌다"
+        await _wait_for(lambda: "백그라운드 태스크 실패" in caplog.text)
+
+    assert f"take-auto-end:{stream.take_id}" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_time_limit_ends_a_connected_take_that_never_sends_audio():
+    """오디오 없이 연결만 붙여 둔 Take 도 끝낸다. 첫 프레임에서 타이머를 걸면 영영 안 걸리고
+    Deepgram 연결이 KeepAlive 로 계속 살아 있다."""
+    store = FakeTranscriptStore()
+    stream = make_stream(FakeSttAdapter(), store, short_time_limit(200))
+    tab = FakeWebSocket()
+    stream.start()
+    await stream.attach(tab)
+
+    assert await stream.wait_closed(timeout=2.0)
+    await _wait_for(lambda: tab.closed is not None)
+    assert auto_end_reason(stream) == AutoEndReason.TIME_LIMIT
+    assert tab.closed == (1000, "")
+    assert [json.loads(t)["type"] for t in tab.sent][-2:] == ["auto_end", "stt_status"]
+
+
+@pytest.mark.anyio
+async def test_server_clock_is_per_take_not_per_stream():
+    """grace 보다 오래 끊었다 새 스트림으로 다시 붙어도 1시간이 새로 시작하지 않는다.
+    스트림 기준이면 30초 넘게 끊었다 붙기를 반복해 제한을 계속 피할 수 있다."""
+    take_id = uuid.uuid7()
+    policy = short_time_limit(400)
+
+    def make() -> TakeStream:
+        return TakeStream(
+            take_id,
+            owner_id=uuid.uuid7(),
+            stt_adapter=FakeSttAdapter(),
+            config=SttConfig(),
+            store=FakeTranscriptStore(),
+            auto_end=policy,
+        )
+
+    first = make()
+    first.start()
+    await asyncio.sleep(0.25)
+    first.request_stop()  # grace 가 지나 사라진 것과 같다
+    assert await first.wait_closed(timeout=2.0)
+    assert auto_end_reason(first) is None
+
+    second = make()
+    second.start()
+    started = time.monotonic()
+    assert await second.wait_closed(timeout=2.0)
+    assert auto_end_reason(second) == AutoEndReason.TIME_LIMIT
+    assert time.monotonic() - started < 0.3, "남은 시간(약 150ms)만 기다린다"
+
+
+@pytest.mark.anyio
+async def test_shutdown_waits_for_the_end_reason_to_be_written():
+    """앱이 내려갈 때 자동 종료 정리를 끊으면 이유가 DB 에 안 남아 다시 뜬 뒤 재연결을 못 막는다."""
+
+    class SlowStore(FakeTranscriptStore):
+        async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+            await asyncio.sleep(0.2)
+            return await super().mark_ended(take_id, end_reason)
+
+    store = SlowStore()
+    stream = make_stream(FakeSttAdapter(), store, short_time_limit(1_000))
+    stream.start()
+    await _wait_until_ok(stream)
+    stream.push(frame(1, 950))
+
+    await take_stream.stop_all()
+
+    assert store.auto_ended == [(stream.take_id, "TIME_LIMIT")]
+
+
+@pytest.mark.anyio
+async def test_server_clock_does_not_count_time_without_a_stream():
+    """탭이 죽어 스트림이 없던 시간은 세지 않는다. 벽시계로 재면 한참 뒤 이어서 연습하자마자
+    끝나 버린다 (무대 시계는 끊긴 동안 멈춰 있다)."""
+    take_id = uuid.uuid7()
+    policy = short_time_limit(400)
+
+    def make() -> TakeStream:
+        return TakeStream(
+            take_id,
+            owner_id=uuid.uuid7(),
+            stt_adapter=FakeSttAdapter(),
+            config=SttConfig(),
+            store=FakeTranscriptStore(),
+            auto_end=policy,
+        )
+
+    first = make()
+    first.start()
+    await asyncio.sleep(0.1)
+    first.request_stop()
+    assert await first.wait_closed(timeout=2.0)
+
+    await asyncio.sleep(0.4)  # 스트림 없이 최대 시간이 지난다
+
+    second = make()
+    second.start()
+    await asyncio.sleep(0.15)
+    assert not second.is_stopping, "열려 있던 시간은 아직 0.25초쯤이다"
+    assert await second.wait_closed(timeout=2.0)
+    assert auto_end_reason(second) == AutoEndReason.TIME_LIMIT
+
+
+@pytest.mark.anyio
+async def test_server_clock_waits_for_the_slack_so_the_frame_time_ends_first():
+    """서버 시계는 보조 상한이라 여유만큼 늦게 끝낸다. 정상 Take 는 프레임 시각이 먼저 끝낸다."""
+    policy = AutoEndPolicy(
+        silence_end_ms=3_600_000,
+        silence_window_ms=3_600_000,
+        silence_ratio=0.8,
+        max_duration_ms=100,
+        server_clock_slack_ms=300,
+    )
+    stream = make_stream(FakeSttAdapter(), FakeTranscriptStore(), policy)
+    stream.start()
+    await asyncio.sleep(0.2)
+    assert not stream.is_stopping
+    assert await stream.wait_closed(timeout=2.0)
+    assert auto_end_reason(stream) == AutoEndReason.TIME_LIMIT
+
+
+@pytest.mark.anyio
+async def test_silence_filled_by_the_server_is_not_counted():
+    """프레임 사이 틈은 BE 가 무음으로 메워 Deepgram 에 보낸다. 그 구간의 빈 final 은 들은 게
+    아니라 말 없음으로 세지 않는다 — 세면 네트워크가 흔들릴 때 말하는 사람도 끊긴다."""
+    store = FakeTranscriptStore()
+    adapter = FakeSttAdapter(
+        Plan(replies=[empty_final(0, 100), empty_final(100, 400), empty_final(400, 500)])
+    )
+    stream = make_stream(adapter, store, SHORT_SILENCE)
+    stream.start()
+    await _wait_until_ok(stream)
+    stream.push(frame(1, 0))
+    stream.push(frame(2, 400))  # 300ms 틈 → 무음으로 메움
+
+    await _wait_for(lambda: adapter.session is not None and adapter.session.audio_ms == 500)
+    await asyncio.sleep(0.05)
+    # 들은 말 없음은 200ms 뿐이다 (SHORT_SILENCE 는 300ms 에서 끝낸다)
+    assert auto_end_reason(stream) is None and not stream.is_stopping
+    stream.request_stop()
+    assert await stream.wait_closed(timeout=2.0)
+
+
+@pytest.mark.anyio
+async def test_silence_carries_over_to_a_new_stream_of_the_same_take():
+    """말 없음 기록은 Take 에 붙어 있다. 30초 넘게 끊겼다 새 스트림으로 붙기를 반복해도
+    처음부터 다시 세지 않는다."""
+    take_id = uuid.uuid7()
+
+    def make(*replies: Transcript) -> tuple[TakeStream, FakeSttAdapter]:
+        adapter = FakeSttAdapter(Plan(replies=list(replies)))
+        stream = TakeStream(
+            take_id,
+            owner_id=uuid.uuid7(),
+            stt_adapter=adapter,
+            config=SttConfig(),
+            store=FakeTranscriptStore(),
+            auto_end=SHORT_SILENCE,
+        )
+        return stream, adapter
+
+    first, adapter = make(empty_final(0, 100), empty_final(100, 200))
+    first.start()
+    await _wait_until_ok(first)
+    first.push(frame(1, 0))
+    first.push(frame(2, 100))
+    await _wait_for(lambda: adapter.session is not None and adapter.session.audio_ms == 200)
+    await asyncio.sleep(0.05)
+    first.request_stop()  # grace 가 지나 사라진 것과 같다
+    assert await first.wait_closed(timeout=2.0)
+    assert auto_end_reason(first) is None
+
+    second, _ = make(empty_final(0, 100))
+    second.start()
+    await _wait_until_ok(second)
+    second.push(frame(1, 200))
+    # 앞 스트림의 200ms + 이번 100ms = 300ms
+    assert await second.wait_closed(timeout=2.0)
+    assert auto_end_reason(second) == AutoEndReason.SILENCE
+
+
+@pytest.mark.anyio
+async def test_auto_end_on_a_take_that_already_ended_is_logged(caplog: pytest.LogCaptureFixture):
+    """DB 에 못 적었다(Take 가 지워졌거나 이미 끝남)는 것을 조용히 넘기지 않는다."""
+    stream = make_stream(
+        FakeSttAdapter(), FakeTranscriptStore(marks=False), short_time_limit(1_000)
+    )
+    stream.start()
+    await _wait_until_ok(stream)
+
+    with caplog.at_level("WARNING"):
+        stream.push(frame(1, 950))
+        assert await stream.wait_closed(timeout=2.0)
+        await _wait_for(lambda: "자동 종료를 적지 않았다" in caplog.text)
+
+
+@pytest.mark.anyio
+async def test_shutdown_cancels_cleanup_that_does_not_finish_and_says_which(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """정리가 상한 안에 안 끝나면 루프가 닫히며 조용히 사라지게 두지 않고, 무엇을 끊는지 남긴다."""
+
+    class StuckStore(FakeTranscriptStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.entered = asyncio.Event()
+
+        async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+            self.entered.set()
+            await asyncio.Event().wait()
+            return True
+
+    monkeypatch.setattr(take_stream, "MARK_AUTO_END_TIMEOUT_SEC", 10.0)
+    monkeypatch.setattr(take_stream, "ABORT_TIMEOUT_SEC", 0.1)
+    store = StuckStore()
+    stream = make_stream(FakeSttAdapter(), store, short_time_limit(1_000))
+    stream.start()
+    await _wait_until_ok(stream)
+    stream.push(frame(1, 950))
+    # 스트림을 정리하고 DB 쓰기(상한 10초)에 들어갈 때까지 기다린다
+    await asyncio.wait_for(store.entered.wait(), 2.0)
+
+    # 상한(10.1초)을 기다리지 않게 줄인다. 스트림 정리가 끝난 뒤의 대기만 본다
+    monkeypatch.setattr(take_stream, "MARK_AUTO_END_TIMEOUT_SEC", 0.1)
+    with caplog.at_level("ERROR"):
+        await take_stream.stop_all()
+
+    assert f"take-auto-end:{stream.take_id}" in caplog.text
+    assert not take_stream._background
+
+
+# ── 떠난 Take ─────────────────────────────────────────────────────────
+
+
+def make_plain_stream(take_id: uuid.UUID, store: FakeTranscriptStore) -> TakeStream:
+    return TakeStream(
+        take_id,
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=store,
+    )
+
+
+async def open_and_leave(stream: TakeStream) -> None:
+    """레지스트리에 올리고 오디오를 한 번 보낸 뒤 탭이 사라진다. grace 가 지나면 스트림만 닫힌다."""
+    tab = FakeWebSocket()
+    take_stream._streams[stream.take_id] = stream
+    stream.start()
+    await stream.attach(tab)
+    await _wait_until_ok(stream)
+    stream.push(frame(1, 0), source=tab)
+    stream.detach(tab)
+    assert await stream.wait_closed(timeout=2.0)
+
+
+@pytest.mark.anyio
+async def test_take_left_without_reconnect_is_ended_as_abandoned(monkeypatch: pytest.MonkeyPatch):
+    """탭을 닫으면 grace 뒤 스트림만 닫히고 Take 는 진행 중으로 남는다. 정해진 시간 동안 아무도 다시
+    붙지 않으면 떠난 것으로 끝낸다. 끝난 시각은 끝내는 지금이 아니라 연결이 끊긴 시각이다."""
+    monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
+    monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 0.2)
+    store = FakeTranscriptStore()
+    stream = make_plain_stream(uuid.uuid7(), store)
+
+    await open_and_leave(stream)
+    closed_at = datetime.now(UTC)
+    assert store.abandoned == [], "grace 만료는 스트림만 정리한다"
+
+    await _wait_for(lambda: store.abandoned)
+    [(take_id, ended_at)] = store.abandoned
+    assert take_id == stream.take_id
+    assert abs((ended_at - closed_at).total_seconds()) < 0.1
+    assert store.calls == ["mark_abandoned"]
+
+    # 그 뒤로 다시 붙으면 거절한다. 자동 종료가 아니라 이유 없이
+    with pytest.raises(take_stream.TakeEnded) as info:
+        await take_stream.attach(
+            stream.take_id,
+            FakeWebSocket(),
+            owner_id=stream.owner_id,
+            stt_adapter=FakeSttAdapter(),
+            config=SttConfig(),
+            store=store,
+        )
+    assert info.value.reason is None
+
+
+@pytest.mark.anyio
+async def test_reconnect_before_the_wait_is_over_keeps_the_take(monkeypatch: pytest.MonkeyPatch):
+    """그 안에 다시 붙으면(탭이 살아 있던 FE, 리허설 주소를 다시 연 사용자) 이어서 연습한다."""
+    monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
+    monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 0.2)
+    store = FakeTranscriptStore()
+    stream = make_plain_stream(uuid.uuid7(), store)
+    await open_and_leave(stream)
+
+    resumed = await take_stream.attach(
+        stream.take_id,
+        FakeWebSocket(),
+        owner_id=stream.owner_id,
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=store,
+    )
+    assert resumed is not stream
+    assert stream.take_id not in take_stream._abandon_timers
+
+    await asyncio.sleep(0.3)
+    assert store.abandoned == []
+    assert stream.take_id not in take_stream._ended
+
+
+@pytest.mark.anyio
+async def test_ended_or_deleted_take_is_not_waited_for():
+    """사용자가 끝냈거나(stop · 자동 종료 · Take PUT) Take 가 지워졌으면 기다릴 것이 없다."""
+    store = FakeTranscriptStore()
+
+    stopped = make_plain_stream(uuid.uuid7(), store)
+    stopped.start()
+    await _wait_until_ok(stopped)
+    stopped.end()
+    assert await stopped.wait_closed(timeout=2.0)
+
+    deleted = make_plain_stream(uuid.uuid7(), store)
+    deleted.start()
+    await _wait_until_ok(deleted)
+    deleted.discard()
+    assert await deleted.wait_closed(timeout=2.0)
+
+    assert take_stream._abandon_timers == {}
+
+    # 떠난 뒤(스트림이 닫혀 타이머만 남음) 지운 Take
+    left = uuid.uuid7()
+    take_stream.arm_abandon(left, store, closed_at=datetime.now(UTC))
+    await take_stream.discard([left])
+    assert take_stream._abandon_timers == {}
+
+
+@pytest.mark.anyio
+async def test_timer_that_fires_while_a_stream_is_open_does_not_end_the_take():
+    """옛 스트림의 정리가 새 스트림이 열린 뒤에 끝나 타이머가 남을 수 있다. 울릴 때 다시 본다."""
+    store = FakeTranscriptStore()
+    stream = make_plain_stream(uuid.uuid7(), store)
+    take_stream._streams[stream.take_id] = stream
+    stream.start()
+    await _wait_until_ok(stream)
+
+    take_stream.arm_abandon(stream.take_id, store, closed_at=datetime.now(UTC), delay_sec=0)
+    await asyncio.sleep(0.1)
+
+    assert store.abandoned == []
+    assert not stream.is_stopping
+
+
+@pytest.mark.anyio
+async def test_abandon_write_failure_leaves_the_take_open(caplog: pytest.LogCaptureFixture):
+    """DB 에 못 적었으면 이 프로세스에서도 끝난 것으로 치지 않는다. 다음에 뜰 때 다시 건다."""
+    store = FakeTranscriptStore(fail_mark=True)
+    take_id = uuid.uuid7()
+
+    with caplog.at_level("ERROR"):
+        take_stream.arm_abandon(take_id, store, closed_at=datetime.now(UTC), delay_sec=0)
+        await _wait_for(lambda: "떠난 Take 를 끝내지 못했다" in caplog.text)
+
+    assert take_id not in take_stream._ended
+
+
+@pytest.mark.anyio
+async def test_startup_rearms_timers_from_the_last_activity(monkeypatch: pytest.MonkeyPatch):
+    """앱이 다시 뜨면 메모리의 타이머가 없다. 진행 중으로 남은 Take 를 DB 에서 읽어 마지막 활동에서
+    잰 남은 시간으로 다시 건다. 이미 지난 Take 는 바로 끝낸다."""
+    monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 60.0)
+    store = FakeTranscriptStore()
+    now = datetime.now(UTC)
+    stale, recent = uuid.uuid7(), uuid.uuid7()
+    store.running = [(stale, now - timedelta(seconds=61)), (recent, now - timedelta(seconds=20))]
+
+    await take_stream.arm_abandoned_takes(store)
+
+    await _wait_for(lambda: store.abandoned)
+    assert store.abandoned == [(stale, now - timedelta(seconds=61))]
+    remaining = take_stream._abandon_timers[recent].when() - asyncio.get_running_loop().time()
+    assert 39 < remaining <= 40
+
+
+@pytest.mark.anyio
+async def test_startup_does_not_fail_when_the_running_takes_cannot_be_read(
+    caplog: pytest.LogCaptureFixture,
+):
+    class BrokenStore(FakeTranscriptStore):
+        async def running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
+            raise RuntimeError("db down")
+
+    with caplog.at_level("ERROR"):
+        await take_stream.arm_abandoned_takes(BrokenStore())
+
+    assert "떠난 Take 타이머를 걸지 못했다" in caplog.text
+    assert take_stream._abandon_timers == {}
+
+
+def test_abandoned_take_is_failed_from_its_close_time(db_session: Session, take: Take):
+    """떠난 Take 는 분석하지 않는다 (FAILED). 진행 중일 때만 바꾸고, 지워진 Take 는 넘어간다."""
+    closed_at = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
+    assert take_service.mark_abandoned(db_session, TAKE_ID, closed_at) is True
+    assert take_service.mark_abandoned(db_session, TAKE_ID, datetime.now(UTC)) is False
+    db_session.refresh(take)
+    assert (take.status, take.end_reason, take.ended_at) == ("FAILED", "ABANDONED", closed_at)
+    assert take_service.mark_abandoned(db_session, uuid.uuid7(), closed_at) is False
+
+
+def test_abandon_does_not_touch_a_take_that_already_ended(db_session: Session, user: User):
+    ended = make_take(db_session, user.id, status="ANALYZING")
+    assert take_service.mark_abandoned(db_session, ended.id, datetime.now(UTC)) is False
+    db_session.refresh(ended)
+    assert (ended.status, ended.end_reason) == ("ANALYZING", None)
+
+
+def test_running_takes_report_their_last_activity(db_session: Session, user: User):
+    """만든 시각 · 시작 시각 · 마지막 전사를 저장한 시각 중 가장 늦은 것. 진행 중인 Take 만."""
+    created = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
+    idle = make_take(db_session, user.id)
+    started = make_take(db_session, user.id)
+    spoken = make_take(db_session, user.id)
+    ended = make_take(db_session, user.id, status="ANALYZING")
+    for t in (idle, started, spoken, ended):
+        t.created_at = created
+    started.started_at = created + timedelta(minutes=1)
+    spoken.started_at = created + timedelta(minutes=1)
+    db_session.add_all(
+        TakeTranscriptSegment(
+            take_id=spoken.id,
+            seq=seq,
+            stt_session_no=1,
+            start_ms=0,
+            end_ms=100,
+            transcript="말",
+            words=[],
+            confidence=0.9,
+            speech_final=True,
+            created_at=created + timedelta(minutes=minutes),
+        )
+        for seq, minutes in ((1, 2), (2, 5))
+    )
+    db_session.commit()
+
+    running = dict(take_service.running_takes(db_session))
+
+    assert running == {
+        idle.id: created,
+        started.id: created + timedelta(minutes=1),
+        spoken.id: created + timedelta(minutes=5),
+    }
+
+
+@pytest.mark.anyio
+async def test_db_store_marks_abandoned(db_session: Session, take: Take):
+    store = DbTranscriptStore(session_factory=lambda: db_session)
+    assert await store.running_takes() == [(TAKE_ID, take.created_at)]
+    assert await store.mark_abandoned(TAKE_ID, datetime.now(UTC)) is True
+    assert db_session.scalar(select(Take.status).where(Take.id == TAKE_ID)) == "FAILED"
+    assert await store.running_takes() == []
+
+
+def test_abandoned_take_in_the_database_is_rejected(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User
+):
+    """프로세스가 다시 떠도 DB 가 막는다. 자동 종료가 아니라 auto_end 없이 일반 문구로."""
+    left = make_take(db_session, user.id, status="FAILED")
+    left.end_reason = "ABANDONED"
+    db_session.commit()
+
+    with client.websocket_connect(f"/api/ws/takes/{left.id}") as ws:
+        auth(ws, create_access_token(user.id))
+        rejected = ws.receive_json()
+        assert closed_with(ws) == 1008
+
+    assert rejected == {"type": "error", "code": "TAKE_ENDED", "message": "이미 끝난 연습입니다."}
+    assert stt.configs == []

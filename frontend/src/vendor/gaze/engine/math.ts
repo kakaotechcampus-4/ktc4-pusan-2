@@ -105,5 +105,7 @@ export function finite(...values: number[]): boolean {
 }
 
 export function clamp(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
 }

@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createLevelMeter, openMeasureStream, type LevelMeter, type MeasureStream } from './level';
+import { createVoiceRecorder, type VoiceRecord } from './voiceRecord';
+import type { Ms } from '@/types/api';
 
 /** 화면에 쓰는 dB 바닥. 이보다 작으면 '입력 없음'으로 봅니다 */
 const DB_FLOOR = -60;
@@ -45,8 +47,13 @@ function paint(el: HTMLElement | null, percent: number): void {
  * 둘 다 "어느 스트림에서 나온 값인가"를 같이 들고 있다가 렌더에서 비교합니다.
  * 그래야 장치를 바꿨을 때 이전 마이크의 판정이 그대로 남지 않고,
  * 이펙트 안에서 상태를 되돌리는 setState도 필요 없습니다.
+ *
+ * ── 음량 1초 기록 ───────────────────────────────────────────────────
+ * `clock`(무대 시계)을 넘기면 잴 때마다 그 시각으로 레벨을 쌓고, `voiceRecord(start, end)` 가
+ * 그 구간의 음량 1초 기록을 만듭니다 (`voiceRecord.ts`). 시선 1초 기록과 같은 시계라야 같은 1초를
+ * 가리킵니다. 장치 점검처럼 `clock` 이 없으면 쌓지 않습니다.
  */
-export function useMicLevel(stream: MediaStream | null) {
+export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () => Ms } = {}) {
   const meterRef = useRef<HTMLDivElement>(null);
   /** 점검 항목 줄 전체 문구 ('마이크 입력 확인됨') */
   const rowRef = useRef<HTMLSpanElement>(null);
@@ -77,8 +84,20 @@ export function useMicLevel(stream: MediaStream | null) {
    */
   const [failedFor, setFailedFor] = useState<MediaStream | null>(null);
 
+  /**
+   * 음량 1초 기록의 재료. 스트림이 바뀌면 비웁니다 — 다른 마이크의 레벨이 섞이면 안 됩니다.
+   * 처음 한 번만 만듭니다 (`useState` 의 초기화 함수). 렌더마다 새로 만들면 버려지는 객체가 쌓입니다
+   */
+  const [voice] = useState(createVoiceRecorder);
+  // 루프가 매번 읽습니다. 이펙트 의존성에 넣으면 시계가 바뀔 때마다 계량기를 다시 엽니다
+  const clockRef = useRef(clock);
+  useEffect(() => {
+    clockRef.current = clock;
+  }, [clock]);
+
   useEffect(() => {
     if (!stream) return;
+    voice.reset();
 
     let raf = 0;
     let cancelled = false;
@@ -122,6 +141,18 @@ export function useMicLevel(stream: MediaStream | null) {
         statsRef.current.speechMs = speech.ms;
         paint(meterRef.current, ((db - DB_FLOOR) / -DB_FLOOR) * 100);
 
+        // 음량 1초 기록의 재료. 화면용으로 자르지 않은 레벨과 '말하는 중' 한 기준을 넘깁니다
+        const now = clockRef.current?.();
+        if (now !== undefined) {
+          const track = (measure?.stream ?? stream).getAudioTracks()[0];
+          voice.push({
+            tMs: now,
+            levelDb: meter.levelDb(),
+            speaking: meter.speaking(),
+            live: meter.state === 'running' && track?.readyState === 'live',
+          });
+        }
+
         // 한 번이라도 소리가 들어오면 점검 통과입니다. 이 setState는 스트림당 한 번 돕니다
         if (!heard && meter.silentMs() === 0) {
           heard = true;
@@ -157,10 +188,20 @@ export function useMicLevel(stream: MediaStream | null) {
       // ★ 따로 받은 트랙도 꼭 놓습니다. 안 그러면 화면을 떠나도 마이크 표시등이 남습니다
       measure?.stream.getTracks().forEach((t) => t.stop());
     };
-  }, [stream]);
+  }, [stream, voice]);
+
+  /**
+   * `[startMs, endMs)` 의 음량 1초 기록. 시선 1초 기록이 오면 그 `t_ms` · `duration_ms` 로 부릅니다.
+   * 정체성이 고정이라 의존성에 넣어도 됩니다.
+   */
+  const voiceRecord = useCallback(
+    (startMs: Ms, endMs: Ms): VoiceRecord => voice.record(startMs, endMs),
+    [voice],
+  );
 
   return {
     meterRef,
+    voiceRecord,
     rowRef,
     silentRef,
     statsRef,
