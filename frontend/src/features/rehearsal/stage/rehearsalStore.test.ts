@@ -59,13 +59,32 @@ describe('단계는 한 방향으로만 간다', () => {
     expect(phase()).toBe('RUNNING');
   });
 
-  it('reset 은 슬라이드와 코치도 처음으로 돌린다', () => {
+  it('reset 은 슬라이드와 코치 · 상태 표시도 처음으로 돌린다', () => {
     useRehearsalStore.getState().setSlide(7);
-    useRehearsalStore.getState().showCoach({ type: 'PACE', text: '천천히', atMs: 1000 });
+    useRehearsalStore.getState().showCoach({
+      area: 'SPEED',
+      instruction: 'SLOW_DOWN',
+      text: '천천히',
+      atMs: 1000,
+    });
+    useRehearsalStore.getState().updateIndicators({ SPEED: 'FAST' });
 
     useRehearsalStore.getState().reset();
 
     expect(useRehearsalStore.getState().slideNumber).toBe(1);
     expect(useRehearsalStore.getState().coach).toBeNull();
+    expect(useRehearsalStore.getState().indicators).toEqual({});
+  });
+
+  it('상태 표시는 받은 영역만 바꾸고, 빈 객체는 그대로 둔다', () => {
+    const { updateIndicators } = useRehearsalStore.getState();
+    updateIndicators({ GAZE: 'SCRIPT', TIME: 'ON_TRACK' });
+    updateIndicators({ GAZE: 'AUDIENCE' });
+    const before = useRehearsalStore.getState().indicators;
+    updateIndicators({});
+
+    expect(useRehearsalStore.getState().indicators).toEqual({ GAZE: 'AUDIENCE', TIME: 'ON_TRACK' });
+    // 같은 객체 — 다시 그리지 않습니다
+    expect(useRehearsalStore.getState().indicators).toBe(before);
   });
 });

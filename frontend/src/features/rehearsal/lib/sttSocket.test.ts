@@ -578,6 +578,29 @@ describe('종료', () => {
   });
 });
 
+describe('AI 코치', () => {
+  it('coach 를 받으면 넘긴다 — 연결과 재연결에는 손대지 않는다', async () => {
+    const onCoach = vi.fn();
+    const stt = makeSocket({ onCoach });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    const coach = {
+      type: 'coach',
+      t_ms: 92_000,
+      action: 'WAIT',
+      feedback: null,
+      indicators: { SPEED: 'FAST' },
+    };
+    sockets[0]!.emit(coach);
+
+    expect(onCoach).toHaveBeenCalledExactlyOnceWith(coach);
+    expect(sockets).toHaveLength(1);
+  });
+});
+
 describe('서버의 자동 종료', () => {
   const AUTO_END = { type: 'auto_end', reason: 'TIME_LIMIT', message: '연습은 최대 1시간까지예요' };
 

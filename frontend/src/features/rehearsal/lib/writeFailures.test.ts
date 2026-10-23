@@ -42,10 +42,10 @@ describe('writeFailures', () => {
 
   it('세션이 섞이지 않는다 — 한 탭에서 Take 를 여러 번 합니다', () => {
     noteWriteFailure(SESSION, 'gazeSample', null);
-    noteWriteFailure('other', 'coachLog', null);
+    noteWriteFailure('other', 'slideChange', null);
 
     expect(readWriteFailures(SESSION)).toEqual({ gazeSample: 1 });
-    expect(readWriteFailures('other')).toEqual({ coachLog: 1 });
+    expect(readWriteFailures('other')).toEqual({ slideChange: 1 });
   });
 
   it('비우면 다음 실패가 다시 첫 건이 된다', () => {

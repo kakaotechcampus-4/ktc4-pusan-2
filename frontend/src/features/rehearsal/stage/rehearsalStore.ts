@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Ms } from '@/types/api';
+import type { CoachArea, IndicatorArea } from '../lib/sttProtocol';
 
 export type StagePhase = 'RUNNING' | 'ENDING' | 'ENDED';
 
@@ -17,11 +18,18 @@ export type StagePhase = 'RUNNING' | 'ENDING' | 'ENDED';
  */
 const ORDER: Record<StagePhase, number> = { RUNNING: 0, ENDING: 1, ENDED: 2 };
 
-export interface CoachMessage {
-  type: string;
+/** 지금 띄운 코치의 한마디. 문장은 AI 코치가 만든 것 그대로입니다 */
+export interface CoachNote {
+  area: CoachArea;
+  /** `CONTINUE` 는 칭찬입니다 — 화면이 경고색을 쓰지 않습니다 */
+  instruction: string;
   text: string;
+  /** 서버가 판단한 시각 (`coach.t_ms`) */
   atMs: Ms;
 }
+
+/** 영역 → 판정 모듈의 상태. 받은 영역만 있습니다 */
+export type Indicators = Partial<Record<IndicatorArea, string>>;
 
 /**
  * 화면에 보이는 리허설 상태만 둡니다 (상태 배치표의 가운데 칸).
@@ -31,22 +39,30 @@ export interface CoachMessage {
  *   자료 · 대본 · Take 맥락             : TanStack Query. 서버에서 온 값입니다
  *
  * 슬라이드 번호가 여기 있는 이유는 화면 세 곳(머리줄·다음 슬라이드·대본)이
- * 같은 값을 봐야 하기 때문입니다. 코치 메시지는 8초에 한 번 바뀝니다 —
+ * 같은 값을 봐야 하기 때문입니다. 코치의 한마디와 상태 표시는 서버가 **바뀔 때만** 보냅니다 —
  * 그 주기의 렌더는 이 프로젝트가 허용하는 범위입니다.
  */
 interface RehearsalState {
   phase: StagePhase;
   slideNumber: number;
-  coach: CoachMessage | null;
+  coach: CoachNote | null;
+  indicators: Indicators;
 
   setPhase: (phase: StagePhase) => void;
   setSlide: (slideNumber: number) => void;
-  showCoach: (coach: CoachMessage) => void;
+  showCoach: (coach: CoachNote) => void;
   clearCoach: () => void;
+  /** 받은 영역만 바꿉니다. 빈 객체는 '바뀌지 않음' 입니다 (`coach-agent.md` 5-3) */
+  updateIndicators: (indicators: Indicators) => void;
   reset: () => void;
 }
 
-const INITIAL = { phase: 'RUNNING' as StagePhase, slideNumber: 1, coach: null };
+const INITIAL = {
+  phase: 'RUNNING' as StagePhase,
+  slideNumber: 1,
+  coach: null,
+  indicators: {} as Indicators,
+};
 
 export const useRehearsalStore = create<RehearsalState>((set) => ({
   ...INITIAL,
@@ -57,5 +73,9 @@ export const useRehearsalStore = create<RehearsalState>((set) => ({
   showCoach: (coach) => set({ coach }),
   // 같은 메시지를 두 번 지우지 않도록 비교합니다 — 8초 타이머가 겹칠 수 있습니다
   clearCoach: () => set((s) => (s.coach === null ? s : { coach: null })),
+  updateIndicators: (indicators) =>
+    set((s) =>
+      Object.keys(indicators).length === 0 ? s : { indicators: { ...s.indicators, ...indicators } },
+    ),
   reset: () => set(INITIAL),
 }));

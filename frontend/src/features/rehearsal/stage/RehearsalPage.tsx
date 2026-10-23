@@ -23,7 +23,6 @@ import {
   markEnding,
   markSubmitted,
   markGazeExcluded,
-  readCoachLog,
   readGazeSamples,
   readSlideChanges,
   setEngineVersion,
@@ -36,14 +35,14 @@ import { ScreenLabel } from '@/shared/ui/ScreenLabel';
 import { formatDuration } from '@/shared/lib/clock';
 import type { GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
-import { useCoach } from './useCoach';
+import { useLiveCoach } from './useLiveCoach';
 import { useLiveGaze } from './useLiveGaze';
 import { useRehearsalMaterials } from './useRehearsalMaterials';
-import { useRehearsalStore } from './rehearsalStore';
+import { useRehearsalStore, type Indicators } from './rehearsalStore';
+import { indicatorViews } from '../lib/coachIndicators';
 import {
   abandonOutcome,
   clearClock,
-  coachHistory,
   lastSlide,
   leftWindow,
   readClock,
@@ -51,7 +50,6 @@ import {
   resumeFromMs,
   saveClock,
   type AbandonOutcome,
-  type CoachHistory,
   type LeftWindow,
 } from './resume';
 import { useSlideDeck } from './useSlideDeck';
@@ -83,7 +81,6 @@ interface Resume {
   fromMs: Ms;
   /** 이어받은 슬라이드로 넘어온 시각. 처음이면 null */
   slideAt: Ms | null;
-  coach: CoachHistory | null;
   /** 끝내기를 누른 뒤에 새로고침했으면 그때 고정한 값. 무대를 열지 않고 종료를 이어갑니다 */
   ending: Ending | null;
   /** 종료까지 보낸 Take. 무대를 열지 않고 처리 화면으로 보냅니다 */
@@ -99,7 +96,6 @@ const freshResume = (sessionId: string | null): Resume => ({
   sessionId,
   fromMs: 0,
   slideAt: null,
-  coach: null,
   ending: null,
   submitted: false,
   left: null,
@@ -110,7 +106,7 @@ const freshResume = (sessionId: string | null): Resume => ({
  *
  * ── 이 화면이 지키는 것 ─────────────────────────────────────────────
  *
- * 1. **브라우저가 원본입니다.** 시선 판정·슬라이드 전환·코치 기록이
+ * 1. **브라우저가 원본입니다.** 시선 판정·슬라이드 전환이
  *    전부 IndexedDB에 먼저 쌓입니다. 서버로 가는 건 발표가 끝난 뒤입니다.
  *    음성만 예외입니다 — 로컬에 남기지 않고 WebSocket으로만 흘립니다 (CLAUDE.md 4번).
  *    중간에 탭이 죽어도 남은 기록으로 리포트를 만들 수 있어야 합니다.
@@ -122,10 +118,10 @@ const freshResume = (sessionId: string | null): Resume => ({
  * 3. **끝내기는 되돌릴 수 없습니다.** 숫자는 종료 시점에 영구 고정되고
  *    (서버는 시선을 재계산할 수 없습니다) 그래서 한 번 더 묻습니다.
  *
- * ── 2단(서버)은 어디까지 왔나 ───────────────────────────────────────
- * 마이크 PCM을 WebSocket으로 흘리고 전사를 받는 데까지 붙었습니다(`useSttStream`).
- * 속도·군더더기·대본 일치는 서버가 아직 `metrics`·`coach` 메시지를 안 보내서
- * 코치 줄에는 들어오지 않습니다. 1단이 그것과 무관하게 돈다는 게 이 구조의 요점입니다.
+ * ── 실시간 코치 ──────────────────────────────────────────────────────
+ * 판단은 AI 코치 에이전트가 합니다(`/coach/evaluate`, BE 가 부름). FE 는 WS `coach` 로 받은
+ * 한마디와 상태 표시를 띄우기만 합니다(`useLiveCoach`). FE 가 따로 판정하지 않습니다 —
+ * 기준이 두 곳에 있으면 화면의 말과 리포트의 숫자가 어긋납니다 (`docs/ai/architecture.md` 0절).
  */
 export function RehearsalPage() {
   const { takeId = '' } = useParams();
@@ -146,6 +142,7 @@ export function RehearsalPage() {
 
   const phase = useRehearsalStore((s) => s.phase);
   const coach = useRehearsalStore((s) => s.coach);
+  const indicators = useRehearsalStore((s) => s.indicators);
   const setPhase = useRehearsalStore((s) => s.setPhase);
   const setSlide = useRehearsalStore((s) => s.setSlide);
   const resetStore = useRehearsalStore((s) => s.reset);
@@ -211,13 +208,12 @@ export function RehearsalPage() {
   );
   // 음량 1초 기록을 무대 시계로 쌓습니다 — 시선 1초 기록과 같은 시계라야 같은 1초를 가리킵니다.
   // 기록은 `voiceRecord(t_ms, t_ms + duration_ms)` 로 꺼내고, WS `metrics` 가 붙으면 시선 기록과 함께 보냅니다
-  const { meterRef, statsRef, audioState } = useMicLevel(stream, { clock: elapsedMs });
+  const { meterRef, audioState } = useMicLevel(stream, { clock: elapsedMs });
   const {
     ready: gazeReady,
     engineVersion,
     error: gazeError,
     perf,
-    bottomRatio,
     missingCalibration,
     flushGaze,
   } = useLiveGaze({
@@ -234,7 +230,7 @@ export function RehearsalPage() {
     // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다
     enabled: running && live,
   });
-  const { slideNumber, slideStartedAtRef } = useSlideDeck({
+  const { slideNumber } = useSlideDeck({
     total: pageCount,
     clientSessionId: sessionId,
     elapsedMs,
@@ -256,6 +252,8 @@ export function RehearsalPage() {
   const leaveClosed = useCallback(() => {
     setResume((current) => current && { ...current, left: 'CLOSED' });
   }, []);
+  // 서버가 보낸 AI 코치의 한마디 · 상태 표시를 띄웁니다
+  const onCoach = useLiveCoach({ enabled: running, mode });
   /**
    * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
    * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
@@ -272,19 +270,7 @@ export function RehearsalPage() {
     elapsedMs,
     onAutoEnd,
     onClosed: leaveClosed,
-  });
-
-  useCoach({
-    enabled: running,
-    mode,
-    clientSessionId: sessionId,
-    limitSec,
-    elapsedMs,
-    bottomRatio,
-    statsRef,
-    audioLive: audioState === 'running',
-    slideStartedAtRef,
-    history: resume?.coach ?? null,
+    onCoach,
   });
 
   // ── 세션 잇기 ────────────────────────────────────────────────────
@@ -293,7 +279,7 @@ export function RehearsalPage() {
   // 창을 닫았다 다시 열었거나, 다른 창이 아직 발표 중입니다 (`leftWindow`).
   //
   // ★ 새로고침해도 location.state 는 남습니다. 그래서 막 넘어왔는지 새로고침했는지는
-  //   행을 읽어야 압니다 — 두 길 모두 행을 읽고, 이어받을 것(시계·슬라이드·코치·준비 값·
+  //   행을 읽어야 압니다 — 두 길 모두 행을 읽고, 이어받을 것(시계·슬라이드·준비 값·
   //   종료 중이었나)을 모은 뒤에 무대를 엽니다.
   const resolvedRef = useRef(false);
   useEffect(() => {
@@ -324,26 +310,19 @@ export function RehearsalPage() {
       // 메모리 스토어는 새로고침하면 비어 있습니다. 시선 기준·장치를 되살립니다
       if (row.prepare) restorePrepare(row.prepare);
 
-      // 행은 읽었으니 세션은 잇습니다. 기록을 못 읽으면 슬라이드·코치만 처음부터입니다 —
+      // 행은 읽었으니 세션은 잇습니다. 기록을 못 읽으면 슬라이드만 처음부터입니다 —
       // 아래 catch 로 보내면 행까지 버려 기록이 하나도 안 쌓이고 시계도 0 부터 돕니다
       let slide: ReturnType<typeof lastSlide> = null;
-      let coach: CoachHistory | null = null;
       let recordedUntil: Ms = 0;
       try {
-        const [changes, coachRows, samples] = await Promise.all([
-          readSlideChanges(id),
-          readCoachLog(id),
-          readGazeSamples(id),
-        ]);
+        const [changes, samples] = await Promise.all([readSlideChanges(id), readGazeSamples(id)]);
         slide = lastSlide(changes);
-        coach = coachHistory(coachRows);
         recordedUntil = recordedUntilMs({
           gaze: samples,
           slideAtMs: changes.map((c) => c.atMs),
-          coachAtMs: coachRows.map((c) => c.atMs),
         });
       } catch (err) {
-        console.error('[rehearsal] 슬라이드·코치·시선 기록을 읽지 못했습니다', err);
+        console.error('[rehearsal] 슬라이드·시선 기록을 읽지 못했습니다', err);
       }
       // 무대보다 먼저 되살립니다. 시작하고 나서 바꾸면 1번 슬라이드가 잠깐 보이고 전환으로 기록됩니다
       if (slide) setSlide(slide.slideNumber);
@@ -352,7 +331,6 @@ export function RehearsalPage() {
         sessionId: id,
         fromMs: resumeFromMs(row, readClock(takeId), Date.now(), BEAT_MS, recordedUntil),
         slideAt: slide?.atMs ?? null,
-        coach,
         ending:
           row.ending ??
           // ending 을 남기기 전에 끝낸 행입니다. 마지막 하트비트가 가장 가까운 값입니다
@@ -771,9 +749,17 @@ export function RehearsalPage() {
               </div>
             </div>
 
-            <div className="coach" data-empty={coach === null}>
-              <span>{coach?.text ?? ''}</span>
-              <span className="rule">한 번에 하나만 · 8초 후 사라짐</span>
+            {/* AI 코치의 한마디(8초)와 상태 표시. 실전 모드는 서버가 보내지 않아 비어 있습니다 */}
+            <div
+              className="coach"
+              data-empty={coach === null}
+              // 칭찬("지금처럼")까지 경고색이면 혼나는 느낌이 납니다
+              data-tone={coach?.instruction === 'CONTINUE' ? 'praise' : 'correct'}
+            >
+              <span className="coach-text" role="status">
+                {coach?.text ?? ''}
+              </span>
+              <CoachIndicators indicators={indicators} />
             </div>
 
             <ScriptPane
@@ -886,4 +872,22 @@ function endButtonText(ending: boolean, confirming: boolean): string {
   if (ending) return '정리하는 중…';
   if (confirming) return '정말 끝낼까요?';
   return '발표 끝내기';
+}
+
+/**
+ * AI 코치의 상태 표시. 받은 영역만, 늘 같은 순서로 둡니다. 고칠 것이 있는 영역만 색을 입힙니다 —
+ * 여섯 칸이 모두 칠해져 있으면 어디를 봐야 할지 모릅니다.
+ */
+function CoachIndicators({ indicators }: { indicators: Indicators }) {
+  const views = indicatorViews(indicators);
+  if (views.length === 0) return null;
+  return (
+    <ul className="indicators" aria-label="코치 상태 표시">
+      {views.map((v) => (
+        <li key={v.area} data-tone={v.tone}>
+          {v.label} <b>{v.value}</b>
+        </li>
+      ))}
+    </ul>
+  );
 }

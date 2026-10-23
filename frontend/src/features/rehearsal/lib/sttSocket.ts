@@ -7,6 +7,7 @@ import {
   WS_CLOSE_NORMAL,
   WS_CLOSE_POLICY,
   type AutoEndReason,
+  type CoachMessage,
   type SttErrorCode,
   type SttState,
   type SttStatusMessage,
@@ -110,6 +111,8 @@ export interface SttSocketOptions {
    * 한 번만 옵니다. 이 뒤로는 다시 붙지 않습니다
    */
   onAutoEnd?: (reason: AutoEndReason, message: string) => void;
+  /** AI 코치의 한마디 · 상태 표시 (`coach`). `COACHING` 모드에서만 옵니다 */
+  onCoach?: (message: CoachMessage) => void;
   createSocket?: (url: string) => SocketLike;
   getToken?: (options: { renew: boolean }) => Promise<string | null>;
   /** 느린 재시도 간격을 고르는 난수 [0, 1). 테스트에서 간격을 고정하려고 둡니다 */
@@ -350,7 +353,7 @@ export class SttSocket {
 
   private handleMessage(data: unknown): void {
     const message = parseServerMessage(data);
-    // 모르는 메시지는 버립니다. 서버가 나중에 metrics·coach 를 추가해도 안 깨집니다
+    // 모르는 메시지는 버립니다. 서버가 나중에 새 메시지를 추가해도 안 깨집니다
     if (!message) return;
 
     switch (message.type) {
@@ -373,6 +376,10 @@ export class SttSocket {
         this.options.onState(message.state);
         // 서버가 정리를 끝냈습니다. 이제 닫아도 마지막 전사를 잃지 않습니다
         if (message.state === 'closed') this.dispose();
+        break;
+
+      case 'coach':
+        this.options.onCoach?.(message);
         break;
 
       case 'auto_end':

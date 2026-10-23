@@ -3,6 +3,7 @@ import {
   STT_ABANDONED_MESSAGE,
   STT_ERROR_MESSAGE,
   STT_STATE_NOTE,
+  type CoachMessage,
   type SttState,
   type TranscriptMessage,
 } from '../lib/sttProtocol';
@@ -24,7 +25,8 @@ import type { Ms } from '@/types/api';
  * ── 끊겨도 발표는 계속됩니다 ───────────────────────────────────────
  *
  * 이 훅이 실패하는 모든 경로(마이크 없음·16kHz 거절·인증 만료)는
- * **문구 한 줄**로 끝납니다. 시선과 1단 코치는 그대로 돕니다.
+ * **문구 한 줄**로 끝납니다. 시선 기록 · 시계 · 슬라이드는 그대로 돕니다 (실시간 코치는
+ * 이 소켓으로 오므로 함께 멈춥니다).
  * 네트워크 끊김은 실패로 치지 않습니다 — 소켓이 발표가 끝날 때까지 다시 붙어 보고,
  * 그동안 마이크 캡처도 계속 돕니다. 붙는 순간 말하기 분석이 이어집니다.
  * 끊긴 동안의 음성은 어디에도 남지 않아 그 구간의 말하기 분석은 빠집니다 (CLAUDE.md 4번).
@@ -36,6 +38,7 @@ export function useSttStream({
   elapsedMs,
   onAutoEnd,
   onClosed,
+  onCoach,
 }: {
   takeId: string;
   stream: MediaStream | null;
@@ -50,6 +53,8 @@ export function useSttStream({
    * 실패로 끝냈습니다. 무대는 이어 가지 않고 실패 화면으로 갑니다
    */
   onClosed?: () => void;
+  /** AI 코치의 한마디 · 상태 표시. 서버가 `COACHING` 모드에서만 보냅니다 (`useLiveCoach`) */
+  onCoach?: (message: CoachMessage) => void;
 }) {
   /** 전사 한 줄이 들어갈 자리. 이 훅이 textContent 로 직접 씁니다 */
   const transcriptRef = useRef<HTMLSpanElement>(null);
@@ -66,9 +71,11 @@ export function useSttStream({
   /** 소켓은 effect 안에서 한 번 만들어집니다. 그 뒤에 바뀐 콜백을 부르려고 ref 로 넘깁니다 */
   const onAutoEndRef = useRef(onAutoEnd);
   const onClosedRef = useRef(onClosed);
+  const onCoachRef = useRef(onCoach);
   useEffect(() => {
     onAutoEndRef.current = onAutoEnd;
     onClosedRef.current = onClosed;
+    onCoachRef.current = onCoach;
   });
 
   useEffect(() => {
@@ -114,6 +121,9 @@ export function useSttStream({
             ? STT_ABANDONED_MESSAGE
             : STT_ERROR_MESSAGE[code],
         );
+      },
+      onCoach: (message) => {
+        if (!cancelled) onCoachRef.current?.(message);
       },
       onAutoEnd: (_reason, message) => {
         if (cancelled) return;
