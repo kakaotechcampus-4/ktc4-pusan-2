@@ -71,6 +71,23 @@ class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(50), nullable=False)
 
+class StandardAnalyses(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+
+    __tablename__ = "standard_analyses"
+    __table_args__ = (
+        UniqueConstraint("pitch_id", "version", name="uq_standard_analyses_pitch_version"),
+    )
+
+    pitch_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    targets: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    script_used: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    excluded: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    values: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    meta: Mapped[Any] = mapped_column(JSONB, nullable=False)
+
 class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """업로드된 발표자료 파일의 한 버전. 한 번 올리면 수정하지 않는다."""
 

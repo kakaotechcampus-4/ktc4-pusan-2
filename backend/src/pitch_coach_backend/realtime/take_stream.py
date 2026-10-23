@@ -33,7 +33,8 @@ final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). �
 붙지 못한다. grace 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리한다 — FE 는 끊긴 뒤에도
 다시 붙고, 새 스트림이 번호를 이어 받는다. 그렇게 정리된 뒤 `ABANDON_AFTER_SEC` 동안 아무도
 다시 붙지 않으면 사용자가 떠난 것으로 보고 Take 를 `FAILED`(`ABANDONED`)로 끝낸다(`arm_abandon`).
-이 타이머는 메모리에만 있어 앱이 다시 뜨면 DB 를 보고 다시 건다(`arm_abandoned_takes`).
+최대 시간까지 남은 발표가 그보다 길면 그만큼 기다린다 — 재연결을 포기한 FE 는 STT 없이 발표를
+이어 간다. 이 타이머는 메모리에만 있어 앱이 다시 뜨면 DB 를 보고 다시 건다(`arm_abandoned_takes`).
 
 자동 종료(`auto_end.py`): 말 없음이나 최대 시간에 걸리면 사용자가 stop 을 보낸 것과 같은 순서로
 정리한다 — `auto_end` 를 알리고, 남은 오디오를 흘리고, `stt_status` closed 를 보내고 1000 으로
@@ -121,8 +122,11 @@ MAX_UNSAVED_FINALS = 200
 MARK_AUTO_END_TIMEOUT_SEC = 5.0
 # 연결 없이 스트림이 정리된 뒤 이만큼 아무도 다시 붙지 않으면 사용자가 떠난 것으로 보고 Take 를
 # 끝낸다. FE 가 끊긴 뒤 다시 붙어 보는 시간(sttSocket `GIVE_UP_AFTER_MS`)과 같다 — 그 안이면 탭이
-# 살아 있는 FE 도, 탭을 닫았다가 리허설 주소를 다시 연 사용자도 이어 갈 수 있다
+# 살아 있는 FE 도, 탭을 닫았다가 리허설 주소를 다시 연 사용자도 이어 갈 수 있다.
+# 최대 시간까지 남은 발표가 더 길면 그만큼 기다린다 (`TakeStream._talk_left_sec`)
 ABANDON_AFTER_SEC = 30 * 60.0
+# 앱이 뜰 때 진행 중인 Take 를 읽는 상한. 이걸 기다리는 동안 앱이 요청을 받지 못한다
+ARM_ABANDONED_TIMEOUT_SEC = 10.0
 # 끝낸 Take · Take 별 자동 종료 상태를 프로세스 안에서 기억하는 개수. 오래된 것부터 버린다
 MAX_REMEMBERED_TAKES = 10_000
 
@@ -267,12 +271,13 @@ class TakeStream:
           있던 시간까지 세어 이어서 연습하자마자 끝난다. FE 무대에는 일시정지가 없어서 열려 있던
           시간은 무대 시계와 거의 같다 — 조금 빠른 만큼(연결 · grace) 여유를 둔다.
         """
-        policy = self.auto_end_policy
-        limit_sec = (policy.max_duration_ms + policy.server_clock_slack_ms) / 1000
-        remaining_sec = limit_sec - self._record.streamed_sec
         self._time_limit = asyncio.get_running_loop().call_later(
-            max(0.0, remaining_sec), self._auto_end, AutoEndReason.TIME_LIMIT
+            max(0.0, self._talk_left_sec()), self._auto_end, AutoEndReason.TIME_LIMIT
         )
+
+    def _talk_left_sec(self) -> float:
+        """서버 시계로 잰 최대 시간까지 남은 초. 지났으면 0 이하다."""
+        return _talk_limit_sec(self.auto_end_policy) - self._record.streamed_sec
 
     async def attach(self, ws: WebSocket) -> None:
         """새 연결을 붙인다. 이미 붙어 있으면 **기존 것을 쫓아낸다.**
@@ -506,8 +511,15 @@ class TakeStream:
         self._closed.set()
         forget(self)
         if not self._discarded and self.take_id not in _ended:
-            # Take 는 끝나지 않고 스트림만 닫혔다 (grace 만료 등). 아무도 다시 붙지 않으면 끝낸다
-            arm_abandon(self.take_id, self._store, closed_at=datetime.now(UTC))
+            # Take 는 끝나지 않고 스트림만 닫혔다 (grace 만료 등). 아무도 다시 붙지 않으면 끝낸다.
+            # 재연결을 포기한 FE 는 STT 없이 발표를 이어 가므로 최대 시간까지는 기다린다 — 먼저
+            # 끝내면 발표 중인 Take 가 FAILED 로 보인다
+            arm_abandon(
+                self.take_id,
+                self._store,
+                closed_at=datetime.now(UTC),
+                delay_sec=max(ABANDON_AFTER_SEC, self._talk_left_sec()),
+            )
 
     # ── 오디오 투입 ───────────────────────────────────────────────────
 
@@ -1106,6 +1118,16 @@ class _BoundedDict[K, V](OrderedDict[K, V]):
 _ended: _BoundedDict[uuid.UUID, AutoEndReason | None] = _BoundedDict()
 
 
+def _talk_limit_sec(policy: AutoEndPolicy) -> float:
+    """서버 시계로 잰 최대 시간. 프레임 시각이 먼저 끝내도록 여유를 더한다."""
+    return (policy.max_duration_ms + policy.server_clock_slack_ms) / 1000
+
+
+def longest_abandon_wait_sec() -> float:
+    """연결이 끊긴 뒤 떠난 것으로 끝내기까지 가장 오래 기다리는 시간. 발표 초반에 끊긴 Take 다."""
+    return max(ABANDON_AFTER_SEC, _talk_limit_sec(AutoEndPolicy.from_settings()))
+
+
 @dataclass
 class _TakeRecord:
     """스트림이 바뀌어도 Take 동안 이어지는 자동 종료 상태. 프로세스가 다시 뜨면 비지만 그때는
@@ -1303,20 +1325,20 @@ async def arm_abandoned_takes(store: TranscriptStore) -> None:
     """앱이 뜰 때 부른다. 진행 중으로 남은 Take 마다 떠난 것으로 끝낼 타이머를 다시 건다.
 
     앞 프로세스의 타이머와 끊긴 시각은 사라졌다. 그래서 마지막으로 활동한 시각(전사 저장 등)에서
-    `ABANDON_AFTER_SEC` 뒤로 건다 — 이미 지났으면 바로 끝낸다. 그 안에 FE 가 다시 붙으면 꺼진다.
+    `longest_abandon_wait_sec()` 뒤로 건다 — 남은 발표 시간(서버 시계)도 사라져 최대 시간 전체를
+    기다린다. 이미 지났으면 바로 끝낸다. 그 안에 FE 가 다시 붙으면 꺼진다.
     """
     try:
-        takes = await store.running_takes()
+        takes = await asyncio.wait_for(store.running_takes(), ARM_ABANDONED_TIMEOUT_SEC)
     except Exception:
-        # 앱은 뜬다. 이 Take 들은 다음에 연결이 붙었다 끊길 때 다시 걸린다
+        # 앱은 뜬다 (상한을 넘겨도). 이 Take 들은 다음에 연결이 붙었다 끊길 때 다시 걸린다
         logger.exception("진행 중인 Take 를 읽지 못해 떠난 Take 타이머를 걸지 못했다")
         return
     now = datetime.now(UTC)
+    wait_sec = longest_abandon_wait_sec()
     for take_id, last_active_at in takes:
         idle_sec = (now - last_active_at).total_seconds()
-        arm_abandon(
-            take_id, store, closed_at=last_active_at, delay_sec=ABANDON_AFTER_SEC - idle_sec
-        )
+        arm_abandon(take_id, store, closed_at=last_active_at, delay_sec=wait_sec - idle_sec)
     if takes:
         logger.info("진행 중으로 남은 Take %d개에 떠난 Take 타이머를 걸었다", len(takes))
 

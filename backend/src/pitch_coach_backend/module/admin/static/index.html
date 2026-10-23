@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>관리자 콘솔 | 피치코치</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>피치코치 관리자 콘솔</h1>
+    <nav>
+      <span id="updated" class="muted"></span>
+      <button id="refresh" type="button">새로고침</button>
+      <a href="logs/" target="_blank" rel="noopener">서버 로그 ↗</a>
+    </nav>
+  </header>
+
+  <main>
+    <p id="error" class="error" hidden></p>
+
+    <section class="cards" id="cards"></section>
+
+    <section class="grid-2">
+      <div class="panel">
+        <h2>일별 연습 <small class="muted days"></small></h2>
+        <div class="bars" id="daily-takes"></div>
+      </div>
+      <div class="panel">
+        <h2>일별 가입 <small class="muted days"></small></h2>
+        <div class="bars" id="daily-signups"></div>
+      </div>
+    </section>
+
+    <section class="grid-4">
+      <div class="panel"><h2>상태</h2><table id="by-status"></table></div>
+      <div class="panel"><h2>모드</h2><table id="by-mode"></table></div>
+      <div class="panel"><h2>대본 표시</h2><table id="by-script-mode"></table></div>
+      <div class="panel"><h2>종료 이유</h2><table id="by-end-reason"></table></div>
+    </section>
+
+    <section class="panel">
+      <h2>멈춘 연습 <small class="muted">진행 중으로 끝날 시간을 넘긴 것</small></h2>
+      <div class="scroll"><table id="stuck-takes"></table></div>
+    </section>
+
+    <section class="panel">
+      <h2>실패한 연습 <small class="muted">최근 50개</small></h2>
+      <div class="scroll"><table id="failed-takes"></table></div>
+    </section>
+
+    <section class="panel">
+      <h2>최근 연습 <small class="muted">최근 50개</small></h2>
+      <div class="scroll"><table id="recent-takes"></table></div>
+    </section>
+
+    <section class="panel">
+      <h2>사용자별</h2>
+      <div class="scroll"><table id="users"></table></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

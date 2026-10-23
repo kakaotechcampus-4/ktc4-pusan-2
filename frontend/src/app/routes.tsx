@@ -18,6 +18,7 @@ import { DesignDraftRoute, DesignIndex } from '@/dev/design/DesignIndex';
 import { AboutPage } from '@/features/info/AboutPage';
 import { UnsupportedPage } from '@/features/info/UnsupportedPage';
 import { NotFoundPage } from '@/features/info/NotFoundPage';
+import { MyPage } from '@/features/auth/MyPage';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -53,7 +54,7 @@ const routes = [
   { path: '/takes/:takeId',            title: 'Take 리포트 | 피치코치', element: <Stub id="P6"  name="Take 리포트" track="B" /> },
   { path: '/pitch/:id/comparison',     title: 'Take 비교 | 피치코치', element: <Stub id="P7"  name="Take 비교" track="B" /> },
   { path: '/pitch/:id/best',           title: 'Best Take 선택 | 피치코치', element: <Stub id="P8"  name="Best Take 선택" track="B" /> },
-  { path: '/me',          title: '마이페이지 | 피치코치', element: <Stub id="P9"   name="마이페이지" track="B" /> },
+  { path: '/me',          title: '마이페이지 | 피치코치', element: <MyPage /> },
   { path: '/privacy',     title: '개인정보 처리방침 | 피치코치', element: <PolicyPage kind="privacy" /> },
   { path: '/terms',       title: '이용약관 | 피치코치', element: <PolicyPage kind="terms" /> },
   { path: '/unsupported', title: '미지원 브라우저 | 피치코치', element: <UnsupportedPage /> },

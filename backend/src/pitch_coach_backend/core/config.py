@@ -8,6 +8,8 @@ BACKEND_DIR = Path(__file__).resolve().parents[3]
 
 # HS256 키는 해시 출력 길이(32바이트) 이상이어야 추측으로 서명을 깨기 어렵다
 JWT_SECRET_KEY_MIN_BYTES = 32
+# 관리자 콘솔 비밀번호. 시도 횟수 제한이 없어 짧으면 대입으로 뚫린다
+ADMIN_PASSWORD_MIN_LENGTH = 12
 
 
 class Settings(BaseSettings):
@@ -59,6 +61,12 @@ class Settings(BaseSettings):
     # Chrome·Firefox 는 http://localhost 를 신뢰 출처로 보므로 로컬에서도 동작한다.
     cookie_secure: bool = True
 
+    # 관리자 콘솔(/admin) 로그인. 팀 공용 계정 하나다. 둘 중 하나라도 비어 있으면 콘솔이
+    # 열리지 않는다 (404). 서버 로그(/admin/logs)도 Caddy 가 forward_auth 로 BE 에 물어 같은
+    # 계정으로 막는다. 브라우저 로그인 창(HTTP Basic)은 ASCII 만 받아서 영문 · 숫자 · 기호만 쓴다
+    admin_username: str = ""
+    admin_password: str = ""
+
     # AI 서버 (대본 파싱 등). 운영은 compose 내부 주소 http://ai:8000.
     # 필수로 두지 않는다 — 빠져도 BE 는 뜨고, 파싱만 AI_UNAVAILABLE 로 실패한다
     ai_base_url: str = "http://localhost:8001"
@@ -78,6 +86,35 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"JWT_SECRET_KEY 는 {JWT_SECRET_KEY_MIN_BYTES}바이트 이상이어야 합니다. "
                 "openssl rand -hex 32 로 만드세요."
+            )
+        return value
+
+    @field_validator("admin_username", "admin_password")
+    @classmethod
+    def _admin_account_is_ascii(cls, value: str) -> str:
+        # FastAPI HTTPBasic 이 ASCII 로만 읽어서, 한글이 있으면 맞게 입력해도 401 만 난다
+        if not value.isascii():
+            raise ValueError(
+                "ADMIN_USERNAME · ADMIN_PASSWORD 는 영문 · 숫자 · 기호만 쓸 수 있습니다."
+            )
+        return value
+
+    @field_validator("admin_username")
+    @classmethod
+    def _admin_username_has_no_colon(cls, value: str) -> str:
+        # Basic 은 '아이디:비밀번호' 를 첫 콜론에서 나눈다
+        if ":" in value:
+            raise ValueError("ADMIN_USERNAME 에는 콜론(:)을 쓸 수 없습니다.")
+        return value
+
+    @field_validator("admin_password")
+    @classmethod
+    def _admin_password_is_long_enough(cls, value: str) -> str:
+        # 비어 있으면 콘솔이 꺼진 것이라 검사하지 않는다
+        if value and len(value) < ADMIN_PASSWORD_MIN_LENGTH:
+            raise ValueError(
+                f"ADMIN_PASSWORD 는 {ADMIN_PASSWORD_MIN_LENGTH}자 이상이어야 합니다. "
+                "openssl rand -base64 18 로 만드세요."
             )
         return value
 

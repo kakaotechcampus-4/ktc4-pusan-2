@@ -1,6 +1,6 @@
 import { Card } from '@/shared/ui/Panel';
 import { Mascot } from '@/shared/ui/Mascot';
-import { InfoPage } from './InfoPage';
+import { InfoPage } from '@/shared/ui/InfoPage';
 
 /** P14 분석 방식 설명 — 시안 `/dev/design/about` */
 

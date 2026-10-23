@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from 'react-router';
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 import { useLogout, useSession } from './useSession';
 
 export function RequireSession({ showHeader = true }: { showHeader?: boolean }) {
@@ -38,6 +38,9 @@ export function RequireSession({ showHeader = true }: { showHeader?: boolean }) 
       {showHeader && (
         <div className="flex items-center justify-end gap-4 px-6 py-3 text-sm">
           <span>{session.data.name}</span>
+          <NavLink to="/me" className="underline aria-[current=page]:font-bold">
+            마이페이지
+          </NavLink>
           <button
             disabled={signOut.isPending}
             onClick={() => signOut.mutate()}
