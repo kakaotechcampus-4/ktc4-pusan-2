@@ -46,6 +46,20 @@ describe('서버 메시지 파싱', () => {
     expect(ended).toEqual({ type: 'auto_end', reason: 'SILENCE', message: '2분 넘게 말이 없어요' });
   });
 
+  it('에러의 끝낸 이유를 통과시키고, 없거나 모르는 이유는 null 로 둔다', () => {
+    const error = (extra: object) =>
+      parseServerMessage(
+        JSON.stringify({ type: 'error', code: 'TAKE_ENDED', message: '끝남', ...extra }),
+      );
+
+    expect(error({ end_reason: 'CLOSED' })).toMatchObject({ end_reason: 'CLOSED' });
+    expect(error({ end_reason: 'ABANDONED' })).toMatchObject({ end_reason: 'ABANDONED' });
+    // 사용자가 끝낸 Take 는 서버가 필드를 뺍니다
+    expect(error({})).toMatchObject({ end_reason: null });
+    // 서버가 나중에 늘린 값은 분기할 수 없습니다
+    expect(error({ end_reason: 'SOMETHING_NEW' })).toMatchObject({ end_reason: null });
+  });
+
   it('모르는 메시지와 깨진 입력은 null 이다 — 발표 중에 예외가 나면 그걸로 끝이다', () => {
     expect(parseServerMessage(JSON.stringify({ type: 'metrics', wpm: 120 }))).toBeNull();
     expect(parseServerMessage('{ 이건 JSON 이 아니다')).toBeNull();

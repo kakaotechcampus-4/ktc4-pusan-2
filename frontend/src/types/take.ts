@@ -1,4 +1,4 @@
-import type { PracticeMode, ScriptMode } from './api';
+import type { PracticeMode, ScriptMode, TakeStatus } from './api';
 
 /**
  * Take 생성 — `POST /api/pitches/{pitch_id}/takes/`. BE 그대로 snake_case 입니다 (`TakeInitRequestDTO`).
@@ -72,4 +72,15 @@ export interface TakeEndRequest {
 export interface TakeUpdated {
   message: string;
   take_id: string;
+}
+
+/**
+ * 창을 닫았다 다시 연 Take 를 실패로 끝낸 결과 — `POST /api/pitches/{pitch_id}/takes/{take_id}/abandon`.
+ * 진행 중이었으면 `FAILED` 로 바뀌고, 이미 끝났으면 그대로인 지금 상태가 옵니다.
+ * 다른 창이 발표 중이면 409 `TAKE_IN_PROGRESS` 입니다.
+ */
+export interface TakeAbandoned {
+  message: string;
+  take_id: string;
+  status: TakeStatus;
 }

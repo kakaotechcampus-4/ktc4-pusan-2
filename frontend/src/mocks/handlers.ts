@@ -225,6 +225,15 @@ export const handlers = [
     HttpResponse.json({ message: 'Take updated successfully', take_id: String(params.takeId) }),
   ),
 
+  // BE 모양 그대로 — 창을 닫았다 다시 연 Take 를 실패로 끝냅니다. 응답 {message, take_id, status}
+  http.post('*/api/pitches/:pitchId/takes/:takeId/abandon', ({ params }) =>
+    HttpResponse.json({
+      message: 'Take abandoned',
+      take_id: String(params.takeId),
+      status: 'FAILED',
+    }),
+  ),
+
   // BE 모양 그대로 — POST /pitches/{id}/takes/{take_id}/calibration, 응답 {message, calibration_id}
   http.post('*/api/pitches/:pitchId/takes/:takeId/calibration', () =>
     HttpResponse.json({ message: 'Calibration created successfully', calibration_id: 'cal1' }),

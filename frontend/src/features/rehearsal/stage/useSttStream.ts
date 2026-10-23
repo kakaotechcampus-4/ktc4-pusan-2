@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  STT_ABANDONED_MESSAGE,
   STT_ERROR_MESSAGE,
   STT_STATE_NOTE,
   type SttState,
@@ -34,6 +35,7 @@ export function useSttStream({
   enabled,
   elapsedMs,
   onAutoEnd,
+  onClosed,
 }: {
   takeId: string;
   stream: MediaStream | null;
@@ -43,6 +45,11 @@ export function useSttStream({
   elapsedMs: () => Ms;
   /** 서버가 Take 를 자동으로 끝냈습니다 (말 없음 · 최대 시간). 무대가 종료 흐름을 탑니다 */
   onAutoEnd?: () => void;
+  /**
+   * 창을 닫아 끝난 Take 입니다 (`TAKE_ENDED` · `CLOSED`). 닫은 탭을 늦게 복원했거나 다른 창이
+   * 실패로 끝냈습니다. 무대는 이어 가지 않고 실패 화면으로 갑니다
+   */
+  onClosed?: () => void;
 }) {
   /** 전사 한 줄이 들어갈 자리. 이 훅이 textContent 로 직접 씁니다 */
   const transcriptRef = useRef<HTMLSpanElement>(null);
@@ -58,8 +65,10 @@ export function useSttStream({
 
   /** 소켓은 effect 안에서 한 번 만들어집니다. 그 뒤에 바뀐 콜백을 부르려고 ref 로 넘깁니다 */
   const onAutoEndRef = useRef(onAutoEnd);
+  const onClosedRef = useRef(onClosed);
   useEffect(() => {
     onAutoEndRef.current = onAutoEnd;
+    onClosedRef.current = onClosed;
   });
 
   useEffect(() => {
@@ -93,8 +102,18 @@ export function useSttStream({
       onStatus: (message) => {
         statsRef.current = { frames: message.frames, lostMs: message.lost_ms };
       },
-      onError: (code) => {
-        if (!cancelled) setErrorNote(STT_ERROR_MESSAGE[code]);
+      onError: (code, _message, endReason) => {
+        if (cancelled) return;
+        if (code === 'TAKE_ENDED' && endReason === 'CLOSED') {
+          onClosedRef.current?.();
+          return;
+        }
+        // 오래 끊겨 서버가 끝냈지만 발표는 이어 갑니다. 끝내기를 보내면 서버가 되살립니다
+        setErrorNote(
+          code === 'TAKE_ENDED' && endReason === 'ABANDONED'
+            ? STT_ABANDONED_MESSAGE
+            : STT_ERROR_MESSAGE[code],
+        );
       },
       onAutoEnd: (_reason, message) => {
         if (cancelled) return;
