@@ -621,8 +621,8 @@ features/<모듈>/
 |---|---|
 | 이 문서 | 모든 기능이 영향을 받으므로 크기 · 배포 여부와 상관없이 AI 팀 회의에서 정하고, JWK0395 · jinn-ie 두 사람의 합의를 Issue 댓글로 남긴 뒤 고친다. PR은 두 사람 중 작성자가 아닌 쪽의 승인 리뷰를 받아 merge한다. FE · BE와 주고받는 값이 걸리면 그 팀과도 합의한다 ([문서 수정 규칙](README.md#수정-규칙)) |
 | 기능 문서 (`features/`) | 기능 안에서 끝나는 변경은 담당이 바로 고친다. FE · BE와 주고받는 값이 바뀌면 그 팀과 Issue에서 합의한다(배포 전 기능은 고치고 알린다). 다른 팀은 바꿀 곳을 Issue로 남긴다 ([문서 수정 규칙](README.md#수정-규칙)) |
-| 서비스 문서 (`ai-service.md`) | 서비스 안에서 끝나는 변경은 서비스 담당이 바로 고친다. 모든 기능 담당이 따르는 것(기능을 붙이는 순서 · 공통 모듈 쓰는 법)이 바뀌면 jinn-ie를 PR 리뷰어로 넣는다. BE · 인프라가 하는 일(compose · 배포 워크플로 · 시크릿 · 헬스체크 · AI 주소)이 바뀌면 그 팀과 Issue에서 합의한다. 공통 계약이 바뀌면 이 문서를 먼저 바꾼다 ([문서 수정 규칙](README.md#수정-규칙)) |
-| 기능 계약(`schemas.py`) — 선택 필드 추가 | FE · BE와 주고받는 값이면 호환되는 선택 필드 추가도 [문서 수정 규칙](README.md#수정-규칙)을 따른다(배포된 기능은 그 팀과 먼저 합의, 배포 전 기능은 고치고 알림). 다른 AI 기능만 받는 값이면 그냥 한다(받는 쪽은 모르는 필드를 무시한다). 받는 쪽이 모르는 필드를 거부하면 아래 줄과 같은 절차를 따른다 |
+| 서비스 문서 (`ai-service.md`) | 서비스 안에서 끝나는 변경은 서비스 담당이 바로 고친다. 모든 기능 담당이 따르는 것(기능을 붙이는 순서 · 공통 모듈 쓰는 법)이 바뀌면 다른 기능 담당을 PR 본문 @멘션으로 알린다. 이 알림 때문에 리뷰어로 지정하거나 승인을 기다리지 않는다. 다른 필수 합의·승인 요건은 유지한다. BE · 인프라가 하는 일(compose · 배포 워크플로 · 시크릿 · 헬스체크 · AI 주소)이 바뀌면 그 팀과 Issue에서 합의한다. 공통 계약이 바뀌면 이 문서를 먼저 바꾼다 ([문서 수정 규칙](README.md#수정-규칙)) |
+| 기능 계약(`schemas.py`) — 선택 필드 추가 | FE · BE와 주고받는 값이면 호환되는 선택 필드 추가도 [문서 수정 규칙](README.md#수정-규칙)을 따른다(배포된 기능은 그 팀과 먼저 합의, 배포 전 기능은 고치고 알림). 다른 AI 기능과 주고받는 선택 필드도 공통 계약 여부·상대 동의·배포 전 알림을 [문서 수정 규칙](README.md#수정-규칙)으로 확인한다. 받는 쪽이 모르는 필드를 거부하면 아래 줄과 같은 절차를 따른다 |
 | 기능 계약 — 이름 변경 · 삭제 · 뜻 변경 · 필수 입력 추가 | 받는 쪽(BE · 다른 기능)과 먼저 맞추고, 기능 버전과 `meta.schema_version`을 올리고, 1절 모듈 표의 '쓰는 곳' 담당을 PR 리뷰어로 지정한다. BE 호출 코드는 같은 PR이나 바로 다음 PR에서 함께 바꾼다 |
 | 기준값(`config.py`) | `criteria_version`이 바뀐다. 그 모듈의 결과 JSON을 다시 만들어 같은 PR에 넣는다 |
 | 저장 모양(1-1) | 계약 변경이다. 테이블 · 칸 변경은 배포 전에 BE 마이그레이션으로 |
@@ -634,22 +634,10 @@ features/<모듈>/
 # 13. 기능 담당 지도
 **폴더 담당**: `ai/`(서비스 `ai/service/` · 연구 `ai/research/` · `ai/.env.example`)는 AI가, `backend/` · `infra/` · `.github/workflows/`는 BE가, `frontend/`는 FE가 관리한다. 다른 팀 폴더에 필요한 변경은 그 팀에 요청한다. 예외는 하나뿐이다: **AI 기능 결과의 DB 값**(무엇을 · 어느 테이블 · 칸에 · 어떤 형식으로 저장할지, 1-1)은 AI가 정하고, 마이그레이션 · 구현 · 운영은 BE가 한다.
 
-| 기능 | 저장소 위치 | 담당 | 설계 문서 |
-|---|---|---|---|
-| 공통 계약 (공통 1초 판정 결과 포함) | 모든 판정 모듈 · `ai/service` | JWK0395 | 이 문서 |
-| 실시간 코치 `coach` (시간 판정 `timing` 포함) | `ai/research/coach-agent` | JWK0395 | [coach-agent.md](features/coach-agent.md) |
-| AI 서비스 · Docker `service` | `ai/service` | JWK0395 | [ai-service.md](ai-service.md) |
-| 시선 `gaze` | `ai/research/gaze-tracking` | JWK0395 | [gaze-tracking.md](features/gaze-tracking.md) |
-| 군더더기 `filler` | — | JWK0395 | [filler.md](features/filler.md) |
-| 대본 전달도 `script_coverage` | `ai/research/script-coverage-evaluation` | JWK0395 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) |
-| 말 속도 · 멈춤 `pace` | — | jinn-ie | [pace.md](features/pace.md) |
-| 소리 크기 · 침묵 `volume` | — | jinn-ie | [volume.md](features/volume.md) |
-| 대본 파싱 `script_parser` | `ai/research/script-parser` | jinn-ie | [script-parser.md](features/script-parser.md) |
-| 평가 기준 분석 `evaluation_criteria` | `ai/research/evaluation-criteria` | jinn-ie | [evaluation-criteria.md](features/evaluation-criteria.md) |
-| 리뷰 에이전트 `review` | — | jinn-ie | [review-agent.md](features/review-agent.md) |
+기능의 담당·상태·활성 연구 코드와 기능 문서 링크는 [README의 기능 지도](README.md#기능-지도)에서 확인한다. 이 문서에 담당 표를 중복하지 않는다. 서비스 담당은 README, 서비스의 실행·구성은 [ai-service.md](ai-service.md)가 기준이다.
 
 - 기능은 담당이 개발한다. 문서를 고치는 규칙은 [문서 수정 규칙](README.md#수정-규칙)을 따른다.
-- 저장소 위치가 `—`인 기능은 연구 폴더가 아직 없다. 코치 연구 폴더 안의 연구용 판정 대역(`coach_lab/judges/`)은 실제 판정 모듈 대신 쓰는 시험용이다.
+- 코치 연구 폴더의 시험용 대역은 실제 기능 구현으로 세지 않는다. 실제 기능 상태는 기능 지도에서 확인한다.
 
 # 14. 확정 값 한눈에
 | 항목 | 값 | 어디서 정하나 |
