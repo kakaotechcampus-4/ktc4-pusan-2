@@ -657,7 +657,7 @@ function BaseVoicePanel({
 const READ_STEPS = [
   { done: '목소리가 들려요', doing: '말소리를 기다리고 있어요' },
   { done: '충분히 들었어요', doing: '계속 읽어 주세요' },
-  { done: '다 읽었어요', doing: '끝까지 읽고 아래 버튼을 눌러 주세요' },
+  { done: '다 읽고 버튼 누르기', doing: '끝까지 읽고 아래 버튼을 눌러 주세요' },
 ] as const;
 
 const READ_STEP_INDEX: Record<ReadStage, number> = { WAITING: 0, HEARD: 1, ENOUGH: 2 };
