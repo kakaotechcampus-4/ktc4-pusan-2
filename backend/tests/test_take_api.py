@@ -74,6 +74,39 @@ def test_previous_missions_without_take_is_empty(
     }
 
 
+def test_previous_missions_next_take_number_counts_takes_not_reviewed(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """미션은 리뷰가 끝난 3번에서 오지만 번호는 리뷰가 안 끝난 4 · 5번 뒤인 6이다."""
+    takes = [_make_take(db_session, pitch_id, versions, number) for number in range(1, 6)]
+    takes[2].review_status = "DONE"
+    db_session.flush()
+
+    body = _missions(client, pitch_id, auth_headers).json()["missions"]
+
+    assert body["source_take_id"] == str(takes[2].id)
+    assert body["next_take_number"] == 6
+
+
+def test_previous_missions_without_reviewed_take_still_counts_takes(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    _make_take(db_session, pitch_id, versions, 1)
+    _make_take(db_session, pitch_id, versions, 2)
+
+    body = _missions(client, pitch_id, auth_headers).json()["missions"]
+
+    assert body == {"source_take_id": None, "next_take_number": 3, "missions": []}
+
+
 def test_previous_missions_come_from_latest_take(
     client: TestClient,
     db_session: Session,

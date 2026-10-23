@@ -224,13 +224,17 @@ def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
 def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
     take_repository = TakeRepository(db)
     latest_take = take_repository.get_latest_reviewed_take_in_pitch(pitch_id)
+    # 미션은 리뷰가 끝난 Take 에서 오지만 번호는 그 뒤에 만든 Take 까지 센다 (Take 생성과 같은 값)
+    next_take_number = take_repository.next_take_number(pitch_id)
 
     if latest_take is None:
-        return PreviousMissionsDTO(source_take_id=None, next_take_number=1, missions=[])
+        return PreviousMissionsDTO(
+            source_take_id=None, next_take_number=next_take_number, missions=[]
+        )
 
     return PreviousMissionsDTO(
         source_take_id=latest_take.id,
-        next_take_number=latest_take.take_number + 1,
+        next_take_number=next_take_number,
         missions = [
             MissionDTO(
                 mission_id=mission.id,
