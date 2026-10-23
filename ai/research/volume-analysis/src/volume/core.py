@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from statistics import median
 from typing import Any
 
 from .config import Config
@@ -112,6 +113,32 @@ def judge(
         issues=pause_issues,
     )
     return [volume, pause]
+
+
+def speaking_levels(
+    records: list[VoiceRecord | dict[str, Any]], config: Config = Config()
+) -> list[float]:
+    """음량 1초 기록 → 그중 말한 1초의 ``level_db`` (시각 순). 기준 음량 표본으로 코치가 모은다.
+
+    말한 1초를 고르는 기준값을 이 모듈이 갖게 해서, 코치가 판정 기준을 따로 두지 않게 한다.
+    ``level_db`` 가 null 인 1초도 뺀다.
+    """
+    parsed = [r if isinstance(r, VoiceRecord) else VoiceRecord.model_validate(r) for r in records]
+    return [
+        r.level_db
+        for r in _dedupe(parsed)
+        if _spoken(r, config) and r.level_db is not None
+    ]
+
+
+def baseline(levels: list[float], config: Config = Config()) -> float | None:
+    """말한 1초의 ``level_db`` 표본 → 기준 음량. 표본이 모자라면 None.
+
+    앞에서 ``baseline_samples`` 개의 중앙값이다. 코치는 값이 나오면 고정하고 표본을 비운다.
+    """
+    if len(levels) < config.baseline_samples:
+        return None
+    return round(median(levels[: config.baseline_samples]), 2)
 
 
 def summarize(tally: dict[str, dict[str, float]], config: Config = Config()) -> Summary:

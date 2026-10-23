@@ -24,6 +24,8 @@ class Config(BaseModel):
     voiced_min_ms: int = 500
     #: 짧은 창에 말한 1초가 이만큼 있어야 VOLUME 을 잴 수 있다
     min_voiced_seconds: int = 3
+    #: 기준 음량을 Take 첫 발화로 잡을 때 쓰는 말한 1초 표본 수. 앞에서 이만큼의 중앙값
+    baseline_samples: int = 15
     #: 연속 무음이 이 값을 넘으면 긴 침묵(SILENT · LONG_SILENCE). severity 0.5
     long_silence_ms: int = 5_000
     #: 아주 긴 침묵. severity 1.0
