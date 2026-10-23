@@ -40,14 +40,17 @@ class _Out(BaseModel):
 class VoiceRecord(_In):
     """음량 1초 기록 한 개 (5-2)."""
 
-    t_ms: int = Field(ge=0, description="Take 시작 기준 이 1초의 시작 시각. 시선 1초 기록과 같은 격자")
+    t_ms: int = Field(
+        ge=0, description="Take 시작 기준 이 1초의 시작 시각. 시선 1초 기록과 같은 격자"
+    )
     duration_ms: int = Field(gt=0, description="보통 1000. stop 직전 마지막 조각만 짧다")
     level_db: float | None = Field(
         default=None, description="말한 구간의 Leq(A 가중 · Fast, dBFS). 말한 구간이 없으면 null"
     )
     voiced_ms: int = Field(ge=0, description="이 1초 중 '말하는 중'이었던 ms")
     silence_ms: int = Field(
-        ge=0, description="이 1초 끝에서 거꾸로 센 연속 무음 길이. 앞 1초들에서 이어지면 1초를 넘는다"
+        ge=0,
+        description="이 1초 끝에서 거꾸로 센 연속 무음 길이. 앞 1초들에서 이어지면 1초를 넘는다",
     )
     audio_live: bool = Field(description="이 1초 동안 오디오가 흘렀나")
 

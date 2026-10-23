@@ -32,7 +32,9 @@ def test_volume_metrics() -> None:
 
 
 def test_pause_metrics() -> None:
-    p = summarize({"PAUSE": {"long_silence_count": 2, "audio_live_ms": 990, "total_ms": 1000}}).PAUSE
+    p = summarize(
+        {"PAUSE": {"long_silence_count": 2, "audio_live_ms": 990, "total_ms": 1000}}
+    ).PAUSE
     assert p.long_silence_count == 2
     assert p.measured_ratio == pytest.approx(0.99)
 
@@ -52,7 +54,16 @@ def test_no_voice_means_volume_measured_zero() -> None:
 
 
 def test_no_baseline_means_no_diff() -> None:
-    s = summarize({"VOLUME": {"voiced_ms": 1000, "voiced_energy": 10**-3 * 1000, "audio_live_ms": 1000, "total_ms": 1000}})
+    s = summarize(
+        {
+            "VOLUME": {
+                "voiced_ms": 1000,
+                "voiced_energy": 10**-3 * 1000,
+                "audio_live_ms": 1000,
+                "total_ms": 1000,
+            }
+        }
+    )
     assert s.VOLUME.level_db == pytest.approx(-30.0)
     assert s.VOLUME.voice_diff_db is None
     assert s.VOLUME.measured_ratio == 0.0

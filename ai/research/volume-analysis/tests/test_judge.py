@@ -1,4 +1,7 @@
-"""judge 판정 규칙 — 작음 · 잴 수 없음 · 에너지 Leq · 침묵 자르기 · 긴 침묵 세기 · 커서 (volume.md 10절)."""
+"""judge 판정 규칙 (volume.md 10절).
+
+작음 · 잴 수 없음 · 에너지 Leq · 침묵 자르기 · 긴 침묵 세기 · 커서.
+"""
 
 from __future__ import annotations
 
@@ -32,7 +35,11 @@ def rec(
 
 
 def run(records: list[dict[str, Any]], t_ms: int, since_ms: int | None = None, base=BASE):
-    inputs = {"records": records, "base_level_db": base, "since_ms": t_ms - 1000 if since_ms is None else since_ms}
+    inputs = {
+        "records": records,
+        "base_level_db": base,
+        "since_ms": t_ms - 1000 if since_ms is None else since_ms,
+    }
     return judge(inputs, t_ms)
 
 
@@ -282,5 +289,7 @@ def test_deterministic() -> None:
 
 def test_unknown_fields_are_ignored() -> None:
     record = {**rec(40000), "extra": 1}
-    volume, _ = judge({"records": [record], "base_level_db": BASE, "since_ms": 40000, "x": 1}, 41000)
+    volume, _ = judge(
+        {"records": [record], "base_level_db": BASE, "since_ms": 40000, "x": 1}, 41000
+    )
     assert volume.tally[0].values.voiced_ms == 800

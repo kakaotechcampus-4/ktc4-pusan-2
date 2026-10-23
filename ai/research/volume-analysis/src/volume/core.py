@@ -124,11 +124,7 @@ def speaking_levels(
     ``level_db`` 가 null 인 1초도 뺀다.
     """
     parsed = [r if isinstance(r, VoiceRecord) else VoiceRecord.model_validate(r) for r in records]
-    return [
-        r.level_db
-        for r in _dedupe(parsed)
-        if _spoken(r, config) and r.level_db is not None
-    ]
+    return [r.level_db for r in _dedupe(parsed) if _spoken(r, config) and r.level_db is not None]
 
 
 def baseline(levels: list[float], config: Config = Config()) -> float | None:
@@ -144,7 +140,8 @@ def baseline(levels: list[float], config: Config = Config()) -> float | None:
 def summarize(tally: dict[str, dict[str, float]], config: Config = Config()) -> Summary:
     """장 · Take 의 ``tally`` 합계(영역 → 이름 → 합) → 영역별 지표.
 
-    분모가 0이면 null. ``measured_ratio`` 만 분모가 0이면 0이다(코치가 측정 비율 기준 미만으로 본다).
+    분모가 0이면 null. ``measured_ratio`` 만 분모가 0이면 0이다
+    (코치가 측정 비율 기준 미만으로 본다).
     """
     v = tally.get("VOLUME", {})
     voiced = v.get("voiced_ms", 0)
@@ -333,8 +330,7 @@ def _tally(
         # 잘린 침묵이 이 1초 안에서 긴 침묵 기준을 처음 넘으면 1 (한 침묵은 한 번)
         silence = _silence(upto)
         crossed = (
-            silence is not None
-            and silence - r.duration_ms <= config.long_silence_ms < silence
+            silence is not None and silence - r.duration_ms <= config.long_silence_ms < silence
         )
         pause.append(
             PauseTallyItem(

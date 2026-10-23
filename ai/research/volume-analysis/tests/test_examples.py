@@ -1,6 +1,7 @@
 """예시 파일 계약 — examples/ 의 입력 · 출력이 구현과 같은지, 계약 모델에 맞는지 본다.
 
-다른 모듈 · BE 는 이 예시로 먼저 개발한다. 기준값을 바꾸면 criteria_version 이 바뀌므로 예시도 다시 만든다.
+다른 모듈 · BE 는 이 예시로 먼저 개발한다.
+기준값을 바꾸면 criteria_version 이 바뀌므로 예시도 다시 만든다.
 """
 
 from __future__ import annotations
@@ -46,7 +47,10 @@ def test_judge_matches_example() -> None:
 
 
 def test_summarize_matches_example() -> None:
-    assert_same(summarize(load("summarize_input.json")).model_dump(mode="json"), load("summarize_output.json"))
+    assert_same(
+        summarize(load("summarize_input.json")).model_dump(mode="json"),
+        load("summarize_output.json"),
+    )
 
 
 def test_criteria_matches_example() -> None:

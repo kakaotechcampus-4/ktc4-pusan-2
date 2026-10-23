@@ -20,7 +20,8 @@ class Config(BaseModel):
     low_diff_bad_db: float = -15.0
     #: 짧은 창(평활) 길이. level_db · voice_diff_db 를 이 창의 말한 1초들로 낸다
     smoothing_ms: int = 5_000
-    #: 말한 1초의 voiced_ms 기준. 시선 config 와 같은 값이어야 한다(architecture.md 6-2, 계약 테스트)
+    #: 말한 1초의 voiced_ms 기준.
+    #: 시선 config 와 같은 값이어야 한다(architecture.md 6-2, 계약 테스트)
     voiced_min_ms: int = 500
     #: 짧은 창에 말한 1초가 이만큼 있어야 VOLUME 을 잴 수 있다
     min_voiced_seconds: int = 3
@@ -30,7 +31,8 @@ class Config(BaseModel):
     long_silence_ms: int = 5_000
     #: 아주 긴 침묵. severity 1.0
     long_silence_bad_ms: int = 15_000
-    #: 판정 창 때문에 문제의 시작 · 끝이 늦게 잡히는 폭. 코치가 Take 결과의 문제 구간을 되돌릴 때 쓴다
+    # 판정 창 때문에 문제의 시작 · 끝이 늦게 잡히는 폭.
+    # 코치가 Take 결과의 문제 구간을 되돌릴 때 쓴다
     #: VOLUME_LOW 의 시작 · 끝
     volume_lag_ms: int = 2_500
     #: LONG_SILENCE 의 시작. 긴 침묵 기준을 넘어야 잡히므로 그만큼 늦다
