@@ -65,7 +65,11 @@ from fastapi import WebSocket
 from pydantic import BaseModel
 from websockets.exceptions import ConnectionClosed
 
-from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO, TranscriptWordDTO
+from pitch_coach_backend.module.take.dto import (
+    MetricSecondCreateDTO,
+    TranscriptSegmentCreateDTO,
+    TranscriptWordDTO,
+)
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS, silence
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
@@ -73,6 +77,7 @@ from pitch_coach_backend.realtime.dto import (
     AutoEndMessage,
     AutoEndReason,
     ErrorMessage,
+    MetricsMessage,
     SttState,
     SttStatusMessage,
     TranscriptMessage,
@@ -86,6 +91,7 @@ from pitch_coach_backend.realtime.event_ingestion import (
     FrameSequencer,
     parse_audio_frame,
 )
+from pitch_coach_backend.realtime.metric_buffer import MetricBuffer
 from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
     SttAdapter,
@@ -124,6 +130,8 @@ MAX_MISSED_FINALS = 200
 MAX_UNSAVED_FINALS = 200
 # 자동 종료를 DB 에 적는 상한. DB 가 늦어도 연결 정리까지 붙잡히지 않게 한다
 MARK_AUTO_END_TIMEOUT_SEC = 5.0
+# Take 를 끝내기 전에 남은 1초 원자료를 저장하는 상한. 위와 같은 이유다
+FLUSH_METRICS_TIMEOUT_SEC = 5.0
 # 연결 없이 스트림이 정리된 뒤 이만큼 아무도 다시 붙지 않으면 사용자가 떠난 것으로 보고 Take 를
 # 끝낸다 (창을 닫은 게 아닌 끊김: 네트워크 장애 · FE 가 재연결을 포기함). 그 안이면 FE 가 다시 붙어
 # 이어 간다. 그 뒤에 STT 없이 발표를 마친 FE 의 끝내기 PUT 은 되살린다
@@ -202,8 +210,8 @@ class TakeStream:
         self.state: SttState = "connecting"
         # 큐가 넘치거나 Deepgram 이 죽어 있어 STT 에 닿지 못한 오디오
         self.dropped_audio_ms = 0
-        # 말 없음 기록 · 서버 시계. Take 에 붙어 있어 이 스트림보다 오래 산다
-        self._record = _take_record(take_id, self.auto_end_policy)
+        # 말 없음 기록 · 서버 시계 · 1초 원자료. Take 에 붙어 있어 이 스트림보다 오래 산다
+        self._record = _take_record(take_id, self.auto_end_policy, store)
         # 이 스트림을 연 시각(monotonic). 닫힐 때 열려 있던 시간을 Take 의 서버 시계에 더한다
         self._opened_at: float | None = None
         # 마지막으로 받은 오디오 프레임 시각(monotonic). 발표 중인지 본다 (`is_live`)
@@ -374,6 +382,8 @@ class TakeStream:
             return
         self._client = None
         self._tab_closed = tab_closed
+        # 다시 붙을지 모른다. 모아 둔 1초 원자료를 지금 넣어 둔다
+        self._record.metrics.flush_soon()
         if self._stopping:
             return
         if self.sequencer.frames == 0:
@@ -553,6 +563,9 @@ class TakeStream:
                 self._unsaved[0].seq,
                 self._unsaved[-1].seq,
             )
+        # Take 를 끝내는 쪽(stop · 자동 종료 · 끝내기 PUT)은 따로 기다린다. 스트림만 닫힌 경우를
+        # 위해 남은 것을 넣어 둔다 — 아무도 다시 붙지 않아 떠난 것으로 끝나도 원자료는 남긴다
+        self._record.metrics.flush_soon()
         self.state = "closed"
         self._closed.set()
         forget(self)
@@ -570,6 +583,28 @@ class TakeStream:
             )
             return
         arm_abandon(self.take_id, self._store, closed_at=datetime.now(UTC))
+
+    # ── 1초 원자료 ────────────────────────────────────────────────────
+
+    def push_metrics(self, message: MetricsMessage, *, source: WebSocket | None = None) -> None:
+        """FE 의 1초 측정값 하나. 받았을 때의 STT 상태와 함께 원자료로 모은다.
+
+        쫓겨난 연결이 보낸 것은 버린다 (오디오와 같은 규칙). 정리에 들어가도 스트림이 닫히기
+        전까지는 받는다 — 자동 종료를 알린 뒤 FE 가 보내는 마지막 1초 조각이 이때 온다.
+        """
+        if self._closed.is_set() or self._discarded:
+            return
+        if source is not None and source is not self._client:
+            return
+        self._record.metrics.add(
+            MetricSecondCreateDTO(
+                t_ms=message.t_ms,
+                slide_number=message.slide_number,
+                gaze=message.gaze,
+                voice=message.voice,
+                stt_status=self.state,
+            )
+        )
 
     # ── 오디오 투입 ───────────────────────────────────────────────────
 
@@ -1027,7 +1062,9 @@ class TakeStream:
             self.cancel()
             await self.wait_cancelled(ABORT_TIMEOUT_SEC)
 
-        # 마지막 확정 전사를 저장한 뒤에 끝난 것으로 적는다 (`RealtimeSession._stop` 과 같은 이유)
+        # 마지막 확정 전사와 1초 원자료를 저장한 뒤에 끝난 것으로 적는다 (`RealtimeSession._stop` 과
+        # 같은 이유)
+        await flush_metrics(self.take_id)
         try:
             marked = await asyncio.wait_for(
                 self._store.mark_ended(self.take_id, reason.value), MARK_AUTO_END_TIMEOUT_SEC
@@ -1177,10 +1214,12 @@ def _talk_limit_sec(policy: AutoEndPolicy) -> float:
 
 @dataclass
 class _TakeRecord:
-    """스트림이 바뀌어도 Take 동안 이어지는 자동 종료 상태. 프로세스가 다시 뜨면 비지만 그때는
-    프레임의 Take 시각이 최대 시간을 막는다 (말 없음은 처음부터 다시 센다)."""
+    """스트림이 바뀌어도 Take 동안 이어지는 상태. 프로세스가 다시 뜨면 비지만 그때는 프레임의 Take
+    시각이 최대 시간을 막는다 (말 없음은 처음부터 다시 센다)."""
 
     silence: SilenceTracker
+    # 아직 저장하지 않은 1초 원자료. 스트림이 바뀌어도 앞 스트림이 못 넣은 행이 이어진다
+    metrics: MetricBuffer
     # 앞서 닫힌 스트림들이 열려 있던 시간(초)의 합. 최대 시간의 서버 시계다
     streamed_sec: float = 0.0
 
@@ -1188,10 +1227,10 @@ class _TakeRecord:
 _takes: _BoundedDict[uuid.UUID, _TakeRecord] = _BoundedDict()
 
 
-def _take_record(take_id: uuid.UUID, policy: AutoEndPolicy) -> _TakeRecord:
+def _take_record(take_id: uuid.UUID, policy: AutoEndPolicy, store: TranscriptStore) -> _TakeRecord:
     record = _takes.get(take_id)
     if record is None:
-        record = _TakeRecord(silence=SilenceTracker(policy))
+        record = _TakeRecord(silence=SilenceTracker(policy), metrics=MetricBuffer(take_id, store))
     # 다시 넣어 가장 새것으로 둔다. 진행 중인 Take 가 오래된 순으로 밀려나지 않게
     _takes[take_id] = record
     return record
@@ -1276,6 +1315,27 @@ def forget(stream: TakeStream) -> None:
         del _streams[stream.take_id]
 
 
+async def flush_metrics(take_id: uuid.UUID) -> None:
+    """Take 를 끝내기(`ANALYZING`) 직전에 부른다. 남은 1초 원자료를 저장한다.
+
+    Take 뒤 분석이 원자료를 읽으므로 끝난 것으로 적기 전에 다 있어야 한다. 못 넣어도 끝내기는
+    계속한다 — 못 넣은 초는 복구 때 빈 구간으로 남는다.
+    """
+    record = _takes.get(take_id)
+    if record is None:
+        return
+    try:
+        saved = await asyncio.wait_for(record.metrics.flush(), FLUSH_METRICS_TIMEOUT_SEC)
+    except TimeoutError:
+        saved = False
+    if not saved and len(record.metrics):
+        logger.error(
+            "Take 를 끝내기 전에 1초 원자료를 다 저장하지 못했다 take=%s 남은 개수=%d",
+            take_id,
+            len(record.metrics),
+        )
+
+
 async def end_without_stop(take_id: uuid.UUID) -> bool:
     """WS `stop` 없이 Take 를 끝낸다 (FE 종료 흐름의 Take PUT). 지금 DB 에 적어도 되면 True.
 
@@ -1283,8 +1343,9 @@ async def end_without_stop(take_id: uuid.UUID) -> bool:
     발표는 끝까지 가므로 REST 로 끝낼 때 여기를 거친다. 전사 순서를 지키려고 셋으로 나눈다.
 
     - `stop` 으로 끝내는 중이거나 연결이 붙어 있으면 False. 그 연결이 마지막 전사를 저장한 뒤 적는다
-    - 연결 없이 남은 스트림(끊긴 뒤 30초)은 `stop` 처럼 남은 전사까지 저장하고 정리한 뒤 True
-    - 스트림이 없으면 바로 True
+    - 연결 없이 남은 스트림(끊긴 뒤 30초)은 `stop` 처럼 남은 전사 · 1초 원자료까지 저장하고 정리한
+      뒤 True
+    - 스트림이 없으면 남은 1초 원자료만 저장하고 True
 
     True 면 이 뒤로 같은 Take 로 붙는 연결은 `TakeEnded` 로 거절한다.
     """
@@ -1294,13 +1355,14 @@ async def end_without_stop(take_id: uuid.UUID) -> bool:
         if stream is not None and (take_id in _ended or stream.has_client):
             return False
         _ended[take_id] = None
-        if stream is None:
-            return True
-        stream.end()
-        if not await stream.wait_closed():
-            logger.warning("Deepgram drain 타임아웃 take=%s. 스트림을 끊는다", take_id)
-            stream.cancel()
-            await stream.wait_cancelled(ABORT_TIMEOUT_SEC)
+        if stream is not None:
+            stream.end()
+            if not await stream.wait_closed():
+                logger.warning("Deepgram drain 타임아웃 take=%s. 스트림을 끊는다", take_id)
+                stream.cancel()
+                await stream.wait_cancelled(ABORT_TIMEOUT_SEC)
+        # 연결 없이 정리된 스트림이 못 넣은 행이 남아 있을 수 있다
+        await flush_metrics(take_id)
         return True
 
 
@@ -1461,6 +1523,10 @@ async def stop_all() -> None:
         if not await stream.wait_closed(timeout=2.0):
             stream.cancel()
             await stream.wait_closed(timeout=ABORT_TIMEOUT_SEC)
+    # 닫힌 스트림이 남긴 1초 원자료. 다시 뜨면 메모리에 없다
+    await asyncio.gather(
+        *(flush_metrics(take_id) for take_id, record in list(_takes.items()) if len(record.metrics))
+    )
     if _background:
         # 자동 종료 정리(이유를 DB 에 적기)가 아직 돌고 있을 수 있다. 여기서 잘리면 다시 뜬 뒤
         # 그 Take 에 다시 붙을 수 있다. 스트림은 위에서 다 닫혔으므로 정리에 남은 것은 DB 쓰기

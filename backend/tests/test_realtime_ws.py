@@ -34,8 +34,8 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptVersion,
 )
 from pitch_coach_backend.module.take import service as take_service
-from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
-from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
+from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO, TranscriptSegmentCreateDTO
+from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import service, take_stream
@@ -45,10 +45,12 @@ from pitch_coach_backend.realtime.dependencies import get_stt_adapter, get_trans
 from pitch_coach_backend.realtime.dto import (
     AutoEndReason,
     ErrorMessage,
+    MetricsMessage,
     TranscriptMessage,
     WsErrorCode,
 )
 from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
+from pitch_coach_backend.realtime.metric_buffer import METRICS_BATCH, MetricBuffer
 from pitch_coach_backend.realtime.stt_adapter import (
     Metadata,
     SttConfig,
@@ -200,8 +202,11 @@ class FakeTranscriptStore:
         fail_mark: bool = False,
         append_delay: float = 0.0,
         marks: bool = True,
+        metric_errors: Iterable[Exception] = (),
     ) -> None:
         self.segments: list[TranscriptSegmentCreateDTO] = []
+        # 저장한 1초 원자료. DB 처럼 같은 1초는 먼저 저장한 것을 둔다
+        self.metrics: dict[int, MetricSecondCreateDTO] = {}
         self.take_ids: list[uuid.UUID] = []
         self.ended: list[uuid.UUID] = []
         # 자동 종료로 적은 (Take, 이유)
@@ -224,6 +229,8 @@ class FakeTranscriptStore:
         self.append_delay = append_delay
         # False 면 Take 가 없거나 이미 끝나 있어 아무것도 적지 않은 것처럼 군다
         self.marks = marks
+        # 1초 원자료를 저장할 때마다 앞에서 하나씩 꺼내 던진다. 다 쓰면 정상으로 저장한다
+        self.metric_errors = list(metric_errors)
 
     async def cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
         self.cursor_reads.append(len(self.segments))
@@ -238,6 +245,14 @@ class FakeTranscriptStore:
         self.take_ids.append(take_id)
         self.segments.append(segment)
         self.calls.append("append")
+
+    async def append_metrics(self, take_id: uuid.UUID, rows: list[MetricSecondCreateDTO]) -> None:
+        await asyncio.sleep(self.append_delay)
+        if self.metric_errors:
+            raise self.metric_errors.pop(0)
+        for row in rows:
+            self.metrics.setdefault(row.t_ms, row)
+        self.calls.append("append_metrics")
 
     async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
         await asyncio.sleep(0)
@@ -3760,3 +3775,242 @@ def test_take_ended_by_the_user_is_rejected_without_a_reason(
         rejected = ws.receive_json()
 
     assert rejected == {"type": "error", "code": "TAKE_ENDED", "message": "이미 끝난 연습입니다."}
+
+
+# ── 1초 원자료 (metrics) ──────────────────────────────────────────────
+
+
+def metrics(t_ms: int, *, slide_number: int | None = 1, duration_ms: int = 1000) -> dict:
+    """FE 가 보내는 1초 측정값. 바깥 t_ms 는 그 1초가 끝난 시각, 안쪽 t_ms 는 시작 시각이다."""
+    start = t_ms - duration_ms
+    return {
+        "type": "metrics",
+        "t_ms": t_ms,
+        "gaze": {"t_ms": start, "duration_ms": duration_ms, "state": "BOTTOM", "confidence": 0.83},
+        "voice": {"t_ms": start, "duration_ms": duration_ms, "level_db": -31.2, "audio_live": True},
+        "slide_number": slide_number,
+    }
+
+
+def send_metrics(ws, *t_ms: int, slide_number: int | None = 1) -> None:
+    for t in t_ms:
+        ws.send_text(json.dumps(metrics(t, slide_number=slide_number)))
+
+
+def test_metrics_are_saved_every_few_seconds_with_the_stt_state(
+    client: TestClient, stt: FakeSttAdapter, token: str, store: FakeTranscriptStore
+):
+    """1초에 하나씩 오는 측정값은 METRICS_BATCH 개가 모일 때마다 한 번에 저장한다. 시선 · 음량
+    기록은 받은 그대로 두고, 받았을 때의 STT 상태를 같이 남긴다."""
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        send_metrics(ws, *range(1000, METRICS_BATCH * 1000, 1000))
+        time.sleep(0.1)
+        assert store.metrics == {}
+        send_metrics(ws, METRICS_BATCH * 1000)
+        wait_until(lambda: len(store.metrics) == METRICS_BATCH)
+        assert store.calls == ["append_metrics"]
+        stop(ws)
+
+    sent = metrics(1000)
+    assert store.metrics[1000] == MetricSecondCreateDTO(
+        t_ms=1000,
+        slide_number=1,
+        gaze=sent["gaze"],
+        voice=sent["voice"],
+        stt_status="ok",
+    )
+
+
+def test_stop_saves_the_last_metrics_before_ending_the_take(
+    client: TestClient, stt: FakeSttAdapter, token: str, store: FakeTranscriptStore
+):
+    """FE 는 마지막 1초 조각을 stop 앞에 보낸다. Take 뒤 분석이 원자료를 읽으므로 모자란 묶음도
+    저장한 뒤에 끝난 것으로 적는다."""
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        send_metrics(ws, 1000)
+        ws.send_text(json.dumps(metrics(1400, duration_ms=400)))
+        stop(ws)
+
+    assert sorted(store.metrics) == [1000, 1400]
+    assert store.metrics[1400].voice == {
+        "t_ms": 1000,
+        "duration_ms": 400,
+        "level_db": -31.2,
+        "audio_live": True,
+    }
+    assert store.calls == ["append_metrics", "mark_ended"]
+
+
+def test_metrics_resent_after_a_reconnect_keep_the_first_save(
+    client: TestClient, stt: FakeSttAdapter, token: str, store: FakeTranscriptStore
+):
+    """끊기면 그때까지 모은 것을 저장해 둔다. FE 는 끊긴 동안 쌓아 둔 것을 다시 붙은 뒤 보내서
+    같은 1초가 또 온다 — 먼저 저장한 것을 둔다."""
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        send_metrics(ws, 1000, 2000)
+    wait_until(lambda: sorted(store.metrics) == [1000, 2000])
+
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        send_metrics(ws, 2000, 3000, slide_number=2)
+        stop(ws)
+
+    assert sorted(store.metrics) == [1000, 2000, 3000]
+    assert store.metrics[2000].slide_number == 1
+    assert store.metrics[3000].slide_number == 2
+
+
+def test_failed_metrics_save_is_retried_before_ending(
+    client: TestClient, stt: FakeSttAdapter, token: str
+):
+    """DB 가 잠깐 실패해도 버리지 않는다. 들고 있다가 끝낼 때 다시 넣는다."""
+    store = use_store(FakeTranscriptStore(metric_errors=[RuntimeError("db down")]))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        send_metrics(ws, *range(1000, (METRICS_BATCH + 1) * 1000, 1000))
+        wait_until(lambda: not store.metric_errors)
+        stop(ws)
+
+    assert sorted(store.metrics) == list(range(1000, (METRICS_BATCH + 1) * 1000, 1000))
+    assert store.calls == ["append_metrics", "mark_ended"]
+
+
+def test_auto_end_saves_the_metrics_before_ending(
+    client: TestClient, token: str, store: FakeTranscriptStore, monkeypatch: pytest.MonkeyPatch
+):
+    """자동 종료도 사용자가 끝낼 때처럼 남은 원자료를 저장한 뒤 끝난 것으로 적는다."""
+    use_policy(monkeypatch, SHORT_SILENCE)
+    use(
+        FakeSttAdapter(
+            Plan(replies=[empty_final(0, 100), empty_final(100, 200), empty_final(200, 300)])
+        )
+    )
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        send_metrics(ws, 1000)
+        time.sleep(0.05)
+        for i in range(3):
+            ws.send_bytes(frame(i + 1, i * 100))
+        receive_auto_end(ws)
+        wait_state(ws, "closed")
+
+    assert sorted(store.metrics) == [1000]
+    assert store.calls.index("append_metrics") < store.calls.index("mark_ended")
+    assert store.auto_ended == [(TAKE_ID, "SILENCE")]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {**metrics(1000), "t_ms": -1},
+        {**metrics(1000), "t_ms": 3_660_001},
+        {**metrics(1000), "slide_number": 0},
+        {**metrics(1000), "gaze": {"duration_ms": 1000}},
+        {**metrics(1000), "voice": {"t_ms": 0, "duration_ms": 1000, "level_db": float("nan")}},
+        {"type": "metrics", "t_ms": 1000},
+    ],
+    ids=["음수 시각", "1시간 넘음", "0번 장", "시작 시각 없음", "NaN", "칸 빠짐"],
+)
+def test_bad_metrics_is_an_error_not_a_close(
+    client: TestClient, stt: FakeSttAdapter, token: str, store: FakeTranscriptStore, message: dict
+):
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_text(json.dumps(message))
+        assert ws.receive_json()["code"] == "BAD_MESSAGE"
+        assert stop(ws)["state"] == "closed"
+
+    assert store.metrics == {}
+
+
+def test_metrics_before_auth_is_rejected(client: TestClient, stt: FakeSttAdapter, token: str):
+    with client.websocket_connect(WS_PATH) as ws:
+        ws.send_text(json.dumps(metrics(1000)))
+        assert ws.receive_json()["code"] == "UNAUTHORIZED"
+        assert closed_with(ws) == 1008
+
+
+@pytest.mark.anyio
+async def test_metrics_from_an_evicted_tab_are_dropped():
+    """다른 탭이 이어받은 뒤 쫓겨난 탭이 보낸 것은 버린다 (오디오와 같은 규칙)."""
+    store = FakeTranscriptStore()
+    stream = TakeStream(
+        TAKE_ID,
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=store,
+    )
+    old_tab, new_tab = FakeWebSocket(), FakeWebSocket()
+    await stream.attach(old_tab)
+    await stream.attach(new_tab)
+
+    stream.push_metrics(MetricsMessage.model_validate(metrics(1000)), source=old_tab)
+    stream.push_metrics(MetricsMessage.model_validate(metrics(2000)), source=new_tab)
+    await take_stream.flush_metrics(TAKE_ID)
+
+    assert sorted(store.metrics) == [2000]
+
+
+@pytest.mark.anyio
+async def test_metric_buffer_drops_the_oldest_when_saves_keep_failing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr("pitch_coach_backend.realtime.metric_buffer.MAX_UNSAVED_METRICS", 3)
+    store = FakeTranscriptStore(metric_errors=[RuntimeError("db down")] * 10)
+    buffer = MetricBuffer(TAKE_ID, store)
+    for t in (1000, 2000, 3000, 4000):
+        buffer.add(row(t))
+
+    assert await buffer.flush() is False
+    store.metric_errors.clear()
+    assert await buffer.flush() is True
+    assert sorted(store.metrics) == [2000, 3000, 4000]
+
+
+@pytest.mark.anyio
+async def test_metric_buffer_stops_when_the_take_is_deleted():
+    store = FakeTranscriptStore(metric_errors=[NonExistentTake()])
+    buffer = MetricBuffer(TAKE_ID, store)
+    buffer.add(row(1000))
+
+    assert await buffer.flush() is False
+    buffer.add(row(2000))
+    assert len(buffer) == 0
+    assert store.metrics == {}
+
+
+def row(t_ms: int, *, slide_number: int | None = 1) -> MetricSecondCreateDTO:
+    return MetricSecondCreateDTO(
+        t_ms=t_ms, slide_number=slide_number, gaze=None, voice=None, stt_status="ok"
+    )
+
+
+def test_db_keeps_the_first_save_of_the_same_second(db_session: Session, take: Take):
+    """같은 1초가 또 오면 오류 없이 건너뛴다. 없는 Take 는 'Take 가 없다' 로 알린다."""
+    take_service.append_metric_seconds(db_session, TAKE_ID, [row(1000), row(2000)])
+    take_service.append_metric_seconds(
+        db_session, TAKE_ID, [row(2000, slide_number=2), row(3000, slide_number=2)]
+    )
+
+    rows = db_session.scalars(
+        select(TakeMetricSecond)
+        .where(TakeMetricSecond.take_id == TAKE_ID)
+        .order_by(TakeMetricSecond.t_ms)
+    ).all()
+    assert [(r.t_ms, r.slide_number, r.stt_status) for r in rows] == [
+        (1000, 1, "ok"),
+        (2000, 1, "ok"),
+        (3000, 2, "ok"),
+    ]
+    with pytest.raises(NonExistentTake):
+        take_service.append_metric_seconds(db_session, uuid.uuid7(), [row(1000)])

@@ -6,9 +6,15 @@
 
 import uuid
 from enum import StrEnum
-from typing import Annotated, Literal, get_args
+from typing import Annotated, Any, Literal, get_args
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import AfterValidator, BaseModel, Field, TypeAdapter
+
+from pitch_coach_backend.core.validation import reject_unstorable_json
+
+# metrics 의 Take 시각 상한. 코치 AI 가 받는 `t_ms` 상한과 같다 (Take 최대 1시간 + 60초 여유,
+# `docs/ai/architecture.md` 1-4)
+MAX_METRICS_T_MS = 3_660_000
 
 # ── FE -> BE ──────────────────────────────────────────────────────────
 
@@ -26,7 +32,35 @@ class StopMessage(BaseModel):
     type: Literal["stop"]
 
 
-ClientMessage = Annotated[AuthMessage | StopMessage, Field(discriminator="type")]
+def _second_record(value: dict[str, Any]) -> dict[str, Any]:
+    """시선 · 음량 1초 기록. 창을 고를 때 읽는 시작 시각 · 길이만 보고 나머지는 그대로 둔다."""
+    for key in ("t_ms", "duration_ms"):
+        v = value.get(key)
+        if isinstance(v, bool) or not isinstance(v, int | float) or v < 0:
+            raise ValueError(f"{key} 는 0 이상의 숫자여야 합니다.")
+    # 원자료로 JSONB 에 그대로 들어간다
+    return reject_unstorable_json(value)
+
+
+SecondRecord = Annotated[dict[str, Any], AfterValidator(_second_record)]
+
+
+class MetricsMessage(BaseModel):
+    """1초 측정값 (시선 · 음량 1초 기록, 지금 슬라이드 번호). 잴 수 없는 값은 null 이다.
+
+    FE 는 1초마다 보내고, `stop` 직전에 마지막 1초 조각을 실제 길이로 한 번 더 보낸다. `t_ms` 는
+    그 1초가 끝난 Take 시각이고 `gaze.t_ms` · `voice.t_ms` 는 시작 시각이다. 끊긴 동안 쌓아
+    두었다가 다시 붙으면 보내므로 같은 1초가 또 올 수 있다 (`docs/ai/architecture.md` 1-4).
+    """
+
+    type: Literal["metrics"]
+    t_ms: int = Field(ge=0, le=MAX_METRICS_T_MS)
+    gaze: SecondRecord | None
+    voice: SecondRecord | None
+    slide_number: Annotated[int, Field(ge=1)] | None
+
+
+ClientMessage = Annotated[AuthMessage | StopMessage | MetricsMessage, Field(discriminator="type")]
 client_message_adapter: TypeAdapter[ClientMessage] = TypeAdapter(ClientMessage)
 
 

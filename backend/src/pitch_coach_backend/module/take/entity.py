@@ -242,3 +242,35 @@ class TakeTranscriptSegment(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     # endpointing 이 침묵을 감지한 문장 경계인지
     speech_final: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class TakeMetricSecond(CreatedAtMixin, Base):
+    """발표 중 FE 가 1초마다 보낸 측정값(WS `metrics`) 1건. Take 결과를 다시 만들 때 쓰는 원자료다.
+
+    `/coach/finalize` 가 빠진 구간이 있다고 답하면(409) 이 행들로 `replay` 를 만든다
+    (`docs/ai/features/coach-agent.md` 12-1). 시선 · 음량 1초 기록은 BE 가 해석하지 않고 받은
+    그대로 둔다. FE 는 끊긴 동안 쌓아 두었다가 다시 보내서 같은 1초가 또 온다 — 먼저 저장한 것을
+    둔다.
+    """
+
+    __tablename__ = "take_metric_seconds"
+    __table_args__ = (
+        # realtime SttState 와 같은 값이다
+        CheckConstraint(
+            "stt_status IN ('connecting', 'ok', 'reconnecting', 'degraded', 'closed')",
+            name="check_take_metric_seconds_stt_status",
+        ),
+    )
+
+    take_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), primary_key=True
+    )
+    # 그 1초가 끝난 Take 시각 (ms). gaze · voice 안의 t_ms 는 시작 시각이다
+    t_ms: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 그 1초를 보낼 때 화면에 있던 장. 모르면 비어 있다
+    slide_number: Mapped[int | None] = mapped_column(Integer)
+    # 시선 · 음량 1초 기록. 못 쟀으면 비어 있다
+    gaze: Mapped[Any | None] = mapped_column(JSONB)
+    voice: Mapped[Any | None] = mapped_column(JSONB)
+    # 그 metrics 를 받았을 때의 실시간 STT 상태. 복구 때 그동안의 단어를 셀지 정한다
+    stt_status: Mapped[str] = mapped_column(String(16), nullable=False)

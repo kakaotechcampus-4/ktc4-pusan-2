@@ -102,6 +102,18 @@ class TranscriptSegmentCreateDTO(BaseModel):
     words: list[TranscriptWordDTO]
     confidence: float
     speech_final: bool
+
+
+class MetricSecondCreateDTO(BaseModel):
+    """WS `metrics` 1건 (take_metric_seconds 한 행). realtime 이 만들어 take service 에 넘긴다."""
+
+    t_ms: int
+    slide_number: int | None
+    gaze: dict[str, Any] | None
+    voice: dict[str, Any] | None
+    stt_status: str
+
+
 class DetailDTO(BaseModel):
     area: str
     slide_number: int | None = None

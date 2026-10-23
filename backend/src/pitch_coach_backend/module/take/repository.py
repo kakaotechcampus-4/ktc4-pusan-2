@@ -12,6 +12,7 @@ from pitch_coach_backend.module.take.entity import (
     Mission,
     Take,
     TakeAIResults,
+    TakeMetricSecond,
     TakeSummary,
     TakeTranscriptSegment,
 )
@@ -238,6 +239,14 @@ class TakeRepository:
         self.db.add(segment)
         self.db.flush()
         return segment
+
+    def save_metric_seconds(self, take_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
+        """1초 원자료를 한 번에 넣는다. 이미 있는 1초는 건너뛴다 — 먼저 저장한 것을 둔다."""
+        self.db.execute(
+            insert(TakeMetricSecond)
+            .values([{"take_id": take_id, **row} for row in rows])
+            .on_conflict_do_nothing(index_elements=["take_id", "t_ms"])
+        )
 
     def save_total_result(self, 
                           take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None
