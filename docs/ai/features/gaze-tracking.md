@@ -544,7 +544,7 @@ sequenceDiagram
         E-->>FE: 1초 기록
         FE->>BE: WS metrics {t_ms, gaze, voice, slide_number}
         BE->>BE: 창(30초) 갱신 · take_metric_seconds 저장
-        BE->>C: POST /coach/evaluate (gaze_records · voice_records · coach_state)
+        BE->>C: POST /coach/evaluate (buffered가 아닐 때, architecture.md 1-3 2번 · gaze_records · voice_records · coach_state)
         C->>G: judge(records, voiced, since_ms)
         G-->>C: 1초 판정 결과 (GAZE)
         C-->>BE: indicators.GAZE · feedback · events · coach_state
@@ -562,7 +562,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
-| 시선 1초 기록 (원자료) | WS `metrics`마다 | `take_metric_seconds.gaze` (JSONB, nullable) | 엔진의 1초 기록 그대로(5-2), BE는 해석하지 않는다. 잰 크기: 한 행 약 0.14 KB(방향 · 이슈가 있으면 약 0.18 KB), 한 시간 Take(3,600행) 약 0.5–0.65 MB | BE가 몇 초씩 모아 쓴다 · BE가 `replay`(`gaze_records`)로 읽는다 | `(take_id, t_ms)` 유일 제약, 같은 1초가 또 오면 먼저 저장한 것을 둔다 | Take와 함께. 얼굴 영상 · 랜드마크가 아닌 파생값(시선 구역 · 신뢰도)이다. 동의 없는 Take(`takes.raw_data_consent` false)는 Take 결과를 저장할 때 지우고, `FAILED`면 7일 뒤 지운다(`architecture.md` 1-1 '지우기 · 보관') |
+| 시선 1초 기록 (원자료) | WS `metrics`마다 | `take_metric_seconds.gaze` (JSONB, nullable) | 엔진의 1초 기록 그대로(5-2), BE는 해석하지 않는다. 잰 크기: 한 행 약 0.14 KB(방향 · 이슈가 있으면 약 0.18 KB), 한 시간 Take(3,600행) 약 0.5–0.65 MB | BE가 몇 초씩 모아 쓴다 · BE가 `replay`(`gaze_records`)로 읽는다 | `(take_id, t_ms)` 유일 제약, 같은 1초가 또 오면 먼저 저장한 것을 둔다 | Take와 함께. 얼굴 영상 · 랜드마크가 아닌 파생값(시선 구역 · 신뢰도)이다. 동의 없는 Take의 예외는 `architecture.md` 1-1 '지우기 · 보관' |
 | 보정 결과 요약 | 발표 전 점검 때 | `calibrations.gaze_confidence` (Float, 0–1, 보정 실패면 0), `calibrations.result` (JSONB) | `result`: `{engine_version, status, separability, loo_accuracy, warnings}`(`separability`는 보정 표본에서 카메라 · 대본 시선 무리의 중심 사이 거리 ÷ 무리 안 흩어짐으로 클수록 잘 갈린다, `loo_accuracy`는 보정 표본을 하나씩 빼고 나머지로 맞힌 비율 0–1) (예: `{"engine_version": "gaze_v1.1.0+head_pose+reference_anchor_v1", "status": "OK", "separability": "<엔진 값>", "loo_accuracy": 0.93, "warnings": []}`). `gaze_confidence`는 보정이 `OK`면 `loo_accuracy`, 아니면 0 (15절 열린 질문). 크기 0.3 KB 안팎 | FE가 보내고 BE가 쓴다 · 리포트, Take끼리 비교할 때 엔진 버전 확인 | Take마다 하나 | Take와 함께. **보정 모델(얼굴 위치 · 크기 · 홍채 · 거리)은 저장하지 않는다** |
 | 시선 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.GAZE` · `criteria.GAZE` | 코치가 `summarize` · `criteria` 결과를 고치지 않고 담는다. 잰 크기: Take · 장마다 지표 7개 약 0.16 KB(장 10개면 약 1.8 KB), `criteria` 다섯 문제 약 0.8 KB | 코치가 만들고 BE가 쓴다 · 리뷰 · 코칭 계획 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
 | 리포트 요약 시선 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.audience_gaze` · `slide_gaze` · `script_gaze` (Integer, nullable), `script_dependency_count` (Integer, nullable) | `audience_ratio` · `screen_ratio` · `script_ratio` × 100 반올림, `reading_runs` (`architecture.md` 1-1 대응 표). 세 비율의 합은 100이 아니다(그 밖 응시 `away_ratio`는 칸이 없다). 시선을 잴 수 없었으면(지표가 null) null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
@@ -572,7 +572,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 
 ## 12-2. 저장 규칙
 - 1초 기록은 엔진 값을 그대로 저장한다. 화면용 구역으로 바꾸거나 구간으로 접지 않는다(FE · BE 모두). 판정 기준이 바뀌어도 원자료로 다시 판정할 수 있게 하기 위해서다.
-- 원자료로 다시 판정하기와 기준값 다시 고르기는 `takes.raw_data_consent`가 true인 Take의 1초 기록으로만 한다. 동의 없는 Take의 1초 기록은 Take 결과를 저장할 때 지워 남지 않는다(`architecture.md` 1-1 '원자료 사용 동의'). Take 결과를 만드는 `replay` 복구는 동의와 상관없이 한다.
+- 원자료로 다시 판정하기와 기준값 다시 고르기는 원자료 사용에 동의한 Take의 1초 기록으로만 한다(동의 조건과 `replay` 예외는 `architecture.md` 1-1 '원자료 사용 동의').
 - 카메라가 끊기거나 권한이 없어도 그때까지 잰 1초 기록은 버리지 않는다. 잴 수 있었는지는 판정 모듈이 측정 비율로 정한다.
 - 엔진 버전은 Take마다 `calibrations.result.engine_version`에 남긴다. 엔진이 바뀌면 같은 시선도 다른 상태로 판정될 수 있어, Take끼리 비교할 때 확인한다.
 - 시선 결과는 코치 응답의 `meta`(`criteria_versions.gaze` 포함)와 함께 저장된다(`coach-agent.md` 12-2).

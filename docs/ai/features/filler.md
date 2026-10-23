@@ -368,13 +368,14 @@ sequenceDiagram
     BE->>DG: keyterm = 군더더기 15개 (복사본) + 대본 용어
     loop 발표 중
         DG-->>BE: 확정 단어 · 문장 끝 신호 · 상태
-        BE->>BE: 창(60초) 갱신 · take_transcript_segments · takes.utterance_ends 저장
-        BE->>C: POST /coach/evaluate (words · utterance_ends · stt_status · coach_state)
+        BE->>BE: 창(60초) 갱신 · take_transcript_segments 저장 · 문장 끝 신호는 메모리에 보관
+        BE->>C: POST /coach/evaluate (다음 실시간 metrics 때, architecture.md 1-3 2번 · words · utterance_ends · stt_status · coach_state)
         C->>F: judge(words, utterance_ends, stt_status, stt_ok_since_ms, 커서)
         F-->>C: words(단어별 판정) + 1초 판정 결과 (FILLER)
         C->>P: judge(..., fillers = 군더더기 · 보류 단어)
         C-->>BE: indicators.FILLER · feedback · events · coach_state
     end
+    BE->>BE: Take 종료 ③ — 문장 끝 신호를 takes.utterance_ends에 한 번에 저장
     BE->>C: POST /coach/finalize (마지막 창)
     C->>F: judge (마지막 창, take_end_ms = Take 끝) · summarize · criteria
     C-->>BE: take_result (areas.FILLER · criteria.FILLER)
