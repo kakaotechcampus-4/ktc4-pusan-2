@@ -33,9 +33,10 @@ final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). �
 붙지 못한다. grace 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리한다 — FE 는 끊긴 뒤에도
 다시 붙고, 새 스트림이 번호를 이어 받는다. 그렇게 정리된 뒤 `ABANDON_AFTER_SEC` 동안 아무도
 다시 붙지 않으면 사용자가 떠난 것으로 보고 Take 를 `FAILED`(`ABANDONED`)로 끝낸다(`arm_abandon`).
-최대 시간까지 남은 발표가 그보다 길면 그만큼 기다린다 — 재연결을 포기한 FE 는 STT 없이 발표를
-이어 간다. 창을 닫아(닫힘 코드 1001) 끊겼으면 `CLOSED_TAB_WAIT_SEC` 만 기다리고 이유를 `CLOSED` 로
-적는다 — 창을 닫은 Take 는 이어 가지 않는다. 그 안에 다시 붙는 것은 새로고침이다.
+재연결을 포기한 FE 는 STT 없이 발표를 이어 가는 중일 수 있다 — 그 FE 가 끝내기 PUT 을 보내면
+되살린다 (take repository `mark_ended`). 창을 닫아(닫힘 코드 1001) 끊겼으면 `CLOSED_TAB_WAIT_SEC`
+만 기다리고 이유를 `CLOSED` 로 적는다 — 창을 닫은 Take 는 이어 가지 않는다. 그 안에 다시 붙는 것은
+새로고침이다.
 이 타이머는 메모리에만 있어 앱이 다시 뜨면 DB 를 보고 다시 건다(`arm_abandoned_takes`).
 
 자동 종료(`auto_end.py`): 말 없음이나 최대 시간에 걸리면 사용자가 stop 을 보낸 것과 같은 순서로
@@ -124,10 +125,9 @@ MAX_UNSAVED_FINALS = 200
 # 자동 종료를 DB 에 적는 상한. DB 가 늦어도 연결 정리까지 붙잡히지 않게 한다
 MARK_AUTO_END_TIMEOUT_SEC = 5.0
 # 연결 없이 스트림이 정리된 뒤 이만큼 아무도 다시 붙지 않으면 사용자가 떠난 것으로 보고 Take 를
-# 끝낸다. FE 가 끊긴 뒤 다시 붙어 보는 시간(sttSocket `GIVE_UP_AFTER_MS`)과 같다 — 그 안이면 탭이
-# 살아 있는 FE 가 이어 갈 수 있다.
-# 최대 시간까지 남은 발표가 더 길면 그만큼 기다린다 (`TakeStream._talk_left_sec`)
-ABANDON_AFTER_SEC = 30 * 60.0
+# 끝낸다 (창을 닫은 게 아닌 끊김: 네트워크 장애 · FE 가 재연결을 포기함). 그 안이면 FE 가 다시 붙어
+# 이어 간다. 그 뒤에 STT 없이 발표를 마친 FE 의 끝내기 PUT 은 되살린다
+ABANDON_AFTER_SEC = 5 * 60.0
 # 창을 닫아(닫힘 코드 1001) 끊긴 스트림이 정리된 뒤 기다리는 시간. 새로고침도 1001 로 끊기므로
 # 다시 붙을 틈을 둔다 — 카메라 · 시선 모델을 다시 띄우느라 grace(30초)를 넘길 수 있다
 CLOSED_TAB_WAIT_SEC = 2 * 60.0
@@ -548,14 +548,7 @@ class TakeStream:
                 end_reason="CLOSED",
             )
             return
-        # 재연결을 포기한 FE 는 STT 없이 발표를 이어 가므로 최대 시간까지는 기다린다 — 먼저
-        # 끝내면 발표 중인 Take 가 FAILED 로 보인다
-        arm_abandon(
-            self.take_id,
-            self._store,
-            closed_at=datetime.now(UTC),
-            delay_sec=max(ABANDON_AFTER_SEC, self._talk_left_sec()),
-        )
+        arm_abandon(self.take_id, self._store, closed_at=datetime.now(UTC))
 
     # ── 오디오 투입 ───────────────────────────────────────────────────
 
@@ -1159,11 +1152,6 @@ def _talk_limit_sec(policy: AutoEndPolicy) -> float:
     return (policy.max_duration_ms + policy.server_clock_slack_ms) / 1000
 
 
-def longest_abandon_wait_sec() -> float:
-    """연결이 끊긴 뒤 떠난 것으로 끝내기까지 가장 오래 기다리는 시간. 발표 초반에 끊긴 Take 다."""
-    return max(ABANDON_AFTER_SEC, _talk_limit_sec(AutoEndPolicy.from_settings()))
-
-
 @dataclass
 class _TakeRecord:
     """스트림이 바뀌어도 Take 동안 이어지는 자동 종료 상태. 프로세스가 다시 뜨면 비지만 그때는
@@ -1371,8 +1359,8 @@ async def arm_abandoned_takes(store: TranscriptStore) -> None:
     """앱이 뜰 때 부른다. 진행 중으로 남은 Take 마다 떠난 것으로 끝낼 타이머를 다시 건다.
 
     앞 프로세스의 타이머와 끊긴 시각은 사라졌다. 그래서 마지막으로 활동한 시각(전사 저장 등)에서
-    `longest_abandon_wait_sec()` 뒤로 건다 — 남은 발표 시간(서버 시계)도 사라져 최대 시간 전체를
-    기다린다. 이미 지났으면 바로 끝낸다. 그 안에 FE 가 다시 붙으면 꺼진다.
+    `ABANDON_AFTER_SEC` 뒤로 건다 — 닫힘 코드도 사라져 창을 닫았는지 모르므로 이유는 `ABANDONED` 다.
+    이미 지났으면 바로 끝낸다. 그 안에 FE 가 다시 붙으면 꺼진다.
     """
     try:
         takes = await asyncio.wait_for(store.running_takes(), ARM_ABANDONED_TIMEOUT_SEC)
@@ -1381,10 +1369,11 @@ async def arm_abandoned_takes(store: TranscriptStore) -> None:
         logger.exception("진행 중인 Take 를 읽지 못해 떠난 Take 타이머를 걸지 못했다")
         return
     now = datetime.now(UTC)
-    wait_sec = longest_abandon_wait_sec()
     for take_id, last_active_at in takes:
         idle_sec = (now - last_active_at).total_seconds()
-        arm_abandon(take_id, store, closed_at=last_active_at, delay_sec=wait_sec - idle_sec)
+        arm_abandon(
+            take_id, store, closed_at=last_active_at, delay_sec=ABANDON_AFTER_SEC - idle_sec
+        )
     if takes:
         logger.info("진행 중으로 남은 Take %d개에 떠난 Take 타이머를 걸었다", len(takes))
 

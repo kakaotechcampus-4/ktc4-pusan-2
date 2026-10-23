@@ -97,10 +97,9 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     # BE 가 끝낸 이유. 사용자가 끝냈거나 아직 진행 중이면 비어 있다.
     # 실시간 STT 재연결은 이 값이 아니라 status 가 막는다.
     #   SILENCE·TIME_LIMIT : 자동 종료. status 는 ANALYZING 으로 바뀐다
-    #   ABANDONED          : 탭을 닫고 돌아오지 않았다 (끊긴 뒤 30분, 발표가 더 남았으면 최대
-    #                        시간까지). 시선 기록 등을 못 받아 분석하지 않고 status 를 FAILED 로
-    #                        둔다. 그 뒤에 끝내기 PUT 이 오면(STT 없이 발표를 이어 간 FE)
-    #                        ANALYZING 으로 되살리고 이유를 지운다
+    #   ABANDONED          : 창을 닫지 않고 끊긴 뒤 5분 동안 돌아오지 않았다. 시선 기록 등을 못 받아
+    #                        분석하지 않고 status 를 FAILED 로 둔다. 그 뒤에 끝내기 PUT 이 오면
+    #                        (STT 없이 발표를 이어 간 FE) ANALYZING 으로 되살리고 이유를 지운다
     #   CLOSED             : 창을 닫았다 (닫힘 코드 1001 뒤 2분 동안 다시 안 붙음, 또는 다시 연 창이
     #                        abandon API 를 부름). 이어 가지 않는다 — FAILED 로 두고 되살리지 않는다
     end_reason: Mapped[str | None] = mapped_column(String(20))

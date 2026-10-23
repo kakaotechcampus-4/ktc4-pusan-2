@@ -18,7 +18,7 @@ stateDiagram-v2
 
     RUNNING --> CLOSED : 창을 닫음 (1001 뒤 2분) · abandon API
     READY --> CLOSED : abandon API
-    RUNNING --> ABANDONED : 끊긴 채 안 돌아옴 (30분 ~ 최대 시간)
+    RUNNING --> ABANDONED : 창을 닫지 않고 끊긴 뒤 5분
     ABANDONED --> ANALYZING : 끝내기 PUT (되살림)
 
     note right of CLOSED : 되살리지 않는다
@@ -39,7 +39,7 @@ stateDiagram-v2
 | `SILENCE` | `ANALYZING` | 오래 말이 없어 자동 종료 |
 | `TIME_LIMIT` | `ANALYZING` | 최대 시간(1시간)이 지나 자동 종료 |
 | `CLOSED` | `FAILED` | 창을 닫았습니다 |
-| `ABANDONED` | `FAILED` | 연결이 끊긴 채 돌아오지 않았습니다. FE 는 살아 있을 수도 있습니다 |
+| `ABANDONED` | `FAILED` | 창을 닫지 않고 끊긴 채 돌아오지 않았습니다. FE 는 살아 있을 수도 있습니다 |
 
 ## 1. 발표 중 연결이 끊기면
 
@@ -69,7 +69,7 @@ stateDiagram-v2
 | 닫힘 코드 | 뜻 | 이후 (3절) |
 |---|---|---|
 | 1001 (going away) | 브라우저가 창을 닫거나 새로고침했습니다 | 2분 기다리고 `CLOSED` |
-| 그 밖 (1006 · 서버가 닫음 등) | 네트워크 장애, FE 가 재연결을 포기함 등 | 30분 ~ 최대 시간 기다리고 `ABANDONED` |
+| 그 밖 (1006 · 서버가 닫음 등) | 네트워크 장애, FE 가 재연결을 포기함 등 | 5분 기다리고 `ABANDONED` |
 
 새로고침도 1001 이라 BE 는 둘을 바로 구분하지 못합니다. 2분 안에 다시 붙으면 새로고침으로 봅니다.
 모바일 브라우저처럼 탭을 닫을 때 닫힘 프레임을 보내지 않으면 1006 이 되어 긴 대기를 탑니다.
@@ -115,16 +115,16 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 | 끊긴 방식 | 기다리는 시간 (스트림이 정리된 뒤부터) | 이유 |
 |---|---|---|
 | 닫힘 코드 1001 | **2분** | `CLOSED` |
-| 그 밖 | **30분**과 **최대 시간까지 남은 발표** 중 긴 쪽 | `ABANDONED` |
-| 앱이 다시 뜸 | 마지막 활동 시각부터 **최대 시간 전체**(1시간 + 60초) | `ABANDONED` |
+| 그 밖 | **5분** | `ABANDONED` |
+| 앱이 다시 뜸 | 마지막 활동 시각부터 **5분** | `ABANDONED` |
 | abandon API | 바로 | `CLOSED` |
 
-- **30분**은 FE 가 끊긴 뒤 다시 붙어 보는 시간과 같습니다.
-- **최대 시간까지 남은 발표**는 최대 시간(1시간 + 60초 여유)에서 이 Take 의 스트림이 열려 있던 시간의 합을 뺀
-  값입니다. 재연결을 포기한 FE 는 STT 없이 발표를 이어 가므로, 발표 초반에 끊겼으면 30분보다 오래 기다립니다.
-- 타이머는 메모리에만 있습니다. 앱이 다시 뜨면 남은 시간과 닫힘 코드를 모르므로 가장 길게 기다립니다.
+- `ABANDONED` 는 FE 가 STT 없이 발표를 이어 가는 중일 수 있습니다 (재연결을 포기했거나 네트워크가 오래 끊김).
+  5분 뒤에 끝내도 그 FE 가 발표를 마치고 보내는 끝내기 PUT 이 되살립니다 (4절). 다만 5분 넘게 끊겼다가
+  네트워크가 돌아온 FE 는 다시 붙을 때 `TAKE_ENDED` 를 받아 남은 발표의 STT 가 빠집니다.
+- 타이머는 메모리에만 있습니다. 앱이 다시 뜨면 닫힘 코드를 모르므로 `ABANDONED` 로 적습니다.
 - 끝난 시각(`ended_at`)은 타이머가 울린 때가 아니라 스트림이 정리된 시각입니다.
-- 관리자 콘솔의 "멈춘 Take" 는 마지막 활동 뒤 가장 긴 대기(1시간 + 60초)보다 10분 넘게 `RUNNING` 인 Take 입니다.
+- 관리자 콘솔의 "멈춘 Take" 는 마지막 활동 뒤 5분 대기보다 10분 넘게 `RUNNING` 인 Take 입니다.
 
 ## 4. Take 가 끝나는 방법
 
@@ -142,8 +142,7 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 ### 되살리기
 
 `ABANDONED` 로 끝난 Take 에 `ended_at` 이 든 끝내기 PUT 이 오면 기록을 받고 `ANALYZING` 으로 되살립니다
-(`end_reason` 은 지웁니다). 화면은 살아 있는데 STT 만 끊겨 발표를 이어 간 경우입니다 — 최대 시간을 넘겨
-발표했거나, 앱이 다시 뜬 뒤 타이머가 먼저 끝낸 경우입니다.
+(`end_reason` 은 지웁니다). 화면은 살아 있는데 STT 만 끊겨 5분 넘게 발표를 이어 간 경우입니다.
 
 `CLOSED` 는 되살리지 않습니다. 창을 닫은 Take 는 이어 가지 않습니다.
 
@@ -166,7 +165,7 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 |---|---|---|
 | grace 30초 | `GRACE_SEC` | `backend/src/pitch_coach_backend/realtime/take_stream.py` |
 | 창을 닫은 뒤 2분 | `CLOSED_TAB_WAIT_SEC` | 위와 같음 |
-| 떠난 Take 30분 | `ABANDON_AFTER_SEC` | 위와 같음 |
+| 떠난 Take 5분 | `ABANDON_AFTER_SEC` | 위와 같음 |
 | Deepgram 재접속 백오프 | `BACKOFF_SEC` | 위와 같음 |
 | 최대 시간 1시간 | `take_max_duration_sec` | `backend/src/pitch_coach_backend/core/config.py` |
 | 서버 시계 여유 60초 | `SERVER_CLOCK_SLACK_MS` | `backend/src/pitch_coach_backend/realtime/auto_end.py` |

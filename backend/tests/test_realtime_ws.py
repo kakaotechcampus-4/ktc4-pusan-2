@@ -3311,16 +3311,13 @@ async def test_shutdown_cancels_cleanup_that_does_not_finish_and_says_which(
 # ── 떠난 Take ─────────────────────────────────────────────────────────
 
 
-def make_plain_stream(
-    take_id: uuid.UUID, store: FakeTranscriptStore, policy: AutoEndPolicy | None = None
-) -> TakeStream:
+def make_plain_stream(take_id: uuid.UUID, store: FakeTranscriptStore) -> TakeStream:
     return TakeStream(
         take_id,
         owner_id=uuid.uuid7(),
         stt_adapter=FakeSttAdapter(),
         config=SttConfig(),
         store=store,
-        auto_end=policy,
     )
 
 
@@ -3348,7 +3345,7 @@ async def test_take_left_without_reconnect_is_ended_as_abandoned(monkeypatch: py
     monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
     monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 0.2)
     store = FakeTranscriptStore()
-    stream = make_plain_stream(uuid.uuid7(), store, short_time_limit(500))
+    stream = make_plain_stream(uuid.uuid7(), store)
 
     await open_and_leave(stream)
     closed_at = datetime.now(UTC)
@@ -3379,7 +3376,7 @@ async def test_reconnect_before_the_wait_is_over_keeps_the_take(monkeypatch: pyt
     monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
     monkeypatch.setattr(take_stream, "ABANDON_AFTER_SEC", 0.2)
     store = FakeTranscriptStore()
-    stream = make_plain_stream(uuid.uuid7(), store, short_time_limit(500))
+    stream = make_plain_stream(uuid.uuid7(), store)
     await open_and_leave(stream)
 
     resumed = await take_stream.attach(
@@ -3399,29 +3396,13 @@ async def test_reconnect_before_the_wait_is_over_keeps_the_take(monkeypatch: pyt
 
 
 @pytest.mark.anyio
-async def test_abandon_waits_until_the_talk_could_have_ended(monkeypatch: pytest.MonkeyPatch):
-    """재연결을 포기한 FE 는 STT 없이 발표를 이어 간다. 발표 초반에 끊겼으면 30분이 아니라 최대
-    시간(서버 시계)까지 기다린다 — 먼저 끝내면 발표 중인 Take 가 FAILED 가 된다."""
-    monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
-    stream = make_plain_stream(uuid.uuid7(), FakeTranscriptStore())
-
-    await open_and_leave(stream)
-
-    policy = stream.auto_end_policy
-    talk_limit_sec = (policy.max_duration_ms + policy.server_clock_slack_ms) / 1000
-    assert talk_limit_sec > take_stream.ABANDON_AFTER_SEC
-    talk_left = talk_limit_sec - take_stream._takes[stream.take_id].streamed_sec
-    assert talk_left - 1 < abandon_wait_left(stream.take_id) <= talk_left
-
-
-@pytest.mark.anyio
-async def test_abandon_waits_thirty_minutes_when_little_of_the_talk_is_left(
+async def test_abandon_waits_the_same_however_much_of_the_talk_is_left(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """남은 발표가 30분보다 짧으면 30분을 기다린다 (탭을 닫았다가 주소를 다시 여는 사용자)."""
+    """창을 닫지 않고 끊겼으면 발표가 얼마나 남았든 ABANDON_AFTER_SEC 만 기다린다. 그 뒤로 STT 없이
+    발표를 이어 간 FE 는 끝내기 PUT 이 되살린다."""
     monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
-    policy = short_time_limit(600_000)
-    stream = make_plain_stream(uuid.uuid7(), FakeTranscriptStore(), policy)
+    stream = make_plain_stream(uuid.uuid7(), FakeTranscriptStore())
 
     await open_and_leave(stream)
 
@@ -3561,10 +3542,8 @@ async def test_abandon_write_failure_leaves_the_take_open(caplog: pytest.LogCapt
 @pytest.mark.anyio
 async def test_startup_rearms_timers_from_the_last_activity():
     """앱이 다시 뜨면 메모리의 타이머가 없다. 진행 중으로 남은 Take 를 DB 에서 읽어 마지막 활동에서
-    잰 남은 시간으로 다시 건다. 남은 발표 시간도 사라져 최대 시간 전체를 기다린다. 이미 지난 Take 는
-    바로 끝낸다."""
-    wait_sec = take_stream.longest_abandon_wait_sec()
-    assert wait_sec > take_stream.ABANDON_AFTER_SEC
+    잰 남은 시간으로 다시 건다. 이미 지난 Take 는 바로 끝낸다."""
+    wait_sec = take_stream.ABANDON_AFTER_SEC
     store = FakeTranscriptStore()
     now = datetime.now(UTC)
     stale, recent = uuid.uuid7(), uuid.uuid7()
