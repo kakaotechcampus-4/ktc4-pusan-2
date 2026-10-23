@@ -58,7 +58,7 @@ flowchart LR
   C -- "장 · Take tally 합계" --> S["pace.summarize · criteria"]
   S --> TR["Take 결과 areas.SPEED"]
 ```
-1. **BE**: 확정 단어 · STT 상태를 Take 기준 ms로 들고 있다가 FE `metrics`를 받을 때마다 최근 60초를 `/coach/evaluate`에 싣는다(`architecture.md` 2절).
+1. **BE**: 확정 단어 · STT 상태를 Take 기준 ms로 들고 있다가 FE `metrics`를 받을 때마다(`buffered: true`인 것은 빼고) 최근 60초를 `/coach/evaluate`에 싣는다(호출 조건은 `architecture.md` 1-3 2번 · 2절).
 2. **코치 → 군더더기 → 말 속도**: 코치가 군더더기를 먼저 부르고, 단어별 판정 중 군더더기(true)와 보류(null) 단어를 `fillers`로 말 속도에 넘긴다. 군더더기 판정이 실패하면 `fillers: null`이다(`coach-agent.md` 6-1).
 3. **`pace.judge`**: 새 단어를 세어 `tally`에 내고(글자 수 · 발화 시간 · 멈춤), 최근 창 · 짧은 창 CPM으로 상태와 문제를 정한다.
 4. **코치 → 시간 판정**: 같은 요청 안에서 말 속도의 `cpm` · `measurable`과 `criteria()`의 `PACE_FAST` 기준값, 장별 `chars` 합을 시간 판정에 넘긴다(`coach-agent.md` 6-2).

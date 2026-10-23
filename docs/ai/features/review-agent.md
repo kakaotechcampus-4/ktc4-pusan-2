@@ -236,7 +236,7 @@ ai/research/review-agent/
 | 이전 Take가 없음 | 비교 없음, 반복 문제 가중 없음 | 200 | 첫 Take |
 | 규칙 단계의 예외(입력 모양 문제) | — | 500 `INTERNAL_ERROR`. BE가 한 번 다시 부르고, 그래도 실패하면 Take를 `COMPLETED`(리뷰 없음, `take_summaries.summary` · `score` null)로 두고 리포트에 결과 없음을 보인다. BE는 `/coach/plan`을 `previous_review` null과 이전 `ACTIVE` 미션 · 반복 문제로 부른다 | Take 결과 · 대본 전달도는 있으므로 측정값은 보여 준다(공통 흐름은 `architecture.md` 1-3) |
 
-- `fallback_reason`이 있는 리뷰를 BE가 나중에 다시 부를 수 있다(같은 입력이라 규칙 단계 결과는 같고 문장만 채워진다, `architecture.md` 4절). 다음 미션 선택은 LLM이 하므로 다시 부르면 미션이 바뀔 수 있다. 그래서 다시 부르는 것은 다음 Take가 시작되기 전에만 한다. 덮을 때 그 리뷰가 만든 `ACTIVE` 미션을 새 결과로 바꾸고 `/coach/plan`을 다시 부른다.
+- `fallback_reason`이 있는 리뷰를 BE가 나중에 다시 부를 수 있다(같은 입력이라 규칙 단계 결과는 같고 문장만 채워진다, `architecture.md` 4절). 다음 미션 선택은 LLM이 하므로 다시 부르면 미션이 바뀔 수 있다. 그래서 다시 부르는 것은 다음 Take가 시작되기 전에만 한다. 덮을 때 그 리뷰가 만든 `ACTIVE` 미션을 새 결과로 바꾸고 `/coach/plan`을 다시 부른다. 저장 직전의 다음 Take 시작 확인(발표 행 잠금)과 다시 불러도 `fallback_reason`이 올 때의 처리는 `architecture.md` 4절을 따른다.
 
 # 8. 시간 예산과 호출 규칙
 | 호출 | AI 예산 | BE 시간 제한 | BE 재시도 | 이유 |
@@ -328,7 +328,7 @@ sequenceDiagram
 **`takes.mission_ids`** (새 칸 JSONB NULL): BE가 Take를 시작할 때 그 Take에 실은 미션 id 목록을 고정한다. 다음 Take가 리뷰보다 먼저 시작돼 같은 `ACTIVE` 미션이 두 Take에 실려도, 리뷰 요청의 `missions`는 이 목록으로 읽으므로 각 Take의 리뷰가 자기 미션을 찾는다. `missions`의 `take_id`는 가장 최근에 실린 Take로 바뀌고, `status` · `observed`는 그 Take의 리뷰만 덮는다(12-2). Take별 판정은 그 Take의 리뷰 결과(`mission_results`)에 남는다. 미션 내용(목표 · 설명)은 Take에 실린 뒤에는 바꾸지 않는다. 목록의 미션이 지워졌으면 리뷰 요청에 싣지 않고 판정하지 않는다(건너뜀). 미션과 Take를 잇는 `take_missions` 연결 테이블은 쓰지 않는다.
 
 ## 12-2. 저장 규칙
-- 리뷰 결과 · 미션 갱신 · 다음 미션 · `take_summaries`(`summary` · `score`) · Take 상태(`COMPLETED`) · `takes.review_status`(`DONE`) · `analysis_stage`(`DONE`) · `completed_at`은 한 트랜잭션으로 저장한다(일부만 남지 않게). 리뷰가 끝내 실패하면 `review_status`를 `FAILED`로 두고 나머지는 같다(`architecture.md` 1-3).
+- 리뷰 결과 · 미션 갱신 · 다음 미션 · `take_summaries`(`summary` · `score`) · Take 상태(`COMPLETED`) · `takes.review_status`(`DONE`) · `analysis_stage`(`DONE`) · `completed_at`은 한 트랜잭션으로 저장한다(일부만 남지 않게). 리뷰가 끝내 실패했을 때의 완료 상태(`review_status` `FAILED`)와 요약 칸 처리는 `architecture.md` 1-1 · 1-3을 따른다.
 - BE는 `mission_results`의 `mission_id`로 이번 Take의 미션 행을 찾아 `status` · `observed`를 바꾸고, `complete`는 `status`가 `ACHIEVED`일 때만 true로 둔다. 그 행의 `take_id`가 이 Take가 아니면(다음 Take가 먼저 시작돼 같은 미션을 실었으면) 덮지 않는다 — 그 미션은 나중 Take의 리뷰가 판정하고, 이 Take의 판정은 이 리뷰의 `mission_results`에 남는다.
 - 결과는 `meta`와 함께 저장한다(`architecture.md` 1-1).
 - 리뷰에 싣는 `missions`는 이 Take에 실린 미션이고 `takes.mission_ids`로 읽는다. 이 Take가 만든 미션(`source_take_id` = 이 Take)이 아니다.

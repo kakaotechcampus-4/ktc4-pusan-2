@@ -319,7 +319,7 @@ sequenceDiagram
     loop 발표 중 1초마다
         FE->>BE: WS metrics {t_ms, gaze, voice, slide_number}
         BE->>BE: 창(30초) 갱신 · take_metric_seconds.voice 저장
-        BE->>C: POST /coach/evaluate (voice_records · calibration · coach_state)
+        BE->>C: POST /coach/evaluate (buffered가 아닐 때, architecture.md 1-3 2번 · voice_records · calibration · coach_state)
         C->>V: speaking_levels(새 기록) → 표본에 더함, baseline(표본) — 기준 음량이 없을 때
         C->>V: judge(records, base_level_db, since_ms)
         V-->>C: VOLUME · PAUSE
