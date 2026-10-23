@@ -11,8 +11,8 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptParseStatus,
     ScriptSlide,
     ScriptVersion,
-    Standards,
     StandardAnalyses,
+    Standards,
 )
 from pitch_coach_backend.module.take.entity import Take, TakeSummary
 
