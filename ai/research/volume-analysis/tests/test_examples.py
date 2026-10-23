@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from volume.core import criteria, judge, summarize
+from volume.core import baseline, criteria, judge, speaking_levels, summarize
 from volume.schemas import Criteria, PauseJudgment, Summary, VolumeInput, VolumeJudgment
 
 EXAMPLES = Path(__file__).parents[1] / "src/volume/examples"
@@ -55,6 +55,15 @@ def test_summarize_matches_example() -> None:
 
 def test_criteria_matches_example() -> None:
     assert_same(criteria().model_dump(mode="json"), load("criteria.json"))
+
+
+def test_speaking_levels_matches_example() -> None:
+    actual = speaking_levels(load("speaking_levels_input.json")["records"])
+    assert_same(actual, load("speaking_levels_output.json"))
+
+
+def test_baseline_matches_example() -> None:
+    assert_same(baseline(load("baseline_input.json")["levels"]), load("baseline_output.json"))
 
 
 def test_examples_follow_contract() -> None:

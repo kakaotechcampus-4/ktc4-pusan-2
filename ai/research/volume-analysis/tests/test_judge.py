@@ -221,7 +221,31 @@ def test_last_partial_piece() -> None:
     [item] = volume.tally
     assert item.values.total_ms == 600
     assert item.values.audio_live_ms == 600
+    assert item.values.voiced_ms == 400
+    assert item.values.voiced_energy == pytest.approx(10 ** (BASE / 10) * 400)
     assert pause.tally[0].values.total_ms == 600
+    # 커서는 마지막 조각의 끝이고, 같은 커서로 다시 부르면 센 몫이 없다
+    assert volume.counted_until_ms == pause.counted_until_ms == 4600
+    again, _ = run(records, 4600, since_ms=volume.counted_until_ms)
+    assert again.tally == []
+
+
+def test_baseline_appears_during_take() -> None:
+    # 기준 음량 없이 0~3초를 센 뒤, 요청이 빠졌다가 6초에 기준 음량이 생긴다
+    records = speech(0, 6000, BASE - 10)
+    before, _ = run(records, 3000, since_ms=0, base=None)
+    assert before.state == "UNKNOWN"
+    assert all(i.values.level_voiced_ms == 0 for i in before.tally)
+
+    after, _ = run(records, 6000, since_ms=before.counted_until_ms, base=BASE)
+    # 그 요청의 짧은 창 전체에 새 기준 음량을 쓴다
+    assert after.state == "LOW"
+    assert after.metrics.voice_diff_db == pytest.approx(-10.0)
+    # 이번에 처음 세는 새 1초(여러 개)는 이번 기준 음량으로 세고, 앞서 센 1초는 다시 세지 않는다
+    assert [i.t_ms for i in after.tally] == [3000, 4000, 5000]
+    for item in after.tally:
+        assert item.values.level_voiced_ms == 800
+        assert item.values.base_db_ms == pytest.approx(BASE * 800)
 
 
 def test_tally_values() -> None:
