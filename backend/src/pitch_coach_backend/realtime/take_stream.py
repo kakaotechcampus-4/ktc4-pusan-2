@@ -123,6 +123,8 @@ MARK_AUTO_END_TIMEOUT_SEC = 5.0
 # 끝낸다. FE 가 끊긴 뒤 다시 붙어 보는 시간(sttSocket `GIVE_UP_AFTER_MS`)과 같다 — 그 안이면 탭이
 # 살아 있는 FE 도, 탭을 닫았다가 리허설 주소를 다시 연 사용자도 이어 갈 수 있다
 ABANDON_AFTER_SEC = 30 * 60.0
+# 앱이 뜰 때 진행 중인 Take 를 읽는 상한. 이걸 기다리는 동안 앱이 요청을 받지 못한다
+ARM_ABANDONED_TIMEOUT_SEC = 10.0
 # 끝낸 Take · Take 별 자동 종료 상태를 프로세스 안에서 기억하는 개수. 오래된 것부터 버린다
 MAX_REMEMBERED_TAKES = 10_000
 
@@ -1306,9 +1308,9 @@ async def arm_abandoned_takes(store: TranscriptStore) -> None:
     `ABANDON_AFTER_SEC` 뒤로 건다 — 이미 지났으면 바로 끝낸다. 그 안에 FE 가 다시 붙으면 꺼진다.
     """
     try:
-        takes = await store.running_takes()
+        takes = await asyncio.wait_for(store.running_takes(), ARM_ABANDONED_TIMEOUT_SEC)
     except Exception:
-        # 앱은 뜬다. 이 Take 들은 다음에 연결이 붙었다 끊길 때 다시 걸린다
+        # 앱은 뜬다 (상한을 넘겨도). 이 Take 들은 다음에 연결이 붙었다 끊길 때 다시 걸린다
         logger.exception("진행 중인 Take 를 읽지 못해 떠난 Take 타이머를 걸지 못했다")
         return
     now = datetime.now(UTC)
