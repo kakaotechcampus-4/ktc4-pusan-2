@@ -27,9 +27,13 @@ import { PaneHeading } from './PaneHeading';
 
 const FAILURE_MESSAGE: Record<'upload' | 'invalid' | 'open', string> = {
   upload: '업로드하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
-  invalid: 'PDF를 열 수 없어요. 암호가 걸려 있거나 손상되지 않았는지 확인해 주세요.',
+  invalid:
+    'PDF를 열 수 없어요. 암호가 걸려 있거나 손상되지 않았는지 확인하고 다른 파일을 골라 주세요.',
   open: '올린 PDF를 열지 못했어요. 파일이 손상됐을 수 있어요.',
 };
+
+/** 같은 파일을 다시 보내도 같은 400 이면(`invalid`) "다시 시도"를 내지 않습니다 (`slideUpload.ts`) */
+const canRetry = (reason: keyof typeof FAILURE_MESSAGE) => reason !== 'invalid';
 
 /** 받을 수 없는 파일이면 그 이유. 드롭존과 "파일 교체"가 같은 규칙을 씁니다 */
 function rejectReason(file: File): string | null {
@@ -128,19 +132,22 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
           </p>
         )}
 
-        {/* 실패한 파일은 들고 있습니다 — 다시 고르게 하지 않습니다 */}
+        {/* 실패한 파일은 들고 있습니다 — 다시 고르게 하지 않습니다. 열 수 없는 PDF(`invalid`)는
+            다시 보내도 같으니 다른 파일을 고르게 합니다 */}
         {failed && !error && (
           <div role="alert" className="mt-4 flex flex-col items-center gap-2">
             <p className="text-xs font-bold text-coral">
               {failed.file.name} · {FAILURE_MESSAGE[failed.reason]}
             </p>
-            <button
-              type="button"
-              onClick={() => startSlideUpload(failed.file)}
-              className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-coral-deep hover:bg-coral-wash"
-            >
-              다시 시도
-            </button>
+            {canRetry(failed.reason) && (
+              <button
+                type="button"
+                onClick={() => startSlideUpload(failed.file)}
+                className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-coral-deep hover:bg-coral-wash"
+              >
+                다시 시도
+              </button>
+            )}
           </div>
         )}
 
@@ -431,7 +438,7 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
       {(error || replaceFailed) && (
         <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-coral">
           {error ?? (replaceFailed && FAILURE_MESSAGE[replaceFailed.reason])}
-          {replaceFailed && !error && (
+          {replaceFailed && !error && canRetry(replaceFailed.reason) && (
             <button
               type="button"
               onClick={() => startSlideUpload(replaceFailed.file, slide.version)}
