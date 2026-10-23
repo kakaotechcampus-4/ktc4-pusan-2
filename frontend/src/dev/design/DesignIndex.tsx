@@ -3,8 +3,6 @@ import type { ReactElement } from 'react';
 import { Link, useParams } from 'react-router';
 import { Card } from '@/shared/ui/Panel';
 import { DraftPage } from './ui';
-import { ReportDraft } from './report/ReportDraft';
-import { ProcessingDraft } from './processing/ProcessingDraft';
 import { StageDraft } from './stage/StageDraft';
 import { LoadingDraft } from './loading/LoadingDraft';
 import { PrepareMissionDraft } from './prepare/PrepareMissionDraft';
@@ -26,14 +24,12 @@ const DRAFTS: { name: string; id: string; title: string; element: ReactElement }
     element: <PrepareMissionDraft />,
   },
   { name: 'stage', id: '07', title: '리허설 무대 · 스타일', element: <StageDraft /> },
-  { name: 'processing', id: 'P6-0', title: '분석 대기', element: <ProcessingDraft /> },
   {
     name: 'processing-loading',
     id: 'P6-0',
     title: '분석 대기 · 8비트 로딩',
     element: <LoadingDraft />,
   },
-  { name: 'report', id: 'P6', title: 'Take 리포트', element: <ReportDraft /> },
   { name: 'comparison', id: 'P7', title: 'Take 비교', element: <ComparisonDraft /> },
   { name: 'best', id: 'P8', title: 'Best Take 선택', element: <BestTakeDraft /> },
   { name: 'retry', id: 'P15', title: '업로드 실패 · 재시도', element: <RetryDraft /> },
@@ -43,6 +39,7 @@ const DRAFTS: { name: string; id: string; title: string; element: ReactElement }
 /**
  * 이미 구현된 화면 — 시안으로 다시 그리지 않고 **실제 화면으로 바로 갑니다** (복사본은 금방 어긋납니다).
  * 접근성 점검도 실제 화면을 봅니다. 목 데이터(`mocks/handlers.ts`)의 피치 `p1` · Take `t3` 으로 열립니다.
+ * 리포트의 상태별 Take id 는 `mocks/report.ts` 에 있습니다.
  */
 const LIVE: { path: string; id: string; title: string; note?: string }[] = [
   { path: '/welcome', id: '—', title: '웰컴 · 서비스 소개' },
@@ -52,6 +49,17 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
   { path: '/pitch/p1/device-check', id: '09', title: '시작 전 세팅 (장치 점검)' },
   { path: '/takes/t3/rehearsal', id: '07', title: '리허설 · 실시간 코칭' },
   { path: '/takes/t3/exam', id: '07', title: '리허설 · 실전 모드' },
+  {
+    path: '/takes/t4/processing',
+    id: 'P6-0',
+    title: '분석 대기',
+    note: '몇 초마다 단계가 넘어가고 리포트로 가요',
+  },
+  { path: '/takes/t-failed/processing', id: 'P6-0', title: '분석 대기 · 분석 실패' },
+  { path: '/takes/t3', id: 'P6', title: 'Take 리포트' },
+  { path: '/takes/t-fallback', id: 'P6', title: 'Take 리포트 · AI 문장 실패' },
+  { path: '/takes/t-review-failed', id: 'P6', title: 'Take 리포트 · 리뷰 실패' },
+  { path: '/takes/t2', id: 'P6', title: 'Take 리포트 · 시선 측정 제외' },
   { path: '/about', id: 'P14', title: '분석 방식 설명' },
   {
     path: '/unsupported',

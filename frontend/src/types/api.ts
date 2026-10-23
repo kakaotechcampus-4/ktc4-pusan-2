@@ -170,15 +170,8 @@ export interface GazePayload {
 }
 
 /* ------------------------------------------------------------------ */
-/* 리포트 — GET /takes/{id}/report                                      */
+/* 리포트 시선 — 새 리포트 응답은 types/report.ts                        */
 /* ------------------------------------------------------------------ */
-
-export interface Metric {
-  value: number;
-  /** 첫 Take는 null. 증감 화살표를 그리지 않습니다 */
-  delta: number | null;
-  direction: 'IMPROVED' | 'WORSENED' | 'SAME' | null;
-}
 
 export interface ReportGaze {
   excluded: boolean;
@@ -195,50 +188,6 @@ export interface ReportGaze {
   uncertainRatio: number | null;
   coverageRatio: number | null;
   reliability: 'HIGH' | 'MEDIUM' | 'LOW' | null;
-}
-
-export interface Finding {
-  id: string;
-  type: string;
-  polarity: 'ISSUE' | 'GOOD' | 'NEUTRAL';
-  slideNumber: number;
-  startMs: Ms;
-  endMs: Ms;
-  severity: number;
-  title: string;
-  message: string;
-  evidence: { label: string; value: string }[];
-}
-
-export interface TakeReport {
-  takeId: string;
-  takeNumber: number;
-  mode: PracticeMode;
-  scriptMode: ScriptMode;
-  headline: string;
-  summary: {
-    durationMs: Ms;
-    timeLimitMs: Ms;
-    /** 음수가 여유 시간입니다. -2000 = 2초 남김 */
-    overTimeMs: Ms;
-    averageWpm: Metric;
-    fillerCount: Metric;
-    /** 대본 의존도의 새 주근거 — STT 전사와 대본 원문의 유사도 */
-    scriptSimilarity: Metric;
-    scriptDependencyCount: Metric;
-    overallConfidence: number;
-  };
-  gaze: ReportGaze;
-  findings: Finding[];
-  missions: {
-    id: string;
-    priority: number;
-    slideNumber: number;
-    description: string;
-    result: 'DONE' | 'PARTIAL' | 'MISSED' | null;
-  }[];
-  /** MVP에서는 항상 false. 영상은 서버로 가지 않습니다 */
-  hasRecording: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -295,15 +244,6 @@ export interface ComparisonResponse {
     takeNumber: number;
     missions: { id: string; description: string; result: 'DONE' | 'PARTIAL' | 'MISSED' }[];
   }[];
-}
-
-export interface AnalysisStatus {
-  status: TakeStatus;
-  steps: {
-    name: 'UPLOAD' | 'STT' | 'CONTENT' | 'REPORT';
-    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
-  }[];
-  estimatedRemainSec: number;
 }
 
 /* ------------------------------------------------------------------ */

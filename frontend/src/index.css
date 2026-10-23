@@ -36,6 +36,13 @@
   --color-gaze-screen: #D9A441;     /* 대본 · 슬라이드 · solid 5px */
   --color-gaze-unknown: #C0392B;    /* 판정 불가 · dashed 5px */
 
+  /* ── 분석 대기 로딩 화면 ───────────────────────────────────────
+     노을 그림(public/loading) 위 게임 대화 상자. 그 화면에서만 씁니다. */
+  --color-dusk: #2B2140;            /* 대화 상자 바탕 · 그림 밖 여백 */
+  --color-dusk-line: #4A3A66;       /* 안쪽 테두리 · 구분선 · 빈 칸 */
+  --color-dusk-ink: #FFF4E0;        /* 본문 · 바깥 테두리 */
+  --color-dusk-accent: #F9BE7A;     /* 진행 막대 · 이름표 */
+
   /* ── ★ 계측 조건 ───────────────────────────────────────────────
      이 네 값은 디자인이 아닙니다.
 
@@ -100,6 +107,17 @@ body {
 .landing[data-motion="off"] .landing-wave { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .landing-float, .landing-wave { animation: none; }
+}
+
+/* 분석 대기의 "분석 중..." 점. 배경 그림은 움직이지 않습니다. */
+@keyframes loading-dot {
+  0%, 20% { opacity: 0; }
+  30%, 90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.loading-dot { animation: loading-dot 1.6s infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .loading-dot { animation: none; }
 }
 
 /* 피치 생성 화면의 밝은 지면. */
