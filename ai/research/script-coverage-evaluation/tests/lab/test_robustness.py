@@ -8,7 +8,7 @@ from coverage_lab import rubric_consistency as consistency
 from coverage_lab.cache import SqliteLLMCache
 from coverage_lab.llm import Settings
 from coverage_lab.rubric_consistency import sample_rubrics
-from coverage_lab.runs import run_script_analysis
+from coverage_lab.runs import run_script_analysis, run_take_evaluation
 from coverage_lab.store import (
     confirm_similar_item,
     connect,
@@ -23,8 +23,11 @@ from script_coverage.core import CoverageError, ScriptLLMs, TakeLLMs
 from script_coverage.script_analysis.schemas import SlideSemanticAnalysis
 from script_coverage.script_analysis.semantic import semantic_config_hash
 from script_coverage.shared.text import normalize_script
-from script_coverage.stt_evaluation.schemas import SlideSTT, Take
+from script_coverage.stt_evaluation.schemas import SlideSTT, Take, VerifierResult
 from tests.lab.test_store import _evaluation, _item, _rubric
+from tests.unit.fakes import DeckAwareLLM, FakeLLM
+from tests.unit.shared.slides import SLIDES
+from tests.unit.test_take_core import SaidAllLLM
 
 MODEL = "m"
 SETTINGS = Settings(base_url="http://127.0.0.1:9/v1", api_key="dummy", model=MODEL)
@@ -136,6 +139,46 @@ def test_partial_failure_goes_through_core_saves_ok_slides_and_deletes_failed_on
     assert load_rubric(conn, "대본", 1) is None
     assert load_rubric(conn, "대본", 2) is not None
     assert load_rubric(conn, "대본", 2).meta.script_name == "대본"
+
+
+def test_call_counts_through_run_functions_and_cache_replay(conn, tmp_path):
+    """다섯 호출 수(1차 분석 · 최종 결론 · 전달 단위 · 의미 평가 · 교차 검증)는 실제로 LLM 을 부른 횟수이고, 같은 캐시로 다시 하면 0 이다."""
+    path = tmp_path / "대본.json"
+    scripts = [{"slide_number": n, "script": SLIDES[("가상대본1", n)]} for n in (4, 6)]
+    path.write_text(json.dumps(scripts, ensure_ascii=False), encoding="utf-8")
+    script_llms = ScriptLLMs(**{s: DeckAwareLLM(s) for s in ("semantic", "final", "unit")})
+    rubrics, stats = run_script_analysis(path, conn, SETTINGS, llms=script_llms)
+    assert [r.meta.slide_number for r in rubrics] == [4, 6] and stats["failed"] == {}
+    assert (stats["analysis_calls"], stats["final_calls"], stats["unit_calls"]) == (2, 2, 2)
+    _, again = run_script_analysis(path, conn, SETTINGS, llms=script_llms)
+    assert (again["analysis_calls"], again["final_calls"], again["unit_calls"]) == (0, 0, 0)
+
+    take = Take(
+        script_name="대본",
+        take_id="대본_take1",
+        slides=[SlideSTT(slide_number=n, stt=SLIDES[("가상대본1", n)]) for n in (4, 6)],
+    )
+    # 6번 장의 의미 평가가 실패한다: 실패한 호출도 센다
+    flaky = TakeLLMs(
+        eval=SaidAllLLM(failing={6: RuntimeError("대본 원문")}),
+        verifier=FakeLLM(VerifierResult(judgments=[])),
+    )
+    evaluations, stats = run_take_evaluation(take, conn, SETTINGS, llms=flaky)
+    assert [e.slide_number for e in evaluations] == [4]
+    assert stats["failed"] == {6: "LLM_ERROR"} and stats["causes"] == {
+        6: "LLM 호출에 실패했습니다."
+    }
+    assert (stats["semantic_calls"], stats["verifier_calls"]) == (
+        2,
+        1,
+    )  # 4번 장에서 규칙과 LLM 이 어긋나 교차 검증을 1번 부른다
+    # 성공한 4번 장은 캐시에 있어 실패했던 6번 장만 다시 부른다
+    fine = TakeLLMs(eval=SaidAllLLM(), verifier=FakeLLM(VerifierResult(judgments=[])))
+    evaluations, stats = run_take_evaluation(take, conn, SETTINGS, llms=fine)
+    assert [e.slide_number for e in evaluations] == [4, 6] and stats["failed"] == {}
+    assert (stats["semantic_calls"], stats["verifier_calls"]) == (1, 1)
+    _, stats = run_take_evaluation(take, conn, SETTINGS, llms=fine)
+    assert (stats["semantic_calls"], stats["verifier_calls"]) == (0, 0)
 
 
 # ── 4. 여러 문장 저장은 한 번에 (실패하면 되돌림) ────────────

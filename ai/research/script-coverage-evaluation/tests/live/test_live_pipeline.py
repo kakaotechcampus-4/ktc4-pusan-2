@@ -1,5 +1,6 @@
 """실제 LLM API 로 슬라이드 한 장을 대본 분석 → STT 평가까지 돌린다 (과금, 약 4~5회 호출).
 
+서비스가 부르는 최상위 진입 함수(`script_coverage.core`)를 요청 · 응답 모양 그대로 부른다.
 캐시 재생 비교는 캐시에서 응답을 꺼내므로 LLM 클라이언트를 실제로 부르지 않는다.
 이 테스트는 구조화 출력 LLM 을 만들고 부르는 경로가 실제로 동작하는지 확인한다.
 기본 실행에서 빠진다 — `uv run python -m pytest -m live` 로 따로 돌린다.
@@ -10,8 +11,9 @@ import pytest
 from coverage_lab.datasets import load_script_json, load_take
 from coverage_lab.llm import load_settings, script_llms, stt_llms
 from coverage_lab.paths import SCRIPT_DIR, STT_DIR
-from script_coverage.script_analysis.core import analyze_script
-from script_coverage.stt_evaluation.core import evaluate_take
+from script_coverage.core import analyze_script, evaluate_take
+from script_coverage.schemas import AnalyzeRequest, RubricRequest, ScriptSlide, TakeSlide
+from script_coverage.version import FEATURE_VERSION, SCHEMA_VERSION
 
 pytestmark = pytest.mark.live
 
@@ -26,24 +28,28 @@ def settings():
 
 
 @pytest.fixture(scope="module")
-def rubric(settings):
+def rubric_response(settings):
     slides = [s for s in load_script_json(SCRIPT_DIR / f"{SCRIPT}.json") if s.slide_number == SLIDE]
-    llms = script_llms(settings)
-    rubrics, stats = analyze_script(
-        SCRIPT,
-        slides,
-        semantic_llm=llms.semantic,
-        final_llm=llms.final,
-        unit_llm=llms.unit,
-        model=settings.model,
+    request = RubricRequest(
+        pitch_id=SCRIPT,
+        script_version_id=SCRIPT,
+        slides=[ScriptSlide(slide_number=s.slide_number, script=s.script) for s in slides],
     )
-    assert stats["failed"] == {}
-    assert (stats["analysis_calls"], stats["final_calls"], stats["unit_calls"]) == (1, 1, 1)
-    assert len(rubrics) == 1
-    return rubrics[0]
+    response = analyze_script(request, llms=script_llms(settings), model=settings.model)
+    assert response.failed == []
+    assert len(response.rubrics) == 1
+    return response
 
 
-def test_script_analysis_live(rubric, settings):
+@pytest.fixture(scope="module")
+def rubric(rubric_response):
+    return rubric_response.rubrics[0]
+
+
+def test_script_analysis_live(rubric_response, rubric, settings):
+    assert rubric_response.meta.model == settings.model
+    assert rubric_response.meta.schema_version == SCHEMA_VERSION
+    assert rubric_response.meta.feature_version == FEATURE_VERSION
     assert rubric.meta.llm_model == settings.model
     assert rubric.key_points, "Key Point 가 하나도 없다"
     assert rubric.content_units, "전달 단위가 하나도 없다"
@@ -53,19 +59,22 @@ def test_script_analysis_live(rubric, settings):
 
 def test_stt_evaluation_live(rubric, settings):
     take = load_take(STT_DIR / f"{TAKE}.json")
-    take = take.model_copy(update={"slides": [s for s in take.slides if s.slide_number == SLIDE]})
-    llms = stt_llms(settings)
-    evaluations, stats = evaluate_take(
-        take,
-        {SLIDE: rubric},
-        eval_llm=llms.eval,
-        verifier_llm=llms.verifier,
-        model=settings.model,
+    request = AnalyzeRequest(
+        take_id=take.take_id,
+        slides=[
+            TakeSlide(slide_number=s.slide_number, stt=s.stt)
+            for s in take.slides
+            if s.slide_number == SLIDE
+        ],
+        rubrics=[rubric],
     )
-    assert stats["failed"] == {}
-    assert stats["semantic_calls"] == 1
-    assert len(evaluations) == 1
-    evaluation = evaluations[0]
+    response = evaluate_take(request, llms=stt_llms(settings), model=settings.model)
+    assert response.failed == []
+    assert response.meta.model == settings.model
+    assert response.meta.feature_version == FEATURE_VERSION
+    assert response.take_scores.scored_ratio == 1.0
+    assert len(response.evaluations) == 1
+    evaluation = response.evaluations[0]
     assert len(evaluation.sentences) == len(rubric.sentences)
     assert 0.0 <= evaluation.scores["content_coverage"] <= 1.0
     assert {s.status for s in evaluation.sentences} <= {
