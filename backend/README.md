@@ -252,8 +252,10 @@ POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_ver
 - `client_session_id`(FE 의 연습 세션 id)가 같으면 새로 만들지 않고 처음 만든 Take 를 돌려준다. 응답을 잃고 다시
   보내도 Take 는 하나다. 모드 · 대본 표시 방식 · 버전이 처음과 다르면 `409 TAKE_SESSION_MISMATCH`, 그 Take 가 이미
   끝났으면(`ABANDONED` 포함) `409 TAKE_ENDED` 다. 둘 다 새 세션 id 로 다시 만든다.
-- 새 Take 를 만들면 같은 발표에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 끝낸다. FE 는 가장 최근 Take 로만
-  발표한다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지 `READY` 다.
+- `READY` 는 시작하지 않은 Take 다. FE 는 마이크를 열고 첫 WS 연결이 `ready` 를 받은 뒤에 발표를 시작하고, 그
+  연결이 `RUNNING` 으로 바꾼다. 그래서 새 Take 를 만들면 같은 발표에서 `READY` 로 남은 Take 를, 다시 연습하지
+  않아도 만든 지 10분이 지난 `READY` 를(1분마다, `module/take/ready_sweep.py`) `FAILED`(`ABANDONED`)로 끝낸다.
+  끝난 시각은 만든 시각으로 적는다.
 
 ## 실시간 STT (WebSocket)
 
@@ -303,7 +305,8 @@ WS /api/ws/takes/{take_id}
 - `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
 - **인증 뒤 Take 를 검사한다.** 사용자 존재 → Take 존재·소유(`takes` → `pitches.user_id`) → 상태
   (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 는 첫 연결이라 받고, 통과하면
-  `RUNNING` 으로 바꾼다 (`docs/ai/architecture.md` 1-3). 못 바꿔도 STT 는 그대로 돈다.
+  `RUNNING` 으로 바꾼다 (`docs/ai/architecture.md` 1-3). 못 바꾸면(DB 오류) `1011` 로 닫아 FE 가 다시 붙게
+  한다 — `READY` 로 남은 채 발표하면 시작하지 않은 Take 로 정리된다. 그사이 정리됐으면 `TAKE_ENDED`(`ABANDONED`).
 - **final 은 `take_transcript_segments` 에 저장한다** (interim 은 저장하지 않는다). 리포트의 유일한
   원천이다. 시각은 Take 기준(ms), `words` 는 `[{word, punctuated_word, start_ms, end_ms, confidence}]`
   JSONB. 저장은 realtime 이 아니라 `take/service.py` 가 하고(`append_transcript_segment`), 스트림이
@@ -373,8 +376,9 @@ WS /api/ws/takes/{take_id}
   끊는다. 서버가 아직 붙어 있다고 믿는 연결(닫힘 프레임 없이 사라진 브라우저)에는 `TAKE_ENDED` 를 보내고 닫는다.
   이미 끝났으면 바꾸지 않는다. 어느 쪽이든 `{"take_id","status"}` 로 지금 상태를 돌려준다 (다시 불러도 같다).
   연결이 붙어 있고 최근 10초 안에 오디오가 왔으면 다른 창이 발표 중이라 `409 TAKE_IN_PROGRESS` 로 거절한다.
-- **STT 없이 끝낸 Take 는 Take PUT 이 끝낸다.** 마이크를 못 열었거나 재연결을 포기한 FE 는 `stop` 을 보내지 못한다.
-  종료 흐름의 `PUT /api/pitches/{pitch_id}/takes/{take_id}` 에 `ended_at` 이 있으면 BE 가 `ANALYZING` 으로 바꾼다.
+- **STT 없이 끝낸 Take 는 Take PUT 이 끝낸다.** 발표 중에 재연결을 포기한 FE 는 `stop` 을 보내지 못한다.
+  종료 흐름의 `PUT /api/pitches/{pitch_id}/takes/{take_id}` 에 `ended_at` 이 있으면 BE 가 `RUNNING` 을 `ANALYZING`
+  으로 바꾼다. 시작하지 않은 Take(`READY`)는 `409 TAKE_NOT_STARTED` 로 거절하고 시각도 적지 않는다.
   연결이 붙어 있거나 `stop` 으로 끝내는 중이면 그 연결에 맡긴다. 끊긴 뒤 30초 안이라 스트림이 남아 있으면
   `stop` 처럼 남은 전사까지 저장한 뒤 바꾼다. 떠난 것으로 끝낸 Take(`ABANDONED`)도 `ANALYZING` 으로 되살리고
   이유를 지운다. 창을 닫아 끝낸 Take(`CLOSED`)는 되살리지 않는다.

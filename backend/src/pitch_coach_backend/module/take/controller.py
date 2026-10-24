@@ -59,8 +59,9 @@ def update_take(
     take_update_dto: TakeUpdateRequestDTO
 ):
     result = update_take_service(db, take_id, take_update_dto)
-    # 발표를 끝냈다. 보통은 WS stop 이 마지막 전사까지 저장한 뒤 Take 를 끝낸다. STT 없이 끝낸
-    # FE 는 stop 을 못 보내므로 여기서 끝낸다. 스트림은 이벤트 루프에 있어서 루프로 넘긴다
+    # 발표를 끝냈다. 보통은 WS stop 이 마지막 전사까지 저장한 뒤 Take 를 끝낸다. 발표 중에 연결이
+    # 끊겨 STT 없이 끝낸 FE 는 stop 을 못 보내므로 여기서 끝낸다. 시작하지 않은 Take(READY)는
+    # update_take_service 가 먼저 거절한다. 스트림은 이벤트 루프에 있어서 루프로 넘긴다
     if take_update_dto.ended_at is not None and anyio.from_thread.run(
         take_stream.end_without_stop, take_id
     ):

@@ -1403,8 +1403,8 @@ async def flush_metrics(take_id: uuid.UUID) -> None:
 async def end_without_stop(take_id: uuid.UUID) -> bool:
     """WS `stop` 없이 Take 를 끝낸다 (FE 종료 흐름의 Take PUT). 지금 DB 에 적어도 되면 True.
 
-    마이크를 못 열었거나 재연결을 포기한 FE 는 소켓을 정리해 `stop` 을 보내지 못한다. 그래도
-    발표는 끝까지 가므로 REST 로 끝낼 때 여기를 거친다. 전사 순서를 지키려고 셋으로 나눈다.
+    발표 중에 재연결을 포기한 FE 는 소켓을 정리해 `stop` 을 보내지 못한다. 그래도 발표는 끝까지
+    가므로 REST 로 끝낼 때 여기를 거친다. 전사 순서를 지키려고 셋으로 나눈다.
 
     - `stop` 으로 끝내는 중이거나 연결이 붙어 있으면 False. 그 연결이 마지막 전사를 저장한 뒤 적는다
     - 연결 없이 남은 스트림(끊긴 뒤 30초)은 `stop` 처럼 남은 전사 · 1초 원자료까지 저장하고 정리한
