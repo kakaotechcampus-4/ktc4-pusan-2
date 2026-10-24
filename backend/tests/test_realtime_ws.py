@@ -3993,6 +3993,7 @@ async def test_audio_dropped_from_the_queue_is_not_heard():
         {**metrics(1000), "gaze": {"t_ms": 0, "duration_ms": 1000, "pad": "x" * 5000}},
         {**metrics(1000), "gaze": {"duration_ms": 1000}},
         {**metrics(1000), "voice": {"t_ms": 0, "duration_ms": 1000, "level_db": float("nan")}},
+        {**metrics(1000), "gaze": {"t_ms": 3_600_000, "duration_ms": 1000, "state": "BOTTOM"}},
         {"type": "metrics", "t_ms": 1000},
     ],
     ids=[
@@ -4003,6 +4004,7 @@ async def test_audio_dropped_from_the_queue_is_not_heard():
         "너무 큰 기록",
         "시작 시각 없음",
         "NaN",
+        "끝 시각이 안 맞는 기록",
         "칸 빠짐",
     ],
 )

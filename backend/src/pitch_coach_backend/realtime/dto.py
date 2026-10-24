@@ -9,7 +9,7 @@ import uuid
 from enum import StrEnum
 from typing import Annotated, Any, Literal, get_args
 
-from pydantic import AfterValidator, BaseModel, Field, TypeAdapter
+from pydantic import AfterValidator, BaseModel, Field, TypeAdapter, model_validator
 
 from pitch_coach_backend.core.validation import reject_unstorable_json
 
@@ -67,6 +67,15 @@ class MetricsMessage(BaseModel):
     gaze: SecondRecord | None
     voice: SecondRecord | None
     slide_number: Annotated[int, Field(ge=1, le=MAX_SLIDE_NUMBER)] | None
+
+    @model_validator(mode="after")
+    def _records_end_at_t_ms(self) -> MetricsMessage:
+        # 두 기록은 바깥 t_ms 에서 끝나는 그 1초다 (시작 + 길이 = 끝). 어긋난 기록을 받으면 복구
+        # (replay)가 그 1초를 엉뚱한 창에 넣는다
+        for name, record in (("gaze", self.gaze), ("voice", self.voice)):
+            if record is not None and record["t_ms"] + record["duration_ms"] != self.t_ms:
+                raise ValueError(f"{name} 의 t_ms + duration_ms 는 바깥 t_ms 와 같아야 합니다.")
+        return self
 
 
 ClientMessage = Annotated[AuthMessage | StopMessage | MetricsMessage, Field(discriminator="type")]
