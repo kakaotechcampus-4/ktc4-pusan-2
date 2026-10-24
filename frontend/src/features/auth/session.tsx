@@ -38,6 +38,9 @@ export function RequireSession({ showHeader = true }: { showHeader?: boolean }) 
       {showHeader && (
         <div className="flex items-center justify-end gap-4 px-6 py-3 text-sm">
           <span>{session.data.name}</span>
+          <NavLink to="/takes" end className="underline aria-[current=page]:font-bold">
+            Take 기록
+          </NavLink>
           <NavLink to="/me" className="underline aria-[current=page]:font-bold">
             마이페이지
           </NavLink>

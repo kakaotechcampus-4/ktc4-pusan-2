@@ -19,6 +19,8 @@ import { AboutPage } from '@/features/info/AboutPage';
 import { UnsupportedPage } from '@/features/info/UnsupportedPage';
 import { NotFoundPage } from '@/features/info/NotFoundPage';
 import { MyPage } from '@/features/auth/MyPage';
+import { TakesPage } from '@/features/report/TakesPage';
+import { ComparisonPage } from '@/features/report/ComparisonPage';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -37,7 +39,7 @@ const routes = [
   { path: '/pitches',     title: 'Pitch 목록 | 피치코치', element: <HomePage /> },
   { path: '/pitch/new',   title: 'Pitch 생성 | 피치코치', element: <PitchCreatePage /> },
   { path: '/pitch/:id/edit', title: 'Pitch 수정 | 피치코치', element: <PitchEditPage /> },
-  { path: '/takes',       title: 'Take 기록 | 피치코치', element: <Stub id="P16"  name="Take 기록" track="B" /> },
+  { path: '/takes',       title: 'Take 기록 | 피치코치', element: <TakesPage /> },
   // ★ Take는 준비 화면의 시작 CTA에서 생긴다.
   //    그래서 준비는 pitchId, 리허설은 takeId를 받는다. 이 경계를 흐리지 말 것.
   //    장치 점검은 준비 바로 앞에 선다. 여기서는 Take 를 만들지 않는다 — 점검하다 그만둔
@@ -52,7 +54,7 @@ const routes = [
   { path: '/takes/:takeId/processing', title: '분석 대기 | 피치코치', element: <Stub id="P6-0" name="분석 대기" track="B" /> },
   { path: '/takes/:takeId/retry',      title: '업로드 실패 · 재시도 | 피치코치', element: <Stub id="P15" name="업로드 실패 · 재시도" track="A" /> },
   { path: '/takes/:takeId',            title: 'Take 리포트 | 피치코치', element: <Stub id="P6"  name="Take 리포트" track="B" /> },
-  { path: '/pitch/:id/comparison',     title: 'Take 비교 | 피치코치', element: <Stub id="P7"  name="Take 비교" track="B" /> },
+  { path: '/pitch/:id/comparison',     title: 'Take 비교 | 피치코치', element: <ComparisonPage /> },
   { path: '/pitch/:id/best',           title: 'Best Take 선택 | 피치코치', element: <Stub id="P8"  name="Best Take 선택" track="B" /> },
   { path: '/me',          title: '마이페이지 | 피치코치', element: <MyPage /> },
   { path: '/privacy',     title: '개인정보 처리방침 | 피치코치', element: <PolicyPage kind="privacy" /> },

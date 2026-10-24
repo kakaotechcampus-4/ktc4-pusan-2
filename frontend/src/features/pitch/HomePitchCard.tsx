@@ -96,9 +96,20 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
           <p className="p-6 text-sm text-stone">아직 연습 기록이 없어요.</p>
         ) : (
           <>
-            <div className="flex justify-between bg-cream/50 px-6 py-3 font-mono text-[10px] tracking-widest text-stone">
+            <div className="flex items-center justify-between gap-4 bg-cream/50 px-6 py-3 font-mono text-[10px] tracking-widest text-stone">
               <span>REHEARSAL LOG</span>
-              <span>최근 연습순</span>
+              <span className="flex items-center gap-4">
+                최근 연습순
+                {/* 비교는 Take 가 둘 이상일 때만 뜻이 있습니다 */}
+                {pitch.pitch_id && takes.length >= 2 && (
+                  <Link
+                    to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/comparison`}
+                    className="font-sans text-xs font-bold tracking-normal text-ink hover:text-coral-deep"
+                  >
+                    Take 비교 →
+                  </Link>
+                )}
+              </span>
             </div>
             <ul>
               {takes.map((take) => (

@@ -7,6 +7,7 @@ import { standardsHandlers } from './standards';
 import { pitchHandlers } from './pitch';
 import { pitchEditHandlers } from './pitchEdit';
 import { scriptHandlers } from './scripts';
+import { takeHistoryHandlers } from './takeHistory';
 import type { TakeCreated, TakeCreateRequest } from '@/types/take';
 import type { ScriptDetail } from '@/types/script';
 import type { AnalysisStatus, HomeResponse, PrepareResponse, TakeReport } from '@/types/api';
@@ -220,6 +221,7 @@ export const handlers = [
   // 수정 화면 목 — 업로드 · 대본 목보다 먼저 와야 합니다 (그쪽은 모르는 id 에 404)
   ...pitchEditHandlers,
   ...homeHandlers,
+  ...takeHistoryHandlers,
   ...authHandlers,
   ...sttHandlers,
   ...presentationHandlers,

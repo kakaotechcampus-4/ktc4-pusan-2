@@ -26,6 +26,9 @@ export function HomePage() {
             <Link to="/" aria-current="page" className="border-b-2 border-coral py-2 font-bold">
               내 피치
             </Link>
+            <Link to="/takes" className="hover:text-coral-deep">
+              Take 기록
+            </Link>
             <button
               type="button"
               onClick={() => setHelpOpen(true)}

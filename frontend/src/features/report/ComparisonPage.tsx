@@ -1,71 +1,72 @@
 import { useState } from 'react';
+import { useParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
-import { Badge } from '@/shared/ui/Badge';
+import { useTakeHistory } from '@/shared/api/takeHistory';
+import { InfoPage } from '@/shared/ui/InfoPage';
+import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
-import { DraftPage, Mascot } from '../ui';
-import { SCRIPT_MODE_LABEL, pct, takes, type TakeRow } from '../takesSample';
+import { QueryState } from './QueryState';
+import {
+  SCRIPT_MODE_LABEL,
+  completedTakes,
+  gazeOffEngine,
+  pct,
+  takeDay,
+} from './takeHistoryFormat';
 
 /**
- * Take 비교 시안 (P7) — 한 피치의 Take들을 나란히.
+ * P7 Take 비교 — 한 피치의 Take들을 나란히.
  *
  * FE 원칙이 "점수가 아니라 Take 간 변화"라 총점 줄은 없습니다 (CLAUDE.md).
  * 시선 엔진이 다른 Take끼리는 시선 값을 이어 그리지 않습니다 — 같은 사람도 엔진이 다르면 숫자가 달라집니다.
  */
-
-type Variant = 'OK' | 'ONE' | 'ENGINE';
-
-const VARIANTS = [
-  { id: 'OK' as const, label: '정상' },
-  { id: 'ONE' as const, label: 'Take 1개' },
-  { id: 'ENGINE' as const, label: '시선 엔진 다름 포함' },
-];
-
-const ROWS: Record<Variant, TakeRow[]> = {
-  OK: takes.slice(0, 2),
-  ONE: takes.slice(0, 1),
-  ENGINE: takes,
-};
 
 type MetricKey = 'audience_ratio' | 'script_ratio' | 'cpm' | 'filler_count';
 
 const METRICS: {
   key: MetricKey;
   label: string;
-  better: 'up' | 'down';
+  /** 속도는 빠를수록 좋은 게 아니라서 비워 둡니다 */
+  hint: string;
   fmt: (v: number) => string;
 }[] = [
-  { key: 'audience_ratio', label: '청중 응시', better: 'up', fmt: (v) => pct(v) },
-  { key: 'script_ratio', label: '대본 응시', better: 'down', fmt: (v) => pct(v) },
-  { key: 'cpm', label: '말하기 속도', better: 'up', fmt: (v) => `${v}자/분` },
-  { key: 'filler_count', label: '군더더기', better: 'down', fmt: (v) => `${v}회` },
+  { key: 'audience_ratio', label: '청중 응시', hint: '높을수록 좋아요. ', fmt: (v) => pct(v) },
+  { key: 'script_ratio', label: '대본 응시', hint: '낮을수록 좋아요. ', fmt: (v) => pct(v) },
+  { key: 'cpm', label: '말하기 속도', hint: '', fmt: (v) => `${v}자/분` },
+  { key: 'filler_count', label: '군더더기', hint: '낮을수록 좋아요. ', fmt: (v) => `${v}회` },
 ];
 
 const GAZE: MetricKey[] = ['audience_ratio', 'script_ratio'];
 
-export function ComparisonDraft() {
-  const [variant, setVariant] = useState<Variant>('OK');
+export function ComparisonPage() {
+  const { id = '' } = useParams();
+  const history = useTakeHistory(id);
   const [metric, setMetric] = useState<MetricKey>('audience_ratio');
-  const rows = ROWS[variant];
-  const latestEngine = rows[0]!.gaze_engine;
+
+  if (!history.data)
+    return (
+      <InfoPage title="Take 비교">
+        <QueryState query={history} />
+      </InfoPage>
+    );
+
+  const rows = completedTakes(history.data.takes);
+  const latestEngine = rows[0]?.gaze_engine ?? null;
   const m = METRICS.find((x) => x.key === metric)!;
   // 오래된 Take부터 그립니다
   const series = [...rows].reverse();
   const max = Math.max(...series.map((r) => r[metric] ?? 0), 1);
+  const offEngine = rows.filter((r) => r.gaze_engine !== null && gazeOffEngine(r, latestEngine));
 
   return (
-    <DraftPage
-      title="Take 비교"
-      eyebrow="캡스톤 중간발표"
-      meta={`Take ${rows.length}개`}
-      variants={VARIANTS}
-      variant={variant}
-      onVariant={setVariant}
-      questions={[
-        '속도는 빠를수록 좋은 게 아니라 목표 범위에 가까울수록 좋아요. AI 리뷰의 비교 규칙(review-agent.md 6-1)을 그대로 쓸지 정해야 해요.',
-        '여기에 쓸 Take 목록 API가 없어요. BE와 정해야 해요.',
-        '대본 보기가 다른 Take끼리 비교할 때 경고를 어디까지 보여 줄지 정해야 해요.',
-      ]}
-    >
+    <InfoPage title="Take 비교">
+      {rows[0] && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
+          <p className="font-bold">{rows[0].pitch_title}</p>
+          <p className="tabular text-sm text-stone">Take {rows.length}개</p>
+        </div>
+      )}
+
       {rows.length < 2 ? (
         <Card>
           <Mascot who="pico">비교하려면 Take가 2개 이상 필요해요. 한 번 더 연습해 볼까요?</Mascot>
@@ -97,21 +98,22 @@ export function ComparisonDraft() {
             <ol className="flex h-48 gap-4 border-b-2 border-ink">
               {series.map((r) => {
                 const v = r[metric];
-                const off = GAZE.includes(metric) && r.gaze_engine !== latestEngine;
+                const off = GAZE.includes(metric) && gazeOffEngine(r, latestEngine);
+                const empty = v === null || off;
                 return (
                   <li key={r.take_id} className="flex flex-1 flex-col items-center gap-2">
                     <span className="tabular font-mono text-sm font-bold">
-                      {v === null || off ? '—' : m.fmt(v)}
+                      {empty ? '—' : m.fmt(v)}
                     </span>
                     {/* 막대 높이의 기준이 되는 칸. 숫자 줄을 뺀 나머지 높이입니다 */}
                     <div className="flex w-full flex-1 items-end">
                       <div
                         className={
-                          off || v === null
+                          empty
                             ? 'w-full border-2 border-dashed border-line-strong'
                             : 'w-full bg-coral'
                         }
-                        style={{ height: `${v === null || off ? 8 : (v / max) * 100}%` }}
+                        style={{ height: `${empty ? 8 : (v / max) * 100}%` }}
                       />
                     </div>
                   </li>
@@ -122,13 +124,11 @@ export function ComparisonDraft() {
               {series.map((r) => (
                 <li key={r.take_id} className="flex-1 text-center text-xs font-bold">
                   TAKE {r.take_number}
-                  {r.is_best && <span className="ml-1 text-coral">★</span>}
                 </li>
               ))}
             </ol>
             <p className="text-xs text-stone">
-              {m.better === 'up' ? '높을수록 좋아요.' : '낮을수록 좋아요.'} 점선은 측정하지 못했거나
-              시선 엔진이 달라 비교하지 않는 Take예요.
+              {m.hint}점선은 측정하지 못했거나 시선 엔진이 달라 비교하지 않는 Take예요.
             </p>
           </Card>
 
@@ -150,17 +150,12 @@ export function ComparisonDraft() {
                 </thead>
                 <tbody className="tabular">
                   {rows.map((r) => {
-                    const off = r.gaze_engine !== latestEngine;
+                    const off = gazeOffEngine(r, latestEngine);
                     return (
                       <tr key={r.take_id} className="border-b border-line last:border-b-0">
                         <td className="py-3 pr-4 font-bold">
                           TAKE {r.take_number}{' '}
-                          <span className="font-normal text-stone">{r.date}</span>
-                          {r.is_best && (
-                            <span className="ml-2">
-                              <Badge tone="strong">BEST</Badge>
-                            </span>
-                          )}
+                          <span className="font-normal text-stone">{takeDay(r.started_at)}</span>
                         </td>
                         <td className="py-3 pr-4">{SCRIPT_MODE_LABEL[r.script_mode]}</td>
                         <td className="py-3 pr-4">
@@ -195,15 +190,15 @@ export function ComparisonDraft() {
                 </tbody>
               </table>
             </div>
-            {variant === 'ENGINE' && (
+            {offEngine.length > 0 && (
               <p className="text-xs text-stone">
-                TAKE 1 · 2는 시선 엔진이 지금과 달라서 시선 값을 비교하지 않아요. 속도 · 군더더기는
-                비교할 수 있어요.
+                {offEngine.map((r) => `TAKE ${r.take_number}`).join(' · ')}는 시선 엔진이 지금과
+                달라서 시선 값을 비교하지 않아요. 속도 · 군더더기는 비교할 수 있어요.
               </p>
             )}
           </Card>
         </>
       )}
-    </DraftPage>
+    </InfoPage>
   );
 }
