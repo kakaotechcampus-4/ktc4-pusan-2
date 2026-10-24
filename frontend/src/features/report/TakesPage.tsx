@@ -16,7 +16,7 @@ import { SCRIPT_MODE_LABEL, pct, takeDay } from './takeHistoryFormat';
  * 홈은 피치별로 접어 보여 주고, 여기는 "언제 무엇을 연습했나"를 한 줄씩 봅니다.
  */
 
-const ALL = '전체';
+const ALL = '';
 
 const STATUS: Record<TakeStatus, { label: string; tone: Tone; link: string | null }> = {
   READY: { label: '준비 중', tone: 'muted', link: null },
@@ -38,8 +38,9 @@ export function TakesPage() {
       </InfoPage>
     );
 
-  const pitches = [ALL, ...new Set(rows.map((t) => t.pitch_title))];
-  const shown = pitch === ALL ? rows : rows.filter((t) => t.pitch_title === pitch);
+  // 제목은 겹칠 수 있어 pitch_id 로 거르고, 제목은 보여 주는 데만 씁니다
+  const pitches = new Map(rows.map((t) => [t.pitch_id, t.pitch_title]));
+  const shown = pitch === ALL ? rows : rows.filter((t) => t.pitch_id === pitch);
 
   return (
     <InfoPage title="Take 기록">
@@ -61,8 +62,11 @@ export function TakesPage() {
                 onChange={(e) => setPitch(e.target.value)}
                 className="border-2 border-ink bg-white px-2 py-1"
               >
-                {pitches.map((p) => (
-                  <option key={p}>{p}</option>
+                <option value={ALL}>전체</option>
+                {[...pitches].map(([id, title]) => (
+                  <option key={id} value={id}>
+                    {title}
+                  </option>
                 ))}
               </select>
             </label>
