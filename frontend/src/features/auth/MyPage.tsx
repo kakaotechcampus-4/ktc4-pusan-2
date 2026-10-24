@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { InfoPage } from '@/shared/ui/InfoPage';
+import { apiRequest } from '@/shared/api/client';
 import { deleteLocalRecords } from '@/shared/lib/localData';
 import { useWithdraw } from '@/shared/api/useWithdraw';
-import { useSession } from './useSession';
+import { useSession, type User } from './useSession';
 
 /**
  * P9 마이페이지.
@@ -16,6 +18,18 @@ import { useSession } from './useSession';
 export function MyPage() {
   const user = useSession().data;
   const withdraw = useWithdraw();
+  const client = useQueryClient();
+  // 원자료 사용 동의 (#361). 서버가 돌려준 내 정보로 세션을 바로 바꿉니다
+  const consent = useMutation({
+    mutationFn: (value: boolean) =>
+      apiRequest<User>('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raw_data_consent: value }),
+      }),
+    onSuccess: (me) => client.setQueryData(['session'], me),
+  });
+  const consented = consent.isPending ? consent.variables : (user?.raw_data_consent ?? false);
   const [cleared, setCleared] = useState<'OK' | 'BLOCKED' | null>(null);
 
   const clearRecords = () => {
@@ -47,10 +61,38 @@ export function MyPage() {
         </dl>
       </Card>
 
+      {/* 동의 범위 · 지우는 때는 `docs/ai/architecture.md` 1-1 '원자료 사용 동의' · '지우기 · 보관' */}
+      <Card title="연습 기록 사용 동의">
+        <p className="text-sm leading-relaxed text-stone">
+          리허설 중 1초마다 잰 시선 · 목소리 크기 기록을 연습이 끝난 뒤에도 남겨, 분석 기준이
+          바뀌었을 때 지난 연습을 다시 분석하는 데 써요. 동의하지 않아도 리포트는 똑같이 나오고, 이
+          기록은 리포트를 만든 뒤 지워요(분석에 실패한 연습은 7일 뒤).
+        </p>
+        <label className="flex items-center gap-3 text-sm font-bold">
+          <input
+            id="raw-data-consent"
+            type="checkbox"
+            checked={consented}
+            disabled={!user || consent.isPending}
+            onChange={(e) => consent.mutate(e.target.checked)}
+            className="size-4 accent-ink"
+          />
+          연습 기록을 남겨 다시 분석하는 데 동의해요
+        </label>
+        <span className="text-xs text-stone">
+          바꾼 설정은 다음에 시작하는 연습부터 적용돼요. 이미 끝난 연습은 그대로예요.
+        </span>
+        {consent.isError && (
+          <p role="alert" className="text-sm text-coral-deep">
+            동의 설정을 바꾸지 못했어요. 다시 시도해 주세요.
+          </p>
+        )}
+      </Card>
+
       <Card title="이 브라우저의 기록">
         <p className="text-sm leading-relaxed text-stone">
-          리허설 중 시선 · 슬라이드 · 코치 기록은 이 브라우저에 저장돼요. 지금은 서버로 보내지
-          않아서 이 브라우저에만 있어요. 카메라 영상과 마이크 소리는 저장하지 않아요.
+          리허설 중 시선 · 슬라이드 · 코치 기록은 이 브라우저에도 저장돼요. 카메라 영상과 마이크
+          소리는 저장하지 않아요.
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="secondary" onClick={clearRecords}>
