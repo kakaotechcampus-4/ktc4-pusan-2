@@ -15,8 +15,9 @@ import sqlite3
 
 import pandas as pd
 
+from script_coverage.config import SCORE_WEIGHT
 from script_coverage.shared.facts import CriticalFact, extract_critical_facts
-from script_coverage.shared.rubric import NAME_TYPES, SCORE_WEIGHT
+from script_coverage.shared.rubric import NAME_TYPES
 from script_coverage.shared.text import compact, normalize_script
 from script_coverage.stt_evaluation.config import STATUS_SCORE
 from script_coverage.stt_evaluation.merge import aggregate_status

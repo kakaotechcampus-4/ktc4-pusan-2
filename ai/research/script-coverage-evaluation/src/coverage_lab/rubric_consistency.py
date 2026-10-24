@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from script_coverage.config import SCORE_WEIGHT
 from script_coverage.script_analysis.draft import draft_rubric
 from script_coverage.script_analysis.final import (
     final_config_hash,
@@ -28,7 +29,7 @@ from script_coverage.shared.llm_step import (
     call_in_parallel,
     llm_step,
 )
-from script_coverage.shared.rubric import NAME_TYPES, SCORE_WEIGHT, EvaluationRubric
+from script_coverage.shared.rubric import NAME_TYPES, EvaluationRubric
 from script_coverage.shared.text import normalize_script
 
 from .cache import SampleCache
