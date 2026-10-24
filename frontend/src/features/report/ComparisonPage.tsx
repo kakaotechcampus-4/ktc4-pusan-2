@@ -154,7 +154,7 @@ export function ComparisonPage() {
                         </td>
                         <td className="py-3 pr-4">{SCRIPT_MODE_LABEL[r.script_mode]}</td>
                         <td className="py-3 pr-4">
-                          {formatDuration(r.duration_ms)}
+                          {r.duration_ms === null ? '—' : formatDuration(r.duration_ms)}
                           <span className="text-stone"> / {formatDuration(r.goal_ms)}</span>
                         </td>
                         {METRICS.map((x) => {
