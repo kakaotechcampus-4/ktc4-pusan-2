@@ -1,0 +1,13 @@
+{
+  "note": "머리글에 본문 — fail, 기계공학(유한요소해석). 초안 — 사람 확인 필요",
+  "status": "fail",
+  "slides": [
+    {
+      "slide_number": 1,
+      "first": "여러분, 안녕하세요. 기계공학과 3학년 설계 과제 발표를 시작하겠습니다.",
+      "last": "감사합니다."
+    }
+  ],
+  "title_lines": [],
+  "actual_slide_ms": null
+}
