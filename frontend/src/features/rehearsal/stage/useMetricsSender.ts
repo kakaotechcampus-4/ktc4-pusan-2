@@ -12,31 +12,29 @@ const TICK_MS = 250;
  * 발표 중 1초마다 WS `metrics` 를 보냅니다 (`docs/ai/architecture.md` 1-4 · 6-2, BE #255).
  *
  * 어느 1초로 보낼지는 `metricsClock` 이 정합니다 — 시선 1초 기록이 오면 그 구간, 안 오면 스스로.
- * 여기서는 그 구간에 음량 1초 기록과 지금 슬라이드 번호를 붙여 소켓에 넘깁니다.
+ * 여기서는 그 구간에 음량 1초 기록과 슬라이드 번호를 붙여 소켓에 넘깁니다.
  * 끊겨 있으면 소켓이 쌓아 두었다가 다시 붙을 때 보냅니다 (`SttSocket.sendMetrics`).
  *
- * 슬라이드 번호는 **보내는 순간**의 번호입니다. 1초 기록은 0.2~3초 늦게 나가서 넘긴 직후의
- * 1초는 다음 슬라이드로 적힐 수 있습니다. 슬라이드별 정확한 구간은 슬라이드 기록이 따로 갖습니다.
+ * 슬라이드 번호는 그 1초가 **시작한 시각**에 보이던 번호입니다 (`slideAt`). 1초 기록은 0.1~3초 늦게
+ * 나가서, 보내는 순간의 번호를 붙이면 넘길 때마다 직전 몇 초가 다음 슬라이드로 적힙니다.
+ * 1초 중간에 넘겼으면 그 1초는 넘기기 전 번호입니다.
  */
 export function useMetricsSender({
   enabled,
   elapsedMs,
   voiceRecord,
-  slideNumber,
+  slideAt,
   send,
 }: {
   /** 발표 중일 때만. 처음 켜질 때의 무대 시각부터 보냅니다 (새로고침해 이어받았으면 그 시각) */
   enabled: boolean;
   elapsedMs: () => Ms;
   voiceRecord: (startMs: Ms, endMs: Ms) => VoiceRecord;
-  slideNumber: number | null;
+  /** 그 시각에 보이던 슬라이드 (`useSlideDeck`). 모르면 null */
+  slideAt: (ms: Ms) => number | null;
   send: (message: MetricsMessage) => void;
 }) {
   const clockRef = useRef<MetricsClock | null>(null);
-  const slideRef = useRef(slideNumber);
-  useEffect(() => {
-    slideRef.current = slideNumber;
-  }, [slideNumber]);
 
   const toMessages = useCallback(
     (windows: MetricsWindow[]): MetricsMessage[] =>
@@ -45,9 +43,9 @@ export function useMetricsSender({
         t_ms: w.endMs,
         gaze: w.gaze,
         voice: voiceRecord(w.startMs, w.endMs),
-        slide_number: slideRef.current,
+        slide_number: slideAt(w.startMs),
       })),
-    [voiceRecord],
+    [voiceRecord, slideAt],
   );
 
   const emit = useCallback(

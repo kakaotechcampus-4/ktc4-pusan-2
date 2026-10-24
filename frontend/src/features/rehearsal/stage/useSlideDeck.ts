@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { appendSlideChange } from '../lib/db';
+import { createSlideTimeline } from '../lib/slideTimeline';
 import { noteWriteFailure } from '../lib/writeFailures';
 import type { Ms } from '@/types/api';
 import { useRehearsalStore } from './rehearsalStore';
@@ -35,6 +36,8 @@ export function useSlideDeck({
 
   /** 지금 슬라이드에 머문 시간을 코치 규칙이 읽습니다 */
   const slideStartedAtRef = useRef<Ms>(0);
+  /** 넘긴 시각들. 늦게 나가는 1초 기록이 그 1초의 번호를 여기서 찾습니다 (`slideAt`) */
+  const timelineRef = useRef(createSlideTimeline(1));
 
   const go = useCallback(
     (next: number) => {
@@ -45,6 +48,7 @@ export function useSlideDeck({
 
       const atMs = elapsedMs();
       slideStartedAtRef.current = atMs;
+      timelineRef.current.change(atMs, clamped);
       setSlide(clamped);
       // 전환 하나가 빠지면 그 슬라이드의 체류 시간이 앞 슬라이드에 합산됩니다 —
       // 서버가 받는 타임라인이 조용히 달라지므로 버리지 않고 셉니다
@@ -60,7 +64,10 @@ export function useSlideDeck({
   // 첫 장도 기록합니다. 없으면 발표 시작부터 첫 전환까지가 어느 슬라이드였는지
   // 서버가 알 수 없습니다 (0ms 행이 그 구간의 시작입니다)
   useEffect(() => {
-    if (!enabled || !clientSessionId) return;
+    if (!enabled) return;
+    // 무대가 열릴 때의 번호부터 셉니다. 이어받았으면 무대보다 먼저 되살려 둔 번호입니다
+    timelineRef.current = createSlideTimeline(useRehearsalStore.getState().slideNumber);
+    if (!clientSessionId) return;
     // 이어받았으면 첫 행은 이미 있습니다. 여기서 0ms 행을 쓰면 그 행을 덮어쓰고,
     // 지금 시각에 쓰면 같은 슬라이드가 구간 두 개로 쪼개집니다
     if (resumedAt !== null) {
@@ -98,5 +105,8 @@ export function useSlideDeck({
     return () => window.removeEventListener('keydown', onKey);
   }, [enabled, go]);
 
-  return { slideNumber, go, slideStartedAtRef };
+  /** 그 시각에 보이던 슬라이드. 늦게 나가는 1초 기록(`useMetricsSender`)이 이걸로 번호를 붙입니다 */
+  const slideAt = useCallback((ms: Ms) => timelineRef.current.at(ms), []);
+
+  return { slideNumber, go, slideStartedAtRef, slideAt };
 }

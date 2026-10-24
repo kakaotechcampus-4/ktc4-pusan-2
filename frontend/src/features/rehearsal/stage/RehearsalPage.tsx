@@ -198,7 +198,7 @@ export function RehearsalPage() {
   const { meterRef, statsRef, audioState, voiceRecord } = useMicLevel(stream, {
     clock: elapsedMs,
   });
-  const { slideNumber, slideStartedAtRef } = useSlideDeck({
+  const { slideNumber, slideStartedAtRef, slideAt } = useSlideDeck({
     total: pageCount,
     clientSessionId: sessionId,
     elapsedMs,
@@ -246,7 +246,7 @@ export function RehearsalPage() {
     enabled: running,
     elapsedMs,
     voiceRecord,
-    slideNumber,
+    slideAt,
     send: sendMetrics,
   });
   const {
