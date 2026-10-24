@@ -1,0 +1,57 @@
+.comfort-scene {
+  image-rendering: pixelated;
+}
+.comfort-scene__wing {
+  transform-box: view-box;
+  transform-origin: 550px 450px;
+  animation: comfort-pat 2.8s steps(4, end) infinite;
+}
+.comfort-scene__tear {
+  color: #4aadf0;
+  animation: comfort-tear 2s steps(3, end) infinite both;
+}
+@keyframes comfort-pat {
+  0%,
+  100% {
+    transform: rotate(8deg);
+  }
+  22%,
+  36% {
+    transform: rotate(0deg);
+  }
+  46% {
+    transform: rotate(2deg);
+  }
+  60% {
+    transform: rotate(0deg);
+  }
+  80% {
+    transform: rotate(8deg);
+  }
+}
+@keyframes comfort-tear {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+.landing[data-motion='off'] .comfort-scene__wing,
+.landing[data-motion='off'] .comfort-scene__tear {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .comfort-scene__wing {
+    animation: none;
+    transform: rotate(0deg);
+  }
+  .comfort-scene__tear {
+    display: none;
+  }
+}

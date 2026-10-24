@@ -1,4 +1,5 @@
-"""final 전사 구간과 Take 종료의 저장소. TakeStream 이 DB 를 직접 만지지 않게 하는 얇은 층이다.
+"""final 전사 구간 · 1초 원자료와 Take 종료의 저장소. TakeStream 이 DB 를 직접 만지지 않게 하는
+얇은 층이다.
 
 TakeStream 은 WebSocket 요청보다 오래 사는 백그라운드 태스크라 `Depends(get_db)` 의
 요청 스코프 세션을 쓸 수 없다 — 그 세션은 엔드포인트가 돌아오는 순간 닫힌다. 그래서
@@ -19,7 +20,7 @@ from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.module.take import service as take_service
-from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
+from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO, TranscriptSegmentCreateDTO
 
 
 class TranscriptStore(Protocol):
@@ -30,6 +31,10 @@ class TranscriptStore(Protocol):
         ...
 
     async def append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None: ...
+
+    async def append_metrics(self, take_id: uuid.UUID, rows: list[MetricSecondCreateDTO]) -> None:
+        """1초 원자료를 한 번에 저장한다. 이미 있는 1초는 건너뛴다."""
+        ...
 
     async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
         """Take 를 끝냈다 (상태 `ANALYZING`, 자동 종료면 이유도). 다시 붙으려는 연결을 막는 근거가
@@ -60,6 +65,9 @@ class DbTranscriptStore:
     async def append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None:
         await run_in_threadpool(self._append, take_id, segment)
 
+    async def append_metrics(self, take_id: uuid.UUID, rows: list[MetricSecondCreateDTO]) -> None:
+        await run_in_threadpool(self._append_metrics, take_id, rows)
+
     async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
         return await run_in_threadpool(self._mark_ended, take_id, end_reason)
 
@@ -85,6 +93,13 @@ class DbTranscriptStore:
         db = self._session_factory()
         try:
             take_service.append_transcript_segment(db, take_id, segment)
+        finally:
+            db.close()
+
+    def _append_metrics(self, take_id: uuid.UUID, rows: list[MetricSecondCreateDTO]) -> None:
+        db = self._session_factory()
+        try:
+            take_service.append_metric_seconds(db, take_id, rows)
         finally:
             db.close()
 

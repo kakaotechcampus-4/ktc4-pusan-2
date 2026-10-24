@@ -21,8 +21,9 @@ export function useWithdraw() {
 
   return useMutation({
     mutationFn: withdraw,
-    onSuccess: () => {
-      navigate('/welcome', { replace: true });
+    // useLogout 과 같습니다 — 옮긴 뒤에 세션을 비워야 /login 으로 튕기지 않습니다
+    onSuccess: async () => {
+      await navigate('/welcome', { replace: true });
       client.clear();
       client.setQueryData(['session'], null);
     },

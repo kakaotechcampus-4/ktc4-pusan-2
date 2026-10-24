@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime
 
@@ -18,6 +19,7 @@ from pitch_coach_backend.module.pitch.exception import (
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
+    MetricSecondCreateDTO,
     MissionDTO,
     MissionInputDTO,
     PreviousMissionsDTO,
@@ -44,6 +46,8 @@ from pitch_coach_backend.module.take.repository import (
     TakeRepository,
     last_active_at,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
@@ -294,7 +298,31 @@ def append_transcript_segment(
     db.commit()
     return saved.id
 
+
+def append_metric_seconds(
+    db: Session, take_id: uuid.UUID, rows: list[MetricSecondCreateDTO]
+) -> None:
+    """1초 원자료 여러 행을 한 번에 저장하고 커밋한다. 이미 있는 1초는 건너뛴다.
+
+    Take 가 그 사이 지워졌으면 `NonExistentTake`. 스트림은 이걸 보고 남은 행을 버린다.
+    """
+    try:
+        TakeRepository(db).save_metric_seconds(take_id, [row.model_dump() for row in rows])
+    except IntegrityError as e:
+        # 이 표의 외래 키는 take_id 하나다. 같은 1초는 ON CONFLICT 로 건너뛰어 여기 오지 않는다
+        if isinstance(e.orig, ForeignKeyViolation):
+            raise NonExistentTake() from e
+        raise
+    db.commit()
+
 def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list[MissionInputDTO]:
+    mission_ids = take_repository.get_mission_ids_of_take(take_id)
+    missions = take_repository.get_missions_by_ids(mission_ids)
+    if len(missions) < len(mission_ids):
+        logger.warning(
+            "take %s: %d of %d missions not found",
+            take_id, len(mission_ids) - len(missions), len(mission_ids),
+        )
     return [
         MissionInputDTO(
             mission_id=mission.id,
@@ -302,7 +330,7 @@ def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list
             slide_number=mission.slide_number,
             target=TargetInfoDTO(**mission.target),
         )
-        for mission in take_repository.get_missions_for_take(take_id)
+        for mission in missions
     ]
 
 def _build_previous_takes(

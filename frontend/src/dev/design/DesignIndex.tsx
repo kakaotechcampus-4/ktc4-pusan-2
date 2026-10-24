@@ -7,9 +7,7 @@ import { StageDraft } from './stage/StageDraft';
 import { LoadingDraft } from './loading/LoadingDraft';
 import { PrepareMissionDraft } from './prepare/PrepareMissionDraft';
 import { RetryDraft } from './retry/RetryDraft';
-import { ComparisonDraft } from './comparison/ComparisonDraft';
 import { BestTakeDraft } from './best/BestTakeDraft';
-import { TakesDraft } from './takes/TakesDraft';
 
 /**
  * 디자인 시안 목록 — `/dev/design`, 각 시안은 `/dev/design/:name`.
@@ -30,10 +28,8 @@ const DRAFTS: { name: string; id: string; title: string; element: ReactElement }
     title: '분석 대기 · 8비트 로딩',
     element: <LoadingDraft />,
   },
-  { name: 'comparison', id: 'P7', title: 'Take 비교', element: <ComparisonDraft /> },
   { name: 'best', id: 'P8', title: 'Best Take 선택', element: <BestTakeDraft /> },
   { name: 'retry', id: 'P15', title: '업로드 실패 · 재시도', element: <RetryDraft /> },
-  { name: 'takes', id: 'P16', title: 'Take 기록', element: <TakesDraft /> },
 ];
 
 /**
@@ -61,6 +57,17 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
   { path: '/takes/t-fallback', id: 'P6', title: 'Take 리포트 · AI 문장 실패' },
   { path: '/takes/t-review-failed', id: 'P6', title: 'Take 리포트 · 리뷰 실패' },
   { path: '/takes/t2', id: 'P6', title: 'Take 리포트 · 시선 측정 제외' },
+  { path: '/takes', id: 'P16', title: 'Take 기록' },
+  {
+    path: '/pitch/10000000-0000-4000-8000-000000000001/comparison',
+    id: 'P7',
+    title: 'Take 비교',
+  },
+  {
+    path: '/pitch/p2/comparison',
+    id: 'P7',
+    title: 'Take 비교 · 완료 Take 없음',
+  },
   { path: '/about', id: 'P14', title: '분석 방식 설명' },
   {
     path: '/unsupported',

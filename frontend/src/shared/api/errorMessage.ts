@@ -28,11 +28,18 @@ const MESSAGE: Record<string, string> = {
   STANDARD_PARSE_FAILED:
     '평가기준을 정리하는 서버가 잠시 응답하지 않아요. 잠시 뒤 다시 정리해 주세요.',
   SCRIPT_ALREADY_PARSED: '이미 나눈 대본이에요. 잠시 뒤 결과가 보여요.',
+  /** 발표자료를 BE 가 열지 못함 — PDF 가 아님 · 깨짐 · 여는 암호 · 40MB 초과 (BE #298) */
+  INVALID_PRESENTATION: 'PDF를 열 수 없어요. 암호가 걸려 있거나 손상되지 않았는지 확인해 주세요.',
   PRESENTATION_VERSION_NOT_FOUND: '발표자료를 찾을 수 없어요. 다시 올려 주세요.',
   TAKE_NOT_FOUND: '연습 기록을 찾을 수 없어요. 처음부터 다시 시작해 주세요.',
   INTERNAL_SERVER_ERROR: '서버에 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요.',
   SCRIPT_PARSE_IN_PROGRESS: '대본을 나누는 중이에요. 잠시만 기다려 주세요.',
   SCRIPT_REUPLOAD_REQUIRED: '이 대본은 다시 올려야 해요. 대본 매핑을 다시 눌러 주세요.',
+  /** Take 생성 — 나누기가 끝나지 않은 대본으로 시작하려 함 (BE #296) */
+  SCRIPT_NOT_PARSED: '대본을 아직 나누는 중이에요. 잠시 뒤 다시 시작해 주세요.',
+  /** Take 생성 — 발표자료 쪽수와 대본 장 수가 다름 (BE #298) */
+  SLIDE_COUNT_MISMATCH:
+    '발표자료 쪽수와 대본 장 수가 달라요. 피치에서 대본 매핑을 다시 확인해 주세요.',
   REQUEST_FAILED: '요청을 처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.',
 };
 
