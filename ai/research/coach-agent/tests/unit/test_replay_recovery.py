@@ -11,7 +11,7 @@ from coach import ReplayRequired, decide, finalize, recovery
 from coach.schemas import FinalizeRequest, ReplayInput
 
 from .conftest import PLAN
-from .fakes import ScriptedJudge, fake_issue, fake_judges
+from .fakes import FakeJudge, ScriptedJudge, fake_issue, fake_judges
 
 
 def raw(t_end: int = 30_000, **over: Any) -> dict[str, Any]:
@@ -112,6 +112,36 @@ def shifted(t_end: int, offset: int = 400) -> dict[str, Any]:
     )
 
 
+class MeasuredJudge(FakeJudge):
+    """summarize 가 measured_ratio 1 을 더해 영역 값이 비지 않는 가짜 판정."""
+
+    def summarize(self, tally: dict[str, dict[str, float]]) -> dict[str, Any]:
+        return {area: {**values, "measured_ratio": 1.0} for area, values in tally.items()}
+
+
+def record_tally(inputs: dict[str, Any], t: int) -> list[dict[str, Any]]:
+    """시선 1초 기록을 실제로 세는 가짜 판정: 커서(since_ms) 이상에서 시작한 기록의 길이를
+    measured_ms 로 센다. 요청 시각이 기록 중간이면 다음 요청에서 그 기록을 건너뛰게 된다."""
+    since = inputs["since_ms"]
+    tally = [
+        {"t_ms": r["t_ms"], "values": {"measured_ms": r["duration_ms"]}}
+        for r in inputs["records"]
+        if r["t_ms"] >= since
+    ]
+    return [
+        {
+            "evaluator": "gaze",
+            "area": "GAZE",
+            "t_ms": t,
+            "counted_until_ms": max(t, since),
+            "criteria_version": "gaze-fake-1",
+            "measurable": True,
+            "state": "CAMERA",
+            "tally": tally,
+        }
+    ]
+
+
 def test_ticks_on_a_thousand_grid_are_every_second():
     r = ReplayInput.model_validate(raw(10_000))
     assert recovery.ticks(r, 10_000) == list(range(0, 10_000, 1_000))
@@ -165,13 +195,59 @@ def test_last_window_takes_words_confirmed_exactly_at_the_take_end():
     assert [w.start_ms for w in recovery.inputs_at(r, 10_000, last_window=True).words] == [9_200]
 
 
+def test_replay_counts_a_word_confirmed_exactly_at_the_take_end():
+    # BE 는 Take 끝보다 늦게 확정된 단어를 Take 끝으로 잘라 싣는다 — replay 의 마지막 창이 센다
+    data = raw(
+        10_000,
+        words=[{"word": "가나다라", "start_ms": 9_200, "end_ms": 9_800, "final_at_ms": 10_000}],
+    )
+    judges = fake_judges(pace=MeasuredJudge("pace"))
+    r = finalize(request(replay=data, t_ms=10_000), judges).take_result
+    assert r.areas["SPEED"].take["chars"] == 4
+
+
+def test_replay_window_lists_words_in_speaking_order():
+    # 늦게 확정된 앞 단어가 원자료에서 뒤에 와도 창에는 말한 순서로 싣는다(실시간 창과 같게)
+    words = [
+        {"word": "나", "start_ms": 3_000, "end_ms": 3_400, "final_at_ms": 4_000},
+        {"word": "가", "start_ms": 1_000, "end_ms": 1_400, "final_at_ms": 4_500},
+    ]
+    r = ReplayInput.model_validate(raw(10_000, words=words))
+    assert [w.word for w in recovery.inputs_at(r, 6_000).words] == ["가", "나"]
+
+
+def test_replay_last_window_keeps_the_stt_status_the_be_sent():
+    # 마지막 metrics 뒤에 STT 가 돌아왔으면 원자료 이력에는 없다 — 요청의 마지막 창 상태를 쓴다
+    data = raw(
+        10_000,
+        stt_status_changes=[{"t_ms": 0, "status": "reconnecting"}],
+        words=[{"word": "가나다라", "start_ms": 9_200, "end_ms": 9_800, "final_at_ms": 10_000}],
+    )
+    seen: list[str] = []
+    judges = fake_judges()
+    real = judges.pace.judge
+
+    def spy(inputs: dict[str, Any], t: int):
+        seen.append(inputs["stt_status"])
+        return real(inputs, t)
+
+    judges.pace.judge = spy  # type: ignore[method-assign]
+    req = {**request(replay=data, t_ms=10_000), "inputs": {"stt_status": "ok"}}
+    finalize(req, judges)
+    assert seen[-1] == "ok" and set(seen[:-1]) == {"reconnecting"}
+    # 요청에 마지막 창이 없으면 원자료 이력의 상태 그대로
+    seen.clear()
+    finalize(request(replay=data, t_ms=10_000), judges)
+    assert seen[-1] == "reconnecting"
+
+
 def test_replay_of_a_shifted_grid_matches_the_live_run():
     t_end = 20_400
     data = shifted(t_end)
     # 실시간: BE 가 1초 기록이 끝날 때마다 요청을 보내고 coach_state 를 이어 간다
     live_req = request(t_ms=t_end, replay=data)
     parsed = ReplayInput.model_validate(data)
-    judges = fake_judges()
+    judges = fake_judges(gaze=MeasuredJudge("gaze", script=record_tally))
     state = None
     for t in range(1_400, t_end, 1_000):
         creq = recovery.request_at(FinalizeRequest.model_validate(live_req), parsed, t, state)
@@ -185,9 +261,13 @@ def test_replay_of_a_shifted_grid_matches_the_live_run():
         },
         judges,
     ).take_result
-    replayed = finalize(live_req, fake_judges()).take_result
+    replayed = finalize(
+        live_req, fake_judges(gaze=MeasuredJudge("gaze", script=record_tally))
+    ).take_result
 
     assert replayed.replayed is True and live.replayed is False
+    # 기록을 하나도 건너뛰지 않았다: [400, 20400) 의 1초 기록 20개
+    assert replayed.areas["GAZE"].take["measured_ms"] == 20_000
     for area, result in live.areas.items():
         assert replayed.areas[area].take == result.take, area
         assert replayed.areas[area].slides == result.slides, area

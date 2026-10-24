@@ -67,9 +67,10 @@ def inputs_at(raw: ReplayInput, t_ms: int, *, last_window: bool = False) -> Coac
     voice = [r for r in raw.voice_records if lo_rec <= r.t_ms and r.t_ms + r.duration_ms <= t_ms]
     lo_word = t_ms - WORDS_WINDOW_MS
     final_by = t_ms + 1 if last_window else t_ms
+    # 확정 시각으로 고른 뒤 말한 순서로 둔다 — 실시간 창도 (start_ms, end_ms) 순서다
     words = [
         WordIn(word=w.word, start_ms=w.start_ms, end_ms=w.end_ms)
-        for w in raw.words
+        for w in sorted(raw.words, key=lambda w: (w.start_ms, w.end_ms))
         if w.final_at_ms < final_by and lo_word < w.end_ms <= t_ms
     ]
     ends = [u for u in raw.utterance_ends if lo_word <= u <= t_ms]

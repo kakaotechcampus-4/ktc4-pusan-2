@@ -151,6 +151,7 @@ def test_last_window_at_the_same_tick_counts_words_confirmed_after_stt_closed():
     assert "chars" not in base.take_result.areas["SPEED"].take
     # 시간은 두 번 세지 않는다
     assert fin.take_result.duration_ms == base.take_result.duration_ms == 10_000
+    assert fin.take_result.areas["TIME"].take["duration_ms"] == 10_000
     for area in ("GAZE", "SPEED", "VOLUME", "FILLER", "TIME"):
         assert fin.take_result.areas[area].take.get("total_ms") == base.take_result.areas[
             area
