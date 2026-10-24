@@ -177,7 +177,10 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 
 - **도메인 안**: `controller → service → repository → entity`. 역방향 없음. controller 가 repository 를 직접 부르지 않는다.
 - **도메인 사이**: 상대 도메인의 **service 만** 부른다. 다른 도메인의 repository·entity 를 import 하지 않는다.
-- **realtime, task → module**: 도메인 service 를 호출한다. module 은 realtime·task 를 모른다.
+- **realtime, coach, task → module**: 도메인 service 를 호출한다. module 은 realtime·coach·task 를 모른다.
+  HTTP 요청이 그쪽에 알릴 일(Take 지움 · 끝내기 PUT · 리뷰 뒤 코칭 계획 등)은 `module/hooks.py` 를 거쳐 부르고,
+  실제 구현은 `main.py` 가 꽂는다.
+- **realtime → coach**: 발표 중 코치를 부른다. coach 는 realtime 을 모른다 (같이 쓰는 저장 버퍼는 `core/row_buffer.py`).
 - **agent**: 어디서든 불려가기만 한다. module 을 import 하지 않는다.
 - **core**: 모두가 import 한다. core 는 module·realtime·agent·task 를 import 하지 않는다 (core 안에서는 서로 import 가능).
 - **entity ↔ dto 변환**: service 가 entity 를 반환하고 controller 의 `response_model` 이 변환한다 (`model_config = ConfigDict(from_attributes=True)`). 도메인마다 다르게 하지 않는다.

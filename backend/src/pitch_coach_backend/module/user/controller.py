@@ -1,10 +1,10 @@
 from typing import Annotated
 
-import anyio
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth.controller import clear_session_cookies
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.service import (
@@ -14,7 +14,6 @@ from pitch_coach_backend.module.pitch.service import (
 )
 from pitch_coach_backend.module.user import service
 from pitch_coach_backend.module.user.dto import UserResponse
-from pitch_coach_backend.realtime import take_stream
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -42,7 +41,7 @@ def withdraw(
     take_ids = get_take_ids_of_user(db, current_user.id)
     service.delete(db, current_user)
     # 발표 삭제와 같다. 진행 중이던 Take 의 실시간 STT 를 끊고, 발표자료 파일은 응답 뒤에 지운다
-    anyio.from_thread.run(take_stream.discard, take_ids)
+    hooks.live_takes().discard(take_ids)
     for pitch_id in pitch_ids:
         background_tasks.add_task(delete_pitch_files, pitch_id)
     clear_session_cookies(response)

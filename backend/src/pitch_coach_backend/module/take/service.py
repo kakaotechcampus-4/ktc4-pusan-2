@@ -470,3 +470,6 @@ def mark_abandoned(
 def running_takes(db: Session) -> list[tuple[uuid.UUID, datetime]]:
     """`RUNNING` 인 Take 와 마지막으로 활동한 시각. 앱이 다시 뜰 때 떠난 Take 를 찾는다."""
     return TakeRepository(db).running_takes_last_active()
+
+
+ABANDON_AFTER_SEC = 5 * 60.0
