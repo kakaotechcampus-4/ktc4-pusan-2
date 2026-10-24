@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FRAME_SAMPLES } from './sttProtocol';
-import { SttSocket, stopTakeStream, type SocketLike } from './sttSocket';
+import { SttSocket, stopTakeStream, tokenExpiresWithin, type SocketLike } from './sttSocket';
 
 /** 서버 흉내. 테스트가 직접 열고·보내고·닫습니다 */
 class FakeSocket implements SocketLike {
@@ -117,6 +117,25 @@ describe('연결과 인증', () => {
     stt.sendFrame(pcm(), 200);
     expect(socket.frames).toHaveLength(3);
     expect(socket.frames[2]!.getUint32(0, true)).toBe(3);
+  });
+
+  it('ready 를 받을 때마다 알린다 — 무대는 첫 ready 뒤에 발표를 시작한다', async () => {
+    vi.useFakeTimers();
+    let readies = 0;
+    const stt = makeSocket({ onReady: () => (readies += 1) });
+    stt.start();
+    await settle();
+
+    sockets[0]!.open();
+    expect(readies).toBe(0);
+    sockets[0]!.emit(READY);
+    expect(readies).toBe(1);
+
+    sockets[0]!.serverClose(1006);
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+    expect(readies).toBe(2);
   });
 
   it('버퍼는 2초(20장)까지만 들고, 넘치면 오래된 것부터 버린다', async () => {
@@ -401,6 +420,112 @@ describe('토큰 만료', () => {
 
     expect(sockets).toHaveLength(2);
     expect(onGiveUp).toHaveBeenCalledWith('FATAL');
+  });
+
+  it('다시 붙은 뒤 또 만료되면 또 새로 받는다 — 15분 넘는 발표에서 두 번 끊겨도 전사가 이어진다', async () => {
+    vi.useFakeTimers();
+    const asked: boolean[] = [];
+    const onGiveUp = vi.fn();
+    const stt = makeSocket({
+      onGiveUp,
+      getToken: ({ renew }) => {
+        asked.push(renew);
+        return Promise.resolve(renew ? 'fresh-token' : 'stale-token');
+      },
+    });
+
+    stt.start();
+    await settle();
+
+    // 첫 연결이 만료로 거절되고, 새 토큰으로 붙습니다
+    sockets[0]!.open();
+    sockets[0]!.emit({ type: 'error', code: 'UNAUTHORIZED', message: '인증이 필요합니다.' });
+    sockets[0]!.serverClose(1008);
+    await settle();
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+
+    // 15분 뒤 끊기고, 다시 붙을 때 토큰이 또 만료돼 있습니다
+    sockets[1]!.serverClose(1006);
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[2]!.open();
+    sockets[2]!.emit({ type: 'error', code: 'UNAUTHORIZED', message: '인증이 필요합니다.' });
+    sockets[2]!.serverClose(1008);
+    await settle();
+
+    expect(asked).toEqual([false, true, false, true]);
+    expect(sockets).toHaveLength(4);
+    sockets[3]!.open();
+    expect(JSON.parse(sockets[3]!.sent[0] as string)).toEqual({
+      type: 'auth',
+      token: 'fresh-token',
+    });
+    expect(onGiveUp).not.toHaveBeenCalled();
+  });
+
+  it('재연결 중에 끝내고 만료로 거절되면 새 토큰으로 붙어 남은 음성과 stop 을 보낸다', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket({
+      getToken: ({ renew }) => Promise.resolve(renew ? 'fresh-token' : 'stale-token'),
+    });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    sockets[0]!.serverClose(1006);
+    stt.sendFrame(pcm(), 0);
+    stt.sendFrame(pcm(), 100);
+
+    let done = false;
+    stt.stop().then(() => {
+      done = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.open();
+    sockets[1]!.emit({ type: 'error', code: 'UNAUTHORIZED', message: '인증이 필요합니다.' });
+    sockets[1]!.serverClose(1008);
+    await settle();
+
+    // 여기서 정리하면 마무리 문장 2초를 잃습니다
+    expect(done).toBe(false);
+    expect(sockets).toHaveLength(3);
+
+    sockets[2]!.open();
+    expect(JSON.parse(sockets[2]!.sent[0] as string)).toEqual({
+      type: 'auth',
+      token: 'fresh-token',
+    });
+    sockets[2]!.emit(READY);
+
+    expect(sockets[2]!.frames).toHaveLength(2);
+    expect(JSON.parse(sockets[2]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
+  });
+});
+
+describe('토큰 만료 시각 (tokenExpiresWithin)', () => {
+  const NOW = 1_800_000_000_000;
+
+  function jwt(payload: object): string {
+    const encode = (value: object) =>
+      btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode(payload)}.signature`;
+  }
+
+  it('여유(1분) 안에 만료되거나 이미 지났으면 곧 만료로 본다', () => {
+    expect(tokenExpiresWithin(jwt({ exp: NOW / 1000 + 30 }), 60_000, NOW)).toBe(true);
+    expect(tokenExpiresWithin(jwt({ exp: NOW / 1000 - 1 }), 60_000, NOW)).toBe(true);
+  });
+
+  it('여유보다 많이 남았으면 그대로 쓴다', () => {
+    expect(tokenExpiresWithin(jwt({ exp: NOW / 1000 + 600 }), 60_000, NOW)).toBe(false);
+  });
+
+  it('읽을 수 없는 토큰은 그대로 쓴다 — 서버가 거절하면 그때 새로 받는다', () => {
+    expect(tokenExpiresWithin('access-token', 60_000, NOW)).toBe(false);
+    expect(tokenExpiresWithin('a.%%%.c', 60_000, NOW)).toBe(false);
+    expect(tokenExpiresWithin(jwt({ sub: 'u1' }), 60_000, NOW)).toBe(false);
   });
 });
 

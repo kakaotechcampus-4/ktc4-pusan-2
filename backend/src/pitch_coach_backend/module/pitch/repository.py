@@ -225,13 +225,13 @@ class PitchRepository:
             .order_by(Standards.position.asc())
         ).all()
 
-    def get_standard_analysis(self, pitch_id: uuid.UUID, version: int) -> list[StandardAnalyses]:
-        return self.db.scalars(
+    def get_standard_analysis(self, pitch_id: uuid.UUID, version: int) -> StandardAnalyses | None:
+        return self.db.scalar(
             select(StandardAnalyses).where(
                 StandardAnalyses.pitch_id == pitch_id,
                 StandardAnalyses.version == version,
             )
-        ).all()
+        )
 
     def get_evaluations_by_version(
             self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
@@ -365,3 +365,19 @@ class PitchRepository:
     def add_slides(self, slides: list[ScriptSlide]) -> None:
         self.db.add_all(slides)
         self.db.flush()
+
+    def get_latest_analysis_version(self, pitch_id: uuid.UUID) -> int | None:
+        """분석까지 끝난 평가 기준의 가장 최근 버전. Take 를 시작할 때 그 Take 에 고정한다."""
+        return self.db.scalar(
+            select(func.max(StandardAnalyses.version)).where(StandardAnalyses.pitch_id == pitch_id)
+        )
+
+    def get_script_used(self, pitch_id: uuid.UUID, version: int) -> bool | None:
+        return self.db.scalar(
+            select(StandardAnalyses.script_used).where(
+                StandardAnalyses.pitch_id == pitch_id, StandardAnalyses.version == version
+            )
+        )
+
+    def get_script_version(self, script_version_id: uuid.UUID) -> ScriptVersion | None:
+        return self.db.get(ScriptVersion, script_version_id)

@@ -19,10 +19,12 @@ from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import delete as sql_delete
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from websockets.exceptions import ConnectionClosedError
 
+from pitch_coach_backend.coach.requests import SlideEvent
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.main import app
@@ -37,11 +39,13 @@ from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO, TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
+from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.user.entity import User
+from pitch_coach_backend.realtime import dependencies as realtime_dependencies
 from pitch_coach_backend.realtime import service, take_stream
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
-from pitch_coach_backend.realtime.dependencies import get_stt_adapter, get_transcript_store
+from pitch_coach_backend.realtime.dependencies import get_stt_adapter
 from pitch_coach_backend.realtime.dto import (
     AutoEndReason,
     ErrorMessage,
@@ -203,10 +207,18 @@ class FakeTranscriptStore:
         append_delay: float = 0.0,
         marks: bool = True,
         metric_errors: Iterable[Exception] = (),
+        stored_utterance_ends: dict[uuid.UUID, list[int]] | None = None,
     ) -> None:
         self.segments: list[TranscriptSegmentCreateDTO] = []
+        # 앞 프로세스가 적어 둔 문장 끝 신호 (Take → 목록)와 앱을 내릴 때 적은 것
+        self.stored_utterance_ends = dict(stored_utterance_ends or {})
+        self.saved_utterance_ends: dict[uuid.UUID, list[int]] = {}
         # 저장한 1초 원자료. DB 처럼 같은 1초는 먼저 저장한 것을 둔다
         self.metrics: dict[int, MetricSecondCreateDTO] = {}
+        # 저장한 장 변경. 같은 시각은 먼저 저장한 것을 둔다
+        self.slides: dict[int, SlideEvent] = {}
+        # 끝낼 때 같이 적은 문장 끝 신호 (Take → 목록)
+        self.utterance_ends: dict[uuid.UUID, list[int] | None] = {}
         self.take_ids: list[uuid.UUID] = []
         self.ended: list[uuid.UUID] = []
         # 자동 종료로 적은 (Take, 이유)
@@ -254,28 +266,45 @@ class FakeTranscriptStore:
             self.metrics.setdefault(row.t_ms, row)
         self.calls.append("append_metrics")
 
-    async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+    async def append_slide_events(self, take_id: uuid.UUID, rows: list[SlideEvent]) -> None:
+        await asyncio.sleep(self.append_delay)
+        for row in rows:
+            self.slides.setdefault(row.started_ms, row)
+        self.calls.append("append_slide_events")
+
+    async def mark_ended(
+        self,
+        take_id: uuid.UUID,
+        end_reason: str | None = None,
+        utterance_ends: list[int] | None = None,
+    ) -> bool:
         await asyncio.sleep(0)
         if self.fail_mark:
-            raise RuntimeError("db down")
+            raise db_down()
         # DB 처럼 이미 끝난 Take 는 다시 적지 않는다
         if not self.marks or take_id in self.ended:
             return False
         self.ended.append(take_id)
+        self.utterance_ends[take_id] = utterance_ends
         self.calls.append("mark_ended")
         if end_reason is not None:
             self.auto_ended.append((take_id, end_reason))
         return True
 
     async def mark_abandoned(
-        self, take_id: uuid.UUID, ended_at: datetime, end_reason: str = "ABANDONED"
+        self,
+        take_id: uuid.UUID,
+        ended_at: datetime,
+        end_reason: str = "ABANDONED",
+        utterance_ends: list[int] | None = None,
     ) -> bool:
         await asyncio.sleep(0)
         if self.fail_mark:
-            raise RuntimeError("db down")
+            raise db_down()
         if not self.marks or take_id in self.ended:
             return False
         self.ended.append(take_id)
+        self.utterance_ends[take_id] = utterance_ends
         self.calls.append("mark_abandoned")
         self.abandoned.append((take_id, ended_at))
         self.abandon_reasons.append(end_reason)
@@ -283,6 +312,17 @@ class FakeTranscriptStore:
 
     async def running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
         return list(self.running)
+
+    async def load_utterance_ends(self, take_id: uuid.UUID) -> list[int]:
+        return list(self.stored_utterance_ends.get(take_id, []))
+
+    async def save_utterance_ends(self, take_id: uuid.UUID, utterance_ends: list[int]) -> None:
+        self.saved_utterance_ends[take_id] = list(utterance_ends)
+
+
+def db_down() -> OperationalError:
+    """DB 가 잠깐 안 되는 것 (연결 끊김). 뒤에서 다시 해 볼 만한 실패다."""
+    return OperationalError("UPDATE takes", {}, ConnectionError("db down"))
 
 
 # ── fixture ───────────────────────────────────────────────────────────
@@ -302,20 +342,23 @@ def _no_leftover_streams():
         timer.cancel()
     take_stream._abandon_timers.clear()
     app.dependency_overrides.pop(get_stt_adapter, None)
-    app.dependency_overrides.pop(get_transcript_store, None)
 
 
 @pytest.fixture(autouse=True)
-def store() -> FakeTranscriptStore:
+def store(monkeypatch: pytest.MonkeyPatch) -> FakeTranscriptStore:
     """기본 저장소는 가짜다. 실제 DbTranscriptStore 는 SessionLocal 로 새 커넥션을 열어서
-    테스트 트랜잭션 안의(아직 커밋 안 된) Take 행을 못 보고 FK 위반이 난다."""
+    테스트 트랜잭션 안의(아직 커밋 안 된) Take 행을 못 보고 FK 위반이 난다.
+
+    프로세스에 하나인 저장소를 바꿔 끼운다 — 끝내기 PUT(module/hooks.py 의 구현)도 같은 것을 꺼내
+    쓴다. 테스트가 끝나면 원래 것으로 돌아간다."""
     fake = FakeTranscriptStore()
-    app.dependency_overrides[get_transcript_store] = lambda: fake
+    monkeypatch.setattr(realtime_dependencies, "_transcript_store", fake)
     return fake
 
 
 def use_store(fake: FakeTranscriptStore) -> FakeTranscriptStore:
-    app.dependency_overrides[get_transcript_store] = lambda: fake
+    # 위 fixture 가 원래 것을 기억해 두었다가 테스트가 끝나면 되돌린다
+    realtime_dependencies._transcript_store = fake
     return fake
 
 
@@ -325,6 +368,7 @@ def _fast_retry(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 2.0)
     # 자동 종료 뒤 stop 을 보내지 않는 테스트가 기다리지 않게
     monkeypatch.setattr(take_stream, "FINAL_METRICS_WAIT_SEC", 0.05)
+    monkeypatch.setattr(take_stream, "MARK_RETRY_SEC", (0.01,))
 
 
 @pytest.fixture
@@ -1716,27 +1760,77 @@ def test_ready_take_becomes_running_on_auth(
     assert ready_take.status == "RUNNING"
 
 
-def test_running_write_failure_still_connects(
+@pytest.mark.parametrize("transient", [False, True])
+def test_running_write_failure_closes_before_ready_and_allows_reconnection(
     client: TestClient,
     stt: FakeSttAdapter,
     db_session: Session,
     user: User,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    transient: bool,
 ):
-    """RUNNING 을 못 적어도 STT 는 돈다."""
+    """시작 값이 고정되지 않았으면 발표를 열지 않는다. DB 복구 후 재연결로 다시 시작한다."""
+    real = take_service.mark_running
+    calls = []
 
     def fail(db: Session, take_id: uuid.UUID) -> bool:
+        calls.append(take_id)
+        if transient:
+            raise db_down()
         raise RuntimeError("db down")
 
     monkeypatch.setattr(take_service, "mark_running", fail)
     ready_take = make_take(db_session, user.id, status="READY")
     with caplog.at_level("ERROR"), client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
+        auth(ws, create_access_token(user.id))
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+
+    assert closed.value.code == 1011
+    assert len(calls) == (2 if transient else 1)
+    assert stt.sessions == []
+    assert ready_take.id not in take_stream._takes
+    db_session.refresh(ready_take)
+    assert ready_take.status == "READY"
+    assert "RUNNING 으로 못 바꿨다" in caplog.text
+
+    monkeypatch.setattr(take_service, "mark_running", real)
+    with client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
         handshake(ws, create_access_token(user.id))
         wait_state(ws, "ok")
         stop(ws)
+    db_session.refresh(ready_take)
+    assert ready_take.status == "RUNNING"
 
-    assert "RUNNING 으로 못 바꿨다" in caplog.text
+
+def test_take_ended_while_starting_is_rejected_with_its_reason(
+    client: TestClient,
+    stt: FakeSttAdapter,
+    db_session: Session,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """상태를 읽은 뒤 RUNNING 으로 바꾸기 전에 시작하지 않은 Take 로 끝났다(정리 작업). 다시 읽어
+    끝난 Take 로 거절한다 — FAILED Take 에 STT 를 붙이지 않는다."""
+    ready_take = make_take(db_session, user.id, status="READY")
+
+    def swept_first(db: Session, take_id: uuid.UUID) -> bool:
+        db.execute(
+            update(Take)
+            .where(Take.id == take_id)
+            .values(status="FAILED", end_reason="ABANDONED")
+        )
+        return TakeRepository(db).mark_running(take_id)
+
+    monkeypatch.setattr(take_service, "mark_running", swept_first)
+    with client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
+        auth(ws, create_access_token(user.id))
+        rejected = ws.receive_json()
+        assert closed_with(ws) == 1008
+
+    assert (rejected["code"], rejected["end_reason"]) == ("TAKE_ENDED", "ABANDONED")
+    assert stt.configs == []
 
 
 # ── Take 종료 ─────────────────────────────────────────────────────────
@@ -1791,16 +1885,16 @@ def test_reconnect_after_stop_is_rejected(client: TestClient, token: str):
 def test_end_write_failure_still_closes_the_take(
     client: TestClient, token: str, caplog: pytest.LogCaptureFixture
 ):
-    """DB 가 죽어 종료를 못 적어도 FE 에는 평소처럼 closed 를 보내고 닫는다. 이 프로세스 안에서는
-    다시 붙는 연결을 계속 막는다."""
+    """DB 가 죽어 종료를 못 적어도 FE 에는 평소처럼 closed 를 보내고 닫는다. 적기는 뒤에서 다시
+    한다. 이 프로세스 안에서는 다시 붙는 연결을 계속 막는다."""
     use_store(FakeTranscriptStore(fail_mark=True))
     adapter = use(FakeSttAdapter())
-    with caplog.at_level("ERROR"), client.websocket_connect(WS_PATH) as ws:
+    with caplog.at_level("WARNING"), client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
         stop(ws)
         assert closed_with(ws) == 1000
-    assert "Take 종료 저장 실패" in caplog.text
+    assert "뒤에서 마저 적는다" in caplog.text
 
     with client.websocket_connect(WS_PATH) as ws:
         auth(ws, token)
@@ -1809,9 +1903,7 @@ def test_end_write_failure_still_closes_the_take(
     assert len(adapter.sessions) == 1
 
 
-def test_take_status_moves_ready_running_analyzing_in_the_database(
-    db_session: Session, user: User
-):
+def test_take_status_moves_ready_running_analyzing_in_the_database(db_session: Session, user: User):
     """연결이 READY 를 RUNNING 으로, 끝내기가 ANALYZING 으로 바꾼다. 두 번 불러도 한 번만 바뀐다."""
     take = make_take(db_session, user.id, status="READY")
     assert take_service.mark_running(db_session, take.id) is True
@@ -1827,9 +1919,11 @@ def test_take_status_moves_ready_running_analyzing_in_the_database(
     assert take_service.mark_running(db_session, take.id) is False, "끝난 Take 는 다시 열지 않는다"
     assert take_service.mark_ended(db_session, uuid.uuid7()) is False
 
-    # 연결 때 RUNNING 을 못 적었어도 끝낼 수 있다
+    # 시작하지 않은 Take 는 끝내지 않는다. 실시간 연결이 한 번도 붙지 않아 남은 기록이 없다
     never_started = make_take(db_session, user.id, status="READY")
-    assert take_service.mark_ended(db_session, never_started.id) is True
+    assert take_service.mark_ended(db_session, never_started.id) is False
+    db_session.refresh(never_started)
+    assert never_started.status == "READY"
 
 
 def test_end_leaves_a_finished_take_and_the_fe_end_time(db_session: Session, user: User):
@@ -1942,11 +2036,11 @@ async def test_end_without_stop_leaves_a_stopping_take_to_its_connection():
     stream.end()
     stream.detach(tab)
 
-    assert await take_stream.end_without_stop(TAKE_ID) is False
+    assert await take_stream.end_without_stop(TAKE_ID) is None
 
     stream.cancel()
     await stream.wait_closed(timeout=1.0)
-    assert await take_stream.end_without_stop(TAKE_ID) is True
+    assert await take_stream.end_without_stop(TAKE_ID) is not None
 
 
 # ── final 저장 ─────────────────────────────────────────────────────────
@@ -2945,11 +3039,12 @@ def test_end_reason_write_failure_still_closes_the_take(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ):
-    """DB 가 죽어 이유를 못 적어도 Take 는 끝낸다. 비용을 막는 게 먼저다."""
+    """DB 가 죽어 이유를 못 적어도 Take 는 끝낸다. 비용을 막는 게 먼저다. 적기는 뒤에서 다시
+    한다."""
     use_policy(monkeypatch, short_time_limit(1_000))
     use_store(FakeTranscriptStore(fail_mark=True))
     use(FakeSttAdapter())
-    with caplog.at_level("ERROR"), client.websocket_connect(WS_PATH) as ws:
+    with caplog.at_level("WARNING"), client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
         ws.send_bytes(frame(1, 950))
@@ -2957,7 +3052,7 @@ def test_end_reason_write_failure_still_closes_the_take(
         wait_state(ws, "closed")
         assert closed_with(ws) == 1000
 
-    assert "자동 종료 이유 저장 실패" in caplog.text
+    assert "뒤에서 마저 적는다" in caplog.text
     assert take_stream._ended == {TAKE_ID: AutoEndReason.TIME_LIMIT}
 
 
@@ -3159,9 +3254,11 @@ async def test_shutdown_waits_for_the_end_reason_to_be_written():
     """앱이 내려갈 때 자동 종료 정리를 끊으면 이유가 DB 에 안 남아 다시 뜬 뒤 재연결을 못 막는다."""
 
     class SlowStore(FakeTranscriptStore):
-        async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+        async def mark_ended(
+            self, take_id: uuid.UUID, end_reason: str | None = None, utterance_ends=None
+        ) -> bool:
             await asyncio.sleep(0.2)
-            return await super().mark_ended(take_id, end_reason)
+            return await super().mark_ended(take_id, end_reason, utterance_ends)
 
     store = SlowStore()
     stream = make_stream(FakeSttAdapter(), store, short_time_limit(1_000))
@@ -3297,7 +3394,7 @@ async def test_auto_end_on_a_take_that_already_ended_is_logged(caplog: pytest.Lo
     with caplog.at_level("WARNING"):
         stream.push(frame(1, 950))
         assert await stream.wait_closed(timeout=2.0)
-        await _wait_for(lambda: "자동 종료를 적지 않았다" in caplog.text)
+        await _wait_for(lambda: "Take 종료를 적지 않았다" in caplog.text)
 
 
 @pytest.mark.anyio
@@ -3311,7 +3408,9 @@ async def test_shutdown_cancels_cleanup_that_does_not_finish_and_says_which(
             super().__init__()
             self.entered = asyncio.Event()
 
-        async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+        async def mark_ended(
+            self, take_id: uuid.UUID, end_reason: str | None = None, utterance_ends=None
+        ) -> bool:
             self.entered.set()
             await asyncio.Event().wait()
             return True
@@ -3902,7 +4001,7 @@ def test_failed_metrics_save_is_retried_before_ending(
     client: TestClient, stt: FakeSttAdapter, token: str
 ):
     """DB 가 잠깐 실패해도 버리지 않는다. 들고 있다가 끝낼 때 다시 넣는다."""
-    store = use_store(FakeTranscriptStore(metric_errors=[RuntimeError("db down")]))
+    store = use_store(FakeTranscriptStore(metric_errors=[db_down()]))
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
@@ -4055,7 +4154,7 @@ async def test_metric_buffer_drops_the_oldest_when_saves_keep_failing(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr("pitch_coach_backend.realtime.metric_buffer.MAX_UNSAVED_METRICS", 3)
-    store = FakeTranscriptStore(metric_errors=[RuntimeError("db down")] * 10)
+    store = FakeTranscriptStore(metric_errors=[db_down()] * 10)
     buffer = MetricBuffer(TAKE_ID, store)
     for t in (1000, 2000, 3000, 4000):
         buffer.add(row(t))
@@ -4069,8 +4168,8 @@ async def test_metric_buffer_drops_the_oldest_when_saves_keep_failing(
 @pytest.mark.anyio
 async def test_metric_buffer_waits_before_retrying_a_failed_save(monkeypatch: pytest.MonkeyPatch):
     """저장에 실패하면 행이 더 와도 바로 다시 넣지 않는다. 기다렸다가 한 번에 넣는다."""
-    monkeypatch.setattr("pitch_coach_backend.realtime.metric_buffer.RETRY_DELAYS_SEC", (0.1,))
-    store = FakeTranscriptStore(metric_errors=[RuntimeError("db down")] * 10)
+    monkeypatch.setattr("pitch_coach_backend.core.row_buffer.RETRY_DELAYS_SEC", (0.1,))
+    store = FakeTranscriptStore(metric_errors=[db_down()] * 10)
     buffer = MetricBuffer(TAKE_ID, store)
     for t in range(1000, (METRICS_BATCH + 3) * 1000, 1000):
         buffer.add(row(t))

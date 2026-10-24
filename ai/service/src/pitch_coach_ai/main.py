@@ -13,7 +13,7 @@
 
 from fastapi import FastAPI
 
-from pitch_coach_ai.api import health
+from pitch_coach_ai.api import health, sample
 from pitch_coach_ai.common.errors import register_exception_handlers
 from pitch_coach_ai.common.request_log import configure_logging, register_request_log
 from pitch_coach_ai.settings import Settings, settings
@@ -32,6 +32,9 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
     register_exception_handlers(app)
     register_request_log(app)
     app.include_router(health.router)
+    # 규약 확인용 대역은 켰을 때만 경로가 생긴다. 끄면(기본) 404 다 (docs/ai/ai-service.md 4-1)
+    if app_settings.ai_enable_sample:
+        app.include_router(sample.router)
     return app
 
 

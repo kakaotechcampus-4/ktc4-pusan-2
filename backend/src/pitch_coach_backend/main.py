@@ -9,15 +9,18 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
 from pitch_coach_backend.core.logging import configure_logging
 from pitch_coach_backend.core.s3 import get_s3
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
 from pitch_coach_backend.module.take.controller import router as take_router
+from pitch_coach_backend.module.take.ready_sweep import start as start_ready_sweep
 from pitch_coach_backend.module.user.controller import router as user_router
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.controller import router as realtime_router
 from pitch_coach_backend.realtime.dependencies import get_transcript_store
+from pitch_coach_backend.realtime.live_takes import RealtimeLiveTakes
 from pitch_coach_backend.realtime.take_stream import arm_abandoned_takes
 from pitch_coach_backend.realtime.take_stream import stop_all as stop_all_streams
 
@@ -26,6 +29,8 @@ from pitch_coach_backend.realtime.take_stream import stop_all as stop_all_stream
 # 버전 접두어(/v1)는 붙이지 않는다 — 설계 문서 경로에 /api 만 앞에 붙는 형태다.
 # 예외는 관리자 콘솔(/admin) 하나다. 앱 API 가 아니라서 Caddy 가 따로 넘긴다.
 API_PREFIX = "/api"
+
+hooks.install(live_takes=RealtimeLiveTakes(), coaching=hooks.coaching())
 
 
 @asynccontextmanager
@@ -37,10 +42,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     AutoEndPolicy.from_settings()
     # 떠난 Take 를 끝내는 타이머는 메모리에 있어 다시 뜨면 사라진다. 진행 중인 Take 에 다시 건다
     await arm_abandoned_takes(get_transcript_store())
+    # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
+    stop_ready_sweep = start_ready_sweep()
     yield
     # 실시간 STT 스트림은 WebSocket 요청 밖에서 도는 백그라운드 태스크다.
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.
     await stop_all_streams()
+    await stop_ready_sweep()
 
 
 app = FastAPI(

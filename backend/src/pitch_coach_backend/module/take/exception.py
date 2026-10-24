@@ -37,6 +37,20 @@ class TakeAlreadyStarted(ConflictException):
     message = "이미 시작한 연습입니다."
 
 
+class TakeNotStarted(ConflictException):
+    # 실시간 연결이 한 번도 붙지 않은(`READY`) Take 를 끝내려 했다. FE 는 첫 `ready` 를 받은 뒤에
+    # 발표를 시작하므로 이 Take 에는 남은 기록이 없다
+    code = "TAKE_NOT_STARTED"
+    message = "시작하지 않은 연습입니다."
+
+
 class InvalidTakeTime(AppException):
     code = "INVALID_TAKE_TIME"
     message = "끝난 시각이 시작한 시각보다 앞섭니다."
+
+
+class TakeNotReviewable(ConflictException):
+    # 리뷰는 Take 결과 · 대본 전달도 채점이 끝난 Take 만 부른다. SCORING 은 채점 진행 중이므로
+    # 허용하지 않는다. AWAITING_CONFIRMATION 에서 부르면 확인 건너뛰기로 본다
+    code = "TAKE_NOT_REVIEWABLE"
+    message = "아직 리뷰할 수 없는 연습입니다."

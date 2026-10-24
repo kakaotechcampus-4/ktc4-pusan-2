@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { LevelBar } from '../media/LevelBar';
-import { useCameraStream } from '../media/useCameraStream';
+import { DEVICE_ERROR_MESSAGE, useCameraStream } from '../media/useCameraStream';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 import { usePrepareStore } from '../prepare/prepareStore';
@@ -62,6 +62,7 @@ import {
 } from './resume';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
+import { CONNECT_SLOW_MS, hasLiveAudio, startGate, type StartGate } from './startGate';
 import { useSttStream } from './useSttStream';
 import { useMetricsSender } from './useMetricsSender';
 import { useSlideSender } from './useSlideSender';
@@ -212,7 +213,19 @@ export function RehearsalPage() {
    * 창을 닫았다 다시 열었거나 다른 창이 발표 중이면 열지 않습니다
    */
   const stageReady = ready && ending === null && !submitted && left === null;
-  const running = stageReady && phase === 'RUNNING';
+  /**
+   * 발표를 시작했나 (`startGate`). 마이크를 열고 서버 연결이 첫 `ready` 를 준 뒤에 true 가 되고,
+   * 그 뒤로는 끝까지 true 입니다. 시계 · 기록 · 끝내기 버튼은 모두 이걸 기다립니다.
+   * 아래 `useSttStream` 이 `ready` 를 알려 주므로 한 렌더 늦게 바뀝니다
+   */
+  const [started, setStarted] = useState(false);
+  const running = stageReady && phase === 'RUNNING' && started;
+  /** 첫 연결이 안 될 때 '다시 시도'가 올립니다. 소켓을 새로 만듭니다 */
+  const [connectAttempt, setConnectAttempt] = useState(0);
+  /** `ready` 를 `CONNECT_SLOW_MS` 넘게 기다렸다 */
+  const [connectSlow, setConnectSlow] = useState(false);
+  /** 끝내기가 `TAKE_NOT_STARTED` 를 받았다 — 서버에서 시작하지 않은 Take 입니다 */
+  const [notStarted, setNotStarted] = useState(false);
   const limitSec = ticket?.timeLimitSec ?? 600;
   const scriptMode = ticket?.scriptMode ?? 'HIGHLIGHT';
   const mode = ticket?.mode ?? 'COACHING';
@@ -262,6 +275,8 @@ export function RehearsalPage() {
     [takeId, sessionId],
   );
   const {
+    connected,
+    startFailure,
     note: sttNote,
     alert: sttAlert,
     sendMetrics,
@@ -272,7 +287,11 @@ export function RehearsalPage() {
   } = useSttStream({
     takeId,
     stream,
+    // 시계보다 먼저 붙습니다 — 첫 `ready` 를 받아야 발표를 시작합니다
     enabled: stageReady && (phase === 'RUNNING' || phase === 'ENDING'),
+    // 마이크는 시계가 돈 뒤에 겁니다. 종료 중에도 살려 둡니다 — 끝내기가 `stop` 으로 직접 끊습니다
+    capture: stageReady && started,
+    attempt: connectAttempt,
     elapsedMs,
     onAutoEnd,
     restoredMetrics,
@@ -280,6 +299,26 @@ export function RehearsalPage() {
     onCoach,
     onConnection,
   });
+
+  const gate = startGate({
+    started,
+    // 새로고침으로 이어 가는 Take 는 서버에서 이미 시작했습니다
+    resumed: (resume?.fromMs ?? 0) > 0,
+    micLive: hasLiveAudio(stream),
+    deviceError,
+    connected,
+    startFailure,
+    slow: connectSlow,
+  });
+  // 시작했으면 붙잡아 둡니다. 렌더 중에 바꿔 effect 를 한 번 더 돌리지 않습니다 — 그 뒤로는
+  // 마이크가 빠지거나 연결이 끊겨도 시계를 멈추지 않습니다
+  if (!started && stageReady && gate.kind === 'STARTED') setStarted(true);
+  // `ready` 를 오래 기다리면 다시 시도를 띄웁니다. 다시 시도하면 처음부터 셉니다
+  useEffect(() => {
+    if (!stageReady || gate.kind !== 'CONNECTING') return;
+    const id = window.setTimeout(() => setConnectSlow(true), CONNECT_SLOW_MS);
+    return () => window.clearTimeout(id);
+  }, [stageReady, gate.kind, connectAttempt]);
 
   // 장이 바뀐 시각을 WS `slide` 로 알립니다. 서버가 장 구간을 나누는 기준입니다 (#324 6-4)
   useSlideSender({
@@ -425,11 +464,7 @@ export function RehearsalPage() {
   //
   // 세션 행을 읽은 뒤에 엽니다 — 새로고침이면 점검한 장치를 거기서 되살립니다.
   // 종료 중에 새로고침했으면 열지 않습니다. 남은 일은 기록을 보내는 것뿐입니다
-  const askedRef = useRef(false);
-  useEffect(() => {
-    if (askedRef.current || !resume || resume.ending || resume.submitted || resume.left) return;
-    askedRef.current = true;
-
+  const openDevices = useCallback(() => {
     (async () => {
       const opened = await request(devices);
       // 고른 장치가 그사이 빠졌으면(USB 분리 등) exact 제약에 걸려 못 엽니다.
@@ -438,12 +473,28 @@ export function RehearsalPage() {
         await request();
       }
       // 장치를 못 연 이유(권한 거부 · 장치 없음)는 request 가 deviceError 로 올립니다 —
-      // 시선 제외와 화면 표시는 그쪽이 맡습니다. 여기로 오는 건 예상 밖의 오류뿐이라
+      // 무대는 그걸 보고 시작하지 않습니다 (`startGate`). 여기로 오는 건 예상 밖의 오류뿐이라
       // 버리지 않고 남깁니다
     })().catch((err: unknown) => {
       console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
     });
-  }, [request, devices, resume]);
+  }, [request, devices]);
+  const askedRef = useRef(false);
+  useEffect(() => {
+    if (askedRef.current || !resume || resume.ending || resume.submitted || resume.left) return;
+    askedRef.current = true;
+    openDevices();
+  }, [openDevices, resume]);
+
+  /** 시작하지 못한 무대의 '다시 시도'. 장치를 못 열었으면 다시 열고, 연결이 안 됐으면 다시 붙습니다 */
+  const retryStart = () => {
+    if (gate.kind === 'NO_MIC') {
+      openDevices();
+      return;
+    }
+    setConnectSlow(false);
+    setConnectAttempt((n) => n + 1);
+  };
 
   // ── 창을 닫았다 다시 열었다 ───────────────────────────────────────
   // 창을 닫은 Take 는 이어 가지 않습니다. 서버에 실패로 끝내 달라고 하고 실패 화면을 보여 줍니다.
@@ -676,6 +727,11 @@ export function RehearsalPage() {
         leaveClosed();
         return;
       }
+      // 서버에서 시작하지 않은 Take 입니다 — 남은 기록이 없어 다시 보내도 같습니다
+      if (e instanceof ApiFailure && e.code === 'TAKE_NOT_STARTED') {
+        setNotStarted(true);
+        return;
+      }
       // 기록은 브라우저에 그대로 있습니다. 여기서 잃는 것은 없고,
       // 재시도 화면이 같은 clientSessionId 의 세션으로 다시 보냅니다
       console.error('[rehearsal] 종료 처리 실패', e);
@@ -714,6 +770,9 @@ export function RehearsalPage() {
   });
 
   if (left) return <LeftWindowNotice left={left} pitchId={ticket?.pitchId ?? null} />;
+  if (notStarted || (gate.kind === 'FAILED' && gate.reason === 'ENDED')) {
+    return <NotStartedNotice pitchId={ticket?.pitchId ?? null} />;
+  }
 
   // 시선이 기록되지 않을 때만 발밑에 한 줄 띄웁니다(`gazeNote`). 발표 중에 고칠 수 없는 문제도 남깁니다 —
   // 코치 상태 표시는 코칭 모드에서 소켓이 붙어 있을 때만 와서, 실전 모드 · 끊긴 동안에는 아무 표시가 없습니다
@@ -748,6 +807,9 @@ export function RehearsalPage() {
             data-gaze="UNKNOWN"
             data-mode={mode}
           >
+            {stageReady && gate.kind !== 'STARTED' && (
+              <StartGateNotice gate={gate} pitchId={ticket?.pitchId ?? null} onRetry={retryStart} />
+            )}
             <header className="stage-head">
               <span className="elapsed" ref={elapsedRef}>
                 00:00
@@ -931,6 +993,72 @@ function LeftWindowNotice({ left, pitchId }: { left: LeftWindow; pitchId: string
       </Card>
     </InfoPage>
   );
+}
+
+/**
+ * 시작하기 전에 끝난 Take 입니다. 서버 연결이 끝내 붙지 않아 시작하지 않은 Take 로 정리됐습니다
+ * (만든 지 10분 · 같은 발표에서 새 Take 를 만듦). 이 Take 는 다시 열 수 없어 새로 준비합니다.
+ */
+function NotStartedNotice({ pitchId }: { pitchId: string | null }) {
+  return (
+    <InfoPage title="연습 시작 안 됨">
+      <Card>
+        <Mascot who="chichi">이 연습은 시작하기 전에 끝났어. 장치 점검부터 다시 해 보자!</Mascot>
+        <div className="flex flex-wrap gap-3">
+          {pitchId && <ButtonLink to={`/pitch/${pitchId}/device-check`}>새 Take 준비</ButtonLink>}
+          <ButtonLink to="/" variant="secondary">
+            내 피치로
+          </ButtonLink>
+        </div>
+      </Card>
+    </InfoPage>
+  );
+}
+
+/**
+ * 발표를 시작하기 전에 무대 위에 띄우는 안내. 시계 · 기록 · 끝내기는 아직 멈춰 있습니다.
+ * 이어 가는 Take(새로고침)에서는 장치를 못 열었을 때만 뜹니다.
+ */
+function StartGateNotice({
+  gate,
+  pitchId,
+  onRetry,
+}: {
+  gate: Exclude<StartGate, { kind: 'STARTED' }>;
+  pitchId: string | null;
+  onRetry: () => void;
+}) {
+  const text = startGateText(gate);
+  const stuck =
+    gate.kind === 'NO_MIC' || gate.kind === 'FAILED' || (gate.kind === 'CONNECTING' && gate.slow);
+  return (
+    <div className="start-gate" role="status">
+      <p>{text}</p>
+      {stuck && (
+        <div className="actions">
+          <button type="button" onClick={onRetry}>
+            다시 시도
+          </button>
+          {pitchId && <ButtonLink to={`/pitch/${pitchId}/device-check`}>장치 점검으로</ButtonLink>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function startGateText(gate: Exclude<StartGate, { kind: 'STARTED' }>): string {
+  switch (gate.kind) {
+    case 'OPENING':
+      return '카메라와 마이크를 여는 중이에요';
+    case 'NO_MIC':
+      return `${gate.error ? `${DEVICE_ERROR_MESSAGE[gate.error]} ` : ''}마이크가 있어야 발표를 시작할 수 있어요.`;
+    case 'CONNECTING':
+      return gate.slow
+        ? '말하기 분석 서버에 연결하지 못했어요. 연결되면 바로 시작해요.'
+        : '말하기 분석 서버에 연결하는 중이에요';
+    case 'FAILED':
+      return '말하기 분석 서버에 연결하지 못했어요. 다시 시도해 주세요.';
+  }
 }
 
 function endButtonText(ending: boolean, confirming: boolean): string {

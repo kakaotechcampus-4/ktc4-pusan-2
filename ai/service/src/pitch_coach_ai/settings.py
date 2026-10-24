@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     # 검사한다. 그래서 ai/.env 에만 적으면 로컬 `uv run uvicorn` 에는 먹지 않는다
     # (compose env_file · docker run --env-file 은 진짜 환경변수로 넣어 먹는다)
     web_concurrency: int = Field(1, ge=1)
+    # 규약 확인용 대역 `POST /sample/judge` 를 켠다. 로컬 확인용이라 서버 AI_ENV 에는 넣지 않는다.
+    # 첫 실제 기능 엔드포인트가 붙으면 대역과 함께 지운다 (docs/ai/ai-service.md 4-1)
+    ai_enable_sample: bool = False
 
     @field_validator(
         "openai_base_url",

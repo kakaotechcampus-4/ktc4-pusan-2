@@ -24,9 +24,15 @@ import type { Ms } from '@/types/api';
  * | `stt_state` | React 상태 | 전이가 드뭅니다 (connecting → ok → …). 문구가 바뀌어야 합니다 |
  * | 프레임·유실 누적 | ref | 계기판용입니다. 발표자에게는 안 보입니다 |
  *
- * ── 끊겨도 발표는 계속됩니다 ───────────────────────────────────────
+ * ── 시작은 첫 `ready` 뒤에 ─────────────────────────────────────────
  *
- * 이 훅이 실패하는 모든 경로(마이크 없음·16kHz 거절·인증 만료)는
+ * 무대는 이 소켓이 첫 `ready` 를 받은 뒤에(`connected`) 시계를 돌립니다. 그 연결이 서버에서
+ * Take 를 시작하므로(`RUNNING`), 연결 없이 시작한 Take 는 기록이 남지 않습니다. `ready` 전에
+ * 소켓이 포기하면 `startFailure` 로 알리고 무대는 시작하지 않습니다.
+ *
+ * ── 시작한 뒤에는 끊겨도 발표는 계속됩니다 ─────────────────────────
+ *
+ * 이 훅이 실패하는 모든 경로(16kHz 거절·인증 만료)는
  * **문구 한 줄**로 끝납니다. 시선 기록 · 시계 · 슬라이드는 그대로 돕니다. 실시간 코치는 이 소켓으로
  * 오므로 소켓이 끝나면 함께 멈춥니다 — 마이크 캡처만 실패하면 소켓은 그대로라 코치도 계속 옵니다.
  * 네트워크 끊김은 실패로 치지 않습니다 — 소켓이 발표가 끝날 때까지 다시 붙어 보고,
@@ -42,6 +48,8 @@ export function useSttStream({
   takeId,
   stream,
   enabled,
+  capture,
+  attempt = 0,
   elapsedMs,
   onAutoEnd,
   restoredMetrics,
@@ -51,8 +59,15 @@ export function useSttStream({
 }: {
   takeId: string;
   stream: MediaStream | null;
-  /** 발표가 도는 동안만 true. 종료 뒤에는 붙지 않습니다 */
+  /** 무대가 열린 동안 true. 종료 뒤에는 붙지 않습니다. 시계보다 먼저 켜져 첫 `ready` 를 받아 옵니다 */
   enabled: boolean;
+  /**
+   * 마이크 PCM 을 보내기 시작해도 되나. **무대 시계가 돈 뒤에** true 여야 합니다 — 캡처는 시작할 때
+   * 시계를 읽어 `offset_ms` 의 기준점을 잡아서, 시계가 멈춘 동안 걸면 기다린 시간만큼 전사가 어긋납니다
+   */
+  capture: boolean;
+  /** 바꾸면 소켓을 새로 만듭니다 (첫 연결이 안 될 때 '다시 시도') */
+  attempt?: number;
   /** 캡처를 시작한 시점의 Take 경과 시간 — offset_ms 의 기준점입니다 */
   elapsedMs: () => Ms;
   /** 서버가 Take 를 자동으로 끝냈습니다 (말 없음 · 최대 시간). 무대가 종료 흐름을 탑니다 */
@@ -93,6 +108,24 @@ export function useSttStream({
    * 같이 두면 재연결 한 번에 지워져 말하기 분석이 도는 것처럼 보입니다
    */
   const [captureNote, setCaptureNote] = useState<string | null>(null);
+  /**
+   * 지금 소켓을 가리키는 값. 이 값이 바뀌면 소켓을 새로 만듭니다 (다시 시도 · 장치를 다시 엶).
+   * 아래 두 상태는 어느 소켓의 결과인지 이 값으로 적어 두어, 새 소켓에서는 저절로 비어 보입니다
+   */
+  const socketKey = enabled && stream && takeId !== '' ? `${takeId}:${attempt}:${stream.id}` : null;
+  /** `ready` 를 받은 소켓. 무대는 지금 소켓이 받은 뒤에 시계를 돌립니다 */
+  const [readyKey, setReadyKey] = useState<string | null>(null);
+  /**
+   * 첫 `ready` 전에 소켓이 포기했다. `ENDED` 는 서버가 이미 끝낸 Take(시작하지 않은 채 정리됨 등),
+   * `GAVE_UP` 은 그 밖의 이유(인증 등)입니다. 무대는 시작하지 않고 안내를 띄웁니다
+   */
+  const [failure, setFailure] = useState<{ key: string; reason: 'ENDED' | 'GAVE_UP' } | null>(null);
+  const connected = socketKey !== null && readyKey === socketKey;
+  const startFailure = failure !== null && failure.key === socketKey ? failure.reason : null;
+  /** 지금 소켓으로 마이크 캡처를 거는 함수. 소켓 effect 가 넣고, 캡처 effect 가 부릅니다 */
+  const startCaptureRef = useRef<(() => void) | null>(null);
+  /** 캡처를 걸어도 되나 (`capture`). 소켓이 나중에 생기면 만들자마자 겁니다 */
+  const captureWantedRef = useRef(capture);
 
   /** 소켓은 effect 안에서 한 번 만들어집니다. 그 뒤에 바뀐 콜백을 부르려고 ref 로 넘깁니다 */
   const onAutoEndRef = useRef(onAutoEnd);
@@ -109,19 +142,19 @@ export function useSttStream({
   });
 
   useEffect(() => {
-    if (!enabled || !stream || takeId === '') return;
+    // 꺼져 있거나(종료 뒤) 스트림 · Take 가 없으면 붙지 않습니다 (`socketKey`)
+    if (socketKey === null || !stream) return;
 
     let cancelled = false;
-
-    /**
-     * 소켓이 포기했다. **캡처 준비가 그보다 늦게 끝날 수 있어서** 따로 둡니다 —
-     * 인증이 먼저 실패하면 `onGiveUp` 시점에는 아직 `captureRef` 가 비어 있고,
-     * 그 뒤에 준비가 끝난 캡처를 그대로 받아 두면 보낼 곳도 없는 워클릿이
-     * 남은 발표 내내 돕니다.
-     */
+    /** 이 소켓이 `ready` 를 받았나. 받기 전의 실패는 '시작하지 못함'이라 무대가 따로 안내합니다 */
+    let everReady = false;
+    /** 소켓이 포기했다. 캡처가 그보다 늦게 준비되면 바로 놓습니다 */
     let abandoned = false;
+    /** 캡처를 한 번만 겁니다 */
+    let captureStarted = false;
+    const key = socketKey;
 
-    const socket = new SttSocket({
+    const created = new SttSocket({
       takeId,
       restoredMetrics: restoredMetricsRef.current?.(),
       slideHistory: () => slidesRef.current,
@@ -133,6 +166,10 @@ export function useSttStream({
         // 다시 붙었으면 지난 경고는 치웁니다 — 남아 있으면 계속 고장 난 것처럼 보입니다
         if (state === 'ok') setErrorNote(null);
       },
+      onReady: () => {
+        everReady = true;
+        if (!cancelled) setReadyKey(key);
+      },
       onStatus: (message) => {
         statsRef.current = { frames: message.frames, lostMs: message.lost_ms };
       },
@@ -140,6 +177,12 @@ export function useSttStream({
         if (cancelled) return;
         if (code === 'TAKE_ENDED' && endReason === 'CLOSED') {
           onClosedRef.current?.();
+          return;
+        }
+        if (!everReady) {
+          // 시작하기 전에 끝난 Take 입니다 (시작하지 않은 채 정리됨 · 다른 곳에서 끝냄). 발표를
+          // 시작하지 않았으니 이어 갈 것도 없습니다. 나머지 이유는 아래 onGiveUp 이 받습니다
+          if (code === 'TAKE_ENDED') setFailure({ key, reason: 'ENDED' });
           return;
         }
         // 오래 끊겨 서버가 끝냈지만 발표는 이어 갑니다. 끝내기를 보내면 서버가 되살립니다
@@ -163,12 +206,18 @@ export function useSttStream({
       },
       onGiveUp: (reason) => {
         // 보낼 곳이 없어졌습니다. 마이크 캡처를 계속 돌리면 남은 발표 내내
-        // 오디오 스레드와 워클릿이 헛돕니다 — 같은 화면에서 시선 워커가 돌고 있습니다
+        // 오디오 스레드와 워클릿이 헛돕니다 — 같은 화면에서 시선 워커가 돌고 있습니다.
+        // 캡처 준비가 이보다 늦게 끝날 수 있어 표시를 남깁니다 (아래 `startCapture`)
         abandoned = true;
         captureRef.current?.stop().catch(() => undefined);
         captureRef.current = null;
 
-        if (cancelled || reason === 'FATAL') return;
+        if (cancelled) return;
+        if (!everReady) {
+          setFailure((current) => (current?.key === key ? current : { key, reason: 'GAVE_UP' }));
+          return;
+        }
+        if (reason === 'FATAL') return;
 
         // FATAL 은 위 onError 가 이미 이유를 말했습니다. 나머지는 여기서 말합니다
         setErrorNote(
@@ -178,36 +227,50 @@ export function useSttStream({
         );
       },
     });
-    socketRef.current = socket;
-    socket.start();
+    socketRef.current = created;
+    created.start();
 
-    startPcmCapture(stream, {
-      elapsedMs,
-      onFrame: ({ pcm, offsetMs }) => socket.sendFrame(pcm, offsetMs),
-    })
-      .then(({ capture, error }) => {
-        // abandoned — 준비가 끝나기 전에 소켓이 포기한 경우입니다
-        if (cancelled || abandoned || error) {
-          capture?.stop().catch(() => undefined);
-          // 소켓은 닫지 않습니다 — 오디오만 못 갈 뿐 metrics 는 계속 보냅니다
-          if (error && !cancelled) setCaptureNote(PCM_CAPTURE_ERROR_MESSAGE[error]);
-          return;
-        }
-        captureRef.current = capture;
+    // 마이크 캡처는 시계가 돈 뒤에 겁니다 (`capture`). 소켓은 `ready` 전 오디오를 2초까지만 들고
+    // 있고, 캡처는 시작할 때 시계를 읽어 기준점을 잡습니다
+    const startCapture = () => {
+      if (cancelled || abandoned || captureStarted) return;
+      captureStarted = true;
+      startPcmCapture(stream, {
+        elapsedMs,
+        onFrame: ({ pcm, offsetMs }) => created.sendFrame(pcm, offsetMs),
       })
-      .catch(() => {
-        // 여기서 삼키면 화면에는 아무 표시 없이 말하기 분석만 사라집니다
-        if (!cancelled) setCaptureNote(PCM_CAPTURE_ERROR_MESSAGE.WORKLET_FAILED);
-      });
+        .then(({ capture: started, error }) => {
+          // abandoned — 준비가 끝나기 전에 소켓이 포기한 경우입니다
+          if (cancelled || abandoned || error) {
+            started?.stop().catch(() => undefined);
+            // 소켓은 닫지 않습니다 — 오디오만 못 갈 뿐 metrics 는 계속 보냅니다
+            if (error && !cancelled) setCaptureNote(PCM_CAPTURE_ERROR_MESSAGE[error]);
+            return;
+          }
+          captureRef.current = started;
+        })
+        .catch(() => {
+          // 여기서 삼키면 화면에는 아무 표시 없이 말하기 분석만 사라집니다
+          if (!cancelled) setCaptureNote(PCM_CAPTURE_ERROR_MESSAGE.WORKLET_FAILED);
+        });
+    };
+    startCaptureRef.current = startCapture;
+    if (captureWantedRef.current) startCapture();
 
     return () => {
       cancelled = true;
+      startCaptureRef.current = null;
       captureRef.current?.stop().catch(() => undefined);
       captureRef.current = null;
       socketRef.current = null;
-      socket.dispose();
+      created.dispose();
     };
-  }, [enabled, stream, takeId, elapsedMs]);
+  }, [socketKey, stream, takeId, elapsedMs]);
+
+  useEffect(() => {
+    captureWantedRef.current = capture;
+    if (capture) startCaptureRef.current?.();
+  }, [capture]);
 
   /**
    * 종료 CTA 가 **화면을 정리하기 전에** 부릅니다.
@@ -259,6 +322,8 @@ export function useSttStream({
 
   return {
     sttState,
+    connected,
+    startFailure,
     /**
      * 발밑에 뜨는 한 줄. 에러가 있으면 에러가 이깁니다. 마이크가 실패했으면 연결 상태 문구
      * ("말하기 분석 중")는 맞지 않아 보여 주지 않습니다
