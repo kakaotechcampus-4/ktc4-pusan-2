@@ -1,3 +1,4 @@
+
 import uuid
 from typing import Annotated
 
@@ -30,6 +31,7 @@ from pitch_coach_backend.module.pitch.service import (
     get_presentation_detail,
     get_script_detail,
     get_standard_detail,
+    pitch_timing,
     request_reparse,
     update_pitch_service,
     upload_presentation_service,
@@ -87,9 +89,14 @@ def add_pitch(
 def update_pitch(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
-    pitch_dto: PitchSaveRequestDTO
+    pitch_dto: PitchSaveRequestDTO,
 ):
+    before = pitch_timing(db, pitch_id)
     result = update_pitch_service(db, pitch_id, pitch_dto)
+    # 제한 시간 · 허용 범위가 바뀌면 다음 Take 의 코칭 계획을 다시 만든다 (coach-agent.md 5-1).
+    # 백그라운드 작업이라 응답을 기다리게 하지 않는다
+    if pitch_timing(db, pitch_id) != before:
+        hooks.coaching().plan_next_take(pitch_id)
     return {"message": "Pitch updated successfully", "pitch_id": result}
 
 @router.delete("/delete/{pitch_id}")

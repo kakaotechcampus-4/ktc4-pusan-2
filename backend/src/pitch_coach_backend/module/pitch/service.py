@@ -366,6 +366,7 @@ def create_script_service(
         requested_at=script.parse_requested_at,
         script_text=content,
         target_ms=target_ms,
+        pitch_id=pitch_id,
     )
     return created, ticket
 
@@ -483,6 +484,7 @@ def request_reparse(
             requested_at=now,
             script_text=script.content,
             target_ms=target_ms,
+            pitch_id=pitch_id,
         ),
     )
 
@@ -732,3 +734,11 @@ def add_coaching_plan(
             meta=meta,
         )
     )
+
+
+def pitch_timing(db: Session, pitch_id: uuid.UUID) -> tuple[int, int, int] | None:
+    """제한 시간 · 허용 초과 · 허용 미달 (초). 코칭 계획의 바탕 값이라 바뀌면 계획을 다시 만든다."""
+    pitch = PitchRepository(db).get_by_id(pitch_id)
+    if pitch is None:
+        return None
+    return pitch.time_limit_sec, pitch.upper_deviation, pitch.lower_deviation
