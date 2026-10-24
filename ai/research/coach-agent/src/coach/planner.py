@@ -1,12 +1,13 @@
-"""Take 시작 전 코칭 계획 — LLM 이 대본 · 미션 · 이전 리뷰를 읽고 이번 Take 에서
+"""Take 시작 전 코칭 계획 — LLM 이 대본 · 미션 · 직전 Take 결과 · 이전 리뷰를 읽고 이번 Take 에서
 집중 · 완화할 것을 정한다.
 
 1초 판단은 지금처럼 규칙이 한다. 계획은 우선순위 가중치(focus, priority.py)와 참을 이유
 (relax · 개입 상한, eligibility.py)로만 반영된다. 매초 LLM 을 부르지 않고 Take 당 한 번만 부른다.
 
 코어는 LLM 클라이언트를 만들지 않는다. 출력 스키마가 PlanDraft 로 고정된 LLM(`.invoke(messages)`)과
-캐시를 인자로 받는다. LLM 이 없거나 실패하면 기본 계획(v1 동작)으로 돌아간다 — 계획을 못 세웠다고
-코칭이 멈추면 안 된다. LLM 이 낸 계획은 그대로 쓰지 않고 config.planner 범위로 검증하고 자른다.
+캐시를 인자로 받는다. LLM 이 없거나 실패하면 기본 계획(아무것도 바꾸지 않음)으로 돌아가고 이유를
+fallback_reason 으로 알린다 — 계획을 못 세웠다고 코칭이 멈추면 안 된다. LLM 이 낸 계획은 그대로
+쓰지 않고 config.planner 범위로 검증하고 자른다.
 """
 
 from __future__ import annotations
@@ -17,18 +18,20 @@ import logging
 import re
 from typing import Any, Protocol
 
+from pydantic import ValidationError
+
 from .config import DEFAULT_CONFIG, CoachConfig, PlannerConfig
 from .prompts.plan import PLAN_SYSTEM_PROMPT
 from .schemas import (
     CoachingPlan,
     FocusItem,
     PlanDraft,
+    PlanFallbackReason,
+    PlanMeta,
     PlanRequest,
     PlanResponse,
     RelaxItem,
 )
-from .version import FEATURE_VERSION
-from .vocab import Mode
 
 log = logging.getLogger(__name__)
 
@@ -64,7 +67,6 @@ def plan_message(req: PlanRequest, cfg: PlannerConfig) -> str:
         {
             "slide_number": s.slide_number,
             "target_seconds": round(s.target_ms / 1000),
-            "required_keywords": s.required_keywords,
             "script": scripts.get(s.slide_number, "")[: cfg.max_script_chars],
             # 수치가 몰린 장을 LLM 이 대본을 읽다 놓치지 않게 센 값을 함께 준다
             "number_count": len(_NUMBER.findall(scripts.get(s.slide_number, ""))),
@@ -84,8 +86,7 @@ def plan_message(req: PlanRequest, cfg: PlannerConfig) -> str:
             for m in req.missions
         ],
         "recurring_issues": [
-            {"type": r.area.value, "slide_number": r.slide_number}
-            for r in req.memory.recurring_issues
+            {"type": r.area.value, "slide_number": r.slide_number} for r in req.recurring_issues
         ],
         "previous_review": _previous_review(req.previous_review, cfg),
     }
@@ -172,7 +173,7 @@ def validate_draft(
             )
 
     budget = _budget(draft.max_interventions, req, pc, dropped)
-    plan = CoachingPlan(source="LLM", focus=focus, relax=relax, max_interventions=budget)
+    plan = CoachingPlan(focus=focus, relax=relax, max_interventions=budget)
     return plan, dropped
 
 
@@ -201,6 +202,28 @@ def _budget(
     return budget
 
 
+#: 예외의 code 로 받아들이는 fallback_reason (서비스 common/llm.py 가 다는 계약)
+_CODES = ("LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE")
+
+
+def _fallback_reason(exc: BaseException) -> PlanFallbackReason:
+    """LLM 호출 · 초안 읽기가 실패한 원인(6-4 5).
+
+    예외가 네 값 중 하나인 code 를 가지면 그것을 쓴다 — 코어는 LLM 라이브러리의 예외 종류를
+    import 하지 않으므로, 서비스가 시간 초과 · 출력 검증 실패 · 설정 없음 예외에 code 를 달아
+    던진다. 없으면 표준 시간 초과 → LLM_TIMEOUT, pydantic 검증 실패 → LLM_INVALID_OUTPUT,
+    그 밖 → LLM_ERROR.
+    """
+    code = getattr(exc, "code", None)
+    if code in _CODES:
+        return code
+    if isinstance(exc, TimeoutError):
+        return "LLM_TIMEOUT"
+    if isinstance(exc, ValidationError):
+        return "LLM_INVALID_OUTPUT"
+    return "LLM_ERROR"
+
+
 def plan_coaching(
     request: PlanRequest | dict[str, Any],
     *,
@@ -209,12 +232,14 @@ def plan_coaching(
     cache: PlanCache | None = None,
     config: CoachConfig | None = None,
 ) -> PlanResponse:
-    """Take 시작 전 한 번. 코칭 계획을 plan 으로 돌려준다.
+    """리뷰 저장 뒤 한 번. 코칭 계획을 coaching_plan 으로 돌려준다.
 
-    BE 가 plan 을 저장해 두었다가 매 /coach/evaluate 요청의 coaching_plan 에 싣는다.
+    BE 가 응답을 발표에 보관했다가 다음 Take 의 매 /coach/evaluate 요청의 coaching_plan 에 싣는다.
+    요청에 모드가 없다 — 계획은 Take 전에 만들고 실전 모드는 evaluate 에서 말하지 않는다.
 
-    llm 이 None 이거나 실전 모드면 LLM 을 부르지 않고 기본 계획을 돌려준다.
-    LLM 이 예외를 내면 기본 계획 + fallback_reason="LLM_ERROR".
+    llm 이 None 이면 LLM 을 부르지 않고 기본 계획 + LLM_UNAVAILABLE. LLM 호출 · 초안 읽기 ·
+    검증이 실패하면 기본 계획 + 원인(LLM_TIMEOUT · LLM_ERROR · LLM_INVALID_OUTPUT). 요청의
+    source_take_id · script_version_id 는 그대로 돌려주고, meta.model 은 성공했을 때만 model 이다.
     요청 형식 오류는 그대로 올린다 (API 가 422 로 바꾼다).
     """
     cfg = config or DEFAULT_CONFIG
@@ -222,22 +247,22 @@ def plan_coaching(
     phash = planner_hash(model)
 
     def respond(
-        plan: CoachingPlan, reason: str | None = None, dropped: list[str] | None = None
+        plan: CoachingPlan,
+        reason: PlanFallbackReason | None = None,
+        dropped: list[str] | None = None,
     ) -> PlanResponse:
         return PlanResponse(
-            policy_version=FEATURE_VERSION,
-            planner_hash=phash,
-            take_id=req.take_id,
-            plan=plan,
+            coaching_plan=plan,
+            source_take_id=req.source_take_id,
+            script_version_id=req.script_version_id,
             fallback_reason=reason,
             dropped=dropped or [],
+            planner_hash=phash,
+            meta=PlanMeta(model=(model or None) if reason is None else None),
         )
 
-    # 실전 모드는 말하지 않으니 계획이 쓸모없다 — 비용을 들이지 않는다
-    if req.mode == Mode.EXAM:
-        return respond(CoachingPlan(), "EXAM_MODE")
     if llm is None:
-        return respond(CoachingPlan(), "NO_LLM")
+        return respond(CoachingPlan(), "LLM_UNAVAILABLE")
 
     message = plan_message(req, cfg.planner)
     key = hashlib.sha256(message.encode("utf-8")).hexdigest()
@@ -246,15 +271,20 @@ def plan_coaching(
         try:
             out = llm.invoke([("system", PLAN_SYSTEM_PROMPT), ("user", message)])
             draft = out if isinstance(out, PlanDraft) else PlanDraft.model_validate(out)
-        except Exception:  # noqa: BLE001 — 계획이 없어도 코칭은 기본 계획으로 계속한다
-            log.exception("coach plan failed take_id=%s", req.take_id)
-            return respond(CoachingPlan(), "LLM_ERROR")
+        except Exception as exc:  # noqa: BLE001 — 계획이 없어도 코칭은 기본 계획으로 계속한다
+            reason = _fallback_reason(exc)
+            log.exception("coach plan failed pitch_id=%s reason=%s", req.pitch_id, reason)
+            return respond(CoachingPlan(), reason)
         if cache is not None:
             try:
                 cache.put(key, phash, draft.model_dump_json())
             except Exception:  # noqa: BLE001 — 저장하지 못해도 이번 계획은 쓴다
-                log.warning("coach plan cache put failed take_id=%s", req.take_id, exc_info=True)
-    plan, dropped = validate_draft(draft, req, cfg)
+                log.warning("coach plan cache put failed pitch_id=%s", req.pitch_id, exc_info=True)
+    try:
+        plan, dropped = validate_draft(draft, req, cfg)
+    except Exception:  # noqa: BLE001 — 검증이 깨져도 기본 계획으로 돌려 코칭을 막지 않는다
+        log.exception("coach plan validation failed pitch_id=%s", req.pitch_id)
+        return respond(CoachingPlan(), "LLM_INVALID_OUTPUT")
     return respond(plan, None, dropped)
 
 

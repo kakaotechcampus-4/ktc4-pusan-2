@@ -209,7 +209,7 @@ result = finalize(finalize_request_dict, judges)
 
 ## 7. 현재 결과
 
-커밋한 결과 파일에서 가져온 값입니다 (`config_hash` `9d82f5b1d7bb`, 기능 버전 `coach-1.2`, 16 시나리오). **가상 발표자 · 대역 판정 모듈 위의 값이며 실제 성능이 아닙니다.**
+커밋한 결과 파일에서 가져온 값입니다 (`config_hash` `8b1e640e988a`, 기능 버전 `coach-1.2`, 16 시나리오). **가상 발표자 · 대역 판정 모듈 위의 값이며 실제 성능이 아닙니다.**
 
 ### Take 결과 채점 (`reports/results/take_result.json`)
 

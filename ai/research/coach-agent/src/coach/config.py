@@ -256,9 +256,10 @@ _TEMPLATES: dict[str, str] = {
 class PlannerConfig(_Section):
     """Take 시작 전 코칭 계획(planner.py). LLM 이 낸 계획은 이 범위로 자른다."""
 
-    #: 장 단위로 봐줄 수 있는 영역. 시간 · 속도 · 음량 · 침묵은 늘 챙긴다
+    #: 장 단위로 봐줄 수 있는 영역. 시간 · 속도 · 음량 · 침묵은 늘 챙긴다. 발표 중에는 내용 지적이
+    #: 없으므로 CONTENT 는 두지 않는다
     relax_types: list[FeedbackType] = Field(
-        default_factory=lambda: [FeedbackType.GAZE, FeedbackType.FILLER, FeedbackType.CONTENT]
+        default_factory=lambda: [FeedbackType.GAZE, FeedbackType.FILLER]
     )
     max_focus: int = 3
     max_relax: int = 3

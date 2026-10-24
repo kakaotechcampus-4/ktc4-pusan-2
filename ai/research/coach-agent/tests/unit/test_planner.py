@@ -10,7 +10,7 @@ import pytest
 from coach import plan_coaching
 from coach.config import load_config
 from coach.planner import plan_message, planner_hash
-from coach.schemas import PlanDraft, PlanRequest
+from coach.schemas import CoachingPlan, PlanDraft, PlanRequest
 
 from .conftest import PLAN, decide_seen, make_request
 from .fakes import ScriptedJudge, fake_issue, fake_judges
@@ -47,7 +47,7 @@ class DictCache:
 
 
 def request(**kw: Any) -> dict[str, Any]:
-    return {"take_id": "t1", "plan": PLAN, "scripts": SCRIPTS, **kw}
+    return {"pitch_id": "p1", "plan": PLAN, "scripts": SCRIPTS, **kw}
 
 
 def draft(focus=(), relax=(), max_interventions=None) -> dict[str, Any]:
@@ -67,9 +67,11 @@ def test_llm_plan_is_validated_and_returned_as_plan():
     )
     resp = plan_coaching(request(), llm=llm, model="m")
     assert resp.fallback_reason is None and resp.dropped == []
-    assert resp.plan.source == "LLM"
-    assert [(f.area.value, f.slide_number, f.weight) for f in resp.plan.focus] == [("TIME", 3, 1.5)]
-    assert resp.plan.relax[0].slide_number == 3
+    assert resp.meta.model == "m"
+    assert [(f.area.value, f.slide_number, f.weight) for f in resp.coaching_plan.focus] == [
+        ("TIME", 3, 1.5)
+    ]
+    assert resp.coaching_plan.relax[0].slide_number == 3
     assert not hasattr(resp, "coach_state")
     assert len(llm.calls) == 1
 
@@ -82,7 +84,7 @@ def _gaze_judges():
 
 def test_relaxed_gaze_is_not_coached_on_that_slide_only():
     resp = plan_coaching(request(), llm=FakeLLM(draft(relax=[GAZE_3])), model="m")
-    plan = resp.plan.model_dump(mode="json")
+    plan = resp.coaching_plan.model_dump(mode="json")
     _, on_3 = decide_seen(make_request(20_000, slide=3, coaching_plan=plan), _gaze_judges())
     c = {c.issue_type.value: c for c in on_3}["GAZE_ON_SCRIPT"]
     assert c.status.value == "IGNORED" and "PLAN_RELAXED" in c.reasons
@@ -102,7 +104,7 @@ def test_relaxed_gaze_is_not_coached_on_that_slide_only():
 def test_unsafe_relax_is_dropped_with_a_reason(relax, why):
     missions = [{"mission_id": "m1", "area": "FILLER", "slide_number": None}]
     resp = plan_coaching(request(missions=missions), llm=FakeLLM(draft(relax=[relax])), model="m")
-    assert resp.plan.relax == []
+    assert resp.coaching_plan.relax == []
     assert len(resp.dropped) == 1 and why in resp.dropped[0]
 
 
@@ -120,13 +122,13 @@ def test_weights_counts_and_budget_are_clamped():
         llm=FakeLLM(draft(focus, relax, max_interventions=1)),
         model="m",
     )
-    assert [(f.area.value, f.weight) for f in resp.plan.focus] == [
+    assert [(f.area.value, f.weight) for f in resp.coaching_plan.focus] == [
         ("GAZE", 2.0),
         ("SPEED", 0.5),
         ("VOLUME", 1.3),
     ]
-    assert resp.plan.relax == []
-    assert resp.plan.max_interventions == 5
+    assert resp.coaching_plan.relax == []
+    assert resp.coaching_plan.max_interventions == 5
     assert len(resp.dropped) == 4
 
 
@@ -142,7 +144,7 @@ def test_weights_counts_and_budget_are_clamped():
 def test_budget_only_when_it_says_less_than_last_take(review, budget, want, why):
     llm = FakeLLM(draft(max_interventions=budget))
     resp = plan_coaching(request(previous_review=review), llm=llm, model="m")
-    assert resp.plan.max_interventions == want
+    assert resp.coaching_plan.max_interventions == want
     if why is not None:
         assert why in resp.dropped[-1]
 
@@ -153,25 +155,65 @@ def test_message_counts_numbers_per_slide():
     assert counts[1] == 0 and counts[3] == 5  # 2024 · 3 · 12 · 4 · 18.2
 
 
+class CodedError(Exception):
+    """서비스 common/llm.py 처럼 fallback_reason 을 code 로 단 예외."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
 @pytest.mark.parametrize(
-    ("kw", "llm", "reason"),
+    ("llm", "reason"),
     [
-        ({"mode": "EXAM"}, FakeLLM(draft()), "EXAM_MODE"),
-        ({}, None, "NO_LLM"),
-        ({}, FakeLLM(TimeoutError("slow")), "LLM_ERROR"),
-        ({}, FakeLLM({"focus": "not a list"}), "LLM_ERROR"),
+        (None, "LLM_UNAVAILABLE"),
+        (FakeLLM(CodedError("LLM_TIMEOUT")), "LLM_TIMEOUT"),
+        (FakeLLM(CodedError("LLM_INVALID_OUTPUT")), "LLM_INVALID_OUTPUT"),
+        (FakeLLM(TimeoutError("slow")), "LLM_TIMEOUT"),
+        (FakeLLM({"focus": "not a list"}), "LLM_INVALID_OUTPUT"),
+        (FakeLLM(RuntimeError("boom")), "LLM_ERROR"),
+        (FakeLLM(CodedError("NOT_A_REASON")), "LLM_ERROR"),
     ],
-    ids=["exam", "no-llm", "timeout", "invalid-output"],
+    ids=[
+        "unavailable",
+        "coded-timeout",
+        "coded-invalid",
+        "timeout",
+        "invalid-output",
+        "other",
+        "bad-code",
+    ],
 )
-def test_fallback_is_the_default_plan(kw, llm, reason):
-    resp = plan_coaching(request(**kw), llm=llm, model="m")
+def test_fallback_is_the_default_plan_with_a_reason(llm, reason):
+    resp = plan_coaching(request(), llm=llm, model="m")
     assert resp.fallback_reason == reason
-    assert resp.plan.source == "DEFAULT" and resp.plan.focus == [] and resp.plan.relax == []
+    assert resp.meta.model is None
+    assert resp.coaching_plan == CoachingPlan()
     # 기본 계획을 coaching_plan 으로 싣고 하는 판단은 계획이 null 인 것과 같다
-    plan = resp.plan.model_dump(mode="json")
+    plan = resp.coaching_plan.model_dump(mode="json")
     with_plan = decide_seen(make_request(20_000, coaching_plan=plan), _gaze_judges())
     without = decide_seen(make_request(20_000), _gaze_judges())
     assert with_plan[1] == without[1]
+
+
+def test_broken_validation_falls_back_as_invalid_output(monkeypatch):
+    def boom(*args: Any, **kwargs: Any):
+        raise RuntimeError("validate")
+
+    monkeypatch.setattr("coach.planner.validate_draft", boom)
+    resp = plan_coaching(request(), llm=FakeLLM(draft()), model="m")
+    assert resp.fallback_reason == "LLM_INVALID_OUTPUT" and resp.meta.model is None
+
+
+def test_response_echoes_the_basis_ids_and_ignores_old_fields():
+    llm = FakeLLM(draft())
+    old = {"take_id": "t9", "mode": "EXAM", "memory": {"recurring_issues": []}}
+    resp = plan_coaching(
+        request(source_take_id="take-122", script_version_id="sv-3", **old), llm=llm, model="m"
+    )
+    assert (resp.source_take_id, resp.script_version_id) == ("take-122", "sv-3")
+    assert len(llm.calls) == 1  # 실전 모드라고 와도 모드가 없으므로 LLM 을 부른다
+    assert plan_coaching(request(), llm=None).source_take_id is None
 
 
 def test_cache_answers_the_same_question_without_calling_the_llm():
@@ -180,7 +222,7 @@ def test_cache_answers_the_same_question_without_calling_the_llm():
     first = plan_coaching(request(), llm=llm, model="m", cache=cache)
     second = plan_coaching(request(), llm=llm, model="m", cache=cache)
     assert len(llm.calls) == 1
-    assert first.plan == second.plan
+    assert first.coaching_plan == second.coaching_plan
     # 모델이 바뀌면 다른 질문이다
     plan_coaching(request(), llm=llm, model="other", cache=cache)
     assert len(llm.calls) == 2
@@ -199,7 +241,7 @@ class BrokenCache:
 def test_broken_cache_is_a_miss_not_a_failure():
     llm = FakeLLM(draft(relax=[GAZE_3]))
     resp = plan_coaching(request(), llm=llm, model="m", cache=BrokenCache())
-    assert resp.fallback_reason is None and resp.plan.source == "LLM"
+    assert resp.fallback_reason is None and resp.meta.model == "m"
     assert len(llm.calls) == 1
 
 

@@ -127,7 +127,7 @@ def test_scenario_config_reaches_the_planner():
 def test_llm_failure_is_reported_not_raised():
     row = row_for("17_plan_numbers_slide", TimeoutError("slow"))
     assert row["valid"] == [False]
-    assert row["fallback_reasons"] == ["LLM_ERROR"]
+    assert row["fallback_reasons"] == ["LLM_TIMEOUT"]
 
 
 def test_samples_are_cached_separately_and_reused(tmp_path: Path):
