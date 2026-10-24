@@ -23,7 +23,7 @@
 |---|---|---|---|---|
 | 실시간 코치 (시간 판정 포함) | [coach-agent.md](features/coach-agent.md) | JWK0395 | 연구 코드 | [coach-agent/](../../ai/research/coach-agent/README.md) |
 | 시선 | [gaze-tracking.md](features/gaze-tracking.md) | JWK0395 | 연구 코드 | [gaze-tracking/](../../ai/research/gaze-tracking/README.md) |
-| 군더더기 | [filler.md](features/filler.md) | JWK0395 | 설계만 | — |
+| 군더더기 | [filler.md](features/filler.md) | JWK0395 | 연구 코드 | [filler-detection/](../../ai/research/filler-detection/README.md) |
 | 대본 전달도 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) | JWK0395 | 연구 코드 | [script-coverage-evaluation/](../../ai/research/script-coverage-evaluation/README.md) |
 | 대본 파싱 | [script-parser.md](features/script-parser.md) | jinn-ie | 연구 코드 | [script-parser/](../../ai/research/script-parser/README.md) |
 | 평가 기준 분석 | [evaluation-criteria.md](features/evaluation-criteria.md) | jinn-ie | 연구 코드 | [evaluation-criteria/](../../ai/research/evaluation-criteria/README.md) |
