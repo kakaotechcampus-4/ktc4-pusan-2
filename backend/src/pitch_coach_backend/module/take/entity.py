@@ -70,6 +70,10 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             "end_reason IN ('SILENCE', 'TIME_LIMIT', 'ABANDONED', 'CLOSED')",
             name="check_take_end_reason",
         ),
+        CheckConstraint(
+            "analysis_hold_reason IN ('COVERAGE_RESCORE_FAILED')",
+            name="check_take_analysis_hold_reason",
+        ),
     )
 
     pitch_id: Mapped[uuid.UUID] = mapped_column(
@@ -111,6 +115,13 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     # FE 가 Take 를 만들기 전에 정한 연습 세션 id (IndexedDB 기록의 키). 생성 요청의 멱등 키다
     client_session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     mission_ids: Mapped[list[str] | None] = mapped_column(JSONB)
+    coverage_retry_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    coverage_rescore_retry_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    analysis_hold_reason: Mapped[str | None] = mapped_column(String(32))
 
 
 class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
@@ -123,9 +134,12 @@ class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
     payload: Mapped[Any | None] = mapped_column(JSONB, nullable=False)
     meta: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
 class TakeSummary(Base):
     """take 의 분석 집계. take 당 1행이라 take_id 를 그대로 PK 로 쓴다."""
@@ -275,3 +289,13 @@ class TakeMetricSecond(CreatedAtMixin, Base):
     voice: Mapped[Any | None] = mapped_column(JSONB)
     # 그 metrics 를 받았을 때의 실시간 STT 상태. 복구 때 그동안의 단어를 셀지 정한다
     stt_status: Mapped[str] = mapped_column(String(16), nullable=False)
+
+
+class TakeSlideEvent(Base):
+    __tablename__ = "take_slide_events"
+
+    take_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), primary_key=True
+    )
+    started_ms: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slide_number: Mapped[int] = mapped_column(Integer, nullable=False)

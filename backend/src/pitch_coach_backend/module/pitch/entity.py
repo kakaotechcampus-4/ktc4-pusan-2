@@ -135,6 +135,10 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             "parse_status IN ('PENDING', 'DONE', 'FAILED')",
             name="ck_script_versions_parse_status",
         ),
+        CheckConstraint(
+            "rubric_status IN ('PENDING', 'DONE', 'PARTIAL', 'FAILED')",
+            name="ck_script_versions_rubric_status",
+        ),
     )
 
     pitch_id: Mapped[uuid.UUID] = mapped_column(
@@ -163,6 +167,11 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     parse_meta: Mapped[Any | None] = mapped_column(JSONB)
     # FAILED 원인 코드 (dto.ScriptParseErrorCode). 상세 원인은 서버 로그에만 남긴다
     parse_error: Mapped[str | None] = mapped_column(String(32))
+    rubric_status: Mapped[str | None] = mapped_column(String(16))
+    rubric_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rubric_retry_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class ScriptSlide(UUIDPrimaryKeyMixin, Base):
@@ -193,3 +202,5 @@ class ScriptSlide(UUIDPrimaryKeyMixin, Base):
     # 이 칸이 생기기 전에 파싱한 행과, 이 값을 주지 않은 AI 응답이면 비어 있다
     script_chars: Mapped[int | None] = mapped_column(Integer)
     expected_ms: Mapped[int | None] = mapped_column(Integer)
+    rubric: Mapped[Any | None] = mapped_column(JSONB)
+    rubric_meta: Mapped[Any | None] = mapped_column(JSONB)
