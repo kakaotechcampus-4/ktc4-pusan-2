@@ -21,7 +21,8 @@ def test_example_with_real_llm(case):
     )
     expected = json.loads((EXAMPLES / case / "response.json").read_text(encoding="utf-8"))
 
-    response = parse_script(request, build_llm())
+    # 추론 강도는 평가에서 고른 값(README 평가 결과). 기본값이면 추론이 출력 한도를 다 써 실패할 수 있다
+    response = parse_script(request, build_llm(reasoning_effort="low"))
 
     # 장 나누기 · 판정은 코드가 하므로 예시와 같아야 한다. 키워드 · 용어는 LLM마다 다를 수 있다
     assert response.status == expected["status"]
