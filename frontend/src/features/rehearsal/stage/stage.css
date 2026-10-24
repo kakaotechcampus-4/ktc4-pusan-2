@@ -572,8 +572,6 @@
   z-index: 5;
   display: grid;
   place-content: center;
-  justify-items: center;
-  gap: 16px;
   padding: 24px;
   background: color-mix(in srgb, var(--color-stage) 88%, transparent);
   color: var(--color-ink-stage);
@@ -581,29 +579,33 @@
   font-size: 15px;
 }
 
+/* 안내 상자 — 시안 07 의 어두운 지면 규칙대로 각진 모서리 · 밝은 선 · 밀린 그림자.
+   진한 테두리는 어두운 무대에 묻혀서 선을 밝게 바꾼다. 막혀서 사용자가 눌러야 할 때만 코랄 선 */
+.start-gate .box {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  max-width: 30rem;
+  padding: 24px 28px;
+  background: var(--color-stage-panel);
+  border: 2px solid color-mix(in srgb, var(--color-ink-stage) 35%, transparent);
+  box-shadow: 4px 4px 0 var(--color-stage-deep);
+}
+
+.start-gate[data-stuck] .box {
+  border-color: var(--color-coral);
+}
+
 .start-gate p {
   max-width: 44ch;
   line-height: 1.6;
+  font-weight: 700;
 }
 
+/* 버튼은 공용 Button · ButtonLink 를 그대로 쓴다 */
 .start-gate .actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 12px;
-}
-
-.start-gate .actions button {
-  padding: 10px 22px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-coral);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.start-gate .actions button:hover {
-  background: var(--color-coral-deep);
 }
