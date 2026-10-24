@@ -1,4 +1,5 @@
 import logging
+import math
 import uuid
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
@@ -561,7 +562,7 @@ def speak_accuracy(payload: Mapping[str, Any]) -> float | None:
     value = (payload.get("take_scores") or {}).get("content_coverage")
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
-    return value * 100
+    return math.ceil(value * 100)
 
 
 def _coverage_open(take: Take | None) -> bool:
@@ -652,15 +653,13 @@ def _conclude_coverage(db: Session, take_id: uuid.UUID) -> str:
         db.rollback()
         return "HELD"
     confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND)
-    if confirmed is None:
-        db.rollback()
-        return "NO_COVERAGE"
-    if confirmed.payload.get("confirmations"):
+    if confirmed is not None and confirmed.payload.get("confirmations"):
         take_repository.set_analysis_stage(take_id, "AWAITING_CONFIRMATION")
         db.commit()
         return "AWAITING_CONFIRMATION"
-    db.rollback()
-    return "READY_FOR_REVIEW"
+    take_repository.set_analysis_stage(take_id, "REVIEWING")
+    db.commit()
+    return "NO_COVERAGE" if confirmed is None else "READY_FOR_REVIEW"
 
 
 async def _in_session[T](
