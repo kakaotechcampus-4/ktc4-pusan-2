@@ -241,7 +241,13 @@ export class SttSocket {
    * 흘린 다음 `stop` 을 보내므로, 끊겨 있던 중에 끝내도 마지막 조각이 `stop` 보다 먼저 갑니다.
    */
   sendMetrics(message: MetricsMessage): void {
-    if (this.disposed || this.stopping) return;
+    if (this.disposed || this.stopping) {
+      // 자동 종료 뒤 서버가 먼저 닫았습니다. 마지막 조각이 서버에 가지 않습니다 — 일어나는지 보려고 남깁니다
+      if (this.autoEnded && this.disposed) {
+        console.warn('[stt] 자동 종료 뒤 연결이 닫혀 metrics 를 보내지 못했습니다', message.t_ms);
+      }
+      return;
+    }
 
     if (this.ready && this.socket) {
       this.socket.send(JSON.stringify(message));

@@ -511,6 +511,9 @@ export function RehearsalPage() {
     // 1초가 안 찬 마지막 시선 조각을 발표 길이까지로 닫아 저장합니다 (최대 0.5초, 실패하지 않습니다)
     await flushGaze(ended.durationMs);
     // 그 조각까지 안 보낸 시간을 발표 길이까지 `metrics` 로 보냅니다. 아래 `stop` 보다 먼저 나갑니다
+    // ★ 서버 자동 종료(`onAutoEnd`)로 왔으면 서버는 Deepgram 정리 뒤 이 조각을 **2초만** 기다리고
+    //   연결을 닫습니다 (BE `FINAL_METRICS_WAIT_SEC`). 닫힌 뒤 보내면 버려집니다 — 여기까지 오는
+    //   작업(`flushGaze` 최대 0.5초)을 늘리지 마세요. 오래 걸리는 일은 `finishMetrics` 뒤에 둡니다
     finishMetrics(ended.durationMs);
 
     // ★ 종료 중에 새로고침해도 무대로 돌아가지 않고 이 값으로 종료를 이어가도록 먼저 적습니다.

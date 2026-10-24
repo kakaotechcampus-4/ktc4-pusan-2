@@ -824,6 +824,48 @@ describe('서버의 자동 종료', () => {
     expect(onGiveUp).toHaveBeenCalledWith('FATAL');
     expect(sockets).toHaveLength(1);
   });
+
+  it('auto_end 뒤에도 연결이 열려 있으면 마지막 metrics 를 바로 보내고, 그 다음에 stop 을 보낸다', async () => {
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    // 서버는 auto_end 를 보낸 뒤 Deepgram 정리 + 2초(FINAL_METRICS_WAIT_SEC) 동안 연결을 열어 둡니다
+    sockets[0]!.emit(AUTO_END);
+    stt.sendMetrics({ type: 'metrics', t_ms: 3_400, gaze: null, voice: null, slide_number: 1 });
+    const stopped = stt.stop();
+
+    const texts = sockets[0]!.sent
+      .filter((d): d is string => typeof d === 'string')
+      .map((d) => JSON.parse(d) as object);
+    // 바로 보냈으니 buffered 가 아닙니다. stop 보다 앞섭니다
+    expect(texts.slice(-2)).toEqual([
+      { type: 'metrics', t_ms: 3_400, gaze: null, voice: null, slide_number: 1 },
+      { type: 'stop' },
+    ]);
+
+    sockets[0]!.emit(status('closed'));
+    await stopped;
+  });
+
+  it('auto_end 뒤 서버가 먼저 닫았으면 마지막 metrics 는 보낼 곳이 없어 버리고, 그 사실을 남긴다', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    sockets[0]!.emit(AUTO_END);
+    sockets[0]!.serverClose(1000);
+    stt.sendMetrics({ type: 'metrics', t_ms: 3_400, gaze: null, voice: null, slide_number: 1 });
+
+    expect(stt.bufferedMetrics).toBe(0);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
 });
 
 describe('stop 만 보내기 (종료 중 새로고침)', () => {
