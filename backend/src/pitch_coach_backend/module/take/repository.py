@@ -100,12 +100,25 @@ class TakeRepository:
         """이 pitch 에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 바꾼다. 바꾼 수를 돌려준다.
 
         새 Take 를 만들 때 부른다. FE 는 가장 최근 Take 로만 발표하므로 앞의 `READY` 는 다시 쓰이지
-        않는다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지
-        `READY` 다. 끝난 시각은 알 수 없어 만든 시각으로 적는다.
+        않는다.
         """
+        return self._abandon_ready(Take.pitch_id == pitch_id)
+
+    def abandon_stale_ready_takes(self, older_than: timedelta) -> int:
+        """만든 지 `older_than` 이 지나도 `READY` 인 Take 를 `FAILED`(`ABANDONED`)로 바꾼다.
+
+        FE 는 첫 실시간 연결이 `ready` 를 받은 뒤에 발표를 시작하고, 그 연결이 `RUNNING` 으로
+        바꾼다. 그래서 `READY` 는 시작하지 않은 Take 다 — 장치 점검에서 시작을 누른 뒤 연결이 끝내
+        붙지 않았다. 시각은 DB 시계로 잰다. 같은 순간 붙은 연결(`mark_running`)과는 둘 다 조건부
+        UPDATE 라 먼저 적은 쪽이 남는다.
+        """
+        return self._abandon_ready(Take.created_at < func.now() - older_than)
+
+    def _abandon_ready(self, *where: ColumnElement[bool]) -> int:
+        # 끝난 시각은 알 수 없어 만든 시각으로 적는다
         result = self.db.execute(
             update(Take)
-            .where(Take.pitch_id == pitch_id, Take.status == "READY")
+            .where(Take.status == "READY", *where)
             .values(
                 status="FAILED",
                 end_reason="ABANDONED",
@@ -340,7 +353,9 @@ class TakeRepository:
         return result.rowcount > 0
 
     def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
-        """진행 중인 Take 를 끝난 상태(`ANALYZING`)로 바꾼다. 바꿨으면 True.
+        """발표 중인(`RUNNING`) Take 를 끝난 상태(`ANALYZING`)로 바꾼다. 바꿨으면 True.
+
+        `READY` 는 바꾸지 않는다. 실시간 연결이 한 번도 붙지 않아 남은 기록이 없다.
 
         BE 가 자동으로 끝냈으면 `end_reason` 에 이유를 같이 적는다 (사용자가 끝냈으면 None).
         Take 가 없거나 이미 끝났으면 아무것도 바꾸지 않고 False. 읽고 쓰지 않고 UPDATE 하나로
@@ -354,7 +369,7 @@ class TakeRepository:
         abandoned = and_(Take.status == "FAILED", Take.end_reason == "ABANDONED")
         result = self.db.execute(
             update(Take)
-            .where(Take.id == take_id, or_(Take.status.in_(IN_PROGRESS_STATUSES), abandoned))
+            .where(Take.id == take_id, or_(Take.status == "RUNNING", abandoned))
             .values(
                 status="ANALYZING",
                 end_reason=end_reason,

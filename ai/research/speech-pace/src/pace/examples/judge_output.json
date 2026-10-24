@@ -1,0 +1,41 @@
+[
+  {
+    "evaluator": "pace",
+    "area": "SPEED",
+    "t_ms": 41000,
+    "counted_until_ms": 41000,
+    "words_counted_until_ms": 40600,
+    "criteria_version": "pace-1.0+b24c6ce0efd4",
+    "measurable": true,
+    "state": "NORMAL",
+    "metrics": {
+      "cpm": 321.3,
+      "cpm_short": 338.0,
+      "speak_ms": 10270
+    },
+    "tally": [
+      {
+        "t_ms": 39700,
+        "values": {
+          "chars": 2,
+          "speak_ms": 350
+        }
+      },
+      {
+        "t_ms": 40100,
+        "values": {
+          "chars": 3,
+          "speak_ms": 500
+        }
+      },
+      {
+        "t_ms": 40000,
+        "values": {
+          "ok_ms": 1000,
+          "total_ms": 1000
+        }
+      }
+    ],
+    "issues": []
+  }
+]
