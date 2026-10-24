@@ -273,6 +273,21 @@ def _percent_to_ratio(value: int | None) -> float | None:
     return None if value is None else value / 100
 
 
+def _achieved_mission_count(mission_ids: Any, results: Any) -> int:
+    """그 Take 에 고정된 미션 중 저장 리뷰가 달성으로 판정한 수. 같은 id 는 한 번만 센다."""
+    if not isinstance(mission_ids, list) or not isinstance(results, list):
+        return 0
+    fixed_ids = {mission_id for mission_id in mission_ids if isinstance(mission_id, str)}
+    return len({
+        result["mission_id"]
+        for result in results
+        if isinstance(result, dict)
+        and result.get("status") == "ACHIEVED"
+        and isinstance(result.get("mission_id"), str)
+        and result["mission_id"] in fixed_ids
+    })
+
+
 def list_takes_service(
     db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None = None
 ) -> TakeHistoryResponseDTO:
@@ -296,7 +311,7 @@ def list_takes_service(
                 script_ratio=_percent_to_ratio(row.script_gaze),
                 cpm=row.average_cpm,
                 filler_count=row.filler_count,
-                missions_achieved=row.missions_achieved,
+                missions_achieved=_achieved_mission_count(row.mission_ids, row.mission_results),
                 missions_total=row.missions_total,
                 gaze_engine=row.gaze_engine,
             )
