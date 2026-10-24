@@ -202,16 +202,6 @@ class TakeRepository:
             .limit(1)
         )
 
-    def get_missions_in_take(self, take_id: uuid.UUID) -> list[Mission]:
-        """take_id 의 Take 를 보고 만든 미션 (다음 Take 에서 보여 줄 것)."""
-        return list(
-            self.db.scalars(
-                select(Mission)
-                .where(Mission.source_take_id == take_id)
-                .order_by(Mission.priority, Mission.slide_number)
-            )
-        )
-
     def get_mission_ids_of_take(self, take_id: uuid.UUID) -> list[uuid.UUID]:
         mission_ids = self.db.scalar(select(Take.mission_ids).where(Take.id == take_id))
         return [uuid.UUID(mission_id) for mission_id in mission_ids or []]
