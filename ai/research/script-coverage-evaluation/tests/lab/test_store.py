@@ -1,6 +1,7 @@
 """store: 평가 기준 · 평가 결과 저장과 읽기, 비슷한 말 표, 사용자 확인."""
 
 import json
+from datetime import datetime
 
 import pytest
 
@@ -34,10 +35,9 @@ def _rubric(script_name="대본", slide_number=1, rubric_id="rid1") -> Evaluatio
         script_name=script_name,
         slide_number=slide_number,
         content_hash=f"hash{slide_number}",
-        rubric_schema_version="1.1",
+        rubric_schema_version="1.2",
         llm_model="m",
         llm_config_hash="a",
-        created_at="2026-01-01T00:00:00+00:00",
     )
     return EvaluationRubric(
         meta=meta,
@@ -116,9 +116,11 @@ def test_rubric_round_trip(conn):
     save_rubric(conn, rubric)
     assert load_rubric(conn, "대본", 1) == rubric
     assert load_rubric(conn, "대본", 2) is None
-    assert conn.execute("SELECT content_hash, created_at FROM evaluation_rubrics").fetchall() == [
-        ("hash1", "2026-01-01T00:00:00+00:00")
-    ]
+    # 시각은 코어가 아니라 저장할 때 DB 칸에 넣는다
+    [(content_hash, created_at)] = conn.execute(
+        "SELECT content_hash, created_at FROM evaluation_rubrics"
+    ).fetchall()
+    assert content_hash == "hash1" and datetime.fromisoformat(created_at).tzinfo is not None
 
 
 def test_load_rubrics_returns_one_script_ordered_by_slide(conn):

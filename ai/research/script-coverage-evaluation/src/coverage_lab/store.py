@@ -149,7 +149,13 @@ def save_rubric(conn: sqlite3.Connection, rubric: EvaluationRubric) -> None:
     m = rubric.meta
     conn.execute(
         "INSERT OR REPLACE INTO evaluation_rubrics VALUES (?, ?, ?, ?, ?)",
-        (m.script_name, m.slide_number, m.content_hash, rubric.model_dump_json(), m.created_at),
+        (
+            m.script_name,
+            m.slide_number,
+            m.content_hash,
+            rubric.model_dump_json(),
+            datetime.now(UTC).isoformat(timespec="seconds"),  # 코어는 시각을 만들지 않는다
+        ),
     )
     conn.commit()
 

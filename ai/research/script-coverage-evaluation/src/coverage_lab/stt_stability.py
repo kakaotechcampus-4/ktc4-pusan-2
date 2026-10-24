@@ -79,7 +79,7 @@ def repeat_runs(
             )
             if stats["failed"]:
                 raise RuntimeError(
-                    f"반복 채점 {k} / {take.take_id} 실패: {next(iter(stats['failed'].values()))}"
+                    f"반복 채점 {k} / {take.take_id} 실패: {next(iter(stats['causes'].values()))}"
                 )
             runs[k][take.take_id] = evaluations
             extra_calls["semantic"] += stats["semantic_calls"]

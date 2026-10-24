@@ -5,7 +5,7 @@ LLM 과 캐시는 인자로 받는다. 평가 기준(rubric)을 읽고 결과를
 
 from datetime import UTC, datetime
 
-from ..shared.llm_step import LLMCache, llm_step
+from ..shared.llm_step import LLMCache, llm_step, record_failures
 from ..shared.rubric import EvaluationRubric
 from ..shared.text import normalize_script
 from .align import align_sentences, fidelity_excluding, positioned_tokens
@@ -41,6 +41,8 @@ def evaluate_take(
     → ⑤ Key Point 판정 = 문장 판정 모으기 (코드) → 점수 계산 (코드).
     `rubrics` = {슬라이드 번호: 평가 기준}. 대본을 다시 분석하지 않고 주어진 평가 기준을 읽어 쓴다.
     결과(평가 목록)는 저장하지 않고 돌려준다 — 저장은 호출하는 쪽이 한다.
+    LLM 호출이 실패한 슬라이드는 평가를 만들지 않고 stats["failed"] 에 {슬라이드 번호: 에러 코드}로,
+    stats["causes"] 에 {슬라이드 번호: "<단계> <예외 클래스 이름>"}(로그용)으로 남긴다.
     """
     slides = {}
     for s in take.slides:
@@ -180,14 +182,16 @@ def evaluate_take(
         )
         evaluations.append(evaluation)
 
-    failed = {n: f"의미 평가 {e}" for n, e in sem_errors.items()} | {
-        n: f"교차 검증 {e}" for n, e in ver_errors.items()
-    }
+    failed: dict[int, str] = {}
+    causes: dict[int, str] = {}
+    record_failures(failed, causes, sem_errors, "의미 평가")
+    record_failures(failed, causes, ver_errors, "교차 검증")
     stats = {
         "slides": len(slides),
         "semantic_calls": sem_calls,
         "verifier_calls": ver_calls,
         "verified_slides": len(ver_messages),
-        "failed": failed,
+        "failed": dict(sorted(failed.items())),
+        "causes": dict(sorted(causes.items())),
     }
     return evaluations, stats

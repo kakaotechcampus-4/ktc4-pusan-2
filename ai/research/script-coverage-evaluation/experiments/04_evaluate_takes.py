@@ -56,13 +56,15 @@ display(segmentation_report(conn, takes))
 # %% 채점 (캐시에 있으면 호출 0). semantic_calls / verifier_calls 는 이번 실행에서 실제로 API 를 부른 횟수다
 all_evaluations: dict[str, list[SlideEvaluation]] = {}
 failures = {}
+causes = {}
 for take in takes:
     evaluations, stats = run_take_evaluation(take, conn, settings, llms=llms)
     all_evaluations[take.take_id] = evaluations
     failures[take.take_id] = stats.pop("failed")
+    causes[take.take_id] = stats.pop("causes")
     print(take.take_id, stats, "실패한 슬라이드:", sorted(failures[take.take_id]) or "-")
 
-first_error = next((msg for failed in failures.values() for msg in failed.values()), None)
+first_error = next((msg for cause in causes.values() for msg in cause.values()), None)
 if first_error:
     raise RuntimeError(f"LLM 호출 실패 — 첫 오류: {first_error}")
 

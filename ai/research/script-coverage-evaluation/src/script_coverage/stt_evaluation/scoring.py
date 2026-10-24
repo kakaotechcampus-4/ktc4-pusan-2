@@ -1,6 +1,6 @@
 """점수 계산: LLM 은 점수를 매기지 않는다. 판정과 규칙 결과로 코드가 계산한다."""
 
-from ..shared.rubric import SCORE_WEIGHT
+from ..config import SCORE_WEIGHT
 from .config import FACT_SCORE, STATUS_SCORE
 from .schemas import FactCheck, KeyPointResult, SimilarItem
 
