@@ -813,7 +813,7 @@ export function RehearsalPage() {
           entry={`진입 · 리허설 준비의 Take ${ticket?.takeNumber ?? ''} 시작하기`}
         />
 
-        <div className="h-[calc(100vh-7rem)] min-h-[560px] overflow-hidden rounded-2xl shadow-lg">
+        <div className="h-[calc(100vh-7rem)] min-h-[560px] overflow-hidden border-2 border-ink shadow-[4px_4px_0_var(--color-line)]">
           {/* ★ data-gaze 한 줄이 테두리의 전부입니다. 워커의 1초 판정이 여기 도착합니다 */}
           <div
             className="stage"
@@ -870,9 +870,11 @@ export function RehearsalPage() {
 
               <div className="rail">
                 <section className="camera">
-                  <video ref={videoRef} muted playsInline />
-                  {!live && <div className="guide" />}
-                  <span className="tag">CAMERA 16:9</span>
+                  <div className="frame">
+                    <video ref={videoRef} muted playsInline />
+                    {!live && <div className="guide" />}
+                    <span className="tag">CAMERA 16:9</span>
+                  </div>
                 </section>
 
                 <section className="mic">
