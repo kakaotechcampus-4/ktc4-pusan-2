@@ -5,6 +5,9 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from pitch_coach_backend import entities  # noqa: F401  # 모든 entity 를 매퍼에 등록
+from pitch_coach_backend.coach.background import start as start_coach_background
+from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
+from pitch_coach_backend.coach.planner import PlannerCoaching
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
 from pitch_coach_backend.core.logging import configure_logging
@@ -15,6 +18,7 @@ from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
 from pitch_coach_backend.module.take.controller import router as take_router
+from pitch_coach_backend.module.take.controller import takes_router
 from pitch_coach_backend.module.take.ready_sweep import start as start_ready_sweep
 from pitch_coach_backend.module.user.controller import router as user_router
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
@@ -30,7 +34,9 @@ from pitch_coach_backend.realtime.take_stream import stop_all as stop_all_stream
 # 예외는 관리자 콘솔(/admin) 하나다. 앱 API 가 아니라서 Caddy 가 따로 넘긴다.
 API_PREFIX = "/api"
 
-hooks.install(live_takes=RealtimeLiveTakes(), coaching=hooks.coaching())
+# module 은 realtime · coach 를 모른다 (README '의존 방향'). HTTP 요청이 발표 중 처리 · 코치에 알릴
+# 일은 module/hooks.py 를 거치고, 그 구현을 여기서 꽂는다
+hooks.install(live_takes=RealtimeLiveTakes(), coaching=PlannerCoaching())
 
 
 @asynccontextmanager
@@ -42,6 +48,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     AutoEndPolicy.from_settings()
     # 떠난 Take 를 끝내는 타이머는 메모리에 있어 다시 뜨면 사라진다. 진행 중인 Take 에 다시 건다
     await arm_abandoned_takes(get_transcript_store())
+    # 만들다 만 Take 결과를 이어 가고, 기한이 지난 1초 원자료를 지우는 주기 작업을 건다
+    stop_coach_background = await start_coach_background(get_coach_client(), get_coach_store())
     # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
     stop_ready_sweep = start_ready_sweep()
     yield
@@ -49,6 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.
     await stop_all_streams()
     await stop_ready_sweep()
+    await stop_coach_background()
 
 
 app = FastAPI(
@@ -90,6 +99,7 @@ api.include_router(auth_router)
 api.include_router(user_router)
 api.include_router(pitch_router)
 api.include_router(take_router)
+api.include_router(takes_router)
 api.include_router(realtime_router)
 
 app.include_router(api)

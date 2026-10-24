@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, func, or_, select, update
+from sqlalchemy import ColumnElement, Row, and_, case, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased, defer
 
@@ -13,6 +13,7 @@ from pitch_coach_backend.module.take.entity import (
     Take,
     TakeAIResults,
     TakeMetricSecond,
+    TakeSlideEvent,
     TakeSummary,
     TakeTranscriptSegment,
 )
@@ -180,7 +181,8 @@ class TakeRepository:
                        & (coverage.kind == "SCRIPT_COVERAGE"))
             .where(
                 Take.pitch_id == self.get_pitch_id_of_take(take_id),
-                Take.take_number < standard_take_num
+                Take.take_number < standard_take_num,
+                Take.status == "COMPLETED",
             )
             .order_by(Take.take_number.desc())
             .limit(limit)
@@ -198,7 +200,7 @@ class TakeRepository:
                 Take.take_number < standard_take_num,
                 TakeAIResults.kind == "REVIEW",
             )
-            .order_by(Take.take_number.desc())
+            .order_by(*finished_order())
             .limit(1)
         )
 
@@ -333,6 +335,82 @@ class TakeRepository:
             .values(analysis_stage=stage, analysis_stage_at=func.now())
         )
 
+    def lock_take(self, take_id: uuid.UUID) -> Take | None:
+        return self.db.scalar(
+            select(Take)
+            .where(Take.id == take_id)
+            .options(defer(Take.event_logs))
+            .with_for_update()
+        )
+
+    def get_ai_result(self, take_id: uuid.UUID, kind: str) -> TakeAIResults | None:
+        return self.db.scalar(
+            select(TakeAIResults).where(
+                TakeAIResults.take_id == take_id, TakeAIResults.kind == kind
+            )
+        )
+
+    def insert_ai_result(
+        self, take_id: uuid.UUID, kind: str, payload: dict, meta: dict | None
+    ) -> bool:
+        inserted = self.db.scalar(
+            insert(TakeAIResults)
+            .values(take_id=take_id, kind=kind, payload=payload, meta=meta, revision=0)
+            .on_conflict_do_nothing(index_elements=[TakeAIResults.take_id, TakeAIResults.kind])
+            .returning(TakeAIResults.id)
+        )
+        return inserted is not None
+
+    def replace_ai_result(
+        self, take_id: uuid.UUID, kind: str, base_revision: int, payload: dict, meta: dict | None
+    ) -> bool:
+        result = self.db.execute(
+            update(TakeAIResults)
+            .where(
+                TakeAIResults.take_id == take_id,
+                TakeAIResults.kind == kind,
+                TakeAIResults.revision == base_revision,
+            )
+            .values(payload=payload, meta=meta, revision=TakeAIResults.revision + 1)
+        )
+        return result.rowcount > 0
+
+    def delete_ai_result(self, take_id: uuid.UUID, kind: str) -> None:
+        self.db.execute(
+            delete(TakeAIResults).where(
+                TakeAIResults.take_id == take_id, TakeAIResults.kind == kind
+            )
+        )
+
+    def upsert_summary_speak_accuracy(self, take_id: uuid.UUID, value: float | None) -> None:
+        stmt = insert(TakeSummary).values(take_id=take_id, speak_accuracy=value)
+        self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[TakeSummary.take_id],
+                set_={"speak_accuracy": stmt.excluded.speak_accuracy},
+            )
+        )
+
+    def get_slide_events(self, take_id: uuid.UUID) -> list[tuple[int, int]]:
+        rows = self.db.execute(
+            select(TakeSlideEvent.slide_number, TakeSlideEvent.started_ms).where(
+                TakeSlideEvent.take_id == take_id
+            )
+        ).all()
+        return [(slide_number, started_ms) for slide_number, started_ms in rows]
+
+    def get_transcript_words(self, take_id: uuid.UUID) -> list[tuple[str, int]]:
+        segments = self.db.scalars(
+            select(TakeTranscriptSegment.words)
+            .where(TakeTranscriptSegment.take_id == take_id)
+            .order_by(TakeTranscriptSegment.seq)
+        ).all()
+        return [
+            (word.get("punctuated_word") or word["word"], word["start_ms"])
+            for words in segments
+            for word in words
+        ]
+
     def complete_take(self, take_id: uuid.UUID, review_status: str) -> None:
         # completed_at 은 '가장 늦게 끝난 Take' 의 순서다 (docs/ai/architecture.md 1-3 'Take 상태')
         self.db.execute(
@@ -419,6 +497,52 @@ class TakeRepository:
         )
         return result.rowcount > 0
 
+    def list_started_takes(
+        self, user_id: uuid.UUID, pitch_id: uuid.UUID | None = None
+    ) -> list[Row[Any]]:
+        """사용자의 시작한 Take 를 시작 시각 최신순으로 읽는다. `pitch_id` 를 주면 그 발표 것만.
+
+        시작하지 않은 Take(장치 점검에서 버려진 것)는 시작 시각이 없어 빠진다. 한 줄에 Take 기록
+        화면이 쓰는 값을 모두 싣는다 — 집계 · 장치 점검 결과가 없으면 그 칸은 null 이다.
+        """
+        # 미션 행은 다음 Take 로 옮겨질 수 있다. 판정은 각 Take 의 저장 리뷰에서 읽는다.
+        # 시작 전 Take 는 칸이 비어 있다. JSON null 이 들어 있어도 배열 길이를 묻지 않는다
+        is_array = func.jsonb_typeof(Take.mission_ids) == "array"
+        total = case((is_array, func.jsonb_array_length(Take.mission_ids)), else_=0)
+        stmt = (
+            select(
+                Take.id.label("take_id"),
+                Take.pitch_id,
+                Pitch.title.label("pitch_title"),
+                Take.take_number,
+                Take.started_at,
+                Take.status,
+                Take.script_mode,
+                Take.duration_sec,
+                Take.goal_time_sec,
+                TakeSummary.audience_gaze,
+                TakeSummary.script_gaze,
+                TakeSummary.average_cpm,
+                TakeSummary.filler_count,
+                Take.mission_ids,
+                TakeAIResults.payload["mission_results"].label("mission_results"),
+                total.label("missions_total"),
+                Calibration.result["engine_version"].astext.label("gaze_engine"),
+            )
+            .join(Pitch, Pitch.id == Take.pitch_id)
+            .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
+            .outerjoin(Calibration, Calibration.take_id == Take.id)
+            .outerjoin(
+                TakeAIResults,
+                (TakeAIResults.take_id == Take.id) & (TakeAIResults.kind == "REVIEW"),
+            )
+            .where(Pitch.user_id == user_id, Take.started_at.is_not(None))
+            .order_by(Take.started_at.desc(), Take.take_number.desc())
+        )
+        if pitch_id is not None:
+            stmt = stmt.where(Take.pitch_id == pitch_id)
+        return list(self.db.execute(stmt).all())
+
     def running_takes_last_active(self) -> list[tuple[uuid.UUID, datetime]]:
         """`RUNNING` 인 Take 와 마지막으로 활동한 시각. 앱이 다시 뜰 때 떠난 Take 를 찾는 데 쓴다.
 
@@ -471,6 +595,24 @@ class TakeRepository:
             .values(utterance_ends=utterance_ends)
         )
         return result.rowcount > 0
+
+    def raw_data_open(self, take_id: uuid.UUID) -> bool | None:
+        """1초 원자료를 더 넣어도 되는 Take 인가. Take 가 없으면 None.
+
+        Take 결과를 저장한 뒤(분석 단계가 `FINALIZING` 을 지남)에는 넣지 않는다 — 동의 없는 Take 는
+        Take 결과를 저장할 때 1초 원자료를 지우는데, 그 뒤에 늦게 들어간 행은 끝내 남는다. Take 행을
+        `FOR SHARE` 로 잠가, Take 결과를 저장하는 트랜잭션(`FOR UPDATE`)과 줄을 세운다.
+
+        Take 결과를 만들지 못한 Take(`FAILED`, 단계는 `FINALIZING` 그대로)와 떠난 Take(`FAILED`,
+        단계 없음)는 받는다. 나중에 replay 로 다시 만들 수 있게 원자료를 두는 Take 라 늦게 온 행도
+        그 재료다. 동의가 없으면 7일 뒤 함께 지운다 (architecture.md 1-1 '지우기 · 보관').
+        """
+        stage = self.db.execute(
+            select(Take.analysis_stage).where(Take.id == take_id).with_for_update(read=True)
+        ).first()
+        if stage is None:
+            return None
+        return stage[0] in (None, FINALIZING_STAGE)
 
 
 REVIEW_STALE_AFTER = timedelta(minutes=2)

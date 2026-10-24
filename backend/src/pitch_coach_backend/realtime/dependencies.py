@@ -1,4 +1,8 @@
-"""Depends 로 주입하는 것. 테스트는 둘 다 가짜로 바꿔 끼운다."""
+"""Depends 로 주입하는 것. 둘 다 프로세스에 하나다.
+
+전사 저장소는 요청 밖(끝내기 PUT 의 뒤처리, `live_takes.py`)에서도 `get_transcript_store()` 로
+꺼내 쓴다. 그래서 테스트는 Depends 가 아니라 이 객체(`_transcript_store`)를 가짜로 바꿔 끼운다.
+"""
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.realtime.stt_adapter import DeepgramSttAdapter, SttAdapter

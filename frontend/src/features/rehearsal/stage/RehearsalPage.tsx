@@ -44,15 +44,19 @@ import {
   abandonOutcome,
   clearClock,
   clearMetrics,
+  clearSlides,
   coachHistory,
   lastSlide,
   leftWindow,
   readClock,
   recordedUntilMs,
   resumeFromMs,
+  mergeSlideChanges,
   saveClock,
   saveMetrics,
+  saveSlides,
   takeMetrics,
+  takeSlides,
   type AbandonOutcome,
   type CoachHistory,
   type LeftWindow,
@@ -62,6 +66,7 @@ import { useStageClock } from './useStageClock';
 import { CONNECT_SLOW_MS, hasLiveAudio, startGate, type StartGate } from './startGate';
 import { useSttStream } from './useSttStream';
 import { useMetricsSender } from './useMetricsSender';
+import { useSlideSender } from './useSlideSender';
 import type { TextRange } from '../lib/scriptMarks';
 import './stage.css';
 
@@ -88,6 +93,8 @@ interface Resume {
   fromMs: Ms;
   /** 이어받은 슬라이드로 넘어온 시각. 처음이면 null */
   slideAt: Ms | null;
+  /** 이어받은 장 넘김 기록 전체. 처음이거나 못 읽었으면 비어 있습니다 — WS `slide` 로 다시 보냅니다 */
+  slideHistory: { atMs: Ms; slideNumber: number }[];
   coach: CoachHistory | null;
   /** 끝내기를 누른 뒤에 새로고침했으면 그때 고정한 값. 무대를 열지 않고 종료를 이어갑니다 */
   ending: Ending | null;
@@ -100,10 +107,14 @@ interface Resume {
   left: LeftWindow | null;
 }
 
+/** 이어받은 장 넘김 기록이 없을 때. 렌더마다 새 배열을 만들지 않게 둡니다 */
+const NO_SLIDES: Resume['slideHistory'] = [];
+
 const freshResume = (sessionId: string | null): Resume => ({
   sessionId,
   fromMs: 0,
   slideAt: null,
+  slideHistory: [],
   coach: null,
   ending: null,
   submitted: false,
@@ -269,7 +280,9 @@ export function RehearsalPage() {
     note: sttNote,
     alert: sttAlert,
     sendMetrics,
+    sendSlide,
     handOffMetrics,
+    slideLog,
     stop: stopStt,
   } = useSttStream({
     takeId,
@@ -305,7 +318,15 @@ export function RehearsalPage() {
     return () => window.clearTimeout(id);
   }, [stageReady, gate.kind, connectAttempt]);
 
-  // 1초마다 시선 · 음량 · 슬라이드를 WS `metrics` 로 보냅니다. 서버의 실시간 코치와 Take 결과의 재료입니다
+  // 장이 바뀐 시각을 WS `slide` 로 알립니다. 서버가 장 구간을 나누는 기준입니다 (#324 6-4)
+  useSlideSender({
+    enabled: running,
+    slideNumber,
+    slideStartedAtRef,
+    history: resume?.slideHistory ?? NO_SLIDES,
+    send: sendSlide,
+  });
+  // 1초마다 시선 · 음량 · 슬라이드(참고값)를 WS `metrics` 로 보냅니다. 서버의 실시간 코치와 Take 결과의 재료입니다
   const { onGazeRecords, finishMetrics, flushMetricsForHide } = useMetricsSender({
     enabled: running,
     elapsedMs,
@@ -388,25 +409,32 @@ export function RehearsalPage() {
 
       // 행은 읽었으니 세션은 잇습니다. 기록을 못 읽으면 슬라이드·코치만 처음부터입니다 —
       // 아래 catch 로 보내면 행까지 버려 기록이 하나도 안 쌓이고 시계도 0 부터 돕니다
-      let slide: ReturnType<typeof lastSlide> = null;
+      let stored: Resume['slideHistory'] = [];
       let coach: CoachHistory | null = null;
-      let recordedUntil: Ms = 0;
+      let gaze: Awaited<ReturnType<typeof readGazeSamples>> = [];
+      let coachAtMs: Ms[] = [];
       try {
         const [changes, coachRows, samples] = await Promise.all([
           readSlideChanges(id),
           readCoachLog(id),
           readGazeSamples(id),
         ]);
-        slide = lastSlide(changes);
+        stored = changes;
         coach = coachHistory(coachRows);
-        recordedUntil = recordedUntilMs({
-          gaze: samples,
-          slideAtMs: changes.map((c) => c.atMs),
-          coachAtMs: coachRows.map((c) => c.atMs),
-        });
+        gaze = samples;
+        coachAtMs = coachRows.map((c) => c.atMs);
       } catch (err) {
         console.error('[rehearsal] 슬라이드·코치·시선 기록을 읽지 못했습니다', err);
       }
+      // 새로고침 직전에 넘긴 장은 IndexedDB 에 아직 없을 수 있습니다. pagehide 에 적어 둔 기록과 합칩니다
+      // (resume.ts `SavedSlides`). 되살릴 장 · 기록이 덮는 시각도 합친 기록으로 셉니다
+      const slideHistory = mergeSlideChanges(stored, takeSlides(takeId, id));
+      const slide = lastSlide(slideHistory);
+      const recordedUntil = recordedUntilMs({
+        gaze,
+        slideAtMs: slideHistory.map((c) => c.atMs),
+        coachAtMs,
+      });
       // 무대보다 먼저 되살립니다. 시작하고 나서 바꾸면 1번 슬라이드가 잠깐 보이고 전환으로 기록됩니다
       if (slide) setSlide(slide.slideNumber);
 
@@ -414,6 +442,7 @@ export function RehearsalPage() {
         sessionId: id,
         fromMs: resumeFromMs(row, readClock(takeId), Date.now(), BEAT_MS, recordedUntil),
         slideAt: slide?.atMs ?? null,
+        slideHistory,
         coach,
         ending:
           row.ending ??
@@ -522,6 +551,7 @@ export function RehearsalPage() {
       forgetZoneRef();
       clearClock(takeId);
       clearMetrics(takeId);
+      clearSlides(takeId);
       if (sessionId) {
         await endSession(sessionId, 'ABORTED').catch((err: unknown) =>
           noteWriteFailure(sessionId, 'ending', err),
@@ -598,6 +628,11 @@ export function RehearsalPage() {
     const save = () => {
       const now = elapsedMs();
       saveClock(takeId, { clientSessionId: sessionId, elapsedMs: now });
+      // 끊겨 소켓에만 있던 장 · IndexedDB 쓰기가 끝나지 않은 장까지 이 페이지가 보낸 장 전부입니다
+      saveSlides(takeId, {
+        clientSessionId: sessionId,
+        slides: slideLog().map((s) => ({ atMs: s.t_ms, slideNumber: s.slide_number })),
+      });
       saveMetrics(takeId, {
         clientSessionId: sessionId,
         messages: handOffMetrics(flushMetricsForHide(now)),
@@ -605,7 +640,7 @@ export function RehearsalPage() {
     };
     window.addEventListener('pagehide', save);
     return () => window.removeEventListener('pagehide', save);
-  }, [running, sessionId, takeId, elapsedMs, handOffMetrics, flushMetricsForHide]);
+  }, [running, sessionId, takeId, elapsedMs, handOffMetrics, flushMetricsForHide, slideLog]);
 
   // 시선 판정이 아직 없는 dev 환경에서 테두리 3색을 눈으로 보려고 둡니다.
   // 1·2·3 키. **기록에는 남기지 않습니다** — 판정이 아니라 눈속임입니다
@@ -703,6 +738,7 @@ export function RehearsalPage() {
       clearWriteFailures(id);
       clearClock(takeId);
       clearMetrics(takeId);
+      clearSlides(takeId);
       // 기록을 쌓지 않고 바꿉니다. 뒤로 가기로 리허설 화면에 돌아오지 않게 합니다
       navigate(`/takes/${takeId}/processing`, { replace: true });
     } catch (e) {

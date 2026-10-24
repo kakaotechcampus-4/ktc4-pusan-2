@@ -16,6 +16,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -135,6 +136,10 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             "parse_status IN ('PENDING', 'DONE', 'FAILED')",
             name="ck_script_versions_parse_status",
         ),
+        CheckConstraint(
+            "rubric_status IN ('PENDING', 'DONE', 'PARTIAL', 'FAILED')",
+            name="ck_script_versions_rubric_status",
+        ),
     )
 
     pitch_id: Mapped[uuid.UUID] = mapped_column(
@@ -163,6 +168,11 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     parse_meta: Mapped[Any | None] = mapped_column(JSONB)
     # FAILED 원인 코드 (dto.ScriptParseErrorCode). 상세 원인은 서버 로그에만 남긴다
     parse_error: Mapped[str | None] = mapped_column(String(32))
+    rubric_status: Mapped[str | None] = mapped_column(String(16))
+    rubric_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rubric_retry_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class ScriptSlide(UUIDPrimaryKeyMixin, Base):
@@ -193,3 +203,34 @@ class ScriptSlide(UUIDPrimaryKeyMixin, Base):
     # 이 칸이 생기기 전에 파싱한 행과, 이 값을 주지 않은 AI 응답이면 비어 있다
     script_chars: Mapped[int | None] = mapped_column(Integer)
     expected_ms: Mapped[int | None] = mapped_column(Integer)
+    rubric: Mapped[Any | None] = mapped_column(JSONB)
+    rubric_meta: Mapped[Any | None] = mapped_column(JSONB)
+
+
+class CoachingPlan(UUIDPrimaryKeyMixin, Base):
+    """코칭 계획 (`/coach/plan` 응답) 한 건. 응답마다 한 행을 더하고 덮어쓰지 않는다.
+
+    다음 Take 를 시작할 때 바탕 값(source_take_id · script_version_id · target_ms · min_ms ·
+    max_ms)이 그때 것과 모두 같은 행 중 `requested_at` 이 가장 늦은 것을 싣는다. 그래서 늦게 온
+    옛 응답이 새 계획을 대신하지 못한다
+    (`docs/ai/features/coach-agent.md` 12-1 · 12-2 '계획 고르기').
+    """
+
+    __tablename__ = "coaching_plans"
+    __table_args__ = (Index("ix_coaching_plans_pitch_requested", "pitch_id", "requested_at"),)
+
+    pitch_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), nullable=False
+    )
+    # 요청에 실은 바탕 값. 외래 키로 묶지 않는다 — Take · 대본을 지워도 계획 행은 발표와 함께 남고,
+    # 이 값은 고를 때 비교하는 데만 쓴다
+    source_take_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    script_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    target_ms: Mapped[int | None] = mapped_column(Integer)
+    min_ms: Mapped[int | None] = mapped_column(Integer)
+    max_ms: Mapped[int | None] = mapped_column(Integer)
+    # BE 가 그 계획 요청을 보낸 시각. 응답을 받은 시각이 아니다
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # 응답의 {coaching_plan, fallback_reason, dropped, planner_hash}
+    payload: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSONB, nullable=False)

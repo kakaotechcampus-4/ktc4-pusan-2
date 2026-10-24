@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Card } from '@/shared/ui/Panel';
 
 /**
  * 점검 항목 카드. 장치 점검과 리허설 준비가 **같은 항목**을 보여 줍니다.
@@ -35,15 +36,15 @@ export function CheckCard({
   const done = required.filter((r) => r.done).length;
 
   return (
-    <section className="rounded-xl border border-line-strong bg-panel p-4">
-      <header className="flex items-baseline gap-2">
-        <h2 className="text-sm font-bold">{title}</h2>
-        <span className="tabular ml-auto font-mono text-xs text-stone">
+    <Card
+      title={title}
+      action={
+        <span className="tabular font-mono text-xs text-stone">
           {done} / {required.length}
         </span>
-      </header>
-
-      <ul className="mt-3 flex flex-col gap-2">
+      }
+    >
+      <ul className="flex flex-col gap-2">
         {rows.map(({ id, ...row }) => (
           <li key={id}>
             <CheckRow {...row} />
@@ -51,8 +52,8 @@ export function CheckCard({
         ))}
       </ul>
 
-      {children ? <div className="mt-3">{children}</div> : null}
-    </section>
+      {children}
+    </Card>
   );
 }
 
@@ -84,7 +85,7 @@ function CheckRow({
     </>
   );
 
-  const className = `flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left ${skin}`;
+  const className = `flex w-full items-center gap-2 border px-3 py-2.5 text-left ${skin}`;
   const hover = done || optional ? 'hover:bg-cream' : 'hover:bg-coral/20';
 
   // 끝난 항목에도 동작이 붙을 수 있습니다 — 시선 측정을 제외했을 때 '다시 잡기'

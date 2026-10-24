@@ -8,6 +8,7 @@ import { LoadingDraft } from './loading/LoadingDraft';
 import { PrepareMissionDraft } from './prepare/PrepareMissionDraft';
 import { RetryDraft } from './retry/RetryDraft';
 import { BestTakeDraft } from './best/BestTakeDraft';
+import { PitchCreateDraft } from './create/PitchCreateDraft';
 
 /**
  * 디자인 시안 목록 — `/dev/design`, 각 시안은 `/dev/design/:name`.
@@ -15,6 +16,12 @@ import { BestTakeDraft } from './best/BestTakeDraft';
  */
 const DRAFTS: { name: string; id: string; title: string; element: ReactElement }[] = [
   { name: 'components', id: 'UI', title: '공용 컴포넌트', element: <ComponentsDraft /> },
+  {
+    name: 'pitch-create',
+    id: 'P3',
+    title: 'Pitch 생성 · 시작 플로우 개편',
+    element: <PitchCreateDraft />,
+  },
   {
     name: 'prepare-mission',
     id: '09',

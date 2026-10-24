@@ -99,6 +99,8 @@ class ParseTicket:
     script_text: str
     # 발표 제한 시간(ms). AI 가 장별 예상 시간을 이 합에 맞춰 나눈다. parse_meta 에도 남긴다
     target_ms: int | None
+    # 파싱이 끝나면 이 발표의 다음 Take 코칭 계획을 요청한다 (`ScriptParseRunner.on_parsed`)
+    pitch_id: uuid.UUID | None = None
 
 
 class HighlightDTO(BaseModel):
@@ -205,4 +207,3 @@ class StandardTextResponseDTO(BaseModel):
     pitch_id: uuid.UUID
     standards: list[StandardDTO]
     except_standard: str | None = None
-    

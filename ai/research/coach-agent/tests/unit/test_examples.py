@@ -114,7 +114,12 @@ def recorded_judges() -> tuple[Judges, dict[str, RecordedJudge]]:
     results = load_evaluate("judge_results.json")
     modules = {name: RecordedJudge(results[name]) for name in ("gaze", "pace", "volume", "filler")}
     # 기준 음량은 요청의 calibration 으로 온다
-    return Judges(**modules, baseline=lambda samples: None), modules  # noqa: ARG005
+    judges = Judges(
+        **modules,
+        speaking_levels=lambda records: [],  # noqa: ARG005
+        baseline=lambda samples: None,  # noqa: ARG005
+    )
+    return judges, modules
 
 
 def test_evaluate_response_matches_example() -> None:

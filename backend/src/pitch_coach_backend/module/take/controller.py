@@ -1,3 +1,5 @@
+import logging
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -5,14 +7,16 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module import hooks
+from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
 from pitch_coach_backend.module.take.dependencies import OwnedTake
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
+    TakeHistoryResponseDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
 )
-from pitch_coach_backend.module.take.exception import TakeInProgress
+from pitch_coach_backend.module.take.exception import TakeInProgress, TakeNotReviewable
 from pitch_coach_backend.module.take.service import (
     close_take_service,
     create_calibration_service,
@@ -20,9 +24,12 @@ from pitch_coach_backend.module.take.service import (
     delete_take_service,
     get_previous_missions_service,
     get_review_result,
+    list_takes_service,
     mark_ended,
     update_take_service,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pitches/{pitch_id}/takes", tags=["Take"])
 
@@ -64,7 +71,7 @@ def update_take(
     if take_update_dto.ended_at is not None:
         hooks.live_takes().end(
             take_id,
-            lambda end_reason, utterance_ends: mark_ended(db, take_id, end_reason),
+            lambda end_reason, utterance_ends: mark_ended(db, take_id, end_reason, utterance_ends),
         )
     return {"message": "Take updated successfully", "take_id": result}
 
@@ -103,7 +110,37 @@ def get_previous_missions(
 @router.post("/{take_id}/review")
 def review_take(
     db: Annotated[Session, Depends(get_db)],
+    pitch_id: uuid.UUID,
     take_id: OwnedTake,
 ):
-    result = get_review_result(db, take_id)
+    def plan_next_take() -> None:
+        # 리뷰를 저장한 직후, 리뷰가 끝내 실패해도 다음 Take 의 코칭 계획을 만든다
+        # (coach-agent.md 5-1). 백그라운드라 응답을 기다리게 하지 않는다. 계획을 못 띄워도 리뷰
+        # 결과 · 원래 오류를 가리지 않는다
+        try:
+            hooks.coaching().plan_next_take(pitch_id)
+        except Exception:
+            logger.exception("리뷰 뒤 코칭 계획을 띄우지 못했다 pitch=%s", pitch_id)
+
+    try:
+        result = get_review_result(db, take_id)
+    except TakeNotReviewable:
+        # 리뷰를 부르지 않았다 (아직 채점 전 · 이미 리뷰함)
+        raise
+    except Exception:
+        plan_next_take()
+        raise
+    plan_next_take()
     return {"message": "Review result retrieved successfully", "review_result": result}
+
+
+# 발표를 가리지 않는 Take 조회. Take 기록은 모든 발표의 Take 를 한 번에 보여 준다
+takes_router = APIRouter(prefix="/takes", tags=["Take"])
+
+@takes_router.get("/", response_model=TakeHistoryResponseDTO)
+def list_takes(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    pitch_id: uuid.UUID | None = None,
+):
+    return list_takes_service(db, current_user.id, pitch_id)

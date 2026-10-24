@@ -1,3 +1,4 @@
+
 import uuid
 from typing import Annotated
 
@@ -16,6 +17,7 @@ from pitch_coach_backend.module.pitch.dto import (
     ScriptCreateDTO,
     ScriptDetailDTO,
     StandardTextDTO,
+    StandardTextResponseDTO,
     UploadPresentationDTO,
 )
 from pitch_coach_backend.module.pitch.service import (
@@ -30,6 +32,7 @@ from pitch_coach_backend.module.pitch.service import (
     get_presentation_detail,
     get_script_detail,
     get_standard_detail,
+    pitch_timing,
     request_reparse,
     update_pitch_service,
     upload_presentation_service,
@@ -87,9 +90,14 @@ def add_pitch(
 def update_pitch(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
-    pitch_dto: PitchSaveRequestDTO
+    pitch_dto: PitchSaveRequestDTO,
 ):
+    before = pitch_timing(db, pitch_id)
     result = update_pitch_service(db, pitch_id, pitch_dto)
+    # 제한 시간 · 허용 범위가 바뀌면 다음 Take 의 코칭 계획을 다시 만든다 (coach-agent.md 5-1).
+    # 백그라운드 작업이라 응답을 기다리게 하지 않는다
+    if pitch_timing(db, pitch_id) != before:
+        hooks.coaching().plan_next_take(pitch_id)
     return {"message": "Pitch updated successfully", "pitch_id": result}
 
 @router.delete("/delete/{pitch_id}")
@@ -122,14 +130,13 @@ def upload_presentation(
         "presentation": result
     }
 
-@router.post("/add/{pitch_id}/standards")
+@router.post("/add/{pitch_id}/standards", response_model=StandardTextResponseDTO)
 def post_pitch_standard_text(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
     standard_text: StandardTextDTO
 ):
-    result = add_pitch_standard_service(db, pitch_id, standard_text)
-    return {"message": "Pitch standard text added successfully", "pitch_id": result}
+    return add_pitch_standard_service(db, pitch_id, standard_text)
 
 
 # 대본 새 버전. 202: 원문 저장까지만 하고 돌려준다. 슬라이드 분리(AI)는 응답 뒤 백그라운드에서

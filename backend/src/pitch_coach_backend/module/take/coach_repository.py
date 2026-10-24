@@ -2,9 +2,10 @@
 
 import uuid
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, func, select, update
+from sqlalchemy import ColumnElement, and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,8 @@ from pitch_coach_backend.module.take.entity import (
     TakeAIResults,
     TakeMetricSecond,
     TakeSlideEvent,
+    TakeSummary,
+    TakeTranscriptSegment,
 )
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import (
@@ -34,11 +37,15 @@ class CoachRepository:
         return self.db.scalar(select(Take.pitch_id).where(Take.id == take_id))
 
     def mark_started(self, take_id: uuid.UUID) -> int | None:
-        """`READY` 인 Take 를 `RUNNING` 으로 바꾸고 그 번호를 돌려준다. 바꾸지 않았으면 None."""
+        """`READY` 인 Take 를 `RUNNING` 으로 바꾸고 그 번호를 돌려준다. 바꾸지 않았으면 None.
+
+        시작 시각도 이때 적는다. FE 는 끝낼 때 PUT 으로 시작 시각을 보내므로, 발표 중이거나 FE 가
+        PUT 을 보내지 못하고 끝난 Take 도 시작한 Take 로 보이게 한다. FE 값이 오면 그 값으로 바뀐다.
+        """
         return self.db.scalar(
             update(Take)
             .where(Take.id == take_id, Take.status == "READY")
-            .values(status="RUNNING")
+            .values(status="RUNNING", started_at=func.coalesce(Take.started_at, func.now()))
             .returning(Take.take_number)
         )
 
@@ -200,6 +207,101 @@ class CoachRepository:
             )
             .on_conflict_do_nothing(index_elements=["take_id", "event_id"])
         )
+
+    def transcript_segments(self, take_id: uuid.UUID) -> list[TakeTranscriptSegment]:
+        return list(
+            self.db.scalars(
+                select(TakeTranscriptSegment)
+                .where(TakeTranscriptSegment.take_id == take_id)
+                .order_by(TakeTranscriptSegment.seq)
+            )
+        )
+
+    def finalizing_take_ids(self, stale_before: datetime | None = None) -> list[uuid.UUID]:
+        query = select(Take.id).where(waiting_for_result())
+        if stale_before is not None:
+            # 기다리기 시작한 시각이 없는 Take 는 칸이 생기기 전부터 기다렸다
+            query = query.where(
+                or_(Take.analysis_stage_at.is_(None), Take.analysis_stage_at < stale_before)
+            )
+        return list(self.db.scalars(query))
+
+    def lock_finalizing(self, take_id: uuid.UUID) -> Take | None:
+        """Take 행을 잠그고 `ANALYZING` · `FINALIZING` 이면 돌려준다."""
+        take = self.db.scalar(select(Take).where(Take.id == take_id).with_for_update())
+        if take is None or not is_waiting_for_result(take):
+            return None
+        return take
+
+    def save_ai_result(
+        self, take_id: uuid.UUID, kind: str, payload: Mapping[str, Any], meta: Mapping[str, Any]
+    ) -> None:
+        """(take_id, kind) 에 하나만 둔다. 이미 있으면 덮고 revision 을 1 올린다."""
+        stmt = insert(TakeAIResults).values(
+            take_id=take_id, kind=kind, payload=dict(payload), meta=dict(meta), revision=0
+        )
+        self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[TakeAIResults.take_id, TakeAIResults.kind],
+                set_={
+                    "payload": stmt.excluded.payload,
+                    "meta": stmt.excluded.meta,
+                    "revision": TakeAIResults.revision + 1,
+                },
+            )
+        )
+
+    def save_summary_measures(self, take_id: uuid.UUID, measures: Mapping[str, Any]) -> None:
+        """take_summaries 의 측정 칸만 바꾼다. 리뷰 · 대본 전달도 칸은 그대로 둔다."""
+        stmt = insert(TakeSummary).values(take_id=take_id, **measures)
+        self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[TakeSummary.take_id],
+                set_={key: stmt.excluded[key] for key in measures},
+            )
+        )
+
+    def delete_metric_seconds(self, take_id: uuid.UUID) -> None:
+        self.db.execute(delete(TakeMetricSecond).where(TakeMetricSecond.take_id == take_id))
+
+    def fail_finalizing(self, take_id: uuid.UUID) -> bool:
+        """Take 결과를 끝내 만들지 못했다. `FAILED` 로 바꾸고 단계는 그대로 둔다. 바꿨으면 True."""
+        result = self.db.execute(
+            update(Take).where(Take.id == take_id, waiting_for_result()).values(status="FAILED")
+        )
+        return result.rowcount > 0
+
+    def purge_expired_metric_seconds(
+        self, before: datetime, after: uuid.UUID | None, limit: int
+    ) -> tuple[list[uuid.UUID], int]:
+        """동의 없이 `FAILED` 로 끝난 Take 의 1초 원자료 중 기한이 지난 것을 지운다.
+
+        기한은 끝난 시각(없으면 만든 시각)이다. Take 를 먼저 잠그고 조건을 확인한다. 되살리거나
+        결과를 저장하는 중인 Take 는 다음 정리 때 본다. 원자료 행부터 잠그면 상태가 바뀐 뒤에도
+        DELETE 의 앞선 스냅샷으로 지울 수 있다 (architecture.md 1-1).
+
+        원자료가 남은 Take 만 `after` 다음 id 부터 `limit` 개 잠근다. 이미 지운 Take 를 다시
+        잠그지 않는다. 잠근 Take id 와 지운 행 수.
+        """
+        query = select(Take.id).where(
+            Take.status == "FAILED",
+            Take.raw_data_consent.is_(False),
+            func.coalesce(Take.ended_at, Take.created_at) < before,
+            select(TakeMetricSecond.take_id).where(TakeMetricSecond.take_id == Take.id).exists(),
+        )
+        if after is not None:
+            query = query.where(Take.id > after)
+        expired = list(
+            self.db.scalars(
+                query.order_by(Take.id).limit(limit).with_for_update(of=Take, skip_locked=True)
+            )
+        )
+        if not expired:
+            return [], 0
+        result = self.db.execute(
+            delete(TakeMetricSecond).where(TakeMetricSecond.take_id.in_(expired))
+        )
+        return expired, result.rowcount
 
 
 REVIEW = "REVIEW"

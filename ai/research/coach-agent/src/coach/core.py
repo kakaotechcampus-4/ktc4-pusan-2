@@ -41,6 +41,7 @@ from .judges import JudgeRun, Judges
 from .policy import RULE_POLICY, Policy, rank_key
 from .renderer import render
 from .schemas import (
+    MAX_T_MS_JUMP,
     AreaCriteria,
     AreaResult,
     CoachRequest,
@@ -94,6 +95,11 @@ def decide(
     # 이미 처리한 시각이 다시 오면(재시도 · 순서 뒤바뀜) 아무것도 바꾸지 않는다
     if state.last_t_ms is not None and req.t_ms <= state.last_t_ms:
         return _response(req, cfg, Action.WAIT, [Reason.STALE_TICK.value], state)
+    # 지난 처리 시각보다 60초 넘게 앞서면 처리하지 않고 빈 상태로 돌려준다 — 잘못된 미래 시각 하나가
+    # last_t_ms 를 올려 이후 요청을 모두 STALE_TICK 으로 막지 못하게 하고, 한 번에 세는 1초 조각
+    # 수를 묶는다. 다음 요청은 새로 시작한다
+    if state.last_t_ms is not None and req.t_ms - state.last_t_ms > MAX_T_MS_JUMP:
+        return _response(req, cfg, Action.WAIT, [Reason.T_MS_JUMP.value], initial_state())
 
     sink = EventSink(state)
     tick, run = _round(req, judges, cfg, state, sink)
@@ -195,8 +201,9 @@ def finalize(
 ) -> FinalizeResponse:
     """Take 종료. 마지막 창을 판정하고 열린 것을 닫아 Take 결과를 만든다.
 
-    ① 마지막 창: decide 와 같은 판정 · 누적을 한 번 더 한다(말은 걸지 않는다). Take 끝을 문장 끝
-       신호로 넣어 뒤 간격을 기다리던 단어까지 판정한다. 이미 그 시각을 처리했으면 건너뛴다.
+    ① 마지막 창: decide 와 같은 판정 · 누적을 한 번 더 한다(말은 걸지 않는다). Take 끝을 STT 모듈
+       입력 take_end_ms 로 넘겨 뒤 간격을 기다리던 단어까지 판정한다. 이미 그 시각을 처리했으면
+       건너뛴다.
     ② 닫기: 재지 못한 효과는 NOT_MEASURED, 열린 문제 구간은 TAKE_END, 마지막 장은 SLIDE.
     ③ 센 구간이 [0, t_ms) 를 덮지 못하면 ReplayRequired.
     ④ 합계(Take · 장 번호별)를 영역 모듈의 summarize 에 넣어 areas 를 만들고, 판정 기준을 남긴다.
@@ -369,10 +376,19 @@ def _take_result(
 
 
 def _round(
-    req: CoachRequest, judges: Judges, cfg: CoachConfig, state: CoachState, sink: EventSink
+    req: CoachRequest,
+    judges: Judges,
+    cfg: CoachConfig,
+    state: CoachState,
+    sink: EventSink,
+    *,
+    take_end_ms: int | None = None,
 ) -> tuple[Tick, JudgeRun]:
-    """판정 라운드 · 측정 정리 · 되돌아보기 · 문제 구간(① ②). decide 와 finalize 가 같이 쓴다."""
-    run = judges_mod.run(req, state, judges, cfg)
+    """판정 라운드 · 측정 정리 · 되돌아보기 · 문제 구간(① ②). decide 와 finalize 가 같이 쓴다.
+
+    take_end_ms 는 finalize 의 마지막 창에서만 Take 끝 시각이다(STT 모듈 입력으로 넘긴다).
+    """
+    run = judges_mod.run(req, state, judges, cfg, take_end_ms=take_end_ms)
     tick = measure.build_tick(req, cfg, state, run)
     slides.emit_ready(state, req.t_ms, sink)
     reflection.resolve(tick, sink)
@@ -388,9 +404,8 @@ def _last_window(
     잴 수 없던 것으로 넘긴다. 넘기지도 못하면 받은 상태 그대로 둔다(센 구간이 모자라 409).
     """
     t = req.t_ms
-    ends = req.inputs.utterance_ends
-    # Take 끝을 문장 끝으로 본다 — 뒤 간격을 기다리던 단어까지 판정한다
-    inputs = req.inputs.model_copy(update={"utterance_ends": ends if t in ends else [*ends, t]})
+    # Take 끝은 문장 끝 신호에 넣지 않고 STT 모듈 입력 take_end_ms 로 따로 넘긴다 — 뒤 간격을
+    # 기다리던 단어까지 판정한다(같은 시각의 실제 UtteranceEnd 와 구분된다)
     creq = CoachRequest(
         take_id=req.take_id,
         t_ms=t,
@@ -400,11 +415,11 @@ def _last_window(
         recurring_issues=req.recurring_issues,
         coaching_plan=req.coaching_plan,
         script_used=req.script_used,
-        inputs=inputs,
+        inputs=req.inputs,
         calibration=req.calibration,
     )
     try:
-        _, run = _round(creq, judges, cfg, state, sink)
+        _, run = _round(creq, judges, cfg, state, sink, take_end_ms=t)
         state.last_t_ms = t
         return state, sink, run
     except Exception:  # noqa: BLE001 — 마지막 창이 깨져도 이미 센 합계로 Take 결과를 낸다
@@ -530,6 +545,7 @@ def _intervene(tick: Tick, c: Candidate, reason_codes: list[str], sink: EventSin
         confidence=confidence,
         reason_codes=reason_codes,
         slide_number=c.slide_number,
+        evidence=c.evidence,
     )
     st.last_fired_ms = tick.t
     st.last_by_instruction[c.instruction.value] = tick.t

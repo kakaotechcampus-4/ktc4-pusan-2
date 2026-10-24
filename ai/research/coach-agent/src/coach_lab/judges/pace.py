@@ -62,6 +62,8 @@ class PaceInput(In):
     words: list[Word] = []
     stt_status: str = "ok"
     stt_ok_since_ms: int | None = None
+    #: finalize 마지막 창의 Take 끝 시각(evaluate 는 None). 말 속도는 쓰지 않는다
+    take_end_ms: int | None = None
     #: None 이면 군더더기 판정이 실패한 것(빈 목록은 군더더기 없음)
     fillers: list[FillerMark] | None = []
     since_ms: int = 0
