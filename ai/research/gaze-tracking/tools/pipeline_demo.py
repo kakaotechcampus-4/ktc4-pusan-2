@@ -1303,11 +1303,12 @@ class PipelineDemo:
             self._draw_debug(view, layer, w, decision)
 
     def _coach_issues(self) -> List[dict]:
-        """The coach's gaze issues, recomputed only when a 1 s record lands (not every drawn frame)."""
-        timeline = self.session.gaze_evidence.timeline
-        key = (id(timeline), len(timeline.samples))
+        """The server module's gaze issues, most severe first, recomputed only when a 1 s record lands."""
+        samples = self.session.gaze_evidence.samples
+        key = (id(samples), len(samples))
         if key != self._coach_key:
-            self._coach_key, self._coach = key, self.session.gaze_evidence.issues()
+            issues = self.session.gaze_evidence.issues()
+            self._coach_key, self._coach = key, sorted(issues, key=lambda i: -i["severity"])
         return self._coach
 
     def _other_direction(self, label: str, decision) -> Optional[str]:
@@ -1316,7 +1317,7 @@ class PipelineDemo:
             return None
         if decision.direction:
             return decision.direction
-        samples = self.session.gaze_evidence.timeline.samples
+        samples = self.session.gaze_evidence.samples
         if samples and samples[-1].state == GazeState.OTHER.value:
             return samples[-1].direction
         return None
