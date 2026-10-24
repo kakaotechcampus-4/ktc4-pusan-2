@@ -44,14 +44,18 @@ import {
   abandonOutcome,
   clearClock,
   clearMetrics,
+  clearSlides,
   lastSlide,
   leftWindow,
   readClock,
   recordedUntilMs,
   resumeFromMs,
+  mergeSlideChanges,
   saveClock,
   saveMetrics,
+  saveSlides,
   takeMetrics,
+  takeSlides,
   type AbandonOutcome,
   type LeftWindow,
 } from './resume';
@@ -261,6 +265,7 @@ export function RehearsalPage() {
     sendMetrics,
     sendSlide,
     handOffMetrics,
+    slideLog,
     stop: stopStt,
   } = useSttStream({
     takeId,
@@ -349,20 +354,23 @@ export function RehearsalPage() {
 
       // 행은 읽었으니 세션은 잇습니다. 기록을 못 읽으면 슬라이드만 처음부터입니다 —
       // 아래 catch 로 보내면 행까지 버려 기록이 하나도 안 쌓이고 시계도 0 부터 돕니다
-      let slide: ReturnType<typeof lastSlide> = null;
-      let slideHistory: Resume['slideHistory'] = [];
-      let recordedUntil: Ms = 0;
+      let stored: Resume['slideHistory'] = [];
+      let gaze: Awaited<ReturnType<typeof readGazeSamples>> = [];
       try {
         const [changes, samples] = await Promise.all([readSlideChanges(id), readGazeSamples(id)]);
-        slide = lastSlide(changes);
-        slideHistory = changes;
-        recordedUntil = recordedUntilMs({
-          gaze: samples,
-          slideAtMs: changes.map((c) => c.atMs),
-        });
+        stored = changes;
+        gaze = samples;
       } catch (err) {
         console.error('[rehearsal] 슬라이드·시선 기록을 읽지 못했습니다', err);
       }
+      // 새로고침 직전에 넘긴 장은 IndexedDB 에 아직 없을 수 있습니다. pagehide 에 적어 둔 기록과 합칩니다
+      // (resume.ts `SavedSlides`). 되살릴 장 · 기록이 덮는 시각도 합친 기록으로 셉니다
+      const slideHistory = mergeSlideChanges(stored, takeSlides(takeId, id));
+      const slide = lastSlide(slideHistory);
+      const recordedUntil = recordedUntilMs({
+        gaze,
+        slideAtMs: slideHistory.map((c) => c.atMs),
+      });
       // 무대보다 먼저 되살립니다. 시작하고 나서 바꾸면 1번 슬라이드가 잠깐 보이고 전환으로 기록됩니다
       if (slide) setSlide(slide.slideNumber);
 
@@ -466,6 +474,7 @@ export function RehearsalPage() {
       forgetZoneRef();
       clearClock(takeId);
       clearMetrics(takeId);
+      clearSlides(takeId);
       if (sessionId) {
         await endSession(sessionId, 'ABORTED').catch((err: unknown) =>
           noteWriteFailure(sessionId, 'ending', err),
@@ -542,6 +551,11 @@ export function RehearsalPage() {
     const save = () => {
       const now = elapsedMs();
       saveClock(takeId, { clientSessionId: sessionId, elapsedMs: now });
+      // 끊겨 소켓에만 있던 장 · IndexedDB 쓰기가 끝나지 않은 장까지 이 페이지가 보낸 장 전부입니다
+      saveSlides(takeId, {
+        clientSessionId: sessionId,
+        slides: slideLog().map((s) => ({ atMs: s.t_ms, slideNumber: s.slide_number })),
+      });
       saveMetrics(takeId, {
         clientSessionId: sessionId,
         messages: handOffMetrics(flushMetricsForHide(now)),
@@ -549,7 +563,7 @@ export function RehearsalPage() {
     };
     window.addEventListener('pagehide', save);
     return () => window.removeEventListener('pagehide', save);
-  }, [running, sessionId, takeId, elapsedMs, handOffMetrics, flushMetricsForHide]);
+  }, [running, sessionId, takeId, elapsedMs, handOffMetrics, flushMetricsForHide, slideLog]);
 
   // 시선 판정이 아직 없는 dev 환경에서 테두리 3색을 눈으로 보려고 둡니다.
   // 1·2·3 키. **기록에는 남기지 않습니다** — 판정이 아니라 눈속임입니다
@@ -647,6 +661,7 @@ export function RehearsalPage() {
       clearWriteFailures(id);
       clearClock(takeId);
       clearMetrics(takeId);
+      clearSlides(takeId);
       // 기록을 쌓지 않고 바꿉니다. 뒤로 가기로 리허설 화면에 돌아오지 않게 합니다
       navigate(`/takes/${takeId}/processing`, { replace: true });
     } catch (e) {
