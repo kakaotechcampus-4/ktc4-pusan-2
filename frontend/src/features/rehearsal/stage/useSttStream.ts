@@ -235,6 +235,9 @@ export function useSttStream({
     socketRef.current?.sendSlide(message);
   }, []);
 
+  /** 이 페이지에서 보낸 장 변경 전부. 새로고침 직전(`pagehide`)에 적어 두려고 꺼냅니다 (`saveSlides`) */
+  const slideLog = useCallback((): SlideMessage[] => [...slidesRef.current], []);
+
   /**
    * 탭이 사라지기 직전(`pagehide`). 남은 1초들을 보내 보고, 서버에 닿았다고 볼 수 없는 것을 돌려줍니다
    * (`SttSocket.handOffMetrics`). 소켓이 없으면 `sendMetrics` 처럼 버립니다.
@@ -262,6 +265,7 @@ export function useSttStream({
     statsRef,
     sendMetrics,
     sendSlide,
+    slideLog,
     handOffMetrics,
     stop,
   };
