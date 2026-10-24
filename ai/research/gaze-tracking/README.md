@@ -15,7 +15,8 @@
 | 설계 | 엔진 계약 · 1초 기록 · 서버 판정 · 배포 → [`docs/ai/features/gaze-tracking.md`](../../../docs/ai/features/gaze-tracking.md) |
 
 > `ai/archive/workspaces/jewon-kim/gaze-tracking/v1/local/`을 구조를 바꿔 옮긴 프로젝트입니다.
-> 판정 로직은 같고, 같은 입력이면 archive와 결과가 같습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
+> 브라우저 엔진 · 기준 구현의 판정 로직은 옮길 때와 같고 같은 입력이면 archive와 결과가 같습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
+> 서버 판정 모듈(`src/gaze/`)은 기능 문서에 맞춰 다시 만들었습니다([4-4](#4-4-코치와-이어지는-곳--연구용-대역과-달라진-판정)).
 > 알고리즘을 어떻게 유도했는지(좌표계 · 보정 · 조건 감시 등)는 archive의 `v1/README.md`에 자세히 있습니다.
 
 ## 목차
@@ -46,7 +47,8 @@
 | 1초 판정 | 최근 30초 기록과 발화 시간으로 상태 · 응시 비율 · 지금 이어지는 응시 · 대본 의존을 재고 다섯 시선 문제를 판정 (`judge`) | 서버 (코치가 요청마다 부름) |
 | Take 지표 | 장 · Take 동안 센 몫으로 청중 · 화면 · 대본 · 그 밖 비율, 대본 의존, 측정 비율 (`summarize`), 다섯 문제의 판정 기준 (`criteria`) | 서버 (코치가 장 끝 · Take 끝에 부름) |
 
-비율은 모두 **측정된 시간**(판정된 4개 상태)으로 나눕니다. 재지 못한 시간이 "청중을 안 봤다"로 읽히지 않게 하기 위해서입니다.
+응시 비율은 **측정된 시간**(판정된 4개 상태)으로 나눕니다. 재지 못한 시간이 "청중을 안 봤다"로 읽히지 않게 하기 위해서입니다.
+대본 의존 비율(`reading_ratio`)은 말한 시간으로, 측정 비율(`measured_ratio`)은 전체 시간으로 나눕니다.
 측정할 수 없으면 `GAZE_UNMEASURABLE`(시선 피드백 보류 신호)을 냅니다. 재지 못한 시간에 틀린 시선 피드백을 하지 않기 위해서이고, 발표는 그대로 이어집니다.
 
 ---
@@ -224,10 +226,9 @@ configs/evidence.yaml 에는 1초 나누기 값만 (서버 판정 값이 다시 
 | `GAZE_ON_SCRIPT` | 대본 비율 0.7 이상, 또는 이어짐 5초 이상이고 비율 0.6 이상 | 이어짐 3초 이상이고 짧은 창 대본 비율 0.6 이상 |
 | 그 밖의 문제 | `GAZE_UNMEASURABLE`만 | `GAZE_ON_SCREEN` · `GAZE_AWAY` · `GAZE_LOW_EYE_CONTACT`도 낸다 |
 | 상태 | `AUDIENCE` · `SCRIPT` · `UNMEASURABLE` | `AUDIENCE` · `SCREEN` · `SCRIPT` · `AWAY` · `UNMEASURABLE` |
-| 측정 불가 | `UNCERTAIN` + `UNMEASURED` 비율이 0.5 초과(최근 평균과 나쁜 쪽) | 측정 비율(짧은 창 · 최근 창 중 나쁜 쪽)이 0.5 미만이거나 짧은 창 평균 신뢰도가 0.5 미만 |
+| 측정 불가 | `UNCERTAIN` + `UNMEASURED`(+ 기록 없는 시간)를 합친 비율이 0.5 초과(최근 평균과 나쁜 쪽) | 측정 비율(짧은 창 · 최근 창 중 나쁜 쪽)이 0.5 미만이거나 짧은 창 평균 신뢰도가 0.5 미만 |
 | 빠진 `reliability` | 1.0으로 봄 | 0으로 봄(기능 문서 5-2 "없으면 0") |
 | 기록이 잠깐 끊김 | 마지막 기록이 2초 안이면 이어짐을 유지 | 빈 1초가 끼면 이어짐이 끊김 |
-| `tally`의 `UNMEASURED` | `uncertain_ms`에 합침 | `unmeasured_ms`로 따로 |
 
 코치 코어(최신 코치 작업 브랜치)의 `Judges`에 대역 대신 이 모듈을 넣어 재생 시나리오(`ai/research/coach-agent/scenarios/`) 16개를 돌려 확인했습니다.
 - 코치의 `JudgmentResult` · `IssueCriteria` 검증 오류는 0건입니다(`judge` 2,756번).
@@ -278,8 +279,8 @@ npm run smoke:prod                         # 운영처럼 격리 헤더 없이
 ### 생성 파일 · 평가
 
 ```bash
-cd web && npm run fixtures                 # configs 나 gaze_lab 을 바꾼 뒤: TS 임계값 · 기준 답 다시 생성
 uv run python tools/make_examples.py       # src/gaze 의 기준값 · 판정을 바꾼 뒤: examples/ 출력 다시 생성
+cd web && npm run fixtures                 # configs 나 gaze_lab 을 바꾼 뒤: TS 임계값 · 기준 답 다시 생성
 uv run python -m gaze_lab.evaluation.gaze_eval --help      # 녹화한 특징 테이블이 있어야 돈다
 uv run python experiments/exp1_backbone.py --help
 ```
@@ -294,7 +295,7 @@ uv run python experiments/exp1_backbone.py --help
 | 기준 구현 | `tests/lab/` | 전처리 기하 · 고개 방향 · 보정 · 조건 감시 · 평가 · 데모 · 시나리오 S01~S24, 생성 파일 최신, 1초 나누기 값과 서버 판정 값의 분리 | 1745 (+ torch 없을 때 38 skip) |
 | TS 엔진 | `web/src/engine/__tests__/` | Python 기준 답과 1e-9~1e-12 안에서 일치, 엔진 흐름, 시나리오, 초기화 실패 | 145 |
 | 그 밖의 web | `web/test/` | FE 계약(실제 `frontend/src/workers/aiAdapter.ts`), 엔진 import · 저장 API 경계, Worker, 자산 검증 | 49 (FE 계약 2개 실패, 9장) |
-| 실제 브라우저 | `web/scripts/smoke.mjs` | MediaPipe를 Worker에서 로드, 준비 점검 → 고개 원 → 보정 → 실시간 → 1초 기록, 카메라 끊김, 지연 | 24 항목 |
+| 실제 브라우저 | `web/scripts/smoke.mjs` | MediaPipe를 Worker에서 로드, 준비 점검 → 고개 원 → 보정 → 실시간 → 1초 기록, 카메라 끊김, 지연 | 23 항목 (데모의 미리보기를 지운 뒤 다시 돌리지 않음) |
 
 Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetch_assets.py`를 돌려야 실행되고, 아니면 이유를 보이고 건너뜁니다.
 
