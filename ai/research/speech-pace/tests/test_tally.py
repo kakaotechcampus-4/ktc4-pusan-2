@@ -214,6 +214,28 @@ def test_a_word_that_overlaps_the_previous_word_is_skipped_but_passes_the_cursor
     assert word_items(again) == [] and again.words_counted_until_ms == 2400
 
 
+def test_a_word_inside_a_longer_word_is_not_the_word_before_a_pause():
+    words = [word("가나다라", 0, 5000), word("마", 1000, 2000), word("바사", 6000, 6500)]
+    r = run(7000, words)
+    # 간격은 겹친 "마" 를 건너뛰어 "가나다라" 끝에서 잰다 (1000, 멈춤 아님)
+    assert total(r.tally, "pause_count") == 0 and total(r.tally, "pause_ms") == 0
+
+
+def test_splitting_requests_does_not_change_pauses_around_an_overlapped_word():
+    words = [word("가나", 0, 1000), word("다라", 500, 2500), word("마바", 4200, 4800)]
+    whole = run(5000, words)
+    first = run(3000, words[:2])
+    later = run(
+        5000,
+        words,
+        since_ms=first.counted_until_ms,
+        words_since_ms=first.words_counted_until_ms,
+    )
+    # 둘 다 겹친 "다라" 를 건너뛰어 "가나" 끝에서 잰다 (3200)
+    for r in (whole, later):
+        assert total(r.tally, "pause_count") == 1 and total(r.tally, "pause_ms") == 3200
+
+
 # ── 시간 몫 ────────────────────────────────────────────────────────────────────
 
 

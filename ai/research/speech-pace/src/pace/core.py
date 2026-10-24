@@ -226,10 +226,12 @@ def _word_tally(
     cursor = inp.words_since_ms
     items: list[TallyItem] = []
     prev: Word | None = None
+    valid_ids = {id(w) for w in _valid(words)}
     for w in words:
         if w.end_ms <= cursor:
             # 이미 센 단어. 다음 단어의 멈춤 간격을 재는 앞 단어로만 쓴다
-            if w.end_ms >= w.start_ms:
+            # (시각이 거꾸로이거나 겹친 단어는 건너뛴다)
+            if id(w) in valid_ids:
                 prev = w
             continue
         if w.end_ms < w.start_ms or w.start_ms < cursor:
