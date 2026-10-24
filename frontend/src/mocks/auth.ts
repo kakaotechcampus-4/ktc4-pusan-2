@@ -98,7 +98,13 @@ export const authHandlers = [
   http.get('*/api/users/me', () =>
     signedIn ? HttpResponse.json(mockUser) : HttpResponse.json(unauthorized, { status: 401 }),
   ),
-  http.post('*/api/auth/logout', () => HttpResponse.json({ detail: '로그아웃되었습니다.' })),
+  // 서버처럼 세션 쿠키를 지웁니다. 로그아웃은 화면을 새로 열어서, 남겨 두면 다시 로그인돼 보입니다
+  http.post('*/api/auth/logout', () => {
+    signedIn = false;
+    setCsrfCookie(false);
+    document.cookie = `${OVERRIDE_COOKIE}=false; path=/; SameSite=Lax`;
+    return HttpResponse.json({ detail: '로그아웃되었습니다.' });
+  }),
   // 탈퇴(#288). 204 와 함께 세션을 끊어, 다시 불러도 로그아웃 상태로 남게 합니다
   http.delete('*/api/users/me', () => {
     if (!signedIn) return HttpResponse.json(unauthorized, { status: 401 });
