@@ -43,7 +43,7 @@ ParseResponse {status, slides[], terms, meta}
 | `tests/test_core.py` | `parse_script` 테스트 (가짜 LLM, 과금 없음) |
 | `tests/test_examples.py` | 계약 테스트: `examples/`의 요청을 돌린 응답이 `response.json`과 같은지, 예시가 계약(장 번호 · fail 1장 · 예상 시간 합 · 하이라이트 위치)을 지키는지 |
 | `data/scripts/` | 평가 대본 15개. `script1`–`5`는 원래 대본(`script1`만 구분자 형식, `2`–`5`는 형식이 다른 `fail` 경우), `script6`–`15`는 평가 경우마다 새로 쓴 대본으로, 분야를 나눴다: `[N]` 수학 · `[슬라이드 N]` 화학 · 머리글 제목만 법률 · 머리글 본문 기계공학 · 일부만 구분자 생명과학 · 마크다운 컴퓨터공학 · 번호 겹침 물리 · 구분자 없음 금융공학 · 2,000자대(2,052자) 전자공학 · 4,000자대(4,198자) 토목공학 |
-| `data/labels/` | 대본마다 정답 라벨 초안: `status`, 장마다 첫 줄 · 마지막 줄, 남으면 안 되는 제목 줄, 장별 실제 시간(`actual_slide_ms`, 아직 없음). **사람 확인 전 초안** |
+| `data/labels/` | 대본마다 정답 라벨: `status`, 장마다 첫 줄 · 마지막 줄, 남으면 안 되는 제목 줄, 장별 실제 시간(`actual_slide_ms`, 아직 없음) |
 | `tests/live/` | 실제 LLM 테스트 (`live` 표시, 과금) |
 | `reports/results/` | 평가 결과 JSON (`run.py --eval`) |
 | `results/` | 실행 결과 (gitignore) |
@@ -110,7 +110,7 @@ response = parse_script(ParseRequest(script_text=text, target_ms=300000), llm)
 | `keywords` · 제목 줄 · `terms` | LLM이 고른 것 중 대본에 그대로 있는 것만 씁니다(중복 · 빈 값 버림) |
 | `highlights` | **정제된 script 기준** 코드 포인트 위치 `{start, end}`(end 미포함)이고, 첫 등장 위치만 잡습니다 |
 | `terms` | 장 단위가 아니라 대본 전체에서 한 번만, 최대 50개까지 추출합니다 |
-| 평가 | 라벨은 초안입니다. 장별 실제 발표 시간이 없어 예상 시간 오차는 아직 잴 수 없습니다 |
+| 평가 | 장별 실제 발표 시간이 없어 예상 시간 오차는 아직 잴 수 없습니다 |
 
 ---
 
