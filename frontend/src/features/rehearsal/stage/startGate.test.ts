@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasLiveAudio, startGate } from './startGate';
+import { hasCamera, hasLiveAudio, startGate } from './startGate';
 
 const base = {
   started: false,
@@ -22,6 +22,16 @@ describe('무대 시계를 돌려도 되나', () => {
     expect(
       startGate({ ...base, micLive: false, deviceError: 'PERMISSION_DENIED', connected: true }),
     ).toEqual({ kind: 'NO_MIC', error: 'PERMISSION_DENIED' });
+  });
+
+  it('카메라를 못 열었어도 마이크가 있으면 시작한다 — 시선만 빠진다', () => {
+    expect(startGate({ ...base, deviceError: 'IN_USE' })).toEqual({
+      kind: 'CONNECTING',
+      slow: false,
+    });
+    expect(startGate({ ...base, deviceError: 'PERMISSION_DENIED', connected: true })).toEqual({
+      kind: 'STARTED',
+    });
   });
 
   it('ready 전에 소켓이 포기하면 이유를 알린다 — 서버가 끝낸 Take 는 다시 시도해도 같다', () => {
@@ -71,5 +81,19 @@ describe('살아 있는 오디오 트랙', () => {
     expect(hasLiveAudio(streamOf())).toBe(false);
     expect(hasLiveAudio(streamOf('ended'))).toBe(false);
     expect(hasLiveAudio(streamOf('ended', 'live'))).toBe(true);
+  });
+});
+
+describe('카메라를 열었나', () => {
+  const streamOf = (...states: MediaStreamTrackState[]) =>
+    ({
+      getVideoTracks: () => states.map((readyState) => ({ readyState })),
+    }) as unknown as MediaStream;
+
+  it('마이크만 연 스트림은 카메라가 없다. 끝난 트랙은 연 것으로 본다', () => {
+    expect(hasCamera(null)).toBe(false);
+    expect(hasCamera(streamOf())).toBe(false);
+    expect(hasCamera(streamOf('ended'))).toBe(true);
+    expect(hasCamera(streamOf('live'))).toBe(true);
   });
 });
