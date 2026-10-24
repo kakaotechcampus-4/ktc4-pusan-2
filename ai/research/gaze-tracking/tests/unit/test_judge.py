@@ -8,7 +8,7 @@ import pytest
 
 from gaze.config import DEFAULT, GazeConfig
 from gaze.core import criteria_version, judge
-from tests.unit.judge_helpers import issue_types, rec, run, secs, spoken, totals
+from tests.unit.judge_helpers import issue_types, rec, run, secs, span, spoken, totals
 
 # ── 결과 하나 · 공통 필드 ──────────────────────────────────────────────────────
 
@@ -496,3 +496,152 @@ def test_judge_does_not_change_its_inputs():
     snapshot = repr(raw)
     judge(raw, 30_000, DEFAULT)
     assert repr(raw) == snapshot
+
+
+# ── 경계 (검증에서 더함) ───────────────────────────────────────────────────────
+
+
+def test_metrics_use_only_the_overlap_with_each_window():
+    records = (
+        span("BOTTOM", 0, 1000)
+        + span("CAMERA", 1000, 25_500)
+        + span("BOTTOM", 25_500, 26_500)
+        + span("CAMERA", 26_500, 31_000)
+    )
+    m = run(records, 31_000).metrics
+    assert (m.script_ratio, m.audience_ratio) == (0.0333, 0.9667)
+    assert (m.script_ratio_short, m.audience_ratio_short) == (0.1, 0.9)
+
+
+@pytest.mark.parametrize(
+    ("reliability", "measurable"), [(0.4999, False), (0.5, True), (0.5001, True)]
+)
+def test_measurement_is_available_at_and_above_the_reliability_minimum(reliability, measurable):
+    r = run(span("CAMERA", 0, 30_000, reliability=reliability), 30_000)
+    assert r.measurable is measurable
+    assert issue_types(r) == ([] if measurable else ["GAZE_UNMEASURABLE"])
+
+
+@pytest.mark.parametrize(("measured_ms", "measurable"), [(2499, False), (2500, True), (2501, True)])
+def test_measurement_is_available_at_and_above_the_measured_minimum(measured_ms, measurable):
+    records = span("CAMERA", 0, 25_000) + span("CAMERA", 30_000 - measured_ms, 30_000)
+    r = run(records, 30_000)
+    assert r.measurable is measurable
+    assert issue_types(r) == ([] if measurable else ["GAZE_UNMEASURABLE"])
+
+
+@pytest.mark.parametrize(
+    ("state", "issue", "length", "expected"),
+    [
+        ("SCREEN", "GAZE_ON_SCREEN", 4999, False),
+        ("SCREEN", "GAZE_ON_SCREEN", 5000, True),
+        ("SCREEN", "GAZE_ON_SCREEN", 5001, True),
+        ("OTHER", "GAZE_AWAY", 1999, False),
+        ("OTHER", "GAZE_AWAY", 2000, True),
+        ("OTHER", "GAZE_AWAY", 2001, True),
+    ],
+)
+def test_each_run_issue_obeys_its_threshold_boundary(state, issue, length, expected):
+    records = span("CAMERA", 0, 30_000 - length) + span(state, 30_000 - length, 30_000)
+    r = run(records, 30_000)
+    assert (issue in issue_types(r)) is expected
+    if length in (2000, 5000):
+        assert r.issues[0].severity == 0.5
+
+
+@pytest.mark.parametrize(("camera_s", "expected"), [(9, False), (8, True)])
+def test_low_eye_contact_starts_below_the_threshold(camera_s, expected):
+    # 청중 9/30 = 0.3 은 기준 미만이 아니다
+    other = 30 - camera_s
+    records = [rec(t, "SCREEN" if t // 1000 % 2 else "OTHER") for t in range(0, other * 1000, 1000)]
+    r = run(records + secs(("CAMERA", camera_s), t0=other * 1000), 30_000)
+    assert ("GAZE_LOW_EYE_CONTACT" in issue_types(r)) is expected
+
+
+@pytest.mark.parametrize(("length", "runs"), [(2999, 0), (3000, 1), (3001, 1)])
+def test_reading_run_threshold_boundary(length, runs):
+    records = span("BOTTOM", 0, length) + [rec(length, "UNCERTAIN"), rec(length + 1000, "CAMERA")]
+    r = run(records, length + 2000, 0, spoken(0, length))
+    assert totals(r).get("reading_runs", 0) == runs
+
+
+@pytest.mark.parametrize("breaker", ["UNCERTAIN", "UNMEASURED", "GAP", "SCREEN", "silent"])
+def test_a_qualified_reading_run_is_counted_when_any_breaker_ends_it(breaker):
+    state = "BOTTOM" if breaker == "silent" else breaker
+    records = secs(("BOTTOM", 3), (state, 1), ("CAMERA", 1))
+    voiced = spoken(0, 3000) if breaker == "silent" else spoken(0, 5000)
+    first = run(records, 5000, 0, voiced)
+    assert [
+        (i.t_ms, i.values["reading_runs"]) for i in first.tally if "reading_runs" in i.values
+    ] == [(3000, 1)]
+    assert "reading_runs" not in totals(run(records, 5000, first.counted_until_ms, voiced))
+
+
+def test_a_record_starting_before_the_cursor_is_not_counted_again():
+    r = run(secs(("CAMERA", 30)), 30_000, 29_500)
+    assert (r.tally, r.counted_until_ms) == ([], 30_000)
+
+
+def test_every_ratio_is_null_when_its_denominator_is_zero():
+    m = run(secs(("UNCERTAIN", 30)), 30_000).metrics
+    ratios = (
+        m.audience_ratio, m.screen_ratio, m.script_ratio, m.away_ratio, m.reading_ratio,
+        m.audience_ratio_short, m.script_ratio_short, m.away_ratio_short,
+    )  # fmt: skip
+    assert ratios == (None,) * 8
+    assert (m.measured_ratio, m.script_run_ms, m.screen_run_ms, m.away_run_ms) == (0.0, 0, 0, 0)
+
+
+def test_missing_voice_records_preserve_gaze_problems():
+    r = run(secs(("CAMERA", 26), ("BOTTOM", 4)), 30_000, 0)
+    assert r.state == "SCRIPT"
+    [issue] = r.issues
+    assert (issue.issue_type, issue.severity) == ("GAZE_ON_SCRIPT", 0.5714)
+    assert r.metrics.reading_ratio is None
+    assert not {"speaking_ms", "reading_ms", "reading_runs"} & set(totals(r))
+
+
+def test_issue_confidence_uses_the_measurement_ratio_of_its_window():
+    alternating = [
+        rec(t, "SCREEN" if t // 1000 % 2 else "BOTTOM") for t in range(3000, 14_000, 1000)
+    ]
+    records = secs(("CAMERA", 3)) + alternating + secs(("BOTTOM", 4), t0=26_000)
+    r = run(records, 30_000)
+    assert {i.issue_type: i.confidence for i in r.issues} == {
+        "GAZE_ON_SCRIPT": 0.8,
+        "GAZE_LOW_EYE_CONTACT": 0.6,
+    }
+
+
+def test_records_with_null_optional_fields_are_read_as_zero():
+    # 코치의 요청 모델은 빠진 confidence · frames 를 null 로 넘긴다
+    records = [rec(t, "CAMERA", confidence=None, frames=None) for t in range(0, 30_000, 1000)]
+    r = run(records, 30_000)
+    assert (r.measurable, totals(r)) == (
+        True,
+        {"camera_ms": 1000, "total_ms": 1000, "measured_ms": 1000},
+    )
+
+
+def test_a_record_with_a_non_string_direction_keeps_its_second():
+    records = secs(("CAMERA", 29)) + [rec(29_000, "OTHER", direction=[])]
+    assert run(records, 30_000).tally[0].values["away_ms"] == 1000
+
+
+def test_mean_reliability_averages_records_not_milliseconds():
+    records = span("CAMERA", 0, 4000, reliability=0.4) + [
+        rec(4000, "CAMERA", duration_ms=500, reliability=1.0)
+    ]
+    r = run(records, 4500)
+    assert (r.metrics.mean_reliability, r.measurable) == (0.52, True)
+
+
+def test_a_huge_time_jump_does_not_make_a_huge_tally():
+    r = run([], 10**9, 0)
+    assert len(r.tally) <= 31
+    assert totals(r) == {"unmeasured_ms": 10**9, "total_ms": 10**9}
+
+
+def test_spoken_time_is_the_overlap_with_spoken_seconds():
+    r = run([], 1500, 0, [{"t_ms": 500, "voiced_ms": 800}])
+    assert totals(r)["speaking_ms"] == 1000

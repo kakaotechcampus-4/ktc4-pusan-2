@@ -30,7 +30,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .config import DEFAULT, EvidenceConfig, GazeConfig
+from .config import DEFAULT, INPUT_WINDOW_MS, EvidenceConfig, GazeConfig
 from .schemas import (
     GazeInput,
     GazeMetrics,
@@ -167,18 +167,38 @@ def _pieces(seg: _Seg, lo: int, hi: int) -> Iterator[tuple[int, int]]:
 
 
 class _Voiced:
-    """같은 1초의 발화 시간. 시각 p 를 덮는 1초가 말한 1초인지 답한다."""
+    """말한 1초들(voiced_ms 가 기준 이상인 1초)을 이어 붙인 구간. 시각 · 구간이 얼마나 말한 때인지 답한다.
+
+    발화 시간 한 개는 그 t_ms 부터 1초를 덮는다(음량 1초 기록과 시선 1초 기록은 같은 t_ms 격자다).
+    """
 
     def __init__(self, voiced: list[Voiced], cfg: GazeConfig) -> None:
         first: dict[int, int] = {}
         for v in voiced:  # 같은 1초가 두 번 오면 먼저 온 것
             first.setdefault(v.t_ms, v.voiced_ms)
-        self._t = sorted(first)
-        self._spoken = [first[t] >= cfg.speaking_min_voiced_ms for t in self._t]
+        spans: list[list[int]] = []
+        for t in sorted(t for t, ms in first.items() if ms >= cfg.speaking_min_voiced_ms):
+            if spans and t <= spans[-1][1]:
+                spans[-1][1] = max(spans[-1][1], t + SECOND_MS)
+            else:
+                spans.append([t, t + SECOND_MS])
+        self._spans = spans
+        self._starts = [s for s, _ in spans]
 
     def at(self, p: int) -> bool:
-        i = bisect.bisect_right(self._t, p) - 1
-        return i >= 0 and p < self._t[i] + SECOND_MS and self._spoken[i]
+        """시각 p 가 말한 1초 안인가."""
+        i = bisect.bisect_right(self._starts, p) - 1
+        return i >= 0 and p < self._spans[i][1]
+
+    def overlap(self, a: int, b: int) -> int:
+        """[a, b) 중 말한 1초에 든 ms."""
+        total = 0
+        i = max(0, bisect.bisect_right(self._starts, a) - 1)
+        while i < len(self._spans) and self._spans[i][0] < b:
+            s, e = self._spans[i]
+            total += max(0, min(b, e) - max(a, s))
+            i += 1
+        return total
 
 
 def _is_reading(seg: _Seg, spoken: _Voiced) -> bool:
@@ -196,24 +216,30 @@ def _tally(
 ) -> list[TallyItem]:
     """since_ms 이상인 1초마다 상태별 ms · 측정 · 전체 · 말한 시간 · 대본 의존(gaze-tracking.md 6-2 3번).
 
-    기록은 t_ms 가 since_ms 이상일 때 통째로 새것이다. 빈 시간은 [since_ms, t_ms) 안을 1초씩 낸다
-    (코치가 각 1초를 그 시각의 장에 더한다). 대본 의존 구간이 끝나면 끝난 1초에 reading_runs 1 을 더한다.
+    기록은 t_ms 가 since_ms 이상일 때 통째로 새것이다. 빈 시간은 [since_ms, t_ms) 안을 빈 시간의 시작부터
+    1초씩 낸다(코치가 각 1초를 그 시각의 장에 더한다). 다만 입력 창(30초)보다 오래된 빈 시간은 한 조각이다
+    -- 요청이 오래 빠진 뒤에도 몫의 개수가 시각 차이만큼 늘지 않게 한다(그 시간은 코치가 복구로 다시 센다).
+    대본 의존 구간이 끝나면 끝난 1초에 reading_runs 1 을 더한다.
     """
+    split_from = max(since_ms, t_ms - INPUT_WINDOW_MS)
     items: dict[int, dict[str, int]] = {}
     for seg in segs:
         if seg.record:
             parts = [(seg.t_ms, seg.end_ms)] if since_ms <= seg.t_ms < t_ms else []
         else:
-            parts = list(_pieces(seg, since_ms, t_ms))
+            old = (max(seg.t_ms, since_ms), min(seg.end_ms, split_from))
+            parts = [old] if old[1] > old[0] else []
+            parts += _pieces(seg, split_from, t_ms)
         for a, b in parts:
             ms = b - a
             values = {TALLY_KEY[seg.state]: ms, "total_ms": ms}
             if seg.state in MEASURED_STATES:
                 values["measured_ms"] = ms
-            if spoken.at(a):
-                values["speaking_ms"] = ms
+            speaking = spoken.overlap(a, b)
+            if speaking:
+                values["speaking_ms"] = speaking
                 if seg.state == "BOTTOM":
-                    values["reading_ms"] = ms
+                    values["reading_ms"] = speaking
             items[a] = values
     for end in _reading_run_ends(segs, spoken, cfg):
         if since_ms <= end < t_ms:
@@ -267,27 +293,27 @@ class _Window:
 
 
 def _window(segs: list[_Seg], lo: int, t_ms: int, spoken: _Voiced) -> _Window:
+    """[lo, t_ms) 의 상태별 ms · 말한 시간 · 대본 의존 시간, 창에 걸친 1초 기록들의 reliability 평균."""
     state_ms = dict.fromkeys(TALLY_KEY, 0)
     rel_sum = 0.0
-    rel_ms = speaking = reading = 0
+    rel_n = speaking = reading = 0
     for seg in segs:
         for a, b in _pieces(seg, lo, t_ms):
-            ms = b - a
-            state_ms[seg.state] += ms
+            state_ms[seg.state] += b - a
             if seg.record:
-                rel_sum += seg.reliability * ms
-                rel_ms += ms
-            if spoken.at(a):
-                speaking += ms
-                if seg.state == "BOTTOM":
-                    reading += ms
+                rel_sum += seg.reliability
+                rel_n += 1
+            ms = spoken.overlap(a, b)
+            speaking += ms
+            if seg.state == "BOTTOM":
+                reading += ms
     return _Window(
         span_ms=max(0, t_ms - lo),
         state_ms=state_ms,
         measured_ms=sum(state_ms[s] for s in MEASURED_STATES),
         speaking_ms=speaking,
         reading_ms=reading,
-        mean_reliability=rel_sum / rel_ms if rel_ms else 0.0,
+        mean_reliability=rel_sum / rel_n if rel_n else 0.0,
     )
 
 

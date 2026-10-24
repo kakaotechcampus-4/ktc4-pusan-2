@@ -71,3 +71,8 @@ def totals(result: JudgmentResult) -> dict[str, int]:
         for k, v in item.values.items():
             out[k] = out.get(k, 0) + v
     return out
+
+
+def span(state: str, t0: int, t1: int, **kw: Any) -> list[dict[str, Any]]:
+    """[t0, t1) 를 t0 부터 1초 기록으로 채운다. 마지막 기록은 남은 길이만큼 짧다."""
+    return [rec(t, state, duration_ms=min(1000, t1 - t), **kw) for t in range(t0, t1, 1000)]
