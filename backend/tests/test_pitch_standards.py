@@ -88,8 +88,7 @@ def test_post_saves_items_in_order_and_returns_them(
     response = _post(client, pitch_id, auth_headers)
 
     assert response.status_code == 200
-    # 컨트롤러가 결과를 pitch_id 키 안에 감싸 돌려준다 (FE types/standards.ts 가 이 모양 기준)
-    assert response.json()["pitch_id"] == {
+    assert response.json() == {
         "pitch_id": str(pitch_id),
         "standards": [{"standard": "추임새 5번 이하"}, {"standard": "대본 없이 발표하기"}],
         "except_standard": "발표 시간, 억양",
@@ -119,7 +118,7 @@ def test_post_again_makes_next_version(
     response = _post(client, pitch_id, auth_headers)
 
     assert response.status_code == 200
-    assert response.json()["pitch_id"]["except_standard"] is None
+    assert response.json()["except_standard"] is None
     assert _saved(db_session, pitch_id)[-1] == (2, 1, "적절한 음량")
 
 
