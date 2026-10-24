@@ -32,14 +32,16 @@ llms = script_llms(settings)
 # %% 모든 대본 분석 (캐시에 있으면 호출 0)
 all_rubrics: dict[str, list[EvaluationRubric]] = {}
 failures: dict[str, dict[int, str]] = {}
+causes: dict[str, dict[int, str]] = {}
 for path in script_files():
     rubrics, stats = run_script_analysis(path, conn, settings, llms=llms)
     all_rubrics[path.stem] = rubrics
     failures[path.stem] = stats.pop("failed")
+    causes[path.stem] = stats.pop("causes")
     print(path.name, stats, "실패한 슬라이드:", sorted(failures[path.stem]) or "-")
 
 # 실패한 슬라이드가 있으면 여기서 멈춘다. 성공한 슬라이드는 캐시에 남으므로 원인을 고치고 다시 실행하면 실패한 것만 호출한다.
-first_error = next((msg for failed in failures.values() for msg in failed.values()), None)
+first_error = next((msg for cause in causes.values() for msg in cause.values()), None)
 if first_error:
     raise RuntimeError(f"LLM 호출 실패 — 첫 오류: {first_error}")
 

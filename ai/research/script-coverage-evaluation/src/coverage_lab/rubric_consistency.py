@@ -96,7 +96,8 @@ def sample_rubrics(
         kind = "script.semantic#0" if k == 0 else "script.semantic"
         cache_put(cache if k == 0 else caches[k], kind, norms[i].content_hash, semantic_config, sem)
     if errors:
-        raise RuntimeError(f"1차 분석 호출 실패: {next(iter(errors.values()))}")
+        first = next(iter(errors.values()))
+        raise RuntimeError(f"1차 분석 호출 실패: {type(first).__name__}: {first}")
     n_calls = len(jobs)
 
     drafts, inputs = {}, {}
@@ -128,7 +129,8 @@ def sample_rubrics(
         cache=cache,
     )
     if errors:
-        raise RuntimeError(f"최종 결론 호출 실패: {next(iter(errors.values()))}")
+        first = next(iter(errors.values()))
+        raise RuntimeError(f"최종 결론 호출 실패: {type(first).__name__}: {first}")
     n_calls += final_calls
 
     finals = {

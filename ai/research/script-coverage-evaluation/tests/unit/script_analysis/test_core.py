@@ -18,6 +18,7 @@ def test_analyze_script_empty_slide_needs_no_llm():
         "final_calls": 0,
         "unit_calls": 0,
         "failed": {},
+        "causes": {},
     }
     assert len(rubrics) == 1
     assert rubrics[0].meta.script_name == "빈대본"
