@@ -198,7 +198,8 @@ class WsErrorCode(StrEnum):
 # BE 가 Take 를 끝낸 이유 (`takes.end_reason` 과 같은 값). `TAKE_ENDED` 에 실어 FE 가 분기한다.
 #   SILENCE · TIME_LIMIT : 자동 종료 (`AutoEndReason`)
 #   ABANDONED            : 창을 닫지 않고 끊긴 채 돌아오지 않았다. FE 가 STT 없이 발표를 이어
-#                          가는 중일 수 있다 — 발표를 마치고 끝내기 PUT 을 보내면 되살아난다
+#                          가는 중일 수 있다 — 발표를 마치고 끝내기 PUT 을 보내면 되살아난다.
+#                          첫 연결에 오면 시작하지 않은 채 끝난 Take 다 (새 Take 를 만듦 · 10분)
 #   CLOSED               : 창을 닫았다. 이어 가지 않는다
 TakeEndReason = Literal["SILENCE", "TIME_LIMIT", "ABANDONED", "CLOSED"]
 TAKE_END_REASONS: tuple[str, ...] = get_args(TakeEndReason)

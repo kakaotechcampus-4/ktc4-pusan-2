@@ -9,7 +9,7 @@
 
 import os
 import uuid
-from collections.abc import Callable, Generator
+from collections.abc import Awaitable, Callable, Generator
 from io import BytesIO
 from pathlib import Path
 
@@ -128,6 +128,13 @@ async def _no_abandon_timers(store: object) -> None:
     return None
 
 
+def _no_ready_sweep() -> Callable[[], Awaitable[None]]:
+    async def stop() -> None:
+        return None
+
+    return stop
+
+
 @pytest.fixture
 def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient]:
     from pitch_coach_backend import main
@@ -141,6 +148,8 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[Te
     monkeypatch.setattr(pitch_service, "delete_prefix", lambda prefix: None)
     # 앱이 뜰 때 진행 중인 Take 를 SessionLocal(테스트 DB 가 아니다)로 읽고 타이머를 건다. 막는다
     monkeypatch.setattr(main, "arm_abandoned_takes", _no_abandon_timers)
+    # 시작하지 않은 Take 정리도 SessionLocal 로 돈다. 테스트는 sweep_once 에 세션을 넘겨 따로 본다
+    monkeypatch.setattr(main, "start_ready_sweep", _no_ready_sweep)
     app.dependency_overrides[get_db] = lambda: db_session
     # 업로드 뒤 백그라운드 대본 파싱이 실제 AI 서버를 부르지 않게 막는다.
     # 파싱을 확인하는 테스트는 가짜 파서를 끼운 runner 로 다시 바꿔 끼운다

@@ -39,7 +39,9 @@ def versions(db_session: Session, pitch_id: uuid.UUID) -> Versions:
     return presentation.id, script.id
 
 
-def _make_take(db: Session, pitch_id: uuid.UUID, versions: Versions, take_number: int) -> Take:
+def _make_take(
+    db: Session, pitch_id: uuid.UUID, versions: Versions, take_number: int, status: str = "READY"
+) -> Take:
     take = Take(
         pitch_id=pitch_id,
         take_number=take_number,
@@ -48,6 +50,7 @@ def _make_take(db: Session, pitch_id: uuid.UUID, versions: Versions, take_number
         mode="COACHING",
         script_mode="HIGHLIGHT",
         goal_time_sec=300,
+        status=status,
     )
     db.add(take)
     db.flush()
@@ -215,7 +218,7 @@ def test_put_keeps_fields_that_were_not_sent(
     pitch_id: uuid.UUID,
     versions: Versions,
 ) -> None:
-    take = _make_take(db_session, pitch_id, versions, 1)
+    take = _make_take(db_session, pitch_id, versions, 1, status="RUNNING")
     started = "2026-10-07T10:00:00+09:00"
     ended = "2026-10-07T10:05:00+09:00"
     logs = [{"type": "slide", "at_ms": 0}]
@@ -250,7 +253,7 @@ def test_put_accepts_utc_z_suffix(
     pitch_id: uuid.UUID,
     versions: Versions,
 ) -> None:
-    take = _make_take(db_session, pitch_id, versions, 1)
+    take = _make_take(db_session, pitch_id, versions, 1, status="RUNNING")
 
     assert _put(client, take, auth_headers, {"ended_at": "2026-10-07T01:05:00Z"}).is_success
 
@@ -281,7 +284,7 @@ def test_put_rejects_end_before_start(
     versions: Versions,
 ) -> None:
     """한 요청 안에서도, 저장된 시작 시각과 비교해도 막는다."""
-    take = _make_take(db_session, pitch_id, versions, 1)
+    take = _make_take(db_session, pitch_id, versions, 1, status="RUNNING")
     started = "2026-10-07T10:00:00+09:00"
     before_start = "2026-10-07T09:59:00+09:00"
 
@@ -359,20 +362,16 @@ def test_put_on_analyzing_take_takes_times_only(
     )
 
 
-@pytest.mark.parametrize("status", ["READY", "RUNNING"])
 def test_put_end_finishes_a_take_that_never_sent_stop(
     client: TestClient,
     db_session: Session,
     auth_headers: dict[str, str],
     pitch_id: uuid.UUID,
     versions: Versions,
-    status: str,
 ) -> None:
-    """마이크를 못 열었거나 재연결을 포기한 FE 는 WS stop 을 못 보낸다. 시각을 보내는 PUT 이
-    Take 를 끝내야 리포트 분석이 시작된다. 인증 전에 끊겼으면 READY 그대로다."""
-    take = _make_take(db_session, pitch_id, versions, 1)
-    take.status = status
-    db_session.flush()
+    """발표 중에 재연결을 포기한 FE 는 WS stop 을 못 보낸다. 시각을 보내는 PUT 이 Take 를 끝내야
+    리포트 분석이 시작된다."""
+    take = _make_take(db_session, pitch_id, versions, 1, status="RUNNING")
     ended = "2026-10-07T10:05:00+09:00"
 
     response = _put(
@@ -382,6 +381,30 @@ def test_put_end_finishes_a_take_that_never_sent_stop(
     assert response.is_success
     db_session.refresh(take)
     assert (take.status, take.ended_at) == ("ANALYZING", datetime.fromisoformat(ended))
+
+
+def test_put_end_rejects_a_take_that_never_started(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """실시간 연결이 한 번도 붙지 않은(READY) Take 는 끝내지 않는다. FE 는 첫 ready 를 받은 뒤에
+    발표를 시작하므로 남은 기록이 없다. 시각도 적지 않는다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+
+    response = _put(
+        client,
+        take,
+        auth_headers,
+        {"started_at": "2026-10-07T10:00:00+09:00", "ended_at": "2026-10-07T10:05:00+09:00"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TAKE_NOT_STARTED"
+    db_session.refresh(take)
+    assert (take.status, take.started_at, take.ended_at) == ("READY", None, None)
 
 
 def test_put_end_revives_a_take_ended_as_abandoned(

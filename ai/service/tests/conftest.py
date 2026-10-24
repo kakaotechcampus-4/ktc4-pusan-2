@@ -5,7 +5,8 @@
   그래서 내 PC 와 CI(키 없음)의 결과가 같고, 실수로 실제 LLM 을 부를 수 없다.
   실제 호출은 `tests/live/` 가 `ai/.env` 를 직접 읽어 따로 한다
 - `client`: 실제 네트워크 없이 앱에 요청을 보내는 TestClient. 테스트마다 앱을
-  새로 만들어 한 테스트의 설정이 다른 테스트로 새지 않게 한다
+  새로 만들어 한 테스트의 설정이 다른 테스트로 새지 않게 한다. 대역은 꺼져 있다(기본)
+- `sample_client`: 규약 확인용 대역(`AI_ENABLE_SAMPLE`)을 켠 앱
 - `probe_client`: `client` 와 같은 앱에 실패를 일부러 내는 테스트 전용 경로(`/_probe/...`)를
   붙인 것. 에러 본문 · 요청 로그 테스트가 쓴다
 - `log_records`: `pitch_coach_ai` 로거가 남긴 로그를 모은 목록. 이 로거는 root 로 올려
@@ -27,6 +28,7 @@ for _name in (
 os.environ["LLM_TIMEOUT_SECONDS"] = "12"
 os.environ["LLM_MAX_RETRIES"] = "1"
 os.environ["WEB_CONCURRENCY"] = "1"
+os.environ["AI_ENABLE_SAMPLE"] = "false"
 
 import logging  # noqa: E402  # 위 환경변수를 먼저 넣어야 한다
 from collections.abc import Iterator  # noqa: E402
@@ -38,11 +40,18 @@ from pydantic import BaseModel  # noqa: E402
 
 from pitch_coach_ai.common import errors  # noqa: E402
 from pitch_coach_ai.main import create_app  # noqa: E402
+from pitch_coach_ai.settings import Settings  # noqa: E402
 
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     with TestClient(create_app()) as c:
+        yield c
+
+
+@pytest.fixture
+def sample_client() -> Iterator[TestClient]:
+    with TestClient(create_app(Settings(ai_enable_sample=True))) as c:
         yield c
 
 
