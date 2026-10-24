@@ -1,5 +1,16 @@
+import re
+
 from script_coverage.script_analysis.core import analyze_script
-from script_coverage.script_analysis.schemas import SlideScript
+from script_coverage.script_analysis.schemas import (
+    FinalKeyPoint,
+    FinalReview,
+    KeyPointDraft,
+    NameVerdict,
+    SentenceLabel,
+    SlideScript,
+    SlideSemanticAnalysis,
+    SlideUnits,
+)
 from tests.unit.fakes import empty_script_llms
 from tests.unit.shared.slides import SLIDES
 
@@ -98,3 +109,54 @@ def test_rubric_has_no_clock():
     second, _, _ = _run(_slides(6))
     assert first[0].model_dump() == second[0].model_dump()
     assert "created_at" not in first[0].meta.model_dump()
+
+
+class _DeckAwareLLM:
+    """메시지를 읽어 정해진 규칙으로 답하는 가짜 LLM (같은 메시지 → 같은 답)."""
+
+    def __init__(self, stage):
+        self.stage = stage
+
+    def invoke(self, messages):
+        text = messages[1][1]
+        sentence_ids = [int(i) for i in re.findall(r"\[S(\d+)\]", text)]
+        roles = [SentenceLabel(id=i, role="claim" if i == 0 else "evidence") for i in sentence_ids]
+        if self.stage == "semantic":
+            # 모든 장이 '도서관' 을 key_term 으로 올린다: 발표 공통 어휘인지는 다른 장을 봐야 안다
+            key_points = [
+                KeyPointDraft(content="도서관 이야기다.", sentence_ids=[0], key_terms=["도서관"])
+            ]
+            return SlideSemanticAnalysis(
+                sentence_roles=roles, core_claim="핵심", key_points=key_points
+            )
+        if self.stage == "final":
+            verdicts = [
+                NameVerdict(candidate_id=c, keep=True, reason="테스트")
+                for c in sorted(set(re.findall(r"\bN\d+\b", text)))
+            ]
+            return FinalReview(
+                sentence_roles=roles,
+                core_claim="핵심",
+                key_points=[FinalKeyPoint(content="도서관 이야기다.", sentence_ids=[0])],
+                name_verdicts=verdicts,
+                changes=[],
+            )
+        return SlideUnits(sentences=[])
+
+
+def _deck_run(slides, **kwargs):
+    llms = {f"{s}_llm": _DeckAwareLLM(s) for s in ("semantic", "final", "unit")}
+    rubrics, _ = analyze_script("대본", slides, **llms, model="test-model", **kwargs)
+    return {r.meta.slide_number: r for r in rubrics}
+
+
+def test_targets_rubric_equals_full_run_rubric():
+    """대상 장만 만들어도 그 장의 평가 기준은 전체를 만든 것과 같다 (키워드 · 공통 어휘 거름 · 이름 판정이 덱 전체 기준)."""
+    deck = _slides(4, 6, 7)
+    full = _deck_run(deck)
+    for number in (4, 6, 7):
+        picked = _deck_run(deck, targets=[number])
+        assert list(picked) == [number]
+        assert picked[number].model_dump() == full[number].model_dump()
+    # 시험이 덱 맥락에 민감한지: 한 장만 넣으면 결과가 달라진다
+    assert _deck_run(_slides(6))[6].model_dump() != full[6].model_dump()
