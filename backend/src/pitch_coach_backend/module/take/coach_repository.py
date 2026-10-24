@@ -53,6 +53,7 @@ class CoachRepository:
         *,
         mission_ids: list[uuid.UUID],
         standard_version: int | None,
+        raw_data_consent: bool,
     ) -> None:
         self.db.execute(
             update(Take)
@@ -60,6 +61,7 @@ class CoachRepository:
             .values(
                 mission_ids=[str(mission_id) for mission_id in mission_ids],
                 standard_version=standard_version,
+                raw_data_consent=raw_data_consent,
             )
         )
 

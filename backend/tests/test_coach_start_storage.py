@@ -133,6 +133,60 @@ def mission(db: Session, source: Take, priority: int, **fields: Any) -> Mission:
 def take_parts(pitch: Pitch, script: ScriptVersion, presentation: PresentationVersion):
     return pitch, script, presentation
 
+def test_starting_a_take_fixes_missions_criteria_and_consent(db_session: Session, take_parts, user):
+    pitch, script, presentation = take_parts
+    now = datetime.now(UTC)
+    # 리뷰가 있는 Take 중 가장 늦게 끝난 것의 미션을 싣는다. 번호 순서가 아니라 끝난 순서다
+    later_finished = reviewed(
+        db_session,
+        make_take(db_session, *take_parts, 1),
+        completed_at=now,
+    )
+    earlier_finished = reviewed(
+        db_session,
+        make_take(db_session, *take_parts, 2),
+        completed_at=now - timedelta(minutes=5),
+    )
+    second = mission(db_session, later_finished, 2)
+    first = mission(db_session, later_finished, 1)
+    mission(db_session, later_finished, 3, status="ACHIEVED")
+    mission(db_session, earlier_finished, 1)
+    db_session.add_all(
+        [
+            StandardAnalyses(
+                pitch_id=pitch.id, version=v, targets=[], excluded=[], meta=META, script_used=None
+            )
+            for v in (1, 2)
+        ]
+    )
+    user.raw_data_consent = True
+    take = make_take(db_session, *take_parts, 3)
+
+    assert coach_service.start_take(db_session, take.id) is True
+
+    db_session.refresh(take)
+    assert take.status == "RUNNING"
+    assert take.mission_ids == [str(first.id), str(second.id)]
+    assert take.standard_version == 2
+    assert take.raw_data_consent is True
+    db_session.refresh(first)
+    assert first.take_id == take.id, "판정은 take_id 가 같은 Take 의 리뷰만 덮는다"
+
+def test_a_take_is_started_once(db_session: Session, take_parts):
+    take = make_take(db_session, *take_parts, 1)
+
+    assert coach_service.start_take(db_session, take.id) is True
+    assert coach_service.start_take(db_session, take.id) is False, "다시 붙은 연결은 그대로 둔다"
+    assert coach_service.start_take(db_session, uuid.uuid7()) is False
+
+def test_first_take_starts_with_nothing_fixed(db_session: Session, take_parts):
+    take = make_take(db_session, *take_parts, 1)
+
+    coach_service.start_take(db_session, take.id)
+
+    db_session.refresh(take)
+    assert (take.mission_ids, take.standard_version, take.raw_data_consent) == ([], None, False)
+
 @pytest.mark.parametrize("initial_version", [None, 1])
 def test_review_uses_the_criteria_fixed_when_the_take_started(
     db_session: Session, take_parts, initial_version: int | None
