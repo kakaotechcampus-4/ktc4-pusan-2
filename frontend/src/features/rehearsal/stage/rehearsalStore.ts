@@ -47,6 +47,11 @@ interface RehearsalState {
   slideNumber: number;
   coach: CoachNote | null;
   indicators: Indicators;
+  /**
+   * 상태 표시가 낡았나 — 서버와 끊겨 더 오지 않습니다. 서버는 **바뀔 때만** 보내므로 끊기면 마지막
+   * 판정이 지금 상태처럼 남습니다. 지우지 않고 흐리게 둡니다(짧게 끊겼다 붙을 때 깜빡이지 않게)
+   */
+  indicatorsStale: boolean;
 
   setPhase: (phase: StagePhase) => void;
   setSlide: (slideNumber: number) => void;
@@ -54,6 +59,7 @@ interface RehearsalState {
   clearCoach: () => void;
   /** 받은 영역만 바꿉니다. 빈 객체는 '바뀌지 않음' 입니다 (`coach-agent.md` 5-3) */
   updateIndicators: (indicators: Indicators) => void;
+  setIndicatorsStale: (stale: boolean) => void;
   reset: () => void;
 }
 
@@ -62,6 +68,7 @@ const INITIAL = {
   slideNumber: 1,
   coach: null,
   indicators: {} as Indicators,
+  indicatorsStale: false,
 };
 
 export const useRehearsalStore = create<RehearsalState>((set) => ({
@@ -77,5 +84,7 @@ export const useRehearsalStore = create<RehearsalState>((set) => ({
     set((s) =>
       Object.keys(indicators).length === 0 ? s : { indicators: { ...s.indicators, ...indicators } },
     ),
+  setIndicatorsStale: (indicatorsStale) =>
+    set((s) => (s.indicatorsStale === indicatorsStale ? s : { indicatorsStale })),
   reset: () => set(INITIAL),
 }));

@@ -140,6 +140,12 @@ export interface SttSocketOptions {
   onAutoEnd?: (reason: AutoEndReason, message: string) => void;
   /** AI 코치의 한마디 · 상태 표시 (`coach`). `COACHING` 모드에서만 옵니다 */
   onCoach?: (message: CoachMessage) => void;
+  /**
+   * 서버와 이어졌다(`ready`) · 끊겼다. `onState` 와 따로 둡니다 — `stt_state` 에는 BE↔Deepgram 상태도
+   * 섞여 있어서(서버가 보내는 `degraded`), 연결은 멀쩡하고 코치도 계속 오는데 `ok` 가 아닐 수 있습니다.
+   * 코치 상태 표시가 낡았는지는 이 연결로만 압니다 (`useLiveCoach`)
+   */
+  onConnection?: (connected: boolean) => void;
   createSocket?: (url: string) => SocketLike;
   getToken?: (options: { renew: boolean }) => Promise<string | null>;
   /** 느린 재시도 간격을 고르는 난수 [0, 1). 테스트에서 간격을 고정하려고 둡니다 */
@@ -515,6 +521,7 @@ export class SttSocket {
         this.flushPending({ withSlideHistory: true });
         this.ready = true;
         this.options.onState(message.stt_state);
+        this.options.onConnection?.(true);
         // 인증을 기다리느라 미뤄 둔 종료가 있으면 이제 보냅니다
         if (this.stopping) this.sendStop();
         break;
@@ -596,9 +603,12 @@ export class SttSocket {
   }
 
   private handleClose(code: number): void {
+    const wasReady = this.ready;
     this.detach(this.socket);
     this.socket = null;
     this.ready = false;
+    // 이어져 있던 연결만 알립니다. 붙는 중에 닫힌 것은 원래 끊긴 상태입니다
+    if (wasReady && !this.disposed) this.options.onConnection?.(false);
 
     if (this.disposed) return;
 

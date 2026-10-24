@@ -415,6 +415,14 @@
   color: var(--color-ink-stage);
 }
 
+/* 서버와 끊겨 더 오지 않는 지난 판정. 경고색을 빼고 모두 흐리게 — 지우면 짧게 끊길 때마다 깜빡인다 */
+.coach .indicators[data-stale='true'] li {
+  border-color: color-mix(in srgb, var(--color-ink-stage) 12%, transparent);
+  background: transparent;
+  color: var(--color-stone);
+  opacity: 0.5;
+}
+
 .coach .rule {
   margin-left: auto;
   font-size: 11px;

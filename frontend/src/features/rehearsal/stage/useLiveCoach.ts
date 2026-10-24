@@ -16,12 +16,19 @@ const DISPLAY_MS = 8_000;
  * 실전 모드(`EXAM`)는 BE 가 보내지 않습니다. 혹시 와도 띄우지 않습니다 — 발표 중에 말하지 않는 것이
  * 실전 모드의 약속입니다.
  *
- * @returns `useSttStream` 의 `onCoach` 에 넘길 함수
+ * **끊기면 상태 표시를 흐리게 둡니다.** 서버는 바뀔 때만 보내서, 끊긴 뒤로는 마지막 판정이 지금 상태처럼
+ * 남습니다 — 재연결을 포기하면 남은 발표 내내 경고색이 그대로입니다. 떠 있던 한마디도 거둡니다.
+ * 다시 붙으면 흐림을 풉니다. BE 는 재연결 때 이전 표시를 잊고 다음 판단에서 다시 보내므로(약 1초)
+ * 곧 최신 상태로 바뀝니다. 기준은 `stt_state` 가 아니라 연결입니다 — 서버의 `degraded`(Deepgram 문제)
+ * 동안에도 코치는 계속 옵니다.
+ *
+ * @returns `useSttStream` 의 `onCoach` · `onConnection` 에 넘길 함수
  */
 export function useLiveCoach({ enabled, mode }: { enabled: boolean; mode: PracticeMode }) {
   const showCoach = useRehearsalStore((s) => s.showCoach);
   const clearCoach = useRehearsalStore((s) => s.clearCoach);
   const updateIndicators = useRehearsalStore((s) => s.updateIndicators);
+  const setIndicatorsStale = useRehearsalStore((s) => s.setIndicatorsStale);
   const hideTimerRef = useRef(0);
 
   // 발표가 끝나면(ENDING) 띄운 말을 거둡니다. 정리하는 동안 늦게 온 말도 띄우지 않습니다
@@ -33,7 +40,17 @@ export function useLiveCoach({ enabled, mode }: { enabled: boolean; mode: Practi
 
   useEffect(() => () => window.clearTimeout(hideTimerRef.current), []);
 
-  return useCallback(
+  const onConnection = useCallback(
+    (connected: boolean) => {
+      setIndicatorsStale(!connected);
+      if (connected) return;
+      window.clearTimeout(hideTimerRef.current);
+      clearCoach();
+    },
+    [setIndicatorsStale, clearCoach],
+  );
+
+  const onCoach = useCallback(
     (message: CoachMessage) => {
       if (!enabled || mode === 'EXAM') return;
 
@@ -51,4 +68,6 @@ export function useLiveCoach({ enabled, mode }: { enabled: boolean; mode: Practi
     },
     [enabled, mode, showCoach, clearCoach, updateIndicators],
   );
+
+  return { onCoach, onConnection };
 }

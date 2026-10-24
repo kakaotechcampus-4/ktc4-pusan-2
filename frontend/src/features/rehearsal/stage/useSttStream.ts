@@ -47,6 +47,7 @@ export function useSttStream({
   restoredMetrics,
   onClosed,
   onCoach,
+  onConnection,
 }: {
   takeId: string;
   stream: MediaStream | null;
@@ -68,6 +69,8 @@ export function useSttStream({
   onClosed?: () => void;
   /** AI 코치의 한마디 · 상태 표시. 서버가 `COACHING` 모드에서만 보냅니다 (`useLiveCoach`) */
   onCoach?: (message: CoachMessage) => void;
+  /** 서버와 이어졌다 · 끊겼다 (`SttSocket` `onConnection`). 코치 상태 표시가 낡았는지 압니다 */
+  onConnection?: (connected: boolean) => void;
 }) {
   /** 전사 한 줄이 들어갈 자리. 이 훅이 textContent 로 직접 씁니다 */
   const transcriptRef = useRef<HTMLSpanElement>(null);
@@ -100,11 +103,13 @@ export function useSttStream({
   const restoredMetricsRef = useRef(restoredMetrics);
   const onClosedRef = useRef(onClosed);
   const onCoachRef = useRef(onCoach);
+  const onConnectionRef = useRef(onConnection);
   useEffect(() => {
     onAutoEndRef.current = onAutoEnd;
     restoredMetricsRef.current = restoredMetrics;
     onClosedRef.current = onClosed;
     onCoachRef.current = onCoach;
+    onConnectionRef.current = onConnection;
   });
 
   useEffect(() => {
@@ -152,6 +157,9 @@ export function useSttStream({
             ? STT_ABANDONED_MESSAGE
             : STT_ERROR_MESSAGE[code],
         );
+      },
+      onConnection: (connected) => {
+        if (!cancelled) onConnectionRef.current?.(connected);
       },
       onCoach: (message) => {
         if (!cancelled) onCoachRef.current?.(message);

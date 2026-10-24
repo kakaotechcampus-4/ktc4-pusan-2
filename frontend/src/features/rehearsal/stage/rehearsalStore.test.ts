@@ -68,12 +68,32 @@ describe('단계는 한 방향으로만 간다', () => {
       atMs: 1000,
     });
     useRehearsalStore.getState().updateIndicators({ SPEED: 'FAST' });
+    useRehearsalStore.getState().setIndicatorsStale(true);
 
     useRehearsalStore.getState().reset();
 
     expect(useRehearsalStore.getState().slideNumber).toBe(1);
     expect(useRehearsalStore.getState().coach).toBeNull();
     expect(useRehearsalStore.getState().indicators).toEqual({});
+    expect(useRehearsalStore.getState().indicatorsStale).toBe(false);
+  });
+
+  it('끊기면 상태 표시를 지우지 않고 낡았다고만 표시한다 — 다시 붙으면 푼다', () => {
+    const { updateIndicators, setIndicatorsStale } = useRehearsalStore.getState();
+    updateIndicators({ SPEED: 'FAST', GAZE: 'SCRIPT' });
+
+    setIndicatorsStale(true);
+    expect(useRehearsalStore.getState().indicatorsStale).toBe(true);
+    // 값은 그대로 둡니다 — 짧게 끊겼다 붙을 때 알약이 사라졌다 나타나지 않게
+    expect(useRehearsalStore.getState().indicators).toEqual({ SPEED: 'FAST', GAZE: 'SCRIPT' });
+
+    const before = useRehearsalStore.getState();
+    setIndicatorsStale(true);
+    // 같은 값이면 상태를 바꾸지 않습니다 — 다시 그리지 않습니다
+    expect(useRehearsalStore.getState()).toBe(before);
+
+    setIndicatorsStale(false);
+    expect(useRehearsalStore.getState().indicatorsStale).toBe(false);
   });
 
   it('상태 표시는 받은 영역만 바꾸고, 빈 객체는 그대로 둔다', () => {

@@ -158,6 +158,7 @@ export function RehearsalPage() {
   const phase = useRehearsalStore((s) => s.phase);
   const coach = useRehearsalStore((s) => s.coach);
   const indicators = useRehearsalStore((s) => s.indicators);
+  const indicatorsStale = useRehearsalStore((s) => s.indicatorsStale);
   const setPhase = useRehearsalStore((s) => s.setPhase);
   const setSlide = useRehearsalStore((s) => s.setSlide);
   const resetStore = useRehearsalStore((s) => s.reset);
@@ -249,7 +250,7 @@ export function RehearsalPage() {
     setResume((current) => current && { ...current, left: 'CLOSED' });
   }, []);
   // 서버가 보낸 AI 코치의 한마디 · 상태 표시를 띄웁니다
-  const onCoach = useLiveCoach({ enabled: running, mode });
+  const { onCoach, onConnection } = useLiveCoach({ enabled: running, mode });
   /**
    * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
    * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
@@ -276,6 +277,7 @@ export function RehearsalPage() {
     restoredMetrics,
     onClosed: leaveClosed,
     onCoach,
+    onConnection,
   });
 
   // 장이 바뀐 시각을 WS `slide` 로 알립니다. 서버가 장 구간을 나누는 기준입니다 (#324 6-4)
@@ -827,7 +829,7 @@ export function RehearsalPage() {
               <span className="coach-text" role="status">
                 {coach?.text ?? ''}
               </span>
-              <CoachIndicators indicators={indicators} />
+              <CoachIndicators indicators={indicators} stale={indicatorsStale} />
             </div>
 
             <ScriptPane
@@ -924,11 +926,16 @@ function endButtonText(ending: boolean, confirming: boolean): string {
  * AI 코치의 상태 표시. 받은 영역만, 늘 같은 순서로 둡니다. 고칠 것이 있는 영역만 색을 입힙니다 —
  * 여섯 칸이 모두 칠해져 있으면 어디를 봐야 할지 모릅니다.
  */
-function CoachIndicators({ indicators }: { indicators: Indicators }) {
+function CoachIndicators({ indicators, stale }: { indicators: Indicators; stale: boolean }) {
   const views = indicatorViews(indicators);
   if (views.length === 0) return null;
   return (
-    <ul className="indicators" aria-label="코치 상태 표시">
+    <ul
+      className="indicators"
+      data-stale={stale}
+      aria-label={stale ? '코치 상태 표시 (연결이 끊겨 지난 판정)' : '코치 상태 표시'}
+      title={stale ? '연결이 끊겨 지난 판정이에요' : undefined}
+    >
       {views.map((v) => (
         <li key={v.area} data-tone={v.tone}>
           {v.label} <b>{v.value}</b>
