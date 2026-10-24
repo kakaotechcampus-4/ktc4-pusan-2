@@ -202,8 +202,9 @@ def finalize(
     """Take 종료. 마지막 창을 판정하고 열린 것을 닫아 Take 결과를 만든다.
 
     ① 마지막 창: decide 와 같은 판정 · 누적을 한 번 더 한다(말은 걸지 않는다). Take 끝을 STT 모듈
-       입력 take_end_ms 로 넘겨 뒤 간격을 기다리던 단어까지 판정한다. 이미 그 시각을 처리했으면
-       건너뛴다.
+       입력 take_end_ms 로 넘겨 뒤 간격을 기다리던 단어까지 판정한다. 그 시각을 이미 evaluate 에서
+       처리했어도 STT 를 닫은 뒤 확정된 단어와 Take 끝 신호는 판정하고(시간 몫은 시각 커서로 다시
+       세지 않는다), 마지막 처리보다 이른 시각이면 건너뛴다.
     ② 닫기: 재지 못한 효과는 NOT_MEASURED, 열린 문제 구간은 TAKE_END, 마지막 장은 SLIDE.
     ③ 센 구간이 [0, t_ms) 를 덮지 못하면 ReplayRequired.
     ④ 합계(Take · 장 번호별)를 영역 모듈의 summarize 에 넣어 areas 를 만들고, 판정 기준을 남긴다.
@@ -225,7 +226,9 @@ def finalize(
 
     sink = EventSink(state)
     run: JudgeRun | None = None
-    if state.last_t_ms is None or t > state.last_t_ms:
+    # 마지막 evaluate 와 같은 시각이어도 부른다 — STT 를 닫은 뒤 확정된 단어와 Take 끝 신호가 있다.
+    # 시간 몫은 시각 커서(since_ms == t)라 다시 세지 않는다. t 가 더 이르면 낡은 요청이라 건너뛴다
+    if state.last_t_ms is None or t >= state.last_t_ms:
         state, sink, run = _last_window(req, judges, cfg, state, sink)
     _close(state, t, sink, cfg)
 
@@ -275,7 +278,7 @@ def _finalize_replay(req: FinalizeRequest, judges: Judges, cfg: CoachConfig) -> 
     state, _ = load_state(coach_state)
     sink = EventSink(state)
     run: JudgeRun | None = None
-    if state.last_t_ms is None or t > state.last_t_ms:
+    if state.last_t_ms is None or t >= state.last_t_ms:
         state, sink, run = _last_window(last, judges, rebuild_cfg, state, sink)
     _close(state, t, sink, rebuild_cfg)
 
