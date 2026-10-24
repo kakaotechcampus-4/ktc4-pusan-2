@@ -339,7 +339,12 @@ class TakeRepository:
         )
         return result.rowcount > 0
 
-    def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
+    def mark_ended(
+        self,
+        take_id: uuid.UUID,
+        end_reason: str | None = None,
+        utterance_ends: list[int] | None = None,
+    ) -> bool:
         """진행 중인 Take 를 끝난 상태(`ANALYZING`)로 바꾼다. 바꿨으면 True.
 
         BE 가 자동으로 끝냈으면 `end_reason` 에 이유를 같이 적는다 (사용자가 끝냈으면 None).
@@ -350,16 +355,24 @@ class TakeRepository:
 
         떠난 것으로 끝낸 Take(`FAILED` · `ABANDONED`)도 되살린다. 재연결을 포기하고 STT 없이
         발표를 이어 간 FE 가 끝내기 PUT 을 보낸 것이다 — 기다리는 시간보다 길게 발표했다.
+
+        분석 단계는 `FINALIZING` 이다 — 이어서 Take 결과(finalize)를 만든다. 문장 끝 신호가
+        주어지면 같이 쓰고, 없으면(메모리에 없음) 있던 값을 둔다.
         """
         abandoned = and_(Take.status == "FAILED", Take.end_reason == "ABANDONED")
+        values: dict[str, Any] = {
+            "status": ENDED_STATUS,
+            "end_reason": end_reason,
+            "ended_at": func.coalesce(Take.ended_at, func.now()),
+            "analysis_stage": FINALIZING_STAGE,
+            "analysis_stage_at": func.now(),
+        }
+        if utterance_ends is not None:
+            values["utterance_ends"] = utterance_ends
         result = self.db.execute(
             update(Take)
             .where(Take.id == take_id, or_(Take.status.in_(IN_PROGRESS_STATUSES), abandoned))
-            .values(
-                status="ANALYZING",
-                end_reason=end_reason,
-                ended_at=func.coalesce(Take.ended_at, func.now()),
-            )
+            .values(**values)
         )
         return result.rowcount > 0
 
@@ -368,6 +381,7 @@ class TakeRepository:
         take_id: uuid.UUID,
         ended_at: datetime | ColumnElement[datetime],
         end_reason: str = "ABANDONED",
+        utterance_ends: list[int] | None = None,
     ) -> bool:
         """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유를 `end_reason` 으로 적는다. 바꿨으면 True.
 
@@ -376,14 +390,17 @@ class TakeRepository:
         `ended_at` 은 이걸 적는 지금이 아니라 마지막으로 연결이 끊긴 시각이다.
         `mark_ended` 처럼 UPDATE 하나로, 진행 중일 때만 바꾼다.
         """
+        values: dict[str, Any] = {
+            "status": "FAILED",
+            "end_reason": end_reason,
+            "ended_at": func.coalesce(Take.ended_at, ended_at),
+        }
+        if utterance_ends is not None:
+            values["utterance_ends"] = utterance_ends
         result = self.db.execute(
             update(Take)
             .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
-            .values(
-                status="FAILED",
-                end_reason=end_reason,
-                ended_at=func.coalesce(Take.ended_at, ended_at),
-            )
+            .values(**values)
         )
         return result.rowcount > 0
 
@@ -427,6 +444,19 @@ class TakeRepository:
         )
         return result.rowcount > 0
 
+    def utterance_ends(self, take_id: uuid.UUID) -> list[int]:
+        """저장된 문장 끝 신호. 없으면 빈 목록."""
+        return json_ints(self.db.scalar(select(Take.utterance_ends).where(Take.id == take_id)))
+
+    def save_utterance_ends(self, take_id: uuid.UUID, utterance_ends: list[int]) -> bool:
+        """진행 중인 Take 의 문장 끝 신호를 바꾼다. 끝난 Take 는 끝낼 때 적은 값을 둔다."""
+        result = self.db.execute(
+            update(Take)
+            .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
+            .values(utterance_ends=utterance_ends)
+        )
+        return result.rowcount > 0
+
 
 REVIEW_STALE_AFTER = timedelta(minutes=2)
 
@@ -436,3 +466,14 @@ def finished_order() -> tuple[ColumnElement[Any], ...]:
     칸을 만들기 전에 끝나 completed_at 이 없는 Take 는 뒤로 가고, 같은 시각이면 번호가 큰 것이다.
     """
     return (Take.completed_at.desc().nulls_last(), Take.take_number.desc())
+
+
+ENDED_STATUS = "ANALYZING"
+
+FINALIZING_STAGE = "FINALIZING"
+
+def json_ints(values: Any) -> list[int]:
+    """JSONB 정수 목록(`takes.utterance_ends` 등)을 읽는다. 정수가 아닌 값은 뺀다."""
+    if not isinstance(values, list):
+        return []
+    return [v for v in values if isinstance(v, int) and not isinstance(v, bool)]

@@ -60,6 +60,9 @@ class MetricsMessage(BaseModel):
     FE 는 1초마다 보내고, `stop` 직전에 마지막 1초 조각을 실제 길이로 한 번 더 보낸다. `t_ms` 는
     그 1초가 끝난 Take 시각이고 `gaze.t_ms` · `voice.t_ms` 는 시작 시각이다. 끊긴 동안 쌓아
     두었다가 다시 붙으면 보내므로 같은 1초가 또 올 수 있다 (`docs/ai/architecture.md` 1-4).
+
+    `slide_number` 는 참고값이다. 장은 `slide` 메시지로 정한다. `buffered` 는 끊긴 동안 쌓아 둔 것을
+    다시 보낼 때만 true 다 — BE 는 이것으로 코치를 부르지 않고 창 · 원자료에만 넣는다 (2절).
     """
 
     type: Literal["metrics"]
@@ -67,6 +70,7 @@ class MetricsMessage(BaseModel):
     gaze: SecondRecord | None
     voice: SecondRecord | None
     slide_number: Annotated[int, Field(ge=1, le=MAX_SLIDE_NUMBER)] | None
+    buffered: bool = False
 
     @model_validator(mode="after")
     def _records_end_at_t_ms(self) -> MetricsMessage:
@@ -78,7 +82,22 @@ class MetricsMessage(BaseModel):
         return self
 
 
-ClientMessage = Annotated[AuthMessage | StopMessage | MetricsMessage, Field(discriminator="type")]
+class SlideMessage(BaseModel):
+    """장을 넘겼다. `t_ms` 는 그 장으로 넘어온 Take 시각이다 (`docs/ai/architecture.md` 1-4).
+
+    FE 는 Take 시작(1번 장, 0) · 장을 넘길 때마다 · 새로고침해 이어 갈 때(이어받은 장과 그 장으로
+    넘어온 원래 시각) 보낸다. 끊긴 동안 넘긴 장은 쌓아 두었다가 다시 붙으면 시각 순서대로 보내므로
+    같은 것이 또 올 수 있다 — 같은 시각은 먼저 받은 것을 둔다.
+    """
+
+    type: Literal["slide"]
+    slide_number: int = Field(ge=1, le=MAX_SLIDE_NUMBER)
+    t_ms: int = Field(ge=0, le=MAX_METRICS_T_MS)
+
+
+ClientMessage = Annotated[
+    AuthMessage | StopMessage | MetricsMessage | SlideMessage, Field(discriminator="type")
+]
 client_message_adapter: TypeAdapter[ClientMessage] = TypeAdapter(ClientMessage)
 
 
@@ -205,6 +224,21 @@ class AutoEndMessage(BaseModel):
     type: Literal["auto_end"] = "auto_end"
     reason: AutoEndReason
     message: str
+
+
+class CoachMessage(BaseModel):
+    """실시간 코치의 한마디와 상태 표시 (`docs/ai/architecture.md` 1-4).
+
+    `COACHING` 모드에서 코치가 말을 걸 때(`action` = `INTERVENE`)와 상태 표시가 바뀔 때만 보낸다.
+    `EXAM` 모드에서는 보내지 않는다. `feedback` 은 말을 걸 때만 있다. `indicators` 는 영역 → 상태
+    이고, 빈 객체는 '바뀌지 않음'이다 — FE 는 이전 표시를 그대로 둔다.
+    """
+
+    type: Literal["coach"] = "coach"
+    t_ms: int
+    action: str
+    feedback: dict[str, Any] | None
+    indicators: dict[str, str]
 
 
 class ErrorMessage(BaseModel):

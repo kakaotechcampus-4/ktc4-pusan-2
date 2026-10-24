@@ -287,6 +287,7 @@ def append_transcript_segment(
         words=[w.model_dump() for w in segment_dto.words],
         confidence=segment_dto.confidence,
         speech_final=segment_dto.speech_final,
+        final_at_ms=segment_dto.final_at_ms,
     )
     try:
         saved = TakeRepository(db).save_transcript_segment(segment)
@@ -442,28 +443,39 @@ def mark_running(db: Session, take_id: uuid.UUID) -> bool:
     return coach_service.start_take(db, take_id)
 
 
-def mark_ended(db: Session, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
-    """Take 를 끝냈다. 상태를 `ANALYZING` 으로 바꾸고 커밋한다.
+def mark_ended(
+    db: Session,
+    take_id: uuid.UUID,
+    end_reason: str | None = None,
+    utterance_ends: list[int] | None = None,
+) -> bool:
+    """Take 를 끝냈다. 상태를 `ANALYZING`, 분석 단계를 `FINALIZING` 으로 바꾸고 커밋한다.
 
     WS stop 이 부르고, STT 없이 끝낸 Take 는 Take PUT(`ended_at`)이 부른다. BE 가 자동으로
     끝냈으면 `end_reason` 에 이유를 남긴다 (처음 적은 이유가 남는다). 떠난 것으로 끝낸 Take 는
-    되살린다 (STT 없이 발표를 이어 간 FE 의 끝내기다).
+    되살린다 (STT 없이 발표를 이어 간 FE 의 끝내기다). `utterance_ends` 는 Take 동안 메모리에
+    들고 있던 문장 끝 신호다 — 있으면 같이 쓴다 (`docs/ai/architecture.md` 1-3 3번 ③).
     Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
     """
-    marked = TakeRepository(db).mark_ended(take_id, end_reason)
+    marked = TakeRepository(db).mark_ended(take_id, end_reason, utterance_ends)
     db.commit()
     return marked
 
 
 def mark_abandoned(
-    db: Session, take_id: uuid.UUID, ended_at: datetime, end_reason: str = "ABANDONED"
+    db: Session,
+    take_id: uuid.UUID,
+    ended_at: datetime,
+    end_reason: str = "ABANDONED",
+    utterance_ends: list[int] | None = None,
 ) -> bool:
     """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유(`ABANDONED` · `CLOSED`)를 적고 커밋한다.
 
     연결 없이 정리된 스트림에 정해진 시간 동안 다시 붙지 않으면 부른다. `ended_at` 은 마지막으로
-    연결이 끊긴 시각이다. Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
+    연결이 끊긴 시각이다. Take 동안 모은 문장 끝 신호가 있으면 같이 쓴다 — 끝내기 PUT 이 되살리면
+    replay 가 쓴다. Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
     """
-    marked = TakeRepository(db).mark_abandoned(take_id, ended_at, end_reason)
+    marked = TakeRepository(db).mark_abandoned(take_id, ended_at, end_reason, utterance_ends)
     db.commit()
     return marked
 
@@ -474,3 +486,13 @@ def running_takes(db: Session) -> list[tuple[uuid.UUID, datetime]]:
 
 
 ABANDON_AFTER_SEC = 5 * 60.0
+
+def stored_utterance_ends(db: Session, take_id: uuid.UUID) -> list[int]:
+    """Take 에 저장된 문장 끝 신호. 앱이 Take 도중에 다시 떴을 때 이어 받는다."""
+    return TakeRepository(db).utterance_ends(take_id)
+
+def save_utterance_ends(db: Session, take_id: uuid.UUID, utterance_ends: list[int]) -> bool:
+    """진행 중인 Take 의 문장 끝 신호를 적어 둔다 (앱을 내릴 때). 끝난 Take 는 그대로 둔다."""
+    saved = TakeRepository(db).save_utterance_ends(take_id, utterance_ends)
+    db.commit()
+    return saved

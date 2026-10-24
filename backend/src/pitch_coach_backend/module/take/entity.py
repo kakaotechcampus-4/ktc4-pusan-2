@@ -116,6 +116,8 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
 
+    utterance_ends: Mapped[list[int] | None] = mapped_column(JSONB)
+
 
 class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """AI 결과. (take_id, kind) 마다 하나다.
@@ -257,6 +259,8 @@ class TakeTranscriptSegment(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     # endpointing 이 침묵을 감지한 문장 경계인지
     speech_final: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
+    final_at_ms: Mapped[int | None] = mapped_column(Integer)
+
 
 class TakeMetricSecond(CreatedAtMixin, Base):
     """발표 중 FE 가 1초마다 보낸 측정값(WS `metrics`) 1건. Take 결과를 다시 만들 때 쓰는 원자료다.
@@ -288,3 +292,20 @@ class TakeMetricSecond(CreatedAtMixin, Base):
     voice: Mapped[Any | None] = mapped_column(JSONB)
     # 그 metrics 를 받았을 때의 실시간 STT 상태. 복구 때 그동안의 단어를 셀지 정한다
     stt_status: Mapped[str] = mapped_column(String(16), nullable=False)
+
+class TakeSlideEvent(CreatedAtMixin, Base):
+    """발표 중 장을 넘긴 기록(WS `slide`) 1건. 장 구간 나누기 · replay · 실시간 지금 장이 이걸 쓴다.
+
+    `metrics.slide_number` 는 참고값이고 장은 이 표로 정한다 (`docs/ai/architecture.md` 1-3 2번).
+    FE 는 끊긴 동안 넘긴 장을 쌓아 두었다가 다시 보내서 같은 이벤트가 또 온다 — 먼저 저장한
+    것을 둔다.
+    """
+
+    __tablename__ = "take_slide_events"
+
+    take_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), primary_key=True
+    )
+    # 그 장으로 넘어온 Take 시각 (ms) — WS `slide` 의 t_ms
+    started_ms: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slide_number: Mapped[int] = mapped_column(Integer, nullable=False)

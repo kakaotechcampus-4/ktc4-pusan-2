@@ -16,7 +16,7 @@ Take 를 끝낼 때(`ANALYZING`)는 그 전에 `seal` 하고 `flush` 를 기다�
 import uuid
 
 from pitch_coach_backend.core.row_buffer import RowBuffer
-from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO
+from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO, SlideEvent
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.realtime.transcript_store import TranscriptStore
 
@@ -36,6 +36,21 @@ class MetricBuffer(RowBuffer[MetricSecondCreateDTO]):
             what="1초 원자료",
             batch=METRICS_BATCH,
             key=lambda row: row.t_ms,
+            max_unsaved=MAX_UNSAVED_METRICS,
+            gone_errors=(NonExistentTake,),
+        )
+
+
+class SlideBuffer(RowBuffer[SlideEvent]):
+    """장 변경 (take_slide_events). 받는 대로 넣는다."""
+
+    def __init__(self, take_id: uuid.UUID, store: TranscriptStore) -> None:
+        super().__init__(
+            take_id,
+            store.append_slide_events,
+            what="장 변경",
+            batch=1,
+            key=lambda event: event.started_ms,
             max_unsaved=MAX_UNSAVED_METRICS,
             gone_errors=(NonExistentTake,),
         )

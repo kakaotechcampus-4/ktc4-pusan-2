@@ -1,13 +1,20 @@
 """코치 연동의 도메인 작업. 기능별 PR에서 단계적으로 연결한다."""
 
 import uuid
+from collections.abc import Iterable
 
+from psycopg.errors import ForeignKeyViolation
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.take.coach_repository import (
     CoachRepository,
 )
+from pitch_coach_backend.module.take.dto import (
+    SlideEvent,
+)
+from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.user import service as user_service
 
 
@@ -41,3 +48,17 @@ def start_take(db: Session, take_id: uuid.UUID) -> bool:
     )
     db.commit()
     return True
+
+
+def append_slide_events(db: Session, take_id: uuid.UUID, events: Iterable[SlideEvent]) -> None:
+    """장 변경을 저장한다. 같은 시각은 먼저 저장한 것을 둔다. Take 가 지워졌으면 `NonExistentTake`.
+    """
+    rows = [{"slide_number": e.slide_number, "started_ms": e.started_ms} for e in events]
+    try:
+        CoachRepository(db).append_slide_events(take_id, rows)
+    except IntegrityError as e:
+        db.rollback()
+        if isinstance(e.orig, ForeignKeyViolation):
+            raise NonExistentTake() from e
+        raise
+    db.commit()
