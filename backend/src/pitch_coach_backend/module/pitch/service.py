@@ -578,7 +578,7 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         file_url=generate_presigned_url(presentation_version.file_key),
         page_count=presentation_version.page_count,
         description=presentation_version.description,
-        created_at=presentation_version.created_at.date()
+        created_at=presentation_version.created_at.astimezone(KST).date()
     )
 
 def add_pitch_standard_service(
