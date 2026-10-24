@@ -17,7 +17,7 @@ from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 
 from script_parser import parse_script
-from script_parser.schemas import SeparatedSlides
+from script_parser.schemas import LLMOutput
 
 ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "data" / "scripts"
@@ -39,7 +39,7 @@ def build_llm() -> Runnable:
         api_key=api_key,
         model=model,
     )
-    return llm.with_structured_output(SeparatedSlides)
+    return llm.with_structured_output(LLMOutput)
 
 
 def natural_key(path: Path) -> list:
