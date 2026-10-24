@@ -10,7 +10,7 @@ from typing import Any
 
 from filler.config import FillerConfig
 from filler.core import judge
-from filler.schemas import JudgmentResult
+from filler.schemas import JudgmentResult, TallyItem
 
 #: 규칙 테스트가 쓰는 기준값. 지금 config.py 기본값과 같지만, 기준값을 다시 골라도
 #: 규칙 테스트가 깨지지 않게 따로 적는다. 기본값 자체는 test_examples · test_contract 가 본다
@@ -27,6 +27,9 @@ CFG = FillerConfig(
 
 #: 사전에 없는 단어. 앞뒤 이웃으로 쓴다
 PLAIN = "발표"
+
+TIME_KEYS = {"elapsed_ms", "total_ms"}
+TIER_KEYS = {"filler_t1", "filler_t2", "filler_t3"}
 
 
 def word(text: str, start_ms: int, end_ms: int) -> dict[str, Any]:
@@ -66,10 +69,38 @@ def check_contract(result: JudgmentResult, inp: dict[str, Any]) -> None:
     assert JudgmentResult.model_validate(result.model_dump()) == result
     assert (result.evaluator, result.area) == ("filler", "FILLER")
     assert re.fullmatch(r"filler-\d+\.\d+\+[0-9a-f]{12}", result.criteria_version)
-    assert result.counted_until_ms == max(result.t_ms, inp["since_ms"])
+    since = inp["since_ms"]
+    assert result.counted_until_ms == max(result.t_ms, since)
+    # 커서는 되돌아가지 않는다
     assert result.words_counted_until_ms >= inp["words_since_ms"]
-    if not result.measurable:
+    for item in result.tally:
+        # 값이 0 인 키는 뺀다
+        assert all(v > 0 for v in item.values.values()), item
+        if "total_ms" in item.values:
+            # 1초 몫: 새 시간 안의 1초 하나
+            assert item.values.keys() <= TIME_KEYS
+            assert since <= item.t_ms < result.t_ms
+            assert item.values["total_ms"] <= 1000
+            assert item.values.get("elapsed_ms", 0) <= item.values["total_ms"]
+        else:
+            # 단어 몫: 새 군더더기 하나
+            assert item.values["filler_count"] == 1
+            assert sum(k in TIER_KEYS for k in item.values) == 1
+            assert sum(k.startswith("filler_word:") for k in item.values) == 1
+    if result.measurable:
+        assert result.state in ("NORMAL", "HIGH")
+        assert result.metrics.recent_filler_count is not None
+        assert [i.issue_type for i in result.issues] == (
+            ["FILLER_FREQUENT"] if result.state == "HIGH" else []
+        )
+    else:
         assert result.state == "UNKNOWN" and result.issues == [] and result.words == []
+        assert result.metrics.recent_filler_count is None and result.metrics.filler_per_min is None
+        assert all("elapsed_ms" not in i.values for i in result.tally)
+    for issue in result.issues:
+        assert issue.area == result.area
+        assert 0.5 <= issue.severity <= 1.0
+        assert issue.confidence == 1.0
     for item in result.words:
         # 사전에 없으면 tier 가 없고 군더더기가 아니다. 보류는 사전에 있는 T2 · T3 단어뿐이다
         if item.tier is None:
@@ -101,3 +132,22 @@ def gap_case(
         word(PLAIN, end + after, end + after + 300),
     ]
     return run(end + after + 300, words, config=config, **overrides)
+
+
+def fillers(n: int, *, start_ms: int = 1_000, step_ms: int = 1_000) -> list[dict[str, Any]]:
+    """채움말 "음" n 개. step_ms 간격으로 300 ms 씩 말한다."""
+    return [word("음", start_ms + k * step_ms, start_ms + k * step_ms + 300) for k in range(n)]
+
+
+def total(tally: list[TallyItem], key: str) -> int:
+    return sum(item.values.get(key, 0) for item in tally)
+
+
+def word_items(result: JudgmentResult) -> list[TallyItem]:
+    """단어 몫 (1초 몫이 아닌 것)."""
+    return [i for i in result.tally if "total_ms" not in i.values]
+
+
+def time_items(result: JudgmentResult) -> list[TallyItem]:
+    """1초 몫."""
+    return [i for i in result.tally if "total_ms" in i.values]

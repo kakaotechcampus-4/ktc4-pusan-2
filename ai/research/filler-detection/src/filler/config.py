@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import unicodedata
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def normalize(word: str) -> str:
@@ -75,7 +75,7 @@ class FillerConfig(BaseModel):
     #: 최근 창(잦음 판정, ms). BE 가 보내는 창 60초 안
     window_ms: int = 60_000
     #: FILLER_FREQUENT 기준값: 최근 창 군더더기 수가 이 값 이상이면 HIGH
-    frequent_count: int = 6
+    frequent_count: int = Field(6, ge=1)
     #: 아주 나쁨 값. 이때 severity 가 1.0
     frequent_bad: int = 15
     #: filler_per_min 을 내는 최소 관측 시간(ms)

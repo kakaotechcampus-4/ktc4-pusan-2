@@ -10,6 +10,9 @@
   2. 창 고르기: `stt_ok_since_ms` 앞 · 시각이 거꾸로 · 겹친 단어를 뺀다.
   3. 단어마다 사전에서 층을 찾고 앞 · 뒤 간격을 잰다.
   4. 층별 규칙으로 군더더기 · 아님 · 보류를 정한다.
+  5. 새 몫 세기: 판정이 정해진 새 군더더기를 `tally` 에 더하고 단어 커서를 보류 단어 앞까지 옮긴다.
+  6. 시간 몫: `since_ms` 부터 `t_ms` 까지 1초마다 `total_ms` · `elapsed_ms` 를 낸다.
+  7. 지표 · 상태 · 문제: 최근 창의 군더더기 수와 분당 수, 기준 이상이면 `FILLER_FREQUENT`.
 고칠 때 주의: 판정 규칙이나 이유 문자열의 뜻이 바뀌면 `version.py` 의 기능 버전을 올리고
 filler.md 6-1 과 `examples/` 를 함께 고친다. 파일 · 환경변수 · 시계 · 난수 · print 를 쓰지 않는다
 (같은 입력에 같은 결과, 서비스로 폴더째 옮겨도 고칠 곳이 없게 — filler.md 4-3).
@@ -27,12 +30,16 @@ from .config import DEFAULT, FillerConfig, normalize
 from .schemas import (
     FillerInput,
     FillerMetrics,
+    JudgmentIssue,
     JudgmentResult,
+    TallyItem,
     Tier,
     Word,
     WordJudgment,
 )
 from .version import FEATURE_VERSION
+
+TICK_MS = 1_000
 
 __all__ = ["judge", "normalize"]
 
@@ -75,7 +82,7 @@ def judge(
     }
 
     if not stt_ok:
-        # 끊긴 동안의 듬성한 단어로 잘못 세지 않게 단어를 판정하지 않는다 (filler.md 7절)
+        # 끊긴 동안의 듬성한 단어로 잘못 세지 않게 단어를 판정하지 않고 시간만 센다 (filler.md 7절)
         return [
             JudgmentResult(
                 **common,
@@ -84,23 +91,27 @@ def judge(
                 state="UNKNOWN",
                 words=[],
                 metrics=FillerMetrics(recent_filler_count=None, filler_per_min=None),
-                tally=[],
+                tally=_time_tally(inp, t_ms, counted_ok=False),
                 issues=[],
             )
         ]
 
-    accepted = _select_window(inp)
-    judged = _judge_words(accepted, inp, config)
+    entries = _window(inp)
+    judged = _judge_words(entries, inp, config)
+    word_items, cursor = _word_tally(entries, judged, inp)
+    recent, per_min = _recent_metrics(judged, inp, t_ms, config)
+    state = "HIGH" if recent >= config.frequent_count else "NORMAL"
+    issues = [_frequent_issue(judged, recent, per_min, t_ms, config)] if state == "HIGH" else []
     return [
         JudgmentResult(
             **common,
-            words_counted_until_ms=inp.words_since_ms,
+            words_counted_until_ms=cursor,
             measurable=True,
-            state="NORMAL",
+            state=state,
             words=[j.out for j in judged],
-            metrics=FillerMetrics(recent_filler_count=None, filler_per_min=None),
-            tally=[],
-            issues=[],
+            metrics=FillerMetrics(recent_filler_count=recent, filler_per_min=per_min),
+            tally=[*word_items, *_time_tally(inp, t_ms, counted_ok=True)],
+            issues=issues,
         )
     ]
 
@@ -130,15 +141,20 @@ def _is_accepted(w: Word, last_end: int | None, words_since_ms: int) -> bool:
     return not (w.end_ms > words_since_ms and w.start_ms < words_since_ms)
 
 
-def _select_window(inp: FillerInput) -> list[Word]:
-    """판정할 단어(받아들인 단어)만 순서대로 고른다."""
-    accepted: list[Word] = []
+def _window(inp: FillerInput) -> list[tuple[Word, bool]]:
+    """창 안 단어를 (start_ms, end_ms) 순으로 돌려준다. 짝의 뒤는 받아들였는지(판정할 단어인지).
+
+    뺀 단어는 `words` 출력에 넣지 않지만, 커서 걷기(`_word_tally`)에서는 "커서만 넘기는 단어"로
+    쓰므로 원래 순서와 함께 기억한다.
+    """
+    entries: list[tuple[Word, bool]] = []
     last_end: int | None = None
     for w in _sorted_window(inp):
-        if _is_accepted(w, last_end, inp.words_since_ms):
-            accepted.append(w)
+        ok = _is_accepted(w, last_end, inp.words_since_ms)
+        entries.append((w, ok))
+        if ok:
             last_end = w.end_ms
-    return accepted
+    return entries
 
 
 # --------------------------------------------------------------------------
@@ -163,8 +179,11 @@ def _tier_of(key: str, config: FillerConfig) -> Tier | None:
     return None
 
 
-def _judge_words(ws: list[Word], inp: FillerInput, config: FillerConfig) -> list[_Judged]:
+def _judge_words(
+    entries: list[tuple[Word, bool]], inp: FillerInput, config: FillerConfig
+) -> list[_Judged]:
     """받아들인 단어마다 층 · 군더더기 여부 · 이유를 정한다."""
+    ws = [w for w, ok in entries if ok]
     ends = inp.utterance_ends
     out: list[_Judged] = []
     for i, w in enumerate(ws):
@@ -275,6 +294,133 @@ def _judge_gap(
         if sentence_start and after_ok:
             return True, REASON_SENTENCE_START
     return False, REASON_SHORT_GAP
+
+
+# --------------------------------------------------------------------------
+# 새 몫 세기 · 단어 커서 · 시간 몫 (filler.md 6-1 5 · 7)
+# --------------------------------------------------------------------------
+
+
+def _word_tally(
+    entries: list[tuple[Word, bool]], judged: list[_Judged], inp: FillerInput
+) -> tuple[list[TallyItem], int]:
+    """판정이 정해진 새 군더더기를 세고 단어 커서를 옮긴다.
+
+    단어를 (start_ms, end_ms) 순으로 걸으며 `end_ms` 가 `words_since_ms` 보다 큰 새 단어만 본다.
+    뺀 단어는 커서만 넘기고, 보류 단어를 만나면 멈춘다(뒤 단어는 보지 않는다). 멈출 때 커서는
+    받은 값 · 판정이 정해진 단어의 end 최댓값 · 보류 단어 시작 이전에 끝난 뺀 단어의 end 최댓값
+    이다(보류 단어보다 늦게 끝나는 뺀 단어는 넣지 않는다). 커서는 `max` 로만 옮겨서 시각이 이른
+    단어가 와도 받은 값보다 작아지지 않는다. 한 번 센 몫은 바꾸지 않는다.
+    몫의 `t_ms` 는 그 단어의 `start_ms` 다(코치가 말한 때의 장에 넣도록).
+    """
+    received = inp.words_since_ms
+    decided_end = received  # 받아들여 판정이 정해진 단어의 end 최댓값
+    dropped_ends: list[int] = []  # 뺀 단어의 end
+    items: list[TallyItem] = []
+    results = iter(judged)
+    pending_start: int | None = None
+    for w, ok in entries:
+        j = next(results) if ok else None
+        if w.end_ms <= received:
+            continue
+        if j is None:
+            dropped_ends.append(w.end_ms)
+            continue
+        if j.out.is_filler is None:
+            pending_start = w.start_ms
+            break
+        decided_end = max(decided_end, w.end_ms)
+        if j.out.is_filler and j.out.tier is not None:
+            items.append(
+                TallyItem(
+                    t_ms=w.start_ms,
+                    values={
+                        "filler_count": 1,
+                        f"filler_{j.out.tier.lower()}": 1,
+                        f"filler_word:{j.key}": 1,
+                    },
+                )
+            )
+    # 보류 단어에서 멈췄으면, 그 단어 시작 뒤에 끝나는 뺀 단어(겹친 단어 등)는 커서에 넣지 않는다:
+    # 커서보다 끝이 이른 보류 단어가 남으면 다음 요청이 그 단어를 영영 세지 못한다
+    # (architecture.md 7절). 멈추지 않았으면 뺀 단어도 모두 넘긴다.
+    skipped = [e for e in dropped_ends if pending_start is None or e <= pending_start]
+    cursor = max([decided_end, *skipped])
+    return items, cursor
+
+
+def _time_tally(inp: FillerInput, t_ms: int, counted_ok: bool) -> list[TallyItem]:
+    """`since_ms` 부터 `t_ms` 까지 1초마다 시간 몫을 낸다.
+
+    `total_ms` 는 그 1초(마지막 조각은 1000 미만일 수 있음), `elapsed_ms` 는 그중 STT 가 ok 였던
+    부분(`stt_ok_since_ms` 이후)이다. 요청이 빠져 새 시간이 여러 초여도 1초마다 나눈다.
+    """
+    items: list[TallyItem] = []
+    s = inp.since_ms
+    while s < t_ms:
+        dur = min(TICK_MS, t_ms - s)
+        values: dict[str, int] = {}
+        if counted_ok:
+            elapsed = max(0, (s + dur) - max(s, inp.stt_ok_since_ms))
+            if elapsed > 0:
+                values["elapsed_ms"] = elapsed
+        values["total_ms"] = dur
+        items.append(TallyItem(t_ms=s, values=values))
+        s += dur
+    return items
+
+
+# --------------------------------------------------------------------------
+# 지표 · 상태 · 문제 (filler.md 5-4, 6-1 6, 14절)
+# --------------------------------------------------------------------------
+
+
+def _recent_fillers(judged: list[_Judged], t_ms: int, config: FillerConfig) -> list[WordJudgment]:
+    """최근 창 안에 시작하고 끝난, 판정이 정해진 군더더기 단어 (filler.md 14절)."""
+    lo = t_ms - config.window_ms
+    return [
+        j.out
+        for j in judged
+        if j.out.is_filler is True and j.out.start_ms >= lo and j.out.end_ms <= t_ms
+    ]
+
+
+def _recent_metrics(
+    judged: list[_Judged], inp: FillerInput, t_ms: int, config: FillerConfig
+) -> tuple[int, float | None]:
+    """최근 창의 군더더기 수와 분당 수.
+
+    분당 수는 창 안에서 STT 가 정상이던 시간으로 나눈다(Take 초반이나 STT 회복 직후에는 창보다
+    짧다). 그 시간이 `min_rate_ms` 보다 짧으면 None 이다.
+    """
+    recent = len(_recent_fillers(judged, t_ms, config))
+    observed = t_ms - max(t_ms - config.window_ms, 0, inp.stt_ok_since_ms)
+    per_min = round(recent * 60_000 / observed, 2) if observed >= config.min_rate_ms else None
+    return recent, per_min
+
+
+def _frequent_issue(
+    judged: list[_Judged], recent: int, per_min: float | None, t_ms: int, config: FillerConfig
+) -> JudgmentIssue:
+    """FILLER_FREQUENT 하나. 기준값에서 severity 0.5, 아주 나쁨 값에서 1.0 이고 그 사이는 직선이다.
+
+    `persistence_sec` 는 창 안 군더더기의 `end_ms` 를 이른 순으로 놓고 `frequent_count` 번째 단어의
+    `end_ms`(조건이 성립한 시각)부터 지금까지다. 창 안 단어만으로 본, 조건이 이어진 시간의
+    하한이다(그 앞에 이미 성립했다가 창 밖으로 나간 단어가 있을 수 있다).
+    """
+    span = config.frequent_bad - config.frequent_count
+    ratio = 1.0 if span <= 0 else min(1.0, max(0.0, (recent - config.frequent_count) / span))
+    ends = sorted(w.end_ms for w in _recent_fillers(judged, t_ms, config))
+    since = ends[config.frequent_count - 1]
+    return JudgmentIssue(
+        issue_type="FILLER_FREQUENT",
+        severity=0.5 + 0.5 * ratio,
+        confidence=1.0,
+        persistence_sec=(t_ms - since) / 1000,
+        threshold=float(config.frequent_count),
+        bad=float(config.frequent_bad),
+        evidence={"recent_filler_count": recent, "filler_per_min": per_min},
+    )
 
 
 # --------------------------------------------------------------------------
