@@ -116,22 +116,12 @@ body {
   0%, 100% { transform: scaleY(.55); }
   50% { transform: scaleY(1); }
 }
-/* 치치 눈물. steps()로 한 칸씩 끊어 떨어뜨려 그림의 픽셀감에 맞춥니다.
-   translateY의 %는 방울 자신의 높이 기준이라 그림 크기가 바뀌어도 낙폭이 같습니다. */
-@keyframes landing-tear {
-  0% { transform: translateY(0); opacity: 1; }
-  80% { opacity: 1; }
-  100% { transform: translateY(300%); opacity: 0; }
-}
 .landing-float { animation: landing-float 4s ease-in-out infinite; }
 .landing-wave { animation: landing-wave 1.6s ease-in-out infinite; }
-.landing-tear { color: #4AADF0; animation: landing-tear 2s steps(3) infinite both; }
 .landing[data-motion="off"] .landing-float,
-.landing[data-motion="off"] .landing-wave,
-.landing[data-motion="off"] .landing-tear { animation-play-state: paused; }
+.landing[data-motion="off"] .landing-wave { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .landing-float, .landing-wave { animation: none; }
-  .landing-tear { display: none; }
 }
 
 /* 피치 생성 화면의 밝은 지면. */
