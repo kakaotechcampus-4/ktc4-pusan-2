@@ -55,6 +55,7 @@ from .schemas import (
     OutcomeEvent,
     SlideResult,
     SuppressedEvent,
+    TakePlan,
     TakeResult,
 )
 from .state import (
@@ -202,8 +203,9 @@ def finalize(
     """Take 종료. 마지막 창을 판정하고 열린 것을 닫아 Take 결과를 만든다.
 
     ① 마지막 창: decide 와 같은 판정 · 누적을 한 번 더 한다(말은 걸지 않는다). Take 끝을 STT 모듈
-       입력 take_end_ms 로 넘겨 뒤 간격을 기다리던 단어까지 판정한다. 이미 그 시각을 처리했으면
-       건너뛴다.
+       입력 take_end_ms 로 넘겨 뒤 간격을 기다리던 단어까지 판정한다. 그 시각을 이미 evaluate 에서
+       처리했어도 STT 를 닫은 뒤 확정된 단어와 Take 끝 신호는 판정하고(시간 몫은 시각 커서로 다시
+       세지 않는다), 마지막 처리보다 이른 시각이면 건너뛴다.
     ② 닫기: 재지 못한 효과는 NOT_MEASURED, 열린 문제 구간은 TAKE_END, 마지막 장은 SLIDE.
     ③ 센 구간이 [0, t_ms) 를 덮지 못하면 ReplayRequired.
     ④ 합계(Take · 장 번호별)를 영역 모듈의 summarize 에 넣어 areas 를 만들고, 판정 기준을 남긴다.
@@ -225,7 +227,9 @@ def finalize(
 
     sink = EventSink(state)
     run: JudgeRun | None = None
-    if state.last_t_ms is None or t > state.last_t_ms:
+    # 마지막 evaluate 와 같은 시각이어도 부른다 — STT 를 닫은 뒤 확정된 단어와 Take 끝 신호가 있다.
+    # 시간 몫은 시각 커서(since_ms == t)라 다시 세지 않는다. t 가 더 이르면 낡은 요청이라 건너뛴다
+    if state.last_t_ms is None or t >= state.last_t_ms:
         state, sink, run = _last_window(req, judges, cfg, state, sink)
     _close(state, t, sink, cfg)
 
@@ -243,10 +247,10 @@ def finalize(
 def _finalize_replay(req: FinalizeRequest, judges: Judges, cfg: CoachConfig) -> FinalizeResponse:
     """Take 전체 원자료로 처음부터 다시 판정해 Take 결과를 만든다(replayed).
 
-    BE 가 1초마다 보냈을 요청을 다시 만들어 실전 모드로 판정하고(새 개입은 만들지 않는다), 끝에
-    평소처럼 마지막 창을 판정하고 닫는다. 지표 · 문제 구간 · 판정 기준은 다시 판정한 결과에서,
-    개입 · 효과 · 포기는 받은 이벤트(실제로 한 코칭)에서 가져온다. 다시 판정한 이벤트는 응답에
-    내지 않는다 — 효과를 재는 실제 개입 중 효과 기록이 없는 것만 NOT_MEASURED 로 낸다.
+    BE 가 1초 기록이 끝날 때마다 보냈을 요청을 다시 만들어 실전 모드로 판정하고(새 개입은 만들지
+    않는다), 끝에 평소처럼 마지막 창을 판정하고 닫는다. 지표 · 문제 구간 · 판정 기준은 다시 판정한
+    결과에서, 개입 · 효과 · 포기는 받은 이벤트(실제로 한 코칭)에서 가져온다. 다시 판정한 이벤트는
+    응답에 내지 않는다 — 효과를 재는 실제 개입 중 효과 기록이 없는 것만 NOT_MEASURED 로 낸다.
     """
     raw = req.replay
     assert raw is not None
@@ -258,16 +262,21 @@ def _finalize_replay(req: FinalizeRequest, judges: Judges, cfg: CoachConfig) -> 
     )
     coach_state: dict[str, Any] | None = None
     rebuilt: list[Any] = []
-    for t_ms in recovery.ticks(t):
+    for t_ms in recovery.ticks(raw, t):
         # 실제 진행처럼 decide_safe 로 — 코치 안 예외가 난 1초는 잴 수 없던 시간으로 넘기고 계속한다
         creq = recovery.request_at(req, raw, t_ms, coach_state)
         resp = decide_safe(creq, judges, rebuild_cfg)
         coach_state = resp.coach_state
         rebuilt.extend(resp.events)
 
+    # 마지막 창은 원자료에서 다시 고르되, 요청에 마지막 창이 실렸으면 BE 가 실은 STT 상태(닫기
+    # 직전)를 쓴다 — 마지막 metrics 뒤에 STT 가 돌아왔으면 원자료의 상태 이력에는 없다
+    last_inputs = recovery.inputs_at(raw, t, last_window=True)
+    if "inputs" in req.model_fields_set:
+        last_inputs = last_inputs.model_copy(update={"stt_status": req.inputs.stt_status})
     last = req.model_copy(
         update={
-            "inputs": recovery.inputs_at(raw, t),
+            "inputs": last_inputs,
             "mode": Mode.EXAM,
             "coach_state": coach_state,
         }
@@ -275,7 +284,7 @@ def _finalize_replay(req: FinalizeRequest, judges: Judges, cfg: CoachConfig) -> 
     state, _ = load_state(coach_state)
     sink = EventSink(state)
     run: JudgeRun | None = None
-    if state.last_t_ms is None or t > state.last_t_ms:
+    if state.last_t_ms is None or t >= state.last_t_ms:
         state, sink, run = _last_window(last, judges, rebuild_cfg, state, sink)
     _close(state, t, sink, rebuild_cfg)
 
@@ -346,10 +355,17 @@ def _take_result(
     t = req.t_ms
     criteria = run.criteria if run is not None else judges_mod.criteria_of(judges, cfg)
     actual = [e for e in coaching_events if isinstance(e, InterventionEvent)] if replayed else None
+    # 요청에 plan 이 실렸으면 시간 계획(장 목록 뺀 것)을 남긴다. replay 도 같은 요청을 쓴다
+    plan = (
+        TakePlan(target_ms=req.plan.target_ms, min_ms=req.plan.min_ms, max_ms=req.plan.max_ms)
+        if "plan" in req.model_fields_set
+        else None
+    )
     return TakeResult(
         take_id=req.take_id,
         duration_ms=t,
         script_mode=req.script_mode,
+        plan=plan,
         replayed=replayed,
         criteria_changed=any(
             v != state.latest_criteria_versions.get(name)

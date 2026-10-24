@@ -89,7 +89,7 @@ coach-agent/
 | `episodes.py` | 같은 문제가 이어지는 동안을 문제 구간 하나로 묶어 `EPISODE`로 남긴다 |
 | `slides.py` | 장 방문 하나마다 `SLIDE`(영역별 합계)를 낸다. 단어 확정이 늦어도 말한 장에 붙는다 |
 | `take_lists.py` | Take 결과의 문제 구간 · 개입 · 포기를 이벤트에서 만든다 |
-| `recovery.py` | replay: Take 전체 원자료로 1초마다의 요청을 다시 만든다 |
+| `recovery.py` | replay: Take 전체 원자료로 실시간 요청 시각(1초 기록이 끝난 시각)마다의 요청을 다시 만든다 |
 | `timing.py` | 계획 대비 시간 판정. 다른 판정 모듈과 같은 결과 모양으로 낸다 |
 | `planner.py` | Take 시작 전 코칭 계획 (LLM은 인자) |
 | `renderer.py` | `instruction` + `variant` → 템플릿 문장 (LLM이 문장을 만들지 않는다) |
@@ -136,7 +136,7 @@ coach-agent/
 
 마지막 창 판정(Take 끝을 STT 모듈 입력 `take_end_ms`로 넘긴다) → 열린 효과 · 문제 구간 · 장 방문 닫기 → 센 구간이 Take를 덮는지 확인(못 덮으면 `ReplayRequired`) →
 합계를 모듈의 `summarize`에 넣어 `areas` → 이벤트에서 문제 구간 · 개입 · 포기.
-`replay`(Take 전체 원자료)가 있으면 `recovery.py`가 1초마다의 요청을 다시 만들어 `EXAM` 모드로 처음부터 판정하고, 지표 · 문제 구간은 그 결과에서, 개입 · 효과는 받은 이벤트에서 가져온다.
+`replay`(Take 전체 원자료)가 있으면 `recovery.py`가 실시간 요청 시각(1초 기록이 끝난 시각, 기록이 없는 구간은 1초 간격)마다 요청을 다시 만들어 `EXAM` 모드로 처음부터 판정하고, 지표 · 문제 구간은 그 결과에서, 개입 · 효과는 받은 이벤트에서 가져온다. 마지막 창은 마지막 evaluate와 같은 시각이어도 부른다. 요청에 `plan`이 실렸으면 Take 결과 `plan`에 시간 계획을 남긴다.
 
 ### 4-3. Take 시작 전 (`plan_coaching`)
 

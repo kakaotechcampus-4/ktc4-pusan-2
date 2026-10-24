@@ -531,12 +531,23 @@ class GaveUp(_Out):
     slide_number: int | None = None
 
 
+class TakePlan(_Out):
+    """이 Take 를 판정한 시간 계획 — 요청 plan 에서 장 목록을 뺀 것. 리뷰가 시간 지표의 좋은 방향을
+    정할 때 쓴다(장 목표는 areas.TIME.slides 에 있다)."""
+
+    target_ms: int | None = None
+    min_ms: int | None = None
+    max_ms: int | None = None
+
+
 class TakeResult(_Out):
     """Take 의 사실(지표 · 판정 기준). 결론은 담지 않는다."""
 
     take_id: str
     duration_ms: int
     script_mode: Literal["HIGHLIGHT", "KEYWORD", "OFF"] | None = None
+    #: 요청에 plan 이 실렸을 때만. 없으면 null
+    plan: TakePlan | None = None
     replayed: bool = False
     criteria_changed: bool = False
     #: 영역(GAZE · SPEED · VOLUME · PAUSE · FILLER · TIME) → 값
