@@ -213,30 +213,53 @@ describe('새로고침 직전에 못 보낸 metrics', () => {
     vi.unstubAllGlobals();
   });
 
+  /** 넘기는 `metrics` 하나 (`HandedMetrics`) */
+  const handed = (tMs: number) => ({ tMs, data: `{"type":"metrics","t_ms":${tMs}}` });
+
   it('적어 둔 것을 한 번만 꺼낸다', () => {
     stubStorage();
-    saveMetrics('t1', { clientSessionId: 's-1', messages: ['a', 'b'] });
-    expect(takeMetrics('t1', 's-1')).toEqual(['a', 'b']);
+    saveMetrics('t1', { clientSessionId: 's-1', messages: [handed(1_000), handed(2_000)] });
+    expect(takeMetrics('t1', 's-1')).toEqual([handed(1_000), handed(2_000)]);
     expect(takeMetrics('t1', 's-1')).toEqual([]);
+  });
+
+  it('모양이 틀린 행은 버린다 — 시각을 모르면 순서를 맞춰 보낼 수 없다', () => {
+    const store = stubStorage();
+    store.set(
+      'rehearsal:metrics:t1',
+      JSON.stringify({
+        clientSessionId: 's-1',
+        messages: [
+          handed(1_000),
+          'not an object',
+          { tMs: '2000', data: '{}' },
+          { tMs: 3_000 },
+          null,
+        ],
+      }),
+    );
+    expect(takeMetrics('t1', 's-1')).toEqual([handed(1_000)]);
   });
 
   it('다른 세션이 적은 것은 버린다', () => {
     const store = stubStorage();
-    saveMetrics('t1', { clientSessionId: 's-old', messages: ['a'] });
+    saveMetrics('t1', { clientSessionId: 's-old', messages: [handed(1_000)] });
     expect(takeMetrics('t1', 's-1')).toEqual([]);
     expect(store.size).toBe(0);
   });
 
   it('보낼 것이 없으면 지난 값도 지운다', () => {
     const store = stubStorage();
-    saveMetrics('t1', { clientSessionId: 's-1', messages: ['a'] });
+    saveMetrics('t1', { clientSessionId: 's-1', messages: [handed(1_000)] });
     saveMetrics('t1', { clientSessionId: 's-1', messages: [] });
     expect(store.size).toBe(0);
   });
 
   it('저장소를 못 쓰면 던지지 않고 빈 목록이다', () => {
     vi.stubGlobal('sessionStorage', undefined);
-    expect(() => saveMetrics('t1', { clientSessionId: 's-1', messages: ['a'] })).not.toThrow();
+    expect(() =>
+      saveMetrics('t1', { clientSessionId: 's-1', messages: [handed(1_000)] }),
+    ).not.toThrow();
     expect(takeMetrics('t1', 's-1')).toEqual([]);
   });
 });

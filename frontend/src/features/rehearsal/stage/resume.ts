@@ -1,4 +1,5 @@
 import type { SlideMessage } from '../lib/sttProtocol';
+import type { HandedMetrics } from '../lib/sttSocket';
 import type { Ms, TakeStatus } from '@/types/api';
 
 /**
@@ -66,7 +67,7 @@ export function clearClock(takeId: string): void {
  */
 export interface SavedMetrics {
   clientSessionId: string;
-  messages: string[];
+  messages: HandedMetrics[];
 }
 
 const metricsKey = (takeId: string) => `rehearsal:metrics:${takeId}`;
@@ -80,15 +81,20 @@ export function saveMetrics(takeId: string, saved: SavedMetrics): void {
   }
 }
 
-/** 적어 둔 것을 꺼내고 지웁니다. 다른 세션이 적은 것은 버립니다 */
-export function takeMetrics(takeId: string, clientSessionId: string): string[] {
+/**
+ * 적어 둔 것을 꺼내고 지웁니다. 다른 세션이 적은 것 · 모양이 틀린 행은 버립니다 — 시각을 모르면
+ * 순서를 맞춰 보낼 수 없습니다. 저장소에서 온 값은 여기서만 확인합니다 (소켓은 그대로 씁니다)
+ */
+export function takeMetrics(takeId: string, clientSessionId: string): HandedMetrics[] {
   try {
     const raw = sessionStorage.getItem(metricsKey(takeId));
     sessionStorage.removeItem(metricsKey(takeId));
     if (!raw) return [];
     const value = JSON.parse(raw) as Partial<SavedMetrics>;
     if (value.clientSessionId !== clientSessionId || !Array.isArray(value.messages)) return [];
-    return value.messages.filter((m): m is string => typeof m === 'string');
+    return value.messages.filter(
+      (m): m is HandedMetrics => typeof m?.tMs === 'number' && typeof m?.data === 'string',
+    );
   } catch {
     return [];
   }
