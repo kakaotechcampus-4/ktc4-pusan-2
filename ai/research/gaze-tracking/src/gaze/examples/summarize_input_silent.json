@@ -1,0 +1,11 @@
+{
+  "GAZE": {
+    "camera_ms": 40000,
+    "script_ms": 12000,
+    "screen_ms": 5000,
+    "away_ms": 1000,
+    "uncertain_ms": 2000,
+    "measured_ms": 58000,
+    "total_ms": 60000
+  }
+}

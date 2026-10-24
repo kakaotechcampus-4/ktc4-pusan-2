@@ -645,3 +645,9 @@ def test_a_huge_time_jump_does_not_make_a_huge_tally():
 def test_spoken_time_is_the_overlap_with_spoken_seconds():
     r = run([], 1500, 0, [{"t_ms": 500, "voiced_ms": 800}])
     assert totals(r)["speaking_ms"] == 1000
+
+
+@pytest.mark.parametrize(("away_s", "severity"), [(2, 0.5), (5, 0.75), (8, 1.0), (10, 1.0)])
+def test_run_severity_is_one_half_at_threshold_and_one_at_bad(away_s, severity):
+    [issue] = run(secs(("CAMERA", 30 - away_s), ("OTHER", away_s)), 30_000).issues
+    assert (issue.issue_type, issue.severity) == ("GAZE_AWAY", severity)

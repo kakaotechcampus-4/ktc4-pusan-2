@@ -1,0 +1,66 @@
+[
+  {
+    "evaluator": "gaze",
+    "area": "GAZE",
+    "t_ms": 41000,
+    "counted_until_ms": 41000,
+    "criteria_version": "gaze-1.2+1c10b82348a2",
+    "measurable": true,
+    "state": "SCREEN",
+    "metrics": {
+      "audience_ratio": 0.1667,
+      "screen_ratio": 0.7333,
+      "script_ratio": 0.1,
+      "away_ratio": 0.0,
+      "reading_ratio": 0.1,
+      "audience_ratio_short": 0.0,
+      "script_ratio_short": 0.0,
+      "away_ratio_short": 0.0,
+      "measured_ratio": 1.0,
+      "mean_reliability": 0.95,
+      "script_run_ms": 0,
+      "screen_run_ms": 8000,
+      "away_run_ms": 0
+    },
+    "tally": [
+      {
+        "t_ms": 40000,
+        "values": {
+          "screen_ms": 1000,
+          "total_ms": 1000,
+          "measured_ms": 1000,
+          "speaking_ms": 1000
+        }
+      }
+    ],
+    "issues": [
+      {
+        "issue_type": "GAZE_ON_SCREEN",
+        "area": "GAZE",
+        "severity": 0.65,
+        "confidence": 1.0,
+        "persistence_sec": 8.0,
+        "threshold": 5000.0,
+        "bad": 15000.0,
+        "evidence": {
+          "screen_run_ms": 8000
+        },
+        "actionable": true
+      },
+      {
+        "issue_type": "GAZE_LOW_EYE_CONTACT",
+        "area": "GAZE",
+        "severity": 0.7222,
+        "confidence": 1.0,
+        "persistence_sec": 30.0,
+        "threshold": 0.3,
+        "bad": 0.0,
+        "evidence": {
+          "audience_ratio": 0.1667,
+          "audience_ratio_short": 0.0
+        },
+        "actionable": true
+      }
+    ]
+  }
+]

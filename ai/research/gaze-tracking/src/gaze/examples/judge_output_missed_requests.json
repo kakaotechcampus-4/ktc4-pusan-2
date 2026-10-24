@@ -1,0 +1,72 @@
+[
+  {
+    "evaluator": "gaze",
+    "area": "GAZE",
+    "t_ms": 41000,
+    "counted_until_ms": 41000,
+    "criteria_version": "gaze-1.2+1c10b82348a2",
+    "measurable": true,
+    "state": "AUDIENCE",
+    "metrics": {
+      "audience_ratio": 0.8148,
+      "screen_ratio": 0.1852,
+      "script_ratio": 0.0,
+      "away_ratio": 0.0,
+      "reading_ratio": 0.0,
+      "audience_ratio_short": 1.0,
+      "script_ratio_short": 0.0,
+      "away_ratio_short": 0.0,
+      "measured_ratio": 0.6,
+      "mean_reliability": 0.95,
+      "script_run_ms": 0,
+      "screen_run_ms": 0,
+      "away_run_ms": 0
+    },
+    "tally": [
+      {
+        "t_ms": 36000,
+        "values": {
+          "unmeasured_ms": 1000,
+          "total_ms": 1000,
+          "speaking_ms": 1000
+        }
+      },
+      {
+        "t_ms": 37000,
+        "values": {
+          "unmeasured_ms": 1000,
+          "total_ms": 1000,
+          "speaking_ms": 1000
+        }
+      },
+      {
+        "t_ms": 38000,
+        "values": {
+          "camera_ms": 1000,
+          "total_ms": 1000,
+          "measured_ms": 1000,
+          "speaking_ms": 1000
+        }
+      },
+      {
+        "t_ms": 39000,
+        "values": {
+          "camera_ms": 1000,
+          "total_ms": 1000,
+          "measured_ms": 1000,
+          "speaking_ms": 1000
+        }
+      },
+      {
+        "t_ms": 40000,
+        "values": {
+          "camera_ms": 1000,
+          "total_ms": 1000,
+          "measured_ms": 1000,
+          "speaking_ms": 1000
+        }
+      }
+    ],
+    "issues": []
+  }
+]

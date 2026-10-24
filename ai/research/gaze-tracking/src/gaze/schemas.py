@@ -196,6 +196,34 @@ class IssueCriteria(_Output):
     offset_lag_ms: int
 
 
+# --------------------------------------------------------------------------
+# 출력: summarize(tally, config) → {"GAZE": {...}} (gaze-tracking.md 5-3 · 14절)
+# --------------------------------------------------------------------------
+
+#: summarize 입력: 장 · Take 동안의 tally 합계 (영역 → 이름 → 합)
+Tally = dict[str, dict[str, float]]
+
+
+class GazeSummary(_Output):
+    """장 · Take 의 시선 지표. 분모가 0 이면 None(measured_ratio 만 0)."""
+
+    #: camera_ms · screen_ms · script_ms · away_ms ÷ measured_ms
+    audience_ratio: Ratio | None
+    script_ratio: Ratio | None
+    screen_ratio: Ratio | None
+    away_ratio: Ratio | None
+    #: reading_ms ÷ speaking_ms (대본 의존)
+    reading_ratio: Ratio | None
+    #: 말한 1초 동안 대본 응시가 기준 시간 이상 이어졌다가 끝난 구간의 수
+    reading_runs: int
+    #: measured_ms ÷ total_ms (시선의 측정 비율)
+    measured_ratio: Ratio
+
+
+class Summary(_Output):
+    GAZE: GazeSummary
+
+
 # ==========================================================================
 # 옛 코어(evaluate_gaze · take_summary · compare_summaries · intervention_outcome)의 계약
 # ==========================================================================
