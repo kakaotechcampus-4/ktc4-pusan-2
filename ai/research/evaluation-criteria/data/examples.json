@@ -1,7 +1,173 @@
 [
-  "시간은 5분이며 ±30초를 허용합니다. 대본은 사용하지 않아야 하고, 발표자의 시선은 청중을 향해야 합니다.",
-  "발표는 시간을 엄수해야 하며, 말하는 속도도 너무 빠르지 않도록 주의해야 합니다. 발표 내용은 이해하기 쉽고 논리적으로 구성되어야 합니다.",
-  "발표 시간은 10분 이내로 해야 합니다. 대본을 보면서 발표해도 되지만, 지나치게 의존해서는 안 됩니다. 발표자의 자세도 단정해야 합니다.",
-  "발표 주제는 창의적이어야 하며 우리 팀의 Agent 활용이 잘 드러나야 합니다. 다른 팀과 비슷한 주제는 피해야 합니다. 발표 시간은 7분입니다.",
-  "발표 시간은 10분이며 시간을 지켜야 합니다. 발표 중 불필요한 추임새를 줄이고 적절한 음량과 억양을 사용해야 합니다. 발표 자료의 내용은 신뢰할 수 있어야 하고 질의응답에도 적극적으로 참여해야 합니다."
+  {
+    "case": "숫자 없는 시선 · 대본 사용 금지 · 발표 시간",
+    "text": "시간은 5분이며 ±30초를 허용합니다. 대본은 사용하지 않아야 하고, 발표자의 시선은 청중을 향해야 합니다.",
+    "expected": {
+      "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": null, "gaze": "청중을 향하기",
+                 "script_dependency": null, "script_similarity": null, "script_used": false},
+      "targets": [],
+      "excluded": ["시간은 5분이며 ±30초를 허용"]
+    }
+  },
+  {
+    "case": "숫자 없는 말 속도 · 측정할 수 없는 기준",
+    "text": "발표는 시간을 엄수해야 하며, 말하는 속도도 너무 빠르지 않도록 주의해야 합니다. 발표 내용은 이해하기 쉽고 논리적으로 구성되어야 합니다.",
+    "expected": {
+      "values": {"speed": "너무 빠르지 않게", "pause": null, "silence": null, "volume": null, "filler": null, "gaze": null,
+                 "script_dependency": null, "script_similarity": null, "script_used": null},
+      "targets": [],
+      "excluded": ["발표는 시간을 엄수", "발표 내용은 이해하기 쉽고 논리적으로 구성"]
+    }
+  },
+  {
+    "case": "대본 사용 허용 · 숫자 없는 대본 의존",
+    "text": "발표 시간은 10분 이내로 해야 합니다. 대본을 보면서 발표해도 되지만, 지나치게 의존해서는 안 됩니다. 발표자의 자세도 단정해야 합니다.",
+    "expected": {
+      "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": null, "gaze": null,
+                 "script_dependency": "지나치게 의존하지 않기", "script_similarity": null, "script_used": true},
+      "targets": [],
+      "excluded": ["발표 시간은 10분 이내", "발표자의 자세도 단정"]
+    }
+  },
+  {
+    "case": "측정할 수 있는 기준 없음",
+    "text": "발표 주제는 창의적이어야 하며 우리 팀의 Agent 활용이 잘 드러나야 합니다. 다른 팀과 비슷한 주제는 피해야 합니다. 발표 시간은 7분입니다.",
+    "expected": {
+      "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": null, "gaze": null,
+                 "script_dependency": null, "script_similarity": null, "script_used": null},
+      "targets": [],
+      "excluded": ["발표 주제는 창의적", "우리 팀의 Agent 활용이 잘 드러나야", "다른 팀과 비슷한 주제는 피해야", "발표 시간은 7분"]
+    }
+  },
+  {
+    "case": "여러 기준이 섞인 문장 · 한 문장 안의 음량과 억양",
+    "text": "발표 시간은 10분이며 시간을 지켜야 합니다. 발표 중 불필요한 추임새를 줄이고 적절한 음량과 억양을 사용해야 합니다. 발표 자료의 내용은 신뢰할 수 있어야 하고 질의응답에도 적극적으로 참여해야 합니다.",
+    "expected": {
+      "values": {"speed": null, "pause": null, "silence": null, "volume": "적절한 음량", "filler": "불필요한 추임새 줄이기", "gaze": null,
+                 "script_dependency": null, "script_similarity": null, "script_used": null},
+      "targets": [],
+      "excluded": ["발표 시간은 10분이며 시간을 지켜야", "억양", "발표 자료의 내용은 신뢰할 수 있어야", "질의응답에도 적극적으로 참여"]
+    }
+  },
+  {
+    "case": "퍼센트 → 비율 (시선 · 대본 의존 · 대본 전달)",
+    "text": "청중을 바라보는 비율은 60% 이상, 대본 보는 시간은 전체의 20% 이하로 해 주세요. 대본은 봐도 됩니다. 준비한 대본 내용은 90% 이상 전달해야 합니다.",
+    "expected": {
+      "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": null, "gaze": "60% 이상",
+                 "script_dependency": "20% 이하", "script_similarity": "90% 이상 전달", "script_used": true},
+      "targets": [
+        {"metric": "audience_ratio", "operator": "GTE", "value": 0.6},
+        {"metric": "reading_ratio", "operator": "LTE", "value": 0.2},
+        {"metric": "content_coverage", "operator": "GTE", "value": 0.9}
+      ],
+      "excluded": []
+    }
+  },
+  {
+    "case": "분당 군더더기 · 말 사이 멈춤 횟수",
+    "text": "추임새는 1분에 3번을 넘지 않게 하고, 말 사이 멈춤은 5번 이하로 해 주세요.",
+    "expected": {
+      "values": {"speed": null, "pause": "5번 이하", "silence": null, "volume": null, "filler": "1분에 3번 넘지 않게", "gaze": null,
+                 "script_dependency": null, "script_similarity": null, "script_used": null},
+      "targets": [
+        {"metric": "filler_per_min", "operator": "LTE", "value": 3},
+        {"metric": "pause_count", "operator": "LTE", "value": 5}
+      ],
+      "excluded": []
+    }
+  },
+  {
+    "case": "초당 글자 → cpm",
+    "text": "말 속도는 초당 5자 이하로 유지해 주세요.",
+    "expected": {
+      "values": {"speed": "초당 5자 이하", "pause": null, "silence": null, "volume": null, "filler": null, "gaze": null,
+                 "script_dependency": null, "script_similarity": null, "script_used": null},
+      "targets": [
+        {"metric": "cpm", "operator": "LTE", "value": 300}
+      ],
+      "excluded": []
+    }
+  },
+  {
+    "case": "긴 침묵 · 말 사이 멈춤 구분",
+    "text": "말 사이에 머뭇거리는 일은 줄이고, 긴 침묵은 2번 이하로 해 주세요.",
+    "expected": {
+      "values": {"speed": null, "pause": "머뭇거림 줄이기", "silence": "2번 이하", "volume": null, "filler": null, "gaze": null,
+                 "script_dependency": null, "script_similarity": null, "script_used": null},
+      "targets": [
+        {"metric": "long_silence_count", "operator": "LTE", "value": 2}
+      ],
+      "excluded": []
+    }
+  },
+  {
+    "case": "목표로 만들지 않는 숫자 (근사 · 절대 dB · 길이 조건이 붙은 횟수)",
+    "text": "말 속도는 1분에 300자 정도로 하고, 목소리는 70dB 이상으로 크게 내 주세요. 4초 넘는 침묵은 3번 이하로 해 주세요.",
+    "expected": {
+      "values": {"speed": "1분에 300자 정도", "pause": null, "silence": "4초 넘는 침묵 3번 이하", "volume": "70dB 이상", "filler": null, "gaze": null,
+                 "script_dependency": null, "script_similarity": null, "script_used": null},
+      "targets": [],
+      "excluded": []
+    }
+  },
+  {
+    "case": "범위 · 미만",
+    "text": "말 속도는 1분에 280~320자를 유지하고 추임새는 3번 미만으로 해 주세요.",
+    "expected": {
+      "values": {"speed": "1분에 280~320자", "pause": null, "silence": null, "volume": null, "filler": "3번 미만", "gaze": null,
+                 "script_dependency": null, "script_similarity": null, "script_used": null},
+      "targets": [
+        {"metric": "cpm", "operator": "GTE", "value": 280},
+        {"metric": "cpm", "operator": "LTE", "value": 320},
+        {"metric": "filler_count", "operator": "LT", "value": 3}
+      ],
+      "excluded": []
+    }
+  },
+  {
+    "case": "평소 목소리 대비 dB · 숫자 없는 시선 · 대본 사용 금지",
+    "text": "목소리는 평소보다 3dB 이상 크게 내고, 청중과 자주 눈을 맞추며 발표해 주세요. 대본은 보지 않습니다.",
+    "expected": {
+      "values": {"speed": null, "pause": null, "silence": null, "volume": "평소보다 3dB 이상", "filler": null, "gaze": "자주 눈 맞추기",
+                 "script_dependency": null, "script_similarity": null, "script_used": false},
+      "targets": [
+        {"metric": "voice_diff_db", "operator": "GTE", "value": 3}
+      ],
+      "excluded": []
+    }
+  },
+  {
+    "case": "초과 (GT)",
+    "text": "청중을 보는 시간이 전체의 50%를 넘어야 합니다.",
+    "expected": {
+      "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": null, "gaze": "50% 넘게",
+                 "script_dependency": null, "script_similarity": null, "script_used": null},
+      "targets": [
+        {"metric": "audience_ratio", "operator": "GT", "value": 0.5}
+      ],
+      "excluded": []
+    }
+  },
+  {
+    "case": "측정할 수 없는 기준만 (자료 · 제스처)",
+    "text": "발표 자료는 깔끔하게 만들고 제스처를 자연스럽게 써 주세요.",
+    "expected": {
+      "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": null, "gaze": null,
+                 "script_dependency": null, "script_similarity": null, "script_used": null},
+      "targets": [],
+      "excluded": ["발표 자료는 깔끔하게", "제스처를 자연스럽게"]
+    }
+  },
+  {
+    "case": "여러 기준이 섞인 문장 (횟수 목표 · 대본 참고 · 숫자 없는 전달 · 측정 불가)",
+    "text": "추임새는 10번 이하로 하고 발표 시간은 8분입니다. 대본은 참고만 하고 준비한 내용은 빠짐없이 전달해 주세요. 발음도 또렷하게 해 주세요.",
+    "expected": {
+      "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": "10번 이하", "gaze": null,
+                 "script_dependency": "참고만 하기", "script_similarity": "빠짐없이 전달", "script_used": true},
+      "targets": [
+        {"metric": "filler_count", "operator": "LTE", "value": 10}
+      ],
+      "excluded": ["발표 시간은 8분", "발음도 또렷하게"]
+    }
+  }
 ]
