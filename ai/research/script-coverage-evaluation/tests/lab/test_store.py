@@ -212,3 +212,5 @@ def test_confirmed_take_scores_include_scored_ratio(conn):
     assert (
         scores["scored_ratio"] == 1.0 and scores["similar_words"] == 0
     )  # 답한 항목은 센 값에서 빠진다
+    # 연습의 대상 장을 주면 채점이 없는(실패한) 장도 분모에 든다
+    assert confirmed_take_scores(conn, "대본_take1", [1, 2])["scored_ratio"] == 0.5

@@ -12,6 +12,7 @@
 
 import json
 import sqlite3
+from collections.abc import Collection
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -351,8 +352,11 @@ def confirm_similar_item(
         return _confirmed_evaluation(conn, take_id, slide_number)
 
 
-def confirmed_take_scores(conn: sqlite3.Connection, take_id: str) -> dict:
-    """연습 한 번의 최종 점수 (사용자 확인 반영). 대상 장은 DB 에 채점이 저장된 그 연습의 장이다 (`scored_ratio` 포함)."""
+def confirmed_take_scores(
+    conn: sqlite3.Connection, take_id: str, targets: Collection[int] | None = None
+) -> dict:
+    """연습 한 번의 최종 점수 (사용자 확인 반영). `targets` 는 그 연습의 대상 장 번호 (`scored_ratio` 의 분모, 실패한 장도 든다).
+    주지 않으면 DB 에 채점이 저장된 장만 대상이라 `scored_ratio` 가 늘 1 이다."""
     slides = [
         n
         for (n,) in conn.execute(
@@ -360,6 +364,5 @@ def confirmed_take_scores(conn: sqlite3.Connection, take_id: str) -> dict:
             (take_id,),
         )
     ]
-    return take_scores(
-        [confirmed_evaluation(conn, take_id, n) for n in slides], slides
-    ).model_dump()
+    evaluations = [confirmed_evaluation(conn, take_id, n) for n in slides]
+    return take_scores(evaluations, slides if targets is None else targets).model_dump()

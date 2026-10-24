@@ -84,7 +84,10 @@ def run_script_analysis(
         for slide in slides:
             delete_rubric(conn, path.stem, slide.slide_number)
         raise
-    stats = _failure_stats(response.failed, counts)
+    stats = {
+        "slides": len(slides),
+        **_failure_stats(response.failed, counts),
+    }  # slides = 대상 장 수
     for slide_number in stats["failed"]:
         delete_rubric(conn, path.stem, slide_number)
     for rubric in response.rubrics:
