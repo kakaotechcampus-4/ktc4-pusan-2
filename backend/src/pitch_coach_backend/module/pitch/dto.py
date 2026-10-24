@@ -164,6 +164,31 @@ class NewerScriptDTO(BaseModel):
     parse_status: ScriptParseStatus
     error_code: ScriptParseErrorCode | None
 
+class PrepareMissionTargetDTO(BaseModel):
+    metric: str
+    operator: str
+    value: float
+
+class PrepareMissionDTO(BaseModel):
+    mission_id: uuid.UUID
+    priority: int
+    # 리뷰 next_missions 의 영역 (review-agent.md 5-3)
+    area: str
+    # null 이면 발표 전체 미션이다
+    slide_number: int | None
+    description: str
+    target: PrepareMissionTargetDTO
+    # 리뷰한 Take 기준으로 쓴 문장이다
+    reason: str | None
+
+class PrepareMissionsDTO(BaseModel):
+    """이번 Take 에 실릴 미션. Take 를 시작할 때 다시 고르므로 그사이 리뷰가 끝나면 바뀔 수 있다."""
+
+    # 미션을 만든 리뷰의 Take 번호. next_take_number - 1 보다 작으면 그 뒤 Take 는 아직 리뷰 전이다
+    source_take_number: int
+    # 리뷰가 미션을 읽는 순서. 리뷰가 다음 미션을 내지 않았으면 빈 목록
+    items: list[PrepareMissionDTO]
+
 class PrepareDTO(BaseModel):
     """장치 점검 화면이 Take 를 만들 때 쓰는 값. 피치 생성을 거치지 않고 들어와도 버전을 안다."""
 
@@ -181,6 +206,8 @@ class PrepareDTO(BaseModel):
     next_take_number: int
     # 가장 최근 Take 의 대본 표시 방식. Take 가 없으면 HIGHLIGHT
     default_script_mode: ScriptMode
+    # Take 를 시작할 때 싣는 미션과 같은 기준으로 고른다. 리뷰가 끝난 Take 가 없으면 None
+    missions: PrepareMissionsDTO | None
 
 class Versioned(Protocol):
     id: uuid.UUID

@@ -266,7 +266,7 @@ POST /api/auth/logout           현재 세션 폐기
 ## 연습 시작 (장치 점검 · Take 생성)
 
 ```
-GET  /api/pitches/{pitch_id}/prepare   이번 연습에 쓸 버전 · 다음 Take 번호 · 지난번 대본 표시 방식
+GET  /api/pitches/{pitch_id}/prepare   이번 연습에 쓸 버전 · 다음 Take 번호 · 지난번 대본 표시 방식 · 이번 Take 미션
 POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_version_id", "script_version_id", "client_session_id"?}
                                        → take_id · take_number
 ```
@@ -278,6 +278,9 @@ POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_ver
   발표자료를 주고, 응답의 `page_count` · `slide_count` 가 달라 FE 가 시작을 막는다.
 - `next_take_number` 는 미리 보여 주는 값이다. 그사이 다른 Take 가 생기면 달라져서 실제 번호는 Take 생성 응답의
   `take_number` 를 본다.
+- `missions` 는 Take 를 시작할 때 싣는 미션과 같은 기준으로 고른다. 리뷰가 끝난 Take 중 가장 늦게 끝난 Take 의
+  `ACTIVE` 미션을 리뷰가 읽는 순서로 주고, 그 Take 번호를 `source_take_number` 로 준다. 리뷰가 끝난 Take 가 없으면
+  `null`, 리뷰가 다음 미션을 내지 않았으면 `items` 가 빈 목록이다. 그사이 리뷰가 끝나면 시작할 때 다시 고른 미션이 실린다.
 - Take 생성은 파싱이 끝난 대본만 받는다 (아니면 `409 SCRIPT_NOT_PARSED`). 발표자료 쪽수와 대본 장 수가 다르면
   `409 SLIDE_COUNT_MISMATCH` 다 (쪽수를 모르는 옛 발표자료는 검사하지 않는다). 목표 시간은 받지 않고 발표 제한 시간을 박는다.
 - `client_session_id`(FE 의 연습 세션 id)가 같으면 새로 만들지 않고 처음 만든 Take 를 돌려준다. 응답을 잃고 다시
