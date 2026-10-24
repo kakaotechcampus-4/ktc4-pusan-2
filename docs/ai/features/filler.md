@@ -71,7 +71,7 @@ flowchart LR
   S --> TR["Take 결과"]
 ```
 1. **keyterm (BE)**: BE가 이 모듈의 keyterm 단어 목록을 가져와 대본 용어(`terms`)와 함께 Deepgram에 넘긴다. 개수 · 길이 한도가 넘치면 대본 용어 뒤쪽부터 뺀다(`architecture.md` 2절). 채움말이 전사에 남아야 판정할 수 있기 때문이다.
-2. **STT (BE)**: BE가 확정 단어 · 문장 끝 신호 · STT 상태를 Take 기준 ms로 들고 있다가, FE `metrics`를 받을 때마다 최근 60초를 `/coach/evaluate`에 싣는다. 복구(`replay`)용으로 단어가 확정된 시각도 함께 보관한다(`architecture.md` 2절, `coach-agent.md` 12-1).
+2. **STT (BE)**: BE가 확정 단어 · 문장 끝 신호 · STT 상태를 Take 기준 ms로 들고 있다가, FE `metrics`를 받을 때마다(`buffered: true`인 것은 빼고, 호출 조건은 `architecture.md` 1-3 2번 · 2절) 최근 60초를 `/coach/evaluate`에 싣는다. 문장 끝 신호는 Take 종료 때 `takes.utterance_ends`에 한 번에 쓴다. 복구(`replay`)용으로 단어가 확정된 시각도 함께 보관한다(`architecture.md` 2절, `coach-agent.md` 12-1).
 3. **코치 → `filler.judge`**: 코치가 요청마다 판정 모듈 중 군더더기를 가장 먼저 부른다. 말 속도가 같은 요청 안에서 군더더기 판정을 받아야 하기 때문이다(`coach-agent.md` 6-1).
 4. **`filler.judge`**: 창 안 단어마다 층과 군더더기 여부를 판정하고(뒤 간격이 필요한데 다음 단어가 없으면 보류), 판정이 정해진 새 단어만 `tally`에 센다. 최근 창의 군더더기 수로 `state`와 `FILLER_FREQUENT`를 정한다.
 5. **코치 → 말 속도**: 코치가 `words` 중 군더더기(true)와 보류(null) 단어를 `fillers`로 말 속도에 넘긴다. 말 속도는 군더더기를 글자 수에서 빼고 보류 단어부터는 다음에 센다. 모듈끼리 import하지 않으므로 코치가 옮겨 준다.
