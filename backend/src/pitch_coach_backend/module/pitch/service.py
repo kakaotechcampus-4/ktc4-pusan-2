@@ -26,6 +26,7 @@ from pitch_coach_backend.module.pitch.dto import (
     ScriptDetailDTO,
     ScriptParseErrorCode,
     ScriptSlideDTO,
+    StandardAIResponseDTO,
     StandardParseResponseDTO,
     StandardTextDTO,
     StandardTextResponseDTO,
@@ -52,6 +53,7 @@ from pitch_coach_backend.module.pitch.exception import (
     ScriptAlreadyParsed,
     ScriptParseInProgress,
     ScriptReuploadRequired,
+    StandardInputRejected,
     StandardParseFailed,
 )
 from pitch_coach_backend.module.pitch.presentation_file import (
@@ -614,12 +616,14 @@ def divide_standard_text(standard_text_dto: StandardTextDTO) -> StandardParseRes
                 f"{settings.ai_base_url}/evaluation-criteria/parse",
                 json={"standard_text": standard_text_dto.standard_text}
             )
+            if response.status_code == 422:
+                raise StandardInputRejected()
             response.raise_for_status()
-            result = response.json()
+            result = StandardAIResponseDTO.model_validate(response.json())
 
         return StandardParseResponseDTO(
-            standards=result["display_criteria"],
-            except_standard=", ".join(result.get("excluded") or []) or None,
+            standards=result.display_criteria,
+            except_standard=", ".join(result.excluded or []) or None,
         )
     # ValueError: JSON 이 아님·pydantic 검증 실패, KeyError·TypeError: 응답 모양이 다름
     except (httpx2.HTTPError, ValueError, KeyError, TypeError) as e:
