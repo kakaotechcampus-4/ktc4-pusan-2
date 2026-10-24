@@ -24,13 +24,15 @@ FILLER_CANDIDATES = ["그", "저", "뭐", "막", "좀", "이제", "그러니까"
 
 
 def segmentation_report(conn: sqlite3.Connection, takes: list[Take]) -> pd.DataFrame:
-    """연습마다 STT 문장 분리와 정렬 상태를 요약한다 (규칙만, API 호출 없음)."""
+    """연습마다 STT 문장 분리와 정렬 상태를 요약한다 (규칙만, API 호출 없음). 평가 기준이 없는 슬라이드는 건너뛴다."""
     filler_pattern = re.compile(r"(?<![가-힣])(" + "|".join(FILLER_CANDIDATES) + r")(?![가-힣])")
     rows = []
     for take in takes:
         lengths, windows, fillers = [], Counter(), Counter()
         for s in take.slides:
             rubric = load_rubric(conn, take.script_name, s.slide_number)
+            if rubric is None:  # 평가 기준이 없는 슬라이드는 채점도 되지 않는다 (RUBRIC_MISSING)
+                continue
             script_norm, stt_norm = normalize_script(rubric.normalized_script), normalize_stt(s.stt)
             lengths += [len(x.text) for x in stt_norm.sentences]
             s_tokens, t_tokens = positioned_tokens(script_norm), positioned_tokens(stt_norm)
