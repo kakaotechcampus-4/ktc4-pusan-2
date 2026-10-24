@@ -13,7 +13,7 @@
 | 설계 | API 계약 · 평가 기준과 채점 필드 · 처리 · 배포 → [`docs/ai/features/script-coverage-evaluation.md`](../../../docs/ai/features/script-coverage-evaluation.md) |
 
 > 이 프로젝트는 `ai/archive/workspaces/jewon-kim/script-coverage-evaluation/v1/local/`의 노트북 2개를 구조만 바꿔 옮긴 것입니다.
-> 판정 로직과 프롬프트는 같고, 같은 LLM 응답 캐시로 돌리면 결과가 바이트 단위로 같습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
+> 옮길 당시에는 판정 로직과 프롬프트가 같고 같은 LLM 응답 캐시로 돌리면 결과가 바이트 단위로 같았습니다. 그 뒤 계약에 맞춰 코어를 고쳤고(평가 기준 형식 `1.2`로 `rubric_id`가 바뀜), 다시 캐시를 재생해도 결과 JSON의 숫자 지표는 그대로였습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
 
 ## 목차
 
@@ -96,6 +96,7 @@ src/script_coverage/        코어: 실제 판정 로직                     →
 코어 안에서도 서비스가 부르는 곳은 **최상위 파일**(`core.py` · `schemas.py` · `config.py` · `version.py`)입니다. 진입 함수 세 개(`analyze_script` · `evaluate_take` ·
 `rescore_evaluation`)가 하위 `script_analysis/` · `stt_evaluation/`의 함수를 감싸 API 모양(`failed` · `slide_numbers` · Take 값)으로 바꿉니다.
 실험 도구(`coverage_lab/runs.py`)도 같은 진입 함수를 거치므로 연구에서 잰 값이 서비스 응답과 같습니다.
+연구 DB의 확인 뒤 점수(`store.confirmed_take_scores`)는 그 연습의 대상 장(`targets`)을 `scored_ratio`의 분모로 받습니다.
 
 ### 코어의 규칙 세 가지
 
@@ -414,7 +415,7 @@ $env:OPENAI_BASE_URL = "http://127.0.0.1:9"; $env:OPENAI_API_KEY = "dummy"; $env
 uv run python experiments/01_build_rubrics.py
 ```
 
-실패한 슬라이드는 평가 기준을 만들지 않고 응답 `failed`(에러 코드 `LLM_TIMEOUT` 등)에 남습니다 (`run_script_analysis`가 돌려주는 `stats["failed"]`가 이 목록입니다). 모든 슬라이드가 실패하면 `CoverageError`로 멈춥니다. 성공한 호출은 캐시에 남으므로, 나중에 제대로 된 주소로 다시 돌리면 실패한 것만 부릅니다.
+실패한 슬라이드는 평가 기준을 만들지 않고 응답 `failed`(에러 코드 `LLM_TIMEOUT` 등)에 남습니다 (`run_script_analysis`가 돌려주는 `stats["failed"]`는 응답 `failed`에서 만든 `{장 번호: 에러 코드}`이고, `stats["causes"]`는 `{장 번호: 고정 문구}`입니다). 모든 슬라이드가 실패하면 `CoverageError`로 멈춥니다. 성공한 호출은 캐시에 남으므로, 나중에 제대로 된 주소로 다시 돌리면 실패한 것만 부릅니다.
 
 ### 실험 돌리기
 
@@ -450,7 +451,7 @@ uv run python -m pytest -m live            # 실제 API 를 부르는 테스트�
 
 ### 옮긴 뒤 검증
 
-아카이브 노트북이 남긴 LLM 캐시를 새 코드로 재생해 비교했습니다 (LLM 호출 0회).
+**옮길 당시의 검증 결과**입니다. 아카이브 노트북이 남긴 LLM 캐시를 새 코드로 재생해 비교했습니다 (LLM 호출 0회).
 
 | 항목 | 결과 |
 |---|---|
@@ -460,6 +461,8 @@ uv run python -m pytest -m live            # 실제 API 를 부르는 테스트�
 | 정확도 · 안정성 지표 | 같음 |
 
 코어를 고친 뒤에도 같은 방식(캐시 재생 → 결과 비교)으로, 평가 기준 · 평가 결과가 의도 밖으로 바뀌지 않았는지 확인할 수 있습니다.
+
+계약에 맞춰 코어를 고친 뒤(최상위 진입 함수 · 에러 코드 · 평가 기준 형식 `1.2`)에도 캐시를 재생해 `reports/results/*.json`을 다시 만들었고, 숫자 지표는 모두 그대로이며 `feature_version`과 `criteria_version`만 달라졌습니다. 평가 기준 형식이 `1.2`로 올라 `rubric_id`는 바뀌었으므로 위 표의 "바이트 단위로 같음"은 옛 코드에서의 결과입니다.
 
 ---
 
