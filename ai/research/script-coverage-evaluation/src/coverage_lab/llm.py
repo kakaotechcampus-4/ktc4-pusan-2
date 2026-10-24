@@ -47,10 +47,16 @@ def load_settings() -> Settings:
     return Settings(base_url=os.getenv("OPENAI_BASE_URL"), api_key=api_key, model=model)
 
 
-def structured_llm(schema: type[BaseModel], settings: Settings):
-    """주어진 출력 스키마 모양으로만 답하도록 고정한 LLM (`.invoke(messages)` 가 스키마 객체를 돌려준다)."""
+def structured_llm(schema: type[BaseModel], settings: Settings, *, max_retries: int = 2):
+    """주어진 출력 스키마 모양으로만 답하도록 고정한 LLM (`.invoke(messages)` 가 스키마 객체를 돌려준다).
+
+    `max_retries` 는 SDK 가 알아서 다시 부르는 횟수다. 재시도를 직접 세어야 하는 시간 측정은 0 으로 준다.
+    """
     client = ChatOpenAI(
-        base_url=settings.base_url, api_key=settings.api_key, model=settings.model, max_retries=2
+        base_url=settings.base_url,
+        api_key=settings.api_key,
+        model=settings.model,
+        max_retries=max_retries,
     )
     return client.with_structured_output(schema)
 
