@@ -19,7 +19,6 @@
 export type WriteKind =
   | 'gazeSample'
   | 'slideChange'
-  | 'coachLog'
   | 'gazeExcluded'
   | 'engineVersion'
   | 'gazePerf'
