@@ -70,7 +70,7 @@ CLOSE_NORMAL = 1000
 # 브라우저가 창을 닫거나 새로고침하며 끊었다. 네트워크가 끊기면 닫힘 프레임이 없어 1006 이 된다
 CLOSE_GOING_AWAY = 1001
 CLOSE_POLICY_VIOLATION = 1008  # 인증·권한·프로토콜 위반
-CLOSE_INTERNAL_ERROR = 1011  # 일시적인 서버 실패. FE 가 재연결할 수 있다
+CLOSE_INTERNAL_ERROR = 1011  # 서버 쪽 일시 오류. FE 는 다시 붙는다
 
 AUTH_TIMEOUT_SEC = 5.0
 # stop 뒤 스트림 정리를 기다리는 상한. 스트림이 Deepgram 을 기다리는 시간과 별개다 —
@@ -83,10 +83,6 @@ CANCEL_TIMEOUT_SEC = 2.0
 # FAILED)는 이미 끝난 연습이라 전사를 더 붙이면 리포트가 오염된다.
 # READY 는 첫 연결이다. 인가를 통과하면 RUNNING 으로 바꾼다 (`docs/ai/architecture.md` 1-3).
 STREAMABLE_TAKE_STATUSES = frozenset({"READY", "RUNNING"})
-
-
-class _TakeStartFailed(Exception):
-    """Take 시작 값을 고정하지 못했다. 미설정 값으로 ready 를 보내지 않는다."""
 
 
 def _origin_allowed(origin: str | None) -> bool:
@@ -251,12 +247,15 @@ class RealtimeSession:
         같은 규칙 — 존재 여부를 흘리지 않는다). 끝난 Take 는 `TAKE_ENDED`. BE 가 자동으로 끝낸
         Take 는 상태가 `ANALYZING` 이라 같이 걸리고, 이유(`end_reason`)는 알림에만 쓴다.
         `READY` 면 `RUNNING` 으로 바꾼다. 다시 붙은 연결(이미 `RUNNING`)은 그대로 둔다.
+        바꾸지 못하면(DB 오류) 1011 로 닫는다.
         """
 
         # 다시 붙은 연결이면 코치는 이미 Take 를 시작할 때의 값을 들고 있다
         need_context = self.coach is not None and not take_stream.coach_enabled(self.take_id)
 
-        def load() -> tuple[bool, bool, str | None, str | None, list[str], TakeContext | None]:
+        def load() -> tuple[
+            bool, bool, bool, str | None, str | None, list[str], TakeContext | None
+        ]:
             # 동기 SQLAlchemy 를 이벤트 루프에서 직접 부르면 다른 Take 의 오디오까지 멈춘다.
             # 그래서 threadpool 이고, 왕복을 아끼려 한 함수에서 전부 읽는다
             user = user_service.find(self.db, user_id)
@@ -285,13 +284,26 @@ class RealtimeSession:
             # 조회가 끝나면 커넥션을 풀에 돌려준다. 이 연결은 몇 분씩 살아 있는데
             # 트랜잭션을 연 채로 두면 Take 수만큼 풀이 마른다
             self.db.rollback()
+            take_found = take is not None
+            started = True
             if status == "READY":
-                # 첫 연결이다. 위 조회와 따로 짧은 트랜잭션 하나로 쓴다 — 용어 조회가 실패해
-                # 트랜잭션이 깨졌어도 적힌다. 미션 · 평가 기준 버전 · 원자료 사용 동의가 고정되기
-                # 전에는 ready 를 보내지 않는다 (`docs/ai/architecture.md` 1-3 1번).
+                # 첫 연결이 Take 를 시작한다. 위 조회와 따로 짧은 트랜잭션 하나로 쓴다 — 용어 조회가
+                # 실패해 트랜잭션이 깨졌어도 적히고, 커밋하면 커넥션도 돌려준다.
+                # 미션 · 평가 기준 버전 · 원자료 사용 동의가 고정되기 전에는 ready 를 보내지 않는다
+                # (`docs/ai/architecture.md` 1-3 1번). 못 적으면 연결을 받지 않는다.
+                # READY 로 남은 채 발표하면 BE 가 시작하지 않은 Take 로 끝내고
+                # (`abandon_stale_ready_takes`) 끝내기도 받지 않는다. FE 는 ready 를 받기 전이라
+                # 발표를 시작하지 않았고 다시 붙는다
                 for attempt in range(2):
                     try:
-                        take_service.mark_running(self.db, self.take_id)
+                        if not take_service.mark_running(self.db, self.take_id):
+                            # 그사이 다른 연결이 시작했거나 시작하지 않은 Take 로 끝났다.
+                            # 다시 읽는다
+                            again = take_service.find_owned(self.db, self.take_id, user_id)
+                            take_found = again is not None
+                            status = again.status if again is not None else None
+                            end_reason = again.end_reason if again is not None else None
+                            self.db.rollback()
                         break
                     except Exception as error:
                         self.db.rollback()
@@ -299,36 +311,36 @@ class RealtimeSession:
                             logger.warning("Take 시작 값 저장을 다시 한다 take=%s", self.take_id)
                             continue
                         logger.exception("Take 를 RUNNING 으로 못 바꿨다 take=%s", self.take_id)
-                        raise _TakeStartFailed from error
-                # 다른 요청이 먼저 시작하거나 끝냈으면 최신 상태로 판단한다.
-                take = take_service.find_owned(self.db, self.take_id, user_id)
-                status = take.status if take is not None else None
-                end_reason = take.end_reason if take is not None else None
-                self.db.rollback()
-                if status == "READY":
-                    raise _TakeStartFailed
+                        started = False
+                        break
             context = None
-            if status in STREAMABLE_TAKE_STATUSES and need_context:
+            if started and status in STREAMABLE_TAKE_STATUSES and need_context:
                 # 코칭은 부가 기능이다. 못 읽어도 STT 는 돈다
                 try:
                     context = coach_store.load_take_context(self.db, self.take_id)
                 except Exception:
                     logger.exception("코치 값을 읽지 못해 코칭 없이 돈다 take=%s", self.take_id)
                 self.db.rollback()
-            return user is not None, take is not None, status, end_reason, terms, context
+            return user is not None, take_found, started, status, end_reason, terms, context
 
-        try:
-            user_found, take_found, status, end_reason, terms, context = await run_in_threadpool(
-                load
-            )
-        except _TakeStartFailed:
-            await self.ws.close(code=CLOSE_INTERNAL_ERROR, reason="take start unavailable")
-            return False
+        (
+            user_found,
+            take_found,
+            started,
+            status,
+            end_reason,
+            terms,
+            context,
+        ) = await run_in_threadpool(load)
         if not user_found:
             await self._reject(WsErrorCode.UNAUTHORIZED, "유효하지 않은 토큰입니다.")
             return False
         if not take_found:
             await self._reject(WsErrorCode.TAKE_NOT_FOUND, "연습을 찾을 수 없습니다.")
+            return False
+        if not started:
+            # 잠깐 DB 가 안 됐다. 1011 이면 FE 가 백오프로 다시 붙는다 (1000 · 1008 만 포기한다)
+            await self._quiet(self.ws.close(code=CLOSE_INTERNAL_ERROR, reason="take not started"))
             return False
         if status not in STREAMABLE_TAKE_STATUSES:
             await self._reject_ended(end_reason)

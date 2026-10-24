@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -5,10 +6,12 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module import hooks
+from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
 from pitch_coach_backend.module.take.dependencies import OwnedTake
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
+    TakeHistoryResponseDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
 )
@@ -20,6 +23,7 @@ from pitch_coach_backend.module.take.service import (
     delete_take_service,
     get_previous_missions_service,
     get_review_result,
+    list_takes_service,
     mark_ended,
     update_take_service,
 )
@@ -57,9 +61,10 @@ def update_take(
     take_update_dto: TakeUpdateRequestDTO,
 ):
     result = update_take_service(db, take_id, take_update_dto)
-    # 발표를 끝냈다. 보통은 WS stop 이 마지막 전사까지 저장한 뒤 Take 를 끝낸다. STT 없이 끝낸
-    # FE 는 stop 을 못 보내므로 여기서 끝낸다 — 남은 전사 · 원자료를 저장한 뒤 이 요청의 DB 세션으로
-    # 끝난 것으로 적는다. 적지 못하면 실패로 답한다 (FE 는 다시 보낸다)
+    # 발표를 끝냈다. 보통은 WS stop 이 마지막 전사까지 저장한 뒤 Take 를 끝낸다. 발표 중에 연결이
+    # 끊겨 STT 없이 끝낸 FE 는 stop 을 못 보내므로 여기서 끝낸다 — 남은 전사 · 원자료를 저장한 뒤
+    # 이 요청의 DB 세션으로 끝난 것으로 적는다. 적지 못하면 실패로 답한다 (FE 는 다시 보낸다).
+    # 시작하지 않은 Take(READY)는 update_take_service 가 먼저 거절한다
     if take_update_dto.ended_at is not None:
         hooks.live_takes().end(
             take_id,
@@ -106,3 +111,15 @@ def review_take(
 ):
     result = get_review_result(db, take_id)
     return {"message": "Review result retrieved successfully", "review_result": result}
+
+
+# 발표를 가리지 않는 Take 조회. Take 기록은 모든 발표의 Take 를 한 번에 보여 준다
+takes_router = APIRouter(prefix="/takes", tags=["Take"])
+
+@takes_router.get("/", response_model=TakeHistoryResponseDTO)
+def list_takes(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    pitch_id: uuid.UUID | None = None,
+):
+    return list_takes_service(db, current_user.id, pitch_id)

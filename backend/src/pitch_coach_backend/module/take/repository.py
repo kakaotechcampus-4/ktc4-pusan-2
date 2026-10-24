@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, func, or_, select, update
+from sqlalchemy import ColumnElement, Row, and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased, defer
 
@@ -100,12 +100,25 @@ class TakeRepository:
         """이 pitch 에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 바꾼다. 바꾼 수를 돌려준다.
 
         새 Take 를 만들 때 부른다. FE 는 가장 최근 Take 로만 발표하므로 앞의 `READY` 는 다시 쓰이지
-        않는다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지
-        `READY` 다. 끝난 시각은 알 수 없어 만든 시각으로 적는다.
+        않는다.
         """
+        return self._abandon_ready(Take.pitch_id == pitch_id)
+
+    def abandon_stale_ready_takes(self, older_than: timedelta) -> int:
+        """만든 지 `older_than` 이 지나도 `READY` 인 Take 를 `FAILED`(`ABANDONED`)로 바꾼다.
+
+        FE 는 첫 실시간 연결이 `ready` 를 받은 뒤에 발표를 시작하고, 그 연결이 `RUNNING` 으로
+        바꾼다. 그래서 `READY` 는 시작하지 않은 Take 다 — 장치 점검에서 시작을 누른 뒤 연결이 끝내
+        붙지 않았다. 시각은 DB 시계로 잰다. 같은 순간 붙은 연결(`mark_running`)과는 둘 다 조건부
+        UPDATE 라 먼저 적은 쪽이 남는다.
+        """
+        return self._abandon_ready(Take.created_at < func.now() - older_than)
+
+    def _abandon_ready(self, *where: ColumnElement[bool]) -> int:
+        # 끝난 시각은 알 수 없어 만든 시각으로 적는다
         result = self.db.execute(
             update(Take)
-            .where(Take.pitch_id == pitch_id, Take.status == "READY")
+            .where(Take.status == "READY", *where)
             .values(
                 status="FAILED",
                 end_reason="ABANDONED",
@@ -345,7 +358,9 @@ class TakeRepository:
         end_reason: str | None = None,
         utterance_ends: list[int] | None = None,
     ) -> bool:
-        """진행 중인 Take 를 끝난 상태(`ANALYZING`)로 바꾼다. 바꿨으면 True.
+        """발표 중인(`RUNNING`) Take 를 끝난 상태(`ANALYZING`)로 바꾼다. 바꿨으면 True.
+
+        `READY` 는 바꾸지 않는다. 실시간 연결이 한 번도 붙지 않아 남은 기록이 없다.
 
         BE 가 자동으로 끝냈으면 `end_reason` 에 이유를 같이 적는다 (사용자가 끝냈으면 None).
         Take 가 없거나 이미 끝났으면 아무것도 바꾸지 않고 False. 읽고 쓰지 않고 UPDATE 하나로
@@ -371,7 +386,7 @@ class TakeRepository:
             values["utterance_ends"] = utterance_ends
         result = self.db.execute(
             update(Take)
-            .where(Take.id == take_id, or_(Take.status.in_(IN_PROGRESS_STATUSES), abandoned))
+            .where(Take.id == take_id, or_(Take.status == "RUNNING", abandoned))
             .values(**values)
         )
         return result.rowcount > 0
@@ -403,6 +418,52 @@ class TakeRepository:
             .values(**values)
         )
         return result.rowcount > 0
+
+    def list_started_takes(
+        self, user_id: uuid.UUID, pitch_id: uuid.UUID | None = None
+    ) -> list[Row[Any]]:
+        """사용자의 시작한 Take 를 시작 시각 최신순으로 읽는다. `pitch_id` 를 주면 그 발표 것만.
+
+        시작하지 않은 Take(장치 점검에서 버려진 것)는 시작 시각이 없어 빠진다. 한 줄에 Take 기록
+        화면이 쓰는 값을 모두 싣는다 — 집계 · 장치 점검 결과가 없으면 그 칸은 null 이다.
+        """
+        # 판정이 끝난 미션은 다음 Take 로 넘어가지 않아 `take_id` 가 판정한 Take 로 남는다
+        achieved = (
+            select(func.count())
+            .where(Mission.take_id == Take.id, Mission.status == "ACHIEVED")
+            .scalar_subquery()
+        )
+        # 시작 전 Take 는 칸이 비어 있다. JSON null 이 들어 있어도 배열 길이를 묻지 않는다
+        is_array = func.jsonb_typeof(Take.mission_ids) == "array"
+        total = case((is_array, func.jsonb_array_length(Take.mission_ids)), else_=0)
+        stmt = (
+            select(
+                Take.id.label("take_id"),
+                Take.pitch_id,
+                Pitch.title.label("pitch_title"),
+                Take.take_number,
+                Take.started_at,
+                Take.status,
+                Take.script_mode,
+                Take.duration_sec,
+                Take.goal_time_sec,
+                TakeSummary.audience_gaze,
+                TakeSummary.script_gaze,
+                TakeSummary.average_cpm,
+                TakeSummary.filler_count,
+                achieved.label("missions_achieved"),
+                total.label("missions_total"),
+                Calibration.result["engine_version"].astext.label("gaze_engine"),
+            )
+            .join(Pitch, Pitch.id == Take.pitch_id)
+            .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
+            .outerjoin(Calibration, Calibration.take_id == Take.id)
+            .where(Pitch.user_id == user_id, Take.started_at.is_not(None))
+            .order_by(Take.started_at.desc(), Take.take_number.desc())
+        )
+        if pitch_id is not None:
+            stmt = stmt.where(Take.pitch_id == pitch_id)
+        return list(self.db.execute(stmt).all())
 
     def running_takes_last_active(self) -> list[tuple[uuid.UUID, datetime]]:
         """`RUNNING` 인 Take 와 마지막으로 활동한 시각. 앱이 다시 뜰 때 떠난 Take 를 찾는 데 쓴다.

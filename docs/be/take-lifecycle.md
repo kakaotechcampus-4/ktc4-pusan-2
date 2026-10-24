@@ -13,13 +13,12 @@ stateDiagram-v2
     [*] --> READY : POST /takes
     READY --> RUNNING : WS 첫 연결
     RUNNING --> ANALYZING : stop · 끝내기 PUT · 자동 종료
-    READY --> ANALYZING : 끝내기 PUT (STT 없이)
     ANALYZING --> COMPLETED : 분석
 
     RUNNING --> CLOSED : 창을 닫음 (1001 뒤 2분) · abandon API
     READY --> CLOSED : abandon API
     RUNNING --> ABANDONED : 창을 닫지 않고 끊긴 뒤 5분
-    READY --> ABANDONED : 같은 발표에서 새 Take 를 만듦
+    READY --> ABANDONED : 같은 발표에서 새 Take 를 만듦 · 10분
     ABANDONED --> ANALYZING : 끝내기 PUT (되살림)
 
     note right of CLOSED : 되살리지 않는다
@@ -27,7 +26,7 @@ stateDiagram-v2
 
 | 상태 | 뜻 | WS 연결 |
 |---|---|---|
-| `READY` | Take 를 만들었고 아직 WS 가 붙지 않았습니다 | 받음 (붙으면 `RUNNING`) |
+| `READY` | Take 를 만들었고 아직 WS 가 붙지 않았습니다. FE 는 첫 연결이 `ready` 를 받은 뒤에 발표를 시작하므로 시작하지 않은 Take 입니다 | 받음 (붙으면 `RUNNING`) |
 | `RUNNING` | 발표 중입니다 | 받음 |
 | `ANALYZING` | 끝났고 분석 중입니다 | `TAKE_ENDED` 로 거절 |
 | `COMPLETED` | 분석이 끝났습니다 | `TAKE_ENDED` 로 거절 |
@@ -40,7 +39,7 @@ stateDiagram-v2
 | `SILENCE` | `ANALYZING` | 오래 말이 없어 자동 종료 |
 | `TIME_LIMIT` | `ANALYZING` | 최대 시간(1시간)이 지나 자동 종료 |
 | `CLOSED` | `FAILED` | 창을 닫았습니다 |
-| `ABANDONED` | `FAILED` | 창을 닫지 않고 끊긴 채 돌아오지 않았습니다. FE 는 살아 있을 수도 있습니다. 또는 `READY` 인 채 같은 발표에서 새 Take 를 만들었습니다 |
+| `ABANDONED` | `FAILED` | 창을 닫지 않고 끊긴 채 돌아오지 않았습니다. FE 는 살아 있을 수도 있습니다. 또는 시작하지 않은 채(`READY`) 같은 발표에서 새 Take 를 만들었거나 10분이 지났습니다 |
 
 ## 1. 발표 중 연결이 끊기면
 
@@ -54,7 +53,7 @@ stateDiagram-v2
 - 먼저 0.5초 · 1초 · 2초 간격으로 세 번 붙어 봅니다.
 - 그 뒤로는 횟수로 포기하지 않고 4~6초(5초 ± 1초)마다 붙어 봅니다.
 - 끊긴 지 5분 30초가 지나면 멈춥니다. 서버가 그때 Take 를 끝내서(3절) 그 뒤로는 붙어도 `TAKE_ENDED` 입니다.
-- 아래 경우는 다시 붙어도 같은 이유로 닫히므로 **바로 포기합니다.** 발표는 STT 없이 이어 갑니다.
+- 아래 경우는 다시 붙어도 같은 이유로 닫히므로 **바로 포기합니다.** 발표 중이면 STT 없이 이어 가고, 첫 `ready` 전이면 발표를 시작하지 않습니다 (FE 는 첫 `ready` 를 받은 뒤에 시계를 돌립니다).
   - 에러 `UNAUTHORIZED`(토큰을 한 번 갱신해 다시 붙어 본 뒤) · `TAKE_NOT_FOUND` · `TAKE_ENDED` · `FORBIDDEN` · `TAKE_TAKEN_OVER`
   - 닫힘 코드 1000 · 1008
 
@@ -151,17 +150,19 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 | 방법 | 누가 | 결과 |
 |---|---|---|
 | 끝내기 버튼 | FE 가 WS `stop` | 마지막 확정 전사와 1초 원자료(`metrics`)까지 저장한 뒤 `ANALYZING`. 이어서 FE 가 PUT 으로 시작 · 끝 시각을 보냄 |
-| STT 없이 끝냄 | FE 가 PUT `ended_at` | `ANALYZING`. 연결이 붙어 있으면 그 연결에 맡기고, 끊긴 뒤 30초 안이라 스트림이 남아 있으면 `stop` 처럼 전사 · 1초 원자료까지 저장한 뒤 바꿈 |
+| STT 없이 끝냄 | FE 가 PUT `ended_at` | 발표 중(`RUNNING`)이면 `ANALYZING`. 시작하지 않은 Take(`READY`)는 409 `TAKE_NOT_STARTED`. 연결이 붙어 있으면 그 연결에 맡기고, 끊긴 뒤 30초 안이라 스트림이 남아 있으면 `stop` 처럼 전사 · 1초 원자료까지 저장한 뒤 바꿈 |
 | 자동 종료 `SILENCE` | BE | 최근 2분 동안 말이 없고 직전 5분 중 80% 이상이 말 없음. 소리 크기가 아니라 전사로 판단하고, STT 가 죽어 있던 구간은 세지 않음 → `ANALYZING` |
 | 자동 종료 `TIME_LIMIT` | BE | 프레임의 Take 시각이 1시간을 넘음. 시각이 멈춘 Take 는 서버 시계(스트림이 열려 있던 시간의 합)가 1시간 + 60초에서 끝냄 → `ANALYZING` |
 | 창을 닫음 | BE (3절) · FE (abandon) | `FAILED`(`CLOSED`) |
 | 끊긴 채 안 돌아옴 | BE (3절) | `FAILED`(`ABANDONED`) |
 | 새 Take 를 만듦 | BE (Take 생성) | 같은 발표에서 `READY` 로 남은 Take 를 모두 `FAILED`(`ABANDONED`). 끝난 시각은 만든 시각 |
+| 시작하지 않은 채 10분 | BE (1분마다 정리) | 만든 지 10분 지나도 `READY` 인 Take 를 `FAILED`(`ABANDONED`). 끝난 시각은 만든 시각 |
 
-새 Take 를 만들 때 끝내는 것은 장치 점검만 하고 시작하지 않은 Take 입니다. FE 는 가장 최근 Take 로만 발표해서
-앞의 `READY` 는 다시 쓰이지 않습니다. 시간으로 끝내지 않는 이유는 마이크 없이 하는 발표가 실시간 연결 없이 끝날
-때까지 `READY` 이기 때문입니다. 그래서 다른 창에서 마이크 없이 발표하던 Take 도 여기서 끝나고, 그 창이 발표를
-마치고 보내는 끝내기 PUT 이 되살립니다 (아래).
+`READY` 는 시작하지 않은 Take 입니다. FE 는 마이크를 열고 첫 연결이 `ready` 를 받은 뒤에 발표 시계를 돌리고,
+그 연결이 `RUNNING` 으로 바꿉니다. 바꾸지 못하면(DB 오류) BE 는 연결을 1011 로 닫고 FE 는 다시 붙습니다.
+Take 는 장치 점검에서 시작을 누를 때 만들어 곧바로 연결이 붙으므로, `READY` 로 남은 Take 는 다시 쓰이지 않습니다.
+새 Take 를 만들 때 같은 발표의 것을 끝내고, 다시 연습하지 않아도 10분이 지나면 끝냅니다. 정리와 첫 연결은 둘 다
+조건부 UPDATE 라 먼저 적은 쪽이 남고, 정리가 먼저면 그 연결은 `TAKE_ENDED`(`ABANDONED`) 를 받습니다.
 
 자동 종료는 `auto_end` 를 보내고 `stop` 과 같은 순서로 정리합니다. FE 는 끝내기 버튼과 같은 종료 흐름을 탑니다.
 
@@ -177,8 +178,7 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 ### 되살리기
 
 `ABANDONED` 로 끝난 Take 에 `ended_at` 이 든 끝내기 PUT 이 오면 기록을 받고 `ANALYZING` 으로 되살립니다
-(`end_reason` 은 지웁니다). 화면은 살아 있는데 STT 만 끊겨 5분 넘게 발표를 이어 간 경우와, 마이크 없이 발표하는
-동안 다른 창에서 새 Take 를 만든 경우입니다.
+(`end_reason` 은 지웁니다). 화면은 살아 있는데 STT 만 끊겨 5분 넘게 발표를 이어 간 경우입니다.
 
 `CLOSED` 는 되살리지 않습니다. 창을 닫은 Take 는 이어 가지 않습니다.
 
@@ -188,7 +188,8 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 
 | Take 상태 | 받는 것 | 아니면 |
 |---|---|---|
-| `READY` · `RUNNING` | 전부 | — |
+| `READY` | `ended_at` 을 뺀 것 | `ended_at` 이 있으면 409 `TAKE_NOT_STARTED` (시작하지 않은 Take 는 끝내지 않음) |
+| `RUNNING` | 전부 | — |
 | `ANALYZING` | 시각(`started_at` · `ended_at`)만 | `event_logs` 는 409 |
 | `FAILED`(`ABANDONED`) | `ended_at` 이 있는 끝내기 (되살림) | 409 |
 | `FAILED`(`CLOSED`) · 그 밖의 `FAILED` · `COMPLETED` | 없음 | 409 `TAKE_ENDED` |
@@ -203,6 +204,7 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 | 창을 닫은 뒤 2분 | `CLOSED_TAB_WAIT_SEC` | 위와 같음 |
 | 발표 중으로 보는 오디오 간격 10초 | `LIVE_AUDIO_SEC` | 위와 같음 |
 | 떠난 Take 5분 | `ABANDON_AFTER_SEC` | 위와 같음 |
+| 시작하지 않은 Take 10분 · 정리 간격 1분 | `READY_EXPIRE_AFTER` · `SWEEP_INTERVAL_SEC` | `backend/src/pitch_coach_backend/module/take/service.py` · `ready_sweep.py` |
 | Deepgram 재접속 백오프 | `BACKOFF_SEC` | 위와 같음 |
 | 최대 시간 1시간 | `take_max_duration_sec` | `backend/src/pitch_coach_backend/core/config.py` |
 | 서버 시계 여유 60초 | `SERVER_CLOCK_SLACK_MS` | `backend/src/pitch_coach_backend/realtime/auto_end.py` |

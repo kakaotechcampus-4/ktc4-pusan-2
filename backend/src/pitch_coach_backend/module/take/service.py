@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx2
 from psycopg.errors import ForeignKeyViolation, UniqueViolation
@@ -28,6 +28,8 @@ from pitch_coach_backend.module.take.dto import (
     PreviousTakeDTO,
     ReviewRequestDTO,
     ReviewResponseDTO,
+    TakeHistoryResponseDTO,
+    TakeHistoryRowDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
     TargetInfoDTO,
@@ -42,6 +44,7 @@ from pitch_coach_backend.module.take.exception import (
     TakeAlreadyEnded,
     TakeAlreadyStarted,
     TakeNotReviewable,
+    TakeNotStarted,
     TakeSessionMismatch,
 )
 from pitch_coach_backend.module.take.repository import (
@@ -138,6 +141,11 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
 
     # 보낸 필드만 바꾼다. 빠진 필드를 None 으로 덮으면 ended_at 만 보낼 때 started_at 이 지워진다
     changes = take_update_dto.model_dump(exclude_none=True)
+
+    # 실시간 연결이 한 번도 붙지 않은 Take 는 끝내지 않는다. FE 는 첫 `ready` 를 받은 뒤에
+    # 발표를 시작하므로 남은 기록이 없다. 만든 지 10분이 지나면 BE 가 ABANDONED 로 끝낸다
+    if existing_take.status == "READY" and "ended_at" in changes:
+        raise TakeNotStarted()
 
     # 떠난 것으로 끝낸 Take 에 온 끝내기다. 재연결을 포기하고 STT 없이 발표를 이어 간 FE 라
     # 기록을 받는다. 상태는 뒤이어 mark_ended 가 ANALYZING 으로 되돌린다
@@ -249,6 +257,43 @@ def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
                 priority=mission.priority,
                 completed=mission.complete
             ) for mission in take_repository.get_missions_in_take(latest_take.id)
+        ]
+    )
+
+
+def _percent_to_ratio(value: int | None) -> float | None:
+    # take_summaries 는 비율 × 100 정수로 둔다 (architecture.md 1-1 반올림)
+    return None if value is None else value / 100
+
+
+def list_takes_service(
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None = None
+) -> TakeHistoryResponseDTO:
+    """Take 기록 · Take 비교 화면의 Take 목록. 남의 발표나 없는 발표를 주면 404 다."""
+    if pitch_id is not None and PitchRepository(db).get_owned(pitch_id, user_id) is None:
+        raise NonExistentPitch()
+    rows = TakeRepository(db).list_started_takes(user_id, pitch_id)
+    return TakeHistoryResponseDTO(
+        takes=[
+            TakeHistoryRowDTO(
+                take_id=row.take_id,
+                pitch_id=row.pitch_id,
+                pitch_title=row.pitch_title,
+                take_number=row.take_number,
+                started_at=row.started_at,
+                status=row.status,
+                script_mode=row.script_mode,
+                duration_ms=None if row.duration_sec is None else row.duration_sec * 1000,
+                goal_ms=row.goal_time_sec * 1000,
+                audience_ratio=_percent_to_ratio(row.audience_gaze),
+                script_ratio=_percent_to_ratio(row.script_gaze),
+                cpm=row.average_cpm,
+                filler_count=row.filler_count,
+                missions_achieved=row.missions_achieved,
+                missions_total=row.missions_total,
+                gaze_engine=row.gaze_engine,
+            )
+            for row in rows
         ]
     )
 
@@ -460,12 +505,14 @@ def mark_ended(
     end_reason: str | None = None,
     utterance_ends: list[int] | None = None,
 ) -> bool:
-    """Take 를 끝냈다. 상태를 `ANALYZING`, 분석 단계를 `FINALIZING` 으로 바꾸고 커밋한다.
+    """Take 를 끝냈다. `RUNNING` 이면 상태를 `ANALYZING`, 분석 단계를 `FINALIZING` 으로 바꾸고
+    커밋한다.
 
-    WS stop 이 부르고, STT 없이 끝낸 Take 는 Take PUT(`ended_at`)이 부른다. BE 가 자동으로
-    끝냈으면 `end_reason` 에 이유를 남긴다 (처음 적은 이유가 남는다). 떠난 것으로 끝낸 Take 는
-    되살린다 (STT 없이 발표를 이어 간 FE 의 끝내기다). `utterance_ends` 는 Take 동안 메모리에
-    들고 있던 문장 끝 신호다 — 있으면 같이 쓴다 (`docs/ai/architecture.md` 1-3 3번 ③).
+    WS stop 이 부르고, 발표 중에 연결이 끊겨 STT 없이 끝낸 Take 는 Take PUT(`ended_at`)이
+    부른다. BE 가 자동으로 끝냈으면 `end_reason` 에 이유를 남긴다 (처음 적은 이유가 남는다).
+    떠난 것으로 끝낸 Take 는 되살린다 (STT 없이 발표를 이어 간 FE 의 끝내기다).
+    `utterance_ends` 는 Take 동안 메모리에 들고 있던 문장 끝 신호다 — 있으면 같이 쓴다
+    (`docs/ai/architecture.md` 1-3 3번 ③).
     Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
     """
     marked = TakeRepository(db).mark_ended(take_id, end_reason, utterance_ends)
@@ -507,3 +554,16 @@ def save_utterance_ends(db: Session, take_id: uuid.UUID, utterance_ends: list[in
     saved = TakeRepository(db).save_utterance_ends(take_id, utterance_ends)
     db.commit()
     return saved
+
+
+# 시작하지 않은 Take 를 끝내는 기준. Take 는 장치 점검에서 시작을 누를 때 만들고 곧바로 실시간
+# 연결이 붙으므로 보통 몇 초면 `RUNNING` 이 된다. 권한 창 · 느린 연결을 넉넉히 기다린다
+READY_EXPIRE_AFTER = timedelta(minutes=10)
+
+
+def abandon_stale_ready_takes(db: Session) -> int:
+    """만든 지 `READY_EXPIRE_AFTER` 가 지나도 `READY` 인 Take 를 `FAILED`(`ABANDONED`)로 끝내고
+    커밋한다. 끝낸 수를 돌려준다."""
+    abandoned = TakeRepository(db).abandon_stale_ready_takes(READY_EXPIRE_AFTER)
+    db.commit()
+    return abandoned

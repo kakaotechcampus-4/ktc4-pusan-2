@@ -25,6 +25,7 @@ x-request-id: 4f1c…(32자리)
 ```
 INFO pitch_coach_ai.request request_id=4f1c… method=GET path=/health status=200 code=- duration_ms=0.9
 ```
+- 실제 줄 앞에는 시각이 붙습니다(`2026-10-24 07:30:24,902 INFO …`). 이 README의 로그 예시는 시각을 줄였습니다(대역 확인 예시만 그대로 둠).
 - uvicorn 자체의 접근 로그(`"GET /health HTTP/1.1" 200 OK`)는 끕니다. 요청마다 위 줄과 겹치고, 쿼리 문자열을 그대로 싣고, 요청 ID가 없기 때문입니다. uvicorn의 시작 · 오류 로그는 그대로 나옵니다.
 - `http://localhost:8001/docs`에서 API 목록과 요청 · 응답 형식을 보고 직접 요청을 보내 볼 수 있습니다.
 - `--reload`는 코드를 저장하면 서버를 다시 띄웁니다. 개발할 때만 씁니다.
@@ -41,6 +42,7 @@ INFO pitch_coach_ai.request request_id=4f1c… method=GET path=/health status=20
 | `LLM_TIMEOUT_SECONDS` | 선택 | `12` | LLM 호출 한 번 전체의 시간 제한(초). 0보다 커야 합니다 |
 | `LLM_MAX_RETRIES` | 선택 | `1` | LLM 재시도 횟수. 요청 마감 안에서만, 시간 초과 · 연결 실패 · 429 · 5xx일 때만 |
 | `WEB_CONCURRENCY` | 선택 | `1` | uvicorn 워커 수. uvicorn 이 시작할 때 **프로세스 환경변수**에서 직접 읽습니다. compose `env_file` · `docker run --env-file`은 환경변수로 넣어 먹지만, `ai/.env`에만 적고 `uv run`으로 띄우면 먹지 않습니다(로컬은 `--workers 4`) |
+| `AI_ENABLE_SAMPLE` | 선택 | `false` | 규약 확인용 대역 `POST /sample/judge`를 켭니다. 로컬 확인용이라 서버 `AI_ENV`에는 넣지 않습니다. 끄면 그 경로는 404 `NOT_FOUND` |
 
 - 값은 따옴표와 줄 끝 주석 없이 `이름=값`으로 적습니다(`docker run --env-file`은 따옴표를 값에 그대로 넣습니다). 빈 값(`OPENAI_API_KEY=`)은 "없음"으로 봅니다.
 - **묶음이 일부만 차 있으면 서버가 시작하지 않습니다.** 키를 빠뜨린 실수를 배포 직후 헬스체크에서 바로 보이게 하려는 것입니다.
@@ -88,7 +90,47 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 - `-p 8001:8000`은 내 PC의 8001번을 컨테이너의 8000번에 잇습니다. 컨테이너는 자기 네트워크를 쓰므로 이 연결이 없으면 밖에서 닿지 않습니다.
 - `--rm`은 끌 때 컨테이너를 지웁니다. 이미지는 남습니다(`docker images pitch-coach-ai`로 크기 확인).
 - LLM 기능을 부를 때는 `--env-file ai/.env`를 더합니다. 키는 이미지에 넣지 않습니다.
-- 의존성 설치 층은 `pyproject.toml` · `uv.lock`이 그대로면 캐시를 다시 써서, 코드만 고친 뒤의 빌드는 몇 초면 끝납니다.
+- 의존성 설치 층은 `pyproject.toml` · `uv.lock`이 그대로면 캐시를 다시 써서, 코드만 고친 뒤의 빌드는 몇 초면 끝납니다. 다만 `python:3.12-slim` 태그가 새 판으로 바뀌면(보안 패치 등) 맨 아래 층부터 다시 받아 의존성 층도 다시 만듭니다.
+
+### 규약 확인용 대역 확인
+판정 모듈이 서비스 규약(요청 검사 · 결과와 `meta` · 공통 에러 본문 · `X-Request-ID` · 처리 시간 로그)으로 붙는지 대역 `POST /sample/judge`로 봅니다. 같은 이미지를 `-e AI_ENABLE_SAMPLE=true`로만 다르게 띄웁니다(서버에는 이 값을 넣지 않아 경로가 없습니다). 저장소 맨 위에서:
+```powershell
+docker run --rm -p 8001:8000 -e AI_ENABLE_SAMPLE=true pitch-coach-ai:local
+```
+다른 창에서 예시 요청을 보냅니다.
+```powershell
+curl.exe -i -X POST http://localhost:8001/sample/judge -H "Content-Type: application/json" -H "X-Request-ID: sample-check-1" --data-binary "@ai/service/src/pitch_coach_ai/features/sample/examples/judge_request.json"
+```
+```
+HTTP/1.1 200 OK
+content-type: application/json
+x-request-id: sample-check-1
+
+{"results":[{"evaluator":"sample","area":"VOLUME","t_ms":6000,"counted_until_ms":6000,"criteria_version":"sample-0.1+5111018b3af5","measurable":true,"state":"NORMAL","metrics":{"measured_ratio":0.75},"tally":[{"t_ms":2000,"values":{"measured_ms":3000.0,"total_ms":4000.0}}],"issues":[]}],"meta":{"schema_version":"1.0","feature_version":"sample-0.1","model":null,"criteria_versions":{"sample":"sample-0.1+5111018b3af5"}}}
+```
+본문은 `features/sample/examples/judge_response.json`과 같습니다. 틀린 요청과 없는 경로는 공통 에러 본문입니다.
+```powershell
+curl.exe -i -X POST http://localhost:8001/sample/judge -H "Content-Type: application/json" -d "{}"
+curl.exe -i http://localhost:8001/no-such-path
+```
+```
+HTTP/1.1 422 Unprocessable Entity
+x-request-id: 93a6e31580c44bf09683fcc3779601f4
+{"error":{"code":"VALIDATION_ERROR","message":"요청 형식이 올바르지 않습니다."}}
+
+HTTP/1.1 404 Not Found
+x-request-id: 7cf8f496b831478b994f98bcdc108496
+{"error":{"code":"NOT_FOUND","message":"요청한 경로를 찾을 수 없습니다."}}
+```
+서버 창(`docker logs`)에는 요청마다 한 줄이 남고, 422는 검증 오류의 필드 이름만 남깁니다(값은 남기지 않음).
+```
+2026-10-24 07:30:24,978 INFO pitch_coach_ai.request request_id=sample-check-1 method=POST path=/sample/judge status=200 code=- duration_ms=2.1
+2026-10-24 07:30:25,054 INFO pitch_coach_ai.errors validation_error fields=[('body.since_ms', 'missing'), ('body.records', 'missing'), ('body.t_ms', 'missing')]
+2026-10-24 07:30:25,054 INFO pitch_coach_ai.request request_id=93a6e31580c44bf09683fcc3779601f4 method=POST path=/sample/judge status=422 code=VALIDATION_ERROR duration_ms=1.0
+2026-10-24 07:30:25,135 INFO pitch_coach_ai.request request_id=7cf8f496b831478b994f98bcdc108496 method=GET path=/no-such-path status=404 code=NOT_FOUND duration_ms=0.5
+```
+- `-e AI_ENABLE_SAMPLE=true` 없이 띄운 컨테이너에 같은 예시 요청을 보내면 404 `NOT_FOUND`입니다.
+- PowerShell 5.1은 따옴표가 든 JSON을 `curl.exe`에 그대로 넘기지 못해, 요청 본문은 파일(`--data-binary "@파일"`)이나 따옴표 없는 `{}`로 보냅니다.
 
 ## 구조
 ```
@@ -97,11 +139,13 @@ ai/service/
 ├── Dockerfile · .dockerignore
 ├── src/pitch_coach_ai/
 │   ├── main.py · settings.py
-│   ├── api/health.py
-│   └── common/errors.py · request_log.py · llm.py · meta.py
+│   ├── api/health.py · sample.py
+│   ├── common/errors.py · request_log.py · llm.py · meta.py
+│   └── features/sample/schemas.py · core.py · config.py · version.py · examples/
 └── tests/
-    ├── conftest.py · test_health.py · test_errors.py · test_request_log.py
+    ├── conftest.py · test_health.py · test_errors.py · test_request_log.py · test_sample.py
     ├── unit/common/test_settings.py · test_llm.py · test_meta.py
+    ├── unit/sample/test_core.py
     └── live/test_llm_live.py
 ```
 
@@ -114,14 +158,18 @@ ai/service/
 | `src/pitch_coach_ai/main.py` | 설정을 읽고 앱을 만들어 예외 처리 · 요청 로그 · 라우터를 붙인다 (`create_app()`, `app`) | 설정 → FastAPI 앱 | uvicorn, 테스트 `client` | 새 라우터를 `create_app`에 `include_router` |
 | `src/pitch_coach_ai/settings.py` | 환경변수 읽기(`settings`), 모델 묶음 검사, 역할 → 묶음 · 출력 상한(`LLM_ROLES`) | 환경변수 · `ai/.env` → `Settings` | `main.py` · `common/llm.py` | 새 변수는 기본값과 함께 더하고 `ai/.env.example` · 위 표도 |
 | `src/pitch_coach_ai/api/health.py` | `GET /health` | — → 200 `{"status": "ok"}` | compose 헬스체크, 배포 확인 | LLM을 부르지 않게 둔다 |
+| `src/pitch_coach_ai/api/sample.py` | `POST /sample/judge` 규약 확인용 대역. 요청 검사 → `core.judge` → `build_judge_meta`. `AI_ENABLE_SAMPLE=true`일 때만 등록 | `{t_ms, since_ms, records}` → 200 `{results, meta}` | AI 담당의 로컬 확인 (BE는 부르지 않음) | 첫 실제 기능 엔드포인트가 붙으면 `features/sample/` · 테스트(`conftest`의 `sample_client` 포함) · `main.py`의 등록 · `AI_ENABLE_SAMPLE`과 함께 지운다 |
 | `src/pitch_coach_ai/common/errors.py` | 예외 → `{"error": {"code", "message"}}` · 상태 코드. `AppError` 와 LLM 예외 넷 | 예외 → 에러 응답 | `main.py`(등록), `common/llm.py`(던짐), 기능(상속) | 새 공통 코드는 `architecture.md` 4절을 먼저 바꾼다 |
 | `src/pitch_coach_ai/common/request_log.py` | `X-Request-ID`(받은 그대로 · 없으면 생성), 처리되지 않은 예외 → 500, 요청마다 한 줄 로그 | 요청 → 응답 + 로그 | `main.py` | 로그에 요청 본문 · 쿼리 · 키를 넣지 않는다 |
 | `src/pitch_coach_ai/common/llm.py` | `structured_llm` · `deadline_after`: 구조화 출력 LLM, 호출 시간 제한 · 재시도 · 요청 마감 · 실패 분류 · 응답 모델 기록 · 호출 로그 | 스키마 · 역할 · 마감 → `.invoke` 를 가진 객체 | 라우터(코어에 넘김) | 시간 · 재시도는 환경변수, 묶음 · 상한은 `LLM_ROLES` |
 | `src/pitch_coach_ai/common/meta.py` | 응답 `meta`(`schema_version` · `feature_version` · `model`, 판정 응답은 `criteria_versions`) | 기능 `FEATURE_VERSION`(`<모듈>-<버전>`) · LLM → `Meta` | 라우터 | `criteria_version` 해시는 코치 연구 코드와 같은 방식으로 둔다 |
-| `tests/conftest.py` | 묶음 환경변수를 비운 뒤 앱 import(실제 키를 읽지 않음), `client` · `probe_client`(실패를 내는 테스트 경로) · `log_records` | — | 모든 앱 테스트 | — |
+| `src/pitch_coach_ai/features/sample/` | 대역 판정 모듈. 판정 모듈 모양(`architecture.md` 7 · 8절) 그대로이고 실제 판정은 없다. `schemas.py`(입력 · `JudgmentResult`) · `core.py`(`judge` · `summarize` · `criteria`) · `config.py`(기준값 · `criteria_version`) · `version.py`(`sample-0.1`) · `examples/`(요청 · 응답 예시) | 1초 기록 · 커서 · 판정 시각 → `[JudgmentResult]` | `api/sample.py` | `config.py`를 바꾸면 해시가 바뀌므로 `examples/judge_response.json`도 고친다. 기능 폴더는 `common/` · FastAPI를 import하지 않는다 |
+| `tests/conftest.py` | 묶음 환경변수를 비운 뒤 앱 import(실제 키를 읽지 않음), `client`(대역 꺼짐) · `sample_client`(대역 켬) · `probe_client`(실패를 내는 테스트 경로) · `log_records` | — | 모든 앱 테스트 | — |
 | `tests/test_health.py` | `/health` 200(fixture 앱 · uvicorn 이 쓰는 `app` 둘 다), 등록된 경로에 `/api` 접두어 없음 | — | pytest | — |
 | `tests/test_errors.py` · `test_request_log.py` | 에러 본문 · 상태 코드, `X-Request-ID`, 요청 로그(본문 · 쿼리 · 입력값 없음) | — | pytest | — |
+| `tests/test_sample.py` | 대역: 예시 요청 → 예시 응답(`meta` 포함), 기본은 404, 422 공통 본문, `X-Request-ID`, 요청 로그 | — | pytest | 대역과 함께 지운다 |
 | `tests/unit/common/` | 설정 · LLM(가짜 LLM) · meta 단위 테스트 | — | pytest | — |
+| `tests/unit/sample/test_core.py` | 대역 코어: 예시 계약, 센 기록의 창 · 중복 · 커서, 기준값 해시, `summarize` · `criteria` | — | pytest | 대역과 함께 지운다 |
 | `tests/live/test_llm_live.py` | 실제 LLM 1회 호출 (과금) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
 
 ## 테스트
@@ -129,13 +177,13 @@ ai/service/
 uv run python -m pytest              # 가짜 LLM, 키 · 과금 없음
 ```
 ```
-58 passed, 1 deselected
+100 passed, 1 deselected
 ```
 ```powershell
 uv run python -m pytest -m live      # 실제 LLM 1회 (ai/.env 의 기본 묶음, 과금)
 ```
 ```
-1 passed, 58 deselected
+1 passed, 100 deselected
 ```
 LLM 호출마다 한 줄이 남습니다(프롬프트 · 답 · 키는 남기지 않음).
 ```
