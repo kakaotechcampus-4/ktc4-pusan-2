@@ -87,7 +87,6 @@ def _evaluation(slide_number=1, items=(), rubric_id="rid1") -> SlideEvaluation:
         verification={"required": False},
         stt_sentences=[],
         stt_text="말했다",
-        created_at="2026-01-01T00:00:00+00:00",
     )
 
 
@@ -179,7 +178,7 @@ def test_confirmation_is_saved_and_applied_only_to_same_wording(conn):
     evaluation = _evaluation(items=[_item("R1")])
     save_evaluation(conn, evaluation)
     confirmed = confirm_similar_item(conn, "대본_take1", 1, "R1", "as_script")
-    assert confirmed.confirmations == {"R1": "as_script"}
+    assert confirmed.applied_answers == {"R1": "as_script"}
     assert conn.execute(
         "SELECT item_id, script_text, stt_text, answer FROM similar_confirmations"
     ).fetchall() == [("R1", "좌석", "자석", "as_script")]

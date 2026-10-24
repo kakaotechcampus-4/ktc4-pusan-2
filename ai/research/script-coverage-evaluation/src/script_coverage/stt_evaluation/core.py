@@ -3,8 +3,6 @@
 LLM 과 캐시는 인자로 받는다. 평가 기준(rubric)을 읽고 결과를 저장하는 일은 호출하는 쪽이 한다.
 """
 
-from datetime import UTC, datetime
-
 from ..shared.llm_step import LLMCache, llm_step, record_failures
 from ..shared.rubric import EvaluationRubric
 from ..shared.text import normalize_script
@@ -178,7 +176,6 @@ def evaluate_take(
             },
             stt_sentences=[s.text for s in d["stt_norm"].sentences],
             stt_text=d["stt_norm"].text,
-            created_at=datetime.now(UTC).isoformat(timespec="seconds"),
         )
         evaluations.append(evaluation)
 

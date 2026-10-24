@@ -1,7 +1,5 @@
 """사용자 확인 뒤 점수 다시 계산. 코드만 쓴다 (LLM 호출 없음, DB 없음). 저장 · 읽기는 호출하는 쪽이 한다."""
 
-from datetime import UTC, datetime
-
 from ..shared.rubric import EvaluationRubric
 from ..shared.text import normalize_script, overlaps
 from .align import fidelity_excluding, positioned_tokens
@@ -79,6 +77,5 @@ def rescore_evaluation(
         rubric, positioned_tokens(script_norm), positioned_tokens(stt_norm), keep_out
     )
     e.scores = slide_scores(e.key_points, e.critical_facts, e.fidelity, held)
-    e.confirmations = answers
-    e.created_at = datetime.now(UTC).isoformat(timespec="seconds")
+    e.applied_answers = answers
     return e

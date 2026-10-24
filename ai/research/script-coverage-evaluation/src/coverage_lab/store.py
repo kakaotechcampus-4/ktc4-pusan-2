@@ -190,6 +190,7 @@ def load_rubrics(conn: sqlite3.Connection, script_name: str) -> dict[int, Evalua
 
 def save_evaluation(conn: sqlite3.Connection, evaluation: SlideEvaluation) -> None:
     """평가 결과 · 비슷한 말 · 확인 결과 삭제를 한 트랜잭션으로 저장한다. 중간에 실패하면 모두 되돌린다."""
+    now = datetime.now(UTC).isoformat(timespec="seconds")  # 코어는 시각을 만들지 않는다
     with conn:  # 성공하면 commit, 예외가 나면 rollback
         conn.execute(
             "INSERT OR REPLACE INTO slide_evaluations VALUES (?, ?, ?, ?, ?, ?)",
@@ -199,7 +200,7 @@ def save_evaluation(conn: sqlite3.Connection, evaluation: SlideEvaluation) -> No
                 evaluation.script_name,
                 evaluation.rubric_id,
                 evaluation.model_dump_json(),
-                evaluation.created_at,
+                now,
             ),
         )
         conn.execute(
@@ -230,7 +231,7 @@ def save_evaluation(conn: sqlite3.Connection, evaluation: SlideEvaluation) -> No
                     json.dumps(it.key_point_ids),
                     it.rule_guess,
                     json.dumps(it.signals, ensure_ascii=False),
-                    evaluation.created_at,
+                    now,
                 )
                 for it in evaluation.similar_items
             ],
@@ -293,7 +294,12 @@ def _confirmed_evaluation(
     )
     conn.execute(
         "INSERT OR REPLACE INTO confirmed_evaluations VALUES (?, ?, ?, ?)",
-        (take_id, slide_number, evaluation.model_dump_json(), evaluation.created_at),
+        (
+            take_id,
+            slide_number,
+            evaluation.model_dump_json(),
+            datetime.now(UTC).isoformat(timespec="seconds"),
+        ),
     )
     return evaluation
 

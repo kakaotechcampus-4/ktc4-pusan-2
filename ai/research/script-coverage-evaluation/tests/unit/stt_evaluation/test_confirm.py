@@ -36,7 +36,6 @@ def _evaluation(**overrides) -> SlideEvaluation:
         verification={},
         stt_sentences=[],
         stt_text="말했다",
-        created_at="c",
     )
     return SlideEvaluation(**(fields | overrides))
 
