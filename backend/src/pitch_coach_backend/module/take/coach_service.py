@@ -297,11 +297,25 @@ def finalizing_takes(db: Session, stale_before: datetime | None = None) -> list[
 
 FAILED_RAW_RETENTION = timedelta(days=7)
 
+# 원자료를 지울 때 한 트랜잭션에서 잠그는 Take 수
+PURGE_BATCH_TAKES = 500
+
 def purge_expired_raw(db: Session, now: datetime) -> int:
-    """동의 없이 FAILED 로 끝난 지 7일이 지난 Take 의 1초 원자료를 지운다. 지운 행 수."""
-    deleted = CoachRepository(db).purge_expired_metric_seconds(now - FAILED_RAW_RETENTION)
-    db.commit()
-    return deleted
+    """동의 없이 FAILED 로 끝난 지 7일이 지난 Take 의 1초 원자료를 지운다. 지운 행 수.
+
+    Take id 순으로 `PURGE_BATCH_TAKES` 개씩 지우고 그때마다 커밋해 잠금을 오래 쥐지 않는다.
+    """
+    repo = CoachRepository(db)
+    before = now - FAILED_RAW_RETENTION
+    deleted = 0
+    after = None
+    while True:
+        take_ids, rows = repo.purge_expired_metric_seconds(before, after, PURGE_BATCH_TAKES)
+        db.commit()
+        deleted += rows
+        if len(take_ids) < PURGE_BATCH_TAKES:
+            return deleted
+        after = take_ids[-1]
 
 def coaching_plan_values(db: Session, pitch_id: uuid.UUID) -> PlanValues | None:
     """다음 Take 의 코칭 계획 요청 재료 (coach-agent.md 5-2 plan). 부르지 않을 때는 None.
