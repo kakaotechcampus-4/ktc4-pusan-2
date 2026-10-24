@@ -9,9 +9,11 @@ from pathlib import Path
 
 import pytest
 
+from script_coverage import core as core_module
 from script_coverage.core import ScriptLLMs, analyze_script
 
-EXAMPLES = Path(__file__).resolve().parents[2] / "src" / "script_coverage" / "examples"
+# 예시 폴더는 코어 패키지 안에 있다. 코어를 옮기면 위 import 앞부분만 바뀐다
+EXAMPLES = Path(core_module.__file__).resolve().parent / "examples"
 MODEL = "openai/gpt-5.6-luna"  # 예시를 만든 모델. 캐시 항목의 설정 해시가 이 이름에 의존한다
 
 
