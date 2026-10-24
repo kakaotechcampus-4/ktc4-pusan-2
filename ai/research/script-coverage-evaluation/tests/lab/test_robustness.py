@@ -207,6 +207,13 @@ def test_segmentation_report_skips_slides_without_rubric(conn):
     from coverage_lab.stt_report import segmentation_report
 
     save_rubric(conn, _rubric("대본", 1))
-    report = segmentation_report(conn, [_take(slides=(1, 2))])  # 2번 장은 평가 기준이 없다
-    assert list(report["take_id"]) == ["대본_take1"]
-    assert not segmentation_report(conn, [_take(slides=(2,))]).empty
+    mixed = segmentation_report(conn, [_take(slides=(1, 2))])  # 2번 장은 평가 기준이 없다
+    alone = segmentation_report(conn, [_take(slides=(1,))])
+    missing = segmentation_report(conn, [_take(slides=(2,))])
+    assert list(mixed["take_id"]) == ["대본_take1"]
+    # 평가 기준이 있는 장은 그대로 세고, 없는 장만 빠진다
+    assert mixed.drop(columns="take_id").to_dict("records") == alone.drop(
+        columns="take_id"
+    ).to_dict("records")
+    assert alone["STT 문장 수"].iloc[0] > 0
+    assert missing["STT 문장 수"].iloc[0] == 0
