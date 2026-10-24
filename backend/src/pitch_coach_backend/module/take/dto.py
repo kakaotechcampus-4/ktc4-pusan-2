@@ -68,7 +68,8 @@ class MissionInputDTO(BaseModel):
     target: TargetInfoDTO
 class MissionDTO(BaseModel):
     mission_id: uuid.UUID
-    slide_number: int
+    # null 이면 Take 전체 미션이다 (missions.slide_number)
+    slide_number: int | None
     description:str
     priority: int
     completed: bool
@@ -243,6 +244,3 @@ class ReviewResponseDTO(BaseModel):
         "LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"
         ] | None = None
     meta: ReviewMetaDTO
-
-
-
