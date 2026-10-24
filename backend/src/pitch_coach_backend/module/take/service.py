@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime
 
@@ -44,6 +45,8 @@ from pitch_coach_backend.module.take.repository import (
     TakeRepository,
     last_active_at,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
@@ -295,6 +298,13 @@ def append_transcript_segment(
     return saved.id
 
 def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list[MissionInputDTO]:
+    mission_ids = take_repository.get_mission_ids_of_take(take_id)
+    missions = take_repository.get_missions_by_ids(mission_ids)
+    if len(missions) < len(mission_ids):
+        logger.warning(
+            "take %s: %d of %d missions not found",
+            take_id, len(mission_ids) - len(missions), len(mission_ids),
+        )
     return [
         MissionInputDTO(
             mission_id=mission.id,
@@ -302,7 +312,7 @@ def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list
             slide_number=mission.slide_number,
             target=TargetInfoDTO(**mission.target),
         )
-        for mission in take_repository.get_missions_for_take(take_id)
+        for mission in missions
     ]
 
 def _build_previous_takes(

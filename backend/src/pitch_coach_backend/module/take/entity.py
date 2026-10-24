@@ -110,6 +110,7 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     event_logs: Mapped[Any | None] = mapped_column(JSONB)
     # FE 가 Take 를 만들기 전에 정한 연습 세션 id (IndexedDB 기록의 키). 생성 요청의 멱등 키다
     client_session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    mission_ids: Mapped[list[str] | None] = mapped_column(JSONB)
 
 
 class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
