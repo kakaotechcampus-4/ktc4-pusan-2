@@ -3,10 +3,13 @@ import { PresentationClock } from '@/shared/lib/clock';
 import {
   abandonOutcome,
   lastSlide,
+  openingSlides,
   leftWindow,
   LIVE_BEAT_MS,
   recordedUntilMs,
   resumeFromMs,
+  saveMetrics,
+  takeMetrics,
 } from './resume';
 
 const BEAT_MS = 5_000;
@@ -169,5 +172,70 @@ describe('PresentationClock.start(fromMs)', () => {
 
     now.mockReturnValue(3_000);
     expect(clock.elapsedMs()).toBe(65_400);
+  });
+});
+
+describe('새로고침 직전에 못 보낸 metrics', () => {
+  /** 테스트는 Node 에서 돌아 sessionStorage 가 없습니다. Map 으로 흉내 냅니다 */
+  function stubStorage() {
+    const store = new Map<string, string>();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    });
+    return store;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('적어 둔 것을 한 번만 꺼낸다', () => {
+    stubStorage();
+    saveMetrics('t1', { clientSessionId: 's-1', messages: ['a', 'b'] });
+    expect(takeMetrics('t1', 's-1')).toEqual(['a', 'b']);
+    expect(takeMetrics('t1', 's-1')).toEqual([]);
+  });
+
+  it('다른 세션이 적은 것은 버린다', () => {
+    const store = stubStorage();
+    saveMetrics('t1', { clientSessionId: 's-old', messages: ['a'] });
+    expect(takeMetrics('t1', 's-1')).toEqual([]);
+    expect(store.size).toBe(0);
+  });
+
+  it('보낼 것이 없으면 지난 값도 지운다', () => {
+    const store = stubStorage();
+    saveMetrics('t1', { clientSessionId: 's-1', messages: ['a'] });
+    saveMetrics('t1', { clientSessionId: 's-1', messages: [] });
+    expect(store.size).toBe(0);
+  });
+
+  it('저장소를 못 쓰면 던지지 않고 빈 목록이다', () => {
+    vi.stubGlobal('sessionStorage', undefined);
+    expect(() => saveMetrics('t1', { clientSessionId: 's-1', messages: ['a'] })).not.toThrow();
+    expect(takeMetrics('t1', 's-1')).toEqual([]);
+  });
+});
+
+describe('openingSlides', () => {
+  it('처음 시작이면 지금 장을 Take 시작(0)으로 보낸다', () => {
+    expect(openingSlides([], 1)).toEqual([{ type: 'slide', slide_number: 1, t_ms: 0 }]);
+  });
+
+  it('이어받았으면 장 넘김 기록 전체를 시각 순서대로 다시 보낸다 — 끊긴 동안 넘긴 장이 빠지지 않게', () => {
+    const history = [
+      { atMs: 80_000, slideNumber: 4 },
+      { atMs: 0, slideNumber: 1 },
+      { atMs: 70_000, slideNumber: 3 },
+      { atMs: 30_000, slideNumber: 2 },
+    ];
+    expect(openingSlides(history, 4).map((m) => [m.slide_number, m.t_ms])).toEqual([
+      [1, 0],
+      [2, 30_000],
+      [3, 70_000],
+      [4, 80_000],
+    ]);
   });
 });

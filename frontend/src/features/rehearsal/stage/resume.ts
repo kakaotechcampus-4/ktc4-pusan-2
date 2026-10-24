@@ -1,3 +1,4 @@
+import type { SlideMessage } from '../lib/sttProtocol';
 import type { Ms, TakeStatus } from '@/types/api';
 
 /**
@@ -48,6 +49,54 @@ export function readClock(takeId: string): SavedClock | null {
 export function clearClock(takeId: string): void {
   try {
     sessionStorage.removeItem(clockKey(takeId));
+  } catch {
+    // 지우지 못해도 다음 Take 는 takeId 가 달라 읽지 않습니다
+  }
+}
+
+/**
+ * 새로고침 직전에 서버로 못 보낸 1초 측정값(`metrics`, JSON 문자열). 탭이 닫히는 순간(`pagehide`) 적습니다.
+ *
+ * 두 가지가 들어갑니다 — 시선을 기다리느라 아직 만들지 않은 마지막 몇 초(`MetricsClock.flush`)와,
+ * 끊겨 있어 소켓이 들고 있던 것(`SttSocket.handOffMetrics`). 메모리에만 있어 새로고침하면 사라지고,
+ * 새 페이지는 저장한 시계부터 다시 보내므로 그 구간을 보낼 길이 없습니다. 음량 1초 기록도
+ * 메모리에만 있어 IndexedDB 에서 다시 만들 수 없습니다. 새 소켓이 붙으면 이것부터 보냅니다.
+ *
+ * 같은 1초가 두 번 가도 BE 는 먼저 받은 것을 둡니다 (`architecture.md` 6-2).
+ */
+export interface SavedMetrics {
+  clientSessionId: string;
+  messages: string[];
+}
+
+const metricsKey = (takeId: string) => `rehearsal:metrics:${takeId}`;
+
+export function saveMetrics(takeId: string, saved: SavedMetrics): void {
+  try {
+    if (saved.messages.length === 0) sessionStorage.removeItem(metricsKey(takeId));
+    else sessionStorage.setItem(metricsKey(takeId), JSON.stringify(saved));
+  } catch {
+    // 사생활 보호 모드 · 저장 공간 부족. 그 몇 초는 잃습니다
+  }
+}
+
+/** 적어 둔 것을 꺼내고 지웁니다. 다른 세션이 적은 것은 버립니다 */
+export function takeMetrics(takeId: string, clientSessionId: string): string[] {
+  try {
+    const raw = sessionStorage.getItem(metricsKey(takeId));
+    sessionStorage.removeItem(metricsKey(takeId));
+    if (!raw) return [];
+    const value = JSON.parse(raw) as Partial<SavedMetrics>;
+    if (value.clientSessionId !== clientSessionId || !Array.isArray(value.messages)) return [];
+    return value.messages.filter((m): m is string => typeof m === 'string');
+  } catch {
+    return [];
+  }
+}
+
+export function clearMetrics(takeId: string): void {
+  try {
+    sessionStorage.removeItem(metricsKey(takeId));
   } catch {
     // 지우지 못해도 다음 Take 는 takeId 가 달라 읽지 않습니다
   }
@@ -188,4 +237,24 @@ export function lastSlide(
     if (!last || c.atMs >= last.atMs) last = { slideNumber: c.slideNumber, atMs: c.atMs };
   }
   return last;
+}
+
+/**
+ * 무대를 열 때 보낼 WS `slide` (`docs/ai/architecture.md` 1-4).
+ *
+ * 이어받았으면 IndexedDB 의 장 넘김 기록을 **전부** 다시 보냅니다. 끊긴 동안 소켓에 쌓였던 장 넘김은
+ * 새로고침과 함께 사라졌고, 사라지는 페이지가 보낸 것도 닿았는지 모릅니다. 하나만 빠져도 장 구간
+ * 나누기에서 그 장의 말이 앞 장으로 들어갑니다. 이미 간 것은 BE 가 `(take_id, started_ms)` 로
+ * 거릅니다 (`coach-agent.md` 12-1). 한 Take 에 수십 개라 다시 보내도 부담이 없습니다.
+ *
+ * 기록이 없으면(처음 시작 · 기록을 못 읽음) 지금 장을 Take 시작(0)으로 보냅니다.
+ */
+export function openingSlides(
+  history: readonly { atMs: Ms; slideNumber: number }[],
+  current: number,
+): SlideMessage[] {
+  if (history.length === 0) return [{ type: 'slide', slide_number: current, t_ms: 0 }];
+  return [...history]
+    .sort((a, b) => a.atMs - b.atMs)
+    .map((h) => ({ type: 'slide', slide_number: h.slideNumber, t_ms: h.atMs }));
 }

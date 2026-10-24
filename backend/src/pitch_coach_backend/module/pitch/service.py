@@ -3,7 +3,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import asdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import httpx2
 from sqlalchemy.orm import Session
@@ -78,6 +78,9 @@ MAX_SCRIPT_CHARS = 50_000
 # 사라져 PENDING 이 영원히 남기 때문이다. 작업의 최악 소요(script_parser 의 타임아웃 × 재시도,
 # 약 61초)보다 길어야 한다 — 짧으면 아직 도는 작업을 만료로 보여주고 재시도를 열어 버린다
 PARSE_EXPIRE_AFTER = timedelta(seconds=90)
+# 발표일은 사용자가 고른 한국 날짜다. 오늘도 한국 날짜로 봐야 0~9시에 오늘 발표가 지난 발표가
+# 되지 않는다. 관리자 콘솔(admin/repository.py)과 같은 고정 오프셋이다
+KST = timezone(timedelta(hours=9), "KST")
 
 def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveRequestDTO):
     new_pitch = Pitch(
@@ -98,7 +101,7 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveReque
 # 홈 화면 : pitches 목록 조회
 def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListResponseDTO:
     pitch_repository = PitchRepository(db)
-    pitches = pitch_repository.get_all_by_user(user_id)
+    pitches = pitch_repository.get_all_by_user(user_id, datetime.now(KST).date())
 
     rows_by_pitch = defaultdict(list)
     for row in pitch_repository.get_takes_with_scores_in_pitches([p.id for p in pitches]):

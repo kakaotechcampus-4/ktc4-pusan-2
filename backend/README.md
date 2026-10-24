@@ -226,6 +226,12 @@ POST /api/auth/logout           현재 세션 폐기
 필요하다. 배포에서는 Caddy 가 같은 origin 으로 묶어 그 문제가 사라진다.
 자세한 흐름과 프론트 연동 코드는 `docs/oauth-architecture.md` 에 있다 (로컬 문서).
 
+## 홈 발표 목록
+
+`GET /api/pitches/` 는 다가오는 발표(오늘 포함) → 날짜 없는 발표 → 지난 발표 순서로 준다.
+다가오는 발표는 가까운 날짜부터, 지난 발표는 최근에 지난 것부터, 같은 날짜면 최근에 만든 발표부터다.
+오늘은 한국 날짜다. FE 는 이 순서를 그대로 보여 준다.
+
 ## 연습 시작 (장치 점검 · Take 생성)
 
 ```
@@ -264,6 +270,7 @@ WS /api/ws/takes/{take_id}
 | 2 | BE → FE | text | `{"type":"ready","take_id":…,"stt_session_no":0,"stt_state":"connecting"}` — 사용자·Take(존재·소유·상태) 검사를 통과했다. 이제 오디오를 보내도 된다 |
 | 3 | FE → BE | **binary** | `[seq u32 LE][offset_ms u32 LE][PCM 16-bit LE 16 kHz mono]`. 100 ms = 3,200 bytes. `offset_ms` 는 Take 시작 = 0 |
 | 4 | BE → FE | text | `{"type":"transcript","segment_id","is_final","speech_final","start_ms","end_ms","text","confidence","words":[…]}` — `segment_id` 가 같으면 덮어쓴다. **타임스탬프는 Take 기준** |
+| 4-1 | FE → BE | text | `{"type":"metrics","t_ms","gaze","voice","slide_number"}` — 1초마다 시선 · 음량 1초 기록과 지금 장. `t_ms` 는 그 1초가 끝난 Take 시각. `stop` 직전에 마지막 1초 조각을 한 번 더 |
 | 5 | FE → BE | text | `{"type":"stop"}` — BE 가 Deepgram 을 정리(`CloseStream` → `Metadata`)하고 |
 | 6 | BE → FE | text | `{"type":"stt_status","state":"closed",…}` 를 보낸 뒤 `1000` 으로 닫는다. **FE 는 이걸 받기 전에 닫지 않는다** |
 
@@ -303,6 +310,16 @@ WS /api/ws/takes/{take_id}
   DB 를 직접 만지지 않도록 `realtime/transcript_store.py` 가 저장할 때마다 짧은 세션을 연다.
   **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다. 단 Take 가 지워져
   저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
+- **`metrics` 는 `take_metric_seconds` 에 1초 원자료로 저장한다** (`realtime/metric_buffer.py`). Take 결과를
+  다시 만들 때(`/coach/finalize` 의 `replay`) 읽는다. 시선 · 음량 기록은 해석하지 않고 받은 그대로 두고, 받았을 때의
+  STT 상태(`stt_status`)를 같이 남긴다. 5개가 모이면 한 번에 넣고, 연결이 끊기거나 스트림이 닫히면 남은 것을
+  넣는다. FE 는 끊긴 동안 쌓아 둔 것을 다시 붙은 뒤 보내므로 같은 1초가 또 온다 — `(take_id, t_ms)` 로 먼저
+  저장한 것을 둔다. 저장에 실패하면 10분 치까지 들고 있다가 다시 넣는다. 잘못된 `metrics` 는 `BAD_MESSAGE` 다.
+  - 동의 없는 Take 의 1초 원자료를 지우는 규칙(Take 결과를 저장할 때 같이 지움 · `FAILED` 로 끝나면 7일 뒤 지움,
+    `docs/ai/architecture.md` 1-1 '지우기 · 보관')과 그 판단에 쓰는 동의 칸(`takes.raw_data_consent`)은 아직 없다.
+    Take 결과를 저장하는 코치 연동과 같이 들어간다.
+  - **배포 의존성**: 이 저장만 먼저 배포하면 코치 연동이 배포될 때까지 쌓인 1초 원자료는 지울 규칙이 없다.
+    두 작업을 같이 배포하거나, 코치 연동을 배포할 때 그 전에 쌓인 원자료를 따로 지운다.
 - **Take 나 발표를 지우면 그 Take 의 스트림을 바로 끊는다.** 지우는 요청이 커밋한 뒤 Deepgram 을
   닫고, 붙어 있는 FE 에는 `TAKE_NOT_FOUND` 를 보낸다. 저장할 곳이 없으니 `stop` 처럼 남은 전사를
   기다리지 않는다. 끊기 전에 온 final 이 저장에 실패해도 스트림이 그걸 보고 스스로 끊는다.
@@ -336,7 +353,7 @@ WS /api/ws/takes/{take_id}
 - 정리가 늦어도 FE 를 붙잡아 두지 않는다. `stop` 뒤 Deepgram drain 이 12초 안에 안 끝나면 태스크를
   끊고, 그마저 2초 안에 안 끝나면 닫힌 것으로 확정해 `closed` 를 보낸다. Deepgram 소켓 닫기 자체도
   3초 상한이 있다. `stop` 을 보낸 직후 FE 가 사라져도(탭 닫힘) 서버 쪽 종료·저장 절차는 같다.
-- **`stop` 이 Take 를 끝낸다.** 마지막 확정 전사까지 저장한 뒤 Take 를 `ANALYZING` 으로 바꾸고 `closed` 를
+- **`stop` 이 Take 를 끝낸다.** 마지막 확정 전사와 1초 원자료까지 저장한 뒤 Take 를 `ANALYZING` 으로 바꾸고 `closed` 를
   보낸다 (`ended_at` 이 비어 있으면 지금 시각으로 채운다). `stop` 을 받은 순간부터 같은 Take 로 붙는 연결은
   `TAKE_ENDED` 로 거절한다 — DB 에 적기 전의 틈은 프로세스 안의 기록이 막는다. 종료를 DB 에 못 적어도
   `closed` 는 보낸다. 30초 대기 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리하고 Take 는 끝내지 않는다
@@ -381,7 +398,8 @@ WS /api/ws/takes/{take_id}
     자동 종료 순간 떨어져 있던 FE 도 종료 흐름을 탄다. 이유를 못 적어도(DB 장애) 종료는 그대로 한다.
   - 판단 코드가 예외를 내도 STT 는 계속 돈다 (로그만). 값은 `TAKE_SILENCE_*`·`TAKE_MAX_DURATION_SEC` 로 바꾸고,
     틀린 값이면 앱이 시작할 때 실패한다.
-- 아직 없는 것: `metrics`/`coach` 메시지 (AI 팀 규칙 확정 후).
+- 아직 없는 것: `slide` · `coach` 메시지와 발표 중 코치 판단, 1초 원자료 지우기 규칙. 코치 연동과 같이
+  들어간다 (`metrics` 는 위처럼 저장한다).
 
 FE 없이 확인하는 두 가지 —
 
@@ -389,6 +407,9 @@ FE 없이 확인하는 두 가지 —
 |---|---|---|
 | 파일 | `dev/stt-send-pcm.py` | `uv run python dev/stt-send-pcm.py 녹음.pcm --email <가입한 이메일>` (파일 상단에 변환 명령). `--take-id` 를 안 주면 그 사용자의 Take 를 하나 만들어 쓴다 |
 | 마이크 | `dev/stt-test.html` | `python3 -m http.server 3000 --directory dev` 로 띄우고 `http://localhost:3000/stt-test.html`. **3000 포트로 열어야** Origin 검사를 통과한다. Take 칸에는 `uv run python dev/stt-send-pcm.py --create-take --email <이메일>` 로 만든 id 를 넣는다 |
+
+1초 원자료 저장 부하는 `dev/metrics-load-test.py` 로 잰다. 같은 Postgres 에 임시 DB 를 만들어 Take 마다 1초에
+1행씩 넣고 끝나면 지운다. 묶음 크기 5(`METRICS_BATCH`)는 develop 서버에서 잰 결과(#338)로 정했다.
 
 ## 대본 파싱 (AI)
 

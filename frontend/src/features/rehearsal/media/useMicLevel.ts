@@ -55,6 +55,11 @@ function paint(el: HTMLElement | null, percent: number): void {
  */
 export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () => Ms } = {}) {
   const meterRef = useRef<HTMLDivElement>(null);
+  /**
+   * 같은 음량을 한 군데 더 그릴 자리. 장치 점검의 "평소 목소리 읽기"가 읽을 문장 바로 아래에 둡니다 —
+   * 읽는 사람이 눈을 문장에 둔 채로 "내 목소리가 들어가고 있다"를 봐야 하기 때문입니다
+   */
+  const echoMeterRef = useRef<HTMLDivElement>(null);
   /** 점검 항목 줄 전체 문구 ('마이크 입력 확인됨') */
   const rowRef = useRef<HTMLSpanElement>(null);
   const silentRef = useRef<HTMLSpanElement>(null);
@@ -139,7 +144,9 @@ export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () 
         statsRef.current.silentMs = meter.silentMs();
         statsRef.current.speechLeqDb = speech.leqDb;
         statsRef.current.speechMs = speech.ms;
-        paint(meterRef.current, ((db - DB_FLOOR) / -DB_FLOOR) * 100);
+        const percent = ((db - DB_FLOOR) / -DB_FLOOR) * 100;
+        paint(meterRef.current, percent);
+        paint(echoMeterRef.current, percent);
 
         // 음량 1초 기록의 재료. 화면용으로 자르지 않은 레벨과 '말하는 중' 한 기준을 넘깁니다
         const now = clockRef.current?.();
@@ -201,6 +208,7 @@ export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () 
 
   return {
     meterRef,
+    echoMeterRef,
     voiceRecord,
     rowRef,
     silentRef,

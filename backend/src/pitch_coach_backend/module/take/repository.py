@@ -12,6 +12,7 @@ from pitch_coach_backend.module.take.entity import (
     Mission,
     Take,
     TakeAIResults,
+    TakeMetricSecond,
     TakeSummary,
     TakeTranscriptSegment,
 )
@@ -190,21 +191,37 @@ class TakeRepository:
             )
         )
 
-    def get_missions_for_take(self, take_id: uuid.UUID) -> list[Mission]:
+    def get_mission_ids_of_take(self, take_id: uuid.UUID) -> list[uuid.UUID]:
+        mission_ids = self.db.scalar(select(Take.mission_ids).where(Take.id == take_id))
+        return [uuid.UUID(mission_id) for mission_id in mission_ids or []]
+
+    def get_missions_by_ids(self, mission_ids: list[uuid.UUID]) -> list[Mission]:
+        if not mission_ids:
+            return []
         return list(
             self.db.scalars(
                 select(Mission)
-                .where(Mission.take_id == take_id)
+                .where(Mission.id.in_(mission_ids))
                 .order_by(Mission.priority, Mission.slide_number)
             )
         )
 
-    def assign_missions_to_take(self, source_take_id: uuid.UUID, take_id: uuid.UUID) -> None:
-        self.db.execute(
+    def assign_missions_to_take(
+        self, source_take_id: uuid.UUID, take_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        mission_ids = self.db.scalars(
             update(Mission)
             .where(Mission.source_take_id == source_take_id, Mission.status == "ACTIVE")
-            .values(take_id=take_id)
+            .values(take_id=take_id) # SQL의 set 역할
+            .returning(Mission.id)
+        ).all()
+        self.db.execute(
+            update(Take)
+            .where(Take.id == take_id)
+            .values(mission_ids=[str(mission_id) for mission_id in mission_ids])
+            # missions_ids도 갱신
         )
+        return list(mission_ids)
 
     def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResults | None:
         kind_filter = True if kind is None else (TakeAIResults.kind == kind)
@@ -238,6 +255,14 @@ class TakeRepository:
         self.db.add(segment)
         self.db.flush()
         return segment
+
+    def save_metric_seconds(self, take_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
+        """1초 원자료를 한 번에 넣는다. 이미 있는 1초는 건너뛴다 — 먼저 저장한 것을 둔다."""
+        self.db.execute(
+            insert(TakeMetricSecond)
+            .values([{"take_id": take_id, **row} for row in rows])
+            .on_conflict_do_nothing(index_elements=["take_id", "t_ms"])
+        )
 
     def save_total_result(self, 
                           take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None

@@ -3,7 +3,7 @@ import { Badge } from '@/shared/ui/Badge';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { DraftPage } from '../ui';
-import { review } from '../report/sample';
+import { reviewFixture as review } from '@/mocks/report';
 
 /**
  * 시작 전 세팅 + 이번 Take 미션 시안 (시안 09) — 실제 화면은 `features/rehearsal/prepare/DeviceCheckPage.tsx`.
@@ -11,8 +11,8 @@ import { review } from '../report/sample';
  * 화면은 왼쪽 "지금 보이는 것"(카메라 · 점검), 오른쪽 "이번 Take를 어떻게 할지"(대본 표시)로 나뉩니다.
  * 미션도 "이번 Take를 어떻게 할지"라서 **오른쪽 맨 위**에 둡니다.
  *
- * 미션은 직전 리뷰가 만든 다음 미션입니다 (`review-agent.md` 5-3 `next_missions`). 리포트 시안의
- * "Take 5에서 해 볼 것"과 같은 데이터라 같은 샘플을 씁니다.
+ * 미션은 직전 리뷰가 만든 다음 미션입니다 (`review-agent.md` 5-3 `next_missions`). 리포트의
+ * "Take 5에서 해 볼 것"과 같은 데이터라 같은 목(`mocks/report.ts`)을 씁니다.
  * 리뷰가 아직 안 끝났으면 그때 저장된 최신 미션을 씁니다 (`architecture.md` 1-3).
  */
 

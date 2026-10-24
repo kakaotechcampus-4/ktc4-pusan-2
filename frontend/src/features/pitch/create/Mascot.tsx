@@ -7,7 +7,7 @@ export function Mascot({ message }: { message: string }) {
   return (
     <div className="mt-auto flex items-end gap-2 pt-4">
       <img
-        src="/onboarding/chichi-mascot.png"
+        src="/onboarding/chichi-bust.png"
         alt=""
         width={80}
         height={96}
