@@ -11,14 +11,12 @@ TakeStream 은 WebSocket 요청보다 오래 사는 백그라운드 태스크라
 """
 
 import uuid
-from collections.abc import Callable
 from datetime import datetime
 from typing import Literal, Protocol
 
-from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.database import SessionPerCall
 from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO, TranscriptSegmentCreateDTO
 
@@ -55,21 +53,21 @@ class TranscriptStore(Protocol):
         ...
 
 
-class DbTranscriptStore:
-    def __init__(self, session_factory: Callable[[], Session] = SessionLocal) -> None:
-        self._session_factory = session_factory
-
+class DbTranscriptStore(SessionPerCall):
     async def cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
-        return await run_in_threadpool(self._cursor, take_id)
+        return await run_in_threadpool(self._with, take_service.transcript_cursor, take_id)
 
     async def append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None:
-        await run_in_threadpool(self._append, take_id, segment)
+        await run_in_threadpool(
+            self._with, take_service.append_transcript_segment, take_id, segment
+        )
 
     async def append_metrics(self, take_id: uuid.UUID, rows: list[MetricSecondCreateDTO]) -> None:
-        await run_in_threadpool(self._append_metrics, take_id, rows)
+        await run_in_threadpool(self._with, take_service.append_metric_seconds, take_id, rows)
+
 
     async def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
-        return await run_in_threadpool(self._mark_ended, take_id, end_reason)
+        return await run_in_threadpool(self._with, take_service.mark_ended, take_id, end_reason)
 
     async def mark_abandoned(
         self,
@@ -77,51 +75,9 @@ class DbTranscriptStore:
         ended_at: datetime,
         end_reason: Literal["ABANDONED", "CLOSED"] = "ABANDONED",
     ) -> bool:
-        return await run_in_threadpool(self._mark_abandoned, take_id, ended_at, end_reason)
+        return await run_in_threadpool(
+            self._with, take_service.mark_abandoned, take_id, ended_at, end_reason
+        )
 
     async def running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
-        return await run_in_threadpool(self._running_takes)
-
-    def _cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
-        db = self._session_factory()
-        try:
-            return take_service.transcript_cursor(db, take_id)
-        finally:
-            db.close()
-
-    def _append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None:
-        db = self._session_factory()
-        try:
-            take_service.append_transcript_segment(db, take_id, segment)
-        finally:
-            db.close()
-
-    def _append_metrics(self, take_id: uuid.UUID, rows: list[MetricSecondCreateDTO]) -> None:
-        db = self._session_factory()
-        try:
-            take_service.append_metric_seconds(db, take_id, rows)
-        finally:
-            db.close()
-
-    def _mark_ended(self, take_id: uuid.UUID, end_reason: str | None) -> bool:
-        db = self._session_factory()
-        try:
-            return take_service.mark_ended(db, take_id, end_reason)
-        finally:
-            db.close()
-
-    def _mark_abandoned(
-        self, take_id: uuid.UUID, ended_at: datetime, end_reason: Literal["ABANDONED", "CLOSED"]
-    ) -> bool:
-        db = self._session_factory()
-        try:
-            return take_service.mark_abandoned(db, take_id, ended_at, end_reason)
-        finally:
-            db.close()
-
-    def _running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
-        db = self._session_factory()
-        try:
-            return take_service.running_takes(db)
-        finally:
-            db.close()
+        return await run_in_threadpool(self._with, take_service.running_takes)

@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from websockets.exceptions import ConnectionClosedError
 
@@ -3902,7 +3903,7 @@ def test_failed_metrics_save_is_retried_before_ending(
     client: TestClient, stt: FakeSttAdapter, token: str
 ):
     """DB 가 잠깐 실패해도 버리지 않는다. 들고 있다가 끝낼 때 다시 넣는다."""
-    store = use_store(FakeTranscriptStore(metric_errors=[RuntimeError("db down")]))
+    store = use_store(FakeTranscriptStore(metric_errors=[db_down()]))
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
@@ -4055,7 +4056,7 @@ async def test_metric_buffer_drops_the_oldest_when_saves_keep_failing(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr("pitch_coach_backend.realtime.metric_buffer.MAX_UNSAVED_METRICS", 3)
-    store = FakeTranscriptStore(metric_errors=[RuntimeError("db down")] * 10)
+    store = FakeTranscriptStore(metric_errors=[db_down()] * 10)
     buffer = MetricBuffer(TAKE_ID, store)
     for t in (1000, 2000, 3000, 4000):
         buffer.add(row(t))
@@ -4069,8 +4070,8 @@ async def test_metric_buffer_drops_the_oldest_when_saves_keep_failing(
 @pytest.mark.anyio
 async def test_metric_buffer_waits_before_retrying_a_failed_save(monkeypatch: pytest.MonkeyPatch):
     """저장에 실패하면 행이 더 와도 바로 다시 넣지 않는다. 기다렸다가 한 번에 넣는다."""
-    monkeypatch.setattr("pitch_coach_backend.realtime.metric_buffer.RETRY_DELAYS_SEC", (0.1,))
-    store = FakeTranscriptStore(metric_errors=[RuntimeError("db down")] * 10)
+    monkeypatch.setattr("pitch_coach_backend.core.row_buffer.RETRY_DELAYS_SEC", (0.1,))
+    store = FakeTranscriptStore(metric_errors=[db_down()] * 10)
     buffer = MetricBuffer(TAKE_ID, store)
     for t in range(1000, (METRICS_BATCH + 3) * 1000, 1000):
         buffer.add(row(t))
@@ -4134,3 +4135,8 @@ def test_db_keeps_the_first_save_of_the_same_second(db_session: Session, take: T
     ]
     with pytest.raises(NonExistentTake):
         take_service.append_metric_seconds(db_session, uuid.uuid7(), [row(1000)])
+
+
+def db_down() -> OperationalError:
+    """DB 가 잠깐 안 되는 것 (연결 끊김). 뒤에서 다시 해 볼 만한 실패다."""
+    return OperationalError("UPDATE takes", {}, ConnectionError("db down"))
