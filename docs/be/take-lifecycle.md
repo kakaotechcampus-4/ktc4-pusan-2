@@ -165,6 +165,15 @@ POST /api/pitches/{pitch_id}/takes/{take_id}/abandon
 
 자동 종료는 `auto_end` 를 보내고 `stop` 과 같은 순서로 정리합니다. FE 는 끝내기 버튼과 같은 종료 흐름을 탑니다.
 
+`ANALYZING` 으로 끝낸 Take 는 분석 단계(`analysis_stage`)가 `FINALIZING` 이고, BE 가 백그라운드로 Take 결과
+(`/coach/finalize`)를 만듭니다. 만들면 `SCORING`, 끝내 못 만들면 `FAILED` 입니다. 떠난 것으로 끝낸 Take
+(`FAILED` · `CLOSED` · `ABANDONED`)는 결과를 만들지 않습니다 — `ABANDONED` 를 끝내기 PUT 이 되살리면 그때
+만듭니다.
+
+현재 자동 처리는 `SCORING` 진입까지입니다. 그 뒤 대본 전달도 채점 · 재시도 · 확인 · 리뷰를 잇는
+분석 파이프라인은 후속 구현입니다. 채점 중인 `SCORING` 에서는 리뷰 API 를 409
+`TAKE_NOT_REVIEWABLE` 로 거절합니다. 전체 자동 완료가 필요한 배포에는 후속 파이프라인도 필요합니다.
+
 ### 되살리기
 
 `ABANDONED` 로 끝난 Take 에 `ended_at` 이 든 끝내기 PUT 이 오면 기록을 받고 `ANALYZING` 으로 되살립니다

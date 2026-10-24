@@ -2,9 +2,10 @@
 
 import uuid
 from collections.abc import Iterable, Mapping
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, func, select, update
+from sqlalchemy import ColumnElement, and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,8 @@ from pitch_coach_backend.module.take.entity import (
     TakeAIResults,
     TakeMetricSecond,
     TakeSlideEvent,
+    TakeSummary,
+    TakeTranscriptSegment,
 )
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import (
@@ -200,6 +203,69 @@ class CoachRepository:
             )
             .on_conflict_do_nothing(index_elements=["take_id", "event_id"])
         )
+
+    def transcript_segments(self, take_id: uuid.UUID) -> list[TakeTranscriptSegment]:
+        return list(
+            self.db.scalars(
+                select(TakeTranscriptSegment)
+                .where(TakeTranscriptSegment.take_id == take_id)
+                .order_by(TakeTranscriptSegment.seq)
+            )
+        )
+
+    def finalizing_take_ids(self, stale_before: datetime | None = None) -> list[uuid.UUID]:
+        query = select(Take.id).where(waiting_for_result())
+        if stale_before is not None:
+            # 기다리기 시작한 시각이 없는 Take 는 칸이 생기기 전부터 기다렸다
+            query = query.where(
+                or_(Take.analysis_stage_at.is_(None), Take.analysis_stage_at < stale_before)
+            )
+        return list(self.db.scalars(query))
+
+    def lock_finalizing(self, take_id: uuid.UUID) -> Take | None:
+        """Take 행을 잠그고 `ANALYZING` · `FINALIZING` 이면 돌려준다."""
+        take = self.db.scalar(select(Take).where(Take.id == take_id).with_for_update())
+        if take is None or not is_waiting_for_result(take):
+            return None
+        return take
+
+    def save_ai_result(
+        self, take_id: uuid.UUID, kind: str, payload: Mapping[str, Any], meta: Mapping[str, Any]
+    ) -> None:
+        """(take_id, kind) 에 하나만 둔다. 이미 있으면 덮고 revision 을 1 올린다."""
+        stmt = insert(TakeAIResults).values(
+            take_id=take_id, kind=kind, payload=dict(payload), meta=dict(meta), revision=0
+        )
+        self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[TakeAIResults.take_id, TakeAIResults.kind],
+                set_={
+                    "payload": stmt.excluded.payload,
+                    "meta": stmt.excluded.meta,
+                    "revision": TakeAIResults.revision + 1,
+                },
+            )
+        )
+
+    def save_summary_measures(self, take_id: uuid.UUID, measures: Mapping[str, Any]) -> None:
+        """take_summaries 의 측정 칸만 바꾼다. 리뷰 · 대본 전달도 칸은 그대로 둔다."""
+        stmt = insert(TakeSummary).values(take_id=take_id, **measures)
+        self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[TakeSummary.take_id],
+                set_={key: stmt.excluded[key] for key in measures},
+            )
+        )
+
+    def delete_metric_seconds(self, take_id: uuid.UUID) -> None:
+        self.db.execute(delete(TakeMetricSecond).where(TakeMetricSecond.take_id == take_id))
+
+    def fail_finalizing(self, take_id: uuid.UUID) -> bool:
+        """Take 결과를 끝내 만들지 못했다. `FAILED` 로 바꾸고 단계는 그대로 둔다. 바꿨으면 True."""
+        result = self.db.execute(
+            update(Take).where(Take.id == take_id, waiting_for_result()).values(status="FAILED")
+        )
+        return result.rowcount > 0
 
 
 REVIEW = "REVIEW"

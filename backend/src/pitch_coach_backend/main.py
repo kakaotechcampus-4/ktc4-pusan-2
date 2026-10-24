@@ -5,6 +5,8 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from pitch_coach_backend import entities  # noqa: F401  # 모든 entity 를 매퍼에 등록
+from pitch_coach_backend.coach.background import start as start_coach_background
+from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
 from pitch_coach_backend.core.logging import configure_logging
@@ -41,10 +43,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     AutoEndPolicy.from_settings()
     # 떠난 Take 를 끝내는 타이머는 메모리에 있어 다시 뜨면 사라진다. 진행 중인 Take 에 다시 건다
     await arm_abandoned_takes(get_transcript_store())
+    stop_coach_background = await start_coach_background(get_coach_client(), get_coach_store())
     yield
     # 실시간 STT 스트림은 WebSocket 요청 밖에서 도는 백그라운드 태스크다.
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.
     await stop_all_streams()
+    await stop_coach_background()
 
 
 app = FastAPI(

@@ -3,28 +3,34 @@
 import logging
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import datetime
 from typing import Any
 
 from psycopg.errors import ForeignKeyViolation
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.take.coach_repository import (
     REVIEW,
+    TAKE_RESULT,
     CoachRepository,
     is_waiting_for_result,
 )
 from pitch_coach_backend.module.take.dto import (
+    FinalizeRows,
     MetricSecond,
     MissionInput,
     SlideEvent,
     SlideTiming,
     StoredEvent,
     TakeCoachValues,
+    TranscriptSegment,
 )
 from pitch_coach_backend.module.take.entity import Mission, Take
 from pitch_coach_backend.module.take.exception import NonExistentTake
+from pitch_coach_backend.module.take.repository import json_ints
 from pitch_coach_backend.module.user import service as user_service
 
 
@@ -196,3 +202,74 @@ def chosen_plan_payload(db, pitch_id, **basis):
 
 
 logger = logging.getLogger(__name__)
+
+
+def finalize_rows(db: Session, take_id: uuid.UUID) -> FinalizeRows | None:
+    """finalize 를 DB 에서 다시 만들 재료. Take 가 Take 결과를 기다리는 중이 아니면 None."""
+    repo = CoachRepository(db)
+    take = repo.take(take_id)
+    if take is None or not is_waiting_for_result(take):
+        return None
+    values = _take_coach_values(db, repo, take)
+    if values is None:
+        return None
+    return FinalizeRows(
+        values=values,
+        seconds=tuple(
+            MetricSecond(r.t_ms, r.slide_number, r.gaze, r.voice, r.stt_status)
+            for r in repo.metric_seconds(take_id)
+        ),
+        segments=tuple(
+            TranscriptSegment(end_ms=s.end_ms, words=s.words, final_at_ms=s.final_at_ms)
+            for s in repo.transcript_segments(take_id)
+        ),
+        utterance_ends=tuple(json_ints(take.utterance_ends)),
+        events=tuple(dict(e.payload) for e in repo.coach_events(take_id)),
+        raw_data_consent=take.raw_data_consent,
+    )
+
+def save_take_result(
+    db: Session,
+    take_id: uuid.UUID,
+    *,
+    take_result: Mapping[str, Any],
+    meta: Mapping[str, Any],
+    events: Sequence[StoredEvent],
+    measures: Mapping[str, Any],
+    duration_sec: int,
+) -> bool:
+    """finalize 응답을 한 트랜잭션에 저장한다 (12-2). 저장했으면 True.
+
+    이벤트(발표 중 못 넣은 것 + 이번 응답의 것, 받은 순서대로) · Take 결과 · take_summaries 측정
+    칸 · Take 길이 · 분석 단계(`SCORING`) · 동의 없는 Take 의 1초 원자료 삭제를 같이 한다. Take
+    행을 잠근 뒤 Take 가 아직 Take 결과를 기다리는 중(`ANALYZING` · `FINALIZING`)일 때만 커밋하고,
+    아니면 응답을 버린다 — 재시작한 BE 와 앞 작업의 응답이 겹쳐도 이미 앞으로 간 단계를 되돌리지
+    않게.
+    """
+    repo = CoachRepository(db)
+    take = repo.lock_finalizing(take_id)
+    if take is None:
+        db.rollback()
+        return False
+    repo.append_events(take_id, events)
+    repo.save_ai_result(take_id, TAKE_RESULT, take_result, meta)
+    repo.save_summary_measures(take_id, measures)
+    take.duration_sec = duration_sec
+    take.analysis_stage = "SCORING"
+    take.analysis_stage_at = func.now()
+    if not take.raw_data_consent:
+        # Take 결과가 생기면 replay 에 쓸 일이 없다
+        repo.delete_metric_seconds(take_id)
+    db.commit()
+    return True
+
+def fail_take_result(db: Session, take_id: uuid.UUID) -> bool:
+    """Take 결과를 끝내 만들지 못했다. Take 를 `FAILED` 로 두고 원자료는 남긴다 (7일, 1-1)."""
+    failed = CoachRepository(db).fail_finalizing(take_id)
+    db.commit()
+    return failed
+
+def finalizing_takes(db: Session, stale_before: datetime | None = None) -> list[uuid.UUID]:
+    """Take 결과를 기다리는 중으로 남은 Take. 앱이 다시 뜰 때 이어 간다 (1-3 'BE가 재시작할 때').
+    `stale_before` 를 주면 그 전에 기다리기 시작한 것만 — 오래 남은 Take 를 다시 띄울 때 쓴다."""
+    return CoachRepository(db).finalizing_take_ids(stale_before)

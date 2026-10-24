@@ -457,6 +457,24 @@ class TakeRepository:
         )
         return result.rowcount > 0
 
+    def raw_data_open(self, take_id: uuid.UUID) -> bool | None:
+        """1초 원자료를 더 넣어도 되는 Take 인가. Take 가 없으면 None.
+
+        Take 결과를 저장한 뒤(분석 단계가 `FINALIZING` 을 지남)에는 넣지 않는다 — 동의 없는 Take 는
+        Take 결과를 저장할 때 1초 원자료를 지우는데, 그 뒤에 늦게 들어간 행은 끝내 남는다. Take 행을
+        `FOR SHARE` 로 잠가, Take 결과를 저장하는 트랜잭션(`FOR UPDATE`)과 줄을 세운다.
+
+        Take 결과를 만들지 못한 Take(`FAILED`, 단계는 `FINALIZING` 그대로)와 떠난 Take(`FAILED`,
+        단계 없음)는 받는다. 나중에 replay 로 다시 만들 수 있게 원자료를 두는 Take 라 늦게 온 행도
+        그 재료다. 동의가 없으면 7일 뒤 함께 지운다 (architecture.md 1-1 '지우기 · 보관').
+        """
+        stage = self.db.execute(
+            select(Take.analysis_stage).where(Take.id == take_id).with_for_update(read=True)
+        ).first()
+        if stage is None:
+            return None
+        return stage[0] in (None, FINALIZING_STAGE)
+
 
 REVIEW_STALE_AFTER = timedelta(minutes=2)
 

@@ -71,6 +71,7 @@ from fastapi import WebSocket
 from pydantic import BaseModel
 from websockets.exceptions import ConnectionClosed
 
+from pitch_coach_backend.coach import finalize as coach_finalize
 from pitch_coach_backend.coach.client import CoachClient, EvaluateReply
 from pitch_coach_backend.coach.requests import SlideEvent, TakeContext
 from pitch_coach_backend.coach.session import (
@@ -1570,8 +1571,14 @@ async def _seal_and_flush(take_id: uuid.UUID, end_reason: str | None) -> Ending:
 def start_finalize(
     take_id: uuid.UUID, coach: CoachDeps | None, snapshot: FinalizeSnapshot | None
 ) -> None:
-    """발표 중 코치의 수명을 끝낸다. 종료 결과 호출은 후속 PR에서 연결한다."""
+    """Take 를 `ANALYZING` · `FINALIZING` 으로 적은 뒤 부른다. 코치의 기억을 놓고 Take 결과를
+    백그라운드로 띄운다. 재료가 없으면(다시 뜬 프로세스 · 되살린 Take) finalize 가 DB 에서 다시
+    만든다."""
     release_coach(take_id)
+    if coach is None:
+        logger.warning("코치가 없어 Take 결과를 띄우지 못했다 take=%s", take_id)
+        return
+    coach_finalize.spawn(take_id, snapshot, client=coach.client, store=coach.store)
 
 
 def after_mark(take_id: uuid.UUID, marked: bool, ending: Ending, coach: CoachDeps | None) -> None:
