@@ -80,3 +80,58 @@ def test_a_run_problem_appears_after_its_onset_lag(issue):
     at = run(secs(("CAMERA", 30 - lag), (state, lag)), 30_000)
     assert issue not in [i.issue_type for i in before.issues]
     assert issue in [i.issue_type for i in at.issues]
+
+
+def test_summarize_handles_sparse_keys_and_independent_zero_denominators():
+    g = summarize({"GAZE": {"camera_ms": 1000, "measured_ms": 1000, "total_ms": 1000}})["GAZE"]
+    assert g == {
+        "audience_ratio": 1.0, "script_ratio": 0.0, "screen_ratio": 0.0, "away_ratio": 0.0,
+        "reading_ratio": None, "reading_runs": 0, "measured_ratio": 1.0,
+    }  # fmt: skip
+
+
+def test_summarize_of_incremental_tallies_matches_all_same_window_ratios():
+    # 코치처럼 돌려받은 커서로 10초마다 부르고 tally 를 더한다
+    pattern = ("CAMERA", "BOTTOM", "SCREEN", "OTHER", "UNCERTAIN")
+    records = secs(*[(s, 1) for s in pattern * 6])
+    voiced = spoken(0, 30_000)
+    total: dict[str, int] = {}
+    since = 0
+    for t in (10_000, 20_000, 30_000):
+        r = run([x for x in records if x["t_ms"] < t], t, since, voiced)
+        for k, v in totals(r).items():
+            total[k] = total.get(k, 0) + v
+        since = r.counted_until_ms
+    g = summarize({"GAZE": total})["GAZE"]
+    assert (g["audience_ratio"], g["script_ratio"], g["screen_ratio"], g["away_ratio"]) == (
+        0.25,
+    ) * 4
+    assert (g["reading_ratio"], g["measured_ratio"], g["reading_runs"]) == (0.2, 0.8, 0)
+    m = r.metrics
+    assert (m.audience_ratio, m.script_ratio, m.screen_ratio, m.away_ratio, m.reading_ratio) == (
+        g["audience_ratio"],
+        g["script_ratio"],
+        g["screen_ratio"],
+        g["away_ratio"],
+        g["reading_ratio"],
+    )
+
+
+def test_criteria_recomputes_lags_and_bad_from_custom_config():
+    c = criteria(
+        GazeConfig(
+            short_window_ms=10_000, recent_window_ms=30_000, script_short_ratio=0.8,
+            low_eye_contact_ratio=0.4, low_eye_contact_min_measured_ms=20_000,
+            min_measured_ratio=0.6, away_run_bad_ms=9000,
+        )
+    )  # fmt: skip
+    assert c["GAZE_ON_SCRIPT"].onset_lag_ms == 8000
+    assert (c["GAZE_LOW_EYE_CONTACT"].onset_lag_ms, c["GAZE_LOW_EYE_CONTACT"].offset_lag_ms) == (
+        20_000,
+        12_000,
+    )
+    assert (c["GAZE_UNMEASURABLE"].onset_lag_ms, c["GAZE_UNMEASURABLE"].offset_lag_ms) == (
+        4000,
+        18_000,
+    )
+    assert c["GAZE_AWAY"].bad == 9000

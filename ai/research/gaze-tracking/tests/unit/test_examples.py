@@ -45,7 +45,7 @@ def check_contract(result: JudgmentResult, inputs: dict[str, Any]) -> None:
     times = [i.t_ms for i in result.tally]
     assert times == sorted(set(times)) and all(since <= x < t for x in times)
     for item in result.tally:
-        assert set(item.values) <= TALLY_KEYS and all(v > 0 for v in item.values.values())
+        assert set(item.values) <= TALLY_KEYS and all(v >= 0 for v in item.values.values())
     rules = criteria()
     for issue in result.issues:
         rule = rules[issue.issue_type]
@@ -67,6 +67,7 @@ def test_there_is_an_example_for_each_situation():
         "judge_input_screen.json",
         "judge_input_camera_lost.json",
         "judge_input_take_start.json",
+        "judge_input_missed_requests.json",
     }
 
 
@@ -164,6 +165,13 @@ def test_camera_lost_example_matches_the_doc_example():
     assert [(i.t_ms, i.values["unmeasured_ms"]) for i in r.tally] == [(29_000, 1000)]
 
 
+def test_missed_requests_example_counts_every_new_second():
+    inputs = _load("judge_input_missed_requests.json")
+    r = _by_name("_missed_requests")
+    assert [i.t_ms for i in r.tally] == list(range(inputs["since_ms"], inputs["t_ms"], 1000))
+    assert [i.values.get("unmeasured_ms", 0) for i in r.tally] == [1000, 1000, 0, 0, 0]
+
+
 def test_take_start_example_has_no_problem_yet():
     r = _by_name("_take_start")
     assert r.metrics.script_run_ms >= criteria()["GAZE_ON_SCRIPT"].threshold
@@ -173,8 +181,19 @@ def test_take_start_example_has_no_problem_yet():
 # ── summarize · criteria ──────────────────────────────────────────────────────
 
 
-def test_summarize_output_file_is_what_the_code_gives_now():
-    assert summarize(_load("summarize_input.json")) == _load("summarize_output.json")
+SUMMARIZE_INPUTS = sorted(EXAMPLES.glob("summarize_input*.json"))
+
+
+@pytest.mark.parametrize("path", SUMMARIZE_INPUTS, ids=lambda p: p.name)
+def test_summarize_output_file_is_what_the_code_gives_now(path):
+    assert summarize(_load(path.name)) == _load(path.name.replace("_input", "_output"))
+
+
+def test_summarize_examples_show_zero_denominators():
+    unmeasured = _load("summarize_output_unmeasured.json")["GAZE"]
+    assert (unmeasured["audience_ratio"], unmeasured["measured_ratio"]) == (None, 0.0)
+    silent = _load("summarize_output_silent.json")["GAZE"]
+    assert silent["reading_ratio"] is None and silent["audience_ratio"] is not None
 
 
 def test_summarize_example_matches_the_doc_example_rounded():
