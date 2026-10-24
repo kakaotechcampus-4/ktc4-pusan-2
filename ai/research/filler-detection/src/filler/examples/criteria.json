@@ -1,0 +1,10 @@
+{
+  "FILLER_FREQUENT": {
+    "metric": "recent_filler_count",
+    "direction": "HIGHER_IS_WORSE",
+    "threshold": 6.0,
+    "bad": 15.0,
+    "onset_lag_ms": 30000,
+    "offset_lag_ms": 30000
+  }
+}

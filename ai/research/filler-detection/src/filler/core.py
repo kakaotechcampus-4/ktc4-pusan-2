@@ -13,6 +13,8 @@
   5. 새 몫 세기: 판정이 정해진 새 군더더기를 `tally` 에 더하고 단어 커서를 보류 단어 앞까지 옮긴다.
   6. 시간 몫: `since_ms` 부터 `t_ms` 까지 1초마다 `total_ms` · `elapsed_ms` 를 낸다.
   7. 지표 · 상태 · 문제: 최근 창의 군더더기 수와 분당 수, 기준 이상이면 `FILLER_FREQUENT`.
+`summarize` 는 장 · Take 의 `tally` 합계를 지표로, `criteria` 는 `FILLER_FREQUENT` 의 기준을,
+`keyterms` 는 STT keyterm 단어 목록을 낸다(filler.md 6-4).
 고칠 때 주의: 판정 규칙이나 이유 문자열의 뜻이 바뀌면 `version.py` 의 기능 버전을 올리고
 filler.md 6-1 과 `examples/` 를 함께 고친다. 파일 · 환경변수 · 시계 · 난수 · print 를 쓰지 않는다
 (같은 입력에 같은 결과, 서비스로 폴더째 옮겨도 고칠 곳이 없게 — filler.md 4-3).
@@ -30,8 +32,12 @@ from .config import DEFAULT, FillerConfig, normalize
 from .schemas import (
     FillerInput,
     FillerMetrics,
+    FillerSummary,
+    IssueCriteria,
     JudgmentIssue,
     JudgmentResult,
+    Summary,
+    Tally,
     TallyItem,
     Tier,
     Word,
@@ -41,7 +47,7 @@ from .version import FEATURE_VERSION
 
 TICK_MS = 1_000
 
-__all__ = ["judge", "normalize"]
+__all__ = ["criteria", "criteria_version", "judge", "keyterms", "normalize", "summarize"]
 
 # 판정 이유 (사람이 읽는다. 바꾸면 기능 버전을 올린다)
 REASON_UNKNOWN_WORD = "사전에 없음"
@@ -114,6 +120,58 @@ def judge(
             issues=issues,
         )
     ]
+
+
+def summarize(tally: Tally, config: FillerConfig = DEFAULT) -> dict[str, dict[str, Any]]:
+    """장 · Take 의 tally 합계 → {"FILLER": {filler_count, filler_per_min, by_tier, by_word,
+    measured_ratio}} (filler.md 5-3 · 6-4).
+
+    인자: tally - 코치가 더한 합계(영역 → 이름 → 합. `filler_count` · `filler_t1~t3` ·
+    `filler_word:<단어>` · `elapsed_ms` · `total_ms`, 빠진 키는 0). config - 쓰지 않지만 다른 진입
+    함수와 같은 모양으로 받는다. 반환: `FillerSummary` 를 dict 로 만든 것.
+    분모가 0 이면 `filler_per_min` 은 None 이고, `measured_ratio` 만 0 이다(architecture.md 7절).
+    `by_word` 는 센 단어만, 횟수 많은 순 · 같으면 단어 순이다.
+    """
+    f = tally.get("FILLER", {})
+    count = int(f.get("filler_count", 0))
+    elapsed = f.get("elapsed_ms", 0)
+    total_ms = f.get("total_ms", 0)
+    prefix = "filler_word:"
+    words = {k[len(prefix) :]: int(v) for k, v in f.items() if k.startswith(prefix)}
+    summary = FillerSummary(
+        filler_count=count,
+        filler_per_min=round(count / elapsed * 60_000, 2) if elapsed > 0 else None,
+        by_tier={t: int(f.get(f"filler_{t.lower()}", 0)) for t in ("T1", "T2", "T3")},
+        by_word=dict(sorted(words.items(), key=lambda kv: (-kv[1], kv[0]))),
+        measured_ratio=round(elapsed / total_ms, 4) if total_ms > 0 else 0.0,
+    )
+    return Summary(FILLER=summary).model_dump()
+
+
+def criteria(config: FillerConfig = DEFAULT) -> dict[str, IssueCriteria]:
+    """`FILLER_FREQUENT` 의 판정 기준 (filler.md 5-3). Take 결과의 `criteria` 에 쓴다.
+
+    반환: {"FILLER_FREQUENT": IssueCriteria}. threshold · bad 는 최근 창 군더더기 수, lag 는 ms.
+    """
+    return {
+        "FILLER_FREQUENT": IssueCriteria(
+            metric="recent_filler_count",
+            direction="HIGHER_IS_WORSE",
+            threshold=float(config.frequent_count),
+            bad=float(config.frequent_bad),
+            onset_lag_ms=config.onset_lag_ms,
+            offset_lag_ms=config.offset_lag_ms,
+        )
+    }
+
+
+def keyterms(config: FillerConfig = DEFAULT) -> list[str]:
+    """STT keyterm 으로 넘기는 단어 목록 (filler.md 5-2). 순서는 BE 목록과 같다.
+
+    BE 는 이 목록만 가져간다. 단어가 바뀌면 BE 의 목록도 바꿔야 하므로 `criteria_version` 과
+    함께 파일로 만든다(filler.md 9절).
+    """
+    return list(config.keyterms)
 
 
 # --------------------------------------------------------------------------

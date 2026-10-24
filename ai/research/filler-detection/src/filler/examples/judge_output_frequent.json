@@ -1,0 +1,163 @@
+[
+  {
+    "evaluator": "filler",
+    "area": "FILLER",
+    "t_ms": 45000,
+    "counted_until_ms": 45000,
+    "words_counted_until_ms": 44400,
+    "criteria_version": "filler-1.0+9612862dccea",
+    "measurable": true,
+    "state": "HIGH",
+    "words": [
+      {
+        "start_ms": 30000,
+        "end_ms": 30300,
+        "word": "음",
+        "tier": "T1",
+        "is_filler": true,
+        "reason": "채움말"
+      },
+      {
+        "start_ms": 31000,
+        "end_ms": 31400,
+        "word": "그니까",
+        "tier": "T3",
+        "is_filler": true,
+        "reason": "앞뒤 간격이 기준 이상인 단독 단어"
+      },
+      {
+        "start_ms": 32000,
+        "end_ms": 32500,
+        "word": "발표",
+        "tier": null,
+        "is_filler": false,
+        "reason": "사전에 없음"
+      },
+      {
+        "start_ms": 33500,
+        "end_ms": 33600,
+        "word": "그",
+        "tier": "T2",
+        "is_filler": true,
+        "reason": "같은 단어가 바로 반복"
+      },
+      {
+        "start_ms": 33650,
+        "end_ms": 33750,
+        "word": "그",
+        "tier": "T2",
+        "is_filler": true,
+        "reason": "뒤 간격이 기준 이상인 단독 단어"
+      },
+      {
+        "start_ms": 34400,
+        "end_ms": 34800,
+        "word": "사람이",
+        "tier": null,
+        "is_filler": false,
+        "reason": "사전에 없음"
+      },
+      {
+        "start_ms": 36000,
+        "end_ms": 36300,
+        "word": "어",
+        "tier": "T1",
+        "is_filler": true,
+        "reason": "채움말"
+      },
+      {
+        "start_ms": 37000,
+        "end_ms": 37200,
+        "word": "좀",
+        "tier": "T3",
+        "is_filler": true,
+        "reason": "같은 단어가 바로 반복"
+      },
+      {
+        "start_ms": 37250,
+        "end_ms": 37450,
+        "word": "좀",
+        "tier": "T3",
+        "is_filler": false,
+        "reason": "간격이 기준보다 짧음"
+      },
+      {
+        "start_ms": 40000,
+        "end_ms": 40300,
+        "word": "음",
+        "tier": "T1",
+        "is_filler": true,
+        "reason": "채움말"
+      },
+      {
+        "start_ms": 43000,
+        "end_ms": 43300,
+        "word": "어",
+        "tier": "T1",
+        "is_filler": true,
+        "reason": "채움말"
+      },
+      {
+        "start_ms": 44000,
+        "end_ms": 44400,
+        "word": "분기",
+        "tier": null,
+        "is_filler": false,
+        "reason": "사전에 없음"
+      }
+    ],
+    "metrics": {
+      "recent_filler_count": 8,
+      "filler_per_min": 10.67
+    },
+    "tally": [
+      {
+        "t_ms": 37000,
+        "values": {
+          "filler_count": 1,
+          "filler_t3": 1,
+          "filler_word:좀": 1
+        }
+      },
+      {
+        "t_ms": 40000,
+        "values": {
+          "filler_count": 1,
+          "filler_t1": 1,
+          "filler_word:음": 1
+        }
+      },
+      {
+        "t_ms": 43000,
+        "values": {
+          "filler_count": 1,
+          "filler_t1": 1,
+          "filler_word:어": 1
+        }
+      },
+      {
+        "t_ms": 44000,
+        "values": {
+          "elapsed_ms": 1000,
+          "total_ms": 1000
+        }
+      }
+    ],
+    "issues": [
+      {
+        "issue_type": "FILLER_FREQUENT",
+        "area": "FILLER",
+        "severity": 0.6111111111111112,
+        "confidence": 1.0,
+        "persistence_sec": 7.8,
+        "threshold": 6.0,
+        "bad": 15.0,
+        "evidence": {
+          "recent_filler_count": 8,
+          "filler_per_min": 10.67
+        },
+        "actionable": true
+      }
+    ]
+  }
+]
