@@ -40,6 +40,7 @@ import { useLiveGaze } from './useLiveGaze';
 import { useRehearsalMaterials } from './useRehearsalMaterials';
 import { useRehearsalStore, type Indicators } from './rehearsalStore';
 import { indicatorViews } from '../lib/coachIndicators';
+import { gazeNote } from '../lib/gazeNote';
 import {
   abandonOutcome,
   clearClock,
@@ -297,9 +298,11 @@ export function RehearsalPage() {
     send: sendMetrics,
   });
   const {
+    ready: gazeReady,
     engineVersion,
     error: gazeError,
     perf,
+    missingCalibration,
     flushGaze,
   } = useLiveGaze({
     stream,
@@ -712,10 +715,20 @@ export function RehearsalPage() {
 
   if (left) return <LeftWindowNotice left={left} pitchId={ticket?.pitchId ?? null} />;
 
-  // 카메라를 다시 꽂으면 되는 경우만 알립니다. 권한 거부 · 기준 없음 · 엔진 오류는 발표 중에 할 수 있는
-  // 것이 없어 띄우지 않습니다 — 제외 사유는 그대로 기록되고, 코치 상태 표시도 시선을 '—' 로 둡니다
-  const cameraLost =
-    (deviceError !== null && deviceError !== 'PERMISSION_DENIED') || gazeError === 'CAMERA_LOST';
+  // 시선이 기록되지 않을 때만 발밑에 한 줄 띄웁니다(`gazeNote`). 발표 중에 고칠 수 없는 문제도 남깁니다 —
+  // 코치 상태 표시는 코칭 모드에서 소켓이 붙어 있을 때만 와서, 실전 모드 · 끊긴 동안에는 아무 표시가 없습니다
+  // 발표 중일 때만 — 끝내고 정리하는 동안에는 엔진이 꺼져 '준비 중'으로 읽힙니다
+  const gazeLine = running
+    ? gazeNote({
+        declined: deviceError === 'PERMISSION_DENIED',
+        cameraLost:
+          (deviceError !== null && deviceError !== 'PERMISSION_DENIED') ||
+          gazeError === 'CAMERA_LOST',
+        missingCalibration,
+        error: gazeError,
+        ready: gazeReady,
+      })
+    : null;
 
   return (
     <div className="min-h-full bg-greige px-4 py-5">
@@ -841,7 +854,11 @@ export function RehearsalPage() {
             />
 
             <div className="stage-foot">
-              {cameraLost && <span>카메라가 연결되지 않았어요 — 연결을 확인해 주세요</span>}
+              {gazeLine && (
+                <span className="gaze" data-alert={gazeLine.alert}>
+                  {gazeLine.text}
+                </span>
+              )}
               {sttNote && (
                 <span className="stt" data-alert={sttAlert}>
                   {sttNote}

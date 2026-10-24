@@ -600,7 +600,8 @@
 }
 
 /* 재연결 중·중단은 눈에 띄어야 한다. 다만 발표를 멈추라는 뜻은 아니다 */
-.stage-foot .stt[data-alert='true'] {
+.stage-foot .stt[data-alert='true'],
+.stage-foot .gaze[data-alert='true'] {
   color: var(--color-gaze-screen);
 }
 
