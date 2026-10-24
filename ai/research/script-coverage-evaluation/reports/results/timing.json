@@ -1,0 +1,187 @@
+{
+  "feature_version": "script_coverage-1.0",
+  "criteria_version": "script_coverage-1.0+e7d09c338962",
+  "model": "openai/gpt-6-luna",
+  "request_deadline_seconds": 120.0,
+  "call_timeout_seconds": 12.0,
+  "total_calls": 326,
+  "combinations": {
+    "N10_W4": {
+      "slides": 10,
+      "workers": 4,
+      "rubric": {
+        "seconds": 110.1,
+        "within_deadline": false,
+        "failed_slides": 6,
+        "failed": {
+          "3": "LLM_TIMEOUT",
+          "4": "LLM_TIMEOUT",
+          "5": "LLM_TIMEOUT",
+          "6": "LLM_TIMEOUT",
+          "9": "LLM_TIMEOUT",
+          "10": "LLM_TIMEOUT"
+        },
+        "request_error": null,
+        "calls": 34,
+        "retries": 6,
+        "timeouts": 12,
+        "call_median_seconds": 10.13,
+        "call_max_seconds": 12.02
+      },
+      "analyze": {
+        "seconds": 6.0,
+        "within_deadline": false,
+        "failed_slides": 6,
+        "failed": {
+          "3": "RUBRIC_MISSING",
+          "4": "RUBRIC_MISSING",
+          "5": "RUBRIC_MISSING",
+          "6": "RUBRIC_MISSING",
+          "9": "RUBRIC_MISSING",
+          "10": "RUBRIC_MISSING"
+        },
+        "request_error": null,
+        "calls": 4,
+        "retries": 0,
+        "timeouts": 0,
+        "call_median_seconds": 4.04,
+        "call_max_seconds": 5.73
+      }
+    },
+    "N10_W8": {
+      "slides": 10,
+      "workers": 8,
+      "rubric": {
+        "seconds": 68.3,
+        "within_deadline": false,
+        "failed_slides": 3,
+        "failed": {
+          "4": "LLM_TIMEOUT",
+          "6": "LLM_TIMEOUT",
+          "9": "LLM_TIMEOUT"
+        },
+        "request_error": null,
+        "calls": 35,
+        "retries": 7,
+        "timeouts": 10,
+        "call_median_seconds": 9.88,
+        "call_max_seconds": 12.03
+      },
+      "analyze": {
+        "seconds": 5.9,
+        "within_deadline": false,
+        "failed_slides": 3,
+        "failed": {
+          "4": "RUBRIC_MISSING",
+          "6": "RUBRIC_MISSING",
+          "9": "RUBRIC_MISSING"
+        },
+        "request_error": null,
+        "calls": 7,
+        "retries": 0,
+        "timeouts": 0,
+        "call_median_seconds": 4.56,
+        "call_max_seconds": 5.55
+      }
+    },
+    "N20_W4": {
+      "slides": 20,
+      "workers": 4,
+      "rubric": {
+        "seconds": 119.5,
+        "within_deadline": false,
+        "failed_slides": 0,
+        "failed": {},
+        "request_error": "LLM_TIMEOUT",
+        "calls": 46,
+        "retries": 7,
+        "timeouts": 12,
+        "call_median_seconds": 9.21,
+        "call_max_seconds": 12.09
+      },
+      "analyze": null
+    },
+    "N20_W8": {
+      "slides": 20,
+      "workers": 8,
+      "rubric": {
+        "seconds": 118.3,
+        "within_deadline": false,
+        "failed_slides": 9,
+        "failed": {
+          "1": "LLM_TIMEOUT",
+          "3": "LLM_TIMEOUT",
+          "4": "LLM_TIMEOUT",
+          "6": "LLM_TIMEOUT",
+          "9": "LLM_TIMEOUT",
+          "12": "LLM_TIMEOUT",
+          "13": "LLM_TIMEOUT",
+          "15": "LLM_TIMEOUT",
+          "16": "LLM_TIMEOUT"
+        },
+        "request_error": null,
+        "calls": 70,
+        "retries": 12,
+        "timeouts": 21,
+        "call_median_seconds": 10.29,
+        "call_max_seconds": 12.03
+      },
+      "analyze": {
+        "seconds": 9.6,
+        "within_deadline": false,
+        "failed_slides": 9,
+        "failed": {
+          "1": "RUBRIC_MISSING",
+          "3": "RUBRIC_MISSING",
+          "4": "RUBRIC_MISSING",
+          "6": "RUBRIC_MISSING",
+          "9": "RUBRIC_MISSING",
+          "12": "RUBRIC_MISSING",
+          "13": "RUBRIC_MISSING",
+          "15": "RUBRIC_MISSING",
+          "16": "RUBRIC_MISSING"
+        },
+        "request_error": null,
+        "calls": 11,
+        "retries": 0,
+        "timeouts": 0,
+        "call_median_seconds": 4.39,
+        "call_max_seconds": 6.17
+      }
+    },
+    "N30_W4": {
+      "slides": 30,
+      "workers": 4,
+      "rubric": {
+        "seconds": 117.3,
+        "within_deadline": false,
+        "failed_slides": 0,
+        "failed": {},
+        "request_error": "LLM_TIMEOUT",
+        "calls": 46,
+        "retries": 5,
+        "timeouts": 12,
+        "call_median_seconds": 10.06,
+        "call_max_seconds": 12.02
+      },
+      "analyze": null
+    },
+    "N30_W8": {
+      "slides": 30,
+      "workers": 8,
+      "rubric": {
+        "seconds": 115.4,
+        "within_deadline": false,
+        "failed_slides": 0,
+        "failed": {},
+        "request_error": "LLM_TIMEOUT",
+        "calls": 73,
+        "retries": 14,
+        "timeouts": 23,
+        "call_median_seconds": 10.03,
+        "call_max_seconds": 12.05
+      },
+      "analyze": null
+    }
+  }
+}
