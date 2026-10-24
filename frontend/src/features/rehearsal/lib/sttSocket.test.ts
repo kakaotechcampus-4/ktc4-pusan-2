@@ -426,6 +426,41 @@ describe('1초 측정값 (metrics)', () => {
     expect(sentMetrics(sockets[0]!)).toEqual([1_000]);
   });
 
+  it('몰아 보내는 것에만 buffered 를 붙인다 — BE 가 지난 시각으로 코치를 부르지 않게', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    /** 보낸 metrics 의 [t_ms, buffered 칸이 있나 · 값] */
+    const flags = (socket: FakeSocket) =>
+      socket.sent
+        .filter((d): d is string => typeof d === 'string')
+        .map((d) => JSON.parse(d) as { type: string; t_ms?: number; buffered?: unknown })
+        .filter((m) => m.type === 'metrics')
+        .map((m) => [m.t_ms, 'buffered' in m ? m.buffered : 'none'] as const);
+
+    stt.sendMetrics(metrics(1_000));
+    sockets[0]!.serverClose(1006);
+    stt.sendMetrics(metrics(2_000));
+    stt.sendMetrics(metrics(3_000));
+
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+    stt.sendMetrics(metrics(4_000));
+
+    // 바로 보낸 것에는 칸이 없습니다(없으면 false — architecture.md 1-4)
+    expect(flags(sockets[0]!)).toEqual([[1_000, 'none']]);
+    expect(flags(sockets[1]!)).toEqual([
+      [2_000, true],
+      [3_000, true],
+      [4_000, 'none'],
+    ]);
+  });
+
   it('끊긴 동안 쌓았다가 다시 붙으면 오디오 다음에 보낸다 — 서버로 가는 길이 이것뿐이다', async () => {
     vi.useFakeTimers();
     const stt = makeSocket();

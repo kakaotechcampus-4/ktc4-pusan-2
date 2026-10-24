@@ -49,8 +49,9 @@ const MAX_PENDING_FRAMES = 20;
  * 오디오(2초)보다 훨씬 길게 듭니다. `metrics` 는 시선 · 음량 기록이 서버에 가는 **유일한 길**이고
  * (발표 종료에 기록을 몰아 보내는 `/complete` 는 없어졌습니다, #134), BE 는 이걸 저장해 Take 결과를
  * 만듭니다. 버리면 리포트에서 그 구간이 빠집니다. 다시 붙으면 몰아 보냅니다 — 같은 1초가 두 번
- * 가도 BE 는 먼저 받은 것을 씁니다 (`architecture.md` 6-2).
- * ★ BE 와 확인 필요 (#255): 몰아 온 지난 `metrics` 로 코치를 부르지 않고 원자료로만 쌓는지
+ * 가도 BE 는 먼저 받은 것을 씁니다 (`architecture.md` 6-2). 몰아 보내는 것에는 `buffered: true` 를
+ * 붙여 BE 가 원자료로만 쌓고 코치는 부르지 않게 합니다 (#324). 5분은 BE 가 끊긴 Take 를 끝내는
+ * 시간(`ABANDONED`, #311)과 같습니다 — 그보다 오래 쌓아도 보낼 곳이 없습니다.
  */
 const MAX_PENDING_METRICS = 300;
 
@@ -235,14 +236,15 @@ export class SttSocket {
    */
   sendMetrics(message: MetricsMessage): void {
     if (this.disposed || this.stopping) return;
-    const data = JSON.stringify(message);
 
     if (this.ready && this.socket) {
-      this.socket.send(data);
+      this.socket.send(JSON.stringify(message));
       return;
     }
 
-    this.pendingMetrics.push(data);
+    // 쌓아 둔 것은 다시 붙은 뒤에야 나갑니다 — 이미 지난 시각입니다. BE 가 저장만 하고 코치를
+    // 부르지 않도록 표시합니다 (`architecture.md` 1-4 · 2절). 시작 직후 `ready` 전 몇 초도 같습니다
+    this.pendingMetrics.push(JSON.stringify({ ...message, buffered: true }));
     while (this.pendingMetrics.length > MAX_PENDING_METRICS) this.pendingMetrics.shift();
   }
 

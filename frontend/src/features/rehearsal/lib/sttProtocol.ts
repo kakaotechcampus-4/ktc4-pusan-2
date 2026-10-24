@@ -25,8 +25,11 @@ import type { VoiceRecord } from '../media/voiceRecord';
  *   gaze          시선 1초 기록 — 엔진 `sampleToDict` 결과 그대로. 잴 수 없었으면 null
  *   voice         음량 1초 기록 (`voiceRecord.ts`). 시선 기록과 같은 구간입니다
  *   slide_number  지금 슬라이드 번호 (1부터). 모르면 null
+ *   buffered      끊긴 동안 쌓아 두었다가 다시 붙은 뒤 보내는 것만 true. 바로 보내는 것에는 붙이지
+ *                 않습니다(없으면 false). 소켓이 보낼 때 붙입니다 (`SttSocket.sendMetrics`)
  *
- * 받은 BE 는 1초 원자료로 저장하고(Take 결과의 재료) 실시간 코치를 부릅니다.
+ * 받은 BE 는 1초 원자료로 저장하고(Take 결과의 재료) 실시간 코치를 부릅니다. `buffered` 인 것은
+ * 저장만 하고 코치를 부르지 않습니다 — 지난 시각으로 말을 걸지 않게 (`architecture.md` 2절).
  * `stop` 직전에 마지막 1초 조각(1초보다 짧을 수 있음)을 한 번 더 보냅니다.
  */
 export interface MetricsMessage {
@@ -35,6 +38,7 @@ export interface MetricsMessage {
   gaze: GazeSampleRecord | null;
   voice: VoiceRecord | null;
   slide_number: number | null;
+  buffered?: true;
 }
 
 /**
