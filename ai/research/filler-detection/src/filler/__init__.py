@@ -4,7 +4,16 @@
 """
 
 from .config import DEFAULT, FillerConfig
-from .core import judge, normalize
+from .core import criteria, judge, keyterms, normalize, summarize
 from .version import FEATURE_VERSION
 
-__all__ = ["DEFAULT", "FEATURE_VERSION", "FillerConfig", "judge", "normalize"]
+__all__ = [
+    "DEFAULT",
+    "FEATURE_VERSION",
+    "FillerConfig",
+    "criteria",
+    "judge",
+    "keyterms",
+    "normalize",
+    "summarize",
+]
