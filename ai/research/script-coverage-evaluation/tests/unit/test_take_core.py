@@ -186,14 +186,17 @@ def test_analyze_empty_stt_slide_skips_llm_and_marks_every_unit_missing():
 @pytest.mark.parametrize("stt", ["", "음 어"])  # 간투사뿐인 STT 도 정규화하면 빈 것이다
 def test_analyze_empty_stt_has_no_matched_facts(stt):
     """이름 · 수치가 많은 장도 STT 가 비면 어떤 수치도 맞게 말한 것으로 세지 않고, LLM 도 부르지 않는다."""
-    eval_llm = SaidAllLLM()
-    response = _analyze(_request(slide_numbers=[4, 6], stt={4: stt, 6: stt}), _llms(eval_llm))
-    assert eval_llm.calls == 0 and response.meta.model is None
+    eval_llm, verifier = SaidAllLLM(), FakeLLM(VerifierResult(judgments=[]))
+    response = _analyze(
+        _request(slide_numbers=[4, 6], stt={4: stt, 6: stt}), _llms(eval_llm, verifier)
+    )
+    assert (eval_llm.calls, verifier.calls) == (0, 0) and response.meta.model is None
     assert [e.slide_number for e in response.evaluations] == [4, 6]
     for e in response.evaluations:
         assert e.stt_text == ""
         assert e.critical_facts and {c.status for c in e.critical_facts} == {"missing"}
-        assert e.scores["critical_fact_accuracy"] in (None, 0.0)
+        assert e.scores["critical_fact_accuracy"] == 0.0  # 수치가 있는데 하나도 말하지 않았다
+        assert e.scores["_weights"]["facts"] > 0
         assert e.scores["content_coverage"] == 0.0 and e.scores["script_fidelity"] == 0.0
         assert not e.similar_items
     assert response.take_scores.scored_ratio == 1.0
@@ -357,6 +360,31 @@ def test_rescore_without_answers_recomputes_take_values_only(stored):
     assert response.meta.model is None
     assert response.meta.criteria_versions == _analyze().meta.criteria_versions
     assert rescore_evaluation(_rescore_request(stored)).model_dump() == response.model_dump()
+
+
+_KEPT = ["scores", "sentences", "key_points", "critical_facts", "applied_answers"]
+
+
+def _kept(evaluations) -> list[dict]:
+    return [e.model_dump(include=set(_KEPT)) for e in evaluations]
+
+
+def test_rescore_without_answers_preserves_analyzed_evaluations():
+    """analyze 응답을 답 없이 다시 계산해도 장별 채점 내용이 그대로다 (Take 값만 다시 계산)."""
+    analyzed = _analyze()
+    again = rescore_evaluation(_rescore_request(analyzed.evaluations))
+    assert _kept(again.evaluations) == _kept(analyzed.evaluations)
+    assert again.take_scores == analyzed.take_scores
+
+
+def test_rescore_without_answers_preserves_cumulative_answers(stored):
+    first = rescore_evaluation(
+        _rescore_request(stored, [_answer(4, "R1", "as_stt"), _answer(6, "R1")])
+    )
+    again = rescore_evaluation(_rescore_request(first.evaluations))
+    assert _kept(again.evaluations) == _kept(first.evaluations)
+    assert again.take_scores == first.take_scores
+    assert again.confirmations == first.confirmations
 
 
 def test_rescore_answers_reduce_confirmations(stored):
