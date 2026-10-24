@@ -1,7 +1,13 @@
 """단위 테스트용 가짜 LLM: `.invoke(messages)` 가 정해진 스키마 객체를 돌려주거나 정해진 예외를 낸다."""
 
+import re
+
 from script_coverage.script_analysis.schemas import (
+    FinalKeyPoint,
     FinalReview,
+    KeyPointDraft,
+    NameVerdict,
+    SentenceLabel,
     SlideSemanticAnalysis,
     SlideUnits,
 )
@@ -50,3 +56,56 @@ class SlideFailingLLM(FakeLLM):
         if number in self.failing:
             raise self.failing[number]
         return self.result
+
+
+class DeckAwareLLM:
+    """메시지를 읽어 정해진 규칙으로 답하는 가짜 LLM (같은 메시지 → 같은 답)."""
+
+    def __init__(self, stage):
+        self.stage = stage
+        self.messages: list[str] = []
+
+    def invoke(self, messages):
+        text = messages[1][1]
+        self.messages.append(text)
+        sentence_ids = [int(i) for i in re.findall(r"\[S(\d+)\]", text)]
+        roles = [SentenceLabel(id=i, role="claim" if i == 0 else "evidence") for i in sentence_ids]
+        if self.stage == "semantic":
+            # 모든 장이 '도서관' 을 key_term 으로 올린다: 발표 공통 어휘인지는 다른 장을 봐야 안다
+            key_points = [
+                KeyPointDraft(content="도서관 이야기다.", sentence_ids=[0], key_terms=["도서관"])
+            ]
+            return SlideSemanticAnalysis(
+                sentence_roles=roles, core_claim="핵심", key_points=key_points
+            )
+        if self.stage == "final":
+            verdicts = [
+                NameVerdict(candidate_id=c, keep=True, reason="테스트")
+                for c in sorted(set(re.findall(r"\bN\d+\b", text)))
+            ]
+            return FinalReview(
+                sentence_roles=roles,
+                core_claim="핵심",
+                key_points=[FinalKeyPoint(content="도서관 이야기다.", sentence_ids=[0])],
+                name_verdicts=verdicts,
+                changes=[],
+            )
+        return SlideUnits(sentences=[])
+
+
+def deck_rubrics(numbers=(4, 6, 7), model="test-model") -> list:
+    """가상대본1 의 평가 기준 (`DeckAwareLLM` 으로 만든 것). script_name 은 `sv-3`."""
+    from script_coverage.core import ScriptLLMs, analyze_script
+    from tests.unit.shared.slides import SLIDES
+
+    llms = ScriptLLMs(**{s: DeckAwareLLM(s) for s in ("semantic", "final", "unit")})
+    response = analyze_script(
+        {
+            "pitch_id": "p-1",
+            "script_version_id": "sv-3",
+            "slides": [{"slide_number": n, "script": SLIDES[("가상대본1", n)]} for n in numbers],
+        },
+        llms=llms,
+        model=model,
+    )
+    return response.rubrics
