@@ -47,16 +47,28 @@ def load_settings() -> Settings:
     return Settings(base_url=os.getenv("OPENAI_BASE_URL"), api_key=api_key, model=model)
 
 
-def structured_llm(schema: type[BaseModel], settings: Settings, *, max_retries: int = 2):
+def structured_llm(
+    schema: type[BaseModel],
+    settings: Settings,
+    *,
+    max_retries: int = 2,
+    timeout: float | None = None,
+    streaming: bool = False,
+):
     """주어진 출력 스키마 모양으로만 답하도록 고정한 LLM (`.invoke(messages)` 가 스키마 객체를 돌려준다).
 
-    `max_retries` 는 SDK 가 알아서 다시 부르는 횟수다. 재시도를 직접 세어야 하는 시간 측정은 0 으로 준다.
+    - `max_retries`: SDK 가 알아서 다시 부르는 횟수. 재시도를 직접 세어야 하는 시간 측정은 0 으로 준다
+    - `timeout` · `streaming`: 시간 측정은 서비스 `common/llm.py` 처럼 전송 시간 제한을 호출 시간 제한과 같게 두고
+      (버린 호출이 오래 남지 않게) 스트리밍으로 받는다. 연구 실험의 기본값은 예전 그대로다
     """
     client = ChatOpenAI(
         base_url=settings.base_url,
         api_key=settings.api_key,
         model=settings.model,
         max_retries=max_retries,
+        timeout=timeout,
+        streaming=streaming,
+        stream_usage=streaming,
     )
     return client.with_structured_output(schema)
 
