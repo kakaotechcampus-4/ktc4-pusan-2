@@ -1,5 +1,27 @@
 @import "tailwindcss";
 
+/* 글꼴은 직접 둡니다 — 이름만 적으면 설치된 PC 에서만 나오고, 맥 · 윈도우가 각자 시스템 글꼴로 그립니다.
+   CDN 에서 받지 않는 이유는 모델 파일과 같습니다 (CLAUDE.md "개발 중 함정"). 라이선스는 public/fonts/*-OFL.txt */
+@font-face {
+  font-family: "Pretendard";
+  font-weight: 45 920;
+  font-display: swap;
+  src: url("/fonts/PretendardVariable.woff2") format("woff2-variations");
+}
+/* 숫자 · 영문만 담은 latin 조각. 한글은 아래 --font-mono 의 Pretendard 로 넘어갑니다 */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/IBMPlexMono-Regular-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/IBMPlexMono-Bold-latin.woff2") format("woff2");
+}
+
 /* ═══════════════════════════════════════════════════════════════
    피치코치 디자인 토큰
 
@@ -36,6 +58,13 @@
   --color-gaze-screen: #D9A441;     /* 대본 · 슬라이드 · solid 5px */
   --color-gaze-unknown: #C0392B;    /* 판정 불가 · dashed 5px */
 
+  /* ── 분석 대기 로딩 화면 ───────────────────────────────────────
+     노을 그림(public/loading) 위 게임 대화 상자. 그 화면에서만 씁니다. */
+  --color-dusk: #2B2140;            /* 대화 상자 바탕 · 그림 밖 여백 */
+  --color-dusk-line: #4A3A66;       /* 안쪽 테두리 · 구분선 · 빈 칸 */
+  --color-dusk-ink: #FFF4E0;        /* 본문 · 바깥 테두리 */
+  --color-dusk-accent: #F9BE7A;     /* 진행 막대 · 이름표 */
+
   /* ── ★ 계측 조건 ───────────────────────────────────────────────
      이 네 값은 디자인이 아닙니다.
 
@@ -55,7 +84,7 @@
   /* ── 타이포 ────────────────────────────────────────────────── */
   --font-sans: "Pretendard", "Noto Sans KR", -apple-system,
                "Apple SD Gothic Neo", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-mono: "IBM Plex Mono", "Pretendard", ui-monospace, monospace;
 }
 
 html, body, #root { height: 100%; }
@@ -100,6 +129,17 @@ body {
 .landing[data-motion="off"] .landing-wave { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .landing-float, .landing-wave { animation: none; }
+}
+
+/* 분석 대기의 "분석 중..." 점. 배경 그림은 움직이지 않습니다. */
+@keyframes loading-dot {
+  0%, 20% { opacity: 0; }
+  30%, 90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.loading-dot { animation: loading-dot 1.6s infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .loading-dot { animation: none; }
 }
 
 /* 피치 생성 화면의 밝은 지면. */

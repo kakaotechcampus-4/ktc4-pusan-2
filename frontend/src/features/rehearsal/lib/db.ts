@@ -371,9 +371,10 @@ export async function setSessionTicket(
 }
 
 /**
- * takeId 로 세션을 찾습니다. 리허설 주소를 다른 탭에서 열었을 때 쓰는 길입니다 —
- * 라우터 state 는 새로고침하면 남지만 탭을 옮기면 없습니다. 기록은 IndexedDB 에 남아 있습니다.
- * 같은 Take 로 두 번 시작된 세션이 있으면 **가장 최근 것**을 잇습니다.
+ * takeId 로 세션을 찾습니다. 리허설 주소를 다른 창에서 열었을 때 쓰는 길입니다 —
+ * 라우터 state 는 새로고침하면 남지만 창을 옮기면 없습니다. 기록은 IndexedDB 에 남아 있습니다.
+ * 찾은 세션은 이어 가지 않고, 창을 닫았는지 · 다른 창이 발표 중인지 가르는 데 씁니다 (`leftWindow`).
+ * 같은 Take 로 두 번 시작된 세션이 있으면 **가장 최근 것**을 봅니다.
  */
 export async function findSessionByTakeId(takeId: string): Promise<SessionRow | null> {
   const db = await openPitchDb();

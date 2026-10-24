@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  STT_ABANDONED_MESSAGE,
   STT_ERROR_MESSAGE,
   STT_STATE_NOTE,
   type MetricsMessage,
@@ -29,6 +30,11 @@ import type { Ms } from '@/types/api';
  * 네트워크 끊김은 실패로 치지 않습니다 — 소켓이 발표가 끝날 때까지 다시 붙어 보고,
  * 그동안 마이크 캡처도 계속 돕니다. 붙는 순간 말하기 분석이 이어집니다.
  * 끊긴 동안의 음성은 어디에도 남지 않아 그 구간의 말하기 분석은 빠집니다 (CLAUDE.md 4번).
+ *
+ * 마이크 캡처가 실패해도 소켓은 닫지 않습니다. 이 소켓이 1초 측정값(`metrics`)의 유일한 길이라,
+ * 닫으면 카메라 · 시선이 멀쩡해도 그 Take 의 원자료가 서버에 하나도 가지 않습니다.
+ * 오디오 없이 붙어 있어도 BE 가 Deepgram 에 KeepAlive 를 보내고, 말 없음 자동 종료는
+ * 전사된 오디오로만 재므로 걸리지 않습니다.
  */
 export function useSttStream({
   takeId,
@@ -36,6 +42,8 @@ export function useSttStream({
   enabled,
   elapsedMs,
   onAutoEnd,
+  restoredMetrics,
+  onClosed,
 }: {
   takeId: string;
   stream: MediaStream | null;
@@ -45,6 +53,16 @@ export function useSttStream({
   elapsedMs: () => Ms;
   /** 서버가 Take 를 자동으로 끝냈습니다 (말 없음 · 최대 시간). 무대가 종료 흐름을 탑니다 */
   onAutoEnd?: () => void;
+  /**
+   * 새로고침 전 페이지가 못 보낸 `metrics` 를 꺼냅니다 (`takeMetrics`). 소켓을 만들 때 한 번 부르고,
+   * 붙자마자 그것부터 보냅니다
+   */
+  restoredMetrics?: () => string[];
+  /**
+   * 창을 닫아 끝난 Take 입니다 (`TAKE_ENDED` · `CLOSED`). 닫은 탭을 늦게 복원했거나 다른 창이
+   * 실패로 끝냈습니다. 무대는 이어 가지 않고 실패 화면으로 갑니다
+   */
+  onClosed?: () => void;
 }) {
   /** 전사 한 줄이 들어갈 자리. 이 훅이 textContent 로 직접 씁니다 */
   const transcriptRef = useRef<HTMLSpanElement>(null);
@@ -57,11 +75,20 @@ export function useSttStream({
 
   const [sttState, setSttState] = useState<SttState | null>(null);
   const [errorNote, setErrorNote] = useState<string | null>(null);
+  /**
+   * 마이크 캡처 실패. 소켓이 다시 붙어도(`ok`) 마이크는 그대로 고장이라 `errorNote` 와 따로 둡니다 —
+   * 같이 두면 재연결 한 번에 지워져 말하기 분석이 도는 것처럼 보입니다
+   */
+  const [captureNote, setCaptureNote] = useState<string | null>(null);
 
   /** 소켓은 effect 안에서 한 번 만들어집니다. 그 뒤에 바뀐 콜백을 부르려고 ref 로 넘깁니다 */
   const onAutoEndRef = useRef(onAutoEnd);
+  const restoredMetricsRef = useRef(restoredMetrics);
+  const onClosedRef = useRef(onClosed);
   useEffect(() => {
     onAutoEndRef.current = onAutoEnd;
+    restoredMetricsRef.current = restoredMetrics;
+    onClosedRef.current = onClosed;
   });
 
   useEffect(() => {
@@ -85,6 +112,7 @@ export function useSttStream({
 
     const socket = new SttSocket({
       takeId,
+      restoredMetrics: restoredMetricsRef.current?.(),
       onTranscript: paint,
       onState: (state) => {
         if (cancelled) return;
@@ -95,8 +123,18 @@ export function useSttStream({
       onStatus: (message) => {
         statsRef.current = { frames: message.frames, lostMs: message.lost_ms };
       },
-      onError: (code) => {
-        if (!cancelled) setErrorNote(STT_ERROR_MESSAGE[code]);
+      onError: (code, _message, endReason) => {
+        if (cancelled) return;
+        if (code === 'TAKE_ENDED' && endReason === 'CLOSED') {
+          onClosedRef.current?.();
+          return;
+        }
+        // 오래 끊겨 서버가 끝냈지만 발표는 이어 갑니다. 끝내기를 보내면 서버가 되살립니다
+        setErrorNote(
+          code === 'TAKE_ENDED' && endReason === 'ABANDONED'
+            ? STT_ABANDONED_MESSAGE
+            : STT_ERROR_MESSAGE[code],
+        );
       },
       onAutoEnd: (_reason, message) => {
         if (cancelled) return;
@@ -132,19 +170,15 @@ export function useSttStream({
         // abandoned — 준비가 끝나기 전에 소켓이 포기한 경우입니다
         if (cancelled || abandoned || error) {
           capture?.stop().catch(() => undefined);
-          // 오디오가 없으면 소켓을 붙잡고 있을 이유가 없습니다
-          if (error) {
-            socket.dispose();
-            if (!cancelled) setErrorNote(PCM_CAPTURE_ERROR_MESSAGE[error]);
-          }
+          // 소켓은 닫지 않습니다 — 오디오만 못 갈 뿐 metrics 는 계속 보냅니다
+          if (error && !cancelled) setCaptureNote(PCM_CAPTURE_ERROR_MESSAGE[error]);
           return;
         }
         captureRef.current = capture;
       })
       .catch(() => {
         // 여기서 삼키면 화면에는 아무 표시 없이 말하기 분석만 사라집니다
-        socket.dispose();
-        if (!cancelled) setErrorNote(PCM_CAPTURE_ERROR_MESSAGE.WORKLET_FAILED);
+        if (!cancelled) setCaptureNote(PCM_CAPTURE_ERROR_MESSAGE.WORKLET_FAILED);
       });
 
     return () => {
@@ -186,16 +220,34 @@ export function useSttStream({
     socketRef.current?.sendSlide(message);
   }, []);
 
+  /**
+   * 탭이 사라지기 직전(`pagehide`). 남은 1초들을 보내 보고, 서버에 닿았다고 볼 수 없는 것을 돌려줍니다
+   * (`SttSocket.handOffMetrics`). 소켓이 없으면 `sendMetrics` 처럼 버립니다.
+   */
+  const handOffMetrics = useCallback(
+    (messages: readonly MetricsMessage[]): string[] =>
+      socketRef.current?.handOffMetrics(messages) ?? [],
+    [],
+  );
+
   return {
     transcriptRef,
     sttState,
-    /** 발밑에 뜨는 한 줄. 에러가 있으면 에러가 이깁니다 */
-    note: errorNote ?? (sttState ? STT_STATE_NOTE[sttState] : null),
+    /**
+     * 발밑에 뜨는 한 줄. 에러가 있으면 에러가 이깁니다. 마이크가 실패했으면 연결 상태 문구
+     * ("말하기 분석 중")는 맞지 않아 보여 주지 않습니다
+     */
+    note: errorNote ?? captureNote ?? (sttState ? STT_STATE_NOTE[sttState] : null),
     /** 눈에 띄게 할 것인가. 정상으로 도는 동안에는 조용히 둡니다 */
-    alert: errorNote !== null || sttState === 'reconnecting' || sttState === 'degraded',
+    alert:
+      errorNote !== null ||
+      captureNote !== null ||
+      sttState === 'reconnecting' ||
+      sttState === 'degraded',
     statsRef,
     sendMetrics,
     sendSlide,
+    handOffMetrics,
     stop,
   };
 }

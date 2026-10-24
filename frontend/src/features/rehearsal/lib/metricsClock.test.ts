@@ -99,6 +99,27 @@ describe('발표 끝', () => {
     expect(clock.finish(9_000)).toEqual([]);
   });
 
+  it('새로고침하면 기다리던 구간을 기다리지 않고 지금까지 메운다 — 새 시계가 그 시각부터 이어 간다', () => {
+    const clock = createMetricsClock(0);
+    // 시선이 없어 스스로 잇는 중입니다. 2초를 기다리므로 59.5초에는 57초까지만 나갔습니다
+    clock.tick(59_500);
+    expect(brief(clock.flush(60_000))).toEqual([
+      [57_000, 58_000, false],
+      [58_000, 59_000, false],
+      [59_000, 60_000, false],
+    ]);
+    expect(brief(clock.flush(60_400))).toEqual([[60_000, 60_400, false]]);
+  });
+
+  it('메운 뒤 페이지가 되살아나면 그 뒤부터 이어 보낸다 — 같은 시간을 두 번 보내지 않는다', () => {
+    const clock = createMetricsClock(0);
+    clock.flush(2_500);
+    expect(clock.gaze([g(2_000)])).toEqual([]);
+    expect(brief(clock.tick(2_500 + SLICE_MS + GAZE_WAIT_MS))).toEqual([[2_500, 3_500, false]]);
+    expect(brief(clock.finish(4_000))).toEqual([[3_500, 4_000, false]]);
+    expect(clock.flush(9_000)).toEqual([]);
+  });
+
   it('새로고침해 이어받았으면 그 시각부터 보낸다', () => {
     const clock = createMetricsClock(42_000);
     expect(brief(clock.tick(43_000 + GAZE_WAIT_MS))).toEqual([[42_000, 43_000, false]]);

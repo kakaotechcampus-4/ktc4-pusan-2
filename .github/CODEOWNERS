@@ -68,3 +68,17 @@
 # 이 아래는 팀이 자유롭게 쓰세요. 파트별 자동 리뷰어 지정 예시:
 #   /backend/   @member-a @member-b
 #   /frontend/  @member-c
+
+/ai/                                          @JWK0395 @jinn-ie
+/docs/ai/                                     @JWK0395 @jinn-ie
+/docs/ai/architecture.md                      @JWK0395 @jinn-ie
+/docs/ai/ai-service.md                        @JWK0395 @jinn-ie
+/docs/ai/features/coach-agent.md              @JWK0395 @jinn-ie
+/docs/ai/features/gaze-tracking.md            @JWK0395 @jinn-ie
+/docs/ai/features/filler.md                   @JWK0395 @jinn-ie
+/docs/ai/features/script-coverage-evaluation.md  @JWK0395 @jinn-ie
+/docs/ai/features/script-parser.md            @JWK0395 @jinn-ie
+/docs/ai/features/evaluation-criteria.md      @JWK0395 @jinn-ie
+/docs/ai/features/pace.md                     @JWK0395 @jinn-ie
+/docs/ai/features/volume.md                   @JWK0395 @jinn-ie
+/docs/ai/features/review-agent.md             @JWK0395 @jinn-ie

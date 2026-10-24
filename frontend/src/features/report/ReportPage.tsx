@@ -1,85 +1,69 @@
-import { Card, Stat } from '@/shared/ui/Panel';
-import { Badge, type Tone } from '@/shared/ui/Badge';
-import { Button, ButtonLink } from '@/shared/ui/Button';
-import { useState } from 'react';
+import { Navigate, useParams } from 'react-router';
+import { useTakeReport } from '@/shared/api/report';
 import { formatDuration } from '@/shared/lib/clock';
-import { DraftPage } from '../ui';
-import { pct } from '../takesSample';
-import {
-  measures,
-  review,
-  reviewFallback,
-  type Area,
-  type Dimension,
-  type DimensionStatus,
-  type JudgeStatus,
-  type Operator,
-  type ReviewResult,
-} from './sample';
+import { Badge, type Tone } from '@/shared/ui/Badge';
+import { ButtonLink } from '@/shared/ui/Button';
+import { Card, Stat } from '@/shared/ui/Panel';
+import type {
+  Dimension,
+  DimensionStatus,
+  JudgeStatus,
+  ReviewResult,
+  TakeMeasures,
+  TakeReport,
+} from '@/types/report';
+import { QueryState, ReportFrame } from './ReportFrame';
+import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
 
 /**
- * 리포트 시안 (P6) — `/dev/design/report`. **시안입니다.** 실제 화면은 `features/report/`에 만듭니다.
+ * Take 리포트 (P6).
  *
  * 순서는 "무엇이 문제였나 → 지난번보다 나아졌나 → 다음엔 무엇을" 입니다 (AI 리뷰의 목적, `review-agent.md` 1절).
  * `score` 는 일부러 보여 주지 않습니다 — FE 원칙이 "점수가 아니라 Take 간 변화"라서입니다 (CLAUDE.md).
  * 시선 3색은 리허설 테두리 전용이라 여기서 쓰지 않습니다.
+ *
+ * 리뷰가 아직이거나 실패해도 측정값은 먼저 보여 줍니다. 분석 중이면 끝날 때까지 주기적으로 다시 묻습니다.
  */
+export function ReportPage() {
+  const { takeId = '' } = useParams();
+  const report = useTakeReport(takeId);
+  const data = report.data;
 
-type Variant = 'OK' | 'FALLBACK' | 'NO_REVIEW' | 'ANALYZING';
-
-const VARIANTS: { id: Variant; label: string }[] = [
-  { id: 'OK', label: '정상' },
-  { id: 'FALLBACK', label: 'AI 문장 실패' },
-  { id: 'NO_REVIEW', label: '리뷰 실패' },
-  { id: 'ANALYZING', label: '분석 중' },
-];
-
-/** 상태마다 리뷰 결과. 리뷰가 없거나 아직이면 null — 측정값만 보입니다 */
-const DATA: Record<Variant, ReviewResult | null> = {
-  OK: review,
-  FALLBACK: reviewFallback,
-  NO_REVIEW: null,
-  ANALYZING: null,
-};
-
-/** 리뷰가 없을 때의 한 줄 */
-const NO_REVIEW_LINE: Partial<Record<Variant, string>> = {
-  ANALYZING: '발표를 분석하고 있어요. 측정값은 먼저 보여 드릴게요.',
-  NO_REVIEW: '이번 Take는 총평을 만들지 못했어요. 측정값은 그대로 확인할 수 있어요.',
-};
-
-export function ReportDraft() {
-  const [variant, setVariant] = useState<Variant>('OK');
-  const data = DATA[variant];
+  if (!takeId) return <Navigate replace to="/" />;
+  // 분석 자체가 실패한 Take 는 보여 줄 측정값이 없습니다. 실패 · 리뷰 보류 안내는 분석 대기 화면이 맡습니다
+  if (data?.status === 'FAILED' || data?.analysis_hold_reason)
+    return <Navigate replace to={`/takes/${takeId}/processing`} />;
 
   return (
-    <DraftPage
-      title="발표 리포트"
-      eyebrow={
-        <>
-          {measures.pitch_title} <span className="mx-2 text-line-strong">/</span> TAKE{' '}
-          {measures.take_number}
-        </>
-      }
-      meta={measures.ended_at}
-      variants={VARIANTS}
-      variant={variant}
-      onVariant={setVariant}
-      questions={[
-        'AI 리뷰가 점수(0–100)를 내지만 FE 원칙은 "점수가 아니라 Take 간 변화"예요. 보여 줄지 정해야 해요.',
-        '측정값(발표 시간 · 응시 · 속도 · 군더더기)을 BE가 리뷰와 어떤 모양으로 합쳐 줄지 아직 없어요.',
-        '다음 미션을 리포트 말고 어디서 또 보여 줄지 (시작 전 세팅 · 홈) 정해야 해요.',
-      ]}
-    >
-      <Hero review={data} variant={variant} />
-      <Measures />
+    <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
+      <QueryState isPending={report.isPending} error={report.error} />
+      {data && <ReportBody report={data} />}
+    </ReportFrame>
+  );
+}
+
+function ReportBody({ report }: { report: TakeReport }) {
+  const review = report.review;
+  const nextTake = report.take_number + 1;
+
+  return (
+    <>
+      <Hero report={report} />
+      {report.measures ? (
+        <Measures m={report.measures} />
+      ) : (
+        <Card title="측정값">
+          <p className="text-sm text-stone">발표 기록을 정리하고 있어요.</p>
+        </Card>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-2">
-        <GazeBreakdown />
-        {data ? (
+        {report.measures && <GazeBreakdown m={report.measures} />}
+        {review ? (
           <JudgeList
             title="내가 정한 평가기준"
             empty="숫자로 확인할 수 있는 평가기준이 없어요."
-            rows={data.criteria_results.map((r) => ({
+            rows={review.criteria_results.map((r) => ({
               ...r,
               title: r.display,
               sub: `목표 ${fmt(r.metric, r.target)} ${OP[r.operator]}`,
@@ -88,7 +72,7 @@ export function ReportDraft() {
         ) : (
           <Card title="평가기준">
             <p className="text-sm text-stone">
-              {variant === 'ANALYZING'
+              {report.review_status === null
                 ? '분석이 끝나면 평가기준 결과를 보여 드릴게요.'
                 : '이번 Take의 평가기준 결과를 불러오지 못했어요.'}
             </p>
@@ -96,51 +80,63 @@ export function ReportDraft() {
         )}
       </div>
 
-      {data && (
+      {review && (
         <>
           <div className="grid gap-4 lg:grid-cols-2">
             <Points
               title="먼저 고칠 것"
               empty="이번 Take에는 크게 고칠 곳이 없어요."
-              items={data.improvements}
+              items={review.improvements}
             />
             <Points
               title="잘한 점"
               empty="아직 강점으로 꼽을 만한 곳이 없어요."
-              items={data.strengths}
+              items={review.strengths}
             />
           </div>
 
-          <Comparison rows={data.comparison} />
+          <Comparison rows={review.comparison} />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <JudgeList
               title="이번 Take 미션 결과"
               empty="이번 Take에는 미션이 없었어요."
-              rows={data.mission_results.map((r) => ({
+              rows={review.mission_results.map((r) => ({
                 ...r,
                 title: `${metricLabel(r.metric)} ${fmt(r.metric, r.target)} ${OP[r.operator]}`,
                 sub: r.slide_number === null ? '발표 전체' : `${r.slide_number}번 장`,
               }))}
             />
-            <Dimensions value={data.dimensions} />
+            <Dimensions value={review.dimensions} />
           </div>
 
-          <NextMissions rows={data.next_missions} nextTake={measures.take_number + 1} />
+          <NextMissions rows={review.next_missions} nextTake={nextTake} pitchId={report.pitch_id} />
         </>
       )}
 
       <footer className="flex justify-end border-t border-line-strong pt-5">
         <ButtonLink to="/">내 피치로</ButtonLink>
       </footer>
-    </DraftPage>
+    </>
   );
 }
 
 /* ── 한 줄 요약 ─────────────────────────────────────────────────── */
 
-function Hero({ review, variant }: { review: ReviewResult | null; variant: Variant }) {
-  const line = review?.overall_summary ?? NO_REVIEW_LINE[variant];
+/** 리뷰가 없을 때의 한 줄 */
+function noReviewLine(status: TakeReport['review_status']) {
+  switch (status) {
+    case null:
+      return '발표를 분석하고 있어요. 측정값은 먼저 보여 드릴게요.';
+    case 'SKIPPED':
+      return '이번 Take는 총평 없이 측정값만 보여 드려요.';
+    default:
+      return '이번 Take는 총평을 만들지 못했어요. 측정값은 그대로 확인할 수 있어요.';
+  }
+}
+
+function Hero({ report }: { report: TakeReport }) {
+  const review = report.review;
 
   return (
     <section className="relative flex flex-row-reverse items-center justify-between gap-5 border-2 border-ink bg-panel p-6 shadow-[4px_4px_0_var(--color-line)] sm:p-8">
@@ -149,12 +145,12 @@ function Hero({ review, variant }: { review: ReviewResult | null; variant: Varia
         alt=""
         width={80}
         height={80}
-        className="hidden h-28 w-28 shrink-0 sm:block object-contain [image-rendering:pixelated]"
+        className="hidden h-28 w-28 shrink-0 object-contain [image-rendering:pixelated] sm:block"
       />
       <div className="min-w-0">
         <p className="text-xs font-bold text-stone">피코의 코칭 노트</p>
         <p role="status" className="mt-3 max-w-3xl text-xl font-bold leading-relaxed xl:text-3xl">
-          {line}
+          {review?.overall_summary ?? noReviewLine(report.review_status)}
         </p>
         {review?.fallback_reason && (
           <p className="mt-2 text-sm text-stone">
@@ -168,8 +164,7 @@ function Hero({ review, variant }: { review: ReviewResult | null; variant: Varia
 
 /* ── 측정값 (리뷰가 없어도 보임) ────────────────────────────────── */
 
-function Measures() {
-  const m = measures;
+function Measures({ m }: { m: TakeMeasures }) {
   const over = m.duration_ms - m.goal_ms;
   return (
     <section aria-label="측정값" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -194,14 +189,23 @@ function Measures() {
  * 시선 네 곳의 비율 (`gaze-tracking.md` 5절). 분모가 모두 측정한 시간이라 막대 하나에 쌓으면 100%입니다.
  * 시선 3색은 리허설 테두리 전용이라 기본 색으로 나누고, 색만으로 구분하지 않게 숫자를 같이 둡니다.
  */
-function GazeBreakdown() {
-  const m = measures;
+function GazeBreakdown({ m }: { m: TakeMeasures }) {
   const rows = [
     { label: '청중', value: m.audience_ratio, color: 'bg-coral' },
     { label: '화면', value: m.screen_ratio, color: 'bg-stone' },
     { label: '대본', value: m.script_ratio, color: 'bg-ink' },
     { label: '다른 곳', value: m.away_ratio, color: 'bg-line-strong' },
   ];
+
+  if (rows.every((row) => row.value === null))
+    return (
+      <Card title="시선 비율">
+        <p className="text-sm text-stone">
+          이번 Take는 시선을 재지 않았어요. 말하기 · 시간 기록은 그대로예요.
+        </p>
+      </Card>
+    );
+
   return (
     <Card title="시선 비율">
       <div className="flex h-4 border border-ink bg-cream" aria-hidden="true">
@@ -268,6 +272,13 @@ function Points({
 
 /* ── 지난 Take와 비교 ───────────────────────────────────────────── */
 
+/** `improved` 는 true · false · null(방향을 정할 수 없음) */
+const TREND: Record<string, { label: string; tone: Tone }> = {
+  true: { label: '나아짐', tone: 'good' },
+  false: { label: '나빠짐', tone: 'bad' },
+  null: { label: '방향 없음', tone: 'muted' },
+};
+
 function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
   return (
     <Card title="지난 Take와 비교">
@@ -306,13 +317,6 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
     </Card>
   );
 }
-
-/** `improved` 는 true · false · null(방향을 정할 수 없음) */
-const TREND: Record<string, { label: string; tone: Tone }> = {
-  true: { label: '나아짐', tone: 'good' },
-  false: { label: '나빠짐', tone: 'bad' },
-  null: { label: '방향 없음', tone: 'muted' },
-};
 
 /* ── 영역별 상태 ────────────────────────────────────────────────── */
 
@@ -410,9 +414,11 @@ function JudgeList({
 function NextMissions({
   rows,
   nextTake,
+  pitchId,
 }: {
   rows: ReviewResult['next_missions'];
   nextTake: number;
+  pitchId: string;
 }) {
   return (
     <section className="border-2 border-ink bg-coral-wash p-6 shadow-[4px_4px_0_var(--color-line)] xl:p-8">
@@ -424,9 +430,7 @@ function NextMissions({
           </p>
         </div>
         {/* 이동만 합니다. Take는 시작 전 세팅에서 생깁니다 (CLAUDE.md 8번) */}
-        <Button disabled title="시안에서는 연습을 시작하지 않습니다" type="button">
-          Take {nextTake} 연습하기 · 연결 예정
-        </Button>
+        <ButtonLink to={`/pitch/${pitchId}/device-check`}>Take {nextTake} 연습하기</ButtonLink>
       </div>
       {rows.length === 0 ? (
         <p className="mt-4 text-sm text-stone">
@@ -451,67 +455,4 @@ function NextMissions({
       )}
     </section>
   );
-}
-
-/* ── 이름 · 숫자 ────────────────────────────────────────────────── */
-
-const AREA: Record<Area, string> = {
-  GAZE: '시선',
-  SPEED: '말 속도',
-  VOLUME: '소리 크기',
-  PAUSE: '침묵',
-  FILLER: '군더더기',
-  CONTENT: '내용 전달',
-  TIME: '시간',
-};
-
-const OP: Record<Operator, string> = { LTE: '이하', GTE: '이상' };
-
-/** 지표 이름은 `architecture.md` 6-3 */
-const METRIC: Record<
-  string,
-  { label: string; unit: 'ratio' | 'count' | 'perMin' | 'cpm' | 'ms' | 'db' }
-> = {
-  audience_ratio: { label: '청중 응시', unit: 'ratio' },
-  script_ratio: { label: '대본 응시', unit: 'ratio' },
-  reading_ratio: { label: '대본 읽기', unit: 'ratio' },
-  reading_runs: { label: '대본 읽기 횟수', unit: 'count' },
-  cpm: { label: '말하기 속도', unit: 'cpm' },
-  pause_count: { label: '멈춤', unit: 'count' },
-  voice_diff_db: { label: '평소 대비 목소리', unit: 'db' },
-  low_ratio: { label: '작은 목소리', unit: 'ratio' },
-  long_silence_count: { label: '긴 침묵', unit: 'count' },
-  filler_count: { label: '군더더기', unit: 'count' },
-  filler_per_min: { label: '분당 군더더기', unit: 'perMin' },
-  duration_ms: { label: '발표 시간', unit: 'ms' },
-  slide_duration_ms: { label: '장 시간', unit: 'ms' },
-  content_coverage: { label: '핵심 내용 전달', unit: 'ratio' },
-  critical_fact_accuracy: { label: '핵심 수치 정확도', unit: 'ratio' },
-};
-
-function metricLabel(metric: string) {
-  return METRIC[metric]?.label ?? metric;
-}
-
-function fmt(metric: string, v: number) {
-  switch (METRIC[metric]?.unit) {
-    case 'ratio':
-      return `${Math.round(v * 100)}%`;
-    case 'count':
-      return `${v}회`;
-    case 'perMin':
-      return `${v}회/분`;
-    case 'cpm':
-      return `${v}자/분`;
-    case 'ms':
-      return formatDuration(v);
-    case 'db':
-      return `${v}dB`;
-    default:
-      return String(v);
-  }
-}
-
-function where(area: Area, slide: number | null) {
-  return slide === null ? `${AREA[area]} · 발표 전체` : `${AREA[area]} · ${slide}번 장`;
 }

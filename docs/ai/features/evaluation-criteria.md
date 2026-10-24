@@ -257,7 +257,7 @@ sequenceDiagram
     BE->>BE: standards · standard_analyses 같은 버전으로 저장
 ```
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고 AI 리드가 정하며, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
+저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
@@ -278,7 +278,7 @@ sequenceDiagram
 | 제약 | UQ(`pitch_id`, `version`) | 버전마다 하나 |
 
 ## 12-2. 저장 규칙
-- 표시 기준(`standards`)과 분석 결과(`standard_analyses`)는 같은 버전 번호로 한 트랜잭션에 저장한다. 리뷰 · 코치는 그 발표의 가장 최근 버전을 읽는다.
+- 표시 기준(`standards`)과 분석 결과(`standard_analyses`)는 같은 버전 번호로 한 트랜잭션에 저장한다. BE는 Take를 시작할 때 그 발표의 최신 버전 번호를 `takes.standard_version`에 고정하고(없으면 null = 기준 없음), 리뷰 `user_criteria` · 코치 `script_used`는 그 버전에서 만든다. Take 도중이나 뒤에 기준을 다시 등록해도 그 Take의 버전은 바꾸지 않는다(`architecture.md` 1-3 1번).
 - `targets[].display`는 저장된 표시 기준 문장과 같아야 한다. 그래서 사용자가 고친 표시 기준은 다시 분석한 결과의 문장으로 저장한다.
 - `excluded`는 목록 그대로 저장한다. 쉼표로 합치면 구절 안의 쉼표 때문에 다시 나눌 수 없다.
 - 결과는 `meta`와 함께 저장한다(`architecture.md` 1-1).

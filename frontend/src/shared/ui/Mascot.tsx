@@ -5,7 +5,7 @@ export function Mascot({ who, children }: { who: 'chichi' | 'pico'; children: Re
   return (
     <div className="flex items-center gap-4">
       <img
-        src={who === 'pico' ? '/onboarding/pico-portrait.png' : '/onboarding/chichi-mascot.png'}
+        src={who === 'pico' ? '/onboarding/pico-bust.png' : '/onboarding/chichi-bust.png'}
         alt=""
         width={80}
         height={80}

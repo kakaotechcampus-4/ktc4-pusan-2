@@ -1,10 +1,17 @@
 import { uploadPresentation } from '@/shared/api/presentation';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import { openPdf } from '@/shared/lib/pdf';
 import { isCurrentDraft, useCreateStore } from './createStore';
 import { fromUploadedPresentation } from './lib/beAdapter';
 
 /**
- * 슬라이드 올리기 — 업로드 → 받은 URL 로 열기 → 장수 세기 → 버전에 채우기.
+ * 슬라이드 올리기 — 업로드 → 장수 받기 → 버전에 채우기.
+ *
+ * ── 장수는 BE 가 센 숫자입니다 (#298) ─────────────────────────────────
+ * BE 가 PDF 를 열어 센 쪽수로 Take 생성 때 대본 장 수와 맞는지 검사합니다. 화면도 같은 숫자를 써야
+ * "맞는다"고 보였는데 시작에서 거절되는 일이 없습니다. 그래서 여기서 PDF 를 열지 않습니다 —
+ * 미리보기는 뷰어가 엽니다. 못 열어도(실서버 S3 CORS 등) 버전은 서버와 같은 번호로 남습니다.
+ * BE 가 쪽수를 주지 않을 때(#298 전)만 지금처럼 열어서 셉니다.
  *
  * ── 왜 컴포넌트 밖인가 ─────────────────────────────────────────────
  * 올리는 도중에 사이드바에서 대본으로 넘어가도 업로드는 끝까지 가야 합니다.
@@ -37,24 +44,29 @@ export async function uploadSlides(file: File, replace: number | null = null): P
     if (!isCurrentDraft(draftId)) return;
     // 화면에는 한 줄만 보이므로 원인은 콘솔에 남깁니다 (404 피치 없음 · 네트워크 · 413 크기 …)
     console.error('[슬라이드] 업로드 실패', { pitchId, file: file.name, error });
-    set({ status: 'failed', file, replace, reason: 'upload' });
+    // BE 가 PDF 를 열지 못했으면(깨짐 · 암호 · PDF 아님) 다시 올려도 같습니다 — 다른 문구로 알립니다
+    const invalid = error instanceof ApiFailure && error.code === 'INVALID_PRESENTATION';
+    set({ status: 'failed', file, replace, reason: invalid ? 'invalid' : 'upload' });
     return;
   }
 
-  let pageCount;
-  try {
-    pageCount = (await openPdf(uploaded.fileUrl)).numPages;
-  } catch (error) {
-    if (!isCurrentDraft(draftId)) return;
-    // 실서버에서는 대개 S3 CORS 입니다 — 브라우저가 URL 의 바이트를 읽지 못합니다
-    console.error('[슬라이드] PDF 열기 실패', { url: uploaded.fileUrl, error });
-    set({ status: 'failed', file, replace, reason: 'open' });
-    return;
+  let pageCount = uploaded.pageCount;
+  if (pageCount === null) {
+    try {
+      pageCount = (await openPdf(uploaded.fileUrl)).numPages;
+    } catch (error) {
+      if (!isCurrentDraft(draftId)) return;
+      // 실서버에서는 대개 S3 CORS 입니다 — 브라우저가 URL 의 바이트를 읽지 못합니다
+      console.error('[슬라이드] PDF 열기 실패', { url: uploaded.fileUrl, error });
+      set({ status: 'failed', file, replace, reason: 'open' });
+      return;
+    }
   }
 
   const result = {
+    fileUrl: uploaded.fileUrl,
+    presentationVersionId: uploaded.presentationVersionId,
     pageCount,
-    ...uploaded,
     fileName: file.name,
   };
   // 그사이 새 피치를 시작했으면 버립니다. 파일은 앞 피치(pitchId) 아래에 올라가 있으니 거기 남습니다

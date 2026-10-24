@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
-import type { PracticeCombo, PrepareResponse, RehearsalTicket } from '@/types/api';
+import type { PracticeCombo, RehearsalTicket } from '@/types/api';
 import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
@@ -13,19 +13,23 @@ import { CheckCard } from './CheckCard';
 import { LevelBar } from '../media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
 import { ScriptModeChoice } from './ScriptModeChoice';
-import { normalizeScriptMode, practiceModeFor, usePrepareStore } from './prepareStore';
+import { practiceModeFor, usePrepareStore } from './prepareStore';
+import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
 import { CALIBRATION_FAIL_MESSAGE, useGazeSetup, type GazeSetupStatus } from './useGazeSetup';
 import { useBaseVoice, type BaseVoiceStatus } from './useBaseVoice';
 import { useMicLevel } from '../media/useMicLevel';
-import { MIN_VOICED_MS } from '../media/baseVoice';
+import type { ReadStage, ShortReason } from '../media/baseVoice';
 import { useVideoStream } from '../media/useVideoStream';
 
 /**
- * 평소 목소리로 읽을 문장. 발표를 여는 말투로, 한 번 읽으면 말한 시간이 5초를 넘습니다.
- * 바꿔도 되지만 너무 짧으면 5초를 못 채워 다시 읽게 됩니다.
+ * 평소 목소리로 읽을 문단. 발표를 여는 말투입니다. 처음부터 한 번에 보여 주고, 다 읽으면 사용자가
+ * "다 읽었어요"를 누릅니다. '말하는 중'은 실제 읽은 시간의 절반 남짓만 잡혀서(`loudness.ts`), 문장 하나로는
+ * 5초를 못 채울 수 있어 두 문장(평소 속도로 10초 안팎)으로 둡니다. 더 줄이면 다 읽어도 모자랄 수 있습니다.
  */
-const BASE_VOICE_SENTENCE =
-  '안녕하세요. 지금부터 발표를 시작하겠습니다. 오늘 준비한 내용을 차근차근 말씀드릴 테니 끝까지 들어 주시면 감사하겠습니다.';
+const BASE_VOICE_SENTENCES = [
+  '안녕하세요. 지금부터 발표를 시작하겠습니다. 오늘 준비한 내용을 차근차근 말씀드리겠습니다.',
+  '먼저 이번 발표에서 다룰 문제를 소개하고, 이어서 해결 방법을 설명드리겠습니다.',
+];
 
 /**
  * 이 화면의 시계. 음량 기록은 무대 시계가 없으니 페이지 시계로 쌓고, 읽는 동안의 구간만 꺼냅니다.
@@ -63,7 +67,8 @@ function deviceCheckHint({
   voiceStatus: BaseVoiceStatus;
 }): string {
   // 읽는 중이면 그 안내가 먼저입니다 — 사용자가 지금 하고 있는 일입니다
-  if (voiceStatus === 'READING') return '아래 문장을 평소 발표하는 목소리로 읽어 주세요';
+  if (voiceStatus === 'READING')
+    return '아래 문단을 평소 발표하는 목소리로 읽고, 다 읽으면 "다 읽었어요"를 눌러 주세요';
   if (deviceError) return DEVICE_ERROR_MESSAGE[deviceError];
   // 카메라 권한을 묻기 전에 알립니다 — 시선 분석을 못 쓰면 카메라를 켜도 시작할 수 없습니다
   if (calStatus === 'UNAVAILABLE' && calUnavailable) return calUnavailable;
@@ -80,18 +85,31 @@ function deviceCheckHint({
 }
 
 /** 평소 목소리 항목의 문구 */
-function baseVoiceLabel(status: BaseVoiceStatus, voicedSec: number): string {
+function baseVoiceLabel(status: BaseVoiceStatus, reason: ShortReason | null): string {
   switch (status) {
     case 'IDLE':
-      return '평소 목소리 · 문장 읽기';
+      return '평소 목소리 · 문단 읽기';
     case 'READING':
-      return `평소 목소리 · 읽는 중 ${voicedSec} / ${MIN_VOICED_MS / 1000}초`;
+      return '평소 목소리 · 크기 재는 중';
     case 'DONE':
       return '평소 목소리 · 확인됨';
     case 'SHORT':
-      return '평소 목소리 · 조금 더 길게 읽어 주세요';
+      return `평소 목소리 · ${SHORT_TITLE[reason ?? 'BRIEF']}`;
   }
 }
+
+/** 다시 읽어야 할 때 항목 문구와 안내. 이유마다 할 일이 달라 나눕니다 (`baseVoice.ts` `ShortReason`) */
+const SHORT_TITLE: Record<ShortReason, string> = {
+  QUIET: '잘 들리지 않았어요',
+  BRIEF: '조금 더 읽어 주세요',
+};
+
+const SHORT_GUIDE: Record<ShortReason, string> = {
+  QUIET:
+    '말소리로 들리지 않았어요. 목소리가 작거나 주변이 시끄러울 수 있어요. "다시 읽기"를 누르고, 마이크에 조금 더 가까이에서 평소 목소리로 읽어 주세요.',
+  BRIEF:
+    '말한 시간이 모자랐어요. "다시 읽기"를 누르고, 문단을 끝까지 읽은 뒤에 "다 읽었어요"를 눌러 주세요.',
+};
 
 /** 평소 목소리 항목의 버튼 문구. 읽는 중에는 그만두기입니다 */
 function baseVoiceActionText(status: BaseVoiceStatus): string {
@@ -159,48 +177,18 @@ function calibrationLabel(cal: Pick<ReturnType<typeof useGazeSetup>, 'status' | 
  *
  * 점검 셋 중 둘은 장치(카메라·마이크)고 하나는 시선 기준점입니다. 셋 다 통과해야 시작합니다.
  */
-/**
- * Take 에 박을 버전과 목표 시간. 피치 생성에서 고른 조합이 먼저이고, 없으면 준비 화면 응답입니다.
- * 둘 다 없으면 null — Take 를 만들 수 없습니다.
- */
-function takeVersions(combo: PracticeCombo | null, data: PrepareResponse | undefined) {
-  if (combo) {
-    return {
-      presentation_version_id: combo.presentationVersionId,
-      script_version_id: combo.scriptVersionId,
-      goal_time_sec: combo.goalTimeSec,
-    };
-  }
-  if (data) {
-    return {
-      presentation_version_id: data.presentationVersionId,
-      script_version_id: data.scriptVersionId,
-      goal_time_sec: data.timeLimitSec,
-    };
-  }
-  return null;
-}
-
-/** 화면 위 부제목. 피치 생성에서 고른 조합이 있으면 그 번호를 씁니다 — 실제로 연습할 조합입니다 */
-function versionLabel(combo: PracticeCombo | null, data: PrepareResponse | undefined): string {
-  if (combo) return `자료 v${combo.slideVersion} · 대본 v${combo.scriptVersion}`;
-  if (data) return `자료 v${data.presentationVersion} · 대본 v${data.scriptVersion}`;
-  return '';
-}
-
 export function DeviceCheckPage() {
   const { pitchId = '' } = useParams();
   // 피치 생성에서 매핑을 저장하며 고른 조합. 홈에서 바로 왔거나 새로고침했으면 없습니다
   const combo = (useLocation().state as { practice?: PracticeCombo } | null)?.practice ?? null;
   const navigate = useNavigate();
-  const { data } = usePrepare(pitchId);
+  const prepare = usePrepare(pitchId);
+  const info = useMemo(() => (prepare.data ? fromPrepare(prepare.data) : null), [prepare.data]);
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
-  const { meterRef, rowRef, silentRef, micOk, audioState, meterError, voiceRecord } = useMicLevel(
-    stream,
-    { clock: pageClock },
-  );
+  const { meterRef, echoMeterRef, rowRef, silentRef, micOk, audioState, meterError, voiceRecord } =
+    useMicLevel(stream, { clock: pageClock });
   // 평소 목소리 크기. 선택 단계라 시작을 막지 않습니다 — 안 재면 AI 가 Take 첫 발화로 잡습니다
   const baseVoice = useBaseVoice({ stream, clock: pageClock, voiceRecord });
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
@@ -244,10 +232,8 @@ export function DeviceCheckPage() {
   // 올 때 사용자가 고른 것이 되돌아갑니다. FULL 이 올 수 있어 3단계로 접습니다.
   // 지난번이 OFF 였으면 실전 모드가 미리 골라집니다 (practiceModeFor 의 대가 참고)
   useEffect(() => {
-    if (data && !scriptModeTouched) {
-      setScriptMode(normalizeScriptMode(data.defaultScriptMode), false);
-    }
-  }, [data, scriptModeTouched, setScriptMode]);
+    if (info && !scriptModeTouched) setScriptMode(info.defaultScriptMode, false);
+  }, [info, scriptModeTouched, setScriptMode]);
 
   // 장치 이름은 권한을 받은 뒤에야 채워집니다. 그 전에는 label이 빈 문자열입니다
   useEffect(() => {
@@ -264,10 +250,16 @@ export function DeviceCheckPage() {
   // 저장된 기준을 확인하는 중에는 열지 않습니다 — "완료"로 보이는데 기준이 없으면
   // 리허설에서 시선이 조용히 빠집니다
   //
-  // ★ 피치 생성에서 조합을 받았으면 준비 화면 응답(`/prepare`)을 기다리지 않습니다.
-  //   Take 에 필요한 값(버전 id · 목표 시간)이 조합에 다 있고, `/prepare` 는 BE 에 아직 없습니다
-  const versions = takeVersions(combo, data);
-  const ready = live && micOk && cal.status === 'DONE' && versions !== null && !starting;
+  // ★ 피치 생성에서 조합을 받았으면 준비 정보(`/prepare`)를 기다리지 않습니다 — Take 에 필요한
+  //   버전 id 가 조합에 다 있습니다. 없을 때(홈 · 새로고침)만 준비 정보로 정하고, 거기서 시작할 수
+  //   없는 이유(버전 없음 · 쪽수 다름 · 불러오기 실패)가 있으면 그걸 먼저 알립니다
+  const choice = takeChoice(combo, info);
+  const prepareBlocked = (() => {
+    if (combo) return null;
+    if (prepare.isError) return `준비 정보를 불러오지 못했어요. ${toMessage(prepare.error)}`;
+    return info ? prepareProblem(info) : null;
+  })();
+  const ready = live && micOk && cal.status === 'DONE' && choice !== null && !starting;
 
   /**
    * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
@@ -276,7 +268,7 @@ export function DeviceCheckPage() {
    * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
    */
   const start = async () => {
-    if (!versions || starting) return;
+    if (!choice || starting) return;
     setStarting(true);
     setStartError(null);
 
@@ -294,10 +286,17 @@ export function DeviceCheckPage() {
     try {
       const clientSessionId = await startSession();
 
-      // ★ 이번 연습의 슬라이드 + 대본 조합이 Take 에 박힙니다 (BE TakeInitRequestDTO)
+      // ★ 이번 연습의 슬라이드 + 대본 조합이 Take 에 박힙니다 (BE TakeInitRequestDTO).
+      //   세션 id 가 멱등 키라, 응답을 잃고 다시 보내도 Take 가 둘 생기지 않습니다 (#296)
       const take = await createTake.mutateAsync({
         pitchId,
-        body: { mode: practiceMode, script_mode: scriptMode, ...versions },
+        body: {
+          mode: practiceMode,
+          script_mode: scriptMode,
+          presentation_version_id: choice.presentationVersionId,
+          script_version_id: choice.scriptVersionId,
+          client_session_id: clientSessionId,
+        },
       });
       await setTakeId(clientSessionId, take.takeId);
       // 리허설을 새로고침하면 이 스토어가 비어서 세션 행에서 되살립니다. 못 적어도 발표는
@@ -311,13 +310,14 @@ export function DeviceCheckPage() {
       // 리허설이 무대를 열 때 쓸 값. 새로고침해도 남도록 세션에도 적어 둡니다
       const ticket: RehearsalTicket = {
         pitchId,
-        title: combo?.title ?? data?.title ?? '',
-        presentationVersionId: versions.presentation_version_id,
-        scriptVersionId: versions.script_version_id,
-        timeLimitSec: versions.goal_time_sec,
+        title: combo?.title ?? info?.title ?? '',
+        presentationVersionId: choice.presentationVersionId,
+        scriptVersionId: choice.scriptVersionId,
+        timeLimitSec: choice.timeLimitSec,
         mode: practiceMode,
         scriptMode,
-        takeNumber: data?.nextTakeNumber ?? null,
+        // 준비 정보의 번호는 예상값이라 그사이 다른 Take 가 생기면 어긋납니다. 실제로 매긴 번호를 씁니다
+        takeNumber: take.takeNumber,
       };
       await setSessionTicket(clientSessionId, ticket);
 
@@ -355,7 +355,8 @@ export function DeviceCheckPage() {
     startError ??
     (starting
       ? '연습을 여는 중…'
-      : deviceCheckHint({
+      : (prepareBlocked ??
+        deviceCheckHint({
           deviceError,
           live,
           micOk,
@@ -363,9 +364,12 @@ export function DeviceCheckPage() {
           calUnavailable: cal.unavailableMessage,
           calPoor: cal.advice !== null,
           voiceStatus: baseVoice.status,
-        }));
+        })));
 
-  const takeNumber = data?.nextTakeNumber ?? 0;
+  const takeNumber = info?.nextTakeNumber ?? 0;
+  // 새 대본을 아직 못 써서 옛 대본으로 연습하면 알립니다. 피치 생성에서 고른 조합이면 해당 없습니다
+  const notice = combo || !info ? null : newerScriptNotice(info);
+  const subtitle = [choice?.label, notice].filter(Boolean).join(' · ');
   const startLabel = practiceModeFor(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
 
   return (
@@ -373,9 +377,9 @@ export function DeviceCheckPage() {
       screenNo="09"
       screenName="시작 전 세팅 (Take 준비)"
       entry="진입 · 피치 생성 완료 / 리포트의 다시 연습하기"
-      title={data?.title ?? combo?.title ?? '불러오는 중…'}
-      subtitle={versionLabel(combo, data)}
-      badge={`TAKE ${data?.nextTakeNumber || '—'} · 시작 전 세팅`}
+      title={info?.title ?? combo?.title ?? '불러오는 중…'}
+      subtitle={subtitle}
+      badge={`TAKE ${takeNumber || '—'} · 시작 전 세팅`}
       onBack={() => navigate(-1)}
       hint={hint}
       actions={
@@ -469,7 +473,7 @@ export function DeviceCheckPage() {
                   // 평소 목소리 크기 — AI 가 "평소보다 작게 말하나"를 볼 기준입니다 (volume.md).
                   // 마이크가 없으면 잴 수 없어 버튼을 두지 않습니다
                   id: 'voice',
-                  label: baseVoiceLabel(baseVoice.status, baseVoice.voicedSec),
+                  label: baseVoiceLabel(baseVoice.status, baseVoice.reason),
                   done: baseVoice.status === 'DONE',
                   optional: true,
                   action: stream
@@ -482,11 +486,15 @@ export function DeviceCheckPage() {
                 },
               ]}
             >
-              {/* 읽을 문장. 읽는 동안과, 짧아서 다시 읽어야 할 때만 보입니다 */}
-              {(baseVoice.status === 'READING' || baseVoice.status === 'SHORT') && (
-                <BaseVoiceSentence
-                  reading={baseVoice.status === 'READING'}
-                  voicedSec={baseVoice.voicedSec}
+              {/* 읽을 문단과 진행. 읽는 동안 · 다시 읽어야 할 때 · 잡힌 뒤에 보입니다 */}
+              {baseVoice.status !== 'IDLE' && (
+                <BaseVoicePanel
+                  status={baseVoice.status}
+                  stage={baseVoice.stage}
+                  onFinish={baseVoice.finish}
+                  reason={baseVoice.reason}
+                  heardSec={baseVoice.heardSec}
+                  echoMeterRef={echoMeterRef}
                 />
               )}
             </CheckCard>
@@ -565,32 +573,120 @@ export function DeviceCheckPage() {
 }
 
 /**
- * 읽을 문장과 말한 시간. 막대는 말한 시간만큼 찹니다 — 쉬는 동안에는 멈춰서,
- * 소리를 내야 찬다는 것이 바로 보입니다.
+ * 평소 목소리 읽기 — **사용자가 "제대로 듣고 있나"를 확인하는 자리**입니다.
+ *
+ * 말한 내용은 확인하지 않습니다(음성 인식은 Take 를 만든 뒤에만 됩니다). 그래서 소리로 볼 수 있는 것만 보여 줍니다.
+ *   읽는 중  문단 · 지금 들리는 음량 막대 · 단계 체크(들림 → 충분히 들음) · "다 읽었어요" 버튼. 시간 막대 ·
+ *           숫자는 두지 않습니다 — "들은 시간 2.5초"로는 잘 되고 있는지 판단할 수 없었습니다.
+ *           끝은 버튼으로 받습니다 — 소리로 정하면 읽는 도중에 끝나거나 문장이 더 붙었습니다
+ *   잡힘     얼마나 들었는지와 어디에 쓰는지. dB 숫자는 보이지 않습니다 — 사용자에게 뜻이 없고,
+ *           작아 보이면 다음 읽기에서 일부러 크게 말하게 됩니다
+ *   다시     이유에 맞는 안내 (안 들림 · 모자람)
  */
-function BaseVoiceSentence({ reading, voicedSec }: { reading: boolean; voicedSec: number }) {
-  const goalSec = MIN_VOICED_MS / 1000;
+function BaseVoicePanel({
+  status,
+  stage,
+  onFinish,
+  reason,
+  heardSec,
+  echoMeterRef,
+}: {
+  status: Exclude<BaseVoiceStatus, 'IDLE'>;
+  stage: ReadStage;
+  onFinish: () => void;
+  reason: ShortReason | null;
+  heardSec: number | null;
+  echoMeterRef: RefObject<HTMLDivElement>;
+}) {
+  if (status === 'DONE') {
+    return (
+      <div role="status" className="rounded-lg border border-line-strong bg-cream p-3 text-sm">
+        <p className="font-bold">평소 목소리를 {heardSec}초 동안 들었어요</p>
+        <p className="mt-1 text-xs leading-relaxed text-stone">
+          발표 중 목소리 크기를 이 기준과 비교해요. 평소보다 크거나 작게 읽었다면 다시 읽어 주세요.
+        </p>
+      </div>
+    );
+  }
+  if (status === 'SHORT') {
+    return (
+      <div className="rounded-lg border border-line-strong bg-cream p-3">
+        <p role="alert" className="text-xs leading-relaxed text-stone">
+          {SHORT_GUIDE[reason ?? 'BRIEF']}
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="rounded-lg border border-line-strong bg-cream p-3">
-      <p className="text-sm leading-relaxed font-semibold">{BASE_VOICE_SENTENCE}</p>
-      {reading ? (
-        <div className="mt-2 flex items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
-            <div
-              className="h-full bg-coral transition-[width]"
-              style={{ width: `${Math.min(100, (voicedSec / goalSec) * 100)}%` }}
-            />
-          </div>
-          <span className="tabular text-xs text-stone">
-            {voicedSec} / {goalSec}초
-          </span>
-        </div>
-      ) : (
-        <p className="mt-2 text-xs text-stone">
-          말한 시간이 {goalSec}초가 안 됐어요. 조금 더 길게, 평소 목소리로 다시 읽어 주세요
-        </p>
-      )}
+      <p className="text-sm leading-relaxed font-semibold">{BASE_VOICE_SENTENCES.join(' ')}</p>
+      <div className="mt-3">
+        <LevelBar variant="segments" meterRef={echoMeterRef} />
+      </div>
+      <ol aria-live="polite" className="mt-3 flex flex-col gap-1.5 text-xs">
+        {READ_STEPS.map((step, i) => (
+          <ReadStep key={step.done} index={i} current={READ_STEP_INDEX[stage]} step={step} />
+        ))}
+      </ol>
+      <button
+        type="button"
+        onClick={onFinish}
+        className="mt-3 h-10 w-full rounded-md bg-coral text-sm font-bold text-white hover:bg-coral-deep"
+      >
+        다 읽었어요
+      </button>
     </div>
+  );
+}
+
+/**
+ * 읽기 세 단계. 지난 단계는 체크, 지금 단계는 "무엇을 하면 되는지", 다음 단계는 흐리게 둡니다.
+ * 마지막 단계는 끝나면 카드가 결과로 바뀌므로 체크될 일이 없습니다.
+ */
+const READ_STEPS = [
+  { done: '목소리가 들려요', doing: '말소리를 기다리고 있어요' },
+  { done: '충분히 들었어요', doing: '계속 읽어 주세요' },
+  { done: '다 읽고 버튼 누르기', doing: '끝까지 읽고 아래 버튼을 눌러 주세요' },
+] as const;
+
+const READ_STEP_INDEX: Record<ReadStage, number> = { WAITING: 0, HEARD: 1, ENOUGH: 2 };
+
+function ReadStep({
+  index,
+  current,
+  step,
+}: {
+  index: number;
+  current: number;
+  step: (typeof READ_STEPS)[number];
+}) {
+  if (index < current) {
+    return (
+      <li className="flex items-center gap-2 font-bold text-ink">
+        <span aria-hidden="true" className="w-3 text-center">
+          ✓
+        </span>
+        {step.done}
+      </li>
+    );
+  }
+  if (index === current) {
+    return (
+      <li aria-current="step" className="flex items-center gap-2 font-bold text-coral-deep">
+        <span aria-hidden="true" className="flex w-3 justify-center">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-coral" />
+        </span>
+        {step.doing}
+      </li>
+    );
+  }
+  return (
+    <li className="flex items-center gap-2 text-stone">
+      <span aria-hidden="true" className="flex w-3 justify-center">
+        <span className="h-2 w-2 rounded-full border border-stone" />
+      </span>
+      {step.done}
+    </li>
   );
 }
 

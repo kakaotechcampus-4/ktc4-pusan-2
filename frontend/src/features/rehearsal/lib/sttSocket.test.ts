@@ -278,7 +278,8 @@ describe('느린 재시도 간격과 상한', () => {
     expect(sockets).toHaveLength(before + 1);
   });
 
-  it('끊긴 지 30분이 지나면 멈춘다 — 열어 두고 떠난 탭이 계속 두드리지 않게', async () => {
+  /** 서버는 끊긴 연결을 30초 살려 둔 뒤 5분을 더 기다려 Take 를 끝냅니다. 그 뒤로는 TAKE_ENDED 입니다 */
+  it('끊긴 지 5분 30초가 지나면 멈춘다 — 서버가 Take 를 끝낸 뒤로 두드리지 않게', async () => {
     vi.useFakeTimers();
     const onGiveUp = vi.fn();
     const stt = makeSocket({ onGiveUp });
@@ -288,7 +289,7 @@ describe('느린 재시도 간격과 상한', () => {
     sockets[0]!.emit(READY);
 
     await exhaustFastBackoff();
-    await keepFailing(29 * 60_000);
+    await keepFailing(5 * 60_000);
     expect(onGiveUp).not.toHaveBeenCalled();
 
     await keepFailing(60_000);
@@ -300,7 +301,7 @@ describe('느린 재시도 간격과 상한', () => {
     expect(sockets).toHaveLength(after);
   });
 
-  it('중간에 한 번 붙으면 30분을 처음부터 다시 센다', async () => {
+  it('중간에 한 번 붙으면 5분 30초를 처음부터 다시 센다', async () => {
     vi.useFakeTimers();
     const onGiveUp = vi.fn();
     const stt = makeSocket({ onGiveUp });
@@ -310,14 +311,14 @@ describe('느린 재시도 간격과 상한', () => {
     sockets[0]!.emit(READY);
 
     await exhaustFastBackoff();
-    await keepFailing(25 * 60_000);
+    await keepFailing(4 * 60_000);
     await vi.advanceTimersByTimeAsync(5_000);
     sockets.at(-1)!.open();
     sockets.at(-1)!.emit(READY);
 
-    // 처음 끊긴 때부터는 30분이 넘지만, 다시 끊긴 때부터는 아직 25분입니다
+    // 처음 끊긴 때부터는 5분 30초가 넘지만, 다시 끊긴 때부터는 아직 4분입니다
     await exhaustFastBackoff();
-    await keepFailing(25 * 60_000);
+    await keepFailing(4 * 60_000);
     expect(onGiveUp).not.toHaveBeenCalled();
   });
 });
@@ -518,6 +519,79 @@ describe('1초 측정값 (metrics)', () => {
     expect(JSON.parse(sockets[1]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
   });
 
+  describe('새로고침 (handOffMetrics · restoredMetrics)', () => {
+    const parsed = (data: readonly string[]) =>
+      data.map((d) => JSON.parse(d) as { t_ms: number; buffered?: boolean });
+
+    it('끊겨 있으면 쌓아 둔 것과 방금 받은 것을 모두 넘긴다', async () => {
+      vi.useFakeTimers();
+      const stt = makeSocket();
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+      sockets[0]!.serverClose(1006);
+      stt.sendMetrics(metrics(57_000));
+
+      const handed = parsed(stt.handOffMetrics([metrics(58_000), metrics(59_000)]));
+      expect(handed.map((m) => [m.t_ms, m.buffered])).toEqual([
+        [57_000, true],
+        [58_000, true],
+        [59_000, true],
+      ]);
+      // 페이지가 되살아나면 다시 붙어 보냅니다
+      expect(stt.bufferedMetrics).toBe(3);
+    });
+
+    it('붙어 있으면 바로 보내 보고, 닿았다고 볼 수 없으니 그것도 넘긴다', async () => {
+      const stt = makeSocket();
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+
+      const handed = parsed(stt.handOffMetrics([metrics(59_000)]));
+      expect(sentMetrics(sockets[0]!)).toEqual([59_000]);
+      expect(handed.map((m) => [m.t_ms, m.buffered])).toEqual([[59_000, true]]);
+      expect(stt.bufferedMetrics).toBe(0);
+    });
+
+    it('새 페이지의 소켓은 넘겨받은 것을 붙자마자 먼저 보낸다', async () => {
+      const handed = makeSocket().handOffMetrics([metrics(58_000), metrics(59_000)]);
+      const stt = makeSocket({ restoredMetrics: handed });
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+      stt.sendMetrics(metrics(61_000));
+
+      expect(sentMetrics(sockets[0]!)).toEqual([58_000, 59_000, 61_000]);
+      const flags = sockets[0]!.sent
+        .filter((d): d is string => typeof d === 'string')
+        .map((d) => JSON.parse(d) as { type: string; buffered?: boolean })
+        .filter((m) => m.type === 'metrics')
+        .map((m) => m.buffered ?? false);
+      expect(flags).toEqual([true, true, false]);
+    });
+
+    it('넘겨받은 것도 상한(5분)을 넘으면 오래된 것부터 버린다', () => {
+      const restored = Array.from({ length: 301 }, (_, i) =>
+        JSON.stringify({ ...metrics((i + 1) * 1_000), buffered: true }),
+      );
+      expect(makeSocket({ restoredMetrics: restored }).bufferedMetrics).toBe(300);
+    });
+
+    it('끝내기(stop) 뒤에는 넘길 것이 없다', async () => {
+      const stt = makeSocket();
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+      stt.stop().catch(() => undefined);
+      expect(stt.handOffMetrics([metrics(9_000)])).toEqual([]);
+    });
+  });
+
   it('stop 을 보낸 뒤에는 보내지 않는다', async () => {
     const stt = makeSocket();
     stt.start();
@@ -619,6 +693,40 @@ describe('장 변경 (slide)', () => {
 
     expect(sentJson(sockets[1]!)).toEqual([['slide', 90_000, false]]);
     expect(JSON.parse(sockets[1]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
+  });
+
+  it('새로고침할 때 쌓인 장 변경은 넘기지 않는다 — 새 페이지가 IndexedDB 기록으로 다시 보낸다', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    sockets[0]!.serverClose(1006);
+    stt.sendSlide(slide(3, 42_300));
+    stt.sendMetrics(metrics(43_000));
+
+    const handed = stt.handOffMetrics([]).map((d) => (JSON.parse(d) as { type: string }).type);
+    expect(handed).toEqual(['metrics']);
+  });
+
+  it('넘겨받은 metrics 와 새 페이지가 보낸 장 변경을 시각 순서대로 보낸다', async () => {
+    const restored = [JSON.stringify({ ...metrics(58_000), buffered: true }), 'not json'];
+    const stt = makeSocket({ restoredMetrics: restored });
+    // 읽을 수 없는 것은 버립니다
+    expect(stt.bufferedMetrics).toBe(1);
+    stt.start();
+    await settle();
+    stt.sendSlide(slide(1, 0));
+    stt.sendSlide(slide(2, 57_500));
+
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    expect(sentJson(sockets[0]!)).toEqual([
+      ['slide', 0, false],
+      ['slide', 57_500, false],
+      ['metrics', 58_000, true],
+    ]);
   });
 });
 
@@ -841,6 +949,89 @@ describe('서버의 자동 종료', () => {
     expect(onError).not.toHaveBeenCalled();
     expect(onGiveUp).toHaveBeenCalledWith('FATAL');
     expect(sockets).toHaveLength(1);
+  });
+
+  it('auto_end 뒤에도 연결이 열려 있으면 마지막 metrics 를 바로 보내고, 그 다음에 stop 을 보낸다', async () => {
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    // 서버는 auto_end 를 보낸 뒤 Deepgram 정리 + 2초(FINAL_METRICS_WAIT_SEC) 동안 연결을 열어 둡니다
+    sockets[0]!.emit(AUTO_END);
+    stt.sendMetrics({ type: 'metrics', t_ms: 3_400, gaze: null, voice: null, slide_number: 1 });
+    const stopped = stt.stop();
+
+    const texts = sockets[0]!.sent
+      .filter((d): d is string => typeof d === 'string')
+      .map((d) => JSON.parse(d) as object);
+    // 바로 보냈으니 buffered 가 아닙니다. stop 보다 앞섭니다
+    expect(texts.slice(-2)).toEqual([
+      { type: 'metrics', t_ms: 3_400, gaze: null, voice: null, slide_number: 1 },
+      { type: 'stop' },
+    ]);
+
+    sockets[0]!.emit(status('closed'));
+    await stopped;
+  });
+
+  it('auto_end 뒤 서버가 먼저 닫았으면 마지막 metrics 는 보낼 곳이 없어 버리고, 그 사실을 남긴다', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    sockets[0]!.emit(AUTO_END);
+    sockets[0]!.serverClose(1000);
+    stt.sendMetrics({ type: 'metrics', t_ms: 3_400, gaze: null, voice: null, slide_number: 1 });
+
+    expect(stt.bufferedMetrics).toBe(0);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+});
+
+describe('끝난 Take 의 이유', () => {
+  /** 창을 닫아 끝난 Take(CLOSED)와 발표를 이어 가도 되는 Take(ABANDONED)를 무대가 가릅니다 */
+  it('TAKE_ENDED 의 end_reason 을 넘기고, 다시 붙지 않는다', async () => {
+    const onError = vi.fn();
+    const onGiveUp = vi.fn();
+    const stt = makeSocket({ onError, onGiveUp });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+
+    sockets[0]!.emit({
+      type: 'error',
+      code: 'TAKE_ENDED',
+      message: '이미 끝난 연습입니다.',
+      end_reason: 'CLOSED',
+    });
+    sockets[0]!.serverClose(1008);
+    await settle();
+
+    expect(onError).toHaveBeenCalledExactlyOnceWith(
+      'TAKE_ENDED',
+      '이미 끝난 연습입니다.',
+      'CLOSED',
+    );
+    expect(onGiveUp).toHaveBeenCalledWith('FATAL');
+    expect(sockets).toHaveLength(1);
+  });
+
+  it('사용자가 끝낸 Take 는 이유가 null 이다', async () => {
+    const onError = vi.fn();
+    const stt = makeSocket({ onError });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+
+    sockets[0]!.emit({ type: 'error', code: 'TAKE_ENDED', message: '이미 끝난 연습입니다.' });
+
+    expect(onError).toHaveBeenCalledWith('TAKE_ENDED', '이미 끝난 연습입니다.', null);
   });
 });
 

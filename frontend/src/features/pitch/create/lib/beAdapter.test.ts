@@ -72,7 +72,21 @@ describe('발표자료 — 업로드 응답', () => {
     expect(fromUploadedPresentation(res)).toEqual({
       fileUrl: 'https://s3.example/p1.pdf',
       presentationVersionId: 'pv1',
+      pageCount: null,
     });
+  });
+
+  it('BE 가 센 쪽수가 있으면 그 숫자를 쓴다 (#298)', () => {
+    const res: UploadPresentationResponse = {
+      message: 'Presentation uploaded successfully',
+      presentation: {
+        pitch_id: 'p1',
+        presentation_version_id: 'pv1',
+        file_url: 'https://s3.example/p1.pdf',
+        page_count: 12,
+      },
+    };
+    expect(fromUploadedPresentation(res).pageCount).toBe(12);
   });
 });
 

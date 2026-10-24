@@ -103,6 +103,9 @@ class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     file_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    # PDF 쪽수. 대본 장 수와 같아야 짝이다. 이 칸이 생기기 전에 올린 행은
+    # dev/backfill-presentation-page-count.py 로 채우기 전까지 비어 있다
+    page_count: Mapped[int | None] = mapped_column(Integer)
     # 사용자가 남기는 변경 메모. 없어도 된다.
     description: Mapped[str | None] = mapped_column(Text)
 

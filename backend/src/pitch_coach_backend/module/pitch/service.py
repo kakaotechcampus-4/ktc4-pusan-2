@@ -3,8 +3,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import asdict
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from datetime import UTC, datetime, timedelta, timezone
 
 import httpx2
 from sqlalchemy.orm import Session
@@ -12,12 +11,16 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.dto import (
     HighlightDTO,
+    NewerScriptDTO,
+    ParsedScriptDTO,
     ParseRequestedDTO,
     ParseTicket,
     PitchListItemDTO,
     PitchListResponseDTO,
     PitchSaveRequestDTO,
+    PrepareDTO,
     PresentationDetailDTO,
+    PresentationVersionDTO,
     ScriptCreatedDTO,
     ScriptDetailDTO,
     ScriptParseErrorCode,
@@ -39,6 +42,7 @@ from pitch_coach_backend.module.pitch.entity import (
     Standards,
 )
 from pitch_coach_backend.module.pitch.exception import (
+    InvalidPresentation,
     InvalidScript,
     NonExistentPitch,
     NonExistentPresentationVersion,
@@ -48,6 +52,11 @@ from pitch_coach_backend.module.pitch.exception import (
     ScriptReuploadRequired,
     StandardParseFailed,
 )
+from pitch_coach_backend.module.pitch.presentation_file import (
+    MAX_PRESENTATION_BYTES,
+    count_pdf_pages,
+    file_size,
+)
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.s3_service import (
     delete_prefix,
@@ -56,6 +65,7 @@ from pitch_coach_backend.module.pitch.s3_service import (
 )
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
+from pitch_coach_backend.module.take.repository import TakeRepository
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +78,9 @@ MAX_SCRIPT_CHARS = 50_000
 # 사라져 PENDING 이 영원히 남기 때문이다. 작업의 최악 소요(script_parser 의 타임아웃 × 재시도,
 # 약 61초)보다 길어야 한다 — 짧으면 아직 도는 작업을 만료로 보여주고 재시도를 열어 버린다
 PARSE_EXPIRE_AFTER = timedelta(seconds=90)
+# 발표일은 사용자가 고른 한국 날짜다. 오늘도 한국 날짜로 봐야 0~9시에 오늘 발표가 지난 발표가
+# 되지 않는다. 관리자 콘솔(admin/repository.py)과 같은 고정 오프셋이다
+KST = timezone(timedelta(hours=9), "KST")
 
 def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveRequestDTO):
     new_pitch = Pitch(
@@ -88,7 +101,7 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveReque
 # 홈 화면 : pitches 목록 조회
 def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListResponseDTO:
     pitch_repository = PitchRepository(db)
-    pitches = pitch_repository.get_all_by_user(user_id)
+    pitches = pitch_repository.get_all_by_user(user_id, datetime.now(KST).date())
 
     rows_by_pitch = defaultdict(list)
     for row in pitch_repository.get_takes_with_scores_in_pitches([p.id for p in pitches]):
@@ -148,9 +161,59 @@ def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
 
     return VersionSummaryDTO(
         pitch_id=pitch_id,
-        presentation_versions=to_version_dtos(pitch_repository.get_presentations(pitch_id)),
+        presentation_versions=[
+            _presentation_dto(row) for row in pitch_repository.get_presentations(pitch_id)
+        ],
         script_versions=to_version_dtos(pitch_repository.get_scripts(pitch_id)),
         evaluation_versions=to_version_dtos(pitch_repository.get_evaluations(pitch_id)),
+    )
+
+def _presentation_dto(row: PresentationVersion) -> PresentationVersionDTO:
+    return PresentationVersionDTO(id=row.id, version=row.version, page_count=row.page_count)
+
+
+# 장치 점검 화면. 홈에서 바로 들어오거나 새로고침해도 Take 에 넣을 버전을 알 수 있게 한다
+def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
+    pitch_repository = PitchRepository(db)
+    pitch = pitch_repository.get_by_id(pitch_id)
+
+    if not pitch:
+        raise NonExistentPitch()
+
+    script = pitch_repository.get_latest_parsed_script(pitch_id)
+    slide_count = pitch_repository.count_slides(script.id) if script else None
+    # FE 매핑 확인과 같은 규칙이다. 장 수와 쪽수가 같은 가장 최근 발표자료, 없으면 가장 최근 것
+    presentation = None
+    if slide_count:
+        presentation = pitch_repository.get_latest_presentation(pitch_id, page_count=slide_count)
+    if presentation is None:
+        presentation = pitch_repository.get_latest_presentation(pitch_id)
+    latest_script = pitch_repository.get_latest_script(pitch_id)
+    latest_take = TakeRepository(db).get_latest_take_in_pitch(pitch_id)
+
+    newer_script = None
+    if latest_script is not None and (script is None or latest_script.version > script.version):
+        status, error = _effective_status(latest_script, datetime.now(UTC))
+        newer_script = NewerScriptDTO(
+            id=latest_script.id,
+            version=latest_script.version,
+            parse_status=status,
+            error_code=error,
+        )
+
+    return PrepareDTO(
+        pitch_id=pitch.id,
+        title=pitch.title,
+        time_limit_sec=pitch.time_limit_sec,
+        script=(
+            ParsedScriptDTO(id=script.id, version=script.version, slide_count=slide_count or 0)
+            if script
+            else None
+        ),
+        presentation=_presentation_dto(presentation) if presentation else None,
+        newer_script=newer_script,
+        next_take_number=latest_take.take_number + 1 if latest_take else 1,
+        default_script_mode=latest_take.script_mode if latest_take else "HIGHLIGHT",
     )
 
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
@@ -207,21 +270,32 @@ def get_take_ids_of_user(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
 
 def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     pitch_repository = PitchRepository(db)
+    presentation_file = upload_dto.presentation_file
+
+    # 확장자 · MIME 은 클라이언트가 정하는 값이라 보지 않고 직접 연다. 잠그기 전에 해서 쪽수를
+    # 세는 동안 같은 pitch 의 다른 요청을 막지 않는다
+    if file_size(presentation_file.file) > MAX_PRESENTATION_BYTES:
+        raise InvalidPresentation()
+    page_count = count_pdf_pages(presentation_file.file)
+    if page_count is None:
+        raise InvalidPresentation()
+
     # 같은 pitch 에 동시에 올려도 같은 버전 번호를 받지 않게 커밋까지 줄을 세운다.
     # 번호가 S3 키에도 들어가서, 잠그지 않으면 500 에 더해 앞서 올린 파일이 덮어쓰인다
     pitch_repository.lock_for_new_version(pitch_id)
 
     version = pitch_repository.next_presentation_version(pitch_id)
-    suffix = Path(upload_dto.presentation_file.filename or "").suffix
     presentation_key = upload(
-        upload_dto.presentation_file,
-        f"pitches/{pitch_id}/presentations/{version}{suffix}"
+        presentation_file,
+        f"pitches/{pitch_id}/presentations/{version}.pdf",
+        content_type="application/pdf",
     )
 
     presentation = PresentationVersion(
         pitch_id=pitch_id,
         version=version,
-        file_key=presentation_key
+        file_key=presentation_key,
+        page_count=page_count,
     )
 
     pitch_repository.save_presentation(presentation)
@@ -230,7 +304,8 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     return UploadPresentationResultDTO(
         pitch_id=pitch_id,
         presentation_version_id=presentation.id,
-        file_url = generate_presigned_url(presentation_key)
+        file_url = generate_presigned_url(presentation_key),
+        page_count=page_count,
     )
 
 def validate_script_text(content: str) -> str:
@@ -497,6 +572,7 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         presentation_version_id=presentation_version.id,
         version=presentation_version.version,
         file_url=generate_presigned_url(presentation_version.file_key),
+        page_count=presentation_version.page_count,
         description=presentation_version.description,
         created_at=presentation_version.created_at.date()
     )
