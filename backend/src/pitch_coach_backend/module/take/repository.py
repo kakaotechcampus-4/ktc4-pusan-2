@@ -199,7 +199,7 @@ class TakeRepository:
                 Take.take_number < standard_take_num,
                 TakeAIResults.kind == "REVIEW",
             )
-            .order_by(Take.take_number.desc())
+            .order_by(*finished_order())
             .limit(1)
         )
 
