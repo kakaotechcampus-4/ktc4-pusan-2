@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { PracticeCombo, PrepareResponse } from '@/types/api';
-import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
+import {
+  fromPrepare,
+  missionSourceNote,
+  newerScriptNotice,
+  prepareProblem,
+  takeChoice,
+} from './prepareInfo';
 
 /** BE #296 · #298 `PrepareDTO` 모양 그대로 */
 const res: PrepareResponse = {
@@ -12,6 +18,7 @@ const res: PrepareResponse = {
   newer_script: null,
   next_take_number: 4,
   default_script_mode: 'KEYWORD',
+  missions: null,
 };
 
 const combo: PracticeCombo = {
@@ -33,6 +40,7 @@ describe('장치 점검 준비 정보 — BE GET /prepare', () => {
       newerScript: null,
       nextTakeNumber: 4,
       defaultScriptMode: 'KEYWORD',
+      missions: null,
     });
   });
 
@@ -109,5 +117,51 @@ describe('이번 연습의 조합', () => {
 
   it('둘 다 없으면 Take 를 만들 수 없다', () => {
     expect(takeChoice(null, null)).toBeNull();
+  });
+});
+
+describe('이번 Take 미션 — BE #409', () => {
+  const item = {
+    area: 'FILLER',
+    slide_number: null,
+    target: { metric: 'filler_count', operator: 'LTE', value: 5 },
+    reason: '이번 Take 7번',
+  };
+
+  it('우선순위 순으로 설명만 옮기고, 모르는 area 도 그대로 받는다', () => {
+    const info = fromPrepare({
+      ...res,
+      missions: {
+        source_take_number: 3,
+        items: [
+          { ...item, mission_id: 'm2', priority: 2, area: 'POSTURE', description: '둘째' },
+          { ...item, mission_id: 'm1', priority: 1, description: '첫째' },
+        ],
+      },
+    });
+    expect(info.missions).toEqual({
+      sourceTakeNumber: 3,
+      items: [
+        { id: 'm1', priority: 1, description: '첫째' },
+        { id: 'm2', priority: 2, description: '둘째' },
+      ],
+    });
+    // 바로 앞 Take(3)의 미션이면 배지로 충분합니다
+    expect(missionSourceNote(info)).toBeNull();
+  });
+
+  it('첫 Take(null)와 #409 전 BE(칸 없음)는 미션 없음이다', () => {
+    expect(fromPrepare(res).missions).toBeNull();
+    const { missions: _, ...old } = res;
+    expect(fromPrepare(old as PrepareResponse).missions).toBeNull();
+    expect(missionSourceNote(fromPrepare(res))).toBeNull();
+  });
+
+  it('바로 앞 Take 가 아니면 분석 중이라 단정하지 않고 리뷰한 Take 만 말한다', () => {
+    const note = missionSourceNote(
+      fromPrepare({ ...res, missions: { source_take_number: 2, items: [] } }),
+    );
+    expect(note).toBe('Take 2 리뷰에서 정한 미션이에요');
+    expect(note).not.toContain('분석');
   });
 });

@@ -13,14 +13,15 @@ import { reviewFixture as review } from '@/mocks/report';
  *
  * 미션은 직전 리뷰가 만든 다음 미션입니다 (`review-agent.md` 5-3 `next_missions`). 리포트의
  * "Take 5에서 해 볼 것"과 같은 데이터라 같은 목(`mocks/report.ts`)을 씁니다.
- * 리뷰가 아직 안 끝났으면 그때 저장된 최신 미션을 씁니다 (`architecture.md` 1-3).
+ * 바로 앞 Take 의 리뷰가 없으면(분석 중 · 실패) 리뷰를 마친 그 전 Take 의 미션을 씁니다 (BE #409).
+ * 둘 중 어느 쪽인지는 알 수 없어서 "분석 중"이라고 말하지 않습니다.
  */
 
 type Variant = 'MISSION' | 'ANALYZING' | 'FIRST';
 
 const VARIANTS = [
   { id: 'MISSION' as const, label: '미션 있음' },
-  { id: 'ANALYZING' as const, label: '지난 분석 중' },
+  { id: 'ANALYZING' as const, label: '앞 Take 리뷰 없음' },
   { id: 'FIRST' as const, label: '첫 Take' },
 ];
 
@@ -45,10 +46,8 @@ export function PrepareMissionDraft() {
       variant={variant}
       onVariant={setVariant}
       questions={[
-        '10/7에 이 화면의 미션 카드를 지웠어요 (62d2b34). 되살릴지 Kjun03과 정해야 해요.',
-        '미션을 읽어 올 API가 옛 구조예요 (GET previous-missions, Take 기준). 새 구조(ACTIVE 미션 · area · target)로 BE와 맞춰야 해요 (#218).',
-        '미션을 고르거나 끌 수 있게 할지 정해야 해요. 지금 AI 계약에서는 BE가 최신 ACTIVE 미션을 모두 실어요.',
-        '미션 이유(reason)는 AI가 리뷰한 Take 기준으로 써서 "이번 Take 7번"처럼 나와요. 다음 Take 화면에서는 헷갈리니, 여기서는 이유를 숨길지 AI에 "지난 Take" 표현을 요청할지 정해야 해요.',
+        '미션을 고르거나 끌 수 있게 할지 정해야 해요. 지금은 BE가 리뷰를 마친 가장 최근 Take의 미션을 모두 실어요 (GET /prepare `missions`, BE #409).',
+        '미션 이유(reason)는 AI가 리뷰한 Take 기준으로 써서 "이번 Take 7번"처럼 나와요. 실제 화면은 이유를 숨겼어요 — 보이려면 AI에 "지난 Take" 표현을 요청해야 해요.',
       ]}
     >
       <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
@@ -145,9 +144,7 @@ function MissionCard({ variant, exam }: { variant: Variant; exam: boolean }) {
         ))}
       </ol>
       {variant === 'ANALYZING' && (
-        <p className="mt-3 text-xs leading-relaxed text-stone">
-          Take 4 분석이 아직 끝나지 않아, 그 전에 정한 미션으로 연습해요.
-        </p>
+        <p className="mt-3 text-xs leading-relaxed text-stone">Take 3 리뷰에서 정한 미션이에요.</p>
       )}
       <p className="mt-3 text-xs leading-relaxed text-stone">
         {exam

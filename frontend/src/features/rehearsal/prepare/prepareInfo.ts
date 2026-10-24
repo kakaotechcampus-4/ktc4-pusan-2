@@ -18,6 +18,13 @@ export interface PrepareInfo {
   newerScript: { version: number; status: 'PENDING' | 'FAILED' } | null;
   nextTakeNumber: number;
   defaultScriptMode: ScriptMode;
+  /** 이번 Take 미션. 첫 Take 면 null, 리뷰에서 정한 미션이 없으면 `items: []` */
+  missions: {
+    /** 미션을 정한 리뷰의 Take 번호. 바로 앞 Take 가 아닐 수 있습니다 */
+    sourceTakeNumber: number;
+    /** 우선순위 순 */
+    items: { id: string; priority: number; description: string }[];
+  } | null;
 }
 
 export function fromPrepare(res: PrepareResponse): PrepareInfo {
@@ -41,6 +48,17 @@ export function fromPrepare(res: PrepareResponse): PrepareInfo {
     },
     nextTakeNumber: res.next_take_number,
     defaultScriptMode: normalizeScriptMode(res.default_script_mode),
+    // area · target · reason 은 화면에 쓰지 않습니다 — 설명 한 줄이 미션의 전부이고, reason 은
+    // 리뷰한 Take 기준 문장("이번 Take 7번")이라 다음 Take 화면에서 헷갈립니다.
+    // #409 전 BE 는 이 칸이 없습니다 — 첫 Take 처럼 미션 없이 둡니다
+    missions: res.missions
+      ? {
+          sourceTakeNumber: res.missions.source_take_number,
+          items: res.missions.items
+            .map((m) => ({ id: m.mission_id, priority: m.priority, description: m.description }))
+            .sort((a, b) => a.priority - b.priority),
+        }
+      : null,
   };
 }
 
@@ -72,6 +90,18 @@ export function newerScriptNotice(info: PrepareInfo): string | null {
   const why = status === 'PENDING' ? '아직 나누는 중이라' : '나누지 못해서';
   // 조사는 숫자가 아니라 '대본'에 붙입니다 — "v2으로"처럼 읽히지 않게
   return `새 대본(v${version})은 ${why} 지난 대본(v${info.script.version})으로 연습해요`;
+}
+
+/**
+ * 미션이 바로 앞 Take 가 아니라 그 전 Take 의 리뷰에서 왔을 때의 안내. 해당 없으면 null 입니다.
+ *
+ * "분석 중"이라고 말하지 않습니다 — 뒤 Take 의 리뷰가 실패했을 수도 있는데 `/prepare` 로는
+ * 둘을 가를 수 없습니다. 리뷰를 마친 Take 만 말합니다.
+ */
+export function missionSourceNote(info: PrepareInfo): string | null {
+  if (!info.missions) return null;
+  const n = info.missions.sourceTakeNumber;
+  return n < info.nextTakeNumber - 1 ? `Take ${n} 리뷰에서 정한 미션이에요` : null;
 }
 
 /** Take 에 박을 버전과 리허설 제한 시간. 화면 위에 보일 번호도 함께 둡니다 */
