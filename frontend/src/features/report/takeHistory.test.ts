@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TakeHistoryRow } from '@/types/takeHistory';
-import { completedTakes, gazeOffEngine, pct, takeDay } from './takeHistoryFormat';
+import { completedTakes, gazeOffEngine, takeDay } from './takeHistoryFormat';
 
 const row = (patch: Partial<TakeHistoryRow>): TakeHistoryRow => ({
   take_id: 't1',
@@ -23,12 +23,6 @@ const row = (patch: Partial<TakeHistoryRow>): TakeHistoryRow => ({
 });
 
 describe('Take 목록 표시', () => {
-  it('측정 못 한 비율은 0% 가 아니라 — 입니다', () => {
-    expect(pct(null)).toBe('—');
-    expect(pct(0)).toBe('0%');
-    expect(pct(0.736)).toBe('74%');
-  });
-
   it('날짜는 월.일 두 자리씩', () => {
     expect(takeDay('2026-03-05T12:00:00')).toBe('03.05');
   });

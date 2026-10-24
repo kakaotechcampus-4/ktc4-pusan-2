@@ -48,6 +48,7 @@ it('keeps polling until the take fails, the review ends, or the stage is DONE', 
 it('shows missing measures as — instead of 0%', () => {
   expect(pct(null)).toBe('—');
   expect(pct(0)).toBe('0%');
+  expect(pct(0.736)).toBe('74%');
   expect(fmt('script_ratio', 0.62)).toBe('62%');
   expect(fmt('unknown_metric', 3)).toBe('3');
 });

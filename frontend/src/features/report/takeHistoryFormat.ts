@@ -7,10 +7,6 @@ export const SCRIPT_MODE_LABEL: Record<ScriptMode, string> = {
   OFF: '대본 없이',
 };
 
-export function pct(v: number | null) {
-  return v === null ? '—' : `${Math.round(v * 100)}%`;
-}
-
 /** `10.06` — 이 브라우저 시간대의 날짜 */
 export function takeDay(iso: string) {
   const d = new Date(iso);
