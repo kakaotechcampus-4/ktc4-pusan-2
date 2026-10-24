@@ -267,6 +267,32 @@ class CoachRepository:
         )
         return result.rowcount > 0
 
+    def purge_expired_metric_seconds(self, before: datetime) -> int:
+        """동의 없이 `FAILED` 로 끝난 Take 의 1초 원자료 중 기한이 지난 것을 지운다.
+
+        기한은 끝난 시각(없으면 만든 시각)이다. Take 를 먼저 잠그고 조건을 확인한다. 되살리거나
+        결과를 저장하는 중인 Take 는 다음 정리 때 본다. 원자료 행부터 잠그면 상태가 바뀐 뒤에도
+        DELETE 의 앞선 스냅샷으로 지울 수 있다 (architecture.md 1-1).
+        """
+        expired = list(
+            self.db.scalars(
+                select(Take.id)
+                .where(
+                    Take.status == "FAILED",
+                    Take.raw_data_consent.is_(False),
+                    func.coalesce(Take.ended_at, Take.created_at) < before,
+                )
+                .order_by(Take.id)
+                .with_for_update(skip_locked=True)
+            )
+        )
+        if not expired:
+            return 0
+        result = self.db.execute(
+            delete(TakeMetricSecond).where(TakeMetricSecond.take_id.in_(expired))
+        )
+        return result.rowcount
+
 
 REVIEW = "REVIEW"
 
