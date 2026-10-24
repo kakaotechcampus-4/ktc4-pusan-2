@@ -9,6 +9,7 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
 from pitch_coach_backend.core.logging import configure_logging
 from pitch_coach_backend.core.s3 import get_s3
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
@@ -19,6 +20,7 @@ from pitch_coach_backend.module.user.controller import router as user_router
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.controller import router as realtime_router
 from pitch_coach_backend.realtime.dependencies import get_transcript_store
+from pitch_coach_backend.realtime.live_takes import RealtimeLiveTakes
 from pitch_coach_backend.realtime.take_stream import arm_abandoned_takes
 from pitch_coach_backend.realtime.take_stream import stop_all as stop_all_streams
 
@@ -27,6 +29,8 @@ from pitch_coach_backend.realtime.take_stream import stop_all as stop_all_stream
 # 버전 접두어(/v1)는 붙이지 않는다 — 설계 문서 경로에 /api 만 앞에 붙는 형태다.
 # 예외는 관리자 콘솔(/admin) 하나다. 앱 API 가 아니라서 Caddy 가 따로 넘긴다.
 API_PREFIX = "/api"
+
+hooks.install(live_takes=RealtimeLiveTakes(), coaching=hooks.coaching())
 
 
 @asynccontextmanager

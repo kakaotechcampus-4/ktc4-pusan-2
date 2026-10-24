@@ -479,6 +479,9 @@ def running_takes(db: Session) -> list[tuple[uuid.UUID, datetime]]:
     return TakeRepository(db).running_takes_last_active()
 
 
+ABANDON_AFTER_SEC = 5 * 60.0
+
+
 # 시작하지 않은 Take 를 끝내는 기준. Take 는 장치 점검에서 시작을 누를 때 만들고 곧바로 실시간
 # 연결이 붙으므로 보통 몇 초면 `RUNNING` 이 된다. 권한 창 · 느린 연결을 넉넉히 기다린다
 READY_EXPIRE_AFTER = timedelta(minutes=10)

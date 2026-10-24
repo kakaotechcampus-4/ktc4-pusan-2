@@ -71,6 +71,7 @@ from pitch_coach_backend.module.take.dto import (
     TranscriptWordDTO,
 )
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
+from pitch_coach_backend.module.take.service import ABANDON_AFTER_SEC
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS, silence
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.dto import (
@@ -143,7 +144,6 @@ METRICS_PERIOD_MS = 1_000
 # 연결 없이 스트림이 정리된 뒤 이만큼 아무도 다시 붙지 않으면 사용자가 떠난 것으로 보고 Take 를
 # 끝낸다 (창을 닫은 게 아닌 끊김: 네트워크 장애 · FE 가 재연결을 포기함). 그 안이면 FE 가 다시 붙어
 # 이어 간다. 그 뒤에 STT 없이 발표를 마친 FE 의 끝내기 PUT 은 되살린다
-ABANDON_AFTER_SEC = 5 * 60.0
 # 연결이 붙어 있고 이 시간 안에 오디오가 왔으면 발표 중으로 본다. 창을 다시 연 FE 가 Take 를
 # 실패로 끝내려 해도 거절한다 (`is_live`). FE 가 다른 창이 살아 있다고 보는 하트비트 기준과 같다
 LIVE_AUDIO_SEC = 10.0
