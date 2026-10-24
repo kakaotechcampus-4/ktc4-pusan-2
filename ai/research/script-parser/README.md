@@ -23,12 +23,12 @@
 
 | 위치 | 내용 |
 |---|---|
-| `script_parser/schema.py` | `Slide`, `SeparatedSlides` (Structured Output 스키마) |
-| `script_parser/prompt.py` | `SYSTEM_PROMPT` — 슬라이드 구분 · keywords · terms 규칙 |
-| `script_parser/postprocess.py` | `clean_script()`, `find_highlights()` — LLM 없이 도는 순수 함수 |
-| `script_parser/parser.py` | `build_llm()`, `parse_script(text)` — 파이프라인 |
-| `run.py` | `data/scripts/*.txt` 실행 → `results/<이름>.json` |
-| `tests/test_postprocess.py` | 후처리 테스트 (LLM 호출 없음) |
+| `src/script_parser/schemas.py` | `Slide`, `SeparatedSlides` (Structured Output 스키마) |
+| `src/script_parser/prompts/parse.py` | `SYSTEM_PROMPT` — 슬라이드 구분 · keywords · terms 규칙 |
+| `src/script_parser/cleaner.py` | `clean_script()`, `find_highlights()` — LLM 없이 도는 순수 함수 |
+| `src/script_parser/core.py` | `parse_script(text, llm)` — 파이프라인 |
+| `run.py` | `build_llm()` (`ai/.env`로 LLM 생성), `data/scripts/*.txt` 실행 → `results/<이름>.json` |
+| `tests/test_cleaner.py` | 후처리 테스트 (LLM 호출 없음) |
 | `data/scripts/` | 테스트 대본 10개. 슬라이드 구분자가 있는 것과 없는 것이 섞여 있음 |
 | `results/` | 실행 결과 (gitignore) |
 
@@ -54,7 +54,8 @@ python -m pytest                     # 후처리 테스트
 코드에서 직접 쓸 때:
 
 ```python
-from script_parser import build_llm, parse_script
+from run import build_llm
+from script_parser import parse_script
 
 llm = build_llm()                    # 여러 대본을 돌릴 때는 재사용
 data = parse_script(text, llm=llm)

@@ -1,6 +1,6 @@
 import pytest
 
-from script_parser.postprocess import clean_script, find_highlights
+from script_parser.cleaner import clean_script, find_highlights
 
 
 @pytest.mark.parametrize(

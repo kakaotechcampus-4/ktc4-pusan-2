@@ -8,14 +8,38 @@
 import argparse
 import json
 import logging
+import os
 import re
 from pathlib import Path
 
-from script_parser import build_llm, parse_script
+from dotenv import load_dotenv
+from langchain_core.runnables import Runnable
+from langchain_openai import ChatOpenAI
+
+from script_parser import parse_script
+from script_parser.schemas import SeparatedSlides
 
 ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "data" / "scripts"
 RESULTS_DIR = ROOT / "results"
+# ai/.env (작업 디렉터리와 상관없이 고정)
+ENV_PATH = ROOT.parents[1] / ".env"
+
+
+def build_llm() -> Runnable:
+    """ai/.env의 OPENAI_* 값으로 Structured Output LLM을 만듭니다."""
+    load_dotenv(ENV_PATH)
+    api_key = os.getenv("OPENAI_API_KEY")
+    model = os.getenv("OPENAI_MODEL")
+    if not api_key or not model:
+        raise RuntimeError(f"OPENAI_API_KEY / OPENAI_MODEL이 비어 있습니다: {ENV_PATH}")
+
+    llm = ChatOpenAI(
+        base_url=os.getenv("OPENAI_BASE_URL"),
+        api_key=api_key,
+        model=model,
+    )
+    return llm.with_structured_output(SeparatedSlides)
 
 
 def natural_key(path: Path) -> list:
