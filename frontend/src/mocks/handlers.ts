@@ -150,6 +150,33 @@ const sampleScript: ScriptDetail = {
   error_code: null,
 };
 
+/**
+ * 발표 종료(PUT)를 실패시킬 에러 코드. null 이면 성공합니다. 재시도 화면(P15)을 목에서 보는 토글입니다 —
+ * 새로고침하면 성공으로 돌아갑니다.
+ *   mockTakeEnd.fail()               500 — 다시 보내기를 띄웁니다
+ *   mockTakeEnd.fail('TAKE_ENDED')   409 — 서버가 이미 끝낸 Take
+ *   mockTakeEnd.ok()                 다시 성공
+ */
+let takeEndFailure: 'INTERNAL_SERVER_ERROR' | 'TAKE_ENDED' | 'TAKE_NOT_STARTED' | null = null;
+
+declare global {
+  interface Window {
+    /** 개발 중 발표 종료 실패 토글. 프로덕션 번들에는 들어가지 않습니다 */
+    mockTakeEnd?: { fail: (code?: NonNullable<typeof takeEndFailure>) => void; ok: () => void };
+  }
+}
+
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  window.mockTakeEnd = {
+    fail: (code = 'INTERNAL_SERVER_ERROR') => {
+      takeEndFailure = code;
+    },
+    ok: () => {
+      takeEndFailure = null;
+    },
+  };
+}
+
 export const handlers = [
   // ★ 대본 목(scriptHandlers)보다 먼저 와야 합니다 — 그쪽은 모르는 id 에 404 를 돌려줍니다
   http.get(`*/api/pitches/:pitchId/scripts/${prepare.script!.id}`, () =>
@@ -171,8 +198,14 @@ export const handlers = [
 
   // BE 모양 그대로 — PUT /pitches/{id}/takes/{take_id} 에 TakeUpdateRequestDTO, 응답 {message, take_id}.
   // 발표 종료가 시작 · 종료 시각을 여기로 적습니다 (옛 /complete 는 BE 가 만들지 않기로 함, #134)
+  // 재시도 화면(P15)을 보려면 콘솔에서 `mockTakeEnd.fail()` 뒤 발표를 끝냅니다 (아래 `takeEndFailure`)
   http.put('*/api/pitches/:pitchId/takes/:takeId', ({ params }) =>
-    HttpResponse.json({ message: 'Take updated successfully', take_id: String(params.takeId) }),
+    takeEndFailure
+      ? HttpResponse.json(
+          { code: takeEndFailure, message: '목 종료 실패', detail: null },
+          { status: takeEndFailure === 'INTERNAL_SERVER_ERROR' ? 500 : 409 },
+        )
+      : HttpResponse.json({ message: 'Take updated successfully', take_id: String(params.takeId) }),
   ),
 
   // BE 모양 그대로 — 창을 닫았다 다시 연 Take 를 실패로 끝냅니다. 응답 {message, take_id, status}

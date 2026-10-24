@@ -21,7 +21,6 @@ import {
   findSessionByTakeId,
   getSession,
   markEnding,
-  markSubmitted,
   markGazeExcluded,
   readCoachLog,
   readGazeSamples,
@@ -30,7 +29,7 @@ import {
   setGazePerf,
   startSession,
 } from '../lib/db';
-import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/writeFailures';
+import { noteWriteFailure } from '../lib/writeFailures';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ScreenLabel } from '@/shared/ui/ScreenLabel';
 import { formatDuration } from '@/shared/lib/clock';
@@ -61,6 +60,7 @@ import {
   type CoachHistory,
   type LeftWindow,
 } from './resume';
+import { sendEnding, type Ending } from './sendEnding';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
 import { CONNECT_SLOW_MS, hasLiveAudio, startGate, type StartGate } from './startGate';
@@ -76,11 +76,6 @@ const BEAT_MS = 5_000;
 /** 대본이 없는 장의 기본값. 매 렌더 새 배열을 만들면 대본 칸의 강조 계산이 매번 다시 돕니다 */
 const NO_KEYWORDS: string[] = [];
 const NO_HIGHLIGHTS: TextRange[] = [];
-
-interface Ending {
-  durationMs: Ms;
-  endedAtIso: string;
-}
 
 /**
  * 이 Take 를 어디서부터 여나. 세션 행을 읽어야 정해지고, 그 전에는 무대를 시작하지 않습니다 —
@@ -700,13 +695,9 @@ export function RehearsalPage() {
   /**
    * Take 의 시작 · 종료 시각을 BE 에 적고 처리 화면으로 갑니다. 끝내기 버튼과 **종료 중 새로고침**이 같이 씁니다.
    *
-   * 새로고침으로 들어왔으면 메모리에 남은 것이 없습니다. 그래서 행(IndexedDB)이 먼저입니다.
-   *
-   * 시선 · 슬라이드 · 코치 기록은 여기서 보내지 않습니다. 계약에서 기록은 발표 중 WS `metrics` 로
-   * 가고(`docs/ai/architecture.md` 1-4, `useMetricsSender`), 코치 기록은 서버 코치가 만듭니다.
-   * 브라우저(IndexedDB)의 기록은 이 브라우저의 사본입니다.
+   * 보내는 일은 재시도 화면(P15)과 같이 쓰는 `sendEnding` 이 합니다.
    */
-  const submit = async (id: string, { durationMs, endedAtIso }: Ending) => {
+  const submit = async (id: string, ending: Ending) => {
     if (!ticket) return;
 
     // 무대는 다시 열리지 않으니 시선 기준은 더 쓸 데가 없습니다. 얼굴 측정값이 들어 있어 버립니다
@@ -717,28 +708,7 @@ export function RehearsalPage() {
     //   어긋나고, useSlideDeck 이 0ms 행을 덮어씁니다 (rehearsalStore 주석 참고).
     //   기록은 IndexedDB 에 그대로 있으므로 재시도 화면으로 보냅니다.
     try {
-      await endSession(id);
-
-      // ── 대조 ────────────────────────────────────────────────────────
-      // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패를 봅니다.
-      // ★ 지금은 알리는 곳이 콘솔뿐입니다.
-      const failures = readWriteFailures(id);
-      if (Object.keys(failures).length > 0) {
-        console.error('[rehearsal] 기록이 불완전합니다', { 실패: failures });
-      }
-
-      const row = await getSession(id);
-      await endTake.mutateAsync({
-        started_at: row?.startedAtIso ?? new Date(Date.now() - durationMs).toISOString(),
-        ended_at: endedAtIso,
-      });
-      // 보냈다는 표시. 이 주소로 다시 들어오면(새로고침 · 뒤로 가기) 무대를 열지 않습니다.
-      // 못 적으면 다시 들어왔을 때 종료를 한 번 더 이어가는데, 같은 시각을 다시 적을 뿐이라 괜찮습니다
-      await markSubmitted(id).catch((err: unknown) => noteWriteFailure(id, 'ending', err));
-      clearWriteFailures(id);
-      clearClock(takeId);
-      clearMetrics(takeId);
-      clearSlides(takeId);
+      await sendEnding(takeId, id, ending, endTake.mutateAsync);
       // 기록을 쌓지 않고 바꿉니다. 뒤로 가기로 리허설 화면에 돌아오지 않게 합니다
       navigate(`/takes/${takeId}/processing`, { replace: true });
     } catch (e) {
