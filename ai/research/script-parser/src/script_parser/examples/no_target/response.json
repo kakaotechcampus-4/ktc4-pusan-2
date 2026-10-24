@@ -1,0 +1,63 @@
+{
+  "status": "success",
+  "slides": [
+    {
+      "slide_number": 1,
+      "script": "안녕하세요, 오늘은 신규 서비스 성과를 말씀드리겠습니다.",
+      "script_chars": 24,
+      "keywords": [
+        "오늘",
+        "신규 서비스",
+        "성과"
+      ],
+      "highlights": [
+        {
+          "start": 7,
+          "end": 9
+        },
+        {
+          "start": 11,
+          "end": 17
+        },
+        {
+          "start": 18,
+          "end": 20
+        }
+      ],
+      "expected_ms": 5455
+    },
+    {
+      "slide_number": 2,
+      "script": "지난 분기 MAU는 12만 명으로 37% 늘었습니다.",
+      "script_chars": 21,
+      "keywords": [
+        "분기",
+        "MAU",
+        "37%"
+      ],
+      "highlights": [
+        {
+          "start": 3,
+          "end": 5
+        },
+        {
+          "start": 6,
+          "end": 9
+        },
+        {
+          "start": 19,
+          "end": 22
+        }
+      ],
+      "expected_ms": 4773
+    }
+  ],
+  "terms": [
+    "MAU"
+  ],
+  "meta": {
+    "schema_version": "1.0",
+    "feature_version": "script_parser-1.0",
+    "model": null
+  }
+}

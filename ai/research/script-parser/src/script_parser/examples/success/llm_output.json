@@ -1,0 +1,30 @@
+{
+  "preface_title_lines": [
+    "# 신규 서비스 성과 보고"
+  ],
+  "slides": [
+    {
+      "slide_number": 1,
+      "title_lines": [],
+      "keywords": [
+        "오늘",
+        "신규 서비스",
+        "성과"
+      ]
+    },
+    {
+      "slide_number": 2,
+      "title_lines": [
+        "시장 현황"
+      ],
+      "keywords": [
+        "분기",
+        "MAU",
+        "37%"
+      ]
+    }
+  ],
+  "terms": [
+    "MAU"
+  ]
+}

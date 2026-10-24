@@ -1,0 +1,13 @@
+{
+  "note": "1–2장에는 구분자가 없고 3장부터만 있음 — fail, 생명과학(CRISPR)",
+  "status": "fail",
+  "slides": [
+    {
+      "slide_number": 1,
+      "first": "안녕하세요. 오늘은 유전자 가위 기술인 CRISPR-Cas9에 대해 발표하겠습니다.",
+      "last": "기술의 가능성만큼이나 생식세포 편집에 대한 윤리적 논의도 함께 이루어져야 합니다."
+    }
+  ],
+  "title_lines": [],
+  "actual_slide_ms": null
+}

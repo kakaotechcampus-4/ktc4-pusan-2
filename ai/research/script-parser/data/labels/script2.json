@@ -1,0 +1,21 @@
+{
+  "note": "`## Slide N —` 형식(구분자 아님) — fail",
+  "status": "fail",
+  "slides": [
+    {
+      "slide_number": 1,
+      "first": "최근 자연어처리 분야에서는 트랜스포머 아키텍처를 기반으로 한 대규모 언어모델이 핵심 기술로 자리잡았습니다.",
+      "last": "감사합니다."
+    }
+  ],
+  "title_lines": [
+    "# 트랜스포머 기반 언어모델의 학습 원리",
+    "## Slide 1 — 문제 정의",
+    "## Slide 2 — 셀프 어텐션",
+    "## Slide 3 — 사전학습과 파인튜닝",
+    "## Slide 4 — 인컨텍스트 러닝",
+    "## Slide 5 — 한계와 문제점",
+    "## Slide 6 — 결론"
+  ],
+  "actual_slide_ms": null
+}
