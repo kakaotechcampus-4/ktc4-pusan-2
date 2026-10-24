@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, func, or_, select, update
+from sqlalchemy import ColumnElement, and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased, defer
 
@@ -13,6 +13,7 @@ from pitch_coach_backend.module.take.entity import (
     Take,
     TakeAIResults,
     TakeMetricSecond,
+    TakeSlideEvent,
     TakeSummary,
     TakeTranscriptSegment,
 )
@@ -323,6 +324,82 @@ class TakeRepository:
             .where(Take.id == take_id)
             .values(analysis_stage=stage, analysis_stage_at=func.now())
         )
+
+    def lock_take(self, take_id: uuid.UUID) -> Take | None:
+        return self.db.scalar(
+            select(Take)
+            .where(Take.id == take_id)
+            .options(defer(Take.event_logs))
+            .with_for_update()
+        )
+
+    def get_ai_result(self, take_id: uuid.UUID, kind: str) -> TakeAIResults | None:
+        return self.db.scalar(
+            select(TakeAIResults).where(
+                TakeAIResults.take_id == take_id, TakeAIResults.kind == kind
+            )
+        )
+
+    def insert_ai_result(
+        self, take_id: uuid.UUID, kind: str, payload: dict, meta: dict | None
+    ) -> bool:
+        inserted = self.db.scalar(
+            insert(TakeAIResults)
+            .values(take_id=take_id, kind=kind, payload=payload, meta=meta, revision=0)
+            .on_conflict_do_nothing(index_elements=[TakeAIResults.take_id, TakeAIResults.kind])
+            .returning(TakeAIResults.id)
+        )
+        return inserted is not None
+
+    def replace_ai_result(
+        self, take_id: uuid.UUID, kind: str, base_revision: int, payload: dict, meta: dict | None
+    ) -> bool:
+        result = self.db.execute(
+            update(TakeAIResults)
+            .where(
+                TakeAIResults.take_id == take_id,
+                TakeAIResults.kind == kind,
+                TakeAIResults.revision == base_revision,
+            )
+            .values(payload=payload, meta=meta, revision=TakeAIResults.revision + 1)
+        )
+        return result.rowcount > 0
+
+    def delete_ai_result(self, take_id: uuid.UUID, kind: str) -> None:
+        self.db.execute(
+            delete(TakeAIResults).where(
+                TakeAIResults.take_id == take_id, TakeAIResults.kind == kind
+            )
+        )
+
+    def upsert_summary_speak_accuracy(self, take_id: uuid.UUID, value: float | None) -> None:
+        stmt = insert(TakeSummary).values(take_id=take_id, speak_accuracy=value)
+        self.db.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[TakeSummary.take_id],
+                set_={"speak_accuracy": stmt.excluded.speak_accuracy},
+            )
+        )
+
+    def get_slide_events(self, take_id: uuid.UUID) -> list[tuple[int, int]]:
+        rows = self.db.execute(
+            select(TakeSlideEvent.slide_number, TakeSlideEvent.started_ms).where(
+                TakeSlideEvent.take_id == take_id
+            )
+        ).all()
+        return [(slide_number, started_ms) for slide_number, started_ms in rows]
+
+    def get_transcript_words(self, take_id: uuid.UUID) -> list[tuple[str, int]]:
+        segments = self.db.scalars(
+            select(TakeTranscriptSegment.words)
+            .where(TakeTranscriptSegment.take_id == take_id)
+            .order_by(TakeTranscriptSegment.seq)
+        ).all()
+        return [
+            (word.get("punctuated_word") or word["word"], word["start_ms"])
+            for words in segments
+            for word in words
+        ]
 
     def complete_take(self, take_id: uuid.UUID, review_status: str) -> None:
         self.db.execute(
