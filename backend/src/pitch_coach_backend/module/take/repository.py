@@ -504,12 +504,7 @@ class TakeRepository:
         시작하지 않은 Take(장치 점검에서 버려진 것)는 시작 시각이 없어 빠진다. 한 줄에 Take 기록
         화면이 쓰는 값을 모두 싣는다 — 집계 · 장치 점검 결과가 없으면 그 칸은 null 이다.
         """
-        # 판정이 끝난 미션은 다음 Take 로 넘어가지 않아 `take_id` 가 판정한 Take 로 남는다
-        achieved = (
-            select(func.count())
-            .where(Mission.take_id == Take.id, Mission.status == "ACHIEVED")
-            .scalar_subquery()
-        )
+        # 미션 행은 다음 Take 로 옮겨질 수 있다. 판정은 각 Take 의 저장 리뷰에서 읽는다.
         # 시작 전 Take 는 칸이 비어 있다. JSON null 이 들어 있어도 배열 길이를 묻지 않는다
         is_array = func.jsonb_typeof(Take.mission_ids) == "array"
         total = case((is_array, func.jsonb_array_length(Take.mission_ids)), else_=0)
@@ -528,13 +523,18 @@ class TakeRepository:
                 TakeSummary.script_gaze,
                 TakeSummary.average_cpm,
                 TakeSummary.filler_count,
-                achieved.label("missions_achieved"),
+                Take.mission_ids,
+                TakeAIResults.payload["mission_results"].label("mission_results"),
                 total.label("missions_total"),
                 Calibration.result["engine_version"].astext.label("gaze_engine"),
             )
             .join(Pitch, Pitch.id == Take.pitch_id)
             .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
             .outerjoin(Calibration, Calibration.take_id == Take.id)
+            .outerjoin(
+                TakeAIResults,
+                (TakeAIResults.take_id == Take.id) & (TakeAIResults.kind == "REVIEW"),
+            )
             .where(Pitch.user_id == user_id, Take.started_at.is_not(None))
             .order_by(Take.started_at.desc(), Take.take_number.desc())
         )
