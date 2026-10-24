@@ -18,6 +18,9 @@ from pitch_coach_backend.coach.requests import (
     missions_payload,
     plan_basis,
     plan_for_evaluate,
+    plan_payload,
+    plan_request,
+    request_basis,
 )
 from pitch_coach_backend.core.database import SessionPerCall
 from pitch_coach_backend.module.take import coach_service
@@ -48,6 +51,20 @@ class DbCoachStore(SessionPerCall):
 
     async def purge_expired_raw(self, now: datetime) -> int:
         return await run_in_threadpool(self._with, coach_service.purge_expired_raw, now)
+
+    async def build_plan_request(self, pitch_id: uuid.UUID) -> dict[str, Any] | None:
+        return await run_in_threadpool(self._with, build_plan_request, pitch_id)
+
+    async def save_plan(
+        self,
+        pitch_id: uuid.UUID,
+        request: Mapping[str, Any],
+        reply: PlanReply,
+        requested_at: datetime,
+    ) -> bool:
+        return await run_in_threadpool(
+            self._with, save_coaching_plan, pitch_id, request, reply, requested_at
+        )
 
 
 class CoachStore(Protocol):
@@ -158,3 +175,53 @@ def save_take_result(
         measures=asdict(reply.summary()),
         duration_sec=reply.duration_sec,
     )
+
+def build_plan_request(db: Session, pitch_id: uuid.UUID) -> dict[str, Any] | None:
+    """다음 Take 의 `/coach/plan` 요청 (coach-agent.md 5-2 plan). 부르지 않을 때는 None
+    (`coach_service.coaching_plan_values`, 입력 상한은 `plan_request`)."""
+    values = coach_service.coaching_plan_values(db, pitch_id)
+    if values is None:
+        return None
+    return plan_request(
+        pitch_id=pitch_id,
+        source_take_id=values.source_take_id,
+        script_version_id=values.script_version_id,
+        plan=build_plan(
+            values.time_limit_sec,
+            time_limit_sec=values.time_limit_sec,
+            lower_deviation_sec=values.lower_deviation_sec,
+            upper_deviation_sec=values.upper_deviation_sec,
+            slides=values.slides,
+            parsed_target_ms=values.parsed_target_ms,
+        ),
+        scripts=values.scripts,
+        missions=values.missions,
+        recurring_issues=values.recurring_issues,
+        previous_take_result=values.previous_take_result,
+        previous_review=values.previous_review,
+    )
+
+def save_coaching_plan(
+    db: Session,
+    pitch_id: uuid.UUID,
+    request: Mapping[str, Any],
+    reply: PlanReply,
+    requested_at: datetime,
+) -> bool:
+    """계획 응답을 한 행으로 더한다 (기본 계획도). 발표가 그 사이 지워졌으면 넣지 않고 False."""
+    basis = request_basis(request)
+    return coach_service.save_coaching_plan(
+        db,
+        pitch_id,
+        source_take_id=_uuid(basis.source_take_id),
+        script_version_id=_uuid(basis.script_version_id),
+        target_ms=basis.target_ms,
+        min_ms=basis.min_ms,
+        max_ms=basis.max_ms,
+        payload=plan_payload(request, reply),
+        meta=dict(reply.meta),
+        requested_at=requested_at,
+    )
+
+def _uuid(value: str | None) -> uuid.UUID | None:
+    return uuid.UUID(value) if value is not None else None
