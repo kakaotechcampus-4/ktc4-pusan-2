@@ -582,7 +582,7 @@ Take 지표를 이벤트에서 다시 계산하지 않고 `summarize`로 만드�
 - **잰 값** (연구 폴더 · 연구용 판정 대역 · 한 대의 Windows 노트북에서 한 번 잰 값. 절대값보다 늘어나는 모양을 본다):
   - 한 시간 Take를 1초 요청으로 진행: 요청당 평균 2.3 ms, `coach_state` 약 14.3–14.7 KB로 일정, 요청 약 30 KB
   - `replay` 한 번: 합성 Take 900초 2.4초 · 1800초 5.7초 · 3600초 15.1초. 한 시간 Take의 복구는 BE 시간 제한 10초를 넘어, `replay`를 붙인 호출만 60초로 둔다. 빠르게 고치는 일은 15절 열린 질문
-  - 코칭 계획(`openai/gpt-5.6-luna`, 시나리오 5개 × 5번): 유효율 1.0 · 기대 통과율 0.96 · 일관성 0.9, 지연 중앙값 2.6초 · 최대 8.1초 (`reports/results/coaching_plan.json`). 이 값은 `gpt-5.6-luna`로 잰 것이라, 기준선은 기본 묶음 모델(6 luna)로 다시 잰 값을 쓴다(같은 모델끼리 비교)
+  - 코칭 계획(기본 묶음 `openai/gpt-6-luna`, 시나리오 5개 × 5번): 유효율 1.0 · 기대 통과율 1.0 · 일관성 0.95, 지연 중앙값 3.1초 · 최대 7.8초 (`reports/results/coaching_plan.json`). 계획 입력을 직전 Take 결과 · 리뷰 모양으로 바꾼 뒤 잰 값이고, 이 값이 기준선이다(모델 · 프롬프트를 바꾸면 같은 시나리오로 다시 재 비교한다)
 - **입력 한도**: `t_ms` 0 이상 3,660,000 이하(evaluate · finalize), 한 번에 앞설 수 있는 시간 60초(evaluate, 넘으면 `T_MS_JUMP`), 코칭 계획 입력 크기(5-2 plan). evaluate가 한 번에 세는 1초 조각은 새로 시작한 상태의 첫 요청에서 30개 안팎(커서를 `t_ms − 30초`에서 시작, 5-2), 그 밖에는 60개 이하다(10만 조각을 잰 2.95초에 비례로 어림하면 60조각은 수 ms). finalize에는 앞섬 검사가 없고, `replay`의 처리 시간은 Take 길이와 원자료 수에 따라 늘어난다(한 시간 약 15초). `t_ms` 상한은 배열 크기를 묶지 않는다. 지금은 BE가 지키는 창 길이(30 · 60초)와 Take 최대 길이가 배열 크기를 묶고, 코치가 직접 검사하는 요청 배열 길이 · 값 범위 · 본문 크기는 코치를 배포하기 전에 정한다(15절 열린 질문).
 
 # 9. 버전
@@ -607,7 +607,7 @@ uv sync
 
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 (실제 LLM 제외) | `uv run python -m pytest` | 테스트 모두 통과, live 1개 제외 (`484 passed, 1 deselected`, develop `bc61b7d`) |
+| 테스트 (실제 LLM 제외) | `uv run python -m pytest` | 테스트 모두 통과, live 1개 제외 (`560 passed, 1 deselected`, Issue #375 작업 끝) |
 | 코어만 · 실험 도구만 | `uv run python -m pytest tests/unit` · `tests/lab` | 통과 |
 | 실제 LLM으로 계획 한 번 (과금) | `uv run python -m pytest -m live` | 유효한 계획 |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |

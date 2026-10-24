@@ -244,7 +244,7 @@ result = finalize(finalize_request_dict, judges)
 
 ### 코칭 계획 실험 (`reports/results/coaching_plan.json`)
 
-실제 LLM(`openai/gpt-5.6-luna`)으로 시나리오 5개 × 5번(25 계획): 유효 100%, 기대 통과 96%, 검증에서 뺀 비율 0%, 일관성 0.90, 지연 중앙값 2.6초 · 최대 8.1초.
+실제 LLM(`openai/gpt-6-luna`, 기본 묶음)으로 시나리오 5개 × 5번(25 계획): 유효 100%, 기대 통과 100%, 검증에서 뺀 비율 0%, 일관성 0.95, 지연 중앙값 3.1초 · 최대 7.8초. 계획 입력을 직전 Take 결과 · 리뷰 모양으로 바꾼 프롬프트(`planner_hash` `56827d3cf73d`)로 잰 값이다.
 
 ## 8. 알려진 한계
 
