@@ -98,7 +98,7 @@ export function TakesPage() {
                     <div>
                       <dt className="sr-only">시간</dt>
                       <dd>
-                        {formatDuration(t.duration_ms)}
+                        {t.duration_ms === null ? '—' : formatDuration(t.duration_ms)}
                         <span className="text-stone"> / {formatDuration(t.goal_ms)}</span>
                       </dd>
                     </div>
