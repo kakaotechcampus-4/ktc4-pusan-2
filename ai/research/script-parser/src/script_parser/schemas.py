@@ -37,7 +37,7 @@ class Meta(BaseModel):
 
     schema_version: str
     feature_version: str
-    model: str
+    model: str | None = Field(default=None, description="실제로 응답한 LLM 모델. 서비스 라우터가 넣는다")
 
 
 class ParseResponse(BaseModel):

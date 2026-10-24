@@ -1,3 +1,3 @@
-from .core import parse_script
+from .core import EmptyScriptError, parse_script
 
-__all__ = ["parse_script"]
+__all__ = ["EmptyScriptError", "parse_script"]

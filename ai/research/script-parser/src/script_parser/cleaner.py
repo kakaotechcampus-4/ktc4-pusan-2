@@ -1,13 +1,14 @@
-"""LLM 출력 후처리. LLM 없이 도는 순수 함수만 둡니다."""
+"""장 대본 정제 · 글자 수 · 하이라이트. LLM 없이 도는 순수 함수만 둡니다."""
 
 import logging
 import re
+import unicodedata
 
 logger = logging.getLogger(__name__)
 
 
 def clean_script(text: str) -> str:
-    """LLM이 섞어 낸 마크다운 문법을 script에서 제거합니다."""
+    """장 대본에서 마크다운 문법을 걷어 내고 공백을 정리합니다."""
     # 헤더 제거: 줄 맨 앞의 #(1~6개) + 공백일 때만 (#1, #해시태그 등은 유지)
     text = re.sub(r"^#{1,6}[ \t]+", "", text, flags=re.MULTILINE)
     # 굵게/기울임 강조 기호 제거: **text**, *text*
@@ -27,10 +28,15 @@ def clean_script(text: str) -> str:
     return text.strip()
 
 
-def find_highlights(script: str, keywords: list[str]) -> list[str]:
-    """keyword가 script에 처음 등장하는 위치를 "start:end" 문자열로 돌려줍니다.
+def count_chars(text: str) -> int:
+    """공백과 문장부호(유니코드 P 범주: 쉼표 · 마침표 · % 등)를 뺀 글자 수(코드 포인트)."""
+    return sum(1 for ch in text if not ch.isspace() and not unicodedata.category(ch).startswith("P"))
 
-    오프셋은 clean_script를 거친 script 기준이어야 합니다.
+
+def find_highlights(script: str, keywords: list[str]) -> list[dict[str, int]]:
+    """keyword가 script에 처음 등장하는 위치를 {"start", "end"}로 돌려줍니다.
+
+    위치는 코드 포인트 기준이고 end는 포함하지 않습니다. clean_script를 거친 script 기준이어야 합니다.
     script에 없는 keyword는 건너뜁니다.
     """
     highlights = []
@@ -39,5 +45,5 @@ def find_highlights(script: str, keywords: list[str]) -> list[str]:
         if start == -1:
             logger.warning("keyword %r not found in script", keyword)
             continue
-        highlights.append(f"{start}:{start + len(keyword)}")
+        highlights.append({"start": start, "end": start + len(keyword)})
     return highlights

@@ -3,6 +3,7 @@
     python run.py --file script3.txt          # 대본 하나
     python run.py --file script1.txt script2.txt
     python run.py --all                       # 전체
+    python run.py --all --target-ms 300000    # 발표 제한 시간에 맞춰 예상 시간 나누기
 """
 
 import argparse
@@ -17,7 +18,7 @@ from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 
 from script_parser import parse_script
-from script_parser.schemas import LLMOutput
+from script_parser.schemas import LLMOutput, ParseRequest
 
 ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "data" / "scripts"
@@ -52,6 +53,7 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--file", nargs="+", help="data/scripts/ 안의 파일명")
     group.add_argument("--all", action="store_true", help="data/scripts/*.txt 전체")
+    parser.add_argument("--target-ms", type=int, default=None, help="발표 제한 시간(ms). 없으면 기준 말 속도로 계산")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -68,7 +70,8 @@ def main() -> None:
     llm = build_llm()
 
     for path in paths:
-        data = parse_script(path.read_text(encoding="utf-8"), llm=llm)
+        request = ParseRequest(script_text=path.read_text(encoding="utf-8"), target_ms=args.target_ms)
+        data = parse_script(request, llm).model_dump()
         out = RESULTS_DIR / f"{path.stem}.json"
         out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"{path.name}: status={data['status']} slides={len(data['slides'])} terms={len(data['terms'])} -> {out.relative_to(ROOT)}")
