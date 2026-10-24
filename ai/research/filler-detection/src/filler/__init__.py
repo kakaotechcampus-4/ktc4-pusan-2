@@ -4,6 +4,7 @@
 """
 
 from .config import DEFAULT, FillerConfig
+from .core import judge, normalize
 from .version import FEATURE_VERSION
 
-__all__ = ["DEFAULT", "FEATURE_VERSION", "FillerConfig"]
+__all__ = ["DEFAULT", "FEATURE_VERSION", "FillerConfig", "judge", "normalize"]
