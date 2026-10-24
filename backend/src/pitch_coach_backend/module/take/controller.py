@@ -63,7 +63,7 @@ def update_take(
     if take_update_dto.ended_at is not None:
         hooks.live_takes().end(
             take_id,
-            lambda end_reason, utterance_ends: mark_ended(db, take_id, end_reason),
+            lambda end_reason, utterance_ends: mark_ended(db, take_id, end_reason, utterance_ends),
         )
     return {"message": "Take updated successfully", "take_id": result}
 

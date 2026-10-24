@@ -6,11 +6,11 @@
 이 들고 있고 연결보다 오래 남는다 — 탭을 새로고침해도 세그먼트 번호가 이어지도록.
 
 연결 하나의 순서: Origin → auth(JWT) → 인가(DB 1회: 사용자·Take 존재·소유·상태·대본 용어.
-READY 면 RUNNING 으로) → ready → 오디오 · 1초 측정값(metrics) → stop(마지막 전사 · 측정값까지
-저장한 뒤 ANALYZING 으로).
+READY 면 RUNNING 으로 바꾸고 이 Take 에 쓸 값을 고정한 뒤 코치가 들고 있을 값을 읽는다) → ready →
+오디오 · 1초 측정값(metrics) · 장 변경(slide) → stop(마지막 전사 · 측정값까지 저장한 뒤 ANALYZING ·
+FINALIZING 으로 적고 Take 결과를 띄운다).
 """
 
-import asyncio
 import contextlib
 import logging
 import uuid
@@ -24,7 +24,12 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from pitch_coach_backend.coach import store as coach_store
+from pitch_coach_backend.coach.client import CoachClient
+from pitch_coach_backend.coach.requests import TakeContext
+from pitch_coach_backend.coach.store import CoachStore
 from pitch_coach_backend.core.config import settings
+from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.core.exceptions import UnauthorizedException
 from pitch_coach_backend.core.security import decode_access_token
 from pitch_coach_backend.module.pitch import service as pitch_service
@@ -40,6 +45,7 @@ from pitch_coach_backend.realtime.dto import (
     ErrorMessage,
     MetricsMessage,
     ReadyMessage,
+    SlideMessage,
     StopMessage,
     TakeEndReason,
     WsErrorCode,
@@ -49,7 +55,12 @@ from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.keyterms import build_keyterms, normalize_term
 from pitch_coach_backend.realtime.stt_adapter import SttAdapter, SttConfig
-from pitch_coach_backend.realtime.take_stream import StreamOwnerMismatch, TakeEnded, TakeStream
+from pitch_coach_backend.realtime.take_stream import (
+    CoachDeps,
+    StreamOwnerMismatch,
+    TakeEnded,
+    TakeStream,
+)
 from pitch_coach_backend.realtime.transcript_store import TranscriptStore
 
 logger = logging.getLogger(__name__)
@@ -59,6 +70,7 @@ CLOSE_NORMAL = 1000
 # 브라우저가 창을 닫거나 새로고침하며 끊었다. 네트워크가 끊기면 닫힘 프레임이 없어 1006 이 된다
 CLOSE_GOING_AWAY = 1001
 CLOSE_POLICY_VIOLATION = 1008  # 인증·권한·프로토콜 위반
+CLOSE_INTERNAL_ERROR = 1011  # 일시적인 서버 실패. FE 가 재연결할 수 있다
 
 AUTH_TIMEOUT_SEC = 5.0
 # stop 뒤 스트림 정리를 기다리는 상한. 스트림이 Deepgram 을 기다리는 시간과 별개다 —
@@ -66,13 +78,15 @@ AUTH_TIMEOUT_SEC = 5.0
 STOP_TIMEOUT_SEC = 12.0
 # 정상 종료가 실패해 태스크를 끊은 뒤 정리를 기다리는 상한
 CANCEL_TIMEOUT_SEC = 2.0
-# 사용자가 끝낸 Take 를 DB 에 적는 상한. DB 가 늦어도 FE 에 closed 를 보내는 게 붙잡히지 않게 한다
-MARK_ENDED_TIMEOUT_SEC = 5.0
 
 # 오디오를 받아도 되는 Take 상태 (FE `TakeStatus` 와 같은 값). 나머지(ANALYZING·COMPLETED·
 # FAILED)는 이미 끝난 연습이라 전사를 더 붙이면 리포트가 오염된다.
 # READY 는 첫 연결이다. 인가를 통과하면 RUNNING 으로 바꾼다 (`docs/ai/architecture.md` 1-3).
 STREAMABLE_TAKE_STATUSES = frozenset({"READY", "RUNNING"})
+
+
+class _TakeStartFailed(Exception):
+    """Take 시작 값을 고정하지 못했다. 미설정 값으로 ready 를 보내지 않는다."""
 
 
 def _origin_allowed(origin: str | None) -> bool:
@@ -108,17 +122,26 @@ class RealtimeSession:
         db: Session,
         stt_adapter: SttAdapter,
         transcript_store: TranscriptStore,
+        coach_client: CoachClient | None = None,
+        coach_store: CoachStore | None = None,
     ) -> None:
         self.ws = ws
         self.take_id = take_id
         self.db = db
         self.stt_adapter = stt_adapter
         self.transcript_store = transcript_store
+        self.coach = (
+            CoachDeps(client=coach_client, store=coach_store)
+            if coach_client is not None and coach_store is not None
+            else None
+        )
 
         # entity 가 아니라 id 만 들고 있는다. realtime 은 다른 도메인의 service 만 부른다
         self.user_id: uuid.UUID | None = None
         # Take 대본의 STT 용어 (우선순위 순, 자르기 전). 인가 때 같은 DB 왕복에서 읽는다
         self.script_terms: list[str] = []
+        # 코치가 Take 동안 들고 있을 값. 인가 때 읽는다. 못 읽으면 코칭 없이 STT 만 돈다
+        self.coach_context: TakeContext | None = None
         self.invalid_frames = 0
         # FE 가 끊을 때 보낸 닫힘 코드. 창을 닫았는지(1001) 보고 스트림이 얼마나 기다릴지 정한다
         self.close_code: int | None = None
@@ -145,6 +168,8 @@ class RealtimeSession:
                 stt_adapter=self.stt_adapter,
                 config=self._stt_config(),
                 store=self.transcript_store,
+                coach=self.coach,
+                coach_context=self.coach_context,
             )
         except StreamOwnerMismatch:
             await self._reject(WsErrorCode.FORBIDDEN, "다른 사용자가 사용 중인 연습입니다.")
@@ -228,7 +253,10 @@ class RealtimeSession:
         `READY` 면 `RUNNING` 으로 바꾼다. 다시 붙은 연결(이미 `RUNNING`)은 그대로 둔다.
         """
 
-        def load() -> tuple[bool, bool, str | None, str | None, list[str]]:
+        # 다시 붙은 연결이면 코치는 이미 Take 를 시작할 때의 값을 들고 있다
+        need_context = self.coach is not None and not take_stream.coach_enabled(self.take_id)
+
+        def load() -> tuple[bool, bool, str | None, str | None, list[str], TakeContext | None]:
             # 동기 SQLAlchemy 를 이벤트 루프에서 직접 부르면 다른 Take 의 오디오까지 멈춘다.
             # 그래서 threadpool 이고, 왕복을 아끼려 한 함수에서 전부 읽는다
             user = user_service.find(self.db, user_id)
@@ -259,16 +287,43 @@ class RealtimeSession:
             self.db.rollback()
             if status == "READY":
                 # 첫 연결이다. 위 조회와 따로 짧은 트랜잭션 하나로 쓴다 — 용어 조회가 실패해
-                # 트랜잭션이 깨졌어도 적히고, 커밋하면 커넥션도 돌려준다. 못 적어도 STT 는 돈다.
-                # 끝낼 때는 READY 에서도 ANALYZING 으로 바꾼다
+                # 트랜잭션이 깨졌어도 적힌다. 미션 · 평가 기준 버전 · 원자료 사용 동의가 고정되기
+                # 전에는 ready 를 보내지 않는다 (`docs/ai/architecture.md` 1-3 1번).
+                for attempt in range(2):
+                    try:
+                        take_service.mark_running(self.db, self.take_id)
+                        break
+                    except Exception as error:
+                        self.db.rollback()
+                        if attempt == 0 and is_transient_db_error(error):
+                            logger.warning("Take 시작 값 저장을 다시 한다 take=%s", self.take_id)
+                            continue
+                        logger.exception("Take 를 RUNNING 으로 못 바꿨다 take=%s", self.take_id)
+                        raise _TakeStartFailed from error
+                # 다른 요청이 먼저 시작하거나 끝냈으면 최신 상태로 판단한다.
+                take = take_service.find_owned(self.db, self.take_id, user_id)
+                status = take.status if take is not None else None
+                end_reason = take.end_reason if take is not None else None
+                self.db.rollback()
+                if status == "READY":
+                    raise _TakeStartFailed
+            context = None
+            if status in STREAMABLE_TAKE_STATUSES and need_context:
+                # 코칭은 부가 기능이다. 못 읽어도 STT 는 돈다
                 try:
-                    take_service.mark_running(self.db, self.take_id)
+                    context = coach_store.load_take_context(self.db, self.take_id)
                 except Exception:
-                    logger.exception("Take 를 RUNNING 으로 못 바꿨다 take=%s", self.take_id)
-                    self.db.rollback()
-            return user is not None, take is not None, status, end_reason, terms
+                    logger.exception("코치 값을 읽지 못해 코칭 없이 돈다 take=%s", self.take_id)
+                self.db.rollback()
+            return user is not None, take is not None, status, end_reason, terms, context
 
-        user_found, take_found, status, end_reason, terms = await run_in_threadpool(load)
+        try:
+            user_found, take_found, status, end_reason, terms, context = await run_in_threadpool(
+                load
+            )
+        except _TakeStartFailed:
+            await self.ws.close(code=CLOSE_INTERNAL_ERROR, reason="take start unavailable")
+            return False
         if not user_found:
             await self._reject(WsErrorCode.UNAUTHORIZED, "유효하지 않은 토큰입니다.")
             return False
@@ -279,6 +334,7 @@ class RealtimeSession:
             await self._reject_ended(end_reason)
             return False
         self.script_terms = terms
+        self.coach_context = context
         return True
 
     def _stt_config(self) -> SttConfig:
@@ -330,6 +386,9 @@ class RealtimeSession:
             if isinstance(parsed, MetricsMessage):
                 stream.push_metrics(parsed, source=self.ws)
                 continue
+            if isinstance(parsed, SlideMessage):
+                stream.push_slide(parsed, source=self.ws)
+                continue
             if isinstance(parsed, StopMessage):
                 if not stream.is_client(self.ws):
                     # 다른 탭이 이어받아 쫓겨난 연결이 닫히기 전에 보냈다. 받으면 스트림이 멈추고
@@ -367,35 +426,22 @@ class RealtimeSession:
             # 저장됐고, 남은 소켓 정리는 reaper 가 마저 한다
             await stream.wait_cancelled(CANCEL_TIMEOUT_SEC)
         # 마지막 확정 전사와 1초 원자료를 저장한 뒤에 끝난 것으로 적는다. Take 뒤 분석은 ANALYZING
-        # 을 보고 시작하므로 그때 원자료가 다 있어야 한다. FE 는 마지막 1초 조각을 stop 앞에 보낸다
-        await take_stream.flush_metrics(self.take_id)
-        await self._mark_ended(stream.auto_end_reason)
+        # 을 보고 시작하므로 그때 원자료가 다 있어야 한다. FE 는 마지막 1초 조각을 stop 앞에 보낸다.
+        # FE 가 `auto_end` 를 받고 보낸 stop 이면 자동 종료 이유를 같이 적는다 — 자동 종료 정리와
+        # 누가 먼저 적든 이유가 남는다. 못 적으면 뒤에서 다시 적고, 그동안 이 프로세스 안에서는
+        # `TakeStream.end` 가 다시 붙는 연결을 막는다
+        reason = stream.auto_end_reason
+        await take_stream.finish_take(
+            self.take_id,
+            self.transcript_store,
+            end_reason=reason.value if reason is not None else None,
+            coach=self.coach,
+        )
         take_stream.forget(stream)
         # FE 가 그 사이 끊겼어도(탭 닫힘) 아래 둘은 조용히 실패하고, 스트림 정리와 저장은
         # 이미 끝났다 — FE 가 있든 없든 서버 쪽 종료 절차는 같다
         await stream.send_status()
         await self._quiet(self.ws.close(code=CLOSE_NORMAL))
-
-    async def _mark_ended(self, auto_end_reason: AutoEndReason | None) -> None:
-        """Take 를 끝난 상태(`ANALYZING`)로 적는다. 못 적어도 종료는 계속한다.
-
-        못 적으면 DB 에는 진행 중으로 남지만, 이 프로세스 안에서는 `TakeStream.end` 가 다시 붙는
-        연결을 막는다. FE 가 `auto_end` 를 받고 보낸 stop 이면 자동 종료 이유를 같이 적는다 —
-        자동 종료 정리와 누가 먼저 적든 이유가 남는다.
-        """
-        end_reason = auto_end_reason.value if auto_end_reason is not None else None
-        try:
-            marked = await asyncio.wait_for(
-                self.transcript_store.mark_ended(self.take_id, end_reason), MARK_ENDED_TIMEOUT_SEC
-            )
-        except Exception:
-            logger.exception("Take 종료 저장 실패 take=%s", self.take_id)
-            return
-        if not marked:
-            # 그 사이 Take 가 지워졌거나 이미 끝난 상태였다
-            logger.warning(
-                "Take 종료를 적지 않았다 (Take 가 없거나 이미 끝남) take=%s", self.take_id
-            )
 
     # ── 보조 ──────────────────────────────────────────────────────────
 
