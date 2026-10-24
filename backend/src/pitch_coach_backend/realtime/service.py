@@ -6,7 +6,8 @@
 이 들고 있고 연결보다 오래 남는다 — 탭을 새로고침해도 세그먼트 번호가 이어지도록.
 
 연결 하나의 순서: Origin → auth(JWT) → 인가(DB 1회: 사용자·Take 존재·소유·상태·대본 용어.
-READY 면 RUNNING 으로) → ready → 오디오 → stop(마지막 전사까지 저장한 뒤 ANALYZING 으로).
+READY 면 RUNNING 으로) → ready → 오디오 · 1초 측정값(metrics) → stop(마지막 전사 · 측정값까지
+저장한 뒤 ANALYZING 으로).
 """
 
 import asyncio
@@ -33,9 +34,11 @@ from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.dto import (
     TAKE_END_REASONS,
+    AuthMessage,
     AutoEndMessage,
     AutoEndReason,
     ErrorMessage,
+    MetricsMessage,
     ReadyMessage,
     StopMessage,
     TakeEndReason,
@@ -203,7 +206,7 @@ class RealtimeSession:
         except ValidationError:
             await self._reject(WsErrorCode.UNAUTHORIZED, "첫 메시지는 auth 여야 합니다.")
             return None
-        if isinstance(parsed, StopMessage):
+        if not isinstance(parsed, AuthMessage):
             await self._reject(WsErrorCode.UNAUTHORIZED, "첫 메시지는 auth 여야 합니다.")
             return None
 
@@ -324,6 +327,9 @@ class RealtimeSession:
                     ErrorMessage(code=WsErrorCode.BAD_MESSAGE, message="알 수 없는 메시지입니다.")
                 )
                 continue
+            if isinstance(parsed, MetricsMessage):
+                stream.push_metrics(parsed, source=self.ws)
+                continue
             if isinstance(parsed, StopMessage):
                 if not stream.is_client(self.ws):
                     # 다른 탭이 이어받아 쫓겨난 연결이 닫히기 전에 보냈다. 받으면 스트림이 멈추고
@@ -360,8 +366,9 @@ class RealtimeSession:
             # 쪽에서 닫힌 것으로 확정한다. FE 를 더 붙잡아 둘 이유가 없다 — final 은 이미
             # 저장됐고, 남은 소켓 정리는 reaper 가 마저 한다
             await stream.wait_cancelled(CANCEL_TIMEOUT_SEC)
-        # 마지막 확정 전사를 저장한 뒤에 끝난 것으로 적는다. Take 뒤 분석은 ANALYZING 을 보고
-        # 시작하므로 그때 전사가 다 있어야 한다
+        # 마지막 확정 전사와 1초 원자료를 저장한 뒤에 끝난 것으로 적는다. Take 뒤 분석은 ANALYZING
+        # 을 보고 시작하므로 그때 원자료가 다 있어야 한다. FE 는 마지막 1초 조각을 stop 앞에 보낸다
+        await take_stream.flush_metrics(self.take_id)
         await self._mark_ended(stream.auto_end_reason)
         take_stream.forget(stream)
         # FE 가 그 사이 끊겼어도(탭 닫힘) 아래 둘은 조용히 실패하고, 스트림 정리와 저장은
