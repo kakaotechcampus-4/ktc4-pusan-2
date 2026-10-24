@@ -246,10 +246,10 @@ def finalize(
 def _finalize_replay(req: FinalizeRequest, judges: Judges, cfg: CoachConfig) -> FinalizeResponse:
     """Take 전체 원자료로 처음부터 다시 판정해 Take 결과를 만든다(replayed).
 
-    BE 가 1초마다 보냈을 요청을 다시 만들어 실전 모드로 판정하고(새 개입은 만들지 않는다), 끝에
-    평소처럼 마지막 창을 판정하고 닫는다. 지표 · 문제 구간 · 판정 기준은 다시 판정한 결과에서,
-    개입 · 효과 · 포기는 받은 이벤트(실제로 한 코칭)에서 가져온다. 다시 판정한 이벤트는 응답에
-    내지 않는다 — 효과를 재는 실제 개입 중 효과 기록이 없는 것만 NOT_MEASURED 로 낸다.
+    BE 가 1초 기록이 끝날 때마다 보냈을 요청을 다시 만들어 실전 모드로 판정하고(새 개입은 만들지
+    않는다), 끝에 평소처럼 마지막 창을 판정하고 닫는다. 지표 · 문제 구간 · 판정 기준은 다시 판정한
+    결과에서, 개입 · 효과 · 포기는 받은 이벤트(실제로 한 코칭)에서 가져온다. 다시 판정한 이벤트는
+    응답에 내지 않는다 — 효과를 재는 실제 개입 중 효과 기록이 없는 것만 NOT_MEASURED 로 낸다.
     """
     raw = req.replay
     assert raw is not None
@@ -261,7 +261,7 @@ def _finalize_replay(req: FinalizeRequest, judges: Judges, cfg: CoachConfig) -> 
     )
     coach_state: dict[str, Any] | None = None
     rebuilt: list[Any] = []
-    for t_ms in recovery.ticks(t):
+    for t_ms in recovery.ticks(raw, t):
         # 실제 진행처럼 decide_safe 로 — 코치 안 예외가 난 1초는 잴 수 없던 시간으로 넘기고 계속한다
         creq = recovery.request_at(req, raw, t_ms, coach_state)
         resp = decide_safe(creq, judges, rebuild_cfg)
@@ -270,7 +270,7 @@ def _finalize_replay(req: FinalizeRequest, judges: Judges, cfg: CoachConfig) -> 
 
     last = req.model_copy(
         update={
-            "inputs": recovery.inputs_at(raw, t),
+            "inputs": recovery.inputs_at(raw, t, last_window=True),
             "mode": Mode.EXAM,
             "coach_state": coach_state,
         }

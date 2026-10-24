@@ -7,8 +7,8 @@ from typing import Any
 import pytest
 
 import coach.core as core_mod
-from coach import ReplayRequired, finalize, recovery
-from coach.schemas import ReplayInput
+from coach import ReplayRequired, decide, finalize, recovery
+from coach.schemas import FinalizeRequest, ReplayInput
 
 from .conftest import PLAN
 from .fakes import ScriptedJudge, fake_issue, fake_judges
@@ -93,6 +93,104 @@ def test_request_window_at_a_given_second():
     )
     assert recovery.inputs_at(r, 50_000).stt_status == "ok"
     assert recovery.inputs_at(r, 10_000).slide.number == 1
+
+
+def shifted(t_end: int, offset: int = 400) -> dict[str, Any]:
+    """1초 격자가 offset 만큼 어긋난 원자료: 기록이 [offset, offset+1000), … 이고 t_end 에 끝남."""
+    starts = range(offset, t_end - 1_000 + 1, 1_000)
+    return raw(
+        t_end,
+        gaze_records=[{"t_ms": t, "duration_ms": 1_000, "state": "CAMERA"} for t in starts],
+        voice_records=[
+            {"t_ms": t, "duration_ms": 1_000, "level_db": -30.0, "voiced_ms": 800, "silence_ms": 0}
+            for t in starts
+        ],
+        words=[
+            {"word": "가나다", "start_ms": t, "end_ms": t + 600, "final_at_ms": t + 1_600}
+            for t in range(offset, t_end - 1_000, 1_000)
+        ],
+    )
+
+
+def test_ticks_on_a_thousand_grid_are_every_second():
+    r = ReplayInput.model_validate(raw(10_000))
+    assert recovery.ticks(r, 10_000) == list(range(0, 10_000, 1_000))
+
+
+def test_ticks_follow_the_ends_of_a_shifted_grid():
+    r = ReplayInput.model_validate(shifted(8_400))
+    ticks = recovery.ticks(r, 8_400)
+    # 0 다음은 첫 기록 [400, 1400) 의 끝부터 — 1000 은 그 기록 안이라 부르지 않는다
+    assert ticks == [0, 1_400, 2_400, 3_400, 4_400, 5_400, 6_400, 7_400]
+    spans = [(g.t_ms, g.t_ms + g.duration_ms) for g in r.gaze_records]
+    assert not [t for t in ticks if any(start < t < end for start, end in spans)]
+
+
+def test_ticks_fill_a_gap_without_records_every_second():
+    gaze = [{"t_ms": t, "duration_ms": 1_000, "state": "CAMERA"} for t in (0, 1_000, 2_000)]
+    gaze += [
+        {"t_ms": t, "duration_ms": 1_000, "state": "CAMERA"} for t in range(13_000, 16_000, 1_000)
+    ]
+    r = ReplayInput.model_validate(raw(16_000, gaze_records=gaze, voice_records=[]))
+    # 3초 ~ 13초는 기록이 없어 1초 간격으로 채운다
+    assert recovery.ticks(r, 16_000) == list(range(0, 16_000, 1_000))
+
+
+def test_ticks_fill_before_the_first_record_and_skip_times_inside_a_record():
+    gaze = [{"t_ms": 2_500, "duration_ms": 1_000, "state": "CAMERA"}]
+    r = ReplayInput.model_validate(raw(6_000, gaze_records=gaze, voice_records=[]))
+    # 1000 · 2000 은 채우고, 3000 은 기록 [2500, 3500) 안이라 건너뛴 뒤 끝 3500 부터 잇는다
+    assert recovery.ticks(r, 6_000) == [0, 1_000, 2_000, 3_500, 4_500, 5_500]
+
+
+def test_word_confirmed_at_the_request_time_goes_in_the_next_request():
+    r = ReplayInput.model_validate(
+        raw(
+            10_000,
+            words=[{"word": "가나다", "start_ms": 2_000, "end_ms": 2_600, "final_at_ms": 4_000}],
+        )
+    )
+    assert recovery.inputs_at(r, 4_000).words == []
+    assert [w.start_ms for w in recovery.inputs_at(r, 5_000).words] == [2_000]
+
+
+def test_last_window_takes_words_confirmed_exactly_at_the_take_end():
+    r = ReplayInput.model_validate(
+        raw(
+            10_000,
+            words=[{"word": "가나다", "start_ms": 9_200, "end_ms": 9_800, "final_at_ms": 10_000}],
+        )
+    )
+    assert recovery.inputs_at(r, 10_000).words == []
+    assert [w.start_ms for w in recovery.inputs_at(r, 10_000, last_window=True).words] == [9_200]
+
+
+def test_replay_of_a_shifted_grid_matches_the_live_run():
+    t_end = 20_400
+    data = shifted(t_end)
+    # 실시간: BE 가 1초 기록이 끝날 때마다 요청을 보내고 coach_state 를 이어 간다
+    live_req = request(t_ms=t_end, replay=data)
+    parsed = ReplayInput.model_validate(data)
+    judges = fake_judges()
+    state = None
+    for t in range(1_400, t_end, 1_000):
+        creq = recovery.request_at(FinalizeRequest.model_validate(live_req), parsed, t, state)
+        state = decide(creq, judges).coach_state
+    live = finalize(
+        {
+            **live_req,
+            "replay": None,
+            "coach_state": state,
+            "inputs": recovery.inputs_at(parsed, t_end, last_window=True).model_dump(mode="json"),
+        },
+        judges,
+    ).take_result
+    replayed = finalize(live_req, fake_judges()).take_result
+
+    assert replayed.replayed is True and live.replayed is False
+    for area, result in live.areas.items():
+        assert replayed.areas[area].take == result.take, area
+        assert replayed.areas[area].slides == result.slides, area
 
 
 def test_rebuild_requests_are_exam_mode_every_second(monkeypatch: pytest.MonkeyPatch):
