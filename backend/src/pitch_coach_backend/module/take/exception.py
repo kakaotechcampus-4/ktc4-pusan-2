@@ -54,3 +54,11 @@ class TakeNotReviewable(ConflictException):
     # 허용하지 않는다. AWAITING_CONFIRMATION 에서 부르면 확인 건너뛰기로 본다
     code = "TAKE_NOT_REVIEWABLE"
     message = "아직 리뷰할 수 없는 연습입니다."
+
+
+class InvalidReviewResponse(AppException):
+    # AI 리뷰 응답이 계약(review-agent.md 5-3)과 다르거나 다른 Take 의 응답이다. 저장하지 않고
+    # Take 를 FAILED 로 끝낸다
+    status_code = 502
+    code = "INVALID_REVIEW_RESPONSE"
+    message = "리뷰 결과가 올바르지 않아 저장하지 못했습니다."
