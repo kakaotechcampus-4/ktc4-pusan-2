@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .version import FEATURE_VERSION, SCHEMA_VERSION
 from .vocab import (
@@ -30,6 +30,12 @@ from .vocab import (
 MAX_T_MS = 3_660_000
 #: 지난 처리 시각보다 이만큼 넘게 앞선 요청은 처리하지 않는다(T_MS_JUMP)
 MAX_T_MS_JUMP = 60_000
+#: plan 요청 입력 크기 상한(5-2). plan 요청에만 건다 — evaluate · finalize 의 같은 필드에는 걸지
+#: 않는다(거절하면 그 Take 의 코칭이 멈춘다). description 은 Python len(코드 포인트 수)
+PLAN_MAX_SLIDES = 100
+PLAN_MAX_MISSIONS = 20
+PLAN_MAX_RECURRING_ISSUES = 20
+PLAN_MAX_MISSION_DESCRIPTION = 500
 
 
 class _In(BaseModel):
@@ -53,8 +59,6 @@ class SlidePlan(_In):
     target_ms: int = Field(ge=0)
     #: 이 장 대본 글자 수 (공백 제외). 진행도 = 이 장에서 말한 글자 수 / script_chars
     script_chars: int = Field(default=0, ge=0)
-    #: 코칭 계획(LLM) 입력에만 쓴다. 발표 중 코치는 보지 않는다
-    required_keywords: list[str] = Field(default_factory=list)
 
 
 class Plan(_In):
@@ -88,12 +92,6 @@ class Mission(_In):
 class RecurringIssue(_In):
     area: FeedbackType
     slide_number: int | None = None
-
-
-class Memory(_In):
-    """이전 Take 기억. 직전 리뷰가 '아직 남은 문제'로 꼽은 것."""
-
-    recurring_issues: list[RecurringIssue] = Field(default_factory=list)
 
 
 class GazeRecordIn(_In):
@@ -161,7 +159,7 @@ class CoachRequest(_In):
     missions: list[Mission] = Field(default_factory=list)
     #: 직전 리뷰의 반복 문제
     recurring_issues: list[RecurringIssue] = Field(default_factory=list)
-    #: 코칭 계획. null 이면 계획 없음. why · source 는 와도 쓰지 않는다
+    #: 코칭 계획. null 이면 계획 없음. why 는 와도 쓰지 않는다
     coaching_plan: CoachingPlan | None = None
     #: 사용자 평가 기준의 대본 사용 설정. true 면 대본 응시를 지적하지 않는다 (SCRIPT_ALLOWED)
     script_used: bool | None = None
@@ -192,7 +190,6 @@ class RelaxItem(_In):
 
 
 class CoachingPlan(_In):
-    source: Literal["DEFAULT", "LLM"] = "DEFAULT"
     focus: list[FocusItem] = Field(default_factory=list)
     relax: list[RelaxItem] = Field(default_factory=list)
     max_interventions: int | None = Field(default=None, ge=0)
@@ -205,18 +202,40 @@ class SlideScript(_In):
     script: str = ""
 
 
-class PlanRequest(_In):
-    """Take 시작 전 코칭 계획 요청. 이번 Take 의 계획 · 장별 대본 · 미션 · 기억 · 직전 리뷰 근거."""
+class PlanMission(Mission):
+    """plan 요청의 미션. 공유 Mission 에 설명 길이 상한만 더한다(evaluate 에는 걸지 않는다)."""
 
-    schema_version: str = SCHEMA_VERSION
-    take_id: str
-    mode: Mode = Mode.COACHING
+    description: str | None = Field(default=None, max_length=PLAN_MAX_MISSION_DESCRIPTION)
+
+
+class PlanRequest(_In):
+    """Take 시작 전 코칭 계획 요청. 바탕 id · 발표 계획 · 장별 대본 · 미션 · 반복 문제 · 직전 Take
+    결과 · 직전 리뷰.
+
+    요청에 모드가 없다 — 계획은 Take 가 시작되기 전에 만들고, 실전 모드 Take 는 evaluate 에서
+    말하지 않으므로 계획이 영향을 주지 않는다. 옛 필드(take_id · mode · memory)가 와도 무시한다.
+    """
+
+    pitch_id: str
+    #: 이 계획의 바탕이 된 Take · 대본 버전. 응답에 그대로 돌려준다(BE 의 계획 고르기용)
+    source_take_id: str | None = None
+    script_version_id: str | None = None
     plan: Plan = Field(default_factory=Plan)
-    scripts: list[SlideScript] = Field(default_factory=list)
-    missions: list[Mission] = Field(default_factory=list)
-    memory: Memory = Field(default_factory=Memory)
-    #: 직전 Take 의 리뷰 요약 그대로. 없으면 null
+    scripts: list[SlideScript] = Field(default_factory=list, max_length=PLAN_MAX_SLIDES)
+    missions: list[PlanMission] = Field(default_factory=list, max_length=PLAN_MAX_MISSIONS)
+    recurring_issues: list[RecurringIssue] = Field(
+        default_factory=list, max_length=PLAN_MAX_RECURRING_ISSUES
+    )
+    #: 직전 Take 결과(take_result)와 직전 리뷰 출력 그대로. 크기를 묶지 않는 dict 다 — 개입 수 ·
+    #: 효과 · 포기한 문제는 코치가 여기서 직접 센다
+    previous_take_result: dict[str, Any] | None = None
     previous_review: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _limit_plan_slides(self) -> PlanRequest:
+        if len(self.plan.slides) > PLAN_MAX_SLIDES:
+            raise ValueError(f"plan.slides 는 {PLAN_MAX_SLIDES}개까지")
+        return self
 
 
 class PlanFocusDraft(BaseModel):
@@ -246,17 +265,31 @@ class PlanDraft(BaseModel):
     )
 
 
-class PlanResponse(_Out):
+PlanFallbackReason = Literal["LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"]
+
+
+class PlanMeta(_Out):
+    """plan 응답을 만든 버전. 판정이 없어 criteria_versions 가 없다(architecture 5절)."""
+
     schema_version: str = SCHEMA_VERSION
-    policy_version: str
-    #: 프롬프트 · 출력 스키마 · 모델로 만든 해시. 같은 해시 · 같은 입력이면 같은 질문이다
-    planner_hash: str
-    take_id: str
-    plan: CoachingPlan
-    #: 기본 계획으로 돌아간 이유 (EXAM_MODE · NO_LLM · LLM_ERROR). LLM 계획을 썼으면 null
-    fallback_reason: str | None = None
+    feature_version: str = FEATURE_VERSION
+    #: 응답한 모델. 기본 계획이면 LLM 이 답했어도 null
+    model: str | None = None
+
+
+class PlanResponse(_Out):
+    coaching_plan: CoachingPlan
+    #: 요청 값 그대로(BE 의 계획 고르기용)
+    source_take_id: str | None
+    script_version_id: str | None
+    #: 기본 계획으로 돌아간 이유. LLM 계획을 썼으면 null
+    fallback_reason: PlanFallbackReason | None = None
     #: 검증에서 뺀 항목과 이유 (예: "relax TIME 3: 봐줄 수 없는 영역")
     dropped: list[str] = Field(default_factory=list)
+    #: 프롬프트 · 출력 스키마 · 요청한 모델 이름으로 만든 해시. 같은 해시 · 같은 입력이면 같은
+    #: 질문이다
+    planner_hash: str
+    meta: PlanMeta
 
 
 # ══════════════════════════════════════════════════════════════════════════

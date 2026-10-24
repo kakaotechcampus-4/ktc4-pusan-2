@@ -31,12 +31,7 @@ PLAN: dict[str, Any] = {
     "slides": [
         {"slide_number": 1, "target_ms": 30_000, "script_chars": 300},
         {"slide_number": 2, "target_ms": 60_000, "script_chars": 600},
-        {
-            "slide_number": 3,
-            "target_ms": 60_000,
-            "script_chars": 600,
-            "required_keywords": ["로컬 처리"],
-        },
+        {"slide_number": 3, "target_ms": 60_000, "script_chars": 600},
         {"slide_number": 4, "target_ms": 30_000, "script_chars": 300},
     ],
 }
