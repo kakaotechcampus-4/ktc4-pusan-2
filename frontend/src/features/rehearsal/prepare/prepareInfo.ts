@@ -23,7 +23,7 @@ export interface PrepareInfo {
     /** 미션을 정한 리뷰의 Take 번호. 바로 앞 Take 가 아닐 수 있습니다 */
     sourceTakeNumber: number;
     /** 우선순위 순 */
-    items: { id: string; priority: number; description: string }[];
+    items: { id: string; description: string }[];
   } | null;
 }
 
@@ -54,9 +54,9 @@ export function fromPrepare(res: PrepareResponse): PrepareInfo {
     missions: res.missions
       ? {
           sourceTakeNumber: res.missions.source_take_number,
-          items: res.missions.items
-            .map((m) => ({ id: m.mission_id, priority: m.priority, description: m.description }))
-            .sort((a, b) => a.priority - b.priority),
+          items: [...res.missions.items]
+            .sort((a, b) => a.priority - b.priority)
+            .map((m) => ({ id: m.mission_id, description: m.description })),
         }
       : null,
   };

@@ -12,22 +12,13 @@ import { missionSourceNote, type PrepareInfo } from './prepareInfo';
 export function MissionCard({ info, exam }: { info: PrepareInfo; exam: boolean }) {
   const { missions } = info;
 
-  if (!missions) {
+  if (!missions?.items.length) {
     return (
       <Card title="이번 Take 미션">
         <p className="text-sm text-stone">
-          첫 Take라 아직 미션이 없어요. 편하게 연습해 보세요. 끝나면 다음에 해 볼 것을 알려 드려요.
-        </p>
-      </Card>
-    );
-  }
-
-  if (missions.items.length === 0) {
-    return (
-      <Card title="이번 Take 미션">
-        <p className="text-sm text-stone">
-          Take {missions.sourceTakeNumber} 리뷰에서 정한 미션이 없어요. 지난번처럼 편하게 연습해
-          보세요.
+          {missions
+            ? `Take ${missions.sourceTakeNumber} 리뷰에서 정한 미션이 없어요. 지난번처럼 편하게 연습해 보세요.`
+            : '첫 Take라 아직 미션이 없어요. 편하게 연습해 보세요. 끝나면 다음에 해 볼 것을 알려 드려요.'}
         </p>
       </Card>
     );

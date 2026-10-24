@@ -142,8 +142,8 @@ describe('이번 Take 미션 — BE #409', () => {
     expect(info.missions).toEqual({
       sourceTakeNumber: 3,
       items: [
-        { id: 'm1', priority: 1, description: '첫째' },
-        { id: 'm2', priority: 2, description: '둘째' },
+        { id: 'm1', description: '첫째' },
+        { id: 'm2', description: '둘째' },
       ],
     });
     // 바로 앞 Take(3)의 미션이면 배지로 충분합니다
@@ -158,10 +158,8 @@ describe('이번 Take 미션 — BE #409', () => {
   });
 
   it('바로 앞 Take 가 아니면 분석 중이라 단정하지 않고 리뷰한 Take 만 말한다', () => {
-    const note = missionSourceNote(
-      fromPrepare({ ...res, missions: { source_take_number: 2, items: [] } }),
-    );
-    expect(note).toBe('Take 2 리뷰에서 정한 미션이에요');
-    expect(note).not.toContain('분석');
+    expect(
+      missionSourceNote(fromPrepare({ ...res, missions: { source_take_number: 2, items: [] } })),
+    ).toBe('Take 2 리뷰에서 정한 미션이에요');
   });
 });

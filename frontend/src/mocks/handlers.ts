@@ -10,7 +10,7 @@ import { scriptHandlers } from './scripts';
 import { takeHistoryHandlers } from './takeHistory';
 import type { TakeCreated, TakeCreateRequest } from '@/types/take';
 import type { ScriptDetail } from '@/types/script';
-import { reportHandlers } from './report';
+import { reportHandlers, reviewFixture } from './report';
 import type { HomeResponse, PrepareResponse } from '@/types/api';
 
 /**
@@ -70,26 +70,7 @@ const prepare: PrepareResponse = {
   // BE #409 — 리포트 목(Take 3 리뷰 `next_missions`)과 같은 미션입니다
   missions: {
     source_take_number: 3,
-    items: [
-      {
-        mission_id: 'm1',
-        priority: 1,
-        area: 'FILLER',
-        slide_number: null,
-        description: '추임새 5번 이하',
-        target: { metric: 'filler_count', operator: 'LTE', value: 5 },
-        reason: '직접 정한 기준인데 이번 Take 7번',
-      },
-      {
-        mission_id: 'm2',
-        priority: 2,
-        area: 'GAZE',
-        slide_number: 3,
-        description: '3번 장 대본 응시 40% 이하',
-        target: { metric: 'script_ratio', operator: 'LTE', value: 0.4 },
-        reason: '3번 장 이번 Take 0.62, 이전 Take 0.70',
-      },
-    ],
+    items: reviewFixture.next_missions.map((m, i) => ({ ...m, mission_id: `m${i + 1}` })),
   },
 };
 
