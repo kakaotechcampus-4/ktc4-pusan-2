@@ -43,6 +43,7 @@ import { useRehearsalStore } from './rehearsalStore';
 import {
   abandonOutcome,
   clearClock,
+  clearMetrics,
   coachHistory,
   lastSlide,
   leftWindow,
@@ -50,6 +51,8 @@ import {
   recordedUntilMs,
   resumeFromMs,
   saveClock,
+  saveMetrics,
+  takeMetrics,
   type AbandonOutcome,
   type CoachHistory,
   type LeftWindow,
@@ -57,6 +60,7 @@ import {
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
 import { useSttStream } from './useSttStream';
+import { useMetricsSender } from './useMetricsSender';
 import type { TextRange } from '../lib/scriptMarks';
 import './stage.css';
 
@@ -210,31 +214,11 @@ export function RehearsalPage() {
     resume?.fromMs ?? 0,
   );
   // 음량 1초 기록을 무대 시계로 쌓습니다 — 시선 1초 기록과 같은 시계라야 같은 1초를 가리킵니다.
-  // 기록은 `voiceRecord(t_ms, t_ms + duration_ms)` 로 꺼내고, WS `metrics` 가 붙으면 시선 기록과 함께 보냅니다
-  const { meterRef, statsRef, audioState } = useMicLevel(stream, { clock: elapsedMs });
-  const {
-    ready: gazeReady,
-    engineVersion,
-    error: gazeError,
-    perf,
-    bottomRatio,
-    missingCalibration,
-    flushGaze,
-  } = useLiveGaze({
-    stream,
-    videoRef,
-    stageRef,
-    clientSessionId: sessionId,
-    // 장치 점검에서 저장한 기준을 이 키로 꺼내 리허설 워커에 넣습니다
-    layoutSignature: calibration?.layoutSignature ?? null,
-    // 판정 저장이 실패해 제외가 정해지면 메모리에도 받아 둡니다
-    onExcluded: noteExclusion,
-    elapsedMs,
-    // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
-    // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다
-    enabled: running && live,
+  // 기록은 `voiceRecord(t_ms, t_ms + duration_ms)` 로 꺼내 시선 기록과 함께 WS `metrics` 로 보냅니다 (`useMetricsSender`)
+  const { meterRef, statsRef, audioState, voiceRecord } = useMicLevel(stream, {
+    clock: elapsedMs,
   });
-  const { slideNumber, slideStartedAtRef } = useSlideDeck({
+  const { slideNumber, slideStartedAtRef, slideAt } = useSlideDeck({
     total: pageCount,
     clientSessionId: sessionId,
     elapsedMs,
@@ -260,10 +244,17 @@ export function RehearsalPage() {
    * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
    * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
    */
+  // 새로고침 전 페이지가 못 보내고 적어 둔 `metrics`. 소켓이 붙자마자 먼저 보냅니다 (resume.ts)
+  const restoredMetrics = useCallback(
+    () => (sessionId ? takeMetrics(takeId, sessionId) : []),
+    [takeId, sessionId],
+  );
   const {
     transcriptRef,
     note: sttNote,
     alert: sttAlert,
+    sendMetrics,
+    handOffMetrics,
     stop: stopStt,
   } = useSttStream({
     takeId,
@@ -271,9 +262,41 @@ export function RehearsalPage() {
     enabled: stageReady && (phase === 'RUNNING' || phase === 'ENDING'),
     elapsedMs,
     onAutoEnd,
+    restoredMetrics,
     onClosed: leaveClosed,
   });
 
+  // 1초마다 시선 · 음량 · 슬라이드를 WS `metrics` 로 보냅니다. 서버의 실시간 코치와 Take 결과의 재료입니다
+  const { onGazeRecords, finishMetrics, flushMetricsForHide } = useMetricsSender({
+    enabled: running,
+    elapsedMs,
+    voiceRecord,
+    slideAt,
+    send: sendMetrics,
+  });
+  const {
+    ready: gazeReady,
+    engineVersion,
+    error: gazeError,
+    perf,
+    bottomRatio,
+    missingCalibration,
+    flushGaze,
+  } = useLiveGaze({
+    stream,
+    videoRef,
+    stageRef,
+    clientSessionId: sessionId,
+    // 장치 점검에서 저장한 기준을 이 키로 꺼내 리허설 워커에 넣습니다
+    layoutSignature: calibration?.layoutSignature ?? null,
+    // 판정 저장이 실패해 제외가 정해지면 메모리에도 받아 둡니다
+    onExcluded: noteExclusion,
+    elapsedMs,
+    // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
+    // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다
+    enabled: running && live,
+    onRecords: onGazeRecords,
+  });
   useCoach({
     enabled: running,
     mode,
@@ -447,6 +470,7 @@ export function RehearsalPage() {
       // 무대는 다시 열리지 않습니다. 시선 기준은 얼굴 측정값이라 버립니다
       forgetZoneRef();
       clearClock(takeId);
+      clearMetrics(takeId);
       if (sessionId) {
         await endSession(sessionId, 'ABORTED').catch((err: unknown) =>
           noteWriteFailure(sessionId, 'ending', err),
@@ -514,12 +538,23 @@ export function RehearsalPage() {
 
   // 새로고침하면 이 값에서 시계를 다시 돌립니다. 하트비트는 5초마다라 그만큼 어긋나고,
   // 가려진 탭에서는 브라우저가 더 늦춥니다. 탭이 닫히는 순간에 동기로 적어 둡니다 (resume.ts)
+  //
+  // 서버로 못 보낸 `metrics` 도 같은 순간에 적습니다 — 시선을 기다리느라 아직 안 만든 마지막 몇 초와
+  // 끊겨 있어 소켓이 들고 있던 것. 메모리에만 있어 새로고침하면 사라지고, 새 페이지는 아래 시계부터
+  // 다시 보내므로 그 구간을 보낼 길이 없습니다. 같은 `now` 로 메워야 새 시계와 빈틈 · 겹침 없이 이어집니다
   useEffect(() => {
     if (!running || !sessionId) return;
-    const save = () => saveClock(takeId, { clientSessionId: sessionId, elapsedMs: elapsedMs() });
+    const save = () => {
+      const now = elapsedMs();
+      saveClock(takeId, { clientSessionId: sessionId, elapsedMs: now });
+      saveMetrics(takeId, {
+        clientSessionId: sessionId,
+        messages: handOffMetrics(flushMetricsForHide(now)),
+      });
+    };
     window.addEventListener('pagehide', save);
     return () => window.removeEventListener('pagehide', save);
-  }, [running, sessionId, takeId, elapsedMs]);
+  }, [running, sessionId, takeId, elapsedMs, handOffMetrics, flushMetricsForHide]);
 
   // 시선 판정이 아직 없는 dev 환경에서 테두리 3색을 눈으로 보려고 둡니다.
   // 1·2·3 키. **기록에는 남기지 않습니다** — 판정이 아니라 눈속임입니다
@@ -554,9 +589,13 @@ export function RehearsalPage() {
 
     setPhase('ENDING');
 
-    // 1초가 안 찬 마지막 시선 조각을 발표 길이까지로 닫아 저장합니다. 지금은 브라우저에만 남고,
-    // WS `metrics` 가 붙으면 `stop` 앞에 이 조각을 보냅니다 (최대 0.5초, 실패하지 않습니다)
+    // 1초가 안 찬 마지막 시선 조각을 발표 길이까지로 닫아 저장합니다 (최대 0.5초, 실패하지 않습니다)
     await flushGaze(ended.durationMs);
+    // 그 조각까지 안 보낸 시간을 발표 길이까지 `metrics` 로 보냅니다. 아래 `stop` 보다 먼저 나갑니다
+    // ★ 서버 자동 종료(`onAutoEnd`)로 왔으면 서버는 Deepgram 정리 뒤 이 조각을 **2초만** 기다리고
+    //   연결을 닫습니다 (BE `FINAL_METRICS_WAIT_SEC`). 닫힌 뒤 보내면 버려집니다 — 여기까지 오는
+    //   작업(`flushGaze` 최대 0.5초)을 늘리지 마세요. 오래 걸리는 일은 `finishMetrics` 뒤에 둡니다
+    finishMetrics(ended.durationMs);
 
     // ★ 종료 중에 새로고침해도 무대로 돌아가지 않고 이 값으로 종료를 이어가도록 먼저 적습니다.
     //   못 적어도 막지 않습니다 — 그때 새로고침하면 발표 중으로 돌아갈 뿐입니다
@@ -578,8 +617,8 @@ export function RehearsalPage() {
    * 새로고침으로 들어왔으면 메모리에 남은 것이 없습니다. 그래서 행(IndexedDB)이 먼저입니다.
    *
    * 시선 · 슬라이드 · 코치 기록은 여기서 보내지 않습니다. 계약에서 기록은 발표 중 WS `metrics` 로
-   * 가고(`docs/ai/architecture.md` 1-4), 코치 기록은 서버 코치가 만듭니다. `metrics` 가 붙기 전까지
-   * 기록은 브라우저(IndexedDB)에만 남습니다.
+   * 가고(`docs/ai/architecture.md` 1-4, `useMetricsSender`), 코치 기록은 서버 코치가 만듭니다.
+   * 브라우저(IndexedDB)의 기록은 이 브라우저의 사본입니다.
    */
   const submit = async (id: string, { durationMs, endedAtIso }: Ending) => {
     if (!ticket) return;
@@ -612,6 +651,7 @@ export function RehearsalPage() {
       await markSubmitted(id).catch((err: unknown) => noteWriteFailure(id, 'ending', err));
       clearWriteFailures(id);
       clearClock(takeId);
+      clearMetrics(takeId);
       // 기록을 쌓지 않고 바꿉니다. 뒤로 가기로 리허설 화면에 돌아오지 않게 합니다
       navigate(`/takes/${takeId}/processing`, { replace: true });
     } catch (e) {
