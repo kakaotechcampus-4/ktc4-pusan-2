@@ -58,7 +58,7 @@ if N_SAMPLES < 2:
     )
 else:
     consistency_table, summary, calls = measure_consistency(
-        script_files(), cache, llms["semantic_llm"], llms["final_llm"], settings.model, N_SAMPLES
+        script_files(), cache, llms.semantic, llms.final, settings.model, N_SAMPLES
     )
     for name, n_calls in calls.items():
         print(f"{name}: 추가 호출 {n_calls}회")

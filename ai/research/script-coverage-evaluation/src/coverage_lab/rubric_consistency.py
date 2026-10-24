@@ -97,7 +97,9 @@ def sample_rubrics(
         cache_put(cache if k == 0 else caches[k], kind, norms[i].content_hash, semantic_config, sem)
     if errors:
         first = next(iter(errors.values()))
-        raise RuntimeError(f"1차 분석 호출 실패: {type(first).__name__}: {first}")
+        raise RuntimeError(
+            f"1차 분석 호출 실패: {type(first).__name__}"
+        )  # 예외 메시지에 대본이 들 수 있어 싣지 않는다
     n_calls = len(jobs)
 
     drafts, inputs = {}, {}
@@ -130,7 +132,7 @@ def sample_rubrics(
     )
     if errors:
         first = next(iter(errors.values()))
-        raise RuntimeError(f"최종 결론 호출 실패: {type(first).__name__}: {first}")
+        raise RuntimeError(f"최종 결론 호출 실패: {type(first).__name__}")
     n_calls += final_calls
 
     finals = {

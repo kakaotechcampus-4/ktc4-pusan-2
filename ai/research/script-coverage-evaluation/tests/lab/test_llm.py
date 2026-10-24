@@ -3,6 +3,7 @@
 import pytest
 
 import coverage_lab.llm as lab_llm
+from script_coverage.core import ScriptLLMs, TakeLLMs
 
 ENV_NAMES = ("OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL")
 
@@ -53,5 +54,7 @@ def test_missing_key_or_model_fails_clearly(tmp_path, monkeypatch):
 
 def test_llm_builders_return_schema_bound_runnables():
     settings = lab_llm.Settings(base_url="http://127.0.0.1:9/v1", api_key="dummy", model="m")
-    assert set(lab_llm.script_llms(settings)) == {"semantic_llm", "final_llm", "unit_llm"}
-    assert set(lab_llm.stt_llms(settings)) == {"eval_llm", "verifier_llm"}
+    script = lab_llm.script_llms(settings)
+    assert (type(script), set(vars(script))) == (ScriptLLMs, {"semantic", "final", "unit"})
+    take = lab_llm.stt_llms(settings)
+    assert (type(take), set(vars(take))) == (TakeLLMs, {"eval", "verifier"})

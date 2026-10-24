@@ -8,7 +8,7 @@ from coverage_lab import rubric_consistency as consistency
 from coverage_lab.cache import SqliteLLMCache
 from coverage_lab.llm import Settings
 from coverage_lab.rubric_consistency import sample_rubrics
-from coverage_lab.runs import run_script_analysis
+from coverage_lab.runs import run_script_analysis, run_take_evaluation
 from coverage_lab.store import (
     confirm_similar_item,
     connect,
@@ -19,11 +19,15 @@ from coverage_lab.store import (
     save_rubric,
 )
 from coverage_lab.stt_stability import check_baseline, repeat_runs
+from script_coverage.core import CoverageError, ScriptLLMs, TakeLLMs
 from script_coverage.script_analysis.schemas import SlideSemanticAnalysis
 from script_coverage.script_analysis.semantic import semantic_config_hash
 from script_coverage.shared.text import normalize_script
-from script_coverage.stt_evaluation.schemas import SlideSTT, Take
+from script_coverage.stt_evaluation.schemas import SlideSTT, Take, VerifierResult
 from tests.lab.test_store import _evaluation, _item, _rubric
+from tests.unit.fakes import DeckAwareLLM, FakeLLM
+from tests.unit.shared.slides import SLIDES
+from tests.unit.test_take_core import SaidAllLLM
 
 MODEL = "m"
 SETTINGS = Settings(base_url="http://127.0.0.1:9/v1", api_key="dummy", model=MODEL)
@@ -81,7 +85,7 @@ def test_baseline_rejects_empty_takes(conn):
 
 
 def test_repeat_runs_stops_before_any_llm_call(conn):
-    llms = {"eval_llm": NoLLM(), "verifier_llm": NoLLM()}
+    llms = TakeLLMs(eval=NoLLM(), verifier=NoLLM())
     with pytest.raises(RuntimeError, match="온전하지 않다"):
         repeat_runs(conn, [_take()], SETTINGS, {"대본_take1": []}, 3, llms=llms)
 
@@ -99,11 +103,82 @@ def test_failed_slide_loses_its_stale_rubric(conn, tmp_path):
     )
     save_rubric(conn, _rubric("대본", 1))  # 대본을 고치기 전에 만든 기준
     save_rubric(conn, _rubric("대본", 5))  # 이번 분석 대상이 아닌 슬라이드는 건드리지 않는다
-    llms = {"semantic_llm": NoLLM(), "final_llm": NoLLM(), "unit_llm": NoLLM()}
-    rubrics, stats = run_script_analysis(path, conn, SETTINGS, llms=llms)
-    assert rubrics == [] and list(stats["failed"]) == [1]
+    llms = ScriptLLMs(semantic=NoLLM(), final=NoLLM(), unit=NoLLM())
+    with pytest.raises(
+        CoverageError
+    ) as error:  # 모든 장이 실패하면 최상위 진입 함수가 요청 전체 오류를 낸다
+        run_script_analysis(path, conn, SETTINGS, llms=llms)
+    assert error.value.code == "LLM_ERROR"
     assert load_rubric(conn, "대본", 1) is None
     assert load_rubric(conn, "대본", 5) is not None
+
+
+def test_partial_failure_goes_through_core_saves_ok_slides_and_deletes_failed_ones(conn, tmp_path):
+    path = tmp_path / "대본.json"
+    path.write_text(
+        json.dumps(
+            [
+                {"slide_number": 1, "script": "안녕하세요. 발표를 시작합니다."},
+                {
+                    "slide_number": 2,
+                    "script": "",
+                },  # 읽을 내용이 없는 장은 LLM 없이 평가 기준이 만들어진다
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    save_rubric(conn, _rubric("대본", 1))
+    llms = ScriptLLMs(semantic=NoLLM(), final=NoLLM(), unit=NoLLM())
+    rubrics, stats = run_script_analysis(path, conn, SETTINGS, llms=llms)
+    assert [r.meta.slide_number for r in rubrics] == [2]
+    assert stats["failed"] == {1: "LLM_ERROR"} and stats["causes"] == {
+        1: "LLM 호출에 실패했습니다."
+    }
+    assert stats["analysis_calls"] == 1  # 호출 수는 실험 도구의 감싸개가 센다 (실패한 호출 포함)
+    assert load_rubric(conn, "대본", 1) is None
+    assert load_rubric(conn, "대본", 2) is not None
+    assert load_rubric(conn, "대본", 2).meta.script_name == "대본"
+
+
+def test_call_counts_through_run_functions_and_cache_replay(conn, tmp_path):
+    """다섯 호출 수(1차 분석 · 최종 결론 · 전달 단위 · 의미 평가 · 교차 검증)는 실제로 LLM 을 부른 횟수이고, 같은 캐시로 다시 하면 0 이다."""
+    path = tmp_path / "대본.json"
+    scripts = [{"slide_number": n, "script": SLIDES[("가상대본1", n)]} for n in (4, 6)]
+    path.write_text(json.dumps(scripts, ensure_ascii=False), encoding="utf-8")
+    script_llms = ScriptLLMs(**{s: DeckAwareLLM(s) for s in ("semantic", "final", "unit")})
+    rubrics, stats = run_script_analysis(path, conn, SETTINGS, llms=script_llms)
+    assert [r.meta.slide_number for r in rubrics] == [4, 6] and stats["failed"] == {}
+    assert (stats["analysis_calls"], stats["final_calls"], stats["unit_calls"]) == (2, 2, 2)
+    _, again = run_script_analysis(path, conn, SETTINGS, llms=script_llms)
+    assert (again["analysis_calls"], again["final_calls"], again["unit_calls"]) == (0, 0, 0)
+
+    take = Take(
+        script_name="대본",
+        take_id="대본_take1",
+        slides=[SlideSTT(slide_number=n, stt=SLIDES[("가상대본1", n)]) for n in (4, 6)],
+    )
+    # 6번 장의 의미 평가가 실패한다: 실패한 호출도 센다
+    flaky = TakeLLMs(
+        eval=SaidAllLLM(failing={6: RuntimeError("대본 원문")}),
+        verifier=FakeLLM(VerifierResult(judgments=[])),
+    )
+    evaluations, stats = run_take_evaluation(take, conn, SETTINGS, llms=flaky)
+    assert [e.slide_number for e in evaluations] == [4]
+    assert stats["failed"] == {6: "LLM_ERROR"} and stats["causes"] == {
+        6: "LLM 호출에 실패했습니다."
+    }
+    assert (stats["semantic_calls"], stats["verifier_calls"]) == (
+        2,
+        1,
+    )  # 4번 장에서 규칙과 LLM 이 어긋나 교차 검증을 1번 부른다
+    # 성공한 4번 장은 캐시에 있어 실패했던 6번 장만 다시 부른다
+    fine = TakeLLMs(eval=SaidAllLLM(), verifier=FakeLLM(VerifierResult(judgments=[])))
+    evaluations, stats = run_take_evaluation(take, conn, SETTINGS, llms=fine)
+    assert [e.slide_number for e in evaluations] == [4, 6] and stats["failed"] == {}
+    assert (stats["semantic_calls"], stats["verifier_calls"]) == (1, 1)
+    _, stats = run_take_evaluation(take, conn, SETTINGS, llms=fine)
+    assert (stats["semantic_calls"], stats["verifier_calls"]) == (0, 0)
 
 
 # ── 4. 여러 문장 저장은 한 번에 (실패하면 되돌림) ────────────
@@ -129,8 +204,9 @@ def test_failed_recompute_does_not_keep_confirmation(conn):
     save_evaluation(
         conn, _evaluation(items=[_item("R1")])
     )  # 평가 기준이 DB 에 없어 다시 계산이 실패한다
-    with pytest.raises(AttributeError):
+    with pytest.raises(CoverageError) as error:
         confirm_similar_item(conn, "대본_take1", 1, "R1", "as_script")
+    assert error.value.code == "RUBRIC_MISSING"
     conn.commit()
     assert conn.execute("SELECT count(*) FROM similar_confirmations").fetchone() == (0,)
 
