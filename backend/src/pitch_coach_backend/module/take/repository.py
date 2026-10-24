@@ -181,7 +181,8 @@ class TakeRepository:
                        & (coverage.kind == "SCRIPT_COVERAGE"))
             .where(
                 Take.pitch_id == self.get_pitch_id_of_take(take_id),
-                Take.take_number < standard_take_num
+                Take.take_number < standard_take_num,
+                Take.status == "COMPLETED",
             )
             .order_by(Take.take_number.desc())
             .limit(limit)
