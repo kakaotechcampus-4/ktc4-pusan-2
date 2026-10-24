@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
  *
  * 색은 `index.css`의 토큰만 씁니다. 새 색을 만들지 않습니다 (CLAUDE.md 7번).
  * 무대(`stage.css`)와 달리 여기는 평범한 카드·폼이라 Tailwind로 갑니다.
+ * 겉모양은 리포트 · 홈과 같은 진한 테두리 · 각진 모서리 · 밀린 그림자입니다 (시안 09, 공용 `Card` · `Button`).
  */
 export function ScreenFrame({
   screenNo,
@@ -45,13 +46,12 @@ export function ScreenFrame({
           <span className="text-xs text-stone">{entry}</span>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-line-strong bg-panel shadow-sm">
+        <div className="border-2 border-ink bg-panel shadow-[4px_4px_0_var(--color-line)]">
           <header className="flex flex-wrap items-center gap-2 border-b border-line px-6 py-4">
             <button
               type="button"
               onClick={onBack}
-              className="rounded-full border border-line-strong px-2.5 py-1 text-sm
-                         hover:bg-cream"
+              className="border-2 border-ink px-2.5 py-1 text-sm font-bold hover:bg-cream"
               aria-label="뒤로"
             >
               ←
@@ -72,30 +72,5 @@ export function ScreenFrame({
         </div>
       </div>
     </div>
-  );
-}
-
-/** 무대 지면 위의 버튼. 강조 하나(코랄) · 보조 하나(테두리)뿐입니다 */
-export function StageButton({
-  variant = 'ghost',
-  disabled = false,
-  onClick,
-  children,
-}: {
-  variant?: 'primary' | 'ghost';
-  disabled?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  const base =
-    'rounded-full px-5 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40';
-  const skin =
-    variant === 'primary'
-      ? 'bg-coral text-white hover:bg-coral-deep'
-      : 'border border-line-strong text-ink hover:bg-cream';
-  return (
-    <button type="button" onClick={onClick} disabled={disabled} className={`${base} ${skin}`}>
-      {children}
-    </button>
   );
 }

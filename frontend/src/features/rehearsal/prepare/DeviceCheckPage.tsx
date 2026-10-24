@@ -11,7 +11,9 @@ import { toMessage } from '@/shared/api/errorMessage';
 import { GazeSetupView } from './GazeSetupView';
 import { CheckCard } from './CheckCard';
 import { LevelBar } from '../media/LevelBar';
-import { ScreenFrame, StageButton } from './ScreenFrame';
+import { Button } from '@/shared/ui/Button';
+import { Card } from '@/shared/ui/Panel';
+import { ScreenFrame } from './ScreenFrame';
 import { ScriptModeChoice } from './ScriptModeChoice';
 import { practiceModeFor, usePrepareStore } from './prepareStore';
 import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
@@ -384,13 +386,9 @@ export function DeviceCheckPage() {
       hint={hint}
       actions={
         <>
-          <StageButton
-            variant="primary"
-            disabled={!ready}
-            onClick={() => start().catch(() => undefined)}
-          >
+          <Button disabled={!ready} onClick={() => start().catch(() => undefined)}>
             {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
-          </StageButton>
+          </Button>
         </>
       }
     >
@@ -417,9 +415,7 @@ export function DeviceCheckPage() {
 
           {/* 장치 선택과 점검 항목을 나란히 — 고른 장치의 결과가 바로 옆에서 보입니다 */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <section className="rounded-xl border border-line-strong bg-panel p-4">
-              <h2 className="text-sm font-bold">장치 선택</h2>
-
+            <Card title="장치 선택">
               <DeviceSelect
                 label="카메라"
                 value={videoId}
@@ -438,7 +434,7 @@ export function DeviceCheckPage() {
                   request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
                 }
               />
-            </section>
+            </Card>
 
             <CheckCard
               title="점검 항목"
@@ -506,7 +502,7 @@ export function DeviceCheckPage() {
 
           {/* 권한·무입력 안내. 문구는 useCameraStream이 들고 있는 것을 그대로 씁니다 —
               화면마다 새로 지으면 사용자가 뭘 해야 할지 매번 달라집니다 */}
-          <section className="rounded-xl border border-dashed border-line-strong p-4 text-xs leading-relaxed">
+          <section className="border-2 border-dashed border-line-strong p-4 text-xs leading-relaxed">
             {deviceError ? (
               <p className="font-bold text-coral">{DEVICE_ERROR_MESSAGE[deviceError]}</p>
             ) : (
@@ -520,7 +516,7 @@ export function DeviceCheckPage() {
 
             {/* 품질이 낮은 기준. AI 정책대로 막지 않습니다 — 시작 버튼은 열려 있고 다시 잡기를 권합니다 */}
             {cal.advice && (
-              <div className="mt-2 rounded-lg border border-line-strong bg-panel p-3">
+              <div className="mt-2 border border-line-strong bg-panel p-3">
                 <p className="font-bold">시선 기준이 흐릿해요 · 다시 잡기를 권해요</p>
                 <p className="mt-1 text-stone">{CALIBRATION_FAIL_MESSAGE[cal.advice]}</p>
                 <p className="mt-1 text-stone">
@@ -529,8 +525,7 @@ export function DeviceCheckPage() {
                 <button
                   type="button"
                   onClick={cal.start}
-                  className="mt-2 rounded-full border border-coral px-3 py-1 font-semibold text-coral
-                             hover:bg-coral/10"
+                  className="mt-2 border-2 border-coral px-3 py-1 font-bold text-coral hover:bg-coral/10"
                 >
                   다시 잡기
                 </button>
@@ -538,7 +533,7 @@ export function DeviceCheckPage() {
             )}
 
             {cal.status === 'FAILED' && (
-              <div className="mt-2 rounded-lg border border-coral bg-coral/10 p-3">
+              <div className="mt-2 border border-coral bg-coral/10 p-3">
                 <p className="font-bold text-coral">기준을 잡지 못했어요</p>
                 <p className="mt-1 text-stone">
                   {CALIBRATION_FAIL_MESSAGE[cal.failReason ?? 'ENGINE_ERROR']}
@@ -546,8 +541,7 @@ export function DeviceCheckPage() {
                 <button
                   type="button"
                   onClick={cal.start}
-                  className="mt-2 rounded-full bg-coral px-3 py-1 font-semibold text-white
-                             hover:bg-coral-deep"
+                  className="mt-2 border-2 border-ink bg-coral px-3 py-1 font-bold text-white hover:bg-coral-deep"
                 >
                   다시 잡기
                 </button>
@@ -600,7 +594,7 @@ function BaseVoicePanel({
 }) {
   if (status === 'DONE') {
     return (
-      <div role="status" className="rounded-lg border border-line-strong bg-cream p-3 text-sm">
+      <div role="status" className="border border-line-strong bg-cream p-3 text-sm">
         <p className="font-bold">평소 목소리를 {heardSec}초 동안 들었어요</p>
         <p className="mt-1 text-xs leading-relaxed text-stone">
           발표 중 목소리 크기를 이 기준과 비교해요. 평소보다 크거나 작게 읽었다면 다시 읽어 주세요.
@@ -610,7 +604,7 @@ function BaseVoicePanel({
   }
   if (status === 'SHORT') {
     return (
-      <div className="rounded-lg border border-line-strong bg-cream p-3">
+      <div className="border border-line-strong bg-cream p-3">
         <p role="alert" className="text-xs leading-relaxed text-stone">
           {SHORT_GUIDE[reason ?? 'BRIEF']}
         </p>
@@ -618,7 +612,7 @@ function BaseVoicePanel({
     );
   }
   return (
-    <div className="rounded-lg border border-line-strong bg-cream p-3">
+    <div className="border border-line-strong bg-cream p-3">
       <p className="text-sm leading-relaxed font-semibold">{BASE_VOICE_SENTENCES.join(' ')}</p>
       <div className="mt-3">
         <LevelBar variant="segments" meterRef={echoMeterRef} />
@@ -628,13 +622,9 @@ function BaseVoicePanel({
           <ReadStep key={step.done} index={i} current={READ_STEP_INDEX[stage]} step={step} />
         ))}
       </ol>
-      <button
-        type="button"
-        onClick={onFinish}
-        className="mt-3 h-10 w-full rounded-md bg-coral text-sm font-bold text-white hover:bg-coral-deep"
-      >
+      <Button onClick={onFinish} className="mt-3 w-full">
         다 읽었어요
-      </button>
+      </Button>
     </div>
   );
 }
@@ -704,14 +694,13 @@ function DeviceSelect({
   onChange: (deviceId: string) => void;
 }) {
   return (
-    <label className="mt-3 block">
+    <label className="block">
       <span className="text-xs text-stone">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={options.length === 0}
-        className="mt-1 w-full rounded-lg border border-line-strong bg-panel px-3 py-2 text-sm
-                   disabled:opacity-50"
+        className="mt-1 w-full border-2 border-ink bg-panel px-3 py-2 text-sm disabled:opacity-50"
       >
         {options.length === 0 ? (
           <option value="">{fallback}</option>
