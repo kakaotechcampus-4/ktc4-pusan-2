@@ -61,13 +61,14 @@ it('장수가 같아도 연결하지 않은 슬라이드 버전으로 시작하�
   expect(toPracticeCombo(store().draft, { ...CHOOSE_LATEST, slides: 2, script: 1 })).toBeNull();
 });
 
-it('이전 빈 버전에 시작한 업로드는 화면을 옮겨도 그 버전에 들어간다', () => {
+it('빈 버전에 시작한 업로드는 화면을 옮겨도 그 버전에 들어간다', () => {
   store().addSlideVersion();
+  // 파일을 기다리는 빈 버전(V2)이 있으면 새 버전을 더 만들지 않습니다 (pendingVersion)
   store().addSlideVersion();
+  expect(store().draft.slides.map((v) => v.version)).toEqual([1, 2]);
   store().select('script', 1);
   store().attachSlides({ ...uploaded, presentationVersionId: 'pv2' }, 2);
   expect(store().draft.slides.find((v) => v.version === 2)?.presentationVersionId).toBe('pv2');
-  expect(store().draft.slides.find((v) => v.version === 3)?.pageCount).toBeNull();
 });
 
 it('파싱 중에는 매핑을 바꾸거나 저장할 수 없다', () => {

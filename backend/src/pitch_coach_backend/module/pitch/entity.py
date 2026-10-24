@@ -16,6 +16,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -46,10 +47,6 @@ class Pitch(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # 제한 시간. 초 단위로 저장해 화면에서 분·초로 환산한다.
     time_limit_sec: Mapped[int] = mapped_column(Integer, nullable=False)
     presentation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    # takes 와 서로를 참조한다. use_alter 로 테이블 생성 후 FK 를 따로 걸어
-    # 순환 때문에 생성 순서가 막히는 것을 피한다.
-    # best_take_id는 추후 점수로 계산한 후,
-    # 가장 최고 점수의 take 를 best_take 로 지정할 때 사용한다.
     upper_deviation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lower_deviation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
@@ -71,6 +68,23 @@ class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(50), nullable=False)
 
+class StandardAnalyses(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+
+    __tablename__ = "standard_analyses"
+    __table_args__ = (
+        UniqueConstraint("pitch_id", "version", name="uq_standard_analyses_pitch_version"),
+    )
+
+    pitch_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    targets: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    script_used: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    excluded: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    values: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    meta: Mapped[Any] = mapped_column(JSONB, nullable=False)
+
 class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """업로드된 발표자료 파일의 한 버전. 한 번 올리면 수정하지 않는다."""
 
@@ -86,6 +100,9 @@ class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     file_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    # PDF 쪽수. 대본 장 수와 같아야 짝이다. 이 칸이 생기기 전에 올린 행은
+    # dev/backfill-presentation-page-count.py 로 채우기 전까지 비어 있다
+    page_count: Mapped[int | None] = mapped_column(Integer)
     # 사용자가 남기는 변경 메모. 없어도 된다.
     description: Mapped[str | None] = mapped_column(Text)
 
@@ -115,6 +132,10 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             "parse_status IN ('PENDING', 'DONE', 'FAILED')",
             name="ck_script_versions_parse_status",
         ),
+        CheckConstraint(
+            "rubric_status IN ('PENDING', 'DONE', 'PARTIAL', 'FAILED')",
+            name="ck_script_versions_rubric_status",
+        ),
     )
 
     pitch_id: Mapped[uuid.UUID] = mapped_column(
@@ -137,8 +158,17 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     segmented: Mapped[bool | None] = mapped_column(Boolean)
     # STT 가 잘못 알아듣기 쉬운 고유명사·전문 용어. Deepgram keyterm 으로 넘긴다
     terms: Mapped[Any | None] = mapped_column(JSONB)
+    # AI 응답의 meta {schema_version, feature_version, model} 에 요청한 target_ms 를 더한 것.
+    # 제한 시간이 바뀌어도 다시 파싱하지 않고, 쓰는 쪽이 expected_ms 를 이 target_ms 에 대한 비율로
+    # 읽는다 (docs/ai/features/script-parser.md 12-2). meta 를 주지 않은 AI 응답이면 비어 있다
+    parse_meta: Mapped[Any | None] = mapped_column(JSONB)
     # FAILED 원인 코드 (dto.ScriptParseErrorCode). 상세 원인은 서버 로그에만 남긴다
     parse_error: Mapped[str | None] = mapped_column(String(32))
+    rubric_status: Mapped[str | None] = mapped_column(String(16))
+    rubric_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rubric_retry_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class ScriptSlide(UUIDPrimaryKeyMixin, Base):
@@ -165,3 +195,38 @@ class ScriptSlide(UUIDPrimaryKeyMixin, Base):
     # keywords  : ["키워드", ...] — 대본에 나온 표현 그대로
     highlights: Mapped[Any | None] = mapped_column(JSONB)
     keywords: Mapped[Any | None] = mapped_column(JSONB)
+    # 공백·문장부호를 뺀 글자 수와 이 장의 예상 발표 시간(ms). 코치 계획의 장별 목표 시간에 쓴다.
+    # 이 칸이 생기기 전에 파싱한 행과, 이 값을 주지 않은 AI 응답이면 비어 있다
+    script_chars: Mapped[int | None] = mapped_column(Integer)
+    expected_ms: Mapped[int | None] = mapped_column(Integer)
+    rubric: Mapped[Any | None] = mapped_column(JSONB)
+    rubric_meta: Mapped[Any | None] = mapped_column(JSONB)
+
+
+class CoachingPlan(UUIDPrimaryKeyMixin, Base):
+    """코칭 계획 (`/coach/plan` 응답) 한 건. 응답마다 한 행을 더하고 덮어쓰지 않는다.
+
+    다음 Take 를 시작할 때 바탕 값(source_take_id · script_version_id · target_ms · min_ms ·
+    max_ms)이 그때 것과 모두 같은 행 중 `requested_at` 이 가장 늦은 것을 싣는다. 그래서 늦게 온
+    옛 응답이 새 계획을 대신하지 못한다
+    (`docs/ai/features/coach-agent.md` 12-1 · 12-2 '계획 고르기').
+    """
+
+    __tablename__ = "coaching_plans"
+    __table_args__ = (Index("ix_coaching_plans_pitch_requested", "pitch_id", "requested_at"),)
+
+    pitch_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), nullable=False
+    )
+    # 요청에 실은 바탕 값. 외래 키로 묶지 않는다 — Take · 대본을 지워도 계획 행은 발표와 함께 남고,
+    # 이 값은 고를 때 비교하는 데만 쓴다
+    source_take_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    script_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    target_ms: Mapped[int | None] = mapped_column(Integer)
+    min_ms: Mapped[int | None] = mapped_column(Integer)
+    max_ms: Mapped[int | None] = mapped_column(Integer)
+    # BE 가 그 계획 요청을 보낸 시각. 응답을 받은 시각이 아니다
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # 응답의 {coaching_plan, fallback_reason, dropped, planner_hash}
+    payload: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSONB, nullable=False)

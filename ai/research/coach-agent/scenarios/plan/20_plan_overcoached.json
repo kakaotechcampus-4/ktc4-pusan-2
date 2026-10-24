@@ -54,52 +54,206 @@
     }
   },
   "previous_review": {
-    "issues": [
+    "overall_summary": "대본 응시가 길고 말이 빨랐지만, 말을 걸어도 나아지지 않았습니다.",
+    "dimensions": {
+      "audience_gaze": "STABLE",
+      "script_independence": "PRIORITY",
+      "pacing_rhythm": "PRIORITY",
+      "vocal_delivery": "STABLE",
+      "fluency": "STABLE",
+      "content_delivery": "NOT_EVALUABLE"
+    },
+    "improvements": [
       {
-        "rank": 1,
         "area": "GAZE",
         "slide_number": 2,
-        "burden_s": 22.0,
-        "memory": "NEW",
-        "gave_up": true
-      },
-      {
-        "rank": 2,
-        "area": "SPEED",
-        "slide_number": null,
-        "burden_s": 18.0,
-        "memory": "NEW",
-        "gave_up": true
-      },
-      {
-        "rank": 3,
-        "area": "FILLER",
-        "slide_number": null,
-        "burden_s": 9.0,
-        "memory": "NEW",
-        "gave_up": true
-      }
-    ],
-    "type_status": [
-      {
-        "area": "GAZE",
-        "status": "PRIORITY"
+        "text": "2번 장에서 문장 끝마다 고개를 들어 보세요"
       },
       {
         "area": "SPEED",
-        "status": "PRIORITY"
-      },
-      {
-        "area": "FILLER",
-        "status": "STABLE"
+        "slide_number": null,
+        "text": "말 속도를 조금 낮춰 보세요"
       }
     ],
-    "summary": {
-      "interventions": 14,
-      "effective_rate": 0.14
-    }
+    "mission_results": []
   },
   "plan_expect": {
     "budget_set": true
+  },
+  "previous_take_result": {
+    "interventions": [
+      {
+        "intervention_id": "iv-20000",
+        "t_ms": 20000,
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "instruction": "LOOK_AT_CAMERA",
+        "message": "청중을 조금 더 바라보세요",
+        "outcome": "EFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-31000",
+        "t_ms": 31000,
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "instruction": "LOOK_AT_CAMERA",
+        "message": "청중을 조금 더 바라보세요",
+        "outcome": "EFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-42000",
+        "t_ms": 42000,
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "instruction": "LOOK_AT_CAMERA",
+        "message": "청중을 조금 더 바라보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-53000",
+        "t_ms": 53000,
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "instruction": "LOOK_AT_CAMERA",
+        "message": "청중을 조금 더 바라보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-64000",
+        "t_ms": 64000,
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "instruction": "LOOK_AT_CAMERA",
+        "message": "청중을 조금 더 바라보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-75000",
+        "t_ms": 75000,
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "instruction": "LOOK_AT_CAMERA",
+        "message": "청중을 조금 더 바라보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-86000",
+        "t_ms": 86000,
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "instruction": "LOOK_AT_CAMERA",
+        "message": "청중을 조금 더 바라보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-97000",
+        "t_ms": 97000,
+        "area": "SPEED",
+        "issue_type": "PACE_FAST",
+        "instruction": "SLOW_DOWN",
+        "message": "조금 천천히 말해 보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-108000",
+        "t_ms": 108000,
+        "area": "SPEED",
+        "issue_type": "PACE_FAST",
+        "instruction": "SLOW_DOWN",
+        "message": "조금 천천히 말해 보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-119000",
+        "t_ms": 119000,
+        "area": "SPEED",
+        "issue_type": "PACE_FAST",
+        "instruction": "SLOW_DOWN",
+        "message": "조금 천천히 말해 보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-130000",
+        "t_ms": 130000,
+        "area": "SPEED",
+        "issue_type": "PACE_FAST",
+        "instruction": "SLOW_DOWN",
+        "message": "조금 천천히 말해 보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-141000",
+        "t_ms": 141000,
+        "area": "FILLER",
+        "issue_type": "FILLER_FREQUENT",
+        "instruction": "REDUCE_FILLER",
+        "message": "군더더기를 줄여 보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-152000",
+        "t_ms": 152000,
+        "area": "FILLER",
+        "issue_type": "FILLER_FREQUENT",
+        "instruction": "REDUCE_FILLER",
+        "message": "군더더기를 줄여 보세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-163000",
+        "t_ms": 163000,
+        "area": "FILLER",
+        "issue_type": "FILLER_FREQUENT",
+        "instruction": "REDUCE_FILLER",
+        "message": "군더더기를 줄여 보세요",
+        "outcome": "INEFFECTIVE"
+      }
+    ],
+    "gave_up": [
+      {
+        "issue_type": "GAZE_ON_SCRIPT",
+        "slide_number": 2
+      },
+      {
+        "issue_type": "PACE_FAST",
+        "slide_number": null
+      },
+      {
+        "issue_type": "FILLER_FREQUENT",
+        "slide_number": null
+      }
+    ],
+    "problem_segments": [
+      {
+        "area": "GAZE",
+        "issue_type": "GAZE_ON_SCRIPT",
+        "slide_number": 2,
+        "start_ms": 40000,
+        "end_ms": 62000,
+        "mean_severity": 0.8,
+        "reliable": true,
+        "coached": true
+      },
+      {
+        "area": "SPEED",
+        "issue_type": "PACE_FAST",
+        "slide_number": null,
+        "start_ms": 70000,
+        "end_ms": 88000,
+        "mean_severity": 0.6,
+        "reliable": true,
+        "coached": true
+      },
+      {
+        "area": "FILLER",
+        "issue_type": "FILLER_FREQUENT",
+        "slide_number": null,
+        "start_ms": 100000,
+        "end_ms": 109000,
+        "mean_severity": 0.5,
+        "reliable": true,
+        "coached": true
+      }
+    ]
   }
 }

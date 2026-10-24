@@ -1,0 +1,22 @@
+{
+  "t_ms": 45000,
+  "since_ms": 44000,
+  "words_since_ms": 36300,
+  "stt_status": "ok",
+  "stt_ok_since_ms": 0,
+  "utterance_ends": [],
+  "words": [
+    {"word": "음", "start_ms": 30000, "end_ms": 30300},
+    {"word": "그니까", "start_ms": 31000, "end_ms": 31400},
+    {"word": "발표", "start_ms": 32000, "end_ms": 32500},
+    {"word": "그", "start_ms": 33500, "end_ms": 33600},
+    {"word": "그", "start_ms": 33650, "end_ms": 33750},
+    {"word": "사람이", "start_ms": 34400, "end_ms": 34800},
+    {"word": "어", "start_ms": 36000, "end_ms": 36300},
+    {"word": "좀", "start_ms": 37000, "end_ms": 37200},
+    {"word": "좀", "start_ms": 37250, "end_ms": 37450},
+    {"word": "음", "start_ms": 40000, "end_ms": 40300},
+    {"word": "어", "start_ms": 43000, "end_ms": 43300},
+    {"word": "분기", "start_ms": 44000, "end_ms": 44400}
+  ]
+}

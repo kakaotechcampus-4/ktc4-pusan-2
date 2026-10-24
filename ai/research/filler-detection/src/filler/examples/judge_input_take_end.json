@@ -1,0 +1,13 @@
+{
+  "t_ms": 52300,
+  "since_ms": 52000,
+  "words_since_ms": 50800,
+  "stt_status": "ok",
+  "stt_ok_since_ms": 0,
+  "utterance_ends": [],
+  "take_end_ms": 52300,
+  "words": [
+    {"word": "매출은", "start_ms": 50300, "end_ms": 50800},
+    {"word": "그", "start_ms": 51500, "end_ms": 51650}
+  ]
+}

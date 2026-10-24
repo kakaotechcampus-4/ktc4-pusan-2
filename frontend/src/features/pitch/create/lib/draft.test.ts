@@ -3,7 +3,10 @@ import {
   CHOOSE_LATEST,
   countChars,
   estimateDurationMs,
+  formatAllowedRange,
   formatEstimate,
+  formatTimeLimit,
+  infoReady,
   toPracticeCombo,
   type PitchDraft,
 } from './draft';
@@ -71,5 +74,25 @@ describe('장치 점검에 넘길 연습 조합 — BE Take 에 박히는 값', 
   it('서버에 올리지 않은 대본이면 Take 를 만들 수 없다', () => {
     const local = { ...draft, scripts: [{ ...draft.scripts[0]!, remote: null }] };
     expect(toPracticeCombo(local, CHOOSE_LATEST)).toBeNull();
+  });
+});
+
+describe('허용오차를 모를 때 (수정 화면)', () => {
+  const form = {
+    title: '발표',
+    presentationDate: '',
+    timeLimitSec: 300,
+    lowerToleranceSec: null,
+    upperToleranceSec: 60,
+  };
+
+  it('하나라도 모르면 저장할 수 없다 — 서버의 원래 값을 덮어쓰지 않게', () => {
+    expect(infoReady(form)).toBe(false);
+    expect(infoReady({ ...form, lowerToleranceSec: 0 })).toBe(true);
+  });
+
+  it('정보 줄과 허용 범위는 모른다고 적는다', () => {
+    expect(formatTimeLimit(300, null, 60)).toBe('5분 (허용오차 확인 필요)');
+    expect(formatAllowedRange(300, null, 60)).toBe('허용오차를 정해 주세요');
   });
 });

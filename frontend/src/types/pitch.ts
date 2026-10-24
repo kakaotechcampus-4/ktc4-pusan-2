@@ -19,3 +19,21 @@ export interface PitchSavedResponse {
   message: string;
   pitch_id: string;
 }
+
+/** 버전 하나 — id 와 갈래 안의 번호 (BE `VersionDTO`) */
+export interface VersionRef {
+  id: string;
+  version: number;
+}
+
+/**
+ * GET /api/pitches/{pitch_id}/resources — 피치의 버전 목록 (BE `VersionSummaryDTO`).
+ * 갈래마다 id · 번호만 옵니다. 내용은 버전마다 따로 읽습니다.
+ */
+export interface PitchResources {
+  pitch_id: string;
+  /** 발표자료에는 BE 가 센 쪽수가 붙습니다 (#298). 옛 발표자료는 null, #298 전의 BE 는 주지 않습니다 */
+  presentation_versions: (VersionRef & { page_count?: number | null })[];
+  script_versions: VersionRef[];
+  evaluation_versions: VersionRef[];
+}

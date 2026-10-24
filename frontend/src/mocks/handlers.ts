@@ -5,10 +5,13 @@ import { sttHandlers } from './stt';
 import { presentationHandlers } from './presentation';
 import { standardsHandlers } from './standards';
 import { pitchHandlers } from './pitch';
+import { pitchEditHandlers } from './pitchEdit';
 import { scriptHandlers } from './scripts';
-import type { TakeCreated } from '@/types/take';
+import { takeHistoryHandlers } from './takeHistory';
+import type { TakeCreated, TakeCreateRequest } from '@/types/take';
 import type { ScriptDetail } from '@/types/script';
-import type { AnalysisStatus, HomeResponse, PrepareResponse, TakeReport } from '@/types/api';
+import { reportHandlers } from './report';
+import type { HomeResponse, PrepareResponse } from '@/types/api';
 
 /**
  * 인터페이스 명세 8-4의 JSON을 그대로 옮긴 목.
@@ -25,7 +28,6 @@ import type { AnalysisStatus, HomeResponse, PrepareResponse, TakeReport } from '
 //   .env 의 VITE_API_BASE 가 채워져 있으면 요청이 http://localhost:8000/api/... 로
 //   나갑니다. 상대 경로 핸들러는 **같은 origin 요청만** 잡으므로 그때 목이 통째로
 //   새고, 화면에는 네트워크 오류만 뜹니다. mocks/auth.ts 가 같은 이유로 그렇게 씁니다.
-const ENGINE = 'face-landmarker@0.10.3+mobileone-s0@1.0+vote-v1';
 
 // 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
 // prettier-ignore
@@ -52,95 +54,47 @@ const home: HomeResponse = {
   inProgressTake: null,
 };
 
-// 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
-// prettier-ignore
-const report: TakeReport = {
-  takeId: 't3', takeNumber: 3, mode: 'COACHING', scriptMode: 'HIGHLIGHT',
-  headline: '이번 Take, 대본에서 한 발 떨어졌어요',
-  summary: {
-    durationMs: 598_000, timeLimitMs: 600_000, overTimeMs: -2_000,
-    averageWpm:            { value: 156,  delta: -12,   direction: 'IMPROVED' },
-    fillerCount:           { value: 6,    delta: -3,    direction: 'IMPROVED' },
-    scriptSimilarity:      { value: 0.62, delta: -0.14, direction: 'IMPROVED' },
-    scriptDependencyCount: { value: 1,    delta: -2,    direction: 'IMPROVED' },
-    overallConfidence: 0.88,
-  },
-  gaze: {
-    excluded: false, excludedReason: null,
-    engineVersion: ENGINE, engineProfile: 'NORMAL', decisionIntervalMs: 1000,
-    trackedMs: 560_000, measuredMs: 526_000, uncertainMs: 34_000,
-    cameraMs: 352_000, bottomMs: 174_000,
-    uncertainRatio: 0.061, coverageRatio: 0.88, reliability: 'HIGH',
-  },
-  findings: [{
-    id: 'f1', type: 'SCRIPT_DEPENDENCY', polarity: 'ISSUE',
-    slideNumber: 6, startMs: 252_000, endMs: 294_000, severity: 2,
-    title: '대본 의존도가 높았습니다',
-    message: '이 구간의 발화가 준비한 대본과 거의 같았고, 화면을 오래 바라봤습니다.',
-    evidence: [
-      { label: '대본 일치율', value: '91%' },
-      { label: '화면 응시 비율', value: '71%' },
-      { label: '말하기 속도', value: '178 WPM' },
-    ],
-  }],
-  missions: [{ id: 'm1', priority: 1, slideNumber: 6, description: 'Slide 6을 Keyword Mode로 설명하기', result: null }],
-  hasRecording: false,
-};
-
-/** 16 측정 제외 — 0이 아니라 null. 이 케이스를 목에 꼭 남겨두세요. */
-// 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
-// prettier-ignore
-const reportExcluded: TakeReport = {
-  ...report,
-  takeId: 't2', takeNumber: 2,
-  gaze: {
-    excluded: true, excludedReason: 'ENGINE_UNAVAILABLE',
-    engineVersion: ENGINE, engineProfile: 'OFF', decisionIntervalMs: 1000,
-    trackedMs: null, measuredMs: null, uncertainMs: null,
-    cameraMs: null, bottomMs: null,
-    uncertainRatio: null, coverageRatio: null, reliability: null,
-  },
-};
-
-// 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
-// prettier-ignore
-const analyzing: AnalysisStatus = {
-  status: 'ANALYZING',
-  steps: [
-    { name: 'UPLOAD',  status: 'COMPLETED' },
-    { name: 'STT',     status: 'RUNNING' },
-    { name: 'CONTENT', status: 'PENDING' },
-    { name: 'REPORT',  status: 'PENDING' },
-  ],
-  estimatedRemainSec: 45,
+/**
+ * 장치 점검 준비 정보 — BE #296 `PrepareDTO` 모양 그대로(쪽수 · 장 수는 #298). 홈의 p1과 같은 Pitch입니다 —
+ * 화면마다 제목·버전·Take 번호가 어긋나면 시연에서 바로 티가 납니다.
+ */
+const prepare: PrepareResponse = {
+  pitch_id: 'p1',
+  title: '캡스톤 최종 발표',
+  time_limit_sec: 600,
+  presentation: { id: 'pv2', version: 2, page_count: 12 },
+  script: { id: 'sv2', version: 2, slide_count: 12 },
+  newer_script: null,
+  next_take_number: 4,
+  default_script_mode: 'HIGHLIGHT',
 };
 
 /**
- * 준비 화면(P4)이 쓰는 값. 홈의 p1과 같은 Pitch입니다 —
- * 화면마다 제목·버전·Take 번호가 어긋나면 시연에서 바로 티가 납니다.
+ * 준비 정보가 다른 상태도 눈으로 보려고, 주소의 피치 id 로 고릅니다.
+ *   /pitch/prep-newer/device-check     새 대본(v3)이 아직 나누는 중 — 옛 대본으로 연습한다는 안내
+ *   /pitch/prep-no-script/device-check 쓸 수 있는 대본이 없음 — 시작을 막음
+ *   /pitch/prep-mismatch/device-check  쪽수(10)와 장 수(12)가 다름 — 시작을 막음
  */
-// 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
-// prettier-ignore
-const prepare: PrepareResponse = {
-  pitchId: 'p1', title: '캡스톤 최종 발표',
-  presentationVersion: 2, scriptVersion: 2, timeLimitSec: 600,
-  presentationVersionId: 'pv2', scriptVersionId: 'sv2',
-  nextTakeNumber: 4,
-  criteria: {
-    version: 1, readOnly: true,
-    items: [
-      { id: 'c1', order: 1, text: '시장 규모 숫자를 반드시 말하고 출처도 덧붙인다' },
-      { id: 'c2', order: 2, text: '대본을 보지 않고 도입부를 말한다' },
-      { id: 'c3', order: 3, text: '군더더기 표현 5회 이하' },
-      { id: 'c4', order: 4, text: '청중 절반 이상 보기' },
-      { id: 'c5', order: 5, text: '마지막 슬라이드에서 목표 금액을 분명하게 말한다' },
-    ],
-  },
-  defaultScriptMode: 'HIGHLIGHT',
-};
+function prepareFor(pitchId: string): PrepareResponse {
+  const base = { ...prepare, pitch_id: pitchId };
+  switch (pitchId) {
+    case 'prep-newer':
+      return {
+        ...base,
+        newer_script: { id: 'sv3', version: 3, parse_status: 'PENDING', error_code: null },
+      };
+    case 'prep-no-script':
+      return { ...base, script: null };
+    case 'prep-mismatch':
+      return { ...base, presentation: { id: 'pv2', version: 2, page_count: 10 } };
+    default:
+      return base;
+  }
+}
 
-/** 발급한 Take 수. BE 처럼 멱등키가 없어 부를 때마다 새로 만듭니다 */
+/** 발급한 Take 수와, 세션 id(멱등 키)별로 처음 만든 Take */
 let issuedTakes = 0;
+const takesBySession = new Map<string, TakeCreated>();
 
 /**
  * 목 데모 대본 — 슬라이드당 한 문단. 아래 `sampleScript` 가 BE 모양으로 묶어 리허설에 줍니다.
@@ -181,8 +135,8 @@ const SLIDE_KEYWORDS = [
  * 피치 생성을 거치지 않아도 대본이 보이게, BE 의 `GET /scripts/{id}` 모양으로 둡니다.
  */
 const sampleScript: ScriptDetail = {
-  script_version_id: prepare.scriptVersionId,
-  version: prepare.scriptVersion,
+  script_version_id: prepare.script!.id,
+  version: prepare.script!.version,
   original_content: SCRIPT_PARAGRAPHS.map((p, i) => `슬라이드 ${i + 1}\n${p}`).join('\n'),
   parse_status: 'DONE',
   segmented: true,
@@ -198,10 +152,13 @@ const sampleScript: ScriptDetail = {
 
 export const handlers = [
   // ★ 대본 목(scriptHandlers)보다 먼저 와야 합니다 — 그쪽은 모르는 id 에 404 를 돌려줍니다
-  http.get(`*/api/pitches/:pitchId/scripts/${prepare.scriptVersionId}`, () =>
+  http.get(`*/api/pitches/:pitchId/scripts/${prepare.script!.id}`, () =>
     HttpResponse.json(sampleScript),
   ),
+  // 수정 화면 목 — 업로드 · 대본 목보다 먼저 와야 합니다 (그쪽은 모르는 id 에 404)
+  ...pitchEditHandlers,
   ...homeHandlers,
+  ...takeHistoryHandlers,
   ...authHandlers,
   ...sttHandlers,
   ...presentationHandlers,
@@ -210,14 +167,21 @@ export const handlers = [
   ...scriptHandlers,
   http.get('*/api/home', () => HttpResponse.json(home)),
 
-  http.get('*/api/takes/:takeId/report', ({ params }) =>
-    HttpResponse.json(params.takeId === 't2' ? reportExcluded : report),
+  ...reportHandlers,
+
+  // BE 모양 그대로 — PUT /pitches/{id}/takes/{take_id} 에 TakeUpdateRequestDTO, 응답 {message, take_id}.
+  // 발표 종료가 시작 · 종료 시각을 여기로 적습니다 (옛 /complete 는 BE 가 만들지 않기로 함, #134)
+  http.put('*/api/pitches/:pitchId/takes/:takeId', ({ params }) =>
+    HttpResponse.json({ message: 'Take updated successfully', take_id: String(params.takeId) }),
   ),
 
-  http.get('*/api/takes/:takeId/status', () => HttpResponse.json(analyzing)),
-
-  http.post('*/api/takes/:takeId/complete', async ({ params }) =>
-    HttpResponse.json({ takeId: params.takeId, status: 'ANALYZING' }, { status: 202 }),
+  // BE 모양 그대로 — 창을 닫았다 다시 연 Take 를 실패로 끝냅니다. 응답 {message, take_id, status}
+  http.post('*/api/pitches/:pitchId/takes/:takeId/abandon', ({ params }) =>
+    HttpResponse.json({
+      message: 'Take abandoned',
+      take_id: String(params.takeId),
+      status: 'FAILED',
+    }),
   ),
 
   // BE 모양 그대로 — POST /pitches/{id}/takes/{take_id}/calibration, 응답 {message, calibration_id}
@@ -226,17 +190,24 @@ export const handlers = [
   ),
 
   http.get('*/api/pitches/:pitchId/prepare', ({ params }) =>
-    HttpResponse.json({ ...prepare, pitchId: String(params.pitchId) }),
+    HttpResponse.json(prepareFor(String(params.pitchId))),
   ),
 
   // ★ Take는 여기서만 생깁니다 (CLAUDE.md 8번). 홈·리포트의 'Take N 시작'은 이동만 합니다.
-  //   BE 모양 그대로입니다 — POST /pitches/{id}/takes/ 에 TakeInitRequestDTO, 응답은 {message, take_id}
+  //   BE 모양 그대로입니다 — POST /pitches/{id}/takes/ 에 TakeInitRequestDTO, 응답은 {message, take_id, take_number}.
+  //   BE 처럼 같은 client_session_id 로 다시 오면 새로 만들지 않고 처음 Take 를 돌려줍니다 (#296)
   http.post('*/api/pitches/:pitchId/takes/', async ({ request }) => {
-    // 본문은 BE 와 같은 모양(TakeCreateRequest)이어야 합니다 — 목은 값을 쓰지 않습니다
-    await request.json();
-    const takeId = `t${prepare.nextTakeNumber + issuedTakes}`;
+    const body = (await request.json()) as TakeCreateRequest;
+    const again = body.client_session_id ? takesBySession.get(body.client_session_id) : undefined;
+    if (again) return HttpResponse.json(again);
+    const takeNumber = prepare.next_take_number + issuedTakes;
     issuedTakes += 1;
-    const res: TakeCreated = { message: 'Take created successfully', take_id: takeId };
+    const res: TakeCreated = {
+      message: 'Take created successfully',
+      take_id: `t${takeNumber}`,
+      take_number: takeNumber,
+    };
+    if (body.client_session_id) takesBySession.set(body.client_session_id, res);
     return HttpResponse.json(res);
   }),
 

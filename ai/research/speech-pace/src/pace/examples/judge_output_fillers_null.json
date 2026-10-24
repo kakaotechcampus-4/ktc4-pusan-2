@@ -1,0 +1,26 @@
+[
+  {
+    "evaluator": "pace",
+    "area": "SPEED",
+    "t_ms": 52000,
+    "counted_until_ms": 52000,
+    "words_counted_until_ms": 50200,
+    "criteria_version": "pace-1.0+b24c6ce0efd4",
+    "measurable": false,
+    "state": "UNKNOWN",
+    "metrics": {
+      "cpm": null,
+      "cpm_short": null,
+      "speak_ms": null
+    },
+    "tally": [
+      {
+        "t_ms": 51000,
+        "values": {
+          "total_ms": 1000
+        }
+      }
+    ],
+    "issues": []
+  }
+]

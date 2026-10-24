@@ -4,6 +4,8 @@
 
 원본: [archive/workspaces/seojin-lee/evaluation-criteria/v1/local/evaluation_criteria_analysis.ipynb](../../archive/workspaces/seojin-lee/evaluation-criteria/v1/local/evaluation_criteria_analysis.ipynb) (노트북 → 모듈로 옮김)
 
+설계(목표 계약 · 처리 · 배포): [`docs/ai/features/evaluation-criteria.md`](../../../docs/ai/features/evaluation-criteria.md)
+
 ```
 평가 기준 문장 ──▶ LLM (SYSTEM_PROMPT + with_structured_output(EvaluationCriteriaAnalysis))
                     │

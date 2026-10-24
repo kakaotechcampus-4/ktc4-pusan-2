@@ -18,7 +18,8 @@ AI 실패는 FAILED 로 저장한다. 결과 저장이 실패하면(값 문제 �
 """
 
 import logging
-from collections.abc import Callable
+import uuid
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -37,15 +38,20 @@ logger = logging.getLogger(__name__)
 
 class ScriptParseRunner:
     def __init__(
-        self, parser: ScriptParser, session_factory: Callable[[], Session] = SessionLocal
+        self,
+        parser: ScriptParser,
+        session_factory: Callable[[], Session] = SessionLocal,
+        on_parsed: Callable[[uuid.UUID], Awaitable[None]] | None = None,
     ) -> None:
         self._parser = parser
         self._session_factory = session_factory
+        # 파싱 결과를 저장한 뒤 부른다 — 다음 Take 의 코칭 계획을 요청한다 (coach-agent.md 5-1)
+        self._on_parsed = on_parsed
 
     async def run(self, ticket: ParseTicket) -> None:
         script_id = ticket.script_version_id
         try:
-            parsed = await self._parser.parse(ticket.script_text)
+            parsed = await self._parser.parse(ticket.script_text, ticket.target_ms)
         except ScriptParseError as exc:
             # 대본 원문은 로그에 남기지 않는다 (사용자 콘텐츠)
             logger.warning("대본 파싱 실패 script_version_id=%s: %s", script_id, exc)
@@ -70,6 +76,13 @@ class ScriptParseRunner:
         if not saved:
             # 그 사이 재시도가 새 작업을 시작했거나 이미 끝난 행이다. 새 작업의 결과를 지킨다
             logger.info("지난 대본 파싱 작업의 결과를 버림 script_version_id=%s", script_id)
+            return
+        if self._on_parsed is not None and ticket.pitch_id is not None:
+            try:
+                await self._on_parsed(ticket.pitch_id)
+            except Exception:
+                # 계획이 없어도 코칭은 돈다. 파싱 결과는 이미 저장했다
+                logger.exception("대본 파싱 뒤 코칭 계획 요청 실패 pitch=%s", ticket.pitch_id)
 
     async def _save_failure(self, ticket: ParseTicket, code: ScriptParseErrorCode) -> None:
         try:

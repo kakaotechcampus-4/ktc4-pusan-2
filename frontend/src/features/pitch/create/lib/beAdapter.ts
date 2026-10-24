@@ -1,8 +1,9 @@
+import type { HomePitch } from '@/types/home';
 import type { PitchRequest, PitchSavedResponse } from '@/types/pitch';
 import type { UploadPresentationResponse } from '@/types/presentation';
 import type { ScriptCreated, ScriptDetail } from '@/types/script';
-import type { StandardsPosted } from '@/types/standards';
-import type { InfoForm } from './draft';
+import type { EvaluationDetail, StandardsPosted } from '@/types/standards';
+import type { InfoForm, KnownInfo } from './draft';
 
 /**
  * BE 응답 ↔ 피치 생성 화면. **옮기는 규칙은 이 파일에만 둡니다.**
@@ -22,8 +23,11 @@ import type { InfoForm } from './draft';
 /* 피치 — POST /pitches/add · PATCH /pitches/update/{id}                 */
 /* ------------------------------------------------------------------ */
 
-/** 발표정보 화면 값 → `PitchSaveRequestDTO`. 날짜를 안 골랐으면 null 입니다 (BE `date | None`) */
-export function toPitchRequest(form: InfoForm): PitchRequest {
+/**
+ * 발표정보 화면 값 → `PitchSaveRequestDTO`. 날짜를 안 골랐으면 null 입니다 (BE `date | None`).
+ * 허용오차를 모르는 값(`infoReady` 가 false)은 받지 않습니다 — BE 는 받은 값으로 덮어씁니다.
+ */
+export function toPitchRequest(form: KnownInfo): PitchRequest {
   return {
     title: form.title.trim(),
     time_limit_sec: form.timeLimitSec,
@@ -43,6 +47,8 @@ export const fromPitchSaved = (res: PitchSavedResponse): string => res.pitch_id;
 export interface UploadedFile {
   fileUrl: string;
   presentationVersionId: string;
+  /** BE 가 센 쪽수 (#298). 모르면 null — 그때만 FE 가 PDF 를 열어 셉니다 */
+  pageCount: number | null;
 }
 
 /** 컨트롤러가 `{"message", "presentation": {...}}` 로 감싸 돌려줍니다 */
@@ -50,6 +56,7 @@ export function fromUploadedPresentation(res: UploadPresentationResponse): Uploa
   return {
     fileUrl: res.presentation.file_url,
     presentationVersionId: res.presentation.presentation_version_id,
+    pageCount: res.presentation.page_count ?? null,
   };
 }
 
@@ -64,14 +71,13 @@ export interface ParsedStandards {
 }
 
 /**
- * 나눈 결과. BE 가 아직 나누지 못해 결과 자리가 비어 오면 null 입니다.
+ * 나눈 결과.
  *
  * ★ 컨트롤러가 결과(`StandardTextResponseDTO`)를 `pitch_id` 키 **안에** 감싸 돌려줍니다.
  *   BE 가 감싸기를 풀면 여기 한 줄만 바꾸면 됩니다.
  */
-export function fromStandardsPosted(res: StandardsPosted): ParsedStandards | null {
+export function fromStandardsPosted(res: StandardsPosted): ParsedStandards {
   const result = res.pitch_id;
-  if (!result) return null;
   return {
     standards: result.standards.map((s) => s.standard),
     exceptText: result.except_standard ?? null,
@@ -133,4 +139,29 @@ export function fromScriptDetail(detail: ScriptDetail): ScriptProgress {
   if (detail.parse_status === 'PENDING') return { status: 'pending' };
   if (detail.parse_status === 'FAILED') return { status: 'failed', errorCode: detail.error_code };
   return { status: 'done', blocks: toBlocks(detail.slides), segmented: detail.segmented };
+}
+
+/* ------------------------------------------------------------------ */
+/* 수정 화면 불러오기 — GET /pitches · /resources · 버전마다 상세          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 목록 한 항목 → 발표정보. 피치 하나를 읽는 API 가 없어 목록(`PitchListItemDTO`)에서 찾습니다.
+ *
+ * ★ 목록에는 허용오차가 없습니다. 모른다는 뜻으로 null 을 둡니다 — 0 으로 채우면 저장할 때
+ *   서버의 원래 값을 덮어씁니다 (`infoReady`). BE 에 `GET /pitches/{id}` 를 요청해 두었습니다.
+ */
+export function fromPitchListItem(item: HomePitch): InfoForm {
+  return {
+    title: item.pitch_title,
+    presentationDate: item.presentation_date ?? '',
+    timeLimitSec: item.pitch_time,
+    lowerToleranceSec: null,
+    upperToleranceSec: null,
+  };
+}
+
+/** 저장된 평가기준 한 버전 → 문장 목록. 저장한 순서(`order`)대로 둡니다 */
+export function fromEvaluation(detail: EvaluationDetail): string[] {
+  return [...detail.evaluations].sort((a, b) => a.order - b.order).map((e) => e.standard);
 }

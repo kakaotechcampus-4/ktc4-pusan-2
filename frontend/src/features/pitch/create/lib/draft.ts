@@ -42,21 +42,42 @@ export function formatDuration(sec: number): string {
   return `${minutes}분 ${seconds}초`;
 }
 
-/** 정보 줄의 "5분 (−30초 / +1분)". 오차가 둘 다 0 이면 괄호를 붙이지 않습니다 */
-export function formatTimeLimit(limitSec: number, lowerSec: number, upperSec: number): string {
+/**
+ * 정보 줄의 "5분 (−30초 / +1분)". 오차가 둘 다 0 이면 괄호를 붙이지 않습니다.
+ * 오차를 모르면(수정 화면 — `PitchDraft.lowerToleranceSec`) 모른다고 적습니다.
+ */
+export function formatTimeLimit(
+  limitSec: number,
+  lowerSec: number | null,
+  upperSec: number | null,
+): string {
   const limit = formatDuration(limitSec);
+  if (lowerSec === null || upperSec === null) return `${limit} (허용오차 확인 필요)`;
   if (lowerSec === 0 && upperSec === 0) return limit;
   return `${limit} (−${formatDuration(lowerSec)} / +${formatDuration(upperSec)})`;
 }
 
-/** "4분 30초 ~ 6분". 하한이 목표보다 길면 0 에서 멈춥니다 */
-export function formatAllowedRange(limitSec: number, lowerSec: number, upperSec: number): string {
+/** "4분 30초 ~ 6분". 하한이 목표보다 길면 0 에서 멈춥니다. 오차를 모르면 범위도 모릅니다 */
+export function formatAllowedRange(
+  limitSec: number,
+  lowerSec: number | null,
+  upperSec: number | null,
+): string {
+  if (lowerSec === null || upperSec === null) return '허용오차를 정해 주세요';
   const from = Math.max(0, limitSec - lowerSec);
   return `${formatDuration(from)} ~ ${formatDuration(limitSec + upperSec)}`;
 }
 
-/** 목업 하단 — "기준은 최대 5개까지. 적을수록 피드백이 선명해져요." */
-export const MAX_CRITERIA = 5;
+/**
+ * 대본 한 버전의 최대 글자 수. BE `MAX_SCRIPT_CHARS` 와 같습니다 (`pitch/service.py`).
+ * BE 는 공백까지 센 길이(Python `len`)로 자르므로 `scriptLength` 로 셉니다 — 화면의 "N자"(공백 제외)와 다릅니다.
+ */
+export const MAX_SCRIPT_CHARS = 50_000;
+
+/** BE 와 같은 방식의 길이. 이모지 같은 글자도 한 글자로 셉니다 (Python 은 코드포인트 단위) */
+export function scriptLength(text: string): number {
+  return [...text].length;
+}
 
 /** 업로드 제한. 목업의 "최대 40MB" */
 export const MAX_SLIDE_BYTES = 40 * 1024 * 1024;
@@ -91,15 +112,15 @@ export type UploadedSlides = Required<
  * 슬라이드 업로드 진행 상태. 버전과 따로 둡니다 — 올리는 도중에는 아직 버전에 채울 것이 없고,
  * 실패하면 버전을 만들지 않은 채로 "다시 시도"할 파일만 들고 있어야 합니다.
  *
- * `upload` 는 서버에 못 올린 것, `open` 은 올렸지만 받은 URL 로 PDF 를 못 연 것입니다
- * (깨진 파일이거나, 실서버에서 S3 CORS 가 막혀 있거나).
+ * `upload` 는 서버에 못 올린 것, `invalid` 는 서버가 PDF 를 열지 못해 거절한 것(BE #298 — 깨짐 · 암호),
+ * `open` 은 올렸지만 받은 URL 로 PDF 를 못 연 것입니다. `open` 은 BE 가 쪽수를 주지 않을 때만 납니다.
  *
  * `replace` 는 "파일 교체"로 올리는 중인 버전입니다. null 이면 빈 자리에 새로 올리는 것입니다.
  */
 export type SlideUpload =
   | { status: 'idle' }
   | { status: 'uploading'; file: File; replace: number | null }
-  | { status: 'failed'; file: File; replace: number | null; reason: 'upload' | 'open' };
+  | { status: 'failed'; file: File; replace: number | null; reason: 'upload' | 'invalid' | 'open' };
 
 /**
  * 대본을 서버에 올려 슬라이드로 나누는 진행 상태. 흐름은 `scriptParse.ts` 가 몹니다.
@@ -145,9 +166,9 @@ export interface CriteriaVersion {
   version: number;
   items: DraftCriterion[];
   /**
-   * 서버에 저장됐나. BE 는 나누면서 바로 저장하므로(`POST /standards`) 정리가 끝나면 true 입니다.
-   * "+ 새 버전"으로 만든 빈 버전만 false 이고, 그런 버전은 연습에 쓰지 않습니다.
-   * 저장한 버전은 고치지 않고, 다시 정리하면 새 버전이 됩니다.
+   * 서버에 저장됐나. BE 는 나누기만 하고 저장하지 않습니다 (#192) — 사용자가 목록을 고친 뒤
+   * "저장"을 눌러야 true 가 됩니다. 저장 안 한 버전은 연습에 쓰지 않습니다.
+   * 저장한 버전은 고치지 않고, 다시 고치려면 "수정하기"로 새 버전을 만듭니다.
    */
   saved: boolean;
   /**
@@ -156,7 +177,7 @@ export interface CriteriaVersion {
    * 손으로만 만든 버전에는 없습니다.
    */
   sourceText?: string;
-  /** 서버가 기준으로 넣지 못한 부분(`except_standard`). 5개를 넘었거나 평가할 수 없는 문장 */
+  /** 서버가 기준으로 넣지 못한 부분(`except_standard`). AI 가 평가 요소로 읽지 못한 문장 */
   exceptText?: string | null;
 }
 
@@ -165,10 +186,16 @@ export interface PitchDraft {
   /** ISO yyyy-mm-dd. 안 정했으면 빈 문자열 */
   presentationDate: string;
   timeLimitSec: number;
-  /** 목표보다 짧게 발표해도 되는 시간(초) */
-  lowerToleranceSec: number;
-  /** 목표보다 길게 발표해도 되는 시간(초) */
-  upperToleranceSec: number;
+  /**
+   * 목표보다 짧게 발표해도 되는 시간(초).
+   *
+   * **null 은 모른다는 뜻입니다.** 수정 화면은 피치를 목록 API(`GET /pitches`)에서 읽는데, 거기에
+   * 허용오차가 없습니다 (BE 에 단건 조회를 요청해 둠). 모르는 값을 0 으로 채우면 저장할 때
+   * 서버의 원래 값을 0 으로 덮어쓰므로, 사용자가 정할 때까지 저장을 막습니다 (`infoReady`).
+   */
+  lowerToleranceSec: number | null;
+  /** 목표보다 길게 발표해도 되는 시간(초). null 은 모름 — `lowerToleranceSec` 와 같습니다 */
+  upperToleranceSec: number | null;
   slides: SlideVersion[];
   scripts: ScriptVersion[];
   criteria: CriteriaVersion[];
@@ -191,12 +218,48 @@ export const infoOf = (d: PitchDraft): InfoForm => ({
 export const infoChanged = (a: InfoForm, b: InfoForm): boolean =>
   (Object.keys(a) as (keyof InfoForm)[]).some((k) => a[k] !== b[k]);
 
+/** 저장할 수 있는 발표정보 — 허용오차까지 아는 것 */
+export type KnownInfo = InfoForm & { lowerToleranceSec: number; upperToleranceSec: number };
+
+/** 허용오차를 아나. 모르면 저장하지 않습니다 — 서버의 원래 값을 덮어쓰게 됩니다 */
+export const infoReady = (form: InfoForm): form is KnownInfo =>
+  form.lowerToleranceSec !== null && form.upperToleranceSec !== null;
+
 /** 각 갈래의 **최신** 버전. 사이드바가 굵게 보여 주는 그것입니다 */
 export const latestSlides = (d: PitchDraft): SlideVersion | null => d.slides.at(-1) ?? null;
 export const latestScript = (d: PitchDraft): ScriptVersion | null => d.scripts.at(-1) ?? null;
 export const latestCriteria = (d: PitchDraft): CriteriaVersion | null => d.criteria.at(-1) ?? null;
 
 /** 저장까지 끝난 마지막 평가기준. 정리만 해 둔 버전은 연습에 들고 가지 않습니다 */
+/**
+ * 그 갈래에서 아직 저장하지 않은 버전. 없으면 null 입니다.
+ *
+ * ── 저장 안 한 버전이 있으면 새 버전을 만들지 않습니다 ─────────────────
+ * 버전은 지우지 않습니다 — Take 가 자기가 쓴 버전을 가리키므로 지난 연습 결과를 보려면 남아 있어야 합니다.
+ * 대신 빈 버전이 끝없이 쌓이지 않게, 저장 안 한 버전이 있는 동안에는 새 버전을 만들지 못하게 합니다.
+ *
+ *   평가기준  정리했거나 비어 있는데 아직 저장하지 않음
+ *   슬라이드  파일을 아직 올리지 않음 (올리면 그 자체로 저장입니다)
+ *   대본      매핑을 아직 저장하지 않음
+ */
+export function pendingVersion(draft: PitchDraft, node: DraftNode): number | null {
+  const pending = (() => {
+    switch (node) {
+      case 'criteria':
+        return draft.criteria.findLast((v) => !v.saved);
+      case 'slides':
+        return draft.slides.findLast((v) => v.pageCount === null);
+      case 'script':
+        return draft.scripts.findLast((v) => !v.saved);
+    }
+  })();
+  return pending?.version ?? null;
+}
+
+/** 저장할 평가기준 — 빈 항목은 빼고 앞뒤 공백을 걷어 냅니다 */
+export const criteriaToSave = (v: CriteriaVersion): string[] =>
+  v.items.map((i) => i.text.trim()).filter((t) => t !== '');
+
 export const latestSavedCriteria = (d: PitchDraft): CriteriaVersion | null =>
   d.criteria.findLast((v) => v.saved) ?? null;
 

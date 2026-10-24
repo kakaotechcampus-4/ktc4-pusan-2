@@ -1,40 +1,44 @@
 import { describe, expect, it } from 'vitest';
 import { buildGazePayload, ENGINE_VERSION_UNAVAILABLE } from './gazePayload';
-import type { ZoneDecision } from '@/workers/gaze.contract';
-import type { GazeZone } from '@/types/api';
+import type { GazeSampleRecord } from '@/workers/gaze.contract';
 
-const d = (tMs: number, zone: GazeZone): ZoneDecision => ({
-  tMs,
-  zone,
+const s = (t_ms: number, state: GazeSampleRecord['state']): GazeSampleRecord => ({
+  t_ms,
+  duration_ms: 1000,
+  state,
+  direction: null,
   confidence: 0.9,
-  sampleCount: 12,
+  reliability: 0.95,
+  issues: [],
+  frames: 8,
 });
 
 const base = {
   durationMs: 10_000,
-  engineVersion: 'dummy@heuristic-v0+vote-v1',
-  decisionIntervalMs: 1000,
+  engineVersion: 'gaze_v1.1.0+head_pose+reference_anchor_v1',
   excludedReason: null,
   calibration: null,
 };
 
 describe('GazePayload 조립', () => {
-  it('판정을 구간으로 묶고 시간 관계식을 만족한다', () => {
-    const decisions = [
-      d(0, 'CAMERA'),
-      d(1000, 'CAMERA'),
-      d(2000, 'CAMERA'),
-      d(3000, 'BOTTOM'),
-      d(4000, 'UNCERTAIN'),
+  it('1초 기록을 구간으로 묶고 시간 관계식을 만족한다', () => {
+    const samples = [
+      s(0, 'CAMERA'),
+      s(1000, 'CAMERA'),
+      s(2000, 'CAMERA'),
+      s(3000, 'BOTTOM'),
+      s(4000, 'UNCERTAIN'),
     ];
     const { payload, validationErrors, cameraMs, bottomMs } = buildGazePayload({
       ...base,
-      decisions,
+      samples,
     });
 
     expect(validationErrors).toHaveLength(0);
     expect(payload.excluded).toBe(false);
     expect(payload.excludedReason).toBeNull();
+    // 1초 기록의 길이는 엔진의 묶는 단위입니다
+    expect(payload.decisionIntervalMs).toBe(1000);
 
     // 연속된 CAMERA 3개가 한 구간으로
     expect(payload.segments).toHaveLength(3);
@@ -51,7 +55,7 @@ describe('GazePayload 조립', () => {
     //   excluded: true 가 그 구분을 합니다. 리포트의 null 은 서버가 만듭니다.
     const { payload, cameraMs, bottomMs } = buildGazePayload({
       ...base,
-      decisions: [d(0, 'CAMERA'), d(1000, 'CAMERA')],
+      samples: [s(0, 'CAMERA'), s(1000, 'CAMERA')],
       engineVersion: null,
       excludedReason: 'ENGINE_UNAVAILABLE',
     });
@@ -73,7 +77,7 @@ describe('GazePayload 조립', () => {
     // 시간대가 겹친 기록 — 보내면 서버가 422 로 되돌린다
     const { payload, validationErrors } = buildGazePayload({
       ...base,
-      decisions: [d(0, 'CAMERA'), d(500, 'BOTTOM')],
+      samples: [s(0, 'CAMERA'), s(500, 'BOTTOM')],
     });
 
     expect(validationErrors.length).toBeGreaterThan(0);
@@ -83,14 +87,14 @@ describe('GazePayload 조립', () => {
   });
 
   /**
-   * 판정 시각은 무대 시계라 끝내기를 누른 순간에 걸친 마지막 판정이 발표 길이를 넘습니다.
+   * 기록 시각은 무대 시계라 끝내기를 누른 순간에 걸친 마지막 기록이 발표 길이를 넘습니다.
    * 그 하나 때문에 Take 전체의 시선이 VALIDATION_FAILED 로 빠지면 안 됩니다.
    */
-  it('발표 길이를 넘는 마지막 판정은 버리고 나머지를 보낸다', () => {
+  it('발표 길이를 넘는 기록은 버리고 나머지를 보낸다', () => {
     const { payload, validationErrors } = buildGazePayload({
       ...base,
       durationMs: 3_500,
-      decisions: [d(1000, 'CAMERA'), d(2000, 'CAMERA'), d(3000, 'CAMERA')],
+      samples: [s(1000, 'CAMERA'), s(2000, 'CAMERA'), s(3000, 'CAMERA')],
     });
 
     expect(validationErrors).toHaveLength(0);
@@ -100,15 +104,15 @@ describe('GazePayload 조립', () => {
     ]);
   });
 
-  it('판정이 하나도 없어도 제외가 아니다 — 측정은 했고 결론이 없는 것', () => {
-    const { payload } = buildGazePayload({ ...base, decisions: [] });
+  it('기록이 하나도 없어도 제외가 아니다 — 측정은 했고 결론이 없는 것', () => {
+    const { payload } = buildGazePayload({ ...base, samples: [] });
     expect(payload.excluded).toBe(false);
     expect(payload.segments).toHaveLength(0);
     expect(payload.trackedMs).toBe(0);
   });
 
   it('engineProfile 은 아직 항상 NORMAL — LIGHT/OFF 임계값은 I-03 대기', () => {
-    const { payload } = buildGazePayload({ ...base, decisions: [d(0, 'CAMERA')] });
+    const { payload } = buildGazePayload({ ...base, samples: [s(0, 'CAMERA')] });
     expect(payload.engineProfile).toBe('NORMAL');
   });
 });

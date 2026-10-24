@@ -5,7 +5,7 @@ import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { useLogout } from '@/shared/api/useLogout';
 import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
-import { duration } from './homeFormat';
+import { duration, totalElapsed } from './homeFormat';
 
 const primary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-coral-deep active:translate-y-1 active:shadow-none';
@@ -26,6 +26,9 @@ export function HomePage() {
             <Link to="/" aria-current="page" className="border-b-2 border-coral py-2 font-bold">
               내 피치
             </Link>
+            <Link to="/takes" className="hover:text-coral-deep">
+              Take 기록
+            </Link>
             <button
               type="button"
               onClick={() => setHelpOpen(true)}
@@ -33,6 +36,9 @@ export function HomePage() {
             >
               사용방법
             </button>
+            <Link to="/me" className="hover:text-coral-deep">
+              마이페이지
+            </Link>
             <button
               disabled={logout.isPending}
               onClick={() => logout.mutate()}
@@ -106,14 +112,7 @@ export function HomePage() {
                 <div className="p-5">
                   <p className="text-xs text-stone">누적 발표 시간</p>
                   <p className="mt-3 flex items-center gap-3 text-sm font-bold">
-                    {duration(
-                      data.pitches.reduce(
-                        (total, pitch) =>
-                          total +
-                          pitch.takes.reduce((sum, take) => sum + (take.take_elapsed ?? 0), 0),
-                        0,
-                      ),
-                    )}
+                    {duration(totalElapsed(data.pitches.flatMap((pitch) => pitch.takes)))}
                   </p>
                 </div>
               </div>

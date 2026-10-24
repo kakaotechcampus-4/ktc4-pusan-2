@@ -13,6 +13,53 @@
  */
 
 import type { Ms } from '@/types/api';
+import type { GazeSampleRecord } from '@/workers/gaze.contract';
+import type { VoiceRecord } from '../media/voiceRecord';
+
+// ── FE → BE (JSON) ─────────────────────────────────────────────────
+
+/**
+ * 1초마다 보내는 측정값 (`docs/ai/architecture.md` 1-4 · 6-2, BE #255).
+ *
+ *   t_ms          이 1초가 끝난 시각 (Take 시작 기준 ms). 기록의 `t_ms` 는 그 1초의 시작입니다
+ *   gaze          시선 1초 기록 — 엔진 `sampleToDict` 결과 그대로. 잴 수 없었으면 null
+ *   voice         음량 1초 기록 (`voiceRecord.ts`). 시선 기록과 같은 구간입니다
+ *   slide_number  지금 슬라이드 번호 (1부터). 모르면 null
+ *   buffered      끊긴 동안 쌓아 두었다가 다시 붙은 뒤 보내는 것만 true. 바로 보내는 것에는 붙이지
+ *                 않습니다(없으면 false). 소켓이 보낼 때 붙입니다 (`SttSocket.sendMetrics`)
+ *
+ * 받은 BE 는 1초 원자료로 저장하고(Take 결과의 재료) 실시간 코치를 부릅니다. `buffered` 인 것은
+ * 저장만 하고 코치를 부르지 않습니다 — 지난 시각으로 말을 걸지 않게 (`architecture.md` 2절).
+ * `stop` 직전에 마지막 1초 조각(1초보다 짧을 수 있음)을 한 번 더 보냅니다.
+ */
+export interface MetricsMessage {
+  type: 'metrics';
+  t_ms: Ms;
+  gaze: GazeSampleRecord | null;
+  voice: VoiceRecord | null;
+  slide_number: number | null;
+  /**
+   * CLAUDE.md 6번(`?` 대신 `| null`)의 예외입니다. 계약이 "선택 bool, 없으면 false, 몰아 보낼 때만
+   * true 로 붙인다"(`architecture.md` 1-4)라 바로 보내는 것에는 키를 붙이지 않습니다.
+   */
+  buffered?: true;
+}
+
+/**
+ * 장이 바뀌었다 (`docs/ai/architecture.md` 1-4, #324 6-4). 장 시각의 기준은 이것 하나입니다 —
+ * `metrics.slide_number` 는 참고값입니다.
+ *
+ *   slide_number  넘어온 장 (1부터)
+ *   t_ms          그 장으로 넘어온 Take 시각. 늦게 보내도 실제로 넘긴 시각입니다
+ *
+ * 보내는 때: Take 시작(첫 장, `t_ms: 0`) · 장을 넘길 때마다 · 새로고침해 이어 갈 때(이어받은 장과
+ * 그 장으로 넘어온 원래 시각). BE 는 `(take_id, t_ms)` 로 한 번만 저장합니다.
+ */
+export interface SlideMessage {
+  type: 'slide';
+  slide_number: number;
+  t_ms: Ms;
+}
 
 /**
  * 서버가 가정하는 오디오 규격입니다. **다른 레이트를 보내면 조용히 틀립니다** —
@@ -94,13 +141,44 @@ export type SttErrorCode =
   | 'BAD_AUDIO_FRAME'
   | 'TAKE_TAKEN_OVER';
 
+/**
+ * BE 가 Take 를 끝낸 이유. `TAKE_ENDED` 에 실려 옵니다 (서버는 사용자가 끝낸 Take 면 필드를 빼고,
+ * `parseServerMessage` 가 그때 `null` 로 채웁니다).
+ *
+ * - `CLOSED` 창을 닫았습니다. **이어 가지 않습니다** — 실패 화면으로 갑니다
+ * - `ABANDONED` 창을 닫지 않고 5분 넘게 끊겨 서버가 끝냈습니다. 발표는 STT 없이 이어 가고,
+ *   끝내기(PUT)를 보내면 서버가 되살립니다
+ * - `SILENCE` · `TIME_LIMIT` 자동 종료 (`AutoEndMessage` 가 먼저 옵니다)
+ */
+export type TakeEndReason = 'SILENCE' | 'TIME_LIMIT' | 'ABANDONED' | 'CLOSED';
+
 export interface SttErrorMessage {
   type: 'error';
   code: SttErrorCode;
   message: string;
+  /** `TAKE_ENDED` 일 때 BE 가 끝낸 이유. 사용자가 끝냈거나 다른 코드면 null */
+  end_reason: TakeEndReason | null;
 }
 
-export type ServerMessage = ReadyMessage | TranscriptMessage | SttStatusMessage | SttErrorMessage;
+/** `SILENCE` 오래 말이 없었다 · `TIME_LIMIT` 최대 시간(1시간)이 지났다 */
+export type AutoEndReason = 'SILENCE' | 'TIME_LIMIT';
+
+/**
+ * 서버가 Take 를 자동으로 끝냈습니다. 이 뒤로 서버는 오디오를 받지 않고,
+ * `stt_status` closed 를 보낸 뒤 1000 으로 닫습니다.
+ *
+ * 무대는 **끝내기 버튼과 같은 종료 흐름**을 타고 `message` 를 보여 줍니다.
+ * 끊겨 있다가 다시 붙을 때도 옵니다 — 그때는 이 메시지 뒤에 `TAKE_ENDED` 가 따라옵니다.
+ */
+export interface AutoEndMessage {
+  type: 'auto_end';
+  reason: AutoEndReason;
+  /** 화면에 그대로 보여 줄 문구 */
+  message: string;
+}
+
+export type ServerMessage =
+  ReadyMessage | TranscriptMessage | SttStatusMessage | SttErrorMessage | AutoEndMessage;
 
 /**
  * **에러가 곧 종료는 아닙니다.** 여기 있는 것만 1008 로 닫히고, 나머지
@@ -132,6 +210,9 @@ export const STT_ERROR_MESSAGE: Record<SttErrorCode, string> = {
   BAD_AUDIO_FRAME: '소리를 보내는 중 문제가 생겼어요. 발표는 계속하세요.',
   TAKE_TAKEN_OVER: '다른 탭에서 같은 연습을 이어받았어요. 이 탭의 말하기 분석은 멈춥니다.',
 };
+
+/** `TAKE_ENDED`(`ABANDONED`) — 오래 끊겨 서버가 Take 를 끝냈지만 발표는 이어 갑니다 */
+export const STT_ABANDONED_MESSAGE = '연결이 오래 끊겨 말하기 분석이 멈췄어요. 발표는 계속하세요.';
 
 /**
  * 발밑 한 줄에 쓰는 상태 문구. `null` 이면 아무 말도 하지 않습니다 —
@@ -169,11 +250,24 @@ export function buildAudioFrame(seq: number, offsetMs: Ms, pcm: ArrayBuffer): Ui
   return frame;
 }
 
+const END_REASONS: ReadonlySet<string> = new Set<TakeEndReason>([
+  'SILENCE',
+  'TIME_LIMIT',
+  'ABANDONED',
+  'CLOSED',
+]);
+
+/** 모르는 이유(서버가 나중에 늘림)는 null 입니다 — 분기할 수 없는 값을 분기한 척하지 않습니다 */
+function toEndReason(value: unknown): TakeEndReason | null {
+  return typeof value === 'string' && END_REASONS.has(value) ? (value as TakeEndReason) : null;
+}
+
 const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   'ready',
   'transcript',
   'stt_status',
   'error',
+  'auto_end',
 ]);
 
 /**
@@ -190,6 +284,11 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
     const type = (parsed as { type?: unknown }).type;
     if (typeof type !== 'string' || !SERVER_MESSAGE_TYPES.has(type)) return null;
 
+    // 서버는 이유가 없으면 필드를 뺍니다. 없음은 null 로 둡니다 (CLAUDE.md 6번)
+    if (type === 'error') {
+      const error = parsed as Omit<SttErrorMessage, 'end_reason'> & { end_reason?: unknown };
+      return { ...error, end_reason: toEndReason(error.end_reason) };
+    }
     return parsed as ServerMessage;
   } catch {
     return null;

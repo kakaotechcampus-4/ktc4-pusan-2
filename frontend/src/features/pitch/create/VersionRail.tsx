@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { selectInfoUnsaved, useCreateStore } from './createStore';
-import type { DraftNode } from './lib/draft';
+import { pendingVersion, type DraftNode } from './lib/draft';
 import { CaretIcon, ChevronIcon, DocIcon, FolderIcon, PixelMark } from './icons';
 
 /**
@@ -22,6 +22,8 @@ interface RailGroup {
   latest: number | null;
   /** "+ 새 버전" — 고르는 게 아니라 **새 버전을 만듭니다** */
   onAdd: () => void;
+  /** 저장 안 한 버전. 있으면 "+ 새 버전"을 막고 이 버전을 저장하라고 안내합니다 (`pendingVersion`) */
+  pending: number | null;
 }
 
 /** 지금 본문에 띄운 줄. 목업의 왼쪽 강조선 + 옅은 배경 */
@@ -91,13 +93,19 @@ function GroupBlock({ group }: { group: RailGroup }) {
             <button
               type="button"
               onClick={group.onAdd}
-              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-stone hover:text-ink"
+              disabled={group.pending !== null}
+              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-stone hover:text-ink disabled:cursor-not-allowed disabled:text-line-strong disabled:hover:text-line-strong"
             >
               <span aria-hidden="true" className="w-4 text-center text-base leading-none">
                 +
               </span>
               새 버전
             </button>
+            {group.pending !== null && (
+              <p className="px-2 pb-1 text-xs text-stone">
+                V{group.pending}을 저장하면 만들 수 있어요
+              </p>
+            )}
           </li>
         </ul>
       )}
@@ -146,6 +154,7 @@ export function VersionRail() {
       versions: draft.criteria.map((v) => v.version),
       latest: draft.criteria.at(-1)?.version ?? null,
       onAdd: addCriteriaVersion,
+      pending: pendingVersion(draft, 'criteria'),
     },
     {
       node: 'slides',
@@ -158,6 +167,7 @@ export function VersionRail() {
         latestSlide === undefined || latestSlide.pageCount === null
           ? select('slides')
           : addSlideVersion(),
+      pending: pendingVersion(draft, 'slides'),
     },
     {
       node: 'script',
@@ -166,6 +176,7 @@ export function VersionRail() {
       latest: draft.scripts.at(-1)?.version ?? null,
       // 직전 버전의 글을 물려받습니다 — 목업의 V1 → V2 → V3 는 고쳐 쓴 흔적입니다
       onAdd: () => addScriptVersion(draft.scripts.at(-1)?.text ?? ''),
+      pending: pendingVersion(draft, 'script'),
     },
   ];
 

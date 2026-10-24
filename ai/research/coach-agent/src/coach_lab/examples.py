@@ -124,7 +124,8 @@ def build() -> dict[str, Any]:
         "volume": _Recorder(volume),
         "filler": _Recorder(filler),
     }
-    judges = Judges(**modules, baseline=lab_judges().baseline)
+    lab = lab_judges()
+    judges = Judges(**modules, speaking_levels=lab.speaking_levels, baseline=lab.baseline)
     state: dict[str, Any] | None = None
     for t in range(0, FINAL_MS + 1, 1_000):
         for module in modules.values():
