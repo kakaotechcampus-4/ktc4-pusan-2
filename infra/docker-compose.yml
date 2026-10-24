@@ -44,7 +44,7 @@ services:
       - ../frontend/.env
 
   caddy:
-    image: caddy:2.6.4-alpine
+    image: caddy:2.11.7-alpine
     container_name: caddy
     restart: unless-stopped
     logging: *default-logging

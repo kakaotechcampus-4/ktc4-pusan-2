@@ -190,21 +190,37 @@ class TakeRepository:
             )
         )
 
-    def get_missions_for_take(self, take_id: uuid.UUID) -> list[Mission]:
+    def get_mission_ids_of_take(self, take_id: uuid.UUID) -> list[uuid.UUID]:
+        mission_ids = self.db.scalar(select(Take.mission_ids).where(Take.id == take_id))
+        return [uuid.UUID(mission_id) for mission_id in mission_ids or []]
+
+    def get_missions_by_ids(self, mission_ids: list[uuid.UUID]) -> list[Mission]:
+        if not mission_ids:
+            return []
         return list(
             self.db.scalars(
                 select(Mission)
-                .where(Mission.take_id == take_id)
+                .where(Mission.id.in_(mission_ids))
                 .order_by(Mission.priority, Mission.slide_number)
             )
         )
 
-    def assign_missions_to_take(self, source_take_id: uuid.UUID, take_id: uuid.UUID) -> None:
-        self.db.execute(
+    def assign_missions_to_take(
+        self, source_take_id: uuid.UUID, take_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        mission_ids = self.db.scalars(
             update(Mission)
             .where(Mission.source_take_id == source_take_id, Mission.status == "ACTIVE")
-            .values(take_id=take_id)
+            .values(take_id=take_id) # SQL의 set 역할
+            .returning(Mission.id)
+        ).all()
+        self.db.execute(
+            update(Take)
+            .where(Take.id == take_id)
+            .values(mission_ids=[str(mission_id) for mission_id in mission_ids])
+            # missions_ids도 갱신
         )
+        return list(mission_ids)
 
     def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResults | None:
         kind_filter = True if kind is None else (TakeAIResults.kind == kind)
@@ -341,10 +357,16 @@ class TakeRepository:
         )
         return result.rowcount > 0
 
-    def mark_abandoned(self, take_id: uuid.UUID, ended_at: datetime) -> bool:
-        """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유를 `ABANDONED` 로 적는다. 바꿨으면 True.
+    def mark_abandoned(
+        self,
+        take_id: uuid.UUID,
+        ended_at: datetime | ColumnElement[datetime],
+        end_reason: str = "ABANDONED",
+    ) -> bool:
+        """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유를 `end_reason` 으로 적는다. 바꿨으면 True.
 
-        탭을 닫고 돌아오지 않은 Take 다. 시선 기록 · 끝난 시각을 FE 가 보내지 못해 분석하지 않는다.
+        창을 닫았거나(`CLOSED`) 연결이 끊긴 채 돌아오지 않은(`ABANDONED`) Take 다. 시선 기록 · 끝난
+        시각을 FE 가 보내지 못해 분석하지 않는다.
         `ended_at` 은 이걸 적는 지금이 아니라 마지막으로 연결이 끊긴 시각이다.
         `mark_ended` 처럼 UPDATE 하나로, 진행 중일 때만 바꾼다.
         """
@@ -353,7 +375,7 @@ class TakeRepository:
             .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
             .values(
                 status="FAILED",
-                end_reason="ABANDONED",
+                end_reason=end_reason,
                 ended_at=func.coalesce(Take.ended_at, ended_at),
             )
         )

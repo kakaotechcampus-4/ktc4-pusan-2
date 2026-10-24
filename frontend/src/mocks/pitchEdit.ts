@@ -87,7 +87,11 @@ export const pitchEditHandlers = [
     if (params.pitchId !== PITCH_ID) return notFound();
     const body: PitchResources = {
       pitch_id: PITCH_ID,
-      presentation_versions: slides.map(({ id, version }) => ({ id, version })),
+      presentation_versions: slides.map(({ id, version, pages }) => ({
+        id,
+        version,
+        page_count: pages,
+      })),
       script_versions: scripts.map((s) => ({ id: s.script_version_id, version: s.version })),
       evaluation_versions: evaluations.map((e) => ({
         id: `edit-ev${e.evaluation_version}`,
@@ -106,6 +110,7 @@ export const pitchEditHandlers = [
       presentation_version_id: slide.id,
       version: slide.version,
       file_url: pdfOf(slide.id, slide.pages),
+      page_count: slide.pages,
       description: null,
       created_at: new Date().toISOString().slice(0, 10),
     };

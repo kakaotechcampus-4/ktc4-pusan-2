@@ -16,6 +16,7 @@ const LABELS = {
   SILENCE: '말 없음',
   TIME_LIMIT: '최대 시간',
   ABANDONED: '이탈',
+  CLOSED: '창 닫음',
   USER: '직접 종료',
 };
 

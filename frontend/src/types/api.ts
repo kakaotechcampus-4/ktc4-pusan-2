@@ -320,24 +320,38 @@ export interface EvalCriterion {
   text: string;
 }
 
+/**
+ * 장치 점검 준비 정보 — `GET /api/pitches/{pitch_id}/prepare` (BE #296 `PrepareDTO`). BE 그대로 snake_case 입니다.
+ * 화면이 쓰는 모양으로는 `features/rehearsal/prepare/prepareInfo.ts` 에서 바꿉니다.
+ *
+ * 피치 생성을 거치지 않고(홈 · 새로고침) 들어와도 이번 연습의 버전을 알게 해 줍니다.
+ */
 export interface PrepareResponse {
-  pitchId: string;
+  pitch_id: string;
   title: string;
-  /** Take가 스냅샷하는 값 — 준비 화면에서 고정됩니다 (CLAUDE.md 8번) */
-  presentationVersion: number;
-  scriptVersion: number;
+  time_limit_sec: number;
   /**
-   * 위 두 버전의 서버 id. BE 의 Take 생성(`TakeInitRequestDTO`)은 번호가 아니라 id 를 받습니다.
-   * ★ `/prepare` 는 BE 에 아직 없습니다 — 생기면 이 둘도 함께 내려 달라고 요청할 값입니다.
+   * 대본 장 수와 쪽수가 같은 가장 최근 발표자료. 맞는 것이 없으면 가장 최근 것이라 쪽수가 다를 수 있습니다.
+   * 발표자료가 없으면 null — Take 를 만들 수 없습니다.
+   * `page_count` 는 BE #298 부터 옵니다. 쪽수를 아직 세지 않은 옛 발표자료는 null 입니다.
    */
-  presentationVersionId: string;
-  scriptVersionId: string;
-  timeLimitSec: number;
-  /** 이번에 만들어질 Take 번호. POST /takes의 응답과 같아야 합니다 */
-  nextTakeNumber: number;
-  criteria: { version: number; readOnly: boolean; items: EvalCriterion[] };
-  /** 지난 Take에서 고른 Script Mode. 화면의 초기 선택값입니다 */
-  defaultScriptMode: ScriptMode;
+  presentation: { id: string; version: number; page_count?: number | null } | null;
+  /**
+   * 나누기가 끝난 가장 최근 대본. 없으면 null — Take 를 만들 수 없습니다.
+   * `slide_count`(나눈 장 수)는 BE #298 부터 옵니다.
+   */
+  script: { id: string; version: number; slide_count?: number } | null;
+  /** `script` 보다 새 대본이 아직 나누는 중(PENDING)이거나 실패(FAILED)했으면 그 대본. 대개 null */
+  newer_script: {
+    id: string;
+    version: number;
+    parse_status: 'PENDING' | 'FAILED';
+    error_code: string | null;
+  } | null;
+  /** 지금 기준 다음 번호. 실제로 매긴 번호는 Take 생성 응답(`take_number`)이 맞습니다 */
+  next_take_number: number;
+  /** 가장 최근 Take 의 대본 표시 방식. Take 가 없으면 HIGHLIGHT */
+  default_script_mode: ScriptMode;
 }
 
 /**
@@ -355,7 +369,7 @@ export interface RehearsalTicket {
   timeLimitSec: number;
   mode: PracticeMode;
   scriptMode: ScriptMode;
-  /** 몇 번째 Take 인가. BE 가 돌려주지 않아 준비 화면 응답에 있을 때만 압니다 */
+  /** 몇 번째 Take 인가. Take 생성 응답(`take_number`)이 실제로 매긴 번호입니다 */
   takeNumber: number | null;
 }
 

@@ -71,7 +71,7 @@ flowchart LR
   S --> TR["Take 결과"]
 ```
 1. **keyterm (BE)**: BE가 이 모듈의 keyterm 단어 목록을 가져와 대본 용어(`terms`)와 함께 Deepgram에 넘긴다. 개수 · 길이 한도가 넘치면 대본 용어 뒤쪽부터 뺀다(`architecture.md` 2절). 채움말이 전사에 남아야 판정할 수 있기 때문이다.
-2. **STT (BE)**: BE가 확정 단어 · 문장 끝 신호 · STT 상태를 Take 기준 ms로 들고 있다가, FE `metrics`를 받을 때마다 최근 60초를 `/coach/evaluate`에 싣는다. 복구(`replay`)용으로 단어가 확정된 시각도 함께 보관한다(`architecture.md` 2절, `coach-agent.md` 12-1).
+2. **STT (BE)**: BE가 확정 단어 · 문장 끝 신호 · STT 상태를 Take 기준 ms로 들고 있다가, FE `metrics`를 받을 때마다(`buffered: true`인 것은 빼고, 호출 조건은 `architecture.md` 1-3 2번 · 2절) 최근 60초를 `/coach/evaluate`에 싣는다. 문장 끝 신호는 Take 종료 때 `takes.utterance_ends`에 한 번에 쓴다. 복구(`replay`)용으로 단어가 확정된 시각도 함께 보관한다(`architecture.md` 2절, `coach-agent.md` 12-1).
 3. **코치 → `filler.judge`**: 코치가 요청마다 판정 모듈 중 군더더기를 가장 먼저 부른다. 말 속도가 같은 요청 안에서 군더더기 판정을 받아야 하기 때문이다(`coach-agent.md` 6-1).
 4. **`filler.judge`**: 창 안 단어마다 층과 군더더기 여부를 판정하고(뒤 간격이 필요한데 다음 단어가 없으면 보류), 판정이 정해진 새 단어만 `tally`에 센다. 최근 창의 군더더기 수로 `state`와 `FILLER_FREQUENT`를 정한다.
 5. **코치 → 말 속도**: 코치가 `words` 중 군더더기(true)와 보류(null) 단어를 `fillers`로 말 속도에 넘긴다. 말 속도는 군더더기를 글자 수에서 빼고 보류 단어부터는 다음에 센다. 모듈끼리 import하지 않으므로 코치가 옮겨 준다.
@@ -368,13 +368,14 @@ sequenceDiagram
     BE->>DG: keyterm = 군더더기 15개 (복사본) + 대본 용어
     loop 발표 중
         DG-->>BE: 확정 단어 · 문장 끝 신호 · 상태
-        BE->>BE: 창(60초) 갱신 · take_transcript_segments · takes.utterance_ends 저장
-        BE->>C: POST /coach/evaluate (words · utterance_ends · stt_status · coach_state)
+        BE->>BE: 창(60초) 갱신 · take_transcript_segments 저장 · 문장 끝 신호는 메모리에 보관
+        BE->>C: POST /coach/evaluate (다음 실시간 metrics 때, architecture.md 1-3 2번 · words · utterance_ends · stt_status · coach_state)
         C->>F: judge(words, utterance_ends, stt_status, stt_ok_since_ms, 커서)
         F-->>C: words(단어별 판정) + 1초 판정 결과 (FILLER)
         C->>P: judge(..., fillers = 군더더기 · 보류 단어)
         C-->>BE: indicators.FILLER · feedback · events · coach_state
     end
+    BE->>BE: Take 종료 ③ — 문장 끝 신호를 takes.utterance_ends에 한 번에 저장
     BE->>C: POST /coach/finalize (마지막 창)
     C->>F: judge (마지막 창, take_end_ms = Take 끝) · summarize · criteria
     C-->>BE: take_result (areas.FILLER · criteria.FILLER)
@@ -383,14 +384,14 @@ sequenceDiagram
 BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3 · 2절, 코치 쪽 저장은 `coach-agent.md` 12절에 있다.
 
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고 AI 리드가 정하며, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 군더더기 모듈은 원자료(STT 단어 · 문장 끝 신호)를 받기만 하고, 단어별 판정(`words`)은 저장하지 않는다(요청마다 다시 만들고, Take 결과에는 횟수만 남는다).
+저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 군더더기 모듈은 원자료(STT 단어 · 문장 끝 신호)를 받기만 하고, 단어별 판정(`words`)은 저장하지 않는다(요청마다 다시 만들고, Take 결과에는 횟수만 남는다).
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
 | 군더더기 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.FILLER`(`take` · `slides`) · `criteria.FILLER` | 코치가 `summarize` · `criteria` 결과를 고치지 않고 담는다. 잰 크기: 서로 다른 군더더기 단어 20개면 Take 또는 장 하나에 약 0.33 KB(장 10개면 약 3.7 KB). `by_word`의 키는 사전 단어뿐이라 개수에 상한이 있다(사전 55개) | 코치가 만들고 BE가 쓴다 · 리뷰(`fluency`) · 리포트 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
 | 리포트 요약 군더더기 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.filler_count` (Integer, nullable) | FILLER `filler_count`(정수). `filler_per_min` · 층별 · 단어별은 칸이 없고 Take 결과에서 읽는다. STT를 잴 수 없었으면(`measured_ratio`가 0) null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
-| 군더더기 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `FILLER`일 때 | `live_feedbacks` (`type` = `FILLER`) | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
-| STT 확정 단어 · 문장 끝 신호 (원자료, 이 모듈의 입력) | Take 동안 | `take_transcript_segments.words` · `takes.utterance_ends` | `architecture.md` 1-1, `coach-agent.md` 12-1. 문장 끝 신호에는 Deepgram `UtteranceEnd`의 마지막 단어 끝 시각을 넣는다(5-2) | BE가 쓴다 · `replay` · 대본 전달도 | `coach-agent.md` 12-1 | Take와 함께. 사용자 발화다 |
+| 군더더기 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `FILLER`일 때 | `coach_events`의 `INTERVENTION` 이벤트(`area` = `FILLER`). `live_feedbacks`에는 쓰지 않는다 | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
+| STT 확정 단어 · 문장 끝 신호 (원자료, 이 모듈의 입력) | 단어는 Take 동안, 문장 끝 신호는 Take 종료 때 한 번에(`architecture.md` 1-3) | `take_transcript_segments.words` · `takes.utterance_ends` | `architecture.md` 1-1, `coach-agent.md` 12-1. 문장 끝 신호에는 Deepgram `UtteranceEnd`의 마지막 단어 끝 시각을 넣는다(5-2) | BE가 쓴다 · `replay` · 대본 전달도 | `coach-agent.md` 12-1 | Take와 함께. 사용자 발화다 |
 | keyterm 단어 목록 | 사전이 바뀔 때 | DB가 아니다. AI `keyterms.json`(원본, 생성 파일)과 BE 안의 복사본 | `{criteria_version, keyterms[]}`, 0.2 KB 안팎 | AI가 만들고 BE가 복사 · BE가 STT 연결 때 읽는다 | 원본은 사전에서만 만든다 | — |
 
 ## 12-2. 저장 규칙

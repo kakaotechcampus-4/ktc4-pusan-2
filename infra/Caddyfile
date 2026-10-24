@@ -16,7 +16,20 @@
 		reverse_proxy be:8000
 	}
 
+	# 요청 본문 크기 상한. 넘으면 BE 에 닿기 전에 413 으로 끝낸다 (Caddy 2.7 전에는 502 였다).
+	# 발표자료는 BE · FE 가 40MiB 까지 받는다. multipart 경계 · 헤더 몫으로 1MiB 를 더 둔다
+	handle /api/pitches/add/*/presentation {
+		request_body {
+			max_size 41MiB
+		}
+		reverse_proxy be:8000
+	}
+
+	# 나머지 API 에서 가장 큰 본문은 대본이다 (5만 자, 150KB 남짓)
 	handle /api/* {
+		request_body {
+			max_size 1MiB
+		}
 		reverse_proxy be:8000
 	}
 

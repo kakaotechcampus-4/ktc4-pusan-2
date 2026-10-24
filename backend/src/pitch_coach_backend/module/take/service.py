@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime
 
@@ -39,7 +40,13 @@ from pitch_coach_backend.module.take.exception import (
     TakeAlreadyStarted,
     TakeSessionMismatch,
 )
-from pitch_coach_backend.module.take.repository import IN_PROGRESS_STATUSES, TakeRepository
+from pitch_coach_backend.module.take.repository import (
+    IN_PROGRESS_STATUSES,
+    TakeRepository,
+    last_active_at,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
@@ -155,6 +162,22 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
 
     return updated_take.id
 
+def close_take_service(db: Session, take_id: uuid.UUID) -> tuple[str, bool]:
+    """창을 닫았다 다시 연 FE 가 Take 를 실패(`FAILED` · `CLOSED`)로 끝낸다. (지금 상태, 바꿨나).
+
+    창을 닫은 Take 는 이어 가지 않는다. 진행 중(`READY` · `RUNNING`)일 때만 바꾸고, 이미 끝났으면
+    그대로 두고 지금 상태를 돌려준다 — FE 는 `ANALYZING` 이면 끝내기가 이미 닿은 것으로 본다.
+    끝난 시각은 마지막 활동 시각이다 (앱이 다시 뜰 때 떠난 Take 를 재는 기준과 같다).
+    """
+    take_repository = TakeRepository(db)
+    closed = take_repository.mark_abandoned(take_id, last_active_at(), end_reason="CLOSED")
+    db.commit()
+    take = take_repository.get_take(take_id)
+    if take is None:
+        raise NonExistentTake()
+    return take.status, closed
+
+
 def delete_take_service(db: Session, take_id: uuid.UUID):
     take_repository = TakeRepository(db)
     existing_take = take_repository.get_take(take_id)
@@ -204,13 +227,17 @@ def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
 def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
     take_repository = TakeRepository(db)
     latest_take = take_repository.get_latest_reviewed_take_in_pitch(pitch_id)
+    # 미션은 리뷰가 끝난 Take 에서 오지만 번호는 그 뒤에 만든 Take 까지 센다 (Take 생성과 같은 값)
+    next_take_number = take_repository.next_take_number(pitch_id)
 
     if latest_take is None:
-        return PreviousMissionsDTO(source_take_id=None, next_take_number=1, missions=[])
+        return PreviousMissionsDTO(
+            source_take_id=None, next_take_number=next_take_number, missions=[]
+        )
 
     return PreviousMissionsDTO(
         source_take_id=latest_take.id,
-        next_take_number=latest_take.take_number + 1,
+        next_take_number=next_take_number,
         missions = [
             MissionDTO(
                 mission_id=mission.id,
@@ -271,6 +298,13 @@ def append_transcript_segment(
     return saved.id
 
 def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list[MissionInputDTO]:
+    mission_ids = take_repository.get_mission_ids_of_take(take_id)
+    missions = take_repository.get_missions_by_ids(mission_ids)
+    if len(missions) < len(mission_ids):
+        logger.warning(
+            "take %s: %d of %d missions not found",
+            take_id, len(mission_ids) - len(missions), len(mission_ids),
+        )
     return [
         MissionInputDTO(
             mission_id=mission.id,
@@ -278,7 +312,7 @@ def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list
             slide_number=mission.slide_number,
             target=TargetInfoDTO(**mission.target),
         )
-        for mission in take_repository.get_missions_for_take(take_id)
+        for mission in missions
     ]
 
 def _build_previous_takes(
@@ -402,13 +436,15 @@ def mark_ended(db: Session, take_id: uuid.UUID, end_reason: str | None = None) -
     return marked
 
 
-def mark_abandoned(db: Session, take_id: uuid.UUID, ended_at: datetime) -> bool:
-    """사용자가 떠난 Take 를 `FAILED`(`ABANDONED`)로 바꾸고 커밋한다.
+def mark_abandoned(
+    db: Session, take_id: uuid.UUID, ended_at: datetime, end_reason: str = "ABANDONED"
+) -> bool:
+    """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유(`ABANDONED` · `CLOSED`)를 적고 커밋한다.
 
     연결 없이 정리된 스트림에 정해진 시간 동안 다시 붙지 않으면 부른다. `ended_at` 은 마지막으로
     연결이 끊긴 시각이다. Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
     """
-    marked = TakeRepository(db).mark_abandoned(take_id, ended_at)
+    marked = TakeRepository(db).mark_abandoned(take_id, ended_at, end_reason)
     db.commit()
     return marked
 

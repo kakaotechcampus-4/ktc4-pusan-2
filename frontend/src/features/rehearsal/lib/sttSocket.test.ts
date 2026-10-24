@@ -278,7 +278,8 @@ describe('느린 재시도 간격과 상한', () => {
     expect(sockets).toHaveLength(before + 1);
   });
 
-  it('끊긴 지 30분이 지나면 멈춘다 — 열어 두고 떠난 탭이 계속 두드리지 않게', async () => {
+  /** 서버는 끊긴 연결을 30초 살려 둔 뒤 5분을 더 기다려 Take 를 끝냅니다. 그 뒤로는 TAKE_ENDED 입니다 */
+  it('끊긴 지 5분 30초가 지나면 멈춘다 — 서버가 Take 를 끝낸 뒤로 두드리지 않게', async () => {
     vi.useFakeTimers();
     const onGiveUp = vi.fn();
     const stt = makeSocket({ onGiveUp });
@@ -288,7 +289,7 @@ describe('느린 재시도 간격과 상한', () => {
     sockets[0]!.emit(READY);
 
     await exhaustFastBackoff();
-    await keepFailing(29 * 60_000);
+    await keepFailing(5 * 60_000);
     expect(onGiveUp).not.toHaveBeenCalled();
 
     await keepFailing(60_000);
@@ -300,7 +301,7 @@ describe('느린 재시도 간격과 상한', () => {
     expect(sockets).toHaveLength(after);
   });
 
-  it('중간에 한 번 붙으면 30분을 처음부터 다시 센다', async () => {
+  it('중간에 한 번 붙으면 5분 30초를 처음부터 다시 센다', async () => {
     vi.useFakeTimers();
     const onGiveUp = vi.fn();
     const stt = makeSocket({ onGiveUp });
@@ -310,14 +311,14 @@ describe('느린 재시도 간격과 상한', () => {
     sockets[0]!.emit(READY);
 
     await exhaustFastBackoff();
-    await keepFailing(25 * 60_000);
+    await keepFailing(4 * 60_000);
     await vi.advanceTimersByTimeAsync(5_000);
     sockets.at(-1)!.open();
     sockets.at(-1)!.emit(READY);
 
-    // 처음 끊긴 때부터는 30분이 넘지만, 다시 끊긴 때부터는 아직 25분입니다
+    // 처음 끊긴 때부터는 5분 30초가 넘지만, 다시 끊긴 때부터는 아직 4분입니다
     await exhaustFastBackoff();
-    await keepFailing(25 * 60_000);
+    await keepFailing(4 * 60_000);
     expect(onGiveUp).not.toHaveBeenCalled();
   });
 });
@@ -622,6 +623,47 @@ describe('서버의 자동 종료', () => {
     expect(onError).not.toHaveBeenCalled();
     expect(onGiveUp).toHaveBeenCalledWith('FATAL');
     expect(sockets).toHaveLength(1);
+  });
+});
+
+describe('끝난 Take 의 이유', () => {
+  /** 창을 닫아 끝난 Take(CLOSED)와 발표를 이어 가도 되는 Take(ABANDONED)를 무대가 가릅니다 */
+  it('TAKE_ENDED 의 end_reason 을 넘기고, 다시 붙지 않는다', async () => {
+    const onError = vi.fn();
+    const onGiveUp = vi.fn();
+    const stt = makeSocket({ onError, onGiveUp });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+
+    sockets[0]!.emit({
+      type: 'error',
+      code: 'TAKE_ENDED',
+      message: '이미 끝난 연습입니다.',
+      end_reason: 'CLOSED',
+    });
+    sockets[0]!.serverClose(1008);
+    await settle();
+
+    expect(onError).toHaveBeenCalledExactlyOnceWith(
+      'TAKE_ENDED',
+      '이미 끝난 연습입니다.',
+      'CLOSED',
+    );
+    expect(onGiveUp).toHaveBeenCalledWith('FATAL');
+    expect(sockets).toHaveLength(1);
+  });
+
+  it('사용자가 끝낸 Take 는 이유가 null 이다', async () => {
+    const onError = vi.fn();
+    const stt = makeSocket({ onError });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+
+    sockets[0]!.emit({ type: 'error', code: 'TAKE_ENDED', message: '이미 끝난 연습입니다.' });
+
+    expect(onError).toHaveBeenCalledWith('TAKE_ENDED', '이미 끝난 연습입니다.', null);
   });
 });
 

@@ -226,6 +226,12 @@ POST /api/auth/logout           현재 세션 폐기
 필요하다. 배포에서는 Caddy 가 같은 origin 으로 묶어 그 문제가 사라진다.
 자세한 흐름과 프론트 연동 코드는 `docs/oauth-architecture.md` 에 있다 (로컬 문서).
 
+## 홈 발표 목록
+
+`GET /api/pitches/` 는 다가오는 발표(오늘 포함) → 날짜 없는 발표 → 지난 발표 순서로 준다.
+다가오는 발표는 가까운 날짜부터, 지난 발표는 최근에 지난 것부터, 같은 날짜면 최근에 만든 발표부터다.
+오늘은 한국 날짜다. FE 는 이 순서를 그대로 보여 준다.
+
 ## 연습 시작 (장치 점검 · Take 생성)
 
 ```
@@ -287,7 +293,7 @@ WS /api/ws/takes/{take_id}
   |---|---|
   | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
   | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다). 연결 중에 Take 나 발표가 지워져도 이 코드로 닫는다 |
-  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다** |
+  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다**. BE 가 끝냈으면 `end_reason`(`SILENCE`·`TIME_LIMIT`·`ABANDONED`·`CLOSED`)을 싣는다 — `CLOSED` 는 이어 가지 않고, `ABANDONED` 는 끝내기 PUT 이 되살린다 |
   | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
   | `BAD_MESSAGE` | 유지 |
   | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
@@ -341,22 +347,28 @@ WS /api/ws/takes/{take_id}
   `TAKE_ENDED` 로 거절한다 — DB 에 적기 전의 틈은 프로세스 안의 기록이 막는다. 종료를 DB 에 못 적어도
   `closed` 는 보낸다. 30초 대기 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리하고 Take 는 끝내지 않는다
   (FE 는 끊긴 뒤에도 다시 붙는다).
-- **탭을 닫고 떠난 Take 는 30분 뒤 BE 가 끝낸다.** 스트림이 끝나지 않은 채 정리된 뒤 30분 동안(FE 가 끊긴 뒤
-  다시 붙어 보는 시간과 같다) 아무도 다시 붙지 않으면 `FAILED` 로 바꾸고 `end_reason` 에 `ABANDONED` 를 남긴다.
-  시선 기록 · 끝난 시각을 FE 가 보내지 못한 Take 라 분석하지 않는다. `ended_at` 은 마지막으로 연결이 끊긴 시각이다.
-  그 안에 다시 붙으면(리허설 주소를 다시 연 경우 포함) 이어서 연습하고, 그 뒤로는 `TAKE_ENDED` 로 거절한다.
-  최대 시간(서버 시계 1시간 + 60초)까지 남은 발표가 30분보다 길면 그만큼 기다린다. 토큰 만료 등으로 재연결을
-  포기한 FE 는 STT 없이 발표를 이어 가기 때문이다. 그래도 먼저 끝냈으면 끝내기 PUT 이 되살린다 (아래).
-  타이머는 메모리에 있어서 앱이 다시 뜨면 `RUNNING` Take 의 마지막 활동 시각(만든 시각 · 시작 시각 · 마지막
-  전사 저장 시각 중 가장 늦은 것)에서 다시 건다. 남은 발표 시간도 사라져 최대 시간 전체를 기다린다.
-  이 Take 들을 10초 안에 읽지 못하면 걸지 않고 앱을 띄운다 (다음에 연결이 붙었다 끊길 때 걸린다).
+- **아무도 다시 붙지 않으면 BE 가 Take 를 실패(`FAILED`)로 끝낸다.** 스트림이 끝나지 않은 채 정리된 뒤 기다리는
+  시간과 이유는 끊긴 방식으로 정한다. 시선 기록 · 끝난 시각을 FE 가 보내지 못한 Take 라 분석하지 않는다.
+  `ended_at` 은 마지막으로 연결이 끊긴 시각이다. 그 안에 다시 붙으면 이어서 연습하고, 그 뒤로는 `TAKE_ENDED` 로
+  거절한다. 전체 조건은 [Take 연결 · 재연결 · 종료 조건](../docs/be/take-lifecycle.md) 에 있다.
+  - 창을 닫거나 새로고침해 끊김(닫힘 코드 1001): **2분** 기다리고 `CLOSED`. 새로고침이면 그 안에 다시 붙는다.
+    창을 닫은 Take 는 이어 가지 않는다.
+  - 그 밖(네트워크 장애 · FE 가 재연결을 포기함): **5분** 기다리고 `ABANDONED`. 재연결을 포기한 FE 는 STT 없이
+    발표를 이어 가는 중일 수 있다. 그 FE 가 발표를 마치고 보내는 끝내기 PUT 이 되살린다 (아래).
+  - 타이머는 메모리에 있어서 앱이 다시 뜨면 `RUNNING` Take 의 마지막 활동 시각(만든 시각 · 시작 시각 · 마지막
+    전사 저장 시각 중 가장 늦은 것)에서 5분으로 다시 건다. 닫힘 코드도 사라져 `ABANDONED` 로 적는다. 이 Take 들을 10초 안에 읽지 못하면 걸지 않고 앱을 띄운다 (다음에 연결이 붙었다 끊길 때 걸린다).
+- **창을 다시 연 FE 는 Take 를 바로 실패로 끝낸다.** `POST /api/pitches/{pitch_id}/takes/{take_id}/abandon`.
+  `READY` · `RUNNING` 이면 `FAILED`(`CLOSED`)로 바꾸고(끝난 시각은 마지막 활동 시각) 타이머를 끈 뒤 남은 스트림을
+  끊는다. 서버가 아직 붙어 있다고 믿는 연결(닫힘 프레임 없이 사라진 브라우저)에는 `TAKE_ENDED` 를 보내고 닫는다.
+  이미 끝났으면 바꾸지 않는다. 어느 쪽이든 `{"take_id","status"}` 로 지금 상태를 돌려준다 (다시 불러도 같다).
+  연결이 붙어 있고 최근 10초 안에 오디오가 왔으면 다른 창이 발표 중이라 `409 TAKE_IN_PROGRESS` 로 거절한다.
 - **STT 없이 끝낸 Take 는 Take PUT 이 끝낸다.** 마이크를 못 열었거나 재연결을 포기한 FE 는 `stop` 을 보내지 못한다.
   종료 흐름의 `PUT /api/pitches/{pitch_id}/takes/{take_id}` 에 `ended_at` 이 있으면 BE 가 `ANALYZING` 으로 바꾼다.
   연결이 붙어 있거나 `stop` 으로 끝내는 중이면 그 연결에 맡긴다. 끊긴 뒤 30초 안이라 스트림이 남아 있으면
   `stop` 처럼 남은 전사까지 저장한 뒤 바꾼다. 떠난 것으로 끝낸 Take(`ABANDONED`)도 `ANALYZING` 으로 되살리고
-  이유를 지운다.
+  이유를 지운다. 창을 닫아 끝낸 Take(`CLOSED`)는 되살리지 않는다.
 - Take PUT 은 상태와 순서를 본다. `COMPLETED`·`FAILED` 는 `409 TAKE_ENDED`, `ANALYZING` 은 시각만 받는다
-  (`event_logs` 는 409). `ABANDONED` 로 끝난 Take 는 `ended_at` 이 있는 끝내기만 받는다.
+  (`event_logs` 는 409). `ABANDONED` 로 끝난 Take 는 `ended_at` 이 있는 끝내기만 받는다 (`CLOSED` 는 409).
   `ended_at` 이 `started_at` 보다 앞서면 `400 INVALID_TAKE_TIME`, 시간대가 없는 시각은 422.
   `null` 은 보내지 않은 것으로 본다. 점검 결과(`calibration`)는 `READY` 일 때만 받는다 (아니면 `409 TAKE_STARTED`).
 - **Take 를 자동으로 끝낸다** (`realtime/auto_end.py`). 둘 중 하나라도 맞으면 `{"type":"auto_end","reason","message"}`
