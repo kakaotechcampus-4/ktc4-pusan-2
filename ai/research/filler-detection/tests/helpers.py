@@ -13,8 +13,10 @@ from filler.core import judge
 from filler.schemas import JudgmentResult, TallyItem
 
 #: 규칙 테스트가 쓰는 기준값. 지금 config.py 기본값과 같지만, 기준값을 다시 골라도
-#: 규칙 테스트가 깨지지 않게 따로 적는다. 기본값 자체는 test_examples · test_contract 가 본다
+#: 규칙 테스트가 깨지지 않게 따로 적는다. 기본값 자체는 test_examples · test_contract 가 본다.
+#: 규칙 테스트는 세 층을 모두 켠 설정으로 본다(기본값은 T1만 센다 — test_counted_tiers.py)
 CFG = FillerConfig(
+    counted_tiers=("T1", "T2", "T3"),
     gap_ms=400,
     sentence_gap_ms=1_000,
     window_ms=60_000,

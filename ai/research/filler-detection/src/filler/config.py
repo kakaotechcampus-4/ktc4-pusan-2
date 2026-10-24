@@ -1,6 +1,7 @@
 """군더더기 판정의 사전과 기준값.
 
-하는 일: 판정 사전(T1 · T2 · T3 단어 목록)과 간격 · 잦음 기준값을 `FillerConfig` 하나에 모은다.
+하는 일: 판정 사전(T1 · T2 · T3 단어 목록), 세는 층(`counted_tiers`, 기본은 T1만)과 간격 · 잦음
+기준값을 `FillerConfig` 하나에 모은다.
 누가 부르나: `core.py` 의 `judge` · `summarize` · `criteria` · `keyterms`, 테스트, 예시 도구.
 입력과 출력: 값 없이 `FillerConfig()` 로 기본값을 만들거나 일부만 바꿔 만든다.
 만든 객체는 바꿀 수 없다(frozen). 값이 서로 어긋나면 만들 때 pydantic
@@ -14,6 +15,7 @@
 from __future__ import annotations
 
 import unicodedata
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -66,6 +68,12 @@ class FillerConfig(BaseModel):
         "음", "어", "아", "에", "으", "그", "저", "이제", "인제", "뭐", "자", "저기",
         "음음", "어어", "으음",
     )  # fmt: skip
+    #: 군더더기로 세는 층. 배포 기본값은 T1(채움말)만 센다. 문장 끝 신호(1초 넘게 쉼) 뒤 첫 단어는
+    #: 앞 간격이 늘 기준보다 커서, T2 간격 규칙이 문장 첫 지시어("그 결과" · "자 이제")를
+    #: 군더더기로 세기 때문이다. 이 목록에 없는
+    #: 층의 단어는 판정하지만 세지 않는다(filler.md 5-2). 간격 규칙을 실제 리허설로 정한 뒤
+    #: T2 · T3를 켠다
+    counted_tiers: tuple[Literal["T1", "T2", "T3"], ...] = ("T1",)
 
     #: 앞 · 뒤 간격 기준(ms). 이 값 이상이면 단독 단어.
     #: filler.md 5-5 예시("그니까" 뒤 간격 400 ms 가 단독)와 맞춘 첫 값
@@ -106,7 +114,13 @@ class FillerConfig(BaseModel):
         missing = [w for w in self.t1_words if w not in self.keyterms]
         if missing:
             raise ValueError(f"T1 단어는 모두 keyterms 에 있어야 한다: {missing}")
+        if not self.counted_tiers or len(set(self.counted_tiers)) != len(self.counted_tiers):
+            raise ValueError("counted_tiers 는 비어 있지 않고 같은 층이 두 번 없어야 한다")
         return self
 
 
 DEFAULT = FillerConfig()
+
+#: T1 · T2 · T3를 모두 세는 설정. 계약 예시(보류 · 문장 끝 신호를 보여 주는 것)와 간격 규칙
+#: 평가가 쓴다. 배포 기본값(`DEFAULT`)은 T1만 센다
+ALL_TIERS = FillerConfig(counted_tiers=("T1", "T2", "T3"))
