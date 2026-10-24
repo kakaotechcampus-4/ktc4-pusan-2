@@ -27,6 +27,7 @@ def test_defaults_without_any_value() -> None:
     assert s.llm_timeout_seconds == 12
     assert s.llm_max_retries == 1
     assert s.web_concurrency == 1
+    assert s.ai_enable_sample is False
     assert s.bundle("default") is None
     assert s.bundle("sol") is None
 

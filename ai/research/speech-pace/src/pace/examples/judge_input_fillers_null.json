@@ -1,0 +1,350 @@
+{
+  "t_ms": 52000,
+  "since_ms": 51000,
+  "words_since_ms": 50200,
+  "stt_status": "ok",
+  "stt_ok_since_ms": 0,
+  "words": [
+    {
+      "word": "안녕하세요",
+      "start_ms": 1200,
+      "end_ms": 2170
+    },
+    {
+      "word": "저희",
+      "start_ms": 2320,
+      "end_ms": 2690
+    },
+    {
+      "word": "팀의",
+      "start_ms": 2810,
+      "end_ms": 3190
+    },
+    {
+      "word": "상반기",
+      "start_ms": 3390,
+      "end_ms": 3980
+    },
+    {
+      "word": "실적",
+      "start_ms": 4130,
+      "end_ms": 4500
+    },
+    {
+      "word": "보고를",
+      "start_ms": 4620,
+      "end_ms": 5190
+    },
+    {
+      "word": "시작하겠습니다",
+      "start_ms": 5390,
+      "end_ms": 6740
+    },
+    {
+      "word": "오늘은",
+      "start_ms": 6890,
+      "end_ms": 7450
+    },
+    {
+      "word": "매출과",
+      "start_ms": 7570,
+      "end_ms": 8140
+    },
+    {
+      "word": "비용",
+      "start_ms": 8340,
+      "end_ms": 8740
+    },
+    {
+      "word": "그리고",
+      "start_ms": 8890,
+      "end_ms": 9450
+    },
+    {
+      "word": "다음",
+      "start_ms": 9570,
+      "end_ms": 9950
+    },
+    {
+      "word": "분기",
+      "start_ms": 10150,
+      "end_ms": 10550
+    },
+    {
+      "word": "계획",
+      "start_ms": 10700,
+      "end_ms": 11070
+    },
+    {
+      "word": "순서로",
+      "start_ms": 11190,
+      "end_ms": 11760
+    },
+    {
+      "word": "말씀드리겠습니다",
+      "start_ms": 11960,
+      "end_ms": 13500
+    },
+    {
+      "word": "발표는",
+      "start_ms": 13650,
+      "end_ms": 14210
+    },
+    {
+      "word": "십",
+      "start_ms": 14330,
+      "end_ms": 14520
+    },
+    {
+      "word": "분",
+      "start_ms": 14720,
+      "end_ms": 14930
+    },
+    {
+      "word": "정도",
+      "start_ms": 15080,
+      "end_ms": 15450
+    },
+    {
+      "word": "걸리고",
+      "start_ms": 15570,
+      "end_ms": 16140
+    },
+    {
+      "word": "질문은",
+      "start_ms": 16340,
+      "end_ms": 16930
+    },
+    {
+      "word": "마지막에",
+      "start_ms": 17080,
+      "end_ms": 17830
+    },
+    {
+      "word": "한꺼번에",
+      "start_ms": 17950,
+      "end_ms": 18710
+    },
+    {
+      "word": "받겠습니다",
+      "start_ms": 18910,
+      "end_ms": 19880
+    },
+    {
+      "word": "먼저",
+      "start_ms": 22390,
+      "end_ms": 22770
+    },
+    {
+      "word": "전체",
+      "start_ms": 22890,
+      "end_ms": 23260
+    },
+    {
+      "word": "매출입니다",
+      "start_ms": 23410,
+      "end_ms": 24380
+    },
+    {
+      "word": "상반기",
+      "start_ms": 24580,
+      "end_ms": 25150
+    },
+    {
+      "word": "매출은",
+      "start_ms": 25270,
+      "end_ms": 25830
+    },
+    {
+      "word": "목표",
+      "start_ms": 25980,
+      "end_ms": 26380
+    },
+    {
+      "word": "대비",
+      "start_ms": 26580,
+      "end_ms": 26960
+    },
+    {
+      "word": "백삼",
+      "start_ms": 27080,
+      "end_ms": 27450
+    },
+    {
+      "word": "퍼센트로",
+      "start_ms": 27600,
+      "end_ms": 28380
+    },
+    {
+      "word": "마감했습니다",
+      "start_ms": 28580,
+      "end_ms": 29720
+    },
+    {
+      "word": "온라인",
+      "start_ms": 29840,
+      "end_ms": 30400
+    },
+    {
+      "word": "채널이",
+      "start_ms": 30550,
+      "end_ms": 31140
+    },
+    {
+      "word": "성장을",
+      "start_ms": 31340,
+      "end_ms": 31910
+    },
+    {
+      "word": "이끌었고",
+      "start_ms": 32030,
+      "end_ms": 32780
+    },
+    {
+      "word": "오프라인은",
+      "start_ms": 32930,
+      "end_ms": 33900
+    },
+    {
+      "word": "조금",
+      "start_ms": 34100,
+      "end_ms": 34480
+    },
+    {
+      "word": "줄었습니다",
+      "start_ms": 34600,
+      "end_ms": 35540
+    },
+    {
+      "word": "이",
+      "start_ms": 35690,
+      "end_ms": 35900
+    },
+    {
+      "word": "흐름이",
+      "start_ms": 36100,
+      "end_ms": 36670
+    },
+    {
+      "word": "이어진",
+      "start_ms": 36790,
+      "end_ms": 37350
+    },
+    {
+      "word": "결과",
+      "start_ms": 37500,
+      "end_ms": 37900
+    },
+    {
+      "word": "지난",
+      "start_ms": 38200,
+      "end_ms": 38450
+    },
+    {
+      "word": "음",
+      "start_ms": 38900,
+      "end_ms": 39300
+    },
+    {
+      "word": "분기",
+      "start_ms": 39700,
+      "end_ms": 40050
+    },
+    {
+      "word": "매출은",
+      "start_ms": 40100,
+      "end_ms": 40600
+    },
+    {
+      "word": "작년",
+      "start_ms": 42430,
+      "end_ms": 42730
+    },
+    {
+      "word": "같은",
+      "start_ms": 42810,
+      "end_ms": 43090
+    },
+    {
+      "word": "기간보다",
+      "start_ms": 43200,
+      "end_ms": 43750
+    },
+    {
+      "word": "십이",
+      "start_ms": 43840,
+      "end_ms": 44140
+    },
+    {
+      "word": "퍼센트",
+      "start_ms": 44220,
+      "end_ms": 44640
+    },
+    {
+      "word": "높았습니다",
+      "start_ms": 44750,
+      "end_ms": 45440
+    },
+    {
+      "word": "반기",
+      "start_ms": 45530,
+      "end_ms": 45830
+    },
+    {
+      "word": "기준으로는",
+      "start_ms": 45910,
+      "end_ms": 46610
+    },
+    {
+      "word": "역대",
+      "start_ms": 46720,
+      "end_ms": 46990
+    },
+    {
+      "word": "가장",
+      "start_ms": 47080,
+      "end_ms": 47380
+    },
+    {
+      "word": "높은",
+      "start_ms": 47460,
+      "end_ms": 47740
+    },
+    {
+      "word": "수치이고",
+      "start_ms": 47850,
+      "end_ms": 48400
+    },
+    {
+      "word": "특히",
+      "start_ms": 48490,
+      "end_ms": 48790
+    },
+    {
+      "word": "신규",
+      "start_ms": 48870,
+      "end_ms": 49150
+    },
+    {
+      "word": "고객이",
+      "start_ms": 49260,
+      "end_ms": 49670
+    },
+    {
+      "word": "빠르게",
+      "start_ms": 49760,
+      "end_ms": 50200
+    },
+    {
+      "word": "늘었고",
+      "start_ms": 50500,
+      "end_ms": 51100
+    },
+    {
+      "word": "그",
+      "start_ms": 51500,
+      "end_ms": 51650
+    }
+  ],
+  "fillers": null
+}
