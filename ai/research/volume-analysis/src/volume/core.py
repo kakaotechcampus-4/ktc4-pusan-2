@@ -294,9 +294,10 @@ def _ramp(value: float, threshold: float, bad: float) -> float:
 def _tally(
     records: list[VoiceRecord], since_ms: int, t_ms: int, base: float | None, config: Config
 ) -> tuple[list[VolumeTallyItem], list[PauseTallyItem]]:
-    """새 1초(t_ms ≥ since_ms)의 VOLUME · PAUSE 몫. 기록이 없는 시간은 total_ms 만 센다.
+    """새 1초(t_ms ≥ since_ms)의 VOLUME · PAUSE 몫. 기록이 없는 시간과 오디오가 끊긴 1초는
+    total_ms 만 센다.
 
-    '말한 1초'로 거르지 않고 기록이 있는 모든 1초를 더한다. 한 번 센 몫은 바꾸지 않는다.
+    '말한 1초'로 거르지 않고 오디오가 흐른 모든 1초를 더한다. 한 번 센 몫은 바꾸지 않는다.
     """
     new = [r for r in records if r.t_ms >= since_ms and _end(r) <= t_ms]
     volume: list[VolumeTallyItem] = []
@@ -311,11 +312,14 @@ def _tally(
         if r.t_ms > pos:
             gap(pos, r.t_ms)
         pos = max(pos, _end(r))
+        # 끊긴 1초는 말한 1초 · 기준 음량 표본과 같이 빼고 시간만 센다
+        if not r.audio_live:
+            gap(r.t_ms, _end(r))
+            continue
         # 그 1초 시점까지의 기록만 보고 센다
         upto = [x for x in records if _end(x) <= _end(r)]
         _, diff = _smoothed(upto, _end(r), base, config)
         level_voiced = r.voiced_ms if base is not None else 0
-        live_ms = r.duration_ms if r.audio_live else 0
         volume.append(
             VolumeTallyItem(
                 t_ms=r.t_ms,
@@ -327,7 +331,7 @@ def _tally(
                     low_ms=r.voiced_ms if diff is not None and diff < config.low_diff_db else 0,
                     level_voiced_ms=level_voiced,
                     base_db_ms=base * level_voiced if base is not None else 0,
-                    audio_live_ms=live_ms,
+                    audio_live_ms=r.duration_ms,
                     total_ms=r.duration_ms,
                 ),
             )
@@ -342,7 +346,7 @@ def _tally(
                 t_ms=r.t_ms,
                 values=PauseTally(
                     long_silence_count=1 if crossed else 0,
-                    audio_live_ms=live_ms,
+                    audio_live_ms=r.duration_ms,
                     total_ms=r.duration_ms,
                 ),
             )

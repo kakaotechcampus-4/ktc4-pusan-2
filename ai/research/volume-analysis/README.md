@@ -79,7 +79,7 @@ volume.state, volume.metrics.voice_diff_db, pause.metrics.silence_ms
 
 | 파일 | 보는 것 |
 |---|---|
-| `tests/test_judge.py` | 작음 · 기준과 같을 때, 기준 음량 없음 · Take 안에서 생김, 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기 · 창 안에 끊김이 없을 때, 긴 침묵 한 번만, 같은 1초 두 번, 마지막 조각(시간 · 에너지 · 커서), 커서 · `tally` |
+| `tests/test_judge.py` | 작음 · 기준과 같을 때, 기준 음량 없음 · Take 안에서 생김, 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기 · 창 안에 끊김이 없을 때, 긴 침묵 한 번만, 같은 1초 두 번, 마지막 조각(시간 · 에너지 · 커서), 커서 · `tally`, 끊긴 1초는 `tally`에 시간만 |
 | `tests/test_baseline.py` | 말한 1초 고르기, `baseline` 표본 부족 · 충분 · 튀는 값 |
 | `tests/test_summarize.py` | Take 지표 계산, 분모가 0일 때, `criteria`가 config를 따르는지, 둘의 결과가 안쪽까지 dict인지 |
 | `tests/test_examples.py` | `examples/`가 구현 · 계약 모델과 같은지 |
@@ -102,6 +102,7 @@ volume.state, volume.metrics.voice_diff_db, pause.metrics.silence_ms
 | `VOLUME_LOW`의 `persistence_sec` | 늘 0 | 마지막 1초부터 거꾸로 작음이 이어진 시간 |
 | 기준 음량 표본 고르기 | 없음 (`baseline`만, 표본은 코치가 고름) | `speaking_levels`가 말한 1초의 `level_db`를 고름. 코치가 판정 기준값을 따로 두지 않는다 |
 | 말한 소리가 없는 Take의 `VOLUME.measured_ratio` | null | 0 (코치가 측정 비율 기준 미만으로 본다) |
+| 끊긴 1초(`audio_live: false`)의 `tally` | 발화 · 에너지도 더함 | `total_ms`만 (말한 1초 · 기준 음량 표본과 같은 기준) |
 
 기준값(작음 −6 dB · 아주 작음 −15 dB · 평활 창 5초 · 말한 1초 3개 · 표본 15개 · 긴 침묵 5초 · 아주 긴 침묵 15초 · 판정 지연 폭)은 대역과 같습니다.
 `voiced_min_ms`(300)는 대역 `volume-0.2`에 없던 값이라, 시선 대역(`coach_lab/judges/gaze.py`의 `speaking_min_voiced_ms`)과 같게 두었습니다.

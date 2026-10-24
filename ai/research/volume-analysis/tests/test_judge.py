@@ -274,6 +274,17 @@ def test_missing_seconds_count_only_total() -> None:
     assert pause.tally[0].values.audio_live_ms == 0
 
 
+def test_audio_dead_seconds_count_only_total() -> None:
+    volume, pause = run([rec(40000), rec(41000, -31.0, 800, audio_live=False)], 42000)
+    dead = volume.tally[0].values
+    assert volume.tally[0].t_ms == 41000
+    assert dead.total_ms == 1000
+    assert dead.voiced_ms == dead.voiced_energy == dead.low_ms == 0
+    assert dead.level_voiced_ms == dead.base_db_ms == dead.audio_live_ms == 0
+    p = pause.tally[0].values
+    assert (p.long_silence_count, p.audio_live_ms, p.total_ms) == (0, 0, 1000)
+
+
 def test_tally_only_new_seconds() -> None:
     volume, _ = run(speech(0, 10000), 10000, since_ms=8000)
     assert [i.t_ms for i in volume.tally] == [8000, 9000]
