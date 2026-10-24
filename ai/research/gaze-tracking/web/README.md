@@ -13,7 +13,7 @@ v1.1 시선 엔진(고개 방향 `head_pose` + 기준점 분류기)을 **브라�
 - `src/demo/` — 로컬 데모 페이지. **프론트엔드 페이지의 대역**입니다. 상자 크기, 전체 화면, 시작 카드, 실시간 개발 패널처럼
   카메라 화면 바깥은 원래 프론트엔드가 맡으니, 데모는 모듈의 이벤트만 받아서 그립니다.
 - 다른 곳(OTHER)을 보면 **어느 쪽인지**(발표자 기준 8방향)가 붙고, 프레임 판정을 1초 기록으로 모아
-  **코치·리뷰 에이전트가 읽는 값**(시선 이슈, 테이크 요약, 개입 효과)을 만듭니다([에이전트 입력](#에이전트-입력-코치리뷰)).
+  **서버로 보내는 1초 기록**을 만듭니다. 그 기록으로 시선 문제 · Take 지표를 내는 것은 서버 판정 모듈입니다([에이전트 입력](#에이전트-입력-코치리뷰)).
 - Python 패키지(`../src/gaze_lab`)가 기준 구현입니다. 이 엔진은 같은 입력에 같은 답을 내는지
   Python이 만든 기준 답으로 검사합니다([검증](#검증)).
 
@@ -66,7 +66,7 @@ npm run dev        # http://localhost:5180
 | 아래 가운데(잠깐) | 알림: "보정 완료", "렌즈 기준을 다시 맞췄어요" 등 |
 
 데모 페이지가 그리는 것(프론트엔드 몫): 시작 카드, 실시간 오른쪽 개발 패널(지금 보는 곳, 좌우·상하 값과 지도, 확률, 신뢰도,
-처음 위치에서 움직인 거리, 코치 신호, `calibrated` 이벤트 JSON, 에이전트 입력 JSON). 전체 화면은 시작 버튼을 누를 때 페이지가
+처음 위치에서 움직인 거리, 서버로 가는 1초 기록, `calibrated` 이벤트 JSON, 마지막 1초 기록 JSON). 전체 화면은 시작 버튼을 누를 때 페이지가
 켜고, 실시간으로 넘어가도 유지합니다(ESC로 나감).
 
 | 단계 | 화면 | 넘어가는 조건 |
@@ -87,9 +87,9 @@ npm run dev        # http://localhost:5180
 - 보정 중 카메라 위치가 **화면 아래·옆으로 판정되면** 멈추고 알려 줍니다. 판정 불가(렌즈와 화면 가운데를
   같은 고개 자세로 봄)는 막지 않습니다.
 - 방향은 발표자 자신의 왼쪽·오른쪽입니다. 미리보기가 거울상이라 화살표는 화면에서 보이는 쪽과 같습니다.
-- "코치에게 가는 시선 신호"는 1초 기록이 하나 쌓일 때마다 갱신됩니다. 측정할 수 없을 때는 회색 카드
-  (`시선을 잴 수 없어요 · 시선 피드백 보류`)가 나옵니다. 아래 `에이전트 입력 (JSON)`을 펼치면 에이전트가 받는 값
-  그대로(마지막 1초 기록, 코치 이슈, 테이크 요약)를 볼 수 있습니다.
+- "서버로 가는 1초 기록"은 1초 기록이 하나 쌓일 때마다 최근 6개를 보여 줍니다. 판정 보류 · 잴 수 없음은 회색입니다.
+  아래 `마지막 1초 기록 (JSON)`을 펼치면 FE가 보내는 모양 그대로를 볼 수 있습니다. 시선 문제는 데모에서 판정하지 않습니다
+  (서버 판정 모듈 `../src/gaze/`의 일이고, 그 결과 예시는 `../src/gaze/examples/`에 있습니다).
 
 ---
 
@@ -105,8 +105,7 @@ web/
 │   ├── ring.ts · arrow3d.ts · cross3d.ts · guide.ts   고개 원 눈금 · 코끝 화살표 · 휘는 십자선 · 얼굴 가이드
 │   └── text.ts                    화면 문구 (한국어)
 ├── src/worker/                    카메라 화면의 Worker (gaze.worker.ts) + 메시지 형식 (protocol.ts)
-├── index.html, src/demo/          데모 페이지 = 프론트엔드 페이지 대역 (main.ts 시작 카드 · 개발 패널 · styles.css,
-│                                  evidence-preview.ts = 서버 코어의 이슈 · 요약 TS 사본, 미리보기 전용)
+├── index.html, src/demo/          데모 페이지 = 프론트엔드 페이지 대역 (main.ts 시작 카드 · 개발 패널 · styles.css)
 ├── src/engine/                    ★ 엔진 — 프론트엔드에 넣을 폴더
 │   ├── index.ts                   createClassifier({ assetDir }) — 진입점
 │   ├── engine.ts                  GazeEngine: FE 계약 메서드 + 게이지 흐름 + 다시 맞추기
@@ -127,7 +126,7 @@ web/
 │   ├── config.ts, defaults.generated.ts  설정. defaults.generated.ts는 Python 설정에서 생성
 │   ├── types.ts
 │   └── __tests__/                 엔진 테스트(engine · parity · scenarios)와 Python 기준 답(fixtures/parity.json). 엔진과 같이 옮긴다
-├── test/                          vitest — fe-contract · 미리보기(evidence-preview, fixtures/evidence.json) · 엔진 import 경계
+├── test/                          vitest — fe-contract · 엔진 import 경계 · Worker · 자산 검증
 │   └── fe-contract/conformance.ts FE의 modelClassifier.ts가 될 코드 (FE 계약 파일을 읽기 전용으로 import)
 ├── scripts/                       copy-assets · smoke · bench (Node) (Python 생성기는 `../tools/`)
 ├── bench.html, src/bench.ts       화면 없는 성능 측정 페이지
@@ -159,10 +158,10 @@ npm run fixtures     # Python에서 defaults.generated.ts와 기준 답 다시 �
 
 | 무엇을 | 어떻게 | 결과 |
 |---|---|---|
-| Python과 같은 답 | Python 코드가 만든 기준 답(`src/engine/__tests__/fixtures/parity.json`, 미리보기는 `test/fixtures/evidence.json`)과 비교 — log Φ, 소프트 박스 밀도, 헤드포즈(두 메모리 순서), 랜드마크 기하, 분류기 시나리오 11개(SCREEN 합치기·각 실패 사유·OTHER 방향 포함), 배치 8개, 준비 점검·조건 감시(눈 기반 / 고개 기준 / 얼굴 메시 거리 / 다른 사람·얼굴 바뀜 규칙 / 고개 방향 흔들림)·별개의 얼굴 판정·게이지(큐별 목표·늘리기)·큐 방향 확인·고개 원 시퀀스(1초 중심과 흔들림), 에이전트 입력(66초 테이크의 1초 기록·창 통계·코치 이슈·테이크 요약·이전 테이크 차이·개입 효과, **키 이름까지**. 1초 기록까지는 엔진 테스트, 이슈 · 요약은 데모 미리보기 테스트) | 엔진 83개 · 미리보기 55개 통과. 수치는 1e-9 ~ 1e-12 안에서 일치 |
+| Python과 같은 답 | Python 코드가 만든 기준 답(`src/engine/__tests__/fixtures/parity.json`)과 비교 — log Φ, 소프트 박스 밀도, 헤드포즈(두 메모리 순서), 랜드마크 기하, 분류기 시나리오 11개(SCREEN 합치기·각 실패 사유·OTHER 방향 포함), 배치 8개, 준비 점검·조건 감시(눈 기반 / 고개 기준 / 얼굴 메시 거리 / 다른 사람·얼굴 바뀜 규칙 / 고개 방향 흔들림)·별개의 얼굴 판정·게이지(큐별 목표·늘리기)·큐 방향 확인·고개 원 시퀀스(1초 중심과 흔들림), 1초 기록(66초 테이크와 짧은 테이크의 프레임 → 1초 기록, **키 이름까지**) | 엔진 83개 통과. 수치는 1e-9 ~ 1e-12 안에서 일치 |
 | 엔진 흐름 | 가짜 얼굴 검출기로 FE 순서(배치 → 보정 → 판정), 게이지 흐름, 조건 감시, 다시 맞추기, 준비 점검, 고개 원(채우기·얼굴 손실), 원 중심 기준 큐 방향 확인, 화면 가운데가 원의 중심을 확인·합침 / 자세가 바뀌었으면 새로 재고 렌즈·대본 기준도 갱신, 고개를 돌려도 신뢰도 유지, 너무 멀리 움직이면 측정 불가와 이동 cm, 조금 들거나 돌린 고개는 가장 가까운 대상, 눈꺼풀이 내려간 숙인 고개도 판정(고개 방향은 눈 없이), OTHER 방향, 판정 → 에이전트 입력 | 28개 통과 |
 | 판별 시나리오 | v1 README §7-13의 시나리오 28개를 가짜 얼굴 검출기로 엔진 전체에 — 렌즈·화면·대본, 화면 가장자리(좌우 값), 옆·위·아래의 다른 곳, 고개를 많이 드는 사람의 좌우, 눈이 안 보이는 고개, 혼자 물러나기·중복 검출·배경 오검출은 다른 사람 아님, 다른 사람 1초(참고 신호), 얼굴 바뀜(보정 직후 포함), 자리 이동, 얼굴 사라짐, 조명 변화는 신뢰도 그대로, 고개 방향 흔들림, 고개 원 기준 확인·자세가 바뀐 뒤 다시 재기, 준비 점검 | 28개 통과 |
-| FE 계약 | `conformance.ts`(FE `modelClassifier.ts`의 TODO를 채운 모양)를 FE의 `aiAdapter.ts`로 실제 실행 | 5개 통과 |
+| FE 계약 | `conformance.ts`(FE `modelClassifier.ts`의 TODO를 채운 모양)를 FE의 `aiAdapter.ts`로 실제 실행 | 5개 중 2개 실패 — FE가 `aiAdapter` · `temporalVoter`를 바꾼 뒤 맞추지 않음(`../README.md` 9장) |
 | 엔진 시작 · 실패 | 지원 확인, 지원하지 않는 브라우저, 제한 시간(늦게 온 검출기는 닫음), 로딩 실패 사유 (MediaPipe를 가짜로 바꿔 Node에서) | 6개 통과 |
 | 엔진 경계 | 엔진 폴더가 바깥(React · DOM · 카메라 화면 · 데모)을 import하지 않고, 저장 · 전송 · 로그 API(`localStorage` · `indexedDB` · `fetch` · `console` …)를 쓰지 않음 | 39개 통과 |
 | Worker | 프레임 처리 중 예외에도 그 프레임에 답하고 오류는 연속 실패당 한 번, 시작 실패 사유 | 2개 통과 |
@@ -185,11 +184,10 @@ p95 약 30~38 ms(격리 헤더 있음 · 없음)입니다. 같은 설정도 PC �
 
 ## 에이전트 입력 (코치·리뷰)
 
-코치 에이전트와 리뷰 에이전트는 프레임을 읽지 않고 **1초 기록**과 그 요약을 읽습니다. 엔진(`evidence.ts`)은
+코치 에이전트와 리뷰 에이전트는 프레임을 읽지 않고 **1초 기록**으로 만든 판정을 읽습니다. 엔진(`evidence.ts`)은
 프레임 판정을 1초 기록으로 만들기까지만 하고(Python `../src/gaze_lab/evidence/gaze.py`와 같은 값), 1초 기록을 읽어
-이슈 · 요약을 만드는 것은 서버 코어(`../src/gaze/core.py`)입니다. 데모 페이지는 그 결과를 미리 보여 주려고
-서버 코어의 TS 사본(`src/demo/evidence-preview.ts`)을 씁니다. 이 사본은 엔진에 들어 있지 않고 frontend로 가지 않습니다
-(규칙과 수치는 archive `v1/README.md` §7-11).
+1초 판정 결과 · Take 지표를 만드는 것은 서버 판정 모듈(`../src/gaze/`, `judge` · `summarize` · `criteria`)입니다.
+엔진과 데모에는 그 판정의 사본을 두지 않습니다(같은 로직이 두 벌이면 맞추는 비용이 계속 들기 때문입니다).
 
 ```ts
 import { GazeEvidenceRecorder, makeConfig, sampleToDict } from './gaze/engine';
@@ -198,18 +196,14 @@ const rec = new GazeEvidenceRecorder(makeConfig().evidence);   // 테이크마�
 const decision = impl.classify(bitmap, tMs);                     // FrameDecision (direction 포함)
 for (const sample of rec.record(decision)) post(sampleToDict(sample));  // 1초가 끝날 때마다 하나
 
-rec.samples;      // 지금까지의 1초 기록. 이슈 · 요약은 서버가 이 기록으로 만든다
-// 데모의 미리보기: issuesNow(rec.samples, cfg), takeSummary(new GazeTimeline(rec.samples), cfg)
-//                  (src/demo/evidence-preview.ts)
+rec.samples;      // 지금까지의 1초 기록. 판정은 서버가 이 기록으로 한다
 ```
 
 | 값 | 모양 | 쓰는 곳 |
 |---|---|---|
 | 1초 기록 | `{t_ms, duration_ms, state, direction, confidence, reliability, issues, frames}` | 저장·전송 단위. `state`는 CAMERA / SCREEN / BOTTOM / OTHER / UNCERTAIN / UNMEASURED |
-| 코치 이슈 | `{evaluator: "gaze", issue_type, t_ms, severity, confidence, persistence_sec, evidence, actionable}` | `GAZE_ON_SCRIPT` · `GAZE_ON_SCREEN` · `GAZE_AWAY`(+`direction`) · `GAZE_LOW_EYE_CONTACT` → `LOOK_AT_CAMERA`. `GAZE_UNMEASURABLE`은 `actionable: false` = 시선 피드백 보류 신호 |
-| 테이크 요약 | 측정 시간, `coverage`, 상태별 비율, `eye_contact_ratio`, `other_direction_ms`, 가장 긴 구간, 구간 목록, 문제 구간 | 리뷰 근거 |
-| 이전 테이크 차이 | `{previous, current, delta}` | 리뷰의 "지난번보다" |
-| 개입 효과 | `{intervention, before, after_5s, effective}` | 코치 피드백이 먹혔는지 |
+| 1초 판정 결과 (서버 `judge`) | `{evaluator: "gaze", area: "GAZE", t_ms, counted_until_ms, criteria_version, measurable, state, metrics, tally, issues}` | 코치: 상태 표시 · 시선 문제 다섯 개(`GAZE_UNMEASURABLE`은 `actionable: false` = 시선 피드백 보류 신호) · 개입 효과(`*_short` 지표) |
+| Take 지표 (서버 `summarize`) | `{"GAZE": {audience_ratio, script_ratio, screen_ratio, away_ratio, reading_ratio, reading_runs, measured_ratio}}` | Take 결과 → 리뷰 · 리포트 |
 
 비율은 **측정된 시간**(판정된 4상태)으로 나눕니다. FE의 `measuredMs`와 같은 생각입니다.
 
