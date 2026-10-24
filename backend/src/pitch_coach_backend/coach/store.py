@@ -46,6 +46,9 @@ class DbCoachStore(SessionPerCall):
     async def finalizing_takes(self, stale_before: datetime | None = None) -> list[uuid.UUID]:
         return await run_in_threadpool(self._with, coach_service.finalizing_takes, stale_before)
 
+    async def purge_expired_raw(self, now: datetime) -> int:
+        return await run_in_threadpool(self._with, coach_service.purge_expired_raw, now)
+
 
 class CoachStore(Protocol):
     async def append_events(self, take_id: uuid.UUID, events: Sequence[StoredEvent]) -> None:

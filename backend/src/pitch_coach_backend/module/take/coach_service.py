@@ -3,7 +3,7 @@
 import logging
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from psycopg.errors import ForeignKeyViolation
@@ -273,3 +273,12 @@ def finalizing_takes(db: Session, stale_before: datetime | None = None) -> list[
     """Take 결과를 기다리는 중으로 남은 Take. 앱이 다시 뜰 때 이어 간다 (1-3 'BE가 재시작할 때').
     `stale_before` 를 주면 그 전에 기다리기 시작한 것만 — 오래 남은 Take 를 다시 띄울 때 쓴다."""
     return CoachRepository(db).finalizing_take_ids(stale_before)
+
+
+FAILED_RAW_RETENTION = timedelta(days=7)
+
+def purge_expired_raw(db: Session, now: datetime) -> int:
+    """동의 없이 FAILED 로 끝난 지 7일이 지난 Take 의 1초 원자료를 지운다. 지운 행 수."""
+    deleted = CoachRepository(db).purge_expired_metric_seconds(now - FAILED_RAW_RETENTION)
+    db.commit()
+    return deleted
