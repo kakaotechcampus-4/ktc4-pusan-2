@@ -35,7 +35,7 @@ from pitch_coach_backend.core.database import Base, CreatedAtMixin, UUIDPrimaryK
 
 
 class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
-    """연습 1회. pitches.best_take_id 가 이 중 하나를 가리킨다."""
+    """발표 하나에 속하는 연습 1회. pitch_id로 발표를 참조한다."""
 
     __tablename__ = "takes"
     __table_args__ = (
