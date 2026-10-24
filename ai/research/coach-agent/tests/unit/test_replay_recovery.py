@@ -364,6 +364,19 @@ def test_empty_raw_data_still_gives_a_result():
     assert r.replayed is True and r.duration_ms == 30_000
 
 
+def test_replay_take_result_carries_the_plan_like_the_normal_path():
+    with_plan = finalize(request(), fake_judges()).take_result
+    assert with_plan.plan is not None
+    assert with_plan.plan.model_dump() == {
+        "target_ms": 180_000,
+        "min_ms": 165_000,
+        "max_ms": 195_000,
+    }
+    req = request()
+    del req["plan"]
+    assert finalize(req, fake_judges()).take_result.plan is None
+
+
 def test_same_replay_same_result():
     a = finalize(request(), fake_judges())
     b = finalize(request(), fake_judges())

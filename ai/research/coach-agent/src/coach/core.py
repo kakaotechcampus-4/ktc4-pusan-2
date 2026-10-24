@@ -55,6 +55,7 @@ from .schemas import (
     OutcomeEvent,
     SlideResult,
     SuppressedEvent,
+    TakePlan,
     TakeResult,
 )
 from .state import (
@@ -349,10 +350,17 @@ def _take_result(
     t = req.t_ms
     criteria = run.criteria if run is not None else judges_mod.criteria_of(judges, cfg)
     actual = [e for e in coaching_events if isinstance(e, InterventionEvent)] if replayed else None
+    # 요청에 plan 이 실렸으면 시간 계획(장 목록 뺀 것)을 남긴다. replay 도 같은 요청을 쓴다
+    plan = (
+        TakePlan(target_ms=req.plan.target_ms, min_ms=req.plan.min_ms, max_ms=req.plan.max_ms)
+        if "plan" in req.model_fields_set
+        else None
+    )
     return TakeResult(
         take_id=req.take_id,
         duration_ms=t,
         script_mode=req.script_mode,
+        plan=plan,
         replayed=replayed,
         criteria_changed=any(
             v != state.latest_criteria_versions.get(name)

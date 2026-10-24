@@ -453,6 +453,27 @@ def test_criteria_changed_when_a_version_changed_during_the_take():
     assert changed.take_result.criteria["SPEED"].criteria_version == "pace-2"
 
 
+# ── 시간 계획 ───────────────────────────────────────────────────────────
+
+
+def test_take_result_carries_the_plan_without_the_slides():
+    s = session(plan=PLAN)
+    s.run(1_000, 20_000)
+    fin = finish(s, 21_000, plan=PLAN)
+    assert fin.take_result.plan is not None
+    assert fin.take_result.plan.model_dump() == {
+        "target_ms": 180_000,
+        "min_ms": 165_000,
+        "max_ms": 195_000,
+    }
+
+
+def test_take_result_plan_is_null_without_a_plan_in_the_request():
+    s = session()
+    s.run(1_000, 20_000)
+    assert finish(s, 21_000).take_result.plan is None
+
+
 # ── 응답 ────────────────────────────────────────────────────────────────
 
 
@@ -469,6 +490,7 @@ def test_response_shape_and_determinism():
         "take_id",
         "duration_ms",
         "script_mode",
+        "plan",
         "replayed",
         "criteria_changed",
         "areas",
