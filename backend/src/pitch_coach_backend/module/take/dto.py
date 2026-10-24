@@ -95,22 +95,10 @@ class MissionInputDTO(BaseModel):
     area: str
     slide_number: int | None = None
     target: TargetInfoDTO
-class MissionDTO(BaseModel):
-    mission_id: uuid.UUID
-    # null 이면 Take 전체 미션이다 (missions.slide_number)
-    slide_number: int | None
-    description:str
-    priority: int
-    completed: bool
 
 class PreviousTakeDTO(BaseModel):
     take_result: dict[str, Any]
     take_scores: list[int] | None = None
-class PreviousMissionsDTO(BaseModel):
-    # Take 가 아직 없으면 None (next_take_number 는 1, missions 는 빈 목록)
-    source_take_id: uuid.UUID | None
-    next_take_number: int
-    missions: list[MissionDTO]
 
 
 class TranscriptWordDTO(BaseModel):

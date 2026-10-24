@@ -22,7 +22,6 @@ from pitch_coach_backend.module.take.service import (
     create_calibration_service,
     create_take_service,
     delete_take_service,
-    get_previous_missions_service,
     get_review_result,
     list_takes_service,
     mark_ended,
@@ -98,14 +97,6 @@ def create_calibration(
 ):
     result = create_calibration_service(db, take_id, calibration_dto)
     return {"message": "Calibration created successfully", "calibration_id": result}
-
-@router.get("/previous-missions")
-def get_previous_missions(
-    pitch_id: OwnedPitch,
-    db: Annotated[Session, Depends(get_db)],
-):
-    result = get_previous_missions_service(db, pitch_id)
-    return {"message": "Previous missions retrieved successfully", "missions": result}
 
 @router.post("/{take_id}/review")
 def review_take(
