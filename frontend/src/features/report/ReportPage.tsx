@@ -140,12 +140,13 @@ function Hero({ report }: { report: TakeReport }) {
 
   return (
     <section className="relative flex flex-row-reverse items-center justify-between gap-5 border-2 border-ink bg-panel p-6 shadow-[4px_4px_0_var(--color-line)] sm:p-8">
+      {/* 오른쪽 끝에 서므로 좌우를 뒤집어 문장 쪽을 보게 합니다 */}
       <img
-        src="/onboarding/pico-portrait.png"
+        src="/onboarding/pico-bust.png"
         alt=""
         width={80}
         height={80}
-        className="hidden h-28 w-28 shrink-0 object-contain [image-rendering:pixelated] sm:block"
+        className="hidden h-28 w-28 shrink-0 -scale-x-100 object-contain [image-rendering:pixelated] sm:block"
       />
       <div className="min-w-0">
         <p className="text-xs font-bold text-stone">피코의 코칭 노트</p>
