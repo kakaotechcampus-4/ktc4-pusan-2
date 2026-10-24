@@ -210,14 +210,12 @@ export interface HomeResponse {
     daysUntil: number;
     presentationVersion: number;
     scriptVersion: number;
-    bestTakeId: string | null;
-    takes: { id: string; takeNumber: number; status: TakeStatus; isBest: boolean }[];
+    takes: { id: string; takeNumber: number; status: TakeStatus }[];
   }[];
   inProgressTake: { takeId: string; pitchTitle: string; startedAt: string } | null;
 }
 
 export interface ComparisonResponse {
-  bestTakeId: string | null;
   /** 행들의 engineVersion이 하나라도 다르면 false — 추세선을 그리지 않습니다 */
   gazeComparable: boolean;
   recommendedTakeId: string | null;
@@ -238,7 +236,6 @@ export interface ComparisonResponse {
     gazeReliability: 'HIGH' | 'MEDIUM' | 'LOW' | null;
     scriptDependencyCount: number;
     scriptMode: ScriptMode;
-    isBest: boolean;
   }[];
   missionResults: {
     takeNumber: number;

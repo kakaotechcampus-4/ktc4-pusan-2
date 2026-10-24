@@ -43,11 +43,11 @@ const home: HomeResponse = {
   pitches: [
     {
       id: 'p1', title: '캡스톤 최종 발표', timeLimitSec: 600, daysUntil: 3,
-      presentationVersion: 2, scriptVersion: 2, bestTakeId: null,
+      presentationVersion: 2, scriptVersion: 2,
       takes: [
-        { id: 't1', takeNumber: 1, status: 'COMPLETED', isBest: false },
-        { id: 't2', takeNumber: 2, status: 'COMPLETED', isBest: false },
-        { id: 't3', takeNumber: 3, status: 'COMPLETED', isBest: false },
+        { id: 't1', takeNumber: 1, status: 'COMPLETED' },
+        { id: 't2', takeNumber: 2, status: 'COMPLETED' },
+        { id: 't3', takeNumber: 3, status: 'COMPLETED' },
       ],
     },
   ],

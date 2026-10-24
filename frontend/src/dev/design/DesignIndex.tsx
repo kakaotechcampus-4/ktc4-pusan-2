@@ -7,7 +7,6 @@ import { StageDraft } from './stage/StageDraft';
 import { LoadingDraft } from './loading/LoadingDraft';
 import { PrepareMissionDraft } from './prepare/PrepareMissionDraft';
 import { RetryDraft } from './retry/RetryDraft';
-import { BestTakeDraft } from './best/BestTakeDraft';
 import { PitchCreateDraft } from './create/PitchCreateDraft';
 
 /**
@@ -35,7 +34,6 @@ const DRAFTS: { name: string; id: string; title: string; element: ReactElement }
     title: '분석 대기 · 8비트 로딩',
     element: <LoadingDraft />,
   },
-  { name: 'best', id: 'P8', title: 'Best Take 선택', element: <BestTakeDraft /> },
   { name: 'retry', id: 'P15', title: '업로드 실패 · 재시도', element: <RetryDraft /> },
 ];
 
@@ -95,6 +93,7 @@ export function DesignIndex() {
       eyebrow="화면 모아 보기"
       questions={[
         '피치 수정(P13)은 Kjun03이 feat/fe-pitch-edit 에서 작업 중이라 시안에서 뺐어요.',
+        'Best Take 선택(P8)은 팀에서 빼기로 해 화면과 시안을 지웠어요.',
         '구현된 화면은 로그인이 필요해요. 목 모드에서는 브라우저 콘솔에 mockSession.on() 을 입력하면 로그인한 상태가 돼요.',
       ]}
     >
