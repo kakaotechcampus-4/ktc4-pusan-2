@@ -307,7 +307,10 @@ def test_prepare_screen_and_take_start_pick_the_same_reviewed_take(db_session: S
 def test_review_starts_only_after_scoring(
     db_session: Session, take_parts, stage: str | None, allowed: bool
 ):
-    take = make_take(db_session, *take_parts, 1, status="ANALYZING", analysis_stage=stage)
+    take = make_take(
+        db_session, *take_parts, 1, status="ANALYZING", analysis_stage=stage,
+        review_request_id=uuid.uuid4() if stage == "REVIEWING" else None,
+    )
 
     assert TakeRepository(db_session).start_review(take.id) is allowed
 
@@ -315,7 +318,8 @@ def test_review_cut_off_midway_can_start_again(db_session: Session, take_parts):
     """리뷰가 도는 중에 앱이 다시 뜨면 Take 가 REVIEWING 으로 남는다. 리뷰 하나가 끝날 시간이
     지났으면 끊긴 리뷰로 보고 다시 받는다. 아직 도는 중이면 두 번 부르지 않는다."""
     now = datetime.now(UTC)
-    reviewing = {"status": "ANALYZING", "analysis_stage": "REVIEWING"}
+    reviewing = {"status": "ANALYZING", "analysis_stage": "REVIEWING",
+                 "review_request_id": uuid.uuid4()}
     running = make_take(db_session, *take_parts, 1, **reviewing, analysis_stage_at=now)
     cut_off = make_take(
         db_session, *take_parts, 2, **reviewing, analysis_stage_at=now - timedelta(minutes=10)

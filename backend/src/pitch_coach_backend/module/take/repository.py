@@ -416,7 +416,12 @@ class TakeRepository:
         self.db.execute(
             update(Take)
             .where(Take.id == take_id)
-            .values(status="COMPLETED", review_status=review_status, completed_at=func.now())
+            .values(
+                status="COMPLETED",
+                review_status=review_status,
+                completed_at=func.now(),
+                review_request_id=None,
+            )
         )
     def mark_running(self, take_id: uuid.UUID) -> bool:
         """`READY` 인 Take 를 `RUNNING` 으로 바꾼다. 바꿨으면 True.
@@ -554,9 +559,10 @@ class TakeRepository:
         ).all()
         return [(take_id, last_active_at) for take_id, last_active_at in rows]
 
-    def start_review(self, take_id: uuid.UUID) -> bool:
+    def start_review(self, take_id: uuid.UUID, request_id: uuid.UUID | None = None) -> bool:
         """채점까지 끝난 Take 의 분석 단계를 `REVIEWING` 으로 바꾼다. 바꿨으면 True.
 
+        채점이 REVIEWING으로 넘긴 뒤 아직 실행 표식이 없으면 즉시 시작한다.
         Take 결과 · 채점을 만드는 중(`FINALIZING` · `SCORING`)이거나 이미 리뷰 중 · 끝난 Take 는
         바꾸지 않는다 — 덮으면
         그 Take 결과가 버려지거나 리뷰를 두 번 부른다 (`docs/ai/architecture.md` 1-3 분석 단계 표).
@@ -573,15 +579,44 @@ class TakeRepository:
             .where(
                 Take.id == take_id,
                 Take.status == "ANALYZING",
+                Take.analysis_hold_reason.is_(None),
+                ~select(TakeAIResults.id)
+                .where(
+                    TakeAIResults.take_id == take_id,
+                    TakeAIResults.kind == "SCRIPT_COVERAGE_PENDING",
+                )
+                .exists(),
                 or_(
+                    and_(
+                        Take.analysis_stage == "REVIEWING", Take.review_request_id.is_(None)
+                    ),
                     Take.analysis_stage == "AWAITING_CONFIRMATION",
                     Take.analysis_stage.is_(None),
                     stale_review,
                 ),
             )
-            .values(analysis_stage="REVIEWING", analysis_stage_at=func.now())
+            .values(
+                analysis_stage="REVIEWING",
+                analysis_stage_at=func.now(),
+                review_request_id=request_id or uuid.uuid4(),
+            )
         )
         return result.rowcount > 0
+
+    def lock_review(self, take_id: uuid.UUID, request_id: uuid.UUID) -> Take | None:
+        """현재 실행 중인 리뷰만 잠근다. 오래된 응답·삭제된 Take는 저장하지 않는다."""
+        return self.db.scalar(
+            select(Take)
+            .where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                Take.analysis_stage == "REVIEWING",
+                Take.review_request_id == request_id,
+                Take.analysis_hold_reason.is_(None),
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
 
     def utterance_ends(self, take_id: uuid.UUID) -> list[int]:
         """저장된 문장 끝 신호. 없으면 빈 목록."""

@@ -91,6 +91,8 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     analysis_stage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), 
                                                                nullable=True)
     review_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # 리뷰를 실행한 작업의 표식. 새 작업이 이어받으면 이전 응답은 저장하지 않는다.
+    review_request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     # 시작 전이거나 중단된 take 는 아래가 비어 있다.
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
