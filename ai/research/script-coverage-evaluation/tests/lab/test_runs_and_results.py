@@ -1,7 +1,5 @@
 """runs 의 입력 검사와 results JSON. LLM 은 부르지 않는다 (평가 기준이 없으면 호출 전에 멈춘다)."""
 
-import pytest
-
 import coverage_lab.results as results
 from coverage_lab.llm import Settings
 from coverage_lab.runs import run_take_evaluation
@@ -10,7 +8,7 @@ from script_coverage.stt_evaluation.schemas import SlideSTT, Take
 from script_coverage.version import FEATURE_VERSION
 
 
-def test_take_evaluation_without_rubrics_fails_before_any_llm_call(tmp_path):
+def test_take_evaluation_without_rubrics_is_rubric_missing_without_llm_call(tmp_path):
     conn = connect(tmp_path / "t.sqlite")
     settings = Settings(base_url="http://127.0.0.1:9/v1", api_key="dummy", model="m")
     take = Take(
@@ -18,8 +16,9 @@ def test_take_evaluation_without_rubrics_fails_before_any_llm_call(tmp_path):
         take_id="없는 대본_take1",
         slides=[SlideSTT(slide_number=1, stt="말")],
     )
-    with pytest.raises(ValueError, match="평가 기준이 없다"):
-        run_take_evaluation(take, conn, settings)
+    evaluations, stats = run_take_evaluation(take, conn, settings)
+    assert evaluations == [] and stats["failed"] == {1: "RUBRIC_MISSING"}
+    assert stats["semantic_calls"] == 0
     conn.close()
 
 
