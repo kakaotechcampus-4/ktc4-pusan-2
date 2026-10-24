@@ -113,6 +113,11 @@ export interface SttSocketOptions {
   onTranscript: (message: TranscriptMessage) => void;
   /** 화면에 뜨는 상태. 서버가 알려준 값과 우리가 아는 값(재연결 중)이 함께 옵니다 */
   onState: (state: SttState) => void;
+  /**
+   * 서버가 `ready` 를 보냈습니다 — 이 연결이 Take 를 시작했거나(`RUNNING`) 이어받았습니다.
+   * 무대는 첫 `ready` 를 받은 뒤에 시계를 돌립니다. 다시 붙을 때마다 옵니다
+   */
+  onReady?: () => void;
   onStatus?: (message: SttStatusMessage) => void;
   /** `endReason` 은 `TAKE_ENDED` 일 때 BE 가 끝낸 이유입니다 (`TakeEndReason`) */
   onError?: (code: SttErrorCode, message: string, endReason: TakeEndReason | null) => void;
@@ -437,6 +442,7 @@ export class SttSocket {
         this.flushPending();
         this.ready = true;
         this.options.onState(message.stt_state);
+        this.options.onReady?.();
         // 인증을 기다리느라 미뤄 둔 종료가 있으면 이제 보냅니다
         if (this.stopping) this.sendStop();
         break;
