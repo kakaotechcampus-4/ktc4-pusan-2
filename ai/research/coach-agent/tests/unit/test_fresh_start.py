@@ -145,3 +145,29 @@ def test_a_failure_on_the_first_fresh_request_also_starts_at_the_window_start(
     assert state["covered"] == [[70_000, 100_000]]
     assert state["totals"]["GAZE"] == {"total_ms": 30_000}
     assert state["slide_dwell_offset_ms"] == {"1": 60_000}
+
+
+def test_time_before_a_slide_that_started_inside_the_window_is_not_counted_for_it(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # 지금 장이 창 안(90_000)에서 시작했으면 그 앞(70_000 ~ 90_000)은 어느 장인지 모른다 — 지금
+    # 장의 머문 시간 · 장 합계에 넣지 않는다(Take 합계에는 넣는다)
+    seen = _timing_spy(monkeypatch)
+    judges = fake_judges()
+    first = decide(make_request(100_000, plan=PLAN, slide=2, slide_started=90_000), judges)
+    state = first.coach_state
+    assert state["slide_unknown_before_ms"] == 90_000
+    assert state["totals"]["TIME"]["elapsed_ms"] == 30_000
+    assert state["slide_totals"]["2"]["TIME"]["elapsed_ms"] == 10_000
+    decide(make_request(101_000, plan=PLAN, slide=2, slide_started=90_000, state=state), judges)
+    assert seen[1]["slide_dwell_ms"] == {"2": 10_000}
+
+
+def test_leftover_cursors_of_an_unprocessed_state_are_moved_to_the_window_start():
+    # last_t_ms 가 없는데 커서가 남은 상태(모양은 맞는 state)도 창 앞에서 시작한다
+    judges = fake_judges()
+    raw = dump_state(initial_state())
+    raw["cursors"] = {"gaze": {"since_ms": 0, "words_since_ms": -1}}
+    resp = decide(make_request(100_000, plan=PLAN, state=raw), judges)
+    assert judges.gaze.calls[0][0]["since_ms"] == 70_000
+    assert resp.coach_state["covered"] == [[70_000, 100_000]]

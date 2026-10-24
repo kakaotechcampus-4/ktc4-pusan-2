@@ -50,7 +50,12 @@ def extend_slide_span(state: CoachState, t_ms: int) -> None:
 
 
 def slide_at(state: CoachState, t_ms: int) -> int | None:
-    """t_ms 에 보이던 장. 가장 늦게 시작한 장 중 시작 ≤ t_ms 인 것, 모든 시작보다 이르면 첫 장."""
+    """t_ms 에 보이던 장. 가장 늦게 시작한 장 중 시작 ≤ t_ms 인 것, 모든 시작보다 이르면 첫 장.
+
+    새로 시작한 상태에서 앞 장을 모르는 시각(slide_unknown_before_ms 보다 이름)은 None 이다.
+    """
+    if state.slide_unknown_before_ms is not None and t_ms < state.slide_unknown_before_ms:
+        return None
     for number, start in reversed(state.slide_log):
         if start <= t_ms:
             return number

@@ -82,6 +82,17 @@ def test_last_window_gets_take_end_as_take_end_ms_not_as_an_utterance_end():
     assert fin.take_result.areas["FILLER"].take["filler_count"] == 1
 
 
+def test_a_real_utterance_end_at_the_take_end_is_passed_as_it_is():
+    # 실제 UtteranceEnd 가 Take 끝과 같은 시각이어도 문장 끝 신호는 받은 그대로이고, Take 끝은
+    # take_end_ms 로 따로 간다(둘을 섞지 않으므로 구분된다)
+    s = session()
+    s.run(1_000, 10_000)
+    finish(s, 11_000, inputs={"utterance_ends": [11_000]})
+    for module in (s.judges.filler, s.judges.pace):
+        inputs, _ = module.calls[-1]
+        assert inputs["utterance_ends"] == [11_000] and inputs["take_end_ms"] == 11_000
+
+
 def test_last_window_keeps_the_stt_status_the_be_sent_even_if_the_audio_stopped():
     s = session()
     s.run(1_000, 10_000)
@@ -165,6 +176,18 @@ def test_replay_required_when_the_take_ends_long_after_the_last_response():
     with pytest.raises(ReplayRequired) as e:
         finish(s, 60_000)  # 마지막 창이 30초라 [5000, 30000) 는 셀 수 없다
     assert e.value.missing == [(5_000, 30_000)]
+
+
+def test_replay_required_after_a_jump_started_the_state_fresh():
+    # 0초부터 센 뒤 60초 넘게 앞선 요청(T_MS_JUMP)으로 새로 시작하면 앞부분 합계가 없어 409
+    s = session()
+    s.run(1_000, 5_000)
+    assert s.step(100_000).reason_codes == ["T_MS_JUMP"]
+    s.run(101_000, 103_000)
+    with pytest.raises(ReplayRequired) as e:
+        finish(s, 103_000)
+    # 새로 시작한 첫 요청(101_000)은 창 앞(71_000)부터 센다
+    assert e.value.missing == [(0, 71_000)]
 
 
 def test_no_replay_when_the_gap_fits_in_the_window():

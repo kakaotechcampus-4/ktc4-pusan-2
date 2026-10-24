@@ -498,6 +498,14 @@ def test_gaze_voiced_leaves_out_seconds_with_the_audio_cut():
     ]
 
 
+def test_gaze_voiced_keeps_only_the_first_record_of_a_second():
+    # 같은 1초가 두 번 오면 먼저 온 것만 쓴다 — 먼저 온 것이 오디오가 끊긴 1초면 그 1초는 빠진다
+    judges = fake_judges()
+    records = [voice(1_000, live=False), voice(1_000)]
+    go(req(1_000, voices=records), initial_state(), judges)
+    assert inputs_of(judges.gaze)["voiced"] == []
+
+
 def test_evaluate_gives_stt_modules_degraded_when_the_audio_stopped():
     judges = fake_judges()
     state = initial_state()

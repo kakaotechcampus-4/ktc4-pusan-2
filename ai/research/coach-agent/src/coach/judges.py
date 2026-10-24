@@ -17,7 +17,15 @@ from typing import Any, Protocol
 
 from . import tally
 from .config import CoachConfig
-from .schemas import CoachInputs, CoachRequest, IssueCriteria, JudgmentResult, SlideNow, TallyItem
+from .schemas import (
+    CoachInputs,
+    CoachRequest,
+    IssueCriteria,
+    JudgmentResult,
+    SlideNow,
+    TallyItem,
+    VoiceRecordIn,
+)
 from .state import CoachState, Cursor
 from .timing import criteria as timing_criteria
 from .timing import judge as timing_judge
@@ -165,9 +173,13 @@ def run(
     call("pace", judges.pace.judge, {**stt_part("pace"), "fillers": fillers})
 
     # 3. gaze
-    # 말한 1초만: 오디오가 끊긴 1초(audio_live false)는 뺀다 — 시선에는 audio_live 가 가지 않는다
+    # 말한 1초만: 오디오가 끊긴 1초(audio_live false)는 뺀다 — 시선에는 audio_live 가 가지 않는다.
+    # 같은 1초가 두 번 오면 먼저 온 것만 쓰므로, 고른 뒤에 뺀다
+    first_voice: dict[int, VoiceRecordIn] = {}
+    for r in inputs.voice_records:
+        first_voice.setdefault(r.t_ms, r)
     voiced = [
-        {"t_ms": r.t_ms, "voiced_ms": r.voiced_ms} for r in inputs.voice_records if r.audio_live
+        {"t_ms": r.t_ms, "voiced_ms": r.voiced_ms} for r in first_voice.values() if r.audio_live
     ]
     gaze_in = {
         "t_ms": t,
@@ -246,21 +258,28 @@ def _start_fresh(req: CoachRequest, state: CoachState) -> None:
     """새로 시작한 상태(last_t_ms 없음)의 첫 요청이면 시각 커서를 창 앞에서 시작한다.
 
     Take 후반에 새로 시작해도 첫 요청이 Take 앞부분 전체를 세지 않도록, 커서가 아직 없는 모듈의
-    시각 커서를 max(0, t − 30초)에 둔다(단어 커서는 60초 창으로 묶이므로 그대로). 창 밖은 셀
+    시각 커서를 max(0, t − 30초)로 올린다(단어 커서는 60초 창으로 묶이므로 그대로). 창 밖은 셀
     원자료가 없고 센 구간에도 넣지 않는다(종료 때 replay 로 다시 만든다). 다만 시간 판정의 머문
     시간은 max(커서, 장 시작)부터 세므로, 지금 장의 창 밖 몫을 미리 slide_dwell_offset_ms 에 둔다.
+    지금 장이 창 안에서 시작했으면 그 앞 시간은 어느 장인지 모른다 — 장 합계에 넣지 않도록
+    slide_unknown_before_ms 에 장 시작을 둔다(그러지 않으면 첫 장으로 보고 지금 장에 더한다).
     """
     if state.last_t_ms is not None:
         return
     start = max(0, req.t_ms - GAZE_VOICE_WINDOW_MS)
     for name in _AREAS:
-        state.cursors.setdefault(name, Cursor(since_ms=start))
+        cur = state.cursors.setdefault(name, Cursor(since_ms=start))
+        cur.since_ms = max(cur.since_ms, start)
     slide = req.inputs.slide
-    if slide is not None:
-        outside = max(0, start - slide.started_ms)
-        if outside:
-            key = str(slide.number)
-            state.slide_dwell_offset_ms[key] = state.slide_dwell_offset_ms.get(key, 0) + outside
+    # 장은 처음 알게 될 때 한 번만 정한다(같은 상태로 다시 불려도 두 번 더하지 않게)
+    if slide is None or state.slide_log:
+        return
+    outside = max(0, start - slide.started_ms)
+    if outside:
+        key = str(slide.number)
+        state.slide_dwell_offset_ms[key] = state.slide_dwell_offset_ms.get(key, 0) + outside
+    elif slide.started_ms > start:
+        state.slide_unknown_before_ms = slide.started_ms
 
 
 def _round_start(state: CoachState) -> int:
