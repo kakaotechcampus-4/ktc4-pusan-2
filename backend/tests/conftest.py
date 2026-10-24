@@ -41,6 +41,7 @@ os.environ.setdefault("DEEPGRAM_API_KEY", "test-deepgram-key")
 # S3 도 마찬가지. 업로드는 테스트에서 모킹한다.
 os.environ.setdefault("S3_BUCKET_NAME", _dotenv.get("S3_BUCKET_NAME", "test-bucket"))
 
+
 def _test_database_url() -> str:
     from pitch_coach_backend.core.config import settings
 
@@ -155,7 +156,7 @@ class NoCoachStore:
         self.failed.append(take_id)
         return True
 
-    async def finalizing_takes(self, stale_before=None) -> list:
+    async def finalizing_takes(self, stale_before=None, *, after=None, limit=100) -> list:
         return []
 
     async def build_plan_request(self, pitch_id) -> None:

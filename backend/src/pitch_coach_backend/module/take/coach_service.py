@@ -68,8 +68,7 @@ def start_take(db: Session, take_id: uuid.UUID) -> bool:
 
 
 def append_slide_events(db: Session, take_id: uuid.UUID, events: Iterable[SlideEvent]) -> None:
-    """장 변경을 저장한다. 같은 시각은 먼저 저장한 것을 둔다. Take 가 지워졌으면 `NonExistentTake`.
-    """
+    """장 변경을 저장한다. 같은 시각은 첫 값을 두며 삭제된 Take 는 `NonExistentTake`."""
     rows = [{"slide_number": e.slide_number, "started_ms": e.started_ms} for e in events]
     try:
         CoachRepository(db).append_slide_events(take_id, rows)
@@ -97,12 +96,14 @@ def take_coach_values(db: Session, take_id: uuid.UUID) -> TakeCoachValues | None
         return None
     return _take_coach_values(db, repo, take)
 
+
 def stored_metric_seconds(db: Session, take_id: uuid.UUID) -> tuple[MetricSecond, ...]:
     """프로세스를 다시 띄운 뒤에도 (take_id, t_ms)의 첫 저장본을 유지한다."""
     return tuple(
         MetricSecond(r.t_ms, r.slide_number, r.gaze, r.voice, r.stt_status)
         for r in CoachRepository(db).metric_seconds(take_id)
     )
+
 
 def _take_coach_values(db: Session, repo: CoachRepository, take: Take) -> TakeCoachValues | None:
     pitch = pitch_service.find_pitch(db, take.pitch_id)
@@ -132,9 +133,11 @@ def _take_coach_values(db: Session, repo: CoachRepository, take: Take) -> TakeCo
         ),
     )
 
+
 def _slide_timings(slides: Iterable[Any]) -> tuple[SlideTiming, ...]:
     """대본 장(`ScriptSlide`)의 시간 계획 재료."""
     return tuple(SlideTiming(s.slide_number, s.expected_ms, s.script_chars) for s in slides)
+
 
 def _parsed_target_ms(parse_meta: Any) -> int | None:
     """대본을 파싱할 때 요청한 목표 시간 (script-parser.md 12-2). 없거나 모양이 틀리면 None."""
@@ -145,6 +148,7 @@ def _parsed_target_ms(parse_meta: Any) -> int | None:
         return None
     return value
 
+
 def _mission_ids(values: Any) -> list[uuid.UUID]:
     ids: list[uuid.UUID] = []
     for value in values or []:
@@ -153,6 +157,7 @@ def _mission_ids(values: Any) -> list[uuid.UUID]:
         except ValueError:
             logger.warning("takes.mission_ids 에 UUID 가 아닌 값이 있다 value=%r", value)
     return ids
+
 
 def _mission_input(mission: Mission) -> MissionInput:
     return MissionInput(
@@ -163,6 +168,7 @@ def _mission_input(mission: Mission) -> MissionInput:
         priority=mission.priority,
         description=mission.description,
     )
+
 
 def _recurring_issues(
     repo: CoachRepository, reviewed: uuid.UUID | None
@@ -177,15 +183,16 @@ def _recurring_issues(
         return ()
     return tuple(issue for issue in issues if isinstance(issue, dict))
 
+
 def append_coach_events(db: Session, take_id: uuid.UUID, events: Sequence[StoredEvent]) -> None:
-    """evaluate 응답 하나의 이벤트를 한 트랜잭션으로 저장한다. Take 가 지워졌으면 `NonExistentTake`.
-    """
+    """evaluate 이벤트를 한 트랜잭션으로 저장한다. 삭제된 Take 는 `NonExistentTake`."""
     try:
         CoachRepository(db).append_events(take_id, events)
     except NonExistentTake:
         db.rollback()
         raise
     db.commit()
+
 
 def load_coach_events(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]] | None:
     """저장된 코치 이벤트를 받은 순서대로 (finalize 의 `events`). Take 가 Take 결과를 기다리는 중이
@@ -248,6 +255,7 @@ def finalize_rows(db: Session, take_id: uuid.UUID) -> FinalizeRows | None:
         raw_data_consent=take.raw_data_consent,
     )
 
+
 def save_take_result(
     db: Session,
     take_id: uuid.UUID,
@@ -283,22 +291,31 @@ def save_take_result(
     db.commit()
     return True
 
+
 def fail_take_result(db: Session, take_id: uuid.UUID) -> bool:
     """Take 결과를 끝내 만들지 못했다. Take 를 `FAILED` 로 두고 원자료는 남긴다 (7일, 1-1)."""
     failed = CoachRepository(db).fail_finalizing(take_id)
     db.commit()
     return failed
 
-def finalizing_takes(db: Session, stale_before: datetime | None = None) -> list[uuid.UUID]:
+
+def finalizing_takes(
+    db: Session,
+    stale_before: datetime | None = None,
+    *,
+    after: uuid.UUID | None = None,
+    limit: int = 100,
+) -> list[uuid.UUID]:
     """Take 결과를 기다리는 중으로 남은 Take. 앱이 다시 뜰 때 이어 간다 (1-3 'BE가 재시작할 때').
     `stale_before` 를 주면 그 전에 기다리기 시작한 것만 — 오래 남은 Take 를 다시 띄울 때 쓴다."""
-    return CoachRepository(db).finalizing_take_ids(stale_before)
+    return CoachRepository(db).finalizing_take_ids(stale_before, after=after, limit=limit)
 
 
 FAILED_RAW_RETENTION = timedelta(days=7)
 
 # 원자료를 지울 때 한 트랜잭션에서 잠그는 Take 수
 PURGE_BATCH_TAKES = 500
+
 
 def purge_expired_raw(db: Session, now: datetime) -> int:
     """동의 없이 FAILED 로 끝난 지 7일이 지난 Take 의 1초 원자료를 지운다. 지운 행 수.
@@ -316,6 +333,7 @@ def purge_expired_raw(db: Session, now: datetime) -> int:
         if len(take_ids) < PURGE_BATCH_TAKES:
             return deleted
         after = take_ids[-1]
+
 
 def coaching_plan_values(db: Session, pitch_id: uuid.UUID) -> PlanValues | None:
     """다음 Take 의 코칭 계획 요청 재료 (coach-agent.md 5-2 plan). 부르지 않을 때는 None.
@@ -355,6 +373,7 @@ def coaching_plan_values(db: Session, pitch_id: uuid.UUID) -> PlanValues | None:
         previous_take_result=previous_result.payload if previous_result else None,
         previous_review=previous_review.payload if previous_review else None,
     )
+
 
 def save_coaching_plan(
     db: Session,
