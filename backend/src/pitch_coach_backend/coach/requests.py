@@ -6,13 +6,15 @@
 
 **창을 고르는 규칙은 AI 의 replay 와 같다** (`ai/research/coach-agent/src/coach/recovery.py` 의
 `inputs_at`). 발표 중 BE 가 보낸 창과 Take 뒤 원자료로 다시 만든 창이 같아야, 응답이 빠져 replay
-로 만든 Take 결과가 정상 진행과 같다(coach-agent.md 1-2). 슬라이드 시작 시각도 발표 중과 replay 가
-`SlideTracker` 하나로 정한다.
+로 만든 Take 결과가 정상 진행과 같다(coach-agent.md 1-2). 지금 장도 발표 중과 replay 가 같은 장 변경
+기록(`take_slide_events`, WS `slide`)으로 정한다 (`slide_at`).
 
 BE 가 값을 고치거나 빼는 곳은 아래뿐이다. 나머지(미션 · 반복 문제 · 1초 기록)는 받은 그대로 싣는다.
   - `mode` · `script_mode`: 계약에 없는 값이면 `COACHING` · null 로 둔다. takes CHECK 가 막지만,
     계약에 없는 값을 그대로 보내면 AI 가 그 Take 의 요청을 전부 422 로 거절해서 한 번 더 막는다
   - `plan.min_ms`: 0 이하면 null (5-2)
+  - `plan.slides[].target_ms`: 대본 파싱의 `expected_ms` 를 지금 목표 시간에 맞춰 비율로 늘이거나
+    줄인다 (script-parser.md 12-2 — 제한 시간만 바뀌면 다시 파싱하지 않는다)
   - `calibration.base_level_db`: 유한한 수가 아니면 null
   - 코칭 계획 요청: 입력 크기 상한(5-2 plan)을 넘으면 AI 가 422 를 준다. 부르지 않는다. 미션 설명만
     길면 그 설명만 뺀다
@@ -23,9 +25,17 @@ import math
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Any
 
 from pitch_coach_backend.coach.client import PlanReply
+from pitch_coach_backend.module.take.dto import (
+    MetricSecond,
+    MissionInput,
+    SlideEvent,
+    SlideTiming,
+    TranscriptSegment,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +57,6 @@ _SCRIPT_MODES = frozenset({"HIGHLIGHT", "KEYWORD", "OFF"})
 # ── 시간 계획 ─────────────────────────────────────────────────────────
 
 
-@dataclass(frozen=True)
-class SlideTiming:
-    """대본 한 장의 시간 계획 (script_slides). 대본 파싱이 값을 주기 전이면 None 이다."""
-
-    slide_number: int
-    expected_ms: int | None
-    script_chars: int | None
-
-
 def build_plan(
     target_sec: int,
     *,
@@ -63,6 +64,7 @@ def build_plan(
     lower_deviation_sec: int,
     upper_deviation_sec: int,
     slides: Iterable[SlideTiming] = (),
+    parsed_target_ms: int | None = None,
 ) -> dict[str, Any]:
     """시간 계획 `plan` (5-2).
 
@@ -72,43 +74,50 @@ def build_plan(
       (FE 가 그렇게 보여 준다) — 그래서 null 로 바꾸지 않고 제한 시간 그대로 싣는다.
     - 장별 계획은 **모든 장에 예상 시간이 있을 때만** 싣는다. 시간 판정은 장 목표의 합으로 남은
       시간을 재므로 일부만 있으면 진행도가 틀어진다. 없으면 빈 목록이고 Take 전체로만 판정한다.
+    - `parsed_target_ms` 는 대본을 파싱할 때 요청한 목표(`script_versions.parse_meta.target_ms`)다.
+      있으면 장 목표를 `target_sec` 에 맞춰 비율로 바꾼다. 파싱처럼 누적으로 반올림해 장 목표의 합이
+      목표와 같게 둔다 — 장마다 반올림하면 합이 몇 ms 씩 어긋나 마지막 장의 남은 시간이 틀어진다.
     """
+    target_ms = target_sec * 1000
     min_ms = (time_limit_sec - lower_deviation_sec) * 1000
     ordered = sorted(slides, key=lambda s: s.slide_number)
     planned = bool(ordered) and all(s.expected_ms is not None for s in ordered)
+    targets = [s.expected_ms or 0 for s in ordered]
+    if planned and parsed_target_ms is not None and parsed_target_ms > 0:
+        targets = _scaled(targets, target_ms, parsed_target_ms)
     return {
-        "target_ms": target_sec * 1000,
+        "target_ms": target_ms,
         "min_ms": min_ms if min_ms > 0 else None,
         "max_ms": (time_limit_sec + upper_deviation_sec) * 1000,
         "slides": [
             {
                 "slide_number": s.slide_number,
-                "target_ms": s.expected_ms,
+                "target_ms": slide_target,
                 # 없으면 0 — 그 장의 진행도는 머문 시간으로 잰다 (6-2)
                 "script_chars": s.script_chars or 0,
             }
-            for s in ordered
+            for s, slide_target in zip(ordered, targets, strict=True)
         ]
         if planned
         else [],
     }
 
 
+def _scaled(values: list[int], target: int, base: int) -> list[int]:
+    """values 를 base 에 대한 비율로 보고 target 에 맞춘다. 누적합을 .5 올림으로 반올림해 나눈다."""
+    scaled: list[int] = []
+    running = 0
+    previous = 0
+    for value in values:
+        running += value
+        # running × target ÷ base 를 .5 올림 (모두 0 이상의 정수라 정수 연산으로 끝난다)
+        cumulative = (2 * running * target + base) // (2 * base)
+        scaled.append(cumulative - previous)
+        previous = cumulative
+    return scaled
+
+
 # ── Take 동안 바뀌지 않는 값 ──────────────────────────────────────────
-
-
-@dataclass(frozen=True)
-class MissionInput:
-    """이번 Take 에 실린 미션 하나 (review-agent.md 12-1 의 missions)."""
-
-    mission_id: str
-    area: str
-    slide_number: int | None
-    # {metric, operator, value}
-    target: Mapping[str, Any] | None
-    # 없으면 키를 뺀다. 코치가 1 로 본다 (명시적 null 은 계약 위반이다)
-    priority: int | None = None
-    description: str | None = None
 
 
 def missions_payload(missions: Iterable[MissionInput]) -> list[dict[str, Any]]:
@@ -140,14 +149,18 @@ class TakeConstants:
     missions: list[dict[str, Any]] = field(default_factory=list)
     # 직전 리뷰의 recurring_issues 그대로 (BE 는 항목을 고치지 않는다)
     recurring_issues: list[dict[str, Any]] = field(default_factory=list)
-    # 오래된 계획 막기를 통과한 계획 (`coaching_plan_for_take`). 없으면 None
+    # Take 를 시작할 때 고른 코칭 계획 (12-2 계획 고르기, `why` 는 뺀다). 없으면 None
     coaching_plan: dict[str, Any] | None = None
     script_used: bool | None = None
     base_level_db: float | None = None
     script_mode: str | None = None
 
     def common(self) -> dict[str, Any]:
-        """evaluate · finalize 가 같이 싣는 칸."""
+        """evaluate · finalize 가 같이 싣는 칸. Take 동안 바뀌지 않아 한 번만 만든다."""
+        return self._common
+
+    @cached_property
+    def _common(self) -> dict[str, Any]:
         mode = self.mode.upper()
         base_level_db = self.base_level_db
         if base_level_db is not None and not math.isfinite(base_level_db):
@@ -178,28 +191,34 @@ class FinalWord:
     final_at_ms: int
 
 
-class SlideTracker:
-    """`metrics.slide_number` 로 지금 장과 그 장의 시작 시각을 정한다.
+def slide_changes(
+    events: Iterable[SlideEvent], *, normalize_start: bool = True
+) -> list[dict[str, int]]:
+    """장 변경 기록 전체를 시각 순서로 둔다. 같은 시각은 먼저 온 것만.
 
-    - 장이 바뀌면 그 `metrics` 의 시각(바깥 `t_ms`)이 새 장의 시작이다.
-    - 처음 알게 된 장은 Take 시작(0)부터로 본다. 발표는 첫 장에서 시작하고, 앞의 `metrics` 가
-      장을 몰랐어도(null) 그동안 화면에 있던 장이다.
-    - null(잴 수 없음)은 무시하고 마지막으로 알던 장을 둔다.
+    처음 알게 된 장은 `started_ms` 를 0 으로 싣는다 — 그 앞의 장을 모르므로 Take 시작부터 그 장으로
+    본다. 이 보정은 replay (5-2)에만 쓰며 실시간 창은 `normalize_start=False` 로 실제 전환 시각을
+    유지한다. FE 는 Take 시작에 1번 장을 0 으로 보내므로 보통은 이미 0 이다.
     """
+    picked: dict[int, int] = {}
+    for event in events:
+        picked.setdefault(event.started_ms, event.slide_number)
+    changes = [{"number": picked[t], "started_ms": t} for t in sorted(picked)]
+    if changes and normalize_start:
+        changes[0] = {**changes[0], "started_ms": 0}
+    return changes
 
-    def __init__(self) -> None:
-        self.current: dict[str, int] | None = None
-        # 지금까지의 장 변경. replay 의 `slides`
-        self.changes: list[dict[str, int]] = []
 
-    def observe(self, t_ms: int, slide_number: int | None) -> None:
-        if slide_number is None:
-            return
-        if self.current is not None and self.current["number"] == slide_number:
-            return
-        started_ms = t_ms if self.current is not None else 0
-        self.current = {"number": slide_number, "started_ms": started_ms}
-        self.changes.append(self.current)
+def slide_at(t_ms: int, changes: Sequence[Mapping[str, int]]) -> dict[str, int] | None:
+    """`t_ms` 요청의 `inputs.slide` (architecture.md 1-3 2번). `slide_changes` 의 결과에서
+    `started_ms` 가 `t_ms` 이하인 것 중 가장 늦은 것이다. 없으면 None — 코치가 마지막으로 알던 장을
+    쓴다. `metrics.slide_number` 는 참고값이라 쓰지 않는다."""
+    current: Mapping[str, int] | None = None
+    for change in changes:
+        if change["started_ms"] > t_ms:
+            break
+        current = change
+    return dict(current) if current is not None else None
 
 
 def window_inputs(
@@ -255,32 +274,11 @@ def _records_between(
 # ── replay ────────────────────────────────────────────────────────────
 
 
-@dataclass(frozen=True)
-class MetricSecond:
-    """1초 원자료 한 행 (take_metric_seconds). `t_ms` 는 그 `metrics` 의 바깥 시각이다."""
-
-    t_ms: int
-    slide_number: int | None
-    gaze: Mapping[str, Any] | None
-    voice: Mapping[str, Any] | None
-    # 그 `metrics` 를 받았을 때의 STT 상태. 마이그레이션 전 행은 None
-    stt_status: str | None
-
-
-@dataclass(frozen=True)
-class TranscriptSegment:
-    """확정 전사 구간 한 행 (take_transcript_segments). words 는 저장된 모양 그대로."""
-
-    end_ms: int
-    words: Sequence[Mapping[str, Any]]
-    # 그 구간이 확정된 Take 시각. 마이그레이션 전 행은 None
-    final_at_ms: int | None
-
-
 def replay_input(
     seconds: Iterable[MetricSecond],
     segments: Iterable[TranscriptSegment],
     utterance_ends: Iterable[int],
+    slides: Iterable[SlideEvent],
     *,
     t_end_ms: int,
 ) -> dict[str, Any]:
@@ -292,7 +290,7 @@ def replay_input(
       실었으므로 그 사이의 짧은 끊김은 양쪽 다 모른다. 처음 알게 된 상태는 Take 시작(0)부터로 둔다 —
       AI 는 이력보다 앞을 '연결 중'으로 보고 그동안의 단어를 세지 않는데, 발표 중 첫 요청은 그
       상태로 첫 1초의 단어를 셌다
-    - 장 변경: `SlideTracker` (발표 중과 같은 규칙)
+    - 장 변경: 장 변경 기록 전체 (`slide_changes`, 발표 중 `slide_at` 과 같은 규칙)
     - 단어: 구간의 확정 시각을 구간 안 단어마다 붙인다(12-1). 확정 시각이 없는 옛 구간은 구간 끝을
       대신 쓴다 — 실제보다 일찍 들어가지만 순서는 그대로다. STT 를 닫은 뒤에 확정된 단어는 확정
       시각이 Take 끝보다 늦다. AI 는 마지막 창에 확정 시각이 Take 끝 이하인 단어만 넣으므로 Take
@@ -300,10 +298,8 @@ def replay_input(
       이렇게 만든다)
     """
     ordered = sorted(seconds, key=lambda s: s.t_ms)
-    slides = SlideTracker()
     stt_status_changes: list[dict[str, Any]] = []
     for second in ordered:
-        slides.observe(second.t_ms, second.slide_number)
         status = second.stt_status
         if status is None:
             continue
@@ -333,7 +329,7 @@ def replay_input(
         "stt_status_changes": stt_status_changes,
         "words": words,
         "utterance_ends": sorted(set(utterance_ends)),
-        "slides": slides.changes,
+        "slides": slide_changes(slides),
     }
 
 
@@ -343,6 +339,69 @@ def _first_per_start(records: Iterable[Mapping[str, Any] | None]) -> list[dict[s
         if record is not None and record["t_ms"] not in picked:
             picked[record["t_ms"]] = dict(record)
     return [picked[start] for start in sorted(picked)]
+
+
+# ── 코치 세션 · finalize 가 DB 에서 읽어 오는 묶음 ───────────────────────
+
+@dataclass(frozen=True)
+class TakeContext:
+    """발표 중 코치가 Take 동안 들고 있는 값. Take 를 시작할 때(첫 WS 연결) 읽는다.
+
+    `slides` 는 이미 저장된 장 변경이다 — 프로세스가 다시 떠 메모리를 잃어도 지금 장을 이어 간다.
+    """
+
+    constants: TakeConstants
+    slides: tuple[SlideEvent, ...] = ()
+    # BE 가 Take 도중 다시 떴을 때 DB 에 이미 있는 초. 재전송이 첫 저장본을 바꾸지 않게 한다.
+    seconds: tuple[MetricSecond, ...] = ()
+
+
+@dataclass(frozen=True)
+class FinalizeSource:
+    """finalize 를 DB 에서 다시 만들 때의 재료. 프로세스가 다시 떠 코치 세션이 없거나
+    (`coach_state` 를 잃음), 409 를 받아 `replay` 가 필요할 때 쓴다."""
+
+    context: TakeContext
+    seconds: tuple[MetricSecond, ...]
+    segments: tuple[TranscriptSegment, ...]
+    utterance_ends: tuple[int, ...]
+    # 받은 순서대로 (coach_events.seq). 이벤트 JSON 그대로
+    events: tuple[dict[str, Any], ...]
+    raw_data_consent: bool
+
+    @property
+    def t_end_ms(self) -> int | None:
+        """Take 가 끝난 시각 — 마지막 `metrics` 의 바깥 `t_ms`. 1초 원자료가 없으면 None."""
+        return max((s.t_ms for s in self.seconds), default=None)
+
+    def replay(self, t_end_ms: int) -> dict[str, Any]:
+        return replay_input(
+            self.seconds,
+            self.segments,
+            self.utterance_ends,
+            self.context.slides,
+            t_end_ms=t_end_ms,
+        )
+
+    def last_window(self, replay: Mapping[str, Any], t_end_ms: int) -> dict[str, Any]:
+        """마지막 창. `replay`(이 원자료로 만든 것)에서 발표 중과 같은 규칙으로 고른다. STT 상태는
+        마지막 1초의 것이다."""
+        words = [
+            FinalWord(w["word"], w["start_ms"], w["end_ms"], w["final_at_ms"])
+            for w in replay["words"]
+        ]
+        last = max(self.seconds, key=lambda s: s.t_ms, default=None)
+        return window_inputs(
+            t_end_ms,
+            gaze_records=(s.gaze for s in self.seconds if s.gaze is not None),
+            voice_records=(s.voice for s in self.seconds if s.voice is not None),
+            words=words,
+            utterance_ends=self.utterance_ends,
+            stt_status=(last.stt_status if last is not None and last.stt_status else "connecting"),
+            slide=slide_at(
+                t_end_ms, slide_changes(self.context.slides, normalize_start=False)
+            ),
+        )
 
 
 # ── 요청 ──────────────────────────────────────────────────────────────
@@ -407,7 +466,8 @@ def plan_request(
 
     - `plan`: `build_plan(time_limit_sec, time_limit_sec=time_limit_sec, ...)`. Take 전이라
       `target_ms` 가 발표 제한 시간이다.
-    - `source_take_id`: 그 발표에서 가장 최근에 `COMPLETED` 가 된 Take. 첫 Take 면 None.
+    - `source_take_id`: 그 발표에서 가장 늦게 끝난 `COMPLETED` Take (리뷰가 끝내 실패한 Take 포함,
+      architecture.md 1-3 'Take 상태'). 첫 Take 면 None.
     - 미션 설명이 상한보다 길면 그 설명만 빼고 보낸다. 설명은 선택이고 없으면 코치가 영역 · 대상 ·
       목표로 계획을 세운다 — 설명 하나 때문에 계획 전체를 잃을 이유가 없다.
     """
@@ -462,14 +522,59 @@ def plan_request(
 # ── 코칭 계획 보관 · 고르기 ───────────────────────────────────────────
 
 
-def stored_plan(request: Mapping[str, Any], reply: PlanReply) -> dict[str, Any]:
-    """`pitches.coaching_plan` 에 둘 모양 (coach-agent.md 12-1).
+@dataclass(frozen=True)
+class PlanBasis:
+    """코칭 계획의 바탕 값 (12-2 계획 고르기). 계획 행에 두고, 다음 Take 를 시작할 때 그때 값과 모두
+    같은 행만 고른다. null 끼리는 같은 값으로 본다."""
 
-    두 id 와 제한 시간(`plan` 의 target · min · max)은 BE 가 보낸 **요청** 값으로 둔다. 다음 Take 를
-    시작할 때 이 값으로 오래된 계획인지 본다. AI 는 두 id 를 그대로 돌려주게 되어 있지만, 빠뜨리거나
-    다르게 돌려줘도 저장할 계획이 영영 오래된 것으로 남지 않게 응답 값은 쓰지 않는다.
-    """
+    source_take_id: str | None
+    script_version_id: str | None
+    target_ms: int | None
+    min_ms: int | None
+    max_ms: int | None
+
+
+def plan_basis(
+    *,
+    source_take_id: str | uuid.UUID | None,
+    script_version_id: str | uuid.UUID | None,
+    time_limit_sec: int,
+    lower_deviation_sec: int,
+    upper_deviation_sec: int,
+) -> PlanBasis:
+    """지금 발표 상태의 바탕 값. 시간 계획은 계획을 요청할 때처럼 제한 시간으로 만든다 — Take 목표
+    시간으로 만들면 목표가 제한 시간과 다를 때마다 맞는 계획이 없다."""
+    plan = build_plan(
+        time_limit_sec,
+        time_limit_sec=time_limit_sec,
+        lower_deviation_sec=lower_deviation_sec,
+        upper_deviation_sec=upper_deviation_sec,
+    )
+    return PlanBasis(
+        source_take_id=_id(source_take_id),
+        script_version_id=_id(script_version_id),
+        target_ms=plan["target_ms"],
+        min_ms=plan["min_ms"],
+        max_ms=plan["max_ms"],
+    )
+
+
+def request_basis(request: Mapping[str, Any]) -> PlanBasis:
+    """계획 요청에 실은 바탕 값. 응답 값은 쓰지 않는다 — AI 는 두 id 를 그대로 돌려주게 되어 있지만,
+    빠뜨리거나 다르게 돌려줘도 저장한 계획이 영영 고를 수 없는 행으로 남지 않게."""
     plan = request["plan"]
+    return PlanBasis(
+        source_take_id=request["source_take_id"],
+        script_version_id=request["script_version_id"],
+        target_ms=plan["target_ms"],
+        min_ms=plan["min_ms"],
+        max_ms=plan["max_ms"],
+    )
+
+
+def plan_payload(request: Mapping[str, Any], reply: PlanReply) -> dict[str, Any]:
+    """`coaching_plans.payload` (12-1). 응답의 coaching_plan · fallback_reason · dropped ·
+    planner_hash 이고 `meta` 는 따로 둔다."""
     for key in ("source_take_id", "script_version_id"):
         echoed = getattr(reply, key)
         if echoed is not None and echoed != request[key]:
@@ -478,61 +583,22 @@ def stored_plan(request: Mapping[str, Any], reply: PlanReply) -> dict[str, Any]:
             )
     return {
         "coaching_plan": reply.coaching_plan,
-        "source_take_id": request["source_take_id"],
-        "script_version_id": request["script_version_id"],
-        "target_ms": plan["target_ms"],
-        "min_ms": plan["min_ms"],
-        "max_ms": plan["max_ms"],
         "fallback_reason": reply.fallback_reason,
         "dropped": reply.dropped,
         "planner_hash": reply.planner_hash,
-        "meta": reply.meta,
     }
 
 
-def coaching_plan_for_take(
-    stored: Mapping[str, Any] | None,
-    *,
-    source_take_id: str | uuid.UUID | None,
-    script_version_id: str | uuid.UUID | None,
-    time_limit_sec: int,
-    lower_deviation_sec: int,
-    upper_deviation_sec: int,
-) -> dict[str, Any] | None:
-    """오래된 계획 막기 (12-2). 저장된 계획이 지금 것과 같을 때만 `why` 를 뺀 계획을 돌려준다.
-
-    '지금 것'은 Take 를 시작할 때의 발표 상태다: 가장 최근에 `COMPLETED` 가 된 Take(없으면 None) ·
-    지금 대본 버전 · 지금 제한 시간과 허용 범위. 하나라도 다르면 None 이고 계획 없이 시작한다.
-    시간 계획은 계획을 요청할 때처럼 제한 시간으로 만들어 비교한다 — Take 목표 시간으로 만든
-    계획을 넘기면 목표가 제한 시간과 다를 때마다 오래된 계획이 된다.
-    """
-    if stored is None:
+def plan_for_evaluate(payload: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """고른 계획 행의 payload 에서 evaluate 에 실을 `coaching_plan`. `why` 는 뺀다 (5-2) — 사람이
+    읽는 근거라 1초마다 싣지 않는다. 모양이 틀렸으면 None (계획 없이 코칭한다)."""
+    if payload is None:
         return None
-    plan = build_plan(
-        time_limit_sec,
-        time_limit_sec=time_limit_sec,
-        lower_deviation_sec=lower_deviation_sec,
-        upper_deviation_sec=upper_deviation_sec,
-    )
-    current = (
-        _id(source_take_id),
-        _id(script_version_id),
-        plan["target_ms"],
-        plan["min_ms"],
-        plan["max_ms"],
-    )
-    saved = tuple(
-        stored.get(key)
-        for key in ("source_take_id", "script_version_id", "target_ms", "min_ms", "max_ms")
-    )
-    if saved != current:
-        return None
-    coaching_plan = stored.get("coaching_plan")
+    coaching_plan = payload.get("coaching_plan")
     if not isinstance(coaching_plan, Mapping):
         return None
     return {
         **coaching_plan,
-        # why 는 와도 쓰지 않는다 (5-2). 사람이 읽는 근거라 1초마다 싣지 않는다
         "focus": [_without_why(item) for item in coaching_plan.get("focus", [])],
         "relax": [_without_why(item) for item in coaching_plan.get("relax", [])],
     }

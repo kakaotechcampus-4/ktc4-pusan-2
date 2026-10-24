@@ -44,7 +44,9 @@ from functools import cache
 from typing import Annotated, Any, Protocol
 
 import httpx
-from pydantic import AfterValidator, BaseModel, ConfigDict, ValidationError
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
+
+from pitch_coach_backend.core.validation import reject_unstorable_json
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +96,10 @@ _UNAVAILABLE_STATUSES = frozenset({404, 503})
 # 비율"이라 측정 품질이 아니다 — BE 는 목표 시간을 늘 싣으므로 늘 1 이고, 평균에 넣으면 다른 영역이
 # 못 쟀어도 신뢰도가 높아 보인다
 _MEASURED_AREAS = ("GAZE", "SPEED", "VOLUME", "PAUSE", "FILLER")
+# take_summaries 칸에 들어가는 범위. 벗어난 값은 잘못 잰 것이다 — 그대로 넣으면 Take 결과 저장이
+# 통째로 실패하므로 그 칸만 None 으로 둔다
+_VOLUME_LIMIT_DB = 999.99  # volume 은 Numeric(5, 2)
+_INTEGER_LIMIT = 2**31 - 1  # Integer 칸
 
 
 @cache
@@ -112,10 +118,12 @@ class _View(BaseModel):
 
 
 def _shaped(view: type[BaseModel]) -> AfterValidator:
-    """dict 가 view 모양인지 검사만 하고 받은 그대로 돌려준다."""
+    """dict 가 view 모양인지 검사만 하고 받은 그대로 돌려준다. 그대로 JSONB 에 넣으므로 넣을 수
+    없는 값(NUL 문자 · NaN · Infinity)도 거절한다 — 넣다 실패하면 뒤 저장까지 막힌다."""
 
     def check(value: dict[str, Any]) -> dict[str, Any]:
         view.model_validate(value)
+        reject_unstorable_json(value)
         return value
 
     return AfterValidator(check)
@@ -130,7 +138,8 @@ class _EventView(_View):
     # 저장 칸(coach_events)이 이 셋을 쓴다. 나머지는 kind 마다 다르고 BE 는 읽지 않는다
     event_id: str
     kind: str
-    t_ms: int
+    # Integer 칸이다. 넘는 값을 넣으면 그 저장이 끝내 실패해 뒤 이벤트까지 막힌다
+    t_ms: int = Field(ge=0, le=_INTEGER_LIMIT)
 
 
 class _AreaView(_View):
@@ -228,8 +237,8 @@ class ReplayRequired:
 class SummaryMeasures:
     """`take_summaries` 의 측정 칸 (architecture.md 1-1 대응 표). 잴 수 없던 값은 None."""
 
-    # 칸 이름은 wpm 이지만 CPM(분당 글자 수)을 넣는다
-    average_wpm: float | None
+    # 말 속도 CPM(분당 글자 수)
+    average_cpm: float | None
     filler_count: int | None
     # 비율 × 100 반올림 (0~100)
     audience_gaze: int | None
@@ -239,7 +248,8 @@ class SummaryMeasures:
     # 평소 목소리 대비 dB
     volume: float | None
     total_intermission: int | None
-    overall_confidence: float | None
+    # 다섯 영역 측정 비율 평균 × 100 반올림
+    overall_confidence: int | None
 
 
 def summary_measures(take_result: dict[str, Any]) -> SummaryMeasures:
@@ -260,11 +270,13 @@ def summary_measures(take_result: dict[str, Any]) -> SummaryMeasures:
 
     def percent(area: str, name: str) -> int | None:
         value = metric(area, name)
-        return None if value is None else _round_half_up(value, scale=100)
+        return None if value is None else _fits(_round_half_up(value, scale=100))
 
     def count(area: str, name: str) -> int | None:
         value = metric(area, name)
-        return None if value is None else _round_half_up(value)
+        return None if value is None else _fits(_round_half_up(value))
+
+    volume = metric("VOLUME", "voice_diff_db")
 
     ratios = [
         result.measured_ratio
@@ -272,17 +284,23 @@ def summary_measures(take_result: dict[str, Any]) -> SummaryMeasures:
         if (result := areas.get(area)) is not None and result.measured_ratio is not None
     ]
     return SummaryMeasures(
-        average_wpm=metric("SPEED", "cpm"),
+        average_cpm=metric("SPEED", "cpm"),
         filler_count=count("FILLER", "filler_count"),
         audience_gaze=percent("GAZE", "audience_ratio"),
         slide_gaze=percent("GAZE", "screen_ratio"),
         script_gaze=percent("GAZE", "script_ratio"),
         script_dependency_count=count("GAZE", "reading_runs"),
-        volume=metric("VOLUME", "voice_diff_db"),
+        volume=volume if volume is not None and abs(volume) <= _VOLUME_LIMIT_DB else None,
         total_intermission=count("SPEED", "pause_count"),
-        # 소수 셋째 자리 아래는 부동소수 잡음이다 (0.9934 → 99.34)
-        overall_confidence=round(sum(ratios) / len(ratios) * 100, 2) if ratios else None,
+        # 비율 × 100 칸은 .5 를 올려 정수로 넣는다 (architecture.md 1-1 '반올림')
+        overall_confidence=(
+            _round_half_up(sum(ratios) / len(ratios), scale=100) if ratios else None
+        ),
     )
+
+
+def _fits(value: int) -> int | None:
+    return value if abs(value) <= _INTEGER_LIMIT else None
 
 
 def _round_half_up(value: float, *, scale: int = 1) -> int:

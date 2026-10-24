@@ -150,7 +150,8 @@ class TakeSummary(Base):
     take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), primary_key=True
     )
-    average_wpm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 말 속도 CPM(분당 글자 수). Take 결과 SPEED cpm 그대로
+    average_cpm: Mapped[float | None] = mapped_column(Float, nullable=True)
     filler_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # 시선이 청중·슬라이드·대본에 머문 정도. 셋을 합쳐 시선 배분을 본다.
     audience_gaze: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -309,3 +310,28 @@ class TakeSlideEvent(CreatedAtMixin, Base):
     # 그 장으로 넘어온 Take 시각 (ms) — WS `slide` 의 t_ms
     started_ms: Mapped[int] = mapped_column(Integer, primary_key=True)
     slide_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class CoachEvent(CreatedAtMixin, Base):
+    """코치 이벤트 1건 (evaluate · finalize 응답의 events).
+
+    코치가 한 말(`INTERVENTION`)도 여기에만 둔다. 이벤트 JSON 은 받은 그대로 payload 에, 그 응답의
+    meta 는 meta 에 둔다. seq 는 BE 가 받은 순서다 — finalize 에 받은 순서대로 넘긴다.
+    같은 event_id 는 같은 이벤트라 한 번만 남긴다 (`docs/ai/features/coach-agent.md` 12-1 · 12-2).
+    """
+
+    __tablename__ = "coach_events"
+    __table_args__ = (
+        UniqueConstraint("take_id", "event_id", name="uq_coach_events_take_event"),
+    )
+
+    take_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), primary_key=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 코치가 정하는 문자열이라 길이를 묶지 않는다. 넘쳐 저장이 실패하면 그 응답의 이벤트를 다 잃는다
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    event_id: Mapped[str] = mapped_column(Text, nullable=False)
+    t_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSONB, nullable=False)

@@ -138,7 +138,7 @@ def test_summary_measures_from_the_example():
     measures = summary_measures(example("finalize/response.json")["take_result"])
 
     assert measures == SummaryMeasures(
-        average_wpm=297.0,
+        average_cpm=297.0,
         filler_count=2,
         audience_gaze=78,
         slide_gaze=0,
@@ -146,8 +146,8 @@ def test_summary_measures_from_the_example():
         script_dependency_count=1,
         volume=0.0,
         total_intermission=0,
-        # GAZE 0.9674 · 나머지 넷 1.0 의 평균. TIME 은 넣지 않는다
-        overall_confidence=99.35,
+        # GAZE 0.9674 · 나머지 넷 1.0 의 평균 99.35 를 반올림. TIME 은 넣지 않는다
+        overall_confidence=99,
     )
 
 
@@ -162,10 +162,10 @@ def test_summary_leaves_unmeasured_values_empty():
     measures = summary_measures(take_result)
 
     assert (measures.audience_gaze, measures.script_dependency_count) == (None, None)
-    assert measures.average_wpm is None
+    assert measures.average_cpm is None
     assert measures.filler_count is None
-    # 측정 비율은 낮아도 있으면 평균에 들어간다 (0.1 · 1.0 · 1.0 · 1.0)
-    assert measures.overall_confidence == 77.5
+    # 측정 비율은 낮아도 있으면 평균에 들어간다 (0.1 · 1.0 · 1.0 · 1.0 → 77.5, .5 는 올린다)
+    assert measures.overall_confidence == 78
 
 
 @pytest.mark.parametrize(
@@ -180,6 +180,21 @@ def test_summary_rounds_half_up(ratio: float, percent: int):
     measures = summary_measures(take_result)
 
     assert (measures.audience_gaze, measures.script_dependency_count) == (percent, 3)
+
+
+def test_summary_drops_values_that_do_not_fit_their_column():
+    """칸에 안 들어가는 값을 넣으면 Take 결과 저장이 통째로 실패한다. 그 칸만 비운다."""
+    take_result = copy.deepcopy(example("finalize/response.json")["take_result"])
+    take_result["areas"]["VOLUME"]["take"]["voice_diff_db"] = 1_000.0
+    take_result["areas"]["FILLER"]["take"]["filler_count"] = 2**31
+    take_result["areas"]["GAZE"]["take"]["audience_ratio"] = 1e9
+
+    measures = summary_measures(take_result)
+
+    assert (measures.volume, measures.filler_count, measures.audience_gaze) == (None, None, None)
+    # 범위 안의 값은 그대로다
+    take_result["areas"]["VOLUME"]["take"]["voice_diff_db"] = -999.99
+    assert summary_measures(take_result).volume == -999.99
 
 
 # ── 호출 ──────────────────────────────────────────────────────────────
@@ -349,6 +364,8 @@ async def test_other_conflicts_are_failures():
         lambda body: body.pop("meta"),
         lambda body: body["events"][0].pop("event_id"),
         lambda body: body["meta"].update(schema_version="2.0"),
+        # coach_events.t_ms 칸(Integer)에 안 들어가는 시각 — 넣으면 뒤 이벤트까지 저장이 막힌다
+        lambda body: body["events"][0].update(t_ms=2**31),
     ],
 )
 async def test_evaluate_reply_that_breaks_the_contract_is_dropped(breaking):
@@ -356,6 +373,26 @@ async def test_evaluate_reply_that_breaks_the_contract_is_dropped(breaking):
     breaking(body)
 
     assert await ai(lambda request: httpx.Response(200, json=body)).evaluate(EVALUATE) is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "unstorable",
+    [
+        lambda body: body["events"][0].update(note="\x00"),
+        lambda body: body["meta"].update(latency=float("nan")),
+    ],
+)
+async def test_evaluate_reply_that_cannot_be_stored_is_dropped(unstorable):
+    """JSONB 에 넣을 수 없는 값(NUL 문자 · NaN)이 든 이벤트를 받으면 그 저장이 끝내 실패한다."""
+    body = example("evaluate/response.json")
+    unstorable(body)
+    raw = json.dumps(body).encode()
+
+    def reply(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=raw, headers={"content-type": "application/json"})
+
+    assert await ai(reply).evaluate(EVALUATE) is None
 
 
 @pytest.mark.anyio
