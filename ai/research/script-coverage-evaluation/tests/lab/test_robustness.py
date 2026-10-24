@@ -201,3 +201,12 @@ def test_semantic_cache_takes_precedence_over_samples_table(conn, script_path, m
         (key, cfg, _semantic("기본").model_dump_json(), "t"),
     )
     assert _used_core_claim(monkeypatch, conn, script_path) == "기본"
+
+
+def test_segmentation_report_skips_slides_without_rubric(conn):
+    from coverage_lab.stt_report import segmentation_report
+
+    save_rubric(conn, _rubric("대본", 1))
+    report = segmentation_report(conn, [_take(slides=(1, 2))])  # 2번 장은 평가 기준이 없다
+    assert list(report["take_id"]) == ["대본_take1"]
+    assert not segmentation_report(conn, [_take(slides=(2,))]).empty
