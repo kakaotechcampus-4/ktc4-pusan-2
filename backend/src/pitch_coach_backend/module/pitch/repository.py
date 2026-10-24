@@ -378,3 +378,6 @@ class PitchRepository:
                 StandardAnalyses.pitch_id == pitch_id, StandardAnalyses.version == version
             )
         )
+
+    def get_script_version(self, script_version_id: uuid.UUID) -> ScriptVersion | None:
+        return self.db.get(ScriptVersion, script_version_id)

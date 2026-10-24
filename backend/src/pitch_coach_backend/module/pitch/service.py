@@ -670,3 +670,11 @@ def criteria_for_version(
 
 def find_pitch(db: Session, pitch_id: uuid.UUID) -> Pitch | None:
     return PitchRepository(db).get_by_id(pitch_id)
+
+
+def find_script_version(db: Session, script_version_id: uuid.UUID) -> ScriptVersion | None:
+    return PitchRepository(db).get_script_version(script_version_id)
+
+def script_slides(db: Session, script_version_id: uuid.UUID) -> list[ScriptSlide]:
+    """대본 버전의 장, 장 번호 순서."""
+    return list(PitchRepository(db).get_slides(script_version_id))

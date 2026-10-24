@@ -1,4 +1,4 @@
-"""코치 요청 만들기 — 시간 계획 · 미션 · 창 · replay · 코칭 계획.
+"""코치 요청 만들기 — 시간 계획 · 미션 · 창 · 장 · replay · 코칭 계획.
 
 AI 예시 요청(`ai/research/coach-agent/src/coach/examples/`)과 키가 같고, 예시의 Take 전체 원자료
 (`replay`)로 창을 다시 고르면 예시 요청의 `inputs` 가 그대로 나오는지 본다. 발표 중 BE 가 보낸
@@ -20,18 +20,23 @@ from pitch_coach_backend.coach.requests import (
     FinalWord,
     MetricSecond,
     MissionInput,
+    PlanBasis,
+    SlideEvent,
     SlideTiming,
-    SlideTracker,
     TakeConstants,
     TranscriptSegment,
     build_plan,
-    coaching_plan_for_take,
     evaluate_request,
     finalize_request,
     missions_payload,
+    plan_basis,
+    plan_for_evaluate,
+    plan_payload,
     plan_request,
     replay_input,
-    stored_plan,
+    request_basis,
+    slide_at,
+    slide_changes,
     window_inputs,
 )
 
@@ -97,6 +102,44 @@ def test_slides_are_left_out_unless_every_slide_has_a_target():
     )
 
     assert plan["slides"] == []
+
+
+def test_slide_targets_follow_the_current_goal_when_the_parse_used_another():
+    """제한 시간만 바뀌면 다시 파싱하지 않는다. 장 목표를 지금 목표에 맞춰 비율로 바꾼다
+    (script-parser.md 12-2). 누적으로 반올림해 합이 목표와 같다."""
+    parsed = [
+        SlideTiming(slide_number=1, expected_ms=100_000, script_chars=500),
+        SlideTiming(slide_number=2, expected_ms=100_000, script_chars=500),
+        SlideTiming(slide_number=3, expected_ms=100_000, script_chars=500),
+    ]
+
+    plan = build_plan(
+        200,
+        time_limit_sec=200,
+        lower_deviation_sec=0,
+        upper_deviation_sec=0,
+        slides=parsed,
+        parsed_target_ms=300_000,
+    )
+
+    targets = [s["target_ms"] for s in plan["slides"]]
+    # 200000 × 1/3 = 66666.67 → 66667, 누적 133333.33 → 133333, 마지막은 남은 몫
+    assert targets == [66_667, 66_666, 66_667]
+    assert sum(targets) == 200_000
+
+
+def test_slide_targets_are_kept_without_a_parse_target():
+    """파싱 때 목표가 없었으면(기준 말 속도로 잼) 비율로 바꿀 기준이 없다. 그대로 싣는다."""
+    plan = build_plan(
+        200,
+        time_limit_sec=200,
+        lower_deviation_sec=0,
+        upper_deviation_sec=0,
+        slides=SLIDES,
+        parsed_target_ms=None,
+    )
+
+    assert [s["target_ms"] for s in plan["slides"]] == [60_000, 60_000]
 
 
 # ── Take 상수 ─────────────────────────────────────────────────────────
@@ -274,30 +317,56 @@ def test_window_edges_and_duplicates():
     assert (inputs["stt_status"], inputs["slide"]) == ("reconnecting", None)
 
 
-def test_slide_tracker():
-    tracker = SlideTracker()
+def test_slide_changes_keep_the_first_of_each_time_and_start_at_zero():
+    # 늦게 온 것 · 다시 보낸 것이 섞여 와도 시각 순서로, 같은 시각은 먼저 온 것만
+    events = [
+        SlideEvent(2, 59_390),
+        SlideEvent(1, 1_200),
+        SlideEvent(3, 90_000),
+        SlideEvent(9, 59_390),
+        SlideEvent(2, 120_000),
+    ]
 
-    for t_ms, number in [(1_390, None), (2_390, 1), (3_390, 1), (4_390, None), (5_390, 2)]:
-        tracker.observe(t_ms, number)
+    changes = slide_changes(events)
 
-    # 처음 알게 된 장은 Take 시작부터. 그 뒤로는 바뀐 metrics 의 시각
-    assert tracker.changes == [{"number": 1, "started_ms": 0}, {"number": 2, "started_ms": 5_390}]
-    assert tracker.current == {"number": 2, "started_ms": 5_390}
+    # 처음 알게 된 장은 Take 시작부터로 본다 (coach-agent.md 5-2 replay)
+    assert changes == [
+        {"number": 1, "started_ms": 0},
+        {"number": 2, "started_ms": 59_390},
+        {"number": 3, "started_ms": 90_000},
+        {"number": 2, "started_ms": 120_000},
+    ]
+    assert slide_changes([]) == []
+
+
+def test_slide_at_is_the_latest_change_at_or_before_the_request():
+    changes = slide_changes([SlideEvent(1, 0), SlideEvent(2, 59_390), SlideEvent(3, 90_000)])
+
+    assert slide_at(0, changes) == {"number": 1, "started_ms": 0}
+    assert slide_at(59_389, changes) == {"number": 1, "started_ms": 0}
+    # 요청 시각과 같은 시각에 넘긴 장은 그 요청의 장이다
+    assert slide_at(59_390, changes) == {"number": 2, "started_ms": 59_390}
+    assert slide_at(200_000, changes) == {"number": 3, "started_ms": 90_000}
+    # 장을 아직 모르면 싣지 않는다 — 코치가 마지막으로 알던 장을 쓴다
+    assert slide_at(5_000, []) is None
 
 
 # ── replay ────────────────────────────────────────────────────────────
 
 
 def seconds_from(raw: dict[str, Any]) -> list[MetricSecond]:
-    """예시 원자료를 take_metric_seconds 행처럼 펼친다 (metrics 하나 = 시선 · 음량 기록 하나)."""
-    slides = sorted(raw["slides"], key=lambda s: s["started_ms"])
+    """예시 원자료를 take_metric_seconds 행처럼 펼친다 (metrics 하나 = 시선 · 음량 기록 하나).
+    `slide_number` 는 참고값이라 replay 에 쓰지 않는다 — 일부러 틀린 값을 넣는다."""
     voice = {r["t_ms"]: r for r in raw["voice_records"]}
-    rows = []
-    for gaze in raw["gaze_records"]:
-        end = gaze["t_ms"] + gaze["duration_ms"]
-        number = [s["number"] for s in slides if s["started_ms"] < end][-1]
-        rows.append(MetricSecond(end, number, gaze, voice[gaze["t_ms"]], "ok"))
-    return rows
+    return [
+        MetricSecond(gaze["t_ms"] + gaze["duration_ms"], 99, gaze, voice[gaze["t_ms"]], "ok")
+        for gaze in raw["gaze_records"]
+    ]
+
+
+def slide_events_from(raw: dict[str, Any]) -> list[SlideEvent]:
+    """예시 원자료의 장 변경을 take_slide_events 행처럼 (FE 가 보낸 WS slide 그대로)."""
+    return [SlideEvent(s["number"], s["started_ms"]) for s in raw["slides"]]
 
 
 def test_replay_rebuilds_the_example_raw_data():
@@ -314,7 +383,11 @@ def test_replay_rebuilds_the_example_raw_data():
     ]
 
     replay = replay_input(
-        seconds_from(raw), reversed(segments), raw["utterance_ends"], t_end_ms=92_000
+        seconds_from(raw),
+        reversed(segments),
+        raw["utterance_ends"],
+        reversed(slide_events_from(raw)),
+        t_end_ms=92_000,
     )
 
     assert replay["gaze_records"] == raw["gaze_records"]
@@ -322,9 +395,8 @@ def test_replay_rebuilds_the_example_raw_data():
     assert replay["stt_status_changes"] == raw["stt_status_changes"]
     assert replay["utterance_ends"] == raw["utterance_ends"]
     assert sorted(replay["words"], key=lambda w: w["start_ms"]) == raw["words"]
-    # 장 변경은 metrics 의 바깥 시각으로 잡힌다. 예시는 장이 바뀐 1초의 시작이다
-    assert [s["number"] for s in replay["slides"]] == [s["number"] for s in raw["slides"]]
-    assert replay["slides"][0]["started_ms"] == 0
+    # 장은 장 변경 기록 그대로다 (metrics.slide_number 를 쓰지 않는다)
+    assert replay["slides"] == raw["slides"]
     assert replay.keys() == raw.keys()
 
 
@@ -340,7 +412,7 @@ def test_replay_stt_history_and_old_rows():
         end_ms=900, words=[{"word": "가", "start_ms": 100, "end_ms": 900}], final_at_ms=None
     )
 
-    replay = replay_input(seconds, [old_segment], [900, 900], t_end_ms=6_000)
+    replay = replay_input(seconds, [old_segment], [900, 900], [], t_end_ms=6_000)
 
     assert replay["stt_status_changes"] == [
         {"t_ms": 0, "status": "connecting"},
@@ -361,7 +433,7 @@ def test_replay_cuts_words_finalized_after_the_take_ended():
         final_at_ms=93_200,
     )
 
-    replay = replay_input([], [closed], [], t_end_ms=92_000)
+    replay = replay_input([], [closed], [], [], t_end_ms=92_000)
 
     assert replay["words"][0]["final_at_ms"] == 92_000
 
@@ -401,42 +473,37 @@ NOW = {
 }
 
 
-def test_stored_plan_keeps_the_reply_and_what_it_was_asked_for():
+def test_plan_row_keeps_the_reply_and_what_it_was_asked_for():
     assert PLAN_REQUEST is not None
 
-    stored = stored_plan(PLAN_REQUEST, PLAN_REPLY)
+    payload = plan_payload(PLAN_REQUEST, PLAN_REPLY)
+    basis = request_basis(PLAN_REQUEST)
 
-    assert stored == {
+    assert payload == {
         "coaching_plan": PLAN_REPLY.coaching_plan,
-        "source_take_id": "take-122",
-        "script_version_id": "sv-3",
-        "target_ms": 300_000,
-        "min_ms": 270_000,
-        "max_ms": 330_000,
         "fallback_reason": None,
         "dropped": ["relax TIME 3: 봐줄 수 없는 영역"],
         "planner_hash": "0123456789ab",
-        "meta": PLAN_REPLY.meta,
     }
+    assert basis == PlanBasis("take-122", "sv-3", 300_000, 270_000, 330_000)
     # JSONB 에 넣을 수 있어야 한다
-    assert json.loads(json.dumps(stored)) == stored
+    assert json.loads(json.dumps(payload)) == payload
 
 
-def test_stored_plan_uses_the_request_ids_even_if_the_reply_drops_them():
+def test_plan_basis_comes_from_the_request_even_if_the_reply_drops_the_ids():
     assert PLAN_REQUEST is not None
     reply = PLAN_REPLY.model_copy(update={"source_take_id": None, "script_version_id": None})
 
-    stored = stored_plan(PLAN_REQUEST, reply)
+    plan_payload(PLAN_REQUEST, reply)
 
-    assert (stored["source_take_id"], stored["script_version_id"]) == ("take-122", "sv-3")
-    assert coaching_plan_for_take(stored, **NOW) is not None
+    assert request_basis(PLAN_REQUEST) == plan_basis(**NOW)
 
 
-def test_fresh_plan_is_sent_without_why():
+def test_plan_is_sent_without_why():
     assert PLAN_REQUEST is not None
-    stored = stored_plan(PLAN_REQUEST, PLAN_REPLY)
+    payload = plan_payload(PLAN_REQUEST, PLAN_REPLY)
 
-    sent = coaching_plan_for_take(stored, **NOW)
+    sent = plan_for_evaluate(payload)
 
     assert sent == {
         "focus": [{"area": "GAZE", "slide_number": 3, "weight": 1.5}],
@@ -444,11 +511,16 @@ def test_fresh_plan_is_sent_without_why():
         "max_interventions": 4,
     }
     # 저장된 값은 그대로다
-    assert stored["coaching_plan"]["focus"][0]["why"] == "근거"
+    assert payload["coaching_plan"]["focus"][0]["why"] == "근거"
+
+
+@pytest.mark.parametrize("payload", [None, {}, {"coaching_plan": None}, {"coaching_plan": []}])
+def test_broken_plan_row_is_not_sent(payload: Any):
+    assert plan_for_evaluate(payload) is None
 
 
 def test_plan_ids_compare_as_strings():
-    """DB 의 Uuid 칼럼은 uuid.UUID 로, JSONB 에 저장된 id 는 문자열로 읽힌다."""
+    """DB 의 Uuid 칼럼은 uuid.UUID 로, JSON 으로 오간 id 는 문자열로 읽힌다."""
     take_id, script_id, pitch_id = uuid.uuid7(), uuid.uuid7(), uuid.uuid7()
     request = plan_request(
         pitch_id=pitch_id,
@@ -458,14 +530,12 @@ def test_plan_ids_compare_as_strings():
         scripts=[],
     )
     assert request is not None
-    stored = json.loads(json.dumps(stored_plan(request, PLAN_REPLY)))
+    request = json.loads(json.dumps(request))
 
-    sent = coaching_plan_for_take(
-        stored, **{**NOW, "source_take_id": take_id, "script_version_id": script_id}
-    )
+    now = plan_basis(**{**NOW, "source_take_id": take_id, "script_version_id": script_id})
 
     assert request["pitch_id"] == str(pitch_id)
-    assert sent is not None
+    assert request_basis(request) == now
 
 
 @pytest.mark.parametrize(
@@ -479,14 +549,23 @@ def test_plan_ids_compare_as_strings():
         {"upper_deviation_sec": 0},
     ],
 )
-def test_stale_plan_is_not_sent(now: dict[str, Any]):
+def test_plan_basis_differs_when_anything_changed(now: dict[str, Any]):
     assert PLAN_REQUEST is not None
 
-    assert coaching_plan_for_take(stored_plan(PLAN_REQUEST, PLAN_REPLY), **{**NOW, **now}) is None
+    assert request_basis(PLAN_REQUEST) != plan_basis(**{**NOW, **now})
 
 
-def test_no_stored_plan():
-    assert coaching_plan_for_take(None, **NOW) is None
+def test_plan_basis_with_no_slack_keeps_null_min():
+    """허용 미달이 제한 시간 이상이면 min_ms 는 null 이다. null 끼리는 같은 값이다 (12-2)."""
+    basis = plan_basis(
+        source_take_id=None,
+        script_version_id=None,
+        time_limit_sec=60,
+        lower_deviation_sec=60,
+        upper_deviation_sec=0,
+    )
+
+    assert basis == PlanBasis(None, None, 60_000, None, 60_000)
 
 
 def test_plan_request_has_the_contract_fields():
