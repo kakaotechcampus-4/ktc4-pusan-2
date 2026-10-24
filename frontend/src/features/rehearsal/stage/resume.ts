@@ -1,3 +1,5 @@
+import type { SlideMessage } from '../lib/sttProtocol';
+import type { HandedMetrics } from '../lib/sttSocket';
 import type { Ms, TakeStatus } from '@/types/api';
 
 /**
@@ -65,7 +67,7 @@ export function clearClock(takeId: string): void {
  */
 export interface SavedMetrics {
   clientSessionId: string;
-  messages: string[];
+  messages: HandedMetrics[];
 }
 
 const metricsKey = (takeId: string) => `rehearsal:metrics:${takeId}`;
@@ -79,15 +81,20 @@ export function saveMetrics(takeId: string, saved: SavedMetrics): void {
   }
 }
 
-/** 적어 둔 것을 꺼내고 지웁니다. 다른 세션이 적은 것은 버립니다 */
-export function takeMetrics(takeId: string, clientSessionId: string): string[] {
+/**
+ * 적어 둔 것을 꺼내고 지웁니다. 다른 세션이 적은 것 · 모양이 틀린 행은 버립니다 — 시각을 모르면
+ * 순서를 맞춰 보낼 수 없습니다. 저장소에서 온 값은 여기서만 확인합니다 (소켓은 그대로 씁니다)
+ */
+export function takeMetrics(takeId: string, clientSessionId: string): HandedMetrics[] {
   try {
     const raw = sessionStorage.getItem(metricsKey(takeId));
     sessionStorage.removeItem(metricsKey(takeId));
     if (!raw) return [];
     const value = JSON.parse(raw) as Partial<SavedMetrics>;
     if (value.clientSessionId !== clientSessionId || !Array.isArray(value.messages)) return [];
-    return value.messages.filter((m): m is string => typeof m === 'string');
+    return value.messages.filter(
+      (m): m is HandedMetrics => typeof m?.tMs === 'number' && typeof m?.data === 'string',
+    );
   } catch {
     return [];
   }
@@ -229,6 +236,72 @@ export function recordedUntilMs({
   return until;
 }
 
+/** 장 넘김 하나. IndexedDB `slideChanges` 행과 같은 모양입니다 */
+export interface SlideChange {
+  atMs: Ms;
+  slideNumber: number;
+}
+
+/**
+ * 새로고침 직전까지 이 페이지에서 보낸 장 넘김 전부 (`useSttStream` `slideLog`). `pagehide` 에 적습니다.
+ *
+ * IndexedDB 기록만으로는 모자랍니다. 쓰기(`appendSlideChange`)가 비동기라 새로고침 직전에 넘긴 장은
+ * 아직 없을 수 있고, 쓰기가 실패했을 수도 있습니다. 끊겨 있었다면 소켓에 쌓였던 그 장도 페이지와 함께
+ * 사라집니다. 그러면 BE 에도 IndexedDB 에도 없어 장 구간 나누기에서 그 장의 말이 앞 장으로 들어갑니다.
+ * 이건 동기라 새로고침이면 남습니다. 이어받을 때 IndexedDB 기록과 합칩니다 (`mergeSlideChanges`).
+ */
+export interface SavedSlides {
+  clientSessionId: string;
+  slides: SlideChange[];
+}
+
+const slidesKey = (takeId: string) => `rehearsal:slides:${takeId}`;
+
+export function saveSlides(takeId: string, saved: SavedSlides): void {
+  try {
+    if (saved.slides.length === 0) sessionStorage.removeItem(slidesKey(takeId));
+    else sessionStorage.setItem(slidesKey(takeId), JSON.stringify(saved));
+  } catch {
+    // 사생활 보호 모드 · 저장 공간 부족. IndexedDB 기록으로 이어받습니다
+  }
+}
+
+/** 적어 둔 것을 꺼내고 지웁니다. 다른 세션이 적은 것 · 모양이 틀린 행은 버립니다 */
+export function takeSlides(takeId: string, clientSessionId: string): SlideChange[] {
+  try {
+    const raw = sessionStorage.getItem(slidesKey(takeId));
+    sessionStorage.removeItem(slidesKey(takeId));
+    if (!raw) return [];
+    const value = JSON.parse(raw) as Partial<SavedSlides>;
+    if (value.clientSessionId !== clientSessionId || !Array.isArray(value.slides)) return [];
+    return value.slides.filter(
+      (s): s is SlideChange => typeof s?.atMs === 'number' && typeof s?.slideNumber === 'number',
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function clearSlides(takeId: string): void {
+  try {
+    sessionStorage.removeItem(slidesKey(takeId));
+  } catch {
+    // 지우지 못해도 다음 Take 는 takeId 가 달라 읽지 않습니다
+  }
+}
+
+/**
+ * IndexedDB 기록과 새로고침 직전에 적어 둔 기록을 합칩니다. 같은 시각은 하나로 둡니다(앞의 것 —
+ * BE 도 `(take_id, started_ms)` 로 같은 시각은 먼저 받은 것을 둡니다). 시각 순서로 돌려줍니다.
+ */
+export function mergeSlideChanges(...sources: readonly (readonly SlideChange[])[]): SlideChange[] {
+  const byTime = new Map<Ms, SlideChange>();
+  for (const source of sources) {
+    for (const s of source) if (!byTime.has(s.atMs)) byTime.set(s.atMs, s);
+  }
+  return [...byTime.values()].sort((a, b) => a.atMs - b.atMs);
+}
+
 /** 마지막으로 보던 슬라이드. 전환 기록이 없으면 null — 처음부터 시작합니다 */
 export function lastSlide(
   changes: { atMs: Ms; slideNumber: number }[],
@@ -238,6 +311,27 @@ export function lastSlide(
     if (!last || c.atMs >= last.atMs) last = { slideNumber: c.slideNumber, atMs: c.atMs };
   }
   return last;
+}
+
+/**
+ * 무대를 열 때 보낼 WS `slide` (`docs/ai/architecture.md` 1-4).
+ *
+ * 이어받았으면 장 넘김 기록을 **전부** 다시 보냅니다 (IndexedDB 기록에 새로고침 직전에 적어 둔 기록을
+ * 합친 것, `mergeSlideChanges`). 끊긴 동안 소켓에 쌓였던 장 넘김은
+ * 새로고침과 함께 사라졌고, 사라지는 페이지가 보낸 것도 닿았는지 모릅니다. 하나만 빠져도 장 구간
+ * 나누기에서 그 장의 말이 앞 장으로 들어갑니다. 이미 간 것은 BE 가 `(take_id, started_ms)` 로
+ * 거릅니다 (`coach-agent.md` 12-1). 한 Take 에 수십 개라 다시 보내도 부담이 없습니다.
+ *
+ * 기록이 없으면(처음 시작 · 기록을 못 읽음) 지금 장을 Take 시작(0)으로 보냅니다.
+ */
+export function openingSlides(
+  history: readonly { atMs: Ms; slideNumber: number }[],
+  current: number,
+): SlideMessage[] {
+  if (history.length === 0) return [{ type: 'slide', slide_number: current, t_ms: 0 }];
+  return [...history]
+    .sort((a, b) => a.atMs - b.atMs)
+    .map((h) => ({ type: 'slide', slide_number: h.slideNumber, t_ms: h.atMs }));
 }
 
 /** 코치가 마지막으로 말한 시각. 쿨다운을 이어가는 데 씁니다 */

@@ -4,10 +4,11 @@ import {
   STT_ERROR_MESSAGE,
   STT_STATE_NOTE,
   type MetricsMessage,
+  type SlideMessage,
   type SttState,
   type TranscriptMessage,
 } from '../lib/sttProtocol';
-import { SttSocket } from '../lib/sttSocket';
+import { SttSocket, type HandedMetrics } from '../lib/sttSocket';
 import { PCM_CAPTURE_ERROR_MESSAGE, startPcmCapture, type PcmCapture } from '../media/pcmCapture';
 import type { Ms } from '@/types/api';
 
@@ -71,7 +72,7 @@ export function useSttStream({
    * 새로고침 전 페이지가 못 보낸 `metrics` 를 꺼냅니다 (`takeMetrics`). 소켓을 만들 때 한 번 부르고,
    * 붙자마자 그것부터 보냅니다
    */
-  restoredMetrics?: () => string[];
+  restoredMetrics?: () => HandedMetrics[];
   /**
    * 창을 닫아 끝난 Take 입니다 (`TAKE_ENDED` · `CLOSED`). 닫은 탭을 늦게 복원했거나 다른 창이
    * 실패로 끝냈습니다. 무대는 이어 가지 않고 실패 화면으로 갑니다
@@ -81,6 +82,15 @@ export function useSttStream({
   /** 전사 한 줄이 들어갈 자리. 이 훅이 textContent 로 직접 씁니다 */
   const transcriptRef = useRef<HTMLSpanElement>(null);
   const socketRef = useRef<SttSocket | null>(null);
+  /**
+   * 이 페이지에서 보낸 장 변경 전부. 소켓이 없을 때(카메라 · 마이크가 열리기 전) 보낸 것도 여기 남고,
+   * 소켓이 `ready` 를 받을 때마다 전부 다시 보냅니다 (`SttSocket` `slideHistory`)
+   */
+  const slidesRef = useRef<SlideMessage[]>([]);
+  // 다른 Take 의 장을 보내지 않습니다. 소켓을 만드는 이펙트보다 먼저 둡니다
+  useEffect(() => {
+    slidesRef.current = [];
+  }, [takeId]);
   const captureRef = useRef<PcmCapture | null>(null);
 
   /** 확정된 마지막 문장. 중간 결과가 비면 이것을 보여 줍니다 */
@@ -145,6 +155,7 @@ export function useSttStream({
     const created = new SttSocket({
       takeId,
       restoredMetrics: restoredMetricsRef.current?.(),
+      slideHistory: () => slidesRef.current,
       onTranscript: paint,
       onState: (state) => {
         if (cancelled) return;
@@ -278,11 +289,24 @@ export function useSttStream({
   }, []);
 
   /**
+   * 장이 바뀌었다 (`slide`). 기록에 먼저 남기고, 소켓이 붙어 있으면 바로 보냅니다.
+   * 소켓이 아직 없거나 끊겨 있으면 다음 `ready` 때 기록 전체와 함께 갑니다 — 무대가 열리는 순간의
+   * 첫 장 · 이어받은 기록은 대개 소켓보다 먼저 옵니다.
+   */
+  const sendSlide = useCallback((message: SlideMessage) => {
+    slidesRef.current.push(message);
+    socketRef.current?.sendSlide(message);
+  }, []);
+
+  /** 이 페이지에서 보낸 장 변경 전부. 새로고침 직전(`pagehide`)에 적어 두려고 꺼냅니다 (`saveSlides`) */
+  const slideLog = useCallback((): SlideMessage[] => [...slidesRef.current], []);
+
+  /**
    * 탭이 사라지기 직전(`pagehide`). 남은 1초들을 보내 보고, 서버에 닿았다고 볼 수 없는 것을 돌려줍니다
    * (`SttSocket.handOffMetrics`). 소켓이 없으면 `sendMetrics` 처럼 버립니다.
    */
   const handOffMetrics = useCallback(
-    (messages: readonly MetricsMessage[]): string[] =>
+    (messages: readonly MetricsMessage[]): HandedMetrics[] =>
       socketRef.current?.handOffMetrics(messages) ?? [],
     [],
   );
@@ -305,6 +329,8 @@ export function useSttStream({
       sttState === 'degraded',
     statsRef,
     sendMetrics,
+    sendSlide,
+    slideLog,
     handOffMetrics,
     stop,
   };

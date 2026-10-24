@@ -4,12 +4,16 @@ import {
   abandonOutcome,
   coachHistory,
   lastSlide,
+  mergeSlideChanges,
+  openingSlides,
   leftWindow,
   LIVE_BEAT_MS,
   recordedUntilMs,
   resumeFromMs,
   saveMetrics,
+  saveSlides,
   takeMetrics,
+  takeSlides,
 } from './resume';
 
 const BEAT_MS = 5_000;
@@ -209,30 +213,136 @@ describe('새로고침 직전에 못 보낸 metrics', () => {
     vi.unstubAllGlobals();
   });
 
+  /** 넘기는 `metrics` 하나 (`HandedMetrics`) */
+  const handed = (tMs: number) => ({ tMs, data: `{"type":"metrics","t_ms":${tMs}}` });
+
   it('적어 둔 것을 한 번만 꺼낸다', () => {
     stubStorage();
-    saveMetrics('t1', { clientSessionId: 's-1', messages: ['a', 'b'] });
-    expect(takeMetrics('t1', 's-1')).toEqual(['a', 'b']);
+    saveMetrics('t1', { clientSessionId: 's-1', messages: [handed(1_000), handed(2_000)] });
+    expect(takeMetrics('t1', 's-1')).toEqual([handed(1_000), handed(2_000)]);
     expect(takeMetrics('t1', 's-1')).toEqual([]);
+  });
+
+  it('모양이 틀린 행은 버린다 — 시각을 모르면 순서를 맞춰 보낼 수 없다', () => {
+    const store = stubStorage();
+    store.set(
+      'rehearsal:metrics:t1',
+      JSON.stringify({
+        clientSessionId: 's-1',
+        messages: [
+          handed(1_000),
+          'not an object',
+          { tMs: '2000', data: '{}' },
+          { tMs: 3_000 },
+          null,
+        ],
+      }),
+    );
+    expect(takeMetrics('t1', 's-1')).toEqual([handed(1_000)]);
   });
 
   it('다른 세션이 적은 것은 버린다', () => {
     const store = stubStorage();
-    saveMetrics('t1', { clientSessionId: 's-old', messages: ['a'] });
+    saveMetrics('t1', { clientSessionId: 's-old', messages: [handed(1_000)] });
     expect(takeMetrics('t1', 's-1')).toEqual([]);
     expect(store.size).toBe(0);
   });
 
   it('보낼 것이 없으면 지난 값도 지운다', () => {
     const store = stubStorage();
-    saveMetrics('t1', { clientSessionId: 's-1', messages: ['a'] });
+    saveMetrics('t1', { clientSessionId: 's-1', messages: [handed(1_000)] });
     saveMetrics('t1', { clientSessionId: 's-1', messages: [] });
     expect(store.size).toBe(0);
   });
 
   it('저장소를 못 쓰면 던지지 않고 빈 목록이다', () => {
     vi.stubGlobal('sessionStorage', undefined);
-    expect(() => saveMetrics('t1', { clientSessionId: 's-1', messages: ['a'] })).not.toThrow();
+    expect(() =>
+      saveMetrics('t1', { clientSessionId: 's-1', messages: [handed(1_000)] }),
+    ).not.toThrow();
     expect(takeMetrics('t1', 's-1')).toEqual([]);
+  });
+});
+
+describe('openingSlides', () => {
+  it('처음 시작이면 지금 장을 Take 시작(0)으로 보낸다', () => {
+    expect(openingSlides([], 1)).toEqual([{ type: 'slide', slide_number: 1, t_ms: 0 }]);
+  });
+
+  it('이어받았으면 장 넘김 기록 전체를 시각 순서대로 다시 보낸다 — 끊긴 동안 넘긴 장이 빠지지 않게', () => {
+    const history = [
+      { atMs: 80_000, slideNumber: 4 },
+      { atMs: 0, slideNumber: 1 },
+      { atMs: 70_000, slideNumber: 3 },
+      { atMs: 30_000, slideNumber: 2 },
+    ];
+    expect(openingSlides(history, 4).map((m) => [m.slide_number, m.t_ms])).toEqual([
+      [1, 0],
+      [2, 30_000],
+      [3, 70_000],
+      [4, 80_000],
+    ]);
+  });
+});
+
+describe('새로고침 직전에 넘긴 장 (saveSlides · mergeSlideChanges)', () => {
+  function stubStorage() {
+    const store = new Map<string, string>();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    });
+    return store;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const change = (atMs: number, slideNumber: number) => ({ atMs, slideNumber });
+
+  it('적어 둔 것을 한 번만 꺼내고, 다른 세션이 적은 것은 버린다', () => {
+    stubStorage();
+    saveSlides('t1', { clientSessionId: 's-1', slides: [change(0, 1), change(42_300, 3)] });
+    expect(takeSlides('t1', 's-2')).toEqual([]);
+
+    saveSlides('t1', { clientSessionId: 's-1', slides: [change(0, 1), change(42_300, 3)] });
+    expect(takeSlides('t1', 's-1')).toEqual([change(0, 1), change(42_300, 3)]);
+    expect(takeSlides('t1', 's-1')).toEqual([]);
+  });
+
+  it('모양이 틀린 행은 버리고, 저장소를 못 쓰면 빈 목록이다', () => {
+    const store = stubStorage();
+    store.set(
+      'rehearsal:slides:t1',
+      JSON.stringify({ clientSessionId: 's-1', slides: [change(0, 1), { atMs: 'x' }, null] }),
+    );
+    expect(takeSlides('t1', 's-1')).toEqual([change(0, 1)]);
+
+    vi.stubGlobal('sessionStorage', undefined);
+    expect(() =>
+      saveSlides('t1', { clientSessionId: 's-1', slides: [change(0, 1)] }),
+    ).not.toThrow();
+    expect(takeSlides('t1', 's-1')).toEqual([]);
+  });
+
+  it('IndexedDB 에 아직 없던 마지막 장도 합쳐서 이어받는다 — 끊긴 채로 넘기고 바로 새로고침', () => {
+    // 42.3초에 3번으로 넘겼지만 IndexedDB 쓰기가 끝나기 전에 탭이 사라졌습니다
+    const stored = [change(0, 1), change(30_000, 2)];
+    const saved = [change(0, 1), change(30_000, 2), change(42_300, 3)];
+    const merged = mergeSlideChanges(stored, saved);
+
+    expect(merged).toEqual([change(0, 1), change(30_000, 2), change(42_300, 3)]);
+    // 되살릴 장도 3번입니다. IndexedDB 만 보면 2번으로 돌아갑니다
+    expect(lastSlide(merged)).toEqual({ slideNumber: 3, atMs: 42_300 });
+    expect(openingSlides(merged, 3).map((m) => m.t_ms)).toEqual([0, 30_000, 42_300]);
+  });
+
+  it('같은 시각은 하나로 두고 시각 순서로 돌려준다', () => {
+    expect(mergeSlideChanges([change(30_000, 2), change(0, 1)], [change(30_000, 9)])).toEqual([
+      change(0, 1),
+      change(30_000, 2),
+    ]);
   });
 });

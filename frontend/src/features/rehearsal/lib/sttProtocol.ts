@@ -46,6 +46,22 @@ export interface MetricsMessage {
 }
 
 /**
+ * 장이 바뀌었다 (`docs/ai/architecture.md` 1-4, #324 6-4). 장 시각의 기준은 이것 하나입니다 —
+ * `metrics.slide_number` 는 참고값입니다.
+ *
+ *   slide_number  넘어온 장 (1부터)
+ *   t_ms          그 장으로 넘어온 Take 시각. 늦게 보내도 실제로 넘긴 시각입니다
+ *
+ * 보내는 때: Take 시작(첫 장, `t_ms: 0`) · 장을 넘길 때마다 · 새로고침해 이어 갈 때(이어받은 장과
+ * 그 장으로 넘어온 원래 시각). BE 는 `(take_id, t_ms)` 로 한 번만 저장합니다.
+ */
+export interface SlideMessage {
+  type: 'slide';
+  slide_number: number;
+  t_ms: Ms;
+}
+
+/**
  * 서버가 가정하는 오디오 규격입니다. **다른 레이트를 보내면 조용히 틀립니다** —
  * 서버는 받은 바이트 수로 시간을 세기 때문에, 48kHz 를 보내면 전사 시각이 3배로
  * 늘어나 리포트 전체가 어긋납니다. 열리지 않으면 보내지 않는 쪽이 맞습니다.
