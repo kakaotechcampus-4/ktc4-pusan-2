@@ -66,6 +66,7 @@ def plan_request(sc: Scenario) -> PlanRequest:
             "scripts": sc.scripts,
             "missions": sc.missions,
             "recurring_issues": sc.memory.get("recurring_issues", []),
+            "previous_take_result": sc.previous_take_result,
             "previous_review": sc.previous_review,
         }
     )

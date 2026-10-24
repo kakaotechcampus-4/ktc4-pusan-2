@@ -13,7 +13,7 @@ import pytest
 
 from coach.schemas import PlanDraft
 from coach_lab.cache import SqlitePlanCache
-from coach_lab.plan_eval import PLAN_SCENARIOS_DIR, evaluate_plans
+from coach_lab.plan_eval import PLAN_SCENARIOS_DIR, evaluate_plans, plan_request
 from coach_lab.simulator import Scenario, check_expect, run
 
 PLAN_SCENARIOS = sorted(PLAN_SCENARIOS_DIR.glob("*.json"))
@@ -113,6 +113,22 @@ def test_unfounded_budget_is_dropped_and_counted():
     assert row["plans"][0]["max_interventions"] is None
     assert "줄이지 못함" in row["dropped"][0][-1]
     assert report["summary"]["dropped_rate"] == 1.0
+
+
+def test_plan_request_has_the_feature_doc_shape():
+    req = plan_request(scenario("20_plan_overcoached"))
+    assert req.pitch_id == "pitch-20_plan_overcoached"
+    assert (req.source_take_id, req.script_version_id) == (None, None)
+    assert len(req.previous_take_result["interventions"]) == 14
+    assert set(req.previous_review) == {
+        "overall_summary",
+        "dimensions",
+        "improvements",
+        "mission_results",
+    }
+    mission = plan_request(scenario("18_plan_mission_focus"))
+    assert [(r.area.value, r.slide_number) for r in mission.recurring_issues] == [("TIME", 3)]
+    assert plan_request(scenario("19_plan_nothing_special")).previous_take_result is None
 
 
 def test_scenario_config_reaches_the_planner():

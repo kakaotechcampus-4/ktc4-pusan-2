@@ -267,7 +267,7 @@ class PlannerConfig(_Section):
     min_interventions: int = 5
     #: LLM 에 넘길 장 대본 글자 수 상한 (장마다)
     max_script_chars: int = 1_500
-    #: 직전 리뷰 근거에서 넘길 문제 수
+    #: 직전 Take 결과 · 리뷰에서 넘길 항목 수(포기한 문제 · 개선점)
     max_previous_issues: int = 5
 
 

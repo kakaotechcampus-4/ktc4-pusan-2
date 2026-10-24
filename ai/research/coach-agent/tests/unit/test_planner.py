@@ -55,7 +55,18 @@ def draft(focus=(), relax=(), max_interventions=None) -> dict[str, Any]:
 
 
 GAZE_3 = {"type": "GAZE", "slide_number": 3, "why": "수치를 정확히 읽어야 한다"}
-OVERCOACHED = {"summary": {"interventions": 9, "effective_rate": 0.1}}
+
+
+def take_result(n: int, effective: int = 0, ineffective: int | None = None, **kw: Any) -> dict:
+    """개입 n개(효과 있음 effective개, 효과 없음 ineffective개, 나머지는 못 잼)인 Take 결과."""
+    ineffective = n - effective if ineffective is None else ineffective
+    outcomes = ["EFFECTIVE"] * effective + ["INEFFECTIVE"] * ineffective
+    outcomes += ["NOT_MEASURED"] * (n - len(outcomes))
+    ivs = [{"intervention_id": f"iv-{i}", "outcome": o} for i, o in enumerate(outcomes)]
+    return {"interventions": ivs, **kw}
+
+
+OVERCOACHED = take_result(9, effective=1)
 
 
 def test_llm_plan_is_validated_and_returned_as_plan():
@@ -118,7 +129,7 @@ def test_weights_counts_and_budget_are_clamped():
     ]
     relax = [{"type": "GAZE", "slide_number": 3, "why": "-"}]  # 전체 GAZE 집중과 겹침
     resp = plan_coaching(
-        request(previous_review=OVERCOACHED),
+        request(previous_take_result=OVERCOACHED),
         llm=FakeLLM(draft(focus, relax, max_interventions=1)),
         model="m",
     )
@@ -136,14 +147,24 @@ def test_weights_counts_and_budget_are_clamped():
     ("review", "budget", "want", "why"),
     [
         (OVERCOACHED, 6, 6, None),
-        (None, 6, None, "직전 리뷰의 개입 수가 없어"),
-        ({"summary": {"interventions": 4, "effective_rate": 0.5}}, 2, None, "줄이지 못함"),
+        (None, 6, None, "직전 Take 결과가 없어"),
+        ({"interventions": "x"}, 6, None, "직전 Take 결과가 없어"),
+        (take_result(4, effective=2), 2, None, "줄이지 못함"),
+        (take_result(5), 3, None, "줄이지 못함"),  # 격려(CONTINUE)도 센 5번 = 하한 5
+        (take_result(6), 3, 5, "5 으로 올림"),
     ],
-    ids=["fewer-than-before", "no-previous-review", "not-fewer-after-raising"],
+    ids=[
+        "fewer-than-before",
+        "no-previous-take",
+        "broken-take-result",
+        "not-fewer-after-raising",
+        "raised-to-the-floor-equals-before",
+        "raised-to-the-floor-still-fewer",
+    ],
 )
 def test_budget_only_when_it_says_less_than_last_take(review, budget, want, why):
     llm = FakeLLM(draft(max_interventions=budget))
-    resp = plan_coaching(request(previous_review=review), llm=llm, model="m")
+    resp = plan_coaching(request(previous_take_result=review), llm=llm, model="m")
     assert resp.coaching_plan.max_interventions == want
     if why is not None:
         assert why in resp.dropped[-1]
@@ -245,19 +266,144 @@ def test_broken_cache_is_a_miss_not_a_failure():
     assert len(llm.calls) == 1
 
 
-def test_message_carries_scripts_missions_and_previous_issues():
-    review = {
-        "issues": [{"rank": 1, "area": "GAZE", "slide_number": 3, "burden_s": 40.0}],
-        "type_status": [{"area": "GAZE", "status": "PRIORITY"}],
-        "summary": {"interventions": 9, "effective_rate": 0.2},
-    }
+def _message(**kw: Any) -> dict[str, Any]:
+    req = PlanRequest.model_validate(request(**kw))
+    return json.loads(plan_message(req, load_config().planner))
+
+
+def test_message_carries_scripts_missions_and_recurring_issues():
     req = request(
-        missions=[{"mission_id": "m1", "area": "TIME", "slide_number": 3}],
-        previous_review=review,
+        missions=[{"mission_id": "m1", "area": "TIME", "slide_number": 3, "description": "1분"}],
+        recurring_issues=[{"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}],
     )
     llm = FakeLLM(draft())
     plan_coaching(req, llm=llm, model="m")
     message = llm.calls[0][1][1]
-    assert "18.2%" in message and '"type": "TIME"' in message and '"PRIORITY"' in message
+    assert "18.2%" in message and '"type": "TIME"' in message
     assert message == plan_message(PlanRequest.model_validate(req), load_config().planner)
+    body = json.loads(message)
+    assert body["recurring_issues"] == [{"type": "GAZE", "slide_number": 3}]
+    assert body["missions"][0]["description"] == "1분"
+    assert all("required_keywords" not in s for s in body["slides"])
+    assert body["previous_take"] is None and body["previous_review"] is None
+
+
+def test_previous_take_is_counted_by_the_coach():
+    result = take_result(
+        6,
+        effective=2,
+        ineffective=3,  # 한 개는 못 잼, 격려(CONTINUE)도 개입 수에 든다
+        gave_up=[
+            {"issue_type": "GAZE_ON_SCRIPT", "slide_number": 2, "extra": 1},
+            {"issue_type": "PACE_FAST", "slide_number": None},
+        ],
+        problem_segments=[
+            {"area": "GAZE", "start_ms": 10_000, "end_ms": 22_500, "reliable": True},
+            {"area": "GAZE", "start_ms": 30_000, "end_ms": 40_000, "reliable": True},
+            {"area": "GAZE", "start_ms": 50_000, "end_ms": 90_000, "reliable": False},
+            {"area": "SPEED", "start_ms": 0, "end_ms": 3_000, "reliable": True},
+        ],
+    )
+    take = _message(previous_take_result=result)["previous_take"]
+    assert take["interventions"] == 6
+    assert take["effective_rate"] == 0.4  # 2 ÷ (2 + 3)
+    assert take["gave_up"] == [
+        {"issue_type": "GAZE_ON_SCRIPT", "slide_number": 2},
+        {"issue_type": "PACE_FAST", "slide_number": None},
+    ]
+    assert take["problem_seconds"] == {"GAZE": 22.5, "SPEED": 3.0}  # 못 믿는 구간은 뺀다
+
+
+def test_previous_take_without_measured_interventions_has_no_rate():
+    unmeasured = take_result(3, effective=0, ineffective=0)
+    take = _message(previous_take_result=unmeasured)["previous_take"]
+    assert take["interventions"] == 3 and take["effective_rate"] is None
+
+
+def test_previous_take_caps_gave_up_to_the_config_limit():
+    limit = load_config().planner.max_previous_issues
+    gave_up = [{"issue_type": "GAZE_ON_SCRIPT", "slide_number": i} for i in range(limit + 3)]
+    take = _message(previous_take_result=take_result(1, gave_up=gave_up))["previous_take"]
+    assert len(take["gave_up"]) == limit
+
+
+def test_previous_review_carries_four_fields_and_trims_text():
+    limit = load_config().planner.max_previous_issues
+    review = {
+        "overall_summary": "가" * 600,
+        "dimensions": {"audience_gaze": "STABLE", "fluency": "PRIORITY"},
+        "improvements": [{"area": "GAZE", "slide_number": 3, "text": "나" * 300, "evidence": {}}]
+        * (limit + 2),
+        "mission_results": [
+            {"mission_id": f"m{i}", "status": "ACHIEVED", "metric": "x", "slide_number": None}
+            for i in range(25)
+        ],
+        "score": 74,
+    }
+    got = _message(previous_review=review)["previous_review"]
+    assert set(got) == {"overall_summary", "dimensions", "improvements", "mission_results"}
+    assert len(got["overall_summary"]) == 500
+    assert got["dimensions"] == {"audience_gaze": "STABLE", "fluency": "PRIORITY"}
+    assert len(got["improvements"]) == limit
+    assert got["improvements"][0] == {"type": "GAZE", "slide_number": 3, "text": "나" * 200}
+    assert len(got["mission_results"]) == 20
+    assert got["mission_results"][0] == {
+        "mission_id": "m0",
+        "status": "ACHIEVED",
+        "metric": "x",
+        "slide_number": None,
+    }
+
+
+def test_malformed_previous_items_are_skipped_without_raising():
+    take = {
+        "interventions": [None, "x", {"outcome": "EFFECTIVE"}, {"outcome": 5}],
+        "gave_up": ["x", {"issue_type": 3}, {"issue_type": "PACE_FAST", "slide_number": "2"}],
+        "problem_segments": [3, {"area": "GAZE", "start_ms": "a", "end_ms": 5, "reliable": True}],
+    }
+    review = {
+        "overall_summary": 7,
+        "dimensions": {"audience_gaze": 1, "fluency": "STABLE", 3: "x"},
+        "improvements": ["x", {"area": 3}, {"area": "GAZE", "text": 9}],
+        "mission_results": [None, {"mission_id": 1, "status": "ACHIEVED"}],
+    }
+    got = _message(previous_take_result=take, previous_review=review)
+    assert got["previous_take"] == {
+        "interventions": 4,
+        "effective_rate": 1.0,
+        "gave_up": [{"issue_type": "PACE_FAST", "slide_number": None}],
+        "problem_seconds": {},
+    }
+    assert got["previous_review"] == {
+        "overall_summary": None,
+        "dimensions": {"fluency": "STABLE"},
+        "improvements": [{"type": "GAZE", "slide_number": None, "text": None}],
+        "mission_results": [
+            {"mission_id": None, "status": "ACHIEVED", "metric": None, "slide_number": None}
+        ],
+    }
+    # 최상위가 dict 가 아니어도 예외 없이 없는 것으로 본다
+    empty = _message(previous_take_result={}, previous_review={})
+    assert empty["previous_take"] is None and empty["previous_review"] is None
+    plan_coaching(request(previous_take_result={"interventions": 5}), llm=FakeLLM(draft()))
+
+
+def test_same_request_gives_the_same_message():
+    kw = {"previous_take_result": take_result(4, effective=1), "previous_review": {"fluency": 1}}
+    req = PlanRequest.model_validate(request(**kw))
+    cfg = load_config().planner
+    assert plan_message(req, cfg) == plan_message(req, cfg)
+
+
+def test_relaxing_content_is_dropped():
+    relax = {"type": "CONTENT", "slide_number": 3, "why": "-"}
+    resp = plan_coaching(request(), llm=FakeLLM(draft(relax=[relax])), model="m")
+    assert resp.coaching_plan.relax == []
+    assert "봐줄 수 없는 영역" in resp.dropped[0]
+
+
+def test_planner_hash_follows_the_prompt(monkeypatch):
+    before = planner_hash("m")
+    monkeypatch.setattr("coach.planner.PLAN_SYSTEM_PROMPT", "다른 지시문")
+    assert planner_hash("m") != before
     assert planner_hash("m") != planner_hash("other")
