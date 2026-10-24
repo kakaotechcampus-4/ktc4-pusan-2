@@ -150,7 +150,7 @@ web/
 npm test             # vitest 194개
 npm run typecheck    # tsc 4번: 전체 / 설정 파일 / FE 컴파일러 옵션(tsconfig.fe.json: 엔진·Worker·카메라 화면) / DOM 없는 엔진(tsconfig.engine.json)
 npm run lint         # FE 와 같은 oxlint 규칙(--max-warnings=0)으로 엔진 · Worker
-npm run smoke        # 헤드리스 Chrome + 가짜 카메라로 데모 전체 (검사 24개, 화면 캡처 .cache/screens/)
+npm run smoke        # 헤드리스 Chrome + 가짜 카메라로 데모 전체 (검사 23개, 화면 캡처 .cache/screens/)
 npm run smoke:prod   # 같은 검사를 운영처럼 격리 헤더(COOP/COEP) 없이
 npm run bench        # Worker 프레임당 ms (CPU·GPU delegate), -- --no-isolation 으로 격리 헤더 없이
 npm run fixtures     # Python에서 defaults.generated.ts와 기준 답 다시 생성 (Python 쪽을 바꾼 뒤)
