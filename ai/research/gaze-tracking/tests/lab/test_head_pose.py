@@ -363,15 +363,13 @@ def test_the_session_records_gaze_evidence_for_the_agents(head_session):
         t_ms += FRAME_MS
 
     evidence = sess.gaze_evidence
-    states = [s.state for s in evidence.timeline.samples]
+    states = [s.state for s in evidence.samples]
     assert states.count("BOTTOM") >= 4 and "OTHER" in states
-    summary = evidence.summary()
-    script = [p for p in summary["problem_segments"] if p["issue_type"] == "GAZE_ON_SCRIPT"]
-    assert script and script[0]["duration_ms"] >= 4000
+    assert evidence.summary()["GAZE"]["script_ratio"] >= 0.4
     away = evidence.issues()
-    assert away[0]["issue_type"] == "GAZE_AWAY"
+    assert [i["issue_type"] for i in away] == ["GAZE_AWAY"]
     # Image-left (yaw < 0) is the presenter's RIGHT.
-    assert away[0]["evidence"]["direction"] == "RIGHT"
+    assert evidence.samples[-1].direction == "RIGHT"
 
 
 # ==========================================================================
