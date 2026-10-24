@@ -65,6 +65,7 @@ export function useLiveGaze({
   enabled,
   onExcluded,
   elapsedMs,
+  onRecords,
 }: {
   stream: MediaStream | null;
   videoRef: RefObject<HTMLVideoElement>;
@@ -89,6 +90,11 @@ export function useLiveGaze({
    * 동안만큼 시선 구간이 슬라이드·전사보다 앞당겨지고, 새로고침해 이어받으면 앞 기록과 겹칩니다.
    */
   elapsedMs: () => Ms;
+  /**
+   * 새 1초 기록을 받습니다 — WS `metrics` 로 서버에 보내는 쪽(`useMetricsSender`)입니다.
+   * `flushGaze` 의 마지막 조각도 `flushGaze` 가 풀리기 전에 여기로 옵니다.
+   */
+  onRecords?: (samples: GazeSampleRecord[]) => void;
 }) {
   const recentRef = useRef<GazeSampleRecord[]>([]);
   /** 아직 끝나지 않은 1초 기록 저장. Take 끝에서 마지막 조각까지 저장된 뒤 기록을 읽게 합니다 */
@@ -99,6 +105,10 @@ export function useLiveGaze({
   useEffect(() => {
     sessionRef.current = clientSessionId;
   }, [clientSessionId]);
+  const onRecordsRef = useRef(onRecords);
+  useEffect(() => {
+    onRecordsRef.current = onRecords;
+  }, [onRecords]);
 
   const onSamples = useCallback(
     (samples: GazeSampleRecord[]) => {
@@ -134,7 +144,10 @@ export function useLiveGaze({
         pendingWritesRef.current.add(write);
       }
 
-      // 3. 최근 창
+      // 3. 서버로 — 1초 기록 그대로 WS `metrics` 에 실립니다
+      onRecordsRef.current?.(samples);
+
+      // 4. 최근 창
       const recent = recentRef.current;
       recent.push(...samples);
       while (recent.length > 0 && last.t_ms - recent[0]!.t_ms > WINDOW_MS) recent.shift();

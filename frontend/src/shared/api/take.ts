@@ -9,7 +9,7 @@ import type { TakeAbandoned, TakeEndRequest, TakeUpdated } from '@/types/take';
  *
  * 예전에는 `POST /takes/{id}/complete` 로 기록을 한꺼번에 보냈습니다. BE 는 그 경로를 만들지 않기로
  * 했고(#134), 종료는 WS `stop` 으로 알리고 기록은 발표 중 WS `metrics` 로 보내는 것이 계약입니다
- * (`docs/ai/architecture.md` 1-3 · 1-4). `metrics` 가 붙기 전까지 여기서는 시각만 남깁니다.
+ * (`docs/ai/architecture.md` 1-3 · 1-4). 그래서 여기서는 시각만 남깁니다.
  */
 export function useEndTake(pitchId: string, takeId: string) {
   return useMutation({

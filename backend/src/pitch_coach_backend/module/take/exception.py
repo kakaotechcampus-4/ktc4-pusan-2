@@ -37,6 +37,13 @@ class TakeAlreadyStarted(ConflictException):
     message = "이미 시작한 연습입니다."
 
 
+class TakeNotStarted(ConflictException):
+    # 실시간 연결이 한 번도 붙지 않은(`READY`) Take 를 끝내려 했다. FE 는 첫 `ready` 를 받은 뒤에
+    # 발표를 시작하므로 이 Take 에는 남은 기록이 없다
+    code = "TAKE_NOT_STARTED"
+    message = "시작하지 않은 연습입니다."
+
+
 class InvalidTakeTime(AppException):
     code = "INVALID_TAKE_TIME"
     message = "끝난 시각이 시작한 시각보다 앞섭니다."
