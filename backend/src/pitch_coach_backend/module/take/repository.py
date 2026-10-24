@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement, Row, and_, case, func, or_, select, update
+from sqlalchemy import ColumnElement, Row, and_, case, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased, defer
 
