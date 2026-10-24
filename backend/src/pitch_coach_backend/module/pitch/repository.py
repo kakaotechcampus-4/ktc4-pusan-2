@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import Row, and_, case, func, literal, or_, select, union_all, update
 from sqlalchemy.orm import Session, defer
 
 from pitch_coach_backend.module.pitch.entity import (
@@ -92,7 +92,7 @@ class PitchRepository:
         self.db.delete(pitch)
         self.db.flush()
 
-    def lock_for_new_version(self, pitch_id: uuid.UUID) -> None:
+    def lock_for_new_version(self, pitch_id: uuid.UUID) -> bool:
         """이 pitch 에 새 버전을 만드는 요청을 한 줄로 세운다 (트랜잭션이 끝날 때까지 잠금).
 
         버전은 max(version) + 1 로 계산한다. 같은 pitch 에 요청 둘이 동시에 오면 둘 다 같은
@@ -116,8 +116,11 @@ class PitchRepository:
         """
         # key_share=True 는 이름과 달리 KEY SHARE 가 아니라 FOR NO KEY UPDATE 로 나간다
         # (KEY SHARE 는 read=True 를 같이 줄 때). tests/test_script_parse.py 가 확인한다
-        self.db.execute(
-            select(Pitch.id).where(Pitch.id == pitch_id).with_for_update(key_share=True)
+        return (
+            self.db.scalar(
+                select(Pitch.id).where(Pitch.id == pitch_id).with_for_update(key_share=True)
+            )
+            is not None
         )
 
     def next_presentation_version(self, pitch_id: uuid.UUID) -> int:
@@ -155,10 +158,7 @@ class PitchRepository:
         )
 
     def next_standard_version(self, pitch_id: uuid.UUID) -> int:
-        current = self.db.scalar(
-            select(func.max(Standards.version)).where(Standards.pitch_id == pitch_id)
-        )
-        return (current or 0) + 1
+        return (self.get_latest_standard_version(pitch_id) or 0) + 1
 
     def save_standard(self, standard: Standards) -> Standards:
         self.db.add(standard)
@@ -210,12 +210,23 @@ class PitchRepository:
             .limit(1)
         )
 
-    def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
-        return self.db.scalars(
-            select(Standards).where(Standards.pitch_id == pitch_id)
-            .distinct(Standards.version)
-            .order_by(Standards.version.asc())
-        ).all()
+    def get_evaluations(self, pitch_id: uuid.UUID) -> list[Row]:
+        # 빈 표시 기준의 새 버전도 목록에 남긴다. 예전 버전의 식별자는 그대로 유지한다.
+        versions = union_all(
+            select(Standards.id, Standards.version, literal(0).label("source")).where(
+                Standards.pitch_id == pitch_id
+            ),
+            select(
+                StandardAnalyses.id, StandardAnalyses.version, literal(1).label("source")
+            ).where(StandardAnalyses.pitch_id == pitch_id),
+        ).subquery()
+        return list(
+            self.db.execute(
+                select(versions.c.id, versions.c.version)
+                .distinct(versions.c.version)
+                .order_by(versions.c.version, versions.c.source, versions.c.id)
+            ).all()
+        )
 
     def get_standards_in_version(self, pitch_id: uuid.UUID, version: int) -> list[Standards]:
         return self.db.scalars(
@@ -234,6 +245,10 @@ class PitchRepository:
             )
         )
 
+    def save_standard_analysis(self, analysis: StandardAnalyses) -> None:
+        self.db.add(analysis)
+        self.db.flush()
+
     def get_evaluations_by_version(
             self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
         return self.db.scalars(
@@ -246,7 +261,16 @@ class PitchRepository:
 
     def get_latest_standard_version(self, pitch_id: uuid.UUID) -> int | None:
         return self.db.scalar(
-            select(func.max(Standards.version)).where(Standards.pitch_id == pitch_id)
+            select(
+                func.greatest(
+                    select(func.max(Standards.version))
+                    .where(Standards.pitch_id == pitch_id)
+                    .scalar_subquery(),
+                    select(func.max(StandardAnalyses.version))
+                    .where(StandardAnalyses.pitch_id == pitch_id)
+                    .scalar_subquery(),
+                )
+            )
         )
 
     # ── 대본 파싱 ────────────────────────────────────────────────────
