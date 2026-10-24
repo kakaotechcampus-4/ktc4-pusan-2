@@ -39,6 +39,7 @@ from pitch_coach_backend.module.take.dto import (
 from pitch_coach_backend.module.take.entity import Calibration, Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import (
     DuplicateTranscriptSegment,
+    InvalidReviewResponse,
     InvalidTakeTime,
     NonExistentTake,
     TakeAlreadyEnded,
@@ -420,14 +421,23 @@ def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
         user_criteria=_build_user_criteria(db, take),
     )
 
-def request_review(review_request: ReviewRequestDTO) -> ReviewResponseDTO:
+def request_review(take_id: uuid.UUID, review_request: ReviewRequestDTO) -> ReviewResponseDTO:
+    """AI 서버에 리뷰를 요청한다. 응답이 계약과 다르거나 다른 Take 의 것이면
+    InvalidReviewResponse(502). 저장하다 DB 제약에 걸리기 전에 여기서 거른다."""
     with httpx2.Client(timeout=30.0) as client:
         response = client.post(
             f"{settings.ai_base_url}/takes/review",
             json=review_request.model_dump(mode="json"),
         )
         response.raise_for_status()
-        return ReviewResponseDTO.model_validate(response.json())
+    try:
+        review_data = ReviewResponseDTO.model_validate(response.json())
+    # JSON 이 아님 · pydantic 검증 실패
+    except ValueError as e:
+        raise InvalidReviewResponse() from e
+    if review_data.take_id != take_id:
+        raise InvalidReviewResponse()
+    return review_data
 
 def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO) -> None:
     take_repository = TakeRepository(db)
@@ -467,7 +477,7 @@ def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
     try:
         review_request = build_review_request(db, take_id)
         db.commit()
-        review_data = request_review(review_request)
+        review_data = request_review(take_id, review_request)
         save_review(db, take_id, review_data)
     except Exception as e:
         db.rollback() # 분석 실패 시 상태를 FAILED로 바꿈.
