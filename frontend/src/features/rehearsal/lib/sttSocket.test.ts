@@ -531,6 +531,97 @@ describe('1초 측정값 (metrics)', () => {
   });
 });
 
+describe('장 변경 (slide)', () => {
+  const slide = (slide_number: number, t_ms: number) =>
+    ({ type: 'slide', slide_number, t_ms }) as const;
+  const metrics = (t_ms: number) =>
+    ({ type: 'metrics', t_ms, gaze: null, voice: null, slide_number: 1 }) as const;
+
+  /** 보낸 JSON 을 [type, t_ms] 로 */
+  const sentJson = (socket: FakeSocket) =>
+    socket.sent
+      .filter((d): d is string => typeof d === 'string')
+      .map((d) => JSON.parse(d) as { type: string; t_ms?: number; buffered?: boolean })
+      .filter((m) => m.type === 'slide' || m.type === 'metrics')
+      .map((m) => [m.type, m.t_ms, m.buffered ?? false] as const);
+
+  it('ready 뒤에는 바로 보낸다 — buffered 표시는 없다', async () => {
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    stt.sendSlide(slide(2, 42_300));
+    expect(sentJson(sockets[0]!)).toEqual([['slide', 42_300, false]]);
+  });
+
+  it('끊긴 동안 넘긴 장은 쌓았다가 metrics 와 시각 순서대로 보낸다', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    sockets[0]!.serverClose(1006);
+    // 시선 1초 기록은 늦게 나와서, 장을 넘긴 뒤에 그 앞 1초가 들어옵니다
+    stt.sendSlide(slide(3, 42_300));
+    stt.sendMetrics(metrics(42_000));
+    stt.sendMetrics(metrics(43_000));
+    expect(stt.bufferedSlides).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+
+    expect(sentJson(sockets[1]!)).toEqual([
+      ['metrics', 42_000, true],
+      ['slide', 42_300, false],
+      ['metrics', 43_000, true],
+    ]);
+    expect(stt.bufferedSlides).toBe(0);
+  });
+
+  it('너무 오래 끊겨 넘쳐도 장 변경은 버리지 않는다 — 장 구간 나누기가 전부 쓴다', async () => {
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+
+    stt.sendSlide(slide(1, 0));
+    for (let i = 1; i <= 301; i++) stt.sendMetrics(metrics(i * 1_000));
+    expect(stt.bufferedMetrics).toBe(300);
+    expect(stt.bufferedSlides).toBe(1);
+
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    const sent = sentJson(sockets[0]!);
+    expect(sent[0]).toEqual(['slide', 0, false]);
+    // 버린 것은 가장 오래된 metrics 하나입니다
+    expect(sent[1]).toEqual(['metrics', 2_000, true]);
+  });
+
+  it('끊긴 채로 끝내면 쌓인 장 변경을 보낸 뒤에 stop 을 보낸다', async () => {
+    vi.useFakeTimers();
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    sockets[0]!.serverClose(1006);
+    stt.sendSlide(slide(5, 90_000));
+    stt.stop().catch(() => undefined);
+
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+
+    expect(sentJson(sockets[1]!)).toEqual([['slide', 90_000, false]]);
+    expect(JSON.parse(sockets[1]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
+  });
+});
+
 describe('종료', () => {
   it('stop 을 보내고 closed 를 받을 때까지 기다린다', async () => {
     const stt = makeSocket();

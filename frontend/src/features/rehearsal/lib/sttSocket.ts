@@ -8,6 +8,7 @@ import {
   WS_CLOSE_POLICY,
   type AutoEndReason,
   type MetricsMessage,
+  type SlideMessage,
   type SttErrorCode,
   type SttState,
   type SttStatusMessage,
@@ -54,6 +55,13 @@ const MAX_PENDING_FRAMES = 20;
  * 시간(`ABANDONED`, #311)과 같습니다 — 그보다 오래 쌓아도 보낼 곳이 없습니다.
  */
 const MAX_PENDING_METRICS = 300;
+
+/** 다시 붙을 때까지 쌓아 둔 JSON 메시지 하나. `tMs` 로 시각 순서를 맞춥니다 */
+interface PendingEvent {
+  kind: 'metrics' | 'slide';
+  tMs: Ms;
+  data: string;
+}
 
 /** 빠른 백오프. 이걸 다 쓰면 화면을 `degraded` 로 두고 느린 재시도로 넘어갑니다 */
 const RETRY_DELAYS_MS = [500, 1_000, 2_000];
@@ -159,8 +167,14 @@ export class SttSocket {
   /** Take 단위 누적입니다. 재연결에서 리셋하지 않습니다 (계약 2) */
   private seq = 0;
   private pending: Uint8Array[] = [];
-  /** 아직 못 보낸 `metrics` (JSON 문자열). 다시 붙으면 오디오 다음에 흘립니다 */
-  private pendingMetrics: string[] = [];
+  /**
+   * 아직 못 보낸 `metrics` · `slide` (JSON 문자열). 다시 붙으면 오디오 다음에 **Take 시각 순서대로**
+   * 흘립니다 (`architecture.md` 2절). 시선 1초 기록은 0.2~3초 늦게 나와서 넣은 순서와 시각 순서가 다를
+   * 수 있습니다
+   */
+  private pendingEvents: PendingEvent[] = [];
+  /** 그중 `metrics` 수. 상한은 `metrics` 에만 겁니다 */
+  private pendingMetricsCount = 0;
   private ready = false;
 
   private retries = 0;
@@ -199,7 +213,12 @@ export class SttSocket {
 
   /** 아직 못 보낸 `metrics` 수. 화면 계기판 · 테스트용입니다 */
   get bufferedMetrics(): number {
-    return this.pendingMetrics.length;
+    return this.pendingMetricsCount;
+  }
+
+  /** 아직 못 보낸 `slide` 수. 테스트용입니다 */
+  get bufferedSlides(): number {
+    return this.pendingEvents.length - this.pendingMetricsCount;
   }
 
   start(): void {
@@ -244,8 +263,36 @@ export class SttSocket {
 
     // 쌓아 둔 것은 다시 붙은 뒤에야 나갑니다 — 이미 지난 시각입니다. BE 가 저장만 하고 코치를
     // 부르지 않도록 표시합니다 (`architecture.md` 1-4 · 2절). 시작 직후 `ready` 전 몇 초도 같습니다
-    this.pendingMetrics.push(JSON.stringify({ ...message, buffered: true }));
-    while (this.pendingMetrics.length > MAX_PENDING_METRICS) this.pendingMetrics.shift();
+    this.pendingEvents.push({
+      kind: 'metrics',
+      tMs: message.t_ms,
+      data: JSON.stringify({ ...message, buffered: true }),
+    });
+    this.pendingMetricsCount += 1;
+    // 넘치면 가장 오래된 `metrics` 만 버립니다. `slide` 는 버리지 않습니다 — 장 구간 나누기가
+    // 이벤트 전체를 쓰므로 하나만 빠져도 그 뒤 장들의 말이 앞 장으로 들어갑니다. 5분에 몇 개뿐입니다
+    while (this.pendingMetricsCount > MAX_PENDING_METRICS) {
+      const oldest = this.pendingEvents.findIndex((e) => e.kind === 'metrics');
+      this.pendingEvents.splice(oldest, 1);
+      this.pendingMetricsCount -= 1;
+    }
+  }
+
+  /**
+   * 장이 바뀌었습니다 (`slide`). `t_ms` 는 그 장으로 넘어온 Take 시각입니다. 끊겨 있으면 쌓았다가
+   * 다시 붙을 때 `metrics` 와 시각 순서대로 보냅니다. `buffered` 표시는 없습니다 — BE 는 받는 대로
+   * 저장하고, 실시간 코치는 요청 시각 이하의 가장 늦은 장을 고릅니다 (`architecture.md` 1-4 · 2절).
+   */
+  sendSlide(message: SlideMessage): void {
+    if (this.disposed || this.stopping) return;
+    const data = JSON.stringify(message);
+
+    if (this.ready && this.socket) {
+      this.socket.send(data);
+      return;
+    }
+
+    this.pendingEvents.push({ kind: 'slide', tMs: message.t_ms, data });
   }
 
   /**
@@ -280,7 +327,7 @@ export class SttSocket {
         this.sendStop();
       } else if (
         this.connecting ||
-        ((this.pending.length > 0 || this.pendingMetrics.length > 0) && this.retryTimer !== null)
+        ((this.pending.length > 0 || this.pendingEvents.length > 0) && this.retryTimer !== null)
       ) {
         // 붙는 중이거나 예약된 재연결이 있으면 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다.
         // 쌓인 `metrics` 만 있어도 기다립니다 — 마지막 1초 조각이 거기 있습니다.
@@ -343,8 +390,7 @@ export class SttSocket {
     }
     this.socket = null;
     this.ready = false;
-    this.pending = [];
-    this.pendingMetrics = [];
+    this.clearPending();
 
     this.flushStopResolvers();
   }
@@ -457,10 +503,20 @@ export class SttSocket {
   private flushPending(): void {
     if (!this.socket) return;
 
-    for (const frame of this.pending) this.socket.send(frame);
+    const socket = this.socket;
+    for (const frame of this.pending) socket.send(frame);
     this.pending = [];
-    for (const data of this.pendingMetrics) this.socket.send(data);
-    this.pendingMetrics = [];
+    // 정렬은 안정 정렬이라 같은 시각이면 넣은 순서를 지킵니다
+    const events = [...this.pendingEvents].sort((a, b) => a.tMs - b.tMs);
+    this.pendingEvents = [];
+    this.pendingMetricsCount = 0;
+    for (const e of events) socket.send(e.data);
+  }
+
+  private clearPending(): void {
+    this.pending = [];
+    this.pendingEvents = [];
+    this.pendingMetricsCount = 0;
   }
 
   private handleClose(code: number): void {
@@ -516,8 +572,7 @@ export class SttSocket {
    * 정리가 끝났다"는 뜻이라, 여기서 쓰면 화면이 아무 문제 없었던 것처럼 보입니다.
    */
   private giveUp(reason: GiveUpReason): void {
-    this.pending = [];
-    this.pendingMetrics = [];
+    this.clearPending();
     this.options.onState('degraded');
     this.options.onGiveUp?.(reason);
     this.dispose();

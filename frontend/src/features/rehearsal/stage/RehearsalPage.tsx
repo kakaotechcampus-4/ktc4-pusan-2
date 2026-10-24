@@ -49,6 +49,7 @@ import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
 import { useSttStream } from './useSttStream';
 import { useMetricsSender } from './useMetricsSender';
+import { useSlideSender } from './useSlideSender';
 import type { TextRange } from '../lib/scriptMarks';
 import './stage.css';
 
@@ -222,6 +223,7 @@ export function RehearsalPage() {
     note: sttNote,
     alert: sttAlert,
     sendMetrics,
+    sendSlide,
     stop: stopStt,
   } = useSttStream({
     takeId,
@@ -231,7 +233,15 @@ export function RehearsalPage() {
     onAutoEnd,
   });
 
-  // 1초마다 시선 · 음량 · 슬라이드를 WS `metrics` 로 보냅니다. 서버의 실시간 코치와 Take 결과의 재료입니다
+  // 장이 바뀐 시각을 WS `slide` 로 알립니다. 서버가 장 구간을 나누는 기준입니다 (#324 6-4)
+  useSlideSender({
+    enabled: running,
+    slideNumber,
+    slideStartedAtRef,
+    resumedAt: resume?.slideAt ?? null,
+    send: sendSlide,
+  });
+  // 1초마다 시선 · 음량 · 슬라이드(참고값)를 WS `metrics` 로 보냅니다. 서버의 실시간 코치와 Take 결과의 재료입니다
   const { onGazeRecords, finishMetrics } = useMetricsSender({
     enabled: running,
     elapsedMs,

@@ -3,6 +3,7 @@ import {
   STT_ERROR_MESSAGE,
   STT_STATE_NOTE,
   type MetricsMessage,
+  type SlideMessage,
   type SttState,
   type TranscriptMessage,
 } from '../lib/sttProtocol';
@@ -180,6 +181,11 @@ export function useSttStream({
     socketRef.current?.sendMetrics(message);
   }, []);
 
+  /** 장이 바뀌었다 (`slide`). 끊겨 있으면 소켓이 쌓아 두었다가 `metrics` 와 시각 순서대로 보냅니다 */
+  const sendSlide = useCallback((message: SlideMessage) => {
+    socketRef.current?.sendSlide(message);
+  }, []);
+
   return {
     transcriptRef,
     sttState,
@@ -189,6 +195,7 @@ export function useSttStream({
     alert: errorNote !== null || sttState === 'reconnecting' || sttState === 'degraded',
     statsRef,
     sendMetrics,
+    sendSlide,
     stop,
   };
 }
