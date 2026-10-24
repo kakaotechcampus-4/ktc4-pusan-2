@@ -41,6 +41,7 @@ INFO pitch_coach_ai.request request_id=4f1c… method=GET path=/health status=20
 | `LLM_TIMEOUT_SECONDS` | 선택 | `12` | LLM 호출 한 번 전체의 시간 제한(초). 0보다 커야 합니다 |
 | `LLM_MAX_RETRIES` | 선택 | `1` | LLM 재시도 횟수. 요청 마감 안에서만, 시간 초과 · 연결 실패 · 429 · 5xx일 때만 |
 | `WEB_CONCURRENCY` | 선택 | `1` | uvicorn 워커 수. uvicorn 이 시작할 때 **프로세스 환경변수**에서 직접 읽습니다. compose `env_file` · `docker run --env-file`은 환경변수로 넣어 먹지만, `ai/.env`에만 적고 `uv run`으로 띄우면 먹지 않습니다(로컬은 `--workers 4`) |
+| `AI_ENABLE_SAMPLE` | 선택 | `false` | 규약 확인용 대역 `POST /sample/judge`를 켭니다. 로컬 확인용이라 서버 `AI_ENV`에는 넣지 않습니다. 끄면 그 경로는 404 `NOT_FOUND` |
 
 - 값은 따옴표와 줄 끝 주석 없이 `이름=값`으로 적습니다(`docker run --env-file`은 따옴표를 값에 그대로 넣습니다). 빈 값(`OPENAI_API_KEY=`)은 "없음"으로 봅니다.
 - **묶음이 일부만 차 있으면 서버가 시작하지 않습니다.** 키를 빠뜨린 실수를 배포 직후 헬스체크에서 바로 보이게 하려는 것입니다.
