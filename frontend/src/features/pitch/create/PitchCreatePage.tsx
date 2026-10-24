@@ -161,7 +161,7 @@ function EditNotice({
   busy?: boolean;
 }) {
   return (
-    <div className="flex h-dvh flex-col bg-greige text-ink">
+    <div className="pitch-create flex h-dvh flex-col bg-greige text-ink">
       <PageHeader />
       <div className="flex flex-1 items-center justify-center p-6">
         <div
