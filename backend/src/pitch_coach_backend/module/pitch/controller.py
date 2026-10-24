@@ -2,11 +2,11 @@
 import uuid
 from typing import Annotated
 
-import anyio
 from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, status
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch, ScriptParseRunnerDep
 from pitch_coach_backend.module.pitch.dto import (
@@ -31,11 +31,11 @@ from pitch_coach_backend.module.pitch.service import (
     get_presentation_detail,
     get_script_detail,
     get_standard_detail,
+    pitch_timing,
     request_reparse,
     update_pitch_service,
     upload_presentation_service,
 )
-from pitch_coach_backend.realtime import take_stream
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
 
@@ -89,9 +89,14 @@ def add_pitch(
 def update_pitch(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
-    pitch_dto: PitchSaveRequestDTO
+    pitch_dto: PitchSaveRequestDTO,
 ):
+    before = pitch_timing(db, pitch_id)
     result = update_pitch_service(db, pitch_id, pitch_dto)
+    # 제한 시간 · 허용 범위가 바뀌면 다음 Take 의 코칭 계획을 다시 만든다 (coach-agent.md 5-1).
+    # 백그라운드 작업이라 응답을 기다리게 하지 않는다
+    if pitch_timing(db, pitch_id) != before:
+        hooks.coaching().plan_next_take(pitch_id)
     return {"message": "Pitch updated successfully", "pitch_id": result}
 
 @router.delete("/delete/{pitch_id}")
@@ -101,9 +106,8 @@ def delete_pitch(
     background_tasks: BackgroundTasks,
 ):
     take_ids = delete_pitch_service(db, pitch_id)
-    # 진행 중이던 Take 가 있으면 실시간 STT(Deepgram)도 끊는다. 스트림은 이벤트 루프에 있어서
-    # 이 함수(스레드 풀)에서 바로 만지지 않고 루프로 넘긴다
-    anyio.from_thread.run(take_stream.discard, take_ids)
+    # 진행 중이던 Take 가 있으면 실시간 STT(Deepgram) · 코치도 끊는다
+    hooks.live_takes().discard(take_ids)
     # 발표자료 파일은 CASCADE 로 지워지지 않는다. 응답을 늦추지 않게 보낸 뒤 지운다
     background_tasks.add_task(delete_pitch_files, pitch_id)
     return {"message": "Pitch deleted successfully", "pitch_id": pitch_id}

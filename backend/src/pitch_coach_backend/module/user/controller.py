@@ -1,10 +1,10 @@
 from typing import Annotated
 
-import anyio
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth.controller import clear_session_cookies
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.service import (
@@ -13,8 +13,7 @@ from pitch_coach_backend.module.pitch.service import (
     get_take_ids_of_user,
 )
 from pitch_coach_backend.module.user import service
-from pitch_coach_backend.module.user.dto import UserResponse
-from pitch_coach_backend.realtime import take_stream
+from pitch_coach_backend.module.user.dto import UserResponse, UserSettingsUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -23,6 +22,16 @@ router = APIRouter(prefix="/users", tags=["users"])
 def read_me(current_user: CurrentUser) -> UserResponse:
     """Access JWT 로 인증한다. entity 를 그대로 돌려주고 response_model 이 변환한다."""
     return current_user
+
+
+@router.patch("/me", response_model=UserResponse, summary="내 설정 바꾸기")
+def update_me(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    body: UserSettingsUpdate,
+) -> UserResponse:
+    """보낸 칸만 바꾼다. Bearer 헤더로 인증하므로 CSRF 검사는 하지 않는다."""
+    return service.update_settings(db, current_user, raw_data_consent=body.raw_data_consent)
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT, summary="회원 탈퇴")
@@ -42,7 +51,7 @@ def withdraw(
     take_ids = get_take_ids_of_user(db, current_user.id)
     service.delete(db, current_user)
     # 발표 삭제와 같다. 진행 중이던 Take 의 실시간 STT 를 끊고, 발표자료 파일은 응답 뒤에 지운다
-    anyio.from_thread.run(take_stream.discard, take_ids)
+    hooks.live_takes().discard(take_ids)
     for pitch_id in pitch_ids:
         background_tasks.add_task(delete_pitch_files, pitch_id)
     clear_session_cookies(response)

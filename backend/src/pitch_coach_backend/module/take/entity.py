@@ -31,11 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from pitch_coach_backend.core.database import (
-    Base,
-    CreatedAtMixin,
-    UUIDPrimaryKeyMixin,
-)
+from pitch_coach_backend.core.database import Base, CreatedAtMixin, UUIDPrimaryKeyMixin
 
 
 class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
@@ -103,10 +99,11 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     # BE 가 끝낸 이유. 사용자가 끝냈거나 아직 진행 중이면 비어 있다.
     # 실시간 STT 재연결은 이 값이 아니라 status 가 막는다.
     #   SILENCE·TIME_LIMIT : 자동 종료. status 는 ANALYZING 으로 바뀐다
-    #   ABANDONED          : 창을 닫지 않고 끊긴 뒤 5분 동안 돌아오지 않았거나, READY 로 남은
-    #                        채 같은 발표에서 새 Take 를 만들었다. 시선 기록 등을 못 받아 분석하지
-    #                        않고 status 를 FAILED 로 둔다. 그 뒤에 끝내기 PUT 이 오면
-    #                        (STT 없이 발표를 이어 간 FE) ANALYZING 으로 되살리고 이유를 지운다
+    #   ABANDONED          : 창을 닫지 않고 끊긴 뒤 5분 동안 돌아오지 않았거나, 시작하지 않은 채
+    #                        (READY) 같은 발표에서 새 Take 를 만들었거나 10분이 지났다. 시선
+    #                        기록 등을 못 받아 분석하지 않고 status 를 FAILED 로 둔다. 그 뒤에
+    #                        끝내기 PUT 이 오면 (STT 없이 발표를 이어 간 FE) ANALYZING 으로
+    #                        되살리고 이유를 지운다
     #   CLOSED             : 창을 닫았다 (닫힘 코드 1001 뒤 2분 동안 다시 안 붙음, 또는 다시 연 창이
     #                        abandon API 를 부름). 이어 가지 않는다 — FAILED 로 두고 되살리지 않는다
     end_reason: Mapped[str | None] = mapped_column(String(20))
@@ -123,8 +120,25 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
     analysis_hold_reason: Mapped[str | None] = mapped_column(String(32))
 
+    standard_version: Mapped[int | None] = mapped_column(Integer)
+
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    raw_data_consent: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    utterance_ends: Mapped[list[int] | None] = mapped_column(JSONB)
+
 
 class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    """AI 결과. (take_id, kind) 마다 하나다.
+
+    kind: TAKE_RESULT (코치 finalize) · SCRIPT_COVERAGE (대본 전달도) ·
+    SCRIPT_COVERAGE_PENDING (병합 후보, BE 내부용) · REVIEW (리뷰).
+    `revision` 은 그 행의 payload 를 바꾼 횟수다 — 처음 0, 바꿀 때마다 1 올린다
+    (`docs/ai/features/script-coverage-evaluation.md` 12-1).
+    """
 
     __tablename__ = "take_ai_results"
     __table_args__ = (
@@ -149,7 +163,8 @@ class TakeSummary(Base):
     take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), primary_key=True
     )
-    average_wpm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 말 속도 CPM(분당 글자 수). Take 결과 SPEED cpm 그대로
+    average_cpm: Mapped[float | None] = mapped_column(Float, nullable=True)
     filler_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # 시선이 청중·슬라이드·대본에 머문 정도. 셋을 합쳐 시선 배분을 본다.
     audience_gaze: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -258,6 +273,8 @@ class TakeTranscriptSegment(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     # endpointing 이 침묵을 감지한 문장 경계인지
     speech_final: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
+    final_at_ms: Mapped[int | None] = mapped_column(Integer)
+
 
 class TakeMetricSecond(CreatedAtMixin, Base):
     """발표 중 FE 가 1초마다 보낸 측정값(WS `metrics`) 1건. Take 결과를 다시 만들 때 쓰는 원자료다.
@@ -299,3 +316,28 @@ class TakeSlideEvent(Base):
     )
     started_ms: Mapped[int] = mapped_column(Integer, primary_key=True)
     slide_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class CoachEvent(CreatedAtMixin, Base):
+    """코치 이벤트 1건 (evaluate · finalize 응답의 events).
+
+    코치가 한 말(`INTERVENTION`)도 여기에만 둔다. 이벤트 JSON 은 받은 그대로 payload 에, 그 응답의
+    meta 는 meta 에 둔다. seq 는 BE 가 받은 순서다 — finalize 에 받은 순서대로 넘긴다.
+    같은 event_id 는 같은 이벤트라 한 번만 남긴다 (`docs/ai/features/coach-agent.md` 12-1 · 12-2).
+    """
+
+    __tablename__ = "coach_events"
+    __table_args__ = (
+        UniqueConstraint("take_id", "event_id", name="uq_coach_events_take_event"),
+    )
+
+    take_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("takes.id", ondelete="CASCADE"), primary_key=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # 코치가 정하는 문자열이라 길이를 묶지 않는다. 넘쳐 저장이 실패하면 그 응답의 이벤트를 다 잃는다
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    event_id: Mapped[str] = mapped_column(Text, nullable=False)
+    t_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    meta: Mapped[Any] = mapped_column(JSONB, nullable=False)

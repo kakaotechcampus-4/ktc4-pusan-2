@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 import httpx2
 from sqlalchemy.orm import Session
@@ -34,6 +35,7 @@ from pitch_coach_backend.module.pitch.dto import (
     VersionSummaryDTO,
 )
 from pitch_coach_backend.module.pitch.entity import (
+    CoachingPlan,
     Pitch,
     PresentationVersion,
     ScriptParseStatus,
@@ -364,6 +366,7 @@ def create_script_service(
         requested_at=script.parse_requested_at,
         script_text=content,
         target_ms=target_ms,
+        pitch_id=pitch_id,
     )
     return created, ticket
 
@@ -481,6 +484,7 @@ def request_reparse(
             requested_at=now,
             script_text=script.content,
             target_ms=target_ms,
+            pitch_id=pitch_id,
         ),
     )
 
@@ -634,3 +638,107 @@ def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: in
             "standard": standards[s].title
         } for s in range(len(standards))],
     }
+
+
+def lock_for_new_version(db: Session, pitch_id: uuid.UUID) -> None:
+    """발표 행을 잠근다 (`PitchRepository.lock_for_new_version`). Take 를 시작할 때도 잡는다."""
+    PitchRepository(db).lock_for_new_version(pitch_id)
+
+def latest_analysis_version(db: Session, pitch_id: uuid.UUID) -> int | None:
+    """분석까지 끝난 평가 기준의 가장 최근 버전. Take 를 시작할 때 그 Take 에 고정한다."""
+    return PitchRepository(db).get_latest_analysis_version(pitch_id)
+
+def script_used(db: Session, pitch_id: uuid.UUID, version: int | None) -> bool | None:
+    """그 버전의 평가 기준이 대본을 쓰는가. 버전이 없으면 None."""
+    if version is None:
+        return None
+    return PitchRepository(db).get_script_used(pitch_id, version)
+
+def criteria_for_version(
+    db: Session, pitch_id: uuid.UUID, version: int | None
+) -> dict[str, Any] | None:
+    """Take 에 고정한 버전의 표시 기준 · 숫자 목표. null 은 끝까지 '기준 없음'이다."""
+    if version is None:
+        return None
+    repository = PitchRepository(db)
+    analysis = repository.get_standard_analysis(pitch_id, version)
+    return {
+        "display_criteria": [
+            s.title for s in repository.get_standards_in_version(pitch_id, version)
+        ],
+        "targets": analysis.targets if analysis is not None else [],
+        "script_used": analysis.script_used if analysis is not None else None,
+    }
+
+
+def find_pitch(db: Session, pitch_id: uuid.UUID) -> Pitch | None:
+    return PitchRepository(db).get_by_id(pitch_id)
+
+
+def find_script_version(db: Session, script_version_id: uuid.UUID) -> ScriptVersion | None:
+    return PitchRepository(db).get_script_version(script_version_id)
+
+def script_slides(db: Session, script_version_id: uuid.UUID) -> list[ScriptSlide]:
+    """대본 버전의 장, 장 번호 순서."""
+    return list(PitchRepository(db).get_slides(script_version_id))
+
+
+def latest_parsed_script(db: Session, pitch_id: uuid.UUID) -> ScriptVersion | None:
+    """파싱이 끝난 가장 최근 대본 버전. 다음 Take 가 쓸 대본이다."""
+    return PitchRepository(db).get_latest_parsed_script(pitch_id)
+
+def chosen_coaching_plan(
+    db: Session,
+    pitch_id: uuid.UUID,
+    *,
+    source_take_id: uuid.UUID | None,
+    script_version_id: uuid.UUID | None,
+    target_ms: int | None,
+    min_ms: int | None,
+    max_ms: int | None,
+) -> CoachingPlan | None:
+    """바탕 값이 모두 같은 계획 중 요청 시각이 가장 늦은 것 (coach-agent.md 12-2 계획 고르기)."""
+    return PitchRepository(db).get_chosen_coaching_plan(
+        pitch_id,
+        source_take_id=source_take_id,
+        script_version_id=script_version_id,
+        target_ms=target_ms,
+        min_ms=min_ms,
+        max_ms=max_ms,
+    )
+
+def add_coaching_plan(
+    db: Session,
+    pitch_id: uuid.UUID,
+    *,
+    source_take_id: uuid.UUID | None,
+    script_version_id: uuid.UUID | None,
+    target_ms: int | None,
+    min_ms: int | None,
+    max_ms: int | None,
+    requested_at: datetime,
+    payload: dict,
+    meta: dict,
+) -> bool:
+    """계획 응답 하나를 한 행으로 더한다. 발표가 그 사이 지워졌으면 넣지 않고 False."""
+    return PitchRepository(db).add_coaching_plan(
+        CoachingPlan(
+            pitch_id=pitch_id,
+            source_take_id=source_take_id,
+            script_version_id=script_version_id,
+            target_ms=target_ms,
+            min_ms=min_ms,
+            max_ms=max_ms,
+            requested_at=requested_at,
+            payload=payload,
+            meta=meta,
+        )
+    )
+
+
+def pitch_timing(db: Session, pitch_id: uuid.UUID) -> tuple[int, int, int] | None:
+    """제한 시간 · 허용 초과 · 허용 미달 (초). 코칭 계획의 바탕 값이라 바뀌면 계획을 다시 만든다."""
+    pitch = PitchRepository(db).get_by_id(pitch_id)
+    if pitch is None:
+        return None
+    return pitch.time_limit_sec, pitch.upper_deviation, pitch.lower_deviation

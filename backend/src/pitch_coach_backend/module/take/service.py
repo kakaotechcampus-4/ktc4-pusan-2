@@ -2,7 +2,7 @@ import logging
 import math
 import uuid
 from collections.abc import Callable, Iterable, Mapping
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.pitch.exception import (
     NonExistentPitch,
@@ -23,6 +24,7 @@ from pitch_coach_backend.module.pitch.exception import (
     SlideCountMismatch,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     MetricSecondCreateDTO,
@@ -32,6 +34,8 @@ from pitch_coach_backend.module.take.dto import (
     PreviousTakeDTO,
     ReviewRequestDTO,
     ReviewResponseDTO,
+    TakeHistoryResponseDTO,
+    TakeHistoryRowDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
     TargetInfoDTO,
@@ -41,10 +45,13 @@ from pitch_coach_backend.module.take.dto import (
 from pitch_coach_backend.module.take.entity import Calibration, Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import (
     DuplicateTranscriptSegment,
+    InvalidReviewResponse,
     InvalidTakeTime,
     NonExistentTake,
     TakeAlreadyEnded,
     TakeAlreadyStarted,
+    TakeNotReviewable,
+    TakeNotStarted,
     TakeSessionMismatch,
 )
 from pitch_coach_backend.module.take.repository import (
@@ -113,7 +120,8 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
 
     take_repository.abandon_ready_takes(pitch_id)
 
-    previous_take = take_repository.get_latest_reviewed_take_in_pitch(pitch_id)
+    # 미션은 Take 를 시작할 때(첫 WS 연결) 싣는다 (`coach_service.start_take`). 만들 때 실으면 장치
+    # 점검만 하고 버린 Take 가 미션을 가져가 다음 Take 에 실리지 않는다
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,
@@ -127,8 +135,6 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     )
 
     saved_take = take_repository.save(new_take)
-    if previous_take is not None:
-        take_repository.assign_missions_to_take(previous_take.id, saved_take.id)
     db.commit()
 
     return saved_take
@@ -142,6 +148,11 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
 
     # 보낸 필드만 바꾼다. 빠진 필드를 None 으로 덮으면 ended_at 만 보낼 때 started_at 이 지워진다
     changes = take_update_dto.model_dump(exclude_none=True)
+
+    # 실시간 연결이 한 번도 붙지 않은 Take 는 끝내지 않는다. FE 는 첫 `ready` 를 받은 뒤에
+    # 발표를 시작하므로 남은 기록이 없다. 만든 지 10분이 지나면 BE 가 ABANDONED 로 끝낸다
+    if existing_take.status == "READY" and "ended_at" in changes:
+        raise TakeNotStarted()
 
     # 떠난 것으로 끝낸 Take 에 온 끝내기다. 재연결을 포기하고 STT 없이 발표를 이어 간 FE 라
     # 기록을 받는다. 상태는 뒤이어 mark_ended 가 ANALYZING 으로 되돌린다
@@ -257,6 +268,43 @@ def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
     )
 
 
+def _percent_to_ratio(value: int | None) -> float | None:
+    # take_summaries 는 비율 × 100 정수로 둔다 (architecture.md 1-1 반올림)
+    return None if value is None else value / 100
+
+
+def list_takes_service(
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None = None
+) -> TakeHistoryResponseDTO:
+    """Take 기록 · Take 비교 화면의 Take 목록. 남의 발표나 없는 발표를 주면 404 다."""
+    if pitch_id is not None and PitchRepository(db).get_owned(pitch_id, user_id) is None:
+        raise NonExistentPitch()
+    rows = TakeRepository(db).list_started_takes(user_id, pitch_id)
+    return TakeHistoryResponseDTO(
+        takes=[
+            TakeHistoryRowDTO(
+                take_id=row.take_id,
+                pitch_id=row.pitch_id,
+                pitch_title=row.pitch_title,
+                take_number=row.take_number,
+                started_at=row.started_at,
+                status=row.status,
+                script_mode=row.script_mode,
+                duration_ms=None if row.duration_sec is None else row.duration_sec * 1000,
+                goal_ms=row.goal_time_sec * 1000,
+                audience_ratio=_percent_to_ratio(row.audience_gaze),
+                script_ratio=_percent_to_ratio(row.script_gaze),
+                cpm=row.average_cpm,
+                filler_count=row.filler_count,
+                missions_achieved=row.missions_achieved,
+                missions_total=row.missions_total,
+                gaze_engine=row.gaze_engine,
+            )
+            for row in rows
+        ]
+    )
+
+
 # ── 실시간 STT (realtime 모듈이 부른다) ──────────────────────────────
 #
 # realtime 은 entity 를 갖지 않고 저장을 여기에 위임한다. 아래 일곱은 WebSocket 연결·
@@ -291,6 +339,7 @@ def append_transcript_segment(
         words=[w.model_dump() for w in segment_dto.words],
         confidence=segment_dto.confidence,
         speech_final=segment_dto.speech_final,
+        final_at_ms=segment_dto.final_at_ms,
     )
     try:
         saved = TakeRepository(db).save_transcript_segment(segment)
@@ -311,9 +360,20 @@ def append_metric_seconds(
     """1초 원자료 여러 행을 한 번에 저장하고 커밋한다. 이미 있는 1초는 건너뛴다.
 
     Take 가 그 사이 지워졌으면 `NonExistentTake`. 스트림은 이걸 보고 남은 행을 버린다.
+    Take 결과를 이미 만든 Take 면 넣지 않는다 (`TakeRepository.raw_data_open`).
     """
+    repository = TakeRepository(db)
+    open_ = repository.raw_data_open(take_id)
+    if open_ is None:
+        raise NonExistentTake()
+    if not open_:
+        db.rollback()
+        logger.warning(
+            "Take 결과를 만든 뒤라 1초 원자료를 넣지 않는다 take=%s count=%d", take_id, len(rows)
+        )
+        return
     try:
-        TakeRepository(db).save_metric_seconds(take_id, [row.model_dump() for row in rows])
+        repository.save_metric_seconds(take_id, [row.model_dump() for row in rows])
     except IntegrityError as e:
         # 이 표의 외래 키는 take_id 하나다. 같은 1초는 ON CONFLICT 로 건너뛰어 여기 오지 않는다
         if isinstance(e.orig, ForeignKeyViolation):
@@ -356,40 +416,45 @@ def _build_previous_recurring_issues(
     previous_review = take_repository.get_previous_review_payload(take_id, take_number)
     return previous_review.get("recurring_issues", []) if previous_review else []
 
-def _build_user_criteria(db: Session, pitch_id: uuid.UUID) -> UserCriteriaDTO | None:
-    pitch_repository = PitchRepository(db)
-    version = pitch_repository.get_latest_standard_version(pitch_id)
-    if version is None:
-        return None
-    standards = pitch_repository.get_standards_in_version(pitch_id, version)
-    analysis = pitch_repository.get_standard_analysis(pitch_id, version)
-    return UserCriteriaDTO(
-        display_criteria=[s.title for s in standards],
-        targets=[TargetInfoDTO(**t) for t in analysis.targets] if analysis else [],
-        script_used=analysis.script_used if analysis else None,
-    )
+def _build_user_criteria(db: Session, take: Take) -> UserCriteriaDTO | None:
+    criteria = pitch_service.criteria_for_version(db, take.pitch_id, take.standard_version)
+    return UserCriteriaDTO.model_validate(criteria) if criteria is not None else None
 
 def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
     take_repository = TakeRepository(db)
-    take_number = take_repository.get_take_number(take_id)
+    take = take_repository.get_take(take_id)
+    if take is None:
+        raise NonExistentTake()
+    take_number = take.take_number
+    result = take_repository.get_take_infos(take_id, "TAKE_RESULT")
+    coverage = take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE")
     return ReviewRequestDTO(
-        take_result=take_repository.get_take_infos(take_id, "TAKE_RESULT"),
-        script_coverage=take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE"),
+        take_result=result,
+        script_coverage=coverage,
         previous_takes=_build_previous_takes(take_repository, take_id, take_number),
         previous_recurring_issues=_build_previous_recurring_issues(take_repository, 
                                                                    take_id, take_number),
         missions=_build_missions(take_repository, take_id),
-        user_criteria=_build_user_criteria(db, take_repository.get_pitch_id_of_take(take_id)),
+        user_criteria=_build_user_criteria(db, take),
     )
 
-def request_review(review_request: ReviewRequestDTO) -> ReviewResponseDTO:
+def request_review(take_id: uuid.UUID, review_request: ReviewRequestDTO) -> ReviewResponseDTO:
+    """AI 서버에 리뷰를 요청한다. 응답이 계약과 다르거나 다른 Take 의 것이면
+    InvalidReviewResponse(502). 저장하다 DB 제약에 걸리기 전에 여기서 거른다."""
     with httpx2.Client(timeout=30.0) as client:
         response = client.post(
             f"{settings.ai_base_url}/takes/review",
             json=review_request.model_dump(mode="json"),
         )
         response.raise_for_status()
-        return ReviewResponseDTO.model_validate(response.json())
+    try:
+        review_data = ReviewResponseDTO.model_validate(response.json())
+    # JSON 이 아님 · pydantic 검증 실패
+    except ValueError as e:
+        raise InvalidReviewResponse() from e
+    if review_data.take_id != take_id:
+        raise InvalidReviewResponse()
+    return review_data
 
 def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO) -> None:
     take_repository = TakeRepository(db)
@@ -421,13 +486,15 @@ def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO)
 
 def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
     take_repository = TakeRepository(db)
-    take_repository.set_analysis_stage(take_id, "REVIEWING")
+    if not take_repository.start_review(take_id):
+        db.rollback()
+        raise TakeNotReviewable()
     db.commit()
 
     try:
         review_request = build_review_request(db, take_id)
         db.commit()
-        review_data = request_review(review_request)
+        review_data = request_review(take_id, review_request)
         save_review(db, take_id, review_data)
     except Exception as e:
         db.rollback() # 분석 실패 시 상태를 FAILED로 바꿈.
@@ -441,34 +508,48 @@ def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
     return review_data
 
 def mark_running(db: Session, take_id: uuid.UUID) -> bool:
-    """첫 실시간 연결이 붙었다. `READY` 면 `RUNNING` 으로 바꾸고 커밋한다. 바꿨으면 True."""
-    marked = TakeRepository(db).mark_running(take_id)
-    db.commit()
-    return marked
+    """첫 실시간 연결이 붙었다. `READY` 면 `RUNNING` 으로 바꾸고, 이 Take 에 쓸 값(실은 미션 ·
+    평가 기준 버전 · 원자료 사용 동의)을 고정한 뒤 커밋한다. 바꿨으면 True
+    (`coach_service.start_take`).
+    """
+    return coach_service.start_take(db, take_id)
 
 
-def mark_ended(db: Session, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
-    """Take 를 끝냈다. 상태를 `ANALYZING` 으로 바꾸고 커밋한다.
+def mark_ended(
+    db: Session,
+    take_id: uuid.UUID,
+    end_reason: str | None = None,
+    utterance_ends: list[int] | None = None,
+) -> bool:
+    """Take 를 끝냈다. `RUNNING` 이면 상태를 `ANALYZING`, 분석 단계를 `FINALIZING` 으로 바꾸고
+    커밋한다.
 
-    WS stop 이 부르고, STT 없이 끝낸 Take 는 Take PUT(`ended_at`)이 부른다. BE 가 자동으로
-    끝냈으면 `end_reason` 에 이유를 남긴다 (처음 적은 이유가 남는다). 떠난 것으로 끝낸 Take 는
-    되살린다 (STT 없이 발표를 이어 간 FE 의 끝내기다).
+    WS stop 이 부르고, 발표 중에 연결이 끊겨 STT 없이 끝낸 Take 는 Take PUT(`ended_at`)이
+    부른다. BE 가 자동으로 끝냈으면 `end_reason` 에 이유를 남긴다 (처음 적은 이유가 남는다).
+    떠난 것으로 끝낸 Take 는 되살린다 (STT 없이 발표를 이어 간 FE 의 끝내기다).
+    `utterance_ends` 는 Take 동안 메모리에 들고 있던 문장 끝 신호다 — 있으면 같이 쓴다
+    (`docs/ai/architecture.md` 1-3 3번 ③).
     Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
     """
-    marked = TakeRepository(db).mark_ended(take_id, end_reason)
+    marked = TakeRepository(db).mark_ended(take_id, end_reason, utterance_ends)
     db.commit()
     return marked
 
 
 def mark_abandoned(
-    db: Session, take_id: uuid.UUID, ended_at: datetime, end_reason: str = "ABANDONED"
+    db: Session,
+    take_id: uuid.UUID,
+    ended_at: datetime,
+    end_reason: str = "ABANDONED",
+    utterance_ends: list[int] | None = None,
 ) -> bool:
     """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유(`ABANDONED` · `CLOSED`)를 적고 커밋한다.
 
     연결 없이 정리된 스트림에 정해진 시간 동안 다시 붙지 않으면 부른다. `ended_at` 은 마지막으로
-    연결이 끊긴 시각이다. Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
+    연결이 끊긴 시각이다. Take 동안 모은 문장 끝 신호가 있으면 같이 쓴다 — 끝내기 PUT 이 되살리면
+    replay 가 쓴다. Take 가 그 사이 지워졌거나 이미 끝났으면 아무것도 안 하고 False.
     """
-    marked = TakeRepository(db).mark_abandoned(take_id, ended_at, end_reason)
+    marked = TakeRepository(db).mark_abandoned(take_id, ended_at, end_reason, utterance_ends)
     db.commit()
     return marked
 
@@ -812,3 +893,27 @@ async def analyze_script_coverage(
             job["retry_used"],
         )
     return await _in_session(session_factory, _conclude_coverage, take_id)
+ABANDON_AFTER_SEC = 5 * 60.0
+
+def stored_utterance_ends(db: Session, take_id: uuid.UUID) -> list[int]:
+    """Take 에 저장된 문장 끝 신호. 앱이 Take 도중에 다시 떴을 때 이어 받는다."""
+    return TakeRepository(db).utterance_ends(take_id)
+
+def save_utterance_ends(db: Session, take_id: uuid.UUID, utterance_ends: list[int]) -> bool:
+    """진행 중인 Take 의 문장 끝 신호를 적어 둔다 (앱을 내릴 때). 끝난 Take 는 그대로 둔다."""
+    saved = TakeRepository(db).save_utterance_ends(take_id, utterance_ends)
+    db.commit()
+    return saved
+
+
+# 시작하지 않은 Take 를 끝내는 기준. Take 는 장치 점검에서 시작을 누를 때 만들고 곧바로 실시간
+# 연결이 붙으므로 보통 몇 초면 `RUNNING` 이 된다. 권한 창 · 느린 연결을 넉넉히 기다린다
+READY_EXPIRE_AFTER = timedelta(minutes=10)
+
+
+def abandon_stale_ready_takes(db: Session) -> int:
+    """만든 지 `READY_EXPIRE_AFTER` 가 지나도 `READY` 인 Take 를 `FAILED`(`ABANDONED`)로 끝내고
+    커밋한다. 끝낸 수를 돌려준다."""
+    abandoned = TakeRepository(db).abandon_stale_ready_takes(READY_EXPIRE_AFTER)
+    db.commit()
+    return abandoned
