@@ -1,5 +1,6 @@
 """대본 → 장별 결과: 구분자 찾기(코드) → 제목 줄 · 키워드 · 용어 고르기(LLM) → 판정 · 정제 · 계산(코드)."""
 
+from itertools import zip_longest
 from typing import Any
 
 from .cleaner import clean_script, count_chars, find_highlights
@@ -44,9 +45,11 @@ def parse_script(request: ParseRequest, llm: Any) -> ParseResponse:
     ):
         status = "fail"
         whole = "\n".join([split.preface] + [s.text for s in split.slides])
-        # 대본 전체를 장 1개로: 제목 줄은 모두 걷어 내고 키워드는 장별 키워드를 합친다
-        parts = [(1, whole, set().union(preface_titles, *titles.values()),
-                  [k for s in split.slides for k in keywords.get(s.slide_number, [])])]
+        # 대본 전체를 장 1개로: 제목 줄은 모두 걷어 내고 키워드는 장별 키워드를 합친다.
+        # 장마다 번갈아 하나씩 합쳐야 개수 상한에서 잘려도 앞쪽 장에 몰리지 않는다
+        per_slide = [keywords.get(s.slide_number, []) for s in split.slides]
+        merged = [k for group in zip_longest(*per_slide) for k in group if k is not None]
+        parts = [(1, whole, set().union(preface_titles, *titles.values()), merged)]
     elif status == "success":
         parts = [
             (s.slide_number, s.text, titles.get(s.slide_number, set()), keywords.get(s.slide_number, []))
