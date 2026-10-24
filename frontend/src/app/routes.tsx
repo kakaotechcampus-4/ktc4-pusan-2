@@ -105,6 +105,7 @@ export const router = createBrowserRouter(
                 showHeader={
                   !['/', '/pitches', '/pitch/new', '/takes/:takeId/processing'].includes(route.path)
                 }
+                bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
               />
             </PageTitle>
           ),

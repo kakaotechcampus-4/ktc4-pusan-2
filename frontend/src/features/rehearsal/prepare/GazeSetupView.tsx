@@ -48,7 +48,7 @@ export function GazeSetupView({
         className={
           overlay
             ? 'fixed inset-0 z-50 bg-stage-deep'
-            : 'absolute inset-0 overflow-hidden rounded-xl border border-stage-panel bg-stage-deep'
+            : 'absolute inset-0 overflow-hidden border-2 border-ink bg-stage-deep shadow-[4px_4px_0_var(--color-line)]'
         }
       >
         {/*
