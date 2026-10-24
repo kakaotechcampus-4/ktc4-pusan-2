@@ -62,7 +62,7 @@ def judge(
     cpm = cpm_short = speak_ms = None
     window_ms = min(cfg.window_ms, max(0, t_ms - inp.stt_ok_since_ms))
     if stt_ok:
-        valid = _valid(words)
+        valid = _valid(words, inp.words_since_ms)
         cpm, speak_ms = _window_cpm(
             valid,
             inp.fillers,
@@ -152,15 +152,22 @@ def criteria(config: PaceConfig = DEFAULT) -> dict[str, IssueCriteria]:
 # --------------------------------------------------------------------------
 
 
-def _valid(words: list[Word]) -> list[Word]:
-    """시각이 거꾸로이거나 앞 단어의 끝보다 일찍 시작하는(겹친) 단어를 뺀다.
+def _valid(words: list[Word], cursor_ms: int) -> list[Word]:
+    """시각이 거꾸로이거나 겹친 단어를 뺀다.
 
+    겹친 단어는 앞 단어의 끝보다 일찍 시작하거나, 새 단어(end_ms > cursor_ms)인데
+    단어 커서보다 일찍 시작하는 단어다. 앞 단어가 입력에 없어도 커서로 겹침을 본다.
     words 는 start_ms 순이어야 한다.
     """
     out: list[Word] = []
     prev_end = None
     for w in words:
-        if w.end_ms >= w.start_ms and (prev_end is None or w.start_ms >= prev_end):
+        crosses_cursor = w.start_ms < cursor_ms < w.end_ms
+        if (
+            w.end_ms >= w.start_ms
+            and not crosses_cursor
+            and (prev_end is None or w.start_ms >= prev_end)
+        ):
             out.append(w)
         prev_end = w.end_ms if prev_end is None else max(prev_end, w.end_ms)
     return out
@@ -226,7 +233,7 @@ def _word_tally(
     cursor = inp.words_since_ms
     items: list[TallyItem] = []
     prev: Word | None = None
-    valid_ids = {id(w) for w in _valid(words)}
+    valid_ids = {id(w) for w in _valid(words, cursor)}
     for w in words:
         if w.end_ms <= cursor:
             # 이미 센 단어. 다음 단어의 멈춤 간격을 재는 앞 단어로만 쓴다
@@ -234,7 +241,7 @@ def _word_tally(
             if id(w) in valid_ids:
                 prev = w
             continue
-        if w.end_ms < w.start_ms or w.start_ms < cursor:
+        if id(w) not in valid_ids:
             # 시각이 거꾸로이거나 겹친 단어: 계산에서 빼고 커서만 넘긴다
             cursor = w.end_ms
             continue

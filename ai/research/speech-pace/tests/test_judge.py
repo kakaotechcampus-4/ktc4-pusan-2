@@ -114,6 +114,15 @@ def test_filler_and_pending_words_are_left_out_of_the_window_cpm():
     assert pending.metrics.cpm == 300.0
 
 
+def test_a_new_word_starting_before_the_word_cursor_is_left_out_of_the_window_cpm_too():
+    words = steady(9000, chars=5, dur_ms=1000, seconds=9)
+    # 커서(10000)까지 센 단어가 입력에서 빠져, 커서보다 일찍 시작하는 새 단어와 겹칠 앞 단어가 없다
+    late = word("가" * 10, 9500, 10_500)
+    r = run(10_500, [*words, late], words_since_ms=10_000)
+    assert word_items(r) == [] and r.words_counted_until_ms == 10_500
+    assert r.metrics.cpm == run(10_500, words, words_since_ms=10_000).metrics.cpm == 300.0
+
+
 def test_after_stt_recovers_the_window_starts_at_the_recovery():
     ok_since = T - 8_000
     before = steady(ok_since - 500, chars=4, dur_ms=1000, seconds=10)  # 느린 말, 복구 전
