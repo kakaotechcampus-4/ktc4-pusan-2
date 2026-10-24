@@ -19,41 +19,48 @@
 
 | 위치 | 내용 |
 |---|---|
-| `evaluation_criteria/schema.py` | `Criteria`, `EvaluationCriteriaAnalysis` (Structured Output 스키마) |
-| `evaluation_criteria/prompt.py` | `SYSTEM_PROMPT` — 평가 요소 매핑 · values · display_criteria · excluded 규칙 |
-| `evaluation_criteria/analyzer.py` | `build_llm()`, `analyze_criteria(text)` — 파이프라인 |
-| `run.py` | 직접 입력 또는 `data/examples.json` 실행 → 콘솔 출력 (`--all`은 `results/examples.json` 저장) |
+| `src/evaluation_criteria/` | 코어. 나중에 서비스 `features/evaluation_criteria/`로 폴더째 옮김. pydantic만 씀 |
+| `src/evaluation_criteria/schemas.py` | `Criteria`, `EvaluationCriteriaAnalysis` (Structured Output 스키마) |
+| `src/evaluation_criteria/prompts/system.py` | `SYSTEM_PROMPT` — 평가 요소 매핑 · values · display_criteria · excluded 규칙 |
+| `src/evaluation_criteria/core.py` | `analyze_criteria(text, llm)` — 파이프라인 |
+| `src/evaluation_criteria/examples/` | 요청 · 응답 예시 (아직 비어 있음) |
+| `run.py` | `build_llm()`(`ai/.env`로 LLM 생성), 직접 입력 또는 `data/examples.json` 실행 → 콘솔 출력 (`--all`은 `results/examples.json` 저장) |
 | `tests/test_schema.py` | 스키마 테스트 (LLM 호출 없음) |
+| `tests/live/` | 실제 LLM 테스트 (`live` 표시, 아직 비어 있음) |
 | `data/examples.json` | 테스트용 평가 기준 문장 5개 |
-| `results/` | 실행 결과 (gitignore) |
+| `results/` | `run.py` 실행 결과 (gitignore) |
+| `reports/results/` | 평가 결과 JSON (아직 비어 있음) |
 
 ---
 
 ## 실행
 
 ```bash
-# research/evaluation-criteria/ 에서
-python -m venv .venv
-./.venv/Scripts/python.exe -m pip install -e ".[dev]"
+# ai/research/evaluation-criteria/ 에서 (Python 3.12)
+uv sync
 ```
+
+OneDrive 폴더처럼 하드 링크가 안 되는 곳에서는 `UV_LINK_MODE=copy`를 설정하고 `uv sync`를 실행합니다.
 
 `ai/.env`에 `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`을 채웁니다(`ai/.env.example` 복사).
 경로가 코드에 고정되어 있어서 어느 디렉터리에서 실행하든 같은 파일을 읽습니다. 키나 모델이 비어 있으면 바로 에러가 납니다.
 
 ```bash
-python run.py --text "추임새는 5번 이하로 해주세요."   # 직접 입력
-python run.py --index 1 3                            # examples.json의 1, 3번째
-python run.py --all                                  # 전체 (순차 호출)
-python -m pytest                                     # 스키마 테스트
+uv run python run.py --text "추임새는 5번 이하로 해주세요."   # 직접 입력
+uv run python run.py --index 1 3                            # examples.json의 1, 3번째
+uv run python run.py --all                                  # 전체 (순차 호출)
+uv run python -m pytest                                     # 스키마 테스트 (live 제외)
+uv run python -m pytest -m live                             # 실제 LLM 테스트 (과금)
 ```
 
-코드에서 직접 쓸 때:
+코드에서 직접 쓸 때 (`llm`은 필수 인자. 코어는 LLM을 만들지 않습니다):
 
 ```python
-from evaluation_criteria import analyze_criteria, build_llm
+from evaluation_criteria import analyze_criteria
+from run import build_llm
 
 llm = build_llm()                    # 여러 입력을 돌릴 때는 재사용
-data = analyze_criteria(text, llm=llm)
+data = analyze_criteria(text, llm)
 ```
 
 ---
@@ -98,7 +105,7 @@ data = analyze_criteria(text, llm=llm)
 |---|---|
 | 고정 필드 스키마 | OpenAI Structured Output의 `json_schema` strict 모드는 자유 키 dict(`dict[str, ...]`)를 지원하지 않습니다. 평가 요소를 `Criteria`의 고정 필드로 둔 것은 의도된 설계입니다 |
 | 모든 필드 required | 언급이 없는 요소도 필드를 생략하지 않고 `null`로 반환합니다. `tests/test_schema.py`가 이를 확인합니다 |
-| 평가 요소 추가 | 발표 분석 시스템에 지표가 추가되면 `schema.py`의 `Criteria`와 `prompt.py`의 평가 요소 표를 함께 고쳐야 합니다 |
+| 평가 요소 추가 | 발표 분석 시스템에 지표가 추가되면 `schemas.py`의 `Criteria`와 `prompts/system.py`의 평가 요소 표를 함께 고쳐야 합니다 |
 | 수치 생성 금지 | 입력에 숫자가 없는 모호한 기준("너무 빠르지 않게")은 숫자를 만들어내지 않고 입력 표현을 그대로 남깁니다 |
 | 발표 시간 | 현재 8개 요소에 없어 `excluded`로 갑니다 |
 | 평가 | 정답 라벨이 있는 평가셋이 없습니다. 지금까지의 정확도는 눈으로 확인한 것이 전부입니다 |

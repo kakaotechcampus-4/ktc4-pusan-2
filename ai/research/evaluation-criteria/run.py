@@ -7,13 +7,42 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 
-from evaluation_criteria import analyze_criteria, build_llm
+from dotenv import load_dotenv
+from langchain_core.runnables import Runnable
+from langchain_openai import ChatOpenAI
+
+from evaluation_criteria import analyze_criteria
+from evaluation_criteria.schemas import EvaluationCriteriaAnalysis
 
 ROOT = Path(__file__).resolve().parent
 EXAMPLES_PATH = ROOT / "data" / "examples.json"
 RESULTS_DIR = ROOT / "results"
+# ai/.env (작업 디렉터리와 상관없이 고정)
+ENV_PATH = ROOT.parents[1] / ".env"
+
+
+def build_llm() -> Runnable:
+    """ai/.env의 OPENAI_* 값으로 Structured Output LLM을 만듭니다.
+
+    자유 키 dict 없이 고정 필드를 사용하여 json_schema 방식으로
+    구조화된 출력을 생성합니다.
+    (function tools가 아니라 response_format 기반이라 reasoning_effort와 충돌하지 않음)
+    """
+    load_dotenv(ENV_PATH)
+    api_key = os.getenv("OPENAI_API_KEY")
+    model = os.getenv("OPENAI_MODEL")
+    if not api_key or not model:
+        raise RuntimeError(f"OPENAI_API_KEY / OPENAI_MODEL이 비어 있습니다: {ENV_PATH}")
+
+    llm = ChatOpenAI(
+        base_url=os.getenv("OPENAI_BASE_URL"),
+        api_key=api_key,
+        model=model,
+    )
+    return llm.with_structured_output(EvaluationCriteriaAnalysis)
 
 
 def main() -> None:

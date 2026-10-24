@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from evaluation_criteria.schema import Criteria, EvaluationCriteriaAnalysis
+from evaluation_criteria.schemas import Criteria, EvaluationCriteriaAnalysis
 
 CRITERIA_FIELDS = [
     "speed",
