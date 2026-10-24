@@ -294,6 +294,9 @@ class InterventionEvent(_Event):
     confidence: float
     reason_codes: list[str]
     slide_number: int | None = None
+    #: 같은 응답 feedback.evidence 와 같은 값 — 문제 구간 start_ms · end_ms · slide_number 와 판정
+    #: 모듈이 준 근거. 기본값은 이 필드가 없던 옛 이벤트를 finalize 가 받을 수 있게 한다
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class OutcomeEvent(_Event):

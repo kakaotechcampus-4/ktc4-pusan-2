@@ -50,7 +50,16 @@
         "PLAN_FOCUS",
         "WORSENING"
       ],
-      "slide_number": 3
+      "slide_number": 3,
+      "evidence": {
+        "start_ms": 88000,
+        "end_ms": 92000,
+        "slide_number": 3,
+        "script_ratio": 0.8,
+        "script_run_ms": 1000,
+        "uncertain_ratio": 0.0,
+        "window_ms": 10000
+      }
     }
   ],
   "coach_state": {

@@ -545,6 +545,7 @@ def _intervene(tick: Tick, c: Candidate, reason_codes: list[str], sink: EventSin
         confidence=confidence,
         reason_codes=reason_codes,
         slide_number=c.slide_number,
+        evidence=c.evidence,
     )
     st.last_fired_ms = tick.t
     st.last_by_instruction[c.instruction.value] = tick.t

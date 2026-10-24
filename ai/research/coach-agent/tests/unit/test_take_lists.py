@@ -306,6 +306,17 @@ def test_episode_closed_by_this_finalize_joins_the_received_events():
     )
 
 
+def test_finalize_accepts_an_old_intervention_event_without_evidence():
+    # evidence 가 없던 옛 INTERVENTION 이벤트도 받는다(기본값은 빈 dict)
+    old = intervention(5_000)
+    assert "evidence" not in old
+    s = Session()
+    s.run(1_000, 9_000, **gaze_on())
+    req = {"take_id": "t", "t_ms": 10_000, "coach_state": s.state, "events": [old]}
+    fin = finalize(req, s.judges, s.config)
+    assert [i.intervention_id for i in fin.take_result.interventions] == ["iv-5000"]
+
+
 def test_received_event_wins_over_the_same_event_made_again():
     """finalize 를 다시 부르면 같은 EPISODE 를 또 만든다 — id 가 같아 하나만, 받은 것을 쓴다."""
     s = Session()
