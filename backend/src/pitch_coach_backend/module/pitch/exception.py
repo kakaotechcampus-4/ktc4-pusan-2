@@ -31,6 +31,12 @@ class StandardParseFailed(AppException):
     message = "평가 기준을 나누지 못했습니다. 잠시 후 다시 시도해 주세요."
 
 
+class StandardInputRejected(AppException):
+    status_code = 422
+    code = "STANDARD_INPUT_REJECTED"
+    message = "평가 기준 입력을 확인해 주세요."
+
+
 class InvalidScript(AppException):
     code = "INVALID_SCRIPT"
     message = "대본이 올바르지 않습니다."
