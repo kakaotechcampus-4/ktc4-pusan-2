@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from evaluation_criteria import check_targets
+from evaluation_criteria.config import DEFAULT
 from evaluation_criteria.schemas import Criteria, EvaluationCriteriaRequest, Target
 from evaluation_criteria.prompts import SYSTEM_PROMPT
 
@@ -32,17 +33,7 @@ def test_expected_answers_follow_the_contract(example):
 @pytest.mark.parametrize("example", EXAMPLES, ids=IDS)
 def test_every_target_has_a_value_for_its_element(example):
     # 목표가 있으면 그 요소의 values 도 null 이 아니다
-    element_of = {
-        "cpm": "speed",
-        "pause_count": "pause",
-        "long_silence_count": "silence",
-        "voice_diff_db": "volume",
-        "filler_count": "filler",
-        "filler_per_min": "filler",
-        "audience_ratio": "gaze",
-        "reading_ratio": "script_dependency",
-        "content_coverage": "script_similarity",
-    }
+    element_of = {m: e for e, metrics in DEFAULT.element_metrics.items() for m in metrics}
     values = example["expected"]["values"]
     for t in example["expected"]["targets"]:
         assert values[element_of[t["metric"]]] is not None
