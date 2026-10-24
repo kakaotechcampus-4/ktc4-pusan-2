@@ -47,6 +47,8 @@ export const fromPitchSaved = (res: PitchSavedResponse): string => res.pitch_id;
 export interface UploadedFile {
   fileUrl: string;
   presentationVersionId: string;
+  /** BE 가 센 쪽수 (#298). 모르면 null — 그때만 FE 가 PDF 를 열어 셉니다 */
+  pageCount: number | null;
 }
 
 /** 컨트롤러가 `{"message", "presentation": {...}}` 로 감싸 돌려줍니다 */
@@ -54,6 +56,7 @@ export function fromUploadedPresentation(res: UploadPresentationResponse): Uploa
   return {
     fileUrl: res.presentation.file_url,
     presentationVersionId: res.presentation.presentation_version_id,
+    pageCount: res.presentation.page_count ?? null,
   };
 }
 

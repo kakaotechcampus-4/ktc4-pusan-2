@@ -5,8 +5,9 @@ import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
  * PDF 를 URL 로 열고 페이지를 canvas 에 그립니다. pdf.js 를 직접 부르는 곳은 여기뿐입니다.
  *
  * ── 왜 서버 변환이 아니라 브라우저인가 ──────────────────────────────
- * 서버는 파일을 S3 에 두고 presigned URL 만 줍니다 (페이지 이미지 · 장수 없음).
- * URL 하나로 장수와 화면이 다 나오므로 BE 에 변환을 따로 요청하지 않습니다.
+ * 서버는 파일을 S3 에 두고 presigned URL 과 BE 가 센 쪽수만 줍니다 (페이지 이미지 없음, #298).
+ * 화면은 URL 하나로 그리므로 BE 에 변환을 따로 요청하지 않습니다. 쪽수는 BE 숫자를 쓰고,
+ * 뷰어의 넘기기만 연 문서의 쪽수를 씁니다 (`slideUpload.ts`).
  *
  * ★ 실서버에서는 S3 버킷에 CORS(GET, 프론트 origin)가 열려 있어야 합니다.
  *   pdf.js 는 `<img>` 처럼 그냥 띄우는 게 아니라 fetch 로 바이트를 읽기 때문입니다.
@@ -30,6 +31,22 @@ export function openPdf(url: string): Promise<PDFDocumentProxy> {
   loading.catch(() => opened.delete(url));
   opened.set(url, loading);
   return loading;
+}
+
+/**
+ * 쪽수만 세고 닫습니다. `openPdf` 와 달리 캐시에 남기지 않습니다.
+ *
+ * 목(`mocks/presentation.ts`)이 BE 처럼 쪽수를 셀 때 씁니다. 캐시에 남기면 뷰어가 업로드 직후
+ * 바로 그려져, 실서버의 "PDF 여는 중…" 단계를 dev 에서 볼 수 없습니다.
+ */
+export async function countPdfPages(url: string): Promise<number> {
+  const task = getDocument({ url });
+  try {
+    return (await task.promise).numPages;
+  } finally {
+    // 문서를 닫는 것은 여는 작업 쪽입니다 (이 판의 pdf.js 문서에는 destroy 가 없습니다)
+    await task.destroy();
+  }
 }
 
 /**

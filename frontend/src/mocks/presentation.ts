@@ -1,8 +1,12 @@
 import { delay, http, HttpResponse } from 'msw';
+import { countPdfPages } from '@/shared/lib/pdf';
 import type { PresentationDetail, UploadPresentationResponse } from '@/types/presentation';
 
 /** 올린 파일. 리허설이 버전 id 로 다시 받을 때(GET /presentations/{id}) 같은 파일을 돌려줍니다 */
-const uploaded = new Map<string, { pitchId: string; url: string; version: number }>();
+const uploaded = new Map<
+  string,
+  { pitchId: string; url: string; version: number; pageCount: number }
+>();
 
 /**
  * 발표자료 업로드 목.
@@ -27,12 +31,26 @@ export const presentationHandlers = [
     const pitchId = String(params.pitchId);
     const id = crypto.randomUUID();
     const url = URL.createObjectURL(file);
+    // BE 처럼 쪽수를 세서 돌려줍니다 (#298). 열리지 않으면 BE 처럼 400 INVALID_PRESENTATION
+    // 캐시에 남기지 않아 뷰어가 실서버처럼 따로 엽니다. 열기 실패(S3 CORS · 만료)는 목에서 재현되지 않습니다
+    let pageCount;
+    try {
+      pageCount = await countPdfPages(url);
+    } catch {
+      URL.revokeObjectURL(url);
+      return HttpResponse.json({ code: 'INVALID_PRESENTATION' }, { status: 400 });
+    }
     const version = [...uploaded.values()].filter((u) => u.pitchId === pitchId).length + 1;
-    uploaded.set(id, { pitchId, url, version });
+    uploaded.set(id, { pitchId, url, version, pageCount });
 
     const body: UploadPresentationResponse = {
       message: 'Presentation uploaded successfully',
-      presentation: { pitch_id: pitchId, presentation_version_id: id, file_url: url },
+      presentation: {
+        pitch_id: pitchId,
+        presentation_version_id: id,
+        file_url: url,
+        page_count: pageCount,
+      },
     };
     return HttpResponse.json(body);
   }),
@@ -49,6 +67,7 @@ export const presentationHandlers = [
       presentation_version_id: id,
       version: found.version,
       file_url: found.url,
+      page_count: found.pageCount,
       description: null,
       created_at: new Date().toISOString().slice(0, 10),
     };

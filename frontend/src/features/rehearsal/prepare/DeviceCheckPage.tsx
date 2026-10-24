@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
-import type { PracticeCombo, PrepareResponse, RehearsalTicket } from '@/types/api';
+import type { PracticeCombo, RehearsalTicket } from '@/types/api';
 import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
 import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
@@ -13,7 +13,8 @@ import { CheckCard } from './CheckCard';
 import { LevelBar } from '../media/LevelBar';
 import { ScreenFrame, StageButton } from './ScreenFrame';
 import { ScriptModeChoice } from './ScriptModeChoice';
-import { normalizeScriptMode, practiceModeFor, usePrepareStore } from './prepareStore';
+import { practiceModeFor, usePrepareStore } from './prepareStore';
+import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
 import { CALIBRATION_FAIL_MESSAGE, useGazeSetup, type GazeSetupStatus } from './useGazeSetup';
 import { useBaseVoice, type BaseVoiceStatus } from './useBaseVoice';
 import { useMicLevel } from '../media/useMicLevel';
@@ -159,41 +160,13 @@ function calibrationLabel(cal: Pick<ReturnType<typeof useGazeSetup>, 'status' | 
  *
  * 점검 셋 중 둘은 장치(카메라·마이크)고 하나는 시선 기준점입니다. 셋 다 통과해야 시작합니다.
  */
-/**
- * Take 에 박을 버전과 목표 시간. 피치 생성에서 고른 조합이 먼저이고, 없으면 준비 화면 응답입니다.
- * 둘 다 없으면 null — Take 를 만들 수 없습니다.
- */
-function takeVersions(combo: PracticeCombo | null, data: PrepareResponse | undefined) {
-  if (combo) {
-    return {
-      presentation_version_id: combo.presentationVersionId,
-      script_version_id: combo.scriptVersionId,
-      goal_time_sec: combo.goalTimeSec,
-    };
-  }
-  if (data) {
-    return {
-      presentation_version_id: data.presentationVersionId,
-      script_version_id: data.scriptVersionId,
-      goal_time_sec: data.timeLimitSec,
-    };
-  }
-  return null;
-}
-
-/** 화면 위 부제목. 피치 생성에서 고른 조합이 있으면 그 번호를 씁니다 — 실제로 연습할 조합입니다 */
-function versionLabel(combo: PracticeCombo | null, data: PrepareResponse | undefined): string {
-  if (combo) return `자료 v${combo.slideVersion} · 대본 v${combo.scriptVersion}`;
-  if (data) return `자료 v${data.presentationVersion} · 대본 v${data.scriptVersion}`;
-  return '';
-}
-
 export function DeviceCheckPage() {
   const { pitchId = '' } = useParams();
   // 피치 생성에서 매핑을 저장하며 고른 조합. 홈에서 바로 왔거나 새로고침했으면 없습니다
   const combo = (useLocation().state as { practice?: PracticeCombo } | null)?.practice ?? null;
   const navigate = useNavigate();
-  const { data } = usePrepare(pitchId);
+  const prepare = usePrepare(pitchId);
+  const info = useMemo(() => (prepare.data ? fromPrepare(prepare.data) : null), [prepare.data]);
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
@@ -244,10 +217,8 @@ export function DeviceCheckPage() {
   // 올 때 사용자가 고른 것이 되돌아갑니다. FULL 이 올 수 있어 3단계로 접습니다.
   // 지난번이 OFF 였으면 실전 모드가 미리 골라집니다 (practiceModeFor 의 대가 참고)
   useEffect(() => {
-    if (data && !scriptModeTouched) {
-      setScriptMode(normalizeScriptMode(data.defaultScriptMode), false);
-    }
-  }, [data, scriptModeTouched, setScriptMode]);
+    if (info && !scriptModeTouched) setScriptMode(info.defaultScriptMode, false);
+  }, [info, scriptModeTouched, setScriptMode]);
 
   // 장치 이름은 권한을 받은 뒤에야 채워집니다. 그 전에는 label이 빈 문자열입니다
   useEffect(() => {
@@ -264,10 +235,16 @@ export function DeviceCheckPage() {
   // 저장된 기준을 확인하는 중에는 열지 않습니다 — "완료"로 보이는데 기준이 없으면
   // 리허설에서 시선이 조용히 빠집니다
   //
-  // ★ 피치 생성에서 조합을 받았으면 준비 화면 응답(`/prepare`)을 기다리지 않습니다.
-  //   Take 에 필요한 값(버전 id · 목표 시간)이 조합에 다 있고, `/prepare` 는 BE 에 아직 없습니다
-  const versions = takeVersions(combo, data);
-  const ready = live && micOk && cal.status === 'DONE' && versions !== null && !starting;
+  // ★ 피치 생성에서 조합을 받았으면 준비 정보(`/prepare`)를 기다리지 않습니다 — Take 에 필요한
+  //   버전 id 가 조합에 다 있습니다. 없을 때(홈 · 새로고침)만 준비 정보로 정하고, 거기서 시작할 수
+  //   없는 이유(버전 없음 · 쪽수 다름 · 불러오기 실패)가 있으면 그걸 먼저 알립니다
+  const choice = takeChoice(combo, info);
+  const prepareBlocked = (() => {
+    if (combo) return null;
+    if (prepare.isError) return `준비 정보를 불러오지 못했어요. ${toMessage(prepare.error)}`;
+    return info ? prepareProblem(info) : null;
+  })();
+  const ready = live && micOk && cal.status === 'DONE' && choice !== null && !starting;
 
   /**
    * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
@@ -276,7 +253,7 @@ export function DeviceCheckPage() {
    * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
    */
   const start = async () => {
-    if (!versions || starting) return;
+    if (!choice || starting) return;
     setStarting(true);
     setStartError(null);
 
@@ -294,10 +271,17 @@ export function DeviceCheckPage() {
     try {
       const clientSessionId = await startSession();
 
-      // ★ 이번 연습의 슬라이드 + 대본 조합이 Take 에 박힙니다 (BE TakeInitRequestDTO)
+      // ★ 이번 연습의 슬라이드 + 대본 조합이 Take 에 박힙니다 (BE TakeInitRequestDTO).
+      //   세션 id 가 멱등 키라, 응답을 잃고 다시 보내도 Take 가 둘 생기지 않습니다 (#296)
       const take = await createTake.mutateAsync({
         pitchId,
-        body: { mode: practiceMode, script_mode: scriptMode, ...versions },
+        body: {
+          mode: practiceMode,
+          script_mode: scriptMode,
+          presentation_version_id: choice.presentationVersionId,
+          script_version_id: choice.scriptVersionId,
+          client_session_id: clientSessionId,
+        },
       });
       await setTakeId(clientSessionId, take.takeId);
       // 리허설을 새로고침하면 이 스토어가 비어서 세션 행에서 되살립니다. 못 적어도 발표는
@@ -311,13 +295,14 @@ export function DeviceCheckPage() {
       // 리허설이 무대를 열 때 쓸 값. 새로고침해도 남도록 세션에도 적어 둡니다
       const ticket: RehearsalTicket = {
         pitchId,
-        title: combo?.title ?? data?.title ?? '',
-        presentationVersionId: versions.presentation_version_id,
-        scriptVersionId: versions.script_version_id,
-        timeLimitSec: versions.goal_time_sec,
+        title: combo?.title ?? info?.title ?? '',
+        presentationVersionId: choice.presentationVersionId,
+        scriptVersionId: choice.scriptVersionId,
+        timeLimitSec: choice.timeLimitSec,
         mode: practiceMode,
         scriptMode,
-        takeNumber: data?.nextTakeNumber ?? null,
+        // 준비 정보의 번호는 예상값이라 그사이 다른 Take 가 생기면 어긋납니다. 실제로 매긴 번호를 씁니다
+        takeNumber: take.takeNumber,
       };
       await setSessionTicket(clientSessionId, ticket);
 
@@ -355,7 +340,8 @@ export function DeviceCheckPage() {
     startError ??
     (starting
       ? '연습을 여는 중…'
-      : deviceCheckHint({
+      : (prepareBlocked ??
+        deviceCheckHint({
           deviceError,
           live,
           micOk,
@@ -363,9 +349,12 @@ export function DeviceCheckPage() {
           calUnavailable: cal.unavailableMessage,
           calPoor: cal.advice !== null,
           voiceStatus: baseVoice.status,
-        }));
+        })));
 
-  const takeNumber = data?.nextTakeNumber ?? 0;
+  const takeNumber = info?.nextTakeNumber ?? 0;
+  // 새 대본을 아직 못 써서 옛 대본으로 연습하면 알립니다. 피치 생성에서 고른 조합이면 해당 없습니다
+  const notice = combo || !info ? null : newerScriptNotice(info);
+  const subtitle = [choice?.label, notice].filter(Boolean).join(' · ');
   const startLabel = practiceModeFor(scriptMode) === 'EXAM' ? '실전 모드로 시작' : '시작하기';
 
   return (
@@ -373,9 +362,9 @@ export function DeviceCheckPage() {
       screenNo="09"
       screenName="시작 전 세팅 (Take 준비)"
       entry="진입 · 피치 생성 완료 / 리포트의 다시 연습하기"
-      title={data?.title ?? combo?.title ?? '불러오는 중…'}
-      subtitle={versionLabel(combo, data)}
-      badge={`TAKE ${data?.nextTakeNumber || '—'} · 시작 전 세팅`}
+      title={info?.title ?? combo?.title ?? '불러오는 중…'}
+      subtitle={subtitle}
+      badge={`TAKE ${takeNumber || '—'} · 시작 전 세팅`}
       onBack={() => navigate(-1)}
       hint={hint}
       actions={
