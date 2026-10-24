@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, func, or_, select, update
+from sqlalchemy import ColumnElement, Row, and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased, defer
 
@@ -418,6 +418,52 @@ class TakeRepository:
             .values(**values)
         )
         return result.rowcount > 0
+
+    def list_started_takes(
+        self, user_id: uuid.UUID, pitch_id: uuid.UUID | None = None
+    ) -> list[Row[Any]]:
+        """사용자의 시작한 Take 를 시작 시각 최신순으로 읽는다. `pitch_id` 를 주면 그 발표 것만.
+
+        시작하지 않은 Take(장치 점검에서 버려진 것)는 시작 시각이 없어 빠진다. 한 줄에 Take 기록
+        화면이 쓰는 값을 모두 싣는다 — 집계 · 장치 점검 결과가 없으면 그 칸은 null 이다.
+        """
+        # 판정이 끝난 미션은 다음 Take 로 넘어가지 않아 `take_id` 가 판정한 Take 로 남는다
+        achieved = (
+            select(func.count())
+            .where(Mission.take_id == Take.id, Mission.status == "ACHIEVED")
+            .scalar_subquery()
+        )
+        # 시작 전 Take 는 칸이 비어 있다. JSON null 이 들어 있어도 배열 길이를 묻지 않는다
+        is_array = func.jsonb_typeof(Take.mission_ids) == "array"
+        total = case((is_array, func.jsonb_array_length(Take.mission_ids)), else_=0)
+        stmt = (
+            select(
+                Take.id.label("take_id"),
+                Take.pitch_id,
+                Pitch.title.label("pitch_title"),
+                Take.take_number,
+                Take.started_at,
+                Take.status,
+                Take.script_mode,
+                Take.duration_sec,
+                Take.goal_time_sec,
+                TakeSummary.audience_gaze,
+                TakeSummary.script_gaze,
+                TakeSummary.average_cpm,
+                TakeSummary.filler_count,
+                achieved.label("missions_achieved"),
+                total.label("missions_total"),
+                Calibration.result["engine_version"].astext.label("gaze_engine"),
+            )
+            .join(Pitch, Pitch.id == Take.pitch_id)
+            .outerjoin(TakeSummary, TakeSummary.take_id == Take.id)
+            .outerjoin(Calibration, Calibration.take_id == Take.id)
+            .where(Pitch.user_id == user_id, Take.started_at.is_not(None))
+            .order_by(Take.started_at.desc(), Take.take_number.desc())
+        )
+        if pitch_id is not None:
+            stmt = stmt.where(Take.pitch_id == pitch_id)
+        return list(self.db.execute(stmt).all())
 
     def running_takes_last_active(self) -> list[tuple[uuid.UUID, datetime]]:
         """`RUNNING` 인 Take 와 마지막으로 활동한 시각. 앱이 다시 뜰 때 떠난 Take 를 찾는 데 쓴다.

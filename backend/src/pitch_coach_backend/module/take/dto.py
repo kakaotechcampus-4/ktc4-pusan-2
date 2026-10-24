@@ -33,6 +33,33 @@ class TakeUpdateRequestDTO(BaseModel):
         Annotated[list[dict[str, Any]], AfterValidator(reject_unstorable_json)] | None
     ) = None
 
+# Take 기록 · Take 비교 화면의 한 줄. FE types/takeHistory.ts 와 같은 모양이다.
+# 못 잰 값은 0 이 아니라 null 이다
+class TakeHistoryRowDTO(BaseModel):
+    take_id: uuid.UUID
+    pitch_id: uuid.UUID
+    pitch_title: str
+    take_number: int
+    started_at: datetime
+    status: str
+    script_mode: str
+    # 끝나지 않았으면 null
+    duration_ms: int | None
+    goal_ms: int
+    # 시선이 청중 · 대본에 머문 비율 (0~1)
+    audience_ratio: float | None
+    script_ratio: float | None
+    cpm: float | None
+    filler_count: int | None
+    # Take 를 시작할 때 실은 미션 중 리뷰가 달성으로 판정한 수 / 실은 수
+    missions_achieved: int
+    missions_total: int
+    # 장치 점검 때의 시선 엔진 버전. 다르면 FE 가 시선 값을 나란히 비교하지 않는다
+    gaze_engine: str | None
+
+class TakeHistoryResponseDTO(BaseModel):
+    takes: list[TakeHistoryRowDTO]
+
 class TakeSummaryDTO(BaseModel):
     take_id: uuid.UUID
     take_version: int
