@@ -137,8 +137,10 @@ def baseline(levels: list[float], config: Config = Config()) -> float | None:
     return round(median(levels[: config.baseline_samples]), 2)
 
 
-def summarize(tally: dict[str, dict[str, float]], config: Config = Config()) -> Summary:
-    """장 · Take 의 ``tally`` 합계(영역 → 이름 → 합) → 영역별 지표.
+def summarize(
+    tally: dict[str, dict[str, float]], config: Config = Config()
+) -> dict[str, dict[str, float | None]]:
+    """장 · Take 의 ``tally`` 합계(영역 → 이름 → 합) → 영역별 지표 (``Summary`` 모양의 dict).
 
     분모가 0이면 null. ``measured_ratio`` 만 분모가 0이면 0이다
     (코치가 측정 비율 기준 미만으로 본다).
@@ -172,11 +174,14 @@ def summarize(tally: dict[str, dict[str, float]], config: Config = Config()) -> 
             long_silence_count=round(p.get("long_silence_count", 0)),
             measured_ratio=_ratio(p.get("audio_live_ms", 0), p.get("total_ms", 0)) or 0.0,
         ),
-    )
+    ).model_dump(mode="json")
 
 
-def criteria(config: Config = Config()) -> Criteria:
-    """``VOLUME_LOW`` · ``LONG_SILENCE`` 의 판정 기준. 코치가 Take 결과의 ``criteria`` 에 남긴다."""
+def criteria(config: Config = Config()) -> dict[str, dict[str, Any]]:
+    """``VOLUME_LOW`` · ``LONG_SILENCE`` 의 판정 기준 (``Criteria`` 모양의 dict).
+
+    코치가 Take 결과의 ``criteria`` 에 남긴다.
+    """
     return Criteria(
         VOLUME_LOW=IssueCriteria(
             metric="voice_diff_db",
@@ -194,7 +199,7 @@ def criteria(config: Config = Config()) -> Criteria:
             onset_lag_ms=config.silence_onset_lag_ms,
             offset_lag_ms=config.silence_offset_lag_ms,
         ),
-    )
+    ).model_dump(mode="json")
 
 
 def _ratio(num: float, den: float) -> float | None:

@@ -71,7 +71,8 @@ volume, pause = judge(
 volume.state, volume.metrics.voice_diff_db, pause.metrics.silence_ms
 ```
 
-- 결과는 pydantic 모델입니다. 코치에 dict로 넘길 때는 `.model_dump(mode="json")`.
+- `judge`의 결과는 pydantic 모델입니다. 코치에 dict로 넘길 때는 `.model_dump(mode="json")`.
+- `summarize` · `criteria`의 결과는 dict입니다(architecture.md 7절). 안에서 `Summary` · `Criteria` 모델로 검증한 뒤 dict로 돌려줍니다.
 - `config.py`의 값을 바꾸면 `criteria_version`이 바뀌므로 `examples/`의 출력도 다시 만들어야 계약 테스트가 통과합니다.
 
 ## 4. 테스트
@@ -80,7 +81,7 @@ volume.state, volume.metrics.voice_diff_db, pause.metrics.silence_ms
 |---|---|
 | `tests/test_judge.py` | 작음 · 기준과 같을 때, 기준 음량 없음 · Take 안에서 생김, 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기 · 창 안에 끊김이 없을 때, 긴 침묵 한 번만, 같은 1초 두 번, 마지막 조각(시간 · 에너지 · 커서), 커서 · `tally` |
 | `tests/test_baseline.py` | 말한 1초 고르기, `baseline` 표본 부족 · 충분 · 튀는 값 |
-| `tests/test_summarize.py` | Take 지표 계산, 분모가 0일 때, `criteria`가 config를 따르는지 |
+| `tests/test_summarize.py` | Take 지표 계산, 분모가 0일 때, `criteria`가 config를 따르는지, 둘의 결과가 안쪽까지 dict인지 |
 | `tests/test_examples.py` | `examples/`가 구현 · 계약 모델과 같은지 |
 
 ## 5. 실험 결과

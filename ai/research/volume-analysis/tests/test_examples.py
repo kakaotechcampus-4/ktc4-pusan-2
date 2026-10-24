@@ -48,13 +48,13 @@ def test_judge_matches_example() -> None:
 
 def test_summarize_matches_example() -> None:
     assert_same(
-        summarize(load("summarize_input.json")).model_dump(mode="json"),
+        summarize(load("summarize_input.json")),
         load("summarize_output.json"),
     )
 
 
 def test_criteria_matches_example() -> None:
-    assert_same(criteria().model_dump(mode="json"), load("criteria.json"))
+    assert_same(criteria(), load("criteria.json"))
 
 
 def test_speaking_levels_matches_example() -> None:
