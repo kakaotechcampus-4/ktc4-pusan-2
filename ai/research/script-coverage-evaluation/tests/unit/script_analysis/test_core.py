@@ -116,9 +116,11 @@ class _DeckAwareLLM:
 
     def __init__(self, stage):
         self.stage = stage
+        self.messages: list[str] = []
 
     def invoke(self, messages):
         text = messages[1][1]
+        self.messages.append(text)
         sentence_ids = [int(i) for i in re.findall(r"\[S(\d+)\]", text)]
         roles = [SentenceLabel(id=i, role="claim" if i == 0 else "evidence") for i in sentence_ids]
         if self.stage == "semantic":
@@ -145,18 +147,28 @@ class _DeckAwareLLM:
 
 
 def _deck_run(slides, **kwargs):
-    llms = {f"{s}_llm": _DeckAwareLLM(s) for s in ("semantic", "final", "unit")}
-    rubrics, _ = analyze_script("대본", slides, **llms, model="test-model", **kwargs)
-    return {r.meta.slide_number: r for r in rubrics}
+    """(장 번호 → 평가 기준, 단계 → LLM 에 보낸 메시지 목록)."""
+    llms = {s: _DeckAwareLLM(s) for s in ("semantic", "final", "unit")}
+    rubrics, _ = analyze_script(
+        "대본", slides, **{f"{s}_llm": llm for s, llm in llms.items()}, model="test-model",
+        **kwargs,
+    )  # fmt: skip
+    return {r.meta.slide_number: r for r in rubrics}, {s: llm.messages for s, llm in llms.items()}
 
 
 def test_targets_rubric_equals_full_run_rubric():
     """대상 장만 만들어도 그 장의 평가 기준은 전체를 만든 것과 같다 (키워드 · 공통 어휘 거름 · 이름 판정이 덱 전체 기준)."""
     deck = _slides(4, 6, 7)
-    full = _deck_run(deck)
+    full, full_messages = _deck_run(deck)
     for number in (4, 6, 7):
-        picked = _deck_run(deck, targets=[number])
+        picked, picked_messages = _deck_run(deck, targets=[number])
         assert list(picked) == [number]
         assert picked[number].model_dump() == full[number].model_dump()
-    # 시험이 덱 맥락에 민감한지: 한 장만 넣으면 결과가 달라진다
-    assert _deck_run(_slides(6))[6].model_dump() != full[6].model_dump()
+        # LLM 이 받는 메시지도 전체 실행의 그 장 메시지와 같다 (최종 결론의 이름 후보 · 공통 어휘는 덱 전체로 만든다)
+        for stage in ("semantic", "final", "unit"):
+            assert len(picked_messages[stage]) == 1
+            assert picked_messages[stage][0] in full_messages[stage]
+    # 시험이 덱 맥락에 민감한지: 한 장만 넣으면 결과와 최종 결론 메시지가 달라진다
+    alone, alone_messages = _deck_run(_slides(6))
+    assert alone[6].model_dump() != full[6].model_dump()
+    assert alone_messages["final"][0] not in full_messages["final"]
