@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
+from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.pitch.exception import (
     NonExistentPitch,
@@ -17,6 +18,7 @@ from pitch_coach_backend.module.pitch.exception import (
     SlideCountMismatch,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     MetricSecondCreateDTO,
@@ -39,6 +41,7 @@ from pitch_coach_backend.module.take.exception import (
     NonExistentTake,
     TakeAlreadyEnded,
     TakeAlreadyStarted,
+    TakeNotReviewable,
     TakeNotStarted,
     TakeSessionMismatch,
 )
@@ -108,7 +111,8 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
 
     take_repository.abandon_ready_takes(pitch_id)
 
-    previous_take = take_repository.get_latest_reviewed_take_in_pitch(pitch_id)
+    # 미션은 Take 를 시작할 때(첫 WS 연결) 싣는다 (`coach_service.start_take`). 만들 때 실으면 장치
+    # 점검만 하고 버린 Take 가 미션을 가져가 다음 Take 에 실리지 않는다
     next_take_number = take_repository.next_take_number(pitch_id)
     new_take = Take(
         pitch_id=pitch_id,
@@ -122,8 +126,6 @@ def create_take_service(db: Session, pitch_id: uuid.UUID, take_dto: TakeInitRequ
     )
 
     saved_take = take_repository.save(new_take)
-    if previous_take is not None:
-        take_repository.assign_missions_to_take(previous_take.id, saved_take.id)
     db.commit()
 
     return saved_take
@@ -356,36 +358,32 @@ def _build_previous_recurring_issues(
     previous_review = take_repository.get_previous_review_payload(take_id, take_number)
     return previous_review.get("recurring_issues", []) if previous_review else []
 
-def _build_user_criteria(db: Session, pitch_id: uuid.UUID) -> UserCriteriaDTO | None:
-    pitch_repository = PitchRepository(db)
-    version = pitch_repository.get_latest_standard_version(pitch_id)
-    if version is None:
-        return None
-    standards = pitch_repository.get_standards_in_version(pitch_id, version)
-    analysis = pitch_repository.get_standard_analysis(pitch_id, version)
-    return UserCriteriaDTO(
-        display_criteria=[s.title for s in standards],
-        targets=[TargetInfoDTO(**t) for t in analysis.targets] if analysis else [],
-        script_used=analysis.script_used if analysis else None,
-    )
+def _build_user_criteria(db: Session, take: Take) -> UserCriteriaDTO | None:
+    criteria = pitch_service.criteria_for_version(db, take.pitch_id, take.standard_version)
+    return UserCriteriaDTO.model_validate(criteria) if criteria is not None else None
 
 def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
     take_repository = TakeRepository(db)
-    take_number = take_repository.get_take_number(take_id)
+    take = take_repository.get_take(take_id)
+    if take is None:
+        raise NonExistentTake()
+    take_number = take.take_number
+    result = take_repository.get_take_infos(take_id, "TAKE_RESULT")
+    coverage = take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE")
     return ReviewRequestDTO(
-        take_result=take_repository.get_take_infos(take_id, "TAKE_RESULT"),
-        script_coverage=take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE"),
+        take_result=result,
+        script_coverage=coverage,
         previous_takes=_build_previous_takes(take_repository, take_id, take_number),
         previous_recurring_issues=_build_previous_recurring_issues(take_repository, 
                                                                    take_id, take_number),
         missions=_build_missions(take_repository, take_id),
-        user_criteria=_build_user_criteria(db, take_repository.get_pitch_id_of_take(take_id)),
+        user_criteria=_build_user_criteria(db, take),
     )
 
 def request_review(review_request: ReviewRequestDTO) -> ReviewResponseDTO:
     with httpx2.Client(timeout=30.0) as client:
         response = client.post(
-            f"{settings.AI_BASE_URL}/takes/review",
+            f"{settings.ai_base_url}/takes/review",
             json=review_request.model_dump(mode="json"),
         )
         response.raise_for_status()
@@ -421,7 +419,9 @@ def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO)
 
 def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
     take_repository = TakeRepository(db)
-    take_repository.set_analysis_stage(take_id, "REVIEWING")
+    if not take_repository.start_review(take_id):
+        db.rollback()
+        raise TakeNotReviewable()
     db.commit()
 
     try:
@@ -441,10 +441,11 @@ def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
     return review_data
 
 def mark_running(db: Session, take_id: uuid.UUID) -> bool:
-    """첫 실시간 연결이 붙었다. `READY` 면 `RUNNING` 으로 바꾸고 커밋한다. 바꿨으면 True."""
-    marked = TakeRepository(db).mark_running(take_id)
-    db.commit()
-    return marked
+    """첫 실시간 연결이 붙었다. `READY` 면 `RUNNING` 으로 바꾸고, 이 Take 에 쓸 값(실은 미션 ·
+    평가 기준 버전 · 원자료 사용 동의)을 고정한 뒤 커밋한다. 바꿨으면 True
+    (`coach_service.start_take`).
+    """
+    return coach_service.start_take(db, take_id)
 
 
 def mark_ended(db: Session, take_id: uuid.UUID, end_reason: str | None = None) -> bool:

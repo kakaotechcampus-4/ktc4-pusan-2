@@ -145,15 +145,23 @@ class TakeRepository:
             .limit(1)
         )
 
-    def get_latest_reviewed_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
-        # 이전 미션은 리뷰까지 끝난 Take 중 가장 최근 것에서 가져온다
-        return self.db.scalar(
+    def get_latest_reviewed_take_in_pitch(
+        self, pitch_id: uuid.UUID, *, before: int | None = None
+    ) -> Take | None:
+        """리뷰까지 끝난 Take 중 가장 늦게 끝난 것. `before` 가 있으면 번호가 그보다 작은 것만 본다.
+
+        다음 Take 에 실을 미션이 이 Take 의 리뷰에서 나온다 (`docs/ai/features/review-agent.md`
+        12-2). 장치 점검 화면과 Take 를 시작할 때 미션을 싣는 쪽(`coach_repository`)이 이 함수
+        하나로 고른다. 리뷰 결과(`REVIEW`)와 `review_status` `DONE` 은 한 트랜잭션에 적힌다.
+        """
+        query = (
             select(Take)
             .where(Take.pitch_id == pitch_id, Take.review_status == "DONE")
             .options(defer(Take.event_logs))
-            .order_by(Take.take_number.desc())
-            .limit(1)
         )
+        if before is not None:
+            query = query.where(Take.take_number < before)
+        return self.db.scalar(query.order_by(*finished_order()).limit(1))
 
     def get_take_number(self, take_id: uuid.UUID) -> int | None:
         return self.db.scalar(
@@ -219,22 +227,6 @@ class TakeRepository:
             )
         )
 
-    def assign_missions_to_take(
-        self, source_take_id: uuid.UUID, take_id: uuid.UUID
-    ) -> list[uuid.UUID]:
-        mission_ids = self.db.scalars(
-            update(Mission)
-            .where(Mission.source_take_id == source_take_id, Mission.status == "ACTIVE")
-            .values(take_id=take_id) # SQL의 set 역할
-            .returning(Mission.id)
-        ).all()
-        self.db.execute(
-            update(Take)
-            .where(Take.id == take_id)
-            .values(mission_ids=[str(mission_id) for mission_id in mission_ids])
-            # missions_ids도 갱신
-        )
-        return list(mission_ids)
 
     def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResults | None:
         kind_filter = True if kind is None else (TakeAIResults.kind == kind)
@@ -289,7 +281,11 @@ class TakeRepository:
         stmt = insert(TakeAIResults).values(**values)
         stmt = stmt.on_conflict_do_update(
             index_elements=[TakeAIResults.take_id, TakeAIResults.kind],
-            set_={key: stmt.excluded[key] for key in values if key not in ("take_id", "kind")},
+            set_={
+                **{key: stmt.excluded[key] for key in values if key not in ("take_id", "kind")},
+                # payload 를 바꿀 때마다 1 올린다 (script-coverage-evaluation.md 12-1)
+                "revision": TakeAIResults.revision + 1,
+            },
         ).returning(TakeAIResults)
         return self.db.scalars(stmt, execution_options={"populate_existing": True}).one()
 
@@ -338,10 +334,11 @@ class TakeRepository:
         )
 
     def complete_take(self, take_id: uuid.UUID, review_status: str) -> None:
+        # completed_at 은 '가장 늦게 끝난 Take' 의 순서다 (docs/ai/architecture.md 1-3 'Take 상태')
         self.db.execute(
             update(Take)
             .where(Take.id == take_id)
-            .values(status="COMPLETED", review_status=review_status)
+            .values(status="COMPLETED", review_status=review_status, completed_at=func.now())
         )
     def mark_running(self, take_id: uuid.UUID) -> bool:
         """`READY` 인 Take 를 `RUNNING` 으로 바꾼다. 바꿨으면 True.
@@ -415,3 +412,42 @@ class TakeRepository:
             select(Take.id, last_active_at()).where(Take.status == "RUNNING")
         ).all()
         return [(take_id, last_active_at) for take_id, last_active_at in rows]
+
+    def start_review(self, take_id: uuid.UUID) -> bool:
+        """채점까지 끝난 Take 의 분석 단계를 `REVIEWING` 으로 바꾼다. 바꿨으면 True.
+
+        Take 결과 · 채점을 만드는 중(`FINALIZING` · `SCORING`)이거나 이미 리뷰 중 · 끝난 Take 는
+        바꾸지 않는다 — 덮으면
+        그 Take 결과가 버려지거나 리뷰를 두 번 부른다 (`docs/ai/architecture.md` 1-3 분석 단계 표).
+        다만 `REVIEW_STALE_AFTER` 넘게 리뷰 중인 Take 는 그 리뷰가 끊긴 것이라 다시 받는다 — 안
+        받으면 그 Take 는 끝내 리뷰를 못 받는다. 분석 단계가 없는 Take 는 그 칸이 생기기 전에 끝난
+        것이라 예전처럼 받는다.
+        """
+        stale_review = and_(
+            Take.analysis_stage == "REVIEWING",
+            Take.analysis_stage_at < func.now() - REVIEW_STALE_AFTER,
+        )
+        result = self.db.execute(
+            update(Take)
+            .where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                or_(
+                    Take.analysis_stage == "AWAITING_CONFIRMATION",
+                    Take.analysis_stage.is_(None),
+                    stale_review,
+                ),
+            )
+            .values(analysis_stage="REVIEWING", analysis_stage_at=func.now())
+        )
+        return result.rowcount > 0
+
+
+REVIEW_STALE_AFTER = timedelta(minutes=2)
+
+def finished_order() -> tuple[ColumnElement[Any], ...]:
+    """'가장 늦게 끝난 Take' 순서 (`docs/ai/architecture.md` 1-3 'Take 상태').
+
+    칸을 만들기 전에 끝나 completed_at 이 없는 Take 는 뒤로 가고, 같은 시각이면 번호가 큰 것이다.
+    """
+    return (Take.completed_at.desc().nulls_last(), Take.take_number.desc())

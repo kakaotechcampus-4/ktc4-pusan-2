@@ -31,11 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from pitch_coach_backend.core.database import (
-    Base,
-    CreatedAtMixin,
-    UUIDPrimaryKeyMixin,
-)
+from pitch_coach_backend.core.database import Base, CreatedAtMixin, UUIDPrimaryKeyMixin
 
 
 class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
@@ -113,8 +109,19 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     client_session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     mission_ids: Mapped[list[str] | None] = mapped_column(JSONB)
 
+    standard_version: Mapped[int | None] = mapped_column(Integer)
+
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
 
 class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    """AI 결과. (take_id, kind) 마다 하나다.
+
+    kind: TAKE_RESULT (코치 finalize) · SCRIPT_COVERAGE (대본 전달도) ·
+    SCRIPT_COVERAGE_PENDING (병합 후보, BE 내부용) · REVIEW (리뷰).
+    `revision` 은 그 행의 payload 를 바꾼 횟수다 — 처음 0, 바꿀 때마다 1 올린다
+    (`docs/ai/features/script-coverage-evaluation.md` 12-1).
+    """
 
     __tablename__ = "take_ai_results"
     __table_args__ = (
@@ -124,9 +131,11 @@ class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     take_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("takes.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    # SCRIPT_COVERAGE_PENDING 이 23자다
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
     payload: Mapped[Any | None] = mapped_column(JSONB, nullable=False)
     meta: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 class TakeSummary(Base):
     """take 의 분석 집계. take 당 1행이라 take_id 를 그대로 PK 로 쓴다."""
