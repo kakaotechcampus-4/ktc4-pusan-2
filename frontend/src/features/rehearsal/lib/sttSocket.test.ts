@@ -710,6 +710,91 @@ describe('장 변경 (slide)', () => {
     expect(handed).toEqual(['metrics']);
   });
 
+  describe('장 기록을 ready 마다 다시 보낸다 (slideHistory)', () => {
+    /** `useSttStream` 처럼 기록에 먼저 남기고 소켓에 넘깁니다 */
+    function withHistory(overrides: Parameters<typeof makeSocket>[0] = {}) {
+      const history: { type: 'slide'; slide_number: number; t_ms: number }[] = [];
+      const stt = makeSocket({ slideHistory: () => history, ...overrides });
+      const send = (slide_number: number, t_ms: number) => {
+        const message = slide(slide_number, t_ms);
+        history.push(message);
+        stt.sendSlide(message);
+      };
+      return { stt, history, send };
+    }
+
+    it('소켓이 생기기 전에 보낸 첫 장 · 이어받은 기록도 ready 때 보낸다', async () => {
+      // 무대가 열리면서 보낸 것 — 카메라 · 마이크가 열리기 전이라 소켓이 없었습니다
+      const history = [slide(1, 0), slide(2, 30_000), slide(3, 57_500)];
+      const stt = makeSocket({ slideHistory: () => history });
+      stt.start();
+      await settle();
+      stt.sendMetrics(metrics(58_000));
+
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+      expect(sentJson(sockets[0]!)).toEqual([
+        ['slide', 0, false],
+        ['slide', 30_000, false],
+        ['slide', 57_500, false],
+        ['metrics', 58_000, true],
+      ]);
+    });
+
+    it('재연결하면 기록 전체를 다시 보낸다 — 끊기기 직전에 보낸 장이 닿지 않았을 수 있다', async () => {
+      vi.useFakeTimers();
+      const { stt, send } = withHistory();
+      send(1, 0);
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+      send(2, 42_300);
+      sockets[0]!.serverClose(1006);
+
+      await vi.advanceTimersByTimeAsync(500);
+      sockets[1]!.open();
+      sockets[1]!.emit(READY);
+      expect(sentJson(sockets[1]!)).toEqual([
+        ['slide', 0, false],
+        ['slide', 42_300, false],
+      ]);
+    });
+
+    it('끊긴 동안 넘긴 장은 한 번만 보낸다 — 쌓아 둔 것은 기록 안에 있다', async () => {
+      vi.useFakeTimers();
+      const { stt, send } = withHistory();
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+      sockets[0]!.serverClose(1006);
+      send(3, 42_300);
+      stt.sendMetrics(metrics(43_000));
+
+      await vi.advanceTimersByTimeAsync(500);
+      sockets[1]!.open();
+      sockets[1]!.emit(READY);
+      expect(sentJson(sockets[1]!)).toEqual([
+        ['slide', 42_300, false],
+        ['metrics', 43_000, true],
+      ]);
+    });
+
+    it('끝낼 때는 기록을 다시 보내지 않는다 — ready 에서 이미 보냈다', async () => {
+      const { stt, send } = withHistory();
+      send(1, 0);
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+      stt.stop().catch(() => undefined);
+
+      expect(sentJson(sockets[0]!)).toEqual([['slide', 0, false]]);
+      expect(JSON.parse(sockets[0]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
+    });
+  });
+
   it('넘겨받은 metrics 와 새 페이지가 보낸 장 변경을 시각 순서대로 보낸다', async () => {
     const restored = [JSON.stringify({ ...metrics(58_000), buffered: true }), 'not json'];
     const stt = makeSocket({ restoredMetrics: restored });

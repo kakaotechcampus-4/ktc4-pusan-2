@@ -14,7 +14,9 @@ import type { Ms } from '@/types/api';
  *   장을 넘길 때   넘어간 장 · 넘긴 순간 (`useSlideDeck` 이 `go` 에서 적어 둔 시각)
  *   이어받았을 때  장 넘김 기록 전체 · 원래 시각 (`openingSlides`)
  *
- * `useSttStream` **뒤에** 부릅니다. 첫 장을 알리는 이펙트가 소켓이 만들어진 뒤에 돌아야 합니다.
+ * 첫 장 · 이어받은 기록은 대개 **소켓보다 먼저** 나갑니다 — 카메라 · 마이크가 열려야 소켓이 생깁니다.
+ * 그래서 `useSttStream` 이 보낸 장을 기록해 두었다가 소켓이 `ready` 를 받을 때마다 전부 다시 보냅니다.
+ * `useSttStream` **뒤에** 부릅니다. Take 가 바뀌면 그 기록을 비우는 이펙트가 이것보다 먼저 돌아야 합니다.
  */
 export function useSlideSender({
   enabled,

@@ -150,6 +150,15 @@ export interface SttSocketOptions {
    * 쌓아 둔 것처럼 다루어 붙자마자 먼저 보냅니다
    */
   restoredMetrics?: readonly string[];
+  /**
+   * 이 페이지에서 보낸 장 변경 전부 (`useSttStream` 이 들고 있음). `ready` 를 받을 때마다 **전부** 다시 보냅니다.
+   *
+   * 소켓보다 장 변경이 먼저 생깁니다 — 무대가 열리면 첫 장(새로고침이면 이어받은 기록 전체)을 바로
+   * 보내는데, 카메라 · 마이크가 열려야 소켓이 생깁니다. 끊기기 직전에 보낸 것도 닿았는지 모릅니다.
+   * 같은 것이 또 가도 BE 가 `(take_id, started_ms)` 로 거릅니다. 한 Take 에 수십 개라 부담이 없습니다.
+   * 주면 쌓아 둔 `slide` 대신 이것을 보냅니다 (쌓아 둔 것은 이 안에 있습니다).
+   */
+  slideHistory?: () => readonly SlideMessage[];
 }
 
 /**
@@ -421,7 +430,8 @@ export class SttSocket {
     if (!this.socket || !this.ready) return;
 
     try {
-      this.flushPending();
+      // 장 기록은 `ready` 에서 이미 보냈습니다. 붙어 있는 동안 넘긴 장은 바로 나갔습니다
+      this.flushPending({ withSlideHistory: false });
       this.socket.send(JSON.stringify({ type: 'stop' }));
     } catch {
       this.dispose();
@@ -503,7 +513,7 @@ export class SttSocket {
       case 'ready':
         this.retries = 0;
         this.disconnectedAt = null;
-        this.flushPending();
+        this.flushPending({ withSlideHistory: true });
         this.ready = true;
         this.options.onState(message.stt_state);
         // 인증을 기다리느라 미뤄 둔 종료가 있으면 이제 보냅니다
@@ -558,14 +568,24 @@ export class SttSocket {
    * 순서가 뒤집히면 서버가 낮은 seq 를 역행으로 보고 버립니다.
    * 쌓인 `metrics` 도 여기서 시각 순서대로 흘립니다.
    */
-  private flushPending(): void {
+  private flushPending({ withSlideHistory }: { withSlideHistory: boolean }): void {
     if (!this.socket) return;
 
     const socket = this.socket;
     for (const frame of this.pending) socket.send(frame);
     this.pending = [];
+    // 장 기록을 받으면 쌓아 둔 `slide` 대신 기록 전체를 보냅니다 (`slideHistory`)
+    const history = withSlideHistory ? this.options.slideHistory?.() : undefined;
+    const queued = history
+      ? this.pendingEvents.filter((e) => e.kind === 'metrics')
+      : this.pendingEvents;
+    const slides = (history ?? []).map((s) => ({
+      kind: 'slide' as const,
+      tMs: s.t_ms,
+      data: JSON.stringify(s),
+    }));
     // 정렬은 안정 정렬이라 같은 시각이면 넣은 순서를 지킵니다
-    const events = [...this.pendingEvents].sort((a, b) => a.tMs - b.tMs);
+    const events = [...queued, ...slides].sort((a, b) => a.tMs - b.tMs);
     this.pendingEvents = [];
     this.pendingMetricsCount = 0;
     for (const e of events) socket.send(e.data);
