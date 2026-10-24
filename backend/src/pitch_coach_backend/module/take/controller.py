@@ -144,3 +144,10 @@ def list_takes(
     pitch_id: uuid.UUID | None = None,
 ):
     return list_takes_service(db, current_user.id, pitch_id)
+
+@takes_router.get("/{take_id}/report")
+def get_take_report(
+    db: Annotated[Session, Depends(get_db)],
+    take_id: OwnedTake,
+):
+    return get_take_report_service(db, take_id)
