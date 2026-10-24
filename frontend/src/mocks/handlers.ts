@@ -166,7 +166,7 @@ declare global {
   }
 }
 
-if (import.meta.env.DEV && typeof window !== 'undefined') {
+if (import.meta.env.DEV) {
   window.mockTakeEnd = {
     fail: (code = 'INTERNAL_SERVER_ERROR') => {
       takeEndFailure = code;

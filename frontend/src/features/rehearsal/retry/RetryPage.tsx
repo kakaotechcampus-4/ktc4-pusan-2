@@ -11,10 +11,12 @@ import { Card, Stat } from '@/shared/ui/Panel';
 import { countAll, findSessionByTakeId, getSession, readSlideChanges } from '../lib/db';
 import type { SessionRow } from '../lib/db';
 import { sendEnding, type Ending } from '../stage/sendEnding';
+import type { RehearsalTicket } from '@/types/api';
 
 /** 다시 보낼 세션. 행이 없거나 무대를 열 값(`ticket`)이 없으면 다시 보낼 수 없습니다 */
 interface Found {
-  row: SessionRow & { ticket: NonNullable<SessionRow['ticket']> };
+  row: SessionRow;
+  ticket: RehearsalTicket;
   ending: Ending;
   /** 남아 있는 기록. 못 읽으면 null — 보내는 데는 필요 없습니다 */
   kept: { gazeSec: number; slideMoves: number; lastSlide: number | null } | null;
@@ -40,13 +42,11 @@ export function RetryPage() {
   const [error, setError] = useState<string | null>(null);
   /** 서버가 이미 끝낸 Take 입니다. 다시 보내도 같아서 버튼을 내립니다 */
   const [gone, setGone] = useState(false);
-  const endTake = useEndTake(found?.row.ticket.pitchId ?? '', takeId);
+  const endTake = useEndTake(found?.ticket.pitchId ?? '', takeId);
 
   useEffect(() => {
-    let cancelled = false;
     (async () => {
       const row = passed ? await getSession(passed) : await findSessionByTakeId(takeId);
-      if (cancelled) return;
       if (!row?.ticket) {
         setFound(null);
         return;
@@ -72,26 +72,16 @@ export function RetryPage() {
           lastSlide: slides.at(-1)?.slideNumber ?? null,
         }))
         .catch(() => null);
-      if (!cancelled) setFound({ row: { ...row, ticket: row.ticket }, ending, kept });
+      setFound({ row, ticket: row.ticket, ending, kept });
     })().catch((err: unknown) => {
       // IndexedDB 를 못 열면(사생활 보호 모드 · 사이트 데이터 삭제) 다시 보낼 기록도 없습니다
       console.error('[retry] 세션을 읽지 못했습니다', err);
-      if (!cancelled) setFound(null);
+      setFound(null);
     });
-    return () => {
-      cancelled = true;
-    };
   }, [takeId, passed, navigate]);
 
-  if (found === undefined) {
-    return (
-      <InfoPage title="업로드 실패 · 재시도">
-        <p role="status" className="border-2 border-ink bg-panel p-8 text-center text-stone">
-          발표 기록을 찾는 중이에요.
-        </p>
-      </InfoPage>
-    );
-  }
+  // IndexedDB 를 읽는 동안(몇 ms)은 아무것도 그리지 않습니다
+  if (found === undefined) return null;
 
   if (found === null) {
     return (
@@ -110,7 +100,7 @@ export function RetryPage() {
     );
   }
 
-  const { row, ending, kept } = found;
+  const { row, ticket, ending, kept } = found;
   const sending = endTake.isPending;
 
   const resend = async () => {
@@ -131,11 +121,11 @@ export function RetryPage() {
   return (
     <InfoPage title="업로드 실패 · 재시도">
       <p className="border-b border-line pb-4 font-bold">
-        {row.ticket.title}
-        {row.ticket.takeNumber !== null && (
+        {ticket.title}
+        {ticket.takeNumber !== null && (
           <>
             {' '}
-            <span className="mx-2 text-line-strong">/</span> TAKE {row.ticket.takeNumber}
+            <span className="mx-2 text-line-strong">/</span> TAKE {ticket.takeNumber}
           </>
         )}
       </p>
@@ -145,7 +135,7 @@ export function RetryPage() {
           <h2 className="text-2xl font-bold">이 Take는 서버에서 이미 끝났어요</h2>
           <p className="text-stone">다시 보내도 받지 않아요. 새 Take로 다시 연습해 주세요.</p>
           <div className="flex flex-wrap gap-3">
-            <ButtonLink to={`/pitch/${row.ticket.pitchId}/device-check`}>새 Take 준비</ButtonLink>
+            <ButtonLink to={`/pitch/${ticket.pitchId}/device-check`}>새 Take 준비</ButtonLink>
             <ButtonLink to="/" variant="secondary">
               내 피치로
             </ButtonLink>

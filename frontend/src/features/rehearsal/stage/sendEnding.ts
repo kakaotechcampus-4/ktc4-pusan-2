@@ -22,11 +22,10 @@ export interface Ending {
  */
 export async function sendEnding(
   takeId: string,
-  clientSessionId: string,
+  id: string,
   { durationMs, endedAtIso }: Ending,
   endTake: (body: TakeEndRequest) => Promise<unknown>,
 ): Promise<void> {
-  const id = clientSessionId;
   await endSession(id);
 
   // ── 대조 ────────────────────────────────────────────────────────
