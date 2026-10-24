@@ -171,3 +171,32 @@ def test_leftover_cursors_of_an_unprocessed_state_are_moved_to_the_window_start(
     resp = decide(make_request(100_000, plan=PLAN, state=raw), judges)
     assert judges.gaze.calls[0][0]["since_ms"] == 70_000
     assert resp.coach_state["covered"] == [[70_000, 100_000]]
+
+
+def _run(slide: int, started: int, until: int = 6_000) -> dict[str, Any]:
+    judges = fake_judges()
+    state = None
+    for t in range(1_000, until + 1, 1_000):
+        state = decide(
+            make_request(t, plan=PLAN, slide=slide, slide_started=started, state=state), judges
+        ).coach_state
+    return state
+
+
+def test_first_slide_known_late_keeps_the_time_before_it_in_that_slide():
+    # 첫 장(계획의 1번)이 400 에 시작한 것으로 처음 알려져도, 창 앞이 잘리지 않았으면 그 앞은 첫
+    # 장의 몫이다 — 예전처럼 첫 장에 넣어 장 합계가 Take 합계와 같다(replay 도 첫 장을 0초로 싣는다)
+    state = _run(slide=1, started=400)
+    assert "slide_unknown_before_ms" not in state
+    assert state["slide_totals"]["1"]["TIME"]["elapsed_ms"] == state["totals"]["TIME"]["elapsed_ms"]
+    assert state["slide_totals"]["1"]["GAZE"]["total_ms"] == state["totals"]["GAZE"]["total_ms"]
+    assert state["totals"]["TIME"]["elapsed_ms"] == 6_000
+
+
+def test_slide_changed_before_the_first_request_leaves_the_earlier_time_unknown():
+    # 1번 장 → 2번 장(400) 뒤 첫 요청: BE 는 지금 장(2번)만 싣는다. 그 앞 400 ms 는 1번 장의 몫이라
+    # 2번 장에 넣지 않는다
+    state = _run(slide=2, started=400)
+    assert state["slide_unknown_before_ms"] == 400
+    assert state["slide_totals"]["2"]["TIME"]["elapsed_ms"] == 5_600
+    assert state["totals"]["TIME"]["elapsed_ms"] == 6_000
