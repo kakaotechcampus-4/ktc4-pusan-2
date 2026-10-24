@@ -10,6 +10,7 @@ from dotenv import find_dotenv, load_dotenv
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
+from script_coverage.core import ScriptLLMs, TakeLLMs
 from script_coverage.script_analysis.schemas import FinalReview, SlideSemanticAnalysis, SlideUnits
 from script_coverage.stt_evaluation.schemas import SemanticEvaluation, VerifierResult
 
@@ -54,18 +55,18 @@ def structured_llm(schema: type[BaseModel], settings: Settings):
     return client.with_structured_output(schema)
 
 
-def script_llms(settings: Settings) -> dict:
-    """`analyze_script(..., **script_llms(settings), model=settings.model)` 로 쓴다."""
-    return {
-        "semantic_llm": structured_llm(SlideSemanticAnalysis, settings),  # 1차 분석
-        "final_llm": structured_llm(FinalReview, settings),  # 최종 결론
-        "unit_llm": structured_llm(SlideUnits, settings),  # 전달 단위
-    }
+def script_llms(settings: Settings) -> ScriptLLMs:
+    """`/scripts/rubric` 진입 함수(`script_coverage.core.analyze_script`)에 넘기는 LLM 묶음."""
+    return ScriptLLMs(
+        semantic=structured_llm(SlideSemanticAnalysis, settings),  # 1차 분석
+        final=structured_llm(FinalReview, settings),  # 최종 결론
+        unit=structured_llm(SlideUnits, settings),  # 전달 단위
+    )
 
 
-def stt_llms(settings: Settings) -> dict:
-    """`evaluate_take(..., **stt_llms(settings), model=settings.model)` 로 쓴다."""
-    return {
-        "eval_llm": structured_llm(SemanticEvaluation, settings),  # 의미 평가
-        "verifier_llm": structured_llm(VerifierResult, settings),  # 교차 검증
-    }
+def stt_llms(settings: Settings) -> TakeLLMs:
+    """`/takes/analyze` 진입 함수(`script_coverage.core.evaluate_take`)에 넘기는 LLM 묶음."""
+    return TakeLLMs(
+        eval=structured_llm(SemanticEvaluation, settings),  # 의미 평가
+        verifier=structured_llm(VerifierResult, settings),  # 교차 검증
+    )

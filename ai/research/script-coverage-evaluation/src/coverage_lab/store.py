@@ -17,10 +17,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from script_coverage.core import rescore_evaluation, take_scores
+from script_coverage.schemas import Answer, RescoreRequest
 from script_coverage.shared.rubric import EvaluationRubric
-from script_coverage.stt_evaluation.confirm import CONFIRM_TEXT, rescore_evaluation
+from script_coverage.stt_evaluation.confirm import CONFIRM_TEXT
 from script_coverage.stt_evaluation.schemas import ConfirmAnswer, SlideEvaluation, Take
-from script_coverage.stt_evaluation.scoring import take_scores
 
 from .paths import DB_PATH
 
@@ -289,9 +290,19 @@ def _confirmed_evaluation(
     answers = load_confirmations(conn, original)
     if not answers:
         return original
-    evaluation = rescore_evaluation(
-        original, answers, load_rubric(conn, original.script_name, slide_number)
+    # 최상위 `core.rescore_evaluation` 으로 처음 채점에 저장된 답 전부를 한 번에 반영한다 (누적 답 규칙은 코어가 정한다)
+    rubric = load_rubric(conn, original.script_name, slide_number)
+    response = rescore_evaluation(
+        RescoreRequest(
+            take_id=take_id,
+            evaluations=[original],
+            rubrics=[rubric] if rubric else [],
+            answers=[
+                Answer(slide_number=slide_number, item_id=i, answer=a) for i, a in answers.items()
+            ],
+        )
     )
+    evaluation = response.evaluations[0]
     conn.execute(
         "INSERT OR REPLACE INTO confirmed_evaluations VALUES (?, ?, ?, ?)",
         (
@@ -341,7 +352,7 @@ def confirm_similar_item(
 
 
 def confirmed_take_scores(conn: sqlite3.Connection, take_id: str) -> dict:
-    """연습 한 번의 최종 점수 (사용자 확인 반영). 슬라이드 점수를 처음 채점과 같은 방식으로 모은다."""
+    """연습 한 번의 최종 점수 (사용자 확인 반영). 대상 장은 DB 에 채점이 저장된 그 연습의 장이다 (`scored_ratio` 포함)."""
     slides = [
         n
         for (n,) in conn.execute(
@@ -349,4 +360,6 @@ def confirmed_take_scores(conn: sqlite3.Connection, take_id: str) -> dict:
             (take_id,),
         )
     ]
-    return take_scores([confirmed_evaluation(conn, take_id, n) for n in slides])
+    return take_scores(
+        [confirmed_evaluation(conn, take_id, n) for n in slides], slides
+    ).model_dump()

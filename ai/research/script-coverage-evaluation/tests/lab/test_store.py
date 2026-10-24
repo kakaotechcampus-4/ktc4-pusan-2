@@ -8,6 +8,7 @@ import pytest
 from coverage_lab.store import (
     confirm_similar_item,
     confirmed_evaluation,
+    confirmed_take_scores,
     connect,
     load_confirmations,
     load_evaluation,
@@ -191,3 +192,23 @@ def test_confirmation_is_saved_and_applied_only_to_same_wording(conn):
     save_evaluation(conn, changed)
     assert confirmed_evaluation(conn, "대본_take1", 1) == changed
     assert confirmed_evaluation(conn, "대본_take1", 9) is None
+
+
+def test_confirmations_accumulate_through_core_rescore(conn):
+    save_rubric(conn, _rubric())
+    save_evaluation(conn, _evaluation(items=[_item("R1"), _item("R2", "센서", "센터")]))
+    confirm_similar_item(conn, "대본_take1", 1, "R1", "as_script")
+    both = confirm_similar_item(conn, "대본_take1", 1, "R2", "as_stt")
+    # 두 번째 확인이 첫 번째 답을 잃지 않는다 (저장된 답 전부를 처음 채점에 한 번에 반영)
+    assert both.applied_answers == {"R1": "as_script", "R2": "as_stt"}
+    assert confirmed_evaluation(conn, "대본_take1", 1) == both
+
+
+def test_confirmed_take_scores_include_scored_ratio(conn):
+    save_rubric(conn, _rubric())
+    save_evaluation(conn, _evaluation(items=[_item("R1")]))
+    confirm_similar_item(conn, "대본_take1", 1, "R1", "as_script")
+    scores = confirmed_take_scores(conn, "대본_take1")
+    assert (
+        scores["scored_ratio"] == 1.0 and scores["similar_words"] == 0
+    )  # 답한 항목은 센 값에서 빠진다

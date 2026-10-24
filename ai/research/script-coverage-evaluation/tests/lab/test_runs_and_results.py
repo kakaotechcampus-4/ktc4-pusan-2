@@ -4,6 +4,7 @@ import coverage_lab.results as results
 from coverage_lab.llm import Settings
 from coverage_lab.runs import run_take_evaluation
 from coverage_lab.store import connect
+from script_coverage.config import CRITERIA_VERSION
 from script_coverage.stt_evaluation.schemas import SlideSTT, Take
 from script_coverage.version import FEATURE_VERSION
 
@@ -29,6 +30,7 @@ def test_write_result_adds_version_and_model(tmp_path, monkeypatch):
     payload = results.read_result("demo")
     assert payload == {
         "feature_version": FEATURE_VERSION,
+        "criteria_version": CRITERIA_VERSION,
         "model": "model-x",
         "table": {"a": {"값": 1}},
     }

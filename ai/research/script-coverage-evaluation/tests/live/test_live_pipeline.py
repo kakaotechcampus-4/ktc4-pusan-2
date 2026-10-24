@@ -28,7 +28,15 @@ def settings():
 @pytest.fixture(scope="module")
 def rubric(settings):
     slides = [s for s in load_script_json(SCRIPT_DIR / f"{SCRIPT}.json") if s.slide_number == SLIDE]
-    rubrics, stats = analyze_script(SCRIPT, slides, **script_llms(settings), model=settings.model)
+    llms = script_llms(settings)
+    rubrics, stats = analyze_script(
+        SCRIPT,
+        slides,
+        semantic_llm=llms.semantic,
+        final_llm=llms.final,
+        unit_llm=llms.unit,
+        model=settings.model,
+    )
     assert stats["failed"] == {}
     assert (stats["analysis_calls"], stats["final_calls"], stats["unit_calls"]) == (1, 1, 1)
     assert len(rubrics) == 1
@@ -46,8 +54,13 @@ def test_script_analysis_live(rubric, settings):
 def test_stt_evaluation_live(rubric, settings):
     take = load_take(STT_DIR / f"{TAKE}.json")
     take = take.model_copy(update={"slides": [s for s in take.slides if s.slide_number == SLIDE]})
+    llms = stt_llms(settings)
     evaluations, stats = evaluate_take(
-        take, {SLIDE: rubric}, **stt_llms(settings), model=settings.model
+        take,
+        {SLIDE: rubric},
+        eval_llm=llms.eval,
+        verifier_llm=llms.verifier,
+        model=settings.model,
     )
     assert stats["failed"] == {}
     assert stats["semantic_calls"] == 1
