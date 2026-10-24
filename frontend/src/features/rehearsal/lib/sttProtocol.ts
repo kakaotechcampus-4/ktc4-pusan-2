@@ -38,6 +38,10 @@ export interface MetricsMessage {
   gaze: GazeSampleRecord | null;
   voice: VoiceRecord | null;
   slide_number: number | null;
+  /**
+   * CLAUDE.md 6번(`?` 대신 `| null`)의 예외입니다. 계약이 "선택 bool, 없으면 false, 몰아 보낼 때만
+   * true 로 붙인다"(`architecture.md` 1-4)라 바로 보내는 것에는 키를 붙이지 않습니다.
+   */
   buffered?: true;
 }
 
