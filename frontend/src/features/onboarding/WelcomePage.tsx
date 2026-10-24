@@ -187,6 +187,24 @@ export function WelcomePage() {
                   fetchPriority="high"
                   className="block aspect-[1.15] w-full object-cover"
                 />
+                {/* 치치 눈 아래 좌표: 원본 1254px 정사각 → object-cover로 위아래 82px씩 잘린 1090px 높이 기준 */}
+                {[
+                  ['30.8%', '59.4%', '0s'],
+                  ['36.5%', '60.8%', '.5s'],
+                  ['30.8%', '59.4%', '.9s'],
+                ].map(([left, top, delay]) => (
+                  <svg
+                    key={delay}
+                    viewBox="0 0 3 4"
+                    shapeRendering="crispEdges"
+                    aria-hidden="true"
+                    className="landing-tear absolute w-[1.2%]"
+                    style={{ left, top, animationDelay: delay }}
+                  >
+                    <path d="M1 0h1v1h1v3H0V1h1z" fill="currentColor" />
+                    <rect x="1" y="1" width="1" height="1" fill="white" />
+                  </svg>
+                ))}
                 <div className="landing-float absolute left-5 top-6 max-w-[80%] border-2 border-ink bg-panel px-4 py-3 shadow-[3px_3px_0_var(--color-ink)] sm:left-8 sm:top-8">
                   <p className="mb-1 font-mono text-[9px] text-coral-deep">
                     PROFESSOR / 오늘의 한마디
