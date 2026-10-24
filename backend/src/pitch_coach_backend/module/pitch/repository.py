@@ -6,6 +6,7 @@ from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.orm import Session, defer
 
 from pitch_coach_backend.module.pitch.entity import (
+    CoachingPlan,
     Pitch,
     PresentationVersion,
     ScriptParseStatus,
@@ -381,3 +382,37 @@ class PitchRepository:
 
     def get_script_version(self, script_version_id: uuid.UUID) -> ScriptVersion | None:
         return self.db.get(ScriptVersion, script_version_id)
+
+    def get_chosen_coaching_plan(
+        self,
+        pitch_id: uuid.UUID,
+        *,
+        source_take_id: uuid.UUID | None,
+        script_version_id: uuid.UUID | None,
+        target_ms: int | None,
+        min_ms: int | None,
+        max_ms: int | None,
+    ) -> CoachingPlan | None:
+        """바탕 값이 모두 같은 계획 중 요청 시각이 가장 늦은 것 (coach-agent.md 12-2 계획 고르기).
+        null 끼리 같다."""
+        return self.db.scalar(
+            select(CoachingPlan)
+            .where(
+                CoachingPlan.pitch_id == pitch_id,
+                CoachingPlan.source_take_id.is_not_distinct_from(source_take_id),
+                CoachingPlan.script_version_id.is_not_distinct_from(script_version_id),
+                CoachingPlan.target_ms.is_not_distinct_from(target_ms),
+                CoachingPlan.min_ms.is_not_distinct_from(min_ms),
+                CoachingPlan.max_ms.is_not_distinct_from(max_ms),
+            )
+            .order_by(CoachingPlan.requested_at.desc(), CoachingPlan.id.desc())
+            .limit(1)
+        )
+
+    def add_coaching_plan(self, plan: CoachingPlan) -> bool:
+        """계획 행 하나를 더한다. 발표가 그 사이 지워졌으면 넣지 않고 False."""
+        if self.db.scalar(select(Pitch.id).where(Pitch.id == plan.pitch_id)) is None:
+            return False
+        self.db.add(plan)
+        self.db.flush()
+        return True

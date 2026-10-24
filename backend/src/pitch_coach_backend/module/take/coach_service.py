@@ -22,6 +22,7 @@ from pitch_coach_backend.module.take.dto import (
     FinalizeRows,
     MetricSecond,
     MissionInput,
+    PlanValues,
     SlideEvent,
     SlideTiming,
     StoredEvent,
@@ -196,9 +197,28 @@ def load_coach_events(db: Session, take_id: uuid.UUID) -> list[dict[str, Any]] |
     return [dict(e.payload) for e in repo.coach_events(take_id)]
 
 
-def chosen_plan_payload(db, pitch_id, **basis):
-    """코칭 계획 저장 기능이 연결되기 전에는 기본 코칭을 사용한다."""
-    return None
+def chosen_plan_payload(
+    db: Session,
+    pitch_id: uuid.UUID,
+    *,
+    source_take_id: uuid.UUID | None,
+    script_version_id: uuid.UUID | None,
+    target_ms: int | None,
+    min_ms: int | None,
+    max_ms: int | None,
+) -> dict[str, Any] | None:
+    """바탕 값이 모두 같은 코칭 계획 중 요청 시각이 가장 늦은 것 (coach-agent.md 12-2 계획
+    고르기). 그 계획 행의 payload, 없으면 None."""
+    plan = pitch_service.chosen_coaching_plan(
+        db,
+        pitch_id,
+        source_take_id=source_take_id,
+        script_version_id=script_version_id,
+        target_ms=target_ms,
+        min_ms=min_ms,
+        max_ms=max_ms,
+    )
+    return dict(plan.payload) if plan is not None else None
 
 
 logger = logging.getLogger(__name__)
@@ -282,3 +302,71 @@ def purge_expired_raw(db: Session, now: datetime) -> int:
     deleted = CoachRepository(db).purge_expired_metric_seconds(now - FAILED_RAW_RETENTION)
     db.commit()
     return deleted
+
+def coaching_plan_values(db: Session, pitch_id: uuid.UUID) -> PlanValues | None:
+    """다음 Take 의 코칭 계획 요청 재료 (coach-agent.md 5-2 plan). 부르지 않을 때는 None.
+
+    - 바탕 Take: 그 발표에서 가장 늦게 끝난 `COMPLETED` Take (리뷰가 끝내 실패한 Take 포함). 첫 Take
+      면 None. 직전 Take 결과 · 리뷰는 이 Take 의 것이다 (리뷰가 실패했으면 리뷰는 None).
+    - 미션 · 반복 문제: 리뷰가 있는 Take 중 가장 늦게 끝난 것의 리뷰가 만든 `ACTIVE` 미션과 반복
+      문제. 다음 Take 를 시작할 때 싣는 것과 같다
+    - 대본: 파싱이 끝난 가장 최근 버전. 없으면 부르지 않는다
+    """
+    repo = CoachRepository(db)
+    pitch = pitch_service.find_pitch(db, pitch_id)
+    if pitch is None:
+        return None
+    script = pitch_service.latest_parsed_script(db, pitch_id)
+    if script is None:
+        return None
+    slides = pitch_service.script_slides(db, script.id)
+    source = repo.latest_completed_take(pitch_id, before=None)
+    reviewed = repo.latest_reviewed_take(pitch_id, before=None)
+    previous_result = repo.ai_result(source, TAKE_RESULT) if source else None
+    previous_review = repo.ai_result(source, REVIEW) if source else None
+    return PlanValues(
+        pitch_id=pitch_id,
+        time_limit_sec=pitch.time_limit_sec,
+        lower_deviation_sec=pitch.lower_deviation,
+        upper_deviation_sec=pitch.upper_deviation,
+        script_version_id=script.id,
+        parsed_target_ms=_parsed_target_ms(script.parse_meta),
+        slides=_slide_timings(slides),
+        scripts=tuple((s.slide_number, s.full_content) for s in slides),
+        source_take_id=source,
+        missions=tuple(_mission_input(m) for m in repo.active_missions_from(reviewed))
+        if reviewed
+        else (),
+        recurring_issues=_recurring_issues(repo, reviewed),
+        previous_take_result=previous_result.payload if previous_result else None,
+        previous_review=previous_review.payload if previous_review else None,
+    )
+
+def save_coaching_plan(
+    db: Session,
+    pitch_id: uuid.UUID,
+    *,
+    source_take_id: uuid.UUID | None,
+    script_version_id: uuid.UUID | None,
+    target_ms: int | None,
+    min_ms: int | None,
+    max_ms: int | None,
+    payload: dict[str, Any],
+    meta: dict[str, Any],
+    requested_at: datetime,
+) -> bool:
+    """계획 응답을 한 행으로 더한다 (기본 계획도). 발표가 그 사이 지워졌으면 넣지 않고 False."""
+    saved = pitch_service.add_coaching_plan(
+        db,
+        pitch_id,
+        source_take_id=source_take_id,
+        script_version_id=script_version_id,
+        target_ms=target_ms,
+        min_ms=min_ms,
+        max_ms=max_ms,
+        requested_at=requested_at,
+        payload=payload,
+        meta=meta,
+    )
+    db.commit()
+    return saved

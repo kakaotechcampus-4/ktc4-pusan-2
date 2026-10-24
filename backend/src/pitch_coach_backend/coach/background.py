@@ -10,7 +10,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 
-from pitch_coach_backend.coach import finalize, retention
+from pitch_coach_backend.coach import finalize, planner, retention
 from pitch_coach_backend.coach.client import CoachClient
 from pitch_coach_backend.coach.store import CoachStore
 
@@ -22,8 +22,8 @@ async def start(client: CoachClient, store: CoachStore) -> Callable[[], Awaitabl
     """작업을 띄우고, 내릴 때 부를 함수를 돌려준다."""
     await finalize.resume(client=client, store=store)
     loops = [
-        retention.start(store),
         asyncio.create_task(finalize.sweep_forever(client, store), name="coach-finalize-sweep"),
+        retention.start(store),
     ]
 
     async def stop() -> None:
@@ -31,5 +31,6 @@ async def start(client: CoachClient, store: CoachStore) -> Callable[[], Awaitabl
             loop.cancel()
         await asyncio.wait(loops)
         await finalize.stop_all(STOP_TIMEOUT_SEC)
+        await planner.stop_all(STOP_TIMEOUT_SEC)
 
     return stop
