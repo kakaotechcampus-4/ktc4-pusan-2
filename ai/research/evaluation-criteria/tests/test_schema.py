@@ -72,6 +72,29 @@ def test_script_used_rejects_non_bool():
         Criteria.model_validate({**EMPTY_VALUES, "script_used": "대본 참고"})
 
 
+# ── 표시 기준 50자: 자르지 않고 출력 스키마 위반 (6절 2번) ─────────────────────
+
+
+def _analysis(display: str) -> dict:
+    return {"display_criteria": [display], "values": EMPTY_VALUES, "targets": [], "excluded": []}
+
+
+def test_display_criterion_of_50_chars_is_allowed():
+    result = EvaluationCriteriaAnalysis.model_validate(_analysis("가" * 50))
+    assert result.display_criteria == ["가" * 50]
+
+
+def test_display_criterion_over_50_chars_is_a_schema_violation():
+    with pytest.raises(ValidationError):
+        EvaluationCriteriaAnalysis.model_validate(_analysis("가" * 51))
+
+
+def test_display_limit_is_not_sent_in_the_json_schema():
+    # strict 모드가 받지 않는 키워드를 LLM 스키마에 싣지 않는다. 응답을 검증할 때만 본다
+    schema = EvaluationCriteriaAnalysis.model_json_schema()
+    assert schema["properties"]["display_criteria"]["items"] == {"type": "string"}
+
+
 @pytest.mark.parametrize(
     "field, bad", [("metric", "speed_score"), ("operator", "EQ")], ids=["metric", "operator"]
 )

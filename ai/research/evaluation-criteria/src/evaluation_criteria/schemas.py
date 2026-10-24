@@ -2,7 +2,9 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
+
+from .config import DEFAULT
 
 # 지표 이름은 architecture.md 6-3 그대로
 Metric = Literal[
@@ -17,6 +19,17 @@ Metric = Literal[
     "content_coverage",
 ]
 Operator = Literal["LTE", "GTE", "LT", "GT"]
+
+
+def _within_display_chars(text: str) -> str:
+    # 자르면 숫자 · 조건이 잘리거나 targets[].display 짝이 깨지므로 스키마 위반으로 본다 (문서 6절 2번)
+    if len(text) > DEFAULT.max_display_chars:
+        raise ValueError(f"표시 기준이 {DEFAULT.max_display_chars}자를 넘는다 ({len(text)}자)")
+    return text
+
+
+# JSON 스키마에 maxLength 를 싣지 않고 응답을 검증할 때만 본다 (strict 모드 호환)
+DisplayCriterion = Annotated[str, AfterValidator(_within_display_chars)]
 
 
 class EvaluationCriteriaRequest(BaseModel):
@@ -52,7 +65,7 @@ class Target(BaseModel):
 
 
 class EvaluationCriteriaAnalysis(BaseModel):
-    display_criteria: list[str] = Field(description="사용자 입력 표현을 살려 짧게 다듬은 평가 기준 목록 (예: \"추임새 5번 이하\")")
+    display_criteria: list[DisplayCriterion] = Field(description="사용자 입력 표현을 살려 짧게 다듬은 평가 기준 목록 (예: \"추임새 5번 이하\")")
     values: Criteria = Field(description="평가 요소별 기준 값 (기준이 없으면 null)")
     targets: list[Target] = Field(description="숫자로 읽히는 기준만 옮긴 숫자 목표 목록")
     excluded: list[str] = Field(description="평가 요소에 없는 기준, 사용자 표현 구절 그대로 (예: \"발표는 5분 안에 끝내기\")")
