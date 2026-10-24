@@ -2,8 +2,9 @@ import { apiRequest } from './client';
 import type { PresentationDetail, UploadPresentationResponse } from '@/types/presentation';
 
 /**
- * 발표자료 업로드. 서버는 S3 에 올리고 presigned URL 을 돌려줍니다 — 변환은 하지 않습니다.
- * 페이지 수와 렌더링은 FE 가 그 URL 을 pdf.js 로 열어서 정합니다.
+ * 발표자료 업로드. 서버는 S3 에 올리고 presigned URL 과 PDF 를 열어 센 쪽수를 돌려줍니다 (#298) —
+ * 변환은 하지 않습니다. 쪽수는 그 숫자를 쓰고(Take 생성 검사와 같아야 합니다), 렌더링은 FE 가
+ * 그 URL 을 pdf.js 로 열어서 합니다 (`slideUpload.ts`).
  *
  * Content-Type 을 직접 넣지 않습니다. FormData 를 넘기면 브라우저가
  * multipart 경계(boundary)까지 붙여 줍니다 — 손으로 넣으면 경계가 빠져 서버가 못 읽습니다.

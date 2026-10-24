@@ -19,7 +19,7 @@ import type {
  *
  *   발표정보   GET /pitches (목록에서 찾기 — 단건 API 가 없습니다. 허용오차는 모름)
  *   버전 목록  GET /pitches/{id}/resources
- *   슬라이드   GET …/presentations/{id} → PDF 를 열어 장수를 셉니다 (업로드 때와 같음)
+ *   슬라이드   GET …/presentations/{id} — 장수는 BE 가 센 숫자(#298). 모르면(옛 발표자료) PDF 를 열어 셉니다
  *   대본       GET …/scripts/{id}
  *   평가기준   GET …/evaluations/{번호}
  *
@@ -40,10 +40,15 @@ export class PitchNotFound extends Error {
 
 const byVersion = (a: VersionRef, b: VersionRef) => a.version - b.version;
 
-async function loadSlide(pitchId: string, ref: VersionRef): Promise<SlideVersion> {
-  // 부를 때마다 새 presigned URL 을 줍니다. 장수는 서버가 주지 않아 PDF 를 열어 셉니다
+async function loadSlide(
+  pitchId: string,
+  ref: VersionRef & { page_count?: number | null },
+): Promise<SlideVersion> {
+  // 부를 때마다 새 presigned URL 을 줍니다
   const detail = await getPresentation(pitchId, ref.id);
-  const pageCount = (await openPdf(detail.file_url)).numPages;
+  // BE 가 센 쪽수가 있으면 PDF 를 받지 않습니다 — 버전이 많아도 빠르고, 하나를 못 열어도 실패하지 않습니다
+  const pageCount =
+    ref.page_count ?? detail.page_count ?? (await openPdf(detail.file_url)).numPages;
   return {
     version: ref.version,
     pageCount,

@@ -16,12 +16,12 @@ from pitch_coach_backend.module.admin.dto import (
 )
 from pitch_coach_backend.module.admin.repository import KST
 from pitch_coach_backend.module.take.entity import Take
-from pitch_coach_backend.realtime.take_stream import longest_abandon_wait_sec
+from pitch_coach_backend.realtime.take_stream import ABANDON_AFTER_SEC
 
 DAILY_DAYS = 30
 USER_LIMIT = 500
-# 연결이 끊긴 Take 는 늦어도 longest_abandon_wait_sec() 뒤에 이탈로 끝난다. 연결된 채 말이
-# 없으면 말 없음 자동 종료로 끝나서, 확정 전사가 그보다 오래 멈춰 있지 않다. 마지막 활동 뒤
+# 연결이 끊긴 Take 는 ABANDON_AFTER_SEC 뒤에 이탈로 끝난다 (창을 닫았으면 더 일찍). 연결된 채
+# 말이 없으면 말 없음 자동 종료로 끝나서, 확정 전사가 그보다 오래 멈춰 있지 않다. 마지막 활동 뒤
 # 이탈 대기보다 여유만큼 더 지났으면 멈춘 것으로 본다
 STUCK_MARGIN = timedelta(minutes=10)
 STUCK_LIMIT = 50
@@ -78,7 +78,7 @@ def list_takes(db: Session, *, status: str | None, limit: int) -> list[AdminTake
 
 def list_stuck_takes(db: Session, now: datetime | None = None) -> list[AdminTakeRow]:
     now = now or datetime.now(UTC)
-    active_before = now - timedelta(seconds=longest_abandon_wait_sec()) - STUCK_MARGIN
+    active_before = now - timedelta(seconds=ABANDON_AFTER_SEC) - STUCK_MARGIN
     rows = repository.list_stuck_takes(db, active_before, STUCK_LIMIT)
     return [AdminTakeRow(**row) for row in rows]
 

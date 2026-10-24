@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from './client';
-import type { TakeEndRequest, TakeUpdated } from '@/types/take';
+import type { TakeAbandoned, TakeEndRequest, TakeUpdated } from '@/types/take';
 
 /**
  * 발표 종료. Take 의 시작 · 종료 시각을 BE 에 적습니다 (`PUT /pitches/{pitch_id}/takes/{take_id}`).
@@ -18,6 +18,19 @@ export function useEndTake(pitchId: string, takeId: string) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+      }),
+  });
+}
+
+/**
+ * 창을 닫았다 다시 연 Take 를 실패로 끝냅니다. 창을 닫은 Take 는 이어 가지 않습니다.
+ * 다시 불러도 결과가 같습니다. 다른 창이 아직 발표 중이면 BE 가 409 `TAKE_IN_PROGRESS` 로 거절합니다.
+ */
+export function useAbandonTake(pitchId: string, takeId: string) {
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<TakeAbandoned>(`/api/pitches/${pitchId}/takes/${takeId}/abandon`, {
+        method: 'POST',
       }),
   });
 }

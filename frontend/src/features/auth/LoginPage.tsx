@@ -98,7 +98,7 @@ export function LoginPage() {
           className="w-full max-w-md border-2 border-ink bg-panel px-8 py-10 text-center shadow-[4px_4px_0_var(--color-ink)] sm:px-12"
         >
           <img
-            src="/onboarding/chichi-mascot.png"
+            src="/onboarding/chichi-bust.png"
             alt=""
             width={80}
             height={96}

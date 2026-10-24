@@ -5,12 +5,14 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Mission, Take
+from pitch_coach_backend.module.take.repository import TakeRepository
 
 Versions = tuple[uuid.UUID, uuid.UUID]
 
@@ -70,6 +72,39 @@ def test_previous_missions_without_take_is_empty(
         "next_take_number": 1,
         "missions": [],
     }
+
+
+def test_previous_missions_next_take_number_counts_takes_not_reviewed(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """미션은 리뷰가 끝난 3번에서 오지만 번호는 리뷰가 안 끝난 4 · 5번 뒤인 6이다."""
+    takes = [_make_take(db_session, pitch_id, versions, number) for number in range(1, 6)]
+    takes[2].review_status = "DONE"
+    db_session.flush()
+
+    body = _missions(client, pitch_id, auth_headers).json()["missions"]
+
+    assert body["source_take_id"] == str(takes[2].id)
+    assert body["next_take_number"] == 6
+
+
+def test_previous_missions_without_reviewed_take_still_counts_takes(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    _make_take(db_session, pitch_id, versions, 1)
+    _make_take(db_session, pitch_id, versions, 2)
+
+    body = _missions(client, pitch_id, auth_headers).json()["missions"]
+
+    assert body == {"source_take_id": None, "next_take_number": 3, "missions": []}
 
 
 def test_previous_missions_come_from_latest_take(
@@ -134,6 +169,21 @@ def test_previous_missions_come_from_latest_take(
             "completed": False,
         },
     ]
+
+
+def test_latest_take_lookup_leaves_event_logs_unloaded(
+    db_session: Session, pitch_id: uuid.UUID, versions: Versions
+) -> None:
+    """장치 점검 · 이전 미션은 번호만 본다. 시선 1초 기록이 쌓인 event_logs 는 읽지 않는다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.event_logs = [{"type": "gaze"}]
+    db_session.flush()
+    db_session.expire_all()
+
+    latest = TakeRepository(db_session).get_latest_take_in_pitch(pitch_id)
+
+    assert latest is not None
+    assert "event_logs" in inspect(latest).unloaded
 
 
 def test_previous_missions_of_take_without_missions_is_empty_list(
@@ -370,6 +420,123 @@ def test_put_end_revives_a_take_ended_as_abandoned(
     )
 
 
+def test_put_end_does_not_revive_a_take_closed_with_its_tab(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """창을 닫아 끝낸 Take(CLOSED)는 이어 가지 않는다. 닫은 탭을 복원해 끝내기를 눌러도 409 다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = "FAILED"
+    take.end_reason = "CLOSED"
+    db_session.flush()
+
+    response = _put(client, take, auth_headers, {"ended_at": "2026-10-07T10:50:00+09:00"})
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TAKE_ENDED"
+
+
+# ── POST /takes/{take_id}/abandon ───────────────────────────────────
+
+
+def _abandon(client: TestClient, take: Take, headers: dict[str, str]):
+    return client.post(f"/api/pitches/{take.pitch_id}/takes/{take.id}/abandon", headers=headers)
+
+
+@pytest.mark.parametrize("status", ["READY", "RUNNING"])
+def test_abandon_fails_a_take_whose_tab_was_closed(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    status: str,
+) -> None:
+    """창을 닫았다 다시 연 FE 가 부른다. 이어 가지 않고 바로 실패(CLOSED)로 끝낸다. 끝난 시각은
+    마지막 활동 시각이다 (여기서는 만든 시각). 다시 불러도 같다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = status
+    db_session.flush()
+
+    first = _abandon(client, take, auth_headers)
+    again = _abandon(client, take, auth_headers)
+
+    assert first.status_code == 200
+    assert first.json()["status"] == again.json()["status"] == "FAILED"
+    db_session.refresh(take)
+    assert (take.status, take.end_reason, take.ended_at) == ("FAILED", "CLOSED", take.created_at)
+
+
+def test_abandon_leaves_a_take_that_already_ended(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """끝내기가 이미 닿았으면 그대로 두고 지금 상태를 돌려준다. FE 는 처리 중 화면으로 간다."""
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = "ANALYZING"
+    db_session.flush()
+
+    response = _abandon(client, take, auth_headers)
+
+    assert response.json()["status"] == "ANALYZING"
+    db_session.refresh(take)
+    assert (take.status, take.end_reason) == ("ANALYZING", None)
+
+
+def test_abandon_is_refused_while_another_window_is_presenting(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FE 는 하트비트로 다른 창이 살아 있는지 보지만 늦을 수 있다. 연결이 붙어 있고 오디오가
+    들어오면 BE 가 거절한다 — 발표 중인 Take 를 끝내지 않는다."""
+    from pitch_coach_backend.realtime import take_stream
+
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = "RUNNING"
+    db_session.flush()
+    monkeypatch.setattr(take_stream, "is_live", lambda take_id: take_id == take.id)
+
+    response = _abandon(client, take, auth_headers)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "TAKE_IN_PROGRESS"
+    db_session.refresh(take)
+    assert (take.status, take.end_reason) == ("RUNNING", None)
+
+
+def test_abandon_on_someone_elses_take_is_404(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    from pitch_coach_backend.module.user.entity import User
+
+    take = _make_take(db_session, pitch_id, versions, 1)
+    stranger = User(email=f"{uuid.uuid4()}@example.com", name="다른 사용자")
+    db_session.add(stranger)
+    db_session.flush()
+
+    response = _abandon(
+        client, take, {"Authorization": f"Bearer {create_access_token(stranger.id)}"}
+    )
+
+    assert response.status_code == 404
+    db_session.refresh(take)
+    assert take.status == "READY"
+
+
 # ── DELETE /takes/{take_id} ─────────────────────────────────────────
 
 
@@ -392,29 +559,6 @@ def test_delete_take_without_a_live_stream(
 # ── 입력 검증 ───────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("goal_time_sec", [0, -60, 3601, 2**31])
-def test_create_with_out_of_range_goal_time_is_422(
-    client: TestClient,
-    auth_headers: dict[str, str],
-    pitch_id: uuid.UUID,
-    versions: Versions,
-    goal_time_sec: int,
-) -> None:
-    response = client.post(
-        f"/api/pitches/{pitch_id}/takes/",
-        json={
-            "mode": "COACHING",
-            "script_mode": "HIGHLIGHT",
-            "presentation_version_id": str(versions[0]),
-            "script_version_id": str(versions[1]),
-            "goal_time_sec": goal_time_sec,
-        },
-        headers=auth_headers,
-    )
-
-    assert response.status_code == 422
-
-
 @pytest.mark.parametrize(
     ("field", "value"), [("mode", "PRACTICE"), ("mode", "coaching"), ("script_mode", "FULL")]
 )
@@ -431,7 +575,6 @@ def test_create_with_unknown_mode_is_422(
         "script_mode": "HIGHLIGHT",
         "presentation_version_id": str(versions[0]),
         "script_version_id": str(versions[1]),
-        "goal_time_sec": 300,
     }
     body[field] = value
 

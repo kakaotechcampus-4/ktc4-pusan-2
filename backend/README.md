@@ -226,6 +226,35 @@ POST /api/auth/logout           현재 세션 폐기
 필요하다. 배포에서는 Caddy 가 같은 origin 으로 묶어 그 문제가 사라진다.
 자세한 흐름과 프론트 연동 코드는 `docs/oauth-architecture.md` 에 있다 (로컬 문서).
 
+## 홈 발표 목록
+
+`GET /api/pitches/` 는 다가오는 발표(오늘 포함) → 날짜 없는 발표 → 지난 발표 순서로 준다.
+다가오는 발표는 가까운 날짜부터, 지난 발표는 최근에 지난 것부터, 같은 날짜면 최근에 만든 발표부터다.
+오늘은 한국 날짜다. FE 는 이 순서를 그대로 보여 준다.
+
+## 연습 시작 (장치 점검 · Take 생성)
+
+```
+GET  /api/pitches/{pitch_id}/prepare   이번 연습에 쓸 버전 · 다음 Take 번호 · 지난번 대본 표시 방식
+POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_version_id", "script_version_id", "client_session_id"?}
+                                       → take_id · take_number
+```
+
+- `/prepare` 는 피치 생성을 거치지 않고 장치 점검에 들어왔을 때(홈 · 새로고침) Take 에 넣을 버전을 준다. 발표자료는
+  가장 최근 것, 대본은 파싱이 끝난(`DONE`) 가장 최근 것이다. 없으면 `null`. 그보다 새 대본이 파싱 중이거나 실패했으면
+  `newer_script` 로 알린다.
+- 발표자료는 대본 장 수와 쪽수가 같은 가장 최근 것을 고른다 (FE 매핑 확인과 같은 규칙). 맞는 것이 없으면 가장 최근
+  발표자료를 주고, 응답의 `page_count` · `slide_count` 가 달라 FE 가 시작을 막는다.
+- `next_take_number` 는 미리 보여 주는 값이다. 그사이 다른 Take 가 생기면 달라져서 실제 번호는 Take 생성 응답의
+  `take_number` 를 본다.
+- Take 생성은 파싱이 끝난 대본만 받는다 (아니면 `409 SCRIPT_NOT_PARSED`). 발표자료 쪽수와 대본 장 수가 다르면
+  `409 SLIDE_COUNT_MISMATCH` 다 (쪽수를 모르는 옛 발표자료는 검사하지 않는다). 목표 시간은 받지 않고 발표 제한 시간을 박는다.
+- `client_session_id`(FE 의 연습 세션 id)가 같으면 새로 만들지 않고 처음 만든 Take 를 돌려준다. 응답을 잃고 다시
+  보내도 Take 는 하나다. 모드 · 대본 표시 방식 · 버전이 처음과 다르면 `409 TAKE_SESSION_MISMATCH`, 그 Take 가 이미
+  끝났으면(`ABANDONED` 포함) `409 TAKE_ENDED` 다. 둘 다 새 세션 id 로 다시 만든다.
+- 새 Take 를 만들면 같은 발표에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 끝낸다. FE 는 가장 최근 Take 로만
+  발표한다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지 `READY` 다.
+
 ## 실시간 STT (WebSocket)
 
 발표 중 마이크 오디오를 Deepgram 으로 흘리고 전사를 FE 로 돌려준다. **BE 가 Deepgram 에 API 키를
@@ -241,6 +270,7 @@ WS /api/ws/takes/{take_id}
 | 2 | BE → FE | text | `{"type":"ready","take_id":…,"stt_session_no":0,"stt_state":"connecting"}` — 사용자·Take(존재·소유·상태) 검사를 통과했다. 이제 오디오를 보내도 된다 |
 | 3 | FE → BE | **binary** | `[seq u32 LE][offset_ms u32 LE][PCM 16-bit LE 16 kHz mono]`. 100 ms = 3,200 bytes. `offset_ms` 는 Take 시작 = 0 |
 | 4 | BE → FE | text | `{"type":"transcript","segment_id","is_final","speech_final","start_ms","end_ms","text","confidence","words":[…]}` — `segment_id` 가 같으면 덮어쓴다. **타임스탬프는 Take 기준** |
+| 4-1 | FE → BE | text | `{"type":"metrics","t_ms","gaze","voice","slide_number"}` — 1초마다 시선 · 음량 1초 기록과 지금 장. `t_ms` 는 그 1초가 끝난 Take 시각. `stop` 직전에 마지막 1초 조각을 한 번 더 |
 | 5 | FE → BE | text | `{"type":"stop"}` — BE 가 Deepgram 을 정리(`CloseStream` → `Metadata`)하고 |
 | 6 | BE → FE | text | `{"type":"stt_status","state":"closed",…}` 를 보낸 뒤 `1000` 으로 닫는다. **FE 는 이걸 받기 전에 닫지 않는다** |
 
@@ -253,6 +283,10 @@ WS /api/ws/takes/{take_id}
   숫자(`frames`·`dropped_frames`·`silence_ms`·`lost_ms`)는 연결 단위가 아니라 **Take 누적**이다.
 - **Deepgram 이 죽어도 연결을 끊지 않는다.** 오디오를 최대 5초 큐에 담고 백오프로 재접속하며
   `degraded` 만 알린다 — 그동안 FE 1단 코치는 계속 돌아야 하기 때문이다.
+- **키가 거절되면 다음 키로 넘어간다** (`DEEPGRAM_API_KEYS`). 연결 요청이 401(틀린 키) · 402(크레딧 부족)로
+  거절되면 그 키를 소진으로 표시하고 기다리지 않고 다음 키로 붙는다. 발표 도중 크레딧이 떨어져 끊겨도 재접속이
+  402 로 거절되므로 같은 길로 넘어간다. 소진 표시는 서버 메모리에만 있고 모든 Take 가 같이 쓴다. 키가 전부
+  소진이면 에러 로그를 남기고 위처럼 `degraded` 로 재시도하며, 그때는 첫 키부터 다시 확인한다
 - 에러는 `{"type":"error","code","message"}`. **에러가 곧 종료는 아니다** — `code` 마다 다르다
   (`realtime/dto.py` 의 `WsErrorCode`).
 
@@ -260,7 +294,7 @@ WS /api/ws/takes/{take_id}
   |---|---|
   | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
   | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다). 연결 중에 Take 나 발표가 지워져도 이 코드로 닫는다 |
-  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다** |
+  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다**. BE 가 끝냈으면 `end_reason`(`SILENCE`·`TIME_LIMIT`·`ABANDONED`·`CLOSED`)을 싣는다 — `CLOSED` 는 이어 가지 않고, `ABANDONED` 는 끝내기 PUT 이 되살린다 |
   | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
   | `BAD_MESSAGE` | 유지 |
   | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
@@ -276,6 +310,16 @@ WS /api/ws/takes/{take_id}
   DB 를 직접 만지지 않도록 `realtime/transcript_store.py` 가 저장할 때마다 짧은 세션을 연다.
   **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다. 단 Take 가 지워져
   저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
+- **`metrics` 는 `take_metric_seconds` 에 1초 원자료로 저장한다** (`realtime/metric_buffer.py`). Take 결과를
+  다시 만들 때(`/coach/finalize` 의 `replay`) 읽는다. 시선 · 음량 기록은 해석하지 않고 받은 그대로 두고, 받았을 때의
+  STT 상태(`stt_status`)를 같이 남긴다. 5개가 모이면 한 번에 넣고, 연결이 끊기거나 스트림이 닫히면 남은 것을
+  넣는다. FE 는 끊긴 동안 쌓아 둔 것을 다시 붙은 뒤 보내므로 같은 1초가 또 온다 — `(take_id, t_ms)` 로 먼저
+  저장한 것을 둔다. 저장에 실패하면 10분 치까지 들고 있다가 다시 넣는다. 잘못된 `metrics` 는 `BAD_MESSAGE` 다.
+  - 동의 없는 Take 의 1초 원자료를 지우는 규칙(Take 결과를 저장할 때 같이 지움 · `FAILED` 로 끝나면 7일 뒤 지움,
+    `docs/ai/architecture.md` 1-1 '지우기 · 보관')과 그 판단에 쓰는 동의 칸(`takes.raw_data_consent`)은 아직 없다.
+    Take 결과를 저장하는 코치 연동과 같이 들어간다.
+  - **배포 의존성**: 이 저장만 먼저 배포하면 코치 연동이 배포될 때까지 쌓인 1초 원자료는 지울 규칙이 없다.
+    두 작업을 같이 배포하거나, 코치 연동을 배포할 때 그 전에 쌓인 원자료를 따로 지운다.
 - **Take 나 발표를 지우면 그 Take 의 스트림을 바로 끊는다.** 지우는 요청이 커밋한 뒤 Deepgram 을
   닫고, 붙어 있는 FE 에는 `TAKE_NOT_FOUND` 를 보낸다. 저장할 곳이 없으니 `stop` 처럼 남은 전사를
   기다리지 않는다. 끊기 전에 온 final 이 저장에 실패해도 스트림이 그걸 보고 스스로 끊는다.
@@ -309,27 +353,33 @@ WS /api/ws/takes/{take_id}
 - 정리가 늦어도 FE 를 붙잡아 두지 않는다. `stop` 뒤 Deepgram drain 이 12초 안에 안 끝나면 태스크를
   끊고, 그마저 2초 안에 안 끝나면 닫힌 것으로 확정해 `closed` 를 보낸다. Deepgram 소켓 닫기 자체도
   3초 상한이 있다. `stop` 을 보낸 직후 FE 가 사라져도(탭 닫힘) 서버 쪽 종료·저장 절차는 같다.
-- **`stop` 이 Take 를 끝낸다.** 마지막 확정 전사까지 저장한 뒤 Take 를 `ANALYZING` 으로 바꾸고 `closed` 를
+- **`stop` 이 Take 를 끝낸다.** 마지막 확정 전사와 1초 원자료까지 저장한 뒤 Take 를 `ANALYZING` 으로 바꾸고 `closed` 를
   보낸다 (`ended_at` 이 비어 있으면 지금 시각으로 채운다). `stop` 을 받은 순간부터 같은 Take 로 붙는 연결은
   `TAKE_ENDED` 로 거절한다 — DB 에 적기 전의 틈은 프로세스 안의 기록이 막는다. 종료를 DB 에 못 적어도
   `closed` 는 보낸다. 30초 대기 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리하고 Take 는 끝내지 않는다
   (FE 는 끊긴 뒤에도 다시 붙는다).
-- **탭을 닫고 떠난 Take 는 30분 뒤 BE 가 끝낸다.** 스트림이 끝나지 않은 채 정리된 뒤 30분 동안(FE 가 끊긴 뒤
-  다시 붙어 보는 시간과 같다) 아무도 다시 붙지 않으면 `FAILED` 로 바꾸고 `end_reason` 에 `ABANDONED` 를 남긴다.
-  시선 기록 · 끝난 시각을 FE 가 보내지 못한 Take 라 분석하지 않는다. `ended_at` 은 마지막으로 연결이 끊긴 시각이다.
-  그 안에 다시 붙으면(리허설 주소를 다시 연 경우 포함) 이어서 연습하고, 그 뒤로는 `TAKE_ENDED` 로 거절한다.
-  최대 시간(서버 시계 1시간 + 60초)까지 남은 발표가 30분보다 길면 그만큼 기다린다. 토큰 만료 등으로 재연결을
-  포기한 FE 는 STT 없이 발표를 이어 가기 때문이다. 그래도 먼저 끝냈으면 끝내기 PUT 이 되살린다 (아래).
-  타이머는 메모리에 있어서 앱이 다시 뜨면 `RUNNING` Take 의 마지막 활동 시각(만든 시각 · 시작 시각 · 마지막
-  전사 저장 시각 중 가장 늦은 것)에서 다시 건다. 남은 발표 시간도 사라져 최대 시간 전체를 기다린다.
-  이 Take 들을 10초 안에 읽지 못하면 걸지 않고 앱을 띄운다 (다음에 연결이 붙었다 끊길 때 걸린다).
+- **아무도 다시 붙지 않으면 BE 가 Take 를 실패(`FAILED`)로 끝낸다.** 스트림이 끝나지 않은 채 정리된 뒤 기다리는
+  시간과 이유는 끊긴 방식으로 정한다. 시선 기록 · 끝난 시각을 FE 가 보내지 못한 Take 라 분석하지 않는다.
+  `ended_at` 은 마지막으로 연결이 끊긴 시각이다. 그 안에 다시 붙으면 이어서 연습하고, 그 뒤로는 `TAKE_ENDED` 로
+  거절한다. 전체 조건은 [Take 연결 · 재연결 · 종료 조건](../docs/be/take-lifecycle.md) 에 있다.
+  - 창을 닫거나 새로고침해 끊김(닫힘 코드 1001): **2분** 기다리고 `CLOSED`. 새로고침이면 그 안에 다시 붙는다.
+    창을 닫은 Take 는 이어 가지 않는다.
+  - 그 밖(네트워크 장애 · FE 가 재연결을 포기함): **5분** 기다리고 `ABANDONED`. 재연결을 포기한 FE 는 STT 없이
+    발표를 이어 가는 중일 수 있다. 그 FE 가 발표를 마치고 보내는 끝내기 PUT 이 되살린다 (아래).
+  - 타이머는 메모리에 있어서 앱이 다시 뜨면 `RUNNING` Take 의 마지막 활동 시각(만든 시각 · 시작 시각 · 마지막
+    전사 저장 시각 중 가장 늦은 것)에서 5분으로 다시 건다. 닫힘 코드도 사라져 `ABANDONED` 로 적는다. 이 Take 들을 10초 안에 읽지 못하면 걸지 않고 앱을 띄운다 (다음에 연결이 붙었다 끊길 때 걸린다).
+- **창을 다시 연 FE 는 Take 를 바로 실패로 끝낸다.** `POST /api/pitches/{pitch_id}/takes/{take_id}/abandon`.
+  `READY` · `RUNNING` 이면 `FAILED`(`CLOSED`)로 바꾸고(끝난 시각은 마지막 활동 시각) 타이머를 끈 뒤 남은 스트림을
+  끊는다. 서버가 아직 붙어 있다고 믿는 연결(닫힘 프레임 없이 사라진 브라우저)에는 `TAKE_ENDED` 를 보내고 닫는다.
+  이미 끝났으면 바꾸지 않는다. 어느 쪽이든 `{"take_id","status"}` 로 지금 상태를 돌려준다 (다시 불러도 같다).
+  연결이 붙어 있고 최근 10초 안에 오디오가 왔으면 다른 창이 발표 중이라 `409 TAKE_IN_PROGRESS` 로 거절한다.
 - **STT 없이 끝낸 Take 는 Take PUT 이 끝낸다.** 마이크를 못 열었거나 재연결을 포기한 FE 는 `stop` 을 보내지 못한다.
   종료 흐름의 `PUT /api/pitches/{pitch_id}/takes/{take_id}` 에 `ended_at` 이 있으면 BE 가 `ANALYZING` 으로 바꾼다.
   연결이 붙어 있거나 `stop` 으로 끝내는 중이면 그 연결에 맡긴다. 끊긴 뒤 30초 안이라 스트림이 남아 있으면
   `stop` 처럼 남은 전사까지 저장한 뒤 바꾼다. 떠난 것으로 끝낸 Take(`ABANDONED`)도 `ANALYZING` 으로 되살리고
-  이유를 지운다.
+  이유를 지운다. 창을 닫아 끝낸 Take(`CLOSED`)는 되살리지 않는다.
 - Take PUT 은 상태와 순서를 본다. `COMPLETED`·`FAILED` 는 `409 TAKE_ENDED`, `ANALYZING` 은 시각만 받는다
-  (`event_logs` 는 409). `ABANDONED` 로 끝난 Take 는 `ended_at` 이 있는 끝내기만 받는다.
+  (`event_logs` 는 409). `ABANDONED` 로 끝난 Take 는 `ended_at` 이 있는 끝내기만 받는다 (`CLOSED` 는 409).
   `ended_at` 이 `started_at` 보다 앞서면 `400 INVALID_TAKE_TIME`, 시간대가 없는 시각은 422.
   `null` 은 보내지 않은 것으로 본다. 점검 결과(`calibration`)는 `READY` 일 때만 받는다 (아니면 `409 TAKE_STARTED`).
 - **Take 를 자동으로 끝낸다** (`realtime/auto_end.py`). 둘 중 하나라도 맞으면 `{"type":"auto_end","reason","message"}`
@@ -348,7 +398,8 @@ WS /api/ws/takes/{take_id}
     자동 종료 순간 떨어져 있던 FE 도 종료 흐름을 탄다. 이유를 못 적어도(DB 장애) 종료는 그대로 한다.
   - 판단 코드가 예외를 내도 STT 는 계속 돈다 (로그만). 값은 `TAKE_SILENCE_*`·`TAKE_MAX_DURATION_SEC` 로 바꾸고,
     틀린 값이면 앱이 시작할 때 실패한다.
-- 아직 없는 것: `metrics`/`coach` 메시지 (AI 팀 규칙 확정 후).
+- 아직 없는 것: `slide` · `coach` 메시지와 발표 중 코치 판단, 1초 원자료 지우기 규칙. 코치 연동과 같이
+  들어간다 (`metrics` 는 위처럼 저장한다).
 
 FE 없이 확인하는 두 가지 —
 
@@ -356,6 +407,9 @@ FE 없이 확인하는 두 가지 —
 |---|---|---|
 | 파일 | `dev/stt-send-pcm.py` | `uv run python dev/stt-send-pcm.py 녹음.pcm --email <가입한 이메일>` (파일 상단에 변환 명령). `--take-id` 를 안 주면 그 사용자의 Take 를 하나 만들어 쓴다 |
 | 마이크 | `dev/stt-test.html` | `python3 -m http.server 3000 --directory dev` 로 띄우고 `http://localhost:3000/stt-test.html`. **3000 포트로 열어야** Origin 검사를 통과한다. Take 칸에는 `uv run python dev/stt-send-pcm.py --create-take --email <이메일>` 로 만든 id 를 넣는다 |
+
+1초 원자료 저장 부하는 `dev/metrics-load-test.py` 로 잰다. 같은 Postgres 에 임시 DB 를 만들어 Take 마다 1초에
+1행씩 넣고 끝나면 지운다. 묶음 크기 5(`METRICS_BATCH`)는 develop 서버에서 잰 결과(#338)로 정했다.
 
 ## 대본 파싱 (AI)
 
@@ -369,6 +423,11 @@ POST /api/pitches/{pitch_id}/scripts/{script_version_id}/parse  202  FAILED 일 
 POST /api/pitches/add/{pitch_id}/presentation                     발표자료(PDF)만. 대본은 받지 않는다
 ```
 
+- **발표자료는 BE 가 PDF 로 열어 본다** (`pitch/presentation_file.py`). 40MB 를 넘거나 열리지 않으면(PDF 가 아님 · 깨짐 ·
+  여는 암호) `400 INVALID_PRESENTATION` 이고 저장하지 않는다. 쓰기 제한만 걸린 PDF 는 받는다. 확장자 · MIME 은 보지 않고,
+  S3 에는 `{version}.pdf` · `application/pdf` 로 올린다. 연 김에 쪽수를 `presentation_versions.page_count` 에 두고
+  업로드 응답 · `/resources` · 발표자료 상세에 싣는다. 이 칸이 생기기 전에 올린 발표자료는
+  `uv run python dev/backfill-presentation-page-count.py` 로 채운다 (`--dry-run` 으로 먼저 본다).
 - **대본은 발표자료와 따로 올린다.** 대본만 여러 번 고치는 게 정상 흐름이라, 발표자료 업로드에 묶으면 PDF 를 매번 다시 올려야 한다.
   버전은 pitch 안에서 자동으로 1, 2, … 로 매기고, 발표자료 버전과는 따로 센다.
 - 대본은 JSON `{"content": "..."}` 로 받는다 (FE 는 textarea 내용 그대로). 비어 있거나 5만 자를 넘거나 NUL 문자가 있으면
@@ -478,5 +537,5 @@ POST /api/pitches/add/{pitch_id}/presentation                     발표자료(P
 | 환경변수 목록 | `.env.example` |
 | Google OAuth 리다이렉트 | `/api/auth/google/callback` (운영 도메인 확정 시 Google Console 에 추가 등록 필요) |
 | 추가로 필요한 것 | Redis (`REDIS_URL`). OAuth state 저장에 쓴다 |
-| Deepgram | `DEEPGRAM_API_KEY`. 운영 도메인은 HTTPS 여야 한다 — 브라우저 마이크(`getUserMedia`)는 secure context 에서만 열린다 |
+| Deepgram | `DEEPGRAM_API_KEY` 하나, 또는 `DEEPGRAM_API_KEYS` 에 쉼표로 여러 개. 운영 도메인은 HTTPS 여야 한다 — 브라우저 마이크(`getUserMedia`)는 secure context 에서만 열린다 |
 | AI 서버 | `AI_BASE_URL` (기본 `http://localhost:8001`, 운영은 compose 내부 `http://ai:8000`). 없으면 BE 는 뜨고 대본 파싱만 `AI_UNAVAILABLE` 로 실패한다 |

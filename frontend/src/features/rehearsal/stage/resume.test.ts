@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PresentationClock } from '@/shared/lib/clock';
 import {
+  abandonOutcome,
   coachHistory,
   lastSlide,
+  leftWindow,
+  LIVE_BEAT_MS,
   recordedUntilMs,
   resumeFromMs,
   saveMetrics,
@@ -14,6 +17,77 @@ const row = (elapsedMs: number, lastBeatAt: number) => ({
   clientSessionId: 's-1',
   elapsedMs,
   lastBeatAt,
+});
+
+describe('이 창에서 무대를 이어 열어도 되나', () => {
+  const NOW = 1_000_000;
+  const running = (lastBeatAt: number) => ({
+    status: 'RUNNING',
+    ending: null,
+    submittedAt: null,
+    lastBeatAt,
+  });
+
+  /** 라우터 state 는 새로고침해도 · 닫은 탭을 복원해도 남습니다 */
+  it('같은 탭이면 이어 간다 — 새로고침이다', () => {
+    expect(leftWindow(running(NOW - 60_000), true, NOW)).toBeNull();
+  });
+
+  it('다른 창에서 열었는데 하트비트가 멈췄으면 창을 닫았다 다시 연 것이다', () => {
+    expect(leftWindow(running(NOW - LIVE_BEAT_MS), false, NOW)).toBe('CLOSED');
+  });
+
+  /** 그 창이 같은 세션 행을 쓰므로 아무것도 바꾸면 안 됩니다 */
+  it('다른 창에서 열었는데 하트비트가 최근이면 그 창이 아직 발표 중이다', () => {
+    expect(leftWindow(running(NOW - 3_000), false, NOW)).toBe('OTHER_WINDOW');
+  });
+
+  /** 끝내기를 누른 뒤의 행은 무대를 열지 않고 종료를 마저 보내는 길이 따로 있습니다 */
+  it('끝내기를 누른 뒤의 행은 막지 않는다', () => {
+    const ending = { durationMs: 60_000, endedAtIso: '2026-10-23T00:00:00Z' };
+    expect(leftWindow({ ...running(0), ending }, false, NOW)).toBeNull();
+    expect(leftWindow({ ...running(0), submittedAt: NOW - 1 }, false, NOW)).toBeNull();
+    expect(leftWindow({ ...running(0), status: 'ENDED' }, false, NOW)).toBeNull();
+  });
+
+  /** 다른 브라우저에서 열었거나 사이트 데이터를 지웠습니다. 처음부터 열면 서버의 Take 시간대와 겹칩니다 */
+  it('다른 창에서 열었는데 이 브라우저에 기록이 없으면 이어 가지 않는다', () => {
+    expect(leftWindow(null, false, NOW)).toBe('CLOSED');
+    // 준비 화면에서 막 넘어왔는데 행이 없으면(그사이 데이터를 지움) 그 값으로 이어 씁니다
+    expect(leftWindow(null, true, NOW)).toBeNull();
+  });
+
+  /** 안내 화면을 본 뒤 새로고침했습니다. 종료를 마저 보내는 길로 빠지면 안 됩니다 */
+  it('창을 닫아 이미 끝낸 행은 같은 탭이어도 다시 열지 않는다', () => {
+    expect(leftWindow({ ...running(NOW), status: 'ABORTED' }, true, NOW)).toBe('CLOSED');
+  });
+
+  /** ending · submittedAt 이 생기기 전에 만든 행에는 키가 없습니다 */
+  it('옛 행에 없는 필드는 없음으로 읽는다', () => {
+    const legacy = { status: 'RUNNING', lastBeatAt: NOW - 60_000 };
+    expect(leftWindow(legacy, false, NOW)).toBe('CLOSED');
+  });
+});
+
+describe('창을 닫은 Take 를 서버에 끝내 달라고 한 뒤', () => {
+  it('실패로 바뀌었으면 실패 화면이다', () => {
+    expect(abandonOutcome('FAILED', null)).toBe('CLOSED');
+  });
+
+  it('다른 창이 발표 중이라고 거절하면 그 창에 맡긴다', () => {
+    expect(abandonOutcome(null, 'TAKE_IN_PROGRESS')).toBe('OTHER_WINDOW');
+  });
+
+  it('끝내기가 이미 닿았으면 분석 중 화면이다', () => {
+    expect(abandonOutcome('ANALYZING', null)).toBe('PROCESSING');
+    expect(abandonOutcome('COMPLETED', null)).toBe('PROCESSING');
+  });
+
+  /** 서버는 떠난 Take 타이머가 정리합니다 */
+  it('알리지 못했어도 실패 화면이다', () => {
+    expect(abandonOutcome(null, 'REQUEST_FAILED')).toBe('CLOSED');
+    expect(abandonOutcome(null, null)).toBe('CLOSED');
+  });
 });
 
 describe('무대 시계를 어디서부터 다시 돌릴까', () => {

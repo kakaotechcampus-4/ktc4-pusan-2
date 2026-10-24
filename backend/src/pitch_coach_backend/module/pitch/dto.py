@@ -10,8 +10,10 @@ from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
 from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
-from pitch_coach_backend.module.take.dto import MAX_TIME_LIMIT_SEC, TakeSummaryDTO
+from pitch_coach_backend.module.take.dto import ScriptMode, TakeSummaryDTO
 
+# 발표 시간 상한. FE 의 MAX_TIME_LIMIT_MIN(60분)과 같다. Take 목표 시간도 이 값을 그대로 쓴다
+MAX_TIME_LIMIT_SEC = 60 * 60
 # FE 의 허용 오차 상한(MAX_TOLERANCE_SEC)과 같다
 MAX_DEVIATION_SEC = 5 * 60
 
@@ -48,6 +50,7 @@ class UploadPresentationResultDTO(BaseModel):
     pitch_id: uuid.UUID
     presentation_version_id: uuid.UUID
     file_url: str
+    page_count: int
 
 
 class ScriptCreateDTO(BaseModel):
@@ -136,11 +139,46 @@ class VersionDTO(BaseModel):
     id: uuid.UUID
     version: int
 
+class PresentationVersionDTO(VersionDTO):
+    # 쪽수를 아직 채우지 않은 옛 발표자료는 None
+    page_count: int | None
+
+class ParsedScriptDTO(VersionDTO):
+    # 슬라이드로 나눈 장 수. 발표자료 쪽수와 같아야 짝이다
+    slide_count: int
+
 class VersionSummaryDTO(BaseModel):
     pitch_id: uuid.UUID
-    presentation_versions: list[VersionDTO]
+    presentation_versions: list[PresentationVersionDTO]
     script_versions: list[VersionDTO]
     evaluation_versions: list[VersionDTO]
+
+class NewerScriptDTO(BaseModel):
+    """연습에 쓸 대본보다 새로 올렸지만 아직 쓸 수 없는 대본. FE 가 왜 옛 대본인지 알린다."""
+
+    id: uuid.UUID
+    version: int
+    # PENDING(나누는 중) 또는 FAILED(나누지 못함). 오래된 PENDING 은 FAILED 로 내린다
+    parse_status: ScriptParseStatus
+    error_code: ScriptParseErrorCode | None
+
+class PrepareDTO(BaseModel):
+    """장치 점검 화면이 Take 를 만들 때 쓰는 값. 피치 생성을 거치지 않고 들어와도 버전을 안다."""
+
+    pitch_id: uuid.UUID
+    title: str
+    time_limit_sec: int
+    # 파싱이 끝난 가장 최근 대본. 슬라이드가 없으면 리허설을 열 수 없어 PENDING · FAILED 는 건너뛴다
+    script: ParsedScriptDTO | None
+    # script 의 장 수와 쪽수가 같은 가장 최근 발표자료. 맞는 것이 없으면 가장 최근 발표자료라
+    # 쪽수가 다를 수 있다 (FE 가 둘을 비교해 막는다). 발표자료가 없으면 None
+    presentation: PresentationVersionDTO | None
+    # script 보다 새 대본이 있는데 파싱 중이거나 실패했으면 그 대본. 없으면 None
+    newer_script: NewerScriptDTO | None
+    # 지금 기준 다음 번호. 그사이 다른 Take 가 생기면 달라져서 실제 번호는 Take 생성 응답을 본다
+    next_take_number: int
+    # 가장 최근 Take 의 대본 표시 방식. Take 가 없으면 HIGHLIGHT
+    default_script_mode: ScriptMode
 
 class Versioned(Protocol):
     id: uuid.UUID
@@ -151,6 +189,7 @@ class PresentationDetailDTO(BaseModel):
     presentation_version_id: uuid.UUID
     version: int
     file_url: str
+    page_count: int | None
     description: str | None = None
     created_at: date
 class StandardTextDTO(BaseModel):

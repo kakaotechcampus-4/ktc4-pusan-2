@@ -5,7 +5,12 @@ import { useCameraStream } from '../media/useCameraStream';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 import { usePrepareStore } from '../prepare/prepareStore';
-import { useEndTake } from '@/shared/api/take';
+import { useAbandonTake, useEndTake } from '@/shared/api/take';
+import { ApiFailure } from '@/shared/api/tokenStore';
+import { ButtonLink } from '@/shared/ui/Button';
+import { InfoPage } from '@/shared/ui/InfoPage';
+import { Mascot } from '@/shared/ui/Mascot';
+import { Card } from '@/shared/ui/Panel';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { exclusionForDeviceError, exclusionForGazeError } from '../lib/gazeExclusion';
 import { stopTakeStream } from '../lib/sttSocket';
@@ -36,17 +41,21 @@ import { useLiveGaze } from './useLiveGaze';
 import { useRehearsalMaterials } from './useRehearsalMaterials';
 import { useRehearsalStore } from './rehearsalStore';
 import {
+  abandonOutcome,
   clearClock,
   clearMetrics,
   coachHistory,
   lastSlide,
+  leftWindow,
   readClock,
   recordedUntilMs,
   resumeFromMs,
   saveClock,
   saveMetrics,
   takeMetrics,
+  type AbandonOutcome,
   type CoachHistory,
+  type LeftWindow,
 } from './resume';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
@@ -83,6 +92,11 @@ interface Resume {
   ending: Ending | null;
   /** 종료까지 보낸 Take. 무대를 열지 않고 처리 화면으로 보냅니다 */
   submitted: boolean;
+  /**
+   * 이 창에서 무대를 열면 안 되는 이유 (`leftWindow`). 창을 닫았다 다시 열었으면 `CLOSED` —
+   * 실패로 끝냅니다. 다른 창이 발표 중이면 `OTHER_WINDOW` — 아무것도 바꾸지 않습니다
+   */
+  left: LeftWindow | null;
 }
 
 const freshResume = (sessionId: string | null): Resume => ({
@@ -92,6 +106,7 @@ const freshResume = (sessionId: string | null): Resume => ({
   coach: null,
   ending: null,
   submitted: false,
+  left: null,
 });
 
 /**
@@ -131,6 +146,7 @@ export function RehearsalPage() {
   );
   const materials = useRehearsalMaterials(ticket ?? null);
   const endTake = useEndTake(ticket?.pitchId ?? '', takeId);
+  const { mutateAsync: abandonTake } = useAbandonTake(ticket?.pitchId ?? '', takeId);
 
   const phase = useRehearsalStore((s) => s.phase);
   const coach = useRehearsalStore((s) => s.coach);
@@ -174,14 +190,18 @@ export function RehearsalPage() {
    */
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  const { stream, error: deviceError, request } = useCameraStream();
+  const { stream, error: deviceError, request, stop: stopCamera } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
 
   const ready = materials.ready && resume !== null;
   /** 이미 종료까지 보낸 Take 입니다 (끝낸 뒤 새로고침 · 뒤로 가기). 무대를 열지 않습니다 */
   const submitted = resume?.submitted ?? false;
-  /** 무대를 열 수 있나. 종료 중에 새로고침했으면 열지 않고 종료만 이어갑니다 */
-  const stageReady = ready && ending === null && !submitted;
+  const left = resume?.left ?? null;
+  /**
+   * 무대를 열 수 있나. 종료 중에 새로고침했으면 열지 않고 종료만 이어갑니다.
+   * 창을 닫았다 다시 열었거나 다른 창이 발표 중이면 열지 않습니다
+   */
+  const stageReady = ready && ending === null && !submitted && left === null;
   const running = stageReady && phase === 'RUNNING';
   const limitSec = ticket?.timeLimitSec ?? 600;
   const scriptMode = ticket?.scriptMode ?? 'HIGHLIGHT';
@@ -216,6 +236,10 @@ export function RehearsalPage() {
       setEndError(toMessage(e));
     });
   }, []);
+  /** 창을 닫아 끝난 Take 입니다. 무대를 닫고 실패로 끝냅니다 (아래 '창을 닫았다 다시 열었다') */
+  const leaveClosed = useCallback(() => {
+    setResume((current) => current && { ...current, left: 'CLOSED' });
+  }, []);
   /**
    * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
    * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
@@ -239,6 +263,7 @@ export function RehearsalPage() {
     elapsedMs,
     onAutoEnd,
     restoredMetrics,
+    onClosed: leaveClosed,
   });
 
   // 1초마다 시선 · 음량 · 슬라이드를 WS `metrics` 로 보냅니다. 서버의 실시간 코치와 Take 결과의 재료입니다
@@ -286,8 +311,9 @@ export function RehearsalPage() {
   });
 
   // ── 세션 잇기 ────────────────────────────────────────────────────
-  // 준비 화면이 넘겨준 값이 먼저입니다. 없으면(다른 탭에서 이 주소를 열었다) takeId로
-  // IndexedDB를 뒤지고, 그래도 없으면 새로 엽니다.
+  // 준비 화면이 넘겨준 값이 먼저입니다. 없으면(다른 창에서 이 주소를 열었다) takeId로
+  // IndexedDB를 뒤지고, 그래도 없으면 새로 엽니다. 다른 창에서 찾은 행은 이어 가지 않습니다 —
+  // 창을 닫았다 다시 열었거나, 다른 창이 아직 발표 중입니다 (`leftWindow`).
   //
   // ★ 새로고침해도 location.state 는 남습니다. 그래서 막 넘어왔는지 새로고침했는지는
   //   행을 읽어야 압니다 — 두 길 모두 행을 읽고, 이어받을 것(시계·슬라이드·코치·준비 값·
@@ -300,6 +326,13 @@ export function RehearsalPage() {
     const passed = (location.state as { clientSessionId?: string } | null)?.clientSessionId;
     (async () => {
       const row = passed ? await getSession(passed) : await findSessionByTakeId(takeId);
+      const leftReason = leftWindow(row ?? null, passed !== undefined, Date.now());
+      if (leftReason) {
+        // 이어 가지 않습니다. 실패로 끝내거나(창을 닫음) 다른 창에 맡깁니다 — 아래 '창을 닫았다 다시 열었다'
+        setTicket((current) => current ?? row?.ticket ?? null);
+        setResume({ ...freshResume(row?.clientSessionId ?? null), left: leftReason });
+        return;
+      }
       if (!row) {
         // 준비 화면을 거쳤는데 행이 없으면(그사이 사이트 데이터를 지웠다) 그 값으로 이어 씁니다 —
         // POST /takes 의 멱등 키가 그 값이라 바꾸면 안 됩니다
@@ -350,6 +383,7 @@ export function RehearsalPage() {
             ? null
             : { durationMs: row.elapsedMs, endedAtIso: new Date(row.lastBeatAt).toISOString() }),
         submitted: (row.submittedAt ?? null) !== null,
+        left: null,
       });
       // IndexedDB 를 못 열면(사생활 보호 모드 · 저장 공간 부족) 여기로 옵니다
     })().catch((err: unknown) => {
@@ -359,9 +393,12 @@ export function RehearsalPage() {
       );
       // 기록은 못 쌓아도 발표는 합니다. 무대를 막으면 이 문구만 남은 빈 화면이 됩니다.
       // 준비 화면이 넘겨준 값은 그대로 씁니다 — POST /takes 의 멱등 키라, 그래야 끝내기를 눌렀을 때
-      // 재시도 화면으로 가서 같은 값으로 다시 보낼 수 있습니다. 없으면 끝내기는 아무것도 하지 않습니다
+      // 재시도 화면으로 가서 같은 값으로 다시 보낼 수 있습니다.
+      // 준비 화면을 거치지 않았으면(다른 창에서 엶) 이어 가지 않습니다 (`leftWindow`)
       setTicket((current) => current ?? null);
-      setResume(freshResume(passed ?? null));
+      setResume(
+        passed !== undefined ? freshResume(passed) : { ...freshResume(null), left: 'CLOSED' },
+      );
     });
   }, [takeId, location.state, restorePrepare, setSlide]);
 
@@ -382,7 +419,7 @@ export function RehearsalPage() {
   // 종료 중에 새로고침했으면 열지 않습니다. 남은 일은 기록을 보내는 것뿐입니다
   const askedRef = useRef(false);
   useEffect(() => {
-    if (askedRef.current || !resume || resume.ending || resume.submitted) return;
+    if (askedRef.current || !resume || resume.ending || resume.submitted || resume.left) return;
     askedRef.current = true;
 
     (async () => {
@@ -399,6 +436,50 @@ export function RehearsalPage() {
       console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
     });
   }, [request, devices, resume]);
+
+  // ── 창을 닫았다 다시 열었다 ───────────────────────────────────────
+  // 창을 닫은 Take 는 이어 가지 않습니다. 서버에 실패로 끝내 달라고 하고 실패 화면을 보여 줍니다.
+  // 무대가 열려 있다 닫힌 경우(닫은 탭을 늦게 복원 · 끝내기가 409)에는 카메라부터 놓습니다.
+  // 다른 창이 발표 중이면(서버 409) 행을 건드리지 않습니다 — 그 창이 같은 세션 행을 씁니다
+  const closingRef = useRef(false);
+  useEffect(() => {
+    if (left !== 'CLOSED' || closingRef.current) return;
+    closingRef.current = true;
+    stopCamera();
+
+    (async () => {
+      // 연습 정보가 없으면(이 브라우저에 기록이 없음) 서버에 알릴 주소를 모릅니다. 타이머가 정리합니다
+      let outcome: AbandonOutcome = 'CLOSED';
+      if (ticket) {
+        try {
+          outcome = abandonOutcome((await abandonTake()).status, null);
+        } catch (e) {
+          outcome = abandonOutcome(null, e instanceof ApiFailure ? e.code : null);
+          if (outcome === 'CLOSED')
+            console.error('[rehearsal] 창을 닫은 Take 를 끝내지 못했습니다', e);
+        }
+      }
+      if (outcome === 'PROCESSING') {
+        navigate(`/takes/${takeId}/processing`, { replace: true });
+        return;
+      }
+      if (outcome === 'OTHER_WINDOW') {
+        setResume((current) => current && { ...current, left: 'OTHER_WINDOW' });
+        return;
+      }
+      // 무대는 다시 열리지 않습니다. 시선 기준은 얼굴 측정값이라 버립니다
+      forgetZoneRef();
+      clearClock(takeId);
+      clearMetrics(takeId);
+      if (sessionId) {
+        await endSession(sessionId, 'ABORTED').catch((err: unknown) =>
+          noteWriteFailure(sessionId, 'ending', err),
+        );
+      }
+    })().catch((e: unknown) => {
+      console.error('[rehearsal] 창을 닫은 Take 정리 실패', e);
+    });
+  }, [left, ticket, takeId, sessionId, stopCamera, abandonTake, navigate]);
 
   // ── 제외 사유 배선 ───────────────────────────────────────────────
   // 한 번 정해지면 되돌리지 않습니다. 발표 도중 엔진이 죽었다면 그 Take의
@@ -574,6 +655,12 @@ export function RehearsalPage() {
       // 기록을 쌓지 않고 바꿉니다. 뒤로 가기로 리허설 화면에 돌아오지 않게 합니다
       navigate(`/takes/${takeId}/processing`, { replace: true });
     } catch (e) {
+      // 서버가 이미 끝낸 Take 입니다 — 창을 닫아 끝났는데(닫은 탭을 늦게 복원) 끝내기를 눌렀습니다.
+      // 다시 보내도 같아서 재시도 화면이 아니라 실패 화면으로 갑니다
+      if (e instanceof ApiFailure && e.code === 'TAKE_ENDED') {
+        leaveClosed();
+        return;
+      }
       // 기록은 브라우저에 그대로 있습니다. 여기서 잃는 것은 없고,
       // 재시도 화면이 같은 clientSessionId 의 세션으로 다시 보냅니다
       console.error('[rehearsal] 종료 처리 실패', e);
@@ -610,6 +697,8 @@ export function RehearsalPage() {
       setEndError(toMessage(e));
     });
   });
+
+  if (left) return <LeftWindowNotice left={left} pitchId={ticket?.pitchId ?? null} />;
 
   const gazeNote = gazeNoteText({
     declined: deviceError === 'PERMISSION_DENIED',
@@ -782,6 +871,33 @@ export function RehearsalPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * 무대를 열지 않는 이유를 알립니다. 창을 닫은 Take 는 이어 가지 않으니 새 Take 로 보냅니다.
+ * 다른 창이 발표 중이면 그 창으로 돌아가게 합니다 — 여기서는 아무것도 바꾸지 않았습니다.
+ */
+function LeftWindowNotice({ left, pitchId }: { left: LeftWindow; pitchId: string | null }) {
+  const closed = left === 'CLOSED';
+  return (
+    <InfoPage title={closed ? '연습 중단' : '다른 창에서 연습 중'}>
+      <Card>
+        <Mascot who="chichi">
+          {closed
+            ? '창이 닫혀서 이번 연습은 중단됐어. 새로 시작해 보자!'
+            : '이 연습은 다른 창에서 하고 있어. 그 창으로 돌아가 줘!'}
+        </Mascot>
+        <div className="flex flex-wrap gap-3">
+          {closed && pitchId && (
+            <ButtonLink to={`/pitch/${pitchId}/device-check`}>새 Take 준비</ButtonLink>
+          )}
+          <ButtonLink to="/" variant="secondary">
+            내 피치로
+          </ButtonLink>
+        </div>
+      </Card>
+    </InfoPage>
   );
 }
 

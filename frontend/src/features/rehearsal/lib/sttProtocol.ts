@@ -125,10 +125,23 @@ export type SttErrorCode =
   | 'BAD_AUDIO_FRAME'
   | 'TAKE_TAKEN_OVER';
 
+/**
+ * BE 가 Take 를 끝낸 이유. `TAKE_ENDED` 에 실려 옵니다 (서버는 사용자가 끝낸 Take 면 필드를 빼고,
+ * `parseServerMessage` 가 그때 `null` 로 채웁니다).
+ *
+ * - `CLOSED` 창을 닫았습니다. **이어 가지 않습니다** — 실패 화면으로 갑니다
+ * - `ABANDONED` 창을 닫지 않고 5분 넘게 끊겨 서버가 끝냈습니다. 발표는 STT 없이 이어 가고,
+ *   끝내기(PUT)를 보내면 서버가 되살립니다
+ * - `SILENCE` · `TIME_LIMIT` 자동 종료 (`AutoEndMessage` 가 먼저 옵니다)
+ */
+export type TakeEndReason = 'SILENCE' | 'TIME_LIMIT' | 'ABANDONED' | 'CLOSED';
+
 export interface SttErrorMessage {
   type: 'error';
   code: SttErrorCode;
   message: string;
+  /** `TAKE_ENDED` 일 때 BE 가 끝낸 이유. 사용자가 끝냈거나 다른 코드면 null */
+  end_reason: TakeEndReason | null;
 }
 
 /** `SILENCE` 오래 말이 없었다 · `TIME_LIMIT` 최대 시간(1시간)이 지났다 */
@@ -182,6 +195,9 @@ export const STT_ERROR_MESSAGE: Record<SttErrorCode, string> = {
   TAKE_TAKEN_OVER: '다른 탭에서 같은 연습을 이어받았어요. 이 탭의 말하기 분석은 멈춥니다.',
 };
 
+/** `TAKE_ENDED`(`ABANDONED`) — 오래 끊겨 서버가 Take 를 끝냈지만 발표는 이어 갑니다 */
+export const STT_ABANDONED_MESSAGE = '연결이 오래 끊겨 말하기 분석이 멈췄어요. 발표는 계속하세요.';
+
 /**
  * 발밑 한 줄에 쓰는 상태 문구. `null` 이면 아무 말도 하지 않습니다 —
  * 정상일 때 굳이 말을 거는 것도 발표자에게는 방해입니다.
@@ -218,6 +234,18 @@ export function buildAudioFrame(seq: number, offsetMs: Ms, pcm: ArrayBuffer): Ui
   return frame;
 }
 
+const END_REASONS: ReadonlySet<string> = new Set<TakeEndReason>([
+  'SILENCE',
+  'TIME_LIMIT',
+  'ABANDONED',
+  'CLOSED',
+]);
+
+/** 모르는 이유(서버가 나중에 늘림)는 null 입니다 — 분기할 수 없는 값을 분기한 척하지 않습니다 */
+function toEndReason(value: unknown): TakeEndReason | null {
+  return typeof value === 'string' && END_REASONS.has(value) ? (value as TakeEndReason) : null;
+}
+
 const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   'ready',
   'transcript',
@@ -240,6 +268,11 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
     const type = (parsed as { type?: unknown }).type;
     if (typeof type !== 'string' || !SERVER_MESSAGE_TYPES.has(type)) return null;
 
+    // 서버는 이유가 없으면 필드를 뺍니다. 없음은 null 로 둡니다 (CLAUDE.md 6번)
+    if (type === 'error') {
+      const error = parsed as Omit<SttErrorMessage, 'end_reason'> & { end_reason?: unknown };
+      return { ...error, end_reason: toEndReason(error.end_reason) };
+    }
     return parsed as ServerMessage;
   } catch {
     return null;

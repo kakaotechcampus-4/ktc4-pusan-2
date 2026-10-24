@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.orm import Session, defer
 
 from pitch_coach_backend.module.pitch.entity import (
@@ -29,10 +29,22 @@ class PitchRepository:
             select(Pitch).where(Pitch.id == pitch_id, Pitch.user_id == user_id)
         )
 
-    def get_all_by_user(self, user_id: uuid.UUID) -> list[Pitch]:
+    def get_all_by_user(self, user_id: uuid.UUID, today: date) -> list[Pitch]:
+        """홈 목록 순서. 다가오는 발표(오늘 포함) → 날짜 없는 발표 → 지난 발표.
+
+        다가오는 발표는 가까운 날짜부터, 지난 발표는 최근에 지난 것부터다.
+        같은 날짜면 최근에 만든 발표가 위다.
+        """
+        upcoming = Pitch.presentation_date >= today
         return self.db.execute(
             select(Pitch).where(Pitch.user_id == user_id)
-            .order_by(Pitch.presentation_date.desc()) # 우선 마감일이 빠른 순서대로 정렬
+            .order_by(
+                case((upcoming, 0), (Pitch.presentation_date.is_(None), 1), else_=2),
+                case((upcoming, Pitch.presentation_date)).asc(),
+                Pitch.presentation_date.desc(),
+                Pitch.created_at.desc(),
+                Pitch.id,
+            )
         ).scalars().all()
 
     def get_takes_with_scores_in_pitch(self, pitch_id: uuid.UUID) -> list[tuple[Take, int | None]]:
@@ -166,6 +178,37 @@ class PitchRepository:
             .order_by(ScriptVersion.version.asc())
         ).all()
 
+    def get_latest_presentation(
+        self, pitch_id: uuid.UUID, page_count: int | None = None
+    ) -> PresentationVersion | None:
+        """가장 최근 발표자료. page_count 를 주면 그 쪽수인 것 중에서 고른다."""
+        query = select(PresentationVersion).where(PresentationVersion.pitch_id == pitch_id)
+        if page_count is not None:
+            query = query.where(PresentationVersion.page_count == page_count)
+        return self.db.scalar(query.order_by(PresentationVersion.version.desc()).limit(1))
+
+    def get_latest_script(self, pitch_id: uuid.UUID) -> ScriptVersion | None:
+        return self.db.scalar(
+            select(ScriptVersion)
+            .where(ScriptVersion.pitch_id == pitch_id)
+            .options(defer(ScriptVersion.content), defer(ScriptVersion.terms))
+            .order_by(ScriptVersion.version.desc())
+            .limit(1)
+        )
+
+    def get_latest_parsed_script(self, pitch_id: uuid.UUID) -> ScriptVersion | None:
+        """파싱이 끝난(DONE) 가장 최근 대본."""
+        return self.db.scalar(
+            select(ScriptVersion)
+            .where(
+                ScriptVersion.pitch_id == pitch_id,
+                ScriptVersion.parse_status == ScriptParseStatus.DONE,
+            )
+            .options(defer(ScriptVersion.content), defer(ScriptVersion.terms))
+            .order_by(ScriptVersion.version.desc())
+            .limit(1)
+        )
+
     def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
         return self.db.scalars(
             select(Standards).where(Standards.pitch_id == pitch_id)
@@ -225,6 +268,11 @@ class PitchRepository:
             .where(ScriptSlide.script_version_id == script_version_id)
             .order_by(ScriptSlide.slide_number)
         ).all()
+
+    def count_slides(self, script_version_id: uuid.UUID) -> int:
+        return self.db.scalar(
+            select(func.count()).where(ScriptSlide.script_version_id == script_version_id)
+        ) or 0
 
     def restart_parse(
         self, script_version_id: uuid.UUID, now: datetime, expired_before: datetime

@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy import ColumnElement, and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session, aliased, defer
 
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.take.entity import (
@@ -12,6 +12,7 @@ from pitch_coach_backend.module.take.entity import (
     Mission,
     Take,
     TakeAIResults,
+    TakeMetricSecond,
     TakeSummary,
     TakeTranscriptSegment,
 )
@@ -86,6 +87,33 @@ class TakeRepository:
         ).returning(Calibration)
         return self.db.scalars(stmt, execution_options={"populate_existing": True}).one()
 
+    def get_by_client_session(
+        self, pitch_id: uuid.UUID, client_session_id: uuid.UUID
+    ) -> Take | None:
+        return self.db.scalar(
+            select(Take)
+            .where(Take.pitch_id == pitch_id, Take.client_session_id == client_session_id)
+            .options(defer(Take.event_logs))
+        )
+
+    def abandon_ready_takes(self, pitch_id: uuid.UUID) -> int:
+        """이 pitch 에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 바꾼다. 바꾼 수를 돌려준다.
+
+        새 Take 를 만들 때 부른다. FE 는 가장 최근 Take 로만 발표하므로 앞의 `READY` 는 다시 쓰이지
+        않는다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지
+        `READY` 다. 끝난 시각은 알 수 없어 만든 시각으로 적는다.
+        """
+        result = self.db.execute(
+            update(Take)
+            .where(Take.pitch_id == pitch_id, Take.status == "READY")
+            .values(
+                status="FAILED",
+                end_reason="ABANDONED",
+                ended_at=func.coalesce(Take.ended_at, Take.created_at),
+            )
+        )
+        return result.rowcount
+
     def next_take_number(self, pitch_id: uuid.UUID) -> int:
         current = self.db.scalar(
             select(func.max(Take.take_number)).where(Take.pitch_id == pitch_id)
@@ -93,11 +121,23 @@ class TakeRepository:
         return (current or 0) + 1
 
     def get_latest_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
+        # 부르는 곳(장치 점검)은 번호 · 대본 표시 방식만 본다. 시선 1초 기록이 쌓이는
+        # event_logs 는 읽지 않는다
         return self.db.scalar(
             select(Take)
-            .where(Take.pitch_id == pitch_id,
-                   Take.review_status == "DONE")  # 완료된 take 중 가장 최근 것.
+            .where(Take.pitch_id == pitch_id)
+            .options(defer(Take.event_logs))
             # created_at 은 같은 트랜잭션 안에서 같아질 수 있다. 번호는 pitch 안에서 유일하다
+            .order_by(Take.take_number.desc())
+            .limit(1)
+        )
+
+    def get_latest_reviewed_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
+        # 이전 미션은 리뷰까지 끝난 Take 중 가장 최근 것에서 가져온다
+        return self.db.scalar(
+            select(Take)
+            .where(Take.pitch_id == pitch_id, Take.review_status == "DONE")
+            .options(defer(Take.event_logs))
             .order_by(Take.take_number.desc())
             .limit(1)
         )
@@ -151,21 +191,37 @@ class TakeRepository:
             )
         )
 
-    def get_missions_for_take(self, take_id: uuid.UUID) -> list[Mission]:
+    def get_mission_ids_of_take(self, take_id: uuid.UUID) -> list[uuid.UUID]:
+        mission_ids = self.db.scalar(select(Take.mission_ids).where(Take.id == take_id))
+        return [uuid.UUID(mission_id) for mission_id in mission_ids or []]
+
+    def get_missions_by_ids(self, mission_ids: list[uuid.UUID]) -> list[Mission]:
+        if not mission_ids:
+            return []
         return list(
             self.db.scalars(
                 select(Mission)
-                .where(Mission.take_id == take_id)
+                .where(Mission.id.in_(mission_ids))
                 .order_by(Mission.priority, Mission.slide_number)
             )
         )
 
-    def assign_missions_to_take(self, source_take_id: uuid.UUID, take_id: uuid.UUID) -> None:
-        self.db.execute(
+    def assign_missions_to_take(
+        self, source_take_id: uuid.UUID, take_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        mission_ids = self.db.scalars(
             update(Mission)
             .where(Mission.source_take_id == source_take_id, Mission.status == "ACTIVE")
-            .values(take_id=take_id)
+            .values(take_id=take_id) # SQL의 set 역할
+            .returning(Mission.id)
+        ).all()
+        self.db.execute(
+            update(Take)
+            .where(Take.id == take_id)
+            .values(mission_ids=[str(mission_id) for mission_id in mission_ids])
+            # missions_ids도 갱신
         )
+        return list(mission_ids)
 
     def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResults | None:
         kind_filter = True if kind is None else (TakeAIResults.kind == kind)
@@ -199,6 +255,14 @@ class TakeRepository:
         self.db.add(segment)
         self.db.flush()
         return segment
+
+    def save_metric_seconds(self, take_id: uuid.UUID, rows: list[dict[str, Any]]) -> None:
+        """1초 원자료를 한 번에 넣는다. 이미 있는 1초는 건너뛴다 — 먼저 저장한 것을 둔다."""
+        self.db.execute(
+            insert(TakeMetricSecond)
+            .values([{"take_id": take_id, **row} for row in rows])
+            .on_conflict_do_nothing(index_elements=["take_id", "t_ms"])
+        )
 
     def save_total_result(self, 
                           take_id: uuid.UUID, total_result_json: dict, meta_json: dict | None
@@ -302,10 +366,16 @@ class TakeRepository:
         )
         return result.rowcount > 0
 
-    def mark_abandoned(self, take_id: uuid.UUID, ended_at: datetime) -> bool:
-        """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유를 `ABANDONED` 로 적는다. 바꿨으면 True.
+    def mark_abandoned(
+        self,
+        take_id: uuid.UUID,
+        ended_at: datetime | ColumnElement[datetime],
+        end_reason: str = "ABANDONED",
+    ) -> bool:
+        """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유를 `end_reason` 으로 적는다. 바꿨으면 True.
 
-        탭을 닫고 돌아오지 않은 Take 다. 시선 기록 · 끝난 시각을 FE 가 보내지 못해 분석하지 않는다.
+        창을 닫았거나(`CLOSED`) 연결이 끊긴 채 돌아오지 않은(`ABANDONED`) Take 다. 시선 기록 · 끝난
+        시각을 FE 가 보내지 못해 분석하지 않는다.
         `ended_at` 은 이걸 적는 지금이 아니라 마지막으로 연결이 끊긴 시각이다.
         `mark_ended` 처럼 UPDATE 하나로, 진행 중일 때만 바꾼다.
         """
@@ -314,7 +384,7 @@ class TakeRepository:
             .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
             .values(
                 status="FAILED",
-                end_reason="ABANDONED",
+                end_reason=end_reason,
                 ended_at=func.coalesce(Take.ended_at, ended_at),
             )
         )

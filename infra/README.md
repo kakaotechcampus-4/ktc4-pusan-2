@@ -17,6 +17,7 @@ infra/
 
 * Caddyfile : 리버스 프록시를 어떤 방식으로 진행할지 명시하는 파일입니다.
 특정 URL, 혹은 URL 형식에 대해 어떤 주소와 port로 요청을 보낼지가 작성되어 있습니다.
+    * `/api/*` 요청 본문 크기 상한도 여기서 겁니다. 발표자료 업로드는 41MiB, 나머지 API 는 1MiB 이고, 넘으면 BE 에 닿기 전에 413 입니다. Caddy 2.7 전에는 413 대신 502 가 나서 이미지를 2.11.7 로 올렸습니다.
 
 * docker-compose.yml : FE, BE, AI, DB(PostgreSQL, Redis), Caddy를 각각의 컨테이너로 띄운 후, 해당 컨테이너들의 관리 방침과 자동 재시작 정책, 종속성 관리 등을 명시하는 파일입니다.
     * 테스트 사이트와 운영 사이트의 caddy 포트 공개와 사이트 URL 지정을 위해 테스트 사이트의 경우 docker-compose.dev.yml, 운영 사이트의 경우 docker-compose.prod.yml에 각각 필요한 정보를 명시하였습니다.
