@@ -200,3 +200,16 @@ def test_slide_changed_before_the_first_request_leaves_the_earlier_time_unknown(
     assert state["slide_unknown_before_ms"] == 400
     assert state["slide_totals"]["2"]["TIME"]["elapsed_ms"] == 5_600
     assert state["totals"]["TIME"]["elapsed_ms"] == 6_000
+
+
+def test_first_slide_inside_a_cut_window_still_leaves_the_earlier_time_unknown():
+    # 창 앞이 잘렸으면(t=100000 → start 70000) 첫 장이어도 그 앞(앞서 다른 장을 봤을 수 있음)은
+    # 모르는 시간이다
+    resp = decide(make_request(100_000, plan=PLAN, slide=1, slide_started=90_000), fake_judges())
+    assert resp.coach_state["slide_unknown_before_ms"] == 90_000
+
+
+def test_slide_started_exactly_at_the_window_start_has_no_offset_and_no_unknown():
+    resp = decide(make_request(100_000, plan=PLAN, slide=2, slide_started=70_000), fake_judges())
+    assert "slide_unknown_before_ms" not in resp.coach_state
+    assert not resp.coach_state.get("slide_dwell_offset_ms")
