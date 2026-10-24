@@ -1,13 +1,17 @@
 """Take 시작 값 고정과 미션 선택. 커밋은 service가 담당한다."""
 
 import uuid
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.entity import (
     Mission,
     Take,
+    TakeSlideEvent,
 )
 from pitch_coach_backend.module.take.repository import (
     TakeRepository,
@@ -81,4 +85,15 @@ class CoachRepository:
                 .where(Mission.source_take_id == source_take_id, Mission.status == "ACTIVE")
                 .order_by(Mission.priority, Mission.slide_number, Mission.id)
             )
+        )
+
+    def append_slide_events(self, take_id: uuid.UUID, rows: Iterable[Mapping[str, Any]]) -> None:
+        """장 변경을 한 번에 넣는다. 같은 시각은 먼저 저장한 것을 둔다."""
+        values = [{"take_id": take_id, **row} for row in rows]
+        if not values:
+            return
+        self.db.execute(
+            insert(TakeSlideEvent)
+            .values(values)
+            .on_conflict_do_nothing(index_elements=["take_id", "started_ms"])
         )

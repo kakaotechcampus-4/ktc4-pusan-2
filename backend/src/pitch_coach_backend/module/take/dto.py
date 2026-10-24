@@ -1,4 +1,6 @@
 import uuid
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
@@ -103,6 +105,8 @@ class TranscriptSegmentCreateDTO(BaseModel):
     words: list[TranscriptWordDTO]
     confidence: float
     speech_final: bool
+    # 이 구간이 확정된 Take 시각 (그 결과를 받기 직전의 마지막 metrics 시각, 없었으면 0)
+    final_at_ms: int | None = None
 
 
 class MetricSecondCreateDTO(BaseModel):
@@ -244,3 +248,136 @@ class ReviewResponseDTO(BaseModel):
         "LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"
         ] | None = None
     meta: ReviewMetaDTO
+
+
+# ── 코치 연동 ─────────────────────────────────────────────────────────
+# coach 패키지가 코치 요청을 만들 때 쓰는 값. take 모듈의 coach_service 가 DB 에서 읽어 이 모양으로
+# 넘기고, 저장할 때도 이 모양으로 받는다 (module 은 coach 를 모른다 — README '의존 방향')
+
+
+@dataclass(frozen=True)
+class SlideTiming:
+    """대본 한 장의 시간 계획 (script_slides). 대본 파싱이 값을 주기 전이면 None 이다."""
+
+    slide_number: int
+    expected_ms: int | None
+    script_chars: int | None
+
+
+@dataclass(frozen=True)
+class MissionInput:
+    """이번 Take 에 실린 미션 하나 (review-agent.md 12-1 의 missions)."""
+
+    mission_id: str
+    area: str
+    slide_number: int | None
+    # {metric, operator, value}
+    target: Mapping[str, Any] | None
+    # 없으면 키를 뺀다. 코치가 1 로 본다 (명시적 null 은 계약 위반이다)
+    priority: int | None = None
+    description: str | None = None
+
+
+@dataclass(frozen=True)
+class SlideEvent:
+    """장을 넘긴 기록 하나 (take_slide_events, WS `slide`).
+
+    `started_ms` 는 그 장으로 넘어온 시각이다."""
+
+    slide_number: int
+    started_ms: int
+
+
+@dataclass(frozen=True)
+class MetricSecond:
+    """1초 원자료 한 행 (take_metric_seconds). `t_ms` 는 그 `metrics` 의 바깥 시각이다.
+
+    `slide_number` 는 FE 가 보낸 참고값이라 replay 에 쓰지 않는다 (장은 `SlideEvent`)."""
+
+    t_ms: int
+    slide_number: int | None
+    gaze: Mapping[str, Any] | None
+    voice: Mapping[str, Any] | None
+    # 그 `metrics` 를 받았을 때의 STT 상태. 마이그레이션 전 행은 None
+    stt_status: str | None
+
+
+@dataclass(frozen=True)
+class TranscriptSegment:
+    """확정 전사 구간 한 행 (take_transcript_segments). words 는 저장된 모양 그대로."""
+
+    end_ms: int
+    words: Sequence[Mapping[str, Any]]
+    # 그 구간이 확정된 Take 시각. 마이그레이션 전 행은 None
+    final_at_ms: int | None
+
+
+# 저장할 코치 이벤트 하나: (이벤트 JSON, 그 응답의 meta)
+type StoredEvent = tuple[Mapping[str, Any], Mapping[str, Any]]
+
+
+@dataclass(frozen=True)
+class TakeCoachValues:
+    """발표 중 코치가 Take 동안 들고 있을 값의 재료 (architecture.md 1-3 1번).
+
+    미션 · 평가 기준 버전 · 동의는 Take 를 시작할 때 고정한 값이다. 반복 문제와 코칭 계획의 바탕
+    Take 는 이 Take 보다 앞선 Take 에서 고른다.
+    """
+
+    take_id: uuid.UUID
+    pitch_id: uuid.UUID
+    mode: str
+    script_mode: str
+    goal_time_sec: int
+    # 발표의 제한 시간 · 허용 범위 (초)
+    time_limit_sec: int
+    lower_deviation_sec: int
+    upper_deviation_sec: int
+    script_version_id: uuid.UUID
+    slides: tuple[SlideTiming, ...]
+    # 대본을 파싱할 때 요청한 목표 시간 (script-parser.md 12-2). 없으면 None
+    parsed_target_ms: int | None
+    missions: tuple[MissionInput, ...]
+    recurring_issues: tuple[dict[str, Any], ...]
+    # 코칭 계획의 바탕 Take — 이 Take 보다 앞서 가장 늦게 끝난 COMPLETED Take. 첫 Take 면 None
+    source_take_id: uuid.UUID | None
+    script_used: bool | None
+    base_level_db: float | None
+    slide_events: tuple[SlideEvent, ...]
+
+
+@dataclass(frozen=True)
+class FinalizeRows:
+    """finalize 를 DB 에서 다시 만들 재료 — Take 결과를 기다리는 Take 의 원자료 전부."""
+
+    values: TakeCoachValues
+    seconds: tuple[MetricSecond, ...]
+    segments: tuple[TranscriptSegment, ...]
+    utterance_ends: tuple[int, ...]
+    # 받은 순서대로 (coach_events.seq). 이벤트 JSON 그대로
+    events: tuple[dict[str, Any], ...]
+    raw_data_consent: bool
+
+
+@dataclass(frozen=True)
+class PlanValues:
+    """다음 Take 의 코칭 계획 요청 재료 (coach-agent.md 5-2 plan)."""
+
+    pitch_id: uuid.UUID
+    time_limit_sec: int
+    lower_deviation_sec: int
+    upper_deviation_sec: int
+    # 파싱이 끝난 가장 최근 대본. 다음 Take 가 쓸 대본이다
+    script_version_id: uuid.UUID
+    parsed_target_ms: int | None
+    slides: tuple[SlideTiming, ...]
+    # (장 번호, 그 장 대본)
+    scripts: tuple[tuple[int, str], ...]
+    # 바탕 Take — 그 발표에서 가장 늦게 끝난 COMPLETED Take (리뷰가 끝내 실패한 Take 포함)
+    source_take_id: uuid.UUID | None
+    # 리뷰가 있는 Take 중 가장 늦게 끝난 것의 리뷰가 만든 ACTIVE 미션과 반복 문제
+    missions: tuple[MissionInput, ...]
+    recurring_issues: tuple[dict[str, Any], ...]
+    # 바탕 Take 의 Take 결과 · 리뷰 (리뷰가 실패했으면 None)
+    previous_take_result: dict[str, Any] | None
+    previous_review: dict[str, Any] | None
