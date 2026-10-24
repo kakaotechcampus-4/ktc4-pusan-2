@@ -41,6 +41,7 @@ from .judges import JudgeRun, Judges
 from .policy import RULE_POLICY, Policy, rank_key
 from .renderer import render
 from .schemas import (
+    MAX_T_MS_JUMP,
     AreaCriteria,
     AreaResult,
     CoachRequest,
@@ -94,6 +95,11 @@ def decide(
     # 이미 처리한 시각이 다시 오면(재시도 · 순서 뒤바뀜) 아무것도 바꾸지 않는다
     if state.last_t_ms is not None and req.t_ms <= state.last_t_ms:
         return _response(req, cfg, Action.WAIT, [Reason.STALE_TICK.value], state)
+    # 지난 처리 시각보다 60초 넘게 앞서면 처리하지 않고 빈 상태로 돌려준다 — 잘못된 미래 시각 하나가
+    # last_t_ms 를 올려 이후 요청을 모두 STALE_TICK 으로 막지 못하게 하고, 한 번에 세는 1초 조각
+    # 수를 묶는다. 다음 요청은 새로 시작한다
+    if state.last_t_ms is not None and req.t_ms - state.last_t_ms > MAX_T_MS_JUMP:
+        return _response(req, cfg, Action.WAIT, [Reason.T_MS_JUMP.value], initial_state())
 
     sink = EventSink(state)
     tick, run = _round(req, judges, cfg, state, sink)

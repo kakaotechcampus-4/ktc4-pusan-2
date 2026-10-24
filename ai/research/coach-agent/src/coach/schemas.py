@@ -24,6 +24,13 @@ from .vocab import (
     StrategyChange,
 )
 
+#: 계약 상수(features/coach-agent.md 5-2). config.py 에 두지 않는다 — 설정 해시(판정 기준 버전)가
+#: 바뀌면 안 된다
+#: t_ms 상한: Take 최대 1시간 + 60초. evaluate 와 finalize 가 함께 쓴다
+MAX_T_MS = 3_660_000
+#: 지난 처리 시각보다 이만큼 넘게 앞선 요청은 처리하지 않는다(T_MS_JUMP)
+MAX_T_MS_JUMP = 60_000
+
 
 class _In(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -148,7 +155,7 @@ class Calibration(_In):
 class CoachRequest(_In):
     take_id: str
     #: Take 시작 기준 경과 ms. 모든 시각이 이 시간축이다
-    t_ms: int = Field(ge=0)
+    t_ms: int = Field(ge=0, le=MAX_T_MS)
     mode: Mode = Mode.COACHING
     plan: Plan = Field(default_factory=Plan)
     missions: list[Mission] = Field(default_factory=list)
@@ -434,7 +441,7 @@ class FinalizeRequest(_In):
     schema_version: str = SCHEMA_VERSION
     take_id: str
     #: Take 가 끝난 시각
-    t_ms: int = Field(ge=0)
+    t_ms: int = Field(ge=0, le=MAX_T_MS)
     mode: Mode = Mode.COACHING
     plan: Plan = Field(default_factory=Plan)
     missions: list[Mission] = Field(default_factory=list)

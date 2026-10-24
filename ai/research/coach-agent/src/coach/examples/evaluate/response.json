@@ -829,21 +829,21 @@
       "GAZE_ON_SCRIPT:3": 88000
     },
     "cursors": {
-      "filler": {
+      "gaze": {
         "since_ms": 92000,
-        "words_since_ms": 90100
+        "words_since_ms": -1
       },
       "pace": {
         "since_ms": 92000,
         "words_since_ms": 90100
       },
-      "gaze": {
-        "since_ms": 92000,
-        "words_since_ms": -1
-      },
       "volume": {
         "since_ms": 92000,
         "words_since_ms": -1
+      },
+      "filler": {
+        "since_ms": 92000,
+        "words_since_ms": 90100
       },
       "timing": {
         "since_ms": 92000,
@@ -1037,6 +1037,7 @@
       "2": 29990,
       "3": 32610
     },
+    "slide_dwell_offset_ms": {},
     "base_level_db": -29.5,
     "base_level_source": "CALIBRATION",
     "baseline_samples": [],

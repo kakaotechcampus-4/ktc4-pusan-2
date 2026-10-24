@@ -167,6 +167,9 @@ class CoachState(_S):
     slide_spans: dict[str, list[int]] = Field(default_factory=dict)
     #: 장 번호별로 STT 를 믿을 수 있던 시간 (timing 이 글자 수로 진행도를 쟤도 되는지 정한다)
     slide_stt_ok_ms: dict[str, int] = Field(default_factory=dict)
+    #: 장 번호(문자열) → ms. 새로 시작한 상태에서 창 밖이라 세지 못한 지금 장 머문 시간.
+    #: 시간 판정의 머문 시간에만 더한다(합계 · Take 결과에는 넣지 않는다)
+    slide_dwell_offset_ms: dict[str, int] = Field(default_factory=dict)
     #: 기준 음량(dBFS)과 출처(CALIBRATION · TAKE), 잡기 전까지 모은 말한 1초의 레벨
     base_level_db: float | None = None
     base_level_source: str | None = None

@@ -104,6 +104,7 @@ def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) 
     t = req.t_ms
     out = JudgeRun()
     out.summarize = lambda area, totals: summarize(judges, area, totals, cfg)
+    _start_fresh(req, state)
     prev_ms = _round_start(state)
     slide = _note_slide(req, state)
     _track_stt(state, inputs, t, out)
@@ -185,7 +186,7 @@ def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) 
         "plan": req.plan.model_dump(mode="json"),
         "slide": slide.model_dump() if slide else None,
         "slide_chars": slide_chars,
-        "slide_dwell_ms": _per_slide(state, "TIME", "elapsed_ms"),
+        "slide_dwell_ms": _dwell_ms(state),
         "slide_stt_ok_ms": dict(state.slide_stt_ok_ms),
         "pace": {
             "cpm": pace_result.metrics.get("cpm"),
@@ -213,11 +214,33 @@ def skip(req: CoachRequest, state: CoachState) -> None:
     빠져나오게 하려는 것이다.
     """
     t = req.t_ms
+    _start_fresh(req, state)
     prev_ms = _round_start(state)
     _note_slide(req, state)
     max_end = max((w.end_ms for w in req.inputs.words), default=None)
     by_module = {name: _fallback(name, state, t, max_end) for name in _AREAS}
     _commit(state, by_module, prev_ms, t, trusted=False, failed=set(_AREAS))
+
+
+def _start_fresh(req: CoachRequest, state: CoachState) -> None:
+    """새로 시작한 상태(last_t_ms 없음)의 첫 요청이면 시각 커서를 창 앞에서 시작한다.
+
+    Take 후반에 새로 시작해도 첫 요청이 Take 앞부분 전체를 세지 않도록, 커서가 아직 없는 모듈의
+    시각 커서를 max(0, t − 30초)에 둔다(단어 커서는 60초 창으로 묶이므로 그대로). 창 밖은 셀
+    원자료가 없고 센 구간에도 넣지 않는다(종료 때 replay 로 다시 만든다). 다만 시간 판정의 머문
+    시간은 max(커서, 장 시작)부터 세므로, 지금 장의 창 밖 몫을 미리 slide_dwell_offset_ms 에 둔다.
+    """
+    if state.last_t_ms is not None:
+        return
+    start = max(0, req.t_ms - GAZE_VOICE_WINDOW_MS)
+    for name in _AREAS:
+        state.cursors.setdefault(name, Cursor(since_ms=start))
+    slide = req.inputs.slide
+    if slide is not None:
+        outside = max(0, start - slide.started_ms)
+        if outside:
+            key = str(slide.number)
+            state.slide_dwell_offset_ms[key] = state.slide_dwell_offset_ms.get(key, 0) + outside
 
 
 def _round_start(state: CoachState) -> int:
@@ -283,6 +306,14 @@ def _fillers(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _per_slide(state: CoachState, area: str, name: str) -> dict[str, int]:
     """장 번호(문자열) → 그 장 합계 중 area 의 name."""
     return {k: int(v[area].get(name, 0)) for k, v in state.slide_totals.items() if area in v}
+
+
+def _dwell_ms(state: CoachState) -> dict[str, int]:
+    """장 번호(문자열) → 시간 판정에 넘길 머문 시간: 센 시간 + 창 밖이라 못 센 몫(오프셋)."""
+    dwell = _per_slide(state, "TIME", "elapsed_ms")
+    for key, offset in state.slide_dwell_offset_ms.items():
+        dwell[key] = dwell.get(key, 0) + offset
+    return dwell
 
 
 def _track_stt(state: CoachState, inputs: CoachInputs, t: int, out: JudgeRun) -> None:
