@@ -88,13 +88,6 @@ export type GazeExcludedReason =
 /** NORMAL 정상 · LIGHT 경량 모드 · OFF 시선 없이 진행 */
 export type GazeEngineProfile = 'NORMAL' | 'LIGHT' | 'OFF';
 
-export interface ApiError {
-  code: string;
-  /** 화면에 그대로 노출 가능한 문구 */
-  message: string;
-  detail: string | null;
-}
-
 /* ------------------------------------------------------------------ */
 /* Pitch · 자료 · 대본                                                  */
 /*                                                                     */
@@ -191,74 +184,11 @@ export interface ReportGaze {
 }
 
 /* ------------------------------------------------------------------ */
-/* 홈 · 비교                                                            */
-/* ------------------------------------------------------------------ */
-
-export interface HomeResponse {
-  nearestPitch: { title: string; daysUntil: number } | null;
-  nextMission: {
-    pitchId: string;
-    nextTakeNumber: number;
-    missions: { id: string; priority: number; description: string }[];
-  } | null;
-  weeklyTakeCount: number;
-  weeklyDelta: number;
-  pitches: {
-    id: string;
-    title: string;
-    timeLimitSec: number;
-    daysUntil: number;
-    presentationVersion: number;
-    scriptVersion: number;
-    bestTakeId: string | null;
-    takes: { id: string; takeNumber: number; status: TakeStatus; isBest: boolean }[];
-  }[];
-  inProgressTake: { takeId: string; pitchTitle: string; startedAt: string } | null;
-}
-
-export interface ComparisonResponse {
-  bestTakeId: string | null;
-  /** 행들의 engineVersion이 하나라도 다르면 false — 추세선을 그리지 않습니다 */
-  gazeComparable: boolean;
-  recommendedTakeId: string | null;
-  recommendReasons: string[];
-  rows: {
-    takeId: string;
-    takeNumber: number;
-    date: string;
-    durationMs: Ms;
-    overTimeMs: Ms;
-    averageWpm: number;
-    fillerCount: number;
-    cameraMs: Ms | null;
-    bottomMs: Ms | null;
-    measuredMs: Ms | null;
-    scriptSimilarity: number;
-    gazeEngineVersion: string;
-    gazeReliability: 'HIGH' | 'MEDIUM' | 'LOW' | null;
-    scriptDependencyCount: number;
-    scriptMode: ScriptMode;
-    isBest: boolean;
-  }[];
-  missionResults: {
-    takeNumber: number;
-    missions: { id: string; description: string; result: 'DONE' | 'PARTIAL' | 'MISSED' }[];
-  }[];
-}
-
-/* ------------------------------------------------------------------ */
 /* 리허설 준비 (P4) · 장치 점검                                         */
 /*                                                                     */
 /* ★ 명세 8-4에 아직 없는 화면입니다. 시안 기준의 잠정 형태이고,        */
 /*   명세가 나오면 다른 타입과 같이 여기서부터 고칩니다.                */
 /* ------------------------------------------------------------------ */
-
-/** 사용자가 직접 적은 평가 기준. 준비 화면에서는 읽기 전용입니다 */
-export interface EvalCriterion {
-  id: string;
-  order: number;
-  text: string;
-}
 
 /**
  * 장치 점검 준비 정보 — `GET /api/pitches/{pitch_id}/prepare` (BE #296 `PrepareDTO`). BE 그대로 snake_case 입니다.
