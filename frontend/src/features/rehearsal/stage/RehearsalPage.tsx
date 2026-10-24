@@ -88,6 +88,8 @@ interface Resume {
   fromMs: Ms;
   /** 이어받은 슬라이드로 넘어온 시각. 처음이면 null */
   slideAt: Ms | null;
+  /** 이어받은 장 넘김 기록 전체. 처음이거나 못 읽었으면 비어 있습니다 — WS `slide` 로 다시 보냅니다 */
+  slideHistory: { atMs: Ms; slideNumber: number }[];
   coach: CoachHistory | null;
   /** 끝내기를 누른 뒤에 새로고침했으면 그때 고정한 값. 무대를 열지 않고 종료를 이어갑니다 */
   ending: Ending | null;
@@ -100,10 +102,14 @@ interface Resume {
   left: LeftWindow | null;
 }
 
+/** 이어받은 장 넘김 기록이 없을 때. 렌더마다 새 배열을 만들지 않게 둡니다 */
+const NO_SLIDES: Resume['slideHistory'] = [];
+
 const freshResume = (sessionId: string | null): Resume => ({
   sessionId,
   fromMs: 0,
   slideAt: null,
+  slideHistory: [],
   coach: null,
   ending: null,
   submitted: false,
@@ -273,7 +279,7 @@ export function RehearsalPage() {
     enabled: running,
     slideNumber,
     slideStartedAtRef,
-    resumedAt: resume?.slideAt ?? null,
+    history: resume?.slideHistory ?? NO_SLIDES,
     send: sendSlide,
   });
   // 1초마다 시선 · 음량 · 슬라이드(참고값)를 WS `metrics` 로 보냅니다. 서버의 실시간 코치와 Take 결과의 재료입니다
@@ -360,6 +366,7 @@ export function RehearsalPage() {
       // 행은 읽었으니 세션은 잇습니다. 기록을 못 읽으면 슬라이드·코치만 처음부터입니다 —
       // 아래 catch 로 보내면 행까지 버려 기록이 하나도 안 쌓이고 시계도 0 부터 돕니다
       let slide: ReturnType<typeof lastSlide> = null;
+      let slideHistory: Resume['slideHistory'] = [];
       let coach: CoachHistory | null = null;
       let recordedUntil: Ms = 0;
       try {
@@ -369,6 +376,7 @@ export function RehearsalPage() {
           readGazeSamples(id),
         ]);
         slide = lastSlide(changes);
+        slideHistory = changes;
         coach = coachHistory(coachRows);
         recordedUntil = recordedUntilMs({
           gaze: samples,
@@ -385,6 +393,7 @@ export function RehearsalPage() {
         sessionId: id,
         fromMs: resumeFromMs(row, readClock(takeId), Date.now(), BEAT_MS, recordedUntil),
         slideAt: slide?.atMs ?? null,
+        slideHistory,
         coach,
         ending:
           row.ending ??

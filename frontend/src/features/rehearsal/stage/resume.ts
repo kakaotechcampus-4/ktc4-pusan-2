@@ -1,3 +1,4 @@
+import type { SlideMessage } from '../lib/sttProtocol';
 import type { Ms, TakeStatus } from '@/types/api';
 
 /**
@@ -238,6 +239,26 @@ export function lastSlide(
     if (!last || c.atMs >= last.atMs) last = { slideNumber: c.slideNumber, atMs: c.atMs };
   }
   return last;
+}
+
+/**
+ * 무대를 열 때 보낼 WS `slide` (`docs/ai/architecture.md` 1-4).
+ *
+ * 이어받았으면 IndexedDB 의 장 넘김 기록을 **전부** 다시 보냅니다. 끊긴 동안 소켓에 쌓였던 장 넘김은
+ * 새로고침과 함께 사라졌고, 사라지는 페이지가 보낸 것도 닿았는지 모릅니다. 하나만 빠져도 장 구간
+ * 나누기에서 그 장의 말이 앞 장으로 들어갑니다. 이미 간 것은 BE 가 `(take_id, started_ms)` 로
+ * 거릅니다 (`coach-agent.md` 12-1). 한 Take 에 수십 개라 다시 보내도 부담이 없습니다.
+ *
+ * 기록이 없으면(처음 시작 · 기록을 못 읽음) 지금 장을 Take 시작(0)으로 보냅니다.
+ */
+export function openingSlides(
+  history: readonly { atMs: Ms; slideNumber: number }[],
+  current: number,
+): SlideMessage[] {
+  if (history.length === 0) return [{ type: 'slide', slide_number: current, t_ms: 0 }];
+  return [...history]
+    .sort((a, b) => a.atMs - b.atMs)
+    .map((h) => ({ type: 'slide', slide_number: h.slideNumber, t_ms: h.atMs }));
 }
 
 /** 코치가 마지막으로 말한 시각. 쿨다운을 이어가는 데 씁니다 */
