@@ -80,7 +80,7 @@ def error(status: int, code: str, message: str = "m") -> httpx.Response:
 
 
 EVALUATE = {"take_id": "take-1", "t_ms": 92000}
-FINALIZE = {"take_id": "take-1", "t_ms": 92000}
+FINALIZE = {"take_id": example("finalize/response.json")["take_result"]["take_id"], "t_ms": 92000}
 PLAN = {"pitch_id": "p-1"}
 
 

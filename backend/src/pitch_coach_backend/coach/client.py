@@ -150,7 +150,7 @@ class _AreaView(_View):
 
 class _TakeResultView(_View):
     take_id: str
-    duration_ms: int
+    duration_ms: int = Field(strict=True, ge=0, le=MAX_T_MS)
     areas: dict[str, _AreaView]
 
 
@@ -575,6 +575,12 @@ class HttpCoachClient:
             # 다시 불러도 같은 모양이 온다. 오류 위치만 남긴다 (값에 대본 · 전사가 있을 수 있다)
             where = ",".join(".".join(map(str, e["loc"])) for e in exc.errors()[:3])
             raise _Failure(f"응답 모양이 계약과 다르다 at={where}", retryable=False) from exc
+        if isinstance(reply, FinalizeReply) and (
+            reply.take_result["take_id"] != request.get("take_id")
+            or reply.take_result["duration_ms"] != request.get("t_ms")
+        ):
+            # 다른 Take · 종료 시각의 결과를 저장하면 원자료까지 삭제될 수 있다.
+            raise _Failure("finalize 응답이 요청한 Take · 종료 시각과 다르다", retryable=False)
         version = str(reply.meta["schema_version"])
         if version.split(".", 1)[0] != SCHEMA_MAJOR:
             raise _Failure(f"모르는 schema_version={version}", retryable=False)
