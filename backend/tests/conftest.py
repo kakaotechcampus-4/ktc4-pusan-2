@@ -191,6 +191,10 @@ async def _no_coach_background(client: object, store: object):
     return stop
 
 
+async def _no_rubric_resume() -> None:
+    return None
+
+
 @pytest.fixture
 def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient]:
     from pitch_coach_backend import main
@@ -209,6 +213,8 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[Te
     monkeypatch.setattr(main, "start_ready_sweep", _no_ready_sweep)
     # 같은 이유로 만들다 만 Take 결과 이어 가기 · 원자료 보관 주기 작업도 막는다
     monkeypatch.setattr(main, "start_coach_background", _no_coach_background)
+    # 남은 평가 기준 작업도 SessionLocal 로 읽고 실제 AI 를 부른다. 막는다
+    monkeypatch.setattr(main, "resume_script_rubrics", _no_rubric_resume)
     app.dependency_overrides[get_db] = lambda: db_session
     # 업로드 뒤 백그라운드 대본 파싱이 실제 AI 서버를 부르지 않게 막는다.
     # 파싱을 확인하는 테스트는 가짜 파서를 끼운 runner 로 다시 바꿔 끼운다

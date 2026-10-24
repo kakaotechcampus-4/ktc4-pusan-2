@@ -119,6 +119,15 @@ class ScriptParseStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class ScriptRubricStatus(StrEnum):
+    """대본 버전의 장별 평가 기준(`/scripts/rubric`) 만들기 상태. null 은 아직 시작하지 않음."""
+
+    PENDING = "PENDING"
+    DONE = "DONE"  # 모든 장 성공
+    PARTIAL = "PARTIAL"  # 다시 부른 뒤에도 실패한 장이 남음
+    FAILED = "FAILED"  # 모든 장 실패
+
+
 class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """대본의 한 버전. 원문은 content, AI 가 슬라이드 단위로 나눈 결과는 ScriptSlide 에 있다.
 
@@ -166,8 +175,12 @@ class ScriptVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     # 제한 시간이 바뀌어도 다시 파싱하지 않고, 쓰는 쪽이 expected_ms 를 이 target_ms 에 대한 비율로
     # 읽는다 (docs/ai/features/script-parser.md 12-2). meta 를 주지 않은 AI 응답이면 비어 있다
     parse_meta: Mapped[Any | None] = mapped_column(JSONB)
-    # FAILED 원인 코드 (dto.ScriptParseErrorCode). 상세 원인은 서버 로그에만 남긴다
+    # FAILED 원인 코드 (dto.ScriptParseErrorCode). 상세 원인은 서버 로그에만 남긴다.
+    # DONE 인데 REPARSE_MISMATCH 면 다시 파싱한 결과가 저장본과 달라 적용하지 않았다는 뜻이다
     parse_error: Mapped[str | None] = mapped_column(String(32))
+    # 평가 기준 만들기 작업 (ScriptRubricStatus). rubric_requested_at 은 작업을 시작·이어받은
+    # 시각이자 작업의 표식이고, rubric_retry_used 는 버전마다 한 번인 재시도를 썼는가다
+    # (보내기 전에 true). docs/ai/architecture.md 1-7
     rubric_status: Mapped[str | None] = mapped_column(String(16))
     rubric_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rubric_retry_used: Mapped[bool] = mapped_column(
@@ -203,6 +216,8 @@ class ScriptSlide(UUIDPrimaryKeyMixin, Base):
     # 이 칸이 생기기 전에 파싱한 행과, 이 값을 주지 않은 AI 응답이면 비어 있다
     script_chars: Mapped[int | None] = mapped_column(Integer)
     expected_ms: Mapped[int | None] = mapped_column(Integer)
+    # 이 장의 평가 기준 (`/scripts/rubric` 응답 rubrics[] 의 그 장 것 그대로)과 그 응답의 meta.
+    # 비어 있으면 아직 없거나 만들기가 실패한 장. 첫 성공본을 덮지 않는다
     rubric: Mapped[Any | None] = mapped_column(JSONB)
     rubric_meta: Mapped[Any | None] = mapped_column(JSONB)
 

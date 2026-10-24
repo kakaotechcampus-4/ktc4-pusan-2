@@ -23,7 +23,7 @@ from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.main import app
 from pitch_coach_backend.module.pitch import service
 from pitch_coach_backend.module.pitch.dependencies import get_script_parse_runner
-from pitch_coach_backend.module.pitch.dto import ParseTicket, ScriptParseErrorCode
+from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket, ScriptParseErrorCode
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     ScriptParseStatus,
@@ -611,12 +611,12 @@ def test_old_job_cannot_overwrite_a_newer_attempt(
     assert new.requested_at != old.requested_at
 
     # 옛 작업의 성공도 실패도 반영되지 않는다
-    assert service.complete_parse(db_session, old, TWO_SLIDES) is False
+    assert service.complete_parse(db_session, old, TWO_SLIDES) is ParseSaved.STALE
     assert service.fail_parse(db_session, old, ScriptParseErrorCode.AI_ERROR) is False
     assert _get(client, pitch_id, script_id, auth_headers).json()["parse_status"] == "PENDING"
 
     # 새 작업은 반영된다. 끝난 뒤에는 같은 작업이 다시 와도 무시된다 (중복 실행 방지)
-    assert service.complete_parse(db_session, new, TWO_SLIDES) is True
+    assert service.complete_parse(db_session, new, TWO_SLIDES) is ParseSaved.APPLIED
     assert service.fail_parse(db_session, new, ScriptParseErrorCode.AI_ERROR) is False
     body = _get(client, pitch_id, script_id, auth_headers).json()
     assert body["parse_status"] == "DONE"
@@ -674,7 +674,7 @@ def test_expired_job_cannot_flip_failed_back_to_done(
     _age(db_session, script_id, service.PARSE_EXPIRE_AFTER.total_seconds() + 1)
     late = _ticket(db_session, script_id)
 
-    assert service.complete_parse(db_session, late, TWO_SLIDES) is False
+    assert service.complete_parse(db_session, late, TWO_SLIDES) is ParseSaved.STALE
     assert service.fail_parse(db_session, late, ScriptParseErrorCode.AI_ERROR) is False
 
     body = _get(client, pitch_id, script_id, auth_headers).json()
@@ -838,7 +838,7 @@ def test_save_failure_ends_as_failed_not_pending(
     """결과 저장이 값 문제로 실패하면 FAILED(INTERNAL_ERROR). PENDING 으로 두면 FE 가 90초를
     기다린 뒤 엉뚱한 PARSE_EXPIRED 를 받는다."""
 
-    def broken_complete(*args: object) -> bool:
+    def broken_complete(*args: object) -> ParseSaved:
         raise ValueError("저장할 수 없는 값")
 
     monkeypatch.setattr(service, "complete_parse", broken_complete)
