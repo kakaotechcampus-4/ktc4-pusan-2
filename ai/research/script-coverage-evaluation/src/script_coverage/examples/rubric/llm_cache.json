@@ -1,0 +1,311 @@
+[
+  {
+    "kind": "script.final",
+    "key": "286fe5aa5c9c6899c49129f3e2467159fa62c528b88a2c626c1d663cebfbc01a",
+    "config_hash": "83cb79b10a03",
+    "output": {
+      "sentence_roles": [
+        {
+          "id": 0,
+          "role": "evidence"
+        },
+        {
+          "id": 1,
+          "role": "claim"
+        },
+        {
+          "id": 2,
+          "role": "detail"
+        }
+      ],
+      "core_claim": "열람실 좌석 예약 시스템 시장의 초기 대상은 약 900곳이며 연간 시장 규모는 약 24억 원에서 36억 원이다.",
+      "key_points": [
+        {
+          "content": "국내 공공도서관은 약 1,200곳이고 대학 도서관은 약 430곳이다.",
+          "sentence_ids": [
+            0
+          ]
+        },
+        {
+          "content": "열람실 좌석 예약 시스템을 이미 쓰는 초기 대상은 약 900곳이며 연간 시장 규모는 약 24억 원에서 36억 원으로 추산했다.",
+          "sentence_ids": [
+            1
+          ]
+        },
+        {
+          "content": "초기에는 이용자가 가장 많은 서울과 대전의 대학 도서관부터 시작한다.",
+          "sentence_ids": [
+            2
+          ]
+        }
+      ],
+      "name_verdicts": [
+        {
+          "candidate_id": "N1",
+          "keep": false,
+          "reason": "일반적인 시스템 설명에 해당하는 4어절 이상의 구절이므로 그대로 말해야 하는 고유 용어는 아니다."
+        },
+        {
+          "candidate_id": "N2",
+          "keep": true,
+          "reason": "공략 시작 지역을 나타내는 고유명사이므로 서울이라는 명칭을 유지해야 한다."
+        },
+        {
+          "candidate_id": "N3",
+          "keep": true,
+          "reason": "공략 시작 지역을 나타내는 고유명사이므로 대전이라는 명칭을 유지해야 한다."
+        }
+      ],
+      "changes": [
+        "N1은 코드 경고와 대본의 일반적 표현이라는 점을 반영해 고정해야 하는 이름·용어가 아닌 것으로 판정했다."
+      ]
+    }
+  },
+  {
+    "kind": "script.final",
+    "key": "b8854923e90994c3d22c969aeecc4af138d2e810a0b7f6e5022985e0d42ef1af",
+    "config_hash": "83cb79b10a03",
+    "output": {
+      "sentence_roles": [
+        {
+          "id": 0,
+          "role": "detail"
+        },
+        {
+          "id": 1,
+          "role": "claim"
+        },
+        {
+          "id": 2,
+          "role": "evidence"
+        },
+        {
+          "id": 3,
+          "role": "evidence"
+        },
+        {
+          "id": 4,
+          "role": "evidence"
+        }
+      ],
+      "core_claim": "시범 운영 결과 빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄었다.",
+      "key_points": [
+        {
+          "content": "2025년 3월부터 8주 동안 제휴 도서관 3곳에서 시범 운영을 했다.",
+          "sentence_ids": [
+            0
+          ]
+        },
+        {
+          "content": "빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄었다.",
+          "sentence_ids": [
+            1
+          ]
+        },
+        {
+          "content": "알림을 받고 10분 안에 자리를 잡은 비율이 76%이다.",
+          "sentence_ids": [
+            2
+          ]
+        },
+        {
+          "content": "노쇼 비율이 18%에서 7%로 낮아졌다.",
+          "sentence_ids": [
+            3
+          ]
+        },
+        {
+          "content": "시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했다.",
+          "sentence_ids": [
+            4
+          ]
+        }
+      ],
+      "name_verdicts": [],
+      "changes": []
+    }
+  },
+  {
+    "kind": "script.semantic",
+    "key": "2c80d08e9afdcd4a1ad597ac61a127130a7532b1085ce5a0a6aa508ce684211d",
+    "config_hash": "f7b2ef94d4e7",
+    "output": {
+      "sentence_roles": [
+        {
+          "id": 0,
+          "role": "evidence"
+        },
+        {
+          "id": 1,
+          "role": "claim"
+        },
+        {
+          "id": 2,
+          "role": "detail"
+        }
+      ],
+      "core_claim": "열람실 좌석 예약 시스템 시장의 초기 대상은 약 900곳이며 연간 시장 규모는 약 24억 원에서 36억 원이다.",
+      "key_points": [
+        {
+          "content": "국내 공공도서관은 약 1,200곳이고 대학 도서관은 약 430곳이다.",
+          "sentence_ids": [
+            0
+          ],
+          "key_terms": []
+        },
+        {
+          "content": "열람실 좌석 예약 시스템을 이미 쓰는 초기 대상은 약 900곳이며 연간 시장 규모는 약 24억 원에서 36억 원으로 추산했다.",
+          "sentence_ids": [
+            1
+          ],
+          "key_terms": [
+            "열람실 좌석 예약 시스템"
+          ]
+        },
+        {
+          "content": "초기에는 이용자가 가장 많은 서울과 대전의 대학 도서관부터 시작한다.",
+          "sentence_ids": [
+            2
+          ],
+          "key_terms": [
+            "서울",
+            "대전"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind": "script.semantic",
+    "key": "d211dcdd3f197a1f93540587dded4e2c54dda186e91eae954f1925023f1f1a3e",
+    "config_hash": "f7b2ef94d4e7",
+    "output": {
+      "sentence_roles": [
+        {
+          "id": 0,
+          "role": "detail"
+        },
+        {
+          "id": 1,
+          "role": "claim"
+        },
+        {
+          "id": 2,
+          "role": "evidence"
+        },
+        {
+          "id": 3,
+          "role": "evidence"
+        },
+        {
+          "id": 4,
+          "role": "evidence"
+        }
+      ],
+      "core_claim": "시범 운영 결과 빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄었다.",
+      "key_points": [
+        {
+          "content": "2025년 3월부터 8주 동안 제휴 도서관 3곳에서 시범 운영을 했다.",
+          "sentence_ids": [
+            0
+          ],
+          "key_terms": []
+        },
+        {
+          "content": "빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄었다.",
+          "sentence_ids": [
+            1
+          ],
+          "key_terms": []
+        },
+        {
+          "content": "알림을 받고 10분 안에 자리를 잡은 비율이 76%이다.",
+          "sentence_ids": [
+            2
+          ],
+          "key_terms": []
+        },
+        {
+          "content": "노쇼 비율이 18%에서 7%로 낮아졌다.",
+          "sentence_ids": [
+            3
+          ],
+          "key_terms": []
+        },
+        {
+          "content": "시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했다.",
+          "sentence_ids": [
+            4
+          ],
+          "key_terms": []
+        }
+      ]
+    }
+  },
+  {
+    "kind": "script.units",
+    "key": "6c0991935582ece7374eb8d38d5cfe1bcd03b2cd053894385235bae14b89a68a",
+    "config_hash": "1e964b21a6bf",
+    "output": {
+      "sentences": [
+        {
+          "sentence_id": 0,
+          "units": [
+            {
+              "text": "2025년 3월부터 시범 운영함",
+              "quote": "2025년 3월부터"
+            },
+            {
+              "text": "8주 동안 시범 운영함",
+              "quote": "8주 동안"
+            },
+            {
+              "text": "제휴 도서관 3곳에서 시범 운영함",
+              "quote": "제휴 도서관 3곳"
+            }
+          ]
+        },
+        {
+          "sentence_id": 1,
+          "units": [
+            {
+              "text": "참여한 이용자는 1,860명이었음",
+              "quote": "참여한 이용자는 1,860명"
+            },
+            {
+              "text": "빈자리를 찾는 데 걸린 시간이 평균 23분에서 13분으로 약 42퍼센트 줄어듦",
+              "quote": "빈자리를 찾는 데 걸린 시간은 평균 23분에서 13분으로 약 42퍼센트 줄었습니다"
+            }
+          ]
+        },
+        {
+          "sentence_id": 2,
+          "units": [
+            {
+              "text": "알림을 받고 10분 안에 자리를 잡은 비율은 76%였음",
+              "quote": "알림을 받고 10분 안에 자리를 잡은 비율은 76%"
+            }
+          ]
+        },
+        {
+          "sentence_id": 3,
+          "units": [
+            {
+              "text": "노쇼 비율이 18%에서 7%로 낮아짐",
+              "quote": "노쇼 비율도 18%에서 7%로 낮아졌습니다"
+            }
+          ]
+        },
+        {
+          "sentence_id": 4,
+          "units": [
+            {
+              "text": "시범 운영 뒤 설문에서 이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답함",
+              "quote": "이용자의 85퍼센트 이상이 계속 쓰고 싶다고 답했습니다"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

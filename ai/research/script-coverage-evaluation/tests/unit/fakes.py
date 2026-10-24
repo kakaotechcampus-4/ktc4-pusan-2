@@ -33,3 +33,20 @@ def empty_script_llms(semantic=None, final=None, unit=None) -> tuple[FakeLLM, Fa
         ),
         FakeLLM(unit or SlideUnits(sentences=[])),
     )
+
+
+class SlideFailingLLM(FakeLLM):
+    """메시지의 `[슬라이드 N]` 로 장을 알아보고, `failing` 에 든 장만 예외를 낸다. 부른 장 번호를 남긴다."""
+
+    def __init__(self, result, failing: dict[int, BaseException] | None = None):
+        super().__init__(result)
+        self.failing = failing or {}
+        self.called_slides: list[int] = []
+
+    def invoke(self, messages):
+        self.calls += 1
+        number = int(messages[1][1].split("]", 1)[0].removeprefix("[슬라이드 "))
+        self.called_slides.append(number)
+        if number in self.failing:
+            raise self.failing[number]
+        return self.result
