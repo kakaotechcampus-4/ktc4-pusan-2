@@ -5,7 +5,10 @@ import uuid
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch import service as pitch_service
-from pitch_coach_backend.module.take.coach_repository import CoachRepository
+from pitch_coach_backend.module.take.coach_repository import (
+    CoachRepository,
+)
+from pitch_coach_backend.module.user import service as user_service
 
 
 def start_take(db: Session, take_id: uuid.UUID) -> bool:
@@ -28,10 +31,13 @@ def start_take(db: Session, take_id: uuid.UUID) -> bool:
         db.commit()
         return False
     mission_ids = repo.assign_missions(take_id, pitch_id, before=take_number)
+    pitch = pitch_service.find_pitch(db, pitch_id)
+    owner = user_service.find(db, pitch.user_id) if pitch is not None else None
     repo.fix_started_values(
         take_id,
         mission_ids=mission_ids,
         standard_version=pitch_service.latest_analysis_version(db, pitch_id),
+        raw_data_consent=bool(owner is not None and owner.raw_data_consent),
     )
     db.commit()
     return True

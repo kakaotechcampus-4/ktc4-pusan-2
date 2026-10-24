@@ -113,6 +113,10 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
 
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    raw_data_consent: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
 
 class TakeAIResults(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """AI 결과. (take_id, kind) 마다 하나다.

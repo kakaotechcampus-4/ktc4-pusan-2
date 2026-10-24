@@ -666,3 +666,7 @@ def criteria_for_version(
         "targets": analysis.targets if analysis is not None else [],
         "script_used": analysis.script_used if analysis is not None else None,
     }
+
+
+def find_pitch(db: Session, pitch_id: uuid.UUID) -> Pitch | None:
+    return PitchRepository(db).get_by_id(pitch_id)
