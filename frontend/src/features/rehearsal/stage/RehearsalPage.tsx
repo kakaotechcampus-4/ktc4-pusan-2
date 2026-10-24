@@ -7,7 +7,7 @@ import { useVideoStream } from '../media/useVideoStream';
 import { usePrepareStore } from '../prepare/prepareStore';
 import { useAbandonTake, useEndTake } from '@/shared/api/take';
 import { ApiFailure } from '@/shared/api/tokenStore';
-import { ButtonLink } from '@/shared/ui/Button';
+import { Button, ButtonLink } from '@/shared/ui/Button';
 import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
@@ -1036,16 +1036,20 @@ function StartGateNotice({
   const stuck =
     gate.kind === 'NO_MIC' || gate.kind === 'FAILED' || (gate.kind === 'CONNECTING' && gate.slow);
   return (
-    <div className="start-gate" role="status">
-      <p>{text}</p>
-      {stuck && (
-        <div className="actions">
-          <button type="button" onClick={onRetry}>
-            다시 시도
-          </button>
-          {pitchId && <ButtonLink to={`/pitch/${pitchId}/device-check`}>장치 점검으로</ButtonLink>}
-        </div>
-      )}
+    <div className="start-gate" role="status" data-stuck={stuck || undefined}>
+      <div className="box">
+        <p>{text}</p>
+        {stuck && (
+          <div className="actions">
+            <Button onClick={onRetry}>다시 시도</Button>
+            {pitchId && (
+              <ButtonLink variant="secondary" to={`/pitch/${pitchId}/device-check`}>
+                장치 점검으로
+              </ButtonLink>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
