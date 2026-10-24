@@ -520,8 +520,13 @@ describe('1초 측정값 (metrics)', () => {
   });
 
   describe('새로고침 (handOffMetrics · restoredMetrics)', () => {
-    const parsed = (data: readonly string[]) =>
-      data.map((d) => JSON.parse(d) as { t_ms: number; buffered?: boolean });
+    /** 넘긴 것의 `data` 를 읽고, 바깥 `tMs` 가 그 `t_ms` 와 같은지도 봅니다 */
+    const parsed = (handed: readonly { tMs: number; data: string }[]) =>
+      handed.map(({ tMs, data }) => {
+        const message = JSON.parse(data) as { t_ms: number; buffered?: boolean };
+        expect(tMs).toBe(message.t_ms);
+        return message;
+      });
 
     it('끊겨 있으면 쌓아 둔 것과 방금 받은 것을 모두 넘긴다', async () => {
       vi.useFakeTimers();
@@ -575,9 +580,10 @@ describe('1초 측정값 (metrics)', () => {
     });
 
     it('넘겨받은 것도 상한(5분)을 넘으면 오래된 것부터 버린다', () => {
-      const restored = Array.from({ length: 301 }, (_, i) =>
-        JSON.stringify({ ...metrics((i + 1) * 1_000), buffered: true }),
-      );
+      const restored = Array.from({ length: 301 }, (_, i) => ({
+        tMs: (i + 1) * 1_000,
+        data: JSON.stringify({ ...metrics((i + 1) * 1_000), buffered: true }),
+      }));
       expect(makeSocket({ restoredMetrics: restored }).bufferedMetrics).toBe(300);
     });
 
@@ -706,7 +712,7 @@ describe('장 변경 (slide)', () => {
     stt.sendSlide(slide(3, 42_300));
     stt.sendMetrics(metrics(43_000));
 
-    const handed = stt.handOffMetrics([]).map((d) => (JSON.parse(d) as { type: string }).type);
+    const handed = stt.handOffMetrics([]).map((d) => (JSON.parse(d.data) as { type: string }).type);
     expect(handed).toEqual(['metrics']);
   });
 
@@ -796,9 +802,10 @@ describe('장 변경 (slide)', () => {
   });
 
   it('넘겨받은 metrics 와 새 페이지가 보낸 장 변경을 시각 순서대로 보낸다', async () => {
-    const restored = [JSON.stringify({ ...metrics(58_000), buffered: true }), 'not json'];
+    const restored = [
+      { tMs: 58_000, data: JSON.stringify({ ...metrics(58_000), buffered: true }) },
+    ];
     const stt = makeSocket({ restoredMetrics: restored });
-    // 읽을 수 없는 것은 버립니다
     expect(stt.bufferedMetrics).toBe(1);
     stt.start();
     await settle();

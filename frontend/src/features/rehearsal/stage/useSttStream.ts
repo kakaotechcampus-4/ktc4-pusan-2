@@ -9,7 +9,7 @@ import {
   type SttState,
   type TranscriptMessage,
 } from '../lib/sttProtocol';
-import { SttSocket } from '../lib/sttSocket';
+import { SttSocket, type HandedMetrics } from '../lib/sttSocket';
 import { PCM_CAPTURE_ERROR_MESSAGE, startPcmCapture, type PcmCapture } from '../media/pcmCapture';
 import type { Ms } from '@/types/api';
 
@@ -60,7 +60,7 @@ export function useSttStream({
    * 새로고침 전 페이지가 못 보낸 `metrics` 를 꺼냅니다 (`takeMetrics`). 소켓을 만들 때 한 번 부르고,
    * 붙자마자 그것부터 보냅니다
    */
-  restoredMetrics?: () => string[];
+  restoredMetrics?: () => HandedMetrics[];
   /**
    * 창을 닫아 끝난 Take 입니다 (`TAKE_ENDED` · `CLOSED`). 닫은 탭을 늦게 복원했거나 다른 창이
    * 실패로 끝냈습니다. 무대는 이어 가지 않고 실패 화면으로 갑니다
@@ -253,7 +253,7 @@ export function useSttStream({
    * (`SttSocket.handOffMetrics`). 소켓이 없으면 `sendMetrics` 처럼 버립니다.
    */
   const handOffMetrics = useCallback(
-    (messages: readonly MetricsMessage[]): string[] =>
+    (messages: readonly MetricsMessage[]): HandedMetrics[] =>
       socketRef.current?.handOffMetrics(messages) ?? [],
     [],
   );

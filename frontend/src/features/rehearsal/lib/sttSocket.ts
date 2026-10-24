@@ -65,14 +65,14 @@ interface PendingEvent {
   data: string;
 }
 
-/** 넘겨받은 `metrics` (JSON 문자열)의 `t_ms`. 읽을 수 없으면 null */
-function restoredTMs(data: string): Ms | null {
-  try {
-    const tMs = (JSON.parse(data) as Partial<MetricsMessage>).t_ms;
-    return typeof tMs === 'number' ? tMs : null;
-  } catch {
-    return null;
-  }
+/**
+ * 새로고침할 때 다음 페이지로 넘기는 `metrics` 하나 (`handOffMetrics` → `restoredMetrics`).
+ * 큐와 같은 모양이라 받는 쪽이 `data` 를 다시 읽어 시각을 꺼낼 필요가 없습니다.
+ * `data` 는 보낼 JSON 그대로(`buffered: true` 포함)입니다
+ */
+export interface HandedMetrics {
+  tMs: Ms;
+  data: string;
 }
 
 /** 빠른 백오프. 이걸 다 쓰면 화면을 `degraded` 로 두고 느린 재시도로 넘어갑니다 */
@@ -149,10 +149,10 @@ export interface SttSocketOptions {
   /** 느린 재시도 간격을 고르는 난수 [0, 1). 테스트에서 간격을 고정하려고 둡니다 */
   random?: () => number;
   /**
-   * 새로고침 전 페이지가 못 보내고 넘긴 `metrics` (JSON 문자열, `handOffMetrics`).
-   * 쌓아 둔 것처럼 다루어 붙자마자 먼저 보냅니다
+   * 새로고침 전 페이지가 못 보내고 넘긴 `metrics` (`handOffMetrics`). 쌓아 둔 것처럼 다루어 붙자마자
+   * 먼저 보냅니다. 저장소에서 꺼낼 때 모양을 확인했습니다 (`takeMetrics`)
    */
-  restoredMetrics?: readonly string[];
+  restoredMetrics?: readonly HandedMetrics[];
   /**
    * 이 페이지에서 보낸 장 변경 전부 (`useSttStream` 이 들고 있음). `ready` 를 받을 때마다 **전부** 다시 보냅니다.
    *
@@ -230,10 +230,8 @@ export class SttSocket {
 
   constructor(options: SttSocketOptions) {
     this.options = options;
-    for (const data of (options.restoredMetrics ?? []).slice(-MAX_PENDING_METRICS)) {
-      const tMs = restoredTMs(data);
-      // 읽을 수 없는 것은 버립니다 — 시각을 모르면 순서를 맞춰 보낼 수 없습니다
-      if (tMs !== null) this.pendingEvents.push({ kind: 'metrics', tMs, data });
+    for (const { tMs, data } of (options.restoredMetrics ?? []).slice(-MAX_PENDING_METRICS)) {
+      this.pendingEvents.push({ kind: 'metrics', tMs, data });
     }
     this.pendingMetricsCount = this.pendingEvents.length;
   }
@@ -345,7 +343,7 @@ export class SttSocket {
    * 두 번 가도 BE 는 먼저 받은 것을 둡니다 (`architecture.md` 6-2). 쌓아 둔 것은 비우지 않습니다 —
    * 페이지가 되살아나면(bfcache) 다시 붙어 보냅니다.
    */
-  handOffMetrics(messages: readonly MetricsMessage[]): string[] {
+  handOffMetrics(messages: readonly MetricsMessage[]): HandedMetrics[] {
     if (this.disposed || this.stopping) return [];
 
     if (!(this.ready && this.socket)) {
@@ -353,7 +351,10 @@ export class SttSocket {
       return this.queuedMetrics();
     }
     for (const message of messages) this.socket.send(JSON.stringify(message));
-    const sent = messages.map((message) => JSON.stringify({ ...message, buffered: true }));
+    const sent = messages.map((message) => ({
+      tMs: message.t_ms,
+      data: JSON.stringify({ ...message, buffered: true }),
+    }));
     return [...this.queuedMetrics(), ...sent].slice(-MAX_PENDING_METRICS);
   }
 
@@ -361,8 +362,10 @@ export class SttSocket {
    * 쌓아 둔 것 중 `metrics` 만. `slide` 는 넘기지 않습니다 — 새 페이지가 IndexedDB 의 장 넘김 기록
    * 전체를 다시 보냅니다 (`useSlideSender`)
    */
-  private queuedMetrics(): string[] {
-    return this.pendingEvents.filter((e) => e.kind === 'metrics').map((e) => e.data);
+  private queuedMetrics(): HandedMetrics[] {
+    return this.pendingEvents
+      .filter((e) => e.kind === 'metrics')
+      .map(({ tMs, data }) => ({ tMs, data }));
   }
 
   /**
