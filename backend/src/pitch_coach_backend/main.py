@@ -15,6 +15,7 @@ from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
 from pitch_coach_backend.module.take.controller import router as take_router
+from pitch_coach_backend.module.take.controller import takes_router
 from pitch_coach_backend.module.take.ready_sweep import start as start_ready_sweep
 from pitch_coach_backend.module.user.controller import router as user_router
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
@@ -90,6 +91,7 @@ api.include_router(auth_router)
 api.include_router(user_router)
 api.include_router(pitch_router)
 api.include_router(take_router)
+api.include_router(takes_router)
 api.include_router(realtime_router)
 
 app.include_router(api)

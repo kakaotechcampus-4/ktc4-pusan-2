@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -5,10 +6,12 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module import hooks
+from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
 from pitch_coach_backend.module.take.dependencies import OwnedTake
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
+    TakeHistoryResponseDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
 )
@@ -20,6 +23,7 @@ from pitch_coach_backend.module.take.service import (
     delete_take_service,
     get_previous_missions_service,
     get_review_result,
+    list_takes_service,
     mark_ended,
     update_take_service,
 )
@@ -107,3 +111,15 @@ def review_take(
 ):
     result = get_review_result(db, take_id)
     return {"message": "Review result retrieved successfully", "review_result": result}
+
+
+# 발표를 가리지 않는 Take 조회. Take 기록은 모든 발표의 Take 를 한 번에 보여 준다
+takes_router = APIRouter(prefix="/takes", tags=["Take"])
+
+@takes_router.get("/", response_model=TakeHistoryResponseDTO)
+def list_takes(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    pitch_id: uuid.UUID | None = None,
+):
+    return list_takes_service(db, current_user.id, pitch_id)

@@ -28,6 +28,8 @@ from pitch_coach_backend.module.take.dto import (
     PreviousTakeDTO,
     ReviewRequestDTO,
     ReviewResponseDTO,
+    TakeHistoryResponseDTO,
+    TakeHistoryRowDTO,
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
     TargetInfoDTO,
@@ -255,6 +257,43 @@ def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
                 priority=mission.priority,
                 completed=mission.complete
             ) for mission in take_repository.get_missions_in_take(latest_take.id)
+        ]
+    )
+
+
+def _percent_to_ratio(value: int | None) -> float | None:
+    # take_summaries 는 비율 × 100 정수로 둔다 (architecture.md 1-1 반올림)
+    return None if value is None else value / 100
+
+
+def list_takes_service(
+    db: Session, user_id: uuid.UUID, pitch_id: uuid.UUID | None = None
+) -> TakeHistoryResponseDTO:
+    """Take 기록 · Take 비교 화면의 Take 목록. 남의 발표나 없는 발표를 주면 404 다."""
+    if pitch_id is not None and PitchRepository(db).get_owned(pitch_id, user_id) is None:
+        raise NonExistentPitch()
+    rows = TakeRepository(db).list_started_takes(user_id, pitch_id)
+    return TakeHistoryResponseDTO(
+        takes=[
+            TakeHistoryRowDTO(
+                take_id=row.take_id,
+                pitch_id=row.pitch_id,
+                pitch_title=row.pitch_title,
+                take_number=row.take_number,
+                started_at=row.started_at,
+                status=row.status,
+                script_mode=row.script_mode,
+                duration_ms=None if row.duration_sec is None else row.duration_sec * 1000,
+                goal_ms=row.goal_time_sec * 1000,
+                audience_ratio=_percent_to_ratio(row.audience_gaze),
+                script_ratio=_percent_to_ratio(row.script_gaze),
+                cpm=row.average_cpm,
+                filler_count=row.filler_count,
+                missions_achieved=row.missions_achieved,
+                missions_total=row.missions_total,
+                gaze_engine=row.gaze_engine,
+            )
+            for row in rows
         ]
     )
 
