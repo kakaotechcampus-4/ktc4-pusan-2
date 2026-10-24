@@ -8,7 +8,7 @@
 |---|---|
 | 담당 | jewon-kim |
 | 기능 버전 | `script_coverage-1.0` (`src/script_coverage/version.py`의 `FEATURE_VERSION`), 평가 기준 형식 `1.2`. 기준 버전 `script_coverage-1.0+<config 해시 12자리>` (`src/script_coverage/config.py`의 `CRITERIA_VERSION`, 임계값 · 점수표를 바꾸면 해시가 달라짐) |
-| 검증한 LLM | OpenAI 호환 API, 모델 `openai/gpt-5.6-luna` |
+| 검증한 LLM | OpenAI 호환 API. 정확도 · 장 수별 시간은 기본 묶음 `openai/gpt-6-luna`, 반복 측정(일관성 · 안정성)은 `openai/gpt-5.6-luna` (8절) |
 | 상태 | v1. **가상 데이터로만 측정했습니다.** 실제 Deepgram 결과와 실제 발표자의 말투로는 아직 측정하지 않았습니다 |
 | 설계 | API 계약 · 평가 기준과 채점 필드 · 처리 · 배포 → [`docs/ai/features/script-coverage-evaluation.md`](../../../docs/ai/features/script-coverage-evaluation.md) |
 
@@ -226,6 +226,7 @@ script-coverage-evaluation/
 | `datasets.py` | 대본 · STT 파일 읽기 |
 | `runs.py` | 최상위 진입 함수를 부르고 DB에 저장하는 연결 다리 (`run_script_analysis`, `run_take_evaluation`). 호출 수는 LLM 객체를 세는 감싸개로 센다 |
 | `examples.py` | `src/script_coverage/examples/`의 API 예시를 연구 캐시로 다시 만든다 (`python -m coverage_lab.examples`) |
+| `deadline_llm.py` | 서비스 `common/llm.py`와 같은 규칙(요청 마감 하나를 모든 호출이 같이 씀 · 호출 한 번 12초 · 남은 시간이 있을 때만 1번 더)으로 LLM을 감싸고 호출 수 · 시간을 기록한다. 장 수별 시간 측정(`07`)이 쓴다 |
 | `results.py` | 지표를 기능 버전 · 기준 버전 · 모델과 함께 `reports/results/*.json`으로 저장 · 읽기 |
 | `rubric_report.py` · `rubric_quality.py` · `rubric_consistency.py` | 평가 기준 요약 표 · 품질 지표 · 같은 대본 반복 분석의 흔들림 |
 | `stt_report.py` · `stt_labels.py` · `stt_checks.py` · `stt_stability.py` | 채점 결과 표 · 정답 라벨 비교 · 충돌 점검과 사용자 확인 뒤 정확도 · 같은 STT 반복 채점의 흔들림 |
@@ -244,8 +245,9 @@ script-coverage-evaluation/
 | `04_evaluate_takes.py` | 연습 18개 채점 | 약 225회 | DB `slide_evaluations` · `similar_items` |
 | `05_accuracy.py` | 정답 비교, 충돌 조건 점검, 사용자 확인 뒤 정확도 | 0회 | `reports/results/stt_accuracy.json` |
 | `06_stability.py` | 같은 STT를 3번 채점해 흔들림 측정 | 약 450회 | `reports/results/stt_stability.json` |
+| `07_timing.py` | 장 수(10 · 20 · 30) × 동시 개수(4 · 8)별로 평가 기준 만들기 · 채점 요청 하나의 시간을 잰다. 캐시를 쓰지 않는다 | 약 330 ~ 510회 (실패한 장은 일찍 멈춘다) | `reports/results/timing.json` |
 
-- `01`이 먼저입니다. `02`~`04`는 `01`의 평가 기준을, `05` · `06`은 `04`의 채점을 읽습니다.
+- `01`이 먼저입니다. `02`~`04`는 `01`의 평가 기준을, `05` · `06`은 `04`의 채점을 읽습니다. `07`은 DB를 쓰지 않아 따로 돌릴 수 있습니다.
 - 비싼 반복 측정(`03`, `06`)은 `RUBRIC_CONSISTENCY_SAMPLES=1` · `STT_CONSISTENCY_SAMPLES=1`로 끌 수 있고, 끄면 결과 JSON을 덮어쓰지 않습니다.
 
 ### 3-5. 나머지
@@ -386,7 +388,7 @@ uv sync                      # Python 3.12, 라이브러리 + 개발 도구 설�
 | 변수 | 필수 | 뜻 |
 |---|---|---|
 | `OPENAI_API_KEY` | 예 | API 키 |
-| `OPENAI_MODEL` | 예 | 모델 이름. 엔드포인트가 허용하는 이름이어야 합니다 (아니면 400). 검증한 값은 `openai/gpt-5.6-luna` |
+| `OPENAI_MODEL` | 예 | 모델 이름. 엔드포인트가 허용하는 이름이어야 합니다 (아니면 400). 검증한 값은 기본 묶음 `openai/gpt-6-luna`와 예전 모델 `openai/gpt-5.6-luna` (8절) |
 | `OPENAI_BASE_URL` | 아니오 | OpenAI 호환 엔드포인트. 없으면 OpenAI 기본 주소 |
 
 - `coverage_lab/llm.py`가 현재 폴더부터 위로 올라가며 처음 만나는 `.env`를 읽고, 없으면 프로젝트 폴더부터 위로 찾습니다. 보통 `ai/.env`가 잡힙니다.
@@ -534,12 +536,41 @@ BE가 배포 환경에서 맡을 저장을 research 에서는 이 표들이 대�
 > 실제 Deepgram 출력과 실제 발표자로는 측정하지 않았습니다. LLM 판정의 실제 정확도는 아직 검증되지 않았습니다.
 > 규칙 부분(수 파서, 수치 검증, 비슷한 말 위치)은 결정적이고 가상 데이터 전체에서 정답과 일치했습니다.
 
-### v1 (기능 버전 `script_coverage-1.0`, 모델 `openai/gpt-5.6-luna`)
+### v1 · 기본 묶음 `openai/gpt-6-luna` (기능 버전 `script_coverage-1.0`)
 
-데이터: 대본 2개(슬라이드 20장, Key Point 80개), 연습 18번(대본당 9개 시나리오), 대본 문장 765개. 숫자는 `reports/results/*.json` 입니다.
+기본 묶음 모델로 `01` → `04` → `05`를 다시 돌린 값입니다(LLM 약 290회). 지금 `reports/results/stt_accuracy.json`은 이 값입니다. 반복 측정(`03` · `06`)은 이 모델로 다시 재지 않아서, `rubric_consistency.json` · `stt_stability.json`은 아래 예전 모델 값입니다. 테스트는 364개(`-m "not live"`)가 통과합니다.
+
+| 지표 (문장 765개 · Key Point 774개 · 사실 729개) | 규칙만 | LLM 1차 | 최종 | 사용자 확인 뒤 |
+|---|---|---|---|---|
+| 대본 문장 판정 정확도 | 0.850 | 0.963 | **0.984** | 0.988 |
+| Key Point 판정 정확도 | 0.848 | 0.960 | **0.983** | 0.987 |
+| 심각한 오판 (문장) | — | 2.2% | **0.5%** | — |
+| 핵심 사실 정확도 (보류 17개 제외) | | | 0.996 | 0.996 |
+| 슬라이드 내용 점수 평균 오차 | | | 0.016 | 0.006 |
+
+- 예전 모델보다 최종 정확도가 약 0.8%p 낮습니다. 가장 많이 내려간 것은 요약형 발표(take8, 문장 0.965 → 0.918 · Key Point 0.963 → 0.907)입니다. 평가 기준도 새 모델로 다시 만들어 Key Point 수가 720 → 774개로 달라졌습니다.
+
+**장 수별 소요 시간** (`07_timing.py` → `timing.json`, 같은 모델, 캐시 없음, 서비스와 같은 규칙: 요청 마감 120초 · 호출 한 번 12초 · 남은 시간이 있으면 1번 더)
+
+| 장 수 | 동시 개수 | 평가 기준 만들기 (초 · 실패 장) | 채점 (초) |
+|---|---|---|---|
+| 10 | 4 | 110 · 6장 시간 초과 | 6 |
+| 10 | 8 | 68 · 3장 시간 초과 | 6 |
+| 20 | 4 | 120 · 모든 장 시간 초과 | — |
+| 20 | 8 | 118 · 9장 시간 초과 | 10 |
+| 30 | 4 | 117 · 모든 장 시간 초과 | — |
+| 30 | 8 | 115 · 모든 장 시간 초과 | — |
+
+- 평가 기준 만들기의 LLM 호출 한 번은 중앙값 약 10초이고, 12초 제한에서 잘리는 호출이 요청마다 10 ~ 23번 나왔습니다. 장마다 세 단계를 차례로 부르므로, 모든 장을 120초 안에 만든 조합은 없습니다. 예전 어림(5.6 luna 캐시 시각, 호출 한 번 약 6초)보다 느립니다.
+- 채점의 호출 한 번은 중앙값 약 4초(최대 약 6초)라 예산 안에 끝납니다. '—'는 평가 기준이 하나도 만들어지지 않아 채점하지 않은 줄입니다.
+- 무엇을 바꿀지(호출 시간 제한 · 동시 개수 · AI 예산)는 기능 문서 15절 열린 질문입니다. 정하기 전까지 `config.py`의 동시 개수는 4입니다.
+
+### v1 · 예전 모델 `openai/gpt-5.6-luna` (기능 버전 `script_coverage-1.0`)
+
+데이터: 대본 2개(슬라이드 20장, Key Point 80개), 연습 18번(대본당 9개 시나리오), 대본 문장 765개. ① · ②의 반복 측정 값은 지금 `reports/results/rubric_consistency.json` · `stt_stability.json`이고, ②의 정확도 값은 6 luna로 다시 재기 전의 `stt_accuracy.json`입니다(git 기록).
 
 > 기능 문서의 계약에 맞춰 코어를 고친 뒤(최상위 진입 함수 · 에러 코드 · 대상 장 · 누적 답) 같은 모델의 캐시를 재생(LLM 호출 0회)해 결과 JSON을 다시 만들었습니다.
-> 값은 같고 버전 문자열(`feature_version`)과 기준 버전(`criteria_version`)만 달라졌습니다. 테스트는 356개(`-m "not live"`)가 통과합니다.
+> 값은 같고 버전 문자열(`feature_version`)과 기준 버전(`criteria_version`)만 달라졌습니다.
 
 **① 대본 분석** (`rubric_consistency.json`)
 
