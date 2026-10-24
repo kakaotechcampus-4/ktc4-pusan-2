@@ -561,3 +561,49 @@
   color: var(--color-ink-stage);
   opacity: 0.75;
 }
+
+/* ── 시작 전 안내 ─────────────────────────────────────────────
+   마이크를 열고 서버 연결이 첫 ready 를 주기 전에는 발표를 시작하지 않는다 (startGate.ts).
+   그동안 무대 전체를 덮는다 — 시계가 멈춘 무대에서 말을 시작하면 그 말은 어디에도 남지 않는다.
+   레이아웃 칸을 바꾸지 않도록 행을 쓰지 않고 위에 얹는다 (대본 높이는 계측 조건이다). */
+.start-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  padding: 24px;
+  background: color-mix(in srgb, var(--color-stage) 88%, transparent);
+  color: var(--color-ink-stage);
+  text-align: center;
+  font-size: 15px;
+}
+
+.start-gate p {
+  max-width: 44ch;
+  line-height: 1.6;
+}
+
+.start-gate .actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.start-gate .actions button {
+  padding: 10px 22px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-coral);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.start-gate .actions button:hover {
+  background: var(--color-coral-deep);
+}

@@ -16,7 +16,7 @@ from pitch_coach_backend.module.admin.dto import (
 )
 from pitch_coach_backend.module.admin.repository import KST
 from pitch_coach_backend.module.take.entity import Take
-from pitch_coach_backend.realtime.take_stream import ABANDON_AFTER_SEC
+from pitch_coach_backend.module.take.service import ABANDON_AFTER_SEC
 
 DAILY_DAYS = 30
 USER_LIMIT = 500

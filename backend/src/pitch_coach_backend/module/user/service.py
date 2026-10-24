@@ -33,6 +33,15 @@ def create(db: Session, *, email: str, name: str) -> User:
     return repository.create(db, email=email, name=name)
 
 
+def update_settings(db: Session, user: User, *, raw_data_consent: bool | None) -> User:
+    """마이페이지 설정을 바꾸고 커밋한다. 원자료 사용 동의는 바꾼 뒤에 시작하는 Take 부터다 —
+    Take 는 시작할 때 이 값을 복사해 그 값만 본다 (`docs/ai/architecture.md` 1-1)."""
+    if raw_data_consent is not None:
+        user.raw_data_consent = raw_data_consent
+    db.commit()
+    return user
+
+
 def delete(db: Session, user: User) -> None:
     """회원을 지운다. 되살릴 수 없다.
 

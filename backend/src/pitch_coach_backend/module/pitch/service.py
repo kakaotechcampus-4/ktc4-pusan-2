@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 import httpx2
 from sqlalchemy.orm import Session
@@ -634,3 +635,46 @@ def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: in
             "standard": standards[s].title
         } for s in range(len(standards))],
     }
+
+
+def lock_for_new_version(db: Session, pitch_id: uuid.UUID) -> None:
+    """발표 행을 잠근다 (`PitchRepository.lock_for_new_version`). Take 를 시작할 때도 잡는다."""
+    PitchRepository(db).lock_for_new_version(pitch_id)
+
+def latest_analysis_version(db: Session, pitch_id: uuid.UUID) -> int | None:
+    """분석까지 끝난 평가 기준의 가장 최근 버전. Take 를 시작할 때 그 Take 에 고정한다."""
+    return PitchRepository(db).get_latest_analysis_version(pitch_id)
+
+def script_used(db: Session, pitch_id: uuid.UUID, version: int | None) -> bool | None:
+    """그 버전의 평가 기준이 대본을 쓰는가. 버전이 없으면 None."""
+    if version is None:
+        return None
+    return PitchRepository(db).get_script_used(pitch_id, version)
+
+def criteria_for_version(
+    db: Session, pitch_id: uuid.UUID, version: int | None
+) -> dict[str, Any] | None:
+    """Take 에 고정한 버전의 표시 기준 · 숫자 목표. null 은 끝까지 '기준 없음'이다."""
+    if version is None:
+        return None
+    repository = PitchRepository(db)
+    analysis = repository.get_standard_analysis(pitch_id, version)
+    return {
+        "display_criteria": [
+            s.title for s in repository.get_standards_in_version(pitch_id, version)
+        ],
+        "targets": analysis.targets if analysis is not None else [],
+        "script_used": analysis.script_used if analysis is not None else None,
+    }
+
+
+def find_pitch(db: Session, pitch_id: uuid.UUID) -> Pitch | None:
+    return PitchRepository(db).get_by_id(pitch_id)
+
+
+def find_script_version(db: Session, script_version_id: uuid.UUID) -> ScriptVersion | None:
+    return PitchRepository(db).get_script_version(script_version_id)
+
+def script_slides(db: Session, script_version_id: uuid.UUID) -> list[ScriptSlide]:
+    """대본 버전의 장, 장 번호 순서."""
+    return list(PitchRepository(db).get_slides(script_version_id))

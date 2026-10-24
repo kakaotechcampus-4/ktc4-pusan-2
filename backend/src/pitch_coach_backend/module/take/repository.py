@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import ColumnElement, and_, func, or_, select, update
@@ -100,12 +100,25 @@ class TakeRepository:
         """이 pitch 에서 `READY` 로 남은 Take 를 `FAILED`(`ABANDONED`)로 바꾼다. 바꾼 수를 돌려준다.
 
         새 Take 를 만들 때 부른다. FE 는 가장 최근 Take 로만 발표하므로 앞의 `READY` 는 다시 쓰이지
-        않는다. 시간으로 끝내지 않는 이유: 마이크 없이 하는 발표는 실시간 연결이 없어 끝날 때까지
-        `READY` 다. 끝난 시각은 알 수 없어 만든 시각으로 적는다.
+        않는다.
         """
+        return self._abandon_ready(Take.pitch_id == pitch_id)
+
+    def abandon_stale_ready_takes(self, older_than: timedelta) -> int:
+        """만든 지 `older_than` 이 지나도 `READY` 인 Take 를 `FAILED`(`ABANDONED`)로 바꾼다.
+
+        FE 는 첫 실시간 연결이 `ready` 를 받은 뒤에 발표를 시작하고, 그 연결이 `RUNNING` 으로
+        바꾼다. 그래서 `READY` 는 시작하지 않은 Take 다 — 장치 점검에서 시작을 누른 뒤 연결이 끝내
+        붙지 않았다. 시각은 DB 시계로 잰다. 같은 순간 붙은 연결(`mark_running`)과는 둘 다 조건부
+        UPDATE 라 먼저 적은 쪽이 남는다.
+        """
+        return self._abandon_ready(Take.created_at < func.now() - older_than)
+
+    def _abandon_ready(self, *where: ColumnElement[bool]) -> int:
+        # 끝난 시각은 알 수 없어 만든 시각으로 적는다
         result = self.db.execute(
             update(Take)
-            .where(Take.pitch_id == pitch_id, Take.status == "READY")
+            .where(Take.status == "READY", *where)
             .values(
                 status="FAILED",
                 end_reason="ABANDONED",
@@ -132,15 +145,23 @@ class TakeRepository:
             .limit(1)
         )
 
-    def get_latest_reviewed_take_in_pitch(self, pitch_id: uuid.UUID) -> Take | None:
-        # 이전 미션은 리뷰까지 끝난 Take 중 가장 최근 것에서 가져온다
-        return self.db.scalar(
+    def get_latest_reviewed_take_in_pitch(
+        self, pitch_id: uuid.UUID, *, before: int | None = None
+    ) -> Take | None:
+        """리뷰까지 끝난 Take 중 가장 늦게 끝난 것. `before` 가 있으면 번호가 그보다 작은 것만 본다.
+
+        다음 Take 에 실을 미션이 이 Take 의 리뷰에서 나온다 (`docs/ai/features/review-agent.md`
+        12-2). 장치 점검 화면과 Take 를 시작할 때 미션을 싣는 쪽(`coach_repository`)이 이 함수
+        하나로 고른다. 리뷰 결과(`REVIEW`)와 `review_status` `DONE` 은 한 트랜잭션에 적힌다.
+        """
+        query = (
             select(Take)
             .where(Take.pitch_id == pitch_id, Take.review_status == "DONE")
             .options(defer(Take.event_logs))
-            .order_by(Take.take_number.desc())
-            .limit(1)
         )
+        if before is not None:
+            query = query.where(Take.take_number < before)
+        return self.db.scalar(query.order_by(*finished_order()).limit(1))
 
     def get_take_number(self, take_id: uuid.UUID) -> int | None:
         return self.db.scalar(
@@ -206,22 +227,6 @@ class TakeRepository:
             )
         )
 
-    def assign_missions_to_take(
-        self, source_take_id: uuid.UUID, take_id: uuid.UUID
-    ) -> list[uuid.UUID]:
-        mission_ids = self.db.scalars(
-            update(Mission)
-            .where(Mission.source_take_id == source_take_id, Mission.status == "ACTIVE")
-            .values(take_id=take_id) # SQL의 set 역할
-            .returning(Mission.id)
-        ).all()
-        self.db.execute(
-            update(Take)
-            .where(Take.id == take_id)
-            .values(mission_ids=[str(mission_id) for mission_id in mission_ids])
-            # missions_ids도 갱신
-        )
-        return list(mission_ids)
 
     def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResults | None:
         kind_filter = True if kind is None else (TakeAIResults.kind == kind)
@@ -276,7 +281,11 @@ class TakeRepository:
         stmt = insert(TakeAIResults).values(**values)
         stmt = stmt.on_conflict_do_update(
             index_elements=[TakeAIResults.take_id, TakeAIResults.kind],
-            set_={key: stmt.excluded[key] for key in values if key not in ("take_id", "kind")},
+            set_={
+                **{key: stmt.excluded[key] for key in values if key not in ("take_id", "kind")},
+                # payload 를 바꿀 때마다 1 올린다 (script-coverage-evaluation.md 12-1)
+                "revision": TakeAIResults.revision + 1,
+            },
         ).returning(TakeAIResults)
         return self.db.scalars(stmt, execution_options={"populate_existing": True}).one()
 
@@ -325,10 +334,11 @@ class TakeRepository:
         )
 
     def complete_take(self, take_id: uuid.UUID, review_status: str) -> None:
+        # completed_at 은 '가장 늦게 끝난 Take' 의 순서다 (docs/ai/architecture.md 1-3 'Take 상태')
         self.db.execute(
             update(Take)
             .where(Take.id == take_id)
-            .values(status="COMPLETED", review_status=review_status)
+            .values(status="COMPLETED", review_status=review_status, completed_at=func.now())
         )
     def mark_running(self, take_id: uuid.UUID) -> bool:
         """`READY` 인 Take 를 `RUNNING` 으로 바꾼다. 바꿨으면 True.
@@ -342,8 +352,15 @@ class TakeRepository:
         )
         return result.rowcount > 0
 
-    def mark_ended(self, take_id: uuid.UUID, end_reason: str | None = None) -> bool:
-        """진행 중인 Take 를 끝난 상태(`ANALYZING`)로 바꾼다. 바꿨으면 True.
+    def mark_ended(
+        self,
+        take_id: uuid.UUID,
+        end_reason: str | None = None,
+        utterance_ends: list[int] | None = None,
+    ) -> bool:
+        """발표 중인(`RUNNING`) Take 를 끝난 상태(`ANALYZING`)로 바꾼다. 바꿨으면 True.
+
+        `READY` 는 바꾸지 않는다. 실시간 연결이 한 번도 붙지 않아 남은 기록이 없다.
 
         BE 가 자동으로 끝냈으면 `end_reason` 에 이유를 같이 적는다 (사용자가 끝냈으면 None).
         Take 가 없거나 이미 끝났으면 아무것도 바꾸지 않고 False. 읽고 쓰지 않고 UPDATE 하나로
@@ -353,16 +370,24 @@ class TakeRepository:
 
         떠난 것으로 끝낸 Take(`FAILED` · `ABANDONED`)도 되살린다. 재연결을 포기하고 STT 없이
         발표를 이어 간 FE 가 끝내기 PUT 을 보낸 것이다 — 기다리는 시간보다 길게 발표했다.
+
+        분석 단계는 `FINALIZING` 이다 — 이어서 Take 결과(finalize)를 만든다. 문장 끝 신호가
+        주어지면 같이 쓰고, 없으면(메모리에 없음) 있던 값을 둔다.
         """
         abandoned = and_(Take.status == "FAILED", Take.end_reason == "ABANDONED")
+        values: dict[str, Any] = {
+            "status": ENDED_STATUS,
+            "end_reason": end_reason,
+            "ended_at": func.coalesce(Take.ended_at, func.now()),
+            "analysis_stage": FINALIZING_STAGE,
+            "analysis_stage_at": func.now(),
+        }
+        if utterance_ends is not None:
+            values["utterance_ends"] = utterance_ends
         result = self.db.execute(
             update(Take)
-            .where(Take.id == take_id, or_(Take.status.in_(IN_PROGRESS_STATUSES), abandoned))
-            .values(
-                status="ANALYZING",
-                end_reason=end_reason,
-                ended_at=func.coalesce(Take.ended_at, func.now()),
-            )
+            .where(Take.id == take_id, or_(Take.status == "RUNNING", abandoned))
+            .values(**values)
         )
         return result.rowcount > 0
 
@@ -371,6 +396,7 @@ class TakeRepository:
         take_id: uuid.UUID,
         ended_at: datetime | ColumnElement[datetime],
         end_reason: str = "ABANDONED",
+        utterance_ends: list[int] | None = None,
     ) -> bool:
         """사용자가 떠난 Take 를 `FAILED` 로 바꾸고 이유를 `end_reason` 으로 적는다. 바꿨으면 True.
 
@@ -379,14 +405,17 @@ class TakeRepository:
         `ended_at` 은 이걸 적는 지금이 아니라 마지막으로 연결이 끊긴 시각이다.
         `mark_ended` 처럼 UPDATE 하나로, 진행 중일 때만 바꾼다.
         """
+        values: dict[str, Any] = {
+            "status": "FAILED",
+            "end_reason": end_reason,
+            "ended_at": func.coalesce(Take.ended_at, ended_at),
+        }
+        if utterance_ends is not None:
+            values["utterance_ends"] = utterance_ends
         result = self.db.execute(
             update(Take)
             .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
-            .values(
-                status="FAILED",
-                end_reason=end_reason,
-                ended_at=func.coalesce(Take.ended_at, ended_at),
-            )
+            .values(**values)
         )
         return result.rowcount > 0
 
@@ -400,3 +429,66 @@ class TakeRepository:
             select(Take.id, last_active_at()).where(Take.status == "RUNNING")
         ).all()
         return [(take_id, last_active_at) for take_id, last_active_at in rows]
+
+    def start_review(self, take_id: uuid.UUID) -> bool:
+        """채점까지 끝난 Take 의 분석 단계를 `REVIEWING` 으로 바꾼다. 바꿨으면 True.
+
+        Take 결과 · 채점을 만드는 중(`FINALIZING` · `SCORING`)이거나 이미 리뷰 중 · 끝난 Take 는
+        바꾸지 않는다 — 덮으면
+        그 Take 결과가 버려지거나 리뷰를 두 번 부른다 (`docs/ai/architecture.md` 1-3 분석 단계 표).
+        다만 `REVIEW_STALE_AFTER` 넘게 리뷰 중인 Take 는 그 리뷰가 끊긴 것이라 다시 받는다 — 안
+        받으면 그 Take 는 끝내 리뷰를 못 받는다. 분석 단계가 없는 Take 는 그 칸이 생기기 전에 끝난
+        것이라 예전처럼 받는다.
+        """
+        stale_review = and_(
+            Take.analysis_stage == "REVIEWING",
+            Take.analysis_stage_at < func.now() - REVIEW_STALE_AFTER,
+        )
+        result = self.db.execute(
+            update(Take)
+            .where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                or_(
+                    Take.analysis_stage == "AWAITING_CONFIRMATION",
+                    Take.analysis_stage.is_(None),
+                    stale_review,
+                ),
+            )
+            .values(analysis_stage="REVIEWING", analysis_stage_at=func.now())
+        )
+        return result.rowcount > 0
+
+    def utterance_ends(self, take_id: uuid.UUID) -> list[int]:
+        """저장된 문장 끝 신호. 없으면 빈 목록."""
+        return json_ints(self.db.scalar(select(Take.utterance_ends).where(Take.id == take_id)))
+
+    def save_utterance_ends(self, take_id: uuid.UUID, utterance_ends: list[int]) -> bool:
+        """진행 중인 Take 의 문장 끝 신호를 바꾼다. 끝난 Take 는 끝낼 때 적은 값을 둔다."""
+        result = self.db.execute(
+            update(Take)
+            .where(Take.id == take_id, Take.status.in_(IN_PROGRESS_STATUSES))
+            .values(utterance_ends=utterance_ends)
+        )
+        return result.rowcount > 0
+
+
+REVIEW_STALE_AFTER = timedelta(minutes=2)
+
+def finished_order() -> tuple[ColumnElement[Any], ...]:
+    """'가장 늦게 끝난 Take' 순서 (`docs/ai/architecture.md` 1-3 'Take 상태').
+
+    칸을 만들기 전에 끝나 completed_at 이 없는 Take 는 뒤로 가고, 같은 시각이면 번호가 큰 것이다.
+    """
+    return (Take.completed_at.desc().nulls_last(), Take.take_number.desc())
+
+
+ENDED_STATUS = "ANALYZING"
+
+FINALIZING_STAGE = "FINALIZING"
+
+def json_ints(values: Any) -> list[int]:
+    """JSONB 정수 목록(`takes.utterance_ends` 등)을 읽는다. 정수가 아닌 값은 뺀다."""
+    if not isinstance(values, list):
+        return []
+    return [v for v in values if isinstance(v, int) and not isinstance(v, bool)]

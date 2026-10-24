@@ -339,7 +339,18 @@ curl.exe http://localhost:8001/health                               # {"status":
 ```
 - `-p 8001:8000`은 내 PC의 8001번을 컨테이너의 8000번에 연결한다. 컨테이너는 자기 네트워크를 쓰므로 이 연결이 없으면 밖에서 들어갈 수 없다.
 - 키 없이 뜨는지만 볼 때는 `--env-file`을 빼도 된다. `--rm`은 종료할 때 컨테이너를 지운다. Ctrl+C로 끈다.
-- **규약 확인용 대역 켜기**: `docker run --rm -p 8001:8000 -e AI_ENABLE_SAMPLE=true pitch-coach-ai:local` 뒤 `features/sample/examples/`의 요청을 `POST http://localhost:8001/sample/judge`로 보내 결과 · `meta` · 응답 헤더 `X-Request-ID`를 보고, 틀린 요청으로 422 공통 에러 본문, 없는 경로로 404 공통 에러 본문을 본다. 대역을 끈 채(기본) 같은 요청을 보내면 404다.
+- **규약 확인용 대역 켜기**: 같은 이미지를 `-e AI_ENABLE_SAMPLE=true`로 띄우고 `features/sample/examples/`의 요청을 보낸다. 저장소 맨 위에서:
+  ```powershell
+  docker run --rm -p 8001:8000 -e AI_ENABLE_SAMPLE=true pitch-coach-ai:local
+  # 다른 창에서
+  curl.exe -i -X POST http://localhost:8001/sample/judge -H "Content-Type: application/json" -H "X-Request-ID: sample-check-1" --data-binary "@ai/service/src/pitch_coach_ai/features/sample/examples/judge_request.json"
+      # 200, x-request-id: sample-check-1, 본문 = examples/judge_response.json (meta.model null, criteria_versions 있음)
+  curl.exe -i -X POST http://localhost:8001/sample/judge -H "Content-Type: application/json" -d "{}"
+      # 422 {"error":{"code":"VALIDATION_ERROR","message":"요청 형식이 올바르지 않습니다."}}
+  curl.exe -i http://localhost:8001/no-such-path
+      # 404 {"error":{"code":"NOT_FOUND","message":"요청한 경로를 찾을 수 없습니다."}}
+  ```
+  컨테이너 로그에는 요청마다 `request_id=… method=POST path=/sample/judge status=200 code=- duration_ms=…` 한 줄이 남는다(422는 검증 오류의 필드 이름만, 값은 없다). 대역을 끈 채(기본) 같은 요청을 보내면 404 `NOT_FOUND`다. 실제 출력은 `ai/service/README.md`에 있다.
 - macOS · Linux에서는 `curl.exe` 대신 `curl`을 쓴다.
 
 **BE와 같이 띄우기 (BE 담당)**
@@ -593,7 +604,7 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 - 기능마다 쓸 모델 고르기(역할별 묶음, 측정 조건): 아직 정하지 않았다. 그 전에는 모든 역할이 기본 묶음이다.
 
 **알려진 한계**
-- 이 문서의 명령 · 출력은 아직 실행해 확인한 결과가 아니라 목표다.
+- 이 문서의 명령 · 출력 중 실행해 확인한 것은 10절의 코드 실행 · 테스트(live 포함) · Docker 이미지 실행 · 규약 확인용 대역과 11-1의 이미지 파일(Dockerfile · `.dockerignore`)이다(로컬 Windows · Docker Desktop, #210). 10절 'BE와 같이 띄우기'와 11-3 compose · 11-5 CI · 배포 · 11-6 운영의 명령 · 출력은 BE가 만들기 전이라 아직 목표다.
 - 인증이 없어 내부망을 벗어나면 안전하지 않다.
 - 워커마다 모델이 따로 올라가 워커를 늘리면 메모리가 그만큼 는다.
 - LLM 호출 시간 제한은 서비스가 그 호출을 기다리지 않게 할 뿐, 이미 보낸 생성을 멈추지는 못한다. 시간 초과로 버린 호출은 출력 상한까지 생성을 마칠 때까지 LLM 호출 스레드(40개) 하나를 쓰고 토큰 비용도 든다. BE가 백그라운드 AI 호출을 동시에 4개로 제한하므로(`architecture.md` 3절) 스레드가 모자랄 가능성은 낮다. 시간 초과가 잦아 모자라면 버린 호출의 스트림을 닫도록 고친다.

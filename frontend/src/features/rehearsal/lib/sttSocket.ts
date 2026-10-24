@@ -127,6 +127,11 @@ export interface SttSocketOptions {
   onTranscript: (message: TranscriptMessage) => void;
   /** 화면에 뜨는 상태. 서버가 알려준 값과 우리가 아는 값(재연결 중)이 함께 옵니다 */
   onState: (state: SttState) => void;
+  /**
+   * 서버가 `ready` 를 보냈습니다 — 이 연결이 Take 를 시작했거나(`RUNNING`) 이어받았습니다.
+   * 무대는 첫 `ready` 를 받은 뒤에 시계를 돌립니다. 다시 붙을 때마다 옵니다
+   */
+  onReady?: () => void;
   onStatus?: (message: SttStatusMessage) => void;
   /** `endReason` 은 `TAKE_ENDED` 일 때 BE 가 끝낸 이유입니다 (`TakeEndReason`) */
   onError?: (code: SttErrorCode, message: string, endReason: TakeEndReason | null) => void;
@@ -167,18 +172,40 @@ export function sttUrl(takeId: string): string {
 }
 
 /**
- * 캐시된 토큰이 있으면 그대로, 없으면 갱신합니다.
+ * 캐시된 토큰이 곧 만료되는지 볼 여유. 인증 메시지가 서버에 닿기까지와 시계 차이를 덮습니다
+ */
+const TOKEN_EXPIRY_MARGIN_MS = 60_000;
+
+/**
+ * JWT 의 `exp` 가 `marginMs` 안에 오는가. 읽을 수 없는 토큰은 아니라고 봅니다 —
+ * 그대로 붙어 보고, 서버가 `UNAUTHORIZED` 로 닫으면 그때 새로 받습니다.
+ */
+export function tokenExpiresWithin(token: string, marginMs: number, now = Date.now()): boolean {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return false;
+    const { exp } = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as {
+      exp?: unknown;
+    };
+    return typeof exp === 'number' && exp * 1000 - now <= marginMs;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 캐시된 토큰이 있으면 그대로, 없거나 곧 만료되면 갱신합니다.
  *
  * `renew` 는 **캐시를 건너뜁니다.** 메모리에 든 access 토큰은 15분짜리라
  * 긴 발표 중에 만료될 수 있는데, 그걸 그대로 다시 들고 붙으면 서버가
- * `UNAUTHORIZED` 로 닫고 FE 는 치명 오류로 보고 영영 포기합니다 —
- * 실제로는 새로 받기만 하면 되는 상황입니다.
+ * `UNAUTHORIZED` 로 닫습니다 — 실제로는 새로 받기만 하면 되는 상황입니다.
+ * 만료 시각이 지났거나 가까우면 거절당하기 전에 미리 받습니다.
  */
 async function defaultGetToken({ renew }: { renew: boolean }): Promise<string | null> {
   if (renew) return refresh().catch(() => null);
 
   const token = getAccessToken();
-  if (token) return token;
+  if (token && !tokenExpiresWithin(token, TOKEN_EXPIRY_MARGIN_MS)) return token;
 
   return refresh().catch(() => null);
 }
@@ -217,6 +244,7 @@ export class SttSocket {
 
   /** 토큰을 새로 받아 한 번 더 붙어 볼 것인가 (만료된 토큰과 진짜 인증 실패를 가릅니다) */
   private renewToken = false;
+  /** 이번 연결 시도에서 이미 새로 받았습니다. 다시 붙으면(`ready`) 비웁니다 */
   private authRetried = false;
   private disposed = false;
 
@@ -509,9 +537,12 @@ export class SttSocket {
       case 'ready':
         this.retries = 0;
         this.disconnectedAt = null;
+        // 새 토큰이 통했습니다. 15분 뒤 다시 만료되면 그때 또 새로 받아야 합니다
+        this.authRetried = false;
         this.flushPending({ withSlideHistory: true });
         this.ready = true;
         this.options.onState(message.stt_state);
+        this.options.onReady?.();
         // 인증을 기다리느라 미뤄 둔 종료가 있으면 이제 보냅니다
         if (this.stopping) this.sendStop();
         break;
@@ -546,7 +577,7 @@ export class SttSocket {
         this.options.onError?.(message.code, message.message, message.end_reason);
 
         // 토큰이 만료된 것뿐일 수 있습니다. 새로 받아 **한 번만** 다시 붙어 봅니다 —
-        // 그래도 거절당하면 진짜 인증 실패이므로 그때 포기합니다
+        // 그래도 `ready` 전에 또 거절당하면 진짜 인증 실패이므로 그때 포기합니다
         if (message.code === 'UNAUTHORIZED' && !this.authRetried) {
           this.authRetried = true;
           this.renewToken = true;
@@ -595,16 +626,18 @@ export class SttSocket {
 
     if (this.disposed) return;
 
-    // stop 을 보낸 뒤라면 서버가 정리를 마치고 닫은 것입니다
-    if (this.stopping) {
-      this.dispose();
-      return;
-    }
-
-    // 토큰 갱신이 예약돼 있으면 1008 이어도 한 번 더 붙습니다 (백오프 없이 바로)
+    // 토큰 갱신이 예약돼 있으면 1008 이어도 한 번 더 붙습니다 (백오프 없이 바로).
+    // 끝내는 중이어도 붙습니다 — 거절당한 연결은 `ready` 전이라 `stop` 이 아직 안 나갔고,
+    // 들고 있는 버퍼가 마무리 문장입니다. 3초 상한은 `stop()` 이 건 그대로 둡니다
     if (!this.fatal && this.renewToken) {
       this.options.onState('reconnecting');
       this.connect().catch(() => this.giveUp('CONNECT_FAILED'));
+      return;
+    }
+
+    // stop 을 보낸 뒤라면 서버가 정리를 마치고 닫은 것입니다
+    if (this.stopping) {
+      this.dispose();
       return;
     }
 

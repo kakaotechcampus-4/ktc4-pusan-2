@@ -67,7 +67,7 @@ def _make_take(
         db.add(
             TakeSummary(
                 take_id=take.id,
-                average_wpm=120.0,
+                average_cpm=120.0,
                 filler_count=3,
                 audience_gaze=50,
                 slide_gaze=30,
