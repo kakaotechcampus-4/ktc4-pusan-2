@@ -82,6 +82,19 @@ def test_preface_body_turns_fail():
     assert slide.expected_ms == 1000
 
 
+def test_preface_fail_keywords_spread_over_slides():
+    # 장마다 키워드 10개, 상한 15개 → 앞 장 10개 + 다음 장 5개가 아니라 장마다 번갈아 고른다
+    words = {n: [f"가{n}{i}" for i in range(10)] for n in (1, 2, 3)}
+    text = "머리글 본문입니다.\n" + "\n".join(f"[{n}] " + " ".join(ws) for n, ws in words.items())
+    llm = FakeLLM(llm_out([(n, [], ws) for n, ws in words.items()]))
+    response = parse_script(ParseRequest(script_text=text), llm)
+    kept = response.slides[0].keywords
+    assert response.status == "fail"
+    assert len(kept) == 15
+    assert kept[:3] == ["가10", "가20", "가30"]
+    assert {k[1] for k in kept} == {"1", "2", "3"}
+
+
 def test_no_delimiter_fail():
     text = "피치코치는 발표 연습을 돕는 AI 코치입니다."
     llm = FakeLLM(llm_out([(1, [], ["피치코치", "발표 연습", "AI 코치"])], terms=["피치코치"]))
