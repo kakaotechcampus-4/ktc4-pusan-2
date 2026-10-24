@@ -191,21 +191,37 @@ class TakeRepository:
             )
         )
 
-    def get_missions_for_take(self, take_id: uuid.UUID) -> list[Mission]:
+    def get_mission_ids_of_take(self, take_id: uuid.UUID) -> list[uuid.UUID]:
+        mission_ids = self.db.scalar(select(Take.mission_ids).where(Take.id == take_id))
+        return [uuid.UUID(mission_id) for mission_id in mission_ids or []]
+
+    def get_missions_by_ids(self, mission_ids: list[uuid.UUID]) -> list[Mission]:
+        if not mission_ids:
+            return []
         return list(
             self.db.scalars(
                 select(Mission)
-                .where(Mission.take_id == take_id)
+                .where(Mission.id.in_(mission_ids))
                 .order_by(Mission.priority, Mission.slide_number)
             )
         )
 
-    def assign_missions_to_take(self, source_take_id: uuid.UUID, take_id: uuid.UUID) -> None:
-        self.db.execute(
+    def assign_missions_to_take(
+        self, source_take_id: uuid.UUID, take_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        mission_ids = self.db.scalars(
             update(Mission)
             .where(Mission.source_take_id == source_take_id, Mission.status == "ACTIVE")
-            .values(take_id=take_id)
+            .values(take_id=take_id) # SQL의 set 역할
+            .returning(Mission.id)
+        ).all()
+        self.db.execute(
+            update(Take)
+            .where(Take.id == take_id)
+            .values(mission_ids=[str(mission_id) for mission_id in mission_ids])
+            # missions_ids도 갱신
         )
+        return list(mission_ids)
 
     def get_take_infos(self, take_id: uuid.UUID, kind:str = None) -> TakeAIResults | None:
         kind_filter = True if kind is None else (TakeAIResults.kind == kind)
