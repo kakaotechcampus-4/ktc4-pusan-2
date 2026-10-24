@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { LevelBar } from '../media/LevelBar';
-import { DEVICE_ERROR_MESSAGE, useCameraStream } from '../media/useCameraStream';
+import { MIC_ERROR_MESSAGE, useCameraStream } from '../media/useCameraStream';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 import { usePrepareStore } from '../prepare/prepareStore';
@@ -63,7 +63,8 @@ import {
 } from './resume';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
-import { CONNECT_SLOW_MS, hasLiveAudio, startGate, type StartGate } from './startGate';
+import { CONNECT_SLOW_MS, hasCamera, hasLiveAudio, startGate, type StartGate } from './startGate';
+import { openStageDevices } from './openDevices';
 import { useSttStream } from './useSttStream';
 import { useMetricsSender } from './useMetricsSender';
 import { useSlideSender } from './useSlideSender';
@@ -202,8 +203,15 @@ export function RehearsalPage() {
    */
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  const { stream, error: deviceError, request, stop: stopCamera } = useCameraStream();
+  const { stream, error: deviceError, request, requestMic, stop: stopCamera } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
+  /** 카메라를 못 열어 마이크만 열었으면 false 입니다. 발표는 하고 시선만 뺍니다 */
+  const cameraOpened = hasCamera(stream);
+  /**
+   * 장치를 차례로 여는 중 (`openDevices.ts`). 카메라를 못 열고 마이크만 다시 여는 동안에도
+   * `deviceError` 가 차 있어서, 이걸 보지 않으면 마이크를 열기 전에 '마이크 없음'이 비칩니다
+   */
+  const [opening, setOpening] = useState(false);
 
   const ready = materials.ready && resume !== null;
   /** 이미 종료까지 보낸 Take 입니다 (끝낸 뒤 새로고침 · 뒤로 가기). 무대를 열지 않습니다 */
@@ -303,7 +311,7 @@ export function RehearsalPage() {
     // 새로고침으로 이어 가는 Take 는 서버에서 이미 시작했습니다
     resumed: (resume?.fromMs ?? 0) > 0,
     micLive: hasLiveAudio(stream),
-    deviceError,
+    deviceError: opening ? null : deviceError,
     connected,
     startFailure,
     slow: connectSlow,
@@ -353,8 +361,8 @@ export function RehearsalPage() {
     onExcluded: noteExclusion,
     elapsedMs,
     // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
-    // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다
-    enabled: running && live,
+    // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다. 마이크만 연 스트림도 같은 이유로 돌리지 않습니다
+    enabled: running && live && cameraOpened,
     onRecords: onGazeRecords,
   });
   useCoach({
@@ -480,26 +488,21 @@ export function RehearsalPage() {
   useEffect(() => resetStore, [resetStore]);
 
   // 카메라는 준비 화면 CTA를 누른 직후라 바로 열립니다 (같은 문서 = 조작이 살아 있음).
-  // 점검에서 쓴 장치를 그대로 엽니다 — 기본 장치를 열면 USB 마이크로 점검하고
-  // 내장 마이크로 녹음하는 일이 생깁니다
+  // 점검에서 쓴 장치를 먼저 열고, 카메라를 못 열면 마이크만 엽니다 (`openDevices.ts`)
   //
   // 세션 행을 읽은 뒤에 엽니다 — 새로고침이면 점검한 장치를 거기서 되살립니다.
   // 종료 중에 새로고침했으면 열지 않습니다. 남은 일은 기록을 보내는 것뿐입니다
   const openDevices = useCallback(() => {
-    (async () => {
-      const opened = await request(devices);
-      // 고른 장치가 그사이 빠졌으면(USB 분리 등) exact 제약에 걸려 못 엽니다.
-      // 발표를 못 여는 것보다 기본 장치로라도 여는 편이 낫습니다
-      if (!opened && (devices.videoDeviceId || devices.audioDeviceId)) {
-        await request();
-      }
-      // 장치를 못 연 이유(권한 거부 · 장치 없음)는 request 가 deviceError 로 올립니다 —
-      // 무대는 그걸 보고 시작하지 않습니다 (`startGate`). 여기로 오는 건 예상 밖의 오류뿐이라
-      // 버리지 않고 남깁니다
-    })().catch((err: unknown) => {
-      console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
-    });
-  }, [request, devices]);
+    setOpening(true);
+    // 장치를 못 연 이유(권한 거부 · 장치 없음)는 request 가 deviceError 로 올립니다 —
+    // 마이크까지 못 열면 무대는 시작하지 않습니다 (`startGate`). 여기로 오는 건 예상 밖의 오류뿐이라
+    // 버리지 않고 남깁니다
+    openStageDevices(devices, { request, requestMic })
+      .catch((err: unknown) => {
+        console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
+      })
+      .finally(() => setOpening(false));
+  }, [request, requestMic, devices]);
   const askedRef = useRef(false);
   useEffect(() => {
     if (askedRef.current || !resume || resume.ending || resume.submitted || resume.left) return;
@@ -797,6 +800,7 @@ export function RehearsalPage() {
 
   const gazeNote = gazeNoteText({
     declined: deviceError === 'PERMISSION_DENIED',
+    noCamera: stream !== null && !cameraOpened,
     cameraLost:
       (deviceError !== null && deviceError !== 'PERMISSION_DENIED') || gazeError === 'CAMERA_LOST',
     missingCalibration,
@@ -871,7 +875,7 @@ export function RehearsalPage() {
               <div className="rail">
                 <section className="camera">
                   <video ref={videoRef} muted playsInline />
-                  {!live && <div className="guide" />}
+                  {!(live && cameraOpened) && <div className="guide" />}
                   <span className="tag">CAMERA 16:9</span>
                 </section>
 
@@ -1059,7 +1063,7 @@ function startGateText(gate: Exclude<StartGate, { kind: 'STARTED' }>): string {
     case 'OPENING':
       return '카메라와 마이크를 여는 중이에요';
     case 'NO_MIC':
-      return `${gate.error ? `${DEVICE_ERROR_MESSAGE[gate.error]} ` : ''}마이크가 있어야 발표를 시작할 수 있어요.`;
+      return `${gate.error ? `${MIC_ERROR_MESSAGE[gate.error]} ` : ''}마이크가 있어야 발표를 시작할 수 있어요.`;
     case 'CONNECTING':
       return gate.slow
         ? '말하기 분석 서버에 연결하지 못했어요. 연결되면 바로 시작해요.'
@@ -1074,12 +1078,15 @@ function startGateText(gate: Exclude<StartGate, { kind: 'STARTED' }>): string {
  */
 function gazeNoteText(state: {
   declined: boolean;
+  noCamera: boolean;
   cameraLost: boolean;
   missingCalibration: boolean;
   error: GazeExcludedReason | null;
   ready: boolean;
 }): string {
   if (state.declined) return '카메라 권한이 없어 시선은 기록하지 않아요 — 발표는 계속됩니다';
+  // 다른 앱이 사용 중이거나 장치가 없어 마이크만 열었습니다
+  if (state.noCamera) return '카메라를 열지 못해 시선은 기록하지 않아요 — 발표는 계속됩니다';
   // 끊기기 전 기록은 남습니다. 이후 시간은 서버가 측정 못 함으로 셉니다
   if (state.cameraLost) return '카메라가 끊겨 이후 시선은 기록하지 않아요 — 발표는 계속됩니다';
   // 새로고침하면 기준(탭 메모리)이 사라집니다. 그 전 기록은 남고, 이후는 측정 못 함으로 셉니다
