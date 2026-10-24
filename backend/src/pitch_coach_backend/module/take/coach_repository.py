@@ -271,31 +271,37 @@ class CoachRepository:
         )
         return result.rowcount > 0
 
-    def purge_expired_metric_seconds(self, before: datetime) -> int:
+    def purge_expired_metric_seconds(
+        self, before: datetime, after: uuid.UUID | None, limit: int
+    ) -> tuple[list[uuid.UUID], int]:
         """동의 없이 `FAILED` 로 끝난 Take 의 1초 원자료 중 기한이 지난 것을 지운다.
 
         기한은 끝난 시각(없으면 만든 시각)이다. Take 를 먼저 잠그고 조건을 확인한다. 되살리거나
         결과를 저장하는 중인 Take 는 다음 정리 때 본다. 원자료 행부터 잠그면 상태가 바뀐 뒤에도
         DELETE 의 앞선 스냅샷으로 지울 수 있다 (architecture.md 1-1).
+
+        원자료가 남은 Take 만 `after` 다음 id 부터 `limit` 개 잠근다. 이미 지운 Take 를 다시
+        잠그지 않는다. 잠근 Take id 와 지운 행 수.
         """
+        query = select(Take.id).where(
+            Take.status == "FAILED",
+            Take.raw_data_consent.is_(False),
+            func.coalesce(Take.ended_at, Take.created_at) < before,
+            select(TakeMetricSecond.take_id).where(TakeMetricSecond.take_id == Take.id).exists(),
+        )
+        if after is not None:
+            query = query.where(Take.id > after)
         expired = list(
             self.db.scalars(
-                select(Take.id)
-                .where(
-                    Take.status == "FAILED",
-                    Take.raw_data_consent.is_(False),
-                    func.coalesce(Take.ended_at, Take.created_at) < before,
-                )
-                .order_by(Take.id)
-                .with_for_update(skip_locked=True)
+                query.order_by(Take.id).limit(limit).with_for_update(of=Take, skip_locked=True)
             )
         )
         if not expired:
-            return 0
+            return [], 0
         result = self.db.execute(
             delete(TakeMetricSecond).where(TakeMetricSecond.take_id.in_(expired))
         )
-        return result.rowcount
+        return expired, result.rowcount
 
 
 REVIEW = "REVIEW"
