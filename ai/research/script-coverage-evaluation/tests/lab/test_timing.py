@@ -2,6 +2,8 @@
 
 import pytest
 
+from coverage_lab.datasets import load_script_json, load_take
+from coverage_lab.paths import SCRIPT_DIR, STT_DIR
 from coverage_lab.timing import PoolSlide, build_deck, request_row, slide_pool
 
 POOL = [PoolSlide("대본", i, f"대본 {i}", f"STT {i}") for i in (1, 2, 3)]
@@ -18,10 +20,18 @@ def test_deck_numbers_slides_and_reuses_the_pool(n):
 
 
 def test_real_pool_pairs_each_slide_with_its_own_stt():
+    """풀의 장마다 대본은 원본 대본 파일의 그 장, STT 는 그 대본 take1 의 같은 장이다."""
     pool = slide_pool()
     assert len(pool) >= 20
     assert len({(p.script_name, p.slide_number) for p in pool}) == len(pool)
-    assert all(p.script and p.stt for p in pool)
+    for p in pool:
+        script = {
+            s.slide_number: s.script for s in load_script_json(SCRIPT_DIR / f"{p.script_name}.json")
+        }
+        take = {
+            s.slide_number: s.stt for s in load_take(STT_DIR / f"{p.script_name}_take1.json").slides
+        }
+        assert (p.script, p.stt) == (script[p.slide_number], take[p.slide_number])
     scripts, _ = build_deck(pool, 30)
     assert len(scripts) == 30 and scripts[len(pool)].script == pool[0].script
 

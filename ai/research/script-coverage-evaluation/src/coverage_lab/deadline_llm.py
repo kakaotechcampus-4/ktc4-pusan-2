@@ -22,7 +22,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, wait
 from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Any
 
-import httpx
+import httpx2  # openai SDK 가 쓰는 전송 계층 (서비스 `common/llm.py` 와 같다)
 import openai
 
 # 호출을 돌리는 스레드. 시간 초과로 버린 호출도 끝날 때까지 스레드 하나를 쓰므로 넉넉히 둔다
@@ -86,9 +86,9 @@ class CallLog:
 
 def classify(exc: BaseException) -> tuple[BaseException, bool, bool]:
     """(올릴 예외, 다시 부를까, 시간 초과인가). 서비스 `common/llm.py` 의 `_classify` 와 같은 순서다."""
-    if isinstance(exc, openai.APITimeoutError | httpx.TimeoutException):
+    if isinstance(exc, openai.APITimeoutError | httpx2.TimeoutException):
         return TimeoutError("LLM 응답 시간이 초과되었다"), True, True
-    if isinstance(exc, openai.APIConnectionError | httpx.TransportError):
+    if isinstance(exc, openai.APIConnectionError | httpx2.TransportError):
         return exc, True, False
     if isinstance(exc, openai.RateLimitError):
         return exc, True, False

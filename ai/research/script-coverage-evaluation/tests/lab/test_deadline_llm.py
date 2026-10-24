@@ -2,7 +2,7 @@
 
 import threading
 
-import httpx
+import httpx2
 import openai
 import pytest
 from langchain_core.exceptions import OutputParserException
@@ -12,11 +12,11 @@ import coverage_lab.deadline_llm as deadline_llm
 from coverage_lab.deadline_llm import CallLog, DeadlineLlm, wait_idle
 
 TIMEOUT = 0.05  # 호출 시간 제한 (시계 단위 = 초, 기다림은 실제 시간이라 짧게 둔다)
-_REQUEST = httpx.Request("POST", "http://llm.test/v1/chat/completions")
+_REQUEST = httpx2.Request("POST", "http://llm.test/v1/chat/completions")
 
 
 def _status(code: int) -> openai.APIStatusError:
-    response = httpx.Response(code, request=_REQUEST)
+    response = httpx2.Response(code, request=_REQUEST)
     if code == 429:
         return openai.RateLimitError("rate limited", response=response, body=None)
     return openai.APIStatusError(f"status {code}", response=response, body=None)
@@ -116,6 +116,29 @@ def test_wait_is_the_call_timeout_or_the_remaining_time(monkeypatch):
     assert waits[-1] == 10.0
 
 
+def test_wait_is_cut_to_the_remaining_time(monkeypatch):
+    """호출을 시작한 뒤(제출 중) 마감이 가까워지면 기다림을 남은 시간으로 줄인다."""
+    clock = FakeClock(85.0)  # 시작할 때 남은 15초 > 시간 제한 10초
+    waits = []
+
+    class FakeFuture:
+        def result(self, timeout):
+            waits.append(timeout)
+            return "answer"
+
+        def cancel(self):
+            return False
+
+    def slow_submit(fn, *args):
+        clock.now = 96.0  # 제출에 시간이 걸려 남은 시간이 4초가 됐다
+        return FakeFuture()
+
+    monkeypatch.setattr(deadline_llm, "_submit", slow_submit)
+    wrapped = DeadlineLlm(ScriptedLLM(), deadline=100.0, log=CallLog(), timeout=10.0, clock=clock)
+    wrapped.invoke([])
+    assert waits == [4.0]
+
+
 def test_timeout_then_retry_succeeds():
     inner = ScriptedLLM("hang", "answer")
     llm, log = _llm(inner)
@@ -139,7 +162,7 @@ def test_timeout_twice_raises_timeout_error():
 
 def test_sdk_timeout_is_a_timeout_and_is_retried():
     """SDK · 전송 계층의 시간 초과도 TimeoutError 로 바꾸고 시간 초과로 센다 (서비스 `_classify` 와 같다)."""
-    inner = ScriptedLLM(openai.APITimeoutError(request=_REQUEST), httpx.ReadTimeout("느림"))
+    inner = ScriptedLLM(openai.APITimeoutError(request=_REQUEST), httpx2.ReadTimeout("느림"))
     llm, log = _llm(inner)
     with pytest.raises(TimeoutError):
         llm.invoke([])
@@ -189,8 +212,14 @@ def test_skipped_retry_keeps_the_previous_error():
 
 @pytest.mark.parametrize(
     "error",
-    [_status(503), _status(500), _status(429), openai.APIConnectionError(request=_REQUEST)],
-    ids=["503", "500", "429", "connection"],
+    [
+        _status(503),
+        _status(500),
+        _status(429),
+        openai.APIConnectionError(request=_REQUEST),
+        httpx2.ConnectError("연결 끊김"),
+    ],
+    ids=["503", "500", "429", "connection", "transport"],
 )
 def test_retryable_failures_are_retried_once(error):
     inner = ScriptedLLM(error, "answer")

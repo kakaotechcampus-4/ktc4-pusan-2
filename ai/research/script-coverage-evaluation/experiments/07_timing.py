@@ -6,7 +6,7 @@
   (코어 코드는 그대로). 채점은 평가 기준이 만들어진 장만 하므로, 채점 기록의 `produced_slides` 가 실제로 채점한 장 수다
 - LLM 은 서비스와 같은 규칙(요청 마감 120초 · 호출 12초 · 재시도 1번 · 서비스와 같은 재시도 분류)으로 감싸고
   (`coverage_lab.deadline_llm`), 서비스처럼 스트리밍 · 전송 시간 제한 12초로 받는다. 요청마다 마감과 기록이 새로
-  시작하고, 측정 사이에는 앞 측정에서 버린 호출이 끝나기를 기다린다 (남은 수는 `leftover_calls` 로 남긴다).
+  시작하고, 측정 사이에는 앞 측정에서 버린 호출이 끝나기를 기다린다 (그래도 남으면 측정을 멈춘다).
   서비스의 역할별 출력 토큰 상한 · 추론 강도와 출력 잘림(`finish_reason=length`) 검사는 없다 (이 기능의 서비스 설정이 아직 없음)
 - LLM 호출: 전체 약 330 ~ 510회 (평가 기준 최대 3 × (10+20+30) × 2 = 360, 채점 약 1.25 × 60 × 2 = 150, 실패한 장은 일찍
   멈춘다). 과금되므로 먼저 `--grid 10:4` 로 한 조합만 돌려 호출 수 · 시간을 보고 나머지를 돌린다. 한 조합만 돌릴 때는 파일을 쓰지 않는다
@@ -28,6 +28,7 @@ from script_coverage.stt_evaluation.schemas import SemanticEvaluation, VerifierR
 
 REQUEST_DEADLINE_SECONDS = 120.0  # 요청 하나의 마감 (architecture.md 의 AI 예산)
 CALL_TIMEOUT_SECONDS = 12.0
+LEFTOVER_WAIT_SECONDS = 60.0  # 측정 사이에 버린 호출이 끝나기를 기다리는 한도
 GRID_SLIDES = (10, 20, 30)
 GRID_WORKERS = (4, 8)
 
@@ -54,8 +55,16 @@ def main() -> None:
         )
 
     def measure(name: str, call, targets: int) -> tuple[dict, object]:
-        """요청 하나를 새 마감 · 새 기록으로 부르고 기록을 모은다. 시작 전에 앞 측정의 버린 호출이 끝나기를 기다린다."""
-        leftover = wait_idle(timeout=2 * CALL_TIMEOUT_SECONDS)
+        """요청 하나를 새 마감 · 새 기록으로 부르고 기록을 모은다.
+
+        시작 전에 앞 측정의 버린 호출이 끝나기를 기다리고, 그래도 남아 있으면 측정을 멈춘다 (겹친 측정은 쓰지 않는다).
+        전송 시간 제한은 읽기 한 번의 제한이라, 조각을 계속 보내는 스트림은 그보다 오래 살 수 있다.
+        """
+        leftover = wait_idle(timeout=LEFTOVER_WAIT_SECONDS)
+        if leftover:
+            raise SystemExit(
+                f"앞 측정에서 버린 호출 {leftover}개가 {LEFTOVER_WAIT_SECONDS:g}초 뒤에도 돈다 — 측정을 멈춘다"
+            )
         log = CallLog()
         started = time.monotonic()
         deadline = started + REQUEST_DEADLINE_SECONDS
