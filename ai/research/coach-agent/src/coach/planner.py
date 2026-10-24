@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from .config import DEFAULT_CONFIG, CoachConfig, PlannerConfig
 from .prompts.plan import PLAN_SYSTEM_PROMPT
 from .schemas import (
+    MAX_T_MS,
     PLAN_MAX_MISSIONS,
     CoachingPlan,
     FocusItem,
@@ -33,6 +34,7 @@ from .schemas import (
     PlanResponse,
     RelaxItem,
 )
+from .vocab import FeedbackType, Issue
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +43,22 @@ _WHY_CHARS = 200
 #: 직전 리뷰에서 LLM 에 넘길 요약 · 개선점 문장 길이 상한
 _SUMMARY_CHARS = 500
 _IMPROVEMENT_CHARS = 200
+#: 직전 리뷰 값 중 LLM 에 싣는 것의 허용 목록(review-agent.md 5-3 차원 표 · 5-4).
+#: 모르는 값은 건너뛴다
+_REVIEW_DIMENSIONS = frozenset(
+    {
+        "audience_gaze",
+        "script_independence",
+        "pacing_rhythm",
+        "vocal_delivery",
+        "fluency",
+        "content_delivery",
+    }
+)
+_DIMENSION_STATES = frozenset({"IMPROVED", "PRIORITY", "STABLE", "STRENGTH", "NOT_EVALUABLE"})
+_MISSION_STATUSES = frozenset({"ACHIEVED", "PARTIAL", "FAILED", "NOT_EVALUABLE"})
+#: 직전 리뷰 미션 결과의 id · 지표 이름 길이 상한
+_ID_CHARS = 64
 #: 대본 속 수치 (12억 · 18.2% · 2024년 · 1,240명 → 숫자 하나씩)
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 
@@ -67,15 +85,18 @@ def planner_hash(model: str) -> str:
 def plan_message(req: PlanRequest, cfg: PlannerConfig) -> str:
     """LLM 에 보내는 입력. 같은 요청이면 같은 문자열이 나온다 (캐시 키)."""
     scripts = {s.slide_number: s.script for s in req.scripts}
+    targets = {s.slide_number: s.target_ms for s in req.plan.slides}
+    # 시간 계획에만 있는 장 · 대본에만 있는 장도 모두 싣는다.
+    # 목표 시간이 null 이면 장별 시간 계획이 없는 장
     slides = [
         {
-            "slide_number": s.slide_number,
-            "target_seconds": round(s.target_ms / 1000),
-            "script": scripts.get(s.slide_number, "")[: cfg.max_script_chars],
+            "slide_number": n,
+            "target_seconds": round(targets[n] / 1000) if n in targets else None,
+            "script": scripts.get(n, "")[: cfg.max_script_chars],
             # 수치가 몰린 장을 LLM 이 대본을 읽다 놓치지 않게 센 값을 함께 준다
-            "number_count": len(_NUMBER.findall(scripts.get(s.slide_number, ""))),
+            "number_count": len(_NUMBER.findall(scripts.get(n, ""))),
         }
-        for s in sorted(req.plan.slides, key=lambda s: s.slide_number)
+        for n in sorted(_known_slides(req))
     ]
     payload: dict[str, Any] = {
         "target_seconds": round(req.plan.target_ms / 1000) if req.plan.target_ms else None,
@@ -98,6 +119,11 @@ def plan_message(req: PlanRequest, cfg: PlannerConfig) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
+def _known_slides(req: PlanRequest) -> set[int]:
+    """계획 · 대본에 있는 장 번호 — plan.slides 와 scripts 의 합집합."""
+    return {s.slide_number for s in req.plan.slides} | {s.slide_number for s in req.scripts}
+
+
 def _dicts(value: Any) -> list[dict[str, Any]]:
     """목록 안의 dict 항목만. 목록이 아니거나 dict 가 아닌 항목은 건너뛴다(예외 없이)."""
     return [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
@@ -108,8 +134,15 @@ def _text(value: Any, limit: int | None = None) -> str | None:
     return value[:limit] if isinstance(value, str) else None
 
 
-def _number(value: Any) -> int | float | None:
-    return value if isinstance(value, int | float) and not isinstance(value, bool) else None
+def _int(value: Any) -> int | None:
+    """정수(bool 아님)면 그대로, 아니면 None."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _enum_text(value: Any, allowed: Any) -> str | None:
+    """허용 값(StrEnum 이나 집합)에 드는 문자열이면 그대로, 아니면 None."""
+    names = {getattr(a, "value", a) for a in allowed}
+    return value if isinstance(value, str) and value in names else None
 
 
 def _previous_take(result: dict[str, Any] | None, cfg: PlannerConfig) -> dict[str, Any] | None:
@@ -126,15 +159,17 @@ def _previous_take(result: dict[str, Any] | None, cfg: PlannerConfig) -> dict[st
     outcomes = [i.get("outcome") for i in interventions]
     effective, ineffective = outcomes.count("EFFECTIVE"), outcomes.count("INEFFECTIVE")
     gave_up = [
-        {"issue_type": g["issue_type"], "slide_number": _number(g.get("slide_number"))}
+        {"issue_type": g["issue_type"], "slide_number": _int(g.get("slide_number"))}
         for g in _dicts(result.get("gave_up"))
-        if isinstance(g.get("issue_type"), str)
+        if _enum_text(g.get("issue_type"), Issue)
     ][: cfg.max_previous_issues]
     problem_ms: dict[str, float] = {}
     for seg in _dicts(result.get("problem_segments")):
-        area = seg.get("area")
-        start, end = _number(seg.get("start_ms")), _number(seg.get("end_ms"))
-        if seg.get("reliable") is True and isinstance(area, str) and None not in (start, end):
+        area = _enum_text(seg.get("area"), FeedbackType)
+        start, end = _int(seg.get("start_ms")), _int(seg.get("end_ms"))
+        # 시각은 0 ~ Take 최대 길이 안의 정수만 — 터무니없는 값으로 합이 넘치지 않게 한다
+        times_ok = all(t is not None and 0 <= t <= MAX_T_MS for t in (start, end))
+        if seg.get("reliable") is True and area and times_ok:
             problem_ms[area] = problem_ms.get(area, 0.0) + max(0, end - start)
     return {
         "interventions": len(raw) if isinstance(raw, list) else None,
@@ -159,23 +194,23 @@ def _previous_review(review: dict[str, Any] | None, cfg: PlannerConfig) -> dict[
         "dimensions": {
             k: v
             for k, v in (dimensions.items() if isinstance(dimensions, dict) else [])
-            if isinstance(k, str) and isinstance(v, str)
+            if k in _REVIEW_DIMENSIONS and isinstance(v, str) and v in _DIMENSION_STATES
         },
         "improvements": [
             {
                 "type": i["area"],
-                "slide_number": _number(i.get("slide_number")),
+                "slide_number": _int(i.get("slide_number")),
                 "text": _text(i.get("text"), _IMPROVEMENT_CHARS),
             }
             for i in _dicts(review.get("improvements"))
-            if isinstance(i.get("area"), str)
+            if _enum_text(i.get("area"), FeedbackType)
         ][: cfg.max_previous_issues],
         "mission_results": [
             {
-                "mission_id": _text(m.get("mission_id")),
-                "status": _text(m.get("status")),
-                "metric": _text(m.get("metric")),
-                "slide_number": _number(m.get("slide_number")),
+                "mission_id": _text(m.get("mission_id"), _ID_CHARS),
+                "status": _enum_text(m.get("status"), _MISSION_STATUSES),
+                "metric": _text(m.get("metric"), _ID_CHARS),
+                "slide_number": _int(m.get("slide_number")),
             }
             for m in _dicts(review.get("mission_results"))
         ][:PLAN_MAX_MISSIONS],
@@ -187,14 +222,16 @@ def validate_draft(
 ) -> tuple[CoachingPlan, list[str]]:
     """LLM 초안을 코치가 쓸 계획으로. 범위를 벗어난 항목은 빼고 이유를 남긴다."""
     pc, pol = cfg.planner, cfg.policy
-    slides = {s.slide_number for s in req.plan.slides}
+    slides = _known_slides(req)
     dropped: list[str] = []
 
     focus: list[FocusItem] = []
     for f in draft.focus:
         label = f"focus {f.type.value} {f.slide_number if f.slide_number is not None else '전체'}"
-        if f.slide_number is not None and f.slide_number not in slides:
-            dropped.append(f"{label}: 계획에 없는 장")
+        if f.type == FeedbackType.CONTENT:
+            dropped.append(f"{label}: 발표 중 후보가 없음")
+        elif f.slide_number is not None and f.slide_number not in slides:
+            dropped.append(f"{label}: 계획 · 대본에 없는 장")
         elif any(x.area == f.type and x.slide_number == f.slide_number for x in focus):
             dropped.append(f"{label}: 중복")
         elif len(focus) >= pc.max_focus:
@@ -217,7 +254,7 @@ def validate_draft(
         if r.type not in pc.relax_types:
             dropped.append(f"{label}: 봐줄 수 없는 영역")
         elif r.slide_number not in slides:
-            dropped.append(f"{label}: 계획에 없는 장")
+            dropped.append(f"{label}: 계획 · 대본에 없는 장")
         elif (r.type, r.slide_number) in mission_scopes or (r.type, None) in mission_scopes:
             dropped.append(f"{label}: 이번 미션 영역")
         elif any(f.area == r.type and f.slide_number in (None, r.slide_number) for f in focus):

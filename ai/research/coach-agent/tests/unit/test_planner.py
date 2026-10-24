@@ -108,7 +108,7 @@ def test_relaxed_gaze_is_not_coached_on_that_slide_only():
     ("relax", "why"),
     [
         ({"type": "TIME", "slide_number": 3, "why": "-"}, "봐줄 수 없는 영역"),
-        ({"type": "GAZE", "slide_number": 9, "why": "-"}, "계획에 없는 장"),
+        ({"type": "GAZE", "slide_number": 9, "why": "-"}, "계획 · 대본에 없는 장"),
         ({"type": "FILLER", "slide_number": 2, "why": "-"}, "이번 미션 영역"),
     ],
 )
@@ -407,3 +407,112 @@ def test_planner_hash_follows_the_prompt(monkeypatch):
     monkeypatch.setattr("coach.planner.PLAN_SYSTEM_PROMPT", "다른 지시문")
     assert planner_hash("m") != before
     assert planner_hash("m") != planner_hash("other")
+
+
+def test_bad_segment_times_and_unknown_names_are_skipped():
+    take = take_result(
+        1,
+        gave_up=[
+            {"issue_type": "NOT_AN_ISSUE", "slide_number": 1},
+            {"issue_type": "PACE_FAST", "slide_number": True},
+            {"issue_type": "PACE_FAST", "slide_number": 2.5},
+        ],
+        problem_segments=[
+            {"area": "GAZE", "start_ms": 0, "end_ms": 10**400, "reliable": True},
+            {"area": "GAZE", "start_ms": -1, "end_ms": 5_000, "reliable": True},
+            {"area": "GAZE", "start_ms": True, "end_ms": 5_000, "reliable": True},
+            {"area": "GAZE", "start_ms": 0, "end_ms": 3_660_001, "reliable": True},
+            {"area": "NOT_AN_AREA", "start_ms": 0, "end_ms": 5_000, "reliable": True},
+            {"area": "TIME", "start_ms": 0, "end_ms": 3_660_000, "reliable": True},
+        ],
+    )
+    got = _message(previous_take_result=take)["previous_take"]
+    assert got["problem_seconds"] == {"TIME": 3660.0}
+    assert got["gave_up"] == [
+        {"issue_type": "PACE_FAST", "slide_number": None},
+        {"issue_type": "PACE_FAST", "slide_number": None},
+    ]
+
+
+def test_review_values_outside_the_allowed_lists_are_skipped():
+    review = {
+        "dimensions": {
+            "audience_gaze": "STABLE",
+            "made_up": "STABLE",
+            "fluency": "GREAT",
+            "vocal_delivery": ["x"],
+        },
+        "improvements": [{"area": "WHATEVER", "text": "x"}, {"area": "TIME", "text": "y"}],
+        "mission_results": [
+            {"mission_id": "m" * 100, "status": "DONE", "metric": "k" * 100},
+            {"mission_id": "m1", "status": "PARTIAL"},
+        ],
+    }
+    got = _message(previous_review=review)["previous_review"]
+    assert got["dimensions"] == {"audience_gaze": "STABLE"}
+    assert [i["type"] for i in got["improvements"]] == ["TIME"]
+    first, second = got["mission_results"]
+    assert (first["mission_id"], first["metric"]) == ("m" * 64, "k" * 64)
+    assert first["status"] is None and second["status"] == "PARTIAL"
+
+
+def test_content_focus_is_dropped_before_the_count_limit():
+    focus = [
+        {"type": "CONTENT", "slide_number": None, "weight": 1.5, "why": "-"},
+        {"type": "CONTENT", "slide_number": 3, "weight": 1.5, "why": "-"},
+        {"type": "GAZE", "slide_number": None, "weight": 1.5, "why": "-"},
+        {"type": "SPEED", "slide_number": None, "weight": 1.5, "why": "-"},
+        {"type": "VOLUME", "slide_number": None, "weight": 1.5, "why": "-"},
+    ]
+    resp = plan_coaching(request(), llm=FakeLLM(draft(focus=focus)), model="m")
+    assert [f.area.value for f in resp.coaching_plan.focus] == ["GAZE", "SPEED", "VOLUME"]
+    assert len(resp.dropped) == 2
+    assert all("발표 중 후보가 없음" in d and d.startswith("focus CONTENT") for d in resp.dropped)
+
+
+def test_slides_known_only_from_scripts_count_as_plan_slides():
+    scripts = [{"slide_number": 2, "script": "둘째 장 1개"}, {"slide_number": 1, "script": "첫 장"}]
+    req = request(plan={}, scripts=scripts)
+    slides = _message(plan={}, scripts=scripts)["slides"]
+    assert [(s["slide_number"], s["target_seconds"]) for s in slides] == [(1, None), (2, None)]
+    assert slides[1]["number_count"] == 1
+    llm = FakeLLM(draft(relax=[{"type": "GAZE", "slide_number": 2, "why": "-"}]))
+    resp = plan_coaching(req, llm=llm, model="m")
+    assert [r.slide_number for r in resp.coaching_plan.relax] == [2] and resp.dropped == []
+    # 시간 계획에만 있는 장도 싣는다
+    only_plan = _message(scripts=[])["slides"]
+    assert [s["slide_number"] for s in only_plan] == [1, 2, 3, 4]
+
+
+def test_encouragement_counts_as_an_intervention_and_keeps_the_budget():
+    ivs = [{"outcome": "EFFECTIVE", "instruction": "LOOK_AT_CAMERA"} for _ in range(5)]
+    ivs.append({"outcome": None, "instruction": "CONTINUE"})
+    result = {"interventions": ivs}
+    assert _message(previous_take_result=result)["previous_take"]["interventions"] == 6
+    resp = plan_coaching(
+        request(previous_take_result=result), llm=FakeLLM(draft(max_interventions=5)), model="m"
+    )
+    assert resp.coaching_plan.max_interventions == 5  # 5 < 6 이라 유지
+
+
+def test_planner_hash_follows_the_output_schema(monkeypatch):
+    before = planner_hash("m")
+    monkeypatch.setattr(
+        PlanDraft, "model_json_schema", classmethod(lambda cls, *a, **k: {"changed": True})
+    )
+    assert planner_hash("m") != before
+
+
+def test_script_is_cut_at_the_config_limit_and_why_at_200():
+    long = "가" * 2_000
+    cfg = load_config().planner
+    message = plan_message(
+        PlanRequest.model_validate(request(scripts=[{"slide_number": 1, "script": long}])), cfg
+    )
+    slide = next(s for s in json.loads(message)["slides"] if s["slide_number"] == 1)
+    assert len(slide["script"]) == cfg.max_script_chars == 1_500
+    focus = [{"type": "GAZE", "slide_number": None, "weight": 1.5, "why": "나" * 300}]
+    relax = [{"type": "FILLER", "slide_number": 1, "why": "다" * 300}]
+    resp = plan_coaching(request(), llm=FakeLLM(draft(focus, relax)), model="m")
+    assert len(resp.coaching_plan.focus[0].why) == 200
+    assert len(resp.coaching_plan.relax[0].why) == 200

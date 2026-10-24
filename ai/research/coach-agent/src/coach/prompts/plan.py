@@ -17,6 +17,7 @@ PLAN_SYSTEM_PROMPT = """너는 발표 연습 코치다. 발표자가 이번 연�
 
 입력
 - slides: 장마다 목표 시간(초) · 대본 · 대본 속 숫자 개수(number_count)
+  (목표 시간이 null 이면 장별 시간 계획이 없는 장)
 - missions: 이번 Take 미션. recurring_issues: 여러 Take 에 걸쳐 반복된 문제
 - previous_take: 직전 Take 결과를 코치가 센 값. interventions 는 말한 횟수(유지 격려 포함),
   effective_rate 는 말한 뒤 효과가 있던 비율(잰 개입이 없으면 null), gave_up 은 효과가 없어
