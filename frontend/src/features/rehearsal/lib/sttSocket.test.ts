@@ -119,6 +119,25 @@ describe('연결과 인증', () => {
     expect(socket.frames[2]!.getUint32(0, true)).toBe(3);
   });
 
+  it('ready 를 받을 때마다 알린다 — 무대는 첫 ready 뒤에 발표를 시작한다', async () => {
+    vi.useFakeTimers();
+    let readies = 0;
+    const stt = makeSocket({ onReady: () => (readies += 1) });
+    stt.start();
+    await settle();
+
+    sockets[0]!.open();
+    expect(readies).toBe(0);
+    sockets[0]!.emit(READY);
+    expect(readies).toBe(1);
+
+    sockets[0]!.serverClose(1006);
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+    expect(readies).toBe(2);
+  });
+
   it('버퍼는 2초(20장)까지만 들고, 넘치면 오래된 것부터 버린다', async () => {
     const stt = makeSocket();
     stt.start();
