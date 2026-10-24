@@ -9,7 +9,8 @@ import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
 import type { TakeStatus } from '@/types/api';
 import { QueryState } from './QueryState';
-import { SCRIPT_MODE_LABEL, pct, takeDay } from './takeHistoryFormat';
+import { pct } from './reportFormat';
+import { SCRIPT_MODE_LABEL, takeDay } from './takeHistoryFormat';
 
 /**
  * P16 Take 기록 — 모든 피치의 연습 기록을 최신순으로.

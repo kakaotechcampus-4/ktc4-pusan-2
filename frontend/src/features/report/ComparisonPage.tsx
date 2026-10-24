@@ -6,13 +6,8 @@ import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
 import { QueryState } from './QueryState';
-import {
-  SCRIPT_MODE_LABEL,
-  completedTakes,
-  gazeOffEngine,
-  pct,
-  takeDay,
-} from './takeHistoryFormat';
+import { pct } from './reportFormat';
+import { SCRIPT_MODE_LABEL, completedTakes, gazeOffEngine, takeDay } from './takeHistoryFormat';
 
 /**
  * P7 Take 비교 — 한 피치의 Take들을 나란히.

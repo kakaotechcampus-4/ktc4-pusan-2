@@ -4,7 +4,7 @@ import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 
 /**
  * 디자인 시안 공통 틀 · 조각. 페이지 틀 · 마스코트만 둡니다. 버튼 · 카드 · 배지는 `@/shared/ui/*` 에서 바로 가져옵니다.
- * 스타일은 리포트 시안(`report/ReportDraft.tsx`)과 같습니다: 진한 테두리 · 각진 모서리 · 밀린 그림자.
+ * 스타일은 리포트 화면(`features/report/ReportPage.tsx`)과 같습니다: 진한 테두리 · 각진 모서리 · 밀린 그림자.
  */
 
 export interface DraftVariant<V extends string> {
