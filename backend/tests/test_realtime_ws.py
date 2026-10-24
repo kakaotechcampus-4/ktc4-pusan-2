@@ -3962,8 +3962,25 @@ def test_auto_end_waits_for_the_last_metrics_sent_after_the_drain(
         stop(ws)
 
     assert sorted(store.metrics) == [300]
+    # 스트림이 정리(closed)된 뒤에 왔어도 정리 전 상태로 적는다. closed 로 적으면 복구가 그 1초의
+    # 단어를 세지 않는다 (coach-agent.md 5-2 마지막 창)
+    assert store.metrics[300].stt_status == "ok"
     assert store.calls.index("append_metrics") < store.calls.index("mark_ended")
     assert store.auto_ended == [(TAKE_ID, "SILENCE")]
+
+
+@pytest.mark.anyio
+async def test_audio_dropped_from_the_queue_is_not_heard():
+    """큐가 넘쳐 버린 오디오는 STT 에 닿지 않았다. 그 1초를 `ok` 로 적으면 복구가 '말이 없었다' 로
+    센다."""
+    stream = make_stream(FakeSttAdapter(), FakeTranscriptStore(), short_time_limit(3_600_000))
+    stream.state = "ok"
+    # 스트림을 띄우지 않아 아무도 큐를 비우지 않는다. 오래된 프레임부터 버려진다
+    for seq in range(1, take_stream.QUEUE_MAX_FRAMES + 11):
+        stream.push(frame(seq, (seq - 1) * 100))
+
+    assert stream._stt_status_of(MetricsMessage.model_validate(metrics(1_000))) == "degraded"
+    stream.cancel()
 
 
 @pytest.mark.parametrize(

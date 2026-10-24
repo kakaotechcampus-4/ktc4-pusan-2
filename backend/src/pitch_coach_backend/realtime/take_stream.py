@@ -216,6 +216,8 @@ class TakeStream:
         self.stt_session_no = stt_session_no
         self.segment_no = segment_no
         self.state: SttState = "connecting"
+        # 정리(closed)되기 전 마지막 상태. 자동 종료 뒤 FE 가 보내는 마지막 1초 조각의 STT 상태다
+        self._open_state: SttState = "connecting"
         # 큐가 넘치거나 Deepgram 이 죽어 있어 STT 에 닿지 못한 오디오
         self.dropped_audio_ms = 0
         # 말 없음 기록 · 서버 시계 · 1초 원자료. Take 에 붙어 있어 이 스트림보다 오래 산다
@@ -637,8 +639,11 @@ class TakeStream:
         규칙과 같다).
         무음으로 메운 짧은 끊김(`MAX_SILENCE_FILL_MS` 이하)은 이어진 것으로 본다.
         """
-        if self.state != "ok":
-            return self.state
+        # 자동 종료 뒤의 마지막 1초 조각은 스트림이 정리된 뒤에 온다. 정리 전 상태로 본다 —
+        # `closed` 로 적으면 복구가 그 1초의 단어를 세지 않는다
+        state = self._open_state if self.state == "closed" else self.state
+        if state != "ok":
+            return state
         starts = [r["t_ms"] for r in (message.gaze, message.voice) if r is not None]
         start_ms = min(starts) if starts else message.t_ms - METRICS_PERIOD_MS
         if (
@@ -712,6 +717,9 @@ class TakeStream:
         self._pending_silence_ms += lost
         if item.timeline_break:
             self._pending_break = True
+        # STT 에 닿지 못한 오디오다. 그 뒤부터를 끊김 없이 들은 것으로 본다 (`_stt_status_of`)
+        if self._heard_from_ms is not None:
+            self._heard_from_ms = max(self._heard_from_ms, item.frame.end_ms)
 
     # ── Deepgram 세션 루프 ────────────────────────────────────────────
 
@@ -1147,6 +1155,7 @@ class TakeStream:
         if self.state == state:
             return
         self.state = state
+        self._open_state = state
         await self.send_status()
 
     async def send_status(self) -> None:
