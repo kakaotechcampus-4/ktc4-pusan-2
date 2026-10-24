@@ -1,0 +1,8 @@
+{
+  "display_criteria": ["3초 넘게 끊기는 일 2번 이하", "말 속도 1분에 300자 이하", "대본 봐도 됨"],
+  "values": {"speed": "1분에 300자 이하", "pause": null, "silence": "3초 넘게 끊김 2번 이하", "volume": null, "filler": null, "gaze": null,
+             "script_dependency": null, "script_similarity": null, "script_used": true},
+  "targets": [{"display": "말 속도 1분에 300자 이하", "metric": "cpm", "operator": "LTE", "value": 300}],
+  "excluded": [],
+  "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.0", "model": "<응답한 모델>"}
+}

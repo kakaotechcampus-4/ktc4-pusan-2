@@ -56,7 +56,7 @@ def main() -> None:
     if args.text:
         inputs = args.text
     else:
-        examples = json.loads(EXAMPLES_PATH.read_text(encoding="utf-8"))
+        examples = [e["text"] for e in json.loads(EXAMPLES_PATH.read_text(encoding="utf-8"))]
         if args.all:
             inputs = examples
         else:

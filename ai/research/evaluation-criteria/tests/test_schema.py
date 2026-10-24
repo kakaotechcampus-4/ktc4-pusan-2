@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from evaluation_criteria.schemas import Criteria, EvaluationCriteriaAnalysis
+from evaluation_criteria.schemas import (
+    Criteria,
+    EvaluationCriteriaAnalysis,
+    EvaluationCriteriaRequest,
+    Target,
+)
 
 CRITERIA_FIELDS = [
     "speed",
@@ -65,3 +70,33 @@ def test_missing_field_rejected():
 def test_script_used_rejects_non_bool():
     with pytest.raises(ValidationError):
         Criteria.model_validate({**EMPTY_VALUES, "script_used": "대본 참고"})
+
+
+@pytest.mark.parametrize(
+    "field, bad", [("metric", "speed_score"), ("operator", "EQ")], ids=["metric", "operator"]
+)
+def test_target_rejects_unknown_metric_or_operator(field, bad):
+    target = {"display": "추임새 5번 이하", "metric": "filler_count", "operator": "LTE", "value": 5}
+    with pytest.raises(ValidationError):
+        Target.model_validate({**target, field: bad})
+
+
+# ── 요청 (5-2): 앞뒤 공백을 뺀 길이 1~2,000자. 넘으면 422 이고 LLM 을 부르지 않는다 ──
+
+
+@pytest.mark.parametrize(
+    "text", ["", "   \n\t ", "　　", "가" * 2001], ids=["empty", "spaces", "fullwidth", "2001"]
+)
+def test_request_rejects_empty_or_too_long_text(text):
+    with pytest.raises(ValidationError):
+        EvaluationCriteriaRequest(standard_text=text)
+
+
+def test_request_strips_and_allows_2000_chars():
+    request = EvaluationCriteriaRequest(standard_text="  " + "가" * 2000 + "\n")
+    assert request.standard_text == "가" * 2000
+
+
+def test_request_ignores_unknown_fields():
+    request = EvaluationCriteriaRequest.model_validate({"standard_text": "추임새 5번", "note": "x"})
+    assert request.model_dump() == {"standard_text": "추임새 5번"}
