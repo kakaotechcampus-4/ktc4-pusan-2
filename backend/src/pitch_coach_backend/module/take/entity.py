@@ -308,7 +308,8 @@ class TakeMetricSecond(CreatedAtMixin, Base):
     stt_status: Mapped[str] = mapped_column(String(16), nullable=False)
 
 
-class TakeSlideEvent(Base):
+
+class TakeSlideEvent(CreatedAtMixin, Base):
     __tablename__ = "take_slide_events"
 
     take_id: Mapped[uuid.UUID] = mapped_column(

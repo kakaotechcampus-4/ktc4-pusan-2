@@ -9,12 +9,11 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from alembic_git_revisions import get_down_revision
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'dbd0c687f1aa'
-down_revision: str | Sequence[str] | None = get_down_revision(revision)
+down_revision: str | Sequence[str] | None = 'c02400000010'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
