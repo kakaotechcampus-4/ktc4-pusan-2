@@ -65,6 +65,20 @@ class VolumeInput(In):
     since_ms: int = 0
 
 
+def speaking_levels(records: list[dict[str, Any]], config: Config = DEFAULT) -> list[float]:
+    """음량 1초 기록 중 말한 1초의 level_db. 기준 음량 표본을 고를 때 코치가 부른다.
+
+    같은 1초가 두 번 오면 먼저 온 것만 쓰고, 말하는 중인 1초(`_speaking`: 오디오가 흐르고 조용한
+    시간이 짧고 레벨이 있음)만 시간순으로 돌려준다. 대역 안에서 '말함'은 평활 창과 같은 기준이다
+    (이 대역에는 voiced_ms 기준값이 없다).
+    """
+    return [
+        r.level_db
+        for r in _dedupe([Record.model_validate(x) for x in records])
+        if _speaking(r, config) and r.level_db is not None
+    ]
+
+
 def baseline(levels: list[float], config: Config = DEFAULT) -> float | None:
     """말한 1초의 level_db 표본에서 평소 목소리를 잡는다. 표본이 모자라면 None."""
     if len(levels) < config.baseline_samples:

@@ -169,3 +169,24 @@ def test_volume_summarize_and_criteria():
     assert c["VOLUME_LOW"].direction == "LOWER_IS_WORSE"
     assert (c["VOLUME_LOW"].threshold, c["VOLUME_LOW"].bad) == (-6.0, -15.0)
     assert (c["LONG_SILENCE"].onset_lag_ms, c["LONG_SILENCE"].offset_lag_ms) == (5000, 0)
+
+
+def test_speaking_levels_pick_the_speaking_seconds_in_time_order():
+    recs = [
+        vrec(2, -32.0),
+        vrec(0, -30.0),
+        vrec(1, None),  # 말하지 않은 1초(level_db 없음)
+        vrec(3, -28.0, audio_live=False),  # 오디오가 끊긴 1초
+        vrec(4, -26.0, silence_ms=400),  # 조용한 시간이 길어 말하는 중이 아님
+        vrec(5, -25.0),
+        vrec(2, -10.0),  # 같은 1초가 두 번 오면 먼저 온 것만
+    ]
+    assert volume.speaking_levels(recs) == [-30.0, -32.0, -25.0]
+    assert volume.speaking_levels([]) == []
+
+
+def test_speaking_levels_follow_the_config():
+    cfg = volume.Config(pause_silence_ms=500)
+    recs = [vrec(0, -30.0, silence_ms=400), vrec(1, -31.0, silence_ms=600)]
+    assert volume.speaking_levels(recs, cfg) == [-30.0]
+    assert volume.speaking_levels(recs) == []  # 기본 기준(300ms)이면 둘 다 말하는 중이 아니다

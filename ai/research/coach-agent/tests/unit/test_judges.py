@@ -288,7 +288,8 @@ def test_audio_dead_keeps_dwell_but_not_stt_ok_time():
     state = initial_state()
     out = go(req(1_000, voices=[voice(1_000, live=False)]), state, judges)
     assert out.audio_dead and not out.stt_ok
-    assert inputs_of(judges.pace)["stt_status"] == "ok"
+    # 오디오가 멈췄으면 BE 의 상태가 ok 여도 모듈에는 degraded 로 넘긴다
+    assert inputs_of(judges.pace)["stt_status"] == "degraded"
     assert state.slide_totals["1"]["TIME"]["elapsed_ms"] == 1_000
     assert state.slide_stt_ok_ms.get("1", 0) == 0
 
@@ -432,3 +433,91 @@ def test_baseline_uses_the_first_record_of_a_second():
     first_null = [voice(1_000, level=None), voice(1_000, level=-60.0)]
     go(req(1_000, voices=first_null), state, fake_judges())
     assert state.baseline_samples == []
+
+
+# ── 판정 모듈에 넘기는 입력 (공통 계약 6-2 · 7절) ────────────────────────
+
+
+def test_baseline_samples_are_what_speaking_levels_picked():
+    seen: list[list[dict[str, Any]]] = []
+
+    def pick_even(records: list[dict[str, Any]]) -> list[float]:
+        seen.append(records)
+        return [r["level_db"] for r in records if r["t_ms"] % 2_000 == 0]
+
+    judges = fake_judges(speaking_levels=pick_even)
+    state = initial_state()
+    records = [voice(t, level=-30.0 - t / 1_000) for t in (1_000, 2_000, 3_000, 4_000)]
+    go(req(4_000, voices=records), state, judges)
+
+    # 새 음량 기록이 시각 순서 dict(model_dump)로 넘어가고, 고른 것만 표본이 된다
+    assert [r["t_ms"] for r in seen[0]] == [0, 1_000, 2_000, 3_000]
+    assert seen[0][0]["audio_live"] is True and "voiced_ms" in seen[0][0]
+    assert state.baseline_samples == [-31.0, -33.0]
+    assert state.base_level_db is None
+
+
+def test_speaking_levels_failure_is_retried_on_the_next_request():
+    calls = {"n": 0}
+
+    def flaky(records: list[dict[str, Any]]) -> list[float]:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("고르기 예외")
+        return [r["level_db"] for r in records]
+
+    judges = fake_judges(speaking_levels=flaky)
+    state = initial_state()
+    go(req(1_000, voices=[voice(1_000)]), state, judges)
+    assert state.baseline_samples == [] and state.base_level_db is None
+    assert inputs_of(judges.volume)["base_level_db"] is None
+    # 다음 요청은 다시 시도한다(실패한 요청은 그 라운드의 커서가 넘어가 그 기록은 다시 오지 않는다)
+    records = [voice(2_000, level=-30.0), voice(3_000, level=-32.0), voice(4_000, level=-31.0)]
+    go(req(4_000, voices=records), state, judges)
+    assert calls["n"] == 2
+    assert state.base_level_db == -31.0 and state.base_level_source == "TAKE"
+
+
+def test_baseline_failure_keeps_the_samples_for_the_next_request():
+    def boom(levels: list[float]) -> float | None:
+        raise RuntimeError("baseline 예외")
+
+    judges = fake_judges(baseline=boom)
+    state = initial_state()
+    go(req(1_000, voices=[voice(1_000)]), state, judges)
+    assert state.baseline_samples == [-30.0] and state.base_level_db is None
+
+
+def test_gaze_voiced_leaves_out_seconds_with_the_audio_cut():
+    judges = fake_judges()
+    records = [voice(1_000), voice(2_000, live=False), voice(3_000)]
+    go(req(3_000, voices=records), initial_state(), judges)
+    assert inputs_of(judges.gaze)["voiced"] == [
+        {"t_ms": 0, "voiced_ms": 800},
+        {"t_ms": 2_000, "voiced_ms": 800},
+    ]
+
+
+def test_evaluate_gives_stt_modules_degraded_when_the_audio_stopped():
+    judges = fake_judges()
+    state = initial_state()
+    go(req(1_000, voices=[voice(1_000, live=False)]), state, judges)
+    assert inputs_of(judges.filler)["stt_status"] == "degraded"
+    assert inputs_of(judges.pace)["stt_status"] == "degraded"
+    assert inputs_of(judges.filler)["take_end_ms"] is None
+    assert inputs_of(judges.pace)["take_end_ms"] is None
+    # 오디오가 돌아오면 BE 의 상태 그대로
+    go(req(2_000, voices=[voice(2_000)]), state, judges)
+    assert inputs_of(judges.filler)["stt_status"] == "ok"
+    # BE 의 상태가 ok 가 아니면 그 값 그대로(오디오가 살아 있어도)
+    go(req(3_000, stt="reconnecting"), state, judges)
+    assert inputs_of(judges.pace)["stt_status"] == "reconnecting"
+
+
+def test_take_end_ms_goes_to_the_stt_modules_and_audio_stop_is_not_swapped():
+    judges = fake_judges()
+    r = req(5_000, voices=[voice(5_000, live=False)])
+    run(r, initial_state(), judges, DEFAULT_CONFIG, take_end_ms=5_000)
+    for module in (judges.filler, judges.pace):
+        assert inputs_of(module)["take_end_ms"] == 5_000
+        assert inputs_of(module)["stt_status"] == "ok"

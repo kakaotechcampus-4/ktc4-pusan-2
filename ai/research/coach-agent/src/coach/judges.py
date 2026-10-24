@@ -76,6 +76,8 @@ class Judges:
     pace: Judge
     volume: Judge
     filler: Judge
+    #: volume 의 말한 1초 고르기: 음량 1초 기록 → 그중 말한 1초의 level_db (공통 계약 6-2 · 7절)
+    speaking_levels: Callable[[list[dict[str, Any]]], list[float]]
     #: volume 의 기준 음량 잡기: 말한 1초의 level_db 표본 → 값(모자라면 None)
     baseline: Callable[[list[float]], float | None]
 
@@ -98,8 +100,19 @@ class JudgeRun:
     summarize: Summarizer | None = None
 
 
-def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) -> JudgeRun:
-    """요청 시각 t 의 판정 라운드. state 에 커서 · 합계 · STT 상태를 반영한다."""
+def run(
+    req: CoachRequest,
+    state: CoachState,
+    judges: Judges,
+    cfg: CoachConfig,
+    *,
+    take_end_ms: int | None = None,
+) -> JudgeRun:
+    """요청 시각 t 의 판정 라운드. state 에 커서 · 합계 · STT 상태를 반영한다.
+
+    take_end_ms 는 finalize 의 마지막 창에서만 Take 끝 시각이다(STT 모듈 입력으로 넘긴다).
+    evaluate 는 None 이고, 이때만 오디오가 멈췄으면 STT 상태를 degraded 로 넘긴다.
+    """
     inputs = req.inputs
     t = req.t_ms
     out = JudgeRun()
@@ -123,7 +136,11 @@ def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) 
     # 1. filler → 2. pace (filler 의 단어 판정을 받는다)
     stt_inputs = {
         "t_ms": t,
-        "stt_status": inputs.stt_status,
+        # 오디오가 멈추면 STT 도 못 듣는다 — evaluate 에서는 ok 여도 degraded 로 넘겨 옛 단어로
+        # '빠르다'가 남지 않게 한다. finalize 마지막 창은 BE 가 닫기 직전 상태를 싣고 더 말을 걸지
+        # 않으므로 그대로 넘긴다(마지막 확정 단어를 센다)
+        "stt_status": "degraded" if take_end_ms is None and out.audio_dead else inputs.stt_status,
+        "take_end_ms": take_end_ms,
         # STT 가 끊긴 적이 없으면 Take 시작(0)부터 믿는다
         "stt_ok_since_ms": state.stt_ok_since_ms or 0,
         "utterance_ends": inputs.utterance_ends,
@@ -148,7 +165,10 @@ def run(req: CoachRequest, state: CoachState, judges: Judges, cfg: CoachConfig) 
     call("pace", judges.pace.judge, {**stt_part("pace"), "fillers": fillers})
 
     # 3. gaze
-    voiced = [{"t_ms": r.t_ms, "voiced_ms": r.voiced_ms} for r in inputs.voice_records]
+    # 말한 1초만: 오디오가 끊긴 1초(audio_live false)는 뺀다 — 시선에는 audio_live 가 가지 않는다
+    voiced = [
+        {"t_ms": r.t_ms, "voiced_ms": r.voiced_ms} for r in inputs.voice_records if r.audio_live
+    ]
     gaze_in = {
         "t_ms": t,
         "since_ms": _cursor(state, "gaze").since_ms,
@@ -320,7 +340,8 @@ def _track_stt(state: CoachState, inputs: CoachInputs, t: int, out: JudgeRun) ->
     """STT 를 믿을 수 있는지 정하고 stt_gap · stt_ok_since_ms 를 갱신한다.
 
     오디오가 멈추면 STT 도 못 듣는다 — 상태가 ok 여도 그동안의 단어는 믿지 않는다. 모듈에는
-    BE 의 stt_status 를 그대로 넘기고, 오디오 정지는 코치의 slide_stt_ok_ms 계산에만 쓴다.
+    evaluate 에서 오디오 정지 시 degraded, finalize 마지막 창에서는 BE 의 stt_status 를 그대로
+    넘기고(run 이 정한다), 오디오 정지는 코치의 slide_stt_ok_ms 계산에도 쓴다.
     """
     latest = max(inputs.voice_records, key=lambda r: r.t_ms, default=None)
     out.audio_dead = latest is not None and not latest.audio_live
@@ -343,14 +364,16 @@ def _base_level(
         return calibrated
     if state.base_level_db is None:
         since = _cursor(state, "volume").since_ms
-        # 같은 1초가 두 번 오면 먼저 온 기록만 쓴다(소리 크기 모듈과 같은 규칙).
-        # 말하지 않은 1초(level_db 없음)는 표본에서 뺀다
-        first: dict[int, float | None] = {}
+        # 같은 1초가 두 번 오면 먼저 온 기록만 쓴다(소리 크기 모듈과 같은 규칙). 그중 말한 1초의
+        # level_db 는 volume 모듈이 고른다(speaking_levels) — 기준은 소리 크기가 갖는다
+        first: dict[int, dict[str, Any]] = {}
         for r in inputs.voice_records:
             if r.t_ms >= since:
-                first.setdefault(r.t_ms, r.level_db)
-        state.baseline_samples.extend(v for _, v in sorted(first.items()) if v is not None)
+                first.setdefault(r.t_ms, r.model_dump())
+        records = [first[k] for k in sorted(first)]
         try:
+            # 둘 다 이 try 안에서 — 예외면 이번엔 값이 없다(baseline 만 실패했으면 표본은 남는다)
+            state.baseline_samples.extend(judges.speaking_levels(records))
             value = judges.baseline(list(state.baseline_samples))
         except Exception:  # noqa: BLE001 — 기준을 못 잡아도 다음 요청에서 다시 시도한다
             log.warning("baseline failed", exc_info=True)

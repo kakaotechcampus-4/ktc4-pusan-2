@@ -20,12 +20,12 @@ from .fakes import AREAS, FakeJudge, fake_judges
 class SummaryJudge(FakeJudge):
     """summarize 가 합계를 그대로 지표로 내고 측정 비율은 합계에 적힌 값(없으면 1.0)을 쓴다.
 
-    군더더기 모듈은 문장 끝 신호가 오면 첫 단어를 군더더기 하나로 센다(보류 단어 시험).
+    군더더기 모듈은 Take 끝(take_end_ms)이 오면 첫 단어를 군더더기 하나로 센다(보류 단어 시험).
     """
 
     def judge(self, inputs: dict[str, Any], t_ms: int) -> list[dict[str, Any]]:
         results = super().judge(inputs, t_ms)
-        if self.name == "filler" and t_ms in inputs["utterance_ends"] and inputs["words"]:
+        if self.name == "filler" and inputs["take_end_ms"] == t_ms and inputs["words"]:
             first = inputs["words"][0]
             results[0]["tally"].append({"t_ms": first["start_ms"], "values": {"filler_count": 1}})
         return results
@@ -62,20 +62,33 @@ def from_state(t_ms: int = 60_000, *, judges_: Judges | None = None, **fields: A
 # ── 마지막 창 ────────────────────────────────────────────────────────────
 
 
-def test_last_window_is_judged_with_take_end_as_utterance_end():
+def test_last_window_gets_take_end_as_take_end_ms_not_as_an_utterance_end():
     s = session()
     s.run(1_000, 10_000)
+    # evaluate 에서는 take_end_ms 가 없다
+    assert s.judges.filler.calls[-1][0]["take_end_ms"] is None
     last = {
         "words": [{"word": "음", "start_ms": 10_200, "end_ms": 10_600}],
         "utterance_ends": [8_000],
     }
     fin = finish(s, 11_000, inputs=last)
 
-    filler = s.judges.filler
-    inputs, t = filler.calls[-1]
-    assert t == 11_000 and inputs["utterance_ends"] == [8_000, 11_000]
-    # 보류했던 단어가 Take 끝에 군더더기로 세어진다
+    for module in (s.judges.filler, s.judges.pace):
+        inputs, t = module.calls[-1]
+        # Take 끝은 문장 끝 신호에 끼워 넣지 않고 take_end_ms 로 따로 받는다
+        assert t == 11_000 and inputs["take_end_ms"] == 11_000
+        assert inputs["utterance_ends"] == [8_000]
+    # 보류했던 단어가 Take 끝에 군더더기로 세어진다(테스트용 군더더기 모듈이 take_end_ms 를 본다)
     assert fin.take_result.areas["FILLER"].take["filler_count"] == 1
+
+
+def test_last_window_keeps_the_stt_status_the_be_sent_even_if_the_audio_stopped():
+    s = session()
+    s.run(1_000, 10_000)
+    stopped = {"voice_records": [{"t_ms": 10_000, "audio_live": False}], "stt_status": "ok"}
+    finish(s, 11_000, inputs=stopped)
+    assert s.judges.filler.calls[-1][0]["stt_status"] == "ok"
+    assert s.judges.pace.calls[-1][0]["stt_status"] == "ok"
 
 
 def test_last_window_is_skipped_when_the_tick_was_already_processed():
