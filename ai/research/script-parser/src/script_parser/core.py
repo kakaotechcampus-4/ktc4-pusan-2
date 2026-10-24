@@ -65,7 +65,8 @@ def parse_script(request: ParseRequest, llm: Any) -> ParseResponse:
     for number, text, title_set, picked_keywords in parts:
         body = "\n".join(line for line in text.splitlines() if line.strip() not in title_set)
         script = clean_script(body)
-        kept = _keep(picked_keywords, script, limit)
+        # 대본 순서로 낸다 (장마다 번갈아 합친 fail 키워드도 여기서 대본 순서가 된다)
+        kept = sorted(_keep(picked_keywords, script, limit), key=script.find)
         slides.append(
             {"slide_number": number, "script": script, "script_chars": count_chars(script),
              "keywords": kept, "highlights": find_highlights(script, kept)}

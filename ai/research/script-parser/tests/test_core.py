@@ -91,8 +91,7 @@ def test_preface_fail_keywords_spread_over_slides():
     kept = response.slides[0].keywords
     assert response.status == "fail"
     assert len(kept) == 15
-    assert kept[:3] == ["가10", "가20", "가30"]
-    assert {k[1] for k in kept} == {"1", "2", "3"}
+    assert kept == [f"가{n}{i}" for n in (1, 2, 3) for i in range(5)]  # 장마다 5개, 대본 순서
 
 
 def test_no_delimiter_fail():
@@ -113,6 +112,13 @@ def test_drops_words_not_in_script():
     assert response.slides[0].script == "피치코치 발표"
     assert response.slides[0].keywords == ["발표"]
     assert response.terms == ["피치코치"]
+
+
+def test_keywords_in_script_order():
+    llm = FakeLLM(llm_out([(1, [], ["다", "가", "나"])]))
+    response = parse_script(ParseRequest(script_text="[1] 가 나 다"), llm)
+    assert response.slides[0].keywords == ["가", "나", "다"]
+    assert [h.start for h in response.slides[0].highlights] == [0, 2, 4]
 
 
 def test_keyword_limit():
