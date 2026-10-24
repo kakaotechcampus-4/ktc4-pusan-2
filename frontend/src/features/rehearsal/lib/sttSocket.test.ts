@@ -518,6 +518,79 @@ describe('1초 측정값 (metrics)', () => {
     expect(JSON.parse(sockets[1]!.sent.at(-1) as string)).toEqual({ type: 'stop' });
   });
 
+  describe('새로고침 (handOffMetrics · restoredMetrics)', () => {
+    const parsed = (data: readonly string[]) =>
+      data.map((d) => JSON.parse(d) as { t_ms: number; buffered?: boolean });
+
+    it('끊겨 있으면 쌓아 둔 것과 방금 받은 것을 모두 넘긴다', async () => {
+      vi.useFakeTimers();
+      const stt = makeSocket();
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+      sockets[0]!.serverClose(1006);
+      stt.sendMetrics(metrics(57_000));
+
+      const handed = parsed(stt.handOffMetrics([metrics(58_000), metrics(59_000)]));
+      expect(handed.map((m) => [m.t_ms, m.buffered])).toEqual([
+        [57_000, true],
+        [58_000, true],
+        [59_000, true],
+      ]);
+      // 페이지가 되살아나면 다시 붙어 보냅니다
+      expect(stt.bufferedMetrics).toBe(3);
+    });
+
+    it('붙어 있으면 바로 보내 보고, 닿았다고 볼 수 없으니 그것도 넘긴다', async () => {
+      const stt = makeSocket();
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+
+      const handed = parsed(stt.handOffMetrics([metrics(59_000)]));
+      expect(sentMetrics(sockets[0]!)).toEqual([59_000]);
+      expect(handed.map((m) => [m.t_ms, m.buffered])).toEqual([[59_000, true]]);
+      expect(stt.bufferedMetrics).toBe(0);
+    });
+
+    it('새 페이지의 소켓은 넘겨받은 것을 붙자마자 먼저 보낸다', async () => {
+      const handed = makeSocket().handOffMetrics([metrics(58_000), metrics(59_000)]);
+      const stt = makeSocket({ restoredMetrics: handed });
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+      stt.sendMetrics(metrics(61_000));
+
+      expect(sentMetrics(sockets[0]!)).toEqual([58_000, 59_000, 61_000]);
+      const flags = sockets[0]!.sent
+        .filter((d): d is string => typeof d === 'string')
+        .map((d) => JSON.parse(d) as { type: string; buffered?: boolean })
+        .filter((m) => m.type === 'metrics')
+        .map((m) => m.buffered ?? false);
+      expect(flags).toEqual([true, true, false]);
+    });
+
+    it('넘겨받은 것도 상한(5분)을 넘으면 오래된 것부터 버린다', () => {
+      const restored = Array.from({ length: 301 }, (_, i) =>
+        JSON.stringify({ ...metrics((i + 1) * 1_000), buffered: true }),
+      );
+      expect(makeSocket({ restoredMetrics: restored }).bufferedMetrics).toBe(300);
+    });
+
+    it('끝내기(stop) 뒤에는 넘길 것이 없다', async () => {
+      const stt = makeSocket();
+      stt.start();
+      await settle();
+      sockets[0]!.open();
+      sockets[0]!.emit(READY);
+      stt.stop().catch(() => undefined);
+      expect(stt.handOffMetrics([metrics(9_000)])).toEqual([]);
+    });
+  });
+
   it('stop 을 보낸 뒤에는 보내지 않는다', async () => {
     const stt = makeSocket();
     stt.start();

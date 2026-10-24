@@ -124,6 +124,11 @@ export interface SttSocketOptions {
   getToken?: (options: { renew: boolean }) => Promise<string | null>;
   /** 느린 재시도 간격을 고르는 난수 [0, 1). 테스트에서 간격을 고정하려고 둡니다 */
   random?: () => number;
+  /**
+   * 새로고침 전 페이지가 못 보내고 넘긴 `metrics` (JSON 문자열, `handOffMetrics`).
+   * 쌓아 둔 것처럼 다루어 붙자마자 먼저 보냅니다
+   */
+  restoredMetrics?: readonly string[];
 }
 
 /**
@@ -186,6 +191,7 @@ export class SttSocket {
 
   constructor(options: SttSocketOptions) {
     this.options = options;
+    this.pendingMetrics = (options.restoredMetrics ?? []).slice(-MAX_PENDING_METRICS);
   }
 
   /** 지금까지 보낸(또는 버린) 프레임 수. 화면 계기판용입니다 */
@@ -246,6 +252,26 @@ export class SttSocket {
     // 부르지 않도록 표시합니다 (`architecture.md` 1-4 · 2절). 시작 직후 `ready` 전 몇 초도 같습니다
     this.pendingMetrics.push(JSON.stringify({ ...message, buffered: true }));
     while (this.pendingMetrics.length > MAX_PENDING_METRICS) this.pendingMetrics.shift();
+  }
+
+  /**
+   * 탭이 사라지기 직전(`pagehide`). 남은 1초들을 보내 보고, **아직 서버에 닿았다고 볼 수 없는 것**을
+   * 모두 돌려줍니다 — 쌓아 둔 것과 방금 받은 것. 새로고침한 페이지가 `restoredMetrics` 로 다시 보냅니다.
+   *
+   * 붙어 있어 방금 보낸 것도 돌려줍니다. 사라지는 페이지의 `send` 는 닿는다는 보장이 없고,
+   * 두 번 가도 BE 는 먼저 받은 것을 둡니다 (`architecture.md` 6-2). 쌓아 둔 것은 비우지 않습니다 —
+   * 페이지가 되살아나면(bfcache) 다시 붙어 보냅니다.
+   */
+  handOffMetrics(messages: readonly MetricsMessage[]): string[] {
+    if (this.disposed || this.stopping) return [];
+
+    if (!(this.ready && this.socket)) {
+      for (const message of messages) this.sendMetrics(message);
+      return [...this.pendingMetrics];
+    }
+    for (const message of messages) this.socket.send(JSON.stringify(message));
+    const sent = messages.map((message) => JSON.stringify({ ...message, buffered: true }));
+    return [...this.pendingMetrics, ...sent].slice(-MAX_PENDING_METRICS);
   }
 
   /**

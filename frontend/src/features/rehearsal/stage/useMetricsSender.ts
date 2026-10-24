@@ -38,19 +38,23 @@ export function useMetricsSender({
     slideRef.current = slideNumber;
   }, [slideNumber]);
 
+  const toMessages = useCallback(
+    (windows: MetricsWindow[]): MetricsMessage[] =>
+      windows.map((w) => ({
+        type: 'metrics',
+        t_ms: w.endMs,
+        gaze: w.gaze,
+        voice: voiceRecord(w.startMs, w.endMs),
+        slide_number: slideRef.current,
+      })),
+    [voiceRecord],
+  );
+
   const emit = useCallback(
     (windows: MetricsWindow[]) => {
-      for (const w of windows) {
-        send({
-          type: 'metrics',
-          t_ms: w.endMs,
-          gaze: w.gaze,
-          voice: voiceRecord(w.startMs, w.endMs),
-          slide_number: slideRef.current,
-        });
-      }
+      for (const message of toMessages(windows)) send(message);
     },
-    [send, voiceRecord],
+    [send, toMessages],
   );
 
   useEffect(() => {
@@ -83,5 +87,19 @@ export function useMetricsSender({
     [emit],
   );
 
-  return { onGazeRecords, finishMetrics };
+  /**
+   * 탭이 사라지기 직전(`pagehide`). 시선을 기다리느라 아직 안 보낸 시간을 지금까지 메워 **보내지 않고**
+   * 돌려줍니다 (`MetricsClock.flush`). 음량 1초 기록은 메모리에만 있어 페이지가 살아 있는 지금 붙여야 합니다.
+   * 부르는 쪽이 소켓에 넘기고(`handOffMetrics`) 새로고침 뒤에 다시 보내도록 적어 둡니다.
+   * `nowMs` 는 같은 순간 적는 무대 시계(`saveClock`)와 같은 값이라야 새 시계와 이어집니다.
+   */
+  const flushMetricsForHide = useCallback(
+    (nowMs: Ms): MetricsMessage[] => {
+      const clock = clockRef.current;
+      return clock ? toMessages(clock.flush(nowMs)) : [];
+    },
+    [toMessages],
+  );
+
+  return { onGazeRecords, finishMetrics, flushMetricsForHide };
 }

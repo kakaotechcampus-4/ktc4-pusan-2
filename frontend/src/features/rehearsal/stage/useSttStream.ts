@@ -40,6 +40,7 @@ export function useSttStream({
   enabled,
   elapsedMs,
   onAutoEnd,
+  restoredMetrics,
 }: {
   takeId: string;
   stream: MediaStream | null;
@@ -49,6 +50,11 @@ export function useSttStream({
   elapsedMs: () => Ms;
   /** 서버가 Take 를 자동으로 끝냈습니다 (말 없음 · 최대 시간). 무대가 종료 흐름을 탑니다 */
   onAutoEnd?: () => void;
+  /**
+   * 새로고침 전 페이지가 못 보낸 `metrics` 를 꺼냅니다 (`takeMetrics`). 소켓을 만들 때 한 번 부르고,
+   * 붙자마자 그것부터 보냅니다
+   */
+  restoredMetrics?: () => string[];
 }) {
   /** 전사 한 줄이 들어갈 자리. 이 훅이 textContent 로 직접 씁니다 */
   const transcriptRef = useRef<HTMLSpanElement>(null);
@@ -69,8 +75,10 @@ export function useSttStream({
 
   /** 소켓은 effect 안에서 한 번 만들어집니다. 그 뒤에 바뀐 콜백을 부르려고 ref 로 넘깁니다 */
   const onAutoEndRef = useRef(onAutoEnd);
+  const restoredMetricsRef = useRef(restoredMetrics);
   useEffect(() => {
     onAutoEndRef.current = onAutoEnd;
+    restoredMetricsRef.current = restoredMetrics;
   });
 
   useEffect(() => {
@@ -94,6 +102,7 @@ export function useSttStream({
 
     const socket = new SttSocket({
       takeId,
+      restoredMetrics: restoredMetricsRef.current?.(),
       onTranscript: paint,
       onState: (state) => {
         if (cancelled) return;
@@ -186,6 +195,16 @@ export function useSttStream({
     socketRef.current?.sendMetrics(message);
   }, []);
 
+  /**
+   * 탭이 사라지기 직전(`pagehide`). 남은 1초들을 보내 보고, 서버에 닿았다고 볼 수 없는 것을 돌려줍니다
+   * (`SttSocket.handOffMetrics`). 소켓이 없으면 `sendMetrics` 처럼 버립니다.
+   */
+  const handOffMetrics = useCallback(
+    (messages: readonly MetricsMessage[]): string[] =>
+      socketRef.current?.handOffMetrics(messages) ?? [],
+    [],
+  );
+
   return {
     transcriptRef,
     sttState,
@@ -202,6 +221,7 @@ export function useSttStream({
       sttState === 'degraded',
     statsRef,
     sendMetrics,
+    handOffMetrics,
     stop,
   };
 }

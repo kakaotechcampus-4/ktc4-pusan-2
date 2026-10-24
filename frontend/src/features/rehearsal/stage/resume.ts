@@ -54,6 +54,54 @@ export function clearClock(takeId: string): void {
 }
 
 /**
+ * 새로고침 직전에 서버로 못 보낸 1초 측정값(`metrics`, JSON 문자열). 탭이 닫히는 순간(`pagehide`) 적습니다.
+ *
+ * 두 가지가 들어갑니다 — 시선을 기다리느라 아직 만들지 않은 마지막 몇 초(`MetricsClock.flush`)와,
+ * 끊겨 있어 소켓이 들고 있던 것(`SttSocket.handOffMetrics`). 메모리에만 있어 새로고침하면 사라지고,
+ * 새 페이지는 저장한 시계부터 다시 보내므로 그 구간을 보낼 길이 없습니다. 음량 1초 기록도
+ * 메모리에만 있어 IndexedDB 에서 다시 만들 수 없습니다. 새 소켓이 붙으면 이것부터 보냅니다.
+ *
+ * 같은 1초가 두 번 가도 BE 는 먼저 받은 것을 둡니다 (`architecture.md` 6-2).
+ */
+export interface SavedMetrics {
+  clientSessionId: string;
+  messages: string[];
+}
+
+const metricsKey = (takeId: string) => `rehearsal:metrics:${takeId}`;
+
+export function saveMetrics(takeId: string, saved: SavedMetrics): void {
+  try {
+    if (saved.messages.length === 0) sessionStorage.removeItem(metricsKey(takeId));
+    else sessionStorage.setItem(metricsKey(takeId), JSON.stringify(saved));
+  } catch {
+    // 사생활 보호 모드 · 저장 공간 부족. 그 몇 초는 잃습니다
+  }
+}
+
+/** 적어 둔 것을 꺼내고 지웁니다. 다른 세션이 적은 것은 버립니다 */
+export function takeMetrics(takeId: string, clientSessionId: string): string[] {
+  try {
+    const raw = sessionStorage.getItem(metricsKey(takeId));
+    sessionStorage.removeItem(metricsKey(takeId));
+    if (!raw) return [];
+    const value = JSON.parse(raw) as Partial<SavedMetrics>;
+    if (value.clientSessionId !== clientSessionId || !Array.isArray(value.messages)) return [];
+    return value.messages.filter((m): m is string => typeof m === 'string');
+  } catch {
+    return [];
+  }
+}
+
+export function clearMetrics(takeId: string): void {
+  try {
+    sessionStorage.removeItem(metricsKey(takeId));
+  } catch {
+    // 지우지 못해도 다음 Take 는 takeId 가 달라 읽지 않습니다
+  }
+}
+
+/**
  * 무대 시계를 어디서부터 다시 돌릴까.
  *
  * 1. 새로고침이면 `pagehide` 에 적어 둔 값이 있습니다. 정확합니다.

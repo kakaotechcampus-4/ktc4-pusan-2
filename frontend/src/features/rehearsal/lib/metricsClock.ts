@@ -44,6 +44,13 @@ export interface MetricsClock {
   tick(nowMs: Ms): MetricsWindow[];
   /** 발표 끝. 아직 안 보낸 시간을 끝 시각까지 메워 돌려줍니다 (마지막은 1초보다 짧을 수 있음) */
   finish(endMs: Ms): MetricsWindow[];
+  /**
+   * 탭이 사라지기 직전(`pagehide`). 안 보낸 시간을 지금까지 메워 돌려줍니다 (마지막은 1초보다 짧을 수 있음).
+   * `GAZE_WAIT_MS` 를 기다리지 않습니다 — 페이지가 사라지면 그 구간의 시선 기록은 더 오지 않습니다.
+   * 새로고침하면 시계가 이 시각부터 다시 돌아서(`saveClock`) 다음 구간과 겹치지 않습니다.
+   * `finish` 와 달리 닫지 않습니다 — 페이지가 되살아나면(bfcache) 이어서 보냅니다.
+   */
+  flush(nowMs: Ms): MetricsWindow[];
 }
 
 /** `[fromMs, toMs)` 안의 꽉 찬 1초들. 1초가 안 되는 끝 자투리는 내지 않습니다 */
@@ -99,6 +106,13 @@ export function createMetricsClock(startMs: Ms): MetricsClock {
       finished = true;
       const out = fill(next, endMs);
       next = Math.max(next, endMs);
+      return out;
+    },
+
+    flush(nowMs) {
+      if (finished) return [];
+      const out = fill(next, nowMs);
+      next = Math.max(next, nowMs);
       return out;
     },
   };

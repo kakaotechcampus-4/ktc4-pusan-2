@@ -37,12 +37,15 @@ import { useRehearsalMaterials } from './useRehearsalMaterials';
 import { useRehearsalStore } from './rehearsalStore';
 import {
   clearClock,
+  clearMetrics,
   coachHistory,
   lastSlide,
   readClock,
   recordedUntilMs,
   resumeFromMs,
   saveClock,
+  saveMetrics,
+  takeMetrics,
   type CoachHistory,
 } from './resume';
 import { useSlideDeck } from './useSlideDeck';
@@ -217,11 +220,17 @@ export function RehearsalPage() {
    * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
    * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
    */
+  // 새로고침 전 페이지가 못 보내고 적어 둔 `metrics`. 소켓이 붙자마자 먼저 보냅니다 (resume.ts)
+  const restoredMetrics = useCallback(
+    () => (sessionId ? takeMetrics(takeId, sessionId) : []),
+    [takeId, sessionId],
+  );
   const {
     transcriptRef,
     note: sttNote,
     alert: sttAlert,
     sendMetrics,
+    handOffMetrics,
     stop: stopStt,
   } = useSttStream({
     takeId,
@@ -229,10 +238,11 @@ export function RehearsalPage() {
     enabled: stageReady && (phase === 'RUNNING' || phase === 'ENDING'),
     elapsedMs,
     onAutoEnd,
+    restoredMetrics,
   });
 
   // 1초마다 시선 · 음량 · 슬라이드를 WS `metrics` 로 보냅니다. 서버의 실시간 코치와 Take 결과의 재료입니다
-  const { onGazeRecords, finishMetrics } = useMetricsSender({
+  const { onGazeRecords, finishMetrics, flushMetricsForHide } = useMetricsSender({
     enabled: running,
     elapsedMs,
     voiceRecord,
@@ -447,12 +457,23 @@ export function RehearsalPage() {
 
   // 새로고침하면 이 값에서 시계를 다시 돌립니다. 하트비트는 5초마다라 그만큼 어긋나고,
   // 가려진 탭에서는 브라우저가 더 늦춥니다. 탭이 닫히는 순간에 동기로 적어 둡니다 (resume.ts)
+  //
+  // 서버로 못 보낸 `metrics` 도 같은 순간에 적습니다 — 시선을 기다리느라 아직 안 만든 마지막 몇 초와
+  // 끊겨 있어 소켓이 들고 있던 것. 메모리에만 있어 새로고침하면 사라지고, 새 페이지는 아래 시계부터
+  // 다시 보내므로 그 구간을 보낼 길이 없습니다. 같은 `now` 로 메워야 새 시계와 빈틈 · 겹침 없이 이어집니다
   useEffect(() => {
     if (!running || !sessionId) return;
-    const save = () => saveClock(takeId, { clientSessionId: sessionId, elapsedMs: elapsedMs() });
+    const save = () => {
+      const now = elapsedMs();
+      saveClock(takeId, { clientSessionId: sessionId, elapsedMs: now });
+      saveMetrics(takeId, {
+        clientSessionId: sessionId,
+        messages: handOffMetrics(flushMetricsForHide(now)),
+      });
+    };
     window.addEventListener('pagehide', save);
     return () => window.removeEventListener('pagehide', save);
-  }, [running, sessionId, takeId, elapsedMs]);
+  }, [running, sessionId, takeId, elapsedMs, handOffMetrics, flushMetricsForHide]);
 
   // 시선 판정이 아직 없는 dev 환경에서 테두리 3색을 눈으로 보려고 둡니다.
   // 1·2·3 키. **기록에는 남기지 않습니다** — 판정이 아니라 눈속임입니다
@@ -546,6 +567,7 @@ export function RehearsalPage() {
       await markSubmitted(id).catch((err: unknown) => noteWriteFailure(id, 'ending', err));
       clearWriteFailures(id);
       clearClock(takeId);
+      clearMetrics(takeId);
       // 기록을 쌓지 않고 바꿉니다. 뒤로 가기로 리허설 화면에 돌아오지 않게 합니다
       navigate(`/takes/${takeId}/processing`, { replace: true });
     } catch (e) {
