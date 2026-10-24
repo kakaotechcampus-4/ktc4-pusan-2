@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -31,6 +31,20 @@ class DbCoachStore(SessionPerCall):
 
     async def load_events(self, take_id: uuid.UUID) -> list[dict[str, Any]] | None:
         return await run_in_threadpool(self._with, coach_service.load_coach_events, take_id)
+
+    async def load_finalize_source(self, take_id: uuid.UUID) -> FinalizeSource | None:
+        return await run_in_threadpool(self._with, load_finalize_source, take_id)
+
+    async def save_take_result(
+        self, take_id: uuid.UUID, reply: FinalizeReply, events: Sequence[StoredEvent]
+    ) -> bool:
+        return await run_in_threadpool(self._with, save_take_result, take_id, reply, events)
+
+    async def fail_take_result(self, take_id: uuid.UUID) -> bool:
+        return await run_in_threadpool(self._with, coach_service.fail_take_result, take_id)
+
+    async def finalizing_takes(self, stale_before: datetime | None = None) -> list[uuid.UUID]:
+        return await run_in_threadpool(self._with, coach_service.finalizing_takes, stale_before)
 
 
 class CoachStore(Protocol):
@@ -112,3 +126,32 @@ def _take_context(db: Session, values: TakeCoachValues) -> TakeContext:
         script_mode=values.script_mode,
     )
     return TakeContext(constants=constants, slides=values.slide_events)
+
+def load_finalize_source(db: Session, take_id: uuid.UUID) -> FinalizeSource | None:
+    """finalize 를 DB 에서 다시 만들 재료. Take 가 Take 결과를 기다리는 중이 아니면 None."""
+    rows = coach_service.finalize_rows(db, take_id)
+    if rows is None:
+        return None
+    return FinalizeSource(
+        context=_take_context(db, rows.values),
+        seconds=rows.seconds,
+        segments=rows.segments,
+        utterance_ends=rows.utterance_ends,
+        events=rows.events,
+        raw_data_consent=rows.raw_data_consent,
+    )
+
+def save_take_result(
+    db: Session, take_id: uuid.UUID, reply: FinalizeReply, events: Sequence[StoredEvent]
+) -> bool:
+    """finalize 응답을 저장한다 (`coach_service.save_take_result`). 발표 중 못 넣은 이벤트 뒤에
+    이번 응답의 이벤트를 붙인다. 저장했으면 True."""
+    return coach_service.save_take_result(
+        db,
+        take_id,
+        take_result=reply.take_result,
+        meta=reply.meta,
+        events=[*events, *((event, reply.meta) for event in reply.events)],
+        measures=asdict(reply.summary()),
+        duration_sec=reply.duration_sec,
+    )

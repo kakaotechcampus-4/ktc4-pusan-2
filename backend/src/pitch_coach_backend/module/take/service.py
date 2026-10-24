@@ -354,9 +354,20 @@ def append_metric_seconds(
     """1초 원자료 여러 행을 한 번에 저장하고 커밋한다. 이미 있는 1초는 건너뛴다.
 
     Take 가 그 사이 지워졌으면 `NonExistentTake`. 스트림은 이걸 보고 남은 행을 버린다.
+    Take 결과를 이미 만든 Take 면 넣지 않는다 (`TakeRepository.raw_data_open`).
     """
+    repository = TakeRepository(db)
+    open_ = repository.raw_data_open(take_id)
+    if open_ is None:
+        raise NonExistentTake()
+    if not open_:
+        db.rollback()
+        logger.warning(
+            "Take 결과를 만든 뒤라 1초 원자료를 넣지 않는다 take=%s count=%d", take_id, len(rows)
+        )
+        return
     try:
-        TakeRepository(db).save_metric_seconds(take_id, [row.model_dump() for row in rows])
+        repository.save_metric_seconds(take_id, [row.model_dump() for row in rows])
     except IntegrityError as e:
         # 이 표의 외래 키는 take_id 하나다. 같은 1초는 ON CONFLICT 로 건너뛰어 여기 오지 않는다
         if isinstance(e.orig, ForeignKeyViolation):
