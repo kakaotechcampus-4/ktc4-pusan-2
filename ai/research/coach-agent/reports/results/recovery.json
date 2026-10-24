@@ -113,8 +113,8 @@
             "by_tier.T3": 0.0,
             "by_word.음": 0.0,
             "filler_count": 0.0,
-            "filler_per_min": 0.0,
-            "measured_ratio": 0.0
+            "filler_per_min": 0.0088,
+            "measured_ratio": 0.0037
           },
           "GAZE": {
             "audience_ratio": 0.0,
@@ -130,8 +130,8 @@
             "measured_ratio": 0.0
           },
           "SPEED": {
-            "cpm": 0.0,
-            "measured_ratio": 0.0,
+            "cpm": 0.0187,
+            "measured_ratio": 0.0037,
             "pause_count": 0.0
           },
           "TIME": {
@@ -253,8 +253,8 @@
             "by_tier.T3": 0.0,
             "by_word.음": 0.0,
             "filler_count": 0.0,
-            "filler_per_min": 0.0,
-            "measured_ratio": 0.0
+            "filler_per_min": 0.0081,
+            "measured_ratio": 0.0036
           },
           "GAZE": {
             "audience_ratio": 0.0,
@@ -270,8 +270,8 @@
             "measured_ratio": 0.0
           },
           "SPEED": {
-            "cpm": 0.0,
-            "measured_ratio": 0.0,
+            "cpm": 0.0281,
+            "measured_ratio": 0.0036,
             "pause_count": 0.0
           },
           "TIME": {

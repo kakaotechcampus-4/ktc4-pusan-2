@@ -77,7 +77,7 @@ coach-agent/
 | 파일 | 하는 일 |
 |---|---|
 | `core.py` | 유일한 진입점: `decide` · `decide_safe` · `finalize` · `ReplayRequired`. 아래 흐름의 순서를 정한다 |
-| `judges.py` | `Judges` 묶음과 한 번의 판정 라운드(`run`): filler → pace → gaze → volume → timing 호출, 커서 · 합계 누적, 모듈 예외 처리, 기준 음량, `skip` |
+| `judges.py` | `Judges` 묶음과 한 번의 판정 라운드(`run`): filler → pace → gaze → volume → timing 호출, 커서 · 합계 누적, 모듈 예외 처리, 기준 음량(volume의 `speaking_levels` · `baseline`), 새로 시작한 상태의 커서 시작, `skip` |
 | `tally.py` | 판정 결과의 `tally` 조각을 Take 합계 · 장 번호별 합계 · 장 방문에 더하고 센 구간을 표시 |
 | `measure.py` | 판정 결과 → `Tick`(지표 · 문제 `Detection`). 상태 표시(`indicators`) |
 | `tick.py` | 한 번의 판단이 들고 다니는 값(`Tick`)과 `Detection` |
@@ -128,13 +128,13 @@ coach-agent/
 ⑦ 문구 렌더링  (INTERVENE 일 때)            ⑧ 이벤트 · 참은 기록 · 기록 · coach_state
 ```
 
-- `t_ms`가 이미 처리한 시각 이하면 아무것도 바꾸지 않고 `WAIT` + `STALE_TICK`.
+- `t_ms`가 이미 처리한 시각 이하면 아무것도 바꾸지 않고 `WAIT` + `STALE_TICK`. 이미 처리한 상태에서 지난 처리 시각보다 60초 넘게 앞서면 처리하지 않고 `WAIT` + `T_MS_JUMP`와 빈 `coach_state`를 돌려준다(상한 `MAX_T_MS`는 `schemas.py`). 새로 시작한 상태(Take 첫 요청 · `STATE_RESET` · `T_MS_JUMP` 뒤)의 첫 요청은 시각 커서를 `max(0, t_ms − 30초)`에서 시작한다.
 - `decide_safe`는 코치 안의 예외를 `WAIT` + `INTERNAL_ERROR`로 바꾸고 그 시간을 잴 수 없던 것으로 넘긴다. 요청 형식 오류(`ValidationError`)는 그대로 올린다.
 - 판정 모듈 하나가 실패하면 그 영역만 잴 수 없음으로 두고 계속한다 ([설계 문서](../../../docs/ai/features/coach-agent.md) 7절).
 
 ### 4-2. Take 종료 (`finalize`)
 
-마지막 창 판정(Take 끝을 문장 끝으로 본다) → 열린 효과 · 문제 구간 · 장 방문 닫기 → 센 구간이 Take를 덮는지 확인(못 덮으면 `ReplayRequired`) →
+마지막 창 판정(Take 끝을 STT 모듈 입력 `take_end_ms`로 넘긴다) → 열린 효과 · 문제 구간 · 장 방문 닫기 → 센 구간이 Take를 덮는지 확인(못 덮으면 `ReplayRequired`) →
 합계를 모듈의 `summarize`에 넣어 `areas` → 이벤트에서 문제 구간 · 개입 · 포기.
 `replay`(Take 전체 원자료)가 있으면 `recovery.py`가 1초마다의 요청을 다시 만들어 `EXAM` 모드로 처음부터 판정하고, 지표 · 문제 구간은 그 결과에서, 개입 · 효과는 받은 이벤트에서 가져온다.
 
@@ -176,10 +176,10 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 
 ```python
 from coach import decide_safe, finalize
-from coach_lab.judges import lab_judges        # 대역 판정 모듈. 배포에서는 기능 모듈로 만든 Judges
+from coach_lab.judges import lab_judges  # 대역 판정 모듈. 배포에서는 기능 모듈로 만든 Judges
 
 judges = lab_judges()
-resp = decide_safe(request_dict, judges)       # 1초마다. resp.coach_state 를 다음 요청에 붙인다
+resp = decide_safe(request_dict, judges)  # 1초마다. resp.coach_state 를 다음 요청에 붙인다
 result = finalize(finalize_request_dict, judges)
 ```
 

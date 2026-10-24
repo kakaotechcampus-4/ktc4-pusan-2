@@ -13,7 +13,14 @@ WORD = "안녕하세요"  # 5자, 군더더기 아님
 
 
 def lab_bundle() -> Judges:
-    return Judges(gaze=gaze, pace=pace, volume=volume, filler=filler, baseline=volume.baseline)
+    return Judges(
+        gaze=gaze,
+        pace=pace,
+        volume=volume,
+        filler=filler,
+        speaking_levels=volume.speaking_levels,
+        baseline=volume.baseline,
+    )
 
 
 def request(t: int, history: dict[str, list]) -> CoachRequest:
