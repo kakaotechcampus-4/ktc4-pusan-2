@@ -408,6 +408,9 @@ FE 없이 확인하는 두 가지 —
 | 파일 | `dev/stt-send-pcm.py` | `uv run python dev/stt-send-pcm.py 녹음.pcm --email <가입한 이메일>` (파일 상단에 변환 명령). `--take-id` 를 안 주면 그 사용자의 Take 를 하나 만들어 쓴다 |
 | 마이크 | `dev/stt-test.html` | `python3 -m http.server 3000 --directory dev` 로 띄우고 `http://localhost:3000/stt-test.html`. **3000 포트로 열어야** Origin 검사를 통과한다. Take 칸에는 `uv run python dev/stt-send-pcm.py --create-take --email <이메일>` 로 만든 id 를 넣는다 |
 
+1초 원자료 저장 부하는 `dev/metrics-load-test.py` 로 잰다. 같은 Postgres 에 임시 DB 를 만들어 Take 마다 1초에
+1행씩 넣고 끝나면 지운다. 묶음 크기 5(`METRICS_BATCH`)는 develop 서버에서 잰 결과(#338)로 정했다.
+
 ## 대본 파싱 (AI)
 
 올린 대본을 AI 서버가 슬라이드 단위로 나누고 키워드를 뽑는다. **BE 가 AI 를 부르고 기다린다** —
