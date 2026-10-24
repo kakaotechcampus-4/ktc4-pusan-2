@@ -1,6 +1,8 @@
 """STT 평가 진입점: 발표 연습 한 번(STT)을 대본의 평가 기준으로 채점한다.
 
 LLM 과 캐시는 인자로 받는다. 평가 기준(rubric)을 읽고 결과를 저장하는 일은 호출하는 쪽이 한다.
+평가 기준이 없는 장은 채점하지 않고 `stats["failed"]` 에 `RUBRIC_MISSING` 으로 남긴다.
+STT 가 빈 장은 LLM 의미 평가를 부르지 않고 코드가 모든 전달 단위를 missing 으로 판정한다.
 """
 
 from ..shared.llm_step import LLMCache, llm_step, record_failures
@@ -8,7 +10,12 @@ from ..shared.rubric import EvaluationRubric
 from ..shared.text import normalize_script
 from .align import align_sentences, fidelity_excluding, positioned_tokens
 from .fact_check import annotate_mismatches, check_critical_facts
-from .judge import eval_config_hash, evaluate_semantics, semantic_eval_message
+from .judge import (
+    empty_stt_evaluation,
+    eval_config_hash,
+    evaluate_semantics,
+    semantic_eval_message,
+)
 from .merge import (
     CONFLICT_TEXT,
     aggregate_key_points,
@@ -43,12 +50,14 @@ def evaluate_take(
     stats["causes"] 에 {슬라이드 번호: "<단계> <예외 클래스 이름>"}(로그용)으로 남긴다.
     """
     slides = {}
+    failed: dict[int, str] = {}
+    causes: dict[int, str] = {}
     for s in take.slides:
         rubric = rubrics.get(s.slide_number)
-        if rubric is None:
-            raise ValueError(
-                f"{take.script_name} 슬라이드 {s.slide_number} 의 평가 기준이 없다 — 대본 분석을 먼저 실행한다"
-            )
+        if rubric is None:  # 나머지 장은 계속 채점한다
+            failed[s.slide_number] = "RUBRIC_MISSING"
+            causes[s.slide_number] = "평가 기준 없음"
+            continue
         script_norm = normalize_script(rubric.normalized_script)
         stt_norm = normalize_stt(s.stt)
         script_ptokens, stt_ptokens = positioned_tokens(script_norm), positioned_tokens(stt_norm)
@@ -89,9 +98,12 @@ def evaluate_take(
         )
 
     # ② LLM 의미 평가 (규칙 분석과 독립: 규칙 결과를 입력에 넣지 않는다)
+    # STT 가 빈 장은 LLM 을 부르지 않고 코드가 판정한다 (캐시에 넣지 않고, 호출 수에도 세지 않는다)
+    empty = {n for n, d in slides.items() if not d["stt_norm"].text}
     messages = {
         n: semantic_eval_message(n, d["rubric"], d["stt_norm"], d["unverified"])
         for n, d in slides.items()
+        if n not in empty
     }
     semantics, sem_errors, sem_calls = llm_step(
         "stt.semantic",
@@ -103,6 +115,9 @@ def evaluate_take(
         cache=cache,
         max_workers=max_workers,
     )
+
+    for n in empty:
+        semantics[n] = empty_stt_evaluation(slides[n]["rubric"], slides[n]["unverified"])
 
     # ③ 문장별 병합·충돌 검사
     for n, d in slides.items():
@@ -179,8 +194,6 @@ def evaluate_take(
         )
         evaluations.append(evaluation)
 
-    failed: dict[int, str] = {}
-    causes: dict[int, str] = {}
     record_failures(failed, causes, sem_errors, "의미 평가")
     record_failures(failed, causes, ver_errors, "교차 검증")
     stats = {

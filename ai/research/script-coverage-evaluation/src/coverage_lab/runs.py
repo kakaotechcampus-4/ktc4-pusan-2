@@ -57,7 +57,7 @@ def run_take_evaluation(
     llms: dict | None = None,
     max_workers: int = 4,
 ) -> tuple[list[SlideEvaluation], dict]:
-    """연습 한 번(STT)을 DB 의 평가 기준으로 채점한다. 평가 기준이 없으면 `ValueError`.
+    """연습 한 번(STT)을 DB 의 평가 기준으로 채점한다. 평가 기준이 없는 슬라이드는 `stats["failed"]` 에 `RUBRIC_MISSING` 으로 남는다.
 
     `sample = k > 0` 이면 같은 입력을 k 번째로 다시 채점한다 (반복 채점). 캐시를 따로 쓰고 결과는 저장하지 않는다.
     """

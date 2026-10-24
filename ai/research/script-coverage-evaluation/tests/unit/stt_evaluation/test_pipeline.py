@@ -6,8 +6,6 @@
 import hashlib
 import json
 
-import pytest
-
 from script_coverage.stt_evaluation.core import evaluate_take
 from script_coverage.stt_evaluation.judge import eval_config_hash
 from script_coverage.stt_evaluation.prompts.semantic import SEMANTIC_EVAL_PROMPT
@@ -45,7 +43,11 @@ def test_config_hash_depends_on_model():
     assert eval_config_hash("a") != eval_config_hash("b")
 
 
-def test_evaluate_take_requires_rubric_for_every_slide():
+def test_evaluate_take_skips_slide_without_rubric():
+    """평가 기준이 없는 장은 예외 없이 건너뛰고 RUBRIC_MISSING 으로 남긴다 (LLM 은 부르지 않는다)."""
     take = Take(script_name="s", take_id="T", slides=[SlideSTT(slide_number=1, stt="말했다")])
-    with pytest.raises(ValueError, match="슬라이드 1 의 평가 기준이 없다"):
-        evaluate_take(take, {}, eval_llm=None, verifier_llm=None, model="m")
+    evaluations, stats = evaluate_take(take, {}, eval_llm=None, verifier_llm=None, model="m")
+    assert evaluations == []
+    assert stats["failed"] == {1: "RUBRIC_MISSING"}
+    assert stats["causes"] == {1: "평가 기준 없음"}
+    assert stats["semantic_calls"] == 0
