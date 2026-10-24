@@ -15,7 +15,7 @@ from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 
 from evaluation_criteria import analyze_criteria
-from evaluation_criteria.schemas import EvaluationCriteriaAnalysis
+from evaluation_criteria.schemas import EvaluationCriteriaAnalysis, EvaluationCriteriaRequest
 
 ROOT = Path(__file__).resolve().parent
 EXAMPLES_PATH = ROOT / "data" / "examples.json"
@@ -68,7 +68,7 @@ def main() -> None:
     llm = build_llm()
     results = []
     for i, text in enumerate(inputs, 1):
-        data = analyze_criteria(text, llm=llm)
+        data = analyze_criteria(EvaluationCriteriaRequest(standard_text=text), llm).model_dump()
         results.append({"input": text, "output": data})
         print(f"Input {i}: {text}")
         print(f"Output {i}: {json.dumps(data, ensure_ascii=False, indent=2)}\n")
