@@ -64,6 +64,18 @@ def test_duplicate_second_uses_the_first_record() -> None:
     assert result.tally[0].values["measured_ms"] == 500
 
 
+def test_overlapping_records_cap_ratio_at_one() -> None:
+    inputs = SampleInput(
+        since_ms=0,
+        records=[SampleRecord(t_ms=0, duration_ms=1500), SampleRecord(t_ms=500, duration_ms=1500)],
+    )
+    [result] = core.judge(inputs, 2000)
+    assert result.metrics["measured_ratio"] == 1.0
+    assert core.summarize({"VOLUME": {"measured_ms": 3000, "total_ms": 2000}}) == {
+        "VOLUME": {"measured_ratio": 1.0}
+    }
+
+
 def test_cursor_never_goes_back() -> None:
     result = _judge(5000, 3000)
     assert result["counted_until_ms"] == 5000

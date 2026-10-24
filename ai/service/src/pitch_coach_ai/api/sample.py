@@ -10,8 +10,9 @@
   예시는 `features/sample/examples/`
 - 라우터는 요청 검사 → 코어 호출 → `meta` 붙이기만 한다. 코어가 동기라 `def` 로 쓴다
   (스레드 풀에서 돈다). 실제 판정 모듈도 같은 모양으로 붙인다
-- 첫 실제 기능 엔드포인트가 붙으면 이 파일 · `features/sample/` · 그 테스트 ·
-  `AI_ENABLE_SAMPLE` 을 지운다
+- 첫 실제 기능 엔드포인트가 붙으면 이 파일 · `features/sample/` · 그 테스트
+  (`tests/test_sample.py` · `tests/unit/sample/` · conftest 의 `sample_client`) ·
+  `main.py` 의 등록 · `AI_ENABLE_SAMPLE`(settings · `.env.example` · README 표)을 지운다
 """
 
 from fastapi import APIRouter

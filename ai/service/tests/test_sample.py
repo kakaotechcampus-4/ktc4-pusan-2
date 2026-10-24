@@ -45,8 +45,17 @@ def test_env_value_turns_sample_on(monkeypatch: pytest.MonkeyPatch) -> None:
         {"t_ms": 1000, "since_ms": 0},
         {"t_ms": 1000, "since_ms": -1, "records": []},
         {"t_ms": 1000, "since_ms": 0, "records": [{"duration_ms": 1000}]},
+        {"t_ms": 1000, "since_ms": 0, "records": [{"t_ms": -1000}]},
+        {"t_ms": 1000, "since_ms": 0, "records": [{"t_ms": 0, "duration_ms": 0}]},
     ],
-    ids=["t_ms-not-int", "records-missing", "since_ms-negative", "record-without-t_ms"],
+    ids=[
+        "t_ms-not-int",
+        "records-missing",
+        "since_ms-negative",
+        "record-without-t_ms",
+        "record-t_ms-negative",
+        "duration_ms-zero",
+    ],
 )
 def test_bad_request_is_422_common_body(sample_client: TestClient, body: dict) -> None:
     res = sample_client.post("/sample/judge", json=body)

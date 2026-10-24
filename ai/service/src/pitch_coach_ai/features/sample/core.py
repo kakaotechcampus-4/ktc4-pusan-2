@@ -7,7 +7,8 @@
   - 센 기록: `inputs.since_ms` 이상에서 시작해 `t_ms` 안에서 끝난 1초.
     같은 `t_ms` 가 두 번 오면 먼저 온 것만 쓴다 (6-2절)
   - `tally`: `[{t_ms: since_ms, values: {measured_ms, total_ms}}]` 한 조각.
-    `total_ms` 는 `t_ms - since_ms` 다. 기록이 오지 않아도 시간은 흐른다
+    `total_ms` 는 `t_ms - since_ms` 다. 기록이 오지 않아도 시간은 흐른다.
+    새로 흐른 시간이 없으면(`t_ms ≤ since_ms`) 새 몫이 없으므로 빈 목록이다
   - `metrics.measured_ratio` = measured_ms ÷ total_ms. 기준값 이상이면 `measurable`,
     `state` 는 `NORMAL`, 아니면 `UNKNOWN`
   - `issues` 는 늘 빈 목록이다(문제를 판정하지 않는다)

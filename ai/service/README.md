@@ -158,7 +158,7 @@ ai/service/
 | `src/pitch_coach_ai/main.py` | 설정을 읽고 앱을 만들어 예외 처리 · 요청 로그 · 라우터를 붙인다 (`create_app()`, `app`) | 설정 → FastAPI 앱 | uvicorn, 테스트 `client` | 새 라우터를 `create_app`에 `include_router` |
 | `src/pitch_coach_ai/settings.py` | 환경변수 읽기(`settings`), 모델 묶음 검사, 역할 → 묶음 · 출력 상한(`LLM_ROLES`) | 환경변수 · `ai/.env` → `Settings` | `main.py` · `common/llm.py` | 새 변수는 기본값과 함께 더하고 `ai/.env.example` · 위 표도 |
 | `src/pitch_coach_ai/api/health.py` | `GET /health` | — → 200 `{"status": "ok"}` | compose 헬스체크, 배포 확인 | LLM을 부르지 않게 둔다 |
-| `src/pitch_coach_ai/api/sample.py` | `POST /sample/judge` 규약 확인용 대역. 요청 검사 → `core.judge` → `build_judge_meta`. `AI_ENABLE_SAMPLE=true`일 때만 등록 | `{t_ms, since_ms, records}` → 200 `{results, meta}` | AI 담당의 로컬 확인 (BE는 부르지 않음) | 첫 실제 기능 엔드포인트가 붙으면 `features/sample/` · 테스트 · `AI_ENABLE_SAMPLE`과 함께 지운다 |
+| `src/pitch_coach_ai/api/sample.py` | `POST /sample/judge` 규약 확인용 대역. 요청 검사 → `core.judge` → `build_judge_meta`. `AI_ENABLE_SAMPLE=true`일 때만 등록 | `{t_ms, since_ms, records}` → 200 `{results, meta}` | AI 담당의 로컬 확인 (BE는 부르지 않음) | 첫 실제 기능 엔드포인트가 붙으면 `features/sample/` · 테스트(`conftest`의 `sample_client` 포함) · `main.py`의 등록 · `AI_ENABLE_SAMPLE`과 함께 지운다 |
 | `src/pitch_coach_ai/common/errors.py` | 예외 → `{"error": {"code", "message"}}` · 상태 코드. `AppError` 와 LLM 예외 넷 | 예외 → 에러 응답 | `main.py`(등록), `common/llm.py`(던짐), 기능(상속) | 새 공통 코드는 `architecture.md` 4절을 먼저 바꾼다 |
 | `src/pitch_coach_ai/common/request_log.py` | `X-Request-ID`(받은 그대로 · 없으면 생성), 처리되지 않은 예외 → 500, 요청마다 한 줄 로그 | 요청 → 응답 + 로그 | `main.py` | 로그에 요청 본문 · 쿼리 · 키를 넣지 않는다 |
 | `src/pitch_coach_ai/common/llm.py` | `structured_llm` · `deadline_after`: 구조화 출력 LLM, 호출 시간 제한 · 재시도 · 요청 마감 · 실패 분류 · 응답 모델 기록 · 호출 로그 | 스키마 · 역할 · 마감 → `.invoke` 를 가진 객체 | 라우터(코어에 넘김) | 시간 · 재시도는 환경변수, 묶음 · 상한은 `LLM_ROLES` |
@@ -177,13 +177,13 @@ ai/service/
 uv run python -m pytest              # 가짜 LLM, 키 · 과금 없음
 ```
 ```
-97 passed, 1 deselected
+100 passed, 1 deselected
 ```
 ```powershell
 uv run python -m pytest -m live      # 실제 LLM 1회 (ai/.env 의 기본 묶음, 과금)
 ```
 ```
-1 passed, 97 deselected
+1 passed, 100 deselected
 ```
 LLM 호출마다 한 줄이 남습니다(프롬프트 · 답 · 키는 남기지 않음).
 ```
