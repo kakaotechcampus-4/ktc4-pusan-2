@@ -58,13 +58,6 @@ const MAX_PENDING_FRAMES = 20;
  */
 const MAX_PENDING_METRICS = 300;
 
-/** 다시 붙을 때까지 쌓아 둔 JSON 메시지 하나. `tMs` 로 시각 순서를 맞춥니다 */
-interface PendingEvent {
-  kind: 'metrics' | 'slide';
-  tMs: Ms;
-  data: string;
-}
-
 /**
  * 새로고침할 때 다음 페이지로 넘기는 `metrics` 하나 (`handOffMetrics` → `restoredMetrics`).
  * 큐와 같은 모양이라 받는 쪽이 `data` 를 다시 읽어 시각을 꺼낼 필요가 없습니다.
@@ -74,6 +67,9 @@ export interface HandedMetrics {
   tMs: Ms;
   data: string;
 }
+
+/** 다시 붙을 때까지 쌓아 둔 JSON 메시지 하나. `tMs` 로 시각 순서를 맞춥니다 */
+type PendingEvent = HandedMetrics;
 
 /** 빠른 백오프. 이걸 다 쓰면 화면을 `degraded` 로 두고 느린 재시도로 넘어갑니다 */
 const RETRY_DELAYS_MS = [500, 1_000, 2_000];
@@ -198,13 +194,16 @@ export class SttSocket {
   private seq = 0;
   private pending: Uint8Array[] = [];
   /**
-   * 아직 못 보낸 `metrics` · `slide` (JSON 문자열). 다시 붙으면 오디오 다음에 **Take 시각 순서대로**
+   * 아직 못 보낸 `metrics` · `slide`. 다시 붙으면 오디오 다음에 둘을 합쳐 **Take 시각 순서대로**
    * 흘립니다 (`architecture.md` 2절). 시선 1초 기록은 0.2~3초 늦게 나와서 넣은 순서와 시각 순서가 다를
-   * 수 있습니다
+   * 수 있습니다.
+   *
+   * 배열을 나눈 이유 — 상한은 `metrics` 에만 겁니다. 한 배열에 섞으면 `metrics` 수를 따로 세고 가장
+   * 오래된 `metrics` 를 찾아 지워야 하는데, 그 수가 한 번 어긋나면 찾지 못해(-1) 마지막 `slide` 를 지웁니다.
+   * 나눠 두면 `metrics` 는 맨 앞이 가장 오래된 것이고, `slide` 는 지워질 길이 없습니다.
    */
-  private pendingEvents: PendingEvent[] = [];
-  /** 그중 `metrics` 수. 상한은 `metrics` 에만 겁니다 */
-  private pendingMetricsCount = 0;
+  private pendingMetrics: PendingEvent[] = [];
+  private pendingSlides: PendingEvent[] = [];
   private ready = false;
 
   private retries = 0;
@@ -230,10 +229,9 @@ export class SttSocket {
 
   constructor(options: SttSocketOptions) {
     this.options = options;
-    for (const { tMs, data } of (options.restoredMetrics ?? []).slice(-MAX_PENDING_METRICS)) {
-      this.pendingEvents.push({ kind: 'metrics', tMs, data });
-    }
-    this.pendingMetricsCount = this.pendingEvents.length;
+    this.pendingMetrics = (options.restoredMetrics ?? [])
+      .slice(-MAX_PENDING_METRICS)
+      .map(({ tMs, data }) => ({ tMs, data }));
   }
 
   /** 지금까지 보낸(또는 버린) 프레임 수. 화면 계기판용입니다 */
@@ -247,12 +245,12 @@ export class SttSocket {
 
   /** 아직 못 보낸 `metrics` 수. 화면 계기판 · 테스트용입니다 */
   get bufferedMetrics(): number {
-    return this.pendingMetricsCount;
+    return this.pendingMetrics.length;
   }
 
   /** 아직 못 보낸 `slide` 수. 테스트용입니다 */
   get bufferedSlides(): number {
-    return this.pendingEvents.length - this.pendingMetricsCount;
+    return this.pendingSlides.length;
   }
 
   start(): void {
@@ -303,19 +301,13 @@ export class SttSocket {
 
     // 쌓아 둔 것은 다시 붙은 뒤에야 나갑니다 — 이미 지난 시각입니다. BE 가 저장만 하고 코치를
     // 부르지 않도록 표시합니다 (`architecture.md` 1-4 · 2절). 시작 직후 `ready` 전 몇 초도 같습니다
-    this.pendingEvents.push({
-      kind: 'metrics',
+    this.pendingMetrics.push({
       tMs: message.t_ms,
       data: JSON.stringify({ ...message, buffered: true }),
     });
-    this.pendingMetricsCount += 1;
-    // 넘치면 가장 오래된 `metrics` 만 버립니다. `slide` 는 버리지 않습니다 — 장 구간 나누기가
+    // 넘치면 가장 오래된 `metrics` 만 버립니다. `slide` 는 따로 두어 버리지 않습니다 — 장 구간 나누기가
     // 이벤트 전체를 쓰므로 하나만 빠져도 그 뒤 장들의 말이 앞 장으로 들어갑니다. 5분에 몇 개뿐입니다
-    while (this.pendingMetricsCount > MAX_PENDING_METRICS) {
-      const oldest = this.pendingEvents.findIndex((e) => e.kind === 'metrics');
-      this.pendingEvents.splice(oldest, 1);
-      this.pendingMetricsCount -= 1;
-    }
+    while (this.pendingMetrics.length > MAX_PENDING_METRICS) this.pendingMetrics.shift();
   }
 
   /**
@@ -332,7 +324,7 @@ export class SttSocket {
       return;
     }
 
-    this.pendingEvents.push({ kind: 'slide', tMs: message.t_ms, data });
+    this.pendingSlides.push({ tMs: message.t_ms, data });
   }
 
   /**
@@ -359,13 +351,11 @@ export class SttSocket {
   }
 
   /**
-   * 쌓아 둔 것 중 `metrics` 만. `slide` 는 넘기지 않습니다 — 새 페이지가 IndexedDB 의 장 넘김 기록
-   * 전체를 다시 보냅니다 (`useSlideSender`)
+   * 쌓아 둔 `metrics`. `slide` 는 넘기지 않습니다 — 장 기록 전체를 따로 적어 두었다가(`saveSlides`)
+   * 새 페이지가 IndexedDB 기록과 합쳐 다시 보냅니다 (`useSlideSender`)
    */
   private queuedMetrics(): HandedMetrics[] {
-    return this.pendingEvents
-      .filter((e) => e.kind === 'metrics')
-      .map(({ tMs, data }) => ({ tMs, data }));
+    return this.pendingMetrics.map(({ tMs, data }) => ({ tMs, data }));
   }
 
   /**
@@ -400,7 +390,10 @@ export class SttSocket {
         this.sendStop();
       } else if (
         this.connecting ||
-        ((this.pending.length > 0 || this.pendingEvents.length > 0) && this.retryTimer !== null)
+        ((this.pending.length > 0 ||
+          this.pendingMetrics.length > 0 ||
+          this.pendingSlides.length > 0) &&
+          this.retryTimer !== null)
       ) {
         // 붙는 중이거나 예약된 재연결이 있으면 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다.
         // 쌓인 `metrics` 만 있어도 기다립니다 — 마지막 1초 조각이 거기 있습니다.
@@ -586,25 +579,20 @@ export class SttSocket {
     this.pending = [];
     // 장 기록을 받으면 쌓아 둔 `slide` 대신 기록 전체를 보냅니다 (`slideHistory`)
     const history = withSlideHistory ? this.options.slideHistory?.() : undefined;
-    const queued = history
-      ? this.pendingEvents.filter((e) => e.kind === 'metrics')
-      : this.pendingEvents;
-    const slides = (history ?? []).map((s) => ({
-      kind: 'slide' as const,
-      tMs: s.t_ms,
-      data: JSON.stringify(s),
-    }));
-    // 정렬은 안정 정렬이라 같은 시각이면 넣은 순서를 지킵니다
-    const events = [...queued, ...slides].sort((a, b) => a.tMs - b.tMs);
-    this.pendingEvents = [];
-    this.pendingMetricsCount = 0;
+    const slides = history
+      ? history.map((s) => ({ tMs: s.t_ms, data: JSON.stringify(s) }))
+      : this.pendingSlides;
+    // 정렬은 안정 정렬이라 같은 시각이면 `metrics` 가 먼저입니다
+    const events = [...this.pendingMetrics, ...slides].sort((a, b) => a.tMs - b.tMs);
+    this.pendingMetrics = [];
+    this.pendingSlides = [];
     for (const e of events) socket.send(e.data);
   }
 
   private clearPending(): void {
     this.pending = [];
-    this.pendingEvents = [];
-    this.pendingMetricsCount = 0;
+    this.pendingMetrics = [];
+    this.pendingSlides = [];
   }
 
   private handleClose(code: number): void {

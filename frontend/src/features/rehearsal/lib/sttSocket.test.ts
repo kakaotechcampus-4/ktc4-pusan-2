@@ -681,6 +681,30 @@ describe('장 변경 (slide)', () => {
     expect(sent[1]).toEqual(['metrics', 2_000, true]);
   });
 
+  it('많이 넘쳐도 장 변경은 하나도 지우지 않고 metrics 만 최근 300개를 남긴다', async () => {
+    const stt = makeSocket();
+    stt.start();
+    await settle();
+
+    // 장을 넘기는 사이사이 metrics 가 상한의 두 배 넘게 쌓입니다
+    for (let i = 1; i <= 700; i++) {
+      if (i % 100 === 0) stt.sendSlide(slide(i / 100 + 1, i * 1_000));
+      stt.sendMetrics(metrics(i * 1_000));
+    }
+    expect(stt.bufferedSlides).toBe(7);
+    expect(stt.bufferedMetrics).toBe(300);
+
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    const sent = sentJson(sockets[0]!);
+    expect(sent.filter(([type]) => type === 'slide').map(([, t]) => t)).toEqual([
+      100_000, 200_000, 300_000, 400_000, 500_000, 600_000, 700_000,
+    ]);
+    const metricTimes = sent.filter(([type]) => type === 'metrics').map(([, t]) => t);
+    expect(metricTimes[0]).toBe(401_000);
+    expect(metricTimes).toHaveLength(300);
+  });
+
   it('끊긴 채로 끝내면 쌓인 장 변경을 보낸 뒤에 stop 을 보낸다', async () => {
     vi.useFakeTimers();
     const stt = makeSocket();
