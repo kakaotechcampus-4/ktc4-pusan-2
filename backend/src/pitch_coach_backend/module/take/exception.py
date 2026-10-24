@@ -37,6 +37,13 @@ class TakeAlreadyStarted(ConflictException):
     message = "이미 시작한 연습입니다."
 
 
+class TakeNotStarted(ConflictException):
+    # 실시간 연결이 한 번도 붙지 않은(`READY`) Take 를 끝내려 했다. FE 는 첫 `ready` 를 받은 뒤에
+    # 발표를 시작하므로 이 Take 에는 남은 기록이 없다
+    code = "TAKE_NOT_STARTED"
+    message = "시작하지 않은 연습입니다."
+
+
 class InvalidTakeTime(AppException):
     code = "INVALID_TAKE_TIME"
     message = "끝난 시각이 시작한 시각보다 앞섭니다."
@@ -47,3 +54,11 @@ class TakeNotReviewable(ConflictException):
     # 허용하지 않는다. AWAITING_CONFIRMATION 에서 부르면 확인 건너뛰기로 본다
     code = "TAKE_NOT_REVIEWABLE"
     message = "아직 리뷰할 수 없는 연습입니다."
+
+
+class InvalidReviewResponse(AppException):
+    # AI 리뷰 응답이 계약(review-agent.md 5-3)과 다르거나 다른 Take 의 응답이다. 저장하지 않고
+    # Take 를 FAILED 로 끝낸다
+    status_code = 502
+    code = "INVALID_REVIEW_RESPONSE"
+    message = "리뷰 결과가 올바르지 않아 저장하지 못했습니다."

@@ -1,0 +1,22 @@
+{
+  "results": [
+    {
+      "evaluator": "sample",
+      "area": "VOLUME",
+      "t_ms": 6000,
+      "counted_until_ms": 6000,
+      "criteria_version": "sample-0.1+5111018b3af5",
+      "measurable": true,
+      "state": "NORMAL",
+      "metrics": {"measured_ratio": 0.75},
+      "tally": [{"t_ms": 2000, "values": {"measured_ms": 3000.0, "total_ms": 4000.0}}],
+      "issues": []
+    }
+  ],
+  "meta": {
+    "schema_version": "1.0",
+    "feature_version": "sample-0.1",
+    "model": null,
+    "criteria_versions": {"sample": "sample-0.1+5111018b3af5"}
+  }
+}

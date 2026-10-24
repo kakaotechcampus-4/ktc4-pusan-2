@@ -19,7 +19,7 @@ from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import delete as sql_delete
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from websockets.exceptions import ConnectionClosedError
@@ -39,6 +39,7 @@ from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO, TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
+from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import dependencies as realtime_dependencies
 from pitch_coach_backend.realtime import service, take_stream
@@ -1803,6 +1804,35 @@ def test_running_write_failure_closes_before_ready_and_allows_reconnection(
     assert ready_take.status == "RUNNING"
 
 
+def test_take_ended_while_starting_is_rejected_with_its_reason(
+    client: TestClient,
+    stt: FakeSttAdapter,
+    db_session: Session,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """상태를 읽은 뒤 RUNNING 으로 바꾸기 전에 시작하지 않은 Take 로 끝났다(정리 작업). 다시 읽어
+    끝난 Take 로 거절한다 — FAILED Take 에 STT 를 붙이지 않는다."""
+    ready_take = make_take(db_session, user.id, status="READY")
+
+    def swept_first(db: Session, take_id: uuid.UUID) -> bool:
+        db.execute(
+            update(Take)
+            .where(Take.id == take_id)
+            .values(status="FAILED", end_reason="ABANDONED")
+        )
+        return TakeRepository(db).mark_running(take_id)
+
+    monkeypatch.setattr(take_service, "mark_running", swept_first)
+    with client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
+        auth(ws, create_access_token(user.id))
+        rejected = ws.receive_json()
+        assert closed_with(ws) == 1008
+
+    assert (rejected["code"], rejected["end_reason"]) == ("TAKE_ENDED", "ABANDONED")
+    assert stt.configs == []
+
+
 # ── Take 종료 ─────────────────────────────────────────────────────────
 
 
@@ -1889,9 +1919,11 @@ def test_take_status_moves_ready_running_analyzing_in_the_database(db_session: S
     assert take_service.mark_running(db_session, take.id) is False, "끝난 Take 는 다시 열지 않는다"
     assert take_service.mark_ended(db_session, uuid.uuid7()) is False
 
-    # 연결 때 RUNNING 을 못 적었어도 끝낼 수 있다
+    # 시작하지 않은 Take 는 끝내지 않는다. 실시간 연결이 한 번도 붙지 않아 남은 기록이 없다
     never_started = make_take(db_session, user.id, status="READY")
-    assert take_service.mark_ended(db_session, never_started.id) is True
+    assert take_service.mark_ended(db_session, never_started.id) is False
+    db_session.refresh(never_started)
+    assert never_started.status == "READY"
 
 
 def test_end_leaves_a_finished_take_and_the_fe_end_time(db_session: Session, user: User):

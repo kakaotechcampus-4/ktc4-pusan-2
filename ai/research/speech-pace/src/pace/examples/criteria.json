@@ -1,0 +1,18 @@
+{
+  "PACE_FAST": {
+    "metric": "cpm",
+    "direction": "HIGHER_IS_WORSE",
+    "threshold": 350.0,
+    "bad": 450.0,
+    "onset_lag_ms": 7500,
+    "offset_lag_ms": 7500
+  },
+  "PACE_SLOW": {
+    "metric": "cpm",
+    "direction": "LOWER_IS_WORSE",
+    "threshold": 275.0,
+    "bad": 200.0,
+    "onset_lag_ms": 7500,
+    "offset_lag_ms": 7500
+  }
+}

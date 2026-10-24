@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from pitch_coach_backend.core.validation import NulFreeStr, reject_unstorable_json
 
@@ -32,6 +32,33 @@ class TakeUpdateRequestDTO(BaseModel):
     event_logs: (
         Annotated[list[dict[str, Any]], AfterValidator(reject_unstorable_json)] | None
     ) = None
+
+# Take 기록 · Take 비교 화면의 한 줄. FE types/takeHistory.ts 와 같은 모양이다.
+# 못 잰 값은 0 이 아니라 null 이다
+class TakeHistoryRowDTO(BaseModel):
+    take_id: uuid.UUID
+    pitch_id: uuid.UUID
+    pitch_title: str
+    take_number: int
+    started_at: datetime
+    status: str
+    script_mode: str
+    # 끝나지 않았으면 null
+    duration_ms: int | None
+    goal_ms: int
+    # 시선이 청중 · 대본에 머문 비율 (0~1)
+    audience_ratio: float | None
+    script_ratio: float | None
+    cpm: float | None
+    filler_count: int | None
+    # Take 를 시작할 때 실은 미션 중 리뷰가 달성으로 판정한 수 / 실은 수
+    missions_achieved: int
+    missions_total: int
+    # 장치 점검 때의 시선 엔진 버전. 다르면 FE 가 시선 값을 나란히 비교하지 않는다
+    gaze_engine: str | None
+
+class TakeHistoryResponseDTO(BaseModel):
+    takes: list[TakeHistoryRowDTO]
 
 class TakeSummaryDTO(BaseModel):
     take_id: uuid.UUID
@@ -206,8 +233,11 @@ class ReviewCriteriaResultDTO(BaseModel):
     observed: float | None = None
     status: Literal["ACHIEVED", "PARTIAL", "FAILED", "NOT_EVALUABLE"]
 
+# 영역 이름 (docs/ai/architecture.md 6-3). missions.area(String(16)) 에 들어간다
+ReviewArea = Literal["GAZE", "SPEED", "VOLUME", "PAUSE", "FILLER", "CONTENT", "TIME"]
+
 class ReviewNextMissionDTO(BaseModel):
-    area: str
+    area: ReviewArea
     slide_number: int | None = None
     description: str = Field(max_length=500)
     target: TargetInfoDTO
@@ -242,12 +272,22 @@ class ReviewResponseDTO(BaseModel):
     comparison: list[ComparisonDTO] = []
     mission_results: list[ReviewMissionResultDTO] = []
     criteria_results: list[ReviewCriteriaResultDTO] = []
-    next_missions: list[ReviewNextMissionDTO] = []
+    # 20개 이하 (review-agent.md 5-3, 코칭 계획 입력 한도)
+    next_missions: list[ReviewNextMissionDTO] = Field(default=[], max_length=20)
     recurring_issues: list[ReviewRecurringIssueDTO] = []
     fallback_reason: Literal[
         "LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"
         ] | None = None
     meta: ReviewMetaDTO
+
+    @model_validator(mode="after")
+    def _next_mission_priorities_unique(self) -> ReviewResponseDTO:
+        # missions 의 UQ(source_take_id, priority) 다. 겹치면 한 INSERT 의 ON CONFLICT 가
+        # 같은 행을 두 번 고치려 해 PostgreSQL 이 거절한다
+        priorities = [mission.priority for mission in self.next_missions]
+        if len(priorities) != len(set(priorities)):
+            raise ValueError("next_missions 의 priority 가 겹칩니다.")
+        return self
 
 
 # ── 코치 연동 ─────────────────────────────────────────────────────────

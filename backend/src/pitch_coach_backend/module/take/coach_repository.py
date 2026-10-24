@@ -37,11 +37,15 @@ class CoachRepository:
         return self.db.scalar(select(Take.pitch_id).where(Take.id == take_id))
 
     def mark_started(self, take_id: uuid.UUID) -> int | None:
-        """`READY` 인 Take 를 `RUNNING` 으로 바꾸고 그 번호를 돌려준다. 바꾸지 않았으면 None."""
+        """`READY` 인 Take 를 `RUNNING` 으로 바꾸고 그 번호를 돌려준다. 바꾸지 않았으면 None.
+
+        시작 시각도 이때 적는다. FE 는 끝낼 때 PUT 으로 시작 시각을 보내므로, 발표 중이거나 FE 가
+        PUT 을 보내지 못하고 끝난 Take 도 시작한 Take 로 보이게 한다. FE 값이 오면 그 값으로 바뀐다.
+        """
         return self.db.scalar(
             update(Take)
             .where(Take.id == take_id, Take.status == "READY")
-            .values(status="RUNNING")
+            .values(status="RUNNING", started_at=func.coalesce(Take.started_at, func.now()))
             .returning(Take.take_number)
         )
 
