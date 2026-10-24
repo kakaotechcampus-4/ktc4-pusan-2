@@ -3,6 +3,8 @@ import type { ScriptDetail } from '@/types/script';
 import { useCreateStore } from './createStore';
 import { pendingVersion, toPracticeCombo } from './lib/draft';
 import { loadPitch, PitchNotFound } from './loadPitch';
+import { getPitchResources } from '@/shared/api/pitch';
+import { openPdf } from '@/shared/lib/pdf';
 
 /**
  * 수정 화면 불러오기. 네트워크와 PDF 는 BE 응답 모양 그대로 흉내 냅니다.
@@ -110,6 +112,24 @@ describe('수정 화면 — 서버의 피치를 초안으로 읽는다', () => {
     const draft = await loadPitch('p1');
     // 대본은 3장이라 4장짜리 V2 가 아니라 3장짜리 V1 에 붙습니다
     expect(draft.scripts.map((s) => s.slideVersion)).toEqual([1, 1]);
+  });
+
+  it('BE 가 센 쪽수가 있으면 PDF 를 열지 않는다 — 없을 때(옛 발표자료)만 연다 (#298)', async () => {
+    vi.mocked(getPitchResources).mockResolvedValueOnce({
+      pitch_id: 'p1',
+      presentation_versions: [
+        { id: 'pv1', version: 1, page_count: 3 },
+        { id: 'pv2', version: 2, page_count: null },
+      ],
+      script_versions: [],
+      evaluation_versions: [],
+    });
+    vi.mocked(openPdf).mockClear();
+
+    const draft = await loadPitch('p1');
+
+    expect(draft.slides.map((s) => s.pageCount)).toEqual([3, 4]);
+    expect(vi.mocked(openPdf).mock.calls.map(([url]) => url)).toEqual(['https://s3/pv2.pdf']);
   });
 
   it('목록에 없는 피치면 PitchNotFound 다', async () => {

@@ -181,7 +181,7 @@ async def test_session_roundtrip():
     fake = FakeDeepgram()
     async with serve(fake.handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        adapter = DeepgramSttAdapter("test-key", base_url=f"ws://127.0.0.1:{port}/v1/listen")
+        adapter = DeepgramSttAdapter(["test-key"], base_url=f"ws://127.0.0.1:{port}/v1/listen")
 
         session = await adapter.connect(SttConfig(keyterms=("음",)))
         await session.send_audio(b"\x00" * 3200)
@@ -202,7 +202,7 @@ async def test_error_close_becomes_single_stt_error():
     fake = FakeDeepgram(close_code=1011)
     async with serve(fake.handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        adapter = DeepgramSttAdapter("test-key", base_url=f"ws://127.0.0.1:{port}/v1/listen")
+        adapter = DeepgramSttAdapter(["test-key"], base_url=f"ws://127.0.0.1:{port}/v1/listen")
 
         session = await adapter.connect(SttConfig())
         await session.close_stream()
@@ -219,7 +219,7 @@ async def test_keepalive_is_sent_only_while_idle(monkeypatch):
     fake = FakeDeepgram()
     async with serve(fake.handler, "127.0.0.1", 0) as server:
         port = server.sockets[0].getsockname()[1]
-        adapter = DeepgramSttAdapter("test-key", base_url=f"ws://127.0.0.1:{port}/v1/listen")
+        adapter = DeepgramSttAdapter(["test-key"], base_url=f"ws://127.0.0.1:{port}/v1/listen")
         session = await adapter.connect(SttConfig())
 
         task = asyncio.create_task(session.keepalive_loop())
@@ -236,7 +236,7 @@ async def test_keepalive_is_sent_only_while_idle(monkeypatch):
 
 @pytest.mark.anyio
 async def test_connect_failure_is_one_exception_type():
-    adapter = DeepgramSttAdapter("test-key", base_url="ws://127.0.0.1:1/v1/listen")
+    adapter = DeepgramSttAdapter(["test-key"], base_url="ws://127.0.0.1:1/v1/listen")
     with pytest.raises(SttConnectError):
         await adapter.connect(SttConfig())
 
@@ -253,10 +253,115 @@ async def test_http_400_on_handshake_is_config_rejected(status: HTTPStatus, reje
 
     async with serve(lambda conn: None, "127.0.0.1", 0, process_request=refuse) as server:
         port = server.sockets[0].getsockname()[1]
-        adapter = DeepgramSttAdapter("test-key", base_url=f"ws://127.0.0.1:{port}/v1/listen")
+        adapter = DeepgramSttAdapter(["test-key"], base_url=f"ws://127.0.0.1:{port}/v1/listen")
         with pytest.raises(SttConnectError) as info:
             await adapter.connect(SttConfig(keyterms=("음",)))
 
     assert isinstance(info.value, SttConfigRejected) is rejected
     if rejected:
         assert "Keyterm limit exceeded." in str(info.value)
+
+
+# ── 키 여러 개 ────────────────────────────────────────────────────────
+
+
+class KeyedDeepgram(FakeDeepgram):
+    """refuse 에 든 키는 연결 요청에서 그 코드로 거절한다. 테스트 도중 바꿀 수 있다."""
+
+    def __init__(self, refuse: dict[str, HTTPStatus] | None = None) -> None:
+        super().__init__()
+        self.refuse = dict(refuse or {})
+        self.tried: list[str] = []
+
+    def process_request(self, conn, request):
+        key = request.headers.get("Authorization", "").removeprefix("Token ")
+        self.tried.append(key)
+        if key in self.refuse:
+            return conn.respond(self.refuse[key], "Project does not have enough credits.")
+        return None
+
+
+async def _close(session) -> None:
+    await session.close_stream()
+    [event async for event in session]
+
+
+@pytest.mark.anyio
+async def test_rejected_key_moves_to_next_key_and_is_skipped_afterwards():
+    fake = KeyedDeepgram({"key-1": HTTPStatus.PAYMENT_REQUIRED})
+    async with serve(fake.handler, "127.0.0.1", 0, process_request=fake.process_request) as server:
+        port = server.sockets[0].getsockname()[1]
+        adapter = DeepgramSttAdapter(
+            ["key-1", "key-2"], base_url=f"ws://127.0.0.1:{port}/v1/listen"
+        )
+        await _close(await adapter.connect(SttConfig()))
+        await _close(await adapter.connect(SttConfig()))
+
+    # 한 번의 connect 안에서 바로 다음 키로 붙고, 두 번째 연결은 소진된 키를 건너뛴다
+    assert fake.tried == ["key-1", "key-2", "key-2"]
+
+
+@pytest.mark.anyio
+async def test_key_exhausted_after_session_loss_moves_to_next_key():
+    # 발표 도중 크레딧이 떨어져 끊긴 뒤 다시 붙는 경우. 재접속이 402 로 거절되면 다음 키다
+    fake = KeyedDeepgram()
+    async with serve(fake.handler, "127.0.0.1", 0, process_request=fake.process_request) as server:
+        port = server.sockets[0].getsockname()[1]
+        adapter = DeepgramSttAdapter(
+            ["key-1", "key-2"], base_url=f"ws://127.0.0.1:{port}/v1/listen"
+        )
+        await _close(await adapter.connect(SttConfig()))
+        fake.refuse["key-1"] = HTTPStatus.PAYMENT_REQUIRED
+        await _close(await adapter.connect(SttConfig()))
+
+    assert fake.tried == ["key-1", "key-1", "key-2"]
+
+
+@pytest.mark.anyio
+async def test_all_keys_rejected_logs_error_and_retries_from_first_key(caplog):
+    fake = KeyedDeepgram({"key-1": HTTPStatus.PAYMENT_REQUIRED, "key-2": HTTPStatus.UNAUTHORIZED})
+    async with serve(fake.handler, "127.0.0.1", 0, process_request=fake.process_request) as server:
+        port = server.sockets[0].getsockname()[1]
+        adapter = DeepgramSttAdapter(
+            ["key-1", "key-2"], base_url=f"ws://127.0.0.1:{port}/v1/listen"
+        )
+        with (
+            caplog.at_level("WARNING", logger=stt_adapter.logger.name),
+            pytest.raises(SttConnectError) as info,
+        ):
+            await adapter.connect(SttConfig())
+        assert not isinstance(info.value, SttConfigRejected)
+
+        # 그사이 첫 키에 크레딧을 채웠다. 재시작 없이 다음 재시도에서 다시 붙는다
+        del fake.refuse["key-1"]
+        await _close(await adapter.connect(SttConfig()))
+
+    assert fake.tried == ["key-1", "key-2", "key-1"]
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert [r.getMessage() for r in errors] == ["Deepgram 키 2개가 모두 거절됐다"]
+    # 로그에는 몇 번째 키인지만 남는다
+    assert "1번째" in caplog.text and "2번째" in caplog.text
+    assert "key-1" not in caplog.text and "key-2" not in caplog.text
+
+
+@pytest.mark.anyio
+async def test_other_handshake_failures_do_not_exhaust_the_key():
+    # 일시 오류(5xx)는 키 탓이 아니다. 다음 키로 넘기지 않고 지금처럼 backoff 재시도에 맡긴다
+    fake = KeyedDeepgram({"key-1": HTTPStatus.SERVICE_UNAVAILABLE})
+    async with serve(fake.handler, "127.0.0.1", 0, process_request=fake.process_request) as server:
+        port = server.sockets[0].getsockname()[1]
+        adapter = DeepgramSttAdapter(
+            ["key-1", "key-2"], base_url=f"ws://127.0.0.1:{port}/v1/listen"
+        )
+        with pytest.raises(SttConnectError):
+            await adapter.connect(SttConfig())
+        del fake.refuse["key-1"]
+        await _close(await adapter.connect(SttConfig()))
+
+    assert fake.tried == ["key-1", "key-1"]
+
+
+@pytest.mark.parametrize("keys", ["", "test-key", []])
+def test_adapter_needs_a_list_of_keys(keys):
+    with pytest.raises(ValueError):
+        DeepgramSttAdapter(keys)

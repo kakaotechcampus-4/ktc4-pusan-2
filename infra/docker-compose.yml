@@ -1,6 +1,14 @@
+# 컨테이너 로그(docker logs)는 기본값이면 크기 제한 없이 쌓여 디스크를 채운다. 서비스마다 10MB × 3개까지만 둔다
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   ai:
     restart: unless-stopped
+    logging: *default-logging
     image: ${IMAGE_REPO:-pitch-coach}:ai-${IMAGE_TAG:-latest}
     build:
       context: ../ai/service
@@ -10,6 +18,7 @@ services:
     
   be:
     restart: unless-stopped
+    logging: *default-logging
     image: ${IMAGE_REPO:-pitch-coach}:be-${IMAGE_TAG:-latest}
     build:
       context: ../backend
@@ -24,6 +33,7 @@ services:
 
   fe:
     restart: unless-stopped
+    logging: *default-logging
     image: ${IMAGE_REPO:-pitch-coach}:fe-${IMAGE_TAG:-latest}
     build:
       context: ../frontend
@@ -34,19 +44,37 @@ services:
       - ../frontend/.env
 
   caddy:
-    image: caddy:2.6.4-alpine
+    image: caddy:2.11.7-alpine
     container_name: caddy
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - be
       - fe
+      - dozzle
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
+
+  # 서버 로그를 웹에서 보는 뷰어. 관리자 콘솔의 /admin/logs/ 다 (Caddy 가 BE 에 로그인을 물어 막는다)
+  dozzle:
+    image: amir20/dozzle:v11.3.0
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DOZZLE_BASE: /admin/logs
+      # 보기만 한다. 컨테이너 시작 · 중지 · 셸 접속은 끈다 (기본값이지만 적어 둔다)
+      DOZZLE_ENABLE_ACTIONS: "false"
+      DOZZLE_ENABLE_SHELL: "false"
+      DOZZLE_NO_ANALYTICS: "true"
+    volumes:
+      # :ro 여도 Docker API 는 다 쓸 수 있다. 그래서 이 컨테이너는 포트를 열지 않고 Caddy 뒤에만 둔다
+      - /var/run/docker.sock:/var/run/docker.sock:ro
   
   db:
     restart: unless-stopped
+    logging: *default-logging
     image: postgres:17-alpine
     env_file:
       - ../backend/.env
@@ -61,6 +89,7 @@ services:
   
   redis:
     restart: unless-stopped
+    logging: *default-logging
     image: redis:7-alpine
     env_file:
       - ../backend/.env

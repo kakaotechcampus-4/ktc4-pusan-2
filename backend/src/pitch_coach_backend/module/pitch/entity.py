@@ -71,6 +71,23 @@ class Standards(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(50), nullable=False)
 
+class StandardAnalyses(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+
+    __tablename__ = "standard_analyses"
+    __table_args__ = (
+        UniqueConstraint("pitch_id", "version", name="uq_standard_analyses_pitch_version"),
+    )
+
+    pitch_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("pitches.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    targets: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    script_used: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    excluded: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    values: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+    meta: Mapped[Any] = mapped_column(JSONB, nullable=False)
+
 class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """업로드된 발표자료 파일의 한 버전. 한 번 올리면 수정하지 않는다."""
 
@@ -86,6 +103,9 @@ class PresentationVersion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     file_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    # PDF 쪽수. 대본 장 수와 같아야 짝이다. 이 칸이 생기기 전에 올린 행은
+    # dev/backfill-presentation-page-count.py 로 채우기 전까지 비어 있다
+    page_count: Mapped[int | None] = mapped_column(Integer)
     # 사용자가 남기는 변경 메모. 없어도 된다.
     description: Mapped[str | None] = mapped_column(Text)
 

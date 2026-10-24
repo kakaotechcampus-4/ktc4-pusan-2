@@ -15,6 +15,10 @@ class NonExistentPresentationVersion(AppException):
     code = "PRESENTATION_VERSION_NOT_FOUND"
     message = "존재하지 않는 발표자료 버전입니다."
 
+class InvalidPresentation(AppException):
+    code = "INVALID_PRESENTATION"
+    message = "40MB 이하의 PDF 만 올릴 수 있습니다. 암호가 걸린 PDF 는 풀어서 올려 주세요."
+
 class NonExistentEvaluation(AppException):
     status_code = 404
     code = "EVALUATION_NOT_FOUND"
@@ -40,6 +44,16 @@ class NonExistentScript(NotFoundException):
 class ScriptParseInProgress(ConflictException):
     code = "SCRIPT_PARSE_IN_PROGRESS"
     message = "대본을 분석하고 있습니다. 잠시 후 다시 확인해 주세요."
+
+
+class ScriptNotParsed(ConflictException):
+    code = "SCRIPT_NOT_PARSED"
+    message = "슬라이드로 나누지 않은 대본으로는 연습할 수 없습니다."
+
+
+class SlideCountMismatch(ConflictException):
+    code = "SLIDE_COUNT_MISMATCH"
+    message = "발표자료 쪽수와 대본 장 수가 다릅니다."
 
 
 class ScriptAlreadyParsed(ConflictException):

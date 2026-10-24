@@ -2,6 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { DeviceChoice } from '../media/useCameraStream';
 import type { CalibrationSummary, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import type { GazeSampleRecord } from '@/workers/gaze.contract';
+import { PITCH_DB_NAME } from '@/shared/lib/localData';
 
 /**
  * 리허설 중 쌓이는 모든 기록. **브라우저가 원본입니다** (CLAUDE.md 4번).
@@ -13,7 +14,6 @@ import type { GazeSampleRecord } from '@/workers/gaze.contract';
  * 키는 `clientSessionId` 입니다. 재시도 화면(P15)이 이 값으로 같은 세션을 다시 찾습니다.
  */
 
-const DB_NAME = 'pitchcoach';
 const DB_VERSION = 5;
 
 /** 세션 상태. 서버의 TakeStatus 와 다릅니다 — 이건 브라우저 쪽 진행 상태입니다. */
@@ -118,7 +118,7 @@ interface PitchDb extends DBSchema {
 let dbPromise: Promise<IDBPDatabase<PitchDb>> | null = null;
 
 export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
-  dbPromise ??= openDB<PitchDb>(DB_NAME, DB_VERSION, {
+  dbPromise ??= openDB<PitchDb>(PITCH_DB_NAME, DB_VERSION, {
     /**
      * ★ 버전별 장부입니다. 위에서부터 순서대로, 각 블록은 브라우저마다 **평생 한 번만** 돕니다.
      *
@@ -194,6 +194,13 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
       //   upgrade(db, oldVersion, _newVersion, tx) {
       //     if (oldVersion < 6) tx.objectStore('session').createIndex('byTakeId', 'takeId');
       //   }
+    },
+    // 다른 곳이 DB 를 지우거나(마이페이지 기록 지우기 · 탈퇴) 버전을 올리려 하면 연결을 닫아
+    // 막지 않습니다. 다음 호출이 다시 엽니다.
+    blocking(_current, _blocked, event) {
+      // 이벤트 안에서 바로 닫아야 삭제가 blocked 로 넘어가지 않습니다
+      (event.target as IDBDatabase).close();
+      dbPromise = null;
     },
   })
     // 실패한 약속을 캐시하면 새로고침 전까지 영원히 실패합니다.
@@ -364,9 +371,10 @@ export async function setSessionTicket(
 }
 
 /**
- * takeId 로 세션을 찾습니다. 리허설 주소를 다른 탭에서 열었을 때 쓰는 길입니다 —
- * 라우터 state 는 새로고침하면 남지만 탭을 옮기면 없습니다. 기록은 IndexedDB 에 남아 있습니다.
- * 같은 Take 로 두 번 시작된 세션이 있으면 **가장 최근 것**을 잇습니다.
+ * takeId 로 세션을 찾습니다. 리허설 주소를 다른 창에서 열었을 때 쓰는 길입니다 —
+ * 라우터 state 는 새로고침하면 남지만 창을 옮기면 없습니다. 기록은 IndexedDB 에 남아 있습니다.
+ * 찾은 세션은 이어 가지 않고, 창을 닫았는지 · 다른 창이 발표 중인지 가르는 데 씁니다 (`leftWindow`).
+ * 같은 Take 로 두 번 시작된 세션이 있으면 **가장 최근 것**을 봅니다.
  */
 export async function findSessionByTakeId(takeId: string): Promise<SessionRow | null> {
   const db = await openPitchDb();

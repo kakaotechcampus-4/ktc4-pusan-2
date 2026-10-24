@@ -319,7 +319,7 @@ sequenceDiagram
     loop 발표 중 1초마다
         FE->>BE: WS metrics {t_ms, gaze, voice, slide_number}
         BE->>BE: 창(30초) 갱신 · take_metric_seconds.voice 저장
-        BE->>C: POST /coach/evaluate (voice_records · calibration · coach_state)
+        BE->>C: POST /coach/evaluate (buffered가 아닐 때, architecture.md 1-3 2번 · voice_records · calibration · coach_state)
         C->>V: speaking_levels(새 기록) → 표본에 더함, baseline(표본) — 기준 음량이 없을 때
         C->>V: judge(records, base_level_db, since_ms)
         V-->>C: VOLUME · PAUSE
@@ -331,15 +331,15 @@ sequenceDiagram
     BE->>BE: take_ai_results · take_summaries.volume
 ```
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고 AI 리드가 정하며, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
+저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
 | 기준 음량 | 발표 전 점검 | `calibrations.base_level_db` (새 칸 Float NULL, dBFS 음수). 기존 `base_volume`(0 이상 1000 미만, 조용한 환경의 소음 기준)은 뜻이 달라 NULL 허용으로 두고 AI 요청에 쓰지 않는다 | 숫자 하나 | FE가 재고 BE가 쓴다 · BE가 evaluate의 `calibration`으로 | Take마다 마지막 것 | Take와 함께. 파생값(음량)이다 |
-| 음량 1초 기록 (원자료) | Take 동안 1초마다 | `take_metric_seconds.voice` (JSONB) | `{t_ms, duration_ms, level_db, voiced_ms, silence_ms, audio_live}` 0.1 KB 안팎, 1시간 Take면 3,600행 | BE가 쓴다 · `replay`, 기준값 다시 고르기(동의한 Take만) | `(take_id, t_ms)` 유일 제약, 먼저 저장한 것을 둔다 | Take와 함께. 음성 파형이 아닌 파생값이다 |
+| 음량 1초 기록 (원자료) | Take 동안 1초마다 | `take_metric_seconds.voice` (JSONB) | `{t_ms, duration_ms, level_db, voiced_ms, silence_ms, audio_live}` 0.1 KB 안팎, 1시간 Take면 3,600행 | BE가 쓴다 · `replay`, 기준값 다시 고르기(`takes.raw_data_consent`가 true인 Take만) | `(take_id, t_ms)` 유일 제약, 먼저 저장한 것을 둔다 | Take와 함께. 음성 파형이 아닌 파생값이다. 동의 없는 Take의 예외는 `architecture.md` 1-1 '지우기 · 보관' |
 | 소리 크기 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`TAKE_RESULT`)의 `areas.VOLUME` · `areas.PAUSE`(`take` · `slides`) · `criteria.VOLUME` · `criteria.PAUSE` | 코치가 고치지 않고 담는다. 영역 · 장 하나에 0.1 KB 안팎 | 코치가 만들고 BE가 쓴다 · 리뷰 · 리포트 | `(take_id, kind)` 유일 | Take와 함께 |
 | 리포트 요약 칸 | Take 결과를 저장할 때 | `take_summaries.volume` (VOLUME `voice_diff_db`) | 숫자, 잴 수 없었으면 null | BE · FE 리포트 목록 | Take마다 한 행 | Take와 함께 |
-| 소리 크기 · 침묵 개입 | evaluate 응답이 `INTERVENE`이고 영역이 `VOLUME` · `PAUSE`일 때 | `live_feedbacks` | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
+| 소리 크기 · 침묵 개입 | evaluate 응답이 `INTERVENE`이고 영역이 `VOLUME` · `PAUSE`일 때 | `coach_events`의 `INTERVENTION` 이벤트(`area` = `VOLUME` · `PAUSE`). `live_feedbacks`에는 쓰지 않는다 | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
 
 ## 12-2. 저장 규칙
 - `base_level_db`는 dBFS(0 이하)다. 0 이상만 받는 기존 `base_volume` 검증(0 이상 1000 미만)에 넣지 않는다.

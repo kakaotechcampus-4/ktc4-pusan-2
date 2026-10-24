@@ -9,7 +9,8 @@
 
 import os
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -102,6 +103,22 @@ def user_id(db_session: Session) -> uuid.UUID:
     return user.id
 
 
+@pytest.fixture
+def make_pdf() -> Callable[[int], bytes]:
+    """쪽수가 pages 인 빈 PDF. 발표자료 업로드는 파일을 직접 열어 쪽수를 센다."""
+    from pypdf import PdfWriter
+
+    def make(pages: int = 1) -> bytes:
+        writer = PdfWriter()
+        for _ in range(pages):
+            writer.add_blank_page(width=200, height=200)
+        buffer = BytesIO()
+        writer.write(buffer)
+        return buffer.getvalue()
+
+    return make
+
+
 class _NoopParseRunner:
     async def run(self, ticket: object) -> None:
         return None
@@ -116,9 +133,12 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[Te
     from pitch_coach_backend import main
     from pitch_coach_backend.core.database import get_db
     from pitch_coach_backend.main import app
+    from pitch_coach_backend.module.pitch import service as pitch_service
     from pitch_coach_backend.module.pitch.dependencies import get_script_parse_runner
 
     monkeypatch.setattr(main, "get_s3", lambda: None)
+    # 발표 삭제·회원 탈퇴 뒤 S3 파일 정리가 실제 버킷을 부르지 않게 막는다
+    monkeypatch.setattr(pitch_service, "delete_prefix", lambda prefix: None)
     # 앱이 뜰 때 진행 중인 Take 를 SessionLocal(테스트 DB 가 아니다)로 읽고 타이머를 건다. 막는다
     monkeypatch.setattr(main, "arm_abandoned_takes", _no_abandon_timers)
     app.dependency_overrides[get_db] = lambda: db_session

@@ -12,11 +12,14 @@ from pitch_coach_backend.module.take.dto import (
     TakeInitRequestDTO,
     TakeUpdateRequestDTO,
 )
+from pitch_coach_backend.module.take.exception import TakeInProgress
 from pitch_coach_backend.module.take.service import (
+    close_take_service,
     create_calibration_service,
     create_take_service,
     delete_take_service,
     get_previous_missions_service,
+    get_review_result,
     mark_ended,
     update_take_service,
 )
@@ -30,8 +33,13 @@ def create_take(
     db: Annotated[Session, Depends(get_db)],
     take_dto: TakeInitRequestDTO
 ):
-    result = create_take_service(db, pitch_id, take_dto)
-    return {"message": "Take created successfully", "take_id": result}
+    take = create_take_service(db, pitch_id, take_dto)
+    # 번호는 FE 가 장치 점검에서 미리 본 next_take_number 와 다를 수 있다. 이 값이 실제 번호다
+    return {
+        "message": "Take created successfully",
+        "take_id": take.id,
+        "take_number": take.take_number,
+    }
 
 @router.delete("/{take_id}")
 def delete_take(
@@ -59,6 +67,21 @@ def update_take(
         mark_ended(db, take_id)
     return {"message": "Take updated successfully", "take_id": result}
 
+@router.post("/{take_id}/abandon")
+def abandon_take(
+    db: Annotated[Session, Depends(get_db)],
+    take_id: OwnedTake,
+):
+    # 창을 닫았다 다시 연 FE 가 부른다. 창을 닫은 Take 는 이어 가지 않고 실패로 끝낸다.
+    # 다른 창이 아직 발표 중이면 거절한다 — FE 는 하트비트로 보지만 늦을 수 있다
+    if anyio.from_thread.run_sync(take_stream.is_live, take_id):
+        raise TakeInProgress()
+    status, closed = close_take_service(db, take_id)
+    if closed:
+        # 남은 스트림 · 떠난 Take 타이머를 끊는다. 스트림은 이벤트 루프에 있어서 루프로 넘긴다
+        anyio.from_thread.run(take_stream.end_closed_tab, take_id)
+    return {"message": "Take abandoned", "take_id": take_id, "status": status}
+
 @router.post("/{take_id}/calibration")
 def create_calibration(
     db: Annotated[Session, Depends(get_db)],
@@ -75,3 +98,11 @@ def get_previous_missions(
 ):
     result = get_previous_missions_service(db, pitch_id)
     return {"message": "Previous missions retrieved successfully", "missions": result}
+
+@router.post("/{take_id}/review")
+def review_take(
+    db: Annotated[Session, Depends(get_db)],
+    take_id: OwnedTake,
+):
+    result = get_review_result(db, take_id)
+    return {"message": "Review result retrieved successfully", "review_result": result}

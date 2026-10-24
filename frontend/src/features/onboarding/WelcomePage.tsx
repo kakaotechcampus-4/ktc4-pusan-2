@@ -379,19 +379,16 @@ export function WelcomePage() {
               >
                 <div className="mb-6 flex items-center gap-5">
                   <figure className="w-28 shrink-0 border border-ink bg-panel p-1.5 shadow-[3px_3px_0_var(--color-line-strong)] lg:w-32">
+                    {/* 마스코트 전신 그림(pico-portrait · chichi-mascot)에서 머리와 어깨만 3:4 로 잘라 낸 증명사진 */}
                     <img
-                      src={
-                        professor
-                          ? '/onboarding/pico-portrait.png'
-                          : '/onboarding/chichi-portrait-longsleeve.png'
-                      }
+                      src={professor ? '/onboarding/pico-id.png' : '/onboarding/chichi-id.png'}
                       alt={
                         professor
                           ? '안경과 정장을 갖춘 공작새 피코 교수의 픽셀 증명사진'
-                          : '아이보리 깃털에 짙은 갈색 포인트, 흰색 Stüssy 롱슬리브를 입은 뱁새 치치의 픽셀 증명사진'
+                          : '흰 깃털에 회색 후드 집업을 입고 검은 가방을 멘 뱁새 치치의 픽셀 증명사진'
                       }
-                      width={1254}
-                      height={1254}
+                      width={professor ? 540 : 600}
+                      height={professor ? 720 : 800}
                       loading="lazy"
                       className="aspect-[3/4] w-full object-cover [image-rendering:pixelated]"
                     />

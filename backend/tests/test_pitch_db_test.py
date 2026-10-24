@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Callable
 from datetime import date
 from io import BytesIO
 from unittest.mock import MagicMock
@@ -30,7 +31,7 @@ def pitch_id(db_session: Session, user_id: uuid.UUID) -> uuid.UUID:
 # S3 upload Mocking
 @pytest.fixture
 def upload_mock(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    mock = MagicMock(side_effect=lambda file, key: key)
+    mock = MagicMock(side_effect=lambda file, key, content_type=None: key)
     monkeypatch.setattr(service, "upload", mock)
     monkeypatch.setattr(service, "generate_presigned_url", lambda key: f"https://fake/{key}")
     return mock
@@ -100,18 +101,25 @@ def test_delete_pitch_removes_the_row_and_returns_its_take_ids(
 
 # pitch presentation 업로드 테스트
 def test_upload_presentation_persists_version_one(
-    db_session: Session, pitch_id: uuid.UUID, upload_mock: MagicMock
+    db_session: Session,
+    pitch_id: uuid.UUID,
+    upload_mock: MagicMock,
+    make_pdf: Callable[[int], bytes],
 ) -> None:
     dto = UploadPresentationDTO(
-        presentation_file=UploadFile(file=BytesIO(b"fake-bytes"), filename="deck.pdf"),
+        presentation_file=UploadFile(file=BytesIO(make_pdf(3)), filename="deck.pdf"),
     )
 
     result = service.upload_presentation_service(db_session, pitch_id, dto)
 
     expected_key = f"pitches/{pitch_id}/presentations/1.pdf"
-    upload_mock.assert_called_once_with(dto.presentation_file, expected_key)
+    upload_mock.assert_called_once_with(
+        dto.presentation_file, expected_key, content_type="application/pdf"
+    )
     saved = db_session.get(PresentationVersion, result.presentation_version_id)
     assert saved is not None
     assert saved.pitch_id == pitch_id
     assert saved.version == 1
     assert saved.file_key == expected_key
+    assert saved.page_count == 3
+    assert result.page_count == 3
