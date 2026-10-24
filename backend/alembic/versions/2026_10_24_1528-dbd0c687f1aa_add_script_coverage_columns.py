@@ -27,12 +27,6 @@ def upgrade() -> None:
     op.create_check_constraint('check_take_analysis_hold_reason', 'takes',
         "analysis_hold_reason IN ('COVERAGE_RESCORE_FAILED')")
 
-    op.alter_column('take_ai_results', 'kind',
-        existing_type=sa.String(length=20),
-        type_=sa.String(length=32),
-        existing_nullable=False)
-    op.add_column('take_ai_results', sa.Column('revision', sa.Integer(), server_default='0', nullable=False))
-
     op.add_column('script_versions', sa.Column('rubric_status', sa.String(length=16), nullable=True))
     op.add_column('script_versions', sa.Column('rubric_requested_at', sa.DateTime(timezone=True), nullable=True))
     op.add_column('script_versions', sa.Column('rubric_retry_used', sa.Boolean(), server_default='false', nullable=False))
@@ -42,19 +36,9 @@ def upgrade() -> None:
     op.add_column('script_slides', sa.Column('rubric', postgresql.JSONB(astext_type=sa.Text()), nullable=True))
     op.add_column('script_slides', sa.Column('rubric_meta', postgresql.JSONB(astext_type=sa.Text()), nullable=True))
 
-    op.create_table('take_slide_events',
-    sa.Column('take_id', sa.Uuid(), nullable=False),
-    sa.Column('started_ms', sa.Integer(), nullable=False),
-    sa.Column('slide_number', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['take_id'], ['takes.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('take_id', 'started_ms')
-    )
-
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_table('take_slide_events')
-
     op.drop_column('script_slides', 'rubric_meta')
     op.drop_column('script_slides', 'rubric')
 
@@ -62,12 +46,6 @@ def downgrade() -> None:
     op.drop_column('script_versions', 'rubric_retry_used')
     op.drop_column('script_versions', 'rubric_requested_at')
     op.drop_column('script_versions', 'rubric_status')
-
-    op.drop_column('take_ai_results', 'revision')
-    op.alter_column('take_ai_results', 'kind',
-        existing_type=sa.String(length=32),
-        type_=sa.String(length=20),
-        existing_nullable=False)
 
     op.drop_constraint('check_take_analysis_hold_reason', 'takes', type_='check')
     op.drop_column('takes', 'analysis_hold_reason')
