@@ -49,12 +49,17 @@ PLAN_MAX_MISSION_DESCRIPTION = 500
 MAX_WINDOW_RECORDS = 120
 MAX_WINDOW_WORDS = 1_000
 MAX_WINDOW_UTTERANCE_ENDS = 300
+#: 단어 하나: 글자 수와 길이(끝 − 시작). 넘는 단어는 그 단어만 버린다. 길이 상한은 늦게 확정된
+#: 단어가 말한 시각의 장을 찾도록 장 전환 기록을 남겨 두는 여유와 같은 값이다(judges.py)
 MAX_WORD_CHARS = 50
+MAX_WORD_SPAN_MS = 10_000
 MAX_FINALIZE_EVENTS = 20_000
-#: replay(Take 전체 원자료) 배열 한도. 1초 기록은 같은 t_ms 를 하나로 센 수다
+#: replay(Take 전체 원자료) 배열 한도. 1초 기록은 같은 t_ms 를 하나로 센 수다(한 시간 + 60초는
+#: 3,660개). 단어 · 문장 끝은 60초 창 한도를 Take 최대 길이(61분)만큼 늘린 값이다 — 창으로는
+#: 받는 발표를 복구에서 거절하지 않게
 MAX_REPLAY_RECORDS = 4_000
-MAX_REPLAY_WORDS = 30_000
-MAX_REPLAY_UTTERANCE_ENDS = 10_000
+MAX_REPLAY_WORDS = MAX_WINDOW_WORDS * 61
+MAX_REPLAY_UTTERANCE_ENDS = MAX_WINDOW_UTTERANCE_ENDS * 61
 MAX_REPLAY_CHANGES = 5_000
 #: STT 상태. 모르는 값은 믿지 않는 상태(degraded)로 읽는다
 STT_STATUSES = frozenset({"connecting", "ok", "reconnecting", "degraded", "closed"})
@@ -62,33 +67,59 @@ STT_STATUSES = frozenset({"connecting", "ok", "reconnecting", "degraded", "close
 log = logging.getLogger(__name__)
 
 
+#: by_t_ms 로 셀 때 배열 전체 길이의 상한(한도의 배수). 같은 1초가 되풀이돼도 받되, 버릴 기록이
+#: 끝없이 와서 검사 비용이 커지지 않게 한다
+REPEAT_ALLOWANCE = 4
+
+
+def _t_key(item: Any) -> int | None:
+    """같은 1초를 하나로 셀 때의 키. 읽을 수 없는 t_ms 면 None(그 기록은 버리므로 안 센다)."""
+    t = item.get("t_ms") if isinstance(item, dict) else None
+    return t if isinstance(t, int) and not isinstance(t, bool) else None
+
+
 def _too_many(raw: Any, limit: int, name: str, *, by_t_ms: bool = False) -> None:
-    """배열이 한도를 넘으면 ValueError(→ 422). by_t_ms 면 같은 t_ms 를 하나로 센다."""
+    """배열이 한도를 넘으면 ValueError(→ 422).
+
+    by_t_ms 면 읽을 수 있는 t_ms 를 같은 것끼리 하나로 센 수를 한도와 비교하고, 배열 전체 길이는
+    한도 × REPEAT_ALLOWANCE 까지 받는다.
+    """
     if not isinstance(raw, list):
         return
-    count = len(raw)
-    if by_t_ms and count > limit:
-        count = len({item.get("t_ms") if isinstance(item, dict) else id(item) for item in raw})
+    if by_t_ms:
+        if len(raw) > limit * REPEAT_ALLOWANCE:
+            raise ValueError(f"{name} 는 {limit * REPEAT_ALLOWANCE}개 이하여야 한다")
+        count = len({_t_key(item) for item in raw} - {None}) if len(raw) > limit else len(raw)
+    else:
+        count = len(raw)
     if count > limit:
         raise ValueError(f"{name} 는 {limit}개 이하여야 한다")
 
 
-def _readable(raw: Any, model: type[BaseModel], name: str) -> Any:
+def _readable(raw: Any, model: type[BaseModel], name: str, *, first_per_t_ms: bool = False) -> Any:
     """읽을 수 없는 항목(타입 · 범위가 틀림)은 그 항목만 버린다(gaze-tracking.md 5-2와 같은 규칙).
 
     항목 하나 때문에 요청 전체가 422 가 되어 그 1초의 모든 판정을 잃지 않게 하기 위해서다.
-    로그에는 버린 수만 남긴다(값은 사용자 원자료).
+    first_per_t_ms 면 같은 t_ms 는 먼저 온 것만 남긴다(replay — 복구가 만드는 1초 요청이 창 한도에
+    걸리지 않게. 판정 모듈도 먼저 온 것만 쓰므로 결과는 같다). 로그에는 버린 수만 남긴다.
     """
     if not isinstance(raw, list):
         return raw
     kept = []
+    seen: set[int] = set()
     for item in raw:
         try:
-            kept.append(model.model_validate(item))
+            value = model.model_validate(item)
         except ValidationError:
             continue
+        if first_per_t_ms:
+            t = value.t_ms  # type: ignore[attr-defined]
+            if t in seen:
+                continue
+            seen.add(t)
+        kept.append(value)
     if len(kept) < len(raw):
-        log.warning("dropped unreadable %s count=%d", name, len(raw) - len(kept))
+        log.warning("dropped unreadable or repeated %s count=%d", name, len(raw) - len(kept))
     return kept
 
 
@@ -103,8 +134,11 @@ def _readable_ints(raw: Any, name: str) -> Any:
 
 
 def _stt_status(value: Any) -> Any:
-    """모르는 STT 상태 · null 은 degraded(믿지 않음). 판정 모듈은 다섯 값만 받는다."""
-    return value if value in STT_STATUSES else "degraded"
+    """모르는 STT 상태 · null · 문자열이 아닌 값은 degraded(믿지 않음).
+
+    판정 모듈은 다섯 값만 받는다.
+    """
+    return value if isinstance(value, str) and value in STT_STATUSES else "degraded"
 
 
 class _In(BaseModel):
@@ -207,6 +241,12 @@ class WordIn(_In):
     word: str = Field(max_length=MAX_WORD_CHARS)
     start_ms: int = Field(ge=0)
     end_ms: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _span(self) -> WordIn:
+        if not 0 <= self.end_ms - self.start_ms <= MAX_WORD_SPAN_MS:
+            raise ValueError("단어는 시작 ≤ 끝이고 길이가 10초 이하여야 한다")
+        return self
 
 
 class SlideNow(_In):
@@ -592,13 +632,13 @@ class ReplayInput(_In):
     @classmethod
     def _gaze(cls, v: Any) -> Any:
         _too_many(v, MAX_REPLAY_RECORDS, "replay.gaze_records", by_t_ms=True)
-        return _readable(v, GazeRecordIn, "replay.gaze_records")
+        return _readable(v, GazeRecordIn, "replay.gaze_records", first_per_t_ms=True)
 
     @field_validator("voice_records", mode="before")
     @classmethod
     def _voice(cls, v: Any) -> Any:
         _too_many(v, MAX_REPLAY_RECORDS, "replay.voice_records", by_t_ms=True)
-        return _readable(v, VoiceRecordIn, "replay.voice_records")
+        return _readable(v, VoiceRecordIn, "replay.voice_records", first_per_t_ms=True)
 
     @field_validator("words", mode="before")
     @classmethod
@@ -622,7 +662,7 @@ class ReplayInput(_In):
     @classmethod
     def _slides(cls, v: Any) -> Any:
         _too_many(v, MAX_REPLAY_CHANGES, "replay.slides")
-        return v
+        return _readable(v, SlideNow, "replay.slides")
 
 
 class FinalizeRequest(_In):

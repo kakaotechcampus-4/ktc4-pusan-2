@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from coach import finalize
 from coach.schemas import (
     MAX_FINALIZE_EVENTS,
     MAX_REPLAY_RECORDS,
@@ -17,11 +18,15 @@ from coach.schemas import (
     MAX_WINDOW_UTTERANCE_ENDS,
     MAX_WINDOW_WORDS,
     MAX_WORD_CHARS,
+    MAX_WORD_SPAN_MS,
     CoachInputs,
     CoachRequest,
     FinalizeRequest,
     ReplayInput,
 )
+
+from .fakes import fake_judges
+from .test_replay_recovery import raw
 
 
 def gaze(t_ms: int, **kw) -> dict:
@@ -85,7 +90,15 @@ def test_unreadable_words_and_utterance_ends_are_dropped():
     assert inputs.utterance_ends == [400, 900]
 
 
-@pytest.mark.parametrize("status", ["unknown", None, 3])
+def test_word_longer_than_the_span_limit_is_dropped():
+    # 늦게 확정된 단어가 말한 장을 찾도록 장 전환을 남기는 여유와 같은 상한이다
+    long = {"word": "매출은", "start_ms": 0, "end_ms": MAX_WORD_SPAN_MS + 1}
+    backwards = {"word": "매출은", "start_ms": 500, "end_ms": 400}
+    inputs = CoachInputs.model_validate({"words": [word(0), long, backwards]})
+    assert [w.start_ms for w in inputs.words] == [0]
+
+
+@pytest.mark.parametrize("status", ["unknown", None, 3, [], {}])
 def test_unknown_stt_status_is_untrusted(status):
     # 판정 모듈은 다섯 값만 받는다. 모르는 값은 믿지 않는 상태로 읽는다
     assert CoachInputs.model_validate({"stt_status": status}).stt_status == "degraded"
@@ -120,8 +133,16 @@ def test_window_arrays_have_a_limit(field, item, limit):
 
 def test_finalize_events_have_a_limit():
     base = {"take_id": "t", "t_ms": 1000}
-    with pytest.raises(ValidationError):
-        FinalizeRequest.model_validate({**base, "events": [{}] * (MAX_FINALIZE_EVENTS + 1)})
+    event = {
+        "kind": "OUTCOME",
+        "event_id": "oc-1",
+        "t_ms": 0,
+        "intervention_id": "iv-0",
+        "outcome": "NOT_MEASURED",
+    }
+    FinalizeRequest.model_validate({**base, "events": [event] * MAX_FINALIZE_EVENTS})
+    with pytest.raises(ValidationError, match="events"):
+        FinalizeRequest.model_validate({**base, "events": [event] * (MAX_FINALIZE_EVENTS + 1)})
 
 
 def test_replay_records_count_the_same_second_once():
@@ -140,5 +161,43 @@ def test_replay_words_have_a_limit():
 
 
 def test_replay_unknown_stt_status_change_is_untrusted():
-    replay = ReplayInput.model_validate({"stt_status_changes": [{"t_ms": 0, "status": "??"}]})
-    assert replay.stt_status_changes[0].status == "degraded"
+    changes = [{"t_ms": 0, "status": "??"}, {"t_ms": 10, "status": []}]
+    replay = ReplayInput.model_validate({"stt_status_changes": changes})
+    assert [c.status for c in replay.stt_status_changes] == ["degraded", "degraded"]
+
+
+def test_replay_keeps_the_first_record_of_the_same_second():
+    first, again = gaze(0, reliability=0.9), gaze(0, reliability=0.1)
+    replay = ReplayInput.model_validate({"gaze_records": [first, again, gaze(1000)]})
+    assert [(r.t_ms, r.reliability) for r in replay.gaze_records] == [(0, 0.9), (1000, None)]
+
+
+def test_replay_unreadable_t_ms_is_dropped_not_an_error():
+    # 같은 1초를 셀 때 읽을 수 없는 t_ms(배열 · 객체)도 예외 없이 세고, 그 기록은 버린다
+    records = [gaze(i * 1000) for i in range(MAX_REPLAY_RECORDS)] + [
+        {"t_ms": [], "duration_ms": 1000, "state": "CAMERA"}
+    ]
+    replay = ReplayInput.model_validate({"gaze_records": records})
+    assert len(replay.gaze_records) == MAX_REPLAY_RECORDS
+
+
+def test_replay_unreadable_slide_change_is_dropped():
+    slides = [{"number": 1, "started_ms": 0}, None, {"number": 2, "started_ms": 5000}]
+    replay = ReplayInput.model_validate({"slides": slides})
+    assert [s.number for s in replay.slides] == [1, 2]
+
+
+def test_replay_with_repeated_seconds_still_recovers():
+    # 같은 1초가 다섯 번씩 와도(창 하나에 150개) 복구가 만드는 1초 요청은 창 한도에 걸리지 않는다
+    data = raw(31_000)
+    data["gaze_records"] = data["gaze_records"] * 5
+    data["voice_records"] = data["voice_records"] * 5
+    req = {"take_id": "t", "t_ms": 31_000, "coach_state": None, "replay": data}
+    assert finalize(req, fake_judges()).take_result.replayed is True
+
+
+def test_replay_records_have_an_overall_limit_with_repeats():
+    # 같은 1초가 되풀이돼도 받지만, 배열 전체는 한도의 4배까지다(버릴 기록이 끝없이 오지 않게)
+    same = [gaze(0)] * (MAX_REPLAY_RECORDS * 4 + 1)
+    with pytest.raises(ValidationError):
+        ReplayInput.model_validate({"gaze_records": same})
