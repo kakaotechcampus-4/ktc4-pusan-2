@@ -9,6 +9,7 @@ from collections import Counter, defaultdict
 
 import pandas as pd
 
+from script_coverage.core import TakeLLMs
 from script_coverage.stt_evaluation.schemas import SlideEvaluation, Take
 from script_coverage.stt_evaluation.scoring import take_scores
 
@@ -62,7 +63,7 @@ def repeat_runs(
     all_evaluations: dict[str, list[SlideEvaluation]],
     n_samples: int,
     *,
-    llms: dict | None = None,
+    llms: TakeLLMs | None = None,
 ) -> tuple[dict[int, dict[str, list[SlideEvaluation]]], Counter]:
     """같은 STT 를 n_samples 번 채점한다. (채점 번호 → 연습별 평가, 이번 실행에서 실제로 부른 API 호출 수)
 

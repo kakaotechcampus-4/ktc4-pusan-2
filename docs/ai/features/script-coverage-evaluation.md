@@ -79,7 +79,7 @@ flowchart LR
 ```
 1. **대본 등록 · 수정 (BE)**: 새 대본 버전(대본 원문을 올릴 때 생긴다)의 파싱이 끝나 장별 대본이 생기면, BE가 그 대본 버전의 모든 장을 실어 백그라운드로 `/scripts/rubric`을 부른다. 키워드 점수와 이름 판정은 발표 전체를 함께 보고 하기 때문에 늘 모든 장을 싣는다. 같은 대본 버전을 다시 파싱해도(예: 제한 시간만 바뀜) 이미 성공한 평가 기준·meta는 다시 만들지 않는다. 유효한 재파싱의 전체 장 번호·대본이 달라지면 새 결과를 적용하지 않고 새 버전 등록을 안내한다(`architecture.md` 1-7).
 2. **평가 기준 만들기 (AI)**: 장마다 1차 분석(LLM) → 코드 초안 → 최종 결론(LLM) → 전달 단위 나누기(LLM)를 차례로 하고, 장은 동시에 처리한다. 실패한 장은 `failed`에 담는다. BE는 장별 평가 기준을 저장하고, 최초 200의 failed 중 네 LLM 오류 코드의 장만 `slide_numbers`로 1회 다시 부른다(8절). 장별 첫 성공 기준·meta를 함께 조건부 저장하며 기존 성공본은 덮지 않는다.
-3. **Take 종료 (BE)**: BE가 확정 전사를 장 변경 기록 전체로 장 구간으로 나눠(5-2 `slides`), Take 생성 때 저장한 `script_version_id`의 장마다 STT 텍스트와 저장된 평가 기준을 실어 백그라운드로 `/takes/analyze`를 부른다. 발표에서 넘어간 장도 빈 STT로 싣는다(빠뜨린 장으로 채점되게, 15절 열린 질문).
+3. **Take 종료 (BE)**: BE가 확정 전사를 장 변경 기록 전체로 장 구간으로 나눠(5-2 `slides`), Take 생성 때 저장한 `script_version_id`의 장마다 STT 텍스트와 저장된 평가 기준을 실어 백그라운드로 `/takes/analyze`를 부른다. 발표에서 넘어간 장도 빈 STT로 싣는다(빠뜨린 장으로 채점되게).
 4. **채점 (AI)**: 장마다 STT 정규화 → 대본 문장과 짝짓기 → 수치 확인 → 비슷한 말 찾기 → 전달 단위 판정(LLM) → 문장으로 모으기 → 규칙과 어긋난 장만 교차 검증(LLM) → 핵심 내용으로 모으기 → 점수. 그리고 Take 점수 · 채점된 장의 비율 · 확인할 항목을 계산한다.
 4-1. **부분 재시도·저장 (BE)**: 최초 200의 완전한 채점·meta·요약을 먼저 저장한다. 허용 오류 장만 재채점하고 새 성공 장을 병합 후보로 보존한 뒤, 남은 failed 전체·처음 채점에 쓴 기준과 함께 답 없이 rescore를 부른다. 성공할 때만 확정본·meta·요약을 함께 교체하고 후보를 지운다. 끝내 실패하면 확정본·후보를 보존하고 리뷰를 보류한다(`architecture.md` 1-3 '리뷰 보류' · 1-7, 이 문서 12-2).
 5. **확인 (FE · BE)**: 확인할 항목이 있으면 BE가 FE에 알리고, FE 확인 화면이 항목마다 답을 받는다. BE는 답을 모아 `/takes/rescore`를 부르고 결과로 채점을 덮는다. 답은 리뷰를 부르기 전까지만 받는다(채점 · 리뷰 · 미션이 서로 다른 채점을 바탕으로 남지 않게). 사용자가 건너뛰거나 화면을 떠나거나 확인을 기다린 지 10분이 지나면(`architecture.md` 1-3) 다시 채점하지 않고 리뷰로 넘어간다.
@@ -158,7 +158,7 @@ ai/research/script-coverage-evaluation/
 | `rubrics` | list | 예 | 대본 등록 때 받은 장별 평가 기준 그대로. 평가 기준이 없는 장(만들기가 실패한 장)은 빠질 수 있다 | `["<장별 평가 기준>"]` |
 | `slide_numbers` | list int · null | 아니오 | 채점할 장. null이면 `slides`의 장 전부 | `[5]` |
 
-- 대본 식별자(`script_name`)는 요청에 따로 없다. 라우터가 `rubrics[].meta.script_name`(= 대본 버전)에서 채우는 안을 쓰되, 아직 정하지 않았다(15절 열린 질문). `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 보아 422 `RUBRIC_MISSING`을 돌려준다.
+- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 보아 422 `RUBRIC_MISSING`을 돌려준다.
 
 **`POST /takes/rescore`**
 
@@ -452,7 +452,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | ⑨ | 장 점수 계산 | |
 
 - 교차 검증이 실패한 장은 그 장 전체를 `failed`로 돌려준다(1차 판정만으로 내지 않는다).
-- STT가 빈 장(발표에서 넘어감)은 LLM을 부르지 않고 모든 전달 단위를 `missing`으로 판정한다(15절 열린 질문).
+- STT가 빈 장(발표에서 넘어감)은 LLM을 부르지 않고 모든 전달 단위를 `missing`으로 판정한다.
 - 요청 마감 시각이 지나 LLM을 부르지 못한 장은 `LLM_TIMEOUT`으로 `failed`에 담는다.
 
 ## 6-3. 다시 계산 (`/takes/rescore`)
@@ -547,12 +547,12 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 |---|---|---|---|
 | `feature_version` | `script_coverage-1.0` | 최상위 `version.py` → 응답 `meta` | 출력의 의미가 바뀔 때(판정 규칙 · 프롬프트 · 점수 계산) |
 | `criteria_version` | `script_coverage-<버전>+<config 해시 12자리>` | 최상위 `config.py`의 해시(하위 config · 판정 임계값 · 판정 상태별 점수 · 중요도 가중치) → `/takes/analyze` · `/takes/rescore` 응답 `meta.criteria_versions.script_coverage` | 채점 기준값을 바꾸면 해시가 바뀐다 |
-| `rubric_schema_version` | `1.2` (만든 시각 `created_at`을 빼는 것은 15절 열린 질문) | `version.py` → 평가 기준 `meta.rubric_schema_version` | 평가 기준의 모양이 바뀔 때 |
+| `rubric_schema_version` | `1.2` (1.2: 만든 시각 `created_at`을 뺌) | `version.py` → 평가 기준 `meta.rubric_schema_version` | 평가 기준의 모양이 바뀔 때 |
 | `rubric_id` | 해시 | 평가 기준 `meta.rubric_id` → 채점 `rubric_id` | 장 대본 · LLM 설정(프롬프트 · 출력 스키마 · 모델) · 형식 버전이 바뀌면 달라진다 |
 | 단계별 설정 해시 | 12자리 | 평가 기준 `meta`의 `llm_config_hash` · `final_config_hash` · `unit_config_hash` | 그 단계의 프롬프트 · 스키마 · 모델이 바뀔 때 (연구 캐시 키) |
 | `schema_version` | `1.0` | 응답 `meta` (`architecture.md` 5절) | 요청 · 응답 필드 이름 변경 · 삭제 · 뜻 변경 |
 
-- 평가 기준과 채점에는 만든 시각을 넣지 않는다(코어는 시계를 쓰지 않는다). 언제 만들었는지는 BE 행의 시각으로 본다(15절 열린 질문).
+- 평가 기준과 채점에는 만든 시각을 넣지 않는다(코어는 시계를 쓰지 않는다). 언제 만들었는지는 BE 행의 시각으로 본다.
 - 평가 기준이 바뀌면(`rubric_id`가 다르면) 저장된 채점을 다시 계산할 수 없고 다시 채점해야 한다.
 
 # 10. 실행 · 테스트
@@ -571,6 +571,7 @@ uv sync
 | 코어만 · 실험 도구만 | `uv run python -m pytest tests/unit` · `tests/lab` | 통과 |
 | 실제 LLM으로 장 하나 끝까지 (과금) | `uv run python -m pytest -m live` | 평가 기준 3번 + 채점 1~2번 호출, 유효한 결과 |
 | 평가 기준 만들기 → 채점 → 정확도 | `uv run python experiments/01_build_rubrics.py` → `04_evaluate_takes.py` → `05_accuracy.py` | `reports/results/stt_accuracy.json` (02 · 03 · 06은 선택 · 반복 측정, 과금) |
+| API 예시 다시 만들기 (과금 없음, 연구 캐시 재생) | `uv run python -m coverage_lab.examples` | `src/script_coverage/examples/`의 세 API 요청 · 응답이 다시 만들어지고 계약 테스트가 통과 |
 | 장 수별 소요 시간 | (실험 스크립트를 더한다) | 장 수별 걸린 시간 · 동시 개수별 비교 |
 
 - 계약 테스트: 고정된 가짜 LLM으로 `examples/`의 요청을 코어에 넣어 응답이 기대 응답과 같은지 본다(기대 출력은 반올림 없이 저장, 실수는 허용 오차). 세 API의 요청 · 응답, 일부 장 실패, 평가 기준이 없는 장, 확인 답 반영을 넣는다.
@@ -733,12 +734,7 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 
 # 15. 열린 질문 · 알려진 한계
 **열린 질문** (아직 정하지 않았다)
-- 기능 에러 코드 이름: 추천 `RUBRIC_MISSING` · `RUBRIC_MISMATCH` · `STT_TEXT_MISSING`(7절). 모든 장이 실패했을 때의 상태 코드는 `architecture.md` 4절대로 정해져 있다.
-- `/takes/analyze`의 대본 식별자를 라우터가 `rubrics[].meta.script_name`에서 채우기(5-2).
 - 평가 결과 기준선: 기본 묶음(6 luna)으로 지금 코드를 다시 재서 바꾸기 전 기준선으로 쓰기(13절).
-- 코어에서 만든 시각(`created_at`)을 빼기: 추천은 빼고 BE 행의 시각을 씀.
-- 장별 '반영한 답' 이름: 추천 `applied_answers`(Take 단위 `confirmations`와 이름을 가른다).
-- 발표에서 넘어간 장을 빈 STT로 싣고 LLM 없이 `missing`.
 - 장 동시 처리 수와 장 수가 많은 대본: 장 수별 시간을 잰 뒤 정한다.
 
 **알려진 한계**
@@ -759,7 +755,7 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 | 대본 식별자 | 요청 `script_version_id` → 코어 `script_name` → 평가 기준 `meta.script_name` | 5-2 |
 | 일부 장 처리 | `slide_numbers` (null이면 전부). 평가 기준 만들기는 늘 모든 장을 싣는다 | 5-2 |
 | 장별 실패 | `failed[{slide_number, error{code, message}}]`, 한 장이라도 성공하면 200 | 7절 |
-| 기능 에러 코드 | `RUBRIC_MISSING` · `RUBRIC_MISMATCH` · `STT_TEXT_MISSING` (추천, 15절 열린 질문) | 7절 |
+| 기능 에러 코드 | `RUBRIC_MISSING` · `RUBRIC_MISMATCH` · `STT_TEXT_MISSING` | 7절 |
 | Take 값 | `take_scores{content_coverage, critical_fact_accuracy, script_fidelity, similar_words, similar_numbers, scored_ratio}`, `confirmations[{slide_number, item_id, script_text, stt_text}]` — 받은 채점 전체로 다시 계산 | 6-4 |
 | id 규칙 | 문장 · 근거 0부터, `KP1` · `CF1` · `S<문장>-U<순번>` · `R1`(장마다) | 5-3 |
 | LLM 호출 | 평가 기준 장마다 최대 3번, 채점 장마다 1번 + 어긋난 장 1번, 다시 계산 0번 | 8절 |
