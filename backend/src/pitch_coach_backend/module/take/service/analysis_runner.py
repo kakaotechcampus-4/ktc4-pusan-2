@@ -21,7 +21,7 @@ from pitch_coach_backend.module.take.service import review as review_service
 logger = logging.getLogger(__name__)
 
 ANALYSIS_CONCURRENCY = 4
-CONFIRMATION_WAIT = timedelta(minutes=10)
+CONFIRMATION_POLL_SEC = 2.0
 RUBRIC_POLL_SEC = 5.0
 RESUME_BATCH_SIZE = 4
 RESUME_READ_TIMEOUT_SEC = 10.0
@@ -112,20 +112,15 @@ async def _run(take_id: uuid.UUID, session_factory: SessionFactory, restarted: b
         _plan_next_take(pitch_id)
 
 
-def _confirmation_started_at(db: Session, take_id: uuid.UUID) -> datetime | None:
-    take = TakeRepository(db).get_take(take_id)
-    if take is None or take.status != "ANALYZING" or take.analysis_stage != "AWAITING_CONFIRMATION":
-        return None
-    return take.analysis_stage_at
+def _awaiting_confirmation(db: Session, take_id: uuid.UUID) -> bool:
+    return TakeRepository(db).awaiting_confirmation(take_id)
 
 
 async def _wait_for_confirmation(take_id: uuid.UUID, session_factory: SessionFactory) -> None:
-    started_at = await _in_session(session_factory, _confirmation_started_at, take_id)
-    if started_at is None:
-        return
-    delay = (started_at + CONFIRMATION_WAIT - datetime.now(UTC)).total_seconds()
-    if delay > 0:
-        await asyncio.sleep(delay)
+    # 답 · 건너뛰기는 확인 API 요청이 단계를 바꾼다. 단계가 바뀌거나 10분이 지날 때까지
+    # 짧게 다시 본다
+    while await _in_session(session_factory, _awaiting_confirmation, take_id):
+        await asyncio.sleep(CONFIRMATION_POLL_SEC)
 
 
 async def _review(

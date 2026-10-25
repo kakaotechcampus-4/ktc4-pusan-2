@@ -18,7 +18,7 @@ from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.dto import ReviewRequestDTO, ReviewResponseDTO
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
-from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.repository import CONFIRMATION_WAIT, TakeRepository
 from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service import review as review_service
@@ -137,10 +137,9 @@ def test_held_take_is_not_reviewed(db_session, user_id, monkeypatch, plans):
 
 
 def test_confirmation_waits_until_its_deadline(db_session, user_id, monkeypatch, plans):
+    monkeypatch.setattr(analysis_runner, "CONFIRMATION_POLL_SEC", 0.05)
     take = _analyzing(db_session, user_id, "AWAITING_CONFIRMATION")
-    take.analysis_stage_at = (
-        datetime.now(UTC) - analysis_runner.CONFIRMATION_WAIT + timedelta(seconds=0.3)
-    )
+    take.analysis_stage_at = datetime.now(UTC) - CONFIRMATION_WAIT + timedelta(seconds=0.3)
     db_session.commit()
     monkeypatch.setattr(
         review_service, "request_review_async", AsyncMock(return_value=_review(take))
@@ -165,6 +164,60 @@ def test_expired_confirmation_is_reviewed_at_once(db_session, user_id, monkeypat
     asyncio.run(analysis_runner.run(take.id))
 
     assert time.monotonic() - started < 1
+    assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
+
+
+def test_answered_confirmation_is_reviewed_without_waiting(
+    db_session, user_id, monkeypatch, plans
+):
+    """확인 API 가 답을 반영해 단계를 넘기면 10분을 다 기다리지 않고 리뷰한다."""
+    monkeypatch.setattr(analysis_runner, "CONFIRMATION_POLL_SEC", 0.05)
+    take = _analyzing(
+        db_session, user_id, "AWAITING_CONFIRMATION", analysis_stage_at=datetime.now(UTC)
+    )
+    monkeypatch.setattr(
+        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+    )
+
+    async def run():
+        runner = asyncio.create_task(analysis_runner.run(take.id))
+        await asyncio.sleep(0.1)
+        assert not runner.done()
+        assert TakeRepository(db_session).skip_confirmation(take.id)
+        db_session.commit()
+        await asyncio.wait_for(runner, 2)
+
+    asyncio.run(run())
+
+    assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
+
+
+def test_expired_confirmation_waits_for_the_answer_being_applied(
+    db_session, user_id, monkeypatch, plans
+):
+    """기한 안에 받은 답을 반영하는 동안에는 기한이 지나도 리뷰를 시작하지 않는다."""
+    monkeypatch.setattr(analysis_runner, "CONFIRMATION_POLL_SEC", 0.05)
+    take = _analyzing(
+        db_session, user_id, "AWAITING_CONFIRMATION", analysis_stage_at=datetime.now(UTC)
+    )
+    requested_at = TakeRepository(db_session).claim_confirmation(take.id)
+    assert requested_at is not None
+    take.analysis_stage_at = datetime.now(UTC) - CONFIRMATION_WAIT - timedelta(seconds=1)
+    db_session.commit()
+    review = AsyncMock(return_value=_review(take))
+    monkeypatch.setattr(review_service, "request_review_async", review)
+
+    async def run():
+        runner = asyncio.create_task(analysis_runner.run(take.id))
+        await asyncio.sleep(0.2)
+        assert not runner.done() and review.await_count == 0
+        TakeRepository(db_session).release_confirmation(take.id, requested_at)
+        db_session.commit()
+        await asyncio.wait_for(runner, 2)
+
+    asyncio.run(run())
+
+    assert review.await_count == 1
     assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
 
 
