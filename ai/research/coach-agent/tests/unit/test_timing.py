@@ -392,9 +392,9 @@ def test_criteria_keys_and_directions() -> None:
 
 def test_criteria_version_format_and_changes_with_config() -> None:
     r = one(make(240_000))
-    assert re.fullmatch(r"timing-1\.0\+[0-9a-f]{12}", r.criteria_version)
+    assert re.fullmatch(r"timing-1\.1\+[0-9a-f]{12}", r.criteria_version)
     changed = TimingConfig(behind_ratio=1.1)
-    assert criteria_version("timing-1.0", changed) != r.criteria_version
+    assert criteria_version("timing-1.1", changed) != r.criteria_version
     assert one(make(240_000), changed).criteria_version != r.criteria_version
 
 
