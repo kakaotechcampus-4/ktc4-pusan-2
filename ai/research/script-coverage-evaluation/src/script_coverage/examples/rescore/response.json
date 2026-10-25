@@ -127,11 +127,9 @@
           "lexical_coverage": 0.875,
           "evidence_coverage": 0.875,
           "fact_statuses": {
-            "CF1": "sound_alike"
+            "CF1": "matched"
           },
-          "similar_ids": [
-            "R1"
-          ],
+          "similar_ids": [],
           "conflicts": [
             "contradicted",
             "sound_alike"
