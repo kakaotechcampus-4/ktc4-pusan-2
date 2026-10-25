@@ -56,7 +56,6 @@ def run_review(monkeypatch, db, take_id):
             raise
 
     monkeypatch.setattr(analysis_runner, "_in_session", run)
-    monkeypatch.setattr(analysis_runner, "_slots_by_loop", {})
     return asyncio.run(analysis_runner._review(take_id, None, False))
 
 

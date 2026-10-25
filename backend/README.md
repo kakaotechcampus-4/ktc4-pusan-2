@@ -131,6 +131,7 @@ backend/
     │   ├── retry.py              # DB 가 잠깐 안 될 때만 다시 하기 (백그라운드 작업)
     │   ├── row_buffer.py         # 행을 모았다 한 번에 저장 · 실패하면 간격을 두고 다시 넣기 (1초 원자료 · 코치 이벤트)
     │   ├── tasks.py              # 백그라운드 태스크 보관 · 실패 로그 · 앱 종료 때 끊기
+    │   ├── ai_slots.py           # 백그라운드 AI 호출 동시 개수 (합계 4, 그 안에서 대본 등록 2)
     │   ├── security.py           # JWT 발급/검증
     │   ├── exceptions.py         # 공통 예외 베이스 + 에러 응답 핸들러
     │   ├── logging.py            # 앱 로거(pitch_coach_backend.*) 레벨 · 형식. 앱이 뜰 때 건다
@@ -213,7 +214,7 @@ backend/
     │       └── metrics.py        # 1초 원자료 · 장 변경을 모았다 저장 (core/row_buffer.py)
     │
     ├── coach/                    # AI 실시간 코치 연동. entity 는 갖지 않는다 (DB 는 take/coach_service)
-    │   ├── client.py             # /coach/evaluate·finalize·plan HTTP. 재시도·409·동시 개수
+    │   ├── client.py             # /coach/evaluate·finalize·plan HTTP. 재시도·409
     │   ├── replies.py            # AI 응답 모양 · 받은 그대로 두는 칸 · take_summaries 측정 값
     │   ├── requests.py           # 요청 만들기 (시간 계획·미션·Take 상수·요청 모양). 순수 함수
     │   ├── windows.py            # 창 · 지금 장 · replay 입력. 순수 함수

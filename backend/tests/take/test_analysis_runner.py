@@ -36,7 +36,6 @@ class PlanSpy:
 def isolated_runner(monkeypatch, db_session: Session):
     monkeypatch.setattr(analysis_runner, "_running", TaskRegistry())
     monkeypatch.setattr(analysis_runner, "_recovery", TaskRegistry())
-    monkeypatch.setattr(analysis_runner, "_slots_by_loop", {})
 
     async def in_current_session(factory, fn, *args):
         return fn(db_session, *args)

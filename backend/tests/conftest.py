@@ -9,6 +9,7 @@
 
 import os
 import uuid
+import weakref
 from collections.abc import Awaitable, Callable, Generator
 from io import BytesIO
 from pathlib import Path
@@ -97,6 +98,16 @@ def db_session(engine: Engine) -> Generator[Session]:
         finally:
             session.close()
             outer.rollback()
+
+
+@pytest.fixture(autouse=True)
+def fresh_ai_slots(monkeypatch: pytest.MonkeyPatch) -> None:
+    """백그라운드 AI 호출 자리(`core/ai_slots.py`)를 테스트마다 비운다. 끝나지 않은 태스크가 쥔
+    자리가 다음 테스트로 넘어가지 않게 한다."""
+    from pitch_coach_backend.core import ai_slots
+
+    monkeypatch.setattr(ai_slots, "_background", weakref.WeakKeyDictionary())
+    monkeypatch.setattr(ai_slots, "_rubric", weakref.WeakKeyDictionary())
 
 
 @pytest.fixture

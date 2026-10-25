@@ -11,6 +11,7 @@ import pytest
 from pitch_coach_backend.coach import client as coach_client
 from pitch_coach_backend.coach.client import EVALUATE_PATH, FINALIZE_PATH, HttpCoachClient
 from pitch_coach_backend.coach.replies import MAX_T_MS, PlanReply
+from pitch_coach_backend.core import ai_slots
 from tests.coach.conftest import EVALUATE, FINALIZE, PLAN, PLAN_RESPONSE, Clock, ai, error, example
 
 # ── AI 가 없을 때 ─────────────────────────────────────────────────────
@@ -184,14 +185,15 @@ async def test_slow_evaluate_is_warned_once_a_minute(caplog: pytest.LogCaptureFi
     assert len(messages) == 1 and "status=504" in messages[0]
 
 
-def test_background_limit_works_on_a_second_event_loop():
+def test_background_limit_works_on_a_second_event_loop(monkeypatch):
     """asyncio.Semaphore 는 처음 기다린 루프에 묶인다. 루프가 바뀌어도(TestClient) 써야 한다."""
+    monkeypatch.setattr(ai_slots, "BACKGROUND_LIMIT", 1)
 
     async def handler(request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(0.01)
         return httpx.Response(200, json=PLAN_RESPONSE)
 
-    client = ai(handler, background_concurrency=1)
+    client = ai(handler)
 
     async def contend() -> list[PlanReply | None]:
         return await asyncio.gather(client.plan(PLAN), client.plan(PLAN))
