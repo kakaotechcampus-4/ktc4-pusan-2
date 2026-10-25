@@ -6,9 +6,13 @@
 """
 
 import re
+from types import SimpleNamespace
+
+import pytest
 
 from pitch_coach_ai.features.script_coverage.core import ScriptLLMs, analyze_script
 from pitch_coach_ai.features.script_coverage.stt_evaluation.core import evaluate_take
+from pitch_coach_ai.features.script_coverage.stt_evaluation.merge import raised_by_name
 from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
     SemanticEvaluation,
     SentenceJudgment,
@@ -133,3 +137,29 @@ def test_verifier_contradicted_wins_over_any_raise() -> None:
     sentence, _ = _evaluate("contradicted")
     assert [u.status for u in sentence.units] == ["contradicted"]
     assert sentence.status == "contradicted"
+
+
+@pytest.mark.parametrize(
+    ("name_type", "name_status", "kept"),
+    [
+        ("proper_noun", "matched", True),
+        ("term", "approximate", True),
+        ("proper_noun", "sound_alike", True),
+        ("proper_noun", "missing", False),
+        ("proper_noun", "unverified", False),
+        ("proper_noun", "mismatched", False),
+        ("percentage", "matched", False),  # 이름이 아닌 사실 두 개뿐
+    ],
+)
+def test_mixed_unit_keeps_its_raise_only_when_a_name_was_found(
+    name_type, name_status, kept
+) -> None:
+    # 한 단위에 수치(CF1, 찾음)와 이름 자리(CF2)가 함께 있다
+    unit = SimpleNamespace(unit_id="S1-U1", raised_by_rule=True, fact_ids=["CF1", "CF2"])
+    other = SimpleNamespace(unit_id="S1-U2", raised_by_rule=False, fact_ids=["CF2"])
+    sentence = SimpleNamespace(sentence_index=1, units=[unit, other])
+    checks = [
+        SimpleNamespace(fact_id="CF1", type="percentage", status="matched"),
+        SimpleNamespace(fact_id="CF2", type=name_type, status=name_status),
+    ]
+    assert raised_by_name([sentence], checks) == ({(1, "S1-U1")} if kept else set())
