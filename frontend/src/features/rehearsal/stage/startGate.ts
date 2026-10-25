@@ -38,7 +38,7 @@ export function startGate(state: {
   resumed: boolean;
   /** 스트림에 살아 있는 오디오 트랙이 있다 */
   micLive: boolean;
-  deviceError: DeviceError | null;
+  micError: DeviceError | null;
   /** 이 페이지의 소켓이 `ready` 를 받았다 */
   connected: boolean;
   startFailure: 'ENDED' | 'GAVE_UP' | null;
@@ -47,8 +47,8 @@ export function startGate(state: {
 }): StartGate {
   if (state.started) return { kind: 'STARTED' };
   if (!state.micLive) {
-    return state.deviceError !== null
-      ? { kind: 'NO_MIC', error: state.deviceError }
+    return state.micError !== null
+      ? { kind: 'NO_MIC', error: state.micError }
       : { kind: 'OPENING' };
   }
   if (state.resumed || state.connected) return { kind: 'STARTED' };

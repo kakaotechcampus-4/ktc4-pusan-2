@@ -5,7 +5,7 @@ const base = {
   started: false,
   resumed: false,
   micLive: true,
-  deviceError: null,
+  micError: null,
   connected: false,
   startFailure: null,
   slow: false,
@@ -20,18 +20,8 @@ describe('무대 시계를 돌려도 되나', () => {
 
   it('장치를 못 열면 연결과 상관없이 시작하지 않는다', () => {
     expect(
-      startGate({ ...base, micLive: false, deviceError: 'PERMISSION_DENIED', connected: true }),
+      startGate({ ...base, micLive: false, micError: 'PERMISSION_DENIED', connected: true }),
     ).toEqual({ kind: 'NO_MIC', error: 'PERMISSION_DENIED' });
-  });
-
-  it('카메라를 못 열었어도 마이크가 있으면 시작한다 — 시선만 빠진다', () => {
-    expect(startGate({ ...base, deviceError: 'IN_USE' })).toEqual({
-      kind: 'CONNECTING',
-      slow: false,
-    });
-    expect(startGate({ ...base, deviceError: 'PERMISSION_DENIED', connected: true })).toEqual({
-      kind: 'STARTED',
-    });
   });
 
   it('ready 전에 소켓이 포기하면 이유를 알린다 — 서버가 끝낸 Take 는 다시 시도해도 같다', () => {
@@ -51,7 +41,7 @@ describe('무대 시계를 돌려도 되나', () => {
 
   it('새로고침으로 이어 가는 Take 는 ready 를 기다리지 않지만 마이크는 본다', () => {
     expect(startGate({ ...base, resumed: true })).toEqual({ kind: 'STARTED' });
-    expect(startGate({ ...base, resumed: true, micLive: false, deviceError: 'IN_USE' })).toEqual({
+    expect(startGate({ ...base, resumed: true, micLive: false, micError: 'IN_USE' })).toEqual({
       kind: 'NO_MIC',
       error: 'IN_USE',
     });
@@ -63,7 +53,7 @@ describe('무대 시계를 돌려도 되나', () => {
         ...base,
         started: true,
         micLive: false,
-        deviceError: 'NOT_FOUND',
+        micError: 'NOT_FOUND',
         startFailure: 'GAVE_UP',
       }),
     ).toEqual({ kind: 'STARTED' });

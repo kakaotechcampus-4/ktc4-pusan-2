@@ -203,13 +203,20 @@ export function RehearsalPage() {
    */
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  const { stream, error: deviceError, request, requestMic, stop: stopCamera } = useCameraStream();
+  const {
+    stream,
+    cameraError,
+    micError,
+    request,
+    requestMic,
+    stop: stopCamera,
+  } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
   /** 카메라를 못 열어 마이크만 열었으면 false 입니다. 발표는 하고 시선만 뺍니다 */
   const cameraOpened = hasCamera(stream);
   /**
-   * 장치를 차례로 여는 중 (`openDevices.ts`). 카메라를 못 열고 마이크만 다시 여는 동안에도
-   * `deviceError` 가 차 있어서, 이걸 보지 않으면 마이크를 열기 전에 '마이크 없음'이 비칩니다
+   * 장치를 차례로 여는 중 (`openDevices.ts`). 최종 결과가 나오기 전에는
+   * 중간 오류로 시선을 제외하거나 장치 오류 안내를 띄우지 않습니다
    */
   const [opening, setOpening] = useState(false);
 
@@ -311,7 +318,7 @@ export function RehearsalPage() {
     // 새로고침으로 이어 가는 Take 는 서버에서 이미 시작했습니다
     resumed: (resume?.fromMs ?? 0) > 0,
     micLive: hasLiveAudio(stream),
-    deviceError: opening ? null : deviceError,
+    micError: opening ? null : micError,
     connected,
     startFailure,
     slow: connectSlow,
@@ -494,7 +501,7 @@ export function RehearsalPage() {
   // 종료 중에 새로고침했으면 열지 않습니다. 남은 일은 기록을 보내는 것뿐입니다
   const openDevices = useCallback(() => {
     setOpening(true);
-    // 장치를 못 연 이유(권한 거부 · 장치 없음)는 request 가 deviceError 로 올립니다 —
+    // 카메라와 마이크를 못 연 이유는 훅이 각각 올립니다 —
     // 마이크까지 못 열면 무대는 시작하지 않습니다 (`startGate`). 여기로 오는 건 예상 밖의 오류뿐이라
     // 버리지 않고 남깁니다
     openStageDevices(devices, { request, requestMic })
@@ -581,10 +588,10 @@ export function RehearsalPage() {
   );
 
   useEffect(() => {
-    if (!sessionId || !deviceError) return;
-    const reason = exclusionForDeviceError(deviceError);
+    if (opening || !sessionId || !cameraError) return;
+    const reason = exclusionForDeviceError(cameraError);
     if (reason) excludeGaze(sessionId, reason);
-  }, [sessionId, deviceError, excludeGaze]);
+  }, [opening, sessionId, cameraError, excludeGaze]);
 
   useEffect(() => {
     if (!sessionId || !gazeError) return;
@@ -799,10 +806,12 @@ export function RehearsalPage() {
   }
 
   const gazeNote = gazeNoteText({
-    declined: deviceError === 'PERMISSION_DENIED',
-    noCamera: stream !== null && !cameraOpened,
+    declined: !opening && cameraError === 'PERMISSION_DENIED',
+    noCamera: !opening && stream !== null && !cameraOpened,
     cameraLost:
-      (deviceError !== null && deviceError !== 'PERMISSION_DENIED') || gazeError === 'CAMERA_LOST',
+      !opening &&
+      ((cameraError !== null && cameraError !== 'PERMISSION_DENIED') ||
+        gazeError === 'CAMERA_LOST'),
     missingCalibration,
     error: gazeError,
     ready: gazeReady,

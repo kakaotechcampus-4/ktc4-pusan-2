@@ -32,16 +32,16 @@ describe('발표 화면의 장치 열기', () => {
     expect(calls).toEqual(['request cam mic']);
   });
 
-  it('고른 장치를 못 열면 기본 장치로 연다', async () => {
+  it('고른 카메라를 못 열면 마이크는 유지하고 기본 카메라로 연다', async () => {
     const { calls, open } = fakeOpen(1);
     await expect(openStageDevices(chosen, open)).resolves.toBe(stream);
-    expect(calls).toEqual(['request cam mic', 'request - -']);
+    expect(calls).toEqual(['request cam mic', 'request - mic']);
   });
 
   it('카메라를 못 열어도 고른 마이크만 열어 시작한다', async () => {
     const { calls, open } = fakeOpen(2);
     await expect(openStageDevices(chosen, open)).resolves.toBe(stream);
-    expect(calls).toEqual(['request cam mic', 'request - -', 'requestMic mic']);
+    expect(calls).toEqual(['request cam mic', 'request - mic', 'requestMic mic']);
   });
 
   it('고른 장치가 없으면 기본 장치를 두 번 열지 않는다', async () => {
