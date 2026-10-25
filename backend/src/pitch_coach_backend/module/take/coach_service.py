@@ -274,6 +274,9 @@ def save_take_result(
     아니면 응답을 버린다 — 재시작한 BE 와 앞 작업의 응답이 겹쳐도 이미 앞으로 간 단계를 되돌리지
     않게.
     """
+    # HTTP 어댑터를 거치지 않은 호출도 다른 Take의 결과를 저장하지 못하게 한다.
+    if take_result.get("take_id") != str(take_id):
+        raise ValueError("Take 결과가 저장 대상과 다릅니다.")
     repo = CoachRepository(db)
     take = repo.lock_finalizing(take_id)
     if take is None:
