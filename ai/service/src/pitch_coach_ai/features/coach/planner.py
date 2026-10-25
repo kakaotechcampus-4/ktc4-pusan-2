@@ -382,8 +382,12 @@ def plan_coaching(
         if cache is not None:
             try:
                 cache.put(key, phash, draft.model_dump_json())
-            except Exception:  # noqa: BLE001 — 저장하지 못해도 이번 계획은 쓴다
-                log.warning("coach plan cache put failed pitch_id=%s", req.pitch_id)
+            except Exception as exc:  # noqa: BLE001 — 저장하지 못해도 이번 계획은 쓴다
+                log.warning(
+                    "coach plan cache put failed pitch_id=%s error=%s",
+                    req.pitch_id,
+                    type(exc).__name__,
+                )
     try:
         plan, dropped = validate_draft(draft, req, cfg)
     except Exception as exc:  # noqa: BLE001 — 검증이 깨져도 기본 계획으로 돌려 코칭을 막지 않는다
@@ -401,6 +405,6 @@ def _cached(cache: PlanCache | None, key: str, phash: str) -> PlanDraft | None:
     try:
         raw = cache.get(key, phash)
         return PlanDraft.model_validate_json(raw) if raw is not None else None
-    except Exception:  # noqa: BLE001 — 캐시 문제로 계획을 못 세우면 안 된다
-        log.warning("coach plan cache get failed")
+    except Exception as exc:  # noqa: BLE001 — 캐시 문제로 계획을 못 세우면 안 된다
+        log.warning("coach plan cache get failed error=%s", type(exc).__name__)
         return None
