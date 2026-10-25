@@ -87,6 +87,8 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
 
             take_summary = TakeSummaryDTO(
                 take_id=take.id,
+                status=take.status,
+                end_reason=take.end_reason,
                 take_version=take.take_number,
                 take_elapsed=take.duration_sec,
                 take_time=take.goal_time_sec,

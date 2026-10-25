@@ -62,6 +62,8 @@ class TakeHistoryResponseDTO(BaseModel):
 
 class TakeSummaryDTO(BaseModel):
     take_id: uuid.UUID
+    status: Literal["READY", "RUNNING", "ANALYZING", "COMPLETED", "FAILED"]
+    end_reason: Literal["SILENCE", "TIME_LIMIT", "ABANDONED", "CLOSED"] | None
     take_version: int
     take_elapsed: int | None = None
     take_time: int
