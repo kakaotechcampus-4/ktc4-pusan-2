@@ -9,10 +9,12 @@ import { homeFixture } from './home';
  *   홈 목의 피치  Take 3개 — 번호 · 시간 · 대본 모드는 홈 목 그대로, 시선 엔진이 다른 Take(1) 포함.
  *                홈의 "Take 비교"가 여기로 옵니다
  *   p2          분석 중 · 분석 실패만 — 비교할 완료 Take 가 없고, 둘 다 발표 시간을 모름(null)
- *   그 밖의 id  Take 없음
+ *   그 밖의 id  BE 처럼 404 (없거나 남의 피치). `pitch_id` 없이 부르는 전체 목록은 그대로입니다
  */
 
 const homePitch = homeFixture.pitches[0]!;
+/** Take 가 없어도 있는 피치면 200 입니다 */
+const pitchIds = new Set([...homeFixture.pitches.map((p) => p.pitch_id), 'p2']);
 
 const base: TakeHistoryRow = {
   take_id: '',
@@ -64,6 +66,8 @@ const rows: TakeHistoryRow[] = [
 export const takeHistoryHandlers = [
   http.get('*/api/takes/', ({ request }) => {
     const pitchId = new URL(request.url).searchParams.get('pitch_id');
+    if (pitchId && !pitchIds.has(pitchId))
+      return HttpResponse.json({ code: 'PITCH_NOT_FOUND' }, { status: 404 });
     return HttpResponse.json({ takes: rows.filter((r) => !pitchId || r.pitch_id === pitchId) });
   }),
 ];

@@ -97,6 +97,11 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
     id: 'P7',
     title: 'Take 비교 · 완료 Take 없음',
   },
+  {
+    path: '/pitch/없는-피치/comparison',
+    id: 'P7',
+    title: 'Take 비교 · 찾을 수 없는 피치',
+  },
   { path: '/about', id: 'P14', title: '분석 방식 설명' },
   {
     path: '/unsupported',
