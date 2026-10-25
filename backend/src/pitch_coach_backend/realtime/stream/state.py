@@ -1,6 +1,6 @@
 """Take 별 스트림 · 기록을 담는 프로세스 상태. 프로세스에 하나이고 요청 · 연결 · 재연결이 같이 쓴다.
 
-registry 만 쓴다. 밖(connection · live_takes)은 registry 의 공개 함수를 부른다.
+registry · finish 만 쓴다. 밖(connection · live_takes)은 둘의 공개 함수를 부른다.
 스트림(`runtime.TakeStream`)은 여기를 직접 만지지 않고 `record.StreamHost` 로 알린다.
 
 uvicorn 워커 하나 · 프로세스 하나가 전제다. 워커를 늘리면 이 상태가 프로세스마다 생겨 같은 Take 의

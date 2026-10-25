@@ -17,7 +17,7 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
-from pitch_coach_backend.realtime.stream import registry, state
+from pitch_coach_backend.realtime.stream import finish, registry, state
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import SttConfig
 from tests.realtime.conftest import (
@@ -393,8 +393,8 @@ async def test_end_without_stop_leaves_a_stopping_take_to_its_connection():
     stream.end()
     stream.detach(tab)
 
-    assert await registry.end_without_stop(TAKE_ID) is None
+    assert await finish.end_without_stop(TAKE_ID) is None
 
     stream.cancel()
     await stream.wait_closed(timeout=1.0)
-    assert await registry.end_without_stop(TAKE_ID) is not None
+    assert await finish.end_without_stop(TAKE_ID) is not None

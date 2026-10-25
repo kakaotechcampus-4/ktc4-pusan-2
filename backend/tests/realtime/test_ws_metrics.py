@@ -18,7 +18,7 @@ from pitch_coach_backend.realtime.dto import (
     MetricsMessage,
 )
 from pitch_coach_backend.realtime.storage.metrics import METRICS_BATCH, MetricBuffer
-from pitch_coach_backend.realtime.stream import registry, runtime, state
+from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
 )
@@ -299,7 +299,7 @@ async def test_metrics_from_an_evicted_tab_are_dropped():
 
     stream.push_metrics(MetricsMessage.model_validate(metrics(1000)), source=old_tab)
     stream.push_metrics(MetricsMessage.model_validate(metrics(2000)), source=new_tab)
-    await registry.flush_metrics(TAKE_ID)
+    await finish.flush_metrics(TAKE_ID)
 
     assert sorted(store.metrics) == [2000]
 

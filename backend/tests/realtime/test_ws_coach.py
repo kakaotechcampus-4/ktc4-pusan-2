@@ -20,7 +20,7 @@ from pitch_coach_backend.module.pitch.entity import StandardAnalyses
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.realtime.dto import AutoEndReason
-from pitch_coach_backend.realtime.stream import registry, runtime, state
+from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
 from pitch_coach_backend.realtime.stream.runtime import CoachDeps
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import UtteranceEnd
@@ -380,10 +380,10 @@ async def test_two_endings_at_once_share_one_seal():
     deps = CoachDeps(client=client, store=coach_store)
 
     first = asyncio.create_task(
-        registry.finish_take(TAKE_ID, store, end_reason="SILENCE", coach=deps)
+        finish.finish_take(TAKE_ID, store, end_reason="SILENCE", coach=deps)
     )
     second = asyncio.create_task(
-        registry.finish_take(TAKE_ID, store, end_reason=None, coach=deps)
+        finish.finish_take(TAKE_ID, store, end_reason=None, coach=deps)
     )
     await asyncio.sleep(0.05)
     client.release.set()
@@ -406,7 +406,7 @@ async def test_raw_rows_not_saved_by_the_end_are_dropped_not_retried():
     record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.metrics.add(_metrics_row(1_000))
 
-    await registry.flush_metrics(TAKE_ID)
+    await finish.flush_metrics(TAKE_ID)
     await asyncio.sleep(1.2)
 
     assert store.metrics == {}
@@ -567,7 +567,7 @@ async def test_left_take_keeps_its_utterance_ends_for_a_revival():
     assert store.utterance_ends[TAKE_ID] == [1_500]
     assert record.coach.released
     # 놓은 뒤에는 모른다 — 끝내기 PUT 이 저장된 값을 덮지 않는다
-    assert registry.utterance_ends_of(TAKE_ID) is None
+    assert finish.utterance_ends_of(TAKE_ID) is None
 
 
 @pytest.mark.anyio
@@ -583,7 +583,7 @@ async def test_ending_that_cannot_be_written_is_written_later():
     record.coach.coach_state = {"v": 2}
     deps = CoachDeps(client=client, store=coach_store)
 
-    assert await registry.finish_take(TAKE_ID, store, end_reason=None, coach=deps) is False
+    assert await finish.finish_take(TAKE_ID, store, end_reason=None, coach=deps) is False
     assert not record.coach.released
 
     store.fail_mark = False
@@ -601,7 +601,7 @@ async def test_ending_that_cannot_be_written_is_written_later():
 async def test_ending_written_late_still_starts_the_take_result(monkeypatch: pytest.MonkeyPatch):
     """DB 가 늦어 기다리기를 그만둬도 적는 일은 커밋된다. 그때 Take 결과를 띄운다 — 안 띄우면 아무도
     띄우지 않아 앱이 다시 뜰 때까지 Take 결과가 없다."""
-    monkeypatch.setattr(registry, "MARK_AUTO_END_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(finish, "MARK_AUTO_END_TIMEOUT_SEC", 0.05)
 
     class SlowStore(FakeTranscriptStore):
         async def mark_ended(self, take_id, end_reason=None, utterance_ends=None) -> bool:
@@ -616,7 +616,7 @@ async def test_ending_written_late_still_starts_the_take_result(monkeypatch: pyt
     await asyncio.sleep(0)
     deps = CoachDeps(client=client, store=coach_store)
 
-    assert await registry.finish_take(TAKE_ID, store, end_reason=None, coach=deps) is False
+    assert await finish.finish_take(TAKE_ID, store, end_reason=None, coach=deps) is False
     for _ in range(50):
         if client.finalized:
             break
@@ -745,9 +745,9 @@ async def test_a_cut_off_ending_record_is_written_again():
     state.take_record(TAKE_ID, short_time_limit(60_000), store)
     cut = asyncio.get_running_loop().create_future()
     cut.cancel()
-    ending = registry.Ending(end_reason=None, utterance_ends=[1_500], snapshot=None)
+    ending = finish.Ending(end_reason=None, utterance_ends=[1_500], snapshot=None)
 
-    registry.mark_later(
+    finish.mark_later(
         TAKE_ID, store, ending, CoachDeps(client=client, store=coach_store), marking=cut
     )
     for _ in range(100):
@@ -765,8 +765,8 @@ async def test_shutdown_waits_for_a_whole_take_ending(monkeypatch: pytest.Monkey
     닫기)를 끝까지 기다린다. 중간에 끊으면 Take 가 진행 중으로 남는다."""
     for module, name in (
         (runtime, "FINAL_METRICS_WAIT_SEC"),
-        (registry, "FLUSH_METRICS_TIMEOUT_SEC"),
-        (registry, "MARK_AUTO_END_TIMEOUT_SEC"),
+        (finish, "FLUSH_METRICS_TIMEOUT_SEC"),
+        (finish, "MARK_AUTO_END_TIMEOUT_SEC"),
         (stt_loop, "ABORT_TIMEOUT_SEC"),
     ):
         monkeypatch.setattr(module, name, 0.1)
@@ -844,9 +844,9 @@ async def test_one_late_ending_record_per_take():
             return await super().mark_ended(take_id, end_reason, utterance_ends)
 
     store = Slow()
-    ending = registry.Ending(end_reason=None, utterance_ends=None, snapshot=None)
+    ending = finish.Ending(end_reason=None, utterance_ends=None, snapshot=None)
     for _ in range(3):
-        registry.mark_later(TAKE_ID, store, ending, None)
+        finish.mark_later(TAKE_ID, store, ending, None)
     for _ in range(50):
         if store.ended:
             break
@@ -869,9 +869,9 @@ async def test_ending_record_that_retrying_cannot_fix_is_given_up_at_once():
 
     store = Broken()
     record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
-    ending = registry.Ending(end_reason=None, utterance_ends=None, snapshot=None)
+    ending = finish.Ending(end_reason=None, utterance_ends=None, snapshot=None)
 
-    registry.mark_later(TAKE_ID, store, ending, None)
+    finish.mark_later(TAKE_ID, store, ending, None)
     for _ in range(50):
         if not state.background.running(("mark", TAKE_ID)):
             break
@@ -930,7 +930,7 @@ async def test_ending_closes_the_raw_buffers_and_the_coach_together():
     record.coach.on_metrics(1_000, gaze=None, voice=None, stt_status="ok", buffered=True)
 
     ending = asyncio.create_task(
-        registry.finish_take(TAKE_ID, store, end_reason=None, coach=None)
+        finish.finish_take(TAKE_ID, store, end_reason=None, coach=None)
     )
     await asyncio.sleep(0)
     record.metrics.add(_metrics_row(2_000))

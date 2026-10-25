@@ -42,7 +42,7 @@ final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). �
 
 실시간 코치(`coach/session.py`): Take 에 붙어 있어 스트림이 바뀌어도 이어진다. `metrics` 마다
 `/coach/evaluate` 를 부르고, 확정 단어에 확정 시각(`final_at_ms`)을 붙이고, 문장 끝 신호 · 장 변경을
-모은다. Take 를 끝내면(`registry.finish_take`) 판단을 멈추고 마지막 창을 만들어, 문장 끝 신호와 함께
+모은다. Take 를 끝내면(`finish.finish_take`) 판단을 멈추고 마지막 창을 만들어, 문장 끝 신호와 함께
 Take 를 `ANALYZING` · `FINALIZING` 으로 적은 뒤 Take 결과(`coach/finalize.py`)를 백그라운드로
 띄운다.
 
@@ -192,7 +192,7 @@ class StreamHost(Protocol):
         end_reason: str | None,
         coach: CoachDeps | None,
     ) -> bool:
-        """스트림을 닫은 뒤 Take 를 끝낸 것으로 적고 Take 결과를 띄운다 (`registry.finish_take`)."""
+        """스트림을 닫은 뒤 Take 를 끝낸 것으로 적고 Take 결과를 띄운다 (`finish.finish_take`)."""
         ...
 
 
