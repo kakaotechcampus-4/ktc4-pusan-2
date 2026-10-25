@@ -174,13 +174,13 @@ ai/service/
 uv run python -m pytest              # 가짜 LLM, 키 · 과금 없음
 ```
 ```
-433 passed, 2 deselected
+446 passed, 2 deselected
 ```
 ```powershell
 uv run python -m pytest -m live      # 실제 LLM 약 6번 (ai/.env 의 기본 묶음, 과금)
 ```
 ```
-2 passed, 433 deselected
+2 passed, 446 deselected
 ```
 LLM 호출마다 한 줄이 남습니다(프롬프트 · 답 · 키는 남기지 않음).
 ```
