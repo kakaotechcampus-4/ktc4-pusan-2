@@ -389,3 +389,18 @@ def test_async_review_errors_become_invalid_review(monkeypatch, status, attempts
         )
 
     assert len(calls) == attempts
+
+
+@pytest.mark.parametrize("restarted", [False, True], ids=["running", "restarted"])
+def test_runner_takes_over_scoring_only_after_a_restart(monkeypatch, restarted):
+    seen = []
+
+    async def analyze(take_id, session_factory, *, takeover):
+        seen.append(takeover)
+        return "HELD"
+
+    monkeypatch.setattr(coverage_service, "analyze_script_coverage", analyze)
+
+    asyncio.run(analysis_runner.run(uuid.uuid4(), restarted=restarted))
+
+    assert seen == [restarted]
