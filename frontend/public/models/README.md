@@ -9,9 +9,12 @@
 AI 가 검증한 값과 같은지 확인하고, 다르면 복사하지 않고 실패합니다. 다른 모델·런타임이면 에러 없이 판정만 틀어지기 때문입니다.
 `package.json` 의 `@mediapipe/tasks-vision` 을 `^` 없이 고정해 둔 것도 같은 이유입니다.
 
+`npm run models -- --download` 는 `face_landmarker.task` 가 없을 때 공식 주소에서 받은 뒤 같은 확인을 합니다.
+배포 이미지(`Dockerfile`)는 이 방법으로 자산을 넣습니다 — 이미지 빌드에서는 AI 리그 폴더가 보이지 않습니다.
+
 | 파일 | 무엇 | 어디서 |
 | --- | --- | --- |
-| `face_landmarker.task` | MediaPipe Face Landmarker (3.6 MB) | AI 리그 `ai/models/` · 팀 드라이브 |
+| `face_landmarker.task` | MediaPipe Face Landmarker (3.6 MB) | AI 리그 `ai/research/gaze-tracking/artifacts/` · 팀 드라이브 · `--download` |
 | `vision_wasm_module_internal.wasm` · `.js` | MediaPipe WASM 런타임 — **모듈 Worker용** | `node_modules/@mediapipe/tasks-vision/wasm/` |
 
 `vision_wasm_internal.*` 이 아니라 `vision_wasm_module_internal.*` 입니다 — 시선 워커가
