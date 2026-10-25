@@ -9,7 +9,7 @@
 | | |
 |---|---|
 | 담당 | jewon-kim |
-| 기능 버전 | 서버 판정 모듈 `gaze-1.2` (`src/gaze/version.py`), 브라우저 엔진 `gaze_v1.1.0+head_pose+reference_anchor_v1` |
+| 기능 버전 | 서버 판정 모듈 `gaze-1.3` (`src/gaze/version.py`), 브라우저 엔진 `gaze_v1.1.0+head_pose+reference_anchor_v1` |
 | 판정 신호 | 고개 방향 (MediaPipe Face Landmarker의 변환 행렬). 눈 기반 백본은 비교 실험용으로 보관 |
 | 상태 | 테스트 영상 · 합성 얼굴로만 검증했습니다. **실제 발표자 녹화로 정확도를 잰 적은 아직 없습니다** |
 | 설계 | 엔진 계약 · 1초 기록 · 서버 판정 · 배포 → [`docs/ai/features/gaze-tracking.md`](../../../docs/ai/features/gaze-tracking.md) |
@@ -114,7 +114,7 @@ gaze-tracking/
 | `core.py` | `judge`(1초 기록 읽기 → 타임라인 → 새 몫 `tally` · 지표 · 상태 · `measurable` · 다섯 문제), `summarize`(장 · Take 지표), `criteria`(문제마다 지표 · 방향 · 기준 · 늦게 잡히는 폭), `criteria_version` |
 | `schemas.py` | 입출력 계약(pydantic): 입력 `GazeInput`(1초 기록 `GazeRecord` · 발화 시간 · 커서), 출력 `JudgmentResult` · `GazeSummary` · `IssueCriteria`(공통 결과 모양을 복사해 둠) |
 | `config.py` | `GazeConfig`: 판정 기준값(창 · 이어짐 기준 · 비율 · 측정 불가 · 시작 직후 억제 · 말한 1초 · 대본 의존 구간). 값의 해시가 `criteria_version`에 들어간다 |
-| `version.py` | 기능 버전 `gaze-1.2`. 출력의 의미가 바뀌면 올린다 |
+| `version.py` | 기능 버전 `gaze-1.3`. 출력의 의미가 바뀌면 올린다 |
 | `examples/` | `judge` 입력 · 출력 8쌍(판정 창 30초 전체), `summarize` 3쌍, `criteria.json`. `tools/make_examples.py`가 출력을 만든다 |
 
 ### 3-3. Python 기준 구현 `src/gaze_lab/`
@@ -220,7 +220,7 @@ configs/evidence.yaml 에는 1초 나누기 값만 (서버 판정 값이 다시 
 코치 연구 폴더는 아직 옛 코치 평가기를 옮긴 연구용 대역(`coach_lab/judges/gaze.py`, `gaze-0.2`)을 씁니다.
 같은 입력에서 이 모듈과 달라지는 점은 아래와 같습니다.
 
-| | 연구용 대역 (`gaze-0.2`) | 이 모듈 (`gaze-1.2`) |
+| | 연구용 대역 (`gaze-0.2`) | 이 모듈 (`gaze-1.3`) |
 |---|---|---|
 | 판정 창 | 10초 한 창 | 짧은 창 5초 · 최근 창 30초 |
 | `GAZE_ON_SCRIPT` | 대본 비율 0.7 이상, 또는 이어짐 5초 이상이고 비율 0.6 이상 | 이어짐 3초 이상이고 짧은 창 대본 비율 0.6 이상 |

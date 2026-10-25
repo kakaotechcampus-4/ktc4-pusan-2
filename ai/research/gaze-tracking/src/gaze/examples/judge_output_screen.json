@@ -4,7 +4,7 @@
     "area": "GAZE",
     "t_ms": 41000,
     "counted_until_ms": 41000,
-    "criteria_version": "gaze-1.2+1c10b82348a2",
+    "criteria_version": "gaze-1.3+1c10b82348a2",
     "measurable": true,
     "state": "SCREEN",
     "metrics": {
@@ -52,7 +52,7 @@
         "area": "GAZE",
         "severity": 0.7222,
         "confidence": 1.0,
-        "persistence_sec": 30.0,
+        "persistence_sec": 12.0,
         "threshold": 0.3,
         "bad": 0.0,
         "evidence": {

@@ -332,18 +332,35 @@ def _window(segs: list[_Seg], lo: int, t_ms: int, spoken: _Voiced) -> _Window:
     )
 
 
-def _unusable_ms(segs: list[_Seg], lo: int, t_ms: int, min_reliability: float) -> int:
-    """[lo, t_ms) 안에서 쓸 수 없던 시간의 합: 기록이 없거나 측정 상태가 아니거나(UNCERTAIN) 기록의
-    reliability 가 기준 미만인 1초. 측정 불가(GAZE_UNMEASURABLE)가 이어진 시간으로 낸다.
+def _trailing_run_ms(segs: list[_Seg], lo: int, t_ms: int, counts) -> int:
+    """[lo, t_ms) 안에서 판정 시각부터 거꾸로, `counts(조각)` 이 참인 조각이 끊김 없이 이어진 길이.
 
-    측정 불가는 창 전체의 비율 · 평균으로 정하는 문제라, 측정 비율과 같은 방식(창 안의 합)으로 잰다.
+    `persistence_sec`(`architecture.md` 7절 '문제 조건이 이어진 시간')를 잰다. 조건이 끝난 앞 구간은
+    세지 않는다 — 지금 조건이 성립하지 않으면 0 이다.
     """
-    total = 0
-    for seg in segs:
-        usable = seg.record and seg.state in MEASURED_STATES and seg.reliability >= min_reliability
-        if not usable:
-            total += sum(b - a for a, b in _pieces(seg, lo, t_ms))
-    return total
+    start = t_ms
+    for seg in reversed(segs):
+        a, b = max(seg.t_ms, lo), min(seg.end_ms, t_ms)
+        if b <= a:
+            if seg.end_ms <= lo:
+                break
+            continue
+        if b != start or not counts(seg):
+            break
+        start = a
+    return t_ms - start
+
+
+def _unusable(min_reliability: float):
+    """쓸 수 없는 조각: 기록이 없거나 측정 상태가 아니거나(UNCERTAIN) reliability 가 기준 미만."""
+    return lambda seg: (
+        not (seg.record and seg.state in MEASURED_STATES and seg.reliability >= min_reliability)
+    )
+
+
+def _not_audience(seg: _Seg) -> bool:
+    """청중을 보지 않은 조각: 측정됐고 상태가 CAMERA 가 아닌 기록. 재지 못한 시간에서는 끊는다."""
+    return seg.record and seg.state in MEASURED_STATES and seg.state != "CAMERA"
 
 
 def _run_at(segs: list[_Seg], t_ms: int) -> dict[str, int]:
@@ -401,7 +418,10 @@ def judge(
         recent.measured_ratio < short.measured_ratio
         and recent.measured_ratio < cfg.min_measured_ratio
     )
-    unusable = _unusable_ms(segs, recent_lo if by_recent else short_lo, t, cfg.min_mean_reliability)
+    unusable = _trailing_run_ms(
+        segs, recent_lo if by_recent else short_lo, t, _unusable(cfg.min_mean_reliability)
+    )
+    away_from_audience = _trailing_run_ms(segs, recent_lo, t, _not_audience)
     metrics = GazeMetrics(
         audience_ratio=r4(recent.ratio("CAMERA")),
         screen_ratio=r4(recent.ratio("SCREEN")),
@@ -432,7 +452,18 @@ def judge(
             state=_state(measurable, short, cfg),
             metrics=metrics,
             tally=_tally(segs, since, t, spoken, cfg),
-            issues=_issues(t, measurable, measured, short, recent, runs, unusable, metrics, cfg),
+            issues=_issues(
+                t,
+                measurable,
+                measured,
+                short,
+                recent,
+                runs,
+                unusable,
+                away_from_audience,
+                metrics,
+                cfg,
+            ),
         )
     ]
 
@@ -457,6 +488,7 @@ def _issues(
     recent: _Window,
     runs: dict[str, int],
     unusable_ms: int,
+    away_from_audience_ms: int,
     m: GazeMetrics,
     cfg: GazeConfig,
 ) -> list[JudgmentIssue]:
@@ -538,7 +570,7 @@ def _issues(
                 issue_type="GAZE_LOW_EYE_CONTACT",
                 severity=severity(audience, cfg.low_eye_contact_ratio, cfg.low_eye_contact_bad),
                 confidence=r4(recent.measured_ratio),  # type: ignore[arg-type]
-                persistence_sec=recent.measured_ms / 1000,
+                persistence_sec=away_from_audience_ms / 1000,
                 threshold=cfg.low_eye_contact_ratio,
                 bad=cfg.low_eye_contact_bad,
                 evidence={
