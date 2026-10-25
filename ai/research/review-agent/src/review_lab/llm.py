@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import openai
 from dotenv import find_dotenv, load_dotenv
 from langchain_openai import ChatOpenAI
 
@@ -74,8 +75,9 @@ class CachedLLM:
     """실제 LLM 앞의 캐시 겸 기록기.
 
     같은 프롬프트 · 출력 스키마 · 모델 · 입력이면 캐시(JSON 파일)의 답을 돌려줘 다시 부르지 않는다.
-    마지막 호출의 입력 메시지 · LLM 초안(숫자 검사 전) · 실제로 부른 시간을 남긴다.
-    LLM 예외는 그대로 올린다 (review_take 가 잡아 기본 결과로 돌아간다).
+    마지막 호출의 입력 메시지 · LLM 초안(숫자 검사 전) · 캐시 여부 · 실제로 부른 시간 · 예외 종류를
+    남긴다. LLM 예외는 그대로 올린다 (review_take 가 잡아 기본 결과로 돌아간다). 실패한 답은
+    캐시하지 않는다.
     """
 
     def __init__(self, llm: Any, model: str, cache_path: Path) -> None:
@@ -88,21 +90,34 @@ class CachedLLM:
         self.prefix = f"{model}\n{REVIEW_SYSTEM_PROMPT}\n{schema}\n"
         self.last_message: str | None = None
         self.last_draft: ReviewDraft | None = None
-        self.last_latency_ms: float | None = None  # 캐시에서 꺼냈으면 None
+        self.last_cached = False
+        #: 실제로 부른 시간 (실패한 호출 포함). 캐시에서 꺼냈으면 None
+        self.last_latency_ms: float | None = None
+        #: 실패한 호출의 예외 종류 이름. 성공이면 None
+        self.last_error: str | None = None
         self.calls = 0
 
     def invoke(self, messages: list[tuple[str, str]]) -> ReviewDraft:
         self.last_message = messages[-1][1]
-        self.last_draft = self.last_latency_ms = None
+        self.last_draft = self.last_latency_ms = self.last_error = None
         key = hashlib.sha256((self.prefix + self.last_message).encode("utf-8")).hexdigest()
-        if key in self.cache:
+        self.last_cached = key in self.cache
+        if self.last_cached:
             draft = ReviewDraft.model_validate(self.cache[key])
         else:
             started = time.perf_counter()
-            out = self.llm.invoke(messages)
-            self.last_latency_ms = (time.perf_counter() - started) * 1000
             self.calls += 1
-            draft = out if isinstance(out, ReviewDraft) else ReviewDraft.model_validate(out)
+            try:
+                out = self.llm.invoke(messages)
+                draft = out if isinstance(out, ReviewDraft) else ReviewDraft.model_validate(out)
+            except Exception as exc:
+                self.last_error = type(exc).__name__
+                # 서비스 common/llm.py 처럼 시간 초과에 code 를 달아 LLM_TIMEOUT 으로 가르게 한다
+                if isinstance(exc, openai.APITimeoutError):
+                    exc.code = "LLM_TIMEOUT"
+                raise
+            finally:
+                self.last_latency_ms = (time.perf_counter() - started) * 1000
             self.cache[key] = draft.model_dump(mode="json")
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             self.cache_path.write_text(
