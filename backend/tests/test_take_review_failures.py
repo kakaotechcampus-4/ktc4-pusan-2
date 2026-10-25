@@ -8,7 +8,6 @@ from functools import partial
 import httpx2
 import pytest
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.take.dto import (
     ReviewRecurringIssueDTO,
     ReviewRequestDTO,
