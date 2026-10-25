@@ -72,3 +72,32 @@ def request_row(
 def retry_targets(failed: dict[int, str]) -> list[int]:
     """BE 가 최초 200 뒤 1번 다시 부를 장: LLM 에러 코드로 실패한 장만 (기능 문서 8절). 입력 오류 장은 빼고 번호순."""
     return sorted(n for n, code in failed.items() if code in LLM_ERROR_CODES)
+
+
+def rubric_with_retry(request, all_slides: list[int], *, retry: bool) -> dict:
+    """평가 기준 만들기 한 작업: 최초 요청 (+ BE 재시도 1번). 최종으로 만든 장 수를 센다.
+
+    `request(slide_numbers)` 는 (기록, 응답 또는 None) 을 돌려준다 (None = 요청 전체 실패, 장별 코드 없음).
+    재시도는 최초 응답이 있으면 LLM 오류 장만(`retry_targets`), 요청 전체가 실패했으면 모든 장을 대상으로 1번이다.
+    재시도가 실패해도 최초에 만든 장은 그대로 센다.
+    """
+    first, response = request(None)
+    rubrics = list(response.rubrics) if response is not None else []
+    retry_row = None
+    if retry:
+        targets = (
+            retry_targets({f.slide_number: f.error.code for f in response.failed})
+            if response is not None
+            else list(all_slides)
+        )
+        if targets:
+            retry_row, again = request(targets)
+            rubrics += list(again.rubrics) if again is not None else []
+    return {
+        "first": first,
+        "retry": retry_row,
+        "final_produced": len(rubrics),
+        "complete": len(rubrics) == len(all_slides),
+        "seconds": round(first["seconds"] + (retry_row["seconds"] if retry_row else 0), 1),
+        "rubrics": rubrics,
+    }

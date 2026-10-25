@@ -25,7 +25,7 @@ import script_coverage.core as core
 from coverage_lab.deadline_llm import CallLog, DeadlineLlm, wait_idle
 from coverage_lab.llm import load_settings, structured_llm
 from coverage_lab.results import write_result
-from coverage_lab.timing import build_deck, request_row, retry_targets, slide_pool
+from coverage_lab.timing import build_deck, request_row, rubric_with_retry, slide_pool
 from script_coverage.schemas import AnalyzeRequest, RubricRequest, RubricResponse
 from script_coverage.script_analysis.schemas import FinalReview, SlideSemanticAnalysis, SlideUnits
 from script_coverage.stt_evaluation.schemas import SemanticEvaluation, VerifierResult
@@ -112,30 +112,13 @@ def main() -> None:
         return call
 
     def rubric_job(n: int, slides) -> dict:
-        """평가 기준 만들기 한 작업: 최초 요청 (+ BE 재시도 1번). 최종으로 만든 장 수를 센다."""
-        first, response = measure(rubric_call(slides), n)
-        rubrics = list(response.rubrics) if response else []
-        retry_row = None
-        if args.retry:
-            targets = (
-                retry_targets(first_failed(response))
-                if response
-                else [s.slide_number for s in slides]
-            )
-            if targets:
-                retry_row, again = measure(rubric_call(slides, targets), len(targets))
-                rubrics += list(again.rubrics) if again else []
-        return {
-            "first": first,
-            "retry": retry_row,
-            "final_produced": len(rubrics),
-            "complete": len(rubrics) == n,
-            "seconds": round(first["seconds"] + (retry_row["seconds"] if retry_row else 0), 1),
-            "rubrics": rubrics,
-        }
+        """평가 기준 만들기 한 작업: 최초 요청 (+ BE 재시도 1번, `coverage_lab.timing.rubric_with_retry`)."""
 
-    def first_failed(response) -> dict[int, str]:
-        return {f.slide_number: f.error.code for f in response.failed}
+        def request(slide_numbers):
+            targets = len(slide_numbers) if slide_numbers else n
+            return measure(rubric_call(slides, slide_numbers), targets)
+
+        return rubric_with_retry(request, [s.slide_number for s in slides], retry=args.retry)
 
     results: dict[str, dict] = {}
     total_calls = 0
