@@ -1,8 +1,9 @@
 """판정 결과의 tally 를 Take 합계와 장 번호별 합계에 모은다.
 
 1초 몫은 그 1초의 t_ms, 단어 몫은 말한 시각(start_ms)의 장에 들어간다. 확정이 늦게 온 단어도
-말한 시각의 장에 붙도록 최근 장 전환을 coach_state(slide_log)에 둔다. 다시 온 장은 장 번호
-하나로 합친다.
+말한 시각의 장에 붙도록 최근 장 전환을 coach_state(slide_log)에 둔다. 전환은 개수가 아니라
+시각으로 지운다 — 아직 셀 수 있는 가장 이른 시각(forget_slides_before)에 보이던 장부터 남긴다.
+다시 온 장은 장 번호 하나로 합친다.
 """
 
 from __future__ import annotations
@@ -10,8 +11,6 @@ from __future__ import annotations
 from .schemas import JudgmentResult, SlideNow
 from .state import CoachState, SlideVisit
 
-#: 남겨 둘 최근 장 전환 수
-SLIDE_LOG_KEEP = 10
 TICK_MS = 1_000
 
 
@@ -37,7 +36,22 @@ def note_slide(state: CoachState, slide: SlideNow | None, target_ms: int | None 
         if span is not None:
             span[1] = max(span[1], slide.started_ms)
     state.slide_spans.setdefault(str(slide.number), [slide.started_ms, slide.started_ms])
-    state.slide_log = [*state.slide_log, (slide.number, slide.started_ms)][-SLIDE_LOG_KEEP:]
+    state.slide_log = [*state.slide_log, (slide.number, slide.started_ms)]
+
+
+def forget_slides_before(state: CoachState, cutoff_ms: int) -> None:
+    """cutoff_ms 보다 이른 시각은 더 묻지 않으므로 그 앞 전환을 지운다.
+
+    cutoff_ms 에 보이던 장(시작 ≤ cutoff_ms 인 마지막 전환)은 남겨, 그 뒤 시각은 모두 제 장을
+    찾는다.
+    장을 빠르게 여러 번 넘긴 직후에 확정된 단어도 말한 시각의 장에 들어가게 하려는 것이다.
+    """
+    keep = 0
+    for i, (_, start) in enumerate(state.slide_log):
+        if start <= cutoff_ms:
+            keep = i
+    if keep:
+        state.slide_log = state.slide_log[keep:]
 
 
 def extend_slide_span(state: CoachState, t_ms: int) -> None:

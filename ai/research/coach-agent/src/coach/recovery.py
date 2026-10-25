@@ -83,7 +83,10 @@ def inputs_at(raw: ReplayInput, t_ms: int, *, last_window: bool = False) -> Coac
     for s in sorted(raw.slides, key=lambda s: s.started_ms):
         if s.started_ms <= t_ms:
             slide = s
-    return CoachInputs(
+    # replay 를 읽을 때 이미 검사한 값이라 다시 검사하지 않는다(model_construct). 그래서 BE 가 같은
+    # 1초를 되풀이해 실었어도 창 한도(BE 가 보내는 요청의 한도)에 걸리지 않고, 실시간과 같이 판정
+    # 모듈이 읽을 수 있는 기록 중 먼저 온 것을 쓴다
+    return CoachInputs.model_construct(
         gaze_records=gaze,
         voice_records=voice,
         words=words,

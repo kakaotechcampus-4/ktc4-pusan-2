@@ -368,7 +368,8 @@ def _take_result(
         script_mode=req.script_mode,
         plan=plan,
         replayed=replayed,
-        criteria_changed=any(
+        criteria_changed=state.criteria_changed
+        or any(
             v != state.latest_criteria_versions.get(name)
             for name, v in state.criteria_versions.items()
         ),

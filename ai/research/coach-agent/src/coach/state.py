@@ -180,6 +180,9 @@ class CoachState(_S):
     #: 모듈별 criteria_version. 처음 본 것과 가장 최근 것
     criteria_versions: dict[str, str] = Field(default_factory=dict)
     latest_criteria_versions: dict[str, str] = Field(default_factory=dict)
+    #: Take 도중 어느 모듈의 기준 버전이 한 번이라도 바뀌었는가. 처음 · 마지막만 비교하면
+    #: A → B → A 를 놓친다. 기본값이 있어 이 칸이 없던 상태도 그대로 읽는다(STATE_VERSION 그대로)
+    criteria_changed: bool = False
     #: 코치가 센 시간 구간 [시작, 끝] (합쳐 둠). 비면 Take 복구(#151)가 그 시간을 다시 요청한다
     covered: list[list[int]] = Field(default_factory=list)
     #: 아직 SLIDE 이벤트를 내지 않은 장 방문(시간순). 마지막이 지금 방문 중인 장이다

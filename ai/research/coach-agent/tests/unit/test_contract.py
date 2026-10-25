@@ -43,10 +43,10 @@ def test_response_has_exactly_the_contract_fields():
     assert set(blob["meta"]) == {"schema_version", "feature_version", "criteria_versions", "model"}
     meta = resp.meta
     assert meta.schema_version == SCHEMA_VERSION == "1.0"
-    assert meta.feature_version == FEATURE_VERSION == "coach-1.2"
+    assert meta.feature_version == FEATURE_VERSION == "coach-1.3"
     assert meta.model is None
     assert set(meta.criteria_versions) == {"gaze", "pace", "volume", "filler", "timing", "coach"}
-    assert meta.criteria_versions["coach"] == f"coach-1.2+{cfg.config_hash()}"
+    assert meta.criteria_versions["coach"] == f"coach-1.3+{cfg.config_hash()}"
 
 
 def test_stale_tick_response_has_meta_too():
