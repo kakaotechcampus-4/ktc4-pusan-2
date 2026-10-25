@@ -1,7 +1,9 @@
 # BE 폴더 구조 분리 계획과 적용 결과
 
 이 문서는 [#475](https://github.com/kakaotechcampus-4/ktc4-pusan-2/issues/475) 의 분리 계획과, 그 계획을 적용하며 달라진
-점을 담는다. 지금 폴더 구조와 의존 규칙의 요약은 [backend/README.md](../../backend/README.md) '폴더 구조' · '의존 방향' 이다.
+점을 담는다. 그 뒤 `realtime/stream` 을 다시 나눈 것([#501](https://github.com/kakaotechcampus-4/ktc4-pusan-2/issues/501))도
+'stream 다시 나누기' 절에 담는다. 지금 폴더 구조와 의존 규칙의 요약은 [backend/README.md](../../backend/README.md)
+'폴더 구조' · '의존 방향' 이다.
 
 ## 적용 결과 (2026-10-25)
 
@@ -35,7 +37,7 @@ API 경로 · 요청/응답 · DB 스키마는 바꾸지 않았다. 아래는 �
 - **runtime 이 registry 를 모르게 한 방법**: 스트림이 알릴 일(열림 · 닫힘 · Take 끝냄 · 백그라운드 태스크 · Take 끝내기)은
   `runtime.StreamHost` 프로토콜로 넘기고 registry 가 구현한다. Take 별 기록 타입(`TakeRecord`)은 runtime 에 두고 registry 가
   만들어 넘긴다 (`registry.create_stream`). 떠난 Take 타이머(`abandon.py`)는 걸고 끄기만 하고, 만료되면 registry 가 넘긴
-  콜백을 부른다.
+  콜백을 부른다. #501 에서 `StreamHost` · `TakeRecord` 는 `stream/record.py` 로 옮겼다.
 - **같이 쓰는 상수**: 한 모듈에만 두고 다른 모듈은 `모듈.상수` 로 읽는다 (예: `stt/loop.py` 의 `ABORT_TIMEOUT_SEC` 를
   registry · runtime 이 `stt_loop.ABORT_TIMEOUT_SEC` 로). 테스트가 한 곳만 바꿔도 모든 사용처에 걸린다.
 - **coach**: `_id` 는 요청과 코칭 계획이 같이 써서 `requests.as_id` 로, `_Reply` 는 client 도 써서 `replies.Reply` 로 이름을
@@ -52,6 +54,62 @@ API 경로 · 요청/응답 · DB 스키마는 바꾸지 않았다. 아래는 �
 - 전체 테스트 1172 passed · 1 skipped (분리 전과 같다).
 - `entities` 를 import 한 뒤 `Base.metadata.tables` 20개 · 각 테이블의 칼럼 이름이 분리 전과 같다.
 - 옮긴 함수 · 클래스 · 메서드는 AST 로 옮기기 전후 본문을 비교했다. 달라진 곳은 위에 적은 연결 지점뿐이다.
+
+## stream 다시 나누기 (2026-10-25, #501)
+
+폴더를 나눈 뒤에도 `stream/runtime.py`(925줄) · `stream/registry.py`(785줄)가 BE 소스에서 가장 길었다. registry 에는 프로세스
+상태 · 연결 붙이기 · Take 끝내기 · 떠난 Take · 앱 종료가 한 파일에 있었고, runtime 은 `TakeStream` 하나가 710줄이었다.
+경계가 분명한 것부터 떼어 냈다. 동작 · API · DB 는 바꾸지 않았다.
+
+### 지금 구조
+
+하위 폴더 없이 평평하게 두고, 층을 정해 위에서 아래로만 import 한다.
+
+| 층 | 파일 | 담는 것 |
+|---|---|---|
+| Take 수명 (밖에서 부르는 입구) | `registry.py` (440줄) | 연결 붙이기(`attach`) · 떠난 Take 끝내기 · 앱 시작 복구 · 앱 종료 정리. connection · main 이 부른다 |
+| | `finish.py` | 사용자 · 자동 종료로 Take 끝내기: 마지막 창 · 원자료 저장 · DB 에 적기 · 늦은 기록 재시도 · Take 결과 띄우기. connection · live_takes 가 부른다 |
+| | `abandon.py` | 떠난 Take 타이머. 걸고 끄기만 하고 만료되면 콜백을 부른다 |
+| | `state.py` | 스트림 맵 · attach 잠금 · 끝낸 Take · Take 별 기록 · 백그라운드 태스크. registry · finish 만 쓴다 |
+| 스트림 하나 | `runtime.py` (716줄) | `TakeStream`: 수명 상태 기계 · 종료 조율 · 입력을 부품에 넘기기 |
+| | `record.py` | `CoachDeps` · `TakeRecord` · `StreamHost` (스트림과 위층의 경계) |
+| | `client.py` | `ClientSlot`: 붙어 있는 연결 · 이전 연결 쫓아내기 · FE 로 보내기 |
+| | `audio_queue.py` | `AudioQueue`: 오래된 것부터 버리는 오디오 큐 · 정리할 때 비우기 |
+| 판단 규칙 | `auto_end.py` | `AutoEndPolicy` · `SilenceTracker` · `TimeLimit`(최대 시간 타이머 · 서버 시계) |
+| | `heard.py` | `HeardRange`: 끊김 없이 받은 오디오 범위 → 1초 원자료의 STT 상태 |
+
+- 의존 방향: `registry → finish → state → runtime → record · client · audio_queue · heard · auto_end`.
+  runtime 과 부품은 registry · finish · state 를 import 하지 않는다. abandon 도 registry 를 모른다.
+- 부품(`ClientSlot` · `AudioQueue` · `HeardRange` · `TimeLimit`)은 `TakeStream` 을 모르고 값과 콜백만 받는다.
+  `_stopping` · `_closed` · `_discarded` 같은 수명 플래그는 `TakeStream` 만 가진다.
+- `record.py` 는 `StreamHost.stream_closed` 의 타입 때문에 `TYPE_CHECKING` 아래에서만 runtime 을 import 한다.
+  `TimeLimit` 은 `TakeRecord` 를 받지 않고 앞서 열려 있던 시간을 받는다. `record.py` 가 `auto_end` 를 import 하므로
+  반대로 import 하면 순환이 생긴다.
+
+### 정한 것
+
+- **옮긴 이름을 옛 모듈에서 다시 내보내지 않는다.** 상수를 다시 내보내면 `monkeypatch.setattr(registry, "MARK_…")` 가
+  옛 이름에만 걸려 테스트가 실패 없이 다른 값으로 돈다. 테스트의 monkeypatch 와 비공개 이름(`registry._streams` 등)을
+  새 모듈로 바꿨다. `state.py` 의 이름은 registry · finish 가 같이 쓰므로 밑줄을 뺐다 (`state.streams`, `state.ended`).
+- **모듈 이름은 `finish.py` 다.** `ending.py` 로 하면 `live_takes.py` 와 Take 끝내기 함수의 지역 변수 · 매개변수 `ending`
+  에 가려진다.
+- **떠난 Take 처리는 registry 에 남겼다.** `abandon.py` 에 합치면 "abandon 은 registry 를 모른다" 가 깨진다.
+- **입구는 registry · finish 둘이다.** 하나로 모으려면 registry 가 finish 를 다시 내보내야 하고 위의 monkeypatch 문제가 생긴다.
+- **수명 관리(`attach` ~ `_finish`)는 나누지 않았다.** 수명 플래그 · 연결 · 기록을 같이 만지는 상태 기계라 믹스인이나
+  객체로 쪼개면 한 흐름을 여러 파일에서 읽어야 한다. runtime 716줄 중 코드는 435줄이고 나머지는 docstring · 주석이다.
+- **하위 폴더(`stream/take/` · `stream/pipeline/`)는 만들지 않았다.** 10개 파일은 이름만으로 찾을 수 있다. 파일이
+  15개를 넘거나 다른 종류의 스트림이 생기면 다시 본다.
+- 그대로 둔 것: `registry.SEAL_WAIT_SEC` 는 `coach.session` 에서 값으로 가져와 '같이 쓰는 상수' 규칙과 맞지 않지만,
+  고치면 `test_ws_coach.py` 의 종료 테스트가 바꾸는 범위가 달라져 두었다. `_quiet` 는 `stt/loop.py` · connection 에도 각자
+  있어 stream 안의 것만 `client.quiet` 로 옮겼다.
+
+### 확인한 것
+
+- 테스트 수집 1228개가 분리 전과 이름까지 같다. 전체 테스트 1227 passed · 1 skipped (분리 전과 같다).
+- 빈 DB 에 `alembic upgrade head` 뒤 `alembic check` 가 "No new upgrade operations", head 1개.
+- `state` · `finish` · `record` · `TimeLimit` · `HeardRange` 로 옮긴 정의는 AST 로 비교했다. 122개 중 112개가 같고, 다른 10개는
+  부품을 쓰도록 바꾼 `TakeStream` 메서드와 docstring 경로만 바뀐 `StreamHost` · `_Host` 다. `ClientSlot` · `AudioQueue` 는
+  옮긴 본문을 diff 로 대조했다.
 
 ---
 

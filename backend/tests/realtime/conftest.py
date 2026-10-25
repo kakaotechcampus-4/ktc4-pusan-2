@@ -35,7 +35,7 @@ from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import dependencies as realtime_dependencies
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
 from pitch_coach_backend.realtime.dependencies import get_stt_adapter
-from pitch_coach_backend.realtime.stream import abandon, registry, runtime
+from pitch_coach_backend.realtime.stream import abandon, finish, registry, runtime, state
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt import loop as stt_loop
@@ -308,12 +308,12 @@ def db_down() -> OperationalError:
 def _no_leftover_streams():
     """스트림은 연결보다 오래 산다. 테스트 사이에 넘어가면 죽은 이벤트 루프의 태스크가 남는다."""
     yield
-    for stream in list(registry._streams.values()):
+    for stream in list(state.streams.values()):
         stream.cancel()
-    registry._streams.clear()
-    registry._attach_locks.clear()
-    registry._ended.clear()
-    registry._takes.clear()
+    state.streams.clear()
+    state.attach_locks.clear()
+    state.ended.clear()
+    state.takes.clear()
     for timer in abandon._abandon_timers.values():
         timer.cancel()
     abandon._abandon_timers.clear()
@@ -344,7 +344,7 @@ def _fast_retry(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 2.0)
     # 자동 종료 뒤 stop 을 보내지 않는 테스트가 기다리지 않게
     monkeypatch.setattr(runtime, "FINAL_METRICS_WAIT_SEC", 0.05)
-    monkeypatch.setattr(registry, "MARK_RETRY_SEC", (0.01,))
+    monkeypatch.setattr(finish, "MARK_RETRY_SEC", (0.01,))
 
 
 @pytest.fixture

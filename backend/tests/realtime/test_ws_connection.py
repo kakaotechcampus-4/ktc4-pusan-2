@@ -22,7 +22,7 @@ from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
 from pitch_coach_backend.realtime.connection import handshake as handshake_module
 from pitch_coach_backend.realtime.dto import ErrorMessage, WsErrorCode
-from pitch_coach_backend.realtime.stream import abandon, registry, runtime
+from pitch_coach_backend.realtime.stream import abandon, registry, runtime, state
 from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.stt.loop import FAST_ATTEMPTS
 from tests.realtime.conftest import (
@@ -488,7 +488,7 @@ def test_grace_expiry_closes_the_stream(
     assert adapter.session.controls == ["CloseStream"]
     # 스트림만 정리한다. FE 는 끊긴 뒤에도 다시 붙으니 Take 는 끝내지 않는다
     assert store.ended == []
-    assert TAKE_ID not in registry._ended
+    assert TAKE_ID not in state.ended
     # 대신 아무도 다시 붙지 않으면 끝낼 타이머를 건다
     assert TAKE_ID in abandon._abandon_timers
 

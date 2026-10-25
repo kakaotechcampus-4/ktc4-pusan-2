@@ -36,9 +36,10 @@ from pitch_coach_backend.realtime.dto import (
 )
 from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
-from pitch_coach_backend.realtime.stream import registry
+from pitch_coach_backend.realtime.stream import finish, registry
+from pitch_coach_backend.realtime.stream.record import CoachDeps
 from pitch_coach_backend.realtime.stream.registry import StreamOwnerMismatch, TakeEnded
-from pitch_coach_backend.realtime.stream.runtime import CoachDeps, TakeStream
+from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt.adapter import SttAdapter, SttConfig
 from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.stt.keyterms import build_keyterms, normalize_term
@@ -246,7 +247,7 @@ class RealtimeSession:
         # 누가 먼저 적든 이유가 남는다. 못 적으면 뒤에서 다시 적고, 그동안 이 프로세스 안에서는
         # `TakeStream.end` 가 다시 붙는 연결을 막는다
         reason = stream.auto_end_reason
-        await registry.finish_take(
+        await finish.finish_take(
             self.take_id,
             self.transcript_store,
             end_reason=reason.value if reason is not None else None,
