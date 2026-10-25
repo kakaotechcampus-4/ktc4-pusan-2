@@ -6,7 +6,8 @@ import pytest
 
 from gaze.config import DEFAULT, GazeConfig
 from gaze.core import criteria, summarize
-from tests.unit.judge_helpers import run, secs, spoken, totals
+
+from .judge_helpers import run, secs, spoken, totals
 
 
 def test_summarize_divides_by_measured_and_spoken_time():

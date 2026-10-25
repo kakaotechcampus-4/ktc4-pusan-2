@@ -13,7 +13,10 @@ from pathlib import Path
 
 import pytest
 
-CORE = Path(__file__).resolve().parents[2] / "src" / "gaze"
+from gaze import core
+
+# 모듈 파일 기준이라 서비스(features/gaze/)로 옮겨도 import 접두어만 바꾸면 새 위치를 본다
+CORE = Path(core.__file__).parent
 
 # 코어가 쓰는 것만 허용한다. 새로 필요하면 여기에 더하고, 그 이유를 리뷰에서 본다
 ALLOWED = {

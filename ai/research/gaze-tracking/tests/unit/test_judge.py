@@ -8,7 +8,8 @@ import pytest
 
 from gaze.config import DEFAULT, GazeConfig
 from gaze.core import criteria_version, judge
-from tests.unit.judge_helpers import issue_types, rec, run, secs, span, spoken, totals
+
+from .judge_helpers import issue_types, rec, run, secs, span, spoken, totals
 
 # ── 결과 하나 · 공통 필드 ──────────────────────────────────────────────────────
 

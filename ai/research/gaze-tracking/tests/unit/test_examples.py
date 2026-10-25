@@ -12,10 +12,12 @@ from typing import Any
 
 import pytest
 
+from gaze import core
 from gaze.core import criteria, judge, summarize
 from gaze.schemas import GazeMetrics, IssueCriteria, JudgmentResult
 
-EXAMPLES = Path(__file__).resolve().parents[2] / "src" / "gaze" / "examples"
+# 모듈 파일 기준이라 서비스(features/gaze/)로 옮겨도 import 접두어만 바꾸면 된다
+EXAMPLES = Path(core.__file__).parent / "examples"
 JUDGE_INPUTS = sorted(EXAMPLES.glob("judge_input*.json"))
 TALLY_KEYS = {
     "camera_ms", "screen_ms", "script_ms", "away_ms", "uncertain_ms", "unmeasured_ms",
