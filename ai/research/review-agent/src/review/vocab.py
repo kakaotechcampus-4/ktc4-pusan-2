@@ -21,7 +21,7 @@ Dimension = Literal[
 DimensionState = Literal["IMPROVED", "PRIORITY", "STABLE", "STRENGTH", "NOT_EVALUABLE"]
 #: 미션 · 사용자 기준 판정 상태
 JudgeStatus = Literal["ACHIEVED", "PARTIAL", "FAILED", "NOT_EVALUABLE"]
-Operator = Literal["LT", "LTE", "GT", "GTE", "EQ"]
+Operator = Literal["LT", "LTE", "GT", "GTE"]
 FallbackReason = Literal["LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"]
 
 

@@ -44,10 +44,8 @@ def judge_target(
         return "FAILED", observed
     if operator in ("LT", "LTE"):
         gap = observed - value
-    elif operator in ("GT", "GTE"):
+    else:  # GT · GTE
         gap = value - observed
-    else:  # EQ
-        gap = abs(observed - value)
     return ("PARTIAL" if gap <= tolerance + 1e-9 else "FAILED"), observed
 
 

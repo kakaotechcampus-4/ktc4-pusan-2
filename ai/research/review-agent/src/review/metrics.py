@@ -74,6 +74,4 @@ def compare(observed: float, operator: str, target: float) -> bool:
         return observed > target
     if operator == "GTE":
         return observed >= target
-    if operator == "EQ":
-        return abs(observed - target) < 1e-9
     raise ValueError(f"unknown operator: {operator}")

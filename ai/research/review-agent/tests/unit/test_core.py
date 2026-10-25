@@ -181,3 +181,14 @@ def test_criteria_targets_limit(req):
     req["user_criteria"]["targets"] = [t] * 21
     with pytest.raises(ValidationError):
         review_take(req)
+
+
+@pytest.mark.parametrize("field", ["missions", "targets"])
+def test_eq_operator_is_rejected(req, field):
+    # 코칭 계획 입력(coach-agent.md 5-2)이 받는 LT · LTE · GT · GTE 만 받는다
+    if field == "missions":
+        req["missions"][0]["target"]["operator"] = "EQ"
+    else:
+        req["user_criteria"]["targets"][0]["operator"] = "EQ"
+    with pytest.raises(ValidationError):  # 라우터가 422 로 바꾼다
+        review_take(req)

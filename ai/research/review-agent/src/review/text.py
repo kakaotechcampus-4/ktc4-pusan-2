@@ -27,7 +27,7 @@ METRIC_LABELS = {
     "filler_count": "군더더기 횟수",
     "content_coverage": "핵심 내용 전달률",
 }
-OPERATOR_WORDS = {"LT": "미만", "LTE": "이하", "GT": "초과", "GTE": "이상", "EQ": ""}
+OPERATOR_WORDS = {"LT": "미만", "LTE": "이하", "GT": "초과", "GTE": "이상"}
 
 #: '좋았던 점' 과 '다듬을 점' 양쪽에 들어가도 어색하지 않은 이름
 DIMENSION_LABELS = {
