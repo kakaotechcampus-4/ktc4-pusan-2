@@ -455,7 +455,7 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `gaze-1.2` | `src/gaze/version.py` → `criteria_version` · Take 결과의 `criteria.GAZE` | 같은 입력에 대한 결과의 의미가 바뀔 때(판정 규칙 · 출력 필드의 뜻) |
+| `feature_version` | `gaze-1.3` | `src/gaze/version.py` → `criteria_version` · Take 결과의 `criteria.GAZE` | 같은 입력에 대한 결과의 의미가 바뀔 때(판정 규칙 · 출력 필드의 뜻) |
 | `criteria_version` | `gaze-<버전>+<config 해시 12자리>` | `judge` 출력 → `coach_state` → 응답 `meta.criteria_versions.gaze` | `config.py`의 판정 기준값을 바꾸면 해시가 바뀐다 |
 | `schema_version` | `1.0` | 코치 응답 `meta` (`architecture.md` 5절) | 1초 기록 · 판정 결과의 필드 이름 변경 · 삭제 · 뜻 변경 |
 | 엔진 버전 | 엔진 `version`은 객체 `{modelVersion, gazeBackbone, gazeClassifier}`, Worker `ready.version`은 세 값을 `+`로 이은 문자열 (예: `gaze_v1.1.0+head_pose+reference_anchor_v1`) | 그 문자열을 FE가 발표 전 점검 결과와 함께 BE에 보낸다(`calibrations.result.engine_version`) | 엔진의 판정(모델 · 백본 · 분류 방식)이 바뀔 때. 엔진이 바뀌면 같은 시선도 다른 상태로 판정될 수 있다 |
@@ -631,7 +631,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 | 영역 · 상태 | `GAZE`, `AUDIENCE` · `SCREEN` · `SCRIPT` · `AWAY` · `UNMEASURABLE` | 5-3 |
 | 문제 | `GAZE_ON_SCRIPT` · `GAZE_ON_SCREEN` · `GAZE_AWAY` · `GAZE_LOW_EYE_CONTACT` · `GAZE_UNMEASURABLE`(`actionable` false) | 5-4 |
 | Take 지표 | `audience_ratio` · `screen_ratio` · `script_ratio` · `away_ratio` · `reading_ratio` · `reading_runs` · `measured_ratio` (Take · 장별) | 5-3 |
-| 버전 | `feature_version` `gaze-1.2` · `criteria_version` `gaze-1.2+<config 해시 12자리>` · 엔진 버전 `gaze_v1.1.0+head_pose+reference_anchor_v1` | 9절 |
+| 버전 | `feature_version` `gaze-1.3` · `criteria_version` `gaze-1.3+<config 해시 12자리>` · 엔진 버전 `gaze_v1.1.0+head_pose+reference_anchor_v1` | 9절 |
 | 시간 · 크기 | 판정 밀리초 단위(evaluate BE 약 300 ms 안), 엔진 첫 로딩 약 16 MB · 초기화 제한 60초 · 프레임 예산 125 ms(초당 8프레임), 1초 기록 약 0.14 KB | 8절 |
 | 저장 | 1초 원자료 `take_metric_seconds.gaze` (`take_id`, `t_ms`), 보정 결과 `calibrations.gaze_confidence` · `result`, Take 지표 `take_ai_results`(`TAKE_RESULT`), 리포트 `take_summaries` 시선 칸 — 괄호는 유일 제약. 보정 모델은 저장하지 않음 | 12-1 |
 | 의존성 | 서버 판정 모듈 pydantic 하나 · Python 3.12, 엔진 `@mediapipe/tasks-vision` 1.0.1 | 4-3 · 11절 |

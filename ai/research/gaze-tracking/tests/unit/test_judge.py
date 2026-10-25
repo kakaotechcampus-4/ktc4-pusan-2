@@ -30,7 +30,7 @@ def test_a_result_comes_out_even_without_problems():
 
 
 def test_criteria_version_is_feature_version_plus_config_hash():
-    assert re.fullmatch(r"gaze-1\.2\+[0-9a-f]{12}", criteria_version())
+    assert re.fullmatch(r"gaze-1\.3\+[0-9a-f]{12}", criteria_version())
     assert run(secs(("CAMERA", 3)), 3000).criteria_version == criteria_version()
     assert criteria_version(GazeConfig(script_run_ms=4000)) != criteria_version()
 

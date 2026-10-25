@@ -85,7 +85,7 @@ def test_record_missing_optional_fields_default_to_zero():
 
 def _result() -> dict:
     return {
-        "t_ms": 1000, "counted_until_ms": 1000, "criteria_version": "gaze-1.2+000000000000",
+        "t_ms": 1000, "counted_until_ms": 1000, "criteria_version": "gaze-1.3+000000000000",
         "measurable": True, "state": "AUDIENCE",
         "metrics": {
             "audience_ratio": 1.0, "screen_ratio": 0.0, "script_ratio": 0.0, "away_ratio": 0.0,
@@ -126,7 +126,7 @@ def test_issue_severity_must_be_between_0_and_1(value):
 
 
 def test_feature_version_is_gaze_1_2():
-    assert FEATURE_VERSION == "gaze-1.2"
+    assert FEATURE_VERSION == "gaze-1.3"
 
 
 # ── 기준값 ─────────────────────────────────────────────────────────────────────
