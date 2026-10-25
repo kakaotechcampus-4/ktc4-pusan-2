@@ -1,24 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
+# import 패키지 evaluation_criteria 는 나중에 ai/service 의 features/evaluation_criteria/ 로 폴더째 옮긴다
 name = "evaluation-criteria"
 version = "1.0.0"
 description = "자연어 발표 평가 기준에서 측정 가능 요소 · 기준 값 추출 (research)"
-requires-python = ">=3.10"
+# service 가 쓸 Python 버전(3.12)에서 검증한다
+requires-python = ">=3.12"
 dependencies = [
-    "python-dotenv",
+    # ── 코어(evaluation_criteria)가 쓰는 것은 pydantic 하나뿐이다. LLM 은 인자로 받는다
     "pydantic>=2",
+    # ── research 전용 (run.py 의 build_llm)
     "langchain-openai",
+    "python-dotenv",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = ["pytest"]
 
-[build-system]
-requires = ["setuptools>=61"]
-build-backend = "setuptools.build_meta"
+[tool.setuptools.packages.find]
+where = ["src"]
 
-[tool.setuptools]
-packages = ["evaluation_criteria"]
+[tool.setuptools.package-data]
+evaluation_criteria = ["examples/*.json"]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
 testpaths = ["tests"]
+# tests.fakes · run.py 를 import 한다
+pythonpath = ["."]
+# live: 실제 LLM API 를 부르는 테스트 (과금). 기본 실행에서 빼고 `pytest -m live` 로 따로 돌린다
+markers = ["live: 실제 LLM API 를 호출한다 (과금)"]
+addopts = "-m 'not live'"
