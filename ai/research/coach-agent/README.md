@@ -112,6 +112,7 @@ coach-agent/
 | `recovery_eval.py` | 복구 실험: 정상 / 요청 누락 / replay로 돌린 Take 결과를 서로 비교 |
 | `examples.py` | `src/coach/examples/`의 evaluate · finalize 예시 파일을 만든다 (다시 돌려도 바이트까지 같다) |
 | `plan_eval.py` · `llm.py` · `cache.py` | 코칭 계획 실험: 실제 LLM으로 계획을 세우고 유효성 · 일관성 · 재생 효과를 잰다. 응답은 `outputs/llm_cache.sqlite`에 캐시 |
+| `usage.py` | LLM 호출마다 출력 토큰 수 · 끝난 이유를 모으고 역할 상한(잰 최대 × 2, 1,024 단위, 최소 2,048)을 계산한다. `plan_eval --usage`가 쓴다 |
 | `paths.py` | 폴더 위치 |
 
 ## 4. 실행 흐름
@@ -167,6 +168,7 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 | 복구 실험 | `uv run python -m coach_lab.recovery_eval` (결과: `reports/results/recovery.json`, `--seeds`) |
 | 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` (`src/coach/examples/`) |
 | 코칭 계획 실험 (과금) | `uv run python -m coach_lab.plan_eval --out reports/results/coaching_plan.json` |
+| 코칭 계획 출력 토큰 (과금, 25번) | `uv run python -m coach_lab.plan_eval --usage --out reports/results/plan_output_tokens.json` (스트리밍 · 캐시 없음, 결과의 `usage`) |
 
 설정은 `config.py`에만 있습니다. 코드를 고치지 말고 바꿀 값만 JSON으로 덮어쓰세요(`--config`). 코어에서는 `load_config(policy={"cooldown_ms": 45_000})`처럼 키워드로 넘깁니다(코어는 파일을 읽지 않습니다).
 설정을 바꾸면 응답 `meta.criteria_versions.coach`의 해시가 달라져 어떤 설정으로 판단했는지 추적됩니다.

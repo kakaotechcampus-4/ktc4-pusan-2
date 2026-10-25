@@ -1,0 +1,92 @@
+{
+  "feature_version": "script_coverage-1.0",
+  "criteria_version": "script_coverage-1.0+e7d09c338962",
+  "model": "openai/gpt-6-luna",
+  "method": "가상대본 · 가상 Take, 서비스와 같은 스트리밍 · 추론 강도 없음, 캐시 없음",
+  "call_timeout_seconds": 60.0,
+  "caps": {},
+  "scripts": [
+    "가상대본1",
+    "가상대본2"
+  ],
+  "takes_per_script": null,
+  "seconds": 474.9,
+  "roles": {
+    "script_coverage.semantic": {
+      "calls": 20,
+      "errors": 0,
+      "unknown_usage": 0,
+      "finish_reason": {
+        "stop": 20
+      },
+      "output_tokens": {
+        "min": 583,
+        "median": 985,
+        "p95": 1237,
+        "max": 1265
+      },
+      "recommended_cap": 3072
+    },
+    "script_coverage.final": {
+      "calls": 20,
+      "errors": 0,
+      "unknown_usage": 0,
+      "finish_reason": {
+        "stop": 20
+      },
+      "output_tokens": {
+        "min": 315,
+        "median": 793,
+        "p95": 1368,
+        "max": 1620
+      },
+      "recommended_cap": 4096
+    },
+    "script_coverage.unit": {
+      "calls": 20,
+      "errors": 0,
+      "unknown_usage": 0,
+      "finish_reason": {
+        "stop": 20
+      },
+      "output_tokens": {
+        "min": 504,
+        "median": 1050,
+        "p95": 1753,
+        "max": 2112
+      },
+      "recommended_cap": 5120
+    },
+    "script_coverage.eval": {
+      "calls": 180,
+      "errors": 0,
+      "unknown_usage": 0,
+      "finish_reason": {
+        "stop": 180
+      },
+      "output_tokens": {
+        "min": 278,
+        "median": 523,
+        "p95": 869,
+        "max": 1053
+      },
+      "recommended_cap": 3072
+    },
+    "script_coverage.verifier": {
+      "calls": 44,
+      "errors": 0,
+      "unknown_usage": 0,
+      "finish_reason": {
+        "stop": 44
+      },
+      "output_tokens": {
+        "min": 104,
+        "median": 153,
+        "p95": 783,
+        "max": 890
+      },
+      "recommended_cap": 2048
+    }
+  },
+  "failed": {}
+}
