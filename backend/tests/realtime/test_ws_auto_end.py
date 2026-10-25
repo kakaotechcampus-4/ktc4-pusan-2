@@ -18,9 +18,10 @@ from pitch_coach_backend.realtime.dto import (
     AutoEndReason,
 )
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
-from pitch_coach_backend.realtime.stream import registry, runtime
+from pitch_coach_backend.realtime.stream import registry
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
     Transcript,
@@ -645,7 +646,7 @@ async def test_shutdown_cancels_cleanup_that_does_not_finish_and_says_which(
             return True
 
     monkeypatch.setattr(registry, "MARK_AUTO_END_TIMEOUT_SEC", 10.0)
-    monkeypatch.setattr(runtime, "ABORT_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.1)
     store = StuckStore()
     stream = make_stream(FakeSttAdapter(), store, short_time_limit(1_000))
     stream.start()

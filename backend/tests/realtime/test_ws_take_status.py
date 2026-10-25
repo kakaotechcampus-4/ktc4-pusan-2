@@ -17,7 +17,8 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
-from pitch_coach_backend.realtime.stream import registry, runtime
+from pitch_coach_backend.realtime.stream import registry
+from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import SttConfig
 from tests.realtime.conftest import (
     TAKE_ID,
@@ -77,7 +78,7 @@ def test_reconnect_while_stopping_is_rejected(
     """사용자가 끝낸 Take 다. 마지막 전사를 정리하는 동안(DB 에 적기 전) 붙는 연결도 받지 않는다 —
     받으면 새 스트림이 열려 끝난 연습 뒤에 전사가 더 붙는다. 종료 중 새로고침한 FE 가 stop 만
     보내러 붙어도 이렇게 거절되고, FE 는 stop 을 보낸 상태에서 닫히면 종료를 그대로 이어 간다."""
-    monkeypatch.setattr(runtime, "DRAIN_TIMEOUT_SEC", 0.3)
+    monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 0.3)
     adapter = use(FakeSttAdapter(Plan(swallow_close=True)))
 
     with client.websocket_connect(WS_PATH) as first:

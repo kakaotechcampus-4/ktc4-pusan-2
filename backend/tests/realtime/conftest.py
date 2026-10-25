@@ -38,6 +38,7 @@ from pitch_coach_backend.realtime.dependencies import get_stt_adapter
 from pitch_coach_backend.realtime.stream import abandon, registry, runtime
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
     Metadata,
     SttConfig,
@@ -339,8 +340,8 @@ def use_store(fake: FakeTranscriptStore) -> FakeTranscriptStore:
 
 @pytest.fixture(autouse=True)
 def _fast_retry(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(runtime, "BACKOFF_SEC", (0.01,))
-    monkeypatch.setattr(runtime, "DRAIN_TIMEOUT_SEC", 2.0)
+    monkeypatch.setattr(stt_loop, "BACKOFF_SEC", (0.01,))
+    monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 2.0)
     # 자동 종료 뒤 stop 을 보내지 않는 테스트가 기다리지 않게
     monkeypatch.setattr(runtime, "FINAL_METRICS_WAIT_SEC", 0.05)
     monkeypatch.setattr(registry, "MARK_RETRY_SEC", (0.01,))

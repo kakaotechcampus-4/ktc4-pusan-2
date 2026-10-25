@@ -22,6 +22,7 @@ from pitch_coach_backend.module.take.service import lifecycle as lifecycle_servi
 from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.stream import registry, runtime
 from pitch_coach_backend.realtime.stream.runtime import CoachDeps
+from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import UtteranceEnd
 from tests.realtime.conftest import (
     TAKE_ID,
@@ -766,7 +767,7 @@ async def test_shutdown_waits_for_a_whole_take_ending(monkeypatch: pytest.Monkey
         (runtime, "FINAL_METRICS_WAIT_SEC"),
         (registry, "FLUSH_METRICS_TIMEOUT_SEC"),
         (registry, "MARK_AUTO_END_TIMEOUT_SEC"),
-        (runtime, "ABORT_TIMEOUT_SEC"),
+        (stt_loop, "ABORT_TIMEOUT_SEC"),
     ):
         monkeypatch.setattr(module, name, 0.1)
     monkeypatch.setattr(registry, "SEAL_WAIT_SEC", 0.05)

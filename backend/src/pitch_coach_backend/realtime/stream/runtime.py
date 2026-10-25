@@ -15,13 +15,8 @@
   탭을 새로고침하면 FE 는 seq 를 1 부터 다시 세고 offset 은 이어받은 무대 시계부터 보낸다.
   새 연결의 첫 프레임이 뒤로 가면(seq 또는 offset) 그렇게 보고(`Accepted.restart`) 세션을 갈아
   그 offset 으로 base 를 잡는다. grace 가 지난 뒤 새 스트림이 열리는 경우와 같은 결과다.
-- **WS-2** (BE↔Deepgram): 큐에 담아 두고 백오프로 재접속한다. 새 세션은 타임스탬프가 다시
-  0 부터라 `base_offset_ms` 를 새로 잡고 `stt_session_no` 를 올린다. 재접속이 이어서 실패해도
-  **연결을 끊지 않는다** — FE 1단 코치는 계속 돌아야 하므로 `degraded` 만 알리고 재시도한다.
-
-타임라인 규칙: 한 Deepgram 세션 안에서는 `take_ms = base_offset_ms + deepgram_ms` 가 성립해야
-한다. 그래서 프레임 사이 갭은 무음으로 메운다. 메우기에 너무 긴 갭(`MAX_SILENCE_FILL_MS` 초과)
-은 **세션을 갈아** base 를 다시 잡는다 — 일부만 메우면 그 뒤 전사 시각이 통째로 앞당겨진다.
+- **WS-2** (BE↔Deepgram): 큐에 담아 두고 백오프로 재접속한다. 재접속 · 세션별 시간 기준 · 무음
+  채우기 · 세션 갈기는 `stt/loop.py` 가 맡는다. 이 파일은 큐를 채우고 돌려받은 전사를 처리한다.
 
 final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). 스트림이 새로 만들어질 때는
 저장된 마지막 번호를 이어 받는다 — grace 가 만료돼 스트림이 사라진 뒤 다시 붙어도 `segment_id`
@@ -61,13 +56,12 @@ import logging
 import time
 import uuid
 from collections.abc import Awaitable, Coroutine
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Protocol
 
 import anyio
 from fastapi import WebSocket
 from pydantic import BaseModel
-from websockets.exceptions import ConnectionClosed
 
 from pitch_coach_backend.coach.client import CoachClient, EvaluateReply
 from pitch_coach_backend.coach.requests import SlideEvent
@@ -82,7 +76,6 @@ from pitch_coach_backend.module.take.dto import (
     TranscriptWordDTO,
 )
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
-from pitch_coach_backend.realtime.audio import BYTES_PER_MS, silence
 from pitch_coach_backend.realtime.dto import (
     AutoEndMessage,
     AutoEndReason,
@@ -97,7 +90,6 @@ from pitch_coach_backend.realtime.dto import (
     WsErrorCode,
 )
 from pitch_coach_backend.realtime.event_ingestion import (
-    MAX_SILENCE_FILL_MS,
     Accepted,
     AudioFrame,
     FrameSequencer,
@@ -106,88 +98,35 @@ from pitch_coach_backend.realtime.event_ingestion import (
 from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuffer
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
+from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
-    Metadata,
     SttAdapter,
     SttConfig,
-    SttConfigRejected,
-    SttConnectError,
-    SttError,
-    SttSession,
     Transcript,
-    UtteranceEnd,
 )
+from pitch_coach_backend.realtime.stt.loop import SttLoop
 
 logger = logging.getLogger(__name__)
 
-
 # FE 가 끊긴 뒤 Deepgram 세션을 살려 두는 시간. 탭 새로고침·와이파이 전환을 덮는다
 GRACE_SEC = 30.0
-
-
 # Deepgram 이 죽어 있는 동안 들고 있을 오디오. 100ms 프레임 기준 5초
 QUEUE_MAX_FRAMES = 50
-
-
-# 재접속 간격(초). 이 뒤로는 마지막 값을 반복한다
-BACKOFF_SEC = (0.5, 1.0, 2.0, 5.0, 10.0)
-
-
-# 이 횟수만큼 실패하면 FE 에 degraded 를 알린다. 재시도는 계속한다
-FAST_ATTEMPTS = 3
-
-
-# Deepgram 이 keyterm 을 거절할 때마다 뒤에서 빼는 개수. 몇 토큰 넘쳤는지 알려 주지 않아서,
-# 한 번에 반씩 버리는 대신 조금씩 빼 우선순위 높은 용어를 최대한 남긴다
-KEYTERM_TRIM_STEP = 5
-
-
-# CloseStream 뒤 남은 결과와 Metadata 를 기다리는 상한
-DRAIN_TIMEOUT_SEC = 10.0
-
-
-# 취소·오류로 세션을 버릴 때 Deepgram 소켓 닫기(abort) 를 기다리는 상한. 이게 없으면
-# 상대가 close 핸드셰이크에 답하지 않을 때 shield 안에서 영영 기다린다
-ABORT_TIMEOUT_SEC = 3.0
-
-
-# Deepgram 이 받았다는 길이와 우리가 보낸 길이의 허용 오차
-DURATION_TOLERANCE_MS = 50
-
-
 # FE 가 떨어져 있는 동안 모아 둘 final 개수. 10분 발표가 200개 안팎이다
 MAX_MISSED_FINALS = 200
-
-
 # 저장에 실패해 들고 있을 final 개수. 넘치면 오래된 것부터 버린다
 MAX_UNSAVED_FINALS = 200
-
-
 # 자동 종료를 알린 뒤 FE 가 마지막 1초 조각과 stop 을 보내기를 기다리는 상한. 그 전에 끝난 것으로
 # 적으면 마지막 조각이 빠진다. stop 을 보내지 않는 FE 도 있어 오래 기다리지 않는다
 FINAL_METRICS_WAIT_SEC = 2.0
-
-
 # 1초 원자료의 STT 상태를 ok 로 볼 때, 그 1초 끝보다 이만큼 늦게 받은 오디오까지 봐준다. FE 는
 # 오디오 프레임과 metrics 를 따로 보내 그 1초의 마지막 프레임이 metrics 뒤에 올 수 있다
 HEARD_SLACK_MS = 1_000
-
-
 # gaze · voice 가 둘 다 없는 metrics 의 1초 길이. FE 는 1초마다 보낸다
 METRICS_PERIOD_MS = 1_000
-
-
 # 연결이 붙어 있고 이 시간 안에 오디오가 왔으면 발표 중으로 본다. 창을 다시 연 FE 가 Take 를
 # 실패로 끝내려 해도 거절한다 (`is_live`). FE 가 다른 창이 살아 있다고 보는 하트비트 기준과 같다
 LIVE_AUDIO_SEC = 10.0
-
-
-# _run_session 이 끝난 이유
-_STOPPED = "stopped"  # CloseStream 을 보냈다. Take 가 끝났다
-
-_ROTATE = "rotate"  # 타임라인이 끊겨 새 세션이 필요하다
-
-_LOST = "lost"  # Deepgram 이 끊었다
 
 
 @dataclass(frozen=True)
@@ -262,10 +201,6 @@ class StreamHost(Protocol):
         ...
 
 
-def _backoff(attempt: int) -> float:
-    return BACKOFF_SEC[min(attempt, len(BACKOFF_SEC)) - 1]
-
-
 class TakeStream:
     def __init__(
         self,
@@ -288,8 +223,6 @@ class TakeStream:
         # 정상 흐름에서는 다른 사용자가 여기까지 오지 못한다 — 검사와 레지스트리가
         # 어긋나는 일이 생겨도 남의 스트림에 붙지 못하게 하는 이중 안전장치다
         self.owner_id = owner_id
-        self._adapter = stt_adapter
-        self._config = config
         self._store = store
         self._grace_sec = GRACE_SEC if grace_sec is None else grace_sec
         self.auto_end_policy = AutoEndPolicy.from_settings() if auto_end is None else auto_end
@@ -298,8 +231,8 @@ class TakeStream:
 
         # ── 연결이 바뀌어도 이어지는 상태 ──
         self.sequencer = FrameSequencer()
-        # 둘 다 Take 기준이다. 스트림이 새로 만들어질 때 저장된 마지막 값에서 이어 받는다
-        self.stt_session_no = stt_session_no
+        # Take 기준이다. 스트림이 새로 만들어질 때 저장된 마지막 값에서 이어 받는다 (세션 번호는
+        # `SttLoop`)
         self.segment_no = segment_no
         self.state: SttState = "connecting"
         # 정리(closed)되기 전 마지막 상태. 자동 종료 뒤 FE 가 보내는 마지막 1초 조각의 STT 상태다
@@ -318,20 +251,6 @@ class TakeStream:
         self._heard_until_ms: int | None = None
         # 최대 시간 타이머. start() 에서 건다
         self._time_limit: asyncio.TimerHandle | None = None
-
-        # ── Deepgram 세션마다 리셋 ──
-        self._base_offset_ms: int | None = None
-        self._bytes_sent = 0
-        # 이 세션에 BE 가 메워 보낸 무음 구간 (Deepgram 세션 시각 ms). 들은 오디오가 아니라
-        # 말 없음에서 뺀다. 그 구간을 덮는 final 을 본 뒤에는 버린다
-        self._filled_ms: list[tuple[int, int]] = []
-        # 드롭된 오디오만큼 다음 프레임 앞에 채울 무음. 타임라인을 밀리지 않게 한다
-        self._pending_silence_ms = 0
-        # 드롭된 프레임이 타임라인 단절(`Accepted.timeline_break`)이었다. 그 프레임과 함께 사라지면
-        # 세션을 갈지 않고 이어 붙여 전사 시각이 어긋난다 — 다음 프레임이 대신 세션을 간다
-        self._pending_break = False
-        # 세션을 갈면서 넘긴 프레임. 새 세션의 첫 프레임이 된다
-        self._carry: Accepted | None = None
 
         self._queue: asyncio.Queue[Accepted | None] = asyncio.Queue(maxsize=QUEUE_MAX_FRAMES)
         self._client: WebSocket | None = None
@@ -353,7 +272,6 @@ class TakeStream:
         # Take 가 지워져 끊었다 (`discard`). 붙어 있던 연결에 알리는 태스크도 위와 같은 이유로 든다
         self._discarded = False
         self._closer: asyncio.Task[None] | None = None
-        self._ever_connected = False
         # 마지막 연결이 창을 닫아(닫힘 코드 1001) 끊겼다. 다시 붙으면 지운다
         self._tab_closed = False
         self._stopping = False
@@ -364,6 +282,24 @@ class TakeStream:
         # 붙어 있던 연결이 Take 를 끝냈거나(stop) 떠났다. 자동 종료가 이걸 보고 FE 의 마지막 1초
         # 조각을 기다린다
         self._client_done = asyncio.Event()
+        # Deepgram 세션 루프. 위 큐를 꺼내 보내고 전사 · 상태를 아래 콜백으로 돌려준다
+        self._stt = SttLoop(
+            take_id,
+            adapter=stt_adapter,
+            config=config,
+            queue=self._queue,
+            stop_event=self._stop_event,
+            is_stopping=lambda: self._stopping,
+            on_state=lambda state: self._set_state(state),
+            on_transcript=lambda event: self._on_transcript(event),
+            on_utterance_end=lambda take_ms: self._record.coach.on_utterance_end(take_ms),
+            stt_session_no=stt_session_no,
+        )
+
+    @property
+    def stt_session_no(self) -> int:
+        """지금 Deepgram 세션 번호 (Take 기준, `SttLoop`)."""
+        return self._stt.stt_session_no
 
     @property
     def is_stopping(self) -> bool:
@@ -536,7 +472,7 @@ class TakeStream:
     async def wait_closed(self, timeout: float | None = None) -> bool:
         try:
             await asyncio.wait_for(
-                self._closed.wait(), DRAIN_TIMEOUT_SEC if timeout is None else timeout
+                self._closed.wait(), stt_loop.DRAIN_TIMEOUT_SEC if timeout is None else timeout
             )
         except TimeoutError:
             return False
@@ -816,9 +752,7 @@ class TakeStream:
     def _drop(self, item: Accepted) -> None:
         lost = item.silence_ms + item.frame.duration_ms
         self.dropped_audio_ms += lost
-        self._pending_silence_ms += lost
-        if item.timeline_break:
-            self._pending_break = True
+        self._stt.on_dropped(lost, timeline_break=item.timeline_break)
         # STT 에 닿지 못한 오디오다. 그 뒤부터를 끊김 없이 들은 것으로 본다 (`_stt_status_of`)
         if self._heard_from_ms is not None:
             self._heard_from_ms = max(self._heard_from_ms, item.frame.end_ms)
@@ -826,214 +760,17 @@ class TakeStream:
     # ── Deepgram 세션 루프 ────────────────────────────────────────────
 
     async def _run(self) -> None:
-        """Deepgram 세션을 필요한 만큼 이어서 연다.
-
-        **루프 조건에 `not self._stopping` 을 두지 않는다.** 회전(`_ROTATE`)과 stop 이
-        겹치면(회전 직전에 넘겨받은 `self._carry` 오디오 한 프레임이 아직 안 나갔는데
-        `request_stop()` 이 먼저 온 경우) `_stopping` 은 이미 True 다. 거기서 루프
-        조건만으로 재진입을 막으면 `continue` 를 써도 다음 세션이 절대 안 열려서
-        캐리 프레임과 그 뒤 큐에 쌓인 stop 신호(`None`) 를 통째로 못 보내고 끝난다.
-        그래서 재진입 여부는 오직 `_run_session` 의 반환값(`reason`) 으로만 정한다.
-        """
-        attempt = 0
+        """Deepgram 세션을 필요한 만큼 이어서 연다 (`SttLoop.run`). 끝나면 정리한다."""
         try:
-            while True:
-                session = await self._connect()
-                if session is None:
-                    attempt += 1
-                    if attempt >= FAST_ATTEMPTS:
-                        # 재시도는 계속한다. 여기서 연결을 끊으면 FE 1단 코치까지 같이 죽는다
-                        await self._set_state("degraded")
-                    if await self._sleep_or_stop(_backoff(attempt)):
-                        break
-                    continue
-
-                attempt = 0
-                self._ever_connected = True
-                self.stt_session_no += 1
-                self._base_offset_ms = None
-                self._bytes_sent = 0
-                self._filled_ms = []
-                if self._carry is None:
-                    # 넘겨받은 프레임이 있으면 지우지 않는다. 세션을 가는 동안 드롭된 것은 그
-                    # 프레임 **뒤**의 오디오라 새 세션에서 무음으로 메워야 한다 (_send_frame)
-                    self._pending_silence_ms = 0
-                await self._set_state("ok")
-
-                try:
-                    reason = await self._run_session(session)
-                except Exception:
-                    # 어댑터·파서의 버그처럼 예상 못 한 예외다. 여기서 태스크가 죽으면 FE 는
-                    # 아무 알림 없이 STT 만 조용히 멈춘 상태가 된다 (큐는 쌓이고 stt_status
-                    # 는 안 온다). Deepgram 이 끊긴 것과 같게 다뤄 재접속한다
-                    logger.exception("STT 세션에서 예상 못 한 예외 take=%s", self.take_id)
-                    reason = _LOST
-                if reason == _ROTATE:
-                    # stop 이 회전과 동시에 왔어도 새 세션을 반드시 한 번 더 연다 — 그래야
-                    # self._carry 와 큐에 남은 나머지(stop 신호 포함) 가 새 세션에서
-                    # 정상적으로 드레인되고, 그 세션이 스스로 _STOPPED 로 끝난다
-                    continue
-                if reason == _STOPPED:
-                    # CloseStream 을 이미 보냈다. 더 열 세션이 없다
-                    break
-                # _LOST — Deepgram 이 끊었다. stop 까지 요청된 상태라면 재시도하지 않는다
-                if self._stopping:
-                    break
-                await self._set_state("reconnecting")
-                attempt = 1
-                if await self._sleep_or_stop(_backoff(attempt)):
-                    break
+            await self._stt.run()
             # 정상으로 끝났다. 저장 못 한 final 을 한 번 더 저장해 본다. Take 종료는 이 스트림이
             # 닫힌 뒤에 적으므로(`RealtimeSession._stop`) 종료 전에 들어간다
             await self._save_unsaved()
         finally:
             self._finish()
 
-    async def _connect(self) -> SttSession | None:
-        while True:
-            try:
-                return await self._adapter.connect(self._config)
-            except SttConfigRejected as e:
-                keyterms = self._config.keyterms
-                floor = self._config.min_keyterms
-                if len(keyterms) <= floor:
-                    logger.error("Deepgram 이 설정을 거절했다 take=%s %s", self.take_id, e)
-                    return None
-                # 같은 설정으로 다시 붙으면 또 거절된다. 우선순위가 낮은 뒤쪽 용어부터 빼고
-                # 기다리지 않고 바로 다시 붙는다 — 실패로 세서 backoff 하면 몇 번만 줄여도
-                # 수십 초 동안 전사가 안 나온다. 줄인 설정은 이후 재접속에도 그대로 쓴다
-                trimmed = keyterms[: max(floor, len(keyterms) - KEYTERM_TRIM_STEP)]
-                logger.warning(
-                    "Deepgram 이 keyterm 을 거절해 %d개 → %d개로 줄인다 take=%s %s",
-                    len(keyterms),
-                    len(trimmed),
-                    self.take_id,
-                    e,
-                )
-                self._config = replace(self._config, keyterms=trimmed)
-            except SttConnectError as e:
-                logger.warning("Deepgram 연결 실패 take=%s %s", self.take_id, e)
-                return None
-
-    async def _sleep_or_stop(self, delay: float) -> bool:
-        """delay 만큼 쉰다. 그 사이 stop 이 오면 True 를 돌려 즉시 끝낸다."""
-        try:
-            await asyncio.wait_for(self._stop_event.wait(), delay)
-        except TimeoutError:
-            return False
-        return True
-
-    async def _run_session(self, session: SttSession) -> str:
-        reason = _LOST
-        try:
-            async with anyio.create_task_group() as tg:
-
-                async def audio() -> None:
-                    nonlocal reason
-                    try:
-                        reason = await self._pump_audio(session)
-                    except ConnectionClosed:
-                        # Deepgram 이 닫았다. 이벤트 쪽은 끊지 않는다 — 이미 받아 둔 final 을
-                        # 마저 읽고, 닫힌 소켓이라 읽을 것이 떨어지면 스스로 끝난다
-                        reason = _LOST
-                        return
-                    # CloseStream 을 보냈다. 이벤트 펌프가 Metadata 까지 받을 시간을 준다
-                    await anyio.sleep(DRAIN_TIMEOUT_SEC)
-                    tg.cancel_scope.cancel()
-
-                async def events() -> None:
-                    await self._pump_events(session)
-                    tg.cancel_scope.cancel()
-
-                tg.start_soon(audio)
-                tg.start_soon(events)
-                tg.start_soon(session.keepalive_loop)
-        finally:
-            # 취소로 빠져나가도 Deepgram 소켓은 닫는다. shield 가 없으면 이 await 가
-            # 다시 취소되어 연결이 그대로 남는다. 다만 shield 안이라 바깥에서는 끊을 수
-            # 없으므로 상한을 둔다 — 상대가 close 에 답하지 않으면 그냥 버리고 나온다
-            with anyio.CancelScope(shield=True), anyio.move_on_after(ABORT_TIMEOUT_SEC) as scope:
-                await _quiet(session.abort())
-            if scope.cancelled_caught:
-                logger.warning("Deepgram 소켓 닫기 타임아웃 take=%s. 버리고 나온다", self.take_id)
-        return reason
-
-    async def _pump_audio(self, session: SttSession) -> str:
-        while True:
-            carried = self._carry is not None
-            item = self._carry or await self._queue.get()
-            self._carry = None
-            if item is None:
-                await session.close_stream()
-                return _STOPPED
-
-            gap_ms = item.silence_ms + self._pending_silence_ms
-            if self._base_offset_ms is not None and (
-                item.timeline_break or self._pending_break or gap_ms > MAX_SILENCE_FILL_MS
-            ):
-                # 무음으로 메우기엔 너무 긴 갭이다. 이대로 보내면 이후 전사 시각이
-                # 갭만큼 앞당겨진다. 세션을 갈아 base 를 다시 잡는다
-                logger.info(
-                    "타임라인 단절로 Deepgram 세션을 교체한다 take=%s gap_ms=%d",
-                    self.take_id,
-                    gap_ms + item.lost_ms,
-                )
-                self._carry = item
-                # 여기까지 드롭된 것은 이 프레임 **앞**의 오디오다. 새 세션의 base 가 흡수한다.
-                # 이 뒤로 드롭되는 것(새 세션이 열리기를 기다리는 동안 큐가 넘침)은 남긴다
-                self._pending_silence_ms = 0
-                self._pending_break = False
-                await session.close_stream()
-                return _ROTATE
-
-            await self._send_frame(session, item, gap_ms, carried=carried)
-
-    async def _send_frame(
-        self, session: SttSession, item: Accepted, gap_ms: int, *, carried: bool = False
-    ) -> None:
-        if self._base_offset_ms is None:
-            # 세션의 첫 프레임. 앞의 갭·드롭은 base 가 흡수하므로 무음을 보내지 않는다.
-            # 단 세션을 갈며 넘겨받은 프레임이면 드롭은 그 **뒤**에서 일어났다 — 지우면 그만큼
-            # 이후 전사 시각이 앞당겨진다. 남겨 두면 다음 프레임 앞에 무음으로 들어간다
-            self._base_offset_ms = item.frame.offset_ms
-            if not carried:
-                self._pending_silence_ms = 0
-                self._pending_break = False
-        else:
-            self._pending_silence_ms = 0
-            if gap_ms:
-                filled_from = self._bytes_sent // BYTES_PER_MS
-                self._filled_ms.append((filled_from, filled_from + gap_ms))
-                await self._send_audio(session, silence(gap_ms))
-        await self._send_audio(session, item.frame.pcm)
-
-    async def _send_audio(self, session: SttSession, pcm: bytes) -> None:
-        await session.send_audio(pcm)
-        self._bytes_sent += len(pcm)
-
-    async def _pump_events(self, session: SttSession) -> None:
-        async for event in session:
-            match event:
-                case Transcript():
-                    await self._on_transcript(event)
-                case Metadata():
-                    self._check_duration(event)
-                case UtteranceEnd():
-                    # 문장 끝 신호. 그 마지막 단어의 끝 시각을 Take 기준으로 바꿔 코치에 넘긴다
-                    if self._base_offset_ms is not None:
-                        self._record.coach.on_utterance_end(
-                            self._base_offset_ms + event.last_word_end_ms
-                        )
-                case SttError():
-                    logger.warning(
-                        "Deepgram 오류 take=%s %s %s", self.take_id, event.code, event.message
-                    )
-                case _:
-                    # SpeechStarted 는 쓰지 않는다
-                    pass
-
     async def _on_transcript(self, event: Transcript) -> None:
-        base = self._base_offset_ms or 0
+        base = self._stt.base_offset_ms or 0
         if event.transcript or event.words:
             message = TranscriptMessage(
                 segment_id=f"{self.stt_session_no}-{self.segment_no}",
@@ -1071,7 +808,7 @@ class TakeStream:
                         self._missed_finals.append(message)
                         del self._missed_finals[:-MAX_MISSED_FINALS]
                     else:
-                        with anyio.move_on_after(ABORT_TIMEOUT_SEC):
+                        with anyio.move_on_after(stt_loop.ABORT_TIMEOUT_SEC):
                             await self._send(message)
                     # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
                     # 리포트의 원천은 이 행이지 화면이 아니다
@@ -1089,10 +826,10 @@ class TakeStream:
                 event.end_ms,
                 ((w.start_ms, w.end_ms) for w in event.words),
                 has_text=bool(event.transcript.strip()),
-                unheard=self._filled_ms,
+                unheard=self._stt.filled_ms,
             )
             # final 은 시각 순으로 온다. 이 final 앞에서 끝난 메운 구간은 다시 볼 일이 없다
-            self._filled_ms = [(s, e) for s, e in self._filled_ms if e > event.end_ms]
+            self._stt.forget_filled(event.end_ms)
         except Exception:
             # 자동 종료는 부가 기능이다. 여기서 예외가 새면 세션이 _LOST 로 처리돼 재접속한다
             logger.exception("말 없음 판단 실패 take=%s", self.take_id)
@@ -1175,23 +912,6 @@ class TakeStream:
                 return
             self._unsaved.pop(0)
 
-    def _check_duration(self, metadata: Metadata) -> None:
-        """Deepgram 이 받았다는 길이와 우리가 보낸 길이를 대조한다.
-
-        어긋나면 그 세션의 타임스탬프가 그만큼 밀려 있다는 뜻이라 리포트에서 영상과 안 맞는다.
-        """
-        sent_ms = self._bytes_sent // BYTES_PER_MS
-        drift_ms = metadata.duration_ms - sent_ms
-        level = logger.warning if abs(drift_ms) > DURATION_TOLERANCE_MS else logger.info
-        level(
-            "Deepgram 세션 종료 take=%s request_id=%s sent_ms=%d duration_ms=%d drift_ms=%+d",
-            self.take_id,
-            metadata.request_id,
-            sent_ms,
-            metadata.duration_ms,
-            drift_ms,
-        )
-
     # ── 자동 종료 ─────────────────────────────────────────────────────
 
     def _auto_end(self, reason: AutoEndReason) -> None:
@@ -1230,10 +950,10 @@ class TakeStream:
         await self._send(
             AutoEndMessage(reason=reason, message=self.auto_end_policy.message(reason))
         )
-        if not await self.wait_closed(DRAIN_TIMEOUT_SEC + ABORT_TIMEOUT_SEC):
+        if not await self.wait_closed(stt_loop.DRAIN_TIMEOUT_SEC + stt_loop.ABORT_TIMEOUT_SEC):
             logger.warning("자동 종료 drain 타임아웃 take=%s. 스트림을 끊는다", self.take_id)
             self.cancel()
-            await self.wait_cancelled(ABORT_TIMEOUT_SEC)
+            await self.wait_cancelled(stt_loop.ABORT_TIMEOUT_SEC)
         if self._client is not None:
             # FE 는 auto_end 를 받고 마지막 1초 조각을 보낸 뒤 stop 을 보낸다. Deepgram 정리가
             # 먼저 끝났으면 그 조각이 아직 안 왔을 수 있다 — stop 이 오거나 연결이 떠날 때까지

@@ -46,6 +46,7 @@ from pitch_coach_backend.realtime.stream import abandon, runtime
 from pitch_coach_backend.realtime.stream.abandon import LeftReason
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.stream.runtime import CoachDeps, TakeRecord, TakeStream
+from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
     SttAdapter,
     SttConfig,
@@ -290,7 +291,7 @@ async def attach(
                 # forget() 만 하면 옛 스트림은 Deepgram 연결을 붙든 채 계속 돈다. 끝나기 전에
                 # 아래에서 번호를 읽으면 옛 스트림이 저장 중인 seq 를 새 스트림이 또 쓴다
                 stream.cancel()
-                await stream.wait_cancelled(runtime.ABORT_TIMEOUT_SEC)
+                await stream.wait_cancelled(stt_loop.ABORT_TIMEOUT_SEC)
             forget(stream)
             stream = None
 
@@ -588,7 +589,7 @@ async def end_without_stop(take_id: uuid.UUID) -> Ending | None:
             if not await stream.wait_closed():
                 logger.warning("Deepgram drain 타임아웃 take=%s. 스트림을 끊는다", take_id)
                 stream.cancel()
-                await stream.wait_cancelled(runtime.ABORT_TIMEOUT_SEC)
+                await stream.wait_cancelled(stt_loop.ABORT_TIMEOUT_SEC)
         # 마지막 창을 만들고, 연결 없이 정리된 스트림이 못 넣은 행을 넣는다
         return await _seal_and_flush(take_id, end_reason)
 
@@ -742,7 +743,7 @@ async def stop_all() -> None:
     for stream in streams:
         if not await stream.wait_closed(timeout=2.0):
             stream.cancel()
-            await stream.wait_closed(timeout=runtime.ABORT_TIMEOUT_SEC)
+            await stream.wait_closed(timeout=stt_loop.ABORT_TIMEOUT_SEC)
     # 닫힌 스트림이 남긴 1초 원자료. 다시 뜨면 메모리에 없다. 스트림이 닫히며 시작한 백그라운드
     # 저장은 행을 꺼내 가 버퍼가 비어 보이므로 `pending` 으로 고른다
     unsaved = [
@@ -773,7 +774,7 @@ async def stop_all() -> None:
             runtime.FINAL_METRICS_WAIT_SEC
             + max(FLUSH_METRICS_TIMEOUT_SEC, 2 * SEAL_WAIT_SEC)
             + MARK_AUTO_END_TIMEOUT_SEC
-            + runtime.ABORT_TIMEOUT_SEC
+            + stt_loop.ABORT_TIMEOUT_SEC
         )
         _, pending = await asyncio.wait(_background.tasks(), timeout=finishing_sec)
         for task in pending:
@@ -781,4 +782,4 @@ async def stop_all() -> None:
             logger.error("종료 때까지 끝나지 않은 백그라운드 태스크를 끊는다 %s", task.get_name())
             task.cancel()
         if pending:
-            await asyncio.wait(pending, timeout=runtime.ABORT_TIMEOUT_SEC)
+            await asyncio.wait(pending, timeout=stt_loop.ABORT_TIMEOUT_SEC)
