@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { LevelBar } from '../media/LevelBar';
-import { DEVICE_ERROR_MESSAGE, useCameraStream } from '../media/useCameraStream';
+import { MIC_ERROR_MESSAGE, useCameraStream } from '../media/useCameraStream';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 import { usePrepareStore } from '../prepare/prepareStore';
@@ -21,7 +21,6 @@ import {
   findSessionByTakeId,
   getSession,
   markEnding,
-  markSubmitted,
   markGazeExcluded,
   readGazeSamples,
   readSlideChanges,
@@ -29,7 +28,7 @@ import {
   setGazePerf,
   startSession,
 } from '../lib/db';
-import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/writeFailures';
+import { noteWriteFailure } from '../lib/writeFailures';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ScreenLabel } from '@/shared/ui/ScreenLabel';
 import { formatDuration } from '@/shared/lib/clock';
@@ -60,9 +59,11 @@ import {
   type AbandonOutcome,
   type LeftWindow,
 } from './resume';
+import { sendEnding, type Ending } from './sendEnding';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
-import { CONNECT_SLOW_MS, hasLiveAudio, startGate, type StartGate } from './startGate';
+import { CONNECT_SLOW_MS, hasCamera, hasLiveAudio, startGate, type StartGate } from './startGate';
+import { openStageDevices } from './openDevices';
 import { useSttStream } from './useSttStream';
 import { useMetricsSender } from './useMetricsSender';
 import { useSlideSender } from './useSlideSender';
@@ -75,11 +76,6 @@ const BEAT_MS = 5_000;
 /** 대본이 없는 장의 기본값. 매 렌더 새 배열을 만들면 대본 칸의 강조 계산이 매번 다시 돕니다 */
 const NO_KEYWORDS: string[] = [];
 const NO_HIGHLIGHTS: TextRange[] = [];
-
-interface Ending {
-  durationMs: Ms;
-  endedAtIso: string;
-}
 
 /**
  * 이 Take 를 어디서부터 여나. 세션 행을 읽어야 정해지고, 그 전에는 무대를 시작하지 않습니다 —
@@ -201,8 +197,22 @@ export function RehearsalPage() {
    */
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  const { stream, error: deviceError, request, stop: stopCamera } = useCameraStream();
+  const {
+    stream,
+    cameraError,
+    micError,
+    request,
+    requestMic,
+    stop: stopCamera,
+  } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
+  /** 카메라를 못 열어 마이크만 열었으면 false 입니다. 발표는 하고 시선만 뺍니다 */
+  const cameraOpened = hasCamera(stream);
+  /**
+   * 장치를 차례로 여는 중 (`openDevices.ts`). 최종 결과가 나오기 전에는
+   * 중간 오류로 시선을 제외하거나 장치 오류 안내를 띄우지 않습니다
+   */
+  const [opening, setOpening] = useState(false);
 
   const ready = materials.ready && resume !== null;
   /** 이미 종료까지 보낸 Take 입니다 (끝낸 뒤 새로고침 · 뒤로 가기). 무대를 열지 않습니다 */
@@ -305,7 +315,7 @@ export function RehearsalPage() {
     // 새로고침으로 이어 가는 Take 는 서버에서 이미 시작했습니다
     resumed: (resume?.fromMs ?? 0) > 0,
     micLive: hasLiveAudio(stream),
-    deviceError,
+    micError: opening ? null : micError,
     connected,
     startFailure,
     slow: connectSlow,
@@ -354,8 +364,8 @@ export function RehearsalPage() {
     onExcluded: noteExclusion,
     elapsedMs,
     // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
-    // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다
-    enabled: running && live,
+    // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다. 마이크만 연 스트림도 같은 이유로 돌리지 않습니다
+    enabled: running && live && cameraOpened,
     onRecords: onGazeRecords,
   });
 
@@ -459,26 +469,21 @@ export function RehearsalPage() {
   useEffect(() => resetStore, [resetStore]);
 
   // 카메라는 준비 화면 CTA를 누른 직후라 바로 열립니다 (같은 문서 = 조작이 살아 있음).
-  // 점검에서 쓴 장치를 그대로 엽니다 — 기본 장치를 열면 USB 마이크로 점검하고
-  // 내장 마이크로 녹음하는 일이 생깁니다
+  // 점검에서 쓴 장치를 먼저 열고, 카메라를 못 열면 마이크만 엽니다 (`openDevices.ts`)
   //
   // 세션 행을 읽은 뒤에 엽니다 — 새로고침이면 점검한 장치를 거기서 되살립니다.
   // 종료 중에 새로고침했으면 열지 않습니다. 남은 일은 기록을 보내는 것뿐입니다
   const openDevices = useCallback(() => {
-    (async () => {
-      const opened = await request(devices);
-      // 고른 장치가 그사이 빠졌으면(USB 분리 등) exact 제약에 걸려 못 엽니다.
-      // 발표를 못 여는 것보다 기본 장치로라도 여는 편이 낫습니다
-      if (!opened && (devices.videoDeviceId || devices.audioDeviceId)) {
-        await request();
-      }
-      // 장치를 못 연 이유(권한 거부 · 장치 없음)는 request 가 deviceError 로 올립니다 —
-      // 무대는 그걸 보고 시작하지 않습니다 (`startGate`). 여기로 오는 건 예상 밖의 오류뿐이라
-      // 버리지 않고 남깁니다
-    })().catch((err: unknown) => {
-      console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
-    });
-  }, [request, devices]);
+    setOpening(true);
+    // 카메라와 마이크를 못 연 이유는 훅이 각각 올립니다 —
+    // 마이크까지 못 열면 무대는 시작하지 않습니다 (`startGate`). 여기로 오는 건 예상 밖의 오류뿐이라
+    // 버리지 않고 남깁니다
+    openStageDevices(devices, { request, requestMic })
+      .catch((err: unknown) => {
+        console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
+      })
+      .finally(() => setOpening(false));
+  }, [request, requestMic, devices]);
   const askedRef = useRef(false);
   useEffect(() => {
     if (askedRef.current || !resume || resume.ending || resume.submitted || resume.left) return;
@@ -557,10 +562,10 @@ export function RehearsalPage() {
   );
 
   useEffect(() => {
-    if (!sessionId || !deviceError) return;
-    const reason = exclusionForDeviceError(deviceError);
+    if (opening || !sessionId || !cameraError) return;
+    const reason = exclusionForDeviceError(cameraError);
     if (reason) excludeGaze(sessionId, reason);
-  }, [sessionId, deviceError, excludeGaze]);
+  }, [opening, sessionId, cameraError, excludeGaze]);
 
   useEffect(() => {
     if (!sessionId || !gazeError) return;
@@ -679,13 +684,9 @@ export function RehearsalPage() {
   /**
    * Take 의 시작 · 종료 시각을 BE 에 적고 처리 화면으로 갑니다. 끝내기 버튼과 **종료 중 새로고침**이 같이 씁니다.
    *
-   * 새로고침으로 들어왔으면 메모리에 남은 것이 없습니다. 그래서 행(IndexedDB)이 먼저입니다.
-   *
-   * 시선 · 슬라이드 · 코치 기록은 여기서 보내지 않습니다. 계약에서 기록은 발표 중 WS `metrics` 로
-   * 가고(`docs/ai/architecture.md` 1-4, `useMetricsSender`), 코치 기록은 서버 코치가 만듭니다.
-   * 브라우저(IndexedDB)의 기록은 이 브라우저의 사본입니다.
+   * 보내는 일은 재시도 화면(P15)과 같이 쓰는 `sendEnding` 이 합니다.
    */
-  const submit = async (id: string, { durationMs, endedAtIso }: Ending) => {
+  const submit = async (id: string, ending: Ending) => {
     if (!ticket) return;
 
     // 무대는 다시 열리지 않으니 시선 기준은 더 쓸 데가 없습니다. 얼굴 측정값이 들어 있어 버립니다
@@ -696,28 +697,7 @@ export function RehearsalPage() {
     //   어긋나고, useSlideDeck 이 0ms 행을 덮어씁니다 (rehearsalStore 주석 참고).
     //   기록은 IndexedDB 에 그대로 있으므로 재시도 화면으로 보냅니다.
     try {
-      await endSession(id);
-
-      // ── 대조 ────────────────────────────────────────────────────────
-      // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패를 봅니다.
-      // ★ 지금은 알리는 곳이 콘솔뿐입니다.
-      const failures = readWriteFailures(id);
-      if (Object.keys(failures).length > 0) {
-        console.error('[rehearsal] 기록이 불완전합니다', { 실패: failures });
-      }
-
-      const row = await getSession(id);
-      await endTake.mutateAsync({
-        started_at: row?.startedAtIso ?? new Date(Date.now() - durationMs).toISOString(),
-        ended_at: endedAtIso,
-      });
-      // 보냈다는 표시. 이 주소로 다시 들어오면(새로고침 · 뒤로 가기) 무대를 열지 않습니다.
-      // 못 적으면 다시 들어왔을 때 종료를 한 번 더 이어가는데, 같은 시각을 다시 적을 뿐이라 괜찮습니다
-      await markSubmitted(id).catch((err: unknown) => noteWriteFailure(id, 'ending', err));
-      clearWriteFailures(id);
-      clearClock(takeId);
-      clearMetrics(takeId);
-      clearSlides(takeId);
+      await sendEnding(takeId, id, ending, endTake.mutateAsync);
       // 기록을 쌓지 않고 바꿉니다. 뒤로 가기로 리허설 화면에 돌아오지 않게 합니다
       navigate(`/takes/${takeId}/processing`, { replace: true });
     } catch (e) {
@@ -776,18 +756,20 @@ export function RehearsalPage() {
 
   // 시선이 기록되지 않을 때만 발밑에 한 줄 띄웁니다(`gazeNote`). 발표 중에 고칠 수 없는 문제도 남깁니다 —
   // 코치 상태 표시는 코칭 모드에서 소켓이 붙어 있을 때만 와서, 실전 모드 · 끊긴 동안에는 아무 표시가 없습니다
-  // 발표 중일 때만 — 끝내고 정리하는 동안에는 엔진이 꺼져 '준비 중'으로 읽힙니다
-  const gazeLine = running
-    ? gazeNote({
-        declined: deviceError === 'PERMISSION_DENIED',
-        cameraLost:
-          (deviceError !== null && deviceError !== 'PERMISSION_DENIED') ||
-          gazeError === 'CAMERA_LOST',
-        missingCalibration,
-        error: gazeError,
-        ready: gazeReady,
-      })
-    : null;
+  // 장치를 모두 연 뒤 발표 중에만 알립니다. 중간 오류나 종료 중 엔진 상태로 안내하지 않습니다
+  const gazeLine =
+    running && !opening
+      ? gazeNote({
+          declined: cameraError === 'PERMISSION_DENIED',
+          noCamera: stream !== null && !cameraOpened,
+          cameraLost:
+            (cameraError !== null && cameraError !== 'PERMISSION_DENIED') ||
+            gazeError === 'CAMERA_LOST',
+          missingCalibration,
+          error: gazeError,
+          ready: gazeReady,
+        })
+      : null;
 
   return (
     <div className="min-h-full bg-greige px-4 py-5">
@@ -798,7 +780,7 @@ export function RehearsalPage() {
           entry={`진입 · 리허설 준비의 Take ${ticket?.takeNumber ?? ''} 시작하기`}
         />
 
-        <div className="h-[calc(100vh-7rem)] min-h-[560px] overflow-hidden rounded-2xl shadow-lg">
+        <div className="h-[calc(100vh-7rem)] min-h-[560px] overflow-hidden border-2 border-ink shadow-[4px_4px_0_var(--color-line)]">
           {/* ★ data-gaze 한 줄이 테두리의 전부입니다. 워커의 1초 판정이 여기 도착합니다 */}
           <div
             className="stage"
@@ -855,9 +837,11 @@ export function RehearsalPage() {
 
               <div className="rail">
                 <section className="camera">
-                  <video ref={videoRef} muted playsInline />
-                  {!live && <div className="guide" />}
-                  <span className="tag">CAMERA 16:9</span>
+                  <div className="frame">
+                    <video ref={videoRef} muted playsInline />
+                    {!(live && cameraOpened) && <div className="guide" />}
+                    <span className="tag">CAMERA 16:9</span>
+                  </div>
                 </section>
 
                 <section className="mic">
@@ -1055,7 +1039,7 @@ function startGateText(gate: Exclude<StartGate, { kind: 'STARTED' }>): string {
     case 'OPENING':
       return '카메라와 마이크를 여는 중이에요';
     case 'NO_MIC':
-      return `${gate.error ? `${DEVICE_ERROR_MESSAGE[gate.error]} ` : ''}마이크가 있어야 발표를 시작할 수 있어요.`;
+      return `${gate.error ? `${MIC_ERROR_MESSAGE[gate.error]} ` : ''}마이크가 있어야 발표를 시작할 수 있어요.`;
     case 'CONNECTING':
       return gate.slow
         ? '말하기 분석 서버에 연결하지 못했어요. 연결되면 바로 시작해요.'

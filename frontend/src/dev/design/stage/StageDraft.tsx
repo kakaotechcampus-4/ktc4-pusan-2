@@ -11,6 +11,9 @@ import { DraftPage } from '../ui';
  *   레일 폭       320px
  *   대본 높이     --spacing-script-highlight · --spacing-script-keyword · 0
  *   시선 테두리   3색 + 두께 차이를 padding으로 상쇄 (안쪽 상자가 움직이지 않게)
+ *
+ * 레일은 대본 모드와 상관없이 같은 크기 · 같은 자리입니다 (#235). 카메라는 늘 16:9 이고 위에서부터 쌓아서,
+ * 남는 높이는 레일 아래에 비워 둡니다. 실제 무대도 같습니다 (stage.css `.rail`).
  */
 
 type Surface = 'LIGHT' | 'DARK';
@@ -23,14 +26,24 @@ const VARIANTS = [
 ];
 
 /**
- * 지면별 색. 어두운 무대는 무대 토큰(`bg-stage` 등)을 쓰고, 값은 아래 `BLACK_STAGE`로 이 시안에서만 바꿉니다.
+ * 지면별 색. 어두운 무대는 실제 무대와 같은 무대 토큰(`bg-stage` 등)을 그대로 씁니다.
  * 어두운 지면에서는 진한 테두리가 묻혀서 테두리도 밝은 선으로 바꿉니다.
+ * `fill` 은 진행 막대 — 제한 시간을 넘기기 전에는 글자색, 넘긴 뒤에만 코랄입니다 (stage.css `.bar`).
  */
 const SURFACE: Record<
   Surface,
-  { stage: string; panel: string; deep: string; text: string; muted: string; line: string }
+  {
+    stage: string;
+    panel: string;
+    deep: string;
+    text: string;
+    muted: string;
+    line: string;
+    fill: string;
+  }
 > = {
   LIGHT: {
+    fill: 'bg-ink',
     line: 'border-ink',
     stage: 'bg-greige text-ink',
     panel: 'bg-panel',
@@ -39,6 +52,7 @@ const SURFACE: Record<
     muted: 'text-stone',
   },
   DARK: {
+    fill: 'bg-ink-stage',
     line: 'border-ink-stage/35',
     stage: 'bg-stage text-ink-stage',
     panel: 'bg-stage-panel',
@@ -47,17 +61,6 @@ const SURFACE: Record<
     muted: 'text-ink-stage/60',
   },
 };
-
-/**
- * 더 검은 무대 후보값 — **시안 전용**입니다. `pitch-create` 처럼 같은 토큰 이름을 이 상자 안에서만 바꿉니다.
- * 채택하면 `index.css` @theme 의 무대 토큰 세 개를 이 값으로 바꾸면 됩니다 (실제 무대 전체에 적용).
- *   지금  stage #332E28 · stage-panel #443D35 · stage-deep #2A2622
- */
-const BLACK_STAGE = {
-  '--color-stage': '#161514',
-  '--color-stage-panel': '#22201E',
-  '--color-stage-deep': '#0C0B0A',
-} as CSSProperties;
 
 /** stage.css 의 `.stage[data-gaze=…] .viewport` 그대로. 두께가 줄면 padding 으로 채웁니다 */
 const GAZE_BORDER: Record<Gaze, CSSProperties> = {
@@ -86,7 +89,7 @@ const SCRIPT = [
 const KEYWORDS = ['피치코치', '혼자 연습의 한계', '속도 · 시선 · 대본 의존'];
 
 export function StageDraft() {
-  const [surface, setSurface] = useState<Surface>('LIGHT');
+  const [surface, setSurface] = useState<Surface>('DARK');
   const [gaze, setGaze] = useState<Gaze>('AUDIENCE');
   const [scriptMode, setScriptMode] = useState<ScriptMode>('HIGHLIGHT');
   const [coach, setCoach] = useState(true);
@@ -102,7 +105,7 @@ export function StageDraft() {
       variant={surface}
       onVariant={setSurface}
       questions={[
-        '밝은 무대로 바꿀지 정해야 해요. 지금 무대가 어두운 건 화면 반사를 줄이고 슬라이드에 집중시키려는 이유예요. 밝게 하면 카메라 미리보기만 어둡게 둘 수 있어요 (시작 전 세팅과 같은 방식).',
+        '어두운 무대로 정했어요 (2026-10-25). 화면 반사를 줄이고 슬라이드에 집중시키려는 이유예요. 실제 무대는 어두운 무대 변형에 맞췄고, 무대 색 토큰은 지금 값 그대로예요 (더 검은 무대 후보값은 쓰지 않기로 해서 시안에서도 지웠어요).',
         '시선 테두리 3색은 무대 전용이라 그대로 뒀어요. 밝은 지면에서도 셋이 잘 구분되는지 봐 주세요.',
         '대본 높이 · 레일 폭 · 코치 줄 높이는 계측 조건이라 바꾸지 않았어요. 바꾸려면 팀 합의가 필요해요 (frontend/CLAUDE.md 7번).',
       ]}
@@ -130,11 +133,11 @@ export function StageDraft() {
         </button>
       </div>
 
+      {/* 높이 788px = 1440×900 창의 실제 무대(100vh - 7rem). 이 높이에서 레일이 세 모드 모두 같게 들어갑니다 */}
       <div
-        className={`grid h-[760px] gap-3 border-2 border-ink p-4 shadow-[4px_4px_0_var(--color-line)] ${s.stage}`}
+        className={`grid h-[788px] gap-3 border-2 border-ink p-4 shadow-[4px_4px_0_var(--color-line)] ${s.stage}`}
         style={{
           gridTemplateRows: `auto 1fr 46px ${SCRIPT_H[scriptMode]} auto`,
-          ...(surface === 'DARK' ? BLACK_STAGE : {}),
         }}
       >
         {/* 머리 */}
@@ -143,7 +146,7 @@ export function StageDraft() {
             06:32 <span className={`text-base font-normal ${s.muted}`}>/ 10:00</span>
           </p>
           <div className={`h-3 flex-1 border-2 ${s.line} ${s.deep}`}>
-            <div className="h-full w-[65%] bg-coral" />
+            <div className={`h-full w-[65%] ${s.fill}`} />
           </div>
           <p className={`tabular font-mono text-sm ${s.muted}`}>
             남은 03:28 <span className={`ml-3 font-bold ${s.text}`}>SLIDE 6 / 12</span>
@@ -158,12 +161,12 @@ export function StageDraft() {
           <div className={`flex items-center justify-center ${box} ${s.deep}`}>
             <p className={`font-mono text-sm ${s.muted}`}>SLIDE 6 · 16:9</p>
           </div>
-          <div className="flex min-h-0 flex-col gap-3">
+          <div className="flex min-h-0 flex-col gap-2.5">
             {/*
               카메라 — 찌그러뜨리지 않고 잘라서 채웁니다 (object-cover, 실제 무대의 `.rail .camera video` 와 같음).
               비율은 16:9 고정이고, 영상이 다른 비율이면 가운데를 기준으로 잘라 맞춥니다. 거울상으로 보여 줍니다.
             */}
-            <div className={`relative overflow-hidden ${box} ${s.deep} aspect-video`}>
+            <div className={`relative shrink-0 overflow-hidden ${box} ${s.deep} aspect-video`}>
               <img
                 src="/onboarding/chichi-portrait-longsleeve.png"
                 alt=""
@@ -185,14 +188,30 @@ export function StageDraft() {
               </span>
               <span className="tabular font-mono text-xs">-11 dB</span>
             </div>
-            <div className={`flex gap-3 p-3 ${box}`}>
-              <div className={`aspect-video w-28 shrink-0 border ${s.line} ${s.deep}`} />
-              <div>
+            <div className={`flex items-center gap-3 p-3 ${box}`}>
+              <div className={`aspect-video min-w-0 flex-1 border ${s.line} ${s.deep}`} />
+              <div className="w-28 shrink-0">
                 <p className={`font-mono text-xs ${s.muted}`}>NEXT</p>
                 <p className="text-sm font-bold">연습이 변화가 되는 순간</p>
                 <p className={`text-xs ${s.muted}`}>→ 키로 이동</p>
               </div>
             </div>
+            {/* 테두리 3색의 뜻 — 배지를 두지 않는 대신 한 줄 (실제 무대의 `.rail .legend`) */}
+            <p className="flex flex-wrap items-center gap-2 text-[10px]">
+              <span className={s.muted}>테두리 =</span>
+              <i className="flex items-center gap-1 not-italic text-gaze-audience">
+                <b className="w-2.5 border-t-2 border-current" />
+                청중
+              </i>
+              <i className="flex items-center gap-1 not-italic text-gaze-screen">
+                <b className="w-2.5 border-t-2 border-current" />
+                화면
+              </i>
+              <i className="flex items-center gap-1 not-italic text-gaze-unknown">
+                <b className="w-2.5 border-t-2 border-dashed border-current" />
+                판정 불가
+              </i>
+            </p>
           </div>
         </div>
 

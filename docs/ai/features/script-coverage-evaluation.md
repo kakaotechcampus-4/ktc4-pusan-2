@@ -79,7 +79,7 @@ flowchart LR
 ```
 1. **대본 등록 · 수정 (BE)**: 새 대본 버전(대본 원문을 올릴 때 생긴다)의 파싱이 끝나 장별 대본이 생기면, BE가 그 대본 버전의 모든 장을 실어 백그라운드로 `/scripts/rubric`을 부른다. 키워드 점수와 이름 판정은 발표 전체를 함께 보고 하기 때문에 늘 모든 장을 싣는다. 같은 대본 버전을 다시 파싱해도(예: 제한 시간만 바뀜) 이미 성공한 평가 기준·meta는 다시 만들지 않는다. 유효한 재파싱의 전체 장 번호·대본이 달라지면 새 결과를 적용하지 않고 새 버전 등록을 안내한다(`architecture.md` 1-7).
 2. **평가 기준 만들기 (AI)**: 장마다 1차 분석(LLM) → 코드 초안 → 최종 결론(LLM) → 전달 단위 나누기(LLM)를 차례로 하고, 장은 동시에 처리한다. 실패한 장은 `failed`에 담는다. BE는 장별 평가 기준을 저장하고, 최초 200의 failed 중 네 LLM 오류 코드의 장만 `slide_numbers`로 1회 다시 부른다(8절). 장별 첫 성공 기준·meta를 함께 조건부 저장하며 기존 성공본은 덮지 않는다.
-3. **Take 종료 (BE)**: BE가 확정 전사를 장 변경 기록 전체로 장 구간으로 나눠(5-2 `slides`), Take 생성 때 저장한 `script_version_id`의 장마다 STT 텍스트와 저장된 평가 기준을 실어 백그라운드로 `/takes/analyze`를 부른다. 발표에서 넘어간 장도 빈 STT로 싣는다(빠뜨린 장으로 채점되게, 15절 열린 질문).
+3. **Take 종료 (BE)**: BE가 확정 전사를 장 변경 기록 전체로 장 구간으로 나눠(5-2 `slides`), Take 생성 때 저장한 `script_version_id`의 장마다 STT 텍스트와 저장된 평가 기준을 실어 백그라운드로 `/takes/analyze`를 부른다. 발표에서 넘어간 장도 빈 STT로 싣는다(빠뜨린 장으로 채점되게).
 4. **채점 (AI)**: 장마다 STT 정규화 → 대본 문장과 짝짓기 → 수치 확인 → 비슷한 말 찾기 → 전달 단위 판정(LLM) → 문장으로 모으기 → 규칙과 어긋난 장만 교차 검증(LLM) → 핵심 내용으로 모으기 → 점수. 그리고 Take 점수 · 채점된 장의 비율 · 확인할 항목을 계산한다.
 4-1. **부분 재시도·저장 (BE)**: 최초 200의 완전한 채점·meta·요약을 먼저 저장한다. 허용 오류 장만 재채점하고 새 성공 장을 병합 후보로 보존한 뒤, 남은 failed 전체·처음 채점에 쓴 기준과 함께 답 없이 rescore를 부른다. 성공할 때만 확정본·meta·요약을 함께 교체하고 후보를 지운다. 끝내 실패하면 확정본·후보를 보존하고 리뷰를 보류한다(`architecture.md` 1-3 '리뷰 보류' · 1-7, 이 문서 12-2).
 5. **확인 (FE · BE)**: 확인할 항목이 있으면 BE가 FE에 알리고, FE 확인 화면이 항목마다 답을 받는다. BE는 답을 모아 `/takes/rescore`를 부르고 결과로 채점을 덮는다. 답은 리뷰를 부르기 전까지만 받는다(채점 · 리뷰 · 미션이 서로 다른 채점을 바탕으로 남지 않게). 사용자가 건너뛰거나 화면을 떠나거나 확인을 기다린 지 10분이 지나면(`architecture.md` 1-3) 다시 채점하지 않고 리뷰로 넘어간다.
@@ -158,7 +158,7 @@ ai/research/script-coverage-evaluation/
 | `rubrics` | list | 예 | 대본 등록 때 받은 장별 평가 기준 그대로. 평가 기준이 없는 장(만들기가 실패한 장)은 빠질 수 있다 | `["<장별 평가 기준>"]` |
 | `slide_numbers` | list int · null | 아니오 | 채점할 장. null이면 `slides`의 장 전부 | `[5]` |
 
-- 대본 식별자(`script_name`)는 요청에 따로 없다. 라우터가 `rubrics[].meta.script_name`(= 대본 버전)에서 채우는 안을 쓰되, 아직 정하지 않았다(15절 열린 질문). `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 보아 422 `RUBRIC_MISSING`을 돌려준다.
+- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 보아 422 `RUBRIC_MISSING`을 돌려준다.
 
 **`POST /takes/rescore`**
 
@@ -421,7 +421,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 
 # 6. 처리 — 안에서 어떻게 도는가
 ## 6-1. 평가 기준 만들기 (`/scripts/rubric`)
-장마다 아래를 차례로 하고, 장은 동시에 처리한다(동시 개수는 `config.py`). 한 단계라도 실패한 장은 평가 기준을 만들지 않고 `failed`에 담는다.
+장마다 아래를 차례로 하고, 장끼리는 서로 기다리지 않는다. 한 장의 LLM 단계가 끝나면 그 장의 다음 단계를 바로 넣고, 동시에 도는 LLM 호출은 `config.py`의 `RUBRIC_MAX_WORKERS`개까지다. 빈자리에는 이미 시작한 장의 다음 단계(전달 단위 → 최종 결론)를 새 장의 1차 분석보다 먼저 넣는다(마감 안에 끝나는 장을 늘리려고). 캐시 읽기 · 쓰기와 코드 단계는 부르는 스레드에서 하므로, 실행 순서가 달라도 장마다의 결과 · LLM 메시지는 같다. 한 단계라도 실패한 장은 평가 기준을 만들지 않고 `failed`에 담는다.
 
 | 순서 | 하는 일 | LLM |
 |---|---|---|
@@ -452,7 +452,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | ⑨ | 장 점수 계산 | |
 
 - 교차 검증이 실패한 장은 그 장 전체를 `failed`로 돌려준다(1차 판정만으로 내지 않는다).
-- STT가 빈 장(발표에서 넘어감)은 LLM을 부르지 않고 모든 전달 단위를 `missing`으로 판정한다(15절 열린 질문).
+- STT가 빈 장(발표에서 넘어감)은 LLM을 부르지 않고 모든 전달 단위를 `missing`으로 판정한다.
 - 요청 마감 시각이 지나 LLM을 부르지 못한 장은 `LLM_TIMEOUT`으로 `failed`에 담는다.
 
 ## 6-3. 다시 계산 (`/takes/rescore`)
@@ -535,10 +535,16 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 
 최초 rubric·analyze와 허용 재시도는 같은 작업이다. 재시도 전송 때 1회 한도를 쓰고, 전체 문맥 입력은 유지하며 대상 번호만 고른다. 부분 재시도가 에러·무응답이면 최초 응답을 보존한다. AI 내부 재시도와 rescore 재시도는 각각 별도다(`architecture.md` 1-7 · 3절).
 
-- **LLM 호출 한 번**: 기본 12초에서 끊고, 요청 마감 시각 안에 남은 시간이 있을 때만 한 번 더 시도한다. 요청 하나의 모든 호출(장별 · 단계별)이 마감 시각 하나를 같이 쓴다(`architecture.md` 9절). 이것은 코어에 넘기는 LLM 객체가 맡고, 코어는 시계를 쓰지 않는다.
+- **LLM 호출 한 번**: 대본 전달도는 20초에서 끊는다(`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`, 평가 기준 만들기 · 채점 모두, `architecture.md` 10절의 기능별 시간 제한). 기본 12초로는 6 luna의 평가 기준 호출이 자주 잘려서다(아래 잰 값: 12초 제한 없이 p95 16.8초 · 최대 18.4초). 요청 마감 시각 안에 남은 시간이 있을 때만 한 번 더 시도한다. 요청 하나의 모든 호출(장별 · 단계별)이 마감 시각 하나를 같이 쓴다(`architecture.md` 9절). 이것은 코어에 넘기는 LLM 객체가 맡고, 코어는 시계를 쓰지 않는다.
 - **호출 수**: 평가 기준 만들기는 장마다 최대 3번(20장이면 약 60번), 채점은 장마다 1번 + 규칙과 어긋난 장만 1번(가상 데이터에서 장의 약 25%), 다시 계산은 0번.
-- **동시 처리**: 장은 동시에 처리하고, 단계(1차 분석 → 최종 결론 → 전달 단위)는 차례로 한다. 동시 개수는 `config.py`에 두고 장 수별 소요 시간을 재서 정한다.
-- **잰 값 · 어림**: 장 수별 소요 시간은 아직 재지 않았다. 연구 캐시에 남은 시각으로 어림하면 짧은 가상 장(대본 평균 205자)에서 호출 한 번이 약 6초이고, 동시 4개면 평가 기준 만들기가 10장 약 54초 · 20장 약 90초 · 30장 약 144초로 30장에서 AI 예산을 넘는다(어림, 15절 열린 질문). 대본이 긴 장은 호출 한 번이 12초를 넘을 수 있어 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`가 필요한지 함께 잰다.
+- **동시 처리**: 평가 기준 만들기는 장끼리 서로 기다리지 않고 장마다 세 단계를 이어 처리하며, 동시에 도는 LLM 호출은 `RUBRIC_MAX_WORKERS`(12)개까지다(6-1). 채점은 `MAX_WORKERS`(4)개다. 두 값은 `config.py`에 있고 결과에 영향이 없어 `criteria_version`에 들어가지 않는다.
+- **잰 값** (`experiments/07_timing.py`, 모델 `openai/gpt-6-luna`, 가상 장(대본 평균 205자), 캐시 없음, 서비스와 같은 규칙과 클라이언트: 요청 마감 120초 · 호출 한 번 20초 · 남은 시간이 있으면 1번 더 · 스트리밍 · LLM 실행 스레드 40개, BE 재시도 1번까지):
+  - 30장 · 동시 12개: 77초에 30장 모두(재시도 필요 없음). 동시 8개는 108초에 29장 → 재시도 32초로 30장(`timing_20s.json`).
+  - 요청 4개가 동시에(20장씩 · 동시 12개, 실행 스레드 40개를 나눠 씀): 4개 모두 76 ~ 87초에 20장 모두(`timing_20s_concurrent.json`). 호출 241번(요청 안 재시도 1번 포함) 중 시간 초과는 1번이고, 그 재시도로 회복해 BE 재시도는 필요 없었다.
+  - `/takes/analyze`: 30장 34 ~ 35초(호출 중앙값 약 4초).
+  - 12초 제한 없이 잰 평가 기준 호출(20장 · 60번): p50 8.6초 · p95 16.8초 · 최대 18.4초, 20초를 넘은 호출은 없었다. 호출 시간 제한 20초는 이 값으로 정했다. 이 분포는 저장소 밖에서 한 번 돌린 임시 측정이라 결과 JSON을 남기지 않았다(`07_timing.py --call-timeout 90`으로 비슷한 조건을 잴 수 있지만 단계별 백분위는 기록하지 않는다).
+  - 고치기 전(호출 12초 · 단계마다 모든 장을 기다림): 10장부터 시간 초과로 실패하는 장이 생겼고 20 · 30장은 동시 4개면 모든 장이 실패했다(`timing.json`, 스트리밍 없이 잰 값이라 조건이 조금 다르다).
+  - 재지 않은 것: 가상 장보다 긴 실제 대본, 30장이 넘는 대본, 요청 4개 × 30장.
 - **백그라운드 동시 개수**: 긴 LLM 요청이 AI 스레드 풀을 채우면 1초마다 오는 `/coach/evaluate`가 늦어진다. BE가 백그라운드 AI 호출의 동시 개수를 제한한다(`architecture.md` 3절, `ai-service.md` 8절).
 - **요청 크기**: 평가 기준 · 채점이 장 수에 비례해 커서, `/takes/rescore` 요청(채점 + 평가 기준 전체)이 가상 데이터 기준 10장 약 166 KB · 30장 약 0.5 MB다. 실제 대본이 길면 비례해 커진다(서비스 요청 본문 크기 상한을 정할 때 이 값을 넣는다).
 
@@ -547,12 +553,12 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 |---|---|---|---|
 | `feature_version` | `script_coverage-1.0` | 최상위 `version.py` → 응답 `meta` | 출력의 의미가 바뀔 때(판정 규칙 · 프롬프트 · 점수 계산) |
 | `criteria_version` | `script_coverage-<버전>+<config 해시 12자리>` | 최상위 `config.py`의 해시(하위 config · 판정 임계값 · 판정 상태별 점수 · 중요도 가중치) → `/takes/analyze` · `/takes/rescore` 응답 `meta.criteria_versions.script_coverage` | 채점 기준값을 바꾸면 해시가 바뀐다 |
-| `rubric_schema_version` | `1.2` (만든 시각 `created_at`을 빼는 것은 15절 열린 질문) | `version.py` → 평가 기준 `meta.rubric_schema_version` | 평가 기준의 모양이 바뀔 때 |
+| `rubric_schema_version` | `1.2` (1.2: 만든 시각 `created_at`을 뺌) | `version.py` → 평가 기준 `meta.rubric_schema_version` | 평가 기준의 모양이 바뀔 때 |
 | `rubric_id` | 해시 | 평가 기준 `meta.rubric_id` → 채점 `rubric_id` | 장 대본 · LLM 설정(프롬프트 · 출력 스키마 · 모델) · 형식 버전이 바뀌면 달라진다 |
 | 단계별 설정 해시 | 12자리 | 평가 기준 `meta`의 `llm_config_hash` · `final_config_hash` · `unit_config_hash` | 그 단계의 프롬프트 · 스키마 · 모델이 바뀔 때 (연구 캐시 키) |
 | `schema_version` | `1.0` | 응답 `meta` (`architecture.md` 5절) | 요청 · 응답 필드 이름 변경 · 삭제 · 뜻 변경 |
 
-- 평가 기준과 채점에는 만든 시각을 넣지 않는다(코어는 시계를 쓰지 않는다). 언제 만들었는지는 BE 행의 시각으로 본다(15절 열린 질문).
+- 평가 기준과 채점에는 만든 시각을 넣지 않는다(코어는 시계를 쓰지 않는다). 언제 만들었는지는 BE 행의 시각으로 본다.
 - 평가 기준이 바뀌면(`rubric_id`가 다르면) 저장된 채점을 다시 계산할 수 없고 다시 채점해야 한다.
 
 # 10. 실행 · 테스트
@@ -571,7 +577,8 @@ uv sync
 | 코어만 · 실험 도구만 | `uv run python -m pytest tests/unit` · `tests/lab` | 통과 |
 | 실제 LLM으로 장 하나 끝까지 (과금) | `uv run python -m pytest -m live` | 평가 기준 3번 + 채점 1~2번 호출, 유효한 결과 |
 | 평가 기준 만들기 → 채점 → 정확도 | `uv run python experiments/01_build_rubrics.py` → `04_evaluate_takes.py` → `05_accuracy.py` | `reports/results/stt_accuracy.json` (02 · 03 · 06은 선택 · 반복 측정, 과금) |
-| 장 수별 소요 시간 | (실험 스크립트를 더한다) | 장 수별 걸린 시간 · 동시 개수별 비교 |
+| API 예시 다시 만들기 (과금 없음, 연구 캐시 재생) | `uv run python -m coverage_lab.examples` | `src/script_coverage/examples/`의 세 API 요청 · 응답이 다시 만들어지고 계약 테스트가 통과 |
+| 장 수별 소요 시간 (과금) | 단일 요청 `uv run python experiments/07_timing.py --grid 30:8 30:12 --call-timeout 20 --retry --analyze --name timing_20s`, 동시 요청 `... --grid 20:12 --call-timeout 20 --retry --concurrent 4 --name timing_20s_concurrent` | `reports/results/<name>.json` (장 수 · 동시 개수별 걸린 시간 · 최초 · 재시도 뒤 만든 장 · 호출 수) |
 
 - 계약 테스트: 고정된 가짜 LLM으로 `examples/`의 요청을 코어에 넣어 응답이 기대 응답과 같은지 본다(기대 출력은 반올림 없이 저장, 실수는 허용 오차). 세 API의 요청 · 응답, 일부 장 실패, 평가 기준이 없는 장, 확인 답 반영을 넣는다.
 - 단위 테스트가 볼 것: `slide_numbers` 선택, 장별 실패 → `failed` 모양, 모두 실패, `scored_ratio`(analyze · rescore, `failed` 있음 · 없음), 다시 계산의 누적 답, 답 없는 다시 계산, 같은 입력 같은 결과.
@@ -590,7 +597,7 @@ uv sync
 | 응답 `meta` | `feature_version` · `criteria_versions`(채점 응답) · 응답한 모델(`architecture.md` 5 · 9절) |
 | 로그 | 대본 · STT 원문은 남기지 않고 장 수 · 글자 수 · 실패 장 수 · 걸린 시간만 남긴다(`architecture.md` 11절) |
 
-**환경변수**: 코어는 환경변수를 읽지 않는다. LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓰고, 출력이 길어 호출 시간 제한이 달라야 하면 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`를 잰 시간과 함께 더한다.
+**환경변수**: 코어는 환경변수를 읽지 않는다. LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓰고, 호출 한 번의 시간 제한만 이 기능에서 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`으로 다르다(8절의 잰 값). 이 값은 `ai/.env.example`에 이미 있다(`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`). 서비스 설정은 모르는 이름을 무시하므로(`extra="ignore"`) 서비스가 읽기 전에 넣어 두어도 안전하고, 서버의 `ai/.env`(GitHub 시크릿 `AI_ENV`, BE 관리)에도 같은 줄을 미리 넣어 둔다. 서비스로 옮길 때는 서비스 `settings.py`에 이 값을 읽는 칸을 더하고(없으면 `LLM_TIMEOUT_SECONDS`), `structured_llm`이 이 기능의 LLM 객체에 그 값을 쓰게 하며, 서비스 README의 환경변수 표에 더한다. 그때 서버에 이 줄이 없으면 기본 12초로 돌아 장이 많은 대본에서 `LLM_TIMEOUT`이 많아진다(아래 증상 표).
 
 **옮긴 뒤 같은 결과인지 확인**
 1. 단위 테스트 · 계약 테스트 통과 (코어 경계 테스트 포함).
@@ -602,7 +609,7 @@ uv sync
 
 | 증상 | 원인 | 확인 · 해결 |
 |---|---|---|
-| `failed`에 `LLM_TIMEOUT`이 많음 · 장이 많은 대본에서 뒤쪽 장이 실패 | 장 수에 비해 AI 예산이 모자람, 대본이 긴 장의 호출이 12초를 넘음 | AI 로그의 장 수 · 걸린 시간. 동시 개수 · `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS` (8절) |
+| `failed`에 `LLM_TIMEOUT`이 많음 · 장이 많은 대본에서 뒤쪽 장이 실패 | 장 수에 비해 AI 예산이 모자람, 대본이 긴 장의 호출이 시간 제한(20초)을 넘음, `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`가 빠져 기본 12초로 돎 | AI 로그의 장 수 · 걸린 시간 · 호출 시간 제한. 동시 개수(`RUBRIC_MAX_WORKERS`) · `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS` (8절) |
 | 모든 응답이 503 `LLM_UNAVAILABLE` | LLM 키 · 모델 설정 없음, `.env` 값에 따옴표 · 줄 끝 주석 | 서버 `ai/.env` (`architecture.md` 10절) |
 | 503 `NOT_READY`가 계속됨 | 형태소 분석기 불러오기가 끝나지 않음 · 실패 | AI 로그의 lifespan, 헬스체크 `start_period` |
 | 채점 `failed`가 모두 `RUBRIC_MISSING` | 평가 기준 만들기가 끝나기 전에 채점을 부름, 대본 버전이 바뀌어 장 번호가 맞지 않음 | BE의 대본 버전별 평가 기준 상태(`script_versions.rubric_status`) |
@@ -711,15 +718,19 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 
 | 평가 데이터 | 지표 | 중점 | 검증 방법 |
 |---|---|---|---|
-| 장별 발화 + 문장별 정답 라벨 (가상 대본 2개 · 장 20개 · 핵심 내용 80개 · 연습 18번 · 문장 765개, 실제 리허설 발화 · 라벨을 더한다) | 문장 · 핵심 내용 판정 정확도, 심각한 오판 비율(전달 ↔ 누락 · 모순) | 말한 내용을 빠뜨렸다고 하는 심각한 오판을 피하는 것 | `experiments/05_accuracy.py` → `reports/results/stt_accuracy.json` |
+| 장별 발화 + 문장별 정답 라벨 (가상 대본 2개 · 장 20개 · 핵심 내용 80개(6 luna로 다시 만든 평가 기준은 86개) · 연습 18번 · 문장 765개, 실제 리허설 발화 · 라벨을 더한다) | 문장 · 핵심 내용 판정 정확도, 심각한 오판 비율(전달 ↔ 누락 · 모순) | 말한 내용을 빠뜨렸다고 하는 심각한 오판을 피하는 것 | `experiments/05_accuracy.py` → `reports/results/stt_accuracy.json` |
 | 같은 STT를 여러 번 채점 | 같은 입력 재실행 판정 일치율, 장 점수 · Take 점수 흔들림 | 다시 돌려도 판정이 같은 것 | `06_stability.py` → `stt_stability.json` |
 | 같은 대본을 여러 번 분석 | 문장 역할 일치율 · 핵심 내용 대응률 · 이름 · 용어 일치율 | 평가 기준의 일관성 | `03_rubric_consistency.py` → `rubric_consistency.json` |
 | 사용자 확인 (정답 라벨로 답을 대신) | 확인 뒤 판정 정확도 · 심각한 오판 · 보류한 사실 수 | 확인이 점수에 바르게 반영되는 것 | `05_accuracy.py`의 확인 단계 |
-| 장 수를 바꾼 대본 | 장 수별 소요 시간 · 실패 장 수 | AI 예산(120초) 안에 끝나는 것 | 더할 측정 |
+| 장 수를 바꾼 대본 | 장 수별 소요 시간 · 실패 장 수 | AI 예산(120초) 안에 끝나는 것 | `07_timing.py` → `timing_20s.json` · `timing_20s_concurrent.json` |
 
-- **지금 결과** (v1, 가상 데이터, 모델 `openai/gpt-5.6-luna`, 저장소 README 8절): 문장 판정 정확도 0.992(규칙만 0.848 · LLM 1차 0.970), 핵심 내용 0.992, 심각한 오판 0.4%, 핵심 사실 정확도 0.999–1.0, 같은 STT 3번 채점 판정 일치율 0.992, 사용자 확인 뒤 문장 0.996 · 심각한 오판 0%. 규칙을 다듬을 때 보지 않은 대본2는 대본1보다 1%p 정도 낮다. 정확도 차이 ±0.004(2~3문장)는 채점마다 달라지는 폭이라 잡음이다.
+- **지금 결과** (v1, 가상 데이터, 기본 묶음 `openai/gpt-6-luna`, 연구 폴더 README 8절):
+  - 문장 판정 정확도 0.984(규칙만 0.850 · LLM 1차 0.963), 핵심 내용 0.983, 심각한 오판 0.5%, 핵심 사실 정확도 0.996, 사용자 확인 뒤 문장 0.988. 가장 낮은 것은 요약형 발표(문장 0.918)다.
+  - 예전 모델(`openai/gpt-5.6-luna`)의 같은 지표는 문장 0.992 · 핵심 내용 0.992 · 심각한 오판 0.4% · 사용자 확인 뒤 문장 0.996이었다.
+  - 같은 STT 3번 채점의 판정 일치율(0.992)과 같은 대본 반복 분석의 일관성은 예전 모델로만 쟀다.
+  - 정확도 차이 ±0.004(2~3문장)는 예전 모델의 반복 채점에서 본, 채점마다 달라지는 폭이라 잡음으로 본다. 6 luna의 반복 변동 폭은 아직 재지 않았다.
 - 가상 STT와 정답 라벨을 같은 사람이 만들어 실제보다 쉬울 수 있고, 규칙 임계값 일부는 같은 데이터로 정했다. 실제 Deepgram 출력 · 실제 발표자로는 재지 않았다.
-- **모델을 바꾸면 같은 모델끼리 비교한다**: 바꾸기 전 · 후를 같은 모델로 잰다(`architecture.md` 9절). 기본 묶음(6 luna)으로 지금 코드를 다시 재서 기준선으로 쓸지는 아직 정하지 않았다(15절 열린 질문).
+- **모델을 바꾸면 같은 모델끼리 비교한다**: 바꾸기 전 · 후를 같은 모델로 잰다(`architecture.md` 9절). 지금 코드를 기본 묶음(6 luna)으로 다시 잰 위 값이 기준선이다(`01` → `04` → `05`). 반복 측정(`03` · `06`)은 6 luna로 다시 재지 않았다.
 - 기준값을 바꾸면 `criteria_version`이 바뀌므로 결과 JSON을 다시 만들어 같은 PR에 넣는다. 기준값은 고정한 채 새 데이터로 먼저 재고, 그다음에 조정한다.
 
 # 14. 지표 정의
@@ -733,13 +744,7 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 
 # 15. 열린 질문 · 알려진 한계
 **열린 질문** (아직 정하지 않았다)
-- 기능 에러 코드 이름: 추천 `RUBRIC_MISSING` · `RUBRIC_MISMATCH` · `STT_TEXT_MISSING`(7절). 모든 장이 실패했을 때의 상태 코드는 `architecture.md` 4절대로 정해져 있다.
-- `/takes/analyze`의 대본 식별자를 라우터가 `rubrics[].meta.script_name`에서 채우기(5-2).
-- 평가 결과 기준선: 기본 묶음(6 luna)으로 지금 코드를 다시 재서 바꾸기 전 기준선으로 쓰기(13절).
-- 코어에서 만든 시각(`created_at`)을 빼기: 추천은 빼고 BE 행의 시각을 씀.
-- 장별 '반영한 답' 이름: 추천 `applied_answers`(Take 단위 `confirmations`와 이름을 가른다).
-- 발표에서 넘어간 장을 빈 STT로 싣고 LLM 없이 `missing`.
-- 장 동시 처리 수와 장 수가 많은 대본: 장 수별 시간을 잰 뒤 정한다.
+- 장이 아주 많거나(30장 넘음) 긴 실제 대본에서 평가 기준 만들기가 120초 안에 끝나는지. 가상 장으로는 동시 개수 12에서 30장 요청 하나와 4개 동시 20장 요청이 BE 재시도 없이 끝났다(뒤의 것은 요청 안 재시도 1번, 8절). 넘는 경우가 나오면 AI 예산 늘리기(`architecture.md` 3절)와 BE가 장을 묶어 부르기를 비교한다.
 
 **알려진 한계**
 - 실제 데이터로 재지 않았다. 실제 Deepgram 출력의 문장 분리 · 인식 오류 양상 · 실제 발표자의 말투는 가상 데이터와 다를 수 있다.
@@ -759,11 +764,11 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 | 대본 식별자 | 요청 `script_version_id` → 코어 `script_name` → 평가 기준 `meta.script_name` | 5-2 |
 | 일부 장 처리 | `slide_numbers` (null이면 전부). 평가 기준 만들기는 늘 모든 장을 싣는다 | 5-2 |
 | 장별 실패 | `failed[{slide_number, error{code, message}}]`, 한 장이라도 성공하면 200 | 7절 |
-| 기능 에러 코드 | `RUBRIC_MISSING` · `RUBRIC_MISMATCH` · `STT_TEXT_MISSING` (추천, 15절 열린 질문) | 7절 |
+| 기능 에러 코드 | `RUBRIC_MISSING` · `RUBRIC_MISMATCH` · `STT_TEXT_MISSING` | 7절 |
 | Take 값 | `take_scores{content_coverage, critical_fact_accuracy, script_fidelity, similar_words, similar_numbers, scored_ratio}`, `confirmations[{slide_number, item_id, script_text, stt_text}]` — 받은 채점 전체로 다시 계산 | 6-4 |
 | id 규칙 | 문장 · 근거 0부터, `KP1` · `CF1` · `S<문장>-U<순번>` · `R1`(장마다) | 5-3 |
 | LLM 호출 | 평가 기준 장마다 최대 3번, 채점 장마다 1번 + 어긋난 장 1번, 다시 계산 0번 | 8절 |
-| 시간 예산 | rubric · analyze AI 120초 / BE 130초 (실패한 장만 1번), rescore BE 10초 (1번) | 8절 |
+| 시간 예산 | rubric · analyze AI 120초 / BE 130초 (실패한 장만 1번), rescore BE 10초 (1번), LLM 호출 한 번 20초 (`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`) | 8절 |
 | 버전 | `schema_version` `1.0` · `feature_version` `script_coverage-1.0` · `criteria_version` `script_coverage-1.0+<config 해시>` · `rubric_schema_version` `1.2` | 9절 |
 | 저장 | 평가 기준 `script_slides.rubric` · `rubric_meta`, 상태 · 작업 기록 `script_versions.rubric_status` · `rubric_requested_at` · `rubric_retry_used`, 채점 `take_ai_results` (`take_id`, `kind`=`SCRIPT_COVERAGE`, 바꿀 때마다 `revision` + 1), 병합 후보 `SCRIPT_COVERAGE_PENDING`(`base_revision`), Take 재시도 기록 · 보류 사유 `takes.coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason`, 리포트 `take_summaries.speak_accuracy` — 괄호는 유일 제약. 확인 답은 채점 안 `applied_answers` | 12-1 · 12-2 |
 | 장 구간 | 장 변경 기록 `take_slide_events` 전체, 단어는 `start_ms`가 든 구간의 장 | 5-2 |

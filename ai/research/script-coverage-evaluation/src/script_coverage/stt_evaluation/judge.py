@@ -4,7 +4,13 @@ from ..shared.llm_step import config_hash
 from ..shared.rubric import ContentUnit, EvaluationRubric
 from ..shared.text import NormalizedScript
 from .prompts.semantic import SEMANTIC_EVAL_PROMPT
-from .schemas import FactCheck, SemanticEvaluation
+from .schemas import (
+    FactCheck,
+    NameCheck,
+    SemanticEvaluation,
+    SentenceJudgment,
+    UnitJudgment,
+)
 
 
 def eval_config_hash(model: str) -> str:
@@ -68,6 +74,33 @@ def semantic_eval_message(
     lines += ["", "## 발표 STT"]
     lines += [f"[T{s.index}] {s.text}" for s in stt_norm.sentences] or ["(발화 없음)"]
     return "\n".join(lines)
+
+
+def empty_stt_evaluation(
+    rubric: EvaluationRubric, unverified: list[FactCheck]
+) -> SemanticEvaluation:
+    """STT 가 빈 장(발표에서 넘어감)의 의미 평가를 LLM 없이 코드가 만든다: 모든 전달 단위 missing, 이름은 말하지 않음.
+
+    판정 대상 문장마다 하나씩, 이름 확인 목록(N1, N2 …)마다 하나씩 낸다. 캐시에 넣지 않는다.
+    """
+    return SemanticEvaluation(
+        sentences=[
+            SentenceJudgment(
+                sentence_id=i,
+                evidence=[],
+                reason="발표에서 이 장의 내용을 말하지 않았다",
+                units=[
+                    UnitJudgment(unit_id=u.id, status="missing") for u in sentence_units(rubric, i)
+                ],
+                confidence="high",
+            )
+            for i in judged_sentences(rubric)
+        ],
+        name_checks=[
+            NameCheck(name_id=f"N{i}", said=False, evidence=[])
+            for i in range(1, len(unverified) + 1)
+        ],
+    )
 
 
 def evaluate_semantics(message: str, eval_llm) -> SemanticEvaluation:

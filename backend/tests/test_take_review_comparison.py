@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults
 from pitch_coach_backend.module.take.repository import TakeRepository
-from pitch_coach_backend.module.take.service import _build_previous_takes
+from pitch_coach_backend.module.take.service.review import _build_previous_takes
 from tests.test_take_history import _pitch, _take
 
 

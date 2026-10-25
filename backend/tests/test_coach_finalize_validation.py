@@ -9,7 +9,8 @@ import pytest
 from sqlalchemy import select
 
 from pitch_coach_backend.coach import store as coach_store
-from pitch_coach_backend.coach.client import MAX_T_MS, FinalizeReply, HttpCoachClient
+from pitch_coach_backend.coach.client import HttpCoachClient
+from pitch_coach_backend.coach.replies import MAX_T_MS, FinalizeReply
 from pitch_coach_backend.module.take.entity import TakeAIResults, TakeMetricSecond
 from tests import test_coach_finalize_storage as storage
 

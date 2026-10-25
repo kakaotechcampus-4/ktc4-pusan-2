@@ -12,7 +12,6 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     PresentationVersion,
@@ -21,14 +20,16 @@ from pitch_coach_backend.module.pitch.entity import (
     StandardAnalyses,
     Standards,
 )
+from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.take import coach_service
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.entity import (
     Mission,
     Take,
     TakeAIResults,
 )
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service import review as review_service
+from pitch_coach_backend.module.take.service import take as take_service
 from pitch_coach_backend.module.user.entity import User
 
 META = {"schema_version": "1.0", "feature_version": "coach-1.2", "model": None}
@@ -218,7 +219,7 @@ def test_review_uses_the_criteria_fixed_when_the_take_started(
     db_session.add(TakeAIResults(take_id=take.id, kind="TAKE_RESULT", payload={"v": 1}, meta=META))
     db_session.flush()
 
-    request = take_service.build_review_request(db_session, take.id)
+    request = review_service.build_review_request(db_session, take.id)
     assert request.take_result == {"v": 1}
     assert request.script_coverage is None
     if initial_version is None:

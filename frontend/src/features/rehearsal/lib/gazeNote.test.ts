@@ -3,6 +3,7 @@ import { gazeNote } from './gazeNote';
 
 const ok = {
   declined: false,
+  noCamera: false,
   cameraLost: false,
   missingCalibration: false,
   error: null,
@@ -12,6 +13,16 @@ const ok = {
 describe('무대 발밑 줄의 시선 안내', () => {
   it('정상으로 기록 중이면 아무것도 띄우지 않는다 — 발표 중에 읽을 글자를 줄인다', () => {
     expect(gazeNote(ok)).toBeNull();
+  });
+
+  it('카메라 없이 시작하면 연결이 끊겼다는 안내 대신 시선 미기록을 알린다', () => {
+    expect(gazeNote({ ...ok, noCamera: true, cameraLost: true, ready: false })).toEqual({
+      text: '카메라를 열지 못해 시선은 기록하지 않아요',
+      alert: false,
+    });
+    expect(gazeNote({ ...ok, noCamera: true, declined: true })?.text).toBe(
+      '카메라 권한이 없어 시선은 기록하지 않아요',
+    );
   });
 
   it('카메라가 끊기면 고칠 수 있으니 눈에 띄게 알린다', () => {
@@ -50,6 +61,7 @@ describe('무대 발밑 줄의 시선 안내', () => {
     expect(
       gazeNote({
         declined: true,
+        noCamera: false,
         cameraLost: true,
         missingCalibration: true,
         error: null,

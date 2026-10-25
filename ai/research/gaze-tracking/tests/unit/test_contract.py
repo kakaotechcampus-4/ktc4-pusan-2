@@ -8,15 +8,26 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from gaze import config
 from gaze.config import DEFAULT, GazeConfig
-from gaze.schemas import GazeInput, GazeRecord, JudgmentIssue, JudgmentResult, TallyItem
+from gaze.schemas import (
+    GazeInput,
+    GazeRecord,
+    JudgmentIssue,
+    JudgmentResult,
+    TallyItem,
+)
 from gaze.version import FEATURE_VERSION
 
 REQUIRED = {"t_ms": 1000, "since_ms": 0}
-#: 소리 크기 판정 모듈의 기준값 파일 (같은 연구 폴더 묶음 안)
-VOLUME_CONFIG = (
-    Path(__file__).resolve().parents[3] / "volume-analysis" / "src" / "volume" / "config.py"
+#: 소리 크기 판정 모듈의 기준값 파일. 시선 모듈 폴더에서 찾는다:
+#: 서비스는 같은 features/ 아래 volume/, 연구 폴더는 ai/research/volume-analysis/src/volume/
+_GAZE_DIR = Path(config.__file__).parent
+_VOLUME_CONFIGS = (
+    _GAZE_DIR.parent / "volume" / "config.py",
+    _GAZE_DIR.parents[2] / "volume-analysis" / "src" / "volume" / "config.py",
 )
+VOLUME_CONFIG = next((p for p in _VOLUME_CONFIGS if p.exists()), _VOLUME_CONFIGS[0])
 
 # ── 입력 ───────────────────────────────────────────────────────────────────────
 

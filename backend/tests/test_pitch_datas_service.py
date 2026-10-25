@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.pitch import service
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO
 from pitch_coach_backend.module.pitch.entity import (
     PresentationVersion,
@@ -14,10 +13,12 @@ from pitch_coach_backend.module.pitch.entity import (
     Standards,
 )
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
+from pitch_coach_backend.module.pitch.service import pitch as pitch_service
+from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
 
 def _make_pitch(db: Session, user_id: uuid.UUID, title: str = "기존 발표") -> uuid.UUID:
-    return service.add_pitch_service(
+    return pitch_service.add_pitch_service(
         db,
         user_id,
         PitchSaveRequestDTO(title=title, time_limit_sec=300, presentation_date=date(2026, 3, 1)),
@@ -75,7 +76,7 @@ def test_missing_pitch_is_not_found(client: TestClient, user_id: uuid.UUID) -> N
 
 
 def test_returns_the_pitch_id(db_session: Session, pitch_id: uuid.UUID) -> None:
-    result = service.get_pitch_datas(db_session, pitch_id)
+    result = pitch_service.get_pitch_datas(db_session, pitch_id)
 
     assert result.pitch_id == pitch_id
 
@@ -83,7 +84,7 @@ def test_returns_the_pitch_id(db_session: Session, pitch_id: uuid.UUID) -> None:
 def test_returns_empty_lists_when_nothing_exists(
     db_session: Session, pitch_id: uuid.UUID
 ) -> None:
-    result = service.get_pitch_datas(db_session, pitch_id)
+    result = pitch_service.get_pitch_datas(db_session, pitch_id)
 
     assert result.presentation_versions == []
     assert result.script_versions == []
@@ -95,7 +96,7 @@ def test_maps_presentation_id_and_version(
 ) -> None:
     presentation = _make_presentation(db_session, pitch_id, 1, page_count=12)
 
-    result = service.get_pitch_datas(db_session, pitch_id)
+    result = pitch_service.get_pitch_datas(db_session, pitch_id)
 
     assert len(result.presentation_versions) == 1
     summary = result.presentation_versions[0]
@@ -108,10 +109,10 @@ def test_maps_presentation_id_and_version(
 def test_presentation_detail_has_page_count(
     db_session: Session, pitch_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(service, "generate_presigned_url", lambda key: f"https://fake/{key}")
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
     presentation = _make_presentation(db_session, pitch_id, 1, page_count=7)
 
-    detail = service.get_presentation_detail(db_session, pitch_id, presentation.id)
+    detail = presentation_service.get_presentation_detail(db_session, pitch_id, presentation.id)
 
     assert detail.page_count == 7
 
@@ -123,7 +124,7 @@ def test_returns_every_presentation_version(
     _make_presentation(db_session, pitch_id, 1)
     _make_presentation(db_session, pitch_id, 2)
 
-    result = service.get_pitch_datas(db_session, pitch_id)
+    result = pitch_service.get_pitch_datas(db_session, pitch_id)
 
     assert sorted(p.version for p in result.presentation_versions) == [1, 2, 3]
 
@@ -131,7 +132,7 @@ def test_returns_every_presentation_version(
 def test_maps_script_id_and_version(db_session: Session, pitch_id: uuid.UUID) -> None:
     script = _make_script(db_session, pitch_id, 1)
 
-    result = service.get_pitch_datas(db_session, pitch_id)
+    result = pitch_service.get_pitch_datas(db_session, pitch_id)
 
     assert len(result.script_versions) == 1
     summary = result.script_versions[0]
@@ -144,7 +145,7 @@ def test_returns_every_script_version(db_session: Session, pitch_id: uuid.UUID) 
     _make_script(db_session, pitch_id, 1)
     _make_script(db_session, pitch_id, 2)
 
-    result = service.get_pitch_datas(db_session, pitch_id)
+    result = pitch_service.get_pitch_datas(db_session, pitch_id)
 
     assert sorted(s.version for s in result.script_versions) == [1, 2, 3]
 
@@ -154,7 +155,7 @@ def test_maps_evaluation_id_and_version(
 ) -> None:
     standard = _make_standard(db_session, pitch_id, 1)
 
-    result = service.get_pitch_datas(db_session, pitch_id)
+    result = pitch_service.get_pitch_datas(db_session, pitch_id)
 
     assert len(result.evaluation_versions) == 1
     summary = result.evaluation_versions[0]
@@ -166,7 +167,7 @@ def test_returns_every_evaluation(db_session: Session, pitch_id: uuid.UUID) -> N
     _make_standard(db_session, pitch_id, 2, title="개정 기준")
     _make_standard(db_session, pitch_id, 1, title="초기 기준")
 
-    result = service.get_pitch_datas(db_session, pitch_id)
+    result = pitch_service.get_pitch_datas(db_session, pitch_id)
 
     assert sorted(e.version for e in result.evaluation_versions) == [1, 2]
 
@@ -179,7 +180,7 @@ def test_returns_only_the_requested_pitch_data(
     _make_script(db_session, other_pitch_id, 1)
     _make_standard(db_session, other_pitch_id, 1)
 
-    result = service.get_pitch_datas(db_session, pitch_id)
+    result = pitch_service.get_pitch_datas(db_session, pitch_id)
 
     assert result.presentation_versions == []
     assert result.script_versions == []

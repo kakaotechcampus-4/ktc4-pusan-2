@@ -11,7 +11,7 @@ import { takeHistoryHandlers } from './takeHistory';
 import type { TakeCreated, TakeCreateRequest } from '@/types/take';
 import type { ScriptDetail } from '@/types/script';
 import { reportHandlers, reviewFixture } from './report';
-import type { HomeResponse, PrepareResponse } from '@/types/api';
+import type { PrepareResponse } from '@/types/api';
 
 /**
  * 인터페이스 명세 8-4의 JSON을 그대로 옮긴 목.
@@ -28,31 +28,6 @@ import type { HomeResponse, PrepareResponse } from '@/types/api';
 //   .env 의 VITE_API_BASE 가 채워져 있으면 요청이 http://localhost:8000/api/... 로
 //   나갑니다. 상대 경로 핸들러는 **같은 origin 요청만** 잡으므로 그때 목이 통째로
 //   새고, 화면에는 네트워크 오류만 뜹니다. mocks/auth.ts 가 같은 이유로 그렇게 씁니다.
-
-// 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
-// prettier-ignore
-const home: HomeResponse = {
-  nearestPitch: { title: '캡스톤 최종 발표', daysUntil: 3 },
-  nextMission: {
-    pitchId: 'p1',
-    nextTakeNumber: 4,
-    missions: [{ id: 'm1', priority: 1, description: 'Slide 6을 Keyword Mode로 설명하기' }],
-  },
-  weeklyTakeCount: 3,
-  weeklyDelta: 1,
-  pitches: [
-    {
-      id: 'p1', title: '캡스톤 최종 발표', timeLimitSec: 600, daysUntil: 3,
-      presentationVersion: 2, scriptVersion: 2, bestTakeId: null,
-      takes: [
-        { id: 't1', takeNumber: 1, status: 'COMPLETED', isBest: false },
-        { id: 't2', takeNumber: 2, status: 'COMPLETED', isBest: false },
-        { id: 't3', takeNumber: 3, status: 'COMPLETED', isBest: false },
-      ],
-    },
-  ],
-  inProgressTake: null,
-};
 
 /**
  * 장치 점검 준비 정보 — BE #296 `PrepareDTO` 모양 그대로(쪽수 · 장 수는 #298). 홈의 p1과 같은 Pitch입니다 —
@@ -164,6 +139,33 @@ const sampleScript: ScriptDetail = {
   error_code: null,
 };
 
+/**
+ * 발표 종료(PUT)를 실패시킬 에러 코드. null 이면 성공합니다. 재시도 화면(P15)을 목에서 보는 토글입니다 —
+ * 새로고침하면 성공으로 돌아갑니다.
+ *   mockTakeEnd.fail()               500 — 다시 보내기를 띄웁니다
+ *   mockTakeEnd.fail('TAKE_ENDED')   409 — 서버가 이미 끝낸 Take
+ *   mockTakeEnd.ok()                 다시 성공
+ */
+let takeEndFailure: 'INTERNAL_SERVER_ERROR' | 'TAKE_ENDED' | 'TAKE_NOT_STARTED' | null = null;
+
+declare global {
+  interface Window {
+    /** 개발 중 발표 종료 실패 토글. 프로덕션 번들에는 들어가지 않습니다 */
+    mockTakeEnd?: { fail: (code?: NonNullable<typeof takeEndFailure>) => void; ok: () => void };
+  }
+}
+
+if (import.meta.env.DEV) {
+  window.mockTakeEnd = {
+    fail: (code = 'INTERNAL_SERVER_ERROR') => {
+      takeEndFailure = code;
+    },
+    ok: () => {
+      takeEndFailure = null;
+    },
+  };
+}
+
 export const handlers = [
   // ★ 대본 목(scriptHandlers)보다 먼저 와야 합니다 — 그쪽은 모르는 id 에 404 를 돌려줍니다
   http.get(`*/api/pitches/:pitchId/scripts/${prepare.script!.id}`, () =>
@@ -179,14 +181,19 @@ export const handlers = [
   ...standardsHandlers,
   ...pitchHandlers,
   ...scriptHandlers,
-  http.get('*/api/home', () => HttpResponse.json(home)),
 
   ...reportHandlers,
 
   // BE 모양 그대로 — PUT /pitches/{id}/takes/{take_id} 에 TakeUpdateRequestDTO, 응답 {message, take_id}.
   // 발표 종료가 시작 · 종료 시각을 여기로 적습니다 (옛 /complete 는 BE 가 만들지 않기로 함, #134)
+  // 재시도 화면(P15)을 보려면 콘솔에서 `mockTakeEnd.fail()` 뒤 발표를 끝냅니다 (아래 `takeEndFailure`)
   http.put('*/api/pitches/:pitchId/takes/:takeId', ({ params }) =>
-    HttpResponse.json({ message: 'Take updated successfully', take_id: String(params.takeId) }),
+    takeEndFailure
+      ? HttpResponse.json(
+          { code: takeEndFailure, message: '목 종료 실패', detail: null },
+          { status: takeEndFailure === 'INTERNAL_SERVER_ERROR' ? 500 : 409 },
+        )
+      : HttpResponse.json({ message: 'Take updated successfully', take_id: String(params.takeId) }),
   ),
 
   // BE 모양 그대로 — 창을 닫았다 다시 연 Take 를 실패로 끝냅니다. 응답 {message, take_id, status}

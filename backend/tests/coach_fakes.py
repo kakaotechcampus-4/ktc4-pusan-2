@@ -12,7 +12,7 @@ from typing import Any
 
 from sqlalchemy.exc import OperationalError
 
-from pitch_coach_backend.coach.client import (
+from pitch_coach_backend.coach.replies import (
     EvaluateReply,
     FinalizeReply,
     PlanReply,

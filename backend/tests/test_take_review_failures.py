@@ -9,23 +9,23 @@ import httpx2
 import pytest
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.take import service
 from pitch_coach_backend.module.take.dto import ReviewRequestDTO, ReviewResponseDTO
 from pitch_coach_backend.module.take.entity import Mission, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service import review as review_service
 from tests.test_take_history import _pitch, _take
 from tests.test_take_review_response import REVIEW, TAKE_ID
 
 
 @pytest.fixture(autouse=True)
 def no_retry_delay(monkeypatch):
-    monkeypatch.setattr(service, "REVIEW_RETRY_DELAY_SEC", 0)
+    monkeypatch.setattr(review_service, "REVIEW_RETRY_DELAY_SEC", 0)
 
 
 def ai(monkeypatch, handler) -> None:
     client = partial(httpx2.Client, transport=httpx2.MockTransport(handler))
-    monkeypatch.setattr(service.httpx2, "Client", client)
+    monkeypatch.setattr(review_service.httpx2, "Client", client)
 
 
 @pytest.mark.parametrize("case", ["major", "nul", "nan", "surrogate", "score-overflow"])
@@ -49,7 +49,7 @@ def test_invalid_review_does_not_retry(monkeypatch, case) -> None:
 
     ai(monkeypatch, handler)
     with pytest.raises(InvalidReviewResponse):
-        service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+        review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
     assert len(calls) == 1
 
 
@@ -69,7 +69,7 @@ def test_review_http_errors_are_502_and_retry_only_transient_statuses(
 
     ai(monkeypatch, handler)
     with pytest.raises(InvalidReviewResponse) as error:
-        service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+        review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
     assert error.value.status_code == 502
     assert len(calls) == attempts
     assert len({request.headers["X-Request-ID"] for request in calls}) == 1
@@ -85,7 +85,7 @@ def test_review_network_failure_becomes_502_after_one_retry(monkeypatch, error_t
 
     ai(monkeypatch, handler)
     with pytest.raises(InvalidReviewResponse):
-        service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+        review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
     assert len(calls) == 2
     assert calls[0].headers["X-Request-ID"] == calls[1].headers["X-Request-ID"]
 
@@ -101,7 +101,7 @@ def test_review_retry_succeeds_and_fallback_is_a_normal_result(monkeypatch) -> N
         return httpx2.Response(503) if len(calls) == 1 else httpx2.Response(200, json=reply)
 
     ai(monkeypatch, handler)
-    assert service.request_review(TAKE_ID, ReviewRequestDTO(take_result={})).fallback_reason
+    assert review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={})).fallback_reason
     assert len(calls) == 2
     assert calls[0].headers["X-Request-ID"] == calls[1].headers["X-Request-ID"]
 
@@ -120,7 +120,7 @@ def test_review_storage_validates_again_before_any_write(db_session, user_id, ca
         review.overall_summary = "bad\x00text"
 
     with pytest.raises(InvalidReviewResponse):
-        service.save_review(db_session, take.id, review)
+        review_service.save_review(db_session, take.id, review)
 
     assert TakeRepository(db_session).get_ai_result(take.id, "REVIEW") is None
     assert db_session.query(Mission).filter_by(source_take_id=take.id).count() == 0

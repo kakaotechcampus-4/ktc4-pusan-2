@@ -207,8 +207,8 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[Te
     from pitch_coach_backend.coach import dependencies as coach_dependencies
     from pitch_coach_backend.core.database import get_db
     from pitch_coach_backend.main import app
-    from pitch_coach_backend.module.pitch import service as pitch_service
     from pitch_coach_backend.module.pitch.dependencies import get_script_parse_runner
+    from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 
     monkeypatch.setattr(main, "get_s3", lambda: None)
     # 발표 삭제·회원 탈퇴 뒤 S3 파일 정리가 실제 버킷을 부르지 않게 막는다

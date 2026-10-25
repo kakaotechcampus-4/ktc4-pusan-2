@@ -25,8 +25,9 @@ const HEADLINE: Record<Variant, string> = {
 };
 
 const BODY: Record<Variant, string> = {
-  FAILED: '기록은 이 브라우저에 그대로 남아 있어요. 연결이 돌아오면 다시 보내 주세요.',
-  RETRYING: '잠시만 기다려 주세요. 창을 닫아도 기록은 남아 있어요.',
+  FAILED:
+    '기록은 이 브라우저에 남아 있지만, 서버는 몇 분 뒤 이 Take를 끝내요. 가능하면 지금 다시 보내 주세요.',
+  RETRYING: '잠시만 기다려 주세요. 다 보낼 때까지 이 창을 열어 두세요.',
   ABANDONED: '지난번 발표 도중 창이 닫힌 것 같아요. 남은 기록으로 이 Take를 마무리할 수 있어요.',
 };
 

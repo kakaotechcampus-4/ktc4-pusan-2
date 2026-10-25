@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.coach import store as coach_store
-from pitch_coach_backend.coach.client import FinalizeReply
+from pitch_coach_backend.coach.replies import FinalizeReply
 from pitch_coach_backend.coach.requests import SlideEvent
 from pitch_coach_backend.coach.store import DbCoachStore
 from pitch_coach_backend.module.pitch.entity import (
@@ -22,7 +22,6 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptVersion,
 )
 from pitch_coach_backend.module.take import coach_service
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.entity import (
     CoachEvent,
     Take,
@@ -32,6 +31,7 @@ from pitch_coach_backend.module.take.entity import (
     TakeSummary,
 )
 from pitch_coach_backend.module.take.exception import NonExistentTake
+from pitch_coach_backend.module.take.service import record as record_service
 from pitch_coach_backend.module.user.entity import User
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "ai/research/coach-agent/src/coach/examples"
@@ -337,7 +337,7 @@ def test_raw_seconds_are_not_added_after_the_take_result(
         t_ms=1_000, slide_number=None, gaze=None, voice=None, stt_status="ok"
     )
 
-    take_service.append_metric_seconds(db_session, take.id, [row])
+    record_service.append_metric_seconds(db_session, take.id, [row])
 
     rows = db_session.scalars(
         select(TakeMetricSecond).where(TakeMetricSecond.take_id == take.id)
@@ -353,7 +353,7 @@ def test_raw_seconds_of_a_deleted_take_raise(db_session: Session):
     )
 
     with pytest.raises(NonExistentTake):
-        take_service.append_metric_seconds(db_session, uuid.uuid7(), [row])
+        record_service.append_metric_seconds(db_session, uuid.uuid7(), [row])
 
 
 @pytest.mark.anyio

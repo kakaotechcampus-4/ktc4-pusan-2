@@ -1,13 +1,13 @@
 """말 없음 판단과 자동 종료 조건. 네트워크 없이 숫자만 확인한다.
 
-스트림에 붙인 흐름(알림·정리·재연결 거절)은 test_realtime_ws.py 의 "자동 종료" 절에 있다.
+스트림에 붙인 흐름(알림·정리·재연결 거절)은 tests/realtime/test_ws_auto_end.py 에 있다.
 """
 
 import pytest
 
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.dto import AutoEndReason
+from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
 
 # 2분 말이 없고, 직전 5분 중 80% 이상이 말 없음
 POLICY = AutoEndPolicy(

@@ -120,8 +120,10 @@ export function StageDemo() {
 
             <div className="rail">
               <section className="camera">
-                <div className="guide" />
-                <span className="tag">CAMERA 16:9</span>
+                <div className="frame">
+                  <div className="guide" />
+                  <span className="tag">CAMERA 16:9</span>
+                </div>
               </section>
               <section className="mic">
                 <span className="text-xs text-stone">음량 — 실제 값은 P5에서</span>

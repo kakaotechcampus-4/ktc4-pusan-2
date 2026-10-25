@@ -17,14 +17,13 @@ from pitch_coach_backend.module.take.dto import (
     TakeUpdateRequestDTO,
 )
 from pitch_coach_backend.module.take.exception import TakeInProgress, TakeNotReviewable
-from pitch_coach_backend.module.take.service import (
-    close_take_service,
+from pitch_coach_backend.module.take.service.lifecycle import close_take_service, mark_ended
+from pitch_coach_backend.module.take.service.review import get_review_result
+from pitch_coach_backend.module.take.service.take import (
     create_calibration_service,
     create_take_service,
     delete_take_service,
-    get_review_result,
     list_takes_service,
-    mark_ended,
     update_take_service,
 )
 

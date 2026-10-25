@@ -12,15 +12,17 @@
 
 import json
 import sqlite3
+from collections.abc import Collection
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 
+from script_coverage.core import rescore_evaluation, take_scores
+from script_coverage.schemas import Answer, RescoreRequest
 from script_coverage.shared.rubric import EvaluationRubric
-from script_coverage.stt_evaluation.confirm import CONFIRM_TEXT, rescore_evaluation
+from script_coverage.stt_evaluation.confirm import CONFIRM_TEXT
 from script_coverage.stt_evaluation.schemas import ConfirmAnswer, SlideEvaluation, Take
-from script_coverage.stt_evaluation.scoring import take_scores
 
 from .paths import DB_PATH
 
@@ -149,7 +151,13 @@ def save_rubric(conn: sqlite3.Connection, rubric: EvaluationRubric) -> None:
     m = rubric.meta
     conn.execute(
         "INSERT OR REPLACE INTO evaluation_rubrics VALUES (?, ?, ?, ?, ?)",
-        (m.script_name, m.slide_number, m.content_hash, rubric.model_dump_json(), m.created_at),
+        (
+            m.script_name,
+            m.slide_number,
+            m.content_hash,
+            rubric.model_dump_json(),
+            datetime.now(UTC).isoformat(timespec="seconds"),  # 코어는 시각을 만들지 않는다
+        ),
     )
     conn.commit()
 
@@ -184,6 +192,7 @@ def load_rubrics(conn: sqlite3.Connection, script_name: str) -> dict[int, Evalua
 
 def save_evaluation(conn: sqlite3.Connection, evaluation: SlideEvaluation) -> None:
     """평가 결과 · 비슷한 말 · 확인 결과 삭제를 한 트랜잭션으로 저장한다. 중간에 실패하면 모두 되돌린다."""
+    now = datetime.now(UTC).isoformat(timespec="seconds")  # 코어는 시각을 만들지 않는다
     with conn:  # 성공하면 commit, 예외가 나면 rollback
         conn.execute(
             "INSERT OR REPLACE INTO slide_evaluations VALUES (?, ?, ?, ?, ?, ?)",
@@ -193,7 +202,7 @@ def save_evaluation(conn: sqlite3.Connection, evaluation: SlideEvaluation) -> No
                 evaluation.script_name,
                 evaluation.rubric_id,
                 evaluation.model_dump_json(),
-                evaluation.created_at,
+                now,
             ),
         )
         conn.execute(
@@ -224,7 +233,7 @@ def save_evaluation(conn: sqlite3.Connection, evaluation: SlideEvaluation) -> No
                     json.dumps(it.key_point_ids),
                     it.rule_guess,
                     json.dumps(it.signals, ensure_ascii=False),
-                    evaluation.created_at,
+                    now,
                 )
                 for it in evaluation.similar_items
             ],
@@ -282,12 +291,27 @@ def _confirmed_evaluation(
     answers = load_confirmations(conn, original)
     if not answers:
         return original
-    evaluation = rescore_evaluation(
-        original, answers, load_rubric(conn, original.script_name, slide_number)
+    # 최상위 `core.rescore_evaluation` 으로 처음 채점에 저장된 답 전부를 한 번에 반영한다 (누적 답 규칙은 코어가 정한다)
+    rubric = load_rubric(conn, original.script_name, slide_number)
+    response = rescore_evaluation(
+        RescoreRequest(
+            take_id=take_id,
+            evaluations=[original],
+            rubrics=[rubric] if rubric else [],
+            answers=[
+                Answer(slide_number=slide_number, item_id=i, answer=a) for i, a in answers.items()
+            ],
+        )
     )
+    evaluation = response.evaluations[0]
     conn.execute(
         "INSERT OR REPLACE INTO confirmed_evaluations VALUES (?, ?, ?, ?)",
-        (take_id, slide_number, evaluation.model_dump_json(), evaluation.created_at),
+        (
+            take_id,
+            slide_number,
+            evaluation.model_dump_json(),
+            datetime.now(UTC).isoformat(timespec="seconds"),
+        ),
     )
     return evaluation
 
@@ -328,8 +352,11 @@ def confirm_similar_item(
         return _confirmed_evaluation(conn, take_id, slide_number)
 
 
-def confirmed_take_scores(conn: sqlite3.Connection, take_id: str) -> dict:
-    """연습 한 번의 최종 점수 (사용자 확인 반영). 슬라이드 점수를 처음 채점과 같은 방식으로 모은다."""
+def confirmed_take_scores(
+    conn: sqlite3.Connection, take_id: str, targets: Collection[int] | None = None
+) -> dict:
+    """연습 한 번의 최종 점수 (사용자 확인 반영). `targets` 는 그 연습의 대상 장 번호 (`scored_ratio` 의 분모, 실패한 장도 든다).
+    주지 않으면 DB 에 채점이 저장된 장만 대상이라 `scored_ratio` 가 늘 1 이다."""
     slides = [
         n
         for (n,) in conn.execute(
@@ -337,4 +364,5 @@ def confirmed_take_scores(conn: sqlite3.Connection, take_id: str) -> dict:
             (take_id,),
         )
     ]
-    return take_scores([confirmed_evaluation(conn, take_id, n) for n in slides])
+    evaluations = [confirmed_evaluation(conn, take_id, n) for n in slides]
+    return take_scores(evaluations, slides if targets is None else targets).model_dump()

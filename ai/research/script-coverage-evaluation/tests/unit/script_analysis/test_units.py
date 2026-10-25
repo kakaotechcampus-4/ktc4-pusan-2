@@ -97,9 +97,9 @@ def test_build_content_units_without_llm_units_uses_whole_sentences():
 
 def test_attach_units_updates_meta():
     with_units = attach_units(_rubric(), SLIDE_UNITS, "test-model")
-    assert with_units.meta.rubric_id == "dd78eb47f964443f"
+    assert with_units.meta.rubric_id == "b027d10db676d46c"
     assert with_units.meta.unit_config_hash == "150d0924a7b6"
     without = attach_units(_rubric(), None, "test-model")
-    assert without.meta.rubric_id == "425ea6231a264b4e"
+    assert without.meta.rubric_id == "4ee76f22efeccb1f"
     assert without.meta.unit_config_hash == ""
     assert without.warnings == ["units_not_split:S0", "units_not_split:S1"]

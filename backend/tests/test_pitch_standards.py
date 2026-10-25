@@ -1,6 +1,6 @@
 """평가 기준 등록(POST /add/{id}/standards)·버전별 조회(GET /{id}/evaluations/{version}).
 
-AI 서버는 httpx2.MockTransport 로 대신한다.
+AI 서버는 httpx.MockTransport 로 대신한다.
 """
 
 import json
@@ -8,20 +8,22 @@ import uuid
 from collections.abc import Callable
 from functools import partial
 
-import httpx2
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.pitch import service
+from pitch_coach_backend.module.pitch.adapter import standard_parser
 from pitch_coach_backend.module.pitch.entity import Standards
 
 AI_RESPONSE = {
     "display_criteria": ["추임새 5번 이하", "대본 없이 발표하기"],
     "values": {"filler": "5번 이하", "script_used": False},
     "excluded": ["발표 시간", "억양"],
+    "targets": [],
+    "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.0", "model": None},
 }
 
 
@@ -42,18 +44,20 @@ def pitch_id(client: TestClient, auth_headers: dict[str, str]) -> uuid.UUID:
 
 
 @pytest.fixture
-def ai(monkeypatch: pytest.MonkeyPatch) -> Callable[[httpx2.Response], list[httpx2.Request]]:
+def ai(monkeypatch: pytest.MonkeyPatch) -> Callable[[httpx.Response], list[httpx.Request]]:
     """AI 서버가 돌려줄 응답을 정한다. 받은 요청 목록을 돌려준다."""
 
-    def use(response: httpx2.Response) -> list[httpx2.Request]:
-        requests: list[httpx2.Request] = []
+    def use(response: httpx.Response) -> list[httpx.Request]:
+        requests: list[httpx.Request] = []
 
-        def handler(request: httpx2.Request) -> httpx2.Response:
+        def handler(request: httpx.Request) -> httpx.Response:
             requests.append(request)
             return response
 
-        transport = httpx2.MockTransport(handler)
-        monkeypatch.setattr(service.httpx2, "Client", partial(httpx2.Client, transport=transport))
+        transport = httpx.MockTransport(handler)
+        monkeypatch.setattr(
+            standard_parser.httpx, "AsyncClient", partial(httpx.AsyncClient, transport=transport)
+        )
         return requests
 
     return use
@@ -86,9 +90,9 @@ def test_post_saves_items_in_order_and_returns_them(
     db_session: Session,
     auth_headers: dict[str, str],
     pitch_id: uuid.UUID,
-    ai: Callable[[httpx2.Response], list[httpx2.Request]],
+    ai: Callable[[httpx.Response], list[httpx.Request]],
 ) -> None:
-    requests = ai(httpx2.Response(200, json=AI_RESPONSE))
+    requests = ai(httpx.Response(200, json=AI_RESPONSE))
 
     response = _post(client, pitch_id, auth_headers)
 
@@ -114,11 +118,15 @@ def test_post_again_makes_next_version(
     db_session: Session,
     auth_headers: dict[str, str],
     pitch_id: uuid.UUID,
-    ai: Callable[[httpx2.Response], list[httpx2.Request]],
+    ai: Callable[[httpx.Response], list[httpx.Request]],
 ) -> None:
-    ai(httpx2.Response(200, json=AI_RESPONSE))
+    ai(httpx.Response(200, json=AI_RESPONSE))
     assert _post(client, pitch_id, auth_headers).status_code == 200
-    ai(httpx2.Response(200, json={"display_criteria": ["적절한 음량"], "excluded": []}))
+    ai(
+        httpx.Response(
+            200, json={**AI_RESPONSE, "display_criteria": ["적절한 음량"], "excluded": []}
+        )
+    )
 
     response = _post(client, pitch_id, auth_headers)
 
@@ -131,9 +139,9 @@ def test_get_evaluation_returns_saved_version_in_order(
     client: TestClient,
     auth_headers: dict[str, str],
     pitch_id: uuid.UUID,
-    ai: Callable[[httpx2.Response], list[httpx2.Request]],
+    ai: Callable[[httpx.Response], list[httpx.Request]],
 ) -> None:
-    ai(httpx2.Response(200, json=AI_RESPONSE))
+    ai(httpx.Response(200, json=AI_RESPONSE))
     assert _post(client, pitch_id, auth_headers).status_code == 200
 
     response = client.get(f"/api/pitches/{pitch_id}/evaluations/1", headers=auth_headers)
@@ -148,10 +156,10 @@ def test_get_evaluation_returns_saved_version_in_order(
 @pytest.mark.parametrize(
     "ai_response",
     [
-        httpx2.Response(500, json={"detail": "LLM 실패"}),
-        httpx2.Response(200, text="not json"),
-        httpx2.Response(200, json={"values": {}}),
-        httpx2.Response(200, json={"display_criteria": "문자열 하나"}),
+        httpx.Response(500, json={"detail": "LLM 실패"}),
+        httpx.Response(200, text="not json"),
+        httpx.Response(200, json={"values": {}}),
+        httpx.Response(200, json={"display_criteria": "문자열 하나"}),
     ],
     ids=["ai-500", "not-json", "no-display-criteria", "wrong-type"],
 )
@@ -160,8 +168,8 @@ def test_ai_failure_is_502_and_saves_nothing(
     db_session: Session,
     auth_headers: dict[str, str],
     pitch_id: uuid.UUID,
-    ai: Callable[[httpx2.Response], list[httpx2.Request]],
-    ai_response: httpx2.Response,
+    ai: Callable[[httpx.Response], list[httpx.Request]],
+    ai_response: httpx.Response,
 ) -> None:
     ai(ai_response)
 
@@ -178,11 +186,13 @@ def test_ai_unreachable_is_502(
     pitch_id: uuid.UUID,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def refuse(request: httpx2.Request) -> httpx2.Response:
-        raise httpx2.ConnectError("connection refused", request=request)
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
 
-    transport = httpx2.MockTransport(refuse)
-    monkeypatch.setattr(service.httpx2, "Client", partial(httpx2.Client, transport=transport))
+    transport = httpx.MockTransport(refuse)
+    monkeypatch.setattr(
+        standard_parser.httpx, "AsyncClient", partial(httpx.AsyncClient, transport=transport)
+    )
 
     response = _post(client, pitch_id, auth_headers)
 
@@ -203,7 +213,7 @@ def test_invalid_input_is_422_without_calling_ai_or_saving(
     ai,
     text,
 ) -> None:
-    requests = ai(httpx2.Response(200, json=AI_RESPONSE))
+    requests = ai(httpx.Response(200, json=AI_RESPONSE))
 
     response = _post(client, pitch_id, auth_headers, text)
 
@@ -219,7 +229,7 @@ def test_invalid_input_is_422_without_calling_ai_or_saving(
     ids=["one-character", "two-thousand", "trim-before-limit"],
 )
 def test_input_limits_apply_after_trimming(client, auth_headers, pitch_id, ai, text) -> None:
-    requests = ai(httpx2.Response(200, json=AI_RESPONSE))
+    requests = ai(httpx.Response(200, json=AI_RESPONSE))
 
     response = _post(client, pitch_id, auth_headers, text)
 
@@ -257,10 +267,10 @@ def test_invalid_ai_response_is_502_and_preserves_the_previous_version(
     ai,
     reply,
 ) -> None:
-    ai(httpx2.Response(200, json=AI_RESPONSE))
+    ai(httpx.Response(200, json=AI_RESPONSE))
     assert _post(client, pitch_id, auth_headers).status_code == 200
     saved = _saved(db_session, pitch_id)
-    requests = ai(httpx2.Response(200, json=reply))
+    requests = ai(httpx.Response(200, json={**AI_RESPONSE, **reply}))
 
     response = _post(client, pitch_id, auth_headers)
 
@@ -278,7 +288,7 @@ def test_ten_fifty_character_titles_are_saved_without_truncation(
     ai,
 ) -> None:
     titles = [str(n) + "가" * 49 for n in range(10)]
-    ai(httpx2.Response(200, json={"display_criteria": titles, "excluded": []}))
+    ai(httpx.Response(200, json={**AI_RESPONSE, "display_criteria": titles, "excluded": []}))
 
     response = _post(client, pitch_id, auth_headers)
 
@@ -295,7 +305,7 @@ def test_no_display_criteria_is_a_valid_response(
     ai,
     excluded,
 ) -> None:
-    ai(httpx2.Response(200, json={"display_criteria": [], "excluded": excluded}))
+    ai(httpx.Response(200, json={**AI_RESPONSE, "display_criteria": [], "excluded": excluded}))
 
     response = _post(client, pitch_id, auth_headers)
 
@@ -314,7 +324,7 @@ def test_ai_input_rejection_is_distinct_from_an_ai_outage(
     status,
     expected,
 ) -> None:
-    requests = ai(httpx2.Response(status, json={"error": {"code": "fake", "message": "fake"}}))
+    requests = ai(httpx.Response(status, json={"error": {"code": "fake", "message": "fake"}}))
 
     response = _post(client, pitch_id, auth_headers)
 

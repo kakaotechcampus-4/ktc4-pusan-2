@@ -5,8 +5,8 @@
 """
 
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.realtime.stt_adapter import DeepgramSttAdapter, SttAdapter
-from pitch_coach_backend.realtime.transcript_store import DbTranscriptStore, TranscriptStore
+from pitch_coach_backend.realtime.storage.store import DbTranscriptStore, TranscriptStore
+from pitch_coach_backend.realtime.stt.adapter import DeepgramSttAdapter, SttAdapter
 
 # 연결 풀이 없다. 세션마다 새 WebSocket 을 여니 어댑터는 키와 키별 소진 표시만 들고 있다.
 # 모든 Take 가 이 하나를 같이 쓰므로 한 Take 에서 소진된 키는 다른 Take 도 건너뛴다

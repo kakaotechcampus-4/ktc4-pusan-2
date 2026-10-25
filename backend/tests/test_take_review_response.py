@@ -1,4 +1,4 @@
-"""AI 리뷰 응답 검사 (service.request_review).
+"""AI 리뷰 응답 검사 (review_service.request_review).
 
 응답이 missions 칸 · 제약에 맞지 않으면 저장 전에 InvalidReviewResponse(502) 로 거른다.
 AI 서버는 httpx2.MockTransport 로 대신한다.
@@ -12,9 +12,9 @@ from typing import Any
 import httpx2
 import pytest
 
-from pitch_coach_backend.module.take import service
 from pitch_coach_backend.module.take.dto import ReviewRequestDTO
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
+from pitch_coach_backend.module.take.service import review as review_service
 
 TAKE_ID = uuid.uuid4()
 
@@ -59,7 +59,9 @@ def ai(monkeypatch: pytest.MonkeyPatch):
 
     def use(response: httpx2.Response) -> None:
         transport = httpx2.MockTransport(lambda request: response)
-        monkeypatch.setattr(service.httpx2, "Client", partial(httpx2.Client, transport=transport))
+        monkeypatch.setattr(
+            review_service.httpx2, "Client", partial(httpx2.Client, transport=transport)
+        )
 
     return use
 
@@ -67,7 +69,7 @@ def ai(monkeypatch: pytest.MonkeyPatch):
 def test_valid_review_is_returned(ai) -> None:
     ai(httpx2.Response(200, json=REVIEW))
 
-    review = service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+    review = review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
 
     assert [m.priority for m in review.next_missions] == [1, 2]
 
@@ -91,7 +93,7 @@ def test_invalid_review_is_rejected(ai, review: dict[str, Any]) -> None:
     ai(httpx2.Response(200, json=review))
 
     with pytest.raises(InvalidReviewResponse) as e:
-        service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+        review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
 
     assert e.value.status_code == 502
 
@@ -100,4 +102,4 @@ def test_non_json_review_is_rejected(ai) -> None:
     ai(httpx2.Response(200, text="not json"))
 
     with pytest.raises(InvalidReviewResponse):
-        service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+        review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))

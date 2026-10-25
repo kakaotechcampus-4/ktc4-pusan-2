@@ -11,7 +11,9 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch import service as pitch_service
+from pitch_coach_backend.module.pitch.service import pitch as pitch_service
+from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.pitch.service import standard as standard_service
 from pitch_coach_backend.module.take.coach_repository import (
     REVIEW,
     TAKE_RESULT,
@@ -60,7 +62,7 @@ def start_take(db: Session, take_id: uuid.UUID) -> bool:
     repo.fix_started_values(
         take_id,
         mission_ids=mission_ids,
-        standard_version=pitch_service.latest_analysis_version(db, pitch_id),
+        standard_version=standard_service.latest_analysis_version(db, pitch_id),
         raw_data_consent=bool(owner is not None and owner.raw_data_consent),
     )
     db.commit()
@@ -109,7 +111,7 @@ def _take_coach_values(db: Session, repo: CoachRepository, take: Take) -> TakeCo
     pitch = pitch_service.find_pitch(db, take.pitch_id)
     if pitch is None:
         return None
-    script = pitch_service.find_script_version(db, take.script_version_id)
+    script = script_service.find_script_version(db, take.script_version_id)
     reviewed = repo.latest_reviewed_take(take.pitch_id, before=take.take_number)
     return TakeCoachValues(
         take_id=take.id,
@@ -121,12 +123,12 @@ def _take_coach_values(db: Session, repo: CoachRepository, take: Take) -> TakeCo
         lower_deviation_sec=pitch.lower_deviation,
         upper_deviation_sec=pitch.upper_deviation,
         script_version_id=take.script_version_id,
-        slides=_slide_timings(pitch_service.script_slides(db, take.script_version_id)),
+        slides=_slide_timings(script_service.script_slides(db, take.script_version_id)),
         parsed_target_ms=_parsed_target_ms(script.parse_meta if script else None),
         missions=tuple(_mission_input(m) for m in repo.missions(_mission_ids(take.mission_ids))),
         recurring_issues=_recurring_issues(repo, reviewed),
         source_take_id=repo.latest_completed_take(take.pitch_id, before=take.take_number),
-        script_used=pitch_service.script_used(db, take.pitch_id, take.standard_version),
+        script_used=standard_service.script_used(db, take.pitch_id, take.standard_version),
         base_level_db=repo.base_level_db(take.id),
         slide_events=tuple(
             SlideEvent(e.slide_number, e.started_ms) for e in repo.slide_events(take.id)
@@ -351,10 +353,10 @@ def coaching_plan_values(db: Session, pitch_id: uuid.UUID) -> PlanValues | None:
     pitch = pitch_service.find_pitch(db, pitch_id)
     if pitch is None:
         return None
-    script = pitch_service.latest_parsed_script(db, pitch_id)
+    script = script_service.latest_parsed_script(db, pitch_id)
     if script is None:
         return None
-    slides = pitch_service.script_slides(db, script.id)
+    slides = script_service.script_slides(db, script.id)
     source = repo.latest_completed_take(pitch_id, before=None)
     reviewed = repo.latest_reviewed_take(pitch_id, before=None)
     previous_result = repo.ai_result(source, TAKE_RESULT) if source else None

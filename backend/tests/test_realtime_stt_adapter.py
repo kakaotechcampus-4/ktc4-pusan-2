@@ -11,8 +11,8 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from websockets.asyncio.server import serve
 
-from pitch_coach_backend.realtime import stt_adapter
-from pitch_coach_backend.realtime.stt_adapter import (
+from pitch_coach_backend.realtime.stt import adapter as stt_adapter
+from pitch_coach_backend.realtime.stt.adapter import (
     DeepgramSttAdapter,
     Metadata,
     SpeechStarted,

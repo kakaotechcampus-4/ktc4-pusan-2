@@ -4,15 +4,15 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     ScriptParseStatus,
     ScriptSlide,
     ScriptVersion,
 )
-from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
-from pitch_coach_backend.realtime.keyterms import (
+from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
+from pitch_coach_backend.realtime.stt.keyterms import (
     MAX_KEYTERM_TOKENS,
     MAX_KEYTERMS,
     TOKEN_HEADROOM,
@@ -78,7 +78,7 @@ def test_count_limit():
     assert len(keyterms) == MAX_KEYTERMS
 
 
-# ── pitch_service.stt_keyterm_candidates ──────────────────────────────
+# ── script_service.stt_keyterm_candidates ──────────────────────────────
 
 
 def _script(db: Session, user_id: uuid.UUID, **fields) -> ScriptVersion:
@@ -110,7 +110,7 @@ def test_candidates_are_terms_only(db_session: Session, user_id: uuid.UUID):
     # 슬라이드 keywords 는 발음 잡기용이 아니라 넣지 않는다
     _slide(db_session, script, 1, ["좌석 예측"])
 
-    assert pitch_service.stt_keyterm_candidates(db_session, script.pitch_id, script.id) == [
+    assert script_service.stt_keyterm_candidates(db_session, script.pitch_id, script.id) == [
         "SeatFlow",
         "XGBoost",
     ]
@@ -120,10 +120,10 @@ def test_candidates_empty_until_parse_is_done(db_session: Session, user_id: uuid
     script = _script(db_session, user_id, terms=["SeatFlow"])  # PENDING
     _slide(db_session, script, 1, ["키워드"])
 
-    assert pitch_service.stt_keyterm_candidates(db_session, script.pitch_id, script.id) == []
+    assert script_service.stt_keyterm_candidates(db_session, script.pitch_id, script.id) == []
 
 
 def test_candidates_ignore_script_of_another_pitch(db_session: Session, user_id: uuid.UUID):
     script = _script(db_session, user_id, parse_status=ScriptParseStatus.DONE, terms=["SeatFlow"])
 
-    assert pitch_service.stt_keyterm_candidates(db_session, uuid.uuid4(), script.id) == []
+    assert script_service.stt_keyterm_candidates(db_session, uuid.uuid4(), script.id) == []

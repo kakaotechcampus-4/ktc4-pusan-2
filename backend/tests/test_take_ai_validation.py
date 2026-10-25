@@ -10,9 +10,9 @@ import httpx
 import pytest
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.take import service
 from pitch_coach_backend.module.take.entity import TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service import coverage as coverage_service
 from tests.test_take_history import _pitch, _take
 
 
@@ -109,7 +109,7 @@ INVALID = [
 
 def ai(monkeypatch, handler) -> None:
     client = partial(httpx.AsyncClient, transport=httpx.MockTransport(handler))
-    monkeypatch.setattr(service.httpx, "AsyncClient", client)
+    monkeypatch.setattr(coverage_service.httpx, "AsyncClient", client)
 
 
 @pytest.mark.parametrize("endpoint", ["analyze", "rescore"])
@@ -124,8 +124,9 @@ def test_invalid_coverage_response_is_not_retryable(monkeypatch, endpoint, case)
         content = json.dumps(broken(coverage(take_id), case)).encode()
     ai(monkeypatch, lambda request: httpx.Response(200, content=content))
 
-    with pytest.raises(service.CoverageCallError) as error:
-        asyncio.run(getattr(service, "request_" + endpoint)({"take_id": str(take_id)}, "id"))
+    with pytest.raises(coverage_service.CoverageCallError) as error:
+        request = getattr(coverage_service, "request_" + endpoint)
+        asyncio.run(request({"take_id": str(take_id)}, "id"))
 
     assert error.value.retryable is False
 
@@ -145,7 +146,7 @@ def test_valid_coverage_preserves_unknown_fields_and_request_id(monkeypatch, unm
         return httpx.Response(200, json=reply)
 
     ai(monkeypatch, handler)
-    actual = asyncio.run(service.request_analyze({"take_id": str(take_id)}, "same-id"))
+    actual = asyncio.run(coverage_service.request_analyze({"take_id": str(take_id)}, "same-id"))
 
     assert actual == reply
     assert requests[0].headers["X-Request-ID"] == "same-id"
@@ -157,8 +158,8 @@ def test_valid_coverage_preserves_unknown_fields_and_request_id(monkeypatch, unm
 )
 def test_coverage_http_failure_classification(monkeypatch, status, retryable) -> None:
     ai(monkeypatch, lambda request: httpx.Response(status))
-    with pytest.raises(service.CoverageCallError) as error:
-        asyncio.run(service.request_analyze({"take_id": str(uuid.uuid4())}, "id"))
+    with pytest.raises(coverage_service.CoverageCallError) as error:
+        asyncio.run(coverage_service.request_analyze({"take_id": str(uuid.uuid4())}, "id"))
     assert error.value.retryable is retryable
 
 
@@ -170,8 +171,8 @@ def test_storage_rejects_invalid_coverage_before_any_write(db_session, user_id, 
     repo = TakeRepository(db_session)
     invalid = broken(coverage(take.id), case)
 
-    with pytest.raises(service.CoverageCallError):
-        service._save_confirmed(db_session, take.id, invalid)
+    with pytest.raises(coverage_service.CoverageCallError):
+        coverage_service._save_confirmed(db_session, take.id, invalid)
 
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE") is None
     assert db_session.query(TakeSummary).filter_by(take_id=take.id).first() is None
@@ -182,7 +183,7 @@ def test_bad_rescore_preserves_confirmed_candidate_and_summary(db_session, user_
         db_session, _pitch(db_session, user_id), 1, status="ANALYZING", analysis_stage="SCORING"
     )
     reply = coverage(take.id)
-    service._save_confirmed(db_session, take.id, reply)
+    coverage_service._save_confirmed(db_session, take.id, reply)
     db_session.add(
         TakeAIResults(
             take_id=take.id, kind="SCRIPT_COVERAGE_PENDING", payload={"base_revision": 0}, meta={}
@@ -191,8 +192,8 @@ def test_bad_rescore_preserves_confirmed_candidate_and_summary(db_session, user_
     db_session.flush()
     repo = TakeRepository(db_session)
 
-    with pytest.raises(service.CoverageCallError):
-        service._apply_merged(db_session, take.id, 0, broken(reply, "other-take"))
+    with pytest.raises(coverage_service.CoverageCallError):
+        coverage_service._apply_merged(db_session, take.id, 0, broken(reply, "other-take"))
 
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE").revision == 0
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE_PENDING") is not None
@@ -209,7 +210,7 @@ def test_valid_rescore_replaces_only_the_expected_revision(db_session, user_id, 
         analysis_stage="SCORING",
     )
     original = coverage(take.id)
-    service._save_confirmed(db_session, take.id, original)
+    coverage_service._save_confirmed(db_session, take.id, original)
     db_session.add(
         TakeAIResults(
             take_id=take.id,
@@ -223,7 +224,7 @@ def test_valid_rescore_replaces_only_the_expected_revision(db_session, user_id, 
     replacement = coverage(take.id)
     replacement["take_scores"]["content_coverage"] = 0.9
 
-    assert service._apply_merged(db_session, take.id, revision, replacement) is applied
+    assert coverage_service._apply_merged(db_session, take.id, revision, replacement) is applied
 
     repo = TakeRepository(db_session)
     saved = repo.get_ai_result(take.id, "SCRIPT_COVERAGE")
@@ -254,8 +255,8 @@ def test_malformed_analyze_advances_to_no_coverage_without_a_partial_save(
     async def in_session(factory, fn, *args):
         return fn(db_session, *args)
 
-    monkeypatch.setattr(service, "_in_session", in_session)
-    assert asyncio.run(service.analyze_script_coverage(take.id)) == "NO_COVERAGE"
+    monkeypatch.setattr(coverage_service, "_in_session", in_session)
+    assert asyncio.run(coverage_service.analyze_script_coverage(take.id)) == "NO_COVERAGE"
     assert len(calls) == 1
     db_session.refresh(take)
     assert take.analysis_stage == "REVIEWING"
@@ -268,8 +269,8 @@ def test_coverage_network_failure_is_retryable(monkeypatch, error_type) -> None:
         raise error_type("fake network failure", request=request)
 
     ai(monkeypatch, handler)
-    with pytest.raises(service.CoverageCallError) as error:
-        asyncio.run(service.request_analyze({"take_id": str(uuid.uuid4())}, "id"))
+    with pytest.raises(coverage_service.CoverageCallError) as error:
+        asyncio.run(coverage_service.request_analyze({"take_id": str(uuid.uuid4())}, "id"))
     assert error.value.retryable is True
 
 
@@ -279,8 +280,8 @@ def test_coverage_attempt_has_an_overall_deadline(monkeypatch) -> None:
         return httpx.Response(200)
 
     ai(monkeypatch, handler)
-    with pytest.raises(service.CoverageCallError) as error:
-        asyncio.run(service._post_ai("/takes/analyze", {}, "id", 0.01))
+    with pytest.raises(coverage_service.CoverageCallError) as error:
+        asyncio.run(coverage_service._post_ai("/takes/analyze", {}, "id", 0.01))
     assert error.value.retryable is True
 
 
@@ -296,8 +297,8 @@ def test_coverage_failure_preserves_results_and_finishes_its_failure_path(
     )
     reply = coverage(take.id)
     if merge:
-        service._save_confirmed(db_session, take.id, reply)
-        assert service._save_candidate(
+        coverage_service._save_confirmed(db_session, take.id, reply)
+        assert coverage_service._save_candidate(
             db_session,
             take.id,
             {
@@ -321,8 +322,8 @@ def test_coverage_failure_preserves_results_and_finishes_its_failure_path(
     async def in_session(factory, fn, *args):
         return fn(db_session, *args)
 
-    monkeypatch.setattr(service, "_in_session", in_session)
-    result = asyncio.run(service.analyze_script_coverage(take.id))
+    monkeypatch.setattr(coverage_service, "_in_session", in_session)
+    result = asyncio.run(coverage_service.analyze_script_coverage(take.id))
 
     db_session.refresh(take)
     repo = TakeRepository(db_session)
@@ -361,8 +362,8 @@ def test_invalid_partial_retry_keeps_the_initial_success(db_session, user_id, mo
     async def in_session(factory, fn, *args):
         return fn(db_session, *args)
 
-    monkeypatch.setattr(service, "_in_session", in_session)
-    assert asyncio.run(service.analyze_script_coverage(take.id)) == "READY_FOR_REVIEW"
+    monkeypatch.setattr(coverage_service, "_in_session", in_session)
+    assert asyncio.run(coverage_service.analyze_script_coverage(take.id)) == "READY_FOR_REVIEW"
 
     repo = TakeRepository(db_session)
     assert len(calls) == 2

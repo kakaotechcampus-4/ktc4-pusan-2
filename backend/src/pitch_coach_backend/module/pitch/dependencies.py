@@ -8,12 +8,12 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
+from pitch_coach_backend.module.pitch.adapter.script_parser import HttpScriptParser
+from pitch_coach_backend.module.pitch.adapter.script_rubric import HttpRubricClient
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.script_parse_runner import ScriptParseRunner
-from pitch_coach_backend.module.pitch.script_parser import HttpScriptParser
-from pitch_coach_backend.module.pitch.script_rubric import HttpRubricClient
-from pitch_coach_backend.module.pitch.script_rubric_runner import ScriptRubricRunner
+from pitch_coach_backend.module.pitch.service.script_parse_runner import ScriptParseRunner
+from pitch_coach_backend.module.pitch.service.script_rubric_runner import ScriptRubricRunner
 
 
 async def _plan_after_parse(pitch_id: uuid.UUID) -> None:

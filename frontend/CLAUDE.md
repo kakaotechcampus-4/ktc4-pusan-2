@@ -111,7 +111,8 @@ IndexedDB           → 새로고침해 이어 가기 위한 사본
 소켓 연결(`onConnection`)입니다.
 
 **단, 시작은 마이크와 서버 연결이 있어야 합니다** (#381). 발표 화면은 마이크를 열고 WebSocket 이 첫
-`ready` 를 받은 뒤에 시계를 돌립니다 (`stage/startGate.ts`). 그 연결이 서버에서 Take 를 시작하므로
+`ready` 를 받은 뒤에 시계를 돌립니다 (`stage/startGate.ts`). 카메라는 조건이 아닙니다 — 못 열면
+마이크만 열어 시작하고 시선만 뺍니다 (#445, `stage/openDevices.ts`). 그 연결이 서버에서 Take 를 시작하므로
 (`READY` → `RUNNING`), 그 전에 시작한 발표는 기록이 하나도 남지 않습니다. 서버는 시작하지 않은 Take 를
 만든 지 10분 뒤 끝내고 그 Take 의 끝내기는 409 `TAKE_NOT_STARTED` 로 거절합니다. 마이크 캡처도 시계가
 돈 뒤에 겁니다 — 캡처가 시작할 때 시계를 읽어 `offset_ms` 기준점을 잡기 때문입니다.
@@ -266,7 +267,7 @@ src/
     auth/       로그인·토큰
     pitch/      Pitch 생성·수정·목록
     rehearsal/  ★ 리허설. 난이도 최상 (Track A)
-    report/     리포트·비교·Best Take
+    report/     리포트·비교·Take 기록·분석 대기
   workers/      시선 워커. 메인 스레드에서 격리
   vendor/gaze/  AI 시선 엔진 v1.1 복사본 — 고치지 않습니다 (그 폴더 README)
   mocks/        MSW. 명세 8-4의 JSON 그대로

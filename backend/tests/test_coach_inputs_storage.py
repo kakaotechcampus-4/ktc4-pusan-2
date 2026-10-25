@@ -19,13 +19,14 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptVersion,
 )
 from pitch_coach_backend.module.take import coach_service
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import SlideEvent
 from pitch_coach_backend.module.take.entity import (
     Take,
     TakeSlideEvent,
 )
 from pitch_coach_backend.module.take.exception import NonExistentTake
+from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
+from pitch_coach_backend.module.take.service import record as record_service
 from pitch_coach_backend.module.user.entity import User
 
 
@@ -129,7 +130,10 @@ def test_slide_events_keep_the_first_of_each_time(db_session: Session, take_part
 def test_ending_a_take_starts_finalizing_with_the_utterance_ends(db_session: Session, take_parts):
     take = make_take(db_session, *take_parts, 1, status="RUNNING", utterance_ends=[100])
 
-    assert take_service.mark_ended(db_session, take.id, utterance_ends=[89_400, 120_000]) is True
+    assert (
+        lifecycle_service.mark_ended(db_session, take.id, utterance_ends=[89_400, 120_000])
+        is True
+    )
 
     db_session.refresh(take)
     assert (take.status, take.analysis_stage) == ("ANALYZING", "FINALIZING")
@@ -140,7 +144,7 @@ def test_ending_without_utterance_ends_keeps_what_was_saved(db_session: Session,
     """이 프로세스가 Take 를 모르면(다시 뜸 · 되살린 Take) 메모리에 문장 끝 신호가 없다."""
     take = make_take(db_session, *take_parts, 1, status="RUNNING", utterance_ends=[100])
 
-    take_service.mark_ended(db_session, take.id)
+    lifecycle_service.mark_ended(db_session, take.id)
 
     db_session.refresh(take)
     assert take.utterance_ends == [100]
@@ -150,17 +154,17 @@ def test_utterance_ends_are_written_down_only_while_the_take_runs(db_session: Se
     running = make_take(db_session, *take_parts, 1, status="RUNNING")
     ended = make_take(db_session, *take_parts, 2, status="ANALYZING", utterance_ends=[100])
 
-    assert take_service.save_utterance_ends(db_session, running.id, [1_500, 9_000]) is True
-    assert take_service.save_utterance_ends(db_session, ended.id, [7]) is False
+    assert record_service.save_utterance_ends(db_session, running.id, [1_500, 9_000]) is True
+    assert record_service.save_utterance_ends(db_session, ended.id, [7]) is False
 
-    assert take_service.stored_utterance_ends(db_session, running.id) == [1_500, 9_000]
-    assert take_service.stored_utterance_ends(db_session, ended.id) == [100]
-    assert take_service.stored_utterance_ends(db_session, uuid.uuid7()) == []
+    assert record_service.stored_utterance_ends(db_session, running.id) == [1_500, 9_000]
+    assert record_service.stored_utterance_ends(db_session, ended.id) == [100]
+    assert record_service.stored_utterance_ends(db_session, uuid.uuid7()) == []
 
 def test_take_left_behind_keeps_its_utterance_ends(db_session: Session, take_parts):
     take = make_take(db_session, *take_parts, 1, status="RUNNING")
 
-    take_service.mark_abandoned(
+    lifecycle_service.mark_abandoned(
         db_session, take.id, datetime.now(UTC), "ABANDONED", utterance_ends=[1_500]
     )
 
