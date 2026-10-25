@@ -211,7 +211,7 @@ const FIXED: Record<string, TakeReport> = {
 
 /**
  * 확인 항목 — 계약 1-1 · 2절의 예("37%" ↔ "47%", "노쇼" → "노조"). 장마다 R1 부터 다시 셉니다.
- * 문장 둘은 FE 제안 필드입니다 (`types/confirmation.ts`).
+ * 문장 둘과 종류는 BE #528 응답 필드입니다 (`types/confirmation.ts`).
  */
 export const confirmationItemsFixture: ConfirmationItem[] = [
   {

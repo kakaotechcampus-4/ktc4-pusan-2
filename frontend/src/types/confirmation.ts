@@ -2,8 +2,7 @@ import type { AnalysisStage } from './report';
 
 /**
  * 대본 전달도 확인 — 발표 뒤 인식이 헷갈린 말(비슷한 말)을 사용자에게 묻습니다.
- * **합의 전 FE 제안입니다.** BE 에 아직 없는 API 이고, FE · BE · AI 합의가 끝나면 이 파일과
- * `shared/api/confirmation.ts` 만 고칩니다.
+ * BE #528의 GET · POST `/api/takes/{take_id}/confirmations` 응답 계약입니다.
  *
  * 필드 이름은 AI 계약 그대로입니다 (`docs/ai/features/script-coverage-evaluation.md` 5-3 `confirmations[]`,
  * 5-6 `similar_items[]`). 답은 리뷰를 부르기 전까지만 받고, 확인 대기가 시작된 지 10분이 지나면
@@ -13,7 +12,7 @@ import type { AnalysisStage } from './report';
 /** 5-4 확인 답 — 대본대로 말함(STT 가 잘못 적음) · 들린 대로 말함(발표자가 다른 말을 함) */
 export type ConfirmAnswer = 'as_script' | 'as_stt';
 
-/** `GET /api/takes/{take_id}/confirmations` (FE 제안) */
+/** `GET /api/takes/{take_id}/confirmations` */
 export interface Confirmations {
   take_id: string;
   /** 지금 분석 단계. `AWAITING_CONFIRMATION` 이 아니면 이미 넘어가 `items` 가 빕니다 */
@@ -28,7 +27,7 @@ export interface Confirmations {
 
 /**
  * 확인 항목 하나. 앞 네 필드는 5-3 `confirmations[]`, `kind` 는 5-6 `similar_items[]` 입니다.
- * 문장 둘은 BE 가 채점에서 찾아 붙이는 FE 제안 필드입니다 — 대본 문장은 평가 기준
+ * 문장 둘은 BE 가 채점에서 찾아 붙입니다 — 대본 문장은 평가 기준
  * `sentences[script_sentence_index].text`, 인식된 문장은 채점 `stt_sentences[stt_sentence_index]`.
  *
  * `item_id` 는 장마다 R1 부터 다시 세서 `(slide_number, item_id)` 둘이 함께 키입니다.
@@ -37,7 +36,8 @@ export interface Confirmations {
 export interface ConfirmationItem {
   slide_number: number;
   item_id: string;
-  kind: 'number' | 'word';
+  /** 같은 장의 similar_items 항목을 못 찾으면 null. BE 는 문자열 값을 그대로 돌려줍니다. */
+  kind: string | null;
   script_text: string;
   stt_text: string;
   script_sentence: string | null;
@@ -45,7 +45,7 @@ export interface ConfirmationItem {
 }
 
 /**
- * `POST /api/takes/{take_id}/confirmations` (FE 제안). 5-2 `/takes/rescore` 의 `answers` 와 같은 모양입니다.
+ * `POST /api/takes/{take_id}/confirmations`. 5-2 `/takes/rescore` 의 `answers` 와 같은 모양입니다.
  * 빈 배열이면 건너뛰기 — 답 없이 리뷰로 넘어갑니다. 고르지 않은 항목은 점수에서 빠진 채 남습니다 (6-3).
  * 확인 대기가 끝났으면(시간 초과 · 이미 답함 · 리뷰 시작) 409 `CONFIRMATION_CLOSED`.
  */
