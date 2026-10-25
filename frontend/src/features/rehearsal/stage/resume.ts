@@ -219,20 +219,18 @@ function estimate(
 
 /**
  * 이미 쌓인 기록이 덮는 마지막 시각. 시선 1초 기록 하나는 `[t_ms, t_ms + duration_ms]` 를 덮고,
- * 슬라이드 전환과 코치 기록은 그 시각 한 점입니다. 기록이 없으면 0 입니다.
+ * 슬라이드 전환은 그 시각 한 점입니다. 기록이 없으면 0 입니다.
  */
 export function recordedUntilMs({
   gaze,
   slideAtMs,
-  coachAtMs,
 }: {
   gaze: { t_ms: Ms; duration_ms: Ms }[];
   slideAtMs: Ms[];
-  coachAtMs: Ms[];
 }): Ms {
   let until = 0;
   for (const s of gaze) until = Math.max(until, s.t_ms + s.duration_ms);
-  for (const t of [...slideAtMs, ...coachAtMs]) until = Math.max(until, t);
+  for (const t of slideAtMs) until = Math.max(until, t);
   return until;
 }
 
@@ -332,21 +330,4 @@ export function openingSlides(
   return [...history]
     .sort((a, b) => a.atMs - b.atMs)
     .map((h) => ({ type: 'slide', slide_number: h.slideNumber, t_ms: h.atMs }));
-}
-
-/** 코치가 마지막으로 말한 시각. 쿨다운을 이어가는 데 씁니다 */
-export interface CoachHistory {
-  lastFiredAt: Ms;
-  lastByType: Record<string, Ms>;
-}
-
-/** 띄운 기록만 봅니다. 참은 기록은 쿨다운을 걸지 않습니다 */
-export function coachHistory(rows: { atMs: Ms; type: string; fired: boolean }[]): CoachHistory {
-  const history: CoachHistory = { lastFiredAt: -Infinity, lastByType: {} };
-  for (const r of rows) {
-    if (!r.fired) continue;
-    history.lastFiredAt = Math.max(history.lastFiredAt, r.atMs);
-    history.lastByType[r.type] = Math.max(history.lastByType[r.type] ?? -Infinity, r.atMs);
-  }
-  return history;
 }

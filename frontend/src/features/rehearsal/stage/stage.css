@@ -345,11 +345,12 @@
 }
 
 /* ── 코치 한 줄 ────────────────────────────────────────────────
-   8초 뒤 사라진다. 위치는 고정 — 뜰 때마다 자리가 바뀌면
+   AI 코치의 한마디는 8초 뒤 사라진다. 위치는 고정 — 뜰 때마다 자리가 바뀌면
    사용자가 그것을 찾느라 시선이 움직인다.
 
    한 번에 하나만 띄운다. 두 개가 겹치면 둘 다 안 읽힌다.
-   자리는 메시지가 없어도 남아 있다(.stage의 --coach-h 주석 참고).  */
+   자리는 메시지가 없어도 남아 있다(.stage의 --coach-h 주석 참고).
+   오른쪽 상태 표시(.indicators)는 한마디가 없어도 보인다.  */
 .coach {
   display: flex;
   align-items: center;
@@ -364,10 +365,62 @@
   transition: opacity 240ms ease;
 }
 
-/* 비어 있을 때도 높이는 유지한다. visibility 라서 자리가 남는다 */
+/* 칭찬(CONTINUE)은 경고색 대신 청중 응시와 같은 초록으로 */
+.coach[data-tone='praise'] {
+  border-color: var(--color-gaze-audience);
+  background: color-mix(in srgb, var(--color-gaze-audience) 14%, transparent);
+}
+
+/* 한마디가 없으면 줄의 테두리 · 배경과 글을 감춘다. 높이와 상태 표시는 남는다 */
 .coach[data-empty='true'] {
+  border-color: transparent;
+  background: transparent;
+}
+
+.coach[data-empty='true'] > :not(.indicators) {
   opacity: 0;
   visibility: hidden;
+}
+
+.coach .coach-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 상태 표시. 좋은 영역은 흐리게, 고칠 것이 있는 영역만 색을 입힌다 */
+.coach .indicators {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.coach .indicators li {
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-ink-stage) 20%, transparent);
+  border-radius: 999px;
+  color: var(--color-stone);
+  white-space: nowrap;
+}
+
+.coach .indicators li[data-tone='warn'] {
+  border-color: var(--color-coral);
+  background: color-mix(in srgb, var(--color-coral) 14%, transparent);
+  color: var(--color-ink-stage);
+}
+
+/* 서버와 끊겨 더 오지 않는 지난 판정. 경고색을 빼고 모두 흐리게 — 지우면 짧게 끊길 때마다 깜빡인다 */
+.coach .indicators[data-stale='true'] li {
+  border-color: color-mix(in srgb, var(--color-ink-stage) 12%, transparent);
+  background: transparent;
+  color: var(--color-stone);
+  opacity: 0.5;
 }
 
 .coach .rule {
@@ -547,19 +600,9 @@
 }
 
 /* 재연결 중·중단은 눈에 띄어야 한다. 다만 발표를 멈추라는 뜻은 아니다 */
-.stage-foot .stt[data-alert='true'] {
+.stage-foot .stt[data-alert='true'],
+.stage-foot .gaze[data-alert='true'] {
   color: var(--color-gaze-screen);
-}
-
-.stage-foot .stt-text {
-  flex: 1;
-  min-width: 0;
-  max-width: 48ch;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--color-ink-stage);
-  opacity: 0.75;
 }
 
 /* ── 시작 전 안내 ─────────────────────────────────────────────
