@@ -1,0 +1,15 @@
+{
+  "GAZE": {
+    "camera_ms": 52000,
+    "script_ms": 28000,
+    "screen_ms": 6000,
+    "away_ms": 4000,
+    "uncertain_ms": 4000,
+    "unmeasured_ms": 2000,
+    "measured_ms": 90000,
+    "total_ms": 96000,
+    "speaking_ms": 70000,
+    "reading_ms": 15000,
+    "reading_runs": 4
+  }
+}

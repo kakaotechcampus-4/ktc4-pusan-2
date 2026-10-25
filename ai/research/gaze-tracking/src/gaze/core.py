@@ -35,8 +35,12 @@ from .schemas import (
     GazeInput,
     GazeMetrics,
     GazeRecord,
+    GazeSummary,
+    IssueCriteria,
     JudgmentIssue,
     JudgmentResult,
+    Summary,
+    Tally,
     TallyItem,
     Voiced,
 )
@@ -507,6 +511,92 @@ def _issues(
             )
         )
     return issues
+
+
+# --------------------------------------------------------------------------
+# summarize · criteria
+# --------------------------------------------------------------------------
+
+
+def summarize(tally: Tally, config: GazeConfig = DEFAULT) -> dict[str, dict[str, Any]]:
+    """장 · Take 의 tally 합계 → {"GAZE": {...}} (gaze-tracking.md 5-3 · 6-4 · 14절).
+
+    인자: tally - 코치가 더한 합계(영역 → 이름 → 합, 빠진 키는 0). config - 쓰지 않지만 다른 진입
+    함수와 같은 모양으로 받는다. 반환: `Summary` 를 dict 로 만든 것. 코치는 이 값을 고치지 않고
+    Take 결과에 담는다. 분모가 0 인 비율은 None 이고, measured_ratio 만 0 이다(architecture.md 7절).
+    """
+    g = tally.get("GAZE", {})
+    measured = g.get("measured_ms", 0)
+    summary = Summary(
+        GAZE=GazeSummary(
+            audience_ratio=r4(_ratio(g.get("camera_ms", 0), measured)),
+            script_ratio=r4(_ratio(g.get("script_ms", 0), measured)),
+            screen_ratio=r4(_ratio(g.get("screen_ms", 0), measured)),
+            away_ratio=r4(_ratio(g.get("away_ms", 0), measured)),
+            reading_ratio=r4(_ratio(g.get("reading_ms", 0), g.get("speaking_ms", 0))),
+            reading_runs=int(g.get("reading_runs", 0)),
+            measured_ratio=r4(_ratio(measured, g.get("total_ms", 0)) or 0.0),  # type: ignore[arg-type]
+        )
+    )
+    return summary.model_dump(mode="json")
+
+
+def criteria(config: GazeConfig = DEFAULT) -> dict[str, IssueCriteria]:
+    """다섯 문제의 판정 기준 (gaze-tracking.md 5-3 · 5-4). 코치가 Take 결과의 criteria.GAZE 에 남긴다.
+
+    onset_lag_ms · offset_lag_ms 는 판정 창 때문에 문제의 시작 · 끝이 늦게 잡히는 폭이다(코치가 Take
+    결과의 문제 구간을 되돌릴 때 쓴다). 기준값에서 계산한다:
+    - 이어짐 문제: 기준 시간이 지나야 잡히고(GAZE_ON_SCRIPT 는 짧은 창 비율도 차야 한다), 이어짐이
+      끊기면 바로 끝난다.
+    - 눈맞춤 부족: 청중을 전혀 안 보기 시작하면 (1 − 기준) × 최근 창 뒤에 기준 아래로 내려가고(측정 시간
+      최소도 채워야 한다), 다시 청중만 보면 기준 × 최근 창 뒤에 올라온다.
+    - 측정 불가: 측정이 끊기면 (1 − 기준) × 짧은 창 뒤에 잡히고, 측정 비율은 최근 창과도 비교하므로
+      다시 잴 수 있게 된 뒤 기준 × 최근 창이 지나야 끝난다.
+    """
+    c = config
+    higher, lower = "HIGHER_IS_WORSE", "LOWER_IS_WORSE"
+
+    def run_rule(metric: str, threshold: int, bad: int, onset: int) -> IssueCriteria:
+        return IssueCriteria(
+            metric=metric,
+            direction=higher,
+            threshold=threshold,
+            bad=bad,
+            onset_lag_ms=onset,
+            offset_lag_ms=0,
+        )
+
+    return {
+        "GAZE_ON_SCRIPT": run_rule(
+            "script_run_ms",
+            c.script_run_ms,
+            c.script_run_bad_ms,
+            max(c.script_run_ms, round(c.script_short_ratio * c.short_window_ms)),
+        ),
+        "GAZE_ON_SCREEN": run_rule(
+            "screen_run_ms", c.screen_run_ms, c.screen_run_bad_ms, c.screen_run_ms
+        ),
+        "GAZE_AWAY": run_rule("away_run_ms", c.away_run_ms, c.away_run_bad_ms, c.away_run_ms),
+        "GAZE_LOW_EYE_CONTACT": IssueCriteria(
+            metric="audience_ratio",
+            direction=lower,
+            threshold=c.low_eye_contact_ratio,
+            bad=c.low_eye_contact_bad,
+            onset_lag_ms=max(
+                c.low_eye_contact_min_measured_ms,
+                round((1 - c.low_eye_contact_ratio) * c.recent_window_ms),
+            ),
+            offset_lag_ms=round(c.low_eye_contact_ratio * c.recent_window_ms),
+        ),
+        "GAZE_UNMEASURABLE": IssueCriteria(
+            metric="measured_ratio",
+            direction=lower,
+            threshold=c.min_measured_ratio,
+            bad=c.unmeasurable_bad,
+            onset_lag_ms=round((1 - c.min_measured_ratio) * c.short_window_ms),
+            offset_lag_ms=round(c.min_measured_ratio * c.recent_window_ms),
+        ),
+    }
 
 
 # ==========================================================================
