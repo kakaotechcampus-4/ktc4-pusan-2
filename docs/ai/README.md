@@ -21,7 +21,7 @@
 
 | 기능 | 문서 | 담당 | 상태 | 활성 연구 코드 |
 |---|---|---|---|---|
-| 실시간 코치 (시간 판정 포함) | [coach-agent.md](features/coach-agent.md) | JWK0395 | 연구 코드 | [coach-agent/](../../ai/research/coach-agent/README.md) |
+| 실시간 코치 (시간 판정 포함) | [coach-agent.md](features/coach-agent.md) | JWK0395 | 서비스 탑재 (코칭 계획만) | [coach-agent/](../../ai/research/coach-agent/README.md) |
 | 시선 | [gaze-tracking.md](features/gaze-tracking.md) | JWK0395 | 연구 코드 | [gaze-tracking/](../../ai/research/gaze-tracking/README.md) |
 | 군더더기 | [filler.md](features/filler.md) | JWK0395 | 연구 코드 | [filler-detection/](../../ai/research/filler-detection/README.md) |
 | 대본 전달도 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) | JWK0395 | 서비스 탑재 | [script-coverage-evaluation/](../../ai/research/script-coverage-evaluation/README.md) |
@@ -31,7 +31,7 @@
 | 소리 크기 · 침묵 | [volume.md](features/volume.md) | jinn-ie | 연구 코드 | [volume-analysis/](../../ai/research/volume-analysis/README.md) |
 | 리뷰 에이전트 | [review-agent.md](features/review-agent.md) | jinn-ie | 연구 코드 | [review-agent/](../../ai/research/review-agent/README.md) |
 
-현재 서비스에는 `/health` · `/ready`와 대본 전달도(`/scripts/rubric` · `/takes/analyze` · `/takes/rescore`)가 연결되어 있고, 나머지 기능은 아직 서비스에 탑재되지 않았습니다(BE 호출 · 배포 여부는 별도). 시선 · 군더더기 판정 모듈과 코치 코어는 서비스(`ai/service/src/pitch_coach_ai/features/gaze/` · `filler/` · `coach/`)로 옮겼지만, 코치 `evaluate` · `finalize`가 열리기 전이라 앱에는 연결되지 않았습니다(`coach-agent.md` 11절). 공통 서버·LLM 모듈 PR #223·#224는 기능 탑재와 구분합니다. 서비스 담당은 JWK0395입니다. 코치 연구 폴더의 `coach_lab/judges/`는 시험용 대역이므로 실제 판정 모듈로 세지 않습니다.
+현재 서비스에는 `/health` · `/ready`와 대본 전달도(`/scripts/rubric` · `/takes/analyze` · `/takes/rescore`) · 코칭 계획(`/coach/plan`)이 연결되어 있고, 나머지 기능은 아직 서비스에 탑재되지 않았습니다(BE 호출 · 배포 여부는 별도). 시선 · 군더더기 판정 모듈은 서비스(`ai/service/src/pitch_coach_ai/features/gaze/` · `filler/`)로 옮겼지만, 코치 `evaluate` · `finalize`가 열리기 전이라 앱에는 연결되지 않았습니다(`coach-agent.md` 11절). 공통 서버·LLM 모듈 PR #223·#224는 기능 탑재와 구분합니다. 서비스 담당은 JWK0395입니다. 코치 연구 폴더의 `coach_lab/judges/`는 시험용 대역이므로 실제 판정 모듈로 세지 않습니다.
 
 기능 코드 PR이 merge되면 담당자가 활성 폴더·앱 연결을 확인하고 이 표를 갱신합니다. 나중에 merge되는 README 수정은 먼저 반영된 기능을 보존합니다.
 
