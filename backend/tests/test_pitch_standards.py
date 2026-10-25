@@ -59,11 +59,16 @@ def ai(monkeypatch: pytest.MonkeyPatch) -> Callable[[httpx2.Response], list[http
     return use
 
 
-def _post(client: TestClient, pitch_id: uuid.UUID, headers: dict[str, str]):
+def _post(
+    client: TestClient,
+    pitch_id: uuid.UUID,
+    headers: dict[str, str],
+    standard_text: str = "추임새는 5번 이하, 대본 없이. 발표 시간과 억양도 본다",
+):
     return client.post(
         f"/api/pitches/add/{pitch_id}/standards",
-        json={"standard_text": "추임새는 5번 이하, 대본 없이. 발표 시간과 억양도 본다"},
-        headers=headers,
+        content=json.dumps({"standard_text": standard_text}).encode(),
+        headers={**headers, "Content-Type": "application/json"},
     )
 
 
@@ -183,3 +188,139 @@ def test_ai_unreachable_is_502(
 
     assert response.status_code == 502
     assert response.json()["code"] == "STANDARD_PARSE_FAILED"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", " \t\n", "\u2003\u3000", "가" * 2001, "기준\x00내용"],
+    ids=["empty", "whitespace", "unicode-whitespace", "too-long", "nul"],
+)
+def test_invalid_input_is_422_without_calling_ai_or_saving(
+    client,
+    db_session,
+    auth_headers,
+    pitch_id,
+    ai,
+    text,
+) -> None:
+    requests = ai(httpx2.Response(200, json=AI_RESPONSE))
+
+    response = _post(client, pitch_id, auth_headers, text)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert requests == []
+    assert _saved(db_session, pitch_id) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["가", "가" * 2000, " \t" + "가" * 2000 + "\n "],
+    ids=["one-character", "two-thousand", "trim-before-limit"],
+)
+def test_input_limits_apply_after_trimming(client, auth_headers, pitch_id, ai, text) -> None:
+    requests = ai(httpx2.Response(200, json=AI_RESPONSE))
+
+    response = _post(client, pitch_id, auth_headers, text)
+
+    assert response.status_code == 200
+    assert len(requests) == 1
+    assert json.loads(requests[0].content)["standard_text"] == text.strip()
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {"display_criteria": ["가" * 51]},
+        {"display_criteria": [f"기준 {n}" for n in range(11)]},
+        {"display_criteria": ["정상 기준", "뒤 기준\x00"]},
+        {"display_criteria": [""]},
+        {"display_criteria": ["   "]},
+        {"display_criteria": ["정상 기준"], "excluded": ["제외\x00"]},
+        {"display_criteria": ["정상 기준"], "excluded": "문자열 목록 아님"},
+    ],
+    ids=[
+        "title-too-long",
+        "too-many",
+        "nul",
+        "empty-title",
+        "blank-title",
+        "excluded-nul",
+        "excluded-wrong-type",
+    ],
+)
+def test_invalid_ai_response_is_502_and_preserves_the_previous_version(
+    client,
+    db_session,
+    auth_headers,
+    pitch_id,
+    ai,
+    reply,
+) -> None:
+    ai(httpx2.Response(200, json=AI_RESPONSE))
+    assert _post(client, pitch_id, auth_headers).status_code == 200
+    saved = _saved(db_session, pitch_id)
+    requests = ai(httpx2.Response(200, json=reply))
+
+    response = _post(client, pitch_id, auth_headers)
+
+    assert response.status_code == 502
+    assert response.json()["code"] == "STANDARD_PARSE_FAILED"
+    assert len(requests) == 1
+    assert _saved(db_session, pitch_id) == saved
+
+
+def test_ten_fifty_character_titles_are_saved_without_truncation(
+    client,
+    db_session,
+    auth_headers,
+    pitch_id,
+    ai,
+) -> None:
+    titles = [str(n) + "가" * 49 for n in range(10)]
+    ai(httpx2.Response(200, json={"display_criteria": titles, "excluded": []}))
+
+    response = _post(client, pitch_id, auth_headers)
+
+    assert response.status_code == 200
+    assert [item["standard"] for item in response.json()["standards"]] == titles
+    assert [title for _, _, title in _saved(db_session, pitch_id)] == titles
+
+
+@pytest.mark.parametrize("excluded", [None, []])
+def test_no_display_criteria_is_a_valid_response(
+    client,
+    auth_headers,
+    pitch_id,
+    ai,
+    excluded,
+) -> None:
+    ai(httpx2.Response(200, json={"display_criteria": [], "excluded": excluded}))
+
+    response = _post(client, pitch_id, auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["standards"] == []
+    assert response.json()["except_standard"] is None
+
+
+@pytest.mark.parametrize("status,expected", [(422, 422), (500, 502), (503, 502), (504, 502)])
+def test_ai_input_rejection_is_distinct_from_an_ai_outage(
+    client,
+    db_session,
+    auth_headers,
+    pitch_id,
+    ai,
+    status,
+    expected,
+) -> None:
+    requests = ai(httpx2.Response(status, json={"error": {"code": "fake", "message": "fake"}}))
+
+    response = _post(client, pitch_id, auth_headers)
+
+    assert response.status_code == expected
+    assert response.json()["code"] == (
+        "STANDARD_INPUT_REJECTED" if status == 422 else "STANDARD_PARSE_FAILED"
+    )
+    assert len(requests) == 1
+    assert _saved(db_session, pitch_id) == []

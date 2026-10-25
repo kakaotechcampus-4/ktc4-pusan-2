@@ -1,5 +1,10 @@
 {
- "criteria_version": "filler-1.0+9612862dccea",
+ "criteria_version": "filler-1.0+60cd87861ea9",
+ "counted_tiers": [
+  "T1",
+  "T2",
+  "T3"
+ ],
  "data": "virtual",
  "seed": 0,
  "n_utterances": 73,

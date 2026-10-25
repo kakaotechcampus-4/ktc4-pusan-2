@@ -3,23 +3,24 @@ import {
   STT_ABANDONED_MESSAGE,
   STT_ERROR_MESSAGE,
   STT_STATE_NOTE,
+  type CoachMessage,
   type MetricsMessage,
   type SlideMessage,
   type SttState,
-  type TranscriptMessage,
 } from '../lib/sttProtocol';
 import { SttSocket, type HandedMetrics } from '../lib/sttSocket';
 import { PCM_CAPTURE_ERROR_MESSAGE, startPcmCapture, type PcmCapture } from '../media/pcmCapture';
 import type { Ms } from '@/types/api';
 
 /**
- * 2단(서버) 코치의 입력선 — 마이크를 16kHz PCM 으로 서버에 흘리고 전사를 받습니다.
+ * 리허설의 서버 연결 — 마이크를 16kHz PCM 으로 흘리고, 1초 기록(`metrics`) · 장 넘김(`slide`)을 보내고,
+ * AI 코치의 `coach` 를 받습니다. 연결은 WebSocket 하나입니다 (CLAUDE.md 4번).
  *
  * ── 화면에 무엇을 어떻게 내보내나 ──────────────────────────────────
  *
  * | 값 | 어디에 | 왜 |
  * | --- | --- | --- |
- * | 전사(중간·확정) | **DOM 직접** (`transcriptRef`) | 100~300ms 마다 옵니다. 상태로 올리면 시선 fps 가 깎입니다 |
+ * | 전사(중간·확정) | **띄우지 않음** | 자기 말이 글로 따라붙으면 그걸 읽게 됩니다. 전사는 서버에 쌓여 리포트에서 씁니다 |
  * | `stt_state` | React 상태 | 전이가 드뭅니다 (connecting → ok → …). 문구가 바뀌어야 합니다 |
  * | 프레임·유실 누적 | ref | 계기판용입니다. 발표자에게는 안 보입니다 |
  *
@@ -32,7 +33,8 @@ import type { Ms } from '@/types/api';
  * ── 시작한 뒤에는 끊겨도 발표는 계속됩니다 ─────────────────────────
  *
  * 이 훅이 실패하는 모든 경로(16kHz 거절·인증 만료)는
- * **문구 한 줄**로 끝납니다. 시선과 1단 코치는 그대로 돕니다.
+ * **문구 한 줄**로 끝납니다. 시선 기록 · 시계 · 슬라이드는 그대로 돕니다. 실시간 코치는 이 소켓으로
+ * 오므로 소켓이 끝나면 함께 멈춥니다 — 마이크 캡처만 실패하면 소켓은 그대로라 코치도 계속 옵니다.
  * 네트워크 끊김은 실패로 치지 않습니다 — 소켓이 발표가 끝날 때까지 다시 붙어 보고,
  * 그동안 마이크 캡처도 계속 돕니다. 붙는 순간 말하기 분석이 이어집니다.
  * 끊긴 동안의 음성은 어디에도 남지 않아 그 구간의 말하기 분석은 빠집니다 (CLAUDE.md 4번).
@@ -52,6 +54,8 @@ export function useSttStream({
   onAutoEnd,
   restoredMetrics,
   onClosed,
+  onCoach,
+  onConnection,
 }: {
   takeId: string;
   stream: MediaStream | null;
@@ -78,9 +82,11 @@ export function useSttStream({
    * 실패로 끝냈습니다. 무대는 이어 가지 않고 실패 화면으로 갑니다
    */
   onClosed?: () => void;
+  /** AI 코치의 한마디 · 상태 표시. 서버가 `COACHING` 모드에서만 보냅니다 (`useLiveCoach`) */
+  onCoach?: (message: CoachMessage) => void;
+  /** 서버와 이어졌다 · 끊겼다 (`SttSocket` `onConnection`). 코치 상태 표시가 낡았는지 압니다 */
+  onConnection?: (connected: boolean) => void;
 }) {
-  /** 전사 한 줄이 들어갈 자리. 이 훅이 textContent 로 직접 씁니다 */
-  const transcriptRef = useRef<HTMLSpanElement>(null);
   const socketRef = useRef<SttSocket | null>(null);
   /**
    * 이 페이지에서 보낸 장 변경 전부. 소켓이 없을 때(카메라 · 마이크가 열리기 전) 보낸 것도 여기 남고,
@@ -93,8 +99,6 @@ export function useSttStream({
   }, [takeId]);
   const captureRef = useRef<PcmCapture | null>(null);
 
-  /** 확정된 마지막 문장. 중간 결과가 비면 이것을 보여 줍니다 */
-  const lastFinalRef = useRef('');
   const statsRef = useRef({ frames: 0, lostMs: 0 });
 
   const [sttState, setSttState] = useState<SttState | null>(null);
@@ -127,10 +131,14 @@ export function useSttStream({
   const onAutoEndRef = useRef(onAutoEnd);
   const restoredMetricsRef = useRef(restoredMetrics);
   const onClosedRef = useRef(onClosed);
+  const onCoachRef = useRef(onCoach);
+  const onConnectionRef = useRef(onConnection);
   useEffect(() => {
     onAutoEndRef.current = onAutoEnd;
     restoredMetricsRef.current = restoredMetrics;
     onClosedRef.current = onClosed;
+    onCoachRef.current = onCoach;
+    onConnectionRef.current = onConnection;
   });
 
   useEffect(() => {
@@ -146,17 +154,12 @@ export function useSttStream({
     let captureStarted = false;
     const key = socketKey;
 
-    const paint = (message: TranscriptMessage) => {
-      if (message.is_final) lastFinalRef.current = message.text;
-      const text = message.is_final ? message.text : message.text || lastFinalRef.current;
-      if (transcriptRef.current) transcriptRef.current.textContent = text;
-    };
-
     const created = new SttSocket({
       takeId,
       restoredMetrics: restoredMetricsRef.current?.(),
       slideHistory: () => slidesRef.current,
-      onTranscript: paint,
+      // 전사는 화면에 띄우지 않습니다 — 서버에 쌓여 리포트에서 씁니다 (위 표)
+      onTranscript: () => undefined,
       onState: (state) => {
         if (cancelled) return;
         setSttState(state);
@@ -188,6 +191,12 @@ export function useSttStream({
             ? STT_ABANDONED_MESSAGE
             : STT_ERROR_MESSAGE[code],
         );
+      },
+      onConnection: (connected) => {
+        if (!cancelled) onConnectionRef.current?.(connected);
+      },
+      onCoach: (message) => {
+        if (!cancelled) onCoachRef.current?.(message);
       },
       onAutoEnd: (_reason, message) => {
         if (cancelled) return;
@@ -312,7 +321,6 @@ export function useSttStream({
   );
 
   return {
-    transcriptRef,
     sttState,
     connected,
     startFailure,

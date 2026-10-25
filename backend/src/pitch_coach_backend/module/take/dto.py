@@ -95,23 +95,11 @@ class MissionInputDTO(BaseModel):
     area: str
     slide_number: int | None = None
     target: TargetInfoDTO
-class MissionDTO(BaseModel):
-    mission_id: uuid.UUID
-    # null 이면 Take 전체 미션이다 (missions.slide_number)
-    slide_number: int | None
-    description:str
-    priority: int
-    completed: bool
 
 class PreviousTakeDTO(BaseModel):
     take_result: dict[str, Any]
     # 대본 채점의 Take 지표 객체. 잴 수 없는 비율은 null이고 개수는 정수다.
     take_scores: dict[str, float | int | None] | None = None
-class PreviousMissionsDTO(BaseModel):
-    # Take 가 아직 없으면 None (next_take_number 는 1, missions 는 빈 목록)
-    source_take_id: uuid.UUID | None
-    next_take_number: int
-    missions: list[MissionDTO]
 
 
 class TranscriptWordDTO(BaseModel):
@@ -266,7 +254,7 @@ class ReviewMetaDTO(BaseModel):
 class ReviewResponseDTO(BaseModel):
     take_id: uuid.UUID
     overall_summary: str
-    score: int | None = None
+    score: int | None = Field(default=None, ge=0, le=100)
     dimensions: DimensionStatus
     strengths: list[DetailDTO] = []
     improvements: list[DetailDTO] = []

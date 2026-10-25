@@ -270,9 +270,10 @@ def _finalize_replay(req: FinalizeRequest, judges: Judges, cfg: CoachConfig) -> 
         rebuilt.extend(resp.events)
 
     # 마지막 창은 원자료에서 다시 고르되, 요청에 마지막 창이 실렸으면 BE 가 실은 STT 상태(닫기
-    # 직전)를 쓴다 — 마지막 metrics 뒤에 STT 가 돌아왔으면 원자료의 상태 이력에는 없다
+    # 직전)를 쓴다 — 마지막 metrics 뒤에 STT 가 돌아왔으면 원자료의 상태 이력에는 없다. 실린 창에
+    # stt_status 가 빠졌으면 기본값(ok)이 아니라 원자료 이력의 상태를 쓴다
     last_inputs = recovery.inputs_at(raw, t, last_window=True)
-    if "inputs" in req.model_fields_set:
+    if "inputs" in req.model_fields_set and "stt_status" in req.inputs.model_fields_set:
         last_inputs = last_inputs.model_copy(update={"stt_status": req.inputs.stt_status})
     last = req.model_copy(
         update={

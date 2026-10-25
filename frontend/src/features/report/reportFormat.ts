@@ -87,6 +87,11 @@ export function pct(v: number | null) {
   return v === null ? '—' : `${Math.round(v * 100)}%`;
 }
 
+/** 발표 시간을 모르면 00:00 이 아니라 — 로 (CLAUDE.md 6번) */
+export function duration(ms: number | null) {
+  return ms === null ? '—' : formatDuration(ms);
+}
+
 export function where(area: Area, slide: number | null) {
   return slide === null ? `${AREA[area]} · 발표 전체` : `${AREA[area]} · ${slide}번 장`;
 }

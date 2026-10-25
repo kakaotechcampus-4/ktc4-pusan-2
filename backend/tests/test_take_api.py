@@ -1,4 +1,4 @@
-"""Take API — 이전 미션 조회, 부분 수정(PUT), 입력 검증."""
+"""Take API — 부분 수정(PUT), 입력 검증."""
 
 import uuid
 from datetime import UTC, datetime
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
-from pitch_coach_backend.module.take.entity import Mission, Take
+from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import TakeRepository
 
 Versions = tuple[uuid.UUID, uuid.UUID]
@@ -57,127 +57,13 @@ def _make_take(
     return take
 
 
-def _missions(client: TestClient, pitch_id: uuid.UUID, headers: dict[str, str]):
-    return client.get(f"/api/pitches/{pitch_id}/takes/previous-missions", headers=headers)
-
-
-# ── 이전 미션 ──────────────────────────────────────────────────────
-
-
-def test_previous_missions_without_take_is_empty(
-    client: TestClient, auth_headers: dict[str, str], pitch_id: uuid.UUID
-) -> None:
-    response = _missions(client, pitch_id, auth_headers)
-
-    assert response.status_code == 200
-    assert response.json()["missions"] == {
-        "source_take_id": None,
-        "next_take_number": 1,
-        "missions": [],
-    }
-
-
-def test_previous_missions_next_take_number_counts_takes_not_reviewed(
-    client: TestClient,
-    db_session: Session,
-    auth_headers: dict[str, str],
-    pitch_id: uuid.UUID,
-    versions: Versions,
-) -> None:
-    """미션은 리뷰가 끝난 3번에서 오지만 번호는 리뷰가 안 끝난 4 · 5번 뒤인 6이다."""
-    takes = [_make_take(db_session, pitch_id, versions, number) for number in range(1, 6)]
-    takes[2].review_status = "DONE"
-    db_session.flush()
-
-    body = _missions(client, pitch_id, auth_headers).json()["missions"]
-
-    assert body["source_take_id"] == str(takes[2].id)
-    assert body["next_take_number"] == 6
-
-
-def test_previous_missions_without_reviewed_take_still_counts_takes(
-    client: TestClient,
-    db_session: Session,
-    auth_headers: dict[str, str],
-    pitch_id: uuid.UUID,
-    versions: Versions,
-) -> None:
-    _make_take(db_session, pitch_id, versions, 1)
-    _make_take(db_session, pitch_id, versions, 2)
-
-    body = _missions(client, pitch_id, auth_headers).json()["missions"]
-
-    assert body == {"source_take_id": None, "next_take_number": 3, "missions": []}
-
-
-def test_previous_missions_come_from_latest_take(
-    client: TestClient,
-    db_session: Session,
-    auth_headers: dict[str, str],
-    pitch_id: uuid.UUID,
-    versions: Versions,
-) -> None:
-    old = _make_take(db_session, pitch_id, versions, 1)
-    latest = _make_take(db_session, pitch_id, versions, 2)
-    old.review_status = "DONE"
-    latest.review_status = "DONE"
-    db_session.add(
-        Mission(
-            source_take_id=old.id,
-            area="FILLER",
-            slide_number=1,
-            target={"metric": "filler_per_min", "operator": "LTE", "value": 2},
-            description="옛것",
-            priority=1,
-        )
-    )
-    second = Mission(
-        source_take_id=latest.id,
-        area="GAZE",
-        slide_number=3,
-        target={"metric": "script_ratio", "operator": "LTE", "value": 0.4},
-        description="시선",
-        priority=2,
-    )
-    first = Mission(
-        source_take_id=latest.id,
-        area="SPEED",
-        slide_number=5,
-        target={"metric": "cpm", "operator": "LTE", "value": 350},
-        description="속도",
-        priority=1,
-    )
-    db_session.add_all([second, first])
-    db_session.flush()
-
-    response = _missions(client, pitch_id, auth_headers)
-
-    assert response.status_code == 200
-    body = response.json()["missions"]
-    assert body["source_take_id"] == str(latest.id)
-    assert body["next_take_number"] == 3
-    assert body["missions"] == [
-        {
-            "mission_id": str(first.id),
-            "slide_number": 5,
-            "description": "속도",
-            "priority": 1,
-            "completed": False,
-        },
-        {
-            "mission_id": str(second.id),
-            "slide_number": 3,
-            "description": "시선",
-            "priority": 2,
-            "completed": False,
-        },
-    ]
+# ── 가장 최근 Take ─────────────────────────────────────────────────
 
 
 def test_latest_take_lookup_leaves_event_logs_unloaded(
     db_session: Session, pitch_id: uuid.UUID, versions: Versions
 ) -> None:
-    """장치 점검 · 이전 미션은 번호만 본다. 시선 1초 기록이 쌓인 event_logs 는 읽지 않는다."""
+    """장치 점검은 번호만 본다. 시선 1초 기록이 쌓인 event_logs 는 읽지 않는다."""
     take = _make_take(db_session, pitch_id, versions, 1)
     take.event_logs = [{"type": "gaze"}]
     db_session.flush()
@@ -187,21 +73,6 @@ def test_latest_take_lookup_leaves_event_logs_unloaded(
 
     assert latest is not None
     assert "event_logs" in inspect(latest).unloaded
-
-
-def test_previous_missions_of_take_without_missions_is_empty_list(
-    client: TestClient,
-    db_session: Session,
-    auth_headers: dict[str, str],
-    pitch_id: uuid.UUID,
-    versions: Versions,
-) -> None:
-    _make_take(db_session, pitch_id, versions, 1)
-
-    response = _missions(client, pitch_id, auth_headers)
-
-    assert response.status_code == 200
-    assert response.json()["missions"]["missions"] == []
 
 
 # ── PUT /takes/{take_id} ────────────────────────────────────────────

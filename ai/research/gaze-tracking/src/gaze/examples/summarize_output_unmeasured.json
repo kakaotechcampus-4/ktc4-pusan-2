@@ -1,0 +1,11 @@
+{
+  "GAZE": {
+    "audience_ratio": null,
+    "script_ratio": null,
+    "screen_ratio": null,
+    "away_ratio": null,
+    "reading_ratio": 0.0,
+    "reading_runs": 0,
+    "measured_ratio": 0.0
+  }
+}

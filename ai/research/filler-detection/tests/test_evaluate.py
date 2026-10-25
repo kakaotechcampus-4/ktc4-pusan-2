@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from filler.config import DEFAULT
+from filler.config import ALL_TIERS
 from filler.core import criteria_version
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,7 +81,7 @@ def test_tier_metrics_on_hand_made_utterance():
     assert result["all"] == {"tp": 2, "fp": 1, "fn": 1, "precision": 0.6667, "recall": 0.6667}
     assert result["out_of_dictionary"] == 1
     assert (result["n_utterances"], result["n_words"]) == (2, 8)
-    assert result["criteria_version"] == criteria_version(DEFAULT)
+    assert result["criteria_version"] == criteria_version(ALL_TIERS)
 
 
 def test_errors_list_missed_and_wrongly_counted_words_with_context():
@@ -214,7 +214,7 @@ def test_tally_without_a_matching_word_stops_the_evaluation():
 
 def test_committed_result_was_made_with_the_current_criteria():
     result = json.loads(RESULT.read_text(encoding="utf-8"))
-    assert result["criteria_version"] == criteria_version(DEFAULT), (
+    assert result["criteria_version"] == criteria_version(ALL_TIERS), (
         f"결과 파일이 오래됐다. 다시 만든다: {REGENERATE}"
     )
 
@@ -227,5 +227,5 @@ def test_committed_result_is_what_the_tool_makes_from_the_committed_data():
     assert committed["streaming_matches_single_call"] is True
     assert [s["gap_ms"] for s in committed["sweep_gap_ms"]] == tool.SWEEP_GAP_MS
     # 기본 기준값(400 ms)의 민감도 행은 본 결과와 같아야 한다
-    base = next(s for s in committed["sweep_gap_ms"] if s["gap_ms"] == DEFAULT.gap_ms)
+    base = next(s for s in committed["sweep_gap_ms"] if s["gap_ms"] == ALL_TIERS.gap_ms)
     assert base["by_tier"] == committed["by_tier"] and base["all"] == committed["all"]

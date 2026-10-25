@@ -1145,6 +1145,86 @@ describe('종료', () => {
   });
 });
 
+describe('AI 코치', () => {
+  it('coach 를 받으면 넘긴다 — 연결과 재연결에는 손대지 않는다', async () => {
+    const onCoach = vi.fn();
+    const stt = makeSocket({ onCoach });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+
+    const coach = {
+      type: 'coach',
+      t_ms: 92_000,
+      action: 'WAIT',
+      feedback: null,
+      indicators: { SPEED: 'FAST' },
+    };
+    sockets[0]!.emit(coach);
+
+    expect(onCoach).toHaveBeenCalledExactlyOnceWith(coach);
+    expect(sockets).toHaveLength(1);
+  });
+});
+
+describe('연결 알림 (onConnection)', () => {
+  it('ready 에서 이어졌다, 끊기면 끊겼다고 알린다 — 재연결하면 다시 이어졌다', async () => {
+    vi.useFakeTimers();
+    const onConnection = vi.fn();
+    const stt = makeSocket({ onConnection });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    // 소켓이 열렸어도 인증(ready) 전에는 이어진 것이 아닙니다
+    expect(onConnection).not.toHaveBeenCalled();
+    sockets[0]!.emit(READY);
+    expect(onConnection.mock.calls).toEqual([[true]]);
+
+    sockets[0]!.serverClose(1006);
+    expect(onConnection.mock.calls).toEqual([[true], [false]]);
+
+    await vi.advanceTimersByTimeAsync(500);
+    sockets[1]!.open();
+    sockets[1]!.emit(READY);
+    expect(onConnection.mock.calls).toEqual([[true], [false], [true]]);
+  });
+
+  it('이어지기 전에 닫히면 알리지 않는다 — 원래 끊긴 상태다', async () => {
+    vi.useFakeTimers();
+    const onConnection = vi.fn();
+    const stt = makeSocket({ onConnection });
+    stt.start();
+    await settle();
+    sockets[0]!.serverClose(1006);
+    expect(onConnection).not.toHaveBeenCalled();
+  });
+
+  it('서버의 stt_status degraded(Deepgram 문제)로는 끊겼다고 하지 않는다 — 코치는 계속 온다', async () => {
+    const onConnection = vi.fn();
+    const stt = makeSocket({ onConnection });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    sockets[0]!.emit(status('degraded'));
+    expect(onConnection.mock.calls).toEqual([[true]]);
+    expect(states.at(-1)).toBe('degraded');
+  });
+
+  it('화면을 떠나 닫을 때는 알리지 않는다', async () => {
+    const onConnection = vi.fn();
+    const stt = makeSocket({ onConnection });
+    stt.start();
+    await settle();
+    sockets[0]!.open();
+    sockets[0]!.emit(READY);
+    stt.dispose();
+    sockets[0]!.serverClose(1000);
+    expect(onConnection.mock.calls).toEqual([[true]]);
+  });
+});
+
 describe('서버의 자동 종료', () => {
   const AUTO_END = { type: 'auto_end', reason: 'TIME_LIMIT', message: '연습은 최대 1시간까지예요' };
 

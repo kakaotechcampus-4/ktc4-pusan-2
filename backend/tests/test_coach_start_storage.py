@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     PresentationVersion,
@@ -273,24 +274,29 @@ def test_completing_a_take_records_when(db_session: Session, take_parts):
     db_session.refresh(take)
     assert take.completed_at is not None
 
-def test_prepare_screen_and_take_start_pick_the_same_reviewed_take(db_session: Session, take_parts):
-    """장치 점검의 이전 미션과 Take 를 시작할 때 싣는 미션은 같은 Take 에서 온다 — 리뷰가 늦게 끝난
-    Take 다 (번호 순서가 아니다)."""
+def test_prepare_screen_shows_the_missions_take_start_assigns(db_session: Session, take_parts):
+    """장치 점검에 보인 미션과 Take 를 시작할 때 싣는 미션은 같은 Take 의 같은 미션 · 같은 순서다 —
+    리뷰가 늦게 끝난 Take 다 (번호 순서가 아니다)."""
     pitch, script, presentation = take_parts
     now = datetime.now(UTC)
     later = reviewed(db_session, make_take(db_session, *take_parts, 1), completed_at=now)
-    reviewed(
+    earlier = reviewed(
         db_session, make_take(db_session, *take_parts, 2), completed_at=now - timedelta(minutes=1)
     )
-    row = mission(db_session, later, 1)
+    mission(db_session, earlier, 1)
+    mission(db_session, later, 2)
+    mission(db_session, later, 1)
+    mission(db_session, later, 3, status="ACHIEVED")
 
-    previous = take_service.get_previous_missions_service(db_session, pitch.id)
+    shown = pitch_service.get_prepare_service(db_session, pitch.id).missions
     take = make_take(db_session, *take_parts, 3)
     coach_service.start_take(db_session, take.id)
 
-    assert previous.source_take_id == later.id
+    assert shown is not None
+    assert shown.source_take_number == later.take_number
     db_session.refresh(take)
-    assert take.mission_ids == [str(row.id)]
+    assert take.mission_ids == [str(item.mission_id) for item in shown.items]
+    assert len(take.mission_ids) == 2
 
 @pytest.mark.parametrize(
     "stage, allowed",
@@ -307,7 +313,10 @@ def test_prepare_screen_and_take_start_pick_the_same_reviewed_take(db_session: S
 def test_review_starts_only_after_scoring(
     db_session: Session, take_parts, stage: str | None, allowed: bool
 ):
-    take = make_take(db_session, *take_parts, 1, status="ANALYZING", analysis_stage=stage)
+    take = make_take(
+        db_session, *take_parts, 1, status="ANALYZING", analysis_stage=stage,
+        review_request_id=uuid.uuid4() if stage == "REVIEWING" else None,
+    )
 
     assert TakeRepository(db_session).start_review(take.id) is allowed
 
@@ -315,7 +324,8 @@ def test_review_cut_off_midway_can_start_again(db_session: Session, take_parts):
     """리뷰가 도는 중에 앱이 다시 뜨면 Take 가 REVIEWING 으로 남는다. 리뷰 하나가 끝날 시간이
     지났으면 끊긴 리뷰로 보고 다시 받는다. 아직 도는 중이면 두 번 부르지 않는다."""
     now = datetime.now(UTC)
-    reviewing = {"status": "ANALYZING", "analysis_stage": "REVIEWING"}
+    reviewing = {"status": "ANALYZING", "analysis_stage": "REVIEWING",
+                 "review_request_id": uuid.uuid4()}
     running = make_take(db_session, *take_parts, 1, **reviewing, analysis_stage_at=now)
     cut_off = make_take(
         db_session, *take_parts, 2, **reviewing, analysis_stage_at=now - timedelta(minutes=10)

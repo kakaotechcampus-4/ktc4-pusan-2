@@ -1,0 +1,42 @@
+{
+  "GAZE_ON_SCRIPT": {
+    "metric": "script_run_ms",
+    "direction": "HIGHER_IS_WORSE",
+    "threshold": 3000.0,
+    "bad": 10000.0,
+    "onset_lag_ms": 3000,
+    "offset_lag_ms": 0
+  },
+  "GAZE_ON_SCREEN": {
+    "metric": "screen_run_ms",
+    "direction": "HIGHER_IS_WORSE",
+    "threshold": 5000.0,
+    "bad": 15000.0,
+    "onset_lag_ms": 5000,
+    "offset_lag_ms": 0
+  },
+  "GAZE_AWAY": {
+    "metric": "away_run_ms",
+    "direction": "HIGHER_IS_WORSE",
+    "threshold": 2000.0,
+    "bad": 8000.0,
+    "onset_lag_ms": 2000,
+    "offset_lag_ms": 0
+  },
+  "GAZE_LOW_EYE_CONTACT": {
+    "metric": "audience_ratio",
+    "direction": "LOWER_IS_WORSE",
+    "threshold": 0.3,
+    "bad": 0.0,
+    "onset_lag_ms": 21000,
+    "offset_lag_ms": 9000
+  },
+  "GAZE_UNMEASURABLE": {
+    "metric": "measured_ratio",
+    "direction": "LOWER_IS_WORSE",
+    "threshold": 0.5,
+    "bad": 0.0,
+    "onset_lag_ms": 2500,
+    "offset_lag_ms": 15000
+  }
+}

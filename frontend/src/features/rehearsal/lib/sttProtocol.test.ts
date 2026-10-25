@@ -60,6 +60,50 @@ describe('서버 메시지 파싱', () => {
     expect(error({ end_reason: 'SOMETHING_NEW' })).toMatchObject({ end_reason: null });
   });
 
+  it('AI 코치의 한마디와 상태 표시를 그대로 통과시킨다', () => {
+    const coach = parseServerMessage(
+      JSON.stringify({
+        type: 'coach',
+        t_ms: 92_000,
+        action: 'INTERVENE',
+        feedback: {
+          area: 'GAZE',
+          instruction: 'LOOK_AT_CAMERA',
+          message: '대본보다 청중을 조금 더 바라보세요',
+          priority: 72,
+          confidence: 0.86,
+        },
+        indicators: { GAZE: 'SCRIPT', TIME: 'ON_TRACK' },
+      }),
+    );
+    expect(coach).toMatchObject({
+      type: 'coach',
+      action: 'INTERVENE',
+      feedback: { area: 'GAZE', message: '대본보다 청중을 조금 더 바라보세요' },
+      indicators: { GAZE: 'SCRIPT', TIME: 'ON_TRACK' },
+    });
+  });
+
+  it('코치 메시지의 빠진 칸은 없음으로 채운다 — 문장 없는 한마디는 띄우지 않는다', () => {
+    expect(parseServerMessage(JSON.stringify({ type: 'coach', t_ms: 1_000 }))).toEqual({
+      type: 'coach',
+      t_ms: 1_000,
+      action: 'WAIT',
+      feedback: null,
+      indicators: {},
+    });
+    const blank = parseServerMessage(
+      JSON.stringify({
+        type: 'coach',
+        t_ms: 1_000,
+        action: 'INTERVENE',
+        feedback: { area: 'GAZE', message: '' },
+        indicators: null,
+      }),
+    );
+    expect(blank).toMatchObject({ feedback: null, indicators: {} });
+  });
+
   it('모르는 메시지와 깨진 입력은 null 이다 — 발표 중에 예외가 나면 그걸로 끝이다', () => {
     expect(parseServerMessage(JSON.stringify({ type: 'metrics', wpm: 120 }))).toBeNull();
     expect(parseServerMessage('{ 이건 JSON 이 아니다')).toBeNull();

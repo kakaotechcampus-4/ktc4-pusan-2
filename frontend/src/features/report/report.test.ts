@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { fetchTakeReport, isSettled } from '@/shared/api/report';
 import { clearTokens } from '@/shared/api/tokenStore';
 import type { TakeReport } from '@/types/report';
-import { fmt, pct, stepStates } from './reportFormat';
+import { duration, fmt, pct, stepStates } from './reportFormat';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -51,6 +51,12 @@ it('shows missing measures as — instead of 0%', () => {
   expect(pct(0.736)).toBe('74%');
   expect(fmt('script_ratio', 0.62)).toBe('62%');
   expect(fmt('unknown_metric', 3)).toBe('3');
+});
+
+it('shows an unknown duration as — instead of 00:00', () => {
+  expect(duration(null)).toBe('—');
+  expect(duration(0)).toBe('00:00');
+  expect(duration(278_000)).toBe('04:38');
 });
 
 it('asks the report endpoint with the take id and keeps errors as failures', async () => {

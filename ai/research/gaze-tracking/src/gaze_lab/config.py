@@ -16,9 +16,6 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-# 1초 기록 · 이슈 · 요약의 임계값은 서버 코어에 한 벌만 둔다 (configs/evidence.yaml 이 덮어쓴다)
-from gaze.config import EvidenceConfig
-
 #: Project root = two levels above this file (src/gaze_lab/config.py).
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = REPO_ROOT / "configs"
@@ -342,6 +339,22 @@ class PreconditionConfig:
     #: Analysed frames per second the stream must sustain: the 1 s vote needs 4
     #: frames, so 5 FPS leaves a little room (8 FPS is the target).
     min_analysis_fps: float = 5.0
+
+
+@dataclass
+class EvidenceConfig:
+    """Cutting frame decisions into 1 s records (``gaze_lab.evidence.gaze``, ``web/src/engine/evidence.ts``).
+
+    A slice is decided by majority of its usable frames (``slice_vote_threshold``
+    of them, else UNCERTAIN); with fewer than ``min_frames_per_slice`` usable
+    frames it is UNMEASURED.  Only the engine's values live here: what the server
+    makes of the records (issues, take metrics) is ``gaze.config.GazeConfig``.
+    Every number is an initial value, not a measured one.
+    """
+
+    slice_ms: int = 1000
+    min_frames_per_slice: int = 4
+    slice_vote_threshold: float = 0.6
 
 
 @dataclass
