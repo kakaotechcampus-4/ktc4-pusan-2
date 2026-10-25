@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
-import { useTakeHistory } from '@/shared/api/takeHistory';
+import { isPitchMissing, useTakeHistory } from '@/shared/api/takeHistory';
+import { ButtonLink } from '@/shared/ui/Button';
 import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
@@ -41,7 +42,19 @@ export function ComparisonPage() {
   if (!history.data)
     return (
       <InfoPage title="Take 비교">
-        <QueryState query={history} />
+        {isPitchMissing(history.error) ? (
+          <Card>
+            <div role="alert" className="flex flex-col gap-3">
+              <p className="font-bold">피치를 찾을 수 없어요.</p>
+              <p className="text-sm text-stone">지워졌거나 열 수 없는 피치예요.</p>
+              <div>
+                <ButtonLink to="/">내 피치로</ButtonLink>
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <QueryState query={history} />
+        )}
       </InfoPage>
     );
 
