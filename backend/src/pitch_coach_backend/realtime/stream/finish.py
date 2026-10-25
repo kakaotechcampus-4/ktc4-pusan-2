@@ -1,6 +1,6 @@
 """Take 를 끝내는 일. 마지막 창을 만들고 남은 원자료를 저장한 뒤 DB 에 적고 Take 결과를 띄운다.
 
-WS stop(`connection/session.py`) · 자동 종료(`runtime.StreamHost.finish_take`) · 끝내기 PUT
+WS stop(`connection/session.py`) · 자동 종료(`record.StreamHost.finish_take`) · 끝내기 PUT
 (`live_takes.py`, `end_without_stop`)이 부른다. DB 가 늦거나 실패하면 뒤에서 마저 적는다
 (`mark_later`). 떠난 Take 는 registry 가 끝내며 원자료 저장(`seal_and_flush`)만 여기서 가져다 쓴다.
 
@@ -21,7 +21,7 @@ from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuffer
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream import state
-from pitch_coach_backend.realtime.stream.runtime import CoachDeps
+from pitch_coach_backend.realtime.stream.record import CoachDeps
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 
 logger = logging.getLogger(__name__)

@@ -5,7 +5,7 @@
 모아 저장한다"). 장 변경은 드물어 받는 대로 넣는다. 저장 · 다시 넣기 규칙은 둘이 같다
 (`core.row_buffer.RowBuffer`).
 
-버퍼는 스트림이 아니라 Take 에 붙어 있다 (`stream/runtime.TakeRecord`). grace 가 지나 스트림이 새로
+버퍼는 스트림이 아니라 Take 에 붙어 있다 (`stream/record.TakeRecord`). grace 가 지나 스트림이 새로
 열려도 앞 스트림이 못 넣은 행이 이어진다.
 
 Take 를 끝낼 때(`ANALYZING`)는 그 전에 `seal` 하고 `flush` 를 기다린다. Take 뒤 분석이 원자료를

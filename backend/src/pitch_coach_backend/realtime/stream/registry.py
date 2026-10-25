@@ -2,8 +2,8 @@
 
 연결(`connection/session.py`)은 연결마다 새로 만들지만, 그 연결은 여기서 같은 Take 의 스트림을
 찾는다 (`attach`). 스트림 맵 · attach 잠금 · 스트림이 바뀌어도 이어질 Take 별 기록(말 없음 · 서버
-시계 · 1초 원자료 · 코치, `runtime.TakeRecord`) · 이 프로세스에서 끝낸 Take 는 `state.py` 에 있다.
-스트림은 이 상태를 직접 만지지 않고 `runtime.StreamHost` 로 알린다.
+시계 · 1초 원자료 · 코치, `record.TakeRecord`) · 이 프로세스에서 끝낸 Take 는 `state.py` 에 있다.
+스트림은 이 상태를 직접 만지지 않고 `record.StreamHost` 로 알린다.
 
 떠난 Take 를 끝내는 일(`_end_abandoned`)은 여기서 한다. 떠난 Take 타이머 자체는 `abandon.py` 고,
 사용자 · 자동 종료로 Take 를 끝내는 일(마지막 창 · 원자료 저장 · DB 에 적기 · Take 결과 띄우기)은
@@ -35,7 +35,8 @@ from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream import abandon, finish, runtime, state
 from pitch_coach_backend.realtime.stream.abandon import LeftReason
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
-from pitch_coach_backend.realtime.stream.runtime import CoachDeps, TakeRecord, TakeStream
+from pitch_coach_backend.realtime.stream.record import CoachDeps, TakeRecord
+from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
     SttAdapter,
@@ -61,7 +62,8 @@ class TakeEnded(Exception):
 
 
 class _Host:
-    """스트림이 알리는 자리 (`runtime.StreamHost`). 이 파일의 맵 · 타이머 · 태스크로 이어 준다."""
+    """스트림이 알리는 자리 (`record.StreamHost`). `state` 의 맵 · 떠난 Take 타이머 · 태스크로 이어
+    준다."""
 
     def stream_started(self, take_id: uuid.UUID) -> None:
         abandon.cancel(take_id)

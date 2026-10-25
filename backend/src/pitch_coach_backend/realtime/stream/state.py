@@ -21,7 +21,8 @@ from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuff
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream.abandon import LeftReason
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
-from pitch_coach_backend.realtime.stream.runtime import TakeRecord, TakeStream
+from pitch_coach_backend.realtime.stream.record import TakeRecord
+from pitch_coach_backend.realtime.stream.runtime import TakeStream
 
 # 끝낸 Take · Take 별 자동 종료 상태를 프로세스 안에서 기억하는 개수. 오래된 것부터 버린다
 MAX_REMEMBERED_TAKES = 10_000

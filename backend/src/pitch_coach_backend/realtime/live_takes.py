@@ -13,7 +13,7 @@ import anyio
 from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
 from pitch_coach_backend.module.hooks import MarkEnded
 from pitch_coach_backend.realtime.dependencies import get_transcript_store
-from pitch_coach_backend.realtime.stream import finish, registry, runtime
+from pitch_coach_backend.realtime.stream import finish, record, registry
 
 
 class RealtimeLiveTakes:
@@ -31,7 +31,7 @@ class RealtimeLiveTakes:
         if ending is None:
             # 연결이 붙어 있다. 그 연결의 stop 이 마지막 전사를 저장한 뒤 끝낸다
             return
-        coach = runtime.CoachDeps(client=get_coach_client(), store=get_coach_store())
+        coach = record.CoachDeps(client=get_coach_client(), store=get_coach_store())
         try:
             marked = mark(ending.end_reason, ending.utterance_ends)
         except Exception:

@@ -21,7 +21,7 @@ from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
-from pitch_coach_backend.realtime.stream.runtime import CoachDeps
+from pitch_coach_backend.realtime.stream.record import CoachDeps
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import UtteranceEnd
 from tests.realtime.conftest import (

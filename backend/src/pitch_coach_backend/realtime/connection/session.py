@@ -37,8 +37,9 @@ from pitch_coach_backend.realtime.dto import (
 from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream import finish, registry
+from pitch_coach_backend.realtime.stream.record import CoachDeps
 from pitch_coach_backend.realtime.stream.registry import StreamOwnerMismatch, TakeEnded
-from pitch_coach_backend.realtime.stream.runtime import CoachDeps, TakeStream
+from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt.adapter import SttAdapter, SttConfig
 from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.stt.keyterms import build_keyterms, normalize_term
