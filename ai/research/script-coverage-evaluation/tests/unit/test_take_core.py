@@ -13,7 +13,7 @@ from script_coverage.core import (
     rescore_evaluation,
     take_scores,
 )
-from script_coverage.schemas import AnalyzeRequest, RescoreRequest
+from script_coverage.schemas import AnalyzeRequest, RescoreRequest, SlideFailure
 from script_coverage.shared.llm_step import ERROR_MESSAGES
 from script_coverage.stt_evaluation.schemas import (
     NameCheck,
@@ -24,7 +24,7 @@ from script_coverage.stt_evaluation.schemas import (
     VerifierResult,
 )
 from script_coverage.version import FEATURE_VERSION, SCHEMA_VERSION
-from tests.unit.fakes import FakeLLM, deck_rubrics
+from tests.unit.fakes import FakeLLM, KeepFirstVerifier, deck_rubrics
 from tests.unit.shared.slides import SLIDES
 
 MODEL = "test-model"
@@ -76,9 +76,7 @@ RUBRICS = deck_rubrics(NUMBERS)
 
 
 def _llms(eval_llm=None, verifier=None) -> TakeLLMs:
-    return TakeLLMs(
-        eval=eval_llm or SaidAllLLM(), verifier=verifier or FakeLLM(VerifierResult(judgments=[]))
-    )
+    return TakeLLMs(eval=eval_llm or SaidAllLLM(), verifier=verifier or KeepFirstVerifier())
 
 
 def _request(numbers=NUMBERS, slide_numbers=None, rubrics=None, stt=None) -> dict:
@@ -266,7 +264,7 @@ def test_analyze_verifier_failure_fails_only_that_slide():
                 "1,860명" in messages[1][1]
             ):  # 검증 메시지에는 장 번호가 없어 6번 장 대본으로 알아본다
                 raise TimeoutError("STT 원문")
-            return VerifierResult(judgments=[])
+            return KeepFirstVerifier().invoke(messages)
 
     verifier = SlideVerifier()
     response = _analyze(llms=_llms(ConflictLLM(), verifier))
@@ -276,6 +274,102 @@ def test_analyze_verifier_failure_fails_only_that_slide():
     assert failure.error.message == ERROR_MESSAGES["LLM_TIMEOUT"]
     assert [e.slide_number for e in response.evaluations] == [4, 7]
     assert response.take_scores.scored_ratio == pytest.approx(0.667)
+
+
+class _MissingOn6(SaidAllLLM):
+    """6번 장은 말한 내용을 전부 missing 으로 판정한다 (규칙과 어긋나 교차 검증 대상이 생긴다)."""
+
+    def invoke(self, messages):
+        result = super().invoke(messages)
+        if self.called_slides[-1] == 6:
+            for s in result.sentences:
+                for u in s.units:
+                    u.status = "missing"
+        return result
+
+
+class _BrokenVerifier(KeepFirstVerifier):
+    """완전한 검증 출력을 만든 뒤, 6번 장이면 `break_it` 으로 일부를 망가뜨린다."""
+
+    def __init__(self, break_it):
+        super().__init__()
+        self.break_it = break_it
+
+    def invoke(self, messages):
+        result = super().invoke(messages)
+        if "1,860명" in messages[1][1]:  # 검증 메시지에는 장 번호가 없어 6번 장 대본으로 알아본다
+            self.break_it(result.judgments)
+        return result
+
+
+def _drop_sentence(js):
+    js.pop()
+
+
+def _drop_unit(js):
+    js[0].units.pop()
+
+
+def _repeat_sentence(js):
+    js.append(js[0].model_copy(deep=True))
+
+
+def _repeat_unit(js):
+    js[0].units.append(js[0].units[0].model_copy())
+
+
+@pytest.mark.parametrize("break_it", [_drop_sentence, _drop_unit, _repeat_sentence, _repeat_unit])
+def test_analyze_incomplete_verification_fails_that_slide(break_it):
+    """교차 검증 출력이 대상 문장 · 전달 단위를 빠뜨리거나 겹치면 그 장은 1차 판정으로 내지 않는다."""
+    verifier = _BrokenVerifier(break_it)
+    response = _analyze(llms=_llms(_MissingOn6(), verifier))
+    [failure] = response.failed
+    assert failure.slide_number == 6 and failure.error.code == "LLM_INVALID_OUTPUT"
+    assert [e.slide_number for e in response.evaluations] == [4, 7]
+
+
+class _MemoryCache:
+    def __init__(self):
+        self.rows: dict[tuple, str] = {}
+
+    def get(self, kind, key, config_hash):
+        return self.rows.get((kind, key, config_hash))
+
+    def put(self, kind, key, config_hash, output_json):
+        self.rows[(kind, key, config_hash)] = output_json
+
+
+def test_incomplete_verification_is_not_cached_and_a_retry_recovers():
+    """잘못된 검증 출력은 캐시에 남지 않고, 캐시에 있던 것도 다시 부른다 — 다시 채점하면 회복된다."""
+    cache = _MemoryCache()
+    broken = evaluate_take(
+        _request(), llms=_llms(_MissingOn6(), _BrokenVerifier(_drop_unit)), model=MODEL, cache=cache
+    )
+    assert [f.slide_number for f in broken.failed] == [6]
+    good = KeepFirstVerifier()
+    again = evaluate_take(_request(), llms=_llms(_MissingOn6(), good), model=MODEL, cache=cache)
+    assert again.failed == [] and good.calls >= 1
+    # 예전에 캐시에 들어간 잘못된 출력도 쓰지 않고 다시 부른다
+    for key in [k for k in cache.rows if k[0] == "stt.verifier"]:
+        cache.rows[key] = '{"judgments": []}'
+    good = KeepFirstVerifier()
+    third = evaluate_take(_request(), llms=_llms(_MissingOn6(), good), model=MODEL, cache=cache)
+    assert third.failed == [] and good.calls >= 1
+
+
+def test_analyze_complete_verification_scores_the_slide():
+    response = _analyze(llms=_llms(_MissingOn6(), KeepFirstVerifier()))
+    assert response.failed == []
+    [six] = [e for e in response.evaluations if e.slide_number == 6]
+    assert six.verification["required"] is True
+    assert all(s.verified for s in six.sentences if s.conflicts)
+
+
+def test_rescore_rejects_failed_slide_number_below_one():
+    with pytest.raises(ValidationError):
+        SlideFailure.model_validate(
+            {"slide_number": 0, "error": {"code": "LLM_ERROR", "message": "m"}}
+        )
 
 
 def test_analyze_llms_none_is_503():

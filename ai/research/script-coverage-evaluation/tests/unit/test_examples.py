@@ -125,6 +125,41 @@ def test_rescore_example():
     assert_same(response.model_dump(mode="json"), expected)
 
 
+def _same_fact_status_everywhere(evaluation: dict) -> None:
+    """반영한 답의 사실은 문장 · 핵심 내용 · 사실 목록에서 같은 상태이고, 문장에는 답한 비슷한 말이 없다."""
+    answered = set(evaluation["applied_answers"])
+    facts = {f["fact_id"]: f["status"] for f in evaluation["critical_facts"]}
+    answered_facts = {
+        it["fact_id"] for it in evaluation["similar_items"] if it["item_id"] in answered
+    } - {None}
+    assert answered_facts
+    for part in evaluation["sentences"] + evaluation["key_points"]:
+        for fact_id, status in part["fact_statuses"].items():
+            if fact_id in answered_facts:
+                assert status == facts[fact_id]
+    for sentence in evaluation["sentences"]:
+        assert not answered & set(sentence["similar_ids"])
+    # 충실도에서 그 자리를 계속 빼려고 similar_items 에는 남는다
+    assert answered <= {it["item_id"] for it in evaluation["similar_items"]}
+
+
+def test_rescore_answer_reaches_every_sentence():
+    response = rescore_evaluation(_load("rescore", "request.json"))
+    _same_fact_status_everywhere(response.model_dump(mode="json")["evaluations"][0])
+
+
+def test_rescore_without_answers_repairs_sentences_from_applied_answers():
+    """문장에 확인 전 상태가 남은 채 저장된 채점도 답 없이 다시 계산하면 현재 상태로 맞춰진다."""
+    request = _load("rescore", "request.json")
+    stale = rescore_evaluation(request).model_dump(mode="json")["evaluations"][0]
+    for sentence in stale["sentences"]:
+        if "CF1" in sentence["fact_statuses"]:
+            sentence["fact_statuses"]["CF1"] = "sound_alike"
+            sentence["similar_ids"] = ["R1"]
+    again = rescore_evaluation({**request, "evaluations": [stale], "answers": []})
+    _same_fact_status_everywhere(again.model_dump(mode="json")["evaluations"][0])
+
+
 def test_assert_same_detects_differences():
     assert_same({"a": [1, 0.1 + 0.2]}, {"a": [1, 0.3]})
     with pytest.raises(AssertionError):

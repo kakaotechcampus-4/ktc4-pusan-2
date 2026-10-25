@@ -125,19 +125,41 @@ def llm_step[M: BaseModel](
     model_cls: type[M],
     cache: LLMCache | None = None,
     max_workers: int = 4,
+    check=None,
 ) -> tuple[dict, dict, int]:
     """캐시에 없는 메시지만 병렬로 호출하고 캐시에 남긴다. (결과, 실패한 예외, 호출 수)
 
     `messages` = {키: 메시지}, `fn(message, llm)` 이 LLM 을 한 번 부른다.
     캐시 읽기 · 쓰기는 호출한 스레드에서만 한다 (SQLite 같은 캐시가 스레드 간 공유를 못 해도 되게).
+    `check(키, 출력)` 이 있으면 출력이 쓸 만한지 검사한다. 예외를 내면 그 키는 실패이고 캐시에
+    남기지 않는다. 캐시에 있던 출력이 검사에 걸리면 없는 것으로 보고 다시 부른다 — 잘못된 출력이
+    캐시에 남아 다시 불러도 회복되지 않는 일을 막는다.
     """
+
+    def usable(k, output) -> bool:
+        if output is None or check is None:
+            return output is not None
+        try:
+            check(k, output)
+        except Exception:
+            return False
+        return True
+
     results = {
         k: cache_get(cache, kind, message_hash(m), config_hash, model_cls)
         for k, m in messages.items()
     }
-    jobs = {k: (messages[k], llm) for k, r in results.items() if r is None}
+    jobs = {k: (messages[k], llm) for k, r in results.items() if not usable(k, r)}
+    for k in jobs:
+        results[k] = None
     done, errors = call_in_parallel(jobs, fn, max_workers)
     for k, output in done.items():
+        if check is not None:
+            try:
+                check(k, output)
+            except Exception as e:
+                errors[k] = e
+                continue
         results[k] = output
         cache_put(cache, kind, message_hash(messages[k]), config_hash, output)
     return results, errors, len(jobs)

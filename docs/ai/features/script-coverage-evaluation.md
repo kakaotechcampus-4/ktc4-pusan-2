@@ -45,7 +45,7 @@ STT(음성 인식)는 숫자 · 이름을 비슷한 소리의 다른 말로 적�
 | 용어 | 뜻 | 예 |
 |---|---|---|
 | 평가 기준 (rubric) | 장 하나의 대본을 분석해 만든 채점 기준. 문장 · 문장 역할 · 핵심 주장 · 핵심 내용 · 핵심 수치 · 키워드 · 전달 단위를 담는다. 대본 등록 때 한 번 만들어 저장한다 | `EvaluationRubric` |
-| 문장 역할 | 대본 문장마다 `claim`(핵심 주장, 장마다 최대 하나) · `evidence`(근거) · `detail`(세부) · `skip`(인사 · 전환, 채점하지 않음) | `["claim", "evidence"]` |
+| 문장 역할 | 대본 문장마다 `claim`(핵심 주장, 장마다 하나를 목표로 만든다. 둘 이상이면 `warnings`에 `too_many_claims`로 남기고 그대로 쓴다) · `evidence`(근거) · `detail`(세부) · `skip`(인사 · 전환, 채점하지 않음) | `["claim", "evidence"]` |
 | 핵심 주장 (`core_claim`) | 그 장이 말하려는 것 한 문장 | "지난 분기 매출이 신규 고객 덕분에 크게 늘었다" |
 | 핵심 내용 (Key Point, `KP`) | 청중이 꼭 가져가야 할 내용. 중요도 `critical` · `high` · `normal`과 근거 문장 번호를 갖는다 | `KP1` "지난 분기 매출 37% 증가" |
 | 핵심 수치 · 사실 (`CF`) | 대본의 숫자 · 날짜 · 시간 · 금액 · 이름. 값으로 비교한다 | `CF1` `37%` |
@@ -167,8 +167,8 @@ ai/research/script-coverage-evaluation/
 | `take_id` | string | 예 | Take 구분 | `take-123` |
 | `evaluations` | list | 예 | 저장해 둔 장별 채점 전체 (`/takes/analyze` · `/takes/rescore` 응답의 것, 다시 채점한 장을 합친 것) | `["<저장해 둔 evaluations 전체>"]` |
 | `rubrics` | list | 예 | 그 장들의 평가 기준 | `["<장별 평가 기준>"]` |
-| `answers` | list | 아니오 | 이번에 받은 확인 답 `[{slide_number, item_id, answer}]`, `answer`는 `as_script` · `as_stt`. 없으면 Take 값만 다시 계산한다 | `[{"slide_number": 3, "item_id": "R1", "answer": "as_script"}]` |
-| `failed` | list | 아니오 | BE가 저장한 실패 장 `[{slide_number, error{code, message}}]`. `scored_ratio`의 대상 장에 넣는다. BE는 `/takes/rescore`를 부를 때마다(사용자 확인 뒤 포함) 저장한 실패 목록 전체를 싣는다(빠지면 실패한 장이 대상에서 빠져 `scored_ratio`가 올라간다) | `[]` |
+| `answers` | list | 아니오 | 이번에 받은 확인 답 `[{slide_number, item_id, answer}]`, `slide_number`는 1 이상, `answer`는 `as_script` · `as_stt`. 없으면 Take 값만 다시 계산한다 | `[{"slide_number": 3, "item_id": "R1", "answer": "as_script"}]` |
+| `failed` | list | 아니오 | BE가 저장한 실패 장 `[{slide_number, error{code, message}}]`, `slide_number`는 1 이상(0 이하면 422). `scored_ratio`의 대상 장에 넣는다. BE는 `/takes/rescore`를 부를 때마다(사용자 확인 뒤 포함) 저장한 실패 목록 전체를 싣는다(빠지면 실패한 장이 대상에서 빠져 `scored_ratio`가 올라간다) | `[]` |
 
 ## 5-3. 출력
 **`/scripts/rubric` 응답**: `{rubrics, failed, meta}`
@@ -291,12 +291,12 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | `meta` | object | 아래 평가 기준 `meta` |
 | `normalized_script` | str | 정규화한 장 대본 전체 |
 | `sentences[]` | `{index, text, start, end}` | 정규화한 대본 문장. `index`는 0부터(`[S0]`), `start` · `end`는 정규화 텍스트 위치 |
-| `sentence_roles[]` | str | 문장 역할, `sentences`와 같은 순서. `claim`(핵심 주장, 장마다 최대 1문장) · `evidence`(근거) · `detail`(세부) · `skip`(인사 · 전환, 채점하지 않음) |
+| `sentence_roles[]` | str | 문장 역할, `sentences`와 같은 순서. `claim`(핵심 주장. LLM에 장마다 한 문장만 고르게 하지만 둘 이상이 나오면 장을 실패로 하지 않고 `warnings`에 `too_many_claims:<개수>`로 남긴 채 그대로 쓴다. `claim` 문장이 든 핵심 내용은 모두 `critical`이 되어 점수 가중치가 커진다) · `evidence`(근거) · `detail`(세부) · `skip`(인사 · 전환, 채점하지 않음) |
 | `core_claim` | str | 장의 핵심 주장 한 문장 |
 | `key_points[]` | object | 핵심 내용 (아래) |
 | `critical_facts[]` | object | 핵심 수치 · 이름 (아래) |
 | `keywords[]` | `{term, score, tf}` | TF-IDF 키워드. `score`는 장 안에서 L2 정규화, `tf`는 장 안 등장 횟수 |
-| `warnings[]` | str | 최종 검증 경고 |
+| `warnings[]` | str | 최종 검증 경고(`too_many_claims:<개수>` · `uncovered_sentences:<문장 번호>` · `no_key_points` 등). 경고가 있어도 평가 기준은 성공으로 돌려준다 |
 | `draft_warnings[]` · `review_changes[]` | str (기본값 있음) | 초안에 대한 코드 검증 경고(최종 결론의 입력) · 최종 결론이 초안에서 바꾼 점 |
 | `name_decisions[]` | `{value, source, keep, reason}` (기본값 있음) | 이름 · 용어 후보별 결정. `source`는 `rule` · `llm`, `keep`이 true면 발표자가 그대로 말해야 하는 말이라 핵심 수치(`proper_noun` · `term`)가 된다 |
 | `content_units[]` | object (기본값 있음) | 문장별 전달 단위 (아래). `skip` 문장은 나누지 않는다 |
@@ -386,8 +386,8 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | `confidence` | str (생성 값: `high` · `medium` · `low`) | LLM 확신도 |
 | `evidence[]` · `reason` | int · str | 근거 STT 문장 번호(범위 밖 번호는 버림) · 판정 이유(사용자에게 보여 줄 수 있음) |
 | `lexical_coverage` · `evidence_coverage` | float | 이 문장의 내용 형태소가 STT 짝 구간에 나온 비율 · LLM 근거 STT 문장에 나온 비율 |
-| `fact_statuses` | `{fact_id: 수치 상태}` | 이 문장에 있는 수치별 규칙 확인 결과 |
-| `similar_ids[]` · `conflicts[]` · `verified` | str · str · bool (기본값 있음) | 이 문장 자리의 비슷한 말(`R` 번호) · 규칙과 LLM 판정이 어긋난 이유(조건 이름과 뜻은 `stt_evaluation/merge.py`의 `CONFLICT_TEXT`. 예: `fact_missing`은 LLM은 말함인데 규칙이 그 수치를 STT에서 못 찾음) · 교차 검증으로 다시 판정했는지 |
+| `fact_statuses` | `{fact_id: 수치 상태}` | 이 문장에 있는 수치별 규칙 확인 결과. `/takes/rescore` 뒤에는 확인 답을 반영한 현재 상태다(사실 목록 `critical_facts` · 핵심 내용과 같은 값, 6-3) |
+| `similar_ids[]` · `conflicts[]` · `verified` | str · str · bool (기본값 있음) | 이 문장 자리의 비슷한 말 중 아직 답하지 않은 것(`R` 번호, 답한 것은 `/takes/rescore`가 뺀다. `similar_items`에는 남는다) · 규칙과 LLM 판정이 어긋난 이유(조건 이름과 뜻은 `stt_evaluation/merge.py`의 `CONFLICT_TEXT`. 예: `fact_missing`은 LLM은 말함인데 규칙이 그 수치를 STT에서 못 찾음) · 교차 검증으로 다시 판정했는지 |
 
 문장 판정은 단위 판정을 모아 코드가 정한다: 모두 `said`면 `said`, 모두 `missing`이면 `missing`, 하나라도 `contradicted`면 `contradicted`, 나머지는 `partial`.
 
@@ -451,13 +451,13 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | ⑧ | 문장 → 핵심 내용 판정으로 모으기 | |
 | ⑨ | 장 점수 계산 | |
 
-- 교차 검증이 실패한 장은 그 장 전체를 `failed`로 돌려준다(1차 판정만으로 내지 않는다).
+- 교차 검증이 실패한 장은 그 장 전체를 `failed`로 돌려준다(1차 판정만으로 내지 않는다). 검증 출력이 검증 대상 문장(충돌한 문장)이나 그 문장의 전달 단위를 빠뜨리거나 같은 것을 두 번 내면 잘못된 출력이다(`LLM_INVALID_OUTPUT`). 대상이 아닌 문장 · 단위의 판정은 쓰지 않는다.
 - STT가 빈 장(발표에서 넘어감)은 LLM을 부르지 않고 모든 전달 단위를 `missing`으로 판정한다.
 - 요청 마감 시각이 지나 LLM을 부르지 못한 장은 `LLM_TIMEOUT`으로 `failed`에 담는다.
 
 ## 6-3. 다시 계산 (`/takes/rescore`)
 1. `answers`를 장마다 나눈다. 받은 채점은 이미 반영한 답(`applied_answers`)이 적용된 상태이므로, 이미 반영한 `item_id`의 답은 다시 적용하지 않고(같은 답이든 다른 답이든 처음 반영한 답을 유지한다) 새 항목의 답만 적용한다. 모르는 `item_id`의 답은 버린다. `applied_answers`는 이전 답과 새 답을 합친 것이 된다.
-2. `as_script`: 그 비슷한 말의 수치 판정을 `matched`로 바꾼다(문장 판정은 그대로). `as_stt`: 수치 판정을 `mismatched`로, 그 자리가 든 전달 단위를 `contradicted`로 바꾸고 문장 · 핵심 내용을 코드로 다시 모은다. LLM은 부르지 않는다.
+2. `as_script`: 그 비슷한 말의 수치 판정을 `matched`로 바꾼다(문장 판정은 그대로). `as_stt`: 수치 판정을 `mismatched`로, 그 자리가 든 전달 단위를 `contradicted`로 바꾸고 문장 · 핵심 내용을 코드로 다시 모은다. 그리고 반영한 답 전체(`applied_answers`)로 문장의 `fact_statuses`를 사실 목록과 같은 현재 상태로 맞추고, 문장의 `similar_ids`에서 답한 항목을 뺀다(`similar_items` · 1차 판정 `first_status` · 교차 검증 기록은 그대로 둔다). LLM은 부르지 않는다.
 3. 답하지 않은 항목은 보류로 남는다. 보류 목록 · 핵심 내용 · 점수는 합친 답 전체로 다시 계산한다. 대본 충실도는 보류한 자리와 `as_script` 자리를 계속 빼고, `as_stt` 자리는 넣어 다시 계산한다(발표자가 실제로 다르게 말했으므로).
 4. 받은 채점 전체(답이 없는 장 포함)로 Take 값(`take_scores` · `confirmations`)을 다시 계산한다(6-4). 그래서 실패한 장을 다시 채점해 합친 뒤 답 없이 불러 Take 값만 다시 받을 수 있다.
 5. 채점의 `rubric_id`가 받은 평가 기준과 다르거나, 채점에 `stt_text` 필드가 없거나(예전 모양), 장의 평가 기준이 없으면 요청 전체를 422로 거절한다(7절). 발표에서 넘어가 `stt_text`가 빈 문자열인 장은 정상 채점이라 거절하지 않는다. 같은 답 · 같은 입력이면 늘 같은 결과가 나온다.
@@ -514,7 +514,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | 상황 | 동작 | 응답 (상태 코드 · 에러 코드) | 이유 |
 |---|---|---|---|
 | 요청 형식이 스키마와 다름 | 거절 | 422 `VALIDATION_ERROR` | 다시 불러도 같다 |
-| 한 장의 LLM 호출이 실패 · 시간 초과 · 잘못된 출력 (평가 기준 · 채점 · 교차 검증) | 그 장만 실패로 담고 나머지 장은 계속한다 | 200, `failed[{slide_number, error{code: LLM_TIMEOUT · LLM_ERROR · LLM_INVALID_OUTPUT · LLM_UNAVAILABLE}}]` | 한 장 때문에 나머지 채점을 잃지 않게. BE는 실패한 장만 다시 부른다 |
+| 한 장의 LLM 호출이 실패 · 시간 초과 · 잘못된 출력 (평가 기준 · 채점 · 교차 검증. 교차 검증이 대상 문장 · 전달 단위를 빠뜨리거나 겹친 것도 잘못된 출력, 6-2) | 그 장만 실패로 담고 나머지 장은 계속한다 | 200, `failed[{slide_number, error{code: LLM_TIMEOUT · LLM_ERROR · LLM_INVALID_OUTPUT · LLM_UNAVAILABLE}}]` | 한 장 때문에 나머지 채점을 잃지 않게. BE는 실패한 장만 다시 부른다 |
 | 채점할 장의 평가 기준이 없음 (평가 기준 만들기가 실패한 장) | 그 장은 채점하지 않고 나머지 장은 계속한다. 그 장도 `scored_ratio`의 대상 장이다 | 200, `failed`에 `RUBRIC_MISSING` | 전체를 멈추지 않고, 일부만 채점된 것을 비율로 알린다 |
 | 모든 장이 실패 | 결과를 내지 않는다 | `architecture.md` 4절 '장별 API'대로: 다시 부를 수 있는 오류(LLM 5xx: 504 `LLM_TIMEOUT` · 502 `LLM_ERROR` · 502 `LLM_INVALID_OUTPUT` · 503 `LLM_UNAVAILABLE`)가 있으면 그중 장 번호가 가장 작은 장의 오류, 모든 장이 입력 오류(평가 기준 없음)일 때만 422 `RUBRIC_MISSING` | LLM 오류는 BE가 한 번 다시 부를 수 있고, 평가 기준이 없는 것은 다시 불러도 같다 |
 | LLM 설정 없음 (`/scripts/rubric` · `/takes/analyze`) | 모든 장이 실패 | 503 `LLM_UNAVAILABLE` | `architecture.md` 9 · 10절 |

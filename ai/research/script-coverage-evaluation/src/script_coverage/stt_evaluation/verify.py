@@ -93,6 +93,33 @@ def verify(message: str, verifier_llm) -> VerifierResult:
     return verifier_llm.invoke([("system", VERIFIER_PROMPT), ("user", message)])
 
 
+class IncompleteVerification(ValueError):
+    """교차 검증 출력이 검증 대상을 다 덮지 못했다. 그 장은 LLM_INVALID_OUTPUT 으로 실패한다."""
+
+    code = "LLM_INVALID_OUTPUT"
+
+
+def check_verification(sentences: list[SentenceResult], verified: VerifierResult) -> None:
+    """검증 대상(충돌한 문장)마다 판정이 하나, 그 문장의 전달 단위마다 판정이 하나 있어야 한다.
+
+    빠지거나 겹치면 그 장을 1차 판정만으로 내지 않고 실패로 돌린다(기능 문서 6-2 ⑦ · 7절).
+    대상이 아닌 문장 · 단위의 판정은 쓰지 않으므로 있어도 된다.
+    """
+    by_id: dict[int, list] = {}
+    for v in verified.judgments:
+        by_id.setdefault(v.sentence_id, []).append(v)
+    for s in sentences:
+        if not s.conflicts:
+            continue
+        found = by_id.get(s.sentence_index, [])
+        if len(found) != 1:
+            raise IncompleteVerification(f"S{s.sentence_index} 판정 {len(found)}개")
+        given = [u.unit_id.strip().upper() for u in found[0].units]
+        for unit in s.units:
+            if given.count(unit.unit_id.upper()) != 1:
+                raise IncompleteVerification(f"S{s.sentence_index} {unit.unit_id} 판정 누락 · 중복")
+
+
 def apply_verification(sentences: list[SentenceResult], verified: VerifierResult | None) -> None:
     if verified is None:
         return

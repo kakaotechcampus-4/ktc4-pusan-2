@@ -34,6 +34,26 @@ def _units_at(
     return [min(sentence.units, key=gap)]
 
 
+def _sync_sentences(e: SlideEvaluation, applied: dict[str, str], items: dict, facts: dict) -> None:
+    """문장의 사실 상태 · 비슷한 말 목록을 답을 반영한 현재 값으로 맞춘다.
+
+    같은 사실이 문장과 핵심 내용 · 사실 목록에서 다른 상태로 보이지 않게 한다. 이전 답까지 모두
+    (applied) 기준으로 맞추므로, 답 없이 다시 계산해도 같은 결과가 된다. 답한 비슷한 말은 문장의
+    similar_ids 에서만 뺀다 — similar_items 는 대본 충실도에서 그 자리를 계속 빼는 데 쓰므로 남기고,
+    1차 판정(first_status) · 교차 검증 기록도 그때의 판정으로 남긴다.
+    """
+    answered_facts = {
+        items[i].fact_id: facts[items[i].fact_id].status
+        for i in applied
+        if i in items and items[i].fact_id in facts
+    }
+    for s in e.sentences:
+        s.fact_statuses = {
+            fid: answered_facts.get(fid, status) for fid, status in s.fact_statuses.items()
+        }
+        s.similar_ids = [i for i in s.similar_ids if i not in applied]
+
+
 def rescore_evaluation(
     evaluation: SlideEvaluation, answers: dict[str, str], rubric: EvaluationRubric
 ) -> SlideEvaluation:
@@ -73,6 +93,7 @@ def rescore_evaluation(
                 u.status = "contradicted"
             sentence.status = status_from_units([u.status for u in sentence.units])
             sentence.reason += f" [사용자 확인] '{item.script_text}' 를 '{item.stt_text}' 로 말함"
+    _sync_sentences(e, applied, items, facts)
     held = [it for it in e.similar_items if it.item_id not in applied]
     stt_norm, script_norm = normalize_script(e.stt_text), normalize_script(rubric.normalized_script)
     e.key_points = aggregate_key_points(rubric, e.sentences, e.critical_facts, held, stt_norm)

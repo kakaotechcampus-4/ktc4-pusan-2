@@ -17,7 +17,7 @@ from script_coverage.stt_evaluation.schemas import (
     VerifierResult,
 )
 from script_coverage.stt_evaluation.verify import verifier_config_hash
-from tests.unit.fakes import FakeLLM, deck_rubrics
+from tests.unit.fakes import FakeLLM, KeepFirstVerifier, deck_rubrics
 
 
 def _notebook_hash(model, prompt, schema):
@@ -56,7 +56,7 @@ def test_evaluate_take_evaluates_present_rubric_and_flags_only_missing_one():
         ],
     )
     eval_llm = FakeLLM(SemanticEvaluation(sentences=[], name_checks=[]))
-    verifier = FakeLLM(VerifierResult(judgments=[]))
+    verifier = KeepFirstVerifier()
     evaluations, stats = evaluate_take(
         take, {6: rubric}, eval_llm=eval_llm, verifier_llm=verifier, model="m"
     )

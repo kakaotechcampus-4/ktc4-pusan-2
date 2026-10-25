@@ -26,7 +26,13 @@ from .normalize import normalize_stt
 from .schemas import SemanticEvaluation, SlideEvaluation, Take, VerifierResult
 from .scoring import slide_scores
 from .similar import find_similar_items, settle_facts
-from .verify import apply_verification, verifier_config_hash, verifier_message, verify
+from .verify import (
+    apply_verification,
+    check_verification,
+    verifier_config_hash,
+    verifier_message,
+    verify,
+)
 
 
 def evaluate_take(
@@ -157,6 +163,8 @@ def evaluate_take(
         VerifierResult,
         cache=cache,
         max_workers=max_workers,
+        # 검증 대상을 다 덮지 못한 출력은 잘못된 출력이다 — 그 장은 1차 판정만으로 내지 않는다
+        check=lambda n, result: check_verification(slides[n]["sentences"], result),
     )
 
     # ⑤ Key Point 판정(문장 판정 모으기) → 점수
