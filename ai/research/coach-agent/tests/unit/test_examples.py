@@ -8,12 +8,14 @@ from typing import Any
 
 import pytest
 
+import coach
 from coach import decide
 from coach.judges import Judges
 from coach.schemas import CoachRequest, CoachResponse, IssueCriteria, JudgmentResult
 from coach.timing import criteria, judge, summarize
 
-EXAMPLES = Path(__file__).parents[2] / "src/coach/examples"
+# 예시는 코어 패키지 안에 있다 — 서비스로 옮겨도 경로를 고치지 않게 모듈 파일 기준으로 찾는다
+EXAMPLES = Path(coach.__file__).resolve().parent / "examples"
 TIMING = EXAMPLES / "timing"
 EVALUATE = EXAMPLES / "evaluate"
 

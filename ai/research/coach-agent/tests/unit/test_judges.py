@@ -10,7 +10,8 @@ from coach.judges import Judges, run
 from coach.schemas import CoachRequest, JudgmentResult
 from coach.state import CoachState, initial_state
 from coach.vocab import FeedbackType
-from tests.unit.fakes import FakeJudge, fake_judges
+
+from .fakes import FakeJudge, fake_judges
 
 PLAN = {
     "target_ms": 120_000,

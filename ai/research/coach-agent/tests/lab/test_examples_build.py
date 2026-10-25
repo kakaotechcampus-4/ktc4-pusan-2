@@ -13,7 +13,7 @@ from coach.config import load_config
 from coach.schemas import FinalizeRequest, FinalizeResponse
 from coach_lab.examples import EXAMPLES_DIR, write
 from coach_lab.judges import lab_judges
-from tests.unit.test_examples import assert_same
+from tests.lab.judge_helpers import assert_same
 
 FINALIZE = EXAMPLES_DIR / "finalize"
 

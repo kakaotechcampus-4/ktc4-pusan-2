@@ -15,7 +15,7 @@ from tests.lab.judge_helpers import (
     plain,
     total,
 )
-from tests.unit.conftest import words as make_words
+from tests.lab.judge_helpers import words as make_words
 
 
 def marks(raw_words: list[dict[str, Any]]) -> list[dict[str, Any]]:
