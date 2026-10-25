@@ -6,7 +6,7 @@ import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
 import { QueryState } from './QueryState';
-import { pct } from './reportFormat';
+import { duration, pct } from './reportFormat';
 import { SCRIPT_MODE_LABEL, completedTakes, gazeOffEngine, takeDay } from './takeHistoryFormat';
 
 /**
@@ -153,8 +153,10 @@ export function ComparisonPage() {
                           <span className="font-normal text-stone">{takeDay(r.started_at)}</span>
                         </td>
                         <td className="py-3 pr-4">{SCRIPT_MODE_LABEL[r.script_mode]}</td>
-                        <td className="py-3 pr-4">
-                          {r.duration_ms === null ? '—' : formatDuration(r.duration_ms)}
+                        <td
+                          className={r.duration_ms === null ? 'py-3 pr-4 text-stone' : 'py-3 pr-4'}
+                        >
+                          {duration(r.duration_ms)}
                           <span className="text-stone"> / {formatDuration(r.goal_ms)}</span>
                         </td>
                         {METRICS.map((x) => {

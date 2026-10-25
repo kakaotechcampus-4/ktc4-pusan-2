@@ -9,7 +9,7 @@ import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
 import type { TakeStatus } from '@/types/api';
 import { QueryState } from './QueryState';
-import { pct } from './reportFormat';
+import { duration, pct } from './reportFormat';
 import { SCRIPT_MODE_LABEL, takeDay } from './takeHistoryFormat';
 
 /**
@@ -97,8 +97,8 @@ export function TakesPage() {
                     </div>
                     <div>
                       <dt className="sr-only">시간</dt>
-                      <dd>
-                        {t.duration_ms === null ? '—' : formatDuration(t.duration_ms)}
+                      <dd className={t.duration_ms === null ? 'text-stone' : undefined}>
+                        {duration(t.duration_ms)}
                         <span className="text-stone"> / {formatDuration(t.goal_ms)}</span>
                       </dd>
                     </div>
