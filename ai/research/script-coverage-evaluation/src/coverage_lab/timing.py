@@ -3,11 +3,13 @@
 - 덱: 가상대본들의 장을 차례로 이어 붙여 N장을 만든다. 풀보다 길면 앞에서부터 다시 쓰고 장 번호는 1..N 으로 새로 매긴다.
   각 장에는 같은 원래 장의 STT(`<대본>_take1`)를 붙인다
 - 기록: 걸린 시간 · 대상 장 수 · 실패 장(요청 전체가 실패하면 대상 장 모두) · 실제로 결과가 나온 장 수 · 호출 기록
+- BE 재시도: 최초 200 의 LLM 오류 장만 `slide_numbers` 로 1번 (`retry_targets`), 요청 전체 실패면 전체 1번
 """
 
 from dataclasses import dataclass
 
 from script_coverage.schemas import ScriptSlide, TakeSlide
+from script_coverage.shared.llm_step import LLM_ERROR_CODES
 
 from .datasets import load_script_json, load_take, script_files, take_files
 
@@ -65,3 +67,8 @@ def request_row(
         "request_error": request_error,
         **log_summary,
     }
+
+
+def retry_targets(failed: dict[int, str]) -> list[int]:
+    """BE 가 최초 200 뒤 1번 다시 부를 장: LLM 에러 코드로 실패한 장만 (기능 문서 8절). 입력 오류 장은 빼고 번호순."""
+    return sorted(n for n, code in failed.items() if code in LLM_ERROR_CODES)

@@ -4,7 +4,7 @@ import pytest
 
 from coverage_lab.datasets import load_script_json, load_take
 from coverage_lab.paths import SCRIPT_DIR, STT_DIR
-from coverage_lab.timing import PoolSlide, build_deck, request_row, slide_pool
+from coverage_lab.timing import PoolSlide, build_deck, request_row, retry_targets, slide_pool
 
 POOL = [PoolSlide("대본", i, f"대본 {i}", f"STT {i}") for i in (1, 2, 3)]
 
@@ -64,3 +64,9 @@ def test_partial_failure_and_deadline():
     assert row["within_deadline"] is False
     assert _row()["within_deadline"] is True
     assert _row(seconds=121.0)["within_deadline"] is False
+
+
+def test_retry_targets_are_llm_failures_only():
+    failed = {7: "LLM_TIMEOUT", 3: "RUBRIC_MISSING", 5: "LLM_ERROR", 9: "LLM_INVALID_OUTPUT"}
+    assert retry_targets(failed) == [5, 7, 9]
+    assert retry_targets({}) == []

@@ -25,8 +25,10 @@ from typing import Any
 import httpx2  # openai SDK 가 쓰는 전송 계층 (서비스 `common/llm.py` 와 같다)
 import openai
 
-# 호출을 돌리는 스레드. 시간 초과로 버린 호출도 끝날 때까지 스레드 하나를 쓰므로 넉넉히 둔다
-_executor = ThreadPoolExecutor(max_workers=64, thread_name_prefix="deadline-llm")
+# 호출을 돌리는 스레드. 서비스(`common/llm.py`)와 같은 40개라, 동시 요청이 많으면 서비스처럼 여기서 줄을 선다
+# (기다린 시간도 호출 시간 제한에 든다). 시간 초과로 버린 호출도 끝날 때까지 스레드 하나를 쓴다
+EXECUTOR_THREADS = 40
+_executor = ThreadPoolExecutor(max_workers=EXECUTOR_THREADS, thread_name_prefix="deadline-llm")
 _pending: set[Future] = set()
 _pending_lock = threading.Lock()
 
