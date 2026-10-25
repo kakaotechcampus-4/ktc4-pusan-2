@@ -98,7 +98,9 @@ def test_one_hour_take_replay_finishes_inside_the_be_limit() -> None:
     started = time.perf_counter()
     res = finalize(req, judges)
     seconds = time.perf_counter() - started
-    size = len(json.dumps(res.model_dump(mode="json"), ensure_ascii=False).encode("utf-8"))
+    # 저장하는 payload(`take_result`)를 공백 없는 JSON 으로 잰다 (코치 기능 문서 12-1)
+    payload = res.take_result.model_dump(mode="json")
+    size = len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     print(f"one-hour replay: {seconds:.1f}s, take_result {size / 1024:.0f} KB")
     # BE 의 replay finalize 시간 제한은 60초다(코치 기능 문서 8절)
     assert seconds < 60

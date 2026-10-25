@@ -28,7 +28,8 @@ def _unknown(
         return _unknown(data, defs[schema["$ref"].rsplit("/", 1)[1]], defs, where)
     for key in ("anyOf", "oneOf", "allOf"):
         if key in schema:
-            options = [s for s in schema[key] if s.get("type") != "null"]
+            # 입력 자료형에 맞는 갈래만 본다(객체 | 문자열이면 객체 갈래)
+            options = [s for s in schema[key] if _fits(data, s, defs)]
             found = [_unknown(data, s, defs, where) for s in options]
             return min(found, key=len) if found else []
     out: list[str] = []
@@ -46,6 +47,20 @@ def _unknown(
         for i, v in enumerate(data):
             out += _unknown(v, schema["items"], defs, f"{where}[{i}]")
     return out
+
+
+def _fits(data: Any, schema: dict[str, Any], defs: dict[str, Any]) -> bool:
+    """`data` 의 JSON 자료형이 이 갈래와 맞는가."""
+    if "$ref" in schema:
+        schema = defs[schema["$ref"].rsplit("/", 1)[1]]
+    kind = schema.get("type")
+    if isinstance(data, dict):
+        return kind == "object" or "properties" in schema or "anyOf" in schema
+    if isinstance(data, list):
+        return kind == "array" or "anyOf" in schema
+    return (
+        kind not in ("object", "array") and kind != "null" if data is not None else kind == "null"
+    )
 
 
 def _check(model: type[BaseModel], data: dict[str, Any]) -> list[str]:
@@ -74,3 +89,13 @@ def test_the_check_finds_a_misspelled_field() -> None:
     data = json.loads((EXAMPLES / "evaluate/request.json").read_text(encoding="utf-8"))
     data["inputs"]["stt_staus"] = "ok"
     assert _check(CoachRequest, data) == ["$.inputs.stt_staus"]
+
+
+def test_the_check_looks_inside_an_object_or_string_field() -> None:
+    schema = {
+        "type": "object",
+        "properties": {"x": {"anyOf": [{"$ref": "#/$defs/O"}, {"type": "string"}]}},
+    }
+    defs = {"O": {"type": "object", "properties": {"a": {"type": "integer"}}}}
+    assert _unknown({"x": {"a": 1, "b": 2}}, schema, defs) == ["$.x.b"]
+    assert _unknown({"x": "문자열"}, schema, defs) == []
