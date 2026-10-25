@@ -238,11 +238,10 @@ class SlideEvaluation(BaseModel):
         default="",
         description="정규화한 STT 전체 텍스트 — 사용자 확인 뒤 점수를 다시 계산할 때 쓴다 (`confirm.py`)",
     )
-    confirmations: dict[str, str] = Field(
+    applied_answers: dict[str, str] = Field(
         default_factory=dict,
-        description="반영한 사용자 확인 (비슷한 말 item_id → as_script / as_stt). 처음 채점에는 비어 있다",
+        description="그 장의 채점에 이미 반영한 확인 답 {item_id: as_script · as_stt}. 처음 채점에는 비어 있다. Take 단위 confirmations(아직 답하지 않은 항목)와 다르다",
     )
-    created_at: str
 
 
 ConfirmAnswer = Literal["as_script", "as_stt"]

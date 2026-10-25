@@ -152,7 +152,9 @@ print(
     "사용자 답 (정답 라벨로 대신):",
     {CONFIRM_TEXT[k]: n for k, n in answered.items()},
     "/ 남은 보류",
-    sum(len(e.similar_items) - len(e.confirmations) for v in confirmed_by_take.values() for e in v),
+    sum(
+        len(e.similar_items) - len(e.applied_answers) for v in confirmed_by_take.values() for e in v
+    ),
 )
 
 kp_c, fact_c, slide_c, sent_c = build_tables(conn, takes, confirmed_by_take)
@@ -177,7 +179,7 @@ changed_scores = pd.DataFrame(
             **{f"{k} (확인 뒤)": take_scores(v)[k] for k in SCORE_KEYS},
         }
         for t, v in confirmed_by_take.items()
-        if any(e.confirmations for e in v)
+        if any(e.applied_answers for e in v)
     ]
 ).set_index("take_id")
 display(changed_scores)
