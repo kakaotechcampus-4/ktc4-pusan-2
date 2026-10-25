@@ -231,7 +231,7 @@ ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 �
     }
   ],
   "failed": [],
-  "meta": {"schema_version": "1.0", "feature_version": "script_coverage-1.0", "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "script_coverage-1.1", "model": "<응답한 모델>"}
 }
 ```
 
@@ -262,8 +262,8 @@ ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 �
   "take_scores": {"content_coverage": 1.0, "critical_fact_accuracy": null, "script_fidelity": 0.83, "similar_words": 0, "similar_numbers": 1, "scored_ratio": 1.0},
   "confirmations": [{"slide_number": 3, "item_id": "R1", "script_text": "37%", "stt_text": "<비슷한 소리의 다른 수>"}],
   "failed": [],
-  "meta": {"schema_version": "1.0", "feature_version": "script_coverage-1.0",
-           "criteria_versions": {"script_coverage": "script_coverage-1.0+<config 해시>"}, "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "script_coverage-1.1",
+           "criteria_versions": {"script_coverage": "script_coverage-1.1+<config 해시>"}, "model": "<응답한 모델>"}
 }
 ```
 
@@ -385,7 +385,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 |---|---|---|
 | `sentence_index` · `text` · `role` | int · str · str | 대본 문장 번호 · 문장 · 문장 역할 |
 | `status` · `first_status` | 문장 상태 (5-4) | 최종 판정 · LLM 1차 판정(전달 단위 판정을 모은 것) |
-| `units[]` | `{unit_id, text, fact_ids[], status, first_status, raised_by_rule}` (기본값 있음, `fact_ids` 빈 목록 · `raised_by_rule` false) | 전달 단위별 판정. `status`는 단위 상태(5-4). `raised_by_rule`은 LLM은 `missing`이라 했지만 그 단위의 수치 · 이름이 STT에 있어 `vague`로 올린 것 |
+| `units[]` | `{unit_id, text, fact_ids[], status, first_status, raised_by_rule}` (기본값 있음, `fact_ids` 빈 목록 · `raised_by_rule` false) | 전달 단위별 판정. `status`는 단위 상태(5-4). `raised_by_rule`은 LLM은 `missing`이라 했지만 그 단위의 수치 · 이름이 STT에 있어 `vague`로 올린 것(교차 검증이 6-2 ⑦대로 `missing`으로 되돌려도 true로 남는다) |
 | `confidence` | str (생성 값: `high` · `medium` · `low`) | LLM 확신도 |
 | `evidence[]` · `reason` | int · str | 근거 STT 문장 번호(범위 밖 번호는 버림) · 판정 이유(사용자에게 보여 줄 수 있음) |
 | `lexical_coverage` · `evidence_coverage` | float | 이 문장의 내용 형태소가 STT 짝 구간에 나온 비율 · LLM 근거 STT 문장에 나온 비율 |
@@ -450,7 +450,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | ④ | 발음이 비슷한 말(숫자 · 이름) 찾기 → 판단 보류 | |
 | ⑤ | 전달 단위마다 말함 · 흐림 · 없음 · 다름 판정 (근거 → 이유 → 판정 순서, 근거 번호는 코드가 확인) | 1번 |
 | ⑥ | 단위 → 문장 판정으로 모으기. 규칙과 LLM이 어긋나면 충돌 표시. 규칙이 확실히 아는 것(그 문장에만 있는 수치 · 이름을 STT에서 찾음)은 LLM 판정을 보정 | |
-| ⑦ | 충돌이 있는 장만 교차 검증 | 1번 (필요할 때) |
+| ⑦ | 충돌이 있는 장만 교차 검증. 검증자가 다시 판정한 단위는 그 판정을 따른다. ⑥에서 규칙이 `vague`로 올린 단위를 검증자가 `missing`이라 하면, 찾은 것이 이름이거나 그 수치가 나온 STT 문장이 대본 문장과 내용 형태소를 함께 가질 때만 `vague`로 두고 아니면 `missing`이다(수치 확인은 STT 전체에서 같은 값을 찾아 다른 이야기의 같은 숫자로도 보정이 걸리므로, #544) | 1번 (필요할 때) |
 | ⑧ | 문장 → 핵심 내용 판정으로 모으기 | |
 | ⑨ | 장 점수 계산 | |
 
@@ -572,7 +572,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `script_coverage-1.0` | 최상위 `version.py` → 응답 `meta` | 출력의 의미가 바뀔 때(판정 규칙 · 프롬프트 · 점수 계산) |
+| `feature_version` | `script_coverage-1.1` (1.1: 교차 검증이 `missing`이면 다른 문맥의 수치로 올린 규칙 보정을 푼다, #544) | 최상위 `version.py` → 응답 `meta` | 출력의 의미가 바뀔 때(판정 규칙 · 프롬프트 · 점수 계산) |
 | `criteria_version` | `script_coverage-<버전>+<config 해시 12자리>` | 최상위 `config.py`의 해시(하위 config · 판정 임계값 · 판정 상태별 점수 · 중요도 가중치) → `/takes/analyze` · `/takes/rescore` 응답 `meta.criteria_versions.script_coverage` | 채점 기준값을 바꾸면 해시가 바뀐다 |
 | `rubric_schema_version` | `1.2` (1.2: 만든 시각 `created_at`을 뺌) | `version.py` → 평가 기준 `meta.rubric_schema_version` | 평가 기준의 모양이 바뀔 때 |
 | `rubric_id` | 해시 | 평가 기준 `meta.rubric_id` → 채점 `rubric_id` | 장 대본 · LLM 설정(프롬프트 · 출력 스키마 · 모델) · 형식 버전이 바뀌면 달라진다 |
@@ -796,7 +796,7 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 | 시간 예산 | rubric · analyze AI 120초 / BE 130초 (실패한 장만 1번), rescore BE 10초 (1번), LLM 호출 한 번 20초 (`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`) | 8절 |
 | BE 동시 개수 | 백그라운드 AI 호출 BE 전체 합계 4(권장), 그 안에서 `/scripts/rubric` 동시 2개, 넘으면 BE에서 대기 | 8절 · `architecture.md` 3절 |
 | LLM 출력 토큰 상한 | `script_coverage.semantic` 4,096 · `final` 4,096 · `unit` 5,120 · `eval` 3,072 · `verifier` 2,048 (잰 최대 × 2, 1,024 단위, 최소 2,048. 서비스 `settings.LLM_ROLES`에 넣는다) | 8절 |
-| 버전 | `schema_version` `1.0` · `feature_version` `script_coverage-1.0` · `criteria_version` `script_coverage-1.0+<config 해시>` · `rubric_schema_version` `1.2` | 9절 |
+| 버전 | `schema_version` `1.0` · `feature_version` `script_coverage-1.1` · `criteria_version` `script_coverage-1.1+<config 해시>` · `rubric_schema_version` `1.2` | 9절 |
 | 저장 | 평가 기준 `script_slides.rubric` · `rubric_meta`, 상태 · 작업 기록 `script_versions.rubric_status` · `rubric_requested_at` · `rubric_retry_used`, 채점 `take_ai_results` (`take_id`, `kind`=`SCRIPT_COVERAGE`, 바꿀 때마다 `revision` + 1), 병합 후보 `SCRIPT_COVERAGE_PENDING`(`base_revision`), Take 재시도 기록 · 보류 사유 · 작업 표식 `takes.coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason` · `coverage_requested_at`, 리포트 `take_summaries.speak_accuracy` — 괄호는 유일 제약. 확인 답은 채점 안 `applied_answers` | 12-1 · 12-2 |
 | 장 구간 | 장 변경 기록 `take_slide_events` 전체, 단어는 `start_ms`가 든 구간의 장 | 5-2 |
 | 의존성 | pydantic · `kiwipiepy>=0.23,<0.24` · `scikit-learn>=1.8,<1.9`, Python 3.12, 서버 안 모델(형태소 분석기) → `/ready` | 4-3 · 11절 |

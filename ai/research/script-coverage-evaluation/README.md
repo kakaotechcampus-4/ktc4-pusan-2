@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | 담당 | jewon-kim |
-| 기능 버전 | `script_coverage-1.0` (서비스 `features/script_coverage/version.py`의 `FEATURE_VERSION`), 평가 기준 형식 `1.2`. 기준 버전 `script_coverage-1.0+<config 해시 12자리>` (서비스 `features/script_coverage/config.py`의 `CRITERIA_VERSION`, 임계값 · 점수표를 바꾸면 해시가 달라짐) |
+| 기능 버전 | `script_coverage-1.1` (서비스 `features/script_coverage/version.py`의 `FEATURE_VERSION`), 평가 기준 형식 `1.2`. 기준 버전 `script_coverage-1.0+<config 해시 12자리>` (서비스 `features/script_coverage/config.py`의 `CRITERIA_VERSION`, 임계값 · 점수표를 바꾸면 해시가 달라짐) |
 | 검증한 LLM | OpenAI 호환 API. 정확도 · 장 수별 시간은 기본 묶음 `openai/gpt-6-luna`, 반복 측정(일관성 · 안정성)은 `openai/gpt-5.6-luna` (8절) |
 | 상태 | v1. **가상 데이터로만 측정했습니다.** 실제 Deepgram 결과와 실제 발표자의 말투로는 아직 측정하지 않았습니다 |
 | 설계 | API 계약 · 평가 기준과 채점 필드 · 처리 · 배포 → [`docs/ai/features/script-coverage-evaluation.md`](../../../docs/ai/features/script-coverage-evaluation.md) |
@@ -481,6 +481,8 @@ uv run python -m pytest -m live            # 실제 API 를 부르는 테스트�
 | 테스트 | 옮기기 전 414개 = 옮긴 뒤 서비스 317개 + 연구 lab 97개, 모두 통과 (깨끗한 사본에서는 로컬 데이터 파일이 필요한 연구 테스트 2개가 건너뜀) |
 | 세 API 예시 (`python -m coverage_lab.examples`) | 요청 · 응답 · 캐시 JSON 8개가 바이트 단위로 같음 |
 | `01` · `04` · `05` 재생 | DB의 평가 기준 31 · 채점 180 · 비슷한 말 29 · 확인 29 · 확인 뒤 채점 24행과 `stt_accuracy.json`이 같음 |
+
+**#544를 고친 뒤(`script_coverage-1.1`)** 같은 캐시로 `04` · `05`를 다시 돌렸습니다(LLM 호출 0회). 채점 180개 · 확인 뒤 채점 · 지표가 버전 문자열 말고 모두 같았습니다. 이 가상 데이터에는 같은 수치가 다른 이야기에서 나오는 경우가 없어서입니다(대본1 · 대본2 모두). 고친 경우는 서비스 회귀 테스트 `tests/unit/script_coverage/stt_evaluation/test_rule_raise.py`가 봅니다. 처음 고친 방법(검증자가 `missing`이면 이름까지 모든 규칙 보정을 풂)은 이름을 나열해 말한 3문장을 망쳐 대본 문장 정확도가 0.982 → 0.978로 떨어져, 수치만 문맥으로 가리는 방법으로 바꿨습니다.
 
 계약에 맞춰 코어를 고친 뒤(최상위 진입 함수 · 에러 코드 · 평가 기준 형식 `1.2`)에도 캐시를 재생해 `reports/results/*.json`을 다시 만들었고, 숫자 지표는 모두 그대로이며 `feature_version`과 `criteria_version`만 달라졌습니다. 평가 기준 형식이 `1.2`로 올라 `rubric_id`는 바뀌었으므로 위 표의 "바이트 단위로 같음"은 옛 코드에서의 결과입니다.
 
