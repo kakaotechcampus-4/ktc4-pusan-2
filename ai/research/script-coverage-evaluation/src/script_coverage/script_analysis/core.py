@@ -2,15 +2,25 @@
 
 슬라이드마다 ① 규칙 기반 분석 1회 ∥ LLM 1차 분석 1회 → ② 1차 결과 정리·검증(코드)
 → ③ LLM 최종 결론 1회 → ④ 조립(코드) → ⑤ LLM 전달 단위 1회 → 검증(코드).
-LLM 호출이 실패한 슬라이드는 평가 기준을 만들지 않고 stats["failed"] 에 남긴다.
+LLM 호출이 실패한 슬라이드는 평가 기준을 만들지 않고 stats["failed"] 에 {슬라이드 번호: 에러 코드}로,
+stats["causes"] 에 {슬라이드 번호: "<단계> <예외 클래스 이름>"}(로그용)으로 남긴다.
 성공한 호출은 캐시에 남으므로 다시 돌리면 실패한 슬라이드만 호출한다.
-평가 기준을 저장하는 일은 호출한 쪽이 한다.
+`targets` 를 주면 그 슬라이드만 LLM 으로 분석하고 평가 기준을 만든다 (정규화 · 키워드 · 이름 판정의
+맥락은 받은 모든 슬라이드로 낸다). 평가 기준을 저장하는 일은 호출한 쪽이 한다.
 """
 
+from collections.abc import Collection
 from concurrent.futures import ThreadPoolExecutor
 
 from ..shared.facts import extract_critical_facts
-from ..shared.llm_step import LLMCache, cache_get, cache_put, call_in_parallel, message_hash
+from ..shared.llm_step import (
+    LLMCache,
+    cache_get,
+    cache_put,
+    call_in_parallel,
+    message_hash,
+    record_failures,
+)
 from ..shared.rubric import EvaluationRubric
 from ..shared.text import normalize_script
 from .draft import draft_rubric
@@ -37,6 +47,7 @@ def analyze_script(
     model: str,
     cache: LLMCache | None = None,
     max_workers: int = 4,
+    targets: Collection[int] | None = None,
 ) -> tuple[list[EvaluationRubric], dict]:
     """Script Analysis Pipeline. 대본 등록·수정 시 한 번 실행한다.
 
@@ -44,12 +55,16 @@ def analyze_script(
     LLM 은 출력 스키마가 고정된 것을 받는다 (`semantic_llm`: SlideSemanticAnalysis,
     `final_llm`: FinalReview, `unit_llm`: SlideUnits). `model` 은 설정 해시와 평가 기준 메타에 들어간다.
     슬라이드는 받은 순서와 상관없이 번호순으로 분석한다.
+    `targets` = 평가 기준을 만들 슬라이드 번호 (None 이면 전부). 대상이 아닌 슬라이드는 LLM 을 부르지 않고
+    결과에도 없지만, 키워드(TF-IDF)와 발표 공통 어휘 · 이름 판정에는 맥락으로 쓰인다.
     """
     slides = sorted(slides, key=lambda s: s.slide_number)
     norms = [normalize_script(s.script) for s in slides]
     deck_texts = [n.text for n in norms]
     keywords = extract_keywords_tfidf(norms)
+    chosen = [i for i, s in enumerate(slides) if targets is None or s.slide_number in targets]
     failed: dict[int, str] = {}
+    causes: dict[int, str] = {}
     semantic_config = semantic_config_hash(model)
     final_config = final_config_hash(model)
     unit_config = unit_config_hash(model)
@@ -57,9 +72,9 @@ def analyze_script(
     # ① 규칙 기반 분석 ∥ LLM 1차 분석 (캐시에 없고 읽을 내용이 있는 슬라이드만 호출)
     semantics = {
         i: cache_get(
-            cache, "script.semantic", n.content_hash, semantic_config, SlideSemanticAnalysis
+            cache, "script.semantic", norms[i].content_hash, semantic_config, SlideSemanticAnalysis
         )
-        for i, n in enumerate(norms)
+        for i in chosen
     }
     analysis_jobs = {
         i: (slides[i], norms[i], semantic_llm)
@@ -70,17 +85,22 @@ def analyze_script(
         max_workers=1
     ) as waiter:  # LLM 호출을 기다리는 동안 메인 스레드는 규칙 분석을 한다
         pending = waiter.submit(call_in_parallel, analysis_jobs, analyze_semantics, max_workers)
-        facts = [extract_critical_facts(n) for n in norms]
+        facts = {i: extract_critical_facts(norms[i]) for i in chosen}
         analyzed, analysis_errors = pending.result()
     for i, sem in analyzed.items():
         semantics[i] = sem
         cache_put(
             cache, "script.semantic", norms[i].content_hash, semantic_config, sem
         )  # 캐시는 메인 스레드에서만
-    failed.update({slides[i].slide_number: f"1차 분석 {msg}" for i, msg in analysis_errors.items()})
+    record_failures(
+        failed,
+        causes,
+        {slides[i].slide_number: e for i, e in analysis_errors.items()},
+        "1차 분석",
+    )
 
     # ② 1차 결과 정리·검증 (코드)
-    ready = [i for i in range(len(slides)) if i not in analysis_errors]
+    ready = [i for i in chosen if i not in analysis_errors]
     drafts = {
         i: draft_rubric(
             script_name, slides[i], norms[i], facts[i], keywords[i],
@@ -109,7 +129,12 @@ def analyze_script(
     for i, review in reviewed.items():
         reviews[i] = review
         cache_put(cache, "script.final", message_hash(inputs[i][1]), final_config, review)
-    failed.update({slides[i].slide_number: f"최종 결론 {msg}" for i, msg in final_errors.items()})
+    record_failures(
+        failed,
+        causes,
+        {slides[i].slide_number: e for i, e in final_errors.items()},
+        "최종 결론",
+    )
 
     # ④ 조립(코드)
     assembled = {}
@@ -139,7 +164,12 @@ def analyze_script(
     for i, output in extracted.items():
         units[i] = output
         cache_put(cache, "script.units", message_hash(unit_inputs[i]), unit_config, output)
-    failed.update({slides[i].slide_number: f"전달 단위 {msg}" for i, msg in unit_errors.items()})
+    record_failures(
+        failed,
+        causes,
+        {slides[i].slide_number: e for i, e in unit_errors.items()},
+        "전달 단위",
+    )
 
     rubrics = []
     for i, rubric in assembled.items():
@@ -149,10 +179,11 @@ def analyze_script(
         rubrics.append(rubric)
 
     stats = {
-        "slides": len(slides),
+        "slides": len(chosen),
         "analysis_calls": len(analysis_jobs),
         "final_calls": len(final_jobs),
         "unit_calls": len(unit_jobs),
-        "failed": failed,
+        "failed": dict(sorted(failed.items())),
+        "causes": dict(sorted(causes.items())),
     }
     return rubrics, stats

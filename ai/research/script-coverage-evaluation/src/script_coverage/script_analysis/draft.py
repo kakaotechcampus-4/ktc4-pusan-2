@@ -5,14 +5,13 @@ LLM 을 쓰지 않는다. 여기서 만든 초안과 경고가 `final.py` 최종
 
 import hashlib
 import re
-from datetime import UTC, datetime
 
+from ..config import ROLE_IMPORTANCE
 from ..shared.facts import CriticalFact, extract_critical_facts, sentence_index
 from ..shared.kiwi import get_kiwi
 from ..shared.rubric import (
     IMPORTANCE_RANK,
     NAME_TYPES,
-    ROLE_IMPORTANCE,
     EvaluationRubric,
     KeyPoint,
     Keyword,
@@ -284,7 +283,6 @@ def new_rubric(
             llm_model=model,
             llm_config_hash=config_hash,
             final_config_hash=final_config,
-            created_at=datetime.now(UTC).isoformat(timespec="seconds"),
         ),
         normalized_script=norm.text,
         sentences=norm.sentences,

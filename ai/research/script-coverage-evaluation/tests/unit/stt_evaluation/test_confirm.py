@@ -13,10 +13,9 @@ def _rubric(rubric_id: str) -> EvaluationRubric:
         script_name="s",
         slide_number=1,
         content_hash="h",
-        rubric_schema_version="1.1",
+        rubric_schema_version="1.2",
         llm_model="m",
         llm_config_hash="a",
-        created_at="t",
     )
     return EvaluationRubric.model_construct(meta=meta)
 

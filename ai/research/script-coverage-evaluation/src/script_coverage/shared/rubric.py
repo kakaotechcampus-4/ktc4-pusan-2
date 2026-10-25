@@ -17,7 +17,9 @@ class Keyword(BaseModel):
 class KeyPoint(BaseModel):
     id: str
     content: str
-    importance: Importance = Field(description="근거 문장의 역할로 코드가 정한다 (ROLE_IMPORTANCE)")
+    importance: Importance = Field(
+        description="근거 문장의 역할로 코드가 정한다 (config.ROLE_IMPORTANCE)"
+    )
     sentence_indices: list[int] = Field(description="근거 문장 번호 (LLM 이 번호로 지정)")
     source_quote: str = Field(description="근거 문장들의 원문")
     source_span: tuple[int, int] | None = Field(
@@ -31,7 +33,9 @@ class RubricMeta(BaseModel):
     rubric_id: str = Field(
         description="대본·LLM 설정·스키마가 같으면 같은 값. 평가 결과가 어떤 기준으로 채점됐는지 가리킨다"
     )
-    script_name: str = Field(description="입력 JSON 파일 이름 (확장자 제외)")
+    script_name: str = Field(
+        description="대본 식별자 (API 요청의 script_version_id. 연구에서는 대본 JSON 파일 이름)"
+    )
     slide_number: int
     content_hash: str
     rubric_schema_version: str
@@ -43,7 +47,6 @@ class RubricMeta(BaseModel):
     unit_config_hash: str = Field(
         default="", description="전달 단위 LLM 설정 해시. 단위를 나누기 전이면 빈 값"
     )
-    created_at: str
 
 
 class NameDecision(BaseModel):
@@ -93,11 +96,9 @@ class EvaluationRubric(BaseModel):
     )
 
 
+# 중요도 순서 (Key Point 의 중요도 = 근거 문장 역할 중 가장 높은 것). 역할 → 중요도 표
+# ROLE_IMPORTANCE 와 채점 가중치 SCORE_WEIGHT 는 기준값이라 최상위 `config.py` 에 있다
 IMPORTANCE_RANK = {"normal": 0, "high": 1, "critical": 2}
-# Key Point 의 중요도 = 근거 문장 역할 중 가장 높은 것
-ROLE_IMPORTANCE = {"claim": "critical", "evidence": "high", "detail": "normal", "skip": "normal"}
-# 채점할 때 Key Point·사실의 가중치 (STT 평가 노트북의 점수 계산과 12장 일관성 측정에서 쓴다)
-SCORE_WEIGHT = {"critical": 3, "high": 2, "normal": 1}
 
 
 NAME_TYPES = ("proper_noun", "term")

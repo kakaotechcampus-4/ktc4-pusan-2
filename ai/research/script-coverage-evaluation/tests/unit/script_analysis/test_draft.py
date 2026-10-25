@@ -161,7 +161,7 @@ def test_new_rubric_meta_follows_config_hash_formula():
     rubric = new_rubric(
         "t", slide, norm, [], ["claim", "evidence", "skip"], "c", [], facts, [], "test-model"
     )
-    assert rubric.meta.rubric_id == "fd10aeab54b498bf"
+    assert rubric.meta.rubric_id == "d4a18da802455144"
     assert rubric.meta.llm_model == "test-model"
     assert rubric.meta.llm_config_hash == "082c56a55231"
     assert rubric.meta.final_config_hash == ""

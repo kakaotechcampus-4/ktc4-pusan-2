@@ -27,7 +27,7 @@ def run_script_analysis(
     """대본 JSON 하나(= 발표 하나)를 분석해 평가 기준을 DB 에 저장한다. 결과는 파일 이름(확장자 제외)으로 저장한다.
 
     캐시는 기본으로 DB 의 캐시 표를 쓴다 (같은 대본 · 같은 LLM 설정이면 API 를 다시 부르지 않는다).
-    LLM 호출이 실패한 슬라이드는 새로 저장하지 않고 `stats["failed"]` 에 남긴다. 그 슬라이드의 예전 평가 기준이 DB 에
+    LLM 호출이 실패한 슬라이드는 새로 저장하지 않고 `stats["failed"]`(에러 코드) · `stats["causes"]`(원인)에 남긴다. 그 슬라이드의 예전 평가 기준이 DB 에
     있으면 **지운다** — 고치기 전 대본의 기준이 남아 STT 평가가 그것으로 채점하는 일을 막기 위해서다 (다시 돌리면 그 슬라이드만 호출한다).
     """
     cache = cache if cache is not None else SqliteLLMCache(conn)
