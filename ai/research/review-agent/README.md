@@ -6,7 +6,7 @@ Take가 끝난 뒤 코치의 **Take 결과**와 **대본 전달도 채점**을 �
 |---|---|
 | 담당 | seojin-lee |
 | 기능 버전 | `review-1.1`, 요청 · 응답 스키마 `1.0` (`src/review/version.py`) |
-| 상태 | 패키지 + 테스트(규칙 단계). LLM 단계 · 숫자 검사는 테스트가 아직 없습니다. **가상 발표 48 Take로만 평가했습니다** (실제 리허설 없음) |
+| 상태 | 패키지 + 테스트(규칙 단계 · 가짜 LLM · 숫자 검사 계약 · 실제 LLM). **가상 발표 48 Take로만 평가했습니다** (실제 리허설 없음) |
 | 설계 | 목적 · BE ↔ 리뷰 계약 · 처리 · 배포 → [`docs/ai/features/review-agent.md`](../../../docs/ai/features/review-agent.md) |
 
 ## 1. 폴더 · 파일 지도
@@ -21,7 +21,7 @@ review-agent/
 ├─ src/review_lab/        연구 전용 (평가 · 실제 LLM 실행). 옮기지 않는다
 ├─ data/                  평가 묶음: takes/ (가상 발표 Take 결과 48개) · answers.json (정답 리뷰)
 ├─ reports/results/       커밋하는 평가 결과 (review_eval.json)
-└─ tests/unit/ · live/    코어 경계 · 단계별 규칙 · 예시 계약 / 실제 LLM (아직 없음)
+└─ tests/unit/ · live/    코어 경계 · 단계별 규칙 · 가짜 LLM · 숫자 검사 · 예시 계약 / 실제 LLM (live 표시)
 ```
 
 **코어 `src/review/`**
@@ -44,16 +44,18 @@ review-agent/
 | `next_missions.py` | 다음 미션 후보, LLM이 고른 순서 붙이기(`merge_picked_missions`) | 6-1 7번 · 6-2 |
 | `recurring.py` | 반복 문제 | 6-1 8번 |
 | `score.py` | 점수 | 6-1 9번 |
-| `text.py` | 강점 · 개선점 후보(`text_candidates`)와 기본 문장 | 6-2 |
+| `text.py` | 강점 · 개선점 후보(`text_candidates`, `IMPROVED` 강점의 장 번호 포함)와 기본 문장 | 6-2 |
 
 **예시 `src/review/examples/review/`**
 
 | 파일 | 내용 |
 |---|---|
 | `request.json` | 요청 |
-| `response.json` | LLM이 없을 때의 응답 (기본 문장, `fallback_reason: LLM_UNAVAILABLE`). 계약 테스트가 비교한다 |
+| `response.json` | LLM이 없을 때의 응답 (기본 문장, `fallback_reason: LLM_UNAVAILABLE`) |
 | `llm_output.json` | 실제 LLM 출력(`ReviewDraft`) 그대로 |
 | `response_llm.json` | 그 출력으로 만든 LLM 성공 응답 (`fallback_reason: null`) |
+
+계약 테스트(`tests/unit/test_examples.py`)가 `request.json`의 응답이 `response.json`과, 가짜 LLM이 `llm_output.json`을 돌려줄 때의 응답이 `response_llm.json`과 같은지 본다.
 
 **연구 도구 `src/review_lab/`**
 
@@ -76,7 +78,8 @@ uv sync                                   # Python 3.12, pydantic + 연구용 LL
 
 | 하는 일 | 명령 | 과금 |
 |---|---|---|
-| 테스트 | `uv run python -m pytest -m "not live"` | 없음 |
+| 테스트 | `uv run python -m pytest` (실제 LLM 테스트는 기본으로 뺀다) | 없음 |
+| 실제 LLM 테스트 | `uv run python -m pytest -m live` (예시 요청 1번) | 있음 |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 없음 |
 | 평가 (규칙 단계만) | `uv run python -m review_lab.evaluate --rules-only` | 없음 |
 | 평가 (실제 LLM) | `uv run python -m review_lab.evaluate --out reports/results/review_eval.json` | 있음 |
@@ -141,8 +144,10 @@ resp = review_take(request_dict, config=load_config(dimension={"priority_max_cou
 | `priority_burden_min` | 차원 상태 일치 | 1순위 일치 | 정답이 없는 칸의 `PRIORITY` |
 |---|---|---|---|
 | 3 | 0.996 | 0.956 | 6 (15번의 작은 대본 응시까지) |
+| 4 | 0.992 | 0.933 | 6 |
 | 5 · 6 | 0.992 | 0.933 | 5 |
 | 7 | 0.988 | 0.911 | 5 |
-| 8 · 10 (이전 값) | 0.972 | 0.822 | 4 |
+| 8 | 0.972 | 0.822 | 5 |
+| 10 (이전 값) | 0.972 | 0.822 | 4 |
 
 10이면 시간 초과 · 긴 침묵 · 짧은 대본 응시(부담 7 안팎)가 `STABLE`로 빠졌습니다. 5와 6이 같은 결과라, 반복 차원이 `IMPROVED`로 내려오는 기준이기도 한 이 값을 덜 엄격한 6으로 정했습니다(규칙 단계만, `--rules-only`로 잼).
