@@ -84,6 +84,7 @@ from pitch_coach_backend.realtime.event_ingestion import (
 )
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
+from pitch_coach_backend.realtime.stream.audio_queue import AudioQueue
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, TimeLimit
 from pitch_coach_backend.realtime.stream.client import ClientSlot, close_with, quiet
 from pitch_coach_backend.realtime.stream.heard import HeardRange
@@ -158,7 +159,8 @@ class TakeStream:
             self.auto_end_policy, lambda: self._auto_end(AutoEndReason.TIME_LIMIT)
         )
 
-        self._queue: asyncio.Queue[Accepted | None] = asyncio.Queue(maxsize=QUEUE_MAX_FRAMES)
+        # Deepgram 으로 보낼 오디오. 넘쳐 버린 것은 `_drop` 이 유실로 센다
+        self._audio = AudioQueue(QUEUE_MAX_FRAMES, self._drop)
         # 지금 붙어 있는 FE 연결. 끊긴 뒤 다시 붙기를 기다리는 동안은 비어 있다
         self._client = ClientSlot()
         # 확정 전사의 번호 · 저장 재시도 · 화면에 못 보낸 final. 번호는 저장된 마지막 값에서 이어
@@ -185,7 +187,7 @@ class TakeStream:
             take_id,
             adapter=stt_adapter,
             config=config,
-            queue=self._queue,
+            queue=self._audio.queue,
             stop_event=self._stop_event,
             is_stopping=lambda: self._stopping,
             on_state=lambda state: self._set_state(state),
@@ -295,7 +297,7 @@ class TakeStream:
             return
         self._stopping = True
         self._stop_event.set()
-        self._put(None)
+        self._audio.put(None)
 
     def end(self) -> None:
         """사용자가 Take 를 끝냈다. 스트림을 정리하고, 같은 Take 로 다시 붙지 못하게 한다.
@@ -420,13 +422,7 @@ class TakeStream:
         self._record.streamed_sec += self._time_limit.stop()
         # Deepgram 에 닿지 못한 채 큐에 남은 오디오는 유실이다. 마지막 stt_status 의
         # lost_ms 가 이걸 빼먹으면 리포트가 "STT 다 받았다" 고 잘못 말한다
-        while True:
-            try:
-                item = self._queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-            if item is not None:
-                self._drop(item)
+        self._audio.drain()
         self._transcripts.report_leftovers()
         # Take 를 끝내는 쪽(stop · 자동 종료 · 끝내기 PUT)은 따로 기다린다. 스트림만 닫힌 경우를
         # 위해 남은 것을 넣어 둔다 — 아무도 다시 붙지 않아 떠난 것으로 끝나도 원자료는 남긴다
@@ -527,26 +523,10 @@ class TakeStream:
                 accepted.frame.seq,
                 accepted.frame.offset_ms,
             )
-        self._put(accepted)
+        self._audio.put(accepted)
         # 큐에 넣은 뒤에 본다. 먼저 끝내면 stop 신호 뒤에 들어가 이 프레임이 버려진다
         if self._time_limit.reached(accepted.frame.end_ms):
             self._auto_end(AutoEndReason.TIME_LIMIT)
-
-    def _put(self, item: Accepted | None) -> None:
-        """큐가 차면 **오래된 것부터** 버린다. 최신 오디오가 실시간 코칭에 쓸모 있다."""
-        while True:
-            try:
-                self._queue.put_nowait(item)
-                return
-            except asyncio.QueueFull:
-                dropped = self._queue.get_nowait()
-                if dropped is None:
-                    # stop 신호를 버리면 영영 안 끝난다. 되돌리고 새 항목을 버린다
-                    self._queue.put_nowait(None)
-                    if item is not None:
-                        self._drop(item)
-                    return
-                self._drop(dropped)
 
     def _drop(self, item: Accepted) -> None:
         lost = item.silence_ms + item.frame.duration_ms
