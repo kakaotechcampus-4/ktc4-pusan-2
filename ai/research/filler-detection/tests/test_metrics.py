@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 
 from filler.config import FillerConfig
-from tests.helpers import PLAIN, fillers, run, time_items, total, word
+
+from .helpers import PLAIN, fillers, run, time_items, total, word
 
 # ── 최근 창 ────────────────────────────────────────────────────────────────────
 

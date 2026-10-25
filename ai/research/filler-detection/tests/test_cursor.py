@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 
 from filler.core import judge
-from tests.helpers import (
+
+from .helpers import (
     CFG,
     PLAIN,
     inputs,

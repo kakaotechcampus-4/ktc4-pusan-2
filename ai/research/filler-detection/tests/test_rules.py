@@ -6,7 +6,8 @@ import pytest
 
 from filler.core import _before, normalize
 from filler.schemas import Word
-from tests.helpers import CFG, PLAIN, gap_case, inputs, run, verdicts, word
+
+from .helpers import CFG, PLAIN, gap_case, inputs, run, verdicts, word
 
 GAP = CFG.gap_ms
 

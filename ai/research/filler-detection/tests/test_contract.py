@@ -11,7 +11,8 @@ from filler.config import DEFAULT, FillerConfig, normalize
 from filler.core import criteria, criteria_version, judge, keyterms
 from filler.schemas import FillerInput, JudgmentResult
 from filler.version import FEATURE_VERSION
-from tests.helpers import CFG, fillers, inputs, run, word
+
+from .helpers import CFG, fillers, inputs, run, word
 
 T = 30_000
 REQUIRED = {"t_ms": 1000, "since_ms": 0, "words_since_ms": 0}

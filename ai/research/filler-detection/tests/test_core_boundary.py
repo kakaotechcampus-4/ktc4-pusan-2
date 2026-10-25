@@ -14,7 +14,10 @@ from pathlib import Path
 
 import pytest
 
-CORE = Path(__file__).resolve().parents[1] / "src" / "filler"
+import filler
+
+# 코어 패키지 파일 기준으로 찾는다 — 서비스로 옮겨도 경로를 고치지 않게
+CORE = Path(filler.__file__).resolve().parent
 
 # 코어가 쓰는 표준 모듈. 계산만 하는 모듈만 둔다. 새로 필요하면 그 모듈이
 # 파일 · 네트워크 · 환경변수 · 시계 · 난수를 쓰지 않는지 확인하고 여기에 더한다

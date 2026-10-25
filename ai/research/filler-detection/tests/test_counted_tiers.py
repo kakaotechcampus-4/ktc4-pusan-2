@@ -12,7 +12,8 @@ from pydantic import ValidationError
 
 from filler.config import ALL_TIERS, DEFAULT, FillerConfig
 from filler.core import criteria_version, judge
-from tests.helpers import CFG, PLAIN, inputs, run, word
+
+from .helpers import CFG, PLAIN, inputs, run, word
 
 NOT_COUNTED = "세지 않는 층"
 

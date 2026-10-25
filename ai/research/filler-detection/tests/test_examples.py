@@ -8,12 +8,15 @@ from typing import Any
 
 import pytest
 
+from filler import core as filler_core
 from filler.config import ALL_TIERS, DEFAULT, FillerConfig
 from filler.core import criteria, criteria_version, judge, summarize
 from filler.schemas import IssueCriteria, JudgmentResult
-from tests.helpers import check_contract, word_items
 
-EXAMPLES = Path(__file__).resolve().parents[1] / "src" / "filler" / "examples"
+from .helpers import check_contract, word_items
+
+# 예시는 코어 패키지 안에 있다 — 서비스로 옮겨도 경로를 고치지 않게 모듈 파일 기준으로 찾는다
+EXAMPLES = Path(filler_core.__file__).resolve().parent / "examples"
 JUDGE_INPUTS = sorted(EXAMPLES.glob("judge_input*.json"))
 
 

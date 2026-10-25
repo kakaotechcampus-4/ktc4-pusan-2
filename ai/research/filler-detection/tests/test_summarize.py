@@ -6,7 +6,8 @@ import pytest
 
 from filler.core import summarize
 from filler.schemas import FillerSummary
-from tests.helpers import fillers, run, total
+
+from .helpers import fillers, run, total
 
 FULL = {
     "filler_count": 7,
