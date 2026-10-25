@@ -98,7 +98,7 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
     title: 'Take 비교 · 완료 Take 없음',
   },
   {
-    path: '/pitch/없는-피치/comparison',
+    path: '/pitch/00000000-0000-4000-8000-000000000000/comparison',
     id: 'P7',
     title: 'Take 비교 · 찾을 수 없는 피치',
   },
