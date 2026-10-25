@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module import hooks
+from pitch_coach_backend.module.pitch.entity import ScriptVersion
+from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.dto import ReviewRequestDTO, ReviewResponseDTO
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
@@ -20,6 +22,7 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service import review as review_service
+from tests.test_take_ai_validation import coverage
 from tests.test_take_history import _pitch, _take
 from tests.test_take_review_response import REVIEW, TAKE_ID
 
@@ -54,15 +57,8 @@ def plans(monkeypatch) -> PlanSpy:
 
 
 def _analyzing(db: Session, user_id: uuid.UUID, stage: str, **fields) -> Take:
-    take = _take(
-        db,
-        _pitch(db, user_id),
-        1,
-        status="ANALYZING",
-        analysis_stage=stage,
-        coverage_retry_used=True,
-        **fields,
-    )
+    fields.setdefault("coverage_retry_used", True)
+    take = _take(db, _pitch(db, user_id), 1, status="ANALYZING", analysis_stage=stage, **fields)
     db.add(
         TakeAIResults(
             take_id=take.id, kind="TAKE_RESULT", payload={"take_id": str(take.id)}, meta={}
@@ -169,6 +165,61 @@ def test_expired_confirmation_is_reviewed_at_once(db_session, user_id, monkeypat
     asyncio.run(analysis_runner.run(take.id))
 
     assert time.monotonic() - started < 1
+    assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
+
+
+def _rubric_pending(db: Session, take: Take, started_ago: timedelta) -> None:
+    db.get(ScriptVersion, take.script_version_id).rubric_status = "PENDING"
+    take.analysis_stage_at = datetime.now(UTC) - started_ago
+    db.commit()
+
+
+def test_scoring_waits_while_the_rubric_is_pending(db_session, user_id, monkeypatch):
+    take = _analyzing(db_session, user_id, "SCORING", coverage_retry_used=False)
+    _rubric_pending(db_session, take, timedelta(seconds=10))
+    analyze = AsyncMock(side_effect=AssertionError("기준이 끝나기 전에 채점하면 안 된다"))
+    monkeypatch.setattr(coverage_service, "request_analyze", analyze)
+
+    outcome = asyncio.run(coverage_service.analyze_script_coverage(take.id))
+
+    assert outcome == "RUBRIC_PENDING"
+    analyze.assert_not_awaited()
+    assert _states(db_session, take) == ("ANALYZING", None, "SCORING")
+
+
+def test_scoring_goes_on_once_the_rubric_wait_times_out(db_session, user_id):
+    take = _analyzing(db_session, user_id, "SCORING")
+    _rubric_pending(db_session, take, coverage_service.RUBRIC_WAIT + timedelta(seconds=1))
+
+    assert asyncio.run(coverage_service.analyze_script_coverage(take.id)) == "NO_COVERAGE"
+
+
+def test_retry_of_a_scored_take_does_not_wait_for_the_rubric(db_session, user_id):
+    take = _analyzing(db_session, user_id, "SCORING")
+    _rubric_pending(db_session, take, timedelta(seconds=10))
+    assert coverage_service._save_confirmed(db_session, take.id, coverage(take.id)) is not None
+
+    assert asyncio.run(coverage_service.analyze_script_coverage(take.id)) == "READY_FOR_REVIEW"
+
+
+def test_runner_polls_until_the_rubric_is_ready(db_session, user_id, monkeypatch, plans):
+    take = _analyzing(db_session, user_id, "SCORING")
+    _rubric_pending(db_session, take, timedelta(seconds=10))
+    monkeypatch.setattr(analysis_runner, "RUBRIC_POLL_SEC", 0)
+    checks: list[bool] = []
+
+    def pending(db, script_version_id):
+        checks.append(len(checks) < 2)
+        return checks[-1]
+
+    monkeypatch.setattr(script_service, "rubric_pending", pending)
+    monkeypatch.setattr(
+        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+    )
+
+    asyncio.run(analysis_runner.run(take.id))
+
+    assert checks == [True, True, False]
     assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
 
 

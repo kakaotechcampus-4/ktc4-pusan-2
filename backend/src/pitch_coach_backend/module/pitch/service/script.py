@@ -448,6 +448,11 @@ def find_script_version(db: Session, script_version_id: uuid.UUID) -> ScriptVers
     return PitchRepository(db).get_script_version(script_version_id)
 
 
+def rubric_pending(db: Session, script_version_id: uuid.UUID) -> bool:
+    script = PitchRepository(db).get_script_version(script_version_id)
+    return script is not None and script.rubric_status == ScriptRubricStatus.PENDING
+
+
 def script_slides(db: Session, script_version_id: uuid.UUID) -> list[ScriptSlide]:
     """대본 버전의 장, 장 번호 순서."""
     return list(PitchRepository(db).get_slides(script_version_id))

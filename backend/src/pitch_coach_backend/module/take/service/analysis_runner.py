@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 ANALYSIS_CONCURRENCY = 4
 CONFIRMATION_WAIT = timedelta(minutes=10)
+RUBRIC_POLL_SEC = 5.0
 RESUME_BATCH_SIZE = 4
 RESUME_READ_TIMEOUT_SEC = 10.0
 SWEEP_INTERVAL_SEC = 5 * 60.0
@@ -78,9 +79,17 @@ async def _in_session[T](
     return await run_in_threadpool(call)
 
 
+async def _score(take_id: uuid.UUID, session_factory: SessionFactory) -> str:
+    while True:
+        async with _slots():
+            outcome = await coverage_service.analyze_script_coverage(take_id, session_factory)
+        if outcome != "RUBRIC_PENDING":
+            return outcome
+        await asyncio.sleep(RUBRIC_POLL_SEC)
+
+
 async def _run(take_id: uuid.UUID, session_factory: SessionFactory) -> None:
-    async with _slots():
-        outcome = await coverage_service.analyze_script_coverage(take_id, session_factory)
+    outcome = await _score(take_id, session_factory)
     if outcome == "HELD":
         logger.warning("대본 전달도 병합이 실패해 리뷰를 보류한다 take=%s", take_id)
         return
