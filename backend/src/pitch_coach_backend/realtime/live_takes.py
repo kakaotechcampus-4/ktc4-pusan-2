@@ -12,8 +12,8 @@ import anyio
 
 from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
 from pitch_coach_backend.module.hooks import MarkEnded
-from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.dependencies import get_transcript_store
+from pitch_coach_backend.realtime.stream import runtime as take_stream
 
 
 class RealtimeLiveTakes:

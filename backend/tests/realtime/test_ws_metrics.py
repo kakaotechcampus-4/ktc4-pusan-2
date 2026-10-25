@@ -14,15 +14,15 @@ from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service import record as record_service
-from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.dto import (
     MetricsMessage,
 )
-from pitch_coach_backend.realtime.metric_buffer import METRICS_BATCH, MetricBuffer
-from pitch_coach_backend.realtime.stt_adapter import (
+from pitch_coach_backend.realtime.storage.metrics import METRICS_BATCH, MetricBuffer
+from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
 )
-from pitch_coach_backend.realtime.take_stream import TakeStream
 from tests.realtime.conftest import (
     SHORT_SILENCE,
     TAKE_ID,
@@ -309,7 +309,7 @@ async def test_metrics_from_an_evicted_tab_are_dropped():
 async def test_metric_buffer_drops_the_oldest_when_saves_keep_failing(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr("pitch_coach_backend.realtime.metric_buffer.MAX_UNSAVED_METRICS", 3)
+    monkeypatch.setattr("pitch_coach_backend.realtime.storage.metrics.MAX_UNSAVED_METRICS", 3)
     store = FakeTranscriptStore(metric_errors=[db_down()] * 10)
     buffer = MetricBuffer(TAKE_ID, store)
     for t in (1000, 2000, 3000, 4000):

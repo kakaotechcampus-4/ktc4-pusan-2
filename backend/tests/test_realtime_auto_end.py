@@ -6,8 +6,8 @@
 import pytest
 
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.dto import AutoEndReason
+from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
 
 # 2분 말이 없고, 직전 5분 중 80% 이상이 말 없음
 POLICY = AutoEndPolicy(

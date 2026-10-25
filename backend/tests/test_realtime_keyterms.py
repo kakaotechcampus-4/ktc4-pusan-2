@@ -11,8 +11,8 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptVersion,
 )
 from pitch_coach_backend.module.pitch.service import script as script_service
-from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
-from pitch_coach_backend.realtime.keyterms import (
+from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
+from pitch_coach_backend.realtime.stt.keyterms import (
     MAX_KEYTERM_TOKENS,
     MAX_KEYTERMS,
     TOKEN_HEADROOM,

@@ -91,7 +91,6 @@ from pitch_coach_backend.module.take.dto import (
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS, silence
-from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.dto import (
     AutoEndMessage,
     AutoEndReason,
@@ -112,8 +111,10 @@ from pitch_coach_backend.realtime.event_ingestion import (
     FrameSequencer,
     parse_audio_frame,
 )
-from pitch_coach_backend.realtime.metric_buffer import MetricBuffer, SlideBuffer
-from pitch_coach_backend.realtime.stt_adapter import (
+from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuffer
+from pitch_coach_backend.realtime.storage.store import TranscriptStore
+from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
+from pitch_coach_backend.realtime.stt.adapter import (
     Metadata,
     SttAdapter,
     SttConfig,
@@ -124,7 +125,6 @@ from pitch_coach_backend.realtime.stt_adapter import (
     Transcript,
     UtteranceEnd,
 )
-from pitch_coach_backend.realtime.transcript_store import TranscriptStore
 
 logger = logging.getLogger(__name__)
 

@@ -19,11 +19,12 @@ from pitch_coach_backend.module.pitch.entity import (
 )
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.user.entity import User
-from pitch_coach_backend.realtime import service, take_stream
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
+from pitch_coach_backend.realtime.connection import session as service
 from pitch_coach_backend.realtime.dto import ErrorMessage, WsErrorCode
-from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
-from pitch_coach_backend.realtime.take_stream import FAST_ATTEMPTS
+from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream.runtime import FAST_ATTEMPTS
+from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
 from tests.realtime.conftest import (
     TAKE_ID,
     WS_PATH,

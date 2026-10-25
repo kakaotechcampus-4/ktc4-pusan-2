@@ -36,8 +36,6 @@ from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.take.service import take as take_service
 from pitch_coach_backend.module.user import service as user_service
-from pitch_coach_backend.realtime import take_stream
-from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.dto import (
     TAKE_END_REASONS,
     AuthMessage,
@@ -53,16 +51,18 @@ from pitch_coach_backend.realtime.dto import (
     client_message_adapter,
 )
 from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
-from pitch_coach_backend.realtime.fillers import KEYTERM_FILLERS
-from pitch_coach_backend.realtime.keyterms import build_keyterms, normalize_term
-from pitch_coach_backend.realtime.stt_adapter import SttAdapter, SttConfig
-from pitch_coach_backend.realtime.take_stream import (
+from pitch_coach_backend.realtime.storage.store import TranscriptStore
+from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
+from pitch_coach_backend.realtime.stream.runtime import (
     CoachDeps,
     StreamOwnerMismatch,
     TakeEnded,
     TakeStream,
 )
-from pitch_coach_backend.realtime.transcript_store import TranscriptStore
+from pitch_coach_backend.realtime.stt.adapter import SttAdapter, SttConfig
+from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
+from pitch_coach_backend.realtime.stt.keyterms import build_keyterms, normalize_term
 
 logger = logging.getLogger(__name__)
 

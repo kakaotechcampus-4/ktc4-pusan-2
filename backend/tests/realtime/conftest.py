@@ -33,11 +33,12 @@ from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO, Transcrip
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import dependencies as realtime_dependencies
-from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
-from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.dependencies import get_stt_adapter
-from pitch_coach_backend.realtime.stt_adapter import (
+from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
+from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stt.adapter import (
     Metadata,
     SttConfig,
     SttConfigRejected,
@@ -46,7 +47,6 @@ from pitch_coach_backend.realtime.stt_adapter import (
     Transcript,
     Word,
 )
-from pitch_coach_backend.realtime.take_stream import TakeStream
 
 TAKE_ID = uuid.uuid7()
 WS_PATH = f"/api/ws/takes/{TAKE_ID}"

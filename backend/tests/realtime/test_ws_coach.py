@@ -19,10 +19,10 @@ from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module.pitch.entity import StandardAnalyses
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
-from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.dto import AutoEndReason
-from pitch_coach_backend.realtime.stt_adapter import UtteranceEnd
-from pitch_coach_backend.realtime.take_stream import CoachDeps
+from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream.runtime import CoachDeps
+from pitch_coach_backend.realtime.stt.adapter import UtteranceEnd
 from tests.realtime.conftest import (
     TAKE_ID,
     WS_PATH,
@@ -501,7 +501,7 @@ async def test_audio_dropped_from_the_queue_is_not_heard():
 @pytest.mark.anyio
 async def test_save_failing_after_close_is_not_put_back():
     """끝낸 뒤 돌던 저장이 실패해도 되돌려 넣거나 다시 넣지 않는다."""
-    from pitch_coach_backend.realtime.metric_buffer import MetricBuffer
+    from pitch_coach_backend.realtime.storage.metrics import MetricBuffer
 
     store = FakeTranscriptStore(metric_errors=[db_down()], append_delay=0.05)
     buffer = MetricBuffer(TAKE_ID, store)
@@ -906,7 +906,7 @@ async def test_rows_that_can_never_be_saved_do_not_block_the_rest():
     막히므로 그 묶음만 버리고 다음 행을 넣는다."""
     from sqlalchemy.exc import DataError
 
-    from pitch_coach_backend.realtime.metric_buffer import MetricBuffer
+    from pitch_coach_backend.realtime.storage.metrics import MetricBuffer
 
     bad = DataError("INSERT take_metric_seconds", {}, ValueError("out of range"))
     store = FakeTranscriptStore(metric_errors=[bad])

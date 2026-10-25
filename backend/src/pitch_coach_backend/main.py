@@ -23,12 +23,12 @@ from pitch_coach_backend.module.take.controller import router as take_router
 from pitch_coach_backend.module.take.controller import takes_router
 from pitch_coach_backend.module.take.ready_sweep import start as start_ready_sweep
 from pitch_coach_backend.module.user.controller import router as user_router
-from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.controller import router as realtime_router
 from pitch_coach_backend.realtime.dependencies import get_transcript_store
 from pitch_coach_backend.realtime.live_takes import RealtimeLiveTakes
-from pitch_coach_backend.realtime.take_stream import arm_abandoned_takes
-from pitch_coach_backend.realtime.take_stream import stop_all as stop_all_streams
+from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
+from pitch_coach_backend.realtime.stream.runtime import arm_abandoned_takes
+from pitch_coach_backend.realtime.stream.runtime import stop_all as stop_all_streams
 
 # Caddy 는 /api/* 만 백엔드로 넘긴다 (infra/Caddyfile). 접두어 없는 경로는 404 도 아니고
 # 프론트 화면이 돌아온다. 그래서 /docs·/openapi.json 까지 전부 /api 아래로 옮긴다.

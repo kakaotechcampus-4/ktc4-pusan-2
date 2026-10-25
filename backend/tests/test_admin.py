@@ -12,7 +12,7 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
 from pitch_coach_backend.module.user.entity import User
-from pitch_coach_backend.realtime.take_stream import ABANDON_AFTER_SEC
+from pitch_coach_backend.realtime.stream.runtime import ABANDON_AFTER_SEC
 
 ADMIN = ("admin", "console-password")
 

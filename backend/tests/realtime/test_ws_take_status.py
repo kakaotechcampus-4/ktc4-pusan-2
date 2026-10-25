@@ -16,10 +16,10 @@ from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
-from pitch_coach_backend.realtime import take_stream
-from pitch_coach_backend.realtime.stt_adapter import SttConfig
-from pitch_coach_backend.realtime.take_stream import TakeStream
-from pitch_coach_backend.realtime.transcript_store import DbTranscriptStore
+from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
+from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stt.adapter import SttConfig
 from tests.realtime.conftest import (
     TAKE_ID,
     WS_PATH,

@@ -18,7 +18,7 @@ import uuid
 from pitch_coach_backend.core.row_buffer import RowBuffer
 from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO, SlideEvent
 from pitch_coach_backend.module.take.exception import NonExistentTake
-from pitch_coach_backend.realtime.transcript_store import TranscriptStore
+from pitch_coach_backend.realtime.storage.store import TranscriptStore
 
 # 이만큼 모이면 저장한다. FE 는 1초에 하나를 보내므로 5초마다다
 METRICS_BATCH = 5

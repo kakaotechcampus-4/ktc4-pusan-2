@@ -14,17 +14,17 @@ from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
-from pitch_coach_backend.realtime import take_stream
-from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.dto import (
     AutoEndReason,
 )
-from pitch_coach_backend.realtime.stt_adapter import (
+from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
+from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
+from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
     Transcript,
 )
-from pitch_coach_backend.realtime.take_stream import TakeStream
-from pitch_coach_backend.realtime.transcript_store import DbTranscriptStore
 from tests.realtime.conftest import (
     SHORT_SILENCE,
     TAKE_ID,

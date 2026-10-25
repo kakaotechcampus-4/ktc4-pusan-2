@@ -15,15 +15,16 @@ from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.module.take.service import record as record_service
-from pitch_coach_backend.realtime import service, take_stream
+from pitch_coach_backend.realtime.connection import session as service
 from pitch_coach_backend.realtime.dto import (
     TranscriptMessage,
 )
-from pitch_coach_backend.realtime.stt_adapter import (
+from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
+from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
 )
-from pitch_coach_backend.realtime.take_stream import TakeStream
-from pitch_coach_backend.realtime.transcript_store import DbTranscriptStore
 from tests.realtime.conftest import (
     TAKE_ID,
     WS_PATH,

@@ -10,11 +10,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.user.entity import User
-from pitch_coach_backend.realtime import service, take_stream
-from pitch_coach_backend.realtime.stt_adapter import (
+from pitch_coach_backend.realtime.connection import session as service
+from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
 )
-from pitch_coach_backend.realtime.take_stream import TakeStream
 from tests.realtime.conftest import (
     TAKE_ID,
     WS_PATH,
