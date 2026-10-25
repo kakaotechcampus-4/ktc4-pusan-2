@@ -237,3 +237,20 @@ def test_meta_model_is_none_without_readable_content():
     assert _analyze(_request(slide_numbers=[])).meta.model is None
     mixed = _analyze(_request(numbers=(1, 6), scripts={1: ""}))
     assert mixed.meta.model == "test-model"
+
+
+def test_rubric_uses_its_own_worker_count(monkeypatch):
+    """평가 기준 만들기는 채점과 다른 동시 개수(`config.RUBRIC_MAX_WORKERS`)로 하위 함수를 부른다."""
+    import script_coverage.core as core_module
+
+    seen = {}
+
+    def spy(*args, **kwargs):
+        seen["max_workers"] = kwargs["max_workers"]
+        return analyze_slides(*args, **kwargs)
+
+    monkeypatch.setattr(core_module, "analyze_slides", spy)
+    monkeypatch.setattr(core_module, "RUBRIC_MAX_WORKERS", 7)
+    monkeypatch.setattr(core_module, "MAX_WORKERS", 3)
+    _analyze(_request())
+    assert seen == {"max_workers": 7}
