@@ -1,0 +1,37 @@
+
+name: AI CI
+
+on:
+  pull_request:
+    branches: [main, develop, release]
+    paths:
+      - 'ai/service/**'
+      - '.github/workflows/ai-ci.yml'
+    
+jobs:
+  ai:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defualts:
+      run:
+        working-directory: ai/service
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: ai/service/uv.lock
+
+      - run: uv sync-locked
+
+      - name: ruff 검사
+        run: uv ruff check src
+
+      - name: pytest
+        run: uv pytest
+
+      - name: docker build
+        run: docker build -t pitch-coach-ai:ci 
