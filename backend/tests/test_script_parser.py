@@ -367,3 +367,13 @@ def test_worst_case_parse_time_is_shorter_than_expiry() -> None:
         DEFAULT_ATTEMPTS - 1
     )
     assert worst < script_service.PARSE_EXPIRE_AFTER.total_seconds()
+
+
+async def test_success_carries_the_request_id_sent_to_ai() -> None:
+    """결과 저장이 실패하면 runner 가 이 값으로 AI 로그와 맞춰 본다. 재시도해도 같은 값이다."""
+    recorder = Recorder(httpx.Response(503), httpx.Response(200, json=_body()))
+
+    parsed = await _parser(recorder).parse("x", None)
+
+    sent = {request.headers["X-Request-ID"] for request in recorder.requests}
+    assert sent == {parsed.request_id}

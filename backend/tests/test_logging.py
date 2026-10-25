@@ -7,8 +7,9 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
-from pitch_coach_backend.core.logging import APP_LOGGER, configure_logging
+from pitch_coach_backend.core.logging import APP_LOGGER, configure_logging, sqlstate
 
 
 @pytest.fixture(autouse=True)
@@ -88,3 +89,21 @@ def test_app_logs_still_reach_caplog(caplog: pytest.LogCaptureFixture):
 def test_app_start_configures_logging(client: TestClient, app_logger: logging.Logger):
     assert len(app_logger.handlers) == 1
     assert app_logger.level == logging.INFO
+
+
+class _DriverError(Exception):
+    def __init__(self, code: object) -> None:
+        self.sqlstate = code
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (OperationalError("SELECT 1", {}, _DriverError("08006")), "08006"),
+        (OperationalError("SELECT 1", {}, _DriverError("원문이 섞인 값")), None),
+        (OperationalError("SELECT 1", {}, _DriverError(None)), None),
+        (RuntimeError("db down"), None),
+    ],
+)
+def test_sqlstate_reads_only_the_five_char_driver_code(error, expected):
+    assert sqlstate(error) == expected

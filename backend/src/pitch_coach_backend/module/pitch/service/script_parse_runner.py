@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ParsedScript,
     ScriptParseError,
@@ -69,8 +70,13 @@ class ScriptParseRunner:
             )
             await self._save_failure(ticket, exc.code)
             return
-        except Exception:
-            logger.exception("대본 파싱 중 예상 못 한 오류 script_version_id=%s", script_id)
+        except Exception as exc:
+            # 예외 메시지에 AI 응답이나 대본 조각이 섞일 수 있어 종류만 남긴다
+            logger.error(
+                "대본 파싱 중 예상 못 한 오류 script_version_id=%s error=%s",
+                script_id,
+                type(exc).__name__,
+            )
             await self._save_failure(ticket, ScriptParseErrorCode.INTERNAL_ERROR)
             return
 
@@ -80,8 +86,16 @@ class ScriptParseRunner:
         script_id = ticket.script_version_id
         try:
             saved = await run_in_threadpool(self._complete, ticket, parsed)
-        except Exception:
-            logger.exception("대본 파싱 결과 저장 실패 script_version_id=%s", script_id)
+        except Exception as exc:
+            # SQLAlchemy 예외 본문에는 full_content 같은 SQL 매개변수와 DB 오류 메시지가 붙어
+            # 대본 원문이 섞인다. traceback 없이 예외 종류 · SQLSTATE · 요청 ID 만 남긴다
+            logger.error(
+                "대본 파싱 결과 저장 실패 script_version_id=%s request_id=%s error=%s sqlstate=%s",
+                script_id,
+                parsed.request_id,
+                type(exc).__name__,
+                sqlstate(exc),
+            )
             # 실패한 세션은 닫혔다(롤백). 새 세션으로 실패를 남긴다. 표식 조건이 있어 안전하다
             await self._save_failure(ticket, ScriptParseErrorCode.INTERNAL_ERROR)
             return
@@ -106,9 +120,13 @@ class ScriptParseRunner:
     async def _save_failure(self, ticket: ParseTicket, code: ScriptParseErrorCode) -> None:
         try:
             await run_in_threadpool(self._fail, ticket, code)
-        except Exception:
-            logger.exception(
-                "대본 파싱 실패 저장 실패 script_version_id=%s", ticket.script_version_id
+        except Exception as exc:
+            logger.error(
+                "대본 파싱 실패 저장 실패 script_version_id=%s code=%s error=%s sqlstate=%s",
+                ticket.script_version_id,
+                code,
+                type(exc).__name__,
+                sqlstate(exc),
             )
 
     # ── threadpool 에서 도는 부분. 저장할 때마다 짧은 세션을 열고 닫는다 ──
