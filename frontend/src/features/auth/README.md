@@ -51,5 +51,4 @@ app/routes.tsx: 공개 경로 이외에 인증 가드 적용.
 mocks/auth.ts: 비로그인 기본 응답.
 
 토큰 모듈은 shared 계층에서 features를 참조하지 않도록 shared/api에 배치했습니다.
-공용 types/api.ts의 기존 ApiError.detail 타입은 수정하지 않았습니다.
 Google 공식 버튼 이미지 출처: https://developers.google.com/identity/branding-guidelines

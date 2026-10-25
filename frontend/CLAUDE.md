@@ -267,7 +267,7 @@ src/
     auth/       로그인·토큰
     pitch/      Pitch 생성·수정·목록
     rehearsal/  ★ 리허설. 난이도 최상 (Track A)
-    report/     리포트·비교·Best Take
+    report/     리포트·비교·Take 기록·분석 대기
   workers/      시선 워커. 메인 스레드에서 격리
   vendor/gaze/  AI 시선 엔진 v1.1 복사본 — 고치지 않습니다 (그 폴더 README)
   mocks/        MSW. 명세 8-4의 JSON 그대로
