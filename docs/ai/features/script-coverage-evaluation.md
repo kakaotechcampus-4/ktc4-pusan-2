@@ -560,9 +560,10 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
   - 고치기 전(호출 12초 · 단계마다 모든 장을 기다림): 10장부터 시간 초과로 실패하는 장이 생겼고 20 · 30장은 동시 4개면 모든 장이 실패했다(`timing.json`, 스트리밍 없이 잰 값이라 조건이 조금 다르다).
   - 출력 토큰 상한을 건 다시 측정(`--cap`, 호출 한 번 20초 · 동시 12개 · BE 재시도 1번):
     - 30장 요청 하나: 103초에 30장 모두(재시도 필요 없음, 호출 92번 중 시간 초과 2번은 요청 안 재시도로 회복). 채점 30장 40초. 상한 전 측정(77초)보다 느렸다. 상한이 원인이라는 증거는 없다(상한은 출력이 잘릴 때만 작동하는데 잘린 호출이 없었다). 느려진 까닭은 가르지 못했다(호출 중앙값 8.9초 대 상한 전 `timing_20s.json` 7.1초, 추측: 측정 때 게이트웨이 응답이 느렸다. 조건마다 한 번씩 잰 값이다)(`timing_capped.json`).
-    - **요청 4개가 동시에 30장씩**: 4개 모두 최초 117 ~ 120초에 2 ~ 4장, BE 재시도 뒤에도 6 ~ 10장만 만들었다(호출 527번, 대부분 20초 시간 초과)(`timing_capped_concurrent.json`). 원인은 가르지 못했다. 20장 × 4개(위)도 동시 호출이 48개였는데 모두 성공했으므로 실행 스레드(40개)만으로는 설명되지 않는다(추측: 요청이 길어 동시 호출 48개가 더 오래 이어지면서 게이트웨이 지연이 겹쳤다. 스레드 대기 시간은 따로 재지 않았다). BE의 백그라운드 AI 호출 동시 개수(권장 4, `architecture.md` 3절)로는 긴 대본 여러 개를 동시에 등록할 때 평가 기준 만들기가 실패할 수 있다. 15절 열린 질문에 남긴다.
+    - **요청 4개가 동시에 30장씩**: 4개 모두 최초 117 ~ 120초에 2 ~ 4장, BE 재시도 뒤에도 6 ~ 10장만 만들었다(호출 527번, 대부분 20초 시간 초과)(`timing_capped_concurrent.json`). 원인은 가르지 못했다. 20장 × 4개(위)도 동시 호출이 48개였는데 모두 성공했으므로 실행 스레드(40개)만으로는 설명되지 않는다(추측: 요청이 길어 동시 호출 48개가 더 오래 이어지면서 게이트웨이 지연이 겹쳤다. 스레드 대기 시간은 따로 재지 않았다). BE의 백그라운드 AI 호출 동시 개수(권장 4, `architecture.md` 3절)로는 긴 대본 여러 개를 동시에 등록할 때 평가 기준 만들기가 실패할 수 있다. 그래서 대본 등록은 동시에 2개까지로 정했다(아래 '백그라운드 동시 개수').
+    - **요청 2개가 동시에 30장씩**: 둘 다 최종 30장 모두. 다만 둘 다 BE 재시도 1번이 필요했다(최초 108초 · 26장 → 재시도 31초 · 4장, 최초 103초 · 29장 → 재시도 32초 · 1장, 호출 195번)(`timing_capped_concurrent2.json`).
   - 재지 않은 것: 가상 장보다 긴 실제 대본, 30장이 넘는 대본.
-- **백그라운드 동시 개수**: 긴 LLM 요청이 AI 스레드 풀을 채우면 1초마다 오는 `/coach/evaluate`가 늦어진다. BE가 백그라운드 AI 호출의 동시 개수를 제한한다(`architecture.md` 3절, `ai-service.md` 8절).
+- **백그라운드 동시 개수**: 긴 LLM 요청이 AI 스레드 풀을 채우면 1초마다 오는 `/coach/evaluate`가 늦어진다. BE가 백그라운드 AI 호출의 동시 개수를 BE 전체 합계로 제한하고(권장 4), 그 안에서 평가 기준 만들기(`/scripts/rubric`)는 동시에 2개까지다. 넘는 요청은 BE에서 기다렸다가 보낸다(`architecture.md` 3절, `ai-service.md` 8절). AI의 120초 마감은 AI가 요청을 받은 때부터라, BE에서 기다린 시간은 실패로 이어지지 않는다. 30장 요청 2개는 BE 재시도 1번으로 모두 만들었고, 4개는 대부분 실패했다(위 잰 값).
 - **요청 크기**: 평가 기준 · 채점이 장 수에 비례해 커서, `/takes/rescore` 요청(채점 + 평가 기준 전체)이 가상 데이터 기준 10장 약 166 KB · 30장 약 0.5 MB다. 실제 대본이 길면 비례해 커진다(서비스 요청 본문 크기 상한을 정할 때 이 값을 넣는다).
 
 # 9. 버전
@@ -595,7 +596,7 @@ uv sync
 | 실제 LLM으로 장 하나 끝까지 (과금) | `uv run python -m pytest -m live` | 평가 기준 3번 + 채점 1~2번 호출, 유효한 결과 |
 | 평가 기준 만들기 → 채점 → 정확도 | `uv run python experiments/01_build_rubrics.py` → `04_evaluate_takes.py` → `05_accuracy.py` | `reports/results/stt_accuracy.json` (02 · 03 · 06은 선택 · 반복 측정, 과금) |
 | API 예시 다시 만들기 (과금 없음, 연구 캐시 재생) | `uv run python -m coverage_lab.examples` | `src/script_coverage/examples/`의 세 API 요청 · 응답이 다시 만들어지고 계약 테스트가 통과 |
-| 장 수별 소요 시간 (과금) | 단일 요청 `uv run python experiments/07_timing.py --grid 30:8 30:12 --call-timeout 20 --retry --analyze --name timing_20s`, 동시 요청 `... --grid 20:12 --call-timeout 20 --retry --concurrent 4 --name timing_20s_concurrent` | `reports/results/<name>.json` (장 수 · 동시 개수별 걸린 시간 · 최초 · 재시도 뒤 만든 장 · 호출 수) |
+| 장 수별 소요 시간 (과금) | 단일 요청 `uv run python experiments/07_timing.py --grid 30:8 30:12 --call-timeout 20 --retry --analyze --name timing_20s`, 동시 요청 `... --grid 20:12 --call-timeout 20 --retry --concurrent 4 --name timing_20s_concurrent`, 상한을 건 동시 요청 `... --grid 30:12 --call-timeout 20 --retry --concurrent 2 --cap <역할=상한 ...> --name timing_capped_concurrent2` | `reports/results/<name>.json` (장 수 · 동시 개수별 걸린 시간 · 최초 · 재시도 뒤 만든 장 · 호출 수) |
 
 - 계약 테스트: 고정된 가짜 LLM으로 `examples/`의 요청을 코어에 넣어 응답이 기대 응답과 같은지 본다(기대 출력은 반올림 없이 저장, 실수는 허용 오차). 세 API의 요청 · 응답, 일부 장 실패, 평가 기준이 없는 장, 확인 답 반영을 넣는다.
 - 단위 테스트가 볼 것: `slide_numbers` 선택, 장별 실패 → `failed` 모양, 모두 실패, `scored_ratio`(analyze · rescore, `failed` 있음 · 없음), 다시 계산의 누적 답, 답 없는 다시 계산, 같은 입력 같은 결과.
@@ -762,7 +763,6 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 # 15. 열린 질문 · 알려진 한계
 **열린 질문** (아직 정하지 않았다)
 - 장이 아주 많거나(30장 넘음) 긴 실제 대본에서 평가 기준 만들기가 120초 안에 끝나는지. 가상 장으로는 동시 개수 12에서 30장 요청 하나와 4개 동시 20장 요청이 BE 재시도 없이 끝났다(뒤의 것은 요청 안 재시도 1번, 8절). 넘는 경우가 나오면 AI 예산 늘리기(`architecture.md` 3절)와 BE가 장을 묶어 부르기를 비교한다.
-- 긴 대본 여러 개를 동시에 등록할 때: 30장 요청 4개가 동시에 오면 평가 기준 만들기가 대부분 시간 초과로 실패했다(8절 잰 값). 정할 것은 셋 중 하나다. ① BE가 평가 기준 만들기 요청만 동시 개수를 더 낮게(예: 2) 둔다(`architecture.md` 3절, BE와 합의). ② 서비스가 모든 요청에 걸쳐 동시에 도는 LLM 호출 수를 묶는다(서비스 공통, `ai-service.md` 8절 실시간 경로 보호와 함께 정한다). ③ ②의 한 방법으로, 장 동시 개수를 그때 도는 요청 수에 따라 낮춘다. 정하기 전에는 지금 값(요청 안 12개, BE 권장 4개)을 그대로 둔다.
 
 **알려진 한계**
 - 실제 데이터로 재지 않았다. 실제 Deepgram 출력의 문장 분리 · 인식 오류 양상 · 실제 발표자의 말투는 가상 데이터와 다를 수 있다.
@@ -787,6 +787,7 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 | id 규칙 | 문장 · 근거 0부터, `KP1` · `CF1` · `S<문장>-U<순번>` · `R1`(장마다) | 5-3 |
 | LLM 호출 | 평가 기준 장마다 최대 3번, 채점 장마다 1번 + 어긋난 장 1번, 다시 계산 0번 | 8절 |
 | 시간 예산 | rubric · analyze AI 120초 / BE 130초 (실패한 장만 1번), rescore BE 10초 (1번), LLM 호출 한 번 20초 (`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`) | 8절 |
+| BE 동시 개수 | 백그라운드 AI 호출 BE 전체 합계 4(권장), 그 안에서 `/scripts/rubric` 동시 2개, 넘으면 BE에서 대기 | 8절 · `architecture.md` 3절 |
 | LLM 출력 토큰 상한 | `script_coverage.semantic` 4,096 · `final` 4,096 · `unit` 5,120 · `eval` 3,072 · `verifier` 2,048 (잰 최대 × 2, 1,024 단위, 최소 2,048. 서비스 `settings.LLM_ROLES`에 넣는다) | 8절 |
 | 버전 | `schema_version` `1.0` · `feature_version` `script_coverage-1.0` · `criteria_version` `script_coverage-1.0+<config 해시>` · `rubric_schema_version` `1.2` | 9절 |
 | 저장 | 평가 기준 `script_slides.rubric` · `rubric_meta`, 상태 · 작업 기록 `script_versions.rubric_status` · `rubric_requested_at` · `rubric_retry_used`, 채점 `take_ai_results` (`take_id`, `kind`=`SCRIPT_COVERAGE`, 바꿀 때마다 `revision` + 1), 병합 후보 `SCRIPT_COVERAGE_PENDING`(`base_revision`), Take 재시도 기록 · 보류 사유 `takes.coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason`, 리포트 `take_summaries.speak_accuracy` — 괄호는 유일 제약. 확인 답은 채점 안 `applied_answers` | 12-1 · 12-2 |
