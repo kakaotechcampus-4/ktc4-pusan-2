@@ -585,7 +585,13 @@ class TakeRepository:
         ).all()
         return [(take_id, last_active_at) for take_id, last_active_at in rows]
 
-    def start_review(self, take_id: uuid.UUID, request_id: uuid.UUID | None = None) -> bool:
+    def start_review(
+        self,
+        take_id: uuid.UUID,
+        request_id: uuid.UUID | None = None,
+        *,
+        takeover: bool = False,
+    ) -> bool:
         """채점까지 끝난 Take 의 분석 단계를 `REVIEWING` 으로 바꾼다. 바꿨으면 True.
 
         채점이 REVIEWING으로 넘긴 뒤 아직 실행 표식이 없으면 즉시 시작한다.
@@ -596,9 +602,13 @@ class TakeRepository:
         받으면 그 Take 는 끝내 리뷰를 못 받는다. 분석 단계가 없는 Take 는 그 칸이 생기기 전에 끝난
         것이라 예전처럼 받는다.
         """
-        stale_review = and_(
-            Take.analysis_stage == "REVIEWING",
-            Take.analysis_stage_at < func.now() - REVIEW_STALE_AFTER,
+        abandoned_review = (
+            Take.analysis_stage == "REVIEWING"
+            if takeover
+            else and_(
+                Take.analysis_stage == "REVIEWING",
+                Take.analysis_stage_at < func.now() - REVIEW_STALE_AFTER,
+            )
         )
         result = self.db.execute(
             update(Take)
@@ -618,7 +628,7 @@ class TakeRepository:
                     ),
                     Take.analysis_stage == "AWAITING_CONFIRMATION",
                     Take.analysis_stage.is_(None),
-                    stale_review,
+                    abandoned_review,
                 ),
             )
             .values(

@@ -102,9 +102,11 @@ def _retryable_status(status_code: int) -> bool:
     return status_code >= 500 or status_code in (408, 429)
 
 
-def claim_review(db: Session, take_id: uuid.UUID, request_id: uuid.UUID) -> uuid.UUID | None:
+def claim_review(
+    db: Session, take_id: uuid.UUID, request_id: uuid.UUID, *, takeover: bool = False
+) -> uuid.UUID | None:
     take_repository = TakeRepository(db)
-    if not take_repository.start_review(take_id, request_id):
+    if not take_repository.start_review(take_id, request_id, takeover=takeover):
         db.rollback()
         return None
     pitch_id = take_repository.get_pitch_id_of_take(take_id)

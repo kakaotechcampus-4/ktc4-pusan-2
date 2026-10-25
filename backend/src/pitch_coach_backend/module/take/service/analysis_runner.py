@@ -39,18 +39,28 @@ _slots_by_loop: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Sem
 
 
 def start(
-    take_id: uuid.UUID, session_factory: SessionFactory = SessionLocal
+    take_id: uuid.UUID,
+    session_factory: SessionFactory = SessionLocal,
+    *,
+    restarted: bool = False,
 ) -> asyncio.Task[None] | None:
     if _running.running(take_id):
         return None
     return _running.spawn(
-        run(take_id, session_factory), name=f"take-analysis:{take_id}", key=take_id
+        run(take_id, session_factory, restarted=restarted),
+        name=f"take-analysis:{take_id}",
+        key=take_id,
     )
 
 
-async def run(take_id: uuid.UUID, session_factory: SessionFactory = SessionLocal) -> None:
+async def run(
+    take_id: uuid.UUID,
+    session_factory: SessionFactory = SessionLocal,
+    *,
+    restarted: bool = False,
+) -> None:
     try:
-        await _run(take_id, session_factory)
+        await _run(take_id, session_factory, restarted)
     except asyncio.CancelledError:
         logger.info("Take 분석을 멈춘다 (앱 종료) take=%s", take_id)
         raise
@@ -88,13 +98,13 @@ async def _score(take_id: uuid.UUID, session_factory: SessionFactory) -> str:
         await asyncio.sleep(RUBRIC_POLL_SEC)
 
 
-async def _run(take_id: uuid.UUID, session_factory: SessionFactory) -> None:
+async def _run(take_id: uuid.UUID, session_factory: SessionFactory, restarted: bool) -> None:
     outcome = await _score(take_id, session_factory)
     if outcome == "HELD":
         logger.warning("대본 전달도 병합이 실패해 리뷰를 보류한다 take=%s", take_id)
         return
     await _wait_for_confirmation(take_id, session_factory)
-    pitch_id = await _review(take_id, session_factory)
+    pitch_id = await _review(take_id, session_factory, restarted)
     if pitch_id is not None:
         _plan_next_take(pitch_id)
 
@@ -115,11 +125,16 @@ async def _wait_for_confirmation(take_id: uuid.UUID, session_factory: SessionFac
         await asyncio.sleep(delay)
 
 
-async def _review(take_id: uuid.UUID, session_factory: SessionFactory) -> uuid.UUID | None:
+async def _review(
+    take_id: uuid.UUID, session_factory: SessionFactory, restarted: bool
+) -> uuid.UUID | None:
     request_id = uuid.uuid4()
     async with _slots():
         pitch_id = await _in_session(
-            session_factory, review_service.claim_review, take_id, request_id
+            session_factory,
+            partial(review_service.claim_review, takeover=restarted),
+            take_id,
+            request_id,
         )
         if pitch_id is None:
             return None
@@ -154,11 +169,16 @@ def _plan_next_take(pitch_id: uuid.UUID) -> None:
 
 
 def resume(
-    session_factory: SessionFactory = SessionLocal, stale_before: datetime | None = None
+    session_factory: SessionFactory = SessionLocal,
+    stale_before: datetime | None = None,
+    *,
+    restarted: bool = False,
 ) -> None:
     if not _recovery.running("resume"):
         _recovery.spawn(
-            _resume(session_factory, stale_before), name="take-analysis-resume", key="resume"
+            _resume(session_factory, stale_before, restarted),
+            name="take-analysis-resume",
+            key="resume",
         )
 
 
@@ -168,7 +188,9 @@ def _analyzing_takes(
     return TakeRepository(db).analyzing_takes(stale_before, after=after, limit=RESUME_BATCH_SIZE)
 
 
-async def _resume(session_factory: SessionFactory, stale_before: datetime | None) -> None:
+async def _resume(
+    session_factory: SessionFactory, stale_before: datetime | None, restarted: bool
+) -> None:
     after: uuid.UUID | None = None
     resumed = 0
     try:
@@ -178,7 +200,7 @@ async def _resume(session_factory: SessionFactory, stale_before: datetime | None
                 RESUME_READ_TIMEOUT_SEC,
             )
             for take_id in take_ids:
-                if start(take_id, session_factory) is not None:
+                if start(take_id, session_factory, restarted=restarted) is not None:
                     resumed += 1
             if len(take_ids) < RESUME_BATCH_SIZE:
                 break
@@ -204,7 +226,7 @@ async def stop_all(timeout: float = STOP_TIMEOUT_SEC) -> None:
 
 
 def start_background() -> Callable[[], Awaitable[None]]:
-    resume()
+    resume(restarted=True)
     sweep = asyncio.create_task(sweep_forever(), name="take-analysis-sweep")
 
     async def stop() -> None:

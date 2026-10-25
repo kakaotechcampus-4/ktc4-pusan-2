@@ -227,7 +227,7 @@ def test_same_take_runs_once(monkeypatch):
     gate = asyncio.Event()
     runs: list[uuid.UUID] = []
 
-    async def blocked(take_id, session_factory):
+    async def blocked(take_id, session_factory, restarted):
         runs.append(take_id)
         await gate.wait()
 
@@ -275,20 +275,75 @@ def test_resume_starts_every_resumable_take(monkeypatch, db_session, user_id):
         for number in range(1, 7)
     ]
     db_session.commit()
-    started: list[uuid.UUID] = []
+    started: list[tuple[uuid.UUID, bool]] = []
 
-    async def record(take_id, session_factory):
-        started.append(take_id)
+    async def record(take_id, session_factory, restarted):
+        started.append((take_id, restarted))
 
     monkeypatch.setattr(analysis_runner, "_run", record)
 
     async def scenario():
-        analysis_runner.resume()
+        analysis_runner.resume(restarted=True)
         await asyncio.gather(*analysis_runner._recovery.tasks())
         await asyncio.gather(*analysis_runner._running.tasks())
 
     asyncio.run(scenario())
-    assert sorted(started) == sorted(take_ids)
+    assert sorted(started) == sorted((take_id, True) for take_id in take_ids)
+
+
+def test_sweep_does_not_take_over_running_reviews(monkeypatch):
+    calls: list[tuple[datetime | None, bool]] = []
+
+    def record(session_factory=None, stale_before=None, *, restarted=False):
+        calls.append((stale_before, restarted))
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(analysis_runner, "resume", record)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(analysis_runner.sweep_forever(interval_sec=0))
+
+    ((stale_before, restarted),) = calls
+    assert stale_before is not None
+    assert restarted is False
+
+
+def _interrupted_review(db: Session, user_id: uuid.UUID) -> Take:
+    take = _analyzing(db, user_id, "REVIEWING")
+    take.review_request_id = uuid.uuid4()
+    take.analysis_stage_at = datetime.now(UTC) - timedelta(seconds=30)
+    db.commit()
+    return take
+
+
+def test_fresh_review_is_not_taken_over_without_a_restart(db_session, user_id, monkeypatch, plans):
+    take = _interrupted_review(db_session, user_id)
+    owner = take.review_request_id
+    reviewer = AsyncMock(side_effect=AssertionError("돌고 있는 리뷰를 가로채면 안 된다"))
+    monkeypatch.setattr(review_service, "request_review_async", reviewer)
+
+    asyncio.run(analysis_runner.run(take.id))
+
+    reviewer.assert_not_awaited()
+    db_session.refresh(take)
+    assert take.review_request_id == owner
+    assert plans.asked == []
+
+
+def test_restart_takes_over_a_review_cut_off_by_the_restart(
+    db_session, user_id, monkeypatch, plans
+):
+    take = _interrupted_review(db_session, user_id)
+    owner = take.review_request_id
+    monkeypatch.setattr(
+        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+    )
+
+    asyncio.run(analysis_runner.run(take.id, restarted=True))
+
+    assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
+    assert take.review_request_id != owner
+    assert plans.asked == [take.pitch_id]
 
 
 def _ai(monkeypatch, handler) -> list[httpx.Request]:
