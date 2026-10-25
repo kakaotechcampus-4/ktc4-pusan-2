@@ -1,6 +1,6 @@
 """7단계: 다음 미션. 규칙 단계가 후보와 목표 숫자를 만든다.
 
-2차에서는 LLM 이 PRIORITY 후보 중 고르고 설명을 붙인다.
+LLM 이 PRIORITY 후보 중 고르고 설명을 붙이면 merge_picked_missions 가 붙인다.
 사용자 기준 FAILED 미션은 LLM 이 빼거나 순서를 바꾸지 못한다.
 LLM 이 없거나 실패하면 select_next_missions 가 후보를 그대로 쓴다.
 """
@@ -169,3 +169,49 @@ def select_next_missions(
     for i, m in enumerate(picked, 1):
         m["priority"] = i
     return picked
+
+
+def fixed_count(criteria_results: list[dict[str, Any]]) -> int:
+    """후보 맨 앞의 사용자 기준 FAILED 미션 개수 (build_next_missions 가 모두 앞에 넣는다)"""
+    return sum(r["status"] == "FAILED" for r in criteria_results)
+
+
+def merge_picked_missions(
+    candidates: list[dict[str, Any]],
+    n_fixed: int,
+    picks: list[tuple[int, str | None, str | None]],
+) -> list[dict[str, Any]]:
+    """LLM 이 고른 다음 미션 (명세 6-2).
+
+    picks 는 LLM 이 고른 순서의 (후보 번호(0부터), 설명, 이유). 번호가 겹치거나 범위 밖이면 버린다.
+
+    - 사용자 기준 FAILED(앞 n_fixed 개)는 LLM 이 골랐든 아니든 후보 순서로 맨 앞에 둔다.
+      설명은 사용자 표현(display)이 있으면 그대로 두고, 없으면 LLM 설명을 쓴다
+    - 이어서 LLM 이 고른 PRIORITY 후보를 고른 순서로
+    - 비었거나 없는 설명 · 이유는 후보의 기본 문장. 설명은 MAX_DESCRIPTION_CHARS 자에서 자른다
+    - priority 를 1부터 다시 매긴다 (한 리뷰 안에서 겹치지 않는다 — 저장 UQ)
+    """
+    written: dict[int, tuple[str | None, str | None]] = {}
+    for index, description, reason in picks:
+        if 0 <= index < len(candidates) and index not in written:
+            written[index] = (description, reason)
+    n_fixed = min(n_fixed, len(candidates))
+    order = [*range(n_fixed), *(i for i in written if i >= n_fixed)]
+
+    missions = []
+    for priority, index in enumerate(order, 1):
+        m = copy.deepcopy(candidates[index])
+        description, reason = written.get(index, (None, None))
+        if index >= n_fixed or m["description"] is None:
+            m["description"] = _or_default(description, m["description"])
+        m["reason"] = _or_default(reason, m["reason"])
+        if m["description"] is not None:
+            m["description"] = m["description"][:MAX_DESCRIPTION_CHARS]
+        m["priority"] = priority
+        missions.append(m)
+    return missions
+
+
+def _or_default(text: str | None, default: str | None) -> str | None:
+    text = (text or "").strip()
+    return text or default

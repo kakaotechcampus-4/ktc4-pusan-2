@@ -104,10 +104,10 @@
   "fallback_reason": "LLM_UNAVAILABLE",
   "meta": {
     "schema_version": "1.0",
-    "feature_version": "review-1.0",
+    "feature_version": "review-1.1",
     "criteria_versions": {
       "gaze": "gaze-1.1+000000000000",
-      "review": "review-1.0+13908767444d"
+      "review": "review-1.1+13908767444d"
     },
     "model": null
   }

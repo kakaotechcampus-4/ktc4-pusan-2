@@ -11,4 +11,5 @@
 #: recurring_issues 에 dimension 을 더했다 (README 의 팀 논의 참고)
 SCHEMA_VERSION = "1.0"
 #: review-1.0: 규칙 단계 + 기본 문장. LLM 단계는 아직 없다
-FEATURE_VERSION = "review-1.0"
+#: review-1.1: LLM 단계 (문장 · 다음 미션 고르기, 1번). LLM 이 없으면 review-1.0 과 같은 결과
+FEATURE_VERSION = "review-1.1"
