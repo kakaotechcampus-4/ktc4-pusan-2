@@ -8,7 +8,7 @@ import type {
 import type { Ms } from '@/types/api';
 import type { GazeEngine } from '@/vendor/gaze/engine';
 // 진입점(index)이 아니라 파일을 직접 엽니다 — 진입점은 MediaPipe 까지 끌고 옵니다
-import { frameFromDecision } from '@/vendor/gaze/engine/evidence';
+import { frameFromDecision } from '@/vendor/gaze/engine/contract';
 import { engineVersion, toCalibrationResult, toPlacementResult } from './aiAdapter';
 import { fitsCurrentEngine } from './calibrationModel';
 

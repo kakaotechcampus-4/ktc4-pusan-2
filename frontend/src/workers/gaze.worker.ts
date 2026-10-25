@@ -4,8 +4,12 @@ import { DummyGazeClassifier } from './dummyClassifier';
 import { ModelGazeClassifier } from './modelClassifier';
 // 진입점(index)이 아니라 파일을 직접 엽니다 — 진입점은 MediaPipe 까지 끌고 와서
 // dummy 워커에도 실립니다. 두 파일은 MediaPipe 를 부르지 않습니다
-import { makeConfig } from '@/vendor/gaze/engine/config';
-import { GazeSlicer, sampleToDict, type GazeSample } from '@/vendor/gaze/engine/evidence';
+import {
+  GazeSlicer,
+  makeConfig,
+  sampleToDict,
+  type GazeSample,
+} from '@/vendor/gaze/engine/contract';
 import type {
   CalibrationResult,
   GazeClassifier,
