@@ -50,6 +50,22 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 - CI 는 PostgreSQL·Redis 서비스와 `DATABASE_URL` 만 제공하면 된다.
   `JWT_SECRET_KEY` 와 구글 값은 conftest 가 테스트용 값을 넣는다.
 
+## 홈 Take 응답
+
+`GET /api/pitches/`의 `pitches[].takes[]`는 기존 필드에 `status`와 `end_reason`을 추가한다.
+
+- `status`: `READY` · `RUNNING` · `ANALYZING` · `COMPLETED` · `FAILED`
+- `end_reason`: `SILENCE` · `TIME_LIMIT` · `ABANDONED` · `CLOSED` 또는 `null`
+- `null`은 수동 종료 또는 아직 종료 이유가 없는 경우다. `ABANDONED`·`CLOSED`는 떠난 Take를
+  구분하며 `SILENCE`·`TIME_LIMIT`은 자동 종료 이유다. 상태는 `status`로 판단한다.
+
+FE 표시 문구는 협의가 필요하다. `READY`는 시작 전, `RUNNING`은 연습 중, `ANALYZING`은
+분석 중, `COMPLETED`는 완료로 제안한다. `FAILED` 중 `ABANDONED`·`CLOSED`는 중단,
+나머지는 실패로 표시할 수 있다. 점수가 없다는 이유만으로 분석 중으로 판단하지 않는다.
+
+`score`·`delta` 계산은 유지한다. `delta`는 바로 이전 Take와 현재 Take에 모두 점수가 있을 때만
+계산하며 어느 한쪽이라도 점수가 없으면 `null`이다. Take 목록 API에는 변경이 없다.
+
 ## 폴더 구조
 
 ```
