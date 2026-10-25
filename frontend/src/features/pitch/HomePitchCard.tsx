@@ -2,7 +2,7 @@ import { duration } from './homeFormat';
 import { useId, useState } from 'react';
 import { Link } from 'react-router';
 import { takeStatusView } from '@/shared/lib/takeStatus';
-import { Badge } from '@/shared/ui/Badge';
+import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
 import type { HomePitch } from '@/types/home';
 
 const modes: Record<string, string> = {
@@ -119,45 +119,56 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
                 return (
                   <li
                     key={take.take_id}
-                    className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-line px-6 py-4 text-sm"
+                    className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-x-4 gap-y-3 border-t border-line px-4 py-4 text-sm sm:px-6 lg:grid-cols-[5rem_5rem_8rem_minmax(0,1fr)_4rem_5rem_6rem]"
                   >
-                    <span className="w-20 font-mono font-bold">
+                    <span className="whitespace-nowrap font-mono font-bold">
                       TAKE {String(take.take_version).padStart(2, '0')}
                     </span>
-                    <Badge tone={status.tone}>{status.label}</Badge>
-                    <span
-                      className="font-mono text-xs"
-                      aria-label={`발표 시간 ${duration(take.take_elapsed)}, 목표 ${duration(take.take_time)}`}
-                    >
-                      {duration(take.take_elapsed)}{' '}
-                      <span className="text-stone">/ {duration(take.take_time)}</span>
-                    </span>
-                    <span className="text-xs text-stone">
-                      {modes[take.script_mode] ?? '기타 대본 모드'}
-                    </span>
-                    <span
-                      className="ml-auto font-mono"
-                      aria-label={take.score === null ? '점수 미제공' : `${take.score}점`}
-                    >
-                      {take.score === null ? '—' : `${take.score}점`}
-                    </span>
-                    <span
-                      className="w-16 text-xs text-stone"
-                      aria-label={
-                        take.delta === null ? '점수 비교 없음' : `이전 대비 ${take.delta}점`
-                      }
-                    >
-                      {deltaText(take.delta)}
-                    </span>
-                    {/* 중단 · 실패 · 시작 전 · 연습 중 Take 는 볼 화면이 없어 링크를 두지 않습니다 */}
-                    {status.link &&
-                      (take.take_id ? (
-                        <Link to={status.link.to} className="font-bold hover:text-coral-deep">
-                          {status.link.text} ↗
-                        </Link>
-                      ) : (
-                        <span className="text-xs text-stone">{status.link.text} 열기 미지원</span>
-                      ))}
+                    <TakeStatusBadge status={status} />
+                    <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-1 lg:contents">
+                      <span
+                        className="whitespace-nowrap font-mono text-xs"
+                        aria-label={`발표 시간 ${duration(take.take_elapsed)}, 목표 ${duration(take.take_time)}`}
+                      >
+                        {duration(take.take_elapsed)}{' '}
+                        <span className="text-stone">/ {duration(take.take_time)}</span>
+                      </span>
+                      <span className="min-w-0 break-words text-xs text-stone">
+                        {modes[take.script_mode] ?? '기타 대본 모드'}
+                      </span>
+                    </div>
+                    <div className="col-span-2 grid grid-cols-[4rem_minmax(0,1fr)_6rem] items-center gap-x-4 lg:contents">
+                      <span
+                        className="font-mono lg:text-right"
+                        aria-label={take.score === null ? '점수 미제공' : `${take.score}점`}
+                      >
+                        {take.score === null ? '—' : `${take.score}점`}
+                      </span>
+                      <span
+                        className="text-xs text-stone lg:text-center"
+                        aria-label={
+                          take.delta === null ? '점수 비교 없음' : `이전 대비 ${take.delta}점`
+                        }
+                      >
+                        {deltaText(take.delta)}
+                      </span>
+                      {/* 중단 · 실패 · 시작 전 · 연습 중 Take 는 볼 화면이 없어 링크를 두지 않습니다 */}
+                      <div className="min-h-5 text-right">
+                        {status.link &&
+                          (take.take_id ? (
+                            <Link
+                              to={status.link.to}
+                              className="whitespace-nowrap font-bold hover:text-coral-deep"
+                            >
+                              {status.link.text} ↗
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-stone">
+                              {status.link.text} 열기 미지원
+                            </span>
+                          ))}
+                      </div>
+                    </div>
                   </li>
                 );
               })}
