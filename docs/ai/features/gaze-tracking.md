@@ -214,7 +214,7 @@ frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · 
 - **Take 시작 직후**: Take 시작 뒤 정해진 시간 동안은 `GAZE_UNMEASURABLE` 말고는 시선 문제를 내지 않는다. 표본이 적은 초반에는 두 번만 봐도 비율이 크게 튄다.
 - **측정 불가일 때**: `measurable`이 false면 `state`는 `UNMEASURABLE`이고 `issues`에는 `GAZE_UNMEASURABLE`만 있다(`architecture.md` 7절).
 - **`severity`**: 공통 규칙(기준값에서 0.5, 아주 나쁨 값에서 1.0, 그 사이 직선, 1.0에서 자름)을 따른다.
-- **`persistence_sec`** (`architecture.md` 7절의 '문제 조건이 이어진 시간'): `GAZE_ON_SCRIPT` · `GAZE_ON_SCREEN` · `GAZE_AWAY`는 지금까지 이어진 응시 길이(`*_run_ms`), `GAZE_LOW_EYE_CONTACT`는 최근 창의 측정 시간이다. `GAZE_UNMEASURABLE`은 창 전체의 비율 · 평균으로 정하는 문제라, 측정 불가를 가른 창 안에서 쓸 수 없던 시간의 합이다(이어진 길이가 아니다). 최근 창의 측정 비율이 짧은 창보다 나빠 기준 미만이 됐으면 최근 창, 그 밖(짧은 창의 측정 비율 · 평균 신뢰도가 기준 미만)은 짧은 창이다. 쓸 수 없는 1초는 기록이 없거나, 측정 상태(`CAMERA` · `SCREEN` · `BOTTOM` · `OTHER`)가 아니거나, 기록의 `reliability`가 기준(`min_mean_reliability`) 미만인 1초다(기준과 같으면 쓸 수 있다). 코치는 이 값을 말을 걸 때의 지속 요구에 쓰지 않는다(`architecture.md` 7절).
+- **`persistence_sec`** (`architecture.md` 7절의 '문제 조건이 이어진 시간'): `GAZE_ON_SCRIPT` · `GAZE_ON_SCREEN` · `GAZE_AWAY`는 지금까지 이어진 응시 길이(`*_run_ms`), `GAZE_LOW_EYE_CONTACT`는 최근 창 안에서 판정 시각부터 거꾸로 청중을 보지 않은 1초(측정됐고 `CAMERA`가 아님)가 끊김 없이 이어진 길이다(재지 못한 1초에서 끊는다). `GAZE_UNMEASURABLE`은 측정 불가를 가른 창 안에서 판정 시각부터 거꾸로 쓸 수 없는 1초가 끊김 없이 이어진 길이다. 최근 창의 측정 비율이 짧은 창보다 나빠 기준 미만이 됐으면 최근 창, 그 밖(짧은 창의 측정 비율 · 평균 신뢰도가 기준 미만)은 짧은 창이다. 두 문제 모두 창 전체의 비율 · 평균으로 정하므로, 문제가 났어도 지금 그 조건이 이어지지 않으면 0이다(예: 앞 20초는 기록이 없었지만 지금 10초째 잘 재고 있으면 0). 쓸 수 없는 1초는 기록이 없거나, 측정 상태(`CAMERA` · `SCREEN` · `BOTTOM` · `OTHER`)가 아니거나, 기록의 `reliability`가 기준(`min_mean_reliability`) 미만인 1초다(기준과 같으면 쓸 수 있다). 코치는 이 값을 말을 걸 때의 지속 요구에 쓰지 않는다(`architecture.md` 7절).
 - 코치가 이 문제들을 어떻게 쓰는지(사다리 · 효과 판정 · 말하지 않는 문제)는 `coach-agent.md` 6-1에 있다. 요약하면 `GAZE_ON_SCRIPT` · `GAZE_AWAY` · `GAZE_LOW_EYE_CONTACT`는 장마다 사다리 하나를 같이 쓰고, `GAZE_ON_SCREEN` · `GAZE_UNMEASURABLE`은 말하지 않고 문제 구간에만 남긴다.
 
 ## 5-5. 예시
@@ -492,7 +492,7 @@ cd web && npm ci
 
 # 11. 배포
 **어디서 도는가**: 두 곳에 배포된다.
-- **서버 판정 모듈** `src/gaze/`(`examples/` 포함)는 AI 서비스의 `features/gaze/`로 폴더째 옮기고, 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮긴다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 소리 크기 판정 모듈의 기준값 파일을 서비스의 `features/volume/`에서 먼저 찾으므로, 소리 크기 모듈이 서비스에 먼저 있어야 한다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
+- **서버 판정 모듈** `src/gaze/`(`examples/` 포함)는 AI 서비스의 `features/gaze/`로 폴더째 옮기고, 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮긴다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 소리 크기 판정 모듈의 기준값 파일을 서비스의 `features/volume/`에서 먼저 찾으므로, 소리 크기 모듈이 서비스에 먼저 있어야 한다. 없으면 그 비교는 실패하지 않고 건너뛰어 조용히 빠진다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
 - **브라우저 엔진** `web/src/engine/`(원본)은 FE가 `frontend/src/vendor/gaze/`로 Worker · 카메라 화면과 함께 복사해 쓴다. FE는 엔진의 `index.ts` · `contract.ts`만 import하고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. 엔진 안은 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다. 화면(카메라 화면 · 보정 안내)은 FE가 고친다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 생긴 뒤, 아래 '옮긴 뒤 확인'을 통과하면 옮긴다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.

@@ -114,8 +114,19 @@ def test_low_eye_contact_when_the_audience_share_is_low():
     assert issue.issue_type == "GAZE_LOW_EYE_CONTACT"
     assert r.metrics.audience_ratio == pytest.approx(0.1667)
     assert issue.severity == pytest.approx(0.7222)
-    assert (issue.threshold, issue.bad, issue.persistence_sec) == (0.3, 0.0, 30.0)
+    # 마지막 5초는 청중을 봤으므로 '청중을 보지 않음'은 지금 이어지지 않는다
+    assert (issue.threshold, issue.bad, issue.persistence_sec) == (0.3, 0.0, 0.0)
     assert issue.evidence == {"audience_ratio": 0.1667, "audience_ratio_short": 1.0}
+
+
+def test_low_eye_contact_persistence_is_the_run_not_looking_at_the_audience():
+    # 청중 5초 → 화면 · 대본을 번갈아 25초: 판정 시각까지 청중을 보지 않은 25초가 이어진다
+    alternating = [
+        rec(t, "SCREEN" if t // 1000 % 2 else "BOTTOM") for t in range(5_000, 30_000, 1000)
+    ]
+    r = run(secs(("CAMERA", 5)) + alternating, 30_000)
+    issue = next(i for i in r.issues if i.issue_type == "GAZE_LOW_EYE_CONTACT")
+    assert issue.persistence_sec == 25.0
 
 
 def test_low_eye_contact_waits_for_enough_measured_time():
@@ -197,13 +208,14 @@ def test_unmeasurable_when_reliability_is_low():
     assert issue.persistence_sec == 5.0
 
 
-def test_unmeasurable_persistence_sums_unusable_seconds_in_the_short_window():
-    # 짧은 창 5초: 신뢰도 낮음 2 · 정상 1 · 기록 없음 2 → 쓸 수 없던 시간 4초 (연속이 아니어도 합)
+def test_unmeasurable_persistence_is_the_run_up_to_now_not_the_sum():
+    # 짧은 창 5초: 신뢰도 낮음 2 · 정상 1 · 기록 없음 2 → 지금까지 이어진 것은 기록 없음 2초뿐
+    # (architecture.md 7절 '이어진 시간'. 앞의 신뢰도 낮은 2초는 정상 1초에서 끊긴다)
     records = [rec(t, "CAMERA") for t in range(0, 25_000, 1000)]
     records += [rec(25_000, "CAMERA", reliability=0.1), rec(26_000, "CAMERA", reliability=0.1)]
     records += [rec(27_000, "CAMERA")]
     issue = _unmeasurable(run(records, 30_000))
-    assert issue.persistence_sec == 4.0
+    assert issue.persistence_sec == 2.0
 
 
 def test_unmeasurable_by_short_reliability_stays_in_the_short_window():
@@ -228,11 +240,18 @@ def test_unusable_second_edges_reliability_at_threshold_and_uncertain():
 def test_measured_ratio_uses_the_worse_of_short_and_recent_windows():
     # 짧은 창은 모두 측정됐지만 최근 30초는 1/3 만 -- 잠깐 좋아진 1초로 다시 열지 않는다
     r = run(secs(("GAP", 20), ("CAMERA", 10)), 30_000)
-    # 이어진 시간도 측정 비율을 정한 최근 창에서 잰다(기록 없던 20초)
-    assert _unmeasurable(r).persistence_sec == 20.0
+    # 최근 창에서 재지만 지금 10초째 잘 재고 있으므로 이어진 시간은 0
+    assert _unmeasurable(r).persistence_sec == 0.0
     issue = _unmeasurable(r)
     assert r.metrics.measured_ratio == 1.0
     assert issue.evidence["measured_ratio"] == 0.3333
+
+
+def test_unmeasurable_persistence_stays_inside_the_deciding_window():
+    # 정상 10초 → 기록 없음 20초: 짧은 창(측정 0)이 측정 불가를 가르므로, 기록 없음이 20초째
+    # 이어져도 그 창 길이 5초까지만 센다(카메라가 끊긴 예시와 같다)
+    r = run(secs(("CAMERA", 10)), 30_000)
+    assert _unmeasurable(r).persistence_sec == 5.0
 
 
 def test_doc_example_camera_lost_after_24_seconds():

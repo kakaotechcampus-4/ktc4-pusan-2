@@ -52,7 +52,7 @@
         "area": "GAZE",
         "severity": 0.7222,
         "confidence": 1.0,
-        "persistence_sec": 30.0,
+        "persistence_sec": 12.0,
         "threshold": 0.3,
         "bad": 0.0,
         "evidence": {
