@@ -564,9 +564,26 @@
   color: var(--color-stone);
 }
 
+/* 발밑 문구는 모두 한 줄이다 — 자리가 모자라면 접히지 않고 말줄임으로 잘린다.
+   하나라도 여러 줄로 접히면 발밑 줄이 커지고, 슬라이드 칸(1fr)이 줄어 시선 각도가 흔들린다.
+   발밑 줄도 min-width 0 — 아니면 한 줄 문구 길이만큼 무대 칸이 넓어진다 */
+.stage-foot {
+  min-width: 0;
+}
+
+.stage-foot > span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 끝내기는 줄지도 접히지도 않는다 — 발밑 문구가 많을 때 버튼 글자가 두 줄이 되면 발밑 줄이 커진다 */
 .stage-foot .end {
+  flex-shrink: 0;
   margin-left: auto;
   padding: 10px 22px;
+  white-space: nowrap;
   border: none;
   border-radius: 999px;
   background: var(--color-coral);
@@ -646,9 +663,42 @@
 }
 
 /* 재연결 중·중단은 눈에 띄어야 한다. 다만 발표를 멈추라는 뜻은 아니다 */
-.stage-foot .stt[data-alert='true'],
-.stage-foot .gaze[data-alert='true'] {
+.stage-foot .stt[data-alert='true'] {
   color: var(--color-gaze-screen);
+}
+
+/* 시선 기록이 멈춘 동안의 안내 (#235). 회색 상태 문구 사이에서 놓치지 않게 코랄 경고 상자로 둔다.
+   판정 불가 테두리(빨간 점선)와 헷갈리지 않게 실선 · 채운 바탕이고, 앞에 '!' 를 붙여 색만으로 나누지 않는다.
+   높이는 끝내기 버튼보다 낮다 — 발밑 줄이 커지면 슬라이드 칸(1fr)이 줄어 시선 각도가 흔들린다.
+   자리가 모자라면 다른 문구가 먼저 잘린다. 경고는 발밑 줄의 절반까지는 줄지 않는다 */
+.stage-foot .gaze[data-alert='true'] {
+  flex-shrink: 0;
+  max-width: 50%;
+  display: inline-block;
+  padding: 3px 10px 3px 4px;
+  border: 1px solid var(--color-coral);
+  background: color-mix(in srgb, var(--color-coral) 14%, transparent);
+  color: var(--color-ink-stage);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.stage-foot .gaze[data-alert='true']::before {
+  content: '!';
+  /* 글이 이미 상태를 말한다 — 화면 낭독기는 '!' 를 읽지 않는다 */
+  content: '!' / '';
+  display: inline-grid;
+  place-items: center;
+  vertical-align: top;
+  width: 18px;
+  height: 18px;
+  margin: 1px 8px 0 0;
+  line-height: 1;
+  background: var(--color-coral);
+  color: var(--color-stage);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 /* ── 시작 전 안내 ─────────────────────────────────────────────
