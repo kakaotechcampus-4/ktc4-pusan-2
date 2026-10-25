@@ -29,6 +29,8 @@ Direction = Literal[
     "RIGHT", "UP_RIGHT", "UP", "UP_LEFT", "LEFT", "DOWN_LEFT", "DOWN", "DOWN_RIGHT"
 ]  # fmt: skip
 _DIRECTIONS = frozenset(get_args(Direction))
+#: 1초 기록에서 빠지거나 null 이면 0 으로 읽는 선택 필드
+_ZERO_IF_MISSING = frozenset({"confidence", "reliability", "frames"})
 IssueType = Literal[
     "GAZE_ON_SCRIPT", "GAZE_ON_SCREEN", "GAZE_AWAY", "GAZE_LOW_EYE_CONTACT", "GAZE_UNMEASURABLE"
 ]  # fmt: skip
@@ -70,11 +72,16 @@ class GazeRecord(_Input):
     @classmethod
     def _keep_what_can_be_read(cls, data: Any) -> Any:
         # 뜻을 읽을 수 있는 정보는 버리지 않는다. 방향은 OTHER 에만 뜻이 있고, 모르는 방향(엔진이 방향을
-        # 늘린 경우 등)은 방향만 버린다. issues 가 null 이면 빈 목록이고, 문자열이 아닌 값은 무시한다
+        # 늘린 경우 · 문자열이 아닌 값)은 방향만 버린다. issues 가 null 이면 빈 목록이고, 문자열이 아닌
+        # 값은 무시한다. 선택 필드가 null 이면 빠진 것과 같다(없으면 0, gaze-tracking.md 5-2) -- 코치의
+        # 요청 모델은 빠진 confidence · reliability · frames 를 null 로 넘긴다
         if not isinstance(data, dict):
             return data
-        data = dict(data)
-        if data.get("state") != "OTHER" or data.get("direction") not in _DIRECTIONS:
+        data = {k: v for k, v in data.items() if not (k in _ZERO_IF_MISSING and v is None)}
+        direction = data.get("direction")
+        if data.get("state") != "OTHER" or not (
+            isinstance(direction, str) and direction in _DIRECTIONS
+        ):
             data["direction"] = None
         issues = data.get("issues")
         data["issues"] = (
