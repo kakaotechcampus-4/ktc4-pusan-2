@@ -181,12 +181,8 @@ function Result({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         <SavedBadge criteria={criteria} />
       </div>
 
-      {items.length === 0 && !editable ? (
-        <div className="flex min-h-48 flex-1 flex-col items-center justify-center gap-2 py-6 text-center">
-          <DocIcon className="mb-2 h-9 w-9 stroke-stone" />
-          <p className="font-bold">아직 정리된 평가기준이 없어요</p>
-          <p className="text-sm text-stone">기준을 작성하고 정리 버튼을 눌러 주세요.</p>
-        </div>
+      {items.length === 0 ? (
+        <EmptyResult editable={editable} edited={criteria?.edited === true} />
       ) : (
         // 개수 제한이 없어 높이를 잡아 둡니다 — 항목 5개쯤 보이고 나머지는 이 안에서 스크롤합니다.
         // 높이가 없으면 목록이 카드를 늘려 화면 아래로 밀려납니다
@@ -213,6 +209,28 @@ function Result({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         <ReviseBar criteria={criteria} />
       )}
     </section>
+  );
+}
+
+/**
+ * 항목이 없을 때. 고칠 수 없으면 아직 정리 전이고, 고칠 수 있으면 다 지웠거나 정리 결과가 비었습니다 —
+ * 이때는 아래 "+ 기준 추가"로 다시 적을 수 있습니다
+ */
+function EmptyResult({ editable, edited }: { editable: boolean; edited: boolean }) {
+  if (!editable) {
+    return (
+      <div className="flex min-h-48 flex-1 flex-col items-center justify-center gap-2 py-6 text-center">
+        <DocIcon className="mb-2 h-9 w-9 stroke-stone" />
+        <p className="font-bold">아직 정리된 평가기준이 없어요</p>
+        <p className="text-sm text-stone">기준을 작성하고 정리 버튼을 눌러 주세요.</p>
+      </div>
+    );
+  }
+  return (
+    <p className="mt-4 rounded-lg border border-dashed border-line-strong px-4 py-6 text-center text-sm text-stone">
+      {edited ? '항목을 모두 지웠어요.' : '정리된 기준이 없어요.'} “+ 기준 추가”로 다시 적거나 다시
+      정리해 주세요.
+    </p>
   );
 }
 

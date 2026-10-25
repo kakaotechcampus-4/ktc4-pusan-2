@@ -276,9 +276,12 @@ export function pendingVersion(draft: PitchDraft, node: DraftNode): number | nul
 export const MAX_CRITERION_CHARS = 50;
 export const MAX_CRITERIA = 10;
 
-/** 고칠 수 있는 버전 — 서버에 있는 **가장 최근** 버전만 고칩니다. 지난 버전은 지난 Take 가 가리킵니다 */
+/**
+ * 고칠 수 있는 버전 — 서버에 있는 **가장 최근** 버전만 고칩니다. 지난 버전은 지난 Take 가 가리킵니다.
+ * 항목 수는 보지 않습니다. 정리 전 빈 버전은 `saved` 가 거르고, 모두 지운 최신 버전도 다시 적을 수 있어야 합니다
+ */
 export const isEditableCriteria = (draft: PitchDraft, v: CriteriaVersion | null): boolean =>
-  v !== null && v.saved && v.items.length > 0 && draft.criteria.at(-1)?.version === v.version;
+  v !== null && v.saved && draft.criteria.at(-1)?.version === v.version;
 
 /** 저장할 평가기준 — 빈 항목은 빼고 앞뒤 공백을 걷어 냅니다 */
 export const criteriaToSave = (v: CriteriaVersion): string[] =>

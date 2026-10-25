@@ -108,6 +108,24 @@ describe('평가기준 — 정리 → (고치기 → 저장)', () => {
     expect(pendingVersion(store().draft, 'criteria')).toBeNull();
   });
 
+  it('최신 버전의 항목을 모두 지워도 계속 고칠 수 있다 — 다시 적거나 다시 정리할 수 있게', () => {
+    for (const item of v1().items) store().removeCriterion(1, item.id);
+    expect(v1().items).toEqual([]);
+    expect(v1().edited).toBe(true);
+    expect(isEditableCriteria(store().draft, v1())).toBe(true);
+
+    store().addCriterion(1);
+    store().editCriterion(1, v1().items[0]!.id, '다시 적은 기준');
+    expect(texts(1)).toEqual(['다시 적은 기준']);
+    // 빈 목록은 저장하지 않습니다 (SaveBar 가 막습니다)
+    expect(criteriaToSave(v1())).toEqual(['다시 적은 기준']);
+  });
+
+  it('정리 전 빈 버전은 여전히 고칠 수 없다 — saved 가 거른다', () => {
+    store().addCriteriaVersion();
+    expect(isEditableCriteria(store().draft, find(2))).toBe(false);
+  });
+
   it('저장하면 적어 둔 서버 목록을 지운다', () => {
     store().editCriterion(1, v1().items[0]!.id, '고친 문장');
     expect(v1().savedItems?.map((i) => i.text)).toEqual(['추임새 5번 이하', '청중 자주 보기']);
