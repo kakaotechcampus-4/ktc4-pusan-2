@@ -900,8 +900,13 @@ export function RehearsalPage() {
             />
 
             <div className="stage-foot">
+              {/* 기록이 멈추면 경고(stage.css) — 화면 낭독기에도 바로 알립니다. 준비 중은 조용히 둡니다 */}
               {gazeLine && (
-                <span className="gaze" data-alert={gazeLine.alert}>
+                <span
+                  className="gaze"
+                  data-alert={gazeLine.alert}
+                  role={gazeLine.alert ? 'alert' : 'status'}
+                >
                   {gazeLine.text}
                 </span>
               )}

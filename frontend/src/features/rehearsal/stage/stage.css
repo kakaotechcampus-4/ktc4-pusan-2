@@ -630,9 +630,38 @@
 }
 
 /* 재연결 중·중단은 눈에 띄어야 한다. 다만 발표를 멈추라는 뜻은 아니다 */
-.stage-foot .stt[data-alert='true'],
-.stage-foot .gaze[data-alert='true'] {
+.stage-foot .stt[data-alert='true'] {
   color: var(--color-gaze-screen);
+}
+
+/* 시선 기록이 멈춘 동안의 안내 (#235). 회색 상태 문구 사이에서 놓치지 않게 코랄 경고 상자로 둔다.
+   판정 불가 테두리(빨간 점선)와 헷갈리지 않게 실선 · 채운 바탕이고, 앞에 '!' 를 붙여 색만으로 나누지 않는다.
+   높이는 끝내기 버튼보다 낮다 — 발밑 줄이 커지면 슬라이드 칸(1fr)이 줄어 시선 각도가 흔들린다 */
+.stage-foot .gaze[data-alert='true'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 4px;
+  border: 1px solid var(--color-coral);
+  background: color-mix(in srgb, var(--color-coral) 14%, transparent);
+  color: var(--color-ink-stage);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.stage-foot .gaze[data-alert='true']::before {
+  content: '!';
+  /* 글이 이미 상태를 말한다 — 화면 낭독기는 '!' 를 읽지 않는다 */
+  content: '!' / '';
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  background: var(--color-coral);
+  color: var(--color-stage);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 /* ── 시작 전 안내 ─────────────────────────────────────────────
