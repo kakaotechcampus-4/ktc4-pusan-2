@@ -20,6 +20,7 @@ BE 가 다시 뜰 때(resume_all) 남은 한도로 이어 간다.
 import logging
 import uuid
 from collections.abc import Callable, Sequence
+from contextvars import ContextVar
 from datetime import datetime
 from typing import Any
 
@@ -27,6 +28,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.module.pitch.adapter.script_rubric import (
     RETRYABLE_SLIDE_CODES,
     RubricCallError,
@@ -37,6 +39,11 @@ from pitch_coach_backend.module.pitch.dto import RubricTicket
 from pitch_coach_backend.module.pitch.service import script as script_service
 
 logger = logging.getLogger(__name__)
+# 작업마다 마지막 AI 요청을 추적한다. 동시에 여러 대본이 실행돼도 서로 섞이지 않는다.
+_request_id: ContextVar[str | None] = ContextVar("rubric_request_id", default=None)
+_LOG_FAILED_CODES = RETRYABLE_SLIDE_CODES | frozenset(
+    {"RUBRIC_MISSING", "RUBRIC_MISMATCH", "STT_TEXT_MISSING", "VALIDATION_ERROR", "INTERNAL_ERROR"}
+)
 
 
 class ScriptRubricRunner:
@@ -54,8 +61,15 @@ class ScriptRubricRunner:
         """
         try:
             ticket = await self._db(script_service.begin_rubric, script_version_id, requested_at)
-        except Exception:
-            logger.exception("평가 기준 작업 시작 실패 script_version_id=%s", script_version_id)
+        except Exception as exc:
+            logger.error(
+                "평가 기준 작업 시작 실패 script_version_id=%s requested_at=%s "
+                "error=%s sqlstate=%s",
+                script_version_id,
+                requested_at,
+                type(exc).__name__,
+                sqlstate(exc),
+            )
             return
         if ticket is not None:
             await self._run(ticket)
@@ -64,8 +78,12 @@ class ScriptRubricRunner:
         """BE 가 뜰 때 부른다. PENDING 으로 남은 작업을 하나씩 이어 간다."""
         try:
             tickets = await self._db(script_service.resume_rubrics)
-        except Exception:
-            logger.exception("남은 평가 기준 작업을 읽지 못했다")
+        except Exception as exc:
+            logger.error(
+                "남은 평가 기준 작업을 읽지 못했다 error=%s sqlstate=%s",
+                type(exc).__name__,
+                sqlstate(exc),
+            )
             return
         if tickets:
             logger.info("평가 기준 작업 %d개를 이어받았다", len(tickets))
@@ -73,18 +91,27 @@ class ScriptRubricRunner:
             await self._run(ticket)
 
     async def _run(self, ticket: RubricTicket) -> None:
+        token = _request_id.set(None)
         try:
             if ticket.resumed:
                 await self._resume(ticket)
             else:
                 await self._first(ticket)
             status = await self._db(script_service.finish_rubric, ticket)
-        except Exception:
-            logger.exception(
-                "평가 기준 작업 실패, PENDING 으로 남김 script_version_id=%s",
+        except Exception as exc:
+            # SQLAlchemy 예외에는 SQL 매개변수·DB 오류 상세가 있어 traceback도 남기지 않는다.
+            logger.error(
+                "평가 기준 작업 실패, PENDING 으로 남김 script_version_id=%s requested_at=%s "
+                "request_id=%s error=%s sqlstate=%s",
                 ticket.script_version_id,
+                ticket.requested_at,
+                _request_id.get(),
+                type(exc).__name__,
+                sqlstate(exc),
             )
             return
+        finally:
+            _request_id.reset(token)
         if status is None:
             logger.info("지난 평가 기준 작업을 버림 script_version_id=%s", ticket.script_version_id)
         else:
@@ -144,6 +171,7 @@ class ScriptRubricRunner:
     async def _call(
         self, ticket: RubricTicket, slide_numbers: Sequence[int] | None, request_id: str
     ) -> RubricReply:
+        _request_id.set(request_id)
         try:
             reply = await self._client.generate(
                 pitch_id=str(ticket.pitch_id),
@@ -155,11 +183,14 @@ class ScriptRubricRunner:
         except RubricCallError as exc:
             # 대본 원문은 로그에 남기지 않는다
             logger.warning(
-                "평가 기준 호출 실패 script_version_id=%s request_id=%s slide_numbers=%s: %s",
+                "평가 기준 호출 실패 script_version_id=%s request_id=%s slide_numbers=%s "
+                "status=%s ai_error_code=%s error=%s",
                 ticket.script_version_id,
                 request_id,
                 slide_numbers,
-                exc,
+                exc.status_code,
+                exc.ai_error_code,
+                type(exc).__name__,
             )
             raise
         if reply.failed:
@@ -167,7 +198,10 @@ class ScriptRubricRunner:
                 "평가 기준 일부 장 실패 script_version_id=%s request_id=%s failed=%s",
                 ticket.script_version_id,
                 request_id,
-                reply.failed,
+                {
+                    number: code if code in _LOG_FAILED_CODES else "UNKNOWN"
+                    for number, code in reply.failed.items()
+                },
             )
         return reply
 
