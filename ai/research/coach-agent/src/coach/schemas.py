@@ -8,9 +8,17 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from .version import FEATURE_VERSION, SCHEMA_VERSION
 from .vocab import (
@@ -36,6 +44,67 @@ PLAN_MAX_SLIDES = 100
 PLAN_MAX_MISSIONS = 20
 PLAN_MAX_RECURRING_ISSUES = 20
 PLAN_MAX_MISSION_DESCRIPTION = 500
+#: evaluate · finalize 원자료 배열 한도(5-2 '입력 한도'). 정상 흐름에서는 닿지 않는 정책상 한도다:
+#: 창 30초 기록 30개 · 60초 단어 수백 개의 몇 배. 넘으면 요청 전체가 422 다
+MAX_WINDOW_RECORDS = 120
+MAX_WINDOW_WORDS = 1_000
+MAX_WINDOW_UTTERANCE_ENDS = 300
+MAX_WORD_CHARS = 50
+MAX_FINALIZE_EVENTS = 20_000
+#: replay(Take 전체 원자료) 배열 한도. 1초 기록은 같은 t_ms 를 하나로 센 수다
+MAX_REPLAY_RECORDS = 4_000
+MAX_REPLAY_WORDS = 30_000
+MAX_REPLAY_UTTERANCE_ENDS = 10_000
+MAX_REPLAY_CHANGES = 5_000
+#: STT 상태. 모르는 값은 믿지 않는 상태(degraded)로 읽는다
+STT_STATUSES = frozenset({"connecting", "ok", "reconnecting", "degraded", "closed"})
+
+log = logging.getLogger(__name__)
+
+
+def _too_many(raw: Any, limit: int, name: str, *, by_t_ms: bool = False) -> None:
+    """배열이 한도를 넘으면 ValueError(→ 422). by_t_ms 면 같은 t_ms 를 하나로 센다."""
+    if not isinstance(raw, list):
+        return
+    count = len(raw)
+    if by_t_ms and count > limit:
+        count = len({item.get("t_ms") if isinstance(item, dict) else id(item) for item in raw})
+    if count > limit:
+        raise ValueError(f"{name} 는 {limit}개 이하여야 한다")
+
+
+def _readable(raw: Any, model: type[BaseModel], name: str) -> Any:
+    """읽을 수 없는 항목(타입 · 범위가 틀림)은 그 항목만 버린다(gaze-tracking.md 5-2와 같은 규칙).
+
+    항목 하나 때문에 요청 전체가 422 가 되어 그 1초의 모든 판정을 잃지 않게 하기 위해서다.
+    로그에는 버린 수만 남긴다(값은 사용자 원자료).
+    """
+    if not isinstance(raw, list):
+        return raw
+    kept = []
+    for item in raw:
+        try:
+            kept.append(model.model_validate(item))
+        except ValidationError:
+            continue
+    if len(kept) < len(raw):
+        log.warning("dropped unreadable %s count=%d", name, len(raw) - len(kept))
+    return kept
+
+
+def _readable_ints(raw: Any, name: str) -> Any:
+    """정수가 아니거나 음수인 시각은 그 값만 버린다."""
+    if not isinstance(raw, list):
+        return raw
+    kept = [v for v in raw if isinstance(v, int) and not isinstance(v, bool) and v >= 0]
+    if len(kept) < len(raw):
+        log.warning("dropped unreadable %s count=%d", name, len(raw) - len(kept))
+    return kept
+
+
+def _stt_status(value: Any) -> Any:
+    """모르는 STT 상태 · null 은 degraded(믿지 않음). 판정 모듈은 다섯 값만 받는다."""
+    return value if value in STT_STATUSES else "degraded"
 
 
 class _In(BaseModel):
@@ -106,6 +175,14 @@ class GazeRecordIn(_In):
     issues: list[str] = Field(default_factory=list)
     frames: int | None = None
 
+    @field_validator("issues", mode="before")
+    @classmethod
+    def _issues(cls, v: Any) -> Any:
+        # null 이면 빈 목록, 문자열이 아닌 값은 버린다(gaze-tracking.md 5-2)
+        if v is None:
+            return []
+        return [i for i in v if isinstance(i, str)] if isinstance(v, list) else v
+
 
 class VoiceRecordIn(_In):
     """FE 가 보내는 음량 1초 기록(#155). 시선 판정도 같은 1초들의 voiced_ms 를 쓴다."""
@@ -113,17 +190,23 @@ class VoiceRecordIn(_In):
     t_ms: int = Field(ge=0)
     duration_ms: int = Field(default=1000, gt=0)
     level_db: float | None = None
-    voiced_ms: int = 0
-    silence_ms: int = 0
+    voiced_ms: int = Field(default=0, ge=0)
+    silence_ms: int = Field(default=0, ge=0)
     audio_live: bool = True
+
+    @model_validator(mode="after")
+    def _within_duration(self) -> VoiceRecordIn:
+        if self.voiced_ms > self.duration_ms:
+            raise ValueError("voiced_ms 는 duration_ms 이하여야 한다")
+        return self
 
 
 class WordIn(_In):
     """STT 확정 단어."""
 
-    word: str
-    start_ms: int
-    end_ms: int
+    word: str = Field(max_length=MAX_WORD_CHARS)
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
 
 
 class SlideNow(_In):
@@ -142,6 +225,36 @@ class CoachInputs(_In):
     utterance_ends: list[int] = Field(default_factory=list)
     stt_status: str = "ok"
     slide: SlideNow | None = None
+
+    # 배열이 한도를 넘으면 요청 전체를 거절하고(422), 한도 안이면 읽을 수 없는 항목만 버린다
+    @field_validator("gaze_records", mode="before")
+    @classmethod
+    def _gaze(cls, v: Any) -> Any:
+        _too_many(v, MAX_WINDOW_RECORDS, "inputs.gaze_records")
+        return _readable(v, GazeRecordIn, "gaze_records")
+
+    @field_validator("voice_records", mode="before")
+    @classmethod
+    def _voice(cls, v: Any) -> Any:
+        _too_many(v, MAX_WINDOW_RECORDS, "inputs.voice_records")
+        return _readable(v, VoiceRecordIn, "voice_records")
+
+    @field_validator("words", mode="before")
+    @classmethod
+    def _words(cls, v: Any) -> Any:
+        _too_many(v, MAX_WINDOW_WORDS, "inputs.words")
+        return _readable(v, WordIn, "words")
+
+    @field_validator("utterance_ends", mode="before")
+    @classmethod
+    def _ends(cls, v: Any) -> Any:
+        _too_many(v, MAX_WINDOW_UTTERANCE_ENDS, "inputs.utterance_ends")
+        return _readable_ints(v, "utterance_ends")
+
+    @field_validator("stt_status", mode="before")
+    @classmethod
+    def _stt(cls, v: Any) -> Any:
+        return _stt_status(v)
 
 
 class Calibration(_In):
@@ -453,8 +566,13 @@ class ReplayWord(WordIn):
 class SttStatusChange(_In):
     """STT 상태가 바뀐 시각과 바뀐 상태."""
 
-    t_ms: int
+    t_ms: int = Field(ge=0)
     status: str
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _stt(cls, v: Any) -> Any:
+        return _stt_status(v)
 
 
 class ReplayInput(_In):
@@ -469,6 +587,42 @@ class ReplayInput(_In):
     words: list[ReplayWord] = Field(default_factory=list)
     utterance_ends: list[int] = Field(default_factory=list)
     slides: list[SlideNow] = Field(default_factory=list)
+
+    @field_validator("gaze_records", mode="before")
+    @classmethod
+    def _gaze(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_RECORDS, "replay.gaze_records", by_t_ms=True)
+        return _readable(v, GazeRecordIn, "replay.gaze_records")
+
+    @field_validator("voice_records", mode="before")
+    @classmethod
+    def _voice(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_RECORDS, "replay.voice_records", by_t_ms=True)
+        return _readable(v, VoiceRecordIn, "replay.voice_records")
+
+    @field_validator("words", mode="before")
+    @classmethod
+    def _words(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_WORDS, "replay.words")
+        return _readable(v, ReplayWord, "replay.words")
+
+    @field_validator("utterance_ends", mode="before")
+    @classmethod
+    def _ends(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_UTTERANCE_ENDS, "replay.utterance_ends")
+        return _readable_ints(v, "replay.utterance_ends")
+
+    @field_validator("stt_status_changes", mode="before")
+    @classmethod
+    def _changes(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_CHANGES, "replay.stt_status_changes")
+        return _readable(v, SttStatusChange, "replay.stt_status_changes")
+
+    @field_validator("slides", mode="before")
+    @classmethod
+    def _slides(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_CHANGES, "replay.slides")
+        return v
 
 
 class FinalizeRequest(_In):
@@ -491,6 +645,13 @@ class FinalizeRequest(_In):
     coach_state: dict[str, Any] | None = None
     #: 이 Take 에서 BE 가 쌓은 코치 이벤트 전부(받은 순서대로)
     events: list[CoachEvent] = Field(default_factory=list)
+
+    @field_validator("events", mode="before")
+    @classmethod
+    def _events(cls, v: Any) -> Any:
+        _too_many(v, MAX_FINALIZE_EVENTS, "events")
+        return v
+
     #: 마지막 창. /coach/evaluate 의 inputs 와 같은 모양
     inputs: CoachInputs = Field(default_factory=CoachInputs)
     #: Take 전체 원자료. 있으면 처음부터 다시 판정해 Take 결과를 만든다(replayed)
