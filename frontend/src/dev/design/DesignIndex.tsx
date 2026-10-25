@@ -49,7 +49,7 @@ const DRAFTS: { name: string; id: string; title: string; note?: string; element:
       name: 'retry',
       id: 'P15',
       title: '업로드 실패 · 재시도',
-      note: '리뷰 중',
+      note: '구현됨 — 위 "업로드 실패 · 재시도"가 실제 화면이에요',
       element: <RetryDraft />,
     },
   ];

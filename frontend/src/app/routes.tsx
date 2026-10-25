@@ -1,7 +1,6 @@
 import type { ReactElement } from 'react';
 import { createBrowserRouter } from 'react-router';
 import { PageTitle } from './PageTitle';
-import { Stub } from '@/shared/ui/Stub';
 import { StageDemo } from '@/features/rehearsal/stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
 import { SttDevPage } from '@/features/rehearsal/media/SttDevPage';
