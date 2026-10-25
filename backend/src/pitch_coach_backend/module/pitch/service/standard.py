@@ -41,7 +41,8 @@ def _analyze_and_save(db: Session, pitch_id: uuid.UUID, text: str) -> StandardTe
     pitch_repository.save_standard_analysis(
         StandardAnalyses(
             pitch_id=pitch_id,
-                values=standards_result.values,
+            version=version,
+            values=standards_result.values,
             targets=standards_result.targets,
             script_used=standards_result.values.get("script_used"),
             excluded=standards_result.excluded or [],
@@ -52,6 +53,7 @@ def _analyze_and_save(db: Session, pitch_id: uuid.UUID, text: str) -> StandardTe
 
     return StandardTextResponseDTO(
         pitch_id=pitch_id,
+        version=version,
         standards=[
             {"standard": standard} for standard in standards_result.display_criteria
         ],

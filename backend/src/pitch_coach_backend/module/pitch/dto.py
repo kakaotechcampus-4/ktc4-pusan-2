@@ -317,5 +317,7 @@ class StandardParseResponseDTO(BaseModel):
     except_standard: str | None = None
 class StandardTextResponseDTO(BaseModel):
     pitch_id: uuid.UUID
+    # 이번에 저장한 평가 기준 버전. FE 는 이 번호로 다시 조회한다
+    version: int
     standards: list[StandardDTO]
     except_standard: str | None = None
