@@ -13,8 +13,8 @@
  * console.  What leaves the device is the 1 s record the host posts on, nothing else.
  * (MediaPipe loads its own model and wasm files; that happens inside the library.)
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -52,18 +52,29 @@ describe('engine boundary', () => {
   );
 
   it('contract.ts (the light entry point) loads no MediaPipe at run time', () => {
-    // Follow value imports and re-exports only: `import type` / `export type` are erased.
-    const RUNTIME_SPECIFIER = /\b(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+['"]([^'"]+)['"]/g;
+    // Value imports, re-exports, side-effect and dynamic imports; `import type` / `export type`
+    // are erased and not followed.
+    const RUNTIME_SPECIFIERS = [
+      /\b(?:import|export)\s+(?!type\s)[^;]*?\bfrom\s+['"]([^'"]+)['"]/g,
+      /^\s*import\s+['"]([^'"]+)['"]/gm,
+      /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+    ];
+    const resolveLocal = (from: string, spec: string): string => {
+      const base = join(dirname(from), spec);
+      return existsSync(`${base}.ts`) ? `${base}.ts` : join(base, 'index.ts');
+    };
     const seen = new Set<string>();
     const reached: string[] = [];
     const visit = (file: string): void => {
       if (seen.has(file)) return;
       seen.add(file);
-      for (const m of code(readFileSync(file, 'utf8')).matchAll(RUNTIME_SPECIFIER)) {
-        const spec = m[1]!;
-        if (spec.startsWith('./')) visit(join(ENGINE, `${spec.slice(2)}.ts`));
-        else reached.push(`${relative(ENGINE, file)} -> ${spec}`);
-      }
+      const text = code(readFileSync(file, 'utf8'));
+      for (const pattern of RUNTIME_SPECIFIERS)
+        for (const m of text.matchAll(pattern)) {
+          const spec = m[1]!;
+          if (spec.startsWith('.')) visit(resolveLocal(file, spec));
+          else reached.push(`${relative(ENGINE, file)} -> ${spec}`);
+        }
     };
     visit(join(ENGINE, 'contract.ts'));
     expect(seen.size).toBeGreaterThan(3); // config, evidence, reference, ... are reached

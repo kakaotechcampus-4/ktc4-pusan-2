@@ -22,7 +22,7 @@ import {
 import type { EngineSettings } from '../src/engine/engine';
 import { frame, type FakeFrame } from '../src/engine/__tests__/helpers';
 
-const engine = vi.hoisted(() => ({ settings: {} as EngineSettings }));
+const engine = vi.hoisted(() => ({ settings: {} as EngineSettings, calls: [] as unknown[] }));
 
 vi.mock('@/vendor/gaze/engine', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/engine')>();
@@ -30,7 +30,10 @@ vi.mock('@/vendor/gaze/engine', async (importOriginal) => {
   const { FakeDetector } = await import('../src/engine/__tests__/helpers');
   return {
     ...actual,
-    createClassifier: async () =>
+    // What the frontend asks for is recorded (asset folder ...); the engine itself is built
+    // around the fake detector with the test's settings.
+    createClassifier: async (opts: unknown) =>
+      engine.calls.push(opts) &&
       new GazeEngine<ImageBitmap>(
         {
           detector: new FakeDetector(),
@@ -73,6 +76,7 @@ function live(c: ModelGazeClassifier, pitches: number[]): GazeSample[] {
 
 beforeEach(() => {
   engine.settings = {};
+  engine.calls = [];
 });
 
 describe('frontend gaze code (modelClassifier + aiAdapter) on this engine', () => {
@@ -81,6 +85,8 @@ describe('frontend gaze code (modelClassifier + aiAdapter) on this engine', () =
     expect(c.version).toBe('gaze-module@unloaded');
     await c.init();
     expect(c.version).toBe('gaze_v1.1.0+head_pose+reference_anchor_v1');
+    // Assets from the frontend's own server, no CDN (doc 11: public/models/).
+    expect(engine.calls).toEqual([{ assetDir: '/models/' }]);
   });
 
   it('runs placement -> calibration -> live frames -> 1 s records', async () => {
@@ -104,17 +110,20 @@ describe('frontend gaze code (modelClassifier + aiAdapter) on this engine', () =
 
     // The frontend worker: Take-relative frame times, each frame into GazeSlicer, the slices
     // out; the last partial slice is closed at the Take's end (flush).
-    const records = live(stage, [...Array<number>(8).fill(18), ...Array<number>(8).fill(4)]);
+    // Lens, screen centre, script: the record keeps the screen apart from the script.
+    const looks = [18, 11, 4].flatMap((pitch) => Array<number>(8).fill(pitch));
+    const records = live(stage, looks);
     // The grid starts at the engine's first frame (doc 5-2: not always a multiple of 1000).
     const t0 = records[0]!.t_ms;
     expect(t0).toBeLessThan(125);
     expect(records.map((r) => [r.t_ms - t0, r.state])).toEqual([
       [0, 'CAMERA'],
-      [1000, 'BOTTOM'],
+      [1000, 'SCREEN'],
+      [2000, 'BOTTOM'],
     ]);
-    expect(records[0]!.duration_ms).toBe(1000);
-    // The last slice ends where the Take ends (flush at the Take length, 2000 ms).
-    expect(records[1]!.t_ms + records[1]!.duration_ms).toBe(2000);
+    expect(records.slice(0, 2).map((r) => r.duration_ms)).toEqual([1000, 1000]);
+    // The last slice ends where the Take ends (flush at the Take length, 3000 ms).
+    expect(records[2]!.t_ms + records[2]!.duration_ms).toBe(3000);
     // The wire record: the 8 fields of doc 5-2 (architecture.md 6-2), nothing face-derived.
     expect(Object.keys(sampleToDict(records[0]!)).sort()).toEqual([
       'confidence',

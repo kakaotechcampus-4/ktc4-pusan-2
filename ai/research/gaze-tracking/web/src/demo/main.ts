@@ -475,8 +475,9 @@ function renderBorder(): void {
     state: last.state,
     confidence: last.confidence,
   };
-  smoke.zones.push(state.zone);
   view.setZone(state.zone.zone);
+  // What the view actually shows, next to what the record folds to (scripts/smoke.mjs compares).
+  smoke.zones.push({ ...state.zone, shown: view.element.dataset.zone });
   $('#now-zone').textContent =
     `1초 기록 · ${sampleName(last)} (득표 ${Math.round(last.confidence * 100)}%)`;
 }

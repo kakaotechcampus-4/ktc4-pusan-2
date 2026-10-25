@@ -1,8 +1,9 @@
 /**
  * What crosses into the frontend, and the frontend's light entry point.
  *
- * The frontend imports only `index.ts` and `contract.ts` from this folder (copied to
- * `frontend/src/vendor/gaze/engine/`):
+ * The frontend's entry points into this folder (copied to `frontend/src/vendor/gaze/engine/`)
+ * are `index.ts` and `contract.ts`.  Direct imports of `config.ts` / `evidence.ts` made before
+ * `contract.ts` re-exported them keep working, but may break when files behind it change.
  *
  *   index.ts     `createClassifier` and the engine.  It pulls MediaPipe in, so the worker
  *                loads it with a dynamic `import()`.
