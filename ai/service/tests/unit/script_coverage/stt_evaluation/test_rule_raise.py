@@ -1,8 +1,8 @@
 """규칙 보정(수치를 말했으면 missing → vague)과 교차 검증 (#544).
 
 수치 확인은 STT 전체에서 같은 값을 찾으므로, 같은 숫자가 다른 문맥에서 나와도 규칙이 단위를 vague 로
-올린다. 교차 검증이 그 단위를 다시 missing 으로 판정하면, 그 수치가 나온 STT 문장이 대본 문장과 내용
-형태소를 함께 가질 때만 보정을 유지하고 아니면 missing 으로 둔다.
+올린다. 교차 검증이 그 단위를 다시 missing 으로 판정하면 수치로 올린 보정은 풀고(missing),
+이름으로 올린 보정은 유지한다(이름은 다른 문장에서 나와도 같은 대상이다).
 """
 
 import re
@@ -67,10 +67,14 @@ class _VerifierSays:
         return VerifierResult(judgments=judgments)
 
 
-def _evaluate(verifier_status: str, stt: str = STT):
+def _evaluate(verifier_status: str, stt: str = STT, script: str = SCRIPT, index: int = 1):
     llms = ScriptLLMs(**{s: DeckAwareLLM(s) for s in ("semantic", "final", "unit")})
     rubric = analyze_script(
-        {"pitch_id": "p-1", "script_version_id": "sv-1", "slides": [{"slide_number": 1, "script": SCRIPT}]},
+        {
+            "pitch_id": "p-1",
+            "script_version_id": "sv-1",
+            "slides": [{"slide_number": 1, "script": script}],
+        },
         llms=llms,
         model="test-model",
     ).rubrics[0]
@@ -82,7 +86,7 @@ def _evaluate(verifier_status: str, stt: str = STT):
         verifier_llm=verifier,
         model="test-model",
     )
-    return evaluations[0].sentences[1], verifier
+    return evaluations[0].sentences[index], verifier
 
 
 def test_number_in_another_context_raises_the_unit_by_rule_first() -> None:
@@ -106,10 +110,26 @@ def test_verifier_can_still_keep_the_unit_vague() -> None:
     assert sentence.status == "partial"
 
 
-def test_rule_raise_survives_verifier_missing_when_the_number_is_said_in_context() -> None:
-    # 요약해 말하며 같은 지표(매출)와 함께 수치를 말했다 — 검증자가 missing 이라 해도 vague 로 둔다
-    stt = "우리 서비스는 효과가 컸습니다. 정리하면 매출이 35% 늘었습니다."
+def test_number_raise_follows_the_verifier_even_with_shared_words() -> None:
+    # 흔한 말(늘다)이 겹쳐도 다른 지표의 수치다. 문맥은 교차 검증이 읽는다
+    stt = "우리 서비스는 효과가 컸습니다. 할인율이 35% 늘었습니다."
     sentence, verifier = _evaluate("missing", stt)
+    assert verifier.calls == 1
+    assert [(u.status, u.raised_by_rule) for u in sentence.units] == [("missing", True)]
+
+
+def test_name_raise_survives_verifier_missing() -> None:
+    # 맡은 일은 말하지 않고 이름만 꺼냈다 — 그 대상 이야기를 한 것이라 vague 로 둔다
+    # (가상 데이터에서 팀원 이름을 나열한 문장들이 정답 partial 이었다)
+    script = "저희 팀을 소개합니다. Samsung 팀은 판매량 예측 모델을 맡았습니다."
+    stt = "저희 팀을 소개합니다. 함께한 곳은 Samsung 입니다."
+    sentence, verifier = _evaluate("missing", stt, script)
     assert verifier.calls == 1
     assert [(u.status, u.raised_by_rule) for u in sentence.units] == [("vague", True)]
     assert sentence.status == "partial"
+
+
+def test_verifier_contradicted_wins_over_any_raise() -> None:
+    sentence, _ = _evaluate("contradicted")
+    assert [u.status for u in sentence.units] == ["contradicted"]
+    assert sentence.status == "contradicted"

@@ -20,7 +20,7 @@ from .merge import (
     CONFLICT_TEXT,
     aggregate_key_points,
     merge_sentences,
-    raised_in_context,
+    raised_by_name,
     resolve_name_checks,
 )
 from .normalize import normalize_stt
@@ -176,9 +176,7 @@ def evaluate_take(
         apply_verification(
             d["sentences"],
             verified.get(n),
-            raised_in_context(
-                d["sentences"], d["fact_checks"], d["script_ptokens"], d["stt_ptokens"]
-            ),
+            raised_by_name(d["sentences"], d["fact_checks"]),
         )
         results = aggregate_key_points(
             d["rubric"], d["sentences"], d["fact_checks"], d["items"], d["stt_norm"]

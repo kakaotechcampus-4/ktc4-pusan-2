@@ -132,9 +132,9 @@ def apply_verification(
         v = by_id.get(s.sentence_index)
         if s.conflicts and v is not None:
             # 검증자가 다시 판정한 단위만 바꾸고, 문장 판정은 코드가 다시 모은다.
-            # 규칙 보정(수치·이름을 STT 에서 찾아 missing → vague)은 그 수치가 나온 STT 문장이 이 문장과
-            # 같은 내용을 말할 때(`keep_raised`, `merge.raised_in_context`)만 검증 뒤에도 유지한다.
-            # 수치 확인은 STT 전체에서 같은 값을 찾아 다른 문맥의 같은 숫자로도 올라가기 때문이다 (#544)
+            # 규칙 보정(수치·이름을 STT 에서 찾아 missing → vague)은 이름을 찾은 단위만
+            # (`keep_raised`, `merge.raised_by_name`) 검증 뒤에도 유지한다. 수치 확인은 STT 전체에서
+            # 같은 값을 찾아 다른 문맥의 같은 숫자로도 올라가므로 수치는 검증 판정을 따른다 (#544)
             final = {u.unit_id.strip().upper(): u.status for u in v.units}
             for u in s.units:
                 u.status = final.get(u.unit_id.upper(), u.status)
