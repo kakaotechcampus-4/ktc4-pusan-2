@@ -451,7 +451,7 @@ function MappingReview({ script, linked }: { script: ScriptVersion; linked: Slid
               disabled={!script.saved && !canSave}
               onClick={() => {
                 // 저장한 조합(슬라이드 + 대본)이 연습할 조합이 됩니다 — 사이드바의 "연습 중"
-                if (!script.saved) saveMapping(script.version);
+                saveMapping(script.version);
                 select('info');
               }}
               className={primaryButton}

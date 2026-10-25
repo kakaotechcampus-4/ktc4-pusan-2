@@ -12,6 +12,7 @@ import {
   isEditableCriteria,
   latestSavedCriteria,
   pendingVersion,
+  toPracticeCombo,
   type CriteriaVersion,
 } from '../lib/draft';
 import { computeGate } from '../lib/gate';
@@ -415,15 +416,18 @@ function StartFooter({ onStart }: { onStart: () => void }) {
   const chosen = useCreateStore((s) => s.chosen);
   const select = useCreateStore((s) => s.select);
   const gate = computeGate(draft, chosen);
+  const ready = toPracticeCombo(draft, chosen) !== null;
   const hasCriteria = latestSavedCriteria(draft) !== null;
 
   return (
     <PaneFooter
       hint={
-        gate.ready ? (
+        ready ? (
           '연습할 준비가 됐어요.'
         ) : (
-          <span className="font-bold text-coral">{gate.message}</span>
+          <span className="font-bold text-coral">
+            {gate.ready ? '대본 매핑을 확인하고 저장해 주세요.' : gate.message}
+          </span>
         )
       }
     >
@@ -431,13 +435,13 @@ function StartFooter({ onStart }: { onStart: () => void }) {
         ← 이전
       </button>
       {!hasCriteria && (
-        <button type="button" disabled={!gate.ready} onClick={onStart} className={secondaryButton}>
+        <button type="button" disabled={!ready} onClick={onStart} className={secondaryButton}>
           건너뛰기
         </button>
       )}
       <button
         type="button"
-        disabled={!gate.ready || !hasCriteria}
+        disabled={!ready || !hasCriteria}
         onClick={onStart}
         className={primaryButton}
       >
