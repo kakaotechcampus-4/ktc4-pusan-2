@@ -101,7 +101,18 @@ def test_summary_leaves_unmeasured_values_empty():
 
 
 @pytest.mark.parametrize(
-    ("ratio", "percent"), [(0.125, 13), (0.285, 29), (0.145, 15), (0.565, 57), (0.0, 0), (1, 100)]
+    ("ratio", "percent"),
+    [
+        (0.125, 13),
+        (0.285, 29),
+        (0.145, 15),
+        (0.565, 57),
+        (0.0, 0),
+        (1, 100),
+        (0.621, 62),
+        (0.624, 62),
+        (0.625, 63),
+    ],
 )
 def test_summary_rounds_half_up(ratio: float, percent: int):
     # 0.285 * 100 은 이진 소수로 28.499… 라 floor(x + 0.5) 로는 28 이 된다
