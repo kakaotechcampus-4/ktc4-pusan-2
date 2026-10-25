@@ -24,7 +24,7 @@ export function gazeNote(state: {
   declined: boolean;
   /** 카메라를 열지 못해 마이크만 열었습니다 */
   noCamera: boolean;
-  /** 카메라가 끊겼습니다 — 다시 꽂으면 됩니다 */
+  /** 카메라가 끊겼습니다 — 발표 중에는 다시 열지 않습니다 */
   cameraLost: boolean;
   /** 시선 기준이 없습니다 (새로고침하면 탭 메모리의 기준이 사라집니다) */
   missingCalibration: boolean;
