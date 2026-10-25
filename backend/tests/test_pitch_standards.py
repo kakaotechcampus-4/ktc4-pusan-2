@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.pitch import standard_parser
+from pitch_coach_backend.module.pitch.adapter import standard_parser
 from pitch_coach_backend.module.pitch.entity import Standards
 
 AI_RESPONSE = {

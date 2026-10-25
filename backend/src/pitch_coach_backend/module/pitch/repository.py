@@ -102,10 +102,10 @@ class PitchRepository:
 
         보장 범위는 이 잠금을 먼저 잡는 경로까지다. 같은 번호를 매기는 경로가 잠금을 건너뛰면
         그 경로끼리는 여전히 같은 번호를 받을 수 있다.
-          - 잡는 곳: service.create_script_service (next_script_version),
-            service.upload_presentation_service (next_presentation_version),
-            service.add_pitch_standard_service (next_standard_version),
-            take/service.create_take_service (next_take_number)
+          - 잡는 곳: service/script.create_script_service (next_script_version),
+            service/presentation.upload_presentation_service (next_presentation_version),
+            service/standard.add_pitch_standard_service (next_standard_version),
+            take/service/take.create_take_service (next_take_number)
         pitch 안에서 max + 1 로 번호를 매기는 경로에 잠금을 걸면 위 목록도 같이 고친다.
 
         FOR UPDATE 가 아니라 FOR NO KEY UPDATE (key_share=True) 다. 자식 행 INSERT 는
@@ -116,7 +116,7 @@ class PitchRepository:
         끝날 때까지 기다린다.
         """
         # key_share=True 는 이름과 달리 KEY SHARE 가 아니라 FOR NO KEY UPDATE 로 나간다
-        # (KEY SHARE 는 read=True 를 같이 줄 때). tests/test_script_parse.py 가 확인한다
+        # (KEY SHARE 는 read=True 를 같이 줄 때). tests/script_parse/test_parse_races.py 가 확인한다
         return (
             self.db.scalar(
                 select(Pitch.id).where(Pitch.id == pitch_id).with_for_update(key_share=True)

@@ -9,18 +9,20 @@ from typing import Any, Protocol
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from pitch_coach_backend.coach.client import FinalizeReply, PlanReply
+from pitch_coach_backend.coach.coaching_plan import (
+    plan_basis,
+    plan_for_evaluate,
+    plan_payload,
+    request_basis,
+)
+from pitch_coach_backend.coach.replies import FinalizeReply, PlanReply
 from pitch_coach_backend.coach.requests import (
     FinalizeSource,
     TakeConstants,
     TakeContext,
     build_plan,
     missions_payload,
-    plan_basis,
-    plan_for_evaluate,
-    plan_payload,
     plan_request,
-    request_basis,
 )
 from pitch_coach_backend.core.database import SessionPerCall
 from pitch_coach_backend.module.take import coach_service

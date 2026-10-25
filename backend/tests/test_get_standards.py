@@ -4,13 +4,13 @@ from datetime import date
 import pytest
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch import service
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO
+from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 
 
 @pytest.fixture
 def pitch_id(db_session: Session, user_id) -> uuid.UUID:
-    return service.add_pitch_service(
+    return pitch_service.add_pitch_service(
         db_session,
         user_id,
         PitchSaveRequestDTO(

@@ -39,6 +39,9 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 - 테스트는 `DATABASE_URL` 의 DB 이름에 `_test` 를 붙인 DB 를 쓴다 (예: `pitch_coach_test`). 없으면 `conftest.py` 가 만든다. 개발 DB 는 건드리지 않는다.
 - 각 테스트는 트랜잭션 안에서 실행되고 끝나면 롤백된다. service 가 `commit()` 을 호출해도 savepoint 로 처리되므로 테스트 사이에 데이터가 남지 않는다.
 - `client` fixture 는 `get_db` 를 테스트 세션으로 바꿔 끼운 `TestClient` 다. HTTP 테스트는 이걸 쓴다.
+- `tests/auth` · `coach` · `realtime` · `script_parse` · `take` 는 그 폴더의 `conftest.py` 가 같이 쓰는 fixture 와
+  가짜를 둔다. 가짜는 함수가 정의된 곳이 아니라 **호출부가 실제로 참조하는 모듈**에 끼운다
+  (예: `realtime/connection/handshake.py` 의 `user_service`, `pitch/service/presentation.py` 의 `upload`).
 - 인증 테스트는 **Redis 15번 DB** 를 쓰고 매번 비운다. 개발용 0번은 건드리지 않는다.
 - `client` fixture 의 base_url 이 `https://testserver` 인 이유: 쿠키를 `Secure` 로 심으므로
   http 로는 httpx 가 쿠키를 되돌려 보내지 않는다. 설정을 낮추는 대신 https 를 쓴다.
@@ -69,6 +72,7 @@ backend/
 │
 ├── tests/
 │   ├── conftest.py               # 테스트 DB 자동 생성, 트랜잭션 격리 세션, TestClient fixture
+│   ├── coach_fakes.py            # 코치 AI · 저장소 가짜 (여러 코치 테스트가 같이 쓴다)
 │   ├── test_health.py
 │   ├── test_security.py          # JWT 발급/검증
 │   ├── test_exceptions.py        # 에러 응답 형식 계약
@@ -76,13 +80,8 @@ backend/
 │   ├── test_auth_entity.py       # oauth_accounts·refresh_tokens 제약
 │   ├── test_google_oauth.py      # ID Token 검증 (실제 RSA 서명으로)
 │   ├── test_state_store.py       # Redis state 1회 소비
-│   ├── test_auth_service.py      # 가입·재로그인·회전·재사용 탐지
-│   ├── test_auth_endpoints.py    # 쿠키·CSRF·리다이렉트
 │   ├── test_realtime_stt_adapter.py  # Deepgram 파싱 + 가짜 서버 왕복
-│   ├── test_realtime_ws.py       # WS 인증·프레임·offset·재연결·종료 순서·자동 종료 (Deepgram 은 가짜)
 │   ├── test_realtime_auto_end.py # 말 없음 판단과 자동 종료 조건 (숫자만)
-│   ├── test_coach_client.py      # 코치 AI 호출: 응답 읽기·재시도·409·동시 개수 (AI 예시 파일을 읽는다)
-│   ├── test_coach_requests.py    # 코치 요청 만들기: 시간 계획·창·장·replay·코칭 계획
 │   ├── test_coach_session.py           # 발표 중 판단 · 상태 · 이벤트 처리 (AI · 저장소는 가짜)
 │   ├── test_coach_finalize.py          # 종료 뒤 Take 결과 생성 · 실패 · 재시작 복구 (가짜)
 │   ├── test_coach_planner.py           # 코칭 계획 요청 · 중복 방지 · 실패 처리 (가짜)
@@ -97,11 +96,17 @@ backend/
 │   ├── test_coach_triggers.py          # 대본 파싱 · 시간 변경 · 리뷰 뒤 코칭 계획 요청
 │   ├── test_coach_consent.py           # 원자료 사용 동의 조회 · 변경 API
 │   ├── test_presentation_date.py       # 발표자료 상세의 한국 날짜 · 자정과 09시 경계
-│   ├── test_realtime_coach.py    # WS 흐름 전체: metrics → evaluate → coach, stop → finalize
-│   └── test_<domain>.py          # 도메인이 늘면 같은 이름 규칙으로
+│   ├── test_<domain>.py          # 도메인이 늘면 같은 이름 규칙으로
+│   │
+│   │   # 커진 테스트는 시나리오별 폴더로 나눈다. 같이 쓰는 fixture · 가짜는 그 폴더의 conftest.py
+│   ├── auth/                     # 가입·재로그인·회전·재사용 탐지 · 쿠키·CSRF·리다이렉트 · 탈퇴
+│   ├── coach/                    # 코치 AI 호출 · 응답 읽기 · 요청 · 창 · replay · 코칭 계획 (AI 예시 파일을 읽는다)
+│   ├── realtime/                 # WS 인증·프레임·offset·재연결·종료 순서·자동 종료·떠남·1초 원자료·코치 (Deepgram 은 가짜)
+│   ├── script_parse/             # 대본 업로드 → 파싱 → 조회 · 재시도 · 경합 · runner
+│   └── take/                     # Take PUT · abandon · 삭제 · 입력 검증
 │
 └── src/pitch_coach_backend/
-    ├── main.py                   # FastAPI 앱 생성, /api 라우터에 컨트롤러 등록, /api/health
+    ├── main.py                   # FastAPI 앱 생성, /api 라우터에 컨트롤러 등록, /api/health. lifespan 이 앱 수명 작업을 건다
     ├── entities.py               # 모든 도메인 entity 를 한 곳에서 import (Alembic·main 이 사용)
     │
     ├── core/                     # 설정·인프라 연결. 도메인 로직을 두지 않는다
@@ -115,7 +120,7 @@ backend/
     │   ├── logging.py            # 앱 로거(pitch_coach_backend.*) 레벨 · 형식. 앱이 뜰 때 건다
     │   └── redis.py              # Redis 클라이언트 + get_redis 의존성
     │
-    ├── module/                   # 도메인. 폴더마다 아래 6 파일을 같은 이름으로 둔다
+    ├── module/                   # 도메인. 기본은 controller · service · repository · entity · dto · exception 파일
     │   ├── hooks.py              # HTTP 요청이 발표 중 처리 · 코치에 알릴 자리. 구현은 main.py 가 꽂는다
     │   ├── auth/                 # Google OAuth, 토큰 발급·회전, get_current_user
     │   │   ├── controller.py     # google/start·callback, refresh, logout. 쿠키 설정
@@ -123,41 +128,71 @@ backend/
     │   │   ├── repository.py
     │   │   ├── entity.py         # OAuthAccount, RefreshToken
     │   │   ├── dto.py
-    │   │   ├── dependencies.py   # get_current_user, verify_csrf (auth 에만 있음)
+    │   │   ├── dependencies.py   # get_current_user, verify_csrf
     │   │   ├── exception.py
-    │   │   ├── google.py         # 구글 어댑터. DB·Redis 를 모른다 (6파일 규칙 밖)
-    │   │   └── state_store.py    # state·nonce·PKCE 의 Redis 1회 소비 (6파일 규칙 밖)
-    │   ├── user/                 # User
-    │   ├── pitch/                # 발표 원고/자료
-    │   │   ├── script_parser.py      # AI 대본 파서 HTTP 어댑터. 응답 검증·변환·재시도. DB 를 모른다 (6파일 규칙 밖)
-    │   │   └── script_parse_runner.py  # 업로드 뒤 BackgroundTasks 로 도는 파싱 작업. 짧은 세션으로 저장 (6파일 규칙 밖)
-    │   ├── take/                 # 발표 1회 수행 기록
-    │   │   ├── coach_service.py      # 코치 연동의 DB 일. take 모듈의 모양(dto)으로 넘기고 받는다 (6파일 규칙 밖)
-    │   │   └── coach_repository.py   # 코치 이벤트 · 장 변경 · Take 결과 · 미션 행 (6파일 규칙 밖)
-    │   ├── rehearsal/            # 실시간 연습 세션
-    │   └── feedback/             # LLM 리뷰 결과
+    │   │   ├── google.py         # 구글 어댑터. DB·Redis 를 모른다
+    │   │   └── state_store.py    # state·nonce·PKCE 의 Redis 1회 소비
+    │   ├── user/                 # User. 기본 파일 구조 그대로
+    │   ├── admin/                # 관리자 콘솔(/admin). 다른 도메인 표를 읽어 모은다
+    │   ├── pitch/                # 발표 · 발표자료 · 대본 · 평가 기준 · 코칭 계획 행
+    │   │   ├── controller.py · repository.py · entity.py · dto.py · dependencies.py · exception.py
+    │   │   ├── service/          # 업무별로 나눈다. __init__.py 는 비워 두고 호출부는 하위 모듈을 import 한다
+    │   │   │   ├── pitch.py              # 발표 생성 · 목록 · 자료 모음 · 준비 화면 · 수정 · 삭제 · 코칭 계획 행
+    │   │   │   ├── presentation.py       # 발표자료(PDF) 업로드 · 조회
+    │   │   │   ├── script.py             # 대본 검사 · 생성 · 파싱 상태 · 재파싱 · 결과 저장 · 장별 평가 기준 상태 · STT 용어
+    │   │   │   ├── standard.py           # 평가 기준 저장 · 나누기 · 조회
+    │   │   │   ├── script_parse_runner.py   # 업로드 뒤 BackgroundTasks 로 도는 파싱 작업. 짧은 세션으로 저장
+    │   │   │   └── script_rubric_runner.py  # 파싱 뒤 장별 평가 기준 작업. 앱이 뜰 때 이어 간다
+    │   │   └── adapter/          # 외부 연동. DB 를 모른다
+    │   │       ├── storage.py            # S3 업로드 · presigned URL · prefix 삭제
+    │   │       ├── presentation_file.py  # PDF 열기 · 쪽수
+    │   │       ├── script_parser.py      # AI 대본 파서 HTTP. 응답 검증·변환·재시도
+    │   │       ├── script_rubric.py      # AI 장별 평가 기준 HTTP
+    │   │       └── standard_parser.py    # AI 평가 기준 분석 HTTP
+    │   └── take/                 # 발표 1회 수행 기록
+    │       ├── controller.py · repository.py · entity.py · dto.py · dependencies.py · exception.py
+    │       ├── service/
+    │       │   ├── take.py               # 생성 · 수정 · 삭제 · 소유권 조회 · 장치 점검 · Take 목록
+    │       │   ├── lifecycle.py          # mark_* · 창 닫힘 · 진행 중 Take 조회 · 떠남 · 시작하지 않은 Take 기준
+    │       │   ├── record.py             # 전사 커서 · 확정 전사 · 1초 원자료 · 문장 끝 신호 저장
+    │       │   ├── review.py             # 리뷰 요청 조립 · 호출 · 결과 저장 (한 트랜잭션)
+    │       │   └── coverage.py           # 대본 전달도 분석 (SCORING) · 재시도 · 병합
+    │       ├── coach_service.py      # 코치 연동의 DB 일. take 모듈의 모양(dto)으로 넘기고 받는다
+    │       ├── coach_repository.py   # 코치 이벤트 · 장 변경 · Take 결과 · 미션 행
+    │       ├── ai_response.py        # 리뷰 · 대본 전달도 응답 검증
+    │       └── ready_sweep.py        # 시작하지 않은 Take 를 끝내는 주기 작업
     │
     ├── realtime/                 # WebSocket. entity 를 갖지 않고 저장은 도메인 service 에 위임
     │   ├── controller.py         # /ws/takes/{take_id} 엔드포인트
-    │   ├── service.py            # 연결 하나의 수명: Origin → 인증 → Take 검사 → 스트림에 붙이기 → 프레임 전달
-    │   ├── take_stream.py        # Take 의 STT 파이프라인 + 레지스트리. **연결보다 오래 산다**
-    │   ├── transcript_store.py   # final·자동 종료 이유 저장. 짧은 DB 세션을 열어 take/service 에 넘긴다
-    │   ├── metric_buffer.py      # 1초 원자료 · 장 변경을 모았다 저장 (core/row_buffer.py)
-    │   ├── live_takes.py         # module/hooks.py 의 발표 중 Take 쪽 구현 (지움 · 창 닫음 · 끝내기 PUT)
-    │   ├── auto_end.py           # Take 자동 종료 조건(말 없음·최대 시간). 네트워크를 모른다
-    │   ├── stt_adapter.py        # Deepgram WebSocket 어댑터. DB 를 모른다 (auth/google.py 와 같은 위치)
-    │   ├── event_ingestion.py    # 오디오 프레임 헤더 검증, 순서·중복, 갭 계산
-    │   ├── audio.py              # 오디오 규격(16 kHz·mono·16-bit)과 무음 생성. 잎 모듈
-    │   ├── dto.py                # BE ↔ FE 메시지
     │   ├── dependencies.py       # get_stt_adapter · get_transcript_store (테스트가 가짜로 바꿔 끼운다)
-    │   ├── fillers.py            # 한국어 군더더기 목록. keyterm boosting + 후처리 사전의 단일 소스
-    │   ├── keyterms.py           # filler + 대본 용어를 Deepgram keyterm 한도(100개·500토큰) 안에서 조립
-    │   ├── state_aggregator.py   # (예정) 시간 정렬/sliding window/state 생성
-    │   └── session_store.py      # (예정) take_stream 의 레지스트리를 Redis 로 옮길 때 분리한다
+    │   ├── dto.py                # BE ↔ FE 메시지 · 오류 코드
+    │   ├── audio.py              # 오디오 규격(16 kHz·mono·16-bit)과 무음 생성. 잎 모듈
+    │   ├── event_ingestion.py    # 오디오 프레임 헤더 검증, 순서·중복, 갭 계산. I/O 없음
+    │   ├── live_takes.py         # module/hooks.py 의 발표 중 Take 쪽 구현 (지움 · 창 닫음 · 끝내기 PUT)
+    │   ├── connection/           # FE 연결 하나. 재접속하면 새로 만든다
+    │   │   ├── session.py        # 연결 하나의 수명: 접속 허용 → 스트림에 붙이기 → 프레임 전달 → stop
+    │   │   └── handshake.py      # Origin · 인증 · Take 존재·소유·상태 검사 · 거절
+    │   ├── stream/               # Take 별 스트림. **연결보다 오래 산다**
+    │   │   ├── registry.py       # 스트림 맵 · attach 잠금 · Take 별 기록 · 끝낸 Take · Take 끝내기 · 앱 시작 복구 · 종료 정리
+    │   │   ├── runtime.py        # TakeStream: 현재 연결 · 오디오 큐 · grace · 자동 종료 · 종료 조율. registry 를 import 하지 않는다
+    │   │   ├── auto_end.py       # 자동 종료 조건(말 없음·최대 시간). 네트워크를 모른다
+    │   │   └── abandon.py        # 떠남 · 창 닫힘 타이머. 만료되면 받은 콜백을 부른다
+    │   ├── stt/                  # 외부 음성 인식. FE 연결 · Take 상태를 모른다
+    │   │   ├── adapter.py        # Deepgram WebSocket 어댑터. DB 를 모른다
+    │   │   ├── loop.py           # Deepgram 접속 · 재접속 · 송수신 · 세션별 시간 기준 · 무음 채우기
+    │   │   ├── keyterms.py       # filler + 대본 용어를 Deepgram keyterm 한도(100개·500토큰) 안에서 조립
+    │   │   └── fillers.py        # 한국어 군더더기 목록. keyterm boosting + 후처리 사전의 단일 소스
+    │   └── storage/              # 기록 버퍼와 도메인 저장 연결
+    │       ├── store.py          # 저장소 Protocol · DB 구현. 짧은 DB 세션을 열어 take service 에 넘긴다
+    │       ├── transcripts.py    # 전사 번호 · 저장 재시도 · 화면에 못 보낸 final
+    │       └── metrics.py        # 1초 원자료 · 장 변경을 모았다 저장 (core/row_buffer.py)
     │
     ├── coach/                    # AI 실시간 코치 연동. entity 는 갖지 않는다 (DB 는 take/coach_service)
-    │   ├── client.py             # /coach/evaluate·finalize·plan HTTP. 응답 검증·재시도·409·동시 개수
-    │   ├── requests.py           # 요청 만들기 (시간 계획·미션·창·장·replay·계획 바탕 값). 순수 함수
+    │   ├── client.py             # /coach/evaluate·finalize·plan HTTP. 재시도·409·동시 개수
+    │   ├── replies.py            # AI 응답 모양 · 받은 그대로 두는 칸 · take_summaries 측정 값
+    │   ├── requests.py           # 요청 만들기 (시간 계획·미션·Take 상수·요청 모양). 순수 함수
+    │   ├── windows.py            # 창 · 지금 장 · replay 입력. 순수 함수
+    │   ├── coaching_plan.py      # 코칭 계획 행 · 바탕 값 · 고르기 · evaluate 에 실을 계획
     │   ├── session.py            # 발표 중 코치 (Take 하나). evaluate · 이벤트 저장 · 확정 시각 · 마지막 창
     │   ├── finalize.py           # Take 결과 (백그라운드). 409 면 replay, 앱이 뜰 때 · 오래 남으면 이어 가기
     │   ├── planner.py            # 코칭 계획 요청 · 저장 (백그라운드). module/hooks.py 의 코치 쪽 구현
@@ -177,6 +212,26 @@ backend/
 ```
 
 폴더는 담당자가 작업을 시작할 때 만든다. 빈 폴더를 미리 커밋하지 않는다.
+
+### 계층을 나누는 기준
+
+- 기본은 `controller.py` · `service.py` · `repository.py` · `entity.py` · `dto.py` · `exception.py` 파일이다.
+  모든 모듈의 폴더 깊이를 맞추지 않는다 (`user` · `auth` · `admin` 은 파일 그대로다).
+- 서로 다른 업무가 섞여 읽기 어려운 계층만 나눈다. service 를 `service/` 로 나눠도 controller · repository ·
+  entity · dto 는 파일로 둔다. 나누면 원래 `service.py` 는 지우고, `service/__init__.py` 는 비워 두고, 호출부는
+  `from ...service import script as script_service` 처럼 하위 모듈을 바로 부른다. 함수를 전달하기만 하는 파일은
+  두지 않는다.
+- 줄 수는 검토 신호이지 목표가 아니다. 테이블마다 파일을 만들지 않는다 — 밀접한 entity 는 한 파일, 여러 표를
+  같이 읽는 조회도 한 repository 에 둔다.
+- 외부 연동(HTTP · S3 · 파일)은 업무 로직과 나눈다 (`pitch/adapter/`). 연결 설정은 `core/` 다.
+- 한 업무의 DB 변경은 같은 세션에서 하고 service 가 커밋을 정한다. repository 마다 커밋하지 않는다.
+  리뷰 결과 · 미션 · 요약 · Take 완료 저장(`take/service/review.py`)은 한 트랜잭션이다.
+- realtime 은 처리 대상과 수명으로 나눈다: 연결 하나(`connection/`) · Take 별 스트림(`stream/`, 연결보다 오래 산다)
+  · 외부 STT(`stt/`) · 기록 저장(`storage/`). 여러 폴더가 쓰는 메시지 · 오디오 규격은 realtime 바로 아래에 둔다.
+- 테스트는 운영 폴더를 그대로 따라가지 않고 시나리오로 나눈다. 같이 쓰는 fixture 는 그 폴더의 `conftest.py`,
+  여러 폴더가 같이 쓰는 가짜는 `tests/coach_fakes.py` 처럼 따로 둔다.
+
+자세한 기준과 적용 결과는 [docs/be/file-split-plan.md](../docs/be/file-split-plan.md) 에 있다.
 
 ## 파일 이름 규칙
 
@@ -206,10 +261,23 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 
 - **도메인 안**: `controller → service → repository → entity`. 역방향 없음. controller 가 repository 를 직접 부르지 않는다.
 - **도메인 사이**: 상대 도메인의 **service 만** 부른다. 다른 도메인의 repository·entity 를 import 하지 않는다.
-- **realtime, coach, task → module**: 도메인 service 를 호출한다. module 은 realtime·coach·task 를 모른다.
-  HTTP 요청이 그쪽에 알릴 일(Take 지움 · 끝내기 PUT · 리뷰 뒤 코칭 계획 등)은 `module/hooks.py` 를 거쳐 부르고,
-  실제 구현은 `main.py` 가 꽂는다.
+- **realtime, coach, task → module**: 도메인 service 를 호출한다. module 은 controller 까지 포함해 realtime·coach·task
+  를 import 하지 않는다. HTTP 요청이 그쪽에 알릴 일(Take 지움 · 끝내기 PUT · 리뷰 뒤 코칭 계획 등)은
+  `module/hooks.py` 를 거쳐 부르고, 실제 구현은 `main.py` 가 꽂는다 (realtime 쪽 구현은 `realtime/live_takes.py` 가
+  `stream/registry.py` 의 공개 함수를 부른다).
 - **realtime → coach**: 발표 중 코치를 부른다. coach 는 realtime 을 모른다 (같이 쓰는 저장 버퍼는 `core/row_buffer.py`).
+- **realtime 안**: `controller → connection/session → connection/handshake`, `session → stream/registry → stream/runtime
+  → stt/loop → stt/adapter`, `runtime → storage/transcripts · storage/metrics → storage/store → take service`.
+  - stt · storage 는 connection · stream 을 import 하지 않는다. STT 이벤트는 받은 콜백으로 돌려준다.
+  - runtime 은 registry 를 import 하지 않는다. Take 별 기록은 registry 가 만들어 넘기고, 알릴 일은
+    `runtime.StreamHost` 로 넘긴다. abandon 도 registry 를 모르고 만료 콜백을 받는다.
+- **registry 수명**: 프로세스에 하나이고 HTTP 요청 · WebSocket 연결 · 재연결이 같은 것을 쓴다. 연결마다 새로 만드는 것은
+  `RealtimeSession` 뿐이다. `main.py` 의 `lifespan` 이 뜰 때 떠난 Take 타이머를 다시 걸고(`arm_abandoned_takes`),
+  내릴 때 스트림 drain · 기록 flush · 백그라운드 태스크 정리를 기다린다(`stop_all`). 테스트는
+  `tests/realtime/conftest.py` 가 테스트마다 레지스트리 상태를 비운다.
+- **운영 전제**: 앱 하나 · uvicorn 워커 하나 · 프로세스 하나. 스트림 · 잠금 · 끝낸 Take 기록과 WebSocket 은 프로세스
+  메모리에 있어서 워커를 늘리면 레지스트리가 여럿 생긴다. 늘리려면 스트림 소유권 · 요청 라우팅 · 종료 통지 · 공유
+  상태를 따로 설계한다.
 - **agent**: 어디서든 불려가기만 한다. module 을 import 하지 않는다.
 - **core**: 모두가 import 한다. core 는 module·realtime·agent·task 를 import 하지 않는다 (core 안에서는 서로 import 가능).
 - **entity ↔ dto 변환**: service 가 entity 를 반환하고 controller 의 `response_model` 이 변환한다 (`model_config = ConfigDict(from_attributes=True)`). 도메인마다 다르게 하지 않는다.
@@ -309,271 +377,19 @@ POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_ver
 
 ## 실시간 STT (WebSocket)
 
-발표 중 마이크 오디오를 Deepgram 으로 흘리고 전사를 FE 로 돌려준다. **BE 가 Deepgram 에 API 키를
-붙인다** — 브라우저 WebSocket 은 헤더를 못 붙이므로 FE → BE → Deepgram 구조가 필수다.
-
-```
-WS /api/ws/takes/{take_id}
-```
-
-| 순서 | 방향 | 프레임 | 내용 |
-|---|---|---|---|
-| 1 | FE → BE | text | `{"type":"auth","token":"<access>"}` — 5초 안에 와야 한다. 브라우저는 헤더를 못 붙이므로 첫 메시지로 |
-| 2 | BE → FE | text | `{"type":"ready","take_id":…,"stt_session_no":0,"stt_state":"connecting"}` — 사용자·Take(존재·소유·상태) 검사를 통과했다. 이제 오디오를 보내도 된다 |
-| 3 | FE → BE | **binary** | `[seq u32 LE][offset_ms u32 LE][PCM 16-bit LE 16 kHz mono]`. 100 ms = 3,200 bytes. `offset_ms` 는 Take 시작 = 0 |
-| 4 | BE → FE | text | `{"type":"transcript","segment_id","is_final","speech_final","start_ms","end_ms","text","confidence","words":[…]}` — `segment_id` 가 같으면 덮어쓴다. **타임스탬프는 Take 기준** |
-| 4-1 | FE → BE | text | `{"type":"metrics","t_ms","gaze","voice","slide_number","buffered"}` — 1초마다 시선 · 음량 1초 기록. `t_ms` 는 그 1초가 끝난 Take 시각. `slide_number` 는 참고값(장은 `slide` 로 정한다). `buffered` 는 끊긴 동안 쌓아 둔 것을 다시 보낼 때만 `true`(없으면 false). `stop` 직전에 마지막 1초 조각을 한 번 더 |
-| 4-2 | FE → BE | text | `{"type":"slide","slide_number","t_ms"}` — 장을 넘길 때마다. Take 시작(1번 장, `t_ms: 0`) · 새로고침해 이어 갈 때(이어받은 장과 그 장으로 넘어온 원래 시각)도 보낸다. 끊긴 동안 넘긴 장은 다시 붙은 뒤 시각 순서대로 |
-| 4-3 | BE → FE | text | `{"type":"coach","t_ms","action","feedback","indicators"}` — `COACHING` 모드에서 코치가 말을 걸 때(`INTERVENE`, `feedback` 이 있음)와 상태 표시(`indicators`)가 바뀔 때만. `EXAM` 은 보내지 않는다. 빈 `indicators` 는 '바뀌지 않음' |
-| 5 | FE → BE | text | `{"type":"stop"}` — BE 가 Deepgram 을 정리(`CloseStream` → `Metadata`)하고 |
-| 6 | BE → FE | text | `{"type":"stt_status","state":"closed",…}` 를 보낸 뒤 `1000` 으로 닫는다. **FE 는 이걸 받기 전에 닫지 않는다** |
-
-- **한 번 보낸 오디오 프레임은 재연결 뒤에도 다시 보내지 않는다.** `seq` 는 Take 안에서 계속 오르고 재연결해도
-  이어 센다. FE 는 아직 못 보낸 프레임만 들고 있다가 `ready` 뒤에 순서대로 보낸다. BE 는 새 연결의 첫 프레임이
-  뒤로 가면 탭을 새로고침해 처음부터 다시 센 것으로 본다 — 보낸 프레임을 다시 보내면 중복이 아니라 재시작으로
-  읽힌다. 확인 응답이 없을 때 다시 보내는 기능을 넣으려면 먼저 이어 보내는지 처음부터 다시 세는지를 FE 가
-  첫 메시지에서 알려 주도록 이 규약부터 바꾼다.
-- `stt_status` 는 상태가 바뀔 때마다 온다. `connecting` → `ok` → (`reconnecting` → `degraded`) → `closed`.
-  숫자(`frames`·`dropped_frames`·`silence_ms`·`lost_ms`)는 연결 단위가 아니라 **Take 누적**이다.
-- **Deepgram 이 죽어도 연결을 끊지 않는다.** 오디오를 최대 5초 큐에 담고 백오프로 재접속하며
-  `degraded` 만 알린다 — 그동안 FE 1단 코치는 계속 돌아야 하기 때문이다.
-- **키가 거절되면 다음 키로 넘어간다** (`DEEPGRAM_API_KEYS`). 연결 요청이 401(틀린 키) · 402(크레딧 부족)로
-  거절되면 그 키를 소진으로 표시하고 기다리지 않고 다음 키로 붙는다. 발표 도중 크레딧이 떨어져 끊겨도 재접속이
-  402 로 거절되므로 같은 길로 넘어간다. 소진 표시는 서버 메모리에만 있고 모든 Take 가 같이 쓴다. 키가 전부
-  소진이면 에러 로그를 남기고 위처럼 `degraded` 로 재시도하며, 그때는 첫 키부터 다시 확인한다
-- 에러는 `{"type":"error","code","message"}`. **에러가 곧 종료는 아니다** — `code` 마다 다르다
-  (`realtime/dto.py` 의 `WsErrorCode`).
-
-  | code | 연결 |
-  |---|---|
-  | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
-  | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다). 연결 중에 Take 나 발표가 지워져도 이 코드로 닫는다 |
-  | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다**. BE 가 끝냈으면 `end_reason`(`SILENCE`·`TIME_LIMIT`·`ABANDONED`·`CLOSED`)을 싣는다 — `CLOSED` 는 이어 가지 않고, `ABANDONED` 는 끝내기 PUT 이 되살린다 |
-  | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
-  | `BAD_MESSAGE` | 유지 |
-  | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
-  | `TAKE_TAKEN_OVER` | `1008` 로 닫는다. FE 는 **재연결하지 않는다** |
-
-- `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
-- **인증 뒤 Take 를 검사한다.** 사용자 존재 → Take 존재·소유(`takes` → `pitches.user_id`) → 상태
-  (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 는 첫 연결이라 받고, 통과하면
-  `RUNNING` 으로 바꾼다 (`docs/ai/architecture.md` 1-3). 못 바꾸면(DB 오류) `1011` 로 닫아 FE 가 다시 붙게
-  한다 — `READY` 로 남은 채 발표하면 시작하지 않은 Take 로 정리된다. 그사이 정리됐으면 `TAKE_ENDED`(`ABANDONED`).
-- **Take 를 시작할 때(첫 연결) 그 Take 에 쓸 값을 고정한다** (`takes.mission_ids` · `standard_version` ·
-  `raw_data_consent`). 미션은 리뷰가 있는 Take 중 가장 늦게 끝난 Take 의 리뷰가 만든 `ACTIVE` 미션이고, 그 행의
-  `take_id` 를 이 Take 로 바꾼다. Take 를 만들 때 싣지 않는다 — 장치 점검만 하고 버린 Take 가 미션을 가져간다.
-  시작 값 저장의 일시 오류는 한 번 다시 시도한다. 끝내 저장하지 못하면 `ready` 전에 1011로 닫아
-  재연결하게 한다. 고정되지 않은 기본값으로 코치를 켜거나 원자료 보관 여부를 결정하지 않는다.
-  이어서 코치가 Take 동안 들고 있을 값(시간 계획 · 미션 · 반복 문제 · 고른 코칭 계획 · 대본 사용 설정 · 기준
-  음량 · 저장된 장 변경)을 읽는다. 못 읽어도 STT 는 돌고 코칭만 끈다.
-- **final 은 `take_transcript_segments` 에 저장한다** (interim 은 저장하지 않는다). 리포트의 유일한
-  원천이다. 시각은 Take 기준(ms), `words` 는 `[{word, punctuated_word, start_ms, end_ms, confidence}]`
-  JSONB. 저장은 realtime 이 아니라 `take/service.py` 가 하고(`append_transcript_segment`), 스트림이
-  DB 를 직접 만지지 않도록 `realtime/transcript_store.py` 가 저장할 때마다 짧은 세션을 연다.
-  **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다. 단 Take 가 지워져
-  저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
-- **`metrics` 는 `take_metric_seconds` 에 1초 원자료로 저장한다** (`realtime/metric_buffer.py`). Take 결과를
-  다시 만들 때(`/coach/finalize` 의 `replay`) 읽는다. 시선 · 음량 기록은 해석하지 않고 받은 그대로 두고, 받았을 때의
-  STT 상태(`stt_status`)를 같이 남긴다. 5개가 모이면 한 번에 넣고, 연결이 끊기거나 스트림이 닫히면 남은 것을
-  넣는다. FE 는 끊긴 동안 쌓아 둔 것을 다시 붙은 뒤 보내므로 같은 1초가 또 온다 — `(take_id, t_ms)` 로 먼저
-  저장한 것을 둔다. 저장에 실패하면 10분 치까지 들고 있다가 다시 넣는다. 잘못된 `metrics` 는 `BAD_MESSAGE` 다.
-- **`slide` 는 `take_slide_events` 에 저장한다.** 같은 시각은 먼저 저장한 것을 둔다. 실시간 코치의 지금 장 ·
-  replay 의 장 변경 · 대본 전달도의 장 구간이 이 표를 쓴다.
-- **확정 단어에는 확정 시각(`take_transcript_segments.final_at_ms`)을 붙인다.** 그 결과를 받기 직전에 받은 마지막
-  `metrics` 의 `t_ms`(아직 없으면 0)다. replay 가 단어를 원래 들어온 순서대로 다시 넣는 데 쓴다. Deepgram 문장 끝
-  신호(`UtteranceEnd`)는 Take 동안 메모리에 두고, Take 를 끝낼 때 `takes.utterance_ends` 에 한 번에 쓴다.
-- **Take 나 발표를 지우면 그 Take 의 스트림을 바로 끊는다.** 지우는 요청이 커밋한 뒤 Deepgram 을
-  닫고, 붙어 있는 FE 에는 `TAKE_NOT_FOUND` 를 보낸다. 저장할 곳이 없으니 `stop` 처럼 남은 전사를
-  기다리지 않는다. 끊기 전에 온 final 이 저장에 실패해도 스트림이 그걸 보고 스스로 끊는다.
-- **STT 파이프라인은 연결보다 오래 산다** (`take_stream.py`). 연결이 끊겨도 30초 동안 Deepgram
-  세션을 살려 두고, 그 안에 다시 붙으면 세그먼트 번호와 프레임 수가 이어진다. 떨어져 있는 동안
-  화면에 못 간 final 은 모아 두었다가 `ready` 직후 순서대로 다시 보낸다 (DB 에는 이미 있다).
-  번호가 리셋되면 FE 가 같은 `segment_id` 를 덮어써 **발표 앞부분 전사가 사라진다** — 그래서
-  30초가 지나 스트림이 사라진 뒤 다시 붙어도 **저장된 마지막 `seq`·`stt_session_no` 에서 이어 받는다.**
-  오디오를 한 번도 안 받은 스트림은 살려 둘 전사가 없어서 끊기면 바로 정리한다.
-- 스트림은 만든 사용자에게 묶인다 (`FORBIDDEN`). 위 DB 검사의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
-- 같은 사용자의 두 번째 연결이 오면 **기존 것을 `TAKE_TAKEN_OVER` 로 쫓아낸다** (탭 복구).
-  반대로 하면 재연결 레이스에서 사용자가 영영 못 붙는다. 쫓겨난 연결이 닫히기 전에 보낸 프레임과 `stop` 은 버린다.
-  정리 중인 스트림에는 붙이지 않고
-  끝나기를 기다렸다가 새로 만든다.
-- Deepgram 타임스탬프는 "그 연결의 첫 바이트 = 0" 이라 BE 가 그 세션 첫 프레임의 `offset_ms` 를 더한다.
-  프레임 사이 갭(> 50 ms) 은 **무음으로 채워** 두 타임라인을 맞추고, 5초를 넘는 갭은 무음 대신
-  **Deepgram 세션을 갈아** base 를 다시 잡는다 — 일부만 채우면 그 뒤 전사 시각이 통째로 앞당겨진다.
-  역행·중복 `seq` 는 버린다. 단 **새 연결의 첫 프레임**이 뒤로 가면(`seq` 또는 `offset_ms`) FE 가 처음부터
-  다시 센 것이므로 버리지 않고 세션을 갈아 그 offset 으로 base 를 잡는다. 탭을 새로고침하면 FE 는 `seq` 를
-  1 부터 다시 세고 `offset_ms` 는 이어받은 무대 시계부터 보낸다 (grace 가 지나 새 스트림이 열린 경우와 같은 결과). 세션이 끝나면 Deepgram 이 보고한 길이와 우리가 보낸 길이를 대조해
-  어긋나면 로그에 남긴다.
-- 한국어 군더더기("음", "어", "그", "이제")는 Deepgram 이 기본으로 버리므로 `realtime/fillers.py` 의
-  목록을 `keyterm` 으로 넘겨 전사에 남긴다. `filler_words` 옵션은 영어 전용이다.
-- filler 뒤에 Take 대본의 용어를 `keyterm` 으로 붙인다 (고유명사 오인식 방지). 파싱된 `terms` 만
-  우선순위 순으로 쓰고, 슬라이드 `keywords` 는 발음 잡기용이 아니라 넣지 않는다. 인가 때 같은 DB 왕복에서
-  읽고, 파싱이 안 끝난 대본이면 filler 만 보낸다.
-  Deepgram 한도는 **100개·전체 500 토큰**이고 넘으면 연결 자체가 거절된다. 토큰 수는 실측으로 정한 상한
-  (한글·ASCII 글자당 1, 그 밖 문자는 UTF-8 바이트, 용어당 +2)으로 세고 50 토큰을 남긴다 (`realtime/keyterms.py`).
-  한도로 빠진 개수는 로그에 남는다. 그래도 추정이 빗나가 Deepgram 이 400 으로 거절하면 뒤쪽 대본 용어를
-  5개씩 빼며 기다리지 않고 바로 다시 붙는다 (filler 는 남긴다). 용어 조회가 실패해도 연결은 닫지 않고 filler 만 쓴다.
-- 정리가 늦어도 FE 를 붙잡아 두지 않는다. `stop` 뒤 Deepgram drain 이 12초 안에 안 끝나면 태스크를
-  끊고, 그마저 2초 안에 안 끝나면 닫힌 것으로 확정해 `closed` 를 보낸다. Deepgram 소켓 닫기 자체도
-  3초 상한이 있다. `stop` 을 보낸 직후 FE 가 사라져도(탭 닫힘) 서버 쪽 종료·저장 절차는 같다.
-- **`stop` 이 Take 를 끝낸다.** 코치 판단을 멈추고(진행 중인 것은 기다린다) 마지막 확정 전사 · 1초 원자료 · 장 변경까지
-  저장한 뒤 Take 를 `ANALYZING` · 분석 단계 `FINALIZING` 으로 바꾸고(문장 끝 신호도 같이) `closed` 를 보낸다
-  (`ended_at` 이 비어 있으면 지금 시각으로 채운다). 이어서 Take 결과(아래 '실시간 코치')를 백그라운드로 만든다. `stop` 을 받은 순간부터 같은 Take 로 붙는 연결은
-  `TAKE_ENDED` 로 거절한다 — DB 에 적기 전의 틈은 프로세스 안의 기록이 막는다. 종료를 DB 에 못 적어도
-  `closed` 는 보낸다. 30초 대기 만료 · 오디오 없는 연결 · 앱 종료는 스트림만 정리하고 Take 는 끝내지 않는다
-  (FE 는 끊긴 뒤에도 다시 붙는다).
-- **아무도 다시 붙지 않으면 BE 가 Take 를 실패(`FAILED`)로 끝낸다.** 스트림이 끝나지 않은 채 정리된 뒤 기다리는
-  시간과 이유는 끊긴 방식으로 정한다. 시선 기록 · 끝난 시각을 FE 가 보내지 못한 Take 라 분석하지 않는다.
-  `ended_at` 은 마지막으로 연결이 끊긴 시각이다. 그 안에 다시 붙으면 이어서 연습하고, 그 뒤로는 `TAKE_ENDED` 로
-  거절한다. 전체 조건은 [Take 연결 · 재연결 · 종료 조건](../docs/be/take-lifecycle.md) 에 있다.
-  - 창을 닫거나 새로고침해 끊김(닫힘 코드 1001): **2분** 기다리고 `CLOSED`. 새로고침이면 그 안에 다시 붙는다.
-    창을 닫은 Take 는 이어 가지 않는다.
-  - 그 밖(네트워크 장애 · FE 가 재연결을 포기함): **5분** 기다리고 `ABANDONED`. 재연결을 포기한 FE 는 STT 없이
-    발표를 이어 가는 중일 수 있다. 그 FE 가 발표를 마치고 보내는 끝내기 PUT 이 되살린다 (아래).
-  - 타이머는 메모리에 있어서 앱이 다시 뜨면 `RUNNING` Take 의 마지막 활동 시각(만든 시각 · 시작 시각 · 마지막
-    전사 저장 시각 중 가장 늦은 것)에서 5분으로 다시 건다. 닫힘 코드도 사라져 `ABANDONED` 로 적는다. 이 Take 들을 10초 안에 읽지 못하면 걸지 않고 앱을 띄운다 (다음에 연결이 붙었다 끊길 때 걸린다).
-- **창을 다시 연 FE 는 Take 를 바로 실패로 끝낸다.** `POST /api/pitches/{pitch_id}/takes/{take_id}/abandon`.
-  `READY` · `RUNNING` 이면 `FAILED`(`CLOSED`)로 바꾸고(끝난 시각은 마지막 활동 시각) 타이머를 끈 뒤 남은 스트림을
-  끊는다. 서버가 아직 붙어 있다고 믿는 연결(닫힘 프레임 없이 사라진 브라우저)에는 `TAKE_ENDED` 를 보내고 닫는다.
-  이미 끝났으면 바꾸지 않는다. 어느 쪽이든 `{"take_id","status"}` 로 지금 상태를 돌려준다 (다시 불러도 같다).
-  연결이 붙어 있고 최근 10초 안에 오디오가 왔으면 다른 창이 발표 중이라 `409 TAKE_IN_PROGRESS` 로 거절한다.
-- **STT 없이 끝낸 Take 는 Take PUT 이 끝낸다.** 발표 중에 재연결을 포기한 FE 는 `stop` 을 보내지 못한다.
-  종료 흐름의 `PUT /api/pitches/{pitch_id}/takes/{take_id}` 에 `ended_at` 이 있으면 BE 가 `RUNNING` 을 `ANALYZING`
-  으로 바꾼다. 시작하지 않은 Take(`READY`)는 `409 TAKE_NOT_STARTED` 로 거절하고 시각도 적지 않는다.
-  연결이 붙어 있거나 `stop` 으로 끝내는 중이면 그 연결에 맡긴다. 끊긴 뒤 30초 안이라 스트림이 남아 있으면
-  `stop` 처럼 남은 전사까지 저장한 뒤 바꾼다. 떠난 것으로 끝낸 Take(`ABANDONED`)도 `ANALYZING` 으로 되살리고
-  이유를 지운다. 창을 닫아 끝낸 Take(`CLOSED`)는 되살리지 않는다.
-- Take PUT 은 상태와 순서를 본다. `COMPLETED`·`FAILED` 는 `409 TAKE_ENDED`, `ANALYZING` 은 시각만 받는다
-  (`event_logs` 는 409). `ABANDONED` 로 끝난 Take 는 `ended_at` 이 있는 끝내기만 받는다 (`CLOSED` 는 409).
-  `ended_at` 이 `started_at` 보다 앞서면 `400 INVALID_TAKE_TIME`, 시간대가 없는 시각은 422.
-  `null` 은 보내지 않은 것으로 본다. 점검 결과(`calibration`)는 `READY` 일 때만 받는다 (아니면 `409 TAKE_STARTED`).
-- **Take 를 자동으로 끝낸다** (`realtime/auto_end.py`). 둘 중 하나라도 맞으면 `{"type":"auto_end","reason","message"}`
-  를 보내고 `stop` 과 같은 순서로 정리한다 (drain → `ANALYZING` → `closed` → `1000`). 오디오는 그 자리에서 끊는다.
-  FE 는 끝내기 버튼과 같은 종료 흐름을 타고 `message` 를 보여 준다.
-  - `SILENCE` — 최근 2분 동안 말이 없고 직전 5분 중 80% 이상이 말 없음. **전사로 판단한다** (소리 크기는
-    소음에도 커진다). 시간은 벽시계가 아니라 Deepgram 이 final(빈 final 포함)로 "들었다" 고 확인한 오디오로
-    잰다 — STT 가 죽어 있거나 오디오가 유실된 구간, BE 가 타임라인을 맞추려고 메워 보낸 무음(프레임 사이 틈 ·
-    큐가 넘쳐 버린 오디오)을 말 없음으로 세면 STT · 네트워크 장애가 곧 강제 종료가 된다. 기록은 Take 에
-    붙어 있어 30초 넘게 끊겼다 새 스트림으로 붙어도 이어진다.
-  - `TIME_LIMIT` — 1시간. 기준은 프레임의 `offset_ms`(FE 무대 시계)다. offset 이 가지 않는 Take(오디오 없이
-    연결만 붙여 둠)는 서버 시계가 막는다 — **이 Take 의 스트림이 열려 있던 시간의 합**이 1시간 + 60초를
-    넘으면 끝낸다. 스트림이 없던 시간(탭이 죽어 있던 동안)은 세지 않는다. FE 가 떨어져 있는 동안(grace)에도 끝낸다.
-  - `stop` 처럼 Take 를 `ANALYZING` 으로 바꾸고, `takes.end_reason` 에 이유를 남긴다. `auto_end` 를 받은 FE 가
-    `stop` 을 보내도 이유는 그대로 남는다. 다시 붙으면 `auto_end` 를 한 번 더 보내고 `TAKE_ENDED` 로 거절한다 —
-    자동 종료 순간 떨어져 있던 FE 도 종료 흐름을 탄다. 이유를 못 적어도(DB 장애) 종료는 그대로 한다.
-  - 판단 코드가 예외를 내도 STT 는 계속 돈다 (로그만). 값은 `TAKE_SILENCE_*`·`TAKE_MAX_DURATION_SEC` 로 바꾸고,
-    틀린 값이면 앱이 시작할 때 실패한다.
-
-FE 없이 확인하는 두 가지 —
-
-| | 무엇 | 어떻게 |
-|---|---|---|
-| 파일 | `dev/stt-send-pcm.py` | `uv run python dev/stt-send-pcm.py 녹음.pcm --email <가입한 이메일>` (파일 상단에 변환 명령). `--take-id` 를 안 주면 그 사용자의 Take 를 하나 만들어 쓴다 |
-| 마이크 | `dev/stt-test.html` | `python3 -m http.server 3000 --directory dev` 로 띄우고 `http://localhost:3000/stt-test.html`. **3000 포트로 열어야** Origin 검사를 통과한다. Take 칸에는 `uv run python dev/stt-send-pcm.py --create-take --email <이메일>` 로 만든 id 를 넣는다 |
-
-1초 원자료 저장 부하는 `dev/metrics-load-test.py` 로 잰다. 같은 Postgres 에 임시 DB 를 만들어 Take 마다 1초에
-1행씩 넣고 끝나면 지운다. 묶음 크기 5(`METRICS_BATCH`)는 develop 서버에서 잰 결과(#338)로 정했다.
+발표 중 마이크 오디오를 Deepgram 으로 흘리고 전사를 FE 로 돌려준다 (`WS /api/ws/takes/{take_id}`).
+메시지 순서 · 에러 코드 · 재연결 · 저장 · 종료 · 자동 종료 규칙은 [docs/be/realtime-stt.md](../docs/be/realtime-stt.md) 에 있다.
+Take 가 언제 어떤 상태로 끝나는지는 [docs/be/take-lifecycle.md](../docs/be/take-lifecycle.md) 다.
 
 ## 대본 파싱 (AI)
 
-올린 대본을 AI 서버가 슬라이드 단위로 나누고 키워드를 뽑는다. **BE 가 AI 를 부르고 기다린다** —
-AI 는 BE 주소를 모른다. FE 쪽은 비동기다 (즉시 `202` + 폴링).
-
-```
-POST /api/pitches/{pitch_id}/scripts                          202  {"content"} → script_version_id·version, PENDING
-GET  /api/pitches/{pitch_id}/scripts/{script_version_id}           PENDING | DONE(+slides) | FAILED(+error_code)
-POST /api/pitches/{pitch_id}/scripts/{script_version_id}/parse  202  FAILED 일 때만. 아니면 409
-POST /api/pitches/add/{pitch_id}/presentation                     발표자료(PDF)만. 대본은 받지 않는다
-```
-
-- **발표자료는 BE 가 PDF 로 열어 본다** (`pitch/presentation_file.py`). 40MB 를 넘거나 열리지 않으면(PDF 가 아님 · 깨짐 ·
-  여는 암호) `400 INVALID_PRESENTATION` 이고 저장하지 않는다. 쓰기 제한만 걸린 PDF 는 받는다. 확장자 · MIME 은 보지 않고,
-  S3 에는 `{version}.pdf` · `application/pdf` 로 올린다. 연 김에 쪽수를 `presentation_versions.page_count` 에 두고
-  업로드 응답 · `/resources` · 발표자료 상세에 싣는다. 이 칸이 생기기 전에 올린 발표자료는
-  `uv run python dev/backfill-presentation-page-count.py` 로 채운다 (`--dry-run` 으로 먼저 본다).
-- **대본은 발표자료와 따로 올린다.** 대본만 여러 번 고치는 게 정상 흐름이라, 발표자료 업로드에 묶으면 PDF 를 매번 다시 올려야 한다.
-  버전은 pitch 안에서 자동으로 1, 2, … 로 매기고, 발표자료 버전과는 따로 센다.
-- 대본은 JSON `{"content": "..."}` 로 받는다 (FE 는 textarea 내용 그대로). 비어 있거나 5만 자를 넘거나 NUL 문자가 있으면
-  `400 INVALID_SCRIPT` 이고 아무것도 저장하지 않는다. NUL 은 JSON(`\u0000`)으로는 오지만 PostgreSQL TEXT 가 받지 못한다.
-  AI 응답에 NUL 이 있어도 `AI_INVALID_OUTPUT`.
-- 대본을 올리면 pitch 행을 `FOR NO KEY UPDATE` 로 잠그고 버전을 매긴다. 같은 pitch 에 동시에 올려도 버전이 겹치지 않는다
-  (잠금이 없으면 둘 다 `max+1` 을 받아 한쪽이 unique 위반 500). `FOR UPDATE` 는 같은 pitch 의 Take 생성까지 막아서 쓰지 않는다.
-- **대본 원문은 S3 가 아니라 DB(`script_versions.content`)에 둔다.** 5만 자 이하 텍스트라 TEXT 로 충분하고, 슬라이드와
-  한 트랜잭션으로 저장되며, 재시도·편집 화면이 네트워크 호출 없이 읽는다. S3 는 발표자료(PDF)만 쓴다.
-  `script_slides.full_content` 는 AI 가 구분자·제목을 빼고 공백을 합친 글이라 원문을 대신하지 못한다.
-- 이 기능 전에 올라온 대본은 원문이 S3 파일(`pitches/{pitch_id}/scripts/{version}.<확장자>`)로만 있어 migration 이 `FAILED (LEGACY_UNPARSED)` 로 두고,
-  재시도하면 `409 SCRIPT_REUPLOAD_REQUIRED` — 새로 올려야 한다.
-- BE → AI 는 `POST {AI_BASE_URL}/scripts/parse` `{"script_text", "target_ms"}`. `target_ms` 는 발표 제한 시간(`time_limit_sec` × 1000)이고,
-  다시 파싱할 때는 그때의 제한 시간을 싣는다. 응답 모양은 [`docs/ai/features/script-parser.md`](../docs/ai/features/script-parser.md) 5절이고
-  `script_parser.py` 가 바꾼다 (`status` → `segmented`, highlight `{"start": 0, "end": 6}` · `"0:6"` → `[0, 6]`, 틀린 highlight 는 그 항목만 버림).
-  highlight 는 AI 가 새 모양으로 바꾸는 동안 두 모양을 다 받는다.
-  시도 한 번 전체 30초(httpx 의 읽기 30초·연결 5초는 단계별 상한이라 따로 묶는다). 타임아웃·연결 실패·5xx·429·408·계약 위반은
-  1초 뒤 1회 재시도, 그 밖의 4xx 는 바로 실패. 결과 저장이 실패하면 `FAILED (INTERNAL_ERROR)` 로 남긴다 (PENDING 으로 두지 않는다).
-- 장별 `script_chars` · `expected_ms` 는 `script_slides` 에, 응답의 `meta` 에 요청한 `target_ms` 를 더한 것은 `script_versions.parse_meta` 에 둔다.
-  이 값들을 주지 않는 응답(지금 AI 연구 코드)이면 비워 둔다. 제한 시간만 바뀌면 다시 파싱하지 않는다 — 쓰는 쪽이 `expected_ms` 를 `parse_meta.target_ms` 에 대한 비율로 읽는다.
-- 작업은 `BackgroundTasks` + `async`. **AI 를 기다리는 동안 DB 세션을 쥐지 않고**, 저장만 threadpool 의
-  짧은 세션으로 한다 (`transcript_store.py` 와 같은 이유 — 같은 이벤트 루프에서 STT 가 돈다).
-- 상태 전이는 전부 **조건부 UPDATE** 다. 재시도 두 번 눌러도 작업은 하나, 늦게 끝난 옛 작업은
-  `parse_requested_at` 이 달라 새 결과를 못 덮는다. 만료가 지난 작업도 쓰지 못한다 (FAILED 가 DONE 으로 뒤집히지 않게).
-- BE 가 재시작돼 작업이 사라지면 PENDING 이 남는다. 요청 후 **90초**가 지난 PENDING 은 읽을 때
-  `FAILED (PARSE_EXPIRED)` 로 보여주고 재시도를 연다. 90초는 어댑터 최악 소요(30 × 2 + 1 = 61초)보다 길어야 한다 (테스트가 확인한다).
-- 테스트는 `conftest.py` 가 파싱 작업을 기본으로 끈다(실제 AI 를 부르지 않게). 흐름 테스트는 가짜 파서를 끼운
-  실제 runner 로 바꿔 끼운다 (`tests/test_script_parse.py`).
-- 파싱된 `terms`(STT 가 틀리기 쉬운 용어)는 리허설 STT `keyterm` 으로 쓰인다 (위 실시간 STT 절).
+올린 대본을 AI 서버가 슬라이드 단위로 나누고 키워드를 뽑는다. FE 쪽은 비동기다 (즉시 `202` + 폴링).
+엔드포인트 · AI 호출 · 재시도 · 만료 · 저장 규칙은 [docs/be/script-parse.md](../docs/be/script-parse.md) 에 있다.
 
 ## 실시간 코치 (AI)
 
-계약은 `docs/ai/features/coach-agent.md` · `docs/ai/architecture.md` 다.
-
-현재 구현 범위는 발표 중 코치와 종료 뒤 Take 결과 저장(`FINALIZING` → `SCORING`), 코칭 계획,
-원자료 보관이다. `SCORING` 뒤 `/takes/analyze` 자동 호출 · 장별 재시도와 병합 rescore · 사용자 확인 ·
-자동 리뷰 · 해당 단계의 재시작 복구는 후속 분석 파이프라인에서 연결한다. 지금은 finalize 가 성공해도
-`SCORING` 에서 기다리며, 채점 완료로 간주하거나 `COMPLETED` 로 넘기지 않는다.
-**배포 의존성**: 연습 종료부터 리포트 완료까지 자동으로 이어지는 배포에는 후속 분석 파이프라인도
-함께 필요하다. 기존 리뷰 API 로 `SCORING` 을 건너뛰지 못한다(409 `TAKE_NOT_REVIEWABLE`).
-
-```
-발표 중   FE metrics ─▶ CoachSession ─ /coach/evaluate ─▶ AI ─▶ coach_state · events(coach_events) · WS coach
-Take 종료  stop ─▶ 분석 단계 FINALIZING ─▶ /coach/finalize (409 면 replay) ─▶ Take 결과 저장 · 분석 단계 SCORING
-다음 Take  리뷰 저장 뒤 · 대본 파싱 뒤 · 제한 시간 변경 뒤 ─▶ /coach/plan ─▶ coaching_plans 에 한 행
-```
-
-| 호출 | 언제 | 시간 제한 | 다시 부르기 |
-|---|---|---|---|
-| `POST /coach/evaluate` | FE `metrics` 마다 | 0.3초 | 없음. 늦은 응답은 버린다 |
-| `POST /coach/finalize` | Take 종료 뒤 (백그라운드) | 10초, `replay` 를 붙이면 60초 | 일시 오류면 1번. 409 `REPLAY_REQUIRED` 는 부른 쪽이 `replay` 를 붙여 다시 부른다 |
-| `POST /coach/plan` | 대본 파싱 뒤 · 대본/제한 시간 변경 뒤 · 리뷰 저장 뒤 (백그라운드) | 30초 | 일시 오류면 1번. `fallback_reason` 이 있어도 정상 결과 |
-
-- 일시 오류는 연결 실패 · 시간 초과 · 408 · 429 · 5xx 다. 다시 불러도 `X-Request-ID` 는 같다.
-- 백그라운드 호출(finalize · plan)은 프로세스 전체에서 동시에 4개까지다. 긴 요청이 AI 스레드 풀을 채우면 evaluate 가 0.3초를 넘긴다.
-- AI 가 없으면(연결 거부 · 404 · 503) evaluate 를 10초 쉰다. 그동안 발표 · STT 는 그대로고, 쉬는 동안의 1초 기록은 다음 요청의 창에 실린다.
-- 응답은 BE 가 쓰는 칸만 검사한다. `coach_state` · `events` · `take_result` · `coaching_plan` · `meta` 는 받은 그대로 둔다
-  (AI 로 다시 가거나 그대로 저장한다). `meta.schema_version` 의 major 가 1 이 아니면 쓰지 않는다.
-- 로그에는 상태 코드와 `error.code` 만 남긴다. 응답 본문에는 대본 · 전사가 되돌아올 수 있다.
-- 창은 AI 의 replay(`ai/research/coach-agent/src/coach/recovery.py`)와 같은 규칙으로 고른다. 시선 · 음량은 30초 안에 시작해
-  그 시각까지 끝난 1초 기록, 단어 · 문장 끝은 60초다. 그래야 응답이 빠져 replay 로 만든 Take 결과가 정상 진행과 같다.
-- `takes.mode` · `script_mode` 가 계약에 없는 값(`PRACTICE` · `FULL` 등)이면 싣지 않는다. 그대로 보내면 AI 가 422 로 거절한다.
-- **발표 중** (`coach/session.py`): Take 에 붙어 있어 연결 · 스트림이 바뀌어도 `coach_state` 가 이어진다. 한 Take 에서
-  앞 응답을 받기 전에 온 `metrics` 는 창에만 넣고 그 1초는 부르지 않는다. `buffered` 인 `metrics` 도 부르지 않는다.
-  응답의 이벤트는 받은 순서대로 `coach_events` 에 쌓고(같은 `event_id` 는 한 번), 저장에 실패하면 들고 있다가 다시 넣는다.
-  코치가 한 말도 `coach_events` 에만 둔다 (`live_feedbacks` 는 쓰지 않는다).
-  중복은 DB 와 같은 `(take_id, t_ms)` 로 가리고 null 센서 · STT 상태까지 첫 메시지를 유지한다.
-  앱을 다시 띄운 뒤에는 이미 저장된 메시지로 창과 중복 키를 복원한다. 실시간 장은 실제 전환 시각을
-  그대로 쓰며, 처음 확보한 장을 0초로 보정하는 것은 replay 에만 적용한다.
-- **Take 결과** (`coach/finalize.py`): 발표 중 세션의 `coach_state` · 마지막 창 · 이벤트로 부른다. 세션이 없거나(앱이 다시 뜸 ·
-  되살린 Take) `coach_state` 가 없으면 처음부터 DB 의 원자료로 `replay` 를 붙인다. 409 면 `replay` 를 붙여 한 번 더.
-  이벤트 · `TAKE_RESULT` · `take_summaries` 측정 칸 · `duration_sec` · 분석 단계 `SCORING` · 동의 없는 Take 의 1초 원자료
-  삭제를 한 트랜잭션에 하고, Take 가 아직 `ANALYZING` · `FINALIZING` 일 때만 저장한다. 끝내 실패하면 `FAILED` 로 두고
-  원자료는 남긴다. 1초 원자료가 하나도 없으면(실시간 연결 없이 끝낸 Take) 부르지 않고 `FAILED` 다. 앱이 뜰 때
-  `FINALIZING` 으로 남은 Take 를 이어 간다. 떠난 Take(`CLOSED` · `ABANDONED`)는 결과를 만들지 않는다.
-- **코칭 계획** (`coach/planner.py`): 응답(기본 계획 포함)마다 `coaching_plans` 에 한 행을 더한다. 다음 Take 를 시작할 때
-  바탕 값(가장 늦게 끝난 `COMPLETED` Take · 그 Take 의 대본 버전 · 제한 시간과 허용 범위)이 같은 행 중 요청 시각이
-  가장 늦은 것을 싣는다. 장별 목표는 대본 파싱의 `expected_ms` 를 지금 목표 시간에 맞춰 비율로 바꾼다.
-- **원자료 사용 동의**: `PATCH /api/users/me {"raw_data_consent": true}`. Take 를 시작할 때 복사한다. 동의 없이 `FAILED` 로
-  끝난 Take 의 1초 원자료는 7일 뒤 주기 작업이 지운다 (`coach/retention.py`).
-- **리뷰의 사용자 평가 기준**은 코치와 같은 `takes.standard_version` 으로 읽는다. Take 시작 때 기준이
-  없었으면 나중에 기준을 등록해도 그 Take 는 끝까지 기준 없이 리뷰한다.
-- 테스트는 AI 예시 파일(`ai/research/coach-agent/src/coach/examples/`)을 직접 읽는다. backend CI 는 `backend/**` 가 바뀔 때만
-  돌아서, AI 가 예시만 바꾼 PR 에서는 이 테스트가 다시 돌지 않는다.
+발표 중 코치(`/coach/evaluate`), 종료 뒤 Take 결과(`/coach/finalize`), 다음 Take 의 코칭 계획(`/coach/plan`)과
+원자료 보관 규칙은 [docs/be/realtime-coach.md](../docs/be/realtime-coach.md) 에 있다.
 
 ## 에러 응답 형식
 
@@ -600,12 +416,13 @@ Take 종료  stop ─▶ 분석 단계 FINALIZING ─▶ /coach/finalize (409 �
 
 ## 새 도메인 추가 절차
 
-1. `module/<name>/` 에 6 파일을 만든다 (`controller`, `service`, `repository`, `entity`, `dto`, `exception`).
+1. `module/<name>/` 에 기본 파일을 만든다 (`controller`, `service`, `repository`, `entity`, `dto`, `exception`).
+   service 가 커져 업무가 섞이면 그때 `service/` 로 나눈다 (위 '계층을 나누는 기준').
 2. `entities.py` 에 `import pitch_coach_backend.module.<name>.entity  # noqa: F401` 를 추가한다. 빠뜨리면 Alembic 이 테이블을 인식하지 못한다.
 3. controller 에 `router = APIRouter(prefix="/<names>", tags=["<name>"])` 를 두고,
    `main.py` 의 `api.include_router(...)` 에 추가한다. `/api` 는 다시 적지 않는다.
 4. `uv run alembic revision --autogenerate -m "..."` 로 마이그레이션을 만들고, 생성된 파일을 읽어 의도와 같은지 확인한 뒤 `uv run alembic upgrade head` 로 적용한다. 마이그레이션 파일은 커밋한다.
-5. `tests/test_<name>.py` 를 만든다.
+5. `tests/test_<name>.py` 를 만든다. 커지면 `tests/<name>/` 에 시나리오별 파일과 `conftest.py` 로 나눈다.
 
 ## 환경변수
 

@@ -200,14 +200,14 @@ Take 는 장치 점검에서 시작을 누를 때 만들어 곧바로 연결이 
 
 | 값 | 상수 | 위치 |
 |---|---|---|
-| grace 30초 | `GRACE_SEC` | `backend/src/pitch_coach_backend/realtime/take_stream.py` |
-| 창을 닫은 뒤 2분 | `CLOSED_TAB_WAIT_SEC` | 위와 같음 |
-| 발표 중으로 보는 오디오 간격 10초 | `LIVE_AUDIO_SEC` | 위와 같음 |
-| 떠난 Take 5분 | `ABANDON_AFTER_SEC` | 위와 같음 |
-| 시작하지 않은 Take 10분 · 정리 간격 1분 | `READY_EXPIRE_AFTER` · `SWEEP_INTERVAL_SEC` | `backend/src/pitch_coach_backend/module/take/service.py` · `ready_sweep.py` |
-| Deepgram 재접속 백오프 | `BACKOFF_SEC` | 위와 같음 |
+| grace 30초 | `GRACE_SEC` | `backend/src/pitch_coach_backend/realtime/stream/runtime.py` |
+| 창을 닫은 뒤 2분 | `CLOSED_TAB_WAIT_SEC` | `backend/src/pitch_coach_backend/realtime/stream/abandon.py` |
+| 발표 중으로 보는 오디오 간격 10초 | `LIVE_AUDIO_SEC` | `backend/src/pitch_coach_backend/realtime/stream/runtime.py` |
+| 떠난 Take 5분 | `ABANDON_AFTER_SEC` | `backend/src/pitch_coach_backend/module/take/service/lifecycle.py` |
+| 시작하지 않은 Take 10분 · 정리 간격 1분 | `READY_EXPIRE_AFTER` · `SWEEP_INTERVAL_SEC` | `backend/src/pitch_coach_backend/module/take/service/lifecycle.py` · `module/take/ready_sweep.py` |
+| Deepgram 재접속 백오프 | `BACKOFF_SEC` | `backend/src/pitch_coach_backend/realtime/stt/loop.py` |
 | 최대 시간 1시간 | `take_max_duration_sec` | `backend/src/pitch_coach_backend/core/config.py` |
-| 서버 시계 여유 60초 | `SERVER_CLOCK_SLACK_MS` | `backend/src/pitch_coach_backend/realtime/auto_end.py` |
+| 서버 시계 여유 60초 | `SERVER_CLOCK_SLACK_MS` | `backend/src/pitch_coach_backend/realtime/stream/auto_end.py` |
 | 말 없음 2분 · 5분 · 80% | `take_silence_*` | `backend/src/pitch_coach_backend/core/config.py` |
 | FE 재연결 간격 · 5분 30초 | `RETRY_DELAYS_MS` · `SLOW_RETRY_MS` · `GIVE_UP_AFTER_MS` | `frontend/src/features/rehearsal/lib/sttSocket.ts` |
 | FE 가 다른 창이 발표 중으로 보는 하트비트 10초 | `LIVE_BEAT_MS` | `frontend/src/features/rehearsal/stage/resume.ts` |

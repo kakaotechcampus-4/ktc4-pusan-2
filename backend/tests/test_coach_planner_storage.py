@@ -13,8 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.coach import store as coach_store
-from pitch_coach_backend.coach.client import PlanReply
-from pitch_coach_backend.coach.requests import request_basis
+from pitch_coach_backend.coach.coaching_plan import request_basis
+from pitch_coach_backend.coach.replies import PlanReply
 from pitch_coach_backend.module.pitch.entity import (
     CoachingPlan,
     Pitch,

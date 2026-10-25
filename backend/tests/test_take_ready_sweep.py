@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take import ready_sweep
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.entity import Take
+from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def test_only_ready_takes_older_than_the_limit_are_abandoned(db_session: Session
     running = make_take("RUNNING", old)
     analyzing = make_take("ANALYZING", old)
 
-    assert take_service.abandon_stale_ready_takes(db_session) == 1
+    assert lifecycle_service.abandon_stale_ready_takes(db_session) == 1
 
     for take in (stale, fresh, running, analyzing):
         db_session.refresh(take)
@@ -70,9 +70,9 @@ def test_a_take_abandoned_before_its_connection_cannot_start(db_session: Session
     """정리와 첫 연결은 둘 다 조건부 UPDATE 라 먼저 적은 쪽이 남는다."""
     stale = make_take("READY", timedelta(minutes=11))
 
-    take_service.abandon_stale_ready_takes(db_session)
+    lifecycle_service.abandon_stale_ready_takes(db_session)
 
-    assert take_service.mark_running(db_session, stale.id) is False
+    assert lifecycle_service.mark_running(db_session, stale.id) is False
     db_session.refresh(stale)
     assert stale.status == "FAILED"
 

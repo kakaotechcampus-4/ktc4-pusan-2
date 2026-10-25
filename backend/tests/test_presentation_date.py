@@ -9,8 +9,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.pitch import service
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion
+from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
 
 @pytest.mark.parametrize(
@@ -46,7 +46,7 @@ def test_presentation_detail_returns_the_korean_date(
     db_session.add(presentation)
     db_session.flush()
     db_session.expire(presentation, ["created_at"])
-    monkeypatch.setattr(service, "generate_presigned_url", lambda key: f"https://fake/{key}")
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
 
     response = client.get(
         f"/api/pitches/{pitch.id}/presentations/{presentation.id}",

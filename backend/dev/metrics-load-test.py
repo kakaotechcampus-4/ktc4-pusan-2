@@ -66,8 +66,8 @@ from pitch_coach_backend.module.pitch.entity import (  # noqa: E402
 from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO  # noqa: E402
 from pitch_coach_backend.module.take.entity import Take  # noqa: E402
 from pitch_coach_backend.module.user.entity import User  # noqa: E402
-from pitch_coach_backend.realtime import metric_buffer  # noqa: E402
-from pitch_coach_backend.realtime.transcript_store import DbTranscriptStore  # noqa: E402
+from pitch_coach_backend.realtime.storage import metrics as metric_buffer  # noqa: E402
+from pitch_coach_backend.realtime.storage.store import DbTranscriptStore  # noqa: E402
 
 
 def make_takes(count: int) -> list[uuid.UUID]:

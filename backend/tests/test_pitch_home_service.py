@@ -4,9 +4,9 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch import service
 from pitch_coach_backend.module.pitch.dto import PitchListResponseDTO, PitchSaveRequestDTO
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.take.entity import Take, TakeSummary
 from pitch_coach_backend.module.user.entity import User
 
@@ -19,7 +19,7 @@ def _make_user(db: Session) -> uuid.UUID:
 
 
 def _make_pitch(db: Session, user_id: uuid.UUID, title: str, time_limit_sec: int) -> uuid.UUID:
-    return service.add_pitch_service(
+    return pitch_service.add_pitch_service(
         db,
         user_id,
         PitchSaveRequestDTO(
@@ -99,11 +99,13 @@ def versions(db_session: Session, pitch_id: uuid.UUID) -> tuple[uuid.UUID, uuid.
 def test_returns_empty_list_when_user_has_no_pitch(
     db_session: Session, user_id: uuid.UUID
 ) -> None:
-    assert service.get_all_pitches_service(db_session, user_id) == PitchListResponseDTO(pitches=[])
+    assert pitch_service.get_all_pitches_service(db_session, user_id) == PitchListResponseDTO(
+        pitches=[]
+    )
 
 # pitch 필드가 잘 매핑되는지 확인
 def test_maps_pitch_fields(db_session: Session, user_id: uuid.UUID, pitch_id: uuid.UUID) -> None:
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert isinstance(result, PitchListResponseDTO)
     assert len(result.pitches) == 1
@@ -115,11 +117,11 @@ def test_maps_pitch_fields(db_session: Session, user_id: uuid.UUID, pitch_id: uu
 def test_pitch_without_presentation_date_lists_null_date(
     db_session: Session, user_id: uuid.UUID
 ) -> None:
-    service.add_pitch_service(
+    pitch_service.add_pitch_service(
         db_session, user_id, PitchSaveRequestDTO(title="날짜 없는 발표", time_limit_sec=300)
     )
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert [p.presentation_date for p in result.pitches] == [None]
 
@@ -127,7 +129,7 @@ def test_pitch_without_presentation_date_lists_null_date(
 def test_pitch_without_takes_has_empty_takes(
     db_session: Session, user_id: uuid.UUID, pitch_id: uuid.UUID
 ) -> None:
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert result.pitches[0].takes == []
 
@@ -149,7 +151,7 @@ def test_maps_take_fields(
         score=71,
     )
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     take = result.pitches[0].takes[0]
     assert take.take_version == 1
@@ -169,7 +171,7 @@ def test_delta_is_none_on_first_take_and_diff_from_previous_afterwards(
     _make_take(db_session, pitch_id, versions, 2, score=75)
     _make_take(db_session, pitch_id, versions, 3, score=70)
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert [t.take_version for t in result.pitches[0].takes] == [1, 2, 3]
     assert [t.score for t in result.pitches[0].takes] == [60, 75, 70]
@@ -186,7 +188,7 @@ def test_takes_are_ordered_by_take_number_not_insertion_order(
     _make_take(db_session, pitch_id, versions, 1, score=50)
     _make_take(db_session, pitch_id, versions, 2, score=70)
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert [t.take_version for t in result.pitches[0].takes] == [1, 2, 3]
     assert [t.delta for t in result.pitches[0].takes] == [None, 20, 20]
@@ -202,7 +204,7 @@ def test_take_without_summary_has_null_score_and_null_delta(
     _make_take(db_session, pitch_id, versions, 2, score=None)
     _make_take(db_session, pitch_id, versions, 3, score=80)
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert [t.score for t in result.pitches[0].takes] == [60, None, 80]
     assert [t.delta for t in result.pitches[0].takes] == [None, None, None]
@@ -227,7 +229,7 @@ def test_take_that_has_not_finished_has_null_elapsed(
     db_session.add(take)
     db_session.flush()
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert result.pitches[0].takes[0].take_elapsed is None
     assert result.pitches[0].takes[0].take_time == 300
@@ -239,7 +241,7 @@ def test_excludes_pitches_of_other_users(
     other_user_id = _make_user(db_session)
     _make_pitch(db_session, other_user_id, "남의 발표", 600)
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert [p.pitch_title for p in result.pitches] == ["기존 발표"]
 
@@ -254,7 +256,7 @@ def test_takes_are_grouped_under_their_own_pitch(
     _make_take(db_session, second_pitch_id, second_versions, 1, score=80)
     _make_take(db_session, second_pitch_id, second_versions, 2, score=85)
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     by_title = {p.pitch_title: p for p in result.pitches}
     assert [t.score for t in by_title["기존 발표"].takes] == [60]
@@ -266,7 +268,7 @@ def test_pitches_are_upcoming_nearest_first_then_undated_then_past_latest_first(
 ) -> None:
     """다가오는 발표(오늘 포함)는 가까운 순, 날짜 없는 발표, 지난 발표는 최근에 지난 순이다."""
     user_id = _make_user(db_session)
-    today = datetime.now(service.KST).date()
+    today = datetime.now(pitch_service.KST).date()
     dates = {
         "지난달": today - timedelta(days=30),
         "열흘 뒤": today + timedelta(days=10),
@@ -276,7 +278,7 @@ def test_pitches_are_upcoming_nearest_first_then_undated_then_past_latest_first(
         "내일": today + timedelta(days=1),
     }
     for title, presentation_date in dates.items():
-        service.add_pitch_service(
+        pitch_service.add_pitch_service(
             db_session,
             user_id,
             PitchSaveRequestDTO(
@@ -284,7 +286,7 @@ def test_pitches_are_upcoming_nearest_first_then_undated_then_past_latest_first(
             ),
         )
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert [p.pitch_title for p in result.pitches] == [
         "오늘", "내일", "열흘 뒤", "날짜 없음", "어제", "지난달",
@@ -293,10 +295,10 @@ def test_pitches_are_upcoming_nearest_first_then_undated_then_past_latest_first(
 
 def test_pitches_on_the_same_date_list_latest_created_first(db_session: Session) -> None:
     user_id = _make_user(db_session)
-    presentation_date = datetime.now(service.KST).date() + timedelta(days=3)
+    presentation_date = datetime.now(pitch_service.KST).date() + timedelta(days=3)
     # 한 트랜잭션 안에서는 now() 가 같아 만든 시각을 직접 벌린다
     for title, minutes_ago in (("먼저 만든 발표", 5), ("나중에 만든 발표", 0)):
-        pitch_id = service.add_pitch_service(
+        pitch_id = pitch_service.add_pitch_service(
             db_session,
             user_id,
             PitchSaveRequestDTO(
@@ -308,7 +310,7 @@ def test_pitches_on_the_same_date_list_latest_created_first(db_session: Session)
         )
     db_session.flush()
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert [p.pitch_title for p in result.pitches] == ["나중에 만든 발표", "먼저 만든 발표"]
 
@@ -323,10 +325,10 @@ def test_today_is_korean_date_even_before_9am(
         def now(cls, tz=None):
             return datetime(2026, 10, 22, 15, 30, tzinfo=UTC).astimezone(tz)
 
-    monkeypatch.setattr(service, "datetime", KoreanEarlyMorning)
+    monkeypatch.setattr(pitch_service, "datetime", KoreanEarlyMorning)
     user_id = _make_user(db_session)
     for title, presentation_date in (("어제", date(2026, 10, 22)), ("오늘", date(2026, 10, 23))):
-        service.add_pitch_service(
+        pitch_service.add_pitch_service(
             db_session,
             user_id,
             PitchSaveRequestDTO(
@@ -334,6 +336,6 @@ def test_today_is_korean_date_even_before_9am(
             ),
         )
 
-    result = service.get_all_pitches_service(db_session, user_id)
+    result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert [p.pitch_title for p in result.pitches] == ["오늘", "어제"]

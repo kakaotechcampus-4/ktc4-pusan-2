@@ -6,14 +6,8 @@ from typing import Any
 import pytest
 
 from pitch_coach_backend.coach import session as session_module
-from pitch_coach_backend.coach.client import (
-    EvaluateReply,
-)
-from pitch_coach_backend.coach.requests import (
-    MetricSecond,
-    SlideEvent,
-    TakeContext,
-)
+from pitch_coach_backend.coach.replies import EvaluateReply
+from pitch_coach_backend.coach.requests import MetricSecond, SlideEvent, TakeContext
 from pitch_coach_backend.coach.session import CoachSession
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from tests.coach_fakes import (

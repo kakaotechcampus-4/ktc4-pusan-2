@@ -35,13 +35,13 @@ def test_app_info_logs_come_out_with_time_level_and_name(app_logger: logging.Log
     configure_logging("info")
     stream = captured(app_logger)
 
-    stream_logger = logging.getLogger(f"{APP_LOGGER}.realtime.take_stream")
+    stream_logger = logging.getLogger(f"{APP_LOGGER}.realtime.stream.runtime")
     stream_logger.info("재연결 없이 grace 만료 take=%s", 1)
     stream_logger.debug("나오지 않는다")
 
     pattern = (
         r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} INFO "
-        r"pitch_coach_backend\.realtime\.take_stream 재연결 없이 grace 만료 take=1\n"
+        r"pitch_coach_backend\.realtime\.stream\.runtime 재연결 없이 grace 만료 take=1\n"
     )
     assert re.fullmatch(pattern, stream.getvalue())
 

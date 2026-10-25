@@ -32,7 +32,8 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mappin
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from pitch_coach_backend.coach.client import CoachClient, FinalizeReply, ReplayRequired
+from pitch_coach_backend.coach.client import CoachClient
+from pitch_coach_backend.coach.replies import FinalizeReply, ReplayRequired
 from pitch_coach_backend.coach.requests import FinalizeSource, finalize_request
 from pitch_coach_backend.coach.session import FinalizeSnapshot
 from pitch_coach_backend.coach.store import CoachStore

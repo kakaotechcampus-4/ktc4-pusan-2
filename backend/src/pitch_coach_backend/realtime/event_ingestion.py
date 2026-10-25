@@ -79,7 +79,7 @@ class Accepted:
         """이 프레임부터는 지금 Deepgram 세션의 타임라인에 이어 붙일 수 없다.
 
         갭을 무음으로 메우지 않았거나(lost_ms) FE 가 처음부터 다시 셌다(restart).
-        그대로 보내면 이후 전사 시각이 어긋난다. 보내는 쪽(take_stream)이 세션을 갈아
+        그대로 보내면 이후 전사 시각이 어긋난다. 보내는 쪽(stream/runtime)이 세션을 갈아
         base 를 다시 잡아야 한다.
         """
         return self.lost_ms > 0 or self.restart

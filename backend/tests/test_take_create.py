@@ -17,10 +17,10 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptSlide,
     ScriptVersion,
 )
-from pitch_coach_backend.module.take import service
 from pitch_coach_backend.module.take.dto import TakeInitRequestDTO
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service import take as take_service
 
 Versions = tuple[uuid.UUID, uuid.UUID]
 
@@ -363,7 +363,7 @@ def test_concurrent_creates_on_one_pitch_get_distinct_numbers(
     def create(name: str) -> None:
         with Session(engine, expire_on_commit=False) as db:
             try:
-                results[name] = service.create_take_service(db, target, dto).take_number
+                results[name] = take_service.create_take_service(db, target, dto).take_number
             except Exception as exc:  # 잠금이 없으면 여기로 온다
                 results[name] = exc
 

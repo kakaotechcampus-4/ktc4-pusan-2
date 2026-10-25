@@ -20,22 +20,28 @@ from pitch_coach_backend.module.pitch.dto import (
     StandardTextResponseDTO,
     UploadPresentationDTO,
 )
-from pitch_coach_backend.module.pitch.service import (
+from pitch_coach_backend.module.pitch.service.pitch import (
     add_pitch_service,
-    add_pitch_standard_service,
-    create_script_service,
     delete_pitch_files,
     delete_pitch_service,
     get_all_pitches_service,
     get_pitch_datas,
     get_prepare_service,
-    get_presentation_detail,
-    get_script_detail,
-    get_standard_detail,
     pitch_timing,
-    request_reparse,
     update_pitch_service,
+)
+from pitch_coach_backend.module.pitch.service.presentation import (
+    get_presentation_detail,
     upload_presentation_service,
+)
+from pitch_coach_backend.module.pitch.service.script import (
+    create_script_service,
+    get_script_detail,
+    request_reparse,
+)
+from pitch_coach_backend.module.pitch.service.standard import (
+    add_pitch_standard_service,
+    get_standard_detail,
 )
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])

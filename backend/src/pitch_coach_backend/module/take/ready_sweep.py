@@ -2,8 +2,8 @@
 
 FE 는 첫 실시간 연결이 `ready` 를 받은 뒤에 발표를 시작하고, 그 연결이 Take 를 `RUNNING` 으로
 바꾼다. 그래서 만든 지 오래된 `READY` 는 장치 점검에서 시작을 누른 뒤 연결이 끝내 붙지 않은 Take 다
-(`service.READY_EXPIRE_AFTER`). 같은 발표에서 새 Take 를 만들 때도 끝내지만(`abandon_ready_takes`),
-다시 연습하지 않으면 그대로 남는다.
+(`service/lifecycle.py` 의 `READY_EXPIRE_AFTER`). 같은 발표에서 새 Take 를 만들 때도
+끝내지만(`abandon_ready_takes`), 다시 연습하지 않으면 그대로 남는다.
 """
 
 import asyncio
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
-from pitch_coach_backend.module.take import service
+from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ async def sweep_once(session_factory: Callable[[], Session] = SessionLocal) -> i
     def sweep() -> int:
         db = session_factory()
         try:
-            return service.abandon_stale_ready_takes(db)
+            return lifecycle_service.abandon_stale_ready_takes(db)
         finally:
             db.close()
 
