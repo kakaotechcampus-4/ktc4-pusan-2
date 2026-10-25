@@ -137,12 +137,14 @@ ai/service/
 │   ├── common/errors.py · request_log.py · llm.py · meta.py · readiness.py
 │   └── features/
 │       ├── script_coverage/   대본 전달도 코어 (파일 지도는 연구 폴더 README 3-2)
-│       └── gaze/              시선 서버 판정 모듈 (파일 지도는 연구 폴더 README 3-2)
+│       ├── gaze/              시선 서버 판정 모듈 (파일 지도는 연구 폴더 README 3-2)
+│       └── filler/            군더더기 판정 모듈 · keyterms.json (파일 지도는 연구 폴더 README '파일 지도')
 └── tests/
     ├── conftest.py · test_health.py · test_errors.py · test_request_log.py · test_openapi.py
     ├── unit/common/test_settings.py · test_llm.py · test_meta.py · test_readiness.py
     ├── unit/script_coverage/   대본 전달도 단위 · 계약 · 경계 · 엔드포인트 테스트
     ├── unit/gaze/              시선 판정 모듈 단위 · 계약 · 경계 테스트
+    ├── unit/filler/            군더더기 판정 모듈 규칙 · 커서 · 지표 · 계약 · 경계 테스트
     └── live/test_llm_live.py · test_script_coverage_live.py
 ```
 
@@ -163,6 +165,7 @@ ai/service/
 | `src/pitch_coach_ai/common/meta.py` | 응답 `meta`(`schema_version` · `feature_version` · `model`, 판정 응답은 `criteria_versions`) | 기능 `FEATURE_VERSION`(`<모듈>-<버전>`) · LLM → `Meta` | 라우터 | `criteria_version` 해시는 코치 연구 코드와 같은 방식으로 둔다 |
 | `src/pitch_coach_ai/features/script_coverage/` | 대본 전달도 코어(`docs/ai/features/script-coverage-evaluation.md`). 진입 함수 `core.py`의 `analyze_script` · `evaluate_take` · `rescore_evaluation`, 요청 · 응답 `schemas.py`, 기준값 `config.py`, `version.py`(`script_coverage-1.1`), `examples/`(세 API 예시와 그 LLM 캐시), 하위 `shared/` · `script_analysis/` · `stt_evaluation/`. 파일마다의 역할은 연구 폴더 README 3-2 | 대본 · STT · 평가 기준 + LLM 객체 → 평가 기준 · 채점 | `api/script_coverage.py` | 연구 폴더(`ai/research/script-coverage-evaluation`)가 이 코어를 editable로 import한다. 코어는 여기서만 고치고, 바꾼 뒤 연구 캐시 재생으로 결과를 비교한다(연구 README '옮긴 뒤 검증'). 프롬프트 · 스키마 문자열은 캐시 키라 줄을 나누지 않는다(E501 제외) |
 | `src/pitch_coach_ai/features/gaze/` | 시선 서버 판정 모듈(`docs/ai/features/gaze-tracking.md`). `core.py`의 `judge` · `summarize` · `criteria`, 입력 · 결과 `schemas.py`, 기준값 `config.py`, `version.py`(`gaze-1.3`), `examples/`. 자기 엔드포인트는 없고 코치가 판정 모듈 묶음으로 쓴다(코치 `evaluate` · `finalize`를 열 때). 파일마다의 역할은 연구 폴더(`ai/research/gaze-tracking`) README 3-2 | 1초 기록 · 커서 · 판정 시각 → `[JudgmentResult]` | (코치 라우터, 아직 없음) | 연구 폴더가 editable로 import한다(`gaze_lab` · `tools/make_examples.py`). 기준값을 바꾸면 연구 폴더 `tools/make_examples.py`로 예시를 다시 만든다 |
+| `src/pitch_coach_ai/features/filler/` | 군더더기 판정 모듈(`docs/ai/features/filler.md`). `core.py`의 `judge` · `summarize` · `criteria` · `keyterms`, `schemas.py`, 사전 · 기준값 `config.py`, `version.py`(`filler-1.0`), `examples/`, BE가 복사해 가는 `keyterms.json`. 자기 엔드포인트는 없고 코치가 판정 모듈 묶음으로 쓴다(코치 `evaluate` · `finalize`를 열 때). 파일마다의 역할은 연구 폴더(`ai/research/filler-detection`) README '파일 지도' | STT 단어 · 문장 끝 신호 · 커서 → `[JudgmentResult]` | (코치 라우터, 아직 없음) | 연구 폴더가 editable로 import한다. 사전을 바꾸면 연구 폴더 `tools/export_keyterms.py`로 `keyterms.json`을, 기준값 · 규칙을 바꾸면 `tools/make_examples.py`로 예시를 다시 만들고 BE에 알린다 |
 | `tests/conftest.py` | 묶음 환경변수를 비운 뒤 앱 import(실제 키를 읽지 않음), `client` · `ready_client`(시작할 때 불러오는 모델까지 기다림) · `probe_client`(실패를 내는 테스트 경로) · `log_records` | — | 모든 앱 테스트 | — |
 | `tests/test_health.py` | `/health` 200(fixture 앱 · uvicorn 이 쓰는 `app` 둘 다), 등록된 경로에 `/api` 접두어 없음 | — | pytest | — |
 | `tests/test_errors.py` · `test_request_log.py` | 에러 본문 · 상태 코드, `X-Request-ID`, 요청 로그(본문 · 쿼리 · 입력값 없음) | — | pytest | — |
@@ -170,6 +173,7 @@ ai/service/
 | `tests/unit/common/` | 설정(기능별 시간 제한 포함) · LLM(가짜 LLM) · meta · 준비 상태 단위 테스트 | — | pytest | — |
 | `tests/unit/script_coverage/` | 대본 전달도 단위 · 계약(`test_examples.py`, 예시와 그 LLM 캐시) · 코어 경계(`test_core_boundary.py`, 코어 패키지 위치 기준) · 엔드포인트(`test_api.py`) · 마감이 중간에 지날 때(`test_deadline.py`) 테스트. 가짜 LLM `fakes.py` | — | pytest | 연구 lab 테스트가 `fakes.py` · `shared/slides.py`의 사본을 쓴다 |
 | `tests/unit/gaze/` | 시선 판정 모듈 단위(`judge` · `summarize`) · 계약(`test_examples.py`) · 코어 경계 테스트. 소리 크기 기준값 비교 하나는 `features/volume/`이 올 때까지 건너뜀 | — | pytest | — |
+| `tests/unit/filler/` | 군더더기 판정 모듈 규칙 · 보류 · 커서 · 지표 · 합계 · 계약(`test_examples.py`) · 코어 경계 테스트. 도우미 `helpers.py` | — | pytest | keyterm 파일 최신 검사는 연구 폴더 `tests/test_keyterms.py` |
 | `tests/live/test_llm_live.py` | 실제 LLM 1회 호출 (과금) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
 | `tests/live/test_script_coverage_live.py` | 대본 전달도를 실제 LLM 으로 장 하나 끝까지(평가 기준 → 채점, 약 4~5번 호출, 과금) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
 
@@ -178,13 +182,13 @@ ai/service/
 uv run python -m pytest              # 가짜 LLM, 키 · 과금 없음
 ```
 ```
-651 passed, 1 skipped, 2 deselected
+947 passed, 1 skipped, 2 deselected
 ```
 ```powershell
 uv run python -m pytest -m live      # 실제 LLM 약 6번 (ai/.env 의 기본 묶음, 과금)
 ```
 ```
-2 passed, 652 deselected
+2 passed, 948 deselected
 ```
 LLM 호출마다 한 줄이 남습니다(프롬프트 · 답 · 키는 남기지 않음).
 ```
