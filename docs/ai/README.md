@@ -27,13 +27,13 @@
 | 대본 전달도 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) | JWK0395 | 연구 코드 | [script-coverage-evaluation/](../../ai/research/script-coverage-evaluation/README.md) |
 | 대본 파싱 | [script-parser.md](features/script-parser.md) | jinn-ie | 연구 코드 | [script-parser/](../../ai/research/script-parser/README.md) |
 | 평가 기준 분석 | [evaluation-criteria.md](features/evaluation-criteria.md) | jinn-ie | 연구 코드 | [evaluation-criteria/](../../ai/research/evaluation-criteria/README.md) |
-| 말 속도 · 멈춤 | [pace.md](features/pace.md) | jinn-ie | 설계만 | — ([구현 PR #222](https://github.com/kakaotechcampus-4/ktc4-pusan-2/pull/222)) |
+| 말 속도 · 멈춤 | [pace.md](features/pace.md) | jinn-ie | 연구 코드 | [speech-pace/](../../ai/research/speech-pace/README.md) |
 | 소리 크기 · 침묵 | [volume.md](features/volume.md) | jinn-ie | 연구 코드 | [volume-analysis/](../../ai/research/volume-analysis/README.md) |
 | 리뷰 에이전트 | [review-agent.md](features/review-agent.md) | jinn-ie | 연구 코드 | [review-agent/](../../ai/research/review-agent/README.md) |
 
 현재 기본 서비스는 `/health`만 연결되어 있고 위 실제 기능은 아직 서비스에 탑재되지 않았습니다. 공통 서버·LLM 모듈 PR #223·#224는 기능 탑재와 구분합니다. 서비스 담당은 JWK0395입니다. 코치 연구 폴더의 `coach_lab/judges/`는 시험용 대역이므로 실제 판정 모듈로 세지 않습니다.
 
-PR #222가 merge되면 담당자가 활성 폴더·앱 연결을 확인하고 이 표를 갱신합니다. 나중에 merge되는 README 수정은 먼저 반영된 기능을 보존합니다.
+기능 코드 PR이 merge되면 담당자가 활성 폴더·앱 연결을 확인하고 이 표를 갱신합니다. 나중에 merge되는 README 수정은 먼저 반영된 기능을 보존합니다.
 
 **읽는 순서**: `architecture.md` 0 · 1절(전체 흐름) → 맡은 기능 문서 0 · 3 · 5절(한눈에 보기 · 흐름 · 계약) → 필요한 절. AI 서비스를 띄우거나, 기능을 붙여 배포하거나, AI 서비스를 부르고 운영할 때(BE · 인프라 포함)는 `ai-service.md` 0절의 역할별 표에서 볼 절을 찾습니다.
 
