@@ -18,8 +18,8 @@ AI 응답을 BE 형식으로 바꾸는 곳은 이 파일 하나다(architecture.
   - plan: 30초. 200 + `fallback_reason` 도 정상 결과다
   - plan · finalize 는 일시 오류(연결 실패 · 시간 초과 · 408 · 429 · 5xx)면 한 번 다시 부른다.
     그 밖의 4xx 는 다시 불러도 같다
-  - plan · finalize 는 프로세스 전체에서 동시에 `BACKGROUND_CONCURRENCY` 개까지 (architecture.md
-    3절). 긴 요청이 AI 스레드 풀을 채우면 1초마다 오는 evaluate 가 300ms 를 넘긴다
+  - plan · finalize 는 다른 백그라운드 AI 호출과 합쳐 동시 개수를 센다 (`core/ai_slots.py`,
+    architecture.md 3절). 긴 요청이 AI 스레드 풀을 채우면 1초마다 오는 evaluate 가 300ms 를 넘긴다
   - 요청마다 `X-Request-ID`. 다시 부를 때도 같은 값이다 — AI 로그에서 두 시도가 한 요청으로 묶인다
   - 로그에는 상태 코드와 `error.code` 만 남긴다. 본문에는 대본 · 전사가 되돌아올 수 있다
 
@@ -33,7 +33,6 @@ import logging
 import ssl
 import time
 import uuid
-import weakref
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
@@ -50,6 +49,7 @@ from pitch_coach_backend.coach.replies import (
     ReplayRequired,
     Reply,
 )
+from pitch_coach_backend.core import ai_slots
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +76,6 @@ PLAN_TIMEOUT_SEC = 30.0
 BACKGROUND_ATTEMPTS = 2
 
 RETRY_DELAY_SEC = 1.0
-
-BACKGROUND_CONCURRENCY = 4
 
 
 # AI 가 없을 때(연결 못 함 · 경로 없음 404 · 준비 중 503) evaluate 를 쉬는 시간. 프로세스 전체에
@@ -134,7 +132,7 @@ class CoachClient(Protocol):
 class _Endpoint:
     path: str
     attempts: int
-    # 동시 개수 제한을 받는 백그라운드 호출인가
+    # 동시 개수 제한(`ai_slots.background`)을 받는 백그라운드 호출인가
     background: bool
 
 
@@ -151,8 +149,8 @@ class HttpCoachClient:
     """AI 서버를 HTTP 로 부른다.
 
     호출마다 AsyncClient 를 새로 연다 (HttpScriptParser 와 같다). compose 내부망이라 연결은
-    금방이고, 앱 수명에 클라이언트를 묶지 않아도 된다. 동시 개수 제한 · evaluate 쉬기는 이 객체가
-    들고 있으므로 프로세스에 하나만 만든다 (`coach/dependencies.py`).
+    금방이고, 앱 수명에 클라이언트를 묶지 않아도 된다. evaluate 쉬기는 이 객체가 들고 있으므로
+    프로세스에 하나만 만든다 (`coach/dependencies.py`).
     """
 
     def __init__(
@@ -165,7 +163,6 @@ class HttpCoachClient:
         plan_timeout_sec: float = PLAN_TIMEOUT_SEC,
         attempts: int = BACKGROUND_ATTEMPTS,
         retry_delay_sec: float = RETRY_DELAY_SEC,
-        background_concurrency: int = BACKGROUND_CONCURRENCY,
         evaluate_pause_sec: float = EVALUATE_PAUSE_SEC,
         transport: httpx.AsyncBaseTransport | None = None,
         clock: Callable[[], float] = time.monotonic,
@@ -179,13 +176,6 @@ class HttpCoachClient:
         self._finalize = _Endpoint(FINALIZE_PATH, attempts=attempts, background=True)
         self._plan = _Endpoint(PLAN_PATH, attempts=attempts, background=True)
         self._retry_delay_sec = retry_delay_sec
-        self._background_concurrency = background_concurrency
-        # 이벤트 루프마다 하나. asyncio.Semaphore 는 처음 기다린 루프에 묶여서, 하나를 여러 루프가
-        # 쓰면(테스트의 TestClient 마다 루프가 다르다) 다른 루프에서 기다리는 순간 RuntimeError 다.
-        # 운영은 uvicorn 루프 하나라 프로세스 전체에 하나다
-        self._background: weakref.WeakKeyDictionary[
-            asyncio.AbstractEventLoop, asyncio.Semaphore
-        ] = weakref.WeakKeyDictionary()
         self._evaluate_pause_sec = evaluate_pause_sec
         self._evaluate_paused_until = 0.0
         # 경고 종류 → 다음에 남길 수 있는 시각, 그 사이 건너뛴 개수
@@ -290,7 +280,7 @@ class HttpCoachClient:
             try:
                 if endpoint.background:
                     # 자리를 기다린 시간은 시간 제한에 넣지 않는다
-                    async with self._slots():
+                    async with ai_slots.background():
                         return await self._attempt(
                             endpoint, request, body, reply_type, timeout_sec, request_id
                         )
@@ -389,15 +379,6 @@ class HttpCoachClient:
         if version.split(".", 1)[0] != SCHEMA_MAJOR:
             raise _Failure(f"모르는 schema_version={version}", retryable=False)
         return reply
-
-    def _slots(self) -> asyncio.Semaphore:
-        """지금 이벤트 루프의 백그라운드 호출 자리."""
-        loop = asyncio.get_running_loop()
-        slots = self._background.get(loop)
-        if slots is None:
-            slots = asyncio.Semaphore(self._background_concurrency)
-            self._background[loop] = slots
-        return slots
 
     def _warn_evaluate(self, key: str, message: str, *args: object) -> None:
         """같은 종류의 evaluate 경고는 `EVALUATE_WARN_INTERVAL_SEC` 에 한 번만 남긴다."""
