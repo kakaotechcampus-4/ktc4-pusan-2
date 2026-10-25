@@ -153,7 +153,7 @@ script-coverage-evaluation/
 |---|---|---|
 | `core.py` | 진입 함수 3개. 일부 장만 실패하면 `failed`에 담아 200, 대상 장이 모두 실패하면 `CoverageError`(상태 · 코드 · 고정 문구) | `analyze_script`, `evaluate_take`, `rescore_evaluation`, `take_scores`, `ScriptLLMs`, `TakeLLMs` |
 | `schemas.py` | 요청 · 응답 모양 (`slide_numbers`, `failed`, `scored_ratio`, `confirmations` 등). LLM 출력 스키마와는 별개 | `RubricRequest`, `AnalyzeRequest`, `RescoreRequest`, `EvaluationResponse` |
-| `config.py` | 점수표 · 중요도 같은 기준값과 그 해시(`CRITERIA_VERSION`), 장 동시 처리 수 `MAX_WORKERS`(해시에 안 들어감) | `CRITERIA_VERSION`, `MAX_WORKERS` |
+| `config.py` | 점수표 · 중요도 같은 기준값과 그 해시(`CRITERIA_VERSION`), 동시 LLM 호출 수 `RUBRIC_MAX_WORKERS`(평가 기준 만들기 12) · `MAX_WORKERS`(채점 4, 둘 다 해시에 안 들어감) | `CRITERIA_VERSION`, `RUBRIC_MAX_WORKERS`, `MAX_WORKERS` |
 | `version.py` | 기능 버전 · 응답 스키마 버전 · 평가 기준 형식 버전 | `FEATURE_VERSION`, `SCHEMA_VERSION`, `RUBRIC_SCHEMA_VERSION` |
 | `examples/` | 세 API의 요청 · 응답 예시와 이를 만드는 데 읽은 LLM 캐시. 만들기: `python -m coverage_lab.examples` (과금 없음, 연구 캐시 재생). 설명은 `examples/README.md` | |
 
@@ -226,7 +226,7 @@ script-coverage-evaluation/
 | `datasets.py` | 대본 · STT 파일 읽기 |
 | `runs.py` | 최상위 진입 함수를 부르고 DB에 저장하는 연결 다리 (`run_script_analysis`, `run_take_evaluation`). 호출 수는 LLM 객체를 세는 감싸개로 센다 |
 | `examples.py` | `src/script_coverage/examples/`의 API 예시를 연구 캐시로 다시 만든다 (`python -m coverage_lab.examples`) |
-| `deadline_llm.py` | 서비스 `common/llm.py`와 같은 규칙(요청 마감 하나를 모든 호출이 같이 씀 · 호출 한 번 12초 · 남은 시간이 있을 때만 1번 더 · 서비스와 같은 재시도 분류)으로 LLM을 감싸고 호출 수 · 시간을 기록한다. 시간 초과로 버린 호출이 끝나기를 기다리는 `wait_idle`도 있다. 장 수별 시간 측정(`07`)이 쓴다 |
+| `deadline_llm.py` | 서비스 `common/llm.py`와 같은 규칙(요청 마감 하나를 모든 호출이 같이 씀 · 호출 한 번 제한 · 남은 시간이 있을 때만 1번 더 · 서비스와 같은 재시도 분류 · 실행 스레드 40개)으로 LLM을 감싸고 호출 수 · 시간을 기록한다. 시간 초과로 버린 호출이 끝나기를 기다리는 `wait_idle`도 있다. 장 수별 시간 측정(`07`)이 쓴다 |
 | `timing.py` | 장 수별 시간 측정의 덱 만들기(가상대본 장을 이어 붙여 N장, 각 장에 같은 장의 STT)와 요청 하나의 기록 모양 |
 | `results.py` | 지표를 기능 버전 · 기준 버전 · 모델과 함께 `reports/results/*.json`으로 저장 · 읽기 |
 | `rubric_report.py` · `rubric_quality.py` · `rubric_consistency.py` | 평가 기준 요약 표 · 품질 지표 · 같은 대본 반복 분석의 흔들림 |
@@ -246,7 +246,7 @@ script-coverage-evaluation/
 | `04_evaluate_takes.py` | 연습 18개 채점 | 약 225회 | DB `slide_evaluations` · `similar_items` |
 | `05_accuracy.py` | 정답 비교, 충돌 조건 점검, 사용자 확인 뒤 정확도 | 0회 | `reports/results/stt_accuracy.json` |
 | `06_stability.py` | 같은 STT를 3번 채점해 흔들림 측정 | 약 450회 | `reports/results/stt_stability.json` |
-| `07_timing.py` | 장 수(10 · 20 · 30) × 동시 개수(4 · 8)별로 평가 기준 만들기 · 채점 요청 하나의 시간을 잰다. 캐시를 쓰지 않는다 | 약 330 ~ 510회 (실패한 장은 일찍 멈춘다) | `reports/results/timing.json` |
+| `07_timing.py` | 장 수 × 동시 개수별로 평가 기준 만들기(+ BE 재시도 1번 · 동시 요청 K개)와 채점의 시간을 잰다. 호출 제한 · 동시 요청 · 재시도 · 채점은 인자로 고른다. 캐시를 쓰지 않는다 | 조합마다 장 수 × 3 × 동시 요청 수 (+ 채점 장 수 × 약 1.25) | `reports/results/<name>.json` (`--name`) |
 
 - `01`이 먼저입니다. `02`~`04`는 `01`의 평가 기준을, `05` · `06`은 `04`의 채점을 읽습니다. `07`은 DB를 쓰지 않아 따로 돌릴 수 있습니다.
 - 비싼 반복 측정(`03`, `06`)은 `RUBRIC_CONSISTENCY_SAMPLES=1` · `STT_CONSISTENCY_SAMPLES=1`로 끌 수 있고, 끄면 결과 JSON을 덮어쓰지 않습니다.
@@ -313,6 +313,8 @@ script-coverage-evaluation/
 | ⑥ 전달 단위 (LLM) | `S0-U1 2025년 3월부터 시범 운영함`, `S0-U2 8주 동안 시범 운영함`, `S0-U3 제휴 도서관 3곳에서 시범 운영함` … |
 
 중요도는 문장 역할로 정합니다. 핵심 주장 문장의 Key Point는 critical, 근거 문장은 high, 나머지는 normal입니다.
+
+장끼리는 서로 기다리지 않습니다. 한 장의 LLM 단계(③ 문장 역할 · ⑤ 최종 확인 · ⑥ 전달 단위)가 끝나면 그 장의 다음 단계를 바로 넣고, 동시에 도는 LLM 호출은 `config.RUBRIC_MAX_WORKERS`(12)개까지입니다. 빈자리에는 이미 시작한 장의 다음 단계를 먼저 넣습니다. 캐시 읽기 · 쓰기와 코드 단계는 부르는 스레드에서 해서, 실행 순서가 달라도 결과는 같습니다.
 
 > **캐시가 끼어드는 자리**: LLM을 부르기 직전마다 `shared/llm_step.py`가 "같은 질문을 전에 한 적 있나?"를 DB에서 찾아봅니다.
 > - "같은 질문"은 같은 입력 · 프롬프트 · 출력 모양 · 모델입니다.
@@ -539,7 +541,7 @@ BE가 배포 환경에서 맡을 저장을 research 에서는 이 표들이 대�
 
 ### v1 · 기본 묶음 `openai/gpt-6-luna` (기능 버전 `script_coverage-1.0`)
 
-기본 묶음 모델로 `01` → `04` → `05`를 다시 돌린 값입니다(LLM 약 290회). 지금 `reports/results/stt_accuracy.json`은 이 값입니다. 반복 측정(`03` · `06`)은 이 모델로 다시 재지 않아서, `rubric_consistency.json` · `stt_stability.json`은 아래 예전 모델 값입니다. 테스트는 385개(`-m "not live"`, 연구 캐시가 있을 때)가 통과합니다.
+기본 묶음 모델로 `01` → `04` → `05`를 다시 돌린 값입니다(LLM 약 290회). 지금 `reports/results/stt_accuracy.json`은 이 값입니다. 반복 측정(`03` · `06`)은 이 모델로 다시 재지 않아서, `rubric_consistency.json` · `stt_stability.json`은 아래 예전 모델 값입니다. 테스트는 390개(`-m "not live"`, 연구 캐시가 있을 때)가 통과합니다.
 
 | 지표 (문장 765개 · Key Point 774개 · 사실 729개) | 규칙만 | LLM 1차 | 최종 | 사용자 확인 뒤 |
 |---|---|---|---|---|
@@ -551,21 +553,27 @@ BE가 배포 환경에서 맡을 저장을 research 에서는 이 표들이 대�
 
 - 예전 모델보다 최종 정확도가 약 0.8%p 낮습니다. 가장 많이 내려간 것은 요약형 발표(take8, 문장 0.965 → 0.918 · Key Point 0.963 → 0.907)입니다. 평가 기준도 새 모델로 다시 만들어 Key Point 수가 720 → 774개로 달라졌습니다.
 
-**장 수별 소요 시간** (`07_timing.py` → `timing.json`, 같은 모델, 캐시 없음, 서비스와 같은 규칙: 요청 마감 120초 · 호출 한 번 12초 · 남은 시간이 있으면 1번 더)
+**장 수별 소요 시간** (`07_timing.py`, 같은 모델, 캐시 없음, 서비스와 같은 규칙 · 클라이언트: 요청 마감 120초 · 호출 한 번 **20초** · 남은 시간이 있으면 1번 더 · 스트리밍 · LLM 실행 스레드 40개, BE 재시도 1번까지)
 
-| 장 수 | 동시 개수 | 평가 기준 만들기 (초 · 실패 장) | 채점 (초) |
-|---|---|---|---|
-| 10 | 4 | 110 · 6장 시간 초과 | 6 |
-| 10 | 8 | 68 · 3장 시간 초과 | 6 |
-| 20 | 4 | 120 · 모든 장 시간 초과 | — |
-| 20 | 8 | 118 · 9장 시간 초과 | 10 |
-| 30 | 4 | 117 · 모든 장 시간 초과 | — |
-| 30 | 8 | 115 · 모든 장 시간 초과 | — |
+| 장 수 | 동시 개수 | 동시 요청 | 평가 기준 만들기 (최초 → 재시도 뒤) | 채점 |
+|---|---|---|---|---|
+| 30 | 8 | 1 | 108초 · 29/30장 → 재시도 32초 · 30/30장 | 34초 |
+| 30 | **12** | 1 | **77초 · 30/30장** (재시도 필요 없음) | 35초 |
+| 20 | **12** | 4 | 4개 모두 76 ~ 87초 · 20/20장 (시간 초과 240번 중 1번, 요청 안 재시도로 회복) | — |
 
-- 평가 기준 만들기의 LLM 호출 한 번은 중앙값 약 10초이고, 12초 제한에서 잘리는 호출이 요청마다 10 ~ 23번 나왔습니다. 장마다 세 단계를 차례로 부르므로, 모든 장을 120초 안에 만든 조합은 없습니다. 예전 어림(5.6 luna 캐시 시각, 호출 한 번 약 6초)보다 느립니다.
-- 채점의 호출 한 번은 중앙값 약 4초(최대 약 6초)라 예산 안에 끝납니다. 채점 시간은 평가 기준이 만들어진 장만(`timing.json`의 `produced_slides`) 채점한 값이고, '—'는 평가 기준이 하나도 만들어지지 않아 채점하지 않은 줄입니다.
-- 측정 조건의 한계: 이 값은 스트리밍 · 전송 시간 제한 없이 받았고, 시간 초과로 버린 호출이 다음 측정과 겹쳤을 수 있습니다(`timing.json`의 `client`). 측정 도구는 그 뒤 서비스처럼(스트리밍 · 전송 시간 제한 12초 · 서비스와 같은 재시도 분류 · 측정 사이에 버린 호출을 기다림) 고쳤고, 다시 재지는 않았습니다. 호출 시간은 12초에서 잘려 그 위의 분포는 모릅니다.
-- 무엇을 바꿀지(호출 시간 제한 · 동시 개수 · AI 예산)는 기능 문서 15절 열린 질문입니다. 정하기 전까지 `config.py`의 동시 개수는 4입니다.
+- 그래서 `config.py`의 평가 기준 만들기 동시 개수 `RUBRIC_MAX_WORKERS`는 12, 호출 시간 제한은 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`(기능 문서 8 · 11절)입니다. 결과는 `timing_20s.json` · `timing_20s_concurrent.json`.
+- 호출 시간 20초는 12초 제한 없이 잰 평가 기준 호출(20장 · 60번)의 p50 8.6초 · p95 16.8초 · 최대 18.4초로 정했습니다(20초를 넘은 호출 0번).
+- 장끼리 서로 기다리지 않게(장마다 세 단계를 이어서) 코어를 바꿨습니다. 예전에는 단계마다 모든 장을 기다려 느린 장 하나가 다음 단계 전체를 늦췄습니다. 결과 · LLM 메시지는 같습니다(연구 캐시로 20장을 다시 만들어 바이트까지 같음을 확인).
+- 이 측정의 LLM 호출은 약 545회입니다(제한 없는 분포 60 · 30장 두 조합 244 · 동시 요청 241).
+- 재지 않은 것: 가상 장보다 긴 실제 대본, 30장이 넘는 대본, 요청 4개 × 30장.
+
+**고치기 전** (`timing.json`: 호출 12초 · 단계마다 모든 장을 기다림 · 스트리밍 없이 · 버린 호출이 다음 측정과 겹쳤을 수 있음)
+
+| 장 수 | 동시 개수 | 평가 기준 만들기 (초 · 실패 장) |
+|---|---|---|
+| 10 | 4 · 8 | 110 · 6장 / 68 · 3장 시간 초과 |
+| 20 | 4 · 8 | 모든 장 / 118초 · 9장 시간 초과 |
+| 30 | 4 · 8 | 모든 장 시간 초과 |
 
 ### v1 · 예전 모델 `openai/gpt-5.6-luna` (기능 버전 `script_coverage-1.0`)
 
