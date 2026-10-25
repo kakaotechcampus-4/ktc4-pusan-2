@@ -332,6 +332,20 @@ def _window(segs: list[_Seg], lo: int, t_ms: int, spoken: _Voiced) -> _Window:
     )
 
 
+def _unusable_ms(segs: list[_Seg], lo: int, t_ms: int, min_reliability: float) -> int:
+    """[lo, t_ms) 안에서 쓸 수 없던 시간의 합: 기록이 없거나 측정 상태가 아니거나(UNCERTAIN) 기록의
+    reliability 가 기준 미만인 1초. 측정 불가(GAZE_UNMEASURABLE)가 이어진 시간으로 낸다.
+
+    측정 불가는 창 전체의 비율 · 평균으로 정하는 문제라, 측정 비율과 같은 방식(창 안의 합)으로 잰다.
+    """
+    total = 0
+    for seg in segs:
+        usable = seg.record and seg.state in MEASURED_STATES and seg.reliability >= min_reliability
+        if not usable:
+            total += sum(b - a for a, b in _pieces(seg, lo, t_ms))
+    return total
+
+
 def _run_at(segs: list[_Seg], t_ms: int) -> dict[str, int]:
     """판정 시각까지 지금 이어지는 응시 길이: {BOTTOM, SCREEN, OTHER} → ms (이어지지 않으면 0).
 
@@ -381,6 +395,13 @@ def judge(
     short = _window(segs, short_lo, t, spoken)
     recent = _window(segs, recent_lo, t, spoken)
     runs = _run_at(segs, t)
+    # 측정 불가가 이어진 시간은 측정 불가를 가른 창에서 잰다: 최근 창의 측정 비율이 짧은 창보다
+    # 나빠 기준 미만이 됐으면 최근 창, 그 밖(짧은 창의 측정 비율 · 평균 신뢰도)은 짧은 창
+    by_recent = (
+        recent.measured_ratio < short.measured_ratio
+        and recent.measured_ratio < cfg.min_measured_ratio
+    )
+    unusable = _unusable_ms(segs, recent_lo if by_recent else short_lo, t, cfg.min_mean_reliability)
     metrics = GazeMetrics(
         audience_ratio=r4(recent.ratio("CAMERA")),
         screen_ratio=r4(recent.ratio("SCREEN")),
@@ -411,7 +432,7 @@ def judge(
             state=_state(measurable, short, cfg),
             metrics=metrics,
             tally=_tally(segs, since, t, spoken, cfg),
-            issues=_issues(t, measurable, measured, short, recent, runs, metrics, cfg),
+            issues=_issues(t, measurable, measured, short, recent, runs, unusable, metrics, cfg),
         )
     ]
 
@@ -435,6 +456,7 @@ def _issues(
     short: _Window,
     recent: _Window,
     runs: dict[str, int],
+    unusable_ms: int,
     m: GazeMetrics,
     cfg: GazeConfig,
 ) -> list[JudgmentIssue]:
@@ -450,7 +472,7 @@ def _issues(
                     severity(short.mean_reliability, cfg.min_mean_reliability, bad),
                 ),
                 confidence=1.0,
-                persistence_sec=(short.span_ms - short.measured_ms) / 1000,
+                persistence_sec=unusable_ms / 1000,
                 threshold=cfg.min_measured_ratio,
                 bad=bad,
                 evidence={
