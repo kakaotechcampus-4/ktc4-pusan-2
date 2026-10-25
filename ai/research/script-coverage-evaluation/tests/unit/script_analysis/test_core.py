@@ -1,17 +1,8 @@
-import re
-
 from script_coverage.script_analysis.core import analyze_script
 from script_coverage.script_analysis.schemas import (
-    FinalKeyPoint,
-    FinalReview,
-    KeyPointDraft,
-    NameVerdict,
-    SentenceLabel,
     SlideScript,
-    SlideSemanticAnalysis,
-    SlideUnits,
 )
-from tests.unit.fakes import empty_script_llms
+from tests.unit.fakes import DeckAwareLLM, empty_script_llms
 from tests.unit.shared.slides import SLIDES
 
 
@@ -111,44 +102,9 @@ def test_rubric_has_no_clock():
     assert "created_at" not in first[0].meta.model_dump()
 
 
-class _DeckAwareLLM:
-    """메시지를 읽어 정해진 규칙으로 답하는 가짜 LLM (같은 메시지 → 같은 답)."""
-
-    def __init__(self, stage):
-        self.stage = stage
-        self.messages: list[str] = []
-
-    def invoke(self, messages):
-        text = messages[1][1]
-        self.messages.append(text)
-        sentence_ids = [int(i) for i in re.findall(r"\[S(\d+)\]", text)]
-        roles = [SentenceLabel(id=i, role="claim" if i == 0 else "evidence") for i in sentence_ids]
-        if self.stage == "semantic":
-            # 모든 장이 '도서관' 을 key_term 으로 올린다: 발표 공통 어휘인지는 다른 장을 봐야 안다
-            key_points = [
-                KeyPointDraft(content="도서관 이야기다.", sentence_ids=[0], key_terms=["도서관"])
-            ]
-            return SlideSemanticAnalysis(
-                sentence_roles=roles, core_claim="핵심", key_points=key_points
-            )
-        if self.stage == "final":
-            verdicts = [
-                NameVerdict(candidate_id=c, keep=True, reason="테스트")
-                for c in sorted(set(re.findall(r"\bN\d+\b", text)))
-            ]
-            return FinalReview(
-                sentence_roles=roles,
-                core_claim="핵심",
-                key_points=[FinalKeyPoint(content="도서관 이야기다.", sentence_ids=[0])],
-                name_verdicts=verdicts,
-                changes=[],
-            )
-        return SlideUnits(sentences=[])
-
-
 def _deck_run(slides, **kwargs):
     """(장 번호 → 평가 기준, 단계 → LLM 에 보낸 메시지 목록)."""
-    llms = {s: _DeckAwareLLM(s) for s in ("semantic", "final", "unit")}
+    llms = {s: DeckAwareLLM(s) for s in ("semantic", "final", "unit")}
     rubrics, _ = analyze_script(
         "대본", slides, **{f"{s}_llm": llm for s, llm in llms.items()}, model="test-model",
         **kwargs,

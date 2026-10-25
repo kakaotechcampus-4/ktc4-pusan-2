@@ -9,7 +9,10 @@
 - `llm_cache.json`: 이 요청이 읽은 캐시 항목 `[{kind, key, config_hash, output}]` (정렬). 서비스로 옮긴 계약
   테스트(`tests/unit/test_examples.py`)가 이것으로 캐시를 만들어 같은 응답이 나오는지 본다.
 
-지금 만드는 예시: `rubric` (`/scripts/rubric`).
+만드는 예시: `rubric` (`/scripts/rubric`), `analyze` (`/takes/analyze`), `rescore` (`/takes/rescore`).
+`analyze` 의 평가 기준은 `rubric` 과 같은 방식으로(연구 캐시 재생) 코어에서 새로 만든다 — 평가 기준 스키마
+버전이 올라 `rubric_id` 가 바뀌었으므로 연구 DB 에 저장된 예전 채점 행은 쓰지 않는다 (어느 장에 비슷한 말이
+있었는지 찾는 데만 썼다). `rescore` 는 LLM 이 없어 `llm_cache.json` 이 없다.
 """
 
 import argparse
@@ -17,12 +20,18 @@ import json
 import sqlite3
 from pathlib import Path
 
-from script_coverage.core import ScriptLLMs, analyze_script
-from script_coverage.schemas import RubricRequest
+from script_coverage.core import (
+    ScriptLLMs,
+    TakeLLMs,
+    analyze_script,
+    evaluate_take,
+    rescore_evaluation,
+)
+from script_coverage.schemas import AnalyzeRequest, RescoreRequest, RubricRequest
 
 from .cache import SqliteLLMCache
-from .datasets import load_script_json
-from .paths import DB_PATH, PROJECT_ROOT, SCRIPT_DIR
+from .datasets import load_script_json, load_take
+from .paths import DB_PATH, PROJECT_ROOT, SCRIPT_DIR, STT_DIR
 
 EXAMPLES_DIR = PROJECT_ROOT / "src" / "script_coverage" / "examples"
 
@@ -32,6 +41,16 @@ RUBRIC_SLIDE_NUMBERS = [6, 7]  # 6: 수치가 많은 장 (성공), 7: 전달 단
 RUBRIC_FAILING_SLIDE = 7
 PITCH_ID = "p-1"
 SCRIPT_VERSION_ID = "sv-3"
+
+# ── analyze · rescore 예시: 가상대본1_take9 의 모든 장 STT 를 보내고 2 · 4 · 6번 장만 채점한다 ──
+# 연구 DB 의 저장된 채점에서 사람이 고른 장이다 (take9 는 2 · 3 · 5 · 6 · 8 · 9번 장에 비슷한 말이 있다)
+TAKE_FILE = "가상대본1_take9"
+TAKE_ID = "take-123"
+ANALYZE_SLIDE_NUMBERS = [2, 4, 6]
+ANALYZE_RUBRIC_SLIDES = [2, 4]  # 6번 장은 평가 기준을 싣지 않는다 → RUBRIC_MISSING
+SIMILAR_SLIDE = 2  # 비슷한 말(R1 · R2)이 있는 장 → 성공
+TIMEOUT_SLIDE = 4  # 의미 평가 캐시 항목을 빼서 LLM_TIMEOUT
+RESCORE_ANSWER = {"slide_number": SIMILAR_SLIDE, "item_id": "R1", "answer": "as_script"}
 
 
 class TimeoutLLM:
@@ -133,6 +152,78 @@ def build_rubric_example(conn: sqlite3.Connection) -> dict[str, object]:
     }
 
 
+def _timeout_take_llms() -> TakeLLMs:
+    llm = TimeoutLLM()
+    return TakeLLMs(eval=llm, verifier=llm)
+
+
+def _analyze_request(conn: sqlite3.Connection, model: str) -> dict:
+    """STT 는 가상 Take 파일에서, 평가 기준은 연구 캐시를 재생해 코어에서 새로 만든다."""
+    script = _run_rubric(
+        {**_rubric_request(), "slide_numbers": ANALYZE_RUBRIC_SLIDES},
+        model,
+        RecordingCache(SqliteLLMCache(conn)),
+    )
+    if len(script.rubrics) != len(ANALYZE_RUBRIC_SLIDES) or script.failed:
+        raise RuntimeError("평가 기준을 연구 캐시로 만들지 못했다: 연구 캐시가 맞지 않는다")
+    take = load_take(STT_DIR / f"{TAKE_FILE}.json")
+    return AnalyzeRequest(
+        take_id=TAKE_ID,
+        slides=[{"slide_number": s.slide_number, "stt": s.stt} for s in take.slides],
+        rubrics=script.rubrics,
+        slide_numbers=ANALYZE_SLIDE_NUMBERS,
+    ).model_dump(mode="json")
+
+
+def build_take_examples(conn: sqlite3.Connection) -> dict[str, dict[str, object]]:
+    """`analyze` · `rescore` 예시의 파일 내용 {예시 이름: {파일 이름: JSON 값}}."""
+    model = research_model(conn, RUBRIC_SCRIPT)
+    request = _analyze_request(conn, model)
+    # 실패시킬 장의 의미 평가 캐시 키: 그 장만 채점하는 요청을 한 번 돌려 읽은 항목에서 찾는다
+    probe = RecordingCache(SqliteLLMCache(conn))
+    evaluate_take(
+        {**request, "slide_numbers": [TIMEOUT_SLIDE]},
+        llms=_timeout_take_llms(),
+        model=model,
+        cache=probe,
+    )
+    keys = {key for kind, key, _ in probe.records if kind == "stt.semantic"}
+    if len(keys) != 1:
+        raise RuntimeError(f"{TIMEOUT_SLIDE}번 장의 의미 평가 캐시를 못 찾았다: {keys}")
+    cache = RecordingCache(
+        SqliteLLMCache(conn), drop=frozenset(("stt.semantic", key) for key in keys)
+    )
+    response = evaluate_take(request, llms=_timeout_take_llms(), model=model, cache=cache)
+    if (
+        [e.slide_number for e in response.evaluations] != [SIMILAR_SLIDE]
+        or [(f.slide_number, f.error.code) for f in response.failed]
+        != [(TIMEOUT_SLIDE, "LLM_TIMEOUT"), (6, "RUBRIC_MISSING")]
+        or not response.confirmations
+    ):
+        raise RuntimeError("analyze 예시가 성공 1 · 실패 2 · 확인할 항목 있음이 아니다")
+    rescore_request = RescoreRequest(
+        take_id=TAKE_ID,
+        evaluations=response.evaluations,
+        rubrics=[r for r in request["rubrics"] if r["meta"]["slide_number"] == SIMILAR_SLIDE],
+        answers=[RESCORE_ANSWER],
+        failed=response.failed,
+    ).model_dump(mode="json")
+    rescored = rescore_evaluation(rescore_request)
+    if not rescored.evaluations[0].applied_answers:
+        raise RuntimeError("rescore 예시에 반영된 답이 없다")
+    return {
+        "analyze": {
+            "request.json": request,
+            "response.json": response.model_dump(mode="json"),
+            "llm_cache.json": cache.entries(),
+        },
+        "rescore": {
+            "request.json": rescore_request,
+            "response.json": rescored.model_dump(mode="json"),
+        },
+    }
+
+
 def dump_json(value) -> str:
     """예시 파일의 글: 한글 그대로, 들여쓰기 2, 실수는 반올림하지 않는다, 끝에 개행."""
     return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
@@ -142,7 +233,7 @@ def build_examples(out_dir: Path = EXAMPLES_DIR, db_path: Path = DB_PATH) -> lis
     """모든 예시를 `out_dir/<api>/` 에 쓴다 (줄 끝은 LF). 쓴 파일 목록을 돌려준다."""
     conn = open_cache_db(db_path)
     try:
-        examples = {"rubric": build_rubric_example(conn)}
+        examples = {"rubric": build_rubric_example(conn), **build_take_examples(conn)}
     finally:
         conn.close()
     written = []

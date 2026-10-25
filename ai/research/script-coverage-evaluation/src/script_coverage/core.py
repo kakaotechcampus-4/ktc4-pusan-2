@@ -225,18 +225,19 @@ def evaluate_take(
 
     대상 장은 `slide_numbers`(없으면 `slides` 전부)다. 평가 기준이 없는 장은 채점하지 않고 `failed`
     (`RUBRIC_MISSING`)에 담되 `scored_ratio` 의 대상 장에는 들어가며, 나머지 장은 계속한다.
-    `rubrics` 가 비었거나 대상 장이 모두 평가 기준이 없으면 422 `RUBRIC_MISSING` 이다. `llms` 가 None 이면
+    대상 장이 없으면 (`slide_numbers=[]`) `rubrics` 와 상관없이 빈 결과 200 이다. 대상이 있는데 `rubrics` 가
+    비었거나 대상 장이 모두 평가 기준이 없으면 422 `RUBRIC_MISSING` 이다. `llms` 가 None 이면
     503 `LLM_UNAVAILABLE`. `meta.model` 은 LLM 출력을 쓴 채점(STT 가 빈 장이 아닌 것)이 있을 때만 모델 이름이다.
     대본 식별자 `script_name` 은 평가 기준 중 장 번호가 가장 작은 것의 `meta.script_name` 에서 가져온다.
     """
     request = AnalyzeRequest.model_validate(request)
     if llms is None:
         raise llm_error("LLM_UNAVAILABLE")
-    if not request.rubrics:
-        raise _input_error("RUBRIC_MISSING", ALL_RUBRIC_MISSING_MESSAGE)
     by_slide: dict[int, EvaluationRubric] = {r.meta.slide_number: r for r in request.rubrics}
     stt = {s.slide_number: s.stt for s in request.slides}
     targets = sorted(set(request.slide_numbers) if request.slide_numbers is not None else set(stt))
+    if not request.rubrics and targets:
+        raise _input_error("RUBRIC_MISSING", ALL_RUBRIC_MISSING_MESSAGE)
     failed = {n: "RUBRIC_MISSING" for n in targets if n not in by_slide}
     ready = [n for n in targets if n in by_slide]
     evaluations: list[SlideEvaluation] = []
@@ -271,7 +272,7 @@ def rescore_evaluation(request: RescoreRequest | dict) -> EvaluationResponse:
     Take 값만 다시 계산한다. 채점한 장의 평가 기준이 없거나(`RUBRIC_MISSING`), `rubric_id` 가 다르거나
     (`RUBRIC_MISMATCH`), 채점에 `stt_text` 필드가 없으면(`STT_TEXT_MISSING`) 장 번호 순으로 검사해 첫 문제에서
     요청 전체를 422 로 거절한다. 빈 문자열 `stt_text`(발표에서 넘어간 장)는 정상이다.
-    대상 장은 `evaluations` 의 장과 요청 `failed` 의 장이고, `failed` 에서는 채점이 있는 장을 뺀다.
+    대상 장은 `evaluations` 의 장과 요청 `failed` 의 장이고, `failed` 에서는 채점이 있는 장을 빼고 같은 장이 둘이면 처음 것만 둔다.
     `meta.model` 은 늘 None 이다.
     """
     request = RescoreRequest.model_validate(request)
@@ -301,8 +302,11 @@ def rescore_evaluation(request: RescoreRequest | dict) -> EvaluationResponse:
     ]
     scored = {e.slide_number for e in rescored}
     targets = scored | {f.slide_number for f in request.failed}
-    failures = [f for f in request.failed if f.slide_number not in scored]
-    return _scoring_response(request.take_id, rescored, targets, failures, None)
+    failures: dict[int, SlideFailure] = {}
+    for f in request.failed:  # 같은 장이 둘이면 처음 것
+        if f.slide_number not in scored:
+            failures.setdefault(f.slide_number, f)
+    return _scoring_response(request.take_id, rescored, targets, list(failures.values()), None)
 
 
 def _input_error(code: str, message: str) -> CoverageError:

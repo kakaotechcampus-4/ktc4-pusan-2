@@ -7,9 +7,7 @@ from pydantic import ValidationError
 
 from script_coverage.core import (
     CoverageError,
-    ScriptLLMs,
     TakeLLMs,
-    analyze_script,
     confirmations,
     evaluate_take,
     rescore_evaluation,
@@ -26,8 +24,7 @@ from script_coverage.stt_evaluation.schemas import (
     VerifierResult,
 )
 from script_coverage.version import FEATURE_VERSION, SCHEMA_VERSION
-from tests.unit.fakes import FakeLLM
-from tests.unit.script_analysis.test_core import _DeckAwareLLM
+from tests.unit.fakes import FakeLLM, deck_rubrics
 from tests.unit.shared.slides import SLIDES
 
 MODEL = "test-model"
@@ -75,23 +72,7 @@ class SaidAllLLM:
         return SemanticEvaluation(sentences=sentences, name_checks=names)
 
 
-def _rubrics(numbers=NUMBERS) -> list:
-    """가상대본1 의 평가 기준 (가짜 LLM 으로 만든 것). script_name 은 `sv-3`."""
-    llm = {s: _DeckAwareLLM(s) for s in ("semantic", "final", "unit")}
-    response = analyze_script(
-        {
-            "pitch_id": "p-1",
-            "script_version_id": "sv-3",
-            "slides": [{"slide_number": n, "script": _script(n)} for n in NUMBERS],
-            "slide_numbers": list(numbers),
-        },
-        llms=ScriptLLMs(**llm),
-        model=MODEL,
-    )
-    return response.rubrics
-
-
-RUBRICS = _rubrics()
+RUBRICS = deck_rubrics(NUMBERS)
 
 
 def _llms(eval_llm=None, verifier=None) -> TakeLLMs:
@@ -202,6 +183,25 @@ def test_analyze_empty_stt_slide_skips_llm_and_marks_every_unit_missing():
     assert response.meta.model == MODEL  # 다른 장은 LLM 출력을 썼다
 
 
+@pytest.mark.parametrize("stt", ["", "음 어"])  # 간투사뿐인 STT 도 정규화하면 빈 것이다
+def test_analyze_empty_stt_has_no_matched_facts(stt):
+    """이름 · 수치가 많은 장도 STT 가 비면 어떤 수치도 맞게 말한 것으로 세지 않고, LLM 도 부르지 않는다."""
+    eval_llm, verifier = SaidAllLLM(), FakeLLM(VerifierResult(judgments=[]))
+    response = _analyze(
+        _request(slide_numbers=[4, 6], stt={4: stt, 6: stt}), _llms(eval_llm, verifier)
+    )
+    assert (eval_llm.calls, verifier.calls) == (0, 0) and response.meta.model is None
+    assert [e.slide_number for e in response.evaluations] == [4, 6]
+    for e in response.evaluations:
+        assert e.stt_text == ""
+        assert e.critical_facts and {c.status for c in e.critical_facts} == {"missing"}
+        assert e.scores["critical_fact_accuracy"] == 0.0  # 수치가 있는데 하나도 말하지 않았다
+        assert e.scores["_weights"]["facts"] > 0
+        assert e.scores["content_coverage"] == 0.0 and e.scores["script_fidelity"] == 0.0
+        assert not e.similar_items
+    assert response.take_scores.scored_ratio == 1.0
+
+
 def test_analyze_meta_model_is_none_when_only_empty_stt():
     eval_llm = SaidAllLLM()
     response = _analyze(_request(slide_numbers=[6], stt={6: ""}), _llms(eval_llm))
@@ -233,6 +233,51 @@ def test_analyze_all_failed_prefers_llm_code_over_rubric_missing():
     assert (caught.value.status_code, caught.value.code) == (504, "LLM_TIMEOUT")
 
 
+def test_analyze_empty_slide_numbers_is_empty_200_even_without_rubrics():
+    for rubrics in ([], RUBRICS):
+        response = _analyze(_request(slide_numbers=[], rubrics=rubrics))
+        assert response.evaluations == [] and response.failed == []
+        assert response.take_scores.scored_ratio == 0.0 and response.meta.model is None
+
+
+def test_analyze_verifier_failure_fails_only_that_slide():
+    """충돌이 있는 장은 교차 검증을 부른다: 검증이 실패하면 그 장만 failed, 나머지 장은 채점된다."""
+
+    class ConflictLLM(SaidAllLLM):
+        """6번 장은 말한 내용을 전부 missing 으로 판정한다 (규칙과 어긋나 충돌이 생긴다)."""
+
+        def invoke(self, messages):
+            result = super().invoke(messages)
+            if self.called_slides[-1] == 6:
+                for s in result.sentences:
+                    for u in s.units:
+                        u.status = "missing"
+            return result
+
+    class SlideVerifier:
+        """6번 장의 교차 검증만 시간 초과가 난다."""
+
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, messages):
+            self.calls += 1
+            if (
+                "1,860명" in messages[1][1]
+            ):  # 검증 메시지에는 장 번호가 없어 6번 장 대본으로 알아본다
+                raise TimeoutError("STT 원문")
+            return VerifierResult(judgments=[])
+
+    verifier = SlideVerifier()
+    response = _analyze(llms=_llms(ConflictLLM(), verifier))
+    assert verifier.calls >= 1
+    [failure] = response.failed
+    assert failure.slide_number == 6 and failure.error.code == "LLM_TIMEOUT"
+    assert failure.error.message == ERROR_MESSAGES["LLM_TIMEOUT"]
+    assert [e.slide_number for e in response.evaluations] == [4, 7]
+    assert response.take_scores.scored_ratio == pytest.approx(0.667)
+
+
 def test_analyze_llms_none_is_503():
     with pytest.raises(CoverageError) as caught:
         evaluate_take(_request(), llms=None, model=MODEL)
@@ -259,15 +304,16 @@ def test_take_scores_scored_ratio():
 
 
 def _item(item_id: str, sentence_index: int) -> SimilarItem:
+    span = (0, 2) if item_id == "R1" else (30, 32)  # 자리가 겹치지 않게
     return SimilarItem(
         item_id=item_id,
         kind="word",
         script_text="좌석",
         stt_text="자석",
         script_sentence_index=sentence_index,
-        script_span=(0, 2),
+        script_span=span,
         stt_sentence_index=0,
-        stt_span=(0, 2),
+        stt_span=span,
         stt_raw_span=None,
         key_point_ids=[],
         signals=[],
@@ -278,7 +324,8 @@ def _item(item_id: str, sentence_index: int) -> SimilarItem:
 @pytest.fixture(scope="module")
 def stored():
     """analyze 응답의 채점에 비슷한 말 R1 · R2 를 4번 장에, R1 을 6번 장에 끼운 것 (저장해 둔 채점)."""
-    response = _analyze()
+    # 4번 장은 첫 단어를 다르게 말했다: 비슷한 말 자리(0~2)를 대본 충실도에 넣느냐에 따라 값이 달라진다
+    response = _analyze(_request(stt={4: "자석" + _script(4)[2:]}))
     evaluations = {e.slide_number: e.model_copy(deep=True) for e in response.evaluations}
     for number, ids in {4: ["R1", "R2"], 6: ["R1"]}.items():
         first = evaluations[number].sentences[0].sentence_index
@@ -315,6 +362,31 @@ def test_rescore_without_answers_recomputes_take_values_only(stored):
     assert rescore_evaluation(_rescore_request(stored)).model_dump() == response.model_dump()
 
 
+_KEPT = ["scores", "sentences", "key_points", "critical_facts", "applied_answers"]
+
+
+def _kept(evaluations) -> list[dict]:
+    return [e.model_dump(include=set(_KEPT)) for e in evaluations]
+
+
+def test_rescore_without_answers_preserves_analyzed_evaluations():
+    """analyze 응답을 답 없이 다시 계산해도 장별 채점 내용이 그대로다 (Take 값만 다시 계산)."""
+    analyzed = _analyze()
+    again = rescore_evaluation(_rescore_request(analyzed.evaluations))
+    assert _kept(again.evaluations) == _kept(analyzed.evaluations)
+    assert again.take_scores == analyzed.take_scores
+
+
+def test_rescore_without_answers_preserves_cumulative_answers(stored):
+    first = rescore_evaluation(
+        _rescore_request(stored, [_answer(4, "R1", "as_stt"), _answer(6, "R1")])
+    )
+    again = rescore_evaluation(_rescore_request(first.evaluations))
+    assert _kept(again.evaluations) == _kept(first.evaluations)
+    assert again.take_scores == first.take_scores
+    assert again.confirmations == first.confirmations
+
+
 def test_rescore_answers_reduce_confirmations(stored):
     response = rescore_evaluation(_rescore_request(stored, [_answer(4, "R1"), _answer(6, "R9")]))
     assert {e.slide_number: e.applied_answers for e in response.evaluations} == {
@@ -343,7 +415,18 @@ def test_rescore_keeps_first_answer_when_resent_or_changed(stored):
     assert four.applied_answers == {"R1": "as_stt", "R2": "as_script"}
     reasons = [s.reason for s in four.sentences]
     assert sum(r.count(marker) for r in reasons) == 1
-    # 같은 요청 안에서 같은 항목 답이 둘이면 처음 것
+    # 처음 답(as_stt)의 효과가 새 답이 와도 그대로다: 그 문장은 계속 contradicted 이고,
+    # 대본 충실도(as_stt 자리는 넣고 계산)와 점수가 첫 다시 계산과 같다
+    first_four = next(e for e in first.evaluations if e.slide_number == 4)
+    index = stored[0].sentences[0].sentence_index
+    assert next(s for s in four.sentences if s.sentence_index == index).status == "contradicted"
+    assert four.fidelity == first_four.fidelity
+    keys = ["content_coverage", "critical_fact_accuracy", "script_fidelity"]
+    assert {k: four.scores[k] for k in keys} == {k: first_four.scores[k] for k in keys}
+    assert four.scores["similar_words"] == first_four.scores["similar_words"] - 1  # R2 에 답함
+    assert (
+        four.fidelity != stored[0].fidelity
+    )  # 시험이 as_stt 효과에 민감한지    # 같은 요청 안에서 같은 항목 답이 둘이면 처음 것
     twice = rescore_evaluation(
         _rescore_request(stored, [_answer(4, "R2", "as_script"), _answer(4, "R2", "as_stt")])
     )
@@ -425,6 +508,22 @@ def test_confirmations_lists_items_without_answers(stored):
         (4, "R1", "좌석", "자석"),
         (6, "R1", "좌석", "자석"),
     ]
+
+
+def test_rescore_failed_duplicates_keep_first(stored):
+    first = {"slide_number": 8, "error": {"code": "LLM_TIMEOUT", "message": "첫 번째"}}
+    second = {"slide_number": 8, "error": {"code": "LLM_ERROR", "message": "두 번째"}}
+    response = rescore_evaluation(_rescore_request(stored, failed=[first, second]))
+    assert [(f.slide_number, f.error.message) for f in response.failed] == [(8, "첫 번째")]
+    assert response.take_scores.scored_ratio == 0.75
+
+
+def test_duplicate_rubric_slide_numbers_are_rejected(stored):
+    twice = [RUBRICS[0], RUBRICS[0]]
+    with pytest.raises(ValidationError):
+        AnalyzeRequest.model_validate(_request(rubrics=twice))
+    with pytest.raises(ValidationError):
+        RescoreRequest.model_validate(_rescore_request(stored, rubrics=twice))
 
 
 def test_rescore_request_validation(stored):

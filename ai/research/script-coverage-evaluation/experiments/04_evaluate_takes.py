@@ -64,7 +64,26 @@ for take in takes:
     causes[take.take_id] = stats.pop("causes")
     print(take.take_id, stats, "실패한 슬라이드:", sorted(failures[take.take_id]) or "-")
 
-first_error = next((msg for cause in causes.values() for msg in cause.values()), None)
+missing = {
+    take_id: sorted(n for n, code in failed.items() if code == "RUBRIC_MISSING")
+    for take_id, failed in failures.items()
+}
+for take_id, numbers in missing.items():
+    if numbers:
+        print(
+            f"{take_id}: 평가 기준이 없는 슬라이드 {numbers} — 01_build_rubrics.py 를 먼저 실행한다"
+        )
+first_error = next(
+    (
+        causes[take_id][n]
+        for take_id, failed in failures.items()
+        for n, code in failed.items()
+        if code != "RUBRIC_MISSING"
+    ),
+    None,
+)
+if any(missing.values()):
+    raise RuntimeError("평가 기준이 없는 슬라이드가 있다 — 01_build_rubrics.py 를 먼저 실행한다")
 if first_error:
     raise RuntimeError(f"LLM 호출 실패 — 첫 오류: {first_error}")
 

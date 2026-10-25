@@ -95,6 +95,9 @@ class AnalyzeRequest(BaseModel):
         unknown = sorted(set(self.slide_numbers or []) - set(numbers))
         if unknown:
             raise ValueError(f"slide_numbers 에 slides 에 없는 장이 있다: {unknown}")
+        numbers = [r.meta.slide_number for r in self.rubrics]
+        if len(numbers) != len(set(numbers)):
+            raise ValueError("rubrics 에 같은 slide_number 가 둘 이상 있다")
         return self
 
 
@@ -120,6 +123,9 @@ class RescoreRequest(BaseModel):
         numbers = [e.slide_number for e in self.evaluations]
         if len(numbers) != len(set(numbers)):
             raise ValueError("evaluations 에 같은 slide_number 가 둘 이상 있다")
+        numbers = [r.meta.slide_number for r in self.rubrics]
+        if len(numbers) != len(set(numbers)):
+            raise ValueError("rubrics 에 같은 slide_number 가 둘 이상 있다")
         return self
 
 
