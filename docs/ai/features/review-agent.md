@@ -71,9 +71,19 @@ ai/research/review-agent/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
 ├─ pyproject.toml · uv.lock                 Python 3.12. 코어는 pydantic 하나, 연구 도구만 LLM 라이브러리
 ├─ src/review/                              리뷰 코어 → 서비스 features/review/로 폴더째 옮긴다
+│   ├─ __init__.py                          review_take 공개
 │   ├─ schemas.py                           요청 · 응답 · LLM 출력 pydantic 모델 = 계약
 │   ├─ core.py                              review_take(): 규칙 단계 → LLM 단계 → 숫자 검사
-│   ├─ rules.py                             규칙 단계 (LLM 없는 순수 함수)
+│   ├─ evaluable.py                         6-1 1번: 판단 가능 여부
+│   ├─ missions.py                          6-1 2 · 3번: 미션 판정 · 사용자 기준
+│   ├─ burden.py                            6-1 4번: 차원 · 장 · 영역별 문제 부담
+│   ├─ dimensions.py                        6-1 5번: 차원 상태
+│   ├─ comparison.py                        6-1 6번: 이전 Take 비교
+│   ├─ next_missions.py                     6-1 7번: 다음 미션 후보
+│   ├─ recurring.py                         6-1 8번: 반복 문제
+│   ├─ score.py                             6-1 9번: 점수
+│   ├─ metrics.py                           지표 찾기 · 비교 (미션 판정 · 다음 미션 · 근거가 같이 쓴다)
+│   ├─ vocab.py                             고정 어휘 · 5-3 차원 표
 │   ├─ text.py                              기본 문장 · 숫자 검사
 │   ├─ config.py · version.py               부담 · 허용치 · 한 걸음 폭 · 점수 · 개수 한도, 기능 버전
 │   ├─ prompts/                             문장 쓰기 · 다음 미션 고르기 프롬프트
@@ -128,7 +138,7 @@ ai/research/review-agent/
 | `overall_summary` | string | 요약 문장 |
 | `score` | int · null | 차원 상태 점수의 평균(0–100, `NOT_EVALUABLE` 제외)을 정수로 반올림한 값. 모든 차원이 판단 불가면 null |
 | `dimensions` | object | 차원 여섯 개 → 상태 |
-| `strengths[]` | list | `{area, slide_number, text, evidence}`. 개선점과 같은 모양이고, 장이 없으면 `slide_number` null. `evidence`는 지표 이름 → 숫자 |
+| `strengths[]` | list | `{area, slide_number, text, evidence}`. 개선점과 같은 모양이고, 장이 없으면 `slide_number` null. `evidence`는 지표 이름 → 숫자. `area` · `evidence`를 고르는 법은 6-2 |
 | `improvements[]` | list | `{area, slide_number, text, evidence}`. 장이 없으면 `slide_number` null |
 | `comparison[]` | list | 바로 앞 Take(`previous_takes[0]`)와 같은 지표 비교 `{metric, slide_number, previous, current, improved, script_mode}`. `improved`는 좋아진 방향인지(bool, 방향을 정할 수 없으면 null). `script_mode`는 두 Take의 대본 보기가 다를 때 `{previous, current}`, 같으면 null |
 | `mission_results[]` | list | `{mission_id, status, metric, operator, slide_number, target, observed}`. `observed`는 판정에 쓴 관측값(float), 없으면 null |
@@ -208,15 +218,15 @@ ai/research/review-agent/
 # 6. 처리 — 안에서 어떻게 도는가
 ## 6-1. 규칙 단계 (LLM 없음, 같은 입력이면 같은 결과)
 규칙은 아홉 개다. 미션을 이루지 못한 차원이 부담을 키우므로 미션 판정을 부담보다 먼저 계산한다.
-1. **판단 가능 여부**: 차원에 속한 영역의 측정 비율이 기준 미만이면 그 차원은 `NOT_EVALUABLE`이고 문제로도 강점으로도 말하지 않는다. `script_coverage`가 null이거나, 채점된 장 비율 `scored_ratio`가 기준 미만이거나, `take_scores.content_coverage`가 null이면(채점할 핵심 내용이 없음) `content_delivery`도 `NOT_EVALUABLE`이다(일부 장만 채점된 점수나 잴 내용이 없는 대본으로 강점이라 하지 않게). `user_criteria.script_used`가 true면 대본 응시를 문제로 보지 않는다.
+1. **판단 가능 여부**: 차원에 속한 영역의 측정 비율이 기준 미만이면 그 차원은 `NOT_EVALUABLE`이고 문제로도 강점으로도 말하지 않는다. `script_coverage`가 null이거나, 채점된 장 비율 `scored_ratio`가 기준 미만이거나, `take_scores.content_coverage`가 null이면(채점할 핵심 내용이 없음) `content_delivery`도 `NOT_EVALUABLE`이다(일부 장만 채점된 점수나 잴 내용이 없는 대본으로 강점이라 하지 않게). `user_criteria.script_used`가 true면 `script_independence`는 `NOT_EVALUABLE`이다(대본 응시를 문제로도 강점으로도 보지 않는다).
    - 측정 비율 기준은 리뷰가 따로 두지 않고 Take 결과의 `areas.<영역>.unmeasured_reason`(코치가 기준 미만이면 `LOW_MEASURED_RATIO`)을 따른다. 영역이 여럿인 차원(`pacing_rhythm`)은 모든 영역이 판단 불가일 때만 `NOT_EVALUABLE`이고, 일부만 판단 불가면 잰 영역으로만 본다. `script_used`가 true면 `GAZE_ON_SCRIPT` 구간을 부담에서도 뺀다. Take 전체의 내용 미션 · 사용자 기준도 `script_coverage`가 null이거나 `scored_ratio`가 기준 미만이면 `NOT_EVALUABLE`로 둔다(장 미션은 그 장의 채점 성공 여부와 관측값으로 판정).
 2. **미션 판정**: 미션 목표의 지표를 지표 이름으로 찾아(Take 결과의 영역 값, 대본 전달도 지표는 `script_coverage.take_scores`, 장 미션이면 장 값 — Take 결과 `areas.<영역>.slides[].metrics` · 대본 전달도 `evaluations[].scores`) 비교한다. 목표 달성 `ACHIEVED`, 못 미친 정도가 허용치 이내면 `PARTIAL`, 그 밖은 `FAILED`. 그 영역(장 미션이면 그 장)의 측정 비율이 기준 미만이거나, 관측값이 null이거나, 그 장의 대본 전달도 채점이 실패했으면(`failed`) `NOT_EVALUABLE`. 허용치는 지표마다 정하고, 개수 지표는 허용치를 두지 않는다.
 3. **사용자 기준**: `user_criteria.targets`를 미션처럼(Take 값으로) 판정해 `criteria_results`에 싣는다. 숫자 목표가 없는 기준은 판정하지 않는다. 범위 목표(같은 `display`에 목표 둘)는 둘 다 판정해 싣는다.
 4. **문제 부담**: 믿을 수 있는(`reliable`) 문제 구간마다 `mean_severity × (end_ms − start_ms) ÷ 1000`을 5-3 표에 따라 차원별로 더한다. 대본 전달도는 `missing` · `contradicted` 핵심 내용을 중요도별로 정해진 부담으로 바꿔 더하고, `sound_alike` · `unverified`는 세지 않는다(STT가 잘못 적었을 수 있어서). 반복 문제(`previous_recurring_issues`의 `dimension`) · 코치가 포기한 문제(`gave_up`, 문제 이름으로 차원을 찾음) · 미션을 이루지 못한 차원은 부담을 키운다(배율은 `config.py`). 핵심 수치가 틀린(`mismatched`) 경우를 넣을지는 아직 정하지 않았다(15절 열린 질문).
-5. **차원 상태**: 부담이 정해진 값 이상인 차원 중 부담이 큰 상위 차원(정해진 개수, 부담이 같으면 5-3 차원 표에 적힌 순서) `PRIORITY` → `previous_recurring_issues`에 `dimension`으로 있던 차원이 이번에 문제가 아니거나, 미션을 이루고 문제가 없으면 `IMPROVED` → 문제가 없으면 `STRENGTH` → 그 밖은 `STABLE`. 순위는 장별이 아니라 차원 합계로 매긴다(장마다 나누면 1순위가 흔들린다). "문제가 없음"은 부담이 0인 것으로 본다.
+5. **차원 상태**: 부담이 정해진 값 이상인 차원 중 부담이 큰 상위 차원(정해진 개수, 부담이 같으면 5-3 차원 표에 적힌 순서) `PRIORITY` → `previous_recurring_issues`에 `dimension`으로 있던 차원의 부담이 이번에 `PRIORITY`의 정해진 값 미만이거나, 미션을 이루고 문제가 없으면 `IMPROVED` → 문제가 없으면 `STRENGTH` → 그 밖은 `STABLE`. 반복 차원의 부담이 정해진 값 이상인데 개수 상한으로 `PRIORITY`에 들지 못하면 여전히 문제라 `STABLE`이다. 순위는 장별이 아니라 차원 합계로 매긴다(장마다 나누면 1순위가 흔들린다). "문제가 없음"은 부담이 0인 것으로 본다.
 6. **이전 Take 비교**: 같은 지표의 이번 값과 이전 값, 좋아진 방향인지. 장 값끼리 비교하면 `slide_number`를 싣고, 한쪽 값이 없으면 비교하지 않는다. 대본 보기(`script_mode`)가 다른 Take끼리는 그 차이를 `script_mode` `{previous, current}`로 함께 싣는다. 비교 대상은 바로 앞 Take(`previous_takes[0]`)이고, 지표의 좋은 방향은 `config.py`의 표로 정한다. 비율 · 개수는 한 방향이고, 범위가 좋은 지표는 각 Take의 값이 그 Take의 기준에 가까워졌는지로 본다: `cpm`은 Take 결과 `criteria`의 기준 범위, Take `duration_ms`는 Take 결과 `plan`의 `min_ms` ~ `max_ms`(없으면 `target_ms`), 장 `slide_duration_ms`는 그 장의 `target_ms`(`coach-agent.md` 5-3). 기준이 없으면 `improved`는 null이다.
-7. **다음 미션 후보**: 사용자 기준이 `FAILED`인 지표는 규칙 단계가 다음 미션으로 먼저 정한다(사용자가 직접 정한 목표라서. LLM은 이것을 빼거나 순서를 바꾸지 못한다). 이어서 `PRIORITY` 차원마다 후보를 하나씩 만든다. 후보는 그 차원에서 부담이 가장 큰 영역의, 부담이 가장 큰 문제로 만들고(동률이면 5-3 차원 표에 적힌 순서), 지표와 비교 방향은 `config.py`의 문제별 미션 지표 표로 정한다(예: `GAZE_ON_SCRIPT` → `script_ratio` `LTE`, `PACE_SLOW` → `cpm` `GTE`, 내용 전달 → `content_coverage` `GTE`). 목표는 지금 값에서 지표별로 정해진 폭만큼 나아진 값이고, 지표별 최종 목표를 넘지 않는다. `PRIORITY` 후보는 고른 영역의 부담이 한 장에 정해진 비율 넘게 몰리면 장 미션, 아니면 Take 미션이고, 시간 · 내용 후보는 늘 장 미션이다. 장 미션의 장은 고른 영역에서 부담이 가장 큰 장(동률이면 작은 장 번호)이고, 장 번호가 있는 부담이 없으면(장 계획이 없는 Take의 시간 문제 등) Take 미션이다. 실패한 사용자 목표에서 나온 미션은 사용자 기준을 Take 값으로 판정하므로 Take 미션(`slide_number` null)이다. 개수 상한까지(20개 이하): 실패한 사용자 목표는 모두 넣고(사용자 목표가 20개 이하이므로 다 들어간다), `PRIORITY` 후보는 `config.py`의 개수까지 채우되 합이 20을 넘지 않게 한다.
-8. **반복 문제**: `PRIORITY` 차원마다 `{area, slide_number, dimension}` 하나를 `recurring_issues`로 낸다. `dimension`은 그 차원 이름이고, `area` · `slide_number`는 그 차원의 7번 후보와 같다(부담이 가장 큰 영역, 장 미션이면 그 장 · Take 미션이면 null). 그 후보가 개수 상한으로 다음 미션에서 빠져도 반복 문제는 낸다. 다음 리뷰는 `dimension`으로 반복된 차원을 찾고(4 · 5번), 다음 Take의 코칭 계획 · 코치는 `area` · `slide_number`를 쓴다.
+7. **다음 미션 후보**: 사용자 기준이 `FAILED`인 지표는 규칙 단계가 다음 미션으로 먼저 정한다(사용자가 직접 정한 목표라서. LLM은 이것을 빼거나 순서를 바꾸지 못한다). 이어서 `PRIORITY` 차원마다 후보를 하나씩 만든다. 후보는 그 차원에서 부담이 가장 큰 영역의, 부담이 가장 큰 문제로 만들고(동률이면 5-3 차원 표에 적힌 순서), 지표와 비교 방향은 `config.py`의 문제별 미션 지표 표로 정한다(예: `GAZE_ON_SCRIPT` → `script_ratio` `LTE`, `PACE_SLOW` → `cpm` `GTE`, 내용 전달 → `content_coverage` `GTE`). 목표는 지금 값에서 지표별로 정해진 폭만큼 나아진 값이고, 최종 목표를 넘지 않는다. 최종 목표는 지표별 값이고, 기준이 Take마다 다른 지표는 그 Take의 기준이다: `cpm`은 Take 결과 `criteria`의 `PACE_FAST`(`LTE`) · `PACE_SLOW`(`GTE`) 기준값, 장 `slide_duration_ms`는 그 장의 `target_ms`, Take `duration_ms`는 `plan.max_ms`. 최종 목표를 정할 기준이 없거나 지금 값이 이미 최종 목표면 후보를 만들지 않는다. `PRIORITY` 후보는 고른 문제의 부담이 한 장에 정해진 비율 넘게 몰리면 장 미션, 아니면 Take 미션이다. 시간 · 내용 후보는 늘 장 미션이고, Take 전체의 시간 초과(`TIME_OVER`)만 Take 미션(`duration_ms`)이다(그 구간의 장은 시간을 넘긴 순간에 보던 장일 뿐이라서). 장 미션의 장은 고른 문제에서 부담이 가장 큰 장(동률이면 작은 장 번호)이고(같은 영역의 다른 문제 부담이 섞여 엉뚱한 장을 고르지 않게), 장 번호가 있는 부담이 없으면 Take 미션이다. 장 값 지표(`slide_duration_ms`)라 Take 미션을 만들 수 없으면 후보를 만들지 않는다. 실패한 사용자 목표에서 나온 미션은 사용자 기준을 Take 값으로 판정하므로 Take 미션(`slide_number` null)이다. 개수 상한까지(20개 이하): 실패한 사용자 목표는 모두 넣고(사용자 목표가 20개 이하이므로 다 들어간다), `PRIORITY` 후보는 `config.py`의 개수까지 채우되 합이 20을 넘지 않게 한다.
+8. **반복 문제**: `PRIORITY` 차원마다 `{area, slide_number, dimension}` 하나를 `recurring_issues`로 낸다. `dimension`은 그 차원 이름이고, `area` · `slide_number`는 그 차원의 7번 후보와 같다(부담이 가장 큰 영역, 장 미션이면 그 장 · Take 미션이면 null). 그 후보가 개수 상한으로 다음 미션에서 빠지거나 목표를 만들 수 없어 만들어지지 않아도 반복 문제는 낸다. 다음 리뷰는 `dimension`으로 반복된 차원을 찾고(4 · 5번), 다음 Take의 코칭 계획 · 코치는 `area` · `slide_number`를 쓴다.
 9. **점수**: 차원 상태를 점수로 바꿔(`STRENGTH`가 가장 높고 `IMPROVED` · `STABLE` · `PRIORITY` 순) `NOT_EVALUABLE`을 뺀 평균을 정수로 반올림한다(0–100). 모든 차원이 `NOT_EVALUABLE`이면 null이다.
 
 ## 6-2. LLM 단계 (1번)
@@ -225,6 +235,10 @@ ai/research/review-agent/
 - **규칙**: 대본 전달도는 점수보다 장별 판정 · 근거로 말한다(같은 입력에서도 장 점수가 흔들린다). 사용자 기준이 `FAILED`인 다음 미션은 늘 앞에 둔다(코드가 다시 맞춘다). `description`은 500자에서 자른다.
 - **숫자 검사**: 코드가 문장마다 숫자를 규칙 단계 결과 · 근거 숫자와 대조한다. 숫자 뽑기와 예시 표는 `architecture.md` 0-2를 따른다. 같은 값으로 보는 표기는 ① 비율과 퍼센트(0.62 ↔ 62% ↔ 62퍼센트. 단위 없는 62는 같은 값이 아니다) ② 시간 ms ↔ 초 ↔ 분(88000 ↔ 88초 ↔ 1분 28초. 이어 쓴 "N분 M초"는 한 값이다) ③ 보여 준 자리까지 반올림한 값(0.6248 ↔ 0.62 ↔ 62%) ④ 정수 개수 · 점수는 그대로이고, ⑤ 음수는 크기로 본다(`voice_diff_db` −1.5 ↔ "1.5dB 작게". "작게 · 줄었다" 같은 방향 말은 검사하지 않는다). 장 번호 · Take 번호 · 날짜는 입력에 있으면 입력에 있는 숫자로 본다. 한글로 쓴 수("세 번")는 검사하지 않으므로 프롬프트가 숫자를 아라비아 숫자로 쓰게 한다(`architecture.md` 0-2를 구체화한 것). 없는 숫자가 든 문장은 규칙 단계의 기본 문장으로 바꾼다. 문장 단위로 바꾸므로 `fallback_reason`은 달지 않고 바꾼 문장 수를 로그에 남긴다.
 - **실패**: LLM이 없거나 실패하면 기본 문장과 규칙 단계 결과(다음 미션은 후보 상위)를 200으로 돌려주고 `fallback_reason`을 단다.
+- **강점 · 개선점의 `area` · `evidence`**: 규칙 단계가 후보마다 정하고, 기본 문장과 LLM 문장이 같이 쓴다. 측정 비율이 기준 미만인 영역(6-1 1번)은 고르지 않는다. 지표는 그 차원의 다음 미션 지표 → 5-3 차원 표의 지표 순으로 보고, 값이 있는 첫 지표를 `evidence`에 싣는다.
+  - 강점: 잰 영역 어디서든 찾고, 찾은 지표의 영역이 `area`다(예: SPEED · PAUSE를 못 잰 Take의 `pacing_rhythm` 강점 → `TIME`, `duration_ms`).
+  - 개선점: `area`는 그 차원에서 부담이 가장 큰 영역(6-1 8번과 같다)이고, 근거도 그 영역의 지표다. 장 개선점이면 그 장 값을 먼저 찾고 없으면 Take 값을 쓴다(예: 3번 장 `SLIDE_OVER` → `slide_duration_ms`).
+  - 근거 지표를 찾지 못하면 `evidence`는 `{}`다.
 
 # 7. 실패할 때
 | 상황 | 동작 | 응답 | 이유 |
