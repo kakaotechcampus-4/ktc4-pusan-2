@@ -26,7 +26,7 @@ export function TakesPage() {
 
   if (!rows)
     return (
-      <InfoPage title="Take 기록">
+      <InfoPage title="Take 기록" logo={false}>
         <QueryState query={history} />
       </InfoPage>
     );
@@ -36,7 +36,7 @@ export function TakesPage() {
   const shown = pitch === ALL ? rows : rows.filter((t) => t.pitch_id === pitch);
 
   return (
-    <InfoPage title="Take 기록">
+    <InfoPage title="Take 기록" logo={false}>
       {rows.length === 0 ? (
         <Card>
           <Mascot who="chichi">아직 연습 기록이 없어. 첫 Take를 시작해 보자!</Mascot>
