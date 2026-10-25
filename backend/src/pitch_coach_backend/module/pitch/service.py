@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from collections import defaultdict
@@ -6,10 +7,8 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
-import httpx2
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.dto import (
     HighlightDTO,
     NewerScriptDTO,
@@ -32,7 +31,6 @@ from pitch_coach_backend.module.pitch.dto import (
     ScriptParseErrorCode,
     ScriptSlideDTO,
     StandardAIResponseDTO,
-    StandardParseResponseDTO,
     StandardTextDTO,
     StandardTextResponseDTO,
     UploadPresentationResultDTO,
@@ -48,19 +46,19 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptRubricStatus,
     ScriptSlide,
     ScriptVersion,
+    StandardAnalyses,
     Standards,
 )
 from pitch_coach_backend.module.pitch.exception import (
     InvalidPresentation,
     InvalidScript,
+    NonExistentEvaluation,
     NonExistentPitch,
     NonExistentPresentationVersion,
     NonExistentScript,
     ScriptAlreadyParsed,
     ScriptParseInProgress,
     ScriptReuploadRequired,
-    StandardInputRejected,
-    StandardParseFailed,
 )
 from pitch_coach_backend.module.pitch.presentation_file import (
     MAX_PRESENTATION_BYTES,
@@ -74,14 +72,13 @@ from pitch_coach_backend.module.pitch.s3_service import (
     upload,
 )
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
+from pitch_coach_backend.module.pitch.standard_parser import parse_standard_text
 from pitch_coach_backend.module.take.coach_repository import CoachRepository
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from pitch_coach_backend.module.take.repository import TakeRepository
 
 logger = logging.getLogger(__name__)
 
-# 평가 기준 나누기는 LLM 한 번 호출이라 기본값(5초)으로는 모자라다. 대본 파싱과 같은 값
-STANDARD_PARSE_TIMEOUT = httpx2.Timeout(30.0, connect=5.0)
 
 # 대본 한 편의 글자 수 상한. 1시간 발표도 2만 자 안팎이라 넉넉하고, LLM 한 번에 넣을 수 있는 크기다
 MAX_SCRIPT_CHARS = 50_000
@@ -765,63 +762,66 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
     )
 
 def add_pitch_standard_service(
-        db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO):
-    # AI 를 먼저 부르고 잠금은 그 뒤에 잡는다 — LLM 을 기다리는 동안 pitch 행을 쥐고 있지 않게
+    db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO
+):
+    # 인가 조회가 빌린 커넥션부터 반환한다. AI 응답을 기다릴 때 DB 트랜잭션을 두지 않는다.
+    db.commit()
     standards_result = divide_standard_text(standard_text_dto)
 
     pitch_repository = PitchRepository(db)
-    pitch_repository.lock_for_new_version(pitch_id)
+    if not pitch_repository.lock_for_new_version(pitch_id):
+        raise NonExistentPitch()
     version = pitch_repository.next_standard_version(pitch_id)
-    for position, title in enumerate(standards_result.standards, start=1):
+    for position, title in enumerate(standards_result.display_criteria, start=1):
         pitch_repository.save_standard(
-            Standards(pitch_id=pitch_id, version=version, position=position, title=title)
+            Standards(
+                pitch_id=pitch_id, version=version, position=position, title=title
+            )
         )
+    pitch_repository.save_standard_analysis(
+        StandardAnalyses(
+            pitch_id=pitch_id,
+            version=version,
+            values=standards_result.values,
+            targets=standards_result.targets,
+            script_used=standards_result.values.get("script_used"),
+            excluded=standards_result.excluded or [],
+            meta=standards_result.meta,
+        )
+    )
     db.commit()
 
     return StandardTextResponseDTO(
-         pitch_id=pitch_id,
-         standards=[{"standard": standard} for standard in standards_result.standards],
-         except_standard=standards_result.except_standard
+        pitch_id=pitch_id,
+        standards=[
+            {"standard": standard} for standard in standards_result.display_criteria
+        ],
+        except_standard=", ".join(standards_result.excluded or []) or None,
     )
 
-def divide_standard_text(standard_text_dto: StandardTextDTO) -> StandardParseResponseDTO:
-    """평가 기준 텍스트를 AI 서버로 보내 항목으로 나눈다.
+def divide_standard_text(standard_text_dto: StandardTextDTO) -> StandardAIResponseDTO:
+    """동기 HTTP 작업 스레드에서 전체 시간 제한이 있는 AI 어댑터를 부른다."""
+    return asyncio.run(parse_standard_text(standard_text_dto.standard_text))
 
-    AI 응답(ai/research/evaluation-criteria 의 스키마)에서 display_criteria 를 항목으로,
-    excluded(기준으로 쓰지 못한 항목 이름 목록)를 쉼표로 이어 except_standard 로 쓴다.
-    AI 가 실패하거나 응답 모양이 다르면 StandardParseFailed(502).
-    """
-    try:
-        with httpx2.Client(timeout=STANDARD_PARSE_TIMEOUT) as client:
-            response = client.post(
-                f"{settings.ai_base_url}/evaluation-criteria/parse",
-                json={"standard_text": standard_text_dto.standard_text}
-            )
-            if response.status_code == 422:
-                raise StandardInputRejected()
-            response.raise_for_status()
-            result = StandardAIResponseDTO.model_validate(response.json())
-
-        return StandardParseResponseDTO(
-            standards=result.display_criteria,
-            except_standard=", ".join(result.excluded or []) or None,
-        )
-    # ValueError: JSON 이 아님·pydantic 검증 실패, KeyError·TypeError: 응답 모양이 다름
-    except (httpx2.HTTPError, ValueError, KeyError, TypeError) as e:
-        raise StandardParseFailed() from e
 
 def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: int):
     pitch_repository = PitchRepository(db)
-    standards = pitch_repository.get_evaluations_by_version(pitch_id, evaluation_version)
+    standards = pitch_repository.get_evaluations_by_version(
+        pitch_id, evaluation_version
+    )
+    if (
+        not standards
+        and pitch_repository.get_standard_analysis(pitch_id, evaluation_version) is None
+    ):
+        raise NonExistentEvaluation()
 
     return {
         "pitch_id": pitch_id,
         "evaluation_version": evaluation_version,
-        "evaluations":
-        [{
-            "order": standards[s].position,
-            "standard": standards[s].title
-        } for s in range(len(standards))],
+        "evaluations": [
+            {"order": standards[s].position, "standard": standards[s].title}
+            for s in range(len(standards))
+        ],
     }
 
 
