@@ -208,7 +208,7 @@ export function PitchCreateDraft() {
         '버전은 지금 규칙 그대로예요 — 슬라이드 · 대본 · 평가기준이 각자 쌓이고, 저장한 버전은 고치지 않고 새 버전을 만들어요. 사이드바에서 갈래를 저장하기 전에는 이름만 보이고, 저장하면 그 아래에 V1과 "+ 새 버전"이 나타나요. 대본의 "+ 새 버전"을 누르면 시안 상태 5가 돼요. "+ 새 버전"은 사이드바에만 둬요.',
       ]}
     >
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-line-strong bg-greige">
+      <div className="pitch-create-square flex min-h-0 flex-1 overflow-hidden border border-line-strong bg-greige">
         <aside className="flex w-sidebar shrink-0 flex-col gap-4 overflow-y-auto border-r border-line-strong bg-cream/60 p-4">
           <Rail
             step={step}
