@@ -28,6 +28,54 @@ const SENTENCES = [
   '다음 슬라이드에서 실제 화면을 보여 드리겠습니다',
 ];
 
+/**
+ * AI 코치 흉내. 실서버는 FE `metrics` 를 받을 때마다 AI 코치를 부르고, 말을 걸 때와 상태 표시가
+ * 바뀔 때만 `coach` 를 보냅니다. 여기서는 오디오 프레임 수로 시간을 세서 비슷한 간격으로 보냅니다 —
+ * 화면이 한마디(8초)와 상태 표시를 어떻게 그리는지 보려는 것입니다. 판단을 흉내 내지 않습니다.
+ */
+const INDICATORS_EVERY_FRAMES = 50;
+const INTERVENE_EVERY_FRAMES = 150;
+
+const INDICATOR_STEPS: Record<string, string>[] = [
+  {
+    GAZE: 'AUDIENCE',
+    SPEED: 'NORMAL',
+    VOLUME: 'NORMAL',
+    PAUSE: 'NORMAL',
+    FILLER: 'NORMAL',
+    TIME: 'ON_TRACK',
+  },
+  { GAZE: 'SCRIPT' },
+  { SPEED: 'FAST', TIME: 'AHEAD' },
+  { GAZE: 'AUDIENCE', SPEED: 'NORMAL' },
+  { FILLER: 'HIGH' },
+  { FILLER: 'NORMAL', TIME: 'ON_TRACK' },
+];
+
+/**
+ * AI 코치 문구 템플릿 그대로입니다 (`ai/research/coach-agent/src/coach/config.py`, coach-1.2).
+ * `{remaining_slides}` 같은 자리는 그럴듯한 값으로 채웠습니다. 길이 · 말투를 실제와 같게 보려는 것입니다
+ */
+const FEEDBACKS = [
+  { area: 'GAZE', instruction: 'LOOK_AT_CAMERA', message: '대본보다 청중을 조금 더 바라보세요' },
+  { area: 'SPEED', instruction: 'SLOW_DOWN', message: '문장 끝에서 한 박자 쉬고 이어가 보세요' },
+  { area: 'FILLER', instruction: 'REDUCE_FILLER', message: "'음' 대신 잠시 호흡하고 이어가세요" },
+  { area: 'GAZE', instruction: 'CONTINUE', message: '좋아요, 지금처럼 이어가세요' },
+  {
+    area: 'VOLUME',
+    instruction: 'SPEAK_LOUDER',
+    message: '뒷자리 청중에게 말한다고 생각하고 소리를 키워 보세요',
+  },
+  { area: 'TIME', instruction: 'SPEED_UP', message: '조금만 빠르게 — 남은 4장, 1분 30초' },
+  {
+    area: 'TIME',
+    instruction: 'MOVE_ON',
+    message: '이 장은 목표보다 25초 넘었어요 — 정리하고 다음 장으로',
+  },
+  { area: 'PAUSE', instruction: 'RESUME', message: '다음 문장으로 이어가 보세요' },
+  { area: 'TIME', instruction: 'WRAP_UP', message: '남은 시간이 짧으니 결론으로 넘어가세요' },
+];
+
 function words(text: string, startMs: number, endMs: number) {
   const chunks = text.split(' ');
   const step = Math.max(1, Math.floor((endMs - startMs) / chunks.length));
@@ -74,6 +122,24 @@ export const sttHandlers = [
       // 오디오 프레임입니다. 서버가 하는 일(누적·전사)만 흉내 냅니다
       if (typeof event.data !== 'string') {
         frames += 1;
+
+        const tMs = frames * 100;
+        if (frames % INDICATORS_EVERY_FRAMES === 0) {
+          const step = frames / INDICATORS_EVERY_FRAMES - 1;
+          const feedback =
+            frames % INTERVENE_EVERY_FRAMES === 0
+              ? FEEDBACKS[(frames / INTERVENE_EVERY_FRAMES - 1) % FEEDBACKS.length]!
+              : null;
+          client.send(
+            JSON.stringify({
+              type: 'coach',
+              t_ms: tMs,
+              action: feedback ? 'INTERVENE' : 'WAIT',
+              feedback: feedback && { ...feedback, priority: 70, confidence: 0.85 },
+              indicators: INDICATOR_STEPS[step % INDICATOR_STEPS.length],
+            }),
+          );
+        }
 
         const sentence = SENTENCES[segment % SENTENCES.length]!;
         const startMs = segment * FINAL_EVERY_FRAMES * 100;

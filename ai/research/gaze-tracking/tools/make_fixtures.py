@@ -27,15 +27,7 @@ from scipy.special import log_ndtr
 from gaze_lab.calibration.gauge import CalibrationGauge
 from gaze_lab.calibration.references import ReferenceAnchorClassifier, soft_box_log_density
 from gaze_lab.config import load_config
-from gaze_lab.evidence.gaze import (
-    GazeFrame,
-    GazeSlicer,
-    GazeTimeline,
-    compare_summaries,
-    evaluate_gaze,
-    intervention_outcome,
-    take_summary,
-)
+from gaze_lab.evidence.gaze import GazeFrame, GazeSlicer
 from gaze_lab.preprocess.crops import (
     eye_aspect_ratio,
     face_bbox_from_landmarks,
@@ -59,10 +51,6 @@ from gaze_lab.schemas import (
 )
 
 OUT = PROJECT / "web" / "src" / "engine" / "__tests__" / "fixtures" / "parity.json"
-#: What the server core makes of the 1 s records, for the demo page's preview copy
-#: (web/src/demo/evidence-preview.ts).  Kept out of the engine's fixture because
-#: that logic is not part of the engine.
-OUT_PREVIEW = PROJECT / "web" / "test" / "fixtures" / "evidence.json"
 CFG = load_config()
 RNG = np.random.default_rng(20261003)
 
@@ -492,7 +480,7 @@ def gauge_extend_sequence() -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# agent evidence (slices, windows, coach issues, review summary, outcome)
+# 1 s records (the engine slices frames; reading the records is the server's)
 # --------------------------------------------------------------------------
 
 
@@ -564,35 +552,14 @@ def evidence_cases() -> Dict[str, Any]:
     frames += evidence_frames(plan[2:], t0=t)
     t_end = frames[-1]["t_ms"] + 125
     samples = slice_frames(frames, cfg, t_end)
-    tl = GazeTimeline(samples)
-
-    end = tl.end_ms
-    probes = sorted({5000, 9000, 12500, 14800, 17000, 21000, 26000, 31000, 38000, 45000, 52000, 60000,
-                     66000, end - 1500, end})
-    stats = [{"t": p, "window": w, "out": tl.stats(p, w)} for p in probes for w in (cfg.short_window_ms,
-                                                                                   cfg.long_window_ms)]
-    issues = [{"t": p, "out": evaluate_gaze(tl, p, cfg)} for p in probes]
-    summary1 = take_summary(tl, cfg)
 
     take2_plan = [("CAMERA", 12, {"flip": 0.05}), ("BOTTOM", 4, {}), ("CAMERA", 14, {}),
                   ("OTHER", 2.5, {"dirs": ("UP",)}), ("CAMERA", 8, {})]
     frames2 = evidence_frames(take2_plan)
     samples2 = slice_frames(frames2, cfg, frames2[-1]["t_ms"] + 125)
-    summary2 = take_summary(GazeTimeline(samples2), cfg)
-
-    outcomes = []
-    for p, issue in [(12000, "GAZE_ON_SCRIPT"), (16500, "GAZE_AWAY"), (26500, "GAZE_ON_SCREEN"),
-                     (52000, "GAZE_ON_SCRIPT"), (60000, "GAZE_LOW_EYE_CONTACT"), (end - 3000, "GAZE_ON_SCRIPT"),
-                     (4000, "GAZE_LOW_EYE_CONTACT")]:
-        outcomes.append({"t": p, "issue": issue, "out": intervention_outcome(tl, p, issue, cfg)})
     return {
         "frames": frames, "t_end": t_end, "samples": [s.to_dict() for s in samples],
-        "runs": [r.to_dict() for r in tl.runs()], "stats": stats, "issues": issues,
-        "summary": summary1,
-        "take2": {"frames": frames2, "samples": [s.to_dict() for s in samples2], "summary": summary2},
-        "compare": compare_summaries(summary2, summary1),
-        "compare_empty": compare_summaries(take_summary(GazeTimeline(), cfg), summary1),
-        "outcomes": outcomes,
+        "take2": {"frames": frames2, "samples": [s.to_dict() for s in samples2]},
     }
 
 
@@ -688,7 +655,7 @@ def gate_sequences() -> List[Dict[str, Any]]:
 
 
 def build() -> Dict[str, Dict[str, Any]]:
-    """Every fixture, JSON-safe, by output file: ``parity`` (engine) and ``evidence`` (preview).
+    """Every fixture, JSON-safe, by output file: ``parity`` (the engine's).
 
     Deterministic only from a fresh RNG: the generator is seeded once at import
     and every case draws from it in order, so call this once per import.
@@ -711,31 +678,14 @@ def build() -> Dict[str, Dict[str, Any]]:
         "sweep": sweep_sequences(),
         "gate": gate_sequences(),
     })
-    ev = full["evidence"]
-    # The engine slices frames into 1 s records; reading the records is the server's.
-    full["evidence"] = {
-        "frames": ev["frames"], "t_end": ev["t_end"], "samples": ev["samples"],
-        "take2": {"frames": ev["take2"]["frames"], "samples": ev["take2"]["samples"]},
-    }
-    preview = {
-        "_generated_by": full["_generated_by"],
-        "config_hash": full["config_hash"],
-        "evidence": {
-            "frames": ev["frames"], "t_end": ev["t_end"], "runs": ev["runs"], "stats": ev["stats"],
-            "issues": ev["issues"], "summary": ev["summary"],
-            "take2": {"frames": ev["take2"]["frames"], "summary": ev["take2"]["summary"]},
-            "compare": ev["compare"], "compare_empty": ev["compare_empty"], "outcomes": ev["outcomes"],
-        },
-    }
-    return {"parity": full, "evidence": preview}
+    return {"parity": full}
 
 
 def main() -> None:
     built = build()
-    for out, data in ((OUT, built["parity"]), (OUT_PREVIEW, built["evidence"])):
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-        print(f"wrote {out} ({out.stat().st_size // 1024} KB)")
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps(built["parity"], ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    print(f"wrote {OUT} ({OUT.stat().st_size // 1024} KB)")
 
 
 if __name__ == "__main__":

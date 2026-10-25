@@ -1,8 +1,9 @@
 import type { ScriptMode, TakeStatus } from './api';
 
 /**
- * Take 목록 — `GET /api/takes/` (`?pitch_id=` 로 한 피치만). **BE 에 아직 없는 API 입니다 (FE 제안).**
+ * Take 목록 — `GET /api/takes/` (`?pitch_id=` 로 한 피치만, BE #398).
  * Take 기록(P16) · Take 비교(P7)가 같은 응답을 씁니다. 최신 Take 가 앞입니다.
+ * 시작하지 않은 Take(장치 점검에서 버린 것)는 오지 않고, 남의 · 없는 피치의 `pitch_id` 는 404 입니다.
  *
  * BE 그대로 snake_case 입니다. 지표 이름은 AI 지표(`docs/ai/architecture.md` 6-3)에 맞췄습니다.
  * 측정 못 한 값은 0이 아니라 null 입니다 (CLAUDE.md 6번).
@@ -16,7 +17,8 @@ export interface TakeHistoryRow {
   started_at: string;
   status: TakeStatus;
   script_mode: ScriptMode;
-  duration_ms: number;
+  /** 발표 중이거나 분석에 실패해 발표 시간을 모르면 null (0초가 아닙니다) */
+  duration_ms: number | null;
   goal_ms: number;
   audience_ratio: number | null;
   script_ratio: number | null;

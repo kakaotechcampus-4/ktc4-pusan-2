@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -17,6 +18,7 @@ from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
+from pitch_coach_backend.module.pitch.dependencies import resume_script_rubrics
 from pitch_coach_backend.module.take.controller import router as take_router
 from pitch_coach_backend.module.take.controller import takes_router
 from pitch_coach_backend.module.take.ready_sweep import start as start_ready_sweep
@@ -52,7 +54,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop_coach_background = await start_coach_background(get_coach_client(), get_coach_store())
     # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
     stop_ready_sweep = start_ready_sweep()
+    # 평가 기준 작업도 메모리에서 돌다 사라졌다. PENDING 으로 남은 버전을 이어 간다.
+    # AI 를 길게 기다리므로 앱이 뜨는 것을 막지 않게 따로 띄운다
+    rubric_resume = asyncio.create_task(resume_script_rubrics(), name="resume-script-rubrics")
     yield
+    rubric_resume.cancel()
+    # 끊긴 작업은 PENDING 으로 남아 다음에 뜰 때 이어받는다
+    await asyncio.gather(rubric_resume, return_exceptions=True)
     # 실시간 STT 스트림은 WebSocket 요청 밖에서 도는 백그라운드 태스크다.
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.
     await stop_all_streams()

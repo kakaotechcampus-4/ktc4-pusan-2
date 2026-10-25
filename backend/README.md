@@ -83,9 +83,20 @@ backend/
 │   ├── test_realtime_auto_end.py # 말 없음 판단과 자동 종료 조건 (숫자만)
 │   ├── test_coach_client.py      # 코치 AI 호출: 응답 읽기·재시도·409·동시 개수 (AI 예시 파일을 읽는다)
 │   ├── test_coach_requests.py    # 코치 요청 만들기: 시간 계획·창·장·replay·코칭 계획
-│   ├── test_coach_session.py     # 발표 중 코치 · Take 결과 · 계획 실행부 (AI · 저장소는 가짜)
-│   ├── test_coach_storage.py     # 코치 저장 규칙: Take 시작 때 고정 · 이벤트 · Take 결과 · 계획 · 보관
-│   ├── test_coach_triggers.py    # 코칭 계획을 부르는 때 · 원자료 사용 동의 API
+│   ├── test_coach_session.py           # 발표 중 판단 · 상태 · 이벤트 처리 (AI · 저장소는 가짜)
+│   ├── test_coach_finalize.py          # 종료 뒤 Take 결과 생성 · 실패 · 재시작 복구 (가짜)
+│   ├── test_coach_planner.py           # 코칭 계획 요청 · 중복 방지 · 실패 처리 (가짜)
+│   ├── test_coach_retention.py         # 원자료 정리 주기 작업 · 오류 복구 (가짜)
+│   ├── test_coach_tasks.py             # 백그라운드 작업 보관 · 종료 · 실패 로그
+│   ├── test_coach_start_storage.py     # 시작 때 미션 · 평가 기준 · 동의 고정, 리뷰 진입 조건
+│   ├── test_coach_inputs_storage.py    # 장 변경 · 문장 끝 신호 · 종료 상태 저장
+│   ├── test_coach_context_storage.py   # 저장 자료로 코치 입력 복원 · 이벤트 순서 · 중복 제거
+│   ├── test_coach_finalize_storage.py  # Take 결과 · 요약 · 종료 상태의 원자적 저장
+│   ├── test_coach_planner_storage.py   # 코칭 계획 저장 · 바탕 값과 요청 시각에 따른 선택
+│   ├── test_coach_retention_storage.py # 동의 없는 실패 Take의 7일 지난 원자료 삭제
+│   ├── test_coach_triggers.py          # 대본 파싱 · 시간 변경 · 리뷰 뒤 코칭 계획 요청
+│   ├── test_coach_consent.py           # 원자료 사용 동의 조회 · 변경 API
+│   ├── test_presentation_date.py       # 발표자료 상세의 한국 날짜 · 자정과 09시 경계
 │   ├── test_realtime_coach.py    # WS 흐름 전체: metrics → evaluate → coach, stop → finalize
 │   └── test_<domain>.py          # 도메인이 늘면 같은 이름 규칙으로
 │
@@ -243,6 +254,11 @@ POST /api/auth/logout           현재 세션 폐기
   프론트는 `csrf_token` 쿠키를 읽어 `X-CSRF-Token` 헤더에 실어야 한다.
 - 구글이 준 토큰은 신원 확인에만 쓰고 **저장하지 않는다.** Google refresh token 은 요청하지 않는다.
 
+OAuth 요청의 `state`·`nonce`·PKCE verifier는 콜백까지 필요한 임시 값이라 Redis에 10분만 둔다
+(`module/auth/state_store.py`의 `STATE_TTL_SECONDS`). 사용자가 돌아오지 않으면 TTL로 자동 삭제된다.
+콜백에서는 `GETDEL` 한 번으로 읽기와 삭제를 원자적으로 처리해 같은 state의 중복 콜백 중 하나만
+소비할 수 있다. 조회와 삭제를 따로 하면 동시에 온 콜백 둘이 같은 값을 읽을 수 있다.
+
 로컬은 프론트(3000)와 백엔드(8000)가 cross-origin 이라 CORS 와 `credentials: 'include'` 가
 필요하다. 배포에서는 Caddy 가 같은 origin 으로 묶어 그 문제가 사라진다.
 자세한 흐름과 프론트 연동 코드는 `docs/oauth-architecture.md` 에 있다 (로컬 문서).
@@ -266,7 +282,7 @@ POST /api/auth/logout           현재 세션 폐기
 ## 연습 시작 (장치 점검 · Take 생성)
 
 ```
-GET  /api/pitches/{pitch_id}/prepare   이번 연습에 쓸 버전 · 다음 Take 번호 · 지난번 대본 표시 방식
+GET  /api/pitches/{pitch_id}/prepare   이번 연습에 쓸 버전 · 다음 Take 번호 · 지난번 대본 표시 방식 · 이번 Take 미션
 POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_version_id", "script_version_id", "client_session_id"?}
                                        → take_id · take_number
 ```
@@ -278,6 +294,9 @@ POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_ver
   발표자료를 주고, 응답의 `page_count` · `slide_count` 가 달라 FE 가 시작을 막는다.
 - `next_take_number` 는 미리 보여 주는 값이다. 그사이 다른 Take 가 생기면 달라져서 실제 번호는 Take 생성 응답의
   `take_number` 를 본다.
+- `missions` 는 Take 를 시작할 때 싣는 미션과 같은 기준으로 고른다. 리뷰가 끝난 Take 중 가장 늦게 끝난 Take 의
+  `ACTIVE` 미션을 리뷰가 읽는 순서로 주고, 그 Take 번호를 `source_take_number` 로 준다. 리뷰가 끝난 Take 가 없으면
+  `null`, 리뷰가 다음 미션을 내지 않았으면 `items` 가 빈 목록이다. 그사이 리뷰가 끝나면 시작할 때 다시 고른 미션이 실린다.
 - Take 생성은 파싱이 끝난 대본만 받는다 (아니면 `409 SCRIPT_NOT_PARSED`). 발표자료 쪽수와 대본 장 수가 다르면
   `409 SLIDE_COUNT_MISMATCH` 다 (쪽수를 모르는 옛 발표자료는 검사하지 않는다). 목표 시간은 받지 않고 발표 제한 시간을 박는다.
 - `client_session_id`(FE 의 연습 세션 id)가 같으면 새로 만들지 않고 처음 만든 Take 를 돌려준다. 응답을 잃고 다시

@@ -26,6 +26,7 @@ import asyncio
 import logging
 import re
 import ssl
+import uuid
 from dataclasses import dataclass
 from functools import cache
 from typing import Any, Literal, Protocol
@@ -53,8 +54,32 @@ DEFAULT_RETRY_DELAY_SEC = 1.0
 # 4xx 인데 다시 부르면 나을 수 있는 것: 408 Request Timeout, 429 Too Many Requests
 _RETRYABLE_CLIENT_STATUSES = frozenset({408, 429})
 _HIGHLIGHT_RE = re.compile(r"^(\d+):(\d+)$")
-# 로그에 AI 응답 본문을 남길 때의 상한. 사용자 대본이 되돌아올 수 있어 짧게 자른다
-_LOG_BODY_LIMIT = 200
+# 오류 본문에는 사용자 원문이 돌아올 수 있다. 계약에 있는 코드만 로그에 남긴다.
+_AI_ERROR_CODES = frozenset(
+    {
+        "VALIDATION_ERROR",
+        "NOT_FOUND",
+        "METHOD_NOT_ALLOWED",
+        "LLM_TIMEOUT",
+        "LLM_ERROR",
+        "LLM_INVALID_OUTPUT",
+        "LLM_UNAVAILABLE",
+        "NOT_READY",
+        "INTERNAL_ERROR",
+    }
+)
+
+
+def _error_code(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+    except ValueError:
+        return "UNKNOWN"
+    error = body.get("error") if isinstance(body, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    return code if isinstance(code, str) and code in _AI_ERROR_CODES else "UNKNOWN"
+
+
 # script_slides 의 slide_number · script_chars · expected_ms 는 PostgreSQL integer(int4).
 # 넘으면 저장에서 터지므로 받을 때 거절한다
 _PG_INTEGER_MAX = 2_147_483_647
@@ -100,11 +125,22 @@ class ParsedScript:
 
 
 class ScriptParseError(Exception):
-    # detail 은 로그용 메시지에만 들어간다 (FE 에는 code 만 나간다)
-    def __init__(self, code: ScriptParseErrorCode, detail: str, *, retryable: bool) -> None:
+    # detail은 진단용이며 로그에는 구조화된 상태·코드·요청 ID만 쓴다. FE에는 code만 나간다.
+    def __init__(
+        self,
+        code: ScriptParseErrorCode,
+        detail: str,
+        *,
+        retryable: bool,
+        status_code: int | None = None,
+        ai_error_code: str | None = None,
+    ) -> None:
         super().__init__(f"{code}: {detail}")
         self.code = code
         self.retryable = retryable
+        self.status_code = status_code
+        self.ai_error_code = ai_error_code
+        self.request_id: str | None = None
 
 
 class ScriptParser(Protocol):
@@ -255,27 +291,36 @@ class HttpScriptParser:
     async def parse(self, script_text: str, target_ms: int | None) -> ParsedScript:
         # target_ms 가 있으면 AI 가 장별 expected_ms 를 합이 이 값이 되게 나눈다
         payload = {"script_text": script_text, "target_ms": target_ms}
+        request_id = uuid.uuid4().hex
         for attempt in range(1, self._attempts + 1):
             try:
-                return await self._attempt(payload)
+                return await self._attempt(payload, request_id)
             except ScriptParseError as exc:
+                exc.request_id = request_id
                 if not exc.retryable or attempt == self._attempts:
                     raise
-                logger.warning("AI 대본 파싱 %d차 실패, 다시 시도: %s", attempt, exc)
+                logger.warning(
+                    "AI 대본 파싱 %d차 실패, 다시 시도 code=%s status=%s ai_code=%s request_id=%s",
+                    attempt,
+                    exc.code,
+                    exc.status_code,
+                    exc.ai_error_code,
+                    request_id,
+                )
                 await asyncio.sleep(self._retry_delay_sec)
         raise AssertionError("unreachable")  # attempts >= 1 이면 위에서 반드시 끝난다
 
-    async def _attempt(self, payload: dict[str, Any]) -> ParsedScript:
+    async def _attempt(self, payload: dict[str, Any], request_id: str) -> ParsedScript:
         """시도 한 번. 전체를 ATTEMPT_TIMEOUT_SEC 로 묶는다 (httpx 타임아웃은 단계별이라)."""
         try:
             async with asyncio.timeout(self._attempt_timeout_sec):
-                return await self._parse_once(payload)
+                return await self._parse_once(payload, request_id)
         except TimeoutError as exc:
             raise ScriptParseError(
                 ScriptParseErrorCode.AI_TIMEOUT, "시도 전체 시간 초과", retryable=True
             ) from exc
 
-    async def _parse_once(self, payload: dict[str, Any]) -> ParsedScript:
+    async def _parse_once(self, payload: dict[str, Any], request_id: str) -> ParsedScript:
         try:
             async with httpx.AsyncClient(
                 base_url=self._base_url,
@@ -283,7 +328,9 @@ class HttpScriptParser:
                 transport=self._transport,
                 verify=_ssl_context(),
             ) as client:
-                response = await client.post(PARSE_PATH, json=payload)
+                response = await client.post(
+                    PARSE_PATH, json=payload, headers={"X-Request-ID": request_id}
+                )
         except httpx.TimeoutException as exc:
             raise ScriptParseError(
                 ScriptParseErrorCode.AI_TIMEOUT, type(exc).__name__, retryable=True
@@ -296,13 +343,21 @@ class HttpScriptParser:
 
         status = response.status_code
         if status >= 400:
-            body = response.text[:_LOG_BODY_LIMIT]
+            code = _error_code(response)
             if status < 500 and status not in _RETRYABLE_CLIENT_STATUSES:
                 raise ScriptParseError(
-                    ScriptParseErrorCode.AI_REJECTED, f"{status} {body}", retryable=False
+                    ScriptParseErrorCode.AI_REJECTED,
+                    "AI 요청 거절",
+                    retryable=False,
+                    status_code=status,
+                    ai_error_code=code,
                 )
             raise ScriptParseError(
-                ScriptParseErrorCode.AI_ERROR, f"{status} {body}", retryable=True
+                ScriptParseErrorCode.AI_ERROR,
+                "AI 호출 실패",
+                retryable=True,
+                status_code=status,
+                ai_error_code=code,
             )
 
         try:

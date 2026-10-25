@@ -16,7 +16,10 @@ import pytest
 CORE = Path(__file__).resolve().parents[2] / "src" / "gaze"
 
 # 코어가 쓰는 것만 허용한다. 새로 필요하면 여기에 더하고, 그 이유를 리뷰에서 본다
-ALLOWED = {"__future__", "math", "dataclasses", "typing", "collections", "pydantic"}
+ALLOWED = {
+    "__future__", "bisect", "collections", "dataclasses", "hashlib", "json", "math", "typing",
+    "pydantic",
+}  # fmt: skip
 
 FILES = sorted(CORE.rglob("*.py"))
 

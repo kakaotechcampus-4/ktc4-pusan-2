@@ -38,8 +38,10 @@ EXAMPLES = Path(__file__).resolve().parents[2] / "ai/research/coach-agent/src/co
 
 META = {"schema_version": "1.0", "feature_version": "coach-1.2", "model": None}
 
+
 def example(name: str) -> dict[str, Any]:
     return json.loads((EXAMPLES / name).read_text(encoding="utf-8"))
+
 
 @pytest.fixture
 def user(db_session: Session) -> User:
@@ -47,6 +49,7 @@ def user(db_session: Session) -> User:
     db_session.add(user)
     db_session.flush()
     return user
+
 
 @pytest.fixture
 def pitch(db_session: Session, user: User) -> Pitch:
@@ -56,6 +59,7 @@ def pitch(db_session: Session, user: User) -> Pitch:
     db_session.add(pitch)
     db_session.flush()
     return pitch
+
 
 @pytest.fixture
 def script(db_session: Session, pitch: Pitch) -> ScriptVersion:
@@ -84,12 +88,14 @@ def script(db_session: Session, pitch: Pitch) -> ScriptVersion:
     db_session.flush()
     return script
 
+
 @pytest.fixture
 def presentation(db_session: Session, pitch: Pitch) -> PresentationVersion:
     presentation = PresentationVersion(pitch_id=pitch.id, version=1, file_key="deck.pdf")
     db_session.add(presentation)
     db_session.flush()
     return presentation
+
 
 def make_take(
     db: Session,
@@ -114,18 +120,22 @@ def make_take(
     db.flush()
     return take
 
+
 @pytest.fixture
 def take_parts(pitch: Pitch, script: ScriptVersion, presentation: PresentationVersion):
     return pitch, script, presentation
 
+
 def _event(event_id: str, t_ms: int, kind: str = "INTERVENTION") -> dict[str, Any]:
     return {"kind": kind, "event_id": event_id, "t_ms": t_ms, "evidence": {"start_ms": 0}}
+
 
 def finalize_reply(take: Take, *, duration_ms: int = 92_400) -> FinalizeReply:
     body = copy.deepcopy(example("finalize/response.json"))
     body["take_result"]["take_id"] = str(take.id)
     body["take_result"]["duration_ms"] = duration_ms
     return FinalizeReply.model_validate(body)
+
 
 def finalizing(db: Session, take: Take, *, consent: bool = False) -> Take:
     take.status = "ANALYZING"
@@ -138,6 +148,7 @@ def finalizing(db: Session, take: Take, *, consent: bool = False) -> Take:
     )
     db.flush()
     return take
+
 
 def test_take_result_is_saved_in_one_transaction(db_session: Session, take_parts):
     take = finalizing(db_session, make_take(db_session, *take_parts, 1))
@@ -173,6 +184,7 @@ def test_take_result_is_saved_in_one_transaction(db_session: Session, take_parts
         == []
     )
 
+
 def test_consented_take_keeps_the_raw_data(db_session: Session, take_parts):
     take = finalizing(db_session, make_take(db_session, *take_parts, 1), consent=True)
 
@@ -182,6 +194,7 @@ def test_consented_take_keeps_the_raw_data(db_session: Session, take_parts):
         select(TakeMetricSecond).where(TakeMetricSecond.take_id == take.id)
     ).all()
     assert len(rows) == 1
+
 
 def test_take_result_keeps_the_review_columns(db_session: Session, take_parts):
     take = finalizing(db_session, make_take(db_session, *take_parts, 1))
@@ -194,6 +207,7 @@ def test_take_result_keeps_the_review_columns(db_session: Session, take_parts):
     db_session.refresh(summary)
     assert (summary.summary, summary.score, summary.speak_accuracy) == ("리뷰", 80, 70)
     assert summary.average_cpm == 297.0
+
 
 @pytest.mark.parametrize(
     "status, stage",
@@ -216,6 +230,7 @@ def test_take_result_is_dropped_unless_the_take_waits_for_it(
         == []
     )
 
+
 def test_failed_finalize_marks_the_take_failed_and_keeps_the_raw_data(
     db_session: Session, take_parts
 ):
@@ -235,6 +250,7 @@ def test_failed_finalize_marks_the_take_failed_and_keeps_the_raw_data(
         == 1
     )
 
+
 def test_finalize_source_has_the_raw_data(db_session: Session, take_parts):
     take = finalizing(db_session, make_take(db_session, *take_parts, 1, utterance_ends=[900]))
     db_session.add(TakeSlideEvent(take_id=take.id, slide_number=2, started_ms=500))
@@ -249,11 +265,13 @@ def test_finalize_source_has_the_raw_data(db_session: Session, take_parts):
     assert source.context.slides == (SlideEvent(2, 500),)
     assert source.replay(1_000)["slides"] == [{"number": 2, "started_ms": 0}]
 
+
 def test_finalize_source_is_only_for_a_take_waiting_for_its_result(db_session: Session, take_parts):
     take = make_take(db_session, *take_parts, 1, status="RUNNING")
 
     assert coach_store.load_finalize_source(db_session, take.id) is None
     assert coach_store.load_finalize_source(db_session, uuid.uuid7()) is None
+
 
 def test_finalizing_takes_are_found_for_the_restart(db_session: Session, take_parts):
     waiting = finalizing(db_session, make_take(db_session, *take_parts, 1))
@@ -261,6 +279,7 @@ def test_finalizing_takes_are_found_for_the_restart(db_session: Session, take_pa
 
     assert waiting.id in coach_service.finalizing_takes(db_session)
     assert len([t for t in coach_service.finalizing_takes(db_session) if t == waiting.id]) == 1
+
 
 def test_only_takes_left_waiting_long_are_picked_up_again(db_session: Session, take_parts):
     """막 끝낸 Take 는 그 Take 의 finalize 가 곧 뜬다. 오래 남은 것만 다시 띄운다. 기다리기 시작한
@@ -278,6 +297,7 @@ def test_only_takes_left_waiting_long_are_picked_up_again(db_session: Session, t
     assert old.id in found and unknown.id in found
     assert fresh.id not in found
 
+
 @pytest.mark.anyio
 async def test_db_store_opens_a_session_for_each_call(db_session: Session, take_parts):
     take = finalizing(db_session, make_take(db_session, *take_parts, 1))
@@ -290,6 +310,7 @@ async def test_db_store_opens_a_session_for_each_call(db_session: Session, take_
     source = await store.load_finalize_source(take.id)
     assert source is not None and source.t_end_ms == 1_000
     assert await store.fail_take_result(take.id) is True
+
 
 @pytest.mark.parametrize(
     "status, stage, saved",
@@ -323,6 +344,7 @@ def test_raw_seconds_are_not_added_after_the_take_result(
     ).all()
     assert len(rows) == (1 if saved else 0)
 
+
 def test_raw_seconds_of_a_deleted_take_raise(db_session: Session):
     from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO
 
@@ -332,3 +354,20 @@ def test_raw_seconds_of_a_deleted_take_raise(db_session: Session):
 
     with pytest.raises(NonExistentTake):
         take_service.append_metric_seconds(db_session, uuid.uuid7(), [row])
+
+
+@pytest.mark.anyio
+async def test_finalizing_ids_are_batched_without_skipping_after_completion(db_session, take_parts):
+    waiting = [finalizing(db_session, make_take(db_session, *take_parts, n)) for n in range(1, 7)]
+    ids = sorted(take.id for take in waiting)
+    db_session.commit()
+    store = DbCoachStore(session_factory=lambda: db_session)
+    first = await store.finalizing_takes(limit=2)
+    assert first == ids[:2]
+    # 앞 배치가 상태 목록에서 빠져도 커서 뒤의 Take 를 빠뜨리지 않는다.
+    for take_id in first:
+        coach_service.fail_take_result(db_session, take_id)
+    second = await store.finalizing_takes(after=first[-1], limit=2)
+    third = await store.finalizing_takes(after=second[-1], limit=2)
+    assert second + third == ids[2:]
+    assert await store.finalizing_takes(after=third[-1], limit=2) == []

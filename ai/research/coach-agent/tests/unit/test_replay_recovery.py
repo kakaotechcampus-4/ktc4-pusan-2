@@ -239,6 +239,11 @@ def test_replay_last_window_keeps_the_stt_status_the_be_sent():
     seen.clear()
     finalize(request(replay=data, t_ms=10_000), judges)
     assert seen[-1] == "reconnecting"
+    # 마지막 창은 실렸지만 stt_status 가 빠졌으면 기본값(ok)이 아니라 원자료 이력의 상태
+    for inputs in ({}, {"words": []}):
+        seen.clear()
+        finalize({**request(replay=data, t_ms=10_000), "inputs": inputs}, judges)
+        assert seen[-1] == "reconnecting", inputs
 
 
 def test_replay_of_a_shifted_grid_matches_the_live_run():

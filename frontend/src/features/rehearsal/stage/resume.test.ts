@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PresentationClock } from '@/shared/lib/clock';
 import {
   abandonOutcome,
-  coachHistory,
   lastSlide,
   mergeSlideChanges,
   openingSlides,
@@ -140,10 +139,11 @@ describe('무대 시계를 어디서부터 다시 돌릴까', () => {
       recordedUntilMs({
         gaze: [s(1_000), s(2_000), s(3_000)],
         slideAtMs: [0, 2_500],
-        coachAtMs: [3_500],
       }),
     ).toBe(4_000);
-    expect(recordedUntilMs({ gaze: [], slideAtMs: [], coachAtMs: [] })).toBe(0);
+    // 슬라이드 전환이 더 늦으면 그 시각입니다
+    expect(recordedUntilMs({ gaze: [s(1_000)], slideAtMs: [4_500] })).toBe(4_500);
+    expect(recordedUntilMs({ gaze: [], slideAtMs: [] })).toBe(0);
   });
 });
 
@@ -159,25 +159,6 @@ describe('슬라이드 이어받기', () => {
 
   it('기록이 없으면 null — 처음부터 시작한다', () => {
     expect(lastSlide([])).toBeNull();
-  });
-});
-
-describe('코치 쿨다운 이어받기', () => {
-  it('띄운 기록만 본다 — 참은 기록은 쿨다운을 걸지 않는다', () => {
-    const history = coachHistory([
-      { atMs: 10_000, type: 'SILENCE', fired: true },
-      { atMs: 30_000, type: 'SILENCE', fired: true },
-      { atMs: 40_000, type: 'LOW_VOLUME', fired: false },
-      { atMs: 35_000, type: 'TIME_LEFT', fired: true },
-    ]);
-    expect(history).toEqual({
-      lastFiredAt: 35_000,
-      lastByType: { SILENCE: 30_000, TIME_LEFT: 35_000 },
-    });
-  });
-
-  it('띄운 적이 없으면 간격 제한이 걸리지 않는다', () => {
-    expect(coachHistory([]).lastFiredAt).toBe(-Infinity);
   });
 });
 

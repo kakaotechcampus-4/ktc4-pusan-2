@@ -9,7 +9,8 @@
   1. STT 가 ok 가 아니면 단어를 판정하지 않는다.
   2. 창 고르기: `stt_ok_since_ms` 앞 · 시각이 거꾸로 · 겹친 단어를 뺀다.
   3. 단어마다 사전에서 층을 찾고 앞 · 뒤 간격을 잰다.
-  4. 층별 규칙으로 군더더기 · 아님 · 보류를 정한다.
+  4. 층별 규칙으로 군더더기 · 아님 · 보류를 정한다. 세는 층(`counted_tiers`, 기본 T1만)에 없는
+     층의 단어는 간격을 보지 않고 아님("세지 않는 층")으로 정한다.
   5. 새 몫 세기: 판정이 정해진 새 군더더기를 `tally` 에 더하고 단어 커서를 보류 단어 앞까지 옮긴다.
   6. 시간 몫: `since_ms` 부터 `t_ms` 까지 1초마다 `total_ms` · `elapsed_ms` 를 낸다.
   7. 지표 · 상태 · 문제: 최근 창의 군더더기 수와 분당 수, 기준 이상이면 `FILLER_FREQUENT`.
@@ -59,6 +60,7 @@ REASON_REPEAT = "같은 단어가 바로 반복"
 REASON_SENTENCE_START = "문장 첫 단어이고 뒤 간격이 기준 이상"
 REASON_SHORT_GAP = "간격이 기준보다 짧음"
 REASON_PENDING = "뒤 간격을 아직 알 수 없음"
+REASON_NOT_COUNTED = "세지 않는 층"
 
 
 # --------------------------------------------------------------------------
@@ -249,6 +251,10 @@ def _judge_words(
         tier = _tier_of(key, config)
         if tier is None:
             is_filler, reason = False, REASON_UNKNOWN_WORD
+        elif tier not in config.counted_tiers:
+            # 세지 않는 층은 간격 · 보류를 보지 않고 바로 정한다
+            # (말 속도 · 리포트 · 개입이 모두 같은 기준을 쓰게)
+            is_filler, reason = False, REASON_NOT_COUNTED
         elif tier == "T1":
             # 채움말은 반복 · 간격과 관계없이 늘 군더더기다
             is_filler, reason = True, REASON_T1
