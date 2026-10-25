@@ -62,6 +62,8 @@ export type PracticeMode = 'COACHING' | 'EXAM';
  */
 export type ScriptMode = 'HIGHLIGHT' | 'KEYWORD' | 'OFF';
 export type TakeStatus = 'READY' | 'RUNNING' | 'ANALYZING' | 'COMPLETED' | 'FAILED';
+/** Take 가 끝난 이유. ABANDONED · CLOSED 는 사용자가 발표를 끝내지 못한 경우입니다 (BE #490) */
+export type TakeEndReason = 'SILENCE' | 'TIME_LIMIT' | 'ABANDONED' | 'CLOSED';
 
 /** AI팀 파이프라인의 최종 출력. 4분할이 아니라 3값입니다. */
 export type GazeZone = 'CAMERA' | 'BOTTOM' | 'UNCERTAIN';

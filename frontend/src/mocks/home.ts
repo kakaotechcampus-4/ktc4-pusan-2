@@ -1,7 +1,10 @@
 import { http, HttpResponse } from 'msw';
 import type { PitchListResponse } from '@/types/home';
 
-/** Updated #47 response including server-issued UUID fields. */
+/**
+ * Updated #47 response including server-issued UUID fields.
+ * Take 2 는 사용자가 끝내 end_reason 이 null, Take 3 은 완료됐지만 점수가 없고, 4 는 분석 중, 5 는 중단(FAILED + ABANDONED) 입니다.
+ */
 export const homeFixture: PitchListResponse = {
   pitches: [
     {
@@ -19,6 +22,8 @@ export const homeFixture: PitchListResponse = {
           script_mode: 'FULL',
           score: 67,
           delta: null,
+          status: 'COMPLETED',
+          end_reason: 'SILENCE',
         },
         {
           take_id: '20000000-0000-4000-8000-000000000002',
@@ -28,6 +33,8 @@ export const homeFixture: PitchListResponse = {
           script_mode: 'HIGHLIGHT',
           score: 72,
           delta: 5,
+          status: 'COMPLETED',
+          end_reason: null,
         },
         {
           take_id: '20000000-0000-4000-8000-000000000003',
@@ -37,6 +44,30 @@ export const homeFixture: PitchListResponse = {
           script_mode: 'KEYWORD',
           score: null,
           delta: null,
+          status: 'COMPLETED',
+          end_reason: 'TIME_LIMIT',
+        },
+        {
+          take_id: '20000000-0000-4000-8000-000000000004',
+          take_version: 4,
+          take_elapsed: 571,
+          take_time: 600,
+          script_mode: 'KEYWORD',
+          score: null,
+          delta: null,
+          status: 'ANALYZING',
+          end_reason: 'SILENCE',
+        },
+        {
+          take_id: '20000000-0000-4000-8000-000000000005',
+          take_version: 5,
+          take_elapsed: null,
+          take_time: 600,
+          script_mode: 'HIGHLIGHT',
+          score: null,
+          delta: null,
+          status: 'FAILED',
+          end_reason: 'ABANDONED',
         },
       ],
     },

@@ -8,6 +8,7 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { PolicyPage } from '@/features/onboarding/PolicyPage';
+import { AppHeader } from '@/features/pitch/AppHeader';
 import { HomePage } from '@/features/pitch/HomePage';
 import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
@@ -105,6 +106,11 @@ export const router = createBrowserRouter(
                   !['/', '/pitches', '/pitch/new', '/takes/:takeId/processing'].includes(route.path)
                 }
                 bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
+                header={
+                  ['/', '/pitches', '/takes', '/me'].includes(route.path) ? (
+                    <AppHeader />
+                  ) : undefined
+                }
               />
             </PageTitle>
           ),

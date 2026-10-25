@@ -10,8 +10,19 @@ const TONE: Record<Tone, string> = {
   muted: 'border border-dashed border-line-strong text-stone',
 };
 
-export function Badge({ tone, children }: { tone: Tone; children: ReactNode }) {
+/** @param className 크기 · 정렬 클래스. 기본은 글자에 맞춘 폭(`w-fit`)입니다. 색은 tone 만 정합니다 */
+export function Badge({
+  tone,
+  className = 'w-fit',
+  children,
+}: {
+  tone: Tone;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <span className={`w-fit shrink-0 px-2 py-0.5 text-xs font-bold ${TONE[tone]}`}>{children}</span>
+    <span className={`${className} shrink-0 px-2 py-0.5 text-xs font-bold ${TONE[tone]}`}>
+      {children}
+    </span>
   );
 }
