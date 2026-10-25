@@ -87,7 +87,7 @@ def apply_rules(
     user_criteria = data["user_criteria"] or {}
     script_used = user_criteria.get("script_used")
 
-    evaluable = check_evaluable(take_result, script_coverage, cfg)
+    evaluable = check_evaluable(take_result, script_coverage, script_used, cfg)
     mission_results = judge_missions(data["missions"] or [], take_result, script_coverage, cfg)
     burden = compute_burden(
         take_result, script_coverage, evaluable, script_used, recurring, mission_results, cfg

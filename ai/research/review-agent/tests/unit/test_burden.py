@@ -69,8 +69,12 @@ def test_sample_burden(req):
 
 def test_script_used_drops_script_gaze(req):
     req["user_criteria"]["script_used"] = True
-    _, trace = run(req)
+    resp, trace = run(req)
     assert trace.burden["script_independence"]["total"] == 0
+    # 대본을 보기로 한 발표: 대본 의존을 문제로도 강점으로도 말하지 않는다
+    assert not trace.evaluable["script_independence"]
+    assert resp.dimensions["script_independence"] == "NOT_EVALUABLE"
+    assert all("script_ratio" not in s.evidence for s in resp.strengths)
 
 
 def test_content_burden_counts_missing_and_contradicted_key_points(req):

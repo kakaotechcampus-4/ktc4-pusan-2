@@ -218,7 +218,7 @@ ai/research/review-agent/
 # 6. 처리 — 안에서 어떻게 도는가
 ## 6-1. 규칙 단계 (LLM 없음, 같은 입력이면 같은 결과)
 규칙은 아홉 개다. 미션을 이루지 못한 차원이 부담을 키우므로 미션 판정을 부담보다 먼저 계산한다.
-1. **판단 가능 여부**: 차원에 속한 영역의 측정 비율이 기준 미만이면 그 차원은 `NOT_EVALUABLE`이고 문제로도 강점으로도 말하지 않는다. `script_coverage`가 null이거나, 채점된 장 비율 `scored_ratio`가 기준 미만이거나, `take_scores.content_coverage`가 null이면(채점할 핵심 내용이 없음) `content_delivery`도 `NOT_EVALUABLE`이다(일부 장만 채점된 점수나 잴 내용이 없는 대본으로 강점이라 하지 않게). `user_criteria.script_used`가 true면 대본 응시를 문제로 보지 않는다.
+1. **판단 가능 여부**: 차원에 속한 영역의 측정 비율이 기준 미만이면 그 차원은 `NOT_EVALUABLE`이고 문제로도 강점으로도 말하지 않는다. `script_coverage`가 null이거나, 채점된 장 비율 `scored_ratio`가 기준 미만이거나, `take_scores.content_coverage`가 null이면(채점할 핵심 내용이 없음) `content_delivery`도 `NOT_EVALUABLE`이다(일부 장만 채점된 점수나 잴 내용이 없는 대본으로 강점이라 하지 않게). `user_criteria.script_used`가 true면 `script_independence`는 `NOT_EVALUABLE`이다(대본 응시를 문제로도 강점으로도 보지 않는다).
    - 측정 비율 기준은 리뷰가 따로 두지 않고 Take 결과의 `areas.<영역>.unmeasured_reason`(코치가 기준 미만이면 `LOW_MEASURED_RATIO`)을 따른다. 영역이 여럿인 차원(`pacing_rhythm`)은 모든 영역이 판단 불가일 때만 `NOT_EVALUABLE`이고, 일부만 판단 불가면 잰 영역으로만 본다. `script_used`가 true면 `GAZE_ON_SCRIPT` 구간을 부담에서도 뺀다. Take 전체의 내용 미션 · 사용자 기준도 `script_coverage`가 null이거나 `scored_ratio`가 기준 미만이면 `NOT_EVALUABLE`로 둔다(장 미션은 그 장의 채점 성공 여부와 관측값으로 판정).
 2. **미션 판정**: 미션 목표의 지표를 지표 이름으로 찾아(Take 결과의 영역 값, 대본 전달도 지표는 `script_coverage.take_scores`, 장 미션이면 장 값 — Take 결과 `areas.<영역>.slides[].metrics` · 대본 전달도 `evaluations[].scores`) 비교한다. 목표 달성 `ACHIEVED`, 못 미친 정도가 허용치 이내면 `PARTIAL`, 그 밖은 `FAILED`. 그 영역(장 미션이면 그 장)의 측정 비율이 기준 미만이거나, 관측값이 null이거나, 그 장의 대본 전달도 채점이 실패했으면(`failed`) `NOT_EVALUABLE`. 허용치는 지표마다 정하고, 개수 지표는 허용치를 두지 않는다.
 3. **사용자 기준**: `user_criteria.targets`를 미션처럼(Take 값으로) 판정해 `criteria_results`에 싣는다. 숫자 목표가 없는 기준은 판정하지 않는다. 범위 목표(같은 `display`에 목표 둘)는 둘 다 판정해 싣는다.

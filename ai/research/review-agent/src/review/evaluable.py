@@ -22,12 +22,17 @@ def measured_areas(take_result: dict[str, Any]) -> set[str]:
 
 
 def check_evaluable(
-    take_result: dict[str, Any], script_coverage: dict[str, Any] | None, cfg: ReviewConfig
+    take_result: dict[str, Any],
+    script_coverage: dict[str, Any] | None,
+    script_used: bool | None,
+    cfg: ReviewConfig,
 ) -> dict[str, bool]:
     """차원마다 판단 가능한지.
 
     - 차원에 속한 영역이 모두 못 잰 영역(unmeasured_reason 있음 · 없는 영역) → False.
       영역이 여럿인 차원(pacing_rhythm)은 일부만 판단 불가면 잰 영역으로만 본다 (부담도 잰 영역만)
+    - script_independence: script_used 가 true 면 False
+      (대본을 보기로 한 발표에 "대본에 기대지 않았다"는 강점을 말하지 않게)
     - content_delivery: 대본 전달도가 없거나 scored_ratio < min_scored_ratio → False
       (일부 장만 채점된 점수로 강점이라 하지 않게).
       take_scores.content_coverage 가 null 이어도 False (채점할 핵심 내용이 없는 대본)
@@ -36,6 +41,10 @@ def check_evaluable(
     measured = measured_areas(take_result)
     evaluable: dict[str, bool] = {}
     for dim, spec in DIMENSIONS.items():
+        if dim == "script_independence" and script_used:
+            # 대본을 보기로 한 발표: 대본 의존을 문제로도 강점으로도 말하지 않는다 (6-1 1번)
+            evaluable[dim] = False
+            continue
         if dim == "content_delivery":
             if script_coverage is None:
                 evaluable[dim] = False
