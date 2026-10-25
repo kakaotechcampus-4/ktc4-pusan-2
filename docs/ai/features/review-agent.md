@@ -71,9 +71,18 @@ ai/research/review-agent/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
 ├─ pyproject.toml · uv.lock                 Python 3.12. 코어는 pydantic 하나, 연구 도구만 LLM 라이브러리
 ├─ src/review/                              리뷰 코어 → 서비스 features/review/로 폴더째 옮긴다
+│   ├─ __init__.py                          review_take 공개
 │   ├─ schemas.py                           요청 · 응답 · LLM 출력 pydantic 모델 = 계약
 │   ├─ core.py                              review_take(): 규칙 단계 → LLM 단계 → 숫자 검사
-│   ├─ rules.py                             규칙 단계 (LLM 없는 순수 함수)
+│   ├─ evaluable.py                         6-1 1번: 판단 가능 여부
+│   ├─ missions.py                          6-1 2 · 3번: 미션 판정 · 사용자 기준
+│   ├─ burden.py                            6-1 4번: 차원 · 장 · 영역별 문제 부담
+│   ├─ dimensions.py                        6-1 5번: 차원 상태
+│   ├─ next_missions.py                     6-1 7번: 다음 미션 후보
+│   ├─ recurring.py                         6-1 8번: 반복 문제
+│   ├─ score.py                             6-1 9번: 점수
+│   ├─ metrics.py                           지표 찾기 · 비교 (미션 판정 · 다음 미션 · 근거가 같이 쓴다)
+│   ├─ vocab.py                             고정 어휘 · 5-3 차원 표
 │   ├─ text.py                              기본 문장 · 숫자 검사
 │   ├─ config.py · version.py               부담 · 허용치 · 한 걸음 폭 · 점수 · 개수 한도, 기능 버전
 │   ├─ prompts/                             문장 쓰기 · 다음 미션 고르기 프롬프트
@@ -213,7 +222,7 @@ ai/research/review-agent/
 2. **미션 판정**: 미션 목표의 지표를 지표 이름으로 찾아(Take 결과의 영역 값, 대본 전달도 지표는 `script_coverage.take_scores`, 장 미션이면 장 값 — Take 결과 `areas.<영역>.slides[].metrics` · 대본 전달도 `evaluations[].scores`) 비교한다. 목표 달성 `ACHIEVED`, 못 미친 정도가 허용치 이내면 `PARTIAL`, 그 밖은 `FAILED`. 그 영역(장 미션이면 그 장)의 측정 비율이 기준 미만이거나, 관측값이 null이거나, 그 장의 대본 전달도 채점이 실패했으면(`failed`) `NOT_EVALUABLE`. 허용치는 지표마다 정하고, 개수 지표는 허용치를 두지 않는다.
 3. **사용자 기준**: `user_criteria.targets`를 미션처럼(Take 값으로) 판정해 `criteria_results`에 싣는다. 숫자 목표가 없는 기준은 판정하지 않는다. 범위 목표(같은 `display`에 목표 둘)는 둘 다 판정해 싣는다.
 4. **문제 부담**: 믿을 수 있는(`reliable`) 문제 구간마다 `mean_severity × (end_ms − start_ms) ÷ 1000`을 5-3 표에 따라 차원별로 더한다. 대본 전달도는 `missing` · `contradicted` 핵심 내용을 중요도별로 정해진 부담으로 바꿔 더하고, `sound_alike` · `unverified`는 세지 않는다(STT가 잘못 적었을 수 있어서). 반복 문제(`previous_recurring_issues`의 `dimension`) · 코치가 포기한 문제(`gave_up`, 문제 이름으로 차원을 찾음) · 미션을 이루지 못한 차원은 부담을 키운다(배율은 `config.py`). 핵심 수치가 틀린(`mismatched`) 경우를 넣을지는 아직 정하지 않았다(15절 열린 질문).
-5. **차원 상태**: 부담이 정해진 값 이상인 차원 중 부담이 큰 상위 차원(정해진 개수, 부담이 같으면 5-3 차원 표에 적힌 순서) `PRIORITY` → `previous_recurring_issues`에 `dimension`으로 있던 차원이 이번에 문제가 아니거나, 미션을 이루고 문제가 없으면 `IMPROVED` → 문제가 없으면 `STRENGTH` → 그 밖은 `STABLE`. 순위는 장별이 아니라 차원 합계로 매긴다(장마다 나누면 1순위가 흔들린다). "문제가 없음"은 부담이 0인 것으로 본다.
+5. **차원 상태**: 부담이 정해진 값 이상인 차원 중 부담이 큰 상위 차원(정해진 개수, 부담이 같으면 5-3 차원 표에 적힌 순서) `PRIORITY` → `previous_recurring_issues`에 `dimension`으로 있던 차원의 부담이 이번에 `PRIORITY`의 정해진 값 미만이거나, 미션을 이루고 문제가 없으면 `IMPROVED` → 문제가 없으면 `STRENGTH` → 그 밖은 `STABLE`. 반복 차원의 부담이 정해진 값 이상인데 개수 상한으로 `PRIORITY`에 들지 못하면 여전히 문제라 `STABLE`이다. 순위는 장별이 아니라 차원 합계로 매긴다(장마다 나누면 1순위가 흔들린다). "문제가 없음"은 부담이 0인 것으로 본다.
 6. **이전 Take 비교**: 같은 지표의 이번 값과 이전 값, 좋아진 방향인지. 장 값끼리 비교하면 `slide_number`를 싣고, 한쪽 값이 없으면 비교하지 않는다. 대본 보기(`script_mode`)가 다른 Take끼리는 그 차이를 `script_mode` `{previous, current}`로 함께 싣는다. 비교 대상은 바로 앞 Take(`previous_takes[0]`)이고, 지표의 좋은 방향은 `config.py`의 표로 정한다. 비율 · 개수는 한 방향이고, 범위가 좋은 지표는 각 Take의 값이 그 Take의 기준에 가까워졌는지로 본다: `cpm`은 Take 결과 `criteria`의 기준 범위, Take `duration_ms`는 Take 결과 `plan`의 `min_ms` ~ `max_ms`(없으면 `target_ms`), 장 `slide_duration_ms`는 그 장의 `target_ms`(`coach-agent.md` 5-3). 기준이 없으면 `improved`는 null이다.
 7. **다음 미션 후보**: 사용자 기준이 `FAILED`인 지표는 규칙 단계가 다음 미션으로 먼저 정한다(사용자가 직접 정한 목표라서. LLM은 이것을 빼거나 순서를 바꾸지 못한다). 이어서 `PRIORITY` 차원마다 후보를 하나씩 만든다. 후보는 그 차원에서 부담이 가장 큰 영역의, 부담이 가장 큰 문제로 만들고(동률이면 5-3 차원 표에 적힌 순서), 지표와 비교 방향은 `config.py`의 문제별 미션 지표 표로 정한다(예: `GAZE_ON_SCRIPT` → `script_ratio` `LTE`, `PACE_SLOW` → `cpm` `GTE`, 내용 전달 → `content_coverage` `GTE`). 목표는 지금 값에서 지표별로 정해진 폭만큼 나아진 값이고, 지표별 최종 목표를 넘지 않는다. `PRIORITY` 후보는 고른 영역의 부담이 한 장에 정해진 비율 넘게 몰리면 장 미션, 아니면 Take 미션이고, 시간 · 내용 후보는 늘 장 미션이다. 장 미션의 장은 고른 영역에서 부담이 가장 큰 장(동률이면 작은 장 번호)이고, 장 번호가 있는 부담이 없으면(장 계획이 없는 Take의 시간 문제 등) Take 미션이다. 실패한 사용자 목표에서 나온 미션은 사용자 기준을 Take 값으로 판정하므로 Take 미션(`slide_number` null)이다. 개수 상한까지(20개 이하): 실패한 사용자 목표는 모두 넣고(사용자 목표가 20개 이하이므로 다 들어간다), `PRIORITY` 후보는 `config.py`의 개수까지 채우되 합이 20을 넘지 않게 한다.
 8. **반복 문제**: `PRIORITY` 차원마다 `{area, slide_number, dimension}` 하나를 `recurring_issues`로 낸다. `dimension`은 그 차원 이름이고, `area` · `slide_number`는 그 차원의 7번 후보와 같다(부담이 가장 큰 영역, 장 미션이면 그 장 · Take 미션이면 null). 그 후보가 개수 상한으로 다음 미션에서 빠져도 반복 문제는 낸다. 다음 리뷰는 `dimension`으로 반복된 차원을 찾고(4 · 5번), 다음 Take의 코칭 계획 · 코치는 `area` · `slide_number`를 쓴다.
