@@ -16,7 +16,7 @@ from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
-from pitch_coach_backend.realtime.stream import abandon, registry, runtime
+from pitch_coach_backend.realtime.stream import abandon, registry, runtime, state
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
@@ -107,7 +107,7 @@ def abandon_wait_left(take_id: uuid.UUID) -> float:
 async def open_and_leave(stream: TakeStream) -> None:
     """레지스트리에 올리고 오디오를 한 번 보낸 뒤 탭이 사라진다. grace 가 지나면 스트림만 닫힌다."""
     tab = FakeWebSocket()
-    registry._streams[stream.take_id] = stream
+    state.streams[stream.take_id] = stream
     stream.start()
     await stream.attach(tab)
     await _wait_until_ok(stream)
@@ -170,7 +170,7 @@ async def test_reconnect_before_the_wait_is_over_keeps_the_take(monkeypatch: pyt
 
     await asyncio.sleep(0.3)
     assert store.abandoned == []
-    assert stream.take_id not in registry._ended
+    assert stream.take_id not in state.ended
 
 
 @pytest.mark.anyio
@@ -196,7 +196,7 @@ async def test_refresh_after_closing_the_tab_keeps_the_take(monkeypatch: pytest.
     store = FakeTranscriptStore()
     stream = make_plain_stream(uuid.uuid7(), store)
     tab = FakeWebSocket()
-    registry._streams[stream.take_id] = stream
+    state.streams[stream.take_id] = stream
     stream.start()
     await stream.attach(tab)
     await _wait_until_ok(stream)
@@ -216,7 +216,7 @@ async def test_refresh_after_closing_the_tab_keeps_the_take(monkeypatch: pytest.
     await asyncio.sleep(0.3)
 
     assert store.abandoned == []
-    assert stream.take_id not in registry._ended
+    assert stream.take_id not in state.ended
 
 
 @pytest.mark.anyio
@@ -226,7 +226,7 @@ async def test_reopened_tab_cuts_the_stream_and_blocks_reconnect():
     store = FakeTranscriptStore()
     stream = make_plain_stream(uuid.uuid7(), store)
     tab = FakeWebSocket()
-    registry._streams[stream.take_id] = stream
+    state.streams[stream.take_id] = stream
     stream.start()
     await stream.attach(tab)
     await _wait_until_ok(stream)
@@ -262,7 +262,7 @@ async def test_take_is_live_only_while_audio_keeps_coming(monkeypatch: pytest.Mo
     monkeypatch.setattr(runtime, "LIVE_AUDIO_SEC", 0.1)
     stream = make_plain_stream(uuid.uuid7(), FakeTranscriptStore())
     tab = FakeWebSocket()
-    registry._streams[stream.take_id] = stream
+    state.streams[stream.take_id] = stream
     stream.start()
     await stream.attach(tab)
     await _wait_until_ok(stream)
@@ -286,7 +286,7 @@ async def test_reopened_tab_turns_off_the_wait_timer():
     await registry.end_closed_tab(take_id)
 
     assert abandon._abandon_timers == {}
-    assert take_id in registry._ended
+    assert take_id in state.ended
 
 
 @pytest.mark.anyio
@@ -320,7 +320,7 @@ async def test_timer_that_fires_while_a_stream_is_open_does_not_end_the_take():
     """옛 스트림의 정리가 새 스트림이 열린 뒤에 끝나 타이머가 남을 수 있다. 울릴 때 다시 본다."""
     store = FakeTranscriptStore()
     stream = make_plain_stream(uuid.uuid7(), store)
-    registry._streams[stream.take_id] = stream
+    state.streams[stream.take_id] = stream
     stream.start()
     await _wait_until_ok(stream)
 
@@ -341,7 +341,7 @@ async def test_abandon_write_failure_leaves_the_take_open(caplog: pytest.LogCapt
         registry.arm_abandon(take_id, store, closed_at=datetime.now(UTC), delay_sec=0)
         await _wait_for(lambda: "떠난 Take 를 끝내지 못했다" in caplog.text)
 
-    assert take_id not in registry._ended
+    assert take_id not in state.ended
 
 
 @pytest.mark.anyio

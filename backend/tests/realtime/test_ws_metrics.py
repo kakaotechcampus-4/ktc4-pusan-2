@@ -18,7 +18,7 @@ from pitch_coach_backend.realtime.dto import (
     MetricsMessage,
 )
 from pitch_coach_backend.realtime.storage.metrics import METRICS_BATCH, MetricBuffer
-from pitch_coach_backend.realtime.stream import registry, runtime
+from pitch_coach_backend.realtime.stream import registry, runtime, state
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
 )
@@ -211,7 +211,7 @@ def test_auto_end_waits_for_the_last_metrics_sent_after_the_drain(
         for i in range(3):
             ws.send_bytes(frame(i + 1, i * 100))
         receive_auto_end(ws)
-        wait_until(lambda: TAKE_ID not in registry._streams)
+        wait_until(lambda: TAKE_ID not in state.streams)
         ws.send_text(json.dumps(metrics(300, duration_ms=300)))
         stop(ws)
 
@@ -340,7 +340,7 @@ async def test_stop_all_waits_for_a_save_already_running(monkeypatch: pytest.Mon
     """스트림이 닫히며 시작한 백그라운드 저장은 행을 꺼내 가 버퍼가 비어 보인다. 앱을 내릴 때
     그 저장도 기다린다 — 안 기다리면 진행 중인 Take 의 마지막 몇 초가 사라진다."""
     store = FakeTranscriptStore(append_delay=0.1)
-    record = registry._take_record(TAKE_ID, SHORT_SILENCE, store)
+    record = state.take_record(TAKE_ID, SHORT_SILENCE, store)
     record.metrics.add(row(1000))
     record.metrics.flush_soon()
     await asyncio.sleep(0)
