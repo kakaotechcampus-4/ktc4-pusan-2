@@ -9,11 +9,14 @@
 - LLM: 서비스와 같은 규칙(요청 마감 120초 · 호출 한 번 `--call-timeout` 초 · 재시도 1번 · 서비스와 같은 재시도 분류)으로 감싸고
   (`coverage_lab.deadline_llm`, 실행 풀은 서비스와 같은 40개), 서비스처럼 스트리밍 · 전송 시간 제한을 호출 제한과 같게 받는다.
   캐시는 쓰지 않는다. 조합 사이에는 앞 조합에서 버린 호출이 끝나기를 기다리고, 그래도 남으면 멈춘다.
-  서비스의 역할별 출력 토큰 상한 · 추론 강도와 출력 잘림(`finish_reason=length`) 검사는 없다 (이 기능의 서비스 설정이 아직 없음)
+  `--cap 역할=N` 으로 서비스와 같은 역할별 출력 토큰 상한을 건다(역할 이름 · 값은 `08_output_tokens.py`).
+  역할마다 끝난 이유(`finish_reason`, 잘림은 `length`)와 출력 토큰 수를 결과에 남긴다(모든 조합 · 재시도를 합친 값,
+  시간 초과로 버린 호출은 끝까지 받지 못해 세지 않는다). 추론 강도는 보내지 않는다(서비스와 같음)
 - LLM 호출(과금): 평가 기준 장마다 최대 3번 × 동시 요청 수 (+ 재시도 장), 채점 장마다 약 1.25번. 먼저 작은 조합 하나로
   호출 수 · 시간을 보고 나머지를 돌린다.
 - 쓰는 곳: `--name` 을 주면 `reports/results/<name>.json`. DB 는 쓰지 않는다
 - 실행: 프로젝트 폴더에서 `.venv/Scripts/python.exe experiments/07_timing.py --grid 30:8 30:12 --call-timeout 20 --retry --analyze --name timing_20s`
+  (상한을 걸면 `--cap script_coverage.semantic=4096 ...` 을 더한다)
   (예전 측정 `timing.json` 은 `--grid` 없이 · 호출 12초 · 재시도 없이 · 도구를 고치기 전에 잰 것)
 """
 
@@ -26,6 +29,7 @@ from coverage_lab.deadline_llm import CallLog, DeadlineLlm, wait_idle
 from coverage_lab.llm import load_settings, structured_llm
 from coverage_lab.results import write_result
 from coverage_lab.timing import build_deck, request_row, rubric_with_retry, slide_pool
+from coverage_lab.usage import UsageLog
 from script_coverage.schemas import AnalyzeRequest, RubricRequest, RubricResponse
 from script_coverage.script_analysis.schemas import FinalReview, SlideSemanticAnalysis, SlideUnits
 from script_coverage.stt_evaluation.schemas import SemanticEvaluation, VerifierResult
@@ -34,6 +38,14 @@ REQUEST_DEADLINE_SECONDS = 120.0  # 요청 하나의 마감 (architecture.md 의
 ANALYZE_WORKERS = 4  # 채점 동시 개수 (config.MAX_WORKERS 와 같게 둔다)
 LEFTOVER_WAIT_SECONDS = 60.0  # 조합 사이에 버린 호출이 끝나기를 기다리는 한도
 DEFAULT_GRID = [(n, w) for n in (10, 20, 30) for w in (4, 8)]
+#: 출력 스키마 → 역할 이름 (`08_output_tokens.py` 의 ROLES 와 같다)
+ROLE_OF = {
+    SlideSemanticAnalysis: "script_coverage.semantic",
+    FinalReview: "script_coverage.final",
+    SlideUnits: "script_coverage.unit",
+    SemanticEvaluation: "script_coverage.eval",
+    VerifierResult: "script_coverage.verifier",
+}
 
 
 def main() -> None:
@@ -50,7 +62,18 @@ def main() -> None:
     parser.add_argument(
         "--name", help="결과 파일 이름 (reports/results/<name>.json). 없으면 쓰지 않는다"
     )
+    parser.add_argument("--cap", nargs="*", default=[], help="역할=출력 토큰 상한")
     args = parser.parse_args()
+    caps: dict[str, int] = {}
+    for item in args.cap:
+        role, sep, value = item.partition("=")
+        if not sep or not value.isdigit():
+            raise SystemExit(f"--cap 은 역할=정수 꼴이다: {item}")
+        caps[role] = int(value)
+    unknown = set(caps) - set(ROLE_OF.values())
+    if unknown:
+        raise SystemExit(f"모르는 역할: {sorted(unknown)}")
+    usage = {role: UsageLog() for role in ROLE_OF.values()}
     grid = (
         [tuple(int(x) for x in item.split(":")) for item in args.grid]
         if args.grid
@@ -64,8 +87,15 @@ def main() -> None:
     pool = slide_pool()
 
     def deadline_llm(schema, deadline: float, log: CallLog) -> DeadlineLlm:
+        role = ROLE_OF[schema]
         inner = structured_llm(  # 재시도는 감싸개가 세며 한다 (SDK 재시도는 끈다)
-            schema, settings, max_retries=0, timeout=call_timeout, streaming=True
+            schema,
+            settings,
+            max_retries=0,
+            timeout=call_timeout,
+            streaming=True,
+            max_completion_tokens=caps.get(role),
+            callbacks=[usage[role]],
         )
         return DeadlineLlm(inner, deadline=deadline, log=log, timeout=call_timeout, max_retries=1)
 
@@ -192,7 +222,10 @@ def main() -> None:
         "request_deadline_seconds": REQUEST_DEADLINE_SECONDS,
         "call_timeout_seconds": call_timeout,
         "be_retry": args.retry,
-        "client": "streaming, transport timeout = call timeout, executor 40, no output token cap",
+        "client": "streaming, transport timeout = call timeout, executor 40, "
+        + (f"output token caps {caps}" if caps else "no output token cap"),
+        "output_token_caps": caps,
+        "usage": {role: log.summary() for role, log in usage.items()},
         "total_calls": total_calls,
         "combinations": results,
     }
