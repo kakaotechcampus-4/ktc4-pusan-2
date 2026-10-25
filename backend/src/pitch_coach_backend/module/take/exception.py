@@ -49,13 +49,6 @@ class InvalidTakeTime(AppException):
     message = "끝난 시각이 시작한 시각보다 앞섭니다."
 
 
-class TakeNotReviewable(ConflictException):
-    # 리뷰는 Take 결과 · 대본 전달도 채점이 끝난 Take 만 부른다. SCORING 은 채점 진행 중이므로
-    # 허용하지 않는다. AWAITING_CONFIRMATION 에서 부르면 확인 건너뛰기로 본다
-    code = "TAKE_NOT_REVIEWABLE"
-    message = "아직 리뷰할 수 없는 연습입니다."
-
-
 class InvalidReviewResponse(AppException):
     # AI 리뷰 응답이 계약(review-agent.md 5-3)과 다르거나 다른 Take 의 응답이다. 저장하지 않고
     # Take 를 FAILED 로 끝낸다

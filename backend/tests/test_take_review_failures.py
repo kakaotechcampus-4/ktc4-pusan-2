@@ -5,21 +5,20 @@ import json
 import uuid
 from functools import partial
 
-import httpx2
+import httpx
 import pytest
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.take.dto import (
     ReviewRecurringIssueDTO,
-    ReviewRequestDTO,
     ReviewResponseDTO,
 )
 from pitch_coach_backend.module.take.entity import Mission, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
 from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import review as review_service
+from tests.test_analysis_review_ownership import run_review
 from tests.test_take_history import _pitch, _take
-from tests.test_take_review_response import REVIEW, TAKE_ID
+from tests.test_take_review_response import REVIEW, request_review
 
 
 @pytest.fixture(autouse=True)
@@ -28,8 +27,8 @@ def no_retry_delay(monkeypatch):
 
 
 def ai(monkeypatch, handler) -> None:
-    client = partial(httpx2.Client, transport=httpx2.MockTransport(handler))
-    monkeypatch.setattr(review_service.httpx2, "Client", client)
+    client = partial(httpx.AsyncClient, transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(review_service.httpx, "AsyncClient", client)
 
 
 @pytest.mark.parametrize("case", ["major", "nul", "nan", "surrogate", "score-overflow"])
@@ -49,11 +48,11 @@ def test_invalid_review_does_not_retry(monkeypatch, case) -> None:
 
     def handler(request):
         calls.append(request)
-        return httpx2.Response(200, content=json.dumps(reply).encode())
+        return httpx.Response(200, content=json.dumps(reply).encode())
 
     ai(monkeypatch, handler)
     with pytest.raises(InvalidReviewResponse):
-        review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+        request_review()
     assert len(calls) == 1
 
 
@@ -69,17 +68,17 @@ def test_review_http_errors_are_502_and_retry_only_transient_statuses(
 
     def handler(request):
         calls.append(request)
-        return httpx2.Response(status)
+        return httpx.Response(status)
 
     ai(monkeypatch, handler)
     with pytest.raises(InvalidReviewResponse) as error:
-        review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+        request_review()
     assert error.value.status_code == 502
     assert len(calls) == attempts
     assert len({request.headers["X-Request-ID"] for request in calls}) == 1
 
 
-@pytest.mark.parametrize("error_type", [httpx2.ConnectError, httpx2.ReadTimeout])
+@pytest.mark.parametrize("error_type", [httpx.ConnectError, httpx.ReadTimeout])
 def test_review_network_failure_becomes_502_after_one_retry(monkeypatch, error_type) -> None:
     calls = []
 
@@ -89,7 +88,7 @@ def test_review_network_failure_becomes_502_after_one_retry(monkeypatch, error_t
 
     ai(monkeypatch, handler)
     with pytest.raises(InvalidReviewResponse):
-        review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+        request_review()
     assert len(calls) == 2
     assert calls[0].headers["X-Request-ID"] == calls[1].headers["X-Request-ID"]
 
@@ -102,10 +101,10 @@ def test_review_retry_succeeds_and_fallback_is_a_normal_result(monkeypatch) -> N
 
     def handler(request):
         calls.append(request)
-        return httpx2.Response(503) if len(calls) == 1 else httpx2.Response(200, json=reply)
+        return httpx.Response(503) if len(calls) == 1 else httpx.Response(200, json=reply)
 
     ai(monkeypatch, handler)
-    assert review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={})).fallback_reason
+    assert request_review().fallback_reason
     assert len(calls) == 2
     assert calls[0].headers["X-Request-ID"] == calls[1].headers["X-Request-ID"]
 
@@ -150,10 +149,9 @@ def test_review_failure_completes_the_take_and_keeps_measurements(
         )
     )
     db_session.flush()
-    ai(monkeypatch, lambda request: httpx2.Response(503))
+    ai(monkeypatch, lambda request: httpx.Response(503))
 
-    with pytest.raises(InvalidReviewResponse):
-        review_service.get_review_result(db_session, take.id)
+    assert run_review(monkeypatch, db_session, take.id) == pitch.id
 
     db_session.refresh(take)
     assert (take.status, take.review_status, take.analysis_stage) == ("COMPLETED", "FAILED", "DONE")

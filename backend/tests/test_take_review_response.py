@@ -1,15 +1,16 @@
-"""AI 리뷰 응답 검사 (review_service.request_review).
+"""AI 리뷰 응답 검사 (review_service.request_review_async).
 
 응답이 missions 칸 · 제약에 맞지 않으면 저장 전에 InvalidReviewResponse(502) 로 거른다.
-AI 서버는 httpx2.MockTransport 로 대신한다.
+AI 서버는 httpx.MockTransport 로 대신한다.
 """
 
+import asyncio
 import copy
 import uuid
 from functools import partial
 from typing import Any
 
-import httpx2
+import httpx
 import pytest
 
 from pitch_coach_backend.module.take.dto import ReviewRequestDTO
@@ -67,32 +68,38 @@ def _review(**changes: Any) -> dict[str, Any]:
     return review
 
 
+def request_review():
+    return asyncio.run(
+        review_service.request_review_async(TAKE_ID, ReviewRequestDTO(take_result={}))
+    )
+
+
 @pytest.fixture
 def ai(monkeypatch: pytest.MonkeyPatch):
     """AI 서버가 돌려줄 응답을 정한다."""
 
-    def use(response: httpx2.Response) -> None:
-        transport = httpx2.MockTransport(lambda request: response)
+    def use(response: httpx.Response) -> None:
+        transport = httpx.MockTransport(lambda request: response)
         monkeypatch.setattr(
-            review_service.httpx2, "Client", partial(httpx2.Client, transport=transport)
+            review_service.httpx, "AsyncClient", partial(httpx.AsyncClient, transport=transport)
         )
 
     return use
 
 
 def test_valid_review_is_returned(ai) -> None:
-    ai(httpx2.Response(200, json=REVIEW))
+    ai(httpx.Response(200, json=REVIEW))
 
-    review = review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+    review = request_review()
 
     assert [m.priority for m in review.next_missions] == [1, 2]
 
 
 def test_recurring_issues_one_per_dimension_are_returned(ai) -> None:
     issues = [_issue(dimension) for dimension in DIMENSIONS]
-    ai(httpx2.Response(200, json=_review(recurring_issues=issues)))
+    ai(httpx.Response(200, json=_review(recurring_issues=issues)))
 
-    review = review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+    review = request_review()
 
     assert [issue.dimension for issue in review.recurring_issues] == list(DIMENSIONS)
 
@@ -124,16 +131,16 @@ def test_recurring_issues_one_per_dimension_are_returned(ai) -> None:
     ],
 )
 def test_invalid_review_is_rejected(ai, review: dict[str, Any]) -> None:
-    ai(httpx2.Response(200, json=review))
+    ai(httpx.Response(200, json=review))
 
     with pytest.raises(InvalidReviewResponse) as e:
-        review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+        request_review()
 
     assert e.value.status_code == 502
 
 
 def test_non_json_review_is_rejected(ai) -> None:
-    ai(httpx2.Response(200, text="not json"))
+    ai(httpx.Response(200, text="not json"))
 
     with pytest.raises(InvalidReviewResponse):
-        review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+        request_review()
