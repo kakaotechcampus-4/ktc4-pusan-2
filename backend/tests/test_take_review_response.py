@@ -30,6 +30,20 @@ def _mission(priority: int, area: str = "FILLER") -> dict[str, Any]:
     }
 
 
+DIMENSIONS = (
+    "audience_gaze",
+    "script_independence",
+    "pacing_rhythm",
+    "vocal_delivery",
+    "fluency",
+    "content_delivery",
+)
+
+
+def _issue(dimension: str, area: str = "GAZE") -> dict[str, Any]:
+    return {"area": area, "slide_number": 3, "dimension": dimension}
+
+
 REVIEW = {
     "take_id": str(TAKE_ID),
     "overall_summary": "먼저 고칠 차원: 대본 의존(3번 장).",
@@ -74,6 +88,15 @@ def test_valid_review_is_returned(ai) -> None:
     assert [m.priority for m in review.next_missions] == [1, 2]
 
 
+def test_recurring_issues_one_per_dimension_are_returned(ai) -> None:
+    issues = [_issue(dimension) for dimension in DIMENSIONS]
+    ai(httpx2.Response(200, json=_review(recurring_issues=issues)))
+
+    review = review_service.request_review(TAKE_ID, ReviewRequestDTO(take_result={}))
+
+    assert [issue.dimension for issue in review.recurring_issues] == list(DIMENSIONS)
+
+
 @pytest.mark.parametrize(
     "review",
     [
@@ -84,10 +107,21 @@ def test_valid_review_is_returned(ai) -> None:
         _review(next_missions=[_mission(1), _mission(1, "GAZE")]),
         # 20개 이하
         _review(next_missions=[_mission(p) for p in range(1, 22)]),
+        # 반복 문제는 20개 이하 · 차원마다 하나다 (다음 리뷰 입력 · 코칭 계획 한도)
+        _review(recurring_issues=[_issue(DIMENSIONS[i % 6]) for i in range(21)]),
+        _review(recurring_issues=[_issue("audience_gaze"), _issue("audience_gaze", "FILLER")]),
         # 다른 Take 의 응답
         _review(take_id=str(uuid.uuid4())),
     ],
-    ids=["area-too-long", "area-unknown", "priority-duplicate", "too-many", "other-take"],
+    ids=[
+        "area-too-long",
+        "area-unknown",
+        "priority-duplicate",
+        "too-many",
+        "recurring-too-many",
+        "recurring-dimension-duplicate",
+        "other-take",
+    ],
 )
 def test_invalid_review_is_rejected(ai, review: dict[str, Any]) -> None:
     ai(httpx2.Response(200, json=review))

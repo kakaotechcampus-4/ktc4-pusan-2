@@ -9,7 +9,11 @@ import httpx2
 import pytest
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.take.dto import ReviewRequestDTO, ReviewResponseDTO
+from pitch_coach_backend.module.take.dto import (
+    ReviewRecurringIssueDTO,
+    ReviewRequestDTO,
+    ReviewResponseDTO,
+)
 from pitch_coach_backend.module.take.entity import Mission, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
 from pitch_coach_backend.module.take.repository import TakeRepository
@@ -106,7 +110,9 @@ def test_review_retry_succeeds_and_fallback_is_a_normal_result(monkeypatch) -> N
     assert calls[0].headers["X-Request-ID"] == calls[1].headers["X-Request-ID"]
 
 
-@pytest.mark.parametrize("case", ["other-take", "major", "nul"])
+@pytest.mark.parametrize(
+    "case", ["other-take", "major", "nul", "recurring-too-many", "recurring-duplicate"]
+)
 def test_review_storage_validates_again_before_any_write(db_session, user_id, case) -> None:
     take = _take(
         db_session, _pitch(db_session, user_id), 1, status="ANALYZING", analysis_stage="REVIEWING"
@@ -116,8 +122,12 @@ def test_review_storage_validates_again_before_any_write(db_session, user_id, ca
         review.take_id = uuid.uuid4()
     elif case == "major":
         review.meta.schema_version = "99.0"
-    else:
+    elif case == "nul":
         review.overall_summary = "bad\x00text"
+    else:
+        # 모델을 만든 뒤 목록을 고치면 검사를 거치지 않는다. 저장 직전 재검사가 막아야 한다
+        issue = ReviewRecurringIssueDTO(area="GAZE", dimension="audience_gaze")
+        review.recurring_issues = [issue] * (21 if case == "recurring-too-many" else 2)
 
     with pytest.raises(InvalidReviewResponse):
         review_service.save_review(db_session, take.id, review)
