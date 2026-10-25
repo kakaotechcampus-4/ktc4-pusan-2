@@ -18,7 +18,7 @@ from .config import ReviewConfig
 from .evaluable import measured_areas
 from .metrics import find_metric
 from .recurring import build_recurring_issues
-from .vocab import DIMENSIONS
+from .vocab import DIMENSIONS, METRIC_TO_DIMENSION
 
 #: 미션 설명용 지표 이름 (명세에 표시 이름이 없어 정한 것. FE 표시 이름이 정해지면 맞춘다)
 METRIC_LABELS = {
@@ -96,6 +96,28 @@ def _evidence(
     return fallback, {}
 
 
+def _improved_slide(
+    dim: str,
+    recurring_issues: list[dict[str, Any]],
+    mission_results: list[dict[str, Any]],
+) -> int | None:
+    """IMPROVED 강점의 장: 나아진 근거의 장.
+
+    그 차원의 직전 반복 문제 → 이룬 장 미션 순. 없으면 None
+    """
+    for it in recurring_issues:
+        if it.get("dimension") == dim and it.get("slide_number") is not None:
+            return it["slide_number"]
+    for m in mission_results:
+        if (
+            m["status"] == "ACHIEVED"
+            and m["slide_number"] is not None
+            and METRIC_TO_DIMENSION.get(m["metric"]) == dim
+        ):
+            return m["slide_number"]
+    return None
+
+
 @dataclass(frozen=True)
 class TextCandidate:
     """강점 · 개선점 후보 하나 (명세 6-2).
@@ -124,10 +146,15 @@ def text_candidates(
     take_result: dict[str, Any],
     script_coverage: dict[str, Any] | None,
     cfg: ReviewConfig,
+    recurring_issues: list[dict[str, Any]] | None = None,
+    mission_results: list[dict[str, Any]] | None = None,
 ) -> TextCandidates:
     """강점 · 개선점 후보와 그 기본 문장.
 
-    - strengths: STRENGTH · IMPROVED 차원 (차원 표 순서). area 는 근거 지표를 찾은 잰 영역
+    - strengths: STRENGTH · IMPROVED 차원 (차원 표 순서). area 는 근거 지표를 찾은 잰 영역.
+      IMPROVED 면 나아진 근거의 장(직전 반복 문제 → 이룬 장 미션, _improved_slide)을 싣고 근거는
+      개선점처럼 그 장 값 → Take 값. STRENGTH 는 그 차원의 Take 전체에 문제가 없다는 뜻이라
+      장 번호 null, 근거는 Take 값
     - improvements: PRIORITY 차원 (부담 큰 순), 부담이 몰린 장이 있으면 장 번호.
       area 는 부담이 가장 큰 영역이고 근거도 그 영역의 지표
     - 못 잰 영역(측정 비율 기준 미만)은 area · 근거에 쓰지 않는다
@@ -142,8 +169,13 @@ def text_candidates(
             text = IMPROVED_TEXT.format(label=DIMENSION_LABELS[dim])
         else:
             continue
-        area, evidence = _evidence(dim, burden, take_result, script_coverage, measured, cfg)
-        item = {"area": area, "slide_number": None, "text": text, "evidence": evidence}
+        slide = None
+        if state == "IMPROVED":
+            slide = _improved_slide(dim, recurring_issues or [], mission_results or [])
+        area, evidence = _evidence(
+            dim, burden, take_result, script_coverage, measured, cfg, slide_number=slide
+        )
+        item = {"area": area, "slide_number": slide, "text": text, "evidence": evidence}
         strengths.append(TextCandidate(dim, state, item))
 
     # PRIORITY 차원 목록은 반복 문제와 같다 (부담 큰 순 · 영역 · 몰린 장)

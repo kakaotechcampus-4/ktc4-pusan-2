@@ -48,6 +48,8 @@ class RuleResult:
 
     take_result: dict[str, Any]
     script_coverage: dict[str, Any] | None
+    #: 입력 그대로 (IMPROVED 강점의 장을 고를 때 쓴다)
+    previous_recurring_issues: list[dict[str, Any]]
     evaluable: dict[str, bool]
     mission_results: list[dict[str, Any]]
     criteria_results: list[dict[str, Any]]
@@ -115,6 +117,7 @@ def apply_rules(
     return RuleResult(
         take_result=take_result,
         script_coverage=script_coverage,
+        previous_recurring_issues=data["previous_recurring_issues"] or [],
         evaluable=evaluable,
         mission_results=mission_results,
         criteria_results=criteria_results,
@@ -350,7 +353,13 @@ def review_take(
     cfg = config or DEFAULT_CONFIG
     rules = apply_rules(_validate(request), cfg)
     texts = text_candidates(
-        rules.dimensions, rules.burden, rules.take_result, rules.script_coverage, cfg
+        rules.dimensions,
+        rules.burden,
+        rules.take_result,
+        rules.script_coverage,
+        cfg,
+        rules.previous_recurring_issues,
+        rules.mission_results,
     )
     text = default_text(texts)
     next_missions = select_next_missions(rules.next_mission_candidates, cfg)

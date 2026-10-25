@@ -63,6 +63,77 @@ def test_strength_skips_unmeasured_area(req):
     assert [(s.area, s.evidence) for s in pacing] == [("TIME", {"duration_ms": 182000})]
 
 
+def _gaze_slides(*metrics: dict | None) -> list[dict]:
+    """1번 장부터 GAZE 장 값 (None 이면 측정 비율 미달로 metrics 가 null 인 장)"""
+    return [
+        {"slide_number": n, "measured_ratio": 0.9 if m else 0.1, "metrics": m}
+        for n, m in enumerate(metrics, 1)
+    ]
+
+
+def _strength(resp, dimension_area: str):
+    return next(s for s in resp.strengths if s.area == dimension_area)
+
+
+def test_strength_slide_is_null_even_with_slide_values(req):
+    # STRENGTH 는 그 차원의 Take 전체에 문제가 없다는 뜻
+    # → 장 값이 있어도 장 번호 null, 근거는 Take 값
+    req["take_result"]["areas"]["GAZE"]["slides"] = _gaze_slides(
+        {"audience_ratio": 0.7},
+        {"audience_ratio": 0.9},
+        {"audience_ratio": 0.5, "script_ratio": 0.62},
+    )
+    resp, _ = run(req)
+    assert resp.dimensions["audience_gaze"] == "STRENGTH"
+    s = _strength(resp, "GAZE")
+    assert (s.slide_number, s.evidence) == (None, {"audience_ratio": 0.58})
+
+
+def test_improved_strength_slide_is_achieved_slide_mission(req):
+    req["missions"].append(
+        {
+            "mission_id": "m-gaze-1",
+            "area": "GAZE",
+            "slide_number": 1,
+            "target": {"metric": "audience_ratio", "operator": "GTE", "value": 0.5},
+        }
+    )
+    req["take_result"]["areas"]["GAZE"]["slides"] = _gaze_slides(
+        {"audience_ratio": 0.6}, {"audience_ratio": 0.9}, {"script_ratio": 0.62}
+    )
+    resp, _ = run(req)
+    assert resp.dimensions["audience_gaze"] == "IMPROVED"  # 미션을 이루고 문제가 없음
+    s = _strength(resp, "GAZE")
+    assert (s.slide_number, s.evidence) == (1, {"audience_ratio": 0.6})
+
+
+def test_improved_strength_without_slide_is_null(req):
+    # Take 전체의 반복 문제가 나아졌으면 장이 없다
+    req["previous_recurring_issues"].append(
+        {"area": "GAZE", "slide_number": None, "dimension": "audience_gaze"}
+    )
+    resp, _ = run(req)
+    assert resp.dimensions["audience_gaze"] == "IMPROVED"
+    s = _strength(resp, "GAZE")
+    assert (s.slide_number, s.evidence) == (None, {"audience_ratio": 0.58})
+
+
+def test_improved_strength_slide_is_previous_recurring_slide(req):
+    req["previous_recurring_issues"].append(
+        {"area": "GAZE", "slide_number": 1, "dimension": "audience_gaze"}
+    )
+    req["take_result"]["areas"]["GAZE"]["slides"] = _gaze_slides(
+        {"audience_ratio": 0.6},
+        {"audience_ratio": 0.9},
+        {"audience_ratio": 0.5, "script_ratio": 0.62},
+    )
+    resp, _ = run(req)
+    assert resp.dimensions["audience_gaze"] == "IMPROVED"
+    s = _strength(resp, "GAZE")
+    # 나아진 근거의 장(직전 반복 문제 1번 장)과 그 장 값
+    assert (s.slide_number, s.evidence) == (1, {"audience_ratio": 0.6})
+
+
 def test_sample_score_and_text(req):
     resp, _ = run(req)
     assert resp.score == 76  # (100 × 3 + 40 + 40) / 5
