@@ -492,7 +492,7 @@ cd web && npm ci
 
 # 11. 배포
 **어디서 도는가**: 두 곳에 배포된다.
-- **서버 판정 모듈** `src/gaze/`(`examples/` 포함)는 AI 서비스의 `features/gaze/`로 폴더째 옮기고, 테스트는 `tests/unit/gaze/`로 옮긴다(import 접두어만 바꾼다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
+- **서버 판정 모듈** `src/gaze/`(`examples/` 포함)는 AI 서비스의 `features/gaze/`로 폴더째 옮기고, 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮긴다(`tests/unit/`의 테스트가 예시를 패키지 위치로 찾는지 확인한다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
 - **브라우저 엔진** `web/src/engine/`(원본)은 FE가 `frontend/src/vendor/gaze/`로 Worker · 카메라 화면과 함께 복사해 쓴다. FE는 엔진의 `index.ts` · `contract.ts`만 import하고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. 엔진 안은 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다. 화면(카메라 화면 · 보정 안내)은 FE가 고친다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 생긴 뒤, 아래 '옮긴 뒤 확인'을 통과하면 옮긴다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
@@ -512,7 +512,7 @@ cd web && npm ci
 | CSP를 쓸 때 | `script-src 'wasm-unsafe-eval'`, `worker-src 'self'` | wasm · Worker 실행 |
 
 **옮긴 뒤 같은 결과인지 확인**
-1. 서비스: 옮긴 `tests/unit/gaze/`가 그대로 통과하고, 코어 경계 테스트가 새 위치를 본다.
+1. 서비스: 옮긴 `tests/unit/gaze/`가 (경로를 고친 뒤) 통과하고, 코어 경계 테스트가 새 위치를 본다.
 2. 코치 연구 폴더: 연구용 판정 대역과 이 모듈에 같은 입력을 넣어 판정을 비교하고 달라진 점을 연구 폴더 README에 적는다. 그 뒤 대역 대신 이 모듈을 `Judges`에 넣어 재생 · 실험을 다시 돌린다(`coach-agent.md` 13절).
 3. FE: `tsc -b` · `oxlint --max-warnings=0` · `vitest`(엔진 테스트 포함)가 통과하고, FE 빌드로 `smoke:prod`와 같은 흐름(격리 없이 준비 점검 → 실시간 → 카메라 끊김)을 확인한다. Chrome 말고 지원할 브라우저에서도 본다.
 4. 연구 폴더: `tools/export_config.py` · `make_fixtures.py`가 만든 파일과 FE 사본의 기준 커밋이 같은지 본다.

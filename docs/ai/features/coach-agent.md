@@ -637,7 +637,7 @@ uv sync
 | 호출 | `/coach/evaluate` → `decide_safe(req, judges)`, `/coach/finalize` → `finalize(req, judges)`, `/coach/plan` → `plan_coaching(req, llm=…, model=…)`. 라우터는 요청마다 마감 시각(AI 예산 25초)을 만들어 `structured_llm(<출력 스키마>, deadline=…)`으로 LLM 객체를 받는다(서비스 `common/llm.py`, 역할 → 묶음은 `settings.py`). `model`은 그 역할 묶음의 모델 이름이다(`planner_hash`). LLM 설정이 없어 객체를 만들 수 없으면 `llm=None`을 넘겨 코어가 기본 계획 + `LLM_UNAVAILABLE`을 200으로 돌려준다. 연구 도구의 고정 값(시간 제한 20초 · 재시도 0)은 쓰지 않는다 |
 | 오류 매핑 | 요청 형식 오류는 422 `VALIDATION_ERROR`. `ReplayRequired`는 409 `REPLAY_REQUIRED`(공통 에러 본문, 메시지에 빠진 구간) |
 | 동기 함수 | 판단은 CPU만 쓰는 짧은 계산이라 `def` 라우터로 두면 스레드 풀에서 돈다(`async def` 안에서 동기 호출을 하면 서버 전체가 멈춘다) |
-| 옮긴 뒤 테스트 | `tests/unit/`도 옮기고 import 접두어만 바꾼다. `test_core_boundary.py`는 코어 폴더를 찾는 상대 경로를 새 위치에 맞춘다 |
+| 옮긴 뒤 테스트 | `ai-service.md` 6-1 2번대로 한다. `tests/unit/`을 옮기되, 예시를 연구 폴더 경로로 찾는 `test_examples.py`는 패키지 위치로 찾게 고치고, `test_core_boundary.py`는 코어 폴더 경로를 새 위치에 맞춘다. finalize 예시를 대역 판정 모듈로 대조하는 `tests/lab/`의 예시 검사는 실제 판정 모듈을 묶은 서비스 계약 테스트로 옮긴다(대역은 서비스에 넣지 않는다) |
 
 **환경변수**: 코치 코어는 환경변수를 읽지 않는다. 코칭 계획의 LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓴다.
 
