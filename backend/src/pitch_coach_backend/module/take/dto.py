@@ -254,7 +254,7 @@ class ReviewMetaDTO(BaseModel):
 class ReviewResponseDTO(BaseModel):
     take_id: uuid.UUID
     overall_summary: str
-    score: int | None = None
+    score: int | None = Field(default=None, ge=0, le=100)
     dimensions: DimensionStatus
     strengths: list[DetailDTO] = []
     improvements: list[DetailDTO] = []

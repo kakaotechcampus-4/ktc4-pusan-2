@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import math
+import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
@@ -25,6 +27,11 @@ from pitch_coach_backend.module.pitch.exception import (
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take import coach_service
+from pitch_coach_backend.module.take.ai_response import (
+    CoverageCallError,
+    validate_coverage_reply,
+    validate_review_reply,
+)
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     MetricSecondCreateDTO,
@@ -425,25 +432,39 @@ def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
         user_criteria=_build_user_criteria(db, take),
     )
 
+REVIEW_RETRY_DELAY_SEC = 1.0
+
+
 def request_review(take_id: uuid.UUID, review_request: ReviewRequestDTO) -> ReviewResponseDTO:
     """AI 서버에 리뷰를 요청한다. 응답이 계약과 다르거나 다른 Take 의 것이면
     InvalidReviewResponse(502). 저장하다 DB 제약에 걸리기 전에 여기서 거른다."""
+    request_id = uuid.uuid4().hex
     with httpx2.Client(timeout=30.0) as client:
-        response = client.post(
-            f"{settings.ai_base_url}/takes/review",
-            json=review_request.model_dump(mode="json"),
-        )
-        response.raise_for_status()
-    try:
-        review_data = ReviewResponseDTO.model_validate(response.json())
-    # JSON 이 아님 · pydantic 검증 실패
-    except ValueError as e:
-        raise InvalidReviewResponse() from e
-    if review_data.take_id != take_id:
-        raise InvalidReviewResponse()
-    return review_data
+        for attempt in range(2):
+            try:
+                response = client.post(
+                    f"{settings.ai_base_url}/takes/review",
+                    json=review_request.model_dump(mode="json"),
+                    headers={"X-Request-ID": request_id},
+                )
+            except httpx2.HTTPError as exc:
+                if attempt:
+                    raise InvalidReviewResponse() from exc
+            else:
+                if response.status_code == 200:
+                    try:
+                        reply = response.json()
+                    except ValueError as exc:
+                        raise InvalidReviewResponse() from exc
+                    return validate_review_reply(reply, take_id)
+                retryable = response.status_code >= 500 or response.status_code in (408, 429)
+                if attempt or not retryable:
+                    raise InvalidReviewResponse()
+            time.sleep(REVIEW_RETRY_DELAY_SEC)
+    raise AssertionError("unreachable")
 
 def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO) -> None:
+    review_data = validate_review_reply(review_data.model_dump(mode="json"), take_id)
     take_repository = TakeRepository(db)
     take_repository.save_total_result(
         take_id,
@@ -553,26 +574,25 @@ COVERAGE_RETRYABLE_FAILED_CODES = frozenset(
 )
 
 
-class CoverageCallError(Exception):
-    def __init__(self, reason: str, retryable: bool) -> None:
-        super().__init__(reason)
-        self.retryable = retryable
-
-
 async def _post_ai(path: str, body: dict, request_id: str, timeout_sec: float) -> dict:
     try:
-        async with httpx.AsyncClient(timeout=timeout_sec) as client:
-            response = await client.post(
-                f"{settings.ai_base_url}{path}", json=body, headers={"X-Request-ID": request_id}
-            )
-    except httpx.HTTPError as e:
+        async with asyncio.timeout(timeout_sec):
+            async with httpx.AsyncClient(timeout=timeout_sec) as client:
+                response = await client.post(
+                    f"{settings.ai_base_url}{path}", json=body, headers={"X-Request-ID": request_id}
+                )
+    except (httpx.HTTPError, TimeoutError) as e:
         raise CoverageCallError(type(e).__name__, retryable=True) from e
-    if response.status_code >= 400:
+    if response.status_code != 200:
         raise CoverageCallError(
             f"status={response.status_code}",
             retryable=response.status_code >= 500 or response.status_code in (408, 429),
         )
-    return response.json()
+    try:
+        reply = response.json()
+    except ValueError as exc:
+        raise CoverageCallError("invalid coverage JSON", retryable=False) from exc
+    return validate_coverage_reply(reply, body["take_id"])
 
 
 async def request_analyze(body: dict, request_id: str) -> dict:
@@ -658,6 +678,7 @@ def _mark_retry_used(db: Session, take_id: uuid.UUID, column: str) -> bool:
 
 
 def _save_confirmed(db: Session, take_id: uuid.UUID, reply: dict) -> dict | None:
+    validate_coverage_reply(reply, take_id)
     take_repository = TakeRepository(db)
     payload = {key: value for key, value in reply.items() if key != "meta"}
     if _lock_open_take(take_repository, take_id) is None or not take_repository.insert_ai_result(
@@ -687,6 +708,7 @@ def _save_candidate(db: Session, take_id: uuid.UUID, candidate: dict) -> bool:
 
 
 def _apply_merged(db: Session, take_id: uuid.UUID, base_revision: int, reply: dict) -> bool:
+    validate_coverage_reply(reply, take_id)
     take_repository = TakeRepository(db)
     payload = {key: value for key, value in reply.items() if key != "meta"}
     if _lock_open_take(take_repository, take_id) is None or not take_repository.replace_ai_result(
