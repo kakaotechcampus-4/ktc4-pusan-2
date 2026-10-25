@@ -6,11 +6,9 @@
 
 from typing import Any
 
-from pitch_coach_backend.coach.requests import (
+from pitch_coach_backend.coach.requests import MetricSecond, SlideEvent, TranscriptSegment
+from pitch_coach_backend.coach.windows import (
     FinalWord,
-    MetricSecond,
-    SlideEvent,
-    TranscriptSegment,
     replay_input,
     slide_at,
     slide_changes,

@@ -6,20 +6,22 @@ from typing import Any
 
 import pytest
 
-from pitch_coach_backend.coach.client import PlanReply
+from pitch_coach_backend.coach.coaching_plan import (
+    PlanBasis,
+    plan_basis,
+    plan_for_evaluate,
+    plan_payload,
+    request_basis,
+)
+from pitch_coach_backend.coach.replies import PlanReply
 from pitch_coach_backend.coach.requests import (
     PLAN_MAX_MISSION_DESCRIPTION,
     PLAN_MAX_MISSIONS,
     PLAN_MAX_SLIDES,
     MissionInput,
-    PlanBasis,
     SlideTiming,
     build_plan,
-    plan_basis,
-    plan_for_evaluate,
-    plan_payload,
     plan_request,
-    request_basis,
 )
 
 # ── 코칭 계획 ─────────────────────────────────────────────────────────

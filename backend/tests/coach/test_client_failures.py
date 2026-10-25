@@ -9,13 +9,8 @@ import httpx
 import pytest
 
 from pitch_coach_backend.coach import client as coach_client
-from pitch_coach_backend.coach.client import (
-    EVALUATE_PATH,
-    FINALIZE_PATH,
-    MAX_T_MS,
-    HttpCoachClient,
-    PlanReply,
-)
+from pitch_coach_backend.coach.client import EVALUATE_PATH, FINALIZE_PATH, HttpCoachClient
+from pitch_coach_backend.coach.replies import MAX_T_MS, PlanReply
 from tests.coach.conftest import EVALUATE, FINALIZE, PLAN, PLAN_RESPONSE, Clock, ai, error, example
 
 # ── AI 가 없을 때 ─────────────────────────────────────────────────────

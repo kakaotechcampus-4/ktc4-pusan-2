@@ -7,7 +7,7 @@ import copy
 
 import pytest
 
-from pitch_coach_backend.coach.client import (
+from pitch_coach_backend.coach.replies import (
     EvaluateReply,
     FinalizeReply,
     PlanReply,

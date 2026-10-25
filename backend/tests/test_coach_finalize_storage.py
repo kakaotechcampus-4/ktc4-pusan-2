@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.coach import store as coach_store
-from pitch_coach_backend.coach.client import FinalizeReply
+from pitch_coach_backend.coach.replies import FinalizeReply
 from pitch_coach_backend.coach.requests import SlideEvent
 from pitch_coach_backend.coach.store import DbCoachStore
 from pitch_coach_backend.module.pitch.entity import (

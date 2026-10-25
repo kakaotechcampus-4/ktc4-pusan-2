@@ -6,9 +6,7 @@ from datetime import datetime
 import pytest
 
 from pitch_coach_backend.coach import planner
-from pitch_coach_backend.coach.client import (
-    PlanReply,
-)
+from pitch_coach_backend.coach.replies import PlanReply
 from tests.coach_fakes import (
     PITCH_ID,
     PLAN_REQUEST,

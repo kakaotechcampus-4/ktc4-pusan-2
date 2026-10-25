@@ -7,10 +7,8 @@ from typing import Any
 import httpx
 import pytest
 
-from pitch_coach_backend.coach.client import (
-    EVALUATE_PATH,
-    FINALIZE_PATH,
-    PLAN_PATH,
+from pitch_coach_backend.coach.client import EVALUATE_PATH, FINALIZE_PATH, PLAN_PATH
+from pitch_coach_backend.coach.replies import (
     EvaluateReply,
     FinalizeReply,
     PlanReply,

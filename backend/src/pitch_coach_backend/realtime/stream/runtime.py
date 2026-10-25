@@ -63,7 +63,8 @@ import anyio
 from fastapi import WebSocket
 from pydantic import BaseModel
 
-from pitch_coach_backend.coach.client import CoachClient, EvaluateReply
+from pitch_coach_backend.coach.client import CoachClient
+from pitch_coach_backend.coach.replies import EvaluateReply
 from pitch_coach_backend.coach.requests import SlideEvent
 from pitch_coach_backend.coach.session import (
     CoachSession,

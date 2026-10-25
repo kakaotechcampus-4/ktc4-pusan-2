@@ -8,9 +8,7 @@ import pytest
 from sqlalchemy.exc import DataError
 
 from pitch_coach_backend.coach import finalize
-from pitch_coach_backend.coach.client import (
-    ReplayRequired,
-)
+from pitch_coach_backend.coach.replies import ReplayRequired
 from pitch_coach_backend.coach.session import FinalizeSnapshot
 from pitch_coach_backend.core.tasks import TaskRegistry
 from tests.coach_fakes import (

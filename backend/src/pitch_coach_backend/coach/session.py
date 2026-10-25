@@ -36,21 +36,24 @@ from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from pitch_coach_backend.coach.client import CoachClient, EvaluateReply
+from pitch_coach_backend.coach.client import CoachClient
+from pitch_coach_backend.coach.replies import EvaluateReply
 from pitch_coach_backend.coach.requests import (
-    GAZE_VOICE_WINDOW_MS,
-    WORDS_WINDOW_MS,
-    FinalWord,
     MetricSecond,
     SlideEvent,
     TakeConstants,
     TakeContext,
     evaluate_request,
+)
+from pitch_coach_backend.coach.store import CoachStore
+from pitch_coach_backend.coach.windows import (
+    GAZE_VOICE_WINDOW_MS,
+    WORDS_WINDOW_MS,
+    FinalWord,
     slide_at,
     slide_changes,
     window_inputs,
 )
-from pitch_coach_backend.coach.store import CoachStore
 from pitch_coach_backend.core.row_buffer import RowBuffer
 from pitch_coach_backend.module.take.dto import StoredEvent
 from pitch_coach_backend.module.take.exception import NonExistentTake
