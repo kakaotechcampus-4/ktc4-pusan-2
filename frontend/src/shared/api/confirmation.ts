@@ -15,12 +15,13 @@ export function useConfirmations(takeId: string) {
   });
 }
 
-/** 답 보내기 · 건너뛰기(빈 답). 보내고 나면 분석 대기가 새 단계를 보도록 리포트를 다시 묻게 합니다 */
+/** 답 보내기 · 건너뛰기(빈 답). 성공하면 분석 대기가 새 단계를 보도록 리포트를 다시 묻습니다. */
 export function useSendConfirmations(takeId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: ConfirmationsRequest) =>
       postJson<ConfirmationsSent>(`/api/takes/${takeId}/confirmations`, body),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['takes', takeId] }),
+    // 502면 같은 답을 다시 보낼 수 있습니다. 확인 항목을 갱신하면 폼이 다시 로딩되어 선택이 사라집니다.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['takes', takeId, 'report'] }),
   });
 }
