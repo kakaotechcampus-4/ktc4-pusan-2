@@ -65,6 +65,19 @@ async def test_finalize_with_the_live_state_saves_the_result():
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("saved", [True, False])
+async def test_saved_take_result_starts_the_analysis(monkeypatch, saved):
+    started: list[uuid.UUID] = []
+    monkeypatch.setattr(finalize, "_on_take_result", started.append)
+    client, store = FakeClient(), FakeStore(events=[EVENT], save_result=saved)
+    client.finalize_replies = [take_result()]
+
+    await finalize.run(TAKE_ID, snapshot(), client=client, store=store)
+
+    assert started == ([TAKE_ID] if saved else [])
+
+
+@pytest.mark.anyio
 async def test_replay_required_sends_the_raw_data_once_more():
     client, store = FakeClient(), FakeStore(source=source())
     client.finalize_replies = [ReplayRequired(), take_result(replayed=True)]

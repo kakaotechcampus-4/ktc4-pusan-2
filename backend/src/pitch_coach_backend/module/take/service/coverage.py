@@ -7,6 +7,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Callable, Iterable, Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -17,6 +18,7 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.rounding import round_half_up
 from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.ai_response import CoverageCallError, validate_coverage_reply
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import TakeRepository
@@ -31,6 +33,8 @@ COVERAGE_CANDIDATE_KIND = "SCRIPT_COVERAGE_PENDING"
 COVERAGE_RETRYABLE_FAILED_CODES = frozenset(
     {"LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"}
 )
+
+RUBRIC_WAIT = timedelta(minutes=5)
 
 
 async def _post_ai(path: str, body: dict, request_id: str, timeout_sec: float) -> dict:
@@ -321,15 +325,25 @@ async def _first_analyze(
         )
 
 
+def _waiting_for_rubric(db: Session, take: Take) -> bool:
+    if not script_service.rubric_pending(db, take.script_version_id):
+        return False
+    started_at = take.analysis_stage_at
+    return started_at is not None and datetime.now(UTC) < started_at + RUBRIC_WAIT
+
+
 def _load_coverage(db: Session, take_id: uuid.UUID) -> dict | None:
     take_repository = TakeRepository(db)
     take = take_repository.get_take(take_id)
     if not _coverage_open(take):
         return None
-    slides = PitchRepository(db).get_slides(take.script_version_id)
     confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND)
     candidate = take_repository.get_ai_result(take_id, COVERAGE_CANDIDATE_KIND)
+    if confirmed is None and candidate is None and _waiting_for_rubric(db, take):
+        return {"rubric_pending": True}
+    slides = PitchRepository(db).get_slides(take.script_version_id)
     return {
+        "rubric_pending": False,
         "body": {
             "take_id": str(take_id),
             "slides": slide_stt(
@@ -354,6 +368,8 @@ async def analyze_script_coverage(
     job = await _in_session(session_factory, _load_coverage, take_id)
     if job is None:
         return "SKIPPED"
+    if job["rubric_pending"]:
+        return "RUBRIC_PENDING"
     body = job["body"]
     if job["candidate"] is not None:
         if job["rescore_retry_used"]:

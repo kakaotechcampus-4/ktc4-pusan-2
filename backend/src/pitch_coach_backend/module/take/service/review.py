@@ -1,9 +1,11 @@
 """리뷰 요청 조립 · AI 호출 · 결과 저장. 결과 · 미션 · 요약 · Take 완료는 한 트랜잭션이다."""
 
+import asyncio
 import logging
 import time
 import uuid
 
+import httpx
 import httpx2
 from sqlalchemy.orm import Session
 
@@ -99,12 +101,59 @@ def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
 
 REVIEW_RETRY_DELAY_SEC = 1.0
 
+REVIEW_TIMEOUT_SEC = 30.0
+
+
+def _retryable_status(status_code: int) -> bool:
+    return status_code >= 500 or status_code in (408, 429)
+
+
+def claim_review(
+    db: Session, take_id: uuid.UUID, request_id: uuid.UUID, *, takeover: bool = False
+) -> uuid.UUID | None:
+    take_repository = TakeRepository(db)
+    if not take_repository.start_review(take_id, request_id, takeover=takeover):
+        db.rollback()
+        return None
+    pitch_id = take_repository.get_pitch_id_of_take(take_id)
+    db.commit()
+    return pitch_id
+
+
+async def request_review_async(
+    take_id: uuid.UUID, review_request: ReviewRequestDTO
+) -> ReviewResponseDTO:
+    request_id = uuid.uuid4().hex
+    body = review_request.model_dump(mode="json")
+    async with httpx.AsyncClient(timeout=REVIEW_TIMEOUT_SEC) as client:
+        for attempt in range(2):
+            try:
+                response = await client.post(
+                    f"{settings.ai_base_url}/takes/review",
+                    json=body,
+                    headers={"X-Request-ID": request_id},
+                )
+            except httpx.HTTPError as exc:
+                if attempt:
+                    raise InvalidReviewResponse() from exc
+            else:
+                if response.status_code == 200:
+                    try:
+                        reply = response.json()
+                    except ValueError as exc:
+                        raise InvalidReviewResponse() from exc
+                    return validate_review_reply(reply, take_id)
+                if attempt or not _retryable_status(response.status_code):
+                    raise InvalidReviewResponse()
+            await asyncio.sleep(REVIEW_RETRY_DELAY_SEC)
+    raise AssertionError("unreachable")
+
 
 def request_review(take_id: uuid.UUID, review_request: ReviewRequestDTO) -> ReviewResponseDTO:
     """AI 서버에 리뷰를 요청한다. 응답이 계약과 다르거나 다른 Take 의 것이면
     InvalidReviewResponse(502). 저장하다 DB 제약에 걸리기 전에 여기서 거른다."""
     request_id = uuid.uuid4().hex
-    with httpx2.Client(timeout=30.0) as client:
+    with httpx2.Client(timeout=REVIEW_TIMEOUT_SEC) as client:
         for attempt in range(2):
             try:
                 response = client.post(
@@ -122,8 +171,7 @@ def request_review(take_id: uuid.UUID, review_request: ReviewRequestDTO) -> Revi
                     except ValueError as exc:
                         raise InvalidReviewResponse() from exc
                     return validate_review_reply(reply, take_id)
-                retryable = response.status_code >= 500 or response.status_code in (408, 429)
-                if attempt or not retryable:
+                if attempt or not _retryable_status(response.status_code):
                     raise InvalidReviewResponse()
             time.sleep(REVIEW_RETRY_DELAY_SEC)
     raise AssertionError("unreachable")
@@ -172,7 +220,7 @@ def save_review(
     return True
 
 
-def _fail_review(db: Session, take_id: uuid.UUID, request_id: uuid.UUID) -> bool:
+def fail_review(db: Session, take_id: uuid.UUID, request_id: uuid.UUID) -> bool:
     repository = TakeRepository(db)
     if repository.lock_review(take_id, request_id) is None:
         db.rollback()
@@ -200,7 +248,7 @@ def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
     except Exception:
         db.rollback()
         # 성공·실패 모두 현재 작업만 확정한다. 다른 작업이 이어받았거나 Take가 삭제됐으면 버린다.
-        if not _fail_review(db, take_id, request_id):
+        if not fail_review(db, take_id, request_id):
             raise TakeNotReviewable() from None
         raise
 

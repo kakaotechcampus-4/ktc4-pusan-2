@@ -8,6 +8,7 @@
 """
 
 import asyncio
+import uuid
 from collections.abc import Awaitable, Callable
 
 from pitch_coach_backend.coach import finalize, planner, retention
@@ -18,8 +19,13 @@ from pitch_coach_backend.coach.store import CoachStore
 STOP_TIMEOUT_SEC = 5.0
 
 
-async def start(client: CoachClient, store: CoachStore) -> Callable[[], Awaitable[None]]:
+async def start(
+    client: CoachClient,
+    store: CoachStore,
+    on_take_result: Callable[[uuid.UUID], object] | None = None,
+) -> Callable[[], Awaitable[None]]:
     """작업을 띄우고, 내릴 때 부를 함수를 돌려준다."""
+    finalize.on_take_result(on_take_result)
     await finalize.resume(client=client, store=store)
     loops = [
         asyncio.create_task(finalize.sweep_forever(client, store), name="coach-finalize-sweep"),
@@ -31,6 +37,7 @@ async def start(client: CoachClient, store: CoachStore) -> Callable[[], Awaitabl
             loop.cancel()
         await asyncio.wait(loops)
         await finalize.stop_all(STOP_TIMEOUT_SEC)
+        finalize.on_take_result(None)
         await planner.stop_all(STOP_TIMEOUT_SEC)
 
     return stop

@@ -60,6 +60,31 @@ class TakeHistoryRowDTO(BaseModel):
 class TakeHistoryResponseDTO(BaseModel):
     takes: list[TakeHistoryRowDTO]
 
+class TakeMeasuresDTO(BaseModel):
+    duration_ms: int
+    goal_ms: int
+    audience_ratio: float | None
+    screen_ratio: float | None
+    script_ratio: float | None
+    away_ratio: float | None
+    unmeasured_ms: int | None
+    cpm: float | None
+    filler_count: int | None
+
+class TakeReportDTO(BaseModel):
+    take_id: uuid.UUID
+    pitch_id: uuid.UUID
+    pitch_title: str
+    take_number: int
+    script_mode: str
+    ended_at: datetime | None
+    status: str
+    analysis_stage: str | None
+    review_status: str | None
+    analysis_hold_reason: str | None
+    measures: TakeMeasuresDTO | None
+    review: dict[str, Any] | None
+
 class TakeSummaryDTO(BaseModel):
     take_id: uuid.UUID
     status: Literal["READY", "RUNNING", "ANALYZING", "COMPLETED", "FAILED"]

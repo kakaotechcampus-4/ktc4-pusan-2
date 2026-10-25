@@ -436,20 +436,19 @@ async def test_shutdown_saves_slide_events_even_without_pending_metrics():
 
 @pytest.mark.parametrize("stage", ["FINALIZING", "SCORING"])
 def test_review_waits_for_the_take_result_and_scoring(
-    client: TestClient, user, take: Take, db_session: Session, coach: Coach, stage: str
+    take: Take, db_session: Session, stage: str
 ):
-    """Take 결과를 만드는 중에는 리뷰를 409 로 막아 분석 단계를 유지한다."""
-    from pitch_coach_backend.core.security import create_access_token
+    """Take 결과를 만드는 중에는 리뷰를 막아 분석 단계를 유지한다."""
+    from pitch_coach_backend.module.take.exception import TakeNotReviewable
+    from pitch_coach_backend.module.take.service import review as review_service
 
     take.status = "ANALYZING"
     take.analysis_stage = stage
     db_session.commit()
-    headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
 
-    response = client.post(f"/api/pitches/{take.pitch_id}/takes/{take.id}/review", headers=headers)
+    with pytest.raises(TakeNotReviewable):
+        review_service.get_review_result(db_session, take.id)
 
-    assert response.status_code == 409
-    assert response.json()["code"] == "TAKE_NOT_REVIEWABLE"
     db_session.refresh(take)
     assert take.analysis_stage == stage
 

@@ -56,6 +56,24 @@ class TakeRepository:
             .where(Take.id == take_id, Pitch.user_id == user_id)
         )
 
+    def get_owned_with_pitch_title(
+        self, take_id: uuid.UUID, user_id: uuid.UUID
+    ) -> tuple[Take, str] | None:
+        row = self.db.execute(
+            select(Take, Pitch.title)
+            .join(Pitch, Pitch.id == Take.pitch_id)
+            .where(Take.id == take_id, Pitch.user_id == user_id)
+        ).first()
+        return None if row is None else (row[0], row[1])
+
+    def get_ai_payloads(self, take_id: uuid.UUID, kinds: tuple[str, ...]) -> dict[str, Any]:
+        rows = self.db.execute(
+            select(TakeAIResults.kind, TakeAIResults.payload).where(
+                TakeAIResults.take_id == take_id, TakeAIResults.kind.in_(kinds)
+            )
+        ).all()
+        return {kind: payload for kind, payload in rows}
+
     def get_max_score_take_in_pitch(self, pitch_id: uuid.UUID) -> uuid.UUID | None:
         return self.db.scalar(
             select(TakeSummary.take_id)
@@ -538,6 +556,24 @@ class TakeRepository:
             stmt = stmt.where(Take.pitch_id == pitch_id)
         return list(self.db.execute(stmt).all())
 
+    def analyzing_takes(
+        self,
+        stale_before: datetime | None = None,
+        *,
+        after: uuid.UUID | None = None,
+        limit: int = 100,
+    ) -> list[uuid.UUID]:
+        stmt = select(Take.id).where(
+            Take.status == "ANALYZING",
+            Take.analysis_stage.in_(("SCORING", "AWAITING_CONFIRMATION", "REVIEWING")),
+            Take.analysis_hold_reason.is_(None),
+        )
+        if stale_before is not None:
+            stmt = stmt.where(Take.analysis_stage_at < stale_before)
+        if after is not None:
+            stmt = stmt.where(Take.id > after)
+        return list(self.db.scalars(stmt.order_by(Take.id).limit(limit)))
+
     def running_takes_last_active(self) -> list[tuple[uuid.UUID, datetime]]:
         """`RUNNING` 인 Take 와 마지막으로 활동한 시각. 앱이 다시 뜰 때 떠난 Take 를 찾는 데 쓴다.
 
@@ -549,7 +585,13 @@ class TakeRepository:
         ).all()
         return [(take_id, last_active_at) for take_id, last_active_at in rows]
 
-    def start_review(self, take_id: uuid.UUID, request_id: uuid.UUID | None = None) -> bool:
+    def start_review(
+        self,
+        take_id: uuid.UUID,
+        request_id: uuid.UUID | None = None,
+        *,
+        takeover: bool = False,
+    ) -> bool:
         """채점까지 끝난 Take 의 분석 단계를 `REVIEWING` 으로 바꾼다. 바꿨으면 True.
 
         채점이 REVIEWING으로 넘긴 뒤 아직 실행 표식이 없으면 즉시 시작한다.
@@ -560,9 +602,13 @@ class TakeRepository:
         받으면 그 Take 는 끝내 리뷰를 못 받는다. 분석 단계가 없는 Take 는 그 칸이 생기기 전에 끝난
         것이라 예전처럼 받는다.
         """
-        stale_review = and_(
-            Take.analysis_stage == "REVIEWING",
-            Take.analysis_stage_at < func.now() - REVIEW_STALE_AFTER,
+        abandoned_review = (
+            Take.analysis_stage == "REVIEWING"
+            if takeover
+            else and_(
+                Take.analysis_stage == "REVIEWING",
+                Take.analysis_stage_at < func.now() - REVIEW_STALE_AFTER,
+            )
         )
         result = self.db.execute(
             update(Take)
@@ -582,7 +628,7 @@ class TakeRepository:
                     ),
                     Take.analysis_stage == "AWAITING_CONFIRMATION",
                     Take.analysis_stage.is_(None),
-                    stale_review,
+                    abandoned_review,
                 ),
             )
             .values(
