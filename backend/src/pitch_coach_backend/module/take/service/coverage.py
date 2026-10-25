@@ -124,13 +124,18 @@ def _coverage_open(take: Take | None) -> bool:
     )
 
 
-def _lock_open_take(take_repository: TakeRepository, take_id: uuid.UUID) -> Take | None:
-    take = take_repository.lock_take(take_id)
+def _lock_open_take(
+    take_repository: TakeRepository, take_id: uuid.UUID, requested_at: datetime
+) -> Take | None:
+    # 이 작업이 아직 표식을 쥐고 있을 때만 쓴다. 이어받힌 작업의 늦은 응답은 여기서 걸러진다
+    take = take_repository.lock_coverage(take_id, requested_at)
     return take if _coverage_open(take) else None
 
 
-def _mark_retry_used(db: Session, take_id: uuid.UUID, column: str) -> bool:
-    take = _lock_open_take(TakeRepository(db), take_id)
+def _mark_retry_used(
+    db: Session, take_id: uuid.UUID, requested_at: datetime, column: str
+) -> bool:
+    take = _lock_open_take(TakeRepository(db), take_id, requested_at)
     if take is None or getattr(take, column):
         db.rollback()
         return False
@@ -139,11 +144,15 @@ def _mark_retry_used(db: Session, take_id: uuid.UUID, column: str) -> bool:
     return True
 
 
-def _save_confirmed(db: Session, take_id: uuid.UUID, reply: dict) -> dict | None:
+def _save_confirmed(
+    db: Session, take_id: uuid.UUID, requested_at: datetime, reply: dict
+) -> dict | None:
     validate_coverage_reply(reply, take_id)
     take_repository = TakeRepository(db)
     payload = {key: value for key, value in reply.items() if key != "meta"}
-    if _lock_open_take(take_repository, take_id) is None or not take_repository.insert_ai_result(
+    if _lock_open_take(
+        take_repository, take_id, requested_at
+    ) is None or not take_repository.insert_ai_result(
         take_id, COVERAGE_KIND, payload, reply.get("meta")
     ):
         db.rollback()
@@ -153,9 +162,11 @@ def _save_confirmed(db: Session, take_id: uuid.UUID, reply: dict) -> dict | None
     return payload
 
 
-def _save_candidate(db: Session, take_id: uuid.UUID, candidate: dict) -> bool:
+def _save_candidate(
+    db: Session, take_id: uuid.UUID, requested_at: datetime, candidate: dict
+) -> bool:
     take_repository = TakeRepository(db)
-    take = _lock_open_take(take_repository, take_id)
+    take = _lock_open_take(take_repository, take_id, requested_at)
     confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND) if take else None
     if (
         confirmed is None
@@ -169,11 +180,15 @@ def _save_candidate(db: Session, take_id: uuid.UUID, candidate: dict) -> bool:
     return True
 
 
-def _apply_merged(db: Session, take_id: uuid.UUID, base_revision: int, reply: dict) -> bool:
+def _apply_merged(
+    db: Session, take_id: uuid.UUID, requested_at: datetime, base_revision: int, reply: dict
+) -> bool:
     validate_coverage_reply(reply, take_id)
     take_repository = TakeRepository(db)
     payload = {key: value for key, value in reply.items() if key != "meta"}
-    if _lock_open_take(take_repository, take_id) is None or not take_repository.replace_ai_result(
+    if _lock_open_take(
+        take_repository, take_id, requested_at
+    ) is None or not take_repository.replace_ai_result(
         take_id, COVERAGE_KIND, base_revision, payload, reply.get("meta")
     ):
         db.rollback()
@@ -184,8 +199,8 @@ def _apply_merged(db: Session, take_id: uuid.UUID, base_revision: int, reply: di
     return True
 
 
-def _hold_coverage(db: Session, take_id: uuid.UUID) -> None:
-    take = _lock_open_take(TakeRepository(db), take_id)
+def _hold_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) -> None:
+    take = _lock_open_take(TakeRepository(db), take_id, requested_at)
     if take is None:
         db.rollback()
         return
@@ -193,16 +208,18 @@ def _hold_coverage(db: Session, take_id: uuid.UUID) -> None:
     db.commit()
 
 
-def _conclude_coverage(db: Session, take_id: uuid.UUID) -> str:
+def _conclude_coverage(db: Session, take_id: uuid.UUID, requested_at: datetime) -> str:
     take_repository = TakeRepository(db)
-    take = take_repository.lock_take(take_id)
-    if take is None or take.status != "ANALYZING" or take.analysis_stage != "SCORING":
+    take = take_repository.lock_coverage(take_id, requested_at)
+    if take is None:
         db.rollback()
         return "SKIPPED"
+    # 작업이 끝났으니 표식을 놓는다. 보류된 Take 는 사람이 정한 복구가 다시 잡는다
+    take.coverage_requested_at = None
     if take.analysis_hold_reason is not None or take_repository.get_ai_result(
         take_id, COVERAGE_CANDIDATE_KIND
     ):
-        db.rollback()
+        db.commit()
         return "HELD"
     confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND)
     if confirmed is not None and confirmed.payload.get("confirmations"):
@@ -228,8 +245,8 @@ async def _in_session[T](
 
 
 async def _merge_candidate(
-    session_factory: Callable[[], Session], take_id: uuid.UUID, rubrics: list[dict],
-    candidate: dict) -> None:
+    session_factory: Callable[[], Session], take_id: uuid.UUID, requested_at: datetime,
+    rubrics: list[dict], candidate: dict) -> None:
     body = {
         "take_id": str(take_id),
         "evaluations": candidate["evaluations"],
@@ -243,28 +260,29 @@ async def _merge_candidate(
     except CoverageCallError as e:
         logger.warning("take %s: coverage merge rescore failed: %s", take_id, e)
         if not e.retryable or not await _in_session(
-            session_factory, _mark_retry_used, take_id, "coverage_rescore_retry_used"
+            session_factory, _mark_retry_used, take_id, requested_at, "coverage_rescore_retry_used"
         ):
-            await _in_session(session_factory, _hold_coverage, take_id)
+            await _in_session(session_factory, _hold_coverage, take_id, requested_at)
             return
         try:
             reply = await request_rescore(body, request_id)
         except CoverageCallError as retry_error:
             logger.warning("take %s: coverage merge rescore retry failed: %s", take_id, retry_error)
-            await _in_session(session_factory, _hold_coverage, take_id)
+            await _in_session(session_factory, _hold_coverage, take_id, requested_at)
             return
     if not await _in_session(
-        session_factory, _apply_merged, take_id, candidate["base_revision"], reply
+        session_factory, _apply_merged, take_id, requested_at, candidate["base_revision"], reply
     ):
         logger.info("take %s: stale coverage merge result discarded", take_id)
 
 
 async def _retry_failed_slides(
-    session_factory: Callable[[], Session], take_id: uuid.UUID, body: dict,
-    script_version_id: str, confirmed: dict, revision: int, retry_used: bool) -> None:
+    session_factory: Callable[[], Session], take_id: uuid.UUID, requested_at: datetime,
+    body: dict, script_version_id: str, confirmed: dict, revision: int,
+    retry_used: bool) -> None:
     targets = retry_targets(confirmed.get("failed", []))
     if not targets or retry_used or not await _in_session(
-        session_factory, _mark_retry_used, take_id, "coverage_retry_used"
+        session_factory, _mark_retry_used, take_id, requested_at, "coverage_retry_used"
     ):
         return
     try:
@@ -282,13 +300,14 @@ async def _retry_failed_slides(
         "failed": merged[1],
         "retry_meta": reply.get("meta"),
     }
-    if await _in_session(session_factory, _save_candidate, take_id, candidate):
-        await _merge_candidate(session_factory, take_id, body["rubrics"], candidate)
+    if await _in_session(session_factory, _save_candidate, take_id, requested_at, candidate):
+        await _merge_candidate(session_factory, take_id, requested_at, body["rubrics"], candidate)
 
 
 async def _first_analyze(
     session_factory: Callable[[], Session],
     take_id: uuid.UUID,
+    requested_at: datetime,
     body: dict,
     script_version_id: str,
     retry_used: bool) -> None:
@@ -305,7 +324,7 @@ async def _first_analyze(
             not e.retryable
             or retry_used
             or not await _in_session(
-                session_factory, _mark_retry_used, take_id, "coverage_retry_used"
+                session_factory, _mark_retry_used, take_id, requested_at, "coverage_retry_used"
             )
         ):
             return
@@ -316,12 +335,13 @@ async def _first_analyze(
                 "take %s: coverage analyze retry failed: %s", take_id, retry_error
             )
             return
-        await _in_session(session_factory, _save_confirmed, take_id, reply)
+        await _in_session(session_factory, _save_confirmed, take_id, requested_at, reply)
         return
-    confirmed = await _in_session(session_factory, _save_confirmed, take_id, reply)
+    confirmed = await _in_session(session_factory, _save_confirmed, take_id, requested_at, reply)
     if confirmed is not None:
         await _retry_failed_slides(
-            session_factory, take_id, body, script_version_id, confirmed, 0, retry_used
+            session_factory, take_id, requested_at, body, script_version_id, confirmed, 0,
+            retry_used,
         )
 
 
@@ -332,18 +352,37 @@ def _waiting_for_rubric(db: Session, take: Take) -> bool:
     return started_at is not None and datetime.now(UTC) < started_at + RUBRIC_WAIT
 
 
-def _load_coverage(db: Session, take_id: uuid.UUID) -> dict | None:
+def _claim_coverage(db: Session, take_id: uuid.UUID, takeover: bool) -> dict | None:
+    """채점 작업 표식을 잡고 이어 갈 재료를 읽는다.
+
+    못 잡았으면(다른 작업이 채점 중이거나 단계가 넘어감) None 이다.
+
+    기준을 기다리는 동안에는 잡지 않는다 (잡으면 기다리는 동안 다른 작업이 이어받지 못한다).
+    """
     take_repository = TakeRepository(db)
     take = take_repository.get_take(take_id)
     if not _coverage_open(take):
         return None
+    if (
+        take_repository.get_ai_result(take_id, COVERAGE_KIND) is None
+        and take_repository.get_ai_result(take_id, COVERAGE_CANDIDATE_KIND) is None
+        and _waiting_for_rubric(db, take)
+    ):
+        return {"rubric_pending": True}
+    requested_at = take_repository.claim_coverage(take_id, takeover=takeover)
+    if requested_at is None:
+        db.rollback()
+        return None
+    # 재시도 기록 · 확정본은 표식을 잡은 뒤에 다시 읽는다. 잡기 전에 읽으면 앞 작업이 그 사이에 쓴
+    # 한도를 못 보고 재시도를 한 번 더 보낼 수 있다
+    take = take_repository.lock_coverage(take_id, requested_at)
+    assert take is not None
     confirmed = take_repository.get_ai_result(take_id, COVERAGE_KIND)
     candidate = take_repository.get_ai_result(take_id, COVERAGE_CANDIDATE_KIND)
-    if confirmed is None and candidate is None and _waiting_for_rubric(db, take):
-        return {"rubric_pending": True}
     slides = PitchRepository(db).get_slides(take.script_version_id)
-    return {
+    job = {
         "rubric_pending": False,
+        "requested_at": requested_at,
         "body": {
             "take_id": str(take_id),
             "slides": slide_stt(
@@ -360,29 +399,43 @@ def _load_coverage(db: Session, take_id: uuid.UUID) -> dict | None:
         "confirmed": (confirmed.payload, confirmed.revision) if confirmed else None,
         "candidate": candidate.payload if candidate else None,
     }
+    db.commit()
+    return job
 
 
 async def analyze_script_coverage(
-    take_id: uuid.UUID, session_factory: Callable[[], Session] = SessionLocal
+    take_id: uuid.UUID,
+    session_factory: Callable[[], Session] = SessionLocal,
+    *,
+    takeover: bool = False,
 ) -> str:
-    job = await _in_session(session_factory, _load_coverage, take_id)
+    """Take 하나의 대본 전달도 채점을 저장된 것 다음 걸음부터 끝까지 한다 (architecture.md 1-7).
+
+    최초 호출부터 단계 전환까지 표식(`takes.coverage_requested_at`)을 잡은 작업 하나만 한다.
+    `takeover` 는 BE 가 다시 떴을 때 끊긴 작업을 바로 이어받을 때만 쓴다.
+    """
+    job = await _in_session(session_factory, _claim_coverage, take_id, takeover)
     if job is None:
         return "SKIPPED"
     if job["rubric_pending"]:
         return "RUBRIC_PENDING"
+    requested_at = job["requested_at"]
     body = job["body"]
     if job["candidate"] is not None:
         if job["rescore_retry_used"]:
-            await _in_session(session_factory, _hold_coverage, take_id)
+            await _in_session(session_factory, _hold_coverage, take_id, requested_at)
         else:
-            await _merge_candidate(session_factory, take_id, body["rubrics"], job["candidate"])
+            await _merge_candidate(
+                session_factory, take_id, requested_at, body["rubrics"], job["candidate"]
+            )
     elif job["confirmed"] is None:
         await _first_analyze(
-            session_factory, take_id, body, job["script_version_id"], job["retry_used"]
+            session_factory, take_id, requested_at, body, job["script_version_id"],
+            job["retry_used"],
         )
     else:
         await _retry_failed_slides(
-            session_factory, take_id, body, job["script_version_id"], *job["confirmed"],
-            job["retry_used"],
+            session_factory, take_id, requested_at, body, job["script_version_id"],
+            *job["confirmed"], job["retry_used"],
         )
-    return await _in_session(session_factory, _conclude_coverage, take_id)
+    return await _in_session(session_factory, _conclude_coverage, take_id, requested_at)

@@ -89,17 +89,20 @@ async def _in_session[T](
     return await run_in_threadpool(call)
 
 
-async def _score(take_id: uuid.UUID, session_factory: SessionFactory) -> str:
+async def _score(take_id: uuid.UUID, session_factory: SessionFactory, restarted: bool) -> str:
     while True:
         async with _slots():
-            outcome = await coverage_service.analyze_script_coverage(take_id, session_factory)
+            # 다시 떴을 때는 앞 프로세스가 잡아 둔 채점 표식을 기한과 관계없이 이어받는다
+            outcome = await coverage_service.analyze_script_coverage(
+                take_id, session_factory, takeover=restarted
+            )
         if outcome != "RUBRIC_PENDING":
             return outcome
         await asyncio.sleep(RUBRIC_POLL_SEC)
 
 
 async def _run(take_id: uuid.UUID, session_factory: SessionFactory, restarted: bool) -> None:
-    outcome = await _score(take_id, session_factory)
+    outcome = await _score(take_id, session_factory, restarted)
     if outcome == "HELD":
         logger.warning("대본 전달도 병합이 실패해 리뷰를 보류한다 take=%s", take_id)
         return
