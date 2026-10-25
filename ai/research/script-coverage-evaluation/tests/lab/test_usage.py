@@ -37,12 +37,19 @@ def test_summary_counts_and_cap():
     for tokens in (500, 900, 1500, 700):
         log.on_llm_end(_result(tokens, "stop"))
     log.on_llm_end(_result(None, "stop"))
-    log.on_llm_error(TimeoutError())
     s = log.summary()
-    assert s["calls"] == 5 and s["errors"] == 1 and s["unknown_usage"] == 1
+    assert s["calls"] == 5 and s["errors"] == 0 and s["unknown_usage"] == 1
     assert s["output_tokens"] == {"min": 500, "median": 900, "p95": 1500, "max": 1500}
     assert s["finish_reason"] == {"stop": 5}
     assert s["recommended_cap"] == 3072
+
+
+def test_errored_call_leaves_the_cap_undecided():
+    # 잘림이 구조화 출력 예외로 올라오면 finish_reason 대신 오류로 보인다
+    log = UsageLog()
+    log.on_llm_end(_result(800, "stop"))
+    log.on_llm_error(ValueError())
+    assert log.summary()["recommended_cap"] is None
 
 
 def test_truncated_call_leaves_the_cap_undecided():
@@ -62,5 +69,7 @@ def test_structured_llm_passes_the_cap_and_callbacks_to_the_client():
         max_completion_tokens=4096,
         callbacks=[log],
     )
-    client = llm.first  # with_structured_output 은 (client | parser) 꼴이다
+    # with_structured_output 은 (client | parser) 꼴이고, client 가 도구 묶음(RunnableBinding)이면 bound 다
+    client = getattr(llm.first, "bound", llm.first)
+    # langchain_openai 의 ChatOpenAI 는 max_completion_tokens 를 max_tokens 필드에 담는다
     assert client.max_tokens == 4096 and client.callbacks == [log] and client.streaming is True

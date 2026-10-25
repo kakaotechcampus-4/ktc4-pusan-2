@@ -91,27 +91,39 @@ def main() -> None:
             ScriptSlide(slide_number=s.slide_number, script=s.script)
             for s in load_script_json(path)
         ]
-        rubric = core.analyze_script(
-            RubricRequest(pitch_id="tokens", script_version_id=path.stem, slides=slides),
-            llms=script_llms,
-            model=settings.model,
-            cache=None,
-        )
+        try:
+            rubric = core.analyze_script(
+                RubricRequest(pitch_id="tokens", script_version_id=path.stem, slides=slides),
+                llms=script_llms,
+                model=settings.model,
+                cache=None,
+            )
+        except core.CoverageError as exc:  # 모든 장이 실패 — 잰 토큰은 남기고 다음 대본으로
+            failed[f"rubric {path.stem}"] = {"all": exc.code}
+            print(f"평가 기준 {path.stem}: 요청 전체 실패 {exc.code}")
+            continue
         failed[f"rubric {path.stem}"] = {str(f.slide_number): f.error.code for f in rubric.failed}
         print(f"평가 기준 {path.stem}: {len(rubric.rubrics)}장, 실패 {len(rubric.failed)}")
         takes = [p for p in take_files() if load_take(p).script_name == path.stem][: args.takes]
         for take_path in takes:
             take = load_take(take_path)
-            response = core.evaluate_take(
-                AnalyzeRequest(
-                    take_id=take_path.stem,
-                    slides=[TakeSlide(slide_number=s.slide_number, stt=s.stt) for s in take.slides],
-                    rubrics=rubric.rubrics,
-                ),
-                llms=take_llms,
-                model=settings.model,
-                cache=None,
-            )
+            try:
+                response = core.evaluate_take(
+                    AnalyzeRequest(
+                        take_id=take_path.stem,
+                        slides=[
+                            TakeSlide(slide_number=s.slide_number, stt=s.stt) for s in take.slides
+                        ],
+                        rubrics=rubric.rubrics,
+                    ),
+                    llms=take_llms,
+                    model=settings.model,
+                    cache=None,
+                )
+            except core.CoverageError as exc:
+                failed[f"take {take_path.stem}"] = {"all": exc.code}
+                print(f"  채점 {take_path.stem}: 요청 전체 실패 {exc.code}")
+                continue
             failed[f"take {take_path.stem}"] = {
                 str(f.slide_number): f.error.code for f in response.failed
             }

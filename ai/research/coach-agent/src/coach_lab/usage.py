@@ -67,7 +67,9 @@ class UsageLog(BaseCallbackHandler):
             values = sorted(self.tokens)
             finish = dict(sorted(self.finish.items()))
             unknown, errors = self.unknown, self.errors
-        truncated = finish.get("length", 0)
+        # 잘림은 finish_reason length 로, 또는 구조화 출력이 예외로 올리면 오류로 보인다.
+        # 둘 다 없을 때만 잰 최대를 믿는다. 시간 초과로 버린 호출은 끝까지 받지 못해 세지 않는다
+        truncated = finish.get("length", 0) + errors
         return {
             "calls": len(values) + unknown,
             "errors": errors,

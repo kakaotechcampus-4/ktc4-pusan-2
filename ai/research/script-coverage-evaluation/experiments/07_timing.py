@@ -10,7 +10,8 @@
   (`coverage_lab.deadline_llm`, 실행 풀은 서비스와 같은 40개), 서비스처럼 스트리밍 · 전송 시간 제한을 호출 제한과 같게 받는다.
   캐시는 쓰지 않는다. 조합 사이에는 앞 조합에서 버린 호출이 끝나기를 기다리고, 그래도 남으면 멈춘다.
   `--cap 역할=N` 으로 서비스와 같은 역할별 출력 토큰 상한을 건다(역할 이름 · 값은 `08_output_tokens.py`).
-  역할마다 끝난 이유(`finish_reason`, 잘림은 `length`)와 출력 토큰 수를 결과에 남긴다. 추론 강도는 보내지 않는다(서비스와 같음)
+  역할마다 끝난 이유(`finish_reason`, 잘림은 `length`)와 출력 토큰 수를 결과에 남긴다(모든 조합 · 재시도를 합친 값,
+  시간 초과로 버린 호출은 끝까지 받지 못해 세지 않는다). 추론 강도는 보내지 않는다(서비스와 같음)
 - LLM 호출(과금): 평가 기준 장마다 최대 3번 × 동시 요청 수 (+ 재시도 장), 채점 장마다 약 1.25번. 먼저 작은 조합 하나로
   호출 수 · 시간을 보고 나머지를 돌린다.
 - 쓰는 곳: `--name` 을 주면 `reports/results/<name>.json`. DB 는 쓰지 않는다
@@ -63,7 +64,12 @@ def main() -> None:
     )
     parser.add_argument("--cap", nargs="*", default=[], help="역할=출력 토큰 상한")
     args = parser.parse_args()
-    caps = {role: int(value) for role, value in (item.split("=") for item in args.cap)}
+    caps: dict[str, int] = {}
+    for item in args.cap:
+        role, sep, value = item.partition("=")
+        if not sep or not value.isdigit():
+            raise SystemExit(f"--cap 은 역할=정수 꼴이다: {item}")
+        caps[role] = int(value)
     unknown = set(caps) - set(ROLE_OF.values())
     if unknown:
         raise SystemExit(f"모르는 역할: {sorted(unknown)}")
