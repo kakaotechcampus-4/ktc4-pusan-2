@@ -3,7 +3,7 @@
 > **이 문서는** 시선 기능의 전체 설명서다. 처음 보는 사람이 이 문서만 읽고 이 기능이 왜 있고, 무엇을 받아 무엇을 내며, 안에서 어떻게 돌고, 어떻게 실행 · 배포하는지 알 수 있게 쓴다.
 > **기준 범위**: 시선 기능의 목표 설계다. 브라우저 엔진(카메라 → 1초 기록)과 서버 판정 모듈(1초 기록 → 1초 판정 결과 · Take 지표)을 함께 다룬다. 기능 사이 공통 계약(1초 원자료 모양 · 1초 판정 결과 형식 · 에러 · meta · 시간 예산 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **한 줄 요약**: 브라우저가 카메라로 발표자가 청중 · 화면 · 대본 · 그 밖 중 어디를 보는지 1초마다 기록하고, 서버 판정 모듈이 그 기록으로 대본 응시 · 눈맞춤 부족 같은 시선 문제와 말하면서 대본을 읽는 습관(대본 의존)을 판정한다.
-> **기준값**: 판정 수치(창 길이 · 이어짐 기준 시간 · 비율 기준 · 측정 불가 기준 · 1초 기록을 만드는 프레임 수 · 득표율)는 서버는 `src/gaze/config.py`, 브라우저 엔진은 `configs/*.yaml`에서 만든 `defaults.generated.ts`에만 두고, 이 문서에는 지표와 나쁜 방향만 쓴다. 문서의 숫자는 BE · FE와 맞춰야 하는 통신 · 운영 값과 예시뿐이다.
+> **기준값**: 판정 수치(창 길이 · 이어짐 기준 시간 · 비율 기준 · 측정 불가 기준 · 1초 기록을 만드는 프레임 수 · 득표율)는 서버는 서비스 `features/gaze/config.py`, 브라우저 엔진은 `configs/*.yaml`에서 만든 `defaults.generated.ts`에만 두고, 이 문서에는 지표와 나쁜 방향만 쓴다. 문서의 숫자는 BE · FE와 맞춰야 하는 통신 · 운영 값과 예시뿐이다.
 > **관련 Issue**: #153
 
 # 0. 한눈에 보기
@@ -94,8 +94,8 @@ flowchart LR
 ai/research/gaze-tracking/
 ├─ README.md                               폴더 · 파일 지도, 실행법, 실험 결과
 ├─ pyproject.toml · uv.lock                 Python 3.12, mediapipe 정확히 고정 (uv)
-├─ configs/                                 엔진 · 평가의 기준값 원본 YAML (서버 판정 기준값은 src/gaze/config.py)
-├─ src/gaze/                                서버 판정 모듈 → 서비스 features/gaze/로 폴더째 옮긴다
+├─ configs/                                 엔진 · 평가의 기준값 원본 YAML (서버 판정 기준값은 서비스 features/gaze/config.py)
+├─ (서비스 ai/service/src/pitch_coach_ai/features/gaze/)   서버 판정 모듈 (연구 폴더 src/gaze/에서 폴더째 옮김, 테스트는 서비스 tests/unit/gaze/)
 │   ├─ schemas.py · core.py · config.py · version.py
 │   └─ examples/                            judge · summarize · criteria 입력 · 출력 예시 (계약 테스트가 읽는다)
 ├─ src/gaze_lab/                            Python 기준 구현(프레임 → 1초 기록) · 데이터셋 · 평가. 연구에 남는다
@@ -128,13 +128,13 @@ frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · 
 | 발표를 막지 않는다. 이상한 1초 기록은 그 1초만 버리고, 조건이 나쁘면 "잴 수 없음"으로 남긴다 | 시선은 정보를 얻는 기능이지 발표를 통제하는 기능이 아니다 |
 | 서버 판정 모듈은 상대 import와 pydantic만 쓰고 파일 · DB · 네트워크 · 환경변수 · 시계를 쓰지 않는다. 시간은 입력의 `t_ms`뿐이다 (`architecture.md` 8절) | 같은 입력에 같은 결과가 나오고, 서비스로 폴더째 옮겨도 코드를 고치지 않는다 |
 | 판정 모듈은 다른 모듈 · 코치를 import하지 않는다. 발화 시간은 코치가 음량 기록에서 골라 `voiced`로 넘긴다 | 모듈끼리 묶이면 하나를 바꿀 때 다른 것이 깨진다 |
-| 서버 판정 기준값은 `src/gaze/config.py` 한 곳, 엔진 기준값은 `configs/*.yaml` → 생성 파일 `defaults.generated.ts` 한 곳이다. 생성 파일이 낡으면 테스트가 실패한다 | 기준이 두 벌이면 발표 중 판정과 리포트가 어긋난다 |
+| 서버 판정 기준값은 서비스 `features/gaze/config.py` 한 곳, 엔진 기준값은 `configs/*.yaml` → 생성 파일 `defaults.generated.ts` 한 곳이다. 생성 파일이 낡으면 테스트가 실패한다 | 기준이 두 벌이면 발표 중 판정과 리포트가 어긋난다 |
 | 엔진은 자기 폴더와 MediaPipe만 import하고 DOM 없이(Worker 전역만) 컴파일된다 | FE로 폴더째 옮겨도 엔진 안을 고치지 않는다 |
 | 1초 기록 이후의 계산(문제 · 지표)은 서버에만 둔다. 엔진 · 데모에는 사본을 두지 않는다 | 같은 로직이 두 벌이면 맞추는 비용이 계속 든다 |
 | 받는 쪽은 모르는 `issues` 값 · 모르는 필드를 무시한다 | 엔진이 촬영 조건 이슈를 더해도 서버가 깨지지 않는다 |
 
 # 5. 입력 · 출력 계약
-서버 판정 모듈의 입력 · 출력 원본은 `src/gaze/schemas.py`의 pydantic 모델이다. 입력은 모르는 필드를 무시하고, 출력은 정해진 필드만 낸다(`architecture.md` 2절). 시각은 모두 Take 시작 기준 ms다. 1초 판정 결과의 공통 필드는 `architecture.md` 7절이 기준이고, 아래는 시선에만 있는 값이다.
+서버 판정 모듈의 입력 · 출력 원본은 서비스 `features/gaze/schemas.py`의 pydantic 모델이다. 입력은 모르는 필드를 무시하고, 출력은 정해진 필드만 낸다(`architecture.md` 2절). 시각은 모두 Take 시작 기준 ms다. 1초 판정 결과의 공통 필드는 `architecture.md` 7절이 기준이고, 아래는 시선에만 있는 값이다.
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 |
@@ -455,7 +455,7 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `gaze-1.3` | `src/gaze/version.py` → `criteria_version` · Take 결과의 `criteria.GAZE` | 같은 입력에 대한 결과의 의미가 바뀔 때(판정 규칙 · 출력 필드의 뜻) |
+| `feature_version` | `gaze-1.3` | 서비스 `features/gaze/version.py` → `criteria_version` · Take 결과의 `criteria.GAZE` | 같은 입력에 대한 결과의 의미가 바뀔 때(판정 규칙 · 출력 필드의 뜻) |
 | `criteria_version` | `gaze-<버전>+<config 해시 12자리>` | `judge` 출력 → `coach_state` → 응답 `meta.criteria_versions.gaze` | `config.py`의 판정 기준값을 바꾸면 해시가 바뀐다 |
 | `schema_version` | `1.0` | 코치 응답 `meta` (`architecture.md` 5절) | 1초 기록 · 판정 결과의 필드 이름 변경 · 삭제 · 뜻 변경 |
 | 엔진 버전 | 엔진 `version`은 객체 `{modelVersion, gazeBackbone, gazeClassifier}`, Worker `ready.version`은 세 값을 `+`로 이은 문자열 (예: `gaze_v1.1.0+head_pose+reference_anchor_v1`) | 그 문자열을 FE가 발표 전 점검 결과와 함께 BE에 보낸다(`calibrations.result.engine_version`) | 엔진의 판정(모델 · 백본 · 분류 방식)이 바뀔 때. 엔진이 바뀌면 같은 시선도 다른 상태로 판정될 수 있다 |
@@ -478,8 +478,8 @@ cd web && npm ci
 
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 서버 판정 모듈 테스트 | `uv run python -m pytest tests/unit` | 모두 통과 |
-| 전체 Python 테스트 | `uv run python -m pytest` | 서버 판정 모듈 + 기준 구현 · 생성 파일 최신 검사 통과 |
+| 서버 판정 모듈 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/gaze` | 통과, 소리 크기 기준값 비교 1개는 소리 크기 모듈이 서비스에 올 때까지 건너뜀 |
+| 전체 Python 테스트 (연구 폴더에서) | `uv run python -m pytest` | 기준 구현 · 생성 파일 최신 검사 통과 |
 | 린트 | `uv run ruff check src tests tools experiments` | 지적 없음 |
 | 엔진 · Worker 테스트 | `cd web && npm test` · `npm run typecheck` · `npm run lint` | 엔진(Python 기준 답과 일치) · FE 계약 · 경계 테스트 통과 |
 | 실제 브라우저 확인 | `cd web && npm run smoke` · `npm run smoke:prod`(격리 헤더 없이) | 준비 점검 → 고개 원 → 보정 → 실시간 → 1초 기록, 카메라 끊김 항목 통과 (Chrome) |
@@ -492,7 +492,7 @@ cd web && npm ci
 
 # 11. 배포
 **어디서 도는가**: 두 곳에 배포된다.
-- **서버 판정 모듈** `src/gaze/`(`examples/` 포함)는 AI 서비스의 `features/gaze/`로 폴더째 옮기고, 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮긴다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 소리 크기 판정 모듈의 기준값 파일을 서비스의 `features/volume/`에서 먼저 찾으므로, 소리 크기 모듈이 서비스에 먼저 있어야 한다. 없으면 그 비교는 실패하지 않고 건너뛰어 조용히 빠진다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
+- **서버 판정 모듈**(`examples/` 포함)은 AI 서비스의 `features/gaze/`에 있다(연구 폴더 `src/gaze/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮겼다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 소리 크기 판정 모듈의 기준값 파일을 서비스의 `features/volume/`에서 먼저 찾으므로, 소리 크기 모듈이 서비스에 먼저 있어야 한다. 없으면 그 비교는 실패하지 않고 건너뛰어 조용히 빠진다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
 - **브라우저 엔진** `web/src/engine/`(원본)은 FE가 `frontend/src/vendor/gaze/`로 Worker · 카메라 화면과 함께 복사해 쓴다. FE는 엔진의 `index.ts` · `contract.ts`만 import하고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. 엔진 안은 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다. 화면(카메라 화면 · 보정 안내)은 FE가 고친다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 생긴 뒤, 아래 '옮긴 뒤 확인'을 통과하면 옮긴다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
