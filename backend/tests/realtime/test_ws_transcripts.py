@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
@@ -20,6 +21,7 @@ from pitch_coach_backend.realtime.dto import (
     TranscriptMessage,
 )
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
+from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
 from pitch_coach_backend.realtime.stream import registry
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
@@ -384,6 +386,41 @@ def test_final_already_committed_does_not_block_the_rest(
     assert [(seg.seq, seg.transcript) for seg in store.segments] == [(2, "둘")]
     assert "이미 저장된 final" in caplog.text
     assert "저장하지 못한 final 을 버린다" not in caplog.text
+
+
+PRIVATE_TRANSCRIPT = "PRIVATE_TRANSCRIPT_AUDIT_MARKER"
+
+
+class _DriverError(Exception):
+    """psycopg 예외처럼 SQLSTATE 를 들고 있다. 본문에는 DB 가 돌려준 값이 섞일 수 있다."""
+
+    sqlstate = "08006"
+
+
+@pytest.mark.anyio
+async def test_save_failure_log_omits_transcript_text(caplog: pytest.LogCaptureFixture):
+    """SQLAlchemy 예외 본문에는 SQL 매개변수가 붙는다. traceback 을 그대로 남기면 전사 원문이
+    로그에 나간다. 예외 종류와 SQLSTATE 만 남기고 버퍼는 다음 저장 때 다시 넣는다."""
+    error = OperationalError(
+        "INSERT INTO take_transcript_segments ...",
+        {"transcript": PRIVATE_TRANSCRIPT},
+        _DriverError(f"connection lost while writing {PRIVATE_TRANSCRIPT}"),
+    )
+    store = FakeTranscriptStore(errors=[error])
+    buffer = TranscriptBuffer(uuid.uuid7(), store)
+
+    with caplog.at_level("ERROR"):
+        assert await buffer.persist(transcript_message("1-1", PRIVATE_TRANSCRIPT), 100, 1)
+
+    assert PRIVATE_TRANSCRIPT not in caplog.text
+    assert "final 저장 실패" in caplog.text
+    assert "error=OperationalError sqlstate=08006" in caplog.text
+    assert f"len={len(PRIVATE_TRANSCRIPT)}" in caplog.text
+    assert [seg.transcript for seg in buffer.unsaved] == [PRIVATE_TRANSCRIPT]
+
+    assert await buffer.save_unsaved()
+    assert [seg.transcript for seg in store.segments] == [PRIVATE_TRANSCRIPT]
+    assert buffer.unsaved == []
 
 
 @pytest.mark.anyio
