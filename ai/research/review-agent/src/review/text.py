@@ -1,10 +1,15 @@
-"""기본 문장 (LLM 없이). 1차의 문장이고, 2차에서 LLM 이 실패했을 때도 이 문장을 쓴다.
+"""강점 · 개선점 후보와 기본 문장 (LLM 없이).
+
+후보마다 영역 · 장 · 근거를 정하고 기본 문장을 붙인다. LLM 이 없거나 실패하면 기본 문장을 그대로
+쓰고, LLM 이 성공해도 빠뜨리거나 숫자 검사에 걸린 문장은 그 후보의 기본 문장으로 바꾼다.
 
 문장 안 숫자는 장 번호뿐이고, 지표 값은 evidence 에 입력 그대로 싣는다 (숫자 검사에 걸리지 않게).
 """
 
 from __future__ import annotations
 
+import copy
+from dataclasses import dataclass
 from typing import Any
 
 from .burden import Burden, focus
@@ -90,14 +95,36 @@ def _evidence(
     return fallback, {}
 
 
-def build_default_text(
+@dataclass(frozen=True)
+class TextCandidate:
+    """강점 · 개선점 후보 하나 (명세 6-2).
+
+    item 은 응답 항목 {area, slide_number, text, evidence} 이고 text 는 기본 문장이다.
+    area · slide_number · evidence 는 규칙 단계가 정해 기본 문장과 LLM 문장이 같이 쓴다.
+    """
+
+    dimension: str
+    #: 그 차원의 상태. 강점은 STRENGTH · IMPROVED, 개선점은 PRIORITY
+    state: str
+    item: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class TextCandidates:
+    #: STRENGTH · IMPROVED 차원 (차원 표 순서)
+    strengths: list[TextCandidate]
+    #: PRIORITY 차원 (반복 문제와 같은 순서 · 영역 · 장)
+    improvements: list[TextCandidate]
+
+
+def text_candidates(
     dimension_states: dict[str, str],
     burden: Burden,
     take_result: dict[str, Any],
     script_coverage: dict[str, Any] | None,
     cfg: ReviewConfig,
-) -> dict[str, Any]:
-    """{overall_summary, strengths, improvements}
+) -> TextCandidates:
+    """강점 · 개선점 후보와 그 기본 문장.
 
     - strengths: STRENGTH · IMPROVED 차원 (차원 표 순서). area 는 근거 지표를 찾은 잰 영역
     - improvements: PRIORITY 차원 (부담 큰 순), 부담이 몰린 장이 있으면 장 번호.
@@ -115,38 +142,59 @@ def build_default_text(
         else:
             continue
         area, evidence = _evidence(dim, burden, take_result, script_coverage, measured, cfg)
-        strengths.append({"area": area, "slide_number": None, "text": text, "evidence": evidence})
+        item = {"area": area, "slide_number": None, "text": text, "evidence": evidence}
+        strengths.append(TextCandidate(dim, state, item))
 
     # PRIORITY 차원 목록은 반복 문제와 같다 (부담 큰 순 · 영역 · 몰린 장)
-    priority_issues = build_recurring_issues(dimension_states, burden, cfg)
     improvements = []
-    for it in priority_issues:
+    for it in build_recurring_issues(dimension_states, burden, cfg):
         dim, slide = it["dimension"], it["slide_number"]
         where = f"{slide}번 장에서 " if slide is not None else ""
-        improvements.append(
-            {
-                "area": it["area"],
-                "slide_number": slide,
-                "text": where + IMPROVEMENT_TEXT[dim],
-                "evidence": _evidence(
-                    dim, burden, take_result, script_coverage, measured, cfg, it["area"], slide
-                )[1],
-            }
-        )
+        item = {
+            "area": it["area"],
+            "slide_number": slide,
+            "text": where + IMPROVEMENT_TEXT[dim],
+            "evidence": _evidence(
+                dim, burden, take_result, script_coverage, measured, cfg, it["area"], slide
+            )[1],
+        }
+        improvements.append(TextCandidate(dim, dimension_states[dim], item))
+    return TextCandidates(strengths, improvements)
 
-    good = [
-        DIMENSION_LABELS[d] for d, s in dimension_states.items() if s in ("STRENGTH", "IMPROVED")
-    ]
+
+def default_summary(candidates: TextCandidates) -> str:
+    """기본 요약 문장. 강점 · 개선점 후보의 차원 이름(개선점은 장 번호도)을 잇는다"""
+    good = [DIMENSION_LABELS[c.dimension] for c in candidates.strengths]
     bad = [
-        (f"{it['slide_number']}번 장 " if it["slide_number"] is not None else "")
-        + DIMENSION_LABELS[it["dimension"]]
-        for it in priority_issues
+        (f"{c.item['slide_number']}번 장 " if c.item["slide_number"] is not None else "")
+        + DIMENSION_LABELS[c.dimension]
+        for c in candidates.improvements
     ]
     parts = []
     if good:
         parts.append(f"좋았던 점은 {', '.join(good)}입니다.")
     if bad:
         parts.append(f"먼저 다듬을 점은 {', '.join(bad)}입니다.")
-    summary = " ".join(parts) if parts else NOTHING_TEXT
+    return " ".join(parts) if parts else NOTHING_TEXT
 
-    return {"overall_summary": summary, "strengths": strengths, "improvements": improvements}
+
+def default_text(candidates: TextCandidates) -> dict[str, Any]:
+    """{overall_summary, strengths, improvements} — 후보를 모두 기본 문장으로"""
+    return {
+        "overall_summary": default_summary(candidates),
+        "strengths": [copy.deepcopy(c.item) for c in candidates.strengths],
+        "improvements": [copy.deepcopy(c.item) for c in candidates.improvements],
+    }
+
+
+def build_default_text(
+    dimension_states: dict[str, str],
+    burden: Burden,
+    take_result: dict[str, Any],
+    script_coverage: dict[str, Any] | None,
+    cfg: ReviewConfig,
+) -> dict[str, Any]:
+    """{overall_summary, strengths, improvements} — text_candidates 를 모두 기본 문장으로"""
+    return default_text(
+        text_candidates(dimension_states, burden, take_result, script_coverage, cfg)
+    )

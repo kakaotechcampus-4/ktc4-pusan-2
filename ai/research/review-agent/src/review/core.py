@@ -20,14 +20,14 @@ from .comparison import compare_previous
 from .config import DEFAULT_CONFIG, ReviewConfig
 from .dimensions import decide_dimension_states
 from .evaluable import check_evaluable
-from .llm_input import Candidate, Candidates, build_candidates, review_message
+from .llm_input import Candidates, build_candidates, review_message
 from .missions import judge_missions, judge_user_criteria
-from .next_missions import build_next_missions, select_next_missions
+from .next_missions import build_next_missions, merge_picked_missions, select_next_missions
 from .prompts.review import REVIEW_SYSTEM_PROMPT
 from .recurring import build_recurring_issues
-from .schemas import MAX_DESCRIPTION_CHARS, ReviewDraft, ReviewRequest, ReviewResponse
+from .schemas import ReviewDraft, ReviewRequest, ReviewResponse
 from .score import compute_score
-from .text import build_default_text
+from .text import TextCandidate, default_text, text_candidates
 from .version import FEATURE_VERSION, SCHEMA_VERSION
 from .vocab import FallbackReason
 
@@ -144,7 +144,7 @@ def _fallback_reason(exc: BaseException) -> FallbackReason:
     return "LLM_ERROR"
 
 
-def _written(items: list[Any], known: dict[str, Candidate]) -> tuple[dict[str, Any], int]:
+def _written(items: list[Any], known: dict[str, Any]) -> tuple[dict[str, Any], int]:
     """(후보 id → LLM 항목, 버린 항목 수). 후보에 없는 id · 같은 id 의 두 번째부터는 버린다"""
     picked: dict[str, Any] = {}
     for item in items:
@@ -153,54 +153,37 @@ def _written(items: list[Any], known: dict[str, Candidate]) -> tuple[dict[str, A
     return picked, len(items) - len(picked)
 
 
-def _or_default(text: str | None, default: str | None) -> str | None:
-    text = (text or "").strip()
-    return text or default
+def _texts(items: dict[str, TextCandidate], written: dict[str, Any]) -> list[dict[str, Any]]:
+    """후보를 모두 후보 순서로. LLM 이 쓴 문장만 바꾸고, 빠뜨렸거나 빈 문장은 기본 문장"""
+    out = []
+    for cid, c in items.items():
+        text = (getattr(written.get(cid), "text", None) or "").strip()
+        out.append({**copy.deepcopy(c.item), "text": text or c.item["text"]})
+    return out
 
 
 def apply_draft(
-    draft: ReviewDraft, candidates: Candidates
+    draft: ReviewDraft, candidates: Candidates, default_summary: str
 ) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
     """LLM 초안을 후보에 붙인다 → (문장, 다음 미션, 버린 항목 수).
 
-    - 강점 · 개선점: 어느 차원을 말할지는 규칙 단계가 정했으므로 후보를 모두 후보 순서로 낸다.
-      LLM 이 쓴 문장만 바꾸고, 빠뜨렸거나 빈 문장은 기본 문장
-    - 다음 미션: 사용자 기준 FAILED(fixed)를 후보 순서로 맨 앞에 두고, 이어서 LLM 이 고른 순서.
-      fixed 의 설명은 사용자 표현(display)이 있으면 그대로 둔다. priority 는 1부터 다시 매긴다
+    - 강점 · 개선점: 어느 차원을 말할지는 규칙 단계가 정했으므로 후보를 모두 낸다 (_texts)
+    - 다음 미션: 사용자 기준 FAILED 를 맨 앞에, 이어서 LLM 이 고른 순서 (merge_picked_missions)
+    - 요약이 비었으면 기본 요약
     """
     strengths, dropped_s = _written(draft.strengths, candidates.strengths)
     improvements, dropped_i = _written(draft.improvements, candidates.improvements)
     missions, dropped_n = _written(draft.next_missions, candidates.next_missions)
 
-    def texts(items: dict[str, Candidate], written: dict[str, Any]) -> list[dict[str, Any]]:
-        return [
-            {
-                **c.default,
-                "text": _or_default(getattr(written.get(cid), "text", None), c.default["text"]),
-            }
-            for cid, c in items.items()
-        ]
-
-    order = [cid for cid, c in candidates.next_missions.items() if c.fixed]
-    order += [cid for cid in missions if not candidates.next_missions[cid].fixed]
-    next_missions = []
-    for priority, cid in enumerate(order, 1):
-        c, item = candidates.next_missions[cid], missions.get(cid)
-        m = copy.deepcopy(c.default)
-        if item is not None:
-            if not (c.fixed and m["description"]):
-                m["description"] = _or_default(item.description, m["description"])
-            m["reason"] = _or_default(item.reason, m["reason"])
-        if m["description"] is not None:
-            m["description"] = m["description"][:MAX_DESCRIPTION_CHARS]
-        m["priority"] = priority
-        next_missions.append(m)
-
-    summary = _or_default(draft.overall_summary, None)
+    index = {cid: i for i, cid in enumerate(candidates.next_missions)}
+    picks = [(index[cid], m.description, m.reason) for cid, m in missions.items()]
+    next_missions = merge_picked_missions(
+        list(candidates.next_missions.values()), candidates.n_fixed, picks
+    )
     text = {
-        "overall_summary": summary,
-        "strengths": texts(candidates.strengths, strengths),
-        "improvements": texts(candidates.improvements, improvements),
+        "overall_summary": draft.overall_summary.strip() or default_summary,
+        "strengths": _texts(candidates.strengths, strengths),
+        "improvements": _texts(candidates.improvements, improvements),
     }
     return text, next_missions, dropped_s + dropped_i + dropped_n
 
@@ -222,21 +205,21 @@ def review_take(
     """
     cfg = config or DEFAULT_CONFIG
     rules = apply_rules(_validate(request), cfg)
-    default_text = build_default_text(
+    texts = text_candidates(
         rules.dimensions, rules.burden, rules.take_result, rules.script_coverage, cfg
     )
-    text = default_text
+    text = default_text(texts)
     next_missions = select_next_missions(rules.next_mission_candidates, cfg)
     reason: FallbackReason | None = "LLM_UNAVAILABLE"
     dropped = 0
 
     if llm is not None:
-        candidates = build_candidates(rules, default_text)
+        candidates = build_candidates(rules, texts)
         message = review_message(rules, candidates)
         try:
             out = llm.invoke([("system", REVIEW_SYSTEM_PROMPT), ("user", message)])
             draft = out if isinstance(out, ReviewDraft) else ReviewDraft.model_validate(out)
-            text, next_missions, dropped = apply_draft(draft, candidates)
+            text, next_missions, dropped = apply_draft(draft, candidates, text["overall_summary"])
             reason = None
         except Exception as exc:  # noqa: BLE001 — 규칙 단계 결과가 본체라 LLM 장애로 끊지 않는다
             reason = _fallback_reason(exc)
@@ -247,8 +230,6 @@ def review_take(
                 reason,
                 type(exc).__name__,
             )
-        if reason is None and text["overall_summary"] is None:
-            text = {**text, "overall_summary": default_text["overall_summary"]}
     # TODO 숫자 검사 (명세 6-2): 문장마다 숫자를 대조해 걸린 문장만 기본 문장으로 바꾼다
 
     log.info(

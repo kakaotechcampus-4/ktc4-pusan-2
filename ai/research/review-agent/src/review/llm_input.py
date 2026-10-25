@@ -1,9 +1,10 @@
 """LLM 단계의 입력 (명세 6-2). 규칙 단계 결과를 후보와 LLM 메시지로 바꾼다.
 
-- 강점 · 개선점 후보는 기본 문장(text.build_default_text)의 항목 그대로다. 영역 · 장 · 근거는
-  규칙 단계가 정했고, LLM 은 candidate_id 로 가리켜 문장만 쓴다.
+- 강점 · 개선점 후보는 text.text_candidates 그대로다. 영역 · 장 · 근거는 규칙 단계가 정했고,
+  LLM 은 candidate_id 로 가리켜 문장만 쓴다.
 - 다음 미션 후보는 규칙 단계 후보(next_missions.build_next_missions) 그대로다.
-  앞쪽의 사용자 기준 FAILED 미션은 fixed — LLM 이 빼거나 순서를 바꾸지 못한다 (core 가 다시 맞춘다).
+  앞쪽의 사용자 기준 FAILED 미션은 fixed — LLM 이 빼거나 순서를 바꾸지 못한다
+  (next_missions.merge_picked_missions 가 다시 맞춘다).
 - 대본 원문 · STT 원문은 넣지 않는다.
 """
 
@@ -13,63 +14,34 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from .text import DIMENSION_LABELS, METRIC_LABELS
-from .vocab import CONTENT_BURDEN_STATUSES, METRIC_TO_DIMENSION
+from .next_missions import fixed_count
+from .text import DIMENSION_LABELS, METRIC_LABELS, TextCandidate, TextCandidates
+from .vocab import CONTENT_BURDEN_STATUSES
 
 if TYPE_CHECKING:
     from .core import RuleResult
 
 
 @dataclass(frozen=True)
-class Candidate:
-    """후보 하나. default 는 LLM 이 없거나 문장을 못 쓸 때 그대로 내는 응답 항목"""
-
-    dimension: str | None
-    #: 강점 후보의 차원 상태 (STRENGTH · IMPROVED). 그 밖은 None
-    state: str | None
-    default: dict[str, Any]
-    #: 다음 미션 중 사용자 기준 FAILED 미션
-    fixed: bool = False
-
-
-@dataclass(frozen=True)
 class Candidates:
     """candidate_id → 후보. dict 순서가 후보 순서다 (s1 · i1 · n1 부터)"""
 
-    strengths: dict[str, Candidate]
-    improvements: dict[str, Candidate]
-    next_missions: dict[str, Candidate]
+    strengths: dict[str, TextCandidate]
+    improvements: dict[str, TextCandidate]
+    #: 다음 미션 후보 (build_next_missions 출력 그대로)
+    next_missions: dict[str, dict[str, Any]]
+    #: next_missions 맨 앞의 사용자 기준 FAILED 미션 개수
+    n_fixed: int
 
 
-def build_candidates(rules: RuleResult, default_text: dict[str, Any]) -> Candidates:
-    """기본 문장 · 다음 미션 후보에 candidate_id 를 붙인다.
-
-    기본 문장의 강점은 STRENGTH · IMPROVED 차원을 차원 표 순서로, 개선점은 반복 문제와 같은
-    PRIORITY 차원 순서로 만든다 (text.build_default_text). 그 순서로 차원을 짝짓는다.
-    """
-    good = [(d, s) for d, s in rules.dimensions.items() if s in ("STRENGTH", "IMPROVED")]
-    strengths = {
-        f"s{i}": Candidate(dimension=d, state=s, default=item)
-        for i, ((d, s), item) in enumerate(zip(good, default_text["strengths"], strict=True), 1)
-    }
-    improvements = {
-        f"i{i}": Candidate(dimension=issue["dimension"], state=None, default=item)
-        for i, (issue, item) in enumerate(
-            zip(rules.recurring_issues, default_text["improvements"], strict=True), 1
-        )
-    }
-    # build_next_missions 는 사용자 기준 FAILED 를 모두 앞에 넣는다
-    n_fixed = sum(r["status"] == "FAILED" for r in rules.criteria_results)
-    next_missions = {
-        f"n{i}": Candidate(
-            dimension=METRIC_TO_DIMENSION.get(m["target"]["metric"]),
-            state=None,
-            default=m,
-            fixed=i <= n_fixed,
-        )
-        for i, m in enumerate(rules.next_mission_candidates, 1)
-    }
-    return Candidates(strengths, improvements, next_missions)
+def build_candidates(rules: RuleResult, texts: TextCandidates) -> Candidates:
+    """강점 · 개선점 · 다음 미션 후보에 candidate_id 를 붙인다."""
+    return Candidates(
+        strengths={f"s{i}": c for i, c in enumerate(texts.strengths, 1)},
+        improvements={f"i{i}": c for i, c in enumerate(texts.improvements, 1)},
+        next_missions={f"n{i}": m for i, m in enumerate(rules.next_mission_candidates, 1)},
+        n_fixed=fixed_count(rules.criteria_results),
+    )
 
 
 def _content_slides(rules: RuleResult) -> list[dict[str, Any]]:
@@ -91,30 +63,29 @@ def review_message(rules: RuleResult, candidates: Candidates) -> str:
     """LLM 에 보내는 입력. 같은 규칙 단계 결과면 같은 문자열이 나온다."""
     metrics: set[str] = set()
 
-    def text_candidates(items: dict[str, Candidate]) -> list[dict[str, Any]]:
+    def text_candidates(items: dict[str, TextCandidate]) -> list[dict[str, Any]]:
         out = []
         for cid, c in items.items():
-            metrics.update(c.default["evidence"])
+            metrics.update(c.item["evidence"])
             out.append(
                 {
                     "candidate_id": cid,
-                    "label": DIMENSION_LABELS.get(c.dimension, c.dimension),
-                    **({"state": c.state} if c.state else {}),
-                    "area": c.default["area"],
-                    "slide_number": c.default["slide_number"],
-                    "evidence": c.default["evidence"],
+                    "label": DIMENSION_LABELS[c.dimension],
+                    "state": c.state,
+                    "area": c.item["area"],
+                    "slide_number": c.item["slide_number"],
+                    "evidence": c.item["evidence"],
                 }
             )
         return out
 
     next_missions = []
-    for cid, c in candidates.next_missions.items():
-        m = c.default
+    for i, (cid, m) in enumerate(candidates.next_missions.items()):
         metrics.add(m["target"]["metric"])
         next_missions.append(
             {
                 "candidate_id": cid,
-                "fixed": c.fixed,
+                "fixed": i < candidates.n_fixed,
                 "area": m["area"],
                 "slide_number": m["slide_number"],
                 "target": m["target"],
