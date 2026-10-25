@@ -8,7 +8,6 @@ import {
   formatEstimate,
   MAX_SCRIPT_CHARS,
   scriptLength,
-  toPracticeCombo,
   type ScriptVersion,
   type SlideVersion,
 } from '../lib/draft';
@@ -17,6 +16,7 @@ import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import { NeedPitch } from './NeedPitch';
+import { PaneFooter, primaryButton, secondaryButton } from './PaneFooter';
 import { PaneHeading } from './PaneHeading';
 
 /**
@@ -27,7 +27,8 @@ import { PaneHeading } from './PaneHeading';
  * 폴링으로 받습니다 (`scriptParse.ts`). AI 는 "슬라이드 1" 같은 **명시적 구분자**로만 나누고,
  * 구분자가 없으면 대본 전체를 한 슬라이드로 둡니다 — 그래서 작성 안내에 구분자를 적어 둡니다.
  *
- * 매핑 확인에서 "저장"하면 그 슬라이드 + 대본이 연습할 조합이 되고, "다음"으로 장치 점검에 갑니다.
+ * 매핑 확인에서 "저장하고 다음"을 누르면 그 슬라이드 + 대본이 연습할 조합이 되고, 발표정보 확인으로 갑니다.
+ * 연습 시작은 마지막 단계(평가기준)에 있습니다.
  * 서버는 대본이 어느 슬라이드에 맞춘 것인지 모르므로, 장수 비교는 화면이 합니다.
  */
 
@@ -115,6 +116,7 @@ function SlideLink({ script, linked }: { script: ScriptVersion; linked: SlideVer
 
 function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersion | null }) {
   const editScript = useCreateStore((s) => s.editScript);
+  const select = useCreateStore((s) => s.select);
 
   const chars = countChars(script.text);
   const estimate = formatEstimate(estimateDurationMs(script.text));
@@ -147,19 +149,9 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
             </span>
           )}
         </div>
-        <div className="flex items-center gap-4">
-          <span className="tabular text-sm text-stone">
-            {chars.toLocaleString()}자 · 예상 {estimate}
-          </span>
-          <button
-            type="button"
-            disabled={chars === 0 || pending || tooLong}
-            onClick={() => startScriptMapping(script.version)}
-            className="h-11 rounded-lg bg-coral px-6 text-sm font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
-          >
-            {mapLabel(pending)}
-          </button>
-        </div>
+        <span className="tabular text-sm text-stone">
+          {chars.toLocaleString()}자 · 예상 {estimate}
+        </span>
       </div>
 
       {hint && !failure && (
@@ -212,10 +204,21 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
         />
       </div>
 
-      <p className="mt-3 border-t border-line pt-3 text-sm text-stone">
-        입력한 대본을 슬라이드별로 연결합니다. 슬라이드마다 “슬라이드 1” · “Slide 1” · “1.” 처럼
-        구분해 적어 주세요 — 구분이 없으면 대본 전체를 한 슬라이드로 연결해요.
-      </p>
+      <div className="mt-3">
+        <PaneFooter hint="슬라이드마다 “슬라이드 1” · “Slide 1” · “1.” 처럼 구분해 적어 주세요 — 구분이 없으면 대본 전체를 한 슬라이드로 연결해요.">
+          <button type="button" onClick={() => select('slides')} className={secondaryButton}>
+            ← 이전
+          </button>
+          <button
+            type="button"
+            disabled={chars === 0 || pending || tooLong}
+            onClick={() => startScriptMapping(script.version)}
+            className={primaryButton}
+          >
+            {mapLabel(pending)}
+          </button>
+        </PaneFooter>
+      </div>
     </div>
   );
 }
@@ -294,18 +297,11 @@ function SaveHint({
   );
 }
 
-function MappingReview({
-  script,
-  linked,
-  onStart,
-}: {
-  script: ScriptVersion;
-  linked: SlideVersion | null;
-  onStart: () => void;
-}) {
+function MappingReview({ script, linked }: { script: ScriptVersion; linked: SlideVersion | null }) {
   const unmapScript = useCreateStore((s) => s.unmapScript);
   const editMappingBlock = useCreateStore((s) => s.editMappingBlock);
   const saveMapping = useCreateStore((s) => s.saveMapping);
+  const select = useCreateStore((s) => s.select);
   const draft = useCreateStore((s) => s.draft);
   const chosen = useCreateStore((s) => s.chosen);
 
@@ -320,8 +316,6 @@ function MappingReview({
   const currentChoice = { ...chosen, slides: script.slideVersion, script: script.version };
   const gate = computeGate(draft, currentChoice);
   const pending = script.parse.status === 'pending';
-  // 저장한 이 조합으로 넘어갑니다. 저장 뒤에 다른 버전을 고쳤으면 진행 조건이 다시 막습니다
-  const canStart = toPracticeCombo(draft, currentChoice) !== null;
   // ★ 장수가 맞아야 저장합니다. 맞지 않는 조합을 저장하면 "저장 완료"인데 "다음"이 막혀 헷갈립니다
   const countsMatch = pageCount > 0 && blocks.length === pageCount;
   const canSave = !script.saved && canSaveMapping(script, linked);
@@ -449,25 +443,20 @@ function MappingReview({
                 {pending ? '매핑 중…' : '수정 대본 매핑'}
               </button>
             )}
-            <button
-              type="button"
-              disabled={!canSave}
-              onClick={() => saveMapping(script.version)}
-              className="h-12 w-36 rounded-lg border border-ink bg-white text-sm font-bold hover:bg-panel disabled:cursor-not-allowed disabled:border-line disabled:text-stone disabled:hover:bg-white"
-            >
-              저장
+            <button type="button" onClick={() => select('slides')} className={secondaryButton}>
+              ← 이전
             </button>
             <button
               type="button"
-              disabled={!canStart}
+              disabled={!script.saved && !canSave}
               onClick={() => {
-                // 확인 창이 볼 조합(chosen)을 지금 화면의 대본으로 맞춥니다
-                saveMapping(script.version);
-                onStart();
+                // 저장한 조합(슬라이드 + 대본)이 연습할 조합이 됩니다 — 사이드바의 "연습 중"
+                if (!script.saved) saveMapping(script.version);
+                select('info');
               }}
-              className="h-12 w-40 rounded-lg bg-coral text-sm font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
+              className={primaryButton}
             >
-              다음 →
+              {script.saved ? '다음 →' : '저장하고 다음 →'}
             </button>
           </div>
           <p className="text-xs text-stone">매핑을 수정하면 다시 저장한 뒤 진행할 수 있어요.</p>
@@ -477,14 +466,7 @@ function MappingReview({
   );
 }
 
-export function ScriptPane({
-  script,
-  onStart,
-}: {
-  script: ScriptVersion | null;
-  /** 매핑 확인의 "다음" — 장치 점검으로 갑니다 */
-  onStart: () => void;
-}) {
+export function ScriptPane({ script }: { script: ScriptVersion | null }) {
   const addScriptVersion = useCreateStore((s) => s.addScriptVersion);
   const hasPitch = useCreateStore((s) => s.pitchId !== null);
   const linked = useCreateStore(
@@ -521,6 +503,6 @@ export function ScriptPane({
   return script.blocks === null ? (
     <Editor script={script} linked={linked} />
   ) : (
-    <MappingReview script={script} linked={linked} onStart={onStart} />
+    <MappingReview script={script} linked={linked} />
   );
 }

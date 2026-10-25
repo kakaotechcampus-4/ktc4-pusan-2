@@ -19,6 +19,14 @@ export type DraftNode = 'slides' | 'script' | 'criteria';
  */
 export type PaneNode = 'info' | DraftNode;
 
+/** 피치 생성의 단계 순서 — 단계 표시줄과 사이드바가 같이 씁니다 (시안 `pitch-create`) */
+export const STEPS: { node: PaneNode; label: string; optional?: boolean }[] = [
+  { node: 'slides', label: '슬라이드' },
+  { node: 'script', label: '대본' },
+  { node: 'info', label: '발표정보 확인' },
+  { node: 'criteria', label: '평가기준', optional: true },
+];
+
 /** 발표 제목 최대 글자 수. BE 의 `title: StringConstraints(min_length=1, max_length=50)` 과 같습니다 */
 export const MAX_TITLE_CHARS = 50;
 

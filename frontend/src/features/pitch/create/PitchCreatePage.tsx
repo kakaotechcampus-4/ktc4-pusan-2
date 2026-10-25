@@ -6,6 +6,7 @@ import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { Mascot } from './Mascot';
 import { InfoBar } from './InfoBar';
 import { loadPitch, PitchNotFound } from './loadPitch';
+import { StepBar } from './StepBar';
 import { VersionRail } from './VersionRail';
 import {
   selectBusy,
@@ -27,13 +28,13 @@ import { ScriptPane } from './steps/ScriptPane';
 import { SlidePane } from './steps/SlidePane';
 
 /**
- * P3 피치 생성. 목업의 발표정보 · 평가기준 · 슬라이드 · 대본 입력 · 매핑 확인이 **한 라우트**입니다.
+ * P3 피치 생성. 슬라이드 · 대본 · 발표정보 확인 · 평가기준이 **한 라우트**입니다 (시안 `pitch-create`).
  *
- * 마법사(다음 → 다음)가 아닌 이유 — 사이드바가 버전 트리라 아무 때나 지난
- * 버전으로 돌아갈 수 있고, 목업에서 대본만 세 번 고친 흔적(V3)이 그 증거입니다.
- * "다음" 버튼은 단계 이동이 아니라 **연습 시작**이고, 매핑 확인 화면에만 있습니다.
+ * 본문 위 단계 표시줄과 단계마다 이전 · 다음 버튼으로 처음 온 사람도 차례로 끝까지 갑니다.
+ * 그래도 마법사처럼 잠그지 않습니다 — 사이드바가 버전 트리라 아무 때나 지난 버전으로 돌아갈 수 있고,
+ * 대본만 세 번 고치는(V3) 일이 정상 흐름입니다. 연습 시작은 마지막 단계(평가기준)에 있습니다.
  *
- * 본문은 사이드바에서 고른 것(`node` + `version`)이 정합니다.
+ * 본문은 사이드바 · 단계 표시줄에서 고른 것(`node` + `version`)이 정합니다.
  */
 
 /** 사이드바 아래 치치의 말풍선. 지금 화면에서 할 일을 한마디로 */
@@ -221,7 +222,7 @@ function PitchCreateScreen() {
       : null;
 
   /*
-    매핑 확인의 "다음" — 장치 점검 → 준비 화면 → 시작 CTA 순서입니다.
+    평가기준 단계의 "연습 시작" — 장치 점검 → 준비 화면 → 시작 CTA 순서입니다.
 
     ★ 여기서 POST /takes 를 부르지 않습니다 (CLAUDE.md 8번) —
       Take 는 준비 화면의 시작 CTA 에서만 생깁니다. 여기서 만들면
@@ -242,11 +243,11 @@ function PitchCreateScreen() {
       const picked = draft.slides.find((v) => v.version === version) ?? latestSlides(draft);
       return <SlidePane slide={picked} />;
     }
-    // 확인 창 없이 바로 장치 점검으로 갑니다. 조합은 매핑 확인 화면에 이미 보이고,
-    // 조합이 맞지 않으면 "다음" 이 막혀 있습니다 (ScriptPane `canStart`)
-    if (node === 'script') return <ScriptPane script={pickedScript} onStart={start} />;
+    if (node === 'script') return <ScriptPane script={pickedScript} />;
+    // 확인 창 없이 바로 장치 점검으로 갑니다. 조합은 사이드바의 "연습 중"과 매핑 확인 화면에 보이고,
+    // 조합이 맞지 않으면 "연습 시작" 이 막혀 있습니다 (CriteriaPane · `computeGate`)
     const picked = draft.criteria.find((v) => v.version === version) ?? latestCriteria(draft);
-    return <CriteriaPane criteria={picked} />;
+    return <CriteriaPane criteria={picked} onStart={start} />;
   })();
 
   return (
@@ -274,6 +275,7 @@ function PitchCreateScreen() {
           </nav>
 
           <InfoBar />
+          <StepBar />
           <section className="flex min-h-[32rem] flex-auto shrink-0 flex-col rounded-lg border border-line bg-panel p-5 xl:p-6">
             {pane}
           </section>

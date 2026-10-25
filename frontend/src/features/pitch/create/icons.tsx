@@ -9,31 +9,6 @@ const svgProps = {
   shapeRendering: 'crispEdges',
 } as const;
 
-export function FolderIcon({ className = 'h-4 w-4' }: { className?: string }) {
-  return (
-    <svg {...svgProps} viewBox="0 0 16 16" className={className}>
-      <path
-        className="fill-none stroke-ink"
-        strokeWidth="1.5"
-        d="M1.75 3.75h4.5l1.5 1.5h6.5v7h-12.5z"
-      />
-    </svg>
-  );
-}
-
-/** 왼쪽 접기 표시. 펼쳐져 있으면 아래, 접혀 있으면 오른쪽을 봅니다 */
-export function CaretIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      {...svgProps}
-      viewBox="0 0 8 8"
-      className={['h-2 w-2', open ? '' : '-rotate-90'].join(' ')}
-    >
-      <path className="fill-ink" d="M0 2h8v1h-1v1h-1v1h-1v1h-2v-1h-1v-1h-1v-1h-1z" />
-    </svg>
-  );
-}
-
 /** 오른쪽 꺾쇠. 본문에 띄운 갈래는 위(^), 나머지는 오른쪽(>) */
 export function ChevronIcon({ up }: { up: boolean }) {
   return (
@@ -104,15 +79,6 @@ export function SparkleIcon() {
     <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4">
       <path className="fill-coral" d="M6 2h2v3h1v1h3v2h-3v1h-1v3h-2v-3h-1v-1h-3v-2h3v-1h1z" />
       <path className="fill-coral" d="M12 10h1v1h1v1h-1v1h-1v-1h-1v-1h1z" />
-    </svg>
-  );
-}
-
-/** 사이드바 머리 오른쪽의 도트 장식 */
-export function PixelMark() {
-  return (
-    <svg {...svgProps} viewBox="0 0 6 6" className="h-2.5 w-2.5">
-      <path className="fill-ink" d="M3 0h3v3h-3zM0 3h3v3h-3z" />
     </svg>
   );
 }

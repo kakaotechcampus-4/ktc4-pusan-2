@@ -11,11 +11,12 @@ import {
   PaperclipIcon,
   PdfUploadIcon,
 } from '../icons';
-import { MAX_SLIDE_BYTES, pendingVersion, type SlideUpload, type SlideVersion } from '../lib/draft';
+import { MAX_SLIDE_BYTES, type SlideUpload, type SlideVersion } from '../lib/draft';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { startSlideUpload } from '../slideUpload';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import { NeedPitch } from './NeedPitch';
+import { PaneFooter, primaryButton } from './PaneFooter';
 import { PaneHeading } from './PaneHeading';
 
 /**
@@ -359,9 +360,7 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
 }
 
 function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload }) {
-  const addSlideVersion = useCreateStore((s) => s.addSlideVersion);
-  // 파일을 기다리는 빈 버전이 있으면 새 버전을 막습니다 (`pendingVersion`)
-  const pendingSlide = useCreateStore((s) => pendingVersion(s.draft, 'slides'));
+  const select = useCreateStore((s) => s.select);
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const opened = usePdfDocument(slide.fileUrl);
@@ -437,17 +436,6 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
               <PaperclipIcon />
               파일 교체
             </button>
-            <button
-              type="button"
-              disabled={replacing || pendingSlide !== null}
-              title={
-                pendingSlide !== null ? `V${pendingSlide}에 파일을 먼저 올려 주세요` : undefined
-              }
-              onClick={addSlideVersion}
-              className="flex h-11 items-center gap-2 rounded-lg border border-coral bg-white px-5 text-sm font-bold text-coral hover:bg-coral-wash disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              + 새 버전
-            </button>
             <PdfInput inputRef={inputRef} onPick={replace} />
           </>
         }
@@ -469,6 +457,13 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
       )}
 
       {body}
+
+      {/* "+ 새 버전"은 사이드바에만 둡니다 — 저장한 버전을 고치는 길은 거기 하나입니다 */}
+      <PaneFooter hint="다음은 슬라이드에 맞춰 대본을 붙여요.">
+        <button type="button" onClick={() => select('script')} className={primaryButton}>
+          다음 · 대본 →
+        </button>
+      </PaneFooter>
     </div>
   );
 }

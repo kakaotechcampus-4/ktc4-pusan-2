@@ -12,13 +12,14 @@ import { fromIsoDate, monthGrid, toIsoDate, type CalendarDay } from '../lib/date
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
 /**
- * 일요일만 강조색으로 칠합니다. 앞뒤 달 칸은 흐리게.
+ * 일요일만 강조색으로 칠합니다. 앞뒤 달 칸은 흐리게. 오늘은 음영 + 테두리 — 고른 날(코랄 채움)이 우선입니다.
  *
  * ★ 목업은 토요일을 파랑으로 칠하지만 디자인 토큰에 파랑이 없습니다 (`index.css` —
  *   "색을 새로 만들지 않습니다"). 토큰이 생기면 여기 한 줄만 더하면 됩니다.
  */
-function dayTone(cell: CalendarDay, selected: boolean): string {
+function dayTone(cell: CalendarDay, selected: boolean, isToday: boolean): string {
   if (selected) return 'bg-coral font-bold text-white';
+  if (isToday) return 'bg-coral-wash font-bold text-coral-deep ring-1 ring-inset ring-coral';
   if (cell.outside) return 'text-line-strong hover:bg-panel';
   if (cell.weekday === 0) return 'text-coral hover:bg-coral-wash';
   return 'text-ink hover:bg-panel';
@@ -48,7 +49,9 @@ export function DatePicker({
       return { year: d.getFullYear(), month: d.getMonth() };
     });
 
-  const today = toIsoDate(new Date());
+  const [now] = useState(() => new Date());
+  const today = toIsoDate(now);
+  const onThisMonth = view.year === now.getFullYear() && view.month === now.getMonth();
 
   return (
     <div className="rounded-lg border border-line bg-white px-4 py-2">
@@ -63,8 +66,17 @@ export function DatePicker({
             <ChevronIcon up={false} />
           </span>
         </button>
-        <p className="tabular text-sm font-bold" aria-live="polite">
-          {view.year}년 {view.month + 1}월
+        <p className="tabular flex items-center gap-2 text-sm font-bold" aria-live="polite">
+          {view.year}년 {view.month + 1}월{/* 다른 달을 보고 있으면 이번 달로 돌아오는 길 */}
+          {!onThisMonth && (
+            <button
+              type="button"
+              onClick={() => setView({ year: now.getFullYear(), month: now.getMonth() })}
+              className="rounded border border-line-strong px-1.5 text-xs font-bold text-stone hover:text-ink"
+            >
+              오늘
+            </button>
+          )}
         </p>
         <button
           type="button"
@@ -85,18 +97,20 @@ export function DatePicker({
 
         {monthGrid(view.year, view.month).map((cell) => {
           const selected = cell.iso === value;
+          const isToday = cell.iso === today;
           return (
             <button
               key={cell.iso}
               type="button"
               role="gridcell"
               aria-selected={selected}
-              aria-label={cell.iso}
-              aria-current={cell.iso === today ? 'date' : undefined}
+              aria-label={isToday ? `${cell.iso} 오늘` : cell.iso}
+              aria-current={isToday ? 'date' : undefined}
               onClick={() => onChange(cell.iso)}
-              className={`tabular mx-auto flex h-7 w-10 items-center justify-center rounded-md text-sm ${dayTone(cell, selected)}`}
+              className={`tabular mx-auto flex h-10 w-10 flex-col items-center justify-center rounded-md text-sm ${dayTone(cell, selected, isToday)}`}
             >
               {cell.day}
+              {isToday && <span className="text-xs leading-none">오늘</span>}
             </button>
           );
         })}
