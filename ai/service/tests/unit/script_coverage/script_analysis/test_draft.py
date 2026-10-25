@@ -1,4 +1,4 @@
-from script_coverage.script_analysis.draft import (
+from pitch_coach_ai.features.script_coverage.script_analysis.draft import (
     importance_from_roles,
     key_term_rejection,
     link_facts_to_key_points,
@@ -8,9 +8,13 @@ from script_coverage.script_analysis.draft import (
     resolve_roles,
     validate_rubric,
 )
-from script_coverage.script_analysis.schemas import KeyPointDraft, SentenceLabel, SlideScript
-from script_coverage.shared.facts import extract_critical_facts
-from script_coverage.shared.text import normalize_script
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
+    KeyPointDraft,
+    SentenceLabel,
+    SlideScript,
+)
+from pitch_coach_ai.features.script_coverage.shared.facts import extract_critical_facts
+from pitch_coach_ai.features.script_coverage.shared.text import normalize_script
 
 from ..shared.slides import SLIDES
 

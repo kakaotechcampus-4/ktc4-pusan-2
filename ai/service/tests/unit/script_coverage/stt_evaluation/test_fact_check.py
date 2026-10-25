@@ -2,17 +2,17 @@
 
 import pytest
 
-from script_coverage.shared.facts import extract_critical_facts
-from script_coverage.shared.rubric import NAME_TYPES
-from script_coverage.shared.text import normalize_script
-from script_coverage.stt_evaluation.fact_check import (
+from pitch_coach_ai.features.script_coverage.shared.facts import extract_critical_facts
+from pitch_coach_ai.features.script_coverage.shared.rubric import NAME_TYPES
+from pitch_coach_ai.features.script_coverage.shared.text import normalize_script
+from pitch_coach_ai.features.script_coverage.stt_evaluation.fact_check import (
     jamo_diff,
     mismatch_signals,
     read_number,
     reading_of,
 )
-from script_coverage.stt_evaluation.normalize import normalize_stt
-from script_coverage.stt_evaluation.schemas import FactCheck
+from pitch_coach_ai.features.script_coverage.stt_evaluation.normalize import normalize_stt
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import FactCheck
 
 
 @pytest.mark.parametrize(

@@ -1,4 +1,4 @@
-from script_coverage.shared.text import compact, normalize_script, overlaps
+from pitch_coach_ai.features.script_coverage.shared.text import compact, normalize_script, overlaps
 
 
 def test_normalize_script_quotes_and_spaces():

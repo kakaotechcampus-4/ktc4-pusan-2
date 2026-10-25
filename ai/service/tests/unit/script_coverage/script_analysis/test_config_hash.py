@@ -1,6 +1,6 @@
-from script_coverage.script_analysis.final import final_config_hash
-from script_coverage.script_analysis.semantic import semantic_config_hash
-from script_coverage.script_analysis.units import unit_config_hash
+from pitch_coach_ai.features.script_coverage.script_analysis.final import final_config_hash
+from pitch_coach_ai.features.script_coverage.script_analysis.semantic import semantic_config_hash
+from pitch_coach_ai.features.script_coverage.script_analysis.units import unit_config_hash
 
 # 값은 원본 노트북(MODEL="test-model")의 llm_config_hash / final_config_hash / unit_config_hash 출력이다
 

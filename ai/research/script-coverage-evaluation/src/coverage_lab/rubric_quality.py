@@ -5,8 +5,8 @@ from collections import Counter
 
 import pandas as pd
 
-from script_coverage.shared.facts import CriticalFact
-from script_coverage.shared.rubric import EvaluationRubric
+from pitch_coach_ai.features.script_coverage.shared.facts import CriticalFact
+from pitch_coach_ai.features.script_coverage.shared.rubric import EvaluationRubric
 
 from .store import load_rubric
 

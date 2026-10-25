@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-import script_coverage
+from pitch_coach_ai.features import script_coverage
 
 # 코어 패키지 파일 기준으로 찾는다 — 서비스로 옮겨도 경로를 고치지 않게
 CORE = Path(script_coverage.__file__).resolve().parent

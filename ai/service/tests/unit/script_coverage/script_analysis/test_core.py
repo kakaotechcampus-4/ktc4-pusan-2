@@ -3,8 +3,8 @@ import time
 
 import pytest
 
-from script_coverage.script_analysis.core import analyze_script
-from script_coverage.script_analysis.schemas import (
+from pitch_coach_ai.features.script_coverage.script_analysis.core import analyze_script
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
     SlideScript,
 )
 

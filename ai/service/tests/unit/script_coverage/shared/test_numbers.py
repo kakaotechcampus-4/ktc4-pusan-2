@@ -1,6 +1,9 @@
 import pytest
 
-from script_coverage.shared.numbers import format_number, parse_korean_number
+from pitch_coach_ai.features.script_coverage.shared.numbers import (
+    format_number,
+    parse_korean_number,
+)
 
 # 기대값은 노트북 원본 함수를 그대로 돌려 얻은 값이다.
 CASES = [

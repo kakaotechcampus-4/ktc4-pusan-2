@@ -1,8 +1,12 @@
-"""단위 테스트용 가짜 LLM: `.invoke(messages)` 가 정해진 스키마 객체를 돌려주거나 정해진 예외를 낸다."""
+"""lab 테스트용 가짜 LLM: `.invoke(messages)` 가 정해진 스키마 객체를 돌려주거나 정해진 예외를 낸다.
+
+단위 테스트는 서비스(`ai/service/tests/unit/script_coverage/`)로 옮겼다. 이 파일은 lab 테스트가 쓰는
+그 도우미(`fakes.py`)와 `test_take_core.SaidAllLLM` 의 사본이다.
+"""
 
 import re
 
-from script_coverage.script_analysis.schemas import (
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
     FinalKeyPoint,
     FinalReview,
     KeyPointDraft,
@@ -11,7 +15,10 @@ from script_coverage.script_analysis.schemas import (
     SlideSemanticAnalysis,
     SlideUnits,
 )
-from script_coverage.stt_evaluation.schemas import (
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
+    NameCheck,
+    SemanticEvaluation,
+    SentenceJudgment,
     UnitJudgment,
     VerifiedSentence,
     VerifierResult,
@@ -122,9 +129,9 @@ class DeckAwareLLM:
 
 def deck_rubrics(numbers=(4, 6, 7), model="test-model") -> list:
     """가상대본1 의 평가 기준 (`DeckAwareLLM` 으로 만든 것). script_name 은 `sv-3`."""
-    from script_coverage.core import ScriptLLMs, analyze_script
+    from pitch_coach_ai.features.script_coverage.core import ScriptLLMs, analyze_script
 
-    from .shared.slides import SLIDES
+    from .slides import SLIDES
 
     llms = ScriptLLMs(**{s: DeckAwareLLM(s) for s in ("semantic", "final", "unit")})
     response = analyze_script(
@@ -137,3 +144,40 @@ def deck_rubrics(numbers=(4, 6, 7), model="test-model") -> list:
         model=model,
     )
     return response.rubrics
+
+
+class SaidAllLLM:
+    """대본 문장의 전달 단위를 모두 말했다고 판정하는 가짜 의미 평가 LLM. `failing` 의 장은 예외를 낸다."""
+
+    def __init__(self, failing: dict[int, BaseException] | None = None):
+        self.failing = failing or {}
+        self.called_slides: list[int] = []
+
+    @property
+    def calls(self) -> int:
+        return len(self.called_slides)
+
+    def invoke(self, messages):
+        text = messages[1][1]
+        number = int(re.match(r"\[슬라이드 (\d+)\]", text).group(1))
+        self.called_slides.append(number)
+        if number in self.failing:
+            raise self.failing[number]
+        sentences = [
+            SentenceJudgment(
+                sentence_id=int(i),
+                evidence=[0],
+                reason="말했다",
+                units=[
+                    UnitJudgment(unit_id=u, status="said")
+                    for u in re.findall(rf"^\s+- (S{i}-U\d+) ", text, flags=re.M)
+                ],
+                confidence="high",
+            )
+            for i in re.findall(r"^\[S(\d+)\]", text, flags=re.M)
+        ]
+        names = [
+            NameCheck(name_id=f"N{n}", said=True, evidence=[0])
+            for n in re.findall(r"^- N(\d+) ", text, flags=re.M)
+        ]
+        return SemanticEvaluation(sentences=sentences, name_checks=names)

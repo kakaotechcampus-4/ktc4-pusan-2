@@ -1,5 +1,8 @@
-from script_coverage.script_analysis.keywords import extract_keywords_tfidf, tokenize_nouns
-from script_coverage.shared.text import normalize_script
+from pitch_coach_ai.features.script_coverage.script_analysis.keywords import (
+    extract_keywords_tfidf,
+    tokenize_nouns,
+)
+from pitch_coach_ai.features.script_coverage.shared.text import normalize_script
 
 from ..shared.slides import SLIDES
 

@@ -7,8 +7,11 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.143.0",
+    "kiwipiepy>=0.23,<0.24",
     "langchain-openai>=1.7.1",
+    "pydantic>=2.13,<3",
     "pydantic-settings>=2.15.0",
+    "scikit-learn>=1.8,<1.9",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -32,6 +35,12 @@ line-length = 100
 [tool.ruff.lint]
 # E/F: pyflakes·pycodestyle, I: import 정렬, UP: 최신 문법, B: 흔한 버그, SIM: 단순화
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# 대본 전달도: 프롬프트 · LLM 출력 스키마의 문자열은 캐시 키(설정 해시)에 들어가 원문 그대로 둬야 해서
+# 줄을 나누지 않는다. 남는 긴 줄은 한국어 주석 · 문자열(한글은 폭 2칸)이다 (연구 폴더와 같은 규칙)
+"src/pitch_coach_ai/features/script_coverage/**" = ["E501"]
+"tests/unit/script_coverage/**" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

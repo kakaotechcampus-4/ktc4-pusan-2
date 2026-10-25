@@ -1,8 +1,8 @@
 import re
 
-from script_coverage import config
-from script_coverage.script_analysis import config as script_config
-from script_coverage.stt_evaluation import config as stt_config
+from pitch_coach_ai.features.script_coverage import config
+from pitch_coach_ai.features.script_coverage.script_analysis import config as script_config
+from pitch_coach_ai.features.script_coverage.stt_evaluation import config as stt_config
 
 
 def test_criteria_version_format():

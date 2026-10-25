@@ -2,8 +2,12 @@
 
 from types import SimpleNamespace
 
-from script_coverage.stt_evaluation.schemas import FactCheck, KeyPointResult, SimilarItem
-from script_coverage.stt_evaluation.scoring import slide_scores, take_scores
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
+    FactCheck,
+    KeyPointResult,
+    SimilarItem,
+)
+from pitch_coach_ai.features.script_coverage.stt_evaluation.scoring import slide_scores, take_scores
 
 
 def _kp(key_point_id, importance, status):

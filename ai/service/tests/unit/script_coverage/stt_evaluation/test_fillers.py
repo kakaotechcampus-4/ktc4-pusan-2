@@ -2,8 +2,14 @@
 
 import pytest
 
-from script_coverage.stt_evaluation.fillers import find_fillers, remove_fillers
-from script_coverage.stt_evaluation.normalize import locate_raw, normalize_stt
+from pitch_coach_ai.features.script_coverage.stt_evaluation.fillers import (
+    find_fillers,
+    remove_fillers,
+)
+from pitch_coach_ai.features.script_coverage.stt_evaluation.normalize import (
+    locate_raw,
+    normalize_stt,
+)
 
 
 @pytest.mark.parametrize(

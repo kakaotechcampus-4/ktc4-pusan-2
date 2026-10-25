@@ -1,6 +1,9 @@
-from script_coverage.script_analysis.schemas import SlideScript
-from script_coverage.script_analysis.semantic import EMPTY_SEMANTICS, semantic_user_message
-from script_coverage.shared.text import normalize_script
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import SlideScript
+from pitch_coach_ai.features.script_coverage.script_analysis.semantic import (
+    EMPTY_SEMANTICS,
+    semantic_user_message,
+)
+from pitch_coach_ai.features.script_coverage.shared.text import normalize_script
 
 from ..shared.slides import SLIDES
 

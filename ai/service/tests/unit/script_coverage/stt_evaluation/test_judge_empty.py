@@ -1,8 +1,11 @@
 """STT 가 빈 장의 의미 평가를 코드가 만든다 (`empty_stt_evaluation`): LLM 없이 모두 말하지 않은 것으로 본다."""
 
-from script_coverage.stt_evaluation.judge import empty_stt_evaluation, judged_sentences
-from script_coverage.stt_evaluation.merge import resolve_name_checks
-from script_coverage.stt_evaluation.schemas import FactCheck
+from pitch_coach_ai.features.script_coverage.stt_evaluation.judge import (
+    empty_stt_evaluation,
+    judged_sentences,
+)
+from pitch_coach_ai.features.script_coverage.stt_evaluation.merge import resolve_name_checks
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import FactCheck
 
 from ..fakes import deck_rubrics
 

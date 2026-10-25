@@ -1,7 +1,10 @@
 import pytest
 
-from script_coverage.shared.facts import CriticalFact, extract_critical_facts
-from script_coverage.shared.text import normalize_script
+from pitch_coach_ai.features.script_coverage.shared.facts import (
+    CriticalFact,
+    extract_critical_facts,
+)
+from pitch_coach_ai.features.script_coverage.shared.text import normalize_script
 
 from .slides import SLIDES
 

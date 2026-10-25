@@ -5,7 +5,7 @@ import re
 import pytest
 from pydantic import ValidationError
 
-from script_coverage.core import (
+from pitch_coach_ai.features.script_coverage.core import (
     CoverageError,
     TakeLLMs,
     confirmations,
@@ -13,9 +13,13 @@ from script_coverage.core import (
     rescore_evaluation,
     take_scores,
 )
-from script_coverage.schemas import AnalyzeRequest, RescoreRequest, SlideFailure
-from script_coverage.shared.llm_step import ERROR_MESSAGES
-from script_coverage.stt_evaluation.schemas import (
+from pitch_coach_ai.features.script_coverage.schemas import (
+    AnalyzeRequest,
+    RescoreRequest,
+    SlideFailure,
+)
+from pitch_coach_ai.features.script_coverage.shared.llm_step import ERROR_MESSAGES
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
     NameCheck,
     SemanticEvaluation,
     SentenceJudgment,
@@ -23,7 +27,7 @@ from script_coverage.stt_evaluation.schemas import (
     UnitJudgment,
     VerifierResult,
 )
-from script_coverage.version import FEATURE_VERSION, SCHEMA_VERSION
+from pitch_coach_ai.features.script_coverage.version import FEATURE_VERSION, SCHEMA_VERSION
 
 from .fakes import FakeLLM, KeepFirstVerifier, deck_rubrics
 from .shared.slides import SLIDES

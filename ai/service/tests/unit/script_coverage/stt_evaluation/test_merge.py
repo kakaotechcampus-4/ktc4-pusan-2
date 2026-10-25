@@ -2,7 +2,10 @@
 
 import pytest
 
-from script_coverage.stt_evaluation.merge import aggregate_status, status_from_units
+from pitch_coach_ai.features.script_coverage.stt_evaluation.merge import (
+    aggregate_status,
+    status_from_units,
+)
 
 
 @pytest.mark.parametrize(

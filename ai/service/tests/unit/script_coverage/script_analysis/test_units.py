@@ -1,18 +1,18 @@
-from script_coverage.script_analysis.draft import new_rubric
-from script_coverage.script_analysis.schemas import (
+from pitch_coach_ai.features.script_coverage.script_analysis.draft import new_rubric
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
     SentenceUnitsDraft,
     SlideScript,
     SlideUnits,
     UnitDraft,
 )
-from script_coverage.script_analysis.units import (
+from pitch_coach_ai.features.script_coverage.script_analysis.units import (
     _find_in_sentence,
     attach_units,
     build_content_units,
     unit_user_message,
 )
-from script_coverage.shared.facts import extract_critical_facts
-from script_coverage.shared.text import normalize_script
+from pitch_coach_ai.features.script_coverage.shared.facts import extract_critical_facts
+from pitch_coach_ai.features.script_coverage.shared.text import normalize_script
 
 from ..shared.slides import SLIDES
 

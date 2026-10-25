@@ -9,7 +9,7 @@ import json
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from script_coverage.shared.llm_step import (
+from pitch_coach_ai.features.script_coverage.shared.llm_step import (
     ERROR_MESSAGES,
     LLM_ERROR_CODES,
     cache_get,

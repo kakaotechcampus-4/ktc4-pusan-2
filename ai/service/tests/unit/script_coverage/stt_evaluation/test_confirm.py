@@ -2,9 +2,15 @@
 
 import pytest
 
-from script_coverage.shared.rubric import EvaluationRubric, RubricMeta
-from script_coverage.stt_evaluation.confirm import CONFIRM_TEXT, rescore_evaluation
-from script_coverage.stt_evaluation.schemas import SimilarItem, SlideEvaluation
+from pitch_coach_ai.features.script_coverage.shared.rubric import EvaluationRubric, RubricMeta
+from pitch_coach_ai.features.script_coverage.stt_evaluation.confirm import (
+    CONFIRM_TEXT,
+    rescore_evaluation,
+)
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
+    SimilarItem,
+    SlideEvaluation,
+)
 
 
 def _rubric(rubric_id: str) -> EvaluationRubric:

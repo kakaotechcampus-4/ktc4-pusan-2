@@ -6,17 +6,19 @@
 import hashlib
 import json
 
-from script_coverage.stt_evaluation.core import evaluate_take
-from script_coverage.stt_evaluation.judge import eval_config_hash
-from script_coverage.stt_evaluation.prompts.semantic import SEMANTIC_EVAL_PROMPT
-from script_coverage.stt_evaluation.prompts.verifier import VERIFIER_PROMPT
-from script_coverage.stt_evaluation.schemas import (
+from pitch_coach_ai.features.script_coverage.stt_evaluation.core import evaluate_take
+from pitch_coach_ai.features.script_coverage.stt_evaluation.judge import eval_config_hash
+from pitch_coach_ai.features.script_coverage.stt_evaluation.prompts.semantic import (
+    SEMANTIC_EVAL_PROMPT,
+)
+from pitch_coach_ai.features.script_coverage.stt_evaluation.prompts.verifier import VERIFIER_PROMPT
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
     SemanticEvaluation,
     SlideSTT,
     Take,
     VerifierResult,
 )
-from script_coverage.stt_evaluation.verify import verifier_config_hash
+from pitch_coach_ai.features.script_coverage.stt_evaluation.verify import verifier_config_hash
 
 from ..fakes import FakeLLM, KeepFirstVerifier, deck_rubrics
 
