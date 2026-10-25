@@ -18,8 +18,10 @@
 안 걸린다. 그때는 최대 시간이 막는다.
 """
 
+import asyncio
+import time
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from pitch_coach_backend.core.config import settings
@@ -161,6 +163,54 @@ class SilenceTracker:
         # silent_run_ms > 0 이면 _observed_ms 도 0 보다 크다
         silent_ratio = (self._observed_ms - self._speech_ms) / self._observed_ms
         return silent_ratio >= self._policy.silence_ratio
+
+
+class TimeLimit:
+    """최대 시간. 기준은 프레임의 Take 시각(`reached`)이고, 서버 시계(`start`)는 그 시각이 가지 않는
+    Take(오디오 없이 연결만 붙여 둠, offset 이 멈춤)를 막는 보조 상한이다. 스트림마다 하나다."""
+
+    def __init__(self, policy: AutoEndPolicy, on_expire: Callable[[], None]) -> None:
+        self._policy = policy
+        self._on_expire = on_expire
+        self._timer: asyncio.TimerHandle | None = None
+        # 이 스트림을 연 시각(monotonic). 닫힐 때 열려 있던 시간을 Take 의 서버 시계에 더한다
+        self._opened_at: float | None = None
+
+    def start(self, streamed_sec: float) -> None:
+        """서버 시계를 켠다. `streamed_sec` 은 앞서 닫힌 스트림들이 열려 있던 시간(초)의 합이다.
+
+        - 스트림을 열 때 건다. 첫 프레임에서 걸면 오디오를 안 보내고 연결만 붙여 둔 Take 는
+          영영 안 끝나고 Deepgram 연결도 계속 살아 있다.
+        - 재는 것은 이 Take 의 스트림이 **열려 있던 시간의 합**이다. 스트림 하나 기준이면 grace
+          (30초)보다 오래 끊었다 다시 붙을 때마다 1시간이 새로 시작하고, 벽시계 기준이면 탭이 죽어
+          있던 시간까지 세어 이어서 연습하자마자 끝난다. FE 무대에는 일시정지가 없어서 열려 있던
+          시간은 무대 시계와 거의 같다 — 조금 빠른 만큼(연결 · grace) 여유를 둔다.
+        """
+        self._opened_at = time.monotonic()
+        self._timer = asyncio.get_running_loop().call_later(
+            max(0.0, self._limit_sec() - streamed_sec), self._on_expire
+        )
+
+    def reached(self, take_ms: int) -> bool:
+        """프레임의 Take 시각(offset)으로 최대 시간을 본다. 최대 시간의 기준이다 — FE 무대 시계라
+        새로고침 · 재연결에도 이어지고, 프로세스가 다시 떠 서버 시계를 잃어도 여기서 걸린다.
+        서버 시계(`start`)는 이 시각이 가지 않을 때만 대신 끝낸다."""
+        return take_ms >= self._policy.max_duration_ms
+
+    def stop(self) -> float:
+        """서버 시계를 끄고 이 스트림이 열려 있던 초를 돌려준다. 켜지 않았거나 이미 껐으면 0."""
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+        if self._opened_at is None:
+            return 0.0
+        opened = time.monotonic() - self._opened_at
+        self._opened_at = None
+        return opened
+
+    def _limit_sec(self) -> float:
+        """서버 시계로 잰 최대 시간. 프레임 시각이 먼저 끝내도록 여유를 더한다."""
+        return (self._policy.max_duration_ms + self._policy.server_clock_slack_ms) / 1000
 
 
 def _clip(spans: Iterable[tuple[int, int]], lo: int, hi: int) -> list[tuple[int, int]]:

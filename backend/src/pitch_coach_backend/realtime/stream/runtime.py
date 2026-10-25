@@ -81,13 +81,12 @@ from pitch_coach_backend.realtime.dto import (
 )
 from pitch_coach_backend.realtime.event_ingestion import (
     Accepted,
-    AudioFrame,
     FrameSequencer,
     parse_audio_frame,
 )
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
-from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
+from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, TimeLimit
 from pitch_coach_backend.realtime.stream.record import CoachDeps, StreamHost, TakeRecord
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
@@ -153,16 +152,16 @@ class TakeStream:
         self.dropped_audio_ms = 0
         # 말 없음 기록 · 서버 시계 · 1초 원자료. Take 에 붙어 있어 이 스트림보다 오래 산다
         self._record = record
-        # 이 스트림을 연 시각(monotonic). 닫힐 때 열려 있던 시간을 Take 의 서버 시계에 더한다
-        self._opened_at: float | None = None
         # 마지막으로 받은 오디오 프레임 시각(monotonic). 발표 중인지 본다 (`is_live`)
         self._last_audio_at: float | None = None
         # 끊김 없이 받은 오디오의 Take 시각 [시작, 끝) (ms). 세션을 갈아야 하는 끊김
         # (`timeline_break`)에서 다시 시작한다. 1초 원자료의 STT 상태를 이걸로 정한다
         self._heard_from_ms: int | None = None
         self._heard_until_ms: int | None = None
-        # 최대 시간 타이머. start() 에서 건다
-        self._time_limit: asyncio.TimerHandle | None = None
+        # 최대 시간. start() 에서 서버 시계를 켠다
+        self._time_limit = TimeLimit(
+            self.auto_end_policy, lambda: self._auto_end(AutoEndReason.TIME_LIMIT)
+        )
 
         self._queue: asyncio.Queue[Accepted | None] = asyncio.Queue(maxsize=QUEUE_MAX_FRAMES)
         self._client: WebSocket | None = None
@@ -240,27 +239,7 @@ class TakeStream:
         # 다시 붙었다. 떠난 것으로 보고 끝내려던 타이머를 끈다
         self._host.stream_started(self.take_id)
         self._task = asyncio.create_task(self._run(), name=f"take-stream:{self.take_id}")
-        self._opened_at = time.monotonic()
-        self._arm_time_limit()
-
-    def _arm_time_limit(self) -> None:
-        """최대 시간의 보조 상한. 기준은 프레임의 Take 시각(`_check_time_limit`)이고, 이건 그 시각이
-        가지 않는 Take(오디오 없이 연결만 붙여 둠, offset 이 멈춤)를 막는다.
-
-        - 스트림을 열 때 건다. 첫 프레임에서 걸면 오디오를 안 보내고 연결만 붙여 둔 Take 는
-          영영 안 끝나고 Deepgram 연결도 계속 살아 있다.
-        - 재는 것은 이 Take 의 스트림이 **열려 있던 시간의 합**이다. 스트림 하나 기준이면 grace
-          (30초)보다 오래 끊었다 다시 붙을 때마다 1시간이 새로 시작하고, 벽시계 기준이면 탭이 죽어
-          있던 시간까지 세어 이어서 연습하자마자 끝난다. FE 무대에는 일시정지가 없어서 열려 있던
-          시간은 무대 시계와 거의 같다 — 조금 빠른 만큼(연결 · grace) 여유를 둔다.
-        """
-        self._time_limit = asyncio.get_running_loop().call_later(
-            max(0.0, self._talk_left_sec()), self._auto_end, AutoEndReason.TIME_LIMIT
-        )
-
-    def _talk_left_sec(self) -> float:
-        """서버 시계로 잰 최대 시간까지 남은 초. 지났으면 0 이하다."""
-        return _talk_limit_sec(self.auto_end_policy) - self._record.streamed_sec
+        self._time_limit.start(self._record.streamed_sec)
 
     async def attach(self, ws: WebSocket) -> None:
         """새 연결을 붙인다. 이미 붙어 있으면 **기존 것을 쫓아낸다.**
@@ -469,12 +448,7 @@ class TakeStream:
     def _finish(self) -> None:
         if self._closed.is_set():
             return
-        if self._time_limit is not None:
-            self._time_limit.cancel()
-            self._time_limit = None
-        if self._opened_at is not None:
-            self._record.streamed_sec += time.monotonic() - self._opened_at
-            self._opened_at = None
+        self._record.streamed_sec += self._time_limit.stop()
         # Deepgram 에 닿지 못한 채 큐에 남은 오디오는 유실이다. 마지막 stt_status 의
         # lost_ms 가 이걸 빼먹으면 리포트가 "STT 다 받았다" 고 잘못 말한다
         while True:
@@ -595,13 +569,7 @@ class TakeStream:
             )
         self._put(accepted)
         # 큐에 넣은 뒤에 본다. 먼저 끝내면 stop 신호 뒤에 들어가 이 프레임이 버려진다
-        self._check_time_limit(accepted.frame)
-
-    def _check_time_limit(self, frame: AudioFrame) -> None:
-        """프레임의 Take 시각(offset)으로 최대 시간을 본다. 최대 시간의 기준이다 — FE 무대 시계라
-        새로고침 · 재연결에도 이어지고, 프로세스가 다시 떠 서버 시계를 잃어도 여기서 걸린다.
-        서버 시계(`_arm_time_limit`)는 이 시각이 가지 않을 때만 대신 끝낸다."""
-        if frame.end_ms >= self.auto_end_policy.max_duration_ms:
+        if self._time_limit.reached(accepted.frame.end_ms):
             self._auto_end(AutoEndReason.TIME_LIMIT)
 
     def _put(self, item: Accepted | None) -> None:
@@ -838,8 +806,3 @@ async def _quiet(awaitable: Awaitable[object]) -> None:
     """
     with contextlib.suppress(Exception):
         await awaitable
-
-
-def _talk_limit_sec(policy: AutoEndPolicy) -> float:
-    """서버 시계로 잰 최대 시간. 프레임 시각이 먼저 끝내도록 여유를 더한다."""
-    return (policy.max_duration_ms + policy.server_clock_slack_ms) / 1000
