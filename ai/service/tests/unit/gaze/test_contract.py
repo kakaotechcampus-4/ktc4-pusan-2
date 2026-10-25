@@ -8,16 +8,16 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from gaze import config
-from gaze.config import DEFAULT, GazeConfig
-from gaze.schemas import (
+from pitch_coach_ai.features.gaze import config
+from pitch_coach_ai.features.gaze.config import DEFAULT, GazeConfig
+from pitch_coach_ai.features.gaze.schemas import (
     GazeInput,
     GazeRecord,
     JudgmentIssue,
     JudgmentResult,
     TallyItem,
 )
-from gaze.version import FEATURE_VERSION
+from pitch_coach_ai.features.gaze.version import FEATURE_VERSION
 
 REQUIRED = {"t_ms": 1000, "since_ms": 0}
 #: 소리 크기 판정 모듈의 기준값 파일. 시선 모듈 폴더에서 찾는다:

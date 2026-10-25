@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from gaze import core
+from pitch_coach_ai.features.gaze import core
 
 # 모듈 파일 기준이라 서비스(features/gaze/)로 옮겨도 import 접두어만 바꾸면 새 위치를 본다
 CORE = Path(core.__file__).parent

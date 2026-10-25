@@ -11,9 +11,9 @@ from __future__ import annotations
 import dataclasses
 from typing import get_args
 
-import gaze.core as core
-from gaze.config import GazeConfig
-from gaze.schemas import Direction, SampleState
+import pitch_coach_ai.features.gaze.core as core
+from pitch_coach_ai.features.gaze.config import GazeConfig
+from pitch_coach_ai.features.gaze.schemas import Direction, SampleState
 from gaze_lab import schemas
 from gaze_lab.config import EvidenceConfig, load_config
 from gaze_lab.evidence.gaze import SAMPLE_STATES

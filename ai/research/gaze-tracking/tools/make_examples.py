@@ -1,6 +1,6 @@
 """서버 판정 모듈의 계약 예시 출력 파일을 입력에서 다시 만드는 도구.
 
-하는 일: `src/gaze/examples/` 의 `<이름>_input.json` 을 읽어 지금 코드(`gaze.core`)로 판정하고 짝이 되는
+하는 일: 서비스 `features/gaze/examples/` 의 `<이름>_input.json` 을 읽어 지금 코드(`gaze.core`)로 판정하고 짝이 되는
 `<이름>_output.json` 을 다시 쓴다(judge · summarize). `criteria.json` 도 지금 기준값으로 다시 쓴다.
 누가 부르나: 사람이 기준값 · 판정 규칙을 바꾼 뒤 한 번 돌린다. 코어가 아니라 도구라 파일을 읽고 쓴다.
 입력과 출력: 입력 JSON 은 손으로 쓰고 그대로 둔다. 출력 JSON 은 줄 끝 LF 로 쓴다.
@@ -16,9 +16,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from gaze.core import criteria, judge, summarize
+from pitch_coach_ai.features.gaze import core as gaze_core
+from pitch_coach_ai.features.gaze.core import criteria, judge, summarize
 
-EXAMPLES = Path(__file__).resolve().parents[1] / "src" / "gaze" / "examples"
+# 예시 원본은 서비스의 판정 모듈 안에 있다 (연구 폴더는 서비스를 editable 로 설치해 그 모듈을 쓴다)
+EXAMPLES = Path(gaze_core.__file__).resolve().parent / "examples"
 
 
 def _load(path: Path) -> Any:

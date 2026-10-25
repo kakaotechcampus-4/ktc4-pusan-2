@@ -6,9 +6,9 @@ import re
 
 import pytest
 
-from gaze.config import DEFAULT, GazeConfig
-from gaze.core import criteria_version, judge
-from gaze.schemas import GazeInput
+from pitch_coach_ai.features.gaze.config import DEFAULT, GazeConfig
+from pitch_coach_ai.features.gaze.core import criteria_version, judge
+from pitch_coach_ai.features.gaze.schemas import GazeInput
 
 from .judge_helpers import issue_types, rec, run, secs, span, spoken, totals
 

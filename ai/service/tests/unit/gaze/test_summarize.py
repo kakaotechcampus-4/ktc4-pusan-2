@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from gaze.config import DEFAULT, GazeConfig
-from gaze.core import criteria, summarize
+from pitch_coach_ai.features.gaze.config import DEFAULT, GazeConfig
+from pitch_coach_ai.features.gaze.core import criteria, summarize
 
 from .judge_helpers import run, secs, spoken, totals
 
