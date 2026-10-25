@@ -28,9 +28,7 @@ from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     MetricSecondCreateDTO,
-    MissionDTO,
     MissionInputDTO,
-    PreviousMissionsDTO,
     PreviousTakeDTO,
     ReviewRequestDTO,
     ReviewResponseDTO,
@@ -241,32 +239,6 @@ def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto:
 def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
     # 미션 생성 로직
     pass
-
-def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
-    take_repository = TakeRepository(db)
-    latest_take = take_repository.get_latest_reviewed_take_in_pitch(pitch_id)
-    # 미션은 리뷰가 끝난 Take 에서 오지만 번호는 그 뒤에 만든 Take 까지 센다 (Take 생성과 같은 값)
-    next_take_number = take_repository.next_take_number(pitch_id)
-
-    if latest_take is None:
-        return PreviousMissionsDTO(
-            source_take_id=None, next_take_number=next_take_number, missions=[]
-        )
-
-    return PreviousMissionsDTO(
-        source_take_id=latest_take.id,
-        next_take_number=next_take_number,
-        missions = [
-            MissionDTO(
-                mission_id=mission.id,
-                slide_number=mission.slide_number,
-                description=mission.description,
-                priority=mission.priority,
-                completed=mission.complete
-            ) for mission in take_repository.get_missions_in_take(latest_take.id)
-        ]
-    )
-
 
 def _percent_to_ratio(value: int | None) -> float | None:
     # take_summaries 는 비율 × 100 정수로 둔다 (architecture.md 1-1 반올림)

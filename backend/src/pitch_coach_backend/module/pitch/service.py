@@ -21,6 +21,9 @@ from pitch_coach_backend.module.pitch.dto import (
     PitchListResponseDTO,
     PitchSaveRequestDTO,
     PrepareDTO,
+    PrepareMissionDTO,
+    PrepareMissionsDTO,
+    PrepareMissionTargetDTO,
     PresentationDetailDTO,
     PresentationVersionDTO,
     RubricTicket,
@@ -69,6 +72,7 @@ from pitch_coach_backend.module.pitch.s3_service import (
     upload,
 )
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
+from pitch_coach_backend.module.take.coach_repository import CoachRepository
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from pitch_coach_backend.module.take.repository import TakeRepository
 
@@ -177,6 +181,31 @@ def _presentation_dto(row: PresentationVersion) -> PresentationVersionDTO:
     return PresentationVersionDTO(id=row.id, version=row.version, page_count=row.page_count)
 
 
+def _prepare_missions(db: Session, pitch_id: uuid.UUID) -> PrepareMissionsDTO | None:
+    """Take 를 시작할 때 싣는 미션(`CoachRepository.assign_missions`)과 같은 Take · 순서로 고른다.
+
+    지금 있는 Take 는 모두 다음 번호보다 작아서 `before` 없이 고른 것과 같다.
+    """
+    source = TakeRepository(db).get_latest_reviewed_take_in_pitch(pitch_id)
+    if source is None:
+        return None
+    return PrepareMissionsDTO(
+        source_take_number=source.take_number,
+        items=[
+            PrepareMissionDTO(
+                mission_id=mission.id,
+                priority=mission.priority,
+                area=mission.area,
+                slide_number=mission.slide_number,
+                description=mission.description,
+                target=PrepareMissionTargetDTO.model_validate(mission.target),
+                reason=mission.reason,
+            )
+            for mission in CoachRepository(db).active_missions_from(source.id)
+        ],
+    )
+
+
 # 장치 점검 화면. 홈에서 바로 들어오거나 새로고침해도 Take 에 넣을 버전을 알 수 있게 한다
 def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
     pitch_repository = PitchRepository(db)
@@ -219,6 +248,7 @@ def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
         newer_script=newer_script,
         next_take_number=latest_take.take_number + 1 if latest_take else 1,
         default_script_mode=latest_take.script_mode if latest_take else "HIGHLIGHT",
+        missions=_prepare_missions(db, pitch_id),
     )
 
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
