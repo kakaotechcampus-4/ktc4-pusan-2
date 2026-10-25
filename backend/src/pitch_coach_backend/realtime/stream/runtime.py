@@ -55,11 +55,9 @@ import contextlib
 import logging
 import time
 import uuid
-from collections.abc import Awaitable
 
 import anyio
 from fastapi import WebSocket
-from pydantic import BaseModel
 
 from pitch_coach_backend.coach.replies import EvaluateReply
 from pitch_coach_backend.coach.requests import SlideEvent
@@ -87,6 +85,7 @@ from pitch_coach_backend.realtime.event_ingestion import (
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, TimeLimit
+from pitch_coach_backend.realtime.stream.client import ClientSlot, close_with, quiet
 from pitch_coach_backend.realtime.stream.heard import HeardRange
 from pitch_coach_backend.realtime.stream.record import CoachDeps, StreamHost, TakeRecord
 from pitch_coach_backend.realtime.stt import loop as stt_loop
@@ -160,7 +159,8 @@ class TakeStream:
         )
 
         self._queue: asyncio.Queue[Accepted | None] = asyncio.Queue(maxsize=QUEUE_MAX_FRAMES)
-        self._client: WebSocket | None = None
+        # 지금 붙어 있는 FE 연결. 끊긴 뒤 다시 붙기를 기다리는 동안은 비어 있다
+        self._client = ClientSlot()
         # 확정 전사의 번호 · 저장 재시도 · 화면에 못 보낸 final. 번호는 저장된 마지막 값에서 이어
         # 받는다
         self._transcripts = TranscriptBuffer(take_id, store, segment_no=segment_no)
@@ -180,9 +180,6 @@ class TakeStream:
         self.auto_end_reason: AutoEndReason | None = None
         self._stop_event = asyncio.Event()
         self._closed = asyncio.Event()
-        # 붙어 있던 연결이 Take 를 끝냈거나(stop) 떠났다. 자동 종료가 이걸 보고 FE 의 마지막 1초
-        # 조각을 기다린다
-        self._client_done = asyncio.Event()
         # Deepgram 세션 루프. 위 큐를 꺼내 보내고 전사 · 상태를 아래 콜백으로 돌려준다
         self._stt = SttLoop(
             take_id,
@@ -218,7 +215,7 @@ class TakeStream:
         브라우저가 닫힘 프레임 없이 사라진 연결은 붙어 있어도 오디오가 멈춰 있어 False 다.
         """
         return (
-            self._client is not None
+            self._client.connected
             and self._last_audio_at is not None
             and time.monotonic() - self._last_audio_at < LIVE_AUDIO_SEC
         )
@@ -226,7 +223,7 @@ class TakeStream:
     @property
     def has_client(self) -> bool:
         """연결이 붙어 있다. 끊긴 뒤 다시 붙기를 기다리는 동안은 False."""
-        return self._client is not None
+        return self._client.connected
 
     # ── 수명 ──────────────────────────────────────────────────────────
 
@@ -238,45 +235,29 @@ class TakeStream:
         self._time_limit.start(self._record.streamed_sec)
 
     async def attach(self, ws: WebSocket) -> None:
-        """새 연결을 붙인다. 이미 붙어 있으면 **기존 것을 쫓아낸다.**
-
-        반대(새 연결을 거절) 로 하면 재연결 레이스에서 사용자가 영영 못 붙는다 —
-        서버는 아직 옛 연결이 살아 있다고 믿는데 브라우저는 이미 그걸 버린 상태가 된다.
-        """
+        """새 연결을 붙인다. 이미 붙어 있으면 기존 것을 쫓아낸다 (`ClientSlot.attach`)."""
         if self._grace_task is not None:
             self._grace_task.cancel()
             self._grace_task = None
 
-        previous = self._client
-        self._client = ws
         self._tab_closed = False
-        self._client_done.clear()
         # 코치의 한마디는 지금 붙어 있는 연결로 보낸다. 스트림이 새로 열려도 세션은 이어진다.
         # 새 연결은 상태 표시를 모르므로 다음 응답의 표시를 바뀐 것으로 보고 보낸다
         self._record.coach.notify = self._notify_coach
         self._record.coach.forget_display()
         self.sequencer.new_connection()
-        if previous is not None and previous is not ws:
-            await _quiet(
-                previous.send_text(
-                    ErrorMessage(
-                        code=WsErrorCode.TAKE_TAKEN_OVER,
-                        message="다른 탭에서 같은 연습을 이어받았어요.",
-                    ).model_dump_json()
-                )
-            )
-            await _quiet(previous.close(code=1008, reason=WsErrorCode.TAKE_TAKEN_OVER))
+        await self._client.attach(ws)
 
     async def resend_missed(self) -> None:
         """떨어져 있는 동안 온 final 을 순서대로 다시 보낸다 (`TranscriptBuffer.resend`).
 
         `ready` 뒤에 부른다. 실시간 화면(자막·2단 코치)이 끊긴 구간을 건너뛰지 않게 하는 용도다.
         """
-        await self._transcripts.resend(self._send_checked)
+        await self._transcripts.resend(self._client.send_checked)
 
     def is_client(self, ws: WebSocket) -> bool:
         """지금 붙어 있는 연결인가. 다른 탭이 이어받아 쫓겨난 연결이면 False."""
-        return self._client is ws
+        return self._client.holds(ws)
 
     def detach(self, ws: WebSocket, *, tab_closed: bool = False) -> None:
         """연결이 끊겼다. 이미 다른 연결이 붙었으면 아무것도 하지 않는다.
@@ -284,11 +265,10 @@ class TakeStream:
         `tab_closed` 는 브라우저가 창을 닫거나 새로고침해 끊은 것이다 (닫힘 코드 1001). 아무도 다시
         붙지 않으면 짧게 기다렸다 끝낸다 (`_finish`).
         """
-        if self._client is not ws:
+        if not self._client.holds(ws):
             return
-        self._client = None
+        self._client.detach()
         self._tab_closed = tab_closed
-        self._client_done.set()
         # 다시 붙을지 모른다. 모아 둔 1초 원자료를 지금 넣어 둔다
         self._record.metrics.flush_soon()
         if self._stopping:
@@ -328,7 +308,7 @@ class TakeStream:
         # 새 판단은 보내지 않는다 (1-3 3번 ①). 진행 중인 것은 Take 를 끝낼 때 기다린다
         self._record.coach.stop()
         # stop 앞에 온 마지막 1초 조각은 이미 받았다
-        self._client_done.set()
+        self._client.done.set()
         self.request_stop()
 
     async def wait_closed(self, timeout: float | None = None) -> bool:
@@ -426,20 +406,13 @@ class TakeStream:
         self._discarded = True
         # 분석하지 않는 Take 다 (지웠거나 창을 닫아 실패로 끝냄)
         self._record.coach.release()
-        client = self._client
         # 끊은 스트림의 전사·상태가 이 연결로 더 나가지 않게 먼저 뗀다
-        self._client = None
-        self._client_done.set()
+        client = self._client.detach()
         self.cancel()
         if client is not None:
             self._closer = asyncio.create_task(
-                self._close_cut_client(client, error),
-                name=f"take-stream-cut:{self.take_id}",
+                close_with(client, error), name=f"take-stream-cut:{self.take_id}"
             )
-
-    async def _close_cut_client(self, client: WebSocket, error: ErrorMessage) -> None:
-        await _quiet(client.send_text(error.model_dump_json()))
-        await _quiet(client.close(code=1008, reason=error.code))
 
     def _finish(self) -> None:
         if self._closed.is_set():
@@ -480,7 +453,7 @@ class TakeStream:
         """
         if self._discarded:
             return
-        if source is not None and source is not self._client:
+        if source is not None and not self._client.holds(source):
             return
         row = MetricSecondCreateDTO(
             t_ms=message.t_ms,
@@ -502,7 +475,7 @@ class TakeStream:
         """FE 가 장을 넘겼다. 원자료로 저장하고 코치의 지금 장을 고친다 (1초 원자료와 같은 규칙)."""
         if self._discarded:
             return
-        if source is not None and source is not self._client:
+        if source is not None and not self._client.holds(source):
             return
         event = SlideEvent(message.slide_number, message.t_ms)
         self._record.slides.add(event)
@@ -539,7 +512,7 @@ class TakeStream:
         if self._stopping:
             # stop 신호 뒤의 오디오는 아무도 소비하지 않는다. 큐에 넣으면 통계만 더럽힌다
             return
-        if source is not None and source is not self._client:
+        if source is not None and not self._client.holds(source):
             return
         self._last_audio_at = time.monotonic()
         accepted = self.sequencer.accept(frame)
@@ -618,7 +591,7 @@ class TakeStream:
                 ],
             )
             if not event.is_final:
-                await self._send(message)
+                await self._client.send(message)
             else:
                 # 확정 시각은 이 결과를 받기 직전의 마지막 metrics 시각이다 (coach-agent.md 12-1).
                 # 화면에 보내는 await 보다 먼저 매긴다 — 그동안 온 metrics 의 요청에는 이 단어가
@@ -629,12 +602,12 @@ class TakeStream:
                 # 받은 final 은 정리(취소)가 와도 끝까지 처리한다. 중간에 끊기면 화면에도 DB 에도
                 # 남지 않는다. 화면 전송은 상대가 멈춰 있을 수 있어 상한을 둔다
                 with anyio.CancelScope(shield=True):
-                    if self._client is None:
+                    if not self._client.connected:
                         # FE 가 떨어져 있다. interim 은 다음 것이 덮으니 버리고 final 만 모은다
                         self._transcripts.hold_missed(message)
                     else:
                         with anyio.move_on_after(stt_loop.ABORT_TIMEOUT_SEC):
-                            await self._send(message)
+                            await self._client.send(message)
                     # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
                     # 리포트의 원천은 이 행이지 화면이 아니다
                     if not await self._transcripts.persist(
@@ -701,19 +674,19 @@ class TakeStream:
         FE 가 그 사이 stop 을 보내도 괜찮다 — 양쪽 다 같은 스트림이 닫히기를 기다리고, 두 번
         보내는 closed 와 close 는 FE 가 이미 닫은 뒤라 조용히 버려진다.
         """
-        await self._send(
+        await self._client.send(
             AutoEndMessage(reason=reason, message=self.auto_end_policy.message(reason))
         )
         if not await self.wait_closed(stt_loop.DRAIN_TIMEOUT_SEC + stt_loop.ABORT_TIMEOUT_SEC):
             logger.warning("자동 종료 drain 타임아웃 take=%s. 스트림을 끊는다", self.take_id)
             self.cancel()
             await self.wait_cancelled(stt_loop.ABORT_TIMEOUT_SEC)
-        if self._client is not None:
+        if self._client.connected:
             # FE 는 auto_end 를 받고 마지막 1초 조각을 보낸 뒤 stop 을 보낸다. Deepgram 정리가
             # 먼저 끝났으면 그 조각이 아직 안 왔을 수 있다 — stop 이 오거나 연결이 떠날 때까지
             # 잠깐 기다린다
             with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._client_done.wait(), FINAL_METRICS_WAIT_SEC)
+                await asyncio.wait_for(self._client.done.wait(), FINAL_METRICS_WAIT_SEC)
 
         # 마지막 확정 전사와 1초 원자료를 저장한 뒤에 끝난 것으로 적는다 (`RealtimeSession._stop` 과
         # 같은 이유). 못 적어도 정리는 계속한다 — 적기는 뒤에서 다시 하고, 그동안 이 프로세스
@@ -723,12 +696,12 @@ class TakeStream:
             self.take_id, self._store, end_reason=reason.value, coach=self._coach
         )
 
-        client = self._client
+        client = self._client.ws
         if client is None:
             # FE 가 떨어져 있다. 다시 붙으면 TAKE_ENDED 로 이유를 받는다
             return
         await self.send_status()
-        await _quiet(client.close(code=1000))
+        await quiet(client.close(code=1000))
 
     # ── FE 로 ─────────────────────────────────────────────────────────
 
@@ -740,7 +713,7 @@ class TakeStream:
         await self.send_status()
 
     async def send_status(self) -> None:
-        await self._send(
+        await self._client.send(
             SttStatusMessage(
                 state=self.state,
                 stt_session_no=self.stt_session_no,
@@ -753,7 +726,7 @@ class TakeStream:
 
     async def _notify_coach(self, t_ms: int, reply: EvaluateReply) -> None:
         """코치의 한마디 · 상태 표시를 FE 에 보낸다 (WS `coach`). 떨어져 있으면 버린다."""
-        await self._send(
+        await self._client.send(
             CoachMessage(
                 t_ms=t_ms,
                 action=reply.action,
@@ -761,34 +734,3 @@ class TakeStream:
                 indicators=reply.indicators,
             )
         )
-
-    async def _send(self, message: BaseModel) -> None:
-        """붙어 있는 클라이언트에게만. grace 중이면 조용히 버린다."""
-        client = self._client
-        if client is None:
-            return
-        await _quiet(client.send_text(message.model_dump_json()))
-
-    async def _send_checked(self, message: BaseModel) -> bool:
-        """`_send` 와 같지만 성공 여부를 알려준다. `resend_missed` 가 재시도를 판단하는 데 쓴다.
-
-        일반 전사·상태 메시지는 실패해도 다음 메시지가 금방 또 오니 무시해도 되지만
-        (`_send`), 놓친 final 은 화면에 **다시 안 오면 그 구간이 비는 데이터**라 구분한다.
-        """
-        client = self._client
-        if client is None:
-            return False
-        try:
-            await client.send_text(message.model_dump_json())
-        except Exception:  # noqa: BLE001 - 어떤 전송 실패든 "재시도 대상" 으로 취급한다
-            return False
-        return True
-
-
-async def _quiet(awaitable: Awaitable[object]) -> None:
-    """이미 끊긴 상대에게 보내거나 닫을 때 나는 예외는 무시한다.
-
-    정리 경로라서 넓게 잡는다 — 여기서 예외가 새면 그다음 정리가 통째로 멈춘다.
-    """
-    with contextlib.suppress(Exception):
-        await awaitable

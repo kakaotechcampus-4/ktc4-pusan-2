@@ -101,7 +101,7 @@ async def test_ready_send_failure_still_detaches_from_the_stream(
     await realtime.run()  # 예외가 새지 않는다
 
     stream = attached[0]
-    assert stream._client is None, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
+    assert not stream.has_client, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
     stream.cancel()
 
 

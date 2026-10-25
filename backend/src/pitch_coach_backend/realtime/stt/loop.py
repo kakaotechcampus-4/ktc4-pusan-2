@@ -64,7 +64,7 @@ _LOST = "lost"  # Deepgram 이 끊었다
 
 
 async def _quiet(awaitable: Awaitable[object]) -> None:
-    """닫힌 소켓을 닫을 때 나는 예외는 무시한다 (`stream/runtime.py` 의 `_quiet` 과 같다)."""
+    """닫힌 소켓을 닫을 때 나는 예외는 무시한다 (`stream/client.py` 의 `quiet` 과 같다)."""
     with contextlib.suppress(Exception):
         await awaitable
 
