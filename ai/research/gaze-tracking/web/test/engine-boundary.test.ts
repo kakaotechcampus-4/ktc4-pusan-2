@@ -16,6 +16,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const ENGINE = fileURLToPath(new URL('../src/engine', import.meta.url));
@@ -52,13 +53,29 @@ describe('engine boundary', () => {
   );
 
   it('contract.ts (the light entry point) loads no MediaPipe at run time', () => {
-    // Value imports, re-exports, side-effect and dynamic imports; `import type` / `export type`
-    // are erased and not followed.
-    const RUNTIME_SPECIFIERS = [
-      /\b(?:import|export)\s+(?!type\s)[^;]*?\bfrom\s+['"]([^'"]+)['"]/g,
-      /^\s*import\s+['"]([^'"]+)['"]/gm,
-      /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-    ];
+    // Parsed, not pattern-matched: value imports, re-exports, side-effect and dynamic `import()`
+    // calls are followed; `import type` / `export type` and `import('x').T` in type positions are
+    // erased by the compiler and are not.
+    const runtimeSpecifiers = (file: string): string[] => {
+      const src = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest);
+      const specs: string[] = [];
+      const walk = (node: ts.Node): void => {
+        if (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly)
+          specs.push((node.moduleSpecifier as ts.StringLiteral).text);
+        else if (ts.isExportDeclaration(node) && node.moduleSpecifier && !node.isTypeOnly)
+          specs.push((node.moduleSpecifier as ts.StringLiteral).text);
+        else if (
+          ts.isCallExpression(node) &&
+          node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+          node.arguments[0] &&
+          ts.isStringLiteralLike(node.arguments[0])
+        )
+          specs.push(node.arguments[0].text);
+        ts.forEachChild(node, walk);
+      };
+      walk(src);
+      return specs;
+    };
     const resolveLocal = (from: string, spec: string): string => {
       const base = join(dirname(from), spec);
       return existsSync(`${base}.ts`) ? `${base}.ts` : join(base, 'index.ts');
@@ -68,13 +85,10 @@ describe('engine boundary', () => {
     const visit = (file: string): void => {
       if (seen.has(file)) return;
       seen.add(file);
-      const text = code(readFileSync(file, 'utf8'));
-      for (const pattern of RUNTIME_SPECIFIERS)
-        for (const m of text.matchAll(pattern)) {
-          const spec = m[1]!;
-          if (spec.startsWith('.')) visit(resolveLocal(file, spec));
-          else reached.push(`${relative(ENGINE, file)} -> ${spec}`);
-        }
+      for (const spec of runtimeSpecifiers(file)) {
+        if (spec.startsWith('.')) visit(resolveLocal(file, spec));
+        else reached.push(`${relative(ENGINE, file)} -> ${spec}`);
+      }
     };
     visit(join(ENGINE, 'contract.ts'));
     expect(seen.size).toBeGreaterThan(3); // config, evidence, reference, ... are reached
