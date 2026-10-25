@@ -1,0 +1,8 @@
+{
+  "GAZE": {
+    "uncertain_ms": 3000,
+    "unmeasured_ms": 57000,
+    "total_ms": 60000,
+    "speaking_ms": 41000
+  }
+}

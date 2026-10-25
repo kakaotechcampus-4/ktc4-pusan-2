@@ -10,7 +10,7 @@ import { scriptHandlers } from './scripts';
 import { takeHistoryHandlers } from './takeHistory';
 import type { TakeCreated, TakeCreateRequest } from '@/types/take';
 import type { ScriptDetail } from '@/types/script';
-import { reportHandlers } from './report';
+import { reportHandlers, reviewFixture } from './report';
 import type { HomeResponse, PrepareResponse } from '@/types/api';
 
 /**
@@ -67,6 +67,11 @@ const prepare: PrepareResponse = {
   newer_script: null,
   next_take_number: 4,
   default_script_mode: 'HIGHLIGHT',
+  // BE #409 — 리포트 목(Take 3 리뷰 `next_missions`)과 같은 미션입니다
+  missions: {
+    source_take_number: 3,
+    items: reviewFixture.next_missions.map((m, i) => ({ ...m, mission_id: `m${i + 1}` })),
+  },
 };
 
 /**
@@ -74,6 +79,9 @@ const prepare: PrepareResponse = {
  *   /pitch/prep-newer/device-check     새 대본(v3)이 아직 나누는 중 — 옛 대본으로 연습한다는 안내
  *   /pitch/prep-no-script/device-check 쓸 수 있는 대본이 없음 — 시작을 막음
  *   /pitch/prep-mismatch/device-check  쪽수(10)와 장 수(12)가 다름 — 시작을 막음
+ *   /pitch/prep-first/device-check     첫 Take — 미션 없음(null)
+ *   /pitch/prep-no-mission/device-check   리뷰는 끝났지만 다음 미션이 없음(items: [])
+ *   /pitch/prep-older-mission/device-check Take 3 리뷰가 없어 Take 2 리뷰의 미션
  */
 function prepareFor(pitchId: string): PrepareResponse {
   const base = { ...prepare, pitch_id: pitchId };
@@ -87,6 +95,12 @@ function prepareFor(pitchId: string): PrepareResponse {
       return { ...base, script: null };
     case 'prep-mismatch':
       return { ...base, presentation: { id: 'pv2', version: 2, page_count: 10 } };
+    case 'prep-first':
+      return { ...base, next_take_number: 1, missions: null };
+    case 'prep-no-mission':
+      return { ...base, missions: { source_take_number: 3, items: [] } };
+    case 'prep-older-mission':
+      return { ...base, missions: { ...prepare.missions!, source_take_number: 2 } };
     default:
       return base;
   }

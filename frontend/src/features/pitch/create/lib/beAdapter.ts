@@ -2,7 +2,7 @@ import type { HomePitch } from '@/types/home';
 import type { PitchRequest, PitchSavedResponse } from '@/types/pitch';
 import type { UploadPresentationResponse } from '@/types/presentation';
 import type { ScriptCreated, ScriptDetail } from '@/types/script';
-import type { EvaluationDetail, StandardsPosted } from '@/types/standards';
+import type { EvaluationDetail, StandardTextResponse } from '@/types/standards';
 import type { InfoForm, KnownInfo } from './draft';
 
 /**
@@ -70,17 +70,11 @@ export interface ParsedStandards {
   exceptText: string | null;
 }
 
-/**
- * 나눈 결과.
- *
- * ★ 컨트롤러가 결과(`StandardTextResponseDTO`)를 `pitch_id` 키 **안에** 감싸 돌려줍니다.
- *   BE 가 감싸기를 풀면 여기 한 줄만 바꾸면 됩니다.
- */
-export function fromStandardsPosted(res: StandardsPosted): ParsedStandards {
-  const result = res.pitch_id;
+/** 나눈 결과 */
+export function fromStandardsPosted(res: StandardTextResponse): ParsedStandards {
   return {
-    standards: result.standards.map((s) => s.standard),
-    exceptText: result.except_standard ?? null,
+    standards: res.standards.map((s) => s.standard),
+    exceptText: res.except_standard ?? null,
   };
 }
 

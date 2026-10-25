@@ -22,6 +22,8 @@
      두 번 세어지면 중복 집계 오류로 멈춘다.
   4. 같은 Take 의 모든 단어를 한 번에(창 없이 + `take_end_ms`) 부른 결과와 센 단어가 같은지
      확인한다(60초 창으로 나눠 부르는 일이 결과를 바꾸지 않는다는 확인이다).
+설정: 평가는 간격 규칙을 재는 도구라 T1 · T2 · T3를 모두 켠 설정(`ALL_TIERS`)으로 잰다.
+배포 기본값(`DEFAULT`)은 T1만 세므로 T2 · T3 정밀도 · 재현율을 잴 수 없다.
 고칠 때 주의: 가상 데이터의 단어 시각은 `make_virtual_data.py` 의 분포에서 나온 것이라 이 숫자는
 실제 정확도가 아니다. 지표 정의(filler.md 14절)나 결과 키를 바꾸면 README 의 결과 표와
 `tests/test_evaluate.py` 도 함께 고친다.
@@ -38,7 +40,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from filler.config import DEFAULT, FillerConfig, normalize
+from filler.config import ALL_TIERS, FillerConfig, normalize
 from filler.core import REASON_REPEAT, criteria_version, judge
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -134,7 +136,7 @@ def _collect(take: dict[str, Any], result: Any, counted: dict[int, str]) -> None
 
 
 def stream_take(
-    take: dict[str, Any], config: FillerConfig = DEFAULT
+    take: dict[str, Any], config: FillerConfig = ALL_TIERS
 ) -> tuple[dict[int, str], dict[int, str]]:
     """발화 하나를 1초마다 이어 불러 센 단어를 낸다.
 
@@ -158,7 +160,7 @@ def stream_take(
     return counted, reasons
 
 
-def single_call_take(take: dict[str, Any], config: FillerConfig = DEFAULT) -> dict[int, str]:
+def single_call_take(take: dict[str, Any], config: FillerConfig = ALL_TIERS) -> dict[int, str]:
     """같은 단어를 한 번에(모든 단어 + `take_end_ms`) 불러 센 단어를 낸다."""
     counted: dict[int, str] = {}
     inp = _request(take, take["take_end_ms"], 0, 0, final=True, windowed=False)
@@ -299,12 +301,13 @@ def repeat_rule(data: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, A
     return dict(sorted(combos.items()))
 
 
-def evaluate(data: dict[str, Any], config: FillerConfig = DEFAULT) -> dict[str, Any]:
+def evaluate(data: dict[str, Any], config: FillerConfig = ALL_TIERS) -> dict[str, Any]:
     """데이터 전체의 평가 결과(JSON 으로 쓸 dict, 민감도 제외)."""
     rows, same = _rows(data, config)
     by_tier, total, ood = tier_metrics(rows)
     return {
         "criteria_version": criteria_version(config),
+        "counted_tiers": list(config.counted_tiers),
         "data": "virtual",
         "seed": data["seed"],
         "n_utterances": len({w["utt"] for t in data["takes"] for w in t["words"]}),
@@ -322,7 +325,7 @@ def sweep_gap_ms(data: dict[str, Any], gaps: list[int] | None = None) -> list[di
     """`gap_ms` 만 바꿔 같은 평가를 다시 돌린 층별 지표 (다른 기준값은 기본값)."""
     out = []
     for gap in gaps or SWEEP_GAP_MS:
-        rows, _ = _rows(data, FillerConfig(gap_ms=gap))
+        rows, _ = _rows(data, FillerConfig(gap_ms=gap, counted_tiers=ALL_TIERS.counted_tiers))
         by_tier, total, _ = tier_metrics(rows)
         out.append({"gap_ms": gap, "by_tier": by_tier, "all": total})
     return out

@@ -1,0 +1,68 @@
+[
+  {
+    "evaluator": "filler",
+    "area": "FILLER",
+    "t_ms": 41000,
+    "counted_until_ms": 41000,
+    "words_counted_until_ms": 40980,
+    "criteria_version": "filler-1.0+3e62c0c87d2a",
+    "measurable": true,
+    "state": "NORMAL",
+    "words": [
+      {
+        "start_ms": 37900,
+        "end_ms": 38300,
+        "word": "그니까",
+        "tier": "T3",
+        "is_filler": false,
+        "reason": "세지 않는 층"
+      },
+      {
+        "start_ms": 38700,
+        "end_ms": 38950,
+        "word": "지난",
+        "tier": null,
+        "is_filler": false,
+        "reason": "사전에 없음"
+      },
+      {
+        "start_ms": 40050,
+        "end_ms": 40400,
+        "word": "음",
+        "tier": "T1",
+        "is_filler": true,
+        "reason": "채움말"
+      },
+      {
+        "start_ms": 40700,
+        "end_ms": 40980,
+        "word": "분기",
+        "tier": null,
+        "is_filler": false,
+        "reason": "사전에 없음"
+      }
+    ],
+    "metrics": {
+      "recent_filler_count": 1,
+      "filler_per_min": 1.46
+    },
+    "tally": [
+      {
+        "t_ms": 40050,
+        "values": {
+          "filler_count": 1,
+          "filler_t1": 1,
+          "filler_word:음": 1
+        }
+      },
+      {
+        "t_ms": 40000,
+        "values": {
+          "elapsed_ms": 1000,
+          "total_ms": 1000
+        }
+      }
+    ],
+    "issues": []
+  }
+]

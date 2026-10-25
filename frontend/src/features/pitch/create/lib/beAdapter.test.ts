@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { UploadPresentationResponse } from '@/types/presentation';
 import type { ScriptDetail } from '@/types/script';
-import type { StandardsPosted } from '@/types/standards';
+import type { StandardTextResponse } from '@/types/standards';
 import type { HomePitch } from '@/types/home';
 import type { EvaluationDetail } from '@/types/standards';
 import {
@@ -90,20 +90,26 @@ describe('발표자료 — 업로드 응답', () => {
   });
 });
 
-describe('평가기준 — 컨트롤러가 pitch_id 안에 감싼 결과', () => {
-  it('pitch_id 안의 standards 와 except_standard 를 꺼낸다', () => {
-    const res: StandardsPosted = {
-      message: 'Pitch standard text added successfully',
-      pitch_id: {
-        pitch_id: 'p1',
-        standards: [{ standard: '시장 규모 말하기' }, { standard: '채움말 5회 이하' }],
-        except_standard: '발표를 멋지게',
-      },
+describe('평가기준 — 나눈 결과 (감싸지 않은 응답)', () => {
+  it('standards 와 except_standard 를 꺼낸다', () => {
+    const res: StandardTextResponse = {
+      pitch_id: 'p1',
+      standards: [{ standard: '시장 규모 말하기' }, { standard: '채움말 5회 이하' }],
+      except_standard: '발표를 멋지게',
     };
     expect(fromStandardsPosted(res)).toEqual({
       standards: ['시장 규모 말하기', '채움말 5회 이하'],
       exceptText: '발표를 멋지게',
     });
+  });
+
+  it('제외된 부분이 없으면 exceptText 는 null', () => {
+    const res: StandardTextResponse = {
+      pitch_id: 'p1',
+      standards: [{ standard: '시장 규모 말하기' }],
+      except_standard: null,
+    };
+    expect(fromStandardsPosted(res).exceptText).toBeNull();
   });
 });
 

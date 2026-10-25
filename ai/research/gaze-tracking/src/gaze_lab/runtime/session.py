@@ -847,11 +847,11 @@ class VisionSession:
 
     @property
     def gaze_evidence(self) -> GazeEvidenceRecorder:
-        """Gaze slices and their readings for the coach / review agents.
+        """The 1 s gaze records and what the server module makes of them.
 
-        ``gaze_evidence.issues()`` -- issues now, in the agents' evaluator format;
-        ``gaze_evidence.summary()`` -- the take's statistics and problem segments;
-        ``gaze_evidence.timeline.samples`` -- the 1 s records themselves.
+        ``gaze_evidence.samples`` -- the 1 s records themselves;
+        ``gaze_evidence.judgment()`` / ``issues()`` -- the coach's 1 s judgment now (``gaze.judge``);
+        ``gaze_evidence.summary()`` -- the take's gaze metrics (``gaze.summarize``).
         """
         return self._evidence
 

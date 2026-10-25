@@ -292,6 +292,26 @@ export interface PrepareResponse {
   next_take_number: number;
   /** 가장 최근 Take 의 대본 표시 방식. Take 가 없으면 HIGHLIGHT */
   default_script_mode: ScriptMode;
+  /**
+   * 이번 Take 미션 (BE #409) — 리뷰가 끝난 가장 최근 Take 가 정한 다음 미션.
+   * 리뷰가 끝난 Take 가 없으면(첫 Take) null, 리뷰는 끝났지만 다음 미션이 없으면 `items: []`.
+   * `source_take_number` 가 `next_take_number - 1` 보다 작을 수 있습니다 — 뒤 Take 가 아직 분석 중이거나
+   * 리뷰에 실패했을 때인데, 어느 쪽인지는 이 응답으로 알 수 없습니다.
+   */
+  missions: {
+    source_take_number: number;
+    items: {
+      mission_id: string;
+      priority: number;
+      /** 보통 GAZE · SPEED · VOLUME · PAUSE · FILLER · CONTENT · TIME. BE 가 문자열로 내려 모르는 값이 올 수 있습니다 */
+      area: string;
+      slide_number: number | null;
+      description: string;
+      target: { metric: string; operator: string; value: number };
+      /** 리뷰한 Take 기준 문장("이번 Take 7번")이라 다음 Take 화면에서는 보이지 않습니다 */
+      reason: string | null;
+    }[];
+  } | null;
 }
 
 /**

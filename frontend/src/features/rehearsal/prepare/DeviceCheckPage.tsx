@@ -15,6 +15,7 @@ import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { ScreenFrame } from './ScreenFrame';
 import { ScriptModeChoice } from './ScriptModeChoice';
+import { MissionCard } from './MissionCard';
 import { practiceModeFor, usePrepareStore } from './prepareStore';
 import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
 import { CALIBRATION_FAIL_MESSAGE, useGazeSetup, type GazeSetupStatus } from './useGazeSetup';
@@ -498,6 +499,8 @@ export function DeviceCheckPage() {
         </div>
 
         <div className="flex flex-col gap-4">
+          {/* 준비 정보가 와야 압니다 — 불러오는 중 · 실패면 자리를 비워 둡니다 */}
+          {info && <MissionCard info={info} exam={practiceModeFor(scriptMode) === 'EXAM'} />}
           <ScriptModeChoice value={scriptMode} onChange={(m) => setScriptMode(m)} />
 
           {/* 권한·무입력 안내. 문구는 useCameraStream이 들고 있는 것을 그대로 씁니다 —

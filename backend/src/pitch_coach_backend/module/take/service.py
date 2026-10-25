@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import math
+import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
@@ -25,12 +27,15 @@ from pitch_coach_backend.module.pitch.exception import (
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take import coach_service
+from pitch_coach_backend.module.take.ai_response import (
+    CoverageCallError,
+    validate_coverage_reply,
+    validate_review_reply,
+)
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     MetricSecondCreateDTO,
-    MissionDTO,
     MissionInputDTO,
-    PreviousMissionsDTO,
     PreviousTakeDTO,
     ReviewRequestDTO,
     ReviewResponseDTO,
@@ -242,32 +247,6 @@ def create_missions(db: Session, pitch_id: uuid.UUID, take_id: uuid.UUID):
     # 미션 생성 로직
     pass
 
-def get_previous_missions_service(db: Session, pitch_id: uuid.UUID):
-    take_repository = TakeRepository(db)
-    latest_take = take_repository.get_latest_reviewed_take_in_pitch(pitch_id)
-    # 미션은 리뷰가 끝난 Take 에서 오지만 번호는 그 뒤에 만든 Take 까지 센다 (Take 생성과 같은 값)
-    next_take_number = take_repository.next_take_number(pitch_id)
-
-    if latest_take is None:
-        return PreviousMissionsDTO(
-            source_take_id=None, next_take_number=next_take_number, missions=[]
-        )
-
-    return PreviousMissionsDTO(
-        source_take_id=latest_take.id,
-        next_take_number=next_take_number,
-        missions = [
-            MissionDTO(
-                mission_id=mission.id,
-                slide_number=mission.slide_number,
-                description=mission.description,
-                priority=mission.priority,
-                completed=mission.complete
-            ) for mission in take_repository.get_missions_in_take(latest_take.id)
-        ]
-    )
-
-
 def _percent_to_ratio(value: int | None) -> float | None:
     # take_summaries 는 비율 × 100 정수로 둔다 (architecture.md 1-1 반올림)
     return None if value is None else value / 100
@@ -453,55 +432,97 @@ def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
         user_criteria=_build_user_criteria(db, take),
     )
 
+REVIEW_RETRY_DELAY_SEC = 1.0
+
+
 def request_review(take_id: uuid.UUID, review_request: ReviewRequestDTO) -> ReviewResponseDTO:
     """AI 서버에 리뷰를 요청한다. 응답이 계약과 다르거나 다른 Take 의 것이면
     InvalidReviewResponse(502). 저장하다 DB 제약에 걸리기 전에 여기서 거른다."""
+    request_id = uuid.uuid4().hex
     with httpx2.Client(timeout=30.0) as client:
-        response = client.post(
-            f"{settings.ai_base_url}/takes/review",
-            json=review_request.model_dump(mode="json"),
-        )
-        response.raise_for_status()
-    try:
-        review_data = ReviewResponseDTO.model_validate(response.json())
-    # JSON 이 아님 · pydantic 검증 실패
-    except ValueError as e:
-        raise InvalidReviewResponse() from e
-    if review_data.take_id != take_id:
-        raise InvalidReviewResponse()
-    return review_data
+        for attempt in range(2):
+            try:
+                response = client.post(
+                    f"{settings.ai_base_url}/takes/review",
+                    json=review_request.model_dump(mode="json"),
+                    headers={"X-Request-ID": request_id},
+                )
+            except httpx2.HTTPError as exc:
+                if attempt:
+                    raise InvalidReviewResponse() from exc
+            else:
+                if response.status_code == 200:
+                    try:
+                        reply = response.json()
+                    except ValueError as exc:
+                        raise InvalidReviewResponse() from exc
+                    return validate_review_reply(reply, take_id)
+                retryable = response.status_code >= 500 or response.status_code in (408, 429)
+                if attempt or not retryable:
+                    raise InvalidReviewResponse()
+            time.sleep(REVIEW_RETRY_DELAY_SEC)
+    raise AssertionError("unreachable")
 
-def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO) -> None:
+def save_review(
+    db: Session,
+    take_id: uuid.UUID,
+    review_data: ReviewResponseDTO,
+    *,
+    request_id: uuid.UUID | None = None,
+) -> bool:
+    review_data = validate_review_reply(review_data.model_dump(mode="json"), take_id)
     take_repository = TakeRepository(db)
+    if request_id is None or take_repository.lock_review(take_id, request_id) is None:
+        db.rollback()
+        return False
     take_repository.save_total_result(
         take_id,
         review_data.model_dump(mode="json", exclude={"meta"}),
         review_data.meta.model_dump(mode="json"),
     )
-    take_repository.upsert_next_missions([
-        {
-            "source_take_id": take_id,
-            "area": mission.area,
-            "slide_number": mission.slide_number,
-            "target": mission.target.model_dump(exclude={"display"}),
-            "description": mission.description,
-            "priority": mission.priority,
-            "reason": mission.reason,
-            "status": "ACTIVE",
-        }
-        for mission in review_data.next_missions
-    ])
+    take_repository.upsert_next_missions(
+        [
+            {
+                "source_take_id": take_id,
+                "area": mission.area,
+                "slide_number": mission.slide_number,
+                "target": mission.target.model_dump(exclude={"display"}),
+                "description": mission.description,
+                "priority": mission.priority,
+                "reason": mission.reason,
+                "status": "ACTIVE",
+            }
+            for mission in review_data.next_missions
+        ]
+    )
     for result in review_data.mission_results:
-        take_repository.update_mission_result(result.mission_id, take_id, 
-                                              result.status, result.observed)
-    take_repository.upsert_summary_review(take_id, review_data.overall_summary, review_data.score)
+        take_repository.update_mission_result(
+            result.mission_id, take_id, result.status, result.observed
+        )
+    take_repository.upsert_summary_review(
+        take_id, review_data.overall_summary, review_data.score
+    )
     take_repository.set_analysis_stage(take_id, "DONE")
     take_repository.complete_take(take_id, "DONE")
     db.commit()
+    return True
+
+
+def _fail_review(db: Session, take_id: uuid.UUID, request_id: uuid.UUID) -> bool:
+    repository = TakeRepository(db)
+    if repository.lock_review(take_id, request_id) is None:
+        db.rollback()
+        return False
+    repository.set_analysis_stage(take_id, "DONE")
+    repository.complete_take(take_id, "FAILED")
+    db.commit()
+    return True
+
 
 def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
     take_repository = TakeRepository(db)
-    if not take_repository.start_review(take_id):
+    request_id = uuid.uuid4()
+    if not take_repository.start_review(take_id, request_id):
         db.rollback()
         raise TakeNotReviewable()
     db.commit()
@@ -510,16 +531,15 @@ def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
         review_request = build_review_request(db, take_id)
         db.commit()
         review_data = request_review(take_id, review_request)
-        save_review(db, take_id, review_data)
-    except Exception as e:
-        db.rollback() # 분석 실패 시 상태를 FAILED로 바꿈.
-        # 이때, 성공을 가정하고 save_review를 실행한 경우
-        # 데이터가 꼬일 위험이 있어 rollback 후 다시 set_analysis_stage, complete_take를 실행한다.
-        take_repository.set_analysis_stage(take_id, "DONE")
-        take_repository.complete_take(take_id, "FAILED")
-        db.commit()
-        raise e
-    
+        if not save_review(db, take_id, review_data, request_id=request_id):
+            raise TakeNotReviewable()
+    except Exception:
+        db.rollback()
+        # 성공·실패 모두 현재 작업만 확정한다. 다른 작업이 이어받았거나 Take가 삭제됐으면 버린다.
+        if not _fail_review(db, take_id, request_id):
+            raise TakeNotReviewable() from None
+        raise
+
     return review_data
 
 def mark_running(db: Session, take_id: uuid.UUID) -> bool:
@@ -581,26 +601,25 @@ COVERAGE_RETRYABLE_FAILED_CODES = frozenset(
 )
 
 
-class CoverageCallError(Exception):
-    def __init__(self, reason: str, retryable: bool) -> None:
-        super().__init__(reason)
-        self.retryable = retryable
-
-
 async def _post_ai(path: str, body: dict, request_id: str, timeout_sec: float) -> dict:
     try:
-        async with httpx.AsyncClient(timeout=timeout_sec) as client:
-            response = await client.post(
-                f"{settings.ai_base_url}{path}", json=body, headers={"X-Request-ID": request_id}
-            )
-    except httpx.HTTPError as e:
+        async with asyncio.timeout(timeout_sec):
+            async with httpx.AsyncClient(timeout=timeout_sec) as client:
+                response = await client.post(
+                    f"{settings.ai_base_url}{path}", json=body, headers={"X-Request-ID": request_id}
+                )
+    except (httpx.HTTPError, TimeoutError) as e:
         raise CoverageCallError(type(e).__name__, retryable=True) from e
-    if response.status_code >= 400:
+    if response.status_code != 200:
         raise CoverageCallError(
             f"status={response.status_code}",
             retryable=response.status_code >= 500 or response.status_code in (408, 429),
         )
-    return response.json()
+    try:
+        reply = response.json()
+    except ValueError as exc:
+        raise CoverageCallError("invalid coverage JSON", retryable=False) from exc
+    return validate_coverage_reply(reply, body["take_id"])
 
 
 async def request_analyze(body: dict, request_id: str) -> dict:
@@ -686,6 +705,7 @@ def _mark_retry_used(db: Session, take_id: uuid.UUID, column: str) -> bool:
 
 
 def _save_confirmed(db: Session, take_id: uuid.UUID, reply: dict) -> dict | None:
+    validate_coverage_reply(reply, take_id)
     take_repository = TakeRepository(db)
     payload = {key: value for key, value in reply.items() if key != "meta"}
     if _lock_open_take(take_repository, take_id) is None or not take_repository.insert_ai_result(
@@ -715,6 +735,7 @@ def _save_candidate(db: Session, take_id: uuid.UUID, candidate: dict) -> bool:
 
 
 def _apply_merged(db: Session, take_id: uuid.UUID, base_revision: int, reply: dict) -> bool:
+    validate_coverage_reply(reply, take_id)
     take_repository = TakeRepository(db)
     payload = {key: value for key, value in reply.items() if key != "meta"}
     if _lock_open_take(take_repository, take_id) is None or not take_repository.replace_ai_result(
@@ -833,22 +854,35 @@ async def _retry_failed_slides(
 
 
 async def _first_analyze(
-    session_factory: Callable[[], Session], take_id: uuid.UUID, body: dict,
-    script_version_id: str, retry_used: bool,
+    session_factory: Callable[[], Session],
+    take_id: uuid.UUID,
+    body: dict,
+    script_version_id: str,
+    retry_used: bool,
 ) -> None:
+    # 전체 재시도를 보낸 뒤 확정본을 저장하기 전에 재시작했을 수 있다.
+    # 이미 쓴 한도를 새 최초 호출로 취급하지 않는다.
+    if retry_used:
+        return
     request_id = uuid.uuid4().hex
     try:
         reply = await request_analyze(body, request_id)
     except CoverageCallError as e:
         logger.warning("take %s: coverage analyze failed: %s", take_id, e)
-        if not e.retryable or retry_used or not await _in_session(
-            session_factory, _mark_retry_used, take_id, "coverage_retry_used"
+        if (
+            not e.retryable
+            or retry_used
+            or not await _in_session(
+                session_factory, _mark_retry_used, take_id, "coverage_retry_used"
+            )
         ):
             return
         try:
             reply = await request_analyze(body, request_id)
         except CoverageCallError as retry_error:
-            logger.warning("take %s: coverage analyze retry failed: %s", take_id, retry_error)
+            logger.warning(
+                "take %s: coverage analyze retry failed: %s", take_id, retry_error
+            )
             return
         await _in_session(session_factory, _save_confirmed, take_id, reply)
         return
