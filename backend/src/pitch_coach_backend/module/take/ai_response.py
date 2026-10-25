@@ -1,7 +1,11 @@
-"""Take AI 응답의 저장 가능 여부를 검사한다. 채점 payload는 받은 그대로 보존한다."""
+"""Take AI 응답의 저장 가능 여부를 검사하고 FE 에 보일 값을 꺼낸다.
+
+채점 payload는 받은 그대로 보존한다.
+"""
 
 import json
 import uuid
+from collections.abc import Mapping
 from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -105,6 +109,62 @@ def validate_coverage_reply(reply: Any, take_id: uuid.UUID | str) -> dict:
         raise CoverageCallError("invalid coverage response", retryable=False) from exc
     # 새 필드와 장별 채점은 rescore에 그대로 돌려보내므로 모델로 다시 직렬화하지 않는다.
     return reply
+
+
+def _at(values: Any, index: Any) -> Any:
+    if isinstance(index, bool) or not isinstance(index, int) or not isinstance(values, list):
+        return None
+    return values[index] if 0 <= index < len(values) else None
+
+
+def _script_sentence(rubric: Mapping[str, Any] | None, index: Any) -> str | None:
+    for sentence in (rubric or {}).get("sentences") or []:
+        if isinstance(sentence, dict) and sentence.get("index") == index:
+            text = sentence.get("text")
+            return text if isinstance(text, str) else None
+    return None
+
+
+def confirmation_items(
+    payload: Mapping[str, Any], rubrics: Mapping[int, Mapping[str, Any] | None]
+) -> list[dict]:
+    """확인 화면에 보일 항목 (`script-coverage-evaluation.md` 5-3 `confirmations[]`).
+
+    같은 장 채점의 `similar_items[]` 에서 종류와 앞뒤 문장을 찾아 붙인다. 대본 문장은 평가 기준
+    `sentences[].text`, 인식한 문장은 채점 `stt_sentences[]` 다. 찾지 못하면 null 로 둔다.
+    """
+    evaluations = {
+        evaluation.get("slide_number"): evaluation
+        for evaluation in payload.get("evaluations") or []
+        if isinstance(evaluation, dict)
+    }
+    items = []
+    for confirmation in payload.get("confirmations") or []:
+        slide_number = confirmation["slide_number"]
+        evaluation = evaluations.get(slide_number, {})
+        similar = next(
+            (
+                item
+                for item in evaluation.get("similar_items") or []
+                if isinstance(item, dict) and item.get("item_id") == confirmation["item_id"]
+            ),
+            {},
+        )
+        stt_sentence = _at(evaluation.get("stt_sentences"), similar.get("stt_sentence_index"))
+        items.append(
+            {
+                "slide_number": slide_number,
+                "item_id": confirmation["item_id"],
+                "kind": similar.get("kind") if isinstance(similar.get("kind"), str) else None,
+                "script_text": confirmation["script_text"],
+                "stt_text": confirmation["stt_text"],
+                "script_sentence": _script_sentence(
+                    rubrics.get(slide_number), similar.get("script_sentence_index")
+                ),
+                "stt_sentence": stt_sentence if isinstance(stt_sentence, str) else None,
+            }
+        )
+    return items
 
 
 def validate_review_reply(reply: Any, take_id: uuid.UUID) -> ReviewResponseDTO:
