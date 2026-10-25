@@ -59,13 +59,13 @@ def load_settings() -> Settings:
     return Settings(base_url=os.getenv("OPENAI_BASE_URL"), api_key=api_key, model=model)
 
 
-def review_llm(settings: Settings) -> Any:
+def review_llm(settings: Settings, timeout_s: float = TIMEOUT_S) -> Any:
     """ReviewDraft 모양으로만 답하도록 고정한 LLM. `review_take(..., llm=..., model=s.model)`"""
     client = ChatOpenAI(
         base_url=settings.base_url,
         api_key=settings.api_key,
         model=settings.model,
-        timeout=TIMEOUT_S,
+        timeout=timeout_s,
         max_retries=MAX_RETRIES,
     )
     return client.with_structured_output(ReviewDraft)
