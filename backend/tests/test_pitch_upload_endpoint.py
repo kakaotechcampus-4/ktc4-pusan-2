@@ -2,6 +2,7 @@ import uuid
 from collections.abc import Callable
 from io import BytesIO
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -140,6 +141,37 @@ def test_upload_to_another_users_pitch_is_rejected(
     assert response.status_code == 404
     assert response.json()["code"] == "PITCH_NOT_FOUND"
     assert _presentation_count(db_session, pitch_id) == 0
+
+
+def test_pitch_deleted_while_counting_pages_is_404_without_s3_upload(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    pdf: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """소유권을 확인한 뒤 쪽수를 세는 사이에 발표가 지워지면 S3 에 올리지 않고 404 다.
+
+    올려 버리면 버전 INSERT 가 FK 위반(500)이 되고, 삭제 쪽 S3 정리가 먼저 끝났으면 파일만 남는다.
+    """
+    from pitch_coach_backend.module.pitch.service.pitch import delete_pitch_service
+
+    count_pages = presentation_service.count_pdf_pages
+
+    def count_after_delete(file: Any) -> int | None:
+        delete_pitch_service(db_session, pitch_id)
+        return count_pages(file)
+
+    upload_mock = MagicMock(side_effect=lambda file, key, content_type=None: key)
+    monkeypatch.setattr(presentation_service, "count_pdf_pages", count_after_delete)
+    monkeypatch.setattr(presentation_service, "upload", upload_mock)
+
+    response = _upload(client, pitch_id, pdf, auth_headers)
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "PITCH_NOT_FOUND"
+    upload_mock.assert_not_called()
 
 
 def test_upload_without_token_is_rejected(
