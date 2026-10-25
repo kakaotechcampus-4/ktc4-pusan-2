@@ -1,4 +1,4 @@
-"""고정 어휘 — 영역 · 차원 · 상태 · 연산자와 차원 표 (명세 3-3).
+"""고정 어휘 — 영역 · 차원 · 상태 · 연산자와 차원 표 (명세 5-3).
 
 차원 표(어느 영역 · 지표 · 문제가 어느 차원인가)는 명세가 정한 계약이라 여기에 둔다.
 판단 기준값(다음 미션 지표 포함)은 config.py 에 있다.
@@ -33,7 +33,7 @@ class DimensionSpec:
     issues: tuple[str, ...]
 
 
-#: 명세 3-3 dimensions 표. 순서가 출력 dimensions 의 순서다
+#: 명세 5-3 dimensions 표. 순서가 출력 dimensions 의 순서다
 DIMENSIONS: dict[str, DimensionSpec] = {
     "audience_gaze": DimensionSpec(
         areas=("GAZE",),
@@ -78,7 +78,7 @@ DIMENSIONS: dict[str, DimensionSpec] = {
 #: 차원 표에 적힌 순서. 부담이 같을 때 순서를 정한다 (명세 6-1 5 · 7번)
 DIMENSION_ORDER: dict[str, int] = {dim: i for i, dim in enumerate(DIMENSIONS)}
 
-#: 부담에 넣지 않는 문제 (명세 3-3)
+#: 부담에 넣지 않는 문제 (명세 5-3)
 NON_BURDEN_ISSUES = frozenset({"GAZE_ON_SCREEN", "GAZE_UNMEASURABLE", "FINAL_MINUTE"})
 
 #: key_points.status 중 부담으로 세는 것. partial 은 세지 않는다.
