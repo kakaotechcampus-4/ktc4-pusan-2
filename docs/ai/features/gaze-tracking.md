@@ -354,7 +354,7 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 | `offset_deg` | `[오른쪽도, 위쪽도]` · null | 표시용. 보정한 화면 영역 밖으로 벗어난 각도 |
 | `aim_deg` | `[오른쪽도, 위쪽도]` · null | 표시용. 화면 중앙을 본 자세에서 벗어난 각도 |
 
-**보정 모델 `CalibrationModel`** — `fitCalibration` · `finishCalibration`이 만든다. 구역별 기준 자세에 `scene`(얼굴 중심 · 면적, 홍채 픽셀 크기, 밝기, 고개 방향, 카메라까지 거리 같은 얼굴 측정값)과 `configHash`가 붙는다. 메모리에만 두고 브라우저 저장소 · 서버 어디에도 두지 않는다(4-3). 일반 데이터라 `structuredClone`을 통과하므로, 같은 세션에서 새 Worker를 만들면 `calibrate(model)`이나 Worker 메시지 `restore`로 넘겨 이어받는다. 받는 쪽은 보정 모델의 모양(스키마 · 필수 구조)만 확인하고 설정 해시(`configHash`)는 비교하지 않는다.
+**보정 모델 `CalibrationModel`** — `fitCalibration` · `finishCalibration`이 만든다. 구역별 기준 자세에 `scene`(얼굴 중심 · 면적, 홍채 픽셀 크기, 밝기, 고개 방향, 카메라까지 거리 같은 얼굴 측정값)과 `configHash`가 붙는다. 메모리에만 두고 브라우저 저장소 · 서버 어디에도 두지 않는다(4-3). 일반 데이터라 `structuredClone`을 통과하므로, 같은 세션에서 새 Worker를 만들면 `calibrate(model)`이나 Worker 메시지 `restore`로 넘겨 이어받는다. 받는 쪽은 보정 모델의 모양(스키마 · 필수 구조)만 확인하고 설정 해시(`configHash`)는 비교하지 않는다. 그래서 FE는 같은 탭에서 화면 배치 · 엔진 버전 · 설정 해시가 같을 때만 보정 모델을 넘긴다(설정 해시는 FE가 비교한다).
 
 **1초 기록 만들기** — `GazeEvidenceRecorder.record(decision)`은 프레임 판정을 받아 끝난 1초 조각을 돌려준다(없으면 빈 목록). `flush(tEndMs)`는 Take 끝의 마지막 짧은 조각을 닫으며 Take가 끝나면 꼭 부른다. `reset()`은 비운다. `sampleToDict(sample)`이 전송 모양(5-2, `confidence` · `reliability`는 소수 4자리)을 만들고 FE는 그대로 보낸다. FE는 Take마다 새 기록기를 쓰고 `tMs`를 Take 시작 기준으로 넘긴다(6-1). 엔진은 시각을 되돌리지 않는다: 프레임 시각은 `max(반올림한 tMs, 앞 프레임 시각 + 1)`이고 이 값이 `FrameDecision.t_ms`가 된다. 그래서 보정 때 쓴 엔진에 Take 시작 기준 시각(0부터)을 이어 넘기면 시각이 밀린다. FE는 발표 화면(Take)마다 새 엔진 · Worker를 만들어 보정 모델만 넘기고, 엔진과 기록기에 같은 Take 시작 기준 시각을 넘긴다.
 
@@ -614,7 +614,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 - 정확도를 실제 발표자 녹화로 잰 적이 없다. 테스트 영상 · 합성 얼굴로만 확인했고, 임계값은 모두 초기값이다.
 - PnP 대체 경로(변환 행렬이 없을 때 얼굴 점과 3D 얼굴 모형으로 머리 자세를 푸는 방식)의 상수는 한 사람의 얼굴 기하에서 유도했다. 브라우저 엔진에는 이 경로가 없다.
 - GPU delegate는 Python과 같은 값인지 확인하지 않았다. 운영은 CPU다.
-- 브라우저는 Chrome · Edge(둘 다 Chromium)에서만 확인했다(Safari · Firefox는 확인 전). Edge는 기능 확인 항목을 모두 통과했고, 부하가 있는 개발 PC에서 프레임 지연이 예산을 넘었다.
+- 브라우저 확인 범위는 Chrome · Edge(둘 다 Chromium)이고 Safari · Firefox는 확인 전이다. 부하가 있는 개발 PC에서는 Chrome · Edge 모두 프레임 지연이 예산을 넘은 적이 있다.
 - 프레임 지연은 개발 PC 기준이다. 같은 PC도 배터리 절전에서는 한 프레임 예산(125 ms)을 넘는다. 저사양 대응(초당 프레임을 줄이는 모드)이 필요한지는 실제 사용자 기기로 정한다. 초당 프레임이 줄어도 1초 기록이 판정하려면 1초에 얼굴 프레임이 기준 개수 이상이어야 한다.
 - 보정에서 화면과 렌즈를 가를 수 없으면(카메라와 화면 중앙이 가까움) 그 Take에서는 `SCREEN`이 나오지 않고 화면 응시가 청중 응시로 읽힐 수 있다.
 - 음량 1초 기록(`voiced_ms`)이 없으면 대본 의존을 잴 수 없다(`reading_ratio` null, `reading_runs` 0).
