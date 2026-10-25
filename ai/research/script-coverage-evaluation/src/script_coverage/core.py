@@ -98,6 +98,8 @@ def analyze_script(
     `slide_numbers` 가 있으면 그 장만 만들고, 나머지 장은 키워드 · 이름 판정의 맥락으로만 쓴다.
     `slide_numbers` 가 빈 목록이면 대상이 없으므로 빈 결과를 돌려준다. `llms` 가 None 이면
     (LLM 설정 없음) 요청 전체가 503 `LLM_UNAVAILABLE` 이다.
+    `meta.model` 은 LLM 출력(캐시 포함)을 쓴 결과가 있을 때만 모델 이름이고, 읽을 내용이 있는 장이
+    하나도 없으면 (빈 대본 장뿐이거나 대상이 없음) None 이다 (architecture.md 5절).
     """
     request = RubricRequest.model_validate(request)
     if llms is None:
@@ -116,10 +118,13 @@ def analyze_script(
     )
     if stats["slides"] and not rubrics:
         raise _all_failed(stats["failed"])
+    used_llm = any(r.normalized_script for r in rubrics)
     return RubricResponse(
         rubrics=sorted(rubrics, key=lambda r: r.meta.slide_number),
         failed=_failures(stats["failed"]),
         meta=ResponseMeta(
-            schema_version=SCHEMA_VERSION, feature_version=FEATURE_VERSION, model=model
+            schema_version=SCHEMA_VERSION,
+            feature_version=FEATURE_VERSION,
+            model=model if used_llm else None,
         ),
     )

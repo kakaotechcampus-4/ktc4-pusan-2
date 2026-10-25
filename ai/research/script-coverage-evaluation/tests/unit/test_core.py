@@ -5,9 +5,11 @@ from pydantic import ValidationError
 
 from script_coverage.core import STATUS_CODES, CoverageError, ScriptLLMs, analyze_script
 from script_coverage.schemas import RubricRequest
+from script_coverage.script_analysis.core import analyze_script as analyze_slides
+from script_coverage.script_analysis.schemas import SlideScript
 from script_coverage.shared.llm_step import ERROR_MESSAGES
 from script_coverage.version import FEATURE_VERSION, SCHEMA_VERSION
-from tests.unit.fakes import FakeLLM, empty_script_llms
+from tests.unit.fakes import FakeLLM, SlideFailingLLM, empty_script_llms
 from tests.unit.shared.slides import SLIDES
 
 
@@ -164,3 +166,74 @@ def test_empty_script_slide_is_accepted_without_llm():
     response = _analyze(_request(numbers=(1, 6), scripts={1: ""}, slide_numbers=[1]), llms)
     assert [r.meta.slide_number for r in response.rubrics] == [1]
     assert llms.semantic.calls == 0
+
+
+# ── 단계별 실패 (1차 분석 · 최종 결론 · 전달 단위) ──────────────
+
+STAGES = [("semantic", "1차 분석"), ("final", "최종 결론"), ("unit", "전달 단위")]
+_ORDER = [name for name, _ in STAGES]
+
+
+def _stage_llms(stage: str, failing: dict[int, BaseException]):
+    """`stage` 의 LLM 만 `failing` 장에서 실패하고, 나머지는 빈 응답을 내는 (ScriptLLMs, 이름 → LLM)."""
+    semantic, final, unit = empty_script_llms()
+    base = dict(zip(_ORDER, (semantic, final, unit), strict=True))
+    llms = {
+        name: SlideFailingLLM(llm.result, failing if name == stage else None)
+        for name, llm in base.items()
+    }
+    return ScriptLLMs(**llms), llms
+
+
+@pytest.mark.parametrize(("stage", "stage_name"), STAGES)
+def test_partial_failure_at_each_stage(stage, stage_name):
+    """대상 두 장 중 6번만 그 단계에서 실패: 200 + failed, 6번은 결과에 없고 뒤 단계도 안 부른다."""
+    llms, by_name = _stage_llms(stage, {6: TimeoutError("대본 원문")})
+    response = _analyze(_request(slide_numbers=[4, 6]), llms)
+    assert [r.meta.slide_number for r in response.rubrics] == [4]
+    [failure] = response.failed
+    assert failure.slide_number == 6
+    assert failure.error.model_dump() == {
+        "code": "LLM_TIMEOUT",
+        "message": ERROR_MESSAGES["LLM_TIMEOUT"],
+    }
+    for later in _ORDER[_ORDER.index(stage) + 1 :]:
+        assert by_name[later].called_slides == [4]  # 실패한 장으로는 다음 단계를 부르지 않는다
+    # 로그용 원인은 하위 함수의 stats["causes"] 에 단계 이름과 예외 클래스 이름만 남는다
+    llms, _ = _stage_llms(stage, {6: TimeoutError("대본 원문")})
+    _, stats = analyze_slides(
+        "sv-3",
+        [SlideScript(slide_number=n, script=SLIDES[("가상대본1", n)]) for n in (4, 6)],
+        semantic_llm=llms.semantic,
+        final_llm=llms.final,
+        unit_llm=llms.unit,
+        model="test-model",
+    )
+    assert stats["failed"] == {6: "LLM_TIMEOUT"}
+    assert stats["causes"] == {6: f"{stage_name} TimeoutError"}
+
+
+@pytest.mark.parametrize(("stage", "stage_name"), STAGES)
+def test_full_failure_at_each_stage_raises(stage, stage_name):
+    llms, _ = _stage_llms(stage, {4: RuntimeError("x"), 6: RuntimeError("y")})
+    with pytest.raises(CoverageError) as caught:
+        _analyze(_request(slide_numbers=[4, 6]), llms)
+    error = caught.value
+    assert (error.status_code, error.code) == (502, "LLM_ERROR")
+    assert error.message == ERROR_MESSAGES["LLM_ERROR"]
+
+
+# ── meta.model: LLM 출력을 쓴 결과가 있을 때만 ────────────────
+
+
+def test_meta_model_is_set_when_llm_output_was_used():
+    assert _analyze(_request(slide_numbers=[6])).meta.model == "test-model"
+
+
+def test_meta_model_is_none_without_readable_content():
+    only_empty = _analyze(_request(numbers=(1, 6), scripts={1: ""}, slide_numbers=[1]))
+    assert [r.meta.slide_number for r in only_empty.rubrics] == [1]
+    assert only_empty.meta.model is None
+    assert _analyze(_request(slide_numbers=[])).meta.model is None
+    mixed = _analyze(_request(numbers=(1, 6), scripts={1: ""}))
+    assert mixed.meta.model == "test-model"
