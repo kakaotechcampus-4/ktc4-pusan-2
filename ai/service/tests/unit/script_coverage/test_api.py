@@ -143,7 +143,7 @@ def test_rubric_returns_rubrics_and_meta(make_client) -> None:
     assert body["failed"] == []
     assert body["meta"] == {
         "schema_version": "1.0",
-        "feature_version": "script_coverage-1.0",
+        "feature_version": "script_coverage-1.1",
         "model": MODEL,
     }
     # 평가 기준에는 설정한 모델 이름이 남는다 (설정 해시에도 들어간다)
