@@ -627,26 +627,26 @@ uv sync
 - 계약 테스트: `tests/unit/test_contract.py`(응답 필드 · 모르는 요청 필드 무시 · 음수 시각 거부 · 모르는 상태 리셋), `tests/unit/test_examples.py`(예시 요청을 넣은 응답이 예시 응답과 같음), `tests/lab/test_examples_build.py`(예시를 다시 만들어도 같음).
 
 # 11. 배포
-**어디서 도는가**: 코어(`src/coach/` 전부, `examples/` · `prompts/` 포함)를 AI 서비스의 `features/coach/`로 폴더째 옮기고, 라우터 `api/coach.py`가 세 엔드포인트를 연다(`ai-service.md`). 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
+**어디서 도는가**: 코어(`src/coach/` 전부, `examples/` · `prompts/` 포함)를 AI 서비스의 `features/coach/`로 폴더째 옮기고, 라우터 `api/coach.py`가 엔드포인트를 연다(`ai-service.md`). `/coach/plan`은 코어를 옮길 때 열고, `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷(시선 · 말 속도 · 소리 크기 · 군더더기)이 서비스에 모두 있을 때 연다. 빈 자리를 예외를 내는 자리표시로 채우면 코어는 그 영역을 잴 수 없음(`UNKNOWN`)으로 두고 견디지만, 그 영역의 `summarize`가 없어 Take 결과의 `measured_ratio`가 null이 되고 판정 기준 · 기준 버전이 비어 공통 계약(`architecture.md` 7절)과 어긋나기 때문이다. 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 `pydantic>=2.13,<3`(서비스 `uv.lock`이 정한 판, 연구 폴더는 서비스를 editable로 설치해 같은 판을 쓴다). 옮기는 시점은 입력 위험(`t_ms` 상한 · 크게 앞선 시각, 5-2)과 복구 비용(`replay` 한 번이 Take 길이만큼 다시 판정함)을 막은 뒤이고, 아래 '옮긴 뒤 같은 결과인지 확인' 1~5를 모두 통과해야 한다. 서비스로 옮겨 BE 연동을 확인한 뒤, 배포할 그 판으로 배포 직전 점검을 통과하면 배포한다.
 
 | 라우터가 할 일 | 설명 |
 |---|---|
-| `Judges` 묶음 만들기 | 앱 시작 때 한 번. 판정 모듈 넷(`judge` · `summarize` · `criteria`)과 volume `speaking_levels` · `baseline`. `timing`은 코어 안에 있어 넘기지 않는다 |
+| `Judges` 묶음 만들기 | 앱 시작 때 한 번. 판정 모듈 넷(`judge` · `summarize` · `criteria`)과 volume `speaking_levels` · `baseline`. `timing`은 코어 안에 있어 넘기지 않는다. 넷이 서비스에 모두 있을 때 evaluate · finalize와 함께 만든다 |
 | 호출 | `/coach/evaluate` → `decide_safe(req, judges)`, `/coach/finalize` → `finalize(req, judges)`, `/coach/plan` → `plan_coaching(req, llm=…, model=…)`. 라우터는 요청마다 마감 시각(AI 예산 25초)을 만들어 `structured_llm(<출력 스키마>, deadline=…)`으로 LLM 객체를 받는다(서비스 `common/llm.py`, 역할 → 묶음은 `settings.py`). `model`은 그 역할 묶음의 모델 이름이다(`planner_hash`). LLM 설정이 없어 객체를 만들 수 없으면 `llm=None`을 넘겨 코어가 기본 계획 + `LLM_UNAVAILABLE`을 200으로 돌려준다. 연구 도구의 고정 값(시간 제한 20초 · 재시도 0)은 쓰지 않는다 |
 | 오류 매핑 | 요청 형식 오류는 422 `VALIDATION_ERROR`. `ReplayRequired`는 409 `REPLAY_REQUIRED`(공통 에러 본문, 메시지에 빠진 구간) |
 | 동기 함수 | 판단은 CPU만 쓰는 짧은 계산이라 `def` 라우터로 두면 스레드 풀에서 돈다(`async def` 안에서 동기 호출을 하면 서버 전체가 멈춘다) |
-| 옮긴 뒤 테스트 | `ai-service.md` 6-1 2번대로 한다. `tests/unit/`을 옮기되, 예시를 연구 폴더 경로로 찾는 `test_examples.py`는 패키지 위치로 찾게 고치고, `test_core_boundary.py`는 코어 폴더 경로를 새 위치에 맞춘다. `tests/lab/test_examples_build.py`는 연구 폴더에 남긴다(예시 생성 `coach_lab.examples`와 연구용 대역을 쓴다). 그중 finalize 예시를 대조하는 검사(`test_finalize_response_matches_example` · `test_finalize_example_judges_the_last_window_with_stt_closed` · `test_finalize_examples_show_normal_and_replay`)는 실제 판정 모듈을 묶은 서비스 계약 테스트로 새로 만든다(대역은 서비스에 넣지 않는다). 이 파일이 쓰는 `assert_same`은 `tests/unit/test_examples.py`에서 가져오므로, 옮긴 뒤에는 연구 폴더에 같은 함수를 둔다 |
+| 옮긴 뒤 테스트 | `ai-service.md` 6-1 2번대로 한다. `tests/unit/`을 옮기되, 예시를 연구 폴더 경로로 찾는 `test_examples.py`는 패키지 위치로 찾게 고치고, `test_core_boundary.py`는 코어 폴더 경로를 새 위치에 맞춘다. `tests/lab/test_examples_build.py`는 연구 폴더에 남긴다(예시 생성 `coach_lab.examples`와 연구용 대역을 쓴다). 그중 finalize 예시를 대조하는 검사(`test_finalize_response_matches_example` · `test_finalize_example_judges_the_last_window_with_stt_closed` · `test_finalize_examples_show_normal_and_replay`)는 실제 판정 모듈을 묶은 서비스 계약 테스트로 새로 만든다(대역은 서비스에 넣지 않는다. evaluate · finalize를 열 때 함께). 이 파일이 쓰는 `assert_same`은 `tests/unit/test_examples.py`에서 가져오므로, 옮긴 뒤에는 연구 폴더에 같은 함수를 둔다 |
 
 **환경변수**: 코치 코어는 환경변수를 읽지 않는다. 코칭 계획의 LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓴다.
 
 **옮긴 뒤 같은 결과인지 확인**
 1. 단위 테스트 통과 (코어 경계 테스트 포함).
-2. 연구 폴더가 서비스를 editable 의존성으로 설치하고 `coach_lab`의 import를 새 패키지 이름으로 바꾼다. 연구용 판정 대역은 실제 판정 모듈로 바꿔 끼운다.
-3. `python -m coach_lab.replay`가 전부 통과하고, `python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` · `python -m coach_lab.recovery_eval` 뒤 `git diff`가 비어 있는지 본다.
+2. 연구 폴더가 서비스를 editable 의존성으로 설치하고 `coach_lab`의 import를 새 패키지 이름으로 바꾼다.
+3. 연구용 판정 대역을 그대로 둔 채 `python -m coach_lab.replay`가 전부 통과하고, `python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` · `python -m coach_lab.recovery_eval` 뒤 `git diff`가 비어 있는지 본다. 그 뒤 대역을 서비스에 있는 실제 판정 모듈로 바꿔 끼워 다시 돌리고, 달라진 판정을 연구 폴더 README에 적는다(서비스에 아직 없는 모듈의 대역은 그 모듈이 오면 바꾼다).
 4. `python -m pytest -m live`(실제 LLM 1회)와 `python -m coach_lab.plan_eval`이 커밋된 `reports/results/coaching_plan.json`과 비슷한지 본다(LLM 답이라 바이트까지 같지는 않다).
-5. 연구 폴더의 `src/coach/`를 지운다. 이후 코어는 서비스에서만 고친다.
+5. 연구 폴더의 `src/coach/`를 지운다. 이후 코어는 서비스에서만 고친다. 다만 BE 테스트가 경로로 읽는 `examples/`는 BE가 서비스 경로(`ai/service/src/pitch_coach_ai/features/coach/examples/`)로 바꿀 때까지 연구 폴더에 사본으로 남기고, 서비스 예시와 같은지 연구 폴더 테스트가 본다(`ai-service.md` 6-1 2번).
 
 **증상별 원인**
 
@@ -758,7 +758,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 4. 409 `REPLAY_REQUIRED`는 공통 에러 본문만 쓰고 빠진 구간은 `message`에 담는다.
 5. 저장 설계: 12-1(유일 제약 · JSONB · 크기 · 보관). 마이그레이션은 BE가 한다.
 6. `/coach/plan` 호출 흐름은 12절 그림 · 12-2대로다. 리뷰를 부르지 않는 배포에서는 대본 파싱 직후와 대본 · 제한 시간 · 허용 범위가 바뀌었을 때만 부른다. `plan.min_ms` · `max_ms`의 기준(발표 제한 시간)은 BE가 맞춘다.
-7. 코어를 서비스로 옮기는 조건: Python 3.12 · `pydantic>=2.13,<3` · 입력 위험(`t_ms` 상한 · 크게 앞선 시각)과 복구 비용을 막은 뒤 · 11절 '옮긴 뒤 같은 결과인지 확인' 통과.
+7. 코어를 서비스로 옮기는 조건: Python 3.12 · `pydantic>=2.13,<3` · 입력 위험(`t_ms` 상한 · 크게 앞선 시각)과 복구 비용을 막은 뒤 · 11절 '옮긴 뒤 같은 결과인지 확인' 통과. 엔드포인트는 `/coach/plan`을 먼저 열고, evaluate · finalize는 판정 모듈 넷이 서비스에 모두 있을 때 연다(11절).
 8. 공통 계약(`architecture.md`)에 맞춤: 기준 음량 표본은 volume `speaking_levels`가 고른 말한 1초, 시선 `voiced`에서 오디오가 끊긴 1초를 뺌, 오디오가 멈추면 STT 모듈에 `degraded`, Take 끝에 멈춤을 세지 않음, 미션 · 반복 문제 영역 일곱(`CONTENT`는 가중 없음).
 9. evaluate · finalize · `replay`의 배열 한도와 기록 값 범위(5-2 · 8절): 배열 개수가 넘으면 422, 한도 안에서 읽을 수 없는 기록(단어 50자 · 10초 초과 포함)은 그 기록만 버림, `replay`의 되풀이된 1초는 판정 모듈이 읽을 수 있는 것 중 먼저 온 것, 모르는 `stt_status`는 `degraded`. plan의 장 · 미션 한도는 evaluate · finalize에 걸지 않는다. finalize 422는 다시 부르지 않고 원자료로 수동 복구한다(7절).
 
