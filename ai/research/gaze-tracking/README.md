@@ -97,12 +97,10 @@ gaze-tracking/
 ├── artifacts/                                   모델 파일 자리 (git 밖). manifest(*.json)만 커밋
 ├── outputs/                                     실행 결과 (git 밖)
 ├── src/
-│   ├── gaze/                                    서버 판정 모듈 (+ examples/ 계약 예시)
-│   └── gaze_lab/                                Python 기준 구현 · 평가
+│   └── gaze_lab/                                Python 기준 구현 · 평가 (서버 판정 모듈은 서비스 features/gaze/)
 ├── experiments/                                 비교 실험 2개 (녹화 데이터 필요)
 ├── tools/                                       데모 · 자산 받기 · 생성기 · 유도 스크립트
 ├── tests/
-│   ├── unit/                                    서버 판정 모듈 테스트 (모듈과 함께 service로 간다)
 │   ├── lab/                                     기준 구현 · 평가 · 도구 · 생성 파일 최신 검사
 │   └── fixtures/                                테스트 얼굴의 출처 · 해시 (사진은 local/, git 밖)
 └── web/                                         브라우저: TS 엔진 · Worker · 카메라 화면 · 데모 (Node 24)
@@ -292,8 +290,8 @@ uv run python experiments/exp1_backbone.py --help
 
 | 묶음 | 위치 | 무엇을 | 수 |
 |---|---|---|---|
-| 서버 판정 모듈 | 서비스 `tests/unit/gaze/` | `judge`(읽기 · 빈 시간 · 겹침 · 커서 · 대본 의존 · 지표 · 상태 · 다섯 문제 · 시작 직후 억제 · 기준값 경계), `summarize` · `criteria`, `examples/` 계약, 입출력 모델, 코어 import 경계 | 201 (소리 크기 모듈이 없으면 1 skip) |
-| 기준 구현 | `tests/lab/` | 전처리 기하 · 고개 방향 · 보정 · 조건 감시 · 평가 · 데모 · 시나리오 S01~S24, 생성 파일 최신, 1초 나누기 값과 서버 판정 값의 분리 | 1745 (+ torch 없을 때 38 skip) |
+| 서버 판정 모듈 | 서비스 `tests/unit/gaze/` | `judge`(읽기 · 빈 시간 · 겹침 · 커서 · 대본 의존 · 지표 · 상태 · 다섯 문제 · 시작 직후 억제 · 기준값 경계), `summarize` · `criteria`, `examples/` 계약, 입출력 모델, 코어 import 경계 | 205 + 1 skipped (서비스, 2026-10-26) |
+| 기준 구현 | `tests/lab/` | 전처리 기하 · 고개 방향 · 보정 · 조건 감시 · 평가 · 데모 · 시나리오 S01~S24, 생성 파일 최신, 1초 나누기 값과 서버 판정 값의 분리 | 1628 passed · 155 skipped (얼굴 자산 없이, 2026-10-26) |
 | TS 엔진 | `web/src/engine/__tests__/` | Python 기준 답과 1e-9~1e-12 안에서 일치, 엔진 흐름, 시나리오, 초기화 실패 | 145 |
 | 그 밖의 web | `web/test/` | FE 계약(FE의 실제 `workers/modelClassifier.ts` · `aiAdapter.ts`를 이 엔진에 붙여 실행), 엔진 import · 저장 API 경계(`contract.ts`가 MediaPipe에 닿지 않음 포함), Worker, 자산 검증 | 53 |
 | 실제 브라우저 | `web/scripts/smoke.mjs` | MediaPipe를 Worker에서 로드, 준비 점검 → 고개 원 → 보정 → 실시간 → 1초 기록, 카메라 끊김, 지연 | 23 항목 (Chrome `smoke` · `smoke:prod` 통과, Edge는 기능 22개 통과 · 지연만 초과) |
