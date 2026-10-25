@@ -2,8 +2,10 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.dto import PitchListResponseDTO, PitchSaveRequestDTO
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
@@ -339,3 +341,55 @@ def test_today_is_korean_date_even_before_9am(
     result = pitch_service.get_all_pitches_service(db_session, user_id)
 
     assert [p.pitch_title for p in result.pitches] == ["오늘", "어제"]
+
+
+@pytest.mark.parametrize(
+    ("status", "end_reason"),
+    [
+        ("READY", None),
+        ("RUNNING", None),
+        ("ANALYZING", None),
+        ("ANALYZING", "SILENCE"),
+        ("ANALYZING", "TIME_LIMIT"),
+        ("COMPLETED", None),
+        ("FAILED", None),
+        ("FAILED", "ABANDONED"),
+        ("FAILED", "CLOSED"),
+    ],
+)
+def test_home_api_includes_take_state_without_changing_existing_fields(
+    client: TestClient,
+    db_session: Session,
+    user_id: uuid.UUID,
+    pitch_id: uuid.UUID,
+    versions: tuple[uuid.UUID, uuid.UUID],
+    status: str,
+    end_reason: str | None,
+) -> None:
+    take_id = _make_take(db_session, pitch_id, versions, 1, score=0)
+    take = db_session.get(Take, take_id)
+    take.status = status
+    take.end_reason = end_reason
+    db_session.flush()
+
+    response = client.get(
+        "/api/pitches/",
+        headers={"Authorization": f"Bearer {create_access_token(user_id)}"},
+    )
+
+    assert response.status_code == 200
+    [pitch] = response.json()["pitches"]
+    assert pitch["takes"] == [
+        {
+            "take_id": str(take_id),
+            "status": status,
+            "end_reason": end_reason,
+            "take_version": 1,
+            "take_elapsed": 280,
+            "take_time": 300,
+            "script_mode": "HIGHLIGHT",
+            "score": 0,
+            "delta": None,
+            "created_at": take.created_at.isoformat().replace("+00:00", "Z"),
+        }
+    ]
