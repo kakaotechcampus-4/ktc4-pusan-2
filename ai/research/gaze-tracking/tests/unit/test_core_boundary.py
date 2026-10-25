@@ -1,7 +1,8 @@
 """코어(gaze)를 나중에 service 로 폴더째 옮길 수 있는지 검사한다.
 
 - 패키지 안에서는 상대 import 만 쓴다. 패키지 경로가 바뀌어도 고칠 곳이 없게 하기 위해서다.
-- 허용한 라이브러리만 쓴다 (허용 목록). 파일 · 네트워크 · 환경변수 · 프로세스 · 로그는 코어 밖이 맡는다.
+- 허용한 라이브러리만 쓴다 (허용 목록).
+  파일 · 네트워크 · 환경변수 · 프로세스 · 로그는 코어 밖이 맡는다.
 - 연구용 코드(gaze_lab)를 import 하지 않는다. import 방향은 gaze_lab → gaze 한 방향뿐이다.
 - 상대 import 는 패키지 안에서만 (``from .x``). ``from ..`` 는 패키지 밖으로 나간다.
 """
@@ -13,7 +14,10 @@ from pathlib import Path
 
 import pytest
 
-CORE = Path(__file__).resolve().parents[2] / "src" / "gaze"
+from gaze import core
+
+# 모듈 파일 기준이라 서비스(features/gaze/)로 옮겨도 import 접두어만 바꾸면 새 위치를 본다
+CORE = Path(core.__file__).parent
 
 # 코어가 쓰는 것만 허용한다. 새로 필요하면 여기에 더하고, 그 이유를 리뷰에서 본다
 ALLOWED = {

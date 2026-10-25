@@ -1,7 +1,9 @@
 """시선 서버 판정 모듈: 1초 기록 → 1초 판정 결과 · 장 / Take 시선 지표 · 판정 기준.
 
-- `core.py` — `judge`(1초 판정 결과, 영역 GAZE) · `summarize`(장 · Take 지표) · `criteria`(다섯 문제의 기준)
-- `schemas.py` — 입력(1초 기록 · 발화 시간 · 커서) · 출력(JudgmentResult · 요약 · 기준) 계약 (pydantic)
+- `core.py` — `judge`(1초 판정 결과, 영역 GAZE) · `summarize`(장 · Take 지표)
+  · `criteria`(다섯 문제의 기준)
+- `schemas.py` — 입력(1초 기록 · 발화 시간 · 커서) ·
+  출력(JudgmentResult · 요약 · 기준) 계약 (pydantic)
 - `config.py` — 판정 기준값 `GazeConfig`. 해시가 criteria_version 에 들어간다
 - `version.py` — 기능 버전
 - `examples/` — 입력 · 출력 예시 (계약 테스트가 읽는다)

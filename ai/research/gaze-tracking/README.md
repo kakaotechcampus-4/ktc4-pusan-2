@@ -313,6 +313,32 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
 - 설정 해시는 `958414c647b7` → `14ed457ab13b`로 바뀌었습니다. 해시에 모델 경로 문자열이 들어가서이고, 임계값은 하나도 바뀌지 않았습니다.
   그 뒤 서버 판정 값을 엔진 설정(`configs/evidence.yaml`)에서 빼며 `32ad2751de59`가 됐습니다. 엔진이 쓰는 값은 그대로입니다.
 
+### 서비스로 옮기기
+
+`src/gaze/`는 `ai/service`의 `src/pitch_coach_ai/features/gaze/`로, `tests/unit/`은 `tests/unit/gaze/`로 폴더째 옮깁니다
+([설계 문서](../../../docs/ai/features/gaze-tracking.md) 11절, [서비스 문서](../../../docs/ai/ai-service.md) 6-1).
+
+1. 두 폴더를 복사합니다(`tests/unit/__init__.py` 포함 — 도우미를 상대 import `.judge_helpers`로 읽습니다).
+2. 테스트의 import 접두어만 `gaze` → `pitch_coach_ai.features.gaze`로 바꿉니다. 코어는 상대 import라 그대로이고,
+   테스트는 `examples/` · 코어 폴더를 모듈 파일(`core.__file__`) 기준으로 찾아 고칠 곳이 없습니다.
+3. 서비스 `pyproject.toml`에 `pydantic>=2.13,<3`을 직접 의존성으로 더하고(`uv add`) `uv.lock`을 함께 커밋합니다. 정확한 판은 서비스 lock이 정합니다.
+4. 서비스에서 `uv run pytest` · `uv run ruff check src tests` · `uv run ruff format --check src tests` · `docker build`를 돌립니다.
+   서버 판정 모듈과 그 테스트는 연구 폴더에서도 서비스와 같은 줄 길이(100) 규칙으로 검사합니다.
+- '말한 1초' 기준값 비교(`test_speaking_second_threshold_matches_volume`)는 같은 `features/` 아래 `volume/config.py`를 읽고,
+  소리 크기 모듈이 아직 서비스에 없으면 이유를 보이고 건너뜁니다.
+
+옮기기 전에 커밋하지 않는 사본으로 위 순서를 미리 돌렸습니다(develop `e5096af`의 서비스 뼈대).
+
+| 확인 | 결과 |
+|---|---|
+| 옮긴 코어 | 연구 폴더와 바이트까지 같음 |
+| 테스트 변경 | import 접두어 줄만 |
+| pydantic | 서비스 lock의 2.14.1 (연구 폴더 lock은 2.13.5) |
+| 서비스 `pytest` | 300 passed · 1 skipped (시선 200 passed, 건너뛴 1개는 소리 크기 기준값 비교) |
+| `ruff check` · `ruff format --check` | 지적 없음 |
+| `docker build` | 성공, 이미지 374 MB (옮기기 전과 같음 — pydantic은 이미 들어 있음) |
+| 이미지 안에서 `judge` | `examples/`의 `judge` 예시 8개가 모두 같은 결과, `criteria` 5개 |
+
 ---
 
 ## 7. 얼굴 데이터와 예외 처리
