@@ -169,7 +169,7 @@ class _OrderLog:
                 try:
                     event = log.hold.get((stage, slide))
                     if event is not None:
-                        assert event.wait(5), "기다린 슬라이드가 풀리지 않았다"
+                        assert event.wait(30), "기다린 슬라이드가 풀리지 않았다"
                     if (stage, slide) in log.fail:
                         raise log.fail[(stage, slide)]
                     return inner.invoke(messages)
@@ -204,7 +204,7 @@ def test_slow_slide_does_not_hold_back_the_others():
 
     def unblock_after_others_finish():
         # 다른 두 장의 전달 단위가 응답을 돌려준 뒤에 늦은 장을 푼다
-        others_finished.append(all(log.done[("unit", n)].wait(5) for n in (6, 7)))
+        others_finished.append(all(log.done[("unit", n)].wait(30) for n in (6, 7)))
         release.set()
 
     watcher = threading.Thread(target=unblock_after_others_finish)
@@ -230,13 +230,15 @@ def test_running_calls_never_exceed_max_workers(workers):
     result = {}
     runner = threading.Thread(target=lambda: result.update(out=log.run(tuple(_MARKS), workers)))
     runner.start()
-    deadline = time.monotonic() + 5
+    deadline = (
+        time.monotonic() + 30
+    )  # 첫 호출 전 형태소 분석기 · TF-IDF 준비도 이 안에 든다 (닿으면 바로 빠진다)
     while log.active < workers and time.monotonic() < deadline:
         time.sleep(0.01)
     time.sleep(0.1)  # 상한을 넘는 호출이 있다면 이 사이에 들어온다
     seen = log.active
     release.set()
-    runner.join(10)
+    runner.join(30)
     assert seen == workers
     assert log.max_active == workers
     rubrics, stats = result["out"]
