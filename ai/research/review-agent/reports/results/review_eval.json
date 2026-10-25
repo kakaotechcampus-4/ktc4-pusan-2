@@ -30,13 +30,13 @@
     "numbers": 416,
     "numbers_not_in_input": 0,
     "numbers_not_in_input_per_take": 0.0,
-    "sentences": 332,
+    "sentences": 330,
     "sentences_failed_number_check": 0,
-    "output_chars_mean": 632,
-    "output_chars_max": 838,
-    "latency_ms_median": 23431,
-    "latency_ms_max": 24562,
-    "uncached_calls": 11
+    "output_chars_mean": 633,
+    "output_chars_max": 856,
+    "latency_ms_median": 7627,
+    "latency_ms_max": 24576,
+    "uncached_calls": 45
    }
   },
   "clean": {
@@ -51,19 +51,23 @@
    "recurring_priority_rate": null,
    "llm": {
     "calls": 16,
-    "schema_valid_rate": 1.0,
-    "fallback_reasons": {},
-    "errors": {},
-    "numbers": 136,
+    "schema_valid_rate": 0.9375,
+    "fallback_reasons": {
+     "LLM_TIMEOUT": 1
+    },
+    "errors": {
+     "OpenAITimeoutError": 1
+    },
+    "numbers": 129,
     "numbers_not_in_input": 0,
     "numbers_not_in_input_per_take": 0.0,
-    "sentences": 116,
+    "sentences": 106,
     "sentences_failed_number_check": 0,
-    "output_chars_mean": 613,
-    "output_chars_max": 765,
-    "latency_ms_median": 9937,
-    "latency_ms_max": 9937,
-    "uncached_calls": 1
+    "output_chars_mean": 610,
+    "output_chars_max": 706,
+    "latency_ms_median": 7185,
+    "latency_ms_max": 24567,
+    "uncached_calls": 15
    }
   },
   "noisy": {
@@ -85,16 +89,16 @@
     "errors": {
      "OpenAITimeoutError": 1
     },
-    "numbers": 145,
+    "numbers": 151,
     "numbers_not_in_input": 0,
     "numbers_not_in_input_per_take": 0.0,
     "sentences": 112,
     "sentences_failed_number_check": 0,
-    "output_chars_mean": 639,
-    "output_chars_max": 838,
-    "latency_ms_median": 23625,
-    "latency_ms_max": 24562,
-    "uncached_calls": 3
+    "output_chars_mean": 657,
+    "output_chars_max": 833,
+    "latency_ms_median": 7692,
+    "latency_ms_max": 24576,
+    "uncached_calls": 15
    }
   },
   "harsh": {
@@ -109,23 +113,23 @@
    "recurring_priority_rate": null,
    "llm": {
     "calls": 16,
-    "schema_valid_rate": 0.875,
+    "schema_valid_rate": 0.9375,
     "fallback_reasons": {
-     "LLM_TIMEOUT": 2
+     "LLM_TIMEOUT": 1
     },
     "errors": {
-     "OpenAITimeoutError": 2
+     "OpenAITimeoutError": 1
     },
-    "numbers": 135,
+    "numbers": 136,
     "numbers_not_in_input": 0,
     "numbers_not_in_input_per_take": 0.0,
-    "sentences": 104,
+    "sentences": 112,
     "sentences_failed_number_check": 0,
-    "output_chars_mean": 645,
-    "output_chars_max": 823,
-    "latency_ms_median": 23431,
-    "latency_ms_max": 24522,
-    "uncached_calls": 7
+    "output_chars_mean": 631,
+    "output_chars_max": 856,
+    "latency_ms_median": 7409,
+    "latency_ms_max": 24548,
+    "uncached_calls": 15
    }
   }
  },
@@ -153,9 +157,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 534,
+    "cached": false,
+    "latency_ms": 8437,
+    "output_chars": 543,
     "sentences": 6,
     "sentences_failed": 0,
     "numbers": 5,
@@ -185,12 +189,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 580,
+    "cached": false,
+    "latency_ms": 7106,
+    "output_chars": 548,
     "sentences": 6,
     "sentences_failed": 0,
-    "numbers": 6,
+    "numbers": 5,
     "numbers_not_in_input": []
    }
   },
@@ -217,9 +221,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 565,
+    "cached": false,
+    "latency_ms": 8753,
+    "output_chars": 583,
     "sentences": 6,
     "sentences_failed": 0,
     "numbers": 6,
@@ -249,9 +253,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 724,
+    "cached": false,
+    "latency_ms": 5982,
+    "output_chars": 650,
     "sentences": 8,
     "sentences_failed": 0,
     "numbers": 11,
@@ -282,11 +286,11 @@
     "fallback_reason": null,
     "error": null,
     "cached": false,
-    "latency_ms": 6732,
-    "output_chars": 636,
+    "latency_ms": 6355,
+    "output_chars": 699,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 11,
+    "numbers": 12,
     "numbers_not_in_input": []
    }
   },
@@ -313,12 +317,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 653,
+    "cached": false,
+    "latency_ms": 7692,
+    "output_chars": 685,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 10,
+    "numbers": 11,
     "numbers_not_in_input": []
    }
   },
@@ -345,9 +349,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 665,
+    "cached": false,
+    "latency_ms": 7554,
+    "output_chars": 666,
     "sentences": 8,
     "sentences_failed": 0,
     "numbers": 11,
@@ -377,12 +381,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 722,
+    "cached": false,
+    "latency_ms": 6031,
+    "output_chars": 676,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 13,
+    "numbers": 12,
     "numbers_not_in_input": []
    }
   },
@@ -409,12 +413,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 671,
+    "cached": false,
+    "latency_ms": 6599,
+    "output_chars": 687,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 11,
+    "numbers": 12,
     "numbers_not_in_input": []
    }
   },
@@ -441,12 +445,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 442,
+    "cached": false,
+    "latency_ms": 7185,
+    "output_chars": 568,
     "sentences": 6,
     "sentences_failed": 0,
-    "numbers": 1,
+    "numbers": 6,
     "numbers_not_in_input": []
    }
   },
@@ -473,9 +477,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 541,
+    "cached": false,
+    "latency_ms": 6633,
+    "output_chars": 538,
     "sentences": 6,
     "sentences_failed": 0,
     "numbers": 6,
@@ -505,9 +509,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 710,
+    "cached": false,
+    "latency_ms": 6649,
+    "output_chars": 716,
     "sentences": 8,
     "sentences_failed": 0,
     "numbers": 12,
@@ -537,12 +541,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 659,
+    "cached": false,
+    "latency_ms": 8790,
+    "output_chars": 677,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 11,
+    "numbers": 13,
     "numbers_not_in_input": []
    }
   },
@@ -567,10 +571,15 @@
     "predicted": "pacing_rhythm"
    },
    "llm": {
-    "fallback_reason": "LLM_TIMEOUT",
-    "error": "OpenAITimeoutError",
+    "fallback_reason": null,
+    "error": null,
     "cached": false,
-    "latency_ms": 24467
+    "latency_ms": 23790,
+    "output_chars": 663,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 7,
+    "numbers_not_in_input": []
    }
   },
   {
@@ -594,15 +603,10 @@
     "predicted": "pacing_rhythm"
    },
    "llm": {
-    "fallback_reason": null,
-    "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 656,
-    "sentences": 8,
-    "sentences_failed": 0,
-    "numbers": 10,
-    "numbers_not_in_input": []
+    "fallback_reason": "LLM_TIMEOUT",
+    "error": "OpenAITimeoutError",
+    "cached": false,
+    "latency_ms": 24576
    }
   },
   {
@@ -628,12 +632,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 611,
+    "cached": false,
+    "latency_ms": 10094,
+    "output_chars": 648,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 6,
+    "numbers": 9,
     "numbers_not_in_input": []
    }
   },
@@ -660,12 +664,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 565,
+    "cached": false,
+    "latency_ms": 7265,
+    "output_chars": 505,
     "sentences": 6,
     "sentences_failed": 0,
-    "numbers": 7,
+    "numbers": 5,
     "numbers_not_in_input": []
    }
   },
@@ -692,9 +696,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 536,
+    "cached": false,
+    "latency_ms": 7231,
+    "output_chars": 571,
     "sentences": 6,
     "sentences_failed": 0,
     "numbers": 8,
@@ -720,9 +724,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 753,
+    "cached": false,
+    "latency_ms": 8113,
+    "output_chars": 706,
     "sentences": 8,
     "sentences_failed": 0,
     "numbers": 12,
@@ -749,11 +753,11 @@
     "fallback_reason": null,
     "error": null,
     "cached": false,
-    "latency_ms": 23431,
-    "output_chars": 788,
+    "latency_ms": 22735,
+    "output_chars": 720,
     "sentences": 10,
     "sentences_failed": 0,
-    "numbers": 15,
+    "numbers": 12,
     "numbers_not_in_input": []
    }
   },
@@ -776,12 +780,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 668,
+    "cached": false,
+    "latency_ms": 9323,
+    "output_chars": 737,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 10,
+    "numbers": 13,
     "numbers_not_in_input": []
    }
   },
@@ -808,12 +812,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 689,
+    "cached": false,
+    "latency_ms": 7135,
+    "output_chars": 658,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 10,
+    "numbers": 13,
     "numbers_not_in_input": []
    }
   },
@@ -840,12 +844,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 692,
+    "cached": false,
+    "latency_ms": 7409,
+    "output_chars": 697,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 11,
+    "numbers": 12,
     "numbers_not_in_input": []
    }
   },
@@ -872,12 +876,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 692,
+    "cached": false,
+    "latency_ms": 8119,
+    "output_chars": 751,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 11,
+    "numbers": 12,
     "numbers_not_in_input": []
    }
   },
@@ -909,9 +913,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 416,
+    "cached": false,
+    "latency_ms": 6076,
+    "output_chars": 467,
     "sentences": 5,
     "sentences_failed": 0,
     "numbers": 4,
@@ -947,11 +951,11 @@
     "fallback_reason": null,
     "error": null,
     "cached": false,
-    "latency_ms": 24495,
-    "output_chars": 663,
+    "latency_ms": 9965,
+    "output_chars": 665,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 11,
+    "numbers": 12,
     "numbers_not_in_input": []
    }
   },
@@ -976,10 +980,15 @@
     "predicted": "pacing_rhythm"
    },
    "llm": {
-    "fallback_reason": "LLM_TIMEOUT",
-    "error": "OpenAITimeoutError",
+    "fallback_reason": null,
+    "error": null,
     "cached": false,
-    "latency_ms": 24562
+    "latency_ms": 11662,
+    "output_chars": 644,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 10,
+    "numbers_not_in_input": []
    }
   },
   {
@@ -1005,12 +1014,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 507,
+    "cached": false,
+    "latency_ms": 6114,
+    "output_chars": 548,
     "sentences": 6,
     "sentences_failed": 0,
-    "numbers": 4,
+    "numbers": 5,
     "numbers_not_in_input": []
    }
   },
@@ -1037,9 +1046,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 547,
+    "cached": false,
+    "latency_ms": 8187,
+    "output_chars": 520,
     "sentences": 6,
     "sentences_failed": 0,
     "numbers": 6,
@@ -1069,12 +1078,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 504,
+    "cached": false,
+    "latency_ms": 7469,
+    "output_chars": 535,
     "sentences": 6,
     "sentences_failed": 0,
-    "numbers": 6,
+    "numbers": 5,
     "numbers_not_in_input": []
    }
   },
@@ -1103,7 +1112,7 @@
     "error": null,
     "cached": true,
     "latency_ms": null,
-    "output_chars": 534,
+    "output_chars": 543,
     "sentences": 6,
     "sentences_failed": 0,
     "numbers": 5,
@@ -1135,10 +1144,10 @@
     "error": null,
     "cached": true,
     "latency_ms": null,
-    "output_chars": 580,
+    "output_chars": 548,
     "sentences": 6,
     "sentences_failed": 0,
-    "numbers": 6,
+    "numbers": 5,
     "numbers_not_in_input": []
    }
   },
@@ -1167,7 +1176,7 @@
     "error": null,
     "cached": true,
     "latency_ms": null,
-    "output_chars": 565,
+    "output_chars": 583,
     "sentences": 6,
     "sentences_failed": 0,
     "numbers": 6,
@@ -1198,11 +1207,11 @@
     "fallback_reason": null,
     "error": null,
     "cached": false,
-    "latency_ms": 9937,
-    "output_chars": 637,
+    "latency_ms": 6920,
+    "output_chars": 676,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 9,
+    "numbers": 7,
     "numbers_not_in_input": []
    }
   },
@@ -1230,11 +1239,11 @@
     "fallback_reason": null,
     "error": null,
     "cached": false,
-    "latency_ms": 22581,
-    "output_chars": 643,
+    "latency_ms": 6715,
+    "output_chars": 557,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 7,
+    "numbers": 3,
     "numbers_not_in_input": []
    }
   },
@@ -1262,11 +1271,11 @@
     "fallback_reason": null,
     "error": null,
     "cached": false,
-    "latency_ms": 23625,
-    "output_chars": 643,
+    "latency_ms": 8056,
+    "output_chars": 634,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 6,
+    "numbers": 10,
     "numbers_not_in_input": []
    }
   },
@@ -1299,9 +1308,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 524,
+    "cached": false,
+    "latency_ms": 5458,
+    "output_chars": 534,
     "sentences": 6,
     "sentences_failed": 0,
     "numbers": 8,
@@ -1337,12 +1346,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 523,
+    "cached": false,
+    "latency_ms": 7480,
+    "output_chars": 569,
     "sentences": 6,
     "sentences_failed": 0,
-    "numbers": 7,
+    "numbers": 10,
     "numbers_not_in_input": []
    }
   },
@@ -1376,11 +1385,11 @@
     "fallback_reason": null,
     "error": null,
     "cached": false,
-    "latency_ms": 9188,
-    "output_chars": 517,
+    "latency_ms": 7627,
+    "output_chars": 512,
     "sentences": 6,
     "sentences_failed": 0,
-    "numbers": 9,
+    "numbers": 7,
     "numbers_not_in_input": []
    }
   },
@@ -1413,12 +1422,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 709,
+    "cached": false,
+    "latency_ms": 7946,
+    "output_chars": 677,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 13,
+    "numbers": 11,
     "numbers_not_in_input": []
    }
   },
@@ -1451,12 +1460,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 727,
+    "cached": false,
+    "latency_ms": 7403,
+    "output_chars": 708,
     "sentences": 8,
     "sentences_failed": 0,
-    "numbers": 13,
+    "numbers": 12,
     "numbers_not_in_input": []
    }
   },
@@ -1489,9 +1498,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 699,
+    "cached": false,
+    "latency_ms": 7676,
+    "output_chars": 736,
     "sentences": 8,
     "sentences_failed": 0,
     "numbers": 12,
@@ -1521,12 +1530,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 641,
+    "cached": false,
+    "latency_ms": 5230,
+    "output_chars": 591,
     "sentences": 7,
     "sentences_failed": 0,
-    "numbers": 10,
+    "numbers": 9,
     "numbers_not_in_input": []
    }
   },
@@ -1554,11 +1563,11 @@
     "fallback_reason": null,
     "error": null,
     "cached": false,
-    "latency_ms": 10979,
-    "output_chars": 823,
+    "latency_ms": 8571,
+    "output_chars": 856,
     "sentences": 10,
     "sentences_failed": 0,
-    "numbers": 16,
+    "numbers": 17,
     "numbers_not_in_input": []
    }
   },
@@ -1585,9 +1594,9 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 669,
+    "cached": false,
+    "latency_ms": 7688,
+    "output_chars": 654,
     "sentences": 8,
     "sentences_failed": 0,
     "numbers": 11,
@@ -1615,15 +1624,10 @@
     "predicted": "vocal_delivery"
    },
    "llm": {
-    "fallback_reason": null,
-    "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 765,
-    "sentences": 10,
-    "sentences_failed": 0,
-    "numbers": 16,
-    "numbers_not_in_input": []
+    "fallback_reason": "LLM_TIMEOUT",
+    "error": "OpenAITimeoutError",
+    "cached": false,
+    "latency_ms": 24567
    }
   },
   {
@@ -1650,7 +1654,7 @@
     "fallback_reason": "LLM_TIMEOUT",
     "error": "OpenAITimeoutError",
     "cached": false,
-    "latency_ms": 24522
+    "latency_ms": 24548
    }
   },
   {
@@ -1676,12 +1680,12 @@
    "llm": {
     "fallback_reason": null,
     "error": null,
-    "cached": true,
-    "latency_ms": null,
-    "output_chars": 838,
+    "cached": false,
+    "latency_ms": 21429,
+    "output_chars": 833,
     "sentences": 10,
     "sentences_failed": 0,
-    "numbers": 17,
+    "numbers": 16,
     "numbers_not_in_input": []
    }
   }
