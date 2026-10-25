@@ -328,6 +328,35 @@ def test_analyze_incomplete_verification_fails_that_slide(break_it):
     assert [e.slide_number for e in response.evaluations] == [4, 7]
 
 
+class _MemoryCache:
+    def __init__(self):
+        self.rows: dict[tuple, str] = {}
+
+    def get(self, kind, key, config_hash):
+        return self.rows.get((kind, key, config_hash))
+
+    def put(self, kind, key, config_hash, output_json):
+        self.rows[(kind, key, config_hash)] = output_json
+
+
+def test_incomplete_verification_is_not_cached_and_a_retry_recovers():
+    """잘못된 검증 출력은 캐시에 남지 않고, 캐시에 있던 것도 다시 부른다 — 다시 채점하면 회복된다."""
+    cache = _MemoryCache()
+    broken = evaluate_take(
+        _request(), llms=_llms(_MissingOn6(), _BrokenVerifier(_drop_unit)), model=MODEL, cache=cache
+    )
+    assert [f.slide_number for f in broken.failed] == [6]
+    good = KeepFirstVerifier()
+    again = evaluate_take(_request(), llms=_llms(_MissingOn6(), good), model=MODEL, cache=cache)
+    assert again.failed == [] and good.calls >= 1
+    # 예전에 캐시에 들어간 잘못된 출력도 쓰지 않고 다시 부른다
+    for key in [k for k in cache.rows if k[0] == "stt.verifier"]:
+        cache.rows[key] = '{"judgments": []}'
+    good = KeepFirstVerifier()
+    third = evaluate_take(_request(), llms=_llms(_MissingOn6(), good), model=MODEL, cache=cache)
+    assert third.failed == [] and good.calls >= 1
+
+
 def test_analyze_complete_verification_scores_the_slide():
     response = _analyze(llms=_llms(_MissingOn6(), KeepFirstVerifier()))
     assert response.failed == []
