@@ -55,7 +55,7 @@ from pitch_coach_ai.common.errors import (
     log_safe,
 )
 from pitch_coach_ai.common.request_log import current_request_id
-from pitch_coach_ai.settings import LLM_ROLES, Settings, settings
+from pitch_coach_ai.settings import LLM_ROLES, LlmRole, ModelBundle, Settings, settings
 
 logger = logging.getLogger("pitch_coach_ai.llm")
 
@@ -255,13 +255,30 @@ def structured_llm(
     - schema: 출력 pydantic 모델. LLM 이 이 모양(JSON 스키마)으로만 답하게 한다
     - model: 역할 이름 (`settings.LLM_ROLES` 의 키). 기능 코드는 묶음 이름을 모른다
     - deadline: `deadline_after(...)` 로 만든 요청 마감. None 이면 호출 시간 제한만 건다
-    - 실패: 역할의 묶음이 설정되지 않았으면 `LlmUnavailable`(503). 기본 결과를 내는 기능
-      (코칭 계획 · 리뷰)은 이것을 잡아 `llm=None` 으로 코어를 부른다
+    - 실패: 역할의 묶음이 설정되지 않았거나 LLM 객체를 만들다 예외가 나면 `LlmUnavailable`(503,
+      `ai-service.md` 6-2). 기본 결과를 내는 기능(코칭 계획 · 리뷰)은 이것을 잡아 `llm=None` 으로
+      코어를 부른다. 만들다 난 예외는 클래스 이름만 로그에 남긴다(메시지에 설정값이 섞일 수 있다)
     """
     role = LLM_ROLES[model]
     bundle = app_settings.bundle(role.bundle)
     if bundle is None:
         raise LlmUnavailable()
+    try:
+        return _build(schema, model, role, bundle, deadline, app_settings)
+    except Exception as exc:
+        logger.error("llm_build_failed role=%s cause=%s", log_safe(model), type(exc).__name__)
+        raise LlmUnavailable() from exc
+
+
+def _build(
+    schema: type[BaseModel],
+    model: str,
+    role: LlmRole,
+    bundle: ModelBundle,
+    deadline: float | None,
+    app_settings: Settings,
+) -> StructuredLlm:
+    """역할 · 묶음으로 LLM 객체를 만든다. 예외는 부르는 쪽(`structured_llm`)이 바꾼다."""
     client = ChatOpenAI(
         model=bundle.model,
         base_url=bundle.base_url,
