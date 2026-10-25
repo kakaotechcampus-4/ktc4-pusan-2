@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.pitch.adapter.standard_parser import parse_standard_text
 from pitch_coach_backend.module.pitch.dto import (
     StandardAIResponseDTO,
+    StandardsSaveRequestDTO,
     StandardTextDTO,
     StandardTextResponseDTO,
 )
@@ -21,6 +22,18 @@ def add_pitch_standard_service(
     db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO
 ) -> StandardTextResponseDTO:
     return _analyze_and_save(db, pitch_id, standard_text_dto.standard_text)
+
+
+def save_pitch_standards_service(
+    db: Session, pitch_id: uuid.UUID, standards_dto: StandardsSaveRequestDTO
+) -> StandardTextResponseDTO:
+    """사용자가 고친 표시 기준을 다시 분석해 새 버전으로 저장한다 (evaluation-criteria.md 12절).
+
+    `targets[].display` 가 저장된 문장과 같아야 해서 보낸 문장이 아니라 다시 분석한 결과의
+    문장을 저장한다. Take 가 고정한 버전을 바꾸지 않도록 늘 새 버전이다.
+    """
+    text = "\n".join(item.standard for item in standards_dto.standards)
+    return _analyze_and_save(db, pitch_id, text)
 
 
 def _analyze_and_save(db: Session, pitch_id: uuid.UUID, text: str) -> StandardTextResponseDTO:
