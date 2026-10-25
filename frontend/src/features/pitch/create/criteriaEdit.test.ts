@@ -18,6 +18,7 @@ beforeEach(() => {
   store().reset();
   store().setPitchId('pitch1');
   store().applyParsedCriteria(null, {
+    version: 1,
     sourceText: '추임새는 5번 이하, 청중을 자주 보기',
     standards: ['추임새 5번 이하', '청중 자주 보기'],
     exceptText: null,
@@ -53,19 +54,28 @@ describe('평가기준 — 정리 → (고치기 → 저장)', () => {
     expect(criteriaToSave(v1())).toEqual(['추임새 5번 이하', '청중 자주 보기']);
   });
 
-  it('저장하면 서버가 돌려준 목록으로 다시 그린다 — 다시 분석해 보낸 문장과 다를 수 있다', () => {
+  it('저장하면 서버가 돌려준 새 버전과 목록으로 다시 그린다', () => {
     store().editCriterion(1, v1().items[0]!.id, '추임새 3번 이하.');
-    store().markCriteriaSaved(1, ['추임새 3번 이하', '청중 자주 보기']);
+    store().markCriteriaSaved(1, {
+      version: 4,
+      standards: ['추임새 3번 이하', '청중 자주 보기'],
+      exceptText: '청중 반응',
+      sourceText: '추임새 3번 이하.\n청중 자주 보기',
+    });
 
-    expect(texts(1)).toEqual(['추임새 3번 이하', '청중 자주 보기']);
+    expect(texts(1)).toEqual(['추임새 5번 이하', '청중 자주 보기']);
+    expect(texts(4)).toEqual(['추임새 3번 이하', '청중 자주 보기']);
     expect(v1().edited).toBe(false);
     expect(selectCriteriaUnsaved(store())).toBe(false);
-    // 같은 버전으로 저장합니다 — 새 버전이 생기지 않습니다
-    expect(store().draft.criteria).toHaveLength(1);
+    expect(store().draft.criteria).toHaveLength(2);
+    expect(store().version).toBe(4);
+    expect(find(4).exceptText).toBe('청중 반응');
+    expect(latestSavedCriteria(store().draft)?.version).toBe(4);
   });
 
   it('지난 버전은 고치지 않는다 — 지난 Take 가 가리킨다', () => {
     store().applyParsedCriteria(null, {
+      version: 2,
       sourceText: '새로 적은 글',
       standards: ['새 기준'],
       exceptText: null,
@@ -81,6 +91,7 @@ describe('평가기준 — 정리 → (고치기 → 저장)', () => {
   it('다시 정리하면 서버처럼 새 버전이 생긴다 — 고친 목록은 그 버전에 남지 않는다', () => {
     store().editCriterion(1, v1().items[0]!.id, '고친 문장');
     store().applyParsedCriteria(1, {
+      version: 2,
       sourceText: '새로 적은 글',
       standards: ['새 기준'],
       exceptText: null,
@@ -90,11 +101,26 @@ describe('평가기준 — 정리 → (고치기 → 저장)', () => {
     expect(find(2).saved).toBe(true);
   });
 
+  it('빈 로컬 버전을 정리하면 서버가 준 버전 번호로 바꾼다', () => {
+    store().addCriteriaVersion();
+    store().applyParsedCriteria(2, {
+      version: 5,
+      sourceText: '새로 적은 글',
+      standards: ['새 기준'],
+      exceptText: null,
+    });
+
+    expect(store().draft.criteria.map((v) => v.version)).toEqual([1, 5]);
+    expect(store().version).toBe(5);
+    expect(latestSavedCriteria(store().draft)?.version).toBe(5);
+  });
+
   it('고친 채로 다시 정리하면 앞 버전은 서버 목록으로 돌아간다 — 저장할 길 없는 고친 내용이 새 버전을 막지 않게', () => {
     // 재현: V1 정리 → 한 줄 고침 → "수정해서 다시 정리" → V2
     store().editCriterion(1, v1().items[0]!.id, '고친 문장');
     store().editCriterion(1, v1().items[0]!.id, '한 번 더 고친 문장');
     store().applyParsedCriteria(1, {
+      version: 2,
       sourceText: '새로 적은 글',
       standards: ['새 기준'],
       exceptText: null,
@@ -129,7 +155,12 @@ describe('평가기준 — 정리 → (고치기 → 저장)', () => {
   it('저장하면 적어 둔 서버 목록을 지운다', () => {
     store().editCriterion(1, v1().items[0]!.id, '고친 문장');
     expect(v1().savedItems?.map((i) => i.text)).toEqual(['추임새 5번 이하', '청중 자주 보기']);
-    store().markCriteriaSaved(1, ['고친 문장', '청중 자주 보기']);
+    store().markCriteriaSaved(1, {
+      version: 2,
+      standards: ['고친 문장', '청중 자주 보기'],
+      exceptText: null,
+      sourceText: '고친 문장\n청중 자주 보기',
+    });
     expect(v1().savedItems).toBeUndefined();
   });
 

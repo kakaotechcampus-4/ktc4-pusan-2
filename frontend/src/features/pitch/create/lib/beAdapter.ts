@@ -65,6 +65,7 @@ export function fromUploadedPresentation(res: UploadPresentationResponse): Uploa
 /* ------------------------------------------------------------------ */
 
 export interface ParsedStandards {
+  version: number;
   standards: string[];
   /** 서버가 기준으로 넣지 못한 부분. 다 들어갔으면 null */
   exceptText: string | null;
@@ -73,6 +74,7 @@ export interface ParsedStandards {
 /** 나눈 결과 */
 export function fromStandardsPosted(res: StandardTextResponse): ParsedStandards {
   return {
+    version: res.version,
     standards: res.standards.map((s) => s.standard),
     exceptText: res.except_standard ?? null,
   };
