@@ -1,9 +1,10 @@
 /// <reference types="node" />
 /**
- * The engine folder moves to the frontend as is (src/engine -> frontend/src/workers/gaze/engine),
+ * The engine folder moves to the frontend as is (src/engine -> frontend/src/vendor/gaze/engine),
  * so it must stand alone: it imports only its own files and MediaPipe. Nothing from the camera
  * view, the worker, the demo page or the frontend (@/..., @fe/...). The frontend imports
- * `index.ts` and `contract.ts`; everything else stays behind that boundary.
+ * `index.ts` and `contract.ts`; everything else stays behind that boundary.  `contract.ts` is
+ * the light entry point: nothing it loads at run time may reach MediaPipe.
  *
  * DOM use is caught by the compiler instead (tsconfig.engine.json: worker globals only).
  *
@@ -49,6 +50,26 @@ describe('engine boundary', () => {
       expect(bad).toEqual([]);
     },
   );
+
+  it('contract.ts (the light entry point) loads no MediaPipe at run time', () => {
+    // Follow value imports and re-exports only: `import type` / `export type` are erased.
+    const RUNTIME_SPECIFIER = /\b(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+['"]([^'"]+)['"]/g;
+    const seen = new Set<string>();
+    const reached: string[] = [];
+    const visit = (file: string): void => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      for (const m of code(readFileSync(file, 'utf8')).matchAll(RUNTIME_SPECIFIER)) {
+        const spec = m[1]!;
+        if (spec.startsWith('./')) visit(join(ENGINE, `${spec.slice(2)}.ts`));
+        else reached.push(`${relative(ENGINE, file)} -> ${spec}`);
+      }
+    };
+    visit(join(ENGINE, 'contract.ts'));
+    expect(seen.size).toBeGreaterThan(3); // config, evidence, reference, ... are reached
+    expect(reached).toEqual([]);
+    expect([...seen].map((f) => relative(ENGINE, f))).not.toContain('landmarker.ts');
+  });
 
   it.each(FILES.map((f) => [relative(ENGINE, f), f]))(
     '%s stores, sends and logs nothing',
