@@ -471,13 +471,17 @@ export const useCreateStore = create<CreateState>((set) => ({
       const from = s.draft.criteria.find((v) => v.version === version);
       if (!from) return s;
       const next = nextVersion(s.draft.criteria);
+      // 서버는 원문을 저장하지 않아 불러온 버전에는 원문이 없습니다. 그때는 목록을 한 줄씩 이어
+      // 원문으로 물려줍니다 — 처음부터 다시 쓰지 않게. 불러올 때(loadCriteria) 채우지 않는 것은
+      // 사용자가 적은 원문처럼 보이지 않게 하려는 것입니다
+      const sourceText = from.sourceText ?? from.items.map((i) => i.text).join('\n');
       return {
         draft: {
           ...s.draft,
           criteria: [
             ...s.draft.criteria,
             // 원문만 물려받습니다. 목록은 다시 정리해야 서버에 새 버전으로 생깁니다 (#463)
-            { version: next, items: [], saved: false, sourceText: from.sourceText ?? '' },
+            { version: next, items: [], saved: false, sourceText },
           ],
         },
         node: 'criteria' as const,

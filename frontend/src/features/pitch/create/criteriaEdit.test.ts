@@ -145,6 +145,29 @@ describe('평가기준 — 정리 → (고치기 → 저장)', () => {
   });
 });
 
+describe('평가기준 — 서버에서 불러온 버전', () => {
+  it('원문이 없는 버전을 "수정하기" 하면 목록을 한 줄씩 이어 원문으로 물려준다', () => {
+    // 서버는 원문을 저장하지 않습니다 — loadCriteria 처럼 sourceText 없이 넣습니다
+    store().hydrate('edit:pitch1', 'pitch1', {
+      ...store().draft,
+      criteria: [
+        {
+          version: 1,
+          saved: true,
+          items: [
+            { id: 'a', text: '추임새 5번 이하' },
+            { id: 'b', text: '청중 자주 보기' },
+          ],
+        },
+      ],
+    });
+    store().reviseCriteria(1);
+
+    expect(find(2).sourceText).toBe('추임새 5번 이하\n청중 자주 보기');
+    expect(find(2).items).toEqual([]);
+  });
+});
+
 describe('평가기준 — 계약 상한', () => {
   it('표시 기준은 한 줄 50자 · 10개까지다 (evaluation-criteria.md 출력 표, standards.title String(50))', () => {
     expect(MAX_CRITERION_CHARS).toBe(50);
