@@ -16,11 +16,13 @@
       "scene": "idle",
       "requests": [],
       "rescore_while_loaded": {
-        "n": 17,
-        "p50_ms": 54.2,
-        "p95_ms": 96.0,
-        "max_ms": 96.0
-      }
+        "n": 30,
+        "p50_ms": 84.7,
+        "p95_ms": 116.4,
+        "max_ms": 119.5
+      },
+      "probe_errors": [],
+      "ok": true
     },
     {
       "scene": "be_limit",
@@ -28,38 +30,40 @@
         {
           "path": "/scripts/rubric",
           "status": 200,
-          "seconds": 46.0,
+          "seconds": 49.3,
           "failed": 0,
           "failed_codes": []
         },
         {
           "path": "/scripts/rubric",
           "status": 200,
-          "seconds": 45.8,
+          "seconds": 50.1,
           "failed": 0,
           "failed_codes": []
         },
         {
           "path": "/takes/analyze",
           "status": 200,
-          "seconds": 77.0,
+          "seconds": 81.3,
           "failed": 0,
           "failed_codes": []
         },
         {
           "path": "/takes/analyze",
           "status": 200,
-          "seconds": 76.7,
+          "seconds": 80.7,
           "failed": 0,
           "failed_codes": []
         }
       ],
       "rescore_while_loaded": {
-        "n": 248,
-        "p50_ms": 51.7,
-        "p95_ms": 80.6,
-        "max_ms": 749.2
-      }
+        "n": 237,
+        "p50_ms": 65.5,
+        "p95_ms": 129.9,
+        "max_ms": 1766.3
+      },
+      "probe_errors": [],
+      "ok": true
     },
     {
       "scene": "over_limit",
@@ -67,38 +71,40 @@
         {
           "path": "/scripts/rubric",
           "status": 200,
-          "seconds": 49.0,
+          "seconds": 49.1,
           "failed": 0,
           "failed_codes": []
         },
         {
           "path": "/scripts/rubric",
           "status": 200,
-          "seconds": 50.2,
+          "seconds": 50.0,
           "failed": 0,
           "failed_codes": []
         },
         {
           "path": "/scripts/rubric",
           "status": 200,
-          "seconds": 51.0,
+          "seconds": 52.3,
           "failed": 0,
           "failed_codes": []
         },
         {
           "path": "/scripts/rubric",
           "status": 200,
-          "seconds": 49.0,
+          "seconds": 48.6,
           "failed": 0,
           "failed_codes": []
         }
       ],
       "rescore_while_loaded": {
-        "n": 161,
-        "p50_ms": 58.1,
-        "p95_ms": 94.6,
-        "max_ms": 944.1
-      }
+        "n": 170,
+        "p50_ms": 48.6,
+        "p95_ms": 84.3,
+        "max_ms": 519.4
+      },
+      "probe_errors": [],
+      "ok": true
     }
   ]
 }

@@ -98,13 +98,19 @@ def serve(app) -> uvicorn.Server:
     raise RuntimeError("서버가 준비되지 않았다")
 
 
-def probe(stop: threading.Event, out: list[float]) -> None:
+def probe(stop: threading.Event, out: list[float], errors: list[str]) -> None:
+    """0.25초마다 `/takes/rescore`. 실패는 `errors` 에 담아 장면을 측정 실패로 남긴다."""
     with httpx.Client(timeout=30) as c:
         while not stop.is_set():
             t0 = time.perf_counter()
-            r = c.post(f"{BASE}/takes/rescore", json=RESCORE)
-            out.append((time.perf_counter() - t0) * 1000)
-            assert r.status_code == 200, r.text
+            try:
+                r = c.post(f"{BASE}/takes/rescore", json=RESCORE)
+            except httpx.HTTPError as exc:
+                errors.append(type(exc).__name__)
+            else:
+                out.append((time.perf_counter() - t0) * 1000)
+                if r.status_code != 200:
+                    errors.append(f"status {r.status_code}")
             time.sleep(0.25)
 
 
@@ -121,8 +127,8 @@ def summary(ms: list[float]) -> dict:
 
 
 def run_scene(name: str, jobs: list[tuple[str, dict]]) -> dict:
-    stop, lat = threading.Event(), []
-    t = threading.Thread(target=probe, args=(stop, lat), daemon=True)
+    stop, lat, errors = threading.Event(), [], []
+    t = threading.Thread(target=probe, args=(stop, lat, errors), daemon=True)
     t.start()
     results: list[dict] = [None] * len(jobs)
 
@@ -145,10 +151,16 @@ def run_scene(name: str, jobs: list[tuple[str, dict]]) -> dict:
     for th in threads:
         th.join()
     if not jobs:
-        time.sleep(5)  # 부하 없는 기준: 5초 동안 잰다
+        time.sleep(10)  # 부하 없는 기준: 10초 동안 잰다
     stop.set()
     t.join()
-    row = {"scene": name, "requests": results, "rescore_while_loaded": summary(lat)}
+    row = {
+        "scene": name,
+        "requests": results,
+        "rescore_while_loaded": summary(lat),
+        "probe_errors": errors,
+        "ok": not errors and all(r["status"] == 200 for r in results),
+    }
     print(json.dumps(row, ensure_ascii=False))
     return row
 
