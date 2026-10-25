@@ -49,13 +49,6 @@ class InvalidTakeTime(AppException):
     message = "끝난 시각이 시작한 시각보다 앞섭니다."
 
 
-class TakeNotReviewable(ConflictException):
-    # 리뷰는 Take 결과 · 대본 전달도 채점이 끝난 Take 만 부른다. SCORING 은 채점 진행 중이므로
-    # 허용하지 않는다. AWAITING_CONFIRMATION 에서 부르면 확인 건너뛰기로 본다
-    code = "TAKE_NOT_REVIEWABLE"
-    message = "아직 리뷰할 수 없는 연습입니다."
-
-
 class ConfirmationClosed(ConflictException):
     # 확인 답은 리뷰를 부르기 전까지만 받는다 (architecture.md 1-3). 이미 답했거나 건너뛰었거나
     # 10분이 지났거나 다른 답을 반영하는 중이다

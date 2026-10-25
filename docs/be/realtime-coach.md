@@ -6,11 +6,9 @@
 계약은 `docs/ai/features/coach-agent.md` · `docs/ai/architecture.md` 다.
 
 현재 구현 범위는 발표 중 코치와 종료 뒤 Take 결과 저장(`FINALIZING` → `SCORING`), 코칭 계획,
-원자료 보관이다. `SCORING` 뒤 `/takes/analyze` 자동 호출 · 장별 재시도와 병합 rescore · 사용자 확인 ·
-자동 리뷰 · 해당 단계의 재시작 복구는 후속 분석 파이프라인에서 연결한다. 지금은 finalize 가 성공해도
-`SCORING` 에서 기다리며, 채점 완료로 간주하거나 `COMPLETED` 로 넘기지 않는다.
-**배포 의존성**: 연습 종료부터 리포트 완료까지 자동으로 이어지는 배포에는 후속 분석 파이프라인도
-함께 필요하다. 기존 리뷰 API 로 `SCORING` 을 건너뛰지 못한다(409 `TAKE_NOT_REVIEWABLE`).
+원자료 보관이다. `SCORING` 뒤 대본 전달도 채점 · 사용자 확인 대기 · 리뷰 · 다음 코칭 계획은
+finalize 가 띄우는 백그라운드 분석(`module/take/service/analysis_runner.py`)이 잇는다. 리뷰를 따로
+부르는 API 는 없다.
 
 ```
 발표 중   FE metrics ─▶ CoachSession ─ /coach/evaluate ─▶ AI ─▶ coach_state · events(coach_events) · WS coach

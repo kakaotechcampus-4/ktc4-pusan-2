@@ -11,8 +11,8 @@ from sqlalchemy import delete, update
 
 from pitch_coach_backend.module.take.dto import ReviewResponseDTO
 from pitch_coach_backend.module.take.entity import Mission, Take, TakeAIResults, TakeSummary
-from pitch_coach_backend.module.take.exception import TakeNotReviewable
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service import review as review_service
 from tests.test_take_ai_validation import claim, coverage
@@ -44,6 +44,22 @@ def in_current_session(monkeypatch, db):
     monkeypatch.setattr(coverage_service, "_in_session", run)
 
 
+def run_review(monkeypatch, db, take_id):
+    """앱 경로(analysis_runner._review)로 리뷰를 한 번 돌린다. 실제로는 호출마다 세션을 새로 열고
+    닫으므로 예외로 끝난 호출의 변경은 버린다."""
+
+    async def run(factory, fn, *args):
+        try:
+            return fn(db, *args)
+        except Exception:
+            db.rollback()
+            raise
+
+    monkeypatch.setattr(analysis_runner, "_in_session", run)
+    monkeypatch.setattr(analysis_runner, "_slots_by_loop", {})
+    return asyncio.run(analysis_runner._review(take_id, None, False))
+
+
 def test_scored_take_starts_review_immediately(db_session, user_id, monkeypatch):
     take = make_ready(db_session, user_id, "SCORING")
     requested_at = claim(db_session, take.id)
@@ -52,8 +68,10 @@ def test_scored_take_starts_review_immediately(db_session, user_id, monkeypatch)
     assert coverage_service._conclude_coverage(db_session, take.id, requested_at) == (
         "READY_FOR_REVIEW"
     )
-    monkeypatch.setattr(review_service, "request_review", lambda *args: review(take))
-    assert review_service.get_review_result(db_session, take.id).score == 90
+    monkeypatch.setattr(
+        review_service, "request_review_async", AsyncMock(return_value=review(take))
+    )
+    assert run_review(monkeypatch, db_session, take.id) == take.pitch_id
     db_session.refresh(take)
     assert (take.status, take.review_status, take.analysis_stage) == ("COMPLETED", "DONE", "DONE")
     assert take.review_request_id is None
@@ -75,7 +93,7 @@ def test_replaced_worker_cannot_change_new_review(db_session, user_id, monkeypat
     take = make_ready(db_session, user_id)
     calls = []
 
-    def respond(*args):
+    async def respond(*args):
         calls.append(args)
         if len(calls) == 1:
             db_session.execute(
@@ -84,15 +102,14 @@ def test_replaced_worker_cannot_change_new_review(db_session, user_id, monkeypat
                 .values(analysis_stage_at=datetime.now(UTC) - timedelta(minutes=3))
             )
             db_session.commit()
-            review_service.get_review_result(db_session, take.id)
+            assert await analysis_runner._review(take.id, None, False) == take.pitch_id
             if old_fails:
                 raise RuntimeError("오래된 작업 실패")
             return review(take, summary="옛 리뷰", score=10)
         return review(take)
 
-    monkeypatch.setattr(review_service, "request_review", respond)
-    with pytest.raises(TakeNotReviewable):
-        review_service.get_review_result(db_session, take.id)
+    monkeypatch.setattr(review_service, "request_review_async", respond)
+    assert run_review(monkeypatch, db_session, take.id) is None
     db_session.expire_all()
     current = db_session.get(Take, take.id)
     assert current.review_status == "DONE"
@@ -108,14 +125,13 @@ def test_deleted_take_does_not_receive_review_or_failure(db_session, user_id, mo
     reply = review(take)
     take_id = take.id
 
-    def respond(*args):
+    async def respond(*args):
         db_session.execute(delete(Take).where(Take.id == take_id))
         db_session.commit()
         return reply
 
-    monkeypatch.setattr(review_service, "request_review", respond)
-    with pytest.raises(TakeNotReviewable):
-        review_service.get_review_result(db_session, take_id)
+    monkeypatch.setattr(review_service, "request_review_async", respond)
+    assert run_review(monkeypatch, db_session, take_id) is None
     assert TakeRepository(db_session).get_ai_result(take_id, "REVIEW") is None
     assert db_session.query(TakeSummary).filter_by(take_id=take_id).count() == 0
 
@@ -127,15 +143,16 @@ def test_storage_failure_rolls_back_review_and_missions(db_session, user_id, mon
     body = copy.deepcopy(REVIEW)
     body["take_id"] = str(take.id)
     monkeypatch.setattr(
-        review_service, "request_review", lambda *args: ReviewResponseDTO.model_validate(body)
+        review_service,
+        "request_review_async",
+        AsyncMock(return_value=ReviewResponseDTO.model_validate(body)),
     )
 
     def fail(*args):
         raise RuntimeError("요약 저장 실패")
 
     monkeypatch.setattr(TakeRepository, "upsert_summary_review", fail)
-    with pytest.raises(RuntimeError, match="요약 저장 실패"):
-        review_service.get_review_result(db_session, take.id)
+    assert run_review(monkeypatch, db_session, take.id) == take.pitch_id
     db_session.refresh(take)
     assert take.review_status == "FAILED"
     assert TakeRepository(db_session).get_ai_result(take.id, "REVIEW") is None

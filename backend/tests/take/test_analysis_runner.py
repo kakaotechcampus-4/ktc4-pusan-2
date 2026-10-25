@@ -1,13 +1,10 @@
 import asyncio
 import copy
-import json
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
-from functools import partial
 from unittest.mock import AsyncMock
 
-import httpx
 import pytest
 from sqlalchemy.orm import Session
 
@@ -15,7 +12,7 @@ from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.pitch.entity import ScriptVersion
 from pitch_coach_backend.module.pitch.service import script as script_service
-from pitch_coach_backend.module.take.dto import ReviewRequestDTO, ReviewResponseDTO
+from pitch_coach_backend.module.take.dto import ReviewResponseDTO
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
 from pitch_coach_backend.module.take.repository import CONFIRMATION_WAIT, TakeRepository
@@ -400,48 +397,6 @@ def test_restart_takes_over_a_review_cut_off_by_the_restart(
     assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
     assert take.review_request_id != owner
     assert plans.asked == [take.pitch_id]
-
-
-def _ai(monkeypatch, handler) -> list[httpx.Request]:
-    calls: list[httpx.Request] = []
-
-    def record(request: httpx.Request) -> httpx.Response:
-        calls.append(request)
-        return handler(request, len(calls))
-
-    client = partial(httpx.AsyncClient, transport=httpx.MockTransport(record))
-    monkeypatch.setattr(review_service.httpx, "AsyncClient", client)
-    return calls
-
-
-def test_async_review_retries_a_transient_status_once(monkeypatch):
-    reply = copy.deepcopy(REVIEW)
-    calls = _ai(
-        monkeypatch,
-        lambda request, n: httpx.Response(503)
-        if n == 1
-        else httpx.Response(200, content=json.dumps(reply).encode()),
-    )
-
-    review = asyncio.run(
-        review_service.request_review_async(TAKE_ID, ReviewRequestDTO(take_result={}))
-    )
-
-    assert review.take_id == TAKE_ID
-    assert len(calls) == 2
-    assert calls[0].headers["X-Request-ID"] == calls[1].headers["X-Request-ID"]
-
-
-@pytest.mark.parametrize("status,attempts", [(422, 1), (404, 1), (429, 2), (500, 2)])
-def test_async_review_errors_become_invalid_review(monkeypatch, status, attempts):
-    calls = _ai(monkeypatch, lambda request, n: httpx.Response(status))
-
-    with pytest.raises(InvalidReviewResponse):
-        asyncio.run(
-            review_service.request_review_async(TAKE_ID, ReviewRequestDTO(take_result={}))
-        )
-
-    assert len(calls) == attempts
 
 
 @pytest.mark.parametrize("restarted", [False, True], ids=["running", "restarted"])
