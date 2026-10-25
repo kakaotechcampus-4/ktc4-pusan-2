@@ -167,6 +167,8 @@ export function InfoPane() {
   };
 
   const draftId = useCreateStore((s) => s.draftId);
+  const autoTitle = useCreateStore((s) => s.autoTitle);
+  const fileName = useCreateStore((s) => s.draft.slides[0]?.fileName ?? null);
   // 저장을 시작한 작성(draftId)을 함께 넘깁니다. 응답이 오기 전에 새 피치를 시작했으면
   // 앞 피치의 id 를 새 작성에 넣지 않습니다 — 넣으면 새 피치의 저장이 앞 피치 수정(PATCH)이 됩니다
   const save = useMutation({
@@ -187,7 +189,10 @@ export function InfoPane() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <PaneHeading title="발표정보 확인" subtitle="발표의 기본 정보를 설정해 주세요." />
+      <PaneHeading
+        title="발표정보 확인"
+        subtitle="채워 둔 값을 확인하고 발표 날짜를 골라 주세요."
+      />
 
       <div className="mb-5 flex flex-col gap-4 rounded-lg border border-line bg-white px-7 py-5">
         <div className="flex flex-col gap-2">
@@ -208,6 +213,9 @@ export function InfoPane() {
             onChange={(e) => patch({ title: e.target.value })}
             className="h-12 rounded-md border border-line-strong bg-white px-4 text-base outline-none placeholder:text-stone focus:border-ink"
           />
+          {autoTitle !== null && form.title === autoTitle && fileName && (
+            <p className="text-xs text-stone">{fileName} 에서 가져왔어요</p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-0">

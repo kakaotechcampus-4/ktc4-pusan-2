@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPitch } from '@/shared/api/pitch';
 import { uploadPresentation } from '@/shared/api/presentation';
 import { createScript } from '@/shared/api/script';
 import { openPdf } from '@/shared/lib/pdf';
@@ -6,6 +7,7 @@ import { isCurrentDraft, useCreateStore } from './createStore';
 import { startScriptMapping } from './scriptParse';
 import { uploadSlides } from './slideUpload';
 
+vi.mock('@/shared/api/pitch', () => ({ createPitch: vi.fn() }));
 vi.mock('@/shared/api/presentation', () => ({ uploadPresentation: vi.fn() }));
 vi.mock('@/shared/lib/pdf', () => ({ openPdf: vi.fn() }));
 vi.mock('@/shared/api/script', () => ({
@@ -31,6 +33,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.mocked(createPitch).mockReset();
   vi.mocked(uploadPresentation).mockReset();
   vi.mocked(openPdf).mockReset();
   vi.mocked(createScript).mockReset();
@@ -58,6 +61,63 @@ describe('새 피치 시작과 작성 중 복귀', () => {
 
     expect(store().pitchId).toBe('pitch-A');
     expect(store().draftId).toBe(before);
+  });
+});
+
+describe('슬라이드부터 올리는 새 피치', () => {
+  const uploaded = {
+    message: 'ok',
+    presentation: {
+      pitch_id: 'pitch-new',
+      presentation_version_id: 'pv-1',
+      file_url: '/a.pdf',
+      page_count: 3,
+    },
+  };
+
+  it('피치가 없으면 파일 이름을 제목으로 피치부터 만들고 그 아래에 올린다', async () => {
+    vi.mocked(createPitch).mockResolvedValue({ message: 'ok', pitch_id: 'pitch-new' });
+    vi.mocked(uploadPresentation).mockResolvedValue(uploaded);
+
+    await uploadSlides(new File(['%PDF'], '캡스톤_중간발표-최종.pdf', { type: 'application/pdf' }));
+
+    expect(createPitch).toHaveBeenCalledWith({
+      title: '캡스톤 중간발표 최종',
+      time_limit_sec: 300,
+      lower_deviation: 30,
+      upper_deviation: 60,
+      presentation_date: null,
+    });
+    expect(vi.mocked(uploadPresentation).mock.calls[0]?.[0]).toBe('pitch-new');
+    expect(store().pitchId).toBe('pitch-new');
+    expect(store().draft.title).toBe('캡스톤 중간발표 최종');
+    expect(store().autoTitle).toBe('캡스톤 중간발표 최종');
+    expect(store().draft.slides).toHaveLength(1);
+  });
+
+  it('피치를 만들지 못하면 올리지 않고 같은 파일로 다시 시도하게 한다', async () => {
+    vi.mocked(createPitch).mockRejectedValue(new Error('network'));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const file = new File(['%PDF'], 'a.pdf');
+
+    await uploadSlides(file);
+
+    expect(uploadPresentation).not.toHaveBeenCalled();
+    expect(store().pitchId).toBeNull();
+    expect(store().slideUpload).toEqual({ status: 'failed', file, reason: 'upload' });
+  });
+
+  it('피치를 만드는 사이 새 피치를 시작했으면 만든 피치를 새 작성에 넣지 않는다', async () => {
+    const created = deferred<Awaited<ReturnType<typeof createPitch>>>();
+    vi.mocked(createPitch).mockReturnValue(created.promise);
+
+    const running = uploadSlides(new File(['%PDF'], 'a.pdf'));
+    store().beginEntry('entry-B');
+    created.resolve({ message: 'ok', pitch_id: 'pitch-old' });
+    await running;
+
+    expect(store().pitchId).toBeNull();
+    expect(uploadPresentation).not.toHaveBeenCalled();
   });
 });
 

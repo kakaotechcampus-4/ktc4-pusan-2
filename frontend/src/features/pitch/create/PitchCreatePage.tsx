@@ -18,6 +18,7 @@ import {
   latestCriteria,
   latestScript,
   latestSlides,
+  latestUploadedSlides,
   toPracticeCombo,
   type PaneNode,
   type ScriptVersion,
@@ -38,9 +39,11 @@ import { SlidePane } from './steps/SlidePane';
  */
 
 /** 사이드바 아래 치치의 말풍선. 지금 화면에서 할 일을 한마디로 */
-function mascotLine(node: PaneNode, script: ScriptVersion | null): string {
-  if (node === 'criteria') return '기준을 정하면\n피드백이 선명해져!';
-  if (node === 'slides') return '발표할 자료를\n확인해 봐!';
+function mascotLine(node: PaneNode, script: ScriptVersion | null, uploaded: boolean): string {
+  if (node === 'criteria') return '기준은 골라도 되고\n건너뛰어도 돼!';
+  if (node === 'slides')
+    return uploaded ? '발표할 자료를\n확인해 봐!' : '발표 자료부터\n올려 볼까?';
+  if (node === 'info') return '날짜만 고르면\n거의 끝!';
   if (node === 'script' && script?.parse.status === 'pending')
     return '수정한 대본을\n연결하고 있어!';
   if (node === 'script' && script?.blocks && !script.remote)
@@ -259,7 +262,7 @@ function PitchCreateScreen() {
         <aside className="flex w-sidebar shrink-0 flex-col gap-4 overflow-y-auto border-r border-line-strong bg-cream/60 p-4">
           <VersionRail />
 
-          <Mascot message={mascotLine(node, pickedScript)} />
+          <Mascot message={mascotLine(node, pickedScript, latestUploadedSlides(draft) !== null)} />
         </aside>
 
         {/* ── 우측: 경로 · 발표 정보 줄 · 본문 ────────────────────── */}

@@ -102,6 +102,10 @@ export function VersionRail() {
   const chosen = useCreateStore((s) => s.chosen);
   const select = useCreateStore((s) => s.select);
   const infoUnsaved = useCreateStore(selectInfoUnsaved);
+  // 새 작성은 파일 업로드까지 끝나야 다음 단계로 갑니다. 수정 화면은 기존 피치 단계를 그대로 엽니다.
+  const canLeaveSlides = useCreateStore(
+    (s) => s.pitchId !== null && (s.autoTitle === null || latestUploadedSlides(s.draft) !== null),
+  );
   const addSlideVersion = useCreateStore((s) => s.addSlideVersion);
   const addScriptVersion = useCreateStore((s) => s.addScriptVersion);
   const addCriteriaVersion = useCreateStore((s) => s.addCriteriaVersion);
@@ -160,8 +164,9 @@ export function VersionRail() {
               <button
                 type="button"
                 onClick={() => select(s.node)}
+                disabled={!canLeaveSlides && s.node !== 'slides'}
                 aria-current={active ? 'step' : undefined}
-                className={`flex w-full items-center justify-between gap-2 border-l-2 px-3 py-2 text-left text-sm ${rowTone(active)}`}
+                className={`flex w-full items-center justify-between gap-2 border-l-2 px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:text-stone ${rowTone(active)}`}
               >
                 <span>{s.label}</span>
                 {/* 고치다 다른 화면으로 왔을 때 — 저장하지 않은 값이 남아 있다는 것을 여기서 압니다 */}

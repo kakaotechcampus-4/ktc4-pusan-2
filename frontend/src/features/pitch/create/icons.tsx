@@ -106,19 +106,6 @@ export function LinkIcon() {
   );
 }
 
-/** "파일 교체" */
-export function PaperclipIcon() {
-  return (
-    <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4">
-      <path
-        className="fill-none stroke-ink"
-        strokeWidth="1.5"
-        d="M10.5 4.5l-5 5a1.5 1.5 0 0 0 2 2l5.5-5.5a3 3 0 0 0-4-4l-5.5 5.5a4.5 4.5 0 0 0 6.5 6.5l4.5-4.5"
-      />
-    </svg>
-  );
-}
-
 /** "평가기준 정리" · "수정해서 다시 정리" */
 export function RefreshIcon() {
   return (
@@ -144,32 +131,6 @@ export function CheckIcon({ className = 'h-3.5 w-3.5 stroke-current' }: { classN
   return (
     <svg {...svgProps} viewBox="0 0 16 16" className={className}>
       <path className="fill-none" strokeWidth="2" d="M3 8.5l3.25 3.25l6.75-7" />
-    </svg>
-  );
-}
-
-/** 뷰어 도구줄 — 폭에 맞추기 */
-export function FitWidthIcon() {
-  return (
-    <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4">
-      <path
-        className="fill-none stroke-ink"
-        strokeWidth="1.5"
-        d="M2.75 2.75v10.5M13.25 2.75v10.5M5 8h6M6.5 6l-2 2l2 2M9.5 6l2 2l-2 2"
-      />
-    </svg>
-  );
-}
-
-/** 뷰어 도구줄 — 전체 화면 */
-export function FullscreenIcon() {
-  return (
-    <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4">
-      <path
-        className="fill-none stroke-ink"
-        strokeWidth="1.5"
-        d="M2.75 6v-3.25h3.25M10 2.75h3.25v3.25M13.25 10v3.25h-3.25M6 13.25h-3.25v-3.25"
-      />
     </svg>
   );
 }
