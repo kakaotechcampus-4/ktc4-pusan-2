@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.module.pitch.adapter.standard_parser import parse_standard_text
 from pitch_coach_backend.module.pitch.dto import (
     StandardAIResponseDTO,
+    StandardsSaveRequestDTO,
     StandardTextDTO,
     StandardTextResponseDTO,
 )
@@ -19,10 +20,26 @@ from pitch_coach_backend.module.pitch.repository import PitchRepository
 
 def add_pitch_standard_service(
     db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO
-):
+) -> StandardTextResponseDTO:
+    return _analyze_and_save(db, pitch_id, standard_text_dto.standard_text)
+
+
+def save_pitch_standards_service(
+    db: Session, pitch_id: uuid.UUID, standards_dto: StandardsSaveRequestDTO
+) -> StandardTextResponseDTO:
+    """사용자가 고친 표시 기준을 다시 분석해 새 버전으로 저장한다 (evaluation-criteria.md 12절).
+
+    `targets[].display` 가 저장된 문장과 같아야 해서 보낸 문장이 아니라 다시 분석한 결과의
+    문장을 저장한다. Take 가 고정한 버전을 바꾸지 않도록 늘 새 버전이다.
+    """
+    text = "\n".join(item.standard for item in standards_dto.standards)
+    return _analyze_and_save(db, pitch_id, text)
+
+
+def _analyze_and_save(db: Session, pitch_id: uuid.UUID, text: str) -> StandardTextResponseDTO:
     # 인가 조회가 빌린 커넥션부터 반환한다. AI 응답을 기다릴 때 DB 트랜잭션을 두지 않는다.
     db.commit()
-    standards_result = divide_standard_text(standard_text_dto)
+    standards_result = divide_standard_text(text)
 
     pitch_repository = PitchRepository(db)
     if not pitch_repository.lock_for_new_version(pitch_id):
@@ -49,6 +66,7 @@ def add_pitch_standard_service(
 
     return StandardTextResponseDTO(
         pitch_id=pitch_id,
+        version=version,
         standards=[
             {"standard": standard} for standard in standards_result.display_criteria
         ],
@@ -56,9 +74,9 @@ def add_pitch_standard_service(
     )
 
 
-def divide_standard_text(standard_text_dto: StandardTextDTO) -> StandardAIResponseDTO:
+def divide_standard_text(text: str) -> StandardAIResponseDTO:
     """동기 HTTP 작업 스레드에서 전체 시간 제한이 있는 AI 어댑터를 부른다."""
-    return asyncio.run(parse_standard_text(standard_text_dto.standard_text))
+    return asyncio.run(parse_standard_text(text))
 
 
 def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: int):

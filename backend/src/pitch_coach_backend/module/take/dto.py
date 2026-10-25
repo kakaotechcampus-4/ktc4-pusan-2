@@ -85,6 +85,38 @@ class TakeReportDTO(BaseModel):
     measures: TakeMeasuresDTO | None
     review: dict[str, Any] | None
 
+# 대본 전달도 확인 (FE types/confirmation.ts). 항목 · 답의 필드는 AI 계약
+# (`script-coverage-evaluation.md` 5-3 `confirmations[]` · 5-6 `similar_items[]`) 이름 그대로다
+class ConfirmationItemDTO(BaseModel):
+    slide_number: int
+    item_id: str
+    kind: str | None
+    script_text: str
+    stt_text: str
+    # 앞뒤 문맥. 숫자만 보여 주면 답하기 어렵다. 채점 · 평가 기준에서 찾지 못하면 null
+    script_sentence: str | None
+    stt_sentence: str | None
+
+class ConfirmationsDTO(BaseModel):
+    take_id: uuid.UUID
+    analysis_stage: str | None
+    # 사용자 컴퓨터 시계가 틀려도 어긋나지 않게 기한 시각이 아니라 남은 ms 로 준다.
+    # 확인 대기가 아니면 null
+    remaining_ms: int | None
+    items: list[ConfirmationItemDTO]
+
+class ConfirmationAnswerDTO(BaseModel):
+    slide_number: int
+    item_id: NulFreeStr
+    answer: Literal["as_script", "as_stt"]
+
+class ConfirmationsRequestDTO(BaseModel):
+    # 빈 배열이면 건너뛰기다. 고르지 않은 항목은 판단 보류로 남는다 (계약 6-3)
+    answers: list[ConfirmationAnswerDTO] = Field(max_length=500)
+
+class ConfirmationsSentDTO(BaseModel):
+    analysis_stage: str
+
 class TakeSummaryDTO(BaseModel):
     take_id: uuid.UUID
     status: Literal["READY", "RUNNING", "ANALYZING", "COMPLETED", "FAILED"]

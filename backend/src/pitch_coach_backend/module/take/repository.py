@@ -351,6 +351,129 @@ class TakeRepository:
             .with_for_update()
         )
 
+    def claim_coverage(self, take_id: uuid.UUID, *, takeover: bool = False) -> datetime | None:
+        """채점 작업 표식(`coverage_requested_at`)을 잡는다. 잡았으면 그 표식을 돌려준다.
+
+        Take 하나에는 채점 작업이 하나만 돈다 (`docs/ai/architecture.md` 1-7 Take별 직렬화).
+        표식이 비었거나 `COVERAGE_STALE_AFTER` 넘게 묵었으면(그 작업이 끊김) 잡는다. `takeover` 는
+        BE 가 다시 떴을 때 앞 프로세스의 작업을 기한과 관계없이 이어받는다. 이어받히면 앞 작업의
+        저장 · 단계 전환은 표식이 달라 반영되지 않는다.
+        """
+        free = or_(
+            Take.coverage_requested_at.is_(None),
+            Take.coverage_requested_at < func.now() - COVERAGE_STALE_AFTER,
+        )
+        return self.db.scalar(
+            update(Take)
+            .where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                Take.analysis_stage == "SCORING",
+                Take.analysis_hold_reason.is_(None),
+                *(() if takeover else (free,)),
+            )
+            # now() 는 트랜잭션 시작 시각이라 한 트랜잭션에서 두 번 잡으면 표식이 같아진다
+            .values(coverage_requested_at=func.clock_timestamp())
+            .returning(Take.coverage_requested_at)
+        )
+
+    def lock_coverage(self, take_id: uuid.UUID, requested_at: datetime) -> Take | None:
+        """표식이 `requested_at` 인 채점 작업이 아직 맡고 있는 `SCORING` Take 만 잠근다.
+
+        다른 작업이 이어받았거나 단계가 넘어갔거나 지워졌으면 None 이다.
+        보류 여부는 부르는 쪽이 본다.
+        """
+        return self.db.scalar(
+            select(Take)
+            .where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                Take.analysis_stage == "SCORING",
+                Take.coverage_requested_at == requested_at,
+            )
+            .options(defer(Take.event_logs))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
+    def clock(self) -> datetime:
+        """DB 시계의 지금 시각. 단계를 바꾼 시각(`analysis_stage_at`)과 같은 시계로 잰다."""
+        return self.db.scalar(select(func.clock_timestamp()))
+
+    def claim_confirmation(self, take_id: uuid.UUID) -> datetime | None:
+        """확인 답을 반영할 표식(`coverage_requested_at`)을 잡는다. 잡았으면 그 표식을 돌려준다.
+
+        채점이 끝나 `AWAITING_CONFIRMATION` 이 된 Take 에서 표식은 확인 답 반영 하나만 쓴다.
+        확인을 기다린 지 `CONFIRMATION_WAIT` 가 지났거나 다른 답을 반영하는 중이면 잡지 못한다.
+        잡은 동안에는 리뷰로 넘어가지 않는다 (`start_review`, `awaiting_confirmation`).
+        """
+        return self.db.scalar(
+            update(Take)
+            .where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                Take.analysis_stage == "AWAITING_CONFIRMATION",
+                Take.analysis_hold_reason.is_(None),
+                Take.analysis_stage_at > func.clock_timestamp() - CONFIRMATION_WAIT,
+                confirmation_free(),
+            )
+            .values(coverage_requested_at=func.clock_timestamp())
+            .returning(Take.coverage_requested_at)
+        )
+
+    def lock_confirmation(self, take_id: uuid.UUID, requested_at: datetime) -> Take | None:
+        """표식이 `requested_at` 인 확인 답 반영이 아직 맡고 있는 Take 만 잠근다."""
+        return self.db.scalar(
+            select(Take)
+            .where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                Take.analysis_stage == "AWAITING_CONFIRMATION",
+                Take.analysis_hold_reason.is_(None),
+                Take.coverage_requested_at == requested_at,
+            )
+            .options(defer(Take.event_logs))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
+    def release_confirmation(self, take_id: uuid.UUID, requested_at: datetime) -> None:
+        self.db.execute(
+            update(Take)
+            .where(Take.id == take_id, Take.coverage_requested_at == requested_at)
+            .values(coverage_requested_at=None)
+        )
+
+    def skip_confirmation(self, take_id: uuid.UUID) -> bool:
+        """확인을 건너뛰고 `REVIEWING` 으로 넘긴다. 답을 반영하는 중이면 넘기지 않는다."""
+        result = self.db.execute(
+            update(Take)
+            .where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                Take.analysis_stage == "AWAITING_CONFIRMATION",
+                Take.analysis_hold_reason.is_(None),
+                confirmation_free(),
+            )
+            .values(analysis_stage="REVIEWING", analysis_stage_at=func.now())
+        )
+        return result.rowcount > 0
+
+    def awaiting_confirmation(self, take_id: uuid.UUID) -> bool:
+        """아직 확인 답을 기다리는가. 10분 안이거나, 지났어도 받은 답을 반영하는 중이면 기다린다."""
+        return self.db.scalar(
+            select(Take.id).where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                Take.analysis_stage == "AWAITING_CONFIRMATION",
+                Take.analysis_hold_reason.is_(None),
+                or_(
+                    Take.analysis_stage_at > func.clock_timestamp() - CONFIRMATION_WAIT,
+                    ~confirmation_free(),
+                ),
+            )
+        ) is not None
+
     def get_ai_result(self, take_id: uuid.UUID, kind: str) -> TakeAIResults | None:
         return self.db.scalar(
             select(TakeAIResults).where(
@@ -600,8 +723,14 @@ class TakeRepository:
         그 Take 결과가 버려지거나 리뷰를 두 번 부른다 (`docs/ai/architecture.md` 1-3 분석 단계 표).
         다만 `REVIEW_STALE_AFTER` 넘게 리뷰 중인 Take 는 그 리뷰가 끊긴 것이라 다시 받는다 — 안
         받으면 그 Take 는 끝내 리뷰를 못 받는다. 분석 단계가 없는 Take 는 그 칸이 생기기 전에 끝난
-        것이라 예전처럼 받는다.
+        것이라 예전처럼 받는다. 확인 답을 반영하는 중인 Take 는 반영이 끝날 때까지 받지 않는다 —
+        리뷰가 답을 반영하기 전 채점을 읽게 된다 (같은 문서 1-7).
         """
+        awaiting = (
+            Take.analysis_stage == "AWAITING_CONFIRMATION"
+            if takeover
+            else and_(Take.analysis_stage == "AWAITING_CONFIRMATION", confirmation_free())
+        )
         abandoned_review = (
             Take.analysis_stage == "REVIEWING"
             if takeover
@@ -626,7 +755,7 @@ class TakeRepository:
                     and_(
                         Take.analysis_stage == "REVIEWING", Take.review_request_id.is_(None)
                     ),
-                    Take.analysis_stage == "AWAITING_CONFIRMATION",
+                    awaiting,
                     Take.analysis_stage.is_(None),
                     abandoned_review,
                 ),
@@ -687,6 +816,25 @@ class TakeRepository:
 
 
 REVIEW_STALE_AFTER = timedelta(minutes=2)
+
+# 채점 작업이 끊긴 것으로 보는 시간. 최초 analyze 와 재시도(130초씩) · 부분 재시도 · 병합 rescore 와
+# 그 재시도를 다 해도 이보다 짧다
+COVERAGE_STALE_AFTER = timedelta(minutes=10)
+
+# 확인 답을 기다리는 시간 (`docs/ai/architecture.md` 1-3). 이 단계의 `analysis_stage_at` 부터 잰다
+CONFIRMATION_WAIT = timedelta(minutes=10)
+
+# 확인 답 반영이 끊긴 것으로 보는 시간. rescore 와 그 재시도(10초씩)를 다 해도 이보다 짧다
+CONFIRMATION_STALE_AFTER = timedelta(minutes=1)
+
+
+def confirmation_free() -> ColumnElement[bool]:
+    """확인 답을 반영하는 요청이 없다 (표식이 비었거나 끊긴 요청의 것이다)."""
+    return or_(
+        Take.coverage_requested_at.is_(None),
+        Take.coverage_requested_at < func.clock_timestamp() - CONFIRMATION_STALE_AFTER,
+    )
+
 
 def finished_order() -> tuple[ColumnElement[Any], ...]:
     """'가장 늦게 끝난 Take' 순서 (`docs/ai/architecture.md` 1-3 'Take 상태').

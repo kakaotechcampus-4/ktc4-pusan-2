@@ -9,7 +9,7 @@ from pitch_coach_backend.module.take.entity import TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service.review import build_review_request
-from tests.test_take_ai_validation import coverage
+from tests.test_take_ai_validation import claim, coverage
 from tests.test_take_history import _pitch, _take
 
 
@@ -48,12 +48,13 @@ def test_review_coverage_depends_on_successful_evaluations(
     elif case == "zero-score":
         reply["evaluations"][0]["scores"]["content_coverage"] = 0.0
         reply["take_scores"]["content_coverage"] = 0.0
+    requested_at = claim(db_session, take.id)
     if case != "no-coverage":
         payload = {key: value for key, value in reply.items() if key != "meta"}
-        assert coverage_service._save_confirmed(db_session, take.id, reply) == payload
+        assert coverage_service._save_confirmed(db_session, take.id, requested_at, reply) == payload
 
     expected_stage = "NO_COVERAGE" if case == "no-coverage" else "READY_FOR_REVIEW"
-    assert coverage_service._conclude_coverage(db_session, take.id) == expected_stage
+    assert coverage_service._conclude_coverage(db_session, take.id, requested_at) == expected_stage
 
     request = build_review_request(db_session, take.id).model_dump(mode="json")
 

@@ -49,6 +49,28 @@ class InvalidTakeTime(AppException):
     message = "끝난 시각이 시작한 시각보다 앞섭니다."
 
 
+class ConfirmationClosed(ConflictException):
+    # 확인 답은 리뷰를 부르기 전까지만 받는다 (architecture.md 1-3). 이미 답했거나 건너뛰었거나
+    # 10분이 지났거나 다른 답을 반영하는 중이다
+    code = "CONFIRMATION_CLOSED"
+    message = "확인 답을 받을 수 없는 연습입니다."
+
+
+class InvalidConfirmationAnswer(AppException):
+    # 지금 확인할 항목에 없는 답이거나 같은 항목에 답을 두 번 보냈다
+    status_code = 422
+    code = "VALIDATION_ERROR"
+    message = "확인할 항목과 맞지 않는 답입니다."
+
+
+class ConfirmationRescoreFailed(AppException):
+    # 답을 반영하는 /takes/rescore 가 재시도 뒤에도 실패했다. 단계는 그대로라
+    # 기한 안에 다시 보낼 수 있다
+    status_code = 502
+    code = "COVERAGE_RESCORE_FAILED"
+    message = "확인 답을 반영하지 못했습니다. 다시 보내 주세요."
+
+
 class InvalidReviewResponse(AppException):
     # AI 리뷰 응답이 계약(review-agent.md 5-3)과 다르거나 다른 Take 의 응답이다. 저장하지 않고
     # Take 를 FAILED 로 끝낸다

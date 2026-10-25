@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { HomeHelpDialog } from './HomeHelpDialog';
-import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
-import { useLogout } from '@/shared/api/useLogout';
 import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { duration, totalElapsed } from './homeFormat';
@@ -12,48 +10,10 @@ const primary =
 export function HomePage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const home = usePitchList();
-  const logout = useLogout();
   const data = home.data;
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
   return (
-    <div className="min-h-dvh bg-panel text-ink">
-      <header className="border-b border-line-strong">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-5 px-6 py-5 lg:px-10">
-          <Link to="/" aria-label="PITCH COACH 홈">
-            <PitchCoachWordmark />
-          </Link>
-          <nav aria-label="홈 메뉴" className="flex items-center gap-5 text-xs sm:gap-8 sm:text-sm">
-            <Link to="/" aria-current="page" className="border-b-2 border-coral py-2 font-bold">
-              내 피치
-            </Link>
-            <Link to="/takes" className="hover:text-coral-deep">
-              Take 기록
-            </Link>
-            <button
-              type="button"
-              onClick={() => setHelpOpen(true)}
-              className="hover:text-coral-deep"
-            >
-              사용방법
-            </button>
-            <Link to="/me" className="hover:text-coral-deep">
-              마이페이지
-            </Link>
-            <button
-              disabled={logout.isPending}
-              onClick={() => logout.mutate()}
-              className="text-stone hover:text-ink disabled:opacity-50"
-            >
-              {logout.isPending ? '로그아웃 중…' : '로그아웃'}
-            </button>
-          </nav>
-        </div>
-        {logout.isError && (
-          <p role="alert" className="px-6 pb-3 text-center text-sm text-coral-deep">
-            로그아웃하지 못했어요. 다시 시도해 주세요.
-          </p>
-        )}
-      </header>
+    <div className="pitch-create min-h-dvh bg-greige text-ink">
       <main className="mx-auto max-w-7xl px-6 pb-16 pt-10 lg:px-10 lg:pt-14">
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
@@ -70,14 +30,14 @@ export function HomePage() {
         {home.isPending && (
           <div
             role="status"
-            className="mt-10 border border-line-strong p-10 text-center text-stone"
+            className="mt-10 border border-line-strong bg-white p-10 text-center text-stone"
           >
             발표 노트를 가져오는 중이에요…
           </div>
         )}
         {/* 불러오는 중에는 isError 도 data 도 없어 아래는 그리지 않습니다 */}
         {home.isError ? (
-          <div role="alert" className="mt-10 border border-line-strong p-10 text-center">
+          <div role="alert" className="mt-10 border border-line-strong bg-white p-10 text-center">
             <h2 className="font-bold">발표 목록을 가져오지 못했어요.</h2>
             <p className="mt-2 text-sm text-stone">잠시 후 다시 시도해 주세요.</p>
             <button
@@ -90,7 +50,7 @@ export function HomePage() {
         ) : (
           data && (
             <>
-              <div className="mt-6 grid grid-cols-1 divide-y divide-line-strong border border-line-strong sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="mt-6 grid grid-cols-1 divide-y divide-ink border border-ink bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                 <div className="p-5">
                   <p className="text-xs text-stone">내 발표 노트</p>
                   <p className="mt-2">
@@ -132,7 +92,7 @@ export function HomePage() {
                     </div>
                   </>
                 ) : (
-                  <div className="border-2 border-dashed border-line-strong bg-cream/40 px-6 py-14 text-center">
+                  <div className="border-2 border-dashed border-line-strong bg-white px-6 py-14 text-center">
                     <p className="font-mono text-xs tracking-widest text-coral-deep">
                       YOUR FIRST PITCH
                     </p>
