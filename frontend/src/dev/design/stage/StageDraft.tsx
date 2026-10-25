@@ -9,11 +9,14 @@ import { DraftPage } from '../ui';
  * 아래 값은 stage.css 와 같아야 합니다 — 디자인이 아니라 계측 조건이라 시안에서도 바꾸지 않습니다.
  *   줄 순서       머리 · 무대 · 코치(46px, 비어도 자리 유지) · 대본(모드별 고정) · 발밑
  *   레일 폭       320px
- *   대본 높이     --spacing-script-highlight · --spacing-script-keyword · 0
+ *   대본 줄       늘 --spacing-script-highlight. 대본 상자만 모드 높이(하이라이트 · 키워드 · 0)로 줄 아래쪽에
  *   시선 테두리   3색 + 두께 차이를 padding으로 상쇄 (안쪽 상자가 움직이지 않게)
  *
  * 레일은 대본 모드와 상관없이 같은 크기 · 같은 자리입니다 (#235). 카메라는 늘 16:9 이고 위에서부터 쌓아서,
  * 남는 높이는 레일 아래에 비워 둡니다. 실제 무대도 같습니다 (stage.css `.rail`).
+ *
+ * 슬라이드 칸도 대본 모드와 상관없이 같은 크기 · 같은 자리입니다 (#443). 대본 줄이 모드 높이를 따라가지
+ * 않아서, 키워드 · 실전 모드에서 남는 높이는 코치 줄과 대본 상자 사이에 비워 둡니다 (stage.css `.stage`).
  */
 
 type Surface = 'LIGHT' | 'DARK';
@@ -137,7 +140,7 @@ export function StageDraft() {
       <div
         className={`grid h-[788px] gap-3 border-2 border-ink p-4 shadow-[4px_4px_0_var(--color-line)] ${s.stage}`}
         style={{
-          gridTemplateRows: `auto 1fr 46px ${SCRIPT_H[scriptMode]} auto`,
+          gridTemplateRows: 'auto 1fr 46px var(--spacing-script-highlight) auto',
         }}
       >
         {/* 머리 */}
@@ -237,9 +240,10 @@ export function StageDraft() {
           )}
         </div>
 
-        {/* 대본 — 높이는 모드별 고정 (계측 조건) */}
+        {/* 대본 — 줄은 늘 하이라이트 높이, 상자는 모드별 높이로 줄 아래쪽에 (계측 조건) */}
         <div
-          className={`min-h-0 overflow-hidden ${scriptMode === 'OFF' ? '' : `${box} px-4 py-3`}`}
+          className={`min-h-0 self-end overflow-hidden ${scriptMode === 'OFF' ? '' : `${box} px-4 py-3`}`}
+          style={{ height: SCRIPT_H[scriptMode] }}
         >
           {scriptMode === 'HIGHLIGHT' && (
             <div className="space-y-2 text-sm leading-relaxed">

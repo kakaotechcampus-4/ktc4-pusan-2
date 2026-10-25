@@ -115,7 +115,7 @@ export function StageDemo() {
           {/* ★ 시선 테두리는 이 상자에 붙는다 — .stage 의 data-gaze 가 받는다 */}
           <div className="viewport">
             <div className="slide">
-              <span className="placeholder">슬라이드 영역 — 남는 만큼 커집니다</span>
+              <span className="placeholder">슬라이드 영역 — 대본 모드와 상관없이 같은 크기</span>
             </div>
 
             <div className="rail">
