@@ -23,9 +23,8 @@ SCORE_WEIGHT = {"critical": 3, "high": 2, "normal": 1}
 
 # 동시에 도는 LLM 호출 수 (기능 문서 8절). 결과에 영향이 없는 실행 값이라 CRITERIA_HASH 에 넣지 않는다
 MAX_WORKERS = 4  # 채점 (`/takes/analyze`): 장마다 1번 + 어긋난 장 1번
-RUBRIC_MAX_WORKERS = (
-    8  # 평가 기준 만들기 (`/scripts/rubric`): 장마다 3번을 이어서, 장 수별 시간을 재서 정한다
-)
+# 평가 기준 만들기 (`/scripts/rubric`): 장마다 3번을 이어서. 호출 20초 제한에서 30장 77초, 4개 동시 20장 87초 (8절)
+RUBRIC_MAX_WORKERS = 12
 
 
 def _constants(module: ModuleType) -> dict:
