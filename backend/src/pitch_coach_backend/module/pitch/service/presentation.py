@@ -14,6 +14,7 @@ from pitch_coach_backend.module.pitch.dto import PresentationDetailDTO, UploadPr
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
 from pitch_coach_backend.module.pitch.exception import (
     InvalidPresentation,
+    NonExistentPitch,
     NonExistentPresentationVersion,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
@@ -33,8 +34,10 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
         raise InvalidPresentation()
 
     # 같은 pitch 에 동시에 올려도 같은 버전 번호를 받지 않게 커밋까지 줄을 세운다.
-    # 번호가 S3 키에도 들어가서, 잠그지 않으면 500 에 더해 앞서 올린 파일이 덮어쓰인다
-    pitch_repository.lock_for_new_version(pitch_id)
+    # 번호가 S3 키에도 들어가서, 잠그지 않으면 500 에 더해 앞서 올린 파일이 덮어쓰인다.
+    # 소유권을 확인한 뒤 쪽수를 세는 사이에 발표가 지워졌으면 S3 에 올리기 전에 404 로 끝낸다
+    if not pitch_repository.lock_for_new_version(pitch_id):
+        raise NonExistentPitch()
 
     version = pitch_repository.next_presentation_version(pitch_id)
     presentation_key = upload(
