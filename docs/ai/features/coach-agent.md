@@ -4,7 +4,7 @@
 > **기준 범위**: 코치의 목표 설계다. 기능 사이 공통 계약(판정 결과 형식 · 에러 · meta · 시간 예산)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **관련 Issue**: #162 · #187
 > **한 줄 요약**: 발표 중 1초마다 판정 결과를 보고 "지금 말을 걸지, 걸면 무엇 하나를 말할지"를 정하고, Take가 끝나면 사실만 담은 Take 결과를 만든다. 다음 Take를 위해 리뷰가 저장된 뒤 코칭 계획을 세운다.
-> **기준값**: 판단 수치(간격 · 쿨다운 · 가중치 · 개입 기준 점수 · 허용치)는 `src/coach/config.py`에만 두고 이 문서에는 지표와 방향만 쓴다. 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
+> **기준값**: 판단 수치(간격 · 쿨다운 · 가중치 · 개입 기준 점수 · 허용치)는 서비스 `features/coach/config.py`에만 두고 이 문서에는 지표와 방향만 쓴다. 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
 
 # 0. 한눈에 보기
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
@@ -89,7 +89,8 @@ flowchart LR
 ai/research/coach-agent/
 ├─ README.md                              폴더 · 파일 지도, 실행법, 실험 결과
 ├─ pyproject.toml · uv.lock               패키지 두 개: coach(코어) · coach_lab(실험), Python 3.12
-├─ src/coach/                             판단 코어 → 서비스 features/coach/로 폴더째 옮긴다
+├─ (서비스 ai/service/src/pitch_coach_ai/features/coach/)  판단 코어 (연구 폴더 src/coach/에서 폴더째 옮김, 테스트는 서비스 tests/unit/coach/)
+├─ src/coach/examples/                    BE 테스트가 읽는 예시 사본 (11절 확인 5)
 │   ├─ examples/                          evaluate · finalize · timing 입력 · 출력 예시 (계약 테스트가 읽는다)
 │   └─ prompts/                           코칭 계획 LLM 프롬프트
 ├─ src/coach_lab/                         재생 · 실험 도구 (가상 발표자 · 연구용 판정 대역 · 채점 · 예시 생성). 연구에만 남는다
@@ -119,10 +120,10 @@ ai/research/coach-agent/
 | 판정 모듈을 import하지 않고 `Judges` 묶음을 인자로 받는다 | 판정 모듈이 바뀌면 묶음만 바꿔 끼운다 (`architecture.md` 8절) |
 | 의존성은 pydantic 하나 | 서비스로 옮길 때 가져갈 라이브러리가 하나뿐이다 |
 | LLM · 캐시는 인자로 받는다 | 코어는 키 · 네트워크를 모른다. LLM 객체는 서비스 `common/llm.py`가 만든다 |
-| 위 규칙은 `tests/unit/test_core_boundary.py`가 코어 파일을 읽어 검사한다 | 어기면 테스트가 실패한다 (허용 표준 라이브러리 목록 · 금지 호출 `print` · `open` 등) |
+| 위 규칙은 서비스 `tests/unit/coach/test_core_boundary.py`가 코어 파일을 읽어 검사한다 | 어기면 테스트가 실패한다 (허용 표준 라이브러리 목록 · 금지 호출 `print` · `open` 등) |
 
 # 5. 입력 · 출력 계약
-요청 · 응답의 원본은 `src/coach/schemas.py`다. 요청은 모르는 필드를 무시하고, 응답은 정해진 필드만 낸다(`architecture.md` 2절). 시각은 모두 Take 시작 기준 ms다.
+요청 · 응답의 원본은 서비스 `features/coach/schemas.py`다. 요청은 모르는 필드를 무시하고, 응답은 정해진 필드만 낸다(`architecture.md` 2절). 시각은 모두 Take 시작 기준 ms다.
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 |
@@ -265,7 +266,7 @@ ai/research/coach-agent/
 | `AHEAD_OF_SCHEDULE` | 이 속도면 `min_ms`(없으면 목표의 정해진 비율)보다 일찍 끝남 (초반 제외) | `projected_end_ratio`(예상 종료 ÷ 이른 한계) — 작을수록 나쁨 |
 
 ## 5-5. 예시
-예시 파일은 `src/coach/examples/`에 있고 `python -m coach_lab.examples`로 다시 만든다(바이트까지 같다). 아래는 발췌다.
+예시 파일은 서비스 `features/coach/examples/`에 있고(BE 테스트용 사본이 연구 폴더 서비스 `features/coach/examples/`에 있다) `python -m coach_lab.examples`로 둘 다 다시 만든다(바이트까지 같다). 아래는 발췌다.
 
 **evaluate 요청** (`examples/evaluate/request.json` 발췌. 시선 기록 30개 · 단어 74개 중 한 줄씩만 싣는다)
 ```json
@@ -480,7 +481,7 @@ ai/research/coach-agent/
 - 합계는 `coach_state`에 쌓이고 Take 결과가 이것을 쓴다. 그래서 `coach_state`를 잃으면 Take 결과를 합계로 못 만든다(finalize 409 → `replay`).
 
 ## 6-2. 시간 판정 `timing`
-계획 대비 진행을 판정한다. 계획이 있어야 하는 판정이라 코치 안(`src/coach/timing.py`)에 두되, 결과는 `architecture.md` 7절의 1초 판정 결과 모양으로 낸다. 상태를 갖지 않고, 코치가 장별 누적을 들고 매번 넘긴다.
+계획 대비 진행을 판정한다. 계획이 있어야 하는 판정이라 코치 안(서비스 `features/coach/timing.py`)에 두되, 결과는 `architecture.md` 7절의 1초 판정 결과 모양으로 낸다. 상태를 갖지 않고, 코치가 장별 누적을 들고 매번 넘긴다.
 
 - **입력**: 계획 `{target_ms, min_ms, max_ms, slides[...]}`, 지금 장 `{number, started_ms}`, 장별 누적 말한 글자 수 `slide_chars`(pace의 `tally`), 장별 머문 시간 `slide_dwell_ms`, 장별 STT가 `ok`였던 시간 `slide_stt_ok_ms`, 지금 말 속도 `pace{cpm, measurable, fast_threshold}`(`SPEED_LIMIT_EXCEEDED` 판단용, 코치가 pace의 `metrics` · `criteria()`에서 넣는다), `since_ms`. `pace.measurable`은 pace가 잴 수 있고 STT를 믿을 수 있고(`stt_status`가 `ok`이고 오디오가 살아 있음) filler · pace가 실패하지 않았을 때만 true다.
 - **계산**:
@@ -501,7 +502,7 @@ ai/research/coach-agent/
 | `confidence` | 진행도를 글자로 쟀으면 높게, 시간으로 대신했으면 낮게 |
 | `summarize` | `{"TIME": {"duration_ms", "measured_ratio"}}`. `duration_ms`는 `elapsed_ms` 합, `measured_ratio`는 `planned_ms ÷ elapsed_ms`(목표 시간이 있던 시간의 비율, Take 내내 목표가 있으면 1 · 없으면 0). `elapsed_ms`가 0이면 0(`architecture.md` 7절) |
 
-- 문제와 판정 지표는 5-4. 예시는 `src/coach/examples/timing/`(`judge_input.json` · `judge_output.json` · `criteria.json` · `summarize_input.json` · `summarize_output.json`).
+- 문제와 판정 지표는 5-4. 예시는 서비스 `features/coach/examples/timing/`(`judge_input.json` · `judge_output.json` · `criteria.json` · `summarize_input.json` · `summarize_output.json`).
 
 ## 6-3. finalize — Take 결과를 만드는 과정
 0. **경로 고르기**: `replay`가 있으면 아래 '`replay`로 다시 만들기'로 간다. 없는데 `coach_state`가 null이거나 새로 시작한 상태(버전이 다르거나 깨짐)면 마지막 창을 보지 않고 바로 `ReplayRequired`(빠진 구간 `[0, t_ms)`)를 올린다 → 409. 유효한 `coach_state`만 1~5로 간다.
@@ -614,20 +615,20 @@ uv sync
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
 | 테스트 (실제 LLM 제외) | `uv run python -m pytest` | 테스트 모두 통과, live 1개 제외 (`560 passed, 1 deselected`, Issue #375 작업 끝) |
-| 코어만 · 실험 도구만 | `uv run python -m pytest tests/unit` · `tests/lab` | 통과 |
+| 코어 테스트 (`ai/service`에서) · 실험 도구 테스트 (연구 폴더에서) | `uv run python -m pytest tests/unit/coach` · `uv run python -m pytest` | 통과 |
 | 실제 LLM으로 계획 한 번 (과금) | `uv run python -m pytest -m live` | 유효한 계획 |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 | 시나리오 재생 | `uv run python -m coach_lab.replay` (하나만: `… replay scenarios/05_time_behind.json -v`) | 16개 PASS |
 | Take 결과 채점 | `uv run python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` | 결과 파일이 커밋된 것과 같으면 `git diff`가 빈다 |
 | 복구 실험 | `uv run python -m coach_lab.recovery_eval` | `reports/results/recovery.json` |
-| 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` | `src/coach/examples/`가 바이트까지 그대로 (생성 결과라 직접 고치지 않는다) |
+| 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` | 서비스 `features/coach/examples/`와 연구 폴더 사본이 바이트까지 그대로 (생성 결과라 직접 고치지 않는다) |
 | 코칭 계획 실험 (과금) | `uv run python -m coach_lab.plan_eval --out reports/results/coaching_plan.json` | 유효율 · 기대 통과율 · 일관성 · 지연 |
 
 - 설정은 `config.py`에만 있다. 재생에서는 바꿀 값만 JSON으로 덮어쓰고(`--config`), 코어에서는 `load_config(policy={...})`처럼 키워드로 넘긴다(코어는 파일을 읽지 않는다).
-- 계약 테스트: `tests/unit/test_contract.py`(응답 필드 · 모르는 요청 필드 무시 · 음수 시각 거부 · 모르는 상태 리셋), `tests/unit/test_examples.py`(예시 요청을 넣은 응답이 예시 응답과 같음), `tests/lab/test_examples_build.py`(예시를 다시 만들어도 같음).
+- 계약 테스트(서비스 `tests/unit/coach/`): `test_contract.py`(응답 필드 · 모르는 요청 필드 무시 · 음수 시각 거부 · 모르는 상태 리셋), `tests/unit/test_examples.py`(예시 요청을 넣은 응답이 예시 응답과 같음), `tests/lab/test_examples_build.py`(예시를 다시 만들어도 같음).
 
 # 11. 배포
-**어디서 도는가**: 코어(`src/coach/` 전부, `examples/` · `prompts/` 포함)를 AI 서비스의 `features/coach/`로 폴더째 옮기고, 라우터 `api/coach.py`가 엔드포인트를 연다(`ai-service.md`). `/coach/plan`은 코어를 옮길 때 열고, `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷(시선 · 말 속도 · 소리 크기 · 군더더기)이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우면 코어는 그 영역을 잴 수 없음(시선은 `UNMEASURABLE`, 나머지는 `UNKNOWN`)으로 두고 견디지만, Take 결과의 그 영역 `measured_ratio`가 null이 되고 판정 기준 · 기준 버전이 비어 공통 계약(`architecture.md` 7절)과 어긋나기 때문이다. 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
+**어디서 도는가**: 코어(`examples/` · `prompts/` 포함)는 AI 서비스의 `features/coach/`에 있다(연구 폴더 `src/coach/`에서 폴더째 옮겼다). 라우터 `api/coach.py`가 엔드포인트를 연다(`ai-service.md`). `/coach/plan`은 코어를 옮길 때 열고, `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷(시선 · 말 속도 · 소리 크기 · 군더더기)이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우면 코어는 그 영역을 잴 수 없음(시선은 `UNMEASURABLE`, 나머지는 `UNKNOWN`)으로 두고 견디지만, Take 결과의 그 영역 `measured_ratio`가 null이 되고 판정 기준 · 기준 버전이 비어 공통 계약(`architecture.md` 7절)과 어긋나기 때문이다. 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 `pydantic>=2.13,<3`(서비스 `uv.lock`이 정한 판, 연구 폴더는 서비스를 editable로 설치해 같은 판을 쓴다). 옮기는 시점은 입력 위험(`t_ms` 상한 · 크게 앞선 시각, 5-2)과 복구 비용(`replay` 한 번이 Take 길이만큼 다시 판정함)을 막은 뒤이고, 아래 '옮긴 뒤 같은 결과인지 확인' 1~5를 모두 통과해야 한다. 서비스로 옮겨 BE 연동을 확인한 뒤, 배포할 그 판으로 배포 직전 점검을 통과하면 배포한다.
 
