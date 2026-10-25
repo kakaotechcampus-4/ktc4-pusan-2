@@ -262,7 +262,7 @@ function PitchCreateScreen() {
         </aside>
 
         {/* ── 우측: 경로 · 발표 정보 줄 · 본문 ────────────────────── */}
-        <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-auto p-4 xl:p-6">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden p-4">
           <nav aria-label="경로" className="flex items-center gap-2 text-xs text-stone">
             <Link to="/" className="hover:text-ink">
               내 피치
@@ -274,7 +274,7 @@ function PitchCreateScreen() {
           </nav>
 
           <InfoBar />
-          <section className="flex min-h-[32rem] flex-auto shrink-0 flex-col rounded-lg border border-line bg-panel p-5 xl:p-6">
+          <section className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg border border-line bg-panel p-5">
             {pane}
           </section>
         </main>
