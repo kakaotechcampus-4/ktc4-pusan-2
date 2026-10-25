@@ -88,20 +88,23 @@ flowchart LR
 # 4. 구성과 폴더
 ## 4-1. 폴더 트리
 ```
-ai/research/script-coverage-evaluation/
-├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock                 Python 3.12. 코어 의존성 pydantic · kiwipiepy · scikit-learn, 연구 전용 langchain-openai 등
-├─ src/script_coverage/                     코어 → 서비스 features/script_coverage/로 폴더째 옮긴다
+ai/service/                                 AI 서비스 (배포 단위)
+├─ src/pitch_coach_ai/features/script_coverage/   코어 (연구 폴더에서 폴더째 옮김)
 │   ├─ schemas.py · core.py · config.py · version.py   모듈 최상위 규약 파일 (API 요청 · 응답, 세 진입 함수, 설정 모음 · 해시, 버전)
 │   ├─ examples/                            세 API 요청 · 응답 예시 (계약 테스트가 읽는다)
 │   ├─ shared/                              두 단계가 같이 쓰는 도구 (글 정리 · 형태소 · 한글 수 읽기 · 사실 뽑기 · 평가 기준 모양 · LLM 단계)
 │   ├─ script_analysis/                     1단계: 대본 → 평가 기준 (prompts/ 포함)
 │   └─ stt_evaluation/                      2 · 3단계: STT → 채점, 확인 뒤 다시 계산 (prompts/ 포함)
+└─ tests/unit/script_coverage/              코어 단위 · 계약 · 경계 테스트
+
+ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 않는다)
+├─ README.md                                폴더 · 파일 지도(코어 포함), 실행법, 실험 결과
+├─ pyproject.toml · uv.lock                 Python 3.12. 서비스를 editable로 설치해 코어를 쓴다, 연구 전용 langchain-openai 등
 ├─ src/coverage_lab/                        실험 도구 (LLM 연결 · 캐시 · SQLite · 지표). 연구에만 남는다
-├─ experiments/                             01 ~ 06 실행 스크립트 (번호 = 실행 순서)
+├─ experiments/                             01 ~ 09 실행 스크립트 (번호 = 실행 순서)
 ├─ reports/                                 보고용 노트북 + results/*.json (지표)
 ├─ data/virtual/                            가상 대본 · 연습 STT · 정답 라벨 (커밋)
-└─ tests/{unit,lab,live}/                   코어 · 실험 도구 · 실제 LLM
+└─ tests/{lab,live}/                        실험 도구 · 실제 LLM
 ```
 하위 패키지 구조(`shared` · `script_analysis` · `stt_evaluation`)는 그대로 두고, 모듈 최상위에 공통 규약 파일(`architecture.md` 8절)을 둔다. 파일마다의 역할은 저장소 `README.md` 3절의 파일 지도에 있다.
 
@@ -595,7 +598,7 @@ uv sync
 | 코어만 · 실험 도구만 | `uv run python -m pytest tests/unit` · `tests/lab` | 통과 |
 | 실제 LLM으로 장 하나 끝까지 (과금) | `uv run python -m pytest -m live` | 평가 기준 3번 + 채점 1~2번 호출, 유효한 결과 |
 | 평가 기준 만들기 → 채점 → 정확도 | `uv run python experiments/01_build_rubrics.py` → `04_evaluate_takes.py` → `05_accuracy.py` | `reports/results/stt_accuracy.json` (02 · 03 · 06은 선택 · 반복 측정, 과금) |
-| API 예시 다시 만들기 (과금 없음, 연구 캐시 재생) | `uv run python -m coverage_lab.examples` | `src/script_coverage/examples/`의 세 API 요청 · 응답이 다시 만들어지고 계약 테스트가 통과 |
+| API 예시 다시 만들기 (과금 없음, 연구 캐시 재생) | `uv run python -m coverage_lab.examples` | 서비스 `features/script_coverage/examples/`의 세 API 요청 · 응답이 다시 만들어지고 계약 테스트가 통과 |
 | 장 수별 소요 시간 (과금) | 단일 요청 `uv run python experiments/07_timing.py --grid 30:8 30:12 --call-timeout 20 --retry --analyze --name timing_20s`, 동시 요청 `... --grid 20:12 --call-timeout 20 --retry --concurrent 4 --name timing_20s_concurrent`, 상한을 건 동시 요청 `... --grid 30:12 --call-timeout 20 --retry --concurrent 2 --cap <역할=상한 ...> --name timing_capped_concurrent2` | `reports/results/<name>.json` (장 수 · 동시 개수별 걸린 시간 · 최초 · 재시도 뒤 만든 장 · 호출 수) |
 
 - 계약 테스트: 고정된 가짜 LLM으로 `examples/`의 요청을 코어에 넣어 응답이 기대 응답과 같은지 본다(기대 출력은 반올림 없이 저장, 실수는 허용 오차). 세 API의 요청 · 응답, 일부 장 실패, 평가 기준이 없는 장, 확인 답 반영을 넣는다.

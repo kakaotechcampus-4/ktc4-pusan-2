@@ -36,4 +36,4 @@ python -m coverage_lab.examples
 
 ## 계약 테스트
 
-`tests/unit/test_examples.py`가 `llm_cache.json`으로 캐시를 만들고(`rescore`는 LLM 없이), 부르면 시간 초과가 되는 LLM으로 `request.json`을 코어에 넣어 `response.json`과 같은 응답이 나오는지 본다 (실수는 약간의 오차를 허용). 이 테스트는 `coverage_lab`을 쓰지 않으므로 코어를 서비스로 옮길 때 예시 폴더와 함께 가져간다.
+서비스 `tests/unit/script_coverage/test_examples.py`가 `llm_cache.json`으로 캐시를 만들고(`rescore`는 LLM 없이), 부르면 시간 초과가 되는 LLM으로 `request.json`을 코어에 넣어 `response.json`과 같은 응답이 나오는지 본다 (실수는 약간의 오차를 허용). 이 테스트는 `coverage_lab`을 쓰지 않으므로 코어를 서비스로 옮길 때 예시 폴더와 함께 가져간다.

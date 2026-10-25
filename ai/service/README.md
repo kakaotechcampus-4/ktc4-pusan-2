@@ -141,11 +141,14 @@ ai/service/
 │   ├── main.py · settings.py
 │   ├── api/health.py · sample.py
 │   ├── common/errors.py · request_log.py · llm.py · meta.py
-│   └── features/sample/schemas.py · core.py · config.py · version.py · examples/
+│   └── features/
+│       ├── sample/schemas.py · core.py · config.py · version.py · examples/
+│       └── script_coverage/   대본 전달도 코어 (파일 지도는 연구 폴더 README 3-2)
 └── tests/
     ├── conftest.py · test_health.py · test_errors.py · test_request_log.py · test_sample.py
     ├── unit/common/test_settings.py · test_llm.py · test_meta.py
     ├── unit/sample/test_core.py
+    ├── unit/script_coverage/   대본 전달도 단위 · 계약 · 경계 테스트
     └── live/test_llm_live.py
 ```
 
@@ -164,12 +167,14 @@ ai/service/
 | `src/pitch_coach_ai/common/llm.py` | `structured_llm` · `deadline_after`: 구조화 출력 LLM, 호출 시간 제한 · 재시도 · 요청 마감 · 실패 분류 · 응답 모델 기록 · 호출 로그 | 스키마 · 역할 · 마감 → `.invoke` 를 가진 객체 | 라우터(코어에 넘김) | 시간 · 재시도는 환경변수, 묶음 · 상한은 `LLM_ROLES` |
 | `src/pitch_coach_ai/common/meta.py` | 응답 `meta`(`schema_version` · `feature_version` · `model`, 판정 응답은 `criteria_versions`) | 기능 `FEATURE_VERSION`(`<모듈>-<버전>`) · LLM → `Meta` | 라우터 | `criteria_version` 해시는 코치 연구 코드와 같은 방식으로 둔다 |
 | `src/pitch_coach_ai/features/sample/` | 대역 판정 모듈. 판정 모듈 모양(`architecture.md` 7 · 8절) 그대로이고 실제 판정은 없다. `schemas.py`(입력 · `JudgmentResult`) · `core.py`(`judge` · `summarize` · `criteria`) · `config.py`(기준값 · `criteria_version`) · `version.py`(`sample-0.1`) · `examples/`(요청 · 응답 예시) | 1초 기록 · 커서 · 판정 시각 → `[JudgmentResult]` | `api/sample.py` | `config.py`를 바꾸면 해시가 바뀌므로 `examples/judge_response.json`도 고친다. 기능 폴더는 `common/` · FastAPI를 import하지 않는다 |
+| `src/pitch_coach_ai/features/script_coverage/` | 대본 전달도 코어(`docs/ai/features/script-coverage-evaluation.md`). 진입 함수 `core.py`의 `analyze_script` · `evaluate_take` · `rescore_evaluation`, 요청 · 응답 `schemas.py`, 기준값 `config.py`, `version.py`(`script_coverage-1.0`), `examples/`(세 API 예시와 그 LLM 캐시), 하위 `shared/` · `script_analysis/` · `stt_evaluation/`. 파일마다의 역할은 연구 폴더 README 3-2 | 대본 · STT · 평가 기준 + LLM 객체 → 평가 기준 · 채점 | (엔드포인트를 붙이는 PR에서) 라우터 | 연구 폴더(`ai/research/script-coverage-evaluation`)가 이 코어를 editable로 import한다. 코어는 여기서만 고치고, 바꾼 뒤 연구 캐시 재생으로 결과를 비교한다(연구 README '옮긴 뒤 검증'). 프롬프트 · 스키마 문자열은 캐시 키라 줄을 나누지 않는다(E501 제외) |
 | `tests/conftest.py` | 묶음 환경변수를 비운 뒤 앱 import(실제 키를 읽지 않음), `client`(대역 꺼짐) · `sample_client`(대역 켬) · `probe_client`(실패를 내는 테스트 경로) · `log_records` | — | 모든 앱 테스트 | — |
 | `tests/test_health.py` | `/health` 200(fixture 앱 · uvicorn 이 쓰는 `app` 둘 다), 등록된 경로에 `/api` 접두어 없음 | — | pytest | — |
 | `tests/test_errors.py` · `test_request_log.py` | 에러 본문 · 상태 코드, `X-Request-ID`, 요청 로그(본문 · 쿼리 · 입력값 없음) | — | pytest | — |
 | `tests/test_sample.py` | 대역: 예시 요청 → 예시 응답(`meta` 포함), 기본은 404, 422 공통 본문, `X-Request-ID`, 요청 로그 | — | pytest | 대역과 함께 지운다 |
 | `tests/unit/common/` | 설정 · LLM(가짜 LLM) · meta 단위 테스트 | — | pytest | — |
 | `tests/unit/sample/test_core.py` | 대역 코어: 예시 계약, 센 기록의 창 · 중복 · 커서, 기준값 해시, `summarize` · `criteria` | — | pytest | 대역과 함께 지운다 |
+| `tests/unit/script_coverage/` | 대본 전달도 단위 · 계약(`test_examples.py`, 예시와 그 LLM 캐시) · 코어 경계(`test_core_boundary.py`, 코어 패키지 위치 기준) 테스트. 가짜 LLM `fakes.py` | — | pytest | 연구 lab 테스트가 `fakes.py` · `shared/slides.py`의 사본을 쓴다 |
 | `tests/live/test_llm_live.py` | 실제 LLM 1회 호출 (과금) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
 
 ## 테스트
@@ -177,13 +182,13 @@ ai/service/
 uv run python -m pytest              # 가짜 LLM, 키 · 과금 없음
 ```
 ```
-100 passed, 1 deselected
+418 passed, 1 deselected
 ```
 ```powershell
 uv run python -m pytest -m live      # 실제 LLM 1회 (ai/.env 의 기본 묶음, 과금)
 ```
 ```
-1 passed, 100 deselected
+1 passed, 418 deselected
 ```
 LLM 호출마다 한 줄이 남습니다(프롬프트 · 답 · 키는 남기지 않음).
 ```
