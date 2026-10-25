@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
 import { useTakeHistory } from '@/shared/api/takeHistory';
-import { Badge, type Tone } from '@/shared/ui/Badge';
+import { takeStatusView } from '@/shared/lib/takeStatus';
+import { Badge } from '@/shared/ui/Badge';
 import { ButtonLink } from '@/shared/ui/Button';
 import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
-import type { TakeStatus } from '@/types/api';
 import { QueryState } from './QueryState';
 import { duration, pct } from './reportFormat';
 import { SCRIPT_MODE_LABEL, takeDay } from './takeHistoryFormat';
@@ -18,14 +18,6 @@ import { SCRIPT_MODE_LABEL, takeDay } from './takeHistoryFormat';
  */
 
 const ALL = '';
-
-const STATUS: Record<TakeStatus, { label: string; tone: Tone; link: string | null }> = {
-  READY: { label: '준비 중', tone: 'muted', link: null },
-  RUNNING: { label: '연습 중', tone: 'good', link: null },
-  ANALYZING: { label: '분석 중', tone: 'good', link: '진행 보기 →' },
-  COMPLETED: { label: '완료', tone: 'plain', link: '리포트 →' },
-  FAILED: { label: '분석 실패', tone: 'muted', link: null },
-};
 
 export function TakesPage() {
   const history = useTakeHistory();
@@ -75,7 +67,8 @@ export function TakesPage() {
         >
           <ul className="flex flex-col">
             {shown.map((t) => {
-              const status = STATUS[t.status];
+              // Take 목록 응답에는 end_reason 이 없어 FAILED 는 모두 "실패" 로 보입니다
+              const status = takeStatusView(t.take_id, t.status, null);
               return (
                 <li
                   key={t.take_id}
@@ -108,15 +101,8 @@ export function TakesPage() {
                     </div>
                   </dl>
                   {status.link ? (
-                    <Link
-                      to={
-                        t.status === 'ANALYZING'
-                          ? `/takes/${t.take_id}/processing`
-                          : `/takes/${t.take_id}`
-                      }
-                      className="text-sm font-bold hover:text-coral-deep"
-                    >
-                      {status.link}
+                    <Link to={status.link.to} className="text-sm font-bold hover:text-coral-deep">
+                      {status.link.text} →
                     </Link>
                   ) : (
                     <span />
