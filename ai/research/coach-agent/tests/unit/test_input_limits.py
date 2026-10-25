@@ -166,10 +166,25 @@ def test_replay_unknown_stt_status_change_is_untrusted():
     assert [c.status for c in replay.stt_status_changes] == ["degraded", "degraded"]
 
 
-def test_replay_keeps_the_first_record_of_the_same_second():
-    first, again = gaze(0, reliability=0.9), gaze(0, reliability=0.1)
-    replay = ReplayInput.model_validate({"gaze_records": [first, again, gaze(1000)]})
-    assert [(r.t_ms, r.reliability) for r in replay.gaze_records] == [(0, 0.9), (1000, None)]
+def test_replay_keeps_repeated_seconds_for_the_judge_modules():
+    # 같은 1초를 여기서 지우지 않는다 — 앞 기록을 판정 모듈이 버리면 뒤 기록을 써야 하므로
+    bad_first = gaze(0, state="BAD")
+    replay = ReplayInput.model_validate({"gaze_records": [bad_first, gaze(0), gaze(1000)]})
+    assert [(r.t_ms, r.state) for r in replay.gaze_records] == [
+        (0, "BAD"),
+        (0, "CAMERA"),
+        (1000, "CAMERA"),
+    ]
+
+
+def test_replay_count_reads_t_ms_like_the_record_model():
+    # 숫자 문자열 t_ms 도 기록 모델처럼 정수로 읽어 센다 — 한도를 우회하지 못한다
+    records = [
+        {"t_ms": str(i * 1000), "duration_ms": 1000, "state": "CAMERA"}
+        for i in range(MAX_REPLAY_RECORDS + 1)
+    ]
+    with pytest.raises(ValidationError):
+        ReplayInput.model_validate({"gaze_records": records})
 
 
 def test_replay_unreadable_t_ms_is_dropped_not_an_error():

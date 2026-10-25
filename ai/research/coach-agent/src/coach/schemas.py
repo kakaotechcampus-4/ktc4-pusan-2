@@ -15,6 +15,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    TypeAdapter,
     ValidationError,
     field_validator,
     model_validator,
@@ -72,10 +73,16 @@ log = logging.getLogger(__name__)
 REPEAT_ALLOWANCE = 4
 
 
+_INT = TypeAdapter(int)
+
+
 def _t_key(item: Any) -> int | None:
-    """같은 1초를 하나로 셀 때의 키. 읽을 수 없는 t_ms 면 None(그 기록은 버리므로 안 센다)."""
-    t = item.get("t_ms") if isinstance(item, dict) else None
-    return t if isinstance(t, int) and not isinstance(t, bool) else None
+    """같은 1초를 하나로 셀 때의 키. 기록 모델과 같은 규칙으로 정수로 읽는다("1000" · 1000.0 도
+    1000). 읽을 수 없으면 None(그 기록은 버리므로 안 센다)."""
+    try:
+        return _INT.validate_python(item.get("t_ms") if isinstance(item, dict) else None)
+    except ValidationError:
+        return None
 
 
 def _too_many(raw: Any, limit: int, name: str, *, by_t_ms: bool = False) -> None:
@@ -96,30 +103,23 @@ def _too_many(raw: Any, limit: int, name: str, *, by_t_ms: bool = False) -> None
         raise ValueError(f"{name} 는 {limit}개 이하여야 한다")
 
 
-def _readable(raw: Any, model: type[BaseModel], name: str, *, first_per_t_ms: bool = False) -> Any:
+def _readable(raw: Any, model: type[BaseModel], name: str) -> Any:
     """읽을 수 없는 항목(타입 · 범위가 틀림)은 그 항목만 버린다(gaze-tracking.md 5-2와 같은 규칙).
 
     항목 하나 때문에 요청 전체가 422 가 되어 그 1초의 모든 판정을 잃지 않게 하기 위해서다.
-    first_per_t_ms 면 같은 t_ms 는 먼저 온 것만 남긴다(replay — 복구가 만드는 1초 요청이 창 한도에
-    걸리지 않게. 판정 모듈도 먼저 온 것만 쓰므로 결과는 같다). 로그에는 버린 수만 남긴다.
+    같은 1초가 여러 번 와도 여기서는 지우지 않는다 — 판정 모듈이 읽을 수 있는 기록 중 먼저 온 것을
+    쓴다. 로그에는 버린 수만 남긴다(값은 사용자 원자료).
     """
     if not isinstance(raw, list):
         return raw
     kept = []
-    seen: set[int] = set()
     for item in raw:
         try:
-            value = model.model_validate(item)
+            kept.append(model.model_validate(item))
         except ValidationError:
             continue
-        if first_per_t_ms:
-            t = value.t_ms  # type: ignore[attr-defined]
-            if t in seen:
-                continue
-            seen.add(t)
-        kept.append(value)
     if len(kept) < len(raw):
-        log.warning("dropped unreadable or repeated %s count=%d", name, len(raw) - len(kept))
+        log.warning("dropped unreadable %s count=%d", name, len(raw) - len(kept))
     return kept
 
 
@@ -632,13 +632,13 @@ class ReplayInput(_In):
     @classmethod
     def _gaze(cls, v: Any) -> Any:
         _too_many(v, MAX_REPLAY_RECORDS, "replay.gaze_records", by_t_ms=True)
-        return _readable(v, GazeRecordIn, "replay.gaze_records", first_per_t_ms=True)
+        return _readable(v, GazeRecordIn, "replay.gaze_records")
 
     @field_validator("voice_records", mode="before")
     @classmethod
     def _voice(cls, v: Any) -> Any:
         _too_many(v, MAX_REPLAY_RECORDS, "replay.voice_records", by_t_ms=True)
-        return _readable(v, VoiceRecordIn, "replay.voice_records", first_per_t_ms=True)
+        return _readable(v, VoiceRecordIn, "replay.voice_records")
 
     @field_validator("words", mode="before")
     @classmethod
