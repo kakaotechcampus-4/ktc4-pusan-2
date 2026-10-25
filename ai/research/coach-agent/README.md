@@ -61,20 +61,18 @@ pitch_coach_ai.features.coach  판단 코어: 1초 판단 · Take 종료 · 코�
 ```
 coach-agent/
 ├─ README.md
-├─ pyproject.toml              패키지 두 개: coach(코어) · coach_lab(실험)
-├─ src/coach/examples/         BE 테스트가 읽는 예시 사본 (원본은 서비스 features/coach/examples/, 3-1)
-│   ├─ examples/               BE 개발자용 실행 가능한 예시 (evaluate · finalize · timing)
-│   └─ prompts/plan.py         코칭 계획 LLM 프롬프트
+├─ pyproject.toml              패키지 하나: coach_lab(실험). 코어는 서비스를 editable로 설치해 씀
+├─ src/coach/examples/         BE 테스트가 읽는 예시 사본 evaluate · finalize · timing (원본은 서비스 features/coach/examples/, 3-1)
 ├─ src/coach_lab/              재생 · 실험 도구 (3-2)
 ├─ scenarios/                  가상 발표 시나리오 16개 (+ plan/ 코칭 계획 실험용)
-├─ tests/{unit,lab,live}/      코어 · 실험 도구 · 실제 LLM
+├─ tests/{lab,live}/          실험 도구 · 실제 LLM (코어 단위 테스트는 서비스 tests/unit/coach/)
 ├─ reports/results/            커밋하는 실험 결과 (take_result · recovery · coaching_plan)
 └─ outputs/                    재생 결과 · 캐시 (git 제외)
 ```
 
 ### 3-1. 판단 코어 (서비스 `ai/service/src/pitch_coach_ai/features/coach/`)
 
-**코어는 AI 서비스로 옮겼습니다**(2026-10-26). 코어는 `ai/service/src/pitch_coach_ai/features/coach/`, 단위 테스트는 `ai/service/tests/unit/coach/`에 있습니다. 이 폴더는 서비스를 editable로 설치해(`pyproject.toml`의 `[tool.uv.sources]`) `coach_lab` · lab 테스트가 `pitch_coach_ai.features.coach`를 import합니다. 코어는 서비스에서 고칩니다. 서비스 `features/coach/examples/`는 BE 테스트(`backend/tests/coach/` 등)가 이 경로를 직접 읽어 남긴 **예시 사본**입니다. `python -m coach_lab.examples`가 서비스 예시와 사본을 함께 쓰고, `tests/lab/test_examples_copy.py`가 같은지 봅니다. BE가 서비스 경로로 바꾸면 사본을 지웁니다.
+**코어는 AI 서비스로 옮겼습니다**(2026-10-26). 코어는 `ai/service/src/pitch_coach_ai/features/coach/`, 단위 테스트는 `ai/service/tests/unit/coach/`에 있습니다. 이 폴더는 서비스를 editable로 설치해(`pyproject.toml`의 `[tool.uv.sources]`) `coach_lab` · lab 테스트가 `pitch_coach_ai.features.coach`를 import합니다. 코어는 서비스에서 고칩니다. `src/coach/examples/`는 BE 테스트(`backend/tests/coach/` 등)가 이 경로를 직접 읽어 남긴 **예시 사본**입니다. `python -m coach_lab.examples`가 서비스 예시와 사본을 함께 쓰고, `tests/lab/test_examples_copy.py`가 같은지 봅니다. BE가 서비스 경로로 바꾸면 사본을 지웁니다.
 
 | 옮긴 뒤 확인 | 결과 |
 |---|---|
@@ -121,7 +119,7 @@ coach-agent/
 | `truth.py` | 정답: 잡음 없는 실제 상태 × 코치와 같은 기준값. 센서가 볼 수 없던 문제는 정답에서도 뺀다 |
 | `evaluate.py` | Take 결과 채점 (구간 재현율 · 정밀도 · 근거 없는 지적 · IoU · 시작 오차 · 조각남 · 장별 오차 · 효과 판정 정확도). 병합 간격 × 최소 구간 격자(`--sweep`) |
 | `recovery_eval.py` | 복구 실험: 정상 / 요청 누락 / replay로 돌린 Take 결과를 서로 비교 |
-| `examples.py` | 서비스 `features/coach/examples/`의 evaluate · finalize 예시 파일을 만든다 (다시 돌려도 바이트까지 같다) |
+| `examples.py` | 서비스 `features/coach/examples/`의 evaluate · finalize 예시 파일을 만들고 BE 테스트용 사본(`src/coach/examples/`)에도 복사한다 (다시 돌려도 바이트까지 같다) |
 | `plan_eval.py` · `llm.py` · `cache.py` | 코칭 계획 실험: 실제 LLM으로 계획을 세우고 유효성 · 일관성 · 재생 효과를 잰다. 응답은 `outputs/llm_cache.sqlite`에 캐시 |
 | `usage.py` | LLM 호출마다 출력 토큰 수 · 끝난 이유를 모으고 역할 상한(잰 최대 × 2, 1,024 단위, 최소 2,048)을 계산한다. `plan_eval --usage`가 쓴다 |
 | `paths.py` | 폴더 위치 |
@@ -177,7 +175,7 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 | 시나리오 재생 | `uv run python -m coach_lab.replay` (하나만: `… replay scenarios/05_time_behind.json -v`, 설정 덮어쓰기: `--config my.json`) |
 | Take 결과 채점 | `uv run python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` (`--seeds`, `--noise clean,noisy,harsh`, `--explain`) |
 | 복구 실험 | `uv run python -m coach_lab.recovery_eval` (결과: `reports/results/recovery.json`, `--seeds`) |
-| 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` (서비스 `features/coach/examples/`와 BE용 사본 서비스 `features/coach/examples/`) |
+| 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` (원본 서비스 `features/coach/examples/`와 BE 테스트용 사본 `src/coach/examples/`) |
 | 코칭 계획 실험 (과금) | `uv run python -m coach_lab.plan_eval --out reports/results/coaching_plan.json` |
 | 코칭 계획 출력 토큰 (과금, 25번) | `uv run python -m coach_lab.plan_eval --usage --out reports/results/plan_output_tokens.json` (스트리밍 · 캐시 없음, 결과의 `usage`) |
 
@@ -187,7 +185,7 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 파이썬에서 직접
 
 ```python
-from coach import decide_safe, finalize
+from pitch_coach_ai.features.coach import decide_safe, finalize
 from coach_lab.judges import lab_judges  # 대역 판정 모듈. 배포에서는 기능 모듈로 만든 Judges
 
 judges = lab_judges()

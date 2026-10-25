@@ -88,14 +88,12 @@ flowchart LR
 ```
 ai/research/coach-agent/
 ├─ README.md                              폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock               패키지 두 개: coach(코어) · coach_lab(실험), Python 3.12
+├─ pyproject.toml · uv.lock               패키지 하나: coach_lab(실험), 서비스를 editable로 설치해 코어를 씀, Python 3.12
 ├─ (서비스 ai/service/src/pitch_coach_ai/features/coach/)  판단 코어 (연구 폴더 src/coach/에서 폴더째 옮김, 테스트는 서비스 tests/unit/coach/)
-├─ src/coach/examples/                    BE 테스트가 읽는 예시 사본 (11절 확인 5)
-│   ├─ examples/                          evaluate · finalize · timing 입력 · 출력 예시 (계약 테스트가 읽는다)
-│   └─ prompts/                           코칭 계획 LLM 프롬프트
+├─ src/coach/examples/                    BE 테스트가 읽는 예시 사본 evaluate · finalize · timing (원본은 서비스 features/coach/examples/, 11절 확인 5)
 ├─ src/coach_lab/                         재생 · 실험 도구 (가상 발표자 · 연구용 판정 대역 · 채점 · 예시 생성). 연구에만 남는다
 ├─ scenarios/                             가상 발표 시나리오 (+ plan/ 코칭 계획 실험용)
-├─ tests/{unit,lab,live}/                 코어 · 실험 도구 · 실제 LLM
+├─ tests/{lab,live}/                      실험 도구 · 실제 LLM (코어 단위 · 계약 테스트는 서비스 tests/unit/coach/)
 └─ reports/results/                       커밋하는 실험 결과 (take_result · recovery · coaching_plan)
 ```
 파일마다의 역할은 `ai/research/coach-agent/README.md` 3절의 파일 지도에 있다.
@@ -266,7 +264,7 @@ ai/research/coach-agent/
 | `AHEAD_OF_SCHEDULE` | 이 속도면 `min_ms`(없으면 목표의 정해진 비율)보다 일찍 끝남 (초반 제외) | `projected_end_ratio`(예상 종료 ÷ 이른 한계) — 작을수록 나쁨 |
 
 ## 5-5. 예시
-예시 파일은 서비스 `features/coach/examples/`에 있고(BE 테스트용 사본이 연구 폴더 서비스 `features/coach/examples/`에 있다) `python -m coach_lab.examples`로 둘 다 다시 만든다(바이트까지 같다). 아래는 발췌다.
+예시 파일은 서비스 `features/coach/examples/`에 있고(BE 테스트용 사본이 연구 폴더 `src/coach/examples/`에 있다) `python -m coach_lab.examples`로 둘 다 다시 만든다(바이트까지 같다). 아래는 발췌다.
 
 **evaluate 요청** (`examples/evaluate/request.json` 발췌. 시선 기록 30개 · 단어 74개 중 한 줄씩만 싣는다)
 ```json
@@ -614,8 +612,8 @@ uv sync
 
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 (실제 LLM 제외) | `uv run python -m pytest` | 테스트 모두 통과, live 1개 제외 (`560 passed, 1 deselected`, Issue #375 작업 끝) |
-| 코어 테스트 (`ai/service`에서) · 실험 도구 테스트 (연구 폴더에서) | `uv run python -m pytest tests/unit/coach` · `uv run python -m pytest` | 통과 |
+| 코어 테스트 (`ai/service`에서, 실제 LLM 제외) | `uv run python -m pytest tests/unit/coach` | 통과 (465 passed, 2026-10-26) |
+| 실험 도구 테스트 (연구 폴더에서, 실제 LLM 제외) | `uv run python -m pytest` | 통과, live 1개 제외 (141 passed, 1 deselected, 2026-10-26) |
 | 실제 LLM으로 계획 한 번 (과금) | `uv run python -m pytest -m live` | 유효한 계획 |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 | 시나리오 재생 | `uv run python -m coach_lab.replay` (하나만: `… replay scenarios/05_time_behind.json -v`) | 16개 PASS |
@@ -625,10 +623,10 @@ uv sync
 | 코칭 계획 실험 (과금) | `uv run python -m coach_lab.plan_eval --out reports/results/coaching_plan.json` | 유효율 · 기대 통과율 · 일관성 · 지연 |
 
 - 설정은 `config.py`에만 있다. 재생에서는 바꿀 값만 JSON으로 덮어쓰고(`--config`), 코어에서는 `load_config(policy={...})`처럼 키워드로 넘긴다(코어는 파일을 읽지 않는다).
-- 계약 테스트(서비스 `tests/unit/coach/`): `test_contract.py`(응답 필드 · 모르는 요청 필드 무시 · 음수 시각 거부 · 모르는 상태 리셋), `tests/unit/test_examples.py`(예시 요청을 넣은 응답이 예시 응답과 같음), `tests/lab/test_examples_build.py`(예시를 다시 만들어도 같음).
+- 계약 테스트(서비스 `tests/unit/coach/`): `test_contract.py`(응답 필드 · 모르는 요청 필드 무시 · 음수 시각 거부 · 모르는 상태 리셋), `test_examples.py`(예시 요청을 넣은 응답이 예시 응답과 같음), `tests/lab/test_examples_build.py`(예시를 다시 만들어도 같음).
 
 # 11. 배포
-**어디서 도는가**: 코어(`examples/` · `prompts/` 포함)는 AI 서비스의 `features/coach/`에 있다(연구 폴더 `src/coach/`에서 폴더째 옮겼다). 라우터 `api/coach.py`가 엔드포인트를 연다(`ai-service.md`). `/coach/plan`은 코어를 옮길 때 열고, `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷(시선 · 말 속도 · 소리 크기 · 군더더기)이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우면 코어는 그 영역을 잴 수 없음(시선은 `UNMEASURABLE`, 나머지는 `UNKNOWN`)으로 두고 견디지만, Take 결과의 그 영역 `measured_ratio`가 null이 되고 판정 기준 · 기준 버전이 비어 공통 계약(`architecture.md` 7절)과 어긋나기 때문이다. 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
+**어디서 도는가**: 코어(`examples/` · `prompts/` 포함)는 AI 서비스의 `features/coach/`에 있다(연구 폴더 `src/coach/`에서 폴더째 옮겼다). 라우터 `api/coach.py`가 엔드포인트를 연다(`ai-service.md`). `/coach/plan`은 코어를 옮기는 작업에서 연다(코어 이동 다음 PR). `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷(시선 · 말 속도 · 소리 크기 · 군더더기)이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우면 코어는 그 영역을 잴 수 없음(시선은 `UNMEASURABLE`, 나머지는 `UNKNOWN`)으로 두고 견디지만, Take 결과의 그 영역 `measured_ratio`가 null이 되고 판정 기준 · 기준 버전이 비어 공통 계약(`architecture.md` 7절)과 어긋나기 때문이다. 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 `pydantic>=2.13,<3`(서비스 `uv.lock`이 정한 판, 연구 폴더는 서비스를 editable로 설치해 같은 판을 쓴다). 옮기는 시점은 입력 위험(`t_ms` 상한 · 크게 앞선 시각, 5-2)과 복구 비용(`replay` 한 번이 Take 길이만큼 다시 판정함)을 막은 뒤이고, 아래 '옮긴 뒤 같은 결과인지 확인' 1~5를 모두 통과해야 한다. 서비스로 옮겨 BE 연동을 확인한 뒤, 배포할 그 판으로 배포 직전 점검을 통과하면 배포한다.
 
@@ -638,7 +636,7 @@ uv sync
 | 호출 | `/coach/evaluate` → `decide_safe(req, judges)`, `/coach/finalize` → `finalize(req, judges)`, `/coach/plan` → `plan_coaching(req, llm=…, model=…)`. 라우터는 요청마다 마감 시각(AI 예산 25초)을 만들어 `structured_llm(<출력 스키마>, deadline=…)`으로 LLM 객체를 받는다(서비스 `common/llm.py`, 역할 → 묶음은 `settings.py`). `model`은 그 역할 묶음의 모델 이름이다(`planner_hash`). LLM 설정이 없어 객체를 만들 수 없으면 `llm=None`을 넘겨 코어가 기본 계획 + `LLM_UNAVAILABLE`을 200으로 돌려준다. 연구 도구의 고정 값(시간 제한 20초 · 재시도 0)은 쓰지 않는다 |
 | 오류 매핑 | 요청 형식 오류는 422 `VALIDATION_ERROR`. `ReplayRequired`는 409 `REPLAY_REQUIRED`(공통 에러 본문, 메시지에 빠진 구간) |
 | 동기 함수 | 판단은 CPU만 쓰는 짧은 계산이라 `def` 라우터로 두면 스레드 풀에서 돈다(`async def` 안에서 동기 호출을 하면 서버 전체가 멈춘다) |
-| 옮긴 뒤 테스트 | `ai-service.md` 6-1 2번대로 한다. `tests/unit/`을 옮기되, 예시를 연구 폴더 경로로 찾는 `test_examples.py`는 패키지 위치로 찾게 고치고, `test_core_boundary.py`는 코어 폴더 경로를 새 위치에 맞춘다. `tests/lab/test_examples_build.py`는 연구 폴더에 남긴다(예시 생성 `coach_lab.examples`와 연구용 대역을 쓴다). 그중 finalize 예시를 대조하는 검사(`test_finalize_response_matches_example` · `test_finalize_example_judges_the_last_window_with_stt_closed` · `test_finalize_examples_show_normal_and_replay`)는 실제 판정 모듈을 묶은 서비스 계약 테스트로 새로 만든다(대역은 서비스에 넣지 않는다. evaluate · finalize를 열 때 함께). 이 파일이 쓰는 `assert_same`은 `tests/unit/test_examples.py`에서 가져오므로, 옮긴 뒤에는 연구 폴더에 같은 함수를 둔다 |
+| 옮긴 뒤 테스트 | `ai-service.md` 6-1 2번대로 한다. `tests/unit/`을 옮기되, 예시를 연구 폴더 경로로 찾는 `test_examples.py`는 패키지 위치로 찾게 고치고, `test_core_boundary.py`는 코어 폴더 경로를 새 위치에 맞춘다. `tests/lab/test_examples_build.py`는 연구 폴더에 남긴다(예시 생성 `coach_lab.examples`와 연구용 대역을 쓴다). 그중 finalize 예시를 대조하는 검사(`test_finalize_response_matches_example` · `test_finalize_example_judges_the_last_window_with_stt_closed` · `test_finalize_examples_show_normal_and_replay`)는 실제 판정 모듈을 묶은 서비스 계약 테스트로 새로 만든다(대역은 서비스에 넣지 않는다. evaluate · finalize를 열 때 함께). 이 파일이 쓰던 `assert_same`은 연구 폴더 `tests/lab/judge_helpers.py`에 같은 함수를 두었다(예전에는 `tests/unit/test_examples.py`에서 가져왔다). |
 
 **환경변수**: 코치 코어는 환경변수를 읽지 않는다. 코칭 계획의 LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓴다.
 
