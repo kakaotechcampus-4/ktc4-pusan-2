@@ -180,6 +180,13 @@ def main() -> None:
                 request = AnalyzeRequest(take_id="timing", slides=slides, rubrics=rubrics)
                 return core.evaluate_take(request, llms=llms, model=settings.model, cache=None)
 
+            leftover = wait_idle(
+                timeout=LEFTOVER_WAIT_SECONDS
+            )  # 평가 기준 만들기에서 버린 호출이 섞이지 않게
+            if leftover:
+                raise SystemExit(
+                    f"평가 기준 만들기에서 버린 호출 {leftover}개가 아직 돈다 — 측정을 멈춘다"
+                )
             analyze_row, _ = measure(analyze_call, n)
             calls += analyze_row["calls"]
             print(f"  채점: {analyze_row['seconds']}초 · {analyze_row['produced_slides']}/{n}장")
