@@ -145,14 +145,13 @@ class _OrderLog:
 
     - hold: {(단계, 슬라이드): Event} — 그 호출은 Event 가 켜질 때까지 응답하지 않는다
     - fail: {(단계, 슬라이드): 예외} — 그 호출은 예외를 낸다
-    - delay: 호출마다 이만큼(초) 걸린다 (동시에 도는 호출 수를 보려고)
     - done: {(단계, 슬라이드): Event} — 그 호출이 응답을 돌려줄 때 켜진다
     """
 
-    def __init__(self, hold=None, fail=None, delay=0.0):
+    def __init__(self, hold=None, fail=None):
         self.order: list[tuple[str, int]] = []
         self.lock = threading.Lock()
-        self.hold, self.fail, self.delay = hold or {}, fail or {}, delay
+        self.hold, self.fail = hold or {}, fail or {}
         self.done = {(stage, n): threading.Event() for stage in _STAGES for n in _MARKS}
         self.active = self.max_active = 0
 
@@ -171,7 +170,6 @@ class _OrderLog:
                     event = log.hold.get((stage, slide))
                     if event is not None:
                         assert event.wait(5), "기다린 슬라이드가 풀리지 않았다"
-                    time.sleep(log.delay)
                     if (stage, slide) in log.fail:
                         raise log.fail[(stage, slide)]
                     return inner.invoke(messages)
@@ -223,11 +221,26 @@ def test_slow_slide_does_not_hold_back_the_others():
 
 @pytest.mark.parametrize("workers", [1, 2, 3])
 def test_running_calls_never_exceed_max_workers(workers):
-    """동시에 도는 LLM 호출은 단계와 상관없이 합쳐서 max_workers 개까지이고, 그만큼은 실제로 동시에 돈다."""
-    log = _OrderLog(delay=0.05)
-    rubrics, _ = log.run((4, 6, 7, 9), max_workers=workers)
+    """동시에 도는 LLM 호출은 max_workers 개까지이고, 그만큼은 실제로 동시에 돈다.
+
+    첫 단계 호출을 모두 붙잡아 둔 채로 들어온 호출 수를 센다. 상한을 넘는 구현이면 기다리는 사이에 더 들어온다.
+    """
+    release = threading.Event()
+    log = _OrderLog(hold={("semantic", n): release for n in _MARKS})
+    result = {}
+    runner = threading.Thread(target=lambda: result.update(out=log.run(tuple(_MARKS), workers)))
+    runner.start()
+    deadline = time.monotonic() + 5
+    while log.active < workers and time.monotonic() < deadline:
+        time.sleep(0.01)
+    time.sleep(0.1)  # 상한을 넘는 호출이 있다면 이 사이에 들어온다
+    seen = log.active
+    release.set()
+    runner.join(10)
+    assert seen == workers
     assert log.max_active == workers
-    assert len(rubrics) == 4
+    rubrics, stats = result["out"]
+    assert len(rubrics) == len(_MARKS) and stats["failed"] == {}
 
 
 def test_failures_in_different_stages_are_all_kept():

@@ -111,6 +111,7 @@ def test_no_retry_needed_when_everything_is_made():
     job = rubric_with_retry(requests, ALL, retry=True)
     assert requests.calls == [None]
     assert (job["final_produced"], job["complete"], job["retry"]) == (4, True, None)
+    assert job["rubrics"] == ["rubric-1", "rubric-2", "rubric-3", "rubric-4"]
 
 
 def test_partial_failure_retries_only_llm_failures_once():
@@ -120,6 +121,7 @@ def test_partial_failure_retries_only_llm_failures_once():
     job = rubric_with_retry(requests, ALL, retry=True)
     assert requests.calls == [None, [2]]  # 입력 오류 장(3)은 다시 부르지 않는다
     assert (job["final_produced"], job["complete"], job["seconds"]) == (3, False, 30.0)
+    assert job["rubrics"] == ["rubric-1", "rubric-4", "rubric-2"]
 
 
 def test_whole_request_failure_retries_every_slide_once():
@@ -127,6 +129,7 @@ def test_whole_request_failure_retries_every_slide_once():
     job = rubric_with_retry(requests, ALL, retry=True)
     assert requests.calls == [None, ALL]
     assert (job["final_produced"], job["complete"]) == (4, True)
+    assert job["rubrics"] == ["rubric-1", "rubric-2", "rubric-3", "rubric-4"]
 
 
 def test_failed_retry_keeps_what_the_first_request_made():
@@ -134,6 +137,7 @@ def test_failed_retry_keeps_what_the_first_request_made():
     job = rubric_with_retry(requests, ALL, retry=True)
     assert requests.calls == [None, [4]]
     assert (job["final_produced"], job["complete"]) == (3, False)
+    assert job["rubrics"] == ["rubric-1", "rubric-2", "rubric-3"]
 
 
 def test_retry_off_calls_once():
