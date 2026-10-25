@@ -44,10 +44,14 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# live: 실제 LLM 을 부르는 테스트(과금). 기본 실행에서 빼고 `pytest -m live` 로만 돈다.
+# live: 실제 LLM 을 부르는 테스트(과금), slow: 오래 걸리는 규모 측정. 둘 다 기본 실행에서 빼고
+# `pytest -m live` · `pytest -m slow` 로만 돈다.
 # CI 는 키 없이 기본 실행만 한다
-markers = ["live: 실제 LLM API 를 호출한다 (과금)"]
-addopts = "-m 'not live'"
+markers = [
+    "live: 실제 LLM API 를 호출한다 (과금)",
+    "slow: 오래 걸리는 규모 측정 (기본 실행에서 빼고 `pytest -m slow` 로 돈다)",
+]
+addopts = "-m 'not live and not slow'"
 filterwarnings = [
     # 스트리밍 + 구조화 출력에서 LangChain 이 내는 직렬화 경고. 결과는 정상이고 서버에서는
     # common/llm.py 가 끈다. pytest 는 테스트마다 경고 필터를 다시 깔아 여기에도 둔다
