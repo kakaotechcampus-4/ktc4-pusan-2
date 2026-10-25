@@ -15,7 +15,8 @@ from .conftest import run, segment, unmeasured
 def test_sample_recurring_issues(req):
     resp, _ = run(req)
     assert [r.model_dump() for r in resp.recurring_issues] == [
-        {"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}
+        {"area": "GAZE", "slide_number": 3, "dimension": "script_independence"},
+        {"area": "FILLER", "slide_number": 2, "dimension": "fluency"},
     ]
 
 
@@ -64,10 +65,10 @@ def test_strength_skips_unmeasured_area(req):
 
 def test_sample_score_and_text(req):
     resp, _ = run(req)
-    assert resp.score == 82  # (100 × 3 + 40 + 70) / 5
+    assert resp.score == 76  # (100 × 3 + 40 + 40) / 5
     assert resp.overall_summary == (
         "좋았던 점은 청중 응시, 말 속도와 시간 배분, 목소리 크기입니다. "
-        "먼저 다듬을 점은 3번 장 대본 의존도입니다."
+        "먼저 다듬을 점은 3번 장 대본 의존도, 2번 장 말의 매끄러움입니다."
     )
     imp = resp.improvements[0]
     assert (imp.area, imp.slide_number, imp.evidence) == ("GAZE", 3, {"script_ratio": 0.62})
@@ -108,7 +109,7 @@ def test_config_change_changes_criteria_version(req):
 def test_accepts_model_and_ignores_unknown_fields(req):
     req["take_result"]["new_field_from_be"] = 1
     req["extra"] = {"x": 1}
-    assert review_take(ReviewRequest.model_validate(req)).score == 82
+    assert review_take(ReviewRequest.model_validate(req)).score == 76
 
 
 def test_null_lists_are_empty(req):
