@@ -3,18 +3,24 @@
 브라우저 엔진이 프레임을 1초 기록으로 모아 보내면, 코치가 요청마다 이 모듈을 부른다. 프레임은 기기를
 떠나지 않으므로 서버가 받는 첫 데이터가 1초 기록이다(gaze-tracking.md 3 · 6-2절)::
 
-    records ─ read_records ─ _timeline ─┬─ _tally         새로 센 1초마다 상태별 ms · 말한 시간 · 대본 의존
-    voiced  ─ _Voiced ──────────────────┤─ _window ×2    짧은 창 · 최근 창의 비율 · 측정 비율 · 평균 신뢰도
+    records ─ read_records ─ _timeline ─┬─ _tally         새로 센 1초마다 상태별 ms
+                                        │                 · 말한 시간 · 대본 의존
+    voiced  ─ _Voiced ──────────────────┤─ _window ×2    짧은 창 · 최근 창의 비율
+                                        │                · 측정 비율 · 평균 신뢰도
                                         ├─ _run_at       지금 이어지는 대본 · 화면 · 그 밖 응시
-                                        └─ _issues       measurable · state · 다섯 문제 → JudgmentResult
+                                        └─ _issues       measurable · state · 다섯 문제
+                                                         → JudgmentResult
 
-- 기록이 오지 않은 시간과 버린 기록의 시간은 UNMEASURED 다. 비율은 모두 측정된 시간(CAMERA · SCREEN ·
-  BOTTOM · OTHER)으로 나눈다. 재지 못한 시간이 "청중을 안 봤다"로 읽히지 않게 하기 위해서다.
-- 시간은 입력의 t_ms 뿐이다. 요청 t_ms 는 마지막 1초 기록이 끝난 시각(그 기록의 t_ms + duration_ms)이다
-  (architecture.md 1-4 예시). 그래서 다음 요청의 커서(= 이번 t_ms)부터 오는 기록이 새것이다.
+- 기록이 오지 않은 시간과 버린 기록의 시간은 UNMEASURED 다. 비율은 모두 측정된 시간
+  (CAMERA · SCREEN · BOTTOM · OTHER)으로 나눈다. 재지 못한 시간이 "청중을 안 봤다"로
+  읽히지 않게 하기 위해서다.
+- 시간은 입력의 t_ms 뿐이다. 요청 t_ms 는 마지막 1초 기록이 끝난 시각
+  (그 기록의 t_ms + duration_ms)이다(architecture.md 1-4 예시). 그래서 다음 요청의
+  커서(= 이번 t_ms)부터 오는 기록이 새것이다.
 - 말을 걸지 결정하지 않는다. 문제와 지표만 내고, 말할지는 코치가 정한다.
 
-기준값은 모두 `config.GazeConfig` 에 있다. 장 · Take 지표(`summarize`)와 판정 기준(`criteria`)도 여기 있다.
+기준값은 모두 `config.GazeConfig` 에 있다. 장 · Take 지표(`summarize`)와
+판정 기준(`criteria`)도 여기 있다.
 """
 
 from __future__ import annotations
@@ -170,7 +176,8 @@ def _pieces(seg: _Seg, lo: int, hi: int) -> Iterator[tuple[int, int]]:
 
 
 class _Voiced:
-    """말한 1초들(voiced_ms 가 기준 이상인 1초)을 이어 붙인 구간. 시각 · 구간이 얼마나 말한 때인지 답한다.
+    """말한 1초들(voiced_ms 가 기준 이상인 1초)을 이어 붙인 구간.
+    시각 · 구간이 얼마나 말한 때인지 답한다.
 
     발화 시간 한 개는 그 t_ms 부터 1초를 덮는다(음량 1초 기록과 시선 1초 기록은 같은 t_ms 격자다).
     """
@@ -217,11 +224,13 @@ def _is_reading(seg: _Seg, spoken: _Voiced) -> bool:
 def _tally(
     segs: list[_Seg], since_ms: int, t_ms: int, spoken: _Voiced, cfg: GazeConfig
 ) -> list[TallyItem]:
-    """since_ms 이상인 1초마다 상태별 ms · 측정 · 전체 · 말한 시간 · 대본 의존(gaze-tracking.md 6-2 3번).
+    """since_ms 이상인 1초마다 상태별 ms · 측정 · 전체 · 말한 시간 · 대본 의존
+    (gaze-tracking.md 6-2 3번).
 
-    기록은 t_ms 가 since_ms 이상일 때 통째로 새것이다. 빈 시간은 [since_ms, t_ms) 안을 빈 시간의 시작부터
-    1초씩 낸다(코치가 각 1초를 그 시각의 장에 더한다). 다만 입력 창(30초)보다 오래된 빈 시간은 한 조각이다
-    -- 요청이 오래 빠진 뒤에도 몫의 개수가 시각 차이만큼 늘지 않게 한다(그 시간은 코치가 복구로 다시 센다).
+    기록은 t_ms 가 since_ms 이상일 때 통째로 새것이다. 빈 시간은 [since_ms, t_ms) 안을
+    빈 시간의 시작부터 1초씩 낸다(코치가 각 1초를 그 시각의 장에 더한다). 다만 입력 창(30초)보다
+    오래된 빈 시간은 한 조각이다 -- 요청이 오래 빠진 뒤에도 몫의 개수가 시각 차이만큼 늘지 않게
+    한다(그 시간은 코치가 복구로 다시 센다).
     대본 의존 구간이 끝나면 끝난 1초에 reading_runs 1 을 더한다.
     """
     split_from = max(since_ms, t_ms - INPUT_WINDOW_MS)
@@ -252,9 +261,11 @@ def _tally(
 
 
 def _reading_run_ends(segs: list[_Seg], spoken: _Voiced, cfg: GazeConfig) -> list[int]:
-    """말한 1초 동안 대본 응시가 기준 시간 이상 이어졌다가 끝난 구간의 끝 시각(gaze-tracking.md 6-3).
+    """말한 1초 동안 대본 응시가 기준 시간 이상 이어졌다가 끝난 구간의 끝 시각
+    (gaze-tracking.md 6-3).
 
-    말하지 않은 1초 · 다른 상태 · 빈 시간이 끼면 끊긴다. 판정 시각까지 이어지는 구간은 끝나지 않았으므로
+    말하지 않은 1초 · 다른 상태 · 빈 시간이 끼면 끊긴다.
+    판정 시각까지 이어지는 구간은 끝나지 않았으므로
     세지 않는다(Take 끝까지 이어진 구간도 같다). 구간 길이는 받은 기록 안에서만 안다.
     """
     ends: list[int] = []
@@ -296,7 +307,8 @@ class _Window:
 
 
 def _window(segs: list[_Seg], lo: int, t_ms: int, spoken: _Voiced) -> _Window:
-    """[lo, t_ms) 의 상태별 ms · 말한 시간 · 대본 의존 시간, 창에 걸친 1초 기록들의 reliability 평균."""
+    """[lo, t_ms) 의 상태별 ms · 말한 시간 · 대본 의존 시간,
+    창에 걸친 1초 기록들의 reliability 평균."""
     state_ms = dict.fromkeys(TALLY_KEY, 0)
     rel_sum = 0.0
     rel_n = speaking = reading = 0
@@ -323,7 +335,8 @@ def _window(segs: list[_Seg], lo: int, t_ms: int, spoken: _Voiced) -> _Window:
 def _run_at(segs: list[_Seg], t_ms: int) -> dict[str, int]:
     """판정 시각까지 지금 이어지는 응시 길이: {BOTTOM, SCREEN, OTHER} → ms (이어지지 않으면 0).
 
-    같은 상태의 기록이 빈틈없이 이어진 것이다. 다른 상태 · UNCERTAIN · 빈 시간이 끼면 끊기고, OTHER 는
+    같은 상태의 기록이 빈틈없이 이어진 것이다.
+    다른 상태 · UNCERTAIN · 빈 시간이 끼면 끊기고, OTHER 는
     방향이 달라도 이어진다.
     """
     runs = {"BOTTOM": 0, "SCREEN": 0, "OTHER": 0}
@@ -351,7 +364,8 @@ def judge(
 ) -> list[JudgmentResult]:
     """t_ms 시점의 시선 판정. 문제가 없어도 결과 하나(영역 GAZE)를 담은 목록을 낸다.
 
-    같은 입력에는 같은 결과가 나오고, 돌려준 counted_until_ms 로 다시 부르면 이미 센 몫은 나오지 않는다.
+    같은 입력에는 같은 결과가 나오고,
+    돌려준 counted_until_ms 로 다시 부르면 이미 센 몫은 나오지 않는다.
     요청이 빠져 새 1초가 여러 개면 한 번에 모두 센다(gaze-tracking.md 6-2).
     """
     cfg = config
@@ -382,7 +396,8 @@ def judge(
         screen_run_ms=runs["SCREEN"],
         away_run_ms=runs["OTHER"],
     )
-    # 측정 비율은 지금 짧은 창과 최근 창 중 나쁜 쪽 -- 잡음으로 잠깐 좋아진 1초에 판정을 다시 열지 않게
+    # 측정 비율은 지금 짧은 창과 최근 창 중 나쁜 쪽
+    # -- 잡음으로 잠깐 좋아진 1초에 판정을 다시 열지 않게
     measured = min(short.measured_ratio, recent.measured_ratio)
     measurable = (
         measured >= cfg.min_measured_ratio and short.mean_reliability >= cfg.min_mean_reliability
@@ -402,7 +417,8 @@ def judge(
 
 
 def _state(measurable: bool, short: _Window, cfg: GazeConfig) -> str:
-    """짧은 창에서 가장 많이 본 곳. 대본 응시 비율이 기준 이상이면 SCRIPT. 마지막 1초로 정하지 않는다."""
+    """짧은 창에서 가장 많이 본 곳. 대본 응시 비율이 기준 이상이면 SCRIPT.
+    마지막 1초로 정하지 않는다."""
     if not measurable:
         return "UNMEASURABLE"
     script = short.ratio("BOTTOM")
@@ -422,7 +438,8 @@ def _issues(
     m: GazeMetrics,
     cfg: GazeConfig,
 ) -> list[JudgmentIssue]:
-    """다섯 문제(gaze-tracking.md 5-4). 잴 수 없으면 측정 불가 신호만, Take 시작 직후에는 아무것도."""
+    """다섯 문제(gaze-tracking.md 5-4).
+    잴 수 없으면 측정 불가 신호만, Take 시작 직후에는 아무것도."""
     if not measurable:
         bad = cfg.unmeasurable_bad
         return [
@@ -541,13 +558,15 @@ def summarize(tally: Tally, config: GazeConfig = DEFAULT) -> dict[str, dict[str,
 
 
 def criteria(config: GazeConfig = DEFAULT) -> dict[str, IssueCriteria]:
-    """다섯 문제의 판정 기준 (gaze-tracking.md 5-3 · 5-4). 코치가 Take 결과의 criteria.GAZE 에 남긴다.
+    """다섯 문제의 판정 기준 (gaze-tracking.md 5-3 · 5-4).
+    코치가 Take 결과의 criteria.GAZE 에 남긴다.
 
     onset_lag_ms · offset_lag_ms 는 판정 창 때문에 문제의 시작 · 끝이 늦게 잡히는 폭이다(코치가 Take
     결과의 문제 구간을 되돌릴 때 쓴다). 기준값에서 계산한다:
     - 이어짐 문제: 기준 시간이 지나야 잡히고(GAZE_ON_SCRIPT 는 짧은 창 비율도 차야 한다), 이어짐이
       끊기면 바로 끝난다.
-    - 눈맞춤 부족: 청중을 전혀 안 보기 시작하면 (1 − 기준) × 최근 창 뒤에 기준 아래로 내려가고(측정 시간
+    - 눈맞춤 부족: 청중을 전혀 안 보기 시작하면 (1 − 기준) × 최근 창 뒤에
+      기준 아래로 내려가고(측정 시간
       최소도 채워야 한다), 다시 청중만 보면 기준 × 최근 창 뒤에 올라온다.
     - 측정 불가: 측정이 끊기면 (1 − 기준) × 짧은 창 뒤에 잡히고, 측정 비율은 최근 창과도 비교하므로
       다시 잴 수 있게 된 뒤 기준 × 최근 창이 지나야 끝난다.

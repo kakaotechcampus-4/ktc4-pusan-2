@@ -4,9 +4,10 @@
 docs/ai/architecture.md 7절을 따른다. 시각은 모두 Take 시작 기준 ms 다.
 
 입력은 1초 기록(브라우저 엔진이 만들어 FE → BE → 코치로 오는 단위)과 같은 1초들의 발화 시간이다.
-**얼굴 영상 · 랜드마크 · 얼굴 측정값은 들어 있지 않다.** 입력 모델은 모르는 필드를 무시하고, 출력 모델은
-정해진 필드만 낸다(gaze-tracking.md 5절). 다른 모듈을 import 하지 않으므로 architecture.md 7절의 공통
-결과 모양(`JudgmentIssue` · `JudgmentResult` · `TallyItem` · `IssueCriteria`)도 여기에 옮겨 둔다.
+**얼굴 영상 · 랜드마크 · 얼굴 측정값은 들어 있지 않다.** 입력 모델은 모르는 필드를 무시하고,
+출력 모델은 정해진 필드만 낸다(gaze-tracking.md 5절). 다른 모듈을 import 하지 않으므로
+architecture.md 7절의 공통 결과 모양(`JudgmentIssue` · `JudgmentResult` · `TallyItem` ·
+`IssueCriteria`)도 여기에 옮겨 둔다.
 """
 
 from __future__ import annotations
@@ -48,7 +49,8 @@ class _Output(BaseModel):
 
 
 class GazeRecord(_Input):
-    """시선 1초 기록 한 개 (architecture.md 6-2). 읽을 수 없으면 그 1초만 버린다(core.read_records)."""
+    """시선 1초 기록 한 개 (architecture.md 6-2).
+    읽을 수 없으면 그 1초만 버린다(core.read_records)."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
@@ -64,10 +66,11 @@ class GazeRecord(_Input):
     @model_validator(mode="before")
     @classmethod
     def _keep_what_can_be_read(cls, data: Any) -> Any:
-        # 뜻을 읽을 수 있는 정보는 버리지 않는다. 방향은 OTHER 에만 뜻이 있고, 모르는 방향(엔진이 방향을
-        # 늘린 경우 · 문자열이 아닌 값)은 방향만 버린다. issues 가 null 이면 빈 목록이고, 문자열이 아닌
-        # 값은 무시한다. 선택 필드가 null 이면 빠진 것과 같다(없으면 0, gaze-tracking.md 5-2) -- 코치의
-        # 요청 모델은 빠진 confidence · reliability · frames 를 null 로 넘긴다
+        # 뜻을 읽을 수 있는 정보는 버리지 않는다. 방향은 OTHER 에만 뜻이 있고, 모르는 방향
+        # (엔진이 방향을 늘린 경우 · 문자열이 아닌 값)은 방향만 버린다. issues 가 null 이면
+        # 빈 목록이고, 문자열이 아닌 값은 무시한다. 선택 필드가 null 이면 빠진 것과 같다
+        # (없으면 0, gaze-tracking.md 5-2) -- 코치의 요청 모델은 빠진 confidence · reliability ·
+        # frames 를 null 로 넘긴다
         if not isinstance(data, dict):
             return data
         data = {k: v for k, v in data.items() if not (k in _ZERO_IF_MISSING and v is None)}
@@ -95,7 +98,8 @@ class GazeInput(_Input):
     t_ms: int = Field(ge=0)
     #: 시각 커서. t_ms 가 이 값 이상인 1초가 새것이다
     since_ms: int = Field(ge=0)
-    #: 최근 시선 1초 기록. 기록 하나씩 읽어 이상한 것은 그 1초만 버리므로 여기서는 모양을 보지 않는다
+    #: 최근 시선 1초 기록.
+    #: 기록 하나씩 읽어 이상한 것은 그 1초만 버리므로 여기서는 모양을 보지 않는다
     records: list[Any] = Field(default_factory=list)
     #: 같은 1초들의 발화 시간
     voiced: list[Voiced] = Field(default_factory=list)

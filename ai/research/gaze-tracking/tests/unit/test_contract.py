@@ -10,7 +10,13 @@ from pydantic import ValidationError
 
 from gaze import config
 from gaze.config import DEFAULT, GazeConfig
-from gaze.schemas import GazeInput, GazeRecord, JudgmentIssue, JudgmentResult, TallyItem
+from gaze.schemas import (
+    GazeInput,
+    GazeRecord,
+    JudgmentIssue,
+    JudgmentResult,
+    TallyItem,
+)
 from gaze.version import FEATURE_VERSION
 
 REQUIRED = {"t_ms": 1000, "since_ms": 0}

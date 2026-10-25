@@ -1,4 +1,5 @@
-"""계약 예시 — examples/ 의 입력 · 출력이 지금 코드와 같고, 공통 계약과 기능 문서 5-5 에 맞는지 본다.
+"""계약 예시 — examples/ 의 입력 · 출력이 지금 코드와 같고,
+공통 계약과 기능 문서 5-5 에 맞는지 본다.
 
 예시 출력은 `tools/make_examples.py` 가 만든다. 기준값 · 판정 규칙을 바꾸면 그 도구로 다시 만든다.
 """
@@ -200,7 +201,8 @@ def test_summarize_examples_show_zero_denominators():
 
 def test_summarize_example_matches_the_doc_example_rounded():
     doc = {"audience_ratio": 0.578, "script_ratio": 0.311, "screen_ratio": 0.067,
-           "away_ratio": 0.044, "reading_ratio": 0.214, "reading_runs": 4, "measured_ratio": 0.938}  # fmt: skip
+           "away_ratio": 0.044, "reading_ratio": 0.214, "reading_runs": 4,
+           "measured_ratio": 0.938}  # fmt: skip
     got = _load("summarize_output.json")["GAZE"]
     assert set(got) == set(doc)
     assert all(got[k] == pytest.approx(v, abs=5e-4) for k, v in doc.items())

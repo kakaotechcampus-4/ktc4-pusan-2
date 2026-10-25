@@ -13,7 +13,8 @@ from .judge_helpers import run, secs, spoken, totals
 def test_summarize_divides_by_measured_and_spoken_time():
     g = summarize({"GAZE": {"camera_ms": 6000, "screen_ms": 2000, "script_ms": 1000,
                             "away_ms": 1000, "measured_ms": 10_000, "total_ms": 20_000,
-                            "speaking_ms": 4000, "reading_ms": 1000, "reading_runs": 2}})["GAZE"]  # fmt: skip
+                            "speaking_ms": 4000, "reading_ms": 1000,
+                            "reading_runs": 2}})["GAZE"]  # fmt: skip
     assert g == {
         "audience_ratio": 0.6, "script_ratio": 0.1, "screen_ratio": 0.2, "away_ratio": 0.1,
         "reading_ratio": 0.25, "reading_runs": 2, "measured_ratio": 0.5,
