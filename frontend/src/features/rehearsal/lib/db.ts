@@ -1,21 +1,20 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { DeviceChoice } from '../media/useCameraStream';
 import type { CalibrationSummary, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
-import type { ZoneDecision, ZoneReference } from '@/workers/gaze.contract';
+import type { GazeSampleRecord } from '@/workers/gaze.contract';
+import { PITCH_DB_NAME } from '@/shared/lib/localData';
 
 /**
  * 리허설 중 쌓이는 모든 기록. **브라우저가 원본입니다** (CLAUDE.md 4번).
  *
  * 스키마를 이 파일 한 곳에 모읍니다. 흩어지면 복구 로직이 무너집니다 —
- * 비정상 종료를 감지하려면 session·gazeSegments 를 같은 관점에서
+ * 비정상 종료를 감지하려면 session·gazeSamples 를 같은 관점에서
  * 봐야 하는데, 접근 경로가 갈리면 "기록이 남아 있는데 진행 중이었다"를 판단할 수 없습니다.
  *
- * 키는 `clientSessionId` 입니다. 업로드 재시도의 멱등 키와 **같은 값**입니다
- * (`CompleteRequest.clientSessionId`) — 그래서 재시도해도 서버가 Take 를 새로 만들지 않습니다.
+ * 키는 `clientSessionId` 입니다. 재시도 화면(P15)이 이 값으로 같은 세션을 다시 찾습니다.
  */
 
-const DB_NAME = 'pitchcoach';
-const DB_VERSION = 3;
+const DB_VERSION = 6;
 
 /** 세션 상태. 서버의 TakeStatus 와 다릅니다 — 이건 브라우저 쪽 진행 상태입니다. */
 export type SessionStatus = 'RUNNING' | 'ENDED' | 'ABORTED';
@@ -67,7 +66,7 @@ export interface SessionRow {
    */
   ending: { durationMs: Ms; endedAtIso: string } | null;
   /**
-   * `/complete` 가 성공한 시각. 있으면 이 Take 는 끝났습니다 — 서버에서 Take 상태를 읽을
+   * 종료 전송(`PUT` 시작 · 종료 시각)이 성공한 시각. 있으면 이 Take 는 끝났습니다 — 서버에서 Take 상태를 읽을
    * API 가 없어서 다시 들어왔을 때(새로고침 · 뒤로 가기) 무대를 열지 않을 근거가 이것뿐입니다.
    */
   submittedAt: number | null;
@@ -85,13 +84,13 @@ interface PitchDb extends DBSchema {
     indexes: { byStatus: SessionStatus };
   };
   /**
-   * 1초 판정 하나가 한 행입니다. 10분이면 최대 600행.
-   * 전송 직전에 compressToSegments 로 같은 zone 끼리 묶습니다 —
-   * 여기서 미리 묶지 않는 이유는, 중간에 죽었을 때 부분 기록이 그대로 살아야 하기 때문입니다.
+   * 엔진 1초 기록 하나가 한 행입니다 (`GazeSampleRecord`). 10분이면 약 600행.
+   * 받은 그대로 둡니다 — 묶거나 고치지 않습니다. 중간에 죽었을 때 부분 기록이 그대로 살아야 하고,
+   * 종료 때 서버로 가는 것도 이 행들입니다. 얼굴 영상 · 랜드마크 · 얼굴 측정값은 없습니다.
    */
-  gazeSegments: {
+  gazeSamples: {
     key: [string, number];
-    value: ZoneDecision & { clientSessionId: string };
+    value: GazeSampleRecord & { clientSessionId: string };
   };
   slideChanges: {
     key: [string, number];
@@ -102,40 +101,12 @@ interface PitchDb extends DBSchema {
     key: [string, number];
     value: { clientSessionId: string; atMs: Ms; firstCharIndex: number; lastCharIndex: number };
   };
-  /** 발동한 것과 **억제한 것 둘 다.** 억제 기록이 코칭 임계값 조정의 유일한 근거입니다 */
-  coachLog: {
-    key: [string, number];
-    value: {
-      clientSessionId: string;
-      atMs: Ms;
-      type: string;
-      fired: boolean;
-      message: string | null;
-      suppressedReason: string | null;
-    };
-  };
-  /**
-   * 캘리브레이션 기준. **서버로 보내지 않습니다** (CLAUDE.md 1번) —
-   * 서버에는 품질 요약(`CalibrationSummary`)만 갑니다.
-   *
-   * 키가 `layoutSignature` 인 이유 — 해상도·배율·카메라 위치가 바뀌면
-   * 시선 각도가 달라져 지난 기준을 쓸 수 없습니다. 키로 두면
-   * "다른 기기에서는 자동으로 재사용되지 않는" 동작이 그냥 나옵니다.
-   */
-  zoneRefs: {
-    key: string;
-    /**
-     * `layoutSignature` 는 FE 가 만든 키입니다 — 분류기는 모릅니다 (layoutSignature.ts).
-     * `engineVersion` 은 이 기준을 만든 엔진입니다. 다른 엔진에는 넣지 않습니다.
-     */
-    value: ZoneReference & { layoutSignature: string; engineVersion: string; fittedAt: number };
-  };
 }
 
 let dbPromise: Promise<IDBPDatabase<PitchDb>> | null = null;
 
 export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
-  dbPromise ??= openDB<PitchDb>(DB_NAME, DB_VERSION, {
+  dbPromise ??= openDB<PitchDb>(PITCH_DB_NAME, DB_VERSION, {
     /**
      * ★ 버전별 장부입니다. 위에서부터 순서대로, 각 블록은 브라우저마다 **평생 한 번만** 돕니다.
      *
@@ -157,7 +128,7 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
      * `oldVersion` 이 IndexedDB 가 그 답으로 준 값입니다.
      */
     upgrade(db, oldVersion) {
-      // 스키마 타입에서 빠진 스토어(audioChunks)를 만들고 지우려면 타입 없는 핸들이 필요합니다.
+      // 스키마 타입에서 빠진 스토어(audioChunks · gazeSegments · coachLog)를 만들고 지우려면 타입 없는 핸들이 필요합니다.
       // 지나간 단계는 그대로 재생해야 하므로 v1 의 생성 줄을 지우지 않고 이걸로 돌립니다.
       const untyped = db as unknown as IDBPDatabase;
 
@@ -167,16 +138,16 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
         session.createIndex('byStatus', 'status');
 
         // 복합 키 [clientSessionId, 시각] — 세션별 범위 조회가 그냥 됩니다.
-        db.createObjectStore('gazeSegments', { keyPath: ['clientSessionId', 'tMs'] });
+        untyped.createObjectStore('gazeSegments', { keyPath: ['clientSessionId', 'tMs'] });
         db.createObjectStore('slideChanges', { keyPath: ['clientSessionId', 'atMs'] });
         db.createObjectStore('scriptScroll', { keyPath: ['clientSessionId', 'atMs'] });
-        db.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
+        untyped.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
         untyped.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
       }
 
       // ── v2 · 캘리브레이션 기준. 세션이 아니라 기기(layoutSignature)에 매입니다 ──
       if (oldVersion < 2) {
-        db.createObjectStore('zoneRefs', { keyPath: 'layoutSignature' });
+        untyped.createObjectStore('zoneRefs', { keyPath: 'layoutSignature' });
       }
 
       // ── v3 · 로컬 녹음 폐기. 음성은 WebSocket 으로만 갑니다 (CLAUDE.md 4번) ──
@@ -185,7 +156,28 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
         untyped.deleteObjectStore('audioChunks');
       }
 
-      // ── v4 를 만들 때는 여기에 블록을 덧붙입니다. 위는 절대 고치지 않습니다 ──
+      // ── v4 · 시선을 엔진 1초 기록으로 저장합니다 (AI 시선 문서 5-2 · 12-2) ──
+      //   FE 다수결로 만든 3구역 판정(gazeSegments)은 더 읽지 않으므로 스토어째 지웁니다.
+      //   키는 [clientSessionId, t_ms] — 1초 기록의 시작 시각입니다.
+      if (oldVersion < 4) {
+        untyped.deleteObjectStore('gazeSegments');
+        db.createObjectStore('gazeSamples', { keyPath: ['clientSessionId', 't_ms'] });
+      }
+
+      // ── v5 · 시선 기준을 브라우저 저장소에 두지 않습니다 (AI 시선 문서 12-2) ──
+      //   기준에는 얼굴 측정값이 들어 있어 이제 탭 메모리에만 둡니다 (zoneRefMemory.ts).
+      //   남아 있던 기준까지 지우도록 스토어째 지웁니다.
+      if (oldVersion < 5) {
+        untyped.deleteObjectStore('zoneRefs');
+      }
+
+      // ── v6 · FE 코치를 없앱니다. 판단은 AI 코치가 하고 BE 가 저장합니다 (coach-agent.md 12-1) ──
+      //   FE 가 띄운 · 참은 코치 기록(coachLog)은 더 쓰지도 읽지도 않으므로 스토어째 지웁니다.
+      if (oldVersion < 6) {
+        untyped.deleteObjectStore('coachLog');
+      }
+
+      // ── v7 을 만들 때는 여기에 블록을 덧붙입니다. 위는 절대 고치지 않습니다 ──
       //   이미 그 단계를 지나온 브라우저는 다시 밟지 않으므로, 위를 고치면
       //   새로 여는 사람에게만 반영되고 기존 사용자와 구조가 갈립니다.
       //
@@ -194,8 +186,15 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
       //   이름에 ConstraintError 를 냅니다.
       //
       //   upgrade(db, oldVersion, _newVersion, tx) {
-      //     if (oldVersion < 4) tx.objectStore('session').createIndex('byTakeId', 'takeId');
+      //     if (oldVersion < 7) tx.objectStore('session').createIndex('byTakeId', 'takeId');
       //   }
+    },
+    // 다른 곳이 DB 를 지우거나(마이페이지 기록 지우기 · 탈퇴) 버전을 올리려 하면 연결을 닫아
+    // 막지 않습니다. 다음 호출이 다시 엽니다.
+    blocking(_current, _blocked, event) {
+      // 이벤트 안에서 바로 닫아야 삭제가 blocked 로 넘어가지 않습니다
+      (event.target as IDBDatabase).close();
+      dbPromise = null;
     },
   })
     // 실패한 약속을 캐시하면 새로고침 전까지 영원히 실패합니다.
@@ -288,7 +287,7 @@ export async function markEnding(
   await patchSession(clientSessionId, { ending });
 }
 
-/** `/complete` 가 성공했다 (`SessionRow.submittedAt`) */
+/** 종료 전송이 성공했다 (`SessionRow.submittedAt`) */
 export async function markSubmitted(clientSessionId: string): Promise<void> {
   await patchSession(clientSessionId, { submittedAt: Date.now() });
 }
@@ -325,29 +324,27 @@ export async function setGazePerf(
   await patchSession(clientSessionId, { gazeAvgFps: avgFps, gazeDroppedFrames: droppedFrames });
 }
 
-// ── 시선 판정 ──────────────────────────────────────────────────────────
+// ── 시선 1초 기록 ─────────────────────────────────────────────────────
 
-/** 1초 판정 하나를 쌓습니다. 초당 한 번 호출되므로 트랜잭션 비용이 문제되지 않습니다. */
-export async function appendGazeDecision(
+/**
+ * 1초 기록을 쌓습니다. 보통 초당 하나이고, 끊겼다 이어지면 몇 개가 한꺼번에 옵니다 —
+ * 한 트랜잭션에 넣어 일부만 들어가는 일이 없게 합니다.
+ */
+export async function appendGazeSamples(
   clientSessionId: string,
-  decision: ZoneDecision,
+  samples: readonly GazeSampleRecord[],
 ): Promise<void> {
+  if (samples.length === 0) return;
   const db = await openPitchDb();
-  await db.put('gazeSegments', { ...decision, clientSessionId });
+  const tx = db.transaction('gazeSamples', 'readwrite');
+  await Promise.all([...samples.map((s) => tx.store.put({ ...s, clientSessionId })), tx.done]);
 }
 
-export async function countGazeDecisions(clientSessionId: string): Promise<number> {
+/** 시작 시각 순으로 돌려줍니다. 받은 그대로이고 `clientSessionId` 만 뗍니다 */
+export async function readGazeSamples(clientSessionId: string): Promise<GazeSampleRecord[]> {
   const db = await openPitchDb();
-  return db.count('gazeSegments', sessionRange(clientSessionId));
-}
-
-/** tMs 순으로 돌려줍니다 — compressToSegments 가 순서를 전제합니다 */
-export async function readGazeDecisions(clientSessionId: string): Promise<ZoneDecision[]> {
-  const db = await openPitchDb();
-  const rows = await db.getAll('gazeSegments', sessionRange(clientSessionId));
-  return rows
-    .map(({ tMs, zone, confidence, sampleCount }) => ({ tMs, zone, confidence, sampleCount }))
-    .sort((a, b) => a.tMs - b.tMs);
+  const rows = await db.getAll('gazeSamples', sessionRange(clientSessionId));
+  return rows.map(({ clientSessionId: _id, ...sample }) => sample).sort((a, b) => a.t_ms - b.t_ms);
 }
 
 /**
@@ -368,9 +365,10 @@ export async function setSessionTicket(
 }
 
 /**
- * takeId 로 세션을 찾습니다. 리허설 주소를 다른 탭에서 열었을 때 쓰는 길입니다 —
- * 라우터 state 는 새로고침하면 남지만 탭을 옮기면 없습니다. 기록은 IndexedDB 에 남아 있습니다.
- * 같은 Take 로 두 번 시작된 세션이 있으면 **가장 최근 것**을 잇습니다.
+ * takeId 로 세션을 찾습니다. 리허설 주소를 다른 창에서 열었을 때 쓰는 길입니다 —
+ * 라우터 state 는 새로고침하면 남지만 창을 옮기면 없습니다. 기록은 IndexedDB 에 남아 있습니다.
+ * 찾은 세션은 이어 가지 않고, 창을 닫았는지 · 다른 창이 발표 중인지 가르는 데 씁니다 (`leftWindow`).
+ * 같은 Take 로 두 번 시작된 세션이 있으면 **가장 최근 것**을 봅니다.
  */
 export async function findSessionByTakeId(takeId: string): Promise<SessionRow | null> {
   const db = await openPitchDb();
@@ -403,48 +401,19 @@ export async function readSlideChanges(
     .sort((a, b) => a.atMs - b.atMs);
 }
 
-/**
- * 코치가 **띄운 것과 참은 것 둘 다** 남깁니다.
- *
- * 참은 기록이 없으면 "왜 안 떴나"를 나중에 알 수 없습니다. 임계값을 조정할 근거가
- * 그것뿐이라, 발동 기록만 남기면 다음 Take 에서 같은 문제가 반복됩니다
- * (`CompleteRequest.suppressedFeedbacks`).
- */
-export async function appendCoachLog(
-  clientSessionId: string,
-  entry: {
-    atMs: Ms;
-    type: string;
-    fired: boolean;
-    message: string | null;
-    suppressedReason: string | null;
-  },
-): Promise<void> {
-  const db = await openPitchDb();
-  await db.put('coachLog', { clientSessionId, ...entry });
-}
-
-export async function readCoachLog(clientSessionId: string) {
-  const db = await openPitchDb();
-  const rows = await db.getAll('coachLog', sessionRange(clientSessionId));
-  return rows.sort((a, b) => a.atMs - b.atMs);
-}
-
 /** dev 페이지의 `기록: N건` 용 */
 export async function countAll(clientSessionId: string): Promise<Record<string, number>> {
   const db = await openPitchDb();
   const range = sessionRange(clientSessionId);
-  const [gaze, slides, scroll, coach] = await Promise.all([
-    db.count('gazeSegments', range),
+  const [gaze, slides, scroll] = await Promise.all([
+    db.count('gazeSamples', range),
     db.count('slideChanges', range),
     db.count('scriptScroll', range),
-    db.count('coachLog', range),
   ]);
   return {
-    gazeSegments: gaze,
+    gazeSamples: gaze,
     slideChanges: slides,
     scriptScroll: scroll,
-    coachLog: coach,
   };
 }
 
@@ -460,50 +429,4 @@ export async function findAbandonedSessions(staleAfterMs = 10_000): Promise<Sess
   const running = await db.getAllFromIndex('session', 'byStatus', 'RUNNING');
   const now = Date.now();
   return running.filter((s) => now - s.lastBeatAt > staleAfterMs);
-}
-
-/* ------------------------------------------------------------------ */
-/* 캘리브레이션 기준 — 기기별로 보관하고 다음 Take 에서 되살립니다        */
-/* ------------------------------------------------------------------ */
-
-/**
- * 기준을 저장합니다. `fitCalibration` 이 낸 값을 그대로 넣고, 키는 FE 가 붙입니다.
- *
- * `model` 안에 무엇이 들었는지 FE 는 모릅니다 — 분류기가 정하고,
- * IndexedDB 는 구조화 복제로 그대로 보관합니다.
- */
-export async function saveZoneRef(
-  layoutSignature: string,
-  ref: ZoneReference,
-  engineVersion: string,
-): Promise<void> {
-  const db = await openPitchDb();
-  await db.put('zoneRefs', { ...ref, layoutSignature, engineVersion, fittedAt: Date.now() });
-}
-
-/**
- * 이 기기의 기준을 되살립니다. 없으면 `null` — 캘리브레이션을 다시 받습니다.
- *
- * `layoutSignature` 가 다르면 애초에 키가 달라 안 잡힙니다.
- * 같은 기기라도 오래된 기준은 쓰지 않습니다 — 카메라를 옮겼거나
- * 앉은 자리가 바뀌었을 가능성이 시간과 함께 커집니다.
- *
- * **엔진이 바뀌었으면 버립니다.** 모델이 업데이트되면 `model` 안의 모양과 뜻이 달라질 수
- * 있는데, 분류기의 `calibrate()` 는 반환값이 없어 "이건 못 쓴다"고 말할 수 없습니다.
- * 그대로 넣으면 판정이 조용히 틀어집니다. AI 도 스키마가 다른 기준은 거부합니다.
- * 버전이 없는 옛 행도 같은 이유로 버립니다.
- */
-export async function loadZoneRef(
-  layoutSignature: string,
-  engineVersion: string,
-  maxAgeMs = 7 * 24 * 60 * 60 * 1000,
-): Promise<ZoneReference | null> {
-  const db = await openPitchDb();
-  const row = await db.get('zoneRefs', layoutSignature);
-  if (!row) return null;
-  if (row.engineVersion !== engineVersion) return null;
-  if (Date.now() - row.fittedAt > maxAgeMs) return null;
-
-  const { fittedAt: _fittedAt, layoutSignature: _key, engineVersion: _engine, ...ref } = row;
-  return ref;
 }

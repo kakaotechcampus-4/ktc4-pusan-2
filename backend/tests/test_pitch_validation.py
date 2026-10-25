@@ -26,19 +26,29 @@ def _add(client: TestClient, headers: dict[str, str], **override: Any):
         {"title": "가" * 51},
         {"title": ""},
         {"title": "   "},
+        {"title": "발\u0000표"},
         {"time_limit_sec": 0},
         {"time_limit_sec": -1},
+        {"time_limit_sec": 3601},
+        {"time_limit_sec": 2**31},
         {"upper_deviation": -1},
+        {"upper_deviation": 301},
         {"lower_deviation": -1},
+        {"lower_deviation": 2**31},
     ],
     ids=[
         "title-51",
         "title-empty",
         "title-blank",
+        "title-nul",
         "time-0",
         "time-negative",
+        "time-over-60min",
+        "time-over-int4",
         "upper-neg",
+        "upper-over-5min",
         "lower-neg",
+        "lower-over-int4",
     ],
 )
 def test_add_rejects_out_of_range_with_422(
@@ -55,6 +65,14 @@ def test_add_accepts_50_char_title_and_strips_spaces(
     assert response.status_code == 200
     pitches = client.get("/api/pitches/", headers=auth_headers).json()["pitches"]
     assert [p["pitch_title"] for p in pitches] == ["가" * 50]
+
+
+def test_add_accepts_upper_bounds(client: TestClient, auth_headers: dict[str, str]) -> None:
+    response = _add(
+        client, auth_headers, time_limit_sec=3600, upper_deviation=300, lower_deviation=300
+    )
+
+    assert response.status_code == 200
 
 
 def test_update_rejects_title_over_50_with_422(

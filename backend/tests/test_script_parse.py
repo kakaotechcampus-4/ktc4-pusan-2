@@ -23,7 +23,7 @@ from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.main import app
 from pitch_coach_backend.module.pitch import service
 from pitch_coach_backend.module.pitch.dependencies import get_script_parse_runner
-from pitch_coach_backend.module.pitch.dto import ParseTicket, ScriptParseErrorCode
+from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket, ScriptParseErrorCode
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     ScriptParseStatus,
@@ -35,10 +35,15 @@ from pitch_coach_backend.module.pitch.script_parse_runner import ScriptParseRunn
 from pitch_coach_backend.module.pitch.script_parser import (
     ParsedScript,
     ParsedSlide,
+    ParseMeta,
     ScriptParseError,
 )
 
 SCRIPT_TEXT = "슬라이드 1:\n안녕하세요. SeatFlow 입니다.\n\n슬라이드 2:\n감사합니다."
+# _new_pitch 의 발표 제한 시간 600초
+TARGET_MS = 600_000
+
+META = ParseMeta(schema_version="1.0", feature_version="script_parser-1.0", model="test-model")
 
 TWO_SLIDES = ParsedScript(
     segmented=True,
@@ -48,22 +53,34 @@ TWO_SLIDES = ParsedScript(
             content="안녕하세요. SeatFlow 입니다.",
             keywords=("SeatFlow",),
             highlights=((7, 15),),
+            script_chars=16,
+            expected_ms=457_143,
         ),
-        ParsedSlide(slide_number=2, content="감사합니다.", keywords=("감사",), highlights=()),
+        ParsedSlide(
+            slide_number=2,
+            content="감사합니다.",
+            keywords=("감사",),
+            highlights=(),
+            script_chars=5,
+            expected_ms=142_857,
+        ),
     ),
     terms=("SeatFlow",),
+    meta=META,
 )
 
 
 class FakeParser:
-    """AI 역할. 정해 둔 결과를 돌려주거나 예외를 던지고, 받은 대본을 남긴다."""
+    """AI 역할. 정해 둔 결과를 돌려주거나 예외를 던지고, 받은 대본과 목표 시간을 남긴다."""
 
     def __init__(self, result: ParsedScript | Exception = TWO_SLIDES) -> None:
         self.result = result
         self.calls: list[str] = []
+        self.targets: list[int | None] = []
 
-    async def parse(self, script_text: str) -> ParsedScript:
+    async def parse(self, script_text: str, target_ms: int | None) -> ParsedScript:
         self.calls.append(script_text)
+        self.targets.append(target_ms)
         if isinstance(self.result, Exception):
             raise self.result
         return self.result
@@ -228,6 +245,86 @@ def test_unsegmented_result_is_done_with_one_slide(
     assert [slide["slide_number"] for slide in body["slides"]] == [1]
 
 
+def _slides(db: Session, script_id: uuid.UUID) -> list[ScriptSlide]:
+    return list(
+        db.scalars(
+            select(ScriptSlide)
+            .where(ScriptSlide.script_version_id == script_id)
+            .order_by(ScriptSlide.slide_number)
+        )
+    )
+
+
+def test_parse_sends_time_limit_and_saves_timing_and_meta(
+    client: TestClient,
+    db_session: Session,
+    parser: FakeParser,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+) -> None:
+    script_id = _create_ok(client, pitch_id, auth_headers)
+
+    # 발표 제한 시간(초)을 ms 로 바꿔 싣는다
+    assert parser.targets == [TARGET_MS]
+    script = db_session.get(ScriptVersion, script_id)
+    assert script is not None
+    # 응답의 meta 에 요청한 target_ms 를 더해 둔다
+    assert script.parse_meta == {
+        "schema_version": "1.0",
+        "feature_version": "script_parser-1.0",
+        "model": "test-model",
+        "target_ms": TARGET_MS,
+    }
+    slides = _slides(db_session, script_id)
+    assert [(slide.script_chars, slide.expected_ms) for slide in slides] == [
+        (16, 457_143),
+        (5, 142_857),
+    ]
+
+
+def test_result_without_new_fields_leaves_the_new_columns_empty(
+    client: TestClient,
+    db_session: Session,
+    parser: FakeParser,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+) -> None:
+    """지금 AI 연구 코드의 응답처럼 script_chars · expected_ms · meta 가 없어도 DONE 이다."""
+    parser.result = ParsedScript(
+        segmented=True, slides=(ParsedSlide(1, "안녕하세요.", (), ()),), terms=()
+    )
+    script_id = _create_ok(client, pitch_id, auth_headers)
+
+    assert _get(client, pitch_id, script_id, auth_headers).json()["parse_status"] == "DONE"
+    script = db_session.get(ScriptVersion, script_id)
+    assert script is not None
+    assert script.parse_meta is None
+    [slide] = _slides(db_session, script_id)
+    assert (slide.script_chars, slide.expected_ms) == (None, None)
+
+
+def test_pitch_without_a_valid_time_limit_is_parsed_without_target(
+    client: TestClient,
+    db_session: Session,
+    parser: FakeParser,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+) -> None:
+    """입력 검증(#147) 전에 0 으로 저장된 발표. 계약은 1 이상이라 목표 없이(null) 부른다."""
+    pitch = db_session.get(Pitch, pitch_id)
+    assert pitch is not None
+    pitch.time_limit_sec = 0
+    db_session.commit()
+
+    script_id = _create_ok(client, pitch_id, auth_headers)
+
+    assert parser.targets == [None]
+    script = db_session.get(ScriptVersion, script_id)
+    assert script is not None
+    assert script.parse_meta is not None
+    assert script.parse_meta["target_ms"] is None
+
+
 @pytest.mark.parametrize(
     ("error", "code"),
     [
@@ -353,6 +450,30 @@ def test_retry_after_failure_reuses_stored_text_and_finishes(
     assert len(body["slides"]) == 2
 
 
+def test_retry_sends_the_time_limit_at_retry_time(
+    client: TestClient,
+    db_session: Session,
+    parser: FakeParser,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+) -> None:
+    parser.result = ScriptParseError(ScriptParseErrorCode.AI_ERROR, "503", retryable=True)
+    script_id = _create_ok(client, pitch_id, auth_headers)
+    pitch = db_session.get(Pitch, pitch_id)
+    assert pitch is not None
+    pitch.time_limit_sec = 300
+    db_session.commit()
+
+    parser.result = TWO_SLIDES
+    assert _reparse(client, pitch_id, script_id, auth_headers).status_code == 202
+
+    assert parser.targets == [TARGET_MS, 300_000]
+    script = db_session.get(ScriptVersion, script_id)
+    assert script is not None
+    assert script.parse_meta is not None
+    assert script.parse_meta["target_ms"] == 300_000
+
+
 def test_retry_is_refused_while_pending(
     client: TestClient,
     auth_headers: dict[str, str],
@@ -472,7 +593,7 @@ def test_legacy_script_asks_for_reupload(
 def _ticket(db: Session, script_id: uuid.UUID) -> ParseTicket:
     script = db.get(ScriptVersion, script_id)
     assert script is not None
-    return ParseTicket(script_id, script.parse_requested_at, SCRIPT_TEXT)
+    return ParseTicket(script_id, script.parse_requested_at, SCRIPT_TEXT, TARGET_MS)
 
 
 def test_old_job_cannot_overwrite_a_newer_attempt(
@@ -490,12 +611,12 @@ def test_old_job_cannot_overwrite_a_newer_attempt(
     assert new.requested_at != old.requested_at
 
     # 옛 작업의 성공도 실패도 반영되지 않는다
-    assert service.complete_parse(db_session, old, TWO_SLIDES) is False
+    assert service.complete_parse(db_session, old, TWO_SLIDES) is ParseSaved.STALE
     assert service.fail_parse(db_session, old, ScriptParseErrorCode.AI_ERROR) is False
     assert _get(client, pitch_id, script_id, auth_headers).json()["parse_status"] == "PENDING"
 
     # 새 작업은 반영된다. 끝난 뒤에는 같은 작업이 다시 와도 무시된다 (중복 실행 방지)
-    assert service.complete_parse(db_session, new, TWO_SLIDES) is True
+    assert service.complete_parse(db_session, new, TWO_SLIDES) is ParseSaved.APPLIED
     assert service.fail_parse(db_session, new, ScriptParseErrorCode.AI_ERROR) is False
     body = _get(client, pitch_id, script_id, auth_headers).json()
     assert body["parse_status"] == "DONE"
@@ -553,7 +674,7 @@ def test_expired_job_cannot_flip_failed_back_to_done(
     _age(db_session, script_id, service.PARSE_EXPIRE_AFTER.total_seconds() + 1)
     late = _ticket(db_session, script_id)
 
-    assert service.complete_parse(db_session, late, TWO_SLIDES) is False
+    assert service.complete_parse(db_session, late, TWO_SLIDES) is ParseSaved.STALE
     assert service.fail_parse(db_session, late, ScriptParseErrorCode.AI_ERROR) is False
 
     body = _get(client, pitch_id, script_id, auth_headers).json()
@@ -685,7 +806,7 @@ async def test_runner_swallows_db_failures_and_logs(
     DB 가 없는 테스트라 행 상태가 아니라 "던지지 않는다"와 로그만 본다.
     """
     runner = ScriptParseRunner(FakeParser(result), session_factory=_broken_session)
-    ticket = ParseTicket(uuid.uuid7(), datetime.now(UTC), SCRIPT_TEXT)
+    ticket = ParseTicket(uuid.uuid7(), datetime.now(UTC), SCRIPT_TEXT, TARGET_MS)
 
     with caplog.at_level(logging.ERROR):
         await runner.run(ticket)  # 예외가 나오면 테스트 실패
@@ -717,7 +838,7 @@ def test_save_failure_ends_as_failed_not_pending(
     """결과 저장이 값 문제로 실패하면 FAILED(INTERNAL_ERROR). PENDING 으로 두면 FE 가 90초를
     기다린 뒤 엉뚱한 PARSE_EXPIRED 를 받는다."""
 
-    def broken_complete(*args: object) -> bool:
+    def broken_complete(*args: object) -> ParseSaved:
         raise ValueError("저장할 수 없는 값")
 
     monkeypatch.setattr(service, "complete_parse", broken_complete)
@@ -849,8 +970,8 @@ def test_version_lock_does_not_block_child_inserts_on_the_same_pitch(engine: Eng
                     take_number=1,
                     presentation_version_id=presentation_id,
                     script_version_id=script_id,
-                    mode="PRACTICE",
-                    script_mode="FULL",
+                    mode="COACHING",
+                    script_mode="HIGHLIGHT",
                     goal_time_sec=60,
                 )
             )

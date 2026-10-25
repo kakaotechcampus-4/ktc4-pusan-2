@@ -47,12 +47,14 @@ def create_refresh_token(
     token_hash: str,
     device_id: uuid.UUID,
     expires_at: datetime,
+    session_expires_at: datetime,
 ) -> RefreshToken:
     token = RefreshToken(
         user_id=user_id,
         token_hash=token_hash,
         device_id=device_id,
         expires_at=expires_at,
+        session_expires_at=session_expires_at,
     )
     db.add(token)
     db.flush()
@@ -66,6 +68,19 @@ def get_refresh_token(db: Session, token_hash: str) -> RefreshToken | None:
     재사용 탐지를 할 수 없다.
     """
     return db.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
+
+
+def get_refresh_token_for_update(db: Session, token_hash: str) -> RefreshToken | None:
+    """get_refresh_token 과 같되 행을 잠근다. 같은 토큰으로 온 회전이 커밋 순서대로 줄을 선다.
+
+    populate_existing: 잠금을 기다리는 사이 다른 요청이 바꾼 값으로 ORM 객체를 덮어쓴다.
+    """
+    return db.scalar(
+        select(RefreshToken)
+        .where(RefreshToken.token_hash == token_hash)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
 
 
 def revoke(db: Session, token: RefreshToken) -> None:

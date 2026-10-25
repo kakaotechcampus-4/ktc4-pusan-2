@@ -50,6 +50,8 @@ class FillerInput(In):
     utterance_ends: list[int] = []
     stt_status: str = "ok"
     stt_ok_since_ms: int | None = None
+    #: finalize 마지막 창의 Take 끝 시각(evaluate 는 None). 대역 군더더기는 보류가 없어 쓰지 않는다
+    take_end_ms: int | None = None
     since_ms: int = 0
     words_since_ms: int = -1
 

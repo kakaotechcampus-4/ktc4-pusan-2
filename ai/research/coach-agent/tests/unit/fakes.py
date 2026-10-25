@@ -116,15 +116,21 @@ def default_baseline(levels: list[float]) -> float | None:
     return round(sum(levels[:3]) / 3, 2) if len(levels) >= 3 else None
 
 
+def default_speaking_levels(records: list[dict[str, Any]]) -> list[float]:
+    """level_db 가 있는(말한) 1초의 레벨."""
+    return [r["level_db"] for r in records if r.get("level_db") is not None]
+
+
 def fake_judges(
     *,
     order: list[str] | None = None,
+    speaking_levels: Callable[[list[dict[str, Any]]], list[float]] = default_speaking_levels,
     baseline: Callable[[list[float]], float | None] = default_baseline,
     **overrides: FakeJudge,
 ) -> Judges:
     """네 모듈을 가짜로 묶는다. overrides 로 모듈 하나를 바꾼다(예: filler=FakeJudge(...))."""
     mods = {n: overrides.get(n) or FakeJudge(n, order=order) for n in AREAS}
-    return Judges(**mods, baseline=baseline)
+    return Judges(**mods, speaking_levels=speaking_levels, baseline=baseline)
 
 
 def fake_issue(

@@ -40,9 +40,9 @@ LLM에게 결론을 맡기면 숫자를 지어내거나 같은 입력에 다른 
 | 차원 | 리뷰가 결론을 내는 여섯 묶음. 영역 · 지표 · 문제가 정해져 있다(5-3 표) | `script_independence` |
 | 부담 | 차원의 문제 크기. 믿을 수 있는(`reliable`) 문제 구간마다 `mean_severity × 초`를 더한다. 대본 전달도는 빠진 · 다르게 말한 핵심 내용을 중요도별 부담으로 바꿔 더한다 | `7.4` |
 | 차원 상태 | `PRIORITY`(먼저 고칠 것) · `IMPROVED`(나아짐) · `STRENGTH`(강점) · `STABLE`(보통) · `NOT_EVALUABLE`(판단 불가) | `PRIORITY` |
-| 미션 | 이번 Take에 실린 목표 `{mission_id, area, slide_number, target{metric, operator, value}, priority, reason}`. 리뷰의 다음 미션에 BE가 `mission_id`를 붙인 것. `priority` · `reason`은 선택이고 리뷰는 판정에 쓰지 않는다 | `{"mission_id": "m-1", "area": "FILLER", "slide_number": null, "target": {"metric": "filler_per_min", "operator": "LTE", "value": 2}, "priority": 1, "reason": "이번 Take 2.4"}` |
+| 미션 | 이번 Take에 실린 목표 `{mission_id, area, slide_number, target{metric, operator, value}}`. 직전 리뷰의 다음 미션에 BE가 `mission_id`를 붙인 것 | `filler_per_min LTE 2` |
 | 미션 · 기준 상태 | `ACHIEVED`(이룸) · `PARTIAL`(허용치 안에서 못 미침) · `FAILED` · `NOT_EVALUABLE` | `PARTIAL` |
-| 사용자 기준 | 평가 기준 분석의 `targets` · `script_used` (`evaluation-criteria.md` 5-3) | `{"targets": [{"display": "추임새 5번 이하", "metric": "filler_count", "operator": "LTE", "value": 5}], "script_used": false}` |
+| 사용자 기준 | 평가 기준 분석의 `targets` · `script_used` (`evaluation-criteria.md` 5-3) | `filler_count LTE 5` |
 | 반복 문제 | 다음 Take에도 먼저 챙길 `{area, slide_number, dimension}` | `{"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}` |
 | 규칙 단계 · LLM 단계 | 숫자 · 상태 · 점수를 정하는 코드(LLM 없음) · 문장을 쓰는 LLM 한 번 | — |
 | 기본 문장 | LLM이 없거나 숫자 검사에 걸린 문장 대신 규칙 단계가 만드는 템플릿 문장 | "3번 장 대본 응시 비율이 0.62입니다" |
@@ -58,7 +58,7 @@ flowchart LR
   BE -- "take_ai_results(REVIEW) · missions · take_summaries" --> DB[(DB)]
   BE -- "next_missions · recurring_issues · previous_review" --> P["/coach/plan (다음 Take 준비)"]
 ```
-1. **BE**: 대본 전달도 채점 · 확인이 끝나면(확인을 건너뛰거나 화면을 떠나거나 정해진 시간이 지나도) 백그라운드로 `/takes/review`를 부른다(`architecture.md` 1-3). 확인 답은 리뷰를 부르기 전까지만 받는다.
+1. **BE**: 대본 전달도 채점 · 확인이 끝나면(확인을 건너뛰거나 화면을 떠나거나 확인을 기다린 지 10분이 지나도) 백그라운드로 `/takes/review`를 부른다(`architecture.md` 1-3). 확인 답은 리뷰를 부르기 전까지만 받는다.
 2. **규칙 단계**: 6-1 순서로 숫자 · 상태 · 점수 · 미션 판정 · 다음 미션 후보 · 반복 문제를 정한다. 같은 입력이면 같은 결과다.
 3. **LLM 단계**: 규칙 단계 결과와 근거 숫자만 받아 문장을 쓰고 다음 미션 후보 중 고른다. 출력 스키마는 고정이다.
 4. **숫자 검사**: 문장마다 숫자를 규칙 단계 결과와 대조하고, 없는 숫자가 든 문장은 기본 문장으로 바꾼다.
@@ -71,21 +71,12 @@ ai/research/review-agent/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
 ├─ pyproject.toml · uv.lock                 Python 3.12. 코어는 pydantic 하나, 연구 도구만 LLM 라이브러리
 ├─ src/review/                              리뷰 코어 → 서비스 features/review/로 폴더째 옮긴다
-│   ├─ __init__.py                          review_take 공개
-│   ├─ schemas.py                           요청 · 응답 pydantic 모델 = 계약
-│   ├─ core.py                              review_take(): 단계를 차례로 부르는 유일한 진입점
-│   ├─ evaluable.py                         1단계: 판단 가능 여부
-│   ├─ burden.py                            2단계: 차원 · 장 · 영역별 문제 부담
-│   ├─ dimensions.py                        3단계: 차원 상태 (PRIORITY 순위)
-│   ├─ missions.py                          4 · 6단계: 미션 판정 · 사용자 기준 판정
-│   ├─ next_missions.py                     7단계: 다음 미션 후보 · 선택
-│   ├─ recurring.py                         8단계: 반복 문제
-│   ├─ score.py                             9단계: 점수
-│   ├─ metrics.py                           지표 찾기 · 비교 (미션 판정 · 다음 미션 · 문장이 같이 씀)
-│   ├─ text.py                              기본 문장 (LLM 없이)
-│   ├─ vocab.py                             고정 어휘 · 차원 표
+│   ├─ schemas.py                           요청 · 응답 · LLM 출력 pydantic 모델 = 계약
+│   ├─ core.py                              review_take(): 규칙 단계 → LLM 단계 → 숫자 검사
+│   ├─ rules.py                             규칙 단계 (LLM 없는 순수 함수)
+│   ├─ text.py                              기본 문장 · 숫자 검사
 │   ├─ config.py · version.py               부담 · 허용치 · 한 걸음 폭 · 점수 · 개수 한도, 기능 버전
-│   ├─ prompts/                             문장 쓰기 · 다음 미션 고르기 프롬프트 (2차 예정)
+│   ├─ prompts/                             문장 쓰기 · 다음 미션 고르기 프롬프트
 │   └─ examples/                            요청 · 응답 예시 (계약 테스트가 읽는다)
 ├─ src/review_lab/                          연구 전용(정답 리뷰 평가 · 실제 LLM 실행). 옮기지 않는다
 ├─ data/                                    공통 기준 Take의 저장 결과 묶음과 정답 리뷰
@@ -123,10 +114,10 @@ ai/research/review-agent/
 |---|---|---|---|
 | `take_result` | object | 예 | 코치 Take 결과(`coach-agent.md` 5-3). Take 결과를 만들지 못한 Take는 `FAILED`라 리뷰를 부르지 않는다 |
 | `script_coverage` | object · null | 아니오 | 대본 전달도 채점 `{take_id, evaluations, take_scores, confirmations, failed}`(사용자가 확인했으면 확인 반영본). 대본이 없거나 모든 장이 실패했으면 null |
-| `previous_takes` | list | 아니오 | 같은 발표의 이전 Take 최근 3개까지, 최근 것부터 `[{take_result, take_scores}]`. `take_scores`는 그 Take의 대본 전달도 Take 값(없으면 null) |
-| `previous_recurring_issues` | list | 아니오 | 직전 리뷰의 반복 문제 `[{area, slide_number, dimension}]`(직전 리뷰의 `recurring_issues` 그대로, 없으면 빈 목록). `dimension`이 없거나 차원 이름이 아닌 항목은 반복 판정(6-1 4 · 5번)에 쓰지 않고 로그에 남긴다(그 항목 때문에 리뷰 전체를 거절하지 않는다) |
-| `missions` | list | 아니오 | 이번 Take에 실린 미션 `[{mission_id, area, slide_number, target{metric, operator, value}, priority, reason}]` (`slide_number`가 null이면 Take 전체) |
-| `user_criteria` | object · null | 아니오 | 사용자 평가 기준 `{display_criteria, targets, script_used}` (없으면 null). BE는 평가 기준 분석 결과의 `display_criteria` · `targets`를 그대로 싣고, `values.script_used`(저장 칸 `standard_analyses.script_used`)를 `script_used`로 옮긴다. `script_used`는 bool 또는 null(언급이 없으면 null) |
+| `previous_takes` | list | 아니오 | 같은 발표에서 `take_number`가 이번 Take보다 작은 `COMPLETED` Take 중 번호가 큰 것부터 3개까지 `[{take_result, take_scores}]`(`architecture.md` 1-1). `take_scores`는 그 Take의 대본 전달도 Take 값(없으면 null) |
+| `previous_recurring_issues` | list | 아니오 | 직전 리뷰의 반복 문제 `[{area, slide_number, dimension}]`(`REVIEW` 결과가 있는 Take 중 가장 늦게 끝난 Take의 `recurring_issues` 그대로, 고르는 순서는 `architecture.md` 1-1 · 1-3, 없으면 빈 목록). `dimension`이 없거나 차원 이름이 아닌 항목은 반복 판정(6-1 4 · 5번)에 쓰지 않고 로그에 남긴다(그 항목 때문에 리뷰 전체를 거절하지 않는다) |
+| `missions` | list | 아니오 | 이번 Take에 실린 미션 `[{mission_id, area, slide_number, target{metric, operator, value}}]` (`slide_number`가 null이면 Take 전체) |
+| `user_criteria` | object · null | 아니오 | 사용자 평가 기준 `{display_criteria, targets, script_used}` (없으면 null). BE는 이 Take의 `takes.standard_version`이 가리키는 버전의 평가 기준 분석 결과로 만들고(`architecture.md` 1-3 1번, `standard_version`이 null이면 기준 없음이라 `user_criteria` null), 그 결과의 `display_criteria` · `targets`를 그대로 싣고, `values.script_used`(저장 칸 `standard_analyses.script_used`)를 `script_used`로 옮긴다. `script_used`는 bool 또는 null(언급이 없으면 null) |
 
 - 입력 개수 한도: `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `user_criteria.targets` 20. 넘으면 422 `VALIDATION_ERROR`이고 BE는 다시 부르지 않는다. `targets` 20은 평가 기준 분석의 표시 기준 10개 × 범위 목표 2개다. `take_result` · `script_coverage` 크기는 요청 본문 크기 상한(`ai-service.md` 15절 열린 질문)으로 정한다.
 
@@ -249,7 +240,7 @@ ai/research/review-agent/
 | 이전 Take가 없음 | 비교 없음, 반복 문제 가중 없음 | 200 | 첫 Take |
 | 규칙 단계의 예외(입력 모양 문제) | — | 500 `INTERNAL_ERROR`. BE가 한 번 다시 부르고, 그래도 실패하면 Take를 `COMPLETED`(리뷰 없음, `take_summaries.summary` · `score` null)로 두고 리포트에 결과 없음을 보인다. BE는 `/coach/plan`을 `previous_review` null과 이전 `ACTIVE` 미션 · 반복 문제로 부른다 | Take 결과 · 대본 전달도는 있으므로 측정값은 보여 준다(공통 흐름은 `architecture.md` 1-3) |
 
-- `fallback_reason`이 있는 리뷰를 BE가 나중에 다시 부를 수 있다(같은 입력이라 규칙 단계 결과는 같고 문장만 채워진다, `architecture.md` 4절). 다음 미션 선택은 LLM이 하므로 다시 부르면 미션이 바뀔 수 있다. 그래서 다시 부르는 것은 다음 Take가 시작되기 전에만 한다. 덮을 때 그 리뷰가 만든 `ACTIVE` 미션을 새 결과로 바꾸고 `/coach/plan`을 다시 부른다.
+- `fallback_reason`이 있는 리뷰를 BE가 나중에 다시 부를 수 있다(같은 입력이라 규칙 단계 결과는 같고 문장만 채워진다, `architecture.md` 4절). 다음 미션 선택은 LLM이 하므로 다시 부르면 미션이 바뀔 수 있다. 그래서 다시 부르는 것은 다음 Take가 시작되기 전에만 한다. 덮을 때 그 리뷰가 만든 `ACTIVE` 미션을 새 결과로 바꾸고 `/coach/plan`을 다시 부른다. 저장 직전의 다음 Take 시작 확인(발표 행 잠금)과 다시 불러도 `fallback_reason`이 올 때의 처리는 `architecture.md` 4절을 따른다.
 
 # 8. 시간 예산과 호출 규칙
 | 호출 | AI 예산 | BE 시간 제한 | BE 재시도 | 이유 |
@@ -303,14 +294,14 @@ sequenceDiagram
     participant BE
     participant R as 리뷰 (AI)
     participant C as 코치 (AI)
-    BE->>BE: 모으기: take_ai_results(TAKE_RESULT · SCRIPT_COVERAGE), 이전 Take 3개, 직전 REVIEW의 recurring_issues, 이 Take에 실린 missions, standard_analyses
+    BE->>BE: 모으기: take_ai_results(TAKE_RESULT · SCRIPT_COVERAGE), 이전 Take 3개(take_number 순), 직전 REVIEW의 recurring_issues, takes.mission_ids의 missions(지운 미션 제외), takes.standard_version의 standard_analyses
     BE->>R: POST /takes/review
     R-->>BE: 리뷰 결과 · fallback_reason · meta
     BE->>BE: take_ai_results(REVIEW) · missions(결과 갱신 · 다음 미션 추가) · take_summaries(summary · score) · Take COMPLETED (한 트랜잭션)
     BE->>C: POST /coach/plan (missions = next_missions + mission_id, recurring_issues, previous_review)
 ```
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고 AI 리드가 정하며, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
+저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
@@ -325,6 +316,7 @@ sequenceDiagram
 |---|---|---|
 | `id` | Uuid PK (있음) | `mission_id` |
 | `source_take_id` | Uuid FK `takes.id` NOT NULL (있음) | 이 미션을 만든 리뷰의 Take |
+| `pitch_id` | Uuid FK `pitches.id` ON DELETE CASCADE NOT NULL (새 칸) | 이 미션의 발표. Take를 시작할 때 그 발표의 최신 `ACTIVE` 미션을 찾는 데 쓴다 |
 | `take_id` | Uuid FK `takes.id` NULL (새 칸) | 이 미션이 가장 최근에 실린 Take. BE가 Take를 시작할 때 채운다 |
 | `area` | String(16) NOT NULL (새 칸) | 영역 |
 | `slide_number` | Integer **NULL 허용으로** | null이면 Take 전체 |
@@ -335,15 +327,16 @@ sequenceDiagram
 | `observed` | Float NULL (새 칸) | 가장 최근 판정 때의 관측값 |
 | `complete` | (있음) | `status`가 `ACHIEVED`면 true |
 | 제약 | UQ(`source_take_id`, `priority`) | 같은 리뷰를 두 번 저장해도 한 벌 |
+| 인덱스 | (`pitch_id`, `status`) | 발표의 `ACTIVE` 미션 찾기 |
 
-**`takes.mission_ids`** (새 칸 JSONB NULL): BE가 Take를 시작할 때 그 Take에 실은 미션 id 목록을 고정한다. 다음 Take가 리뷰보다 먼저 시작돼 같은 `ACTIVE` 미션이 두 Take에 실려도, 리뷰 요청의 `missions`는 이 목록으로 읽으므로 각 Take의 리뷰가 자기 미션을 찾는다. `missions`의 `take_id`는 가장 최근에 실린 Take로 바뀌고, `status` · `observed`는 그 Take의 리뷰만 덮는다(12-2). Take별 판정은 그 Take의 리뷰 결과(`mission_results`)에 남는다.
+**`takes.mission_ids`** (새 칸 JSONB NULL): BE가 Take를 시작할 때 그 Take에 실은 미션 id 목록을 고정한다. 다음 Take가 리뷰보다 먼저 시작돼 같은 `ACTIVE` 미션이 두 Take에 실려도, 리뷰 요청의 `missions`는 이 목록으로 읽으므로 각 Take의 리뷰가 자기 미션을 찾는다. `missions`의 `take_id`는 가장 최근에 실린 Take로 바뀌고, `status` · `observed`는 그 Take의 리뷰만 덮는다(12-2). Take별 판정은 그 Take의 리뷰 결과(`mission_results`)에 남는다. 미션 내용(목표 · 설명)은 Take에 실린 뒤에는 바꾸지 않는다. 목록의 미션이 지워졌으면 리뷰 요청에 싣지 않고 판정하지 않는다(건너뜀). 미션과 Take를 잇는 `take_missions` 연결 테이블은 쓰지 않는다.
 
 ## 12-2. 저장 규칙
-- 리뷰 결과 · 미션 갱신 · 다음 미션 · `take_summaries`(`summary` · `score`) · Take 상태(`COMPLETED`)는 한 트랜잭션으로 저장한다(일부만 남지 않게).
+- 리뷰 결과 · 미션 갱신 · 다음 미션 · `take_summaries`(`summary` · `score`) · Take 상태(`COMPLETED`) · `takes.review_status`(`DONE`) · `analysis_stage`(`DONE`) · `completed_at`은 한 트랜잭션으로 저장한다(일부만 남지 않게). 리뷰가 끝내 실패했을 때의 완료 상태(`review_status` `FAILED`)와 요약 칸 처리는 `architecture.md` 1-1 · 1-3을 따른다.
 - BE는 `mission_results`의 `mission_id`로 이번 Take의 미션 행을 찾아 `status` · `observed`를 바꾸고, `complete`는 `status`가 `ACHIEVED`일 때만 true로 둔다. 그 행의 `take_id`가 이 Take가 아니면(다음 Take가 먼저 시작돼 같은 미션을 실었으면) 덮지 않는다 — 그 미션은 나중 Take의 리뷰가 판정하고, 이 Take의 판정은 이 리뷰의 `mission_results`에 남는다.
 - 결과는 `meta`와 함께 저장한다(`architecture.md` 1-1).
 - 리뷰에 싣는 `missions`는 이 Take에 실린 미션이고 `takes.mission_ids`로 읽는다. 이 Take가 만든 미션(`source_take_id` = 이 Take)이 아니다.
-- 다음 Take는 가장 최근 리뷰가 만든 `ACTIVE` 미션을 싣는다. 리뷰가 아직 없으면 그때 저장된 최신 미션 · 반복 문제를 쓴다(`architecture.md` 1-3).
+- 다음 Take는 그 발표에서 `REVIEW` 결과가 있는 Take 중 가장 늦게 끝난 Take(순서 `completed_at DESC NULLS LAST, take_number DESC`, `architecture.md` 1-3 'Take 상태')의 리뷰가 만든 `ACTIVE` 미션을 싣는다. 리뷰가 아직 없으면 그때 저장된 최신 미션 · 반복 문제를 쓴다(`architecture.md` 1-3).
 - 테이블 · 칸 변경은 배포 전 BE 마이그레이션이다.
 
 # 13. 품질 검증
@@ -390,4 +383,4 @@ sequenceDiagram
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번 | 8절 |
 | 버전 | `review-1.0` · `criteria_versions.review` `review-1.0+<config 해시>` · `schema_version` `1.0` | 9절 |
 | 입력 한도 | `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `targets` 20 (넘으면 422) | 5-2 |
-| 저장 | `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `reason` · `observed`, UQ(`source_take_id`, `priority`)), `takes.mission_ids`, `take_summaries.summary` · `score` | 12-1 |
+| 저장 | `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `pitch_id` · `reason` · `observed`, UQ(`source_take_id`, `priority`), 인덱스 (`pitch_id`, `status`)), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at` | 12-1 · 12-2 |

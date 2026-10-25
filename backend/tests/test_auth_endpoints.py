@@ -5,6 +5,7 @@ refresh 가 되는지" 를 브라우저와 같은 방식으로 확인할 수 있
 구글 통신만 가짜고 나머지(쿠키·CSRF·리다이렉트·JWT)는 전부 실제 코드다.
 """
 
+import uuid
 from collections.abc import Generator
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -12,19 +13,25 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 import redis
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.auth import google
 from pitch_coach_backend.module.auth.controller import (
     BROWSER_COOKIE_NAME,
     REFRESH_COOKIE_NAME,
+    browser_cookie_name,
 )
 from pitch_coach_backend.module.auth.dependencies import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
+from pitch_coach_backend.module.auth.entity import OAuthAccount, RefreshToken
 from pitch_coach_backend.module.auth.exception import (
     EmailAlreadyRegistered,
     GoogleIdentityRejected,
     GoogleTokenExchangeFailed,
 )
+from pitch_coach_backend.module.pitch.entity import Pitch
+from pitch_coach_backend.module.user.entity import User
 
 TEST_REDIS_DB = 15
 START = "/api/auth/google/start"
@@ -75,10 +82,15 @@ def fake_google(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return box
 
 
+def start_login(client: TestClient) -> str:
+    """start 를 부르고 구글로 보낸 state 를 돌려준다."""
+    started = client.get(START, follow_redirects=False)
+    return parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+
+
 def do_login(client: TestClient) -> None:
     """start -> callback 을 브라우저처럼 통과시킨다. 이후 client 는 쿠키를 갖는다."""
-    started = client.get(START, follow_redirects=False)
-    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+    state = start_login(client)
     done = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
     assert done.status_code == 302, done.text
 
@@ -109,6 +121,48 @@ def test_start_sets_the_temporary_browser_cookie(client: TestClient) -> None:
     cookie = res.headers["set-cookie"]
     assert BROWSER_COOKIE_NAME in cookie
     assert "HttpOnly" in cookie
+
+
+def test_start_failure_redirects_with_login_failed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Redis 오류 등으로 시작을 못 해도 500 JSON 대신 프론트로 보낸다."""
+    from pitch_coach_backend.module.auth import state_store
+
+    def fail(*args: Any, **kwargs: Any) -> None:
+        raise redis.ConnectionError("down")
+
+    monkeypatch.setattr(state_store, "save", fail)
+
+    res = client.get(START, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=login_failed" in res.headers["location"]
+    assert not any(name.startswith(BROWSER_COOKIE_NAME) for name in res.cookies)
+
+
+def test_login_started_in_two_tabs_completes_in_both(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """나중 탭의 임시 쿠키가 먼저 탭의 것을 덮어쓰지 않는다."""
+    first = start_login(client)
+    second = start_login(client)
+
+    for state in (first, second):
+        res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
+        assert "auth_error" not in res.headers["location"]
+        assert REFRESH_COOKIE_NAME in res.cookies
+        assert client.cookies.get(browser_cookie_name(state)) is None
+
+
+def test_hostile_state_in_the_callback_does_not_crash(client: TestClient) -> None:
+    """state 는 쿠키 이름에 들어간다. 쿠키 이름에 못 쓰는 글자가 와도 500 이 아니다."""
+    for params in ({"code": "c", "state": "a b;c"}, {"error": "access_denied", "state": "a b;c"}):
+        res = client.get(CALLBACK, params=params, follow_redirects=False)
+
+        assert res.status_code == 302
+        assert "auth_error=" in res.headers["location"]
 
 
 @pytest.mark.parametrize(
@@ -218,9 +272,8 @@ def test_callback_with_unknown_state_is_rejected(
 def test_callback_without_the_browser_cookie_is_rejected(
     client: TestClient, fake_google: dict[str, Any]
 ) -> None:
-    started = client.get(START, follow_redirects=False)
-    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
-    client.cookies.delete(BROWSER_COOKIE_NAME)
+    state = start_login(client)
+    client.cookies.delete(browser_cookie_name(state))
 
     res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
 
@@ -260,7 +313,29 @@ def test_callback_failure_redirects_with_a_code_instead_of_json(
     assert f"auth_error={expected_code}" in res.headers["location"]
     assert REFRESH_COOKIE_NAME not in res.cookies
     # 실패해도 임시 쿠키는 정리한다
-    assert client.cookies.get(BROWSER_COOKIE_NAME) is None
+    assert client.cookies.get(browser_cookie_name(state)) is None
+
+
+def test_unexpected_callback_error_redirects_with_login_failed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """도메인 예외가 아닌 오류(DB 오류 등)도 500 JSON 대신 프론트로 보낸다."""
+    from pitch_coach_backend.module.auth import service
+
+    def fail(**kwargs: Any) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service.google, "exchange_code_for_id_token", fail)
+    started = client.get(START, follow_redirects=False)
+    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+
+    res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=login_failed" in res.headers["location"]
+    assert REFRESH_COOKIE_NAME not in res.cookies
+    assert client.cookies.get(browser_cookie_name(state)) is None
 
 
 def test_cancelled_consent_redirects_to_the_frontend(client: TestClient) -> None:
@@ -285,12 +360,12 @@ def test_callback_without_any_parameter_redirects_too(client: TestClient) -> Non
 
 
 def test_cancelled_consent_clears_the_temporary_cookie(client: TestClient) -> None:
-    client.get(START, follow_redirects=False)
-    assert BROWSER_COOKIE_NAME in client.cookies
+    state = start_login(client)
+    assert browser_cookie_name(state) in client.cookies
 
-    client.get(CALLBACK, params={"error": "access_denied"}, follow_redirects=False)
+    client.get(CALLBACK, params={"error": "access_denied", "state": state}, follow_redirects=False)
 
-    assert client.cookies.get(BROWSER_COOKIE_NAME) is None
+    assert client.cookies.get(browser_cookie_name(state)) is None
 
 
 def test_google_error_code_is_not_reflected_verbatim(client: TestClient) -> None:
@@ -559,6 +634,107 @@ def test_me_rejects_an_expired_access_token(
     assert client.get(ME, headers={"Authorization": f"Bearer {expired}"}).status_code == 401
 
 
+# --- 회원 탈퇴 -----------------------------------------------------------
+
+
+@pytest.fixture
+def deleted_prefixes(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """S3 에서 지우라고 한 prefix. conftest 의 막아 둔 함수를 기록하는 것으로 바꾼다."""
+    from pitch_coach_backend.module.pitch import service as pitch_service
+
+    prefixes: list[str] = []
+    monkeypatch.setattr(pitch_service, "delete_prefix", prefixes.append)
+    return prefixes
+
+
+def login_and_get_access(client: TestClient) -> dict[str, str]:
+    do_login(client)
+    access = client.post(REFRESH, headers=csrf_headers(client)).json()["access_token"]
+    return {"Authorization": f"Bearer {access}"}
+
+
+def add_pitch(client: TestClient, auth: dict[str, str]) -> uuid.UUID:
+    res = client.post(
+        "/api/pitches/add", json={"title": "탈퇴 전 발표", "time_limit_sec": 300}, headers=auth
+    )
+    assert res.status_code == 200, res.text
+    return uuid.UUID(res.json()["pitch_id"])
+
+
+def test_withdraw_deletes_the_user_and_everything_under_them(
+    client: TestClient,
+    db_session: Session,
+    fake_google: dict[str, Any],
+    deleted_prefixes: list[str],
+) -> None:
+    auth = login_and_get_access(client)
+    user_id = uuid.UUID(client.get(ME, headers=auth).json()["id"])
+    pitch_id = add_pitch(client, auth)
+
+    res = client.delete(ME, headers=auth)
+
+    assert res.status_code == 204
+    assert db_session.scalar(select(User).where(User.id == user_id)) is None
+    assert db_session.scalars(select(OAuthAccount)).all() == []
+    assert db_session.scalars(select(RefreshToken)).all() == []
+    assert db_session.scalars(select(Pitch)).all() == []
+    assert deleted_prefixes == [f"pitches/{pitch_id}/"]
+
+
+def test_withdraw_clears_the_session_cookies(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    auth = login_and_get_access(client)
+
+    client.delete(ME, headers=auth)
+
+    assert client.cookies.get(REFRESH_COOKIE_NAME) is None
+    assert client.cookies.get(CSRF_COOKIE_NAME) is None
+
+
+def test_access_token_stops_working_after_withdrawal(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """Access 는 폐기할 수 없지만 사용자를 찾지 못해 401 이 난다."""
+    auth = login_and_get_access(client)
+    client.delete(ME, headers=auth)
+
+    assert client.get(ME, headers=auth).status_code == 401
+    assert client.delete(ME, headers=auth).status_code == 401
+
+
+def test_withdraw_does_not_touch_other_users(
+    client: TestClient, db_session: Session, fake_google: dict[str, Any], user_id: uuid.UUID
+) -> None:
+    from pitch_coach_backend.module.pitch import service as pitch_service
+    from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO
+
+    other_pitch_id = pitch_service.add_pitch_service(
+        db_session, user_id, PitchSaveRequestDTO(title="남의 발표", time_limit_sec=300)
+    )
+    auth = login_and_get_access(client)
+
+    client.delete(ME, headers=auth)
+
+    assert db_session.scalar(select(User).where(User.id == user_id)) is not None
+    assert db_session.scalar(select(Pitch).where(Pitch.id == other_pitch_id)) is not None
+
+
+def test_signing_in_again_after_withdrawal_starts_a_new_account(
+    client: TestClient, fake_google: dict[str, Any]
+) -> None:
+    """같은 구글 계정이어도 이전 기록이 붙지 않는 새 회원이 된다."""
+    auth = login_and_get_access(client)
+    old_id = client.get(ME, headers=auth).json()["id"]
+    add_pitch(client, auth)
+    client.delete(ME, headers=auth)
+
+    auth = login_and_get_access(client)
+
+    assert client.get(ME, headers=auth).json()["id"] != old_id
+    assert client.get("/api/pitches/", headers=auth).json()["pitches"] == []
+
+
 # Starlette 은 헤더·쿠키를 latin-1 로 디코딩한다. 0xFF 바이트는 'ÿ'(비ASCII str)가 된다.
 NON_ASCII = "ÿ".encode("latin-1")
 
@@ -580,13 +756,12 @@ def test_non_ascii_csrf_header_is_rejected_not_crashed(
 def test_non_ascii_browser_cookie_is_rejected_not_crashed(
     client: TestClient, fake_google: dict[str, Any]
 ) -> None:
-    started = client.get(START, follow_redirects=False)
-    state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+    state = start_login(client)
 
     res = client.get(
         CALLBACK,
         params={"code": "c", "state": state},
-        headers={"Cookie": b"%s=%s" % (BROWSER_COOKIE_NAME.encode(), NON_ASCII)},
+        headers={"Cookie": b"%s=%s" % (browser_cookie_name(state).encode(), NON_ASCII)},
         follow_redirects=False,
     )
 

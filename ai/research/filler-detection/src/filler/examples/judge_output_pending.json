@@ -1,0 +1,44 @@
+[
+  {
+    "evaluator": "filler",
+    "area": "FILLER",
+    "t_ms": 52000,
+    "counted_until_ms": 52000,
+    "words_counted_until_ms": 50800,
+    "criteria_version": "filler-1.0+60cd87861ea9",
+    "measurable": true,
+    "state": "NORMAL",
+    "words": [
+      {
+        "start_ms": 50300,
+        "end_ms": 50800,
+        "word": "매출은",
+        "tier": null,
+        "is_filler": false,
+        "reason": "사전에 없음"
+      },
+      {
+        "start_ms": 51500,
+        "end_ms": 51650,
+        "word": "그",
+        "tier": "T2",
+        "is_filler": null,
+        "reason": "뒤 간격을 아직 알 수 없음"
+      }
+    ],
+    "metrics": {
+      "recent_filler_count": 0,
+      "filler_per_min": 0.0
+    },
+    "tally": [
+      {
+        "t_ms": 51000,
+        "values": {
+          "elapsed_ms": 1000,
+          "total_ms": 1000
+        }
+      }
+    ],
+    "issues": []
+  }
+]

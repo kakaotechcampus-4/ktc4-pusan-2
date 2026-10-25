@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   CalibrationResult,
+  GazeSampleRecord,
   GazeWorkerIn,
   GazeWorkerOut,
   PlacementResult,
-  ZoneDecision,
   ZoneReference,
 } from '@/workers/gaze.contract';
+import type { Ms } from '@/types/api';
 
 export interface GazePerf {
   /** 실제로 끝낸 프레임 수 기준. 보낸 수가 아니다 — 이게 진짜 숫자 */
@@ -99,11 +100,15 @@ const freshState = (loadMs: number, impl: GazeImpl): WorkerState => ({
  * 그리고 **초당 `maxFps` 장을 넘기지 않는다** (기본 8, AI 분석 속도).
  * 백프레셔는 "처리한 만큼만" 보내게 할 뿐이라, 처리가 빠르면 초당 수십 장을 돈다.
  *
- * @param onDecision 1초 판정 콜백. **React 상태로 올리지 않는다** — 받는 쪽이 처리한다
- * @param loadMs     가짜 부하. 바뀌면 워커를 새로 만든다 (앞 측정이 다음에 안 섞이게)
+ * @param onSamples 1초 기록 콜백. 끝난 조각이 시각 순으로 온다 (보통 하나).
+ *                  **React 상태로 올리지 않는다** — 받는 쪽이 처리한다
+ * @param loadMs    가짜 부하. 바뀌면 워커를 새로 만든다 (앞 측정이 다음에 안 섞이게)
  */
+/** Take 끝 마지막 조각을 기다리는 최대 시간. 워커 왕복은 보통 몇 ms 입니다 */
+const FLUSH_WAIT_MS = 500;
+
 export function useGazeWorker(
-  onDecision: (d: ZoneDecision) => void,
+  onSamples: (samples: GazeSampleRecord[]) => void,
   loadMs: number,
   impl: GazeImpl = 'dummy',
   {
@@ -166,10 +171,10 @@ export function useGazeWorker(
   const zoneRefRef = useRef<ZoneReference | null>(null);
 
   // 콜백을 ref 에 담는다 — 콜백이 바뀔 때마다 워커를 다시 만들면 안 된다.
-  const onDecisionRef = useRef(onDecision);
+  const onSamplesRef = useRef(onSamples);
   useEffect(() => {
-    onDecisionRef.current = onDecision;
-  }, [onDecision]);
+    onSamplesRef.current = onSamples;
+  }, [onSamples]);
 
   const onCalibratedRef = useRef(onCalibrated);
   useEffect(() => {
@@ -205,8 +210,12 @@ export function useGazeWorker(
           rttCountRef.current += 1;
           inFlightRef.current = false;
           return;
-        case 'decision':
-          onDecisionRef.current(msg.decision);
+        case 'samples':
+          onSamplesRef.current(msg.samples);
+          return;
+        case 'flushed':
+          flushDoneRef.current?.();
+          flushDoneRef.current = null;
           return;
         case 'calibrated':
           onCalibratedRef.current?.(msg.result, msg.engineVersion);
@@ -355,6 +364,32 @@ export function useGazeWorker(
     [tick],
   );
 
+  /** `flush` 를 기다리는 쪽. `flushed` 가 오면 부릅니다 */
+  const flushDoneRef = useRef<(() => void) | null>(null);
+
+  /**
+   * Take 끝 — 1초가 안 찬 마지막 조각을 `tEndMs` 까지로 닫아 받습니다 (`samples` 로 먼저 옵니다).
+   *
+   * 끝내기 처리가 기록을 읽기 **전에** 부르고 기다립니다. 워커가 없거나 답이 늦으면
+   * `FLUSH_WAIT_MS` 뒤에 그냥 넘어갑니다 — 마지막 1초 미만을 잃는 것이 종료를 막는 것보다 낫습니다.
+   */
+  const flush = useCallback((tEndMs: Ms): Promise<void> => {
+    const worker = workerRef.current;
+    if (!worker) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const timer = window.setTimeout(() => {
+        flushDoneRef.current = null;
+        resolve();
+      }, FLUSH_WAIT_MS);
+      flushDoneRef.current = () => {
+        window.clearTimeout(timer);
+        resolve();
+      };
+      const msg: GazeWorkerIn = { type: 'flush', tEndMs };
+      worker.postMessage(msg);
+    });
+  }, []);
+
   const stopPump = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
@@ -398,7 +433,7 @@ export function useGazeWorker(
 
   /**
    * 저장해 둔 기준을 분류기에 적용합니다. 리허설이 씁니다 —
-   * 기준은 장치 점검 화면의 **다른 워커**에서 계산되어 IndexedDB 로 넘어옵니다.
+   * 기준은 장치 점검 화면의 **다른 워커**에서 계산되어 탭 메모리로 넘어옵니다.
    *
    * 펌프를 켜기 **전에** 불러야 합니다. 기준 없이 들어간 프레임은 전부 버려집니다.
    */
@@ -415,6 +450,7 @@ export function useGazeWorker(
     perf,
     startPump,
     stopPump,
+    flush,
     fitCalibration,
     checkPlacement,
     calibrate,

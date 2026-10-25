@@ -1,4 +1,5 @@
 import type { ScriptMode } from '@/types/api';
+import { Card } from '@/shared/ui/Panel';
 
 /**
  * 발표 중 대본을 어떻게 띄울지. **시작하면 못 바꿉니다.**
@@ -35,14 +36,12 @@ export function ScriptModeChoice({
   onChange: (mode: ScriptMode) => void;
 }) {
   return (
-    <section className="rounded-xl border border-line-strong bg-panel p-4">
-      <div className="flex flex-wrap items-baseline gap-2">
-        <h2 className="text-sm font-bold">발표 중 대본 표시</h2>
-        <span className="text-xs text-stone">시작 후 변경 불가</span>
-      </div>
-
+    <Card
+      title="발표 중 대본 표시"
+      action={<span className="text-xs text-stone">시작 후 변경 불가</span>}
+    >
       {/* 세로 목록입니다 — 넷을 가로로 놓으면 문구가 잘려 무엇이 다른지 안 보입니다 */}
-      <div role="radiogroup" aria-label="발표 중 대본 표시" className="mt-3 flex flex-col gap-2">
+      <div role="radiogroup" aria-label="발표 중 대본 표시" className="flex flex-col gap-2">
         {OPTIONS.map((opt) => {
           const on = value === opt.value;
           return (
@@ -53,10 +52,8 @@ export function ScriptModeChoice({
               aria-checked={on}
               onClick={() => onChange(opt.value)}
               className={[
-                'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left',
-                on
-                  ? 'border-coral bg-coral-wash'
-                  : 'border-dashed border-line-strong hover:bg-cream',
+                'flex items-start gap-3 border-2 px-3 py-2.5 text-left',
+                on ? 'border-ink bg-coral-wash' : 'border-line-strong bg-panel hover:bg-cream',
               ].join(' ')}
             >
               {/* 색만으로 고른 것을 말하지 않습니다 — 모양이 같이 바뀝니다 */}
@@ -71,6 +68,6 @@ export function ScriptModeChoice({
           );
         })}
       </div>
-    </section>
+    </Card>
   );
 }

@@ -70,8 +70,8 @@ jobs:
       - name: Build & push
         working-directory: infra
         run: |
-          docker compose $FILES build be fe
-          docker compose $FILES push be fe
+          docker compose $FILES build be fe ai
+          docker compose $FILES push be fe ai
 
       # ── 여기부터 EC2 접속 (22번 포트 대신 SSM 터널 사용) ──
 
@@ -153,10 +153,17 @@ jobs:
           cd ~/"$REMOTE_DIR"/infra
 
           FILES="-f docker-compose.yml -f docker-compose.dev.yml"
+          # 이미지를 배포마다 커밋 태그(be-<sha> 등)로 받아서, -a 없는 prune 은 옛 이미지를 지우지 못해
+          # 디스크가 찬다. 받기 전에 컨테이너가 쓰지 않는 이미지를 모두 지운다. 지금 도는 컨테이너의
+          # 이미지는 남는다. 되돌릴 때는 ECR 에서 다시 받는다
+          docker image prune -af
+          df -h /
           docker compose $FILES pull
           docker compose $FILES run --rm -T be alembic upgrade head < /dev/null
           docker compose $FILES up -d --no-build --remove-orphans
-          docker image prune -f
+          # 방금 내려간 이전 버전 이미지
+          docker image prune -af
+          docker system df
           SCRIPT
 
       - name: Close SSM tunnel

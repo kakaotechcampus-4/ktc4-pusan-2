@@ -53,6 +53,8 @@ class RefreshToken(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # 이 device_id 의 토큰을 통째로 폐기할 수 있다.
     device_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # 로그인 시각 + refresh_session_max_days. 회전해도 이어받으며, expires_at 은 이보다 늦지 않다
+    session_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # NULL 이면 살아 있는 토큰. 회전·로그아웃·재사용 탐지 시 시각이 찍힌다.
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # 회전으로 폐기됐을 때 이어받은 토큰. 로그아웃·재사용 탐지로 폐기됐으면 NULL 이다.

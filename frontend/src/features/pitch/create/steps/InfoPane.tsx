@@ -3,12 +3,13 @@ import { useMutation } from '@tanstack/react-query';
 import { toMessage } from '@/shared/api/errorMessage';
 import { createPitch, updatePitch } from '@/shared/api/pitch';
 import type { PitchRequest } from '@/types/pitch';
-import { useCreateStore } from '../createStore';
+import { isCurrentDraft, useCreateStore } from '../createStore';
 import { fromPitchSaved, toPitchRequest } from '../lib/beAdapter';
 import { dotDate } from '../lib/date';
 import {
   infoChanged,
   infoOf,
+  infoReady,
   MAX_TIME_LIMIT_MIN,
   MAX_TITLE_CHARS,
   MAX_TOLERANCE_SEC,
@@ -95,6 +96,10 @@ function Stepper({
   );
 }
 
+/**
+ * 허용오차 한 칸. `valueSec` 가 null 이면 **모르는 값**입니다 (수정 화면, `PitchDraft.lowerToleranceSec`).
+ * 그때 −는 0초, +는 한 칸(30초)에서 시작합니다 — 사용자가 정해야 저장할 수 있습니다.
+ */
 function ToleranceField({
   label,
   hint,
@@ -104,25 +109,36 @@ function ToleranceField({
 }: {
   label: string;
   hint: string;
-  valueSec: number;
+  valueSec: number | null;
   maxSec: number;
   onChange: (sec: number) => void;
 }) {
+  const unknown = valueSec === null;
+  const sec = valueSec ?? 0;
   return (
     <div className="flex flex-1 flex-col gap-2">
       <p className="text-sm font-bold">{label}</p>
       <Stepper
         label={label}
-        value={formatDuration(valueSec)}
+        value={unknown ? '확인 필요' : formatDuration(sec)}
         size="sm"
-        canDecrease={valueSec > 0}
-        canIncrease={valueSec + TOLERANCE_STEP_SEC <= maxSec}
-        onDecrease={() => onChange(valueSec - TOLERANCE_STEP_SEC)}
-        onIncrease={() => onChange(valueSec + TOLERANCE_STEP_SEC)}
+        canDecrease={unknown || sec > 0}
+        canIncrease={sec + TOLERANCE_STEP_SEC <= maxSec}
+        onDecrease={() => onChange(unknown ? 0 : sec - TOLERANCE_STEP_SEC)}
+        onIncrease={() => onChange(sec + TOLERANCE_STEP_SEC)}
       />
-      <p className="text-xs text-stone">{hint}</p>
+      <p className={unknown ? 'text-xs font-bold text-coral' : 'text-xs text-stone'}>
+        {unknown ? '저장된 값을 불러오지 못했어요. 다시 정해 주세요' : hint}
+      </p>
     </div>
   );
+}
+
+/** 저장 버튼에 올리는 막힌 이유. 막히지 않았으면 undefined */
+function blockedReason(titleMissing: boolean, toleranceUnknown: boolean): string | undefined {
+  if (titleMissing) return '발표 제목을 먼저 입력해 주세요';
+  if (toleranceUnknown) return '허용오차를 정해 주세요 — 저장된 값을 불러오지 못했어요';
+  return undefined;
 }
 
 export function InfoPane() {
@@ -143,13 +159,19 @@ export function InfoPane() {
     // 목표가 줄면 하한도 함께 줄입니다 — "3분 발표에 하한 5분" 은 0초 밑으로 내려갑니다
     patch({
       timeLimitSec: limitSec,
-      lowerToleranceSec: Math.min(form.lowerToleranceSec, limitSec),
+      lowerToleranceSec:
+        form.lowerToleranceSec === null ? null : Math.min(form.lowerToleranceSec, limitSec),
     });
   };
 
+  const draftId = useCreateStore((s) => s.draftId);
+  // 저장을 시작한 작성(draftId)을 함께 넘깁니다. 응답이 오기 전에 새 피치를 시작했으면
+  // 앞 피치의 id 를 새 작성에 넣지 않습니다 — 넣으면 새 피치의 저장이 앞 피치 수정(PATCH)이 됩니다
   const save = useMutation({
-    mutationFn: (body: PitchRequest) => (pitchId ? updatePitch(pitchId, body) : createPitch(body)),
-    onSuccess: (res, body) => {
+    mutationFn: ({ body }: { body: PitchRequest; draftId: string }) =>
+      pitchId ? updatePitch(pitchId, body) : createPitch(body),
+    onSuccess: (res, { body, draftId: from }) => {
+      if (!isCurrentDraft(from)) return;
       setPitchId(fromPitchSaved(res));
       setMeta({ ...form, title: body.title });
     },
@@ -158,6 +180,8 @@ export function InfoPane() {
   // 피치가 아직 없으면 고친 게 없어도 저장해야 합니다 — 기본값 그대로 만들 수도 있습니다
   const dirty = pitchId === null || infoChanged(saved, form);
   const titleMissing = form.title.trim() === '';
+  const toleranceUnknown = !infoReady(form);
+  const blocked = blockedReason(titleMissing, toleranceUnknown);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -245,12 +269,14 @@ export function InfoPane() {
               </p>
               <button
                 type="button"
-                disabled={!dirty || titleMissing || save.isPending}
-                onClick={() => save.mutate(toPitchRequest(form))}
-                title={titleMissing ? '발표 제목을 먼저 입력해 주세요' : undefined}
+                disabled={!dirty || blocked !== undefined || save.isPending}
+                onClick={() => {
+                  if (infoReady(form)) save.mutate({ body: toPitchRequest(form), draftId });
+                }}
+                title={blocked}
                 className="h-12 w-44 shrink-0 rounded-md bg-coral text-base font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
               >
-                {saveLabel(save.isPending, dirty || titleMissing)}
+                {saveLabel(save.isPending, dirty || blocked !== undefined)}
               </button>
             </div>
             {save.isError && (

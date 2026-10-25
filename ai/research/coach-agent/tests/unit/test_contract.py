@@ -7,9 +7,9 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from coach import decide
+from coach import decide, plan_coaching
 from coach.config import load_config
-from coach.schemas import CoachRequest, CoachResponse
+from coach.schemas import CoachRequest, CoachResponse, Mission, PlanRequest
 from coach.state import CoachState, dump_state, load_state
 from coach.version import FEATURE_VERSION, SCHEMA_VERSION, STATE_VERSION
 from coach.vocab import FeedbackType, Instruction
@@ -142,3 +142,129 @@ def test_config_override_changes_hash():
     assert tuned.policy.cooldown_ms == 20_000
     assert tuned.policy.min_gap_ms == base.policy.min_gap_ms  # 나머지는 기본값
     assert tuned.config_hash() != base.config_hash()
+
+
+# ── /coach/plan ─────────────────────────────────────────────────────────────
+
+#: coach-agent.md 5-5 plan 요청 예시 (previous_* 는 null)
+PLAN_REQUEST_EXAMPLE = {
+    "pitch_id": "p-1",
+    "source_take_id": "take-122",
+    "script_version_id": "sv-3",
+    "plan": {
+        "target_ms": 300000,
+        "min_ms": 270000,
+        "max_ms": 330000,
+        "slides": [
+            {"slide_number": 1, "target_ms": 60000, "script_chars": 300},
+            {"slide_number": 2, "target_ms": 60000, "script_chars": 300},
+            {"slide_number": 3, "target_ms": 90000, "script_chars": 450},
+        ],
+    },
+    "scripts": [
+        {
+            "slide_number": 3,
+            "script": "지난 분기 매출은 37% 늘었습니다. 신규 고객이 늘어난 덕분입니다.",
+        }
+    ],
+    "missions": [
+        {
+            "mission_id": "m-2",
+            "area": "GAZE",
+            "slide_number": 3,
+            "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.4},
+        }
+    ],
+    "recurring_issues": [{"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}],
+    "previous_take_result": None,
+    "previous_review": None,
+}
+
+
+class _Draft:
+    """초안이 비어 있는 LLM 흉내."""
+
+    def invoke(self, messages):
+        return {"focus": [], "relax": [], "max_interventions": None}
+
+
+def test_plan_response_has_exactly_the_contract_fields():
+    resp = plan_coaching(PLAN_REQUEST_EXAMPLE, llm=_Draft(), model="m")
+    blob = resp.model_dump(mode="json")
+    assert set(blob) == {
+        "coaching_plan",
+        "source_take_id",
+        "script_version_id",
+        "fallback_reason",
+        "dropped",
+        "planner_hash",
+        "meta",
+    }
+    assert set(blob["meta"]) == {"schema_version", "feature_version", "model"}
+    assert set(blob["coaching_plan"]) == {"focus", "relax", "max_interventions"}
+    assert blob["meta"] == {
+        "schema_version": SCHEMA_VERSION,
+        "feature_version": FEATURE_VERSION,
+        "model": "m",
+    }
+    assert (blob["source_take_id"], blob["script_version_id"]) == ("take-122", "sv-3")
+
+
+def test_plan_request_needs_pitch_id():
+    body = {k: v for k, v in PLAN_REQUEST_EXAMPLE.items() if k != "pitch_id"}
+    with pytest.raises(ValidationError):
+        PlanRequest.model_validate(body)
+
+
+def _slides(n: int) -> list[dict]:
+    return [{"slide_number": i, "target_ms": 1000} for i in range(1, n + 1)]
+
+
+@pytest.mark.parametrize(
+    ("field", "make"),
+    [
+        ("plan", lambda n: {"slides": _slides(n)}),
+        ("scripts", lambda n: [{"slide_number": i, "script": "a"} for i in range(n)]),
+        ("missions", lambda n: [{"mission_id": f"m{i}", "area": "GAZE"} for i in range(n)]),
+        ("recurring_issues", lambda n: [{"area": "GAZE"} for _ in range(n)]),
+    ],
+    ids=["plan.slides", "scripts", "missions", "recurring_issues"],
+)
+def test_plan_request_array_limits(field, make):
+    limit = {"plan": 100, "scripts": 100, "missions": 20, "recurring_issues": 20}[field]
+    PlanRequest.model_validate({"pitch_id": "p", field: make(limit)})
+    with pytest.raises(ValidationError):
+        PlanRequest.model_validate({"pitch_id": "p", field: make(limit + 1)})
+
+
+@pytest.mark.parametrize(
+    ("description", "ok"),
+    [("가" * 500, True), ("가" * 501, False), (None, True), ("", True)],
+    ids=["exactly-500", "501", "null", "empty"],
+)
+def test_plan_mission_description_limit_counts_code_points(description, ok):
+    mission = {"mission_id": "m", "area": "GAZE", "description": description}
+    body = {"pitch_id": "p", "missions": [mission]}
+    if ok:
+        PlanRequest.model_validate(body)
+    else:
+        with pytest.raises(ValidationError):
+            PlanRequest.model_validate(body)
+    # 설명을 아예 빼도 통과한다
+    PlanRequest.model_validate({"pitch_id": "p", "missions": [{"mission_id": "m", "area": "GAZE"}]})
+
+
+def test_evaluate_mission_description_is_not_limited():
+    long = "가" * 501
+    Mission.model_validate({"mission_id": "m", "area": "GAZE", "description": long})
+    mission = {"mission_id": "m", "area": "GAZE", "description": long}
+    req = CoachRequest.model_validate({"take_id": "t", "t_ms": 1000, "missions": [mission]})
+    assert req.missions[0].description == long
+
+
+def test_evaluate_ignores_source_in_the_coaching_plan():
+    body = {"take_id": "t", "t_ms": 1000, "coaching_plan": {"source": "LLM", "focus": []}}
+    req = CoachRequest.model_validate(body)
+    assert req.coaching_plan is not None and not hasattr(req.coaching_plan, "source")
+    plan = {"source": "LLM", "focus": [], "relax": []}
+    decide(make_request(1000, coaching_plan=plan), fake_judges())

@@ -1,0 +1,49 @@
+[
+  {
+    "evaluator": "pace",
+    "area": "SPEED",
+    "t_ms": 52000,
+    "counted_until_ms": 52000,
+    "words_counted_until_ms": 51100,
+    "criteria_version": "pace-1.0+b24c6ce0efd4",
+    "measurable": true,
+    "state": "FAST",
+    "metrics": {
+      "cpm": 403.8,
+      "cpm_short": 402.3,
+      "speak_ms": 8470
+    },
+    "tally": [
+      {
+        "t_ms": 50500,
+        "values": {
+          "chars": 3,
+          "speak_ms": 600
+        }
+      },
+      {
+        "t_ms": 51000,
+        "values": {
+          "ok_ms": 1000,
+          "total_ms": 1000
+        }
+      }
+    ],
+    "issues": [
+      {
+        "issue_type": "PACE_FAST",
+        "area": "SPEED",
+        "severity": 0.769,
+        "confidence": 1.0,
+        "persistence_sec": 0.0,
+        "threshold": 350.0,
+        "bad": 450.0,
+        "evidence": {
+          "cpm": 403.8,
+          "window_ms": 15000
+        },
+        "actionable": true
+      }
+    ]
+  }
+]

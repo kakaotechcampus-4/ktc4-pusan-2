@@ -33,6 +33,7 @@ TABLE: dict[type, set[str]] = {
         "confidence",
         "reason_codes",
         "slide_number",
+        "evidence",
     },  # fmt: skip
     OutcomeEvent: {"intervention_id", "outcome", "metric", "before", "after"},
     EpisodeEvent: {

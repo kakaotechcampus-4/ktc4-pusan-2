@@ -197,7 +197,7 @@
         "t_ms": 92000,
         "counted_until_ms": 92000,
         "words_counted_until_ms": null,
-        "criteria_version": "volume-0.2+06b3417cd48b",
+        "criteria_version": "volume-0.2+862f8de95679",
         "measurable": true,
         "state": "NORMAL",
         "metrics": {
@@ -227,7 +227,7 @@
         "t_ms": 92000,
         "counted_until_ms": 92000,
         "words_counted_until_ms": null,
-        "criteria_version": "volume-0.2+06b3417cd48b",
+        "criteria_version": "volume-0.2+862f8de95679",
         "measurable": true,
         "state": "NORMAL",
         "metrics": {

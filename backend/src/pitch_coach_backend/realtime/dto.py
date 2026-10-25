@@ -4,11 +4,24 @@
 필드 이름은 REST DTO 와 같은 snake_case.
 """
 
+import json
 import uuid
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal, get_args
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import AfterValidator, BaseModel, Field, TypeAdapter, model_validator
+
+from pitch_coach_backend.core.validation import reject_unstorable_json
+
+# metrics 의 Take 시각 상한. 코치 AI 가 받는 `t_ms` 상한과 같다 (Take 최대 1시간 + 60초 여유,
+# `docs/ai/architecture.md` 1-4)
+MAX_METRICS_T_MS = 3_660_000
+# `take_metric_seconds.slide_number` 는 PostgreSQL integer(int4). 넘으면 저장에서 터지고, 실패한
+# 행이 버퍼에 남아 같은 묶음의 정상 행까지 계속 못 넣는다
+MAX_SLIDE_NUMBER = 2_147_483_647
+# 시선 · 음량 1초 기록 하나의 JSON 크기 상한(바이트). 실제 기록은 200바이트 안팎이다. Take 하나가
+# 저장 못 한 기록을 600초까지 메모리에 들고 있으므로 크기를 묶는다
+MAX_SECOND_RECORD_BYTES = 4_096
 
 # ── FE -> BE ──────────────────────────────────────────────────────────
 
@@ -26,7 +39,65 @@ class StopMessage(BaseModel):
     type: Literal["stop"]
 
 
-ClientMessage = Annotated[AuthMessage | StopMessage, Field(discriminator="type")]
+def _second_record(value: dict[str, Any]) -> dict[str, Any]:
+    """시선 · 음량 1초 기록. 창을 고를 때 읽는 시작 시각 · 길이만 보고 나머지는 그대로 둔다."""
+    for key in ("t_ms", "duration_ms"):
+        v = value.get(key)
+        if isinstance(v, bool) or not isinstance(v, int | float) or v < 0:
+            raise ValueError(f"{key} 는 0 이상의 숫자여야 합니다.")
+    if len(json.dumps(value, ensure_ascii=False).encode()) > MAX_SECOND_RECORD_BYTES:
+        raise ValueError(f"1초 기록은 {MAX_SECOND_RECORD_BYTES}바이트 이하여야 합니다.")
+    # 원자료로 JSONB 에 그대로 들어간다
+    return reject_unstorable_json(value)
+
+
+SecondRecord = Annotated[dict[str, Any], AfterValidator(_second_record)]
+
+
+class MetricsMessage(BaseModel):
+    """1초 측정값 (시선 · 음량 1초 기록, 지금 슬라이드 번호). 잴 수 없는 값은 null 이다.
+
+    FE 는 1초마다 보내고, `stop` 직전에 마지막 1초 조각을 실제 길이로 한 번 더 보낸다. `t_ms` 는
+    그 1초가 끝난 Take 시각이고 `gaze.t_ms` · `voice.t_ms` 는 시작 시각이다. 끊긴 동안 쌓아
+    두었다가 다시 붙으면 보내므로 같은 1초가 또 올 수 있다 (`docs/ai/architecture.md` 1-4).
+
+    `slide_number` 는 참고값이다. 장은 `slide` 메시지로 정한다. `buffered` 는 끊긴 동안 쌓아 둔 것을
+    다시 보낼 때만 true 다 — BE 는 이것으로 코치를 부르지 않고 창 · 원자료에만 넣는다 (2절).
+    """
+
+    type: Literal["metrics"]
+    t_ms: int = Field(ge=0, le=MAX_METRICS_T_MS)
+    gaze: SecondRecord | None
+    voice: SecondRecord | None
+    slide_number: Annotated[int, Field(ge=1, le=MAX_SLIDE_NUMBER)] | None
+    buffered: bool = False
+
+    @model_validator(mode="after")
+    def _records_end_at_t_ms(self) -> MetricsMessage:
+        # 두 기록은 바깥 t_ms 에서 끝나는 그 1초다 (시작 + 길이 = 끝). 어긋난 기록을 받으면 복구
+        # (replay)가 그 1초를 엉뚱한 창에 넣는다
+        for name, record in (("gaze", self.gaze), ("voice", self.voice)):
+            if record is not None and record["t_ms"] + record["duration_ms"] != self.t_ms:
+                raise ValueError(f"{name} 의 t_ms + duration_ms 는 바깥 t_ms 와 같아야 합니다.")
+        return self
+
+
+class SlideMessage(BaseModel):
+    """장을 넘겼다. `t_ms` 는 그 장으로 넘어온 Take 시각이다 (`docs/ai/architecture.md` 1-4).
+
+    FE 는 Take 시작(1번 장, 0) · 장을 넘길 때마다 · 새로고침해 이어 갈 때(이어받은 장과 그 장으로
+    넘어온 원래 시각) 보낸다. 끊긴 동안 넘긴 장은 쌓아 두었다가 다시 붙으면 시각 순서대로 보내므로
+    같은 것이 또 올 수 있다 — 같은 시각은 먼저 받은 것을 둔다.
+    """
+
+    type: Literal["slide"]
+    slide_number: int = Field(ge=1, le=MAX_SLIDE_NUMBER)
+    t_ms: int = Field(ge=0, le=MAX_METRICS_T_MS)
+
+
+ClientMessage = Annotated[
+    AuthMessage | StopMessage | MetricsMessage | SlideMessage, Field(discriminator="type")
+]
 client_message_adapter: TypeAdapter[ClientMessage] = TypeAdapter(ClientMessage)
 
 
@@ -110,7 +181,8 @@ class WsErrorCode(StrEnum):
     | `TAKE_TAKEN_OVER` | 1008 로 닫는다. FE 는 **재연결하지 않는다** |
 
     - `TAKE_NOT_FOUND` 는 REST 의 404 와 같은 규칙으로 "없음" 과 "남의 것" 을 구분하지 않는다.
-    - `TAKE_ENDED` 는 ANALYZING·COMPLETED·FAILED. 끝난 연습에 전사를 더 붙이면 리포트가 오염된다.
+    - `TAKE_ENDED` 는 ANALYZING·COMPLETED·FAILED 이거나 BE 가 자동 종료한 Take(`AutoEndMessage`).
+      끝난 연습에 전사를 더 붙이면 리포트가 오염된다. BE 가 끝냈으면 `end_reason` 에 이유를 싣는다.
     - `FORBIDDEN` 은 소유권 검사(DB) 뒤의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
     """
 
@@ -123,9 +195,58 @@ class WsErrorCode(StrEnum):
     TAKE_TAKEN_OVER = "TAKE_TAKEN_OVER"
 
 
+# BE 가 Take 를 끝낸 이유 (`takes.end_reason` 과 같은 값). `TAKE_ENDED` 에 실어 FE 가 분기한다.
+#   SILENCE · TIME_LIMIT : 자동 종료 (`AutoEndReason`)
+#   ABANDONED            : 창을 닫지 않고 끊긴 채 돌아오지 않았다. FE 가 STT 없이 발표를 이어
+#                          가는 중일 수 있다 — 발표를 마치고 끝내기 PUT 을 보내면 되살아난다.
+#                          첫 연결에 오면 시작하지 않은 채 끝난 Take 다 (새 Take 를 만듦 · 10분)
+#   CLOSED               : 창을 닫았다. 이어 가지 않는다
+TakeEndReason = Literal["SILENCE", "TIME_LIMIT", "ABANDONED", "CLOSED"]
+TAKE_END_REASONS: tuple[str, ...] = get_args(TakeEndReason)
+
+
+class AutoEndReason(StrEnum):
+    """BE 가 Take 를 스스로 끝낸 이유. FE 가 분기하는 값이다."""
+
+    SILENCE = "SILENCE"  # 오래 말이 없었다
+    TIME_LIMIT = "TIME_LIMIT"  # 최대 시간이 지났다
+
+
+class AutoEndMessage(BaseModel):
+    """BE 가 Take 를 자동으로 끝낸다. 이 메시지 뒤로는 오디오를 받지 않는다.
+
+    순서: `auto_end` → (남은 오디오 정리) → `stt_status` closed → 1000 close.
+    FE 는 사용자가 끝내기를 누른 것과 같은 종료 흐름을 타고 `message` 를 보여 준다.
+    `stop` 을 보내도 되고 안 보내도 된다 — 서버는 이미 정리하고 있다.
+    같은 Take 로 다시 붙으면 이 메시지를 한 번 더 보내고 `TAKE_ENDED` 로 거절한다 (자동 종료 순간
+    떨어져 있던 FE 도 종료 흐름을 타게).
+    """
+
+    type: Literal["auto_end"] = "auto_end"
+    reason: AutoEndReason
+    message: str
+
+
+class CoachMessage(BaseModel):
+    """실시간 코치의 한마디와 상태 표시 (`docs/ai/architecture.md` 1-4).
+
+    `COACHING` 모드에서 코치가 말을 걸 때(`action` = `INTERVENE`)와 상태 표시가 바뀔 때만 보낸다.
+    `EXAM` 모드에서는 보내지 않는다. `feedback` 은 말을 걸 때만 있다. `indicators` 는 영역 → 상태
+    이고, 빈 객체는 '바뀌지 않음'이다 — FE 는 이전 표시를 그대로 둔다.
+    """
+
+    type: Literal["coach"] = "coach"
+    t_ms: int
+    action: str
+    feedback: dict[str, Any] | None
+    indicators: dict[str, str]
+
+
 class ErrorMessage(BaseModel):
     """무엇이 잘못됐는지. 연결을 닫을지는 code 가 정한다 (WsErrorCode 표)."""
 
     type: Literal["error"] = "error"
     code: WsErrorCode
     message: str
+    # `TAKE_ENDED` 일 때 BE 가 끝낸 이유. 사용자가 끝냈거나 다른 코드면 싣지 않는다
+    end_reason: TakeEndReason | None = Field(default=None, exclude_if=lambda v: v is None)

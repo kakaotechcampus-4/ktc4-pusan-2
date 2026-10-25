@@ -71,7 +71,7 @@ flowchart LR
   S --> TR["Take 결과"]
 ```
 1. **keyterm (BE)**: BE가 이 모듈의 keyterm 단어 목록을 가져와 대본 용어(`terms`)와 함께 Deepgram에 넘긴다. 개수 · 길이 한도가 넘치면 대본 용어 뒤쪽부터 뺀다(`architecture.md` 2절). 채움말이 전사에 남아야 판정할 수 있기 때문이다.
-2. **STT (BE)**: BE가 확정 단어 · 문장 끝 신호 · STT 상태를 Take 기준 ms로 들고 있다가, FE `metrics`를 받을 때마다 최근 60초를 `/coach/evaluate`에 싣는다. 복구(`replay`)용으로 단어가 확정된 시각도 함께 보관한다(`architecture.md` 2절, `coach-agent.md` 12-1).
+2. **STT (BE)**: BE가 확정 단어 · 문장 끝 신호 · STT 상태를 Take 기준 ms로 들고 있다가, FE `metrics`를 받을 때마다(`buffered: true`인 것은 빼고, 호출 조건은 `architecture.md` 1-3 2번 · 2절) 최근 60초를 `/coach/evaluate`에 싣는다. 문장 끝 신호는 Take 종료 때 `takes.utterance_ends`에 한 번에 쓴다. 복구(`replay`)용으로 단어가 확정된 시각도 함께 보관한다(`architecture.md` 2절, `coach-agent.md` 12-1).
 3. **코치 → `filler.judge`**: 코치가 요청마다 판정 모듈 중 군더더기를 가장 먼저 부른다. 말 속도가 같은 요청 안에서 군더더기 판정을 받아야 하기 때문이다(`coach-agent.md` 6-1).
 4. **`filler.judge`**: 창 안 단어마다 층과 군더더기 여부를 판정하고(뒤 간격이 필요한데 다음 단어가 없으면 보류), 판정이 정해진 새 단어만 `tally`에 센다. 최근 창의 군더더기 수로 `state`와 `FILLER_FREQUENT`를 정한다.
 5. **코치 → 말 속도**: 코치가 `words` 중 군더더기(true)와 보류(null) 단어를 `fillers`로 말 속도에 넘긴다. 말 속도는 군더더기를 글자 수에서 빼고 보류 단어부터는 다음에 센다. 모듈끼리 import하지 않으므로 코치가 옮겨 준다.
@@ -89,7 +89,7 @@ ai/research/filler-detection/
 │   ├─ keyterms.json                        keyterm 단어 목록 (config.py 사전에서 만든 생성 파일, BE가 가져간다)
 │   └─ examples/                            judge · summarize · criteria 입력 · 출력 예시 (계약 테스트가 읽는다)
 ├─ data/                                    평가 데이터: 층 · 군더더기 여부를 단어마다 표시한 발화 세트
-├─ tools/                                   keyterm 파일 다시 만들기 · 평가 스크립트
+├─ tools/                                   예시 · keyterm 파일 · 가상 평가 데이터 다시 만들기, 평가 스크립트
 ├─ tests/                                   판정 규칙 · 커서 · 계약 · keyterm 파일 최신 검사
 └─ reports/results/                         평가 결과 JSON (층별 정밀도 · 재현율)
 ```
@@ -134,9 +134,10 @@ ai/research/filler-detection/
 | T2 지시 · 대용 | 그 · 저 · 이제 · 인제 · 뭐 · 자 · 저기 · 이 · 인자 · 저기요 · 아아 | 그 · 저 · 이제 · 인제 · 뭐 · 자 · 저기만 넣는다 | 다음 중 하나면 군더더기: 앞이나 뒤 간격이 기준 이상인 단독 단어 / 같은 단어가 바로 반복 / 문장 첫 단어이고 뒤 간격이 기준 이상 |
 | T3 어휘적 | 그니까 · 그러니까 · 그니깐 · 근데 · 그런데 · 그래서 · 그래가지고 · 그래갖고 · 뭐지 · 뭐냐 · 뭐더라 · 뭔가 · 뭐랄까 · 그게 · 막 · 좀 · 약간 · 그냥 · 되게 · 진짜 · 완전 · 솔직히 · 사실 · 이렇게 · 저렇게 · 그렇게 · 이런 · 그런 · 있잖아 · 있잖아요 · 아무튼 · 어쨌든 · 하여튼 · 아니 · 글쎄 · 글쎄요 | 넣지 않는다 | 앞뒤 간격이 모두 기준 이상인 단독 단어, 또는 같은 단어가 바로 반복 |
 
+- 배포 기본값은 T1만 센다(`config.py`의 `counted_tiers`). T2 · T3는 층 · 이유를 판정하지만 `is_filler`는 false로 내고 세지 않는다. 문장 첫 지시어("그 결과" · "자 이제")를 군더더기로 세는 오탐 때문이며, 간격 규칙을 실제 리허설로 정한 뒤 켠다.
 - keyterm은 T1 8개와 T2 7개, 모두 15개다. T3와 T2 일부를 넣지 않는 이유는 둘이다. 평범한 단어까지 끌어당겨 말하지 않은 단어가 전사에 낄 수 있다. 개수 한도가 있는 keyterm 자리를 대본 용어와 나눠 써야 한다.
 - "네 · 예 · 응"은 청중 응답과 구분할 수 없어 넣지 않는다.
-- 사전과 맞출 때 단어는 앞뒤 공백 · 문장부호를 떼고 그대로 비교한다(활용형 · 띄어쓰기 변형은 사전에 따로 넣어야 센다). BE가 싣는 `word`는 Deepgram의 문장부호 없는 어절이고(`punctuated_word`가 아님), `filler_word:<단어>` 키에도 뗀 단어를 쓴다(15절 열린 질문).
+- 사전과 맞출 때 단어는 앞뒤 공백 · 문장부호를 떼고 그대로 비교한다(활용형 · 띄어쓰기 변형은 사전에 따로 넣어야 센다). BE가 싣는 `word`는 Deepgram의 문장부호 없는 어절이고(`punctuated_word`가 아님), `filler_word:<단어>` 키에도 뗀 단어를 쓴다. 떼는 문장부호는 유니코드 문장부호(P 범주)이고, 단어 가운데 글자는 그대로 둔다.
 - keyterm 목록의 순서는 BE 목록과 같게 둔다: T1 짧은 채움말(음 · 어 · 아 · 에 · 으) → T2 일곱 개 → T1 늘인 채움말(음음 · 어어 · 으음). 군더더기 keyterm 15개는 모두 남기고, 한도가 넘치면 대본 용어 뒤쪽부터 뺀다(`architecture.md` 2절).
 
 **`judge(inputs, t_ms, config)`의 `inputs`** (코치가 만든다. `architecture.md` 7절 STT 모듈 입력)
@@ -187,6 +188,8 @@ ai/research/filler-detection/
 - 코치는 `FILLER_FREQUENT`에 `REDUCE_FILLER` → `REDUCE_FILLER`(숨 쉬기) → 그만둠 사다리를 쓰고, 개입 효과는 개입 뒤 정해진 구간의 군더더기 수를 개입 앞 같은 길이 구간과 `tally`의 시각으로 비교한다(`coach-agent.md` 6-1).
 
 ## 5-5. 예시
+아래 예시는 T2 · T3를 켠 설정(`counted_tiers`가 세 층 모두)의 결과다. 배포 기본값(T1만)에서는 T2 · T3 단어가 `is_filler: false`("세지 않는 층")이고 보류가 생기지 않는다(예: 첫 예시의 "그니까"는 세지 않아 `recent_filler_count`가 1).
+
 **`judge` 입력**
 ```json
 {
@@ -226,7 +229,7 @@ ai/research/filler-detection/
 ```
 - "그니까"(37,900 ms)는 지난 요청에서 이미 센 단어라(`end_ms` 38,300 ≤ 단어 커서 38,950) `tally`에 다시 나오지 않는다. `words`에는 창 안 단어가 모두 나온다.
 - "그니까"는 창의 첫 단어라 앞 단어가 없지만, 앞선 문장 끝 신호(36,800)가 있어 앞 간격을 1,100 ms로 본다(6-1).
-- `filler_per_min`은 최근 창 안에서 STT가 정상이던 시간으로 나눈다. Take 41초째이고 창보다 짧으므로 2 ÷ 41초 × 60 = 2.93이다(15절 열린 질문).
+- `filler_per_min`은 최근 창 안에서 STT가 정상이던 시간으로 나눈다. Take 41초째이고 창보다 짧으므로 2 ÷ 41초 × 60 = 2.93이다.
 
 **경계 상황: 창의 마지막 단어가 보류됨**. "그"(T2)는 뒤 간격을 봐야 하는데 다음 단어가 아직 없어 보류(`is_filler: null`)이고, 단어 커서는 그 앞("매출은"의 `end_ms`)에서 멈춘다. 다음 요청에서 다음 단어가 오면 판정해 센다.
 ```json
@@ -264,13 +267,13 @@ ai/research/filler-detection/
 ## 6-1. `judge` 요청 하나가 도는 과정
 1. **창 고르기**: `start_ms`가 `stt_ok_since_ms`보다 이른 단어는 뺀다. STT가 불안정했던 동안의 듬성한 단어를 믿지 않고, 그 시각 앞 단어와의 간격도 쓰지 않는다(`architecture.md` 7절).
 2. **사전 맞추기**: 단어마다 앞뒤 공백 · 문장부호를 떼고 사전에서 층을 찾는다. 없으면 `tier: null`, `is_filler: false`, `reason: "사전에 없음"`.
-3. **층별 판정**:
+3. **층별 판정**: `counted_tiers`에 없는 층의 단어는 간격을 보지 않고 `is_filler: false`(이유 "세지 않는 층")로 정한다. 보류하지 않는다.
    - T1은 늘 군더더기다.
    - T2는 다음 중 하나면 군더더기다: 앞이나 뒤 간격이 기준 이상인 단독 단어 / 같은 단어가 바로 반복 / 문장 첫 단어이고 뒤 간격이 기준 이상.
    - T3는 앞뒤 간격이 모두 기준 이상인 단독 단어이거나, 같은 단어가 바로 반복이면 군더더기다.
    - 문장 첫 단어는 직전 문장 끝 신호 뒤의 첫 단어, 또는 앞 단어와의 간격이 기준 이상인 단어다.
-   - 앞 단어가 창에 없으면(창의 첫 단어, STT가 돌아온 뒤 첫 단어) 그 단어 시작 전이면서 `stt_ok_since_ms` 이상인 문장 끝 신호를 앞 단어의 끝으로 보고 앞 간격을 잰다(STT가 불안정했던 동안의 신호는 쓰지 않는다). 그런 신호가 없으면 앞 간격을 모르는 것으로 보고 앞 간격 조건은 맞지 않은 것으로 친다(놓침보다 오탐을 피한다, 15절 열린 질문).
-   - 바로 반복은 T2 · T3 단어에만 쓰는 조건이다. 같은 단어가 바로 반복되면 앞의 것들은 군더더기로 세고, 마지막 하나는 반복 조건으로는 세지 않고 간격 · 문장 첫 단어 규칙으로 따로 판정한다("그 그 사람" → 앞의 "그"는 군더더기, 뒤의 "그"는 간격으로 판정). 뒤의 것이 실제로 쓰인 말일 수 있어서다. T1은 반복과 관계없이 모두 군더더기다. 이 규칙은 평가 데이터로 확인해 README에 적는다(15절 열린 질문).
+   - 앞 단어가 창에 없으면(창의 첫 단어, STT가 돌아온 뒤 첫 단어) 그 단어 시작 전이면서 `stt_ok_since_ms` 이상인 문장 끝 신호를 앞 단어의 끝으로 보고 앞 간격을 잰다(STT가 불안정했던 동안의 신호는 쓰지 않는다). 그런 신호가 없으면 앞 간격을 모르는 것으로 보고 앞 간격 조건은 맞지 않은 것으로 친다(놓침보다 오탐을 피한다).
+   - 바로 반복은 T2 · T3 단어에만 쓰는 조건이다. 같은 단어가 바로 반복되면 앞의 것들은 군더더기로 세고, 마지막 하나는 반복 조건으로는 세지 않고 간격 · 문장 첫 단어 규칙으로 따로 판정한다("그 그 사람" → 앞의 "그"는 군더더기, 뒤의 "그"는 간격으로 판정). 뒤의 것이 실제로 쓰인 말일 수 있어서다. T1은 반복과 관계없이 모두 군더더기다. 사이에 문장 끝 신호가 있으면 같은 단어가 이어져도 바로 반복으로 보지 않는다(새 문장의 첫 단어다). 평가 데이터로 확인한 결과는 연구 폴더 README에 있다.
 4. **보류**: 뒤 간격을 봐야 하는 단어(T2 · T3)인데 다음 단어도, 그 단어 끝 이후(같은 시각 포함)의 문장 끝 신호도, `take_end_ms`도 아직 없으면 `is_filler: null`로 둔다. 보류는 창의 마지막 단어에만 생긴다. 그 단어 끝 이후(같은 시각 포함)의 문장 끝 신호가 오면 판정한다.
    - 신호 시각이 그 단어의 `end_ms`와 같으면 Deepgram `UtteranceEnd`(그 단어 뒤로 정해진 시간 넘게 말이 없었음)이므로 뒤 간격이 기준 이상인 것으로 본다. 신호까지의 차이(0)로 재지 않는다.
    - 신호 시각이 그 단어의 `end_ms`보다 늦으면 신호 시각 − `end_ms`를 뒤 간격으로 잰다.
@@ -329,7 +332,9 @@ uv sync
 |---|---|---|
 | 테스트 | `uv run python -m pytest` | 판정 규칙 · 커서 · 계약(`examples/`) · keyterm 파일 최신 검사 통과 |
 | keyterm 파일 다시 만들기 | `uv run python tools/export_keyterms.py` | 사전에서 `src/filler/keyterms.json`을 다시 만든다. 커밋된 것과 같으면 `git diff`가 빈다 |
-| 평가 | `uv run python tools/evaluate.py --out reports/results/filler_eval.json` | 층별 정밀도 · 재현율, keyterm 효과 (13절) |
+| 예시 다시 만들기 | `uv run python tools/make_examples.py` | 기준값 · 규칙을 바꾼 뒤 `examples/`의 출력 JSON을 다시 만든다 |
+| 가상 평가 데이터 다시 만들기 | `uv run python tools/make_virtual_data.py --seed 0` | 손으로 쓴 발화 원본(`data/virtual/source.json`)에서 단어 시각을 만든 `data/virtual/words.json` |
+| 평가 | `uv run python tools/evaluate.py --out reports/results/filler_eval.json` | 층별 정밀도 · 재현율, 앞 · 뒤 간격 기준을 바꾼 민감도 (13절) |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 
 - 판정 테스트가 볼 것: T1 · T2 · T3 각 규칙과 경계(간격이 기준과 같을 때), 문장 첫 단어(문장 끝 신호 뒤 · 큰 앞 간격), 바로 반복, 보류와 다음 요청에서의 판정, Take 끝(`take_end_ms`로 보류 단어 정하기, 마지막 단어 끝과 같은 시각이면 뒤 간격 0), `stt_ok_since_ms` 앞 단어 제외, STT가 `ok`가 아님, 사전에 없는 단어 · 문장부호가 붙은 단어. 커서: 보류 단어 앞에서 멈춤, 같은 입력이면 같은 결과, 돌려준 커서로 겹친 창을 다시 부르면 중복 집계 없음, 요청이 빠져 새 1초가 여러 개면 1초마다 시간 몫. 테스트 이름은 동작을 문장으로 짓는다(예: `test_t2_word_is_pending_until_next_word_arrives`).
@@ -337,13 +342,13 @@ uv sync
 # 11. 배포
 **어디서 도는가**: 판정 모듈 `src/filler/`(`examples/` · `keyterms.json` 포함)를 AI 서비스의 `features/filler/`로 폴더째 옮기고, 테스트는 `tests/unit/filler/`로 옮긴다. 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
 
-**keyterm 목록이 BE로 가는 길** (15절 열린 질문): BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽을 수 없다. 그래서 BE가 `keyterms.json`의 복사본을 `backend/` 안에 두고 STT 연결 때 그 목록을 쓴다. BE 테스트가 저장소의 AI 파일(`ai/.../filler/keyterms.json`)과 복사본이 같은지 확인한다. 사전의 keyterm 표시가 바뀌면 AI가 같은 PR에서 파일을 다시 만들고 BE에 알린다.
+**keyterm 목록이 BE로 가는 길**: BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽을 수 없다. 그래서 BE가 `keyterms.json`의 복사본을 `backend/` 안에 두고 STT 연결 때 그 목록을 쓴다. BE 테스트가 저장소의 AI 파일(`ai/.../filler/keyterms.json`)과 복사본이 같은지 확인한다. 사전의 keyterm 표시가 바뀌면 AI가 같은 PR에서 파일을 다시 만들고 BE에 알린다.
 
 **환경변수**: 군더더기 판정 모듈은 환경변수를 읽지 않는다. 서비스 공통 환경변수는 `architecture.md` 10절이다.
 
 **옮긴 뒤 같은 결과인지 확인**
 1. 서비스: 옮긴 `tests/unit/filler/`가 그대로 통과하고, 코어 경계 테스트가 새 위치를 본다.
-2. 코치 연구 폴더: 연구용 대역 대신 이 모듈을 `Judges`에 넣어 재생 · 실험을 다시 돌리고, 달라진 판정(T2 · T3 · 보류가 생김)을 기록한다(`coach-agent.md` 13절).
+2. 코치 연구 폴더: 연구용 대역 대신 이 모듈을 `Judges`에 넣어 재생 · 실험을 다시 돌리고, 달라진 판정을 기록한다(배포 기본값은 T1만 세어 대역과 같은 기준이고, T2 · T3를 켜면 T2 · T3 · 보류가 생긴다)(`coach-agent.md` 13절).
 3. BE: keyterm 복사본이 서비스의 `keyterms.json`과 같다는 BE 테스트가 통과한다.
 
 **증상별 원인**
@@ -352,7 +357,7 @@ uv sync
 |---|---|---|
 | `indicators.FILLER`가 계속 `UNKNOWN` | STT 상태가 `ok`가 아님(재연결 · 저하), 오디오가 멈춤 | evaluate 요청의 `inputs.stt_status`, BE의 STT 상태 기록 |
 | 채움말("음 · 어")이 거의 세지지 않음 | keyterm에 군더더기 단어가 빠짐(BE 목록이 다름), Deepgram이 채움말을 지움 | BE가 Deepgram에 넘긴 keyterm 목록, keyterm 복사본 테스트 |
-| "그 · 이제"가 거의 군더더기로 세지지 않음 | 문장 끝 신호가 오지 않아 신호를 쓰는 판정(문장 끝 뒤 첫 단어 · 보류 해소)이 빠짐, 단어 시각이 이상함 | `inputs.utterance_ends`가 비었는지(BE가 신호를 버리는지), 단어 `start_ms` · `end_ms`. 큰 앞 간격 · 단독 · 바로 반복 조건으로 세지는지도 함께 본다 |
+| (T2 · T3를 켰을 때) "그 · 이제"가 거의 군더더기로 세지지 않음. 배포 기본값(T1만)에서는 정상이다 | 문장 끝 신호가 오지 않아 신호를 쓰는 판정(문장 끝 뒤 첫 단어 · 보류 해소)이 빠짐, 단어 시각이 이상함 | `inputs.utterance_ends`가 비었는지(BE가 신호를 버리는지), 단어 `start_ms` · `end_ms`. 큰 앞 간격 · 단독 · 바로 반복 조건으로 세지는지도 함께 본다 |
 | 말 속도가 군더더기를 빼지 못함 · 말 속도가 잴 수 없음 | 군더더기 판정 실패로 코치가 `fillers: null`을 넘김 | AI 로그의 filler 예외, `words` 모양 |
 | 같은 단어가 두 번 세짐 | 코치가 단어 커서를 넘기지 않음, BE가 단어 시각을 바꿔 보냄 | `coach_state`의 filler 커서, 같은 단어의 `end_ms`가 요청마다 같은지 |
 
@@ -368,13 +373,14 @@ sequenceDiagram
     BE->>DG: keyterm = 군더더기 15개 (복사본) + 대본 용어
     loop 발표 중
         DG-->>BE: 확정 단어 · 문장 끝 신호 · 상태
-        BE->>BE: 창(60초) 갱신 · take_transcript_segments · takes.utterance_ends 저장
-        BE->>C: POST /coach/evaluate (words · utterance_ends · stt_status · coach_state)
+        BE->>BE: 창(60초) 갱신 · take_transcript_segments 저장 · 문장 끝 신호는 메모리에 보관
+        BE->>C: POST /coach/evaluate (다음 실시간 metrics 때, architecture.md 1-3 2번 · words · utterance_ends · stt_status · coach_state)
         C->>F: judge(words, utterance_ends, stt_status, stt_ok_since_ms, 커서)
         F-->>C: words(단어별 판정) + 1초 판정 결과 (FILLER)
         C->>P: judge(..., fillers = 군더더기 · 보류 단어)
         C-->>BE: indicators.FILLER · feedback · events · coach_state
     end
+    BE->>BE: Take 종료 ③ — 문장 끝 신호를 takes.utterance_ends에 한 번에 저장
     BE->>C: POST /coach/finalize (마지막 창)
     C->>F: judge (마지막 창, take_end_ms = Take 끝) · summarize · criteria
     C-->>BE: take_result (areas.FILLER · criteria.FILLER)
@@ -383,14 +389,14 @@ sequenceDiagram
 BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3 · 2절, 코치 쪽 저장은 `coach-agent.md` 12절에 있다.
 
 ## 12-1. 저장 (DB)
-저장 설계는 AI가 하고 AI 리드가 정하며, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 군더더기 모듈은 원자료(STT 단어 · 문장 끝 신호)를 받기만 하고, 단어별 판정(`words`)은 저장하지 않는다(요청마다 다시 만들고, Take 결과에는 횟수만 남는다).
+저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다. 군더더기 모듈은 원자료(STT 단어 · 문장 끝 신호)를 받기만 하고, 단어별 판정(`words`)은 저장하지 않는다(요청마다 다시 만들고, Take 결과에는 횟수만 남는다).
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
 | 군더더기 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.FILLER`(`take` · `slides`) · `criteria.FILLER` | 코치가 `summarize` · `criteria` 결과를 고치지 않고 담는다. 잰 크기: 서로 다른 군더더기 단어 20개면 Take 또는 장 하나에 약 0.33 KB(장 10개면 약 3.7 KB). `by_word`의 키는 사전 단어뿐이라 개수에 상한이 있다(사전 55개) | 코치가 만들고 BE가 쓴다 · 리뷰(`fluency`) · 리포트 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
 | 리포트 요약 군더더기 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.filler_count` (Integer, nullable) | FILLER `filler_count`(정수). `filler_per_min` · 층별 · 단어별은 칸이 없고 Take 결과에서 읽는다. STT를 잴 수 없었으면(`measured_ratio`가 0) null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
-| 군더더기 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `FILLER`일 때 | `live_feedbacks` (`type` = `FILLER`) | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
-| STT 확정 단어 · 문장 끝 신호 (원자료, 이 모듈의 입력) | Take 동안 | `take_transcript_segments.words` · `takes.utterance_ends` | `architecture.md` 1-1, `coach-agent.md` 12-1. 문장 끝 신호에는 Deepgram `UtteranceEnd`의 마지막 단어 끝 시각을 넣는다(5-2) | BE가 쓴다 · `replay` · 대본 전달도 | `coach-agent.md` 12-1 | Take와 함께. 사용자 발화다 |
+| 군더더기 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `FILLER`일 때 | `coach_events`의 `INTERVENTION` 이벤트(`area` = `FILLER`). `live_feedbacks`에는 쓰지 않는다 | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
+| STT 확정 단어 · 문장 끝 신호 (원자료, 이 모듈의 입력) | 단어는 Take 동안, 문장 끝 신호는 Take 종료 때 한 번에(`architecture.md` 1-3) | `take_transcript_segments.words` · `takes.utterance_ends` | `architecture.md` 1-1, `coach-agent.md` 12-1. 문장 끝 신호에는 Deepgram `UtteranceEnd`의 마지막 단어 끝 시각을 넣는다(5-2) | BE가 쓴다 · `replay` · 대본 전달도 | `coach-agent.md` 12-1 | Take와 함께. 사용자 발화다 |
 | keyterm 단어 목록 | 사전이 바뀔 때 | DB가 아니다. AI `keyterms.json`(원본, 생성 파일)과 BE 안의 복사본 | `{criteria_version, keyterms[]}`, 0.2 KB 안팎 | AI가 만들고 BE가 복사 · BE가 STT 연결 때 읽는다 | 원본은 사전에서만 만든다 | — |
 
 ## 12-2. 저장 규칙
@@ -400,7 +406,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 - 테이블 · 칸이 바뀌면 배포 전에 BE가 마이그레이션한다(`take_summaries`의 nullable 칸 · `takes.utterance_ends` 포함). 저장 모양이 바뀌면 계약 변경이다.
 
 # 13. 품질 검증
-평가 데이터에는 가상 발표와 실제 리허설을 함께 둔다(`architecture.md` 12절). 결과 파일은 `reports/results/`에 커밋한다.
+평가 데이터에는 가상 발표와 실제 리허설을 함께 둔다(`architecture.md` 12절). 결과 파일은 `reports/results/`에 커밋한다. 평가는 간격 규칙을 재는 것이라 T1 · T2 · T3를 모두 켠 설정으로 잰다(배포 기본값은 T1만 센다, 5-2).
 
 | 평가 데이터 | 지표 | 중점 | 검증 방법 |
 |---|---|---|---|
@@ -425,22 +431,24 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 - **keyterm 끼어듦**: 말하지 않았는데 전사에 생긴 keyterm 단어 수 ÷ 발화 분.
 
 # 15. 열린 질문 · 알려진 한계
-**열린 질문** (아직 정하지 않았다)
-- 판정 결과 `filler_per_min`의 분모: 추천은 최근 창 안에서 STT가 정상이던 시간.
-- 판정 세부 규칙: 단어 정규화, 앞 단어가 없을 때의 앞 간격, 바로 반복에서 앞의 것만 세기.
-- keyterm 목록을 BE가 가져가는 방법: 추천은 BE 안 복사본 + 같은지 BE 테스트.
+**열린 질문**
+- T2 · T3 단독 단어와 문장 첫 단어의 간격 규칙, 그리고 T2 · T3를 셀지. 실제 리허설로 정한다.
 
 **알려진 한계**
 - keyterm으로도 채움말이 모두 전사에 남지는 않아 채움말 수는 실제보다 적게 나올 수 있다.
 - 사전에 없는 군더더기는 세지 않는다. 활용형 · 띄어쓰기 변형도 사전에 넣어야 센다.
 - 규칙은 간격과 문장 끝만 본다. "진짜 좋았다"의 "진짜"가 앞뒤로 쉬어 말해지면 군더더기로 셀 수 있다(T3는 앞뒤 간격이 모두 기준 이상이거나 바로 반복될 때만 세어 오탐을 줄인다).
 - STT 단어 시각의 정확도에 기대므로, 단어 시각이 흔들리면 간격 판정도 흔들린다.
-- 평가 데이터가 아직 없고, 기준값은 초기값이다. 코치 재생은 T1만 세는 연구용 대역으로 해 왔다.
+- 기준값은 가상 발표 세트로만 확인한 초기값이다. 가상 세트의 단어 시각은 정해진 분포에서 만든 것이라 실제 정확도를 보여 주지 않는다. 실제 리허설 세트와 keyterm 효과(채움말 보존율 · 끼어듦)는 이 평가에 들어 있지 않다. 코치 재생은 T1만 세는 연구용 대역으로 해 왔다.
+- 배포 기본값은 T1만 세므로 실제 T2 · T3 군더더기("그 .." · 습관적인 "그니까" 등)도 세지 않는다. 군더더기 수는 그만큼 실제보다 적게 나온다.
+- (T2 · T3를 켰을 때) 문장 끝 신호는 마지막 단어 뒤로 정해진 시간 넘게 말이 없을 때 오므로, 신호 뒤 첫 단어는 보통 앞 간격이 기준보다 크다. 그래서 문장 첫 T2 단어("이제 · 자 · 그")는 정상 용법이어도 "앞 간격이 기준 이상인 단독 단어"로 셀 수 있다. 가상 세트의 T2 · T3 오탐 대부분이 이런 문장 첫 단어다(연구 폴더 README).
+- T2 세 번째 조건(문장 첫 단어이고 뒤 간격이 기준 이상)은 뒤 간격 기준이 첫 조건과 같아, 첫 조건의 "뒤 간격이 기준 이상"에 늘 포함돼 결과를 바꾸지 않는다.
 
 # 16. 확정 값 한눈에
 | 항목 | 값 | 어디서 정하나 |
 |---|---|---|
 | 사전 | T1 8개 · T2 11개 · T3 36개 (5-2 표), "네 · 예 · 응" 제외. 원본은 `config.py` | 5-2 |
+| 세는 층 | 배포 기본 T1만 (`counted_tiers`) | 5-2 |
 | keyterm | T1 8개 + T2 7개 = 15개, 우선순위 순서 T1 짧은 5 → T2 7 → T1 늘인 3. BE는 군더더기 15개를 늘 남긴다 | 5-2 · 11절 |
 | 입력 | `words` · `utterance_ends` · `take_end_ms`(finalize 마지막 창만, evaluate에서는 null) · `stt_status` · `stt_ok_since_ms` · `since_ms` · `words_since_ms` (BE 창 60초) | 5-2, `architecture.md` 2 · 7절 |
 | 진입 함수 | `judge` · `summarize` · `criteria` (자기 HTTP 엔드포인트 없음), `keyterms` | 4-2 |

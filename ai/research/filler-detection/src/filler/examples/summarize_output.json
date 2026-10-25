@@ -1,0 +1,17 @@
+{
+  "FILLER": {
+    "filler_count": 7,
+    "filler_per_min": 2.4,
+    "by_tier": {
+      "T1": 4,
+      "T2": 0,
+      "T3": 3
+    },
+    "by_word": {
+      "음": 4,
+      "그니까": 2,
+      "좀": 1
+    },
+    "measured_ratio": 0.97
+  }
+}

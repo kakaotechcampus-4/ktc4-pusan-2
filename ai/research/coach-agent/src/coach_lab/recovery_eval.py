@@ -51,7 +51,7 @@ def offline(
     assert raw is not None
     state: dict[str, Any] | None = None
     events: list[dict[str, Any]] = []
-    for t in recovery.ticks(fr.t_ms):
+    for t in recovery.ticks(raw, fr.t_ms):
         if drop is not None and drop[0] <= t < drop[1]:
             continue
         resp = decide_safe(recovery.request_at(fr, raw, t, state, mode=fr.mode), judges, cfg)
@@ -61,7 +61,7 @@ def offline(
         **result.final_request,
         "events": events,
         "coach_state": state,
-        "inputs": recovery.inputs_at(raw, fr.t_ms).model_dump(mode="json"),
+        "inputs": recovery.inputs_at(raw, fr.t_ms, last_window=True).model_dump(mode="json"),
     }
     try:
         return finalize(base, judges, cfg).take_result, False

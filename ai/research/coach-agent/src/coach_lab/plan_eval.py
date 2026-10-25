@@ -59,12 +59,14 @@ class TimedLLM:
 def plan_request(sc: Scenario) -> PlanRequest:
     return PlanRequest.model_validate(
         {
-            "take_id": sc.take_id,
-            "mode": sc.mode,
+            "pitch_id": f"pitch-{sc.name}",
+            "source_take_id": None,
+            "script_version_id": None,
             "plan": sc.plan,
             "scripts": sc.scripts,
             "missions": sc.missions,
-            "memory": sc.memory,
+            "recurring_issues": sc.memory.get("recurring_issues", []),
+            "previous_take_result": sc.previous_take_result,
             "previous_review": sc.previous_review,
         }
     )
@@ -139,14 +141,16 @@ def evaluate_plans(
         ]
         first = responses[0]
         base = run(sc)
-        with_plan = run(sc, coaching_plan=first.plan.model_dump(mode="json"))
+        with_plan = run(sc, coaching_plan=first.coaching_plan.model_dump(mode="json"))
         before, after = interventions_by_scope(base), interventions_by_scope(with_plan)
-        failures = [check_plan(r.plan, sc.plan_expect) for r in responses]
+        failures = [check_plan(r.coaching_plan, sc.plan_expect) for r in responses]
         for item in sc.plan_expect.get("with_plan_no_interventions", []):
             key = f"{item['area']} {item['slide_number']}"
             if after.get(key):
                 failures[0].append(f"계획으로 재생해도 {key} 개입 {after[key]}번")
-        scopes = [(_scopes(r.plan.focus), _scopes(r.plan.relax)) for r in responses]
+        scopes = [
+            (_scopes(r.coaching_plan.focus), _scopes(r.coaching_plan.relax)) for r in responses
+        ]
         rows.append(
             {
                 "scenario": sc.name,
@@ -154,7 +158,7 @@ def evaluate_plans(
                 "fallback_reasons": [r.fallback_reason for r in responses],
                 "expect_failures": failures,
                 "consistent": [s == scopes[0] for s in scopes],
-                "plans": [r.plan.model_dump(mode="json") for r in responses],
+                "plans": [r.coaching_plan.model_dump(mode="json") for r in responses],
                 "dropped": [r.dropped for r in responses],
                 "interventions_without_plan": before,
                 "interventions_with_plan": after,
@@ -228,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
     report = {
         "model": settings.model,
         "planner_hash": planner_hash(settings.model),
-        "policy_version": FEATURE_VERSION,
+        "feature_version": FEATURE_VERSION,
         "samples": args.samples,
         **evaluate_plans(scenarios, plan_llm(settings), settings.model, cache, args.samples),
     }

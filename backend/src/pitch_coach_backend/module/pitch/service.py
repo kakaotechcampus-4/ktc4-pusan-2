@@ -1,8 +1,10 @@
+import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from collections.abc import Iterable, Mapping
+from dataclasses import asdict
+from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 import httpx2
 from sqlalchemy.orm import Session
@@ -10,16 +12,26 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.dto import (
     HighlightDTO,
+    NewerScriptDTO,
+    ParsedScriptDTO,
     ParseRequestedDTO,
+    ParseSaved,
     ParseTicket,
     PitchListItemDTO,
     PitchListResponseDTO,
     PitchSaveRequestDTO,
+    PrepareDTO,
+    PrepareMissionDTO,
+    PrepareMissionsDTO,
+    PrepareMissionTargetDTO,
     PresentationDetailDTO,
+    PresentationVersionDTO,
+    RubricTicket,
     ScriptCreatedDTO,
     ScriptDetailDTO,
     ScriptParseErrorCode,
     ScriptSlideDTO,
+    StandardAIResponseDTO,
     StandardParseResponseDTO,
     StandardTextDTO,
     StandardTextResponseDTO,
@@ -29,14 +41,17 @@ from pitch_coach_backend.module.pitch.dto import (
     VersionSummaryDTO,
 )
 from pitch_coach_backend.module.pitch.entity import (
+    CoachingPlan,
     Pitch,
     PresentationVersion,
     ScriptParseStatus,
+    ScriptRubricStatus,
     ScriptSlide,
     ScriptVersion,
     Standards,
 )
 from pitch_coach_backend.module.pitch.exception import (
+    InvalidPresentation,
     InvalidScript,
     NonExistentPitch,
     NonExistentPresentationVersion,
@@ -44,12 +59,26 @@ from pitch_coach_backend.module.pitch.exception import (
     ScriptAlreadyParsed,
     ScriptParseInProgress,
     ScriptReuploadRequired,
+    StandardInputRejected,
     StandardParseFailed,
 )
+from pitch_coach_backend.module.pitch.presentation_file import (
+    MAX_PRESENTATION_BYTES,
+    count_pdf_pages,
+    file_size,
+)
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.s3_service import generate_presigned_url, upload
+from pitch_coach_backend.module.pitch.s3_service import (
+    delete_prefix,
+    generate_presigned_url,
+    upload,
+)
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
+from pitch_coach_backend.module.take.coach_repository import CoachRepository
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
+from pitch_coach_backend.module.take.repository import TakeRepository
+
+logger = logging.getLogger(__name__)
 
 # 평가 기준 나누기는 LLM 한 번 호출이라 기본값(5초)으로는 모자라다. 대본 파싱과 같은 값
 STANDARD_PARSE_TIMEOUT = httpx2.Timeout(30.0, connect=5.0)
@@ -58,8 +87,11 @@ STANDARD_PARSE_TIMEOUT = httpx2.Timeout(30.0, connect=5.0)
 MAX_SCRIPT_CHARS = 50_000
 # 요청 후 이만큼 지나도 PENDING 이면 만료(FAILED)로 본다. BE 가 재시작되면 백그라운드 작업이
 # 사라져 PENDING 이 영원히 남기 때문이다. 작업의 최악 소요(script_parser 의 타임아웃 × 재시도,
-# 약 71초)보다 길어야 한다 — 짧으면 아직 도는 작업을 만료로 보여주고 재시도를 열어 버린다
+# 약 61초)보다 길어야 한다 — 짧으면 아직 도는 작업을 만료로 보여주고 재시도를 열어 버린다
 PARSE_EXPIRE_AFTER = timedelta(seconds=90)
+# 발표일은 사용자가 고른 한국 날짜다. 오늘도 한국 날짜로 봐야 0~9시에 오늘 발표가 지난 발표가
+# 되지 않는다. 관리자 콘솔(admin/repository.py)과 같은 고정 오프셋이다
+KST = timezone(timedelta(hours=9), "KST")
 
 def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveRequestDTO):
     new_pitch = Pitch(
@@ -80,7 +112,7 @@ def add_pitch_service(db: Session, user_id: uuid.UUID, pitch_dto: PitchSaveReque
 # 홈 화면 : pitches 목록 조회
 def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListResponseDTO:
     pitch_repository = PitchRepository(db)
-    pitches = pitch_repository.get_all_by_user(user_id)
+    pitches = pitch_repository.get_all_by_user(user_id, datetime.now(KST).date())
 
     rows_by_pitch = defaultdict(list)
     for row in pitch_repository.get_takes_with_scores_in_pitches([p.id for p in pitches]):
@@ -140,9 +172,85 @@ def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
 
     return VersionSummaryDTO(
         pitch_id=pitch_id,
-        presentation_versions=to_version_dtos(pitch_repository.get_presentations(pitch_id)),
+        presentation_versions=[
+            _presentation_dto(row) for row in pitch_repository.get_presentations(pitch_id)
+        ],
         script_versions=to_version_dtos(pitch_repository.get_scripts(pitch_id)),
         evaluation_versions=to_version_dtos(pitch_repository.get_evaluations(pitch_id)),
+    )
+
+def _presentation_dto(row: PresentationVersion) -> PresentationVersionDTO:
+    return PresentationVersionDTO(id=row.id, version=row.version, page_count=row.page_count)
+
+
+def _prepare_missions(db: Session, pitch_id: uuid.UUID) -> PrepareMissionsDTO | None:
+    """Take 를 시작할 때 싣는 미션(`CoachRepository.assign_missions`)과 같은 Take · 순서로 고른다.
+
+    지금 있는 Take 는 모두 다음 번호보다 작아서 `before` 없이 고른 것과 같다.
+    """
+    source = TakeRepository(db).get_latest_reviewed_take_in_pitch(pitch_id)
+    if source is None:
+        return None
+    return PrepareMissionsDTO(
+        source_take_number=source.take_number,
+        items=[
+            PrepareMissionDTO(
+                mission_id=mission.id,
+                priority=mission.priority,
+                area=mission.area,
+                slide_number=mission.slide_number,
+                description=mission.description,
+                target=PrepareMissionTargetDTO.model_validate(mission.target),
+                reason=mission.reason,
+            )
+            for mission in CoachRepository(db).active_missions_from(source.id)
+        ],
+    )
+
+
+# 장치 점검 화면. 홈에서 바로 들어오거나 새로고침해도 Take 에 넣을 버전을 알 수 있게 한다
+def get_prepare_service(db: Session, pitch_id: uuid.UUID) -> PrepareDTO:
+    pitch_repository = PitchRepository(db)
+    pitch = pitch_repository.get_by_id(pitch_id)
+
+    if not pitch:
+        raise NonExistentPitch()
+
+    script = pitch_repository.get_latest_parsed_script(pitch_id)
+    slide_count = pitch_repository.count_slides(script.id) if script else None
+    # FE 매핑 확인과 같은 규칙이다. 장 수와 쪽수가 같은 가장 최근 발표자료, 없으면 가장 최근 것
+    presentation = None
+    if slide_count:
+        presentation = pitch_repository.get_latest_presentation(pitch_id, page_count=slide_count)
+    if presentation is None:
+        presentation = pitch_repository.get_latest_presentation(pitch_id)
+    latest_script = pitch_repository.get_latest_script(pitch_id)
+    latest_take = TakeRepository(db).get_latest_take_in_pitch(pitch_id)
+
+    newer_script = None
+    if latest_script is not None and (script is None or latest_script.version > script.version):
+        status, error = _effective_status(latest_script, datetime.now(UTC))
+        newer_script = NewerScriptDTO(
+            id=latest_script.id,
+            version=latest_script.version,
+            parse_status=status,
+            error_code=error,
+        )
+
+    return PrepareDTO(
+        pitch_id=pitch.id,
+        title=pitch.title,
+        time_limit_sec=pitch.time_limit_sec,
+        script=(
+            ParsedScriptDTO(id=script.id, version=script.version, slide_count=slide_count or 0)
+            if script
+            else None
+        ),
+        presentation=_presentation_dto(presentation) if presentation else None,
+        newer_script=newer_script,
+        next_take_number=latest_take.take_number + 1 if latest_take else 1,
+        default_script_mode=latest_take.script_mode if latest_take else "HIGHLIGHT",
+        missions=_prepare_missions(db, pitch_id),
     )
 
 def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
@@ -163,35 +271,68 @@ def update_pitch_service(db: Session, pitch_id: uuid.UUID, pitch_dto):
 
     return updated_pitch.id
 
-def delete_pitch_service(db: Session, pitch_id: uuid.UUID):
+def delete_pitch_service(db: Session, pitch_id: uuid.UUID) -> list[uuid.UUID]:
+    """pitch 를 지운다. Take 와 그 아래 행은 CASCADE 로 같이 지워진다.
+
+    지운 Take 의 id 를 돌려준다. 진행 중이던 Take 의 실시간 STT 는 호출자가 끊는다.
+    """
     pitch_repository = PitchRepository(db)
     existing_pitch = pitch_repository.get_by_id(pitch_id)
 
     if not existing_pitch:
         raise NonExistentPitch()
 
+    # 지운 뒤에는 CASCADE 로 사라져 읽을 수 없다
+    take_ids = pitch_repository.get_take_ids(pitch_id)
     pitch_repository.delete(existing_pitch)
     db.commit()
 
-    return pitch_id
+    return take_ids
+
+def delete_pitch_files(pitch_id: uuid.UUID) -> None:
+    """S3 에 올린 이 pitch 의 파일을 지운다. pitch 행을 지운 커밋 뒤 백그라운드로 돈다.
+
+    실패해도 삭제 요청은 이미 성공했다. 남은 파일은 로그의 pitch_id 로 찾아 지운다.
+    """
+    try:
+        delete_prefix(f"pitches/{pitch_id}/")
+    except Exception:
+        logger.exception("pitch 파일 삭제 실패 pitch_id=%s", pitch_id)
+
+def get_pitch_ids_of_user(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
+    return PitchRepository(db).get_ids_by_user(user_id)
+
+def get_take_ids_of_user(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
+    return PitchRepository(db).get_take_ids_by_user(user_id)
 
 def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     pitch_repository = PitchRepository(db)
+    presentation_file = upload_dto.presentation_file
+
+    # 확장자 · MIME 은 클라이언트가 정하는 값이라 보지 않고 직접 연다. 잠그기 전에 해서 쪽수를
+    # 세는 동안 같은 pitch 의 다른 요청을 막지 않는다
+    if file_size(presentation_file.file) > MAX_PRESENTATION_BYTES:
+        raise InvalidPresentation()
+    page_count = count_pdf_pages(presentation_file.file)
+    if page_count is None:
+        raise InvalidPresentation()
+
     # 같은 pitch 에 동시에 올려도 같은 버전 번호를 받지 않게 커밋까지 줄을 세운다.
     # 번호가 S3 키에도 들어가서, 잠그지 않으면 500 에 더해 앞서 올린 파일이 덮어쓰인다
     pitch_repository.lock_for_new_version(pitch_id)
 
     version = pitch_repository.next_presentation_version(pitch_id)
-    suffix = Path(upload_dto.presentation_file.filename or "").suffix
     presentation_key = upload(
-        upload_dto.presentation_file,
-        f"pitches/{pitch_id}/presentations/{version}{suffix}"
+        presentation_file,
+        f"pitches/{pitch_id}/presentations/{version}.pdf",
+        content_type="application/pdf",
     )
 
     presentation = PresentationVersion(
         pitch_id=pitch_id,
         version=version,
-        file_key=presentation_key
+        file_key=presentation_key,
+        page_count=page_count,
     )
 
     pitch_repository.save_presentation(presentation)
@@ -200,7 +341,8 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     return UploadPresentationResultDTO(
         pitch_id=pitch_id,
         presentation_version_id=presentation.id,
-        file_url = generate_presigned_url(presentation_key)
+        file_url = generate_presigned_url(presentation_key),
+        page_count=page_count,
     )
 
 def validate_script_text(content: str) -> str:
@@ -215,6 +357,16 @@ def validate_script_text(content: str) -> str:
     return content
 
 
+def _target_ms(pitch_repository: PitchRepository, pitch_id: uuid.UUID) -> int | None:
+    """AI 에 실을 발표 제한 시간(ms). 다시 파싱할 때도 그때의 제한 시간을 싣는다."""
+    pitch = pitch_repository.get_by_id(pitch_id)
+    if pitch is None:
+        raise NonExistentPitch()
+    # 계약은 1 이상이다. 입력 검증(#147) 전에 0 이하로 저장된 발표는 AI 가 422 로 거절하지 않게
+    # 목표 없이 부른다
+    return pitch.time_limit_sec * 1000 if pitch.time_limit_sec > 0 else None
+
+
 def create_script_service(
     db: Session, pitch_id: uuid.UUID, content: str
 ) -> tuple[ScriptCreatedDTO, ParseTicket]:
@@ -226,6 +378,7 @@ def create_script_service(
     pitch_repository = PitchRepository(db)
     # 같은 pitch 에 동시에 올려도 같은 버전 번호를 받지 않게 커밋까지 줄을 세운다
     pitch_repository.lock_for_new_version(pitch_id)
+    target_ms = _target_ms(pitch_repository, pitch_id)
 
     script = ScriptVersion(
         pitch_id=pitch_id,
@@ -247,6 +400,8 @@ def create_script_service(
         script_version_id=script.id,
         requested_at=script.parse_requested_at,
         script_text=content,
+        target_ms=target_ms,
+        pitch_id=pitch_id,
     )
     return created, ticket
 
@@ -341,6 +496,7 @@ def request_reparse(
     # 파싱 기능 전에 올라온 대본은 원문이 S3 파일로만 있어(.docx 도 있음) 다시 올려야 한다
     if script.content is None:
         raise ScriptReuploadRequired()
+    target_ms = _target_ms(pitch_repository, pitch_id)
 
     # 위 검사는 빠른 거절용이고, 실제 판정은 이 조건부 UPDATE 다.
     # 버튼을 두 번 눌러 요청 둘이 동시에 여기까지 와도 하나만 1행을 바꾼다
@@ -358,27 +514,63 @@ def request_reparse(
 
     return (
         ParseRequestedDTO(script_version_id=script.id, parse_status=ScriptParseStatus.PENDING),
-        ParseTicket(script_version_id=script.id, requested_at=now, script_text=script.content),
+        ParseTicket(
+            script_version_id=script.id,
+            requested_at=now,
+            script_text=script.content,
+            target_ms=target_ms,
+            pitch_id=pitch_id,
+        ),
     )
 
 
-def complete_parse(db: Session, ticket: ParseTicket, parsed: ParsedScript) -> bool:
-    """AI 결과를 저장하고 DONE. 이 작업이 이미 무효(재시도로 교체·만료 후 재시작)면 False."""
-    pitch_repository = PitchRepository(db)
+def complete_parse(db: Session, ticket: ParseTicket, parsed: ParsedScript) -> ParseSaved:
+    """AI 결과를 저장하고 DONE. 이 작업이 이미 무효(재시도로 교체·만료 후 재시작)면 STALE.
 
-    # 상태 UPDATE 를 먼저 한다. 이기면 이 행이 잠겨서 슬라이드를 넣는 동안 다른 작업이 못 끼어든다.
-    # PENDING → DONE 은 이 한 번뿐이고 DONE 은 다시 파싱하지 않으므로,
-    # 넣기 전에 지울 슬라이드는 없다
-    if not pitch_repository.mark_parse_done(
+    원문은 버전 안에서 바뀌지 않으므로 같은 버전을 다시 파싱하면 같은 장이 나와야 한다.
+    장별 결과가 이미 저장돼 있으면 전체 (장 번호, 대본) 를 번호순으로 비교해 같으면 저장본과
+    그 평가 기준을 그대로 두고, 다르면 적용하지 않고 REPARSE_MISMATCH 를 남긴다 — 그 버전으로 이미
+    채점한 Take 가 다른 장을 가리키게 되지 않게 (docs/ai/architecture.md 1-7).
+    지금은 DONE 대본의 재파싱을 막고 있어(ScriptAlreadyParsed) 저장본이 있는 경우는 생기지 않는다.
+    적용하거나 재사용하면 평가 기준 첫 작업도 같은 트랜잭션에서 PENDING 으로 둔다 (_queue_rubric).
+    """
+    pitch_repository = PitchRepository(db)
+    # 행을 먼저 잠근다. 슬라이드를 넣는 동안 다른 작업이 못 끼어든다
+    script = pitch_repository.lock_pending_parse(
         ticket.script_version_id,
         ticket.requested_at,
         expired_before=datetime.now(UTC) - PARSE_EXPIRE_AFTER,
-        segmented=parsed.segmented,
-        terms=list(parsed.terms),
-    ):
+    )
+    if script is None:
         db.rollback()
-        return False
+        return ParseSaved.STALE
 
+    script.parse_status = ScriptParseStatus.DONE
+    stored = [
+        (slide.slide_number, slide.full_content) for slide in pitch_repository.get_slides(script.id)
+    ]
+    if stored:
+        # 문자열은 더 다듬지 않고 그대로 비교한다
+        fresh = sorted((slide.slide_number, slide.content) for slide in parsed.slides)
+        if stored == fresh:
+            script.parse_error = None
+            _queue_rubric(script, ticket.requested_at)
+            db.commit()
+            return ParseSaved.REUSED
+        script.parse_error = ScriptParseErrorCode.REPARSE_MISMATCH
+        db.commit()
+        logger.warning(
+            "다시 파싱한 대본이 저장본과 달라 적용하지 않음 script_version_id=%s", script.id
+        )
+        return ParseSaved.MISMATCH
+
+    parse_meta = None
+    if parsed.meta is not None:
+        parse_meta = {**asdict(parsed.meta), "target_ms": ticket.target_ms}
+    script.segmented = parsed.segmented
+    script.terms = list(parsed.terms)
+    script.parse_meta = parse_meta
+    script.parse_error = None
     pitch_repository.add_slides(
         [
             ScriptSlide(
@@ -387,12 +579,15 @@ def complete_parse(db: Session, ticket: ParseTicket, parsed: ParsedScript) -> bo
                 full_content=slide.content,
                 keywords=list(slide.keywords),
                 highlights=[list(span) for span in slide.highlights],
+                script_chars=slide.script_chars,
+                expected_ms=slide.expected_ms,
             )
             for slide in parsed.slides
         ],
     )
+    _queue_rubric(script, ticket.requested_at)
     db.commit()
-    return True
+    return ParseSaved.APPLIED
 
 
 def fail_parse(db: Session, ticket: ParseTicket, error_code: ScriptParseErrorCode) -> bool:
@@ -408,6 +603,127 @@ def fail_parse(db: Session, ticket: ParseTicket, error_code: ScriptParseErrorCod
         return False
     db.commit()
     return True
+
+
+# ── 장별 평가 기준 (/scripts/rubric) ─────────────────────────────────────
+# 백그라운드 작업(script_rubric_runner)이 단계마다 짧은 세션으로 부른다.
+# 순서와 조건은 docs/ai/architecture.md 1-7, 저장 칸은 script-coverage-evaluation.md 12-1
+
+
+def _queue_rubric(script: ScriptVersion, requested_at: datetime) -> None:
+    """평가 기준을 만든 적 없는 버전이면 첫 작업을 PENDING 으로 둔다. 잠근 행에 부른다.
+
+    파싱 결과와 같은 트랜잭션에서 한다. 커밋 직후 BE 가 죽어도 상태가 null 로 남지 않아 다시 뜰 때
+    이어받는다. 표식은 그 파싱 작업의 표식을 그대로 쓴다 — 파싱 작업이 이어서 이 표식으로
+    작업을 연다 (begin_rubric). 이미 시작했던 버전의 작업 · 한도 · 성공 기준은 건드리지 않는다.
+    """
+    if script.rubric_status is None:
+        script.rubric_status = ScriptRubricStatus.PENDING
+        script.rubric_requested_at = requested_at
+
+
+def begin_rubric(
+    db: Session, script_version_id: uuid.UUID, requested_at: datetime
+) -> RubricTicket | None:
+    """complete_parse 가 PENDING 으로 둔 첫 작업을 연다. 그 사이 다른 작업이 됐으면 None."""
+    pitch_repository = PitchRepository(db)
+    script = pitch_repository.lock_rubric_job(script_version_id, requested_at)
+    if script is None:
+        db.rollback()
+        return None
+    ticket = _rubric_ticket(pitch_repository, script, resumed=False)
+    db.commit()
+    return ticket
+
+
+def resume_rubrics(db: Session) -> list[RubricTicket]:
+    """BE 가 뜰 때 부른다. PENDING 으로 남은 작업마다 표식을 새로 바꿔 이어받는다.
+
+    BE 프로세스가 하나라 앞 작업은 이미 끝났다. 여러 프로세스로 늘리면 표식 교체만으로는 둘이
+    차례로 이어받는 것을 막지 못하므로 그때 방법을 따로 정한다 (architecture.md 1-7).
+    """
+    pitch_repository = PitchRepository(db)
+    tickets: list[RubricTicket] = []
+    for script_version_id, read_at in pitch_repository.get_pending_rubrics():
+        now = datetime.now(UTC)
+        if not pitch_repository.take_over_rubric(script_version_id, read_at, now):
+            db.rollback()
+            continue
+        script = pitch_repository.lock_rubric_job(script_version_id, now)
+        assert script is not None  # 방금 표식을 바꾼 행이다
+        tickets.append(_rubric_ticket(pitch_repository, script, resumed=True))
+        db.commit()
+    return tickets
+
+
+def _rubric_ticket(
+    pitch_repository: PitchRepository, script: ScriptVersion, *, resumed: bool
+) -> RubricTicket:
+    slides = pitch_repository.get_slides(script.id)
+    assert script.rubric_requested_at is not None  # PENDING 인 작업이다
+    return RubricTicket(
+        script_version_id=script.id,
+        pitch_id=script.pitch_id,
+        requested_at=script.rubric_requested_at,
+        slides=tuple((slide.slide_number, slide.full_content) for slide in slides),
+        missing=tuple(slide.slide_number for slide in slides if slide.rubric is None),
+        retry_used=script.rubric_retry_used,
+        resumed=resumed,
+    )
+
+
+def use_rubric_retry(db: Session, ticket: RubricTicket) -> bool:
+    """재시도를 보내기 전에 한도를 썼다고 커밋한다. 이미 썼거나 이 작업이 무효면 False.
+
+    보낸 뒤 BE 가 재시작해도 같은 재시도를 다시 보내지 않게 한다.
+    """
+    script = PitchRepository(db).lock_rubric_job(ticket.script_version_id, ticket.requested_at)
+    if script is None or script.rubric_retry_used:
+        db.rollback()
+        return False
+    script.rubric_retry_used = True
+    db.commit()
+    return True
+
+
+def save_rubrics(
+    db: Session,
+    ticket: RubricTicket,
+    rubrics: Mapping[int, dict[str, Any]],
+    rubric_meta: dict[str, Any],
+) -> bool:
+    """응답 하나의 장별 기준을 한 트랜잭션으로 저장한다. 이 작업이 무효면 버리고 False.
+
+    기준이 이미 있는 장은 건너뛴다 (첫 성공본을 덮지 않는다).
+    """
+    pitch_repository = PitchRepository(db)
+    if pitch_repository.lock_rubric_job(ticket.script_version_id, ticket.requested_at) is None:
+        db.rollback()
+        return False
+    for slide_number, rubric in rubrics.items():
+        pitch_repository.save_rubric(ticket.script_version_id, slide_number, rubric, rubric_meta)
+    db.commit()
+    return True
+
+
+def finish_rubric(db: Session, ticket: RubricTicket) -> ScriptRubricStatus | None:
+    """저장된 장별 기준으로 상태를 확정한다. 이 작업이 무효면 None."""
+    pitch_repository = PitchRepository(db)
+    script = pitch_repository.lock_rubric_job(ticket.script_version_id, ticket.requested_at)
+    if script is None:
+        db.rollback()
+        return None
+    slides = pitch_repository.get_slides(script.id)
+    made = sum(slide.rubric is not None for slide in slides)
+    if made == len(slides):
+        status = ScriptRubricStatus.DONE
+    elif made == 0:
+        status = ScriptRubricStatus.FAILED
+    else:
+        status = ScriptRubricStatus.PARTIAL
+    script.rubric_status = status
+    db.commit()
+    return status
 
 
 def stt_keyterm_candidates(
@@ -443,8 +759,9 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         presentation_version_id=presentation_version.id,
         version=presentation_version.version,
         file_url=generate_presigned_url(presentation_version.file_key),
+        page_count=presentation_version.page_count,
         description=presentation_version.description,
-        created_at=presentation_version.created_at.date()
+        created_at=presentation_version.created_at.astimezone(KST).date()
     )
 
 def add_pitch_standard_service(
@@ -480,12 +797,14 @@ def divide_standard_text(standard_text_dto: StandardTextDTO) -> StandardParseRes
                 f"{settings.ai_base_url}/evaluation-criteria/parse",
                 json={"standard_text": standard_text_dto.standard_text}
             )
+            if response.status_code == 422:
+                raise StandardInputRejected()
             response.raise_for_status()
-            result = response.json()
+            result = StandardAIResponseDTO.model_validate(response.json())
 
         return StandardParseResponseDTO(
-            standards=result["display_criteria"],
-            except_standard=", ".join(result.get("excluded") or []) or None,
+            standards=result.display_criteria,
+            except_standard=", ".join(result.excluded or []) or None,
         )
     # ValueError: JSON 이 아님·pydantic 검증 실패, KeyError·TypeError: 응답 모양이 다름
     except (httpx2.HTTPError, ValueError, KeyError, TypeError) as e:
@@ -504,3 +823,107 @@ def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: in
             "standard": standards[s].title
         } for s in range(len(standards))],
     }
+
+
+def lock_for_new_version(db: Session, pitch_id: uuid.UUID) -> None:
+    """발표 행을 잠근다 (`PitchRepository.lock_for_new_version`). Take 를 시작할 때도 잡는다."""
+    PitchRepository(db).lock_for_new_version(pitch_id)
+
+def latest_analysis_version(db: Session, pitch_id: uuid.UUID) -> int | None:
+    """분석까지 끝난 평가 기준의 가장 최근 버전. Take 를 시작할 때 그 Take 에 고정한다."""
+    return PitchRepository(db).get_latest_analysis_version(pitch_id)
+
+def script_used(db: Session, pitch_id: uuid.UUID, version: int | None) -> bool | None:
+    """그 버전의 평가 기준이 대본을 쓰는가. 버전이 없으면 None."""
+    if version is None:
+        return None
+    return PitchRepository(db).get_script_used(pitch_id, version)
+
+def criteria_for_version(
+    db: Session, pitch_id: uuid.UUID, version: int | None
+) -> dict[str, Any] | None:
+    """Take 에 고정한 버전의 표시 기준 · 숫자 목표. null 은 끝까지 '기준 없음'이다."""
+    if version is None:
+        return None
+    repository = PitchRepository(db)
+    analysis = repository.get_standard_analysis(pitch_id, version)
+    return {
+        "display_criteria": [
+            s.title for s in repository.get_standards_in_version(pitch_id, version)
+        ],
+        "targets": analysis.targets if analysis is not None else [],
+        "script_used": analysis.script_used if analysis is not None else None,
+    }
+
+
+def find_pitch(db: Session, pitch_id: uuid.UUID) -> Pitch | None:
+    return PitchRepository(db).get_by_id(pitch_id)
+
+
+def find_script_version(db: Session, script_version_id: uuid.UUID) -> ScriptVersion | None:
+    return PitchRepository(db).get_script_version(script_version_id)
+
+def script_slides(db: Session, script_version_id: uuid.UUID) -> list[ScriptSlide]:
+    """대본 버전의 장, 장 번호 순서."""
+    return list(PitchRepository(db).get_slides(script_version_id))
+
+
+def latest_parsed_script(db: Session, pitch_id: uuid.UUID) -> ScriptVersion | None:
+    """파싱이 끝난 가장 최근 대본 버전. 다음 Take 가 쓸 대본이다."""
+    return PitchRepository(db).get_latest_parsed_script(pitch_id)
+
+def chosen_coaching_plan(
+    db: Session,
+    pitch_id: uuid.UUID,
+    *,
+    source_take_id: uuid.UUID | None,
+    script_version_id: uuid.UUID | None,
+    target_ms: int | None,
+    min_ms: int | None,
+    max_ms: int | None,
+) -> CoachingPlan | None:
+    """바탕 값이 모두 같은 계획 중 요청 시각이 가장 늦은 것 (coach-agent.md 12-2 계획 고르기)."""
+    return PitchRepository(db).get_chosen_coaching_plan(
+        pitch_id,
+        source_take_id=source_take_id,
+        script_version_id=script_version_id,
+        target_ms=target_ms,
+        min_ms=min_ms,
+        max_ms=max_ms,
+    )
+
+def add_coaching_plan(
+    db: Session,
+    pitch_id: uuid.UUID,
+    *,
+    source_take_id: uuid.UUID | None,
+    script_version_id: uuid.UUID | None,
+    target_ms: int | None,
+    min_ms: int | None,
+    max_ms: int | None,
+    requested_at: datetime,
+    payload: dict,
+    meta: dict,
+) -> bool:
+    """계획 응답 하나를 한 행으로 더한다. 발표가 그 사이 지워졌으면 넣지 않고 False."""
+    return PitchRepository(db).add_coaching_plan(
+        CoachingPlan(
+            pitch_id=pitch_id,
+            source_take_id=source_take_id,
+            script_version_id=script_version_id,
+            target_ms=target_ms,
+            min_ms=min_ms,
+            max_ms=max_ms,
+            requested_at=requested_at,
+            payload=payload,
+            meta=meta,
+        )
+    )
+
+
+def pitch_timing(db: Session, pitch_id: uuid.UUID) -> tuple[int, int, int] | None:
+    """제한 시간 · 허용 초과 · 허용 미달 (초). 코칭 계획의 바탕 값이라 바뀌면 계획을 다시 만든다."""
+    pitch = PitchRepository(db).get_by_id(pitch_id)
+    if pitch is None:
+        return None
+    return pitch.time_limit_sec, pitch.upper_deviation, pitch.lower_deviation

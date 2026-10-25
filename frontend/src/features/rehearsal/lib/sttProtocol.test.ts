@@ -38,6 +38,72 @@ describe('서버 메시지 파싱', () => {
     expect(transcript).toMatchObject({ type: 'transcript', segment_id: '1-7' });
   });
 
+  it('서버의 자동 종료 알림을 통과시킨다', () => {
+    const ended = parseServerMessage(
+      JSON.stringify({ type: 'auto_end', reason: 'SILENCE', message: '2분 넘게 말이 없어요' }),
+    );
+
+    expect(ended).toEqual({ type: 'auto_end', reason: 'SILENCE', message: '2분 넘게 말이 없어요' });
+  });
+
+  it('에러의 끝낸 이유를 통과시키고, 없거나 모르는 이유는 null 로 둔다', () => {
+    const error = (extra: object) =>
+      parseServerMessage(
+        JSON.stringify({ type: 'error', code: 'TAKE_ENDED', message: '끝남', ...extra }),
+      );
+
+    expect(error({ end_reason: 'CLOSED' })).toMatchObject({ end_reason: 'CLOSED' });
+    expect(error({ end_reason: 'ABANDONED' })).toMatchObject({ end_reason: 'ABANDONED' });
+    // 사용자가 끝낸 Take 는 서버가 필드를 뺍니다
+    expect(error({})).toMatchObject({ end_reason: null });
+    // 서버가 나중에 늘린 값은 분기할 수 없습니다
+    expect(error({ end_reason: 'SOMETHING_NEW' })).toMatchObject({ end_reason: null });
+  });
+
+  it('AI 코치의 한마디와 상태 표시를 그대로 통과시킨다', () => {
+    const coach = parseServerMessage(
+      JSON.stringify({
+        type: 'coach',
+        t_ms: 92_000,
+        action: 'INTERVENE',
+        feedback: {
+          area: 'GAZE',
+          instruction: 'LOOK_AT_CAMERA',
+          message: '대본보다 청중을 조금 더 바라보세요',
+          priority: 72,
+          confidence: 0.86,
+        },
+        indicators: { GAZE: 'SCRIPT', TIME: 'ON_TRACK' },
+      }),
+    );
+    expect(coach).toMatchObject({
+      type: 'coach',
+      action: 'INTERVENE',
+      feedback: { area: 'GAZE', message: '대본보다 청중을 조금 더 바라보세요' },
+      indicators: { GAZE: 'SCRIPT', TIME: 'ON_TRACK' },
+    });
+  });
+
+  it('코치 메시지의 빠진 칸은 없음으로 채운다 — 문장 없는 한마디는 띄우지 않는다', () => {
+    expect(parseServerMessage(JSON.stringify({ type: 'coach', t_ms: 1_000 }))).toEqual({
+      type: 'coach',
+      t_ms: 1_000,
+      action: 'WAIT',
+      feedback: null,
+      indicators: {},
+    });
+    const blank = parseServerMessage(
+      JSON.stringify({
+        type: 'coach',
+        t_ms: 1_000,
+        action: 'INTERVENE',
+        feedback: { area: 'GAZE', message: '' },
+        indicators: null,
+      }),
+    );
+    expect(blank).toMatchObject({ feedback: null, indicators: {} });
+  });
+
   it('모르는 메시지와 깨진 입력은 null 이다 — 발표 중에 예외가 나면 그걸로 끝이다', () => {
     expect(parseServerMessage(JSON.stringify({ type: 'metrics', wpm: 120 }))).toBeNull();
     expect(parseServerMessage('{ 이건 JSON 이 아니다')).toBeNull();

@@ -1,11 +1,18 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useEffect, useLayoutEffect, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { Mascot } from './Mascot';
-import { StartConfirm } from './StartConfirm';
 import { InfoBar } from './InfoBar';
+import { loadPitch, PitchNotFound } from './loadPitch';
 import { VersionRail } from './VersionRail';
-import { selectBusy, selectInfoUnsaved, useCreateStore } from './createStore';
+import {
+  selectBusy,
+  selectCriteriaUnsaved,
+  selectInfoUnsaved,
+  useCreateStore,
+} from './createStore';
 import {
   latestCriteria,
   latestScript,
@@ -44,25 +51,169 @@ function mascotLine(node: PaneNode, script: ScriptVersion | null): string {
   return '준비부터\n차근차근!';
 }
 
+/**
+ * 새로 시작한 작성인지 보고, 그렇다면 앞 피치를 비운 뒤에 화면을 그립니다.
+ *
+ * 스토어는 앱 전체에 하나라 화면을 떠나도 남습니다. 피치 A 를 저장하고 홈에서 "새 피치 만들기"로
+ * 들어오면 A 가 그대로 열려, 저장이 새 피치(POST) 대신 A 수정(PATCH)으로 갑니다.
+ * 기록 항목(`location.key`)이 다르면 새로 시작한 것으로 봅니다 — `createStore` 의 `entryKey`.
+ *
+ * 비우기 전에 그리면 발표정보 칸이 A 의 값으로 한 번 그려지므로, 비울 때까지 아무것도 그리지 않습니다.
+ * `useLayoutEffect` 라 화면에 A 가 비치지 않습니다.
+ */
 export function PitchCreatePage() {
+  const { key } = useLocation();
+  const entryKey = useCreateStore((s) => s.entryKey);
+  const beginEntry = useCreateStore((s) => s.beginEntry);
+
+  useLayoutEffect(() => {
+    beginEntry(key);
+  }, [key, beginEntry]);
+
+  if (entryKey !== key) return null;
+  return <PitchCreateScreen />;
+}
+
+/** 피치가 없거나 남의 것 — 다시 시도해도 같습니다. 그 밖(네트워크 · 5xx · PDF 를 못 엶)은 다시 시도합니다 */
+const isMissing = (error: unknown) =>
+  error instanceof PitchNotFound ||
+  (error instanceof ApiFailure && (error.status === 404 || error.status === 403));
+
+/**
+ * P13 피치 수정. **피치 생성 화면을 그대로 씁니다** — 들어올 때 서버의 피치를 읽어 채우는 것만 다릅니다.
+ *
+ * 생성 화면이 이미 버전 트리라, 수정은 "불러온 버전 위에 새 버전을 만드는 것"입니다. 저장한 버전은
+ * 고치지 않고, 고치면 새 버전이 생기는 규칙도 같습니다. 발표정보는 `PATCH /pitches/update/{id}` 로 고칩니다.
+ *
+ * 생성 화면처럼 기록 항목(`location.key`)으로 "새로 들어옴"과 "장치 점검에서 돌아옴"을 가릅니다.
+ * 돌아왔으면 다시 읽지 않고 고치던 그대로 보여 줍니다 (`createStore.hydrate`).
+ */
+export function PitchEditPage() {
+  const { id = '' } = useParams();
+  const { key } = useLocation();
+  const entryKey = useCreateStore((s) => s.entryKey);
+  const editing = useCreateStore((s) => s.pitchId);
+  const hydrate = useCreateStore((s) => s.hydrate);
+  const ready = entryKey === key && editing === id;
+
+  const pitch = useQuery({
+    queryKey: ['pitch-edit', id, key],
+    queryFn: () => loadPitch(id),
+    enabled: !ready && id !== '',
+    // 한 번 읽어 채운 뒤에는 화면이 고치는 값이 맞습니다. 다시 읽어 덮지 않습니다
+    staleTime: Infinity,
+    // 화면을 떠나면 바로 버립니다. 다시 들어오면 그사이 올린 버전까지 서버에서 새로 읽어야 합니다 —
+    // 남겨 두면 옛 결과로 채워져 사이드바 번호가 서버와 어긋납니다
+    gcTime: 0,
+    retry: false,
+  });
+
+  useLayoutEffect(() => {
+    if (!ready && pitch.data) hydrate(key, id, pitch.data);
+  }, [ready, pitch.data, hydrate, key, id]);
+
+  useEffect(() => {
+    if (pitch.error)
+      console.error('[피치 수정] 피치를 불러오지 못했습니다', { id, error: pitch.error });
+  }, [pitch.error, id]);
+
+  if (ready) return <PitchCreateScreen />;
+  if (pitch.isError) {
+    return isMissing(pitch.error) ? (
+      <EditNotice title="피치를 찾을 수 없어요" body="지워졌거나 열 수 없는 피치예요." />
+    ) : (
+      <EditNotice
+        title="피치를 불러오지 못했어요"
+        body="잠시 후 다시 시도해 주세요."
+        action={
+          <button
+            type="button"
+            onClick={() => {
+              pitch.refetch().catch(() => undefined);
+            }}
+            className="h-11 rounded-md bg-coral px-6 text-sm font-bold text-white hover:bg-coral-deep"
+          >
+            다시 불러오기
+          </button>
+        }
+      />
+    );
+  }
+  return (
+    <EditNotice
+      title="피치를 불러오는 중이에요…"
+      body="슬라이드 · 대본 · 평가기준을 가져오고 있어요."
+      busy
+    />
+  );
+}
+
+/** 수정 화면을 그리기 전의 안내 한 장 — 불러오는 중 · 없음 · 실패 */
+function EditNotice({
+  title,
+  body,
+  action,
+  busy = false,
+}: {
+  title: string;
+  body: string;
+  action?: ReactNode;
+  busy?: boolean;
+}) {
+  return (
+    <div className="pitch-create flex h-dvh flex-col bg-greige text-ink">
+      <PageHeader />
+      <div className="flex flex-1 items-center justify-center p-6">
+        <div
+          role={busy ? 'status' : 'alert'}
+          className="flex w-full max-w-md flex-col items-center gap-3 rounded-lg border border-line bg-panel p-8 text-center"
+        >
+          <h1 className="text-lg font-bold">{title}</h1>
+          <p className="text-sm text-stone">{body}</p>
+          <div className="mt-2 flex items-center gap-3">
+            {action}
+            <Link to="/" className="text-sm font-bold hover:text-coral-deep">
+              내 피치로
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PageHeader() {
+  return (
+    <header className="flex shrink-0 items-center justify-between border-b border-line-strong bg-panel px-6 py-4">
+      <Link to="/" aria-label="PITCH COACH 홈">
+        <PitchCoachWordmark />
+      </Link>
+      <Link to="/" className="text-sm font-bold hover:text-coral-deep">
+        ← 내 피치
+      </Link>
+    </header>
+  );
+}
+
+function PitchCreateScreen() {
   const draft = useCreateStore((s) => s.draft);
   const node = useCreateStore((s) => s.node);
   const version = useCreateStore((s) => s.version);
   const pitchId = useCreateStore((s) => s.pitchId);
   const chosen = useCreateStore((s) => s.chosen);
   const navigate = useNavigate();
-  const [confirming, setConfirming] = useState(false);
   const unsaved = useCreateStore(selectInfoUnsaved);
   const busy = useCreateStore(selectBusy);
 
   // 탭을 닫거나 새로고침하면 저장하지 않은 발표정보와 진행 중인 업로드 · 나누기가 사라집니다.
   // 브라우저 기본 확인 창만 띄웁니다 — 문구는 브라우저가 정하고 바꿀 수 없습니다
+  const criteriaUnsaved = useCreateStore(selectCriteriaUnsaved);
   useEffect(() => {
-    if (!unsaved && !busy) return;
+    if (!unsaved && !busy && !criteriaUnsaved) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [unsaved, busy]);
+  }, [unsaved, busy, criteriaUnsaved]);
 
   const pickedScript =
     node === 'script'
@@ -91,22 +242,16 @@ export function PitchCreatePage() {
       const picked = draft.slides.find((v) => v.version === version) ?? latestSlides(draft);
       return <SlidePane slide={picked} />;
     }
-    if (node === 'script')
-      return <ScriptPane script={pickedScript} onStart={() => setConfirming(true)} />;
+    // 확인 창 없이 바로 장치 점검으로 갑니다. 조합은 매핑 확인 화면에 이미 보이고,
+    // 조합이 맞지 않으면 "다음" 이 막혀 있습니다 (ScriptPane `canStart`)
+    if (node === 'script') return <ScriptPane script={pickedScript} onStart={start} />;
     const picked = draft.criteria.find((v) => v.version === version) ?? latestCriteria(draft);
     return <CriteriaPane criteria={picked} />;
   })();
 
   return (
     <div className="pitch-create flex h-dvh flex-col bg-greige text-ink">
-      <header className="flex shrink-0 items-center justify-between border-b border-line-strong bg-panel px-6 py-4">
-        <Link to="/" aria-label="PITCH COACH 홈">
-          <PitchCoachWordmark />
-        </Link>
-        <Link to="/" className="text-sm font-bold hover:text-coral-deep">
-          ← 내 피치
-        </Link>
-      </header>
+      <PageHeader />
 
       <div className="flex min-h-0 flex-1">
         {/* ── 좌측: 발표 자료 트리 · 치치 ─────────────────────────── */}
@@ -134,7 +279,6 @@ export function PitchCreatePage() {
           </section>
         </main>
       </div>
-      {confirming && <StartConfirm onClose={() => setConfirming(false)} onGo={start} />}
     </div>
   );
 }

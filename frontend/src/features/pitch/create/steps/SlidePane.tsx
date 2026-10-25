@@ -11,7 +11,7 @@ import {
   PaperclipIcon,
   PdfUploadIcon,
 } from '../icons';
-import { MAX_SLIDE_BYTES, type SlideUpload, type SlideVersion } from '../lib/draft';
+import { MAX_SLIDE_BYTES, pendingVersion, type SlideUpload, type SlideVersion } from '../lib/draft';
 import { PdfPage } from '@/shared/ui/PdfPage';
 import { startSlideUpload } from '../slideUpload';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
@@ -25,10 +25,15 @@ import { PaneHeading } from './PaneHeading';
  * 고른 파일을 바로 그리지 않는 이유는 `slideUpload.ts` 에 있습니다.
  */
 
-const FAILURE_MESSAGE: Record<'upload' | 'open', string> = {
+const FAILURE_MESSAGE: Record<'upload' | 'invalid' | 'open', string> = {
   upload: '업로드하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.',
+  invalid:
+    'PDF를 열 수 없어요. 암호가 걸려 있거나 손상되지 않았는지 확인하고 다른 파일을 골라 주세요.',
   open: '올린 PDF를 열지 못했어요. 파일이 손상됐을 수 있어요.',
 };
+
+/** 같은 파일을 다시 보내도 같은 400 이면(`invalid`) "다시 시도"를 내지 않습니다 (`slideUpload.ts`) */
+const canRetry = (reason: keyof typeof FAILURE_MESSAGE) => reason !== 'invalid';
 
 /** 받을 수 없는 파일이면 그 이유. 드롭존과 "파일 교체"가 같은 규칙을 씁니다 */
 function rejectReason(file: File): string | null {
@@ -127,19 +132,22 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
           </p>
         )}
 
-        {/* 실패한 파일은 들고 있습니다 — 다시 고르게 하지 않습니다 */}
+        {/* 실패한 파일은 들고 있습니다 — 다시 고르게 하지 않습니다. 열 수 없는 PDF(`invalid`)는
+            다시 보내도 같으니 다른 파일을 고르게 합니다 */}
         {failed && !error && (
           <div role="alert" className="mt-4 flex flex-col items-center gap-2">
             <p className="text-xs font-bold text-coral">
               {failed.file.name} · {FAILURE_MESSAGE[failed.reason]}
             </p>
-            <button
-              type="button"
-              onClick={() => startSlideUpload(failed.file)}
-              className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-coral-deep hover:bg-coral-wash"
-            >
-              다시 시도
-            </button>
+            {canRetry(failed.reason) && (
+              <button
+                type="button"
+                onClick={() => startSlideUpload(failed.file)}
+                className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-coral-deep hover:bg-coral-wash"
+              >
+                다시 시도
+              </button>
+            )}
           </div>
         )}
 
@@ -282,7 +290,9 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
   const [page, setPage] = useState(1);
   const [zoomIndex, setZoomIndex] = useState(ZOOM_STEPS.indexOf(1));
   const [fitWidth, setFitWidth] = useState(false);
-  const total = slide.pageCount ?? 0;
+  // 넘기기 · 썸네일은 실제로 연 문서의 쪽수입니다. BE 숫자(`slide.pageCount`)는 "N장" 배지와
+  // 대본 장 수 맞추기에만 씁니다 — 둘이 다른 PDF 에서 없는 쪽을 열다 오류가 나지 않게
+  const total = doc.numPages;
 
   const goTo = (n: number) => setPage(Math.min(total, Math.max(1, n)));
 
@@ -350,6 +360,8 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
 
 function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload }) {
   const addSlideVersion = useCreateStore((s) => s.addSlideVersion);
+  // 파일을 기다리는 빈 버전이 있으면 새 버전을 막습니다 (`pendingVersion`)
+  const pendingSlide = useCreateStore((s) => pendingVersion(s.draft, 'slides'));
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const opened = usePdfDocument(slide.fileUrl);
@@ -369,8 +381,24 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
   const body = (() => {
     if (!slide.fileUrl) return <ViewerMessage>이 버전에는 파일 주소가 없어요</ViewerMessage>;
     if (opened === null) return <ViewerMessage>PDF 여는 중…</ViewerMessage>;
-    // presigned URL 은 1시간 뒤 만료됩니다. 한 번 연 문서는 메모리에 있어 여기까지 오지 않습니다
-    if ('failed' in opened) return <ViewerMessage>PDF를 열지 못했어요</ViewerMessage>;
+    // BE 가 쪽수를 주면 업로드 때 PDF 를 열지 않아(#298) 처음 여는 곳이 여기입니다. 실서버에서는
+    // S3 CORS · 만료된 presigned URL(1시간)로 못 열 수 있습니다. 버전은 저장돼 있으니 다시 열기만 둡니다
+    if ('failed' in opened)
+      return (
+        <ViewerMessage>
+          <div role="alert" className="flex flex-col items-center gap-2 text-center">
+            <span>PDF를 열지 못했어요. 파일은 저장돼 있어요.</span>
+            <span className="text-xs">계속 안 되면 새로고침해 주세요.</span>
+            <button
+              type="button"
+              onClick={opened.retry}
+              className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-coral-deep hover:bg-coral-wash"
+            >
+              다시 열기
+            </button>
+          </div>
+        </ViewerMessage>
+      );
     // 파일을 바꾸면 첫 장부터 다시 봅니다
     return <Pages key={slide.fileUrl} slide={slide} doc={opened.doc} />;
   })();
@@ -411,7 +439,10 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
             </button>
             <button
               type="button"
-              disabled={replacing}
+              disabled={replacing || pendingSlide !== null}
+              title={
+                pendingSlide !== null ? `V${pendingSlide}에 파일을 먼저 올려 주세요` : undefined
+              }
               onClick={addSlideVersion}
               className="flex h-11 items-center gap-2 rounded-lg border border-coral bg-white px-5 text-sm font-bold text-coral hover:bg-coral-wash disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -425,7 +456,7 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
       {(error || replaceFailed) && (
         <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-coral">
           {error ?? (replaceFailed && FAILURE_MESSAGE[replaceFailed.reason])}
-          {replaceFailed && !error && (
+          {replaceFailed && !error && canRetry(replaceFailed.reason) && (
             <button
               type="button"
               onClick={() => startSlideUpload(replaceFailed.file, slide.version)}

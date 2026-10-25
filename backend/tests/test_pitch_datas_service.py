@@ -25,12 +25,13 @@ def _make_pitch(db: Session, user_id: uuid.UUID, title: str = "기존 발표") -
 
 
 def _make_presentation(
-    db: Session, pitch_id: uuid.UUID, version: int
+    db: Session, pitch_id: uuid.UUID, version: int, page_count: int | None = None
 ) -> PresentationVersion:
     presentation = PresentationVersion(
         pitch_id=pitch_id,
         version=version,
         file_key=f"pitches/{pitch_id}/presentations/{version}.pdf",
+        page_count=page_count,
     )
     db.add(presentation)
     db.flush()
@@ -92,7 +93,7 @@ def test_returns_empty_lists_when_nothing_exists(
 def test_maps_presentation_id_and_version(
     db_session: Session, pitch_id: uuid.UUID
 ) -> None:
-    presentation = _make_presentation(db_session, pitch_id, 1)
+    presentation = _make_presentation(db_session, pitch_id, 1, page_count=12)
 
     result = service.get_pitch_datas(db_session, pitch_id)
 
@@ -100,6 +101,19 @@ def test_maps_presentation_id_and_version(
     summary = result.presentation_versions[0]
     assert summary.id == presentation.id
     assert summary.version == 1
+    # FE 가 PDF 를 열지 않고 대본과 짝을 맞춘다
+    assert summary.page_count == 12
+
+
+def test_presentation_detail_has_page_count(
+    db_session: Session, pitch_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(service, "generate_presigned_url", lambda key: f"https://fake/{key}")
+    presentation = _make_presentation(db_session, pitch_id, 1, page_count=7)
+
+    detail = service.get_presentation_detail(db_session, pitch_id, presentation.id)
+
+    assert detail.page_count == 7
 
 
 def test_returns_every_presentation_version(

@@ -5,10 +5,10 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과 카메라 화면 �
 
 | 항목 | 값 |
 | --- | --- |
-| 원본 | `ai/archive/workspaces/jewon-kim/gaze-tracking/v1/local/web/src/{engine,camera,worker}` |
-| 기준 커밋 | `f0632a7` (feat(ai): 브라우저용 gaze 엔진과 카메라 화면 모듈, 로컬 웹 데모 추가) — develop `6e94c39` 시점 |
-| 모델 버전 | `gaze_v1.1.0+head_pose+reference_anchor_v1` |
-| 사용법 원문 | 원본 폴더의 `web/README.md` (FE에 붙이는 법 · 카메라 화면 붙이기) |
+| 원본 | `ai/research/gaze-tracking/web/src/{engine,camera,worker}` (`engine/__tests__` 포함) |
+| 기준 커밋 | `1f92351` (fix(ai): 프레임 예외 · Worker 종료 · 카메라 끊김에서 시선 분석이 조용히 멈추지 않게 함) — develop `a315a0d` 시점 (AI #104~#108) |
+| 모델 버전 | `gaze_v1.1.0+head_pose+reference_anchor_v1` · 설정 해시 `14ed457ab13b` |
+| 사용법 원문 | `ai/research/gaze-tracking/web/README.md` (FE에 붙이는 법 · 카메라 화면 붙이기) · `ai/research/gaze-tracking/DEPLOY.md` |
 
 ## 누가 무엇을 쓰나
 
@@ -24,7 +24,7 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과 카메라 화면 �
 
 | 파일 | 출처 |
 | --- | --- |
-| `face_landmarker.task` | AI `v1/local/ai/models/` 또는 팀 드라이브 |
+| `face_landmarker.task` | AI `ai/research/gaze-tracking/artifacts/` 또는 팀 드라이브 (sha256 은 `npm run models` 가 확인) |
 | `vision_wasm_module_internal.js` · `.wasm` | `node_modules/@mediapipe/tasks-vision/wasm/` |
 
 ## 다시 복사할 때

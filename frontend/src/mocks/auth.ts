@@ -48,7 +48,13 @@ function initialSignedIn(): boolean {
 
 let signedIn = initialSignedIn();
 
-const mockUser = { id: 'u1', email: 'demo@pitchcoach.local', name: '데모 사용자' };
+// 동의는 새로고침하면 처음 값(false)으로 돌아갑니다
+const mockUser = {
+  id: 'u1',
+  email: 'demo@pitchcoach.local',
+  name: '데모 사용자',
+  raw_data_consent: false,
+};
 
 /**
  * 토큰 회전은 **쿠키를 먼저 봅니다** — `csrf_token` 이 없으면 `refresh()` 가
@@ -98,5 +104,26 @@ export const authHandlers = [
   http.get('*/api/users/me', () =>
     signedIn ? HttpResponse.json(mockUser) : HttpResponse.json(unauthorized, { status: 401 }),
   ),
-  http.post('*/api/auth/logout', () => HttpResponse.json({ detail: '로그아웃되었습니다.' })),
+  // 마이페이지 설정(#361). 보낸 칸만 바꿉니다
+  http.patch('*/api/users/me', async ({ request }) => {
+    if (!signedIn) return HttpResponse.json(unauthorized, { status: 401 });
+    const body = (await request.json()) as { raw_data_consent?: boolean };
+    if (body.raw_data_consent !== undefined) mockUser.raw_data_consent = body.raw_data_consent;
+    return HttpResponse.json(mockUser);
+  }),
+  // 서버처럼 세션 쿠키를 지웁니다. 로그아웃은 화면을 새로 열어서, 남겨 두면 다시 로그인돼 보입니다
+  http.post('*/api/auth/logout', () => {
+    signedIn = false;
+    setCsrfCookie(false);
+    document.cookie = `${OVERRIDE_COOKIE}=false; path=/; SameSite=Lax`;
+    return HttpResponse.json({ detail: '로그아웃되었습니다.' });
+  }),
+  // 탈퇴(#288). 204 와 함께 세션을 끊어, 다시 불러도 로그아웃 상태로 남게 합니다
+  http.delete('*/api/users/me', () => {
+    if (!signedIn) return HttpResponse.json(unauthorized, { status: 401 });
+    signedIn = false;
+    setCsrfCookie(false);
+    document.cookie = `${OVERRIDE_COOKIE}=false; path=/; SameSite=Lax`;
+    return new HttpResponse(null, { status: 204 });
+  }),
 ];

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -5,30 +6,66 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from pitch_coach_backend import entities  # noqa: F401  # 모든 entity 를 매퍼에 등록
+from pitch_coach_backend.coach.background import start as start_coach_background
+from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
+from pitch_coach_backend.coach.planner import PlannerCoaching
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.exceptions import register_exception_handlers
+from pitch_coach_backend.core.logging import configure_logging
 from pitch_coach_backend.core.s3 import get_s3
+from pitch_coach_backend.module import hooks
+from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
+from pitch_coach_backend.module.pitch.dependencies import resume_script_rubrics
 from pitch_coach_backend.module.take.controller import router as take_router
+from pitch_coach_backend.module.take.controller import takes_router
+from pitch_coach_backend.module.take.ready_sweep import start as start_ready_sweep
 from pitch_coach_backend.module.user.controller import router as user_router
+from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.controller import router as realtime_router
+from pitch_coach_backend.realtime.dependencies import get_transcript_store
+from pitch_coach_backend.realtime.live_takes import RealtimeLiveTakes
+from pitch_coach_backend.realtime.take_stream import arm_abandoned_takes
 from pitch_coach_backend.realtime.take_stream import stop_all as stop_all_streams
 
 # Caddy 는 /api/* 만 백엔드로 넘긴다 (infra/Caddyfile). 접두어 없는 경로는 404 도 아니고
 # 프론트 화면이 돌아온다. 그래서 /docs·/openapi.json 까지 전부 /api 아래로 옮긴다.
 # 버전 접두어(/v1)는 붙이지 않는다 — 설계 문서 경로에 /api 만 앞에 붙는 형태다.
+# 예외는 관리자 콘솔(/admin) 하나다. 앱 API 가 아니라서 Caddy 가 따로 넘긴다.
 API_PREFIX = "/api"
+
+# module 은 realtime · coach 를 모른다 (README '의존 방향'). HTTP 요청이 발표 중 처리 · 코치에 알릴
+# 일은 module/hooks.py 를 거치고, 그 구현을 여기서 꽂는다
+hooks.install(live_takes=RealtimeLiveTakes(), coaching=PlannerCoaching())
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # 아래에서 남기는 로그부터 나오도록 맨 먼저 건다. 레벨이 틀렸으면 지금 실패한다
+    configure_logging(settings.log_level)
     get_s3()
+    # 자동 종료 설정이 틀렸으면 첫 연습이 아니라 지금 실패한다
+    AutoEndPolicy.from_settings()
+    # 떠난 Take 를 끝내는 타이머는 메모리에 있어 다시 뜨면 사라진다. 진행 중인 Take 에 다시 건다
+    await arm_abandoned_takes(get_transcript_store())
+    # 만들다 만 Take 결과를 이어 가고, 기한이 지난 1초 원자료를 지우는 주기 작업을 건다
+    stop_coach_background = await start_coach_background(get_coach_client(), get_coach_store())
+    # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
+    stop_ready_sweep = start_ready_sweep()
+    # 평가 기준 작업도 메모리에서 돌다 사라졌다. PENDING 으로 남은 버전을 이어 간다.
+    # AI 를 길게 기다리므로 앱이 뜨는 것을 막지 않게 따로 띄운다
+    rubric_resume = asyncio.create_task(resume_script_rubrics(), name="resume-script-rubrics")
     yield
+    rubric_resume.cancel()
+    # 끊긴 작업은 PENDING 으로 남아 다음에 뜰 때 이어받는다
+    await asyncio.gather(rubric_resume, return_exceptions=True)
     # 실시간 STT 스트림은 WebSocket 요청 밖에서 도는 백그라운드 태스크다.
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.
     await stop_all_streams()
+    await stop_ready_sweep()
+    await stop_coach_background()
 
 
 app = FastAPI(
@@ -70,6 +107,8 @@ api.include_router(auth_router)
 api.include_router(user_router)
 api.include_router(pitch_router)
 api.include_router(take_router)
+api.include_router(takes_router)
 api.include_router(realtime_router)
 
 app.include_router(api)
+app.include_router(admin_router)

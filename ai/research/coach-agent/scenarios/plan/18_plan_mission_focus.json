@@ -74,30 +74,23 @@
     ]
   },
   "previous_review": {
-    "issues": [
+    "overall_summary": "3번 장에서 시간이 길어져 전체 시간이 밀렸습니다.",
+    "dimensions": {
+      "audience_gaze": "STABLE",
+      "script_independence": "STABLE",
+      "pacing_rhythm": "PRIORITY",
+      "vocal_delivery": "STABLE",
+      "fluency": "STABLE",
+      "content_delivery": "STABLE"
+    },
+    "improvements": [
       {
-        "rank": 1,
         "area": "TIME",
         "slide_number": 3,
-        "burden_s": 48.0,
-        "memory": "RECURRING",
-        "gave_up": false
+        "text": "3번 장을 1분 안에 마치도록 내용을 줄여 보세요"
       }
     ],
-    "type_status": [
-      {
-        "area": "TIME",
-        "status": "PRIORITY"
-      },
-      {
-        "area": "GAZE",
-        "status": "STABLE"
-      }
-    ],
-    "summary": {
-      "interventions": 4,
-      "effective_rate": 0.5
-    }
+    "mission_results": []
   },
   "reactions": {
     "SPEED_UP": {
@@ -133,5 +126,58 @@
       "TIME"
     ],
     "no_budget": true
+  },
+  "previous_take_result": {
+    "interventions": [
+      {
+        "intervention_id": "iv-95000",
+        "t_ms": 95000,
+        "area": "TIME",
+        "issue_type": "SLIDE_OVER",
+        "instruction": "CONDENSE",
+        "message": "내용을 줄여 보세요",
+        "outcome": "EFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-128000",
+        "t_ms": 128000,
+        "area": "TIME",
+        "issue_type": "SLIDE_OVER",
+        "instruction": "MOVE_ON",
+        "message": "다음 장으로 넘어가세요",
+        "outcome": "INEFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-150000",
+        "t_ms": 150000,
+        "area": "TIME",
+        "issue_type": "BEHIND_SCHEDULE",
+        "instruction": "SPEED_UP",
+        "message": "조금 더 빠르게 말해 보세요",
+        "outcome": "EFFECTIVE"
+      },
+      {
+        "intervention_id": "iv-171000",
+        "t_ms": 171000,
+        "area": "TIME",
+        "issue_type": "SLIDE_OVER",
+        "instruction": "MOVE_ON",
+        "message": "다음 장으로 넘어가세요",
+        "outcome": "INEFFECTIVE"
+      }
+    ],
+    "gave_up": [],
+    "problem_segments": [
+      {
+        "area": "TIME",
+        "issue_type": "SLIDE_OVER",
+        "slide_number": 3,
+        "start_ms": 100000,
+        "end_ms": 148000,
+        "mean_severity": 0.7,
+        "reliable": true,
+        "coached": true
+      }
+    ]
   }
 }

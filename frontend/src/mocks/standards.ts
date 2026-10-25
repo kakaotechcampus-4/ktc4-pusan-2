@@ -1,17 +1,17 @@
 import { delay, http, HttpResponse } from 'msw';
-import type { StandardTextRequest, StandardTextResponse, StandardsPosted } from '@/types/standards';
+import type {
+  StandardTextRequest,
+  StandardTextResponse,
+  StandardsSaveRequest,
+  StandardsSaved,
+} from '@/types/standards';
 
 /**
  * 평가기준 나누기 목. 실서버는 AI 로 나눌 예정이고, 목은 **줄 · 문장 단위**로 자릅니다.
  *
  * 결과 모양만 맞추면 됩니다 — FE 는 `standards` 를 목록으로, `except_standard` 를
  * 안내 문구로 그릴 뿐이라 나누는 품질은 화면 흐름 확인에 상관없습니다.
- *
- * ★ 응답은 BE 컨트롤러 모양 그대로 `{"message", "pitch_id": <결과>}` 로 감쌉니다.
  */
-
-/** 서버가 받아 주는 개수. FE 의 MAX_CRITERIA 와 같습니다 */
-const MAX_STANDARDS = 5;
 
 export function splitStandards(text: string): string[] {
   return (
@@ -30,17 +30,26 @@ export const standardsHandlers = [
     const { standard_text } = (await request.json()) as StandardTextRequest;
     await delay(900);
 
-    const all = splitStandards(standard_text);
-    const rest = all.slice(MAX_STANDARDS);
-    const result: StandardTextResponse = {
+    // BE 처럼 개수를 자르지 않고 모두 돌려줍니다. 목은 나누지 못한 문장을 따로 가리지 않습니다
+    const body: StandardTextResponse = {
       pitch_id: String(params.pitchId),
-      standards: all.slice(0, MAX_STANDARDS).map((standard) => ({ standard })),
-      except_standard: rest.length > 0 ? rest.join(' / ') : null,
+      standards: splitStandards(standard_text).map((standard) => ({ standard })),
+      except_standard: null,
     };
-    const body: StandardsPosted = {
-      message: 'Pitch standard text added successfully',
-      pitch_id: result,
-    };
+    return HttpResponse.json(body);
+  }),
+
+  // 확정 저장 (BE #192). 나누기와 달리 받은 목록을 그대로 저장합니다 — 목은 저장한 척만 합니다
+  http.post('*/api/pitches/:pitchId/standards', async ({ request }) => {
+    const { standards } = (await request.json()) as StandardsSaveRequest;
+    await delay(400);
+    if (standards.length === 0 || standards.some((s) => s.standard.trim() === '')) {
+      return HttpResponse.json(
+        { code: 'VALIDATION_ERROR', message: '빈 평가기준은 저장할 수 없습니다.' },
+        { status: 422 },
+      );
+    }
+    const body: StandardsSaved = { message: 'Final standards added successfully' };
     return HttpResponse.json(body);
   }),
 ];

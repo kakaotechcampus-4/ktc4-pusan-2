@@ -4,7 +4,7 @@
  * set-up check, the head circle, the calibration gauge and a face guide, which
  * the frontend contract keeps inside the worker.
  */
-import type { CalibrationQualityDict, StoredModel } from '../engine';
+import type { CalibrationModel, CalibrationQualityDict, EngineInitFailure } from '../engine';
 import type { FrameDecision, OtherMapping } from '../engine/contract';
 import type { BaselineCheck, ReanchorStatus } from '../engine/engine';
 import type { GaugeStatus } from '../engine/gauge';
@@ -12,6 +12,9 @@ import type { PlacementResultDict } from '../engine/placement';
 import type { PreconditionReport } from '../engine/preconditions';
 import type { SweepStatus } from '../engine/sweep';
 import type { Cue, FaceGuide, InvalidReason, StateClass } from '../engine/types';
+
+/** Why something failed: the engine did not start (`EngineInitFailure`), or one frame failed. */
+export type EngineFailure = EngineInitFailure | 'FRAME_FAILED';
 
 /** What the worker should do with a frame. */
 export type FrameMode = 'preview' | 'check' | 'sweep' | 'calibrate' | 'live';
@@ -26,7 +29,7 @@ export type ToWorker =
   | { type: 'resetCalibration' }
   | { type: 'resetPreconditions' }
   | { type: 'reanchor'; tMs: number }
-  /** Adopt a stored calibration (`StoredModel` from an earlier `calibrated`). */
+  /** Adopt this session's calibration (`CalibrationModel` from an earlier `calibrated`; memory only). */
   | { type: 'restore'; model: unknown };
 
 export interface FrameSummary {
@@ -45,7 +48,8 @@ export interface FrameSummary {
 
 export type FromWorker =
   | { type: 'ready'; version: string; isolated: boolean }
-  | { type: 'failed'; message: string }
+  /** `reason` says why, when known: the engine could not start, or one frame failed (analysis goes on). */
+  | { type: 'failed'; message: string; reason?: EngineFailure }
   | {
       type: 'frame';
       frame: FrameSummary;
@@ -61,7 +65,7 @@ export type FromWorker =
   | {
       type: 'calibrated';
       quality: CalibrationQualityDict;
-      model: StoredModel | null;
+      model: CalibrationModel | null;
       placement: PlacementResultDict | null;
       classes: StateClass[];
     }

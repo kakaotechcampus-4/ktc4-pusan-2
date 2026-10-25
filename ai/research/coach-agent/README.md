@@ -19,13 +19,13 @@ Take 시작 전에는 LLM이 이번 Take의 **코칭 계획**(먼저 챙길 것 
 
 | 단계 | 하는 일 | 언제 | 진입점 |
 |---|---|---|---|
-| 0 | 대본 · 미션 · 직전 리뷰를 읽고 이번 Take에서 먼저 챙길 것 · 봐줄 것을 정한다 (LLM) | Take 시작 전 한 번 | `plan_coaching` |
+| 0 | 대본 · 미션 · 직전 Take 결과 · 직전 리뷰를 읽고 이번 Take에서 먼저 챙길 것 · 봐줄 것을 정한다 (LLM) | Take 시작 전 한 번 | `plan_coaching` |
 | 1 | 판정 모듈 결과로 **말할지, 무엇을 말할지** 정한다 | 발표 중 1초마다 | `decide` · `decide_safe` |
 | 2 | 마지막 창을 판정하고 열린 것을 닫아 **Take 결과**를 만든다. 합계를 못 믿으면 원자료로 다시 판정한다 | Take 종료 때 한 번 | `finalize` |
 | 3 | 가상 발표로 재생하고 Take 결과를 정답과 비교해 채점한다 | 연구할 때만 (배포에는 없음) | `coach_lab` |
 
 ```
-Take 시작 전:  plan_coaching(대본 · 미션 · 기억 · 직전 리뷰, LLM) ─▶ 코칭 계획
+Take 시작 전:  plan_coaching(대본 · 미션 · 반복 문제 · 직전 Take 결과 · 직전 리뷰, LLM) ─▶ 코칭 계획
 
 FE/BE  시선 · 음량 1초 기록 · STT 단어 · 장 ─┐   Judges (filler → pace → gaze → volume) + timing
 계획 · 미션 · 코칭 계획 · 지난 coach_state ──┼─▶ decide() ─▶ WAIT / IGNORE / INTERVENE
@@ -77,7 +77,7 @@ coach-agent/
 | 파일 | 하는 일 |
 |---|---|
 | `core.py` | 유일한 진입점: `decide` · `decide_safe` · `finalize` · `ReplayRequired`. 아래 흐름의 순서를 정한다 |
-| `judges.py` | `Judges` 묶음과 한 번의 판정 라운드(`run`): filler → pace → gaze → volume → timing 호출, 커서 · 합계 누적, 모듈 예외 처리, 기준 음량, `skip` |
+| `judges.py` | `Judges` 묶음과 한 번의 판정 라운드(`run`): filler → pace → gaze → volume → timing 호출, 커서 · 합계 누적, 모듈 예외 처리, 기준 음량(volume의 `speaking_levels` · `baseline`), 새로 시작한 상태의 커서 시작, `skip` |
 | `tally.py` | 판정 결과의 `tally` 조각을 Take 합계 · 장 번호별 합계 · 장 방문에 더하고 센 구간을 표시 |
 | `measure.py` | 판정 결과 → `Tick`(지표 · 문제 `Detection`). 상태 표시(`indicators`) |
 | `tick.py` | 한 번의 판단이 들고 다니는 값(`Tick`)과 `Detection` |
@@ -89,7 +89,7 @@ coach-agent/
 | `episodes.py` | 같은 문제가 이어지는 동안을 문제 구간 하나로 묶어 `EPISODE`로 남긴다 |
 | `slides.py` | 장 방문 하나마다 `SLIDE`(영역별 합계)를 낸다. 단어 확정이 늦어도 말한 장에 붙는다 |
 | `take_lists.py` | Take 결과의 문제 구간 · 개입 · 포기를 이벤트에서 만든다 |
-| `recovery.py` | replay: Take 전체 원자료로 1초마다의 요청을 다시 만든다 |
+| `recovery.py` | replay: Take 전체 원자료로 실시간 요청 시각(1초 기록이 끝난 시각)마다의 요청을 다시 만든다 |
 | `timing.py` | 계획 대비 시간 판정. 다른 판정 모듈과 같은 결과 모양으로 낸다 |
 | `planner.py` | Take 시작 전 코칭 계획 (LLM은 인자) |
 | `renderer.py` | `instruction` + `variant` → 템플릿 문장 (LLM이 문장을 만들지 않는다) |
@@ -128,20 +128,19 @@ coach-agent/
 ⑦ 문구 렌더링  (INTERVENE 일 때)            ⑧ 이벤트 · 참은 기록 · 기록 · coach_state
 ```
 
-- `t_ms`가 이미 처리한 시각 이하면 아무것도 바꾸지 않고 `WAIT` + `STALE_TICK`.
+- `t_ms`가 이미 처리한 시각 이하면 아무것도 바꾸지 않고 `WAIT` + `STALE_TICK`. 이미 처리한 상태에서 지난 처리 시각보다 60초 넘게 앞서면 처리하지 않고 `WAIT` + `T_MS_JUMP`와 빈 `coach_state`를 돌려준다(상한 `MAX_T_MS`는 `schemas.py`). 새로 시작한 상태(Take 첫 요청 · `STATE_RESET` · `T_MS_JUMP` 뒤)의 첫 요청은 시각 커서를 `max(0, t_ms − 30초)`에서 시작한다.
 - `decide_safe`는 코치 안의 예외를 `WAIT` + `INTERNAL_ERROR`로 바꾸고 그 시간을 잴 수 없던 것으로 넘긴다. 요청 형식 오류(`ValidationError`)는 그대로 올린다.
 - 판정 모듈 하나가 실패하면 그 영역만 잴 수 없음으로 두고 계속한다 ([설계 문서](../../../docs/ai/features/coach-agent.md) 7절).
 
 ### 4-2. Take 종료 (`finalize`)
 
-마지막 창 판정(Take 끝을 문장 끝으로 본다) → 열린 효과 · 문제 구간 · 장 방문 닫기 → 센 구간이 Take를 덮는지 확인(못 덮으면 `ReplayRequired`) →
+마지막 창 판정(Take 끝을 STT 모듈 입력 `take_end_ms`로 넘긴다) → 열린 효과 · 문제 구간 · 장 방문 닫기 → 센 구간이 Take를 덮는지 확인(못 덮으면 `ReplayRequired`) →
 합계를 모듈의 `summarize`에 넣어 `areas` → 이벤트에서 문제 구간 · 개입 · 포기.
-`replay`(Take 전체 원자료)가 있으면 `recovery.py`가 1초마다의 요청을 다시 만들어 `EXAM` 모드로 처음부터 판정하고, 지표 · 문제 구간은 그 결과에서, 개입 · 효과는 받은 이벤트에서 가져온다.
+`replay`(Take 전체 원자료)가 있으면 `recovery.py`가 실시간 요청 시각(1초 기록이 끝난 시각, 기록이 없는 구간은 1초 간격)마다 요청을 다시 만들어 `EXAM` 모드로 처음부터 판정하고, 지표 · 문제 구간은 그 결과에서, 개입 · 효과는 받은 이벤트에서 가져온다. 마지막 창은 마지막 evaluate와 같은 시각이어도 부른다. 요청에 `plan`이 실렸으면 Take 결과 `plan`에 시간 계획을 남긴다.
 
 ### 4-3. Take 시작 전 (`plan_coaching`)
 
-LLM이 `focus`(가중치) · `relax`(장 단위로 봐줄 영역) · `max_interventions`를 낸다. 코치는 그것을 `config.planner` 범위로 검증하고 자른다. 실전 모드 · LLM 없음 · LLM 오류는 기본 계획 + `fallback_reason`이고, 계획 없이도 코칭은 그대로 돈다.
-입출력은 후속 작업(#162)에서 Take 결과 · 리뷰 출력에 맞춰 바뀝니다.
+LLM이 `focus`(가중치) · `relax`(장 단위로 봐줄 영역) · `max_interventions`를 낸다. 코치는 그것을 `config.planner` 범위로 검증하고 자른다(`relax`는 시선 · 군더더기만). 요청에 모드가 없고, LLM 입력의 개입 수 · 효과 있던 비율 · 포기한 문제 · 문제 구간 길이는 직전 Take 결과에서 코치가 직접 센다. 개입 상한의 근거도 그 Take 결과의 개입 수(유지 격려 포함)다. LLM 없음은 `LLM_UNAVAILABLE`, 실패는 원인에 따라 `LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT`인 기본 계획 + `fallback_reason`이고, 계획 없이도 코칭은 그대로 돈다. 응답은 요청의 `source_take_id` · `script_version_id`를 그대로 돌려주고 `meta`를 싣는다.
 
 ## 5. 판단 규칙
 
@@ -176,10 +175,10 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 
 ```python
 from coach import decide_safe, finalize
-from coach_lab.judges import lab_judges        # 대역 판정 모듈. 배포에서는 기능 모듈로 만든 Judges
+from coach_lab.judges import lab_judges  # 대역 판정 모듈. 배포에서는 기능 모듈로 만든 Judges
 
 judges = lab_judges()
-resp = decide_safe(request_dict, judges)       # 1초마다. resp.coach_state 를 다음 요청에 붙인다
+resp = decide_safe(request_dict, judges)  # 1초마다. resp.coach_state 를 다음 요청에 붙인다
 result = finalize(finalize_request_dict, judges)
 ```
 
@@ -209,7 +208,7 @@ result = finalize(finalize_request_dict, judges)
 
 ## 7. 현재 결과
 
-커밋한 결과 파일에서 가져온 값입니다 (`config_hash` `9d82f5b1d7bb`, 기능 버전 `coach-1.2`, 16 시나리오). **가상 발표자 · 대역 판정 모듈 위의 값이며 실제 성능이 아닙니다.**
+커밋한 결과 파일에서 가져온 값입니다 (`config_hash` `8b1e640e988a`, 기능 버전 `coach-1.2`, 16 시나리오). **가상 발표자 · 대역 판정 모듈 위의 값이며 실제 성능이 아닙니다.**
 
 ### Take 결과 채점 (`reports/results/take_result.json`)
 
@@ -245,14 +244,13 @@ result = finalize(finalize_request_dict, judges)
 
 ### 코칭 계획 실험 (`reports/results/coaching_plan.json`)
 
-실제 LLM(`openai/gpt-5.6-luna`)으로 시나리오 5개 × 5번(25 계획): 유효 100%, 기대 통과 96%, 검증에서 뺀 비율 0%, 일관성 0.90, 지연 중앙값 2.6초 · 최대 8.1초.
+실제 LLM(`openai/gpt-6-luna`, 기본 묶음)으로 시나리오 5개 × 5번(25 계획): 유효 100%, 기대 통과 100%, 검증에서 뺀 비율 0%, 일관성 0.95, 지연 중앙값 3.1초 · 최대 7.8초. 계획 입력을 직전 Take 결과 · 리뷰 모양으로 바꾼 프롬프트(`planner_hash` `56827d3cf73d`)로 잰 값이다.
 
 ## 8. 알려진 한계
 
 - **가상 발표자로만 확인했습니다.** 시선 · 속도 · 음량 · 군더더기 판정은 연구용 대역이고, 기준값(대본 응시 5초 · 350 CPM 등)은 실제 연습 데이터로 다시 골라야 합니다.
 - 판정 모듈(#152~#155)이 나오면 대역 대신 그 모듈로 `Judges`를 만들어 같은 실험을 다시 돌려야 합니다. 판정 모듈의 `since_ms` · `counted_until_ms` 계약은 코치의 커서와 맞물려 있습니다.
 - 개입 규칙이 아직 `Tick`으로 옮긴 지표를 읽습니다(`measure.py`). 판정 결과를 직접 읽도록 줄이는 일은 #150의 개입 규칙 작업에 남아 있습니다.
-- `/coach/plan`의 입출력은 Take 결과 · 리뷰 출력과 아직 맞지 않습니다 (#162).
 - 요청이 30초보다 길게 빠지면 합계로는 Take 결과를 만들 수 없고 replay가 필요합니다. replay는 Take 전체 원자료를 BE가 보관해야 쓸 수 있습니다.
 - 효과 판정은 실시간 지표(짧은 창)로 잽니다. 개입이 잡음으로 튄 순간에 일어나기 쉬워, 시선은 "기준선으로 돌아옴"만 효과로 인정합니다.
 - `GAZE_ON_SCREEN` · `GAZE_UNMEASURABLE` · `PACE_SLOW`는 정상 행동과 가릴 근거가 없어 말하지 않고 문제 구간에만 남깁니다.
