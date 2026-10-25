@@ -72,6 +72,12 @@ _slots_by_loop: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Sem
 # DB 재시도를 다 쓴 Take 의 재료. 스트림은 이미 놓았으므로 다음 sweep 까지 여기서 보관한다.
 # 저장소도 함께 둬 앱 종료 때 대기 중인 이벤트를 DB 에 한 번 더 넣어 볼 수 있게 한다.
 _pending: dict[uuid.UUID, tuple[FinalizeSnapshot, CoachStore]] = {}
+_on_take_result: Callable[[uuid.UUID], object] | None = None
+
+
+def on_take_result(callback: Callable[[uuid.UUID], object] | None) -> None:
+    global _on_take_result
+    _on_take_result = callback
 
 
 def spawn(
@@ -232,6 +238,11 @@ async def _run(
         reply.take_result["duration_ms"],
         reply.take_result.get("replayed"),
     )
+    if _on_take_result is not None:
+        try:
+            _on_take_result(take_id)
+        except Exception:
+            logger.exception("Take 결과 뒤 분석을 띄우지 못했다 take=%s", take_id)
 
 
 def _merged(

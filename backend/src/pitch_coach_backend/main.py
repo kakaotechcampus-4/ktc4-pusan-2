@@ -22,6 +22,10 @@ from pitch_coach_backend.module.pitch.dependencies import resume_script_rubrics
 from pitch_coach_backend.module.take.controller import router as take_router
 from pitch_coach_backend.module.take.controller import takes_router
 from pitch_coach_backend.module.take.ready_sweep import start as start_ready_sweep
+from pitch_coach_backend.module.take.service import analysis_runner
+from pitch_coach_backend.module.take.service.analysis_runner import (
+    start_background as start_analysis_runner,
+)
 from pitch_coach_backend.module.user.controller import router as user_router
 from pitch_coach_backend.realtime.controller import router as realtime_router
 from pitch_coach_backend.realtime.dependencies import get_transcript_store
@@ -51,7 +55,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 떠난 Take 를 끝내는 타이머는 메모리에 있어 다시 뜨면 사라진다. 진행 중인 Take 에 다시 건다
     await arm_abandoned_takes(get_transcript_store())
     # 만들다 만 Take 결과를 이어 가고, 기한이 지난 1초 원자료를 지우는 주기 작업을 건다
-    stop_coach_background = await start_coach_background(get_coach_client(), get_coach_store())
+    stop_coach_background = await start_coach_background(
+        get_coach_client(), get_coach_store(), on_take_result=analysis_runner.start
+    )
+    stop_analysis = start_analysis_runner()
     # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
     stop_ready_sweep = start_ready_sweep()
     # 평가 기준 작업도 메모리에서 돌다 사라졌다. PENDING 으로 남은 버전을 이어 간다.
@@ -66,6 +73,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await stop_all_streams()
     await stop_ready_sweep()
     await stop_coach_background()
+    await stop_analysis()
 
 
 app = FastAPI(

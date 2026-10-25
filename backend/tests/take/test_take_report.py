@@ -116,7 +116,10 @@ def test_report_leaves_unmeasured_areas_null(
         {
             "take_id": str(take.id),
             "duration_ms": 60_000,
-            "areas": {"GAZE": {"measured_ratio": 0.1, "take": None}, "SPEED": {"take": {"cpm": None}}},
+            "areas": {
+                "GAZE": {"measured_ratio": 0.1, "take": None},
+                "SPEED": {"take": {"cpm": None}},
+            },
         },
     )
 

@@ -556,6 +556,24 @@ class TakeRepository:
             stmt = stmt.where(Take.pitch_id == pitch_id)
         return list(self.db.execute(stmt).all())
 
+    def analyzing_takes(
+        self,
+        stale_before: datetime | None = None,
+        *,
+        after: uuid.UUID | None = None,
+        limit: int = 100,
+    ) -> list[uuid.UUID]:
+        stmt = select(Take.id).where(
+            Take.status == "ANALYZING",
+            Take.analysis_stage.in_(("SCORING", "AWAITING_CONFIRMATION", "REVIEWING")),
+            Take.analysis_hold_reason.is_(None),
+        )
+        if stale_before is not None:
+            stmt = stmt.where(Take.analysis_stage_at < stale_before)
+        if after is not None:
+            stmt = stmt.where(Take.id > after)
+        return list(self.db.scalars(stmt.order_by(Take.id).limit(limit)))
+
     def running_takes_last_active(self) -> list[tuple[uuid.UUID, datetime]]:
         """`RUNNING` 인 Take 와 마지막으로 활동한 시각. 앱이 다시 뜰 때 떠난 Take 를 찾는 데 쓴다.
 
