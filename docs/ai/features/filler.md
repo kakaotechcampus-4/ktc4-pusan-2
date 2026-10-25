@@ -341,14 +341,14 @@ uv sync
 - 판정 테스트가 볼 것: T1 · T2 · T3 각 규칙과 경계(간격이 기준과 같을 때), 문장 첫 단어(문장 끝 신호 뒤 · 큰 앞 간격), 바로 반복, 보류와 다음 요청에서의 판정, Take 끝(`take_end_ms`로 보류 단어 정하기, 마지막 단어 끝과 같은 시각이면 뒤 간격 0), `stt_ok_since_ms` 앞 단어 제외, STT가 `ok`가 아님, 사전에 없는 단어 · 문장부호가 붙은 단어. 커서: 보류 단어 앞에서 멈춤, 같은 입력이면 같은 결과, 돌려준 커서로 겹친 창을 다시 부르면 중복 집계 없음, 요청이 빠져 새 1초가 여러 개면 1초마다 시간 몫. 테스트 이름은 동작을 문장으로 짓는다(예: `test_t2_word_is_pending_until_next_word_arrives`).
 
 # 11. 배포
-**어디서 도는가**: 판정 모듈 `src/filler/`(`examples/` · `keyterms.json` 포함)를 AI 서비스의 `features/filler/`로 폴더째 옮기고, 테스트는 `tests/unit/filler/`로 옮긴다. 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
+**어디서 도는가**: 판정 모듈 `src/filler/`(`examples/` · `keyterms.json` 포함)를 AI 서비스의 `features/filler/`로 폴더째 옮기고, 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/filler/`로 옮긴다. 예시를 연구 폴더 경로로 찾는 `test_examples.py`는 옮기고 패키지 위치로 찾게 고친다. 연구 도구 · 가상 데이터를 쓰는 테스트(`test_evaluate.py` · `test_virtual_data.py` · `test_virtual_tool.py`)와, 생성 도구(`tools/export_keyterms.py`)를 불러 `keyterms.json`이 최신인지 보는 `test_keyterms.py`는 연구 폴더에 남긴다. 생성 도구와 `test_keyterms.py`는 서비스의 `features/filler/keyterms.json`을 원본으로 읽고 쓰게 바꾸고, 연구 폴더의 `keyterms.json`은 지운다. 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
 
 **keyterm 목록이 BE로 가는 길**: BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽을 수 없다. 그래서 BE가 `keyterms.json`의 복사본을 `backend/` 안에 두고 STT 연결 때 그 목록을 쓴다. BE 테스트가 저장소의 AI 파일(`ai/.../filler/keyterms.json`)과 복사본이 같은지 확인한다. 사전의 keyterm 표시가 바뀌면 AI가 같은 PR에서 파일을 다시 만들고 BE에 알린다.
 
 **환경변수**: 군더더기 판정 모듈은 환경변수를 읽지 않는다. 서비스 공통 환경변수는 `architecture.md` 10절이다.
 
 **옮긴 뒤 같은 결과인지 확인**
-1. 서비스: 옮긴 `tests/unit/filler/`가 그대로 통과하고, 코어 경계 테스트가 새 위치를 본다.
+1. 서비스: 옮긴 `tests/unit/filler/`가 (경로를 고친 뒤) 통과하고, 코어 경계 테스트가 새 위치를 본다.
 2. 코치 연구 폴더: 연구용 대역 대신 이 모듈을 `Judges`에 넣어 재생 · 실험을 다시 돌리고, 달라진 판정을 기록한다(배포 기본값은 T1만 세어 대역과 같은 기준이고, T2 · T3를 켜면 T2 · T3 · 보류가 생긴다)(`coach-agent.md` 13절).
 3. BE: keyterm 복사본이 서비스의 `keyterms.json`과 같다는 BE 테스트가 통과한다.
 
