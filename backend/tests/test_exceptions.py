@@ -143,6 +143,7 @@ def test_unhandled_exception_returns_json_without_internals(
         "message": "서버 오류가 발생했습니다.",
         "detail": None,
     }
-    # 내부 예외 내용은 응답이 아니라 서버 로그에만 남는다
+    # 응답과 서버 로그 모두 예외 본문 대신 안전한 진단값만 남긴다
     assert "DB 비밀번호" not in res.text
-    assert "DB 비밀번호가 틀렸습니다" in caplog.text
+    assert "DB 비밀번호" not in caplog.text
+    assert "GET /boom error=RuntimeError sqlstate=None" in caplog.text

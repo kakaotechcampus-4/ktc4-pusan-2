@@ -38,6 +38,7 @@ from pitch_coach_backend.coach.requests import FinalizeSource, finalize_request
 from pitch_coach_backend.coach.session import FinalizeSnapshot
 from pitch_coach_backend.coach.store import CoachStore
 from pitch_coach_backend.core.database import is_transient_db_error
+from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.core.retry import retry_transient
 from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module.take.dto import StoredEvent
@@ -114,15 +115,30 @@ async def run(
         raise
     except Exception as error:
         if is_transient_db_error(error):
-            logger.exception("finalize 가 DB 에 닿지 못했다 take=%s. 나중에 이어 간다", take_id)
+            logger.error(
+                "finalize 가 DB 에 닿지 못했다 take=%s. 나중에 이어 간다 error=%s sqlstate=%s",
+                take_id,
+                type(error).__name__,
+                sqlstate(error),
+            )
             if snapshot is not None and snapshot.events:
                 await _keep_events(take_id, snapshot.events, store)
             return
-        logger.exception("finalize 실패 take=%s. 다시 해도 같아 Take 를 FAILED 로 둔다", take_id)
+        logger.error(
+            "finalize 실패 take=%s. 다시 해도 같아 Take 를 FAILED 로 둔다 error=%s sqlstate=%s",
+            take_id,
+            type(error).__name__,
+            sqlstate(error),
+        )
         try:
             await _retrying("실패 적기", take_id, lambda: store.fail_take_result(take_id))
-        except Exception:
-            logger.exception("Take 를 FAILED 로 적지 못했다 take=%s", take_id)
+        except Exception as mark_error:
+            logger.error(
+                "Take 를 FAILED 로 적지 못했다 take=%s error=%s sqlstate=%s",
+                take_id,
+                type(mark_error).__name__,
+                sqlstate(mark_error),
+            )
             return
         _pending.pop(take_id, None)
     else:
@@ -144,8 +160,13 @@ async def _keep_events(
     있는 코치 이벤트를 넣어 둔다 (이미 있는 것은 건너뛴다)."""
     try:
         await asyncio.wait_for(store.append_events(take_id, events), KEEP_EVENTS_TIMEOUT_SEC)
-    except Exception:
-        logger.exception("재개를 위해 코치 이벤트를 넣어 두지 못했다 take=%s", take_id)
+    except Exception as error:
+        logger.error(
+            "재개를 위해 코치 이벤트를 넣어 두지 못했다 take=%s error=%s sqlstate=%s",
+            take_id,
+            type(error).__name__,
+            sqlstate(error),
+        )
 
 
 async def _retrying[T](what: str, take_id: uuid.UUID, step: Callable[[], Awaitable[T]]) -> T:
@@ -308,9 +329,13 @@ async def _resume(client: CoachClient, store: CoachStore, stale_before: datetime
             # 결과 저장까지 끝낸 뒤 다음 ID 를 읽어 태스크 수도 한 배치로 묶는다.
             if tasks:
                 await asyncio.gather(*tasks)
-    except Exception:
+    except Exception as error:
         # 조회가 덜 끝났으면 대기 재료를 지우지 않고 다음 sweep 에서 이어 간다.
-        logger.exception("Take 결과를 기다리는 Take 를 읽지 못했다")
+        logger.error(
+            "Take 결과를 기다리는 Take 를 읽지 못했다 error=%s sqlstate=%s",
+            type(error).__name__,
+            sqlstate(error),
+        )
         return
     for take_id, entry in pending.items():
         if not _running.running(take_id) and _pending.get(take_id) is entry:

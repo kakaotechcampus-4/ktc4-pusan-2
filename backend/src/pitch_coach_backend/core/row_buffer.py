@@ -14,6 +14,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 
 from pitch_coach_backend.core.database import is_transient_db_error
+from pitch_coach_backend.core.logging import sqlstate
 
 logger = logging.getLogger(__name__)
 
@@ -159,13 +160,16 @@ class RowBuffer[T]:
                         return False
                     if isinstance(e, Exception) and not is_transient_db_error(e):
                         # 다시 넣어도 같다. 들고 있으면 뒤에 온 행까지 막히므로 이 묶음만 버린다
-                        logger.exception(
-                            "%s 를 저장할 수 없어 버린다 id=%s count=%d t_ms=%s~%s",
+                        logger.error(
+                            "%s 를 저장할 수 없어 버린다 id=%s count=%d t_ms=%s~%s "
+                            "error=%s sqlstate=%s",
                             self._what,
                             self.owner_id,
                             len(rows),
                             self._key(rows[0]),
                             self._key(rows[-1]),
+                            type(e).__name__,
+                            sqlstate(e),
                         )
                         complete = False
                         continue
@@ -175,12 +179,15 @@ class RowBuffer[T]:
                         raise
                     self._failures += 1
                     delay = RETRY_DELAYS_SEC[min(self._failures, len(RETRY_DELAYS_SEC)) - 1]
-                    logger.exception(
-                        "%s 저장 실패 id=%s 남은 개수=%d %.0f초 뒤 다시 넣는다",
+                    logger.error(
+                        "%s 저장 실패 id=%s 남은 개수=%d %.0f초 뒤 다시 넣는다 "
+                        "error=%s sqlstate=%s",
                         self._what,
                         self.owner_id,
                         len(self._rows),
                         delay,
+                        type(e).__name__,
+                        sqlstate(e),
                     )
                     self._schedule_retry(delay)
                     return False
