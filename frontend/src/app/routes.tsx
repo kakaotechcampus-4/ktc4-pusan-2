@@ -1,7 +1,6 @@
 import type { ReactElement } from 'react';
 import { createBrowserRouter } from 'react-router';
 import { PageTitle } from './PageTitle';
-import { Stub } from '@/shared/ui/Stub';
 import { StageDemo } from '@/features/rehearsal/stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
 import { SttDevPage } from '@/features/rehearsal/media/SttDevPage';
@@ -14,6 +13,7 @@ import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
 import { PitchCreatePage, PitchEditPage } from '@/features/pitch/create/PitchCreatePage';
 import { RehearsalPage } from '@/features/rehearsal/stage/RehearsalPage';
+import { RetryPage } from '@/features/rehearsal/retry/RetryPage';
 import { ProcessingPage } from '@/features/report/ProcessingPage';
 import { ReportPage } from '@/features/report/ReportPage';
 import { DesignDraftRoute, DesignIndex } from '@/dev/design/DesignIndex';
@@ -54,7 +54,7 @@ const routes = [
   { path: '/takes/:takeId/rehearsal',  title: '실시간 코칭 리허설 | 피치코치', element: <RehearsalPage /> },
   { path: '/takes/:takeId/exam',       title: '실전 검증 리허설 | 피치코치', element: <RehearsalPage /> },
   { path: '/takes/:takeId/processing', title: '분석 대기 | 피치코치', element: <ProcessingPage /> },
-  { path: '/takes/:takeId/retry',      title: '업로드 실패 · 재시도 | 피치코치', element: <Stub id="P15" name="업로드 실패 · 재시도" track="A" /> },
+  { path: '/takes/:takeId/retry',      title: '업로드 실패 · 재시도 | 피치코치', element: <RetryPage /> },
   { path: '/takes/:takeId',            title: 'Take 리포트 | 피치코치', element: <ReportPage /> },
   { path: '/pitch/:id/comparison',     title: 'Take 비교 | 피치코치', element: <ComparisonPage /> },
   { path: '/me',          title: '마이페이지 | 피치코치', element: <MyPage /> },

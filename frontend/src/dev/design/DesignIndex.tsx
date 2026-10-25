@@ -49,7 +49,7 @@ const DRAFTS: { name: string; id: string; title: string; note?: string; element:
       name: 'retry',
       id: 'P15',
       title: '업로드 실패 · 재시도',
-      note: '리뷰 중',
+      note: '구현됨 — 위 "업로드 실패 · 재시도"가 실제 화면이에요',
       element: <RetryDraft />,
     },
   ];
@@ -73,6 +73,12 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
     id: 'P6-0',
     title: '분석 대기',
     note: '몇 초마다 단계가 넘어가고 리포트로 가요',
+  },
+  {
+    path: '/takes/t3/retry',
+    id: 'P15',
+    title: '업로드 실패 · 재시도',
+    note: '이 브라우저에 기록이 없으면 안내만 떠요. 콘솔 mockTakeEnd.fail() 뒤 발표를 끝내면 열려요',
   },
   { path: '/takes/t-failed/processing', id: 'P6-0', title: '분석 대기 · 분석 실패' },
   { path: '/takes/t-held/processing', id: 'P6-0', title: '분석 대기 · 리뷰 보류' },
