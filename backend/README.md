@@ -173,6 +173,7 @@ backend/
     │       │   ├── record.py             # 전사 커서 · 확정 전사 · 1초 원자료 · 문장 끝 신호 저장
     │       │   ├── review.py             # 리뷰 요청 조립 · 호출 · 결과 저장 (한 트랜잭션)
     │       │   ├── coverage.py           # 대본 전달도 분석 (SCORING) · 재시도 · 병합
+    │       │   ├── confirmation.py       # 대본 전달도 확인 답 받기 · rescore 반영 · 건너뛰기 (AWAITING_CONFIRMATION)
     │       │   └── analysis_runner.py    # Take 결과 뒤 채점 → 확인 대기 → 리뷰 → 코칭 계획 (백그라운드). 앱이 뜰 때 이어 간다
     │       ├── coach_service.py      # 코치 연동의 DB 일. take 모듈의 모양(dto)으로 넘기고 받는다
     │       ├── coach_repository.py   # 코치 이벤트 · 장 변경 · Take 결과 · 미션 행
