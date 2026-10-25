@@ -20,7 +20,7 @@ from typing import Any, Protocol
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from pitch_coach_backend.module.pitch.adapter.script_parser import _ssl_context
+from pitch_coach_backend.module.pitch.adapter.script_parser import _error_code, _ssl_context
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,6 @@ RETRYABLE_SLIDE_CODES = frozenset(
 )
 
 _RETRYABLE_CLIENT_STATUSES = frozenset({408, 429})
-_LOG_BODY_LIMIT = 200
 
 
 @dataclass(frozen=True)
@@ -56,10 +55,19 @@ class RubricReply:
 
 
 class RubricCallError(Exception):
-    # detail 은 로그용이다
-    def __init__(self, detail: str, *, retryable: bool) -> None:
+    # detail 은 진단용이다. 작업 로그에는 이 문자열 대신 아래 코드만 남긴다.
+    def __init__(
+        self,
+        detail: str,
+        *,
+        retryable: bool,
+        status_code: int | None = None,
+        ai_error_code: str | None = None,
+    ) -> None:
         super().__init__(detail)
         self.retryable = retryable
+        self.status_code = status_code
+        self.ai_error_code = ai_error_code
 
 
 class RubricClient(Protocol):
@@ -181,8 +189,12 @@ class HttpRubricClient:
         status = response.status_code
         if status >= 400:
             retryable = status >= 500 or status in _RETRYABLE_CLIENT_STATUSES
+            code = _error_code(response)
             raise RubricCallError(
-                f"{status} {response.text[:_LOG_BODY_LIMIT]}", retryable=retryable
+                f"status={status} ai_error_code={code}",
+                retryable=retryable,
+                status_code=status,
+                ai_error_code=code,
             )
         try:
             wire = _WireResult.model_validate_json(response.content)
@@ -208,4 +220,4 @@ class HttpRubricClient:
             raise RubricCallError(type(exc).__name__, retryable=True) from exc
         except httpx.HTTPError as exc:
             # 연결 실패 · 깨진 응답 등 응답을 제대로 받지 못한 경우는 모두 무응답으로 본다
-            raise RubricCallError(f"{type(exc).__name__}: {exc}", retryable=True) from exc
+            raise RubricCallError(type(exc).__name__, retryable=True) from exc
