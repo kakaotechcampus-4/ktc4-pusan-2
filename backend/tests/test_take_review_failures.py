@@ -8,7 +8,6 @@ from functools import partial
 import httpx2
 import pytest
 
-from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.take.dto import ReviewRequestDTO, ReviewResponseDTO
 from pitch_coach_backend.module.take.entity import Mission, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
@@ -127,8 +126,7 @@ def test_review_storage_validates_again_before_any_write(db_session, user_id, ca
     assert db_session.query(TakeSummary).filter_by(take_id=take.id).count() == 0
 
 
-def test_review_api_returns_502_and_keeps_measurements_on_failure(
-    client,
+def test_review_failure_completes_the_take_and_keeps_measurements(
     db_session,
     user_id,
     monkeypatch,
@@ -143,13 +141,9 @@ def test_review_api_returns_502_and_keeps_measurements_on_failure(
     db_session.flush()
     ai(monkeypatch, lambda request: httpx2.Response(503))
 
-    response = client.post(
-        f"/api/pitches/{pitch.id}/takes/{take.id}/review",
-        headers={"Authorization": f"Bearer {create_access_token(user_id)}"},
-    )
+    with pytest.raises(InvalidReviewResponse):
+        review_service.get_review_result(db_session, take.id)
 
-    assert response.status_code == 502
-    assert response.json()["code"] == "INVALID_REVIEW_RESPONSE"
     db_session.refresh(take)
     assert (take.status, take.review_status, take.analysis_stage) == ("COMPLETED", "FAILED", "DONE")
     repo = TakeRepository(db_session)

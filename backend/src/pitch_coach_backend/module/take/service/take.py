@@ -1,6 +1,7 @@
-"""Take 생성 · 수정 · 삭제 · 소유권 조회 · 장치 점검 · Take 목록."""
+"""Take 생성 · 수정 · 삭제 · 소유권 조회 · 장치 점검 · Take 목록 · 리포트."""
 
 import uuid
+from collections.abc import Mapping
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -19,6 +20,8 @@ from pitch_coach_backend.module.take.dto import (
     TakeHistoryResponseDTO,
     TakeHistoryRowDTO,
     TakeInitRequestDTO,
+    TakeMeasuresDTO,
+    TakeReportDTO,
     TakeUpdateRequestDTO,
 )
 from pitch_coach_backend.module.take.entity import Calibration, Take
@@ -250,6 +253,57 @@ def list_takes_service(
             )
             for row in rows
         ]
+    )
+
+
+def _take_metric(areas: Mapping[str, Any], area: str, name: str) -> float | None:
+    values = (areas.get(area) or {}).get("take") or {}
+    value = values.get(name)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return value
+
+
+def _take_measures(take: Take, take_result: Mapping[str, Any] | None) -> TakeMeasuresDTO | None:
+    if take_result is None:
+        return None
+    areas = take_result.get("areas") or {}
+    filler_count = _take_metric(areas, "FILLER", "filler_count")
+    return TakeMeasuresDTO(
+        duration_ms=take_result["duration_ms"],
+        goal_ms=take.goal_time_sec * 1000,
+        audience_ratio=_take_metric(areas, "GAZE", "audience_ratio"),
+        screen_ratio=_take_metric(areas, "GAZE", "screen_ratio"),
+        script_ratio=_take_metric(areas, "GAZE", "script_ratio"),
+        away_ratio=_take_metric(areas, "GAZE", "away_ratio"),
+        unmeasured_ms=None,
+        cpm=_take_metric(areas, "SPEED", "cpm"),
+        filler_count=None if filler_count is None else round(filler_count),
+    )
+
+
+def get_take_report_service(
+    db: Session, take_id: uuid.UUID, user_id: uuid.UUID
+) -> TakeReportDTO:
+    take_repository = TakeRepository(db)
+    owned = take_repository.get_owned_with_pitch_title(take_id, user_id)
+    if owned is None:
+        raise NonExistentTake()
+    take, pitch_title = owned
+    payloads = take_repository.get_ai_payloads(take_id, ("TAKE_RESULT", "REVIEW"))
+    return TakeReportDTO(
+        take_id=take.id,
+        pitch_id=take.pitch_id,
+        pitch_title=pitch_title,
+        take_number=take.take_number,
+        script_mode=take.script_mode,
+        ended_at=take.ended_at,
+        status=take.status,
+        analysis_stage=take.analysis_stage,
+        review_status=take.review_status,
+        analysis_hold_reason=take.analysis_hold_reason,
+        measures=_take_measures(take, payloads.get("TAKE_RESULT")),
+        review=payloads.get("REVIEW"),
     )
 
 

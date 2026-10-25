@@ -152,7 +152,7 @@ backend/
     │   └── take/                 # 발표 1회 수행 기록
     │       ├── controller.py · repository.py · entity.py · dto.py · dependencies.py · exception.py
     │       ├── service/
-    │       │   ├── take.py               # 생성 · 수정 · 삭제 · 소유권 조회 · 장치 점검 · Take 목록
+    │       │   ├── take.py               # 생성 · 수정 · 삭제 · 소유권 조회 · 장치 점검 · Take 목록 · 리포트
     │       │   ├── lifecycle.py          # mark_* · 창 닫힘 · 진행 중 Take 조회 · 떠남 · 시작하지 않은 Take 기준
     │       │   ├── record.py             # 전사 커서 · 확정 전사 · 1초 원자료 · 문장 끝 신호 저장
     │       │   ├── review.py             # 리뷰 요청 조립 · 호출 · 결과 저장 (한 트랜잭션)

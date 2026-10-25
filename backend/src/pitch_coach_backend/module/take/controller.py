@@ -1,4 +1,3 @@
-import logging
 import uuid
 from typing import Annotated
 
@@ -14,20 +13,19 @@ from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
     TakeHistoryResponseDTO,
     TakeInitRequestDTO,
+    TakeReportDTO,
     TakeUpdateRequestDTO,
 )
-from pitch_coach_backend.module.take.exception import TakeInProgress, TakeNotReviewable
+from pitch_coach_backend.module.take.exception import TakeInProgress
 from pitch_coach_backend.module.take.service.lifecycle import close_take_service, mark_ended
-from pitch_coach_backend.module.take.service.review import get_review_result
 from pitch_coach_backend.module.take.service.take import (
     create_calibration_service,
     create_take_service,
     delete_take_service,
+    get_take_report_service,
     list_takes_service,
     update_take_service,
 )
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pitches/{pitch_id}/takes", tags=["Take"])
 
@@ -97,32 +95,6 @@ def create_calibration(
     result = create_calibration_service(db, take_id, calibration_dto)
     return {"message": "Calibration created successfully", "calibration_id": result}
 
-@router.post("/{take_id}/review")
-def review_take(
-    db: Annotated[Session, Depends(get_db)],
-    pitch_id: uuid.UUID,
-    take_id: OwnedTake,
-):
-    def plan_next_take() -> None:
-        # 리뷰를 저장한 직후, 리뷰가 끝내 실패해도 다음 Take 의 코칭 계획을 만든다
-        # (coach-agent.md 5-1). 백그라운드라 응답을 기다리게 하지 않는다. 계획을 못 띄워도 리뷰
-        # 결과 · 원래 오류를 가리지 않는다
-        try:
-            hooks.coaching().plan_next_take(pitch_id)
-        except Exception:
-            logger.exception("리뷰 뒤 코칭 계획을 띄우지 못했다 pitch=%s", pitch_id)
-
-    try:
-        result = get_review_result(db, take_id)
-    except TakeNotReviewable:
-        # 리뷰를 부르지 않았다 (아직 채점 전 · 이미 리뷰함)
-        raise
-    except Exception:
-        plan_next_take()
-        raise
-    plan_next_take()
-    return {"message": "Review result retrieved successfully", "review_result": result}
-
 
 # 발표를 가리지 않는 Take 조회. Take 기록은 모든 발표의 Take 를 한 번에 보여 준다
 takes_router = APIRouter(prefix="/takes", tags=["Take"])
@@ -134,3 +106,11 @@ def list_takes(
     pitch_id: uuid.UUID | None = None,
 ):
     return list_takes_service(db, current_user.id, pitch_id)
+
+@takes_router.get("/{take_id}/report", response_model=TakeReportDTO)
+def get_take_report(
+    take_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+):
+    return get_take_report_service(db, take_id, current_user.id)

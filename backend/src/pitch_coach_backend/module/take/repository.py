@@ -56,6 +56,24 @@ class TakeRepository:
             .where(Take.id == take_id, Pitch.user_id == user_id)
         )
 
+    def get_owned_with_pitch_title(
+        self, take_id: uuid.UUID, user_id: uuid.UUID
+    ) -> tuple[Take, str] | None:
+        row = self.db.execute(
+            select(Take, Pitch.title)
+            .join(Pitch, Pitch.id == Take.pitch_id)
+            .where(Take.id == take_id, Pitch.user_id == user_id)
+        ).first()
+        return None if row is None else (row[0], row[1])
+
+    def get_ai_payloads(self, take_id: uuid.UUID, kinds: tuple[str, ...]) -> dict[str, Any]:
+        rows = self.db.execute(
+            select(TakeAIResults.kind, TakeAIResults.payload).where(
+                TakeAIResults.take_id == take_id, TakeAIResults.kind.in_(kinds)
+            )
+        ).all()
+        return {kind: payload for kind, payload in rows}
+
     def get_max_score_take_in_pitch(self, pitch_id: uuid.UUID) -> uuid.UUID | None:
         return self.db.scalar(
             select(TakeSummary.take_id)
