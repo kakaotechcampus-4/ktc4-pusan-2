@@ -37,7 +37,7 @@ export function ConfirmPage() {
 
   return (
     <DuskScreen report={report.data}>
-      <ConfirmContent takeId={takeId} confirmations={confirmations} />
+      <ConfirmContent key={takeId} takeId={takeId} confirmations={confirmations} />
     </DuskScreen>
   );
 }
@@ -49,6 +49,9 @@ function ConfirmContent({
   takeId: string;
   confirmations: ReturnType<typeof useConfirmations>;
 }) {
+  // 재조회로 폼이 잠시 로딩·오류 화면으로 바뀌어도 선택한 답은 유지합니다.
+  const [picks, setPicks] = useState<Record<string, Choice>>({});
+
   if (confirmations.error)
     return (
       <div role="alert" className="flex flex-col items-center gap-4">
@@ -77,7 +80,14 @@ function ConfirmContent({
       />
     );
 
-  return <ConfirmForm takeId={takeId} data={confirmations.data} />;
+  return (
+    <ConfirmForm
+      takeId={takeId}
+      data={confirmations.data}
+      picks={picks}
+      onChoose={(key, choice) => setPicks((previous) => ({ ...previous, [key]: choice }))}
+    />
+  );
 }
 
 /** 더 답할 수 없을 때 — 분석 대기로 돌려보냅니다. 거기서 끝났으면 리포트로 넘어갑니다 */
@@ -93,10 +103,19 @@ function Closed({ takeId, title, text }: { takeId: string; title: string; text: 
 
 const TICK_MS = 1000;
 
-function ConfirmForm({ takeId, data }: { takeId: string; data: Confirmations }) {
+function ConfirmForm({
+  takeId,
+  data,
+  picks,
+  onChoose,
+}: {
+  takeId: string;
+  data: Confirmations;
+  picks: Record<string, Choice>;
+  onChoose: (key: string, choice: Choice) => void;
+}) {
   const navigate = useNavigate();
   const send = useSendConfirmations(takeId);
-  const [picks, setPicks] = useState<Record<string, Choice>>({});
 
   // 받은 순간부터 셉니다 — 백그라운드 탭에서도 맞게 performance.now() 기준 (CLAUDE.md 개발 중 함정)
   const [deadline] = useState(() => performance.now() + (data.remaining_ms ?? 0));
@@ -137,7 +156,7 @@ function ConfirmForm({ takeId, data }: { takeId: string; data: Confirmations }) 
             key={itemKey(item)}
             item={item}
             choice={picks[itemKey(item)]}
-            onChoose={(c) => setPicks((p) => ({ ...p, [itemKey(item)]: c }))}
+            onChoose={(choice) => onChoose(itemKey(item), choice)}
           />
         ))}
       </ol>
