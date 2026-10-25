@@ -22,7 +22,7 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service import review as review_service
-from tests.test_take_ai_validation import coverage
+from tests.test_take_ai_validation import claim, coverage, release
 from tests.test_take_history import _pitch, _take
 from tests.test_take_review_response import REVIEW, TAKE_ID
 
@@ -197,7 +197,10 @@ def test_scoring_goes_on_once_the_rubric_wait_times_out(db_session, user_id):
 def test_retry_of_a_scored_take_does_not_wait_for_the_rubric(db_session, user_id):
     take = _analyzing(db_session, user_id, "SCORING")
     _rubric_pending(db_session, take, timedelta(seconds=10))
-    assert coverage_service._save_confirmed(db_session, take.id, coverage(take.id)) is not None
+    requested_at = claim(db_session, take.id)
+    saved = coverage_service._save_confirmed(db_session, take.id, requested_at, coverage(take.id))
+    assert saved is not None
+    release(db_session, take.id)
 
     assert asyncio.run(coverage_service.analyze_script_coverage(take.id)) == "READY_FOR_REVIEW"
 

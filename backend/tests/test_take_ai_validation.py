@@ -4,13 +4,15 @@ import asyncio
 import copy
 import json
 import uuid
+from datetime import datetime
 from functools import partial
 
 import httpx
 import pytest
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.take.entity import TakeAIResults, TakeSummary
+from pitch_coach_backend.module.take.entity import Take, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from tests.test_take_history import _pitch, _take
@@ -55,6 +57,18 @@ def coverage(take_id: uuid.UUID) -> dict:
         },
         "future_field": {"preserved": True},
     }
+
+
+def claim(db: Session, take_id: uuid.UUID) -> datetime:
+    """채점 작업 표식을 잡는다. 채점 저장 함수는 표식을 쥔 작업만 쓴다."""
+    requested_at = TakeRepository(db).claim_coverage(take_id)
+    assert requested_at is not None
+    return requested_at
+
+
+def release(db: Session, take_id: uuid.UUID) -> None:
+    """준비하며 잡은 표식을 놓는다. 앞 채점 작업이 끝난 상태다."""
+    db.execute(update(Take).where(Take.id == take_id).values(coverage_requested_at=None))
 
 
 def broken(reply: dict, case: str) -> dict:
@@ -172,7 +186,7 @@ def test_storage_rejects_invalid_coverage_before_any_write(db_session, user_id, 
     invalid = broken(coverage(take.id), case)
 
     with pytest.raises(coverage_service.CoverageCallError):
-        coverage_service._save_confirmed(db_session, take.id, invalid)
+        coverage_service._save_confirmed(db_session, take.id, claim(db_session, take.id), invalid)
 
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE") is None
     assert db_session.query(TakeSummary).filter_by(take_id=take.id).first() is None
@@ -183,7 +197,8 @@ def test_bad_rescore_preserves_confirmed_candidate_and_summary(db_session, user_
         db_session, _pitch(db_session, user_id), 1, status="ANALYZING", analysis_stage="SCORING"
     )
     reply = coverage(take.id)
-    coverage_service._save_confirmed(db_session, take.id, reply)
+    requested_at = claim(db_session, take.id)
+    coverage_service._save_confirmed(db_session, take.id, requested_at, reply)
     db_session.add(
         TakeAIResults(
             take_id=take.id, kind="SCRIPT_COVERAGE_PENDING", payload={"base_revision": 0}, meta={}
@@ -193,7 +208,9 @@ def test_bad_rescore_preserves_confirmed_candidate_and_summary(db_session, user_
     repo = TakeRepository(db_session)
 
     with pytest.raises(coverage_service.CoverageCallError):
-        coverage_service._apply_merged(db_session, take.id, 0, broken(reply, "other-take"))
+        coverage_service._apply_merged(
+            db_session, take.id, requested_at, 0, broken(reply, "other-take")
+        )
 
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE").revision == 0
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE_PENDING") is not None
@@ -210,7 +227,8 @@ def test_valid_rescore_replaces_only_the_expected_revision(db_session, user_id, 
         analysis_stage="SCORING",
     )
     original = coverage(take.id)
-    coverage_service._save_confirmed(db_session, take.id, original)
+    requested_at = claim(db_session, take.id)
+    coverage_service._save_confirmed(db_session, take.id, requested_at, original)
     db_session.add(
         TakeAIResults(
             take_id=take.id,
@@ -224,7 +242,10 @@ def test_valid_rescore_replaces_only_the_expected_revision(db_session, user_id, 
     replacement = coverage(take.id)
     replacement["take_scores"]["content_coverage"] = 0.9
 
-    assert coverage_service._apply_merged(db_session, take.id, revision, replacement) is applied
+    assert (
+        coverage_service._apply_merged(db_session, take.id, requested_at, revision, replacement)
+        is applied
+    )
 
     repo = TakeRepository(db_session)
     saved = repo.get_ai_result(take.id, "SCRIPT_COVERAGE")
@@ -297,10 +318,12 @@ def test_coverage_failure_preserves_results_and_finishes_its_failure_path(
     )
     reply = coverage(take.id)
     if merge:
-        coverage_service._save_confirmed(db_session, take.id, reply)
+        requested_at = claim(db_session, take.id)
+        coverage_service._save_confirmed(db_session, take.id, requested_at, reply)
         assert coverage_service._save_candidate(
             db_session,
             take.id,
+            requested_at,
             {
                 "script_version_id": str(take.script_version_id),
                 "base_revision": 0,
@@ -309,6 +332,7 @@ def test_coverage_failure_preserves_results_and_finishes_its_failure_path(
                 "retry_meta": reply["meta"],
             },
         )
+        release(db_session, take.id)
     calls = []
 
     def handler(request):
@@ -393,9 +417,13 @@ def test_coverage_storage_rounds_summary_and_preserves_raw_scores(
     repo = TakeRepository(db_session)
     reply = coverage(take.id)
     reply["take_scores"]["content_coverage"] = ratio
+    requested_at = claim(db_session, take.id)
 
     if storage_path == "merged":
-        assert coverage_service._save_confirmed(db_session, take.id, coverage(take.id)) is not None
+        assert (
+            coverage_service._save_confirmed(db_session, take.id, requested_at, coverage(take.id))
+            is not None
+        )
         db_session.add(
             TakeAIResults(
                 take_id=take.id,
@@ -405,10 +433,10 @@ def test_coverage_storage_rounds_summary_and_preserves_raw_scores(
             )
         )
         db_session.commit()
-        assert coverage_service._apply_merged(db_session, take.id, 0, reply)
+        assert coverage_service._apply_merged(db_session, take.id, requested_at, 0, reply)
         assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE_PENDING") is None
     else:
-        assert coverage_service._save_confirmed(db_session, take.id, reply) is not None
+        assert coverage_service._save_confirmed(db_session, take.id, requested_at, reply) is not None
 
     db_session.expire_all()
     summary = db_session.query(TakeSummary).filter_by(take_id=take.id).one()
