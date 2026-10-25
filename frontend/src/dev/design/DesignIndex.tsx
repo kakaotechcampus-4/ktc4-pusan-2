@@ -28,14 +28,14 @@ const DRAFTS: { name: string; id: string; title: string; note?: string; element:
       name: 'prepare-mission',
       id: '09',
       title: '시작 전 세팅 · 이번 Take 미션',
-      note: '장치 점검 스타일은 구현됨 · 미션 카드는 #430 리뷰 중',
+      note: '구현됨 — 위 "시작 전 세팅"이 실제 화면이에요',
       element: <PrepareMissionDraft />,
     },
     {
       name: 'stage',
       id: '07',
       title: '리허설 무대 · 스타일',
-      note: '어두운 무대로 정함 · #444 리뷰 중',
+      note: '어두운 무대로 정함 · 리뷰 중',
       element: <StageDraft />,
     },
     {
@@ -49,7 +49,7 @@ const DRAFTS: { name: string; id: string; title: string; note?: string; element:
       name: 'retry',
       id: 'P15',
       title: '업로드 실패 · 재시도',
-      note: '#431 리뷰 중',
+      note: '리뷰 중',
       element: <RetryDraft />,
     },
   ];
