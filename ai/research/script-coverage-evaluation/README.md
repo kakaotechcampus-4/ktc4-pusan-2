@@ -132,7 +132,7 @@ script-coverage-evaluation/
 │
 ├── src/coverage_lab/              ── 실험 도구 (한 폴더) ──
 │
-├── experiments/                   01 ~ 06 실행 스크립트 (번호 = 실행 순서)
+├── experiments/                   01 ~ 09 실행 스크립트 (번호 = 실행 순서)
 ├── reports/                       보고용 노트북 2개 + results/*.json (지표)
 ├── data/virtual/                  가상 대본 2 · 연습 STT 18 · 정답 라벨 18
 ├── outputs/                       rubrics.sqlite (LLM 캐시 + 결과 DB, git 제외)
@@ -478,7 +478,7 @@ uv run python -m pytest -m live            # 실제 API 를 부르는 테스트�
 
 | 항목 | 결과 |
 |---|---|
-| 테스트 | 옮기기 전 414개 = 옮긴 뒤 서비스 317개 + 연구 lab 97개, 모두 통과 |
+| 테스트 | 옮기기 전 414개 = 옮긴 뒤 서비스 317개 + 연구 lab 97개, 모두 통과 (깨끗한 사본에서는 로컬 데이터 파일이 필요한 연구 테스트 2개가 건너뜀) |
 | 세 API 예시 (`python -m coverage_lab.examples`) | 요청 · 응답 · 캐시 JSON 8개가 바이트 단위로 같음 |
 | `01` · `04` · `05` 재생 | DB의 평가 기준 31 · 채점 180 · 비슷한 말 29 · 확인 29 · 확인 뒤 채점 24행과 `stt_accuracy.json`이 같음 |
 

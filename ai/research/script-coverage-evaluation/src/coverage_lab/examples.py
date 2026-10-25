@@ -7,7 +7,7 @@
 
 - `request.json` / `response.json`: 최상위 진입 함수(`script_coverage.core`)의 입력 · 출력
 - `llm_cache.json`: 이 요청이 읽은 캐시 항목 `[{kind, key, config_hash, output}]` (정렬). 서비스로 옮긴 계약
-  테스트(`tests/unit/test_examples.py`)가 이것으로 캐시를 만들어 같은 응답이 나오는지 본다.
+  테스트(서비스 `tests/unit/script_coverage/test_examples.py`)가 이것으로 캐시를 만들어 같은 응답이 나오는지 본다.
 
 만드는 예시: `rubric` (`/scripts/rubric`), `analyze` (`/takes/analyze`), `rescore` (`/takes/rescore`).
 `analyze` 의 평가 기준은 `rubric` 과 같은 방식으로(연구 캐시 재생) 코어에서 새로 만든다 — 평가 기준 스키마
@@ -40,7 +40,7 @@ from .paths import DB_PATH, SCRIPT_DIR, STT_DIR
 
 # 예시 원본은 서비스의 코어 패키지 안에 있다 (연구 폴더는 서비스를 editable 로 설치해 그 코어를 쓴다)
 EXAMPLES_DIR = Path(script_coverage_pkg.__file__).resolve().parent / "examples"
-# 예시를 만든 모델 (계약 테스트 `tests/unit/test_examples.py` 의 MODEL 과 같다). 캐시 항목의 설정 해시가 이 이름에
+# 예시를 만든 모델 (서비스 계약 테스트 `tests/unit/script_coverage/test_examples.py` 의 MODEL 과 같다). 캐시 항목의 설정 해시가 이 이름에
 # 의존하므로, 연구 DB 의 평가 기준을 다른 모델로 다시 만들어도 예시는 이 모델의 캐시 항목으로 같게 나온다
 EXAMPLE_MODEL = "openai/gpt-5.6-luna"
 
