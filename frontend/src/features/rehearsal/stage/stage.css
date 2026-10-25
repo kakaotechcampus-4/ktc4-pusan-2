@@ -18,13 +18,17 @@
      머리   타이머 · 진행 막대 · 슬라이드 번호        (내용만큼)
      무대   슬라이드 + 오른쪽 레일  ★ 시선 테두리     (남는 만큼)
      코치   한 줄 배너                                (자리를 늘 비워 둔다)
-     대본   모드마다 고정                             (계측 조건)
+     대본   늘 하이라이트 높이 · 상자는 모드 높이     (계측 조건)
      발밑   기록 상태 · 끝내기                        (내용만큼)
 
    ★ 코치 줄의 높이를 늘 잡아 두는 이유 —
      말풍선이 뜰 때 위 칸이 줄어들면 슬라이드가 움직이고,
      그만큼 발표자의 시선 각도가 흔들린다. 그 흔들림이 곧 측정 오차다.
-     그래서 메시지가 없어도 자리는 남는다.                       */
+     그래서 메시지가 없어도 자리는 남는다.
+
+   ★ 대본 줄도 같은 이유로 대본 모드와 상관없이 하이라이트 높이를 잡는다 (#443) —
+     줄이 모드 높이를 따라가면 남는 높이(1fr)를 받는 슬라이드 칸이 모드마다 커지고
+     자리도 바뀐다. 그래서 슬라이드 · 레일 · 코치 줄은 세 모드에서 같은 크기 · 같은 자리다.  */
 .stage {
   --script-h: var(--spacing-script-highlight);
   --rail-w: 320px;
@@ -34,7 +38,7 @@
   --stage-line: 2px solid color-mix(in srgb, var(--color-ink-stage) 35%, transparent);
 
   display: grid;
-  grid-template-rows: auto 1fr var(--coach-h) var(--script-h) auto;
+  grid-template-rows: auto 1fr var(--coach-h) var(--spacing-script-highlight) auto;
   gap: 12px;
   height: 100%;
   padding: 16px;
@@ -45,10 +49,10 @@
   color: var(--color-ink-stage);
 }
 
-/* ── Script Mode 4단 ───────────────────────────────────────────
-   Keyword는 이미 16:9 폭 한계에 닿아 있어서,
-   Off로 가도 슬라이드가 더 커지지 않고 위아래 여백만 늘어난다.
-   그래서 실제 슬라이드 크기는 네 모드에 두 종류뿐이다.        */
+/* ── Script Mode 3단 ───────────────────────────────────────────
+   --script-h 는 대본 상자의 높이만 정한다. 줄은 늘 하이라이트 높이라서(.stage 주석),
+   키워드 · 실전 모드에서 남는 높이는 코치 줄과 대본 상자 사이에 비워 둔다.
+   대본 상자는 줄 아래쪽(발밑 줄 바로 위)에 앉는다 — 모드가 달라도 그 자리다.  */
 .stage[data-script-mode='HIGHLIGHT'] {
   --script-h: var(--spacing-script-highlight);
 }
@@ -61,6 +65,18 @@
 
 .stage[data-script-mode='OFF'] .script {
   display: none;
+}
+
+/* 줄을 자리로 못 박는다 — 실전 모드는 대본 상자가 없어서, 그냥 두면 발밑 줄이 비어 있는
+   대본 줄로 한 칸 당겨 앉는다 (화면 가운데에 끝내기 버튼이 뜬다) */
+.script {
+  grid-row: 4;
+  align-self: end;
+  height: var(--script-h);
+}
+
+.stage-foot {
+  grid-row: 5;
 }
 
 /* ── 머리줄 ───────────────────────────────────────────────────
