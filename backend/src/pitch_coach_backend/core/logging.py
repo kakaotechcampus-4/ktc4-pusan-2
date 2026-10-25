@@ -10,6 +10,7 @@ pytest `caplog` 는 지금처럼 잡는다.
 """
 
 import logging
+import re
 
 APP_LOGGER = "pitch_coach_backend"
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
@@ -30,3 +31,14 @@ def configure_logging(level: str) -> None:
     handler.set_name(_HANDLER_NAME)
     handler.setFormatter(logging.Formatter(LOG_FORMAT))
     logger.addHandler(handler)
+
+
+def sqlstate(exc: BaseException) -> str | None:
+    """DB 드라이버가 준 SQLSTATE (예: `08006`). 다섯 자리 코드라 사용자 원문이 섞이지 않는다.
+
+    SQLAlchemy 예외 문자열에는 SQL 매개변수와 DB 오류 메시지가 붙는다. 저장 실패 로그에는 예외
+    본문 대신 예외 종류와 이 값을 남긴다. SQLAlchemy 는 드라이버 예외를 `orig` 에 담는다. 그 밖의
+    예외나 모양이 다르면 None.
+    """
+    code = getattr(getattr(exc, "orig", None), "sqlstate", None)
+    return code if isinstance(code, str) and re.fullmatch(r"[0-9A-Z]{5}", code) else None

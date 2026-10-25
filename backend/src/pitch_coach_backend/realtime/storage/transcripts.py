@@ -13,10 +13,10 @@ import 하지 않는다.
 
 import asyncio
 import logging
-import re
 import uuid
 from collections.abc import Awaitable, Callable
 
+from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO, TranscriptWordDTO
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.realtime.dto import TranscriptMessage
@@ -163,7 +163,7 @@ class TranscriptBuffer:
                     len(segment.transcript),
                     len(self.unsaved),
                     type(exc).__name__,
-                    _sqlstate(exc),
+                    sqlstate(exc),
                 )
                 return True
             self.unsaved.pop(0)
@@ -188,12 +188,3 @@ class TranscriptBuffer:
                 self.unsaved[0].seq,
                 self.unsaved[-1].seq,
             )
-
-
-def _sqlstate(exc: BaseException) -> str | None:
-    """DB 드라이버가 준 SQLSTATE (예: `08006`). 다섯 자리 코드라 원문이 섞이지 않는다.
-
-    SQLAlchemy 는 드라이버 예외를 `orig` 에 담는다. 그 밖의 예외나 모양이 다르면 None.
-    """
-    code = getattr(getattr(exc, "orig", None), "sqlstate", None)
-    return code if isinstance(code, str) and re.fullmatch(r"[0-9A-Z]{5}", code) else None
