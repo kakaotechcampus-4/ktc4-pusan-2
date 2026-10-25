@@ -28,7 +28,14 @@ def test_feature_paths_are_listed_without_api_prefix() -> None:
     import json
 
     paths = set(json.loads(_export_module().render())["paths"])
-    assert paths == {"/health", "/ready", "/scripts/rubric", "/takes/analyze", "/takes/rescore"}
+    assert paths == {
+        "/health",
+        "/ready",
+        "/scripts/rubric",
+        "/takes/analyze",
+        "/takes/rescore",
+        "/coach/plan",
+    }
 
 
 def test_error_responses_document_the_common_error_body() -> None:
@@ -42,3 +49,11 @@ def test_error_responses_document_the_common_error_body() -> None:
         assert schema == {"$ref": "#/components/schemas/ErrorResponse"}
     assert "503" in doc["paths"]["/ready"]["get"]["responses"]
     assert "HTTPValidationError" not in doc["components"]["schemas"]
+
+
+def test_coach_plan_documents_only_422_and_500_as_errors() -> None:
+    import json
+
+    responses = json.loads(_export_module().render())["paths"]["/coach/plan"]["post"]["responses"]
+    # LLM 실패는 기본 계획 200 이라 502 · 503 · 504 를 내지 않는다
+    assert set(responses) == {"200", "422", "500"}
