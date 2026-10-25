@@ -20,7 +20,7 @@
   - 발표자 실수인지 인식 오류인지의 최종 판단. 발음이 비슷한 말은 위치와 함께 넘기고, 사용자 답이 오면 코드로 다시 계산만 한다.
   - LLM이 점수를 매기는 것. LLM은 판정만 하고 점수는 코드가 계산한다(같은 판정에 같은 점수가 나오게).
   - 전달력(말 속도 · 군더더기 · 시선) 평가, 코칭 문장, 결론(좋다 · 나쁘다). 결론은 리뷰가 낸다.
-  - 저장. 평가 기준과 채점은 BE가 AI가 낸 모양 그대로 저장해 그대로 돌려보내고, 내용은 해석하지 않는다.
+  - 저장. 평가 기준과 채점은 BE가 AI가 낸 모양 그대로 저장해 그대로 돌려보내고, 내용은 해석하지 않는다(리포트 · 확인 화면에 필요한 값만 읽는다, 12-2).
 
 # 1. 왜 필요한가
 ## 1-1. 배경
@@ -127,7 +127,7 @@ ai/research/script-coverage-evaluation/
 | 프롬프트는 `.py` 상수다 | 프롬프트 · 출력 스키마 · 모델 이름이 설정 해시에 들어간다. 텍스트 파일은 git이 줄바꿈을 바꿀 수 있어 해시가 달라진다 |
 | scikit-learn은 `1.8.x`, kiwipiepy는 `0.23.x`로 고정한다 | 키워드(TF-IDF) · 형태소 결과가 판마다 달라 평가 기준이 바뀐다. 올릴 때는 캐시 재생으로 같은지 먼저 본다 |
 | 판정 임계값 · 판정 상태별 점수 · 역할별 중요도 · 중요도 가중치는 최상위 `config.py`가 모아 해시한다(`criteria_version`) | 기준이 바뀐 것을 버전으로 추적한다 |
-| 입력 모델은 모르는 필드를 무시하고, 출력 모델은 정해진 필드만 낸다. 단, 평가 기준 · 채점 본문은 AI가 낸 모양 그대로 왕복하므로 BE는 해석하지 않는다 | `architecture.md` 2절 '모르는 필드' |
+| 입력 모델은 모르는 필드를 무시하고, 출력 모델은 정해진 필드만 낸다. 단, 평가 기준 · 채점 본문은 AI가 낸 모양 그대로 왕복하므로 BE는 해석하지 않는다(필요한 값만 읽는다, 12-2) | `architecture.md` 2절 '모르는 필드' |
 
 # 5. 입력 · 출력 계약
 요청 · 응답의 원본은 최상위 `schemas.py`의 pydantic 모델이다. 평가 기준 · 채점의 필드 원본은 `shared/rubric.py` · `stt_evaluation/schemas.py`이고, 필드 하나하나의 표는 5-6에 있다. 아래 예시는 필드 일부만 보인다. 장 번호 `slide_number`는 1부터이고(`architecture.md` 6-1) 이어질 필요는 없다. 문장 번호 · 근거 번호는 0부터다.
@@ -282,7 +282,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 ```
 
 ## 5-6. 평가 기준 · 채점 필드
-5-3의 `rubrics[]` · `evaluations[]` 한 장의 필드다. BE는 이 본문을 해석하지 않고 저장했다 그대로 돌려보내지만(12-2), FE 확인 화면과 리뷰가 읽는 값이 여기서 나온다. 원본은 `shared/rubric.py`(평가 기준) · `stt_evaluation/schemas.py`(채점)이다. 글자 위치(`span`)는 `[시작, 끝)` 코드 포인트이고 정규화 텍스트 기준이다(원본 STT 기준은 `stt_raw_span` 하나). '기본값 있음'은 없어도 되는 필드다.
+5-3의 `rubrics[]` · `evaluations[]` 한 장의 필드다. BE는 이 본문을 해석하지 않고 저장했다 그대로 돌려보내지만(BE가 읽는 필드는 12-2), FE 확인 화면과 리뷰가 읽는 값이 여기서 나온다. 원본은 `shared/rubric.py`(평가 기준) · `stt_evaluation/schemas.py`(채점)이다. 글자 위치(`span`)는 `[시작, 끝)` 코드 포인트이고 정규화 텍스트 기준이다(원본 STT 기준은 `stt_raw_span` 하나). '기본값 있음'은 없어도 되는 필드다.
 
 **평가 기준** (장 하나, `/scripts/rubric`이 만들고 `/takes/analyze`가 읽는다)
 
@@ -691,12 +691,15 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 | 대본 버전의 평가 기준 상태 · 작업 기록 | 부르기 전 · 재시도 전 · 끝난 뒤 | `script_versions.rubric_status` (String(16), nullable) · `rubric_requested_at` (timestamptz, nullable) · `rubric_retry_used` (Boolean, NOT NULL, 기본 false) | `rubric_status`: `PENDING`(만드는 중) · `DONE`(모든 장 성공) · `PARTIAL`(다시 부른 뒤에도 실패한 장이 있음) · `FAILED`(모든 장 실패). null은 아직 부르지 않음. `rubric_requested_at`: 작업을 시작한 시각이자 그 작업의 표식. `rubric_retry_used`: 그 버전의 재시도 1회를 썼는가(보내기 전에 true) | BE가 쓰고 읽는다 · Take 종료 뒤 채점을 부를 때 (`PENDING`이면 끝날 때까지 기다린다), BE가 재시작할 때 남은 한도 | 대본 버전마다 하나. null → `PENDING` 조건부 갱신으로 작업을 하나만 시작하고, 출력은 아직 `PENDING`이고 `rubric_requested_at`이 같을 때만 반영한다(`architecture.md` 1-7) | 대본 버전과 함께 |
 | 대본 전달도 채점 | `/takes/analyze` · `/takes/rescore` 응답 | `take_ai_results` (`take_id` · `kind` = `SCRIPT_COVERAGE` · `payload` JSONB · `meta` JSONB · `revision` Integer NOT NULL 기본 0) | `payload` = 응답에서 `meta`를 뺀 `{take_id, evaluations, take_scores, confirmations, failed}`, `meta` = 응답의 `meta`. `revision`은 행을 처음 만들 때 0이고, 그 행의 `payload`를 바꿀 때마다 1 올린다(`take_ai_results`의 모든 kind에 같은 규칙. 최신인지 확인하는 데 쓰는 것은 이 kind다). 잰 크기: 장 하나 채점 평균 약 9.8 KB(5.7–14.8 KB), 10장 약 98 KB · 30장 약 293 KB | BE가 쓴다 · 리뷰 `script_coverage` · `previous_takes[].take_scores`, `/takes/rescore`의 `evaluations` | `(take_id, kind)` 유일 제약, 하나만 둔다. 다시 채점하거나 확인을 반영하면 덮는다(최초 200의 완전한 결과를 먼저 저장하고 새 성공 장을 병합 후보로 보존한다. `/takes/rescore` 성공 때만 최신 확정본·meta·요약을 함께 교체한다) | Take와 함께. 장별 STT 텍스트(`stt_text` · `stt_sentences`)는 사용자 발화다 |
 | 대본 전달도 병합 후보 (BE 내부용) | 일부 장 재채점 성공 뒤, rescore 전 | `take_ai_results` (`take_id` · `kind`=`SCRIPT_COVERAGE_PENDING` · `payload` JSONB) | `{script_version_id, base_revision, evaluations, failed, retry_meta}`. base_revision은 후보를 만들 때 읽은 확정본(`SCRIPT_COVERAGE` 행)의 `revision`(정수), evaluations는 새 성공 장을 합친 채점, failed는 남은 실패 전체, retry_meta는 재채점 응답 meta. 크기는 evaluations에 비례하며 아직 실측하지 않았다 | BE가 쓴다 · 복구 rescore 입력. FE·리뷰·결과 조회에 확정 채점으로 제공하지 않는다. `kind` 값이 23자라 `take_ai_results.kind` 칸은 그 길이를 담을 수 있어야 한다(지금 BE 칸 `String(20)`은 `String(32)`로 늘린다) | Take 버전과 확정본 `revision` = `base_revision`을 확인한 뒤 저장한다. 후보 저장은 확정본을 바꾸지 않는다. rescore 성공 때 확정본 교체와 후보 삭제를 원자적으로 한다(12-2) | 기존 Take 결과와 같은 보관·삭제. 원문을 로그에 남기지 않는다 |
-| Take의 채점 재시도 기록 · 리뷰 보류 사유 | 재시도를 보내기 전 · 병합 rescore가 끝내 실패했을 때 | `takes.coverage_retry_used` · `coverage_rescore_retry_used` (둘 다 Boolean, NOT NULL, 기본 false), `takes.analysis_hold_reason` (String, nullable) | `coverage_retry_used`: `/takes/analyze`의 재시도 1회(부분 · 전체 공유)를 썼는가. `coverage_rescore_retry_used`: 병합 rescore의 재시도 1회를 썼는가. 둘 다 보내기 전에 true로 바꾼다. `analysis_hold_reason`: null = 보류 아님, `COVERAGE_RESCORE_FAILED` = 병합 rescore가 허용된 재시도 뒤에도 실패해 리뷰를 보류함 | BE가 쓰고 읽는다 · BE가 재시작할 때 남은 한도와 이어 갈 Take를 고른다(`architecture.md` 1-3 · 1-7) | Take마다 하나. 사람이 정한 복구도 재시도 칸을 false로 되돌리지 않는다. 복구가 성공하면 `analysis_hold_reason`만 null로 되돌린다 | Take와 함께 |
+| Take의 채점 재시도 기록 · 리뷰 보류 사유 | 채점 작업을 시작할 때 · 재시도를 보내기 전 · 병합 rescore가 끝내 실패했을 때 | `takes.coverage_retry_used` · `coverage_rescore_retry_used` (둘 다 Boolean, NOT NULL, 기본 false), `takes.analysis_hold_reason` (String, nullable), `takes.coverage_requested_at` (timestamptz, nullable) | `coverage_retry_used`: `/takes/analyze`의 재시도 1회(부분 · 전체 공유)를 썼는가. `coverage_rescore_retry_used`: 병합 rescore의 재시도 1회를 썼는가. 둘 다 보내기 전에 true로 바꾼다. `analysis_hold_reason`: null = 보류 아님, `COVERAGE_RESCORE_FAILED` = 병합 rescore가 허용된 재시도 뒤에도 실패해 리뷰를 보류함. `coverage_requested_at`: 지금 채점 작업을 맡은 작업의 표식(시작 시각). null = 맡은 작업 없음. Take마다 채점 작업 하나만 돌게 하고, 작업이 끝나면(단계 전환 · 보류) 비운다(`architecture.md` 1-7) | BE가 쓰고 읽는다 · BE가 재시작할 때 남은 한도와 이어 갈 Take를 고른다(`architecture.md` 1-3 · 1-7) | Take마다 하나. 사람이 정한 복구도 재시도 칸을 false로 되돌리지 않는다. 복구가 성공하면 `analysis_hold_reason`만 null로 되돌린다 | Take와 함께 |
 | 확인 답 | FE 확인 화면에서 답할 때 | 따로 두지 않는다. `/takes/rescore` 결과의 장별 `applied_answers`로 위 `payload` 안에 남는다 | `{item_id: as_script · as_stt}`. 답을 받은 뒤 `/takes/rescore`가 실패하면 BE는 답을 다시 보낼 수 있게 요청 처리 동안 들고 있는다 | FE가 보내고 BE가 `/takes/rescore`에 싣는다 | 같은 `(slide_number, item_id)` 답이 두 번 오면 한 번만 반영한다(이미 반영한 답은 코어도 유지). 리뷰를 부른 뒤에는 받지 않는다 | Take와 함께 |
 | 리포트 요약 내용 전달 칸 | 채점을 저장할 때 | `take_summaries.speak_accuracy` (nullable) | `take_scores.content_coverage` × 100 (`architecture.md` 1-1 대응 표). 모든 장이 실패했거나 `content_coverage`가 null이면 null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행, 확인 반영으로 덮는다 | Take와 함께 |
 
 ## 12-2. 저장 규칙
-- 평가 기준 · 채점은 AI가 낸 모양 그대로 저장해 그대로 돌려보낸다. BE는 내용을 해석하지 않고, 필요한 값(`take_scores.content_coverage` · `confirmations`)만 읽는다. 결과는 `meta`와 함께 저장한다.
+- 평가 기준 · 채점은 AI가 낸 모양 그대로 저장해 그대로 돌려보낸다. BE는 내용을 해석하지 않고, 필요한 값만 읽는다. 결과는 `meta`와 함께 저장한다.
+  - 리포트 · 확인 목록: 채점의 `take_scores.content_coverage` · `confirmations`.
+  - 확인 화면: `confirmations`의 항목마다 같은 장 채점 `similar_items[]`에서 `item_id`가 같은 항목의 `kind` · `script_sentence_index` · `stt_sentence_index`, 그 번호로 고르는 채점 `stt_sentences[]`와 평가 기준 `sentences[].text`. 찾지 못하면 BE는 그 값을 null로 둔다.
+  - BE가 읽는 위 필드는 BE와 주고받는 값이다. 이름 · 뜻을 바꿀 때는 BE와 합의한다.
 - 평가 기준 생성 · 재파싱 비교 · 최초 채점 · 장별 재시도 · 병합 후보 · 리뷰 보류 · 수동 복구의 순서와 조건은 `architecture.md` 1-7이 기준이다. 아래는 그 조건을 DB에서 지키는 방법이다.
 - 확인 답은 리뷰를 부르기 전까지만 받는다. 리뷰는 미해결 병합 후보가 없을 때 최신 확정 SCRIPT_COVERAGE를 읽는다. 성공한 병합 rescore와 확인 답 반영 결과도 포함한다.
 - 한 채점 응답의 `take_ai_results` · `take_summaries.speak_accuracy`는 한 트랜잭션으로 저장한다.
@@ -711,7 +714,7 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 - **후보 저장**: 후보는 확정본 행의 `revision`을 읽어 `base_revision`에 넣고, 같은 트랜잭션에서 그 `revision`이 그대로이고 후보의 `script_version_id`가 Take의 저장 버전과 같을 때만 `SCRIPT_COVERAGE_PENDING` 행으로 넣는다. 후보 저장은 확정본 · meta · 요약을 바꾸지 않는다.
 - **재시도 기록**: `script_versions.rubric_retry_used` · `takes.coverage_retry_used` · `takes.coverage_rescore_retry_used`는 그 재시도 요청을 보내기 전에 true로 커밋한다. 그래서 보낸 뒤 BE가 재시작해도 같은 재시도를 다시 보내지 않는다.
 - JSON 칸은 JSONB이고 DB 크기 제약은 두지 않는다. 12-1의 잰 크기(장 수에 비례)보다 크게 벗어나면 BE가 로그로 남긴다.
-- 테이블 · 칸이 바뀌면 배포 전에 BE가 마이그레이션한다(`script_slides.rubric` · `rubric_meta` · `script_versions.rubric_status` · `rubric_requested_at` · `rubric_retry_used` · `take_ai_results.revision` · `take_ai_results.kind` 길이(`String(32)`) · `takes.coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason` · `take_summaries`의 nullable 칸 포함). 저장 모양이 바뀌면 계약 변경이다.
+- 테이블 · 칸이 바뀌면 배포 전에 BE가 마이그레이션한다(`script_slides.rubric` · `rubric_meta` · `script_versions.rubric_status` · `rubric_requested_at` · `rubric_retry_used` · `take_ai_results.revision` · `take_ai_results.kind` 길이(`String(32)`) · `takes.coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason` · `coverage_requested_at` · `take_summaries`의 nullable 칸 포함). 저장 모양이 바뀌면 계약 변경이다.
 
 # 13. 품질 검증
 평가 데이터에는 가상 발표와 실제 리허설을 함께 둔다(`architecture.md` 12절). 결과 JSON에는 기능 버전과 config 해시, 잰 모델을 남긴다.
@@ -770,6 +773,6 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 | LLM 호출 | 평가 기준 장마다 최대 3번, 채점 장마다 1번 + 어긋난 장 1번, 다시 계산 0번 | 8절 |
 | 시간 예산 | rubric · analyze AI 120초 / BE 130초 (실패한 장만 1번), rescore BE 10초 (1번), LLM 호출 한 번 20초 (`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`) | 8절 |
 | 버전 | `schema_version` `1.0` · `feature_version` `script_coverage-1.0` · `criteria_version` `script_coverage-1.0+<config 해시>` · `rubric_schema_version` `1.2` | 9절 |
-| 저장 | 평가 기준 `script_slides.rubric` · `rubric_meta`, 상태 · 작업 기록 `script_versions.rubric_status` · `rubric_requested_at` · `rubric_retry_used`, 채점 `take_ai_results` (`take_id`, `kind`=`SCRIPT_COVERAGE`, 바꿀 때마다 `revision` + 1), 병합 후보 `SCRIPT_COVERAGE_PENDING`(`base_revision`), Take 재시도 기록 · 보류 사유 `takes.coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason`, 리포트 `take_summaries.speak_accuracy` — 괄호는 유일 제약. 확인 답은 채점 안 `applied_answers` | 12-1 · 12-2 |
+| 저장 | 평가 기준 `script_slides.rubric` · `rubric_meta`, 상태 · 작업 기록 `script_versions.rubric_status` · `rubric_requested_at` · `rubric_retry_used`, 채점 `take_ai_results` (`take_id`, `kind`=`SCRIPT_COVERAGE`, 바꿀 때마다 `revision` + 1), 병합 후보 `SCRIPT_COVERAGE_PENDING`(`base_revision`), Take 재시도 기록 · 보류 사유 · 작업 표식 `takes.coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason` · `coverage_requested_at`, 리포트 `take_summaries.speak_accuracy` — 괄호는 유일 제약. 확인 답은 채점 안 `applied_answers` | 12-1 · 12-2 |
 | 장 구간 | 장 변경 기록 `take_slide_events` 전체, 단어는 `start_ms`가 든 구간의 장 | 5-2 |
 | 의존성 | pydantic · `kiwipiepy>=0.23,<0.24` · `scikit-learn>=1.8,<1.9`, Python 3.12, 서버 안 모델(형태소 분석기) → `/ready` | 4-3 · 11절 |
