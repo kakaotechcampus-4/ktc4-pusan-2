@@ -12,7 +12,7 @@ export interface HomeTake {
   take_id: string;
   /** 점수 유무가 아니라 이 값으로 분석 상태를 판단합니다 (BE #490) */
   status: TakeStatus;
-  /** 끝나지 않았으면 null. 키는 항상 옵니다 */
+  /** 사용자가 끝냈거나 아직 끝나지 않았으면 null. 키는 항상 옵니다 */
   end_reason: TakeEndReason | null;
 }
 

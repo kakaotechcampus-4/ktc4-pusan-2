@@ -3,7 +3,7 @@ import type { PitchListResponse } from '@/types/home';
 
 /**
  * Updated #47 response including server-issued UUID fields.
- * Take 3 은 완료됐지만 점수가 없고, 4 는 분석 중, 5 는 중단(FAILED + ABANDONED) 입니다.
+ * Take 2 는 사용자가 끝내 end_reason 이 null, Take 3 은 완료됐지만 점수가 없고, 4 는 분석 중, 5 는 중단(FAILED + ABANDONED) 입니다.
  */
 export const homeFixture: PitchListResponse = {
   pitches: [
@@ -34,7 +34,7 @@ export const homeFixture: PitchListResponse = {
           score: 72,
           delta: 5,
           status: 'COMPLETED',
-          end_reason: 'SILENCE',
+          end_reason: null,
         },
         {
           take_id: '20000000-0000-4000-8000-000000000003',
