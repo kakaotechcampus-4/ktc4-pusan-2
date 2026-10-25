@@ -1,7 +1,8 @@
 from script_coverage.script_analysis.schemas import SlideScript
 from script_coverage.script_analysis.semantic import EMPTY_SEMANTICS, semantic_user_message
 from script_coverage.shared.text import normalize_script
-from tests.unit.shared.slides import SLIDES
+
+from ..shared.slides import SLIDES
 
 
 def test_semantic_user_message_format():

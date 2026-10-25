@@ -24,8 +24,9 @@ from script_coverage.stt_evaluation.schemas import (
     VerifierResult,
 )
 from script_coverage.version import FEATURE_VERSION, SCHEMA_VERSION
-from tests.unit.fakes import FakeLLM, KeepFirstVerifier, deck_rubrics
-from tests.unit.shared.slides import SLIDES
+
+from .fakes import FakeLLM, KeepFirstVerifier, deck_rubrics
+from .shared.slides import SLIDES
 
 MODEL = "test-model"
 NUMBERS = (4, 6, 7)

@@ -9,8 +9,9 @@ from script_coverage.script_analysis.core import analyze_script as analyze_slide
 from script_coverage.script_analysis.schemas import SlideScript
 from script_coverage.shared.llm_step import ERROR_MESSAGES
 from script_coverage.version import FEATURE_VERSION, SCHEMA_VERSION
-from tests.unit.fakes import FakeLLM, SlideFailingLLM, empty_script_llms
-from tests.unit.shared.slides import SLIDES
+
+from .fakes import FakeLLM, SlideFailingLLM, empty_script_llms
+from .shared.slides import SLIDES
 
 
 class CodedError(Exception):

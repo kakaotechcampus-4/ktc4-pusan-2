@@ -3,7 +3,8 @@
 from script_coverage.stt_evaluation.judge import empty_stt_evaluation, judged_sentences
 from script_coverage.stt_evaluation.merge import resolve_name_checks
 from script_coverage.stt_evaluation.schemas import FactCheck
-from tests.unit.fakes import deck_rubrics
+
+from ..fakes import deck_rubrics
 
 
 def _unverified(n: int) -> list[FactCheck]:

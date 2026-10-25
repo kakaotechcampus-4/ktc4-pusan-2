@@ -7,8 +7,9 @@ from script_coverage.script_analysis.core import analyze_script
 from script_coverage.script_analysis.schemas import (
     SlideScript,
 )
-from tests.unit.fakes import DeckAwareLLM, empty_script_llms
-from tests.unit.shared.slides import SLIDES
+
+from ..fakes import DeckAwareLLM, empty_script_llms
+from ..shared.slides import SLIDES
 
 
 def test_analyze_script_empty_slide_needs_no_llm():

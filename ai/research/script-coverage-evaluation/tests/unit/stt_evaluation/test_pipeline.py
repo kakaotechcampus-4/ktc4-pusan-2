@@ -17,7 +17,8 @@ from script_coverage.stt_evaluation.schemas import (
     VerifierResult,
 )
 from script_coverage.stt_evaluation.verify import verifier_config_hash
-from tests.unit.fakes import FakeLLM, KeepFirstVerifier, deck_rubrics
+
+from ..fakes import FakeLLM, KeepFirstVerifier, deck_rubrics
 
 
 def _notebook_hash(model, prompt, schema):

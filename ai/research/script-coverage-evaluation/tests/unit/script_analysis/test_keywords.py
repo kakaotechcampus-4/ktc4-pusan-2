@@ -1,6 +1,7 @@
 from script_coverage.script_analysis.keywords import extract_keywords_tfidf, tokenize_nouns
 from script_coverage.shared.text import normalize_script
-from tests.unit.shared.slides import SLIDES
+
+from ..shared.slides import SLIDES
 
 
 def test_tokenize_nouns():

@@ -11,7 +11,8 @@ from script_coverage.script_analysis.draft import (
 from script_coverage.script_analysis.schemas import KeyPointDraft, SentenceLabel, SlideScript
 from script_coverage.shared.facts import extract_critical_facts
 from script_coverage.shared.text import normalize_script
-from tests.unit.shared.slides import SLIDES
+
+from ..shared.slides import SLIDES
 
 # 기대값은 원본 노트북 셀 코드를 같은 입력으로 돌려 얻은 것이다
 

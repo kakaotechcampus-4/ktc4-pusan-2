@@ -15,7 +15,10 @@ from pathlib import Path
 
 import pytest
 
-CORE = Path(__file__).resolve().parents[2] / "src" / "script_coverage"
+import script_coverage
+
+# 코어 패키지 파일 기준으로 찾는다 — 서비스로 옮겨도 경로를 고치지 않게
+CORE = Path(script_coverage.__file__).resolve().parent
 
 THIRD_PARTY = {"pydantic", "kiwipiepy", "sklearn", "numpy", "scipy"}
 FORBIDDEN_STDLIB = {

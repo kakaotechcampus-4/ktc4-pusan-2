@@ -123,7 +123,8 @@ class DeckAwareLLM:
 def deck_rubrics(numbers=(4, 6, 7), model="test-model") -> list:
     """가상대본1 의 평가 기준 (`DeckAwareLLM` 으로 만든 것). script_name 은 `sv-3`."""
     from script_coverage.core import ScriptLLMs, analyze_script
-    from tests.unit.shared.slides import SLIDES
+
+    from .shared.slides import SLIDES
 
     llms = ScriptLLMs(**{s: DeckAwareLLM(s) for s in ("semantic", "final", "unit")})
     response = analyze_script(
