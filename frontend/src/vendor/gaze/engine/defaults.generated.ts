@@ -2,7 +2,7 @@
 // tests/lab/test_web_engine_sources.py fails when this file is stale.
 export const DEFAULTS = {
   "_generated_by": "tools/export_config.py -- do not edit by hand",
-  "config_hash": "14ed457ab13b",
+  "config_hash": "32ad2751de59",
   "version": {
     "modelVersion": "gaze_v1.1.0",
     "gazeBackbone": "head_pose",
@@ -118,24 +118,7 @@ export const DEFAULTS = {
   "evidence": {
     "slice_ms": 1000,
     "min_frames_per_slice": 4,
-    "slice_vote_threshold": 0.6,
-    "short_window_ms": 5000,
-    "long_window_ms": 30000,
-    "script_min_ms": 3000,
-    "script_full_ms": 10000,
-    "screen_min_ms": 5000,
-    "screen_full_ms": 15000,
-    "away_min_ms": 2000,
-    "away_full_ms": 8000,
-    "low_eye_contact_ratio": 0.3,
-    "low_eye_contact_min_measured_ms": 15000,
-    "unmeasurable_coverage": 0.5,
-    "unmeasurable_reliability": 0.5,
-    "segment_min_ms": 1000,
-    "outcome_before_ms": 5000,
-    "outcome_delay_ms": 5000,
-    "outcome_after_ms": 5000,
-    "outcome_min_change": 0.2
+    "slice_vote_threshold": 0.6
   },
   "sweep": {
     "ticks": 32,

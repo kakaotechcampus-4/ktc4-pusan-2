@@ -6,8 +6,8 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과 카메라 화면 �
 | 항목 | 값 |
 | --- | --- |
 | 원본 | `ai/research/gaze-tracking/web/src/{engine,camera,worker}` (`engine/__tests__` 포함) |
-| 기준 커밋 | `1f92351` (fix(ai): 프레임 예외 · Worker 종료 · 카메라 끊김에서 시선 분석이 조용히 멈추지 않게 함) — develop `a315a0d` 시점 (AI #104~#108) |
-| 모델 버전 | `gaze_v1.1.0+head_pose+reference_anchor_v1` · 설정 해시 `14ed457ab13b` |
+| 기준 커밋 | `21763f4` (refactor(ai): 시선 옛 서버 코어 정리 — 엔진 설정에서 서버 판정 값 제거) — develop `c94176b` 시점 |
+| 모델 버전 | `gaze_v1.1.0+head_pose+reference_anchor_v1` · 설정 해시 `32ad2751de59` |
 | 사용법 원문 | `ai/research/gaze-tracking/web/README.md` (FE에 붙이는 법 · 카메라 화면 붙이기) · `ai/research/gaze-tracking/DEPLOY.md` |
 
 ## 누가 무엇을 쓰나
