@@ -7,9 +7,9 @@
  *   - the box the view fills (#stage: the whole window, or a 16:9 card with ?box),
  *   - the start card, the camera permission and going full screen,
  *   - a dev panel next to the picture in live, built only from the view's events:
- *     the frontend's own 1 s vote (`TemporalVoter`, imported read-only) and the
- *     1 s records (`engine/evidence.ts`) the frontend sends.  What the server makes of
- *     the records (issues, take metrics) is the Python module `gaze` and is not shown here.
+ *     the 1 s records (`engine/evidence.ts`) the frontend sends, and the rehearsal border
+ *     drawn from the latest record.  What the server makes of the records (issues, take
+ *     metrics) is the Python module `gaze` and is not shown here.
  *
  * So everything this page shows is what the frontend can get from the view.
  *
@@ -17,8 +17,7 @@
  * `window.__smoke` (scripts/smoke.mjs drives it in headless Chrome).
  */
 import './styles.css';
-import { TemporalVoter } from '@fe/workers/temporalVoter';
-import { GazeCameraView, type CameraPhase, type SetupResult } from '../camera';
+import { GazeCameraView, type CameraPhase, type CameraZone, type SetupResult } from '../camera';
 import {
   DIRECTION_ARROW,
   DIRECTION_NAME,
@@ -26,13 +25,17 @@ import {
   ISSUE,
   STATE_NAME,
   UNCERTAIN_REASON,
-  ZONE_NAME,
 } from '../camera/text';
 import type { CalibrationQualityDict } from '../engine';
 import { makeConfig } from '../engine/config';
 import type { ConditionState } from '../engine/condition';
 import type { FrameDecision } from '../engine/contract';
-import { GazeEvidenceRecorder, sampleToDict, type GazeSample } from '../engine/evidence';
+import {
+  GazeEvidenceRecorder,
+  sampleToDict,
+  type GazeSample,
+  type SampleState,
+} from '../engine/evidence';
 import type { GaugeStatus } from '../engine/gauge';
 import type { PlacementResultDict } from '../engine/placement';
 import type { PreconditionReport } from '../engine/preconditions';
@@ -66,8 +69,8 @@ const state = {
   /** Why recent frames were "판정 보류" (t_ms, reason), for the dev panel. */
   uncertain: [] as [number, string][],
   result: null as SetupResult | null,
-  voter: new TemporalVoter(),
-  zone: null as { zone: string; confidence: number; sampleCount: number } | null,
+  /** The border now, from the latest 1 s record. */
+  zone: null as { zone: CameraZone; state: SampleState; confidence: number } | null,
   evidence: new GazeEvidenceRecorder(EVIDENCE),
 };
 
@@ -154,7 +157,6 @@ function go(stage: Stage): void {
   state.stage = stage;
   document.body.dataset.stage = stage;
   if (stage === 'live' && entering) {
-    state.voter = new TemporalVoter();
     state.zone = null;
     state.uncertain = [];
     state.evidence.reset();
@@ -224,7 +226,7 @@ function liveHtml(): string {
     <div class="now">
       <p class="now-label">지금 보는 곳</p>
       <p class="now-state" id="now-state">–</p>
-      <p class="now-zone" id="now-zone">1초 판정 대기 중</p>
+      <p class="now-zone" id="now-zone">1초 기록 대기 중</p>
       <p class="now-reason" id="now-reason"></p>
     </div>
     <div class="aim">
@@ -263,18 +265,6 @@ function liveHtml(): string {
 function onDecision(d: FrameDecision): void {
   if (state.stage !== 'live') return;
   if (SMOKE && smoke.decisions.length < 40) smoke.decisions.push(d);
-  // The frontend's own adapter rule: no face -> no vote.
-  if (d.face_valid)
-    state.voter.push({ zone: d.label, confidence: Math.max(d.p_camera, d.p_bottom) }, d.t_ms);
-  const z = state.voter.decide(d.t_ms);
-  if (z) {
-    state.zone = z;
-    smoke.zones.push(z);
-    // The 1 s decision goes back to the view as the rehearsal border.
-    view.setZone(z.zone as 'CAMERA' | 'BOTTOM' | 'UNCERTAIN');
-    $('#now-zone').textContent =
-      `1초 판정 · ${ZONE_NAME[z.zone as keyof typeof ZONE_NAME]} (${Math.round(z.confidence * 100)}%)`;
-  }
   renderReason(d);
   renderAim(d);
   const nowState = $('#now-state');
@@ -282,7 +272,10 @@ function onDecision(d: FrameDecision): void {
     ? `${STATE_NAME[d.state]} <span class="dir">${DIRECTION_ARROW[d.direction]} ${DIRECTION_NAME[d.direction]}</span>`
     : STATE_NAME[d.state];
   nowState.dataset.state = d.state;
-  if (state.evidence.record(d).length) renderEvidence();
+  if (state.evidence.record(d).length) {
+    renderEvidence();
+    renderBorder();
+  }
   for (const li of document.querySelectorAll<HTMLElement>('.bar')) {
     const c = li.dataset.class as StateClass;
     const p = d.probs?.[c];
@@ -309,7 +302,7 @@ function onDecision(d: FrameDecision): void {
   const p95 = percentile(state.processMs, 95);
   $('#dev').textContent = [
     `engine     ${state.version}${state.isolated ? '  (crossOriginIsolated)' : ''}`,
-    `frame      ${d.state} -> FE zone ${d.face_valid ? d.label : 'null (no sample)'}`,
+    `frame      ${d.face_valid ? d.state : 'UNMEASURED (no face)'}`,
     `head       yaw ${d.head_yaw_deg.toFixed(1)}°  pitch ${d.head_pitch_deg.toFixed(1)}°`,
     `outside    ${d.offset_deg ? `right ${d.offset_deg[0].toFixed(1)}°  up ${d.offset_deg[1].toFixed(1)}°` : '–'}${d.direction ? `  -> ${d.direction}` : ''}`,
     `latency    p95 ${p95.toFixed(1)} ms (worker) · detect median ${percentile(state.detectMs, 50).toFixed(1)} ms`,
@@ -405,10 +398,6 @@ function renderReason(d: FrameDecision): void {
   } else if (d.state === 'OTHER') {
     el.textContent = '보정한 화면·렌즈·대본 영역 밖을 보고 있어요';
   } else el.textContent = '';
-  // The frontend's 3 zones have no "elsewhere": OTHER counts there as 판정 불가.
-  if (state.zone?.zone === 'UNCERTAIN' && d.state === 'OTHER')
-    $('#now-zone').textContent =
-      `1초 판정 · 판정 불가 (프론트엔드 3구역에서는 '다른 곳'도 판정 불가로 셉니다)`;
   while (state.uncertain.length && d.t_ms - state.uncertain[0]![0] > 30_000)
     state.uncertain.shift();
 }
@@ -466,9 +455,38 @@ function renderEvidence(): void {
   if (SMOKE) smoke.evidence = { samples: samples.map(sampleToDict) };
 }
 
+/**
+ * The view's border has three zones, so the latest 1 s record is folded into them: the screen
+ * and the script are both "the screen" (BOTTOM), everything else is 판정 불가.  The record
+ * itself, which the frontend sends, keeps all six states.
+ */
+const BORDER_ZONE: Partial<Record<SampleState, CameraZone>> = {
+  CAMERA: 'CAMERA',
+  SCREEN: 'BOTTOM',
+  BOTTOM: 'BOTTOM',
+};
+
+/** Once per completed 1 s record: the rehearsal border and the line under the picture. */
+function renderBorder(): void {
+  const last = state.evidence.samples.at(-1);
+  if (!last) return;
+  state.zone = {
+    zone: BORDER_ZONE[last.state] ?? 'UNCERTAIN',
+    state: last.state,
+    confidence: last.confidence,
+  };
+  smoke.zones.push(state.zone);
+  view.setZone(state.zone.zone);
+  $('#now-zone').textContent =
+    `1초 기록 · ${sampleName(last)} (득표 ${Math.round(last.confidence * 100)}%)`;
+}
+
+function sampleName(s: GazeSample): string {
+  return s.state === 'UNMEASURED' ? '잴 수 없음' : STATE_NAME[s.state as keyof typeof STATE_NAME];
+}
+
 function recordHtml(s: GazeSample): string {
-  const name =
-    s.state === 'UNMEASURED' ? '잴 수 없음' : STATE_NAME[s.state as keyof typeof STATE_NAME];
+  const name = sampleName(s);
   const dir = s.direction ? ` ${DIRECTION_ARROW[s.direction]} ${DIRECTION_NAME[s.direction]}` : '';
   return `
     <li class="${s.state === 'UNCERTAIN' || s.state === 'UNMEASURED' ? 'passive' : ''}">

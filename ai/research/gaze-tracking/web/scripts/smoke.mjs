@@ -224,7 +224,7 @@ try {
     typeof jitter === 'number' && jitter < 1.5,
     `head-direction jitter of real MediaPipe on a still face (${typeof jitter === 'number' ? `${jitter.toFixed(2)}°` : 'none'})`,
   );
-  check(s.zones.length >= 1, `1-second votes from the frontend TemporalVoter (${s.zones.length})`);
+  check(s.zones.length >= 1, `1-second border from the 1 s records (${s.zones.length})`);
   const ev = s.evidence;
   const wire = [
     't_ms',
