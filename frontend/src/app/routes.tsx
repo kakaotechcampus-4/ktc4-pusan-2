@@ -58,7 +58,6 @@ const routes = [
   { path: '/takes/:takeId/retry',      title: '업로드 실패 · 재시도 | 피치코치', element: <RetryPage /> },
   { path: '/takes/:takeId',            title: 'Take 리포트 | 피치코치', element: <ReportPage /> },
   { path: '/pitch/:id/comparison',     title: 'Take 비교 | 피치코치', element: <ComparisonPage /> },
-  { path: '/pitch/:id/best',           title: 'Best Take 선택 | 피치코치', element: <Stub id="P8"  name="Best Take 선택" track="B" /> },
   { path: '/me',          title: '마이페이지 | 피치코치', element: <MyPage /> },
   { path: '/privacy',     title: '개인정보 처리방침 | 피치코치', element: <PolicyPage kind="privacy" /> },
   { path: '/terms',       title: '이용약관 | 피치코치', element: <PolicyPage kind="terms" /> },

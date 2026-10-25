@@ -6,14 +6,19 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from coach.config import load_config
+from coach.planner import plan_message
 from coach.schemas import PlanDraft
+from coach_lab import llm as lab_llm
+from coach_lab import plan_eval
 from coach_lab.cache import SqlitePlanCache
-from coach_lab.plan_eval import PLAN_SCENARIOS_DIR, evaluate_plans
+from coach_lab.plan_eval import PLAN_SCENARIOS_DIR, evaluate_plans, plan_request
 from coach_lab.simulator import Scenario, check_expect, run
 
 PLAN_SCENARIOS = sorted(PLAN_SCENARIOS_DIR.glob("*.json"))
@@ -115,6 +120,22 @@ def test_unfounded_budget_is_dropped_and_counted():
     assert report["summary"]["dropped_rate"] == 1.0
 
 
+def test_plan_request_has_the_feature_doc_shape():
+    req = plan_request(scenario("20_plan_overcoached"))
+    assert req.pitch_id == "pitch-20_plan_overcoached"
+    assert (req.source_take_id, req.script_version_id) == (None, None)
+    assert len(req.previous_take_result["interventions"]) == 14
+    assert set(req.previous_review) == {
+        "overall_summary",
+        "dimensions",
+        "improvements",
+        "mission_results",
+    }
+    mission = plan_request(scenario("18_plan_mission_focus"))
+    assert [(r.area.value, r.slide_number) for r in mission.recurring_issues] == [("TIME", 3)]
+    assert plan_request(scenario("19_plan_nothing_special")).previous_take_result is None
+
+
 def test_scenario_config_reaches_the_planner():
     # 시나리오가 개입 상한 하한을 12 로 바꾸면 계획 검증도 그 값을 쓴다 (직전 Take 14번)
     sc = scenario("20_plan_overcoached").model_copy(
@@ -127,7 +148,7 @@ def test_scenario_config_reaches_the_planner():
 def test_llm_failure_is_reported_not_raised():
     row = row_for("17_plan_numbers_slide", TimeoutError("slow"))
     assert row["valid"] == [False]
-    assert row["fallback_reasons"] == ["LLM_ERROR"]
+    assert row["fallback_reasons"] == ["LLM_TIMEOUT"]
 
 
 def test_samples_are_cached_separately_and_reused(tmp_path: Path):
@@ -140,3 +161,41 @@ def test_samples_are_cached_separately_and_reused(tmp_path: Path):
     assert (llm.calls, again["summary"]["llm_calls"]) == (3, 1)  # 늘린 반복만 새로 부른다
     assert again["summary"]["latency_ms_median"] is not None
     cache.close()
+
+
+def test_scenario_conversion_is_pinned_in_the_llm_input():
+    cfg = load_config().planner
+
+    def take(name: str) -> dict[str, Any]:
+        message = plan_message(plan_request(scenario(name)), cfg)
+        return json.loads(message)["previous_take"]
+
+    eighteen = take("18_plan_mission_focus")
+    assert (eighteen["interventions"], eighteen["effective_rate"]) == (4, 0.5)
+    assert eighteen["problem_seconds"] == {"TIME": 48.0} and eighteen["gave_up"] == []
+    twenty = take("20_plan_overcoached")
+    assert (twenty["interventions"], twenty["effective_rate"]) == (14, 0.14)
+    assert len(twenty["gave_up"]) == 3
+    assert twenty["problem_seconds"] == {"GAZE": 22.0, "SPEED": 18.0, "FILLER": 9.0}
+
+
+def test_main_writes_the_new_result_shape(tmp_path: Path, monkeypatch):
+    """main 을 LLM · 설정 · 캐시 대역으로 돌려 결과 파일 모양을 본다 (실제 LLM 은 부르지 않는다)."""
+
+    class Settings:
+        model = "fake-model"
+
+    monkeypatch.setattr(lab_llm, "load_settings", lambda: Settings())
+    monkeypatch.setattr(
+        lab_llm, "plan_llm", lambda settings: FixedLLM(GOOD["17_plan_numbers_slide"])
+    )
+    out = tmp_path / "plan.json"
+    scenario_path = str(PLAN_SCENARIOS_DIR / "17_plan_numbers_slide.json")
+    argv = [scenario_path, "--samples", "1", "--no-cache", "--out", str(out)]
+    assert plan_eval.main(argv) == 0
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert "feature_version" in report and "policy_version" not in report
+    plan = report["scenarios"][0]["plans"][0]
+    assert set(plan) == {"focus", "relax", "max_interventions"}
+    assert plan["relax"][0]["area"] == "GAZE" and "source" not in plan
+    assert report["scenarios"][0]["valid"] == [True]

@@ -10,8 +10,8 @@ import { scriptHandlers } from './scripts';
 import { takeHistoryHandlers } from './takeHistory';
 import type { TakeCreated, TakeCreateRequest } from '@/types/take';
 import type { ScriptDetail } from '@/types/script';
-import { reportHandlers } from './report';
-import type { HomeResponse, PrepareResponse } from '@/types/api';
+import { reportHandlers, reviewFixture } from './report';
+import type { PrepareResponse } from '@/types/api';
 
 /**
  * 인터페이스 명세 8-4의 JSON을 그대로 옮긴 목.
@@ -29,31 +29,6 @@ import type { HomeResponse, PrepareResponse } from '@/types/api';
 //   나갑니다. 상대 경로 핸들러는 **같은 origin 요청만** 잡으므로 그때 목이 통째로
 //   새고, 화면에는 네트워크 오류만 뜹니다. mocks/auth.ts 가 같은 이유로 그렇게 씁니다.
 
-// 명세 8-4의 표와 열을 맞춰 둔다 — 나란히 놓고 값을 대조하는 게 이 파일의 용도다.
-// prettier-ignore
-const home: HomeResponse = {
-  nearestPitch: { title: '캡스톤 최종 발표', daysUntil: 3 },
-  nextMission: {
-    pitchId: 'p1',
-    nextTakeNumber: 4,
-    missions: [{ id: 'm1', priority: 1, description: 'Slide 6을 Keyword Mode로 설명하기' }],
-  },
-  weeklyTakeCount: 3,
-  weeklyDelta: 1,
-  pitches: [
-    {
-      id: 'p1', title: '캡스톤 최종 발표', timeLimitSec: 600, daysUntil: 3,
-      presentationVersion: 2, scriptVersion: 2, bestTakeId: null,
-      takes: [
-        { id: 't1', takeNumber: 1, status: 'COMPLETED', isBest: false },
-        { id: 't2', takeNumber: 2, status: 'COMPLETED', isBest: false },
-        { id: 't3', takeNumber: 3, status: 'COMPLETED', isBest: false },
-      ],
-    },
-  ],
-  inProgressTake: null,
-};
-
 /**
  * 장치 점검 준비 정보 — BE #296 `PrepareDTO` 모양 그대로(쪽수 · 장 수는 #298). 홈의 p1과 같은 Pitch입니다 —
  * 화면마다 제목·버전·Take 번호가 어긋나면 시연에서 바로 티가 납니다.
@@ -67,6 +42,11 @@ const prepare: PrepareResponse = {
   newer_script: null,
   next_take_number: 4,
   default_script_mode: 'HIGHLIGHT',
+  // BE #409 — 리포트 목(Take 3 리뷰 `next_missions`)과 같은 미션입니다
+  missions: {
+    source_take_number: 3,
+    items: reviewFixture.next_missions.map((m, i) => ({ ...m, mission_id: `m${i + 1}` })),
+  },
 };
 
 /**
@@ -74,6 +54,9 @@ const prepare: PrepareResponse = {
  *   /pitch/prep-newer/device-check     새 대본(v3)이 아직 나누는 중 — 옛 대본으로 연습한다는 안내
  *   /pitch/prep-no-script/device-check 쓸 수 있는 대본이 없음 — 시작을 막음
  *   /pitch/prep-mismatch/device-check  쪽수(10)와 장 수(12)가 다름 — 시작을 막음
+ *   /pitch/prep-first/device-check     첫 Take — 미션 없음(null)
+ *   /pitch/prep-no-mission/device-check   리뷰는 끝났지만 다음 미션이 없음(items: [])
+ *   /pitch/prep-older-mission/device-check Take 3 리뷰가 없어 Take 2 리뷰의 미션
  */
 function prepareFor(pitchId: string): PrepareResponse {
   const base = { ...prepare, pitch_id: pitchId };
@@ -87,6 +70,12 @@ function prepareFor(pitchId: string): PrepareResponse {
       return { ...base, script: null };
     case 'prep-mismatch':
       return { ...base, presentation: { id: 'pv2', version: 2, page_count: 10 } };
+    case 'prep-first':
+      return { ...base, next_take_number: 1, missions: null };
+    case 'prep-no-mission':
+      return { ...base, missions: { source_take_number: 3, items: [] } };
+    case 'prep-older-mission':
+      return { ...base, missions: { ...prepare.missions!, source_take_number: 2 } };
     default:
       return base;
   }
@@ -192,7 +181,6 @@ export const handlers = [
   ...standardsHandlers,
   ...pitchHandlers,
   ...scriptHandlers,
-  http.get('*/api/home', () => HttpResponse.json(home)),
 
   ...reportHandlers,
 

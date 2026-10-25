@@ -1,37 +1,26 @@
-"""Gaze evidence for the coach and review agents.
+"""Gaze evidence: frame decisions -> 1 s records, read by the server judgment module.
 
 The agents never read frames.  They read a small, durable record of where the
-presenter looked, in the shape every feature evaluator shares::
+presenter looked, one per second::
 
     frame decisions --GazeSlicer--> GazeSample, one per slice (1 s by default)
-                    --GazeTimeline--> evaluate_gaze()       issues for the coach (now)
-                                      take_summary()        statistics + segments for the review
-                                      intervention_outcome() before / after a coach feedback
-                                      compare_summaries()   previous-take delta
+                    --GazeEvidenceRecorder.judgment()--> gaze.judge (the coach's 1 s judgment)
+                    --GazeEvidenceRecorder.summary()---> gaze.summarize (take metrics)
 
-Issues use the agents' common evaluator output -- ``evaluator``,
-``issue_type``, ``severity``, ``confidence``, ``persistence_sec``,
-``evidence``, ``actionable`` (plus ``t_ms``) -- so a coach candidate generator
-can rank gaze next to speech, script and timing.  Measurement stays here;
-deciding whether to intervene stays with the coach.
+Slice states are the classifier's states plus UNCERTAIN (no clear majority) and
+UNMEASURED (no usable face in the slice).  An OTHER slice carries the direction
+the presenter looked (``GAZE_DIRECTIONS``, presenter-centric).
 
-Slice states are the classifier's states plus UNMEASURED (no usable face in
-the slice).  Like the frontend's take statistics, every ratio divides by the
-MEASURED time -- the decided states CAMERA / SCREEN / BOTTOM / OTHER -- so time
-without a measurement never reads as "did not look at the audience".  An OTHER
-slice carries the direction the presenter looked (``GAZE_DIRECTIONS``,
-presenter-centric).
-
-Every threshold lives in ``EvidenceConfig`` (``evidence.yaml``) and is an
-initial value.  The browser port (``web/src/engine/evidence.ts``) mirrors this
-module and is tested against it.
+The slicing thresholds live in ``EvidenceConfig`` (``evidence.yaml``).  The
+browser port (``web/src/engine/evidence.ts``) mirrors the slicer and is tested
+against it.
 
 Split between device and server: frames never leave the device, so cutting
 frame decisions into slices (``GazeFrame``, ``GazeSlicer``, ``decide_slice``)
 and the session's ``GazeEvidenceRecorder`` live here, next to the frame
-pipeline.  Everything that reads slices -- ``GazeSample``, ``GazeTimeline`` and
-the issue / summary / outcome functions -- is the server core ``gaze.core`` and
-is re-exported here unchanged.
+pipeline.  Reading the records -- issues, metrics, take values -- is the server
+module ``gaze`` (``judge`` · ``summarize``); the recorder only calls it, the
+way the coach does.
 """
 
 from __future__ import annotations
@@ -40,31 +29,12 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from gaze.core import (
-    GAZE_COACH_ACTION,
-    GAZE_LOW_EYE_CONTACT,
-    GAZE_UNMEASURABLE,
-    RUN_ISSUES,
-    SAMPLE_STATES,
-    UNCERTAIN,
-    UNMEASURED,
-    GazeSample,
-    GazeTimeline,
-    Run,
-    compare_summaries,
-    evaluate_gaze,
-    intervention_outcome,
-    r4,
-    take_summary,
-)
+from gaze.core import judge, r4, summarize
+from gaze.schemas import JudgmentResult
 from gaze_lab.config import EvidenceConfig
-from gaze_lab.schemas import GAZE_DIRECTIONS, GazeDecision
+from gaze_lab.schemas import GAZE_DIRECTIONS, STATE_CLASSES, GazeDecision
 
 __all__ = [
-    "GAZE_COACH_ACTION",
-    "GAZE_LOW_EYE_CONTACT",
-    "GAZE_UNMEASURABLE",
-    "RUN_ISSUES",
     "SAMPLE_STATES",
     "UNCERTAIN",
     "UNMEASURED",
@@ -72,15 +42,48 @@ __all__ = [
     "GazeFrame",
     "GazeSample",
     "GazeSlicer",
-    "GazeTimeline",
-    "Run",
-    "compare_summaries",
     "decide_slice",
-    "evaluate_gaze",
-    "intervention_outcome",
-    "r4",
-    "take_summary",
 ]
+
+UNCERTAIN = "UNCERTAIN"
+UNMEASURED = "UNMEASURED"
+#: Every slice state, decided ones first (also the tie-break order of a vote).
+SAMPLE_STATES: Tuple[str, ...] = tuple(STATE_CLASSES) + (UNCERTAIN, UNMEASURED)
+#: How much of the take the recorder hands ``judge`` -- what the backend sends the coach.
+INPUT_WINDOW_MS = 30_000
+
+
+@dataclass(frozen=True)
+class GazeSample:
+    """One slice of gaze evidence: the 1 s record the device sends (8 fields, gaze-tracking.md 5-2)."""
+
+    t_ms: int
+    duration_ms: int
+    state: str
+    direction: Optional[str] = None
+    #: Share of the slice's usable frames that voted for ``state`` (0 when UNMEASURED).
+    confidence: float = 0.0
+    #: Mean condition reliability over the slice's frames (0 for a slice without frames).
+    reliability: float = 0.0
+    #: Condition issues present in at least half of the slice's frames.
+    issues: Tuple[str, ...] = ()
+    frames: int = 0
+
+    @property
+    def end_ms(self) -> int:
+        return self.t_ms + self.duration_ms
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "t_ms": self.t_ms,
+            "duration_ms": self.duration_ms,
+            "state": self.state,
+            "direction": self.direction,
+            "confidence": r4(self.confidence),
+            "reliability": r4(self.reliability),
+            "issues": list(self.issues),
+            "frames": self.frames,
+        }
 
 
 # --------------------------------------------------------------------------
@@ -193,34 +196,79 @@ def decide_slice(frames: Sequence[GazeFrame], start: int, duration: int, cfg: Ev
 
 @dataclass
 class GazeEvidenceRecorder:
-    """Frame decisions in, slices and a timeline out.  Nothing is persisted here."""
+    """Frame decisions in, 1 s records out; reads them through the server module.  Nothing is persisted."""
 
     cfg: EvidenceConfig
-    timeline: GazeTimeline = field(default_factory=GazeTimeline)
+    samples: List[GazeSample] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self._slicer = GazeSlicer(self.cfg)
 
+    @property
+    def end_ms(self) -> Optional[int]:
+        return self.samples[-1].end_ms if self.samples else None
+
     def record(self, decision: GazeDecision, condition: Any = None) -> List[GazeSample]:
         """Add one frame decision; returns the slices it completed."""
         done = self._slicer.push(GazeFrame.from_decision(decision, condition))
-        self.timeline.extend(done)
+        self.samples.extend(done)
         return done
 
     def flush(self, t_end_ms: Optional[int] = None) -> List[GazeSample]:
         done = self._slicer.flush(t_end_ms)
-        self.timeline.extend(done)
+        self.samples.extend(done)
         return done
 
-    def issues(self, t_ms: Optional[int] = None) -> List[Dict[str, Any]]:
-        end = self.timeline.end_ms
-        if end is None:
-            return []
-        return evaluate_gaze(self.timeline, end if t_ms is None else int(t_ms), self.cfg)
+    def _take_records(self, since_ms: int) -> List[Dict[str, Any]]:
+        """Records ending after ``since_ms``, on the take's clock (the first record starts the take at 0).
 
-    def summary(self) -> Dict[str, Any]:
-        return take_summary(self.timeline, self.cfg)
+        The session's clock also runs through set-up and calibration; the frontend hands the engine
+        take-relative times (gaze-tracking.md 5-6), so the server reads the take from 0.
+        """
+        t0 = self.samples[0].t_ms
+        out = []
+        for s in self.samples:
+            if s.end_ms - t0 > since_ms:
+                out.append({**s.to_dict(), "t_ms": s.t_ms - t0})
+        return out
+
+    def judgment(
+        self, t_ms: Optional[int] = None, voiced: Optional[List[Dict[str, int]]] = None
+    ) -> Optional[JudgmentResult]:
+        """The coach's 1 s judgment at take time ``t_ms`` (default: the end of the last record).
+
+        None before the first record.  Like the backend, it hands ``gaze.judge`` only the last 30 s
+        of records; ``voiced`` is the same seconds' speaking time (``[{t_ms, voiced_ms}]``, take
+        time, none in the demo).
+        """
+        end = self.end_ms
+        if end is None:
+            return None
+        t = end - self.samples[0].t_ms if t_ms is None else int(t_ms)
+        records = self._take_records(t - INPUT_WINDOW_MS)
+        inputs = {"t_ms": t, "since_ms": max(0, t - 1000), "records": records, "voiced": voiced or []}
+        [result] = judge(inputs, t)
+        return result
+
+    def issues(self, t_ms: Optional[int] = None) -> List[Dict[str, Any]]:
+        """The gaze issues of ``judgment`` as plain dicts (empty before the first record)."""
+        result = self.judgment(t_ms)
+        return [] if result is None else [i.model_dump(mode="json") for i in result.issues]
+
+    def summary(self, voiced: Optional[List[Dict[str, int]]] = None) -> Dict[str, Any]:
+        """The take's gaze metrics: every record judged once, the tally added up, then ``gaze.summarize``."""
+        end = self.end_ms
+        if end is None:
+            return summarize({})
+        t = end - self.samples[0].t_ms
+        records = self._take_records(0)
+        [result] = judge({"t_ms": t, "since_ms": 0, "records": records, "voiced": voiced or []}, t)
+        total: Dict[str, float] = {}
+        for item in result.tally:
+            for k, v in item.values.items():
+                total[k] = total.get(k, 0) + v
+        return summarize({"GAZE": total})
 
     def reset(self) -> None:
-        self.timeline = GazeTimeline()
+        self.samples = []
         self._slicer = GazeSlicer(self.cfg)

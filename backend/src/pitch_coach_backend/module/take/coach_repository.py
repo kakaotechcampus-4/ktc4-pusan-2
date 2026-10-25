@@ -217,14 +217,22 @@ class CoachRepository:
             )
         )
 
-    def finalizing_take_ids(self, stale_before: datetime | None = None) -> list[uuid.UUID]:
+    def finalizing_take_ids(
+        self,
+        stale_before: datetime | None = None,
+        *,
+        after: uuid.UUID | None = None,
+        limit: int = 100,
+    ) -> list[uuid.UUID]:
         query = select(Take.id).where(waiting_for_result())
         if stale_before is not None:
             # 기다리기 시작한 시각이 없는 Take 는 칸이 생기기 전부터 기다렸다
             query = query.where(
                 or_(Take.analysis_stage_at.is_(None), Take.analysis_stage_at < stale_before)
             )
-        return list(self.db.scalars(query))
+        if after is not None:
+            query = query.where(Take.id > after)
+        return list(self.db.scalars(query.order_by(Take.id).limit(limit)))
 
     def lock_finalizing(self, take_id: uuid.UUID) -> Take | None:
         """Take 행을 잠그고 `ANALYZING` · `FINALIZING` 이면 돌려준다."""
@@ -308,9 +316,11 @@ REVIEW = "REVIEW"
 
 TAKE_RESULT = "TAKE_RESULT"
 
+
 def waiting_for_result() -> ColumnElement[bool]:
     """Take 결과(finalize)를 기다리는 Take — 상태 `ANALYZING` · 분석 단계 `FINALIZING`."""
     return and_(Take.status == ENDED_STATUS, Take.analysis_stage == FINALIZING_STAGE)
+
 
 def is_waiting_for_result(take: Take) -> bool:
     """읽어 둔 Take 에 `waiting_for_result` 를 본다."""

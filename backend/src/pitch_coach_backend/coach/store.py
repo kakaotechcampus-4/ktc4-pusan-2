@@ -28,7 +28,6 @@ from pitch_coach_backend.module.take.dto import StoredEvent, TakeCoachValues
 
 
 class DbCoachStore(SessionPerCall):
-
     async def append_events(self, take_id: uuid.UUID, events: Sequence[StoredEvent]) -> None:
         await run_in_threadpool(self._with, coach_service.append_coach_events, take_id, events)
 
@@ -46,8 +45,17 @@ class DbCoachStore(SessionPerCall):
     async def fail_take_result(self, take_id: uuid.UUID) -> bool:
         return await run_in_threadpool(self._with, coach_service.fail_take_result, take_id)
 
-    async def finalizing_takes(self, stale_before: datetime | None = None) -> list[uuid.UUID]:
-        return await run_in_threadpool(self._with, coach_service.finalizing_takes, stale_before)
+    async def finalizing_takes(
+        self,
+        stale_before: datetime | None = None,
+        *,
+        after: uuid.UUID | None = None,
+        limit: int = 100,
+    ) -> list[uuid.UUID]:
+        return await run_in_threadpool(
+            self._with,
+            lambda db: coach_service.finalizing_takes(db, stale_before, after=after, limit=limit),
+        )
 
     async def purge_expired_raw(self, now: datetime) -> int:
         return await run_in_threadpool(self._with, coach_service.purge_expired_raw, now)
@@ -86,8 +94,15 @@ class CoachStore(Protocol):
 
     async def fail_take_result(self, take_id: uuid.UUID) -> bool: ...
 
-    async def finalizing_takes(self, stale_before: datetime | None = None) -> list[uuid.UUID]:
-        """Take 결과를 기다리는 Take. `stale_before` 를 주면 그 전에 기다리기 시작한 것만."""
+    async def finalizing_takes(
+        self,
+        stale_before: datetime | None = None,
+        *,
+        after: uuid.UUID | None = None,
+        limit: int = 100,
+    ) -> list[uuid.UUID]:
+        """Take 결과를 기다리는 Take 를 ID 오름차순으로 `after` 뒤에서 `limit` 개 읽는다.
+        `stale_before` 를 주면 그 전에 기다리기 시작한 것만 읽는다."""
         ...
 
     async def build_plan_request(self, pitch_id: uuid.UUID) -> dict[str, Any] | None: ...
@@ -102,6 +117,7 @@ class CoachStore(Protocol):
 
     async def purge_expired_raw(self, now: datetime) -> int: ...
 
+
 def load_take_context(db: Session, take_id: uuid.UUID) -> TakeContext | None:
     """발표 중 코치가 들고 있을 값 (architecture.md 1-3 1번). Take 가 없으면 None."""
     values = coach_service.take_coach_values(db, take_id)
@@ -110,6 +126,7 @@ def load_take_context(db: Session, take_id: uuid.UUID) -> TakeContext | None:
     return replace(
         _take_context(db, values), seconds=coach_service.stored_metric_seconds(db, take_id)
     )
+
 
 def _take_context(db: Session, values: TakeCoachValues) -> TakeContext:
     timing = {
@@ -147,6 +164,7 @@ def _take_context(db: Session, values: TakeCoachValues) -> TakeContext:
     )
     return TakeContext(constants=constants, slides=values.slide_events)
 
+
 def load_finalize_source(db: Session, take_id: uuid.UUID) -> FinalizeSource | None:
     """finalize 를 DB 에서 다시 만들 재료. Take 가 Take 결과를 기다리는 중이 아니면 None."""
     rows = coach_service.finalize_rows(db, take_id)
@@ -160,6 +178,7 @@ def load_finalize_source(db: Session, take_id: uuid.UUID) -> FinalizeSource | No
         events=rows.events,
         raw_data_consent=rows.raw_data_consent,
     )
+
 
 def save_take_result(
     db: Session, take_id: uuid.UUID, reply: FinalizeReply, events: Sequence[StoredEvent]
@@ -175,6 +194,7 @@ def save_take_result(
         measures=asdict(reply.summary()),
         duration_sec=reply.duration_sec,
     )
+
 
 def build_plan_request(db: Session, pitch_id: uuid.UUID) -> dict[str, Any] | None:
     """다음 Take 의 `/coach/plan` 요청 (coach-agent.md 5-2 plan). 부르지 않을 때는 None
@@ -201,6 +221,7 @@ def build_plan_request(db: Session, pitch_id: uuid.UUID) -> dict[str, Any] | Non
         previous_review=values.previous_review,
     )
 
+
 def save_coaching_plan(
     db: Session,
     pitch_id: uuid.UUID,
@@ -222,6 +243,7 @@ def save_coaching_plan(
         meta=dict(reply.meta),
         requested_at=requested_at,
     )
+
 
 def _uuid(value: str | None) -> uuid.UUID | None:
     return uuid.UUID(value) if value is not None else None

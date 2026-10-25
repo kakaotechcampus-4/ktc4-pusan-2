@@ -1,5 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router';
+import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from './client';
 import { clearTokens } from './tokenStore';
 import { deleteLocalRecords } from '@/shared/lib/localData';
@@ -16,16 +15,9 @@ export async function withdraw(): Promise<void> {
 }
 
 export function useWithdraw() {
-  const client = useQueryClient();
-  const navigate = useNavigate();
-
   return useMutation({
     mutationFn: withdraw,
-    // useLogout 과 같습니다 — 옮긴 뒤에 세션을 비워야 /login 으로 튕기지 않습니다
-    onSuccess: async () => {
-      await navigate('/welcome', { replace: true });
-      client.clear();
-      client.setQueryData(['session'], null);
-    },
+    // useLogout 과 같습니다 — 화면을 새로 열어야 /login 으로 튕기지 않습니다
+    onSuccess: () => window.location.replace('/welcome'),
   });
 }

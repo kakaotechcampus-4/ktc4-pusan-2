@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from script_coverage.config import CRITERIA_VERSION
 from script_coverage.version import FEATURE_VERSION
 
 from .paths import RESULTS_DIR
@@ -18,10 +19,15 @@ def _plain(value):
 
 
 def write_result(name: str, model: str, metrics: dict) -> Path:
-    """기능 버전과 모델 이름을 함께 적어 저장한다."""
+    """기능 버전 · 기준 버전(config 해시 포함)과 모델 이름을 함께 적어 저장한다."""
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     path = RESULTS_DIR / f"{name}.json"
-    payload = {"feature_version": FEATURE_VERSION, "model": model, **metrics}
+    payload = {
+        "feature_version": FEATURE_VERSION,
+        "criteria_version": CRITERIA_VERSION,
+        "model": model,
+        **metrics,
+    }
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, default=_plain), encoding="utf-8"
     )

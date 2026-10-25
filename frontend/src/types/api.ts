@@ -88,13 +88,6 @@ export type GazeExcludedReason =
 /** NORMAL 정상 · LIGHT 경량 모드 · OFF 시선 없이 진행 */
 export type GazeEngineProfile = 'NORMAL' | 'LIGHT' | 'OFF';
 
-export interface ApiError {
-  code: string;
-  /** 화면에 그대로 노출 가능한 문구 */
-  message: string;
-  detail: string | null;
-}
-
 /* ------------------------------------------------------------------ */
 /* Pitch · 자료 · 대본                                                  */
 /*                                                                     */
@@ -191,74 +184,11 @@ export interface ReportGaze {
 }
 
 /* ------------------------------------------------------------------ */
-/* 홈 · 비교                                                            */
-/* ------------------------------------------------------------------ */
-
-export interface HomeResponse {
-  nearestPitch: { title: string; daysUntil: number } | null;
-  nextMission: {
-    pitchId: string;
-    nextTakeNumber: number;
-    missions: { id: string; priority: number; description: string }[];
-  } | null;
-  weeklyTakeCount: number;
-  weeklyDelta: number;
-  pitches: {
-    id: string;
-    title: string;
-    timeLimitSec: number;
-    daysUntil: number;
-    presentationVersion: number;
-    scriptVersion: number;
-    bestTakeId: string | null;
-    takes: { id: string; takeNumber: number; status: TakeStatus; isBest: boolean }[];
-  }[];
-  inProgressTake: { takeId: string; pitchTitle: string; startedAt: string } | null;
-}
-
-export interface ComparisonResponse {
-  bestTakeId: string | null;
-  /** 행들의 engineVersion이 하나라도 다르면 false — 추세선을 그리지 않습니다 */
-  gazeComparable: boolean;
-  recommendedTakeId: string | null;
-  recommendReasons: string[];
-  rows: {
-    takeId: string;
-    takeNumber: number;
-    date: string;
-    durationMs: Ms;
-    overTimeMs: Ms;
-    averageWpm: number;
-    fillerCount: number;
-    cameraMs: Ms | null;
-    bottomMs: Ms | null;
-    measuredMs: Ms | null;
-    scriptSimilarity: number;
-    gazeEngineVersion: string;
-    gazeReliability: 'HIGH' | 'MEDIUM' | 'LOW' | null;
-    scriptDependencyCount: number;
-    scriptMode: ScriptMode;
-    isBest: boolean;
-  }[];
-  missionResults: {
-    takeNumber: number;
-    missions: { id: string; description: string; result: 'DONE' | 'PARTIAL' | 'MISSED' }[];
-  }[];
-}
-
-/* ------------------------------------------------------------------ */
 /* 리허설 준비 (P4) · 장치 점검                                         */
 /*                                                                     */
 /* ★ 명세 8-4에 아직 없는 화면입니다. 시안 기준의 잠정 형태이고,        */
 /*   명세가 나오면 다른 타입과 같이 여기서부터 고칩니다.                */
 /* ------------------------------------------------------------------ */
-
-/** 사용자가 직접 적은 평가 기준. 준비 화면에서는 읽기 전용입니다 */
-export interface EvalCriterion {
-  id: string;
-  order: number;
-  text: string;
-}
 
 /**
  * 장치 점검 준비 정보 — `GET /api/pitches/{pitch_id}/prepare` (BE #296 `PrepareDTO`). BE 그대로 snake_case 입니다.
@@ -292,6 +222,26 @@ export interface PrepareResponse {
   next_take_number: number;
   /** 가장 최근 Take 의 대본 표시 방식. Take 가 없으면 HIGHLIGHT */
   default_script_mode: ScriptMode;
+  /**
+   * 이번 Take 미션 (BE #409) — 리뷰가 끝난 가장 최근 Take 가 정한 다음 미션.
+   * 리뷰가 끝난 Take 가 없으면(첫 Take) null, 리뷰는 끝났지만 다음 미션이 없으면 `items: []`.
+   * `source_take_number` 가 `next_take_number - 1` 보다 작을 수 있습니다 — 뒤 Take 가 아직 분석 중이거나
+   * 리뷰에 실패했을 때인데, 어느 쪽인지는 이 응답으로 알 수 없습니다.
+   */
+  missions: {
+    source_take_number: number;
+    items: {
+      mission_id: string;
+      priority: number;
+      /** 보통 GAZE · SPEED · VOLUME · PAUSE · FILLER · CONTENT · TIME. BE 가 문자열로 내려 모르는 값이 올 수 있습니다 */
+      area: string;
+      slide_number: number | null;
+      description: string;
+      target: { metric: string; operator: string; value: number };
+      /** 리뷰한 Take 기준 문장("이번 Take 7번")이라 다음 Take 화면에서는 보이지 않습니다 */
+      reason: string | null;
+    }[];
+  } | null;
 }
 
 /**

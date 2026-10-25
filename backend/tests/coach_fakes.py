@@ -37,8 +37,10 @@ TAKE_ID = uuid.uuid7()
 
 PITCH_ID = uuid.uuid7()
 
+
 def example(name: str) -> dict[str, Any]:
     return json.loads((EXAMPLES / name).read_text(encoding="utf-8"))
+
 
 def constants(mode: str = "COACHING") -> TakeConstants:
     return TakeConstants(
@@ -47,6 +49,7 @@ def constants(mode: str = "COACHING") -> TakeConstants:
         plan=build_plan(300, time_limit_sec=300, lower_deviation_sec=30, upper_deviation_sec=30),
         script_mode="HIGHLIGHT",
     )
+
 
 def reply(
     *,
@@ -77,6 +80,7 @@ def reply(
         }
     )
 
+
 class FakeClient:
     def __init__(self) -> None:
         self.evaluated: list[dict[str, Any]] = []
@@ -104,6 +108,7 @@ class FakeClient:
     async def plan(self, request: dict[str, Any]) -> PlanReply | None:
         self.planned.append(request)
         return self.plan_reply
+
 
 @dataclass
 class FakeStore:
@@ -140,9 +145,17 @@ class FakeStore:
         self.failed.append(take_id)
         return True
 
-    async def finalizing_takes(self, stale_before: datetime | None = None) -> list[uuid.UUID]:
+    async def finalizing_takes(
+        self,
+        stale_before: datetime | None = None,
+        *,
+        after: uuid.UUID | None = None,
+        limit: int = 100,
+    ) -> list[uuid.UUID]:
         self.stale_cutoffs.append(stale_before)
-        return list(self.finalizing)
+        return [take_id for take_id in sorted(self.finalizing) if after is None or take_id > after][
+            :limit
+        ]
 
     async def build_plan_request(self, pitch_id) -> dict[str, Any] | None:
         return self.plan_request
@@ -155,8 +168,10 @@ class FakeStore:
         self.purged.append(now)
         return 3
 
+
 def gaze(t_ms: int) -> dict[str, Any]:
     return {"t_ms": t_ms, "duration_ms": 1000, "state": "CAMERA", "confidence": 0.9}
+
 
 def voice(t_ms: int) -> dict[str, Any]:
     return {
@@ -168,6 +183,7 @@ def voice(t_ms: int) -> dict[str, Any]:
         "audio_live": True,
     }
 
+
 def session(
     client: FakeClient, store: FakeStore, mode: str = "COACHING", slides=()
 ) -> CoachSession:
@@ -175,24 +191,29 @@ def session(
     coach.enable(TakeContext(constants(mode), slides=tuple(slides)), client=client, store=store)
     return coach
 
+
 def tick(coach: CoachSession, t_ms: int, *, buffered: bool = False, stt_status: str = "ok") -> None:
     start = t_ms - 1000
     coach.on_metrics(
         t_ms, gaze=gaze(start), voice=voice(start), stt_status=stt_status, buffered=buffered
     )
 
+
 async def settle() -> None:
     for _ in range(5):
         await asyncio.sleep(0)
+
 
 def take_result(**overrides: Any) -> FinalizeReply:
     body = copy.deepcopy(example("finalize/response.json"))
     body["take_result"].update(overrides)
     return FinalizeReply.model_validate(body)
 
+
 LIVE_STATE = {"v": 2}
 
 ONE_SECOND = (MetricSecond(92_000, 1, None, None, "ok"),)
+
 
 def snapshot(*, coach_state: dict[str, Any] | None = LIVE_STATE, events=()) -> FinalizeSnapshot:
     return FinalizeSnapshot(
@@ -202,6 +223,7 @@ def snapshot(*, coach_state: dict[str, Any] | None = LIVE_STATE, events=()) -> F
         coach_state=coach_state,
         events=tuple(events),
     )
+
 
 def source(*, seconds=ONE_SECOND, events=()) -> FinalizeSource:
     return FinalizeSource(
@@ -217,10 +239,13 @@ def source(*, seconds=ONE_SECOND, events=()) -> FinalizeSource:
         raw_data_consent=False,
     )
 
+
 EVENT = ({"kind": "INTERVENTION", "event_id": "iv-1", "t_ms": 1}, META)
+
 
 def db_down() -> OperationalError:
     return OperationalError("SELECT 1", {}, ConnectionError("connection reset"))
+
 
 PLAN_REQUEST = {
     "pitch_id": str(PITCH_ID),
@@ -228,6 +253,7 @@ PLAN_REQUEST = {
     "script_version_id": None,
     "plan": {"target_ms": 300_000, "min_ms": 270_000, "max_ms": 330_000, "slides": []},
 }
+
 
 def example_plan_reply() -> dict[str, Any]:
     return {

@@ -14,7 +14,7 @@ import { PITCH_DB_NAME } from '@/shared/lib/localData';
  * 키는 `clientSessionId` 입니다. 재시도 화면(P15)이 이 값으로 같은 세션을 다시 찾습니다.
  */
 
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 /** 세션 상태. 서버의 TakeStatus 와 다릅니다 — 이건 브라우저 쪽 진행 상태입니다. */
 export type SessionStatus = 'RUNNING' | 'ENDED' | 'ABORTED';
@@ -101,18 +101,6 @@ interface PitchDb extends DBSchema {
     key: [string, number];
     value: { clientSessionId: string; atMs: Ms; firstCharIndex: number; lastCharIndex: number };
   };
-  /** 발동한 것과 **억제한 것 둘 다.** 억제 기록이 코칭 임계값 조정의 유일한 근거입니다 */
-  coachLog: {
-    key: [string, number];
-    value: {
-      clientSessionId: string;
-      atMs: Ms;
-      type: string;
-      fired: boolean;
-      message: string | null;
-      suppressedReason: string | null;
-    };
-  };
 }
 
 let dbPromise: Promise<IDBPDatabase<PitchDb>> | null = null;
@@ -140,7 +128,7 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
      * `oldVersion` 이 IndexedDB 가 그 답으로 준 값입니다.
      */
     upgrade(db, oldVersion) {
-      // 스키마 타입에서 빠진 스토어(audioChunks · gazeSegments)를 만들고 지우려면 타입 없는 핸들이 필요합니다.
+      // 스키마 타입에서 빠진 스토어(audioChunks · gazeSegments · coachLog)를 만들고 지우려면 타입 없는 핸들이 필요합니다.
       // 지나간 단계는 그대로 재생해야 하므로 v1 의 생성 줄을 지우지 않고 이걸로 돌립니다.
       const untyped = db as unknown as IDBPDatabase;
 
@@ -153,7 +141,7 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
         untyped.createObjectStore('gazeSegments', { keyPath: ['clientSessionId', 'tMs'] });
         db.createObjectStore('slideChanges', { keyPath: ['clientSessionId', 'atMs'] });
         db.createObjectStore('scriptScroll', { keyPath: ['clientSessionId', 'atMs'] });
-        db.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
+        untyped.createObjectStore('coachLog', { keyPath: ['clientSessionId', 'atMs'] });
         untyped.createObjectStore('audioChunks', { keyPath: ['clientSessionId', 'seq'] });
       }
 
@@ -183,7 +171,13 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
         untyped.deleteObjectStore('zoneRefs');
       }
 
-      // ── v6 을 만들 때는 여기에 블록을 덧붙입니다. 위는 절대 고치지 않습니다 ──
+      // ── v6 · FE 코치를 없앱니다. 판단은 AI 코치가 하고 BE 가 저장합니다 (coach-agent.md 12-1) ──
+      //   FE 가 띄운 · 참은 코치 기록(coachLog)은 더 쓰지도 읽지도 않으므로 스토어째 지웁니다.
+      if (oldVersion < 6) {
+        untyped.deleteObjectStore('coachLog');
+      }
+
+      // ── v7 을 만들 때는 여기에 블록을 덧붙입니다. 위는 절대 고치지 않습니다 ──
       //   이미 그 단계를 지나온 브라우저는 다시 밟지 않으므로, 위를 고치면
       //   새로 여는 사람에게만 반영되고 기존 사용자와 구조가 갈립니다.
       //
@@ -192,7 +186,7 @@ export function openPitchDb(): Promise<IDBPDatabase<PitchDb>> {
       //   이름에 ConstraintError 를 냅니다.
       //
       //   upgrade(db, oldVersion, _newVersion, tx) {
-      //     if (oldVersion < 6) tx.objectStore('session').createIndex('byTakeId', 'takeId');
+      //     if (oldVersion < 7) tx.objectStore('session').createIndex('byTakeId', 'takeId');
       //   }
     },
     // 다른 곳이 DB 를 지우거나(마이페이지 기록 지우기 · 탈퇴) 버전을 올리려 하면 연결을 닫아
@@ -407,48 +401,19 @@ export async function readSlideChanges(
     .sort((a, b) => a.atMs - b.atMs);
 }
 
-/**
- * 코치가 **띄운 것과 참은 것 둘 다** 남깁니다.
- *
- * 참은 기록이 없으면 "왜 안 떴나"를 나중에 알 수 없습니다. 임계값을 조정할 근거가
- * 그것뿐이라, 발동 기록만 남기면 다음 Take 에서 같은 문제가 반복됩니다.
- * 지금은 브라우저에만 남습니다 — 예전 `/complete` 경로가 없어졌습니다(#134).
- */
-export async function appendCoachLog(
-  clientSessionId: string,
-  entry: {
-    atMs: Ms;
-    type: string;
-    fired: boolean;
-    message: string | null;
-    suppressedReason: string | null;
-  },
-): Promise<void> {
-  const db = await openPitchDb();
-  await db.put('coachLog', { clientSessionId, ...entry });
-}
-
-export async function readCoachLog(clientSessionId: string) {
-  const db = await openPitchDb();
-  const rows = await db.getAll('coachLog', sessionRange(clientSessionId));
-  return rows.sort((a, b) => a.atMs - b.atMs);
-}
-
 /** dev 페이지의 `기록: N건` 용 */
 export async function countAll(clientSessionId: string): Promise<Record<string, number>> {
   const db = await openPitchDb();
   const range = sessionRange(clientSessionId);
-  const [gaze, slides, scroll, coach] = await Promise.all([
+  const [gaze, slides, scroll] = await Promise.all([
     db.count('gazeSamples', range),
     db.count('slideChanges', range),
     db.count('scriptScroll', range),
-    db.count('coachLog', range),
   ]);
   return {
     gazeSamples: gaze,
     slideChanges: slides,
     scriptScroll: scroll,
-    coachLog: coach,
   };
 }
 

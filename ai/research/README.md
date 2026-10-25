@@ -11,5 +11,6 @@
 | 대본 전달도 | [script-coverage-evaluation/](script-coverage-evaluation/README.md) |
 | 대본 파싱 | [script-parser/](script-parser/README.md) |
 | 평가 기준 분석 | [evaluation-criteria/](evaluation-criteria/README.md) |
+| 군더더기 | [filler-detection/](filler-detection/README.md) |
 
 새 연구 코드가 merge되면 이 실행법 목록과 기능 지도를 함께 갱신합니다. 연구 폴더의 존재는 서비스 탑재를 뜻하지 않습니다. 과거 실험의 동결본은 [archive/](../archive/README.md)에 있습니다.

@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import Row, and_, case, func, literal, or_, select, union_all, update
 from sqlalchemy.orm import Session, defer
 
 from pitch_coach_backend.module.pitch.entity import (
@@ -10,6 +10,7 @@ from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     PresentationVersion,
     ScriptParseStatus,
+    ScriptRubricStatus,
     ScriptSlide,
     ScriptVersion,
     StandardAnalyses,
@@ -92,7 +93,7 @@ class PitchRepository:
         self.db.delete(pitch)
         self.db.flush()
 
-    def lock_for_new_version(self, pitch_id: uuid.UUID) -> None:
+    def lock_for_new_version(self, pitch_id: uuid.UUID) -> bool:
         """이 pitch 에 새 버전을 만드는 요청을 한 줄로 세운다 (트랜잭션이 끝날 때까지 잠금).
 
         버전은 max(version) + 1 로 계산한다. 같은 pitch 에 요청 둘이 동시에 오면 둘 다 같은
@@ -116,8 +117,11 @@ class PitchRepository:
         """
         # key_share=True 는 이름과 달리 KEY SHARE 가 아니라 FOR NO KEY UPDATE 로 나간다
         # (KEY SHARE 는 read=True 를 같이 줄 때). tests/test_script_parse.py 가 확인한다
-        self.db.execute(
-            select(Pitch.id).where(Pitch.id == pitch_id).with_for_update(key_share=True)
+        return (
+            self.db.scalar(
+                select(Pitch.id).where(Pitch.id == pitch_id).with_for_update(key_share=True)
+            )
+            is not None
         )
 
     def next_presentation_version(self, pitch_id: uuid.UUID) -> int:
@@ -155,10 +159,7 @@ class PitchRepository:
         )
 
     def next_standard_version(self, pitch_id: uuid.UUID) -> int:
-        current = self.db.scalar(
-            select(func.max(Standards.version)).where(Standards.pitch_id == pitch_id)
-        )
-        return (current or 0) + 1
+        return (self.get_latest_standard_version(pitch_id) or 0) + 1
 
     def save_standard(self, standard: Standards) -> Standards:
         self.db.add(standard)
@@ -210,12 +211,23 @@ class PitchRepository:
             .limit(1)
         )
 
-    def get_evaluations(self, pitch_id: uuid.UUID) -> list[Standards]:
-        return self.db.scalars(
-            select(Standards).where(Standards.pitch_id == pitch_id)
-            .distinct(Standards.version)
-            .order_by(Standards.version.asc())
-        ).all()
+    def get_evaluations(self, pitch_id: uuid.UUID) -> list[Row]:
+        # 빈 표시 기준의 새 버전도 목록에 남긴다. 예전 버전의 식별자는 그대로 유지한다.
+        versions = union_all(
+            select(Standards.id, Standards.version, literal(0).label("source")).where(
+                Standards.pitch_id == pitch_id
+            ),
+            select(
+                StandardAnalyses.id, StandardAnalyses.version, literal(1).label("source")
+            ).where(StandardAnalyses.pitch_id == pitch_id),
+        ).subquery()
+        return list(
+            self.db.execute(
+                select(versions.c.id, versions.c.version)
+                .distinct(versions.c.version)
+                .order_by(versions.c.version, versions.c.source, versions.c.id)
+            ).all()
+        )
 
     def get_standards_in_version(self, pitch_id: uuid.UUID, version: int) -> list[Standards]:
         return self.db.scalars(
@@ -234,6 +246,10 @@ class PitchRepository:
             )
         )
 
+    def save_standard_analysis(self, analysis: StandardAnalyses) -> None:
+        self.db.add(analysis)
+        self.db.flush()
+
     def get_evaluations_by_version(
             self, pitch_id: uuid.UUID, version: int) -> list[Standards] | None:
         return self.db.scalars(
@@ -246,7 +262,16 @@ class PitchRepository:
 
     def get_latest_standard_version(self, pitch_id: uuid.UUID) -> int | None:
         return self.db.scalar(
-            select(func.max(Standards.version)).where(Standards.pitch_id == pitch_id)
+            select(
+                func.greatest(
+                    select(func.max(Standards.version))
+                    .where(Standards.pitch_id == pitch_id)
+                    .scalar_subquery(),
+                    select(func.max(StandardAnalyses.version))
+                    .where(StandardAnalyses.pitch_id == pitch_id)
+                    .scalar_subquery(),
+                )
+            )
         )
 
     # ── 대본 파싱 ────────────────────────────────────────────────────
@@ -298,27 +323,6 @@ class PitchRepository:
             )
         )
         return result.rowcount == 1
-
-    def mark_parse_done(
-        self,
-        script_version_id: uuid.UUID,
-        requested_at: datetime,
-        *,
-        expired_before: datetime,
-        segmented: bool,
-        terms: list[str],
-        parse_meta: dict[str, Any] | None,
-    ) -> bool:
-        return self._finish_parse(
-            script_version_id,
-            requested_at,
-            expired_before,
-            parse_status=ScriptParseStatus.DONE,
-            segmented=segmented,
-            terms=terms,
-            parse_meta=parse_meta,
-            parse_error=None,
-        )
 
     def mark_parse_failed(
         self,
@@ -416,3 +420,85 @@ class PitchRepository:
         self.db.add(plan)
         self.db.flush()
         return True
+
+    def lock_pending_parse(
+        self, script_version_id: uuid.UUID, requested_at: datetime, *, expired_before: datetime
+    ) -> ScriptVersion | None:
+        """이 작업(requested_at)이 아직 유효한 PENDING 이면 그 행을 잠가 돌려준다.
+
+        조건은 _finish_parse 와 같다. 잠근 뒤 저장본과 비교해 무엇을 쓸지 정한다.
+        """
+        return self.db.scalar(
+            select(ScriptVersion)
+            .where(
+                ScriptVersion.id == script_version_id,
+                ScriptVersion.parse_status == ScriptParseStatus.PENDING,
+                ScriptVersion.parse_requested_at == requested_at,
+                ScriptVersion.parse_requested_at >= expired_before,
+            )
+            .with_for_update()
+            # 잠근 뒤의 값을 읽는다. 세션에 남은 옛 값을 쓰지 않게
+            .execution_options(populate_existing=True)
+        )
+
+    # ── 평가 기준 만들기 (docs/ai/architecture.md 1-7) ──────────────────────
+    # 작업은 rubric_requested_at 을 표식으로 들고 다닌다. 저장·재시도 기록·상태 확정은 모두
+    # "아직 PENDING 이고 표식이 같다" 를 조건으로 건다. 늦게 끝난 옛 작업은 아무것도 바꾸지 못한다
+
+    def get_pending_rubrics(self) -> list[tuple[uuid.UUID, datetime]]:
+        rows = self.db.execute(
+            select(ScriptVersion.id, ScriptVersion.rubric_requested_at).where(
+                ScriptVersion.rubric_status == ScriptRubricStatus.PENDING
+            )
+        ).all()
+        return [(script_version_id, requested_at) for script_version_id, requested_at in rows]
+
+    def take_over_rubric(
+        self, script_version_id: uuid.UUID, read_at: datetime, now: datetime
+    ) -> bool:
+        """읽은 표식이 그대로인 PENDING 이면 표식을 새 시각으로 바꾼다. 바꿨으면 True."""
+        result = self.db.execute(
+            update(ScriptVersion)
+            .where(
+                ScriptVersion.id == script_version_id,
+                ScriptVersion.rubric_status == ScriptRubricStatus.PENDING,
+                ScriptVersion.rubric_requested_at == read_at,
+            )
+            .values(rubric_requested_at=now)
+        )
+        return result.rowcount == 1
+
+    def lock_rubric_job(
+        self, script_version_id: uuid.UUID, requested_at: datetime
+    ) -> ScriptVersion | None:
+        """이 작업이 아직 그 버전의 작업이면 행을 잠가 돌려준다."""
+        return self.db.scalar(
+            select(ScriptVersion)
+            .where(
+                ScriptVersion.id == script_version_id,
+                ScriptVersion.rubric_status == ScriptRubricStatus.PENDING,
+                ScriptVersion.rubric_requested_at == requested_at,
+            )
+            .with_for_update()
+            # 잠근 뒤의 값을 읽는다. 세션에 남은 옛 값을 쓰지 않게
+            .execution_options(populate_existing=True)
+        )
+
+    def save_rubric(
+        self,
+        script_version_id: uuid.UUID,
+        slide_number: int,
+        rubric: dict[str, Any],
+        rubric_meta: dict[str, Any],
+    ) -> bool:
+        """그 장에 아직 기준이 없을 때만 넣는다. 첫 성공본은 덮지 않는다."""
+        result = self.db.execute(
+            update(ScriptSlide)
+            .where(
+                ScriptSlide.script_version_id == script_version_id,
+                ScriptSlide.slide_number == slide_number,
+                ScriptSlide.rubric.is_(None),
+            )
+            .values(rubric=rubric, rubric_meta=rubric_meta)
+        )
+        return result.rowcount == 1

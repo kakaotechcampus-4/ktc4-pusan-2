@@ -816,21 +816,21 @@
       "GAZE_ON_SCRIPT:3": 88000
     },
     "cursors": {
-      "filler": {
+      "gaze": {
         "since_ms": 91000,
-        "words_since_ms": 89380
+        "words_since_ms": -1
       },
       "pace": {
         "since_ms": 91000,
         "words_since_ms": 89380
       },
-      "gaze": {
-        "since_ms": 91000,
-        "words_since_ms": -1
-      },
       "volume": {
         "since_ms": 91000,
         "words_since_ms": -1
+      },
+      "filler": {
+        "since_ms": 91000,
+        "words_since_ms": 89380
       },
       "timing": {
         "since_ms": 91000,
@@ -1024,6 +1024,7 @@
       "2": 29990,
       "3": 31610
     },
+    "slide_dwell_offset_ms": {},
     "base_level_db": -29.5,
     "base_level_source": "CALIBRATION",
     "baseline_samples": [],
@@ -1031,14 +1032,14 @@
       "filler": "filler-0.1+4b2747c2be03",
       "pace": "pace-0.2+685bb58a4c67",
       "gaze": "gaze-0.2+b6f8b464a3ee",
-      "volume": "volume-0.2+06b3417cd48b",
+      "volume": "volume-0.2+862f8de95679",
       "timing": "timing-1.0+305f8e44237d"
     },
     "latest_criteria_versions": {
       "filler": "filler-0.1+4b2747c2be03",
       "pace": "pace-0.2+685bb58a4c67",
       "gaze": "gaze-0.2+b6f8b464a3ee",
-      "volume": "volume-0.2+06b3417cd48b",
+      "volume": "volume-0.2+862f8de95679",
       "timing": "timing-1.0+305f8e44237d"
     },
     "covered": [
@@ -1255,7 +1256,16 @@
       "reason_codes": [
         "AHEAD_OF_SCHEDULE"
       ],
-      "slide_number": 3
+      "slide_number": 3,
+      "evidence": {
+        "start_ms": 60000,
+        "end_ms": 73000,
+        "slide_number": 3,
+        "projected_end_ms": 118837,
+        "early_limit_ms": 270000,
+        "target_ms": 300000,
+        "projected_end_ratio": 0.4401
+      }
     },
     {
       "event_id": "su-AHEAD_OF_SCHEDULE-80000",

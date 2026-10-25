@@ -35,4 +35,4 @@ FACT_SCORE = {
     "matched": 1.0,
     "approximate": 0.5,
 }  # 나머지(missing / mismatched)는 0, sound_alike 는 계산에서 뺀다
-# 중요도 가중치 SCORE_WEIGHT (critical 3 / high 2 / normal 1) 는 `shared/rubric.py` 에 정의된 값을 그대로 쓴다
+# 중요도 가중치 SCORE_WEIGHT (critical 3 / high 2 / normal 1) 는 최상위 `config.py` 에 정의된 값을 그대로 쓴다

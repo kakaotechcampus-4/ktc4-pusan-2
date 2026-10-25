@@ -1,0 +1,113 @@
+{
+  "feature_version": "script_coverage-1.0",
+  "criteria_version": "script_coverage-1.0+e7d09c338962",
+  "model": "openai/gpt-6-luna",
+  "request_deadline_seconds": 120.0,
+  "call_timeout_seconds": 20.0,
+  "be_retry": true,
+  "client": "streaming, transport timeout = call timeout, executor 40, no output token cap",
+  "total_calls": 244,
+  "combinations": {
+    "N30_W8_K1": {
+      "slides": 30,
+      "rubric_workers": 8,
+      "analyze_workers": 4,
+      "concurrent_requests": 1,
+      "complete_requests": 1,
+      "jobs": [
+        {
+          "first": {
+            "seconds": 108.3,
+            "within_deadline": false,
+            "target_slides": 30,
+            "produced_slides": 29,
+            "failed_slides": 1,
+            "failed": {
+              "30": "LLM_TIMEOUT"
+            },
+            "request_error": null,
+            "calls": 89,
+            "retries": 0,
+            "timeouts": 0,
+            "call_median_seconds": 8.06,
+            "call_max_seconds": 16.83
+          },
+          "retry": {
+            "seconds": 31.5,
+            "within_deadline": true,
+            "target_slides": 1,
+            "produced_slides": 1,
+            "failed_slides": 0,
+            "failed": {},
+            "request_error": null,
+            "calls": 3,
+            "retries": 0,
+            "timeouts": 0,
+            "call_median_seconds": 10.08,
+            "call_max_seconds": 11.44
+          },
+          "final_produced": 30,
+          "complete": true,
+          "seconds": 139.8
+        }
+      ],
+      "analyze": {
+        "seconds": 33.7,
+        "within_deadline": true,
+        "target_slides": 30,
+        "produced_slides": 30,
+        "failed_slides": 0,
+        "failed": {},
+        "request_error": null,
+        "calls": 31,
+        "retries": 0,
+        "timeouts": 0,
+        "call_median_seconds": 3.75,
+        "call_max_seconds": 5.23
+      }
+    },
+    "N30_W12_K1": {
+      "slides": 30,
+      "rubric_workers": 12,
+      "analyze_workers": 4,
+      "concurrent_requests": 1,
+      "complete_requests": 1,
+      "jobs": [
+        {
+          "first": {
+            "seconds": 77.4,
+            "within_deadline": true,
+            "target_slides": 30,
+            "produced_slides": 30,
+            "failed_slides": 0,
+            "failed": {},
+            "request_error": null,
+            "calls": 90,
+            "retries": 0,
+            "timeouts": 0,
+            "call_median_seconds": 7.12,
+            "call_max_seconds": 19.91
+          },
+          "retry": null,
+          "final_produced": 30,
+          "complete": true,
+          "seconds": 77.4
+        }
+      ],
+      "analyze": {
+        "seconds": 34.6,
+        "within_deadline": true,
+        "target_slides": 30,
+        "produced_slides": 30,
+        "failed_slides": 0,
+        "failed": {},
+        "request_error": null,
+        "calls": 31,
+        "retries": 0,
+        "timeouts": 0,
+        "call_median_seconds": 4.08,
+        "call_max_seconds": 5.33
+      }
+    }
+  }
+}

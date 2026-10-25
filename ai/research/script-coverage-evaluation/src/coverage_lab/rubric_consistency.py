@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from script_coverage.config import SCORE_WEIGHT
 from script_coverage.script_analysis.draft import draft_rubric
 from script_coverage.script_analysis.final import (
     final_config_hash,
@@ -28,7 +29,7 @@ from script_coverage.shared.llm_step import (
     call_in_parallel,
     llm_step,
 )
-from script_coverage.shared.rubric import NAME_TYPES, SCORE_WEIGHT, EvaluationRubric
+from script_coverage.shared.rubric import NAME_TYPES, EvaluationRubric
 from script_coverage.shared.text import normalize_script
 
 from .cache import SampleCache
@@ -95,7 +96,10 @@ def sample_rubrics(
         kind = "script.semantic#0" if k == 0 else "script.semantic"
         cache_put(cache if k == 0 else caches[k], kind, norms[i].content_hash, semantic_config, sem)
     if errors:
-        raise RuntimeError(f"1차 분석 호출 실패: {next(iter(errors.values()))}")
+        first = next(iter(errors.values()))
+        raise RuntimeError(
+            f"1차 분석 호출 실패: {type(first).__name__}"
+        )  # 예외 메시지에 대본이 들 수 있어 싣지 않는다
     n_calls = len(jobs)
 
     drafts, inputs = {}, {}
@@ -127,7 +131,8 @@ def sample_rubrics(
         cache=cache,
     )
     if errors:
-        raise RuntimeError(f"최종 결론 호출 실패: {next(iter(errors.values()))}")
+        first = next(iter(errors.values()))
+        raise RuntimeError(f"최종 결론 호출 실패: {type(first).__name__}")
     n_calls += final_calls
 
     finals = {

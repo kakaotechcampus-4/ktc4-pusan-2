@@ -13,5 +13,13 @@ __all__ = ["filler", "gaze", "lab_judges", "pace", "volume"]
 
 
 def lab_judges() -> Judges:
-    """네 대역 모듈을 코치가 받는 묶음으로 만든다. 기준 음량은 volume.baseline 으로 잡는다."""
-    return Judges(gaze=gaze, pace=pace, volume=volume, filler=filler, baseline=volume.baseline)
+    """네 대역 모듈을 코치가 받는 묶음으로 만든다. 기준 음량은 volume 의 말한 1초 고르기
+    (speaking_levels)와 baseline 으로 잡는다."""
+    return Judges(
+        gaze=gaze,
+        pace=pace,
+        volume=volume,
+        filler=filler,
+        speaking_levels=volume.speaking_levels,
+        baseline=volume.baseline,
+    )

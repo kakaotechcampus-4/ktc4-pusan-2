@@ -1,0 +1,14 @@
+{
+  "t_ms": 41000,
+  "since_ms": 40000,
+  "words_since_ms": 38950,
+  "stt_status": "reconnecting",
+  "stt_ok_since_ms": 0,
+  "utterance_ends": [36800],
+  "words": [
+    {"word": "그니까", "start_ms": 37900, "end_ms": 38300},
+    {"word": "지난", "start_ms": 38700, "end_ms": 38950},
+    {"word": "음", "start_ms": 40050, "end_ms": 40400},
+    {"word": "분기", "start_ms": 40700, "end_ms": 40980}
+  ]
+}
