@@ -19,10 +19,14 @@ from pitch_coach_backend.module.pitch.repository import PitchRepository
 
 def add_pitch_standard_service(
     db: Session, pitch_id: uuid.UUID, standard_text_dto: StandardTextDTO
-):
+) -> StandardTextResponseDTO:
+    return _analyze_and_save(db, pitch_id, standard_text_dto.standard_text)
+
+
+def _analyze_and_save(db: Session, pitch_id: uuid.UUID, text: str) -> StandardTextResponseDTO:
     # 인가 조회가 빌린 커넥션부터 반환한다. AI 응답을 기다릴 때 DB 트랜잭션을 두지 않는다.
     db.commit()
-    standards_result = divide_standard_text(standard_text_dto)
+    standards_result = divide_standard_text(text)
 
     pitch_repository = PitchRepository(db)
     if not pitch_repository.lock_for_new_version(pitch_id):
@@ -37,8 +41,7 @@ def add_pitch_standard_service(
     pitch_repository.save_standard_analysis(
         StandardAnalyses(
             pitch_id=pitch_id,
-            version=version,
-            values=standards_result.values,
+                values=standards_result.values,
             targets=standards_result.targets,
             script_used=standards_result.values.get("script_used"),
             excluded=standards_result.excluded or [],
@@ -56,9 +59,9 @@ def add_pitch_standard_service(
     )
 
 
-def divide_standard_text(standard_text_dto: StandardTextDTO) -> StandardAIResponseDTO:
+def divide_standard_text(text: str) -> StandardAIResponseDTO:
     """동기 HTTP 작업 스레드에서 전체 시간 제한이 있는 AI 어댑터를 부른다."""
-    return asyncio.run(parse_standard_text(standard_text_dto.standard_text))
+    return asyncio.run(parse_standard_text(text))
 
 
 def get_standard_detail(db: Session, pitch_id: uuid.UUID, evaluation_version: int):
