@@ -10,7 +10,13 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
 from pitch_coach_backend.module.take.coach_repository import CoachRepository
-from pitch_coach_backend.module.take.entity import Calibration, Mission, Take, TakeSummary
+from pitch_coach_backend.module.take.entity import (
+    Calibration,
+    Mission,
+    Take,
+    TakeAIResults,
+    TakeSummary,
+)
 from pitch_coach_backend.module.user.entity import User
 
 T0 = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
@@ -66,6 +72,13 @@ def _list(client: TestClient, headers: dict[str, str], pitch_id: uuid.UUID | Non
     return client.get(f"/api/takes/{query}", headers=headers)
 
 
+def _review(db: Session, take: Take, results: list[dict[str, str]]) -> None:
+    db.add(TakeAIResults(
+        take_id=take.id, kind="REVIEW", payload={"mission_results": results}, meta={},
+    ))
+    db.flush()
+
+
 def test_lists_measures_missions_and_gaze_engine(
     client: TestClient, db_session: Session, user_id: uuid.UUID, auth_headers: dict[str, str]
 ) -> None:
@@ -94,6 +107,9 @@ def test_lists_measures_missions_and_gaze_engine(
     )
     for mission in missions:
         mission.take_id = take.id
+    _review(db_session, take, [
+        {"mission_id": str(m.id), "status": m.status} for m in missions
+    ])
     db_session.add_all([
         TakeSummary(take_id=take.id, audience_gaze=74, script_gaze=22, average_cpm=352.5,
                     filler_count=7),
@@ -125,6 +141,95 @@ def test_lists_measures_missions_and_gaze_engine(
         "gaze_engine": "gaze_v1.1.0",
     }
     assert datetime.fromisoformat(row["started_at"]) == T0 + timedelta(days=1)
+
+
+def test_mission_verdict_stays_with_the_take_when_a_later_take_starts(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, auth_headers: dict[str, str]
+) -> None:
+    pitch = _pitch(db_session, user_id)
+    source = _take(db_session, pitch, 1)
+    earlier = _take(db_session, pitch, 2)
+    later = _take(db_session, pitch, 3, status="RUNNING")
+    mission = Mission(
+        source_take_id=source.id, take_id=later.id, area="GAZE",
+        target={"metric": "audience_ratio"}, description="청중 보기", priority=1,
+        status="ACTIVE",
+    )
+    db_session.add(mission)
+    db_session.flush()
+    earlier.mission_ids = later.mission_ids = [str(mission.id)]
+    _review(db_session, earlier, [{"mission_id": str(mission.id), "status": "ACHIEVED"}])
+
+    def counts():
+        response = _list(client, auth_headers)
+        assert response.status_code == 200
+        return {row["take_id"]: row["missions_achieved"] for row in response.json()["takes"]}
+
+    assert counts()[str(earlier.id)] == 1
+    assert counts()[str(later.id)] == 0
+    # 뒤 Take 의 판정이 공유 미션 행을 바꿔도 앞 기록은 그대로다.
+    mission.status = "FAILED"
+    _review(db_session, later, [{"mission_id": str(mission.id), "status": "FAILED"}])
+    assert counts()[str(earlier.id)] == 1
+    assert counts()[str(later.id)] == 0
+
+
+def test_mission_count_uses_unique_achieved_ids_from_the_frozen_list(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, auth_headers: dict[str, str]
+) -> None:
+    pitch = _pitch(db_session, user_id)
+    achieved, failed, unrelated = (str(uuid.uuid4()) for _ in range(3))
+    take = _take(db_session, pitch, 1, mission_ids=[achieved, failed])
+    _review(db_session, take, [
+        {"mission_id": achieved, "status": "ACHIEVED"},
+        {"mission_id": achieved, "status": "ACHIEVED"},
+        {"mission_id": failed, "status": "FAILED"},
+        {"mission_id": unrelated, "status": "ACHIEVED"},
+    ])
+
+    [row] = _list(client, auth_headers).json()["takes"]
+
+    assert row["missions_achieved"] == 1
+    assert row["missions_total"] == 2
+
+
+def test_mission_without_a_saved_review_does_not_count_as_achieved(
+    client: TestClient, db_session: Session, user_id: uuid.UUID, auth_headers: dict[str, str]
+) -> None:
+    pitch = _pitch(db_session, user_id)
+    source = _take(db_session, pitch, 1)
+    take = _take(db_session, pitch, 2)
+    mission = Mission(
+        source_take_id=source.id, take_id=take.id, area="GAZE", target={},
+        description="미션", priority=1, status="ACHIEVED",
+    )
+    db_session.add(mission)
+    db_session.flush()
+    take.mission_ids = [str(mission.id)]
+    db_session.flush()
+
+    rows = {r["take_id"]: r for r in _list(client, auth_headers).json()["takes"]}
+
+    assert rows[str(take.id)]["missions_achieved"] == 0
+
+
+@pytest.mark.parametrize("payload", [{}, {"mission_results": None}])
+def test_old_review_without_mission_verdicts_counts_zero(
+    client: TestClient, db_session: Session, user_id: uuid.UUID,
+    auth_headers: dict[str, str], payload: dict,
+) -> None:
+    take = _take(
+        db_session, _pitch(db_session, user_id), 1, mission_ids=[str(uuid.uuid4())]
+    )
+    db_session.add(TakeAIResults(take_id=take.id, kind="REVIEW", payload=payload, meta={}))
+    db_session.flush()
+
+    response = _list(client, auth_headers)
+
+    assert response.status_code == 200
+    [row] = response.json()["takes"]
+    assert row["missions_achieved"] == 0
+    assert row["missions_total"] == 1
 
 
 def test_unmeasured_values_are_null(

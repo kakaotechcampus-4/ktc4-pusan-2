@@ -130,7 +130,7 @@ frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · 
 | 판정 모듈은 다른 모듈 · 코치를 import하지 않는다. 발화 시간은 코치가 음량 기록에서 골라 `voiced`로 넘긴다 | 모듈끼리 묶이면 하나를 바꿀 때 다른 것이 깨진다 |
 | 서버 판정 기준값은 `src/gaze/config.py` 한 곳, 엔진 기준값은 `configs/*.yaml` → 생성 파일 `defaults.generated.ts` 한 곳이다. 생성 파일이 낡으면 테스트가 실패한다 | 기준이 두 벌이면 발표 중 판정과 리포트가 어긋난다 |
 | 엔진은 자기 폴더와 MediaPipe만 import하고 DOM 없이(Worker 전역만) 컴파일된다 | FE로 폴더째 옮겨도 엔진 안을 고치지 않는다 |
-| 1초 기록 이후의 계산(문제 · 지표)은 서버에만 둔다. 엔진에는 사본을 두지 않는다(데모의 미리보기 사본만 예외) | 같은 로직이 두 벌이면 맞추는 비용이 계속 든다 |
+| 1초 기록 이후의 계산(문제 · 지표)은 서버에만 둔다. 엔진 · 데모에는 사본을 두지 않는다 | 같은 로직이 두 벌이면 맞추는 비용이 계속 든다 |
 | 받는 쪽은 모르는 `issues` 값 · 모르는 필드를 무시한다 | 엔진이 촬영 조건 이슈를 더해도 서버가 깨지지 않는다 |
 
 # 5. 입력 · 출력 계약
@@ -453,7 +453,7 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `gaze-<버전>` | `src/gaze/version.py` → `criteria_version` · Take 결과의 `criteria.GAZE` | 같은 입력에 대한 결과의 의미가 바뀔 때(판정 규칙 · 출력 필드의 뜻) |
+| `feature_version` | `gaze-1.2` | `src/gaze/version.py` → `criteria_version` · Take 결과의 `criteria.GAZE` | 같은 입력에 대한 결과의 의미가 바뀔 때(판정 규칙 · 출력 필드의 뜻) |
 | `criteria_version` | `gaze-<버전>+<config 해시 12자리>` | `judge` 출력 → `coach_state` → 응답 `meta.criteria_versions.gaze` | `config.py`의 판정 기준값을 바꾸면 해시가 바뀐다 |
 | `schema_version` | `1.0` | 코치 응답 `meta` (`architecture.md` 5절) | 1초 기록 · 판정 결과의 필드 이름 변경 · 삭제 · 뜻 변경 |
 | 엔진 버전 | 엔진 `version`은 객체 `{modelVersion, gazeBackbone, gazeClassifier}`, Worker `ready.version`은 세 값을 `+`로 이은 문자열 (예: `gaze_v1.1.0+head_pose+reference_anchor_v1`) | 그 문자열을 FE가 발표 전 점검 결과와 함께 BE에 보낸다(`calibrations.result.engine_version`) | 엔진의 판정(모델 · 백본 · 분류 방식)이 바뀔 때. 엔진이 바뀌면 같은 시선도 다른 상태로 판정될 수 있다 |
@@ -607,7 +607,6 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 
 # 15. 열린 질문 · 알려진 한계
 **열린 질문** (아직 정하지 않았다)
-- 기능 버전 값: 추천은 `gaze-1.2`(출력의 뜻은 바뀌지만 1초 기록 형식 · 엔진 짝은 그대로다).
 - 보정 품질 0–1(`calibrations.gaze_confidence`)을 엔진의 보정 결과로 정하는 법: 추천은 보정이 `OK`면 `loo_accuracy`, 아니면 0.
 - 보정 모델을 장치 점검 화면에서 발표 화면으로 넘기는 법: 추천은 같은 탭의 메모리 + `restore`, 브라우저 저장소는 쓰지 않음.
 - 실측 평가 데이터를 모으는 정책(동의 · 보관 기간 · 삭제). 정하기 전에는 얼굴 영상을 녹화 · 저장하지 않는다.
@@ -634,7 +633,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 | 영역 · 상태 | `GAZE`, `AUDIENCE` · `SCREEN` · `SCRIPT` · `AWAY` · `UNMEASURABLE` | 5-3 |
 | 문제 | `GAZE_ON_SCRIPT` · `GAZE_ON_SCREEN` · `GAZE_AWAY` · `GAZE_LOW_EYE_CONTACT` · `GAZE_UNMEASURABLE`(`actionable` false) | 5-4 |
 | Take 지표 | `audience_ratio` · `screen_ratio` · `script_ratio` · `away_ratio` · `reading_ratio` · `reading_runs` · `measured_ratio` (Take · 장별) | 5-3 |
-| 버전 | `feature_version` `gaze-<버전>`(추천 `gaze-1.2`, 15절 열린 질문) · `criteria_version` `gaze-<버전>+<config 해시 12자리>` · 엔진 버전 `gaze_v1.1.0+head_pose+reference_anchor_v1` | 9절 |
+| 버전 | `feature_version` `gaze-1.2` · `criteria_version` `gaze-1.2+<config 해시 12자리>` · 엔진 버전 `gaze_v1.1.0+head_pose+reference_anchor_v1` | 9절 |
 | 시간 · 크기 | 판정 밀리초 단위(evaluate BE 약 300 ms 안), 엔진 첫 로딩 약 16 MB · 초기화 제한 60초 · 프레임 예산 125 ms(초당 8프레임), 1초 기록 약 0.14 KB | 8절 |
 | 저장 | 1초 원자료 `take_metric_seconds.gaze` (`take_id`, `t_ms`), 보정 결과 `calibrations.gaze_confidence` · `result`, Take 지표 `take_ai_results`(`TAKE_RESULT`), 리포트 `take_summaries` 시선 칸 — 괄호는 유일 제약. 보정 모델은 저장하지 않음 | 12-1 |
 | 의존성 | 서버 판정 모듈 pydantic 하나 · Python 3.12, 엔진 `@mediapipe/tasks-vision` 1.0.1 | 4-3 · 11절 |

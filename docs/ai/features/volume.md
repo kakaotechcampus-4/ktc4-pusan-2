@@ -155,8 +155,8 @@ ai/research/volume-analysis/
 | `measurable` | 마지막 1초에 오디오가 흐르고, 기준 음량이 있고, 짧은 창에 말한 1초가 기준 개수 이상 | 마지막 1초에 오디오가 흐름 |
 | `issues[].confidence` | 잴 수 있으면 1 | 잴 수 있으면 1 |
 
-- `tally`는 '말한 1초'로 거르지 않고 기록이 있는 모든 1초를 더한다. 에너지에 `voiced_ms`로 무게를 주므로 짧은 발화는 무게가 작고, '말한 1초' 기준(2절)은 평활 창 · 기준 음량 표본에만 쓴다.
-- 기록이 없는 1초(빈 구간)는 `total_ms`만 센다.
+- `tally`는 '말한 1초'로 거르지 않고 오디오가 흐른 모든 1초를 더한다. 에너지에 `voiced_ms`로 무게를 주므로 짧은 발화는 무게가 작고, '말한 1초' 기준(2절)은 평활 창 · 기준 음량 표본에만 쓴다.
+- 기록이 없는 1초(빈 구간)와 오디오가 끊긴 1초(`audio_live: false`)는 `total_ms`만 센다.
 - `base_db_ms`는 `summarize`가 `voice_diff_db`를 내는 데 필요해 둔다.
 
 **`summarize(tally)` → 두 영역** (분모가 0이면 null. `measured_ratio`만 분모가 0이면 0, `architecture.md` 7절)

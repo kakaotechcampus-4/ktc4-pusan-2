@@ -1,6 +1,7 @@
 """대본 파싱 백그라운드 작업. 업로드·재시도 응답을 돌려준 뒤 FastAPI BackgroundTasks 로 돈다.
 
     ParseTicket ──▶ AI 호출 (await, DB 세션 없음) ──▶ 짧은 세션: DONE / FAILED 저장
+                                                     ──▶ (DONE 이면) 장별 평가 기준 작업
 
 지키는 규칙 (BE 는 uvicorn 워커 하나의 이벤트 루프를 실시간 STT WebSocket 과 같이 쓴다)
   - AI 는 `await` 로 기다린다. 기다리는 동안 루프는 다른 요청과 STT 를 계속 처리한다
@@ -26,12 +27,13 @@ from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.module.pitch import service as pitch_service
-from pitch_coach_backend.module.pitch.dto import ParseTicket, ScriptParseErrorCode
+from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket, ScriptParseErrorCode
 from pitch_coach_backend.module.pitch.script_parser import (
     ParsedScript,
     ScriptParseError,
     ScriptParser,
 )
+from pitch_coach_backend.module.pitch.script_rubric_runner import ScriptRubricRunner
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +44,14 @@ class ScriptParseRunner:
         parser: ScriptParser,
         session_factory: Callable[[], Session] = SessionLocal,
         on_parsed: Callable[[uuid.UUID], Awaitable[None]] | None = None,
+        rubric_runner: ScriptRubricRunner | None = None,
     ) -> None:
         self._parser = parser
         self._session_factory = session_factory
         # 파싱 결과를 저장한 뒤 부른다 — 다음 Take 의 코칭 계획을 요청한다 (coach-agent.md 5-1)
         self._on_parsed = on_parsed
+        # 이어서 장별 평가 기준을 만든다 (architecture.md 1-7)
+        self._rubric_runner = rubric_runner
 
     async def run(self, ticket: ParseTicket) -> None:
         script_id = ticket.script_version_id
@@ -73,9 +78,12 @@ class ScriptParseRunner:
             # 실패한 세션은 닫혔다(롤백). 새 세션으로 실패를 남긴다. 표식 조건이 있어 안전하다
             await self._save_failure(ticket, ScriptParseErrorCode.INTERNAL_ERROR)
             return
-        if not saved:
+        if saved is ParseSaved.STALE:
             # 그 사이 재시도가 새 작업을 시작했거나 이미 끝난 행이다. 새 작업의 결과를 지킨다
             logger.info("지난 대본 파싱 작업의 결과를 버림 script_version_id=%s", script_id)
+            return
+        if saved is ParseSaved.MISMATCH:
+            # 저장본과 달라 적용하지 않았다. 바뀐 것이 없으니 계획도 평가 기준도 만들지 않는다
             return
         if self._on_parsed is not None and ticket.pitch_id is not None:
             try:
@@ -83,6 +91,10 @@ class ScriptParseRunner:
             except Exception:
                 # 계획이 없어도 코칭은 돈다. 파싱 결과는 이미 저장했다
                 logger.exception("대본 파싱 뒤 코칭 계획 요청 실패 pitch=%s", ticket.pitch_id)
+        # 저장본을 재사용했으면 기준을 만든 적 없는 버전일 때만 돈다 (complete_parse 가 PENDING 을
+        # 두었을 때)
+        if self._rubric_runner is not None:
+            await self._rubric_runner.start(script_id, ticket.requested_at)
 
     async def _save_failure(self, ticket: ParseTicket, code: ScriptParseErrorCode) -> None:
         try:
@@ -94,7 +106,7 @@ class ScriptParseRunner:
 
     # ── threadpool 에서 도는 부분. 저장할 때마다 짧은 세션을 열고 닫는다 ──
 
-    def _complete(self, ticket: ParseTicket, parsed: ParsedScript) -> bool:
+    def _complete(self, ticket: ParseTicket, parsed: ParsedScript) -> ParseSaved:
         db = self._session_factory()
         try:
             return pitch_service.complete_parse(db, ticket, parsed)

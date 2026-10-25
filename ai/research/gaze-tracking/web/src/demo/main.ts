@@ -8,7 +8,8 @@
  *   - the start card, the camera permission and going full screen,
  *   - a dev panel next to the picture in live, built only from the view's events:
  *     the frontend's own 1 s vote (`TemporalVoter`, imported read-only) and the
- *     agent evidence (`engine/evidence.ts`) the coach and review agents read.
+ *     1 s records (`engine/evidence.ts`) the frontend sends.  What the server makes of
+ *     the records (issues, take metrics) is the Python module `gaze` and is not shown here.
  *
  * So everything this page shows is what the frontend can get from the view.
  *
@@ -37,14 +38,7 @@ import type { PlacementResultDict } from '../engine/placement';
 import type { PreconditionReport } from '../engine/preconditions';
 import { aimOffset, screenRegion, type ReferenceModelData } from '../engine/reference';
 import type { SweepStatus } from '../engine/sweep';
-import { GAZE_DIRECTIONS, type GazeDirection, type StateClass } from '../engine/types';
-import {
-  GAZE_ISSUE_NAME,
-  GazeTimeline,
-  issuesNow,
-  takeSummary,
-  type GazeIssue,
-} from './evidence-preview';
+import type { StateClass } from '../engine/types';
 
 type Stage = 'intro' | 'flow' | 'live';
 
@@ -52,7 +46,8 @@ const PARAMS = new URLSearchParams(location.search);
 const SMOKE = PARAMS.has('smoke');
 const CFG = makeConfig();
 const EVIDENCE = CFG.evidence;
-const secs = (ms: number) => `${ms / 1000}`;
+/** How many of the latest 1 s records the dev panel lists. */
+const RECENT_RECORDS = 6;
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const stageBox = $('#stage');
@@ -99,7 +94,7 @@ const smoke = {
   processMsWarm: [] as number[],
   detectMsMedian: 0,
   headSamples: [] as [number, number][],
-  evidence: { samples: [] as GazeSample[], issues: [] as GazeIssue[], summary: {} as unknown },
+  evidence: { samples: [] as GazeSample[] },
 };
 (window as unknown as { __smoke: typeof smoke }).__smoke = smoke;
 
@@ -253,14 +248,8 @@ function liveHtml(): string {
       </div>
     </div>
     <section class="agent">
-      <div class="agent-head"><span>코치에게 가는 시선 신호</span><small>1초 기록 · 최근 ${secs(EVIDENCE.short_window_ms)}–${secs(EVIDENCE.long_window_ms)}초</small></div>
+      <div class="agent-head"><span>서버로 가는 1초 기록</span><small>최근 ${RECENT_RECORDS}개 · 문제 판정은 서버가 한다</small></div>
       <ul class="agent-issues" id="agent-issues"><li class="empty">기록을 모으는 중이에요</li></ul>
-      <dl class="take">
-        <div><dt>청중 응시</dt><dd id="take-eye">–</dd></div>
-        <div><dt>측정된 시간</dt><dd id="take-cov">–</dd></div>
-        <div><dt>문제 구간</dt><dd id="take-prob">–</dd></div>
-      </dl>
-      <p class="take-dirs" id="take-dirs"></p>
     </section>
     <div class="actions">
       <button id="live-reanchor" class="btn ghost">렌즈 다시 맞추기</button>
@@ -268,7 +257,7 @@ function liveHtml(): string {
     </div>
     <details class="dev"><summary>개발 정보</summary><pre id="dev"></pre></details>
     <details class="dev"><summary>보정 결과 (calibrated 이벤트)</summary><pre class="json" id="setup-json"></pre></details>
-    <details class="dev"><summary>에이전트 입력 (JSON)</summary><pre class="json" id="agent-json"></pre></details>`;
+    <details class="dev"><summary>마지막 1초 기록 (JSON)</summary><pre class="json" id="agent-json"></pre></details>`;
 }
 
 function onDecision(d: FrameDecision): void {
@@ -466,67 +455,25 @@ function renderDrift(drift: ConditionState['drift'], unusable: boolean): void {
     : `판정 오차 약 ${drift.deg.toFixed(1)}° · 한계 ${drift.fail_deg.toFixed(1)}° (보정 지점 간격)`;
 }
 
-/** Once per completed 1 s record: the coach's issues now and the take so far. */
+/** Once per completed 1 s record: the latest records, as the frontend sends them. */
 function renderEvidence(): void {
-  const rec = state.evidence;
-  const issues = issuesNow(rec.samples, EVIDENCE);
-  const summary = takeSummary(new GazeTimeline(rec.samples), EVIDENCE) as {
-    eye_contact_ratio?: number | null;
-    coverage?: number;
-    measured_ms?: number;
-    problem_segments: unknown[];
-    other_direction_ms?: Record<GazeDirection, number>;
-  };
-  $('#agent-issues').innerHTML = issues.length
-    ? issues.map(issueHtml).join('')
-    : '<li class="empty">지금은 지적할 시선 문제가 없어요</li>';
-  const pct = (v: number | null | undefined) => (v == null ? '–' : `${Math.round(v * 100)}%`);
-  $('#take-eye').textContent = pct(summary.eye_contact_ratio);
-  $('#take-cov').textContent = pct(summary.coverage);
-  $('#take-prob').textContent = `${summary.problem_segments.length}개`;
-  const dirs = GAZE_DIRECTIONS.map((g) => [g, summary.other_direction_ms?.[g] ?? 0] as const)
-    .filter(([, ms]) => ms > 0)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
-  $('#take-dirs').textContent = dirs.length
-    ? `다른 곳을 본 방향 · ${dirs.map(([g, ms]) => `${DIRECTION_NAME[g]} ${Math.round(ms / 1000)}초`).join(' · ')}`
-    : '';
-  const last = rec.samples.at(-1);
-  $('#agent-json').textContent = JSON.stringify(
-    {
-      last_sample: last ? sampleToDict(last) : null,
-      coach_issues: issues,
-      review_summary: summary,
-    },
-    null,
-    2,
-  );
-  if (SMOKE) {
-    smoke.evidence = {
-      samples: rec.samples.map(sampleToDict),
-      issues,
-      summary,
-    };
-  }
+  const samples = state.evidence.samples;
+  $('#agent-issues').innerHTML = samples.length
+    ? samples.slice(-RECENT_RECORDS).reverse().map(recordHtml).join('')
+    : '<li class="empty">기록을 모으는 중이에요</li>';
+  const last = samples.at(-1);
+  $('#agent-json').textContent = JSON.stringify(last ? sampleToDict(last) : null, null, 2);
+  if (SMOKE) smoke.evidence = { samples: samples.map(sampleToDict) };
 }
 
-function issueHtml(i: GazeIssue): string {
-  const longS = secs(EVIDENCE.long_window_ms);
-  const shortS = secs(EVIDENCE.short_window_ms);
-  const ev = i.evidence as Record<string, number | string | null>;
-  const pct = (v: unknown) => `${Math.round(Number(v ?? 0) * 100)}%`;
-  let title: string = GAZE_ISSUE_NAME[i.issue_type];
-  let detail = `${i.persistence_sec.toFixed(0)}초째 계속`;
-  if (i.issue_type === 'GAZE_AWAY' && ev.direction)
-    title = `${DIRECTION_NAME[ev.direction as GazeDirection]} 쪽을 오래 보고 있어요`;
-  if (i.issue_type === 'GAZE_LOW_EYE_CONTACT')
-    detail = `최근 ${longS}초 중 청중 ${pct(ev[`camera_ratio_${longS}s`])}`;
-  if (i.issue_type === 'GAZE_UNMEASURABLE')
-    detail = `최근 ${shortS}초 측정 ${pct(ev[`coverage_${shortS}s`])} · 시선 피드백 보류`;
+function recordHtml(s: GazeSample): string {
+  const name =
+    s.state === 'UNMEASURED' ? '잴 수 없음' : STATE_NAME[s.state as keyof typeof STATE_NAME];
+  const dir = s.direction ? ` ${DIRECTION_ARROW[s.direction]} ${DIRECTION_NAME[s.direction]}` : '';
   return `
-    <li class="${i.actionable ? '' : 'passive'}">
-      <div><b>${title}</b><span>${detail}</span></div>
-      <em><small>심각도</small>${Math.round(i.severity * 100)}</em>
+    <li class="${s.state === 'UNCERTAIN' || s.state === 'UNMEASURED' ? 'passive' : ''}">
+      <div><b>${name}${dir}</b><span>${(s.t_ms / 1000).toFixed(0)}초 · 프레임 ${s.frames}개</span></div>
+      <em><small>득표</small>${Math.round(s.confidence * 100)}</em>
     </li>`;
 }
 

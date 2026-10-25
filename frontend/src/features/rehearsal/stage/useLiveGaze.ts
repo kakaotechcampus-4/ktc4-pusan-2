@@ -15,12 +15,6 @@ const BORDER: Record<GazeZone, string> = {
   UNCERTAIN: 'UNKNOWN',
 };
 
-/** 코치 규칙이 보는 창. 1초 기록 기준이라 10개입니다 */
-const WINDOW_MS = 10_000;
-
-/** 대본 비율을 믿으려면 창 안에서 이만큼은 재야 합니다 — 1초 기록 다섯 개 */
-const MIN_MEASURED_MS = 5_000;
-
 /**
  * 기준을 꺼낸 상태. 엔진 버전은 워커가 ready 를 보내야 알므로, 그 전에는 꺼낼 수 없어 LOADING 입니다.
  */
@@ -96,7 +90,6 @@ export function useLiveGaze({
    */
   onRecords?: (samples: GazeSampleRecord[]) => void;
 }) {
-  const recentRef = useRef<GazeSampleRecord[]>([]);
   /** 아직 끝나지 않은 1초 기록 저장. Take 끝에서 마지막 조각까지 저장된 뒤 기록을 읽게 합니다 */
   const pendingWritesRef = useRef(new Set<Promise<unknown>>());
   // 기록 콜백이 읽을 세션 키. 이펙트에서 옮깁니다 — 렌더에서 ref 에 쓰면
@@ -144,13 +137,8 @@ export function useLiveGaze({
         pendingWritesRef.current.add(write);
       }
 
-      // 3. 서버로 — 1초 기록 그대로 WS `metrics` 에 실립니다
+      // 3. 서버로 — 1초 기록 그대로 WS `metrics` 에 실립니다. 코칭 판단(대본을 오래 보나 등)은 AI 가 합니다
       onRecordsRef.current?.(samples);
-
-      // 4. 최근 창
-      const recent = recentRef.current;
-      recent.push(...samples);
-      while (recent.length > 0 && last.t_ms - recent[0]!.t_ms > WINDOW_MS) recent.shift();
     },
     [stageRef, onExcluded],
   );
@@ -211,28 +199,6 @@ export function useLiveGaze({
     workerError ?? (missingCalibration ? 'CALIBRATION_LOST' : null);
 
   /**
-   * 최근 창에서 화면(아래)을 본 비율. 재지 못한 시간을 빼고 시간으로 나눕니다.
-   * 잰 시간이 모자라면 null — 없는 근거로 코치하지 않습니다.
-   * 정체성을 고정해 두는 이유는 useStageClock 과 같습니다.
-   */
-  const bottomRatio = useCallback((windowMs: Ms = WINDOW_MS): number | null => {
-    const recent = recentRef.current;
-    if (recent.length === 0) return null;
-    const last = recent.at(-1)!.t_ms;
-    let measuredMs = 0;
-    let bottomMs = 0;
-    for (const s of recent) {
-      if (last - s.t_ms > windowMs) continue;
-      const zone = zoneOf(s.state);
-      if (zone === 'UNCERTAIN') continue;
-      measuredMs += s.duration_ms;
-      if (zone === 'BOTTOM') bottomMs += s.duration_ms;
-    }
-    if (measuredMs < MIN_MEASURED_MS) return null;
-    return bottomMs / measuredMs;
-  }, []);
-
-  /**
    * Take 끝 — 1초가 안 찬 마지막 조각을 발표 길이(`tEndMs`)까지로 닫아 저장하고, 저장이 끝날 때까지
    * 기다립니다. 끝내기 처리가 IndexedDB 의 1초 기록을 읽기 **전에** 부릅니다.
    * 실패하지 않습니다 — 워커가 늦으면 마지막 조각 없이 넘어가고, 저장 실패는 기록이 맡습니다.
@@ -245,5 +211,5 @@ export function useLiveGaze({
     [flush],
   );
 
-  return { ready, engineVersion, error, perf, bottomRatio, missingCalibration, flushGaze };
+  return { ready, engineVersion, error, perf, missingCalibration, flushGaze };
 }

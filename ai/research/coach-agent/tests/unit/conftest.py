@@ -31,12 +31,7 @@ PLAN: dict[str, Any] = {
     "slides": [
         {"slide_number": 1, "target_ms": 30_000, "script_chars": 300},
         {"slide_number": 2, "target_ms": 60_000, "script_chars": 600},
-        {
-            "slide_number": 3,
-            "target_ms": 60_000,
-            "script_chars": 600,
-            "required_keywords": ["로컬 처리"],
-        },
+        {"slide_number": 3, "target_ms": 60_000, "script_chars": 600},
         {"slide_number": 4, "target_ms": 30_000, "script_chars": 300},
     ],
 }
@@ -301,7 +296,9 @@ def gaze_blind() -> dict[str, Any]:
 
 def mid_slide_state(slide: int, started_ms: int, chars: int, now_ms: int) -> dict[str, Any]:
     """slide 번 장을 started_ms 부터 말하는 중이고 chars 자를 말했으며 now_ms 직전까지 센 상태."""
+    # 이미 처리한 상태라 last_t_ms 가 있다(없으면 새로 시작한 상태로 본다)
     state = CoachState(
+        last_t_ms=now_ms,
         slide_number=slide,
         slide_log=[(slide, started_ms)],
         slide_totals={

@@ -32,6 +32,11 @@ for _target, _source in (
 # 테스트 토큰은 항상 같은 키로 서명된다 (.env 값보다 우선)
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-do-not-use-in-production")
 
+# 관리자 콘솔은 기본으로 꺼 둔다 (.env·실행 환경의 계정과 무관하게).
+# 콘솔을 켜는 테스트만 admin_account fixture 로 settings 를 바꾼다.
+os.environ["ADMIN_USERNAME"] = ""
+os.environ["ADMIN_PASSWORD"] = ""
+
 # 필수 설정이 늘면 .env 가 없는 CI 에서 settings import 자체가 실패한다.
 # 구글 값은 테스트에서 실제로 쓰이지 않고(외부 HTTP 는 모킹), 존재하기만 하면 된다.
 os.environ.setdefault("GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent.com")
@@ -191,6 +196,10 @@ async def _no_coach_background(client: object, store: object):
     return stop
 
 
+async def _no_rubric_resume() -> None:
+    return None
+
+
 @pytest.fixture
 def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient]:
     from pitch_coach_backend import main
@@ -209,6 +218,8 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[Te
     monkeypatch.setattr(main, "start_ready_sweep", _no_ready_sweep)
     # 같은 이유로 만들다 만 Take 결과 이어 가기 · 원자료 보관 주기 작업도 막는다
     monkeypatch.setattr(main, "start_coach_background", _no_coach_background)
+    # 남은 평가 기준 작업도 SessionLocal 로 읽고 실제 AI 를 부른다. 막는다
+    monkeypatch.setattr(main, "resume_script_rubrics", _no_rubric_resume)
     app.dependency_overrides[get_db] = lambda: db_session
     # 업로드 뒤 백그라운드 대본 파싱이 실제 AI 서버를 부르지 않게 막는다.
     # 파싱을 확인하는 테스트는 가짜 파서를 끼운 runner 로 다시 바꿔 끼운다

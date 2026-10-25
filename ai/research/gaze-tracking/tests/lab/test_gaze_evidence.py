@@ -3,10 +3,11 @@
 * OTHER decisions carry a presenter-centric direction (``GAZE_DIRECTIONS``);
 * frames become 1 s slices by majority vote (UNCERTAIN below the vote share,
   UNMEASURED without enough usable frames, gaps recorded as UNMEASURED);
-* the session's recorder builds the timeline from frame decisions.
+* a slice is exactly the 1 s record the server reads;
+* the session's recorder collects the records and reads them through the server module.
 
-What reads the slices (timeline, issues, summaries) is the server core and is
-tested in ``tests/unit/test_core.py``.
+What the server makes of the records (issues, metrics, take values) is tested with the
+server module in ``tests/unit/``.
 """
 
 from __future__ import annotations
@@ -17,7 +18,8 @@ import pytest
 
 from gaze_lab.calibration.references import ReferenceAnchorClassifier, direction_of, gaze_offset
 from gaze_lab.config import CalibrationConfig, EvidenceConfig
-from gaze_lab.evidence.gaze import GazeEvidenceRecorder, GazeFrame, GazeSlicer
+from gaze.schemas import GazeRecord
+from gaze_lab.evidence.gaze import GazeEvidenceRecorder, GazeFrame, GazeSample, GazeSlicer
 from gaze_lab.schemas import GAZE_DIRECTIONS, CalibrationSample, FrameObservation, GazeVector, HeadPose
 
 CFG = EvidenceConfig()
@@ -132,14 +134,25 @@ def test_an_other_slice_keeps_the_most_common_direction_and_frequent_issues():
     assert s.issues == ("SECOND_FACE",)  # in 5 of 8 frames
 
 
-def test_the_recorder_builds_the_timeline_from_decisions():
+def test_a_slice_is_exactly_the_wire_record_the_server_reads():
+    s = GazeSample(1000, 1000, "OTHER", "LEFT", 0.123456, 0.987654, ("TOO_FAR",), 8)
+    wire = s.to_dict()
+    assert set(wire) == set(GazeRecord.model_fields)
+    assert (wire["confidence"], wire["reliability"]) == (0.1235, 0.9877)
+    assert GazeRecord.model_validate(wire).model_dump(mode="json") == wire
+
+
+def test_the_recorder_collects_records_and_reads_them_through_the_server_module():
     from gaze_lab.schemas import GazeDecision
 
     rec = GazeEvidenceRecorder(CFG)
-    for i in range(24):
+    assert (rec.judgment(), rec.issues()) == (None, [])
+    for i in range(48):
         rec.record(GazeDecision(t_ms=i * 125, frame_id=i, label="CAMERA", p_camera=0.9, p_bottom=0.05, face_valid=True))
     rec.flush()
-    assert [s.state for s in rec.timeline.samples] == ["CAMERA", "CAMERA", "CAMERA"]
-    assert rec.summary()["eye_contact_ratio"] == 1.0
+    assert [s.state for s in rec.samples] == ["CAMERA"] * 6
+    judgment = rec.judgment()
+    assert (judgment.t_ms, judgment.state, judgment.metrics.audience_ratio) == (6000, "AUDIENCE", 1.0)
+    assert rec.summary()["GAZE"]["audience_ratio"] == 1.0
     rec.reset()
-    assert rec.timeline.samples == []
+    assert rec.samples == []

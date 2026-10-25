@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/shared/api/client';
 import { ApiFailure, getAccessToken, refresh } from '@/shared/api/tokenStore';
 
-export type User = { id: string; email: string; name: string };
+/** `raw_data_consent`: 원자료 사용 동의 (#361, `docs/ai/architecture.md` 1-1). 마이페이지에서 바꿉니다 */
+export type User = { id: string; email: string; name: string; raw_data_consent: boolean };
 
 export { useLogout } from '@/shared/api/useLogout';
 

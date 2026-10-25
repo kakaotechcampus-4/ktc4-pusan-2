@@ -98,7 +98,8 @@ class MissionInputDTO(BaseModel):
 
 class PreviousTakeDTO(BaseModel):
     take_result: dict[str, Any]
-    take_scores: list[int] | None = None
+    # 대본 채점의 Take 지표 객체. 잴 수 없는 비율은 null이고 개수는 정수다.
+    take_scores: dict[str, float | int | None] | None = None
 
 
 class TranscriptWordDTO(BaseModel):

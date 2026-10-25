@@ -10,6 +10,7 @@ from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     PresentationVersion,
     ScriptParseStatus,
+    ScriptRubricStatus,
     ScriptSlide,
     ScriptVersion,
     StandardAnalyses,
@@ -299,27 +300,6 @@ class PitchRepository:
         )
         return result.rowcount == 1
 
-    def mark_parse_done(
-        self,
-        script_version_id: uuid.UUID,
-        requested_at: datetime,
-        *,
-        expired_before: datetime,
-        segmented: bool,
-        terms: list[str],
-        parse_meta: dict[str, Any] | None,
-    ) -> bool:
-        return self._finish_parse(
-            script_version_id,
-            requested_at,
-            expired_before,
-            parse_status=ScriptParseStatus.DONE,
-            segmented=segmented,
-            terms=terms,
-            parse_meta=parse_meta,
-            parse_error=None,
-        )
-
     def mark_parse_failed(
         self,
         script_version_id: uuid.UUID,
@@ -416,3 +396,85 @@ class PitchRepository:
         self.db.add(plan)
         self.db.flush()
         return True
+
+    def lock_pending_parse(
+        self, script_version_id: uuid.UUID, requested_at: datetime, *, expired_before: datetime
+    ) -> ScriptVersion | None:
+        """이 작업(requested_at)이 아직 유효한 PENDING 이면 그 행을 잠가 돌려준다.
+
+        조건은 _finish_parse 와 같다. 잠근 뒤 저장본과 비교해 무엇을 쓸지 정한다.
+        """
+        return self.db.scalar(
+            select(ScriptVersion)
+            .where(
+                ScriptVersion.id == script_version_id,
+                ScriptVersion.parse_status == ScriptParseStatus.PENDING,
+                ScriptVersion.parse_requested_at == requested_at,
+                ScriptVersion.parse_requested_at >= expired_before,
+            )
+            .with_for_update()
+            # 잠근 뒤의 값을 읽는다. 세션에 남은 옛 값을 쓰지 않게
+            .execution_options(populate_existing=True)
+        )
+
+    # ── 평가 기준 만들기 (docs/ai/architecture.md 1-7) ──────────────────────
+    # 작업은 rubric_requested_at 을 표식으로 들고 다닌다. 저장·재시도 기록·상태 확정은 모두
+    # "아직 PENDING 이고 표식이 같다" 를 조건으로 건다. 늦게 끝난 옛 작업은 아무것도 바꾸지 못한다
+
+    def get_pending_rubrics(self) -> list[tuple[uuid.UUID, datetime]]:
+        rows = self.db.execute(
+            select(ScriptVersion.id, ScriptVersion.rubric_requested_at).where(
+                ScriptVersion.rubric_status == ScriptRubricStatus.PENDING
+            )
+        ).all()
+        return [(script_version_id, requested_at) for script_version_id, requested_at in rows]
+
+    def take_over_rubric(
+        self, script_version_id: uuid.UUID, read_at: datetime, now: datetime
+    ) -> bool:
+        """읽은 표식이 그대로인 PENDING 이면 표식을 새 시각으로 바꾼다. 바꿨으면 True."""
+        result = self.db.execute(
+            update(ScriptVersion)
+            .where(
+                ScriptVersion.id == script_version_id,
+                ScriptVersion.rubric_status == ScriptRubricStatus.PENDING,
+                ScriptVersion.rubric_requested_at == read_at,
+            )
+            .values(rubric_requested_at=now)
+        )
+        return result.rowcount == 1
+
+    def lock_rubric_job(
+        self, script_version_id: uuid.UUID, requested_at: datetime
+    ) -> ScriptVersion | None:
+        """이 작업이 아직 그 버전의 작업이면 행을 잠가 돌려준다."""
+        return self.db.scalar(
+            select(ScriptVersion)
+            .where(
+                ScriptVersion.id == script_version_id,
+                ScriptVersion.rubric_status == ScriptRubricStatus.PENDING,
+                ScriptVersion.rubric_requested_at == requested_at,
+            )
+            .with_for_update()
+            # 잠근 뒤의 값을 읽는다. 세션에 남은 옛 값을 쓰지 않게
+            .execution_options(populate_existing=True)
+        )
+
+    def save_rubric(
+        self,
+        script_version_id: uuid.UUID,
+        slide_number: int,
+        rubric: dict[str, Any],
+        rubric_meta: dict[str, Any],
+    ) -> bool:
+        """그 장에 아직 기준이 없을 때만 넣는다. 첫 성공본은 덮지 않는다."""
+        result = self.db.execute(
+            update(ScriptSlide)
+            .where(
+                ScriptSlide.script_version_id == script_version_id,
+                ScriptSlide.slide_number == slide_number,
+                ScriptSlide.rubric.is_(None),
+            )
+            .values(rubric=rubric, rubric_meta=rubric_meta)
+        )
+        return result.rowcount == 1

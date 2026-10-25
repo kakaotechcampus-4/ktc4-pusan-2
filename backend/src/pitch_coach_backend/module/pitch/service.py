@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
@@ -15,6 +15,7 @@ from pitch_coach_backend.module.pitch.dto import (
     NewerScriptDTO,
     ParsedScriptDTO,
     ParseRequestedDTO,
+    ParseSaved,
     ParseTicket,
     PitchListItemDTO,
     PitchListResponseDTO,
@@ -25,6 +26,7 @@ from pitch_coach_backend.module.pitch.dto import (
     PrepareMissionTargetDTO,
     PresentationDetailDTO,
     PresentationVersionDTO,
+    RubricTicket,
     ScriptCreatedDTO,
     ScriptDetailDTO,
     ScriptParseErrorCode,
@@ -42,6 +44,7 @@ from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     PresentationVersion,
     ScriptParseStatus,
+    ScriptRubricStatus,
     ScriptSlide,
     ScriptVersion,
     Standards,
@@ -519,27 +522,53 @@ def request_reparse(
     )
 
 
-def complete_parse(db: Session, ticket: ParseTicket, parsed: ParsedScript) -> bool:
-    """AI 결과를 저장하고 DONE. 이 작업이 이미 무효(재시도로 교체·만료 후 재시작)면 False."""
-    pitch_repository = PitchRepository(db)
-    parse_meta = None
-    if parsed.meta is not None:
-        parse_meta = {**asdict(parsed.meta), "target_ms": ticket.target_ms}
+def complete_parse(db: Session, ticket: ParseTicket, parsed: ParsedScript) -> ParseSaved:
+    """AI 결과를 저장하고 DONE. 이 작업이 이미 무효(재시도로 교체·만료 후 재시작)면 STALE.
 
-    # 상태 UPDATE 를 먼저 한다. 이기면 이 행이 잠겨서 슬라이드를 넣는 동안 다른 작업이 못 끼어든다.
-    # PENDING → DONE 은 이 한 번뿐이고 DONE 은 다시 파싱하지 않으므로,
-    # 넣기 전에 지울 슬라이드는 없다
-    if not pitch_repository.mark_parse_done(
+    원문은 버전 안에서 바뀌지 않으므로 같은 버전을 다시 파싱하면 같은 장이 나와야 한다.
+    장별 결과가 이미 저장돼 있으면 전체 (장 번호, 대본) 를 번호순으로 비교해 같으면 저장본과
+    그 평가 기준을 그대로 두고, 다르면 적용하지 않고 REPARSE_MISMATCH 를 남긴다 — 그 버전으로 이미
+    채점한 Take 가 다른 장을 가리키게 되지 않게 (docs/ai/architecture.md 1-7).
+    지금은 DONE 대본의 재파싱을 막고 있어(ScriptAlreadyParsed) 저장본이 있는 경우는 생기지 않는다.
+    적용하거나 재사용하면 평가 기준 첫 작업도 같은 트랜잭션에서 PENDING 으로 둔다 (_queue_rubric).
+    """
+    pitch_repository = PitchRepository(db)
+    # 행을 먼저 잠근다. 슬라이드를 넣는 동안 다른 작업이 못 끼어든다
+    script = pitch_repository.lock_pending_parse(
         ticket.script_version_id,
         ticket.requested_at,
         expired_before=datetime.now(UTC) - PARSE_EXPIRE_AFTER,
-        segmented=parsed.segmented,
-        terms=list(parsed.terms),
-        parse_meta=parse_meta,
-    ):
+    )
+    if script is None:
         db.rollback()
-        return False
+        return ParseSaved.STALE
 
+    script.parse_status = ScriptParseStatus.DONE
+    stored = [
+        (slide.slide_number, slide.full_content) for slide in pitch_repository.get_slides(script.id)
+    ]
+    if stored:
+        # 문자열은 더 다듬지 않고 그대로 비교한다
+        fresh = sorted((slide.slide_number, slide.content) for slide in parsed.slides)
+        if stored == fresh:
+            script.parse_error = None
+            _queue_rubric(script, ticket.requested_at)
+            db.commit()
+            return ParseSaved.REUSED
+        script.parse_error = ScriptParseErrorCode.REPARSE_MISMATCH
+        db.commit()
+        logger.warning(
+            "다시 파싱한 대본이 저장본과 달라 적용하지 않음 script_version_id=%s", script.id
+        )
+        return ParseSaved.MISMATCH
+
+    parse_meta = None
+    if parsed.meta is not None:
+        parse_meta = {**asdict(parsed.meta), "target_ms": ticket.target_ms}
+    script.segmented = parsed.segmented
+    script.terms = list(parsed.terms)
+    script.parse_meta = parse_meta
+    script.parse_error = None
     pitch_repository.add_slides(
         [
             ScriptSlide(
@@ -554,8 +583,9 @@ def complete_parse(db: Session, ticket: ParseTicket, parsed: ParsedScript) -> bo
             for slide in parsed.slides
         ],
     )
+    _queue_rubric(script, ticket.requested_at)
     db.commit()
-    return True
+    return ParseSaved.APPLIED
 
 
 def fail_parse(db: Session, ticket: ParseTicket, error_code: ScriptParseErrorCode) -> bool:
@@ -571,6 +601,127 @@ def fail_parse(db: Session, ticket: ParseTicket, error_code: ScriptParseErrorCod
         return False
     db.commit()
     return True
+
+
+# ── 장별 평가 기준 (/scripts/rubric) ─────────────────────────────────────
+# 백그라운드 작업(script_rubric_runner)이 단계마다 짧은 세션으로 부른다.
+# 순서와 조건은 docs/ai/architecture.md 1-7, 저장 칸은 script-coverage-evaluation.md 12-1
+
+
+def _queue_rubric(script: ScriptVersion, requested_at: datetime) -> None:
+    """평가 기준을 만든 적 없는 버전이면 첫 작업을 PENDING 으로 둔다. 잠근 행에 부른다.
+
+    파싱 결과와 같은 트랜잭션에서 한다. 커밋 직후 BE 가 죽어도 상태가 null 로 남지 않아 다시 뜰 때
+    이어받는다. 표식은 그 파싱 작업의 표식을 그대로 쓴다 — 파싱 작업이 이어서 이 표식으로
+    작업을 연다 (begin_rubric). 이미 시작했던 버전의 작업 · 한도 · 성공 기준은 건드리지 않는다.
+    """
+    if script.rubric_status is None:
+        script.rubric_status = ScriptRubricStatus.PENDING
+        script.rubric_requested_at = requested_at
+
+
+def begin_rubric(
+    db: Session, script_version_id: uuid.UUID, requested_at: datetime
+) -> RubricTicket | None:
+    """complete_parse 가 PENDING 으로 둔 첫 작업을 연다. 그 사이 다른 작업이 됐으면 None."""
+    pitch_repository = PitchRepository(db)
+    script = pitch_repository.lock_rubric_job(script_version_id, requested_at)
+    if script is None:
+        db.rollback()
+        return None
+    ticket = _rubric_ticket(pitch_repository, script, resumed=False)
+    db.commit()
+    return ticket
+
+
+def resume_rubrics(db: Session) -> list[RubricTicket]:
+    """BE 가 뜰 때 부른다. PENDING 으로 남은 작업마다 표식을 새로 바꿔 이어받는다.
+
+    BE 프로세스가 하나라 앞 작업은 이미 끝났다. 여러 프로세스로 늘리면 표식 교체만으로는 둘이
+    차례로 이어받는 것을 막지 못하므로 그때 방법을 따로 정한다 (architecture.md 1-7).
+    """
+    pitch_repository = PitchRepository(db)
+    tickets: list[RubricTicket] = []
+    for script_version_id, read_at in pitch_repository.get_pending_rubrics():
+        now = datetime.now(UTC)
+        if not pitch_repository.take_over_rubric(script_version_id, read_at, now):
+            db.rollback()
+            continue
+        script = pitch_repository.lock_rubric_job(script_version_id, now)
+        assert script is not None  # 방금 표식을 바꾼 행이다
+        tickets.append(_rubric_ticket(pitch_repository, script, resumed=True))
+        db.commit()
+    return tickets
+
+
+def _rubric_ticket(
+    pitch_repository: PitchRepository, script: ScriptVersion, *, resumed: bool
+) -> RubricTicket:
+    slides = pitch_repository.get_slides(script.id)
+    assert script.rubric_requested_at is not None  # PENDING 인 작업이다
+    return RubricTicket(
+        script_version_id=script.id,
+        pitch_id=script.pitch_id,
+        requested_at=script.rubric_requested_at,
+        slides=tuple((slide.slide_number, slide.full_content) for slide in slides),
+        missing=tuple(slide.slide_number for slide in slides if slide.rubric is None),
+        retry_used=script.rubric_retry_used,
+        resumed=resumed,
+    )
+
+
+def use_rubric_retry(db: Session, ticket: RubricTicket) -> bool:
+    """재시도를 보내기 전에 한도를 썼다고 커밋한다. 이미 썼거나 이 작업이 무효면 False.
+
+    보낸 뒤 BE 가 재시작해도 같은 재시도를 다시 보내지 않게 한다.
+    """
+    script = PitchRepository(db).lock_rubric_job(ticket.script_version_id, ticket.requested_at)
+    if script is None or script.rubric_retry_used:
+        db.rollback()
+        return False
+    script.rubric_retry_used = True
+    db.commit()
+    return True
+
+
+def save_rubrics(
+    db: Session,
+    ticket: RubricTicket,
+    rubrics: Mapping[int, dict[str, Any]],
+    rubric_meta: dict[str, Any],
+) -> bool:
+    """응답 하나의 장별 기준을 한 트랜잭션으로 저장한다. 이 작업이 무효면 버리고 False.
+
+    기준이 이미 있는 장은 건너뛴다 (첫 성공본을 덮지 않는다).
+    """
+    pitch_repository = PitchRepository(db)
+    if pitch_repository.lock_rubric_job(ticket.script_version_id, ticket.requested_at) is None:
+        db.rollback()
+        return False
+    for slide_number, rubric in rubrics.items():
+        pitch_repository.save_rubric(ticket.script_version_id, slide_number, rubric, rubric_meta)
+    db.commit()
+    return True
+
+
+def finish_rubric(db: Session, ticket: RubricTicket) -> ScriptRubricStatus | None:
+    """저장된 장별 기준으로 상태를 확정한다. 이 작업이 무효면 None."""
+    pitch_repository = PitchRepository(db)
+    script = pitch_repository.lock_rubric_job(ticket.script_version_id, ticket.requested_at)
+    if script is None:
+        db.rollback()
+        return None
+    slides = pitch_repository.get_slides(script.id)
+    made = sum(slide.rubric is not None for slide in slides)
+    if made == len(slides):
+        status = ScriptRubricStatus.DONE
+    elif made == 0:
+        status = ScriptRubricStatus.FAILED
+    else:
+        status = ScriptRubricStatus.PARTIAL
+    script.rubric_status = status
+    db.commit()
+    return status
 
 
 def stt_keyterm_candidates(
@@ -608,7 +759,7 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         file_url=generate_presigned_url(presentation_version.file_key),
         page_count=presentation_version.page_count,
         description=presentation_version.description,
-        created_at=presentation_version.created_at.date()
+        created_at=presentation_version.created_at.astimezone(KST).date()
     )
 
 def add_pitch_standard_service(

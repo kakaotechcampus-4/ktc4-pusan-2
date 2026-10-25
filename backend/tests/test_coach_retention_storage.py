@@ -20,6 +20,7 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptVersion,
 )
 from pitch_coach_backend.module.take import coach_service
+from pitch_coach_backend.module.take.coach_repository import CoachRepository
 from pitch_coach_backend.module.take.entity import (
     Take,
     TakeMetricSecond,
@@ -137,6 +138,35 @@ def test_raw_data_of_failed_takes_without_consent_is_purged_after_seven_days(
     left = set(db_session.scalars(select(TakeMetricSecond.take_id)).all())
     assert targets["expired"].id not in left
     assert {targets["recent"].id, targets["consented"].id, targets["revived"].id} <= left
+
+def test_retention_locks_only_takes_that_still_have_raw_data(db_session: Session, take_parts):
+    old = datetime.now(UTC) - timedelta(days=8)
+    with_raw = make_take(db_session, *take_parts, 1, status="FAILED", ended_at=old)
+    # 이미 정리했거나 원자료 없이 끝난 Take
+    make_take(db_session, *take_parts, 2, status="FAILED", ended_at=old)
+    db_session.add(TakeMetricSecond(take_id=with_raw.id, t_ms=1_000, stt_status="ok"))
+    db_session.flush()
+
+    locked, deleted = CoachRepository(db_session).purge_expired_metric_seconds(
+        datetime.now(UTC) - timedelta(days=7), None, 10
+    )
+
+    assert (locked, deleted) == ([with_raw.id], 1)
+
+def test_retention_purges_every_batch_in_one_run(
+    db_session: Session, take_parts, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(coach_service, "PURGE_BATCH_TAKES", 2)
+    now = datetime.now(UTC)
+    for number in range(1, 6):
+        take = make_take(
+            db_session, *take_parts, number, status="FAILED", ended_at=now - timedelta(days=8)
+        )
+        db_session.add(TakeMetricSecond(take_id=take.id, t_ms=1_000, stt_status="ok"))
+    db_session.flush()
+
+    assert coach_service.purge_expired_raw(db_session, now) == 5
+    assert db_session.scalar(select(TakeMetricSecond.take_id)) is None
 
 def test_retention_does_not_delete_raw_data_while_a_take_is_being_revived(engine):
     """Take 와 원자료를 되살리기 트랜잭션이 쥔 동안 정리가 시작된다. 옛 상태로 DELETE 를

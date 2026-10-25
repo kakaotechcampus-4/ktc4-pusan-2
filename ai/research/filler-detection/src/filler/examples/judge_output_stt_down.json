@@ -1,0 +1,26 @@
+[
+  {
+    "evaluator": "filler",
+    "area": "FILLER",
+    "t_ms": 41000,
+    "counted_until_ms": 41000,
+    "words_counted_until_ms": 38950,
+    "criteria_version": "filler-1.0+60cd87861ea9",
+    "measurable": false,
+    "state": "UNKNOWN",
+    "words": [],
+    "metrics": {
+      "recent_filler_count": null,
+      "filler_per_min": null
+    },
+    "tally": [
+      {
+        "t_ms": 40000,
+        "values": {
+          "total_ms": 1000
+        }
+      }
+    ],
+    "issues": []
+  }
+]

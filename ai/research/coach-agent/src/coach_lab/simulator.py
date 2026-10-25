@@ -162,8 +162,10 @@ class Scenario(BaseModel):
     noise: Noise = Field(default_factory=Noise)
     seed: int = 0
     expect: dict[str, Any] = Field(default_factory=dict)
-    #: 코칭 계획 실험용 (scenarios/plan/): 장별 대본, 직전 리뷰 근거, 계획에 대한 기대
+    #: 코칭 계획 실험용 (scenarios/plan/): 장별 대본, 직전 Take 결과(코치가 읽는 칸만)와 직전 리뷰
+    #: 출력(리뷰 출력 모양), 계획에 대한 기대
     scripts: list[dict[str, Any]] = Field(default_factory=list)
+    previous_take_result: dict[str, Any] | None = None
     previous_review: dict[str, Any] | None = None
     plan_expect: dict[str, Any] = Field(default_factory=dict)
 

@@ -83,9 +83,20 @@ backend/
 │   ├── test_realtime_auto_end.py # 말 없음 판단과 자동 종료 조건 (숫자만)
 │   ├── test_coach_client.py      # 코치 AI 호출: 응답 읽기·재시도·409·동시 개수 (AI 예시 파일을 읽는다)
 │   ├── test_coach_requests.py    # 코치 요청 만들기: 시간 계획·창·장·replay·코칭 계획
-│   ├── test_coach_session.py     # 발표 중 코치 · Take 결과 · 계획 실행부 (AI · 저장소는 가짜)
-│   ├── test_coach_storage.py     # 코치 저장 규칙: Take 시작 때 고정 · 이벤트 · Take 결과 · 계획 · 보관
-│   ├── test_coach_triggers.py    # 코칭 계획을 부르는 때 · 원자료 사용 동의 API
+│   ├── test_coach_session.py           # 발표 중 판단 · 상태 · 이벤트 처리 (AI · 저장소는 가짜)
+│   ├── test_coach_finalize.py          # 종료 뒤 Take 결과 생성 · 실패 · 재시작 복구 (가짜)
+│   ├── test_coach_planner.py           # 코칭 계획 요청 · 중복 방지 · 실패 처리 (가짜)
+│   ├── test_coach_retention.py         # 원자료 정리 주기 작업 · 오류 복구 (가짜)
+│   ├── test_coach_tasks.py             # 백그라운드 작업 보관 · 종료 · 실패 로그
+│   ├── test_coach_start_storage.py     # 시작 때 미션 · 평가 기준 · 동의 고정, 리뷰 진입 조건
+│   ├── test_coach_inputs_storage.py    # 장 변경 · 문장 끝 신호 · 종료 상태 저장
+│   ├── test_coach_context_storage.py   # 저장 자료로 코치 입력 복원 · 이벤트 순서 · 중복 제거
+│   ├── test_coach_finalize_storage.py  # Take 결과 · 요약 · 종료 상태의 원자적 저장
+│   ├── test_coach_planner_storage.py   # 코칭 계획 저장 · 바탕 값과 요청 시각에 따른 선택
+│   ├── test_coach_retention_storage.py # 동의 없는 실패 Take의 7일 지난 원자료 삭제
+│   ├── test_coach_triggers.py          # 대본 파싱 · 시간 변경 · 리뷰 뒤 코칭 계획 요청
+│   ├── test_coach_consent.py           # 원자료 사용 동의 조회 · 변경 API
+│   ├── test_presentation_date.py       # 발표자료 상세의 한국 날짜 · 자정과 09시 경계
 │   ├── test_realtime_coach.py    # WS 흐름 전체: metrics → evaluate → coach, stop → finalize
 │   └── test_<domain>.py          # 도메인이 늘면 같은 이름 규칙으로
 │
@@ -242,6 +253,11 @@ POST /api/auth/logout           현재 세션 폐기
   출처는 `Origin`, 없으면 `Referer` 순으로 보고 **둘 다 없으면 막는다** (OWASP 권장).
   프론트는 `csrf_token` 쿠키를 읽어 `X-CSRF-Token` 헤더에 실어야 한다.
 - 구글이 준 토큰은 신원 확인에만 쓰고 **저장하지 않는다.** Google refresh token 은 요청하지 않는다.
+
+OAuth 요청의 `state`·`nonce`·PKCE verifier는 콜백까지 필요한 임시 값이라 Redis에 10분만 둔다
+(`module/auth/state_store.py`의 `STATE_TTL_SECONDS`). 사용자가 돌아오지 않으면 TTL로 자동 삭제된다.
+콜백에서는 `GETDEL` 한 번으로 읽기와 삭제를 원자적으로 처리해 같은 state의 중복 콜백 중 하나만
+소비할 수 있다. 조회와 삭제를 따로 하면 동시에 온 콜백 둘이 같은 값을 읽을 수 있다.
 
 로컬은 프론트(3000)와 백엔드(8000)가 cross-origin 이라 CORS 와 `credentials: 'include'` 가
 필요하다. 배포에서는 Caddy 가 같은 origin 으로 묶어 그 문제가 사라진다.

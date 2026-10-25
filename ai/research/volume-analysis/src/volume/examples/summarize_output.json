@@ -1,0 +1,12 @@
+{
+  "VOLUME": {
+    "level_db": -29.52,
+    "voice_diff_db": -0.02,
+    "low_ratio": 0.0801,
+    "measured_ratio": 0.9262
+  },
+  "PAUSE": {
+    "long_silence_count": 2,
+    "measured_ratio": 0.978
+  }
+}

@@ -37,6 +37,9 @@ class Config(Section):
     long_silence_bad_ms: int = 15_000
     #: 이보다 조용한 시간이 짧으면 말하는 중으로 본다
     pause_silence_ms: int = 300
+    #: 말한 1초의 voiced_ms 기준(architecture.md 6-2). 대역 시선의 speaking_min_voiced_ms 와 같은
+    #: 값이어야 한다(테스트가 본다). 기준 음량 표본 고르기(speaking_levels)에만 쓴다
+    speaking_min_voiced_ms: int = 300
     #: 옛 리뷰 근거 설정의 지연 값과 같다
     volume_lag_ms: int = 2_500
     silence_onset_lag_ms: int = 5_000
@@ -63,6 +66,20 @@ class VolumeInput(In):
     records: list[Record] = []
     base_level_db: float | None = None
     since_ms: int = 0
+
+
+def speaking_levels(records: list[dict[str, Any]], config: Config = DEFAULT) -> list[float]:
+    """음량 1초 기록 중 말한 1초의 level_db. 기준 음량 표본을 고를 때 코치가 부른다.
+
+    같은 1초가 두 번 오면 먼저 온 것만 쓰고, 말한 1초(오디오가 흐르고 voiced_ms 가 기준 이상이며
+    레벨이 있음, architecture.md 6-2)만 시간순으로 돌려준다. 대역의 평활 창은 옛 규칙(`_speaking`)
+    그대로다 — 실제 소리 크기 모듈이 둘을 같은 기준으로 맞춘다.
+    """
+    return [
+        r.level_db
+        for r in _dedupe([Record.model_validate(x) for x in records])
+        if r.audio_live and r.voiced_ms >= config.speaking_min_voiced_ms and r.level_db is not None
+    ]
 
 
 def baseline(levels: list[float], config: Config = DEFAULT) -> float | None:
