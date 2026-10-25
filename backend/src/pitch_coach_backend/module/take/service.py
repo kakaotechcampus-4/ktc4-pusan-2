@@ -463,38 +463,66 @@ def request_review(take_id: uuid.UUID, review_request: ReviewRequestDTO) -> Revi
             time.sleep(REVIEW_RETRY_DELAY_SEC)
     raise AssertionError("unreachable")
 
-def save_review(db: Session, take_id: uuid.UUID, review_data: ReviewResponseDTO) -> None:
+def save_review(
+    db: Session,
+    take_id: uuid.UUID,
+    review_data: ReviewResponseDTO,
+    *,
+    request_id: uuid.UUID | None = None,
+) -> bool:
     review_data = validate_review_reply(review_data.model_dump(mode="json"), take_id)
     take_repository = TakeRepository(db)
+    if request_id is None or take_repository.lock_review(take_id, request_id) is None:
+        db.rollback()
+        return False
     take_repository.save_total_result(
         take_id,
         review_data.model_dump(mode="json", exclude={"meta"}),
         review_data.meta.model_dump(mode="json"),
     )
-    take_repository.upsert_next_missions([
-        {
-            "source_take_id": take_id,
-            "area": mission.area,
-            "slide_number": mission.slide_number,
-            "target": mission.target.model_dump(exclude={"display"}),
-            "description": mission.description,
-            "priority": mission.priority,
-            "reason": mission.reason,
-            "status": "ACTIVE",
-        }
-        for mission in review_data.next_missions
-    ])
+    take_repository.upsert_next_missions(
+        [
+            {
+                "source_take_id": take_id,
+                "area": mission.area,
+                "slide_number": mission.slide_number,
+                "target": mission.target.model_dump(exclude={"display"}),
+                "description": mission.description,
+                "priority": mission.priority,
+                "reason": mission.reason,
+                "status": "ACTIVE",
+            }
+            for mission in review_data.next_missions
+        ]
+    )
     for result in review_data.mission_results:
-        take_repository.update_mission_result(result.mission_id, take_id, 
-                                              result.status, result.observed)
-    take_repository.upsert_summary_review(take_id, review_data.overall_summary, review_data.score)
+        take_repository.update_mission_result(
+            result.mission_id, take_id, result.status, result.observed
+        )
+    take_repository.upsert_summary_review(
+        take_id, review_data.overall_summary, review_data.score
+    )
     take_repository.set_analysis_stage(take_id, "DONE")
     take_repository.complete_take(take_id, "DONE")
     db.commit()
+    return True
+
+
+def _fail_review(db: Session, take_id: uuid.UUID, request_id: uuid.UUID) -> bool:
+    repository = TakeRepository(db)
+    if repository.lock_review(take_id, request_id) is None:
+        db.rollback()
+        return False
+    repository.set_analysis_stage(take_id, "DONE")
+    repository.complete_take(take_id, "FAILED")
+    db.commit()
+    return True
+
 
 def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
     take_repository = TakeRepository(db)
-    if not take_repository.start_review(take_id):
+    request_id = uuid.uuid4()
+    if not take_repository.start_review(take_id, request_id):
         db.rollback()
         raise TakeNotReviewable()
     db.commit()
@@ -503,16 +531,15 @@ def get_review_result(db: Session, take_id: uuid.UUID) -> ReviewResponseDTO:
         review_request = build_review_request(db, take_id)
         db.commit()
         review_data = request_review(take_id, review_request)
-        save_review(db, take_id, review_data)
-    except Exception as e:
-        db.rollback() # 분석 실패 시 상태를 FAILED로 바꿈.
-        # 이때, 성공을 가정하고 save_review를 실행한 경우
-        # 데이터가 꼬일 위험이 있어 rollback 후 다시 set_analysis_stage, complete_take를 실행한다.
-        take_repository.set_analysis_stage(take_id, "DONE")
-        take_repository.complete_take(take_id, "FAILED")
-        db.commit()
-        raise e
-    
+        if not save_review(db, take_id, review_data, request_id=request_id):
+            raise TakeNotReviewable()
+    except Exception:
+        db.rollback()
+        # 성공·실패 모두 현재 작업만 확정한다. 다른 작업이 이어받았거나 Take가 삭제됐으면 버린다.
+        if not _fail_review(db, take_id, request_id):
+            raise TakeNotReviewable() from None
+        raise
+
     return review_data
 
 def mark_running(db: Session, take_id: uuid.UUID) -> bool:
@@ -827,22 +854,35 @@ async def _retry_failed_slides(
 
 
 async def _first_analyze(
-    session_factory: Callable[[], Session], take_id: uuid.UUID, body: dict,
-    script_version_id: str, retry_used: bool,
+    session_factory: Callable[[], Session],
+    take_id: uuid.UUID,
+    body: dict,
+    script_version_id: str,
+    retry_used: bool,
 ) -> None:
+    # 전체 재시도를 보낸 뒤 확정본을 저장하기 전에 재시작했을 수 있다.
+    # 이미 쓴 한도를 새 최초 호출로 취급하지 않는다.
+    if retry_used:
+        return
     request_id = uuid.uuid4().hex
     try:
         reply = await request_analyze(body, request_id)
     except CoverageCallError as e:
         logger.warning("take %s: coverage analyze failed: %s", take_id, e)
-        if not e.retryable or retry_used or not await _in_session(
-            session_factory, _mark_retry_used, take_id, "coverage_retry_used"
+        if (
+            not e.retryable
+            or retry_used
+            or not await _in_session(
+                session_factory, _mark_retry_used, take_id, "coverage_retry_used"
+            )
         ):
             return
         try:
             reply = await request_analyze(body, request_id)
         except CoverageCallError as retry_error:
-            logger.warning("take %s: coverage analyze retry failed: %s", take_id, retry_error)
+            logger.warning(
+                "take %s: coverage analyze retry failed: %s", take_id, retry_error
+            )
             return
         await _in_session(session_factory, _save_confirmed, take_id, reply)
         return
