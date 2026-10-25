@@ -24,7 +24,7 @@ import {
  * 점수에서 빠진 채 남습니다 (`docs/ai/features/script-coverage-evaluation.md` 6-3).
  * 확인 대기가 시작된 지 10분이 지나면 답 없이 그대로 진행됩니다 (같은 문서 12절).
  *
- * ★ API 는 합의 전 FE 제안입니다 (`types/confirmation.ts`).
+ * BE #528의 확인 API를 사용합니다 (`types/confirmation.ts`).
  * 녹음 다시 듣기는 없습니다 — 음성을 어디에도 저장하지 않아(CLAUDE.md 4번) 들려줄 소리가 없습니다.
  * 대신 그 말이 든 문장을 보여 줍니다.
  */
@@ -65,7 +65,8 @@ function ConfirmContent({
       </div>
     );
 
-  if (confirmations.isPending) return <StatusLine text="확인할 말을 불러오는 중" />;
+  if (confirmations.isPending || confirmations.isFetching)
+    return <StatusLine text="확인할 말을 불러오는 중" />;
 
   if (confirmations.data.items.length === 0)
     return (
@@ -112,7 +113,7 @@ function ConfirmForm({ takeId, data }: { takeId: string; data: Confirmations }) 
   if (expired)
     return <Closed takeId={takeId} title="확인 시간이 끝났어요" text="답 없이 그대로 진행돼요." />;
   if (closed)
-    return <Closed takeId={takeId} title="확인 시간이 끝났어요" text={toMessage(send.error)} />;
+    return <Closed takeId={takeId} title="확인을 받을 수 없어요" text={toMessage(send.error)} />;
 
   const submit = (answers: ReturnType<typeof toAnswers>) =>
     send.mutate(
@@ -175,11 +176,14 @@ function ItemCard({
     { value: 'as_stt', label: '들린 대로 말했어요', word: item.stt_text },
     { value: 'unsure', label: '잘 모르겠어요', word: null },
   ];
+  let kindLabel = '비슷한 말';
+  if (item.kind === 'number') kindLabel = '숫자';
+  if (item.kind === 'word') kindLabel = '단어';
 
   return (
     <li className="border-2 border-dusk-line p-3">
       <p className="font-mono text-xs font-bold text-dusk-accent">
-        {item.slide_number}번 장 · {item.kind === 'number' ? '숫자' : '단어'}
+        {item.slide_number}번 장 · {kindLabel}
       </p>
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm leading-relaxed">
         <dt className="text-xs leading-6 text-dusk-accent">대본</dt>

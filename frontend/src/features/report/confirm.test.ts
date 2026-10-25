@@ -1,5 +1,7 @@
 import { expect, it } from 'vitest';
 import { confirmationItemsFixture as items } from '@/mocks/report';
+import { toMessage } from '@/shared/api/errorMessage';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import { allPicked, itemKey, remainingLabel, splitAround, toAnswers } from './confirmFormat';
 
 it('keys items by slide and item id, since item ids restart on every slide', () => {
@@ -34,4 +36,9 @@ it('splits the sentence around the word, or gives up when it is not there', () =
   expect(splitAround('매출은 늘었습니다.', '37%')).toBeNull();
   expect(splitAround(null, '37%')).toBeNull();
   expect(splitAround('매출', '')).toBeNull();
+});
+
+it('explains a retryable rescore failure separately from a closed confirmation', () => {
+  expect(toMessage(new ApiFailure(502, 'COVERAGE_RESCORE_FAILED'))).toContain('다시 보내');
+  expect(toMessage(new ApiFailure(409, 'CONFIRMATION_CLOSED'))).toContain('상태를 다시 확인');
 });

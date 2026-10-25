@@ -2,14 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, postJson } from './client';
 import type { Confirmations, ConfirmationsRequest, ConfirmationsSent } from '@/types/confirmation';
 
-/** 대본 확인 — 합의 전 FE 제안 API 입니다 (`types/confirmation.ts`) */
+/** 대본 확인 — BE #528의 REST 응답을 그대로 받습니다 (`types/confirmation.ts`). */
 
 export function useConfirmations(takeId: string) {
   return useQuery({
     queryKey: ['takes', takeId, 'confirmations'],
     queryFn: () => apiRequest<Confirmations>(`/api/takes/${takeId}/confirmations`),
-    // 남은 시간을 받은 순간부터 세므로 다시 묻지 않습니다 — 다시 받으면 고른 답과 시계가 어긋납니다
-    staleTime: Infinity,
+    // 화면에 다시 오면 단계 · 남은 시간을 새로 받습니다. 답을 고르는 중에는 포커스 복귀로 갱신하지 않습니다.
+    staleTime: 0,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: false,
   });
 }
