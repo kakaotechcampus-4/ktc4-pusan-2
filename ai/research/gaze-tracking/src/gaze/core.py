@@ -395,9 +395,13 @@ def judge(
     short = _window(segs, short_lo, t, spoken)
     recent = _window(segs, recent_lo, t, spoken)
     runs = _run_at(segs, t)
-    # 측정 불가가 이어진 시간은 측정 비율을 정한 창(짧은 창과 최근 창 중 나쁜 쪽)에서 잰다
-    worse_lo = recent_lo if recent.measured_ratio < short.measured_ratio else short_lo
-    unusable = _unusable_ms(segs, worse_lo, t, cfg.min_mean_reliability)
+    # 측정 불가가 이어진 시간은 측정 불가를 가른 창에서 잰다: 최근 창의 측정 비율이 짧은 창보다
+    # 나빠 기준 미만이 됐으면 최근 창, 그 밖(짧은 창의 측정 비율 · 평균 신뢰도)은 짧은 창
+    by_recent = (
+        recent.measured_ratio < short.measured_ratio
+        and recent.measured_ratio < cfg.min_measured_ratio
+    )
+    unusable = _unusable_ms(segs, recent_lo if by_recent else short_lo, t, cfg.min_mean_reliability)
     metrics = GazeMetrics(
         audience_ratio=r4(recent.ratio("CAMERA")),
         screen_ratio=r4(recent.ratio("SCREEN")),

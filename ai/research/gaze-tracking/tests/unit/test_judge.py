@@ -206,6 +206,25 @@ def test_unmeasurable_persistence_sums_unusable_seconds_in_the_short_window():
     assert issue.persistence_sec == 4.0
 
 
+def test_unmeasurable_by_short_reliability_stays_in_the_short_window():
+    # 최근 창의 측정 비율이 짧은 창보다 조금 나쁘지만 기준 이상이고, 짧은 창 신뢰도가 원인이다.
+    # 이어진 시간은 짧은 창(5초)에서 잰다 — 20초 전의 신뢰도 낮은 1초는 넣지 않는다
+    records = [rec(t, "CAMERA") for t in range(0, 25_000, 1000) if t != 5_000]
+    records[5] = rec(6_000, "CAMERA", reliability=0.1)
+    records += [rec(t, "CAMERA", reliability=0.2) for t in range(25_000, 30_000, 1000)]
+    issue = _unmeasurable(run(records, 30_000))
+    assert issue.persistence_sec == 5.0
+
+
+def test_unusable_second_edges_reliability_at_threshold_and_uncertain():
+    # 짧은 창: 기준과 같은 0.5(쓸 수 있음) 1 · UNCERTAIN 2 · 기록 없음 2 → 쓸 수 없던 시간 4초
+    records = [rec(t, "CAMERA") for t in range(0, 25_000, 1000)]
+    records += [rec(25_000, "CAMERA", reliability=0.5)]
+    records += [rec(26_000, "UNCERTAIN"), rec(27_000, "UNCERTAIN")]
+    issue = _unmeasurable(run(records, 30_000))
+    assert issue.persistence_sec == 4.0
+
+
 def test_measured_ratio_uses_the_worse_of_short_and_recent_windows():
     # 짧은 창은 모두 측정됐지만 최근 30초는 1/3 만 -- 잠깐 좋아진 1초로 다시 열지 않는다
     r = run(secs(("GAP", 20), ("CAMERA", 10)), 30_000)

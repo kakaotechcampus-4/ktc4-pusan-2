@@ -214,7 +214,7 @@ frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · 
 - **Take 시작 직후**: Take 시작 뒤 정해진 시간 동안은 `GAZE_UNMEASURABLE` 말고는 시선 문제를 내지 않는다. 표본이 적은 초반에는 두 번만 봐도 비율이 크게 튄다.
 - **측정 불가일 때**: `measurable`이 false면 `state`는 `UNMEASURABLE`이고 `issues`에는 `GAZE_UNMEASURABLE`만 있다(`architecture.md` 7절).
 - **`severity`**: 공통 규칙(기준값에서 0.5, 아주 나쁨 값에서 1.0, 그 사이 직선, 1.0에서 자름)을 따른다.
-- **`persistence_sec`** (`architecture.md` 7절의 '문제 조건이 이어진 시간'): `GAZE_ON_SCRIPT` · `GAZE_ON_SCREEN` · `GAZE_AWAY`는 지금까지 이어진 응시 길이(`*_run_ms`), `GAZE_LOW_EYE_CONTACT`는 최근 창의 측정 시간이다. `GAZE_UNMEASURABLE`은 창 전체의 비율 · 평균으로 정하는 문제라, 측정 비율을 정한 창(짧은 창과 최근 창 중 측정 비율이 나쁜 쪽) 안에서 쓸 수 없던 시간의 합이다. 쓸 수 없는 1초는 기록이 없거나, 측정 상태가 아니거나(`UNCERTAIN`), 기록의 `reliability`가 기준(`min_mean_reliability`) 미만인 1초다. 코치는 이 값을 말을 걸 때의 지속 요구에 쓰지 않는다(`architecture.md` 7절).
+- **`persistence_sec`** (`architecture.md` 7절의 '문제 조건이 이어진 시간'): `GAZE_ON_SCRIPT` · `GAZE_ON_SCREEN` · `GAZE_AWAY`는 지금까지 이어진 응시 길이(`*_run_ms`), `GAZE_LOW_EYE_CONTACT`는 최근 창의 측정 시간이다. `GAZE_UNMEASURABLE`은 창 전체의 비율 · 평균으로 정하는 문제라, 측정 불가를 가른 창 안에서 쓸 수 없던 시간의 합이다(이어진 길이가 아니다). 최근 창의 측정 비율이 짧은 창보다 나빠 기준 미만이 됐으면 최근 창, 그 밖(짧은 창의 측정 비율 · 평균 신뢰도가 기준 미만)은 짧은 창이다. 쓸 수 없는 1초는 기록이 없거나, 측정 상태(`CAMERA` · `SCREEN` · `BOTTOM` · `OTHER`)가 아니거나, 기록의 `reliability`가 기준(`min_mean_reliability`) 미만인 1초다(기준과 같으면 쓸 수 있다). 코치는 이 값을 말을 걸 때의 지속 요구에 쓰지 않는다(`architecture.md` 7절).
 - 코치가 이 문제들을 어떻게 쓰는지(사다리 · 효과 판정 · 말하지 않는 문제)는 `coach-agent.md` 6-1에 있다. 요약하면 `GAZE_ON_SCRIPT` · `GAZE_AWAY` · `GAZE_LOW_EYE_CONTACT`는 장마다 사다리 하나를 같이 쓰고, `GAZE_ON_SCREEN` · `GAZE_UNMEASURABLE`은 말하지 않고 문제 구간에만 남긴다.
 
 ## 5-5. 예시
