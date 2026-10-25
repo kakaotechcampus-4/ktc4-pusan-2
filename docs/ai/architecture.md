@@ -640,6 +640,7 @@ features/<모듈>/
 | `<기능>_LLM_TIMEOUT_SECONDS` | 선택 | `LLM_TIMEOUT_SECONDS` | 그 기능만 시간 제한이 다를 때 (예: 출력이 긴 기능). 그 기능 PR에서 잰 시간과 함께 더한다 |
 | `LLM_MAX_RETRIES` | 선택 | 1 | LLM 호출 재시도 횟수. 요청 예산 안에서만 쓴다. 예비 묶음으로 넘어가면 무시하고 묶음마다 한 번씩 시도한다 |
 | `WEB_CONCURRENCY` | 선택 | 1 | uvicorn 워커 수 (`ai-service.md` 8절) |
+| `AI_ENABLE_SAMPLE` | 선택 | `false` | 규약 확인용 대역 엔드포인트(`POST /sample/judge`)를 켠다. 로컬에서 규약을 확인할 때만 `true`로 두고, 서버의 `AI_ENV`에는 넣지 않는다. 첫 실제 기능 엔드포인트가 붙으면 대역과 함께 지운다 (`ai-service.md` 4 · 15절) |
 | `AI_BASE_URL` (BE) | BE에 필요 | 로컬 `http://localhost:8001` | BE가 AI를 부르는 주소. 서버에서는 `http://ai:8000` |
 
 - research와 service가 같은 이름을 쓴다. 로컬에서는 `ai/.env` 하나를 함께 쓴다.
@@ -727,7 +728,7 @@ features/<모듈>/
 | 역할 → 모델 묶음 | 서비스 `settings.py` 상수. 지금은 모든 역할이 기본 묶음 | 9절 |
 | LLM 출력 한도 | 역할마다 출력 토큰 상한을 서비스 `settings.py` 상수로(잘리면 `LLM_INVALID_OUTPUT`) | 9절 |
 | 문장 끝 신호 · 커서 | `utterance_ends` = Deepgram `UtteranceEnd`의 마지막 단어 끝 시각(말 속도는 쓰지 않음) · 커서는 되돌아가지 않음 | 6-2 · 7절 |
-| 그 밖의 서비스 환경변수 | `WEB_CONCURRENCY`(1) | 10절 |
+| 그 밖의 서비스 환경변수 | `WEB_CONCURRENCY`(1) · `AI_ENABLE_SAMPLE`(`false`, 로컬 확인용) | 10절 |
 | `.env` 작성 | 따옴표 · 줄 끝 주석 없이 `이름=값` | 10절 |
 | 서버 시크릿 | GitHub 시크릿 `AI_ENV` → 서버 `~/pitch-coach/ai/.env` | 10절 |
 | 이미지 태그 | `pitch-coach:ai-<커밋 SHA>` | 11절 |
