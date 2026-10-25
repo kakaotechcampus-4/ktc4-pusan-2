@@ -9,11 +9,12 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy import delete, update
 
-from pitch_coach_backend.module.take import service
 from pitch_coach_backend.module.take.dto import ReviewResponseDTO
 from pitch_coach_backend.module.take.entity import Mission, Take, TakeAIResults, TakeSummary
 from pitch_coach_backend.module.take.exception import TakeNotReviewable
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service import coverage as coverage_service
+from pitch_coach_backend.module.take.service import review as review_service
 from tests.test_take_ai_validation import coverage
 from tests.test_take_history import _pitch, _take
 from tests.test_take_review_response import REVIEW
@@ -40,15 +41,15 @@ def in_current_session(monkeypatch, db):
     async def run(factory, fn, *args):
         return fn(db, *args)
 
-    monkeypatch.setattr(service, "_in_session", run)
+    monkeypatch.setattr(coverage_service, "_in_session", run)
 
 
 def test_scored_take_starts_review_immediately(db_session, user_id, monkeypatch):
     take = make_ready(db_session, user_id, "SCORING")
-    assert service._save_confirmed(db_session, take.id, coverage(take.id)) is not None
-    assert service._conclude_coverage(db_session, take.id) == "READY_FOR_REVIEW"
-    monkeypatch.setattr(service, "request_review", lambda *args: review(take))
-    assert service.get_review_result(db_session, take.id).score == 90
+    assert coverage_service._save_confirmed(db_session, take.id, coverage(take.id)) is not None
+    assert coverage_service._conclude_coverage(db_session, take.id) == "READY_FOR_REVIEW"
+    monkeypatch.setattr(review_service, "request_review", lambda *args: review(take))
+    assert review_service.get_review_result(db_session, take.id).score == 90
     db_session.refresh(take)
     assert (take.status, take.review_status, take.analysis_stage) == ("COMPLETED", "DONE", "DONE")
     assert take.review_request_id is None
@@ -79,15 +80,15 @@ def test_replaced_worker_cannot_change_new_review(db_session, user_id, monkeypat
                 .values(analysis_stage_at=datetime.now(UTC) - timedelta(minutes=3))
             )
             db_session.commit()
-            service.get_review_result(db_session, take.id)
+            review_service.get_review_result(db_session, take.id)
             if old_fails:
                 raise RuntimeError("오래된 작업 실패")
             return review(take, summary="옛 리뷰", score=10)
         return review(take)
 
-    monkeypatch.setattr(service, "request_review", respond)
+    monkeypatch.setattr(review_service, "request_review", respond)
     with pytest.raises(TakeNotReviewable):
-        service.get_review_result(db_session, take.id)
+        review_service.get_review_result(db_session, take.id)
     db_session.expire_all()
     current = db_session.get(Take, take.id)
     assert current.review_status == "DONE"
@@ -108,9 +109,9 @@ def test_deleted_take_does_not_receive_review_or_failure(db_session, user_id, mo
         db_session.commit()
         return reply
 
-    monkeypatch.setattr(service, "request_review", respond)
+    monkeypatch.setattr(review_service, "request_review", respond)
     with pytest.raises(TakeNotReviewable):
-        service.get_review_result(db_session, take_id)
+        review_service.get_review_result(db_session, take_id)
     assert TakeRepository(db_session).get_ai_result(take_id, "REVIEW") is None
     assert db_session.query(TakeSummary).filter_by(take_id=take_id).count() == 0
 
@@ -122,7 +123,7 @@ def test_storage_failure_rolls_back_review_and_missions(db_session, user_id, mon
     body = copy.deepcopy(REVIEW)
     body["take_id"] = str(take.id)
     monkeypatch.setattr(
-        service, "request_review", lambda *args: ReviewResponseDTO.model_validate(body)
+        review_service, "request_review", lambda *args: ReviewResponseDTO.model_validate(body)
     )
 
     def fail(*args):
@@ -130,7 +131,7 @@ def test_storage_failure_rolls_back_review_and_missions(db_session, user_id, mon
 
     monkeypatch.setattr(TakeRepository, "upsert_summary_review", fail)
     with pytest.raises(RuntimeError, match="요약 저장 실패"):
-        service.get_review_result(db_session, take.id)
+        review_service.get_review_result(db_session, take.id)
     db_session.refresh(take)
     assert take.review_status == "FAILED"
     assert TakeRepository(db_session).get_ai_result(take.id, "REVIEW") is None
@@ -155,8 +156,8 @@ def test_resume_with_exhausted_budget_does_not_call_analyze(db_session, user_id,
     take = make_ready(db_session, user_id, "SCORING", coverage_retry_used=True)
     in_current_session(monkeypatch, db_session)
     analyze = AsyncMock(side_effect=AssertionError("이미 쓴 한도로 호출함"))
-    monkeypatch.setattr(service, "request_analyze", analyze)
-    assert asyncio.run(service.analyze_script_coverage(take.id)) == "NO_COVERAGE"
+    monkeypatch.setattr(coverage_service, "request_analyze", analyze)
+    assert asyncio.run(coverage_service.analyze_script_coverage(take.id)) == "NO_COVERAGE"
     analyze.assert_not_awaited()
     db_session.refresh(take)
     assert take.coverage_retry_used is True
@@ -166,14 +167,14 @@ def test_resume_with_exhausted_budget_does_not_call_analyze(db_session, user_id,
 def test_whole_retry_keeps_one_budget_after_restart(db_session, user_id, monkeypatch):
     take = make_ready(db_session, user_id, "SCORING")
     in_current_session(monkeypatch, db_session)
-    analyze = AsyncMock(side_effect=service.CoverageCallError("장애", retryable=True))
-    monkeypatch.setattr(service, "request_analyze", analyze)
-    assert asyncio.run(service.analyze_script_coverage(take.id)) == "NO_COVERAGE"
+    analyze = AsyncMock(side_effect=coverage_service.CoverageCallError("장애", retryable=True))
+    monkeypatch.setattr(coverage_service, "request_analyze", analyze)
+    assert asyncio.run(coverage_service.analyze_script_coverage(take.id)) == "NO_COVERAGE"
     assert analyze.await_count == 2
     assert analyze.await_args_list[0].args[1] == analyze.await_args_list[1].args[1]
     db_session.execute(update(Take).where(Take.id == take.id).values(analysis_stage="SCORING"))
     db_session.commit()
-    assert asyncio.run(service.analyze_script_coverage(take.id)) == "NO_COVERAGE"
+    assert asyncio.run(coverage_service.analyze_script_coverage(take.id)) == "NO_COVERAGE"
     assert analyze.await_count == 2
 
 

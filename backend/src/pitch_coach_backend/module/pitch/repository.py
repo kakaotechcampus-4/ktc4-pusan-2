@@ -105,7 +105,7 @@ class PitchRepository:
           - 잡는 곳: service/script.create_script_service (next_script_version),
             service/presentation.upload_presentation_service (next_presentation_version),
             service/standard.add_pitch_standard_service (next_standard_version),
-            take/service.create_take_service (next_take_number)
+            take/service/take.create_take_service (next_take_number)
         pitch 안에서 max + 1 로 번호를 매기는 경로에 잠금을 걸면 위 목록도 같이 고친다.
 
         FOR UPDATE 가 아니라 FOR NO KEY UPDATE (key_share=True) 다. 자식 행 INSERT 는

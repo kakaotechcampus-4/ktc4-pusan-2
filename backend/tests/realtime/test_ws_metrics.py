@@ -10,10 +10,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import MetricSecondCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond
 from pitch_coach_backend.module.take.exception import NonExistentTake
+from pitch_coach_backend.module.take.service import record as record_service
 from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.dto import (
     MetricsMessage,
@@ -366,8 +366,8 @@ async def test_metric_buffer_stops_when_the_take_is_deleted():
 
 def test_db_keeps_the_first_save_of_the_same_second(db_session: Session, take: Take):
     """같은 1초가 또 오면 오류 없이 건너뛴다. 없는 Take 는 'Take 가 없다' 로 알린다."""
-    take_service.append_metric_seconds(db_session, TAKE_ID, [row(1000), row(2000)])
-    take_service.append_metric_seconds(
+    record_service.append_metric_seconds(db_session, TAKE_ID, [row(1000), row(2000)])
+    record_service.append_metric_seconds(
         db_session, TAKE_ID, [row(2000, slide_number=2), row(3000, slide_number=2)]
     )
 
@@ -382,4 +382,4 @@ def test_db_keeps_the_first_save_of_the_same_second(db_session: Session, take: T
         (3000, 2, "ok"),
     ]
     with pytest.raises(NonExistentTake):
-        take_service.append_metric_seconds(db_session, uuid.uuid7(), [row(1000)])
+        record_service.append_metric_seconds(db_session, uuid.uuid7(), [row(1000)])

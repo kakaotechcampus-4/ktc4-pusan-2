@@ -33,7 +33,8 @@ from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.core.exceptions import UnauthorizedException
 from pitch_coach_backend.core.security import decode_access_token
 from pitch_coach_backend.module.pitch.service import script as script_service
-from pitch_coach_backend.module.take import service as take_service
+from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
+from pitch_coach_backend.module.take.service import take as take_service
 from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy
@@ -296,7 +297,7 @@ class RealtimeSession:
                 # 발표를 시작하지 않았고 다시 붙는다
                 for attempt in range(2):
                     try:
-                        if not take_service.mark_running(self.db, self.take_id):
+                        if not lifecycle_service.mark_running(self.db, self.take_id):
                             # 그사이 다른 연결이 시작했거나 시작하지 않은 Take 로 끝났다.
                             # 다시 읽는다
                             again = take_service.find_owned(self.db, self.take_id, user_id)

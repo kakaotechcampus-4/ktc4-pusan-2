@@ -11,10 +11,10 @@ from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
+from pitch_coach_backend.module.take.service import record as record_service
 from pitch_coach_backend.realtime import service, take_stream
 from pitch_coach_backend.realtime.dto import (
     TranscriptMessage,
@@ -259,7 +259,7 @@ def test_finals_are_written_to_the_database(client: TestClient, db_session: Sess
             "confidence": 0.9,
         }
     ]
-    assert take_service.transcript_cursor(db_session, TAKE_ID) == (2, 1)
+    assert record_service.transcript_cursor(db_session, TAKE_ID) == (2, 1)
 
 
 def test_new_stream_resumes_numbering_from_persisted_cursor(client: TestClient, token: str):
@@ -513,9 +513,9 @@ def test_only_a_missing_take_is_reported_as_deleted(db_session: Session, take: T
         speech_final=True,
     )
     with pytest.raises(NonExistentTake):
-        take_service.append_transcript_segment(db_session, uuid.uuid7(), segment)
+        record_service.append_transcript_segment(db_session, uuid.uuid7(), segment)
     db_session.rollback()
 
-    take_service.append_transcript_segment(db_session, TAKE_ID, segment)
+    record_service.append_transcript_segment(db_session, TAKE_ID, segment)
     with pytest.raises(DuplicateTranscriptSegment):
-        take_service.append_transcript_segment(db_session, TAKE_ID, segment)
+        record_service.append_transcript_segment(db_session, TAKE_ID, segment)

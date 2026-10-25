@@ -12,9 +12,9 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.stt_adapter import SttConfig
@@ -126,7 +126,7 @@ def test_running_write_failure_closes_before_ready_and_allows_reconnection(
     transient: bool,
 ):
     """시작 값이 고정되지 않았으면 발표를 열지 않는다. DB 복구 후 재연결로 다시 시작한다."""
-    real = take_service.mark_running
+    real = lifecycle_service.mark_running
     calls = []
 
     def fail(db: Session, take_id: uuid.UUID) -> bool:
@@ -135,7 +135,7 @@ def test_running_write_failure_closes_before_ready_and_allows_reconnection(
             raise db_down()
         raise RuntimeError("db down")
 
-    monkeypatch.setattr(take_service, "mark_running", fail)
+    monkeypatch.setattr(lifecycle_service, "mark_running", fail)
     ready_take = make_take(db_session, user.id, status="READY")
     with caplog.at_level("ERROR"), client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
         auth(ws, create_access_token(user.id))
@@ -150,7 +150,7 @@ def test_running_write_failure_closes_before_ready_and_allows_reconnection(
     assert ready_take.status == "READY"
     assert "RUNNING 으로 못 바꿨다" in caplog.text
 
-    monkeypatch.setattr(take_service, "mark_running", real)
+    monkeypatch.setattr(lifecycle_service, "mark_running", real)
     with client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
         handshake(ws, create_access_token(user.id))
         wait_state(ws, "ok")
@@ -176,7 +176,7 @@ def test_take_ended_while_starting_is_rejected_with_its_reason(
         )
         return TakeRepository(db).mark_running(take_id)
 
-    monkeypatch.setattr(take_service, "mark_running", swept_first)
+    monkeypatch.setattr(lifecycle_service, "mark_running", swept_first)
     with client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
         auth(ws, create_access_token(user.id))
         rejected = ws.receive_json()
@@ -259,22 +259,26 @@ def test_end_write_failure_still_closes_the_take(
 def test_take_status_moves_ready_running_analyzing_in_the_database(db_session: Session, user: User):
     """연결이 READY 를 RUNNING 으로, 끝내기가 ANALYZING 으로 바꾼다. 두 번 불러도 한 번만 바뀐다."""
     take = make_take(db_session, user.id, status="READY")
-    assert take_service.mark_running(db_session, take.id) is True
-    assert take_service.mark_running(db_session, take.id) is False, "다시 붙은 연결은 그대로 둔다"
+    assert lifecycle_service.mark_running(db_session, take.id) is True
+    assert lifecycle_service.mark_running(db_session, take.id) is False, (
+        "다시 붙은 연결은 그대로 둔다"
+    )
     db_session.refresh(take)
     assert take.status == "RUNNING"
 
-    assert take_service.mark_ended(db_session, take.id) is True
-    assert take_service.mark_ended(db_session, take.id) is False
+    assert lifecycle_service.mark_ended(db_session, take.id) is True
+    assert lifecycle_service.mark_ended(db_session, take.id) is False
     db_session.refresh(take)
     assert take.status == "ANALYZING"
     assert take.ended_at is not None, "FE 가 종료 시각을 못 적어도 남는다"
-    assert take_service.mark_running(db_session, take.id) is False, "끝난 Take 는 다시 열지 않는다"
-    assert take_service.mark_ended(db_session, uuid.uuid7()) is False
+    assert lifecycle_service.mark_running(db_session, take.id) is False, (
+        "끝난 Take 는 다시 열지 않는다"
+    )
+    assert lifecycle_service.mark_ended(db_session, uuid.uuid7()) is False
 
     # 시작하지 않은 Take 는 끝내지 않는다. 실시간 연결이 한 번도 붙지 않아 남은 기록이 없다
     never_started = make_take(db_session, user.id, status="READY")
-    assert take_service.mark_ended(db_session, never_started.id) is False
+    assert lifecycle_service.mark_ended(db_session, never_started.id) is False
     db_session.refresh(never_started)
     assert never_started.status == "READY"
 
@@ -282,7 +286,7 @@ def test_take_status_moves_ready_running_analyzing_in_the_database(db_session: S
 def test_end_leaves_a_finished_take_and_the_fe_end_time(db_session: Session, user: User):
     """이미 끝난 Take 는 바꾸지 않는다. FE 가 먼저 적은 종료 시각도 덮지 않는다."""
     completed = make_take(db_session, user.id, status="COMPLETED")
-    assert take_service.mark_ended(db_session, completed.id) is False
+    assert lifecycle_service.mark_ended(db_session, completed.id) is False
     db_session.refresh(completed)
     assert completed.status == "COMPLETED"
 
@@ -290,7 +294,7 @@ def test_end_leaves_a_finished_take_and_the_fe_end_time(db_session: Session, use
     fe_end = datetime(2026, 10, 22, 10, 5, tzinfo=UTC)
     running.ended_at = fe_end
     db_session.commit()
-    assert take_service.mark_ended(db_session, running.id) is True
+    assert lifecycle_service.mark_ended(db_session, running.id) is True
     db_session.refresh(running)
     assert running.ended_at == fe_end
 

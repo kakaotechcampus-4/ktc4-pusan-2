@@ -17,8 +17,8 @@ from pitch_coach_backend.coach import finalize as coach_finalize
 from pitch_coach_backend.coach.requests import SlideEvent, TakeContext
 from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module.pitch.entity import StandardAnalyses
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.entity import Take
+from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.stt_adapter import UtteranceEnd
@@ -221,7 +221,7 @@ def test_transient_start_failure_is_retried_before_enabling_the_coach(
         )
     )
     db_session.commit()
-    real = take_service.mark_running
+    real = lifecycle_service.mark_running
     calls = []
 
     def flaky(db, take_id):
@@ -230,7 +230,7 @@ def test_transient_start_failure_is_retried_before_enabling_the_coach(
             raise db_down()
         return real(db, take_id)
 
-    monkeypatch.setattr(take_service, "mark_running", flaky)
+    monkeypatch.setattr(lifecycle_service, "mark_running", flaky)
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")

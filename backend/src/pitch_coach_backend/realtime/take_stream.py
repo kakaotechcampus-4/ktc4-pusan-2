@@ -89,7 +89,7 @@ from pitch_coach_backend.module.take.dto import (
     TranscriptWordDTO,
 )
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
-from pitch_coach_backend.module.take.service import ABANDON_AFTER_SEC
+from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS, silence
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.dto import (

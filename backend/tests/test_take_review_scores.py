@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.dto import PreviousTakeDTO
 from pitch_coach_backend.module.take.entity import TakeAIResults
-from pitch_coach_backend.module.take.service import build_review_request
+from pitch_coach_backend.module.take.service.review import build_review_request
 from tests.test_take_history import _pitch, _take
 
 

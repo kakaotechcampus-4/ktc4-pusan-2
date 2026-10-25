@@ -11,8 +11,8 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.entity import Take
+from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.auto_end import AutoEndPolicy, SilenceTracker
@@ -289,19 +289,19 @@ def test_end_reason_is_written_to_the_database_once(db_session: Session, take: T
     """Take 를 끝난 상태로 바꾸고 이유를 적는다. 먼저 적힌 이유가 남고, 그 사이 지워진 Take 는
     조용히 넘어간다."""
     assert take.ended_at is None
-    assert take_service.mark_ended(db_session, TAKE_ID, "SILENCE") is True
-    assert take_service.mark_ended(db_session, TAKE_ID, "TIME_LIMIT") is False
+    assert lifecycle_service.mark_ended(db_session, TAKE_ID, "SILENCE") is True
+    assert lifecycle_service.mark_ended(db_session, TAKE_ID, "TIME_LIMIT") is False
     db_session.refresh(take)
     assert (take.status, take.end_reason) == ("ANALYZING", "SILENCE")
     assert take.ended_at is not None, "FE 가 떨어져 있어도 끝난 시각이 남는다"
-    assert take_service.mark_ended(db_session, uuid.uuid7(), "SILENCE") is False
+    assert lifecycle_service.mark_ended(db_session, uuid.uuid7(), "SILENCE") is False
 
 
 def test_end_reason_is_not_written_to_a_take_that_already_ended(db_session: Session, user: User):
     """이미 끝난 Take(사용자가 끝내 분석 중 등)는 자동 종료로 바꾸지 않는다. FE 가 적은 끝난 시각도
     덮지 않는다."""
     ended = make_take(db_session, user.id, status="COMPLETED")
-    assert take_service.mark_ended(db_session, ended.id, "TIME_LIMIT") is False
+    assert lifecycle_service.mark_ended(db_session, ended.id, "TIME_LIMIT") is False
     db_session.refresh(ended)
     assert (ended.status, ended.end_reason) == ("COMPLETED", None)
 

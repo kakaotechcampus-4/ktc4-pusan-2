@@ -12,8 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
+from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.stt_adapter import (
@@ -399,16 +399,16 @@ async def test_startup_does_not_wait_for_a_slow_database(
 def test_abandoned_take_is_failed_from_its_close_time(db_session: Session, take: Take):
     """떠난 Take 는 분석하지 않는다 (FAILED). 진행 중일 때만 바꾸고, 지워진 Take 는 넘어간다."""
     closed_at = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
-    assert take_service.mark_abandoned(db_session, TAKE_ID, closed_at) is True
-    assert take_service.mark_abandoned(db_session, TAKE_ID, datetime.now(UTC)) is False
+    assert lifecycle_service.mark_abandoned(db_session, TAKE_ID, closed_at) is True
+    assert lifecycle_service.mark_abandoned(db_session, TAKE_ID, datetime.now(UTC)) is False
     db_session.refresh(take)
     assert (take.status, take.end_reason, take.ended_at) == ("FAILED", "ABANDONED", closed_at)
-    assert take_service.mark_abandoned(db_session, uuid.uuid7(), closed_at) is False
+    assert lifecycle_service.mark_abandoned(db_session, uuid.uuid7(), closed_at) is False
 
 
 def test_abandon_does_not_touch_a_take_that_already_ended(db_session: Session, user: User):
     ended = make_take(db_session, user.id, status="ANALYZING")
-    assert take_service.mark_abandoned(db_session, ended.id, datetime.now(UTC)) is False
+    assert lifecycle_service.mark_abandoned(db_session, ended.id, datetime.now(UTC)) is False
     db_session.refresh(ended)
     assert (ended.status, ended.end_reason) == ("ANALYZING", None)
 
@@ -419,10 +419,10 @@ def test_end_revives_a_take_ended_as_abandoned(db_session: Session, user: User):
     abandoned = make_take(db_session, user.id)
     failed = make_take(db_session, user.id, status="FAILED")
     closed_at = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
-    assert take_service.mark_abandoned(db_session, abandoned.id, closed_at) is True
+    assert lifecycle_service.mark_abandoned(db_session, abandoned.id, closed_at) is True
 
-    assert take_service.mark_ended(db_session, abandoned.id) is True
-    assert take_service.mark_ended(db_session, failed.id) is False
+    assert lifecycle_service.mark_ended(db_session, abandoned.id) is True
+    assert lifecycle_service.mark_ended(db_session, failed.id) is False
 
     db_session.refresh(abandoned)
     db_session.refresh(failed)
@@ -437,9 +437,12 @@ def test_end_revives_a_take_ended_as_abandoned(db_session: Session, user: User):
 def test_end_does_not_revive_a_take_closed_with_its_tab(db_session: Session, user: User):
     """창을 닫아 끝낸 Take(CLOSED)는 이어 가지 않는다. 끝내기 PUT 이 와도 되살리지 않는다."""
     closed = make_take(db_session, user.id)
-    assert take_service.mark_abandoned(db_session, closed.id, datetime.now(UTC), "CLOSED") is True
+    assert (
+        lifecycle_service.mark_abandoned(db_session, closed.id, datetime.now(UTC), "CLOSED")
+        is True
+    )
 
-    assert take_service.mark_ended(db_session, closed.id) is False
+    assert lifecycle_service.mark_ended(db_session, closed.id) is False
 
     db_session.refresh(closed)
     assert (closed.status, closed.end_reason) == ("FAILED", "CLOSED")
@@ -473,7 +476,7 @@ def test_running_takes_report_their_last_activity(db_session: Session, user: Use
     )
     db_session.commit()
 
-    running = dict(take_service.running_takes(db_session))
+    running = dict(lifecycle_service.running_takes(db_session))
 
     assert running == {
         idle.id: created,

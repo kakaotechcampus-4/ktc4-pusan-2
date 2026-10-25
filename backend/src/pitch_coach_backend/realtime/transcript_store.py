@@ -18,12 +18,13 @@ from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionPerCall
 from pitch_coach_backend.module.take import coach_service
-from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.dto import (
     MetricSecondCreateDTO,
     SlideEvent,
     TranscriptSegmentCreateDTO,
 )
+from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
+from pitch_coach_backend.module.take.service import record as record_service
 
 
 class TranscriptStore(Protocol):
@@ -80,15 +81,15 @@ class TranscriptStore(Protocol):
 
 class DbTranscriptStore(SessionPerCall):
     async def cursor(self, take_id: uuid.UUID) -> tuple[int, int]:
-        return await run_in_threadpool(self._with, take_service.transcript_cursor, take_id)
+        return await run_in_threadpool(self._with, record_service.transcript_cursor, take_id)
 
     async def append(self, take_id: uuid.UUID, segment: TranscriptSegmentCreateDTO) -> None:
         await run_in_threadpool(
-            self._with, take_service.append_transcript_segment, take_id, segment
+            self._with, record_service.append_transcript_segment, take_id, segment
         )
 
     async def append_metrics(self, take_id: uuid.UUID, rows: list[MetricSecondCreateDTO]) -> None:
-        await run_in_threadpool(self._with, take_service.append_metric_seconds, take_id, rows)
+        await run_in_threadpool(self._with, record_service.append_metric_seconds, take_id, rows)
 
     async def append_slide_events(self, take_id: uuid.UUID, rows: list[SlideEvent]) -> None:
         await run_in_threadpool(self._with, coach_service.append_slide_events, take_id, rows)
@@ -100,7 +101,7 @@ class DbTranscriptStore(SessionPerCall):
         utterance_ends: list[int] | None = None,
     ) -> bool:
         return await run_in_threadpool(
-            self._with, take_service.mark_ended, take_id, end_reason, utterance_ends
+            self._with, lifecycle_service.mark_ended, take_id, end_reason, utterance_ends
         )
 
     async def mark_abandoned(
@@ -111,16 +112,21 @@ class DbTranscriptStore(SessionPerCall):
         utterance_ends: list[int] | None = None,
     ) -> bool:
         return await run_in_threadpool(
-            self._with, take_service.mark_abandoned, take_id, ended_at, end_reason, utterance_ends
+            self._with,
+            lifecycle_service.mark_abandoned,
+            take_id,
+            ended_at,
+            end_reason,
+            utterance_ends,
         )
 
     async def running_takes(self) -> list[tuple[uuid.UUID, datetime]]:
-        return await run_in_threadpool(self._with, take_service.running_takes)
+        return await run_in_threadpool(self._with, lifecycle_service.running_takes)
 
     async def load_utterance_ends(self, take_id: uuid.UUID) -> list[int]:
-        return await run_in_threadpool(self._with, take_service.stored_utterance_ends, take_id)
+        return await run_in_threadpool(self._with, record_service.stored_utterance_ends, take_id)
 
     async def save_utterance_ends(self, take_id: uuid.UUID, utterance_ends: list[int]) -> None:
         await run_in_threadpool(
-            self._with, take_service.save_utterance_ends, take_id, utterance_ends
+            self._with, record_service.save_utterance_ends, take_id, utterance_ends
         )
