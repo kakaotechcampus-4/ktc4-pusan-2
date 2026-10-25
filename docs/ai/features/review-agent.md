@@ -84,7 +84,7 @@ ai/research/review-agent/
 │   ├─ score.py                             6-1 9번: 점수
 │   ├─ metrics.py                           지표 찾기 · 비교 (미션 판정 · 다음 미션 · 근거가 같이 쓴다)
 │   ├─ vocab.py                             고정 어휘 · 5-3 차원 표
-│   ├─ text.py                              기본 문장 · 숫자 검사
+│   ├─ text.py                              기본 문장
 │   ├─ config.py · version.py               부담 · 허용치 · 한 걸음 폭 · 점수 · 개수 한도, 기능 버전
 │   ├─ prompts/                             문장 쓰기 · 다음 미션 고르기 프롬프트
 │   └─ examples/                            요청 · 응답 예시 (계약 테스트가 읽는다)

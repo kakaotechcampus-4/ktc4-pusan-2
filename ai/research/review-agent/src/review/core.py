@@ -1,6 +1,7 @@
 """리뷰 진입점.
 
 - apply_rules: 규칙 단계만 (LLM 없음, 문장 없음). 같은 입력이면 같은 결과다.
+- check_numbers: 숫자 검사. LLM 문장 속 숫자가 모두 입력에 있는 숫자인지 본다.
 - review_take: 최종 진입점 (POST /takes/review). 규칙 단계 결과에
   LLM 단계(문장 · 다음 미션 고르기, 1번)를 붙여 응답을 만든다.
   LLM 이 없거나 실패하면 기본 문장과 후보 상위 다음 미션을 내고 fallback_reason 을 단다.
@@ -10,6 +11,9 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
+import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -120,6 +124,84 @@ def apply_rules(
         recurring_issues=build_recurring_issues(states, burden, cfg),
         score=compute_score(states, cfg),
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 숫자 검사 (명세 6-2, architecture.md 0-2)
+# ══════════════════════════════════════════════════════════════════════════
+
+#: 문장 속 단위 → 입력 값을 그 단위로 바꾸는 배율. 시간 입력은 ms 다 (architecture.md 6-1).
+#: 단위가 없거나 개수 · 점수 · 글자 · dB 는 입력 값 그대로
+_UNIT_SCALE = {
+    "%": 100,
+    "퍼센트": 100,
+    "ms": 1,
+    "초": 1 / 1000,
+    "분": 1 / 60000,
+    "번": 1,
+    "개": 1,
+    "점": 1,
+    "자": 1,
+    "db": 1,
+    "": 1,
+}
+#: 정수 · 소수. 1,240 처럼 세 자리마다 쉼표를 찍은 수도 한 값이다
+_NUM = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
+#: 이어 쓴 "N분 M초" 는 한 값 (초로 센다)
+_MIN_SEC = re.compile(rf"({_NUM})분\s?({_NUM})초(?!과)")
+#: 숫자 바로 뒤에 붙은 단위. "5초과" · "분당" 의 초 · 분은 단위가 아니다
+_NUMBER = re.compile(rf"({_NUM})(퍼센트|%|ms|dB|초(?!과)|분(?!당)|번|개|점|자)?", re.IGNORECASE)
+
+
+def _value(text: str) -> tuple[float, int]:
+    """(값, 보여 준 소수 자리)"""
+    text = text.replace(",", "")
+    return float(text), len(text.partition(".")[2])
+
+
+def _numbers(sentence: str) -> list[tuple[str, float, int]]:
+    """문장 속 숫자 (단위, 값, 소수 자리). 한글로 쓴 수("세 번")는 뽑지 않는다"""
+    found: list[tuple[str, float, int]] = []
+
+    def min_sec(m: re.Match[str]) -> str:
+        minutes, _ = _value(m.group(1))
+        seconds, places = _value(m.group(2))
+        found.append(("초", minutes * 60 + seconds, places))
+        return " "  # 뽑은 자리는 다시 뽑지 않는다
+
+    rest = _MIN_SEC.sub(min_sec, sentence)
+    for m in _NUMBER.finditer(rest):
+        value, places = _value(m.group(1))
+        found.append(((m.group(2) or "").lower(), value, places))
+    return found
+
+
+def _round_half_up(value: float, places: int) -> float:
+    """보여 준 자리까지 반올림 (0.625 → 0.63). 부동소수 오차는 1e-9 로 덮는다"""
+    scale = 10**places
+    return math.floor(value * scale + 0.5 + 1e-9) / scale
+
+
+def check_numbers(sentence: str, allowed_numbers: Iterable[float | int | None]) -> bool:
+    """문장 속 숫자가 모두 입력에 있는 숫자면 True (명세 6-2 숫자 검사).
+
+    allowed_numbers 는 입력 값 그대로 (비율 0–1 · 시간 ms · 개수 · dB · 장 번호 · Take 번호).
+    문장 속 숫자 하나가 아래 중 하나로 입력 값과 같으면 통과다 (architecture.md 0-2).
+
+    1. 비율과 퍼센트: 0.6248 ↔ 62% · 62퍼센트 · 0.62. 단위 없는 62 는 다르다
+    2. 시간: 88000 ↔ 88초 · 1분 28초 · 88000ms
+    3. 문장에 보인 소수 자리까지 반올림한 입력 값과 같다 (0.6248 ↔ 0.62)
+    4. 개수 · 점수는 그대로 (5 ↔ 5번)
+    5. 음수는 크기로 본다 (−1.5 ↔ 1.5dB). 방향 말("작게")은 보지 않는다
+
+    숫자가 없는 문장은 True. None · bool 은 입력 값으로 보지 않는다.
+    """
+    allowed = [abs(float(a)) for a in allowed_numbers if a is not None and not isinstance(a, bool)]
+    for unit, value, places in _numbers(sentence):
+        scale = _UNIT_SCALE[unit]
+        if not any(abs(_round_half_up(a * scale, places) - value) < 1e-9 for a in allowed):
+            return False
+    return True
 
 
 #: 예외의 code 로 받아들이는 fallback_reason (서비스 common/llm.py 가 다는 계약)
