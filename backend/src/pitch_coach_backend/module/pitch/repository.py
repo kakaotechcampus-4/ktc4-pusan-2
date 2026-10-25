@@ -116,7 +116,7 @@ class PitchRepository:
         끝날 때까지 기다린다.
         """
         # key_share=True 는 이름과 달리 KEY SHARE 가 아니라 FOR NO KEY UPDATE 로 나간다
-        # (KEY SHARE 는 read=True 를 같이 줄 때). tests/test_script_parse.py 가 확인한다
+        # (KEY SHARE 는 read=True 를 같이 줄 때). tests/script_parse/test_parse_races.py 가 확인한다
         return (
             self.db.scalar(
                 select(Pitch.id).where(Pitch.id == pitch_id).with_for_update(key_share=True)

@@ -17,8 +17,8 @@ from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket
 from pitch_coach_backend.module.pitch.entity import Pitch, ScriptVersion
 from pitch_coach_backend.module.pitch.script_parse_runner import ScriptParseRunner
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
+from tests.realtime.conftest import wait_until
 from tests.test_coach_session import FakeClient, FakeStore
-from tests.test_realtime_ws import wait_until
 
 
 class PlanSpy(FakeStore):
@@ -136,7 +136,7 @@ async def test_parsing_a_script_asks_for_the_first_plan(db_session: Session, pit
     runner = ScriptParseRunner(Parser(), session_factory=lambda: db_session, on_parsed=on_parsed)
     ticket = ParseTicket(script.id, script.parse_requested_at, script.content, 300_000, pitch.id)
     saved = {"value": ParseSaved.APPLIED}
-    # 결과 저장은 test_script_parse.py 가 본다. 여기서는 저장한 뒤에 부르는지만 본다
+    # 결과 저장은 tests/script_parse/ 가 본다. 여기서는 저장한 뒤에 부르는지만 본다
     runner._complete = lambda ticket, parsed: saved["value"]  # type: ignore[method-assign]
 
     await runner.run(ticket)

@@ -23,9 +23,7 @@ from pitch_coach_backend.realtime import take_stream
 from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.stt_adapter import UtteranceEnd
 from pitch_coach_backend.realtime.take_stream import CoachDeps
-from tests import test_realtime_ws as rt
-from tests.test_coach_session import FakeClient, FakeStore, constants, reply
-from tests.test_realtime_ws import (
+from tests.realtime.conftest import (
     TAKE_ID,
     WS_PATH,
     FakeSttAdapter,
@@ -42,18 +40,11 @@ from tests.test_realtime_ws import (
     stop,
     transcript,
     use,
+    use_store,
     wait_state,
     wait_until,
 )
-
-# test_realtime_ws 의 fixture 를 그대로 쓴다 (가짜 Deepgram · 전사 저장소 · Take · 정리)
-_no_leftover_streams = rt._no_leftover_streams
-_fast_retry = rt._fast_retry
-store = rt.store
-stt = rt.stt
-user = rt.user
-take = rt.take
-token = rt.token
+from tests.test_coach_session import FakeClient, FakeStore, constants, reply
 
 
 class Coach:
@@ -831,7 +822,7 @@ def test_a_take_picked_up_after_a_restart_keeps_its_utterance_ends(
 ):
     """앱이 Take 도중에 다시 떴다. Take 를 끝낼 때 메모리의 목록으로 덮어 쓰므로 앞 프로세스가
     적어 둔 문장 끝 신호를 이어 받아야 앞부분이 빠지지 않는다."""
-    store = rt.use_store(FakeTranscriptStore(stored_utterance_ends={TAKE_ID: [1_500, 9_000]}))
+    store = use_store(FakeTranscriptStore(stored_utterance_ends={TAKE_ID: [1_500, 9_000]}))
 
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)

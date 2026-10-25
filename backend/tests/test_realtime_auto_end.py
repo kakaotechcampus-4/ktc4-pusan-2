@@ -1,6 +1,6 @@
 """말 없음 판단과 자동 종료 조건. 네트워크 없이 숫자만 확인한다.
 
-스트림에 붙인 흐름(알림·정리·재연결 거절)은 test_realtime_ws.py 의 "자동 종료" 절에 있다.
+스트림에 붙인 흐름(알림·정리·재연결 거절)은 tests/realtime/test_ws_auto_end.py 에 있다.
 """
 
 import pytest
