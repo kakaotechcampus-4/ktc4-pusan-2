@@ -264,21 +264,26 @@ def structured_llm(
     if bundle is None:
         raise LlmUnavailable()
     try:
-        return _build(schema, model, role, bundle, deadline, app_settings)
+        runnable = _client(schema, role, bundle, app_settings)
     except Exception as exc:
         logger.error("llm_build_failed role=%s cause=%s", log_safe(model), type(exc).__name__)
         raise LlmUnavailable() from exc
+    return StructuredLlm(
+        runnable,
+        role=model,
+        timeout_seconds=app_settings.llm_timeout_seconds,
+        max_retries=app_settings.llm_max_retries,
+        deadline=deadline,
+    )
 
 
-def _build(
-    schema: type[BaseModel],
-    model: str,
-    role: LlmRole,
-    bundle: ModelBundle,
-    deadline: float | None,
-    app_settings: Settings,
-) -> StructuredLlm:
-    """역할 · 묶음으로 LLM 객체를 만든다. 예외는 부르는 쪽(`structured_llm`)이 바꾼다."""
+def _client(
+    schema: type[BaseModel], role: LlmRole, bundle: ModelBundle, app_settings: Settings
+) -> Runnable:
+    """역할 · 묶음으로 출력 스키마를 고정한 LLM 클라이언트를 만든다.
+
+    여기서 난 예외(설정 값 · 라이브러리)만 `structured_llm` 이 `LlmUnavailable` 로 바꾼다.
+    """
     client = ChatOpenAI(
         model=bundle.model,
         base_url=bundle.base_url,
@@ -296,10 +301,4 @@ def _build(
         streaming=True,
         stream_usage=True,
     )
-    return StructuredLlm(
-        client.with_structured_output(schema),
-        role=model,
-        timeout_seconds=app_settings.llm_timeout_seconds,
-        max_retries=app_settings.llm_max_retries,
-        deadline=deadline,
-    )
+    return client.with_structured_output(schema)

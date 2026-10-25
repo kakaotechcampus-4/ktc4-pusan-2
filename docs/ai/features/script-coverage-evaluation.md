@@ -601,7 +601,7 @@ uv sync
 - 단위 테스트가 볼 것: `slide_numbers` 선택, 장별 실패 → `failed` 모양, 모두 실패, `scored_ratio`(analyze · rescore, `failed` 있음 · 없음), 다시 계산의 누적 답, 답 없는 다시 계산, 같은 입력 같은 결과.
 
 # 11. 배포
-**어디서 도는가**: 코어 `src/script_coverage/`(`examples/` · `prompts/` 포함)를 AI 서비스의 `features/script_coverage/`로 폴더째 옮기고, 라우터가 세 엔드포인트를 연다. 테스트는 `tests/unit/script_coverage/`로 옮긴다(import 접두어만 바꾸고, `test_core_boundary.py`의 코어 폴더 경로를 새 위치에 맞춘다). 실험 도구(`coverage_lab`) · 실험 · 노트북은 옮기지 않는다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
+**어디서 도는가**: 코어 `src/script_coverage/`(`examples/` · `prompts/` 포함)를 AI 서비스의 `features/script_coverage/`로 폴더째 옮기고, 라우터가 세 엔드포인트를 연다. 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/`만 `tests/unit/script_coverage/`로 옮긴다(import 접두어를 바꾸고, `test_core_boundary.py`의 코어 폴더 경로를 새 위치에 맞춘다. `test_examples.py`는 이미 예시를 패키지 위치로 찾는다). 연구 도구(`coverage_lab`)를 쓰는 `tests/lab/`은 연구 폴더에 남긴다. 실험 도구(`coverage_lab`) · 실험 · 노트북은 옮기지 않는다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
 
 | 라우터 · 서비스가 할 일 | 설명 |
 |---|---|

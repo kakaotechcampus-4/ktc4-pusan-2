@@ -492,7 +492,7 @@ cd web && npm ci
 
 # 11. 배포
 **어디서 도는가**: 두 곳에 배포된다.
-- **서버 판정 모듈** `src/gaze/`(`examples/` 포함)는 AI 서비스의 `features/gaze/`로 폴더째 옮기고, 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮긴다(`tests/unit/`의 테스트가 예시를 패키지 위치로 찾는지 확인한다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
+- **서버 판정 모듈** `src/gaze/`(`examples/` 포함)는 AI 서비스의 `features/gaze/`로 폴더째 옮기고, 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮긴다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 소리 크기 판정 모듈의 기준값 파일을 서비스의 `features/volume/`에서 먼저 찾으므로, 소리 크기 모듈이 서비스에 먼저 있어야 한다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
 - **브라우저 엔진** `web/src/engine/`(원본)은 FE가 `frontend/src/vendor/gaze/`로 Worker · 카메라 화면과 함께 복사해 쓴다. FE는 엔진의 `index.ts` · `contract.ts`만 import하고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. 엔진 안은 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다. 화면(카메라 화면 · 보정 안내)은 FE가 고친다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 생긴 뒤, 아래 '옮긴 뒤 확인'을 통과하면 옮긴다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
