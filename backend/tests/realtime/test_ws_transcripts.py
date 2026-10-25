@@ -103,7 +103,7 @@ async def test_resend_missed_keeps_unsent_finals_when_send_fails_partway():
         config=SttConfig(),
         store=FakeTranscriptStore(),
     )
-    stream._missed_finals = [
+    stream._transcripts.missed_finals = [
         transcript_message("1-1", "첫"),
         transcript_message("1-2", "둘"),
         transcript_message("1-3", "셋"),
@@ -114,7 +114,7 @@ async def test_resend_missed_keeps_unsent_finals_when_send_fails_partway():
     await stream.resend_missed()
 
     assert [json.loads(t)["text"] for t in fake_ws.sent] == ["첫"]
-    assert [m.text for m in stream._missed_finals] == ["둘", "셋"], (
+    assert [m.text for m in stream._transcripts.missed_finals] == ["둘", "셋"], (
         "실패한 지점부터는 다음 재연결을 위해 남아 있어야 한다"
     )
 
@@ -163,7 +163,7 @@ async def test_concurrent_resend_missed_does_not_race_on_the_shared_list():
         config=SttConfig(),
         store=FakeTranscriptStore(),
     )
-    stream._missed_finals = [
+    stream._transcripts.missed_finals = [
         transcript_message("1-1", "첫"),
         transcript_message("1-2", "둘"),
     ]
@@ -174,7 +174,7 @@ async def test_concurrent_resend_missed_does_not_race_on_the_shared_list():
     # IndexError 가 나면 gather 자체가 그 예외로 실패한다
     await asyncio.gather(stream.resend_missed(), stream.resend_missed())
 
-    assert stream._missed_finals == []
+    assert stream._transcripts.missed_finals == []
     # 두 메시지 모두 (중복 없이) 정확히 한 번씩만 나갔다
     sent_texts = [json.loads(t)["text"] for t in ws_a.sent]
     assert sent_texts == ["첫", "둘"]
