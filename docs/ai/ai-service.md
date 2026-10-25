@@ -585,7 +585,7 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 |---|---|---|---|
 | 최소 서버 | FastAPI 앱 · `/health` · `pyproject.toml` · `uv.lock` · Dockerfile · `.dockerignore` · 테스트 · README | AI | 로컬 `docker run` 뒤 `/health` 200 |
 | CI | `ai-ci.yml` | BE (내용은 11-5) | PR에서 통과 |
-| 공통 | `settings.py` · `common/llm.py`(호출 시간 제한 · 요청 마감) · `common/errors.py` · `X-Request-ID` · 처리 시간 로그 · 테스트, 규약 확인용 대역 | AI | 키 없이 뜸, 대역으로 결과 · `meta` · 에러 본문 확인, live 테스트로 실제 호출 1회 |
+| 공통 | `settings.py` · `common/llm.py`(호출 시간 제한 · 요청 마감) · `common/errors.py` · `X-Request-ID` · 처리 시간 로그 · 테스트 | AI | 키 없이 뜸, 첫 기능(대본 전달도)의 계약 · 엔드포인트 테스트로 결과 · `meta` · 에러 본문 확인, live 테스트로 실제 호출 (처음에는 규약 확인용 대역으로 확인했고 지금은 지웠다) |
 | compose · 배포 | compose `ai` 서비스, 배포 워크플로(develop · 운영)의 `ai` 빌드 · push, 시크릿 `AI_ENV` | BE (내용은 11-3 · 11-5) | develop 서버의 be 컨테이너에서 `http://ai:8000/health` 200 |
 | 기능 엔드포인트 | 기능별 코어와 엔드포인트, `contracts/openapi.json`(기능이 하나라도 있으면), `/ready`(서버 안 모델을 쓰는 기능이 있으면) | AI | 기능별 |
 
@@ -595,7 +595,7 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 - 기능마다 쓸 모델 고르기(역할별 묶음, 측정 조건): 아직 정하지 않았다. 그 전에는 모든 역할이 기본 묶음이다.
 
 **알려진 한계**
-- 이 문서의 명령 · 출력 중 실행해 확인한 것은 10절의 코드 실행 · 테스트(live 포함) · Docker 이미지 실행 · 규약 확인용 대역과 11-1의 이미지 파일(Dockerfile · `.dockerignore`)이다(로컬 Windows · Docker Desktop, #210). 10절 'BE와 같이 띄우기'와 11-3 compose · 11-5 CI · 배포 · 11-6 운영의 명령 · 출력은 BE가 만들기 전이라 아직 목표다.
+- 이 문서의 명령 · 출력 중 실행해 확인한 것은 10절의 코드 실행 · 테스트(live 포함) · Docker 이미지 실행 · 대본 전달도 확인(처음에는 규약 확인용 대역)과 11-1의 이미지 파일(Dockerfile · `.dockerignore`)이다(로컬 Windows · Docker Desktop, #210). 10절 'BE와 같이 띄우기'와 11-3 compose · 11-5 CI · 배포 · 11-6 운영의 명령 · 출력은 BE가 만들기 전이라 아직 목표다.
 - 인증이 없어 내부망을 벗어나면 안전하지 않다.
 - 워커마다 모델이 따로 올라가 워커를 늘리면 메모리가 그만큼 는다.
 - LLM 호출 시간 제한은 서비스가 그 호출을 기다리지 않게 할 뿐, 이미 보낸 생성을 멈추지는 못한다. 시간 초과로 버린 호출은 출력 상한까지 생성을 마칠 때까지 LLM 호출 스레드(40개) 하나를 쓰고 토큰 비용도 든다. BE가 백그라운드 AI 호출을 합쳐 동시에 4개로 제한하므로(대본 등록은 그 안에서 2개, `architecture.md` 3절) 스레드가 모자랄 가능성은 낮다. 시간 초과가 잦아 모자라면 버린 호출의 스트림을 닫도록 고친다.

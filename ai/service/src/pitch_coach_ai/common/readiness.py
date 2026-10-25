@@ -4,8 +4,11 @@
   `Depends(require_ready)` 로 준비 전 요청을 503 `NOT_READY` 로 돌려보낸다.
   `GET /ready` 도 이것을 본다
 - 불러오기는 별도 스레드에서 한다. 그동안에도 서버는 요청을 받아 `/health` 는 200, 모델을 쓰는
-  기능은 503 이다(BE 는 다시 부른다). 불러오기가 실패하면 준비되지 않은 채로 남고, 헬스체크가
-  `/ready` 를 보면 컨테이너가 다시 시작된다 (`ai-service.md` 7절)
+  기능은 503 이다(BE 는 다시 부른다). 불러오기가 실패하면 `on_failure` 를 부른다. 앱(`main.py`)은
+  여기서 프로세스를 끝내, compose 재시작 정책(`restart: unless-stopped`)이 컨테이너를 다시 띄우게
+  한다(헬스체크가 unhealthy 를 표시하는 것만으로는 다시 시작되지 않는다, `ai-service.md` 7절)
+- `require_ready` 와 `/health` · `/ready` 는 `async def` 다. 긴 LLM 요청이 동기 라우터의 스레드 풀을
+  채워도 헬스체크와 준비 확인은 기다리지 않는다
 - 로그: `warmup_done name=… duration_ms=…` · `warmup_failed name=… error=…`(예외 종류와 위치만)
 - 고칠 때: 새 모델은 기능 라우터 모듈의 `WARMUP` 목록에 불러오는 함수를 더한다(함수는 결과를
   스스로 보관해야 한다. 예: `functools.cache` 를 단 `get_kiwi`)
@@ -28,8 +31,11 @@ Loader = Callable[[], object]
 class Readiness:
     """불러올 함수 목록을 한 스레드에서 차례로 부르고, 다 끝나면 준비됨으로 둔다."""
 
-    def __init__(self, loaders: Sequence[Loader]) -> None:
+    def __init__(
+        self, loaders: Sequence[Loader], on_failure: Callable[[], None] | None = None
+    ) -> None:
         self._loaders = list(loaders)
+        self._on_failure = on_failure
         self._ready = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -49,6 +55,8 @@ class Readiness:
                 load()
             except Exception as exc:  # noqa: BLE001  # 준비되지 않은 채로 남긴다
                 logger.error("warmup_failed name=%s error=%s", name, exception_summary(exc))
+                if self._on_failure is not None:
+                    self._on_failure()
                 return
             logger.info(
                 "warmup_done name=%s duration_ms=%.1f", name, (time.monotonic() - started) * 1000
@@ -64,7 +72,7 @@ class Readiness:
         return self._ready.wait(timeout)
 
 
-def require_ready(request: Request) -> None:
+async def require_ready(request: Request) -> None:
     """라우터 의존성: 시작할 때 불러오는 모델이 아직 준비되지 않았으면 503 `NOT_READY`."""
     if not request.app.state.readiness.ready:
         raise NotReady()

@@ -29,3 +29,16 @@ def test_feature_paths_are_listed_without_api_prefix() -> None:
 
     paths = set(json.loads(_export_module().render())["paths"])
     assert paths == {"/health", "/ready", "/scripts/rubric", "/takes/analyze", "/takes/rescore"}
+
+
+def test_error_responses_document_the_common_error_body() -> None:
+    import json
+
+    doc = json.loads(_export_module().render())
+    for path in ("/scripts/rubric", "/takes/analyze", "/takes/rescore"):
+        responses = doc["paths"][path]["post"]["responses"]
+        assert set(responses) == {"200", "422", "500", "502", "503", "504"}
+        schema = responses["422"]["content"]["application/json"]["schema"]
+        assert schema == {"$ref": "#/components/schemas/ErrorResponse"}
+    assert "503" in doc["paths"]["/ready"]["get"]["responses"]
+    assert "HTTPValidationError" not in doc["components"]["schemas"]

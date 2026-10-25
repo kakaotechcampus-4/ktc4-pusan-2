@@ -14,6 +14,8 @@
   내부망에서 BE 만 부르고 Caddy 를 거치지 않는다 (`docs/ai/architecture.md` 2절)
 """
 
+import os
+import signal
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -27,6 +29,14 @@ from pitch_coach_ai.settings import Settings, settings
 
 #: 시작할 때 불러올 서버 안 모델 (기능 라우터 모듈의 WARMUP)
 _WARMUP = [*script_coverage.WARMUP]
+
+
+def _stop_process() -> None:
+    """시작할 때 불러오는 모델을 불러오지 못했다. 프로세스를 끝내 재시작 정책이 다시 띄우게 한다.
+
+    준비되지 않은 채로 떠 있으면 헬스체크는 unhealthy 를 표시할 뿐 컨테이너를 다시 시작하지 않는다.
+    """
+    os.kill(os.getpid(), signal.SIGTERM)
 
 
 @asynccontextmanager
@@ -44,7 +54,7 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
     configure_logging()
     app = FastAPI(title="Pitch Coach AI", version="0.1.0", lifespan=_lifespan)
     app.state.settings = app_settings
-    app.state.readiness = Readiness(_WARMUP)
+    app.state.readiness = Readiness(_WARMUP, on_failure=_stop_process)
     # 모든 에러를 {"error": {"code", "message"}} 로, 요청마다 X-Request-ID 와 한 줄 로그
     register_exception_handlers(app)
     register_request_log(app)

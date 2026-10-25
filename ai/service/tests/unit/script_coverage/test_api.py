@@ -80,6 +80,19 @@ class _FailOn:
         return self.inner.invoke(messages)
 
 
+class _Answering:
+    """`inner` 에 넘기고, 성공한 호출 뒤에만 `responded_model` 을 기록한다 (서비스 LLM 객체처럼)."""
+
+    def __init__(self, inner: Any, model: str):
+        self.inner, self.model = inner, model
+        self.responded_model: str | None = None
+
+    def invoke(self, messages):
+        result = self.inner.invoke(messages)
+        self.responded_model = self.model
+        return result
+
+
 class _Raise:
     def __init__(self, error: BaseException):
         self.error = error
@@ -139,9 +152,22 @@ def test_rubric_returns_rubrics_and_meta(make_client) -> None:
 
 def test_meta_model_is_the_model_that_actually_answered(make_client) -> None:
     fakes = _script_fakes()
-    fakes["final"].responded_model = "openai/gpt-6-luna-2026-06"
+    fakes["final"] = _Answering(fakes["final"], "openai/gpt-6-luna-2026-06")
     body = make_client(fakes).post("/scripts/rubric", json=_rubric_request()).json()
+    assert fakes["final"].responded_model == "openai/gpt-6-luna-2026-06"  # 실제로 불렸다
     assert body["meta"]["model"] == "openai/gpt-6-luna-2026-06"
+
+
+def test_meta_model_is_null_when_no_llm_output_was_used(make_client) -> None:
+    # 빈 대본 장뿐이면 LLM 을 부르지 않는다 (architecture.md 5절)
+    body = {
+        "pitch_id": "p-1",
+        "script_version_id": "sv-3",
+        "slides": [{"slide_number": 1, "script": ""}],
+    }
+    res = make_client(_script_fakes()).post("/scripts/rubric", json=body)
+    assert res.status_code == 200
+    assert res.json()["meta"]["model"] is None
 
 
 def test_one_failed_slide_goes_to_failed_and_others_succeed(make_client) -> None:
@@ -298,3 +324,31 @@ def test_failed_request_log_has_the_error_code(
     make_client(fakes).post("/scripts/rubric", json=_rubric_request())
     (line,) = [r.getMessage() for r in log_records if r.name == "pitch_coach_ai.script_coverage"]
     assert " failed=- code=LLM_TIMEOUT " in line
+
+
+def test_analyze_one_failed_slide_goes_to_failed_and_lowers_scored_ratio(make_client) -> None:
+    fakes = _take_fakes()
+    fakes["eval"] = _FailOn(fakes["eval"], "[슬라이드 6]", LlmTimeout())
+    res = make_client(fakes).post("/takes/analyze", json=_analyze_request())
+    assert res.status_code == 200
+    body = res.json()
+    assert [e["slide_number"] for e in body["evaluations"]] == [4, 7]
+    assert [(f["slide_number"], f["error"]["code"]) for f in body["failed"]] == [(6, "LLM_TIMEOUT")]
+    assert body["take_scores"]["scored_ratio"] == round(2 / 3, 3)
+
+
+def test_analyze_all_slides_failed_is_the_common_error_body(make_client) -> None:
+    fakes = _take_fakes()
+    fakes["eval"] = _Raise(LlmTimeout())
+    res = make_client(fakes).post("/takes/analyze", json=_analyze_request())
+    assert res.status_code == 504
+    assert res.json() == {
+        "error": {"code": "LLM_TIMEOUT", "message": "LLM 응답 시간이 초과되었습니다."}
+    }
+
+
+def test_analyze_eval_and_verifier_share_one_deadline(make_client) -> None:
+    client = make_client(_take_fakes())
+    client.post("/takes/analyze", json=_analyze_request())
+    assert [r for r, _ in client.calls] == ["script_coverage.eval", "script_coverage.verifier"]
+    assert len({d for _, d in client.calls}) == 1

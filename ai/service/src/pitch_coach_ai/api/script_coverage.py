@@ -29,7 +29,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from pitch_coach_ai.common.errors import AppError, LlmUnavailable
+from pitch_coach_ai.common.errors import ERROR_RESPONSES, AppError, LlmUnavailable
 from pitch_coach_ai.common.llm import deadline_after, structured_llm
 from pitch_coach_ai.common.readiness import require_ready
 from pitch_coach_ai.features.script_coverage.core import (
@@ -61,7 +61,11 @@ from pitch_coach_ai.settings import LLM_ROLES, Settings
 
 logger = logging.getLogger("pitch_coach_ai.script_coverage")
 
-router = APIRouter(tags=["script_coverage"], dependencies=[Depends(require_ready)])
+router = APIRouter(
+    tags=["script_coverage"],
+    dependencies=[Depends(require_ready)],
+    responses=ERROR_RESPONSES,
+)
 
 #: 시작할 때 불러올 것 (`common/readiness.py`). Kiwi 는 처음 만들 때 모델을 읽어 느리다
 WARMUP = [get_kiwi]

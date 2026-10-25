@@ -26,10 +26,12 @@ import re
 import traceback
 from http import HTTPStatus
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from starlette.exceptions import HTTPException
 
 logger = logging.getLogger("pitch_coach_ai.errors")
@@ -85,6 +87,32 @@ class NotReady(AppError):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "NOT_READY"
     message = "서버가 아직 준비 중입니다. 잠시 뒤 다시 요청해 주세요."
+
+
+class ErrorBody(BaseModel):
+    code: str
+    message: str
+
+
+class ErrorResponse(BaseModel):
+    """모든 에러 응답의 모양. OpenAPI 문서(`contracts/openapi.json`)에 이 모양을 싣는 데 쓴다."""
+
+    error: ErrorBody
+
+
+def _error_doc(description: str) -> dict[str, Any]:
+    return {"model": ErrorResponse, "description": description}
+
+
+#: 라우터의 `responses=` 에 넣는 에러 응답 문서.
+#: FastAPI 가 기본으로 싣는 422(`detail`)를 공통 본문으로 덮는다
+ERROR_RESPONSES: dict[int, dict[str, Any]] = {
+    422: _error_doc("요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"),
+    500: _error_doc("처리되지 않은 예외(INTERNAL_ERROR)"),
+    502: _error_doc("LLM 호출 실패(LLM_ERROR) · 잘못된 출력(LLM_INVALID_OUTPUT)"),
+    503: _error_doc("LLM 을 쓸 수 없음(LLM_UNAVAILABLE) · 준비 전(NOT_READY)"),
+    504: _error_doc("LLM 응답 시간 초과(LLM_TIMEOUT)"),
+}
 
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
