@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.connection import session as service
-from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream import registry, runtime
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
@@ -43,7 +43,7 @@ def test_stop_timeout_cancels_the_stream_instead_of_leaking_it(
 ):
     """drain 이 실패해도 레지스트리에서만 사라지고 태스크가 계속 도는 일이 없어야 한다."""
     monkeypatch.setattr(service, "STOP_TIMEOUT_SEC", 0.1)
-    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 5.0)
+    monkeypatch.setattr(runtime, "DRAIN_TIMEOUT_SEC", 5.0)
     adapter = use(FakeSttAdapter(Plan(swallow_close=True)))
 
     with client.websocket_connect(WS_PATH) as ws:
@@ -53,7 +53,7 @@ def test_stop_timeout_cancels_the_stream_instead_of_leaking_it(
         assert stop(ws)["state"] == "closed"
         assert closed_with(ws) == 1000
 
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
     assert adapter.session is not None
     # 태스크를 끊었으면 Deepgram 소켓도 닫혀야 한다 (shield 안의 abort)
     assert adapter.session.aborted
@@ -88,14 +88,14 @@ async def test_ready_send_failure_still_detaches_from_the_stream(
     )
     # 붙인 스트림을 잡아 둔다. 오디오 없이 끊기면 바로 정리돼 레지스트리에서 빠질 수 있다
     attached: list[TakeStream] = []
-    attach = take_stream.attach
+    attach = registry.attach
 
     async def spy(*args, **kwargs) -> TakeStream:
         stream = await attach(*args, **kwargs)
         attached.append(stream)
         return stream
 
-    monkeypatch.setattr(take_stream, "attach", spy)
+    monkeypatch.setattr(registry, "attach", spy)
 
     await realtime.run()  # 예외가 새지 않는다
 
@@ -114,12 +114,12 @@ async def test_concurrent_attach_during_handover_does_not_duplicate_stream(
     """확인(get) -> 생성(TakeStream) 이 원자적이지 않으면, 정리 중인 스트림에
     두 연결이 동시에 오는 순간 둘 다 "없다" 를 보고 각자 새 스트림·Deepgram 세션을
     만든다. 하나는 레지스트리에서 밀려나 고아로 남는다."""
-    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(runtime, "DRAIN_TIMEOUT_SEC", 0.05)
     take_id = uuid.uuid7()
     owner_id = uuid.uuid7()
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
 
-    first = await take_stream.attach(
+    first = await registry.attach(
         take_id,
         FakeWebSocket(),
         owner_id=owner_id,
@@ -131,7 +131,7 @@ async def test_concurrent_attach_during_handover_does_not_duplicate_stream(
     first.request_stop()  # swallow_close 라서 스스로는 절대 안 끝난다 -> is_stopping 만 유지된다
 
     second, third = await asyncio.gather(
-        take_stream.attach(
+        registry.attach(
             take_id,
             FakeWebSocket(),
             owner_id=owner_id,
@@ -139,7 +139,7 @@ async def test_concurrent_attach_during_handover_does_not_duplicate_stream(
             config=SttConfig(),
             store=FakeTranscriptStore(),
         ),
-        take_stream.attach(
+        registry.attach(
             take_id,
             FakeWebSocket(),
             owner_id=owner_id,
@@ -150,7 +150,7 @@ async def test_concurrent_attach_during_handover_does_not_duplicate_stream(
     )
 
     assert second is third, "같은 take_id 로 겹친 재연결은 같은 스트림으로 수렴해야 한다"
-    assert take_stream.active_count() == 1
+    assert registry.active_count() == 1
     # Deepgram 연결은 처음(1) + 핸드오버 뒤 새로 한 번(1) = 2 여야 한다. 락이 없으면 3 이 된다
     assert len(adapter.sessions) == 2
 
@@ -164,7 +164,7 @@ async def test_cancel_waits_for_real_deepgram_cleanup_before_reporting_closed():
     CancelledError 를 던지도록 예약할 뿐 그 자리에서 정리가 끝나는 게 아니다.
     실제 정리(Deepgram 소켓을 shield 안에서 닫는 것)가 끝나야 closed 여야 한다."""
     adapter = FakeSttAdapter(Plan(abort_delay=0.15))
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,
@@ -192,7 +192,7 @@ async def test_stop_immediately_after_long_gap_still_flushes_carried_audio():
     """세션 회전(_ROTATE)과 stop 이 겹치면, 회전 직전에 넘겨받은 캐리 프레임과 그 뒤
     큐에 남은 stop 신호가 새 세션을 하나 더 열어서라도 처리돼야 한다."""
     adapter = FakeSttAdapter(Plan(), Plan())
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,
@@ -227,13 +227,13 @@ async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
     """옛 스트림의 정리가 정상 종료 상한(DRAIN_TIMEOUT_SEC)을 넘기면 핸드오버는 기다리기를
     포기한다. 그때 그냥 forget() 만 하면 옛 스트림은 레지스트리에서만 사라질 뿐 자기 페이스대로
     계속 돈다 — Deepgram 연결이 안 끊긴다. cancel() 로 강제로 끊어야 한다."""
-    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(runtime, "DRAIN_TIMEOUT_SEC", 0.05)
     take_id = uuid.uuid7()
     owner_id = uuid.uuid7()
     # swallow_close: CloseStream 을 보내도 스스로는 절대 안 끝난다 (느린 정상 drain 재현)
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan())
 
-    old_stream = await take_stream.attach(
+    old_stream = await registry.attach(
         take_id,
         FakeWebSocket(),
         owner_id=owner_id,
@@ -244,7 +244,7 @@ async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
     await _wait_until_ok(old_stream)
     old_stream.request_stop()  # 정상적으로 정리를 시작했다 (아직 안 끝났을 뿐)
 
-    new_stream = await take_stream.attach(
+    new_stream = await registry.attach(
         take_id,
         FakeWebSocket(),
         owner_id=owner_id,
@@ -271,7 +271,7 @@ async def test_handover_waits_for_the_old_stream_to_finish_saving(
 ):
     """정리 중인 스트림이 final 을 저장하는 도중에 끊겨도 그 저장은 끝까지 간다. 새 스트림은
     그 저장이 끝난 뒤 번호를 읽는다 — 먼저 읽으면 같은 seq 로 저장하다 UNIQUE 위반으로 버려진다."""
-    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(runtime, "DRAIN_TIMEOUT_SEC", 0.05)
     take_id = uuid.uuid7()
     owner_id = uuid.uuid7()
     adapter = FakeSttAdapter(
@@ -280,7 +280,7 @@ async def test_handover_waits_for_the_old_stream_to_finish_saving(
     )
     store = FakeTranscriptStore(append_delay=0.3)
 
-    old_stream = await take_stream.attach(
+    old_stream = await registry.attach(
         take_id,
         FakeWebSocket(),
         owner_id=owner_id,
@@ -293,7 +293,7 @@ async def test_handover_waits_for_the_old_stream_to_finish_saving(
     await _wait_for(lambda: adapter.sessions[0].audio)
     old_stream.request_stop()  # final 저장(0.3s) 중에 drain 상한(0.05s)이 지나 끊긴다
 
-    new_stream = await take_stream.attach(
+    new_stream = await registry.attach(
         take_id,
         FakeWebSocket(),
         owner_id=owner_id,
@@ -319,7 +319,7 @@ async def test_cancel_before_task_ever_runs_still_reports_closed():
     않은 채로), 코루틴 본문이 아예 실행되지 않아 _run() 의 finally 조차 안 돈다.
     그러면 _finish() 를 아무도 안 불러서 wait_closed() 가 영원히 False 만 준다."""
     adapter = FakeSttAdapter(Plan())
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,
@@ -332,7 +332,7 @@ async def test_cancel_before_task_ever_runs_still_reports_closed():
     closed = await stream.wait_closed(timeout=1.0)
     assert closed is True
     assert stream.is_finished is True
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
 
 
 # ── 코드 리뷰 반영: cancel 정리 상한 · reaper 참조 · take 별 락 ─────────
@@ -343,7 +343,7 @@ async def test_cancel_keeps_a_reference_to_the_reaper_task():
     """asyncio 는 태스크를 약하게만 잡는다. 참조 없이 create_task 만 하면 정리가 끝나기 전에
     GC 될 수 있다 (asyncio.create_task 문서의 경고)."""
     adapter = FakeSttAdapter(Plan(abort_delay=0.05))
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,
@@ -366,9 +366,9 @@ async def test_abort_is_bounded_so_cancel_cannot_hang_on_deepgram(
 ):
     """Deepgram 소켓 닫기는 shield 안에서 돌아 바깥에서 끊을 수 없다. 상대가 close 에 답하지
     않으면 상한을 두지 않는 한 영영 기다린다."""
-    monkeypatch.setattr(take_stream, "ABORT_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(runtime, "ABORT_TIMEOUT_SEC", 0.1)
     adapter = FakeSttAdapter(Plan(abort_delay=10.0))  # 사실상 답이 없다
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,
@@ -388,9 +388,9 @@ async def test_abort_is_bounded_so_cancel_cannot_hang_on_deepgram(
 async def test_wait_cancelled_gives_up_and_reports_closed(monkeypatch: pytest.MonkeyPatch):
     """CANCEL_TIMEOUT_SEC 안에 정리가 안 끝나면 (코드 리뷰 케이스 1) 닫힌 것으로 확정한다.
     FE 는 더 붙잡히지 않고, 뒤늦게 끝난 정리는 idempotent 한 _finish 로 흡수된다."""
-    monkeypatch.setattr(take_stream, "ABORT_TIMEOUT_SEC", 1.0)
+    monkeypatch.setattr(runtime, "ABORT_TIMEOUT_SEC", 1.0)
     adapter = FakeSttAdapter(Plan(abort_delay=0.3))
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,
@@ -413,12 +413,12 @@ async def test_wait_cancelled_gives_up_and_reports_closed(monkeypatch: pytest.Mo
 async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.MonkeyPatch):
     """attach 락이 프로세스 전역이면 한 Take 의 핸드오버 대기(DRAIN_TIMEOUT_SEC) 동안
     다른 모든 Take 의 연결이 같이 멈춘다 (코드 리뷰 지적). take_id 별 락이어야 한다."""
-    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.5)
+    monkeypatch.setattr(runtime, "DRAIN_TIMEOUT_SEC", 0.5)
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
     take_a, take_b, owner = uuid.uuid7(), uuid.uuid7(), uuid.uuid7()
 
     def attach(take_id: uuid.UUID):
-        return take_stream.attach(
+        return registry.attach(
             take_id,
             FakeWebSocket(),
             owner_id=owner,
@@ -440,8 +440,8 @@ async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.Monk
 
     assert elapsed_b < 0.25, f"다른 Take 가 핸드오버 대기에 같이 막혔다 ({elapsed_b:.2f}s)"
     assert new_a is not old_a and stream_b is not old_a
-    assert take_stream.active_count() == 2
-    assert not take_stream._attach_locks, "다 쓴 락은 남기지 않는다"
+    assert registry.active_count() == 2
+    assert not registry._attach_locks, "다 쓴 락은 남기지 않는다"
 
 
 @pytest.mark.anyio
@@ -449,7 +449,7 @@ async def test_frames_from_a_taken_over_connection_are_ignored():
     """다른 탭이 이어받은 뒤 쫓겨난 연결이 닫히기 전에 보낸 프레임은 버린다.
     섞이면 새 탭의 seq 를 앞질러 새 탭 오디오가 역행으로 버려진다."""
     adapter = FakeSttAdapter()
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,
@@ -477,7 +477,7 @@ async def test_stop_from_a_taken_over_connection_is_ignored():
     """쫓겨난 연결이 닫히기 전에 보낸 stop 도 버린다. 받으면 스트림이 멈추고, 이어받은 탭의
     오디오는 멈춘 스트림에 아무 알림 없이 버려진다."""
     adapter = FakeSttAdapter()
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,
@@ -512,7 +512,7 @@ async def test_stream_without_audio_stops_on_detach_instead_of_waiting_grace():
     adapter = FakeSttAdapter()
 
     def make() -> TakeStream:
-        return TakeStream(
+        return registry.create_stream(
             uuid.uuid7(),
             owner_id=uuid.uuid7(),
             stt_adapter=adapter,
@@ -554,10 +554,10 @@ async def test_audio_dropped_while_rotating_is_filled_with_silence(
 ):
     """세션을 가는 동안 큐가 넘쳐 드롭된 것은 넘겨받은 프레임 **뒤**의 오디오다. 새 세션의
     base 가 흡수하면 안 된다 — 그만큼 이후 전사 시각이 앞당겨진다. 새로고침할 때마다 세션을 간다."""
-    monkeypatch.setattr(take_stream, "QUEUE_MAX_FRAMES", 10)
+    monkeypatch.setattr(runtime, "QUEUE_MAX_FRAMES", 10)
     adapter = FakeSttAdapter()
     _slow_after_first(adapter, 0.3)
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,
@@ -595,9 +595,9 @@ async def test_audio_dropped_while_rotating_is_filled_with_silence(
 async def test_dropped_restart_frame_still_rotates(monkeypatch: pytest.MonkeyPatch):
     """새로고침 뒤 첫 프레임(restart)이 큐가 넘쳐 드롭돼도 세션을 간다. 표시가 프레임과 함께
     사라지면 새 탭 오디오가 옛 세션에 이어 붙는다."""
-    monkeypatch.setattr(take_stream, "QUEUE_MAX_FRAMES", 5)
+    monkeypatch.setattr(runtime, "QUEUE_MAX_FRAMES", 5)
     adapter = FakeSttAdapter()
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,
@@ -631,7 +631,7 @@ async def test_dropped_restart_frame_still_rotates(monkeypatch: pytest.MonkeyPat
 @pytest.mark.anyio
 async def test_audio_after_stop_is_ignored():
     """stop 뒤의 오디오는 아무도 소비하지 않는다. 큐에 넣으면 통계(frames)만 어긋난다."""
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=FakeSttAdapter(),
@@ -653,7 +653,7 @@ async def test_audio_after_stop_is_ignored():
 async def test_audio_that_never_reached_deepgram_is_reported_as_lost():
     """Deepgram 이 끝내 안 붙은 채 끝나면 큐에 남은 오디오는 유실이다. 마지막 stt_status 의
     lost_ms 가 이걸 빼먹으면 리포트가 "STT 다 받았다" 고 잘못 말한다."""
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=FakeSttAdapter(fail_times=1_000),
@@ -677,7 +677,7 @@ async def test_unexpected_exception_in_session_reconnects_instead_of_dying(
     """어댑터 버그 같은 예상 못 한 예외로 태스크가 죽으면 FE 는 아무 알림 없이 STT 만 조용히
     멈춘 상태가 된다. Deepgram 이 끊긴 것과 같게 다뤄 재접속해야 한다."""
     adapter = FakeSttAdapter(Plan(explode_on_send=True), Plan())
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=adapter,

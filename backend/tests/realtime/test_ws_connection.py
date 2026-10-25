@@ -22,7 +22,7 @@ from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
 from pitch_coach_backend.realtime.connection import session as service
 from pitch_coach_backend.realtime.dto import ErrorMessage, WsErrorCode
-from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream import abandon, registry, runtime
 from pitch_coach_backend.realtime.stream.runtime import FAST_ATTEMPTS
 from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
 from tests.realtime.conftest import (
@@ -471,7 +471,7 @@ def test_reload_within_grace_restarts_the_timeline_instead_of_dropping_audio(
 def test_grace_expiry_closes_the_stream(
     client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch, store: FakeTranscriptStore
 ):
-    monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
+    monkeypatch.setattr(runtime, "GRACE_SEC", 0.05)
     adapter = use(FakeSttAdapter())
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
@@ -479,18 +479,18 @@ def test_grace_expiry_closes_the_stream(
         ws.send_bytes(frame(1, 0))
 
     deadline = time.monotonic() + 3.0
-    while take_stream.active_count() and time.monotonic() < deadline:
+    while registry.active_count() and time.monotonic() < deadline:
         time.sleep(0.02)
 
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
     assert adapter.session is not None
     # 그냥 버리지 않고 CloseStream 으로 마지막 전사까지 받아 둔다
     assert adapter.session.controls == ["CloseStream"]
     # 스트림만 정리한다. FE 는 끊긴 뒤에도 다시 붙으니 Take 는 끝내지 않는다
     assert store.ended == []
-    assert TAKE_ID not in take_stream._ended
+    assert TAKE_ID not in registry._ended
     # 대신 아무도 다시 붙지 않으면 끝낼 타이머를 건다
-    assert TAKE_ID in take_stream._abandon_timers
+    assert TAKE_ID in abandon._abandon_timers
 
 
 def test_reconnect_after_grace_expiry_resumes_on_a_new_stream(
@@ -499,7 +499,7 @@ def test_reconnect_after_grace_expiry_resumes_on_a_new_stream(
     """FE 는 빠른 백오프가 다 실패해도 포기하지 않고 5초마다 다시 붙는다. 그래서 grace 가
     지난 뒤에 붙는 연결도 받아야 한다 — 새 스트림을 열고, FE 가 리셋하지 않은 seq 와
     Take 기준 offset 을 그대로 받아 전사 시각이 Take 타임라인에 맞게 나온다."""
-    monkeypatch.setattr(take_stream, "GRACE_SEC", 0.05)
+    monkeypatch.setattr(runtime, "GRACE_SEC", 0.05)
     adapter = use(
         FakeSttAdapter(Plan(), Plan(replies=[transcript(0, 100, "다시 붙었다", is_final=True)]))
     )
@@ -509,9 +509,9 @@ def test_reconnect_after_grace_expiry_resumes_on_a_new_stream(
         ws.send_bytes(frame(1, 0))
 
     deadline = time.monotonic() + 3.0
-    while take_stream.active_count() and time.monotonic() < deadline:
+    while registry.active_count() and time.monotonic() < deadline:
         time.sleep(0.02)
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
 
     # 40초 뒤에 붙었다. 그동안 FE 는 seq 를 계속 올렸다 (끊긴 동안의 프레임은 버려졌다)
     with client.websocket_connect(WS_PATH) as ws:
@@ -693,7 +693,7 @@ def test_unknown_take_is_rejected_before_deepgram(
         assert ws.receive_json()["code"] == "TAKE_NOT_FOUND"
         assert closed_with(ws) == 1008
     assert stt.configs == [], "Take 검사에 걸리면 Deepgram 에 붙지 않는다"
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
 
 
 def test_ended_take_is_rejected(
@@ -719,7 +719,7 @@ def test_someone_elses_take_is_rejected_even_without_a_live_stream(
         assert ws.receive_json()["code"] == "TAKE_NOT_FOUND"
         assert closed_with(ws) == 1008
     assert stt.configs == [], "Deepgram 에 붙지 않는다"
-    assert take_stream.active_count() == 0, "스트림도 만들지 않는다"
+    assert registry.active_count() == 0, "스트림도 만들지 않는다"
 
 
 def test_reconnect_is_authorized_again_even_while_the_stream_is_alive(
@@ -733,7 +733,7 @@ def test_reconnect_is_authorized_again_even_while_the_stream_is_alive(
         # 오디오를 한 번도 안 받은 스트림은 끊기면 바로 정리된다. grace 에 들어가려면
         # 받은 오디오가 있어야 한다
         ws.send_bytes(frame(1, 0))
-    assert take_stream.active_count() == 1, "grace 중이라 스트림은 살아 있다"
+    assert registry.active_count() == 1, "grace 중이라 스트림은 살아 있다"
 
     take.status = "COMPLETED"
     db_session.commit()

@@ -70,12 +70,12 @@ def test_abandon_is_refused_while_another_window_is_presenting(
 ) -> None:
     """FE 는 하트비트로 다른 창이 살아 있는지 보지만 늦을 수 있다. 연결이 붙어 있고 오디오가
     들어오면 BE 가 거절한다 — 발표 중인 Take 를 끝내지 않는다."""
-    from pitch_coach_backend.realtime.stream import runtime as take_stream
+    from pitch_coach_backend.realtime.stream import registry
 
     take = _make_take(db_session, pitch_id, versions, 1)
     take.status = "RUNNING"
     db_session.flush()
-    monkeypatch.setattr(take_stream, "is_live", lambda take_id: take_id == take.id)
+    monkeypatch.setattr(registry, "is_live", lambda take_id: take_id == take.id)
 
     response = _abandon(client, take, auth_headers)
 

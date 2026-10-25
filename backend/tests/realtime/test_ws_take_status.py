@@ -17,8 +17,7 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
-from pitch_coach_backend.realtime.stream import runtime as take_stream
-from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stream import registry, runtime
 from pitch_coach_backend.realtime.stt.adapter import SttConfig
 from tests.realtime.conftest import (
     TAKE_ID,
@@ -78,7 +77,7 @@ def test_reconnect_while_stopping_is_rejected(
     """사용자가 끝낸 Take 다. 마지막 전사를 정리하는 동안(DB 에 적기 전) 붙는 연결도 받지 않는다 —
     받으면 새 스트림이 열려 끝난 연습 뒤에 전사가 더 붙는다. 종료 중 새로고침한 FE 가 stop 만
     보내러 붙어도 이렇게 거절되고, FE 는 stop 을 보낸 상태에서 닫히면 종료를 그대로 이어 간다."""
-    monkeypatch.setattr(take_stream, "DRAIN_TIMEOUT_SEC", 0.3)
+    monkeypatch.setattr(runtime, "DRAIN_TIMEOUT_SEC", 0.3)
     adapter = use(FakeSttAdapter(Plan(swallow_close=True)))
 
     with client.websocket_connect(WS_PATH) as first:
@@ -86,7 +85,7 @@ def test_reconnect_while_stopping_is_rejected(
         wait_state(first, "ok")
         first.send_text(json.dumps({"type": "stop"}))  # 응답을 기다리지 않는다
         deadline = time.monotonic() + 3.0
-        while TAKE_ID not in take_stream._ended and time.monotonic() < deadline:
+        while TAKE_ID not in registry._ended and time.monotonic() < deadline:
             time.sleep(0.01)
 
         with client.websocket_connect(WS_PATH) as second:
@@ -145,7 +144,7 @@ def test_running_write_failure_closes_before_ready_and_allows_reconnection(
     assert closed.value.code == 1011
     assert len(calls) == (2 if transient else 1)
     assert stt.sessions == []
-    assert ready_take.id not in take_stream._takes
+    assert ready_take.id not in registry._takes
     db_session.refresh(ready_take)
     assert ready_take.status == "READY"
     assert "RUNNING 으로 못 바꿨다" in caplog.text
@@ -353,7 +352,7 @@ def test_put_end_after_the_connection_dropped_drains_then_ends(
         wait_state(ws, "ok")
         ws.send_bytes(frame(1, 0))
         ws.receive_json()
-    stream = take_stream._streams[TAKE_ID]
+    stream = registry._streams[TAKE_ID]
     deadline = time.monotonic() + 2.0
     while stream.has_client and time.monotonic() < deadline:
         time.sleep(0.01)
@@ -361,7 +360,7 @@ def test_put_end_after_the_connection_dropped_drains_then_ends(
 
     assert put_end(client, take, token) == 200
 
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
     assert adapter.session is not None
     assert adapter.session.controls == ["CloseStream"]
     assert store.calls == ["append"]
@@ -379,22 +378,22 @@ async def test_end_without_stop_leaves_a_stopping_take_to_its_connection():
     """stop 으로 끝내는 중이면 그 연결이 마지막 전사를 저장한 뒤 적는다. 정리가 끝나 스트림이
     사라졌으면 PUT 이 다시 적어도 된다 — 같은 Take 를 두 번 끝내도 한 번만 바뀐다."""
     tab = FakeWebSocket()
-    stream = TakeStream(
+    stream = registry.create_stream(
         TAKE_ID,
         owner_id=uuid.uuid7(),
         stt_adapter=FakeSttAdapter(Plan(swallow_close=True)),
         config=SttConfig(),
         store=FakeTranscriptStore(),
     )
-    take_stream._streams[TAKE_ID] = stream
+    registry._streams[TAKE_ID] = stream
     stream.start()
     await stream.attach(tab)
     stream.push(frame(1, 0), source=tab)
     stream.end()
     stream.detach(tab)
 
-    assert await take_stream.end_without_stop(TAKE_ID) is None
+    assert await registry.end_without_stop(TAKE_ID) is None
 
     stream.cancel()
     await stream.wait_closed(timeout=1.0)
-    assert await take_stream.end_without_stop(TAKE_ID) is not None
+    assert await registry.end_without_stop(TAKE_ID) is not None

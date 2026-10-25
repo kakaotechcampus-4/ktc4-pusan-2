@@ -18,8 +18,7 @@ from pitch_coach_backend.realtime.dto import (
     MetricsMessage,
 )
 from pitch_coach_backend.realtime.storage.metrics import METRICS_BATCH, MetricBuffer
-from pitch_coach_backend.realtime.stream import runtime as take_stream
-from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stream import registry, runtime
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
 )
@@ -200,7 +199,7 @@ def test_auto_end_waits_for_the_last_metrics_sent_after_the_drain(
     """FE 는 auto_end 를 받고 마지막 1초 조각과 stop 을 보낸다. Deepgram 정리가 먼저 끝났어도 그
     조각을 받아 저장한 뒤에 끝난 것으로 적는다."""
     use_policy(monkeypatch, SHORT_SILENCE)
-    monkeypatch.setattr(take_stream, "FINAL_METRICS_WAIT_SEC", 2.0)
+    monkeypatch.setattr(runtime, "FINAL_METRICS_WAIT_SEC", 2.0)
     use(
         FakeSttAdapter(
             Plan(replies=[empty_final(0, 100), empty_final(100, 200), empty_final(200, 300)])
@@ -212,7 +211,7 @@ def test_auto_end_waits_for_the_last_metrics_sent_after_the_drain(
         for i in range(3):
             ws.send_bytes(frame(i + 1, i * 100))
         receive_auto_end(ws)
-        wait_until(lambda: TAKE_ID not in take_stream._streams)
+        wait_until(lambda: TAKE_ID not in registry._streams)
         ws.send_text(json.dumps(metrics(300, duration_ms=300)))
         stop(ws)
 
@@ -231,7 +230,7 @@ async def test_audio_dropped_from_the_queue_is_not_heard():
     stream = make_stream(FakeSttAdapter(), FakeTranscriptStore(), short_time_limit(3_600_000))
     stream.state = "ok"
     # 스트림을 띄우지 않아 아무도 큐를 비우지 않는다. 오래된 프레임부터 버려진다
-    for seq in range(1, take_stream.QUEUE_MAX_FRAMES + 11):
+    for seq in range(1, runtime.QUEUE_MAX_FRAMES + 11):
         stream.push(frame(seq, (seq - 1) * 100))
 
     assert stream._stt_status_of(MetricsMessage.model_validate(metrics(1_000))) == "degraded"
@@ -287,7 +286,7 @@ def test_metrics_before_auth_is_rejected(client: TestClient, stt: FakeSttAdapter
 async def test_metrics_from_an_evicted_tab_are_dropped():
     """다른 탭이 이어받은 뒤 쫓겨난 탭이 보낸 것은 버린다 (오디오와 같은 규칙)."""
     store = FakeTranscriptStore()
-    stream = TakeStream(
+    stream = registry.create_stream(
         TAKE_ID,
         owner_id=uuid.uuid7(),
         stt_adapter=FakeSttAdapter(),
@@ -300,7 +299,7 @@ async def test_metrics_from_an_evicted_tab_are_dropped():
 
     stream.push_metrics(MetricsMessage.model_validate(metrics(1000)), source=old_tab)
     stream.push_metrics(MetricsMessage.model_validate(metrics(2000)), source=new_tab)
-    await take_stream.flush_metrics(TAKE_ID)
+    await registry.flush_metrics(TAKE_ID)
 
     assert sorted(store.metrics) == [2000]
 
@@ -341,13 +340,13 @@ async def test_stop_all_waits_for_a_save_already_running(monkeypatch: pytest.Mon
     """스트림이 닫히며 시작한 백그라운드 저장은 행을 꺼내 가 버퍼가 비어 보인다. 앱을 내릴 때
     그 저장도 기다린다 — 안 기다리면 진행 중인 Take 의 마지막 몇 초가 사라진다."""
     store = FakeTranscriptStore(append_delay=0.1)
-    record = take_stream._take_record(TAKE_ID, SHORT_SILENCE, store)
+    record = registry._take_record(TAKE_ID, SHORT_SILENCE, store)
     record.metrics.add(row(1000))
     record.metrics.flush_soon()
     await asyncio.sleep(0)
     assert len(record.metrics) == 0
 
-    await take_stream.stop_all()
+    await registry.stop_all()
 
     assert sorted(store.metrics) == [1000]
 

@@ -2,7 +2,7 @@
 
     FE ──(WS-1)── RealtimeSession ──push──▶ TakeStream ──(WS-2)── Deepgram
 
-이 클래스는 **연결만큼만** 산다. 오디오 파이프라인과 Deepgram 세션은 `take_stream.TakeStream`
+이 클래스는 **연결만큼만** 산다. 오디오 파이프라인과 Deepgram 세션은 `runtime.TakeStream`
 이 들고 있고 연결보다 오래 남는다 — 탭을 새로고침해도 세그먼트 번호가 이어지도록.
 
 연결 하나의 순서: Origin → auth(JWT) → 인가(DB 1회: 사용자·Take 존재·소유·상태·대본 용어.
@@ -52,14 +52,10 @@ from pitch_coach_backend.realtime.dto import (
 )
 from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
-from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream import registry
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
-from pitch_coach_backend.realtime.stream.runtime import (
-    CoachDeps,
-    StreamOwnerMismatch,
-    TakeEnded,
-    TakeStream,
-)
+from pitch_coach_backend.realtime.stream.registry import StreamOwnerMismatch, TakeEnded
+from pitch_coach_backend.realtime.stream.runtime import CoachDeps, TakeStream
 from pitch_coach_backend.realtime.stt.adapter import SttAdapter, SttConfig
 from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
 from pitch_coach_backend.realtime.stt.keyterms import build_keyterms, normalize_term
@@ -158,7 +154,7 @@ class RealtimeSession:
             return
         self.user_id = user_id
         try:
-            stream = await take_stream.attach(
+            stream = await registry.attach(
                 self.take_id,
                 self.ws,
                 owner_id=user_id,
@@ -252,7 +248,7 @@ class RealtimeSession:
         """
 
         # 다시 붙은 연결이면 코치는 이미 Take 를 시작할 때의 값을 들고 있다
-        need_context = self.coach is not None and not take_stream.coach_enabled(self.take_id)
+        need_context = self.coach is not None and not registry.coach_enabled(self.take_id)
 
         def load() -> tuple[
             bool, bool, bool, str | None, str | None, list[str], TakeContext | None
@@ -444,13 +440,13 @@ class RealtimeSession:
         # 누가 먼저 적든 이유가 남는다. 못 적으면 뒤에서 다시 적고, 그동안 이 프로세스 안에서는
         # `TakeStream.end` 가 다시 붙는 연결을 막는다
         reason = stream.auto_end_reason
-        await take_stream.finish_take(
+        await registry.finish_take(
             self.take_id,
             self.transcript_store,
             end_reason=reason.value if reason is not None else None,
             coach=self.coach,
         )
-        take_stream.forget(stream)
+        registry.forget(stream)
         # FE 가 그 사이 끊겼어도(탭 닫힘) 아래 둘은 조용히 실패하고, 스트림 정리와 저장은
         # 이미 끝났다 — FE 가 있든 없든 서버 쪽 종료 절차는 같다
         await stream.send_status()

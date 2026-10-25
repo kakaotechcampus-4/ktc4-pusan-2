@@ -20,8 +20,7 @@ from pitch_coach_backend.realtime.dto import (
     TranscriptMessage,
 )
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
-from pitch_coach_backend.realtime.stream import runtime as take_stream
-from pitch_coach_backend.realtime.stream.runtime import TakeStream
+from pitch_coach_backend.realtime.stream import registry
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
 )
@@ -97,7 +96,7 @@ async def test_resend_missed_keeps_unsent_finals_when_send_fails_partway():
     """한꺼번에 비우고 보내면, 두 번째 전송이 실패했을 때 아직 못 보낸 세 번째 이후가
     이미 비워진 리스트와 함께 사라진다. 성공한 만큼만 지워야 다음 재연결 때
     나머지를 다시 시도할 수 있다."""
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=FakeSttAdapter(),
@@ -132,7 +131,7 @@ async def test_finals_received_before_deepgram_closes_are_saved():
         Plan(),
     )
     store = FakeTranscriptStore()
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(), owner_id=uuid.uuid7(), stt_adapter=adapter, config=SttConfig(), store=store
     )
     stream.start()
@@ -157,7 +156,7 @@ async def test_concurrent_resend_missed_does_not_race_on_the_shared_list():
     """탭 두 개가 거의 동시에 붙으면 서로 다른 RealtimeSession 이 resend_missed() 를
     동시에 부를 수 있다. 락 없이 같은 리스트를 각자 확인-후-pop 하면, 한쪽이 이미
     비운 자리를 다른 쪽이 또 pop 하다가 IndexError 가 난다."""
-    stream = TakeStream(
+    stream = registry.create_stream(
         uuid.uuid7(),
         owner_id=uuid.uuid7(),
         stt_adapter=FakeSttAdapter(),
@@ -413,7 +412,7 @@ async def test_stop_persists_the_last_final_even_if_the_client_dies_during_drain
     assert [json.loads(t)["type"] for t in ws.sent] == ["ready"]
     assert [seg.transcript for seg in store.segments] == ["마지막 말"]
     assert adapter.sessions[0].controls == ["CloseStream"]
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
 
 
 # ── Take 삭제 ─────────────────────────────────────────────────────────
@@ -444,7 +443,7 @@ def test_deleting_the_take_cuts_its_live_stream(
     assert session is not None
     wait_until(lambda: session.aborted)
     assert session.controls == [], "CloseStream 으로 남은 전사를 기다리지 않는다"
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
 
 
 def test_deleting_the_pitch_cuts_the_live_streams_of_its_takes(
@@ -467,7 +466,7 @@ def test_deleting_the_pitch_cuts_the_live_streams_of_its_takes(
     session = stt.session
     assert session is not None
     wait_until(lambda: session.aborted)
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
 
 
 def test_final_for_a_deleted_take_cuts_the_stream(
@@ -497,7 +496,7 @@ def test_final_for_a_deleted_take_cuts_the_stream(
     session = adapter.session
     assert session is not None
     wait_until(lambda: session.aborted)
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
 
 
 def test_only_a_missing_take_is_reported_as_deleted(db_session: Session, take: Take):

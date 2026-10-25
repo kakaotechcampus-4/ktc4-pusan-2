@@ -18,7 +18,7 @@ from pitch_coach_backend.realtime.dto import (
     AutoEndReason,
 )
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
-from pitch_coach_backend.realtime.stream import runtime as take_stream
+from pitch_coach_backend.realtime.stream import registry, runtime
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt.adapter import (
@@ -57,7 +57,7 @@ from tests.realtime.conftest import (
 
 def auto_end_reason(stream: TakeStream) -> AutoEndReason | None:
     """이 프로세스가 그 Take 를 자동으로 끝냈으면 그 이유."""
-    return take_stream._ended.get(stream.take_id)
+    return registry._ended.get(stream.take_id)
 
 
 def test_silence_ends_the_take_like_a_user_stop(
@@ -89,7 +89,7 @@ def test_silence_ends_the_take_like_a_user_stop(
     assert status["frames"] == 3
     assert adapter.session is not None and adapter.session.controls == ["CloseStream"]
     assert store.auto_ended == [(TAKE_ID, "SILENCE")]
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
 
 
 def test_speech_keeps_the_take_running(
@@ -259,7 +259,7 @@ def test_stop_sent_after_auto_end_closes_once(
         wait_state(ws, "closed")
 
     assert adapter.session is not None and adapter.session.controls == ["CloseStream"]
-    assert take_stream.active_count() == 0
+    assert registry.active_count() == 0
 
 
 def test_end_reason_write_failure_still_closes_the_take(
@@ -282,7 +282,7 @@ def test_end_reason_write_failure_still_closes_the_take(
         assert closed_with(ws) == 1000
 
     assert "뒤에서 마저 적는다" in caplog.text
-    assert take_stream._ended == {TAKE_ID: AutoEndReason.TIME_LIMIT}
+    assert registry._ended == {TAKE_ID: AutoEndReason.TIME_LIMIT}
 
 
 def test_end_reason_is_written_to_the_database_once(db_session: Session, take: Take):
@@ -352,8 +352,8 @@ async def test_time_limit_while_detached_still_ends_and_blocks_reconnect():
     )
     assert tab.closed is None
 
-    with pytest.raises(take_stream.TakeEnded) as info:
-        await take_stream.attach(
+    with pytest.raises(registry.TakeEnded) as info:
+        await registry.attach(
             stream.take_id,
             FakeWebSocket(),
             owner_id=stream.owner_id,
@@ -454,7 +454,7 @@ async def test_server_clock_is_per_take_not_per_stream():
     policy = short_time_limit(400)
 
     def make() -> TakeStream:
-        return TakeStream(
+        return registry.create_stream(
             take_id,
             owner_id=uuid.uuid7(),
             stt_adapter=FakeSttAdapter(),
@@ -495,7 +495,7 @@ async def test_shutdown_waits_for_the_end_reason_to_be_written():
     await _wait_until_ok(stream)
     stream.push(frame(1, 950))
 
-    await take_stream.stop_all()
+    await registry.stop_all()
 
     assert store.auto_ended == [(stream.take_id, "TIME_LIMIT")]
 
@@ -508,7 +508,7 @@ async def test_server_clock_does_not_count_time_without_a_stream():
     policy = short_time_limit(400)
 
     def make() -> TakeStream:
-        return TakeStream(
+        return registry.create_stream(
             take_id,
             owner_id=uuid.uuid7(),
             stt_adapter=FakeSttAdapter(),
@@ -581,7 +581,7 @@ async def test_silence_carries_over_to_a_new_stream_of_the_same_take():
 
     def make(*replies: Transcript) -> tuple[TakeStream, FakeSttAdapter]:
         adapter = FakeSttAdapter(Plan(replies=list(replies)))
-        stream = TakeStream(
+        stream = registry.create_stream(
             take_id,
             owner_id=uuid.uuid7(),
             stt_adapter=adapter,
@@ -644,8 +644,8 @@ async def test_shutdown_cancels_cleanup_that_does_not_finish_and_says_which(
             await asyncio.Event().wait()
             return True
 
-    monkeypatch.setattr(take_stream, "MARK_AUTO_END_TIMEOUT_SEC", 10.0)
-    monkeypatch.setattr(take_stream, "ABORT_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(registry, "MARK_AUTO_END_TIMEOUT_SEC", 10.0)
+    monkeypatch.setattr(runtime, "ABORT_TIMEOUT_SEC", 0.1)
     store = StuckStore()
     stream = make_stream(FakeSttAdapter(), store, short_time_limit(1_000))
     stream.start()
@@ -655,9 +655,9 @@ async def test_shutdown_cancels_cleanup_that_does_not_finish_and_says_which(
     await asyncio.wait_for(store.entered.wait(), 2.0)
 
     # 상한(10.1초)을 기다리지 않게 줄인다. 스트림 정리가 끝난 뒤의 대기만 본다
-    monkeypatch.setattr(take_stream, "MARK_AUTO_END_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(registry, "MARK_AUTO_END_TIMEOUT_SEC", 0.1)
     with caplog.at_level("ERROR"):
-        await take_stream.stop_all()
+        await registry.stop_all()
 
     assert f"take-auto-end:{stream.take_id}" in caplog.text
-    assert not take_stream._background
+    assert not registry._background

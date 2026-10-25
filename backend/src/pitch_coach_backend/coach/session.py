@@ -1,4 +1,4 @@
-"""한 Take 의 발표 중 코칭. Take 에 붙어 있어(`take_stream._TakeRecord`) WebSocket 연결 · STT
+"""한 Take 의 발표 중 코칭. Take 에 붙어 있어(`stream/runtime.TakeRecord`) WebSocket 연결 · STT
 스트림보다 오래 산다.
 
     FE ── metrics (1초마다) ─▶ CoachSession ── POST /coach/evaluate ─▶ AI
@@ -68,7 +68,7 @@ MAX_UNSAVED_EVENTS = 2_000
 # 동안에는 다음 판단을 모두 건너뛴다. 넘기면 그 메시지는 버린다
 NOTIFY_TIMEOUT_SEC = 1.0
 
-# WS `coach` 를 보내는 쪽 (take_stream). 붙어 있는 클라이언트에게만 보낸다
+# WS `coach` 를 보내는 쪽 (stream/runtime). 붙어 있는 클라이언트에게만 보낸다
 type Notify = Callable[[int, EvaluateReply], Awaitable[None]]
 
 
