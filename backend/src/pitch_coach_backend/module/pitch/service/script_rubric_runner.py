@@ -8,6 +8,10 @@
   - 최초 호출이 무응답 · 408 · 429 · 5xx 면 failed 를 모르니 전체를 다시 부른다
   - 보내기 전에 rubric_retry_used 를 커밋한다. 다시 부른 뒤에는 더 부르지 않는다
 
+동시에 AI 로 보내는 대본 등록은 2개까지이고, 다른 백그라운드 AI 호출과 합계도 센다
+(`core/ai_slots.py`). 자리가 없으면 기다렸다 보낸다. AI 의 120초는 보낸 때부터라 기다린 시간은
+실패로 이어지지 않는다.
+
 지키는 규칙은 script_parse_runner 와 같다. AI 를 기다리는 동안 DB 세션을 쥐지 않고, 저장할 때마다
 짧은 세션을 threadpool 에서 연다. 저장 · 재시도 기록 · 상태 확정은 모두 작업의 표식
 (rubric_requested_at)이 그대로일 때만 반영돼, 이어받은 뒤 늦게 끝난 옛 작업은 아무것도
@@ -27,6 +31,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.module.pitch.adapter.script_rubric import (
@@ -173,13 +178,15 @@ class ScriptRubricRunner:
     ) -> RubricReply:
         _request_id.set(request_id)
         try:
-            reply = await self._client.generate(
-                pitch_id=str(ticket.pitch_id),
-                script_version_id=str(ticket.script_version_id),
-                slides=ticket.slides,
-                slide_numbers=slide_numbers,
-                request_id=request_id,
-            )
+            # 시도 시간 제한은 client 안에서 건다. 자리를 기다린 시간은 들어가지 않는다
+            async with ai_slots.rubric():
+                reply = await self._client.generate(
+                    pitch_id=str(ticket.pitch_id),
+                    script_version_id=str(ticket.script_version_id),
+                    slides=ticket.slides,
+                    slide_numbers=slide_numbers,
+                    request_id=request_id,
+                )
         except RubricCallError as exc:
             # 대본 원문은 로그에 남기지 않는다
             logger.warning(
