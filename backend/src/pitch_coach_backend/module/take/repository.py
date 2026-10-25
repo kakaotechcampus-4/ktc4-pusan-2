@@ -351,6 +351,51 @@ class TakeRepository:
             .with_for_update()
         )
 
+    def claim_coverage(self, take_id: uuid.UUID, *, takeover: bool = False) -> datetime | None:
+        """채점 작업 표식(`coverage_requested_at`)을 잡는다. 잡았으면 그 표식을 돌려준다.
+
+        Take 하나에는 채점 작업이 하나만 돈다 (`docs/ai/architecture.md` 1-7 Take별 직렬화).
+        표식이 비었거나 `COVERAGE_STALE_AFTER` 넘게 묵었으면(그 작업이 끊김) 잡는다. `takeover` 는
+        BE 가 다시 떴을 때 앞 프로세스의 작업을 기한과 관계없이 이어받는다. 이어받히면 앞 작업의
+        저장 · 단계 전환은 표식이 달라 반영되지 않는다.
+        """
+        free = or_(
+            Take.coverage_requested_at.is_(None),
+            Take.coverage_requested_at < func.now() - COVERAGE_STALE_AFTER,
+        )
+        return self.db.scalar(
+            update(Take)
+            .where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                Take.analysis_stage == "SCORING",
+                Take.analysis_hold_reason.is_(None),
+                *(() if takeover else (free,)),
+            )
+            # now() 는 트랜잭션 시작 시각이라 한 트랜잭션에서 두 번 잡으면 표식이 같아진다
+            .values(coverage_requested_at=func.clock_timestamp())
+            .returning(Take.coverage_requested_at)
+        )
+
+    def lock_coverage(self, take_id: uuid.UUID, requested_at: datetime) -> Take | None:
+        """표식이 `requested_at` 인 채점 작업이 아직 맡고 있는 `SCORING` Take 만 잠근다.
+
+        다른 작업이 이어받았거나 단계가 넘어갔거나 지워졌으면 None 이다.
+        보류 여부는 부르는 쪽이 본다.
+        """
+        return self.db.scalar(
+            select(Take)
+            .where(
+                Take.id == take_id,
+                Take.status == "ANALYZING",
+                Take.analysis_stage == "SCORING",
+                Take.coverage_requested_at == requested_at,
+            )
+            .options(defer(Take.event_logs))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+
     def get_ai_result(self, take_id: uuid.UUID, kind: str) -> TakeAIResults | None:
         return self.db.scalar(
             select(TakeAIResults).where(
@@ -687,6 +732,10 @@ class TakeRepository:
 
 
 REVIEW_STALE_AFTER = timedelta(minutes=2)
+
+# 채점 작업이 끊긴 것으로 보는 시간. 최초 analyze 와 재시도(130초씩) · 부분 재시도 · 병합 rescore 와
+# 그 재시도를 다 해도 이보다 짧다
+COVERAGE_STALE_AFTER = timedelta(minutes=10)
 
 def finished_order() -> tuple[ColumnElement[Any], ...]:
     """'가장 늦게 끝난 Take' 순서 (`docs/ai/architecture.md` 1-3 'Take 상태').
