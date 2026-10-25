@@ -254,7 +254,23 @@ class PresentationDetailDTO(BaseModel):
     description: str | None = None
     created_at: date
 class StandardTextDTO(BaseModel):
-    standard_text: str
+    standard_text: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=2000),
+        AfterValidator(reject_nul),
+    ]
+
+
+class StandardAIResponseDTO(BaseModel):
+    # AI의 표시 문장은 자르거나 다듬지 않는다. 조건과 targets의 display 짝이 달라질 수 있다.
+    display_criteria: list[
+        Annotated[
+            str,
+            StringConstraints(min_length=1, max_length=50, pattern=r"\S"),
+            AfterValidator(reject_nul),
+        ]
+    ] = Field(max_length=10)
+    excluded: list[Annotated[str, AfterValidator(reject_nul)]] | None = None
 
 class StandardDTO(BaseModel):
     standard: str
