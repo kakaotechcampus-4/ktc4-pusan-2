@@ -34,6 +34,9 @@ from .datasets import load_script_json, load_take
 from .paths import DB_PATH, PROJECT_ROOT, SCRIPT_DIR, STT_DIR
 
 EXAMPLES_DIR = PROJECT_ROOT / "src" / "script_coverage" / "examples"
+# 예시를 만든 모델 (계약 테스트 `tests/unit/test_examples.py` 의 MODEL 과 같다). 캐시 항목의 설정 해시가 이 이름에
+# 의존하므로, 연구 DB 의 평가 기준을 다른 모델로 다시 만들어도 예시는 이 모델의 캐시 항목으로 같게 나온다
+EXAMPLE_MODEL = "openai/gpt-5.6-luna"
 
 # ── rubric 예시: 가상대본1 의 모든 장을 보내고 6 · 7번 장만 만든다 ──
 RUBRIC_SCRIPT = "가상대본1"
@@ -99,19 +102,6 @@ def open_cache_db(path: Path = DB_PATH) -> sqlite3.Connection:
     return sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
 
 
-def research_model(conn: sqlite3.Connection, script_name: str) -> str:
-    """연구 캐시에 저장된 평가 기준이 쓴 모델 이름. 캐시 항목의 설정 해시가 이 이름에 의존한다."""
-    models = {
-        json.loads(rubric_json)["meta"]["llm_model"]
-        for (rubric_json,) in conn.execute(
-            "SELECT rubric_json FROM evaluation_rubrics WHERE script_name = ?", (script_name,)
-        )
-    }
-    if len(models) != 1:
-        raise RuntimeError(f"연구 캐시에서 {script_name} 의 모델 이름을 하나로 못 찾았다: {models}")
-    return models.pop()
-
-
 def _rubric_request() -> dict:
     slides = load_script_json(SCRIPT_DIR / f"{RUBRIC_SCRIPT}.json")
     return RubricRequest(
@@ -131,7 +121,7 @@ def _run_rubric(request: dict, model: str, cache: RecordingCache):
 
 def build_rubric_example(conn: sqlite3.Connection) -> dict[str, object]:
     """`rubric` 예시의 파일 내용 {파일 이름: JSON 값}."""
-    model = research_model(conn, RUBRIC_SCRIPT)
+    model = EXAMPLE_MODEL
     request = _rubric_request()
     # 실패시킬 장의 전달 단위 캐시 키: 그 장만 만드는 요청을 한 번 돌려 읽은 항목에서 찾는다
     probe = RecordingCache(SqliteLLMCache(conn))
@@ -177,7 +167,7 @@ def _analyze_request(conn: sqlite3.Connection, model: str) -> dict:
 
 def build_take_examples(conn: sqlite3.Connection) -> dict[str, dict[str, object]]:
     """`analyze` · `rescore` 예시의 파일 내용 {예시 이름: {파일 이름: JSON 값}}."""
-    model = research_model(conn, RUBRIC_SCRIPT)
+    model = EXAMPLE_MODEL
     request = _analyze_request(conn, model)
     # 실패시킬 장의 의미 평가 캐시 키: 그 장만 채점하는 요청을 한 번 돌려 읽은 항목에서 찾는다
     probe = RecordingCache(SqliteLLMCache(conn))
