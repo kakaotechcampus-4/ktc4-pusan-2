@@ -11,6 +11,11 @@ from script_coverage.script_analysis.schemas import (
     SlideSemanticAnalysis,
     SlideUnits,
 )
+from script_coverage.stt_evaluation.schemas import (
+    UnitJudgment,
+    VerifiedSentence,
+    VerifierResult,
+)
 
 
 class FakeLLM:
@@ -39,6 +44,28 @@ def empty_script_llms(semantic=None, final=None, unit=None) -> tuple[FakeLLM, Fa
         ),
         FakeLLM(unit or SlideUnits(sentences=[])),
     )
+
+
+class KeepFirstVerifier:
+    """교차 검증 가짜: 검증 메시지의 대상 문장 · 전달 단위마다 1차 판정을 그대로 돌려준다.
+
+    검증 출력은 대상을 빠짐없이 덮어야 하므로(check_verification) 빈 판정 대신 이것을 쓴다.
+    """
+
+    def __init__(self):
+        self.calls = 0
+
+    def invoke(self, messages):
+        self.calls += 1
+        judgments: list[VerifiedSentence] = []
+        for line in messages[1][1].splitlines():
+            if m := re.match(r"## S(\d+) ", line):
+                judgments.append(
+                    VerifiedSentence(sentence_id=int(m[1]), reason="1차 유지", units=[])
+                )
+            elif m := re.match(r"  (S\d+-U\d+) .* — (said|vague|missing|contradicted)$", line):
+                judgments[-1].units.append(UnitJudgment(unit_id=m[1], status=m[2]))
+        return VerifierResult(judgments=judgments)
 
 
 class SlideFailingLLM(FakeLLM):

@@ -25,7 +25,7 @@ class ErrorBody(BaseModel):
 class SlideFailure(BaseModel):
     """처리하지 못한 장 하나. 나머지 장의 결과는 그대로 돌려준다."""
 
-    slide_number: int
+    slide_number: int = Field(ge=1)
     error: ErrorBody
 
 
@@ -104,7 +104,7 @@ class AnalyzeRequest(BaseModel):
 class Answer(BaseModel):
     """비슷한 말 하나에 대한 사용자 확인 답."""
 
-    slide_number: int
+    slide_number: int = Field(ge=1)
     item_id: str
     answer: Literal["as_script", "as_stt"]
 
