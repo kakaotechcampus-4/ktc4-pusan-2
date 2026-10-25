@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .burden import Burden, compute_burden
+from .burden import Burden, compute_burden, recurring_dimensions
 from .config import DEFAULT_CONFIG, ReviewConfig
 from .dimensions import decide_dimension_states
 from .evaluable import check_evaluable
@@ -81,16 +81,16 @@ def apply_rules(
 
     take_result = data["take_result"]
     script_coverage = data["script_coverage"]
-    prev_recurring = data["previous_recurring_issues"] or []
+    recurring = recurring_dimensions(data["previous_recurring_issues"])
     user_criteria = data["user_criteria"] or {}
     script_used = user_criteria.get("script_used")
 
     evaluable = check_evaluable(take_result, script_coverage, cfg)
     mission_results = judge_missions(data["missions"] or [], take_result, script_coverage, cfg)
     burden = compute_burden(
-        take_result, script_coverage, evaluable, script_used, prev_recurring, mission_results, cfg
+        take_result, script_coverage, evaluable, script_used, recurring, mission_results, cfg
     )
-    states = decide_dimension_states(burden, evaluable, prev_recurring, mission_results, cfg)
+    states = decide_dimension_states(burden, evaluable, recurring, mission_results, cfg)
     criteria_results = judge_user_criteria(user_criteria, take_result, script_coverage, cfg)
     candidates = build_next_missions(
         criteria_results, states, burden, take_result, script_coverage, cfg

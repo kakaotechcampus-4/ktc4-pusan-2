@@ -82,12 +82,13 @@ def judge_user_criteria(
     script_coverage: dict[str, Any] | None,
     cfg: ReviewConfig,
 ) -> list[dict[str, Any]]:
-    """사용자 기준(targets) 판정. 숫자 목표가 없는 기준은 건너뛴다. 반환: criteria_results"""
+    """사용자 기준(targets) 판정. Take 값으로 판정하고, 숫자 목표가 없는 기준은 건너뛴다.
+    반환: criteria_results"""
     results = []
     for t in user_criteria.get("targets") or []:
         if t.get("metric") is None or t.get("operator") is None or t.get("value") is None:
             continue
-        status, observed = judge_target(t, t.get("slide_number"), take_result, script_coverage, cfg)
+        status, observed = judge_target(t, None, take_result, script_coverage, cfg)
         results.append(
             {
                 "display": t.get("display"),

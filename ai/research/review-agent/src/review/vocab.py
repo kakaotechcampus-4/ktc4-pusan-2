@@ -75,6 +75,9 @@ DIMENSIONS: dict[str, DimensionSpec] = {
     ),
 }
 
+#: 차원 표에 적힌 순서. 부담이 같을 때 순서를 정한다 (명세 6-1 5 · 7번)
+DIMENSION_ORDER: dict[str, int] = {dim: i for i, dim in enumerate(DIMENSIONS)}
+
 #: 부담에 넣지 않는 문제 (명세 3-3)
 NON_BURDEN_ISSUES = frozenset({"GAZE_ON_SCREEN", "GAZE_UNMEASURABLE", "FINAL_MINUTE"})
 
@@ -92,9 +95,4 @@ ISSUE_TO_DIMENSION: dict[str, str] = {
 }
 METRIC_TO_DIMENSION: dict[str, str] = {
     metric: dim for dim, spec in DIMENSIONS.items() for metric in spec.metrics
-}
-#: 영역 → 차원. GAZE 는 두 차원으로 나뉜다
-AREA_TO_DIMENSIONS: dict[str, tuple[str, ...]] = {
-    area: tuple(dim for dim, spec in DIMENSIONS.items() if area in spec.areas)
-    for area in ("GAZE", "SPEED", "VOLUME", "PAUSE", "FILLER", "CONTENT", "TIME")
 }

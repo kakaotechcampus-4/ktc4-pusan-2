@@ -1,18 +1,18 @@
 """2단계: 문제 부담. 차원별로 문제가 얼마나 심했는지를 숫자 하나로 만든다.
 
 부담 = 믿을 수 있는 문제 구간의 mean_severity × 초 (+ 대본 전달도의 빠진 · 틀린 핵심 내용).
-차원 합계(total)로 PRIORITY 순위를 매기고, 장별 합계(by_slide)로 장 미션 · 반복 문제의 장을,
-영역별 합계(by_area)로 영역이 여럿인 차원(pacing_rhythm)의 반복 문제 영역을 고른다.
+차원 합계(total)로 PRIORITY 순위를 매기고, 영역별 합계(by_area)로 다음 미션 · 반복 문제의 영역을,
+그 영역의 장별 합계(by_area_slide)로 장 미션 · 반복 문제의 장을 고른다.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from .config import ReviewConfig
 from .evaluable import measured_areas
 from .vocab import (
-    AREA_TO_DIMENSIONS,
     CONTENT_BURDEN_STATUSES,
     DIMENSIONS,
     ISSUE_TO_DIMENSION,
@@ -21,22 +21,31 @@ from .vocab import (
     SLIDE_ONLY_DIMENSIONS,
 )
 
-#: {dimension: {"total": float, "by_slide": {slide_number: float}, "by_area": {area: float}}}
+log = logging.getLogger(__name__)
+
+#: {dimension: {"total": float, "by_slide": {slide_number: float}, "by_area": {area: float},
+#:              "by_area_slide": {area: {slide_number: float}}}}
 Burden = dict[str, dict[str, Any]]
 
 
 def recurring_dimensions(recurring_issues: list[dict[str, Any]] | None) -> set[str]:
     """반복 문제가 가리키는 차원들.
 
-    dimension 이 있으면 그 차원, 없으면(예전 리뷰) area 에 속한 차원 전부 (GAZE 는 두 차원).
+    dimension 이 없거나 차원 이름이 아닌 항목은 반복 판정에 쓰지 않고 로그에 남긴다
+    (그 항목 때문에 리뷰 전체를 거절하지 않는다, 명세 5-2).
     결과는 포함 여부 확인에만 쓴다 (순서를 정하지 않는다).
     """
     dims: set[str] = set()
+    skipped = 0
     for it in recurring_issues or []:
         if it.get("dimension") in DIMENSIONS:
             dims.add(it["dimension"])
         else:
-            dims.update(AREA_TO_DIMENSIONS.get(it.get("area"), ()))
+            skipped += 1
+    if skipped:
+        log.warning(
+            "previous_recurring_issues: dimension 이 없거나 모르는 항목 %d개를 건너뜀", skipped
+        )
     return dims
 
 
@@ -45,6 +54,8 @@ def _add(burden: Burden, dim: str, area: str, slide_number: int | None, amount: 
     b["total"] += amount
     b["by_slide"][slide_number] = b["by_slide"].get(slide_number, 0.0) + amount
     b["by_area"][area] = b["by_area"].get(area, 0.0) + amount
+    area_slide = b["by_area_slide"].setdefault(area, {})
+    area_slide[slide_number] = area_slide.get(slide_number, 0.0) + amount
 
 
 def compute_burden(
@@ -52,7 +63,7 @@ def compute_burden(
     script_coverage: dict[str, Any] | None,
     evaluable: dict[str, bool],
     script_used: bool | None,
-    previous_recurring_issues: list[dict[str, Any]] | None,
+    recurring_dims: set[str],
     mission_results: list[dict[str, Any]],
     cfg: ReviewConfig,
 ) -> Burden:
@@ -65,7 +76,10 @@ def compute_burden(
     - 반복 문제 · gave_up · 미션을 이루지 못한 차원은 이유마다 배수를 한 번씩 곱한다
     """
     c = cfg.burden
-    burden: Burden = {dim: {"total": 0.0, "by_slide": {}, "by_area": {}} for dim in DIMENSIONS}
+    burden: Burden = {
+        dim: {"total": 0.0, "by_slide": {}, "by_area": {}, "by_area_slide": {}}
+        for dim in DIMENSIONS
+    }
 
     # 1) 문제 구간
     measured = measured_areas(take_result)
@@ -98,7 +112,7 @@ def compute_burden(
 
     # 3) 가중: 차원마다 이유별로 한 번씩 곱한다
     weights = {dim: 1.0 for dim in DIMENSIONS}
-    for dim in recurring_dimensions(previous_recurring_issues):
+    for dim in recurring_dims:
         weights[dim] *= c.recurring_weight
     gave_up = {ISSUE_TO_DIMENSION.get(g["issue_type"]) for g in take_result.get("gave_up") or []}
     for dim in gave_up - {None}:
@@ -117,17 +131,30 @@ def compute_burden(
             b["total"] *= w
             b["by_slide"] = {k: v * w for k, v in b["by_slide"].items()}
             b["by_area"] = {k: v * w for k, v in b["by_area"].items()}
+            b["by_area_slide"] = {
+                a: {k: v * w for k, v in s.items()} for a, s in b["by_area_slide"].items()
+            }
     return burden
 
 
-def focus_slide(dim: str, burden: Burden, cfg: ReviewConfig) -> int | None:
-    """부담이 몰린 장. 장 미션 · 반복 문제의 장을 정한다. 몰리지 않았으면 None (Take 전체).
+def focus_area(dim: str, burden: Burden) -> str:
+    """차원에서 부담이 가장 큰 영역 (같으면 차원 표에 적힌 순서). 다음 미션 · 반복 문제의 영역"""
+    areas = DIMENSIONS[dim].areas
+    by_area = burden[dim]["by_area"]
+    return max(areas, key=lambda a: (by_area.get(a, 0.0), -areas.index(a)))
 
-    - 부담이 가장 큰 장(같으면 번호가 작은 장)이 전체의 slide_concentration 을 넘으면 그 장
+
+def focus_slide(dim: str, area: str, burden: Burden, cfg: ReviewConfig) -> int | None:
+    """고른 영역에서 부담이 몰린 장. 장 미션 · 반복 문제의 장을 정한다.
+    몰리지 않았으면 None (Take 전체).
+
+    - 그 영역에서 부담이 가장 큰 장(같으면 번호가 작은 장)이
+      그 영역 부담의 slide_concentration 을 넘으면 그 장
     - 내용(content_delivery)은 늘 장 단위라 가장 큰 장
     """
-    by_slide = {k: v for k, v in burden[dim]["by_slide"].items() if k is not None}
-    total = burden[dim]["total"]
+    area_slide = burden[dim]["by_area_slide"].get(area, {})
+    by_slide = {k: v for k, v in area_slide.items() if k is not None}
+    total = burden[dim]["by_area"].get(area, 0.0)
     if not by_slide or total <= 0:
         return None
     slide, amount = max(by_slide.items(), key=lambda kv: (kv[1], -kv[0]))

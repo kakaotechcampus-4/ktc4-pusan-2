@@ -10,12 +10,12 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from .burden import Burden, focus_slide
+from .burden import Burden, focus_area, focus_slide
 from .config import ReviewConfig
 from .metrics import find_metric
 from .schemas import MAX_DESCRIPTION_CHARS, MAX_NEXT_MISSIONS
 from .text import METRIC_LABELS, OPERATOR_WORDS
-from .vocab import METRIC_TO_DIMENSION, SLIDE_ONLY_DIMENSIONS
+from .vocab import DIMENSION_ORDER, METRIC_TO_DIMENSION
 
 
 def _format_value(metric: str, value: float) -> str:
@@ -62,11 +62,13 @@ def build_next_missions(
        (targets 한도가 상한 이하라 다 들어간다).
        지표가 속한 차원의 부담 큰 순, 같으면 targets 순서
     2) PRIORITY 차원마다 하나, priority_candidate_max 개까지이고 합계 상한을 넘지 않게
-       (부담 큰 순, 같으면 이름순).
+       (부담 큰 순, 같으면 차원 표 순서).
        mission_metric 이 None 인 차원은 건너뛴다.
        목표 = 지금 값 + step (final 을 넘지 않음).
-       부담이 몰린 장이 있으면 장 미션, 그 장 값이 없으면 Take 미션.
-       같은 (지표, 장)이 이미 있거나 지금 값이 없거나 이미 최종 목표면 건너뛴다
+       부담이 가장 큰 영역에서 부담이 몰린 장이 있으면 장 미션, 아니면 Take 미션
+       (반복 문제와 같은 영역 · 장).
+       같은 (지표, 장)이 이미 있거나 지금 값(장 미션이면 그 장 값)이 없거나
+       이미 최종 목표면 건너뛴다. 건너뛰어도 반복 문제는 낸다
     """
     c = cfg.next_mission
     missions: list[dict[str, Any]] = []
@@ -95,18 +97,15 @@ def build_next_missions(
     # 2) PRIORITY 차원
     room = min(c.priority_candidate_max, MAX_NEXT_MISSIONS - len(missions))
     priority_dims = [d for d, s in dimension_states.items() if s == "PRIORITY"]
-    priority_dims.sort(key=lambda d: (-burden[d]["total"], d))
+    priority_dims.sort(key=lambda d: (-burden[d]["total"], DIMENSION_ORDER[d]))
     for dim in priority_dims:
         if room <= 0:
             break
         metric = c.mission_metric.get(dim)
         if metric is None:
             continue
-        slide = focus_slide(dim, burden, cfg)
+        slide = focus_slide(dim, focus_area(dim, burden), burden, cfg)
         area, current, _ = find_metric(take_result, script_coverage, metric, slide)
-        if current is None and slide is not None and dim not in SLIDE_ONLY_DIMENSIONS:
-            slide = None  # 장 값이 없으면 Take 미션으로
-            area, current, _ = find_metric(take_result, script_coverage, metric)
         if current is None or (metric, slide) in taken:
             continue
         nxt = _next_target(metric, current, cfg)

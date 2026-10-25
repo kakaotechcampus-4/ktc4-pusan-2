@@ -7,7 +7,7 @@ import pytest
 from review import load_config
 from review.missions import judge_target
 
-from .conftest import run, sample_coverage, sample_request
+from .conftest import run, sample_coverage, sample_request, target
 
 _REQ = sample_request()
 TAKE = _REQ["take_result"]
@@ -47,6 +47,16 @@ def test_sample_mission_and_criteria(req):
     assert (m.mission_id, m.status, m.observed, m.target) == ("m-1", "PARTIAL", 2.4, 2)
     c = resp.criteria_results[0]
     assert (c.display, c.status, c.observed, c.target) == ("추임새 5번 이하", "FAILED", 7, 5)
+
+
+def test_criteria_are_judged_on_take_value(req):
+    # 사용자 기준은 Take 값으로 판정한다. slide_number 가 와도 무시한다
+    # (3번 장 값 0.62 가 아니라 Take 값 0.31)
+    t = target("대본 40% 이하", "script_ratio", "LTE", 0.4)
+    req["user_criteria"]["targets"] = [{**t, "slide_number": 3}]
+    resp, _ = run(req)
+    c = resp.criteria_results[0]
+    assert (c.status, c.observed) == ("ACHIEVED", 0.31)
 
 
 def test_criteria_without_number_are_skipped(req):

@@ -29,6 +29,20 @@ def test_pacing_recurring_area_is_largest_burden_area(req):
     assert [(r.area, r.slide_number) for r in pacing] == [("TIME", 3)]
 
 
+def test_recurring_slide_is_concentrated_within_chosen_area(req):
+    # 차원 전체로는 3번 장이 12 / 24 = 0.5 로 몰리지 않았지만,
+    # 고른 영역 TIME 에서는 3번 장에 모두 몰렸다
+    req["take_result"]["problem_segments"] += [
+        segment("SLIDE_OVER", "TIME", 3, 110_000, 125_000, 0.8),  # 12.0
+        segment("PACE_FAST", "SPEED", 1, 0, 6_000, 0.5),  # 3.0
+        segment("PACE_FAST", "SPEED", 2, 0, 6_000, 0.5),  # 3.0
+        segment("LONG_SILENCE", "PAUSE", 4, 0, 10_000, 0.6),  # 6.0
+    ]
+    resp, _ = run(req)
+    pacing = [r for r in resp.recurring_issues if r.dimension == "pacing_rhythm"]
+    assert [(r.area, r.slide_number) for r in pacing] == [("TIME", 3)]
+
+
 def test_improvement_evidence_comes_from_its_area(req):
     req["take_result"]["problem_segments"].append(
         segment("SLIDE_OVER", "TIME", 3, 110_000, 125_000, 0.8)
@@ -62,6 +76,11 @@ def test_sample_score_and_text(req):
 
 def test_score_none_when_nothing_evaluable():
     assert compute_score({d: "NOT_EVALUABLE" for d in DIMENSIONS}, load_config()) is None
+
+
+def test_score_rounds_half_up():
+    # (100 + 85) / 2 = 92.5 → 93 (round() 는 92)
+    assert compute_score({"fluency": "STRENGTH", "vocal_delivery": "IMPROVED"}, load_config()) == 93
 
 
 def test_fallback_and_meta(req):

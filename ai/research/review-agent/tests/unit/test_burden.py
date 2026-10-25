@@ -97,11 +97,11 @@ def test_recurring_weight_follows_dimension(req):
     _, trace = run(req)
     assert trace.burden["audience_gaze"]["total"] == pytest.approx(5.0)
 
-    # 예전 형식: area 만 있으면 GAZE 의 두 차원 모두 가중
+    # dimension 이 없으면 반복 판정에 쓰지 않는다 (가중 없음)
     req["previous_recurring_issues"] = [{"area": "GAZE", "slide_number": 3}]
     _, trace = run(req)
-    assert trace.burden["audience_gaze"]["total"] == pytest.approx(6.0)
-    assert trace.burden["script_independence"]["total"] == pytest.approx(15.696)
+    assert trace.burden["audience_gaze"]["total"] == pytest.approx(5.0)
+    assert trace.burden["script_independence"]["total"] == pytest.approx(13.08)
 
 
 def test_time_mission_not_achieved_weights_pacing(req):

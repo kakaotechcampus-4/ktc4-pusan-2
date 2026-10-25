@@ -125,7 +125,7 @@ class Mission(_In):
 class RecurringIssueIn(_In):
     area: str | None = None
     slide_number: int | None = None
-    #: 리뷰가 낸 반복 문제에만 있다. 없으면(예전 리뷰) area 로 차원을 찾는다
+    #: 없거나 차원 이름이 아니면 반복 판정에 쓰지 않고 로그에 남긴다 (명세 5-2)
     dimension: str | None = None
 
 
@@ -136,7 +136,6 @@ class CriteriaTarget(_In):
     metric: str | None = None
     operator: Operator | None = None
     value: Number | None = None
-    slide_number: int | None = None
 
 
 class UserCriteria(_In):
@@ -234,7 +233,7 @@ class NextMission(_Out):
 class RecurringIssue(_Out):
     area: str
     slide_number: int | None
-    #: 명세에 없는 필드. 다음 리뷰가 area 로 차원을 거꾸로 찾지 않게 (GAZE 는 두 차원)
+    #: 다음 리뷰가 반복된 차원을 찾는 값. area 만으로는 차원을 가르지 못한다 (GAZE 는 두 차원)
     dimension: str
 
 

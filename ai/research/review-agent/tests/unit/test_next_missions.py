@@ -52,6 +52,9 @@ def busy_request(req):
     req["take_result"]["problem_segments"].append(
         segment("FILLER_FREQUENT", "FILLER", 3, 70_000, 84_000, 0.6)
     )
+    req["take_result"]["areas"]["FILLER"]["slides"] = [
+        {"slide_number": 3, "measured_ratio": 1.0, "metrics": {"filler_per_min": 3.0}}
+    ]
     coverage = sample_coverage()
     coverage["evaluations"][0]["scores"]["content_coverage"] = 0.6
     coverage["evaluations"][0]["key_points"] += [
@@ -69,10 +72,21 @@ def test_candidates_and_final_are_same_without_llm(req):
         "추임새 5번 이하",
         "3번 장 대본 응시 비율 52% 이하",
         "3번 장 핵심 내용 전달률 70% 이상",  # 내용은 늘 장 미션
-        "분당 군더더기 1.9 이하",  # 3번 장에 58% 몰렸지만 장 값이 없어 Take 미션
+        "3번 장 분당 군더더기 2.5 이하",  # 3번 장에 58% 몰림
     ]
     assert descriptions(resp.next_missions) == descriptions(trace.next_mission_candidates)
     assert [m.priority for m in resp.next_missions] == [1, 2, 3, 4]
+
+
+def test_missing_slide_value_skips_candidate_but_keeps_recurring(req):
+    # 부담이 몰린 장의 값이 없으면(그 장 측정 비율 미달) 후보를 만들지 않고,
+    # 반복 문제는 그 장으로 낸다
+    req = busy_request(req)
+    req["take_result"]["areas"]["FILLER"]["slides"][0]["metrics"] = None
+    resp, _ = run(req)
+    assert "분당 군더더기" not in " ".join(descriptions(resp.next_missions))
+    fluency = [r for r in resp.recurring_issues if r.dimension == "fluency"]
+    assert [(r.area, r.slide_number) for r in fluency] == [("FILLER", 3)]
 
 
 def test_all_failed_criteria_kept_and_priority_capped(req):

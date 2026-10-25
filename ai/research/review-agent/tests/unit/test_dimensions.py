@@ -19,11 +19,15 @@ def test_sample_states(req):
     }
 
 
-def test_old_recurring_format_marks_both_gaze_dimensions(req):
-    """dimension 이 없는 예전 반복 문제는 GAZE 두 차원을 다 반복 문제로 본다 (알려진 한계)"""
-    req["previous_recurring_issues"] = [{"area": "GAZE", "slide_number": 3}]
+def test_recurring_without_dimension_is_skipped(req, caplog):
+    """dimension 이 없거나 차원 이름이 아닌 반복 문제는 반복 판정에 쓰지 않고 로그에 남긴다"""
+    req["previous_recurring_issues"] = [
+        {"area": "GAZE", "slide_number": 3},
+        {"area": "GAZE", "slide_number": 3, "dimension": "unknown"},
+    ]
     resp, _ = run(req)
-    assert resp.dimensions["audience_gaze"] == "IMPROVED"
+    assert resp.dimensions["audience_gaze"] == "STRENGTH"
+    assert "2개를 건너뜀" in caplog.text
 
 
 def test_recurring_resolved_is_improved(req):
@@ -59,13 +63,13 @@ def test_achieved_mission_without_problem_is_improved(req):
     assert resp.dimensions["vocal_delivery"] == "IMPROVED"
 
 
-def test_priority_ties_break_by_name(req):
+def test_priority_ties_break_by_table_order(req):
     req["previous_recurring_issues"] = []
     req["take_result"]["problem_segments"] = [
         segment("FILLER_FREQUENT", "FILLER", 1, 0, 20_000, 0.6),
         segment("VOLUME_LOW", "VOLUME", 2, 0, 20_000, 0.6),
     ]
     resp, _ = run(req, load_config(dimension={"priority_max_count": 1}))
-    # 부담이 같으면 이름순: fluency < vocal_delivery
-    assert resp.dimensions["fluency"] == "PRIORITY"
-    assert resp.dimensions["vocal_delivery"] == "STABLE"
+    # 부담이 같으면 차원 표 순서: vocal_delivery 가 fluency 보다 앞
+    assert resp.dimensions["vocal_delivery"] == "PRIORITY"
+    assert resp.dimensions["fluency"] == "STABLE"
