@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import logging
 import math
 import re
@@ -204,6 +205,36 @@ def check_numbers(sentence: str, allowed_numbers: Iterable[float | int | None]) 
     return True
 
 
+def message_numbers(message: str) -> list[float]:
+    """LLM 에 보낸 입력(review_message) 속 숫자 = 숫자 검사의 허용 숫자.
+
+    LLM 이 볼 수 있던 숫자는 이것뿐이라 그 밖의 숫자는 지어낸 것이다.
+    - JSON 의 숫자 값 (점수 · 근거 · 미션 목표 · 관측값 · 비교 값 · 장 번호 · 핵심 내용 개수 …)
+    - 문자열 속 숫자 (기본 설명 "52% 이하" · 사용자 표현 "추임새 5번 이하" …)를 입력 단위로
+      되돌린 값 (52% → 0.52, 1분 28초 → 88000)
+    - candidate_id("s1")는 번호일 뿐이라 넣지 않는다
+    """
+    found: list[float] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, bool) or value is None:
+            return
+        if isinstance(value, int | float):
+            found.append(value)
+        elif isinstance(value, str):
+            found.extend(v / _UNIT_SCALE[unit] for unit, v, _ in _numbers(value))
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                if key != "candidate_id":
+                    walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(json.loads(message))
+    return found
+
+
 #: 예외의 code 로 받아들이는 fallback_reason (서비스 common/llm.py 가 다는 계약)
 _CODES = ("LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE")
 
@@ -235,39 +266,70 @@ def _written(items: list[Any], known: dict[str, Any]) -> tuple[dict[str, Any], i
     return picked, len(items) - len(picked)
 
 
-def _texts(items: dict[str, TextCandidate], written: dict[str, Any]) -> list[dict[str, Any]]:
+def _texts(items: dict[str, TextCandidate], written: dict[str, str | None]) -> list[dict[str, Any]]:
     """후보를 모두 후보 순서로. LLM 이 쓴 문장만 바꾸고, 빠뜨렸거나 빈 문장은 기본 문장"""
     out = []
     for cid, c in items.items():
-        text = (getattr(written.get(cid), "text", None) or "").strip()
+        text = (written.get(cid) or "").strip()
         out.append({**copy.deepcopy(c.item), "text": text or c.item["text"]})
     return out
 
 
 def apply_draft(
-    draft: ReviewDraft, candidates: Candidates, default_summary: str
-) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
-    """LLM 초안을 후보에 붙인다 → (문장, 다음 미션, 버린 항목 수).
+    draft: ReviewDraft,
+    candidates: Candidates,
+    default_summary: str,
+    allowed_numbers: list[float],
+) -> tuple[dict[str, Any], list[dict[str, Any]], int, int]:
+    """LLM 초안을 후보에 붙인다 → (문장, 다음 미션, 버린 항목 수, 숫자 검사로 바꾼 문장 수).
 
+    - 숫자 검사: LLM 문장마다 check_numbers. 걸린 문장은 쓰지 않아 그 후보의 기본 문장이 된다
+      (문장 단위로 바꾸므로 fallback_reason 은 달지 않는다, 명세 6-2)
     - 강점 · 개선점: 어느 차원을 말할지는 규칙 단계가 정했으므로 후보를 모두 낸다 (_texts)
     - 다음 미션: 사용자 기준 FAILED 를 맨 앞에, 이어서 LLM 이 고른 순서 (merge_picked_missions)
-    - 요약이 비었으면 기본 요약
+    - 요약이 비었거나 숫자 검사에 걸리면 기본 요약
     """
+    replaced = 0
+
+    def checked(sentence: str | None) -> str | None:
+        nonlocal replaced
+        if sentence and not check_numbers(sentence, allowed_numbers):
+            replaced += 1
+            return None
+        return sentence
+
     strengths, dropped_s = _written(draft.strengths, candidates.strengths)
     improvements, dropped_i = _written(draft.improvements, candidates.improvements)
     missions, dropped_n = _written(draft.next_missions, candidates.next_missions)
 
     index = {cid: i for i, cid in enumerate(candidates.next_missions)}
-    picks = [(index[cid], m.description, m.reason) for cid, m in missions.items()]
+    # 사용자 표현(display)이 있는 FAILED 미션은 LLM 설명을 쓰지 않으므로 검사 · 셈에서 뺀다
+    keep = {
+        i
+        for i, m in enumerate(candidates.next_missions.values())
+        if i < candidates.n_fixed and m["description"] is not None
+    }
+    picks = [
+        (
+            index[cid],
+            None if index[cid] in keep else checked(m.description),
+            checked(m.reason),
+        )
+        for cid, m in missions.items()
+    ]
     next_missions = merge_picked_missions(
         list(candidates.next_missions.values()), candidates.n_fixed, picks
     )
     text = {
-        "overall_summary": draft.overall_summary.strip() or default_summary,
-        "strengths": _texts(candidates.strengths, strengths),
-        "improvements": _texts(candidates.improvements, improvements),
+        "overall_summary": (checked(draft.overall_summary) or "").strip() or default_summary,
+        "strengths": _texts(
+            candidates.strengths, {cid: checked(m.text) for cid, m in strengths.items()}
+        ),
+        "improvements": _texts(
+            candidates.improvements, {cid: checked(m.text) for cid, m in improvements.items()}
+        ),
     }
-    return text, next_missions, dropped_s + dropped_i + dropped_n
+    return text, next_missions, dropped_s + dropped_i + dropped_n, replaced
 
 
 def review_take(
@@ -293,7 +355,7 @@ def review_take(
     text = default_text(texts)
     next_missions = select_next_missions(rules.next_mission_candidates, cfg)
     reason: FallbackReason | None = "LLM_UNAVAILABLE"
-    dropped = 0
+    dropped = replaced = 0
 
     if llm is not None:
         candidates = build_candidates(rules, texts)
@@ -301,7 +363,9 @@ def review_take(
         try:
             out = llm.invoke([("system", REVIEW_SYSTEM_PROMPT), ("user", message)])
             draft = out if isinstance(out, ReviewDraft) else ReviewDraft.model_validate(out)
-            text, next_missions, dropped = apply_draft(draft, candidates, text["overall_summary"])
+            text, next_missions, dropped, replaced = apply_draft(
+                draft, candidates, text["overall_summary"], message_numbers(message)
+            )
             reason = None
         except Exception as exc:  # noqa: BLE001 — 규칙 단계 결과가 본체라 LLM 장애로 끊지 않는다
             reason = _fallback_reason(exc)
@@ -312,14 +376,14 @@ def review_take(
                 reason,
                 type(exc).__name__,
             )
-    # TODO 숫자 검사 (명세 6-2): 문장마다 숫자를 대조해 걸린 문장만 기본 문장으로 바꾼다
 
     log.info(
-        "review take_id=%s score=%s dimensions=%s fallback_reason=%s dropped=%d",
+        "review take_id=%s score=%s dimensions=%s fallback_reason=%s replaced=%d dropped=%d",
         rules.take_result["take_id"],
         rules.score,
         rules.dimensions,
         reason,
+        replaced,
         dropped,
     )
     return ReviewResponse.model_validate(
