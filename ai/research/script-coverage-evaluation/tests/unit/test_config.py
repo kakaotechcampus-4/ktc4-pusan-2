@@ -41,4 +41,5 @@ def test_script_analysis_constant_and_role_importance_change_the_hash(monkeypatc
 def test_max_workers_is_not_hashed(monkeypatch):
     before = config.criteria_hash()
     monkeypatch.setattr(config, "MAX_WORKERS", 16)
+    monkeypatch.setattr(config, "RUBRIC_MAX_WORKERS", 32)
     assert config.criteria_hash() == before

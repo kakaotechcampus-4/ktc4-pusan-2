@@ -18,7 +18,7 @@ from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any
 
-from .config import CRITERIA_VERSION, MAX_WORKERS
+from .config import CRITERIA_VERSION, MAX_WORKERS, RUBRIC_MAX_WORKERS
 from .schemas import (
     AnalyzeRequest,
     Confirmation,
@@ -145,7 +145,7 @@ def analyze_script(
         unit_llm=llms.unit,
         model=model,
         cache=cache,
-        max_workers=MAX_WORKERS,
+        max_workers=RUBRIC_MAX_WORKERS,
         targets=request.slide_numbers,
     )
     if stats["slides"] and not rubrics:

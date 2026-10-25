@@ -1,3 +1,6 @@
+import threading
+import time
+
 from script_coverage.script_analysis.core import analyze_script
 from script_coverage.script_analysis.schemas import (
     SlideScript,
@@ -128,3 +131,80 @@ def test_targets_rubric_equals_full_run_rubric():
     alone, alone_messages = _deck_run(_slides(6))
     assert alone[6].model_dump() != full[6].model_dump()
     assert alone_messages["final"][0] not in full_messages["final"]
+
+
+# 이어 처리: 슬라이드끼리 기다리지 않고, 빈자리에는 이미 시작한 슬라이드의 다음 단계를 먼저 넣는다
+_MARKS = {4: "예측 모델은", 6: "2025년 3월부터", 7: "국내 공공도서관은"}
+
+
+class _OrderLog:
+    """단계 · 슬라이드를 호출 순서대로 적는 가짜 LLM 묶음 (답은 DeckAwareLLM 과 같다)."""
+
+    def __init__(self, hold=None):
+        self.order: list[tuple[str, int]] = []
+        self.lock = threading.Lock()
+        self.hold = (
+            hold or {}
+        )  # {(단계, 슬라이드): Event} — 그 호출은 Event 가 켜질 때까지 응답하지 않는다
+
+    def llm(self, stage):
+        inner = DeckAwareLLM(stage)
+        log = self
+
+        class Recording:
+            def invoke(self, messages):
+                slide = next(n for n, mark in _MARKS.items() if mark in messages[1][1])
+                with log.lock:
+                    log.order.append((stage, slide))
+                event = log.hold.get((stage, slide))
+                if event is not None:
+                    assert event.wait(5), "기다린 슬라이드가 풀리지 않았다"
+                return inner.invoke(messages)
+
+        return Recording()
+
+    def run(self, numbers, max_workers):
+        return analyze_script(
+            "대본", _slides(*numbers), model="test-model", max_workers=max_workers,
+            **{f"{s}_llm": self.llm(s) for s in ("semantic", "final", "unit")},
+        )  # fmt: skip
+
+
+def test_one_worker_finishes_a_slide_before_starting_the_next():
+    """동시 1개면 한 슬라이드의 세 단계가 다음 슬라이드의 1차 분석보다 먼저 돈다 (단계마다 모두 기다리지 않는다)."""
+    log = _OrderLog()
+    rubrics, stats = log.run((4, 6, 7), max_workers=1)
+    assert log.order == [(stage, n) for n in (4, 6, 7) for stage in ("semantic", "final", "unit")]
+    assert [r.meta.slide_number for r in rubrics] == [4, 6, 7]
+    assert (stats["analysis_calls"], stats["final_calls"], stats["unit_calls"]) == (3, 3, 3)
+
+
+def test_slow_slide_does_not_hold_back_the_others():
+    """한 슬라이드의 1차 분석이 늦어도 다른 슬라이드는 끝까지 간다 (그 뒤에 늦은 슬라이드가 이어서 끝난다)."""
+    release = threading.Event()
+    log = _OrderLog(hold={("semantic", 4): release})
+
+    def unblock_after_others_finish():
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            with log.lock:
+                if {("unit", 6), ("unit", 7)} <= set(log.order):
+                    break
+            time.sleep(0.01)
+        release.set()
+
+    watcher = threading.Thread(target=unblock_after_others_finish)
+    watcher.start()
+    rubrics, _ = log.run((4, 6, 7), max_workers=2)
+    watcher.join()
+    order = log.order
+    assert order.index(("unit", 6)) < order.index(("final", 4))
+    assert order.index(("unit", 7)) < order.index(("final", 4))
+    assert [r.meta.slide_number for r in rubrics] == [4, 6, 7]
+
+
+def test_pipelined_result_does_not_depend_on_workers():
+    """동시 개수 · 실행 순서가 달라도 평가 기준은 같다 (단계마다의 계산과 LLM 메시지는 슬라이드 안에서만 정해진다)."""
+    one, _ = _OrderLog().run((4, 6, 7), max_workers=1)
+    many, _ = _OrderLog().run((4, 6, 7), max_workers=8)
+    assert [r.model_dump() for r in one] == [r.model_dump() for r in many]
