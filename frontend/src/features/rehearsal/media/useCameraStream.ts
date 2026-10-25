@@ -6,6 +6,11 @@ export interface DeviceChoice {
   audioDeviceId?: string;
 }
 
+export interface DeviceRequestOptions {
+  /** 고른 마이크가 없을 때 기본 마이크를 허용합니다. 발표 화면의 기본 카메라 재시도에만 씁니다 */
+  fallbackMic?: boolean;
+}
+
 export type DeviceError =
   | 'PERMISSION_DENIED' // 사용자가 거부
   | 'NOT_FOUND' // 카메라·마이크가 없음
@@ -40,7 +45,10 @@ function release(s: MediaStream): void {
 export function useCameraStream() {
   const streamRef = useRef<MediaStream | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  // 장치 점검은 두 장치를 한 번에 요청한 오류를 그대로 씁니다.
   const [error, setError] = useState<DeviceError | null>(null);
+  const [cameraError, setCameraError] = useState<DeviceError | null>(null);
+  const [micError, setMicError] = useState<DeviceError | null>(null);
 
   const stop = useCallback(() => {
     if (streamRef.current) release(streamRef.current);
@@ -48,52 +56,108 @@ export function useCameraStream() {
     setStream(null);
   }, []);
 
+  const adopt = useCallback((s: MediaStream) => {
+    liveStreams.add(s);
+    streamRef.current = s;
+    setStream(s);
+    return s;
+  }, []);
+
   const request = useCallback(
-    async (choice: DeviceChoice = {}) => {
+    async (choice: DeviceChoice = {}, options: DeviceRequestOptions = {}) => {
       stop();
       setError(null);
+      setCameraError(null);
+      setMicError(null);
       try {
         // deviceId 는 exact 로 겁니다 — ideal 로 주면 브라우저가 조용히 다른 장치를
         // 열어서, 사용자가 고른 마이크와 실제로 녹음되는 마이크가 달라집니다.
-        const s = await navigator.mediaDevices.getUserMedia({
+        const constraints: MediaStreamConstraints = {
           video: {
             width: 640,
             height: 480,
             frameRate: { ideal: 15 },
             ...(choice.videoDeviceId ? { deviceId: { exact: choice.videoDeviceId } } : {}),
           },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            ...(choice.audioDeviceId ? { deviceId: { exact: choice.audioDeviceId } } : {}),
-          },
+          audio: audioConstraints(choice.audioDeviceId),
+        };
+        const s = await navigator.mediaDevices.getUserMedia(constraints).catch((e: unknown) => {
+          if (!options.fallbackMic || !choice.audioDeviceId || toDeviceError(e) !== 'NOT_FOUND') {
+            throw e;
+          }
+          // 기본 카메라와 고른 마이크를 함께 못 찾았을 때만 기본 마이크로 다시 엽니다.
+          return navigator.mediaDevices.getUserMedia({ ...constraints, audio: audioConstraints() });
         });
-        liveStreams.add(s);
-        streamRef.current = s;
-        setStream(s);
-        return s;
+        return adopt(s);
       } catch (e) {
         setError(toDeviceError(e));
+        // 마이크 오류인지는 마이크만 다시 열어 확인합니다.
+        setCameraError(toDeviceError(e));
         return null;
       }
     },
-    [stop],
+    [stop, adopt],
+  );
+
+  /**
+   * 마이크만 엽니다. 발표 화면이 카메라를 못 열었을 때 씁니다 — 카메라는 발표 시작 조건이 아닙니다.
+   * 고른 마이크가 빠졌을 때만 기본 마이크로 넘어갑니다.
+   * 카메라 오류는 유지하고, 마이크를 못 연 이유는 `micError` 에 따로 둡니다.
+   */
+  const requestMic = useCallback(
+    async (audioDeviceId?: string) => {
+      stop();
+      setMicError(null);
+      try {
+        const s = await navigator.mediaDevices
+          .getUserMedia({ audio: audioConstraints(audioDeviceId) })
+          .catch((e: unknown) => {
+            if (!audioDeviceId || toDeviceError(e) !== 'NOT_FOUND') throw e;
+            return navigator.mediaDevices.getUserMedia({ audio: audioConstraints() });
+          });
+        return adopt(s);
+      } catch (e) {
+        setMicError(toDeviceError(e));
+        return null;
+      }
+    },
+    [stop, adopt],
   );
 
   // 언마운트 시 반드시 놓아줍니다. 안 그러면 카메라 불이 안 꺼집니다.
   useEffect(() => stop, [stop]);
 
-  // 발표 중 장치가 빠지는 경우 (명세 8-3 · 카메라만 소실)
+  // 트랙 종료도 봅니다. devicechange 없이 마이크가 끝나도 시작 덮개를 갱신해야 합니다.
   useEffect(() => {
+    if (!stream) return;
     const onChange = () => {
-      const alive = streamRef.current?.getVideoTracks().some((t) => t.readyState === 'live');
-      if (streamRef.current && !alive) setError('NOT_FOUND');
+      const video = stream.getVideoTracks();
+      if (video.length > 0 && !video.some((t) => t.readyState === 'live')) {
+        setError('NOT_FOUND');
+        setCameraError('NOT_FOUND');
+      }
+      const audio = stream.getAudioTracks();
+      if (!audio.some((t) => t.readyState === 'live')) setMicError('NOT_FOUND');
     };
+    const tracks = stream.getTracks();
+    onChange();
+    tracks.forEach((track) => track.addEventListener('ended', onChange));
     navigator.mediaDevices?.addEventListener('devicechange', onChange);
-    return () => navigator.mediaDevices?.removeEventListener('devicechange', onChange);
-  }, []);
+    return () => {
+      tracks.forEach((track) => track.removeEventListener('ended', onChange));
+      navigator.mediaDevices?.removeEventListener('devicechange', onChange);
+    };
+  }, [stream]);
 
-  return { stream, error, request, stop };
+  return { stream, error, cameraError, micError, request, requestMic, stop };
+}
+
+function audioConstraints(deviceId?: string): MediaTrackConstraints {
+  return {
+    echoCancellation: true,
+    noiseSuppression: true,
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+  };
 }
 
 function toDeviceError(e: unknown): DeviceError {
@@ -109,6 +173,14 @@ export const DEVICE_ERROR_MESSAGE: Record<DeviceError, string> = {
   NOT_FOUND: '연결된 카메라나 마이크를 찾지 못했어요.',
   IN_USE: '다른 앱이 카메라를 쓰고 있어요. Zoom이나 화상회의를 닫고 다시 시도해 주세요.',
   UNKNOWN: '카메라를 시작하지 못했어요. 페이지를 새로고침해 주세요.',
+};
+
+/** 마이크를 못 열었을 때 (발표 화면의 시작 덮개). 위 문구는 카메라를 앞세워서 따로 둡니다 */
+export const MIC_ERROR_MESSAGE: Record<DeviceError, string> = {
+  PERMISSION_DENIED: '마이크 사용을 허용해 주세요. 주소창 왼쪽 자물쇠에서 바꿀 수 있어요.',
+  NOT_FOUND: '연결된 마이크를 찾지 못했어요.',
+  IN_USE: '다른 앱이 마이크를 쓰고 있어요. Zoom이나 화상회의를 닫고 다시 시도해 주세요.',
+  UNKNOWN: '마이크를 시작하지 못했어요.',
 };
 
 // HMR에서 스트림을 확실히 놓아줍니다 — 개발 중에만 동작합니다. 지우지 마세요.

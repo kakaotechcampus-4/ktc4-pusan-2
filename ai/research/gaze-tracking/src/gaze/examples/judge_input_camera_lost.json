@@ -1,0 +1,378 @@
+{
+  "t_ms": 30000,
+  "since_ms": 29000,
+  "records": [
+    {
+      "t_ms": 0,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 1000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 2000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 3000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 4000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 5000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 6000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 7000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 8000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 9000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 10000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 11000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 12000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 13000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 14000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 15000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 16000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 17000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 18000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 19000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 20000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 21000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 22000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 23000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    },
+    {
+      "t_ms": 24000,
+      "duration_ms": 1000,
+      "state": "CAMERA",
+      "direction": null,
+      "confidence": 0.88,
+      "reliability": 0.95,
+      "issues": [],
+      "frames": 8
+    }
+  ],
+  "voiced": [
+    {
+      "t_ms": 0,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 1000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 2000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 3000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 4000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 5000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 6000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 7000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 8000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 9000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 10000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 11000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 12000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 13000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 14000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 15000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 16000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 17000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 18000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 19000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 20000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 21000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 22000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 23000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 24000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 25000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 26000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 27000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 28000,
+      "voiced_ms": 820
+    },
+    {
+      "t_ms": 29000,
+      "voiced_ms": 820
+    }
+  ]
+}

@@ -14,7 +14,7 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptSlide,
     ScriptVersion,
 )
-from pitch_coach_backend.module.take.entity import Take
+from pitch_coach_backend.module.take.entity import Mission, Take
 
 
 @pytest.fixture
@@ -77,19 +77,42 @@ def _take(
     script_mode: str,
     presentation: PresentationVersion,
     script: ScriptVersion,
-) -> None:
-    db.add(
-        Take(
-            pitch_id=pitch_id,
-            take_number=take_number,
-            presentation_version_id=presentation.id,
-            script_version_id=script.id,
-            mode="COACHING",
-            script_mode=script_mode,
-            goal_time_sec=600,
-        )
+) -> Take:
+    take = Take(
+        pitch_id=pitch_id,
+        take_number=take_number,
+        presentation_version_id=presentation.id,
+        script_version_id=script.id,
+        mode="COACHING",
+        script_mode=script_mode,
+        goal_time_sec=600,
     )
+    db.add(take)
     db.flush()
+    return take
+
+
+def _reviewed(db: Session, take: Take, completed_at: datetime) -> Take:
+    take.status = "COMPLETED"
+    take.review_status = "DONE"
+    take.completed_at = completed_at
+    db.flush()
+    return take
+
+
+def _mission(db: Session, source: Take, priority: int, **fields) -> Mission:
+    row = Mission(
+        source_take_id=source.id,
+        area=fields.pop("area", "GAZE"),
+        slide_number=fields.pop("slide_number", None),
+        target=fields.pop("target", {"metric": "audience_ratio", "operator": "GTE", "value": 0.6}),
+        description=fields.pop("description", f"미션 {priority}"),
+        priority=priority,
+        **fields,
+    )
+    db.add(row)
+    db.flush()
+    return row
 
 
 def _prepare(client: TestClient, pitch_id: uuid.UUID, headers: dict[str, str]):
@@ -111,6 +134,7 @@ def test_new_pitch_has_no_versions_and_starts_at_take_1(
         "newer_script": None,
         "next_take_number": 1,
         "default_script_mode": "HIGHLIGHT",
+        "missions": None,
     }
 
 
@@ -245,6 +269,99 @@ def test_next_take_number_and_script_mode_follow_latest_take(
 
     assert body["next_take_number"] == 3
     assert body["default_script_mode"] == "KEYWORD"
+
+
+def test_missions_come_from_the_take_whose_review_finished_last(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+) -> None:
+    """Take 를 시작할 때 싣는 미션과 같은 기준이다. 번호가 아니라 리뷰가 늦게 끝난 Take 이고,
+    그 Take 가 만든 ACTIVE 미션만 리뷰가 읽는 순서로 준다."""
+    presentation = _presentation(db_session, pitch_id, 1)
+    script = _script(db_session, pitch_id, 1, "DONE")
+    now = datetime.now(UTC)
+    later = _take(db_session, pitch_id, 1, "HIGHLIGHT", presentation, script)
+    earlier = _take(db_session, pitch_id, 2, "HIGHLIGHT", presentation, script)
+    _reviewed(db_session, later, now)
+    _reviewed(db_session, earlier, now - timedelta(minutes=1))
+    # 아직 분석 중인 Take. 미션은 그 전에 리뷰가 끝난 Take 에서 온다
+    _take(db_session, pitch_id, 3, "HIGHLIGHT", presentation, script)
+    _mission(db_session, earlier, 1)
+    second = _mission(
+        db_session,
+        later,
+        2,
+        area="SPEED",
+        slide_number=3,
+        target={"metric": "cpm", "operator": "LTE", "value": 350},
+        description="3번 장을 천천히 말하기",
+        reason="3번 장에서 말이 빨랐다",
+    )
+    first = _mission(db_session, later, 1, description="청중을 보며 말하기")
+    _mission(db_session, later, 3, status="ACHIEVED")
+
+    body = _prepare(client, pitch_id, auth_headers).json()
+
+    assert body["next_take_number"] == 4
+    assert body["missions"] == {
+        "source_take_number": 1,
+        "items": [
+            {
+                "mission_id": str(first.id),
+                "priority": 1,
+                "area": "GAZE",
+                "slide_number": None,
+                "description": "청중을 보며 말하기",
+                "target": {"metric": "audience_ratio", "operator": "GTE", "value": 0.6},
+                "reason": None,
+            },
+            {
+                "mission_id": str(second.id),
+                "priority": 2,
+                "area": "SPEED",
+                "slide_number": 3,
+                "description": "3번 장을 천천히 말하기",
+                "target": {"metric": "cpm", "operator": "LTE", "value": 350.0},
+                "reason": "3번 장에서 말이 빨랐다",
+            },
+        ],
+    }
+
+
+def test_missions_are_null_until_a_review_finishes(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+) -> None:
+    presentation = _presentation(db_session, pitch_id, 1)
+    script = _script(db_session, pitch_id, 1, "DONE")
+    _take(db_session, pitch_id, 1, "HIGHLIGHT", presentation, script)
+
+    body = _prepare(client, pitch_id, auth_headers).json()
+
+    assert body["missions"] is None
+
+
+def test_review_without_next_missions_gives_empty_items(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+) -> None:
+    presentation = _presentation(db_session, pitch_id, 1)
+    script = _script(db_session, pitch_id, 1, "DONE")
+    _reviewed(
+        db_session,
+        _take(db_session, pitch_id, 1, "HIGHLIGHT", presentation, script),
+        datetime.now(UTC),
+    )
+
+    body = _prepare(client, pitch_id, auth_headers).json()
+
+    assert body["missions"] == {"source_take_number": 1, "items": []}
 
 
 def test_pitch_of_another_user_is_404(

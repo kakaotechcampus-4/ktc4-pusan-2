@@ -5,9 +5,8 @@
  *
  * The 1 s record (`sampleToDict`) is what leaves the device: state, OTHER direction,
  * vote share, condition reliability and issues, frame count -- no image, no landmark.
- * Reading the records (coach issues, take summary, intervention outcome) is the
- * server's job (`gaze.core`); the demo page previews it with a copy in
- * `src/demo/evidence-preview.ts`, so the engine does not carry server logic.
+ * Reading the records (the 1 s judgment, take metrics) is the server module's job
+ * (Python `gaze`: `judge` · `summarize` · `criteria`); the engine carries no server logic.
  */
 import type { EvidenceConfig } from './config';
 import type { ConditionState } from './condition';

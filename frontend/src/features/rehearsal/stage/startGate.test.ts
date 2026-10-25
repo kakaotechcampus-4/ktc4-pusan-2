@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { hasLiveAudio, startGate } from './startGate';
+import { hasCamera, hasLiveAudio, startGate } from './startGate';
 
 const base = {
   started: false,
   resumed: false,
   micLive: true,
-  deviceError: null,
+  micError: null,
   connected: false,
   startFailure: null,
   slow: false,
@@ -20,7 +20,7 @@ describe('무대 시계를 돌려도 되나', () => {
 
   it('장치를 못 열면 연결과 상관없이 시작하지 않는다', () => {
     expect(
-      startGate({ ...base, micLive: false, deviceError: 'PERMISSION_DENIED', connected: true }),
+      startGate({ ...base, micLive: false, micError: 'PERMISSION_DENIED', connected: true }),
     ).toEqual({ kind: 'NO_MIC', error: 'PERMISSION_DENIED' });
   });
 
@@ -41,7 +41,7 @@ describe('무대 시계를 돌려도 되나', () => {
 
   it('새로고침으로 이어 가는 Take 는 ready 를 기다리지 않지만 마이크는 본다', () => {
     expect(startGate({ ...base, resumed: true })).toEqual({ kind: 'STARTED' });
-    expect(startGate({ ...base, resumed: true, micLive: false, deviceError: 'IN_USE' })).toEqual({
+    expect(startGate({ ...base, resumed: true, micLive: false, micError: 'IN_USE' })).toEqual({
       kind: 'NO_MIC',
       error: 'IN_USE',
     });
@@ -53,7 +53,7 @@ describe('무대 시계를 돌려도 되나', () => {
         ...base,
         started: true,
         micLive: false,
-        deviceError: 'NOT_FOUND',
+        micError: 'NOT_FOUND',
         startFailure: 'GAVE_UP',
       }),
     ).toEqual({ kind: 'STARTED' });
@@ -71,5 +71,19 @@ describe('살아 있는 오디오 트랙', () => {
     expect(hasLiveAudio(streamOf())).toBe(false);
     expect(hasLiveAudio(streamOf('ended'))).toBe(false);
     expect(hasLiveAudio(streamOf('ended', 'live'))).toBe(true);
+  });
+});
+
+describe('카메라를 열었나', () => {
+  const streamOf = (...states: MediaStreamTrackState[]) =>
+    ({
+      getVideoTracks: () => states.map((readyState) => ({ readyState })),
+    }) as unknown as MediaStream;
+
+  it('마이크만 연 스트림은 카메라가 없다. 끝난 트랙은 연 것으로 본다', () => {
+    expect(hasCamera(null)).toBe(false);
+    expect(hasCamera(streamOf())).toBe(false);
+    expect(hasCamera(streamOf('ended'))).toBe(true);
+    expect(hasCamera(streamOf('live'))).toBe(true);
   });
 });

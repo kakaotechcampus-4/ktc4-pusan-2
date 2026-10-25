@@ -177,8 +177,52 @@ export interface AutoEndMessage {
   message: string;
 }
 
+/** 상태 표시를 하는 영역 (`docs/ai/architecture.md` 6-3). `CONTENT` 는 발표 중에 판정하지 않습니다 */
+export type IndicatorArea = 'GAZE' | 'SPEED' | 'VOLUME' | 'PAUSE' | 'FILLER' | 'TIME';
+
+/** 코치가 말을 거는 영역 */
+export type CoachArea = IndicatorArea | 'CONTENT';
+
+/**
+ * 코치가 건네는 한마디 (`coach-agent.md` 5-3). `message` 는 AI 코치가 만든 문장이라 그대로 띄웁니다.
+ * `instruction` 은 `LOOK_AT_CAMERA` · `SLOW_DOWN` · … · `CONTINUE`(지금처럼 유지) 입니다.
+ */
+export interface CoachFeedback {
+  area: CoachArea;
+  instruction: string;
+  message: string;
+  /** 0–100 */
+  priority: number;
+  /** 0–1 */
+  confidence: number;
+}
+
+/**
+ * AI 코치(`/coach/evaluate`)의 판단을 BE 가 넘겨줍니다 (`architecture.md` 1-4).
+ * BE 는 `COACHING` 모드에서 **말을 걸 때(`INTERVENE`)와 상태 표시가 바뀔 때만** 보냅니다.
+ *
+ *   feedback    `INTERVENE` 일 때만 객체. 그 밖에는 null
+ *   indicators  영역 → 그 판정 모듈의 상태 (`AUDIENCE` · `SCRIPT` · `NORMAL` · `FAST` · `AHEAD` …).
+ *               빈 객체는 '바뀌지 않음' 입니다 — 이전 표시를 그대로 둡니다
+ *
+ * 언제 말할지 · 얼마나 자주 말할지는 AI 코치가 정합니다 (쿨다운 · 효과 판정). FE 는 띄우기만 합니다.
+ */
+export interface CoachMessage {
+  type: 'coach';
+  t_ms: Ms;
+  /** `INTERVENE` 지금 말함 · `WAIT` 보기만 · `IGNORE` 이번엔 버림 */
+  action: string;
+  feedback: CoachFeedback | null;
+  indicators: Partial<Record<IndicatorArea, string>>;
+}
+
 export type ServerMessage =
-  ReadyMessage | TranscriptMessage | SttStatusMessage | SttErrorMessage | AutoEndMessage;
+  | ReadyMessage
+  | TranscriptMessage
+  | SttStatusMessage
+  | SttErrorMessage
+  | AutoEndMessage
+  | CoachMessage;
 
 /**
  * **에러가 곧 종료는 아닙니다.** 여기 있는 것만 1008 로 닫히고, 나머지
@@ -262,16 +306,39 @@ function toEndReason(value: unknown): TakeEndReason | null {
   return typeof value === 'string' && END_REASONS.has(value) ? (value as TakeEndReason) : null;
 }
 
+/**
+ * 빠진 칸은 '없음' 으로 채웁니다. 말이 없으면 `feedback` 은 null, 표시가 그대로면 `indicators` 는 {}.
+ * 띄울 문장이 없는 `feedback` 은 버립니다 — 빈 줄을 띄우는 것보다 아무 말도 안 하는 편이 낫습니다.
+ */
+function toCoachMessage(raw: Record<string, unknown>): CoachMessage {
+  const feedback = raw.feedback as Partial<CoachFeedback> | null | undefined;
+  const indicators = raw.indicators;
+  return {
+    type: 'coach',
+    t_ms: typeof raw.t_ms === 'number' ? raw.t_ms : 0,
+    action: typeof raw.action === 'string' ? raw.action : 'WAIT',
+    feedback:
+      feedback && typeof feedback.message === 'string' && feedback.message !== ''
+        ? (feedback as CoachFeedback)
+        : null,
+    indicators:
+      typeof indicators === 'object' && indicators !== null && !Array.isArray(indicators)
+        ? (indicators as CoachMessage['indicators'])
+        : {},
+  };
+}
+
 const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   'ready',
   'transcript',
   'stt_status',
   'error',
   'auto_end',
+  'coach',
 ]);
 
 /**
- * 모르는 메시지는 `null` 입니다. 서버가 나중에 `metrics`·`coach` 를 추가해도
+ * 모르는 메시지는 `null` 입니다. 서버가 나중에 새 메시지를 추가해도
  * 이 화면이 깨지지 않아야 합니다 — 발표 중에 예외가 나면 그걸로 끝입니다.
  */
 export function parseServerMessage(raw: unknown): ServerMessage | null {
@@ -289,6 +356,7 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
       const error = parsed as Omit<SttErrorMessage, 'end_reason'> & { end_reason?: unknown };
       return { ...error, end_reason: toEndReason(error.end_reason) };
     }
+    if (type === 'coach') return toCoachMessage(parsed as Record<string, unknown>);
     return parsed as ServerMessage;
   } catch {
     return null;

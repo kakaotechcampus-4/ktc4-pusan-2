@@ -1,14 +1,15 @@
 
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Annotated, Protocol
+from typing import Annotated, Any, Literal, Protocol
 
 from fastapi import File, UploadFile
-from pydantic import AfterValidator, BaseModel, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints, model_validator
 
-from pitch_coach_backend.core.validation import reject_nul
+from pitch_coach_backend.core.validation import reject_nul, reject_unstorable_json
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.take.dto import ScriptMode, TakeSummaryDTO
 
@@ -84,6 +85,9 @@ class ScriptParseErrorCode(StrEnum):
     INTERNAL_ERROR = "INTERNAL_ERROR"  # BE 쪽 예상 못 한 오류
     # 파싱 기능 전에 올라온 대본 (migration 이 채움). 원문이 DB 에 없어 다시 올려야 한다
     LEGACY_UNPARSED = "LEGACY_UNPARSED"
+    # FAILED 가 아니라 DONE 과 같이 온다. 같은 버전을 다시 파싱한 결과가 저장본과 달라 적용하지
+    # 않았다 (docs/ai/architecture.md 1-7). 바뀐 대본은 새 버전으로 올려야 한다
+    REPARSE_MISMATCH = "REPARSE_MISMATCH"
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,35 @@ class ParseTicket:
     target_ms: int | None
     # 파싱이 끝나면 이 발표의 다음 Take 코칭 계획을 요청한다 (`ScriptParseRunner.on_parsed`)
     pitch_id: uuid.UUID | None = None
+
+
+class ParseSaved(StrEnum):
+    """파싱 결과를 저장하려 한 결과 (service.complete_parse)."""
+
+    STALE = "STALE"  # 이 작업이 이미 무효라 아무것도 쓰지 않음 (재시도로 교체·만료·이미 끝남)
+    APPLIED = "APPLIED"  # 저장본이 없어 새 결과를 저장함
+    REUSED = "REUSED"  # 저장본과 장 번호·대본이 같아 저장본(과 그 평가 기준)을 그대로 둠
+    MISMATCH = "MISMATCH"  # 저장본과 달라 적용하지 않고 parse_error 에 REPARSE_MISMATCH 를 남김
+
+
+@dataclass(frozen=True)
+class RubricTicket:
+    """평가 기준 만들기 작업에 넘기는 것. 파싱 작업처럼 DB 세션 없이 이것만 들고 AI 를 기다린다.
+
+    requested_at 은 이 작업의 표식(script_versions.rubric_requested_at)이다.
+    """
+
+    script_version_id: uuid.UUID
+    pitch_id: uuid.UUID
+    requested_at: datetime
+    # 그 버전의 모든 장 (번호, 장별 대본). 일부 장만 다시 만들 때도 전부 싣는다 — AI 가 키워드
+    # 점수·이름 판정에 발표 전체를 본다
+    slides: tuple[tuple[int, str], ...]
+    # 아직 기준이 없는 장
+    missing: tuple[int, ...]
+    retry_used: bool
+    # BE 가 다시 뜰 때 PENDING 으로 남은 작업을 이어받은 것이다
+    resumed: bool = False
 
 
 class HighlightDTO(BaseModel):
@@ -164,6 +197,31 @@ class NewerScriptDTO(BaseModel):
     parse_status: ScriptParseStatus
     error_code: ScriptParseErrorCode | None
 
+class PrepareMissionTargetDTO(BaseModel):
+    metric: str
+    operator: str
+    value: float
+
+class PrepareMissionDTO(BaseModel):
+    mission_id: uuid.UUID
+    priority: int
+    # 리뷰 next_missions 의 영역 (review-agent.md 5-3)
+    area: str
+    # null 이면 발표 전체 미션이다
+    slide_number: int | None
+    description: str
+    target: PrepareMissionTargetDTO
+    # 리뷰한 Take 기준으로 쓴 문장이다
+    reason: str | None
+
+class PrepareMissionsDTO(BaseModel):
+    """이번 Take 에 실릴 미션. Take 를 시작할 때 다시 고르므로 그사이 리뷰가 끝나면 바뀔 수 있다."""
+
+    # 미션을 만든 리뷰의 Take 번호. next_take_number - 1 보다 작으면 그 뒤 Take 는 아직 리뷰 전이다
+    source_take_number: int
+    # 리뷰가 미션을 읽는 순서. 리뷰가 다음 미션을 내지 않았으면 빈 목록
+    items: list[PrepareMissionDTO]
+
 class PrepareDTO(BaseModel):
     """장치 점검 화면이 Take 를 만들 때 쓰는 값. 피치 생성을 거치지 않고 들어와도 버전을 안다."""
 
@@ -181,6 +239,8 @@ class PrepareDTO(BaseModel):
     next_take_number: int
     # 가장 최근 Take 의 대본 표시 방식. Take 가 없으면 HIGHLIGHT
     default_script_mode: ScriptMode
+    # Take 를 시작할 때 싣는 미션과 같은 기준으로 고른다. 리뷰가 끝난 Take 가 없으면 None
+    missions: PrepareMissionsDTO | None
 
 class Versioned(Protocol):
     id: uuid.UUID
@@ -195,7 +255,59 @@ class PresentationDetailDTO(BaseModel):
     description: str | None = None
     created_at: date
 class StandardTextDTO(BaseModel):
-    standard_text: str
+    standard_text: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=2000),
+        AfterValidator(reject_nul),
+    ]
+
+
+class StandardTargetDTO(BaseModel):
+    display: str
+    metric: str
+    operator: Literal["LTE", "GTE", "LT", "GT"]
+    value: float = Field(strict=True, allow_inf_nan=False)
+
+
+class StandardAIResponseDTO(BaseModel):
+    # AI의 표시 문장은 자르거나 다듬지 않는다. 조건과 targets의 display 짝이 달라질 수 있다.
+    display_criteria: list[
+        Annotated[
+            str,
+            StringConstraints(min_length=1, max_length=50, pattern=r"\S"),
+            AfterValidator(reject_nul),
+        ]
+    ] = Field(max_length=10)
+    excluded: list[Annotated[str, AfterValidator(reject_nul)]] | None = None
+    values: dict[str, Any]
+    targets: list[dict[str, Any]] = Field(max_length=20)
+    meta: dict[str, Any]
+
+    @model_validator(mode="after")
+    def _analysis_is_storable(self) -> StandardAIResponseDTO:
+        for key, value in self.values.items():
+            if key == "script_used":
+                if value is not None and type(value) is not bool:
+                    raise ValueError("script_used는 bool 또는 null이어야 합니다.")
+            elif value is not None and not isinstance(value, str):
+                raise ValueError("요소 값은 문자열 또는 null이어야 합니다.")
+        for target in self.targets:
+            checked = StandardTargetDTO.model_validate(target)
+            if checked.display not in self.display_criteria:
+                raise ValueError("목표에 해당하는 표시 기준이 없습니다.")
+        version = self.meta.get("schema_version")
+        if not isinstance(version, str) or version.split(".", 1)[0] != "1":
+            raise ValueError("지원하지 않는 평가 기준 응답 버전입니다.")
+        if not isinstance(self.meta.get("feature_version"), str):
+            raise ValueError("기능 버전이 없습니다.")
+        if self.meta.get("model") is not None and not isinstance(
+            self.meta["model"], str
+        ):
+            raise ValueError("모델 정보가 올바르지 않습니다.")
+        payload = self.model_dump(mode="python")
+        reject_unstorable_json(payload)
+        json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        return self
 
 class StandardDTO(BaseModel):
     standard: str

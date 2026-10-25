@@ -14,7 +14,8 @@
   - 409 `REPLAY_REQUIRED` 면 DB 의 원자료로 replay 를 만들어 한 번 더 부른다. 일시 오류의 재시도는
     클라이언트가 한다. 끝내 실패하면 Take 를 `FAILED` 로 두고 원자료는 남긴다 (7일, 1-1).
   - 결과 저장은 Take 가 아직 Take 결과를 기다리는 중일 때만 한다 (`store.save_take_result`).
-  - AI 를 기다리는 동안 DB 세션을 쥐지 않는다. 동시 개수는 클라이언트가 묶는다 (3절, 4개).
+  - AI 를 기다리는 동안 DB 세션을 쥐지 않는다. 원자료 읽기부터 결과 저장까지 4개로 묶고,
+    복구는 ID 도 4개씩 읽어 앞 묶음이 끝난 뒤 다음 묶음을 띄운다. HTTP 제한은 별도로 유지한다.
 
 실패는 던지지 않는다. 받을 사람이 없다. DB 가 잠깐 안 되면(연결 끊김 · 잠금 대기) 그 단계만 다시
 하고, 그래도 안 되면 Take 는 `FINALIZING` 으로 남아 주기 작업(`sweep_forever`)이나 앱이 다시 뜰 때
@@ -26,7 +27,8 @@
 import asyncio
 import logging
 import uuid
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+import weakref
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -46,6 +48,9 @@ logger = logging.getLogger(__name__)
 RETRY_DELAYS_SEC = (5.0, 30.0)
 # 앱이 뜰 때 Take 결과를 기다리는 Take 를 읽는 상한. DB 가 늦어도 앱은 뜬다
 RESUME_READ_TIMEOUT_SEC = 10.0
+# 원자료 · replay 를 메모리에 들고 있는 작업 수. HTTP 를 기다리기 전부터 묶는다
+FINALIZE_CONCURRENCY = 4
+RESUME_BATCH_SIZE = 4
 # 앱을 내리며 finalize 를 끊을 때 재료에만 있는 코치 이벤트를 넣어 보는 상한. 끊긴 finalize 를
 # 기다리는 시간(`background.STOP_TIMEOUT_SEC`) 안이다
 KEEP_EVENTS_TIMEOUT_SEC = 3.0
@@ -57,6 +62,12 @@ STALE_FINALIZING = timedelta(minutes=10)
 
 # 돌고 있는 finalize. Take id 로 찾아 같은 Take 를 두 번 띄우지 않는다
 _running = TaskRegistry()
+# 앱 시작 · 주기 복구가 겹쳐 같은 backlog 를 동시에 훑지 않게 한다
+_recovery = TaskRegistry()
+# 테스트의 여러 이벤트 루프에서도 각각 같은 상한을 쓴다 (client 의 HTTP 제한과 같은 방식)
+_slots_by_loop: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    weakref.WeakKeyDictionary()
+)
 # DB 재시도를 다 쓴 Take 의 재료. 스트림은 이미 놓았으므로 다음 sweep 까지 여기서 보관한다.
 # 저장소도 함께 둬 앱 종료 때 대기 중인 이벤트를 DB 에 한 번 더 넣어 볼 수 있게 한다.
 _pending: dict[uuid.UUID, tuple[FinalizeSnapshot, CoachStore]] = {}
@@ -68,12 +79,12 @@ def spawn(
     *,
     client: CoachClient,
     store: CoachStore,
-) -> None:
+) -> asyncio.Task[None] | None:
     """finalize 를 백그라운드로 띄운다. 같은 Take 가 이미 돌고 있으면 띄우지 않는다."""
     if _running.running(take_id):
         logger.info("finalize 가 이미 돌고 있다 take=%s", take_id)
         return
-    _running.spawn(
+    return _running.spawn(
         run(take_id, snapshot, client=client, store=store),
         name=f"coach-finalize:{take_id}",
         key=take_id,
@@ -92,7 +103,8 @@ async def run(
     if snapshot is not None:
         _pending[take_id] = (snapshot, store)
     try:
-        await _run(take_id, snapshot, client, store)
+        async with _slots():
+            await _run(take_id, snapshot, client, store)
     except asyncio.CancelledError:
         # 앱을 내린다. Take 는 FINALIZING 으로 남고 다시 뜰 때 이어 간다
         logger.info("finalize 를 멈춘다 (앱 종료) take=%s", take_id)
@@ -114,6 +126,14 @@ async def run(
         _pending.pop(take_id, None)
     else:
         _pending.pop(take_id, None)
+
+
+def _slots() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    if (slots := _slots_by_loop.get(loop)) is None:
+        slots = asyncio.Semaphore(FINALIZE_CONCURRENCY)
+        _slots_by_loop[loop] = slots
+    return slots
 
 
 async def _keep_events(
@@ -238,36 +258,64 @@ async def resume(
 
     이 프로세스에서 보관 중인 재료가 있으면 이어 쓰고, 앞 프로세스의 세션을 잃었으면 처음부터
     replay 를 붙인다 (architecture.md 1-3 'BE가 재시작할 때' `FINALIZING`). `stale_before` 를
-    주면 그 전에 FINALIZING 이 된 Take 만 본다.
+    주면 그 전에 FINALIZING 이 된 Take 만 본다. 조회 · 복구는 별도 태스크에서 배치로 진행해
+    앱 시작을 막지 않고, 이미 복구 중이면 새 복구를 띄우지 않는다.
     """
+    if not _recovery.running("resume"):
+        _recovery.spawn(
+            _resume(client, store, stale_before), name="coach-finalize-resume", key="resume"
+        )
+
+
+async def _waiting_batches(
+    store: CoachStore, stale_before: datetime | None
+) -> AsyncIterator[list[uuid.UUID]]:
+    after = None
+    while True:
+        # 각 배치의 DB 읽기에만 상한을 건다. 복구 전체나 AI 를 기다리는 시간은 묶지 않는다.
+        take_ids = await asyncio.wait_for(
+            store.finalizing_takes(stale_before, after=after, limit=RESUME_BATCH_SIZE),
+            RESUME_READ_TIMEOUT_SEC,
+        )
+        if not take_ids:
+            return
+        yield take_ids
+        if len(take_ids) < RESUME_BATCH_SIZE:
+            return
+        after = take_ids[-1]
+
+
+async def _resume(client: CoachClient, store: CoachStore, stale_before: datetime | None) -> None:
     # 읽는 동안 새 작업이 등록될 수 있다. 이번 조회 전에 대기하던 재료만 정리 대상으로 둔다.
     pending = dict(_pending)
-
-    async def waiting() -> tuple[list[uuid.UUID], set[uuid.UUID]]:
-        take_ids = await store.finalizing_takes(stale_before)
-        # 오래된 Take 만 읽은 목록에 없다고 새로 대기 중인 snapshot 까지 지우면 안 된다.
-        all_waiting = (
-            await store.finalizing_takes() if pending and stale_before is not None else take_ids
-        )
-        return take_ids, set(all_waiting)
-
+    resumed = 0
     try:
-        take_ids, all_waiting = await asyncio.wait_for(waiting(), RESUME_READ_TIMEOUT_SEC)
+        if pending and stale_before is not None:
+            # 오래된 Take 조회에 빠진 새 snapshot 도 전체 대기 목록에 있으면 보관한다.
+            async for take_ids in _waiting_batches(store, None):
+                for take_id in take_ids:
+                    pending.pop(take_id, None)
+        async for take_ids in _waiting_batches(store, stale_before):
+            tasks = []
+            for take_id in take_ids:
+                if stale_before is None:
+                    pending.pop(take_id, None)
+                task = spawn(take_id, None, client=client, store=store)
+                if task is not None:
+                    tasks.append(task)
+            resumed += len(tasks)
+            # 결과 저장까지 끝낸 뒤 다음 ID 를 읽어 태스크 수도 한 배치로 묶는다.
+            if tasks:
+                await asyncio.gather(*tasks)
     except Exception:
+        # 조회가 덜 끝났으면 대기 재료를 지우지 않고 다음 sweep 에서 이어 간다.
         logger.exception("Take 결과를 기다리는 Take 를 읽지 못했다")
         return
     for take_id, entry in pending.items():
-        if (
-            take_id not in all_waiting
-            and not _running.running(take_id)
-            and _pending.get(take_id) is entry
-        ):
+        if not _running.running(take_id) and _pending.get(take_id) is entry:
             del _pending[take_id]
-    resumed = [take_id for take_id in take_ids if not _running.running(take_id)]
-    for take_id in resumed:
-        spawn(take_id, None, client=client, store=store)
     if resumed:
-        logger.info("Take 결과를 기다리던 Take %d개의 finalize 를 다시 띄웠다", len(resumed))
+        logger.info("Take 결과를 기다리던 Take %d개의 finalize 를 다시 띄웠다", resumed)
 
 
 async def sweep_forever(
@@ -282,7 +330,8 @@ async def sweep_forever(
 async def stop_all(timeout: float) -> None:
     """앱 종료. 돌고 있는 finalize 를 끊는다 — FINALIZING 으로 남아 다시 뜰 때 이어 간다."""
     deadline = asyncio.get_running_loop().time() + timeout
-    await _running.stop_all(timeout)
+    await _recovery.stop_all(timeout)
+    await _running.stop_all(max(0.0, deadline - asyncio.get_running_loop().time()))
     # 재시도 소진 뒤 sweep 을 기다리던 Take 는 실행 태스크가 없어 위 취소 경로를 타지 않는다.
     if pending := [
         _keep_events(take_id, snapshot.events, store)

@@ -263,6 +263,8 @@ def _start_fresh(req: CoachRequest, state: CoachState) -> None:
     시간은 max(커서, 장 시작)부터 세므로, 지금 장의 창 밖 몫을 미리 slide_dwell_offset_ms 에 둔다.
     지금 장이 창 안에서 시작했으면 그 앞 시간은 어느 장인지 모른다 — 장 합계에 넣지 않도록
     slide_unknown_before_ms 에 장 시작을 둔다(그러지 않으면 첫 장으로 보고 지금 장에 더한다).
+    다만 창 앞이 잘리지 않았고(Take 처음부터 보임) 지금 장이 계획의 첫 장이면, 그 앞은 첫 장이
+    늦게 알려진 몫이라 예전처럼 첫 장에 넣는다 — replay 도 첫 장 변경을 0초로 싣는다.
     """
     if state.last_t_ms is not None:
         return
@@ -279,7 +281,10 @@ def _start_fresh(req: CoachRequest, state: CoachState) -> None:
         key = str(slide.number)
         state.slide_dwell_offset_ms[key] = state.slide_dwell_offset_ms.get(key, 0) + outside
     elif slide.started_ms > start:
-        state.slide_unknown_before_ms = slide.started_ms
+        # 첫 요청 전에 장이 바뀌었으면(지금 장이 첫 장이 아님) 그 앞은 앞 장의 몫이다
+        first = min((s.slide_number for s in req.plan.slides), default=1)
+        if start > 0 or slide.number != first:
+            state.slide_unknown_before_ms = slide.started_ms
 
 
 def _round_start(state: CoachState) -> int:

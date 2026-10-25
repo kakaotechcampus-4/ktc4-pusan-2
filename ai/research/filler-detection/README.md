@@ -39,6 +39,8 @@ flowchart LR
 | T2 지시 · 대용 | 그 · 저 · 이제 · 뭐 · 자 · 이 | 앞이나 뒤 간격이 `gap_ms` 이상인 단독 단어, 또는 같은 단어가 바로 반복 |
 | T3 어휘적 | 그니까 · 근데 · 진짜 · 사실 | 앞뒤 간격이 모두 `gap_ms` 이상인 단독 단어, 또는 같은 단어가 바로 반복 |
 
+- **세는 층**: 배포 기본값은 T1만 셉니다(`counted_tiers`). 문장 끝 신호(1초 넘게 쉼) 뒤 첫 단어는 앞 간격이 늘 기준보다 커서, T2 규칙이 문장 첫 지시어("그 결과" · "자 이제")를 군더더기로 세기 때문입니다. T2 · T3 단어는 층과 이유("세지 않는 층")만 내고 `is_filler: false`이며 보류하지 않습니다. 위 표의 T2 · T3 규칙은 세 층을 모두 켠 설정(`ALL_TIERS`)에서 동작하고, 간격 규칙을 실제 리허설로 정한 뒤 켭니다.
+
 - **보류**: T2 · T3 단어인데 뒤 간격을 아직 알 수 없으면(다음 단어도, 그 단어 끝 이후의 문장 끝 신호도, Take 끝 시각도 없음) `is_filler: null`로 두고 세지 않습니다. Take 끝 시각(`take_end_ms`)이 오면 그때까지 보류인 단어를 정합니다.
 - **바로 반복**: 같은 단어(문장부호를 뗀 뒤)가 문장 끝 신호 없이 이어지면 앞의 것을 군더더기로 세고, 마지막 하나는 자기 간격으로만 판정합니다. 실제 결과는 아래 '가상 평가 결과'에 있습니다.
 - **앞 간격을 모를 때**: 창의 첫 단어는 앞 단어가 없습니다. 그 단어 시작 전의 문장 끝 신호를 앞 단어의 끝으로 보고, 신호도 없으면 앞 간격 조건은 맞지 않은 것으로 칩니다(놓침보다 오탐을 피함).
@@ -86,9 +88,9 @@ uv run python -m pytest -q               # 테스트
 uv run ruff check . && uv run ruff format --check .
 ```
 ```text
-309 passed in 5.92s
+334 passed in 12.81s
 All checks passed!
-24 files already formatted
+25 files already formatted
 ```
 
 ```bash
@@ -107,7 +109,7 @@ summarize_output.json, criteria.json
 uv run python tools/export_keyterms.py   # keyterms.json 다시 만들기 (사전이 바뀐 뒤)
 ```
 ```text
-keyterms.json: 15개, filler-1.0+9612862dccea
+keyterms.json: 15개, filler-1.0+3e62c0c87d2a
 ```
 
 ```bash
@@ -121,7 +123,7 @@ words.json: 발화 73개, 단어 959개, seed 0
 uv run python tools/evaluate.py --data data/virtual/words.json --out reports/results/filler_eval.json
 ```
 ```text
-filler-1.0+9612862dccea  발화 73개 · 단어 959개 · 사전에 없는 정답 7개 · 이어 부르기 = 한 번에 부르기: True
+filler-1.0+60cd87861ea9  발화 73개 · 단어 959개 · 사전에 없는 정답 7개 · 이어 부르기 = 한 번에 부르기: True
 층      tp   fp   fn      정밀도      재현율
 T1     49    6    0   0.8909      1.0
 T2     31   34    6   0.4769   0.8378
@@ -132,7 +134,7 @@ T3     13   27   23    0.325   0.3611
 다시 만든 파일이 커밋된 것과 같으면 `git diff`가 비어야 합니다. 같은 seed면 같은 파일이 나옵니다.
 
 ## 결과를 직접 보는 법
-`judge`는 입력 dict와 판정 시각을 받아 결과 하나가 든 목록을 냅니다. 아래는 "저희는 · 음 · 그니까" 세 단어가 있는 41초 창입니다.
+`judge`는 입력 dict와 판정 시각을 받아 결과 하나가 든 목록을 냅니다. 아래는 "저희는 · 음 · 그니까" 세 단어가 있는 41초 창을 배포 기본값(T1만 셈)으로 판정한 것입니다.
 
 ```python
 from filler.core import judge
@@ -156,15 +158,23 @@ for w in r.words:
 print([(i.t_ms, i.values) for i in r.tally if "filler_count" in i.values])
 ```
 ```text
+NORMAL 1 40800
+저희는 None False 사전에 없음
+음 T1 True 채움말
+그니까 T3 False 세지 않는 층
+[(40050, {'filler_count': 1, 'filler_t1': 1, 'filler_word:음': 1})]
+```
+세 층을 모두 켜고(`judge(inputs, t_ms=41000, config=ALL_TIERS)`, `from filler.config import ALL_TIERS`) 같은 창을 판정하면 결과가 이렇게 바뀝니다.
+```text
 NORMAL 1 40400
 저희는 None False 사전에 없음
 음 T1 True 채움말
 그니까 T3 None 뒤 간격을 아직 알 수 없음
 [(40050, {'filler_count': 1, 'filler_t1': 1, 'filler_word:음': 1})]
 ```
-"음"은 T1이라 바로 셉니다. "그니까"는 T3인데 마지막 단어라 뒤 간격을 몰라 보류(`None`)이고, 그래서 단어 커서(`words_counted_until_ms`)가 "음"의 끝(40400)에서 멈춥니다. 다음 요청에서 다음 단어나 문장 끝 신호가 오면 정해집니다.
+기본값에서 "음"은 T1이라 바로 세고, "그니까"는 T3라 세지 않으므로 단어 커서가 그 끝(40800)까지 갑니다. 세 층을 켜면 "그니까"는 마지막 단어라 뒤 간격을 몰라 보류(`None`)이고, 그래서 단어 커서(`words_counted_until_ms`)가 "음"의 끝(40400)에서 멈춥니다. 다음 요청에서 다음 단어나 문장 끝 신호가 오면 정해집니다.
 
-`src/filler/examples/`에는 같은 방식의 입력 · 출력 JSON이 있습니다. 출력은 지금 코드로 돌린 값이고, `criteria_version`은 기본 기준값의 값입니다.
+`src/filler/examples/`에는 같은 방식의 입력 · 출력 JSON이 있습니다. 출력은 지금 코드로 돌린 값입니다. 보류 · 문장 끝 신호 · T2 · T3 규칙을 보여 주려고, 이름에 `default`가 들어간 예시만 배포 기본값(T1만 셈)으로 판정하고 나머지는 세 층을 모두 켠 설정(`ALL_TIERS`)으로 판정합니다.
 
 | 파일 | 보여 주는 것 |
 |---|---|
@@ -172,6 +182,7 @@ NORMAL 1 40400
 | `judge_input_pending.json` · `judge_output_pending.json` | filler.md 5-5 경계 예시. 마지막 "그"가 보류 단어라 단어 커서가 그 앞에서 멈춤 |
 | `judge_input_take_end.json` · `judge_output_take_end.json` | 같은 "매출은 · 그" 창에서 Take 끝 시각(`take_end_ms`)이 와 "그"가 정해져 셈 |
 | `judge_input_stt_down.json` · `judge_output_stt_down.json` | `stt_status`가 `reconnecting`. 단어를 판정하지 않고 시간만 세며 `UNKNOWN` |
+| `judge_input_default.json` · `judge_output_default.json` | 5-5 첫 예시와 같은 입력을 배포 기본값으로 판정. "그니까"(T3)는 세지 않는 층이라 최근 창 1개 |
 | `judge_input_frequent.json` · `judge_output_frequent.json` | 최근 창에 군더더기 8개(T1 · T2 · T3 · 바로 반복). `HIGH`와 `FILLER_FREQUENT` 하나 |
 | `summarize_input.json` · `summarize_output.json` | Take `tally` 합계 → 군더더기 7개 · 분당 2.4 · 측정 비율 0.97 (filler.md 5-5 값) |
 | `criteria.json` | `FILLER_FREQUENT` 판정 기준 |
@@ -179,7 +190,7 @@ NORMAL 1 40400
 기준값(`config.py`)이나 규칙을 바꾸면 출력과 `criteria_version`이 달라져 `tests/test_examples.py`가 깨집니다. 그때는 입력은 그대로 두고 `tools/make_examples.py`로 출력만 다시 만들어 같은 PR에 넣습니다(architecture.md 12절). 다시 만든 뒤에도 문서 대조 테스트(상태 · 보류 등)가 깨지면 새 기준값에서 예시가 보여 주려던 상황이 달라진 것이므로 입력을 고칩니다.
 
 ## 가상 평가 결과
-`tools/evaluate.py`가 만든 `reports/results/filler_eval.json`을 옮긴 것입니다(`criteria_version` `filler-1.0+9612862dccea`, 가상 발화 73개 · 단어 959개 · seed 0).
+`tools/evaluate.py`가 만든 `reports/results/filler_eval.json`을 옮긴 것입니다(세 층을 모두 켠 설정 `ALL_TIERS`로 잼 — 간격 규칙을 재는 평가라서. `criteria_version` `filler-1.0+60cd87861ea9`, 가상 발화 73개 · 단어 959개 · seed 0).
 
 **평가 방식.** 발화 73개를 원본 순서대로 하나의 Take 시간선(약 11분 43초)에 이어 붙입니다. 발화 사이에는 1.1~1.8초를 두고 앞 발화의 마지막 단어 끝을 문장 끝 신호로 넣어, 실제 Take처럼 발화의 첫 단어도 앞 간격과 앞 문장 끝 신호를 압니다(Take의 첫 단어만 앞 신호가 없습니다). 그 Take를 코치처럼 1초(t = 1000, 2000, …)마다 `judge`로 이어 부릅니다. 그 시각에 확정된 단어만 보냅니다: 단어는 `end_ms + 800 <= t`(STT 확정 지연), 문장 끝 신호는 `u + 1000 <= t`(UtteranceEnd는 1초 쉰 뒤 옴)이고 창은 t 앞 60초라 Take가 진행되면 창이 따라 움직입니다. 돌려받은 두 커서를 다음 요청에 넘기고, 마지막 요청만 Take 끝 시각을 넣습니다. 센 군더더기는 단어 몫의 `t_ms`(= 단어 `start_ms`)로 단어에 맞추고, 같은 단어가 두 번 세어지면 평가가 멈춥니다. 같은 Take의 모든 단어를 창 없이 한 번에 부른 결과와 센 단어가 같은지도 확인했고 같았습니다(`streaming_matches_single_call: true`). 틀린 예의 `reason`은 그 단어의 판정이 처음 정해진 요청에서의 이유입니다.
 
@@ -261,6 +272,7 @@ BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽
 
 | 값 | 기본값 | 근거 |
 |---|---|---|
+| 세는 층 | T1만 | 문장 첫 지시어 오탐 때문. 간격 규칙을 실제 리허설로 정한 뒤 T2 · T3를 켠다 |
 | 앞 · 뒤 간격 기준 | 400 ms | filler.md 5-5 예시("그니까" 뒤 간격 400 ms가 단독)와 맞춘 첫 값 |
 | 문장 첫 단어 앞 간격 | 1000 ms | Deepgram `utterance_end_ms`(1초)와 같은 값 |
 | 최근 창 | 60초 | BE가 보내는 창 60초 안 |
@@ -290,6 +302,7 @@ BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽
 | `test_virtual_tool.py` | 가상 데이터 도구: `*` 표기 · 층, 쉼 종류별 간격 범위, 문장 끝 신호, 발화를 하나의 Take로 잇기, 같은 seed 같은 결과 |
 | `test_virtual_data.py` | 커밋된 `words.json`이 원본 · seed로 다시 만든 것과 같고, 발화가 한 Take에 순서대로 이어지며 층별 개수가 고름 |
 | `test_evaluate.py` | 작은 손 데이터로 지표 · 틀린 예 · 요청 만들기 · 중복 집계 검사 · 반복 규칙, 60초보다 긴 Take에서 이어 부르기 = 한 번에 부르기, 커밋된 결과 파일의 `criteria_version`과 최신 여부 |
+| `test_counted_tiers.py` | 배포 기본값은 T1만 셈: 문장 첫 · 쉼 뒤 지시어를 세지 않음, 보류 없음, T1은 그대로, 세 층을 켜면 지금 규칙대로 |
 | `test_core_boundary.py` | 코어가 상대 import와 표준 모듈 · pydantic만 쓰고 파일 · 출력을 다루지 않음(어기면 실패) |
 | `helpers.py` | 입력 도우미와 공통 계약 검사. `run()`은 판정할 때마다 공통 계약도 봅니다 |
 

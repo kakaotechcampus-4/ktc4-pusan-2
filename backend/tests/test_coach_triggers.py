@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.coach import dependencies as coach_dependencies
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.pitch.dto import ParseTicket
+from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket
 from pitch_coach_backend.module.pitch.entity import Pitch, ScriptVersion
 from pitch_coach_backend.module.pitch.script_parse_runner import ScriptParseRunner
 from pitch_coach_backend.module.pitch.script_parser import ParsedScript
@@ -135,15 +135,16 @@ async def test_parsing_a_script_asks_for_the_first_plan(db_session: Session, pit
 
     runner = ScriptParseRunner(Parser(), session_factory=lambda: db_session, on_parsed=on_parsed)
     ticket = ParseTicket(script.id, script.parse_requested_at, script.content, 300_000, pitch.id)
-    saved = {"value": True}
+    saved = {"value": ParseSaved.APPLIED}
     # 결과 저장은 test_script_parse.py 가 본다. 여기서는 저장한 뒤에 부르는지만 본다
     runner._complete = lambda ticket, parsed: saved["value"]  # type: ignore[method-assign]
 
     await runner.run(ticket)
-    saved["value"] = False
-    await runner.run(ticket)
+    # 지난 작업의 결과를 버렸거나(저장 안 함) 저장본과 달라 적용하지 않았으면 부르지 않는다
+    for skipped in (ParseSaved.STALE, ParseSaved.MISMATCH):
+        saved["value"] = skipped
+        await runner.run(ticket)
 
-    # 지난 작업의 결과를 버렸으면(저장 안 함) 부르지 않는다
     assert asked == [pitch.id]
 
 @pytest.fixture

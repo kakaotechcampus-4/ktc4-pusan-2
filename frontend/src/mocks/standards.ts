@@ -2,7 +2,6 @@ import { delay, http, HttpResponse } from 'msw';
 import type {
   StandardTextRequest,
   StandardTextResponse,
-  StandardsPosted,
   StandardsSaveRequest,
   StandardsSaved,
 } from '@/types/standards';
@@ -12,8 +11,6 @@ import type {
  *
  * 결과 모양만 맞추면 됩니다 — FE 는 `standards` 를 목록으로, `except_standard` 를
  * 안내 문구로 그릴 뿐이라 나누는 품질은 화면 흐름 확인에 상관없습니다.
- *
- * ★ 응답은 BE 컨트롤러 모양 그대로 `{"message", "pitch_id": <결과>}` 로 감쌉니다.
  */
 
 export function splitStandards(text: string): string[] {
@@ -34,14 +31,10 @@ export const standardsHandlers = [
     await delay(900);
 
     // BE 처럼 개수를 자르지 않고 모두 돌려줍니다. 목은 나누지 못한 문장을 따로 가리지 않습니다
-    const result: StandardTextResponse = {
+    const body: StandardTextResponse = {
       pitch_id: String(params.pitchId),
       standards: splitStandards(standard_text).map((standard) => ({ standard })),
       except_standard: null,
-    };
-    const body: StandardsPosted = {
-      message: 'Pitch standard text added successfully',
-      pitch_id: result,
     };
     return HttpResponse.json(body);
   }),
