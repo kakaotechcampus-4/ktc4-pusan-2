@@ -1,6 +1,4 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router';
-import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ButtonLink } from '@/shared/ui/Button';
 import type { TakeReport } from '@/types/report';
@@ -19,18 +17,13 @@ export function ReportFrame({
 }) {
   return (
     <div className="pitch-create min-h-dvh bg-greige text-ink">
-      <header className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-5 pt-6 sm:px-8">
-        <div className="flex flex-wrap items-center gap-4">
-          <Link to="/" aria-label="홈으로">
-            <PitchCoachWordmark />
-          </Link>
-          <span className="h-5 w-px bg-line-strong" aria-hidden="true" />
-          <h1 className="text-lg font-bold">{title}</h1>
-        </div>
+      <header className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 pt-6 lg:px-10">
+        {/* 로고는 위의 공용 상단바(AppHeader)에 있어 여기서는 제목만 둡니다 */}
+        <h1 className="text-lg font-bold">{title}</h1>
         {meta && <p className="tabular text-sm text-stone">{meta}</p>}
       </header>
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-5 pb-12 pt-5 sm:px-8">
+      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-6 pb-12 pt-5 lg:px-10">
         {report && (
           <p className="border-b border-line pb-4 font-bold">
             {report.pitch_title} <span className="mx-2 text-line-strong">/</span> TAKE{' '}

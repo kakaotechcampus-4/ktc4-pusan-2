@@ -85,7 +85,7 @@ export function RetryPage() {
 
   if (found === null) {
     return (
-      <InfoPage title="업로드 실패 · 재시도">
+      <InfoPage title="업로드 실패 · 재시도" logo={false}>
         <Card>
           <h2 className="text-2xl font-bold">다시 보낼 발표 기록이 없어요</h2>
           <p className="text-stone">
@@ -119,7 +119,7 @@ export function RetryPage() {
   };
 
   return (
-    <InfoPage title="업로드 실패 · 재시도">
+    <InfoPage title="업로드 실패 · 재시도" logo={false}>
       <p className="border-b border-line pb-4 font-bold">
         {ticket.title}
         {ticket.takeNumber !== null && (
