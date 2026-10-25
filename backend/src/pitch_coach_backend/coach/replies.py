@@ -11,11 +11,11 @@ Take 결과에서 `take_summaries` 의 측정 칸을 읽는 것(`summary_measure
 
 import math
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
+from pitch_coach_backend.core.rounding import round_half_up
 from pitch_coach_backend.core.validation import reject_unstorable_json
 
 # 요청 `t_ms` 의 상한. Take 최대 1시간 + 60초 (architecture.md 1-3). 넘으면 AI 가 422 를 준다
@@ -134,7 +134,7 @@ class FinalizeReply(Reply):
     @property
     def duration_sec(self) -> int:
         """takes.duration_sec. Take 결과의 길이(요청의 t_ms)를 초로 반올림한다."""
-        return _round_half_up(self.take_result["duration_ms"] / 1000)
+        return round_half_up(self.take_result["duration_ms"] / 1000)
 
     def summary(self) -> SummaryMeasures:
         return summary_measures(self.take_result)
@@ -196,11 +196,11 @@ def summary_measures(take_result: dict[str, Any]) -> SummaryMeasures:
 
     def percent(area: str, name: str) -> int | None:
         value = metric(area, name)
-        return None if value is None else _fits(_round_half_up(value, scale=100))
+        return None if value is None else _fits(round_half_up(value, scale=100))
 
     def count(area: str, name: str) -> int | None:
         value = metric(area, name)
-        return None if value is None else _fits(_round_half_up(value))
+        return None if value is None else _fits(round_half_up(value))
 
     volume = metric("VOLUME", "voice_diff_db")
 
@@ -220,20 +220,10 @@ def summary_measures(take_result: dict[str, Any]) -> SummaryMeasures:
         total_intermission=count("SPEED", "pause_count"),
         # 비율 × 100 칸은 .5 를 올려 정수로 넣는다 (architecture.md 1-1 '반올림')
         overall_confidence=(
-            _round_half_up(sum(ratios) / len(ratios), scale=100) if ratios else None
+            round_half_up(sum(ratios) / len(ratios), scale=100) if ratios else None
         ),
     )
 
 
 def _fits(value: int) -> int | None:
     return value if abs(value) <= _INTEGER_LIMIT else None
-
-
-def _round_half_up(value: float, *, scale: int = 1) -> int:
-    """value × scale 을 반올림한다(.5 는 올림).
-
-    round() 는 짝수 쪽으로 반올림하고(round(0.5) == 0), floor(x + 0.5) 는 이진 소수 오차로
-    0.285 × 100 = 28.499… 를 28 로 만든다. 그래서 값을 적힌 자릿수(repr) 그대로 Decimal 로 센다.
-    """
-    exact = Decimal(repr(value)) * scale
-    return int(exact.quantize(Decimal(1), rounding=ROUND_HALF_UP))

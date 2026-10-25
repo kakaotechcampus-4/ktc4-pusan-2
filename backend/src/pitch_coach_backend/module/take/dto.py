@@ -87,6 +87,8 @@ class TakeReportDTO(BaseModel):
 
 class TakeSummaryDTO(BaseModel):
     take_id: uuid.UUID
+    status: Literal["READY", "RUNNING", "ANALYZING", "COMPLETED", "FAILED"]
+    end_reason: Literal["SILENCE", "TIME_LIMIT", "ABANDONED", "CLOSED"] | None
     take_version: int
     take_elapsed: int | None = None
     take_time: int
@@ -288,7 +290,8 @@ class ReviewResponseDTO(BaseModel):
     criteria_results: list[ReviewCriteriaResultDTO] = []
     # 20개 이하 (review-agent.md 5-3, 코칭 계획 입력 한도)
     next_missions: list[ReviewNextMissionDTO] = Field(default=[], max_length=20)
-    recurring_issues: list[ReviewRecurringIssueDTO] = []
+    # 20개 이하, 차원마다 하나 (review-agent.md 5-3). 넘으면 다음 리뷰 입력 · 코칭 계획이 막힌다
+    recurring_issues: list[ReviewRecurringIssueDTO] = Field(default=[], max_length=20)
     fallback_reason: Literal[
         "LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"
         ] | None = None
@@ -301,6 +304,13 @@ class ReviewResponseDTO(BaseModel):
         priorities = [mission.priority for mission in self.next_missions]
         if len(priorities) != len(set(priorities)):
             raise ValueError("next_missions 의 priority 가 겹칩니다.")
+        return self
+
+    @model_validator(mode="after")
+    def _recurring_issue_dimensions_unique(self) -> ReviewResponseDTO:
+        dimensions = [issue.dimension for issue in self.recurring_issues]
+        if len(dimensions) != len(set(dimensions)):
+            raise ValueError("recurring_issues 의 dimension 이 겹칩니다.")
         return self
 
 

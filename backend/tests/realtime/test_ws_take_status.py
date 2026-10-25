@@ -17,7 +17,7 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
-from pitch_coach_backend.realtime.stream import registry
+from pitch_coach_backend.realtime.stream import finish, registry, state
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import SttConfig
 from tests.realtime.conftest import (
@@ -86,7 +86,7 @@ def test_reconnect_while_stopping_is_rejected(
         wait_state(first, "ok")
         first.send_text(json.dumps({"type": "stop"}))  # 응답을 기다리지 않는다
         deadline = time.monotonic() + 3.0
-        while TAKE_ID not in registry._ended and time.monotonic() < deadline:
+        while TAKE_ID not in state.ended and time.monotonic() < deadline:
             time.sleep(0.01)
 
         with client.websocket_connect(WS_PATH) as second:
@@ -145,7 +145,7 @@ def test_running_write_failure_closes_before_ready_and_allows_reconnection(
     assert closed.value.code == 1011
     assert len(calls) == (2 if transient else 1)
     assert stt.sessions == []
-    assert ready_take.id not in registry._takes
+    assert ready_take.id not in state.takes
     db_session.refresh(ready_take)
     assert ready_take.status == "READY"
     assert "RUNNING 으로 못 바꿨다" in caplog.text
@@ -353,7 +353,7 @@ def test_put_end_after_the_connection_dropped_drains_then_ends(
         wait_state(ws, "ok")
         ws.send_bytes(frame(1, 0))
         ws.receive_json()
-    stream = registry._streams[TAKE_ID]
+    stream = state.streams[TAKE_ID]
     deadline = time.monotonic() + 2.0
     while stream.has_client and time.monotonic() < deadline:
         time.sleep(0.01)
@@ -386,15 +386,15 @@ async def test_end_without_stop_leaves_a_stopping_take_to_its_connection():
         config=SttConfig(),
         store=FakeTranscriptStore(),
     )
-    registry._streams[TAKE_ID] = stream
+    state.streams[TAKE_ID] = stream
     stream.start()
     await stream.attach(tab)
     stream.push(frame(1, 0), source=tab)
     stream.end()
     stream.detach(tab)
 
-    assert await registry.end_without_stop(TAKE_ID) is None
+    assert await finish.end_without_stop(TAKE_ID) is None
 
     stream.cancel()
     await stream.wait_closed(timeout=1.0)
-    assert await registry.end_without_stop(TAKE_ID) is not None
+    assert await finish.end_without_stop(TAKE_ID) is not None

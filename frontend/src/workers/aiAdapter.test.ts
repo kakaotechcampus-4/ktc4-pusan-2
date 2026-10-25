@@ -5,7 +5,7 @@ import {
   toPlacementResult,
   type AiCalibrationQuality,
 } from './aiAdapter';
-import { SCREEN_MERGED_WARNING } from '@/vendor/gaze/engine/reference';
+import { SCREEN_MERGED_WARNING } from '@/vendor/gaze/engine/contract';
 
 const passed: AiCalibrationQuality = {
   status: 'OK',

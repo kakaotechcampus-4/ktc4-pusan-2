@@ -16,9 +16,10 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "types": ["vite/client"],
-    // Read-only views of the frontend's contract files, for the conformance check
-    // (test/fe-contract). Nothing under frontend/ is modified.
+    // Read-only views of the frontend's gaze code for test/fe-contract; its copy of this
+    // folder (@/vendor/gaze/*) is this folder's src. Nothing under frontend/ is modified.
     "paths": {
+      "@/vendor/gaze/*": ["./src/*"],
       "@fe/*": ["../../../../frontend/src/*"],
       "@/*": ["../../../../frontend/src/*"]
     }

@@ -42,12 +42,12 @@ final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). �
 
 실시간 코치(`coach/session.py`): Take 에 붙어 있어 스트림이 바뀌어도 이어진다. `metrics` 마다
 `/coach/evaluate` 를 부르고, 확정 단어에 확정 시각(`final_at_ms`)을 붙이고, 문장 끝 신호 · 장 변경을
-모은다. Take 를 끝내면(`registry.finish_take`) 판단을 멈추고 마지막 창을 만들어, 문장 끝 신호와 함께
+모은다. Take 를 끝내면(`finish.finish_take`) 판단을 멈추고 마지막 창을 만들어, 문장 끝 신호와 함께
 Take 를 `ANALYZING` · `FINALIZING` 으로 적은 뒤 Take 결과(`coach/finalize.py`)를 백그라운드로
 띄운다.
 
-스트림 맵 · 끝낸 Take · Take 별 기록은 `registry.py` 가 들고 있다. 이 파일은 registry 를 import 하지
-않고 받은 기록을 갱신하며, 알릴 일은 `StreamHost` 로 넘긴다.
+스트림 맵 · 끝낸 Take · Take 별 기록은 `state.py` 가 들고 있다. 이 파일은 registry 를 import 하지
+않는다. 받은 기록(`record.TakeRecord`)을 갱신하고 알릴 일은 `record.StreamHost` 로 넘긴다.
 """
 
 import asyncio
@@ -55,22 +55,12 @@ import contextlib
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Coroutine
-from dataclasses import dataclass
-from typing import Protocol
 
 import anyio
 from fastapi import WebSocket
-from pydantic import BaseModel
 
-from pitch_coach_backend.coach.client import CoachClient
 from pitch_coach_backend.coach.replies import EvaluateReply
 from pitch_coach_backend.coach.requests import SlideEvent
-from pitch_coach_backend.coach.session import (
-    CoachSession,
-    FinalizeSnapshot,
-)
-from pitch_coach_backend.coach.store import CoachStore
 from pitch_coach_backend.module.take.dto import (
     MetricSecondCreateDTO,
 )
@@ -89,14 +79,16 @@ from pitch_coach_backend.realtime.dto import (
 )
 from pitch_coach_backend.realtime.event_ingestion import (
     Accepted,
-    AudioFrame,
     FrameSequencer,
     parse_audio_frame,
 )
-from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuffer
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
-from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
+from pitch_coach_backend.realtime.stream.audio_queue import AudioQueue
+from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, TimeLimit
+from pitch_coach_backend.realtime.stream.client import ClientSlot, close_with, quiet
+from pitch_coach_backend.realtime.stream.heard import HeardRange
+from pitch_coach_backend.realtime.stream.record import CoachDeps, StreamHost, TakeRecord
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
     SttAdapter,
@@ -114,86 +106,11 @@ QUEUE_MAX_FRAMES = 50
 # 자동 종료를 알린 뒤 FE 가 마지막 1초 조각과 stop 을 보내기를 기다리는 상한. 그 전에 끝난 것으로
 # 적으면 마지막 조각이 빠진다. stop 을 보내지 않는 FE 도 있어 오래 기다리지 않는다
 FINAL_METRICS_WAIT_SEC = 2.0
-# 1초 원자료의 STT 상태를 ok 로 볼 때, 그 1초 끝보다 이만큼 늦게 받은 오디오까지 봐준다. FE 는
-# 오디오 프레임과 metrics 를 따로 보내 그 1초의 마지막 프레임이 metrics 뒤에 올 수 있다
-HEARD_SLACK_MS = 1_000
 # gaze · voice 가 둘 다 없는 metrics 의 1초 길이. FE 는 1초마다 보낸다
 METRICS_PERIOD_MS = 1_000
 # 연결이 붙어 있고 이 시간 안에 오디오가 왔으면 발표 중으로 본다. 창을 다시 연 FE 가 Take 를
 # 실패로 끝내려 해도 거절한다 (`is_live`). FE 가 다른 창이 살아 있다고 보는 하트비트 기준과 같다
 LIVE_AUDIO_SEC = 10.0
-
-
-@dataclass(frozen=True)
-class CoachDeps:
-    """코치 AI 와 그 저장소. Take 를 끝낸 뒤 Take 결과를 만들 때도 쓴다."""
-
-    client: CoachClient
-    store: CoachStore
-
-
-@dataclass
-class TakeRecord:
-    """스트림이 바뀌어도 Take 동안 이어지는 상태. 프로세스가 다시 뜨면 비지만 그때는 프레임의 Take
-    시각이 최대 시간을 막는다 (말 없음은 처음부터 다시 센다).
-
-    registry 가 Take 마다 만들어 보관하고 스트림을 만들 때 넘긴다. 스트림은 받은 기록을 갱신할 뿐
-    registry 의 맵 · 잠금에는 손대지 않는다.
-    """
-
-    silence: SilenceTracker
-    # 아직 저장하지 않은 1초 원자료 · 장 변경. 스트림이 바뀌어도 앞 스트림이 못 넣은 행이 이어진다
-    metrics: MetricBuffer
-    slides: SlideBuffer
-    # 발표 중 코치. coach_state · 창 · 확정 시각 · 문장 끝 신호가 스트림이 바뀌어도 이어진다
-    coach: CoachSession
-    store: TranscriptStore
-    # 앞서 닫힌 스트림들이 열려 있던 시간(초)의 합. 최대 시간의 서버 시계다
-    streamed_sec: float = 0.0
-    # Take 를 끝낼 때 finalize 재료를 만드는 작업. 끝내는 쪽이 여럿이어도(자동 종료와 그 뒤 온 stop)
-    # 하나를 같이 기다리고 결과를 각자 들고 있는다. 코치의 기억을 놓을 때 같이 놓는다
-    seal: asyncio.Task[FinalizeSnapshot | None] | None = None
-
-
-class StreamHost(Protocol):
-    """스트림이 Take 별 상태(registry)에 알리는 자리. runtime 은 registry 를 import 하지 않는다.
-
-    끝낸 Take 기록 · 떠난 Take 타이머 · 스트림 맵 · 백그라운드 태스크는 registry 가 들고 있고,
-    스트림은 여기로만 알린다.
-    """
-
-    def stream_started(self, take_id: uuid.UUID) -> None:
-        """스트림이 열렸다 (다시 붙었다). 떠난 것으로 보고 끝내려던 타이머를 끈다."""
-        ...
-
-    def stream_closed(
-        self, stream: TakeStream, store: TranscriptStore, *, discarded: bool, tab_closed: bool
-    ) -> None:
-        """스트림이 닫혔다. 레지스트리에서 빼고, Take 가 끝나지 않았으면 떠난 Take 타이머를 건다."""
-        ...
-
-    def take_ended(self, take_id: uuid.UUID, reason: AutoEndReason | None) -> None:
-        """이 프로세스에서 Take 를 끝냈다. DB 에 적히기 전이라도 같은 Take 로 다시 붙지 못하게 한다.
-
-        `reason` 은 BE 가 자동으로 끝낸 이유다. 사용자가 끝냈으면 None 이고, 이미 적힌 이유를 지우지
-        않는다.
-        """
-        ...
-
-    def spawn(self, coro: Coroutine[object, object, None], *, name: str) -> None:
-        """백그라운드로 돌린다. 앱을 내릴 때 registry 가 끝나기를 기다린다."""
-        ...
-
-    async def finish_take(
-        self,
-        take_id: uuid.UUID,
-        store: TranscriptStore,
-        *,
-        end_reason: str | None,
-        coach: CoachDeps | None,
-    ) -> bool:
-        """스트림을 닫은 뒤 Take 를 끝낸 것으로 적고 Take 결과를 띄운다 (`registry.finish_take`)."""
-        ...
 
 
 class TakeStream:
@@ -233,19 +150,19 @@ class TakeStream:
         self.dropped_audio_ms = 0
         # 말 없음 기록 · 서버 시계 · 1초 원자료. Take 에 붙어 있어 이 스트림보다 오래 산다
         self._record = record
-        # 이 스트림을 연 시각(monotonic). 닫힐 때 열려 있던 시간을 Take 의 서버 시계에 더한다
-        self._opened_at: float | None = None
         # 마지막으로 받은 오디오 프레임 시각(monotonic). 발표 중인지 본다 (`is_live`)
         self._last_audio_at: float | None = None
-        # 끊김 없이 받은 오디오의 Take 시각 [시작, 끝) (ms). 세션을 갈아야 하는 끊김
-        # (`timeline_break`)에서 다시 시작한다. 1초 원자료의 STT 상태를 이걸로 정한다
-        self._heard_from_ms: int | None = None
-        self._heard_until_ms: int | None = None
-        # 최대 시간 타이머. start() 에서 건다
-        self._time_limit: asyncio.TimerHandle | None = None
+        # 끊김 없이 받은 오디오의 Take 시각. 1초 원자료의 STT 상태를 이걸로 정한다
+        self._heard = HeardRange()
+        # 최대 시간. start() 에서 서버 시계를 켠다
+        self._time_limit = TimeLimit(
+            self.auto_end_policy, lambda: self._auto_end(AutoEndReason.TIME_LIMIT)
+        )
 
-        self._queue: asyncio.Queue[Accepted | None] = asyncio.Queue(maxsize=QUEUE_MAX_FRAMES)
-        self._client: WebSocket | None = None
+        # Deepgram 으로 보낼 오디오. 넘쳐 버린 것은 `_drop` 이 유실로 센다
+        self._audio = AudioQueue(QUEUE_MAX_FRAMES, self._drop)
+        # 지금 붙어 있는 FE 연결. 끊긴 뒤 다시 붙기를 기다리는 동안은 비어 있다
+        self._client = ClientSlot()
         # 확정 전사의 번호 · 저장 재시도 · 화면에 못 보낸 final. 번호는 저장된 마지막 값에서 이어
         # 받는다
         self._transcripts = TranscriptBuffer(take_id, store, segment_no=segment_no)
@@ -265,15 +182,12 @@ class TakeStream:
         self.auto_end_reason: AutoEndReason | None = None
         self._stop_event = asyncio.Event()
         self._closed = asyncio.Event()
-        # 붙어 있던 연결이 Take 를 끝냈거나(stop) 떠났다. 자동 종료가 이걸 보고 FE 의 마지막 1초
-        # 조각을 기다린다
-        self._client_done = asyncio.Event()
         # Deepgram 세션 루프. 위 큐를 꺼내 보내고 전사 · 상태를 아래 콜백으로 돌려준다
         self._stt = SttLoop(
             take_id,
             adapter=stt_adapter,
             config=config,
-            queue=self._queue,
+            queue=self._audio.queue,
             stop_event=self._stop_event,
             is_stopping=lambda: self._stopping,
             on_state=lambda state: self._set_state(state),
@@ -303,7 +217,7 @@ class TakeStream:
         브라우저가 닫힘 프레임 없이 사라진 연결은 붙어 있어도 오디오가 멈춰 있어 False 다.
         """
         return (
-            self._client is not None
+            self._client.connected
             and self._last_audio_at is not None
             and time.monotonic() - self._last_audio_at < LIVE_AUDIO_SEC
         )
@@ -311,7 +225,7 @@ class TakeStream:
     @property
     def has_client(self) -> bool:
         """연결이 붙어 있다. 끊긴 뒤 다시 붙기를 기다리는 동안은 False."""
-        return self._client is not None
+        return self._client.connected
 
     # ── 수명 ──────────────────────────────────────────────────────────
 
@@ -320,68 +234,32 @@ class TakeStream:
         # 다시 붙었다. 떠난 것으로 보고 끝내려던 타이머를 끈다
         self._host.stream_started(self.take_id)
         self._task = asyncio.create_task(self._run(), name=f"take-stream:{self.take_id}")
-        self._opened_at = time.monotonic()
-        self._arm_time_limit()
-
-    def _arm_time_limit(self) -> None:
-        """최대 시간의 보조 상한. 기준은 프레임의 Take 시각(`_check_time_limit`)이고, 이건 그 시각이
-        가지 않는 Take(오디오 없이 연결만 붙여 둠, offset 이 멈춤)를 막는다.
-
-        - 스트림을 열 때 건다. 첫 프레임에서 걸면 오디오를 안 보내고 연결만 붙여 둔 Take 는
-          영영 안 끝나고 Deepgram 연결도 계속 살아 있다.
-        - 재는 것은 이 Take 의 스트림이 **열려 있던 시간의 합**이다. 스트림 하나 기준이면 grace
-          (30초)보다 오래 끊었다 다시 붙을 때마다 1시간이 새로 시작하고, 벽시계 기준이면 탭이 죽어
-          있던 시간까지 세어 이어서 연습하자마자 끝난다. FE 무대에는 일시정지가 없어서 열려 있던
-          시간은 무대 시계와 거의 같다 — 조금 빠른 만큼(연결 · grace) 여유를 둔다.
-        """
-        self._time_limit = asyncio.get_running_loop().call_later(
-            max(0.0, self._talk_left_sec()), self._auto_end, AutoEndReason.TIME_LIMIT
-        )
-
-    def _talk_left_sec(self) -> float:
-        """서버 시계로 잰 최대 시간까지 남은 초. 지났으면 0 이하다."""
-        return _talk_limit_sec(self.auto_end_policy) - self._record.streamed_sec
+        self._time_limit.start(self._record.streamed_sec)
 
     async def attach(self, ws: WebSocket) -> None:
-        """새 연결을 붙인다. 이미 붙어 있으면 **기존 것을 쫓아낸다.**
-
-        반대(새 연결을 거절) 로 하면 재연결 레이스에서 사용자가 영영 못 붙는다 —
-        서버는 아직 옛 연결이 살아 있다고 믿는데 브라우저는 이미 그걸 버린 상태가 된다.
-        """
+        """새 연결을 붙인다. 이미 붙어 있으면 기존 것을 쫓아낸다 (`ClientSlot.attach`)."""
         if self._grace_task is not None:
             self._grace_task.cancel()
             self._grace_task = None
 
-        previous = self._client
-        self._client = ws
         self._tab_closed = False
-        self._client_done.clear()
         # 코치의 한마디는 지금 붙어 있는 연결로 보낸다. 스트림이 새로 열려도 세션은 이어진다.
         # 새 연결은 상태 표시를 모르므로 다음 응답의 표시를 바뀐 것으로 보고 보낸다
         self._record.coach.notify = self._notify_coach
         self._record.coach.forget_display()
         self.sequencer.new_connection()
-        if previous is not None and previous is not ws:
-            await _quiet(
-                previous.send_text(
-                    ErrorMessage(
-                        code=WsErrorCode.TAKE_TAKEN_OVER,
-                        message="다른 탭에서 같은 연습을 이어받았어요.",
-                    ).model_dump_json()
-                )
-            )
-            await _quiet(previous.close(code=1008, reason=WsErrorCode.TAKE_TAKEN_OVER))
+        await self._client.attach(ws)
 
     async def resend_missed(self) -> None:
         """떨어져 있는 동안 온 final 을 순서대로 다시 보낸다 (`TranscriptBuffer.resend`).
 
         `ready` 뒤에 부른다. 실시간 화면(자막·2단 코치)이 끊긴 구간을 건너뛰지 않게 하는 용도다.
         """
-        await self._transcripts.resend(self._send_checked)
+        await self._transcripts.resend(self._client.send_checked)
 
     def is_client(self, ws: WebSocket) -> bool:
         """지금 붙어 있는 연결인가. 다른 탭이 이어받아 쫓겨난 연결이면 False."""
-        return self._client is ws
+        return self._client.holds(ws)
 
     def detach(self, ws: WebSocket, *, tab_closed: bool = False) -> None:
         """연결이 끊겼다. 이미 다른 연결이 붙었으면 아무것도 하지 않는다.
@@ -389,11 +267,10 @@ class TakeStream:
         `tab_closed` 는 브라우저가 창을 닫거나 새로고침해 끊은 것이다 (닫힘 코드 1001). 아무도 다시
         붙지 않으면 짧게 기다렸다 끝낸다 (`_finish`).
         """
-        if self._client is not ws:
+        if not self._client.holds(ws):
             return
-        self._client = None
+        self._client.detach()
         self._tab_closed = tab_closed
-        self._client_done.set()
         # 다시 붙을지 모른다. 모아 둔 1초 원자료를 지금 넣어 둔다
         self._record.metrics.flush_soon()
         if self._stopping:
@@ -420,7 +297,7 @@ class TakeStream:
             return
         self._stopping = True
         self._stop_event.set()
-        self._put(None)
+        self._audio.put(None)
 
     def end(self) -> None:
         """사용자가 Take 를 끝냈다. 스트림을 정리하고, 같은 Take 로 다시 붙지 못하게 한다.
@@ -433,7 +310,7 @@ class TakeStream:
         # 새 판단은 보내지 않는다 (1-3 3번 ①). 진행 중인 것은 Take 를 끝낼 때 기다린다
         self._record.coach.stop()
         # stop 앞에 온 마지막 1초 조각은 이미 받았다
-        self._client_done.set()
+        self._client.done.set()
         self.request_stop()
 
     async def wait_closed(self, timeout: float | None = None) -> bool:
@@ -531,39 +408,21 @@ class TakeStream:
         self._discarded = True
         # 분석하지 않는 Take 다 (지웠거나 창을 닫아 실패로 끝냄)
         self._record.coach.release()
-        client = self._client
         # 끊은 스트림의 전사·상태가 이 연결로 더 나가지 않게 먼저 뗀다
-        self._client = None
-        self._client_done.set()
+        client = self._client.detach()
         self.cancel()
         if client is not None:
             self._closer = asyncio.create_task(
-                self._close_cut_client(client, error),
-                name=f"take-stream-cut:{self.take_id}",
+                close_with(client, error), name=f"take-stream-cut:{self.take_id}"
             )
-
-    async def _close_cut_client(self, client: WebSocket, error: ErrorMessage) -> None:
-        await _quiet(client.send_text(error.model_dump_json()))
-        await _quiet(client.close(code=1008, reason=error.code))
 
     def _finish(self) -> None:
         if self._closed.is_set():
             return
-        if self._time_limit is not None:
-            self._time_limit.cancel()
-            self._time_limit = None
-        if self._opened_at is not None:
-            self._record.streamed_sec += time.monotonic() - self._opened_at
-            self._opened_at = None
+        self._record.streamed_sec += self._time_limit.stop()
         # Deepgram 에 닿지 못한 채 큐에 남은 오디오는 유실이다. 마지막 stt_status 의
         # lost_ms 가 이걸 빼먹으면 리포트가 "STT 다 받았다" 고 잘못 말한다
-        while True:
-            try:
-                item = self._queue.get_nowait()
-            except asyncio.QueueEmpty:
-                break
-            if item is not None:
-                self._drop(item)
+        self._audio.drain()
         self._transcripts.report_leftovers()
         # Take 를 끝내는 쪽(stop · 자동 종료 · 끝내기 PUT)은 따로 기다린다. 스트림만 닫힌 경우를
         # 위해 남은 것을 넣어 둔다 — 아무도 다시 붙지 않아 떠난 것으로 끝나도 원자료는 남긴다
@@ -590,7 +449,7 @@ class TakeStream:
         """
         if self._discarded:
             return
-        if source is not None and source is not self._client:
+        if source is not None and not self._client.holds(source):
             return
         row = MetricSecondCreateDTO(
             t_ms=message.t_ms,
@@ -612,7 +471,7 @@ class TakeStream:
         """FE 가 장을 넘겼다. 원자료로 저장하고 코치의 지금 장을 고친다 (1초 원자료와 같은 규칙)."""
         if self._discarded:
             return
-        if source is not None and source is not self._client:
+        if source is not None and not self._client.holds(source):
             return
         event = SlideEvent(message.slide_number, message.t_ms)
         self._record.slides.add(event)
@@ -635,14 +494,7 @@ class TakeStream:
             return state
         starts = [r["t_ms"] for r in (message.gaze, message.voice) if r is not None]
         start_ms = min(starts) if starts else message.t_ms - METRICS_PERIOD_MS
-        if (
-            self._heard_from_ms is None
-            or self._heard_until_ms is None
-            or start_ms < self._heard_from_ms
-            or message.t_ms > self._heard_until_ms + HEARD_SLACK_MS
-        ):
-            return "degraded"
-        return "ok"
+        return "ok" if self._heard.covers(start_ms, message.t_ms) else "degraded"
 
     # ── 오디오 투입 ───────────────────────────────────────────────────
 
@@ -656,15 +508,13 @@ class TakeStream:
         if self._stopping:
             # stop 신호 뒤의 오디오는 아무도 소비하지 않는다. 큐에 넣으면 통계만 더럽힌다
             return
-        if source is not None and source is not self._client:
+        if source is not None and not self._client.holds(source):
             return
         self._last_audio_at = time.monotonic()
         accepted = self.sequencer.accept(frame)
         if accepted is None:
             return
-        if self._heard_from_ms is None or accepted.timeline_break:
-            self._heard_from_ms = accepted.frame.offset_ms
-        self._heard_until_ms = accepted.frame.end_ms
+        self._heard.add(accepted)
         if accepted.restart:
             logger.info(
                 "새 연결이 seq 를 처음부터 보낸다(탭 새로고침). 타임라인을 다시 잡는다 "
@@ -673,40 +523,17 @@ class TakeStream:
                 accepted.frame.seq,
                 accepted.frame.offset_ms,
             )
-        self._put(accepted)
+        self._audio.put(accepted)
         # 큐에 넣은 뒤에 본다. 먼저 끝내면 stop 신호 뒤에 들어가 이 프레임이 버려진다
-        self._check_time_limit(accepted.frame)
-
-    def _check_time_limit(self, frame: AudioFrame) -> None:
-        """프레임의 Take 시각(offset)으로 최대 시간을 본다. 최대 시간의 기준이다 — FE 무대 시계라
-        새로고침 · 재연결에도 이어지고, 프로세스가 다시 떠 서버 시계를 잃어도 여기서 걸린다.
-        서버 시계(`_arm_time_limit`)는 이 시각이 가지 않을 때만 대신 끝낸다."""
-        if frame.end_ms >= self.auto_end_policy.max_duration_ms:
+        if self._time_limit.reached(accepted.frame.end_ms):
             self._auto_end(AutoEndReason.TIME_LIMIT)
-
-    def _put(self, item: Accepted | None) -> None:
-        """큐가 차면 **오래된 것부터** 버린다. 최신 오디오가 실시간 코칭에 쓸모 있다."""
-        while True:
-            try:
-                self._queue.put_nowait(item)
-                return
-            except asyncio.QueueFull:
-                dropped = self._queue.get_nowait()
-                if dropped is None:
-                    # stop 신호를 버리면 영영 안 끝난다. 되돌리고 새 항목을 버린다
-                    self._queue.put_nowait(None)
-                    if item is not None:
-                        self._drop(item)
-                    return
-                self._drop(dropped)
 
     def _drop(self, item: Accepted) -> None:
         lost = item.silence_ms + item.frame.duration_ms
         self.dropped_audio_ms += lost
         self._stt.on_dropped(lost, timeline_break=item.timeline_break)
         # STT 에 닿지 못한 오디오다. 그 뒤부터를 끊김 없이 들은 것으로 본다 (`_stt_status_of`)
-        if self._heard_from_ms is not None:
-            self._heard_from_ms = max(self._heard_from_ms, item.frame.end_ms)
+        self._heard.drop_until(item.frame.end_ms)
 
     # ── Deepgram 세션 루프 ────────────────────────────────────────────
 
@@ -744,7 +571,7 @@ class TakeStream:
                 ],
             )
             if not event.is_final:
-                await self._send(message)
+                await self._client.send(message)
             else:
                 # 확정 시각은 이 결과를 받기 직전의 마지막 metrics 시각이다 (coach-agent.md 12-1).
                 # 화면에 보내는 await 보다 먼저 매긴다 — 그동안 온 metrics 의 요청에는 이 단어가
@@ -755,12 +582,12 @@ class TakeStream:
                 # 받은 final 은 정리(취소)가 와도 끝까지 처리한다. 중간에 끊기면 화면에도 DB 에도
                 # 남지 않는다. 화면 전송은 상대가 멈춰 있을 수 있어 상한을 둔다
                 with anyio.CancelScope(shield=True):
-                    if self._client is None:
+                    if not self._client.connected:
                         # FE 가 떨어져 있다. interim 은 다음 것이 덮으니 버리고 final 만 모은다
                         self._transcripts.hold_missed(message)
                     else:
                         with anyio.move_on_after(stt_loop.ABORT_TIMEOUT_SEC):
-                            await self._send(message)
+                            await self._client.send(message)
                     # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
                     # 리포트의 원천은 이 행이지 화면이 아니다
                     if not await self._transcripts.persist(
@@ -827,19 +654,19 @@ class TakeStream:
         FE 가 그 사이 stop 을 보내도 괜찮다 — 양쪽 다 같은 스트림이 닫히기를 기다리고, 두 번
         보내는 closed 와 close 는 FE 가 이미 닫은 뒤라 조용히 버려진다.
         """
-        await self._send(
+        await self._client.send(
             AutoEndMessage(reason=reason, message=self.auto_end_policy.message(reason))
         )
         if not await self.wait_closed(stt_loop.DRAIN_TIMEOUT_SEC + stt_loop.ABORT_TIMEOUT_SEC):
             logger.warning("자동 종료 drain 타임아웃 take=%s. 스트림을 끊는다", self.take_id)
             self.cancel()
             await self.wait_cancelled(stt_loop.ABORT_TIMEOUT_SEC)
-        if self._client is not None:
+        if self._client.connected:
             # FE 는 auto_end 를 받고 마지막 1초 조각을 보낸 뒤 stop 을 보낸다. Deepgram 정리가
             # 먼저 끝났으면 그 조각이 아직 안 왔을 수 있다 — stop 이 오거나 연결이 떠날 때까지
             # 잠깐 기다린다
             with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._client_done.wait(), FINAL_METRICS_WAIT_SEC)
+                await asyncio.wait_for(self._client.done.wait(), FINAL_METRICS_WAIT_SEC)
 
         # 마지막 확정 전사와 1초 원자료를 저장한 뒤에 끝난 것으로 적는다 (`RealtimeSession._stop` 과
         # 같은 이유). 못 적어도 정리는 계속한다 — 적기는 뒤에서 다시 하고, 그동안 이 프로세스
@@ -849,12 +676,12 @@ class TakeStream:
             self.take_id, self._store, end_reason=reason.value, coach=self._coach
         )
 
-        client = self._client
+        client = self._client.ws
         if client is None:
             # FE 가 떨어져 있다. 다시 붙으면 TAKE_ENDED 로 이유를 받는다
             return
         await self.send_status()
-        await _quiet(client.close(code=1000))
+        await quiet(client.close(code=1000))
 
     # ── FE 로 ─────────────────────────────────────────────────────────
 
@@ -866,7 +693,7 @@ class TakeStream:
         await self.send_status()
 
     async def send_status(self) -> None:
-        await self._send(
+        await self._client.send(
             SttStatusMessage(
                 state=self.state,
                 stt_session_no=self.stt_session_no,
@@ -879,7 +706,7 @@ class TakeStream:
 
     async def _notify_coach(self, t_ms: int, reply: EvaluateReply) -> None:
         """코치의 한마디 · 상태 표시를 FE 에 보낸다 (WS `coach`). 떨어져 있으면 버린다."""
-        await self._send(
+        await self._client.send(
             CoachMessage(
                 t_ms=t_ms,
                 action=reply.action,
@@ -887,39 +714,3 @@ class TakeStream:
                 indicators=reply.indicators,
             )
         )
-
-    async def _send(self, message: BaseModel) -> None:
-        """붙어 있는 클라이언트에게만. grace 중이면 조용히 버린다."""
-        client = self._client
-        if client is None:
-            return
-        await _quiet(client.send_text(message.model_dump_json()))
-
-    async def _send_checked(self, message: BaseModel) -> bool:
-        """`_send` 와 같지만 성공 여부를 알려준다. `resend_missed` 가 재시도를 판단하는 데 쓴다.
-
-        일반 전사·상태 메시지는 실패해도 다음 메시지가 금방 또 오니 무시해도 되지만
-        (`_send`), 놓친 final 은 화면에 **다시 안 오면 그 구간이 비는 데이터**라 구분한다.
-        """
-        client = self._client
-        if client is None:
-            return False
-        try:
-            await client.send_text(message.model_dump_json())
-        except Exception:  # noqa: BLE001 - 어떤 전송 실패든 "재시도 대상" 으로 취급한다
-            return False
-        return True
-
-
-async def _quiet(awaitable: Awaitable[object]) -> None:
-    """이미 끊긴 상대에게 보내거나 닫을 때 나는 예외는 무시한다.
-
-    정리 경로라서 넓게 잡는다 — 여기서 예외가 새면 그다음 정리가 통째로 멈춘다.
-    """
-    with contextlib.suppress(Exception):
-        await awaitable
-
-
-def _talk_limit_sec(policy: AutoEndPolicy) -> float:
-    """서버 시계로 잰 최대 시간. 프레임 시각이 먼저 끝내도록 여유를 더한다."""
-    return (policy.max_duration_ms + policy.server_clock_slack_ms) / 1000

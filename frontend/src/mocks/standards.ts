@@ -6,6 +6,20 @@ import type {
   StandardsSaved,
 } from '@/types/standards';
 
+/** 계약 값 — 표시 기준 한 줄 50자 · 10개까지 (`evaluation-criteria.md` 출력 표) */
+const MAX_CHARS = 50;
+const MAX_COUNT = 10;
+
+/**
+ * 고친 글을 "다시 분석"한 흉내. 실서버는 AI 로 다시 나누고 문장을 다듬어, 보낸 문장과 다를 수 있습니다.
+ * 목은 공백을 줄이고 끝의 마침표를 뗍니다 — 화면이 돌려받은 목록으로 다시 그리는지 보려는 것입니다
+ */
+const reanalyze = (s: string) =>
+  s
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[.。]$/, '');
+
 /**
  * 평가기준 나누기 목. 실서버는 AI 로 나눌 예정이고, 목은 **줄 · 문장 단위**로 자릅니다.
  *
@@ -30,26 +44,37 @@ export const standardsHandlers = [
     const { standard_text } = (await request.json()) as StandardTextRequest;
     await delay(900);
 
-    // BE 처럼 개수를 자르지 않고 모두 돌려줍니다. 목은 나누지 못한 문장을 따로 가리지 않습니다
+    // AI 출력처럼 10개 · 한 줄 50자까지 냅니다. 목은 나누지 못한 문장을 따로 가리지 않습니다
     const body: StandardTextResponse = {
       pitch_id: String(params.pitchId),
-      standards: splitStandards(standard_text).map((standard) => ({ standard })),
+      standards: splitStandards(standard_text)
+        .slice(0, MAX_COUNT)
+        .map((s) => ({ standard: s.slice(0, MAX_CHARS) })),
       except_standard: null,
     };
     return HttpResponse.json(body);
   }),
 
-  // 확정 저장 (BE #192). 나누기와 달리 받은 목록을 그대로 저장합니다 — 목은 저장한 척만 합니다
+  // 고친 목록 저장 — 경로 · 모양은 FE 제안입니다(계약 304행 미정). 계약대로 다시 분석한 목록을 돌려줍니다
   http.post('*/api/pitches/:pitchId/standards', async ({ request }) => {
     const { standards } = (await request.json()) as StandardsSaveRequest;
-    await delay(400);
-    if (standards.length === 0 || standards.some((s) => s.standard.trim() === '')) {
+    await delay(600);
+    const invalid =
+      standards.length === 0 ||
+      standards.length > MAX_COUNT ||
+      standards.some((s) => s.standard.trim() === '' || s.standard.length > MAX_CHARS);
+    if (invalid) {
       return HttpResponse.json(
-        { code: 'VALIDATION_ERROR', message: '빈 평가기준은 저장할 수 없습니다.' },
+        {
+          code: 'VALIDATION_ERROR',
+          message: '평가기준은 1~10개, 한 줄 50자까지 저장할 수 있습니다.',
+        },
         { status: 422 },
       );
     }
-    const body: StandardsSaved = { message: 'Final standards added successfully' };
+    const body: StandardsSaved = {
+      standards: standards.map((s) => ({ standard: reanalyze(s.standard) })),
+    };
     return HttpResponse.json(body);
   }),
 ];

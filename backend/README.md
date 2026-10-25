@@ -50,6 +50,22 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 - CI 는 PostgreSQL·Redis 서비스와 `DATABASE_URL` 만 제공하면 된다.
   `JWT_SECRET_KEY` 와 구글 값은 conftest 가 테스트용 값을 넣는다.
 
+## 홈 Take 응답
+
+`GET /api/pitches/`의 `pitches[].takes[]`는 기존 필드에 `status`와 `end_reason`을 추가한다.
+
+- `status`: `READY` · `RUNNING` · `ANALYZING` · `COMPLETED` · `FAILED`
+- `end_reason`: `SILENCE` · `TIME_LIMIT` · `ABANDONED` · `CLOSED` 또는 `null`
+- `null`은 수동 종료 또는 아직 종료 이유가 없는 경우다. `ABANDONED`·`CLOSED`는 떠난 Take를
+  구분하며 `SILENCE`·`TIME_LIMIT`은 자동 종료 이유다. 상태는 `status`로 판단한다.
+
+FE 표시 문구는 협의가 필요하다. `READY`는 시작 전, `RUNNING`은 연습 중, `ANALYZING`은
+분석 중, `COMPLETED`는 완료로 제안한다. `FAILED` 중 `ABANDONED`·`CLOSED`는 중단,
+나머지는 실패로 표시할 수 있다. 점수가 없다는 이유만으로 분석 중으로 판단하지 않는다.
+
+`score`·`delta` 계산은 유지한다. `delta`는 바로 이전 Take와 현재 Take에 모두 점수가 있을 때만
+계산하며 어느 한쪽이라도 점수가 없으면 `null`이다. Take 목록 API에는 변경이 없다.
+
 ## 폴더 구조
 
 ```
@@ -174,10 +190,16 @@ backend/
     │   │   ├── session.py        # 연결 하나의 수명: 접속 허용 → 스트림에 붙이기 → 프레임 전달 → stop
     │   │   └── handshake.py      # Origin · 인증 · Take 존재·소유·상태 검사 · 거절
     │   ├── stream/               # Take 별 스트림. **연결보다 오래 산다**
-    │   │   ├── registry.py       # 스트림 맵 · attach 잠금 · Take 별 기록 · 끝낸 Take · Take 끝내기 · 앱 시작 복구 · 종료 정리
-    │   │   ├── runtime.py        # TakeStream: 현재 연결 · 오디오 큐 · grace · 자동 종료 · 종료 조율. registry 를 import 하지 않는다
-    │   │   ├── auto_end.py       # 자동 종료 조건(말 없음·최대 시간). 네트워크를 모른다
-    │   │   └── abandon.py        # 떠남 · 창 닫힘 타이머. 만료되면 받은 콜백을 부른다
+    │   │   ├── registry.py       # 연결 붙이기(attach) · 떠난 Take 끝내기 · 앱 시작 복구 · 종료 정리
+    │   │   ├── finish.py         # 사용자 · 자동 종료로 Take 끝내기: 마지막 창 · 원자료 저장 · DB 에 적기 · Take 결과
+    │   │   ├── state.py          # 스트림 맵 · attach 잠금 · 끝낸 Take · Take 별 기록. registry · finish 만 쓴다
+    │   │   ├── abandon.py        # 떠남 · 창 닫힘 타이머. 만료되면 받은 콜백을 부른다
+    │   │   ├── runtime.py        # TakeStream: 수명 상태 기계 · grace · 종료 조율. 입력은 아래 부품에 넘긴다
+    │   │   ├── record.py         # TakeRecord · StreamHost · CoachDeps. 스트림과 위 파일들의 경계
+    │   │   ├── client.py         # 붙어 있는 연결 · 이전 연결 쫓아내기 · FE 로 보내기
+    │   │   ├── audio_queue.py    # Deepgram 으로 보낼 오디오 큐. 차면 오래된 것부터 버린다
+    │   │   ├── auto_end.py       # 자동 종료 조건(말 없음·최대 시간)과 최대 시간 타이머. 네트워크를 모른다
+    │   │   └── heard.py          # 끊김 없이 받은 오디오 범위 → 1초 원자료의 STT 상태
     │   ├── stt/                  # 외부 음성 인식. FE 연결 · Take 상태를 모른다
     │   │   ├── adapter.py        # Deepgram WebSocket 어댑터. DB 를 모른다
     │   │   ├── loop.py           # Deepgram 접속 · 재접속 · 송수신 · 세션별 시간 기준 · 무음 채우기
@@ -265,14 +287,18 @@ Spring / NestJS 용어를 쓴다. FastAPI 문서·오픈소스와의 대응은 �
 - **realtime, coach, task → module**: 도메인 service 를 호출한다. module 은 controller 까지 포함해 realtime·coach·task
   를 import 하지 않는다. HTTP 요청이 그쪽에 알릴 일(Take 지움 · 끝내기 PUT · 리뷰 뒤 코칭 계획 등)은
   `module/hooks.py` 를 거쳐 부르고, 실제 구현은 `main.py` 가 꽂는다 (realtime 쪽 구현은 `realtime/live_takes.py` 가
-  `stream/registry.py` 의 공개 함수를 부른다).
+  `stream/registry.py` · `stream/finish.py` 의 공개 함수를 부른다).
 - **realtime → coach**: 발표 중 코치를 부른다. coach 는 realtime 을 모른다 (같이 쓰는 저장 버퍼는 `core/row_buffer.py`).
-- **realtime 안**: `controller → connection/session → connection/handshake`, `session → stream/registry → stream/runtime
-  → stt/loop → stt/adapter`, `runtime → storage/transcripts · storage/metrics → storage/store → take service`.
+- **realtime 안**: `controller → connection/session → connection/handshake`, `session → stream/registry · stream/finish
+  → stream/state → stream/runtime → stt/loop → stt/adapter`, `runtime → storage/transcripts · storage/metrics →
+  storage/store → take service`.
   - stt · storage 는 connection · stream 을 import 하지 않는다. STT 이벤트는 받은 콜백으로 돌려준다.
-  - runtime 은 registry 를 import 하지 않는다. Take 별 기록은 registry 가 만들어 넘기고, 알릴 일은
-    `runtime.StreamHost` 로 넘긴다. abandon 도 registry 를 모르고 만료 콜백을 받는다.
-- **registry 수명**: 프로세스에 하나이고 HTTP 요청 · WebSocket 연결 · 재연결이 같은 것을 쓴다. 연결마다 새로 만드는 것은
+  - runtime 과 그 부품(client · audio_queue · heard · auto_end)은 registry · finish · state 를 import 하지 않는다.
+    Take 별 기록은 registry 가 만들어(`state.take_record`) 넘기고, 알릴 일은 `record.StreamHost` 로 넘긴다.
+    부품은 `TakeStream` 도 모르고 값과 콜백만 받는다. abandon 도 registry 를 모르고 만료 콜백을 받는다.
+  - 옮긴 이름을 옛 모듈에서 다시 내보내지 않는다. 테스트의 monkeypatch 가 옛 이름에만 걸린다.
+- **registry 수명**: 레지스트리 상태(`stream/state.py`)는 프로세스에 하나이고 HTTP 요청 · WebSocket 연결 · 재연결이
+  같은 것을 쓴다. 연결마다 새로 만드는 것은
   `RealtimeSession` 뿐이다. `main.py` 의 `lifespan` 이 뜰 때 떠난 Take 타이머를 다시 걸고(`arm_abandoned_takes`),
   내릴 때 스트림 drain · 기록 flush · 백그라운드 태스크 정리를 기다린다(`stop_all`). 테스트는
   `tests/realtime/conftest.py` 가 테스트마다 레지스트리 상태를 비운다.

@@ -27,7 +27,7 @@ import logging
 import re
 import ssl
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from typing import Any, Literal, Protocol
 
@@ -122,6 +122,8 @@ class ParsedScript:
     slides: tuple[ParsedSlide, ...]
     terms: tuple[str, ...]
     meta: ParseMeta | None = None
+    # AI 에 보낸 X-Request-ID. 결과 저장이 실패했을 때 AI 로그와 맞춰 보는 용도다
+    request_id: str | None = None
 
 
 class ScriptParseError(Exception):
@@ -364,4 +366,4 @@ class HttpScriptParser:
             wire = _WireResult.model_validate_json(response.content)
         except ValidationError as exc:
             raise _invalid(f"응답 스키마 불일치: {exc.error_count()}개 오류") from exc
-        return to_parsed_script(wire)
+        return replace(to_parsed_script(wire), request_id=request_id)

@@ -6,8 +6,8 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과 카메라 화면 �
 | 항목 | 값 |
 | --- | --- |
 | 원본 | `ai/research/gaze-tracking/web/src/{engine,camera,worker}` (`engine/__tests__` 포함) |
-| 기준 커밋 | `1f92351` (fix(ai): 프레임 예외 · Worker 종료 · 카메라 끊김에서 시선 분석이 조용히 멈추지 않게 함) — develop `a315a0d` 시점 (AI #104~#108) |
-| 모델 버전 | `gaze_v1.1.0+head_pose+reference_anchor_v1` · 설정 해시 `14ed457ab13b` |
+| 기준 커밋 | `10c9aae` (test(ai): 시선 웹 검증 반영 — #478) — develop `f52e65d` 시점 |
+| 모델 버전 | `gaze_v1.1.0+head_pose+reference_anchor_v1` · 설정 해시 `32ad2751de59` |
 | 사용법 원문 | `ai/research/gaze-tracking/web/README.md` (FE에 붙이는 법 · 카메라 화면 붙이기) · `ai/research/gaze-tracking/DEPLOY.md` |
 
 ## 누가 무엇을 쓰나
@@ -15,7 +15,12 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과 카메라 화면 �
 | 폴더 | 쓰는 곳 | 역할 |
 | --- | --- | --- |
 | `engine/` | `workers/modelClassifier.ts` | 리허설 워커의 `GazeClassifier` 구현 (프레임 판정만, 1초 다수결은 FE) |
-| `camera/` + `worker/` | `features/rehearsal/prepare/GazeSetup.tsx` | 장치 점검의 준비 점검 → 고개 원 → 3점 보정 화면 (상자 안은 모듈이 그림) |
+| `camera/` + `worker/` | `features/rehearsal/prepare/useGazeSetup.ts` | 장치 점검의 준비 점검 → 고개 원 → 3점 보정 화면 (상자 안은 모듈이 그림) |
+
+엔진은 두 입구로만 부릅니다(원문 README 'FE로 복사하기'). 안쪽 파일(`config` · `evidence` · `reference`)을 바로 부르지 않습니다.
+
+- `engine/index.ts` — `createClassifier`. MediaPipe 를 불러오므로 워커에서 동적 `import()` 로 부릅니다. 타입만 가져오는 `import type` 은 괜찮습니다
+- `engine/contract.ts` — MediaPipe 없이 쓰는 값 (`CONFIG_HASH` · `makeConfig` · `GazeSlicer` · `sampleToDict` · `frameFromDecision` · `SCREEN_MERGED_WARNING`)
 
 ## 자산
 
@@ -31,7 +36,8 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과 카메라 화면 �
 
 1. 위 원본 경로의 세 폴더를 통째로 덮어씁니다.
 2. 이 문서의 기준 커밋과 모델 버전을 고칩니다.
-3. 저장된 기준(IndexedDB)은 자동으로 버려집니다 — 모델 버전이 바뀌면 저장 키(엔진 버전)가 달라지고,
-   버전은 같아도 설정이 바뀌면 `configHash` 가 달라져 `workers/calibrationModel.ts` 가 거릅니다.
+3. 옛 보정 기준은 쓰이지 않습니다 — 기준은 탭 메모리에만 두어(`features/rehearsal/lib/zoneRefMemory.ts`) 새로고침하면 사라지고,
+   탭에 남아 있어도 엔진 버전이 다르면 `takeZoneRef` 가, 버전은 같아도 설정이 바뀌면 `configHash` 가 달라져
+   `workers/calibrationModel.ts` 가 거릅니다.
    엔진의 `calibrate()` 는 모양(schema)만 보고 설정은 확인하지 않으니, 이 검사를 지우지 마세요.
 4. `npm run typecheck && npm run test`

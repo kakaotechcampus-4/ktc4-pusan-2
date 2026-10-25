@@ -1,4 +1,4 @@
-import { CONFIG_HASH } from '@/vendor/gaze/engine/config';
+import { CONFIG_HASH } from '@/vendor/gaze/engine/contract';
 
 /**
  * 저장해 둔 보정 결과(`ZoneReference.model`)를 지금 엔진에 넣어도 되는지.
@@ -13,7 +13,7 @@ import { CONFIG_HASH } from '@/vendor/gaze/engine/config';
  * (`vendor/gaze/engine/engine.ts`). 그 값이 지금 설정과 같을 때만 씁니다.
  * 다르면 저장된 기준이 없는 것으로 보고 다시 보정을 받습니다.
  *
- * `config.ts` 만 불러옵니다 — 엔진 진입점(`index.ts`)을 부르면 MediaPipe 까지 메인 번들에 딸려 옵니다.
+ * `contract.ts` 만 불러옵니다 — 엔진 진입점(`index.ts`)을 부르면 MediaPipe 까지 메인 번들에 딸려 옵니다.
  */
 export function fitsCurrentEngine(model: unknown): boolean {
   if (typeof model !== 'object' || model === null) return false;

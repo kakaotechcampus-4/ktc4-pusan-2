@@ -5,7 +5,6 @@
 
 import asyncio
 import logging
-import math
 import uuid
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
@@ -17,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.rounding import round_half_up
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take.ai_response import CoverageCallError, validate_coverage_reply
@@ -108,11 +108,11 @@ def merge_retry(
     )
 
 
-def speak_accuracy(payload: Mapping[str, Any]) -> float | None:
+def speak_accuracy(payload: Mapping[str, Any]) -> int | None:
     value = (payload.get("take_scores") or {}).get("content_coverage")
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
-    return math.ceil(value * 100)
+    return round_half_up(value, scale=100)
 
 
 def _coverage_open(take: Take | None) -> bool:

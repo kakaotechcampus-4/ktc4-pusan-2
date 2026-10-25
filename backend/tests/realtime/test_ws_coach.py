@@ -20,8 +20,8 @@ from pitch_coach_backend.module.pitch.entity import StandardAnalyses
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.service import lifecycle as lifecycle_service
 from pitch_coach_backend.realtime.dto import AutoEndReason
-from pitch_coach_backend.realtime.stream import registry, runtime
-from pitch_coach_backend.realtime.stream.runtime import CoachDeps
+from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
+from pitch_coach_backend.realtime.stream.record import CoachDeps
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import UtteranceEnd
 from tests.realtime.conftest import (
@@ -373,17 +373,17 @@ async def test_two_endings_at_once_share_one_seal():
     client, coach_store = FakeClient(), FakeStore()
     client.release.clear()
     store = FakeTranscriptStore()
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.coach.enable(TakeContext(constants()), client=client, store=coach_store)
     record.coach.on_metrics(1_000, gaze=None, voice=None, stt_status="ok", buffered=False)
     await asyncio.sleep(0)
     deps = CoachDeps(client=client, store=coach_store)
 
     first = asyncio.create_task(
-        registry.finish_take(TAKE_ID, store, end_reason="SILENCE", coach=deps)
+        finish.finish_take(TAKE_ID, store, end_reason="SILENCE", coach=deps)
     )
     second = asyncio.create_task(
-        registry.finish_take(TAKE_ID, store, end_reason=None, coach=deps)
+        finish.finish_take(TAKE_ID, store, end_reason=None, coach=deps)
     )
     await asyncio.sleep(0.05)
     client.release.set()
@@ -403,10 +403,10 @@ async def test_two_endings_at_once_share_one_seal():
 async def test_raw_rows_not_saved_by_the_end_are_dropped_not_retried():
     """끝낸 뒤 다시 넣으면 Take 결과 저장(동의 없는 Take 의 원자료 삭제)과 엇갈린다."""
     store = FakeTranscriptStore(metric_errors=[db_down()] * 3)
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.metrics.add(_metrics_row(1_000))
 
-    await registry.flush_metrics(TAKE_ID)
+    await finish.flush_metrics(TAKE_ID)
     await asyncio.sleep(1.2)
 
     assert store.metrics == {}
@@ -425,7 +425,7 @@ def _metrics_row(t_ms: int):
 @pytest.mark.anyio
 async def test_shutdown_saves_slide_events_even_without_pending_metrics():
     store = FakeTranscriptStore()
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     store.append_delay = 0.05
     record.slides.add(SlideEvent(2, 59_390))
 
@@ -558,7 +558,7 @@ async def test_left_take_keeps_its_utterance_ends_for_a_revival():
     from datetime import UTC, datetime
 
     store = FakeTranscriptStore()
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.coach.on_utterance_end(1_500)
 
     await registry._end_abandoned(TAKE_ID, store, datetime.now(UTC), "ABANDONED")
@@ -566,7 +566,7 @@ async def test_left_take_keeps_its_utterance_ends_for_a_revival():
     assert store.utterance_ends[TAKE_ID] == [1_500]
     assert record.coach.released
     # 놓은 뒤에는 모른다 — 끝내기 PUT 이 저장된 값을 덮지 않는다
-    assert registry.utterance_ends_of(TAKE_ID) is None
+    assert finish.utterance_ends_of(TAKE_ID) is None
 
 
 @pytest.mark.anyio
@@ -575,14 +575,14 @@ async def test_ending_that_cannot_be_written_is_written_later():
     Take 결과를 띄운다. 그때까지 코치의 기억(문장 끝 신호 · 재료)을 들고 있는다."""
     client, coach_store = FakeClient(), FakeStore()
     store = FakeTranscriptStore(fail_mark=True)
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.coach.enable(TakeContext(constants()), client=client, store=coach_store)
     record.coach.on_utterance_end(1_500)
     record.coach.on_metrics(1_000, gaze=None, voice=None, stt_status="ok", buffered=True)
     record.coach.coach_state = {"v": 2}
     deps = CoachDeps(client=client, store=coach_store)
 
-    assert await registry.finish_take(TAKE_ID, store, end_reason=None, coach=deps) is False
+    assert await finish.finish_take(TAKE_ID, store, end_reason=None, coach=deps) is False
     assert not record.coach.released
 
     store.fail_mark = False
@@ -600,7 +600,7 @@ async def test_ending_that_cannot_be_written_is_written_later():
 async def test_ending_written_late_still_starts_the_take_result(monkeypatch: pytest.MonkeyPatch):
     """DB 가 늦어 기다리기를 그만둬도 적는 일은 커밋된다. 그때 Take 결과를 띄운다 — 안 띄우면 아무도
     띄우지 않아 앱이 다시 뜰 때까지 Take 결과가 없다."""
-    monkeypatch.setattr(registry, "MARK_AUTO_END_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(finish, "MARK_AUTO_END_TIMEOUT_SEC", 0.05)
 
     class SlowStore(FakeTranscriptStore):
         async def mark_ended(self, take_id, end_reason=None, utterance_ends=None) -> bool:
@@ -609,13 +609,13 @@ async def test_ending_written_late_still_starts_the_take_result(monkeypatch: pyt
 
     client, coach_store = FakeClient(), FakeStore()
     store = SlowStore()
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.coach.enable(TakeContext(constants()), client=client, store=coach_store)
     record.coach.on_metrics(1_000, gaze=None, voice=None, stt_status="ok", buffered=False)
     await asyncio.sleep(0)
     deps = CoachDeps(client=client, store=coach_store)
 
-    assert await registry.finish_take(TAKE_ID, store, end_reason=None, coach=deps) is False
+    assert await finish.finish_take(TAKE_ID, store, end_reason=None, coach=deps) is False
     for _ in range(50):
         if client.finalized:
             break
@@ -628,10 +628,10 @@ async def test_ending_written_late_still_starts_the_take_result(monkeypatch: pyt
 @pytest.mark.anyio
 async def test_closing_or_deleting_a_take_without_a_stream_lets_go_of_the_coach():
     store = FakeTranscriptStore()
-    closed = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    closed = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     closed.coach.coach_state = {"v": 2}
     other = uuid.uuid7()
-    deleted = registry._take_record(other, short_time_limit(60_000), store)
+    deleted = state.take_record(other, short_time_limit(60_000), store)
 
     await registry.end_closed_tab(TAKE_ID)
     await registry.discard([other])
@@ -651,7 +651,7 @@ async def test_left_take_saves_its_unsaved_coach_events_before_letting_go():
         reply(t_ms=1_000, events=[{"kind": "INTERVENTION", "event_id": "iv-1000", "t_ms": 1_000}])
     ]
     store = FakeTranscriptStore()
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.coach.enable(TakeContext(constants()), client=client, store=coach_store)
     record.coach.on_metrics(1_000, gaze=None, voice=None, stt_status="ok", buffered=False)
     for _ in range(5):
@@ -680,7 +680,7 @@ def _put_end(client: TestClient, user, take: Take):
 def _coach_record(store: FakeTranscriptStore, coach: Coach):
     """1초가 지난 코치 세션. 몰아 온 metrics 로 넣어 판단은 하지 않는다 — 이 스레드에는 이벤트
     루프가 없다."""
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.coach.enable(TakeContext(constants()), client=coach.client, store=coach.store)
     record.coach.on_metrics(1_000, gaze=None, voice=None, stt_status="ok", buffered=True)
     record.coach.coach_state = {"v": 2}
@@ -741,12 +741,12 @@ async def test_a_cut_off_ending_record_is_written_again():
     오류를 내고 멈추지 않는다."""
     client, coach_store = FakeClient(), FakeStore()
     store = FakeTranscriptStore()
-    registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    state.take_record(TAKE_ID, short_time_limit(60_000), store)
     cut = asyncio.get_running_loop().create_future()
     cut.cancel()
-    ending = registry.Ending(end_reason=None, utterance_ends=[1_500], snapshot=None)
+    ending = finish.Ending(end_reason=None, utterance_ends=[1_500], snapshot=None)
 
-    registry.mark_later(
+    finish.mark_later(
         TAKE_ID, store, ending, CoachDeps(client=client, store=coach_store), marking=cut
     )
     for _ in range(100):
@@ -764,8 +764,8 @@ async def test_shutdown_waits_for_a_whole_take_ending(monkeypatch: pytest.Monkey
     닫기)를 끝까지 기다린다. 중간에 끊으면 Take 가 진행 중으로 남는다."""
     for module, name in (
         (runtime, "FINAL_METRICS_WAIT_SEC"),
-        (registry, "FLUSH_METRICS_TIMEOUT_SEC"),
-        (registry, "MARK_AUTO_END_TIMEOUT_SEC"),
+        (finish, "FLUSH_METRICS_TIMEOUT_SEC"),
+        (finish, "MARK_AUTO_END_TIMEOUT_SEC"),
         (stt_loop, "ABORT_TIMEOUT_SEC"),
     ):
         monkeypatch.setattr(module, name, 0.1)
@@ -777,7 +777,7 @@ async def test_shutdown_waits_for_a_whole_take_ending(monkeypatch: pytest.Monkey
         await asyncio.sleep(0.3)
         finished.set()
 
-    registry._spawn(ending(), name="take-auto-end:test")
+    state.spawn(ending(), name="take-auto-end:test")
     await registry.stop_all()
 
     assert finished.is_set()
@@ -791,13 +791,13 @@ def test_put_end_while_an_auto_end_is_written_keeps_its_reason(
 ):
     """자동 종료의 기록이 늦어 뒤에서 다시 적는 동안 FE 의 끝내기 PUT 이 먼저 적어도 자동 종료
     이유가 남는다."""
-    registry._ended[TAKE_ID] = AutoEndReason.SILENCE
+    state.ended[TAKE_ID] = AutoEndReason.SILENCE
 
     assert _put_end(client, user, take).is_success
 
     db_session.refresh(take)
     assert (take.status, take.end_reason) == ("ANALYZING", "SILENCE")
-    assert registry._ended[TAKE_ID] == AutoEndReason.SILENCE
+    assert state.ended[TAKE_ID] == AutoEndReason.SILENCE
 
 
 @pytest.mark.anyio
@@ -805,10 +805,10 @@ async def test_shutdown_writes_down_the_utterance_ends_of_live_takes():
     """문장 끝 신호는 Take 를 끝낼 때 한 번에 적는다. 앱을 내리면 진행 중인 Take 의 것은 지금
     적어 둔다 — 다시 뜬 프로세스가 이어 받는다."""
     store = FakeTranscriptStore()
-    live = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    live = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     live.coach.on_utterance_end(1_500)
     ended_id = uuid.uuid7()
-    ended = registry._take_record(ended_id, short_time_limit(60_000), store)
+    ended = state.take_record(ended_id, short_time_limit(60_000), store)
     ended.coach.on_utterance_end(900)
     ended.coach.release()
 
@@ -843,9 +843,9 @@ async def test_one_late_ending_record_per_take():
             return await super().mark_ended(take_id, end_reason, utterance_ends)
 
     store = Slow()
-    ending = registry.Ending(end_reason=None, utterance_ends=None, snapshot=None)
+    ending = finish.Ending(end_reason=None, utterance_ends=None, snapshot=None)
     for _ in range(3):
-        registry.mark_later(TAKE_ID, store, ending, None)
+        finish.mark_later(TAKE_ID, store, ending, None)
     for _ in range(50):
         if store.ended:
             break
@@ -867,12 +867,12 @@ async def test_ending_record_that_retrying_cannot_fix_is_given_up_at_once():
             raise DataError("UPDATE takes", {}, ValueError("bad value"))
 
     store = Broken()
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
-    ending = registry.Ending(end_reason=None, utterance_ends=None, snapshot=None)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
+    ending = finish.Ending(end_reason=None, utterance_ends=None, snapshot=None)
 
-    registry.mark_later(TAKE_ID, store, ending, None)
+    finish.mark_later(TAKE_ID, store, ending, None)
     for _ in range(50):
-        if not registry._background.running(("mark", TAKE_ID)):
+        if not state.background.running(("mark", TAKE_ID)):
             break
         await asyncio.sleep(0.01)
 
@@ -887,7 +887,7 @@ async def test_left_take_saves_its_raw_seconds_and_closes_the_buffers():
     from datetime import UTC, datetime
 
     store = FakeTranscriptStore()
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.metrics.add(_metrics_row(1_000))
 
     await registry._end_abandoned(TAKE_ID, store, datetime.now(UTC), "ABANDONED")
@@ -925,11 +925,11 @@ async def test_rows_that_can_never_be_saved_do_not_block_the_rest():
 async def test_ending_closes_the_raw_buffers_and_the_coach_together():
     """원자료 버퍼와 코치가 같은 순간에 받기를 멈춘다. 끝내는 중에 온 1초가 한쪽에만 들지 않게."""
     store = FakeTranscriptStore()
-    record = registry._take_record(TAKE_ID, short_time_limit(60_000), store)
+    record = state.take_record(TAKE_ID, short_time_limit(60_000), store)
     record.coach.on_metrics(1_000, gaze=None, voice=None, stt_status="ok", buffered=True)
 
     ending = asyncio.create_task(
-        registry.finish_take(TAKE_ID, store, end_reason=None, coach=None)
+        finish.finish_take(TAKE_ID, store, end_reason=None, coach=None)
     )
     await asyncio.sleep(0)
     record.metrics.add(_metrics_row(2_000))

@@ -1,7 +1,7 @@
 import { compressToSegments, summarize, validate } from './gazeSegments';
 import type { CalibrationSummary, GazeExcludedReason, GazePayload, Ms } from '@/types/api';
 import type { GazeSampleRecord } from '@/workers/gaze.contract';
-import { makeConfig } from '@/vendor/gaze/engine/config';
+import { makeConfig } from '@/vendor/gaze/engine/contract';
 
 /**
  * 1초 기록들을 서버로 보낼 `GazePayload` 로 조립합니다.

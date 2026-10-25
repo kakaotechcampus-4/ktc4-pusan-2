@@ -370,3 +370,51 @@ def test_invalid_partial_retry_keeps_the_initial_success(db_session, user_id, mo
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE").revision == 0
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE").payload["failed"] == reply["failed"]
     assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE_PENDING") is None
+
+
+@pytest.mark.parametrize("storage_path", ["confirmed", "merged"])
+@pytest.mark.parametrize(
+    ("ratio", "expected"),
+    [(0.621, 62), (0.624, 62), (0.625, 63), (0.285, 29), (0, 0), (1, 100), (None, None)],
+)
+def test_coverage_storage_rounds_summary_and_preserves_raw_scores(
+    db_session: Session,
+    user_id: uuid.UUID,
+    storage_path: str,
+    ratio: float | None,
+    expected: int | None,
+) -> None:
+    take = _take(
+        db_session, _pitch(db_session, user_id), 1, status="ANALYZING", analysis_stage="SCORING"
+    )
+    # 측정·리뷰 칸은 대본 전달도 요약 갱신으로 바뀌지 않아야 한다.
+    db_session.add(TakeSummary(take_id=take.id, audience_gaze=42, score=77, speak_accuracy=81))
+    db_session.flush()
+    repo = TakeRepository(db_session)
+    reply = coverage(take.id)
+    reply["take_scores"]["content_coverage"] = ratio
+
+    if storage_path == "merged":
+        assert coverage_service._save_confirmed(db_session, take.id, coverage(take.id)) is not None
+        db_session.add(
+            TakeAIResults(
+                take_id=take.id,
+                kind="SCRIPT_COVERAGE_PENDING",
+                payload={"base_revision": 0},
+                meta={},
+            )
+        )
+        db_session.commit()
+        assert coverage_service._apply_merged(db_session, take.id, 0, reply)
+        assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE_PENDING") is None
+    else:
+        assert coverage_service._save_confirmed(db_session, take.id, reply) is not None
+
+    db_session.expire_all()
+    summary = db_session.query(TakeSummary).filter_by(take_id=take.id).one()
+    assert summary.speak_accuracy == expected
+    assert (summary.audience_gaze, summary.score) == (42, 77)
+    confirmed = repo.get_ai_result(take.id, "SCRIPT_COVERAGE")
+    assert confirmed.payload["take_scores"] == reply["take_scores"]
+    assert confirmed.meta == reply["meta"]
+    assert confirmed.revision == (1 if storage_path == "merged" else 0)

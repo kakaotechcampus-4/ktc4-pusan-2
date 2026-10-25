@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compressToSegments, summarize, validate, zoneOf } from './gazeSegments';
-import { makeConfig } from '@/vendor/gaze/engine/config';
-import { GazeSlicer, sampleToDict } from '@/vendor/gaze/engine/evidence';
+import { GazeSlicer, makeConfig, sampleToDict } from '@/vendor/gaze/engine/contract';
 import type { GazeFrame, GazeSampleRecord } from '@/workers/gaze.contract';
 
 const s = (t_ms: number, state: GazeSampleRecord['state']): GazeSampleRecord => ({

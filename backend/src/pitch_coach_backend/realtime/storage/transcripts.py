@@ -16,6 +16,7 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 
+from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO, TranscriptWordDTO
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.realtime.dto import TranscriptMessage
@@ -151,20 +152,22 @@ class TranscriptBuffer:
                 logger.warning(
                     "이미 저장된 final 이다. 넘어간다 take=%s seq=%d", self.take_id, segment.seq
                 )
-            except Exception:
+            except Exception as exc:
                 # DB 장애로 스트림까지 멈추면 안 된다 — 화면 전사는 이미 나갔고 발표는 계속된다.
-                # 전사 원문은 로그에 남기지 않는다 (seq 와 길이만)
-                logger.exception(
-                    "final 저장 실패 take=%s seq=%d len=%d 남은 개수=%d",
+                # 전사 원문은 로그에 남기지 않는다 (seq 와 길이만). SQLAlchemy 예외 본문에는 SQL
+                # 매개변수와 DB 오류 메시지가 붙어 원문이 섞이므로 traceback 도 남기지 않는다
+                logger.error(
+                    "final 저장 실패 take=%s seq=%d len=%d 남은 개수=%d error=%s sqlstate=%s",
                     self.take_id,
                     segment.seq,
                     len(segment.transcript),
                     len(self.unsaved),
+                    type(exc).__name__,
+                    sqlstate(exc),
                 )
                 return True
             self.unsaved.pop(0)
         return True
-
 
     def report_leftovers(self) -> None:
         """스트림이 닫힐 때 남은 것을 로그로 남긴다. 화면에 못 보낸 final 과 저장하지 못한 final."""

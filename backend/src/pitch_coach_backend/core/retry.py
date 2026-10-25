@@ -5,6 +5,7 @@ import logging
 from collections.abc import Awaitable, Callable, Sequence
 
 from pitch_coach_backend.core.database import is_transient_db_error
+from pitch_coach_backend.core.logging import sqlstate
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,12 @@ async def retry_transient[T](
         except Exception as error:
             if delay is None or not is_transient_db_error(error):
                 raise
-            logger.warning("%s 실패. %.0f초 뒤 다시 한다", what, delay, exc_info=True)
+            logger.warning(
+                "%s 실패. %.0f초 뒤 다시 한다 error=%s sqlstate=%s",
+                what,
+                delay,
+                type(error).__name__,
+                sqlstate(error),
+            )
             await asyncio.sleep(delay)
     raise AssertionError("unreachable")

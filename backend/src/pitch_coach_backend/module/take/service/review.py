@@ -37,7 +37,9 @@ def _build_missions(take_repository: TakeRepository, take_id: uuid.UUID) -> list
     if len(missions) < len(mission_ids):
         logger.warning(
             "take %s: %d of %d missions not found",
-            take_id, len(mission_ids) - len(missions), len(mission_ids),
+            take_id,
+            len(mission_ids) - len(missions),
+            len(mission_ids),
         )
     return [
         MissionInputDTO(
@@ -82,12 +84,16 @@ def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:
     take_number = take.take_number
     result = take_repository.get_take_infos(take_id, "TAKE_RESULT")
     coverage = take_repository.get_take_infos(take_id, "SCRIPT_COVERAGE")
+    # 전체 실패 진단은 저장본에 보존하고 리뷰에는 채점 없음으로 보낸다.
+    if coverage is not None and not coverage.get("evaluations"):
+        coverage = None
     return ReviewRequestDTO(
         take_result=result,
         script_coverage=coverage,
         previous_takes=_build_previous_takes(take_repository, take_id, take_number),
-        previous_recurring_issues=_build_previous_recurring_issues(take_repository, 
-                                                                   take_id, take_number),
+        previous_recurring_issues=_build_previous_recurring_issues(
+            take_repository, take_id, take_number
+        ),
         missions=_build_missions(take_repository, take_id),
         user_criteria=_build_user_criteria(db, take),
     )
@@ -176,7 +182,8 @@ def save_review(
     take_id: uuid.UUID,
     review_data: ReviewResponseDTO,
     *,
-    request_id: uuid.UUID | None = None) -> bool:
+    request_id: uuid.UUID | None = None,
+) -> bool:
     review_data = validate_review_reply(review_data.model_dump(mode="json"), take_id)
     take_repository = TakeRepository(db)
     if request_id is None or take_repository.lock_review(take_id, request_id) is None:
@@ -206,9 +213,7 @@ def save_review(
         take_repository.update_mission_result(
             result.mission_id, take_id, result.status, result.observed
         )
-    take_repository.upsert_summary_review(
-        take_id, review_data.overall_summary, review_data.score
-    )
+    take_repository.upsert_summary_review(take_id, review_data.overall_summary, review_data.score)
     take_repository.set_analysis_stage(take_id, "DONE")
     take_repository.complete_take(take_id, "DONE")
     db.commit()

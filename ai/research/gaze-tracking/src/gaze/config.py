@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-#: BE 가 /coach/evaluate 에 싣는 시선 · 음량 1초 기록의 길이(architecture.md 2절). 판정 창은 이 안에서 정한다
+#: BE 가 /coach/evaluate 에 싣는 시선 · 음량 1초 기록의 길이(architecture.md 2절).
+#: 판정 창은 이 안에서 정한다
 INPUT_WINDOW_MS = 30_000
 
 

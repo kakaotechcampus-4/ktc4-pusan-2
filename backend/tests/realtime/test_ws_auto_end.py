@@ -18,7 +18,7 @@ from pitch_coach_backend.realtime.dto import (
     AutoEndReason,
 )
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
-from pitch_coach_backend.realtime.stream import registry
+from pitch_coach_backend.realtime.stream import finish, registry, state
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt import loop as stt_loop
@@ -58,7 +58,7 @@ from tests.realtime.conftest import (
 
 def auto_end_reason(stream: TakeStream) -> AutoEndReason | None:
     """이 프로세스가 그 Take 를 자동으로 끝냈으면 그 이유."""
-    return registry._ended.get(stream.take_id)
+    return state.ended.get(stream.take_id)
 
 
 def test_silence_ends_the_take_like_a_user_stop(
@@ -283,7 +283,7 @@ def test_end_reason_write_failure_still_closes_the_take(
         assert closed_with(ws) == 1000
 
     assert "뒤에서 마저 적는다" in caplog.text
-    assert registry._ended == {TAKE_ID: AutoEndReason.TIME_LIMIT}
+    assert state.ended == {TAKE_ID: AutoEndReason.TIME_LIMIT}
 
 
 def test_end_reason_is_written_to_the_database_once(db_session: Session, take: Take):
@@ -645,7 +645,7 @@ async def test_shutdown_cancels_cleanup_that_does_not_finish_and_says_which(
             await asyncio.Event().wait()
             return True
 
-    monkeypatch.setattr(registry, "MARK_AUTO_END_TIMEOUT_SEC", 10.0)
+    monkeypatch.setattr(finish, "MARK_AUTO_END_TIMEOUT_SEC", 10.0)
     monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.1)
     store = StuckStore()
     stream = make_stream(FakeSttAdapter(), store, short_time_limit(1_000))
@@ -656,9 +656,9 @@ async def test_shutdown_cancels_cleanup_that_does_not_finish_and_says_which(
     await asyncio.wait_for(store.entered.wait(), 2.0)
 
     # 상한(10.1초)을 기다리지 않게 줄인다. 스트림 정리가 끝난 뒤의 대기만 본다
-    monkeypatch.setattr(registry, "MARK_AUTO_END_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(finish, "MARK_AUTO_END_TIMEOUT_SEC", 0.1)
     with caplog.at_level("ERROR"):
         await registry.stop_all()
 
     assert f"take-auto-end:{stream.take_id}" in caplog.text
-    assert not registry._background
+    assert not state.background

@@ -59,7 +59,7 @@
 
 | 덩어리 | 폴더 | 하는 일 | 나중에 |
 |---|---|---|---|
-| **TS 엔진** | `web/src/engine/` | 프레임 → 준비 점검 · 고개 원 · 보정 · 프레임 판정 · 1초 기록 (Web Worker 안) | `frontend/src/workers/gaze/engine/`로 폴더째 |
+| **TS 엔진** | `web/src/engine/` | 프레임 → 준비 점검 · 고개 원 · 보정 · 프레임 판정 · 1초 기록 (Web Worker 안) | `frontend/src/vendor/gaze/engine/`로 폴더째 (카메라 화면 · Worker와 함께) |
 | **서버 판정 모듈** | `src/gaze/` | 1초 기록 → 1초 판정 결과(`judge`) · Take 지표(`summarize`) · 판정 기준(`criteria`) | `ai/service`의 `features/gaze/`로 폴더째 |
 | **Python 기준 구현** | `src/gaze_lab/` | 같은 판정의 Python 판 + 데이터셋 · 평가 · 실험. TS 엔진의 임계값 · 기준 답을 만든다 | research에 남음 |
 
@@ -148,11 +148,11 @@ gaze-tracking/
 
 | 폴더 | 하는 일 |
 |---|---|
-| `src/engine/` | **TS 엔진** — frontend로 갈 폴더. `index.ts`(진입점 · 지원 확인 · 초기화 실패 사유) · `contract.ts`(FE 경계) 외에는 엔진 안에서만 쓴다. `__tests__/`에 엔진 테스트와 Python 기준 답 |
+| `src/engine/` | **TS 엔진** — frontend로 갈 폴더. `index.ts`(진입점 · 지원 확인 · 초기화 실패 사유, MediaPipe를 불러옴) · `contract.ts`(MediaPipe 없이 쓰는 FE 진입점) 외에는 엔진 안에서만 쓴다. `__tests__/`에 엔진 테스트와 Python 기준 답 |
 | `src/worker/` | 카메라 화면용 Worker (메시지 처리) |
 | `src/camera/` | 카메라 화면 모듈: 영상 · 얼굴 원 · 보정 안내 (FE가 가져가 고칠 UI, 지금은 그대로) |
-| `src/demo/` | 로컬 데모 페이지 (FE 페이지 대역). 서버로 가는 1초 기록을 보여 준다 (문제 판정은 서버 모듈) |
-| `test/` | FE 계약 확인 · 엔진 경계 · Worker · 자산 검증 |
+| `src/demo/` | 로컬 데모 페이지 (FE 페이지 대역). 서버로 가는 1초 기록과 그 기록의 테두리를 보여 준다 (문제 판정은 서버 모듈) |
+| `test/` | FE 계약 확인(FE의 실제 시선 코드를 이 엔진에 붙여 실행) · 엔진 경계 · Worker · 자산 검증 |
 | `scripts/` | `copy-assets`(해시 확인 후 복사) · `smoke`(실제 브라우저) · `bench`(지연 측정) |
 
 자세한 내용은 [web/README.md](web/README.md)에 있습니다.
@@ -294,8 +294,8 @@ uv run python experiments/exp1_backbone.py --help
 | 서버 판정 모듈 | `tests/unit/` | `judge`(읽기 · 빈 시간 · 겹침 · 커서 · 대본 의존 · 지표 · 상태 · 다섯 문제 · 시작 직후 억제 · 기준값 경계), `summarize` · `criteria`, `examples/` 계약, 입출력 모델, 코어 import 경계 | 201 (소리 크기 모듈이 없으면 1 skip) |
 | 기준 구현 | `tests/lab/` | 전처리 기하 · 고개 방향 · 보정 · 조건 감시 · 평가 · 데모 · 시나리오 S01~S24, 생성 파일 최신, 1초 나누기 값과 서버 판정 값의 분리 | 1745 (+ torch 없을 때 38 skip) |
 | TS 엔진 | `web/src/engine/__tests__/` | Python 기준 답과 1e-9~1e-12 안에서 일치, 엔진 흐름, 시나리오, 초기화 실패 | 145 |
-| 그 밖의 web | `web/test/` | FE 계약(실제 `frontend/src/workers/aiAdapter.ts`), 엔진 import · 저장 API 경계, Worker, 자산 검증 | 49 (FE 계약 2개 실패, 9장) |
-| 실제 브라우저 | `web/scripts/smoke.mjs` | MediaPipe를 Worker에서 로드, 준비 점검 → 고개 원 → 보정 → 실시간 → 1초 기록, 카메라 끊김, 지연 | 23 항목 (데모의 미리보기를 지운 뒤 다시 돌리지 않음) |
+| 그 밖의 web | `web/test/` | FE 계약(FE의 실제 `workers/modelClassifier.ts` · `aiAdapter.ts`를 이 엔진에 붙여 실행), 엔진 import · 저장 API 경계(`contract.ts`가 MediaPipe에 닿지 않음 포함), Worker, 자산 검증 | 53 |
+| 실제 브라우저 | `web/scripts/smoke.mjs` | MediaPipe를 Worker에서 로드, 준비 점검 → 고개 원 → 보정 → 실시간 → 1초 기록, 카메라 끊김, 지연 | 23 항목 (Chrome `smoke` · `smoke:prod` 통과, Edge는 기능 22개 통과 · 지연만 초과) |
 
 Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetch_assets.py`를 돌려야 실행되고, 아니면 이유를 보이고 건너뜁니다.
 
@@ -312,6 +312,32 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
   지금 서버 판정 모듈은 기능 문서 5 · 6절대로 다시 만든 것이라 archive와 비교하지 않습니다(4-4).
 - 설정 해시는 `958414c647b7` → `14ed457ab13b`로 바뀌었습니다. 해시에 모델 경로 문자열이 들어가서이고, 임계값은 하나도 바뀌지 않았습니다.
   그 뒤 서버 판정 값을 엔진 설정(`configs/evidence.yaml`)에서 빼며 `32ad2751de59`가 됐습니다. 엔진이 쓰는 값은 그대로입니다.
+
+### 서비스로 옮기기
+
+`src/gaze/`는 `ai/service`의 `src/pitch_coach_ai/features/gaze/`로, `tests/unit/`은 `tests/unit/gaze/`로 폴더째 옮깁니다
+([설계 문서](../../../docs/ai/features/gaze-tracking.md) 11절, [서비스 문서](../../../docs/ai/ai-service.md) 6-1).
+
+1. 두 폴더를 복사합니다(`tests/unit/__init__.py` 포함 — 도우미를 상대 import `.judge_helpers`로 읽습니다).
+2. 테스트의 import 접두어만 `gaze` → `pitch_coach_ai.features.gaze`로 바꿉니다. 코어는 상대 import라 그대로이고,
+   테스트는 `examples/` · 코어 폴더를 모듈 파일(`core.__file__`) 기준으로 찾아 고칠 곳이 없습니다.
+3. 서비스 `pyproject.toml`에 `pydantic>=2.13,<3`을 직접 의존성으로 더하고(`uv add`) `uv.lock`을 함께 커밋합니다. 정확한 판은 서비스 lock이 정합니다.
+4. 서비스에서 `uv run pytest` · `uv run ruff check src tests` · `uv run ruff format --check src tests` · `docker build`를 돌립니다.
+   서버 판정 모듈과 그 테스트는 연구 폴더에서도 서비스와 같은 줄 길이(100) 규칙으로 검사합니다.
+- '말한 1초' 기준값 비교(`test_speaking_second_threshold_matches_volume`)는 같은 `features/` 아래 `volume/config.py`를 읽고,
+  소리 크기 모듈이 아직 서비스에 없으면 이유를 보이고 건너뜁니다.
+
+옮기기 전에 커밋하지 않는 사본으로 위 순서를 미리 돌렸습니다(develop `e5096af`의 서비스 뼈대).
+
+| 확인 | 결과 |
+|---|---|
+| 옮긴 코어 | 연구 폴더와 바이트까지 같음 |
+| 테스트 변경 | import 접두어 줄만 |
+| pydantic | 서비스 lock의 2.14.1 (연구 폴더 lock은 2.13.5) |
+| 서비스 `pytest` | 300 passed · 1 skipped (시선 200 passed, 건너뛴 1개는 소리 크기 기준값 비교) |
+| `ruff check` · `ruff format --check` | 지적 없음 |
+| `docker build` | 성공, 이미지 374 MB (옮기기 전과 같음 — pydantic은 이미 들어 있음) |
+| 이미지 안에서 `judge` | `examples/`의 `judge` 예시 8개가 모두 같은 결과, `criteria` 5개 |
 
 ---
 
@@ -366,11 +392,10 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
 - **PnP 대체 경로의 상수는 한 사람의 얼굴 기하입니다.** archive 사진에서 유도한 값이라 지금 테스트 얼굴에서는 최대 3.3 cm 다르고
   PnP 경로가 pitch를 약 18° 더 읽습니다. MediaPipe가 변환 행렬을 주면 이 경로를 타지 않고, 브라우저 엔진에는 이 경로가 없습니다.
 - **GPU delegate는 Python과 같은 값인지 확인하지 않았습니다.** 운영은 CPU입니다.
-- **브라우저는 Chrome에서만 확인했습니다.** Edge는 이 PC에서 자동화로 띄우지 못했고, Safari · Firefox는 확인 전입니다.
+- **브라우저는 Chrome · Edge(둘 다 Chromium)에서만 확인했습니다.** Edge는 기능 항목은 모두 통과했고, 부하가 있는 PC에서 프레임 지연이 예산을 넘었습니다. Safari · Firefox는 확인 전입니다.
 - **카메라 화면(`web/src/camera/view.ts`)은 FE lint의 중첩 삼항식 규칙에 8곳 걸립니다.** UI를 지금 고치지 않기로 해서 그대로 두었습니다.
-- 지연은 개발 PC 기준(Worker p95 약 30~38 ms / 예산 125 ms)입니다. 저사양 노트북에서는 다시 재야 합니다.
-- **FE 계약 확인(`web/test/fe-contract`)이 지금 FE 코드와 맞지 않습니다.** FE가 `workers/temporalVoter` · `toFrameVerdict`를 바꾼 뒤
-  맞추지 않아 테스트 2개와 `tsconfig.fe.json` 타입 검사가 실패합니다. 데모의 `TemporalVoter` import도 같은 이유로 타입 검사에 걸립니다.
+- 지연은 개발 PC 기준입니다. 한가할 때 Worker p95 약 30~38 ms였지만, 다른 일로 CPU를 쓰는 상태에서는 74~207 ms까지 흔들려
+  예산(125 ms)을 넘기도 했습니다([web/README.md](web/README.md) '지연 시간'). 실제 사용자 기기 · 저사양 노트북에서 다시 재야 합니다.
 
 ---
 

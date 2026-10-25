@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.connection import session
-from pitch_coach_backend.realtime.stream import registry, runtime
+from pitch_coach_backend.realtime.stream import registry, runtime, state
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
@@ -101,7 +101,7 @@ async def test_ready_send_failure_still_detaches_from_the_stream(
     await realtime.run()  # 예외가 새지 않는다
 
     stream = attached[0]
-    assert stream._client is None, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
+    assert not stream.has_client, "detach() 가 안 불리면 죽은 ws 가 현재 클라이언트로 남는다"
     stream.cancel()
 
 
@@ -442,7 +442,7 @@ async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.Monk
     assert elapsed_b < 0.25, f"다른 Take 가 핸드오버 대기에 같이 막혔다 ({elapsed_b:.2f}s)"
     assert new_a is not old_a and stream_b is not old_a
     assert registry.active_count() == 2
-    assert not registry._attach_locks, "다 쓴 락은 남기지 않는다"
+    assert not state.attach_locks, "다 쓴 락은 남기지 않는다"
 
 
 @pytest.mark.anyio

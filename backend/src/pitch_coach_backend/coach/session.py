@@ -1,4 +1,4 @@
-"""한 Take 의 발표 중 코칭. Take 에 붙어 있어(`stream/runtime.TakeRecord`) WebSocket 연결 · STT
+"""한 Take 의 발표 중 코칭. Take 에 붙어 있어(`stream/record.TakeRecord`) WebSocket 연결 · STT
 스트림보다 오래 산다.
 
     FE ── metrics (1초마다) ─▶ CoachSession ── POST /coach/evaluate ─▶ AI
