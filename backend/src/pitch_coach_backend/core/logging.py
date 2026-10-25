@@ -23,7 +23,7 @@ class _ServerExceptionFilter(logging.Filter):
     """서버가 다시 기록하는 예외도 원문 없이 진단한다. 일반 서버 로그는 그대로 둔다."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if record.exc_info is not None:
+        if record.exc_info:
             error = record.exc_info[1]
             record.msg = "ASGI 실행 실패 error=%s sqlstate=%s"
             record.args = (type(error).__name__, sqlstate(error))

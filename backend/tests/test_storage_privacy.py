@@ -271,3 +271,12 @@ def test_server_filter_is_installed_once():
     configure_logging("INFO")
     assert first
     assert logger.filters == first
+
+
+@pytest.mark.parametrize("exc_info", [None, False])
+def test_server_filter_keeps_messages_without_exception_info(exc_info, caplog):
+    configure_logging("INFO")
+    logger = logging.getLogger("uvicorn.error")
+    with caplog.at_level(logging.ERROR):
+        logger.error("ordinary server failure", exc_info=exc_info)
+    assert caplog.records[-1].getMessage() == "ordinary server failure"
