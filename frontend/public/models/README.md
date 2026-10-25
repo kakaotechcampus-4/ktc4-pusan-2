@@ -1,6 +1,7 @@
 # 모델 가중치는 여기에 둡니다
 
-`public/models/` 에 두고 Cache API로 캐싱합니다. **CDN에서 받지 않습니다.**
+`public/models/` 에 두고 앱과 같은 서버에서 받습니다. **CDN에서 받지 않습니다.**
+따로 캐싱하지 않고(Cache API 를 쓰지 않습니다) 브라우저 HTTP 캐시에 맡깁니다.
 시연장 와이파이가 느리면 발표가 안 됩니다.
 
 시선 엔진 v1.1(`src/vendor/gaze`)이 읽는 파일입니다. `npm run models` 가 채웁니다.

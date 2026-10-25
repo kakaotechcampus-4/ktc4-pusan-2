@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | 카메라 영상 | 브라우저 워커 | 없음 |
 | 시선 구간(계산 결과) | 구간 압축 후 | `POST /complete` |
-| Calibration 기준 벡터 | IndexedDB | 없음 (품질 요약만) |
+| Calibration 기준 벡터 | 탭 메모리 (브라우저 저장소에도 두지 않음) | 없음 (품질 요약만) |
 | 마이크 오디오 | PCM 실시간 전송 (로컬 저장 없음) | 있음 (STT 필요) · WebSocket |
 
 **"온디바이스"가 전부 로컬이라는 뜻은 아닙니다.** 카메라는 100% 로컬, 마이크는 서버 전송입니다.
@@ -320,7 +320,7 @@ FE 는 WS `coach` 를 띄우기만 합니다(4번).
 ## 개발 중 함정
 
 **모델 파일을 CDN에서 받지 마세요.** MediaPipe WASM과 gaze 가중치는 `public/models/`에
-두고 Cache API로 캐싱합니다. 시연장 와이파이가 느리면 발표가 안 됩니다.
+두고 앱과 같은 서버에서 받습니다(Cache API는 쓰지 않습니다). 시연장 와이파이가 느리면 발표가 안 됩니다.
 `npm run models`가 채웁니다 (`face_landmarker.task`는 따로 받아야 하면 받는 명령을 알려 줍니다).
 없으면 장치 점검은 '소리만으로 계속하기'만 열리고, 리허설은 시선을 `ENGINE_UNAVAILABLE`로 뺍니다.
 
@@ -376,4 +376,5 @@ npm run lint         # oxlint
 **장치 점검의 시선 기준만은 예외입니다** — AI 카메라 화면 모듈(`GazeCameraView`)이 상자 안을
 직접 그립니다 (준비 점검 → 고개 원 → 3점 보정, 전체 화면). FE는 상자 · 스트림 · 결과 처리만
 맡습니다 (`prepare/useGazeSetup.ts`). 보정 화면의 문구와 단계는 AI 쪽에서 고칩니다.
-기준은 IndexedDB를 거쳐 리허설 워커로 가고, 둘이 같은 `takeEngineVersion()`으로 키를 맞춥니다.
+기준은 탭 메모리(`lib/zoneRefMemory.ts`)를 거쳐 리허설 워커로 가고, 둘이 같은 화면 배치(`layoutSignature`)와
+엔진 버전으로 키를 맞춥니다.
