@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { selectInfoUnsaved, useCreateStore } from './createStore';
-import { pendingVersion, type DraftNode } from './lib/draft';
+import { pendingVersion, type DraftNode, type PitchDraft } from './lib/draft';
 import { CaretIcon, ChevronIcon, DocIcon, FolderIcon, PixelMark } from './icons';
 
 /**
@@ -24,6 +24,8 @@ interface RailGroup {
   onAdd: () => void;
   /** 저장 안 한 버전. 있으면 "+ 새 버전"을 막고 이 버전을 저장하라고 안내합니다 (`pendingVersion`) */
   pending: number | null;
+  /** 막았을 때 무엇을 하면 되는지. 갈래마다 '저장'의 뜻이 달라 따로 받습니다 */
+  pendingNote: string | null;
 }
 
 /** 지금 본문에 띄운 줄. 목업의 왼쪽 강조선 + 옅은 배경 */
@@ -101,10 +103,8 @@ function GroupBlock({ group }: { group: RailGroup }) {
               </span>
               새 버전
             </button>
-            {group.pending !== null && (
-              <p className="px-2 pb-1 text-xs text-stone">
-                V{group.pending}을 저장하면 만들 수 있어요
-              </p>
+            {group.pendingNote !== null && (
+              <p className="px-2 pb-1 text-xs text-stone">{group.pendingNote}</p>
             )}
           </li>
         </ul>
@@ -137,6 +137,20 @@ function InfoItem() {
   );
 }
 
+/** 막힌 "+ 새 버전" 아래 안내. 버전이 저장돼 있는지에 따라 할 일이 다릅니다 */
+function pendingNote(draft: PitchDraft, node: DraftNode): string | null {
+  const pending = pendingVersion(draft, node);
+  if (pending === null) return null;
+  if (node === 'criteria') {
+    // 평가기준은 정리하면 서버에 저장됩니다(#463). 막히는 건 고친 내용을 저장하지 않았거나 아직 정리하지 않았을 때입니다
+    const v = draft.criteria.find((c) => c.version === pending);
+    return v?.saved
+      ? `V${pending}의 고친 내용을 저장하면 만들 수 있어요`
+      : `V${pending}을 정리하면 만들 수 있어요`;
+  }
+  return `V${pending}을 저장하면 만들 수 있어요`;
+}
+
 export function VersionRail() {
   const draft = useCreateStore((s) => s.draft);
   const select = useCreateStore((s) => s.select);
@@ -155,6 +169,7 @@ export function VersionRail() {
       latest: draft.criteria.at(-1)?.version ?? null,
       onAdd: addCriteriaVersion,
       pending: pendingVersion(draft, 'criteria'),
+      pendingNote: pendingNote(draft, 'criteria'),
     },
     {
       node: 'slides',
@@ -168,6 +183,7 @@ export function VersionRail() {
           ? select('slides')
           : addSlideVersion(),
       pending: pendingVersion(draft, 'slides'),
+      pendingNote: pendingNote(draft, 'slides'),
     },
     {
       node: 'script',
@@ -177,6 +193,7 @@ export function VersionRail() {
       // 직전 버전의 글을 물려받습니다 — 목업의 V1 → V2 → V3 는 고쳐 쓴 흔적입니다
       onAdd: () => addScriptVersion(draft.scripts.at(-1)?.text ?? ''),
       pending: pendingVersion(draft, 'script'),
+      pendingNote: pendingNote(draft, 'script'),
     },
   ];
 
