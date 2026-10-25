@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: develop-ec2-deploy
-  cancel-in-progress: true
+  group: ktc-server-deploy
+  cancel-in-progress: false
 
 permissions:
   id-token: write # OIDC로 AWS 역할을 맡기 위해 필요
@@ -159,6 +159,7 @@ jobs:
           docker image prune -af
           df -h /
           docker compose $FILES pull
+          docker network inspect edge >/dev/null 2>&1 || docker network create edge
           docker compose $FILES run --rm -T be alembic upgrade head < /dev/null
           docker compose $FILES up -d --no-build --remove-orphans
           # 방금 내려간 이전 버전 이미지
