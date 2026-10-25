@@ -1,4 +1,4 @@
-import { CONFIG_HASH } from '@/vendor/gaze/engine/config';
+import { CONFIG_HASH } from '@/vendor/gaze/engine/contract';
 
 /**
  * 저장해 둔 보정 결과(`ZoneReference.model`)를 지금 엔진에 넣어도 되는지.

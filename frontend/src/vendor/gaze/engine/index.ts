@@ -1,17 +1,20 @@
 /**
  * Gaze engine (head-pose v1.1) for the browser.
  *
- * The frontend loads this module inside its gaze worker and delegates to it
- * (`frontend/src/workers/modelClassifier.ts`, "A안"):
+ * The frontend loads this module inside its gaze worker with a dynamic `import()` (it pulls
+ * MediaPipe in) and delegates to it (`frontend/src/workers/modelClassifier.ts`):
  *
- *     const { createClassifier } = await import('./gaze/engine');
+ *     const { createClassifier } = await import(<this folder>);   // vendor/gaze/engine
  *     const impl = await createClassifier({ assetDir: '/models/' });
  *     engineVersion(impl.version);                                 // aiAdapter
  *     toCalibrationResult(...impl.fitCalibration(camera, bottom))   // { quality, model }
  *     toPlacementResult(impl.checkPlacement(camera, screen));
- *     impl.calibrate(ref.model);
- *     toFrameVerdict(impl.classify(frame, tMs));
+ *     impl.calibrate(model);
+ *     frameFromDecision(impl.classify(frame, tMs));                 // -> GazeSlicer -> 1 s record
  *     impl.dispose();
+ *
+ * What the host needs without MediaPipe (config hash, `frameFromDecision`, `GazeSlicer`,
+ * `sampleToDict`, ...) comes from `contract.ts`, the light entry point.
  *
  * Runs without DOM (worker-safe); the calibration `model` is plain data and
  * survives `structuredClone`.  It holds face measurements: keep it in memory for the

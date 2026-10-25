@@ -1,12 +1,19 @@
 /**
- * What crosses into the frontend.
+ * What crosses into the frontend, and the frontend's light entry point.
  *
- * The frontend's `workers/aiAdapter.ts` already maps the Python engine's
- * `to_dict()` output onto its `GazeClassifier` contract (2-point calibration,
- * zones CAMERA / BOTTOM / UNCERTAIN).  The engine therefore hands out objects
- * with exactly those snake_case keys, plus extra fields the adapter ignores.
- * The types below restate the adapter's input shapes so this package can be
- * type-checked against them without importing frontend code.
+ * The frontend's entry points into this folder (copied to `frontend/src/vendor/gaze/engine/`)
+ * are `index.ts` and `contract.ts`.  Direct imports of `config.ts` / `evidence.ts` made before
+ * `contract.ts` re-exported them keep working, but may break when files behind it change.
+ *
+ *   index.ts     `createClassifier` and the engine.  It pulls MediaPipe in, so the worker
+ *                loads it with a dynamic `import()`.
+ *   contract.ts  everything the host needs without MediaPipe: the shapes its adapter reads,
+ *                the engine config hash, the 1 s record slicer (re-exported at the bottom).
+ *
+ * The frontend's `workers/aiAdapter.ts` maps the engine's snake_case outputs (calibration
+ * quality, placement, version parts) onto its `GazeClassifier` contract.  The types below
+ * restate the adapter's input shapes so this package can be type-checked against them
+ * without importing frontend code.
  */
 import type { CalibrationConfig } from './config';
 import type { ConditionState } from './condition';
@@ -107,3 +114,18 @@ export function contractDecision(
     return { label: 'UNCERTAIN', p_camera: pCamera, p_bottom: pBottom, reason: 'OTHER' };
   return { label: best[0], p_camera: pCamera, p_bottom: pBottom, reason: null };
 }
+
+// ---------------------------------------------------------------- light entry point
+// Re-exported for the host so it never has to open files behind this boundary.  None of
+// these modules imports MediaPipe (test/engine-boundary.test.ts walks the imports).
+export { CONFIG_HASH, makeConfig, VERSION } from './config';
+export type { EngineConfig, EvidenceConfig } from './config';
+export {
+  frameFromDecision,
+  GazeEvidenceRecorder,
+  GazeSlicer,
+  SAMPLE_STATES,
+  sampleToDict,
+} from './evidence';
+export type { GazeFrame, GazeSample, SampleState } from './evidence';
+export { SCREEN_MERGED_WARNING } from './reference';
