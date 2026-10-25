@@ -20,7 +20,7 @@ from pitch_coach_backend.module.pitch.entity import (
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
-from pitch_coach_backend.realtime.connection import session as service
+from pitch_coach_backend.realtime.connection import handshake as handshake_module
 from pitch_coach_backend.realtime.dto import ErrorMessage, WsErrorCode
 from pitch_coach_backend.realtime.stream import abandon, registry, runtime
 from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
@@ -206,7 +206,7 @@ def test_script_term_lookup_failure_still_connects(
     def broken(*args, **kwargs):
         raise RuntimeError("statement timeout")
 
-    monkeypatch.setattr(service.script_service, "stt_keyterm_candidates", broken)
+    monkeypatch.setattr(handshake_module.script_service, "stt_keyterm_candidates", broken)
 
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
@@ -662,7 +662,9 @@ def test_authenticate_does_not_touch_user_after_rollback(
                 tripwire["id_read_after_rollback"] = True
             return self._id
 
-    monkeypatch.setattr(service.user_service, "find", lambda db, uid: TripwireUser(user.id))
+    monkeypatch.setattr(
+        handshake_module.user_service, "find", lambda db, uid: TripwireUser(user.id)
+    )
     original_rollback = db_session.rollback
 
     def rollback_and_arm() -> None:

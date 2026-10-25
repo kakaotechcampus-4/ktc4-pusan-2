@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.user.entity import User
-from pitch_coach_backend.realtime.connection import session as service
+from pitch_coach_backend.realtime.connection import session
 from pitch_coach_backend.realtime.stream import registry, runtime
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt import loop as stt_loop
@@ -43,7 +43,7 @@ def test_stop_timeout_cancels_the_stream_instead_of_leaking_it(
     client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
 ):
     """drain 이 실패해도 레지스트리에서만 사라지고 태스크가 계속 도는 일이 없어야 한다."""
-    monkeypatch.setattr(service, "STOP_TIMEOUT_SEC", 0.1)
+    monkeypatch.setattr(session, "STOP_TIMEOUT_SEC", 0.1)
     monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 5.0)
     adapter = use(FakeSttAdapter(Plan(swallow_close=True)))
 
@@ -80,7 +80,7 @@ async def test_ready_send_failure_still_detaches_from_the_stream(
         ],
         fail_send_after=1,  # 첫 send_text = ready 메시지에서 터진다
     )
-    realtime = service.RealtimeSession(
+    realtime = session.RealtimeSession(
         ws,
         take_id=TAKE_ID,
         db=db_session,
@@ -492,7 +492,7 @@ async def test_stop_from_a_taken_over_connection_is_ignored():
     await stream.attach(old_tab)
     await stream.attach(new_tab)
 
-    realtime = service.RealtimeSession(
+    realtime = session.RealtimeSession(
         old_tab,
         take_id=stream.take_id,
         db=None,  # type: ignore[arg-type] - 펌프는 DB 를 안 본다

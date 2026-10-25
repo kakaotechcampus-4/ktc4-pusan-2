@@ -15,7 +15,7 @@ from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.module.take.service import record as record_service
-from pitch_coach_backend.realtime.connection import session as service
+from pitch_coach_backend.realtime.connection import session
 from pitch_coach_backend.realtime.dto import (
     TranscriptMessage,
 )
@@ -403,7 +403,7 @@ async def test_stop_persists_the_last_final_even_if_the_client_dies_during_drain
         ],
         fail_send_after=2,  # ready 는 나가고, 그 뒤(마지막 transcript·closed 상태) 부터 끊긴다
     )
-    realtime = service.RealtimeSession(
+    realtime = session.RealtimeSession(
         ws, take_id=TAKE_ID, db=db_session, stt_adapter=adapter, transcript_store=store
     )
 
