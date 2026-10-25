@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from filler.core import judge
+from pitch_coach_ai.features.filler.core import judge
 
 from .helpers import (
     CFG,

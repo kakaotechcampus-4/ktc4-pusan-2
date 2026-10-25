@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import filler
+from pitch_coach_ai.features import filler
 
 # 코어 패키지 파일 기준으로 찾는다 — 서비스로 옮겨도 경로를 고치지 않게
 CORE = Path(filler.__file__).resolve().parent

@@ -7,10 +7,10 @@ import re
 import pytest
 from pydantic import ValidationError
 
-from filler.config import DEFAULT, FillerConfig, normalize
-from filler.core import criteria, criteria_version, judge, keyterms
-from filler.schemas import FillerInput, JudgmentResult
-from filler.version import FEATURE_VERSION
+from pitch_coach_ai.features.filler.config import DEFAULT, FillerConfig, normalize
+from pitch_coach_ai.features.filler.core import criteria, criteria_version, judge, keyterms
+from pitch_coach_ai.features.filler.schemas import FillerInput, JudgmentResult
+from pitch_coach_ai.features.filler.version import FEATURE_VERSION
 
 from .helpers import CFG, fillers, inputs, run, word
 

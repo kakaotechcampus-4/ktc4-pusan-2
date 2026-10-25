@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from filler.core import summarize
-from filler.schemas import FillerSummary
+from pitch_coach_ai.features.filler.core import summarize
+from pitch_coach_ai.features.filler.schemas import FillerSummary
 
 from .helpers import fillers, run, total
 

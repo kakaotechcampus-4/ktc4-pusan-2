@@ -8,10 +8,10 @@ from typing import Any
 
 import pytest
 
-from filler import core as filler_core
-from filler.config import ALL_TIERS, DEFAULT, FillerConfig
-from filler.core import criteria, criteria_version, judge, summarize
-from filler.schemas import IssueCriteria, JudgmentResult
+from pitch_coach_ai.features.filler import core as filler_core
+from pitch_coach_ai.features.filler.config import ALL_TIERS, DEFAULT, FillerConfig
+from pitch_coach_ai.features.filler.core import criteria, criteria_version, judge, summarize
+from pitch_coach_ai.features.filler.schemas import IssueCriteria, JudgmentResult
 
 from .helpers import check_contract, word_items
 
