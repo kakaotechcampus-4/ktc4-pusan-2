@@ -41,7 +41,7 @@ from pitch_coach_ai.features.coach.schemas import ProblemSegment, TakeResult
 from pitch_coach_ai.features.coach.version import FEATURE_VERSION
 from pitch_coach_ai.features.coach.vocab import FeedbackType, Issue
 
-from .judges import lab_judges
+from .judges import real_judges
 from .paths import OUTPUTS_DIR, SCENARIOS_DIR
 from .simulator import NOISE_PRESETS, RunResult, Scenario, run, scenario_config, slide_metric
 from .truth import PROBLEM_TYPES, TruthInterval, truth_aggs, truth_intervals, truth_outcome
@@ -112,6 +112,17 @@ class Score:
         }
 
 
+def _merge(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """겹치거나 맞닿은 구간을 합친다. 예: [(0, 5), (3, 8), (10, 12)] → [(0, 8), (10, 12)]."""
+    out: list[tuple[int, int]] = []
+    for s, e in sorted(spans):
+        if out and s <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], e))
+        else:
+            out.append((s, e))
+    return out
+
+
 def _overlap(a0: int, a1: int, b0: int, b1: int) -> int:
     return max(0, min(a1, b1) - max(a0, b0))
 
@@ -156,8 +167,11 @@ def score_segments(
             )
             continue
         score.truth_hit += 1
-        inter = sum(_overlap(c.start_ms, c.end_ms, t.start_ms, t.end_ms) for c in hits)
-        union = t.span_ms + sum(c.end_ms - c.start_ms for c in hits) - inter
+        # 같은 영역의 지적끼리 겹칠 수 있다(시선 GAZE_ON_SCRIPT · GAZE_LOW_EYE_CONTACT).
+        # 지적 구간을 먼저 합쳐야 교집합 · 합집합을 두 번 세지 않는다
+        merged = _merge([(c.start_ms, c.end_ms) for c in hits])
+        inter = sum(_overlap(s, e, t.start_ms, t.end_ms) for s, e in merged)
+        union = t.span_ms + sum(e - s for s, e in merged) - inter
         score.iou.append(inter / union if union else 0.0)
         score.onset_err_ms.append(abs(min(c.start_ms for c in hits) - t.start_ms))
         score.fragments.append(len(hits))
@@ -242,7 +256,7 @@ def score_take(
 def rebuild_take(result: RunResult, config: CoachConfig) -> TakeResult:
     """같은 재생의 마지막 요청으로 finalize 만 다시 불러, 다른 설정의 Take 결과를 만든다."""
     assert result.final_request is not None
-    return finalize(result.final_request, lab_judges(), config).take_result
+    return finalize(result.final_request, real_judges(), config).take_result
 
 
 def evaluate(

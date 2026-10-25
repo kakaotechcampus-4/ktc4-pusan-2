@@ -19,17 +19,17 @@
   ],
   "seeds": 5,
   "config_hash": "8b1e640e988a",
-  "feature_version": "coach-1.2",
+  "feature_version": "coach-1.3",
   "results": {
     "clean": {
       "takes": 16,
-      "segment_recall": 1.0,
+      "segment_recall": 0.9167,
       "segment_precision": 1.0,
-      "segment_f1": 1.0,
+      "segment_f1": 0.9565,
       "unsupported_claims_per_take": 0.0,
-      "segment_iou": 0.8188,
-      "onset_error_s": 0.87,
-      "fragments_per_problem": 1.0833,
+      "segment_iou": 0.7856,
+      "onset_error_s": 1.27,
+      "fragments_per_problem": 1.5455,
       "slide_mae": {
         "cpm": 4.2068,
         "duration_ms": 0.3403,
@@ -40,37 +40,37 @@
     },
     "noisy": {
       "takes": 80,
-      "segment_recall": 0.9344,
-      "segment_precision": 0.9194,
-      "segment_f1": 0.9268,
-      "unsupported_claims_per_take": 0.0625,
-      "segment_iou": 0.772,
-      "onset_error_s": 1.98,
-      "fragments_per_problem": 1.0877,
+      "segment_recall": 0.9516,
+      "segment_precision": 0.9787,
+      "segment_f1": 0.965,
+      "unsupported_claims_per_take": 0.025,
+      "segment_iou": 0.7644,
+      "onset_error_s": 2.25,
+      "fragments_per_problem": 1.6949,
       "slide_mae": {
         "cpm": 5.4847,
         "duration_ms": 0.3709,
-        "script_ratio": 0.0596
+        "script_ratio": 0.0594
       },
-      "outcome_accuracy": 0.9767,
-      "false_intervention_rate": 0.0213
+      "outcome_accuracy": 0.9429,
+      "false_intervention_rate": 0.0
     },
     "harsh": {
       "takes": 80,
-      "segment_recall": 0.9516,
-      "segment_precision": 0.875,
-      "segment_f1": 0.9117,
-      "unsupported_claims_per_take": 0.1125,
-      "segment_iou": 0.7298,
-      "onset_error_s": 2.38,
-      "fragments_per_problem": 1.1525,
+      "segment_recall": 0.9344,
+      "segment_precision": 0.9239,
+      "segment_f1": 0.9291,
+      "unsupported_claims_per_take": 0.0875,
+      "segment_iou": 0.722,
+      "onset_error_s": 2.71,
+      "fragments_per_problem": 1.614,
       "slide_mae": {
         "cpm": 6.8817,
         "duration_ms": 0.374,
-        "script_ratio": 0.1043
+        "script_ratio": 0.1039
       },
-      "outcome_accuracy": 0.9118,
-      "false_intervention_rate": 0.0213
+      "outcome_accuracy": 1.0,
+      "false_intervention_rate": 0.0217
     }
   },
   "sweep": {
@@ -80,240 +80,240 @@
         "merge_gap_ms": 0,
         "min_segment_ms": 0,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9296,
-        "segment_f1": 0.932,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.7703,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.2456,
+        "segment_recall": 0.9516,
+        "segment_precision": 0.9839,
+        "segment_f1": 0.9675,
+        "unsupported_claims_per_take": 0.025,
+        "segment_iou": 0.7638,
+        "onset_error_s": 2.25,
+        "fragments_per_problem": 2.2034,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합  0s · 최소 3s",
         "merge_gap_ms": 0,
         "min_segment_ms": 3000,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9296,
-        "segment_f1": 0.932,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.7703,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.2456,
+        "segment_recall": 0.9516,
+        "segment_precision": 0.9839,
+        "segment_f1": 0.9675,
+        "unsupported_claims_per_take": 0.025,
+        "segment_iou": 0.7638,
+        "onset_error_s": 2.25,
+        "fragments_per_problem": 2.2034,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합  0s · 최소 6s",
         "merge_gap_ms": 0,
         "min_segment_ms": 6000,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9701,
-        "segment_f1": 0.9519,
-        "unsupported_claims_per_take": 0.025,
-        "segment_iou": 0.7673,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.2281,
+        "segment_recall": 0.9194,
+        "segment_precision": 1.0,
+        "segment_f1": 0.958,
+        "unsupported_claims_per_take": 0.0,
+        "segment_iou": 0.744,
+        "onset_error_s": 2.85,
+        "fragments_per_problem": 1.5263,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합  5s · 최소 0s",
         "merge_gap_ms": 5000,
         "min_segment_ms": 0,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9231,
-        "segment_f1": 0.9287,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.768,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.1404,
+        "segment_recall": 0.9516,
+        "segment_precision": 0.9813,
+        "segment_f1": 0.9662,
+        "unsupported_claims_per_take": 0.025,
+        "segment_iou": 0.7638,
+        "onset_error_s": 2.25,
+        "fragments_per_problem": 1.9153,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합  5s · 최소 3s",
         "merge_gap_ms": 5000,
         "min_segment_ms": 3000,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9231,
-        "segment_f1": 0.9287,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.768,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.1404,
+        "segment_recall": 0.9516,
+        "segment_precision": 0.9813,
+        "segment_f1": 0.9662,
+        "unsupported_claims_per_take": 0.025,
+        "segment_iou": 0.7638,
+        "onset_error_s": 2.25,
+        "fragments_per_problem": 1.9153,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합  5s · 최소 6s",
         "merge_gap_ms": 5000,
         "min_segment_ms": 6000,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9672,
-        "segment_f1": 0.9505,
-        "unsupported_claims_per_take": 0.025,
-        "segment_iou": 0.7649,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.1228,
+        "segment_recall": 0.9194,
+        "segment_precision": 1.0,
+        "segment_f1": 0.958,
+        "unsupported_claims_per_take": 0.0,
+        "segment_iou": 0.7529,
+        "onset_error_s": 2.61,
+        "fragments_per_problem": 1.5789,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합 10s · 최소 0s",
         "merge_gap_ms": 10000,
         "min_segment_ms": 0,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9194,
-        "segment_f1": 0.9268,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.772,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.0877,
+        "segment_recall": 0.9516,
+        "segment_precision": 0.9787,
+        "segment_f1": 0.965,
+        "unsupported_claims_per_take": 0.025,
+        "segment_iou": 0.7644,
+        "onset_error_s": 2.25,
+        "fragments_per_problem": 1.6949,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합 10s · 최소 3s (기본)",
         "merge_gap_ms": 10000,
         "min_segment_ms": 3000,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9194,
-        "segment_f1": 0.9268,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.772,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.0877,
+        "segment_recall": 0.9516,
+        "segment_precision": 0.9787,
+        "segment_f1": 0.965,
+        "unsupported_claims_per_take": 0.025,
+        "segment_iou": 0.7644,
+        "onset_error_s": 2.25,
+        "fragments_per_problem": 1.6949,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합 10s · 최소 6s",
         "merge_gap_ms": 10000,
         "min_segment_ms": 6000,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9661,
-        "segment_f1": 0.95,
-        "unsupported_claims_per_take": 0.025,
-        "segment_iou": 0.772,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.0877,
+        "segment_recall": 0.9194,
+        "segment_precision": 1.0,
+        "segment_f1": 0.958,
+        "unsupported_claims_per_take": 0.0,
+        "segment_iou": 0.7571,
+        "onset_error_s": 2.6,
+        "fragments_per_problem": 1.5439,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합 20s · 최소 0s",
         "merge_gap_ms": 20000,
         "min_segment_ms": 0,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9194,
-        "segment_f1": 0.9268,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.772,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.0877,
+        "segment_recall": 0.9516,
+        "segment_precision": 0.9762,
+        "segment_f1": 0.9637,
+        "unsupported_claims_per_take": 0.025,
+        "segment_iou": 0.7673,
+        "onset_error_s": 2.25,
+        "fragments_per_problem": 1.5254,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합 20s · 최소 3s",
         "merge_gap_ms": 20000,
         "min_segment_ms": 3000,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9194,
-        "segment_f1": 0.9268,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.772,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.0877,
+        "segment_recall": 0.9516,
+        "segment_precision": 0.9762,
+        "segment_f1": 0.9637,
+        "unsupported_claims_per_take": 0.025,
+        "segment_iou": 0.7673,
+        "onset_error_s": 2.25,
+        "fragments_per_problem": 1.5254,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       },
       {
         "variant": "병합 20s · 최소 6s",
         "merge_gap_ms": 20000,
         "min_segment_ms": 6000,
         "takes": 80,
-        "segment_recall": 0.9344,
-        "segment_precision": 0.9661,
-        "segment_f1": 0.95,
-        "unsupported_claims_per_take": 0.025,
-        "segment_iou": 0.772,
-        "onset_error_s": 1.98,
-        "fragments_per_problem": 1.0877,
+        "segment_recall": 0.9194,
+        "segment_precision": 1.0,
+        "segment_f1": 0.958,
+        "unsupported_claims_per_take": 0.0,
+        "segment_iou": 0.7692,
+        "onset_error_s": 2.32,
+        "fragments_per_problem": 1.4737,
         "slide_mae": {
           "cpm": 5.4847,
           "duration_ms": 0.3709,
-          "script_ratio": 0.0596
+          "script_ratio": 0.0594
         },
-        "outcome_accuracy": 0.9767,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 0.9429,
+        "false_intervention_rate": 0.0
       }
     ],
     "harsh": [
@@ -322,240 +322,240 @@
         "merge_gap_ms": 0,
         "min_segment_ms": 0,
         "takes": 80,
-        "segment_recall": 0.9516,
-        "segment_precision": 0.8875,
-        "segment_f1": 0.9184,
-        "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.7258,
-        "onset_error_s": 2.38,
-        "fragments_per_problem": 1.2881,
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9369,
+        "segment_f1": 0.9356,
+        "unsupported_claims_per_take": 0.0875,
+        "segment_iou": 0.7222,
+        "onset_error_s": 2.71,
+        "fragments_per_problem": 1.9474,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합  0s · 최소 3s",
         "merge_gap_ms": 0,
         "min_segment_ms": 3000,
         "takes": 80,
-        "segment_recall": 0.9516,
-        "segment_precision": 0.8875,
-        "segment_f1": 0.9184,
-        "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.7258,
-        "onset_error_s": 2.38,
-        "fragments_per_problem": 1.2881,
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9369,
+        "segment_f1": 0.9356,
+        "unsupported_claims_per_take": 0.0875,
+        "segment_iou": 0.7222,
+        "onset_error_s": 2.71,
+        "fragments_per_problem": 1.9474,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합  0s · 최소 6s",
         "merge_gap_ms": 0,
         "min_segment_ms": 6000,
         "takes": 80,
-        "segment_recall": 0.9355,
-        "segment_precision": 0.9306,
-        "segment_f1": 0.933,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.7181,
-        "onset_error_s": 2.81,
-        "fragments_per_problem": 1.2414,
+        "segment_recall": 0.8852,
+        "segment_precision": 0.9444,
+        "segment_f1": 0.9138,
+        "unsupported_claims_per_take": 0.05,
+        "segment_iou": 0.7312,
+        "onset_error_s": 2.66,
+        "fragments_per_problem": 1.3704,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합  5s · 최소 0s",
         "merge_gap_ms": 5000,
         "min_segment_ms": 0,
         "takes": 80,
-        "segment_recall": 0.9516,
-        "segment_precision": 0.8831,
-        "segment_f1": 0.9161,
-        "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.7258,
-        "onset_error_s": 2.38,
-        "fragments_per_problem": 1.2373,
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9307,
+        "segment_f1": 0.9325,
+        "unsupported_claims_per_take": 0.0875,
+        "segment_iou": 0.7222,
+        "onset_error_s": 2.71,
+        "fragments_per_problem": 1.7719,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합  5s · 최소 3s",
         "merge_gap_ms": 5000,
         "min_segment_ms": 3000,
         "takes": 80,
-        "segment_recall": 0.9516,
-        "segment_precision": 0.8831,
-        "segment_f1": 0.9161,
-        "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.7258,
-        "onset_error_s": 2.38,
-        "fragments_per_problem": 1.2373,
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9307,
+        "segment_f1": 0.9325,
+        "unsupported_claims_per_take": 0.0875,
+        "segment_iou": 0.7222,
+        "onset_error_s": 2.71,
+        "fragments_per_problem": 1.7719,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합  5s · 최소 6s",
         "merge_gap_ms": 5000,
         "min_segment_ms": 6000,
         "takes": 80,
-        "segment_recall": 0.9355,
-        "segment_precision": 0.9286,
-        "segment_f1": 0.932,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.7211,
-        "onset_error_s": 2.68,
-        "fragments_per_problem": 1.2069,
+        "segment_recall": 0.8852,
+        "segment_precision": 0.9467,
+        "segment_f1": 0.9149,
+        "unsupported_claims_per_take": 0.05,
+        "segment_iou": 0.7313,
+        "onset_error_s": 2.66,
+        "fragments_per_problem": 1.4259,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합 10s · 최소 0s",
         "merge_gap_ms": 10000,
         "min_segment_ms": 0,
         "takes": 80,
-        "segment_recall": 0.9516,
-        "segment_precision": 0.875,
-        "segment_f1": 0.9117,
-        "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.7298,
-        "onset_error_s": 2.38,
-        "fragments_per_problem": 1.1525,
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9239,
+        "segment_f1": 0.9291,
+        "unsupported_claims_per_take": 0.0875,
+        "segment_iou": 0.722,
+        "onset_error_s": 2.71,
+        "fragments_per_problem": 1.614,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합 10s · 최소 3s (기본)",
         "merge_gap_ms": 10000,
         "min_segment_ms": 3000,
         "takes": 80,
-        "segment_recall": 0.9516,
-        "segment_precision": 0.875,
-        "segment_f1": 0.9117,
-        "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.7298,
-        "onset_error_s": 2.38,
-        "fragments_per_problem": 1.1525,
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9239,
+        "segment_f1": 0.9291,
+        "unsupported_claims_per_take": 0.0875,
+        "segment_iou": 0.722,
+        "onset_error_s": 2.71,
+        "fragments_per_problem": 1.614,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합 10s · 최소 6s",
         "merge_gap_ms": 10000,
         "min_segment_ms": 6000,
         "takes": 80,
-        "segment_recall": 0.9355,
-        "segment_precision": 0.9242,
-        "segment_f1": 0.9298,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.7274,
-        "onset_error_s": 2.68,
-        "fragments_per_problem": 1.1379,
+        "segment_recall": 0.8852,
+        "segment_precision": 0.9467,
+        "segment_f1": 0.9149,
+        "unsupported_claims_per_take": 0.05,
+        "segment_iou": 0.739,
+        "onset_error_s": 2.62,
+        "fragments_per_problem": 1.4444,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합 20s · 최소 0s",
         "merge_gap_ms": 20000,
         "min_segment_ms": 0,
         "takes": 80,
-        "segment_recall": 0.9516,
-        "segment_precision": 0.8676,
-        "segment_f1": 0.9077,
-        "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.743,
-        "onset_error_s": 2.38,
-        "fragments_per_problem": 1.0847,
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9176,
+        "segment_f1": 0.9259,
+        "unsupported_claims_per_take": 0.0875,
+        "segment_iou": 0.7216,
+        "onset_error_s": 2.71,
+        "fragments_per_problem": 1.4912,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합 20s · 최소 3s",
         "merge_gap_ms": 20000,
         "min_segment_ms": 3000,
         "takes": 80,
-        "segment_recall": 0.9516,
-        "segment_precision": 0.8676,
-        "segment_f1": 0.9077,
-        "unsupported_claims_per_take": 0.1125,
-        "segment_iou": 0.743,
-        "onset_error_s": 2.38,
-        "fragments_per_problem": 1.0847,
+        "segment_recall": 0.9344,
+        "segment_precision": 0.9176,
+        "segment_f1": 0.9259,
+        "unsupported_claims_per_take": 0.0875,
+        "segment_iou": 0.7216,
+        "onset_error_s": 2.71,
+        "fragments_per_problem": 1.4912,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       },
       {
         "variant": "병합 20s · 최소 6s",
         "merge_gap_ms": 20000,
         "min_segment_ms": 6000,
         "takes": 80,
-        "segment_recall": 0.9355,
-        "segment_precision": 0.9206,
-        "segment_f1": 0.928,
-        "unsupported_claims_per_take": 0.0625,
-        "segment_iou": 0.7438,
-        "onset_error_s": 2.4,
-        "fragments_per_problem": 1.0862,
+        "segment_recall": 0.8852,
+        "segment_precision": 0.9474,
+        "segment_f1": 0.9152,
+        "unsupported_claims_per_take": 0.05,
+        "segment_iou": 0.743,
+        "onset_error_s": 2.53,
+        "fragments_per_problem": 1.463,
         "slide_mae": {
           "cpm": 6.8817,
           "duration_ms": 0.374,
-          "script_ratio": 0.1043
+          "script_ratio": 0.1039
         },
-        "outcome_accuracy": 0.9118,
-        "false_intervention_rate": 0.0213
+        "outcome_accuracy": 1.0,
+        "false_intervention_rate": 0.0217
       }
     ]
   }
