@@ -31,9 +31,19 @@ from tests.coach_fakes import (
 def anyio_backend():
     return "asyncio"
 
+
 @pytest.fixture(autouse=True)
 def isolated_pending_finalizes(monkeypatch):
-    monkeypatch.setattr(finalize, "_pending", {}, raising=False)
+    monkeypatch.setattr(finalize, "_pending", {})
+    monkeypatch.setattr(finalize, "_recovery", TaskRegistry())
+    monkeypatch.setattr(finalize, "_running", TaskRegistry())
+    monkeypatch.setattr(finalize, "_slots_by_loop", {})
+
+
+async def resume_and_wait(**kwargs):
+    await finalize.resume(**kwargs)
+    await asyncio.gather(*finalize._recovery.tasks())
+
 
 @pytest.mark.anyio
 async def test_finalize_with_the_live_state_saves_the_result():
@@ -55,6 +65,7 @@ async def test_finalize_with_the_live_state_saves_the_result():
     assert [e["event_id"] for e, _ in events] == ["iv-1", "oc-1"]
     assert store.failed == []
 
+
 @pytest.mark.anyio
 async def test_replay_required_sends_the_raw_data_once_more():
     client, store = FakeClient(), FakeStore(source=source())
@@ -69,6 +80,7 @@ async def test_replay_required_sends_the_raw_data_once_more():
     assert replay["words"] == [{"word": "가", "start_ms": 0, "end_ms": 500, "final_at_ms": 0}]
     assert replay["utterance_ends"] == [500]
     assert len(store.saved) == 1
+
 
 @pytest.mark.anyio
 async def test_without_a_live_state_finalize_starts_with_the_replay():
@@ -85,6 +97,7 @@ async def test_without_a_live_state_finalize_starts_with_the_replay():
     assert [e["event_id"] for e in request["events"]] == ["iv-1"]
     assert len(store.saved) == 1
 
+
 @pytest.mark.anyio
 async def test_a_disabled_coach_still_gets_a_replayed_result():
     client, store = FakeClient(), FakeStore(source=source())
@@ -99,6 +112,7 @@ async def test_a_disabled_coach_still_gets_a_replayed_result():
     assert request["inputs"] == {"stt_status": "ok"}
     assert "replay" in request
 
+
 @pytest.mark.anyio
 async def test_no_raw_data_fails_the_take_without_calling_the_coach():
     client, store = FakeClient(), FakeStore(source=source(seconds=()))
@@ -107,6 +121,7 @@ async def test_no_raw_data_fails_the_take_without_calling_the_coach():
 
     assert client.finalized == []
     assert store.failed == [TAKE_ID]
+
 
 @pytest.mark.anyio
 async def test_finalize_that_fails_marks_the_take_failed():
@@ -118,6 +133,7 @@ async def test_finalize_that_fails_marks_the_take_failed():
     assert store.failed == [TAKE_ID]
     assert store.saved == []
 
+
 @pytest.mark.anyio
 async def test_finalize_of_a_take_no_longer_waiting_does_nothing():
     client, store = FakeClient(), FakeStore(source=None)
@@ -127,17 +143,33 @@ async def test_finalize_of_a_take_no_longer_waiting_does_nothing():
     assert client.finalized == []
     assert store.failed == []
 
+
 @pytest.mark.anyio
 async def test_a_take_is_finalized_once_at_a_time_and_restart_resumes_waiting_takes():
-    client, store = FakeClient(), FakeStore(source=source(), finalizing=[TAKE_ID])
-    client.finalize_replies = [take_result(), take_result()]
+    entered, release = asyncio.Event(), asyncio.Event()
 
+    class Blocking(FakeClient):
+        async def finalize(self, request):
+            self.finalized.append(request)
+            entered.set()
+            await release.wait()
+            return take_result()
+
+    client, store = Blocking(), FakeStore(source=source(), finalizing=[TAKE_ID])
     await finalize.resume(client=client, store=store)
-    finalize.spawn(TAKE_ID, None, client=client, store=store)
-    await asyncio.gather(*finalize._running.tasks())
+    await asyncio.wait_for(entered.wait(), 1)
+    try:
+        finalize.spawn(TAKE_ID, None, client=client, store=store)
+        await finalize.resume(client=client, store=store)
+        assert len(finalize._recovery) == 1
+        assert len(client.finalized) == 1
+    finally:
+        release.set()
+        await asyncio.gather(*finalize._recovery.tasks())
 
     assert len(client.finalized) == 1
     assert len(finalize._running) == 0
+
 
 @pytest.mark.anyio
 async def test_db_outage_in_finalize_is_retried_then_left_for_the_restart(
@@ -160,6 +192,7 @@ async def test_db_outage_in_finalize_is_retried_then_left_for_the_restart(
     assert len(calls) == 3
     assert "나중에 이어 간다" in caplog.text
     assert store.failed == []
+
 
 @pytest.mark.anyio
 async def test_finalize_recovers_from_a_short_db_failure(monkeypatch: pytest.MonkeyPatch):
@@ -184,6 +217,7 @@ async def test_finalize_recovers_from_a_short_db_failure(monkeypatch: pytest.Mon
     assert store.failed == []
     # 저장만 다시 한다. 받은 Take 결과로 — AI 를 다시 부르지 않는다
     assert len(client.finalized) == 1
+
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("failed_step", ["load_events", "load_finalize_source", "save_take_result"])
@@ -210,13 +244,14 @@ async def test_finalize_resume_keeps_unsaved_events_after_db_retries_run_out(
     assert store.failed == [] and store.saved == []
 
     monkeypatch.setattr(store, failed_step, original)
-    await finalize.resume(client=client, store=store)
+    await resume_and_wait(client=client, store=store)
     await asyncio.gather(*finalize._running.tasks())
 
     assert [e["event_id"] for e in client.finalized[-1]["events"]] == ["iv-1"]
     assert [e["event_id"] for e, _ in store.saved[0][1]] == ["iv-1"]
     assert store.failed == []
     assert TAKE_ID not in finalize._pending
+
 
 @pytest.mark.anyio
 async def test_shutdown_saves_events_of_a_finalize_waiting_for_the_next_sweep(monkeypatch):
@@ -238,6 +273,7 @@ async def test_shutdown_saves_events_of_a_finalize_waiting_for_the_next_sweep(mo
     await finalize.stop_all(timeout=1)
     assert [e["event_id"] for e, _ in store.events] == ["iv-1"]
 
+
 @pytest.mark.anyio
 @pytest.mark.parametrize("stale_before", [None, datetime.now(UTC)])
 async def test_resume_releases_snapshots_of_takes_no_longer_finalizing(monkeypatch, stale_before):
@@ -255,16 +291,17 @@ async def test_resume_releases_snapshots_of_takes_no_longer_finalizing(monkeypat
 
     # DB 복구 뒤 삭제되었거나 다른 작업자가 완료해 FINALIZING 목록에서는 빠졌다.
     client = FakeClient()
-    await finalize.resume(client=client, store=store, stale_before=stale_before)
+    await resume_and_wait(client=client, store=store, stale_before=stale_before)
     assert TAKE_ID not in finalize._pending
     assert client.finalized == []
+
 
 @pytest.mark.anyio
 async def test_stale_sweep_keeps_a_fresh_pending_snapshot(monkeypatch):
     monkeypatch.setattr(finalize, "_running", TaskRegistry())
 
     class Fresh(FakeStore):
-        async def finalizing_takes(self, stale_before=None):
+        async def finalizing_takes(self, stale_before=None, *, after=None, limit=100):
             self.stale_cutoffs.append(stale_before)
             return [TAKE_ID] if stale_before is None else []
 
@@ -272,11 +309,12 @@ async def test_stale_sweep_keeps_a_fresh_pending_snapshot(monkeypatch):
     snap = snapshot(events=[EVENT])
     finalize._pending[TAKE_ID] = (snap, store)
     cutoff = datetime.now(UTC)
-    await finalize.resume(client=client, store=store, stale_before=cutoff)
+    await resume_and_wait(client=client, store=store, stale_before=cutoff)
 
     assert finalize._pending[TAKE_ID][0] is snap
-    assert store.stale_cutoffs == [cutoff, None]
+    assert store.stale_cutoffs == [None, cutoff]
     assert client.finalized == []
+
 
 @pytest.mark.anyio
 async def test_resume_does_not_release_a_running_finalize_snapshot(monkeypatch):
@@ -293,12 +331,13 @@ async def test_resume_does_not_release_a_running_finalize_snapshot(monkeypatch):
     finalize.spawn(TAKE_ID, snapshot(events=[EVENT]), client=client, store=store)
     try:
         await asyncio.wait_for(started.wait(), 1)
-        await finalize.resume(client=client, store=store)
+        await resume_and_wait(client=client, store=store)
         assert TAKE_ID in finalize._pending
     finally:
         release.set()
         await asyncio.gather(*finalize._running.tasks())
     assert TAKE_ID not in finalize._pending
+
 
 @pytest.mark.anyio
 async def test_error_that_retrying_cannot_fix_fails_the_take_at_once(
@@ -325,6 +364,7 @@ async def test_error_that_retrying_cannot_fix_fails_the_take_at_once(
     assert store.failed == [TAKE_ID]
     assert len(client.finalized) == 1
 
+
 @pytest.mark.anyio
 async def test_app_starts_even_if_the_waiting_takes_cannot_be_read(
     monkeypatch: pytest.MonkeyPatch,
@@ -333,10 +373,13 @@ async def test_app_starts_even_if_the_waiting_takes_cannot_be_read(
     monkeypatch.setattr(finalize, "RESUME_READ_TIMEOUT_SEC", 0.05)
 
     class Hanging(FakeStore):
-        async def finalizing_takes(self, stale_before=None):
+        async def finalizing_takes(self, stale_before=None, *, after=None, limit=100):
             await asyncio.Event().wait()
 
-    await asyncio.wait_for(finalize.resume(client=FakeClient(), store=Hanging()), 1.0)
+    # 원자료 복구와 DB 조회가 늦어도 호출자는 바로 돌아온다.
+    await asyncio.wait_for(finalize.resume(client=FakeClient(), store=Hanging()), 0.1)
+    await asyncio.wait_for(asyncio.gather(*finalize._recovery.tasks()), 1.0)
+
 
 @pytest.mark.anyio
 async def test_takes_left_waiting_are_picked_up_without_a_restart(
@@ -354,11 +397,15 @@ async def test_takes_left_waiting_are_picked_up_without_a_restart(
             break
         await asyncio.sleep(0.01)
     sweeping.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await sweeping
+    await asyncio.gather(*finalize._recovery.tasks())
 
     assert len(store.saved) == 1
     cutoff = store.stale_cutoffs[0]
     assert cutoff is not None
     assert cutoff <= datetime.now(UTC) - finalize.STALE_FINALIZING
+
 
 @pytest.mark.anyio
 async def test_finalize_does_not_call_the_coach_for_a_take_no_longer_waiting():
@@ -376,6 +423,7 @@ async def test_finalize_does_not_call_the_coach_for_a_take_no_longer_waiting():
 
     assert client.finalized == []
     assert store.saved == [] and store.failed == []
+
 
 @pytest.mark.anyio
 async def test_events_only_in_the_snapshot_are_kept_when_the_app_stops():
@@ -400,3 +448,156 @@ async def test_events_only_in_the_snapshot_are_kept_when_the_app_stops():
     with pytest.raises(asyncio.CancelledError):
         await running
     assert [e["event_id"] for e, _ in store.events] == ["iv-1"]
+
+
+@pytest.mark.anyio
+async def test_recovery_reads_the_next_batch_only_after_results_are_saved():
+    take_ids = [uuid.uuid7() for _ in range(11)]
+    release, full = asyncio.Event(), asyncio.Event()
+    reads, listed, completed = [], [], []
+
+    class Backlog(FakeStore):
+        async def finalizing_takes(self, stale_before=None, *, after=None, limit=100):
+            listed.append((after, limit))
+            return await super().finalizing_takes(stale_before, after=after, limit=limit)
+
+        async def load_finalize_source(self, take_id):
+            reads.append(take_id)
+            if len(reads) == 4:
+                full.set()
+            return source()
+
+        async def save_take_result(self, take_id, reply, events):
+            completed.append(take_id)
+            self.finalizing.remove(take_id)
+            return True
+
+    class Blocking(FakeClient):
+        async def finalize(self, request):
+            await release.wait()
+            return take_result()
+
+    store, client = Backlog(finalizing=take_ids.copy()), Blocking()
+    await finalize.resume(client=client, store=store)
+    try:
+        await asyncio.wait_for(full.wait(), 1)
+        await finalize.resume(client=client, store=store)
+        assert reads == take_ids[:4]
+        assert listed == [(None, 4)]
+        assert len(finalize._running) == 4
+        assert completed == []
+    finally:
+        release.set()
+        await asyncio.gather(*finalize._recovery.tasks())
+
+    assert completed == take_ids
+    assert listed == [(None, 4), (take_ids[3], 4), (take_ids[7], 4)]
+    assert len(reads) == len(set(reads)) == 11
+
+
+@pytest.mark.anyio
+async def test_finalize_jobs_share_slots_before_reading_raw_data():
+    reads = []
+    release, full = asyncio.Event(), asyncio.Event()
+
+    class Tracking(FakeStore):
+        async def load_finalize_source(self, take_id):
+            reads.append(take_id)
+            if len(reads) == 4:
+                full.set()
+            return source()
+
+    class Blocking(FakeClient):
+        async def finalize(self, request):
+            await release.wait()
+            return take_result()
+
+    client, store = Blocking(), Tracking()
+    for _ in range(7):
+        finalize.spawn(uuid.uuid7(), None, client=client, store=store)
+    try:
+        await asyncio.wait_for(full.wait(), 1)
+        assert len(reads) == 4
+    finally:
+        release.set()
+        await asyncio.gather(*finalize._running.tasks())
+    assert len(reads) == 7
+
+
+@pytest.mark.anyio
+async def test_shutdown_stops_recovery_and_unread_takes_resume_next_time():
+    take_ids = [uuid.uuid7() for _ in range(9)]
+    reads, completed = [], []
+    full = asyncio.Event()
+
+    class Backlog(FakeStore):
+        async def load_finalize_source(self, take_id):
+            reads.append(take_id)
+            if len(reads) == 4:
+                full.set()
+            return source()
+
+        async def save_take_result(self, take_id, reply, events):
+            completed.append(take_id)
+            self.finalizing.remove(take_id)
+            return True
+
+    class Slow(FakeClient):
+        async def finalize(self, request):
+            await asyncio.Event().wait()
+
+    class Ready(FakeClient):
+        async def finalize(self, request):
+            return take_result()
+
+    store = Backlog(finalizing=take_ids.copy())
+    await finalize.resume(client=Slow(), store=store)
+    await asyncio.wait_for(full.wait(), 1)
+    await finalize.stop_all(timeout=1)
+    assert len(reads) == 4 and completed == []
+    assert len(finalize._recovery) == len(finalize._running) == 0
+    assert store.failed == []
+
+    await resume_and_wait(client=Ready(), store=store)
+    assert completed == take_ids
+
+
+@pytest.mark.anyio
+async def test_a_failed_batch_read_keeps_pending_snapshots_and_next_sweep_retries():
+    take_ids = [uuid.uuid7() for _ in range(5)]
+    snap = snapshot(events=[EVENT])
+
+    class Broken(FakeStore):
+        async def finalizing_takes(self, stale_before=None, *, after=None, limit=100):
+            if after is not None:
+                raise db_down()
+            return await super().finalizing_takes(stale_before, after=after, limit=limit)
+
+    store = Broken(finalizing=take_ids)
+    finalize._pending[TAKE_ID] = (snap, store)
+    await resume_and_wait(client=FakeClient(), store=store)
+    assert finalize._pending[TAKE_ID][0] is snap
+    assert len(finalize._recovery) == 0
+
+    await resume_and_wait(client=FakeClient(), store=FakeStore())
+    assert TAKE_ID not in finalize._pending
+
+
+@pytest.mark.anyio
+async def test_cancelled_job_waiting_for_a_slot_keeps_snapshot_events(monkeypatch):
+    monkeypatch.setattr(finalize, "FINALIZE_CONCURRENCY", 1)
+    entered = asyncio.Event()
+
+    class Slow(FakeClient):
+        async def finalize(self, request):
+            entered.set()
+            await asyncio.Event().wait()
+
+    store, client = FakeStore(), Slow()
+    finalize.spawn(uuid.uuid7(), snapshot(), client=client, store=store)
+    await asyncio.wait_for(entered.wait(), 1)
+    finalize.spawn(TAKE_ID, snapshot(events=[EVENT]), client=client, store=store)
+    await asyncio.sleep(0)
+    await finalize.stop_all(timeout=1)
+    assert EVENT in store.events
+    assert store.failed == []
