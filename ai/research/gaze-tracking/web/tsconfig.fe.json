@@ -1,8 +1,9 @@
 {
-  // Compiles the engine, the camera view with its worker, and the conformance shim
-  // with the frontend's own compiler options (frontend/tsconfig.app.json): if this
-  // passes, src/engine, src/worker and src/camera can be copied into the frontend
-  // and type-check there unchanged.
+  // Compiles the engine, the camera view with its worker, and the frontend's own gaze code
+  // that uses them (workers/modelClassifier.ts, workers/gaze.worker.ts and what they import)
+  // with the frontend's compiler options (frontend/tsconfig.app.json). `@/vendor/gaze/*`
+  // resolves to this folder's src: if this passes, src/engine, src/worker and src/camera can
+  // be copied to frontend/src/vendor/gaze/ and the frontend code type-checks against them.
   "compilerOptions": {
     "target": "es2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
@@ -21,9 +22,16 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "@/vendor/gaze/*": ["./src/*"],
       "@fe/*": ["../../../../frontend/src/*"],
       "@/*": ["../../../../frontend/src/*"]
     }
   },
-  "include": ["src/engine", "src/worker", "src/camera", "test/fe-contract/conformance.ts"]
+  "include": [
+    "src/engine",
+    "src/worker",
+    "src/camera",
+    "../../../../frontend/src/workers/modelClassifier.ts",
+    "../../../../frontend/src/workers/gaze.worker.ts"
+  ]
 }
