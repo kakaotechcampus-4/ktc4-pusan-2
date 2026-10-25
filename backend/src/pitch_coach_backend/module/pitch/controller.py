@@ -16,6 +16,7 @@ from pitch_coach_backend.module.pitch.dto import (
     ScriptCreatedDTO,
     ScriptCreateDTO,
     ScriptDetailDTO,
+    StandardsSaveRequestDTO,
     StandardTextDTO,
     StandardTextResponseDTO,
     UploadPresentationDTO,
@@ -42,6 +43,7 @@ from pitch_coach_backend.module.pitch.service.script import (
 from pitch_coach_backend.module.pitch.service.standard import (
     add_pitch_standard_service,
     get_standard_detail,
+    save_pitch_standards_service,
 )
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
@@ -143,6 +145,16 @@ def post_pitch_standard_text(
     standard_text: StandardTextDTO
 ):
     return add_pitch_standard_service(db, pitch_id, standard_text)
+
+# 사용자가 고친 표시 기준 저장. 다시 분석한 문장을 새 버전으로 저장한다
+# (evaluation-criteria.md 12절)
+@router.post("/{pitch_id}/standards", response_model=StandardTextResponseDTO)
+def save_pitch_standards(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)],
+    standards: StandardsSaveRequestDTO,
+):
+    return save_pitch_standards_service(db, pitch_id, standards)
 
 
 # 대본 새 버전. 202: 원문 저장까지만 하고 돌려준다. 슬라이드 분리(AI)는 응답 뒤 백그라운드에서

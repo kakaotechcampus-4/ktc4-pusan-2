@@ -15,7 +15,7 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service import review as review_service
-from tests.test_take_ai_validation import coverage
+from tests.test_take_ai_validation import claim, coverage
 from tests.test_take_history import _pitch, _take
 from tests.test_take_review_response import REVIEW
 
@@ -61,8 +61,12 @@ def run_review(monkeypatch, db, take_id):
 
 def test_scored_take_starts_review_immediately(db_session, user_id, monkeypatch):
     take = make_ready(db_session, user_id, "SCORING")
-    assert coverage_service._save_confirmed(db_session, take.id, coverage(take.id)) is not None
-    assert coverage_service._conclude_coverage(db_session, take.id) == "READY_FOR_REVIEW"
+    requested_at = claim(db_session, take.id)
+    saved = coverage_service._save_confirmed(db_session, take.id, requested_at, coverage(take.id))
+    assert saved is not None
+    assert coverage_service._conclude_coverage(db_session, take.id, requested_at) == (
+        "READY_FOR_REVIEW"
+    )
     monkeypatch.setattr(
         review_service, "request_review_async", AsyncMock(return_value=review(take))
     )

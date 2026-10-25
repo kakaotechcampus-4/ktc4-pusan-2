@@ -1,16 +1,20 @@
+import type { ReactNode } from 'react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 import { useLogout, useSession } from './useSession';
 
 /**
  * @param bright 이름 · 로그아웃 줄을 아래 화면과 같은 밝은 지면(`pitch-create`)으로 둡니다.
  *   리허설 무대는 기본 지면이라 끕니다 — 켜면 무대 위에 밝은 띠가 생깁니다
+ * @param header 주면 이름 · 로그아웃 줄 대신 이것을 얹습니다 (홈 · Take 기록 · 마이페이지의 상단바)
  */
 export function RequireSession({
   showHeader = true,
   bright = true,
+  header,
 }: {
   showHeader?: boolean;
   bright?: boolean;
+  header?: ReactNode;
 }) {
   const session = useSession();
   const signOut = useLogout();
@@ -45,7 +49,8 @@ export function RequireSession({
 
   return (
     <>
-      {showHeader && (
+      {header}
+      {!header && showHeader && (
         <div
           className={`${bright ? 'pitch-create bg-greige text-ink ' : ''}flex items-center justify-end gap-4 px-6 py-3 text-sm`}
         >

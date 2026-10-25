@@ -99,6 +99,7 @@ def test_post_saves_items_in_order_and_returns_them(
     assert response.status_code == 200
     assert response.json() == {
         "pitch_id": str(pitch_id),
+        "version": 1,
         "standards": [{"standard": "추임새 5번 이하"}, {"standard": "대본 없이 발표하기"}],
         "except_standard": "발표 시간, 억양",
     }
@@ -132,6 +133,7 @@ def test_post_again_makes_next_version(
 
     assert response.status_code == 200
     assert response.json()["except_standard"] is None
+    assert response.json()["version"] == 2
     assert _saved(db_session, pitch_id)[-1] == (2, 1, "적절한 음량")
 
 

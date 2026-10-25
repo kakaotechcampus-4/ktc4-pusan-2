@@ -150,7 +150,7 @@ async def test_take_analysis_waits_for_a_total_slot(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(ai_slots, "BACKGROUND_LIMIT", 1)
     scored: list[uuid.UUID] = []
 
-    async def analyze(take_id: uuid.UUID, session_factory: Any) -> str:
+    async def analyze(take_id: uuid.UUID, session_factory: Any, *, takeover: bool) -> str:
         scored.append(take_id)
         return "SKIPPED"
 
@@ -159,7 +159,7 @@ async def test_take_analysis_waits_for_a_total_slot(monkeypatch: pytest.MonkeyPa
 
     async with ai_slots.background():
         # 코치 호출 같은 다른 백그라운드 호출이 자리를 다 쓰고 있다
-        scoring = asyncio.create_task(analysis_runner._score(take_id, None))
+        scoring = asyncio.create_task(analysis_runner._score(take_id, None, False))
         await asyncio.sleep(0.01)
         assert scored == []
 

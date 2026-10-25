@@ -20,7 +20,7 @@ from pitch_coach_backend.module.take.service import review as review_service
 
 logger = logging.getLogger(__name__)
 
-CONFIRMATION_WAIT = timedelta(minutes=10)
+CONFIRMATION_POLL_SEC = 2.0
 RUBRIC_POLL_SEC = 5.0
 RESUME_BATCH_SIZE = 4
 RESUME_READ_TIMEOUT_SEC = 10.0
@@ -77,19 +77,22 @@ async def _in_session[T](
     return await run_in_threadpool(call)
 
 
-async def _score(take_id: uuid.UUID, session_factory: SessionFactory) -> str:
+async def _score(take_id: uuid.UUID, session_factory: SessionFactory, restarted: bool) -> str:
     while True:
         # 채점 · 리뷰는 AI 호출 자리를 작업 전체에 쥔다. 작업 표식을 잡은 뒤에 자리를 기다리면 그
         # 사이 표식이 낡는다. 작업 안의 AI 호출은 하나씩이라 자리 하나로 충분하다
         async with ai_slots.background():
-            outcome = await coverage_service.analyze_script_coverage(take_id, session_factory)
+            # 다시 떴을 때는 앞 프로세스가 잡아 둔 채점 표식을 기한과 관계없이 이어받는다
+            outcome = await coverage_service.analyze_script_coverage(
+                take_id, session_factory, takeover=restarted
+            )
         if outcome != "RUBRIC_PENDING":
             return outcome
         await asyncio.sleep(RUBRIC_POLL_SEC)
 
 
 async def _run(take_id: uuid.UUID, session_factory: SessionFactory, restarted: bool) -> None:
-    outcome = await _score(take_id, session_factory)
+    outcome = await _score(take_id, session_factory, restarted)
     if outcome == "HELD":
         logger.warning("대본 전달도 병합이 실패해 리뷰를 보류한다 take=%s", take_id)
         return
@@ -99,20 +102,15 @@ async def _run(take_id: uuid.UUID, session_factory: SessionFactory, restarted: b
         _plan_next_take(pitch_id)
 
 
-def _confirmation_started_at(db: Session, take_id: uuid.UUID) -> datetime | None:
-    take = TakeRepository(db).get_take(take_id)
-    if take is None or take.status != "ANALYZING" or take.analysis_stage != "AWAITING_CONFIRMATION":
-        return None
-    return take.analysis_stage_at
+def _awaiting_confirmation(db: Session, take_id: uuid.UUID) -> bool:
+    return TakeRepository(db).awaiting_confirmation(take_id)
 
 
 async def _wait_for_confirmation(take_id: uuid.UUID, session_factory: SessionFactory) -> None:
-    started_at = await _in_session(session_factory, _confirmation_started_at, take_id)
-    if started_at is None:
-        return
-    delay = (started_at + CONFIRMATION_WAIT - datetime.now(UTC)).total_seconds()
-    if delay > 0:
-        await asyncio.sleep(delay)
+    # 답 · 건너뛰기는 확인 API 요청이 단계를 바꾼다. 단계가 바뀌거나 10분이 지날 때까지
+    # 짧게 다시 본다
+    while await _in_session(session_factory, _awaiting_confirmation, take_id):
+        await asyncio.sleep(CONFIRMATION_POLL_SEC)
 
 
 async def _review(

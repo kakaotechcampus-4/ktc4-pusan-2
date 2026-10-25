@@ -49,7 +49,7 @@ export function MyPage() {
   };
 
   return (
-    <InfoPage title="마이페이지">
+    <InfoPage title="마이페이지" logo={false}>
       <Card title="계정">
         <dl className="grid gap-3 text-sm sm:grid-cols-[8rem_1fr]">
           <dt className="text-stone">이름</dt>
