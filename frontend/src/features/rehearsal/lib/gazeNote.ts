@@ -19,6 +19,8 @@ export interface GazeNote {
 export function gazeNote(state: {
   /** 카메라 권한을 거부했습니다 */
   declined: boolean;
+  /** 카메라를 열지 못해 마이크만 열었습니다 */
+  noCamera: boolean;
   /** 카메라가 끊겼습니다 — 다시 꽂으면 됩니다 */
   cameraLost: boolean;
   /** 시선 기준이 없습니다 (새로고침하면 탭 메모리의 기준이 사라집니다) */
@@ -30,6 +32,9 @@ export function gazeNote(state: {
 }): GazeNote | null {
   if (state.declined || state.error === 'USER_DECLINED') {
     return { text: '카메라 권한이 없어 시선은 기록하지 않아요', alert: false };
+  }
+  if (state.noCamera) {
+    return { text: '카메라를 열지 못해 시선은 기록하지 않아요', alert: false };
   }
   // 끊기기 전 기록은 남습니다. 다시 연결되면 이어서 기록합니다
   if (state.cameraLost || state.error === 'CAMERA_LOST') {
