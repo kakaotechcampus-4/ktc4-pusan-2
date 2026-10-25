@@ -5,10 +5,10 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch import service
+from pitch_coach_backend.module.pitch.adapter.script_parser import ScriptParseError
 from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket, ScriptParseErrorCode
 from pitch_coach_backend.module.pitch.entity import Pitch, ScriptParseStatus, ScriptVersion
-from pitch_coach_backend.module.pitch.script_parser import ScriptParseError
+from pitch_coach_backend.module.pitch.service import script as script_service
 from tests.script_parse.conftest import (
     SCRIPT_TEXT,
     TARGET_MS,
@@ -124,7 +124,7 @@ def test_stale_pending_is_reported_as_expired_and_can_be_retried(
     pitch_id: uuid.UUID,
 ) -> None:
     script_id = _create_ok(client, pitch_id, auth_headers)
-    _age(db_session, script_id, service.PARSE_EXPIRE_AFTER.total_seconds() + 1)
+    _age(db_session, script_id, script_service.PARSE_EXPIRE_AFTER.total_seconds() + 1)
 
     body = _get(client, pitch_id, script_id, auth_headers).json()
     assert body["parse_status"] == "FAILED"
@@ -144,7 +144,7 @@ def test_pending_just_before_expiry_is_still_pending(
     pitch_id: uuid.UUID,
 ) -> None:
     script_id = _create_ok(client, pitch_id, auth_headers)
-    _age(db_session, script_id, service.PARSE_EXPIRE_AFTER.total_seconds() - 5)
+    _age(db_session, script_id, script_service.PARSE_EXPIRE_AFTER.total_seconds() - 5)
 
     assert _get(client, pitch_id, script_id, auth_headers).json()["parse_status"] == "PENDING"
     assert _reparse(client, pitch_id, script_id, auth_headers).status_code == 409
@@ -207,13 +207,13 @@ def test_old_job_cannot_overwrite_a_newer_attempt(
     assert new.requested_at != old.requested_at
 
     # 옛 작업의 성공도 실패도 반영되지 않는다
-    assert service.complete_parse(db_session, old, TWO_SLIDES) is ParseSaved.STALE
-    assert service.fail_parse(db_session, old, ScriptParseErrorCode.AI_ERROR) is False
+    assert script_service.complete_parse(db_session, old, TWO_SLIDES) is ParseSaved.STALE
+    assert script_service.fail_parse(db_session, old, ScriptParseErrorCode.AI_ERROR) is False
     assert _get(client, pitch_id, script_id, auth_headers).json()["parse_status"] == "PENDING"
 
     # 새 작업은 반영된다. 끝난 뒤에는 같은 작업이 다시 와도 무시된다 (중복 실행 방지)
-    assert service.complete_parse(db_session, new, TWO_SLIDES) is ParseSaved.APPLIED
-    assert service.fail_parse(db_session, new, ScriptParseErrorCode.AI_ERROR) is False
+    assert script_service.complete_parse(db_session, new, TWO_SLIDES) is ParseSaved.APPLIED
+    assert script_service.fail_parse(db_session, new, ScriptParseErrorCode.AI_ERROR) is False
     body = _get(client, pitch_id, script_id, auth_headers).json()
     assert body["parse_status"] == "DONE"
     assert len(body["slides"]) == 2
@@ -233,11 +233,11 @@ def test_expired_job_cannot_flip_failed_back_to_done(
     뒤집히면 FE 의 "다시 시도" 가 409 SCRIPT_ALREADY_PARSED 를 받는다.
     """
     script_id = _create_ok(client, pitch_id, auth_headers)
-    _age(db_session, script_id, service.PARSE_EXPIRE_AFTER.total_seconds() + 1)
+    _age(db_session, script_id, script_service.PARSE_EXPIRE_AFTER.total_seconds() + 1)
     late = _ticket(db_session, script_id)
 
-    assert service.complete_parse(db_session, late, TWO_SLIDES) is ParseSaved.STALE
-    assert service.fail_parse(db_session, late, ScriptParseErrorCode.AI_ERROR) is False
+    assert script_service.complete_parse(db_session, late, TWO_SLIDES) is ParseSaved.STALE
+    assert script_service.fail_parse(db_session, late, ScriptParseErrorCode.AI_ERROR) is False
 
     body = _get(client, pitch_id, script_id, auth_headers).json()
     assert (body["parse_status"], body["error_code"]) == ("FAILED", "PARSE_EXPIRED")

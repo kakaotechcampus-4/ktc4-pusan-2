@@ -7,7 +7,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch import service
+from pitch_coach_backend.module.pitch.adapter.script_parser import (
+    ParsedScript,
+    ParsedSlide,
+    ScriptParseError,
+)
 from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
@@ -15,11 +19,7 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptSlide,
     ScriptVersion,
 )
-from pitch_coach_backend.module.pitch.script_parser import (
-    ParsedScript,
-    ParsedSlide,
-    ScriptParseError,
-)
+from pitch_coach_backend.module.pitch.service import script as script_service
 from tests.script_parse.conftest import (
     SCRIPT_TEXT,
     TARGET_MS,
@@ -240,7 +240,7 @@ def test_parse_failure_is_failed_with_code(
     "content",
     [
         pytest.param("   \n\t ", id="blank"),
-        pytest.param("가" * (service.MAX_SCRIPT_CHARS + 1), id="too-many-chars"),
+        pytest.param("가" * (script_service.MAX_SCRIPT_CHARS + 1), id="too-many-chars"),
         # JSON 은 \u0000 을 허용하지만 PostgreSQL TEXT 는 NUL 을 넣지 못한다
         pytest.param("가\x00나", id="nul"),
     ],
@@ -298,7 +298,7 @@ def test_exactly_max_chars_is_accepted(
     auth_headers: dict[str, str],
     pitch_id: uuid.UUID,
 ) -> None:
-    script = "가" * service.MAX_SCRIPT_CHARS
+    script = "가" * script_service.MAX_SCRIPT_CHARS
 
     response = _create(client, pitch_id, auth_headers, content=script)
 

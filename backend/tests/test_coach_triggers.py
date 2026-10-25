@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.coach import dependencies as coach_dependencies
 from pitch_coach_backend.core.security import create_access_token
+from pitch_coach_backend.module.pitch.adapter.script_parser import ParsedScript
 from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket
 from pitch_coach_backend.module.pitch.entity import Pitch, ScriptVersion
-from pitch_coach_backend.module.pitch.script_parse_runner import ScriptParseRunner
-from pitch_coach_backend.module.pitch.script_parser import ParsedScript
+from pitch_coach_backend.module.pitch.service.script_parse_runner import ScriptParseRunner
 from tests.realtime.conftest import wait_until
 from tests.test_coach_session import FakeClient, FakeStore
 

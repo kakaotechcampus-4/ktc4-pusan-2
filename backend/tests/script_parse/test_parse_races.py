@@ -13,13 +13,13 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.pitch import service
+from pitch_coach_backend.module.pitch.adapter.script_parser import (
+    ScriptParseError,
+)
 from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
 from pitch_coach_backend.module.pitch.entity import Pitch, ScriptParseStatus, ScriptVersion
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.script_parser import (
-    ScriptParseError,
-)
+from pitch_coach_backend.module.pitch.service import script as script_service
 from tests.script_parse.conftest import FakeParser, _age, _create_ok, _get, _new_pitch, _reparse
 
 
@@ -87,7 +87,7 @@ def test_restart_parse_lets_only_one_of_two_win(
     _age(db_session, script_id, 3600)
     repo = PitchRepository(db_session)
     now = datetime.now(UTC)
-    expired_before = now - service.PARSE_EXPIRE_AFTER
+    expired_before = now - script_service.PARSE_EXPIRE_AFTER
 
     assert repo.restart_parse(script_id, now, expired_before) is True
     assert repo.restart_parse(script_id, now, expired_before) is False
@@ -128,7 +128,7 @@ def test_losing_a_retry_race_answers_in_progress(
     def other_retry(script_id: uuid.UUID) -> None:
         now = datetime.now(UTC)
         repo = PitchRepository(db_session)
-        _REAL_RESTART_PARSE(repo, script_id, now, now - service.PARSE_EXPIRE_AFTER)
+        _REAL_RESTART_PARSE(repo, script_id, now, now - script_service.PARSE_EXPIRE_AFTER)
 
     _race(monkeypatch, db_session, other_retry)
     response = _reparse(client, pitch_id, script_id, auth_headers)
@@ -206,7 +206,7 @@ def test_concurrent_script_creates_on_one_pitch_get_distinct_versions(
     def create(name: str) -> None:
         with Session(engine, expire_on_commit=False) as db:
             try:
-                created, _ = service.create_script_service(db, target, f"대본 {name}")
+                created, _ = script_service.create_script_service(db, target, f"대본 {name}")
                 results[name] = created.version
             except Exception as exc:  # 잠금이 없으면 여기로 온다
                 results[name] = exc

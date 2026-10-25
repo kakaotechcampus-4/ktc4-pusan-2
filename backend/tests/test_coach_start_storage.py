@@ -12,7 +12,6 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     PresentationVersion,
@@ -21,6 +20,7 @@ from pitch_coach_backend.module.pitch.entity import (
     StandardAnalyses,
     Standards,
 )
+from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.take.entity import (

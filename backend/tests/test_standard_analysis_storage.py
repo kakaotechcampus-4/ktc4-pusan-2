@@ -8,7 +8,7 @@ import httpx
 import pytest
 from sqlalchemy import select
 
-from pitch_coach_backend.module.pitch import service, standard_parser
+from pitch_coach_backend.module.pitch.adapter import standard_parser
 from pitch_coach_backend.module.pitch.entity import (
     Pitch,
     PresentationVersion,
@@ -18,6 +18,7 @@ from pitch_coach_backend.module.pitch.entity import (
 )
 from pitch_coach_backend.module.pitch.exception import StandardParseFailed
 from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.pitch.service import standard as standard_service
 from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take.entity import Take
 from tests import test_pitch_standards as base
@@ -151,8 +152,8 @@ def test_empty_versions_advance_without_changing_started_take(
     db_session.refresh(first)
     db_session.refresh(latest)
     assert first.standard_version == 1 and latest.standard_version == 3
-    assert service.criteria_for_version(db_session, pitch_id, 1)["script_used"] is True
-    assert service.criteria_for_version(db_session, pitch_id, 3) == {
+    assert standard_service.criteria_for_version(db_session, pitch_id, 1)["script_used"] is True
+    assert standard_service.criteria_for_version(db_session, pitch_id, 3) == {
         "display_criteria": [],
         "targets": [],
         "script_used": None,

@@ -205,7 +205,7 @@ def test_script_term_lookup_failure_still_connects(
     def broken(*args, **kwargs):
         raise RuntimeError("statement timeout")
 
-    monkeypatch.setattr(service.pitch_service, "stt_keyterm_candidates", broken)
+    monkeypatch.setattr(service.script_service, "stt_keyterm_candidates", broken)
 
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)

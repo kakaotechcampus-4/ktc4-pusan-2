@@ -9,14 +9,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.pitch import service
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
+from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
 
 @pytest.fixture(autouse=True)
 def s3_mock(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(service, "upload", lambda file, key, content_type=None: key)
-    monkeypatch.setattr(service, "generate_presigned_url", lambda key: f"https://fake/{key}")
+    monkeypatch.setattr(presentation_service, "upload", lambda file, key, content_type=None: key)
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
 
 
 @pytest.fixture
@@ -211,7 +211,7 @@ def test_file_over_the_size_limit_is_400(
     pdf: bytes,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(service, "MAX_PRESENTATION_BYTES", len(pdf) - 1)
+    monkeypatch.setattr(presentation_service, "MAX_PRESENTATION_BYTES", len(pdf) - 1)
 
     response = _upload(client, pitch_id, pdf, auth_headers)
 

@@ -15,7 +15,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.main import app
-from pitch_coach_backend.module.pitch import service
+from pitch_coach_backend.module.pitch.adapter.script_parser import ParsedScript, ParsedSlide
+from pitch_coach_backend.module.pitch.adapter.script_rubric import (
+    RUBRIC_PATH,
+    HttpRubricClient,
+    RubricCallError,
+    RubricReply,
+)
 from pitch_coach_backend.module.pitch.dependencies import get_script_parse_runner
 from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket
 from pitch_coach_backend.module.pitch.entity import (
@@ -26,15 +32,9 @@ from pitch_coach_backend.module.pitch.entity import (
     ScriptVersion,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
-from pitch_coach_backend.module.pitch.script_parse_runner import ScriptParseRunner
-from pitch_coach_backend.module.pitch.script_parser import ParsedScript, ParsedSlide
-from pitch_coach_backend.module.pitch.script_rubric import (
-    RUBRIC_PATH,
-    HttpRubricClient,
-    RubricCallError,
-    RubricReply,
-)
-from pitch_coach_backend.module.pitch.script_rubric_runner import ScriptRubricRunner
+from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.pitch.service.script_parse_runner import ScriptParseRunner
+from pitch_coach_backend.module.pitch.service.script_rubric_runner import ScriptRubricRunner
 
 pytestmark = pytest.mark.anyio
 
@@ -503,7 +503,7 @@ def test_same_reparse_reuses_stored_slides(db_session: Session, version_id: uuid
     ticket = _pending_parse(db_session, version_id)
 
     # 순서가 달라도 번호순으로 비교한다
-    saved = service.complete_parse(db_session, ticket, _parsed(*reversed(SLIDES)))
+    saved = script_service.complete_parse(db_session, ticket, _parsed(*reversed(SLIDES)))
 
     assert saved is ParseSaved.REUSED
     script = db_session.get(ScriptVersion, version_id)
@@ -526,7 +526,7 @@ def test_reused_reparse_keeps_the_finished_rubric_job(
     script.rubric_retry_used = True
     ticket = _pending_parse(db_session, version_id)
 
-    assert service.complete_parse(db_session, ticket, _parsed(*SLIDES)) is ParseSaved.REUSED
+    assert script_service.complete_parse(db_session, ticket, _parsed(*SLIDES)) is ParseSaved.REUSED
 
     script = db_session.get(ScriptVersion, version_id)
     assert (script.rubric_status, script.rubric_requested_at, script.rubric_retry_used) == (
@@ -539,7 +539,9 @@ def test_reused_reparse_keeps_the_finished_rubric_job(
 def test_different_reparse_is_not_applied(db_session: Session, version_id: uuid.UUID) -> None:
     ticket = _pending_parse(db_session, version_id)
 
-    saved = service.complete_parse(db_session, ticket, _parsed((1, "안녕하세요."), (2, "다른 말")))
+    saved = script_service.complete_parse(
+        db_session, ticket, _parsed((1, "안녕하세요."), (2, "다른 말"))
+    )
 
     assert saved is ParseSaved.MISMATCH
     script = db_session.get(ScriptVersion, version_id)

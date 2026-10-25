@@ -8,13 +8,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch import service
-from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket, ScriptParseErrorCode
-from pitch_coach_backend.module.pitch.script_parse_runner import ScriptParseRunner
-from pitch_coach_backend.module.pitch.script_parser import (
+from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ParsedScript,
     ScriptParseError,
 )
+from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket, ScriptParseErrorCode
+from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.pitch.service.script_parse_runner import ScriptParseRunner
 from tests.script_parse.conftest import (
     SCRIPT_TEXT,
     TARGET_MS,
@@ -77,7 +77,7 @@ def test_save_failure_ends_as_failed_not_pending(
     def broken_complete(*args: object) -> ParseSaved:
         raise ValueError("저장할 수 없는 값")
 
-    monkeypatch.setattr(service, "complete_parse", broken_complete)
+    monkeypatch.setattr(script_service, "complete_parse", broken_complete)
     script_id = _create_ok(client, pitch_id, auth_headers)
 
     body = _get(client, pitch_id, script_id, auth_headers).json()

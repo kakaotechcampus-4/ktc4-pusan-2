@@ -20,7 +20,7 @@ from typing import Any, Protocol
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from pitch_coach_backend.module.pitch.script_parser import _ssl_context
+from pitch_coach_backend.module.pitch.adapter.script_parser import _ssl_context
 
 logger = logging.getLogger(__name__)
 

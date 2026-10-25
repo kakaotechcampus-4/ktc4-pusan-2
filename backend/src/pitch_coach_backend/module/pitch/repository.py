@@ -102,9 +102,9 @@ class PitchRepository:
 
         보장 범위는 이 잠금을 먼저 잡는 경로까지다. 같은 번호를 매기는 경로가 잠금을 건너뛰면
         그 경로끼리는 여전히 같은 번호를 받을 수 있다.
-          - 잡는 곳: service.create_script_service (next_script_version),
-            service.upload_presentation_service (next_presentation_version),
-            service.add_pitch_standard_service (next_standard_version),
+          - 잡는 곳: service/script.create_script_service (next_script_version),
+            service/presentation.upload_presentation_service (next_presentation_version),
+            service/standard.add_pitch_standard_service (next_standard_version),
             take/service.create_take_service (next_take_number)
         pitch 안에서 max + 1 로 번호를 매기는 경로에 잠금을 걸면 위 목록도 같이 고친다.
 

@@ -16,7 +16,6 @@ from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import SessionLocal
-from pitch_coach_backend.module.pitch import service as pitch_service
 from pitch_coach_backend.module.pitch.entity import ScriptParseStatus
 from pitch_coach_backend.module.pitch.exception import (
     NonExistentPitch,
@@ -26,6 +25,7 @@ from pitch_coach_backend.module.pitch.exception import (
     SlideCountMismatch,
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.pitch.service import standard as standard_service
 from pitch_coach_backend.module.take import coach_service
 from pitch_coach_backend.module.take.ai_response import (
     CoverageCallError,
@@ -411,7 +411,7 @@ def _build_previous_recurring_issues(
     return previous_review.get("recurring_issues", []) if previous_review else []
 
 def _build_user_criteria(db: Session, take: Take) -> UserCriteriaDTO | None:
-    criteria = pitch_service.criteria_for_version(db, take.pitch_id, take.standard_version)
+    criteria = standard_service.criteria_for_version(db, take.pitch_id, take.standard_version)
     return UserCriteriaDTO.model_validate(criteria) if criteria is not None else None
 
 def build_review_request(db: Session, take_id: uuid.UUID) -> ReviewRequestDTO:

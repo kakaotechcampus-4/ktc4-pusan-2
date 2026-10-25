@@ -1,4 +1,4 @@
-"""AI 실시간 코치 호출. DB 를 모른다 (module/pitch/script_parser.py 와 같은 자리).
+"""AI 실시간 코치 호출. DB 를 모른다 (module/pitch/adapter/script_parser.py 와 같은 자리).
 
     BE ──POST /coach/plan      (백그라운드, LLM)       ──▶ AI
     BE ──POST /coach/evaluate  (발표 중 metrics 마다)  ──▶ AI

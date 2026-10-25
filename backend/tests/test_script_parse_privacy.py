@@ -9,9 +9,12 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
+from pitch_coach_backend.module.pitch.adapter.script_parser import (
+    HttpScriptParser,
+    ScriptParseError,
+)
 from pitch_coach_backend.module.pitch.dto import ParseTicket
-from pitch_coach_backend.module.pitch.script_parse_runner import ScriptParseRunner
-from pitch_coach_backend.module.pitch.script_parser import HttpScriptParser, ScriptParseError
+from pitch_coach_backend.module.pitch.service.script_parse_runner import ScriptParseRunner
 
 PRIVATE = "PRIVATE_SCRIPT_AUDIT_MARKER"
 

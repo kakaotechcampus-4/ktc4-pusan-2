@@ -21,8 +21,8 @@ from sqlalchemy import select
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.s3 import get_s3
+from pitch_coach_backend.module.pitch.adapter.presentation_file import count_pdf_pages
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
-from pitch_coach_backend.module.pitch.presentation_file import count_pdf_pages
 
 # 이보다 큰 PDF 는 메모리 대신 임시 파일에 받는다
 SPOOL_MAX_BYTES = 8 * 1024 * 1024

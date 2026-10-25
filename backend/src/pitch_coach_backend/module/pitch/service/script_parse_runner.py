@@ -14,7 +14,7 @@
 실패는 밖으로 던지지 않는다. 응답은 이미 나갔으니 받을 사람이 없고, 던지면 ASGI 로그만 남는다.
 AI 실패는 FAILED 로 저장한다. 결과 저장이 실패하면(값 문제 등) 새 세션으로 FAILED(INTERNAL_ERROR)
 를 한 번 더 시도한다 — 안 그러면 FE 가 90초 동안 "분석 중"을 보다가 엉뚱한 PARSE_EXPIRED 를 받는다.
-그마저 실패하면(DB 장애) 로그만 남긴다. 그 행은 PENDING 으로 남지만 service.PARSE_EXPIRE_AFTER 가
+그마저 실패하면(DB 장애) 로그만 남긴다. 그 행은 PENDING 으로 남지만 script.PARSE_EXPIRE_AFTER 가
 지나면 FAILED(PARSE_EXPIRED) 로 보여 재시도할 수 있다.
 """
 
@@ -26,14 +26,14 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
-from pitch_coach_backend.module.pitch import service as pitch_service
-from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket, ScriptParseErrorCode
-from pitch_coach_backend.module.pitch.script_parser import (
+from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ParsedScript,
     ScriptParseError,
     ScriptParser,
 )
-from pitch_coach_backend.module.pitch.script_rubric_runner import ScriptRubricRunner
+from pitch_coach_backend.module.pitch.dto import ParseSaved, ParseTicket, ScriptParseErrorCode
+from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.pitch.service.script_rubric_runner import ScriptRubricRunner
 
 logger = logging.getLogger(__name__)
 
@@ -116,13 +116,13 @@ class ScriptParseRunner:
     def _complete(self, ticket: ParseTicket, parsed: ParsedScript) -> ParseSaved:
         db = self._session_factory()
         try:
-            return pitch_service.complete_parse(db, ticket, parsed)
+            return script_service.complete_parse(db, ticket, parsed)
         finally:
             db.close()
 
     def _fail(self, ticket: ParseTicket, code: ScriptParseErrorCode) -> bool:
         db = self._session_factory()
         try:
-            return pitch_service.fail_parse(db, ticket, code)
+            return script_service.fail_parse(db, ticket, code)
         finally:
             db.close()

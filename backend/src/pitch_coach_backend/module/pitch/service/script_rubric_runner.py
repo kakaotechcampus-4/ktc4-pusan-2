@@ -27,14 +27,14 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core.database import SessionLocal
-from pitch_coach_backend.module.pitch import service as pitch_service
-from pitch_coach_backend.module.pitch.dto import RubricTicket
-from pitch_coach_backend.module.pitch.script_rubric import (
+from pitch_coach_backend.module.pitch.adapter.script_rubric import (
     RETRYABLE_SLIDE_CODES,
     RubricCallError,
     RubricClient,
     RubricReply,
 )
+from pitch_coach_backend.module.pitch.dto import RubricTicket
+from pitch_coach_backend.module.pitch.service import script as script_service
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class ScriptRubricRunner:
         하지 않는다.
         """
         try:
-            ticket = await self._db(pitch_service.begin_rubric, script_version_id, requested_at)
+            ticket = await self._db(script_service.begin_rubric, script_version_id, requested_at)
         except Exception:
             logger.exception("평가 기준 작업 시작 실패 script_version_id=%s", script_version_id)
             return
@@ -63,7 +63,7 @@ class ScriptRubricRunner:
     async def resume_all(self) -> None:
         """BE 가 뜰 때 부른다. PENDING 으로 남은 작업을 하나씩 이어 간다."""
         try:
-            tickets = await self._db(pitch_service.resume_rubrics)
+            tickets = await self._db(script_service.resume_rubrics)
         except Exception:
             logger.exception("남은 평가 기준 작업을 읽지 못했다")
             return
@@ -78,7 +78,7 @@ class ScriptRubricRunner:
                 await self._resume(ticket)
             else:
                 await self._first(ticket)
-            status = await self._db(pitch_service.finish_rubric, ticket)
+            status = await self._db(script_service.finish_rubric, ticket)
         except Exception:
             logger.exception(
                 "평가 기준 작업 실패, PENDING 으로 남김 script_version_id=%s",
@@ -101,7 +101,7 @@ class ScriptRubricRunner:
         try:
             reply = await self._call(ticket, None, request_id)
         except RubricCallError as exc:
-            if not exc.retryable or not await self._db(pitch_service.use_rubric_retry, ticket):
+            if not exc.retryable or not await self._db(script_service.use_rubric_retry, ticket):
                 return
             try:
                 reply = await self._call(ticket, None, request_id)
@@ -119,7 +119,7 @@ class ScriptRubricRunner:
             and number in ticket.missing
             and number not in reply.rubrics
         )
-        if not retry or not await self._db(pitch_service.use_rubric_retry, ticket):
+        if not retry or not await self._db(script_service.use_rubric_retry, ticket):
             return
         try:
             again = await self._call(ticket, retry, uuid.uuid4().hex)
@@ -132,7 +132,7 @@ class ScriptRubricRunner:
         """앞 작업이 어디까지 보냈는지 모르니 남은 한도(재시도)로 기준이 없는 장만 다시 부른다."""
         if ticket.retry_used or not ticket.missing:
             return
-        if not await self._db(pitch_service.use_rubric_retry, ticket):
+        if not await self._db(script_service.use_rubric_retry, ticket):
             return
         numbers = None if len(ticket.missing) == len(ticket.slides) else ticket.missing
         try:
@@ -172,7 +172,7 @@ class ScriptRubricRunner:
         return reply
 
     async def _save(self, ticket: RubricTicket, reply: RubricReply) -> bool:
-        return await self._db(pitch_service.save_rubrics, ticket, reply.rubrics, reply.meta)
+        return await self._db(script_service.save_rubrics, ticket, reply.rubrics, reply.meta)
 
     async def _db(self, step: Callable[..., Any], *args: Any) -> Any:
         """service 함수 하나를 짧은 세션으로 threadpool 에서 돌린다."""

@@ -11,9 +11,7 @@ from typing import Any
 import httpx
 import pytest
 
-from pitch_coach_backend.module.pitch import service
-from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
-from pitch_coach_backend.module.pitch.script_parser import (
+from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ATTEMPT_TIMEOUT_SEC,
     DEFAULT_ATTEMPTS,
     DEFAULT_RETRY_DELAY_SEC,
@@ -22,6 +20,8 @@ from pitch_coach_backend.module.pitch.script_parser import (
     ParseMeta,
     ScriptParseError,
 )
+from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
+from pitch_coach_backend.module.pitch.service import script as script_service
 
 BASE_URL = "http://ai.test"
 
@@ -366,4 +366,4 @@ def test_worst_case_parse_time_is_shorter_than_expiry() -> None:
     worst = ATTEMPT_TIMEOUT_SEC * DEFAULT_ATTEMPTS + DEFAULT_RETRY_DELAY_SEC * (
         DEFAULT_ATTEMPTS - 1
     )
-    assert worst < service.PARSE_EXPIRE_AFTER.total_seconds()
+    assert worst < script_service.PARSE_EXPIRE_AFTER.total_seconds()

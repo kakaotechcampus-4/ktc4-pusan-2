@@ -24,7 +24,7 @@ pytestmark = pytest.mark.usefixtures("_clean_redis", "_use_test_redis")
 @pytest.fixture
 def deleted_prefixes(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """S3 에서 지우라고 한 prefix. conftest 의 막아 둔 함수를 기록하는 것으로 바꾼다."""
-    from pitch_coach_backend.module.pitch import service as pitch_service
+    from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 
     prefixes: list[str] = []
     monkeypatch.setattr(pitch_service, "delete_prefix", prefixes.append)
@@ -90,8 +90,8 @@ def test_access_token_stops_working_after_withdrawal(
 def test_withdraw_does_not_touch_other_users(
     client: TestClient, db_session: Session, fake_google: dict[str, Any], user_id: uuid.UUID
 ) -> None:
-    from pitch_coach_backend.module.pitch import service as pitch_service
     from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO
+    from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 
     other_pitch_id = pitch_service.add_pitch_service(
         db_session, user_id, PitchSaveRequestDTO(title="남의 발표", time_limit_sec=300)

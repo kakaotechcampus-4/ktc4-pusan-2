@@ -32,7 +32,7 @@ from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.core.exceptions import UnauthorizedException
 from pitch_coach_backend.core.security import decode_access_token
-from pitch_coach_backend.module.pitch import service as pitch_service
+from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.take import service as take_service
 from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.realtime import take_stream
@@ -276,7 +276,7 @@ class RealtimeSession:
                 # 예외를 흘리면 연결이 1011 로 닫히고 FE 재연결이 같은 실패를 되풀이한다.
                 # 실패한 트랜잭션은 아래 rollback() 이 정리한다
                 try:
-                    terms = pitch_service.stt_keyterm_candidates(
+                    terms = script_service.stt_keyterm_candidates(
                         self.db, take.pitch_id, take.script_version_id
                     )
                 except Exception:

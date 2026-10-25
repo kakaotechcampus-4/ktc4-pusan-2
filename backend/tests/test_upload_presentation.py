@@ -13,22 +13,23 @@ from fastapi import UploadFile
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch import service
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO, UploadPresentationDTO
+from pitch_coach_backend.module.pitch.service import pitch as pitch_service
+from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
 
 @pytest.fixture
 def upload_mock(monkeypatch) -> MagicMock:
     mock = MagicMock(side_effect=lambda file, key, content_type=None: key)
     # upload 함수를 mock으로 대체
-    monkeypatch.setattr(service, "upload", mock) 
+    monkeypatch.setattr(presentation_service, "upload", mock) 
     # generate_presigned_url 함수를 람다함수로 생성하도록 대체
-    monkeypatch.setattr(service, "generate_presigned_url", lambda key: f"https://fake/{key}") 
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}") 
     return mock
 
 
 def _make_pitch(db: Session, user_id: uuid.UUID, title: str = "기존 발표") -> uuid.UUID:
-    return service.add_pitch_service(
+    return pitch_service.add_pitch_service(
         db,
         user_id,
         PitchSaveRequestDTO(
@@ -47,7 +48,7 @@ def test_upload_presentation_service(
     pdf_real_file = UploadFile(filename="dummy_file.pdf", file=BytesIO(make_pdf(1)))
     dto = UploadPresentationDTO(presentation_file=pdf_real_file)
 
-    result = service.upload_presentation_service(db_session, pitch_id, dto)
+    result = presentation_service.upload_presentation_service(db_session, pitch_id, dto)
 
     expected_file_key = f"pitches/{pitch_id}/presentations/1.pdf"
     upload_mock.assert_called_once_with(
@@ -81,8 +82,8 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
             time.sleep(0.3)
         return key
 
-    monkeypatch.setattr(service, "upload", slow_upload)
-    monkeypatch.setattr(service, "generate_presigned_url", lambda key: f"https://fake/{key}")
+    monkeypatch.setattr(presentation_service, "upload", slow_upload)
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
 
     with Session(engine) as setup:
         user = User(email=f"{uuid.uuid4()}@example.com", name="동시 업로드")
@@ -101,7 +102,7 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
         )
         with Session(engine, expire_on_commit=False) as db:
             try:
-                results[name] = service.upload_presentation_service(db, target, dto)
+                results[name] = presentation_service.upload_presentation_service(db, target, dto)
             except Exception as exc:  # 잠금이 없으면 여기로 온다
                 results[name] = exc
 

@@ -15,10 +15,14 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.main import app
+from pitch_coach_backend.module.pitch.adapter.script_parser import (
+    ParsedScript,
+    ParsedSlide,
+    ParseMeta,
+)
 from pitch_coach_backend.module.pitch.dependencies import get_script_parse_runner
 from pitch_coach_backend.module.pitch.entity import ScriptVersion
-from pitch_coach_backend.module.pitch.script_parse_runner import ScriptParseRunner
-from pitch_coach_backend.module.pitch.script_parser import ParsedScript, ParsedSlide, ParseMeta
+from pitch_coach_backend.module.pitch.service.script_parse_runner import ScriptParseRunner
 
 SCRIPT_TEXT = "슬라이드 1:\n안녕하세요. SeatFlow 입니다.\n\n슬라이드 2:\n감사합니다."
 # _new_pitch 의 발표 제한 시간 600초

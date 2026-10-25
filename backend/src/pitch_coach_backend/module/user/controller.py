@@ -7,7 +7,7 @@ from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth.controller import clear_session_cookies
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
-from pitch_coach_backend.module.pitch.service import (
+from pitch_coach_backend.module.pitch.service.pitch import (
     delete_pitch_files,
     get_pitch_ids_of_user,
     get_take_ids_of_user,
