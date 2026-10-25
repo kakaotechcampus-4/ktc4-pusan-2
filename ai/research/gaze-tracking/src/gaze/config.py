@@ -3,16 +3,12 @@
 - `GazeConfig` — 서버 판정 모듈(`judge` · `summarize` · `criteria`)의 기준값. 서버 판정 기준값은
   이 클래스 한 곳에만 둔다(gaze-tracking.md 4-3). 값을 바꾸면 `criteria_version` 의 해시가 바뀐다.
   모두 초기값이고 실측으로 고른 값이 아니다(gaze-tracking.md 13절).
-- `EvidenceConfig` — 옛 서버 코어(`evaluate_gaze` 등)와 기준 구현의 1초 나누기가 함께 쓰는 값.
-  research 에서는 configs/evidence.yaml 이 덮어쓴다(gaze_lab.config.load_config). 옛 코어를 정리하면
-  1초 나누기 값만 gaze_lab 으로 옮긴다.
 
-원본(EvidenceConfig): ai/archive/workspaces/jewon-kim/gaze-tracking/v1/local/ai/src/vision/config.py
+1초 기록을 만드는 값(1초 길이 · 프레임 수 · 득표율)은 브라우저 엔진의 값이라 여기 없다
+(configs/evidence.yaml → gaze_lab.config.EvidenceConfig → web 의 defaults.generated.ts).
 """
 
 from __future__ import annotations
-
-from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -90,47 +86,3 @@ class GazeConfig(BaseModel):
 
 
 DEFAULT = GazeConfig()
-
-
-@dataclass
-class EvidenceConfig:
-    """Gaze evidence for the coach and review agents (``gaze.core``).
-
-    Frame decisions are cut into fixed slices (one record per second by
-    default), the slices form a timeline, and the timeline is read as issues in
-    the agents' common evaluator format, take summaries and intervention
-    outcomes.  Every number here is an initial value, not a measured one.
-    """
-
-    #: Slice length and how a slice is decided from its frames.
-    slice_ms: int = 1000
-    min_frames_per_slice: int = 4
-    slice_vote_threshold: float = 0.6
-    #: Windows the realtime stats are read over (the coach's "recent 5-30 s").
-    short_window_ms: int = 5000
-    long_window_ms: int = 30000
-    #: A continuous run must last ``*_min_ms`` to be an issue; severity reaches
-    #: 1.0 at ``*_full_ms``.  Script reading is the most expected, so the most
-    #: tolerated; looking away the least.
-    script_min_ms: int = 3000
-    script_full_ms: int = 10000
-    screen_min_ms: int = 5000
-    screen_full_ms: int = 15000
-    away_min_ms: int = 2000
-    away_full_ms: int = 8000
-    #: Eye contact below this share of the measured time over the long window.
-    low_eye_contact_ratio: float = 0.30
-    low_eye_contact_min_measured_ms: int = 15000
-    #: The gaze is not usable when, over the short window, the measured share
-    #: or the mean condition reliability falls below these.
-    unmeasurable_coverage: float = 0.5
-    unmeasurable_reliability: float = 0.5
-    #: Runs shorter than this are not reported as segments.
-    segment_min_ms: int = 1000
-    #: Intervention outcome: the target ratio over ``before_ms`` before the
-    #: feedback against ``after_ms`` starting ``delay_ms`` after it.
-    outcome_before_ms: int = 5000
-    outcome_delay_ms: int = 5000
-    outcome_after_ms: int = 5000
-    #: The ratio must move the right way by this much to call it effective.
-    outcome_min_change: float = 0.2

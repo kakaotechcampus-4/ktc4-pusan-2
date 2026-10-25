@@ -1,7 +1,7 @@
 # gaze-tracking (시선)
 
 웹캠으로 발표자가 **카메라(청중) · 화면 · 대본 · 그 밖** 중 어디를 보는지 판정하고,
-그 기록으로 코치 · 리뷰 에이전트가 읽을 **시선 이슈와 테이크 요약**을 만드는 기능입니다.
+그 기록으로 코치가 읽을 **1초 판정 결과(시선 문제 · 지표)**와 리뷰가 읽을 **Take 시선 지표**를 만드는 기능입니다.
 
 판정은 **사용자 브라우저 안에서(온디바이스)** 돕니다. 카메라 영상 · 얼굴 랜드마크 · 얼굴 측정값은 기기를 떠나지 않고,
 서버에는 **1초 기록**(1초마다 상태 하나, 필드 8개)만 갑니다.
@@ -9,13 +9,14 @@
 | | |
 |---|---|
 | 담당 | jewon-kim |
-| 기능 버전 | 서버 코어 `1.1` (`src/gaze/version.py`), 브라우저 엔진 `gaze_v1.1.0+head_pose+reference_anchor_v1` |
+| 기능 버전 | 서버 판정 모듈 `gaze-1.2` (`src/gaze/version.py`), 브라우저 엔진 `gaze_v1.1.0+head_pose+reference_anchor_v1` |
 | 판정 신호 | 고개 방향 (MediaPipe Face Landmarker의 변환 행렬). 눈 기반 백본은 비교 실험용으로 보관 |
 | 상태 | 테스트 영상 · 합성 얼굴로만 검증했습니다. **실제 발표자 녹화로 정확도를 잰 적은 아직 없습니다** |
 | 설계 | 엔진 계약 · 1초 기록 · 서버 판정 · 배포 → [`docs/ai/features/gaze-tracking.md`](../../../docs/ai/features/gaze-tracking.md) |
 
 > `ai/archive/workspaces/jewon-kim/gaze-tracking/v1/local/`을 구조를 바꿔 옮긴 프로젝트입니다.
-> 판정 로직은 같고, 같은 입력이면 archive와 결과가 같습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
+> 브라우저 엔진 · 기준 구현의 판정 로직은 옮길 때와 같고 같은 입력이면 archive와 결과가 같습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
+> 서버 판정 모듈(`src/gaze/`)은 기능 문서에 맞춰 다시 만들었습니다([4-4](#4-4-코치와-이어지는-곳--연구용-대역과-달라진-판정)).
 > 알고리즘을 어떻게 유도했는지(좌표계 · 보정 · 조건 감시 등)는 archive의 `v1/README.md`에 자세히 있습니다.
 
 ## 목차
@@ -43,10 +44,11 @@
 | 보정 | 편한 자세로 화면 중앙 → 렌즈 → 대본을 차례로 봄. 사용자마다 기준점 3개 | 브라우저 |
 | 실시간 판정 | 프레임마다 고개 방향을 기준점과 비교해 CAMERA / SCREEN / BOTTOM / OTHER(+ 8방향) / UNCERTAIN | 브라우저 (초당 8프레임) |
 | 1초 기록 | 1초 동안의 프레임을 다수결로 모아 상태 하나. 재지 못한 1초는 UNMEASURED | 브라우저 → 서버 |
-| 코치 이슈 | 지금 대본 · 화면 · 다른 곳을 오래 보는지, 눈맞춤이 적은지, 측정할 수 없는지 | 서버 |
-| 리뷰 요약 | 테이크 전체의 상태별 시간 · 비율 · 구간 · 문제 구간, 이전 테이크와 차이, 피드백 전후 효과 | 서버 |
+| 1초 판정 | 최근 30초 기록과 발화 시간으로 상태 · 응시 비율 · 지금 이어지는 응시 · 대본 의존을 재고 다섯 시선 문제를 판정 (`judge`) | 서버 (코치가 요청마다 부름) |
+| Take 지표 | 장 · Take 동안 센 몫으로 청중 · 화면 · 대본 · 그 밖 비율, 대본 의존, 측정 비율 (`summarize`), 다섯 문제의 판정 기준 (`criteria`) | 서버 (코치가 장 끝 · Take 끝에 부름) |
 
-비율은 모두 **측정된 시간**(판정된 4개 상태)으로 나눕니다. 재지 못한 시간이 "청중을 안 봤다"로 읽히지 않게 하기 위해서입니다.
+응시 비율은 **측정된 시간**(판정된 4개 상태)으로 나눕니다. 재지 못한 시간이 "청중을 안 봤다"로 읽히지 않게 하기 위해서입니다.
+대본 의존 비율(`reading_ratio`)은 말한 시간으로, 측정 비율(`measured_ratio`)은 전체 시간으로 나눕니다.
 측정할 수 없으면 `GAZE_UNMEASURABLE`(시선 피드백 보류 신호)을 냅니다. 재지 못한 시간에 틀린 시선 피드백을 하지 않기 위해서이고, 발표는 그대로 이어집니다.
 
 ---
@@ -58,7 +60,7 @@
 | 덩어리 | 폴더 | 하는 일 | 나중에 |
 |---|---|---|---|
 | **TS 엔진** | `web/src/engine/` | 프레임 → 준비 점검 · 고개 원 · 보정 · 프레임 판정 · 1초 기록 (Web Worker 안) | `frontend/src/workers/gaze/engine/`로 폴더째 |
-| **서버 코어** | `src/gaze/` | 1초 기록 → 코치 이슈 · 테이크 요약 · 비교 · 개입 효과 | `ai/service`의 `features/gaze/`로 폴더째 |
+| **서버 판정 모듈** | `src/gaze/` | 1초 기록 → 1초 판정 결과(`judge`) · Take 지표(`summarize`) · 판정 기준(`criteria`) | `ai/service`의 `features/gaze/`로 폴더째 |
 | **Python 기준 구현** | `src/gaze_lab/` | 같은 판정의 Python 판 + 데이터셋 · 평가 · 실험. TS 엔진의 임계값 · 기준 답을 만든다 | research에 남음 |
 
 ```
@@ -73,9 +75,9 @@ tools/export_config.py · make_fixtures.py  ──생성──▶  web/src/engin
    기기 밖으로 나가는 것은 1초 기록뿐입니다 ([7장](#7-얼굴-데이터와-예외-처리)). 테스트로 막습니다.
 2. **막지 않는다.** 시선은 정보를 얻으려는 기능이지 발표를 통제하는 기능이 아닙니다. 조건이 나쁘면 "측정 못 함"으로 남기고,
    발표는 어떤 경우에도 멈추지 않습니다. 이상한 1초 기록은 그 1초만 버립니다.
-3. **임계값 원본은 하나다.** `configs/*.yaml`이 원본입니다. TS는 생성된 `defaults.generated.ts`만 읽고,
-   서버 코어 기본값은 YAML과 같은지 테스트로 묶습니다. 테스트 사진 하나에 맞춰 임계값을 바꾸지 않습니다(과적합).
-4. **경계는 테스트로.** 서버 코어는 상대 import와 허용한 라이브러리(pydantic 등)만 쓰고 파일 · 네트워크 · 환경변수를 쓰지 않습니다.
+3. **임계값 원본은 하나다.** 엔진 임계값은 `configs/*.yaml`이 원본이고 TS는 생성된 `defaults.generated.ts`만 읽습니다.
+   서버 판정 기준값은 `src/gaze/config.py`에만 두고 YAML에는 두지 않습니다(테스트로 막음). 테스트 사진 하나에 맞춰 임계값을 바꾸지 않습니다(과적합).
+4. **경계는 테스트로.** 서버 판정 모듈은 상대 import와 허용한 라이브러리(pydantic 등)만 쓰고 파일 · 네트워크 · 환경변수를 쓰지 않습니다.
    TS 엔진은 자기 폴더와 MediaPipe만 import하고, DOM 없이(Worker 전역만) 컴파일됩니다.
 
 ---
@@ -94,25 +96,26 @@ gaze-tracking/
 ├── artifacts/                                   모델 파일 자리 (git 밖). manifest(*.json)만 커밋
 ├── outputs/                                     실행 결과 (git 밖)
 ├── src/
-│   ├── gaze/                                    서버 코어
+│   ├── gaze/                                    서버 판정 모듈 (+ examples/ 계약 예시)
 │   └── gaze_lab/                                Python 기준 구현 · 평가
 ├── experiments/                                 비교 실험 2개 (녹화 데이터 필요)
 ├── tools/                                       데모 · 자산 받기 · 생성기 · 유도 스크립트
 ├── tests/
-│   ├── unit/                                    서버 코어 테스트 (코어와 함께 service로 간다)
+│   ├── unit/                                    서버 판정 모듈 테스트 (모듈과 함께 service로 간다)
 │   ├── lab/                                     기준 구현 · 평가 · 도구 · 생성 파일 최신 검사
 │   └── fixtures/                                테스트 얼굴의 출처 · 해시 (사진은 local/, git 밖)
 └── web/                                         브라우저: TS 엔진 · Worker · 카메라 화면 · 데모 (Node 24)
 ```
 
-### 3-2. 서버 코어 `src/gaze/`
+### 3-2. 서버 판정 모듈 `src/gaze/`
 
 | 파일 | 하는 일 |
 |---|---|
-| `core.py` | `GazeSample`(1초 기록), `GazeTimeline`(창 통계 · 연속 구간), `evaluate_gaze`(코치 이슈), `take_summary`, `compare_summaries`, `intervention_outcome`, 서버 입구의 `normalize_samples`(정렬 · 중복 제거 · 빈 시간을 측정 못 함으로) |
-| `schemas.py` | 입출력 계약(pydantic): 1초 기록 `GazeSampleRecord`와 `parse_records`(읽을 수 없는 기록은 그 1초만 버림), 이슈 · 요약 · 비교 · 개입 효과 모델 |
-| `config.py` | `EvidenceConfig`: 창 길이 · 이슈 임계값 (`configs/evidence.yaml`과 같은 값) |
-| `version.py` | 기능 버전. 출력의 의미가 바뀌면 올린다 |
+| `core.py` | `judge`(1초 기록 읽기 → 타임라인 → 새 몫 `tally` · 지표 · 상태 · `measurable` · 다섯 문제), `summarize`(장 · Take 지표), `criteria`(문제마다 지표 · 방향 · 기준 · 늦게 잡히는 폭), `criteria_version` |
+| `schemas.py` | 입출력 계약(pydantic): 입력 `GazeInput`(1초 기록 `GazeRecord` · 발화 시간 · 커서), 출력 `JudgmentResult` · `GazeSummary` · `IssueCriteria`(공통 결과 모양을 복사해 둠) |
+| `config.py` | `GazeConfig`: 판정 기준값(창 · 이어짐 기준 · 비율 · 측정 불가 · 시작 직후 억제 · 말한 1초 · 대본 의존 구간). 값의 해시가 `criteria_version`에 들어간다 |
+| `version.py` | 기능 버전 `gaze-1.2`. 출력의 의미가 바뀌면 올린다 |
+| `examples/` | `judge` 입력 · 출력 8쌍(판정 창 30초 전체), `summarize` 3쌍, `criteria.json`. `tools/make_examples.py`가 출력을 만든다 |
 
 ### 3-3. Python 기준 구현 `src/gaze_lab/`
 
@@ -124,7 +127,7 @@ gaze-tracking/
 | `calibration/` | 3점 보정: 기준점 분류기 · 게이지 · 품질 (LR은 비교용) | `reference.ts` · `gauge.ts` |
 | `runtime/` | `VisionSession`(전체 흐름) · 준비 점검 · 고개 원 · 조건 감시 · 카메라 배치 · 버전 | `engine.ts` · `preconditions.ts` · `sweep.ts` · `condition.ts` · `placement.ts` |
 | `temporal/` | `GAZE_STATE` 이벤트 평활 | 없음 (1초 다수결은 FE) |
-| `evidence/gaze.py` | 프레임 판정 → 1초 기록(`GazeSlicer`), 세션 기록기. 1초 기록을 읽는 부분은 `gaze.core`를 다시 내보냄 | `evidence.ts` |
+| `evidence/gaze.py` | 프레임 판정 → 1초 기록(`GazeSample` · `GazeSlicer`), 세션 기록기(1초 기록을 서버 모듈 `judge` · `summarize`로 읽음) | `evidence.ts` |
 | `data/` · `evaluation/` | 라벨 · 분할 · 특징 테이블, 지표 · 릴리스 게이트 · 평가 CLI · 임계값 스윕 · 실험 로그 | 없음 |
 
 ### 3-4. `tools/` · `experiments/`
@@ -135,6 +138,7 @@ gaze-tracking/
 | `tools/make_static_video.py` | 테스트 얼굴 원본 → 웹캠 구도의 사진 · 정지 영상 |
 | `tools/pipeline_demo.py` | 웹캠(또는 영상)으로 준비 점검 → 고개 원 → 보정 → 실시간 판정을 보는 Python 데모 |
 | `tools/export_config.py` · `make_fixtures.py` | `configs/` → TS 임계값, Python 실행 결과 → TS parity 기준 답 |
+| `tools/make_examples.py` | 서버 판정 모듈의 `examples/` 출력을 지금 코드 · 기준값으로 다시 만든다 |
 | `tools/derive_headpose_model.py` | 얼굴 사진 한 장 → PnP 모델 점 9개 (고개 방향 대체 경로의 상수를 만든 방법) |
 | `tools/download_checkpoints.py` | 눈 기반 백본 가중치 (비교 실험용) |
 | `tools/make_y4m.py` | 웹 smoke용 가짜 카메라 영상 |
@@ -147,8 +151,8 @@ gaze-tracking/
 | `src/engine/` | **TS 엔진** — frontend로 갈 폴더. `index.ts`(진입점 · 지원 확인 · 초기화 실패 사유) · `contract.ts`(FE 경계) 외에는 엔진 안에서만 쓴다. `__tests__/`에 엔진 테스트와 Python 기준 답 |
 | `src/worker/` | 카메라 화면용 Worker (메시지 처리) |
 | `src/camera/` | 카메라 화면 모듈: 영상 · 얼굴 원 · 보정 안내 (FE가 가져가 고칠 UI, 지금은 그대로) |
-| `src/demo/` | 로컬 데모 페이지 (FE 페이지 대역). `evidence-preview.ts`는 서버 코어의 TS 사본으로 데모의 이슈 · 요약 미리보기 전용 |
-| `test/` | FE 계약 확인 · 미리보기 parity · 엔진 경계 · Worker · 자산 검증 |
+| `src/demo/` | 로컬 데모 페이지 (FE 페이지 대역). 서버로 가는 1초 기록을 보여 준다 (문제 판정은 서버 모듈) |
+| `test/` | FE 계약 확인 · 엔진 경계 · Worker · 자산 검증 |
 | `scripts/` | `copy-assets`(해시 확인 후 복사) · `smoke`(실제 브라우저) · `bench`(지연 측정) |
 
 자세한 내용은 [web/README.md](web/README.md)에 있습니다.
@@ -177,20 +181,25 @@ gaze-tracking/
 사용자의 세 기준점(화면 중앙 · 렌즈 · 대본)과 비교 → 상태와 확률, OTHER면 방향 → 촬영 조건 감시가 신뢰도를 붙임.
 8프레임(1초)이 모이면 다수결로 1초 기록 하나가 됩니다.
 
-### 4-2. 서버 코어
+### 4-2. 서버 판정 모듈
 
 ```
-요청의 1초 기록 ─▶ parse_records ─▶ normalize_samples ─▶ GazeTimeline
-                   (읽을 수 없는 1초 버림)  (정렬 · 중복 제거 · 빈 시간 = 측정 못 함)
-                                                         ├─ evaluate_gaze(지금)    코치 이슈
-                                                         ├─ take_summary()        리뷰 요약
-                                                         ├─ compare_summaries()   이전 테이크와 차이
-                                                         └─ intervention_outcome() 피드백 전후 효과
+코치 ─ judge({t_ms, since_ms, records, voiced})          최근 30초 1초 기록 · 같은 1초들의 발화 시간
+        read_records   이상한 기록은 그 1초만 버림
+        _timeline      정렬 · 겹침 제거 · 빈 시간 = UNMEASURED
+          ├─ _tally      since_ms 뒤 새 1초마다 상태별 ms · 말한 시간 · 대본 의존
+          ├─ _window ×2  짧은 창 5초 · 최근 창 30초의 비율 · 측정 비율 · 신뢰도
+          ├─ _run_at     지금 이어지는 대본 · 화면 · 그 밖 응시
+          └─ _issues     measurable · state · 다섯 문제  ─▶ JudgmentResult
+코치 ─ summarize(장 · Take 동안 더한 tally) ─▶ {"GAZE": 비율 · reading_ratio · reading_runs · measured_ratio}
+코치 ─ criteria() ─▶ 다섯 문제의 {metric, direction, threshold, bad, onset_lag_ms, offset_lag_ms}
 ```
 
-예: 10초 청중을 보다가 4초 대본을 보면 `GAZE_ON_SCRIPT`(severity 0.4 = 4초/10초)가 나옵니다.
-여기서 카메라가 끊겨 기록이 멈추면, 1초 뒤에는 대본 이슈가 사라지고 3초쯤 지나면 `GAZE_UNMEASURABLE`(시선 피드백 보류 신호)이 됩니다.
-120초 테이크의 요약은 `coverage` 0.1167(측정 14초 / 120초)입니다.
+예(`src/gaze/examples/`):
+- 26초 청중을 보다가 말하면서 대본을 4초 이어 보면 `GAZE_ON_SCRIPT`(severity 0.5714)가 나오고, 그 1초는 `reading_ms` 1000입니다.
+- 말하면서 대본을 5초 보다가 청중으로 돌아오면, 돌아온 1초의 `tally`에 `reading_runs` 1이 들어갑니다.
+- 카메라가 끊겨 기록이 5초 오지 않으면 짧은 창이 비어 `measurable: false`이고, 문제는 `GAZE_UNMEASURABLE`(시선 피드백 보류 신호)만 나옵니다.
+- Take 시작 뒤 5초 동안은 대본을 오래 봐도 `GAZE_UNMEASURABLE` 말고는 내지 않습니다.
 
 ### 4-3. research: 임계값과 기준 답
 
@@ -198,12 +207,35 @@ gaze-tracking/
 configs/*.yaml ─▶ gaze_lab.config.load_config ─┬─▶ VisionSession (Python 데모 · 평가)
                                                ├─▶ tools/export_config.py ─▶ web/src/engine/defaults.generated.ts
                                                └─▶ tools/make_fixtures.py ─▶ web/src/engine/__tests__/fixtures/parity.json
-                                                                           web/test/fixtures/evidence.json
-configs/evidence.yaml ◀── 같은지 테스트 ──▶ gaze.config.EvidenceConfig 기본값 (서버가 쓰는 값)
+src/gaze/config.py (GazeConfig, 서버 판정 기준값) ─▶ tools/make_examples.py ─▶ src/gaze/examples/*_output.json
+configs/evidence.yaml 에는 1초 나누기 값만 (서버 판정 값이 다시 생기면 tests/lab/test_core_sync.py 실패)
 ```
 
 알고리즘을 바꿀 때는 Python에서 실험 · 평가 → TS에 같은 변경 → `npm run fixtures`로 기준 답 다시 생성 → 양쪽 테스트 순서로 합니다.
-생성 파일이 낡으면 `tests/lab/test_web_engine_sources.py`가 실패합니다.
+생성 파일이 낡으면 `tests/lab/test_web_engine_sources.py`가, 예시 출력이 낡으면 `tests/unit/test_examples.py`가 실패합니다.
+
+### 4-4. 코치와 이어지는 곳 · 연구용 대역과 달라진 판정
+
+코치는 판정 모듈을 import하지 않고 `Judges`로 `judge` · `summarize` · `criteria`를 받습니다(기능 문서 5-1).
+코치 연구 폴더는 아직 옛 코치 평가기를 옮긴 연구용 대역(`coach_lab/judges/gaze.py`, `gaze-0.2`)을 씁니다.
+같은 입력에서 이 모듈과 달라지는 점은 아래와 같습니다.
+
+| | 연구용 대역 (`gaze-0.2`) | 이 모듈 (`gaze-1.2`) |
+|---|---|---|
+| 판정 창 | 10초 한 창 | 짧은 창 5초 · 최근 창 30초 |
+| `GAZE_ON_SCRIPT` | 대본 비율 0.7 이상, 또는 이어짐 5초 이상이고 비율 0.6 이상 | 이어짐 3초 이상이고 짧은 창 대본 비율 0.6 이상 |
+| 그 밖의 문제 | `GAZE_UNMEASURABLE`만 | `GAZE_ON_SCREEN` · `GAZE_AWAY` · `GAZE_LOW_EYE_CONTACT`도 낸다 |
+| 상태 | `AUDIENCE` · `SCRIPT` · `UNMEASURABLE` | `AUDIENCE` · `SCREEN` · `SCRIPT` · `AWAY` · `UNMEASURABLE` |
+| 측정 불가 | `UNCERTAIN` + `UNMEASURED`(+ 기록 없는 시간)를 합친 비율이 0.5 초과(최근 평균과 나쁜 쪽) | 측정 비율(짧은 창 · 최근 창 중 나쁜 쪽)이 0.5 미만이거나 짧은 창 평균 신뢰도가 0.5 미만 |
+| 빠진 `reliability` | 1.0으로 봄 | 0으로 봄(기능 문서 5-2 "없으면 0") |
+| 기록이 잠깐 끊김 | 마지막 기록이 2초 안이면 이어짐을 유지 | 빈 1초가 끼면 이어짐이 끊김 |
+
+코치 코어(최신 코치 작업 브랜치)의 `Judges`에 대역 대신 이 모듈을 넣어 재생 시나리오(`ai/research/coach-agent/scenarios/`) 16개를 돌려 확인했습니다.
+- 코치의 `JudgmentResult` · `IssueCriteria` 검증 오류는 0건입니다(`judge` 2,756번).
+- 시뮬레이터가 만드는 시선 기록에는 `reliability`가 없어, 이 모듈에서는 Take 내내 측정 불가가 됩니다.
+- 기록에 신뢰도를 실제 엔진처럼 채우면 16개 중 15개가 대역과 같게 기대를 통과합니다.
+- 남은 하나(대본 응시를 포기하는 시나리오)는 시선 사다리의 두 번째 개입이 새로 생긴 `GAZE_LOW_EYE_CONTACT`로 가서 기대가 달라졌습니다.
+- 대역을 이 모듈로 바꿀 때 시뮬레이터 기록과 그 시나리오의 기대를 함께 맞춥니다.
 
 ---
 
@@ -233,11 +265,11 @@ cd web && npm run dev                                  # 브라우저 데모 htt
 ### 테스트
 
 ```bash
-uv run python -m pytest                    # 서버 코어(unit) + 기준 구현(lab)
-uv run python -m pytest tests/unit         # 서버 코어만
+uv run python -m pytest                    # 서버 판정 모듈(unit) + 기준 구현(lab)
+uv run python -m pytest tests/unit         # 서버 판정 모듈만 (pydantic · pytest 만 있으면 돈다)
 uv run ruff check src tests tools experiments
 cd web
-npm test                                   # 엔진 · 미리보기 · 경계 · Worker · FE 계약
+npm test                                   # 엔진 · 경계 · Worker · FE 계약
 npm run typecheck                          # tsc 4종 (전체 / 설정 / FE 컴파일러 옵션 / DOM 없는 엔진)
 npm run lint                               # FE 와 같은 oxlint 규칙으로 엔진 · Worker
 npm run smoke                              # 실제 브라우저 (Chrome. CHROME=<경로> 로 다른 Chromium), COOP/COEP 켬
@@ -247,6 +279,7 @@ npm run smoke:prod                         # 운영처럼 격리 헤더 없이
 ### 생성 파일 · 평가
 
 ```bash
+uv run python tools/make_examples.py       # src/gaze 의 기준값 · 판정을 바꾼 뒤: examples/ 출력 다시 생성
 cd web && npm run fixtures                 # configs 나 gaze_lab 을 바꾼 뒤: TS 임계값 · 기준 답 다시 생성
 uv run python -m gaze_lab.evaluation.gaze_eval --help      # 녹화한 특징 테이블이 있어야 돈다
 uv run python experiments/exp1_backbone.py --help
@@ -258,11 +291,11 @@ uv run python experiments/exp1_backbone.py --help
 
 | 묶음 | 위치 | 무엇을 | 수 |
 |---|---|---|---|
-| 서버 코어 | `tests/unit/` | 타임라인 · 이슈 · 요약 · 비교 · 개입 효과, 입출력 계약, 서버 입구(끊김 · 유실 · 순서 · 테이크 밖 · 잘못된 시각), 코어 import 경계 | 89 |
-| 기준 구현 | `tests/lab/` | 전처리 기하 · 고개 방향 · 보정 · 조건 감시 · 평가 · 데모 · 시나리오 S01~S24, 생성 파일 최신, 코어와 YAML 동기화 | 1745 (+ torch 없을 때 38 skip) |
+| 서버 판정 모듈 | `tests/unit/` | `judge`(읽기 · 빈 시간 · 겹침 · 커서 · 대본 의존 · 지표 · 상태 · 다섯 문제 · 시작 직후 억제 · 기준값 경계), `summarize` · `criteria`, `examples/` 계약, 입출력 모델, 코어 import 경계 | 201 (소리 크기 모듈이 없으면 1 skip) |
+| 기준 구현 | `tests/lab/` | 전처리 기하 · 고개 방향 · 보정 · 조건 감시 · 평가 · 데모 · 시나리오 S01~S24, 생성 파일 최신, 1초 나누기 값과 서버 판정 값의 분리 | 1745 (+ torch 없을 때 38 skip) |
 | TS 엔진 | `web/src/engine/__tests__/` | Python 기준 답과 1e-9~1e-12 안에서 일치, 엔진 흐름, 시나리오, 초기화 실패 | 145 |
-| 그 밖의 web | `web/test/` | 서버 코어 미리보기(parity), FE 계약(실제 `frontend/src/workers/aiAdapter.ts`), 엔진 import · 저장 API 경계, Worker, 자산 검증 | 104 |
-| 실제 브라우저 | `web/scripts/smoke.mjs` | MediaPipe를 Worker에서 로드, 준비 점검 → 고개 원 → 보정 → 실시간 → 1초 기록, 카메라 끊김, 지연 | 24 항목 |
+| 그 밖의 web | `web/test/` | FE 계약(실제 `frontend/src/workers/aiAdapter.ts`), 엔진 import · 저장 API 경계, Worker, 자산 검증 | 49 (FE 계약 2개 실패, 9장) |
+| 실제 브라우저 | `web/scripts/smoke.mjs` | MediaPipe를 Worker에서 로드, 준비 점검 → 고개 원 → 보정 → 실시간 → 1초 기록, 카메라 끊김, 지연 | 23 항목 (데모의 미리보기를 지운 뒤 다시 돌리지 않음) |
 
 Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetch_assets.py`를 돌려야 실행되고, 아니면 이유를 보이고 건너뜁니다.
 
@@ -275,8 +308,10 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
 
 - archive를 그대로 돌린 결과와 비교했습니다: pytest 테스트별 결과(옛 사진 기준 1785개 동일), 데모 영상 재생 출력(바이트 단위 동일),
   생성 파일(경로 문자열 · 설정 해시 · 소수점 끝자리 2.2e-16 이하 차이만), vitest(archive와 같은 수에서 시작).
-- 서버 코어는 무작위 타임라인 1500개 × 설정 2종에서 archive 모듈과 출력이 모두 같습니다(381,140건).
+- 옮길 때의 옛 서버 코어(`evaluate_gaze` 등)는 무작위 타임라인 1500개 × 설정 2종에서 archive 모듈과 출력이 모두 같았습니다(381,140건).
+  지금 서버 판정 모듈은 기능 문서 5 · 6절대로 다시 만든 것이라 archive와 비교하지 않습니다(4-4).
 - 설정 해시는 `958414c647b7` → `14ed457ab13b`로 바뀌었습니다. 해시에 모델 경로 문자열이 들어가서이고, 임계값은 하나도 바뀌지 않았습니다.
+  그 뒤 서버 판정 값을 엔진 설정(`configs/evidence.yaml`)에서 빼며 `32ad2751de59`가 됐습니다. 엔진이 쓰는 값은 그대로입니다.
 
 ---
 
@@ -306,8 +341,8 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
 | 발표 중 카메라 끊김 | 카메라 화면이 `CAMERA_LOST`를 한 번 알리고 캡처를 멈춤. 서버는 빈 시간을 측정 못 함으로 봄 | 계속 |
 | 탭 숨김 · 전송 유실 | 서버가 빈 시간을 측정 못 함으로 채움 → 오래된 이슈를 내지 않고, 길어지면 시선 피드백 보류 | 계속 |
 | 얼굴이 안 보임 · 다른 사람 · 자세가 크게 바뀜 | 측정 못 함 / 판정 보류 / 신뢰도 낮춤 (조건 감시) | 계속 |
-| 읽을 수 없는 1초 기록 | 그 1초만 버리고(`parse_records`) 측정 못 함으로 채움 | — |
-| 테이크 밖 시각의 기록 (다른 단위의 시각 등) | 버림(`normalize_samples`). 빈 시간은 길이와 상관없이 기록 하나라 계산량이 늘지 않음 | — |
+| 읽을 수 없는 1초 기록 | 그 1초만 버리고(`read_records`) 측정 못 함으로 채움 | — |
+| 판정 시각 뒤의 기록 · 시각이 크게 어긋난 기록 | 판정 시각 뒤는 버림. 빈 시간은 판정에서 조각 하나이고 `tally`도 30초보다 오래된 빈 시간은 한 조각이라 계산량이 늘지 않음 | — |
 
 ---
 
@@ -334,13 +369,15 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
 - **브라우저는 Chrome에서만 확인했습니다.** Edge는 이 PC에서 자동화로 띄우지 못했고, Safari · Firefox는 확인 전입니다.
 - **카메라 화면(`web/src/camera/view.ts`)은 FE lint의 중첩 삼항식 규칙에 8곳 걸립니다.** UI를 지금 고치지 않기로 해서 그대로 두었습니다.
 - 지연은 개발 PC 기준(Worker p95 약 30~38 ms / 예산 125 ms)입니다. 저사양 노트북에서는 다시 재야 합니다.
+- **FE 계약 확인(`web/test/fe-contract`)이 지금 FE 코드와 맞지 않습니다.** FE가 `workers/temporalVoter` · `toFrameVerdict`를 바꾼 뒤
+  맞추지 않아 테스트 2개와 `tsconfig.fe.json` 타입 검사가 실패합니다. 데모의 `TemporalVoter` import도 같은 이유로 타입 검사에 걸립니다.
 
 ---
 
 ## 10. 코드 읽는 순서
 
-1. `src/gaze/schemas.py` — 서버가 무엇을 받고 무엇을 내는지
-2. `src/gaze/core.py` — 1초 기록이 이슈 · 요약이 되는 과정
+1. `src/gaze/schemas.py` · `examples/judge_input_script.json` — 서버가 무엇을 받고 무엇을 내는지
+2. `src/gaze/core.py` — 1초 기록이 1초 판정 결과 · Take 지표가 되는 과정
 3. `web/src/engine/index.ts` · `contract.ts` — 브라우저 엔진의 입구와 FE 경계
 4. `web/src/engine/engine.ts` — 준비 점검 → 고개 원 → 보정 → 판정의 흐름
 5. `src/gaze_lab/runtime/session.py` — 같은 흐름의 Python 판
@@ -359,7 +396,7 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
 | `ai/tools/{pipeline_demo,download_checkpoints}.py` | `tools/` |
 | `ai/tools/{collect,label_review,extract_features}.py` | 옮기지 않음 (원본 얼굴 영상 저장) |
 | `ai/configs/` · `ai/models/` · `ai/reports/` | `configs/` · `artifacts/` · `outputs/` |
-| `tests/` | `tests/lab/` (+ 서버 코어 테스트는 `tests/unit/`) |
+| `tests/` | `tests/lab/` (+ 서버 판정 모듈 테스트는 `tests/unit/`) |
 | `tests/fixtures/{face.jpg,static_face_30fps.mp4}` | 합성 얼굴로 교체, git 밖 (`tests/fixtures/`) |
 | `web/` (+ `web/scripts/*.py`) | `web/` (+ `tools/`) |
 | `v1/README.md` 등 문서 4벌 | 이 문서 · `web/README.md` · 설계 문서(`docs/ai/features/gaze-tracking.md`) |
