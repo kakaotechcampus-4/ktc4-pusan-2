@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from coach.judges import Judges
+from pitch_coach_ai.features.coach.judges import Judges
 
 from . import filler, gaze, pace, volume
 

@@ -9,10 +9,10 @@ from typing import Any
 
 import pytest
 
-from coach.config import load_config
 from coach_lab.paths import SCENARIOS_DIR
 from coach_lab.replay import load_config_file
 from coach_lab.simulator import Presenter, Scenario, check_expect, run
+from pitch_coach_ai.features.coach.config import load_config
 
 SCENARIOS = sorted(SCENARIOS_DIR.glob("*.json"))
 

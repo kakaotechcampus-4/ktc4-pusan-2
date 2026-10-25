@@ -29,10 +29,10 @@ from pathlib import Path
 from statistics import fmean, median
 from typing import Any
 
-from coach import plan_coaching
-from coach.planner import planner_hash
-from coach.schemas import CoachingPlan, PlanRequest, PlanResponse
-from coach.version import FEATURE_VERSION
+from pitch_coach_ai.features.coach import plan_coaching
+from pitch_coach_ai.features.coach.planner import planner_hash
+from pitch_coach_ai.features.coach.schemas import CoachingPlan, PlanRequest, PlanResponse
+from pitch_coach_ai.features.coach.version import FEATURE_VERSION
 
 from .cache import SqlitePlanCache
 from .paths import OUTPUTS_DIR, SCENARIOS_DIR

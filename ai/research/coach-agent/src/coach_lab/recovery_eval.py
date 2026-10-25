@@ -24,9 +24,9 @@ from pathlib import Path
 from statistics import fmean
 from typing import Any
 
-from coach import ReplayRequired, decide_safe, finalize, recovery
-from coach.schemas import FinalizeRequest, ProblemSegment, TakeResult
-from coach.version import FEATURE_VERSION
+from pitch_coach_ai.features.coach import ReplayRequired, decide_safe, finalize, recovery
+from pitch_coach_ai.features.coach.schemas import FinalizeRequest, ProblemSegment, TakeResult
+from pitch_coach_ai.features.coach.version import FEATURE_VERSION
 
 from .judges import lab_judges
 from .paths import RESULTS_DIR, SCENARIOS_DIR

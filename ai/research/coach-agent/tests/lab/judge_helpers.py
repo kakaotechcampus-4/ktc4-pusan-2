@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from coach.schemas import JudgmentResult
+from pitch_coach_ai.features.coach.schemas import JudgmentResult
 
 
 def check_shape(result: JudgmentResult, since: int = 0) -> None:

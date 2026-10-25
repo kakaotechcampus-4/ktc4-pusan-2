@@ -3,18 +3,17 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# 배포 이름. import 패키지는 두 개다.
-#   coach     — 판단 코어. 나중에 ai/service 의 features/coach/ 로 폴더째 옮긴다
-#   coach_lab — research 전용 재생 · 실험 도구. 옮기지 않는다
+# 배포 이름. import 패키지는 coach_lab(research 전용 재생 · 실험 도구) 하나다.
+# 판단 코어는 AI 서비스(ai/service)의 pitch_coach_ai.features.coach 에 있고, 서비스를 editable 로 설치해
+# 그대로 import 한다(원본은 서비스 한 곳). src/coach/examples/ 는 BE 테스트가 읽는 예시 사본이다
 name = "coach-agent"
 version = "1.0.0"
 description = "Pitch Coach realtime coach agent - research (core + lab)"
 # service 가 쓸 Python 버전(3.12)에서 검증한다
 requires-python = ">=3.12"
 dependencies = [
-    # ── 코어(coach)가 쓰는 것은 pydantic 하나뿐이다. service 로 옮길 때 이것만 가져간다.
-    #    코칭 계획의 LLM 클라이언트는 코어가 만들지 않고 인자로 받는다
-    "pydantic>=2.13",
+    # ── 코어: 서비스 패키지가 가져온다(pydantic 포함). 판은 서비스 uv.lock 과 같게 맞춘다
+    "pitch-coach-ai",
     # ── research 전용 (coach_lab 의 코칭 계획 실험 plan_eval · llm). 재생 · 리뷰 근거 실험은 쓰지 않는다
     "langchain-openai>=1.3",
     "python-dotenv>=1.0",
@@ -26,8 +25,13 @@ dev = [
     "ruff>=0.16",
 ]
 
+[tool.uv.sources]
+pitch-coach-ai = { path = "../../service", editable = true }
+
 [tool.setuptools.packages.find]
 where = ["src"]
+# src/coach/ 는 BE 테스트용 예시 사본(패키지 아님)
+include = ["coach_lab*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -44,4 +48,4 @@ src = ["src", "."]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["coach", "coach_lab"]
+known-first-party = ["pitch_coach_ai", "coach_lab"]

@@ -35,11 +35,11 @@ from pathlib import Path
 from statistics import fmean
 from typing import Any
 
-from coach import finalize
-from coach.config import CoachConfig, load_config
-from coach.schemas import ProblemSegment, TakeResult
-from coach.version import FEATURE_VERSION
-from coach.vocab import FeedbackType, Issue
+from pitch_coach_ai.features.coach import finalize
+from pitch_coach_ai.features.coach.config import CoachConfig, load_config
+from pitch_coach_ai.features.coach.schemas import ProblemSegment, TakeResult
+from pitch_coach_ai.features.coach.version import FEATURE_VERSION
+from pitch_coach_ai.features.coach.vocab import FeedbackType, Issue
 
 from .judges import lab_judges
 from .paths import OUTPUTS_DIR, SCENARIOS_DIR
