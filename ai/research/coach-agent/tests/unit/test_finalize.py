@@ -454,6 +454,16 @@ def test_criteria_changed_when_a_version_changed_during_the_take():
     assert changed.take_result.criteria["SPEED"].criteria_version == "pace-2"
 
 
+def test_criteria_changed_when_a_version_changed_and_came_back():
+    # A → B → A: 처음과 마지막이 같아도 Take 도중 바뀐 적이 있으면 true
+    back = from_state(
+        criteria_versions={"gaze": "gaze-1"},
+        latest_criteria_versions={"gaze": "gaze-1"},
+        criteria_changed=True,
+    )
+    assert back.take_result.criteria_changed is True
+
+
 # ── 시간 계획 ───────────────────────────────────────────────────────────
 
 

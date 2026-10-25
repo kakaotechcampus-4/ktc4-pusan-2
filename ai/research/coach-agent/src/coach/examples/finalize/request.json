@@ -1042,6 +1042,7 @@
       "volume": "volume-0.2+862f8de95679",
       "timing": "timing-1.0+305f8e44237d"
     },
+    "criteria_changed": false,
     "covered": [
       [
         0,

@@ -37,6 +37,7 @@ log = logging.getLogger(__name__)
 # BE 와 맞춘 통신 규약 값: 요청에 실리는 입력 창 길이
 GAZE_VOICE_WINDOW_MS = 30_000  # 시선 · 음량 1초 기록
 WORDS_WINDOW_MS = 60_000  # STT 확정 단어 · 문장 끝 신호
+WORD_SPAN_MARGIN_MS = 10_000  # 단어 하나의 길이(시작 ~ 끝) 여유. 장 전환 기록을 지울 때 쓴다
 
 #: 모듈 이름 → 그 모듈이 내는 영역 (결과 순서)
 _AREAS: dict[str, tuple[FeedbackType, ...]] = {
@@ -212,6 +213,9 @@ def run(
         spoken_in = tally.slide_at(state, piece.t_ms)
         if chars and spoken_in is not None:
             slide_chars[str(spoken_in)] = slide_chars.get(str(spoken_in), 0) + chars
+    # 오디오가 멈췄거나 STT 가 ok 가 아니거나 군더더기 · 말 속도 판정이 실패하면 이번 단어를 믿지
+    # 않는다: 속도를 모르는 것으로 넘기고, 진행도도 머문 시간으로 잰다(6-2)
+    trusted = out.stt_ok and not {"filler", "pace"} & out.failed
     timing_in = {
         "t_ms": t,
         "since_ms": _cursor(state, "timing").since_ms,
@@ -220,19 +224,16 @@ def run(
         "slide_chars": slide_chars,
         "slide_dwell_ms": _dwell_ms(state),
         "slide_stt_ok_ms": dict(state.slide_stt_ok_ms),
+        "stt_trusted": trusted,
         "pace": {
             "cpm": pace_result.metrics.get("cpm"),
-            # 오디오가 멈췄거나 군더더기 · 말 속도 판정이 실패하면 속도를 모르는 것으로 넘긴다
-            "measurable": pace_result.measurable
-            and out.stt_ok
-            and not {"filler", "pace"} & out.failed,
+            "measurable": pace_result.measurable and trusted,
             "fast_threshold": fast.threshold if fast else None,
         },
     }
     call("timing", lambda i, t_ms: timing_judge(i, t_ms, cfg.timing), timing_in)
 
     # 누적 → 커서 · 기준 버전. 결과는 영역 순서(GAZE … TIME)로 담는다
-    trusted = out.stt_ok and not {"filler", "pace"} & out.failed
     all_results = _commit(state, by_module, prev_ms, t, trusted, out.failed)
     out.results = {r.area: r for r in all_results}
     return out
@@ -304,6 +305,8 @@ def _note_slide(req: CoachRequest, state: CoachState) -> SlideNow | None:
         slide = SlideNow(number=number, started_ms=started)
     plan = next((s for s in req.plan.slides if slide and s.slide_number == slide.number), None)
     tally.note_slide(state, slide, plan.target_ms if plan else None)
+    # 단어는 끝난 시각이 60초 창 안이면 늦게 확정돼 올 수 있다. 말한 시각은 단어 길이만큼 더 이르다
+    tally.forget_slides_before(state, req.t_ms - WORDS_WINDOW_MS - WORD_SPAN_MARGIN_MS)
     return slide
 
 
@@ -477,6 +480,8 @@ def _advance(
         return
     version = results[0].criteria_version
     state.criteria_versions.setdefault(name, version)
+    if state.latest_criteria_versions.get(name, version) != version:
+        state.criteria_changed = True
     state.latest_criteria_versions[name] = version
 
 

@@ -7,7 +7,7 @@ from typing import Any
 from coach import judges as judges_mod
 from coach.config import DEFAULT_CONFIG
 from coach.judges import Judges, run
-from coach.schemas import CoachRequest
+from coach.schemas import CoachRequest, JudgmentResult
 from coach.state import CoachState, initial_state
 from coach.vocab import FeedbackType
 from tests.unit.fakes import FakeJudge, fake_judges
@@ -246,6 +246,32 @@ def test_late_word_lands_in_slide_of_speaking_time():
     assert state.slide_totals["1"]["TIME"]["elapsed_ms"] == 5_000
     assert state.slide_totals["2"]["TIME"]["elapsed_ms"] == 1_000
     assert state.slide_log == [(1, 0), (2, 5_000)]
+
+
+def test_late_word_after_many_quick_slide_changes_keeps_its_slide():
+    # 1초마다 장을 넘겨 12장까지 간 뒤에야 1장에서 말한 단어가 확정됐다.
+    # 전환을 개수(최근 10개)로 지우면 3장에 들어간다
+    judges = fake_judges()
+    state = initial_state()
+    for n in range(1, 13):
+        go(req(n * 1_000, slide=(n, (n - 1) * 1_000)), state, judges)
+    late = word("안녕하세요", 200, 700)
+    go(req(13_000, slide=(12, 11_000), words=[late]), state, judges)
+    assert state.slide_totals["1"]["SPEED"]["chars"] == 5
+    assert "chars" not in state.slide_totals.get("3", {}).get("SPEED", {})
+
+
+def test_slide_log_forgets_changes_only_before_the_word_window():
+    judges = fake_judges()
+    state = initial_state()
+    go(req(1_000, slide=(1, 0)), state, judges)
+    go(req(2_000, slide=(2, 1_500)), state, judges)
+    go(req(60_000, slide=(3, 59_000)), state, judges)
+    # 60초 창 + 단어 길이 여유 10초 안이면 1장 기록도 남는다
+    assert [n for n, _ in state.slide_log] == [1, 2, 3]
+    go(req(100_000, slide=(4, 99_000)), state, judges)
+    # 기준 시각(100초 − 70초 = 30초)에 보이던 2장부터 남긴다
+    assert state.slide_log == [(2, 1_500), (3, 59_000), (4, 99_000)]
 
 
 def test_baseline_collected_until_value_then_fixed():
@@ -529,3 +555,21 @@ def test_take_end_ms_goes_to_the_stt_modules_and_audio_stop_is_not_swapped():
     for module in (judges.filler, judges.pace):
         assert inputs_of(module)["take_end_ms"] == 5_000
         assert inputs_of(module)["stt_status"] == "ok"
+
+
+def test_criteria_change_is_remembered_even_if_it_comes_back():
+    # A → B → A 면 처음과 마지막이 같지만 Take 도중 기준이 바뀌었다
+    state = initial_state()
+    for t, version in [(1_000, "gaze-A"), (2_000, "gaze-B"), (3_000, "gaze-A")]:
+        result = JudgmentResult(
+            evaluator="gaze",
+            area=FeedbackType.GAZE,
+            t_ms=t,
+            counted_until_ms=t,
+            criteria_version=version,
+            measurable=True,
+            state="AUDIENCE",
+        )
+        judges_mod._advance(state, "gaze", [result])
+    assert state.criteria_versions["gaze"] == state.latest_criteria_versions["gaze"] == "gaze-A"
+    assert state.criteria_changed is True

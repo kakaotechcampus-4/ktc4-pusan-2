@@ -62,6 +62,9 @@ class TimingInput(_In):
     slide_chars: dict[str, int] = Field(default_factory=dict)
     slide_stt_ok_ms: dict[str, int] = Field(default_factory=dict)
     slide_dwell_ms: dict[str, int] = Field(default_factory=dict)
+    #: 이번 요청에서 STT 와 군더더기 · 말 속도 판정을 믿을 수 있는가. 아니면 이번 진행도는 머문
+    #: 시간으로 잰다 — 누적(slide_stt_ok_ms)은 이번 몫을 판정 뒤에 더하므로 끊긴 첫 요청을 모른다
+    stt_trusted: bool = True
     pace: PaceRef | None = None
 
 
@@ -122,7 +125,8 @@ def summarize(
     return {
         "TIME": {
             "duration_ms": elapsed,
-            "measured_ratio": round(planned / elapsed, 4) if elapsed > 0 else None,
+            # 잰 시간이 없으면 0 (architecture.md 7절: measured_ratio 는 null 로 두지 않는다)
+            "measured_ratio": round(planned / elapsed, 4) if elapsed > 0 else 0.0,
         }
     }
 
@@ -191,8 +195,9 @@ def judge(
         dwell_done = inp.slide_dwell_ms.get(key, 0)
         dwell_now = dwell_done + max(0, t - max(inp.since_ms, inp.slide.started_ms))
         stt_ok = inp.slide_stt_ok_ms.get(key, 0)
-        # 말한 글자 수는 그 장에 머무는 동안 STT 를 계속 믿을 수 있었을 때만 진행도로 쓴다
-        if script_chars > 0 and stt_ok >= dwell_done:
+        # 말한 글자 수는 그 장에 머무는 동안(이번 요청 포함) STT 를 계속 믿을 수 있었을 때만
+        # 진행도로 쓴다
+        if script_chars > 0 and inp.stt_trusted and stt_ok >= dwell_done:
             progress = min(1.0, inp.slide_chars.get(key, 0) / script_chars)
             confidence = config.progress_confidence_chars
         elif cur_target > 0:
