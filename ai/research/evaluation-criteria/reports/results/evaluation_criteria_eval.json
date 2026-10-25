@@ -1,6 +1,6 @@
 {
   "meta": {
-    "measured_at": "2026-10-25T03:06:27",
+    "measured_at": "2026-10-25T16:26:34",
     "schema_version": "1.0",
     "feature_version": "evaluation_criteria-1.0",
     "models": [
@@ -14,29 +14,29 @@
     "target_recall": 1.0,
     "target_precision": 1.0,
     "fabricated_targets_per_sentence": 0.0,
-    "display_user_wording_ratio": 0.9231,
+    "display_user_wording_ratio": 0.8462,
     "failed": 0
   },
   "measurements": {
     "latency_s": {
-      "min": 2.66,
-      "median": 4.5,
-      "max": 8.0
+      "min": 2.36,
+      "median": 3.7,
+      "max": 63.04
     },
     "output_chars": {
-      "min": 269,
-      "median": 351,
-      "max": 624
+      "min": 268,
+      "median": 346,
+      "max": 633
     },
     "output_tokens": {
-      "min": 164,
-      "median": 337,
-      "max": 720
+      "min": 143,
+      "median": 315,
+      "max": 432
     },
     "reasoning_tokens": {
-      "min": 53,
-      "median": 170,
-      "max": 525
+      "min": 52,
+      "median": 107,
+      "max": 245
     }
   },
   "cases": [
@@ -63,7 +63,7 @@
       "output": {
         "display_criteria": [
           "대본 사용하지 않기",
-          "시선은 청중을 향하기"
+          "시선을 청중에게 향하기"
         ],
         "values": {
           "speed": null,
@@ -71,7 +71,7 @@
           "silence": null,
           "volume": null,
           "filler": null,
-          "gaze": "시선을 청중을 향하기",
+          "gaze": "시선을 청중에게 향하기",
           "script_dependency": null,
           "script_similarity": null,
           "script_used": false
@@ -88,10 +88,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 4.84,
-      "output_chars": 291,
-      "output_tokens": 343,
-      "reasoning_tokens": 197,
+      "latency_s": 3.46,
+      "output_chars": 293,
+      "output_tokens": 252,
+      "reasoning_tokens": 107,
       "display_user_wording": true
     },
     {
@@ -111,8 +111,8 @@
         },
         "targets": [],
         "excluded": [
-          "발표는 시간을 엄수",
-          "발표 내용은 이해하기 쉽고 논리적으로 구성"
+          "발표는 시간을 엄수해야",
+          "발표 내용은 이해하기 쉽고 논리적으로 구성되어야"
         ]
       },
       "output": {
@@ -133,8 +133,7 @@
         "targets": [],
         "excluded": [
           "발표는 시간을 엄수해야",
-          "발표 내용은 이해하기 쉽고",
-          "논리적으로 구성되어야"
+          "발표 내용은 이해하기 쉽고 논리적으로 구성되어야"
         ]
       },
       "error": null,
@@ -144,10 +143,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 5.77,
-      "output_chars": 307,
-      "output_tokens": 451,
-      "reasoning_tokens": 297,
+      "latency_s": 3.77,
+      "output_chars": 304,
+      "output_tokens": 359,
+      "reasoning_tokens": 211,
       "display_user_wording": true
     },
     {
@@ -167,13 +166,13 @@
         },
         "targets": [],
         "excluded": [
-          "발표 시간은 10분 이내",
-          "발표자의 자세도 단정"
+          "발표 시간은 10분 이내로 해야",
+          "발표자의 자세도 단정해야"
         ]
       },
       "output": {
         "display_criteria": [
-          "대본 보면서 발표해도 됨",
+          "대본을 보면서 발표해도 됨",
           "대본에 지나치게 의존하지 않기"
         ],
         "values": {
@@ -189,7 +188,7 @@
         },
         "targets": [],
         "excluded": [
-          "발표 시간은 10분 이내",
+          "발표 시간은 10분 이내로",
           "발표자의 자세도 단정해야"
         ]
       },
@@ -200,10 +199,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 4.97,
-      "output_chars": 312,
-      "output_tokens": 390,
-      "reasoning_tokens": 238,
+      "latency_s": 4.1,
+      "output_chars": 314,
+      "output_tokens": 336,
+      "reasoning_tokens": 172,
       "display_user_wording": true
     },
     {
@@ -223,7 +222,7 @@
         },
         "targets": [],
         "excluded": [
-          "발표 주제는 창의적",
+          "발표 주제는 창의적이어야",
           "우리 팀의 Agent 활용이 잘 드러나야",
           "다른 팀과 비슷한 주제는 피해야",
           "발표 시간은 7분"
@@ -257,10 +256,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 3.73,
+      "latency_s": 3.7,
       "output_chars": 310,
-      "output_tokens": 284,
-      "reasoning_tokens": 170,
+      "output_tokens": 320,
+      "reasoning_tokens": 166,
       "display_user_wording": null
     },
     {
@@ -283,13 +282,13 @@
           "발표 시간은 10분이며 시간을 지켜야",
           "억양",
           "발표 자료의 내용은 신뢰할 수 있어야",
-          "질의응답에도 적극적으로 참여"
+          "질의응답에도 적극적으로 참여해야"
         ]
       },
       "output": {
         "display_criteria": [
           "불필요한 추임새 줄이기",
-          "적절한 음량 사용하기"
+          "적절한 음량"
         ],
         "values": {
           "speed": null,
@@ -317,10 +316,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 8.0,
-      "output_chars": 351,
-      "output_tokens": 720,
-      "reasoning_tokens": 525,
+      "latency_s": 4.52,
+      "output_chars": 346,
+      "output_tokens": 432,
+      "reasoning_tokens": 245,
       "display_user_wording": true
     },
     {
@@ -371,7 +370,7 @@
           "volume": null,
           "filler": null,
           "gaze": "60% 이상",
-          "script_dependency": "전체의 20% 이하",
+          "script_dependency": "대본 보는 시간 전체의 20% 이하",
           "script_similarity": "90% 이상 전달",
           "script_used": true
         },
@@ -404,10 +403,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 5.1,
-      "output_chars": 624,
-      "output_tokens": 491,
-      "reasoning_tokens": 181,
+      "latency_s": 4.73,
+      "output_chars": 633,
+      "output_tokens": 357,
+      "reasoning_tokens": 135,
       "display_user_wording": true
     },
     {
@@ -441,7 +440,7 @@
       },
       "output": {
         "display_criteria": [
-          "추임새 1분에 3번 넘지 않게",
+          "추임새 1분에 3번 이하",
           "말 사이 멈춤 5번 이하"
         ],
         "values": {
@@ -449,7 +448,7 @@
           "pause": "5번 이하",
           "silence": null,
           "volume": null,
-          "filler": "1분에 3번을 넘지 않게",
+          "filler": "1분에 3번 이하",
           "gaze": null,
           "script_dependency": null,
           "script_similarity": null,
@@ -457,7 +456,7 @@
         },
         "targets": [
           {
-            "display": "추임새 1분에 3번 넘지 않게",
+            "display": "추임새 1분에 3번 이하",
             "metric": "filler_per_min",
             "operator": "LTE",
             "value": 3.0
@@ -478,11 +477,11 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 4.5,
-      "output_chars": 464,
-      "output_tokens": 337,
-      "reasoning_tokens": 106,
-      "display_user_wording": true
+      "latency_s": 5.11,
+      "output_chars": 454,
+      "output_tokens": 315,
+      "reasoning_tokens": 89,
+      "display_user_wording": false
     },
     {
       "case": "초당 글자 → cpm",
@@ -540,10 +539,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 2.66,
+      "latency_s": 63.04,
       "output_chars": 336,
-      "output_tokens": 164,
-      "reasoning_tokens": 53,
+      "output_tokens": 211,
+      "reasoning_tokens": 52,
       "display_user_wording": true
     },
     {
@@ -577,8 +576,8 @@
         ],
         "values": {
           "speed": null,
-          "pause": "말 사이 머뭇거림 줄이기",
-          "silence": "긴 침묵 2번 이하",
+          "pause": "머뭇거리는 일 줄이기",
+          "silence": "2번 이하",
           "volume": null,
           "filler": null,
           "gaze": null,
@@ -603,10 +602,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 3.47,
-      "output_chars": 373,
-      "output_tokens": 293,
-      "reasoning_tokens": 107,
+      "latency_s": 2.92,
+      "output_chars": 366,
+      "output_tokens": 245,
+      "reasoning_tokens": 65,
       "display_user_wording": true
     },
     {
@@ -630,14 +629,14 @@
       "output": {
         "display_criteria": [
           "말 속도 1분에 300자 정도",
-          "목소리 70dB 이상으로 크게 내기",
+          "목소리 70dB 이상",
           "4초 넘는 침묵 3번 이하"
         ],
         "values": {
           "speed": "1분에 300자 정도",
           "pause": null,
           "silence": "4초 넘는 침묵 3번 이하",
-          "volume": "70dB 이상으로 크게",
+          "volume": "70dB 이상",
           "filler": null,
           "gaze": null,
           "script_dependency": null,
@@ -654,10 +653,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 4.23,
-      "output_chars": 325,
-      "output_tokens": 304,
-      "reasoning_tokens": 135,
+      "latency_s": 3.61,
+      "output_chars": 312,
+      "output_tokens": 311,
+      "reasoning_tokens": 148,
       "display_user_wording": true
     },
     {
@@ -739,10 +738,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 3.97,
+      "latency_s": 3.69,
       "output_chars": 534,
-      "output_tokens": 357,
-      "reasoning_tokens": 90,
+      "output_tokens": 334,
+      "reasoning_tokens": 67,
       "display_user_wording": true
     },
     {
@@ -771,9 +770,9 @@
       },
       "output": {
         "display_criteria": [
-          "목소리는 평소보다 3dB 이상 크게",
-          "청중과 자주 눈 맞추기",
-          "대본 보지 않기"
+          "목소리는 평소보다 3dB 이상 크게 내기",
+          "청중과 자주 눈을 맞추기",
+          "대본을 보지 않기"
         ],
         "values": {
           "speed": null,
@@ -781,14 +780,14 @@
           "silence": null,
           "volume": "평소보다 3dB 이상 크게",
           "filler": null,
-          "gaze": "청중과 자주 눈 맞추기",
+          "gaze": "청중과 자주 눈을 맞추기",
           "script_dependency": null,
           "script_similarity": null,
           "script_used": false
         },
         "targets": [
           {
-            "display": "목소리는 평소보다 3dB 이상 크게",
+            "display": "목소리는 평소보다 3dB 이상 크게 내기",
             "metric": "voice_diff_db",
             "operator": "GTE",
             "value": 3.0
@@ -803,10 +802,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 4.08,
-      "output_chars": 401,
-      "output_tokens": 332,
-      "reasoning_tokens": 128,
+      "latency_s": 3.57,
+      "output_chars": 410,
+      "output_tokens": 250,
+      "reasoning_tokens": 96,
       "display_user_wording": true
     },
     {
@@ -865,10 +864,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 3.0,
+      "latency_s": 3.3,
       "output_chars": 370,
-      "output_tokens": 196,
-      "reasoning_tokens": 70,
+      "output_tokens": 268,
+      "reasoning_tokens": 94,
       "display_user_wording": false
     },
     {
@@ -888,8 +887,8 @@
         },
         "targets": [],
         "excluded": [
-          "발표 자료는 깔끔하게",
-          "제스처를 자연스럽게"
+          "발표 자료는 깔끔하게 만들고",
+          "제스처를 자연스럽게 써"
         ]
       },
       "output": {
@@ -907,8 +906,8 @@
         },
         "targets": [],
         "excluded": [
-          "발표 자료는 깔끔하게 만들기",
-          "제스처를 자연스럽게 쓰기"
+          "발표 자료는 깔끔하게 만들고",
+          "제스처를 자연스럽게 써"
         ]
       },
       "error": null,
@@ -918,10 +917,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 4.5,
-      "output_chars": 269,
-      "output_tokens": 283,
-      "reasoning_tokens": 192,
+      "latency_s": 2.36,
+      "output_chars": 268,
+      "output_tokens": 143,
+      "reasoning_tokens": 52,
       "display_user_wording": null
     },
     {
@@ -988,10 +987,10 @@
         "missing_targets": [],
         "fabricated_targets": []
       },
-      "latency_s": 5.15,
+      "latency_s": 4.16,
       "output_chars": 409,
-      "output_tokens": 430,
-      "reasoning_tokens": 218,
+      "output_tokens": 379,
+      "reasoning_tokens": 167,
       "display_user_wording": true
     }
   ]

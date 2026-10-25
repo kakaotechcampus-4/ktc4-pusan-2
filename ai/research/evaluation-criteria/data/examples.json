@@ -16,7 +16,7 @@
       "values": {"speed": "너무 빠르지 않게", "pause": null, "silence": null, "volume": null, "filler": null, "gaze": null,
                  "script_dependency": null, "script_similarity": null, "script_used": null},
       "targets": [],
-      "excluded": ["발표는 시간을 엄수", "발표 내용은 이해하기 쉽고 논리적으로 구성"]
+      "excluded": ["발표는 시간을 엄수해야", "발표 내용은 이해하기 쉽고 논리적으로 구성되어야"]
     }
   },
   {
@@ -26,7 +26,7 @@
       "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": null, "gaze": null,
                  "script_dependency": "지나치게 의존하지 않기", "script_similarity": null, "script_used": true},
       "targets": [],
-      "excluded": ["발표 시간은 10분 이내", "발표자의 자세도 단정"]
+      "excluded": ["발표 시간은 10분 이내로 해야", "발표자의 자세도 단정해야"]
     }
   },
   {
@@ -36,7 +36,7 @@
       "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": null, "gaze": null,
                  "script_dependency": null, "script_similarity": null, "script_used": null},
       "targets": [],
-      "excluded": ["발표 주제는 창의적", "우리 팀의 Agent 활용이 잘 드러나야", "다른 팀과 비슷한 주제는 피해야", "발표 시간은 7분"]
+      "excluded": ["발표 주제는 창의적이어야", "우리 팀의 Agent 활용이 잘 드러나야", "다른 팀과 비슷한 주제는 피해야", "발표 시간은 7분"]
     }
   },
   {
@@ -46,7 +46,7 @@
       "values": {"speed": null, "pause": null, "silence": null, "volume": "적절한 음량", "filler": "불필요한 추임새 줄이기", "gaze": null,
                  "script_dependency": null, "script_similarity": null, "script_used": null},
       "targets": [],
-      "excluded": ["발표 시간은 10분이며 시간을 지켜야", "억양", "발표 자료의 내용은 신뢰할 수 있어야", "질의응답에도 적극적으로 참여"]
+      "excluded": ["발표 시간은 10분이며 시간을 지켜야", "억양", "발표 자료의 내용은 신뢰할 수 있어야", "질의응답에도 적극적으로 참여해야"]
     }
   },
   {
@@ -155,7 +155,7 @@
       "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": null, "gaze": null,
                  "script_dependency": null, "script_similarity": null, "script_used": null},
       "targets": [],
-      "excluded": ["발표 자료는 깔끔하게", "제스처를 자연스럽게"]
+      "excluded": ["발표 자료는 깔끔하게 만들고", "제스처를 자연스럽게 써"]
     }
   },
   {

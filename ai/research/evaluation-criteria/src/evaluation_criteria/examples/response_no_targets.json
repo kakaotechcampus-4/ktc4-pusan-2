@@ -3,6 +3,6 @@
   "values": {"speed": null, "pause": null, "silence": null, "volume": null, "filler": null, "gaze": null,
              "script_dependency": null, "script_similarity": null, "script_used": null},
   "targets": [],
-  "excluded": ["발표 주제는 창의적", "발표 시간은 7분"],
+  "excluded": ["발표 주제는 창의적이어야", "발표 시간은 7분"],
   "meta": {"schema_version": "1.0", "feature_version": "evaluation_criteria-1.0", "model": "<응답한 모델>"}
 }

@@ -47,11 +47,11 @@ def test_script_used_three_values(script_used):
 
 def test_only_unmeasurable_criteria_is_not_a_failure():
     # 7절: 측정할 수 있는 기준이 하나도 없으면 표시 기준 · 목표 빈 목록, 기준은 excluded 에
-    output = analysis(excluded=["발표 주제는 창의적", "발표 시간은 7분"])
+    output = analysis(excluded=["발표 주제는 창의적이어야", "발표 시간은 7분"])
     response, _ = run(output, text="발표 주제는 창의적이어야 하고 발표 시간은 7분입니다")
     assert response.display_criteria == []
     assert response.targets == []
-    assert response.excluded == ["발표 주제는 창의적", "발표 시간은 7분"]
+    assert response.excluded == ["발표 주제는 창의적이어야", "발표 시간은 7분"]
 
 
 def test_bad_target_is_dropped_but_display_criteria_stays():
