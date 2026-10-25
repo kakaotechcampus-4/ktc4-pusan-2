@@ -33,6 +33,7 @@ from pitch_coach_backend.module.take.exception import (
     TakeNotStarted,
     TakeSessionMismatch,
 )
+from pitch_coach_backend.module.take.measures import take_count, take_metric
 from pitch_coach_backend.module.take.repository import IN_PROGRESS_STATUSES, TakeRepository
 
 
@@ -256,29 +257,20 @@ def list_takes_service(
     )
 
 
-def _take_metric(areas: Mapping[str, Any], area: str, name: str) -> float | None:
-    values = (areas.get(area) or {}).get("take") or {}
-    value = values.get(name)
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return None
-    return value
-
-
 def _take_measures(take: Take, take_result: Mapping[str, Any] | None) -> TakeMeasuresDTO | None:
     if take_result is None:
         return None
     areas = take_result.get("areas") or {}
-    filler_count = _take_metric(areas, "FILLER", "filler_count")
     return TakeMeasuresDTO(
         duration_ms=take_result["duration_ms"],
         goal_ms=take.goal_time_sec * 1000,
-        audience_ratio=_take_metric(areas, "GAZE", "audience_ratio"),
-        screen_ratio=_take_metric(areas, "GAZE", "screen_ratio"),
-        script_ratio=_take_metric(areas, "GAZE", "script_ratio"),
-        away_ratio=_take_metric(areas, "GAZE", "away_ratio"),
+        audience_ratio=take_metric(areas, "GAZE", "audience_ratio"),
+        screen_ratio=take_metric(areas, "GAZE", "screen_ratio"),
+        script_ratio=take_metric(areas, "GAZE", "script_ratio"),
+        away_ratio=take_metric(areas, "GAZE", "away_ratio"),
         unmeasured_ms=None,
-        cpm=_take_metric(areas, "SPEED", "cpm"),
-        filler_count=None if filler_count is None else round(filler_count),
+        cpm=take_metric(areas, "SPEED", "cpm"),
+        filler_count=take_count(areas, "FILLER", "filler_count"),
     )
 
 

@@ -9,7 +9,6 @@ Take 결과에서 `take_summaries` 의 측정 칸을 읽는 것(`summary_measure
 `client.py` 다.
 """
 
-import math
 from dataclasses import dataclass
 from typing import Annotated, Any
 
@@ -17,6 +16,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from pitch_coach_backend.core.rounding import round_half_up
 from pitch_coach_backend.core.validation import reject_unstorable_json
+from pitch_coach_backend.module.take.measures import take_count, take_metric
 
 # 요청 `t_ms` 의 상한. Take 최대 1시간 + 60초 (architecture.md 1-3). 넘으면 AI 가 422 를 준다
 MAX_T_MS = 3_660_000
@@ -181,33 +181,26 @@ class SummaryMeasures:
 def summary_measures(take_result: dict[str, Any]) -> SummaryMeasures:
     """Take 결과에서 리포트 목록 · 비교에 쓰는 값만 꺼낸다. 영역 값이 없거나(측정 비율 미달) 지표가
     null(분모 0)이면 그 칸은 None 이다."""
-    areas = _TakeResultView.model_validate(take_result).areas
+    views = _TakeResultView.model_validate(take_result).areas
+    areas = take_result["areas"]
 
     def metric(area: str, name: str) -> float | None:
-        result = areas.get(area)
-        if result is None or result.take is None:
-            return None
-        value = result.take.get(name)
-        if isinstance(value, bool) or not isinstance(value, int | float):
-            return None
-        if not math.isfinite(value):
-            return None
-        return float(value)
+        return take_metric(areas, area, name)
 
     def percent(area: str, name: str) -> int | None:
         value = metric(area, name)
         return None if value is None else _fits(round_half_up(value, scale=100))
 
     def count(area: str, name: str) -> int | None:
-        value = metric(area, name)
-        return None if value is None else _fits(round_half_up(value))
+        value = take_count(areas, area, name)
+        return None if value is None else _fits(value)
 
     volume = metric("VOLUME", "voice_diff_db")
 
     ratios = [
         result.measured_ratio
         for area in _MEASURED_AREAS
-        if (result := areas.get(area)) is not None and result.measured_ratio is not None
+        if (result := views.get(area)) is not None and result.measured_ratio is not None
     ]
     return SummaryMeasures(
         average_cpm=metric("SPEED", "cpm"),

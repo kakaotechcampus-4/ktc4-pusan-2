@@ -3,6 +3,7 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.coach.replies import summary_measures
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults
 from pitch_coach_backend.module.user.entity import User
@@ -131,6 +132,33 @@ def test_report_leaves_unmeasured_areas_null(
         for key in ("audience_ratio", "screen_ratio", "script_ratio", "away_ratio", "cpm")
     ] == [None] * 5
     assert measures["filler_count"] is None
+
+
+def test_report_rounds_counts_like_the_saved_summary(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+) -> None:
+    """2.5 를 round() 로 세면 2 가 된다. 리포트와 Take 목록 · 비교가 같은 3 을 보여야 한다."""
+    take = _make_take(db_session, pitch_id, versions, 1, status="ANALYZING")
+    take.analysis_stage = "SCORING"
+    take_result = {
+        "take_id": str(take.id),
+        "duration_ms": 60_000,
+        "areas": {
+            "SPEED": {"measured_ratio": 1.0, "take": {"cpm": 300}},
+            "FILLER": {"measured_ratio": 1.0, "take": {"filler_count": 2.5}},
+        },
+    }
+    _add_result(db_session, take, "TAKE_RESULT", take_result)
+
+    measures = _report(client, take.id, auth_headers).json()["measures"]
+    summary = summary_measures(take_result)
+
+    assert measures["filler_count"] == summary.filler_count == 3
+    assert measures["cpm"] == summary.average_cpm == 300
 
 
 def test_report_of_a_missing_or_someone_elses_take_is_404(

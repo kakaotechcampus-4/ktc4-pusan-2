@@ -177,6 +177,7 @@ backend/
     │       ├── coach_service.py      # 코치 연동의 DB 일. take 모듈의 모양(dto)으로 넘기고 받는다
     │       ├── coach_repository.py   # 코치 이벤트 · 장 변경 · Take 결과 · 미션 행
     │       ├── ai_response.py        # 리뷰 · 대본 전달도 응답 검증
+    │       ├── measures.py           # Take 결과에서 지표 꺼내기 · 개수 반올림 (리포트 · take_summaries 공통)
     │       └── ready_sweep.py        # 시작하지 않은 Take 를 끝내는 주기 작업
     │
     ├── realtime/                 # WebSocket. entity 를 갖지 않고 저장은 도메인 service 에 위임
