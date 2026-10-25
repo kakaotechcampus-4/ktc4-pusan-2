@@ -356,7 +356,7 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 
 **보정 모델 `CalibrationModel`** — `fitCalibration` · `finishCalibration`이 만든다. 구역별 기준 자세에 `scene`(얼굴 중심 · 면적, 홍채 픽셀 크기, 밝기, 고개 방향, 카메라까지 거리 같은 얼굴 측정값)과 `configHash`가 붙는다. 메모리에만 두고 브라우저 저장소 · 서버 어디에도 두지 않는다(4-3). 일반 데이터라 `structuredClone`을 통과하므로, 같은 세션에서 새 Worker를 만들면 `calibrate(model)`이나 Worker 메시지 `restore`로 넘겨 이어받는다. 받는 쪽은 보정 모델의 모양(스키마 · 필수 구조)만 확인하고 설정 해시(`configHash`)는 비교하지 않는다.
 
-**1초 기록 만들기** — `GazeEvidenceRecorder.record(decision)`은 프레임 판정을 받아 끝난 1초 조각을 돌려준다(없으면 빈 목록). `flush(tEndMs)`는 Take 끝의 마지막 짧은 조각을 닫으며 Take가 끝나면 꼭 부른다. `reset()`은 비운다. `sampleToDict(sample)`이 전송 모양(5-2, `confidence` · `reliability`는 소수 4자리)을 만들고 FE는 그대로 보낸다. FE는 Take마다 새 기록기를 쓰고 `tMs`를 Take 시작 기준으로 넘긴다(6-1). 엔진은 시각을 되돌리지 않는다: 프레임 시각은 `max(반올림한 tMs, 앞 프레임 시각 + 1)`이고 이 값이 `FrameDecision.t_ms`가 된다. 그래서 보정 때 쓴 엔진에 Take 시작 기준 시각(0부터)을 이어 넘기면 시각이 밀린다(15절 열린 질문).
+**1초 기록 만들기** — `GazeEvidenceRecorder.record(decision)`은 프레임 판정을 받아 끝난 1초 조각을 돌려준다(없으면 빈 목록). `flush(tEndMs)`는 Take 끝의 마지막 짧은 조각을 닫으며 Take가 끝나면 꼭 부른다. `reset()`은 비운다. `sampleToDict(sample)`이 전송 모양(5-2, `confidence` · `reliability`는 소수 4자리)을 만들고 FE는 그대로 보낸다. FE는 Take마다 새 기록기를 쓰고 `tMs`를 Take 시작 기준으로 넘긴다(6-1). 엔진은 시각을 되돌리지 않는다: 프레임 시각은 `max(반올림한 tMs, 앞 프레임 시각 + 1)`이고 이 값이 `FrameDecision.t_ms`가 된다. 그래서 보정 때 쓴 엔진에 Take 시작 기준 시각(0부터)을 이어 넘기면 시각이 밀린다. FE는 발표 화면(Take)마다 새 엔진 · Worker를 만들어 보정 모델만 넘기고, 엔진과 기록기에 같은 Take 시작 기준 시각을 넘긴다.
 
 **Worker 메시지** (`worker/protocol.ts`, 카메라 화면 ↔ Worker)
 
@@ -428,7 +428,8 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 |---|---|---|---|
 | 지원하지 않는 브라우저 (WebAssembly · `createImageBitmap` 없음) | `checkSupport()`가 카메라 권한을 묻기 전에 알려 준다. FE는 시선만 빼고 발표를 진행한다 | 1초 기록 없음 → 서버는 `UNMEASURED`로 봄 | 시선은 발표를 막지 않는다 |
 | 모델 · 런타임 로딩 실패 · 지연 | `EngineInitError` (`TIMEOUT`: 기본 60초 안에 못 불러옴 / `INIT_FAILED`) | 위와 같음. 사유는 로그용 | 같음 |
-| 보정 실패 · 보정 전 | 보정 품질 0. 보정 전의 1초는 `UNMEASURED` | 그 시간은 측정 불가, `GAZE_UNMEASURABLE` | 기준점 없이 판정하면 틀린 지적이 나간다 |
+| 보정 실패(보정 모델 없음) · 보정 전 | 보정 품질 0. 보정 전의 1초는 `UNMEASURED` | 그 시간은 측정 불가, `GAZE_UNMEASURABLE` | 기준점 없이 판정하면 틀린 지적이 나간다 |
+| 재측정 권장 보정 (`RETRY_REQUIRED`이지만 보정 모델이 있음. 사유 `CLASS_NOT_SEPARABLE` · `ANCHOR_AMBIGUOUS` 등) | 발표를 막지 않고 그 보정으로 잰다. FE는 사유를 보정 실패 사유로 받아 다시 보정하기를 권한다 | 보정 품질(`gaze_confidence`) 0, `calibrations.result`의 `status` · `loo_accuracy`는 엔진 값 그대로(12-1) | 시선은 발표를 막지 않는다. 믿음이 낮은 Take인지는 보정 결과로 남는다 |
 | 프레임 처리 중 예외 | 그 프레임은 얼굴 없음으로 답하고 다음 프레임 계속. 연속 실패 중에는 첫 번째만 알림 (`FRAME_FAILED`) | 그 1초의 신뢰도 · 상태에 반영 | 한 프레임 때문에 엔진을 멈추지 않는다 |
 | Worker 종료 | 카메라 화면이 `WORKER_FAILED`를 한 번 알리고 프레임 전송을 멈춤 | 이후 1초 기록 없음 → `UNMEASURED` | 발표는 계속 |
 | 발표 중 카메라 끊김 | 카메라 화면이 `CAMERA_LOST`를 한 번 알리고 캡처를 멈춤. 끊기기 전까지 잰 1초 기록은 버리지 않는다 | 끊긴 시간만 `UNMEASURED`. 길어지면 `GAZE_UNMEASURABLE` | Take 전체의 시선을 잃지 않게 |
@@ -503,7 +504,7 @@ cd web && npm ci
 |---|---|---|
 | 모델 · 런타임 파일 | `face_landmarker.task`와 MediaPipe wasm을 빌드 단계에서 해시를 확인한 뒤 `public/models/`에 넣는다. 경로나 파일 이름에 버전을 붙인다. CDN은 쓰지 않는다 | 다른 판의 모델이면 랜드마크가 달라져 판정이 바뀐다 |
 | `@mediapipe/tasks-vision` | `1.0.1` 정확히 고정 | 연구 Python(mediapipe 1.0.1)과 같은 판이어야 기준 답과 같다 |
-| 기존 보정 모델 지우기 | FE가 지금 IndexedDB(`zoneRefs`)에 보정 모델을 저장한다. 저장을 멈추고, 브라우저 DB 버전을 올리며 기존 `zoneRefs`를 지운다 | 보정 모델에 얼굴 측정값이 들어 있다(4-3) |
+| 보정 모델 저장 | 보정 모델은 브라우저 저장소(IndexedDB · localStorage)에 두지 않는다. 예전에 IndexedDB(`zoneRefs`)에 저장한 것은 브라우저 DB 버전을 올리며 지운다 | 보정 모델에 얼굴 측정값이 들어 있다(4-3) |
 | 생성 파일 | `defaults.generated.ts`와 엔진 `__tests__/fixtures/`는 FE의 prettier · oxlint 대상에서 뺀다. 생성은 연구 폴더 `tools/`가 계속 한다 | 손으로 고치지 않는 파일이다 |
 | 압축 · 캐시 | Caddy에서 정적 파일 압축(`encode`)을 켠다(wasm 11.8 MB → 압축 3.4 MB). `/models/`에 긴 캐시 헤더 | 첫 로딩 약 16 MB를 줄인다 |
 | 격리 헤더 | COOP/COEP는 넣지 않는다 | 엔진은 교차 출처 격리 없이 돈다(`smoke:prod`). COEP는 Safari 미지원 · OAuth 팝업 등에 영향을 준다 |
@@ -563,12 +564,12 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
 | 시선 1초 기록 (원자료) | WS `metrics`마다 | `take_metric_seconds.gaze` (JSONB, nullable) | 엔진의 1초 기록 그대로(5-2), BE는 해석하지 않는다. 잰 크기: 한 행 약 0.14 KB(방향 · 이슈가 있으면 약 0.18 KB), 한 시간 Take(3,600행) 약 0.5–0.65 MB | BE가 몇 초씩 모아 쓴다 · BE가 `replay`(`gaze_records`)로 읽는다 | `(take_id, t_ms)` 유일 제약, 같은 1초가 또 오면 먼저 저장한 것을 둔다 | Take와 함께. 얼굴 영상 · 랜드마크가 아닌 파생값(시선 구역 · 신뢰도)이다. 동의 없는 Take의 예외는 `architecture.md` 1-1 '지우기 · 보관' |
-| 보정 결과 요약 | 발표 전 점검 때 | `calibrations.gaze_confidence` (Float, 0–1, 보정 실패면 0), `calibrations.result` (JSONB) | `result`: `{engine_version, status, separability, loo_accuracy, warnings}`(`separability`는 보정 표본에서 카메라 · 대본 시선 무리의 중심 사이 거리 ÷ 무리 안 흩어짐으로 클수록 잘 갈린다, `loo_accuracy`는 보정 표본을 하나씩 빼고 나머지로 맞힌 비율 0–1) (예: `{"engine_version": "gaze_v1.1.0+head_pose+reference_anchor_v1", "status": "OK", "separability": "<엔진 값>", "loo_accuracy": 0.93, "warnings": []}`). `gaze_confidence`는 보정이 `OK`면 `loo_accuracy`, 아니면 0 (15절 열린 질문). 크기 0.3 KB 안팎 | FE가 보내고 BE가 쓴다 · 리포트, Take끼리 비교할 때 엔진 버전 확인 | Take마다 하나 | Take와 함께. **보정 모델(얼굴 위치 · 크기 · 홍채 · 거리)은 저장하지 않는다** |
+| 보정 결과 요약 | 발표 전 점검 때 | `calibrations.gaze_confidence` (Float, 0–1, 보정 실패면 0), `calibrations.result` (JSONB) | `result`: `{engine_version, status, separability, loo_accuracy, warnings}`(`separability`는 보정 표본에서 카메라 · 대본 시선 무리의 중심 사이 거리 ÷ 무리 안 흩어짐으로 클수록 잘 갈린다, `loo_accuracy`는 보정 표본을 하나씩 빼고 나머지로 맞힌 비율 0–1) (예: `{"engine_version": "gaze_v1.1.0+head_pose+reference_anchor_v1", "status": "OK", "separability": "<엔진 값>", "loo_accuracy": 0.93, "warnings": []}`). `gaze_confidence`는 보정이 `OK`면 `loo_accuracy`(없으면 0), 아니면 0이다. 재측정 권장 보정으로 발표해도(7절) `gaze_confidence`는 0이고 `result.loo_accuracy`는 엔진 값을 그대로 둔다. 크기 0.3 KB 안팎 | FE가 보내고 BE가 쓴다 · 리포트, Take끼리 비교할 때 엔진 버전 확인 | Take마다 하나 | Take와 함께. **보정 모델(얼굴 위치 · 크기 · 홍채 · 거리)은 저장하지 않는다** |
 | 시선 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.GAZE` · `criteria.GAZE` | 코치가 `summarize` · `criteria` 결과를 고치지 않고 담는다. 잰 크기: Take · 장마다 지표 7개 약 0.16 KB(장 10개면 약 1.8 KB), `criteria` 다섯 문제 약 0.8 KB | 코치가 만들고 BE가 쓴다 · 리뷰 · 코칭 계획 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
 | 리포트 요약 시선 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.audience_gaze` · `slide_gaze` · `script_gaze` (Integer, nullable), `script_dependency_count` (Integer, nullable) | `audience_ratio` · `screen_ratio` · `script_ratio` × 100 반올림, `reading_runs` (`architecture.md` 1-1 대응 표). 세 비율의 합은 100이 아니다(그 밖 응시 `away_ratio`는 칸이 없다). 시선을 잴 수 없었으면(지표가 null) null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
 | 시선 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `GAZE`일 때 | `coach_events`의 `INTERVENTION` 이벤트(`area` = `GAZE`). `live_feedbacks`에는 쓰지 않는다 | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
 | 진행 중 창 | Take 동안 | Take를 맡은 BE 프로세스 메모리 | 최근 30초 시선 · 음량 1초 기록 | BE | 같은 1초는 먼저 온 것 | Take가 끝나면 지운다 |
-| 보정 모델 | 발표 전 점검 때 | **저장하지 않는다**. 같은 브라우저 탭의 메모리에만 두고, 새 Worker에는 `restore`(구조 복제)로 넘긴다. 보정한 화면 배치와 같을 때만 이어받는다 (15절 열린 질문) | — | 엔진 | — | 탭을 닫거나 새로고침하거나 화면 배치가 바뀌면 다시 보정한다 |
+| 보정 모델 | 발표 전 점검 때 | **저장하지 않는다**. 같은 브라우저 탭의 메모리에만 두고, 새 Worker에는 `calibrate(model)`이나 `restore`(구조 복제)로 넘긴다. 보정한 화면 배치 · 엔진 버전 · 엔진 설정 해시와 같을 때만 이어받는다(설정 해시는 FE가 비교한다, 5-6) | — | 엔진 | — | 탭을 닫거나 새로고침하거나 화면 배치가 바뀌면 다시 보정한다 |
 
 ## 12-2. 저장 규칙
 - 1초 기록은 엔진 값을 그대로 저장한다. 화면용 구역으로 바꾸거나 구간으로 접지 않는다(FE · BE 모두). 판정 기준이 바뀌어도 원자료로 다시 판정할 수 있게 하기 위해서다.
@@ -607,17 +608,13 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 
 # 15. 열린 질문 · 알려진 한계
 **열린 질문** (아직 정하지 않았다)
-- 보정 품질 0–1(`calibrations.gaze_confidence`)을 엔진의 보정 결과로 정하는 법: 추천은 보정이 `OK`면 `loo_accuracy`, 아니면 0.
-- 보정 모델을 장치 점검 화면에서 발표 화면으로 넘기는 법: 추천은 같은 탭의 메모리 + `restore`, 브라우저 저장소는 쓰지 않음.
 - 실측 평가 데이터를 모으는 정책(동의 · 보관 기간 · 삭제). 정하기 전에는 얼굴 영상을 녹화 · 저장하지 않는다.
-- 보정 실패 사유 `ANCHOR_AMBIGUOUS`(보정 지점 하나를 주변 영역과 가를 수 없음)를 FE 실패 목록에 넣을지와 화면 안내를 FE와 정한다.
-- Take 시간축과 엔진 시계를 맞추는 법(5-6): 보정한 엔진을 발표에 이어 쓸 때 Take마다 새 엔진 · Worker를 쓸지, 엔진에는 늘 늘어나는 시각을 넘기고 기록기에 넣기 전에 Take 시작 기준으로 바꿀지 FE 연결 때 정한다.
 
 **알려진 한계**
 - 정확도를 실제 발표자 녹화로 잰 적이 없다. 테스트 영상 · 합성 얼굴로만 확인했고, 임계값은 모두 초기값이다.
 - PnP 대체 경로(변환 행렬이 없을 때 얼굴 점과 3D 얼굴 모형으로 머리 자세를 푸는 방식)의 상수는 한 사람의 얼굴 기하에서 유도했다. 브라우저 엔진에는 이 경로가 없다.
 - GPU delegate는 Python과 같은 값인지 확인하지 않았다. 운영은 CPU다.
-- 브라우저는 Chrome에서만 확인했다(Edge · Safari · Firefox는 확인 전).
+- 브라우저는 Chrome · Edge(둘 다 Chromium)에서만 확인했다(Safari · Firefox는 확인 전). Edge는 기능 확인 항목을 모두 통과했고, 부하가 있는 개발 PC에서 프레임 지연이 예산을 넘었다.
 - 프레임 지연은 개발 PC 기준이다. 같은 PC도 배터리 절전에서는 한 프레임 예산(125 ms)을 넘는다. 저사양 대응(초당 프레임을 줄이는 모드)이 필요한지는 실제 사용자 기기로 정한다. 초당 프레임이 줄어도 1초 기록이 판정하려면 1초에 얼굴 프레임이 기준 개수 이상이어야 한다.
 - 보정에서 화면과 렌즈를 가를 수 없으면(카메라와 화면 중앙이 가까움) 그 Take에서는 `SCREEN`이 나오지 않고 화면 응시가 청중 응시로 읽힐 수 있다.
 - 음량 1초 기록(`voiced_ms`)이 없으면 대본 의존을 잴 수 없다(`reading_ratio` null, `reading_runs` 0).
