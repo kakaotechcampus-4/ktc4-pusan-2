@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .burden import Burden
+from .burden import Burden, focus
 from .config import ReviewConfig
 from .evaluable import measured_areas
 from .metrics import find_metric
@@ -18,6 +18,10 @@ from .vocab import DIMENSIONS
 METRIC_LABELS = {
     "audience_ratio": "청중 응시 비율",
     "script_ratio": "대본 응시 비율",
+    "cpm": "말 속도(분당 글자 수)",
+    "long_silence_count": "긴 침묵",
+    "duration_ms": "발표 시간",
+    "slide_duration_ms": "머문 시간",
     "voice_diff_db": "평소 대비 음량(dB)",
     "filler_per_min": "분당 군더더기",
     "filler_count": "군더더기 횟수",
@@ -56,6 +60,7 @@ NOTHING_TEXT = "이번 Take는 평가할 수 있는 항목이 부족했습니다
 
 def _evidence(
     dim: str,
+    burden: Burden,
     take_result: dict[str, Any],
     script_coverage: dict[str, Any] | None,
     measured: set[str],
@@ -65,15 +70,15 @@ def _evidence(
 ) -> tuple[str, dict[str, Any]]:
     """(영역, 근거). 잰 영역의 지표 중 값이 있는 첫 지표를 근거로 싣는다.
 
-    - 지표 순서: 다음 미션 지표 → 차원 표의 지표 순
+    - 지표 순서: 다음 미션 지표(차원에서 고른 문제의 mission_target) → 차원 표의 지표 순
     - area 가 있으면(개선점) 그 영역의 지표만, 없으면(강점) 잰 영역 어디든
     - 장 개선점이면 그 장 값이 있는 지표를 먼저 찾고, 없으면 Take 값
     - 못 찾으면 (area 또는 잰 영역 중 첫 영역, {})
     """
     spec = DIMENSIONS[dim]
-    metrics = dict.fromkeys(
-        m for m in (cfg.next_mission.mission_metric.get(dim), *spec.metrics) if m
-    )
+    _, issue, _ = focus(dim, burden, cfg)
+    rule = cfg.next_mission.mission_target.get(issue) if issue is not None else None
+    metrics = dict.fromkeys(m for m in (rule.metric if rule else None, *spec.metrics) if m)
     slides = (slide_number, None) if slide_number is not None else (None,)
     for slide in slides:
         for metric in metrics:
@@ -109,7 +114,7 @@ def build_default_text(
             text = IMPROVED_TEXT.format(label=DIMENSION_LABELS[dim])
         else:
             continue
-        area, evidence = _evidence(dim, take_result, script_coverage, measured, cfg)
+        area, evidence = _evidence(dim, burden, take_result, script_coverage, measured, cfg)
         strengths.append({"area": area, "slide_number": None, "text": text, "evidence": evidence})
 
     # PRIORITY 차원 목록은 반복 문제와 같다 (부담 큰 순 · 영역 · 몰린 장)
@@ -124,7 +129,7 @@ def build_default_text(
                 "slide_number": slide,
                 "text": where + IMPROVEMENT_TEXT[dim],
                 "evidence": _evidence(
-                    dim, take_result, script_coverage, measured, cfg, it["area"], slide
+                    dim, burden, take_result, script_coverage, measured, cfg, it["area"], slide
                 )[1],
             }
         )

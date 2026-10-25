@@ -10,18 +10,25 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from .burden import Burden, focus_area, focus_slide
+from .burden import Burden, focus
 from .config import ReviewConfig
-from .metrics import find_metric
+from .metrics import find_metric, slide_target_ms, speed_threshold
 from .schemas import MAX_DESCRIPTION_CHARS, MAX_NEXT_MISSIONS
 from .text import METRIC_LABELS, OPERATOR_WORDS
 from .vocab import DIMENSION_ORDER, METRIC_TO_DIMENSION
 
 
 def _format_value(metric: str, value: float) -> str:
-    """비율 지표는 %, 나머지는 그대로"""
+    """비율 지표는 %, 시간 지표는 분 · 초, 개수 지표는 번, 나머지는 그대로"""
     if metric.endswith("_ratio") or metric == "content_coverage":
         return f"{round(value * 100)}%"
+    if metric.endswith("_ms"):
+        minutes, seconds = divmod(round(value / 1000), 60)
+        if not minutes:
+            return f"{seconds}초"
+        return f"{minutes}분 {seconds}초" if seconds else f"{minutes}분"
+    if metric.endswith("_count"):
+        return f"{value:g}번"
     return f"{value:g}"
 
 
@@ -31,19 +38,35 @@ def _describe(metric: str, operator: str, value: float, slide_number: int | None
     return f"{where}{label} {_format_value(metric, value)} {OPERATOR_WORDS[operator]}".strip()
 
 
-def _next_target(metric: str, current: float, cfg: ReviewConfig) -> tuple[str, float] | None:
+def _final(
+    metric: str,
+    operator: str,
+    slide_number: int | None,
+    take_result: dict[str, Any],
+    cfg: ReviewConfig,
+) -> Any:
+    """최종 목표. 기준이 Take 마다 다른 지표는 그 Take 의 기준이다 (명세 6-1 7번). 없으면 None
+
+    - cpm: LTE 면 PACE_FAST, GTE 면 PACE_SLOW 기준값
+    - slide_duration_ms: 그 장의 target_ms
+    - duration_ms: plan.max_ms (TIME_OVER 의 Take 미션)
+    """
+    if metric == "cpm":
+        return speed_threshold(take_result, "PACE_FAST" if operator == "LTE" else "PACE_SLOW")
+    if metric == "slide_duration_ms":
+        return slide_target_ms(take_result, slide_number)
+    if metric == "duration_ms":
+        return (take_result.get("plan") or {}).get("max_ms") if operator == "LTE" else None
+    return cfg.next_mission.final.get(metric)
+
+
+def _next_target(operator: str, current: float, step: Any, final: Any) -> float | None:
     """지금 값에서 한 걸음 나아진 목표. 최종 목표를 넘지 않는다. 이미 최종 목표면 None"""
-    step = cfg.next_mission.step.get(metric)
-    final = cfg.next_mission.final.get(metric)
     if step is None or final is None:
         return None
-    if step < 0:  # 낮을수록 좋음
-        if current <= final:
-            return None
-        return "LTE", max(current + step, final)
-    if current >= final:  # 높을수록 좋음
-        return None
-    return "GTE", min(current + step, final)
+    if operator == "LTE":  # 낮을수록 좋음
+        return None if current <= final else max(current - step, final)
+    return None if current >= final else min(current + step, final)
 
 
 def build_next_missions(
@@ -63,12 +86,12 @@ def build_next_missions(
        지표가 속한 차원의 부담 큰 순, 같으면 targets 순서
     2) PRIORITY 차원마다 하나, priority_candidate_max 개까지이고 합계 상한을 넘지 않게
        (부담 큰 순, 같으면 차원 표 순서).
-       mission_metric 이 None 인 차원은 건너뛴다.
-       목표 = 지금 값 + step (final 을 넘지 않음).
-       부담이 가장 큰 영역에서 부담이 몰린 장이 있으면 장 미션, 아니면 Take 미션
-       (반복 문제와 같은 영역 · 장).
-       같은 (지표, 장)이 이미 있거나 지금 값(장 미션이면 그 장 값)이 없거나
-       이미 최종 목표면 건너뛴다. 건너뛰어도 반복 문제는 낸다
+       부담이 가장 큰 영역의 부담이 가장 큰 문제로 mission_target 에서 지표 · 방향을 찾는다.
+       목표 = 지금 값에서 step 만큼 나아진 값 (최종 목표를 넘지 않음, _final).
+       그 문제의 부담이 몰린 장이 있으면 장 미션, 아니면 Take 미션
+       (반복 문제와 같은 영역 · 장, focus).
+       표에 없는 문제이거나, 같은 (지표, 장)이 이미 있거나, 지금 값(장 미션이면 그 장 값)이 없거나,
+       최종 목표를 정할 기준이 없거나 이미 최종 목표면 건너뛴다. 건너뛰어도 반복 문제는 낸다
     """
     c = cfg.next_mission
     missions: list[dict[str, Any]] = []
@@ -101,17 +124,18 @@ def build_next_missions(
     for dim in priority_dims:
         if room <= 0:
             break
-        metric = c.mission_metric.get(dim)
-        if metric is None:
+        _, issue, slide = focus(dim, burden, cfg)
+        rule = c.mission_target.get(issue) if issue is not None else None
+        if rule is None:
             continue
-        slide = focus_slide(dim, focus_area(dim, burden), burden, cfg)
+        metric, operator = rule.metric, rule.operator
         area, current, _ = find_metric(take_result, script_coverage, metric, slide)
         if current is None or (metric, slide) in taken:
             continue
-        nxt = _next_target(metric, current, cfg)
-        if nxt is None:
+        final = _final(metric, operator, slide, take_result, cfg)
+        value = _next_target(operator, current, c.step.get(metric), final)
+        if value is None:
             continue
-        operator, value = nxt
         value = round(value, 2) if isinstance(value, float) else value
         where = f"{slide}번 장 " if slide is not None else ""
         missions.append(

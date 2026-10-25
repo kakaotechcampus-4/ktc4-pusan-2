@@ -52,6 +52,18 @@ def find_metric(
     return None, None, None
 
 
+def speed_threshold(take_result: dict[str, Any], issue: str) -> Any:
+    """그 Take 를 판정한 말 속도 기준값 (criteria.SPEED.issues.<PACE_FAST · PACE_SLOW>.threshold)"""
+    issues = ((take_result.get("criteria") or {}).get("SPEED") or {}).get("issues") or {}
+    return (issues.get(issue) or {}).get("threshold")
+
+
+def slide_target_ms(take_result: dict[str, Any], slide_number: int | None) -> Any:
+    """그 장의 목표 시간 (areas.TIME.slides[].target_ms). 없으면 None"""
+    slides = (take_result["areas"].get("TIME") or {}).get("slides") or []
+    return next((s.get("target_ms") for s in slides if s["slide_number"] == slide_number), None)
+
+
 def compare(observed: float, operator: str, target: float) -> bool:
     """observed operator target 이 참인지"""
     if operator == "LT":

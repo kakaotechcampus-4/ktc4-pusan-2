@@ -14,6 +14,7 @@ from typing import Any
 
 from .config import ReviewConfig
 from .evaluable import measured_areas
+from .metrics import slide_target_ms, speed_threshold
 from .vocab import DIMENSIONS
 
 #: (지표, 장 번호). Take 값은 장 번호가 None
@@ -58,20 +59,15 @@ def _bounds(
     """
     low = high = None
     if metric == "cpm":
-        issues = ((take_result.get("criteria") or {}).get("SPEED") or {}).get("issues") or {}
-        low = (issues.get("PACE_SLOW") or {}).get("threshold")
-        high = (issues.get("PACE_FAST") or {}).get("threshold")
+        low = speed_threshold(take_result, "PACE_SLOW")
+        high = speed_threshold(take_result, "PACE_FAST")
     elif metric == "duration_ms":
         plan = take_result.get("plan") or {}
         low, high = plan.get("min_ms"), plan.get("max_ms")
         if low is None and high is None:
             low = high = plan.get("target_ms")
     elif metric == "slide_duration_ms":
-        slides = (take_result["areas"].get("TIME") or {}).get("slides") or []
-        target = next(
-            (s.get("target_ms") for s in slides if s["slide_number"] == slide_number), None
-        )
-        low = high = target
+        low = high = slide_target_ms(take_result, slide_number)
     if not _is_number(low) and not _is_number(high):
         return None
     return (low if _is_number(low) else -math.inf, high if _is_number(high) else math.inf)

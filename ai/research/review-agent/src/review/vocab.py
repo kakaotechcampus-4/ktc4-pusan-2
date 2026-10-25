@@ -86,9 +86,13 @@ NON_BURDEN_ISSUES = frozenset({"GAZE_ON_SCREEN", "GAZE_UNMEASURABLE", "FINAL_MIN
 #: 틀린 수치는 이미 그 key_point 의 contradicted 에 반영돼 두 번 세게 된다
 CONTENT_BURDEN_STATUSES = frozenset({"missing", "contradicted"})
 
-#: 시간 · 내용은 늘 장 미션 (명세 3-2 7단계).
-#: 시간(pacing_rhythm)은 1차에서 다음 미션을 만들지 않는다
-SLIDE_ONLY_DIMENSIONS = frozenset({"content_delivery"})
+#: 내용(content_delivery)의 부담은 문제 이름이 없어 문제 자리에 이 이름을 쓴다
+CONTENT_ISSUE = "CONTENT"
+
+#: 시간 · 내용은 늘 장 미션 (명세 6-1 7번)
+SLIDE_ONLY_ISSUES = frozenset({"SLIDE_OVER", "BEHIND_SCHEDULE", "AHEAD_OF_SCHEDULE", CONTENT_ISSUE})
+#: Take 전체의 시간 초과는 늘 Take 미션. 그 구간의 장은 시간을 넘긴 순간에 보던 장일 뿐이다
+TAKE_ONLY_ISSUES = frozenset({"TIME_OVER"})
 
 ISSUE_TO_DIMENSION: dict[str, str] = {
     issue: dim for dim, spec in DIMENSIONS.items() for issue in spec.issues

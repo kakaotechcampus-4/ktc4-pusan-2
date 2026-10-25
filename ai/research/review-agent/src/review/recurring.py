@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .burden import Burden, focus_area, focus_slide
+from .burden import Burden, focus
 from .config import ReviewConfig
 from .vocab import DIMENSION_ORDER
 
@@ -20,15 +20,14 @@ def build_recurring_issues(
 
     - area: 차원의 영역이 하나면 그 영역, 여럿이면(pacing_rhythm) 부담이 가장 큰 영역
       (같으면 차원 표에 적힌 순서)
-    - slide_number: 다음 미션과 같은 규칙 (그 영역의 focus_slide). 몰리지 않았으면 None
+    - slide_number: 다음 미션과 같은 규칙 (고른 문제의 부담이 몰린 장, focus). 몰리지 않았거나
+      Take 전체의 시간 초과면 None
     - dimension: GAZE 처럼 한 영역이 여러 차원으로 나뉘어도 다음 리뷰가 알 수 있게
     """
     dims = [d for d, s in dimension_states.items() if s == "PRIORITY"]
     dims.sort(key=lambda d: (-burden[d]["total"], DIMENSION_ORDER[d]))
     issues = []
     for dim in dims:
-        area = focus_area(dim, burden)
-        issues.append(
-            {"area": area, "slide_number": focus_slide(dim, area, burden, cfg), "dimension": dim}
-        )
+        area, _, slide = focus(dim, burden, cfg)
+        issues.append({"area": area, "slide_number": slide, "dimension": dim})
     return issues

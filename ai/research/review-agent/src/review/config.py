@@ -76,38 +76,61 @@ class MissionConfig(_Section):
     )
 
 
+class MissionRule(_Section):
+    """문제 하나의 다음 미션 지표와 비교 방향"""
+
+    metric: str
+    operator: Literal["LTE", "GTE"]
+
+
 class NextMissionConfig(_Section):
     """7단계: 다음 미션"""
 
-    #: PRIORITY 차원의 다음 미션을 거는 지표.
-    #: None 이면 다음 미션을 만들지 않고 반복 문제로만 넘긴다.
-    #: pacing_rhythm 은 문제마다 좋아지는 방향이 달라(빠름 · 느림) 지표 하나로 정하지 못한다
-    mission_metric: dict[str, str | None] = Field(
+    #: 문제별 미션 지표 · 비교 방향 (명세 6-1 7번). PRIORITY 차원에서 고른 문제로 찾는다.
+    #: 빠름 · 느림처럼 같은 지표라도 문제마다 방향이 다르다.
+    #: 내용 전달은 문제 이름이 없어 vocab.CONTENT_ISSUE 로 찾는다.
+    #: 표에 없는 문제는 후보를 만들지 않는다
+    mission_target: dict[str, MissionRule] = Field(
         default_factory=lambda: {
-            "audience_gaze": "audience_ratio",
-            "script_independence": "script_ratio",
-            "pacing_rhythm": None,
-            "vocal_delivery": "voice_diff_db",
-            "fluency": "filler_per_min",
-            "content_delivery": "content_coverage",
+            "GAZE_LOW_EYE_CONTACT": MissionRule(metric="audience_ratio", operator="GTE"),
+            "GAZE_AWAY": MissionRule(metric="audience_ratio", operator="GTE"),
+            "GAZE_ON_SCRIPT": MissionRule(metric="script_ratio", operator="LTE"),
+            "PACE_FAST": MissionRule(metric="cpm", operator="LTE"),
+            "PACE_SLOW": MissionRule(metric="cpm", operator="GTE"),
+            "LONG_SILENCE": MissionRule(metric="long_silence_count", operator="LTE"),
+            "BEHIND_SCHEDULE": MissionRule(metric="slide_duration_ms", operator="LTE"),
+            "AHEAD_OF_SCHEDULE": MissionRule(metric="slide_duration_ms", operator="GTE"),
+            "SLIDE_OVER": MissionRule(metric="slide_duration_ms", operator="LTE"),
+            "TIME_OVER": MissionRule(metric="duration_ms", operator="LTE"),
+            "VOLUME_LOW": MissionRule(metric="voice_diff_db", operator="GTE"),
+            "FILLER_FREQUENT": MissionRule(metric="filler_per_min", operator="LTE"),
+            "CONTENT": MissionRule(metric="content_coverage", operator="GTE"),
         }
     )
-    #: 지금 값에서 나아질 폭. 부호가 좋아지는 방향이다 (음수 → LTE, 양수 → GTE)
+    #: 지금 값에서 나아질 폭 (크기). 방향은 mission_target 의 operator 다
     step: dict[str, int | float] = Field(
         default_factory=lambda: {
             "audience_ratio": 0.1,
-            "script_ratio": -0.1,
+            "script_ratio": 0.1,
+            "cpm": 20,
+            "long_silence_count": 1,
+            "slide_duration_ms": 10_000,
+            "duration_ms": 30_000,
             "voice_diff_db": 1.0,
-            "filler_per_min": -0.5,
-            "filler_count": -2,
+            "filler_per_min": 0.5,
+            "filler_count": 2,
             "content_coverage": 0.1,
         }
     )
-    #: 지표별 최종 목표. 다음 목표는 이 값을 넘지 않고, 이미 넘었으면 그 지표로 미션을 만들지 않는다
+    #: 지표별 최종 목표. 다음 목표는 이 값을 넘지 않고,
+    #: 이미 넘었으면 그 지표로 미션을 만들지 않는다.
+    #: 기준이 Take 마다 다른 지표(cpm · slide_duration_ms · duration_ms)는 여기에 두지 않고
+    #: 그 Take 의 기준을 쓴다 (next_missions._final)
     final: dict[str, int | float] = Field(
         default_factory=lambda: {
             "audience_ratio": 0.8,
             "script_ratio": 0.2,
+            "long_silence_count": 0,
             "voice_diff_db": 0.0,
             "filler_per_min": 1.0,
             "filler_count": 3,
