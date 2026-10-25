@@ -199,7 +199,10 @@ const editCriteria = (
 ): PitchDraft => ({
   ...draft,
   criteria: draft.criteria.map((v) =>
-    v.version === version && isEditableCriteria(draft, v) ? { ...update(v), edited: true } : v,
+    v.version === version && isEditableCriteria(draft, v)
+      ? // 처음 고칠 때 서버 목록을 적어 둡니다 — 고친 채로 다시 정리하면 이것으로 되돌립니다
+        { ...update(v), edited: true, savedItems: v.edited ? v.savedItems : v.items }
+      : v,
   ),
 });
 
@@ -384,7 +387,13 @@ export const useCreateStore = create<CreateState>((set) => ({
           draft: {
             ...s.draft,
             criteria: [
-              ...s.draft.criteria,
+              // 고친 채로 다시 정리했으면 그 고친 내용은 버리고 서버 목록으로 되돌립니다.
+              // 이 버전은 이제 최신이 아니라 고칠 수도 저장할 수도 없습니다 (`isEditableCriteria`)
+              ...s.draft.criteria.map((v) =>
+                v.version === target?.version && v.edited
+                  ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
+                  : v,
+              ),
               { version: next, items, saved: true, edited: false, sourceText, exceptText },
             ],
           },
@@ -397,7 +406,15 @@ export const useCreateStore = create<CreateState>((set) => ({
           ...s.draft,
           criteria: s.draft.criteria.map((v) =>
             v.version === target.version
-              ? { ...v, items, saved: true, edited: false, sourceText, exceptText }
+              ? {
+                  ...v,
+                  items,
+                  saved: true,
+                  edited: false,
+                  savedItems: undefined,
+                  sourceText,
+                  exceptText,
+                }
               : v,
           ),
         },
@@ -438,6 +455,7 @@ export const useCreateStore = create<CreateState>((set) => ({
                 ...v,
                 saved: true,
                 edited: false,
+                savedItems: undefined,
                 // 서버가 다시 분석해 저장한 목록입니다. 화면은 이것으로 다시 그립니다
                 items: standards.map((text) => ({ id: crypto.randomUUID(), text })),
               }

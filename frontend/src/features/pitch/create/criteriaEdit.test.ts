@@ -6,6 +6,7 @@ import {
   criteriaToSave,
   isEditableCriteria,
   latestSavedCriteria,
+  pendingVersion,
 } from './lib/draft';
 
 const store = () => useCreateStore.getState();
@@ -87,6 +88,31 @@ describe('평가기준 — 정리 → (고치기 → 저장)', () => {
     expect(store().draft.criteria).toHaveLength(2);
     expect(texts(2)).toEqual(['새 기준']);
     expect(find(2).saved).toBe(true);
+  });
+
+  it('고친 채로 다시 정리하면 앞 버전은 서버 목록으로 돌아간다 — 저장할 길 없는 고친 내용이 새 버전을 막지 않게', () => {
+    // 재현: V1 정리 → 한 줄 고침 → "수정해서 다시 정리" → V2
+    store().editCriterion(1, v1().items[0]!.id, '고친 문장');
+    store().editCriterion(1, v1().items[0]!.id, '한 번 더 고친 문장');
+    store().applyParsedCriteria(1, {
+      sourceText: '새로 적은 글',
+      standards: ['새 기준'],
+      exceptText: null,
+    });
+
+    expect(texts(1)).toEqual(['추임새 5번 이하', '청중 자주 보기']);
+    expect(v1().edited).toBe(false);
+    expect(v1().savedItems).toBeUndefined();
+    // 떠나기 경고 · "+ 새 버전" 막힘이 풀립니다
+    expect(selectCriteriaUnsaved(store())).toBe(false);
+    expect(pendingVersion(store().draft, 'criteria')).toBeNull();
+  });
+
+  it('저장하면 적어 둔 서버 목록을 지운다', () => {
+    store().editCriterion(1, v1().items[0]!.id, '고친 문장');
+    expect(v1().savedItems?.map((i) => i.text)).toEqual(['추임새 5번 이하', '청중 자주 보기']);
+    store().markCriteriaSaved(1, ['고친 문장', '청중 자주 보기']);
+    expect(v1().savedItems).toBeUndefined();
   });
 
   it('지난 버전을 "수정하기" 하면 원문을 물려받은 빈 버전이 생기고, 정리해야 서버에 생긴다', () => {

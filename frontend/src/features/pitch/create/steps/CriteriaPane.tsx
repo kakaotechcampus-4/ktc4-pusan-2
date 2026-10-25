@@ -141,6 +141,14 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         {parseButtonLabel(parse.isPending, hasItems)}
       </button>
 
+      {/* 다시 정리하면 새 버전이 생기고, 이 버전에서 고친 내용은 버려집니다 (createStore applyParsedCriteria) */}
+      {criteria?.edited && !parse.isPending && (
+        <p className="text-xs text-stone">
+          다시 정리하면 V{criteria.version}에서 고친 내용은 저장되지 않아요. 남기려면 먼저 저장해
+          주세요.
+        </p>
+      )}
+
       {parse.isError && (
         <p role="alert" className="text-sm font-bold text-coral">
           {parseErrorMessage(parse.error)}
