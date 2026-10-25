@@ -203,7 +203,7 @@ ai/research/review-agent/
                      "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.4}, "priority": 2, "reason": "3번 장 이번 Take 0.62, 이전 Take 0.70"}],
   "recurring_issues": [{"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}],
   "fallback_reason": null,
-  "meta": {"schema_version": "1.0", "feature_version": "review-1.0", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.0+<config 해시>"}, "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "review-1.1", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.1+<config 해시>"}, "model": "<응답한 모델>"}
 }
 ```
 **경계 — LLM 실패** (200, 문장은 기본 문장, 다음 미션은 후보 상위, 숫자 · 상태 · 점수는 같다)
@@ -212,7 +212,7 @@ ai/research/review-agent/
  "strengths": [{"area": "CONTENT", "slide_number": null, "text": "내용 전달: 핵심 내용 전달률 0.92", "evidence": {"content_coverage": 0.92}}],
  "...": "...",
  "fallback_reason": "LLM_TIMEOUT",
- "meta": {"schema_version": "1.0", "feature_version": "review-1.0", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.0+<config 해시>"}, "model": null}}
+ "meta": {"schema_version": "1.0", "feature_version": "review-1.1", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.1+<config 해시>"}, "model": null}}
 ```
 
 # 6. 처리 — 안에서 어떻게 도는가
@@ -377,7 +377,9 @@ sequenceDiagram
 - 대본 전달도 부담에 핵심 수치가 틀린(`mismatched`) · 빠진 경우를 넣을지와 중복 계산 막기: 아직 정하지 않았다(6-1 4번).
 
 **알려진 한계**
-- 부담 기준 · 허용치 · 점수 같은 값이 아직 없다(옛 리뷰 근거의 값은 옛 지표 이름이다). 정답 리뷰로 고른다.
+- 부담 기준(`PRIORITY`가 되는 최소 부담)만 13절 평가로 골랐다. 허용치 · 한 걸음 폭 · 점수 · 가중은 정답이 없거나 적어 아직 임시값이다. 실제 리허설 Take와 사람이 단 정답으로 다시 고른다.
+- 13절 평가는 공통 기준 Take(`architecture.md` 12절)가 아직 없어 코치 가상 발표 시나리오를 재생한 Take 결과로 대신했고, 정답 리뷰도 시나리오로 적은 초안이다. 대본 전달도 채점 · 이어진 Take · 사용자 평가 기준이 없는 묶음이라 내용 규칙과 반복 `PRIORITY` 비율은 재지 않았다(결과와 묶음은 연구 폴더 README).
+- 지금 기본 모델은 리뷰 한 번에 9초 안팎이 걸려, 호출 한 번 12초 제한(8절)에 걸려 `LLM_TIMEOUT`이 되는 Take가 있다(가상 발표 48 Take에서 3~4번).
 - 이전 Take 비교는 같은 발표 안에서만이고, 대본 보기가 다른 Take끼리의 비교는 해석에 주의가 필요하다.
 - 다음 미션 목표는 지금 값에서 한 걸음이라, 측정 비율이 낮은 Take에서는 후보가 줄어든다.
 - 숫자 검사는 허용 숫자를 단위 구분 없이 한 목록으로 대조한다(4-2 `check_numbers(sentence, allowed_numbers)`). 그래서 입력에 장 번호 · 개수 같은 작은 정수가 있으면 같은 숫자를 다른 단위로 쓴 문장도 통과한다(예: 장 번호 3이 있으면 실제 값이 −2.1인 음량을 "3dB"라고 써도 통과하고, 사용자 기준 값 5가 있으면 없는 "5번 장"도 통과한다).
@@ -392,6 +394,6 @@ sequenceDiagram
 | 장 없음 | `slide_number` null (0 아님) | 4-3 |
 | 실패 | LLM 실패는 200 기본 결과 + `fallback_reason`(`LLM_*`만). 입력 오류(422)는 다시 부르지 않고, 연결 실패 · 시간 초과 · 408 · 429 · 5xx는 BE가 1번 다시. 끝내 실패하면 Take `COMPLETED`(리뷰 없음) + `/coach/plan`은 `previous_review` null | 7절 |
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번 | 8절 |
-| 버전 | `review-1.0` · `criteria_versions.review` `review-1.0+<config 해시>` · `schema_version` `1.0` | 9절 |
+| 버전 | `review-1.1` · `criteria_versions.review` `review-1.1+<config 해시>` · `schema_version` `1.0` | 9절 |
 | 입력 한도 | `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `targets` 20 (넘으면 422) | 5-2 |
 | 저장 | `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `pitch_id` · `reason` · `observed`, UQ(`source_take_id`, `priority`), 인덱스 (`pitch_id`, `status`)), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at` | 12-1 · 12-2 |
