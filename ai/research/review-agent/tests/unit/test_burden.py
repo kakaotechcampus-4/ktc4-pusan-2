@@ -61,7 +61,7 @@ def test_sample_burden(req):
     assert b["script_independence"]["total"] == pytest.approx(15.696)
     assert b["script_independence"]["by_slide"] == {3: pytest.approx(15.696)}
     assert b["script_independence"]["by_area"] == {"GAZE": pytest.approx(15.696)}
-    assert b["fluency"]["total"] == pytest.approx(6.0)
+    assert b["fluency"]["total"] == pytest.approx(6.6)  # 6.0 × 미션 m-1 PARTIAL 가중 1.1
     # reliable 이 아닌 VOLUME_LOW · 부담 제외 GAZE_ON_SCREEN 은 세지 않는다
     assert b["vocal_delivery"]["total"] == 0
     assert b["audience_gaze"]["total"] == 0
@@ -119,7 +119,8 @@ def test_time_mission_not_achieved_weights_pacing(req):
     ]
     resp, trace = run(req, load_config(burden={"mission_failed_weight": 1.5}))
     assert resp.mission_results[0].status in ("FAILED", "PARTIAL")
-    assert trace.burden["pacing_rhythm"]["total"] == pytest.approx(18.0)
+    # 12.0 × 미션 가중 1.5 × gave_up(PACE_FAST) 가중 1.1
+    assert trace.burden["pacing_rhythm"]["total"] == pytest.approx(19.8)
 
 
 def test_pacing_partial_unmeasured_uses_measured_areas(req):
@@ -127,13 +128,13 @@ def test_pacing_partial_unmeasured_uses_measured_areas(req):
     req["take_result"]["areas"]["TIME"] = unmeasured()
     req["take_result"]["problem_segments"] += [
         segment("SLIDE_OVER", "TIME", 3, 110_000, 125_000, 0.8),  # 세지 않음
-        segment("PACE_FAST", "SPEED", 2, 30_000, 40_000, 0.5),  # 5.0
+        segment("PACE_FAST", "SPEED", 2, 30_000, 40_000, 0.5),  # 5.0 × gave_up 가중 1.1
     ]
     resp, trace = run(req)
     assert trace.evaluable["pacing_rhythm"]
     assert resp.dimensions["pacing_rhythm"] != "NOT_EVALUABLE"
-    assert trace.burden["pacing_rhythm"]["total"] == pytest.approx(5.0)
-    assert trace.burden["pacing_rhythm"]["by_area"] == {"SPEED": pytest.approx(5.0)}
+    assert trace.burden["pacing_rhythm"]["total"] == pytest.approx(5.5)
+    assert trace.burden["pacing_rhythm"]["by_area"] == {"SPEED": pytest.approx(5.5)}
 
 
 def test_pacing_all_unmeasured_is_not_evaluable(req):

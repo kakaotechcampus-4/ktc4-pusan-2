@@ -43,10 +43,10 @@ class BurdenConfig(_Section):
     content_burden_fallback: str = "normal"
     #: 직전 반복 문제였던 차원의 부담 배수
     recurring_weight: float = 1.2
-    #: 코치가 포기한 문제(gave_up)의 차원 부담 배수 (1차: 가중 없음)
-    gave_up_weight: float = 1.0
-    #: 미션을 이루지 못한(FAILED · PARTIAL) 지표의 차원 부담 배수 (1차: 가중 없음)
-    mission_failed_weight: float = 1.0
+    #: 코치가 포기한 문제(gave_up)의 차원 부담 배수. 반복 문제보다 작게 둔다
+    gave_up_weight: float = 1.1
+    #: 미션을 이루지 못한(FAILED · PARTIAL) 지표의 차원 부담 배수. 반복 문제보다 작게 둔다
+    mission_failed_weight: float = 1.1
 
 
 class DimensionConfig(_Section):

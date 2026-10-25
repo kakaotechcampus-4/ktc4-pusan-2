@@ -65,6 +65,7 @@ def test_achieved_mission_without_problem_is_improved(req):
 
 def test_priority_ties_break_by_table_order(req):
     req["previous_recurring_issues"] = []
+    req["missions"] = []  # 미션 가중 없이 부담을 같게
     req["take_result"]["problem_segments"] = [
         segment("FILLER_FREQUENT", "FILLER", 1, 0, 20_000, 0.6),
         segment("VOLUME_LOW", "VOLUME", 2, 0, 20_000, 0.6),

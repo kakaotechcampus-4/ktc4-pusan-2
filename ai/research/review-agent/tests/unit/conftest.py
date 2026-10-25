@@ -2,7 +2,7 @@
 
 예시 요청(src/review/examples/review/request.json)의 값으로 계산한 부담:
 - script_independence = (0.71 × 13초 + 0.55 × 7초) × 반복 가중 1.2 = 15.696 (3번 장)
-- fluency = 0.5 × 12초 = 6.0 (2번 장)
+- fluency = 0.5 × 12초 × 미션 m-1 PARTIAL 가중 1.1 = 6.6 (2번 장)
 """
 
 from __future__ import annotations

@@ -49,6 +49,7 @@ def test_failed_criteria_tie_keeps_input_order(req):
 
 def busy_request(req):
     """PRIORITY 3개: script_independence 15.7 · content_delivery 15.0 · fluency 14.4"""
+    req["missions"] = []  # 미션 가중 없이 부담 순서를 고정
     req["take_result"]["problem_segments"].append(
         segment("FILLER_FREQUENT", "FILLER", 3, 70_000, 84_000, 0.6)
     )
