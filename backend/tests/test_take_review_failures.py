@@ -1,7 +1,9 @@
 """리뷰의 잘못된 응답과 전송 실패는 저장하지 않고 도메인 502로 처리한다."""
 
+import asyncio
 import copy
 import json
+import time
 import uuid
 from functools import partial
 
@@ -18,7 +20,7 @@ from pitch_coach_backend.module.take.repository import TakeRepository
 from pitch_coach_backend.module.take.service import review as review_service
 from tests.test_analysis_review_ownership import run_review
 from tests.test_take_history import _pitch, _take
-from tests.test_take_review_response import REVIEW, request_review
+from tests.test_take_review_response import REVIEW, TAKE_ID, request_review
 
 
 @pytest.fixture(autouse=True)
@@ -89,6 +91,50 @@ def test_review_network_failure_becomes_502_after_one_retry(monkeypatch, error_t
     ai(monkeypatch, handler)
     with pytest.raises(InvalidReviewResponse):
         request_review()
+    assert len(calls) == 2
+    assert calls[0].headers["X-Request-ID"] == calls[1].headers["X-Request-ID"]
+
+
+async def _trickle(body: bytes):
+    for start in range(0, len(body), 40):
+        await asyncio.sleep(0.02)
+        yield body[start : start + 40]
+
+
+@pytest.mark.parametrize("slow", ["trickled-body", "late-response"])
+def test_review_attempt_is_limited_as_a_whole(monkeypatch, slow) -> None:
+    """읽기 간격이 짧아도 시도 하나가 전체 제한을 넘으면 버리고 한 번만 다시 부른다."""
+    monkeypatch.setattr(review_service, "REVIEW_TIMEOUT_SEC", 0.1)
+    body = json.dumps(REVIEW).encode()
+    calls = []
+
+    async def handler(request):
+        calls.append(request)
+        if slow == "late-response":
+            await asyncio.sleep(1)
+            return httpx.Response(200, content=body)
+        return httpx.Response(200, content=_trickle(body))
+
+    ai(monkeypatch, handler)
+    started = time.monotonic()
+    with pytest.raises(InvalidReviewResponse):
+        request_review()
+    assert time.monotonic() - started < 0.8
+    assert len(calls) == 2
+    assert calls[0].headers["X-Request-ID"] == calls[1].headers["X-Request-ID"]
+
+
+def test_review_retry_after_an_attempt_runs_out_of_time(monkeypatch) -> None:
+    monkeypatch.setattr(review_service, "REVIEW_TIMEOUT_SEC", 0.1)
+    body = json.dumps(REVIEW).encode()
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, content=_trickle(body) if len(calls) == 1 else body)
+
+    ai(monkeypatch, handler)
+    assert request_review().take_id == TAKE_ID
     assert len(calls) == 2
     assert calls[0].headers["X-Request-ID"] == calls[1].headers["X-Request-ID"]
 

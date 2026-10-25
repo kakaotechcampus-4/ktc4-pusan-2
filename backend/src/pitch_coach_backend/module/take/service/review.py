@@ -127,12 +127,15 @@ async def request_review_async(
     async with httpx.AsyncClient(timeout=REVIEW_TIMEOUT_SEC) as client:
         for attempt in range(2):
             try:
-                response = await client.post(
-                    f"{settings.ai_base_url}/takes/review",
-                    json=body,
-                    headers={"X-Request-ID": request_id},
-                )
-            except httpx.HTTPError as exc:
+                # httpx timeout 은 읽기 한 번의 제한이라 조금씩 오는 응답은 끝없이 기다린다.
+                # 시도마다 전체 시간을 따로 막는다.
+                async with asyncio.timeout(REVIEW_TIMEOUT_SEC):
+                    response = await client.post(
+                        f"{settings.ai_base_url}/takes/review",
+                        json=body,
+                        headers={"X-Request-ID": request_id},
+                    )
+            except (httpx.HTTPError, TimeoutError) as exc:
                 if attempt:
                     raise InvalidReviewResponse() from exc
             else:
