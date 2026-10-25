@@ -166,11 +166,17 @@ export interface CriteriaVersion {
   version: number;
   items: DraftCriterion[];
   /**
-   * 서버에 저장됐나. BE 는 나누기만 하고 저장하지 않습니다 (#192) — 사용자가 목록을 고친 뒤
-   * "저장"을 눌러야 true 가 됩니다. 저장 안 한 버전은 연습에 쓰지 않습니다.
-   * 저장한 버전은 고치지 않고, 다시 고치려면 "수정하기"로 새 버전을 만듭니다.
+   * 서버에 이 버전이 있나. BE 는 **정리하는 순간** AI 가 나눈 결과를 새 버전으로 저장합니다 (#463) —
+   * 그래서 정리하면 바로 true 입니다. "+ 새 버전"으로 만든 빈 버전만 false 이고, 정리해야 서버에 생깁니다.
+   * 연습에는 서버에 있는 버전을 씁니다.
    */
   saved: boolean;
+  /**
+   * 서버 버전 뒤에 사용자가 목록을 고치고 아직 저장하지 않았나. 계약은 고친 표시 기준을 저장하면
+   * 서버가 그 글로 한 번 더 분석해 **같은 버전**으로 저장합니다 (`docs/ai/features/evaluation-criteria.md`
+   * 57 · 282행). 저장하기 전까지 서버(연습)에는 고치기 전 목록이 남아 있습니다.
+   */
+  edited?: boolean;
   /**
    * 자연어로 적은 원문. 서버가 이것을 `items` 로 나눕니다.
    * 다시 열었을 때 무엇을 적어서 이 목록이 나왔는지 보여 주려고 함께 둡니다.
@@ -238,7 +244,7 @@ export const latestCriteria = (d: PitchDraft): CriteriaVersion | null => d.crite
  * 버전은 지우지 않습니다 — Take 가 자기가 쓴 버전을 가리키므로 지난 연습 결과를 보려면 남아 있어야 합니다.
  * 대신 빈 버전이 끝없이 쌓이지 않게, 저장 안 한 버전이 있는 동안에는 새 버전을 만들지 못하게 합니다.
  *
- *   평가기준  정리했거나 비어 있는데 아직 저장하지 않음
+ *   평가기준  아직 정리하지 않은 빈 버전, 또는 고친 내용을 아직 저장하지 않음
  *   슬라이드  파일을 아직 올리지 않음 (올리면 그 자체로 저장입니다)
  *   대본      매핑을 아직 저장하지 않음
  */
@@ -246,7 +252,7 @@ export function pendingVersion(draft: PitchDraft, node: DraftNode): number | nul
   const pending = (() => {
     switch (node) {
       case 'criteria':
-        return draft.criteria.findLast((v) => !v.saved);
+        return draft.criteria.findLast((v) => !v.saved || v.edited === true);
       case 'slides':
         return draft.slides.findLast((v) => v.pageCount === null);
       case 'script':
@@ -255,6 +261,18 @@ export function pendingVersion(draft: PitchDraft, node: DraftNode): number | nul
   })();
   return pending?.version ?? null;
 }
+
+/**
+ * 표시 기준 한 줄 · 목록 개수 상한. 계약 값입니다 — AI 출력이 한 줄 50자 이내 · 10개까지이고,
+ * BE `standards.title` 이 String(50) 입니다 (`docs/ai/features/evaluation-criteria.md` 출력 표).
+ * 고친 목록이 이걸 넘으면 저장에서 막히므로 화면에서 먼저 지킵니다.
+ */
+export const MAX_CRITERION_CHARS = 50;
+export const MAX_CRITERIA = 10;
+
+/** 고칠 수 있는 버전 — 서버에 있는 **가장 최근** 버전만 고칩니다. 지난 버전은 지난 Take 가 가리킵니다 */
+export const isEditableCriteria = (draft: PitchDraft, v: CriteriaVersion | null): boolean =>
+  v !== null && v.saved && v.items.length > 0 && draft.criteria.at(-1)?.version === v.version;
 
 /** 저장할 평가기준 — 빈 항목은 빼고 앞뒤 공백을 걷어 냅니다 */
 export const criteriaToSave = (v: CriteriaVersion): string[] =>

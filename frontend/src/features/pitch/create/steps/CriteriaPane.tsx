@@ -5,20 +5,30 @@ import { parseStandards, saveStandards } from '@/shared/api/standards';
 import { isCurrentDraft, useCreateStore } from '../createStore';
 import { AlertIcon, CheckIcon, DocIcon, RefreshIcon } from '../icons';
 import { fromStandardsPosted } from '../lib/beAdapter';
-import { criteriaToSave, pendingVersion, type CriteriaVersion } from '../lib/draft';
+import {
+  MAX_CRITERIA,
+  MAX_CRITERION_CHARS,
+  criteriaToSave,
+  isEditableCriteria,
+  pendingVersion,
+  type CriteriaVersion,
+} from '../lib/draft';
 import { NeedPitch } from './NeedPitch';
 import { PaneHeading } from './PaneHeading';
 
 /**
- * 목업 평가기준 — 왼쪽에 자연어로 한 번에 적고, 오른쪽에서 정리된 결과를 고쳐 저장합니다.
+ * 목업 평가기준 — 왼쪽에 자연어로 한 번에 적고, 오른쪽에서 정리된 결과를 확인 · 고칩니다.
  *
- * ── 정리 → 고치기 → 저장 (BE #192) ───────────────────────────────────
- *   정리   `POST /pitches/add/{id}/standards` — 서버(→ AI)가 나누기만 하고 저장하지 않습니다
- *   고치기 오른쪽 목록에서 문장 수정 · 추가 · 삭제. 아직 서버에는 없습니다 ("저장 안 됨")
- *   저장   `POST /pitches/{id}/standards` — 고친 목록을 확정합니다. 이 버전부터 연습에 씁니다
+ * ── 정리 → (고치기 → 저장) (`docs/ai/features/evaluation-criteria.md` 57 · 282행) ─────────
+ *   정리   `POST /pitches/add/{id}/standards` — 서버(→ AI)가 나누고 **그대로 새 버전으로 저장합니다** (#463).
+ *          그래서 정리하면 바로 "저장됨"이고, 이 버전으로 연습할 수 있습니다
+ *   고치기 가장 최근 버전의 목록에서 문장 수정 · 추가 · 삭제. 서버에는 아직 고치기 전 목록이 있습니다
+ *          ("고친 내용 저장 안 됨"). 한 줄 50자 · 10개까지 (계약 값)
+ *   저장   고친 목록을 보내면 서버가 그 글로 한 번 더 분석해 **같은 버전**으로 저장하고 목록을 돌려줍니다.
+ *          보낸 문장과 다를 수 있어 돌려받은 목록으로 다시 그립니다. ★ 이 호출은 계약에서 아직 미정입니다(304행)
  *
- * 저장한 버전은 고치지 않습니다. 다시 고치려면 "수정하기"로 새 버전을 만듭니다 (다른 갈래와 같은 규칙).
- * 저장 전에 다시 정리하면 고친 목록은 새 정리 결과로 바뀝니다.
+ * 지난 버전은 고치지 않습니다(지난 Take 가 가리킵니다). 고치려면 "수정하기"로 원문을 물려받은 새 버전을 만들어
+ * 다시 정리합니다. 다시 정리하면 서버에 새 버전이 생깁니다.
  * 발표시간은 여기가 아니라 발표정보에서 정합니다.
  */
 
@@ -37,7 +47,7 @@ function parseButtonLabel(pending: boolean, hasItems: boolean): string {
   return '평가기준 정리';
 }
 
-/** 처음 정리는 꽉 찬 버튼, 결과가 있으면 테두리 버튼 — 저장이 다음 할 일이 되도록 */
+/** 처음 정리는 꽉 찬 버튼, 결과가 있으면 테두리 버튼 — 결과 확인 · 고치기가 다음 할 일이 되도록 */
 function parseButtonTone(hasItems: boolean): string {
   if (hasItems) return 'border border-coral bg-white text-coral hover:bg-coral-wash';
   return 'bg-coral text-white hover:bg-coral-deep';
@@ -149,7 +159,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
 
 function Result({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitchId: string }) {
   const items = criteria?.items ?? [];
-  const editable = criteria !== null && !criteria.saved;
+  const editable = useCreateStore((s) => isEditableCriteria(s.draft, criteria));
 
   return (
     <section className="flex min-w-0 flex-col rounded-lg border border-line bg-white p-4 xl:p-5">
@@ -174,7 +184,7 @@ function Result({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         // 높이가 없으면 목록이 카드를 늘려 화면 아래로 밀려납니다
         <ol className="mt-4 flex max-h-88 flex-col gap-2.5 overflow-y-auto pr-1">
           {items.map((item, i) =>
-            editable ? (
+            editable && criteria ? (
               <EditableItem key={item.id} version={criteria.version} item={item} index={i} />
             ) : (
               <li
@@ -189,7 +199,7 @@ function Result({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         </ol>
       )}
 
-      {editable ? (
+      {editable && criteria ? (
         <SaveBar criteria={criteria} pitchId={pitchId} />
       ) : (
         <ReviseBar criteria={criteria} />
@@ -206,9 +216,15 @@ function ItemNumber({ index }: { index: number }) {
   );
 }
 
-/** 저장 안 한 목록은 코랄, 저장한 목록은 회색 표시 — 사이드바의 발표정보 표시와 같은 말입니다 */
+/**
+ * 고친 내용을 저장하지 않았으면 코랄, 서버에 있는 그대로면 회색 표시 — 사이드바의 발표정보 표시와 같은 말입니다.
+ * 정리만 한 목록도 서버에 저장돼 있습니다 (#463)
+ */
 function SavedBadge({ criteria }: { criteria: CriteriaVersion | null }) {
   if (!criteria || criteria.items.length === 0) return null;
+  if (criteria.edited) {
+    return <span className="text-xs font-bold text-coral">고친 내용 저장 안 됨</span>;
+  }
   if (criteria.saved) {
     return (
       <span className="flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-2.5 py-1 text-xs font-bold">
@@ -216,10 +232,10 @@ function SavedBadge({ criteria }: { criteria: CriteriaVersion | null }) {
       </span>
     );
   }
-  return <span className="text-xs font-bold text-coral">저장 안 됨</span>;
+  return <span className="text-xs font-bold text-coral">아직 정리하지 않음</span>;
 }
 
-/** AI 가 정리한 문장 한 줄. 사용자가 고치거나 지울 수 있습니다 */
+/** AI 가 정리한 문장 한 줄. 사용자가 고치거나 지울 수 있습니다. 한 줄 50자까지 (계약 값) */
 function EditableItem({
   version,
   item,
@@ -231,16 +247,24 @@ function EditableItem({
 }) {
   const editCriterion = useCreateStore((s) => s.editCriterion);
   const removeCriterion = useCreateStore((s) => s.removeCriterion);
+  // 상한에 가까워지면 남은 글자를 보입니다. 늘 보이면 목록이 숫자로 시끄러워집니다
+  const nearLimit = item.text.length >= MAX_CRITERION_CHARS - 10;
   return (
     <li className="flex items-center gap-3 rounded-lg border border-line bg-white px-3 py-2">
       <ItemNumber index={index} />
       <input
         aria-label={`평가기준 ${index + 1}`}
         value={item.text}
+        maxLength={MAX_CRITERION_CHARS}
         onChange={(e) => editCriterion(version, item.id, e.target.value)}
         placeholder="기준을 적어 주세요"
         className="h-9 min-w-0 flex-1 rounded-md border border-transparent px-2 text-sm outline-none placeholder:text-stone hover:border-line focus:border-ink"
       />
+      {nearLimit && (
+        <span className="tabular shrink-0 text-xs text-stone">
+          {item.text.length}/{MAX_CRITERION_CHARS}
+        </span>
+      )}
       <button
         type="button"
         aria-label={`평가기준 ${index + 1} 삭제`}
@@ -253,19 +277,34 @@ function EditableItem({
   );
 }
 
-/** 저장 전: 기준 추가 · 저장. 빈 항목은 빼고 보냅니다 */
+/** 저장 안내 한 줄. 고친 내용이 없으면 이미 저장돼 있다는 것을, 있으면 저장해야 쓰인다는 것을 말합니다 */
+function saveHint(edited: boolean, count: number, refined: boolean): string {
+  if (refined && !edited) return 'AI가 문장을 다듬어 저장했어요. 이 목록으로 연습해요.';
+  if (!edited) return 'AI가 정리한 그대로 저장돼 연습에 쓰여요. 고치면 다시 저장할 수 있어요.';
+  if (count === 0) return '저장할 기준을 하나 이상 적어 주세요.';
+  return '고친 내용을 저장해야 연습에 쓰여요. 저장할 때 AI가 한 번 더 다듬고, 빈 줄은 빠져요.';
+}
+
+/** 고치기: 기준 추가 · 저장. 빈 항목은 빼고 보내고, 서버가 돌려준 목록으로 다시 그립니다 */
 function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: string }) {
   const addCriterion = useCreateStore((s) => s.addCriterion);
   const markCriteriaSaved = useCreateStore((s) => s.markCriteriaSaved);
   const draftId = useCreateStore((s) => s.draftId);
   const standards = criteriaToSave(criteria);
+  const edited = criteria.edited === true;
+  const full = criteria.items.length >= MAX_CRITERIA;
+  /** 서버가 보낸 문장과 다르게 저장했나 — 다음에 고칠 때까지 안내합니다 */
+  const [refined, setRefined] = useState(false);
 
   const save = useMutation({
     // 정리와 같습니다 — 저장하는 사이 새 피치를 시작했으면 결과를 새 작성에 넣지 않습니다
     mutationFn: ({ list }: { list: string[]; draftId: string }) => saveStandards(pitchId, list),
-    onSuccess: (_res, { list, draftId: from }) => {
+    onSuccess: (res, { list, draftId: from }) => {
       if (!isCurrentDraft(from)) return;
-      markCriteriaSaved(criteria.version, list);
+      // 계약상 서버가 고친 글로 다시 분석해 저장합니다. 돌려받은 목록이 없으면(응답 모양 미정) 보낸 목록을 씁니다
+      const saved = res.standards?.map((s) => s.standard) ?? list;
+      setRefined(saved.join('\n') !== list.join('\n'));
+      markCriteriaSaved(criteria.version, saved);
     },
     onError: (error) => console.error('[평가기준] 저장하지 못했습니다', error),
   });
@@ -274,10 +313,14 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
     <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
       <button
         type="button"
-        onClick={() => addCriterion(criteria.version)}
-        className="self-start rounded-md px-2 py-1 text-sm font-bold text-stone hover:bg-panel hover:text-ink"
+        disabled={full}
+        onClick={() => {
+          setRefined(false);
+          addCriterion(criteria.version);
+        }}
+        className="self-start rounded-md px-2 py-1 text-sm font-bold text-stone hover:bg-panel hover:text-ink disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
-        + 기준 추가
+        {full ? `기준은 ${MAX_CRITERIA}개까지예요` : '+ 기준 추가'}
       </button>
       {save.isError && (
         <p role="alert" className="text-sm font-bold text-coral">
@@ -285,25 +328,21 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
         </p>
       )}
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-stone">
-          {standards.length === 0
-            ? '저장할 기준을 하나 이상 적어 주세요.'
-            : '확인하고 저장해야 연습에 쓰여요. 빈 줄은 빼고 저장돼요.'}
-        </p>
+        <p className="text-xs text-stone">{saveHint(edited, standards.length, refined)}</p>
         <button
           type="button"
-          disabled={standards.length === 0 || save.isPending}
+          disabled={!edited || standards.length === 0 || save.isPending}
           onClick={() => save.mutate({ list: standards, draftId })}
           className="h-10 shrink-0 rounded-lg bg-coral px-5 text-sm font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
         >
-          {save.isPending ? '저장하는 중…' : '평가기준 저장'}
+          {save.isPending ? '저장하는 중…' : '고친 내용 저장'}
         </button>
       </div>
     </div>
   );
 }
 
-/** 저장 후: 저장한 목록은 고정이라, 고치려면 새 버전을 만듭니다 */
+/** 지난 버전: 그 자리에서 고치지 않고, 원문을 물려받은 새 버전을 만들어 다시 정리합니다 */
 function ReviseBar({ criteria }: { criteria: CriteriaVersion | null }) {
   const reviseCriteria = useCreateStore((s) => s.reviseCriteria);
   const select = useCreateStore((s) => s.select);
@@ -312,7 +351,7 @@ function ReviseBar({ criteria }: { criteria: CriteriaVersion | null }) {
   if (!criteria || criteria.items.length === 0) {
     return (
       <p className="mt-4 border-t border-line pt-4 text-xs text-stone">
-        정리한 뒤 목록을 고치고 저장할 수 있어요.
+        정리하면 바로 저장되고, 목록을 고쳐 다시 저장할 수 있어요.
       </p>
     );
   }
@@ -320,8 +359,8 @@ function ReviseBar({ criteria }: { criteria: CriteriaVersion | null }) {
     <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-4">
       <p className="text-xs text-stone">
         {pending === null
-          ? '저장한 기준은 바뀌지 않아요. 고치면 새 버전으로 저장돼요.'
-          : `저장하지 않은 V${pending}이 있어요. 그 버전을 마저 저장해 주세요.`}
+          ? '지난 버전은 바뀌지 않아요. 고치려면 이 글로 새 버전을 만들어 다시 정리해요.'
+          : `마무리하지 않은 V${pending}이 있어요. 그 버전을 마저 정리하거나 저장해 주세요.`}
       </p>
       <button
         type="button"

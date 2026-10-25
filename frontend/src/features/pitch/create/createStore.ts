@@ -17,6 +17,7 @@ import {
   canSaveMapping,
   infoChanged,
   infoOf,
+  isEditableCriteria,
   latestUploadedSlides,
 } from './lib/draft';
 
@@ -133,19 +134,25 @@ interface CreateState {
   addCriteriaVersion: () => void;
   /**
    * 서버가 나누고 저장한 결과를 넣습니다. "+ 새 버전"으로 만든 빈 버전이면 거기 채우고,
-   * 아니면 새 버전을 만듭니다 — 서버도 정리할 때마다 새로 저장하고, 저장한 것은 고치지 않습니다.
+   * 아니면 새 버전을 만듭니다 — 서버도 정리할 때마다 새 버전으로 저장합니다 (#463).
    */
   applyParsedCriteria: (
     version: number | null,
     parsed: { sourceText: string; standards: string[]; exceptText: string | null },
   ) => void;
-  /** 저장 전 목록 고치기. 저장한 버전은 바꾸지 않습니다 */
+  /** 목록 고치기. 서버에 있는 가장 최근 버전만 고치고(`isEditableCriteria`), 고치면 `edited` 가 됩니다 */
   editCriterion: (version: number, id: string, text: string) => void;
   addCriterion: (version: number) => void;
   removeCriterion: (version: number, id: string) => void;
-  /** 확정 저장이 끝났습니다. 빈 항목은 빼고 저장한 그대로 둡니다 */
+  /**
+   * 고친 목록을 저장했습니다. `standards` 는 **서버가 돌려준 목록**입니다 — 계약상 서버가 고친 글로
+   * 한 번 더 분석해 저장하므로, 보낸 문장과 다를 수 있습니다
+   */
   markCriteriaSaved: (version: number, standards: string[]) => void;
-  /** 저장한 버전을 고치려면 — 같은 목록으로 새 버전(저장 안 됨)을 만듭니다 */
+  /**
+   * 지난 버전을 고치려면 — 그 버전의 원문을 물려받은 빈 버전을 만듭니다. 다시 정리해야 서버에 새 버전이
+   * 생깁니다. 지난 버전은 지난 Take 가 가리키므로 그 자리에서 고치지 않습니다
+   */
   reviseCriteria: (version: number) => void;
 
   reset: () => void;
@@ -184,14 +191,16 @@ const mapScripts = (
   scripts: draft.scripts.map((v) => (v.version === version ? update(v) : v)),
 });
 
-/** 저장 안 한 평가기준 버전만 고칩니다. 저장한 버전은 그대로 돌려줍니다 */
-const mapUnsavedCriteria = (
+/** 고칠 수 있는 평가기준 버전만 고치고 `edited` 로 둡니다. 그 밖의 버전은 그대로 돌려줍니다 */
+const editCriteria = (
   draft: PitchDraft,
   version: number,
   update: (v: CriteriaVersion) => CriteriaVersion,
 ): PitchDraft => ({
   ...draft,
-  criteria: draft.criteria.map((v) => (v.version === version && !v.saved ? update(v) : v)),
+  criteria: draft.criteria.map((v) =>
+    v.version === version && isEditableCriteria(draft, v) ? { ...update(v), edited: true } : v,
+  ),
 });
 
 export const useCreateStore = create<CreateState>((set) => ({
@@ -368,6 +377,7 @@ export const useCreateStore = create<CreateState>((set) => ({
       const items = standards.map((text) => ({ id: crypto.randomUUID(), text }));
       const target = s.draft.criteria.find((v) => v.version === version);
 
+      // 정리하면 서버에 새 버전으로 저장됩니다 (#463). 고칠 수는 있고, 고치면 다시 저장합니다
       if (!target || target.saved) {
         const next = nextVersion(s.draft.criteria);
         return {
@@ -375,8 +385,7 @@ export const useCreateStore = create<CreateState>((set) => ({
             ...s.draft,
             criteria: [
               ...s.draft.criteria,
-              // 정리만 했습니다. 고친 뒤 "저장"을 눌러야 서버에 남습니다 (BE #192)
-              { version: next, items, saved: false, sourceText, exceptText },
+              { version: next, items, saved: true, edited: false, sourceText, exceptText },
             ],
           },
           node: 'criteria' as const,
@@ -388,7 +397,7 @@ export const useCreateStore = create<CreateState>((set) => ({
           ...s.draft,
           criteria: s.draft.criteria.map((v) =>
             v.version === target.version
-              ? { ...v, items, saved: false, sourceText, exceptText }
+              ? { ...v, items, saved: true, edited: false, sourceText, exceptText }
               : v,
           ),
         },
@@ -397,7 +406,7 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   editCriterion: (version, id, text) =>
     set((s) => ({
-      draft: mapUnsavedCriteria(s.draft, version, (v) => ({
+      draft: editCriteria(s.draft, version, (v) => ({
         ...v,
         items: v.items.map((i) => (i.id === id ? { ...i, text } : i)),
       })),
@@ -405,7 +414,7 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   addCriterion: (version) =>
     set((s) => ({
-      draft: mapUnsavedCriteria(s.draft, version, (v) => ({
+      draft: editCriteria(s.draft, version, (v) => ({
         ...v,
         items: [...v.items, { id: crypto.randomUUID(), text: '' }],
       })),
@@ -413,7 +422,7 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   removeCriterion: (version, id) =>
     set((s) => ({
-      draft: mapUnsavedCriteria(s.draft, version, (v) => ({
+      draft: editCriteria(s.draft, version, (v) => ({
         ...v,
         items: v.items.filter((i) => i.id !== id),
       })),
@@ -421,12 +430,20 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   markCriteriaSaved: (version, standards) =>
     set((s) => ({
-      draft: mapUnsavedCriteria(s.draft, version, (v) => ({
-        ...v,
-        saved: true,
-        // 서버에 보낸 그대로 남깁니다 — 빈 항목과 공백은 이미 걸러 보냈습니다
-        items: standards.map((text) => ({ id: crypto.randomUUID(), text })),
-      })),
+      draft: {
+        ...s.draft,
+        criteria: s.draft.criteria.map((v) =>
+          v.version === version
+            ? {
+                ...v,
+                saved: true,
+                edited: false,
+                // 서버가 다시 분석해 저장한 목록입니다. 화면은 이것으로 다시 그립니다
+                items: standards.map((text) => ({ id: crypto.randomUUID(), text })),
+              }
+            : v,
+        ),
+      },
     })),
 
   reviseCriteria: (version) =>
@@ -441,12 +458,8 @@ export const useCreateStore = create<CreateState>((set) => ({
           ...s.draft,
           criteria: [
             ...s.draft.criteria,
-            {
-              ...from,
-              version: next,
-              saved: false,
-              items: from.items.map((i) => ({ ...i, id: crypto.randomUUID() })),
-            },
+            // 원문만 물려받습니다. 목록은 다시 정리해야 서버에 새 버전으로 생깁니다 (#463)
+            { version: next, items: [], saved: false, sourceText: from.sourceText ?? '' },
           ],
         },
         node: 'criteria' as const,
@@ -494,9 +507,12 @@ export const selectInfoUnsaved = (s: CreateState): boolean =>
   s.infoEdits !== null && infoChanged(s.infoEdits, infoOf(s.draft));
 
 /** 서버로 가는 중인 일이 있나 — 슬라이드 업로드 · 대본 나누기. 지금 떠나면 결과를 받을 곳이 없습니다 */
-/** 정리하거나 고친 평가기준을 아직 저장하지 않았나. 떠나기 경고가 봅니다 */
+/**
+ * 고친 평가기준을 아직 저장하지 않았나. 떠나기 경고가 봅니다. 정리만 한 목록은 이미 서버에 있어(#463)
+ * 경고하지 않습니다
+ */
 export const selectCriteriaUnsaved = (s: CreateState): boolean =>
-  s.draft.criteria.some((v) => !v.saved && v.items.length > 0);
+  s.draft.criteria.some((v) => v.edited === true);
 
 export const selectBusy = (s: CreateState): boolean =>
   s.slideUpload.status === 'uploading' || s.draft.scripts.some((v) => v.parse.status === 'pending');
