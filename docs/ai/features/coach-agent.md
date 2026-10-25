@@ -106,7 +106,7 @@ ai/research/coach-agent/
 | `decide(request, judges)` | 예외를 잡지 않는 1초 판단. 테스트 · 재생용 | 테스트 · `decide_safe` |
 | `finalize(request, judges)` → `POST /coach/finalize` | 마지막 창 판정 · 닫기 · Take 결과. 다 세지 못했으면 `ReplayRequired`(빠진 구간 `missing`)를 올린다 → 라우터가 409 | API 라우터 |
 | `plan_coaching(request, llm=…, model=…, cache=…)` → `POST /coach/plan` | 코칭 계획. LLM 클라이언트와 캐시는 인자로 받고, LLM 실패는 기본 계획 + `fallback_reason` | API 라우터 (연구에서는 `coach_lab.plan_eval`) |
-| `Judges` | 판정 모듈 묶음 (`judge` · `summarize` · `criteria` 세 함수를 가진 모듈 넷 + volume `speaking_levels` · `baseline`) | 라우터가 앱 시작 때 한 번 만든다 |
+| `Judges` | 판정 모듈 묶음 (`judge` · `summarize` · `criteria` 세 함수를 가진 모듈 넷 + volume `speaking_levels` · `baseline`) | 라우터가 앱 시작 때 한 번 만든다(판정 모듈 넷이 서비스에 모두 있어 evaluate · finalize를 열 때부터, 11절) |
 | `initial_state()` | 빈 `coach_state` | 테스트 · 재생 |
 
 ## 4-3. 규칙과 이유
@@ -627,7 +627,7 @@ uv sync
 - 계약 테스트: `tests/unit/test_contract.py`(응답 필드 · 모르는 요청 필드 무시 · 음수 시각 거부 · 모르는 상태 리셋), `tests/unit/test_examples.py`(예시 요청을 넣은 응답이 예시 응답과 같음), `tests/lab/test_examples_build.py`(예시를 다시 만들어도 같음).
 
 # 11. 배포
-**어디서 도는가**: 코어(`src/coach/` 전부, `examples/` · `prompts/` 포함)를 AI 서비스의 `features/coach/`로 폴더째 옮기고, 라우터 `api/coach.py`가 엔드포인트를 연다(`ai-service.md`). `/coach/plan`은 코어를 옮길 때 열고, `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷(시선 · 말 속도 · 소리 크기 · 군더더기)이 서비스에 모두 있을 때 연다. 빈 자리를 예외를 내는 자리표시로 채우면 코어는 그 영역을 잴 수 없음(`UNKNOWN`)으로 두고 견디지만, 그 영역의 `summarize`가 없어 Take 결과의 `measured_ratio`가 null이 되고 판정 기준 · 기준 버전이 비어 공통 계약(`architecture.md` 7절)과 어긋나기 때문이다. 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
+**어디서 도는가**: 코어(`src/coach/` 전부, `examples/` · `prompts/` 포함)를 AI 서비스의 `features/coach/`로 폴더째 옮기고, 라우터 `api/coach.py`가 엔드포인트를 연다(`ai-service.md`). `/coach/plan`은 코어를 옮길 때 열고, `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷(시선 · 말 속도 · 소리 크기 · 군더더기)이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우면 코어는 그 영역을 잴 수 없음(시선은 `UNMEASURABLE`, 나머지는 `UNKNOWN`)으로 두고 견디지만, Take 결과의 그 영역 `measured_ratio`가 null이 되고 판정 기준 · 기준 버전이 비어 공통 계약(`architecture.md` 7절)과 어긋나기 때문이다. 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 `pydantic>=2.13,<3`(서비스 `uv.lock`이 정한 판, 연구 폴더는 서비스를 editable로 설치해 같은 판을 쓴다). 옮기는 시점은 입력 위험(`t_ms` 상한 · 크게 앞선 시각, 5-2)과 복구 비용(`replay` 한 번이 Take 길이만큼 다시 판정함)을 막은 뒤이고, 아래 '옮긴 뒤 같은 결과인지 확인' 1~5를 모두 통과해야 한다. 서비스로 옮겨 BE 연동을 확인한 뒤, 배포할 그 판으로 배포 직전 점검을 통과하면 배포한다.
 

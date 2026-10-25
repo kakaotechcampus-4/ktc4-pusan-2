@@ -217,7 +217,7 @@ LLM 설정 없이 LLM 기능을 부르면 (`architecture.md` 4절)
 3. **의존성**: 코어가 쓰는 패키지를 더한다(6-4).
 4. **LLM · 모델**: LLM은 `common/llm.py`로 만들어 넘긴다(6-2). 서버 안에서 돌리는 모델이 있으면 6-3.
 5. **라우터**: `api/<이름>.py`를 만들고 `main.py`에 등록한다. 경로 · 요청 · 응답 필드는 BE와 합의하고, `ai/service/README.md`의 API 목록과 `contracts/openapi.json`을 갱신한다.
-   - 판정 모듈은 자기 엔드포인트가 없고 `api/coach.py`가 묶어 코치에 넘긴다(4-3). 코치 `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷이 서비스에 모두 있을 때 연다. 빈 자리를 예외를 내는 자리표시로 채우지 않는다. 코치는 견디지만 Take 결과의 그 영역 `measured_ratio`가 null이 되어 `architecture.md` 7절과 어긋난다(`coach-agent.md` 11절).
+   - 판정 모듈은 자기 엔드포인트가 없고 `api/coach.py`가 묶어 코치에 넘긴다(4-3). 코치 `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우지 않는다. 코치는 견디지만 Take 결과의 그 영역 `measured_ratio`가 null이 되어 `architecture.md` 7절과 어긋난다(`coach-agent.md` 11절).
 6. **확인**: `uv run pytest`, 필요하면 `uv run pytest -m live`, 그리고 `docker build`로 이미지가 만들어지는지 본다(10절). 출력이 긴 기능이면 걸린 시간도 잰다(`architecture.md` 3절).
 7. **PR**: CI가 통과하면 merge한다. develop에 merge되면 자동으로 배포된다.
 
