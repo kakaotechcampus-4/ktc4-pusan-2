@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .burden import Burden, compute_burden, recurring_dimensions
+from .comparison import compare_previous
 from .config import DEFAULT_CONFIG, ReviewConfig
 from .dimensions import decide_dimension_states
 from .evaluable import check_evaluable
@@ -39,6 +40,7 @@ class RuleResult:
     criteria_results: list[dict[str, Any]]
     burden: Burden
     dimensions: dict[str, str]
+    comparison: list[dict[str, Any]]
     next_mission_candidates: list[dict[str, Any]]
     recurring_issues: list[dict[str, Any]]
     score: int | None
@@ -72,9 +74,9 @@ def apply_rules(
     """규칙 단계 (명세 6-1). LLM · 문장 없이 숫자 · 상태 · 점수 · 미션 판정 ·
     다음 미션 후보 · 반복 문제를 정한다.
 
-    실행 순서: 판단 가능 → 미션 판정 → 부담 → 차원 상태 → 사용자 기준 → 다음 미션 후보 → 반복 문제
-    → 점수. 부담 · 차원 상태가 미션 결과를 쓰므로 미션 판정을 먼저 한다.
-    1차: 이전 Take 비교(6번)는 없다.
+    실행 순서: 판단 가능 → 미션 판정 → 부담 → 차원 상태 → 사용자 기준 → 이전 Take 비교
+    → 다음 미션 후보 → 반복 문제 → 점수.
+    부담 · 차원 상태가 미션 결과를 쓰므로 미션 판정을 먼저 한다.
     """
     cfg = config or DEFAULT_CONFIG
     data = _validate(request).model_dump()
@@ -92,6 +94,7 @@ def apply_rules(
     )
     states = decide_dimension_states(burden, evaluable, recurring, mission_results, cfg)
     criteria_results = judge_user_criteria(user_criteria, take_result, script_coverage, cfg)
+    comparison = compare_previous(take_result, script_coverage, data["previous_takes"], cfg)
     candidates = build_next_missions(
         criteria_results, states, burden, take_result, script_coverage, cfg
     )
@@ -104,6 +107,7 @@ def apply_rules(
         criteria_results=criteria_results,
         burden=burden,
         dimensions=states,
+        comparison=comparison,
         next_mission_candidates=candidates,
         recurring_issues=build_recurring_issues(states, burden, cfg),
         score=compute_score(states, cfg),
@@ -140,7 +144,7 @@ def review_take(
             "dimensions": rules.dimensions,
             "strengths": text["strengths"],
             "improvements": text["improvements"],
-            "comparison": [],  # 1차: 이전 Take 비교 없음
+            "comparison": rules.comparison,
             "mission_results": rules.mission_results,
             "criteria_results": rules.criteria_results,
             "next_missions": next_missions,

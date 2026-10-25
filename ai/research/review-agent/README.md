@@ -6,7 +6,7 @@ Take가 끝난 뒤 코치의 **Take 결과**와 **대본 전달도 채점**을 �
 |---|---|
 | 담당 | seojin-lee |
 | 기능 버전 | `review-1.0`, 요청 · 응답 스키마 `1.0` (`src/review/version.py`) |
-| 상태 | 패키지 + 테스트 (규칙 단계만. LLM 단계 · 숫자 검사 · 이전 Take 비교는 아직 없음) |
+| 상태 | 패키지 + 테스트 (규칙 단계만. LLM 단계 · 숫자 검사는 아직 없음) |
 | 설계 | 목적 · BE ↔ 리뷰 계약 · 처리 · 배포 → [`docs/ai/features/review-agent.md`](../../../docs/ai/features/review-agent.md) |
 
 ## 1. 폴더 · 파일 지도
@@ -32,6 +32,7 @@ review-agent/
 | `missions.py` | 미션 · 사용자 기준 판정 | 6-1 2 · 3번 |
 | `burden.py` | 차원 · 장 · 영역별 부담 | 6-1 4번 |
 | `dimensions.py` | 차원 상태 | 6-1 5번 |
+| `comparison.py` | 이전 Take 비교 | 6-1 6번 |
 | `next_missions.py` | 다음 미션 후보 · 선택 | 6-1 7번 |
 | `recurring.py` | 반복 문제 | 6-1 8번 |
 | `score.py` | 점수 | 6-1 9번 |

@@ -43,6 +43,8 @@ class SlideValues(_In):
     """Take 결과의 장별 값. 측정 비율 미달이면 metrics 가 null"""
 
     slide_number: int
+    #: 장 목표 시간. 이전 Take 비교에서 slide_duration_ms 의 기준
+    target_ms: int | None = None
     measured_ratio: float | None = None
     metrics: dict[str, Any] | None = None
 
@@ -78,6 +80,10 @@ class TakeResult(_In):
     """코치 Take 결과 (명세 2-3). 리뷰가 읽는 필드만"""
 
     take_id: str
+    #: 대본 보기 (HIGHLIGHT · KEYWORD · OFF)
+    script_mode: str | None = None
+    #: 시간 계획 {target_ms, min_ms, max_ms}. 이전 Take 비교에서 duration_ms 의 기준
+    plan: dict[str, Any] | None = None
     areas: dict[str, AreaResult]
     problem_segments: list[ProblemSegment] = Field(default_factory=list)
     gave_up: list[GaveUp] = Field(default_factory=list)
@@ -145,12 +151,18 @@ class UserCriteria(_In):
     script_used: bool | None = None
 
 
+class PreviousTake(_In):
+    take_result: TakeResult
+    #: 그 Take 의 대본 전달도 Take 값. 없으면 null
+    take_scores: dict[str, Any] | None = None
+
+
 class ReviewRequest(_In):
     take_result: TakeResult
     #: 모든 장이 실패했으면 null
     script_coverage: ScriptCoverage | None = None
-    #: 같은 발표의 이전 Take (최근 3개). 1차는 이전 Take 비교를 하지 않아 받기만 한다
-    previous_takes: list[Any] | None = Field(default=None, max_length=MAX_PREVIOUS_TAKES)
+    #: 같은 발표의 이전 Take (번호가 큰 것부터 3개). 비교는 [0](바로 앞 Take)만 쓴다
+    previous_takes: list[PreviousTake] | None = Field(default=None, max_length=MAX_PREVIOUS_TAKES)
     previous_recurring_issues: list[RecurringIssueIn] | None = Field(
         default=None, max_length=MAX_RECURRING_ISSUES
     )
@@ -179,8 +191,9 @@ class Improvement(_Out):
 
 
 class ScriptMode(_Out):
-    previous: str
-    current: str
+    #: 대본 보기를 남기지 않은 Take 는 null
+    previous: str | None
+    current: str | None
 
 
 class Comparison(_Out):
@@ -252,7 +265,7 @@ class ReviewResponse(_Out):
     dimensions: dict[str, DimensionState]
     strengths: list[Strength]
     improvements: list[Improvement]
-    #: 1차: 이전 Take 비교를 하지 않아 늘 빈 목록
+    #: 바로 앞 Take 와 같은 지표 비교. 이전 Take 가 없으면 빈 목록
     comparison: list[Comparison]
     mission_results: list[MissionResult]
     criteria_results: list[CriteriaResult]

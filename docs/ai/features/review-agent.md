@@ -78,6 +78,7 @@ ai/research/review-agent/
 │   ├─ missions.py                          6-1 2 · 3번: 미션 판정 · 사용자 기준
 │   ├─ burden.py                            6-1 4번: 차원 · 장 · 영역별 문제 부담
 │   ├─ dimensions.py                        6-1 5번: 차원 상태
+│   ├─ comparison.py                        6-1 6번: 이전 Take 비교
 │   ├─ next_missions.py                     6-1 7번: 다음 미션 후보
 │   ├─ recurring.py                         6-1 8번: 반복 문제
 │   ├─ score.py                             6-1 9번: 점수

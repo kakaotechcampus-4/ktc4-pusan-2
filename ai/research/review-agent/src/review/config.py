@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
@@ -121,6 +121,38 @@ class NextMissionConfig(_Section):
     priority_candidate_max: int = 3
 
 
+class ComparisonConfig(_Section):
+    """6-1 6번: 이전 Take 비교"""
+
+    #: 비교하는 지표와 좋은 방향. 표에 없는 지표는 비교하지 않는다.
+    #: HIGHER · LOWER: 한 방향.
+    #: RANGE: 각 Take 의 값이 그 Take 의 기준에 가까워졌는지
+    #: (cpm: criteria 의 PACE_SLOW ~ PACE_FAST 기준, duration_ms: plan,
+    #: slide_duration_ms: 장 target_ms).
+    #: None: 방향을 정할 수 없음 (improved null)
+    direction: dict[str, Literal["HIGHER", "LOWER", "RANGE"] | None] = Field(
+        default_factory=lambda: {
+            "audience_ratio": "HIGHER",
+            "script_ratio": "LOWER",
+            "reading_ratio": "LOWER",
+            "reading_runs": "LOWER",
+            "cpm": "RANGE",
+            # 말 사이 멈춤은 많고 적음 중 어느 쪽이 좋은지 정하지 않았다
+            "pause_count": None,
+            "long_silence_count": "LOWER",
+            "duration_ms": "RANGE",
+            "slide_duration_ms": "RANGE",
+            # 작은 소리(VOLUME_LOW)만 문제로 보고, 다음 미션도 GTE 다
+            "voice_diff_db": "HIGHER",
+            "low_ratio": "LOWER",
+            "filler_per_min": "LOWER",
+            "filler_count": "LOWER",
+            "content_coverage": "HIGHER",
+            "critical_fact_accuracy": "HIGHER",
+        }
+    )
+
+
 class ScoreConfig(_Section):
     """9단계: 점수. NOT_EVALUABLE 을 뺀 평균"""
 
@@ -135,6 +167,7 @@ class ReviewConfig(_Section):
     dimension: DimensionConfig = Field(default_factory=DimensionConfig)
     mission: MissionConfig = Field(default_factory=MissionConfig)
     next_mission: NextMissionConfig = Field(default_factory=NextMissionConfig)
+    comparison: ComparisonConfig = Field(default_factory=ComparisonConfig)
     score: ScoreConfig = Field(default_factory=ScoreConfig)
 
     _hash: str | None = PrivateAttr(default=None)

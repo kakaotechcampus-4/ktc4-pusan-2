@@ -10,5 +10,5 @@
 #: 1.0: 명세 3-1 · 3-3 의 요청 · 응답.
 #: recurring_issues 에 dimension 을 더했다 (README 의 팀 논의 참고)
 SCHEMA_VERSION = "1.0"
-#: review-1.0: 규칙 단계 + 기본 문장. LLM 단계 · 이전 Take 비교는 아직 없다
+#: review-1.0: 규칙 단계 + 기본 문장. LLM 단계는 아직 없다
 FEATURE_VERSION = "review-1.0"

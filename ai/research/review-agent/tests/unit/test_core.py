@@ -165,7 +165,7 @@ def test_comparison_shape():
 )
 def test_input_count_limits(req, field, limit):
     item = {
-        "previous_takes": {"take_result": None, "take_scores": None},
+        "previous_takes": {"take_result": req["take_result"], "take_scores": None},
         "missions": req["missions"][0],
         "previous_recurring_issues": req["previous_recurring_issues"][0],
     }[field]
