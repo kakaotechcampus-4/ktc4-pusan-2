@@ -16,6 +16,7 @@ import { PitchCreatePage, PitchEditPage } from '@/features/pitch/create/PitchCre
 import { RehearsalPage } from '@/features/rehearsal/stage/RehearsalPage';
 import { RetryPage } from '@/features/rehearsal/retry/RetryPage';
 import { ProcessingPage } from '@/features/report/ProcessingPage';
+import { ConfirmPage } from '@/features/report/ConfirmPage';
 import { ReportPage } from '@/features/report/ReportPage';
 import { DesignDraftRoute, DesignIndex } from '@/dev/design/DesignIndex';
 import { AboutPage } from '@/features/info/AboutPage';
@@ -55,6 +56,7 @@ const routes = [
   { path: '/takes/:takeId/rehearsal',  title: '실시간 코칭 리허설 | 피치코치', element: <RehearsalPage /> },
   { path: '/takes/:takeId/exam',       title: '실전 검증 리허설 | 피치코치', element: <RehearsalPage /> },
   { path: '/takes/:takeId/processing', title: '분석 대기 | 피치코치', element: <ProcessingPage /> },
+  { path: '/takes/:takeId/confirm',    title: '대본 확인 | 피치코치', element: <ConfirmPage /> },
   { path: '/takes/:takeId/retry',      title: '업로드 실패 · 재시도 | 피치코치', element: <RetryPage /> },
   { path: '/takes/:takeId',            title: 'Take 리포트 | 피치코치', element: <ReportPage /> },
   { path: '/pitch/:id/comparison',     title: 'Take 비교 | 피치코치', element: <ComparisonPage /> },
@@ -100,10 +102,16 @@ export const router = createBrowserRouter(
           path: route.path,
           element: (
             <PageTitle title={route.title}>
-              {/* 분석 대기는 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
+              {/* 분석 대기 · 대본 확인은 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
               <RequireSession
                 showHeader={
-                  !['/', '/pitches', '/pitch/new', '/takes/:takeId/processing'].includes(route.path)
+                  ![
+                    '/',
+                    '/pitches',
+                    '/pitch/new',
+                    '/takes/:takeId/processing',
+                    '/takes/:takeId/confirm',
+                  ].includes(route.path)
                 }
                 bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
                 header={

@@ -32,6 +32,8 @@ const MESSAGE: Record<string, string> = {
   INVALID_PRESENTATION: 'PDF를 열 수 없어요. 암호가 걸려 있거나 손상되지 않았는지 확인해 주세요.',
   PRESENTATION_VERSION_NOT_FOUND: '발표자료를 찾을 수 없어요. 다시 올려 주세요.',
   TAKE_NOT_FOUND: '연습 기록을 찾을 수 없어요. 처음부터 다시 시작해 주세요.',
+  /** 대본 확인 — 시간이 지났거나 이미 답했거나 리뷰가 시작됨 (합의 전 FE 제안, `types/confirmation.ts`) */
+  CONFIRMATION_CLOSED: '확인 시간이 끝나 답을 반영하지 못했어요. 분석은 그대로 이어져요.',
   INTERNAL_SERVER_ERROR: '서버에 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요.',
   SCRIPT_PARSE_IN_PROGRESS: '대본을 나누는 중이에요. 잠시만 기다려 주세요.',
   SCRIPT_REUPLOAD_REQUIRED: '이 대본은 다시 올려야 해요. 대본 매핑을 다시 눌러 주세요.',

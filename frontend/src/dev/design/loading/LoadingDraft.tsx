@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { ButtonLink } from '@/shared/ui/Button';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 
 /**
@@ -156,6 +157,17 @@ function Dialog({
         {current + 1}/3 · {STEP_NAMES[current]}
       </p>
 
+      {/* 확인 대기 — 실제 화면은 확인 화면(/takes/:takeId/confirm)으로 가는 버튼을 띄웁니다 */}
+      {waiting && (
+        <>
+          <p className="text-sm leading-relaxed" style={{ color: C.text }}>
+            비슷하게 들린 말이 있어요. 어떻게 말했는지 알려 주면 채점에 반영되고, 답이 없으면 10분
+            안에 그대로 진행돼요.
+          </p>
+          <ButtonLink to="/takes/t-confirm/confirm">비슷하게 들린 말 확인하기</ButtonLink>
+        </>
+      )}
+
       <div
         className="w-full border-t-2 border-dashed pt-4 text-left"
         style={{ borderColor: C.nightLine }}
@@ -169,7 +181,7 @@ function Dialog({
       </div>
 
       <p className="text-xs" style={{ color: C.accent }}>
-        보통 1분 안에 끝나요. 화면을 떠나도 분석은 계속돼요.
+        {!waiting && '보통 1분 안에 끝나요. '}화면을 떠나도 분석은 계속돼요.
       </p>
     </section>
   );
