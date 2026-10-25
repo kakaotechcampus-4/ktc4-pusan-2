@@ -597,7 +597,7 @@ uv sync
 | 응답 `meta` | `feature_version` · `criteria_versions`(채점 응답) · 응답한 모델(`architecture.md` 5 · 9절) |
 | 로그 | 대본 · STT 원문은 남기지 않고 장 수 · 글자 수 · 실패 장 수 · 걸린 시간만 남긴다(`architecture.md` 11절) |
 
-**환경변수**: 코어는 환경변수를 읽지 않는다. LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓰고, 호출 한 번의 시간 제한만 이 기능에서 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`으로 다르다(8절의 잰 값). 서비스로 옮길 때 `ai/.env.example`에 주석 줄(`# SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`)로 더하고, 서비스 `structured_llm`이 이 기능의 LLM 객체에 이 값을 쓰게 한다. 서버 `.env`에 넣는 일은 BE(인프라)에 요청한다.
+**환경변수**: 코어는 환경변수를 읽지 않는다. LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓰고, 호출 한 번의 시간 제한만 이 기능에서 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`으로 다르다(8절의 잰 값). 이 값은 `ai/.env.example`에 이미 있다(`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`). 서비스 설정은 모르는 이름을 무시하므로(`extra="ignore"`) 서비스가 읽기 전에 넣어 두어도 안전하고, 서버의 `ai/.env`(GitHub 시크릿 `AI_ENV`, BE 관리)에도 같은 줄을 미리 넣어 둔다. 서비스로 옮길 때는 서비스 `settings.py`에 이 값을 읽는 칸을 더하고(없으면 `LLM_TIMEOUT_SECONDS`), `structured_llm`이 이 기능의 LLM 객체에 그 값을 쓰게 하며, 서비스 README의 환경변수 표에 더한다. 그때 서버에 이 줄이 없으면 기본 12초로 돌아 장이 많은 대본에서 `LLM_TIMEOUT`이 많아진다(아래 증상 표).
 
 **옮긴 뒤 같은 결과인지 확인**
 1. 단위 테스트 · 계약 테스트 통과 (코어 경계 테스트 포함).
