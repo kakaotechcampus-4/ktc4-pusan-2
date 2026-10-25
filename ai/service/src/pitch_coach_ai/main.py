@@ -16,7 +16,7 @@
 
 import os
 import signal
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -32,9 +32,11 @@ _WARMUP = [*script_coverage.WARMUP]
 
 
 def _stop_process() -> None:
-    """시작할 때 불러오는 모델을 불러오지 못했다. 프로세스를 끝내 재시작 정책이 다시 띄우게 한다.
+    """시작할 때 불러오는 모델을 불러오지 못했다. 이 프로세스를 끝낸다.
 
-    준비되지 않은 채로 떠 있으면 헬스체크는 unhealthy 를 표시할 뿐 컨테이너를 다시 시작하지 않는다.
+    워커가 하나면 서버가 끝나 compose 재시작 정책이 컨테이너를 다시 띄우고, 여러 워커면
+    uvicorn 이 그 워커를 다시 띄운다. 준비되지 않은 채로 떠 있으면 헬스체크는 unhealthy 를
+    표시할 뿐 다시 시작하지 않는다.
     """
     os.kill(os.getpid(), signal.SIGTERM)
 
@@ -45,7 +47,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-def create_app(app_settings: Settings = settings) -> FastAPI:
+def create_app(
+    app_settings: Settings = settings,
+    *,
+    on_warmup_failure: Callable[[], None] | None = None,
+) -> FastAPI:
     """라우터를 붙인 새 앱을 돌려준다.
 
     테스트가 설정을 바꿔 앱을 새로 만들 수 있게 함수로 두고 설정을 인자로 받는다.
@@ -54,7 +60,7 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
     configure_logging()
     app = FastAPI(title="Pitch Coach AI", version="0.1.0", lifespan=_lifespan)
     app.state.settings = app_settings
-    app.state.readiness = Readiness(_WARMUP, on_failure=_stop_process)
+    app.state.readiness = Readiness(_WARMUP, on_failure=on_warmup_failure)
     # 모든 에러를 {"error": {"code", "message"}} 로, 요청마다 X-Request-ID 와 한 줄 로그
     register_exception_handlers(app)
     register_request_log(app)
@@ -63,4 +69,6 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
     return app
 
 
-app = create_app()
+# uvicorn 이 쓰는 앱만 불러오기 실패 때 프로세스를 끝낸다.
+# 테스트가 만드는 앱은 테스트 프로세스를 죽이지 않게 끝내지 않는다
+app = create_app(on_warmup_failure=_stop_process)

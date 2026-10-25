@@ -4,9 +4,11 @@
   `Depends(require_ready)` 로 준비 전 요청을 503 `NOT_READY` 로 돌려보낸다.
   `GET /ready` 도 이것을 본다
 - 불러오기는 별도 스레드에서 한다. 그동안에도 서버는 요청을 받아 `/health` 는 200, 모델을 쓰는
-  기능은 503 이다(BE 는 다시 부른다). 불러오기가 실패하면 `on_failure` 를 부른다. 앱(`main.py`)은
-  여기서 프로세스를 끝내, compose 재시작 정책(`restart: unless-stopped`)이 컨테이너를 다시 띄우게
-  한다(헬스체크가 unhealthy 를 표시하는 것만으로는 다시 시작되지 않는다, `ai-service.md` 7절)
+  기능은 503 이다(BE 는 다시 부른다). 불러오기가 실패하면 `on_failure` 를 부른다.
+  uvicorn 이 쓰는 앱(`main.app`)은 여기서 프로세스를 끝낸다. 워커가 하나면 compose 재시작
+  정책(`restart: unless-stopped`)이 컨테이너를, 여러 워커면 uvicorn 이 그 워커를 다시 띄운다.
+  헬스체크가 unhealthy 를 표시하는 것만으로는 다시 시작되지 않는다(`ai-service.md` 7절).
+  테스트가 만드는 앱은 끝내지 않는다
 - `require_ready` 와 `/health` · `/ready` 는 `async def` 다. 긴 LLM 요청이 동기 라우터의 스레드 풀을
   채워도 헬스체크와 준비 확인은 기다리지 않는다
 - 로그: `warmup_done name=… duration_ms=…` · `warmup_failed name=… error=…`(예외 종류와 위치만)

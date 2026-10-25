@@ -157,7 +157,7 @@ ai/service/
 | `src/pitch_coach_ai/common/errors.py` | 예외 → `{"error": {"code", "message"}}` · 상태 코드. `AppError` 와 LLM 예외 넷, `NotReady`(503), OpenAPI 에 싣는 공통 에러 본문(`ErrorResponse` · `ERROR_RESPONSES`) | 예외 → 에러 응답 | `main.py`(등록), `common/llm.py`(던짐), 기능(상속) | 새 공통 코드는 `architecture.md` 4절을 먼저 바꾼다 |
 | `src/pitch_coach_ai/common/request_log.py` | `X-Request-ID`(받은 그대로 · 없으면 생성), 처리되지 않은 예외 → 500, 요청마다 한 줄 로그 | 요청 → 응답 + 로그 | `main.py` | 로그에 요청 본문 · 쿼리 · 키를 넣지 않는다 |
 | `src/pitch_coach_ai/common/llm.py` | `structured_llm` · `deadline_after`: 구조화 출력 LLM, 호출 시간 제한 · 재시도 · 요청 마감 · 실패 분류 · 응답 모델 기록 · 호출 로그 | 스키마 · 역할 · 마감 → `.invoke` 를 가진 객체 | 라우터(코어에 넘김) | 시간 · 재시도는 환경변수, 묶음 · 상한은 `LLM_ROLES` |
-| `src/pitch_coach_ai/common/readiness.py` | 시작할 때 불러오는 모델의 준비 상태(`Readiness`), 준비 전 503 `NOT_READY` 의존성(`require_ready`), `warmup_done` · `warmup_failed` 로그 | 불러오는 함수 목록 → 준비됨 | `main.py` · 모델을 쓰는 라우터 · `/ready` | 불러오기가 실패하면 `main.py` 가 프로세스를 끝내 compose 재시작 정책이 다시 띄운다(unhealthy 표시만으로는 재시작되지 않는다). `require_ready` · `/health` · `/ready` 는 `async def`(스레드 풀이 차도 기다리지 않음) |
+| `src/pitch_coach_ai/common/readiness.py` | 시작할 때 불러오는 모델의 준비 상태(`Readiness`), 준비 전 503 `NOT_READY` 의존성(`require_ready`), `warmup_done` · `warmup_failed` 로그 | 불러오는 함수 목록 → 준비됨 | `main.py` · 모델을 쓰는 라우터 · `/ready` | 불러오기가 실패하면 uvicorn 이 쓰는 앱(`main.app`)만 프로세스를 끝낸다. 워커 하나면 compose 재시작 정책이 컨테이너를, 여러 워커면 uvicorn 이 워커를 다시 띄운다(unhealthy 표시만으로는 재시작되지 않는다). `require_ready` · `/health` · `/ready` 는 `async def`(스레드 풀이 차도 기다리지 않음) |
 | `src/pitch_coach_ai/common/meta.py` | 응답 `meta`(`schema_version` · `feature_version` · `model`, 판정 응답은 `criteria_versions`) | 기능 `FEATURE_VERSION`(`<모듈>-<버전>`) · LLM → `Meta` | 라우터 | `criteria_version` 해시는 코치 연구 코드와 같은 방식으로 둔다 |
 | `src/pitch_coach_ai/features/script_coverage/` | 대본 전달도 코어(`docs/ai/features/script-coverage-evaluation.md`). 진입 함수 `core.py`의 `analyze_script` · `evaluate_take` · `rescore_evaluation`, 요청 · 응답 `schemas.py`, 기준값 `config.py`, `version.py`(`script_coverage-1.0`), `examples/`(세 API 예시와 그 LLM 캐시), 하위 `shared/` · `script_analysis/` · `stt_evaluation/`. 파일마다의 역할은 연구 폴더 README 3-2 | 대본 · STT · 평가 기준 + LLM 객체 → 평가 기준 · 채점 | `api/script_coverage.py` | 연구 폴더(`ai/research/script-coverage-evaluation`)가 이 코어를 editable로 import한다. 코어는 여기서만 고치고, 바꾼 뒤 연구 캐시 재생으로 결과를 비교한다(연구 README '옮긴 뒤 검증'). 프롬프트 · 스키마 문자열은 캐시 키라 줄을 나누지 않는다(E501 제외) |
 | `tests/conftest.py` | 묶음 환경변수를 비운 뒤 앱 import(실제 키를 읽지 않음), `client` · `ready_client`(시작할 때 불러오는 모델까지 기다림) · `probe_client`(실패를 내는 테스트 경로) · `log_records` | — | 모든 앱 테스트 | — |
@@ -174,13 +174,13 @@ ai/service/
 uv run python -m pytest              # 가짜 LLM, 키 · 과금 없음
 ```
 ```
-432 passed, 2 deselected
+433 passed, 2 deselected
 ```
 ```powershell
 uv run python -m pytest -m live      # 실제 LLM 약 6번 (ai/.env 의 기본 묶음, 과금)
 ```
 ```
-2 passed, 432 deselected
+2 passed, 433 deselected
 ```
 LLM 호출마다 한 줄이 남습니다(프롬프트 · 답 · 키는 남기지 않음).
 ```
