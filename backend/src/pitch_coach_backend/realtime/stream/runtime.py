@@ -87,6 +87,7 @@ from pitch_coach_backend.realtime.event_ingestion import (
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, TimeLimit
+from pitch_coach_backend.realtime.stream.heard import HeardRange
 from pitch_coach_backend.realtime.stream.record import CoachDeps, StreamHost, TakeRecord
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
@@ -105,9 +106,6 @@ QUEUE_MAX_FRAMES = 50
 # 자동 종료를 알린 뒤 FE 가 마지막 1초 조각과 stop 을 보내기를 기다리는 상한. 그 전에 끝난 것으로
 # 적으면 마지막 조각이 빠진다. stop 을 보내지 않는 FE 도 있어 오래 기다리지 않는다
 FINAL_METRICS_WAIT_SEC = 2.0
-# 1초 원자료의 STT 상태를 ok 로 볼 때, 그 1초 끝보다 이만큼 늦게 받은 오디오까지 봐준다. FE 는
-# 오디오 프레임과 metrics 를 따로 보내 그 1초의 마지막 프레임이 metrics 뒤에 올 수 있다
-HEARD_SLACK_MS = 1_000
 # gaze · voice 가 둘 다 없는 metrics 의 1초 길이. FE 는 1초마다 보낸다
 METRICS_PERIOD_MS = 1_000
 # 연결이 붙어 있고 이 시간 안에 오디오가 왔으면 발표 중으로 본다. 창을 다시 연 FE 가 Take 를
@@ -154,10 +152,8 @@ class TakeStream:
         self._record = record
         # 마지막으로 받은 오디오 프레임 시각(monotonic). 발표 중인지 본다 (`is_live`)
         self._last_audio_at: float | None = None
-        # 끊김 없이 받은 오디오의 Take 시각 [시작, 끝) (ms). 세션을 갈아야 하는 끊김
-        # (`timeline_break`)에서 다시 시작한다. 1초 원자료의 STT 상태를 이걸로 정한다
-        self._heard_from_ms: int | None = None
-        self._heard_until_ms: int | None = None
+        # 끊김 없이 받은 오디오의 Take 시각. 1초 원자료의 STT 상태를 이걸로 정한다
+        self._heard = HeardRange()
         # 최대 시간. start() 에서 서버 시계를 켠다
         self._time_limit = TimeLimit(
             self.auto_end_policy, lambda: self._auto_end(AutoEndReason.TIME_LIMIT)
@@ -529,14 +525,7 @@ class TakeStream:
             return state
         starts = [r["t_ms"] for r in (message.gaze, message.voice) if r is not None]
         start_ms = min(starts) if starts else message.t_ms - METRICS_PERIOD_MS
-        if (
-            self._heard_from_ms is None
-            or self._heard_until_ms is None
-            or start_ms < self._heard_from_ms
-            or message.t_ms > self._heard_until_ms + HEARD_SLACK_MS
-        ):
-            return "degraded"
-        return "ok"
+        return "ok" if self._heard.covers(start_ms, message.t_ms) else "degraded"
 
     # ── 오디오 투입 ───────────────────────────────────────────────────
 
@@ -556,9 +545,7 @@ class TakeStream:
         accepted = self.sequencer.accept(frame)
         if accepted is None:
             return
-        if self._heard_from_ms is None or accepted.timeline_break:
-            self._heard_from_ms = accepted.frame.offset_ms
-        self._heard_until_ms = accepted.frame.end_ms
+        self._heard.add(accepted)
         if accepted.restart:
             logger.info(
                 "새 연결이 seq 를 처음부터 보낸다(탭 새로고침). 타임라인을 다시 잡는다 "
@@ -593,8 +580,7 @@ class TakeStream:
         self.dropped_audio_ms += lost
         self._stt.on_dropped(lost, timeline_break=item.timeline_break)
         # STT 에 닿지 못한 오디오다. 그 뒤부터를 끊김 없이 들은 것으로 본다 (`_stt_status_of`)
-        if self._heard_from_ms is not None:
-            self._heard_from_ms = max(self._heard_from_ms, item.frame.end_ms)
+        self._heard.drop_until(item.frame.end_ms)
 
     # ── Deepgram 세션 루프 ────────────────────────────────────────────
 
