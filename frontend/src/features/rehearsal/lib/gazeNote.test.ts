@@ -25,9 +25,9 @@ describe('무대 발밑 줄의 시선 안내', () => {
     );
   });
 
-  it('카메라가 끊기면 고칠 수 있으니 눈에 띄게 알린다', () => {
+  it('카메라가 끊기면 이후 시선이 빠진다고 눈에 띄게 알린다 — 발표 중에는 다시 열지 않는다', () => {
     expect(gazeNote({ ...ok, cameraLost: true })).toEqual({
-      text: '카메라가 연결되지 않았어요 — 연결을 확인해 주세요',
+      text: '카메라가 끊겨 이후 시선은 기록하지 않아요',
       alert: true,
     });
     expect(gazeNote({ ...ok, error: 'CAMERA_LOST' })?.alert).toBe(true);

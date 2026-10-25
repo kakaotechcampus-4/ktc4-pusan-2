@@ -900,9 +900,11 @@ export function RehearsalPage() {
             />
 
             <div className="stage-foot">
-              {/* 기록이 멈추면 경고(stage.css) — 화면 낭독기에도 바로 알립니다. 준비 중은 조용히 둡니다 */}
+              {/* 기록이 멈추면 경고(stage.css) — 화면 낭독기에도 바로 알립니다. 준비 중은 조용히 둡니다.
+                  key 로 요소를 갈아 끼웁니다 — 있던 status 의 role 만 alert 로 바꾸면 낭독기가 놓칩니다 */}
               {gazeLine && (
                 <span
+                  key={gazeLine.alert ? 'alert' : 'status'}
                   className="gaze"
                   data-alert={gazeLine.alert}
                   role={gazeLine.alert ? 'alert' : 'status'}

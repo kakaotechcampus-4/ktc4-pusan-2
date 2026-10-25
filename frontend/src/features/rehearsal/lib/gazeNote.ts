@@ -39,9 +39,9 @@ export function gazeNote(state: {
   if (state.noCamera) {
     return { text: '카메라를 열지 못해 시선은 기록하지 않아요', alert: true };
   }
-  // 끊기기 전 기록은 남습니다. 다시 연결되면 이어서 기록합니다
+  // 끊기기 전 기록은 남습니다. 발표 중에는 카메라를 다시 열지 않아서 다시 꽂아도 이후 시선은 빠집니다
   if (state.cameraLost || state.error === 'CAMERA_LOST') {
-    return { text: '카메라가 연결되지 않았어요 — 연결을 확인해 주세요', alert: true };
+    return { text: '카메라가 끊겨 이후 시선은 기록하지 않아요', alert: true };
   }
   // 그 전 기록은 남고, 이후는 서버가 측정 못 함으로 셉니다
   if (state.missingCalibration || state.error === 'CALIBRATION_LOST') {
