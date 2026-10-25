@@ -21,6 +21,7 @@ import anyio
 from pitch_coach_backend.coach.client import CoachClient
 from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
 from pitch_coach_backend.coach.store import CoachStore
+from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.core.tasks import TaskRegistry
 
 logger = logging.getLogger(__name__)
@@ -51,8 +52,13 @@ async def run(pitch_id: uuid.UUID, *, client: CoachClient, store: CoachStore) ->
             return
         if not await store.save_plan(pitch_id, request, reply, requested_at):
             logger.info("발표가 지워져 코칭 계획을 버렸다 pitch=%s", pitch_id)
-    except Exception:
-        logger.exception("코칭 계획을 요청 · 저장하지 못했다 pitch=%s", pitch_id)
+    except Exception as error:
+        logger.error(
+            "코칭 계획을 요청 · 저장하지 못했다 pitch=%s error=%s sqlstate=%s",
+            pitch_id,
+            type(error).__name__,
+            sqlstate(error),
+        )
 
 
 class PlannerCoaching:

@@ -2,7 +2,8 @@
 
 uvicorn 기본 설정은 `uvicorn.*` 로거만 잡는다. 그대로 두면 앱 로거(`pitch_coach_backend.*`)는
 핸들러가 없어서 INFO 는 버려지고, WARNING 이상은 파이썬 기본 처리로 메시지만(레벨 · 시각 · 이름
-없이) 나간다. 그래서 앱 로거에만 핸들러를 단다. 다른 라이브러리 로그는 건드리지 않는다.
+없이) 나간다. 그래서 앱 로거에만 핸들러를 단다.
+Uvicorn의 예외 로그는 아래 필터로 본문·traceback을 제거한다.
 
 루트가 아니라 앱 로거에 다는 이유: uvicorn 로거는 루트로 올라가지 않아 겹치지 않지만, 루트에 달면
 httpx · websockets 같은 라이브러리의 INFO 까지 같이 나온다. 앱 로그는 그대로 루트로도 올라가서
@@ -18,6 +19,21 @@ LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 _HANDLER_NAME = "pitch_coach_backend"
 
 
+class _ServerExceptionFilter(logging.Filter):
+    """서버가 다시 기록하는 예외도 원문 없이 진단한다. 일반 서버 로그는 그대로 둔다."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info:
+            error = record.exc_info[1]
+            record.msg = "ASGI 실행 실패 error=%s sqlstate=%s"
+            record.args = (type(error).__name__, sqlstate(error))
+            record.exc_info = None
+            # 다른 핸들러가 먼저 포맷한 traceback도 재사용하지 않는다.
+            record.exc_text = None
+            record.stack_info = None
+        return True
+
+
 def configure_logging(level: str) -> None:
     """앱 로거에 `level` 과 출력 형식을 건다. 여러 번 불러도 핸들러는 하나다.
 
@@ -25,6 +41,10 @@ def configure_logging(level: str) -> None:
     """
     logger = logging.getLogger(APP_LOGGER)
     logger.setLevel(level.upper())
+    # Starlette는 500 응답 뒤에도 원래 예외를 올려 Uvicorn이 다시 기록한다.
+    server_logger = logging.getLogger("uvicorn.error")
+    if not any(isinstance(item, _ServerExceptionFilter) for item in server_logger.filters):
+        server_logger.addFilter(_ServerExceptionFilter())
     if any(handler.get_name() == _HANDLER_NAME for handler in logger.handlers):
         return
     handler = logging.StreamHandler()

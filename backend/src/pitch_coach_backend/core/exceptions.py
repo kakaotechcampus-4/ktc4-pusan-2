@@ -25,6 +25,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
+from pitch_coach_backend.core.logging import sqlstate
+
 logger = logging.getLogger(__name__)
 
 
@@ -138,8 +140,14 @@ async def http_exception_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """처리되지 않은 예외. 원인은 서버 로그에만 남기고 응답에는 넣지 않는다."""
-    logger.exception("처리되지 않은 예외: %s %s", request.method, request.url.path, exc_info=exc)
+    """처리되지 않은 예외. 원문을 포함할 수 있는 본문·traceback 대신 안전한 진단값만 남긴다."""
+    logger.error(
+        "처리되지 않은 예외: %s %s error=%s sqlstate=%s",
+        request.method,
+        request.url.path,
+        type(exc).__name__,
+        sqlstate(exc),
+    )
     return _error_response(
         status.HTTP_500_INTERNAL_SERVER_ERROR,
         "INTERNAL_SERVER_ERROR",
