@@ -44,12 +44,17 @@ def parse_script(request: ParseRequest, llm: Any) -> ParseResponse:
         line.strip() and line.strip() not in preface_titles for line in split.preface.splitlines()
     ):
         status = "fail"
-        whole = "\n".join([split.preface] + [s.text for s in split.slides])
-        # 대본 전체를 장 1개로: 제목 줄은 모두 걷어 내고 키워드는 장별 키워드를 합친다.
+        # 대본 전체를 장 1개로: 머리글 · 장마다 그 장의 제목 줄만 빼고 합친다.
+        # 다른 장의 본문 줄이나 없는 장 번호의 제목 줄에 맞는 줄은 지우지 않는다
+        whole = "\n".join(
+            [_drop_titles(split.preface, preface_titles)]
+            + [_drop_titles(s.text, titles.get(s.slide_number, set())) for s in split.slides]
+        )
+        # 키워드는 장별 키워드를 합친다.
         # 장마다 번갈아 하나씩 합쳐야 개수 상한에서 잘려도 앞쪽 장에 몰리지 않는다
         per_slide = [keywords.get(s.slide_number, []) for s in split.slides]
         merged = [k for group in zip_longest(*per_slide) for k in group if k is not None]
-        parts = [(1, whole, set().union(preface_titles, *titles.values()), merged)]
+        parts = [(1, whole, set(), merged)]
     elif status == "success":
         parts = [
             (s.slide_number, s.text, titles.get(s.slide_number, set()), keywords.get(s.slide_number, []))
@@ -63,8 +68,7 @@ def parse_script(request: ParseRequest, llm: Any) -> ParseResponse:
     limit = MAX_KEYWORDS if status == "success" else MAX_KEYWORDS_FAIL
     slides = []
     for number, text, title_set, picked_keywords in parts:
-        body = "\n".join(line for line in text.splitlines() if line.strip() not in title_set)
-        script = clean_script(body)
+        script = clean_script(_drop_titles(text, title_set))
         # 대본 순서로 낸다 (장마다 번갈아 합친 fail 키워드도 여기서 대본 순서가 된다)
         kept = sorted(_keep(picked_keywords, script, limit), key=script.find)
         slides.append(
@@ -96,6 +100,11 @@ def _render(split: SplitResult) -> str:
     for s in split.slides:
         blocks.append(f"<장 {s.slide_number}>\n{s.text}\n</장 {s.slide_number}>")
     return "\n\n".join(blocks)
+
+
+def _drop_titles(text: str, titles: set[str]) -> str:
+    """앞뒤 공백을 뺀 줄이 제목 줄과 똑같은 줄만 뺀다."""
+    return "\n".join(line for line in text.splitlines() if line.strip() not in titles)
 
 
 def _keep(words: list[str], text: str, limit: int) -> list[str]:

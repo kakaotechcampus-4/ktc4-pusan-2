@@ -82,6 +82,24 @@ def test_preface_body_turns_fail():
     assert slide.expected_ms == 1000
 
 
+def test_preface_fail_keeps_other_slide_body():
+    # 1장 제목 줄 "성과"가 2장의 본문 줄 "성과"를 지우지 않는다
+    text = "도입 설명입니다.\n[1] 성과\n매출이 늘었습니다.\n[2] 다음 계획\n성과\n를 말씀드리면 이렇습니다."
+    llm = FakeLLM(llm_out([(1, ["성과"], []), (2, ["다음 계획"], [])]))
+    response = parse_script(ParseRequest(script_text=text), llm)
+    assert response.status == "fail"
+    assert response.slides[0].script == "도입 설명입니다.\n매출이 늘었습니다.\n성과\n를 말씀드리면 이렇습니다."
+
+
+def test_preface_fail_ignores_unknown_slide_titles():
+    # 대본에 없는 99장의 제목 줄은 버린다
+    text = "소개합니다.\n[1] 제품 개요입니다.\n자세히 보겠습니다."
+    llm = FakeLLM(llm_out([(1, [], []), (99, ["제품 개요입니다."], [])]))
+    response = parse_script(ParseRequest(script_text=text), llm)
+    assert response.status == "fail"
+    assert response.slides[0].script == "소개합니다.\n제품 개요입니다.\n자세히 보겠습니다."
+
+
 def test_preface_fail_keywords_spread_over_slides():
     # 장마다 키워드 10개, 상한 15개 → 앞 장 10개 + 다음 장 5개가 아니라 장마다 번갈아 고른다
     words = {n: [f"가{n}{i}" for i in range(10)] for n in (1, 2, 3)}
