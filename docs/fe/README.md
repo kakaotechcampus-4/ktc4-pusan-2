@@ -12,7 +12,7 @@
 
 | 내용 | 위치 |
 |---|---|
-| 지켜야 할 결정 · 명령어 · 작업 순서 | [frontend/CLAUDE.md](../../frontend/CLAUDE.md) |
+| 지켜야 할 결정 · 명령어 · 작업 순서 | [frontend/AGENTS.md](../../frontend/AGENTS.md) |
 | 코드 스타일 · 네이밍 | [frontend/FRONTEND_CONVENTION.md](../../frontend/FRONTEND_CONVENTION.md) |
 | 코드만 봐도 아는 컴포넌트 설명 | 코드 |
 
