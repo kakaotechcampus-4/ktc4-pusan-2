@@ -175,12 +175,12 @@ jobs:
         if: always()
         run: ssh -O exit "$SSH_HOST" 2>/dev/null || true
 
-      - name: Create PR to develop
+      - name: Create PR to develop-next
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "Release ${{ github.sha }}"
           title: "Release ${{ github.sha }}"
-          body: "Release ${{ github.sha }} to develop"
-          base: develop
-          branch: release-to-develop
+          body: "Release ${{ github.sha }} to develop-next"
+          base: develop-next
+          branch: release-to-develop-next
