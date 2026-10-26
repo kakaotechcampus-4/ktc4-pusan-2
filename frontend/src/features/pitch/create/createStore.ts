@@ -390,11 +390,14 @@ export const useCreateStore = create<CreateState>((set) => ({
             criteria: [
               // 고친 채로 다시 정리했으면 그 고친 내용은 버리고 서버 목록으로 되돌립니다.
               // 이 버전은 이제 최신이 아니라 고칠 수도 저장할 수도 없습니다 (`isEditableCriteria`)
-              ...s.draft.criteria.map((v) =>
-                v.version === target?.version && v.edited
-                  ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
-                  : v,
-              ),
+              ...s.draft.criteria
+                // 요청 중 만든 같은 번호의 빈 버전은 서버 결과로 교체합니다.
+                .filter((v) => v.saved || v.version !== savedVersion)
+                .map((v) =>
+                  v.version === target?.version && v.edited
+                    ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
+                    : v,
+                ),
               { version: savedVersion, items, saved: true, edited: false, sourceText, exceptText },
             ],
           },
