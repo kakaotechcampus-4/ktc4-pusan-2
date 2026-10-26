@@ -408,20 +408,22 @@ export const useCreateStore = create<CreateState>((set) => ({
       return {
         draft: {
           ...s.draft,
-          criteria: s.draft.criteria.map((v) =>
-            v.version === target.version
-              ? {
-                  ...v,
-                  version: savedVersion,
-                  items,
-                  saved: true,
-                  edited: false,
-                  savedItems: undefined,
-                  sourceText,
-                  exceptText,
-                }
-              : v,
-          ),
+          criteria: s.draft.criteria
+            .map((v) =>
+              v.version === target.version
+                ? {
+                    ...v,
+                    version: savedVersion,
+                    items,
+                    saved: true,
+                    edited: false,
+                    savedItems: undefined,
+                    sourceText,
+                    exceptText,
+                  }
+                : v,
+            )
+            .sort((a, b) => a.version - b.version),
         },
         version: savedVersion,
       };
