@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { HomeHelpDialog } from './HomeHelpDialog';
+import { HomeHelpDialog } from '@/shared/ui/HomeHelpDialog';
 import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { duration, totalElapsed } from './homeFormat';

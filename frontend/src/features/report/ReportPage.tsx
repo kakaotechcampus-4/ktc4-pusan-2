@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { claimReviewPreview, expireReviewPreview } from '@/shared/lib/serviceReviewPreview';
+import { AppHeader } from '@/shared/ui/AppHeader';
 import { ServiceReviewDialog } from './ServiceReviewDialog';
 import { useTakeReport } from '@/shared/api/report';
 import { formatDuration } from '@/shared/lib/clock';
@@ -29,8 +30,33 @@ import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
  */
 export function ReportPage() {
   const { takeId = '' } = useParams();
+  return <ReportView key={takeId} takeId={takeId} />;
+}
+
+function ReportView({ takeId }: { takeId: string }) {
   const report = useTakeReport(takeId);
   const data = report.data;
+  const navigate = useNavigate();
+  const [destination, setDestination] = useState<string | null>(null);
+  function requestExit(event: MouseEvent<HTMLAnchorElement>) {
+    // Preserve open-in-new-tab and other ordinary link behavior.
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    if (
+      report.error ||
+      report.isPending ||
+      !data ||
+      data.status !== 'COMPLETED' ||
+      data.analysis_stage !== 'DONE' ||
+      data.review_status !== 'DONE' ||
+      !data.review ||
+      !claimReviewPreview(data.take_id)
+    )
+      return;
+    event.preventDefault();
+    setDestination(event.currentTarget.getAttribute('href') ?? '/');
+  }
+
   const activeTake = useRef<string | null>(null);
   useEffect(() => {
     activeTake.current = takeId;
@@ -49,34 +75,32 @@ export function ReportPage() {
     return <Navigate replace to={`/takes/${takeId}/processing`} />;
 
   return (
-    <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
-      <QueryState isPending={report.isPending} error={report.error} />
-      {data && (
-        <ReportBody key={takeId} report={data} canReview={!report.error && !report.isPending} />
+    <div className="flex min-h-dvh flex-col">
+      <AppHeader onHomeClick={requestExit} />
+      <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
+        <QueryState isPending={report.isPending} error={report.error} />
+        {data && <ReportBody key={takeId} report={data} onExit={requestExit} />}
+      </ReportFrame>
+      {destination !== null && (
+        <ServiceReviewDialog
+          takeId={takeId}
+          onContinue={() => {
+            setDestination(null);
+            navigate(destination);
+          }}
+        />
       )}
-    </ReportFrame>
+    </div>
   );
 }
 
-function ReportBody({ report, canReview }: { report: TakeReport; canReview: boolean }) {
-  const navigate = useNavigate();
-  const [destination, setDestination] = useState<string | null>(null);
-  function requestExit(event: MouseEvent<HTMLAnchorElement>) {
-    // Preserve open-in-new-tab and other ordinary link behavior.
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-      return;
-    if (
-      !canReview ||
-      report.status !== 'COMPLETED' ||
-      report.analysis_stage !== 'DONE' ||
-      report.review_status !== 'DONE' ||
-      !report.review ||
-      !claimReviewPreview(report.take_id)
-    )
-      return;
-    event.preventDefault();
-    setDestination(event.currentTarget.getAttribute('href') ?? '/');
-  }
+function ReportBody({
+  report,
+  onExit,
+}: {
+  report: TakeReport;
+  onExit: (event: MouseEvent<HTMLAnchorElement>) => void;
+}) {
   const review = report.review;
   const nextTake = report.take_number + 1;
 
@@ -148,25 +172,16 @@ function ReportBody({ report, canReview }: { report: TakeReport; canReview: bool
             rows={review.next_missions}
             nextTake={nextTake}
             pitchId={report.pitch_id}
-            onExit={requestExit}
+            onExit={onExit}
           />
         </>
       )}
 
       <footer className="flex justify-end border-t border-line-strong pt-5">
-        <ButtonLink to="/" onClick={requestExit}>
+        <ButtonLink to="/" onClick={onExit}>
           내 피치로
         </ButtonLink>
       </footer>
-      {destination !== null && (
-        <ServiceReviewDialog
-          takeId={report.take_id}
-          onContinue={() => {
-            setDestination(null);
-            navigate(destination);
-          }}
-        />
-      )}
     </>
   );
 }
