@@ -2,7 +2,7 @@ name: Deploy develop
 
 on:
   push:
-    branches: [develop, develop-next]
+    branches: [develop-next]
   workflow_dispatch:
 
 concurrency:

@@ -11,8 +11,7 @@ concurrency:
 
 permissions:
   id-token: write # OIDC로 AWS 역할을 맡기 위해 필요
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   deploy:
@@ -175,12 +174,26 @@ jobs:
         if: always()
         run: ssh -O exit "$SSH_HOST" 2>/dev/null || true
 
-      - name: Create PR to develop-next
-        uses: peter-evans/create-pull-request@v5
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Release ${{ github.sha }}"
-          title: "Release ${{ github.sha }}"
-          body: "Release ${{ github.sha }} to develop-next"
-          base: develop-next
-          branch: release-to-develop-next
+          app-id: ${{ secrets.RELEASE_PR_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PR_APP_PRIVATE_KEY }}
+
+      - name: Create PR to develop-next
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(gh pr list --base develop-next --head release --state open --json number --jq '.[].number')" ]; then
+            echo "release → develop-next PR already open"
+            exit 0
+          fi
+          if [ "$(git rev-list --count origin/develop-next..origin/release)" -eq 0 ]; then
+            echo "develop-next already contains release"
+            exit 0
+          fi
+          gh pr create --base develop-next --head release \
+            --title "Merge release into develop-next" \
+            --body "release 의 변경을 develop-next 에 반영합니다. (배포 커밋 $GITHUB_SHA)"
