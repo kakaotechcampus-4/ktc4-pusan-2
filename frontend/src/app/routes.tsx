@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { createBrowserRouter } from 'react-router';
 import { PageTitle } from './PageTitle';
+import { LaunchGate } from './LaunchGate';
 import { StageDemo } from '@/features/rehearsal/stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
 import { SttDevPage } from '@/features/rehearsal/media/SttDevPage';
@@ -94,24 +95,32 @@ export const router = createBrowserRouter(
     publicPaths.includes(route.path)
       ? {
           path: route.path,
-          element: <PageTitle title={route.title}>{route.element}</PageTitle>,
+          element: (
+            <PageTitle title={route.title}>
+              {route.path === '/login' ? <LaunchGate>{route.element}</LaunchGate> : route.element}
+            </PageTitle>
+          ),
         }
       : {
           path: route.path,
           element: (
             <PageTitle title={route.title}>
               {/* 분석 대기는 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
-              <RequireSession
-                showHeader={
-                  !['/', '/pitches', '/pitch/new', '/takes/:takeId/processing'].includes(route.path)
-                }
-                bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
-                header={
-                  ['/', '/pitches', '/takes', '/me'].includes(route.path) ? (
-                    <AppHeader />
-                  ) : undefined
-                }
-              />
+              <LaunchGate>
+                <RequireSession
+                  showHeader={
+                    !['/', '/pitches', '/pitch/new', '/takes/:takeId/processing'].includes(
+                      route.path,
+                    )
+                  }
+                  bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
+                  header={
+                    ['/', '/pitches', '/takes', '/me'].includes(route.path) ? (
+                      <AppHeader />
+                    ) : undefined
+                  }
+                />
+              </LaunchGate>
             </PageTitle>
           ),
           children: [{ index: true, element: route.element }],
