@@ -135,6 +135,33 @@ describe('평가기준 — 정리 → (고치기 → 저장)', () => {
     expect(store().version).toBe(3);
   });
 
+  it.each(['parse', 'save'])('늦은 %s 응답이 최신 서버 버전을 뒤로 밀지 않는다', (operation) => {
+    // 정리는 새 빈 버전에서도 요청할 수 있고, 저장 중에도 원문 재정리를 요청할 수 있습니다.
+    if (operation === 'parse') store().addCriteriaVersion();
+    else store().editCriterion(1, v1().items[0]!.id, '먼저 저장한 문장');
+    store().applyParsedCriteria(operation === 'parse' ? 2 : 1, {
+      version: 3,
+      sourceText: '나중 요청',
+      standards: ['최신 기준'],
+      exceptText: null,
+    });
+    const earlier = {
+      version: 2,
+      sourceText: '먼저 요청',
+      standards: ['이전 기준'],
+      exceptText: null,
+    };
+    if (operation === 'parse') store().applyParsedCriteria(1, earlier);
+    else store().markCriteriaSaved(1, earlier);
+
+    expect(store().draft.criteria.map((v) => v.version)).toEqual([1, 2, 3]);
+    expect(latestSavedCriteria(store().draft)?.version).toBe(3);
+    expect(isEditableCriteria(store().draft, find(3))).toBe(true);
+    expect(isEditableCriteria(store().draft, find(2))).toBe(false);
+    store().addCriteriaVersion();
+    expect(store().version).toBe(4);
+  });
+
   it('고친 채로 다시 정리하면 앞 버전은 서버 목록으로 돌아간다 — 저장할 길 없는 고친 내용이 새 버전을 막지 않게', () => {
     // 재현: V1 정리 → 한 줄 고침 → "수정해서 다시 정리" → V2
     store().editCriterion(1, v1().items[0]!.id, '고친 문장');
