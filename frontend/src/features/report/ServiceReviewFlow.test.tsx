@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, Link, useNavigate } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ReportPage } from './ReportPage';
 import { measuresFixture, reviewFixture } from '@/mocks/report';
@@ -53,16 +53,36 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
+function HistoryButtons() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button onClick={() => navigate(-1)}>뒤로</button>
+      <button onClick={() => navigate(1)}>앞으로</button>
+    </>
+  );
+}
 async function render() {
   await act(async () =>
     root.render(
-      <MemoryRouter initialEntries={['/takes/t3']}>
-        <Routes>
-          <Route path="/takes/:takeId" element={<ReportPage />} />
-          <Route path="/" element={<p>홈 도착</p>} />
-          <Route path="/pitch/p1/device-check" element={<p>장치 점검 도착</p>} />
-        </Routes>
-      </MemoryRouter>,
+      <StrictMode>
+        <MemoryRouter initialEntries={['/', '/takes/t3']} initialIndex={1}>
+          <HistoryButtons />
+          <Routes>
+            <Route path="/takes/:takeId" element={<ReportPage />} />
+            <Route
+              path="/"
+              element={
+                <>
+                  <p>홈 도착</p>
+                  <Link to="/takes/t3">기록 다시 열기</Link>
+                </>
+              }
+            />
+            <Route path="/pitch/p1/device-check" element={<p>장치 점검 도착</p>} />
+          </Routes>
+        </MemoryRouter>
+      </StrictMode>,
     ),
   );
 }
@@ -79,7 +99,7 @@ it.each(['내 피치로', 'Take 4 연습하기'])(
     await act(async () =>
       [...host.querySelectorAll('button')].find((b) => b.textContent === '나중에')!.click(),
     );
-    expect(host.textContent).toBe(label === '내 피치로' ? '홈 도착' : '장치 점검 도착');
+    expect(host.textContent).toContain(label === '내 피치로' ? '홈 도착' : '장치 점검 도착');
   },
 );
 it.each(['old', 'loading', 'failed-review', 'query-error'])(
@@ -94,6 +114,30 @@ it.each(['old', 'loading', 'failed-review', 'query-error'])(
       [...host.querySelectorAll('a')].find((a) => a.textContent === '내 피치로')!.click(),
     );
     expect(host.querySelector('dialog')).toBeNull();
-    expect(host.textContent).toBe('홈 도착');
+    expect(host.textContent).toContain('홈 도착');
+  },
+);
+
+it.each(['header', 'history'])(
+  'expires an unused opportunity after %s exit and return',
+  async (exit) => {
+    markReviewPreviewReady('t3');
+    await render();
+    await act(async () => {
+      if (exit === 'header')
+        host.querySelector<HTMLAnchorElement>('a[aria-label="홈으로"]')!.click();
+      else [...host.querySelectorAll('button')].find((b) => b.textContent === '뒤로')!.click();
+    });
+    expect(host.textContent).toContain('홈 도착');
+    await act(async () => {
+      if (exit === 'header')
+        [...host.querySelectorAll('a')].find((a) => a.textContent === '기록 다시 열기')!.click();
+      else [...host.querySelectorAll('button')].find((b) => b.textContent === '앞으로')!.click();
+    });
+    await act(async () =>
+      [...host.querySelectorAll('a')].find((a) => a.textContent === '내 피치로')!.click(),
+    );
+    expect(host.querySelector('dialog')).toBeNull();
+    expect(host.textContent).toContain('홈 도착');
   },
 );

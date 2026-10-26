@@ -64,8 +64,16 @@ export function ServiceReviewDialog({
       className="pitch-create fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-md overflow-y-auto border-2 border-ink bg-panel p-6 text-ink backdrop:bg-ink/40 sm:p-8"
     >
       <div className="flex items-center justify-between gap-4">
-        <PitchCoachWordmark />
-        <Button variant="quiet" size="sm" onClick={onContinue} aria-label="리뷰 요청 닫고 계속하기">
+        <div className="min-w-0 flex-1 [&>svg]:h-auto [&>svg]:w-full [&>svg]:max-w-48">
+          <PitchCoachWordmark />
+        </div>
+        <Button
+          variant="quiet"
+          size="sm"
+          className="shrink-0"
+          onClick={onContinue}
+          aria-label="리뷰 요청 닫고 계속하기"
+        >
           닫기
         </Button>
       </div>

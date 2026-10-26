@@ -1,6 +1,6 @@
-import { useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
-import { claimReviewPreview } from '@/shared/lib/serviceReviewPreview';
+import { claimReviewPreview, expireReviewPreview } from '@/shared/lib/serviceReviewPreview';
 import { ServiceReviewDialog } from './ServiceReviewDialog';
 import { useTakeReport } from '@/shared/api/report';
 import { formatDuration } from '@/shared/lib/clock';
@@ -31,6 +31,17 @@ export function ReportPage() {
   const { takeId = '' } = useParams();
   const report = useTakeReport(takeId);
   const data = report.data;
+  const activeTake = useRef<string | null>(null);
+  useEffect(() => {
+    activeTake.current = takeId;
+    return () => {
+      activeTake.current = null;
+      // StrictMode replays effects without leaving the report. Allow its setup to run first.
+      queueMicrotask(() => {
+        if (activeTake.current !== takeId) expireReviewPreview(takeId);
+      });
+    };
+  }, [takeId]);
 
   if (!takeId) return <Navigate replace to="/" />;
   // 분석 자체가 실패한 Take 는 보여 줄 측정값이 없습니다. 실패 · 리뷰 보류 안내는 분석 대기 화면이 맡습니다

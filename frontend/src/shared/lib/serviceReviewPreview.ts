@@ -22,3 +22,14 @@ export function claimReviewPreview(takeId: string): boolean {
     return false;
   }
 }
+
+/** Leaving the first report view ends its unused preview opportunity. */
+export function expireReviewPreview(takeId: string) {
+  if (!serviceReviewPreview) return;
+  try {
+    if (sessionStorage.getItem(key(takeId)) === 'ready')
+      sessionStorage.setItem(key(takeId), 'expired');
+  } catch {
+    // Storage failure must not interrupt navigation.
+  }
+}
