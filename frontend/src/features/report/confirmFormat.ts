@@ -1,7 +1,7 @@
 import { formatDuration } from '@/shared/lib/clock';
 import type { ConfirmAnswer, ConfirmationItem, ConfirmationsRequest } from '@/types/confirmation';
 
-/** 항목마다 고른 것. `unsure` 는 보내지 않고 점수에서 빠진 채 남습니다 (계약 6-3) */
+/** 항목마다 고른 것. `unsure` 는 보내지 않고 보류로 남습니다 (계약 6-3) */
 export type Choice = ConfirmAnswer | 'unsure';
 
 /** `item_id` 는 장마다 R1 부터 다시 세서 장 번호와 함께 키로 씁니다 */

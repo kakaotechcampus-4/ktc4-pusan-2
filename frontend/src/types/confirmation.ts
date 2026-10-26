@@ -46,7 +46,7 @@ export interface ConfirmationItem {
 
 /**
  * `POST /api/takes/{take_id}/confirmations`. 5-2 `/takes/rescore` 의 `answers` 와 같은 모양입니다.
- * 빈 배열이면 건너뛰기 — 답 없이 리뷰로 넘어갑니다. 고르지 않은 항목은 점수에서 빠진 채 남습니다 (6-3).
+ * 빈 배열이면 건너뛰기 — 답 없이 리뷰로 넘어갑니다. 고르지 않은 항목은 보류로 남습니다 (6-3).
  * 확인 대기가 끝났으면(시간 초과 · 이미 답함 · 리뷰 시작) 409 `CONFIRMATION_CLOSED`.
  */
 export interface ConfirmationsRequest {

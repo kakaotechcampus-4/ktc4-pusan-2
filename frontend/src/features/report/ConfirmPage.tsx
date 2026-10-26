@@ -21,7 +21,7 @@ import {
  * 분석 대기(`ProcessingPage`)가 확인 대기일 때 버튼으로 옵니다. 같은 노을 화면을 씁니다.
  *
  * 답은 한 번에 보내고, 보내면(건너뛰어도) 분석 대기로 돌아갑니다. 고르지 않은 말 · '잘 모르겠어요'는
- * 점수에서 빠진 채 남습니다 (`docs/ai/features/script-coverage-evaluation.md` 6-3).
+ * 보류로 남고, 내용 점수는 잠정값을 유지합니다 (`docs/ai/features/script-coverage-evaluation.md` 6-3).
  * 확인 대기가 시작된 지 10분이 지나면 답 없이 그대로 진행됩니다 (같은 문서 12절).
  *
  * BE #528의 확인 API를 사용합니다 (`types/confirmation.ts`).
@@ -144,7 +144,12 @@ function ConfirmForm({
     <>
       <h1 className="text-lg font-bold sm:text-xl">비슷하게 들린 말이 있어요</h1>
       <p className="text-sm leading-relaxed">
-        발표에서 어떻게 말했는지 알려 주면 채점에 반영돼요. 잘 모르겠으면 그 말은 점수에서 빠져요.
+        확인할 항목이 {data.items.length}개 있어요. 현재 내용 점수는 이 부분을 대본대로 말했다고
+        가정한 잠정값이에요. 어떻게 말했는지 답해 주시면 다시 계산하며, 점수가 달라질 수 있어요.
+      </p>
+      <p className="text-sm leading-relaxed">
+        잘 모르겠거나 건너뛰면 해당 항목은 보류로 남고 내용 점수는 잠정값을 유지해요. 보류한 부분은
+        수치 정확도와 대본 충실도 계산에서 제외돼요.
       </p>
       <p role="timer" className="tabular font-mono text-xs text-dusk-accent">
         남은 시간 {remainingLabel(left)}

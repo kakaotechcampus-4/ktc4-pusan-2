@@ -8,7 +8,7 @@ it('keys items by slide and item id, since item ids restart on every slide', () 
   expect(items.map(itemKey)).toEqual(['3:R1', '5:R1']);
 });
 
-it('sends only real answers — unsure and unpicked items stay out of the score', () => {
+it('sends only real answers — unsure and unpicked items remain pending', () => {
   expect(toAnswers(items, { '3:R1': 'as_script', '5:R1': 'unsure' })).toEqual([
     { slide_number: 3, item_id: 'R1', answer: 'as_script' },
   ]);
