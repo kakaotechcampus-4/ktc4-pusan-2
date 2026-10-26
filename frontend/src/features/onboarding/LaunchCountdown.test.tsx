@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -100,4 +100,68 @@ it('조회 실패 시 재시도 안내를 표시하고 CTA를 열지 않는다',
 it('미공개 상태에서는 로그인 화면을 렌더링하지 않고 대기 경로로 보낸다', async () => {
   await show({ server_now: LAUNCH_AT, launch_at: LAUNCH_AT, is_open: false }, true);
   expect(container.textContent).toBe('대기 페이지');
+});
+
+it('최초 공개 상태 조회에 실패하면 보호 화면을 열지 않는다', async () => {
+  await show(null, true);
+  expect(container.textContent).toBe('대기 페이지');
+});
+
+it('공개 후 재조회 실패는 진행 중인 화면을 유지하고 명시적인 비공개 응답은 차단한다', async () => {
+  const cleanup = vi.fn();
+  function RunningSession() {
+    useEffect(() => cleanup, []);
+    return <p>진행 중인 발표</p>;
+  }
+
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ server_now: LAUNCH_AT, launch_at: LAUNCH_AT, is_open: true }),
+      ),
+  );
+  await act(async () => {
+    root.render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/rehearsal']}>
+          <Routes>
+            <Route
+              path="/rehearsal"
+              element={
+                <LaunchGate>
+                  <RunningSession />
+                </LaunchGate>
+              }
+            />
+            <Route path="/welcome" element={<p>대기 페이지</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+  expect(container.textContent).toBe('진행 중인 발표');
+
+  vi.mocked(fetch).mockRejectedValue(new Error('temporary outage'));
+  await act(async () => {
+    await client.refetchQueries({ queryKey: ['launch-status'] });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+  expect(client.getQueryState(['launch-status'])?.status).toBe('error');
+  expect(container.textContent).toBe('진행 중인 발표');
+  expect(cleanup).not.toHaveBeenCalled();
+
+  vi.mocked(fetch).mockResolvedValue(
+    Response.json({ server_now: LAUNCH_AT, launch_at: LAUNCH_AT, is_open: false }),
+  );
+  await act(async () => {
+    await client.refetchQueries({ queryKey: ['launch-status'] });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+  expect(container.textContent).toBe('대기 페이지');
+  expect(cleanup).toHaveBeenCalledOnce();
 });
