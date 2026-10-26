@@ -58,6 +58,6 @@ FE는 화면 안내를 담당한다. 실제 인증/API/WS 차단은 BE 책임이
 
 ### PR 분리 검증
 
-최신 origin/develop 기반 feat/fe-launch-countdown에서 카운트다운 변경만 분리했다. frontend/에서 npm run build, 두 테스트 파일의 vitest(9개), 신규 코드와 라우트의 oxlint가 통과했다. 원래 작업 디렉터리의 대본 확인·서비스 리뷰 변경은 포함하지 않았다.
+origin/develop-next 기반 feat/fe-launch-countdown에서 카운트다운 변경만 분리했다. 다른 feature/fix PR을 먼저 병합할 필요가 없는 독립 PR이다. frontend/에서 npm run build, 두 테스트 파일의 vitest(9개), 신규 코드와 라우트의 oxlint가 통과했다. 원래 작업 디렉터리의 대본 확인·서비스 리뷰 변경은 포함하지 않았다.
 
 카운트다운은 흰색 패널 위의 플립 카드로 표시한다. 변경된 단위만 560ms 동안 전환하며 기존 모션 정지 및 prefers-reduced-motion에서 정적인 숫자로 표시한다. 데스크톱과 390px·320px 브라우저 뷰포트에서 표시를 확인했다.
