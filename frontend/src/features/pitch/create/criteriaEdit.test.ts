@@ -135,6 +135,29 @@ describe('평가기준 — 정리 → (고치기 → 저장)', () => {
     expect(store().version).toBe(3);
   });
 
+  it('빈 버전의 응답이 다른 요청 뒤에 도착해도 최신 버전과 다음 번호를 유지한다', () => {
+    store().addCriteriaVersion();
+    // 다른 요청/탭에서 서버 V2가 만들어진 뒤 V1 재정리가 V3으로 먼저 도착합니다.
+    store().applyParsedCriteria(1, {
+      version: 3,
+      sourceText: '재정리',
+      standards: ['이전 기준'],
+      exceptText: null,
+    });
+    store().applyParsedCriteria(2, {
+      version: 4,
+      sourceText: '빈 버전 정리',
+      standards: ['최신 기준'],
+      exceptText: null,
+    });
+    expect(store().draft.criteria.map((v) => v.version)).toEqual([1, 3, 4]);
+    expect(latestSavedCriteria(store().draft)?.version).toBe(4);
+    expect(isEditableCriteria(store().draft, find(4))).toBe(true);
+    expect(isEditableCriteria(store().draft, find(3))).toBe(false);
+    store().addCriteriaVersion();
+    expect(store().version).toBe(5);
+  });
+
   it.each(['parse', 'save'])('늦은 %s 응답이 최신 서버 버전을 뒤로 밀지 않는다', (operation) => {
     // 정리는 새 빈 버전에서도 요청할 수 있고, 저장 중에도 원문 재정리를 요청할 수 있습니다.
     if (operation === 'parse') store().addCriteriaVersion();
