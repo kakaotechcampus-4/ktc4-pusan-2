@@ -51,8 +51,17 @@ function ConfirmContent({
 }) {
   // 재조회로 폼이 잠시 로딩·오류 화면으로 바뀌어도 선택한 답은 유지합니다.
   const [picks, setPicks] = useState<Record<string, Choice>>({});
+  const navigate = useNavigate();
+  const send = useSendConfirmations(takeId);
+  const submit = (answers: ReturnType<typeof toAnswers>) =>
+    send.mutate(
+      { answers },
+      { onSuccess: () => navigate(`/takes/${takeId}/processing`, { replace: true }) },
+    );
+  // 재조회가 제출 중인 폼을 없애거나 제출 오류를 가리지 않게 합니다.
+  const keepSubmission = send.isPending || send.error !== null;
 
-  if (confirmations.error)
+  if (confirmations.error && !keepSubmission)
     return (
       <div role="alert" className="flex flex-col items-center gap-4">
         <p className="text-lg font-bold">확인할 말을 불러오지 못했어요.</p>
@@ -68,10 +77,10 @@ function ConfirmContent({
       </div>
     );
 
-  if (confirmations.isPending || confirmations.isFetching)
+  if (!confirmations.data || (confirmations.isFetching && !keepSubmission))
     return <StatusLine text="확인할 말을 불러오는 중" />;
 
-  if (confirmations.data.items.length === 0)
+  if (confirmations.data.items.length === 0 && !keepSubmission)
     return (
       <Closed
         takeId={takeId}
@@ -85,6 +94,8 @@ function ConfirmContent({
       takeId={takeId}
       data={confirmations.data}
       picks={picks}
+      send={send}
+      onSubmit={submit}
       onChoose={(key, choice) => setPicks((previous) => ({ ...previous, [key]: choice }))}
     />
   );
@@ -108,15 +119,16 @@ function ConfirmForm({
   data,
   picks,
   onChoose,
+  send,
+  onSubmit,
 }: {
   takeId: string;
   data: Confirmations;
   picks: Record<string, Choice>;
   onChoose: (key: string, choice: Choice) => void;
+  send: ReturnType<typeof useSendConfirmations>;
+  onSubmit: (answers: ReturnType<typeof toAnswers>) => void;
 }) {
-  const navigate = useNavigate();
-  const send = useSendConfirmations(takeId);
-
   // 받은 순간부터 셉니다 — 백그라운드 탭에서도 맞게 performance.now() 기준 (CLAUDE.md 개발 중 함정)
   const [deadline] = useState(() => performance.now() + (data.remaining_ms ?? 0));
   const [now, setNow] = useState(() => performance.now());
@@ -129,16 +141,12 @@ function ConfirmForm({
   }, [expired]);
 
   const closed = send.error instanceof ApiFailure && send.error.code === 'CONFIRMATION_CLOSED';
-  if (expired)
-    return <Closed takeId={takeId} title="확인 시간이 끝났어요" text="답 없이 그대로 진행돼요." />;
+  // 기한 안에 보낸 답은 시간이 지나도 서버 결과를 기다립니다.
+  if (send.isPending) return <StatusLine text="답을 반영하는 중" />;
   if (closed)
     return <Closed takeId={takeId} title="확인을 받을 수 없어요" text={toMessage(send.error)} />;
-
-  const submit = (answers: ReturnType<typeof toAnswers>) =>
-    send.mutate(
-      { answers },
-      { onSuccess: () => navigate(`/takes/${takeId}/processing`, { replace: true }) },
-    );
+  if (expired)
+    return <Closed takeId={takeId} title="확인 시간이 끝났어요" text="답 없이 그대로 진행돼요." />;
 
   return (
     <>
@@ -174,11 +182,11 @@ function ConfirmForm({
       <div className="flex flex-wrap justify-center gap-3">
         <Button
           disabled={!allPicked(data.items, picks) || send.isPending}
-          onClick={() => submit(toAnswers(data.items, picks))}
+          onClick={() => onSubmit(toAnswers(data.items, picks))}
         >
           답 보내기
         </Button>
-        <Button variant="secondary" disabled={send.isPending} onClick={() => submit([])}>
+        <Button variant="secondary" disabled={send.isPending} onClick={() => onSubmit([])}>
           건너뛰기
         </Button>
       </div>
