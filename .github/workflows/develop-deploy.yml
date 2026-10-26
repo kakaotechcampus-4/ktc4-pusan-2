@@ -2,7 +2,7 @@ name: Deploy develop
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, develop-next]
   workflow_dispatch:
 
 concurrency:
@@ -127,6 +127,7 @@ jobs:
         env:
           BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
           FRONTEND_ENV: ${{ secrets.FRONTEND_ENV }}
+          AI_ENV: ${{ secrets.AI_ENV }}
         run: |
           set -euo pipefail
           # docker-compose.yml 의 env_file 경로(../backend/.env) 복원.
