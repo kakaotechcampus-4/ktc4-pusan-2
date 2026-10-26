@@ -1,9 +1,9 @@
 * 이 내용은 배포와 hotfix를 어떻게 수행할지에 대한 방법을 나타내는 문서입니다.
 
 ## 배포
-* develop에서 검증이 완료된 커밋을 선택합니다.
-* `release` branch를 그 커밋까지 fast-forward하여, develop의 진척사항을 배포 버전에 반영합니다.
-* 큰 수정사항의 경우 `release` branch에 반영한 후 이를 `develop`에 PR을 생성해, 승인 후 merge 시켜 develop에 반영하도록 합니다.
+* `develop-next`에서 검증이 완료된 커밋을 선택합니다.
+* `release` branch를 그 커밋까지 fast-forward하여, `develop-next`의 진척사항을 배포 버전에 반영합니다.
+* 큰 수정사항의 경우 `release` branch에 반영한 후 이를 `develop-next`에 PR을 생성해, 승인 후 merge 시켜 develop에 반영하도록 합니다.
 * 생성된 PR은 1명 이상의 리뷰어의 승인이 필요합니다.
 
 ## hotfix
