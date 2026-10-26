@@ -1,4 +1,7 @@
-import { Navigate, useParams } from 'react-router';
+import { useState, type MouseEvent } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router';
+import { claimReviewPreview } from '@/shared/lib/serviceReviewPreview';
+import { ServiceReviewDialog } from './ServiceReviewDialog';
 import { useTakeReport } from '@/shared/api/report';
 import { formatDuration } from '@/shared/lib/clock';
 import { Badge, type Tone } from '@/shared/ui/Badge';
@@ -37,12 +40,32 @@ export function ReportPage() {
   return (
     <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
       <QueryState isPending={report.isPending} error={report.error} />
-      {data && <ReportBody report={data} />}
+      {data && (
+        <ReportBody key={takeId} report={data} canReview={!report.error && !report.isPending} />
+      )}
     </ReportFrame>
   );
 }
 
-function ReportBody({ report }: { report: TakeReport }) {
+function ReportBody({ report, canReview }: { report: TakeReport; canReview: boolean }) {
+  const navigate = useNavigate();
+  const [destination, setDestination] = useState<string | null>(null);
+  function requestExit(event: MouseEvent<HTMLAnchorElement>) {
+    // Preserve open-in-new-tab and other ordinary link behavior.
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    if (
+      !canReview ||
+      report.status !== 'COMPLETED' ||
+      report.analysis_stage !== 'DONE' ||
+      report.review_status !== 'DONE' ||
+      !report.review ||
+      !claimReviewPreview(report.take_id)
+    )
+      return;
+    event.preventDefault();
+    setDestination(event.currentTarget.getAttribute('href') ?? '/');
+  }
   const review = report.review;
   const nextTake = report.take_number + 1;
 
@@ -110,13 +133,29 @@ function ReportBody({ report }: { report: TakeReport }) {
             <Dimensions value={review.dimensions} />
           </div>
 
-          <NextMissions rows={review.next_missions} nextTake={nextTake} pitchId={report.pitch_id} />
+          <NextMissions
+            rows={review.next_missions}
+            nextTake={nextTake}
+            pitchId={report.pitch_id}
+            onExit={requestExit}
+          />
         </>
       )}
 
       <footer className="flex justify-end border-t border-line-strong pt-5">
-        <ButtonLink to="/">내 피치로</ButtonLink>
+        <ButtonLink to="/" onClick={requestExit}>
+          내 피치로
+        </ButtonLink>
       </footer>
+      {destination !== null && (
+        <ServiceReviewDialog
+          takeId={report.take_id}
+          onContinue={() => {
+            setDestination(null);
+            navigate(destination);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -416,10 +455,12 @@ function NextMissions({
   rows,
   nextTake,
   pitchId,
+  onExit,
 }: {
   rows: ReviewResult['next_missions'];
   nextTake: number;
   pitchId: string;
+  onExit: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   return (
     <section className="border-2 border-ink bg-coral-wash p-6 shadow-[4px_4px_0_var(--color-line)] xl:p-8">
@@ -431,7 +472,9 @@ function NextMissions({
           </p>
         </div>
         {/* 이동만 합니다. Take는 시작 전 세팅에서 생깁니다 (CLAUDE.md 8번) */}
-        <ButtonLink to={`/pitch/${pitchId}/device-check`}>Take {nextTake} 연습하기</ButtonLink>
+        <ButtonLink to={`/pitch/${pitchId}/device-check`} onClick={onExit}>
+          Take {nextTake} 연습하기
+        </ButtonLink>
       </div>
       {rows.length === 0 ? (
         <p className="mt-4 text-sm text-stone">
