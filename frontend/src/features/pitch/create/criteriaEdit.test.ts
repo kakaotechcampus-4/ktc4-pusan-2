@@ -115,6 +115,26 @@ describe('평가기준 — 정리 → (고치기 → 저장)', () => {
     expect(latestSavedCriteria(store().draft)?.version).toBe(5);
   });
 
+  it('V1 재정리 요청 중 만든 빈 V2는 서버 V2로 교체한다', () => {
+    // V1에서 요청을 시작한 뒤 응답 전에 사이드바의 "+ 새 버전"을 누른 경우입니다.
+    store().addCriteriaVersion();
+    store().applyParsedCriteria(1, {
+      version: 2,
+      sourceText: '새로 정리한 글',
+      standards: ['새 기준'],
+      exceptText: null,
+    });
+
+    expect(store().draft.criteria.map((v) => v.version)).toEqual([1, 2]);
+    expect(find(2).saved).toBe(true);
+    expect(texts(2)).toEqual(['새 기준']);
+    expect(store().version).toBe(2);
+    expect(pendingVersion(store().draft, 'criteria')).toBeNull();
+    expect(selectCriteriaUnsaved(store())).toBe(false);
+    store().addCriteriaVersion();
+    expect(store().version).toBe(3);
+  });
+
   it('고친 채로 다시 정리하면 앞 버전은 서버 목록으로 돌아간다 — 저장할 길 없는 고친 내용이 새 버전을 막지 않게', () => {
     // 재현: V1 정리 → 한 줄 고침 → "수정해서 다시 정리" → V2
     store().editCriterion(1, v1().items[0]!.id, '고친 문장');
