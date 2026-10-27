@@ -123,6 +123,7 @@ erDiagram
         uuid id PK
         uuid user_id FK "nullable, 탈퇴 시 NULL"
         text content "1~2000자"
+        string category "5가지 유형, 기본 OTHER"
         string source "RATING_POPUP 또는 MY_PAGE"
         uuid service_feedback_id FK, UK "nullable"
         uuid request_id "nullable, 사용자와 복합 UNIQUE"
@@ -158,6 +159,7 @@ ERD의 다건 표기 자체는 3건 상한을 표현하지 않으므로 아래 C
 | `id` | UUIDv7 PK, 기존 mixin |
 | `user_id` | nullable UUID, FK → `users.id`, `ON DELETE SET NULL` |
 | `content` | Text NOT NULL, `CHECK (char_length(content) BETWEEN 1 AND 2000)` |
+| `category` | String(16) NOT NULL, 다섯 유형 CHECK, 기본값 `OTHER` |
 | `source` | String NOT NULL, `RATING_POPUP`·`MY_PAGE` CHECK |
 | `service_feedback_id` | nullable UUID, UNIQUE, FK → `service_feedbacks.id`, `ON DELETE CASCADE` |
 | `request_id` | nullable UUID, `(user_id, request_id)` UNIQUE |
@@ -242,7 +244,22 @@ PostgreSQL 17의 기본 `READ COMMITTED`를 전제로, 잠금 **이후 별도 SQ
 
 ## 6. API 계약안
 
-일반 API는 `CurrentUser` Bearer 인증을 사용한다. DTO는 미정의 필드를 거절한다.
+일반 API는 `CurrentUser` Bearer 인증을 사용한다.
+의견에는 `category`를 추가한다. 전송 위치를 뜻하는 `source`와 별개이며 하나의 의견에 유형 하나를 저장한다.
+
+| `category` | 화면 의미 |
+|---|---|
+| `POSITIVE` | 좋았던 점 |
+| `IMPROVEMENT` | 개선할 점 |
+| `PROBLEM` | 문제가 있었던 점 |
+| `QUESTION` | 질문 |
+| `OTHER` | 기타 |
+
+Python `SuggestionCategory(StrEnum)`으로 검증하고 DB에는 저장소 관례대로 문자열+CHECK를 사용한다.
+팝업·마이페이지 요청에서 생략하면 `OTHER`이며 null·알 수 없는 값은 422다.
+`f54000000003`이 기존 의견도 `OTHER`로 채운다. 팝업에 의견이 없으면 유형만 별도로 저장하지 않는다.
+같은 내용이어도 유형을 바꾸어 재전송하면 기존 평점 409 또는 의견 요청 충돌 409이며 덮어쓰지 않는다.
+ DTO는 미정의 필드를 거절한다.
 별점은 엄격한 정수 1~5만 받고 문자열·실수·불리언은 거절한다.
 의견은 저장 가능한 UTF-8인지 검증하고 NUL·잘못된 유니코드를 거절한 뒤 앞뒤 공백을 제거한다.
 정규화한 내용의 길이를 검사하며 팝업의 생략·null·공백은 모두 의견 없음으로 비교한다.
@@ -295,10 +312,10 @@ commit 후 응답 유실·탭 종료가 발생하면 실제 표시하지 못해�
 ### 평점 제출
 
 ```json
-{"rating": 4, "suggestion": "리포트에서 지난 연습과 비교하기가 더 쉬우면 좋겠어요."}
+{"rating": 4, "suggestion": "리포트에서 지난 연습과 비교하기가 더 쉬우면 좋겠어요.", "category": "IMPROVEMENT"}
 ```
 
-사용자 잠금 후 기존 평점이 있으면 **별점과 그 평점에 연결된 팝업 의견만** 비교한다.
+사용자 잠금 후 기존 평점이 있으면 **별점과 그 평점에 연결된 팝업 의견의 내용·유형만** 비교한다.
 같으면 200, 다르면 409다. 기존 행 확인을 리포트 검사보다 먼저 해 성공 요청의 재전송을 보장한다.
 
 신규 제출이면 현재 본인 리포트 존재를 확인하고 평점을 INSERT한다.
@@ -318,16 +335,17 @@ commit 후 응답 유실·탭 종료가 발생하면 실제 표시하지 못해�
 ```json
 {
   "request_id": "9745c85a-8155-463e-a8e6-633d40066936",
-  "content": "발표 기록을 날짜별로 찾아볼 수 있으면 좋겠어요."
+  "content": "발표 기록을 날짜별로 찾아볼 수 있으면 좋겠어요.",
+  "category": "IMPROVEMENT"
 }
 ```
 
 서버가 `user_id`와 `source=MY_PAGE`를 채운다. 리포트·평점·노출을 조회·변경하지 않는다.
-같은 사용자·요청 ID·정규화한 내용은 기존 결과를 반환하고, 같은 ID에 다른 내용은 409다.
+같은 사용자·요청 ID·정규화한 내용·유형은 기존 결과를 반환하고, 같은 ID에 다른 내용이나 유형은 409다.
 새 ID이면 같은 내용이라도 의도적인 새 의견으로 저장한다. 다른 사용자의 동일 UUID와는 충돌하지 않는다.
 
 ```json
-{"id": "24f4ea6e-086b-4e42-9659-f1e76d3ee898", "source": "MY_PAGE", "created_at": "2026-10-27T06:00:00Z"}
+{"id": "24f4ea6e-086b-4e42-9659-f1e76d3ee898", "source": "MY_PAGE", "category": "IMPROVEMENT", "created_at": "2026-10-27T06:00:00Z"}
 ```
 
 ### 읽기 전용 상태
@@ -364,6 +382,7 @@ FE 파일은 BE에서 수정하지 않는다. 아래 내용을 전달할 계약�
   재시도 응답도 같은 방문에서 팝업을 두 번 열지 않게 한다. 다른 탭의 방문은 별도 ID를 사용한다.
 - 승인 재시도는 GET의 `should_prompt`가 false여도 기존 ID로 가능해야 한다. 세 번째 승인의 응답 유실을 복구하기 위해서다.
 - 승인 실패·거절은 홈 이용을 막지 않는다. 포커스 복귀·재렌더만으로 새 ID를 만들지 않는다.
+- 팝업·마이페이지는 선택한 `category`를 내용과 함께 전송하고 재시도에도 같은 유형을 유지한다.
 - 팝업 제출 실패 시 별점·의견을 유지하고 닫기·재시도를 허용한다. 별점 제출 재시도는 표시 API를 다시 부르지 않는다.
 - 평점 이미 제출 409는 상태를 갱신하고 종료한다. 마이페이지 요청 충돌 409는 저장 성공으로 취급하거나 자동 새 ID로 바꾸지 않는다.
 - 마이페이지는 내용만 필수로 받고 요청 ID는 제출 버튼을 누를 때 한 번 만든다. 응답 유실 재시도에서는 같은 ID·내용을 유지한다.
@@ -381,7 +400,7 @@ FE 파일은 BE에서 수정하지 않는다. 아래 내용을 전달할 계약�
 | API | 반환·필터 |
 |---|---|
 | `GET /admin/api/service-feedbacks` | 평점·연결된 팝업 의견·제출 시각·사용자 ID |
-| `GET /admin/api/suggestions` | 의견·출처·평점 연결 ID·제출 시각·사용자 ID, 선택 `source` 필터 |
+| `GET /admin/api/suggestions` | 의견·출처·평점 연결 ID·제출 시각·사용자 ID, 선택 `source`·`category` 필터 |
 
 공통으로 `limit` 기본 50·최대 200, `offset` 기본 0·최소 0, `(created_at DESC, id DESC)` 정렬을 사용한다.
 응답은 `items`·`next_offset`이며 `limit+1`건 조회로 다음 페이지 존재를 판단해 마지막에는 null을 반환한다.
@@ -533,3 +552,13 @@ BE 저장·API·관리자·검증 완료 후 FE 실연동에서 홈 팝업·마�
 - 추가 검증: Ruff·앱 import·`f54000000002` 단일 head·빈 DB migration·`alembic check` 통과.
 - 전체 테스트는 1,402 passed · 1 skipped다. 기존 데이터의 migration 전후 보관과 안전한 downgrade도 검증했다.
 - Graphviz로 만든 ERD PNG의 컬럼·FK·탈퇴 정책을 직접 확인했다. 관리자 JS 문법과 문서 링크 검사도 통과했다.
+
+## 13. 의견 유형 추가 (2026-10-27)
+
+- `POSITIVE`, `IMPROVEMENT`, `PROBLEM`, `QUESTION`, `OTHER`를 `SuggestionCategory`로 추가했다.
+- 팝업·마이페이지의 `category`를 저장하며 생략한 요청과 기존 데이터는 `OTHER`다.
+- 마이페이지 성공 응답과 관리자 평점/의견 조회에 유형을 추가하고 관리자 의견은 출처·유형을 함께 필터링한다.
+- 동일 요청의 내용 또는 유형 변경을 충돌로 처리한다. 탈퇴 뒤에도 유형은 내용과 함께 보관한다.
+- 검증: Ruff·앱 import·`f54000000003` 단일 head·빈 DB migration·스키마 일치 검사 통과.
+- 전체 테스트 1,431 passed · 1 skipped. 유형 저장·기본 OTHER·유형 변경 재시도·관리자 조합 필터를 확인했다.
+- 갱신한 ERD PNG를 직접 확인했고 관리자 JS 문법·문서 링크 검사도 통과했다.

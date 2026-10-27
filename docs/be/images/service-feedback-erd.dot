@@ -21,6 +21,8 @@ digraph service_feedback {
     <TR><TD>id</TD><TD>UUIDv7</TD><TD>PK</TD></TR>
     <TR><TD PORT="user_id">user_id</TD><TD>UUID · nullable</TD><TD>FK</TD></TR>
     <TR><TD>content</TD><TD>TEXT</TD><TD>1~2,000자</TD></TR>
+    <TR><TD>category</TD><TD>VARCHAR(16)</TD><TD>5가지 유형 · 기본 OTHER</TD></TR>
+    <TR><TD COLSPAN="3"><FONT POINT-SIZE="11">POSITIVE / IMPROVEMENT / PROBLEM / QUESTION / OTHER</FONT></TD></TR>
     <TR><TD>source</TD><TD COLSPAN="2">RATING_POPUP / MY_PAGE</TD></TR>
     <TR><TD PORT="feedback_id">service_feedback_id</TD><TD>UUID · nullable</TD><TD>FK / UNIQUE</TD></TR>
     <TR><TD>request_id</TD><TD>UUID · nullable</TD><TD>사용자와 복합 UNIQUE</TD></TR>
