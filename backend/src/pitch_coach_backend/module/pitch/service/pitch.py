@@ -120,7 +120,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
 def to_version_dtos(rows: Iterable[Versioned]) -> list[VersionDTO]:
     return [VersionDTO(id=row.id, version=row.version) for row in rows]
 
-def get_pitch_info(db: Session, pitch_id: uuid.UUID) -> PitchListItemDTO:
+def get_pitch_info(db: Session, pitch_id: uuid.UUID) -> PitchInfoResponseDTO:
     pitch_repository = PitchRepository(db)
     pitch = pitch_repository.get_by_id(pitch_id)
     if not pitch:
