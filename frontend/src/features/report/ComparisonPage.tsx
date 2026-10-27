@@ -8,7 +8,13 @@ import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
 import { QueryState } from './QueryState';
 import { duration, pct } from './reportFormat';
-import { SCRIPT_MODE_LABEL, completedTakes, gazeOffEngine, takeDay } from './takeHistoryFormat';
+import {
+  SCRIPT_MODE_LABEL,
+  completedTakes,
+  gazeOffEngine,
+  latestGazeEngine,
+  takeDay,
+} from './takeHistoryFormat';
 
 /**
  * P7 Take 비교 — 한 피치의 Take들을 나란히.
@@ -42,7 +48,7 @@ export function ComparisonPage() {
 
   if (!history.data)
     return (
-      <InfoPage title="Take 비교">
+      <InfoPage title="Take 비교" logo={false}>
         {isPitchMissing(history.error) ? (
           <Card>
             <div role="alert" className="flex flex-col gap-3">
@@ -60,7 +66,7 @@ export function ComparisonPage() {
     );
 
   const rows = completedTakes(history.data.takes);
-  const latestEngine = rows[0]?.gaze_engine ?? null;
+  const latestEngine = latestGazeEngine(rows);
   const m = METRICS.find((x) => x.key === metric)!;
   // 오래된 Take부터 그립니다
   const series = [...rows].reverse();
@@ -68,7 +74,7 @@ export function ComparisonPage() {
   const offEngine = rows.filter((r) => r.gaze_engine !== null && gazeOffEngine(r, latestEngine));
 
   return (
-    <InfoPage title="Take 비교">
+    <InfoPage title="Take 비교" logo={false}>
       {rows[0] && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
           <p className="min-w-0 font-bold [overflow-wrap:anywhere]">{rows[0].pitch_title}</p>

@@ -14,7 +14,7 @@ def test_sample_states(req):
         "script_independence": "PRIORITY",
         "pacing_rhythm": "STRENGTH",
         "vocal_delivery": "STRENGTH",
-        "fluency": "STABLE",
+        "fluency": "PRIORITY",  # 부담 6.6 ≥ priority_burden_min 6
         "content_delivery": "NOT_EVALUABLE",
     }
 

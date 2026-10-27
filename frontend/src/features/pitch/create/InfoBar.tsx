@@ -25,6 +25,7 @@ function Item({ label, children }: { label: string; children: ReactNode }) {
 export function InfoBar() {
   const pitchId = useCreateStore((s) => s.pitchId);
   const title = useCreateStore((s) => s.draft.title.trim());
+  const fromFile = useCreateStore((s) => s.autoTitle !== null && s.draft.title === s.autoTitle);
   const date = useCreateStore((s) => s.draft.presentationDate);
   const limitSec = useCreateStore((s) => s.draft.timeLimitSec);
   const lowerSec = useCreateStore((s) => s.draft.lowerToleranceSec);
@@ -46,6 +47,11 @@ export function InfoBar() {
           >
             {title || '제목 미입력'}
           </span>
+          {fromFile && (
+            <span className="rounded bg-cream px-1.5 py-0.5 text-xs font-medium text-stone">
+              파일 이름
+            </span>
+          )}
         </Item>
 
         <Item label="발표 날짜">

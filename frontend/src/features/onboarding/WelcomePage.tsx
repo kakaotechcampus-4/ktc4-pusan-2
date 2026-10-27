@@ -2,6 +2,7 @@ import { useEffect, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router';
 import { PitchCoachWordmark } from './PitchCoachWordmark';
 import { ComfortScene } from './ComfortScene';
+import { LaunchCountdown, LaunchStart } from './LaunchCountdown';
 
 const cta =
   'inline-flex items-center justify-center gap-6 border-2 border-ink bg-coral-deep px-6 py-3.5 font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-1 hover:bg-ink active:translate-x-1 active:translate-y-1 active:shadow-none';
@@ -73,7 +74,10 @@ export function WelcomePage() {
     setActive(id);
   }
   return (
-    <div className="landing min-h-dvh bg-panel text-ink" data-motion={motion ? 'on' : 'off'}>
+    <div
+      className="landing min-h-dvh overflow-x-clip bg-panel text-ink"
+      data-motion={motion ? 'on' : 'off'}
+    >
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-panel focus:p-4"
@@ -92,7 +96,7 @@ export function WelcomePage() {
           </a>
           <nav
             aria-label="랜딩 페이지 메뉴"
-            className="order-3 flex w-full justify-between gap-3 text-xs sm:order-none sm:w-auto sm:gap-6 sm:text-sm"
+            className="order-3 flex w-full justify-between gap-2 text-xs sm:order-none sm:w-auto sm:gap-6 sm:text-sm"
           >
             {sections.map(([id, label]) => (
               <a
@@ -106,12 +110,9 @@ export function WelcomePage() {
               </a>
             ))}
           </nav>
-          <Link
-            to="/login?next=/"
-            className="border border-ink px-4 py-2 text-sm font-bold transition hover:bg-ink hover:text-panel"
-          >
+          <LaunchStart className="border border-ink px-4 py-2 text-sm font-bold transition hover:bg-ink hover:text-panel">
             시작하기 ↗
-          </Link>
+          </LaunchStart>
         </div>
       </header>
       <main id="main" tabIndex={-1} className="scroll-mt-36">
@@ -153,10 +154,9 @@ export function WelcomePage() {
               <br />
               다음 발표를 한 번 더 연습해요.
             </p>
+            <LaunchCountdown />
             <div className="mt-8 flex flex-wrap items-center gap-6">
-              <Link to="/login?next=/" className={cta}>
-                치치와 연습 시작하기 ↗
-              </Link>
+              <LaunchStart className={cta}>치치와 연습 시작하기 ↗</LaunchStart>
               <a
                 href="#guide"
                 onClick={(e) => jump(e, 'guide')}
@@ -450,9 +450,7 @@ export function WelcomePage() {
             잘하려고 왔잖아.
             <br className="sm:hidden" /> 이제 같이 해보자!
           </h2>
-          <Link to="/login?next=/" className={cta}>
-            첫 연습 시작하기 ↗
-          </Link>
+          <LaunchStart className={cta}>첫 연습 시작하기 ↗</LaunchStart>
         </section>
         <section id="policies" tabIndex={-1} className="mx-auto max-w-6xl scroll-mt-36 px-6 py-12">
           <div className="flex flex-wrap items-center justify-between gap-5">

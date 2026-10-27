@@ -10,10 +10,14 @@ import {
   MAX_CRITERION_CHARS,
   criteriaToSave,
   isEditableCriteria,
+  latestSavedCriteria,
   pendingVersion,
+  toPracticeCombo,
   type CriteriaVersion,
 } from '../lib/draft';
+import { computeGate } from '../lib/gate';
 import { NeedPitch } from './NeedPitch';
+import { PaneFooter, primaryButton, secondaryButton } from './PaneFooter';
 import { PaneHeading } from './PaneHeading';
 
 /**
@@ -24,8 +28,8 @@ import { PaneHeading } from './PaneHeading';
  *          그래서 정리하면 바로 "저장됨"이고, 이 버전으로 연습할 수 있습니다
  *   고치기 가장 최근 버전의 목록에서 문장 수정 · 추가 · 삭제. 서버에는 아직 고치기 전 목록이 있습니다
  *          ("고친 내용 저장 안 됨"). 한 줄 50자 · 10개까지 (계약 값)
- *   저장   고친 목록을 보내면 서버가 그 글로 한 번 더 분석해 **같은 버전**으로 저장하고 목록을 돌려줍니다.
- *          보낸 문장과 다를 수 있어 돌려받은 목록으로 다시 그립니다. ★ 이 호출은 계약에서 아직 미정입니다(304행)
+ *   저장   고친 목록을 보내면 서버가 다시 분석해 **새 버전**으로 저장합니다 (#532).
+ *          받은 버전 번호와 목록으로 다시 그립니다. 이전 버전은 지난 Take를 위해 남깁니다.
  *
  * 지난 버전은 고치지 않습니다(지난 Take 가 가리킵니다). 고치려면 "수정하기"로 원문을 물려받은 새 버전을 만들어
  * 다시 정리합니다. 다시 정리하면 서버에 새 버전이 생깁니다.
@@ -115,11 +119,12 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
     <section className="flex min-w-0 flex-col gap-3 rounded-lg border border-line bg-white p-4 xl:p-5">
       <div>
         <h3 className="text-lg font-bold">평가기준 작성</h3>
-        <p className="mt-1 text-sm text-ink/80">문장이나 목록으로 자유롭게 작성해 주세요.</p>
+        <p className="mt-1 text-sm text-ink/80">문장이나 목록으로 2,000자까지 작성해 주세요.</p>
       </div>
 
       <textarea
         aria-label="평가기준 작성"
+        maxLength={2000}
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={PLACEHOLDER}
@@ -129,7 +134,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
 
       <button
         type="button"
-        disabled={text.trim() === '' || parse.isPending}
+        disabled={text.trim() === '' || text.length > 2000 || parse.isPending}
         onClick={() => parse.mutate({ source: text, draftId })}
         className={[
           'flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg text-sm font-bold',
@@ -324,13 +329,18 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
 
   const save = useMutation({
     // 정리와 같습니다 — 저장하는 사이 새 피치를 시작했으면 결과를 새 작성에 넣지 않습니다
-    mutationFn: ({ list }: { list: string[]; draftId: string }) => saveStandards(pitchId, list),
-    onSuccess: (res, { list, draftId: from }) => {
+    mutationFn: ({ list }: { list: string[]; draftId: string; sourceVersion: number }) =>
+      saveStandards(pitchId, list),
+    onSuccess: (res, { list, draftId: from, sourceVersion }) => {
       if (!isCurrentDraft(from)) return;
-      // 계약상 서버가 고친 글로 다시 분석해 저장합니다. 돌려받은 목록이 없으면(응답 모양 미정) 보낸 목록을 씁니다
-      const saved = res.standards?.map((s) => s.standard) ?? list;
+      const saved = res.standards.map((s) => s.standard);
       setRefined(saved.join('\n') !== list.join('\n'));
-      markCriteriaSaved(criteria.version, saved);
+      markCriteriaSaved(sourceVersion, {
+        version: res.version,
+        standards: saved,
+        exceptText: res.except_standard,
+        sourceText: list.join('\n'),
+      });
     },
     onError: (error) => console.error('[평가기준] 저장하지 못했습니다', error),
   });
@@ -358,7 +368,7 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
         <button
           type="button"
           disabled={!edited || standards.length === 0 || save.isPending}
-          onClick={() => save.mutate({ list: standards, draftId })}
+          onClick={() => save.mutate({ list: standards, draftId, sourceVersion: criteria.version })}
           className="h-10 shrink-0 rounded-lg bg-coral-deep px-5 text-sm font-bold text-white hover:bg-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-ink/80"
         >
           {save.isPending ? '저장하는 중…' : '고친 내용 저장'}
@@ -401,13 +411,66 @@ function ReviseBar({ criteria }: { criteria: CriteriaVersion | null }) {
   );
 }
 
-export function CriteriaPane({ criteria }: { criteria: CriteriaVersion | null }) {
+/**
+ * 마지막 단계의 연습 시작. 평가기준은 선택이라 없으면 "건너뛰기"로 시작합니다.
+ *
+ * 장치 점검에 넘기는 조합에는 평가기준이 없습니다 — 서버가 저장된 마지막 버전으로 채점합니다.
+ * 그래서 저장한 기준이 있으면 건너뛸 수 없고(건너뛰어도 그 기준으로 채점됩니다), "건너뛰기"를 내지 않습니다.
+ */
+function StartFooter({ onStart }: { onStart: () => void }) {
+  const draft = useCreateStore((s) => s.draft);
+  const chosen = useCreateStore((s) => s.chosen);
+  const select = useCreateStore((s) => s.select);
+  const gate = computeGate(draft, chosen);
+  const ready = toPracticeCombo(draft, chosen) !== null;
+  const hasCriteria = latestSavedCriteria(draft) !== null;
+
+  return (
+    <PaneFooter
+      hint={
+        ready ? (
+          '연습할 준비가 됐어요.'
+        ) : (
+          <span className="font-bold text-ink">
+            {gate.ready ? '대본 매핑을 확인하고 저장해 주세요.' : gate.message}
+          </span>
+        )
+      }
+    >
+      <button type="button" onClick={() => select('info')} className={secondaryButton}>
+        ← 이전
+      </button>
+      {!hasCriteria && (
+        <button type="button" disabled={!ready} onClick={onStart} className={secondaryButton}>
+          건너뛰기
+        </button>
+      )}
+      <button
+        type="button"
+        disabled={!ready || !hasCriteria}
+        onClick={onStart}
+        className={primaryButton}
+      >
+        연습 시작 →
+      </button>
+    </PaneFooter>
+  );
+}
+
+export function CriteriaPane({
+  criteria,
+  onStart,
+}: {
+  criteria: CriteriaVersion | null;
+  /** 연습 시작 — 장치 점검으로 갑니다 */
+  onStart: () => void;
+}) {
   const pitchId = useCreateStore((s) => s.pitchId);
   return (
     <div className="flex flex-1 flex-col">
       <PaneHeading
-        title="평가기준"
-        subtitle="원하는 기준을 한 번에 적고, 정리된 결과를 확인해 주세요."
+        title="평가기준 (선택)"
+        subtitle="연습할 때 무엇을 볼지 정해요. 건너뛰어도 연습할 수 있어요."
       />
       {pitchId === null ? (
         <NeedPitch what="평가기준" />
@@ -418,6 +481,9 @@ export function CriteriaPane({ criteria }: { criteria: CriteriaVersion | null })
           <Result criteria={criteria} pitchId={pitchId} />
         </div>
       )}
+      <div className="mt-5 flex flex-1 flex-col">
+        <StartFooter onStart={onStart} />
+      </div>
     </div>
   );
 }

@@ -16,12 +16,25 @@ afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 function Calendar() {
   const [value, setValue] = useState('2028-02-28');
   return <DatePicker value={value} onChange={setValue} />;
 }
 const day = (iso: string) => host.querySelector<HTMLButtonElement>(`[data-date="${iso}"]`)!;
+it('returns to today with focus while preserving the selected date', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(2026, 9, 28));
+  await act(async () => root.render(<Calendar />));
+  const todayButton = [...host.querySelectorAll('button')].find((b) => b.textContent === '오늘')!;
+  await act(async () => todayButton.click());
+  expect(document.activeElement).toBe(day('2026-10-28'));
+  expect(day('2026-10-28').getAttribute('aria-current')).toBe('date');
+  expect(day('2026-10-28').parentElement?.getAttribute('aria-selected')).toBe('false');
+  await key('ArrowRight');
+  expect(document.activeElement).toBe(day('2026-10-29'));
+});
 async function key(value: string) {
   await act(async () =>
     document.activeElement!.dispatchEvent(

@@ -2,7 +2,7 @@ name: AI CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, release, develop-next]
     paths:
       - 'ai/service/**'
       - '.github/workflows/ai-ci.yml'

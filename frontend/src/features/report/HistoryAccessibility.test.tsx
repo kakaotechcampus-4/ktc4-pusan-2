@@ -20,6 +20,7 @@ beforeEach(() => {
     take_number: n,
     started_at: '2026-10-06T12:00:00',
     status: 'COMPLETED',
+    end_reason: null,
     script_mode: 'HIGHLIGHT',
     duration_ms: 1000,
     goal_ms: 2000,

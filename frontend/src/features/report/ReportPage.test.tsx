@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ReportPage } from './ReportPage';
 import { measuresFixture, reviewFixture } from '@/mocks/report';
@@ -44,13 +45,15 @@ afterEach(async () => {
 async function render() {
   await act(async () =>
     root.render(
-      <MemoryRouter initialEntries={['/takes/t3']}>
-        <Routes>
-          <Route path="/takes/:takeId" element={<ReportPage />} />
-          <Route path="/" element={<p>홈 도착</p>} />
-          <Route path="/pitch/p1/device-check" element={<p>장치 점검 도착</p>} />
-        </Routes>
-      </MemoryRouter>,
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/takes/t3']}>
+          <Routes>
+            <Route path="/takes/:takeId" element={<ReportPage />} />
+            <Route path="/" element={<p>홈 도착</p>} />
+            <Route path="/pitch/p1/device-check" element={<p>장치 점검 도착</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
     ),
   );
 }

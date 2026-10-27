@@ -1,10 +1,9 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router';
+import { useEffect, useState } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router';
 import { isSettled, useTakeReport } from '@/shared/api/report';
 import { toMessage } from '@/shared/api/errorMessage';
-import { formatDuration } from '@/shared/lib/clock';
 import { ButtonLink } from '@/shared/ui/Button';
-import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
+import { DuskScreen, StatusLine } from './DuskScreen';
 import { stepStates, type StepState } from './reportFormat';
 
 /**
@@ -13,10 +12,10 @@ import { stepStates, type StepState } from './reportFormat';
  * Take 리포트를 끝날 때까지 주기적으로 묻고, 끝나면 리포트로 넘깁니다. 리뷰가 실패해도 측정값은 있어
  * 리포트로 넘어가고, 분석 자체가 실패했을 때만 여기 남습니다. 화면을 떠나도 분석은 서버에서 이어집니다.
  *
- * 배경 그림(`public/loading/sunset-wide-bird.png`)은 움직이지 않고 화면을 채웁니다 — 비율이 다르면 가장자리만 잘립니다.
- * 상태 · 진행 · 팁은 그림 위 대화 상자에 둡니다. 넓은 화면은 오른쪽, 좁은 화면은 아래쪽이라 왼쪽의 치치를 가리지 않습니다.
+ * 상태 · 진행 · 팁은 노을 그림 위 대화 상자에 둡니다 (`DuskScreen`).
  *
- * ★ 대본 확인(`AWAITING_CONFIRMATION`)은 기다림만 보여 줍니다. 답하는 화면은 따로 만듭니다 —
+ * ★ 대본 확인(`AWAITING_CONFIRMATION`) 동안은 확인 화면(`/takes/:takeId/confirm`)으로 가는 버튼을 띄웁니다.
+ *   저절로 넘기지 않습니다 — 확인 화면에서 돌아온 사용자를 다시 튕겨 보내게 됩니다.
  *   답이 없어도 BE 가 정한 시간이 지나면 그대로 진행됩니다.
  */
 
@@ -29,9 +28,9 @@ const STEP_LABEL: Record<StepState, string> = {
   PENDING: '대기',
 };
 
-// 확인 화면이 아직 없어 답할 수 없습니다. BE 는 확인을 최대 10분 기다립니다 (`architecture.md` 1-3)
+// BE 는 확인을 최대 10분 기다립니다 (`architecture.md` 1-3)
 const WAITING_DETAIL =
-  '비슷하게 들린 말이 있어 확인을 기다려요. 답이 없으면 10분 안에 그대로 진행돼요.';
+  '비슷하게 들린 말이 있어요. 어떻게 말했는지 알려 주면 채점에 반영되고, 답이 없으면 10분 안에 그대로 진행돼요.';
 
 /**
  * 기다리는 동안 치치가 건네는 팁 — 게임 로딩 화면의 Tip 처럼 몇 초마다 바뀝니다.
@@ -81,54 +80,23 @@ export function ProcessingPage() {
   if (!takeId) return <Navigate replace to="/" />;
 
   return (
-    <div className="relative flex min-h-dvh flex-col overflow-hidden bg-dusk">
-      <img
-        src="/loading/sunset-wide-bird.png"
-        alt="노을 진 바닷가 도시 위를 가방을 멘 치치가 날아가는 그림"
-        width={1672}
-        height={941}
-        className="absolute inset-0 h-full w-full object-cover object-center"
+    <DuskScreen report={data}>
+      <h1 className="sr-only">분석 대기</h1>
+      <DialogContent
+        takeId={takeId}
+        isPending={report.isPending}
+        error={report.error}
+        failed={failed}
+        held={held}
+        pitchId={data?.pitch_id}
+        states={stepStates(data?.analysis_stage ?? null)}
       />
-
-      <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 px-5 pt-5 sm:px-8">
-        <Link to="/" aria-label="홈으로" className="border-2 border-ink bg-panel px-3 py-2">
-          <PitchCoachWordmark />
-        </Link>
-        {data && (
-          <p className="tabular min-w-0 [overflow-wrap:anywhere] bg-dusk px-2 py-1 text-sm font-bold text-dusk-ink">
-            {data.pitch_title} / TAKE {data.take_number}
-            {data.measures && ` · 발표 길이 ${formatDuration(data.measures.duration_ms)}`}
-          </p>
-        )}
-      </header>
-
-      <main className="relative z-10 flex flex-1 items-end justify-center px-5 pb-8 pt-4 sm:px-8 lg:items-center lg:justify-end lg:pb-4">
-        <h1 className="sr-only">분석 대기</h1>
-        <DialogBox>
-          <DialogContent
-            isPending={report.isPending}
-            error={report.error}
-            failed={failed}
-            held={held}
-            pitchId={data?.pitch_id}
-            states={stepStates(data?.analysis_stage ?? null)}
-          />
-        </DialogBox>
-      </main>
-    </div>
-  );
-}
-
-/** 게임 대화 상자 — 진한 바탕에 두 겹 테두리 */
-function DialogBox({ children }: { children: ReactNode }) {
-  return (
-    <section className="flex w-full min-w-0 [overflow-wrap:anywhere] max-w-xl flex-col items-center gap-4 border-4 border-dusk-ink bg-dusk px-5 py-5 text-center text-dusk-ink shadow-[inset_0_0_0_3px_var(--color-dusk),inset_0_0_0_5px_var(--color-dusk-line)] sm:px-8 lg:max-w-md">
-      {children}
-    </section>
+    </DuskScreen>
   );
 }
 
 function DialogContent({
+  takeId,
   isPending,
   error,
   failed,
@@ -136,6 +104,7 @@ function DialogContent({
   pitchId,
   states,
 }: {
+  takeId: string;
   isPending: boolean;
   error: Error | null;
   failed: boolean;
@@ -188,29 +157,10 @@ function DialogContent({
       </div>
     );
 
-  return <Progress states={states} />;
+  return <Progress takeId={takeId} states={states} />;
 }
 
-/** "분석 중..." — 점 셋이 차례로 켜집니다. 점은 화면 읽기 프로그램이 읽지 않습니다 */
-function StatusLine({ text }: { text: string }) {
-  return (
-    <p role="status" className="text-lg font-bold sm:text-xl">
-      {text}
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="loading-dot"
-          style={{ animationDelay: `${i * 0.25}s` }}
-          aria-hidden="true"
-        >
-          .
-        </span>
-      ))}
-    </p>
-  );
-}
-
-function Progress({ states }: { states: StepState[] }) {
+function Progress({ takeId, states }: { takeId: string; states: StepState[] }) {
   const [paused, setPaused] = useState(false);
   const tip = useRotatingTip(paused);
   const current = states.findIndex((s) => s === 'RUNNING' || s === 'WAITING');
@@ -243,7 +193,12 @@ function Progress({ states }: { states: StepState[] }) {
           {current + 1}/3 · {STEP_NAMES[current]}
         </p>
       )}
-      {waiting && <p className="text-sm">{WAITING_DETAIL}</p>}
+      {waiting && (
+        <>
+          <p className="text-sm leading-relaxed">{WAITING_DETAIL}</p>
+          <ButtonLink to={`/takes/${takeId}/confirm`}>비슷하게 들린 말 확인하기</ButtonLink>
+        </>
+      )}
 
       {/* 몇 초마다 바뀌어 aria-live 를 걸지 않습니다 — 화면 읽기 프로그램이 계속 읽게 됩니다 */}
       <div className="w-full border-t-2 border-dashed border-dusk-line pt-4 text-left">

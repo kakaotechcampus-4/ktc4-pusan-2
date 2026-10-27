@@ -3,6 +3,7 @@
 입력 모델은 모르는 필드를 무시합니다(extra="ignore") — BE 가 필드를 먼저 추가해도 깨지지 않게.
 리뷰가 읽는 필드만 적었습니다 (Take 결과 · 대본 전달도의 나머지 필드는 받아도 버린다).
 출력 모델은 정해진 필드만 냅니다(extra="forbid"). 필드 이름은 snake_case 입니다.
+LLM 출력 스키마(ReviewDraft)도 여기에 둡니다. BE 계약이 아니라 코어 ↔ LLM 사이의 모양입니다.
 """
 
 from __future__ import annotations
@@ -273,3 +274,30 @@ class ReviewResponse(_Out):
     recurring_issues: list[RecurringIssue] = Field(max_length=MAX_RECURRING_ISSUES)
     fallback_reason: FallbackReason | None
     meta: Meta
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# LLM 출력 (명세 6-2). 숫자 · 상태 · 목표는 없다 — 코드가 후보에서 붙인다
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class DraftText(BaseModel):
+    candidate_id: str = Field(description="입력 후보의 candidate_id 그대로")
+    text: str = Field(description="발표자에게 하는 한두 문장")
+
+
+class DraftNextMission(BaseModel):
+    candidate_id: str = Field(description="입력 next_mission_candidates 의 candidate_id 그대로")
+    description: str = Field(description="다음 Take 에서 할 일 한 문장")
+    reason: str = Field(description="이 미션을 고른 이유 한 문장")
+
+
+class ReviewDraft(BaseModel):
+    """LLM 이 내는 문장 초안. 코어가 후보 id 로 영역 · 장 · 근거 · 목표를 붙여 응답을 만든다"""
+
+    overall_summary: str = Field(description="이번 Take 요약 2~3문장")
+    strengths: list[DraftText] = Field(description="strength_candidates 마다 하나")
+    improvements: list[DraftText] = Field(description="improvement_candidates 마다 하나")
+    next_missions: list[DraftNextMission] = Field(
+        description="next_mission_candidates 중 고른 것, 먼저 할 것부터"
+    )

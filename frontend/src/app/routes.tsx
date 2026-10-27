@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { createBrowserRouter } from 'react-router';
 import { PageTitle } from './PageTitle';
+import { LaunchGate } from './LaunchGate';
 import { StageDemo } from '@/features/rehearsal/stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
 import { SttDevPage } from '@/features/rehearsal/media/SttDevPage';
@@ -8,7 +9,7 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { PolicyPage } from '@/features/onboarding/PolicyPage';
-import { AppHeader } from '@/features/pitch/AppHeader';
+import { AppHeader } from '@/shared/ui/AppHeader';
 import { HomePage } from '@/features/pitch/HomePage';
 import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
@@ -16,6 +17,7 @@ import { PitchCreatePage, PitchEditPage } from '@/features/pitch/create/PitchCre
 import { RehearsalPage } from '@/features/rehearsal/stage/RehearsalPage';
 import { RetryPage } from '@/features/rehearsal/retry/RetryPage';
 import { ProcessingPage } from '@/features/report/ProcessingPage';
+import { ConfirmPage } from '@/features/report/ConfirmPage';
 import { ReportPage } from '@/features/report/ReportPage';
 import { DesignDraftRoute, DesignIndex } from '@/dev/design/DesignIndex';
 import { AboutPage } from '@/features/info/AboutPage';
@@ -55,6 +57,7 @@ const routes = [
   { path: '/takes/:takeId/rehearsal',  title: '실시간 코칭 리허설 | 피치코치', element: <RehearsalPage /> },
   { path: '/takes/:takeId/exam',       title: '실전 검증 리허설 | 피치코치', element: <RehearsalPage /> },
   { path: '/takes/:takeId/processing', title: '분석 대기 | 피치코치', element: <ProcessingPage /> },
+  { path: '/takes/:takeId/confirm',    title: '대본 확인 | 피치코치', element: <ConfirmPage /> },
   { path: '/takes/:takeId/retry',      title: '업로드 실패 · 재시도 | 피치코치', element: <RetryPage /> },
   { path: '/takes/:takeId',            title: 'Take 리포트 | 피치코치', element: <ReportPage /> },
   { path: '/pitch/:id/comparison',     title: 'Take 비교 | 피치코치', element: <ComparisonPage /> },
@@ -89,29 +92,51 @@ const publicPaths = [
   '*',
 ];
 
+// 홈과 같은 상단바(AppHeader)를 얹는 화면. 메뉴를 옮기거나 기록을 열어도 상단바가 바뀌지 않게 합니다.
+// 편집 화면(/pitch/new · edit)은 자체 헤더를, 장치 점검 · 리허설 · 분석 대기는 집중 화면이라 각자의 틀을 씁니다
+const appHeaderPaths = [
+  '/',
+  '/pitches',
+  '/takes',
+  '/me',
+  '/takes/:takeId/retry',
+  '/pitch/:id/comparison',
+];
+
 export const router = createBrowserRouter(
   routes.map((route) =>
     publicPaths.includes(route.path)
       ? {
           path: route.path,
-          element: <PageTitle title={route.title}>{route.element}</PageTitle>,
+          element: (
+            <PageTitle title={route.title}>
+              {route.path === '/login' ? <LaunchGate>{route.element}</LaunchGate> : route.element}
+            </PageTitle>
+          ),
         }
       : {
           path: route.path,
           element: (
             <PageTitle title={route.title}>
-              {/* 분석 대기는 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
-              <RequireSession
-                showHeader={
-                  !['/', '/pitches', '/pitch/new', '/takes/:takeId/processing'].includes(route.path)
-                }
-                bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
-                header={
-                  ['/', '/pitches', '/takes', '/me'].includes(route.path) ? (
-                    <AppHeader />
-                  ) : undefined
-                }
-              />
+              <LaunchGate>
+                {/* 분석 대기 · 대본 확인은 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
+                <RequireSession
+                  showHeader={
+                    ![
+                      '/',
+                      '/pitches',
+                      '/pitch/new',
+                      '/pitch/:id/edit',
+                      '/takes/:takeId/processing',
+                      // 리포트는 화면 안에서 공용 헤더를 표시합니다.
+                      '/takes/:takeId',
+                      '/takes/:takeId/confirm',
+                    ].includes(route.path)
+                  }
+                  bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
+                  header={appHeaderPaths.includes(route.path) ? <AppHeader /> : undefined}
+                />
+              </LaunchGate>
             </PageTitle>
           ),
           children: [{ index: true, element: route.element }],

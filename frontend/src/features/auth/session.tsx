@@ -47,10 +47,19 @@ export function RequireSession({
       />
     );
 
+  if (header)
+    return (
+      // 상단바와 화면이 함께 한 화면 높이를 채웁니다. 화면은 flex-1 로 남은 높이를 받아,
+      // 내용이 짧으면 상단바 높이만큼 스크롤이 생기지 않습니다.
+      <div className="flex min-h-dvh flex-col">
+        {header}
+        <Outlet />
+      </div>
+    );
+
   return (
     <>
-      {header}
-      {!header && showHeader && (
+      {showHeader && (
         <div
           className={`${bright ? 'pitch-create flex-wrap bg-greige text-ink [&>a]:shrink-0 [&>button]:shrink-0 ' : ''}flex items-center justify-end gap-4 px-6 py-3 text-sm`}
         >
