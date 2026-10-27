@@ -460,7 +460,7 @@ services:
 변수 목록 · 작성 규칙 · 비밀값이 가는 길은 `architecture.md` 10절이다. 서비스에서는 `settings.py`만 환경변수를 읽고, 값이 없어도 서버가 뜨도록 기본값을 둔다. 새 변수를 더하는 순서도 `architecture.md` 10절을 따른다.
 
 ## 11-5. CI와 배포
-- **CI** (`.github/workflows/ai-ci.yml`): `ai/service/**`나 이 워크플로 파일이 바뀐 PR, 그리고 main · develop · release · develop-next push에서(backend · frontend CI와 같은 브랜치, #584) job `ai` 하나가 `uv sync --locked` → ruff → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build ai/service`를 돈다. 실제 LLM은 부르지 않으므로 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다. 실패한 PR을 막으려면 저장소 관리자가 브랜치 보호의 필수 체크에 `ai`를 넣는다(`backend`와 같은 방식). 이때 워크플로를 경로 필터(`paths`)로 아예 돌리지 않으면, `ai/service/`를 건드리지 않은 PR에서 필수 체크가 대기에 머물러 병합이 막힌다. 필수 체크로 두려면 워크플로는 모든 PR에서 돌고, 바뀐 경로에 따라 검사 단계만 건너뛰게 만든다.
+- **CI** (`.github/workflows/ai-ci.yml`): `ai/service/**`나 이 워크플로 파일이 바뀐 PR과 push(push는 main · develop · release · develop-next. backend · frontend CI와 같은 브랜치, #584)에서 job `ai` 하나가 `uv sync --locked` → ruff → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build ai/service`를 돈다. 실제 LLM은 부르지 않으므로 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다. 실패한 PR을 막으려면 저장소 관리자가 브랜치 보호의 필수 체크에 `ai`를 넣는다(`backend`와 같은 방식). 이때 워크플로를 경로 필터(`paths`)로 아예 돌리지 않으면, `ai/service/`를 건드리지 않은 PR에서 필수 체크가 대기에 머물러 병합이 막힌다. 필수 체크로 두려면 워크플로는 모든 PR에서 돌고, 바뀐 경로에 따라 검사 단계만 건너뛰게 만든다.
 - **배포** (`develop-deploy.yml` · `release-deploy.yml`. 빌드 · 서버 배포 흐름은 같고, 트리거 브랜치 · compose 덮어쓰기 파일 · 서버 폴더 · 시크릿이 다르며, release에는 배포 뒤 PR 만들기 단계가 더 있다. 배포 순서 · hotfix는 `docs/be/release.md`)
 ```
 develop-next push (merge)                     release push
@@ -495,7 +495,7 @@ docker compose $FILES exec be python -c "import urllib.request as u; print(u.url
 docker compose $FILES exec be python -c "import urllib.request as u; print(u.urlopen('http://ai:8000/ready').status)"
                                                 # 200 이면 서버 안 모델까지 준비됨 (준비 전이면 503 오류)
 docker inspect --format '{{.HostConfig.Memory}}' $(docker compose $FILES ps -q ai)
-                                                # 메모리 상한. 650117120 (= 620m) 이어야 한다
+                                                # 메모리 상한. 650117120 (= 620m). 0 이면 상한 없음 (12절 '지금 상태'의 release 차이)
 docker stats --no-stream                        # 컨테이너별 CPU · 메모리 (두 환경의 컨테이너가 함께 보인다)
 docker compose $FILES restart ai                # AI만 다시 띄우기
 ```
@@ -550,7 +550,7 @@ FE는 AI를 부르지 않는다. 기능별로 누가 언제 무엇을 부르는�
 |---|---|
 | compose에 `ai` 서비스 (11-3 그대로: 헬스체크 `/ready` · `mem_limit: 620m`, `ports` 없음, `be.depends_on`에 넣지 않음) | 서버의 be 컨테이너에서 `http://ai:8000/ready` 200, `ps ai`가 `(healthy)`, 메모리 상한 650117120 (11-6 명령) |
 | 두 배포 워크플로의 build · push 대상에 `ai`, 빈 env 파일에 `ai/.env`, 서버 env 단계에 `AI_ENV` · `RELEASE_AI_ENV`. release 배포에도 develop과 같은 마이그레이션 단계 | 이미지 `pitch-coach:ai-<sha>`가 ECR에 올라감 |
-| `.github/workflows/ai-ci.yml` (11-5, push 트리거 `[main, develop, release, develop-next]`) | PR과 그 브랜치 push에서 job `ai` 통과 |
+| `.github/workflows/ai-ci.yml` (11-5, push 트리거 `[main, develop, release, develop-next]`) | `ai/service/**`가 바뀐 PR과 그 브랜치 push에서 job `ai` 통과 |
 | GitHub 시크릿 `AI_ENV` · `RELEASE_AI_ENV` (내용 = `ai/.env` 전체, 따옴표 없이) | 서버 `~/pitch-coach/ai/.env` · `~/pitch-coach-release/ai/.env` |
 | 서버 BE 환경변수 `AI_BASE_URL=http://ai:8000` | BE가 내부망으로 AI를 부름 |
 | (권장) 배포의 `docker compose up`이 `ai`가 healthy가 될 때까지 기다리게 함(예: `--wait --wait-timeout 120`) | AI가 뜨지 못하면 배포 워크플로가 실패로 끝남 |
@@ -559,7 +559,7 @@ FE는 AI를 부르지 않는다. 기능별로 누가 언제 무엇을 부르는�
 **지금 상태** (2026-10-27 `develop-next`)
 - 반영됨(#380, #564): compose `ai`(`env_file` · 헬스체크 · 종료 대기 30초, `ports` 없음), 두 배포 워크플로의 `ai` 빌드 · push · 빈 env 파일 · 서버 env 단계(`AI_ENV` · `RELEASE_AI_ENV`), release 배포의 마이그레이션 단계, `ai-ci.yml`.
 - 반영됨(#584, `develop-next` `13d3fd5e`): 헬스체크 `/health` → `/ready`, `ai`의 `mem_limit: 620m`, `ai-ci.yml` push 트리거 `[main, develop]` → `[main, develop, release, develop-next]`.
-- `release`와 다른 곳: `release`(2026-10-27 `017fa228`)에는 위 #584 변경이 아직 없다(헬스체크 `/health`, 메모리 상한 없음, push `[main, develop]`). 그래서 release 서버는 모델 준비 전에도 healthy로 보이고, `release` push에서는 AI CI가 돌지 않는다. `release`를 이 변경이 든 `develop-next` 커밋까지 올리면(`docs/be/release.md`) 같아진다.
+- `release`와 다른 곳: `release`(2026-10-27 `017fa228`)에는 위 #584 변경이 아직 없다(헬스체크 `/health`, 메모리 상한 없음, push `[main, develop]`). release 배포는 `release`의 compose 파일을 서버에 복사하므로 release 서버도 이 설정일 것이고(서버에서 확인한 기록은 없다), 그러면 모델 준비 전에도 healthy로 보인다. `release` push에서는 AI CI가 돌지 않는다. `release`를 이 변경이 든 `develop-next` 커밋까지 올리면(`docs/be/release.md`) 같아진다.
 - 확인하지 못한 것: 두 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)의 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`은 #584에서 BE가 확인 항목을 완료로 표시했지만(2026-10-27), AI는 시크릿 내용을 볼 수 없어 직접 확인하지 못했다. 서버에서 11-6 명령(`(healthy)` · `/ready` 200 · 메모리 상한)을 돌린 기록도 아직 없다(#584 완료 조건).
 - 요청 중: #585 — BE 테스트가 읽는 코치 예시 경로를 서비스 폴더로.
 - 아직 요청하지 않음: 위 표의 (권장) 배포의 `up` 대기.
@@ -583,7 +583,7 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 |---|---|---|---|
 | `tests/` (가짜 LLM) | 단위 · 계약 테스트 통과 | 키 없이 CI가 통과하고, 각 기능 예시 응답과 같은 것 | `ai-ci.yml` |
 | 로컬 이미지 | `docker build` 성공 · 컨테이너 `/health` 200 | 배포와 같은 이미지가 뜨는 것 | 10절 Docker 실행 |
-| develop · release 서버 | be 컨테이너에서 `http://ai:8000/ready` 200, `ps ai` `(healthy)`, 메모리 상한 650117120 | 내부망 연결, 모델 준비, 메모리 상한 | 11-6 명령 |
+| develop · release 서버 | be 컨테이너에서 `http://ai:8000/ready` 200, `ps ai` `(healthy)`, 메모리 상한 650117120 (release 서버는 #584 변경이 `release`에 들어가 배포된 뒤) | 내부망 연결, 모델 준비, 메모리 상한 | 11-6 명령 |
 | 실제 LLM (live) | 기능별 실제 호출 1회 성공 · 걸린 시간 | 모델 설정이 맞고 시간 제한 안에 끝나는 것 | `pytest -m live` (과금) |
 | 재생 중 측정 | `/coach/evaluate` 처리 시간 | 백그라운드 LLM 요청이 몰려도 실시간 경로가 BE 시간 제한 안에 끝나는 것 | AI 로그 · 부하 확인 |
 
