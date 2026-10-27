@@ -1,4 +1,8 @@
-"""evaluate · finalize 요청 · 응답 예시 만들기 — BE 개발자가 읽는 `src/coach/examples/` 파일.
+"""evaluate · finalize 요청 · 응답 예시 만들기 — BE 개발자가 읽는 예시 파일.
+
+예시 원본은 서비스 `features/coach/examples/` 이다.
+
+연구 폴더 `src/coach/examples/` 는 BE 테스트가 읽는 사본이라 함께 쓴다.
 
     python -m coach_lab.examples [--out 폴더]
 
@@ -20,16 +24,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
-from coach import decide, finalize
-from coach.judges import Judges
+from pitch_coach_ai.features import coach as coach_pkg
+from pitch_coach_ai.features.coach import decide, finalize
+from pitch_coach_ai.features.coach.judges import Judges
 
 from .judges import filler, gaze, lab_judges, pace, volume
 from .simulator import Presenter, Scenario
 
-EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "coach" / "examples"
+# 예시 원본은 서비스의 코어 패키지 안에 있다
+# (연구 폴더는 서비스를 editable 로 설치해 그 코어를 쓴다)
+EXAMPLES_DIR = Path(coach_pkg.__file__).resolve().parent / "examples"
+# BE 테스트가 읽는 연구 폴더의 사본. BE 가 서비스 경로로 바꾸면 이 사본과 아래 복사를 지운다
+#: (`tests/lab/test_examples_copy.py` 가 같은지 본다)
+BE_COPY_DIR = Path(__file__).resolve().parents[1] / "coach" / "examples"
 OUT_DIR = EXAMPLES_DIR / "evaluate"
 FINAL_MS = 92_000
 BASE_LEVEL_DB = -29.5
@@ -229,8 +240,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--out", default=str(EXAMPLES_DIR), help="예시 폴더(evaluate · finalize 위)"
     )
-    for path in write(Path(parser.parse_args(argv).out)):
+    out = Path(parser.parse_args(argv).out)
+    for path in write(out):
         print(path)
+    if out == EXAMPLES_DIR:
+        # 서비스 예시를 고쳤으면 BE 가 읽는 사본도 같게 맞춘다
+        shutil.copytree(EXAMPLES_DIR, BE_COPY_DIR, dirs_exist_ok=True)
+        print(f"사본: {BE_COPY_DIR}")
     return 0
 
 

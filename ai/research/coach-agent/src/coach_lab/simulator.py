@@ -32,10 +32,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from coach import decide, finalize
-from coach.config import CoachConfig, load_config
-from coach.judges import Judges
-from coach.schemas import CoachResponse, TakeResult
+from pitch_coach_ai.features.coach import decide, finalize
+from pitch_coach_ai.features.coach.config import CoachConfig, load_config
+from pitch_coach_ai.features.coach.judges import Judges
+from pitch_coach_ai.features.coach.schemas import CoachResponse, TakeResult
 
 from .judges import lab_judges
 
@@ -547,7 +547,7 @@ _TAKE_CONSTANTS = (
 
 def scenario_config(sc: Scenario, override: dict[str, Any] | None = None) -> CoachConfig:
     """시나리오 설정 위에 실험 변형을 덮는다."""
-    from coach.config import _deep_merge  # noqa: PLC0415 — 도구 전용
+    from pitch_coach_ai.features.coach.config import _deep_merge  # noqa: PLC0415 — 도구 전용
 
     return load_config(**_deep_merge(sc.config, override or {}))
 

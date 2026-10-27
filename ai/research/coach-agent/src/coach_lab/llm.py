@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from dotenv import find_dotenv, load_dotenv
 from langchain_openai import ChatOpenAI
 
-from coach.schemas import PlanDraft
+from pitch_coach_ai.features.coach.schemas import PlanDraft
 
 from .paths import PROJECT_ROOT
 
