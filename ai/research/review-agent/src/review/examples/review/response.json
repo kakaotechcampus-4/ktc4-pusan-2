@@ -1,13 +1,13 @@
 {
   "take_id": "take-123",
-  "overall_summary": "좋았던 점은 청중 응시, 말 속도와 시간 배분, 목소리 크기입니다. 먼저 다듬을 점은 3번 장 대본 의존도입니다.",
-  "score": 82,
+  "overall_summary": "좋았던 점은 청중 응시, 말 속도와 시간 배분, 목소리 크기입니다. 먼저 다듬을 점은 3번 장 대본 의존도, 2번 장 말의 매끄러움입니다.",
+  "score": 76,
   "dimensions": {
     "audience_gaze": "STRENGTH",
     "script_independence": "PRIORITY",
     "pacing_rhythm": "STRENGTH",
     "vocal_delivery": "STRENGTH",
-    "fluency": "STABLE",
+    "fluency": "PRIORITY",
     "content_delivery": "NOT_EVALUABLE"
   },
   "strengths": [
@@ -43,6 +43,14 @@
       "text": "3번 장에서 대본을 이어 읽기보다 문장 끝에서 고개를 들어 보세요",
       "evidence": {
         "script_ratio": 0.62
+      }
+    },
+    {
+      "area": "FILLER",
+      "slide_number": 2,
+      "text": "2번 장에서 군더더기 대신 잠깐 쉬어 보세요",
+      "evidence": {
+        "filler_per_min": 2.4
       }
     }
   ],
@@ -99,6 +107,11 @@
       "area": "GAZE",
       "slide_number": 3,
       "dimension": "script_independence"
+    },
+    {
+      "area": "FILLER",
+      "slide_number": 2,
+      "dimension": "fluency"
     }
   ],
   "fallback_reason": "LLM_UNAVAILABLE",
@@ -107,7 +120,7 @@
     "feature_version": "review-1.1",
     "criteria_versions": {
       "gaze": "gaze-1.1+000000000000",
-      "review": "review-1.1+13908767444d"
+      "review": "review-1.1+99c57adfbbb0"
     },
     "model": null
   }

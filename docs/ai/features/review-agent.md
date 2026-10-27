@@ -93,7 +93,7 @@ ai/research/review-agent/
 ├─ tests/ · tests/live/                     규칙 · 숫자 검사 · 계약(가짜 LLM) / 실제 LLM(live 표시)
 └─ reports/results/                         평가 결과 JSON
 ```
-연구 폴더 이름(`review-agent`, 코치 `coach-agent`와 같은 꼴)은 아직 정하지 않았다(15절 열린 질문). 파일 이름은 담당자가 정하고 README의 파일 지도에 둔다.
+연구 폴더는 `ai/research/review-agent/`(코치 `coach-agent`와 같은 꼴)다. 파일 이름은 담당자가 정하고 README의 파일 지도에 둔다.
 
 ## 4-2. 진입 함수
 | 함수 | 하는 일 | 부르는 쪽 |
@@ -203,7 +203,7 @@ ai/research/review-agent/
                      "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.4}, "priority": 2, "reason": "3번 장 이번 Take 0.62, 이전 Take 0.70"}],
   "recurring_issues": [{"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}],
   "fallback_reason": null,
-  "meta": {"schema_version": "1.0", "feature_version": "review-1.0", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.0+<config 해시>"}, "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "review-1.1", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.1+<config 해시>"}, "model": "<응답한 모델>"}
 }
 ```
 **경계 — LLM 실패** (200, 문장은 기본 문장, 다음 미션은 후보 상위, 숫자 · 상태 · 점수는 같다)
@@ -212,7 +212,7 @@ ai/research/review-agent/
  "strengths": [{"area": "CONTENT", "slide_number": null, "text": "내용 전달: 핵심 내용 전달률 0.92", "evidence": {"content_coverage": 0.92}}],
  "...": "...",
  "fallback_reason": "LLM_TIMEOUT",
- "meta": {"schema_version": "1.0", "feature_version": "review-1.0", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.0+<config 해시>"}, "model": null}}
+ "meta": {"schema_version": "1.0", "feature_version": "review-1.1", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.1+<config 해시>"}, "model": null}}
 ```
 
 # 6. 처리 — 안에서 어떻게 도는가
@@ -237,6 +237,7 @@ ai/research/review-agent/
 - **실패**: LLM이 없거나 실패하면 기본 문장과 규칙 단계 결과(다음 미션은 후보 상위)를 200으로 돌려주고 `fallback_reason`을 단다.
 - **강점 · 개선점의 `area` · `evidence`**: 규칙 단계가 후보마다 정하고, 기본 문장과 LLM 문장이 같이 쓴다. 측정 비율이 기준 미만인 영역(6-1 1번)은 고르지 않는다. 지표는 그 차원의 다음 미션 지표 → 5-3 차원 표의 지표 순으로 보고, 값이 있는 첫 지표를 `evidence`에 싣는다.
   - 강점: 잰 영역 어디서든 찾고, 찾은 지표의 영역이 `area`다(예: SPEED · PAUSE를 못 잰 Take의 `pacing_rhythm` 강점 → `TIME`, `duration_ms`).
+  - 강점의 `slide_number`: `IMPROVED`면 나아진 근거의 장(그 차원의 `previous_recurring_issues` 장 → 이룬 장 미션의 장)이고, 근거는 그 장 값을 먼저 찾는다. 그 장 값이 없으면(이번에 재지 못한 장) 근거는 Take 값이고 `slide_number`는 null이다. 그런 장이 없거나 `STRENGTH`면 null이다(`STRENGTH`는 그 차원의 Take 전체에 문제가 없다는 뜻이라 장 하나를 고르지 않는다).
   - 개선점: `area`는 그 차원에서 부담이 가장 큰 영역(6-1 8번과 같다)이고, 근거도 그 영역의 지표다. 장 개선점이면 그 장 값을 먼저 찾고 없으면 Take 값을 쓴다(예: 3번 장 `SLIDE_OVER` → `slide_duration_ms`).
   - 근거 지표를 찾지 못하면 `evidence`는 `{}`다.
 
@@ -367,17 +368,18 @@ sequenceDiagram
 
 # 15. 열린 질문 · 알려진 한계
 **정한 것**
-- 강점에도 장 번호(5-3), 규칙 단계의 세부(6-1), 출력의 세부(점수 · 비교 · 반복 문제의 영역 · 차원, 5-3 · 6-1), 입력 한도와 다음 미션 상한(5-2 · 5-3), 실패 · 다시 부르기 흐름(7절), 저장 설계와 `takes.mission_ids`(12절), 숫자 검사 규칙과 `fallback_reason`의 뜻(5-3 · 6-2).
+- 연구 폴더 이름 `ai/research/review-agent/`(4-1, 구현 Issue #211), 강점에도 장 번호(5-3 · 6-2), 규칙 단계의 세부(6-1), 출력의 세부(점수 · 비교 · 반복 문제의 영역 · 차원, 5-3 · 6-1), 입력 한도와 다음 미션 상한(5-2 · 5-3), 실패 · 다시 부르기 흐름(7절), 저장 설계와 `takes.mission_ids`(12절), 숫자 검사 규칙과 `fallback_reason`의 뜻(5-3 · 6-2).
 
 **`architecture.md`에 있는 것**
 - 숫자 검사 규칙 · `fallback_reason`의 뜻(`architecture.md` 0-2 · 4 · 9절), 리뷰 실패 흐름 · `takes.mission_ids` · `missions` 칸(`architecture.md` 1-1 · 1-3).
 
 **열린 질문**
-- 연구 폴더 이름: 아직 정하지 않았다. 후보는 `ai/research/review-agent/`(코치 `coach-agent`와 같은 꼴)이다. 구현 Issue는 #211이다.
 - 대본 전달도 부담에 핵심 수치가 틀린(`mismatched`) · 빠진 경우를 넣을지와 중복 계산 막기: 아직 정하지 않았다(6-1 4번).
 
 **알려진 한계**
-- 부담 기준 · 허용치 · 점수 같은 값이 아직 없다(옛 리뷰 근거의 값은 옛 지표 이름이다). 정답 리뷰로 고른다.
+- 부담 기준(`PRIORITY`가 되는 최소 부담)만 13절 평가로 골랐다. 허용치 · 한 걸음 폭 · 점수 · 가중은 정답이 없거나 적어 아직 임시값이다. 실제 리허설 Take와 사람이 단 정답으로 다시 고른다.
+- 13절 평가는 공통 기준 Take(`architecture.md` 12절)가 아직 없어 코치 가상 발표 시나리오를 재생한 Take 결과로 대신했고, 정답 리뷰도 시나리오로 적은 초안이다. 대본 전달도 채점 · 이어진 Take · 사용자 평가 기준이 없는 묶음이라 내용 규칙과 반복 `PRIORITY` 비율은 재지 않았다(결과와 묶음은 연구 폴더 README).
+- 지금 기본 모델은 리뷰 한 번에 8초 안팎이 걸려, 호출 한 번 12초 제한(8절)에 걸려 `LLM_TIMEOUT`이 되는 Take가 있다(가상 발표 48 Take에서 3번).
 - 이전 Take 비교는 같은 발표 안에서만이고, 대본 보기가 다른 Take끼리의 비교는 해석에 주의가 필요하다.
 - 다음 미션 목표는 지금 값에서 한 걸음이라, 측정 비율이 낮은 Take에서는 후보가 줄어든다.
 - 숫자 검사는 허용 숫자를 단위 구분 없이 한 목록으로 대조한다(4-2 `check_numbers(sentence, allowed_numbers)`). 그래서 입력에 장 번호 · 개수 같은 작은 정수가 있으면 같은 숫자를 다른 단위로 쓴 문장도 통과한다(예: 장 번호 3이 있으면 실제 값이 −2.1인 음량을 "3dB"라고 써도 통과하고, 사용자 기준 값 5가 있으면 없는 "5번 장"도 통과한다).
@@ -392,6 +394,6 @@ sequenceDiagram
 | 장 없음 | `slide_number` null (0 아님) | 4-3 |
 | 실패 | LLM 실패는 200 기본 결과 + `fallback_reason`(`LLM_*`만). 입력 오류(422)는 다시 부르지 않고, 연결 실패 · 시간 초과 · 408 · 429 · 5xx는 BE가 1번 다시. 끝내 실패하면 Take `COMPLETED`(리뷰 없음) + `/coach/plan`은 `previous_review` null | 7절 |
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번 | 8절 |
-| 버전 | `review-1.0` · `criteria_versions.review` `review-1.0+<config 해시>` · `schema_version` `1.0` | 9절 |
+| 버전 | `review-1.1` · `criteria_versions.review` `review-1.1+<config 해시>` · `schema_version` `1.0` | 9절 |
 | 입력 한도 | `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `targets` 20 (넘으면 422) | 5-2 |
 | 저장 | `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `pitch_id` · `reason` · `observed`, UQ(`source_take_id`, `priority`), 인덱스 (`pitch_id`, `status`)), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at` | 12-1 · 12-2 |
