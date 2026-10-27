@@ -5,10 +5,18 @@ import type {
   StandardsSaveRequest,
   StandardsSaved,
 } from '@/types/standards';
+import { homeFixture } from './home';
+import { recordMockEvaluation } from './pitchEdit';
 
 /** 계약 값 — 표시 기준 한 줄 50자 · 10개까지 (`evaluation-criteria.md` 출력 표) */
 const MAX_CHARS = 50;
 const MAX_COUNT = 10;
+const versions = new Map<string, number>([[homeFixture.pitches[0]!.pitch_id, 2]]);
+const nextVersion = (pitchId: string) => {
+  const version = (versions.get(pitchId) ?? 0) + 1;
+  versions.set(pitchId, version);
+  return version;
+};
 
 /**
  * 고친 글을 "다시 분석"한 흉내. 실서버는 AI 로 다시 나누고 문장을 다듬어, 보낸 문장과 다를 수 있습니다.
@@ -47,22 +55,33 @@ export const standardsHandlers = [
     // AI 출력처럼 10개 · 한 줄 50자까지 냅니다. 목은 나누지 못한 문장을 따로 가리지 않습니다
     const body: StandardTextResponse = {
       pitch_id: String(params.pitchId),
+      version: nextVersion(String(params.pitchId)),
       standards: splitStandards(standard_text)
         .slice(0, MAX_COUNT)
         .map((s) => ({ standard: s.slice(0, MAX_CHARS) })),
       except_standard: null,
     };
+    recordMockEvaluation(
+      body.pitch_id,
+      body.version,
+      body.standards.map((s) => s.standard),
+    );
     return HttpResponse.json(body);
   }),
 
-  // 고친 목록 저장 — 경로 · 모양은 FE 제안입니다(계약 304행 미정). 계약대로 다시 분석한 목록을 돌려줍니다
-  http.post('*/api/pitches/:pitchId/standards', async ({ request }) => {
+  // 고친 목록 저장 — 실서버처럼 다시 분석한 목록과 새 버전을 돌려줍니다 (#532)
+  http.post('*/api/pitches/:pitchId/standards', async ({ request, params }) => {
     const { standards } = (await request.json()) as StandardsSaveRequest;
     await delay(600);
     const invalid =
       standards.length === 0 ||
       standards.length > MAX_COUNT ||
-      standards.some((s) => s.standard.trim() === '' || s.standard.length > MAX_CHARS);
+      standards.some(
+        (s) =>
+          s.standard.trim() === '' ||
+          s.standard.trim().length > MAX_CHARS ||
+          /[\r\n\0]/.test(s.standard),
+      );
     if (invalid) {
       return HttpResponse.json(
         {
@@ -73,8 +92,16 @@ export const standardsHandlers = [
       );
     }
     const body: StandardsSaved = {
+      pitch_id: String(params.pitchId),
+      version: nextVersion(String(params.pitchId)),
       standards: standards.map((s) => ({ standard: reanalyze(s.standard) })),
+      except_standard: null,
     };
+    recordMockEvaluation(
+      body.pitch_id,
+      body.version,
+      body.standards.map((s) => s.standard),
+    );
     return HttpResponse.json(body);
   }),
 ];

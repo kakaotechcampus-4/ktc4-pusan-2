@@ -6,7 +6,7 @@
 결과 JSON 으로 쓴다(filler.md 13 · 14절).
 누가 부르나: 사람이 사전 · 기준값 · 규칙을 바꾼 뒤 한 번 돌린다. `tests/test_evaluate.py` 가
 계산부를 부르고 커밋된 결과 파일의 `criteria_version` 이 지금 기준값과 같은지 본다.
-코어(`src/filler/`)에는 파일을 읽는 코드를 두지 않으므로 평가는 모두 이 도구에 있다.
+코어(서비스 `features/filler/`)에는 파일을 읽는 코드를 두지 않으므로 평가는 모두 이 도구에 있다.
 입력과 출력: 입력은 `make_virtual_data.py` 가 만든 `words.json`. 출력은
 `reports/results/filler_eval.json`(`criteria_version` · 개수 · `by_tier` · `all` ·
 `out_of_dictionary` · `streaming_matches_single_call` · `sweep_gap_ms` · `repeat_rule` ·
@@ -40,8 +40,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from filler.config import ALL_TIERS, FillerConfig, normalize
-from filler.core import REASON_REPEAT, criteria_version, judge
+from pitch_coach_ai.features.filler.config import ALL_TIERS, FillerConfig, normalize
+from pitch_coach_ai.features.filler.core import REASON_REPEAT, criteria_version, judge
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "virtual" / "words.json"

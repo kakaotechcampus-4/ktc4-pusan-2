@@ -49,12 +49,17 @@ class LlmRole:
       추론 모델은 추론에 한도를 써서, 상한이 없거나 작으면 답이 잘린다
       (잘리면 `LLM_INVALID_OUTPUT`, `docs/ai/architecture.md` 9절)
     - reasoning_effort: 추론 강도. None 이면 보내지 않는다
+    - timeout_setting: 이 역할의 호출 한 번 시간 제한을 담은 `Settings` 칸 이름. 그 칸이 비어 있거나
+      None 이면 `LLM_TIMEOUT_SECONDS` 를 쓴다 (기능별 시간 제한, `docs/ai/architecture.md` 10절)
     """
 
     bundle: str
     max_output_tokens: int
     reasoning_effort: str | None = None
+    timeout_setting: str | None = None
 
+
+_SCRIPT_COVERAGE_TIMEOUT = "script_coverage_llm_timeout_seconds"
 
 # 역할 → 묶음 연결과 출력 상한. 환경변수로 두지 않는다.
 # 서버 시크릿만 바꿔 잰 적 없는 모델로 바뀌지 않게, 바꾸는 것은 측정을 실은
@@ -63,6 +68,27 @@ LLM_ROLES: dict[str, LlmRole] = {
     # 뼈대용 기본 역할. 4096 은 잰 값이 아니라 임시값이다.
     # 각 기능 PR 이 잰 출력 길이로 역할을 더한다
     "default": LlmRole(bundle="default", max_output_tokens=4096),
+    # 대본 전달도: 단계(출력 스키마)마다 하나.
+    # 상한 = 잰 최대 출력 × 2 를 1,024 단위로 올림(최소 2,048),
+    # 호출 한 번 시간 제한은 SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS (기능 문서 8절)
+    "script_coverage.semantic": LlmRole(
+        bundle="default", max_output_tokens=4096, timeout_setting=_SCRIPT_COVERAGE_TIMEOUT
+    ),
+    "script_coverage.final": LlmRole(
+        bundle="default", max_output_tokens=4096, timeout_setting=_SCRIPT_COVERAGE_TIMEOUT
+    ),
+    "script_coverage.unit": LlmRole(
+        bundle="default", max_output_tokens=5120, timeout_setting=_SCRIPT_COVERAGE_TIMEOUT
+    ),
+    "script_coverage.eval": LlmRole(
+        bundle="default", max_output_tokens=3072, timeout_setting=_SCRIPT_COVERAGE_TIMEOUT
+    ),
+    "script_coverage.verifier": LlmRole(
+        bundle="default", max_output_tokens=2048, timeout_setting=_SCRIPT_COVERAGE_TIMEOUT
+    ),
+    # 코치 코칭 계획: 잰 최대 출력 × 2 를 1,024 단위로 올림(최소 2,048).
+    # 호출 한 번은 LLM_TIMEOUT_SECONDS (코치 기능 문서 8절)
+    "coach.plan": LlmRole(bundle="default", max_output_tokens=2048),
 }
 
 
@@ -87,13 +113,12 @@ class Settings(BaseSettings):
     # 범위 밖(0 이하 · nan · 음수)이면 시작 오류
     llm_timeout_seconds: float = Field(12, gt=0, allow_inf_nan=False)
     llm_max_retries: int = Field(1, ge=0)
+    # 기능별 호출 한 번 시간 제한(초). 없으면 LLM_TIMEOUT_SECONDS. 어느 역할이 쓰는지는 LLM_ROLES
+    script_coverage_llm_timeout_seconds: float | None = Field(None, gt=0, allow_inf_nan=False)
     # uvicorn 워커 수. uvicorn 이 시작할 때 프로세스 환경변수에서 직접 읽고, 여기서는 형식만
     # 검사한다. 그래서 ai/.env 에만 적으면 로컬 `uv run uvicorn` 에는 먹지 않는다
     # (compose env_file · docker run --env-file 은 진짜 환경변수로 넣어 먹는다)
     web_concurrency: int = Field(1, ge=1)
-    # 규약 확인용 대역 `POST /sample/judge` 를 켠다. 로컬 확인용이라 서버 AI_ENV 에는 넣지 않는다.
-    # 첫 실제 기능 엔드포인트가 붙으면 대역과 함께 지운다 (docs/ai/ai-service.md 4-1)
-    ai_enable_sample: bool = False
 
     @field_validator(
         "openai_base_url",
@@ -102,11 +127,15 @@ class Settings(BaseSettings):
         "openai_sol_base_url",
         "openai_sol_api_key",
         "openai_sol_model",
+        "script_coverage_llm_timeout_seconds",
         mode="before",
     )
     @classmethod
     def _blank_is_none(cls, value: object) -> object:
-        """`OPENAI_API_KEY=` 처럼 빈 값은 '없음'으로 본다 (예시 파일을 복사한 칸)."""
+        """`OPENAI_API_KEY=` 처럼 빈 값은 '없음'으로 본다 (예시 파일을 복사한 칸).
+
+        기능별 시간 제한도 빈 값이면 없음(→ `LLM_TIMEOUT_SECONDS`)이다.
+        """
         if isinstance(value, str) and value.strip() == "":
             return None
         return value
@@ -123,6 +152,18 @@ class Settings(BaseSettings):
                     "(셋 다 채우거나, 쓰지 않으면 세 줄 모두 주석으로 둡니다)"
                 )
         return self
+
+    def timeout_for(self, role: LlmRole) -> float:
+        """역할의 호출 한 번 시간 제한(초). 기능별 값이 없으면 `llm_timeout_seconds`.
+
+        예: SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20 이면
+        `settings.timeout_for(LLM_ROLES["script_coverage.eval"])` → 20.0
+        """
+        if role.timeout_setting is not None:
+            value = getattr(self, role.timeout_setting)
+            if value is not None:
+                return value
+        return self.llm_timeout_seconds
 
     def bundle(self, name: str) -> ModelBundle | None:
         """묶음 이름으로 모델 묶음을 돌려준다. 설정되지 않았으면 None.

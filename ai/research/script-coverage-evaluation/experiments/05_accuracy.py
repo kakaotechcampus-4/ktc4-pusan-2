@@ -34,8 +34,8 @@ from coverage_lab.stt_labels import (
     similar_accuracy,
     similar_tables,
 )
-from script_coverage.stt_evaluation.confirm import CONFIRM_TEXT
-from script_coverage.stt_evaluation.scoring import take_scores
+from pitch_coach_ai.features.script_coverage.stt_evaluation.confirm import CONFIRM_TEXT
+from pitch_coach_ai.features.script_coverage.stt_evaluation.scoring import take_scores
 
 # 스크립트로 실행할 때도 표가 잘리지 않게 한다
 pd.set_option("display.width", 250)

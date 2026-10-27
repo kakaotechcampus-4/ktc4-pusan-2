@@ -10,9 +10,16 @@ from dotenv import find_dotenv, load_dotenv
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from script_coverage.core import ScriptLLMs, TakeLLMs
-from script_coverage.script_analysis.schemas import FinalReview, SlideSemanticAnalysis, SlideUnits
-from script_coverage.stt_evaluation.schemas import SemanticEvaluation, VerifierResult
+from pitch_coach_ai.features.script_coverage.core import ScriptLLMs, TakeLLMs
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
+    FinalReview,
+    SlideSemanticAnalysis,
+    SlideUnits,
+)
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
+    SemanticEvaluation,
+    VerifierResult,
+)
 
 from .paths import PROJECT_ROOT
 

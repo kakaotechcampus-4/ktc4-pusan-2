@@ -52,8 +52,11 @@ class BurdenConfig(_Section):
 class DimensionConfig(_Section):
     """3단계: 차원 상태"""
 
-    #: PRIORITY 후보가 되는 최소 부담. 반복 문제였던 차원은 이 값 미만으로 내려와야 IMPROVED
-    priority_burden_min: float = 10.0
+    #: PRIORITY 후보가 되는 최소 부담. 반복 문제였던 차원은 이 값 미만으로 내려와야 IMPROVED.
+    #: 가상 발표 48 Take(review_lab.evaluate)로 골랐다 — 10 이면 시간 초과 · 긴 침묵 · 짧은
+    #: 대본 응시(부담 7 안팎)가 STABLE 로 빠지고, 5 · 6 은 같은 결과,
+    #: 3 이면 작은 대본 응시까지 PRIORITY 가 된다 (README 3절)
+    priority_burden_min: float = 6.0
     #: PRIORITY 최대 개수 (부담 큰 순)
     priority_max_count: int = 3
 

@@ -14,9 +14,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from coach.config import CoachConfig
-from coach.schemas import Plan
-from coach.vocab import FeedbackType, Issue
+from pitch_coach_ai.features.coach.config import CoachConfig
+from pitch_coach_ai.features.coach.schemas import Plan
+from pitch_coach_ai.features.coach.vocab import FeedbackType, Issue
 
 from .judges import filler as filler_judge
 from .judges import gaze as gaze_judge

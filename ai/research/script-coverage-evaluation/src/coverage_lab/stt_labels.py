@@ -15,19 +15,22 @@ import sqlite3
 
 import pandas as pd
 
-from script_coverage.config import SCORE_WEIGHT
-from script_coverage.shared.facts import CriticalFact, extract_critical_facts
-from script_coverage.shared.rubric import NAME_TYPES
-from script_coverage.shared.text import compact, normalize_script
-from script_coverage.stt_evaluation.config import STATUS_SCORE
-from script_coverage.stt_evaluation.merge import aggregate_status
-from script_coverage.stt_evaluation.schemas import (
+from pitch_coach_ai.features.script_coverage.config import SCORE_WEIGHT
+from pitch_coach_ai.features.script_coverage.shared.facts import (
+    CriticalFact,
+    extract_critical_facts,
+)
+from pitch_coach_ai.features.script_coverage.shared.rubric import NAME_TYPES
+from pitch_coach_ai.features.script_coverage.shared.text import compact, normalize_script
+from pitch_coach_ai.features.script_coverage.stt_evaluation.config import STATUS_SCORE
+from pitch_coach_ai.features.script_coverage.stt_evaluation.merge import aggregate_status
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
     SentenceResult,
     SimilarItem,
     SlideEvaluation,
     Take,
 )
-from script_coverage.stt_evaluation.similar import _plain
+from pitch_coach_ai.features.script_coverage.stt_evaluation.similar import _plain
 
 from .paths import LABEL_DIR
 from .store import load_rubric

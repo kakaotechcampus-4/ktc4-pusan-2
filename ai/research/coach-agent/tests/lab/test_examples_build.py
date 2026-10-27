@@ -8,12 +8,12 @@ from typing import Any
 
 import pytest
 
-from coach import finalize
-from coach.config import load_config
-from coach.schemas import FinalizeRequest, FinalizeResponse
 from coach_lab.examples import EXAMPLES_DIR, write
 from coach_lab.judges import lab_judges
-from tests.unit.test_examples import assert_same
+from pitch_coach_ai.features.coach import finalize
+from pitch_coach_ai.features.coach.config import load_config
+from pitch_coach_ai.features.coach.schemas import FinalizeRequest, FinalizeResponse
+from tests.lab.judge_helpers import assert_same
 
 FINALIZE = EXAMPLES_DIR / "finalize"
 

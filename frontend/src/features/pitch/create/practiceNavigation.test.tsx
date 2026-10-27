@@ -83,6 +83,7 @@ it.each(['건너뛰기', '연습 시작 →'])(
     state().editInfo({ title: '기계공학 발표' });
     if (label === '연습 시작 →') {
       state().applyParsedCriteria(null, {
+        version: 1,
         sourceText: '출처 말하기',
         standards: ['출처 말하기'],
         exceptText: null,

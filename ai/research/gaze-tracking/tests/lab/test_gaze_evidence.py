@@ -18,7 +18,7 @@ import pytest
 
 from gaze_lab.calibration.references import ReferenceAnchorClassifier, direction_of, gaze_offset
 from gaze_lab.config import CalibrationConfig, EvidenceConfig
-from gaze.schemas import GazeRecord
+from pitch_coach_ai.features.gaze.schemas import GazeRecord
 from gaze_lab.evidence.gaze import GazeEvidenceRecorder, GazeFrame, GazeSample, GazeSlicer
 from gaze_lab.schemas import GAZE_DIRECTIONS, CalibrationSample, FrameObservation, GazeVector, HeadPose
 

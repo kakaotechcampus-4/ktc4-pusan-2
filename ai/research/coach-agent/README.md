@@ -11,7 +11,7 @@ Take 시작 전에는 LLM이 이번 Take의 **코칭 계획**(먼저 챙길 것 
 | 담당 | jewon-kim |
 | 판단 방식 | 규칙 + 되돌아보기. 1초 판단에는 LLM을 쓰지 않고, Take 시작 전 코칭 계획에만 LLM을 한 번 씁니다 |
 | 판정 | 시선 · 속도 · 음량 · 군더더기 판정은 코치가 하지 않습니다. 판정 모듈(#152~#155)이 하고 코치는 결과를 받습니다 |
-| 기능 버전 | `coach-1.3`(시간 판정 `timing-1.1`), 요청 · 응답 스키마 `1.0`, `coach_state` 모양 `2` (`src/coach/version.py`) |
+| 기능 버전 | `coach-1.3`(시간 판정 `timing-1.1`), 요청 · 응답 스키마 `1.0`, `coach_state` 모양 `2` (서비스 `features/coach/version.py`) |
 | 상태 | 판정 모듈 계약 · 패키지 + 테스트. **가상 발표자와 대역 판정 모듈로만 확인했습니다.** 기준값은 실제 발표 데이터로 검증하지 않았습니다 |
 | 설계 | 목적 · BE ↔ 코치 계약 · 처리 · 배포 → [`docs/ai/features/coach-agent.md`](../../../docs/ai/features/coach-agent.md) |
 
@@ -41,10 +41,10 @@ Take 종료:  finalize(마지막 창 · 이벤트 · coach_state [· replay]) �
 ```
 src/coach_lab/     재생 · 실험: 가상 발표자 · 대역 판정 모듈 · 정답 · 채점 · 예시 생성    → research에만 남음
       │ import
-src/coach/         판단 코어: 1초 판단 · Take 종료 · 코칭 계획                          → 나중에 AI 서버로 폴더째 복사
+pitch_coach_ai.features.coach  판단 코어: 1초 판단 · Take 종료 · 코칭 계획              → AI 서비스(ai/service)에 있음
 ```
 
-코어의 규칙 (`tests/unit/test_core_boundary.py`가 코어 파일을 읽어 검사하므로 어기면 테스트가 실패합니다)
+코어의 규칙 (서비스 `tests/unit/coach/test_core_boundary.py`가 코어 파일을 읽어 검사하므로 어기면 테스트가 실패합니다)
 
 | 규칙 | 이유 |
 |---|---|
@@ -61,18 +61,27 @@ src/coach/         판단 코어: 1초 판단 · Take 종료 · 코칭 계획   
 ```
 coach-agent/
 ├─ README.md
-├─ pyproject.toml              패키지 두 개: coach(코어) · coach_lab(실험)
-├─ src/coach/                  판단 코어 (3-1)
-│   ├─ examples/               BE 개발자용 실행 가능한 예시 (evaluate · finalize · timing)
-│   └─ prompts/plan.py         코칭 계획 LLM 프롬프트
+├─ pyproject.toml              패키지 하나: coach_lab(실험). 코어는 서비스를 editable로 설치해 씀
+├─ src/coach/examples/         BE 테스트가 읽는 예시 사본 evaluate · finalize · timing (원본은 서비스 features/coach/examples/, 3-1)
 ├─ src/coach_lab/              재생 · 실험 도구 (3-2)
 ├─ scenarios/                  가상 발표 시나리오 16개 (+ plan/ 코칭 계획 실험용)
-├─ tests/{unit,lab,live}/      코어 · 실험 도구 · 실제 LLM
+├─ tests/{lab,live}/          실험 도구 · 실제 LLM (코어 단위 테스트는 서비스 tests/unit/coach/)
 ├─ reports/results/            커밋하는 실험 결과 (take_result · recovery · coaching_plan)
 └─ outputs/                    재생 결과 · 캐시 (git 제외)
 ```
 
-### 3-1. 판단 코어 `src/coach/`
+### 3-1. 판단 코어 (서비스 `ai/service/src/pitch_coach_ai/features/coach/`)
+
+**코어는 AI 서비스로 옮겼습니다**(2026-10-26). 코어는 `ai/service/src/pitch_coach_ai/features/coach/`, 단위 테스트는 `ai/service/tests/unit/coach/`에 있습니다. 이 폴더는 서비스를 editable로 설치해(`pyproject.toml`의 `[tool.uv.sources]`) `coach_lab` · lab 테스트가 `pitch_coach_ai.features.coach`를 import합니다. 코어는 서비스에서 고칩니다. `src/coach/examples/`는 BE 테스트(`backend/tests/coach/` 등)가 이 경로를 직접 읽어 남긴 **예시 사본**입니다. `python -m coach_lab.examples`가 서비스 예시와 사본을 함께 쓰고, `tests/lab/test_examples_copy.py`가 같은지 봅니다. BE가 서비스 경로로 바꾸면 사본을 지웁니다.
+
+| 옮긴 뒤 확인 | 결과 |
+|---|---|
+| 옮긴 코어 · 예시 · 프롬프트 | 이름만 바뀜(100%) |
+| 테스트 수 | 옮기기 전 605 passed = 서비스 465 + 이 폴더 140 (+ 사본 검사 1) |
+| `python -m coach_lab.replay` | 16/16 통과, 출력은 처리 시간(p50 · p95)만 다름 |
+| `evaluate --sweep` · `recovery_eval` · `coach_lab.examples` | 다시 만든 `take_result.json` · `recovery.json` · 예시가 옮기기 전과 같음 |
+
+파일마다의 역할은 아래 표에 둡니다(경로는 서비스 `features/coach/` 기준).
 
 | 파일 | 하는 일 |
 |---|---|
@@ -110,7 +119,7 @@ coach-agent/
 | `truth.py` | 정답: 잡음 없는 실제 상태 × 코치와 같은 기준값. 센서가 볼 수 없던 문제는 정답에서도 뺀다 |
 | `evaluate.py` | Take 결과 채점 (구간 재현율 · 정밀도 · 근거 없는 지적 · IoU · 시작 오차 · 조각남 · 장별 오차 · 효과 판정 정확도). 병합 간격 × 최소 구간 격자(`--sweep`) |
 | `recovery_eval.py` | 복구 실험: 정상 / 요청 누락 / replay로 돌린 Take 결과를 서로 비교 |
-| `examples.py` | `src/coach/examples/`의 evaluate · finalize 예시 파일을 만든다 (다시 돌려도 바이트까지 같다) |
+| `examples.py` | 서비스 `features/coach/examples/`의 evaluate · finalize 예시 파일을 만들고 BE 테스트용 사본(`src/coach/examples/`)에도 복사한다 (다시 돌려도 바이트까지 같다) |
 | `plan_eval.py` · `llm.py` · `cache.py` | 코칭 계획 실험: 실제 LLM으로 계획을 세우고 유효성 · 일관성 · 재생 효과를 잰다. 응답은 `outputs/llm_cache.sqlite`에 캐시 |
 | `usage.py` | LLM 호출마다 출력 토큰 수 · 끝난 이유를 모으고 역할 상한(잰 최대 × 2, 1,024 단위, 최소 2,048)을 계산한다. `plan_eval --usage`가 쓴다 |
 | `paths.py` | 폴더 위치 |
@@ -145,7 +154,7 @@ LLM이 `focus`(가중치) · `relax`(장 단위로 봐줄 영역) · `max_interv
 
 ## 5. 판단 규칙
 
-판단 규칙(문제별 사다리 · 말하지 않는 이유 · Take 결과 규칙)은 [설계 문서](../../../docs/ai/features/coach-agent.md) 6-1 · 6-3에 있습니다. 값의 원본은 `src/coach/config.py`(`_default_issue_rules` · `config.take_result`)입니다.
+판단 규칙(문제별 사다리 · 말하지 않는 이유 · Take 결과 규칙)은 [설계 문서](../../../docs/ai/features/coach-agent.md) 6-1 · 6-3에 있습니다. 값의 원본은 서비스 `features/coach/config.py`(`_default_issue_rules` · `config.take_result`)입니다.
 
 ## 6. 실행법
 
@@ -160,13 +169,13 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 
 | 하는 일 | 명령 |
 |---|---|
-| 테스트 | `uv run python -m pytest` (코어만: `tests/unit`, 실험 도구: `tests/lab`) |
+| 테스트 | `uv run python -m pytest` (실험 도구 `tests/lab`. 코어 단위 테스트는 `ai/service`에서 `uv run python -m pytest tests/unit/coach`) |
 | 실제 LLM으로 계획 한 번 (과금) | `uv run python -m pytest -m live` |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` |
 | 시나리오 재생 | `uv run python -m coach_lab.replay` (하나만: `… replay scenarios/05_time_behind.json -v`, 설정 덮어쓰기: `--config my.json`) |
 | Take 결과 채점 | `uv run python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` (`--seeds`, `--noise clean,noisy,harsh`, `--explain`) |
 | 복구 실험 | `uv run python -m coach_lab.recovery_eval` (결과: `reports/results/recovery.json`, `--seeds`) |
-| 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` (`src/coach/examples/`) |
+| 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` (원본 서비스 `features/coach/examples/`와 BE 테스트용 사본 `src/coach/examples/`) |
 | 코칭 계획 실험 (과금) | `uv run python -m coach_lab.plan_eval --out reports/results/coaching_plan.json` |
 | 코칭 계획 출력 토큰 (과금, 25번) | `uv run python -m coach_lab.plan_eval --usage --out reports/results/plan_output_tokens.json` (스트리밍 · 캐시 없음, 결과의 `usage`) |
 
@@ -176,7 +185,7 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 파이썬에서 직접
 
 ```python
-from coach import decide_safe, finalize
+from pitch_coach_ai.features.coach import decide_safe, finalize
 from coach_lab.judges import lab_judges  # 대역 판정 모듈. 배포에서는 기능 모듈로 만든 Judges
 
 judges = lab_judges()
@@ -210,7 +219,13 @@ result = finalize(finalize_request_dict, judges)
 
 ## 7. 현재 결과
 
-커밋한 결과 파일에서 가져온 값입니다 (`config_hash` `8b1e640e988a`, 기능 버전 `coach-1.2`, 16 시나리오). **가상 발표자 · 대역 판정 모듈 위의 값이며 실제 성능이 아닙니다.**
+커밋한 결과 파일에서 가져온 값입니다 (`config_hash` `8b1e640e988a`, 기능 버전 `coach-1.3`, 16 시나리오). **가상 발표자 위의 값이며 실제 성능이 아닙니다.** 시선 · 군더더기는 서비스의 실제 판정 모듈, 말 속도 · 소리 크기는 연구용 대역입니다(`coach_lab.judges.real_judges`, 2026-10-26부터).
+
+**대역에서 실제 모듈로 바꾸며 달라진 것** (재생 16/16 통과)
+- 시뮬레이터 시선 1초 기록에 신뢰도(`confidence` · `reliability` · `frames`)를 넣었습니다. 없으면 실제 시선 모듈이 Take 내내 잴 수 없음으로 봅니다.
+- 실제 시선 모듈은 대역이 내지 않던 `GAZE_LOW_EYE_CONTACT`를 `GAZE_ON_SCRIPT`와 겹쳐 냅니다. 그래서 `03_gaze_gave_up`의 둘째 개입과 포기 대상이 `GAZE_LOW_EYE_CONTACT`가 되어 기대를 맞췄고, 같은 문제를 여러 조각으로 짚어 조각남이 1.1 → 1.5~1.7로 늘었습니다. 겹친 지적 때문에 구간 IoU가 1을 넘던 채점 도구 버그를 고쳤습니다(겹친 지적을 합친 뒤 계산).
+- 군더더기는 배포 기본값(T1만 셈)이라 대역과 같은 기준이고, `08_filler_frequent`는 그대로 통과합니다.
+- 아래 표의 변화: clean 구간 재현율 1.000 → 0.917(정답 구간 하나를 놓침), noisy · harsh 정밀도 · 근거 없는 지적은 좋아짐, 시작 오차는 0.3~0.4초 늘어남.
 
 ### Take 결과 채점 (`reports/results/take_result.json`)
 
@@ -218,18 +233,18 @@ result = finalize(finalize_request_dict, judges)
 
 | 지표 | clean | noisy | harsh |
 |---|---|---|---|
-| 구간 재현율 | 1.000 | 0.934 | 0.952 |
-| 구간 정밀도 | 1.000 | 0.919 | 0.875 |
-| 구간 F1 | 1.000 | 0.927 | 0.912 |
-| 근거 없는 지적 (Take 당) | 0 | 0.063 | 0.113 |
-| 구간 IoU | 0.819 | 0.772 | 0.730 |
-| 시작 오차 (초) | 0.87 | 1.98 | 2.38 |
-| 조각남 (문제 하나당 조각 수) | 1.08 | 1.09 | 1.15 |
-| 효과 판정 정확도 | 1.000 | 0.977 | 0.912 |
-| 불필요한 개입률 | 0 | 0.021 | 0.021 |
+| 구간 재현율 | 0.917 | 0.952 | 0.934 |
+| 구간 정밀도 | 1.000 | 0.979 | 0.924 |
+| 구간 F1 | 0.957 | 0.965 | 0.929 |
+| 근거 없는 지적 (Take 당) | 0 | 0.025 | 0.088 |
+| 구간 IoU | 0.786 | 0.764 | 0.722 |
+| 시작 오차 (초) | 1.27 | 2.25 | 2.71 |
+| 조각남 (문제 하나당 조각 수) | 1.55 | 1.69 | 1.61 |
+| 효과 판정 정확도 | 1.000 | 0.943 | 1.000 |
+| 불필요한 개입률 | 0 | 0 | 0.022 |
 
-- 장별 평균 절대 오차 (clean / noisy / harsh): CPM 4.3 / 5.5 / 6.9, 장 시간 0.34 / 0.37 / 0.37초, 대본 응시 비율 0.032 / 0.060 / 0.104.
-- 격자(`--sweep`): 최소 구간을 6초로 올리면 noisy F1이 0.927 → 0.950, harsh가 0.912 → 0.930으로 오릅니다(정밀도가 오르고 재현율은 거의 그대로 — harsh는 0.952 → 0.936). 병합 간격은 조각남에만 영향을 줍니다. 기본값은 아직 바꾸지 않았습니다.
+- 장별 평균 절대 오차 (clean / noisy / harsh): CPM 4.2 / 5.5 / 6.9, 장 시간 0.34 / 0.37 / 0.37초, 대본 응시 비율 0.032 / 0.059 / 0.104.
+- 격자(`--sweep`): 실제 시선 모듈로는 최소 구간을 6초로 올려도 noisy F1이 오르지 않습니다(0.965 → 0.958, 재현율 0.952 → 0.919). 병합 간격은 조각남뿐 아니라 정밀도 · F1 · IoU에도 조금 영향을 줍니다. 기본값은 그대로입니다.
 
 ### 복구 실험 (`reports/results/recovery.json`)
 
@@ -239,19 +254,21 @@ result = finalize(finalize_request_dict, judges)
 | 경우 | 재판정 필요 | 정상 구간 중 일치 (clean / noisy) | 경우 구간 중 정상과 일치 (clean / noisy) | 지표 차이 |
 |---|---|---|---|---|
 | replay | — | 1.000 / 1.000 | 1.000 / 1.000 | 영역 지표 모두 0 |
-| short_drop | 0% | 0.944 / 0.896 | 0.954 / 0.913 | 영역 지표 모두 0 |
-| long_drop | 100% | 0.969 / 0.938 | 1.000 / 1.000 | 영역 지표 모두 0 |
+| short_drop | 0% | 0.875 / 0.844 | 0.918 / 0.922 | CPM 0.02 / 0.03, 분당 군더더기 0.009 / 0.008, 측정 비율 0.004 |
+| long_drop | 100% | 0.917 / 0.938 | 1.000 / 1.000 | 영역 지표 모두 0 |
 
-한쪽에만 값이 있는 지표(`values_missing`)는 모든 경우 0입니다. 영역 지표(`take`)는 세 경우 모두 정상과 같고, 달라지는 것은 문제 구간 일부입니다.
+한쪽에만 값이 있는 지표(`values_missing`)는 모든 경우 0입니다. replay · long_drop의 영역 지표(`take`)는 정상과 같고, short_drop은 빠진 20초의 단어 몫 때문에 말 속도 · 군더더기 지표가 아주 조금 다릅니다(이 차이는 대역 때 결과 파일에도 있었습니다). 달라지는 것은 주로 문제 구간 일부입니다.
 
 ### 코칭 계획 실험 (`reports/results/coaching_plan.json`)
 
 실제 LLM(`openai/gpt-6-luna`, 기본 묶음)으로 시나리오 5개 × 5번(25 계획): 유효 100%, 기대 통과 100%, 검증에서 뺀 비율 0%, 일관성 0.95, 지연 중앙값 3.1초 · 최대 7.8초. 계획 입력을 직전 Take 결과 · 리뷰 모양으로 바꾼 프롬프트(`planner_hash` `56827d3cf73d`)로 잰 값이다.
 
+코어를 서비스로 옮긴 뒤 다시 돌린 값(2026-10-26, 결과 파일은 그대로 두고 비교만): 유효 100%, 기대 통과 96%(25개 중 `19_plan_nothing_special` 한 번이 근거 없이 3번 장 시선을 봐줌), 검증에서 뺀 비율 0%, 일관성 0.95, 지연 중앙값 3.0초 · 최대 6.7초. 그 밖의 지표는 같습니다. 다시 돌린 결과는 커밋하지 않아(`outputs/`) 차이의 원인을 더 따지지 않았고, 같은 입력에서 다섯 번 중 한 번만 달라 LLM 답의 흔들림으로 보입니다.
+
 ## 8. 알려진 한계
 
-- **가상 발표자로만 확인했습니다.** 시선 · 속도 · 음량 · 군더더기 판정은 연구용 대역이고, 기준값(대본 응시 5초 · 350 CPM 등)은 실제 연습 데이터로 다시 골라야 합니다.
-- 판정 모듈(#152~#155)이 나오면 대역 대신 그 모듈로 `Judges`를 만들어 같은 실험을 다시 돌려야 합니다. 판정 모듈의 `since_ms` · `counted_until_ms` 계약은 코치의 커서와 맞물려 있습니다.
+- **가상 발표자로만 확인했습니다.** 시선 · 군더더기는 서비스의 실제 판정 모듈이지만 말 속도 · 음량은 연구용 대역이고, 기준값(대본 응시 5초 · 350 CPM 등)은 실제 연습 데이터로 다시 골라야 합니다.
+- 말 속도 · 소리 크기 판정 모듈이 서비스에 오면 `real_judges`의 대역을 바꿔 같은 실험을 다시 돌립니다. 판정 모듈의 `since_ms` · `counted_until_ms` 계약은 코치의 커서와 맞물려 있습니다.
 - 개입 규칙이 아직 `Tick`으로 옮긴 지표를 읽습니다(`measure.py`). 판정 결과를 직접 읽도록 줄이는 일은 #150의 개입 규칙 작업에 남아 있습니다.
 - 요청이 30초보다 길게 빠지면 합계로는 Take 결과를 만들 수 없고 replay가 필요합니다. replay는 Take 전체 원자료를 BE가 보관해야 쓸 수 있습니다.
 - 효과 판정은 실시간 지표(짧은 창)로 잽니다. 개입이 잡음으로 튄 순간에 일어나기 쉬워, 시선은 "기준선으로 돌아옴"만 효과로 인정합니다.

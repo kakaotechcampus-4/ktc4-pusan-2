@@ -88,7 +88,7 @@ npm run dev        # http://localhost:5180
 - 방향은 발표자 자신의 왼쪽·오른쪽입니다. 미리보기가 거울상이라 화살표는 화면에서 보이는 쪽과 같습니다.
 - "서버로 가는 1초 기록"은 1초 기록이 하나 쌓일 때마다 최근 6개를 보여 줍니다. 판정 보류 · 잴 수 없음은 회색입니다.
   아래 `마지막 1초 기록 (JSON)`을 펼치면 FE가 보내는 모양 그대로를 볼 수 있습니다. 시선 문제는 데모에서 판정하지 않습니다
-  (서버 판정 모듈 `../src/gaze/`의 일이고, 그 결과 예시는 `../src/gaze/examples/`에 있습니다).
+  (서버 판정 모듈 서비스 `features/gaze/`의 일이고, 그 결과 예시는 `ai/service/src/pitch_coach_ai/features/gaze/examples/`에 있습니다).
 
 ---
 
@@ -186,7 +186,7 @@ Edge p95가 134~207 ms까지 올라 예산을 넘었습니다. 같은 설정도 
 
 코치 에이전트와 리뷰 에이전트는 프레임을 읽지 않고 **1초 기록**으로 만든 판정을 읽습니다. 엔진(`evidence.ts`)은
 프레임 판정을 1초 기록으로 만들기까지만 하고(Python `../src/gaze_lab/evidence/gaze.py`와 같은 값), 1초 기록을 읽어
-1초 판정 결과 · Take 지표를 만드는 것은 서버 판정 모듈(`../src/gaze/`, `judge` · `summarize` · `criteria`)입니다.
+1초 판정 결과 · Take 지표를 만드는 것은 서버 판정 모듈(서비스 `features/gaze/`, `judge` · `summarize` · `criteria`)입니다.
 엔진과 데모에는 그 판정의 사본을 두지 않습니다(같은 로직이 두 벌이면 맞추는 비용이 계속 들기 때문입니다).
 
 FE Worker(`frontend/src/workers/gaze.worker.ts`)가 1초 기록을 만드는 모양입니다.

@@ -1,4 +1,4 @@
-"""keyterm 파일 — `src/filler/keyterms.json` 이 지금 사전과 같은 최신 상태인지 본다."""
+"""keyterm 파일 — 서비스 `features/filler/keyterms.json` 이 지금 사전과 같은 최신 상태인지 본다."""
 
 from __future__ import annotations
 
@@ -6,11 +6,13 @@ import importlib.util
 import json
 from pathlib import Path
 
-from filler.config import DEFAULT
-from filler.core import criteria_version, keyterms
+from pitch_coach_ai.features import filler as filler_pkg
+from pitch_coach_ai.features.filler.config import DEFAULT
+from pitch_coach_ai.features.filler.core import criteria_version, keyterms
 
 ROOT = Path(__file__).resolve().parents[1]
-PATH = ROOT / "src" / "filler" / "keyterms.json"
+# 원본은 서비스의 판정 모듈 안에 있다 (연구 폴더는 서비스를 editable 로 설치해 그 모듈을 쓴다)
+PATH = Path(filler_pkg.__file__).resolve().parent / "keyterms.json"
 REGENERATE = "uv run python tools/export_keyterms.py"
 
 _spec = importlib.util.spec_from_file_location(

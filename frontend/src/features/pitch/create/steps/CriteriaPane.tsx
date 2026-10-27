@@ -28,8 +28,8 @@ import { PaneHeading } from './PaneHeading';
  *          그래서 정리하면 바로 "저장됨"이고, 이 버전으로 연습할 수 있습니다
  *   고치기 가장 최근 버전의 목록에서 문장 수정 · 추가 · 삭제. 서버에는 아직 고치기 전 목록이 있습니다
  *          ("고친 내용 저장 안 됨"). 한 줄 50자 · 10개까지 (계약 값)
- *   저장   고친 목록을 보내면 서버가 그 글로 한 번 더 분석해 **같은 버전**으로 저장하고 목록을 돌려줍니다.
- *          보낸 문장과 다를 수 있어 돌려받은 목록으로 다시 그립니다. ★ 이 호출은 계약에서 아직 미정입니다(304행)
+ *   저장   고친 목록을 보내면 서버가 다시 분석해 **새 버전**으로 저장합니다 (#532).
+ *          받은 버전 번호와 목록으로 다시 그립니다. 이전 버전은 지난 Take를 위해 남깁니다.
  *
  * 지난 버전은 고치지 않습니다(지난 Take 가 가리킵니다). 고치려면 "수정하기"로 원문을 물려받은 새 버전을 만들어
  * 다시 정리합니다. 다시 정리하면 서버에 새 버전이 생깁니다.
@@ -331,10 +331,14 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
     mutationFn: ({ list }: { list: string[]; draftId: string }) => saveStandards(pitchId, list),
     onSuccess: (res, { list, draftId: from }) => {
       if (!isCurrentDraft(from)) return;
-      // 계약상 서버가 고친 글로 다시 분석해 저장합니다. 돌려받은 목록이 없으면(응답 모양 미정) 보낸 목록을 씁니다
-      const saved = res.standards?.map((s) => s.standard) ?? list;
+      const saved = res.standards.map((s) => s.standard);
       setRefined(saved.join('\n') !== list.join('\n'));
-      markCriteriaSaved(criteria.version, saved);
+      markCriteriaSaved(criteria.version, {
+        version: res.version,
+        standards: saved,
+        exceptText: res.except_standard,
+        sourceText: list.join('\n'),
+      });
     },
     onError: (error) => console.error('[평가기준] 저장하지 못했습니다', error),
   });
