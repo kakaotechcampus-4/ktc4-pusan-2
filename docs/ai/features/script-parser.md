@@ -56,7 +56,7 @@ flowchart LR
   L --> S2["정제 · 판정 · 글자 수 · 예상 시간 · 하이라이트 (코드)"]
   S2 -- "status · slides · terms · meta" --> BE
   BE -- "script_versions · script_slides 저장" --> DB[(DB)]
-  BE -- "장별 대본" --> R["대본 전달도 /scripts/rubric"]
+  BE -- "장별 대본 (새 버전의 첫 생성만, 1-7)" --> R["대본 전달도 /scripts/rubric"]
   BE -- "terms + 군더더기 keyterm" --> DG["Deepgram (STT 연결 때)"]
   BE -- "plan.slides · scripts" --> C["코치 /coach/plan · evaluate"]
 ```
@@ -64,7 +64,7 @@ flowchart LR
 2. **구분자 찾기**: 코드가 줄 맨 앞 구분자를 찾아 장 후보와 첫 구분자 앞 글(머리글)을 나눈다.
 3. **LLM 한 번**: 대본과 장 후보를 주고, 머리글 · 장마다의 제목 줄, 장마다 키워드, 대본 전체 용어를 고르게 한다. 출력은 짧다(키워드 · 줄 · 용어 목록).
 4. **코드 마무리**: 제목 줄을 걷어 낸 뒤 머리글에 본문이 남으면 `fail`로 바꾼다. 장 대본을 정제하고 글자 수 · 예상 시간 · 하이라이트를 계산한다. 대본에 그대로 없는 키워드 · 용어를 버린다.
-5. **BE**: 응답을 저장하고(처리 상태 `DONE`, `fail`이면 `segmented` false) 대본 전달도 평가 기준 · 코칭 계획을 부른다. STT keyterm은 Take의 STT를 연결할 때 `terms`와 군더더기 keyterm 단어로 만든다.
+5. **BE**: 응답을 저장하고(처리 상태 `DONE`, `fail`이면 `segmented` false) 대본 전달도 평가 기준 · 코칭 계획을 부른다. 평가 기준(`/scripts/rubric`)은 새 버전의 첫 생성 때만 모든 장으로 부르고, 같은 버전의 성공 기준 · meta는 보존한다. 같은 버전을 다시 파싱한 결과가 저장본과 다르면 적용하지 않고(`parse_error` = `REPARSE_MISMATCH`, 12-2) rubric도 부르지 않는다. 조건은 `architecture.md` 1-6 · 1-7을 따른다. STT keyterm은 Take의 STT를 연결할 때 `terms`와 군더더기 keyterm 단어로 만든다.
 
 # 4. 구성과 폴더
 ## 4-1. 폴더 트리
@@ -117,7 +117,7 @@ ai/research/script-parser/
 
 - 구분자와 공백을 빼면 글자가 없는 대본(공백뿐 · 구분자만 있음)은 처리할 수 없는 입력이라 422 `EMPTY_SCRIPT`이고 LLM을 부르지 않는다.
 
-**구분자**: 줄 맨 앞(앞 공백 허용)의 `[N]` · `[슬라이드 N]` · `슬라이드 N:` (N은 숫자)만 구분자다. 구분자 뒤 같은 줄의 글은 그 장의 본문이다(예: "[1] 안녕하세요, …"). 제목이면 LLM이 제목 줄로 골라 코드가 걷어 낸다. '첫째' · '다음으로' 같은 말은 구분자가 아니다. 구분자 형식을 넓힐지는 아직 정하지 않았다(15절 열린 질문).
+**구분자**: 줄 맨 앞(앞 공백 허용)의 `[N]` · `[슬라이드 N]` · `슬라이드 N:` (N은 1~4자리 숫자)만 구분자다. 5자리 이상이면 구분자가 아니라 본문 줄이다. 구분자 뒤 같은 줄의 글은 그 장의 본문이다(예: "[1] 안녕하세요, …"). 제목이면 LLM이 제목 줄로 골라 코드가 걷어 낸다. '첫째' · '다음으로' 같은 말은 구분자가 아니다. 구분자 형식을 넓힐지는 아직 정하지 않았다(15절 열린 질문).
 
 ## 5-3. 출력
 | 필드 | 타입 | 뜻 |
@@ -256,10 +256,16 @@ sequenceDiagram
     BE->>BE: script_versions (PENDING) 저장
     BE->>P: POST /scripts/parse {script_text, target_ms}
     P-->>BE: status · slides · terms · meta
-    BE->>BE: script_versions (DONE, segmented, terms, parse_meta) · script_slides 저장
+    alt 새 버전의 첫 파싱 결과 (architecture.md 1-7)
+        BE->>BE: script_versions (DONE, segmented, terms, parse_meta) · script_slides 저장
+        BE->>BE: 대본 전달도 /scripts/rubric (기준 생성 이력이 없을 때만) · /coach/plan (백그라운드)
+    else 같은 버전을 다시 파싱 · 저장본과 같음
+        BE->>BE: 기존 장 · 성공 기준 · meta 재사용 (rubric 다시 부르지 않음)
+    else 같은 버전을 다시 파싱 · 저장본과 다름
+        BE->>BE: 적용하지 않음 · parse_error = REPARSE_MISMATCH (rubric 부르지 않음, 12-2)
+    end
     FE->>BE: 상태 조회 (1초 폴링)
     BE-->>FE: 장별 대본 · 키워드 · 하이라이트 · segmented
-    BE->>BE: 대본 전달도 /scripts/rubric · /coach/plan (백그라운드)
 ```
 ## 12-1. 저장 (DB)
 저장 설계는 AI가 하고, 마이그레이션 · 구현 · 운영은 BE가 한다. 공통 저장 지도는 `architecture.md` 1-1이다.
