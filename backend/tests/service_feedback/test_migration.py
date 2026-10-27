@@ -7,6 +7,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 
 from pitch_coach_backend.core.config import settings
@@ -78,6 +79,10 @@ def test_retention_upgrade_preserves_existing_rows_and_safe_downgrade(
             )
         command.upgrade(config, "head")
         command.check(config)
+        with migration_engine.connect() as connection:
+            assert connection.scalars(
+                text("SELECT DISTINCT category FROM user_suggestions")
+            ).all() == ["OTHER"]
         if withdraw:
             with migration_engine.begin() as connection:
                 connection.execute(text("DELETE FROM users WHERE id = :user_id"), values)
@@ -114,7 +119,8 @@ def test_retention_upgrade_preserves_existing_rows_and_safe_downgrade(
                 command.downgrade(config, "f54000000001")
             with migration_engine.connect() as connection:
                 assert (
-                    MigrationContext.configure(connection).get_current_revision() == "f54000000002"
+                    MigrationContext.configure(connection).get_current_revision()
+                    == ScriptDirectory.from_config(config).get_current_head()
                 )
                 assert connection.scalar(text("SELECT count(*) FROM service_feedbacks")) == 1
                 assert connection.scalar(text("SELECT count(*) FROM user_suggestions")) == 2
