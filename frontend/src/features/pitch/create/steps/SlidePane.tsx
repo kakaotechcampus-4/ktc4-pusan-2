@@ -1,10 +1,11 @@
-import { useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useCreateStore } from '../createStore';
 import {
   CheckIcon,
   ChevronIcon,
   DocIcon,
+  ExitFullscreenIcon,
   FileIcon,
   FitWidthIcon,
   FullscreenIcon,
@@ -202,6 +203,7 @@ function Toolbar({
   onZoom,
   fitWidth,
   onFitWidth,
+  fullscreen,
   onFullscreen,
 }: {
   fileName: string;
@@ -212,6 +214,7 @@ function Toolbar({
   onZoom: (index: number) => void;
   fitWidth: boolean;
   onFitWidth: () => void;
+  fullscreen: boolean;
   onFullscreen: () => void;
 }) {
   return (
@@ -278,8 +281,13 @@ function Toolbar({
       >
         <FitWidthIcon />
       </button>
-      <button type="button" aria-label="전체 화면" onClick={onFullscreen} className={toolButton}>
-        <FullscreenIcon />
+      <button
+        type="button"
+        aria-label={fullscreen ? '전체 화면 끝내기' : '전체 화면'}
+        onClick={onFullscreen}
+        className={toolButton}
+      >
+        {fullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
       </button>
     </div>
   );
@@ -296,7 +304,21 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
 
   const goTo = (n: number) => setPage(Math.min(total, Math.max(1, n)));
 
-  const fullscreen = () => {
+  // Esc 로 나가도 버튼이 따라오게 브라우저 알림으로 맞춥니다 — 클릭만 보면 어긋납니다
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement === cardRef.current);
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch((err: unknown) => {
+        console.error('[슬라이드] 전체 화면을 끝내지 못했습니다', err);
+      });
+      return;
+    }
     cardRef.current?.requestFullscreen().catch((err: unknown) => {
       // 브라우저가 막은 경우(iframe 정책 등) — 뷰어는 그대로 쓸 수 있으니 남기기만 합니다
       console.error('[슬라이드] 전체 화면을 열지 못했습니다', err);
@@ -322,7 +344,8 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
         onZoom={setZoomIndex}
         fitWidth={fitWidth}
         onFitWidth={() => setFitWidth((v) => !v)}
-        onFullscreen={fullscreen}
+        fullscreen={fullscreen}
+        onFullscreen={toggleFullscreen}
       />
 
       <div className="flex min-h-0 flex-1">

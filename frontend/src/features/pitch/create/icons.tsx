@@ -207,3 +207,16 @@ export function FullscreenIcon() {
     </svg>
   );
 }
+
+/** 뷰어 도구줄 — 전체 화면 끝내기. 펼치기 모서리를 안쪽으로 접은 모양 */
+export function ExitFullscreenIcon() {
+  return (
+    <svg {...svgProps} viewBox="0 0 16 16" className="h-4 w-4">
+      <path
+        className="fill-none stroke-ink"
+        strokeWidth="1.5"
+        d="M6 2.75v3.25h-3.25M13.25 6h-3.25v-3.25M10 13.25v-3.25h3.25M2.75 10h3.25v3.25"
+      />
+    </svg>
+  );
+}
