@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from pitch_coach_backend.core.validation import reject_nul
+from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
 SuggestionSource = Literal["RATING_POPUP", "MY_PAGE"]
 PromptReason = Literal["ALREADY_SUBMITTED", "NO_REPORT", "DISPLAY_LIMIT_REACHED"]
@@ -29,6 +30,7 @@ class FeedbackCreate(BaseModel):
 
     rating: Annotated[int, Field(strict=True, ge=1, le=5)]
     suggestion: str | None = None
+    category: SuggestionCategory = SuggestionCategory.OTHER
 
     _normalize = field_validator("suggestion")(normalize_suggestion)
 
@@ -44,6 +46,7 @@ class SuggestionCreate(BaseModel):
 
     request_id: uuid.UUID
     content: str
+    category: SuggestionCategory = SuggestionCategory.OTHER
 
     @field_validator("content")
     @classmethod
@@ -83,4 +86,5 @@ class SuggestionResponse(BaseModel):
 
     id: uuid.UUID
     source: SuggestionSource
+    category: SuggestionCategory
     created_at: datetime

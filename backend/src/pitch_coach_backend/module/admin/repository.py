@@ -185,6 +185,7 @@ def list_feedbacks(db: Session, *, limit: int, offset: int) -> list[dict[str, An
         ServiceFeedback.rating,
         ServiceFeedback.created_at,
         UserSuggestion.content.label("suggestion"),
+        UserSuggestion.category,
     ).outerjoin(UserSuggestion, UserSuggestion.service_feedback_id == ServiceFeedback.id)
     return _fetch(
         db,
@@ -195,18 +196,21 @@ def list_feedbacks(db: Session, *, limit: int, offset: int) -> list[dict[str, An
 
 
 def list_suggestions(
-    db: Session, *, source: str | None, limit: int, offset: int
+    db: Session, *, source: str | None, limit: int, offset: int, category: str | None = None
 ) -> list[dict[str, Any]]:
     stmt = select(
         UserSuggestion.id,
         UserSuggestion.user_id,
         UserSuggestion.content,
         UserSuggestion.source,
+        UserSuggestion.category,
         UserSuggestion.service_feedback_id,
         UserSuggestion.created_at,
     )
     if source is not None:
         stmt = stmt.where(UserSuggestion.source == source)
+    if category is not None:
+        stmt = stmt.where(UserSuggestion.category == category)
     return _fetch(
         db,
         stmt.order_by(UserSuggestion.created_at.desc(), UserSuggestion.id.desc())

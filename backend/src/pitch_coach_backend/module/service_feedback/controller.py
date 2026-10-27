@@ -38,7 +38,7 @@ def approve_impression(
 @router.post("", response_model=FeedbackResponse, status_code=201, summary="서비스 평점 보내기")
 def submit_feedback(body: FeedbackCreate, current_user: CurrentUser, db: DB, response: Response):
     feedback, created = service.submit_feedback(
-        db, current_user.id, rating=body.rating, suggestion=body.suggestion
+        db, current_user.id, rating=body.rating, suggestion=body.suggestion, category=body.category
     )
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return feedback
@@ -51,7 +51,11 @@ def submit_suggestion(
     body: SuggestionCreate, current_user: CurrentUser, db: DB, response: Response
 ):
     suggestion, created = service.submit_suggestion(
-        db, current_user.id, request_id=body.request_id, content=body.content
+        db,
+        current_user.id,
+        request_id=body.request_id,
+        content=body.content,
+        category=body.category,
     )
     response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
     return suggestion

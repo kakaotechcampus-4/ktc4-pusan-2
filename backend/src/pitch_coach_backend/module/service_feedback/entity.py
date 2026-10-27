@@ -15,6 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pitch_coach_backend.core.database import Base, CreatedAtMixin, UUIDPrimaryKeyMixin
+from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
 
 class ServiceFeedback(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
@@ -44,6 +45,10 @@ class UserSuggestion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
             "OR (source = 'MY_PAGE' AND service_feedback_id IS NULL AND request_id IS NOT NULL)",
             name="ck_user_suggestions_source",
         ),
+        CheckConstraint(
+            "category IN ('POSITIVE', 'IMPROVEMENT', 'PROBLEM', 'QUESTION', 'OTHER')",
+            name="ck_user_suggestions_category",
+        ),
         Index("ix_user_suggestions_created", "created_at", "id"),
     )
 
@@ -54,6 +59,9 @@ class UserSuggestion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String(16), nullable=False)
+    category: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=SuggestionCategory.OTHER, server_default="OTHER"
+    )
     service_feedback_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("service_feedbacks.id", ondelete="CASCADE")
     )

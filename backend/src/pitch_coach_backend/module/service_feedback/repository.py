@@ -11,15 +11,16 @@ from pitch_coach_backend.module.service_feedback.entity import (
     ServiceFeedbackImpression,
     UserSuggestion,
 )
+from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
 
 def feedback_of(db: Session, user_id: uuid.UUID) -> ServiceFeedback | None:
     return db.scalar(select(ServiceFeedback).where(ServiceFeedback.user_id == user_id))
 
 
-def popup_suggestion(db: Session, feedback_id: uuid.UUID) -> str | None:
+def popup_suggestion(db: Session, feedback_id: uuid.UUID) -> UserSuggestion | None:
     return db.scalar(
-        select(UserSuggestion.content).where(UserSuggestion.service_feedback_id == feedback_id)
+        select(UserSuggestion).where(UserSuggestion.service_feedback_id == feedback_id)
     )
 
 
@@ -59,23 +60,36 @@ def add_feedback(db: Session, user_id: uuid.UUID, rating: int) -> ServiceFeedbac
     return row
 
 
-def add_popup_suggestion(db: Session, feedback: ServiceFeedback, content: str) -> None:
+def add_popup_suggestion(
+    db: Session, feedback: ServiceFeedback, content: str, category: SuggestionCategory
+) -> None:
     db.add(
         UserSuggestion(
             user_id=feedback.user_id,
             content=content,
             source="RATING_POPUP",
+            category=category.value,
             service_feedback_id=feedback.id,
         )
     )
 
 
 def insert_suggestion(
-    db: Session, user_id: uuid.UUID, request_id: uuid.UUID, content: str
+    db: Session,
+    user_id: uuid.UUID,
+    request_id: uuid.UUID,
+    content: str,
+    category: SuggestionCategory,
 ) -> UserSuggestion | None:
     return db.scalar(
         insert(UserSuggestion)
-        .values(user_id=user_id, request_id=request_id, content=content, source="MY_PAGE")
+        .values(
+            user_id=user_id,
+            request_id=request_id,
+            content=content,
+            source="MY_PAGE",
+            category=category.value,
+        )
         .on_conflict_do_nothing(constraint="uq_user_suggestions_request")
         .returning(UserSuggestion)
     )

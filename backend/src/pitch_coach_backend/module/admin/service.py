@@ -100,9 +100,11 @@ def list_feedbacks(db: Session, *, limit: int, offset: int) -> AdminPage[AdminFe
 
 
 def list_suggestions(
-    db: Session, *, source: str | None, limit: int, offset: int
+    db: Session, *, source: str | None, limit: int, offset: int, category: str | None = None
 ) -> AdminPage[AdminSuggestionRow]:
-    rows = repository.list_suggestions(db, source=source, limit=limit, offset=offset)
+    rows = repository.list_suggestions(
+        db, source=source, category=category, limit=limit, offset=offset
+    )
     return AdminPage[AdminSuggestionRow](
         items=[AdminSuggestionRow(**row) for row in rows[:limit]],
         next_offset=offset + limit if len(rows) > limit else None,

@@ -20,6 +20,11 @@ const LABELS = {
   USER: '직접 종료',
   RATING_POPUP: '평점 팝업',
   MY_PAGE: '마이페이지',
+  POSITIVE: '좋았던 점',
+  IMPROVEMENT: '개선할 점',
+  PROBLEM: '문제 신고',
+  QUESTION: '질문',
+  OTHER: '기타',
 };
 
 const label = (value) => (value == null ? '—' : LABELS[value] ?? value);
@@ -171,12 +176,14 @@ const FEEDBACK_COLUMNS = [
   ['제출 시각', (row) => dateTime(row.created_at)],
   ['사용자 ID', (row) => row.user_id ?? '탈퇴한 사용자'],
   ['평점', (row) => `${row.rating} / 5`, true],
+  ['의견 유형', (row) => label(row.category)],
   ['의견', (row) => opinionText(row.suggestion)],
 ];
 const SUGGESTION_COLUMNS = [
   ['제출 시각', (row) => dateTime(row.created_at)],
   ['사용자 ID', (row) => row.user_id ?? '탈퇴한 사용자'],
   ['보낸 곳', (row) => label(row.source)],
+  ['의견 유형', (row) => label(row.category)],
   ['의견', (row) => opinionText(row.content)],
 ];
 
@@ -192,6 +199,8 @@ async function loadFeedbackPage(id, offset) {
   if (id === 'suggestions') {
     const source = document.getElementById('suggestions-source').value;
     if (source) query.set('source', source);
+    const category = document.getElementById('suggestions-category').value;
+    if (category) query.set('category', category);
   }
   try {
     const page = await getJSON(`${state.path}?${query}`);
@@ -230,9 +239,11 @@ function showFeedbackError(error) {
   node.textContent = error.message;
   node.hidden = false;
 }
-document.getElementById('suggestions-source').addEventListener('change', () => {
-  loadFeedbackPage('suggestions', 0).catch(showFeedbackError);
-});
+for (const id of ['suggestions-source', 'suggestions-category']) {
+  document.getElementById(id).addEventListener('change', () => {
+    loadFeedbackPage('suggestions', 0).catch(showFeedbackError);
+  });
+}
 
 // ---------- 불러오기 ----------
 

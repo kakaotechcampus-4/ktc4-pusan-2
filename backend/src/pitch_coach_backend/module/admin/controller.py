@@ -24,6 +24,7 @@ from pitch_coach_backend.module.admin.dto import (
     StatsResponse,
 )
 from pitch_coach_backend.module.service_feedback.dto import SuggestionSource
+from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -95,7 +96,10 @@ def feedbacks(
 def suggestions(
     db: Annotated[Session, Depends(get_db)],
     source: SuggestionSource | None = None,
+    category: SuggestionCategory | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> AdminPage[AdminSuggestionRow]:
-    return service.list_suggestions(db, source=source, limit=limit, offset=offset)
+    return service.list_suggestions(
+        db, source=source, category=category, limit=limit, offset=offset
+    )

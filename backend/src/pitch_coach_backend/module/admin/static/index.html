@@ -75,6 +75,16 @@
           <option value="MY_PAGE">마이페이지</option>
         </select>
       </label>
+      <label>의견 유형
+        <select id="suggestions-category">
+          <option value="">전체</option>
+          <option value="POSITIVE">좋았던 점</option>
+          <option value="IMPROVEMENT">개선할 점</option>
+          <option value="PROBLEM">문제 신고</option>
+          <option value="QUESTION">질문</option>
+          <option value="OTHER">기타</option>
+        </select>
+      </label>
       <p id="suggestions-error" class="error" hidden></p>
       <div class="scroll"><table id="suggestions"></table></div>
       <div class="pager">

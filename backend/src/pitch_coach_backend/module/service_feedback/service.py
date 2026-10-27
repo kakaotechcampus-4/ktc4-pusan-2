@@ -12,6 +12,7 @@ from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.service_feedback import repository
 from pitch_coach_backend.module.service_feedback.dto import ImpressionResponse, PromptState
 from pitch_coach_backend.module.service_feedback.entity import ServiceFeedback, UserSuggestion
+from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 from pitch_coach_backend.module.service_feedback.exception import (
     FeedbackAlreadySubmitted,
     FeedbackNotEligible,
@@ -77,35 +78,48 @@ def approve_impression(
 
 
 def submit_feedback(
-    db: Session, user_id: uuid.UUID, *, rating: int, suggestion: str | None
+    db: Session,
+    user_id: uuid.UUID,
+    *,
+    rating: int,
+    suggestion: str | None,
+    category: SuggestionCategory = SuggestionCategory.OTHER,
 ) -> tuple[ServiceFeedback, bool]:
     with _locked_user(db, user_id):
         feedback = repository.feedback_of(db, user_id)
         created = feedback is None
         if feedback is not None:
-            if (
-                feedback.rating != rating
-                or repository.popup_suggestion(db, feedback.id) != suggestion
-            ):
+            opinion = repository.popup_suggestion(db, feedback.id)
+            saved = None if opinion is None else (opinion.content, opinion.category)
+            requested = None if suggestion is None else (suggestion, category.value)
+            if feedback.rating != rating or saved != requested:
                 raise FeedbackAlreadySubmitted()
         else:
             if not _has_report(db, user_id):
                 raise FeedbackNotEligible()
             feedback = repository.add_feedback(db, user_id, rating)
             if suggestion is not None:
-                repository.add_popup_suggestion(db, feedback, suggestion)
+                repository.add_popup_suggestion(db, feedback, suggestion, category)
     return feedback, created
 
 
 def submit_suggestion(
-    db: Session, user_id: uuid.UUID, *, request_id: uuid.UUID, content: str
+    db: Session,
+    user_id: uuid.UUID,
+    *,
+    request_id: uuid.UUID,
+    content: str,
+    category: SuggestionCategory = SuggestionCategory.OTHER,
 ) -> tuple[UserSuggestion, bool]:
     try:
-        suggestion = repository.insert_suggestion(db, user_id, request_id, content)
+        suggestion = repository.insert_suggestion(db, user_id, request_id, content, category)
         created = suggestion is not None
         if suggestion is None:
             suggestion = repository.suggestion_by_request(db, user_id, request_id)
-            if suggestion is None or suggestion.content != content:
+            if suggestion is None or (suggestion.content, suggestion.category) != (
+                content,
+                category.value,
+            ):
                 raise SuggestionRequestConflict()
         db.commit()
         return suggestion, created

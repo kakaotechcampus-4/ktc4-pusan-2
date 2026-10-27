@@ -3,6 +3,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
+from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
+
 
 class UserStats(BaseModel):
     total: int
@@ -78,6 +80,7 @@ class AdminFeedbackRow(BaseModel):
     user_id: uuid.UUID | None
     rating: int
     suggestion: str | None
+    category: SuggestionCategory | None
     created_at: datetime
 
 
@@ -86,6 +89,7 @@ class AdminSuggestionRow(BaseModel):
     user_id: uuid.UUID | None
     content: str
     source: str
+    category: SuggestionCategory
     service_feedback_id: uuid.UUID | None
     created_at: datetime
 
