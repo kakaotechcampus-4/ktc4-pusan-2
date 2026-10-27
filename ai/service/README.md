@@ -38,7 +38,7 @@ INFO pitch_coach_ai.request request_id=4f1c… method=GET path=/health status=20
 
 | 경로 | 하는 일 | 기능 문서 | 부르는 쪽 · 방식 |
 |---|---|---|---|
-| `GET /health` | 프로세스가 살아 있으면 200 | `ai-service.md` 4-2 | 배포 확인, 헬스체크 |
+| `GET /health` | 프로세스가 살아 있으면 200 | `ai-service.md` 4-2 | 배포 확인 |
 | `GET /ready` | 시작할 때 불러오는 모델까지 준비됐으면 200, 아니면 503 `NOT_READY` | `ai-service.md` 6-3 | compose 헬스체크 |
 | `POST /scripts/rubric` | 대본 → 장별 평가 기준 (LLM, AI 예산 120초) | [`script-coverage-evaluation.md`](../../docs/ai/features/script-coverage-evaluation.md) 5절 | BE 백그라운드 |
 | `POST /takes/analyze` | 장별 STT + 평가 기준 → 장별 채점 · Take 값 (LLM, AI 예산 120초) | 같음 | BE 백그라운드 |

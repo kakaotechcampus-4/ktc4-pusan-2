@@ -660,7 +660,7 @@ features/<모듈>/
 
 | 단계 | 무엇을 | 누가 |
 |---|---|---|
-| CI | `ai/service/**`나 `.github/workflows/ai-ci.yml`이 바뀐 PR, 그리고 main · develop push에서 job `ai` 하나: `uv sync --locked` → ruff → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build ai/service`. 실제 LLM은 부르지 않아 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다 | BE가 만든다(`.github/workflows/`는 BE 관리). AI는 내용을 BE에 요청한다 |
+| CI | `ai/service/**`나 `.github/workflows/ai-ci.yml`이 바뀐 PR과 push(push는 main · develop · release · develop-next. backend · frontend CI와 같은 브랜치)에서 job `ai` 하나: `uv sync --locked` → ruff → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build ai/service`. 실제 LLM은 부르지 않아 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다 | BE가 만든다(`.github/workflows/`는 BE 관리). AI는 내용을 BE에 요청한다 |
 | 이미지 | `ai/service/` 폴더 하나가 빌드 컨텍스트이고 이미지 하나를 만든다. 태그는 커밋 SHA(`pitch-coach:ai-<sha>`). develop · release 배포 모두 ECR | AI(`ai/service/Dockerfile`). 빌드 · push는 BE의 배포 워크플로 |
 | 배포 | `develop-next` push(merge) → `develop-deploy.yml` → develop 서버(`~/pitch-coach`), `release` push → `release-deploy.yml` → release 서버(운영, 같은 EC2의 `~/pitch-coach-release`). 두 워크플로 모두 Actions에서 수동 실행도 된다. `main`은 워크플로 없이 수동으로 배포하기로 했다(#380). 두 워크플로가 `be` · `fe` · `ai` 이미지를 빌드 · push하고, compose 파일 · 시크릿(develop `BACKEND_ENV` · `FRONTEND_ENV` · `AI_ENV`, release는 같은 이름 앞에 `RELEASE_`)을 서버에 복사한 뒤, 서버에서 `docker compose pull` → `docker compose run --rm be alembic upgrade head` → `docker compose up -d --no-build` | 인프라(BE) |
 | DB 마이그레이션 | AI 결과를 저장하는 테이블 · 칸이 바뀌면 BE 마이그레이션으로 만든다. 두 워크플로 모두 새 이미지를 띄우기 전에 `alembic upgrade head`를 돌리고, 실패하면 컨테이너를 바꾸지 않는다 | BE |
