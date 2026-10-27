@@ -9,8 +9,6 @@ services:
     ports: !reset []
   db:
     ports: !reset []
-  redis:
-    ports: !reset []
   caddy:
     container_name: caddy-release
     environment:

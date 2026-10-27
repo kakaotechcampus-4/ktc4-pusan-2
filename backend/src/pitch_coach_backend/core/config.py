@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     )
 
     database_url: str
-    redis_url: str = "redis://localhost:6379/0"
 
     # 앱 로거(pitch_coach_backend.*)의 레벨. DEBUG · INFO · WARNING · ERROR (core/logging.py)
     log_level: str = "INFO"

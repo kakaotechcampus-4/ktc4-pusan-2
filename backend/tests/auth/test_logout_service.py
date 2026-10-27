@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-import redis
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,9 +19,9 @@ from tests.auth.conftest import login
 
 
 def test_expired_refresh_token_is_rejected(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
-    issued = login(db_session, redis_client)
+    issued = login(db_session)
     stored = repository.get_refresh_token(
         db_session, security.hash_refresh_token(issued.refresh_token)
     )
@@ -50,9 +49,9 @@ def _stored(db: Session, refresh_token: str) -> RefreshToken:
 
 
 def test_login_sets_the_end_of_the_whole_session(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
-    issued = login(db_session, redis_client)
+    issued = login(db_session)
     stored = _stored(db_session, issued.refresh_token)
 
     expected = datetime.now(UTC) + timedelta(days=settings.refresh_session_max_days)
@@ -61,10 +60,10 @@ def test_login_sets_the_end_of_the_whole_session(
 
 
 def test_rotation_never_extends_past_the_end_of_the_session(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
     """로그인한 지 오래돼 세션의 끝이 하루 남았다. 회전해도 14일이 아니라 그때까지만 산다."""
-    issued = login(db_session, redis_client)
+    issued = login(db_session)
     session_end = datetime.now(UTC) + timedelta(days=1)
     stored = _stored(db_session, issued.refresh_token)
     stored.session_expires_at = session_end
@@ -77,14 +76,14 @@ def test_rotation_never_extends_past_the_end_of_the_session(
 
 
 def test_deleting_a_user_kills_their_refresh_tokens(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
     """탈퇴하면 남은 Refresh 로 다시 들어올 수 없다.
 
     FK 의 ON DELETE CASCADE 가 토큰 행을 지운다. 그래서 "사용자는 없는데 토큰은 살아 있는"
     상태 자체가 DB 에 존재할 수 없다 (service 의 user is None 분기는 그 뒤를 받치는 방어선).
     """
-    issued = login(db_session, redis_client)
+    issued = login(db_session)
 
     db_session.delete(issued.user)
     db_session.commit()
@@ -97,10 +96,8 @@ def test_deleting_a_user_kills_their_refresh_tokens(
 # --- 로그아웃 -----------------------------------------------------------
 
 
-def test_logout_revokes_the_session(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
-) -> None:
-    issued = login(db_session, redis_client)
+def test_logout_revokes_the_session(db_session: Session, fake_google: dict[str, Any]) -> None:
+    issued = login(db_session)
 
     service.logout(db_session, issued.refresh_token)
 
@@ -110,9 +107,9 @@ def test_logout_revokes_the_session(
 
 
 def test_logout_revokes_rotated_tokens_of_the_same_device(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
-    issued = login(db_session, redis_client)
+    issued = login(db_session)
     current = service.rotate(db_session, issued.refresh_token)
 
     service.logout(db_session, current.refresh_token)
@@ -122,21 +119,19 @@ def test_logout_revokes_rotated_tokens_of_the_same_device(
 
 
 def test_logout_leaves_other_devices_alone(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
+    db_session: Session, fake_google: dict[str, Any]
 ) -> None:
-    laptop = login(db_session, redis_client)
-    phone = login(db_session, redis_client)
+    laptop = login(db_session)
+    phone = login(db_session)
 
     service.logout(db_session, laptop.refresh_token)
 
     assert service.rotate(db_session, phone.refresh_token) is not None
 
 
-def test_logout_is_idempotent_and_silent(
-    db_session: Session, redis_client: redis.Redis, fake_google: dict[str, Any]
-) -> None:
+def test_logout_is_idempotent_and_silent(db_session: Session, fake_google: dict[str, Any]) -> None:
     """토큰 존재 여부를 알려주지 않는다. 두 번 호출해도 오류가 없다."""
-    issued = login(db_session, redis_client)
+    issued = login(db_session)
 
     service.logout(db_session, issued.refresh_token)
     service.logout(db_session, issued.refresh_token)

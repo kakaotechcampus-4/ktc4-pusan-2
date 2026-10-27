@@ -17,7 +17,6 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "pyjwt[crypto]>=2.13.0",
     "pypdf[crypto]>=6.21.2",
-    "redis>=8.1.0",
     "sqlalchemy>=2.0.52",
     "websockets>=17.1",
 ]

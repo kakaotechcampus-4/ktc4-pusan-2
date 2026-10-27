@@ -11,7 +11,7 @@ FastAPI 기반 백엔드. 발표(pitch) 연습을 녹음·실시간 세션으로
 | ORM / 마이그레이션 | SQLAlchemy 2.x, Alembic |
 | DB | PostgreSQL 17 (드라이버 psycopg 3) |
 | 인증 | Google OAuth 2.0 (Authorization Code + PKCE) + JWT (PyJWT) |
-| 비동기 작업 / 캐시 | Redis (OAuth state 저장에 사용 중). Celery 는 예정 |
+| 비동기 작업 | Celery 는 예정 |
 | 실시간 STT | Deepgram Nova-3 스트리밍 (`ko`). FE → BE → Deepgram, WebSocket |
 | 테스트 / 린트 | pytest, ruff |
 
@@ -42,12 +42,11 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 - `tests/auth` · `coach` · `realtime` · `script_parse` · `take` 는 그 폴더의 `conftest.py` 가 같이 쓰는 fixture 와
   가짜를 둔다. 가짜는 함수가 정의된 곳이 아니라 **호출부가 실제로 참조하는 모듈**에 끼운다
   (예: `realtime/connection/handshake.py` 의 `user_service`, `pitch/service/presentation.py` 의 `upload`).
-- 인증 테스트는 **Redis 15번 DB** 를 쓰고 매번 비운다. 개발용 0번은 건드리지 않는다.
 - `client` fixture 의 base_url 이 `https://testserver` 인 이유: 쿠키를 `Secure` 로 심으므로
   http 로는 httpx 가 쿠키를 되돌려 보내지 않는다. 설정을 낮추는 대신 https 를 쓴다.
 - 구글 연동 테스트는 **외부 HTTP 통신만 모킹하고 검증 로직은 실제로 실행**한다.
   테스트용 RSA 키로 진짜 RS256 토큰을 서명해 위조·만료·`aud` 불일치를 실제로 거부시킨다.
-- CI 는 PostgreSQL·Redis 서비스와 `DATABASE_URL` 만 제공하면 된다.
+- CI 는 PostgreSQL 서비스와 `DATABASE_URL` 만 제공하면 된다.
   `JWT_SECRET_KEY` 와 구글 값은 conftest 가 테스트용 값을 넣는다.
 
 ## 홈 Take 응답
@@ -95,7 +94,7 @@ backend/
 │   ├── test_user_entity.py
 │   ├── test_auth_entity.py       # oauth_accounts·refresh_tokens 제약
 │   ├── test_google_oauth.py      # ID Token 검증 (실제 RSA 서명으로)
-│   ├── test_state_store.py       # Redis state 1회 소비
+│   ├── test_state_store.py       # state 1회 소비 · 만료 · 동시 콜백
 │   ├── test_realtime_stt_adapter.py  # Deepgram 파싱 + 가짜 서버 왕복
 │   ├── test_realtime_auto_end.py # 말 없음 판단과 자동 종료 조건 (숫자만)
 │   ├── test_coach_session.py           # 발표 중 판단 · 상태 · 이벤트 처리 (AI · 저장소는 가짜)
@@ -134,8 +133,7 @@ backend/
     │   ├── ai_slots.py           # 백그라운드 AI 호출 동시 개수 (합계 4, 그 안에서 대본 등록 2)
     │   ├── security.py           # JWT 발급/검증
     │   ├── exceptions.py         # 공통 예외 베이스 + 에러 응답 핸들러
-    │   ├── logging.py            # 앱 로거(pitch_coach_backend.*) 레벨 · 형식. 앱이 뜰 때 건다
-    │   └── redis.py              # Redis 클라이언트 + get_redis 의존성
+    │   └── logging.py            # 앱 로거(pitch_coach_backend.*) 레벨 · 형식. 앱이 뜰 때 건다
     │
     ├── module/                   # 도메인. 기본은 controller · service · repository · entity · dto · exception 파일
     │   ├── hooks.py              # HTTP 요청이 발표 중 처리 · 코치에 알릴 자리. 구현은 main.py 가 꽂는다
@@ -143,12 +141,12 @@ backend/
     │   │   ├── controller.py     # google/start·callback, refresh, logout. 쿠키 설정
     │   │   ├── service.py        # 로그인·회전·로그아웃. 트랜잭션 경계
     │   │   ├── repository.py
-    │   │   ├── entity.py         # OAuthAccount, RefreshToken
+    │   │   ├── entity.py         # OAuthAccount, RefreshToken, OAuthAuthorizationRequest
     │   │   ├── dto.py
     │   │   ├── dependencies.py   # get_current_user, verify_csrf
     │   │   ├── exception.py
-    │   │   ├── google.py         # 구글 어댑터. DB·Redis 를 모른다
-    │   │   └── state_store.py    # state·nonce·PKCE 의 Redis 1회 소비
+    │   │   ├── google.py         # 구글 어댑터. DB 를 모른다
+    │   │   └── state_store.py    # state·nonce·PKCE 의 1회 소비 (PostgreSQL)
     │   ├── user/                 # User. 기본 파일 구조 그대로
     │   ├── admin/                # 관리자 콘솔(/admin). 다른 도메인 표를 읽어 모은다
     │   ├── pitch/                # 발표 · 발표자료 · 대본 · 평가 기준 · 코칭 계획 행
@@ -332,7 +330,7 @@ Google OAuth 2.0 (Authorization Code + PKCE). **백엔드가 시작·콜백·cod
 프론트는 구글과 직접 통신하지 않고 `client_secret` 도 보지 않는다.
 
 ```
-GET  /api/auth/google/start     구글로 302. state·nonce·PKCE 를 Redis 에 저장
+GET  /api/auth/google/start     구글로 302. state·nonce·PKCE 를 DB 에 저장
 GET  /api/auth/google/callback  ID Token 검증 -> 쿠키 심고 프론트로 302
 POST /api/auth/refresh          Access 발급 + Refresh 회전. Access 를 얻는 유일한 경로
 POST /api/auth/logout           현재 세션 폐기
@@ -352,10 +350,20 @@ POST /api/auth/logout           현재 세션 폐기
   프론트는 `csrf_token` 쿠키를 읽어 `X-CSRF-Token` 헤더에 실어야 한다.
 - 구글이 준 토큰은 신원 확인에만 쓰고 **저장하지 않는다.** Google refresh token 은 요청하지 않는다.
 
-OAuth 요청의 `state`·`nonce`·PKCE verifier는 콜백까지 필요한 임시 값이라 Redis에 10분만 둔다
-(`module/auth/state_store.py`의 `STATE_TTL_SECONDS`). 사용자가 돌아오지 않으면 TTL로 자동 삭제된다.
-콜백에서는 `GETDEL` 한 번으로 읽기와 삭제를 원자적으로 처리해 같은 state의 중복 콜백 중 하나만
-소비할 수 있다. 조회와 삭제를 따로 하면 동시에 온 콜백 둘이 같은 값을 읽을 수 있다.
+OAuth 요청의 `state`·`nonce`·PKCE verifier는 콜백까지 필요한 임시 값이라
+`oauth_authorization_requests` 에 만료 시각(10분, `module/auth/state_store.py` 의 `STATE_TTL_SECONDS`)과
+함께 둔다.
+
+- 콜백은 `DELETE ... RETURNING` 한 문장으로 읽고 지운다. 같은 state 로 콜백 둘이 동시에 와도
+  하나만 요청을 받는다. 조회와 삭제를 따로 하면 둘 다 같은 값을 읽을 수 있다.
+- 지운 것은 바로 커밋한다. 뒤에서 브라우저 확인·구글 통신·사용자 저장이 실패해도 같은 state 를
+  다시 쓸 수 없고, 구글 응답을 기다리는 동안 DB 트랜잭션을 열어 두지 않는다.
+- 만료 시각이 지난 요청은 콜백이 와도 거절한다. 콜백이 오지 않은 요청은 다음 로그인 시작 때
+  만료된 것을 한꺼번에 지운다. 따로 도는 정리 작업은 없다.
+
+예전에는 Redis 에 두었다. 배포 직전에 Redis 에 저장된 진행 중 요청은 옮기지 않는다. 배포 중에
+구글 동의 화면에 있던 사용자는 `auth_error=invalid_request` 로 돌아오고 다시 로그인하면 된다
+(최대 10분 사이에 시작한 로그인만 해당한다). 배포 순서와 Redis 볼륨 정리는 `infra/README.md` 에 있다.
 
 로컬은 프론트(3000)와 백엔드(8000)가 cross-origin 이라 CORS 와 `credentials: 'include'` 가
 필요하다. 배포에서는 Caddy 가 같은 origin 으로 묶어 그 문제가 사라진다.
@@ -476,6 +484,5 @@ Take 가 언제 어떤 상태로 끝나는지는 [docs/be/take-lifecycle.md](../
 | CI 테스트 / 린트 | `uv run pytest` / `uv run ruff check` / `uv run ruff format --check` (테스트는 PostgreSQL 서비스 + `DATABASE_URL` 필요) |
 | 환경변수 목록 | `.env.example` |
 | Google OAuth 리다이렉트 | `/api/auth/google/callback` (운영 도메인 확정 시 Google Console 에 추가 등록 필요) |
-| 추가로 필요한 것 | Redis (`REDIS_URL`). OAuth state 저장에 쓴다 |
 | Deepgram | `DEEPGRAM_API_KEY` 하나, 또는 `DEEPGRAM_API_KEYS` 에 쉼표로 여러 개. 운영 도메인은 HTTPS 여야 한다 — 브라우저 마이크(`getUserMedia`)는 secure context 에서만 열린다 |
 | AI 서버 | `AI_BASE_URL` (기본 `http://localhost:8001`, 운영은 compose 내부 `http://ai:8000`). 없으면 BE 는 뜨고 대본 파싱만 `AI_UNAVAILABLE` 로 실패한다 |

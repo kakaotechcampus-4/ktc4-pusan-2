@@ -15,9 +15,6 @@ from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.user.entity import User
 from tests.auth.conftest import ME, REFRESH, csrf_headers, do_login
 
-pytestmark = pytest.mark.usefixtures("_clean_redis", "_use_test_redis")
-
-
 # --- 회원 탈퇴 -----------------------------------------------------------
 
 
