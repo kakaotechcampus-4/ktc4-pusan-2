@@ -180,7 +180,7 @@ ai/research/volume-analysis/
 | `VOLUME_LOW` | `VOLUME` | `voice_diff_db`가 작음 기준 미만 | `voice_diff_db` (낮을수록) | true |
 | `LONG_SILENCE` | `PAUSE` | `silence_ms`가 긴 침묵 기준 초과 | `silence_ms` (길수록) | true |
 
-- `VOLUME`은 오디오가 멈췄거나 기준 음량이 없거나 말한 1초가 부족하면 `UNKNOWN`이고 문제를 내지 않는다. `PAUSE`는 오디오가 흐르면 기준 음량 · 말한 1초 수와 관계없이 판정하고, 오디오가 멈추면 `UNKNOWN`이다. 측정 불가 문제 이름은 없다(`architecture.md` 6-3).
+- `VOLUME`은 오디오가 멈췄거나 기준 음량이 없거나 말한 1초가 부족하면 `UNKNOWN`이고 문제를 내지 않는다. `PAUSE`는 오디오가 흐르면 기준 음량 · 말한 1초 수와 관계없이 판정하고, 오디오가 멈추면 `UNKNOWN`이다. 판정 시각(`t_ms`)에 끝나는 1초 기록이 없으면(기록이 끊김) 두 영역 모두 `UNKNOWN`이다. 마지막으로 받은 기록으로 `LOW` · `SILENT`를 이어 가지 않는다. 측정 불가 문제 이름은 없다(`architecture.md` 6-3).
 - `severity`는 공통 규칙을 따른다. `LONG_SILENCE`의 `persistence_sec`은 `silence_ms ÷ 1000`이다.
 - 코치는 `VOLUME_LOW`에 `SPEAK_LOUDER` → `SPEAK_LOUDER`(뒷자리 기준) → 그만둠, `LONG_SILENCE`에 `RESUME`(그만두지 않음)을 쓰고, 효과는 `voice_diff_db` · 다시 말함으로 잰다(`coach-agent.md` 6-1).
 
@@ -198,14 +198,14 @@ ai/research/volume-analysis/
 ```json
 [
   {
-    "evaluator": "volume", "area": "VOLUME", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.0+<config 해시>",
+    "evaluator": "volume", "area": "VOLUME", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.1+<config 해시>",
     "measurable": true, "state": "NORMAL",
     "metrics": {"level_db": -31.0, "voice_diff_db": -1.5},
     "tally": [{"t_ms": 40000, "values": {"voiced_ms": 820, "voiced_energy": 0.622, "low_ms": 0, "level_voiced_ms": 820, "base_db_ms": -24190.0, "audio_live_ms": 1000, "total_ms": 1000}}],
     "issues": []
   },
   {
-    "evaluator": "volume", "area": "PAUSE", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.0+<config 해시>",
+    "evaluator": "volume", "area": "PAUSE", "t_ms": 41000, "counted_until_ms": 41000, "criteria_version": "volume-1.1+<config 해시>",
     "measurable": true, "state": "NORMAL",
     "metrics": {"silence_ms": 0},
     "tally": [{"t_ms": 40000, "values": {"long_silence_count": 0, "audio_live_ms": 1000, "total_ms": 1000}}],
@@ -249,7 +249,7 @@ ai/research/volume-analysis/
 |---|---|---|---|
 | 마지막 1초에 오디오가 흐르지 않음 | 두 영역 모두 잴 수 없음 | `UNKNOWN`, 문제 없음. 시간은 `total_ms`만(`audio_live_ms` 0) | 마이크가 끊긴 것을 작은 목소리 · 침묵으로 보지 않는다 |
 | 기준 음량 없음 | `VOLUME`만 잴 수 없음 | `VOLUME` `UNKNOWN`, `PAUSE`는 그대로 | 비교할 기준이 없다 |
-| 기록이 오지 않은 1초 | 그 1초는 `total_ms`만 | 측정 비율이 줄어든다 | 없는 값을 추측하지 않는다 |
+| 기록이 오지 않은 1초 | 그 1초는 `total_ms`만(빈 구간이 여러 초면 1초씩, 끝 조각 포함). 판정 시각에 끝나는 1초가 없으면 두 영역 모두 잴 수 없음 | 측정 비율이 줄어든다. `UNKNOWN`, 문제 없음 | 없는 값을 추측하지 않는다. 코치가 몫을 그 `t_ms`의 장에 더하므로 빈 구간 중간에 장이 바뀌어도 시간이 앞 장에 몰리지 않는다 |
 | 오디오가 다시 흐른 직후 | `silence_ms`를 다시 흐른 뒤로 자른다 | 끊긴 시간은 침묵이 아니다 | 같음 |
 | `baseline` 표본 부족 | None | 코치가 다음 요청에서 다시 부른다 | — |
 | 판정 모듈 예외 | 코치가 두 영역 모두 잴 수 없음으로 두고 커서를 이번 창 끝으로 넘긴다 | evaluate 200, `indicators.VOLUME` · `PAUSE`는 `UNKNOWN` | 한 영역 고장으로 나머지 코칭을 멈추지 않게 (`coach-agent.md` 6-1) |
@@ -384,6 +384,6 @@ sequenceDiagram
 | 진입 함수 | `judge` · `summarize` · `criteria` · `speaking_levels` · `baseline` (자기 HTTP 엔드포인트 없음) | 4-2 |
 | 영역 · 상태 · 문제 | `VOLUME`(`LOW` · `NORMAL` · `UNKNOWN`, `VOLUME_LOW`), `PAUSE`(`SILENT` · `NORMAL` · `UNKNOWN`, `LONG_SILENCE`) | 5-3 · 5-4 |
 | Take 지표 | `level_db` · `voice_diff_db` · `low_ratio` · `measured_ratio` (+ 코치가 붙이는 `base_level_source`), `long_silence_count` · `measured_ratio` | 5-3 |
-| 버전 | `volume-1.0` · `criteria_version` `volume-1.0+<config 해시 12자리>` | 9절 |
+| 버전 | `volume-1.1` · `criteria_version` `volume-1.1+<config 해시 12자리>` | 9절 |
 | 저장 | `calibrations.base_level_db`(새 칸), `take_metric_seconds.voice`, Take 결과 `areas.VOLUME` · `PAUSE`, `take_summaries.volume` | 12-1 |
 | 의존성 | pydantic 하나, Python 3.12, 폴더 `ai/research/volume-analysis/` | 4절 · 11절 |

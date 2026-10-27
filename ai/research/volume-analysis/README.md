@@ -8,7 +8,7 @@
 |---|---|
 | 판단 방식 | 규칙. LLM · 네트워크를 쓰지 않는다 |
 | 부르는 쪽 | 코치(`/coach/evaluate` · `/coach/finalize` · `replay`). 자기 HTTP 엔드포인트는 없다 |
-| 기능 버전 | `volume-1.0` (`src/volume/version.py`), `criteria_version` = `volume-1.0+<config 해시 12자리>` |
+| 기능 버전 | `volume-1.1` (`src/volume/version.py`), `criteria_version` = `volume-1.1+<config 해시 12자리>` |
 | 상태 | 진입 함수 5개 + 테스트. **기준값은 옛 평가기 값이고 실제 녹음으로 검증하지 않았다** |
 | 설계 | 목적 · 입출력 계약 · 처리 · 배포 → [`docs/ai/features/volume.md`](../../../docs/ai/features/volume.md) |
 
@@ -94,7 +94,7 @@ volume.state, volume.metrics.voice_diff_db, pause.metrics.silence_ms
 
 코치 연구 폴더의 대역 `coach_lab/judges/volume.py`와 출력 모양은 같고 규칙이 다릅니다.
 
-| | 대역 `volume-0.2` | 이 모듈 `volume-1.0` |
+| | 대역 `volume-0.2` | 이 모듈 `volume-1.1` |
 |---|---|---|
 | 짧은 창의 음량 | dB 값 평균 | 에너지 평균(Leq), `voiced_ms`로 가중 |
 | 말한 1초 | `silence_ms` < 300 · 오디오 흐름 · `level_db` 있음 | `voiced_ms` ≥ `voiced_min_ms` · `audio_live` (시선과 같은 기준) |
