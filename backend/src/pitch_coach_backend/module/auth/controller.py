@@ -19,7 +19,6 @@ import secrets
 from typing import Annotated
 from urllib.parse import urlencode, urljoin
 
-import redis
 from fastapi import APIRouter, Cookie, Depends, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -27,8 +26,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.core.exceptions import AppException
-from pitch_coach_backend.core.redis import get_redis
-from pitch_coach_backend.module.auth import service, state_store
+from pitch_coach_backend.module.auth import service
 from pitch_coach_backend.module.auth.dependencies import (
     CSRF_COOKIE_NAME,
     CsrfProtected,
@@ -53,7 +51,7 @@ BROWSER_COOKIE_NAME = "oauth_browser"
 REFRESH_COOKIE_PATH = "/api/auth"
 CSRF_COOKIE_PATH = "/"
 
-# 로그인 시작부터 콜백까지만 살면 된다. state 의 TTL 과 맞춘다.
+# 로그인 시작부터 콜백까지만 살면 된다. state 의 만료 시간과 맞춘다.
 BROWSER_COOKIE_MAX_AGE = 600
 
 # 우리가 만드는 state 의 모양(token_urlsafe). 쿠키 이름에 넣어도 되는 글자뿐이다.
@@ -165,13 +163,13 @@ def _frontend_url(return_to: str | None, *, auth_error: str | None = None) -> st
 
 @router.get("/google/start", summary="구글 로그인 시작")
 def google_start(
-    redis_client: Annotated[redis.Redis, Depends(get_redis)],
+    db: Annotated[Session, Depends(get_db)],
     return_to: Annotated[str | None, Query(description="로그인 후 돌아갈 프론트 경로")] = None,
 ) -> RedirectResponse:
     try:
-        started = service.start_login(redis_client, return_to=_safe_return_to(return_to))
+        started = service.start_login(db, return_to=_safe_return_to(return_to))
     except Exception:
-        # 로그인 버튼이 화면째 이 주소로 옮겨 온다. Redis 오류 등으로 500 JSON 을 주면
+        # 로그인 버튼이 화면째 이 주소로 옮겨 온다. DB 오류 등으로 500 JSON 을 주면
         # 사용자가 그대로 보므로 콜백 실패와 같이 프론트로 돌려보낸다
         logger.exception("구글 로그인 시작 중 예상하지 못한 오류")
         return RedirectResponse(
@@ -196,7 +194,6 @@ def google_start(
 def google_callback(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
-    redis_client: Annotated[redis.Redis, Depends(get_redis)],
     code: Annotated[str | None, Query()] = None,
     state: Annotated[str | None, Query()] = None,
     error: Annotated[str | None, Query()] = None,
@@ -212,8 +209,8 @@ def google_callback(
     """
     if code is None or state is None:
         if state:
-            # 남은 인증 요청을 Redis 에서 지운다. TTL 로도 사라지지만 즉시 정리한다.
-            state_store.consume(redis_client, state)
+            # 남은 인증 요청을 지운다. 만료로도 거절되지만 즉시 정리한다.
+            service.cancel_login(db, state)
         response = RedirectResponse(
             _frontend_url("/", auth_error=error or "invalid_request"),
             status_code=status.HTTP_302_FOUND,
@@ -224,7 +221,6 @@ def google_callback(
     try:
         issued = service.complete_login(
             db,
-            redis_client,
             code=code,
             state=state,
             browser_token=request.cookies.get(browser_cookie_name(state)),

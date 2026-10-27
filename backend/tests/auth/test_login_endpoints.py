@@ -4,8 +4,8 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-import redis
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.auth import google, service, state_store
@@ -21,9 +21,6 @@ from pitch_coach_backend.module.auth.exception import (
     GoogleTokenExchangeFailed,
 )
 from tests.auth.conftest import CALLBACK, NON_ASCII, START, start_login
-
-pytestmark = pytest.mark.usefixtures("_clean_redis", "_use_test_redis")
-
 
 # --- start --------------------------------------------------------------
 
@@ -46,10 +43,10 @@ def test_start_sets_the_temporary_browser_cookie(client: TestClient) -> None:
 def test_start_failure_redirects_with_login_failed(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Redis 오류 등으로 시작을 못 해도 500 JSON 대신 프론트로 보낸다."""
+    """DB 오류 등으로 시작을 못 해도 500 JSON 대신 프론트로 보낸다."""
 
     def fail(*args: Any, **kwargs: Any) -> None:
-        raise redis.ConnectionError("down")
+        raise OperationalError("INSERT", {}, Exception("down"))
 
     monkeypatch.setattr(state_store, "save", fail)
 

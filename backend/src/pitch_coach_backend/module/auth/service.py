@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import NoReturn
 
-import redis
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -54,8 +53,8 @@ class IssuedSession:
 # --- 로그인 시작 ---------------------------------------------------------
 
 
-def start_login(redis_client: redis.Redis, *, return_to: str) -> LoginStart:
-    """state·nonce·PKCE 를 만들어 Redis 에 두고 구글 인증 URL 을 돌려준다.
+def start_login(db: Session, *, return_to: str) -> LoginStart:
+    """state·nonce·PKCE 를 만들어 DB 에 두고 구글 인증 URL 을 돌려준다.
 
     browser_token 은 임시 쿠키로 브라우저에 심는다. state 를 훔쳐도 이 쿠키가 없으면
     콜백을 완성할 수 없다 (state 단독보다 한 겹 두껍다).
@@ -66,7 +65,7 @@ def start_login(redis_client: redis.Redis, *, return_to: str) -> LoginStart:
     verifier, challenge = google.build_pkce_pair()
 
     state_store.save(
-        redis_client,
+        db,
         state,
         AuthorizationRequest(
             nonce=nonce,
@@ -75,6 +74,7 @@ def start_login(redis_client: redis.Redis, *, return_to: str) -> LoginStart:
             return_to=return_to,
         ),
     )
+    db.commit()
     return LoginStart(
         authorization_url=google.build_authorization_url(
             state=state, nonce=nonce, code_challenge=challenge
@@ -89,16 +89,21 @@ def start_login(redis_client: redis.Redis, *, return_to: str) -> LoginStart:
 
 def complete_login(
     db: Session,
-    redis_client: redis.Redis,
     *,
     code: str,
     state: str,
     browser_token: str | None,
 ) -> IssuedSession:
-    """콜백 처리 전체. 검증 -> 사용자 확보 -> 세션 발급 순서다."""
-    pending = state_store.consume(redis_client, state)
+    """콜백 처리 전체. 검증 -> 사용자 확보 -> 세션 발급 순서다.
+
+    인증 요청은 꺼내자마자 커밋해 지운다. 뒤에서 브라우저 확인·구글 통신·사용자 저장이
+    실패해 롤백돼도 같은 state 를 다시 쓸 수 없다. 커밋하면 연결을 돌려주므로 구글 응답을
+    기다리는 동안 트랜잭션을 열어 두지도 않는다.
+    """
+    pending = state_store.consume(db, state)
+    db.commit()
     if pending is None:
-        # 없거나 이미 소비됐거나 TTL 이 지났다. 셋을 구분해 알려주지 않는다.
+        # 없거나 이미 소비됐거나 만료됐다. 셋을 구분해 알려주지 않는다.
         raise InvalidAuthorizationRequest()
 
     # 로그인을 시작한 브라우저가 맞는지. compare_digest 로 타이밍 차이를 없앤다.
@@ -112,6 +117,12 @@ def complete_login(
     session = _issue_session(db, user=user, device_id=uuid.uuid7(), return_to=pending.return_to)
     db.commit()
     return session
+
+
+def cancel_login(db: Session, state: str) -> None:
+    """동의 화면에서 취소하는 등 code 없이 돌아온 요청을 지운다. 만료로도 거절되지만 바로 지운다."""
+    state_store.consume(db, state)
+    db.commit()
 
 
 def _find_or_create_user(db: Session, identity: google.GoogleIdentity) -> User:
