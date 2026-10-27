@@ -194,6 +194,14 @@ def _float_or_none(value: Any) -> float | None:
     return None if value is None else float(value)
 
 
+def rating_summary(db: Session) -> tuple[int, float | None]:
+    """(평점 수, 평균). 탈퇴 뒤 보관한 평점도 센다. 평점이 없으면 평균은 None."""
+    count, avg = db.execute(
+        select(func.count(ServiceFeedback.id), func.avg(ServiceFeedback.rating))
+    ).one()
+    return int(count), _float_or_none(avg)
+
+
 def list_feedbacks(db: Session, *, limit: int, offset: int) -> list[dict[str, Any]]:
     stmt = select(
         ServiceFeedback.id,

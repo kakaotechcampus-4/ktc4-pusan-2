@@ -20,6 +20,7 @@ from pitch_coach_backend.module.admin.dto import (
     AdminFeedbackGroupRow,
     AdminFeedbackRow,
     AdminPage,
+    AdminRatingSummary,
     AdminSuggestionRow,
     AdminTakeRow,
     AdminUserRow,
@@ -92,6 +93,11 @@ def feedbacks(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> AdminPage[AdminFeedbackRow]:
     return service.list_feedbacks(db, limit=limit, offset=offset)
+
+
+@router.get("/api/service-feedbacks/summary")
+def rating_summary(db: Annotated[Session, Depends(get_db)]) -> AdminRatingSummary:
+    return service.rating_summary(db)
 
 
 @router.get("/api/service-feedbacks/by-user", response_model=AdminPage[AdminFeedbackGroupRow])

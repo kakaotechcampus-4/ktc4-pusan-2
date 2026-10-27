@@ -94,6 +94,12 @@ class AdminSuggestionRow(BaseModel):
     created_at: datetime
 
 
+class AdminRatingSummary(BaseModel):
+    # 평점을 남긴 수만 센다. 의견만 보낸 미평가 사용자는 빠진다
+    rated_count: int
+    avg_rating: float | None
+
+
 class AdminGroupSuggestion(BaseModel):
     id: uuid.UUID
     content: str

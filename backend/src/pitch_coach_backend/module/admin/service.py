@@ -11,6 +11,7 @@ from pitch_coach_backend.module.admin.dto import (
     AdminFeedbackRow,
     AdminGroupSuggestion,
     AdminPage,
+    AdminRatingSummary,
     AdminSuggestionRow,
     AdminTakeRow,
     AdminUserRow,
@@ -94,6 +95,11 @@ def list_stuck_takes(db: Session, now: datetime | None = None) -> list[AdminTake
 def _named(counts: dict[str | None, int]) -> dict[str, int]:
     # NOT NULL 컬럼이라 None 키는 없다
     return {key: n for key, n in counts.items() if key is not None}
+
+
+def rating_summary(db: Session) -> AdminRatingSummary:
+    count, avg = repository.rating_summary(db)
+    return AdminRatingSummary(rated_count=count, avg_rating=avg)
 
 
 def list_feedbacks(db: Session, *, limit: int, offset: int) -> AdminPage[AdminFeedbackRow]:
