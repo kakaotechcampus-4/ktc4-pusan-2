@@ -247,7 +247,9 @@ def test_opinion_failure_rolls_back_rating(db_session, user_id, report, monkeypa
     assert db_session.scalar(select(func.count()).select_from(ServiceFeedback)) == 0
 
 
-def test_withdraw_cascades_and_old_token_is_rejected(client, auth, report, db_session):
+def test_withdraw_retains_feedback_and_opinions_but_deletes_displays(
+    client, auth, report, db_session
+):
     approve(client, auth)
     client.post(FEEDBACK, headers=auth, json={"rating": 5, "suggestion": "팝업 의견"})
     client.post(
@@ -256,8 +258,18 @@ def test_withdraw_cascades_and_old_token_is_rejected(client, auth, report, db_se
         json={"request_id": str(uuid.uuid4()), "content": "마이페이지 의견"},
     )
     assert client.delete("/api/users/me", headers=auth).status_code == 204
-    for entity in (ServiceFeedback, UserSuggestion, ServiceFeedbackImpression):
-        assert db_session.scalar(select(func.count()).select_from(entity)) == 0
+    assert db_session.scalar(select(func.count()).select_from(ServiceFeedback)) == 1
+    assert db_session.scalar(select(func.count()).select_from(UserSuggestion)) == 2
+    assert db_session.scalar(select(func.count()).select_from(ServiceFeedbackImpression)) == 0
+    db_session.expire_all()
+    feedback = db_session.scalar(select(ServiceFeedback))
+    opinions = db_session.scalars(select(UserSuggestion)).all()
+    assert feedback.user_id is None
+    assert feedback.rating == 5
+    assert all(row.user_id is None for row in opinions)
+    popup = next(row for row in opinions if row.source == "RATING_POPUP")
+    assert popup.service_feedback_id == feedback.id
+    assert {row.content for row in opinions} == {"팝업 의견", "마이페이지 의견"}
     assert client.get(STATE, headers=auth).status_code == 401
 
 

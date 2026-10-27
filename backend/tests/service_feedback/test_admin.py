@@ -5,6 +5,7 @@ import pytest
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.service_feedback import service
+from pitch_coach_backend.module.user import service as user_service
 
 ADMIN = ("admin", "console-test-password")
 
@@ -55,3 +56,19 @@ def test_admin_lists_popup_and_mypage_independently(client, console, db_session,
 @pytest.mark.parametrize("query", ["limit=0", "limit=201", "offset=-1", "source=UNKNOWN"])
 def test_admin_validates_pagination_and_source(client, console, query):
     assert client.get(f"/admin/api/suggestions?{query}", auth=ADMIN).status_code == 422
+
+
+def test_admin_can_read_retained_feedback_after_withdrawal(
+    client, console, db_session, user_id, report
+):
+    feedback, _ = service.submit_feedback(db_session, user_id, rating=5, suggestion="팝업 의견")
+    service.submit_suggestion(db_session, user_id, request_id=uuid.uuid4(), content="추가 의견")
+    user_service.delete(db_session, user_service.get(db_session, user_id))
+    ratings = client.get("/admin/api/service-feedbacks", auth=ADMIN)
+    opinions = client.get("/admin/api/suggestions", auth=ADMIN)
+    assert ratings.status_code == opinions.status_code == 200
+    assert ratings.json()["items"][0]["id"] == str(feedback.id)
+    assert ratings.json()["items"][0]["user_id"] is None
+    assert ratings.json()["items"][0]["suggestion"] == "팝업 의견"
+    assert len(opinions.json()["items"]) == 2
+    assert all(row["user_id"] is None for row in opinions.json()["items"])

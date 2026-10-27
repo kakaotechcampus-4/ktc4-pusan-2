@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.service_feedback import service
 from pitch_coach_backend.module.service_feedback.entity import (
+    ServiceFeedback,
     ServiceFeedbackImpression,
     UserSuggestion,
 )
@@ -31,6 +32,9 @@ def committed_user(engine):
         yield user_id
     finally:
         with Session(engine) as db:
+            # 테스트가 만든 수집 데이터만 정리한다. 실제 탈퇴 경로는 이를 삭제하지 않는다.
+            db.execute(delete(UserSuggestion).where(UserSuggestion.user_id == user_id))
+            db.execute(delete(ServiceFeedback).where(ServiceFeedback.user_id == user_id))
             db.execute(delete(User).where(User.id == user_id))
             db.commit()
 
