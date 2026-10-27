@@ -12,4 +12,6 @@
 SCHEMA_VERSION = "1.0"
 #: review-1.0: 규칙 단계 + 기본 문장. LLM 단계는 아직 없다
 #: review-1.1: LLM 단계 (문장 · 다음 미션 고르기, 1번). LLM 이 없으면 review-1.0 과 같은 결과
-FEATURE_VERSION = "review-1.1"
+#: review-1.2: 판단 가능한 차원이 모두 STABLE 이면 기본 요약을 '전반적으로 보통'으로,
+#: LLM 비교 입력에 script_mode 와 해석 규칙, 출력 area · slide_number 계약을 좁힘 (#589)
+FEATURE_VERSION = "review-1.2"

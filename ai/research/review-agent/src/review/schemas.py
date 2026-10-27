@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .vocab import DimensionState, FallbackReason, JudgeStatus, Operator
+from .vocab import Area, DimensionState, FallbackReason, JudgeStatus, Operator
 
 Number = int | float
 
@@ -124,8 +124,8 @@ class Target(_In):
 class Mission(_In):
     mission_id: str
     area: str | None = None
-    #: null 이면 Take 전체
-    slide_number: int | None = None
+    #: null 이면 Take 전체. 장 번호는 1부터이고 0을 전체로 쓰지 않는다 (architecture.md 6-1)
+    slide_number: int | None = Field(default=None, ge=1)
     target: Target
 
 
@@ -236,8 +236,9 @@ class MissionTarget(_Out):
 class NextMission(_Out):
     """mission_id 는 없다. BE 가 missions 에 저장하며 붙인다"""
 
-    area: str | None
-    slide_number: int | None
+    #: missions.area 는 NOT NULL 이고 일곱 영역 중 하나 (명세 12-1, architecture.md 6-3)
+    area: Area
+    slide_number: int | None = Field(ge=1)
     description: str | None = Field(max_length=MAX_DESCRIPTION_CHARS)
     target: MissionTarget
     priority: int
@@ -246,7 +247,7 @@ class NextMission(_Out):
 
 class RecurringIssue(_Out):
     area: str
-    slide_number: int | None
+    slide_number: int | None = Field(ge=1)
     #: 다음 리뷰가 반복된 차원을 찾는 값. area 만으로는 차원을 가르지 못한다 (GAZE 는 두 차원)
     dimension: str
 

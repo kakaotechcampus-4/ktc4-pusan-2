@@ -106,6 +106,19 @@ def test_llm_gets_system_prompt_and_candidates_without_script(req):
     assert "대본원문표식" not in message and "STT원문표식" not in message
 
 
+def test_llm_gets_script_mode_of_comparison(req):
+    # 대본 보기가 다른 Take 끼리의 비교는 그 차이를 LLM 에도 싣는다 (명세 5-3 · 6-2)
+    previous = json.loads(json.dumps(req["take_result"]))
+    previous["script_mode"] = "OFF"
+    req["previous_takes"] = [{"take_result": previous, "take_scores": None}]
+    llm = FakeLLM(full_draft)
+    review_take(req, llm)
+    comparison = json.loads(llm.messages[-1][1])["comparison"]
+    assert comparison
+    assert all(c["script_mode"] == {"previous": "OFF", "current": "HIGHLIGHT"} for c in comparison)
+    assert "script_mode" in REVIEW_SYSTEM_PROMPT
+
+
 def test_dict_output_is_accepted(req):
     resp = review_take(req, FakeLLM(lambda p: full_draft(p).model_dump()), model="m")
     assert resp.fallback_reason is None

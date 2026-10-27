@@ -117,7 +117,17 @@ def review_message(rules: RuleResult, candidates: Candidates) -> str:
             for r in rules.criteria_results
         ],
         "comparison": [
-            {k: r[k] for k in ("metric", "slide_number", "previous", "current", "improved")}
+            {
+                k: r[k]
+                for k in (
+                    "metric",
+                    "slide_number",
+                    "previous",
+                    "current",
+                    "improved",
+                    "script_mode",
+                )
+            }
             for r in rules.comparison
         ],
         "content_slides": _content_slides(rules),

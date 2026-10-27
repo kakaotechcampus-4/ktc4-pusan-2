@@ -62,6 +62,8 @@ IMPROVEMENT_TEXT = {
     "content_delivery": "빠뜨린 핵심 내용을 다시 챙겨 보세요",
 }
 NOTHING_TEXT = "이번 Take는 평가할 수 있는 항목이 부족했습니다."
+#: 판단할 수 있는 차원이 모두 STABLE 이라 강점 · 개선점 후보가 없을 때
+STABLE_TEXT = "이번 Take는 전반적으로 보통이었습니다. 두드러진 강점이나 먼저 고칠 점은 없었습니다."
 
 
 def _evidence(
@@ -138,6 +140,8 @@ class TextCandidates:
     strengths: list[TextCandidate]
     #: PRIORITY 차원 (반복 문제와 같은 순서 · 영역 · 장)
     improvements: list[TextCandidate]
+    #: 판단할 수 있는(NOT_EVALUABLE 이 아닌) 차원이 있는지. 후보가 없을 때 기본 요약을 고른다
+    evaluable: bool = False
 
 
 def text_candidates(
@@ -193,11 +197,16 @@ def text_candidates(
             )[1],
         }
         improvements.append(TextCandidate(dim, dimension_states[dim], item))
-    return TextCandidates(strengths, improvements)
+    evaluable = any(s != "NOT_EVALUABLE" for s in dimension_states.values())
+    return TextCandidates(strengths, improvements, evaluable)
 
 
 def default_summary(candidates: TextCandidates) -> str:
-    """기본 요약 문장. 강점 · 개선점 후보의 차원 이름(개선점은 장 번호도)을 잇는다"""
+    """기본 요약 문장. 강점 · 개선점 후보의 차원 이름(개선점은 장 번호도)을 잇는다.
+
+    후보가 없으면 판단할 수 있는 차원이 있을 때(모두 STABLE) '전반적으로 보통',
+    없을 때만 '평가할 수 있는 항목이 부족'이다 — LLM 이 실패한 Take 가 측정 부족처럼 보이지 않게
+    """
     good = [DIMENSION_LABELS[c.dimension] for c in candidates.strengths]
     bad = [
         (f"{c.item['slide_number']}번 장 " if c.item["slide_number"] is not None else "")
@@ -209,7 +218,9 @@ def default_summary(candidates: TextCandidates) -> str:
         parts.append(f"좋았던 점은 {', '.join(good)}입니다.")
     if bad:
         parts.append(f"먼저 다듬을 점은 {', '.join(bad)}입니다.")
-    return " ".join(parts) if parts else NOTHING_TEXT
+    if parts:
+        return " ".join(parts)
+    return STABLE_TEXT if candidates.evaluable else NOTHING_TEXT
 
 
 def default_text(candidates: TextCandidates) -> dict[str, Any]:
