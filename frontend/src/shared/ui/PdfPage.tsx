@@ -19,12 +19,14 @@ export function PdfPage({
   fit,
   zoom = 1,
   className = '',
+  onDoubleClick,
 }: {
   doc: PDFDocumentProxy;
   pageNumber: number;
   fit: 'width' | 'contain';
   zoom?: number;
   className?: string;
+  onDoubleClick?: () => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -60,7 +62,7 @@ export function PdfPage({
   }, [doc, pageNumber, box, zoom]);
 
   return (
-    <div ref={boxRef} className={`flex ${className}`}>
+    <div ref={boxRef} onDoubleClick={onDoubleClick} className={`flex ${className}`}>
       <canvas ref={canvasRef} className="m-auto block shrink-0 bg-white shadow-sm" />
     </div>
   );

@@ -377,6 +377,8 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
           pageNumber={page}
           fit={fitWidth ? 'width' : 'contain'}
           zoom={ZOOM_STEPS[zoomIndex] ?? 1}
+          // 본문만 — 썸네일은 장을 고르려고 두 번 누를 수 있습니다
+          onDoubleClick={toggleFullscreen}
           className="min-h-0 min-w-0 flex-1 overflow-auto bg-panel/30 p-6"
         />
       </div>
