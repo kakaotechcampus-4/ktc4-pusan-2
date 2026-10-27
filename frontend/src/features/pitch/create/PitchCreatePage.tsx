@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ApiFailure } from '@/shared/api/tokenStore';
@@ -207,6 +207,7 @@ function PitchCreateScreen() {
   const chosen = useCreateStore((s) => s.chosen);
   const navigate = useNavigate();
   const unsaved = useCreateStore(selectInfoUnsaved);
+  const [saveInfoRequired, setSaveInfoRequired] = useState(false);
   const busy = useCreateStore(selectBusy);
 
   // 탭을 닫거나 새로고침하면 저장하지 않은 발표정보와 진행 중인 업로드 · 나누기가 사라집니다.
@@ -235,6 +236,11 @@ function PitchCreateScreen() {
       Take 에 박아 두므로(TakeInitRequestDTO), "어느 슬라이드에 맞춘 대본인가"가 남는 곳은 거기뿐입니다.
   */
   const start = () => {
+    if (unsaved) {
+      setSaveInfoRequired(true);
+      useCreateStore.getState().select('info');
+      return;
+    }
     const practice = toPracticeCombo(draft, chosen);
     if (pitchId && practice) navigate(`/pitch/${pitchId}/device-check`, { state: { practice } });
   };
@@ -279,6 +285,11 @@ function PitchCreateScreen() {
 
           <InfoBar />
           <StepBar />
+          {saveInfoRequired && unsaved && node === 'info' && (
+            <p role="alert" className="text-sm font-bold text-coral">
+              연습을 시작하기 전에 발표정보를 저장해 주세요.
+            </p>
+          )}
           <section className="flex min-h-[32rem] flex-auto shrink-0 flex-col rounded-lg border border-line bg-panel p-5 xl:p-6">
             {pane}
           </section>
