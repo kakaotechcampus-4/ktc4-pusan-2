@@ -11,10 +11,7 @@ const baseURL = process.env.REVIEW_BASE_URL || 'http://localhost:3012';
       try {
         await context.addCookies([{ name: 'mock_session', value: 'true', url: baseURL }]);
         const page = await context.newPage();
-        await page.goto(`${baseURL}/takes/t3`);
-        await page.getByRole('link', { name: '내 피치로', exact: true }).waitFor();
-        await page.evaluate(() => sessionStorage.setItem('pitchcoach:review-preview:t3', 'ready'));
-        await page.getByRole('link', { name: '내 피치로', exact: true }).click();
+        await page.goto(`${baseURL}/`);
         const dialog = page.getByRole('dialog');
         await dialog.waitFor();
         const dimensions = await dialog.evaluate((element) => {

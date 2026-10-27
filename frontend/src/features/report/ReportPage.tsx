@@ -1,8 +1,5 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router';
-import { claimReviewPreview, expireReviewPreview } from '@/shared/lib/serviceReviewPreview';
+import { Navigate, useParams } from 'react-router';
 import { AppHeader } from '@/shared/ui/AppHeader';
-import { ServiceReviewDialog } from './ServiceReviewDialog';
 import { useTakeReport } from '@/shared/api/report';
 import { formatDuration } from '@/shared/lib/clock';
 import { Badge, type Tone } from '@/shared/ui/Badge';
@@ -36,39 +33,6 @@ export function ReportPage() {
 function ReportView({ takeId }: { takeId: string }) {
   const report = useTakeReport(takeId);
   const data = report.data;
-  const navigate = useNavigate();
-  const [destination, setDestination] = useState<string | null>(null);
-  function requestExit(event: MouseEvent<HTMLAnchorElement>) {
-    // Preserve open-in-new-tab and other ordinary link behavior.
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-      return;
-    if (
-      report.error ||
-      report.isPending ||
-      !data ||
-      data.status !== 'COMPLETED' ||
-      data.analysis_stage !== 'DONE' ||
-      data.review_status !== 'DONE' ||
-      !data.review ||
-      !claimReviewPreview(data.take_id)
-    )
-      return;
-    event.preventDefault();
-    setDestination(event.currentTarget.getAttribute('href') ?? '/');
-  }
-
-  const activeTake = useRef<string | null>(null);
-  useEffect(() => {
-    activeTake.current = takeId;
-    return () => {
-      activeTake.current = null;
-      // StrictMode replays effects without leaving the report. Allow its setup to run first.
-      queueMicrotask(() => {
-        if (activeTake.current !== takeId) expireReviewPreview(takeId);
-      });
-    };
-  }, [takeId]);
-
   if (!takeId) return <Navigate replace to="/" />;
   // 분석 자체가 실패한 Take 는 보여 줄 측정값이 없습니다. 실패 · 리뷰 보류 안내는 분석 대기 화면이 맡습니다
   if (data?.status === 'FAILED' || data?.analysis_hold_reason)
@@ -76,31 +40,16 @@ function ReportView({ takeId }: { takeId: string }) {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <AppHeader onHomeClick={requestExit} />
+      <AppHeader />
       <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
         <QueryState isPending={report.isPending} error={report.error} />
-        {data && <ReportBody key={takeId} report={data} onExit={requestExit} />}
+        {data && <ReportBody key={takeId} report={data} />}
       </ReportFrame>
-      {destination !== null && (
-        <ServiceReviewDialog
-          takeId={takeId}
-          onContinue={() => {
-            setDestination(null);
-            navigate(destination);
-          }}
-        />
-      )}
     </div>
   );
 }
 
-function ReportBody({
-  report,
-  onExit,
-}: {
-  report: TakeReport;
-  onExit: (event: MouseEvent<HTMLAnchorElement>) => void;
-}) {
+function ReportBody({ report }: { report: TakeReport }) {
   const review = report.review;
   const nextTake = report.take_number + 1;
 
@@ -168,19 +117,12 @@ function ReportBody({
             <Dimensions value={review.dimensions} />
           </div>
 
-          <NextMissions
-            rows={review.next_missions}
-            nextTake={nextTake}
-            pitchId={report.pitch_id}
-            onExit={onExit}
-          />
+          <NextMissions rows={review.next_missions} nextTake={nextTake} pitchId={report.pitch_id} />
         </>
       )}
 
       <footer className="flex justify-end border-t border-line-strong pt-5">
-        <ButtonLink to="/" onClick={onExit}>
-          내 피치로
-        </ButtonLink>
+        <ButtonLink to="/">내 피치로</ButtonLink>
       </footer>
     </>
   );
@@ -481,12 +423,10 @@ function NextMissions({
   rows,
   nextTake,
   pitchId,
-  onExit,
 }: {
   rows: ReviewResult['next_missions'];
   nextTake: number;
   pitchId: string;
-  onExit: (event: MouseEvent<HTMLAnchorElement>) => void;
 }) {
   return (
     <section className="border-2 border-ink bg-coral-wash p-6 shadow-[4px_4px_0_var(--color-line)] xl:p-8">
@@ -498,9 +438,7 @@ function NextMissions({
           </p>
         </div>
         {/* 이동만 합니다. Take는 시작 전 세팅에서 생깁니다 (CLAUDE.md 8번) */}
-        <ButtonLink to={`/pitch/${pitchId}/device-check`} onClick={onExit}>
-          Take {nextTake} 연습하기
-        </ButtonLink>
+        <ButtonLink to={`/pitch/${pitchId}/device-check`}>Take {nextTake} 연습하기</ButtonLink>
       </div>
       {rows.length === 0 ? (
         <p className="mt-4 text-sm text-stone">

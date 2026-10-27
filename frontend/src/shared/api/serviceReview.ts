@@ -1,14 +1,33 @@
-import { postJson } from './client';
-import type { ServiceReviewReceipt, ServiceReviewRequest } from '@/types/serviceReview';
+import { apiRequest } from './client';
+import type {
+  ServiceReviewReceipt,
+  ServiceReviewRequest,
+  ServiceReviewState,
+  ServiceReviewImpression,
+  SuggestionRequest,
+  SuggestionReceipt,
+} from '@/types/serviceReview';
 
-// Keep the unagreed endpoint out of production and real-server development.
-export const serviceReviewPreview =
-  import.meta.env.DEV && import.meta.env.VITE_USE_MOCK !== 'false';
-
-export function submitServiceReview(takeId: string, body: ServiceReviewRequest) {
-  if (!serviceReviewPreview) return Promise.reject(new Error('Service review preview is disabled'));
-  return postJson<ServiceReviewReceipt>(
-    `/api/mock/service-reviews/${encodeURIComponent(takeId)}`,
-    body,
-  );
-}
+export const getServiceReviewState = () =>
+  apiRequest<ServiceReviewState>('/api/service-feedback/me');
+export const requestServiceReview = (display_request_id: string, signal?: AbortSignal) =>
+  apiRequest<ServiceReviewImpression>('/api/service-feedback/impressions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ display_request_id }),
+    signal,
+  });
+export const submitServiceReview = (body: ServiceReviewRequest, signal?: AbortSignal) =>
+  apiRequest<ServiceReviewReceipt>('/api/service-feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+export const submitSuggestion = (body: SuggestionRequest, signal?: AbortSignal) =>
+  apiRequest<SuggestionReceipt>('/api/suggestions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });

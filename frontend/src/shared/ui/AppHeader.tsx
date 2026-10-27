@@ -1,4 +1,4 @@
-import { useState, type MouseEventHandler } from 'react';
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { HomeHelpDialog } from './HomeHelpDialog';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
@@ -24,14 +24,14 @@ function MenuLink({ to, label, current }: { to: string; label: string; current: 
  * 홈 · Take 기록 · 마이페이지가 같이 쓰는 상단바. 메뉴를 옮겨도 모양이 바뀌지 않게 한 곳에 둡니다.
  * 바탕은 기본 지면(`bg-panel`)으로 고정합니다 — 아래 화면이 흰 지면이어도 상단바 색은 그대로입니다.
  */
-export function AppHeader({ onHomeClick }: { onHomeClick?: MouseEventHandler<HTMLAnchorElement> }) {
+export function AppHeader() {
   const [helpOpen, setHelpOpen] = useState(false);
   const logout = useLogout();
   const { pathname } = useLocation();
   return (
     <header className="border-b border-line-strong bg-panel text-ink">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-5 px-6 py-5 lg:px-10">
-        <Link to="/" aria-label="PITCH COACH 홈" onClick={onHomeClick}>
+        <Link to="/" aria-label="PITCH COACH 홈">
           <PitchCoachWordmark />
         </Link>
         <nav aria-label="홈 메뉴" className="flex items-center gap-5 text-xs sm:gap-8 sm:text-sm">

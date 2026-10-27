@@ -1,5 +1,4 @@
 import { endSession, getSession, markSubmitted } from '../lib/db';
-import { markReviewPreviewReady } from '@/shared/lib/serviceReviewPreview';
 import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/writeFailures';
 import type { Ms } from '@/types/api';
 import type { TakeEndRequest } from '@/types/take';
@@ -49,5 +48,4 @@ export async function sendEnding(
   clearClock(takeId);
   clearMetrics(takeId);
   clearSlides(takeId);
-  markReviewPreviewReady(takeId);
 }

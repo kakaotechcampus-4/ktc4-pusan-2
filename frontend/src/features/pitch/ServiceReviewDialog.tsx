@@ -1,21 +1,21 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { submitServiceReview } from '@/shared/api/serviceReview';
+import { ApiFailure } from '@/shared/api/tokenStore';
+import { toMessage } from '@/shared/api/errorMessage';
+import { getServiceReviewState, submitServiceReview } from '@/shared/api/serviceReview';
 import { Button } from '@/shared/ui/Button';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 
-export function ServiceReviewDialog({
-  takeId,
-  onContinue,
-}: {
-  takeId: string;
-  onContinue: () => void;
-}) {
+export function ServiceReviewDialog({ onContinue }: { onContinue: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const title = useId();
   const description = useId();
   const [rating, setRating] = useState(0);
+  const [suggestion, setSuggestion] = useState('');
+  const [locked, setLocked] = useState(false);
+  const length = [...suggestion.trim()].length;
+  const controller = useRef<AbortController | null>(null);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState('');
   const busy = useRef(false);
   const alive = useRef(true);
 
@@ -28,6 +28,7 @@ export function ServiceReviewDialog({
     document.body.style.overflow = 'hidden';
     return () => {
       alive.current = false;
+      controller.current?.abort();
       dialog?.close();
       document.body.style.overflow = overflow;
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
@@ -35,17 +36,35 @@ export function ServiceReviewDialog({
   }, []);
 
   async function submit() {
-    if (!rating || busy.current) return;
+    if (!rating || length > 2000 || busy.current) return;
     busy.current = true;
     setPending(true);
-    setError(false);
+    setError('');
+    setLocked(true);
+    controller.current = new AbortController();
     try {
-      await submitServiceReview(takeId, { rating });
+      await submitServiceReview(
+        { rating, suggestion: suggestion.trim() || null },
+        controller.current.signal,
+      );
       if (alive.current) onContinue();
-    } catch {
-      if (alive.current) setError(true);
+    } catch (failure) {
+      if (!alive.current) return;
+      if (failure instanceof ApiFailure && failure.code === 'SERVICE_FEEDBACK_ALREADY_SUBMITTED') {
+        // 다른 탭에서 이미 제출했으면 서버 상태를 새로 확인하고 이번 요청을 닫습니다.
+        await getServiceReviewState().catch(() => undefined);
+        if (alive.current) onContinue();
+      } else {
+        if (failure instanceof ApiFailure && failure.status === 422) setLocked(false);
+        setError(
+          failure instanceof ApiFailure && failure.code === 'SERVICE_FEEDBACK_NOT_ELIGIBLE'
+            ? '평점을 보낼 수 있는 완료 리포트가 없어요. 닫고 다음 연습을 진행해 주세요.'
+            : '보내지 못했어요. ' + toMessage(failure) + ' 같은 내용으로 다시 시도할 수 있어요.',
+        );
+      }
     } finally {
       busy.current = false;
+      controller.current = null;
       if (alive.current) setPending(false);
     }
   }
@@ -80,10 +99,10 @@ export function ServiceReviewDialog({
       <h2 id={title} className="mt-6 text-xl font-bold">
         피치코치가 도움이 되었나요?
       </h2>
-      <p id={description} className="mt-3 text-sm leading-relaxed text-stone">
+      <p id={description} className="mt-3 text-sm leading-relaxed text-ink/80">
         연습과 리포트 경험을 별점으로 알려주세요.
       </p>
-      <fieldset disabled={pending} className="my-6">
+      <fieldset disabled={pending || locked} className="my-6">
         <legend className="mb-3 text-sm font-bold">서비스 만족도</legend>
         <div className="flex justify-between gap-1">
           {[1, 2, 3, 4, 5].map((value) => (
@@ -99,7 +118,7 @@ export function ServiceReviewDialog({
               />
               <span
                 aria-hidden="true"
-                className={`flex h-11 w-10 sm:h-12 sm:w-12 items-center justify-center text-3xl peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-ink ${value <= rating ? 'text-coral' : 'text-stone'}`}
+                className={`flex h-11 w-10 sm:h-12 sm:w-12 items-center justify-center text-3xl peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-ink ${value <= rating ? 'text-coral-deep' : 'text-stone'}`}
               >
                 ★
               </span>
@@ -107,9 +126,26 @@ export function ServiceReviewDialog({
           ))}
         </div>
       </fieldset>
+      <div className="mb-4 flex min-w-0 flex-col gap-2">
+        <label htmlFor={description + '-opinion'} className="text-sm font-bold">
+          의견 (선택)
+        </label>
+        <textarea
+          id={description + '-opinion'}
+          rows={4}
+          value={suggestion}
+          readOnly={pending || locked}
+          onChange={(event) => setSuggestion(event.target.value)}
+          aria-describedby={description + '-count'}
+          className="w-full min-w-0 resize-y border-2 border-ink bg-white p-3 text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+        />
+        <p id={description + '-count'} className="text-sm text-ink/80">
+          {length.toLocaleString()} / 2,000자
+        </p>
+      </div>
       {error && (
         <p role="alert" className="mb-4 text-sm">
-          보내지 못했어요. 선택한 별점으로 다시 시도하거나 나중에 계속할 수 있어요.
+          {error}
         </p>
       )}
       {pending && (
@@ -119,9 +155,9 @@ export function ServiceReviewDialog({
       )}
       <div className="flex flex-col gap-3">
         <Button
-          disabled={!rating || pending}
+          disabled={!rating || pending || length > 2000}
           onClick={() => {
-            submit().catch(() => setError(true));
+            submit().catch(() => setError('다시 시도해 주세요.'));
           }}
         >
           {pending ? '제출 중…' : submitLabel}
