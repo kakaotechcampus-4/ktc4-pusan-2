@@ -36,7 +36,7 @@ export function countdownParts(remainingMs: number) {
 }
 
 export function useLaunchStatus() {
-  const required = window.location.hostname === 'pitch-coach-release.duckdns.org';
+  const required = import.meta.env.VITE_LAUNCH_GATE_ENABLED === 'true';
   const query = useQuery({
     queryKey: ['launch-status'],
     enabled: required,

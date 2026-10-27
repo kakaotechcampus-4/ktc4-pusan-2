@@ -14,7 +14,7 @@ let client: QueryClient;
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  vi.stubGlobal('location', new URL('https://pitch-coach-release.duckdns.org'));
+  vi.stubEnv('VITE_LAUNCH_GATE_ENABLED', 'true');
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -26,6 +26,7 @@ afterEach(async () => {
   client.clear();
   container.remove();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 async function show(status: object | null, guarded = false) {
@@ -108,10 +109,10 @@ it('최초 공개 상태 조회에 실패하면 보호 화면을 열지 않는�
   expect(container.textContent).toBe('대기 페이지');
 });
 
-it.each(['pitch-coach-dev.duckdns.org', 'localhost', '127.0.0.1'])(
-  '%s에서는 상태 API 없이 카운트다운을 숨기고 CTA와 보호 화면을 연다',
-  async (hostname) => {
-    vi.stubGlobal('location', new URL(`https://${hostname}`));
+it.each(['false', undefined, '', 'TRUE'])(
+  '출시 제한 설정이 %s이면 상태 API 없이 카운트다운을 숨기고 CTA와 보호 화면을 연다',
+  async (value) => {
+    vi.stubEnv('VITE_LAUNCH_GATE_ENABLED', value);
     await show(null);
     expect(container.querySelector('section')).toBeNull();
     expect(container.querySelectorAll('a[href="/login?next=/"]')).toHaveLength(3);
