@@ -109,3 +109,5 @@ table.grouped td { vertical-align: top; }
 .opinions li + li { margin-top: 8px; }
 .opinions .opinion { max-height: 12em; overflow-y: auto; }
 button.more { margin-top: 6px; }
+.summary { margin: 0 0 10px; }
+.summary strong { font-size: 18px; }

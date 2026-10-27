@@ -187,10 +187,28 @@ const SUGGESTION_COLUMNS = [
 const stars = (rating) => '★'.repeat(rating) + '☆'.repeat(5 - rating);
 const subText = (text) => el('small', { className: 'muted block', textContent: text });
 
+// UUIDv7 은 앞자리가 만든 시각이라 비슷한 때 가입한 사용자끼리 겹친다. 뒷자리를 붙여 가른다.
+// 전체 ID 는 마우스를 올리면 보인다
+const shortId = (id) => el('span', { title: id, textContent: `${id.slice(0, 8)}…${id.slice(-4)}` });
+
 function authorCell(row) {
-  if (row.user_id) return row.user_id;
+  if (row.user_id) return shortId(row.user_id);
   // 탈퇴하면 작성자를 알 수 없다. 묶음마다 다른 ID 를 보여 서로 다른 탈퇴자를 가른다
-  return el('span', {}, ['탈퇴한 사용자', subText(`작성자 연결 없음 · ${row.retained_id}`)]);
+  const retained = el('small', { className: 'muted block' }, ['작성자 연결 없음 · ', shortId(row.retained_id)]);
+  return el('span', {}, ['탈퇴한 사용자', retained]);
+}
+
+function renderRatingSummary(summary) {
+  const node = document.getElementById('rating-summary');
+  if (summary.avg_rating == null) {
+    node.replaceChildren(el('span', { className: 'muted', textContent: '아직 평점이 없습니다' }));
+    return;
+  }
+  node.replaceChildren(
+    '평균 ',
+    el('strong', { textContent: `${summary.avg_rating.toFixed(1)}점` }),
+    el('span', { className: 'muted', textContent: ` · 평점 ${summary.rated_count}개, 미평가 제외` }),
+  );
 }
 
 function ratingCell(row) {
@@ -338,6 +356,7 @@ const SECTIONS = [
   ['api/takes?status=FAILED&limit=50', (rows) => renderTable('failed-takes', TAKE_COLUMNS, rows)],
   ['api/takes?limit=50', (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
   ['api/users', (rows) => renderTable('users', USER_COLUMNS, rows)],
+  ['api/service-feedbacks/summary', renderRatingSummary],
 ];
 
 async function load() {
