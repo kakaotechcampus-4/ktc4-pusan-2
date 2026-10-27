@@ -32,12 +32,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from coach import decide, finalize
-from coach.config import CoachConfig, load_config
-from coach.judges import Judges
-from coach.schemas import CoachResponse, TakeResult
+from pitch_coach_ai.features.coach import decide, finalize
+from pitch_coach_ai.features.coach.config import CoachConfig, load_config
+from pitch_coach_ai.features.coach.judges import Judges
+from pitch_coach_ai.features.coach.schemas import CoachResponse, TakeResult
 
-from .judges import lab_judges
+from .judges import real_judges
 
 _SYLLABLE_WORD = "가나다"  # 3글자 단어. 내용은 상관없고 글자 수만 쓴다
 _FILLER = "음"
@@ -386,7 +386,19 @@ class Presenter:
         # 이 틱의 기록은 지난 1초(t − tick ~ t)의 판정이다. Take 시작 순간(t = 0)에는 없다
         if t >= self.sc.tick_ms:
             tick = self.sc.tick_ms
-            self.gaze_records.append({"t_ms": t - tick, "duration_ms": tick, "state": label})
+            # FE 엔진의 1초 기록처럼 신뢰도를 싣는다(실제 시선 모듈은 신뢰도가 낮은 창을
+            # 잴 수 없음으로 본다). 판단 보류(UNCERTAIN)는 다수결 비율(confidence)만 낮추고,
+            # 촬영 조건 신뢰도(reliability)는 그대로 둔다
+            self.gaze_records.append(
+                {
+                    "t_ms": t - tick,
+                    "duration_ms": tick,
+                    "state": label,
+                    "confidence": 0.0 if label == "UNCERTAIN" else 0.9,
+                    "reliability": 0.95,
+                    "frames": 12,
+                }
+            )
             self.all_gaze_records.append(self.gaze_records[-1])
             # FE 는 그 1초 동안 소리를 낸 시간을 잰다 — 마이크가 들은 단어가 그 1초와 겹친 만큼.
             # 1초 끝에 말하던 단어(다음 틱에 마저 말한다)도 넣는다
@@ -547,7 +559,7 @@ _TAKE_CONSTANTS = (
 
 def scenario_config(sc: Scenario, override: dict[str, Any] | None = None) -> CoachConfig:
     """시나리오 설정 위에 실험 변형을 덮는다."""
-    from coach.config import _deep_merge  # noqa: PLC0415 — 도구 전용
+    from pitch_coach_ai.features.coach.config import _deep_merge  # noqa: PLC0415 — 도구 전용
 
     return load_config(**_deep_merge(sc.config, override or {}))
 
@@ -568,7 +580,7 @@ def run(
     """
     cfg = config if config is not None else scenario_config(sc)
     presenter = Presenter(sc, noise, seed, coaching_plan)
-    judges = judges or lab_judges()
+    judges = judges or real_judges()
     result = RunResult(
         scenario=sc,
         noise=presenter.noise,

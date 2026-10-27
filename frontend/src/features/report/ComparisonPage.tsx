@@ -8,7 +8,13 @@ import { Mascot } from '@/shared/ui/Mascot';
 import { Card } from '@/shared/ui/Panel';
 import { QueryState } from './QueryState';
 import { duration, pct } from './reportFormat';
-import { SCRIPT_MODE_LABEL, completedTakes, gazeOffEngine, takeDay } from './takeHistoryFormat';
+import {
+  SCRIPT_MODE_LABEL,
+  completedTakes,
+  gazeOffEngine,
+  latestGazeEngine,
+  takeDay,
+} from './takeHistoryFormat';
 
 /**
  * P7 Take 비교 — 한 피치의 Take들을 나란히.
@@ -59,7 +65,7 @@ export function ComparisonPage() {
     );
 
   const rows = completedTakes(history.data.takes);
-  const latestEngine = rows[0]?.gaze_engine ?? null;
+  const latestEngine = latestGazeEngine(rows);
   const m = METRICS.find((x) => x.key === metric)!;
   // 오래된 Take부터 그립니다
   const series = [...rows].reverse();

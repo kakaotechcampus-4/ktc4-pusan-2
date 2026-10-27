@@ -1,0 +1,24 @@
+name: pitch-coach-release
+
+services:
+  ai:
+    ports: !reset []
+  be:
+    ports: !reset []
+  fe:
+    ports: !reset []
+  db:
+    ports: !reset []
+  redis:
+    ports: !reset []
+  caddy:
+    container_name: caddy-release
+    environment:
+      SITE_URL: http://pitch-coach-release.duckdns.org
+    networks:
+      - default
+      - edge
+
+networks:
+  edge:
+    external: true

@@ -15,7 +15,8 @@ from .conftest import run, segment, unmeasured
 def test_sample_recurring_issues(req):
     resp, _ = run(req)
     assert [r.model_dump() for r in resp.recurring_issues] == [
-        {"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}
+        {"area": "GAZE", "slide_number": 3, "dimension": "script_independence"},
+        {"area": "FILLER", "slide_number": 2, "dimension": "fluency"},
     ]
 
 
@@ -62,12 +63,98 @@ def test_strength_skips_unmeasured_area(req):
     assert [(s.area, s.evidence) for s in pacing] == [("TIME", {"duration_ms": 182000})]
 
 
+def _gaze_slides(*metrics: dict | None) -> list[dict]:
+    """1번 장부터 GAZE 장 값 (None 이면 측정 비율 미달로 metrics 가 null 인 장)"""
+    return [
+        {"slide_number": n, "measured_ratio": 0.9 if m else 0.1, "metrics": m}
+        for n, m in enumerate(metrics, 1)
+    ]
+
+
+def _strength(resp, dimension_area: str):
+    return next(s for s in resp.strengths if s.area == dimension_area)
+
+
+def test_strength_slide_is_null_even_with_slide_values(req):
+    # STRENGTH 는 그 차원의 Take 전체에 문제가 없다는 뜻
+    # → 장 값이 있어도 장 번호 null, 근거는 Take 값
+    req["take_result"]["areas"]["GAZE"]["slides"] = _gaze_slides(
+        {"audience_ratio": 0.7},
+        {"audience_ratio": 0.9},
+        {"audience_ratio": 0.5, "script_ratio": 0.62},
+    )
+    resp, _ = run(req)
+    assert resp.dimensions["audience_gaze"] == "STRENGTH"
+    s = _strength(resp, "GAZE")
+    assert (s.slide_number, s.evidence) == (None, {"audience_ratio": 0.58})
+
+
+def test_improved_strength_slide_is_achieved_slide_mission(req):
+    req["missions"].append(
+        {
+            "mission_id": "m-gaze-1",
+            "area": "GAZE",
+            "slide_number": 1,
+            "target": {"metric": "audience_ratio", "operator": "GTE", "value": 0.5},
+        }
+    )
+    req["take_result"]["areas"]["GAZE"]["slides"] = _gaze_slides(
+        {"audience_ratio": 0.6}, {"audience_ratio": 0.9}, {"script_ratio": 0.62}
+    )
+    resp, _ = run(req)
+    assert resp.dimensions["audience_gaze"] == "IMPROVED"  # 미션을 이루고 문제가 없음
+    s = _strength(resp, "GAZE")
+    assert (s.slide_number, s.evidence) == (1, {"audience_ratio": 0.6})
+
+
+def test_improved_strength_without_slide_is_null(req):
+    # Take 전체의 반복 문제가 나아졌으면 장이 없다
+    req["previous_recurring_issues"].append(
+        {"area": "GAZE", "slide_number": None, "dimension": "audience_gaze"}
+    )
+    resp, _ = run(req)
+    assert resp.dimensions["audience_gaze"] == "IMPROVED"
+    s = _strength(resp, "GAZE")
+    assert (s.slide_number, s.evidence) == (None, {"audience_ratio": 0.58})
+
+
+def test_improved_strength_slide_is_previous_recurring_slide(req):
+    req["previous_recurring_issues"].append(
+        {"area": "GAZE", "slide_number": 1, "dimension": "audience_gaze"}
+    )
+    req["take_result"]["areas"]["GAZE"]["slides"] = _gaze_slides(
+        {"audience_ratio": 0.6},
+        {"audience_ratio": 0.9},
+        {"audience_ratio": 0.5, "script_ratio": 0.62},
+    )
+    resp, _ = run(req)
+    assert resp.dimensions["audience_gaze"] == "IMPROVED"
+    s = _strength(resp, "GAZE")
+    # 나아진 근거의 장(직전 반복 문제 1번 장)과 그 장 값
+    assert (s.slide_number, s.evidence) == (1, {"audience_ratio": 0.6})
+
+
+def test_improved_strength_unmeasured_slide_is_null(req):
+    # 직전 반복 문제의 장을 이번에 재지 못했으면 그 장이 나아졌다고 말하지 않는다
+    # → 장 번호 null, 근거는 Take 값
+    req["previous_recurring_issues"].append(
+        {"area": "GAZE", "slide_number": 3, "dimension": "audience_gaze"}
+    )
+    req["take_result"]["areas"]["GAZE"]["slides"] = _gaze_slides(
+        {"audience_ratio": 0.6}, {"audience_ratio": 0.9}, None
+    )
+    resp, _ = run(req)
+    assert resp.dimensions["audience_gaze"] == "IMPROVED"
+    s = _strength(resp, "GAZE")
+    assert (s.slide_number, s.evidence) == (None, {"audience_ratio": 0.58})
+
+
 def test_sample_score_and_text(req):
     resp, _ = run(req)
-    assert resp.score == 82  # (100 × 3 + 40 + 70) / 5
+    assert resp.score == 76  # (100 × 3 + 40 + 40) / 5
     assert resp.overall_summary == (
         "좋았던 점은 청중 응시, 말 속도와 시간 배분, 목소리 크기입니다. "
-        "먼저 다듬을 점은 3번 장 대본 의존도입니다."
+        "먼저 다듬을 점은 3번 장 대본 의존도, 2번 장 말의 매끄러움입니다."
     )
     imp = resp.improvements[0]
     assert (imp.area, imp.slide_number, imp.evidence) == ("GAZE", 3, {"script_ratio": 0.62})
@@ -88,8 +175,8 @@ def test_fallback_and_meta(req):
     assert resp.fallback_reason == "LLM_UNAVAILABLE"
     assert resp.comparison == []
     assert resp.meta.schema_version == "1.0"
-    assert resp.meta.feature_version == "review-1.0"
-    assert resp.meta.criteria_versions["review"].startswith("review-1.0+")
+    assert resp.meta.feature_version == "review-1.1"
+    assert resp.meta.criteria_versions["review"].startswith("review-1.1+")
     assert resp.meta.model is None
 
 
@@ -108,7 +195,7 @@ def test_config_change_changes_criteria_version(req):
 def test_accepts_model_and_ignores_unknown_fields(req):
     req["take_result"]["new_field_from_be"] = 1
     req["extra"] = {"x": 1}
-    assert review_take(ReviewRequest.model_validate(req)).score == 82
+    assert review_take(ReviewRequest.model_validate(req)).score == 76
 
 
 def test_null_lists_are_empty(req):
@@ -139,7 +226,7 @@ def test_criteria_versions_carry_take_result_criteria(req):
     assert versions.keys() == {"gaze", "volume", "review"}
     assert versions["gaze"] == "gaze-1.1+000000000000"
     assert versions["volume"] == "volume-1.0+aaaaaaaaaaaa"
-    assert versions["review"].startswith("review-1.0+")
+    assert versions["review"].startswith("review-1.1+")
 
 
 def test_comparison_shape():

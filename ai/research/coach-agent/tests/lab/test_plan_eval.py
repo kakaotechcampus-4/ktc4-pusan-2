@@ -12,14 +12,14 @@ from typing import Any
 
 import pytest
 
-from coach.config import load_config
-from coach.planner import plan_message
-from coach.schemas import PlanDraft
 from coach_lab import llm as lab_llm
 from coach_lab import plan_eval
 from coach_lab.cache import SqlitePlanCache
 from coach_lab.plan_eval import PLAN_SCENARIOS_DIR, evaluate_plans, plan_request
 from coach_lab.simulator import Scenario, check_expect, run
+from pitch_coach_ai.features.coach.config import load_config
+from pitch_coach_ai.features.coach.planner import plan_message
+from pitch_coach_ai.features.coach.schemas import PlanDraft
 
 PLAN_SCENARIOS = sorted(PLAN_SCENARIOS_DIR.glob("*.json"))
 

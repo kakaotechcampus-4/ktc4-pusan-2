@@ -67,8 +67,7 @@ export function TakesPage() {
         >
           <ul className="flex flex-col">
             {shown.map((t) => {
-              // Take 목록 응답에는 end_reason 이 없어 FAILED 는 모두 "실패" 로 보입니다
-              const status = takeStatusView(t.take_id, t.status, null);
+              const status = takeStatusView(t.take_id, t.status, t.end_reason ?? null);
               return (
                 <li
                   key={t.take_id}

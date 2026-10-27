@@ -350,7 +350,10 @@ function Dimensions({ value }: { value: ReviewResult['dimensions'] }) {
     <Card title="영역별 상태">
       <ul className="grid grid-cols-2 gap-2">
         {(Object.keys(DIMENSION_LABEL) as Dimension[]).map((d) => {
-          const s = DIMENSION_STATUS[value[d]];
+          const status = value[d];
+          const s = Object.hasOwn(DIMENSION_STATUS, status)
+            ? DIMENSION_STATUS[status as DimensionStatus]
+            : DIMENSION_STATUS.NOT_EVALUABLE;
           return (
             <li key={d} className="flex flex-col gap-2 border-b border-line px-0 py-3">
               <span className="text-sm font-bold">{DIMENSION_LABEL[d]}</span>
@@ -454,7 +457,8 @@ function NextMissions({
               <div className="min-w-0">
                 <p className="font-bold">{r.description}</p>
                 <p className="mt-0.5 text-sm text-stone">
-                  {where(r.area, r.slide_number)} · {r.reason}
+                  {where(r.area, r.slide_number)}
+                  {r.reason ? ` · ${r.reason}` : ''}
                 </p>
               </div>
             </li>

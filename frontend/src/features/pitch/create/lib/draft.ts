@@ -19,6 +19,14 @@ export type DraftNode = 'slides' | 'script' | 'criteria';
  */
 export type PaneNode = 'info' | DraftNode;
 
+/** 피치 생성의 단계 순서 — 단계 표시줄과 사이드바가 같이 씁니다 (시안 `pitch-create`) */
+export const STEPS: { node: PaneNode; label: string; optional?: boolean }[] = [
+  { node: 'slides', label: '슬라이드' },
+  { node: 'script', label: '대본' },
+  { node: 'info', label: '발표정보 확인' },
+  { node: 'criteria', label: '평가기준', optional: true },
+];
+
 /** 발표 제목 최대 글자 수. BE 의 `title: StringConstraints(min_length=1, max_length=50)` 과 같습니다 */
 export const MAX_TITLE_CHARS = 50;
 
@@ -82,6 +90,21 @@ export function scriptLength(text: string): number {
 /** 업로드 제한. 목업의 "최대 40MB" */
 export const MAX_SLIDE_BYTES = 40 * 1024 * 1024;
 
+/**
+ * 파일 이름 → 발표 제목. 확장자를 떼고 `_` · `-` 를 띄어 씁니다. BE 제한(50자)에서 자릅니다.
+ * 남는 게 없으면(".pdf") 기본 제목을 씁니다 — 빈 제목은 BE 가 거절합니다.
+ */
+export function titleFromFile(name: string): string {
+  const title = name
+    .replace(/\.pdf$/i, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_TITLE_CHARS)
+    .trim();
+  return title || '새 발표';
+}
+
 export interface SlideVersion {
   version: number;
   /**
@@ -114,13 +137,12 @@ export type UploadedSlides = Required<
  *
  * `upload` 는 서버에 못 올린 것, `invalid` 는 서버가 PDF 를 열지 못해 거절한 것(BE #298 — 깨짐 · 암호),
  * `open` 은 올렸지만 받은 URL 로 PDF 를 못 연 것입니다. `open` 은 BE 가 쪽수를 주지 않을 때만 납니다.
- *
- * `replace` 는 "파일 교체"로 올리는 중인 버전입니다. null 이면 빈 자리에 새로 올리는 것입니다.
+ * 피치를 만들다 실패한 것도 `upload` 입니다 — 같은 파일로 다시 시도하면 피치부터 다시 만듭니다.
  */
 export type SlideUpload =
   | { status: 'idle' }
-  | { status: 'uploading'; file: File; replace: number | null }
-  | { status: 'failed'; file: File; replace: number | null; reason: 'upload' | 'invalid' | 'open' };
+  | { status: 'uploading'; file: File }
+  | { status: 'failed'; file: File; reason: 'upload' | 'invalid' | 'open' };
 
 /**
  * 대본을 서버에 올려 슬라이드로 나누는 진행 상태. 흐름은 `scriptParse.ts` 가 몹니다.
@@ -173,8 +195,8 @@ export interface CriteriaVersion {
   saved: boolean;
   /**
    * 서버 버전 뒤에 사용자가 목록을 고치고 아직 저장하지 않았나. 계약은 고친 표시 기준을 저장하면
-   * 서버가 그 글로 한 번 더 분석해 **같은 버전**으로 저장합니다 (`docs/ai/features/evaluation-criteria.md`
-   * 57 · 282행). 저장하기 전까지 서버(연습)에는 고치기 전 목록이 남아 있습니다.
+   * 서버가 그 글로 한 번 더 분석해 **새 버전**으로 저장합니다 (#532).
+   * 저장하기 전까지 서버(연습)에는 고치기 전 목록이 남아 있습니다.
    */
   edited?: boolean;
   /**

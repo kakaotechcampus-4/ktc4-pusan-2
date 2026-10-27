@@ -653,6 +653,7 @@ class TakeRepository:
                 Take.take_number,
                 Take.started_at,
                 Take.status,
+                Take.end_reason,
                 Take.script_mode,
                 Take.duration_sec,
                 Take.goal_time_sec,

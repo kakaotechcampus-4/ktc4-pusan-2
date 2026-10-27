@@ -3,7 +3,7 @@ import { apiRequest } from './client';
 import type { TakeAbandoned, TakeEndRequest, TakeUpdated } from '@/types/take';
 
 /**
- * 발표 종료. Take 의 시작 · 종료 시각을 BE 에 적습니다 (`PUT /pitches/{pitch_id}/takes/{take_id}`).
+ * 발표 종료. Take 의 종료 시각을 BE 에 적습니다 (`PUT /pitches/{pitch_id}/takes/{take_id}`).
  * 실패하면 P15(재시도)로 보냅니다 — 기록은 브라우저에 남아 있으므로 여기서 잃는 것은 없습니다.
  * BE 가 보낸 필드만 덮어써서 같은 값으로 다시 보내도 결과가 같습니다.
  *

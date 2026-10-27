@@ -17,14 +17,26 @@
 import argparse
 import time
 
-import script_coverage.core as core
+import pitch_coach_ai.features.script_coverage.core as core
 from coverage_lab.datasets import load_script_json, load_take, script_files, take_files
 from coverage_lab.llm import load_settings, structured_llm
 from coverage_lab.results import write_result
 from coverage_lab.usage import UsageLog
-from script_coverage.schemas import AnalyzeRequest, RubricRequest, ScriptSlide, TakeSlide
-from script_coverage.script_analysis.schemas import FinalReview, SlideSemanticAnalysis, SlideUnits
-from script_coverage.stt_evaluation.schemas import SemanticEvaluation, VerifierResult
+from pitch_coach_ai.features.script_coverage.schemas import (
+    AnalyzeRequest,
+    RubricRequest,
+    ScriptSlide,
+    TakeSlide,
+)
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
+    FinalReview,
+    SlideSemanticAnalysis,
+    SlideUnits,
+)
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
+    SemanticEvaluation,
+    VerifierResult,
+)
 
 #: 역할 이름 → 출력 스키마. 이름은 서비스 `settings.LLM_ROLES` 에 더할 역할 이름이다
 ROLES = {

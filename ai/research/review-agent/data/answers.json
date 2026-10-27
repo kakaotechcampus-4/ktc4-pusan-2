@@ -1,0 +1,86 @@
+{
+ "about": "정답 리뷰 (가상 발표). 코치 시나리오(coach-agent/scenarios)의 description · expect 로 발표자에게 실제로 있던 문제를 보고 정했다. 리뷰 결과를 보기 전에 적었다. 시나리오로 정할 수 없는 차원 · 미션은 적지 않는다 (평가에서 빠진다). top_priority 는 부담 1위 PRIORITY 차원이고 null 은 PRIORITY 가 없어야 한다는 뜻이다. 대본 전달도 채점이 없는 묶음이라 content_delivery 는 모두 NOT_EVALUABLE 이다. 실제 리허설 정답은 사람이 단다 (review-agent.md 13절). 이 파일은 AI 가 적은 초안이라 사람 검토가 필요하다.",
+ "scenarios": {
+  "01_baseline_good": {
+   "basis": "문제없는 발표자",
+   "dimensions": {"audience_gaze": "STRENGTH", "script_independence": "STRENGTH", "pacing_rhythm": "STRENGTH", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": null
+  },
+  "02_gaze_effective": {
+   "basis": "35~90초(2번 장) 대본만 봄. 지적 뒤 고쳤지만 이번 Take 의 문제로 남는다. 청중 응시는 대본 응시와 함께 떨어졌을 수 있어 적지 않는다",
+   "dimensions": {"script_independence": "PRIORITY", "pacing_rhythm": "STRENGTH", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": "script_independence"
+  },
+  "03_gaze_gave_up": {
+   "basis": "2번 장 내내 대본만 봄, 코치가 포기",
+   "dimensions": {"script_independence": "PRIORITY", "pacing_rhythm": "STRENGTH", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": "script_independence"
+  },
+  "04_gaze_sensor_unusable": {
+   "basis": "얼굴이 자주 안 잡힘 — 시선은 믿을 수 없어 적지 않는다. 믿을 수 있는 문제가 없으므로 PRIORITY 가 없어야 한다",
+   "dimensions": {"pacing_rhythm": "STRENGTH", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": null
+  },
+  "05_time_behind": {
+   "basis": "느린 발표자(240 CPM)로 장 시간이 늦어짐. 직전 반복 문제도 TIME. 3번 장 시간 미션은 따라잡는지 시나리오로 정할 수 없어 적지 않는다",
+   "dimensions": {"audience_gaze": "STRENGTH", "script_independence": "STRENGTH", "pacing_rhythm": "PRIORITY", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": "pacing_rhythm"
+  },
+  "06_pace_fast": {
+   "basis": "40초부터 420 CPM",
+   "dimensions": {"audience_gaze": "STRENGTH", "script_independence": "STRENGTH", "pacing_rhythm": "PRIORITY", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": "pacing_rhythm"
+  },
+  "07_exam_mode": {
+   "basis": "실전 모드. 2번 장 대본 응시와 빠름이 둘 다 믿을 수 있는 문제 구간으로 남는다. 어느 쪽 부담이 큰지는 시나리오로 정할 수 없다",
+   "dimensions": {"script_independence": "PRIORITY", "pacing_rhythm": "PRIORITY", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"}
+  },
+  "08_filler_frequent": {
+   "basis": "30초부터 군더더기 분당 14회",
+   "dimensions": {"audience_gaze": "STRENGTH", "script_independence": "STRENGTH", "pacing_rhythm": "STRENGTH", "vocal_delivery": "STRENGTH", "fluency": "PRIORITY", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": "fluency"
+  },
+  "09_long_silence": {
+   "basis": "70~90초 말이 멈춤 (20초)",
+   "dimensions": {"audience_gaze": "STRENGTH", "script_independence": "STRENGTH", "pacing_rhythm": "PRIORITY", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": "pacing_rhythm"
+  },
+  "10_audio_dead": {
+   "basis": "오디오만 멈췄고 발표자는 계속 말함 — 발표자에게는 문제가 없다",
+   "dimensions": {"audience_gaze": "STRENGTH", "script_independence": "STRENGTH", "pacing_rhythm": "STRENGTH", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": null
+  },
+  "11_keyword_missing": {
+   "basis": "3번 장 핵심 키워드를 빠뜨림 — 대본 전달도 채점이 없어 내용은 판단 불가, 나머지는 문제없음",
+   "dimensions": {"audience_gaze": "STRENGTH", "script_independence": "STRENGTH", "pacing_rhythm": "STRENGTH", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": null
+  },
+  "12_no_slide_plan": {
+   "basis": "장별 계획이 없고 발표가 제한 시간을 넘김 (시간 초과를 알림)",
+   "dimensions": {"audience_gaze": "STRENGTH", "script_independence": "STRENGTH", "pacing_rhythm": "PRIORITY", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": "pacing_rhythm"
+  },
+  "13_recurring_resolved": {
+   "basis": "직전 반복 문제(2번 장 대본 응시)가 이번엔 없고 미션 목표 안",
+   "dimensions": {"audience_gaze": "STRENGTH", "script_independence": "IMPROVED", "pacing_rhythm": "STRENGTH", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": null,
+   "missions": {"m-gaze-2": "ACHIEVED"}
+  },
+  "14_recurring_persists": {
+   "basis": "직전 반복 문제(3번 장 대본 응시)가 그대로, 3번 장 대본 응시 0.85 로 미션 목표 0.3 을 크게 넘김",
+   "dimensions": {"script_independence": "PRIORITY", "pacing_rhythm": "STRENGTH", "vocal_delivery": "STRENGTH", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": "script_independence",
+   "missions": {"m-gaze-3": "FAILED"}
+  },
+  "15_mixed_burdens": {
+   "basis": "2번 장 내내 빠름(크고 김)이 가장 큰 문제. 3번 장 잠깐 대본 응시 · 군더더기 조금은 크기에 따라 PRIORITY · STABLE 이 갈려 적지 않는다",
+   "dimensions": {"pacing_rhythm": "PRIORITY", "vocal_delivery": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": "pacing_rhythm"
+  },
+  "16_noisy_sensors": {
+   "basis": "오디오가 멀쩡한 4번 장의 작은 목소리만 문제. 센서가 나쁠 때의 시선 · 속도는 믿을 수 없어 적지 않는다",
+   "dimensions": {"vocal_delivery": "PRIORITY", "fluency": "STRENGTH", "content_delivery": "NOT_EVALUABLE"},
+   "top_priority": "vocal_delivery"
+  }
+ }
+}

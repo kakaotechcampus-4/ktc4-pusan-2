@@ -12,7 +12,7 @@
 
 | 내용 | 위치 |
 |---|---|
-| 지켜야 할 결정 · 명령어 · 작업 순서 | [frontend/CLAUDE.md](../../frontend/CLAUDE.md) |
+| 지켜야 할 결정 · 명령어 · 작업 순서 | [frontend/AGENTS.md](../../frontend/AGENTS.md) |
 | 코드 스타일 · 네이밍 | [frontend/FRONTEND_CONVENTION.md](../../frontend/FRONTEND_CONVENTION.md) |
 | 코드만 봐도 아는 컴포넌트 설명 | 코드 |
 
@@ -20,7 +20,7 @@
 
 | 문서 | 담는 것 | 담당 |
 |---|---|---|
-| (아직 없음) | | |
+| [Pitch / Take 데이터 계약 (#570)](pitch-take-contract-570.md) | FE 불일치 처리와 BE 선행 조건 · 검증 결과 | FE |
 
 문서를 추가하면 이 표에 한 줄 넣습니다.
 

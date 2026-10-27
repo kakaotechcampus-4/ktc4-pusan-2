@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from filler.config import ALL_TIERS
-from filler.core import criteria_version
+from pitch_coach_ai.features.filler.config import ALL_TIERS
+from pitch_coach_ai.features.filler.core import criteria_version
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULT = ROOT / "reports" / "results" / "filler_eval.json"

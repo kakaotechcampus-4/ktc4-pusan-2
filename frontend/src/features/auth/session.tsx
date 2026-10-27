@@ -50,7 +50,7 @@ export function RequireSession({
   if (header)
     return (
       // 상단바와 화면이 함께 한 화면 높이를 채웁니다. 화면은 flex-1 로 남은 높이를 받아,
-      // 내용이 짧으면 상단바 높이만큼 스크롤이 생기지 않습니다 (홈)
+      // 내용이 짧으면 상단바 높이만큼 스크롤이 생기지 않습니다.
       <div className="flex min-h-dvh flex-col">
         {header}
         <Outlet />
