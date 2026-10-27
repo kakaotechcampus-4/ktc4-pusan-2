@@ -50,3 +50,13 @@ def delete(db: Session, user: User) -> None:
     """
     repository.delete(db, user)
     db.commit()
+
+
+def lock_for_update(db: Session, user_id: uuid.UUID) -> bool:
+    """같은 사용자의 표시 승인·평점 제출을 직렬화한다. commit은 호출자가 한다."""
+    return repository.lock_for_update(db, user_id)
+
+
+def exists(db: Session, user_id: uuid.UUID) -> bool:
+    """인증 뒤 탈퇴한 경우도 확인하도록 캐시 없이 DB를 읽는다."""
+    return repository.exists(db, user_id)
