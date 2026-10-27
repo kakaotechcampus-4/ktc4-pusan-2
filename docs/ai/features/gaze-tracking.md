@@ -478,7 +478,7 @@ cd web && npm ci
 
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 서버 판정 모듈 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/gaze` | 통과, 소리 크기 기준값 비교 1개는 소리 크기 모듈이 서비스에 올 때까지 건너뜀 |
+| 서버 판정 모듈 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/gaze` | 통과(소리 크기 기준값 비교 포함) |
 | 전체 Python 테스트 (연구 폴더에서) | `uv run python -m pytest` | 기준 구현 · 생성 파일 최신 검사 통과 |
 | 린트 | `uv run ruff check src tests tools experiments` | 지적 없음 |
 | 엔진 · Worker 테스트 | `cd web && npm test` · `npm run typecheck` · `npm run lint` | 엔진(Python 기준 답과 일치) · FE 계약 · 경계 테스트 통과 |
@@ -492,7 +492,7 @@ cd web && npm ci
 
 # 11. 배포
 **어디서 도는가**: 두 곳에 배포된다.
-- **서버 판정 모듈**(`examples/` 포함)은 AI 서비스의 `features/gaze/`에 있다(연구 폴더 `src/gaze/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮겼다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 소리 크기 판정 모듈의 기준값 파일을 서비스의 `features/volume/`에서 먼저 찾는다. 소리 크기 모듈은 아직 서비스에 없어 그 비교 하나는 이유를 보이고 건너뛰며(1 skipped), 소리 크기 모듈이 서비스에 오면 다시 비교한다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
+- **서버 판정 모듈**(`examples/` 포함)은 AI 서비스의 `features/gaze/`에 있다(연구 폴더 `src/gaze/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮겼다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 '말한 1초' 기준값을 소리 크기 판정 모듈의 기준값 파일과 비교한다(`architecture.md` 6-2). 그 파일을 서비스의 `features/volume/`에서 먼저 찾고, 소리 크기가 서비스에 오기 전에는 연구 폴더의 소리 크기 `config.py`와 비교한다. 소리 크기를 서비스로 옮기면 연구 폴더 후보를 지운다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
 - **브라우저 엔진** `web/src/engine/`(원본)은 FE가 `frontend/src/vendor/gaze/`로 Worker · 카메라 화면과 함께 복사해 쓴다. FE는 엔진의 `index.ts` · `contract.ts`만 import하고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. 엔진 안은 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다. 화면(카메라 화면 · 보정 안내)은 FE가 고친다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 있고 아래 '옮긴 뒤 확인' 1을 통과해 옮겼다(2026-10-26). 2(코치 연구 폴더 재생)도 마쳤다(2026-10-26, 코치 연구 폴더 README 7절). 3(FE) · 4(연구 도구와 FE 사본 대조)와 코치 앱 연결은 이어지는 작업이다.
