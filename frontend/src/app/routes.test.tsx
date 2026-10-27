@@ -110,3 +110,28 @@ it('preserves confirmation route, title and header ownership after lazy loading'
   expect(document.title).toBe('대본 확인 | 피치코치');
   expect(host.querySelector('header')).toBeNull();
 });
+
+it('shows welcome to signed-out root visitors after launch and home to signed-in visitors', async () => {
+  state.launchOpen = true;
+  state.signedIn = false;
+  await visit('/?utm_source=share');
+  expect(router!.state.location.pathname).toBe('/welcome');
+  expect(host.textContent).toBe('서비스 소개');
+
+  await visit('/takes?sort=recent#latest');
+  expect(router!.state.location.pathname).toBe('/login');
+  expect(new URLSearchParams(router!.state.location.search).get('next')).toBe(
+    '/takes?sort=recent#latest',
+  );
+
+  await visit('/?auth_error=access_denied');
+  expect(router!.state.location.pathname).toBe('/login');
+  expect(new URLSearchParams(router!.state.location.search).get('auth_error')).toBe(
+    'access_denied',
+  );
+
+  state.signedIn = true;
+  await visit('/');
+  expect(router!.state.location.pathname).toBe('/');
+  expect(host.textContent).toContain('내 피치');
+});
