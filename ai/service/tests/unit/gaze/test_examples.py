@@ -13,9 +13,9 @@ from typing import Any
 
 import pytest
 
-from gaze import core
-from gaze.core import criteria, judge, summarize
-from gaze.schemas import GazeMetrics, IssueCriteria, JudgmentResult
+from pitch_coach_ai.features.gaze import core
+from pitch_coach_ai.features.gaze.core import criteria, judge, summarize
+from pitch_coach_ai.features.gaze.schemas import GazeMetrics, IssueCriteria, JudgmentResult
 
 # 모듈 파일 기준이라 서비스(features/gaze/)로 옮겨도 import 접두어만 바꾸면 된다
 EXAMPLES = Path(core.__file__).parent / "examples"

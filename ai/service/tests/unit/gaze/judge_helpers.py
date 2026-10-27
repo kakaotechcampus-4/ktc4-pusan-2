@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from gaze.config import DEFAULT, GazeConfig
-from gaze.core import judge
-from gaze.schemas import JudgmentResult
+from pitch_coach_ai.features.gaze.config import DEFAULT, GazeConfig
+from pitch_coach_ai.features.gaze.core import judge
+from pitch_coach_ai.features.gaze.schemas import JudgmentResult
 
 CFG = DEFAULT
 

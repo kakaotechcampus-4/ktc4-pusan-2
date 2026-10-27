@@ -6,8 +6,9 @@ import re
 
 import pytest
 
-from gaze.config import DEFAULT, GazeConfig
-from gaze.core import criteria_version, judge
+from pitch_coach_ai.features.gaze.config import DEFAULT, GazeConfig
+from pitch_coach_ai.features.gaze.core import criteria_version, judge
+from pitch_coach_ai.features.gaze.schemas import GazeInput
 
 from .judge_helpers import issue_types, rec, run, secs, span, spoken, totals
 
@@ -41,8 +42,6 @@ def test_same_input_gives_the_same_result():
 
 
 def test_judge_accepts_the_input_model_and_a_dict_alike():
-    from gaze.schemas import GazeInput
-
     raw = {"t_ms": 3000, "since_ms": 2000, "records": secs(("CAMERA", 3))}
     assert judge(GazeInput.model_validate(raw), 3000) == judge(raw, 3000)
 
