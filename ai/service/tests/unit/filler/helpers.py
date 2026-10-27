@@ -8,9 +8,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from filler.config import FillerConfig
-from filler.core import judge
-from filler.schemas import JudgmentResult, TallyItem
+from pitch_coach_ai.features.filler.config import FillerConfig
+from pitch_coach_ai.features.filler.core import judge
+from pitch_coach_ai.features.filler.schemas import JudgmentResult, TallyItem
 
 #: 규칙 테스트가 쓰는 기준값. 지금 config.py 기본값과 같지만, 기준값을 다시 골라도
 #: 규칙 테스트가 깨지지 않게 따로 적는다. 기본값 자체는 test_examples · test_contract 가 본다.

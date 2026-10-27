@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from filler.core import _before, normalize
-from filler.schemas import Word
-from tests.helpers import CFG, PLAIN, gap_case, inputs, run, verdicts, word
+from pitch_coach_ai.features.filler.core import _before, normalize
+from pitch_coach_ai.features.filler.schemas import Word
+
+from .helpers import CFG, PLAIN, gap_case, inputs, run, verdicts, word
 
 GAP = CFG.gap_ms
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.helpers import PLAIN, run, verdicts, word
+from .helpers import PLAIN, run, verdicts, word
 
 PENDING = "뒤 간격을 아직 알 수 없음"
 
