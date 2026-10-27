@@ -5,7 +5,7 @@ import { ApiFailure } from '@/shared/api/tokenStore';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { Mascot } from './Mascot';
 import { InfoBar } from './InfoBar';
-import { loadPitch, PitchNotFound } from './loadPitch';
+import { loadPitch } from './loadPitch';
 import { StepBar } from './StepBar';
 import { VersionRail } from './VersionRail';
 import {
@@ -80,8 +80,7 @@ export function PitchCreatePage() {
 
 /** 피치가 없거나 남의 것 — 다시 시도해도 같습니다. 그 밖(네트워크 · 5xx · PDF 를 못 엶)은 다시 시도합니다 */
 const isMissing = (error: unknown) =>
-  error instanceof PitchNotFound ||
-  (error instanceof ApiFailure && (error.status === 404 || error.status === 403));
+  error instanceof ApiFailure && (error.status === 404 || error.status === 403);
 
 /**
  * P13 피치 수정. **피치 생성 화면을 그대로 씁니다** — 들어올 때 서버의 피치를 읽어 채우는 것만 다릅니다.

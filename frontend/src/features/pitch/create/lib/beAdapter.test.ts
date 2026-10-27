@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { UploadPresentationResponse } from '@/types/presentation';
 import type { ScriptDetail } from '@/types/script';
 import type { StandardTextResponse } from '@/types/standards';
-import type { HomePitch } from '@/types/home';
+import type { PitchDetail } from '@/types/pitch';
 import type { EvaluationDetail } from '@/types/standards';
 import {
   fromEvaluation,
-  fromPitchListItem,
+  fromPitchDetail,
   fromPitchSaved,
   fromScriptCreated,
   fromScriptDetail,
@@ -203,28 +203,28 @@ describe('대본 — 폴링 응답', () => {
   });
 });
 
-describe('수정 화면 — 목록 한 항목 · 저장된 평가기준', () => {
-  const item: HomePitch = {
+describe('수정 화면 — 발표 기본정보 · 저장된 평가기준', () => {
+  const item: PitchDetail = {
     pitch_id: 'p1',
-    pitch_title: '캡스톤 최종 발표',
-    pitch_time: 600,
-    thumbnail_url: null,
+    title: '캡스톤 최종 발표',
+    time_limit_sec: 600,
+    lower_deviation: 15,
+    upper_deviation: 30,
     presentation_date: '2026-10-30',
-    takes: [],
   };
 
-  it('목록에는 허용오차가 없어 모른다(null)로 둔다 — 0 으로 채우면 저장 때 원래 값을 덮어쓴다', () => {
-    expect(fromPitchListItem(item)).toEqual({
+  it('단건 응답의 허용오차를 보존한다', () => {
+    expect(fromPitchDetail(item)).toEqual({
       title: '캡스톤 최종 발표',
       presentationDate: '2026-10-30',
       timeLimitSec: 600,
-      lowerToleranceSec: null,
-      upperToleranceSec: null,
+      lowerToleranceSec: 15,
+      upperToleranceSec: 30,
     });
   });
 
   it('발표일이 없으면 빈 문자열이다 (생성 화면과 같은 "안 정함")', () => {
-    expect(fromPitchListItem({ ...item, presentation_date: null }).presentationDate).toBe('');
+    expect(fromPitchDetail({ ...item, presentation_date: null }).presentationDate).toBe('');
   });
 
   it('평가기준은 저장한 순서(order)대로 둔다', () => {

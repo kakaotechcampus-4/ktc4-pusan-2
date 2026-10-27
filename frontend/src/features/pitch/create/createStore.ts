@@ -384,6 +384,12 @@ export const useCreateStore = create<CreateState>((set) => ({
       // 화면에서만 자르면 보이지 않는 기준으로 채점됩니다. 많으면 목록이 스크롤됩니다
       const items = standards.map((text) => ({ id: crypto.randomUUID(), text }));
       const target = s.draft.criteria.find((v) => v.version === version);
+      // 요청을 보낸 뒤 다른 화면을 열었다면 그 화면의 선택은 유지합니다.
+      const selectedVersion =
+        s.node === 'criteria' &&
+        (s.version === null || s.version === version || s.version === savedVersion)
+          ? savedVersion
+          : s.version;
 
       // 정리하면 서버에 새 버전으로 저장됩니다 (#463). 고칠 수는 있고, 고치면 다시 저장합니다
       if (!target || target.saved) {
@@ -404,8 +410,7 @@ export const useCreateStore = create<CreateState>((set) => ({
               { version: savedVersion, items, saved: true, edited: false, sourceText, exceptText },
             ].sort((a, b) => a.version - b.version),
           },
-          node: 'criteria' as const,
-          version: savedVersion,
+          version: selectedVersion,
         };
       }
       return {
@@ -428,7 +433,7 @@ export const useCreateStore = create<CreateState>((set) => ({
             )
             .sort((a, b) => a.version - b.version),
         },
-        version: savedVersion,
+        version: selectedVersion,
       };
     }),
 
@@ -461,11 +466,13 @@ export const useCreateStore = create<CreateState>((set) => ({
       draft: {
         ...s.draft,
         criteria: [
-          ...s.draft.criteria.map((v) =>
-            v.version === sourceVersion
-              ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
-              : v,
-          ),
+          ...s.draft.criteria
+            .filter((v) => v.saved || v.version !== version)
+            .map((v) =>
+              v.version === sourceVersion
+                ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
+                : v,
+            ),
           {
             version,
             saved: true,

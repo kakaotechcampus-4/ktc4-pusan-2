@@ -93,6 +93,18 @@ const notFound = () => HttpResponse.json({ code: 'PITCH_NOT_FOUND' }, { status: 
 
 /** ★ 업로드 · 대본 목보다 먼저 와야 합니다 — 그쪽은 모르는 id 에 404 를 돌려줍니다 */
 export const pitchEditHandlers = [
+  http.get('*/api/pitches/:pitchId', ({ params }) => {
+    const item = homeFixture.pitches.find((p) => p.pitch_id === params.pitchId);
+    if (!item) return HttpResponse.json({ code: 'PITCH_NOT_FOUND' }, { status: 404 });
+    return HttpResponse.json({
+      pitch_id: item.pitch_id,
+      title: item.pitch_title,
+      time_limit_sec: item.pitch_time,
+      presentation_date: item.presentation_date,
+      lower_deviation: 15,
+      upper_deviation: 30,
+    });
+  }),
   http.get('*/api/pitches/:pitchId/resources', ({ params }) => {
     if (params.pitchId !== PITCH_ID) return notFound();
     const body: PitchResources = {

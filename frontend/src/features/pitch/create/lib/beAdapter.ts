@@ -1,5 +1,4 @@
-import type { HomePitch } from '@/types/home';
-import type { PitchRequest, PitchSavedResponse } from '@/types/pitch';
+import type { PitchDetail, PitchRequest, PitchSavedResponse } from '@/types/pitch';
 import type { UploadPresentationResponse } from '@/types/presentation';
 import type { ScriptCreated, ScriptDetail } from '@/types/script';
 import type { EvaluationDetail, StandardTextResponse } from '@/types/standards';
@@ -141,19 +140,14 @@ export function fromScriptDetail(detail: ScriptDetail): ScriptProgress {
 /* 수정 화면 불러오기 — GET /pitches · /resources · 버전마다 상세          */
 /* ------------------------------------------------------------------ */
 
-/**
- * 목록 한 항목 → 발표정보. 피치 하나를 읽는 API 가 없어 목록(`PitchListItemDTO`)에서 찾습니다.
- *
- * ★ 목록에는 허용오차가 없습니다. 모른다는 뜻으로 null 을 둡니다 — 0 으로 채우면 저장할 때
- *   서버의 원래 값을 덮어씁니다 (`infoReady`). BE 에 `GET /pitches/{id}` 를 요청해 두었습니다.
- */
-export function fromPitchListItem(item: HomePitch): InfoForm {
+/** 허용오차를 포함한 단건 응답 → 발표정보. 저장된 값을 그대로 유지합니다. */
+export function fromPitchDetail(item: PitchDetail): InfoForm {
   return {
-    title: item.pitch_title,
+    title: item.title,
     presentationDate: item.presentation_date ?? '',
-    timeLimitSec: item.pitch_time,
-    lowerToleranceSec: null,
-    upperToleranceSec: null,
+    timeLimitSec: item.time_limit_sec,
+    lowerToleranceSec: item.lower_deviation,
+    upperToleranceSec: item.upper_deviation,
   };
 }
 
