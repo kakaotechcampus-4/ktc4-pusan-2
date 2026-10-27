@@ -18,11 +18,15 @@ from pathlib import Path
 
 import pandas as pd
 
-from script_coverage.core import rescore_evaluation, take_scores
-from script_coverage.schemas import Answer, RescoreRequest
-from script_coverage.shared.rubric import EvaluationRubric
-from script_coverage.stt_evaluation.confirm import CONFIRM_TEXT
-from script_coverage.stt_evaluation.schemas import ConfirmAnswer, SlideEvaluation, Take
+from pitch_coach_ai.features.script_coverage.core import rescore_evaluation, take_scores
+from pitch_coach_ai.features.script_coverage.schemas import Answer, RescoreRequest
+from pitch_coach_ai.features.script_coverage.shared.rubric import EvaluationRubric
+from pitch_coach_ai.features.script_coverage.stt_evaluation.confirm import CONFIRM_TEXT
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
+    ConfirmAnswer,
+    SlideEvaluation,
+    Take,
+)
 
 from .paths import DB_PATH
 

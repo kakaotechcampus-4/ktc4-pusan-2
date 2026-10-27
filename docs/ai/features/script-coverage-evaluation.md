@@ -88,20 +88,23 @@ flowchart LR
 # 4. 구성과 폴더
 ## 4-1. 폴더 트리
 ```
-ai/research/script-coverage-evaluation/
-├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock                 Python 3.12. 코어 의존성 pydantic · kiwipiepy · scikit-learn, 연구 전용 langchain-openai 등
-├─ src/script_coverage/                     코어 → 서비스 features/script_coverage/로 폴더째 옮긴다
+ai/service/                                 AI 서비스 (배포 단위)
+├─ src/pitch_coach_ai/features/script_coverage/   코어 (연구 폴더에서 폴더째 옮김)
 │   ├─ schemas.py · core.py · config.py · version.py   모듈 최상위 규약 파일 (API 요청 · 응답, 세 진입 함수, 설정 모음 · 해시, 버전)
 │   ├─ examples/                            세 API 요청 · 응답 예시 (계약 테스트가 읽는다)
 │   ├─ shared/                              두 단계가 같이 쓰는 도구 (글 정리 · 형태소 · 한글 수 읽기 · 사실 뽑기 · 평가 기준 모양 · LLM 단계)
 │   ├─ script_analysis/                     1단계: 대본 → 평가 기준 (prompts/ 포함)
 │   └─ stt_evaluation/                      2 · 3단계: STT → 채점, 확인 뒤 다시 계산 (prompts/ 포함)
+└─ tests/unit/script_coverage/              코어 단위 · 계약 · 경계 테스트
+
+ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 않는다)
+├─ README.md                                폴더 · 파일 지도(코어 포함), 실행법, 실험 결과
+├─ pyproject.toml · uv.lock                 Python 3.12. 서비스를 editable로 설치해 코어를 쓴다, 연구 전용 langchain-openai 등
 ├─ src/coverage_lab/                        실험 도구 (LLM 연결 · 캐시 · SQLite · 지표). 연구에만 남는다
-├─ experiments/                             01 ~ 06 실행 스크립트 (번호 = 실행 순서)
+├─ experiments/                             01 ~ 09 실행 스크립트 (번호 = 실행 순서)
 ├─ reports/                                 보고용 노트북 + results/*.json (지표)
 ├─ data/virtual/                            가상 대본 · 연습 STT · 정답 라벨 (커밋)
-└─ tests/{unit,lab,live}/                   코어 · 실험 도구 · 실제 LLM
+└─ tests/{lab,live}/                        실험 도구 · 실제 LLM
 ```
 하위 패키지 구조(`shared` · `script_analysis` · `stt_evaluation`)는 그대로 두고, 모듈 최상위에 공통 규약 파일(`architecture.md` 8절)을 둔다. 파일마다의 역할은 저장소 `README.md` 3절의 파일 지도에 있다.
 
@@ -121,7 +124,7 @@ ai/research/script-coverage-evaluation/
 ## 4-3. 규칙과 이유
 | 규칙 | 이유 |
 |---|---|
-| 패키지 안에서는 상대 import만, 파일 · DB · 네트워크 · 환경변수 · 시계를 쓰지 않는다. LLM과 캐시는 인자로 받는다. `tests/unit/test_core_boundary.py`가 코드를 읽어 검사한다 | 서비스로 폴더째 옮겨도 고칠 것이 없고, 같은 입력(LLM 답 포함)에 같은 결과가 나온다 |
+| 패키지 안에서는 상대 import만, 파일 · DB · 네트워크 · 환경변수 · 시계를 쓰지 않는다. LLM과 캐시는 인자로 받는다. 서비스 `tests/unit/script_coverage/test_core_boundary.py`가 코드를 읽어 검사한다 | 서비스로 폴더째 옮겨도 고칠 것이 없고, 같은 입력(LLM 답 포함)에 같은 결과가 나온다 |
 | `script_analysis`와 `stt_evaluation`은 서로 import하지 않고 공용은 `shared/`에만 둔다. 두 단계 사이의 약속(평가 기준 모양)은 `shared/rubric.py` 한 곳이다 | 한쪽을 고쳐도 다른 쪽에 숨은 영향이 없다 |
 | 숫자 · 이름 · 문장 짝짓기 · 점수는 코드가, 의미 판단(핵심인지, 그 뜻을 전달했는지)은 LLM이 한다. LLM은 점수를 매기지 않는다 | 같은 판정에 같은 점수. 숫자는 입력에 있는 것만 쓴다(`architecture.md` 0-2) |
 | 프롬프트는 `.py` 상수다 | 프롬프트 · 출력 스키마 · 모델 이름이 설정 해시에 들어간다. 텍스트 파일은 git이 줄바꿈을 바꿀 수 있어 해시가 달라진다 |
@@ -591,18 +594,18 @@ uv sync
 
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 (실제 LLM 제외) | `uv run python -m pytest` | 모두 통과, live 2개 제외 |
-| 코어만 · 실험 도구만 | `uv run python -m pytest tests/unit` · `tests/lab` | 통과 |
+| 코어 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/script_coverage` | 통과 |
+| 실험 도구 테스트 (연구 폴더에서, 실제 LLM 제외) | `uv run python -m pytest` | 통과, live 2개 제외 |
 | 실제 LLM으로 장 하나 끝까지 (과금) | `uv run python -m pytest -m live` | 평가 기준 3번 + 채점 1~2번 호출, 유효한 결과 |
 | 평가 기준 만들기 → 채점 → 정확도 | `uv run python experiments/01_build_rubrics.py` → `04_evaluate_takes.py` → `05_accuracy.py` | `reports/results/stt_accuracy.json` (02 · 03 · 06은 선택 · 반복 측정, 과금) |
-| API 예시 다시 만들기 (과금 없음, 연구 캐시 재생) | `uv run python -m coverage_lab.examples` | `src/script_coverage/examples/`의 세 API 요청 · 응답이 다시 만들어지고 계약 테스트가 통과 |
+| API 예시 다시 만들기 (과금 없음, 연구 캐시 재생) | `uv run python -m coverage_lab.examples` | 서비스 `features/script_coverage/examples/`의 세 API 요청 · 응답이 다시 만들어지고 계약 테스트가 통과 |
 | 장 수별 소요 시간 (과금) | 단일 요청 `uv run python experiments/07_timing.py --grid 30:8 30:12 --call-timeout 20 --retry --analyze --name timing_20s`, 동시 요청 `... --grid 20:12 --call-timeout 20 --retry --concurrent 4 --name timing_20s_concurrent`, 상한을 건 동시 요청 `... --grid 30:12 --call-timeout 20 --retry --concurrent 2 --cap <역할=상한 ...> --name timing_capped_concurrent2` | `reports/results/<name>.json` (장 수 · 동시 개수별 걸린 시간 · 최초 · 재시도 뒤 만든 장 · 호출 수) |
 
 - 계약 테스트: 고정된 가짜 LLM으로 `examples/`의 요청을 코어에 넣어 응답이 기대 응답과 같은지 본다(기대 출력은 반올림 없이 저장, 실수는 허용 오차). 세 API의 요청 · 응답, 일부 장 실패, 평가 기준이 없는 장, 확인 답 반영을 넣는다.
 - 단위 테스트가 볼 것: `slide_numbers` 선택, 장별 실패 → `failed` 모양, 모두 실패, `scored_ratio`(analyze · rescore, `failed` 있음 · 없음), 다시 계산의 누적 답, 답 없는 다시 계산, 같은 입력 같은 결과.
 
 # 11. 배포
-**어디서 도는가**: 코어 `src/script_coverage/`(`examples/` · `prompts/` 포함)를 AI 서비스의 `features/script_coverage/`로 폴더째 옮기고, 라우터가 세 엔드포인트를 연다. 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/`만 `tests/unit/script_coverage/`로 옮긴다(import 접두어를 바꾸고, `test_core_boundary.py`의 코어 폴더 경로를 새 위치에 맞춘다. `test_examples.py`는 이미 예시를 패키지 위치로 찾는다). 연구 도구(`coverage_lab`)를 쓰는 `tests/lab/`은 연구 폴더에 남긴다. 실험 도구(`coverage_lab`) · 실험 · 노트북은 옮기지 않는다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
+**어디서 도는가**: 코어(`examples/` · `prompts/` 포함)는 AI 서비스의 `features/script_coverage/`에 있고(연구 폴더 `src/script_coverage/`에서 폴더째 옮겼다), 라우터가 세 엔드포인트를 연다. 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/`만 `tests/unit/script_coverage/`로 옮겼다(import 접두어를 바꾸고, `test_core_boundary.py`의 코어 폴더 경로를 새 위치에 맞춘다. `test_examples.py`는 이미 예시를 패키지 위치로 찾는다). 연구 도구(`coverage_lab`)를 쓰는 `tests/lab/`은 연구 폴더에 남긴다. 실험 도구(`coverage_lab`) · 실험 · 노트북은 옮기지 않는다.
 
 | 라우터 · 서비스가 할 일 | 설명 |
 |---|---|
