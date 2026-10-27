@@ -11,12 +11,19 @@ from pitch_coach_backend.module.pitch.dependencies import OwnedPitch
 from pitch_coach_backend.module.take.dependencies import OwnedTake
 from pitch_coach_backend.module.take.dto import (
     CalibrationDTO,
+    ConfirmationsDTO,
+    ConfirmationsRequestDTO,
+    ConfirmationsSentDTO,
     TakeHistoryResponseDTO,
     TakeInitRequestDTO,
     TakeReportDTO,
     TakeUpdateRequestDTO,
 )
 from pitch_coach_backend.module.take.exception import TakeInProgress
+from pitch_coach_backend.module.take.service.confirmation import (
+    get_confirmations_service,
+    send_confirmations_service,
+)
 from pitch_coach_backend.module.take.service.lifecycle import close_take_service, mark_ended
 from pitch_coach_backend.module.take.service.take import (
     create_calibration_service,
@@ -114,3 +121,22 @@ def get_take_report(
     db: Annotated[Session, Depends(get_db)],
 ):
     return get_take_report_service(db, take_id, current_user.id)
+
+@takes_router.get("/{take_id}/confirmations", response_model=ConfirmationsDTO)
+def get_confirmations(
+    take_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+):
+    # 확인 대기가 아니면(이미 넘어감) 빈 항목과 지금 단계를 준다. FE 는 리포트로 넘어간다
+    return get_confirmations_service(db, take_id, current_user.id)
+
+@takes_router.post("/{take_id}/confirmations", response_model=ConfirmationsSentDTO)
+async def send_confirmations(
+    take_id: uuid.UUID,
+    current_user: CurrentUser,
+    body: ConfirmationsRequestDTO,
+):
+    # 빈 answers 는 건너뛰기다. 답은 /takes/rescore 로 반영한 뒤 리뷰로 넘긴다
+    stage = await send_confirmations_service(take_id, current_user.id, body.answers)
+    return ConfirmationsSentDTO(analysis_stage=stage)

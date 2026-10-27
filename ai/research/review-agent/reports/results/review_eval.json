@@ -1,0 +1,1693 @@
+{
+ "feature_version": "review-1.1",
+ "criteria_version": "review-1.1+99c57adfbbb0",
+ "model": "openai/gpt-6-luna",
+ "data": {
+  "takes": 48,
+  "scenarios": 16,
+  "answers": "data/answers.json"
+ },
+ "results": {
+  "all": {
+   "takes": 48,
+   "dimension_accuracy": 0.9921,
+   "dimension_checked": 252,
+   "top_priority_accuracy": 0.9333,
+   "top_priority_checked": 45,
+   "mission_accuracy": 1.0,
+   "mission_checked": 6,
+   "false_strengths_per_take": 0.0,
+   "recurring_priority_rate": null,
+   "llm": {
+    "calls": 48,
+    "schema_valid_rate": 0.9375,
+    "fallback_reasons": {
+     "LLM_TIMEOUT": 3
+    },
+    "errors": {
+     "OpenAITimeoutError": 3
+    },
+    "numbers": 416,
+    "numbers_not_in_input": 0,
+    "numbers_not_in_input_per_take": 0.0,
+    "sentences": 330,
+    "sentences_failed_number_check": 0,
+    "output_chars_mean": 633,
+    "output_chars_max": 856,
+    "latency_ms_median": 7627,
+    "latency_ms_max": 24576,
+    "uncached_calls": 45
+   }
+  },
+  "clean": {
+   "takes": 16,
+   "dimension_accuracy": 0.9881,
+   "dimension_checked": 84,
+   "top_priority_accuracy": 0.9333,
+   "top_priority_checked": 15,
+   "mission_accuracy": 1.0,
+   "mission_checked": 2,
+   "false_strengths_per_take": 0.0,
+   "recurring_priority_rate": null,
+   "llm": {
+    "calls": 16,
+    "schema_valid_rate": 0.9375,
+    "fallback_reasons": {
+     "LLM_TIMEOUT": 1
+    },
+    "errors": {
+     "OpenAITimeoutError": 1
+    },
+    "numbers": 129,
+    "numbers_not_in_input": 0,
+    "numbers_not_in_input_per_take": 0.0,
+    "sentences": 106,
+    "sentences_failed_number_check": 0,
+    "output_chars_mean": 610,
+    "output_chars_max": 706,
+    "latency_ms_median": 7185,
+    "latency_ms_max": 24567,
+    "uncached_calls": 15
+   }
+  },
+  "noisy": {
+   "takes": 16,
+   "dimension_accuracy": 1.0,
+   "dimension_checked": 84,
+   "top_priority_accuracy": 0.8667,
+   "top_priority_checked": 15,
+   "mission_accuracy": 1.0,
+   "mission_checked": 2,
+   "false_strengths_per_take": 0.0,
+   "recurring_priority_rate": null,
+   "llm": {
+    "calls": 16,
+    "schema_valid_rate": 0.9375,
+    "fallback_reasons": {
+     "LLM_TIMEOUT": 1
+    },
+    "errors": {
+     "OpenAITimeoutError": 1
+    },
+    "numbers": 151,
+    "numbers_not_in_input": 0,
+    "numbers_not_in_input_per_take": 0.0,
+    "sentences": 112,
+    "sentences_failed_number_check": 0,
+    "output_chars_mean": 657,
+    "output_chars_max": 833,
+    "latency_ms_median": 7692,
+    "latency_ms_max": 24576,
+    "uncached_calls": 15
+   }
+  },
+  "harsh": {
+   "takes": 16,
+   "dimension_accuracy": 0.9881,
+   "dimension_checked": 84,
+   "top_priority_accuracy": 1.0,
+   "top_priority_checked": 15,
+   "mission_accuracy": 1.0,
+   "mission_checked": 2,
+   "false_strengths_per_take": 0.0,
+   "recurring_priority_rate": null,
+   "llm": {
+    "calls": 16,
+    "schema_valid_rate": 0.9375,
+    "fallback_reasons": {
+     "LLM_TIMEOUT": 1
+    },
+    "errors": {
+     "OpenAITimeoutError": 1
+    },
+    "numbers": 136,
+    "numbers_not_in_input": 0,
+    "numbers_not_in_input_per_take": 0.0,
+    "sentences": 112,
+    "sentences_failed_number_check": 0,
+    "output_chars_mean": 631,
+    "output_chars_max": 856,
+    "latency_ms_median": 7409,
+    "latency_ms_max": 24548,
+    "uncached_calls": 15
+   }
+  }
+ },
+ "cases": [
+  {
+   "case": "01_baseline_good__clean",
+   "scenario": "01_baseline_good",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 8437,
+    "output_chars": 543,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 5,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "01_baseline_good__harsh",
+   "scenario": "01_baseline_good",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7106,
+    "output_chars": 548,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 5,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "01_baseline_good__noisy",
+   "scenario": "01_baseline_good",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 8753,
+    "output_chars": 583,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 6,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "02_gaze_effective__clean",
+   "scenario": "02_gaze_effective",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "script_independence",
+    "predicted": "script_independence"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 5982,
+    "output_chars": 650,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 11,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "02_gaze_effective__harsh",
+   "scenario": "02_gaze_effective",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "script_independence",
+    "predicted": "script_independence"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 6355,
+    "output_chars": 699,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "02_gaze_effective__noisy",
+   "scenario": "02_gaze_effective",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "script_independence",
+    "predicted": "script_independence"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7692,
+    "output_chars": 685,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 11,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "03_gaze_gave_up__clean",
+   "scenario": "03_gaze_gave_up",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "script_independence",
+    "predicted": "script_independence"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7554,
+    "output_chars": 666,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 11,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "03_gaze_gave_up__harsh",
+   "scenario": "03_gaze_gave_up",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "script_independence",
+    "predicted": "script_independence"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 6031,
+    "output_chars": 676,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "03_gaze_gave_up__noisy",
+   "scenario": "03_gaze_gave_up",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "script_independence",
+    "predicted": "script_independence"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 6599,
+    "output_chars": 687,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "04_gaze_sensor_unusable__clean",
+   "scenario": "04_gaze_sensor_unusable",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 4,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7185,
+    "output_chars": 568,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 6,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "04_gaze_sensor_unusable__harsh",
+   "scenario": "04_gaze_sensor_unusable",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 4,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 6633,
+    "output_chars": 538,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 6,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "04_gaze_sensor_unusable__noisy",
+   "scenario": "04_gaze_sensor_unusable",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 4,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": null,
+    "predicted": "script_independence"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 6649,
+    "output_chars": 716,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "05_time_behind__clean",
+   "scenario": "05_time_behind",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 8790,
+    "output_chars": 677,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 13,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "05_time_behind__harsh",
+   "scenario": "05_time_behind",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 23790,
+    "output_chars": 663,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 7,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "05_time_behind__noisy",
+   "scenario": "05_time_behind",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": "LLM_TIMEOUT",
+    "error": "OpenAITimeoutError",
+    "cached": false,
+    "latency_ms": 24576
+   }
+  },
+  {
+   "case": "06_pace_fast__clean",
+   "scenario": "06_pace_fast",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 10094,
+    "output_chars": 648,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 9,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "06_pace_fast__harsh",
+   "scenario": "06_pace_fast",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7265,
+    "output_chars": 505,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 5,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "06_pace_fast__noisy",
+   "scenario": "06_pace_fast",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7231,
+    "output_chars": 571,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 8,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "07_exam_mode__clean",
+   "scenario": "07_exam_mode",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 76,
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 8113,
+    "output_chars": 706,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "07_exam_mode__harsh",
+   "scenario": "07_exam_mode",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 76,
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 22735,
+    "output_chars": 720,
+    "sentences": 10,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "07_exam_mode__noisy",
+   "scenario": "07_exam_mode",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 76,
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 9323,
+    "output_chars": 737,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 13,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "08_filler_frequent__clean",
+   "scenario": "08_filler_frequent",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "PRIORITY",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "fluency",
+    "predicted": "fluency"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7135,
+    "output_chars": 658,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 13,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "08_filler_frequent__harsh",
+   "scenario": "08_filler_frequent",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "PRIORITY",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "fluency",
+    "predicted": "fluency"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7409,
+    "output_chars": 697,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "08_filler_frequent__noisy",
+   "scenario": "08_filler_frequent",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "PRIORITY",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "fluency",
+    "predicted": "fluency"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 8119,
+    "output_chars": 751,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "09_long_silence__clean",
+   "scenario": "09_long_silence",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STABLE",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {
+    "pacing_rhythm": {
+     "answer": "PRIORITY",
+     "predicted": "STABLE"
+    }
+   },
+   "false_strengths": [],
+   "score": 94,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 6076,
+    "output_chars": 467,
+    "sentences": 5,
+    "sentences_failed": 0,
+    "numbers": 4,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "09_long_silence__harsh",
+   "scenario": "09_long_silence",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {
+    "script_independence": {
+     "answer": "STRENGTH",
+     "predicted": "PRIORITY"
+    }
+   },
+   "false_strengths": [],
+   "score": 76,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 9965,
+    "output_chars": 665,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "09_long_silence__noisy",
+   "scenario": "09_long_silence",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 11662,
+    "output_chars": 644,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 10,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "10_audio_dead__clean",
+   "scenario": "10_audio_dead",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 6114,
+    "output_chars": 548,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 5,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "10_audio_dead__harsh",
+   "scenario": "10_audio_dead",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 8187,
+    "output_chars": 520,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 6,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "10_audio_dead__noisy",
+   "scenario": "10_audio_dead",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7469,
+    "output_chars": 535,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 5,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "11_keyword_missing__clean",
+   "scenario": "11_keyword_missing",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": true,
+    "latency_ms": null,
+    "output_chars": 543,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 5,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "11_keyword_missing__harsh",
+   "scenario": "11_keyword_missing",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": true,
+    "latency_ms": null,
+    "output_chars": 548,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 5,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "11_keyword_missing__noisy",
+   "scenario": "11_keyword_missing",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 100,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": true,
+    "latency_ms": null,
+    "output_chars": 583,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 6,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "12_no_slide_plan__clean",
+   "scenario": "12_no_slide_plan",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 6920,
+    "output_chars": 676,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 7,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "12_no_slide_plan__harsh",
+   "scenario": "12_no_slide_plan",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 6715,
+    "output_chars": 557,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 3,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "12_no_slide_plan__noisy",
+   "scenario": "12_no_slide_plan",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 8056,
+    "output_chars": 634,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 10,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "13_recurring_resolved__clean",
+   "scenario": "13_recurring_resolved",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "IMPROVED",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 97,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "missions": {
+    "m-gaze-2": {
+     "answer": "ACHIEVED",
+     "predicted": "ACHIEVED"
+    }
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 5458,
+    "output_chars": 534,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 8,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "13_recurring_resolved__harsh",
+   "scenario": "13_recurring_resolved",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "IMPROVED",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 97,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "missions": {
+    "m-gaze-2": {
+     "answer": "ACHIEVED",
+     "predicted": "ACHIEVED"
+    }
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7480,
+    "output_chars": 569,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 10,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "13_recurring_resolved__noisy",
+   "scenario": "13_recurring_resolved",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "IMPROVED",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 6,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 97,
+   "top_priority": {
+    "answer": null,
+    "predicted": null
+   },
+   "missions": {
+    "m-gaze-2": {
+     "answer": "ACHIEVED",
+     "predicted": "ACHIEVED"
+    }
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7627,
+    "output_chars": 512,
+    "sentences": 6,
+    "sentences_failed": 0,
+    "numbers": 7,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "14_recurring_persists__clean",
+   "scenario": "14_recurring_persists",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "script_independence",
+    "predicted": "script_independence"
+   },
+   "missions": {
+    "m-gaze-3": {
+     "answer": "FAILED",
+     "predicted": "FAILED"
+    }
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7946,
+    "output_chars": 677,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 11,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "14_recurring_persists__harsh",
+   "scenario": "14_recurring_persists",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "script_independence",
+    "predicted": "script_independence"
+   },
+   "missions": {
+    "m-gaze-3": {
+     "answer": "FAILED",
+     "predicted": "FAILED"
+    }
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7403,
+    "output_chars": 708,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "14_recurring_persists__noisy",
+   "scenario": "14_recurring_persists",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "STRENGTH",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 5,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "script_independence",
+    "predicted": "script_independence"
+   },
+   "missions": {
+    "m-gaze-3": {
+     "answer": "FAILED",
+     "predicted": "FAILED"
+    }
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7676,
+    "output_chars": 736,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 12,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "15_mixed_burdens__clean",
+   "scenario": "15_mixed_burdens",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STABLE",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 3,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 82,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 5230,
+    "output_chars": 591,
+    "sentences": 7,
+    "sentences_failed": 0,
+    "numbers": 9,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "15_mixed_burdens__harsh",
+   "scenario": "15_mixed_burdens",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "PRIORITY",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 3,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 76,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 8571,
+    "output_chars": 856,
+    "sentences": 10,
+    "sentences_failed": 0,
+    "numbers": 17,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "15_mixed_burdens__noisy",
+   "scenario": "15_mixed_burdens",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "STRENGTH",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 3,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 88,
+   "top_priority": {
+    "answer": "pacing_rhythm",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 7688,
+    "output_chars": 654,
+    "sentences": 8,
+    "sentences_failed": 0,
+    "numbers": 11,
+    "numbers_not_in_input": []
+   }
+  },
+  {
+   "case": "16_noisy_sensors__clean",
+   "scenario": "16_noisy_sensors",
+   "noise": "clean",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "PRIORITY",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 3,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 76,
+   "top_priority": {
+    "answer": "vocal_delivery",
+    "predicted": "vocal_delivery"
+   },
+   "llm": {
+    "fallback_reason": "LLM_TIMEOUT",
+    "error": "OpenAITimeoutError",
+    "cached": false,
+    "latency_ms": 24567
+   }
+  },
+  {
+   "case": "16_noisy_sensors__harsh",
+   "scenario": "16_noisy_sensors",
+   "noise": "harsh",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "PRIORITY",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 3,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 76,
+   "top_priority": {
+    "answer": "vocal_delivery",
+    "predicted": "vocal_delivery"
+   },
+   "llm": {
+    "fallback_reason": "LLM_TIMEOUT",
+    "error": "OpenAITimeoutError",
+    "cached": false,
+    "latency_ms": 24548
+   }
+  },
+  {
+   "case": "16_noisy_sensors__noisy",
+   "scenario": "16_noisy_sensors",
+   "noise": "noisy",
+   "dimensions": {
+    "audience_gaze": "STRENGTH",
+    "script_independence": "STRENGTH",
+    "pacing_rhythm": "PRIORITY",
+    "vocal_delivery": "PRIORITY",
+    "fluency": "STRENGTH",
+    "content_delivery": "NOT_EVALUABLE"
+   },
+   "dimension_checked": 3,
+   "dimension_errors": {},
+   "false_strengths": [],
+   "score": 76,
+   "top_priority": {
+    "answer": "vocal_delivery",
+    "predicted": "pacing_rhythm"
+   },
+   "llm": {
+    "fallback_reason": null,
+    "error": null,
+    "cached": false,
+    "latency_ms": 21429,
+    "output_chars": 833,
+    "sentences": 10,
+    "sentences_failed": 0,
+    "numbers": 16,
+    "numbers_not_in_input": []
+   }
+  }
+ ]
+}

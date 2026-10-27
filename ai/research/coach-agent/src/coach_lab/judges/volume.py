@@ -15,9 +15,14 @@ import math
 from statistics import fmean, median
 from typing import Any
 
-from coach.config import criteria_version as _criteria_version
-from coach.schemas import IssueCriteria, JudgmentIssue, JudgmentResult, TallyItem
-from coach.vocab import FeedbackType, Issue
+from pitch_coach_ai.features.coach.config import criteria_version as _criteria_version
+from pitch_coach_ai.features.coach.schemas import (
+    IssueCriteria,
+    JudgmentIssue,
+    JudgmentResult,
+    TallyItem,
+)
+from pitch_coach_ai.features.coach.vocab import FeedbackType, Issue
 
 from ._common import HIGHER, LOWER, In, Section, parse, ramp, ratio
 

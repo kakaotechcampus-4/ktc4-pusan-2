@@ -16,6 +16,7 @@ from pitch_coach_backend.module.pitch.dto import (
     ScriptCreatedDTO,
     ScriptCreateDTO,
     ScriptDetailDTO,
+    StandardsSaveRequestDTO,
     StandardTextDTO,
     StandardTextResponseDTO,
     UploadPresentationDTO,
@@ -26,6 +27,7 @@ from pitch_coach_backend.module.pitch.service.pitch import (
     delete_pitch_service,
     get_all_pitches_service,
     get_pitch_datas,
+    get_pitch_info,
     get_prepare_service,
     pitch_timing,
     update_pitch_service,
@@ -42,6 +44,7 @@ from pitch_coach_backend.module.pitch.service.script import (
 from pitch_coach_backend.module.pitch.service.standard import (
     add_pitch_standard_service,
     get_standard_detail,
+    save_pitch_standards_service,
 )
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
@@ -54,6 +57,13 @@ def get_pitches(
     all_pitches = get_all_pitches_service(db, current_user.id)
     return all_pitches
 
+@router.get("/{pitch_id}")
+def get_pitch(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)]
+):
+    each_pitch = get_pitch_info(db, pitch_id)
+    return each_pitch
 
 # 사이드바
 # /api/pitches/{pitch_id}/resources로 변경
@@ -143,6 +153,16 @@ def post_pitch_standard_text(
     standard_text: StandardTextDTO
 ):
     return add_pitch_standard_service(db, pitch_id, standard_text)
+
+# 사용자가 고친 표시 기준 저장. 다시 분석한 문장을 새 버전으로 저장한다
+# (evaluation-criteria.md 12절)
+@router.post("/{pitch_id}/standards", response_model=StandardTextResponseDTO)
+def save_pitch_standards(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)],
+    standards: StandardsSaveRequestDTO,
+):
+    return save_pitch_standards_service(db, pitch_id, standards)
 
 
 # 대본 새 버전. 202: 원문 저장까지만 하고 돌려준다. 슬라이드 분리(AI)는 응답 뒤 백그라운드에서

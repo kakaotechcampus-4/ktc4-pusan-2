@@ -116,7 +116,7 @@ AI는 개인 context를 저장하지 않는다. BE가 사용자 · 발표 · Tak
 | 발표 | 코칭 계획 (응답마다 한 행) | `coaching_plans` (기본 계획 포함, 응답마다 한 행) | `/coach/plan` | 코치 `coaching_plan`. Take를 시작할 때 바탕 값이 지금 것과 같은 행 중 `requested_at`이 가장 늦은 것만 싣는다 | [coach-agent.md](features/coach-agent.md) 12-1 · 12-2 |
 | Take | 목표 시간 · 모드 · 대본 보기 | `takes` (`goal_time_sec` · `mode` · `script_mode`) | FE 입력 (Take를 만들 때) | 코치 `plan.target_ms` · `mode`, finalize `script_mode` | — |
 | Take | Take를 시작할 때 고정하는 값 | `takes` (`mission_ids` · `standard_version` · `raw_data_consent`) | BE (Take 시작 때, 1-3 1번) | 리뷰 `missions`, 코치 `script_used` · 리뷰 `user_criteria`, 기준값 다시 고르기 · 원자료로 다시 판정하기(동의한 Take만) | 1-3, 아래 '원자료 사용 동의' |
-| Take | Take 상태 · 분석 단계 · 재시도 기록 | `takes` (`status` · `analysis_stage` · `analysis_stage_at` · `review_status` · `analysis_hold_reason` · `completed_at` · `coverage_retry_used` · `coverage_rescore_retry_used`) | BE | FE 분석 대기 · 리포트 화면, BE가 재시작할 때 이어 갈 작업 고르기 | 1-3 · 1-7, [script-coverage-evaluation.md](features/script-coverage-evaluation.md) 12-1 (재시도 기록 · 보류 사유) |
+| Take | Take 상태 · 분석 단계 · 재시도 기록 | `takes` (`status` · `analysis_stage` · `analysis_stage_at` · `review_status` · `analysis_hold_reason` · `completed_at` · `coverage_retry_used` · `coverage_rescore_retry_used` · `coverage_requested_at`) | BE | FE 분석 대기 · 리포트 화면, BE가 재시작할 때 이어 갈 작업 고르기 | 1-3 · 1-7, [script-coverage-evaluation.md](features/script-coverage-evaluation.md) 12-1 (재시도 기록 · 보류 사유) |
 | Take | 발표 전 점검 | `calibrations` (`base_level_db` · `face_detected` · `mic_detected` · `gaze_confidence` · `result`) | FE 발표 전 점검 | 코치 `calibration` | [volume.md](features/volume.md) 12-1 (기준 음량), [gaze-tracking.md](features/gaze-tracking.md) 12-1 (보정) |
 | Take | Take 결과 · 대본 전달도 확정 채점 · 리뷰 | `take_ai_results` (`take_id` · `kind` = `TAKE_RESULT` · `SCRIPT_COVERAGE` · `REVIEW` · `payload` · `meta` · `revision`) | `/coach/finalize` · `/takes/analyze` · `/takes/rescore` · `/takes/review` | 리뷰 `take_result` · `script_coverage` · `previous_takes`(`take_number`가 이번 Take보다 작은 `COMPLETED` Take 중 번호가 큰 3개), 코칭 계획 `previous_take_result` · `previous_review`(`source_take_id`의 것) | `(take_id, kind)`마다 하나. `revision`은 그 행의 `payload`를 바꾼 횟수다([script-coverage-evaluation.md](features/script-coverage-evaluation.md) 12-1). [coach-agent.md](features/coach-agent.md) · [script-coverage-evaluation.md](features/script-coverage-evaluation.md) · [review-agent.md](features/review-agent.md) 12-1 |
 | Take | 대본 전달도 병합 후보 (BE 내부용) | `take_ai_results` (`take_id` · `kind`=`SCRIPT_COVERAGE_PENDING` · `payload`) | BE (재채점한 장을 최초 채점에 병합) | `/takes/rescore`의 복구 입력. FE·리뷰·결과 조회에는 확정 채점으로 제공하지 않는다 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) 12-1 · 12-2, 이 문서 1-7 |
@@ -243,7 +243,7 @@ sequenceDiagram
 
 **BE가 재시작할 때**: BE는 시작할 때 Take 상태가 `ANALYZING`인 Take를 `analysis_stage`부터 이어 간다. `analysis_hold_reason`이 null이 아닌 Take는 빼고(사람의 복구를 기다린다), 재시도는 1-7의 재시도 기록 칸으로 남은 한도만 쓴다.
 - `FINALIZING`: 진행 중 상태(`coach_state`)가 없으므로 `replay`를 붙여 finalize를 부른다(2절 '복구').
-- `SCORING`: 저장된 것을 보고 1-7의 다음 걸음부터 한다. 확정본(`SCRIPT_COVERAGE`)이 없으면 `/takes/analyze`를 남은 한도 안에서 부르고, 병합 후보(`SCRIPT_COVERAGE_PENDING`)가 있으면 analyze를 다시 부르지 않고 그 후보와 고정 rubric으로 병합 rescore를 남은 한도 안에서 부른다. `coverage_rescore_retry_used`가 이미 true인데 결과를 반영하지 못했으면 다시 부르지 않고 후보 · 확정본을 보존한 채 `COVERAGE_RESCORE_FAILED`로 보류한다. 확정본만 있으면 허용 오류 장이 남았고 `coverage_retry_used`가 false일 때만 부분 재시도를 하고, 아니면 확인 · 리뷰로 간다.
+- `SCORING`: 앞 프로세스의 채점 작업 표식(`coverage_requested_at`, 1-7)을 이어받은 뒤 저장된 것을 보고 1-7의 다음 걸음부터 한다. 확정본(`SCRIPT_COVERAGE`)이 없으면 `/takes/analyze`를 남은 한도 안에서 부르고, 병합 후보(`SCRIPT_COVERAGE_PENDING`)가 있으면 analyze를 다시 부르지 않고 그 후보와 고정 rubric으로 병합 rescore를 남은 한도 안에서 부른다. `coverage_rescore_retry_used`가 이미 true인데 결과를 반영하지 못했으면 다시 부르지 않고 후보 · 확정본을 보존한 채 `COVERAGE_RESCORE_FAILED`로 보류한다. 확정본만 있으면 허용 오류 장이 남았고 `coverage_retry_used`가 false일 때만 부분 재시도를 하고, 아니면 확인 · 리뷰로 간다.
 - `AWAITING_CONFIRMATION`: 그 단계의 `analysis_stage_at`부터 10분이 지날 때까지 확인 답을 기다린다(이미 지났으면 바로 리뷰로).
 - `REVIEWING`: `/takes/review`를 다시 부른다.
 
@@ -318,7 +318,7 @@ BE와 FE 사이의 계약이고, AI 입력의 출처라 여기에 둔다. BE가 
 | 슬라이드 | WS `slide` (Take 시작 · 장을 넘길 때마다 · 이어 갈 때, 1-4). `metrics.slide_number`는 참고값 | `take_slide_events`에 저장하고, 요청 시각 이하의 가장 늦은 이벤트를 `inputs.slide`로 싣는다. 종료 뒤 이벤트 전체로 확정 전사를 장 구간으로 나누고 `replay.slides`를 만든다(1-3) | `timing.judge`, `/takes/analyze` | `take_slide_events` |
 | 실시간 코칭 | WS `coach`를 받아 피드백(글자) · 상태 표시 | FE `metrics`를 받을 때마다(`buffered`는 빼고) `/coach/evaluate`. `coach_state`는 진행 중 상태로, 이벤트(`INTERVENTION` 포함)는 `coach_events`로. `COACHING` 모드에서 `INTERVENE`이거나 상태 표시가 바뀌면 WS `coach` | `/coach/evaluate` | 진행 중 `coach_state`, `coach_events` |
 | Take 결과 | 종료 (WS `stop`, 자동 종료면 `auto_end`를 받음) | Deepgram을 닫아 마지막 확정 단어를 받고 FE에 `closed`를 보낸 뒤, 백그라운드로 `/coach/finalize`(마지막 창 포함, 409면 `replay`를 붙여 다시) | `/coach/finalize` | `take_ai_results` (`TAKE_RESULT`), `takes.duration_sec` · `analysis_stage`, `take_summaries` 측정 칸 |
-| 대본 전달도 채점 · 확인 | 확인 화면에서 항목마다 `as_script` · `as_stt` 답 (REST) | 백그라운드로 `/takes/analyze`를 부른다. 최초 성공본을 저장하고 허용 오류 장만 1회 다시 채점하며, 새 성공 장이 있을 때만 병합 후보를 보존하고 답 없이 `/takes/rescore`로 Take 값을 받는다(1-7). rescore가 끝내 실패하면 확정본·후보를 보존하고 리뷰를 보류한다. 확인할 것이 있으면 FE에 알리고, 답을 받으면 `/takes/rescore`. 답은 리뷰를 부르기 전까지만 받고(채점 · 리뷰 · 미션이 서로 다른 채점을 바탕으로 남지 않게), 같은 답이 두 번 오면 한 번만 반영한다 | `/takes/analyze` · `/takes/rescore` | `take_ai_results` (`SCRIPT_COVERAGE`, rescore 성공 때만 확정본 교체하고 `revision`을 올림; `SCRIPT_COVERAGE_PENDING`, 병합 후보), `take_summaries.speak_accuracy`, `takes` (`coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason`) |
+| 대본 전달도 채점 · 확인 | 확인 화면에서 항목마다 `as_script` · `as_stt` 답 (REST) | 백그라운드로 `/takes/analyze`를 부른다. 최초 성공본을 저장하고 허용 오류 장만 1회 다시 채점하며, 새 성공 장이 있을 때만 병합 후보를 보존하고 답 없이 `/takes/rescore`로 Take 값을 받는다(1-7). rescore가 끝내 실패하면 확정본·후보를 보존하고 리뷰를 보류한다. 확인할 것이 있으면 FE에 알리고, 답을 받으면 `/takes/rescore`. 답은 리뷰를 부르기 전까지만 받고(채점 · 리뷰 · 미션이 서로 다른 채점을 바탕으로 남지 않게), 같은 답이 두 번 오면 한 번만 반영한다 | `/takes/analyze` · `/takes/rescore` | `take_ai_results` (`SCRIPT_COVERAGE`, rescore 성공 때만 확정본 교체하고 `revision`을 올림; `SCRIPT_COVERAGE_PENDING`, 병합 후보), `take_summaries.speak_accuracy`, `takes` (`coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason` · `coverage_requested_at`) |
 | 리뷰 | 리포트 화면 (REST 조회) | 채점 · 확인이 끝나면(확인을 건너뛰거나 화면을 떠나거나 확인을 기다린 지 10분이 지나도) 백그라운드로 `/takes/review`. 리뷰 · 미션을 저장하고 `take_summaries`의 `summary` · `score`를 채운다(미션 판정은 행의 `take_id`가 이 Take일 때만 덮는다. 끝내 실패하면 1-3) | `/takes/review` | `take_ai_results` (`REVIEW`), `take_summaries`, `missions`, `takes` (`review_status` · `completed_at`) |
 | 다음 Take 준비 | — | 리뷰를 저장한 직후(리뷰가 끝내 실패해도 `previous_review` null로) 백그라운드로 `/coach/plan`. 응답마다 한 행을 넣는다 | `/coach/plan` | `coaching_plans` |
 
@@ -337,6 +337,7 @@ BE와 FE 사이의 계약이고, AI 입력의 출처라 여기에 둔다. BE가 
 
 **최초 채점과 병합 후보**
 - 최초 호출 또는 허용된 전체 재시도에서 처음 받은 200의 완전한 payload·meta와 요약을 확정본으로 저장한다. 전체 재시도에서 받은 200의 failed에는 추가 재시도를 하지 않는다. Take별 최초 analyze와 허용 재시도는 하나의 작업으로 실행한다. 최초 저장도 Take별 직렬화에 포함하고, 확정본이 없으며 응답이 유효하고 리뷰 전일 때만 조건부 저장한다. 중복·시간 제한을 넘긴 응답으로 기존 확정본·meta·요약을 덮지 않는다. 새 성공 장을 최초 evaluations에 합치고, 남은 failed 전체와 처음 채점에 쓴 rubric을 rescore에 보낸다. Take별 병합·확인 답·리뷰 전환은 직렬화하고 입력 저장본이 최신이며 리뷰 전일 때만 반영한다. 기존 확인 답을 보존한다.
+- Take별 채점 작업은 `takes.coverage_requested_at`(timestamptz, nullable. 그 작업을 시작한 시각이자 표식)을 잡은 작업 하나만 한다. BE는 `SCORING`이고 보류가 아니며 표식이 null이거나 BE가 정한 기한(지금 10분)보다 오래됐을 때만 조건부 갱신으로 표식을 잡는다. 재시도 기록 · 확정본 저장 · 후보 저장 · 병합 반영 · 보류 · 단계 전환은 표식이 같을 때만 반영하고, 작업이 끝나면(단계 전환 · 보류) 표식을 비운다. BE가 다시 뜨면 앞 프로세스의 표식을 기한과 관계없이 이어받는다(평가 기준 이어받기와 같은 한계: BE를 여러 프로세스로 늘리면 앞 실행자가 끝났는지 확인하는 방법을 함께 정한다).
 - rescore 전에 `take_ai_results`의 같은 take_id·별도 kind `SCRIPT_COVERAGE_PENDING`에 후보를 보존한다. payload는 `{script_version_id, base_revision, evaluations, failed, retry_meta}`다. `base_revision`은 후보를 만들 때 읽은 확정본(`SCRIPT_COVERAGE` 행)의 `revision`이고, retry_meta는 재채점 응답 meta다. 후보의 버전은 Take의 저장 버전과 같아야 한다. 후보를 저장할 때도 확정본의 `revision`이 `base_revision`과 같은지 확인한다. `revision`과 payload의 형식은 `script-coverage-evaluation.md` 12-1이다.
 - 후보 저장으로 기존 확정 payload·meta·요약을 바꾸지 않는다. 후보는 BE 내부 복구용이며 FE·리뷰·Take 결과 조회에 확정 채점으로 제공하지 않는다. 후보 보관·삭제는 기존 Take 결과와 같고 대본·STT 원문을 로그에 남기지 않는다.
 - 확인 답 rescore는 병합 후보 없이, 요청을 만들 때 읽은 확정본의 `revision`이 반영할 때도 같은지(최신성) · 요청 유효성 · 리뷰 전 조건을 확인해 반영한다.
@@ -380,7 +381,7 @@ API마다 요청 하나의 시간 예산이 있다. AI는 LLM 호출 한 번마�
 - **입력 오류는 다시 부르지 않는다.** 4xx는 다시 불러도 같다. 예외는 408 · 429와 409 `REPLAY_REQUIRED`다. `/coach/finalize`의 409는 `replay`를 붙여 한 번 다시 부른다.
 - **동기 API(평가 기준 분석)는 BE가 다시 부르지 않는다.** AI가 이미 한 번 더 시도했으므로, BE까지 다시 부르면 사용자가 두 배로 기다린다.
 - **`/coach/evaluate`는 한 Take에서 한 번에 하나만.** 앞 요청의 응답을 받기 전에는 다음 요청을 보내지 않고, 늦게 온 응답은 버린다(`coach_state`가 꼬이지 않게).
-- **백그라운드 호출은 BE가 동시 개수를 제한한다.** BE 전체 합계로 센다(권장 4. BE 프로세스를 늘리면 합계가 넘지 않게 나눈다). 긴 LLM 요청이 AI의 스레드 풀(40)을 채우면 1초마다 오는 `/coach/evaluate`가 시간 제한을 넘긴다(`ai-service.md` 8절).
+- **백그라운드 호출은 BE가 동시 개수를 제한한다.** 코치 plan · finalize, Take 분석, 대본 등록(`/scripts/rubric`), 리뷰를 BE 전체 합계로 센다(권장 4. BE 프로세스를 늘리면 합계가 넘지 않게 나눈다). 그 안에서 `/scripts/rubric`은 동시에 2개까지다(요청 하나가 장마다 LLM을 동시에 12개 부르기 때문, `script-coverage-evaluation.md` 8절). 넘는 요청은 실패시키지 않고 BE에서 기다린다. 긴 LLM 요청이 AI의 스레드 풀(40)을 채우면 1초마다 오는 `/coach/evaluate`가 시간 제한을 넘긴다(`ai-service.md` 8절).
 - **출력이 긴 기능**은 출력 길이에 비례해 오래 걸린다. 기능 PR에서 실제 데이터로 걸린 시간을 재서 LLM 호출 한 번이 시간 제한 안에 끝나는지 확인한다.
 - **요청 하나의 시간**: `/coach/evaluate`는 BE 시간 제한 안에 여유 있게 끝나야 한다. 판정 모듈은 1초 판정에 LLM · 네트워크를 쓰지 않고, LLM은 대본 · 평가 기준 등록, 다음 Take 준비, Take 종료 뒤 분석에만 쓴다.
 
@@ -639,7 +640,6 @@ features/<모듈>/
 | `<기능>_LLM_TIMEOUT_SECONDS` | 선택 | `LLM_TIMEOUT_SECONDS` | 그 기능만 시간 제한이 다를 때 (예: 출력이 긴 기능). 그 기능 PR에서 잰 시간과 함께 더한다 |
 | `LLM_MAX_RETRIES` | 선택 | 1 | LLM 호출 재시도 횟수. 요청 예산 안에서만 쓴다. 예비 묶음으로 넘어가면 무시하고 묶음마다 한 번씩 시도한다 |
 | `WEB_CONCURRENCY` | 선택 | 1 | uvicorn 워커 수 (`ai-service.md` 8절) |
-| `AI_ENABLE_SAMPLE` | 선택 | `false` | 규약 확인용 대역 엔드포인트(`POST /sample/judge`)를 켠다. 로컬에서 규약을 확인할 때만 `true`로 두고, 서버의 `AI_ENV`에는 넣지 않는다. 첫 실제 기능 엔드포인트가 붙으면 대역과 함께 지운다 (`ai-service.md` 4 · 15절) |
 | `AI_BASE_URL` (BE) | BE에 필요 | 로컬 `http://localhost:8001` | BE가 AI를 부르는 주소. 서버에서는 `http://ai:8000` |
 
 - research와 service가 같은 이름을 쓴다. 로컬에서는 `ai/.env` 하나를 함께 쓴다.
@@ -672,7 +672,7 @@ features/<모듈>/
 # 12. 변경 규칙과 공통 시험
 | 무엇을 바꾸나 | 어떻게 |
 |---|---|
-| 이 문서 | 모든 기능이 영향을 받으므로 크기 · 배포 여부와 상관없이 AI 팀 회의에서 정하고, JWK0395 · jinn-ie 두 사람의 합의를 Issue 댓글로 남긴 뒤 고친다. PR은 두 사람 중 작성자가 아닌 쪽의 승인 리뷰를 받아 merge한다. FE · BE와 주고받는 값이 걸리면 그 팀과도 합의한다 ([문서 수정 규칙](README.md#수정-규칙)) |
+| 이 문서 | 필드 · 값 · 저장 모양 · 의미 · 호출 시점이 바뀌면 모든 기능이 영향을 받으므로 크기 · 배포 여부와 상관없이 AI 팀 회의에서 정하고, JWK0395 · jinn-ie 두 사람의 합의를 Issue 댓글로 남긴 뒤 고친다. PR은 두 사람 중 작성자가 아닌 쪽의 승인 리뷰를 받아 merge한다. FE · BE와 주고받는 값이 걸리면 그 팀과도 합의한다. 이것들을 바꾸지 않는 오탈자 · 설명 보완은 회의 · 결정 댓글 없이 일반 PR 리뷰로 고치고, PR 본문의 Issue 링크는 그대로 둔다 ([문서 수정 규칙](README.md#수정-규칙)) |
 | 기능 문서 (`features/`) | 기능 안에서 끝나는 변경은 담당이 바로 고친다. FE · BE와 주고받는 값이 바뀌면 그 팀과 Issue에서 합의한다(배포 전 기능은 고치고 알린다). 다른 팀은 바꿀 곳을 Issue로 남긴다 ([문서 수정 규칙](README.md#수정-규칙)) |
 | 서비스 문서 (`ai-service.md`) | 서비스 안에서 끝나는 변경은 서비스 담당이 바로 고친다. 모든 기능 담당이 따르는 것(기능을 붙이는 순서 · 공통 모듈 쓰는 법)이 바뀌면 다른 기능 담당을 PR 본문 @멘션으로 알린다. 이 알림 때문에 리뷰어로 지정하거나 승인을 기다리지 않는다. 다른 필수 합의·승인 요건은 유지한다. BE · 인프라가 하는 일(compose · 배포 워크플로 · 시크릿 · 헬스체크 · AI 주소)이 바뀌면 그 팀과 Issue에서 합의한다. 공통 계약이 바뀌면 이 문서를 먼저 바꾼다 ([문서 수정 규칙](README.md#수정-규칙)) |
 | 기능 계약(`schemas.py`) — 선택 필드 추가 | FE · BE와 주고받는 값이면 호환되는 선택 필드 추가도 [문서 수정 규칙](README.md#수정-규칙)을 따른다(배포된 기능은 그 팀과 먼저 합의, 배포 전 기능은 고치고 알림). 다른 AI 기능과 주고받는 선택 필드도 공통 계약 여부·상대 동의·배포 전 알림을 [문서 수정 규칙](README.md#수정-규칙)으로 확인한다. 받는 쪽이 모르는 필드를 거부하면 아래 줄과 같은 절차를 따른다 |
@@ -727,7 +727,7 @@ features/<모듈>/
 | 역할 → 모델 묶음 | 서비스 `settings.py` 상수. 지금은 모든 역할이 기본 묶음 | 9절 |
 | LLM 출력 한도 | 역할마다 출력 토큰 상한을 서비스 `settings.py` 상수로(잘리면 `LLM_INVALID_OUTPUT`) | 9절 |
 | 문장 끝 신호 · 커서 | `utterance_ends` = Deepgram `UtteranceEnd`의 마지막 단어 끝 시각(말 속도는 쓰지 않음) · 커서는 되돌아가지 않음 | 6-2 · 7절 |
-| 그 밖의 서비스 환경변수 | `WEB_CONCURRENCY`(1) · `AI_ENABLE_SAMPLE`(`false`, 로컬 확인용) | 10절 |
+| 그 밖의 서비스 환경변수 | `WEB_CONCURRENCY`(1) | 10절 |
 | `.env` 작성 | 따옴표 · 줄 끝 주석 없이 `이름=값` | 10절 |
 | 서버 시크릿 | GitHub 시크릿 `AI_ENV` → 서버 `~/pitch-coach/ai/.env` | 10절 |
 | 이미지 태그 | `pitch-coach:ai-<커밋 SHA>` | 11절 |

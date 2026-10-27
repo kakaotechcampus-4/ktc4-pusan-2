@@ -1,0 +1,39 @@
+[
+  {
+    "evaluator": "gaze",
+    "area": "GAZE",
+    "t_ms": 4000,
+    "counted_until_ms": 4000,
+    "criteria_version": "gaze-1.3+1c10b82348a2",
+    "measurable": true,
+    "state": "SCRIPT",
+    "metrics": {
+      "audience_ratio": 0.0,
+      "screen_ratio": 0.0,
+      "script_ratio": 1.0,
+      "away_ratio": 0.0,
+      "reading_ratio": 1.0,
+      "audience_ratio_short": 0.0,
+      "script_ratio_short": 1.0,
+      "away_ratio_short": 0.0,
+      "measured_ratio": 1.0,
+      "mean_reliability": 0.95,
+      "script_run_ms": 4000,
+      "screen_run_ms": 0,
+      "away_run_ms": 0
+    },
+    "tally": [
+      {
+        "t_ms": 3000,
+        "values": {
+          "script_ms": 1000,
+          "total_ms": 1000,
+          "measured_ms": 1000,
+          "speaking_ms": 1000,
+          "reading_ms": 1000
+        }
+      }
+    ],
+    "issues": []
+  }
+]

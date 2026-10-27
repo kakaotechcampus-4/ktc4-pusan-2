@@ -1,0 +1,52 @@
+[
+  {
+    "evaluator": "gaze",
+    "area": "GAZE",
+    "t_ms": 41000,
+    "counted_until_ms": 41000,
+    "criteria_version": "gaze-1.3+1c10b82348a2",
+    "measurable": true,
+    "state": "AWAY",
+    "metrics": {
+      "audience_ratio": 0.9,
+      "screen_ratio": 0.0,
+      "script_ratio": 0.0,
+      "away_ratio": 0.1,
+      "reading_ratio": 0.0,
+      "audience_ratio_short": 0.4,
+      "script_ratio_short": 0.0,
+      "away_ratio_short": 0.6,
+      "measured_ratio": 1.0,
+      "mean_reliability": 0.95,
+      "script_run_ms": 0,
+      "screen_run_ms": 0,
+      "away_run_ms": 3000
+    },
+    "tally": [
+      {
+        "t_ms": 40000,
+        "values": {
+          "away_ms": 1000,
+          "total_ms": 1000,
+          "measured_ms": 1000
+        }
+      }
+    ],
+    "issues": [
+      {
+        "issue_type": "GAZE_AWAY",
+        "area": "GAZE",
+        "severity": 0.5833,
+        "confidence": 1.0,
+        "persistence_sec": 3.0,
+        "threshold": 2000.0,
+        "bad": 8000.0,
+        "evidence": {
+          "away_run_ms": 3000,
+          "away_ratio_short": 0.6
+        },
+        "actionable": true
+      }
+    ]
+  }
+]

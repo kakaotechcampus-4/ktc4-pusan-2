@@ -1,13 +1,10 @@
 import asyncio
 import copy
-import json
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
-from functools import partial
 from unittest.mock import AsyncMock
 
-import httpx
 import pytest
 from sqlalchemy.orm import Session
 
@@ -15,14 +12,14 @@ from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.pitch.entity import ScriptVersion
 from pitch_coach_backend.module.pitch.service import script as script_service
-from pitch_coach_backend.module.take.dto import ReviewRequestDTO, ReviewResponseDTO
+from pitch_coach_backend.module.take.dto import ReviewResponseDTO
 from pitch_coach_backend.module.take.entity import Take, TakeAIResults
 from pitch_coach_backend.module.take.exception import InvalidReviewResponse
-from pitch_coach_backend.module.take.repository import TakeRepository
+from pitch_coach_backend.module.take.repository import CONFIRMATION_WAIT, TakeRepository
 from pitch_coach_backend.module.take.service import analysis_runner
 from pitch_coach_backend.module.take.service import coverage as coverage_service
 from pitch_coach_backend.module.take.service import review as review_service
-from tests.test_take_ai_validation import coverage
+from tests.test_take_ai_validation import claim, coverage, release
 from tests.test_take_history import _pitch, _take
 from tests.test_take_review_response import REVIEW, TAKE_ID
 
@@ -39,7 +36,6 @@ class PlanSpy:
 def isolated_runner(monkeypatch, db_session: Session):
     monkeypatch.setattr(analysis_runner, "_running", TaskRegistry())
     monkeypatch.setattr(analysis_runner, "_recovery", TaskRegistry())
-    monkeypatch.setattr(analysis_runner, "_slots_by_loop", {})
 
     async def in_current_session(factory, fn, *args):
         return fn(db_session, *args)
@@ -137,10 +133,9 @@ def test_held_take_is_not_reviewed(db_session, user_id, monkeypatch, plans):
 
 
 def test_confirmation_waits_until_its_deadline(db_session, user_id, monkeypatch, plans):
+    monkeypatch.setattr(analysis_runner, "CONFIRMATION_POLL_SEC", 0.05)
     take = _analyzing(db_session, user_id, "AWAITING_CONFIRMATION")
-    take.analysis_stage_at = (
-        datetime.now(UTC) - analysis_runner.CONFIRMATION_WAIT + timedelta(seconds=0.3)
-    )
+    take.analysis_stage_at = datetime.now(UTC) - CONFIRMATION_WAIT + timedelta(seconds=0.3)
     db_session.commit()
     monkeypatch.setattr(
         review_service, "request_review_async", AsyncMock(return_value=_review(take))
@@ -165,6 +160,60 @@ def test_expired_confirmation_is_reviewed_at_once(db_session, user_id, monkeypat
     asyncio.run(analysis_runner.run(take.id))
 
     assert time.monotonic() - started < 1
+    assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
+
+
+def test_answered_confirmation_is_reviewed_without_waiting(
+    db_session, user_id, monkeypatch, plans
+):
+    """확인 API 가 답을 반영해 단계를 넘기면 10분을 다 기다리지 않고 리뷰한다."""
+    monkeypatch.setattr(analysis_runner, "CONFIRMATION_POLL_SEC", 0.05)
+    take = _analyzing(
+        db_session, user_id, "AWAITING_CONFIRMATION", analysis_stage_at=datetime.now(UTC)
+    )
+    monkeypatch.setattr(
+        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+    )
+
+    async def run():
+        runner = asyncio.create_task(analysis_runner.run(take.id))
+        await asyncio.sleep(0.1)
+        assert not runner.done()
+        assert TakeRepository(db_session).skip_confirmation(take.id)
+        db_session.commit()
+        await asyncio.wait_for(runner, 2)
+
+    asyncio.run(run())
+
+    assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
+
+
+def test_expired_confirmation_waits_for_the_answer_being_applied(
+    db_session, user_id, monkeypatch, plans
+):
+    """기한 안에 받은 답을 반영하는 동안에는 기한이 지나도 리뷰를 시작하지 않는다."""
+    monkeypatch.setattr(analysis_runner, "CONFIRMATION_POLL_SEC", 0.05)
+    take = _analyzing(
+        db_session, user_id, "AWAITING_CONFIRMATION", analysis_stage_at=datetime.now(UTC)
+    )
+    requested_at = TakeRepository(db_session).claim_confirmation(take.id)
+    assert requested_at is not None
+    take.analysis_stage_at = datetime.now(UTC) - CONFIRMATION_WAIT - timedelta(seconds=1)
+    db_session.commit()
+    review = AsyncMock(return_value=_review(take))
+    monkeypatch.setattr(review_service, "request_review_async", review)
+
+    async def run():
+        runner = asyncio.create_task(analysis_runner.run(take.id))
+        await asyncio.sleep(0.2)
+        assert not runner.done() and review.await_count == 0
+        TakeRepository(db_session).release_confirmation(take.id, requested_at)
+        db_session.commit()
+        await asyncio.wait_for(runner, 2)
+
+    asyncio.run(run())
+
+    assert review.await_count == 1
     assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
 
 
@@ -197,7 +246,10 @@ def test_scoring_goes_on_once_the_rubric_wait_times_out(db_session, user_id):
 def test_retry_of_a_scored_take_does_not_wait_for_the_rubric(db_session, user_id):
     take = _analyzing(db_session, user_id, "SCORING")
     _rubric_pending(db_session, take, timedelta(seconds=10))
-    assert coverage_service._save_confirmed(db_session, take.id, coverage(take.id)) is not None
+    requested_at = claim(db_session, take.id)
+    saved = coverage_service._save_confirmed(db_session, take.id, requested_at, coverage(take.id))
+    assert saved is not None
+    release(db_session, take.id)
 
     assert asyncio.run(coverage_service.analyze_script_coverage(take.id)) == "READY_FOR_REVIEW"
 
@@ -346,43 +398,16 @@ def test_restart_takes_over_a_review_cut_off_by_the_restart(
     assert plans.asked == [take.pitch_id]
 
 
-def _ai(monkeypatch, handler) -> list[httpx.Request]:
-    calls: list[httpx.Request] = []
+@pytest.mark.parametrize("restarted", [False, True], ids=["running", "restarted"])
+def test_runner_takes_over_scoring_only_after_a_restart(monkeypatch, restarted):
+    seen = []
 
-    def record(request: httpx.Request) -> httpx.Response:
-        calls.append(request)
-        return handler(request, len(calls))
+    async def analyze(take_id, session_factory, *, takeover):
+        seen.append(takeover)
+        return "HELD"
 
-    client = partial(httpx.AsyncClient, transport=httpx.MockTransport(record))
-    monkeypatch.setattr(review_service.httpx, "AsyncClient", client)
-    return calls
+    monkeypatch.setattr(coverage_service, "analyze_script_coverage", analyze)
 
+    asyncio.run(analysis_runner.run(uuid.uuid4(), restarted=restarted))
 
-def test_async_review_retries_a_transient_status_once(monkeypatch):
-    reply = copy.deepcopy(REVIEW)
-    calls = _ai(
-        monkeypatch,
-        lambda request, n: httpx.Response(503)
-        if n == 1
-        else httpx.Response(200, content=json.dumps(reply).encode()),
-    )
-
-    review = asyncio.run(
-        review_service.request_review_async(TAKE_ID, ReviewRequestDTO(take_result={}))
-    )
-
-    assert review.take_id == TAKE_ID
-    assert len(calls) == 2
-    assert calls[0].headers["X-Request-ID"] == calls[1].headers["X-Request-ID"]
-
-
-@pytest.mark.parametrize("status,attempts", [(422, 1), (404, 1), (429, 2), (500, 2)])
-def test_async_review_errors_become_invalid_review(monkeypatch, status, attempts):
-    calls = _ai(monkeypatch, lambda request, n: httpx.Response(status))
-
-    with pytest.raises(InvalidReviewResponse):
-        asyncio.run(
-            review_service.request_review_async(TAKE_ID, ReviewRequestDTO(take_result={}))
-        )
-
-    assert len(calls) == attempts
+    assert seen == [restarted]

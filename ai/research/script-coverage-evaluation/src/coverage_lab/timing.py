@@ -8,8 +8,8 @@
 
 from dataclasses import dataclass
 
-from script_coverage.schemas import ScriptSlide, TakeSlide
-from script_coverage.shared.llm_step import LLM_ERROR_CODES
+from pitch_coach_ai.features.script_coverage.schemas import ScriptSlide, TakeSlide
+from pitch_coach_ai.features.script_coverage.shared.llm_step import LLM_ERROR_CODES
 
 from .datasets import load_script_json, load_take, script_files, take_files
 

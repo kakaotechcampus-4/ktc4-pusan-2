@@ -6,11 +6,9 @@
 계약은 `docs/ai/features/coach-agent.md` · `docs/ai/architecture.md` 다.
 
 현재 구현 범위는 발표 중 코치와 종료 뒤 Take 결과 저장(`FINALIZING` → `SCORING`), 코칭 계획,
-원자료 보관이다. `SCORING` 뒤 `/takes/analyze` 자동 호출 · 장별 재시도와 병합 rescore · 사용자 확인 ·
-자동 리뷰 · 해당 단계의 재시작 복구는 후속 분석 파이프라인에서 연결한다. 지금은 finalize 가 성공해도
-`SCORING` 에서 기다리며, 채점 완료로 간주하거나 `COMPLETED` 로 넘기지 않는다.
-**배포 의존성**: 연습 종료부터 리포트 완료까지 자동으로 이어지는 배포에는 후속 분석 파이프라인도
-함께 필요하다. 기존 리뷰 API 로 `SCORING` 을 건너뛰지 못한다(409 `TAKE_NOT_REVIEWABLE`).
+원자료 보관이다. `SCORING` 뒤 대본 전달도 채점 · 사용자 확인 대기 · 리뷰 · 다음 코칭 계획은
+finalize 가 띄우는 백그라운드 분석(`module/take/service/analysis_runner.py`)이 잇는다. 리뷰를 따로
+부르는 API 는 없다.
 
 ```
 발표 중   FE metrics ─▶ CoachSession ─ /coach/evaluate ─▶ AI ─▶ coach_state · events(coach_events) · WS coach
@@ -25,7 +23,7 @@ Take 종료  stop ─▶ 분석 단계 FINALIZING ─▶ /coach/finalize (409 �
 | `POST /coach/plan` | 대본 파싱 뒤 · 대본/제한 시간 변경 뒤 · 리뷰 저장 뒤 (백그라운드) | 30초 | 일시 오류면 1번. `fallback_reason` 이 있어도 정상 결과 |
 
 - 일시 오류는 연결 실패 · 시간 초과 · 408 · 429 · 5xx 다. 다시 불러도 `X-Request-ID` 는 같다.
-- 백그라운드 호출(finalize · plan)은 프로세스 전체에서 동시에 4개까지다. 긴 요청이 AI 스레드 풀을 채우면 evaluate 가 0.3초를 넘긴다.
+- 백그라운드 호출(finalize · plan)은 Take 분석(채점 · 리뷰) · 대본 등록과 합쳐 프로세스 전체에서 동시에 4개까지다(`core/ai_slots.py`). 긴 요청이 AI 스레드 풀을 채우면 evaluate 가 0.3초를 넘긴다. 자리가 없으면 기다렸다 보내고, 기다린 시간은 위 시간 제한에 넣지 않는다.
 - AI 가 없으면(연결 거부 · 404 · 503) evaluate 를 10초 쉰다. 그동안 발표 · STT 는 그대로고, 쉬는 동안의 1초 기록은 다음 요청의 창에 실린다.
 - 응답은 BE 가 쓰는 칸만 검사한다. `coach_state` · `events` · `take_result` · `coaching_plan` · `meta` 는 받은 그대로 둔다
   (AI 로 다시 가거나 그대로 저장한다). `meta.schema_version` 의 major 가 1 이 아니면 쓰지 않는다.

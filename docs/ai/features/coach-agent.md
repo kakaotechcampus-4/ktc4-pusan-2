@@ -4,7 +4,7 @@
 > **기준 범위**: 코치의 목표 설계다. 기능 사이 공통 계약(판정 결과 형식 · 에러 · meta · 시간 예산)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **관련 Issue**: #162 · #187
 > **한 줄 요약**: 발표 중 1초마다 판정 결과를 보고 "지금 말을 걸지, 걸면 무엇 하나를 말할지"를 정하고, Take가 끝나면 사실만 담은 Take 결과를 만든다. 다음 Take를 위해 리뷰가 저장된 뒤 코칭 계획을 세운다.
-> **기준값**: 판단 수치(간격 · 쿨다운 · 가중치 · 개입 기준 점수 · 허용치)는 `src/coach/config.py`에만 두고 이 문서에는 지표와 방향만 쓴다. 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
+> **기준값**: 판단 수치(간격 · 쿨다운 · 가중치 · 개입 기준 점수 · 허용치)는 서비스 `features/coach/config.py`에만 두고 이 문서에는 지표와 방향만 쓴다. 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
 
 # 0. 한눈에 보기
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
@@ -88,13 +88,12 @@ flowchart LR
 ```
 ai/research/coach-agent/
 ├─ README.md                              폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock               패키지 두 개: coach(코어) · coach_lab(실험), Python 3.12
-├─ src/coach/                             판단 코어 → 서비스 features/coach/로 폴더째 옮긴다
-│   ├─ examples/                          evaluate · finalize · timing 입력 · 출력 예시 (계약 테스트가 읽는다)
-│   └─ prompts/                           코칭 계획 LLM 프롬프트
+├─ pyproject.toml · uv.lock               패키지 하나: coach_lab(실험), 서비스를 editable로 설치해 코어를 씀, Python 3.12
+├─ (서비스 ai/service/src/pitch_coach_ai/features/coach/)  판단 코어 (연구 폴더 src/coach/에서 폴더째 옮김, 테스트는 서비스 tests/unit/coach/)
+├─ src/coach/examples/                    BE 테스트가 읽는 예시 사본 evaluate · finalize · timing (원본은 서비스 features/coach/examples/, 11절 확인 5)
 ├─ src/coach_lab/                         재생 · 실험 도구 (가상 발표자 · 연구용 판정 대역 · 채점 · 예시 생성). 연구에만 남는다
 ├─ scenarios/                             가상 발표 시나리오 (+ plan/ 코칭 계획 실험용)
-├─ tests/{unit,lab,live}/                 코어 · 실험 도구 · 실제 LLM
+├─ tests/{lab,live}/                      실험 도구 · 실제 LLM (코어 단위 · 계약 테스트는 서비스 tests/unit/coach/)
 └─ reports/results/                       커밋하는 실험 결과 (take_result · recovery · coaching_plan)
 ```
 파일마다의 역할은 `ai/research/coach-agent/README.md` 3절의 파일 지도에 있다.
@@ -106,7 +105,7 @@ ai/research/coach-agent/
 | `decide(request, judges)` | 예외를 잡지 않는 1초 판단. 테스트 · 재생용 | 테스트 · `decide_safe` |
 | `finalize(request, judges)` → `POST /coach/finalize` | 마지막 창 판정 · 닫기 · Take 결과. 다 세지 못했으면 `ReplayRequired`(빠진 구간 `missing`)를 올린다 → 라우터가 409 | API 라우터 |
 | `plan_coaching(request, llm=…, model=…, cache=…)` → `POST /coach/plan` | 코칭 계획. LLM 클라이언트와 캐시는 인자로 받고, LLM 실패는 기본 계획 + `fallback_reason` | API 라우터 (연구에서는 `coach_lab.plan_eval`) |
-| `Judges` | 판정 모듈 묶음 (`judge` · `summarize` · `criteria` 세 함수를 가진 모듈 넷 + volume `speaking_levels` · `baseline`) | 라우터가 앱 시작 때 한 번 만든다 |
+| `Judges` | 판정 모듈 묶음 (`judge` · `summarize` · `criteria` 세 함수를 가진 모듈 넷 + volume `speaking_levels` · `baseline`) | 라우터가 앱 시작 때 한 번 만든다(판정 모듈 넷이 서비스에 모두 있어 evaluate · finalize를 열 때부터, 11절) |
 | `initial_state()` | 빈 `coach_state` | 테스트 · 재생 |
 
 ## 4-3. 규칙과 이유
@@ -119,10 +118,10 @@ ai/research/coach-agent/
 | 판정 모듈을 import하지 않고 `Judges` 묶음을 인자로 받는다 | 판정 모듈이 바뀌면 묶음만 바꿔 끼운다 (`architecture.md` 8절) |
 | 의존성은 pydantic 하나 | 서비스로 옮길 때 가져갈 라이브러리가 하나뿐이다 |
 | LLM · 캐시는 인자로 받는다 | 코어는 키 · 네트워크를 모른다. LLM 객체는 서비스 `common/llm.py`가 만든다 |
-| 위 규칙은 `tests/unit/test_core_boundary.py`가 코어 파일을 읽어 검사한다 | 어기면 테스트가 실패한다 (허용 표준 라이브러리 목록 · 금지 호출 `print` · `open` 등) |
+| 위 규칙은 서비스 `tests/unit/coach/test_core_boundary.py`가 코어 파일을 읽어 검사한다 | 어기면 테스트가 실패한다 (허용 표준 라이브러리 목록 · 금지 호출 `print` · `open` 등) |
 
 # 5. 입력 · 출력 계약
-요청 · 응답의 원본은 `src/coach/schemas.py`다. 요청은 모르는 필드를 무시하고, 응답은 정해진 필드만 낸다(`architecture.md` 2절). 시각은 모두 Take 시작 기준 ms다.
+요청 · 응답의 원본은 서비스 `features/coach/schemas.py`다. 요청은 모르는 필드를 무시하고, 응답은 정해진 필드만 낸다(`architecture.md` 2절). 시각은 모두 Take 시작 기준 ms다.
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 |
@@ -149,11 +148,13 @@ ai/research/coach-agent/
 | `inputs.voice_records` | list | 아니오 | 최근 30초 음량 1초 기록. 시선 판정이 같은 30초의 발화 시간을 쓴다 | 아래 5-5 |
 | `inputs.words` | list | 아니오 | 최근 60초 STT 확정 단어 `{word, start_ms, end_ms}`. 60초 창에 넣을지는 단어가 끝난 시각 `end_ms`로 정한다 | `[{"word": "매출은", "start_ms": 91100, "end_ms": 91600}]` |
 | `inputs.utterance_ends` | list int | 아니오 | 최근 60초 문장 끝 신호 시각 | `[89400]` |
-| `inputs.stt_status` | enum | 아니오 | STT 상태 `connecting` · `ok` · `reconnecting` · `degraded` · `closed`. `ok`가 아니면 단어 기반 판정(속도 · 군더더기)은 잴 수 없음 | `ok` |
+| `inputs.stt_status` | enum | 아니오 | STT 상태 `connecting` · `ok` · `reconnecting` · `degraded` · `closed`. `ok`가 아니면 단어 기반 판정(속도 · 군더더기)은 잴 수 없음. 모르는 값 · null은 `degraded`로 읽는다 | `ok` |
 | `inputs.slide` | object | 아니오 | 지금 장 `{number, started_ms}`. BE가 장 변경 기록(12-1 `take_slide_events`) 중 `started_ms`가 요청 `t_ms` 이하인 것 가운데 가장 늦은 것으로 만든다(`architecture.md` 1-3). 없으면 마지막으로 알던 장 | `{"number": 3, "started_ms": 59390}` |
 | `coach_state` | object · null | 아니오 | 지난 응답의 값 그대로. Take 첫 요청은 null | `{"v": 2, "last_t_ms": 91000, ...}` |
 
 - `take_id` · `t_ms`가 없거나 타입이 틀리거나 `t_ms`가 상한을 넘으면 요청 전체가 거부된다(422 `VALIDATION_ERROR`). BE는 그 1초를 건너뛰고 `coach_state`를 바꾸지 않는다.
+- **배열 한도**: `inputs.gaze_records` · `inputs.voice_records` 각 120개, `inputs.words` 1,000개, `inputs.utterance_ends` 300개를 넘으면 요청 전체가 422 `VALIDATION_ERROR`다(finalize의 `inputs`도 같다). 창(30 · 60초)에 정상으로 실리는 수의 몇 배로 잡은 정책상 한도라, 정상 흐름에서는 닿지 않고 BE의 창 버그 · 비정상 입력만 막는다. 장 수에는 한도를 두지 않는다(plan의 장 100개 한도는 `/coach/plan`에만 건다. evaluate · finalize에 걸면 장이 많은 발표가 매초 거부된다).
+- **읽을 수 없는 기록**: 한도 안의 배열에서 기록 하나가 읽을 수 없으면 그 기록만 버리고 나머지로 판정한다(요청 전체를 거부하지 않는다). 시선 기록은 `t_ms`가 음수 · `duration_ms`가 0 이하 · `state`가 없으면 버리고 `issues`가 null이면 빈 목록으로 본다(값 검사는 시선 모듈이 한 번 더 한다, `gaze-tracking.md` 5-2). 음량 기록은 `t_ms` · `voiced_ms` · `silence_ms`가 음수이거나 `voiced_ms`가 `duration_ms`보다 크면, 단어는 `word`가 50자를 넘거나 `start_ms` · `end_ms`가 음수이거나 `end_ms − start_ms`가 0 미만 · 10초 초과이면(10초는 늦게 확정된 단어가 말한 장을 찾도록 장 전환을 남겨 두는 여유와 같다, 6-1), 문장 끝 시각은 음수 · 정수가 아니면 버린다. `replay`는 같은 규칙에 장 변경 · STT 상태 변경도 하나씩 버리고(모르는 STT 상태는 `degraded`). 같은 1초가 되풀이돼 와도 지우지 않고, 실시간과 같이 판정 모듈이 읽을 수 있는 기록 중 먼저 온 것을 쓴다(복구가 다시 만드는 1초 요청에는 창 배열 한도를 걸지 않는다). 버린 1초는 기록이 오지 않은 1초와 같다. 이 버림은 422가 아니다.
 - **크게 앞선 시각 (`T_MS_JUMP`)**: 받은 `coach_state`가 유효하고 이미 한 번 이상 처리한 상태인데 `t_ms − last_t_ms > 60000`이면, 코치는 그 요청을 처리하지 않고 200 `WAIT` · `reason_codes: ["T_MS_JUMP"]`와 **빈 `coach_state`**(`initial_state()`)를 돌려준다(이벤트 · `indicators` 없음). BE는 따로 처리하지 않고 평소처럼 이 `coach_state`를 다음 요청에 붙인다. 다음 요청부터 새로 시작하므로, 이미 처리한 상태에서 60초 넘게 앞선 잘못된 시각 하나가 `last_t_ms`를 올려 그 Take의 이후 요청을 모두 `STALE_TICK`으로 막는 일이 없고(검사하지 않는 새로 시작한 상태의 첫 요청과 60초 안쪽의 잘못된 시각은 막지 못한다 — 15절 알려진 한계), 정상적인 긴 공백(AI 재시작 · 장애) 뒤에도 1초 만에 코칭이 이어진다. 새로 시작했으므로 Take 앞부분 합계가 없어 종료 때 409 → `replay`로 Take 결과를 만든다(센 구간은 요청마다 `[max(지난 커서, t_ms − 30초), t_ms]`만 표시되므로 빈 상태 뒤의 덮임 확인에서 빠진 구간이 남는다). **새로 시작한 상태(`last_t_ms`가 없는 상태 — Take 첫 요청, `STATE_RESET`, `T_MS_JUMP` 뒤)의 첫 요청은 모듈마다 시각 커서를 `max(0, t_ms − 30000)`에서 시작한다.** 창 밖은 셀 원자료가 없고 센 구간에도 넣지 않으며 종료 때 `replay`로 다시 만들기 때문이다. 다만 시간 판정의 '지금 장에 머문 시간'은 `max(커서, 장 시작)`부터 세므로(`timing.py`), 이때 지금 장의 창 밖 몫(`max(0, (t_ms − 30000) − 장 시작)`)을 머문 시간에 미리 넣어 둔다(새로 시작한 뒤에도 `SLIDE_OVER` · 진행도가 늦어지지 않게). 그래서 evaluate 하나가 세는 1초 조각은 늘 60개 안팎으로 묶이고 Take 길이에 비례하지 않는다(커서가 0에서 시작하면 Take 후반의 첫 요청이 수천 조각을 세어 BE 시간 제한을 넘기고, 응답이 버려져 다음 요청도 다시 0부터 세는 일이 되풀이될 수 있다). 60초는 보통의 배포 재시작 공백(컨테이너 교체와 시작 유예 10초)보다 넉넉하게 잡은 값이고(측정한 값은 아니다), 이미 처리한 상태에서 60초 안쪽으로 앞선 잘못된 시각이 코칭을 막는 시간을 1분 안으로 묶는다. 공백이 60초를 넘으면 위처럼 새로 시작한다. Take 첫 요청(`coach_state` null)과 finalize에는 이 검사를 하지 않는다.
 - 창은 BE가 매번 겹쳐 보내도 된다. 코치가 판정 모듈별 커서로 이미 센 시간을 건너뛰므로 두 번 세지 않는다. 같은 1초 기록이 두 번 오면 먼저 온 것만 쓴다.
 - 재연결 뒤 FE가 몰아 보낸 `metrics`(`buffered: true`)로는 BE가 evaluate를 부르지 않는다(`architecture.md` 2절). 그 1초 기록은 표시가 없는 다음 실시간 요청의 창에 함께 실려 오고, 코치는 그 요청 하나에서 창 안의 새 1초를 모두 센다. 그래서 지난 시각으로 새로 말을 걸지 않는다.
@@ -199,7 +200,7 @@ ai/research/coach-agent/
 | `reason_codes` | list | 왜 이 행동인가(6-1의 이유 코드). `INTERVENE`이면 첫 값이 문제 코드(`issue_type`) | `["GAZE_ON_SCRIPT", "PLAN_FOCUS"]` |
 | `events` | list | 이번 응답에서 생긴 이벤트(아래 표). BE가 받은 순서대로 쌓는다 | `[{"event_id": "iv-92000", ...}]` |
 | `coach_state` | object | 다음 요청에 그대로 붙인다. 내용은 몰라도 된다 | `{"v": 2, "last_t_ms": 92000, ...}` |
-| `meta` | object | `schema_version` · `feature_version` · `criteria_versions`(판정 모듈별 + `coach`) · `model`(항상 null) | `{"schema_version": "1.0", "feature_version": "coach-1.2", ...}` |
+| `meta` | object | `schema_version` · `feature_version` · `criteria_versions`(판정 모듈별 + `coach`) · `model`(항상 null) | `{"schema_version": "1.0", "feature_version": "coach-1.3", ...}` |
 
 `instruction`: `LOOK_AT_CAMERA` · `SLOW_DOWN` · `SPEED_UP` · `SPEAK_LOUDER` · `RESUME` · `REDUCE_FILLER` · `CONDENSE` · `MOVE_ON` · `WRAP_UP` · `CONTINUE`(효과가 있을 때 "지금처럼" 유지 격려).
 
@@ -245,7 +246,7 @@ ai/research/coach-agent/
 | `fallback_reason` | enum · null | 기본 계획으로 돌아간 이유 `LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT` · `LLM_UNAVAILABLE`. 성공이면 null | `null` |
 | `dropped` | list | 검증에서 뺀 항목과 이유 | `["relax TIME 3: 봐줄 수 없는 영역"]` |
 | `planner_hash` | string | 프롬프트 · 출력 스키마 · 요청한 모델 이름(역할의 묶음)의 해시 (캐시 무효화 · 추적용). 실제로 응답한 모델은 `meta.model` | `<해시>` |
-| `meta` | object | `schema_version` · `feature_version` · `model`(응답한 모델, 기본 계획이면 null). 코어는 성공했을 때 넘겨받은 `model` 인자를 넣고, 서비스 라우터는 `fallback_reason`이 null인 성공 응답에서만 콜백으로 잡은 실제 응답 모델로 바꿔 싣는다(예비 모델이 없는 지금은 같다). 기본 계획이면 LLM이 응답했어도 null이다 | `{"schema_version": "1.0", "feature_version": "coach-1.2", "model": "<모델>"}` |
+| `meta` | object | `schema_version` · `feature_version` · `model`(응답한 모델, 기본 계획이면 null). 코어는 성공했을 때 넘겨받은 `model` 인자를 넣고, 서비스 라우터는 `fallback_reason`이 null인 성공 응답에서만 콜백으로 잡은 실제 응답 모델로 바꿔 싣는다(예비 모델이 없는 지금은 같다). 기본 계획이면 LLM이 응답했어도 null이다 | `{"schema_version": "1.0", "feature_version": "coach-1.3", "model": "<모델>"}` |
 
 - `coach_state`를 돌려주지 않는다. 계획은 evaluate 요청의 `coaching_plan`으로만 들어간다.
 - `coaching_plan`의 키는 `focus` · `relax` · `max_interventions`뿐이다(`source`는 두지 않는다 — LLM인지 기본 계획인지는 `fallback_reason`이 말한다).
@@ -263,7 +264,7 @@ ai/research/coach-agent/
 | `AHEAD_OF_SCHEDULE` | 이 속도면 `min_ms`(없으면 목표의 정해진 비율)보다 일찍 끝남 (초반 제외) | `projected_end_ratio`(예상 종료 ÷ 이른 한계) — 작을수록 나쁨 |
 
 ## 5-5. 예시
-예시 파일은 `src/coach/examples/`에 있고 `python -m coach_lab.examples`로 다시 만든다(바이트까지 같다). 아래는 발췌다.
+예시 파일은 서비스 `features/coach/examples/`에 있고(BE 테스트용 사본이 연구 폴더 `src/coach/examples/`에 있다) `python -m coach_lab.examples`로 둘 다 다시 만든다(바이트까지 같다). 아래는 발췌다.
 
 **evaluate 요청** (`examples/evaluate/request.json` 발췌. 시선 기록 30개 · 단어 74개 중 한 줄씩만 싣는다)
 ```json
@@ -291,21 +292,21 @@ ai/research/coach-agent/
  "reason_codes": ["GAZE_ON_SCRIPT", "MISSION_RELEVANT", "RECURRING", "PLAN_FOCUS", "WORSENING"],
  "events": [{"event_id": "iv-92000", "t_ms": 92000, "kind": "INTERVENTION", "intervention_id": "iv-92000", "...": "..."}],
  "coach_state": {"v": 2, "last_t_ms": 92000, "...": "..."},
- "meta": {"schema_version": "1.0", "feature_version": "coach-1.2", "model": null,
-          "criteria_versions": {"gaze": "<모듈 기준 버전>", "timing": "timing-1.0+<config 해시>", "coach": "coach-1.2+<config 해시>", "...": "..."}}}
+ "meta": {"schema_version": "1.0", "feature_version": "coach-1.3", "model": null,
+          "criteria_versions": {"gaze": "<모듈 기준 버전>", "timing": "timing-1.1+<config 해시>", "coach": "coach-1.3+<config 해시>", "...": "..."}}}
 ```
 `reason_codes`의 `MISSION_RELEVANT`(미션과 관련) · `RECURRING`(반복 문제) · `PLAN_FOCUS`(코칭 계획이 먼저 챙기라고 함) · `WORSENING`(나빠지는 중)은 "왜 말했는가"를 설명한다.
 
 **경계 — 이미 처리한 시각** (`t_ms`가 `coach_state`의 `last_t_ms` 이하. 아무것도 바꾸지 않는다)
 ```json
 {"action": "WAIT", "feedback": null, "indicators": {}, "reason_codes": ["STALE_TICK"], "events": [],
- "coach_state": "<받은 coach_state 그대로>", "meta": {"schema_version": "1.0", "feature_version": "coach-1.2", "...": "..."}}
+ "coach_state": "<받은 coach_state 그대로>", "meta": {"schema_version": "1.0", "feature_version": "coach-1.3", "...": "..."}}
 ```
 
 **경계 — 크게 앞선 시각** (`last_t_ms`가 91000인데 `t_ms`가 160000. 처리하지 않고 빈 상태를 돌려준다)
 ```json
 {"action": "WAIT", "feedback": null, "indicators": {}, "reason_codes": ["T_MS_JUMP"], "events": [],
- "coach_state": "<빈 coach_state (initial_state)>", "meta": {"schema_version": "1.0", "feature_version": "coach-1.2", "...": "..."}}
+ "coach_state": "<빈 coach_state (initial_state)>", "meta": {"schema_version": "1.0", "feature_version": "coach-1.3", "...": "..."}}
 ```
 
 **finalize 요청에 실리는 이벤트** (`examples/finalize/request.json` 발췌)
@@ -367,7 +368,7 @@ ai/research/coach-agent/
  "source_take_id": "take-122", "script_version_id": "sv-3",
  "fallback_reason": null, "dropped": [],
  "planner_hash": "<프롬프트 · 출력 스키마 · 모델 이름의 해시>",
- "meta": {"schema_version": "1.0", "feature_version": "coach-1.2", "model": "<응답한 모델>"}}
+ "meta": {"schema_version": "1.0", "feature_version": "coach-1.3", "model": "<응답한 모델>"}}
 ```
 **plan 응답 — 경계: LLM 시간 초과로 기본 계획** (200)
 ```json
@@ -375,7 +376,7 @@ ai/research/coach-agent/
  "source_take_id": "take-122", "script_version_id": "sv-3",
  "fallback_reason": "LLM_TIMEOUT", "dropped": [],
  "planner_hash": "<해시>",
- "meta": {"schema_version": "1.0", "feature_version": "coach-1.2", "model": null}}
+ "meta": {"schema_version": "1.0", "feature_version": "coach-1.3", "model": null}}
 ```
 
 # 6. 처리 — 안에서 어떻게 도는가
@@ -472,18 +473,18 @@ ai/research/coach-agent/
 
 **`coach_state`가 이어지는 방식**
 - 코치는 아무것도 저장하지 않는다. 같은 요청에는 같은 응답이 나온다(시계 · 파일 · 네트워크를 쓰지 않아서).
-- `coach_state`에 두는 것: 모듈별 커서(`counted_until_ms` · `words_counted_until_ms`), 이 Take에서 처음 본 `criteria_versions`, 최근 장 전환과 장별 첫 시작 · 마지막 끝, STT가 `ok`가 된 시각, 열린 문제 구간, 효과를 기다리는 개입, 사다리 칸 · 포기, 쿨다운 · 직전 메시지 시각, 개입 수, Take · 장 합계, 악화 · 효과 비교용 최근 지표(최근 60초), 기준 음량 표본과 값, 지금까지 센 구간(복구 판단용), `coach_state` 버전(`v`).
+- `coach_state`에 두는 것: 모듈별 커서(`counted_until_ms` · `words_counted_until_ms`), 이 Take에서 처음 본 `criteria_versions`와 도중에 바뀐 적이 있는지(`criteria_changed`, A → B → A도 바뀐 것), 장 전환(아직 늦게 확정될 수 있는 단어의 시각 — 지금 − 60초 − 단어 길이 상한 10초 — 에 보이던 장부터)과 장별 첫 시작 · 마지막 끝, STT가 `ok`가 된 시각, 열린 문제 구간, 효과를 기다리는 개입, 사다리 칸 · 포기, 쿨다운 · 직전 메시지 시각, 개입 수, Take · 장 합계, 악화 · 효과 비교용 최근 지표(최근 60초), 기준 음량 표본과 값, 지금까지 센 구간(복구 판단용), `coach_state` 버전(`v`).
 - 닫힌 문제 구간 · 개입은 이벤트로 나가므로 크기는 Take 길이에 따라 크게 늘지 않고, 장마다 남는 값만 장 수에 비례해 는다. BE는 이 값을 읽지 않고 최신 하나만 저장해 다음 요청에 붙인다.
 - 계획은 `coach_state`에 두지 않는다. 매 요청의 `coaching_plan`에서 읽는다.
 - 합계는 `coach_state`에 쌓이고 Take 결과가 이것을 쓴다. 그래서 `coach_state`를 잃으면 Take 결과를 합계로 못 만든다(finalize 409 → `replay`).
 
 ## 6-2. 시간 판정 `timing`
-계획 대비 진행을 판정한다. 계획이 있어야 하는 판정이라 코치 안(`src/coach/timing.py`)에 두되, 결과는 `architecture.md` 7절의 1초 판정 결과 모양으로 낸다. 상태를 갖지 않고, 코치가 장별 누적을 들고 매번 넘긴다.
+계획 대비 진행을 판정한다. 계획이 있어야 하는 판정이라 코치 안(서비스 `features/coach/timing.py`)에 두되, 결과는 `architecture.md` 7절의 1초 판정 결과 모양으로 낸다. 상태를 갖지 않고, 코치가 장별 누적을 들고 매번 넘긴다.
 
 - **입력**: 계획 `{target_ms, min_ms, max_ms, slides[...]}`, 지금 장 `{number, started_ms}`, 장별 누적 말한 글자 수 `slide_chars`(pace의 `tally`), 장별 머문 시간 `slide_dwell_ms`, 장별 STT가 `ok`였던 시간 `slide_stt_ok_ms`, 지금 말 속도 `pace{cpm, measurable, fast_threshold}`(`SPEED_LIMIT_EXCEEDED` 판단용, 코치가 pace의 `metrics` · `criteria()`에서 넣는다), `since_ms`. `pace.measurable`은 pace가 잴 수 있고 STT를 믿을 수 있고(`stt_status`가 `ok`이고 오디오가 살아 있음) filler · pace가 실패하지 않았을 때만 true다.
 - **계산**:
   - 장별 `target_ms` 합이 `plan.target_ms`와 다르면 비율로 맞춰 쓴다. 장별 값은 대본 파싱 때 발표 제한 시간으로 나눈 것이고, Take 목표는 Take마다 다를 수 있기 때문이다.
-  - 지금 장 진행 비율 = 말한 글자 수 ÷ `script_chars`(1을 넘지 않는다). STT가 끊겨 글자 수를 믿을 수 없거나 `script_chars`가 0인 장은 그 장에 머문 시간 ÷ 장 목표로 대신 잰다.
+  - 지금 장 진행 비율 = 말한 글자 수 ÷ `script_chars`(1을 넘지 않는다). STT가 끊겨 글자 수를 믿을 수 없거나 `script_chars`가 0인 장은 그 장에 머문 시간 ÷ 장 목표로 대신 잰다. '믿을 수 없음'은 그 장에 머무는 동안 한 번이라도 믿지 못한 요청이 있었던 것이고, 끊긴 바로 그 요청부터 머문 시간으로 잰다(코치가 이번 요청의 신뢰 여부 `stt_trusted`를 넘긴다: `stt_status`가 `ok`이고 오디오가 살아 있고 filler · pace가 실패하지 않았을 때 true. `pace.measurable`은 여기에 pace 자체가 잴 수 있는지를 더한 값이다).
   - 진행도 = 앞 장들의 `target_ms` 합 + 지금 장 `target_ms` × 지금 장 진행 비율. '앞 장'은 지금 장보다 번호가 작은 장이다.
   - 남은 내용 = 지금 장 `target_ms` × (1 − 지금 장 진행 비율) + 뒤 장들의 `target_ms` 합.
   - `required_ratio` = 남은 내용 ÷ (목표 − 경과). `projected_end_ms` = 경과 + 남은 내용 × 경과 ÷ 진행도.
@@ -499,7 +500,7 @@ ai/research/coach-agent/
 | `confidence` | 진행도를 글자로 쟀으면 높게, 시간으로 대신했으면 낮게 |
 | `summarize` | `{"TIME": {"duration_ms", "measured_ratio"}}`. `duration_ms`는 `elapsed_ms` 합, `measured_ratio`는 `planned_ms ÷ elapsed_ms`(목표 시간이 있던 시간의 비율, Take 내내 목표가 있으면 1 · 없으면 0). `elapsed_ms`가 0이면 0(`architecture.md` 7절) |
 
-- 문제와 판정 지표는 5-4. 예시는 `src/coach/examples/timing/`(`judge_input.json` · `judge_output.json` · `criteria.json` · `summarize_input.json` · `summarize_output.json`).
+- 문제와 판정 지표는 5-4. 예시는 서비스 `features/coach/examples/timing/`(`judge_input.json` · `judge_output.json` · `criteria.json` · `summarize_input.json` · `summarize_output.json`).
 
 ## 6-3. finalize — Take 결과를 만드는 과정
 0. **경로 고르기**: `replay`가 있으면 아래 '`replay`로 다시 만들기'로 간다. 없는데 `coach_state`가 null이거나 새로 시작한 상태(버전이 다르거나 깨짐)면 마지막 창을 보지 않고 바로 `ReplayRequired`(빠진 구간 `[0, t_ms)`)를 올린다 → 409. 유효한 `coach_state`만 1~5로 간다.
@@ -568,6 +569,9 @@ Take 지표를 이벤트에서 다시 계산하지 않고 `summarize`로 만드�
 | 응답 여러 개가 빠져 합계가 Take를 못 덮음 (finalize) | `take_result`를 만들지 않고 빠진 구간 `[시작, 끝)` 목록을 알린다. BE가 Take 전체 원자료를 `replay`에 실어 다시 부르면 0초부터 다시 판정한다 | 409 · `REPLAY_REQUIRED` | 합계가 비면 지표가 틀리므로 처음부터 다시 계산하는 쪽이 정확하다 |
 | `coach_state`가 null이거나 새로 시작된 상태 (finalize) | 위와 같다. 빠진 구간은 Take 전체 | 409 · `REPLAY_REQUIRED` | 앞부분 합계가 없어서 |
 | finalize의 마지막 창이 예외 | 그 창을 잴 수 없던 시간으로 넘기고 이미 센 합계로 Take 결과를 낸다(덮지 못하면 409) | 200 또는 409 | 마지막 몇 초 때문에 Take 결과를 잃지 않기 위해 |
+| 배열이 한도를 넘음 (evaluate · finalize · `replay`, 5-2 · 8절) | 요청을 거부한다 | 422 `VALIDATION_ERROR` | 비정상 입력 하나로 시간 예산 · 메모리를 넘기지 않게. 배열을 잘라 성공처럼 돌려주지 않는다 |
+| 한도 안의 기록 하나를 읽을 수 없음 (evaluate · finalize · `replay`) | 그 기록만 버리고 나머지로 판정한다(5-2) | 200 | 기록 하나 때문에 그 1초의 모든 판정을 잃지 않게 |
+| finalize가 422 (BE 쪽) | 같은 요청으로 다시 부르지 않고 Take를 `FAILED`로 표시한다. 원자료 · 이벤트는 그대로 보관하고(원자료 사용에 동의하지 않은 Take의 1초 원자료는 `takes.ended_at`(없으면 `takes.created_at`)부터 7일 동안만 남는다, `architecture.md` 1-1), 원인(BE가 보낸 값 · 한도)을 고친 뒤 `replay`를 실어 다시 만든다(수동 복구. 동의하지 않은 Take는 그 7일 안에 해야 한다) | 422 | 같은 입력은 같은 422가 된다. 결과를 잃지 않는 길은 원자료 보관이다 |
 | finalize 실패 (BE 쪽, 409 외) | BE가 한 번 다시 부른다. 그래도 실패하면 Take를 `FAILED`로 표시하고 원자료는 보관한다(나중에 `replay`로 다시 만들 수 있다) | 5xx · 시간 초과 | Take 결과는 리뷰 · 리포트의 입력이다 |
 | plan LLM 시간 초과 · 실패 · 잘못된 출력 · LLM 없음 | 기본 계획을 돌려준다 | 200 · `fallback_reason`: `LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT` · `LLM_UNAVAILABLE` | 계획이 없어도 코칭은 돌아간다 |
 | 다음 Take 시작 때 쓸 계획이 없음 · 오래됨 | BE가 `coaching_plan` null로 시작한다 (12-2 계획 고르기) | — | 발표 시작을 막지 않기 위해 |
@@ -583,15 +587,16 @@ Take 지표를 이벤트에서 다시 계산하지 않고 `summarize`로 만드�
   - 한 시간 Take를 1초 요청으로 진행: 요청당 평균 2.3 ms, `coach_state` 약 14.3–14.7 KB로 일정, 요청 약 30 KB
   - `replay` 한 번: 합성 Take 900초 2.4초 · 1800초 5.7초 · 3600초 15.1초. 한 시간 Take의 복구는 BE 시간 제한 10초를 넘어, `replay`를 붙인 호출만 60초로 둔다. 빠르게 고치는 일은 15절 열린 질문
   - 코칭 계획(기본 묶음 `openai/gpt-6-luna`, 시나리오 5개 × 5번): 유효율 1.0 · 기대 통과율 1.0 · 일관성 0.95, 지연 중앙값 3.1초 · 최대 7.8초 (`reports/results/coaching_plan.json`). 계획 입력을 직전 Take 결과 · 리뷰 모양으로 바꾼 뒤 잰 값이고, 이 값이 기준선이다(모델 · 프롬프트를 바꾸면 같은 시나리오로 다시 재 비교한다)
-- **입력 한도**: `t_ms` 0 이상 3,660,000 이하(evaluate · finalize), 한 번에 앞설 수 있는 시간 60초(evaluate, 넘으면 `T_MS_JUMP`), 코칭 계획 입력 크기(5-2 plan). evaluate가 한 번에 세는 1초 조각은 새로 시작한 상태의 첫 요청에서 30개 안팎(커서를 `t_ms − 30초`에서 시작, 5-2), 그 밖에는 60개 이하다(10만 조각을 잰 2.95초에 비례로 어림하면 60조각은 수 ms). finalize에는 앞섬 검사가 없고, `replay`의 처리 시간은 Take 길이와 원자료 수에 따라 늘어난다(한 시간 약 15초). `t_ms` 상한은 배열 크기를 묶지 않는다. 지금은 BE가 지키는 창 길이(30 · 60초)와 Take 최대 길이가 배열 크기를 묶고, 코치가 직접 검사하는 요청 배열 길이 · 값 범위 · 본문 크기는 코치를 배포하기 전에 정한다(15절 열린 질문).
+  - 코칭 계획의 출력 토큰(같은 시나리오 5개 × 5번, 서비스처럼 스트리밍 · 추론 강도 보내지 않음 · 캐시 없음, `python -m coach_lab.plan_eval --usage`, `reports/results/plan_output_tokens.json`): 25번 모두 `finish_reason` `stop`, 출력 토큰(추론 포함) 중앙값 154 · p95 427 · 최대 486. 역할 `coach.plan`의 출력 토큰 상한은 2,048이다(잰 최대 × 2를 1,024 단위로 올린 값의 최소). 서비스로 옮길 때 `settings.LLM_ROLES`에 이 역할과 값을 넣는다. 잘리면 기본 계획 + `fallback_reason: LLM_INVALID_OUTPUT`이다(7절). 시나리오 다섯 개의 계획 입력만 쟀고, 직전 Take 결과 · 리뷰가 긴 실제 이력은 재지 않았다(최소 2,048이라 잰 최대의 4배 넘는 여유가 있다)
+- **입력 한도**: `t_ms` 0 이상 3,660,000 이하(evaluate · finalize), 한 번에 앞설 수 있는 시간 60초(evaluate, 넘으면 `T_MS_JUMP`), 코칭 계획 입력 크기(5-2 plan). evaluate가 한 번에 세는 1초 조각은 새로 시작한 상태의 첫 요청에서 30개 안팎(커서를 `t_ms − 30초`에서 시작, 5-2), 그 밖에는 60개 이하다(10만 조각을 잰 2.95초에 비례로 어림하면 60조각은 수 ms). finalize에는 앞섬 검사가 없고, `replay`의 처리 시간은 Take 길이와 원자료 수에 따라 늘어난다(한 시간 약 15초). `t_ms` 상한은 배열 크기를 묶지 않으므로 코치가 배열 길이를 직접 검사한다(넘으면 422): evaluate · finalize `inputs`의 시선 · 음량 기록 각 120개 · 단어 1,000개 · 문장 끝 300개, finalize `events` 20,000개, `replay`의 시선 · 음량 기록 각 4,000개(읽을 수 있는 `t_ms`를 같은 것끼리 하나로 센 수 — 한 시간 + 60초는 3,660개. 배열 전체는 16,000개까지) · 단어 61,000개 · 문장 끝 18,300개 · STT 상태 변경 5,000개 · 장 변경 5,000개(`replay`의 단어 · 문장 끝은 60초 창 한도를 Take 최대 61분만큼 늘린 값이라, 창으로 받은 발표를 복구에서 거절하지 않는다). 모두 정상으로 실리는 수보다 넉넉한 정책상 한도이고(창의 단어 1,000개는 초당 16어절 남짓), 실제 발표 데이터로 잰 상한은 아니다. 단어 하나의 글자 수(50자) · 길이(10초)는 넘으면 그 단어만 버린다(422 아님, 5-2). 요청 본문 바이트 상한은 두지 않았다(15절).
 
 # 9. 버전
 | 버전 | 지금 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
 | `schema_version` | `1.0` | `version.py` → 응답 `meta` | 요청 · 응답 필드 이름 변경 · 삭제 · 뜻 변경처럼 BE가 깨지는 변경 |
-| `feature_version` | `coach-1.2` | `version.py` → 응답 `meta` | 판단 규칙 · 프롬프트 · 결과의 의미가 바뀔 때 |
-| `criteria_versions.coach` | `coach-1.2+<config 해시 12자리>` | `config_hash()` → 응답 `meta` | `config.py`의 판단 수치를 바꾸면 해시가 바뀐다 |
-| `criteria_versions.timing` | `timing-1.0+<설정 해시>` | `version.py`의 시간 판정 버전 + `TimingConfig` 해시 | 시간 판정 규칙(버전) · 기준값(해시)이 바뀔 때 |
+| `feature_version` | `coach-1.3` | `version.py` → 응답 `meta` | 판단 규칙 · 프롬프트 · 결과의 의미가 바뀔 때 |
+| `criteria_versions.coach` | `coach-1.3+<config 해시 12자리>` | `config_hash()` → 응답 `meta` | `config.py`의 판단 수치를 바꾸면 해시가 바뀐다 |
+| `criteria_versions.timing` | `timing-1.1+<설정 해시>` | `version.py`의 시간 판정 버전 + `TimingConfig` 해시 | 시간 판정 규칙(버전) · 기준값(해시)이 바뀔 때 |
 | `criteria_versions.<판정 모듈>` | 그 모듈의 `criteria_version` | 판정 결과 → `coach_state` → 응답 `meta` | 그 모듈이 정한다 (`architecture.md` 5절) |
 | `coach_state`의 `v` | `2` | `version.py` | `coach_state` 모양이 바뀔 때. 배포된 적이 있는 버전이면 올려야 이전 상태가 `STATE_RESET`으로 버려진다 |
 | `planner_hash` | 프롬프트 · 출력 스키마 · 모델 이름의 해시 12자리 | `plan` 응답 | 프롬프트 · 출력 스키마 · 모델 중 하나가 바뀔 때 (캐시가 함께 무효가 된다) |
@@ -607,40 +612,40 @@ uv sync
 
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 (실제 LLM 제외) | `uv run python -m pytest` | 테스트 모두 통과, live 1개 제외 (`560 passed, 1 deselected`, Issue #375 작업 끝) |
-| 코어만 · 실험 도구만 | `uv run python -m pytest tests/unit` · `tests/lab` | 통과 |
+| 코어 테스트 (`ai/service`에서, 실제 LLM 제외) | `uv run python -m pytest tests/unit/coach` | 통과 (465 passed, 2026-10-26) |
+| 실험 도구 테스트 (연구 폴더에서, 실제 LLM 제외) | `uv run python -m pytest` | 통과, live 1개 제외 (141 passed, 1 deselected, 2026-10-26) |
 | 실제 LLM으로 계획 한 번 (과금) | `uv run python -m pytest -m live` | 유효한 계획 |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 | 시나리오 재생 | `uv run python -m coach_lab.replay` (하나만: `… replay scenarios/05_time_behind.json -v`) | 16개 PASS |
 | Take 결과 채점 | `uv run python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` | 결과 파일이 커밋된 것과 같으면 `git diff`가 빈다 |
 | 복구 실험 | `uv run python -m coach_lab.recovery_eval` | `reports/results/recovery.json` |
-| 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` | `src/coach/examples/`가 바이트까지 그대로 (생성 결과라 직접 고치지 않는다) |
+| 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` | 서비스 `features/coach/examples/`와 연구 폴더 사본이 바이트까지 그대로 (생성 결과라 직접 고치지 않는다) |
 | 코칭 계획 실험 (과금) | `uv run python -m coach_lab.plan_eval --out reports/results/coaching_plan.json` | 유효율 · 기대 통과율 · 일관성 · 지연 |
 
 - 설정은 `config.py`에만 있다. 재생에서는 바꿀 값만 JSON으로 덮어쓰고(`--config`), 코어에서는 `load_config(policy={...})`처럼 키워드로 넘긴다(코어는 파일을 읽지 않는다).
-- 계약 테스트: `tests/unit/test_contract.py`(응답 필드 · 모르는 요청 필드 무시 · 음수 시각 거부 · 모르는 상태 리셋), `tests/unit/test_examples.py`(예시 요청을 넣은 응답이 예시 응답과 같음), `tests/lab/test_examples_build.py`(예시를 다시 만들어도 같음).
+- 계약 테스트(서비스 `tests/unit/coach/`): `test_contract.py`(응답 필드 · 모르는 요청 필드 무시 · 음수 시각 거부 · 모르는 상태 리셋), `test_examples.py`(예시 요청을 넣은 응답이 예시 응답과 같음), `tests/lab/test_examples_build.py`(예시를 다시 만들어도 같음).
 
 # 11. 배포
-**어디서 도는가**: 코어(`src/coach/` 전부, `examples/` · `prompts/` 포함)를 AI 서비스의 `features/coach/`로 폴더째 옮기고, 라우터 `api/coach.py`가 세 엔드포인트를 연다(`ai-service.md`). 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
+**어디서 도는가**: 코어(`examples/` · `prompts/` 포함)는 AI 서비스의 `features/coach/`에 있다(연구 폴더 `src/coach/`에서 폴더째 옮겼다). 라우터 `api/coach.py`가 엔드포인트를 연다(`ai-service.md`). `/coach/plan`은 코어를 옮기는 작업에서 연다(코어 이동 다음 PR). `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷(시선 · 말 속도 · 소리 크기 · 군더더기)이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우면 코어는 그 영역을 잴 수 없음(시선은 `UNMEASURABLE`, 나머지는 `UNKNOWN`)으로 두고 견디지만, Take 결과의 그 영역 `measured_ratio`가 null이 되고 판정 기준 · 기준 버전이 비어 공통 계약(`architecture.md` 7절)과 어긋나기 때문이다. 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 `pydantic>=2.13,<3`(서비스 `uv.lock`이 정한 판, 연구 폴더는 서비스를 editable로 설치해 같은 판을 쓴다). 옮기는 시점은 입력 위험(`t_ms` 상한 · 크게 앞선 시각, 5-2)과 복구 비용(`replay` 한 번이 Take 길이만큼 다시 판정함)을 막은 뒤이고, 아래 '옮긴 뒤 같은 결과인지 확인' 1~5를 모두 통과해야 한다. 서비스로 옮겨 BE 연동을 확인한 뒤, 배포할 그 판으로 배포 직전 점검을 통과하면 배포한다.
 
 | 라우터가 할 일 | 설명 |
 |---|---|
-| `Judges` 묶음 만들기 | 앱 시작 때 한 번. 판정 모듈 넷(`judge` · `summarize` · `criteria`)과 volume `speaking_levels` · `baseline`. `timing`은 코어 안에 있어 넘기지 않는다 |
+| `Judges` 묶음 만들기 | 앱 시작 때 한 번. 판정 모듈 넷(`judge` · `summarize` · `criteria`)과 volume `speaking_levels` · `baseline`. `timing`은 코어 안에 있어 넘기지 않는다. 넷이 서비스에 모두 있을 때 evaluate · finalize와 함께 만든다 |
 | 호출 | `/coach/evaluate` → `decide_safe(req, judges)`, `/coach/finalize` → `finalize(req, judges)`, `/coach/plan` → `plan_coaching(req, llm=…, model=…)`. 라우터는 요청마다 마감 시각(AI 예산 25초)을 만들어 `structured_llm(<출력 스키마>, deadline=…)`으로 LLM 객체를 받는다(서비스 `common/llm.py`, 역할 → 묶음은 `settings.py`). `model`은 그 역할 묶음의 모델 이름이다(`planner_hash`). LLM 설정이 없어 객체를 만들 수 없으면 `llm=None`을 넘겨 코어가 기본 계획 + `LLM_UNAVAILABLE`을 200으로 돌려준다. 연구 도구의 고정 값(시간 제한 20초 · 재시도 0)은 쓰지 않는다 |
 | 오류 매핑 | 요청 형식 오류는 422 `VALIDATION_ERROR`. `ReplayRequired`는 409 `REPLAY_REQUIRED`(공통 에러 본문, 메시지에 빠진 구간) |
 | 동기 함수 | 판단은 CPU만 쓰는 짧은 계산이라 `def` 라우터로 두면 스레드 풀에서 돈다(`async def` 안에서 동기 호출을 하면 서버 전체가 멈춘다) |
-| 옮긴 뒤 테스트 | `tests/unit/`도 옮기고 import 접두어만 바꾼다. `test_core_boundary.py`는 코어 폴더를 찾는 상대 경로를 새 위치에 맞춘다 |
+| 옮긴 뒤 테스트 | `ai-service.md` 6-1 2번대로 한다. `tests/unit/`을 옮기되, 예시를 연구 폴더 경로로 찾는 `test_examples.py`는 패키지 위치로 찾게 고치고, `test_core_boundary.py`는 코어 폴더 경로를 새 위치에 맞춘다. `tests/lab/test_examples_build.py`는 연구 폴더에 남긴다(예시 생성 `coach_lab.examples`와 연구용 대역을 쓴다). 그중 finalize 예시를 대조하는 검사(`test_finalize_response_matches_example` · `test_finalize_example_judges_the_last_window_with_stt_closed` · `test_finalize_examples_show_normal_and_replay`)는 실제 판정 모듈을 묶은 서비스 계약 테스트로 새로 만든다(대역은 서비스에 넣지 않는다. evaluate · finalize를 열 때 함께). 이 파일이 쓰던 `assert_same`은 연구 폴더 `tests/lab/judge_helpers.py`에 같은 함수를 두었다(예전에는 `tests/unit/test_examples.py`에서 가져왔다). |
 
 **환경변수**: 코치 코어는 환경변수를 읽지 않는다. 코칭 계획의 LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓴다.
 
 **옮긴 뒤 같은 결과인지 확인**
 1. 단위 테스트 통과 (코어 경계 테스트 포함).
-2. 연구 폴더가 서비스를 editable 의존성으로 설치하고 `coach_lab`의 import를 새 패키지 이름으로 바꾼다. 연구용 판정 대역은 실제 판정 모듈로 바꿔 끼운다.
-3. `python -m coach_lab.replay`가 전부 통과하고, `python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` · `python -m coach_lab.recovery_eval` 뒤 `git diff`가 비어 있는지 본다.
+2. 연구 폴더가 서비스를 editable 의존성으로 설치하고 `coach_lab`의 import를 새 패키지 이름으로 바꾼다.
+3. 연구용 판정 대역을 그대로 둔 채 `python -m coach_lab.replay`가 전부 통과하고, `python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` · `python -m coach_lab.recovery_eval` 뒤 `git diff`가 비어 있는지 본다. 그 뒤 대역을 서비스에 있는 실제 판정 모듈로 바꿔 끼워 다시 돌리고, 달라진 판정을 연구 폴더 README에 적는다(서비스에 아직 없는 모듈의 대역은 그 모듈이 오면 바꾼다).
 4. `python -m pytest -m live`(실제 LLM 1회)와 `python -m coach_lab.plan_eval`이 커밋된 `reports/results/coaching_plan.json`과 비슷한지 본다(LLM 답이라 바이트까지 같지는 않다).
-5. 연구 폴더의 `src/coach/`를 지운다. 이후 코어는 서비스에서만 고친다.
+5. 연구 폴더의 `src/coach/`를 지운다. 이후 코어는 서비스에서만 고친다. 다만 BE 테스트가 경로로 읽는 `examples/`는 BE가 서비스 경로(`ai/service/src/pitch_coach_ai/features/coach/examples/`)로 바꿀 때까지 연구 폴더에 사본으로 남기고, 서비스 예시와 같은지 연구 폴더 테스트가 본다(`ai-service.md` 6-1 2번).
 
 **증상별 원인**
 
@@ -697,7 +702,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 | 코칭 계획 (응답마다 한 행) | `/coach/plan` 응답 (기본 계획 포함) | `coaching_plans` 테이블: `id` · `pitch_id` · `source_take_id` · `script_version_id` · `target_ms` · `min_ms` · `max_ms` · `requested_at` · `payload` · `meta`. 인덱스 (`pitch_id`, `requested_at`) | `id` UUID PK. `pitch_id` UUID NOT NULL, `pitches.id` 외래 키(발표를 지우면 함께 지움, ON DELETE CASCADE). `source_take_id` · `script_version_id`는 요청 값(UUID, nullable)이고 외래 키로 묶지 않는다(Take를 지워도 계획 행은 발표와 함께 남고, 이 값은 바탕 값 비교에만 쓴다). `target_ms` · `min_ms` · `max_ms`는 요청 `plan`의 값(Integer ms, nullable). `requested_at`은 BE가 그 계획 요청을 보낸 시각(timestamptz, NOT NULL). `payload`(JSONB, NOT NULL) = 응답의 `{coaching_plan, fallback_reason, dropped, planner_hash}`, `meta`(JSONB, NOT NULL) = 응답의 `meta`. 크기: 행 하나 수 KB(`focus` · `relax` 각 3개 이하) | BE가 쓴다 · BE가 다음 Take 시작 때 골라 evaluate에 싣는다(12-2 계획 고르기) | 덮어쓰지 않고 응답마다 행을 더한다. 유일 제약은 두지 않는다 | 발표와 함께. 옛 행도 따로 기한을 두지 않고 발표를 지울 때 함께 지운다(행 수는 계획 요청 수만큼만 는다) |
 | `coach_state` | evaluate 응답마다 | Take를 맡은 BE 프로세스 메모리 (여러 프로세스면 Redis `coach_state:{take_id}` 등) | 응답의 JSON 그대로. 잰 크기: 공백 없는 JSON 약 16 KB(예시 92초 Take), 한 시간 Take를 1초 요청으로 돌려도 14.3–14.7 KB로 일정 | BE가 쓰고 다음 요청에 붙인다. BE는 해석하지 않는다 | 최신 하나만 둔다 | Take가 끝나면 지운다 |
 | 코치 이벤트 (코치가 한 말 `INTERVENTION` 포함) | evaluate · finalize 응답마다 | `coach_events` (`take_id` · `seq` · `kind` · `event_id` · `t_ms` · `payload` JSONB · `meta` JSONB) | 이벤트 JSON 그대로 `payload`(`INTERVENTION`이면 `evidence`도 그 안에, 5-3), 그 응답의 `meta`를 `meta`에. 코치가 한 말은 이 테이블에만 두고 `live_feedbacks`에는 쓰지 않는다(리포트도 여기서 읽는다). `seq`는 BE가 받은 순서로 매긴다(12-2). 잰 크기: 이벤트 하나 약 0.3–0.4 KB(예시 finalize 요청 이벤트 11개 3.7 KB) | BE가 받은 순서대로 추가만 · finalize의 `events`, 리포트 | `(take_id, event_id)` · `(take_id, seq)` 유일 제약, 같은 `event_id`가 이미 있으면 건너뛴다. `event_id`가 같으면 같은 이벤트다(그래도 finalize가 한 번 더 거른다) | Take와 함께 |
-| Take 결과 | finalize 응답 | `take_ai_results` (`take_id` · `kind`=`TAKE_RESULT` · `payload` JSONB · `meta` JSONB) | 응답의 `take_result`를 `payload`에, 응답의 `meta`를 `meta`에. 잰 크기: 공백 없는 JSON 약 6.7 KB(예시 92초 Take, 3장). 크기는 Take 길이가 아니라 장 수 · 문제 구간 수(하나 약 0.15 KB) · 개입 수(하나 약 0.3 KB)에 비례한다. 한 시간 Take는 실측하지 않았다(규모 테스트가 없다, 15절 알려진 한계) | BE가 쓴다 · 리뷰 `take_result` · `previous_takes`, 코칭 계획 `previous_take_result` | `(take_id, kind)` 유일 제약. Take마다 하나 (`replay`로 다시 만들면 덮는다) | Take와 함께 |
+| Take 결과 | finalize 응답 | `take_ai_results` (`take_id` · `kind`=`TAKE_RESULT` · `payload` JSONB · `meta` JSONB) | 응답의 `take_result`를 `payload`에, 응답의 `meta`를 `meta`에. 잰 크기: 공백 없는 JSON 약 6.7 KB(예시 92초 Take, 3장). 크기는 Take 길이가 아니라 장 수 · 문제 구간 수(하나 약 0.15 KB) · 개입 수(하나 약 0.3 KB)에 비례한다. 한 시간 Take(30장, 합성 원자료, 말 속도 · 소리 크기는 가짜 판정 모듈)를 `replay`로 만든 결과는 공백 없는 JSON 약 18 KB였다(서비스 `tests/unit/coach/test_extremes.py`, `pytest -m slow`) | BE가 쓴다 · 리뷰 `take_result` · `previous_takes`, 코칭 계획 `previous_take_result` | `(take_id, kind)` 유일 제약. Take마다 하나 (`replay`로 다시 만들면 덮는다) | Take와 함께 |
 | 리포트 요약 측정 칸 | finalize 응답 | `take_summaries` (`architecture.md` 1-1 대응 표) | 칸, 값 칸은 모두 nullable | BE · FE 리포트 목록 | Take마다 한 행 | Take와 함께 |
 | 복구용 원자료 | Take 동안 (`utterance_ends`는 Take 종료 때) | `take_metric_seconds` (`take_id` · `t_ms` · `slide_number` · `gaze` JSONB · `voice` JSONB · `stt_status`), `take_slide_events` (`take_id` UUID NOT NULL, `takes.id` 외래 키 ON DELETE CASCADE · `slide_number` Integer NOT NULL · `started_ms` Integer NOT NULL. 기본 키 (`take_id`, `started_ms`), 다른 테이블이 참조하지 않으므로 `id` 칸은 두지 않는다), `take_transcript_segments` (확정 단어 `words`와 `final_at_ms` Integer), `takes.utterance_ends` (JSONB, ms 목록) | Take 기준 ms. 1초 원자료는 몇 초씩 모아 쓴다. `take_metric_seconds.slide_number`는 FE가 보낸 참고값이고, 장은 `take_slide_events`로 정한다. `take_slide_events`는 WS `slide` 하나가 한 행이다(`started_ms` = 메시지의 `t_ms`, `architecture.md` 1-4). `final_at_ms`는 BE가 그 확정 결과를 받기 직전의 마지막 `metrics.t_ms`(아직 `metrics`가 없으면 0)다. STT는 구간 단위로 확정되므로 확정 시각은 구간마다 한 칸이고, `replay`에 실을 때 구간 안의 단어마다 그 구간의 `final_at_ms`를 붙인다(Take 끝보다 늦으면 Take 끝으로 자른다, 5-2). `utterance_ends`는 Take 동안 BE 메모리에 두고 창에 싣다가, Take 종료 때(`architecture.md` 1-3 3번 ③) 한 번에 쓴다. 한 시간 Take의 `replay` 요청은 합성 Take에서 약 1.9 MB | BE가 쓴다 · 409 때 `replay`. `take_slide_events`는 evaluate `inputs.slide`와 `/takes/analyze`의 장 구간 나누기에도 쓴다 | `take_metric_seconds`는 `(take_id, t_ms)`, `take_slide_events`는 기본 키 `(take_id, started_ms)`. 같은 키가 또 오면 먼저 저장한 것을 둔다. 늦게 온 이벤트도 키가 새로우면 그대로 넣는다 | Take와 함께 (`architecture.md` 1-1. 1초 기록은 생체 정보가 아닌 파생값이다). 동의 없는 Take의 `take_metric_seconds` 예외는 `architecture.md` 1-1 '지우기 · 보관' |
 
@@ -727,7 +732,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 | 장 전환 시각과 진행 정답을 단 발표 재생 | 장 시간 오차 · 늦음 판정 시작 오차 (`timing`) | 장 시간이 정답과 맞고, 늦음을 늦지 않게 알아채는 것 | 재생 |
 | 코칭 계획 시나리오(`scenarios/plan/`)마다 여러 번 | 유효율 · 기대 통과율 · 일관성 · 지연 · 첫 계획으로 재생했을 때의 개입 변화 | 기본 계획으로 돌아가지 않고 시나리오가 기대한 계획을 내는 것 | `coach_lab.plan_eval` → `coaching_plan.json` (실제 LLM, 과금) |
 
-- 판정 모듈은 연구용 대역이라, 실제 판정 모듈이 나오면 같은 실험을 다시 돌린다.
+- 시선 · 군더더기는 서비스의 실제 판정 모듈로 재생 · 실험을 다시 돌렸다(연구 폴더 README 7절). 말 속도 · 소리 크기는 아직 대역이라, 그 모듈이 서비스에 오면 같은 실험을 다시 돌린다.
 - 모델을 바꾸면 같은 시나리오로 이전 모델과 비교한 뒤 바꾼다(프롬프트 · 검증 범위는 잰 모델에 맞춰 골랐다).
 
 # 14. 지표 정의
@@ -752,11 +757,12 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 4. 409 `REPLAY_REQUIRED`는 공통 에러 본문만 쓰고 빠진 구간은 `message`에 담는다.
 5. 저장 설계: 12-1(유일 제약 · JSONB · 크기 · 보관). 마이그레이션은 BE가 한다.
 6. `/coach/plan` 호출 흐름은 12절 그림 · 12-2대로다. 리뷰를 부르지 않는 배포에서는 대본 파싱 직후와 대본 · 제한 시간 · 허용 범위가 바뀌었을 때만 부른다. `plan.min_ms` · `max_ms`의 기준(발표 제한 시간)은 BE가 맞춘다.
-7. 코어를 서비스로 옮기는 조건: Python 3.12 · `pydantic>=2.13,<3` · 입력 위험(`t_ms` 상한 · 크게 앞선 시각)과 복구 비용을 막은 뒤 · 11절 '옮긴 뒤 같은 결과인지 확인' 통과.
+7. 코어를 서비스로 옮기는 조건: Python 3.12 · `pydantic>=2.13,<3` · 입력 위험(`t_ms` 상한 · 크게 앞선 시각)과 복구 비용을 막은 뒤 · 11절 '옮긴 뒤 같은 결과인지 확인' 통과. 엔드포인트는 `/coach/plan`을 먼저 열고, evaluate · finalize는 판정 모듈 넷이 서비스에 모두 있을 때 연다(11절).
 8. 공통 계약(`architecture.md`)에 맞춤: 기준 음량 표본은 volume `speaking_levels`가 고른 말한 1초, 시선 `voiced`에서 오디오가 끊긴 1초를 뺌, 오디오가 멈추면 STT 모듈에 `degraded`, Take 끝에 멈춤을 세지 않음, 미션 · 반복 문제 영역 일곱(`CONTENT`는 가중 없음).
+9. evaluate · finalize · `replay`의 배열 한도와 기록 값 범위(5-2 · 8절): 배열 개수가 넘으면 422, 한도 안에서 읽을 수 없는 기록(단어 50자 · 10초 초과 포함)은 그 기록만 버림, `replay`의 되풀이된 1초는 판정 모듈이 읽을 수 있는 것 중 먼저 온 것, 모르는 `stt_status`는 `degraded`. plan의 장 · 미션 한도는 evaluate · finalize에 걸지 않는다. finalize 422는 다시 부르지 않고 원자료로 수동 복구한다(7절).
 
 **아직 정하지 않은 것**
-- 요청 배열 길이 · 값 범위(`voiced_ms` · `stt_status` 허용 목록 등) · 요청 본문 크기 상한. plan 입력 크기 상한과 같은 필드의 evaluate · finalize 한도도 함께 정한다(5-2)
+- 요청 본문 바이트 상한. 배열 · 단어 한도로 원자료 크기는 묶이지만 `coach_state` · `events`의 근거 값 · 미션 설명(evaluate)처럼 묶이지 않는 값이 있다. 서비스 공통으로 정한다(`ai-service.md` 15절)
 - 복구를 이동 창으로 빠르게 하고 `replay` 시간 제한(60초)을 다시 줄이기
 - `coach_state` 정합성 검사 또는 서명
 - 코칭 계획의 사용자별 호출 횟수 제한 · 캐시
@@ -767,8 +773,8 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 - `T_MS_JUMP`는 이미 처리한 상태에서 60초 넘게 앞선 시각만 막는다. 새로 시작한 상태의 첫 요청(Take 첫 요청 · `STATE_RESET` · `T_MS_JUMP` 직후)에 잘못된 미래 시각이 오면 그 시각까지 `STALE_TICK`이 이어질 수 있고(상한 3,660,000까지), 60초 안쪽의 잘못된 시각은 그만큼 코칭을 멈추게 한다. BE가 Take 시간축을 이어 가는 것(`architecture.md` 2절)이 이를 막는다.
 - 새로 시작하면(`T_MS_JUMP` · `STATE_RESET`) 쿨다운뿐 아니라 개입 수 · 사다리 칸 · 포기도 처음부터다. 그 Take의 개입 상한은 새로 시작한 뒤부터 다시 센다.
 - 리뷰의 다음 미션 · 반복 문제는 `review-agent.md` 5-3이 이 입력 한도(20개 · 설명 500자 · 20개) 안으로 낸다. 리뷰 출력 예시(`review-agent.md` 5-5)로 계획 입력을 시험한다.
-- BE가 재기동해 finalize를 원자료로 다시 할 때 Take 상수는 저장된 값으로 다시 만든다. Take 시작 뒤 발표의 제한 시간 · 허용 범위 · 장별 값이 바뀌었으면 시간 판정의 기준이 원래 Take와 달라질 수 있다.
-- 가상 발표자와 연구용 판정 대역으로만 확인했다. 판정 기준값은 실제 연습 데이터로 검증하지 않았다. 대역은 `GAZE_LOW_EYE_CONTACT` · `GAZE_ON_SCREEN`을 내지 않는다.
+- BE가 재기동해 finalize를 원자료로 다시 할 때 Take 상수는 저장된 값으로 다시 만든다. Take 시작 뒤 발표의 제한 시간 · 허용 범위 · 장별 값이 바뀌었으면 시간 판정의 기준이 원래 Take와 달라질 수 있다. 그래서 원자료를 보관해도 복구 결과가 원래 결과와 같다고 보장하지 않는다. 고치려면 BE가 Take 시작 당시의 시간 계획을 Take에 함께 보관해 복구에 싣는다(저장 설계 변경이라 따로 정한다).
+- 가상 발표자로만 확인했다. 시선 · 군더더기는 서비스의 실제 판정 모듈로, 말 속도 · 소리 크기는 연구용 대역으로 재생 · 실험을 돌렸다(연구 폴더 README 7절). 판정 기준값은 실제 연습 데이터로 검증하지 않았다. 말 속도 · 소리 크기 대역은 실제 모듈과 다를 수 있고, 예전 시선 대역은 `GAZE_LOW_EYE_CONTACT` · `GAZE_ON_SCREEN`을 내지 않았다(실제 시선 모듈은 `GAZE_LOW_EYE_CONTACT`를 `GAZE_ON_SCRIPT`와 겹쳐 낸다).
 - 요청이 30초보다 길게 빠지면 합계로는 Take 결과를 만들 수 없고 `replay`가 필요하다. `replay`는 BE가 Take 전체 원자료를 보관해야 쓸 수 있다.
 - Take 도중 BE가 재시작하면 메모리에 있던 문장 끝 신호를 잃어, 그 Take의 `replay`는 문장 끝 없이 판정된다(군더더기 보류 풀기 · 문장 끝 기다리기가 부정확해진다, `architecture.md` 1-3 3번).
 - 요청 사이에 장이 여러 번 바뀌면 중간 장은 실시간 판정(시간 판정 · 장 방문)에서 빠질 수 있다. Take 결과를 `replay`로 만들 때는 장 변경 전체를 쓴다(`architecture.md` 1-3 2번).
@@ -776,7 +782,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 - `GAZE_ON_SCREEN` · `GAZE_UNMEASURABLE` · `PACE_SLOW`는 정상 행동과 가릴 근거가 없어 말하지 않고 문제 구간에만 남긴다.
 - 개입 규칙이 아직 판정 결과를 직접 읽지 않고 한 번 옮긴 지표(`measure.py`의 `Tick`)를 읽는다.
 - 오디오가 멈춘 동안 확정된 단어(멈추기 직전에 말한 단어 포함)는 STT 모듈이 세지 않는다(`degraded`). 옛 단어로 지적하지 않는 대신 1초 안팎의 글자 수 · 발화 시간을 잃는다. 오디오 정지는 가장 늦은 음량 기록으로만 판단하므로, evaluate를 건너뛰어 한 요청에 여러 1초가 새로 들어오면 그 사이의 짧은 정지는 놓칠 수 있다.
-- 입력 신뢰성의 남은 한계: 모르는 필드를 무시하므로 요청 필드 이름의 오타가 조용히 무시되고 기본값이 쓰이며, `STATE_RESET`이 몇 번 났는지 서버에서 세지 않는다. 악성 · 극단 입력(상한 + 1, 음수, NaN, 위조 `coach_state`)과 규모(한 시간 Take의 `replay` 시간 · `take_result` 크기, 큰 요청) 테스트가 없다.
+- 입력 신뢰성의 남은 한계: 모르는 필드를 무시하므로 요청 필드 이름의 오타가 조용히 무시되고 기본값이 쓰인다. 예시 요청에 그런 필드가 없는지는 계약 테스트(서비스 `tests/unit/coach/test_example_fields.py`)가 본다. `STATE_RESET`이 몇 번 났는지는 서버에서 세지 않는다(evaluate를 열 때 로그로 남긴다). 배열 한도 + 1 · 음수 시각 · 범위 밖 기록 · 위조한 `coach_state`(예외 없이 계약대로 응답) · 한 시간 Take 복구(시간 · `take_result` 크기, `pytest -m slow`)는 테스트한다. 음량 `level_db` · 시선 `reliability`의 NaN · 무한대는 지금 걸러지지 않는다(값 범위 검사는 아직 정하지 않았다). 한도 가까운 큰 요청은 재지 않았다.
 
 # 16. 확정 값 한눈에
 | 항목 | 값 | 어디서 정하나 |
@@ -788,11 +794,12 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 | `event_id` | `iv-<t_ms>` · `oc-<intervention_id>` · `ep-<issue_type>-<장>-<start_ms>` · `sl-<장>-<start_ms>` · `st-<issue_type>-<장>-<t_ms>` · `su-<issue_type>-<t_ms>`, 한 응답 안 중복은 `-2` … | 5-3 |
 | 시간 예산 | evaluate BE 약 300 ms (재시도 없음) · finalize BE 10초 (1번 + 409 때 `replay` 1번, `replay`를 붙인 호출은 60초) · plan AI 25초 / BE 30초 (1번) | 8절 |
 | 409 | `REPLAY_REQUIRED`, `replay`를 붙여 한 번 다시 | 7절 |
-| 입력 한도 | `t_ms` 0 ~ 3,660,000 (evaluate · finalize, 넘으면 422) · 앞섬 60초 초과면 200 `WAIT` · `T_MS_JUMP` + 빈 `coach_state` · plan 입력 장 · 대본 100 / 미션 20 / 반복 문제 20 / 미션 설명 500자 | 5-2 · 8절 |
+| 입력 한도 | `t_ms` 0 ~ 3,660,000 (evaluate · finalize, 넘으면 422) · 앞섬 60초 초과면 200 `WAIT` · `T_MS_JUMP` + 빈 `coach_state` · plan 입력 장 · 대본 100 / 미션 20 / 반복 문제 20 / 미션 설명 500자 · evaluate · finalize `inputs` 시선 · 음량 120 / 단어 1,000 / 문장 끝 300 · finalize `events` 20,000 · `replay` 시선 · 음량 4,000(같은 `t_ms`는 하나, 배열 전체 16,000) / 단어 61,000 / 문장 끝 18,300 / STT 상태 · 장 변경 5,000 (넘으면 422). 한도 안에서 읽을 수 없는 기록(단어 50자 · 10초 초과 포함)은 그 기록만 버림 | 5-2 · 8절 |
+| LLM 출력 토큰 상한 (plan) | 역할 `coach.plan` 2,048 (잰 최대 486의 2배를 1,024 단위로 올린 값의 최소, 8절) | 8절 |
 | `fallback_reason` (plan) | `LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT` · `LLM_UNAVAILABLE` · null | 5-3 |
 | `relax` 허용 영역 | `GAZE` · `FILLER` | 6-4 |
 | 오디오가 멈춘 1초 | STT 모듈에 `stt_status` `degraded`, 시선 `voiced`에서 뺌 | 6-1 |
 | 미션 · 반복 문제 영역 | 일곱(`CONTENT` 미션 · 반복 문제는 발표 중 가중 없음) | 5-2 · 6-1 |
-| 버전 | `schema_version` `1.0` · `feature_version` `coach-1.2` · `coach_state` `v` `2` · `timing-1.0` | 9절 |
+| 버전 | `schema_version` `1.0` · `feature_version` `coach-1.3` · `coach_state` `v` `2` · `timing-1.1` | 9절 |
 | 저장 | 코칭 계획 `coaching_plans`(응답마다 한 행, `requested_at`이 가장 늦은 것을 고름), 이벤트 `coach_events` (`take_id`, `event_id`, 코치가 한 말 포함), Take 결과 `take_ai_results` (`take_id`, `kind`=`TAKE_RESULT`), 1초 원자료 `take_metric_seconds` (`take_id`, `t_ms`), 장 변경 `take_slide_events` (`take_id`, `started_ms`), 문장 끝 `takes.utterance_ends`(Take 종료 때 한 번에) — 괄호는 유일 제약. JSONB, Take · 발표와 함께 보관(동의 없는 Take의 1초 원자료는 예외). `coach_state`는 BE 메모리 | 12-1 · 12-2 |
 | 의존성 · 옮기는 조건 | pydantic 하나(`>=2.13,<3`), Python 3.12. 입력 위험 · 복구 비용을 막고 11절 확인을 통과한 뒤 서비스로 | 4-3 · 11절 |

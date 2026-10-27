@@ -19,15 +19,14 @@ from coverage_lab.store import (
     save_rubric,
 )
 from coverage_lab.stt_stability import check_baseline, repeat_runs
-from script_coverage.core import CoverageError, ScriptLLMs, TakeLLMs
-from script_coverage.script_analysis.schemas import SlideSemanticAnalysis
-from script_coverage.script_analysis.semantic import semantic_config_hash
-from script_coverage.shared.text import normalize_script
-from script_coverage.stt_evaluation.schemas import SlideSTT, Take, VerifierResult
+from pitch_coach_ai.features.script_coverage.core import CoverageError, ScriptLLMs, TakeLLMs
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import SlideSemanticAnalysis
+from pitch_coach_ai.features.script_coverage.script_analysis.semantic import semantic_config_hash
+from pitch_coach_ai.features.script_coverage.shared.text import normalize_script
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import SlideSTT, Take
+from tests.lab.fakes import DeckAwareLLM, KeepFirstVerifier, SaidAllLLM
+from tests.lab.slides import SLIDES
 from tests.lab.test_store import _evaluation, _item, _rubric
-from tests.unit.fakes import DeckAwareLLM, FakeLLM
-from tests.unit.shared.slides import SLIDES
-from tests.unit.test_take_core import SaidAllLLM
 
 MODEL = "m"
 SETTINGS = Settings(base_url="http://127.0.0.1:9/v1", api_key="dummy", model=MODEL)
@@ -161,7 +160,7 @@ def test_call_counts_through_run_functions_and_cache_replay(conn, tmp_path):
     # 6번 장의 의미 평가가 실패한다: 실패한 호출도 센다
     flaky = TakeLLMs(
         eval=SaidAllLLM(failing={6: RuntimeError("대본 원문")}),
-        verifier=FakeLLM(VerifierResult(judgments=[])),
+        verifier=KeepFirstVerifier(),
     )
     evaluations, stats = run_take_evaluation(take, conn, SETTINGS, llms=flaky)
     assert [e.slide_number for e in evaluations] == [4]
@@ -173,7 +172,7 @@ def test_call_counts_through_run_functions_and_cache_replay(conn, tmp_path):
         1,
     )  # 4번 장에서 규칙과 LLM 이 어긋나 교차 검증을 1번 부른다
     # 성공한 4번 장은 캐시에 있어 실패했던 6번 장만 다시 부른다
-    fine = TakeLLMs(eval=SaidAllLLM(), verifier=FakeLLM(VerifierResult(judgments=[])))
+    fine = TakeLLMs(eval=SaidAllLLM(), verifier=KeepFirstVerifier())
     evaluations, stats = run_take_evaluation(take, conn, SETTINGS, llms=fine)
     assert [e.slide_number for e in evaluations] == [4, 6] and stats["failed"] == {}
     assert (stats["semantic_calls"], stats["verifier_calls"]) == (1, 1)

@@ -9,28 +9,34 @@ from pathlib import Path
 
 import pandas as pd
 
-from script_coverage.config import SCORE_WEIGHT
-from script_coverage.script_analysis.draft import draft_rubric
-from script_coverage.script_analysis.final import (
+from pitch_coach_ai.features.script_coverage.config import SCORE_WEIGHT
+from pitch_coach_ai.features.script_coverage.script_analysis.draft import draft_rubric
+from pitch_coach_ai.features.script_coverage.script_analysis.final import (
     final_config_hash,
     final_user_message,
     finalize_rubric,
     name_candidates,
     review_final,
 )
-from script_coverage.script_analysis.keywords import extract_keywords_tfidf
-from script_coverage.script_analysis.schemas import FinalReview, SlideSemanticAnalysis
-from script_coverage.script_analysis.semantic import analyze_semantics, semantic_config_hash
-from script_coverage.shared.facts import extract_critical_facts
-from script_coverage.shared.llm_step import (
+from pitch_coach_ai.features.script_coverage.script_analysis.keywords import extract_keywords_tfidf
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
+    FinalReview,
+    SlideSemanticAnalysis,
+)
+from pitch_coach_ai.features.script_coverage.script_analysis.semantic import (
+    analyze_semantics,
+    semantic_config_hash,
+)
+from pitch_coach_ai.features.script_coverage.shared.facts import extract_critical_facts
+from pitch_coach_ai.features.script_coverage.shared.llm_step import (
     LLMCache,
     cache_get,
     cache_put,
     call_in_parallel,
     llm_step,
 )
-from script_coverage.shared.rubric import NAME_TYPES, EvaluationRubric
-from script_coverage.shared.text import normalize_script
+from pitch_coach_ai.features.script_coverage.shared.rubric import NAME_TYPES, EvaluationRubric
+from pitch_coach_ai.features.script_coverage.shared.text import normalize_script
 
 from .cache import SampleCache
 from .datasets import load_script_json

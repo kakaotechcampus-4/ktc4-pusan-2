@@ -419,3 +419,37 @@ def test_request_id_in_llm_log_cannot_forge_fields(log_records: list[logging.Log
         client.post("/_probe/llm-forge", headers={"X-Request-ID": "fake outcome=ok"})
     line = next(r.getMessage() for r in log_records if r.name == "pitch_coach_ai.llm")
     assert r"request_id=fake\x20outcome=ok " in line
+
+
+def test_client_build_error_is_llm_unavailable_and_logs_only_the_class(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # LLM 객체를 만들다 난 예외도 LLM_UNAVAILABLE 이다(ai-service.md 6-2). 메시지는 남기지 않는다
+    class BrokenChatOpenAI:
+        def __init__(self, **kwargs: Any) -> None:
+            raise ValueError("secret-in-message")
+
+    monkeypatch.setattr(llm_module, "ChatOpenAI", BrokenChatOpenAI)
+    with caplog.at_level("ERROR", logger="pitch_coach_ai.llm"), pytest.raises(LlmUnavailable):
+        structured_llm(Answer, app_settings=_full_settings())
+    assert "llm_build_failed" in caplog.text and "ValueError" in caplog.text
+    assert "secret-in-message" not in caplog.text
+
+
+def test_feature_role_uses_its_own_call_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class SpyChatOpenAI:
+        def __init__(self, **kwargs: Any) -> None:
+            seen.update(kwargs)
+
+        def with_structured_output(self, schema: type[BaseModel]) -> FakeRunnable:
+            return FakeRunnable(ok())
+
+    monkeypatch.setattr(llm_module, "ChatOpenAI", SpyChatOpenAI)
+    s = _full_settings(script_coverage_llm_timeout_seconds=20)
+    llm = structured_llm(Answer, "script_coverage.unit", app_settings=s)
+    assert llm._timeout == 20  # 호출 전체를 끊는 시간
+    assert seen["timeout"] == 20  # 연결 · 읽기 한 번마다
+    assert seen["max_completion_tokens"] == 5120  # LLM_ROLES["script_coverage.unit"]
+    assert structured_llm(Answer, app_settings=s)._timeout == 12  # 다른 역할은 그대로

@@ -16,7 +16,7 @@
 import sqlite3
 from datetime import UTC, datetime
 
-from script_coverage.shared.llm_step import LLMCache
+from pitch_coach_ai.features.script_coverage.shared.llm_step import LLMCache
 
 # 표가 하나인 종류: kind -> (표, 키 열, 설정 해시 열)
 _SIMPLE_TABLES = {

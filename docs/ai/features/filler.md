@@ -3,7 +3,7 @@
 > **이 문서는** 군더더기 판정 기능의 전체 설명서다. 처음 보는 사람이 이 문서만 읽고 이 기능이 왜 있고, 무엇을 받아 무엇을 내며, 안에서 어떻게 돌고, 어떻게 실행 · 배포하는지 알 수 있게 쓴다.
 > **기준 범위**: 군더더기 판정 모듈의 목표 설계다. 기능 사이 공통 계약(1초 원자료 모양 · 1초 판정 결과 형식 · 커서 · 에러 · meta · 시간 예산 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **한 줄 요약**: STT가 확정한 단어마다 "음 · 그 · 그니까" 같은 군더더기인지 층(T1 · T2 · T3)과 함께 판정하고, 최근 빈도로 1초 판정 결과를 낸다. 군더더기 사전의 원본을 이 모듈이 갖고, BE는 여기서 STT keyterm 단어만 가져간다.
-> **기준값**: 판정 수치(앞 · 뒤 간격 기준, 문장 첫 단어 간격 기준, 잦음 기준, 판정 창 길이)와 사전은 `src/filler/config.py`에만 두고 이 문서에는 지표와 나쁜 방향만 쓴다. 사전의 단어 목록은 BE · STT와 맞춰야 하는 값이라 이 문서에도 적는다(5-2). 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
+> **기준값**: 판정 수치(앞 · 뒤 간격 기준, 문장 첫 단어 간격 기준, 잦음 기준, 판정 창 길이)와 사전은 서비스 `features/filler/config.py`에만 두고 이 문서에는 지표와 나쁜 방향만 쓴다. 사전의 단어 목록은 BE · STT와 맞춰야 하는 값이라 이 문서에도 적는다(5-2). 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
 > **관련 Issue**: #152
 
 # 0. 한눈에 보기
@@ -83,14 +83,14 @@ flowchart LR
 ```
 ai/research/filler-detection/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock                 Python 3.12, 의존성은 pydantic 하나
-├─ src/filler/                              판정 모듈 → 서비스 features/filler/로 폴더째 옮긴다
+├─ pyproject.toml · uv.lock                 Python 3.12, 서비스를 editable로 설치해 판정 모듈을 쓴다
+├─ (서비스 ai/service/src/pitch_coach_ai/features/filler/)   판정 모듈 (연구 폴더 src/filler/에서 폴더째 옮김, 테스트는 서비스 tests/unit/filler/)
 │   ├─ schemas.py · core.py · config.py · version.py
 │   ├─ keyterms.json                        keyterm 단어 목록 (config.py 사전에서 만든 생성 파일, BE가 가져간다)
 │   └─ examples/                            judge · summarize · criteria 입력 · 출력 예시 (계약 테스트가 읽는다)
 ├─ data/                                    평가 데이터: 층 · 군더더기 여부를 단어마다 표시한 발화 세트
 ├─ tools/                                   예시 · keyterm 파일 · 가상 평가 데이터 다시 만들기, 평가 스크립트
-├─ tests/                                   판정 규칙 · 커서 · 계약 · keyterm 파일 최신 검사
+├─ tests/                                   keyterm 파일 최신 · 가상 데이터 · 평가 검사 (판정 규칙 · 커서 · 계약은 서비스 tests/unit/filler/)
 └─ reports/results/                         평가 결과 JSON (층별 정밀도 · 재현율)
 ```
 파일마다의 역할은 연구 폴더를 만들 때 README의 파일 지도에 둔다.
@@ -113,7 +113,7 @@ ai/research/filler-detection/
 | 입력 모델은 모르는 필드를 무시하고, 출력 모델은 정해진 필드만 낸다 | `architecture.md` 2절 '모르는 필드' |
 
 # 5. 입력 · 출력 계약
-입력 · 출력의 원본은 `src/filler/schemas.py`의 pydantic 모델이다. 시각은 모두 Take 시작 기준 ms다. 1초 판정 결과의 공통 필드와 STT 모듈 입력 · 커서 규칙은 `architecture.md` 7절이 기준이고, 아래는 군더더기에만 있는 값이다.
+입력 · 출력의 원본은 서비스 `features/filler/schemas.py`의 pydantic 모델이다. 시각은 모두 Take 시작 기준 ms다. 1초 판정 결과의 공통 필드와 STT 모듈 입력 · 커서 규칙은 `architecture.md` 7절이 기준이고, 아래는 군더더기에만 있는 값이다.
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 |
@@ -185,6 +185,7 @@ ai/research/filler-detection/
 
 - 잴 수 없으면(`stt_status`가 `ok`가 아님) `state`는 `UNKNOWN`이고 `issues`는 빈 목록이다. 군더더기에는 측정 불가 문제 이름이 없다(`architecture.md` 6-3).
 - `severity`는 공통 규칙(기준값에서 0.5, 아주 나쁨 값에서 1.0, 그 사이 직선, 1.0에서 자름)을 따른다.
+- `persistence_sec`(`architecture.md` 7절의 '문제 조건이 이어진 시간')는 이 요청의 창 안 단어만으로 잰 **하한**이다. 최근 창 군더더기의 끝 시각을 이른 순으로 놓고, 기준 개수 번째 단어가 끝난 시각(조건이 성립한 시각)부터 지금까지다. 판정은 지난 요청을 기억하지 않으므로, 조건이 그 전부터 이어졌는데 앞 단어가 창 밖으로 나가면 값이 줄 수 있다. 코치는 이 값을 말을 걸 때의 지속 요구에 쓰지 않는다(`architecture.md` 7절). 정확한 지속 시간이 필요해지면 이전 상태를 입력으로 받는 계약으로 바꾼다.
 - 코치는 `FILLER_FREQUENT`에 `REDUCE_FILLER` → `REDUCE_FILLER`(숨 쉬기) → 그만둠 사다리를 쓰고, 개입 효과는 개입 뒤 정해진 구간의 군더더기 수를 개입 앞 같은 길이 구간과 `tally`의 시각으로 비교한다(`coach-agent.md` 6-1).
 
 ## 5-5. 예시
@@ -314,7 +315,7 @@ ai/research/filler-detection/
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `filler-<버전>` (첫 판 `filler-1.0`) | `src/filler/version.py` | 판정 규칙 · 출력의 뜻이 바뀔 때 |
+| `feature_version` | `filler-<버전>` (첫 판 `filler-1.0`) | 서비스 `features/filler/version.py` | 판정 규칙 · 출력의 뜻이 바뀔 때 |
 | `criteria_version` | `filler-<버전>+<config 해시 12자리>` | `judge` 출력 → `coach_state` → 응답 `meta.criteria_versions.filler`, `keyterms.json` | 사전 · 간격 기준 · 잦음 기준을 바꾸면 해시가 바뀐다 |
 | `schema_version` | `1.0` | 코치 응답 `meta` (`architecture.md` 5절) | 판정 결과 · `words`의 필드 이름 변경 · 삭제 · 뜻 변경 |
 
@@ -330,8 +331,9 @@ uv sync
 
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 | `uv run python -m pytest` | 판정 규칙 · 커서 · 계약(`examples/`) · keyterm 파일 최신 검사 통과 |
-| keyterm 파일 다시 만들기 | `uv run python tools/export_keyterms.py` | 사전에서 `src/filler/keyterms.json`을 다시 만든다. 커밋된 것과 같으면 `git diff`가 빈다 |
+| 판정 모듈 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/filler` | 판정 규칙 · 커서 · 계약(`examples/`) 통과 |
+| 연구 폴더 테스트 | `uv run python -m pytest` | keyterm 파일 최신 · 가상 데이터 · 평가 검사 통과 |
+| keyterm 파일 다시 만들기 | `uv run python tools/export_keyterms.py` | 사전에서 서비스 `features/filler/keyterms.json`을 다시 만든다. 커밋된 것과 같으면 `git diff`가 빈다 |
 | 예시 다시 만들기 | `uv run python tools/make_examples.py` | 기준값 · 규칙을 바꾼 뒤 `examples/`의 출력 JSON을 다시 만든다 |
 | 가상 평가 데이터 다시 만들기 | `uv run python tools/make_virtual_data.py --seed 0` | 손으로 쓴 발화 원본(`data/virtual/source.json`)에서 단어 시각을 만든 `data/virtual/words.json` |
 | 평가 | `uv run python tools/evaluate.py --out reports/results/filler_eval.json` | 층별 정밀도 · 재현율, 앞 · 뒤 간격 기준을 바꾼 민감도 (13절) |
@@ -340,14 +342,14 @@ uv sync
 - 판정 테스트가 볼 것: T1 · T2 · T3 각 규칙과 경계(간격이 기준과 같을 때), 문장 첫 단어(문장 끝 신호 뒤 · 큰 앞 간격), 바로 반복, 보류와 다음 요청에서의 판정, Take 끝(`take_end_ms`로 보류 단어 정하기, 마지막 단어 끝과 같은 시각이면 뒤 간격 0), `stt_ok_since_ms` 앞 단어 제외, STT가 `ok`가 아님, 사전에 없는 단어 · 문장부호가 붙은 단어. 커서: 보류 단어 앞에서 멈춤, 같은 입력이면 같은 결과, 돌려준 커서로 겹친 창을 다시 부르면 중복 집계 없음, 요청이 빠져 새 1초가 여러 개면 1초마다 시간 몫. 테스트 이름은 동작을 문장으로 짓는다(예: `test_t2_word_is_pending_until_next_word_arrives`).
 
 # 11. 배포
-**어디서 도는가**: 판정 모듈 `src/filler/`(`examples/` · `keyterms.json` 포함)를 AI 서비스의 `features/filler/`로 폴더째 옮기고, 테스트는 `tests/unit/filler/`로 옮긴다. 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
+**어디서 도는가**: 판정 모듈(`examples/` · `keyterms.json` 포함)은 AI 서비스의 `features/filler/`에 있다(연구 폴더 `src/filler/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/filler/`로 옮겼다. 예시를 연구 폴더 경로로 찾던 `test_examples.py`는 패키지 위치로 찾게 고쳐 옮겼다. 연구 도구 · 가상 데이터를 쓰는 테스트(`test_evaluate.py` · `test_virtual_data.py` · `test_virtual_tool.py`)와, 생성 도구(`tools/export_keyterms.py`)를 불러 `keyterms.json`이 최신인지 보는 `test_keyterms.py`는 연구 폴더에 남겼다. 생성 도구와 `test_keyterms.py`는 서비스의 `features/filler/keyterms.json`을 원본으로 읽고 쓰고, 연구 폴더에는 `keyterms.json` 사본이 없다. 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다. 코치 앱 연결(`evaluate` · `finalize`)은 이어지는 작업이다.
 
-**keyterm 목록이 BE로 가는 길**: BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽을 수 없다. 그래서 BE가 `keyterms.json`의 복사본을 `backend/` 안에 두고 STT 연결 때 그 목록을 쓴다. BE 테스트가 저장소의 AI 파일(`ai/.../filler/keyterms.json`)과 복사본이 같은지 확인한다. 사전의 keyterm 표시가 바뀌면 AI가 같은 PR에서 파일을 다시 만들고 BE에 알린다.
+**keyterm 목록이 BE로 가는 길**: BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽을 수 없다. 그래서 BE가 `keyterms.json`의 복사본을 `backend/` 안에 두고 STT 연결 때 그 목록을 쓴다. BE 테스트가 저장소의 AI 파일(`ai/.../filler/keyterms.json`)과 복사본이 같은지 확인한다. 사전의 keyterm 표시가 바뀌면 AI가 같은 PR에서 파일을 다시 만들고 BE에 알린다. 지금 BE는 자기 목록(`backend/src/pitch_coach_backend/realtime/stt/fillers.py`의 `KEYTERM_FILLERS`)을 쓰고, 이 복사본과 같은지 보는 테스트는 아직 없다(BE에 전할 일).
 
 **환경변수**: 군더더기 판정 모듈은 환경변수를 읽지 않는다. 서비스 공통 환경변수는 `architecture.md` 10절이다.
 
 **옮긴 뒤 같은 결과인지 확인**
-1. 서비스: 옮긴 `tests/unit/filler/`가 그대로 통과하고, 코어 경계 테스트가 새 위치를 본다.
+1. 서비스: 옮긴 `tests/unit/filler/`가 (경로를 고친 뒤) 통과하고, 코어 경계 테스트가 새 위치를 본다.
 2. 코치 연구 폴더: 연구용 대역 대신 이 모듈을 `Judges`에 넣어 재생 · 실험을 다시 돌리고, 달라진 판정을 기록한다(배포 기본값은 T1만 세어 대역과 같은 기준이고, T2 · T3를 켜면 T2 · T3 · 보류가 생긴다)(`coach-agent.md` 13절).
 3. BE: keyterm 복사본이 서비스의 `keyterms.json`과 같다는 BE 테스트가 통과한다.
 

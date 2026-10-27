@@ -25,7 +25,7 @@ name: Frontend CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, release, develop-next]
     # 백엔드만 바뀐 푸시에 프론트 CI 를 돌리지 않습니다.
     paths:
       - 'frontend/**'

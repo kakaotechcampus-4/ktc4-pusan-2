@@ -171,9 +171,9 @@ Take 는 장치 점검에서 시작을 누를 때 만들어 곧바로 연결이 
 (`FAILED` · `CLOSED` · `ABANDONED`)는 결과를 만들지 않습니다 — `ABANDONED` 를 끝내기 PUT 이 되살리면 그때
 만듭니다.
 
-현재 자동 처리는 `SCORING` 진입까지입니다. 그 뒤 대본 전달도 채점 · 재시도 · 확인 · 리뷰를 잇는
-분석 파이프라인은 후속 구현입니다. 채점 중인 `SCORING` 에서는 리뷰 API 를 409
-`TAKE_NOT_REVIEWABLE` 로 거절합니다. 전체 자동 완료가 필요한 배포에는 후속 파이프라인도 필요합니다.
+`SCORING` 뒤에는 BE 가 백그라운드로 대본 전달도 채점 · 사용자 확인 대기 · 리뷰를 이어 갑니다
+(`backend/src/pitch_coach_backend/module/take/service/analysis_runner.py`). 리뷰를 따로 부르는 API 는
+없고, 리뷰가 실패해도 측정 결과는 남긴 채 Take 를 끝냅니다(`review_status` `FAILED`).
 
 ### 되살리기
 

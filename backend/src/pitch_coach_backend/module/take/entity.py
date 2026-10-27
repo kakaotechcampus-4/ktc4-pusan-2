@@ -121,6 +121,8 @@ class Take(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     analysis_hold_reason: Mapped[str | None] = mapped_column(String(32))
+    # 지금 이 Take 를 채점하는 작업의 표식(그 작업이 시작한 시각). 비어 있으면 맡은 작업이 없다
+    coverage_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     standard_version: Mapped[int | None] = mapped_column(Integer)
 

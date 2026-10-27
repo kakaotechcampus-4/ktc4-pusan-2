@@ -1,13 +1,13 @@
 """API 예시 파일 만들기: 연구 캐시의 실제 LLM 출력으로 요청 · 응답 · LLM 캐시 JSON 을 쓴다.
 
-`python -m coverage_lab.examples` 로 `src/script_coverage/examples/<api>/` 에 `request.json` ·
+`python -m coverage_lab.examples` 로 서비스 `features/script_coverage/examples/<api>/` 에 `request.json` ·
 `response.json` · `llm_cache.json` 을 만든다. 과금이 없다: LLM 은 부르면 `TimeoutError` 를 내는
 객체이고, 응답은 연구 캐시(`outputs/rubrics.sqlite`)에 있는 실제 LLM 출력으로만 만든다.
 캐시에 없는 호출은 실패한 장이 된다 (예시가 `failed` 를 보이는 데 일부러 쓴다).
 
 - `request.json` / `response.json`: 최상위 진입 함수(`script_coverage.core`)의 입력 · 출력
 - `llm_cache.json`: 이 요청이 읽은 캐시 항목 `[{kind, key, config_hash, output}]` (정렬). 서비스로 옮긴 계약
-  테스트(`tests/unit/test_examples.py`)가 이것으로 캐시를 만들어 같은 응답이 나오는지 본다.
+  테스트(서비스 `tests/unit/script_coverage/test_examples.py`)가 이것으로 캐시를 만들어 같은 응답이 나오는지 본다.
 
 만드는 예시: `rubric` (`/scripts/rubric`), `analyze` (`/takes/analyze`), `rescore` (`/takes/rescore`).
 `analyze` 의 평가 기준은 `rubric` 과 같은 방식으로(연구 캐시 재생) 코어에서 새로 만든다 — 평가 기준 스키마
@@ -20,21 +20,27 @@ import json
 import sqlite3
 from pathlib import Path
 
-from script_coverage.core import (
+from pitch_coach_ai.features import script_coverage as script_coverage_pkg
+from pitch_coach_ai.features.script_coverage.core import (
     ScriptLLMs,
     TakeLLMs,
     analyze_script,
     evaluate_take,
     rescore_evaluation,
 )
-from script_coverage.schemas import AnalyzeRequest, RescoreRequest, RubricRequest
+from pitch_coach_ai.features.script_coverage.schemas import (
+    AnalyzeRequest,
+    RescoreRequest,
+    RubricRequest,
+)
 
 from .cache import SqliteLLMCache
 from .datasets import load_script_json, load_take
-from .paths import DB_PATH, PROJECT_ROOT, SCRIPT_DIR, STT_DIR
+from .paths import DB_PATH, SCRIPT_DIR, STT_DIR
 
-EXAMPLES_DIR = PROJECT_ROOT / "src" / "script_coverage" / "examples"
-# 예시를 만든 모델 (계약 테스트 `tests/unit/test_examples.py` 의 MODEL 과 같다). 캐시 항목의 설정 해시가 이 이름에
+# 예시 원본은 서비스의 코어 패키지 안에 있다 (연구 폴더는 서비스를 editable 로 설치해 그 코어를 쓴다)
+EXAMPLES_DIR = Path(script_coverage_pkg.__file__).resolve().parent / "examples"
+# 예시를 만든 모델 (서비스 계약 테스트 `tests/unit/script_coverage/test_examples.py` 의 MODEL 과 같다). 캐시 항목의 설정 해시가 이 이름에
 # 의존하므로, 연구 DB 의 평가 기준을 다른 모델로 다시 만들어도 예시는 이 모델의 캐시 항목으로 같게 나온다
 EXAMPLE_MODEL = "openai/gpt-5.6-luna"
 

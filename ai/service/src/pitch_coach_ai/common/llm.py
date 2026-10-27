@@ -8,8 +8,9 @@
       meta = build_meta(FEATURE_VERSION, llm=llm)         # 예: "script_parser-1.0"
 
 - 하는 일 (호출 한 번마다)
-  1. 마감까지 남은 시간이 호출 한 번의 시간 제한(`LLM_TIMEOUT_SECONDS`, 기본 12초)보다
-     짧으면 새 호출을 시작하지 않는다
+  1. 마감까지 남은 시간이 호출 한 번의 시간 제한(`LLM_TIMEOUT_SECONDS`, 기본 12초. 역할에
+     기능별 값이 있으면 그 값, 예: `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`)보다 짧으면 새 호출을
+     시작하지 않는다
   2. 호출을 별도 스레드에서 돌리고 시간 제한 전체만 기다린다. `ChatOpenAI` 의 timeout 은
      연결 · 읽기 한 번마다라서, 조금씩 오는 응답은 그것만으로 끊기지 않는다
   3. 실패를 공통 예외(`common/errors.py`)로 바꾼다. 시간 초과 · 연결 실패 · 429 · 5xx 만
@@ -55,7 +56,7 @@ from pitch_coach_ai.common.errors import (
     log_safe,
 )
 from pitch_coach_ai.common.request_log import current_request_id
-from pitch_coach_ai.settings import LLM_ROLES, Settings, settings
+from pitch_coach_ai.settings import LLM_ROLES, LlmRole, ModelBundle, Settings, settings
 
 logger = logging.getLogger("pitch_coach_ai.llm")
 
@@ -255,13 +256,35 @@ def structured_llm(
     - schema: 출력 pydantic 모델. LLM 이 이 모양(JSON 스키마)으로만 답하게 한다
     - model: 역할 이름 (`settings.LLM_ROLES` 의 키). 기능 코드는 묶음 이름을 모른다
     - deadline: `deadline_after(...)` 로 만든 요청 마감. None 이면 호출 시간 제한만 건다
-    - 실패: 역할의 묶음이 설정되지 않았으면 `LlmUnavailable`(503). 기본 결과를 내는 기능
-      (코칭 계획 · 리뷰)은 이것을 잡아 `llm=None` 으로 코어를 부른다
+    - 실패: 역할의 묶음이 설정되지 않았거나 LLM 객체를 만들다 예외가 나면 `LlmUnavailable`(503,
+      `ai-service.md` 6-2). 기본 결과를 내는 기능(코칭 계획 · 리뷰)은 이것을 잡아 `llm=None` 으로
+      코어를 부른다. 만들다 난 예외는 클래스 이름만 로그에 남긴다(메시지에 설정값이 섞일 수 있다)
     """
     role = LLM_ROLES[model]
     bundle = app_settings.bundle(role.bundle)
     if bundle is None:
         raise LlmUnavailable()
+    try:
+        runnable = _client(schema, role, bundle, app_settings)
+    except Exception as exc:
+        logger.error("llm_build_failed role=%s cause=%s", log_safe(model), type(exc).__name__)
+        raise LlmUnavailable() from exc
+    return StructuredLlm(
+        runnable,
+        role=model,
+        timeout_seconds=app_settings.timeout_for(role),
+        max_retries=app_settings.llm_max_retries,
+        deadline=deadline,
+    )
+
+
+def _client(
+    schema: type[BaseModel], role: LlmRole, bundle: ModelBundle, app_settings: Settings
+) -> Runnable:
+    """역할 · 묶음으로 출력 스키마를 고정한 LLM 클라이언트를 만든다.
+
+    여기서 난 예외(설정 값 · 라이브러리)만 `structured_llm` 이 `LlmUnavailable` 로 바꾼다.
+    """
     client = ChatOpenAI(
         model=bundle.model,
         base_url=bundle.base_url,
@@ -270,7 +293,7 @@ def structured_llm(
         reasoning_effort=role.reasoning_effort,
         # 연결 · 읽기 한 번마다의 시간 제한. 호출 전체는 StructuredLlm 이 같은 값으로 끊는다.
         # 버린 호출의 스레드가 오래 남지 않게 같은 값을 준다
-        timeout=app_settings.llm_timeout_seconds,
+        timeout=app_settings.timeout_for(role),
         # 재시도는 StructuredLlm 이 마감을 보며 한다 (SDK 자체 재시도는 끈다)
         max_retries=0,
         # 게이트웨이는 스트리밍이 아닌 요청의 출력 상한을 2,000토큰 이하로만 받고(넘으면 400),
@@ -279,10 +302,4 @@ def structured_llm(
         streaming=True,
         stream_usage=True,
     )
-    return StructuredLlm(
-        client.with_structured_output(schema),
-        role=model,
-        timeout_seconds=app_settings.llm_timeout_seconds,
-        max_retries=app_settings.llm_max_retries,
-        deadline=deadline,
-    )
+    return client.with_structured_output(schema)

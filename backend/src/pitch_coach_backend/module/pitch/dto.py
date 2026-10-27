@@ -32,6 +32,9 @@ class PitchSaveRequestDTO(BaseModel):
     lower_deviation: int = Field(default=0, ge=0, le=MAX_DEVIATION_SEC)
     presentation_date: date | None = None
 
+class PitchInfoResponseDTO(PitchSaveRequestDTO):
+    pitch_id: uuid.UUID
+
 class PitchListItemDTO(BaseModel):
     pitch_id: uuid.UUID
     pitch_title: str
@@ -312,10 +315,27 @@ class StandardAIResponseDTO(BaseModel):
 class StandardDTO(BaseModel):
     standard: str
 
+class StandardInputDTO(BaseModel):
+    standard: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True, min_length=1, max_length=50, pattern=r"^[^\r\n]*$"
+        ),
+        AfterValidator(reject_nul),
+    ]
+
 class StandardParseResponseDTO(BaseModel):
     standards: list[str]
     except_standard: str | None = None
+class StandardsSaveRequestDTO(BaseModel):
+    # 사용자가 고친 표시 기준. 화면에 보인 순서 그대로 한 줄씩 온다. 한 줄이 `standards.title`
+    # (String(50)) 한 행이 되고 10개까지다 (evaluation-criteria.md 15절). 줄을 합쳐 다시 분석하므로
+    # 한 줄 안에 줄바꿈은 받지 않는다
+    standards: list[StandardInputDTO] = Field(min_length=1, max_length=10)
+
 class StandardTextResponseDTO(BaseModel):
     pitch_id: uuid.UUID
+    # 이번에 저장한 평가 기준 버전. FE 는 이 번호로 다시 조회한다
+    version: int
     standards: list[StandardDTO]
     except_standard: str | None = None

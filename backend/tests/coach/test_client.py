@@ -14,6 +14,7 @@ from pitch_coach_backend.coach.replies import (
     PlanReply,
     ReplayRequired,
 )
+from pitch_coach_backend.core import ai_slots
 from tests.coach.conftest import EVALUATE, FINALIZE, PLAN, PLAN_RESPONSE, ai, error, example
 
 # ── 호출 ──────────────────────────────────────────────────────────────
@@ -255,7 +256,8 @@ async def test_plan_fallback_is_a_normal_reply():
 
 
 @pytest.mark.anyio
-async def test_background_calls_share_one_concurrency_limit():
+async def test_background_calls_share_one_concurrency_limit(monkeypatch):
+    monkeypatch.setattr(ai_slots, "BACKGROUND_LIMIT", 2)
     running = 0
     peak = 0
 
@@ -271,7 +273,7 @@ async def test_background_calls_share_one_concurrency_limit():
             return httpx.Response(200, json=example("evaluate/response.json"))
         return httpx.Response(200, json=example("finalize/response.json"))
 
-    client = ai(handler, background_concurrency=2, evaluate_timeout_sec=1)
+    client = ai(handler, evaluate_timeout_sec=1)
     results = await asyncio.gather(
         *(client.finalize(FINALIZE) for _ in range(3)), *(client.plan(PLAN) for _ in range(3))
     )

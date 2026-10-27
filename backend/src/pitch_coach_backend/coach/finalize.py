@@ -15,7 +15,9 @@
     클라이언트가 한다. 끝내 실패하면 Take 를 `FAILED` 로 두고 원자료는 남긴다 (7일, 1-1).
   - 결과 저장은 Take 가 아직 Take 결과를 기다리는 중일 때만 한다 (`store.save_take_result`).
   - AI 를 기다리는 동안 DB 세션을 쥐지 않는다. 원자료 읽기부터 결과 저장까지 4개로 묶고,
-    복구는 ID 도 4개씩 읽어 앞 묶음이 끝난 뒤 다음 묶음을 띄운다. HTTP 제한은 별도로 유지한다.
+    복구는 ID 도 4개씩 읽어 앞 묶음이 끝난 뒤 다음 묶음을 띄운다. AI 호출 자리는 client 가 다른
+    백그라운드 호출과 합쳐 따로 센다 (`core/ai_slots.py`). 같은 세마포어로 묶으면 바깥에서 자리를
+    다 쥔 채 안에서 기다린다.
 
 실패는 던지지 않는다. 받을 사람이 없다. DB 가 잠깐 안 되면(연결 끊김 · 잠금 대기) 그 단계만 다시
 하고, 그래도 안 되면 Take 는 `FINALIZING` 으로 남아 주기 작업(`sweep_forever`)이나 앱이 다시 뜰 때
@@ -66,7 +68,7 @@ STALE_FINALIZING = timedelta(minutes=10)
 _running = TaskRegistry()
 # 앱 시작 · 주기 복구가 겹쳐 같은 backlog 를 동시에 훑지 않게 한다
 _recovery = TaskRegistry()
-# 테스트의 여러 이벤트 루프에서도 각각 같은 상한을 쓴다 (client 의 HTTP 제한과 같은 방식)
+# 테스트의 여러 이벤트 루프에서도 각각 같은 상한을 쓴다 (`core/ai_slots.py` 와 같은 방식)
 _slots_by_loop: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
     weakref.WeakKeyDictionary()
 )
