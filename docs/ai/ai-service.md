@@ -560,7 +560,8 @@ FE는 AI를 부르지 않는다. 기능별로 누가 언제 무엇을 부르는�
 - 반영됨(#380, #564): compose `ai`(`env_file` · 헬스체크 · 종료 대기 30초, `ports` 없음), 두 배포 워크플로의 `ai` 빌드 · push · 빈 env 파일 · 서버 env 단계(`AI_ENV` · `RELEASE_AI_ENV`), release 배포의 마이그레이션 단계, `ai-ci.yml`.
 - 반영됨(#584, `develop-next` `13d3fd5e`): 헬스체크 `/health` → `/ready`, `ai`의 `mem_limit: 620m`, `ai-ci.yml` push 트리거 `[main, develop]` → `[main, develop, release, develop-next]`.
 - `release`와 다른 곳: `release`(2026-10-27 `017fa228`)에는 위 #584 변경이 아직 없다(헬스체크 `/health`, 메모리 상한 없음, push `[main, develop]`). release 배포는 `release`의 compose 파일을 서버에 복사하므로 release 서버도 이 설정일 것이고(서버에서 확인한 기록은 없다), 그러면 모델 준비 전에도 healthy로 보인다. `release` push에서는 AI CI가 돌지 않는다. `release`를 이 변경이 든 `develop-next` 커밋까지 올리면(`docs/be/release.md`) 같아진다.
-- 확인하지 못한 것: 두 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)의 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`은 #584에서 BE가 확인 항목을 완료로 표시했지만(2026-10-27), AI는 시크릿 내용을 볼 수 없어 직접 확인하지 못했다. 서버에서 11-6 명령(`(healthy)` · `/ready` 200 · 메모리 상한)을 돌린 기록도 아직 없다(#584 완료 조건).
+- BE가 확인함: 두 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)에 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20` 줄이 있다(2026-10-27, #584 완료 표시 · #588 리뷰). AI는 시크릿 내용을 볼 수 없어 BE 확인을 따른다.
+- 확인하지 못한 것: 서버에서 11-6 명령(`(healthy)` · `/ready` 200 · 메모리 상한)을 돌린 기록이 아직 없다(#584 완료 조건).
 - 요청 중: #585 — BE 테스트가 읽는 코치 예시 경로를 서비스 폴더로.
 - 아직 요청하지 않음: 위 표의 (권장) 배포의 `up` 대기.
 
@@ -589,6 +590,7 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 
 # 14. 지표 정의
 - **`/health` 응답**: 컨테이너 안에서 `http://localhost:8000/health`가 200과 `{"status": "ok"}`를 돌려주면 성공이다. LLM을 부르지 않으므로 모델이 실제로 응답하는지는 live 테스트로 따로 본다.
+- **`/ready` 응답**: 컨테이너 안에서 `http://localhost:8000/ready`가 200과 `{"status": "ready"}`를 돌려주면 시작할 때 불러오는 서버 안 모델까지 준비된 것이다(compose 헬스체크 · 13절 서버 확인의 기준). 준비 전에는 503 `NOT_READY`(공통 에러 본문)다. 불러오기에 실패하면 프로세스가 끝나 다시 뜨므로(`main.py`), 503이 이어지면 불러오기가 끝나지 않은 것이다(11-6 증상 표의 `(unhealthy)`). 걸린 시간은 AI 로그의 `warmup_done ... duration_ms`로 본다. `/health`처럼 LLM 연결은 보지 않는다.
 - **기능 처리 시간**: 라우터가 요청을 받은 때부터 응답을 보낸 때까지. AI 로그에 경로 · 상태 코드 · 걸린 시간 · `X-Request-ID`와 함께 남긴다.
 - **컨테이너 메모리**: `docker stats --no-stream`의 MEM USAGE. 서버 안 모델을 붙일 때 이 값의 1.5배를 `mem_limit`으로 둔다(지금 620m, 6-3).
 - **이미지 크기**: 로컬은 `docker images pitch-coach-ai`(10절에서 만든 `pitch-coach-ai:local`), 서버는 `docker compose $FILES images ai`의 SIZE. 의존성을 더할 때 전후를 비교한다.
