@@ -51,6 +51,15 @@ def test_architecture_contract_table(allowed, sentence, same):
         ([88000, 3], "3번 장에서 1분 28초 머물렀습니다", True),
         ([3, 0.62], "3번 장 0.62, 이전 0.70", False),  # 하나라도 없으면 False
         ([None, True], "1번", False),  # None · bool 은 입력 값이 아니다
+        # 개수 · 점수 · 단위 없는 정수는 반올림하지 않는다 (비율 0.62 가 "1번" 으로 통과하지 않게)
+        ([0.62], "1번", False),
+        ([0.58], "1점", False),
+        ([0.52], "1개", False),
+        ([0.62], "1", False),
+        ([0.4], "0번", False),
+        ([2.4], "2번", False),
+        ([5.0], "5번", True),  # 문자열에서 되돌린 5.0 도 같은 개수
+        ([318.5], "319자", True),  # 자는 보인 자리까지 반올림
     ],
 )
 def test_check_numbers_edges(allowed, sentence, same):

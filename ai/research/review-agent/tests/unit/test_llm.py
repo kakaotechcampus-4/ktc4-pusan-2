@@ -44,8 +44,8 @@ def full_draft(payload: dict[str, Any]) -> ReviewDraft:
         {
             "overall_summary": "LLM 요약",
             "strengths": [
-                {"candidate_id": c, "text": f"LLM 강점 {c[1:]}번째"}
-                for c in ids(payload, "strength_candidates")
+                {"candidate_id": c, "text": f"LLM 강점 {'가나다라마바사'[i]}"}
+                for i, c in enumerate(ids(payload, "strength_candidates"))
             ],
             "improvements": [
                 {"candidate_id": c, "text": "LLM 개선점"}
@@ -81,9 +81,9 @@ def test_success_uses_llm_text_and_keeps_rule_results(req):
     assert resp.meta.model == "fake-model"
     assert resp.overall_summary == "LLM 요약"
     assert [s.text for s in resp.strengths] == [
-        "LLM 강점 1번째",
-        "LLM 강점 2번째",
-        "LLM 강점 3번째",
+        "LLM 강점 가",
+        "LLM 강점 나",
+        "LLM 강점 다",
     ]
     assert {i.text for i in resp.improvements} == {"LLM 개선점"}
     # 숫자 · 상태 · 점수 · 판정 · 영역 · 근거는 LLM 이 바꾸지 못한다
@@ -143,8 +143,8 @@ def test_next_missions_fixed_first_then_llm_order(req):
         return {
             **full_draft(p).model_dump(),
             "next_missions": [
-                {"candidate_id": "n2", "description": "x" * 600, "reason": "LLM 이유 n2"},
-                {"candidate_id": "n1", "description": "LLM 이 바꾼 설명", "reason": "LLM 이유 n1"},
+                {"candidate_id": "n2", "description": "x" * 600, "reason": "LLM 이유 긴 설명"},
+                {"candidate_id": "n1", "description": "LLM 이 바꾼 설명", "reason": "LLM 이유 고정"},
             ],
         }
 
@@ -154,7 +154,7 @@ def test_next_missions_fixed_first_then_llm_order(req):
     assert [m.priority for m in resp.next_missions] == [1, 2]
     # 사용자 기준 FAILED 는 맨 앞, 설명은 사용자 표현 그대로, 이유는 LLM 문장
     assert fixed.target == base.next_missions[0].target
-    assert (fixed.description, fixed.reason) == ("추임새 5번 이하", "LLM 이유 n1")
+    assert (fixed.description, fixed.reason) == ("추임새 5번 이하", "LLM 이유 고정")
     # 설명은 500자에서 자른다
     assert picked.target == base.next_missions[1].target
     assert picked.description == "x" * MAX_DESCRIPTION_CHARS
