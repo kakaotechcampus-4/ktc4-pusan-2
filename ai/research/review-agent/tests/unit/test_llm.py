@@ -144,7 +144,11 @@ def test_next_missions_fixed_first_then_llm_order(req):
             **full_draft(p).model_dump(),
             "next_missions": [
                 {"candidate_id": "n2", "description": "x" * 600, "reason": "LLM 이유 긴 설명"},
-                {"candidate_id": "n1", "description": "LLM 이 바꾼 설명", "reason": "LLM 이유 고정"},
+                {
+                    "candidate_id": "n1",
+                    "description": "LLM 이 바꾼 설명",
+                    "reason": "LLM 이유 고정",
+                },
             ],
         }
 
