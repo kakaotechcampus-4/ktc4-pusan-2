@@ -2,7 +2,8 @@
 SCHEMA_VERSION = "1.0"
 
 # 기능(모델) 버전. 출력의 의미가 바뀔 때만 올린다 (ai/README.md 규칙 5). 응답 meta.feature_version 에 들어간다.
-FEATURE_VERSION = "script_coverage-1.0"
+# 1.1: 교차 검증이 missing 이라 하면 수치로 올린 규칙 보정은 풀고, 이름으로 올린 보정은 유지한다 (#544)
+FEATURE_VERSION = "script_coverage-1.1"
 
 # 평가 기준(EvaluationRubric) 스키마 버전. 평가 기준 메타와 rubric_id 에 들어간다.
 # 1.1: 전달 단위(content_units) 추가

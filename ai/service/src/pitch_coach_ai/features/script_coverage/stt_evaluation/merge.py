@@ -115,6 +115,25 @@ def evidence_coverage(
     return sum((target & found).values()) / sum(target.values()) if target else 0.0
 
 
+def raised_by_name(
+    sentences: list[SentenceResult], fact_checks: list[FactCheck]
+) -> set[tuple[int, str]]:
+    """규칙 보정한 단위 중 이름(사람 · 기관 등)을 찾은 것: (문장 번호, 단위 번호).
+
+    교차 검증이 missing 이라 해도 이 단위의 보정은 유지한다(`apply_verification`). 이름은 다른 문장에서
+    나와도 같은 대상을 가리키지만, 수치는 STT 전체에서 같은 값을 찾으므로 다른 이야기의 같은 숫자로도
+    보정이 걸린다(#544, 예: 대본 '매출이 35% 늘었다' ↔ STT '할인율은 35%'). 수치만 찾은 단위는 문맥을
+    읽는 교차 검증의 판정을 따른다.
+    """
+    names = {c.fact_id for c in fact_checks if c.status in FOUND_STATUSES and c.type in NAME_TYPES}
+    return {
+        (s.sentence_index, u.unit_id)
+        for s in sentences
+        for u in s.units
+        if u.raised_by_rule and names & set(u.fact_ids)
+    }
+
+
 def facts_in_evidence(
     checks: list[FactCheck], evidence: list[int], stt_norm: NormalizedScript
 ) -> bool:

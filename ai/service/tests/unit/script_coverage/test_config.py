@@ -6,8 +6,8 @@ from pitch_coach_ai.features.script_coverage.stt_evaluation import config as stt
 
 
 def test_criteria_version_format():
-    assert re.fullmatch(r"script_coverage-1\.0\+[0-9a-f]{12}", config.CRITERIA_VERSION)
-    assert f"script_coverage-1.0+{config.CRITERIA_HASH}" == config.CRITERIA_VERSION
+    assert re.fullmatch(r"script_coverage-1\.1\+[0-9a-f]{12}", config.CRITERIA_VERSION)
+    assert f"script_coverage-1.1+{config.CRITERIA_HASH}" == config.CRITERIA_VERSION
 
 
 def test_criteria_hash_is_deterministic():

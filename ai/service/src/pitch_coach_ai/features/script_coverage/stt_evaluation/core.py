@@ -20,6 +20,7 @@ from .merge import (
     CONFLICT_TEXT,
     aggregate_key_points,
     merge_sentences,
+    raised_by_name,
     resolve_name_checks,
 )
 from .normalize import normalize_stt
@@ -172,7 +173,11 @@ def evaluate_take(
     for n, d in slides.items():
         if "sentences" not in d or n in ver_errors:
             continue
-        apply_verification(d["sentences"], verified.get(n))
+        apply_verification(
+            d["sentences"],
+            verified.get(n),
+            raised_by_name(d["sentences"], d["fact_checks"]),
+        )
         results = aggregate_key_points(
             d["rubric"], d["sentences"], d["fact_checks"], d["items"], d["stt_norm"]
         )
