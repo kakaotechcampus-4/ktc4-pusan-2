@@ -27,6 +27,7 @@ from pitch_coach_backend.module.pitch.service.pitch import (
     delete_pitch_service,
     get_all_pitches_service,
     get_pitch_datas,
+    get_pitch_info,
     get_prepare_service,
     pitch_timing,
     update_pitch_service,
@@ -56,6 +57,13 @@ def get_pitches(
     all_pitches = get_all_pitches_service(db, current_user.id)
     return all_pitches
 
+@router.get("/{pitch_id}")
+def get_pitch(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)]
+):
+    each_pitch = get_pitch_info(db, pitch_id)
+    return each_pitch
 
 # 사이드바
 # /api/pitches/{pitch_id}/resources로 변경

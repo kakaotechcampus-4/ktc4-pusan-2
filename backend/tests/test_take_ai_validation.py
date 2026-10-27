@@ -436,7 +436,8 @@ def test_coverage_storage_rounds_summary_and_preserves_raw_scores(
         assert coverage_service._apply_merged(db_session, take.id, requested_at, 0, reply)
         assert repo.get_ai_result(take.id, "SCRIPT_COVERAGE_PENDING") is None
     else:
-        assert coverage_service._save_confirmed(db_session, take.id, requested_at, reply) is not None
+        assert coverage_service._save_confirmed(
+            db_session, take.id, requested_at, reply) is not None
 
     db_session.expire_all()
     summary = db_session.query(TakeSummary).filter_by(take_id=take.id).one()
