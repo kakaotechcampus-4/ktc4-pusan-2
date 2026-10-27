@@ -61,7 +61,8 @@
 | 잠금 파일 | 설치할 정확한 라이브러리 버전 목록 | `uv.lock` |
 | 기능 코어 | 연구 폴더에서 옮겨 온 순수 로직 폴더(`schemas.py` · `core.py` · `config.py` · `version.py`) | `features/coach/` |
 | 라우터 | 경로 하나를 받아 요청을 검사하고 기능 코어를 부르는 얇은 코드 | `api/coach.py` |
-| ECR · Docker Hub | 이미지를 올려 두는 저장소. develop은 ECR, 운영은 Docker Hub | — |
+| ECR | 이미지를 올려 두는 AWS 저장소. develop · release 배포 모두 여기에 올린다 | `pitch-coach:ai-<sha>` |
+| develop · release | 서버 환경 두 개. develop은 `develop-next` 브랜치, release(운영)는 `release` 브랜치가 배포된다. 같은 EC2에 폴더 · compose 프로젝트를 나눠 띄운다 | `~/pitch-coach` · `~/pitch-coach-release` |
 
 # 3. 전체 흐름
 ```mermaid
@@ -100,13 +101,13 @@ ktc4-pusan-2/
 │   ├── archive/          # 동결된 과거 코드. 이미지에 안 들어간다
 │   └── .env.example      # LLM 환경변수 이름 (실제 ai/.env 는 git에 안 올린다)
 ├── infra/
-│   ├── docker-compose.yml        # 공통: caddy · fe · be · db · redis + ai
-│   ├── docker-compose.dev.yml    # develop 서버용 덮어쓰기
-│   └── docker-compose.prod.yml   # 운영 서버용 덮어쓰기
+│   ├── docker-compose.yml          # 공통: caddy · fe · be · db · redis + ai
+│   ├── docker-compose.dev.yml      # develop 서버용 덮어쓰기
+│   └── docker-compose.release.yml  # release 서버(운영)용 덮어쓰기. 모든 서비스의 ports 를 비운다
 └── .github/workflows/
     ├── ai-ci.yml                 # ai/service 검사: lint · 테스트 · 이미지 빌드
-    ├── develop-deploy.yml        # be · fe · ai 이미지 빌드 · push · develop 서버 배포
-    └── main-deploy.yml           # 같은 흐름으로 운영 서버 배포
+    ├── develop-deploy.yml        # develop-next push: be · fe · ai 이미지 빌드 · push · develop 서버 배포
+    └── release-deploy.yml        # release push(또는 수동 실행): 같은 흐름으로 release 서버 배포
 ```
 - `ai/`는 AI가, `infra/` · `.github/workflows/`는 BE가 관리한다. 위 트리의 `ai` 항목 · `ai-ci.yml` · 배포 워크플로의 `ai` 빌드는 BE가 만든다(12절).
 ```
@@ -215,7 +216,7 @@ LLM 설정 없이 LLM 기능을 부르면 (`architecture.md` 4절)
 5. **라우터**: `api/<이름>.py`를 만들고 `main.py`에 등록한다. 경로 · 요청 · 응답 필드는 BE와 합의하고, `ai/service/README.md`의 API 목록과 `contracts/openapi.json`을 갱신한다.
    - 판정 모듈은 자기 엔드포인트가 없고 `api/coach.py`가 묶어 코치에 넘긴다(4-3). 코치 `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우지 않는다. 코치는 견디지만 Take 결과의 그 영역 `measured_ratio`가 null이 되어 `architecture.md` 7절과 어긋난다(`coach-agent.md` 11절).
 6. **확인**: `uv run pytest`, 필요하면 `uv run pytest -m live`, 그리고 `docker build`로 이미지가 만들어지는지 본다(10절). 출력이 긴 기능이면 걸린 시간도 잰다(`architecture.md` 3절).
-7. **PR**: CI가 통과하면 merge한다. develop에 merge되면 자동으로 배포된다.
+7. **PR**: CI가 통과하면 merge한다. `develop-next`에 merge되면 develop 서버에 자동으로 배포되고, release 서버에는 `release` 브랜치에 들어갈 때 배포된다(11-5).
 
 ```python
 # src/pitch_coach_ai/api/example.py  (경로 · 이름은 예시. 실제 경로와 필드는 BE와 정한다)
@@ -423,8 +424,8 @@ contracts/
 |---|---|---|---|
 | 로컬 개발 | `uv run uvicorn ... --reload --port 8001` (10절) | `http://localhost:8001` | `ai/.env` |
 | 로컬 Docker 확인 | `docker build` 뒤 `docker run -p 8001:8000` (10절) | `http://localhost:8001` | `--env-file ai/.env` |
-| develop 서버 | compose(`docker-compose.yml`에 `docker-compose.dev.yml`을 덮어서). CI가 만든 이미지를 받아 띄운다 | 내부망 `http://ai:8000`만 | 서버의 `ai/.env` |
-| 운영 서버 | compose(`docker-compose.yml`에 `docker-compose.prod.yml`을 덮어서) | 내부망 `http://ai:8000`만 | 서버의 `ai/.env` |
+| develop 서버 | `~/pitch-coach`에서 compose(`docker-compose.yml`에 `docker-compose.dev.yml`을 덮어서). CI가 만든 이미지를 받아 띄운다 | 내부망 `http://ai:8000`만 | `~/pitch-coach/ai/.env` (시크릿 `AI_ENV`) |
+| release 서버(운영) | develop과 같은 EC2의 `~/pitch-coach-release`에서 compose(`docker-compose.yml`에 `docker-compose.release.yml`을 덮어서, 프로젝트 이름 `pitch-coach-release`) | 내부망 `http://ai:8000`만 | `~/pitch-coach-release/ai/.env` (시크릿 `RELEASE_AI_ENV`) |
 
 ## 11-3. compose 연결
 ```yaml
@@ -451,42 +452,46 @@ services:
 - **서비스 이름이 주소다.** 같은 compose 안에서는 서비스 이름 `ai`가 내부 DNS 이름이 되어, be가 `http://ai:8000`으로 부른다. 서버의 BE 환경변수는 `AI_BASE_URL=http://ai:8000`.
 - **`be`의 `depends_on`에 `ai`를 넣지 않는다.** BE는 AI 없이도 뜨게 만들어져 있다. 넣으면 AI가 실패할 때 BE도 못 뜬다.
 - **메모리 상한**: AI와 BE · DB가 같은 서버에 있다. 무거운 모델을 붙인 AI가 메모리를 다 쓰면 BE나 DB가 같이 죽을 수 있으므로, 서버 안 모델을 붙일 때 `mem_limit`을 둔다.
-- **`docker-compose.dev.yml`은 develop 서버의 설정이다.** 여기에 소스 마운트나 `--reload`를 넣으면 서버에는 소스 폴더가 없어 AI가 뜨지 못한다. 로컬 개발은 10절로 한다.
-- **compose의 `env_file`은 파일이 없으면 실패한다.** 그래서 CI가 빌드 전에 만드는 빈 env 파일에 `ai/.env`를 더하고, 서버의 env 파일을 쓰는 단계에 `AI_ENV`를 더한다.
+- **`docker-compose.dev.yml` · `docker-compose.release.yml`은 서버의 설정이다.** 여기에 소스 마운트나 `--reload`를 넣으면 서버에는 소스 폴더가 없어 AI가 뜨지 못한다. 로컬 개발은 10절로 한다.
+- **compose의 `env_file`은 파일이 없으면 실패한다.** 그래서 CI가 빌드 전에 만드는 빈 env 파일에 `ai/.env`를 더하고, 서버의 env 파일을 쓰는 단계에 `AI_ENV`(release 배포는 `RELEASE_AI_ENV`)를 더한다.
 
 ## 11-4. 환경변수
 변수 목록 · 작성 규칙 · 비밀값이 가는 길은 `architecture.md` 10절이다. 서비스에서는 `settings.py`만 환경변수를 읽고, 값이 없어도 서버가 뜨도록 기본값을 둔다. 새 변수를 더하는 순서도 `architecture.md` 10절을 따른다.
 
 ## 11-5. CI와 배포
 - **CI** (`.github/workflows/ai-ci.yml`): `ai/service/**`나 이 워크플로 파일이 바뀐 PR, 그리고 main · develop push에서 job `ai` 하나가 `uv sync --locked` → ruff → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build ai/service`를 돈다. 실제 LLM은 부르지 않으므로 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다. 실패한 PR을 막으려면 저장소 관리자가 브랜치 보호의 필수 체크에 `ai`를 넣는다(`backend`와 같은 방식). 이때 워크플로를 경로 필터(`paths`)로 아예 돌리지 않으면, `ai/service/`를 건드리지 않은 PR에서 필수 체크가 대기에 머물러 병합이 막힌다. 필수 체크로 두려면 워크플로는 모든 PR에서 돌고, 바뀐 경로에 따라 검사 단계만 건너뛰게 만든다.
-- **배포** (`develop-deploy.yml` · `main-deploy.yml`, 두 워크플로가 같은 흐름)
+- **배포** (`develop-deploy.yml` · `release-deploy.yml`. 빌드 · 서버 배포 흐름은 같고, 트리거 브랜치 · compose 덮어쓰기 파일 · 서버 폴더 · 시크릿이 다르며, release에는 배포 뒤 PR 만들기 단계가 더 있다. 배포 순서 · hotfix는 `docs/be/release.md`)
 ```
-develop push (merge)                          main push
+develop-next push (merge)                     release push
+(둘 다 Actions에서 수동 실행도 된다)
   ▼                                             ▼
 GitHub Actions
   ├─ 빌드용 빈 env 파일 만들기 (backend · frontend · ai)
   ├─ docker compose build be fe ai
-  ├─ docker compose push  be fe ai    ──▶ develop: ECR  pitch-coach:be-<sha> · fe-<sha> · ai-<sha>
-  │                                      운영:    Docker Hub  <계정>/pitch-coach:<같은 태그>
-  ├─ compose 파일 · 시크릿(BACKEND_ENV · FRONTEND_ENV · AI_ENV)을 서버의 .env 로 복사
+  ├─ docker compose push  be fe ai    ──▶ ECR  pitch-coach:be-<sha> · fe-<sha> · ai-<sha> (두 배포 같음)
+  ├─ compose 파일을 서버에 복사하고, 시크릿을 SSH stdin으로 서버의 .env 에 쓴다
+  │     develop: BACKEND_ENV · FRONTEND_ENV · AI_ENV                          → ~/pitch-coach/<폴더>/.env
+  │     release: RELEASE_BACKEND_ENV · RELEASE_FRONTEND_ENV · RELEASE_AI_ENV  → ~/pitch-coach-release/<폴더>/.env
   ▼
-서버 (EC2)
+서버 (EC2, 두 배포가 같은 서버)
   ├─ docker compose pull                         이미지를 받는다
   ├─ docker compose run --rm be alembic upgrade head   새 BE 이미지로 DB 스키마를 올린다 (실패하면 멈춘다)
   └─ docker compose up -d --no-build             받은 이미지로 띄운다 (서버에서 빌드하지 않는다)
 ```
 - 서버는 이미지를 직접 빌드하지 않고 받아서 띄우기만 한다. 그래서 compose에 `ai`를 넣으면 **두 배포 워크플로의 build · push 대상에도 `ai`를 같이 넣어야 한다.** 빠뜨리면 서버의 `pull`이 없는 이미지를 찾다가 배포 전체가 실패한다.
-- **되돌리기**: 문제가 생긴 커밋을 `git revert`해 develop 서버는 develop에, 운영 서버는 main에 올리면 그 브랜치의 배포 워크플로가 같은 흐름으로 다시 배포한다.
+- **release 배포 뒤**: `release-deploy.yml`은 배포를 마치고 `release` → `develop-next` PR을 만든다(이미 열려 있거나 `develop-next`가 `release`를 다 담고 있으면 만들지 않는다). 이 PR은 만들어지기만 하고, 승인 · merge되어야 `develop-next`에 들어간다. `main` 브랜치는 배포 워크플로 없이 수동으로 배포하기로 했다(#380).
+- **되돌리기**: develop 서버는 문제가 생긴 커밋을 `git revert`해 `develop-next`에 merge하면 `develop-deploy.yml`이 다시 배포한다. release 서버는 `docs/be/release.md`의 hotfix대로 `release`에서 브랜치를 갈라 되돌리고 PR로 `release`에 merge하면 `release-deploy.yml`이 다시 배포한다. 그 수정은 위 `release` → `develop-next` PR이 merge되어야 `develop-next`에도 들어간다.
 
 ## 11-6. 운영과 문제 해결
-develop 서버의 `~/pitch-coach/infra`에서:
+develop 서버는 `~/pitch-coach/infra`, release 서버는 `~/pitch-coach-release/infra`에서(같은 EC2이고 `FILES`만 다르다):
 ```bash
-FILES="-f docker-compose.yml -f docker-compose.dev.yml"
+FILES="-f docker-compose.yml -f docker-compose.dev.yml"       # develop
+# release 서버에서는 위 줄 대신: FILES="-f docker-compose.yml -f docker-compose.release.yml"
 docker compose $FILES ps ai                     # 상태. (healthy) 인지 본다
 docker compose $FILES logs -f --tail=200 ai     # 로그
 docker compose $FILES exec be python -c "import urllib.request as u; print(u.urlopen('http://ai:8000/health').read())"
                                                 # BE 컨테이너에서 AI가 보이는지
-docker stats --no-stream                        # 컨테이너별 CPU · 메모리
+docker stats --no-stream                        # 컨테이너별 CPU · 메모리 (두 환경의 컨테이너가 함께 보인다)
 docker compose $FILES restart ai                # AI만 다시 띄우기
 ```
 **증상별 원인**
@@ -531,21 +536,26 @@ FE는 AI를 부르지 않는다. 기능별로 누가 언제 무엇을 부르는�
 | API 경로와 요청 · 응답 필드 | AI (`schemas.py`) | BE와 합의 |
 | AI 기능 결과의 저장 설계(테이블 · 칸 · JSON 형식) | AI가 정한다 (`architecture.md` 1-1 · 각 기능 문서 12-1) | BE (마이그레이션 · 구현) |
 | BE의 AI 호출 코드 (변환 · 시간 예산 · 재시도 · `X-Request-ID` · 백그라운드 동시 개수 · 결과와 `meta` 저장) | BE | AI |
-| `.github/workflows/ai-ci.yml`, `infra/docker-compose*.yml`의 `ai` 서비스, 배포 워크플로(develop · 운영)의 `ai` 빌드 · push, GitHub 시크릿 `AI_ENV`, 서버 `ai/.env` · 자원, BE `AI_BASE_URL` | BE. AI는 11-3 · 11-5의 내용(그대로 쓸 수 있는 파일 내용 포함)을 BE에 전달한다 | AI |
+| `.github/workflows/ai-ci.yml`, `infra/docker-compose*.yml`의 `ai` 서비스, 배포 워크플로(`develop-deploy.yml` · `release-deploy.yml`)의 `ai` 빌드 · push, GitHub 시크릿 `AI_ENV` · `RELEASE_AI_ENV`, 서버 `ai/.env` · 자원, BE `AI_BASE_URL` | BE. AI는 11-3 · 11-5의 내용(그대로 쓸 수 있는 파일 내용 포함)을 BE에 전달한다 | AI |
 
 **BE에 요청하는 것과 받는 값**
 
 | 요청하는 것 | 받는 값 · 확인 |
 |---|---|
 | compose에 `ai` 서비스 (11-3 그대로, `ports` 없음, `be.depends_on`에 넣지 않음) | develop 서버의 be 컨테이너에서 `http://ai:8000/health` 200 (11-6 명령) |
-| 두 배포 워크플로의 build · push 대상에 `ai`, 빈 env 파일에 `ai/.env`, 서버 env 단계에 `AI_ENV`. 운영 배포에도 develop과 같은 마이그레이션 단계 | 이미지 `pitch-coach:ai-<sha>`가 ECR · Docker Hub에 올라감 |
+| 두 배포 워크플로의 build · push 대상에 `ai`, 빈 env 파일에 `ai/.env`, 서버 env 단계에 `AI_ENV` · `RELEASE_AI_ENV`. release 배포에도 develop과 같은 마이그레이션 단계 | 이미지 `pitch-coach:ai-<sha>`가 ECR에 올라감 |
 | `.github/workflows/ai-ci.yml` (11-5) | PR에서 job `ai` 통과 |
-| GitHub 시크릿 `AI_ENV` (내용 = `ai/.env` 전체, 따옴표 없이) | 서버 `~/pitch-coach/ai/.env` |
+| GitHub 시크릿 `AI_ENV` · `RELEASE_AI_ENV` (내용 = `ai/.env` 전체, 따옴표 없이) | 서버 `~/pitch-coach/ai/.env` · `~/pitch-coach-release/ai/.env` |
 | 서버 BE 환경변수 `AI_BASE_URL=http://ai:8000` | BE가 내부망으로 AI를 부름 |
 | (권장) 배포의 `docker compose up`이 `ai`가 healthy가 될 때까지 기다리게 함(예: `--wait --wait-timeout 120`) | AI가 뜨지 못하면 배포 워크플로가 실패로 끝남 |
 | BE의 AI 호출: 경로 버전 없음, `X-Request-ID`, `architecture.md` 3절 시간 예산 · 재시도, 백그라운드 동시 개수 제한, 결과와 `meta` 저장 | BE의 AI 호출 코드가 `architecture.md` 2 · 3 · 5절대로 동작함 |
 
-- **순서**: compose의 `ai` 항목과 두 배포 워크플로의 `ai` 빌드 · push는 같은 PR에서, 첫 AI 서비스 PR이 develop에 merge된 뒤에 넣는다. compose에만 넣으면 서버의 `pull`이 없는 이미지를 찾다가 배포 전체가 실패하고, `ai/service/`가 없으면 빌드가 실패한다.
+**지금 상태** (2026-10-27 `develop-next`)
+- 반영됨(#380, #564): compose `ai`(`env_file` · 헬스체크 `/health` · 종료 대기 30초, `ports` 없음), 두 배포 워크플로의 `ai` 빌드 · push · 빈 env 파일 · 서버 env 단계(`AI_ENV` · `RELEASE_AI_ENV`), release 배포의 마이그레이션 단계, `ai-ci.yml`.
+- 요청 중: #584 — 헬스체크를 `/ready`로, `ai`의 메모리 상한(`mem_limit`), `ai-ci.yml` push 트리거에 `develop-next` · `release`, 두 시크릿의 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20` 확인. #585 — BE 테스트가 읽는 코치 예시 경로를 서비스 폴더로.
+- 아직 요청하지 않음: 위 표의 (권장) 배포의 `up` 대기.
+
+- **순서**: compose의 `ai` 항목과 두 배포 워크플로의 `ai` 빌드 · push는 같은 PR에서, 첫 AI 서비스 PR이 merge된 뒤에 넣었다(#380). compose에만 넣으면 서버의 `pull`이 없는 이미지를 찾다가 배포 전체가 실패하고, `ai/service/`가 없으면 빌드가 실패한다.
 
 ## 12-1. 저장 (DB)
 AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음). 기능 결과의 저장 위치는 `architecture.md` 1-1(저장 지도)과 각 기능 문서 12-1에 있다.
@@ -579,14 +589,14 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 - **모델 설정 칸**: 모델마다 이름 · 주소 · 키 묶음(`OPENAI_*` 기본 · `OPENAI_SOL_*`), `architecture.md` 10절. 서비스가 이 묶음을 읽는 설정은 `settings.py`이고, 묶음이 반만 차 있으면 시작 오류다.
 - **역할 → 묶음 연결**: `settings.py`의 상수 한 곳에 둔다(환경변수가 아니다). 지금은 모든 역할이 기본 묶음이다.
 - **만드는 쪽**: 아래 표의 최소 서버 · 공통(과 지금은 지운 규약 확인용 대역, 4-1)은 AI가 만들고 로컬 컨테이너로 확인한다. CI · compose · 배포는 BE가 만들고, AI는 그 내용을 BE에 전달한다.
-- **운영 배포의 마이그레이션 단계**: 운영 배포(`main-deploy.yml`)에도 develop 배포와 같은 마이그레이션 단계(`alembic upgrade head` · `alembic-git-revisions`)를 둔다. BE가 넣는다.
+- **release 배포의 마이그레이션 단계**: release 배포(`release-deploy.yml`)에도 develop 배포와 같은 마이그레이션 단계(`alembic-git-revisions` · `alembic upgrade head`)가 있다. BE가 넣었다(#564).
 
 | 구성 | 만드는 것 | 누가 | 다 됐는지 확인 |
 |---|---|---|---|
 | 최소 서버 | FastAPI 앱 · `/health` · `pyproject.toml` · `uv.lock` · Dockerfile · `.dockerignore` · 테스트 · README | AI | 로컬 `docker run` 뒤 `/health` 200 |
 | CI | `ai-ci.yml` | BE (내용은 11-5) | PR에서 통과 |
 | 공통 | `settings.py` · `common/llm.py`(호출 시간 제한 · 요청 마감) · `common/errors.py` · `X-Request-ID` · 처리 시간 로그 · 테스트 | AI | 키 없이 뜸, 첫 기능(대본 전달도)의 계약 · 엔드포인트 테스트로 결과 · `meta` · 에러 본문 확인, live 테스트로 실제 호출 (처음에는 규약 확인용 대역으로 확인했고 지금은 지웠다) |
-| compose · 배포 | compose `ai` 서비스, 배포 워크플로(develop · 운영)의 `ai` 빌드 · push, 시크릿 `AI_ENV` | BE (내용은 11-3 · 11-5) | develop 서버의 be 컨테이너에서 `http://ai:8000/health` 200 |
+| compose · 배포 | compose `ai` 서비스, 배포 워크플로(develop · release)의 `ai` 빌드 · push, 시크릿 `AI_ENV` · `RELEASE_AI_ENV` | BE (내용은 11-3 · 11-5) | develop 서버의 be 컨테이너에서 `http://ai:8000/health` 200 |
 | 기능 엔드포인트 | 기능별 코어와 엔드포인트, `contracts/openapi.json`(기능이 하나라도 있으면), `/ready`(서버 안 모델을 쓰는 기능이 있으면) | AI | 기능별 |
 
 **열린 질문**
@@ -595,7 +605,7 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 - 기능마다 쓸 모델 고르기(역할별 묶음, 측정 조건): 아직 정하지 않았다. 그 전에는 모든 역할이 기본 묶음이다.
 
 **알려진 한계**
-- 이 문서의 명령 · 출력 중 실행해 확인한 것은 10절의 코드 실행 · 테스트(live 포함) · Docker 이미지 실행 · 대본 전달도 확인(처음에는 규약 확인용 대역)과 11-1의 이미지 파일(Dockerfile · `.dockerignore`)이다(로컬 Windows · Docker Desktop, #210). 10절 'BE와 같이 띄우기'와 11-3 compose · 11-5 CI · 배포 · 11-6 운영의 명령 · 출력은 BE가 만들기 전이라 아직 목표다.
+- 이 문서의 명령 · 출력 중 실행해 확인한 것은 10절의 코드 실행 · 테스트(live 포함) · Docker 이미지 실행 · 대본 전달도 확인(처음에는 규약 확인용 대역)과 11-1의 이미지 파일(Dockerfile · `.dockerignore`)이다(로컬 Windows · Docker Desktop, #210). 11-3 compose · 11-5 CI · 배포는 BE가 만들어 `infra/docker-compose*.yml`과 두 배포 워크플로 · `ai-ci.yml`에 들어가 있다. 지금 구성은 그 파일이 기준이고, 11-3 · 11-5의 주석 · 문단에 적은 권장 · 앞으로의 설정(메모리 상한 · 필수 체크 등)은 아직 파일에 없을 수 있다. 10절 'BE와 같이 띄우기'와 11-6 운영 명령은 이 문서에서 실행해 확인한 기록이 없다.
 - 인증이 없어 내부망을 벗어나면 안전하지 않다.
 - 워커마다 모델이 따로 올라가 워커를 늘리면 메모리가 그만큼 는다.
 - LLM 호출 시간 제한은 서비스가 그 호출을 기다리지 않게 할 뿐, 이미 보낸 생성을 멈추지는 못한다. 시간 초과로 버린 호출은 출력 상한까지 생성을 마칠 때까지 LLM 호출 스레드(40개) 하나를 쓰고 토큰 비용도 든다. BE가 백그라운드 AI 호출을 합쳐 동시에 4개로 제한하므로(대본 등록은 그 안에서 2개, `architecture.md` 3절) 스레드가 모자랄 가능성은 낮다. 시간 초과가 잦아 모자라면 버린 호출의 스트림을 닫도록 고친다.
@@ -604,7 +614,7 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 | 항목 | 값 | 어디서 정하나 |
 |---|---|---|
 | 배포 단위 · 빌드 컨텍스트 | `ai/service/` | 4절 |
-| 이미지 | `pitch-coach:ai-<커밋 SHA>` (BE · FE와 같은 저장소. develop은 ECR, 운영은 Docker Hub) | 9절 · 11-5 |
+| 이미지 | `pitch-coach:ai-<커밋 SHA>` (BE · FE와 같은 ECR 저장소. develop · release 배포 같음) | 9절 · 11-5 |
 | 컨테이너 · 주소 | `ai`, 내부망 `http://ai:8000` (로컬 `http://localhost:8001`). 외부 공개 없음 | 11-2 · 11-3 |
 | Python · 패키지 · 실행 | 3.12, `pitch_coach_ai`, `uvicorn pitch_coach_ai.main:app`, uv `0.11` (이미지의 `ghcr.io/astral-sh/uv:0.11`) | 4절 · 11-1 |
 | 헬스체크 | `/health` (간격 10초 · 시간 제한 3초 · 재시도 5 · 시작 유예 10초). 서버 안 모델이 생기면 `/ready` | 8절 · 11-3 |
@@ -612,5 +622,5 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 | 역할 → 모델 묶음 | `settings.py` 상수, 지금은 모두 기본 묶음 | 15절 · `architecture.md` 9절 |
 | 메모리 상한 | 서버 안 모델을 붙일 때 잰 값의 1.5배 | 6-3 |
 | 모델 파일 | git 밖, manifest만 커밋. 공개 모델은 빌드할 때 이미지에 넣는다 | 6-3 |
-| 서버 시크릿 | GitHub 시크릿 `AI_ENV` → 서버 `~/pitch-coach/ai/.env` | `architecture.md` 10절 |
+| 서버 시크릿 | GitHub 시크릿 `AI_ENV` → develop 서버 `~/pitch-coach/ai/.env`, `RELEASE_AI_ENV` → release 서버 `~/pitch-coach-release/ai/.env` | `architecture.md` 10절 |
 | 에러 본문 · `meta` · 시간 예산 · 환경변수 | `architecture.md` 4 · 5 · 3 · 10절 | `architecture.md` |
