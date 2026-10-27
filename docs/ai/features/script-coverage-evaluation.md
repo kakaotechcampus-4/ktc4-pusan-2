@@ -618,7 +618,7 @@ uv sync
 | 응답 `meta` | `feature_version` · `criteria_versions`(채점 응답) · 응답한 모델(`architecture.md` 5 · 9절) |
 | 로그 | 대본 · STT 원문은 남기지 않고 장 수 · 글자 수 · 실패 장 수 · 걸린 시간만 남긴다(`architecture.md` 11절) |
 
-**환경변수**: 코어는 환경변수를 읽지 않는다. LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓰고, 호출 한 번의 시간 제한만 이 기능에서 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`으로 다르다(8절의 잰 값). 이 값은 `ai/.env.example`에 있고(`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`), 서버의 `ai/.env`(GitHub 시크릿 develop `AI_ENV` · release `RELEASE_AI_ENV`, BE 관리)에도 같은 줄을 넣는다(`AI_ENV`는 #466에서 요청했고, 두 시크릿에 있는지 확인은 #584에서 요청 중). 서비스 `settings.py`가 이 칸을 읽고(없거나 비면 `LLM_TIMEOUT_SECONDS`), 이 기능의 역할 다섯 개(`settings.LLM_ROLES`의 `timeout_setting`)만 그 값을 쓴다. 서버에 이 줄이 없으면 기본 12초로 돌아 장이 많은 대본에서 `LLM_TIMEOUT`이 많아진다(아래 증상 표).
+**환경변수**: 코어는 환경변수를 읽지 않는다. LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓰고, 호출 한 번의 시간 제한만 이 기능에서 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`으로 다르다(8절의 잰 값). 이 값은 `ai/.env.example`에 있고(`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`), 서버의 `ai/.env`(GitHub 시크릿 develop `AI_ENV` · release `RELEASE_AI_ENV`, BE 관리)에도 같은 줄을 넣는다(`AI_ENV`는 #466에서 요청했고, 두 시크릿에 있는지는 #584에서 BE가 확인 항목을 완료로 표시했다(2026-10-27). AI는 시크릿 내용을 볼 수 없어 직접 확인하지는 못했다). 서비스 `settings.py`가 이 칸을 읽고(없거나 비면 `LLM_TIMEOUT_SECONDS`), 이 기능의 역할 다섯 개(`settings.LLM_ROLES`의 `timeout_setting`)만 그 값을 쓴다. 서버에 이 줄이 없으면 기본 12초로 돌아 장이 많은 대본에서 `LLM_TIMEOUT`이 많아진다(아래 증상 표).
 
 **옮긴 뒤 같은 결과인지 확인**
 1. 단위 테스트 · 계약 테스트 통과 (코어 경계 테스트 포함).
