@@ -73,8 +73,8 @@ function Versions({ node, group }: { node: DraftNode; group: RailGroup }) {
               className={`tabular flex w-full items-center justify-between rounded-r border-l-2 px-2 py-1 text-left text-sm ${rowTone(active)}`}
             >
               V{v}
-              {v === group.practicing && <span className="text-xs text-stone">연습 중</span>}
-              {v === group.pending && <span className="text-xs font-bold text-coral">저장 전</span>}
+              {v === group.practicing && <span className="text-xs text-ink/80">연습 중</span>}
+              {v === group.pending && <span className="text-xs font-bold text-ink">저장 전</span>}
             </button>
           </li>
         );
@@ -84,12 +84,12 @@ function Versions({ node, group }: { node: DraftNode; group: RailGroup }) {
           type="button"
           onClick={group.onAdd}
           disabled={group.pending !== null}
-          className="w-full px-2 py-1 text-left text-sm text-stone hover:text-ink disabled:cursor-not-allowed disabled:text-line-strong"
+          className="w-full px-2 py-1 text-left text-sm text-ink/80 hover:text-ink disabled:cursor-not-allowed disabled:text-line-strong"
         >
           + 새 버전
         </button>
         {group.pendingNote !== null && (
-          <p className="px-2 pb-1 text-xs text-stone">{group.pendingNote}</p>
+          <p className="px-2 pb-1 text-xs text-ink/80">{group.pendingNote}</p>
         )}
       </li>
     </ul>
@@ -166,12 +166,12 @@ export function VersionRail() {
                 onClick={() => select(s.node)}
                 disabled={!canLeaveSlides && s.node !== 'slides'}
                 aria-current={active ? 'step' : undefined}
-                className={`flex w-full items-center justify-between gap-2 border-l-2 px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:text-stone ${rowTone(active)}`}
+                className={`flex w-full items-center justify-between gap-2 border-l-2 px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:text-ink/80 ${rowTone(active)}`}
               >
                 <span>{s.label}</span>
                 {/* 고치다 다른 화면으로 왔을 때 — 저장하지 않은 값이 남아 있다는 것을 여기서 압니다 */}
                 {s.node === 'info' && infoUnsaved && (
-                  <span className="text-xs font-bold text-coral">저장 안 됨</span>
+                  <span className="text-xs font-bold text-ink">저장 안 됨</span>
                 )}
               </button>
               {group && open && s.node !== 'info' && <Versions node={s.node} group={group} />}

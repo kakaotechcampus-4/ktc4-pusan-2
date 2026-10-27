@@ -62,23 +62,23 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
             />
           ) : (
             <div className="p-3">
-              <span className="font-mono text-[9px] text-stone">
+              <span className="font-mono text-[9px] text-ink/80">
                 PITCH / {String(index + 1).padStart(2, '0')}
               </span>
-              <div className="mt-3 h-1.5 w-12 bg-coral" />
+              <div className="mt-3 h-1.5 w-12 bg-coral-deep" />
               <div className="mt-2 h-1 w-16 bg-line-strong" />
             </div>
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="mb-2 text-xs text-stone">
+          <p className="mb-2 text-xs text-ink/80">
             {takes.length === 0 && <span className="mr-2 font-bold text-coral-deep">연습 전</span>}
             목표 {duration(pitch.pitch_time)}
           </p>
           {pitch.pitch_id ? (
             <Link
               to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
-              className={`${titleStyle} hover:text-coral-deep`}
+              className={`${titleStyle} hover:text-ink`}
             >
               {pitch.pitch_title}
               <span aria-hidden="true" className="text-sm">
@@ -88,12 +88,12 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
           ) : (
             <h3 className={titleStyle}>{pitch.pitch_title}</h3>
           )}
-          <p className="mt-2 text-xs text-stone">
+          <p className="mt-2 text-xs text-ink/80">
             {pitch.pitch_id ? '자료와 대본 확인하기' : '현재 자료 열기를 사용할 수 없어요.'}
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-4">
-          <span className="whitespace-nowrap text-xs text-stone">
+          <span className="whitespace-nowrap text-xs text-ink/80">
             연습 기록 <strong className="font-mono text-ink">{takes.length}</strong>
           </span>
           {/* 비교는 Take 가 둘 이상일 때만 뜻이 있습니다 */}
@@ -109,7 +109,7 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
       </div>
       <div id={recordsId} hidden={!open} className="border-t border-line-strong">
         {takes.length === 0 ? (
-          <p className="p-6 text-sm text-stone">
+          <p className="p-6 text-sm text-ink/80">
             아직 연습 기록이 없어요.
             {pitch.pitch_id && ' 피치 제목을 눌러 자료와 대본을 이어서 준비해 보세요.'}
           </p>
@@ -132,9 +132,9 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
                       aria-label={`발표 시간 ${duration(take.take_elapsed)}, 목표 ${duration(take.take_time)}`}
                     >
                       {duration(take.take_elapsed)}{' '}
-                      <span className="text-stone">/ {duration(take.take_time)}</span>
+                      <span className="text-ink/80">/ {duration(take.take_time)}</span>
                     </span>
-                    <span className="min-w-0 break-words text-xs text-stone">
+                    <span className="min-w-0 break-words text-xs text-ink/80">
                       {modes[take.script_mode] ?? '기타 대본 모드'}
                     </span>
                   </div>
@@ -146,7 +146,7 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
                       {take.score === null ? '—' : `${take.score}점`}
                     </span>
                     <span
-                      className="text-xs text-stone lg:text-center"
+                      className="text-xs text-ink/80 lg:text-center"
                       aria-label={
                         take.delta === null ? '점수 비교 없음' : `이전 대비 ${take.delta}점`
                       }
@@ -164,7 +164,9 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
                             {status.link.text} ↗
                           </Link>
                         ) : (
-                          <span className="text-xs text-stone">{status.link.text} 열기 미지원</span>
+                          <span className="text-xs text-ink/80">
+                            {status.link.text} 열기 미지원
+                          </span>
                         ))}
                     </div>
                   </div>

@@ -53,8 +53,8 @@ function parseButtonLabel(pending: boolean, hasItems: boolean): string {
 
 /** 처음 정리는 꽉 찬 버튼, 결과가 있으면 테두리 버튼 — 결과 확인 · 고치기가 다음 할 일이 되도록 */
 function parseButtonTone(hasItems: boolean): string {
-  if (hasItems) return 'border border-coral bg-white text-coral hover:bg-coral-wash';
-  return 'bg-coral text-white hover:bg-coral-deep';
+  if (hasItems) return 'border border-coral bg-white text-ink hover:bg-coral-wash';
+  return 'bg-coral-deep text-white hover:bg-ink';
 }
 
 /**
@@ -72,7 +72,7 @@ function Guide({ except }: { except: string | null }) {
           <AlertIcon />
           평가기준에 넣지 않은 내용
         </p>
-        <p className="mt-1.5 pl-6 text-sm leading-relaxed text-stone">
+        <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink/80">
           연습 중에 측정할 수 없는 항목이라 평가기준에서 뺐어요. 발표 시간은 발표정보에서 정해요.
         </p>
         <p className="mt-1 pl-6 text-sm font-bold leading-relaxed">“{except}”</p>
@@ -85,7 +85,7 @@ function Guide({ except }: { except: string | null }) {
         <AlertIcon />
         작성 안내
       </p>
-      <p className="mt-1.5 pl-6 text-sm leading-relaxed text-stone">
+      <p className="mt-1.5 pl-6 text-sm leading-relaxed text-ink/80">
         구체적인 행동이나 목표를 적어 주세요.
         <br />
         정리 과정에서 반영하지 못한 내용이 있으면 이유와 안내를 이곳에 알려드려요.
@@ -119,7 +119,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
     <section className="flex min-w-0 flex-col gap-3 rounded-lg border border-line bg-white p-4 xl:p-5">
       <div>
         <h3 className="text-lg font-bold">평가기준 작성</h3>
-        <p className="mt-1 text-sm text-stone">문장이나 목록으로 2,000자까지 작성해 주세요.</p>
+        <p className="mt-1 text-sm text-ink/80">문장이나 목록으로 2,000자까지 작성해 주세요.</p>
       </div>
 
       <textarea
@@ -129,7 +129,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         onChange={(e) => setText(e.target.value)}
         placeholder={PLACEHOLDER}
         rows={5}
-        className="min-h-32 w-full resize-y rounded-lg border border-line-strong bg-white p-3 text-sm leading-relaxed outline-none placeholder:text-stone focus:border-ink"
+        className="min-h-32 w-full resize-y rounded-lg border border-line-strong bg-white p-3 text-sm leading-relaxed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-ink/80 focus:border-ink"
       />
 
       <button
@@ -138,7 +138,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         onClick={() => parse.mutate({ source: text, draftId })}
         className={[
           'flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg text-sm font-bold',
-          'disabled:cursor-not-allowed disabled:border-transparent disabled:bg-line disabled:text-stone',
+          'disabled:cursor-not-allowed disabled:border-transparent disabled:bg-line disabled:text-ink/80',
           parseButtonTone(hasItems),
         ].join(' ')}
       >
@@ -148,21 +148,21 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
 
       {/* 다시 정리하면 새 버전이 생기고, 이 버전에서 고친 내용은 버려집니다 (createStore applyParsedCriteria) */}
       {criteria?.edited && !parse.isPending && (
-        <p className="text-xs text-stone">
+        <p className="text-xs text-ink/80">
           다시 정리하면 V{criteria.version}에서 고친 내용은 저장되지 않아요. 남기려면 먼저 저장해
           주세요.
         </p>
       )}
 
       {parse.isError && (
-        <p role="alert" className="text-sm font-bold text-coral">
+        <p role="alert" className="text-sm font-bold text-ink">
           {parseErrorMessage(parse.error)}
         </p>
       )}
 
       <Guide except={except} />
       {except && (
-        <p className="text-xs text-stone">
+        <p className="text-xs text-ink/80">
           측정할 수 있는 행동(속도 · 음량 · 시선 등)으로 바꿔 적으면 기준에 넣을 수 있어요.
         </p>
       )}
@@ -179,7 +179,7 @@ function Result({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           <h3 className="text-lg font-bold">정리된 평가기준</h3>
-          <span className="tabular rounded-md bg-panel px-2.5 py-1 text-xs font-bold text-stone">
+          <span className="tabular rounded-md bg-panel px-2.5 py-1 text-xs font-bold text-ink/80">
             {items.length}개 항목
           </span>
         </div>
@@ -227,12 +227,12 @@ function EmptyResult({ editable, edited }: { editable: boolean; edited: boolean 
       <div className="flex min-h-48 flex-1 flex-col items-center justify-center gap-2 py-6 text-center">
         <DocIcon className="mb-2 h-9 w-9 stroke-stone" />
         <p className="font-bold">아직 정리된 평가기준이 없어요</p>
-        <p className="text-sm text-stone">기준을 작성하고 정리 버튼을 눌러 주세요.</p>
+        <p className="text-sm text-ink/80">기준을 작성하고 정리 버튼을 눌러 주세요.</p>
       </div>
     );
   }
   return (
-    <p className="mt-4 rounded-lg border border-dashed border-line-strong px-4 py-6 text-center text-sm text-stone">
+    <p className="mt-4 rounded-lg border border-dashed border-line-strong px-4 py-6 text-center text-sm text-ink/80">
       {edited ? '항목을 모두 지웠어요.' : '정리된 기준이 없어요.'} “+ 기준 추가”로 다시 적거나 다시
       정리해 주세요.
     </p>
@@ -254,7 +254,7 @@ function ItemNumber({ index }: { index: number }) {
 function SavedBadge({ criteria }: { criteria: CriteriaVersion | null }) {
   if (!criteria || criteria.items.length === 0) return null;
   if (criteria.edited) {
-    return <span className="text-xs font-bold text-coral">고친 내용 저장 안 됨</span>;
+    return <span className="text-xs font-bold text-ink">고친 내용 저장 안 됨</span>;
   }
   if (criteria.saved) {
     return (
@@ -263,7 +263,7 @@ function SavedBadge({ criteria }: { criteria: CriteriaVersion | null }) {
       </span>
     );
   }
-  return <span className="text-xs font-bold text-coral">아직 정리하지 않음</span>;
+  return <span className="text-xs font-bold text-ink">아직 정리하지 않음</span>;
 }
 
 /** AI 가 정리한 문장 한 줄. 사용자가 고치거나 지울 수 있습니다. 한 줄 50자까지 (계약 값) */
@@ -289,10 +289,10 @@ function EditableItem({
         maxLength={MAX_CRITERION_CHARS}
         onChange={(e) => editCriterion(version, item.id, e.target.value)}
         placeholder="기준을 적어 주세요"
-        className="h-9 min-w-0 flex-1 rounded-md border border-transparent px-2 text-sm outline-none placeholder:text-stone hover:border-line focus:border-ink"
+        className="h-9 min-w-0 flex-1 rounded-md border border-transparent px-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-ink/80 hover:border-line focus:border-ink"
       />
       {nearLimit && (
-        <span className="tabular shrink-0 text-xs text-stone">
+        <span className="tabular shrink-0 text-xs text-ink/80">
           {item.text.length}/{MAX_CRITERION_CHARS}
         </span>
       )}
@@ -300,7 +300,7 @@ function EditableItem({
         type="button"
         aria-label={`평가기준 ${index + 1} 삭제`}
         onClick={() => removeCriterion(version, item.id)}
-        className="shrink-0 rounded-md px-2 py-1 text-sm font-bold text-stone hover:bg-panel hover:text-ink"
+        className="shrink-0 rounded-md px-2 py-1 text-sm font-bold text-ink/80 hover:bg-panel hover:text-ink"
       >
         삭제
       </button>
@@ -354,22 +354,22 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
           setRefined(false);
           addCriterion(criteria.version);
         }}
-        className="self-start rounded-md px-2 py-1 text-sm font-bold text-stone hover:bg-panel hover:text-ink disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        className="self-start rounded-md px-2 py-1 text-sm font-bold text-ink/80 hover:bg-panel hover:text-ink disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         {full ? `기준은 ${MAX_CRITERIA}개까지예요` : '+ 기준 추가'}
       </button>
       {save.isError && (
-        <p role="alert" className="text-sm font-bold text-coral">
+        <p role="alert" className="text-sm font-bold text-ink">
           평가기준을 저장하지 못했어요. {toMessage(save.error)}
         </p>
       )}
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-stone">{saveHint(edited, standards.length, refined)}</p>
+        <p className="text-xs text-ink/80">{saveHint(edited, standards.length, refined)}</p>
         <button
           type="button"
           disabled={!edited || standards.length === 0 || save.isPending}
           onClick={() => save.mutate({ list: standards, draftId, sourceVersion: criteria.version })}
-          className="h-10 shrink-0 rounded-lg bg-coral px-5 text-sm font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
+          className="h-10 shrink-0 rounded-lg bg-coral-deep px-5 text-sm font-bold text-white hover:bg-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-ink/80"
         >
           {save.isPending ? '저장하는 중…' : '고친 내용 저장'}
         </button>
@@ -386,14 +386,14 @@ function ReviseBar({ criteria }: { criteria: CriteriaVersion | null }) {
   const pending = useCreateStore((s) => pendingVersion(s.draft, 'criteria'));
   if (!criteria || criteria.items.length === 0) {
     return (
-      <p className="mt-4 border-t border-line pt-4 text-xs text-stone">
+      <p className="mt-4 border-t border-line pt-4 text-xs text-ink/80">
         정리하면 바로 저장되고, 목록을 고쳐 다시 저장할 수 있어요.
       </p>
     );
   }
   return (
     <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-4">
-      <p className="text-xs text-stone">
+      <p className="text-xs text-ink/80">
         {pending === null
           ? '지난 버전은 바뀌지 않아요. 고치려면 이 글로 새 버전을 만들어 다시 정리해요.'
           : `마무리하지 않은 V${pending}이 있어요. 그 버전을 마저 정리하거나 저장해 주세요.`}
@@ -403,7 +403,7 @@ function ReviseBar({ criteria }: { criteria: CriteriaVersion | null }) {
         onClick={() =>
           pending === null ? reviseCriteria(criteria.version) : select('criteria', pending)
         }
-        className="h-10 shrink-0 rounded-lg border border-coral bg-white px-4 text-sm font-bold text-coral hover:bg-coral-wash"
+        className="h-10 shrink-0 rounded-lg border border-coral bg-white px-4 text-sm font-bold text-ink hover:bg-coral-wash"
       >
         {pending === null ? '수정하기' : `V${pending} 열기`}
       </button>
@@ -431,7 +431,7 @@ function StartFooter({ onStart }: { onStart: () => void }) {
         ready ? (
           '연습할 준비가 됐어요.'
         ) : (
-          <span className="font-bold text-coral">
+          <span className="font-bold text-ink">
             {gate.ready ? '대본 매핑을 확인하고 저장해 주세요.' : gate.message}
           </span>
         )

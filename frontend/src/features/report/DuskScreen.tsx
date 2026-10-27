@@ -32,7 +32,7 @@ export function DuskScreen({
           <PitchCoachWordmark />
         </Link>
         {report && (
-          <p className="tabular bg-dusk px-2 py-1 text-sm font-bold text-dusk-ink">
+          <p className="tabular min-w-0 [overflow-wrap:anywhere] bg-dusk px-2 py-1 text-sm font-bold text-dusk-ink">
             {report.pitch_title} / TAKE {report.take_number}
             {report.measures && ` · 발표 길이 ${formatDuration(report.measures.duration_ms)}`}
           </p>
@@ -41,7 +41,7 @@ export function DuskScreen({
 
       <main className="relative z-10 flex flex-1 items-end justify-center px-5 pb-8 pt-4 sm:px-8 lg:items-center lg:justify-end lg:pb-4">
         {/* 게임 대화 상자 — 진한 바탕에 두 겹 테두리 */}
-        <section className="flex w-full max-w-xl flex-col items-center gap-4 border-4 border-dusk-ink bg-dusk px-5 py-5 text-center text-dusk-ink shadow-[inset_0_0_0_3px_var(--color-dusk),inset_0_0_0_5px_var(--color-dusk-line)] sm:px-8 lg:max-w-md">
+        <section className="flex w-full min-w-0 [overflow-wrap:anywhere] max-w-xl flex-col items-center gap-4 border-4 border-dusk-ink bg-dusk px-5 py-5 text-center text-dusk-ink shadow-[inset_0_0_0_3px_var(--color-dusk),inset_0_0_0_5px_var(--color-dusk-line)] sm:px-8 lg:max-w-md">
           {children}
         </section>
       </main>

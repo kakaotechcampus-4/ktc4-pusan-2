@@ -39,7 +39,7 @@ export function CheckCard({
     <Card
       title={title}
       action={
-        <span className="tabular font-mono text-xs text-stone">
+        <span className="tabular font-mono text-xs text-ink/80">
           {done} / {required.length}
         </span>
       }
@@ -78,8 +78,8 @@ function CheckRow({
       <span aria-hidden className="text-xs">
         {done ? '✓' : '○'}
       </span>
-      <span className="text-sm">{label}</span>
-      {optional && !done ? <span className="text-xs text-stone">선택</span> : null}
+      <span className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]">{label}</span>
+      {optional && !done ? <span className="text-xs text-ink/80">선택</span> : null}
       {action ? <span className="ml-auto text-xs font-semibold">{action.text}</span> : null}
       {trailing ? <span className="ml-auto w-20 shrink-0">{trailing}</span> : null}
     </>
@@ -103,5 +103,5 @@ function CheckRow({
 function rowSkin(done: boolean, optional: boolean): string {
   if (done) return 'border-line bg-panel text-ink';
   if (optional) return 'border-dashed border-line-strong bg-panel text-ink';
-  return 'border-coral bg-coral/10 text-coral';
+  return 'border-coral bg-coral/10 text-ink';
 }

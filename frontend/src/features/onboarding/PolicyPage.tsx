@@ -74,7 +74,7 @@ export function PolicyPage({ kind }: { kind: 'terms' | 'privacy' }) {
         >
           ← {fromHome ? '홈으로 돌아가기' : '피치코치로 돌아가기'}
         </Link>
-        <p className="mb-3 mt-12 font-mono text-xs tracking-widest text-coral-deep">
+        <p className="mb-3 mt-12 font-mono text-xs tracking-widest text-ink">
           PITCH COACH / POLICY DRAFT
         </p>
         <h1 className="text-3xl font-extrabold">{title}</h1>

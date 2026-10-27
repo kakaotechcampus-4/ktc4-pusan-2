@@ -110,11 +110,11 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
       >
         <PdfUploadIcon />
         <p className="mt-5 text-lg font-bold">PDF를 여기에 끌어다 놓으세요</p>
-        <p className="mt-1.5 text-sm text-stone">
+        <p className="mt-1.5 text-sm text-ink/80">
           파일 이름으로 발표 제목을 채워 드려요 · 나중에 고칠 수 있어요 · 최대 40MB
         </p>
         {pitchId === null && (
-          <p className="mt-3 text-xs text-stone">
+          <p className="mt-3 text-xs text-ink/80">
             PDF를 올리면 피치가 자동으로 만들어져요.
             <br />
             업로드에 실패하거나 나가도 내 피치에 남아, 나중에 이어서 준비할 수 있어요.
@@ -124,14 +124,14 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="mt-6 inline-flex items-center gap-2.5 rounded-lg bg-coral px-12 py-3 text-sm font-bold text-white hover:bg-coral-deep"
+          className="mt-6 inline-flex items-center gap-2.5 rounded-lg bg-coral-deep px-12 py-3 text-sm font-bold text-white hover:bg-ink"
         >
           <FileIcon />
           PDF 파일 선택
         </button>
 
         {error && (
-          <p role="alert" className="mt-3 text-xs font-bold text-coral">
+          <p role="alert" className="mt-3 text-xs font-bold text-ink">
             {error}
           </p>
         )}
@@ -140,11 +140,11 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
             다시 보내도 같으니 다른 파일을 고르게 합니다 */}
         {failed && !error && (
           <div role="alert" className="mt-4 flex flex-col items-center gap-2">
-            <p className="text-xs font-bold text-coral">
+            <p className="text-xs font-bold text-ink">
               {failed.file.name} · {FAILURE_MESSAGE[failed.reason]}
             </p>
             {pitchId !== null && (
-              <p className="text-xs text-stone">
+              <p className="text-xs text-ink/80">
                 피치는 내 피치에 보관돼 있어요. 이 피치에서 다시 업로드할 수 있어요.
               </p>
             )}
@@ -152,7 +152,7 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
               <button
                 type="button"
                 onClick={() => startSlideUpload(failed.file)}
-                className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-coral-deep hover:bg-coral-wash"
+                className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-ink hover:bg-coral-wash"
               >
                 다시 시도
               </button>
@@ -177,8 +177,8 @@ function Uploading({ file, version }: { file: File; version: number | null }) {
           <PdfUploadIcon />
         </span>
         <p className="mt-5 text-lg font-bold">올리는 중…</p>
-        <p className="mt-1.5 max-w-full truncate text-sm text-stone">{file.name}</p>
-        <p className="mt-4 text-xs text-stone">
+        <p className="mt-1.5 max-w-full truncate text-sm text-ink/80">{file.name}</p>
+        <p className="mt-4 text-xs text-ink/80">
           다른 자료를 먼저 준비해도 괜찮아요. 업로드는 계속돼요.
         </p>
       </div>
@@ -192,7 +192,7 @@ function Uploading({ file, version }: { file: File; version: number | null }) {
 
 function Message({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-5 flex min-h-40 items-center justify-center rounded-lg border border-line bg-white text-sm text-stone">
+    <div className="mb-5 flex min-h-40 items-center justify-center rounded-lg border border-line bg-white text-sm text-ink/80">
       {children}
     </div>
   );
@@ -230,7 +230,7 @@ function TitleCheck({ autoTitle }: { autoTitle: string }) {
           </button>
         )}
       </div>
-      <p className="text-xs text-stone">
+      <p className="text-xs text-ink/80">
         여기서 바로 고치거나, 나중에 발표정보에서 고칠 수 있어요.
       </p>
     </div>
@@ -239,7 +239,7 @@ function TitleCheck({ autoTitle }: { autoTitle: string }) {
 
 function Thumb({ children }: { children: ReactNode }) {
   return (
-    <li className="tabular flex aspect-video items-center justify-center overflow-hidden rounded-md border border-line bg-cream text-xs text-stone">
+    <li className="tabular flex aspect-video items-center justify-center overflow-hidden rounded-md border border-line bg-cream text-xs text-ink/80">
       {children}
     </li>
   );
@@ -304,9 +304,11 @@ function Uploaded({ slide }: { slide: SlideVersion }) {
       />
       {autoTitle !== null && <TitleCheck autoTitle={autoTitle} />}
 
-      <p className="mb-3 flex items-center gap-2 text-sm">
-        <span className="font-bold">{slide.fileName ?? `슬라이드 V${slide.version}.pdf`}</span>
-        <span className="tabular text-stone">· {slide.pageCount}장</span>
+      <p className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <span className="min-w-0 font-bold [overflow-wrap:anywhere]">
+          {slide.fileName ?? `슬라이드 V${slide.version}.pdf`}
+        </span>
+        <span className="tabular text-ink/80">· {slide.pageCount}장</span>
       </p>
       <Thumbs slide={slide} />
 

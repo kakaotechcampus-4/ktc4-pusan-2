@@ -5,7 +5,7 @@ type ButtonVariant = 'primary' | 'secondary' | 'quiet';
 type ButtonSize = 'sm' | 'md';
 
 const variants: Record<ButtonVariant, string> = {
-  primary: 'border-ink bg-coral text-white shadow-[3px_3px_0_var(--color-ink)] hover:bg-coral-deep',
+  primary: 'border-ink bg-coral-deep text-white shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink',
   secondary: 'border-ink bg-panel text-ink hover:bg-cream',
   quiet: 'border-transparent bg-transparent text-ink hover:bg-cream',
 };

@@ -80,15 +80,19 @@ export function RetryPage() {
     });
   }, [takeId, passed, navigate]);
 
-  // IndexedDB 를 읽는 동안(몇 ms)은 아무것도 그리지 않습니다
-  if (found === undefined) return null;
+  if (found === undefined)
+    return (
+      <InfoPage title="업로드 실패 · 재시도">
+        <p role="status">이 브라우저의 발표 기록을 확인하고 있어요.</p>
+      </InfoPage>
+    );
 
   if (found === null) {
     return (
       <InfoPage title="업로드 실패 · 재시도" logo={false}>
         <Card>
           <h2 className="text-2xl font-bold">다시 보낼 발표 기록이 없어요</h2>
-          <p className="text-stone">
+          <p className="text-ink/80">
             이 브라우저에 이 Take의 기록이 남아 있지 않아요. 발표한 브라우저에서 다시 열거나, 새
             Take로 연습해 주세요.
           </p>
@@ -120,7 +124,7 @@ export function RetryPage() {
 
   return (
     <InfoPage title="업로드 실패 · 재시도" logo={false}>
-      <p className="border-b border-line pb-4 font-bold">
+      <p className="border-b border-line pb-4 font-bold [overflow-wrap:anywhere]">
         {ticket.title}
         {ticket.takeNumber !== null && (
           <>
@@ -133,7 +137,7 @@ export function RetryPage() {
       {gone ? (
         <Card>
           <h2 className="text-2xl font-bold">이 Take는 서버에서 이미 끝났어요</h2>
-          <p className="text-stone">다시 보내도 받지 않아요. 새 Take로 다시 연습해 주세요.</p>
+          <p className="text-ink/80">다시 보내도 받지 않아요. 새 Take로 다시 연습해 주세요.</p>
           <div className="flex flex-wrap gap-3">
             <ButtonLink to={`/pitch/${ticket.pitchId}/device-check`}>새 Take 준비</ButtonLink>
             <ButtonLink to="/" variant="secondary">
@@ -146,7 +150,7 @@ export function RetryPage() {
           <h2 className="text-2xl font-bold">
             {sending ? '발표 기록을 다시 보내고 있어요' : '발표 기록을 서버로 보내지 못했어요'}
           </h2>
-          <p className="text-stone">
+          <p className="text-ink/80">
             {sending
               ? '잠시만 기다려 주세요. 다 보낼 때까지 이 창을 열어 두세요.'
               : '기록은 이 브라우저에 남아 있지만, 서버는 몇 분 뒤 이 Take를 끝내요. 가능하면 지금 다시 보내 주세요.'}

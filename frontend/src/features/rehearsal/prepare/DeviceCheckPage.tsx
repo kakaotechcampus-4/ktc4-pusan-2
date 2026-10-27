@@ -398,8 +398,8 @@ export function DeviceCheckPage() {
         "이번 Take 를 어떻게 할지"(대본 표시)입니다. 장치와 결정을 갈라 두면
         발표 직전에 눈이 한쪽만 훑어도 됩니다.
       */}
-      <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
-        <div className="flex flex-col gap-4">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="flex min-w-0 flex-col gap-4">
           <div className="aspect-video w-full">
             <GazeSetupView
               frameRef={cal.frameRef}
@@ -415,7 +415,7 @@ export function DeviceCheckPage() {
           </div>
 
           {/* 장치 선택과 점검 항목을 나란히 — 고른 장치의 결과가 바로 옆에서 보입니다 */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
             <Card title="장치 선택">
               <DeviceSelect
                 label="카메라"
@@ -498,7 +498,7 @@ export function DeviceCheckPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           {/* 준비 정보가 와야 압니다 — 불러오는 중 · 실패면 자리를 비워 둡니다 */}
           {info && <MissionCard info={info} exam={practiceModeFor(scriptMode) === 'EXAM'} />}
           <ScriptModeChoice value={scriptMode} onChange={(m) => setScriptMode(m)} />
@@ -507,11 +507,11 @@ export function DeviceCheckPage() {
               화면마다 새로 지으면 사용자가 뭘 해야 할지 매번 달라집니다 */}
           <section className="border-2 border-dashed border-line-strong p-4 text-xs leading-relaxed">
             {deviceError ? (
-              <p className="font-bold text-coral">{DEVICE_ERROR_MESSAGE[deviceError]}</p>
+              <p className="font-bold text-ink">{DEVICE_ERROR_MESSAGE[deviceError]}</p>
             ) : (
               <>
-                <p className="text-stone">권한·무입력 안내가 이 자리에 표시됩니다</p>
-                <p className="mt-1 text-stone">
+                <p className="text-ink/80">권한·무입력 안내가 이 자리에 표시됩니다</p>
+                <p className="mt-1 text-ink/80">
                   예: 주소창 왼쪽 자물쇠 → 카메라 → 허용으로 바꿔 주세요
                 </p>
               </>
@@ -521,14 +521,14 @@ export function DeviceCheckPage() {
             {cal.advice && (
               <div className="mt-2 border border-line-strong bg-panel p-3">
                 <p className="font-bold">시선 기준이 흐릿해요 · 다시 잡기를 권해요</p>
-                <p className="mt-1 text-stone">{CALIBRATION_FAIL_MESSAGE[cal.advice]}</p>
-                <p className="mt-1 text-stone">
+                <p className="mt-1 text-ink/80">{CALIBRATION_FAIL_MESSAGE[cal.advice]}</p>
+                <p className="mt-1 text-ink/80">
                   이대로 시작해도 되지만, 이번 Take 의 시선 기록은 덜 정확할 수 있어요.
                 </p>
                 <button
                   type="button"
                   onClick={cal.start}
-                  className="mt-2 border-2 border-coral px-3 py-1 font-bold text-coral hover:bg-coral/10"
+                  className="mt-2 border-2 border-coral px-3 py-1 font-bold text-ink hover:bg-coral/10"
                 >
                   다시 잡기
                 </button>
@@ -537,31 +537,31 @@ export function DeviceCheckPage() {
 
             {cal.status === 'FAILED' && (
               <div className="mt-2 border border-coral bg-coral/10 p-3">
-                <p className="font-bold text-coral">기준을 잡지 못했어요</p>
-                <p className="mt-1 text-stone">
+                <p className="font-bold text-ink">기준을 잡지 못했어요</p>
+                <p className="mt-1 text-ink/80">
                   {CALIBRATION_FAIL_MESSAGE[cal.failReason ?? 'ENGINE_ERROR']}
                 </p>
                 <button
                   type="button"
                   onClick={cal.start}
-                  className="mt-2 border-2 border-ink bg-coral px-3 py-1 font-bold text-white hover:bg-coral-deep"
+                  className="mt-2 border-2 border-ink bg-coral-deep px-3 py-1 font-bold text-white hover:bg-ink"
                 >
                   다시 잡기
                 </button>
               </div>
             )}
 
-            <p className="mt-1 text-coral">
+            <p className="mt-1 text-ink">
               <span ref={silentRef} />
             </p>
             {audioState && audioState !== 'running' && (
-              <p className="mt-1 text-coral">
+              <p className="mt-1 text-ink">
                 AudioContext가 {audioState} 상태입니다 — 오디오가 흐르지 않습니다
               </p>
             )}
             {/* 계량기가 아예 못 떴을 때. '입력 없음'과 구분해서 보여줘야
                 사용자가 말을 더 크게 할지, 장치를 바꿀지 정할 수 있습니다 */}
-            {meterError && <p className="mt-1 text-coral">{meterError}</p>}
+            {meterError && <p className="mt-1 text-ink">{meterError}</p>}
           </section>
         </div>
       </div>
@@ -599,7 +599,7 @@ function BaseVoicePanel({
     return (
       <div role="status" className="border border-line-strong bg-cream p-3 text-sm">
         <p className="font-bold">평소 목소리를 {heardSec}초 동안 들었어요</p>
-        <p className="mt-1 text-xs leading-relaxed text-stone">
+        <p className="mt-1 text-xs leading-relaxed text-ink/80">
           발표 중 목소리 크기를 이 기준과 비교해요. 평소보다 크거나 작게 읽었다면 다시 읽어 주세요.
         </p>
       </div>
@@ -608,7 +608,7 @@ function BaseVoicePanel({
   if (status === 'SHORT') {
     return (
       <div className="border border-line-strong bg-cream p-3">
-        <p role="alert" className="text-xs leading-relaxed text-stone">
+        <p role="alert" className="text-xs leading-relaxed text-ink/80">
           {SHORT_GUIDE[reason ?? 'BRIEF']}
         </p>
       </div>
@@ -665,7 +665,7 @@ function ReadStep({
   }
   if (index === current) {
     return (
-      <li aria-current="step" className="flex items-center gap-2 font-bold text-coral-deep">
+      <li aria-current="step" className="flex items-center gap-2 font-bold text-ink">
         <span aria-hidden="true" className="flex w-3 justify-center">
           <span className="h-2 w-2 animate-pulse rounded-full bg-coral" />
         </span>
@@ -674,7 +674,7 @@ function ReadStep({
     );
   }
   return (
-    <li className="flex items-center gap-2 text-stone">
+    <li className="flex items-center gap-2 text-ink/80">
       <span aria-hidden="true" className="flex w-3 justify-center">
         <span className="h-2 w-2 rounded-full border border-stone" />
       </span>
@@ -698,7 +698,7 @@ function DeviceSelect({
 }) {
   return (
     <label className="block">
-      <span className="text-xs text-stone">{label}</span>
+      <span className="text-xs text-ink/80">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}

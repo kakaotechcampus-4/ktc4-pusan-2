@@ -38,7 +38,7 @@ export function ScreenFrame({
   children: ReactNode;
 }) {
   return (
-    <div className="pitch-create min-h-full bg-greige px-4 py-5 text-ink">
+    <div className="pitch-create min-h-full bg-greige px-4 py-5 text-ink [&_.text-stone]:text-ink/80">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
         <div className="flex flex-wrap items-baseline gap-3 px-1">
           <span className="tabular font-mono text-xs font-bold text-stone">{screenNo}</span>
@@ -47,7 +47,7 @@ export function ScreenFrame({
         </div>
 
         <div className="border-2 border-ink bg-panel shadow-[4px_4px_0_var(--color-line)]">
-          <header className="flex flex-wrap items-center gap-2 border-b border-line px-6 py-4">
+          <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-4 [overflow-wrap:anywhere] sm:px-6">
             <button
               type="button"
               onClick={onBack}
@@ -63,9 +63,9 @@ export function ScreenFrame({
             </span>
           </header>
 
-          <div className="px-6 py-5">{children}</div>
+          <div className="px-3 py-5 sm:px-6">{children}</div>
 
-          <footer className="flex flex-wrap items-center gap-3 border-t border-line px-6 py-4">
+          <footer className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-4 sm:px-6">
             <p className="text-sm text-stone">{hint}</p>
             <div className="ml-auto flex flex-wrap gap-3">{actions}</div>
           </footer>

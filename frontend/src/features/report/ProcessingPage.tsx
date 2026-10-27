@@ -54,12 +54,13 @@ function otherTip(current: number) {
 }
 
 /** 팁 번호. 매번 앞부분만 보지 않게 처음 팁도, 다음 팁도 무작위로 고릅니다 */
-function useRotatingTip() {
+function useRotatingTip(paused: boolean) {
   const [index, setIndex] = useState(() => Math.floor(Math.random() * TIPS.length));
   useEffect(() => {
+    if (paused) return;
     const id = window.setInterval(() => setIndex(otherTip), TIP_MS);
     return () => window.clearInterval(id);
-  }, []);
+  }, [paused]);
   return index;
 }
 
@@ -80,6 +81,7 @@ export function ProcessingPage() {
 
   return (
     <DuskScreen report={data}>
+      <h1 className="sr-only">분석 대기</h1>
       <DialogContent
         takeId={takeId}
         isPending={report.isPending}
@@ -159,7 +161,8 @@ function DialogContent({
 }
 
 function Progress({ takeId, states }: { takeId: string; states: StepState[] }) {
-  const tip = useRotatingTip();
+  const [paused, setPaused] = useState(false);
+  const tip = useRotatingTip(paused);
   const current = states.findIndex((s) => s === 'RUNNING' || s === 'WAITING');
   const waiting = states[current] === 'WAITING';
 
@@ -201,6 +204,14 @@ function Progress({ takeId, states }: { takeId: string; states: StepState[] }) {
       <div className="w-full border-t-2 border-dashed border-dusk-line pt-4 text-left">
         <p className="font-mono text-xs font-bold text-dusk-accent">TIP · 치치</p>
         <p className="mt-1 text-sm leading-relaxed">{TIPS[tip]}</p>
+        <button
+          type="button"
+          aria-pressed={paused}
+          onClick={() => setPaused(!paused)}
+          className="mt-2 min-h-11 text-xs text-dusk-accent underline underline-offset-4"
+        >
+          {paused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
+        </button>
       </div>
 
       <p className="text-xs text-dusk-accent">

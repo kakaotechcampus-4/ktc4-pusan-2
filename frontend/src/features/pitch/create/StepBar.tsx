@@ -56,7 +56,7 @@ export function StepBar() {
                   'tabular flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
                   current && 'bg-ink text-white',
                   done && 'bg-coral-wash text-coral-deep',
-                  !current && !done && 'border border-line-strong text-stone',
+                  !current && !done && 'border border-line-strong text-ink/80',
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -65,7 +65,7 @@ export function StepBar() {
               </span>
               <span>
                 {s.label}
-                {s.optional && <span className="ml-1 text-xs font-normal text-stone">(선택)</span>}
+                {s.optional && <span className="ml-1 text-xs font-normal text-ink/80">(선택)</span>}
               </span>
             </button>
           </li>
