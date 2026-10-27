@@ -79,6 +79,14 @@ class LlmUnavailable(LlmError):
     message = "지금은 LLM 을 쓸 수 없습니다."
 
 
+class NotReady(AppError):
+    """시작할 때 불러오는 모델(예: 형태소 분석기)이 아직 준비되지 않았다. BE 는 다시 부른다."""
+
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    code = "NOT_READY"
+    message = "서버가 아직 준비 중입니다. 잠시 뒤 다시 요청해 주세요."
+
+
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
