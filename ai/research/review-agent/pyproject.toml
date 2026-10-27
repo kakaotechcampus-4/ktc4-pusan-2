@@ -3,17 +3,21 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# 배포 이름. import 패키지는 review 하나다.
-#   review — 리뷰 코어. 나중에 ai/service 의 features/review/ 로 폴더째 옮긴다
+# 배포 이름. import 패키지는 둘이다.
+#   review     — 리뷰 코어. 나중에 ai/service 의 features/review/ 로 폴더째 옮긴다
+#   review_lab — research 전용 평가 · 실제 LLM 실행 도구. 옮기지 않는다
 name = "review-agent"
 version = "1.0.0"
-description = "Pitch Coach review agent - research (core)"
+description = "Pitch Coach review agent - research (core + lab)"
 # service 가 쓸 Python 버전(3.12)에서 검증한다
 requires-python = ">=3.12"
 dependencies = [
     # 코어(review)가 쓰는 것은 pydantic 하나뿐이다. service 로 옮길 때 이것만 가져간다.
-    # 2차 LLM 단계도 LLM 클라이언트는 코어가 만들지 않고 인자로 받는다
+    # LLM 단계도 LLM 클라이언트는 코어가 만들지 않고 인자로 받는다
     "pydantic>=2.12",
+    # ── research 전용 (review_lab 의 실제 LLM 실행 · 평가). 코어는 쓰지 않는다
+    "langchain-openai>=1.3",
+    "python-dotenv>=1.0",
 ]
 
 [dependency-groups]
@@ -40,4 +44,4 @@ src = ["src", "."]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["review"]
+known-first-party = ["review", "review_lab"]
