@@ -50,6 +50,28 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 - CI 는 PostgreSQL·Redis 서비스와 `DATABASE_URL` 만 제공하면 된다.
   `JWT_SECRET_KEY` 와 구글 값은 conftest 가 테스트용 값을 넣는다.
 
+## 서비스 평점·의견
+
+홈 평점 팝업은 본인의 완료 Take와 `TAKE_RESULT`가 남아 있는 미평가자에게 최초 포함 최대 3회 요청한다.
+별점은 사용자당 한 건이며 팝업 의견과 마이페이지 의견은 공통 테이블에 별도로 저장한다.
+마이페이지 의견은 리포트·평점·노출 횟수와 관계없이 여러 번 보낼 수 있다.
+
+| API | 계약 |
+|---|---|
+| `POST /api/service-feedback/impressions` | `{display_request_id: UUID}`. 승인 시 `should_open=true`, 사용자 전체 최대 3회. 같은 ID 재시도는 추가 집계하지 않음 |
+| `GET /api/service-feedback/me` | `has_report`, `submitted`, `display_count`, `display_limit`, `should_prompt`. 읽기 전용이며 홈의 필수 사전 요청은 아님 |
+| `POST /api/service-feedback` | `{rating: 정수 1~5, suggestion?: string/null}`. 최초 201, 같은 내용 재시도 200, 다른 내용 409 |
+| `POST /api/suggestions` | `{request_id: UUID, content: string}`. 최초 201, 같은 ID·내용 200, 같은 ID·다른 내용 409 |
+
+모두 기존 Bearer 인증을 사용한다. 의견은 앞뒤 공백 제거 후 최대 2,000자다. 마이페이지는 빈 의견을 거절한다.
+서버가 표시를 승인한 뒤 화면을 열며 응답 유실 시 같은 표시 ID를 재사용한다. 승인 뒤 탭 종료 시 실제로 열지
+못했어도 사용한 1회로 남을 수 있다. 세 번째 팝업의 평점 제출·재시도는 계속 허용한다.
+
+운영자는 기존 Basic 인증의 `/admin/`에서 별점·의견을 확인한다. 조회 API는
+`GET /admin/api/service-feedbacks`, `GET /admin/api/suggestions`이며 `limit` 1~200, `offset` 0 이상을 받는다.
+의견 조회는 `source=RATING_POPUP|MY_PAGE` 필터를 제공한다.
+자세한 요청/응답·오류·ERD·FE 연동은 [서비스 평가 문서](../docs/be/service-feedback-plan-540.md)에 있다.
+
 ## 홈 Take 응답
 
 `GET /api/pitches/`의 `pitches[].takes[]`는 기존 필드에 `status`와 `end_reason`을 추가한다.
