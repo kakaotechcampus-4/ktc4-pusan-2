@@ -1,10 +1,16 @@
-"""기본 문장 (LLM 없이). 1차의 문장이고, 2차에서 LLM 이 실패했을 때도 이 문장을 쓴다.
+"""강점 · 개선점 후보와 기본 문장 (LLM 없이).
+
+후보마다 영역 · 장 · 근거를 정하고 기본 문장을 붙인다. LLM 이 없거나 실패하면 기본 문장을 그대로
+쓰고, LLM 이 성공해도 빠뜨리거나 숫자 검사(core.check_numbers)에 걸린 문장은 그 후보의 기본 문장으로
+바꾼다.
 
 문장 안 숫자는 장 번호뿐이고, 지표 값은 evidence 에 입력 그대로 싣는다 (숫자 검사에 걸리지 않게).
 """
 
 from __future__ import annotations
 
+import copy
+from dataclasses import dataclass
 from typing import Any
 
 from .burden import Burden, focus
@@ -12,7 +18,7 @@ from .config import ReviewConfig
 from .evaluable import measured_areas
 from .metrics import find_metric
 from .recurring import build_recurring_issues
-from .vocab import DIMENSIONS
+from .vocab import DIMENSIONS, METRIC_TO_DIMENSION
 
 #: 미션 설명용 지표 이름 (명세에 표시 이름이 없어 정한 것. FE 표시 이름이 정해지면 맞춘다)
 METRIC_LABELS = {
@@ -67,13 +73,13 @@ def _evidence(
     cfg: ReviewConfig,
     area: str | None = None,
     slide_number: int | None = None,
-) -> tuple[str, dict[str, Any]]:
-    """(영역, 근거). 잰 영역의 지표 중 값이 있는 첫 지표를 근거로 싣는다.
+) -> tuple[str, dict[str, Any], int | None]:
+    """(영역, 근거, 근거를 찾은 장). 잰 영역의 지표 중 값이 있는 첫 지표를 근거로 싣는다.
 
     - 지표 순서: 다음 미션 지표(차원에서 고른 문제의 mission_target) → 차원 표의 지표 순
     - area 가 있으면(개선점) 그 영역의 지표만, 없으면(강점) 잰 영역 어디든
-    - 장 개선점이면 그 장 값이 있는 지표를 먼저 찾고, 없으면 Take 값
-    - 못 찾으면 (area 또는 잰 영역 중 첫 영역, {})
+    - slide_number 가 있으면 그 장 값이 있는 지표를 먼저 찾고, 없으면 Take 값 (찾은 장 None)
+    - 못 찾으면 (area 또는 잰 영역 중 첫 영역, {}, None)
     """
     spec = DIMENSIONS[dim]
     _, issue, _ = focus(dim, burden, cfg)
@@ -85,21 +91,70 @@ def _evidence(
             found, value, _ = find_metric(take_result, script_coverage, metric, slide)
             if value is None or found not in measured or (area and found != area):
                 continue
-            return found, {metric: value}
+            return found, {metric: value}, slide
     fallback = area or next((a for a in spec.areas if a in measured), spec.areas[0])
-    return fallback, {}
+    return fallback, {}, None
 
 
-def build_default_text(
+def _improved_slide(
+    dim: str,
+    recurring_issues: list[dict[str, Any]],
+    mission_results: list[dict[str, Any]],
+) -> int | None:
+    """IMPROVED 강점의 장: 나아진 근거의 장.
+
+    그 차원의 직전 반복 문제 → 이룬 장 미션 순. 없으면 None
+    """
+    for it in recurring_issues:
+        if it.get("dimension") == dim and it.get("slide_number") is not None:
+            return it["slide_number"]
+    for m in mission_results:
+        if (
+            m["status"] == "ACHIEVED"
+            and m["slide_number"] is not None
+            and METRIC_TO_DIMENSION.get(m["metric"]) == dim
+        ):
+            return m["slide_number"]
+    return None
+
+
+@dataclass(frozen=True)
+class TextCandidate:
+    """강점 · 개선점 후보 하나 (명세 6-2).
+
+    item 은 응답 항목 {area, slide_number, text, evidence} 이고 text 는 기본 문장이다.
+    area · slide_number · evidence 는 규칙 단계가 정해 기본 문장과 LLM 문장이 같이 쓴다.
+    """
+
+    dimension: str
+    #: 그 차원의 상태. 강점은 STRENGTH · IMPROVED, 개선점은 PRIORITY
+    state: str
+    item: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class TextCandidates:
+    #: STRENGTH · IMPROVED 차원 (차원 표 순서)
+    strengths: list[TextCandidate]
+    #: PRIORITY 차원 (반복 문제와 같은 순서 · 영역 · 장)
+    improvements: list[TextCandidate]
+
+
+def text_candidates(
     dimension_states: dict[str, str],
     burden: Burden,
     take_result: dict[str, Any],
     script_coverage: dict[str, Any] | None,
     cfg: ReviewConfig,
-) -> dict[str, Any]:
-    """{overall_summary, strengths, improvements}
+    recurring_issues: list[dict[str, Any]] | None = None,
+    mission_results: list[dict[str, Any]] | None = None,
+) -> TextCandidates:
+    """강점 · 개선점 후보와 그 기본 문장.
 
-    - strengths: STRENGTH · IMPROVED 차원 (차원 표 순서). area 는 근거 지표를 찾은 잰 영역
+    - strengths: STRENGTH · IMPROVED 차원 (차원 표 순서). area 는 근거 지표를 찾은 잰 영역.
+      IMPROVED 면 나아진 근거의 장(직전 반복 문제 → 이룬 장 미션, _improved_slide)의 값을 먼저
+      찾아 그 장을 싣고, 장 값이 없으면(이번에 재지 못한 장) Take 값과 장 번호 null.
+      STRENGTH 는 그 차원의 Take 전체에 문제가 없다는 뜻이라 장 번호 null, 근거는 Take 값
     - improvements: PRIORITY 차원 (부담 큰 순), 부담이 몰린 장이 있으면 장 번호.
       area 는 부담이 가장 큰 영역이고 근거도 그 영역의 지표
     - 못 잰 영역(측정 비율 기준 미만)은 area · 근거에 쓰지 않는다
@@ -114,39 +169,66 @@ def build_default_text(
             text = IMPROVED_TEXT.format(label=DIMENSION_LABELS[dim])
         else:
             continue
-        area, evidence = _evidence(dim, burden, take_result, script_coverage, measured, cfg)
-        strengths.append({"area": area, "slide_number": None, "text": text, "evidence": evidence})
+        slide = None
+        if state == "IMPROVED":
+            slide = _improved_slide(dim, recurring_issues or [], mission_results or [])
+        area, evidence, found_slide = _evidence(
+            dim, burden, take_result, script_coverage, measured, cfg, slide_number=slide
+        )
+        item = {"area": area, "slide_number": found_slide, "text": text, "evidence": evidence}
+        strengths.append(TextCandidate(dim, state, item))
 
-    # PRIORITY 차원 목록은 반복 문제와 같다 (부담 큰 순 · 영역 · 몰린 장)
-    priority_issues = build_recurring_issues(dimension_states, burden, cfg)
+    # PRIORITY 차원 목록은 반복 문제와 같다 (부담 큰 순 · 영역 · 몰린 장).
+    # 개선점은 반복 문제와 같은 장을 가리켜야 해서 장 값이 없어도 장 번호를 그대로 둔다 (6-1 8번)
     improvements = []
-    for it in priority_issues:
+    for it in build_recurring_issues(dimension_states, burden, cfg):
         dim, slide = it["dimension"], it["slide_number"]
         where = f"{slide}번 장에서 " if slide is not None else ""
-        improvements.append(
-            {
-                "area": it["area"],
-                "slide_number": slide,
-                "text": where + IMPROVEMENT_TEXT[dim],
-                "evidence": _evidence(
-                    dim, burden, take_result, script_coverage, measured, cfg, it["area"], slide
-                )[1],
-            }
-        )
+        item = {
+            "area": it["area"],
+            "slide_number": slide,
+            "text": where + IMPROVEMENT_TEXT[dim],
+            "evidence": _evidence(
+                dim, burden, take_result, script_coverage, measured, cfg, it["area"], slide
+            )[1],
+        }
+        improvements.append(TextCandidate(dim, dimension_states[dim], item))
+    return TextCandidates(strengths, improvements)
 
-    good = [
-        DIMENSION_LABELS[d] for d, s in dimension_states.items() if s in ("STRENGTH", "IMPROVED")
-    ]
+
+def default_summary(candidates: TextCandidates) -> str:
+    """기본 요약 문장. 강점 · 개선점 후보의 차원 이름(개선점은 장 번호도)을 잇는다"""
+    good = [DIMENSION_LABELS[c.dimension] for c in candidates.strengths]
     bad = [
-        (f"{it['slide_number']}번 장 " if it["slide_number"] is not None else "")
-        + DIMENSION_LABELS[it["dimension"]]
-        for it in priority_issues
+        (f"{c.item['slide_number']}번 장 " if c.item["slide_number"] is not None else "")
+        + DIMENSION_LABELS[c.dimension]
+        for c in candidates.improvements
     ]
     parts = []
     if good:
         parts.append(f"좋았던 점은 {', '.join(good)}입니다.")
     if bad:
         parts.append(f"먼저 다듬을 점은 {', '.join(bad)}입니다.")
-    summary = " ".join(parts) if parts else NOTHING_TEXT
+    return " ".join(parts) if parts else NOTHING_TEXT
 
-    return {"overall_summary": summary, "strengths": strengths, "improvements": improvements}
+
+def default_text(candidates: TextCandidates) -> dict[str, Any]:
+    """{overall_summary, strengths, improvements} — 후보를 모두 기본 문장으로"""
+    return {
+        "overall_summary": default_summary(candidates),
+        "strengths": [copy.deepcopy(c.item) for c in candidates.strengths],
+        "improvements": [copy.deepcopy(c.item) for c in candidates.improvements],
+    }
+
+
+def build_default_text(
+    dimension_states: dict[str, str],
+    burden: Burden,
+    take_result: dict[str, Any],
+    script_coverage: dict[str, Any] | None,
+    cfg: ReviewConfig,
+) -> dict[str, Any]:
+    """{overall_summary, strengths, improvements} — text_candidates 를 모두 기본 문장으로"""
+    return default_text(
+        text_candidates(dimension_states, burden, take_result, script_coverage, cfg)
+    )

@@ -14,6 +14,10 @@ export interface PitchRequest {
   presentation_date: string | null;
 }
 
+export interface PitchDetail extends PitchRequest {
+  pitch_id: string;
+}
+
 /** 두 API 모두 `{"message", "pitch_id"}` 를 돌려줍니다 */
 export interface PitchSavedResponse {
   message: string;

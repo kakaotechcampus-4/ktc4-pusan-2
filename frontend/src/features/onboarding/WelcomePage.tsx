@@ -2,9 +2,10 @@ import { useEffect, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router';
 import { PitchCoachWordmark } from './PitchCoachWordmark';
 import { ComfortScene } from './ComfortScene';
+import { LaunchCountdown, LaunchStart } from './LaunchCountdown';
 
 const cta =
-  'inline-flex items-center justify-center gap-6 border-2 border-ink bg-coral px-6 py-3.5 font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-1 hover:bg-coral-deep active:translate-x-1 active:translate-y-1 active:shadow-none';
+  'inline-flex items-center justify-center gap-6 border-2 border-ink bg-coral-deep px-6 py-3.5 font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-1 hover:bg-ink active:translate-x-1 active:translate-y-1 active:shadow-none';
 const sections = [
   ['service', '서비스 소개'],
   ['guide', '사용방법'],
@@ -36,6 +37,7 @@ const faqs = [
   ],
 ];
 export function WelcomePage() {
+  const [year] = useState(() => new Date().getFullYear());
   const [active, setActive] = useState('');
   const [example, setExample] = useState(0);
   const [motion, setMotion] = useState(
@@ -72,7 +74,10 @@ export function WelcomePage() {
     setActive(id);
   }
   return (
-    <div className="landing min-h-dvh bg-panel text-ink" data-motion={motion ? 'on' : 'off'}>
+    <div
+      className="landing min-h-dvh overflow-x-clip bg-panel text-ink"
+      data-motion={motion ? 'on' : 'off'}
+    >
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-panel focus:p-4"
@@ -91,7 +96,7 @@ export function WelcomePage() {
           </a>
           <nav
             aria-label="랜딩 페이지 메뉴"
-            className="order-3 flex w-full justify-between gap-3 text-xs sm:order-none sm:w-auto sm:gap-6 sm:text-sm"
+            className="order-3 flex w-full justify-between gap-2 text-xs sm:order-none sm:w-auto sm:gap-6 sm:text-sm"
           >
             {sections.map(([id, label]) => (
               <a
@@ -99,18 +104,15 @@ export function WelcomePage() {
                 href={`#${id}`}
                 onClick={(e) => jump(e, id)}
                 aria-current={active === id ? 'location' : undefined}
-                className={`border-b-2 py-1 hover:text-coral-deep ${active === id ? 'border-coral text-coral-deep' : 'border-transparent'}`}
+                className={`inline-flex min-h-11 items-center border-b-2 py-1 hover:text-ink ${active === id ? 'border-coral text-ink' : 'border-transparent'}`}
               >
                 {label}
               </a>
             ))}
           </nav>
-          <Link
-            to="/login?next=/"
-            className="border border-ink px-4 py-2 text-sm font-bold transition hover:bg-ink hover:text-panel"
-          >
+          <LaunchStart className="border border-ink px-4 py-2 text-sm font-bold transition hover:bg-ink hover:text-panel">
             시작하기 ↗
-          </Link>
+          </LaunchStart>
         </div>
       </header>
       <main id="main" tabIndex={-1} className="scroll-mt-36">
@@ -129,7 +131,7 @@ export function WelcomePage() {
               발표는 떨려도,
               <br />
               연습은{' '}
-              <span className="relative inline-block text-coral-deep">
+              <span className="relative inline-block text-ink">
                 즐겁게.
                 <svg
                   viewBox="0 0 240 12"
@@ -152,10 +154,9 @@ export function WelcomePage() {
               <br />
               다음 발표를 한 번 더 연습해요.
             </p>
+            <LaunchCountdown />
             <div className="mt-8 flex flex-wrap items-center gap-6">
-              <Link to="/login?next=/" className={cta}>
-                치치와 연습 시작하기 ↗
-              </Link>
+              <LaunchStart className={cta}>치치와 연습 시작하기 ↗</LaunchStart>
               <a
                 href="#guide"
                 onClick={(e) => jump(e, 'guide')}
@@ -167,7 +168,7 @@ export function WelcomePage() {
             <p className="mt-6 text-xs leading-6">
               PDF 슬라이드와 대본을 준비해 주세요.
               <br />
-              <span className="text-coral-deep">카메라 영상은 브라우저 안에서 처리돼요.</span>
+              <span className="text-ink">카메라 영상은 브라우저 안에서 처리돼요.</span>
             </p>
           </div>
           <div className="relative pt-4">
@@ -182,9 +183,7 @@ export function WelcomePage() {
               <div className="relative overflow-hidden">
                 <ComfortScene />
                 <div className="landing-float absolute left-5 top-6 max-w-[80%] border-2 border-ink bg-panel px-4 py-3 shadow-[3px_3px_0_var(--color-ink)] sm:left-8 sm:top-8">
-                  <p className="mb-1 font-mono text-[9px] text-coral-deep">
-                    PROFESSOR / 오늘의 한마디
-                  </p>
+                  <p className="mb-1 font-mono text-[9px] text-ink">PROFESSOR / 오늘의 한마디</p>
                   <p className="text-sm font-bold">괜찮습니다. 처음부터 잘하는 새는 없어요.</p>
                 </div>
               </div>
@@ -198,12 +197,12 @@ export function WelcomePage() {
                 <span>+1 TAKE</span>
               </div>
             </div>
-            <div className="mt-4 flex justify-between text-[11px]">
+            <div className="mt-4 flex flex-wrap items-center gap-3 justify-between text-[11px]">
               <span>조금씩, 나아지는 중입니다.</span>
               <button
                 onClick={() => setMotion(!motion)}
                 aria-pressed={!motion}
-                className="underline underline-offset-4"
+                className="min-h-11 underline underline-offset-4"
               >
                 {motion ? '모션 일시정지 Ⅱ' : '모션 재생 ▷'}
               </button>
@@ -226,7 +225,7 @@ export function WelcomePage() {
         >
           <div className="mb-10 flex flex-wrap items-end justify-between gap-5">
             <div>
-              <p className="mb-3 font-mono text-xs font-bold text-coral-deep">01 / A LITTLE HELP</p>
+              <p className="mb-3 font-mono text-xs font-bold text-ink">01 / A LITTLE HELP</p>
               <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
                 혼자 연습해도,
                 <br />
@@ -269,7 +268,7 @@ export function WelcomePage() {
               aria-live="polite"
               aria-atomic="true"
             >
-              <p className="mb-3 font-mono text-[10px] text-coral-deep">피코 교수의 피드백</p>
+              <p className="mb-3 font-mono text-[10px] text-ink">피코 교수의 피드백</p>
               <p className="text-xl font-bold leading-9">“{examples[example][1]}”</p>
               <div
                 className="my-8 flex h-16 items-center justify-center gap-2 border-y border-line py-3"
@@ -278,7 +277,7 @@ export function WelcomePage() {
                 {[30, 65, 45, 85, 55, 95, 60, 40, 70, 50, 35, 60].map((height, i) => (
                   <span
                     key={i}
-                    className="landing-wave w-3 bg-coral sm:w-4"
+                    className="landing-wave w-3 bg-coral-deep sm:w-4"
                     style={{ height: `${height}%`, animationDelay: `${i * 90}ms` }}
                   />
                 ))}
@@ -296,7 +295,7 @@ export function WelcomePage() {
           className="scroll-mt-36 border-y border-line-strong bg-greige px-6 py-20 lg:py-24"
         >
           <div className="mx-auto max-w-6xl">
-            <p className="mb-3 text-center font-mono text-xs font-bold text-coral-deep">
+            <p className="mb-3 text-center font-mono text-xs font-bold text-ink">
               02 / HOW TO PLAY
             </p>
             <h2 className="text-center text-3xl font-extrabold sm:text-4xl">
@@ -321,7 +320,7 @@ export function WelcomePage() {
                 ],
               ].map(([title, description, label], i) => (
                 <article key={title} className="border-t-2 border-ink pt-6">
-                  <span className="font-mono text-5xl font-black text-coral">0{i + 1}.</span>
+                  <span className="font-mono text-5xl font-black text-coral-deep">0{i + 1}.</span>
                   <h3 className="mb-3 mt-6 text-xl font-bold">{title}</h3>
                   <p className="text-sm leading-7">{description}</p>
                   <p className="mt-6 font-mono text-[10px] tracking-widest">{label} ↗</p>
@@ -335,9 +334,7 @@ export function WelcomePage() {
           tabIndex={-1}
           className="mx-auto max-w-7xl scroll-mt-36 px-6 py-20 lg:px-10 lg:py-28"
         >
-          <p className="mb-3 font-mono text-xs font-bold text-coral-deep">
-            03 / THE PRESENTATION LAB
-          </p>
+          <p className="mb-3 font-mono text-xs font-bold text-ink">03 / THE PRESENTATION LAB</p>
           <div className="grid gap-7 border-b border-line-strong pb-10 lg:grid-cols-[.9fr_1.1fr] lg:gap-16">
             <div>
               <h2 className="text-3xl font-extrabold leading-snug sm:text-4xl">
@@ -371,7 +368,7 @@ export function WelcomePage() {
                 key={String(professor)}
                 className={`border border-line-strong p-6 lg:p-8 ${professor ? 'bg-cream' : 'bg-coral-wash'}`}
               >
-                <div className="mb-6 flex items-center gap-5">
+                <div className="mb-6 flex flex-wrap items-center gap-5 sm:flex-nowrap">
                   <figure className="w-28 shrink-0 border border-ink bg-panel p-1.5 shadow-[3px_3px_0_var(--color-line-strong)] lg:w-32">
                     {/* 정면 픽셀 증명사진은 원본 3:4 비율을 유지합니다. */}
                     <img
@@ -400,7 +397,7 @@ export function WelcomePage() {
                     <p className="text-xs leading-6">
                       {professor ? '연구 책임자 · 공작새' : '신입 연구원 · 뱁새'}
                     </p>
-                    <p className="mt-3 text-xs font-bold text-coral-deep">
+                    <p className="mt-3 text-xs font-bold text-ink">
                       {professor ? '연구 분야: 말하기와 시선' : '연구 과제: 떨려도 끝까지 말하기'}
                     </p>
                   </div>
@@ -426,9 +423,7 @@ export function WelcomePage() {
         >
           <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-[.7fr_1.3fr]">
             <div>
-              <p className="mb-3 font-mono text-xs font-bold text-coral-deep">
-                04 / BEFORE YOU START
-              </p>
+              <p className="mb-3 font-mono text-xs font-bold text-ink">04 / BEFORE YOU START</p>
               <h2 className="text-3xl font-extrabold">
                 잠깐, 궁금한 게<br />
                 있다면.
@@ -437,7 +432,7 @@ export function WelcomePage() {
             <div>
               {faqs.map(([question, answer]) => (
                 <details key={question} className="group border-b border-line-strong py-5">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-6 font-bold [&::-webkit-details-marker]:hidden">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-6 font-bold [&::-webkit-details-marker]:hidden">
                     {question}
                     <span aria-hidden="true" className="text-xl font-normal group-open:rotate-45">
                       +
@@ -455,9 +450,7 @@ export function WelcomePage() {
             잘하려고 왔잖아.
             <br className="sm:hidden" /> 이제 같이 해보자!
           </h2>
-          <Link to="/login?next=/" className={cta}>
-            첫 연습 시작하기 ↗
-          </Link>
+          <LaunchStart className={cta}>첫 연습 시작하기 ↗</LaunchStart>
         </section>
         <section id="policies" tabIndex={-1} className="mx-auto max-w-6xl scroll-mt-36 px-6 py-12">
           <div className="flex flex-wrap items-center justify-between gap-5">
@@ -490,7 +483,7 @@ export function WelcomePage() {
           >
             이용약관 및 개인정보 안내 ↑
           </a>
-          <span className="font-mono text-[10px]">© {new Date().getFullYear()} PITCH COACH</span>
+          <span className="font-mono text-[10px]">© {year} PITCH COACH</span>
         </div>
       </footer>
     </div>

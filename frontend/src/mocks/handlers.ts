@@ -1,4 +1,6 @@
+import { LAUNCH_AT } from '@/shared/api/launch';
 import { homeHandlers } from './home';
+import { serviceReviewHandlers } from './serviceReview';
 import { http, HttpResponse } from 'msw';
 import { authHandlers } from './auth';
 import { sttHandlers } from './stt';
@@ -167,6 +169,18 @@ if (import.meta.env.DEV) {
 }
 
 export const handlers = [
+  // #541 BE 미확정 계약: 개발 목은 공개 전 상태를 유지한다.
+  http.get('*/api/launch-status', () =>
+    HttpResponse.json(
+      {
+        server_now: new Date().toISOString(),
+        launch_at: LAUNCH_AT,
+        is_open: false,
+      },
+      { headers: { 'Cache-Control': 'no-store' } },
+    ),
+  ),
+  ...serviceReviewHandlers,
   // ★ 대본 목(scriptHandlers)보다 먼저 와야 합니다 — 그쪽은 모르는 id 에 404 를 돌려줍니다
   http.get(`*/api/pitches/:pitchId/scripts/${prepare.script!.id}`, () =>
     HttpResponse.json(sampleScript),

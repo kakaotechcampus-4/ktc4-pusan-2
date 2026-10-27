@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SuggestionForm } from './SuggestionForm';
 import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/shared/ui/Button';
@@ -51,7 +52,7 @@ export function MyPage() {
   return (
     <InfoPage title="마이페이지" logo={false}>
       <Card title="계정">
-        <dl className="grid gap-3 text-sm sm:grid-cols-[8rem_1fr]">
+        <dl className="grid gap-3 text-sm [overflow-wrap:anywhere] sm:grid-cols-[8rem_minmax(0,1fr)]">
           <dt className="text-stone">이름</dt>
           <dd className="font-bold">{user?.name}</dd>
           <dt className="text-stone">이메일</dt>
@@ -68,14 +69,14 @@ export function MyPage() {
           바뀌었을 때 지난 연습을 다시 분석하는 데 써요. 동의하지 않아도 리포트는 똑같이 나오고, 이
           기록은 리포트를 만든 뒤 지워요(분석에 실패한 연습은 7일 뒤).
         </p>
-        <label className="flex items-center gap-3 text-sm font-bold">
+        <label className="flex min-h-11 items-center gap-3 text-sm font-bold">
           <input
             id="raw-data-consent"
             type="checkbox"
             checked={consented}
             disabled={!user || consent.isPending}
             onChange={(e) => consent.mutate(e.target.checked)}
-            className="size-4 accent-ink"
+            className="size-4 shrink-0 accent-ink"
           />
           연습 기록을 남겨 다시 분석하는 데 동의해요
         </label>
@@ -107,15 +108,23 @@ export function MyPage() {
         </p>
       </Card>
 
+      {user && <SuggestionForm key={user.id} />}
+
       <Card title="약관 · 정책">
         <ul className="space-y-2 text-sm">
           <li>
-            <Link to="/terms?from=home" className="underline underline-offset-4">
+            <Link
+              to="/terms?from=home"
+              className="inline-flex min-h-11 items-center underline underline-offset-4"
+            >
               이용약관
             </Link>
           </li>
           <li>
-            <Link to="/privacy?from=home" className="underline underline-offset-4">
+            <Link
+              to="/privacy?from=home"
+              className="inline-flex min-h-11 items-center underline underline-offset-4"
+            >
               개인정보 처리방침
             </Link>
           </li>
@@ -131,7 +140,7 @@ export function MyPage() {
             type="button"
             disabled={withdraw.isPending}
             onClick={confirmWithdraw}
-            className="text-sm font-bold text-coral-deep underline underline-offset-4 disabled:opacity-50"
+            className="min-h-11 text-sm font-bold text-coral-deep underline underline-offset-4 disabled:opacity-50"
           >
             {withdraw.isPending ? '삭제하는 중…' : '계정 삭제하기'}
           </button>

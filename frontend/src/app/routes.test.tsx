@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider, useParams } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { appRoutes, router as browserRouter } from './routes';
 
-const state = vi.hoisted(() => ({ signedIn: false, stageImports: 0 }));
+const state = vi.hoisted(() => ({ signedIn: false, stageImports: 0, launchOpen: true }));
 vi.mock('@/features/auth/useSession', () => ({
   useSession: () => ({
     isPending: false,
@@ -14,14 +14,21 @@ vi.mock('@/features/auth/useSession', () => ({
   }),
   useLogout: () => ({ isPending: false, isError: false }),
 }));
+vi.mock('@/shared/api/launch', () => ({
+  useLaunchStatus: () => ({ required: true, isPending: false }),
+  launchIsOpen: () => state.launchOpen,
+}));
 vi.mock('@/features/onboarding/WelcomePage', () => ({ WelcomePage: () => <p>서비스 소개</p> }));
 vi.mock('@/features/auth/LoginPage', () => ({ LoginPage: () => <p>로그인</p> }));
-vi.mock('@/features/pitch/AppHeader', () => ({ AppHeader: () => <header>메뉴</header> }));
+vi.mock('@/shared/ui/AppHeader', () => ({ AppHeader: () => <header>메뉴</header> }));
 vi.mock('@/features/pitch/HomePage', () => ({ HomePage: () => <p>내 피치</p> }));
 vi.mock('@/features/rehearsal/stage/RehearsalPage', () => {
   state.stageImports++;
   return { RehearsalPage: () => <p>리허설 {useParams().takeId}</p> };
 });
+vi.mock('@/features/report/ConfirmPage', () => ({
+  ConfirmPage: () => <p>대본 확인 {useParams().takeId}</p>,
+}));
 vi.mock('@/features/info/AboutPage', () => {
   throw new Error('Failed to fetch dynamically imported module');
 });
@@ -53,6 +60,12 @@ async function visit(path: string) {
 }
 
 it('loads rehearsal only after the session gate, preserving take routes and titles', async () => {
+  state.launchOpen = false;
+  state.signedIn = true;
+  await visit('/takes/review-take/rehearsal');
+  expect(router!.state.location.pathname).toBe('/welcome');
+  expect(state.stageImports).toBe(0);
+  state.launchOpen = true;
   state.signedIn = false;
   await visit('/takes/review-take/rehearsal');
   expect(router!.state.location.pathname).toBe('/login');
@@ -88,4 +101,12 @@ it('offers recovery when a screen chunk fails and can navigate back to the eager
   expect(host.textContent).toContain('내 피치');
   expect(host.querySelector('[role="alert"]')).toBeNull();
   window.removeEventListener('error', onExpectedError);
+});
+
+it('preserves confirmation route, title and header ownership after lazy loading', async () => {
+  state.signedIn = true;
+  await visit('/takes/confirm-take/confirm');
+  await vi.waitFor(() => expect(host.textContent).toContain('대본 확인 confirm-take'));
+  expect(document.title).toBe('대본 확인 | 피치코치');
+  expect(host.querySelector('header')).toBeNull();
 });

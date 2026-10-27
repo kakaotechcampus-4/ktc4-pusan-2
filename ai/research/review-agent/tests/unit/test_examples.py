@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from review import ReviewRequest, ReviewResponse, review_take
+from review.schemas import ReviewDraft
 
 from .conftest import EXAMPLES
 
@@ -46,3 +47,30 @@ def test_example_files_parse():
 def test_example_response_matches():
     actual = review_take(load("request.json")).model_dump(mode="json")
     assert_same(actual, load("response.json"))
+
+
+class FixedLLM:
+    """llm_output.json 을 돌려주는 가짜 LLM"""
+
+    def __init__(self, output: Any) -> None:
+        self.output = output
+
+    def invoke(self, messages: Any) -> Any:
+        return self.output
+
+
+def test_example_llm_files_parse():
+    ReviewDraft.model_validate(load("llm_output.json"))
+    ReviewResponse.model_validate(load("response_llm.json"))
+
+
+def test_example_llm_response_matches():
+    """LLM 성공 예시: llm_output.json 을 받은 응답이 response_llm.json 과 같다.
+
+    숫자 검사도 거친다 — llm_output.json 의 문장이 걸리면 기본 문장으로 바뀌어 다르게 나온다.
+    """
+    expected = load("response_llm.json")
+    llm = FixedLLM(load("llm_output.json"))
+    actual = review_take(load("request.json"), llm, model=expected["meta"]["model"])
+    assert actual.fallback_reason is None
+    assert_same(actual.model_dump(mode="json"), expected)

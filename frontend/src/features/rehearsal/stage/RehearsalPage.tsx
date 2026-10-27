@@ -655,6 +655,7 @@ export function RehearsalPage() {
     // 시간을 먼저 붙잡습니다. 아래 await들이 도는 동안에도 시계는 갑니다.
     // ★ 끝난 시각도 여기서 찍습니다 — STT 정리는 최대 3초까지 걸리는데,
     //   그 시간을 endedAt에 얹으면 endedAt - startedAt이 durationMs와 어긋납니다
+    // oxlint-disable-next-line react/purity -- 렌더에서는 호출하지 않고 클릭·서버 자동 종료 이벤트에서만 종료 시각을 고정합니다.
     const ended: Ending = { durationMs: elapsedMs(), endedAtIso: new Date().toISOString() };
 
     setPhase('ENDING');

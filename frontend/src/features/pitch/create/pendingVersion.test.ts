@@ -30,26 +30,46 @@ describe('저장 안 한 버전이 있으면 새 버전을 만들지 않는다',
   });
 
   it('평가기준 — 정리하면 서버에 저장되므로 바로 새 버전을 만들 수 있다 (#463)', () => {
-    store().applyParsedCriteria(null, { sourceText: '가', standards: ['가'], exceptText: null });
+    store().applyParsedCriteria(null, {
+      version: 1,
+      sourceText: '가',
+      standards: ['가'],
+      exceptText: null,
+    });
     expect(pendingVersion(store().draft, 'criteria')).toBeNull();
     store().addCriteriaVersion();
     expect(versions(store().draft.criteria)).toEqual([1, 2]);
   });
 
   it('평가기준 — 고친 내용을 저장하지 않았으면 새 버전을 만들지 않고 그 버전을 연다', () => {
-    store().applyParsedCriteria(null, { sourceText: '가', standards: ['가'], exceptText: null });
+    store().applyParsedCriteria(null, {
+      version: 1,
+      sourceText: '가',
+      standards: ['가'],
+      exceptText: null,
+    });
     const id = store().draft.criteria[0]!.items[0]!.id;
     store().editCriterion(1, id, '가나');
     expect(pendingVersion(store().draft, 'criteria')).toBe(1);
     store().addCriteriaVersion();
     expect(versions(store().draft.criteria)).toEqual([1]);
 
-    store().markCriteriaSaved(1, ['가나']);
+    store().markCriteriaSaved(1, {
+      version: 2,
+      standards: ['가나'],
+      exceptText: null,
+      sourceText: '가나',
+    });
     expect(pendingVersion(store().draft, 'criteria')).toBeNull();
   });
 
   it('평가기준 — "수정하기"도 같은 규칙이다. 아직 정리하지 않은 버전이 있으면 그 버전을 연다', () => {
-    store().applyParsedCriteria(null, { sourceText: '가', standards: ['가'], exceptText: null });
+    store().applyParsedCriteria(null, {
+      version: 1,
+      sourceText: '가',
+      standards: ['가'],
+      exceptText: null,
+    });
     store().reviseCriteria(1);
     store().reviseCriteria(1);
     expect(versions(store().draft.criteria)).toEqual([1, 2]);

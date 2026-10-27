@@ -15,7 +15,7 @@ export function MissionCard({ info, exam }: { info: PrepareInfo; exam: boolean }
   if (!missions?.items.length) {
     return (
       <Card title="이번 Take 미션">
-        <p className="text-sm text-stone">
+        <p className="text-sm text-ink/80">
           {missions
             ? `Take ${missions.sourceTakeNumber} 리뷰에서 정한 미션이 없어요. 지난번처럼 편하게 연습해 보세요.`
             : '첫 Take라 아직 미션이 없어요. 편하게 연습해 보세요. 끝나면 다음에 해 볼 것을 알려 드려요.'}
@@ -35,15 +35,15 @@ export function MissionCard({ info, exam }: { info: PrepareInfo; exam: boolean }
         {missions.items.map((m, i) => (
           <li key={m.id} className="flex gap-3 border-t border-ink/15 py-3">
             {/* 번호는 보이는 순서입니다 — BE priority 가 1부터 빈틈없이 온다고 믿지 않습니다 */}
-            <span className="tabular flex h-6 w-6 shrink-0 items-center justify-center bg-coral text-xs font-bold text-white">
+            <span className="tabular flex h-6 w-6 shrink-0 items-center justify-center bg-coral-deep text-xs font-bold text-white">
               {i + 1}
             </span>
             <p className="min-w-0 text-sm font-bold">{m.description}</p>
           </li>
         ))}
       </ol>
-      {note && <p className="mt-3 text-xs leading-relaxed text-stone">{note}</p>}
-      <p className="mt-3 text-xs leading-relaxed text-stone">
+      {note && <p className="mt-3 text-xs leading-relaxed text-ink/80">{note}</p>}
+      <p className="mt-3 text-xs leading-relaxed text-ink/80">
         {exam
           ? '실전 모드에서는 코치가 알려 주지 않아요. 끝난 뒤 리포트에서 결과를 확인해요.'
           : '발표 중에 이 미션을 기준으로 코치가 알려 드려요.'}

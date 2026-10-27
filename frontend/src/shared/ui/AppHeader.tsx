@@ -11,8 +11,8 @@ function MenuLink({ to, label, current }: { to: string; label: string; current: 
       aria-current={current ? 'page' : undefined}
       className={
         current
-          ? 'border-b-2 border-coral py-2 font-bold'
-          : 'border-b-2 border-transparent py-2 hover:text-coral-deep'
+          ? 'inline-flex min-h-11 items-center border-b-2 border-coral py-2 font-bold'
+          : 'inline-flex min-h-11 items-center border-b-2 border-transparent py-2 hover:text-coral-deep'
       }
     >
       {label}
@@ -34,17 +34,24 @@ export function AppHeader() {
         <Link to="/" aria-label="PITCH COACH 홈">
           <PitchCoachWordmark />
         </Link>
-        <nav aria-label="홈 메뉴" className="flex items-center gap-5 text-xs sm:gap-8 sm:text-sm">
+        <nav
+          aria-label="홈 메뉴"
+          className="flex flex-wrap items-center gap-5 text-xs sm:gap-8 sm:text-sm"
+        >
           <MenuLink to="/" label="내 피치" current={pathname === '/' || pathname === '/pitches'} />
           <MenuLink to="/takes" label="Take 기록" current={pathname === '/takes'} />
-          <button type="button" onClick={() => setHelpOpen(true)} className="hover:text-coral-deep">
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="min-h-11 hover:text-ink"
+          >
             사용방법
           </button>
           <MenuLink to="/me" label="마이페이지" current={pathname === '/me'} />
           <button
             disabled={logout.isPending}
             onClick={() => logout.mutate()}
-            className="text-stone hover:text-ink disabled:opacity-50"
+            className="min-h-11 text-ink/80 hover:text-ink disabled:opacity-50"
           >
             {logout.isPending ? '로그아웃 중…' : '로그아웃'}
           </button>

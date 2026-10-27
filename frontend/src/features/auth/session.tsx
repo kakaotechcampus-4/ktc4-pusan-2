@@ -47,14 +47,29 @@ export function RequireSession({
       />
     );
 
+  if (header)
+    return (
+      // 상단바와 화면이 함께 한 화면 높이를 채웁니다. 화면은 flex-1 로 남은 높이를 받아,
+      // 내용이 짧으면 상단바 높이만큼 스크롤이 생기지 않습니다.
+      <div className="flex min-h-dvh flex-col">
+        {header}
+        <Outlet />
+      </div>
+    );
+
   return (
     <>
-      {header}
-      {!header && showHeader && (
+      {showHeader && (
         <div
-          className={`${bright ? 'pitch-create bg-greige text-ink ' : ''}flex items-center justify-end gap-4 px-6 py-3 text-sm`}
+          className={`${bright ? 'pitch-create flex-wrap bg-greige text-ink [&>a]:shrink-0 [&>button]:shrink-0 ' : ''}flex items-center justify-end gap-4 px-6 py-3 text-sm`}
         >
-          <span>{session.data.name}</span>
+          {/* 리허설은 헤더 높이로 무대 위치가 달라지지 않도록 한 줄을 유지합니다. */}
+          <span
+            title={session.data.name}
+            className={bright ? 'min-w-0 max-w-full [overflow-wrap:anywhere]' : 'min-w-0 truncate'}
+          >
+            {session.data.name}
+          </span>
           <NavLink to="/takes" end className="underline aria-[current=page]:font-bold">
             Take 기록
           </NavLink>

@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScriptDetail } from '@/types/script';
 import { useCreateStore } from './createStore';
 import { pendingVersion, toPracticeCombo } from './lib/draft';
-import { loadPitch, PitchNotFound } from './loadPitch';
-import { getPitchResources } from '@/shared/api/pitch';
+import { loadPitch } from './loadPitch';
+import { getPitch, getPitchResources } from '@/shared/api/pitch';
 import { openPdf } from '@/shared/lib/pdf';
 
 /**
@@ -28,6 +28,14 @@ vi.mock('@/shared/api/home', () => ({
   })),
 }));
 vi.mock('@/shared/api/pitch', () => ({
+  getPitch: vi.fn(async () => ({
+    pitch_id: 'p1',
+    title: '캡스톤',
+    time_limit_sec: 300,
+    presentation_date: null,
+    lower_deviation: 15,
+    upper_deviation: 30,
+  })),
   getPitchResources: vi.fn(async () => ({
     pitch_id: 'p1',
     // 순서가 섞여 와도 번호대로 둡니다
@@ -92,8 +100,8 @@ describe('수정 화면 — 서버의 피치를 초안으로 읽는다', () => {
     expect(draft).toMatchObject({
       title: '캡스톤',
       timeLimitSec: 300,
-      lowerToleranceSec: null,
-      upperToleranceSec: null,
+      lowerToleranceSec: 15,
+      upperToleranceSec: 30,
     });
     expect(draft.slides.map((s) => [s.version, s.pageCount, s.presentationVersionId])).toEqual([
       [1, 3, 'pv1'],
@@ -132,8 +140,9 @@ describe('수정 화면 — 서버의 피치를 초안으로 읽는다', () => {
     expect(vi.mocked(openPdf).mock.calls.map(([url]) => url)).toEqual(['https://s3/pv2.pdf']);
   });
 
-  it('목록에 없는 피치면 PitchNotFound 다', async () => {
-    await expect(loadPitch('nope')).rejects.toBeInstanceOf(PitchNotFound);
+  it('기본정보를 못 읽으면 수정 화면을 열지 않는다', async () => {
+    vi.mocked(getPitch).mockRejectedValueOnce(new Error('PITCH_NOT_FOUND'));
+    await expect(loadPitch('nope')).rejects.toThrow('PITCH_NOT_FOUND');
   });
 });
 

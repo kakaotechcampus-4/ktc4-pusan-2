@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronIcon } from '../icons';
 import { fromIsoDate, monthGrid, toIsoDate, type CalendarDay } from '../lib/date';
 
@@ -12,20 +12,21 @@ import { fromIsoDate, monthGrid, toIsoDate, type CalendarDay } from '../lib/date
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
 /**
- * 일요일만 강조색으로 칠합니다. 앞뒤 달 칸은 흐리게.
+ * 일요일만 강조색으로 칠합니다. 앞뒤 달 칸은 흐리게. 오늘은 음영 + 테두리 — 고른 날(코랄 채움)이 우선입니다.
  *
  * ★ 목업은 토요일을 파랑으로 칠하지만 디자인 토큰에 파랑이 없습니다 (`index.css` —
  *   "색을 새로 만들지 않습니다"). 토큰이 생기면 여기 한 줄만 더하면 됩니다.
  */
-function dayTone(cell: CalendarDay, selected: boolean): string {
-  if (selected) return 'bg-coral font-bold text-white';
-  if (cell.outside) return 'text-line-strong hover:bg-panel';
-  if (cell.weekday === 0) return 'text-coral hover:bg-coral-wash';
+function dayTone(cell: CalendarDay, selected: boolean, isToday: boolean): string {
+  if (selected) return 'bg-coral-deep font-bold text-white';
+  if (isToday) return 'bg-coral-wash font-bold text-ink ring-1 ring-inset ring-coral';
+  if (cell.outside) return 'text-ink/80 hover:bg-panel';
+  if (cell.weekday === 0) return 'text-ink underline hover:bg-coral-wash';
   return 'text-ink hover:bg-panel';
 }
 
 function weekdayTone(weekday: number): string {
-  return weekday === 0 ? 'text-coral' : 'text-stone';
+  return weekday === 0 ? 'text-ink' : 'text-ink/80';
 }
 
 export function DatePicker({
@@ -48,10 +49,57 @@ export function DatePicker({
       return { year: d.getFullYear(), month: d.getMonth() };
     });
 
-  const today = toIsoDate(new Date());
+  const [now] = useState(() => new Date());
+  const today = toIsoDate(now);
+  const onThisMonth = view.year === now.getFullYear() && view.month === now.getMonth();
+  const [focused, setFocused] = useState(value || today);
+  const grid = useRef<HTMLTableElement>(null);
+  const pendingFocus = useRef(false);
+  const days = monthGrid(view.year, view.month);
+  const tabDate = days.some((cell) => cell.iso === focused)
+    ? focused
+    : toIsoDate(new Date(view.year, view.month, 1));
+
+  useLayoutEffect(() => {
+    if (!pendingFocus.current) return;
+    pendingFocus.current = false;
+    grid.current?.querySelector<HTMLButtonElement>(`[data-date="${focused}"]`)?.focus();
+  }, [focused, view]);
+
+  function moveFocus(event: KeyboardEvent<HTMLButtonElement>, iso: string) {
+    const date = fromIsoDate(iso)!;
+    let offset: number;
+    switch (event.key) {
+      case 'ArrowLeft':
+        offset = -1;
+        break;
+      case 'ArrowRight':
+        offset = 1;
+        break;
+      case 'ArrowUp':
+        offset = -7;
+        break;
+      case 'ArrowDown':
+        offset = 7;
+        break;
+      case 'Home':
+        offset = -date.getDay();
+        break;
+      case 'End':
+        offset = 6 - date.getDay();
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    date.setDate(date.getDate() + offset);
+    pendingFocus.current = true;
+    setFocused(toIsoDate(date));
+    setView({ year: date.getFullYear(), month: date.getMonth() });
+  }
 
   return (
-    <div className="rounded-lg border border-line bg-white px-4 py-2">
+    <div className="rounded-lg border border-line bg-white px-1 py-2 sm:px-4">
       <div className="mb-1 flex items-center justify-between">
         <button
           type="button"
@@ -63,8 +111,21 @@ export function DatePicker({
             <ChevronIcon up={false} />
           </span>
         </button>
-        <p className="tabular text-sm font-bold" aria-live="polite">
-          {view.year}년 {view.month + 1}월
+        <p className="tabular flex items-center gap-2 text-sm font-bold" aria-live="polite">
+          {view.year}년 {view.month + 1}월{/* 다른 달을 보고 있으면 이번 달로 돌아오는 길 */}
+          {!onThisMonth && (
+            <button
+              type="button"
+              onClick={() => {
+                pendingFocus.current = true;
+                setFocused(today);
+                setView({ year: now.getFullYear(), month: now.getMonth() });
+              }}
+              className="rounded border border-line-strong px-1.5 text-xs font-bold text-ink/80 hover:text-ink"
+            >
+              오늘
+            </button>
+          )}
         </p>
         <button
           type="button"
@@ -76,31 +137,50 @@ export function DatePicker({
         </button>
       </div>
 
-      <div role="grid" aria-label="발표 날짜" className="grid grid-cols-7 gap-y-0.5 text-center">
-        {WEEKDAYS.map((w, i) => (
-          <span key={w} role="columnheader" className={`py-1 text-xs font-bold ${weekdayTone(i)}`}>
-            {w}
-          </span>
-        ))}
-
-        {monthGrid(view.year, view.month).map((cell) => {
-          const selected = cell.iso === value;
-          return (
-            <button
-              key={cell.iso}
-              type="button"
-              role="gridcell"
-              aria-selected={selected}
-              aria-label={cell.iso}
-              aria-current={cell.iso === today ? 'date' : undefined}
-              onClick={() => onChange(cell.iso)}
-              className={`tabular mx-auto flex h-7 w-10 items-center justify-center rounded-md text-sm ${dayTone(cell, selected)}`}
-            >
-              {cell.day}
-            </button>
-          );
-        })}
-      </div>
+      <table
+        ref={grid}
+        role="grid"
+        aria-label="발표 날짜"
+        className="w-full table-fixed text-center"
+      >
+        <thead>
+          <tr>
+            {WEEKDAYS.map((w, i) => (
+              <th key={w} scope="col" className={`py-1 text-xs font-bold ${weekdayTone(i)}`}>
+                {w}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: days.length / 7 }, (_, week) => (
+            <tr key={week}>
+              {days.slice(week * 7, week * 7 + 7).map((cell) => {
+                const selected = cell.iso === value;
+                const isToday = cell.iso === today;
+                return (
+                  <td key={cell.iso} aria-selected={selected} className="p-0">
+                    <button
+                      type="button"
+                      data-date={cell.iso}
+                      tabIndex={cell.iso === tabDate ? 0 : -1}
+                      onFocus={() => setFocused(cell.iso)}
+                      onKeyDown={(event) => moveFocus(event, cell.iso)}
+                      aria-label={isToday ? `${cell.iso} 오늘` : cell.iso}
+                      aria-current={cell.iso === today ? 'date' : undefined}
+                      onClick={() => onChange(cell.iso)}
+                      className={`tabular mx-auto flex min-h-11 w-full max-w-10 flex-col items-center justify-center rounded-md text-sm ${dayTone(cell, selected, isToday)}`}
+                    >
+                      {cell.day}
+                      {isToday && <span className="text-xs leading-none">오늘</span>}
+                    </button>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
