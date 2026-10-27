@@ -203,7 +203,7 @@ ai/research/review-agent/
                      "target": {"metric": "script_ratio", "operator": "LTE", "value": 0.4}, "priority": 2, "reason": "3번 장 이번 Take 0.62, 이전 Take 0.70"}],
   "recurring_issues": [{"area": "GAZE", "slide_number": 3, "dimension": "script_independence"}],
   "fallback_reason": null,
-  "meta": {"schema_version": "1.0", "feature_version": "review-1.1", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.1+<config 해시>"}, "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "review-1.2", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.2+<config 해시>"}, "model": "<응답한 모델>"}
 }
 ```
 **경계 — LLM 실패** (200, 문장은 기본 문장, 다음 미션은 후보 상위, 숫자 · 상태 · 점수는 같다)
@@ -212,7 +212,7 @@ ai/research/review-agent/
  "strengths": [{"area": "CONTENT", "slide_number": null, "text": "내용 전달: 핵심 내용 전달률 0.92", "evidence": {"content_coverage": 0.92}}],
  "...": "...",
  "fallback_reason": "LLM_TIMEOUT",
- "meta": {"schema_version": "1.0", "feature_version": "review-1.1", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.1+<config 해시>"}, "model": null}}
+ "meta": {"schema_version": "1.0", "feature_version": "review-1.2", "criteria_versions": {"gaze": "<Take 결과의 기준 버전>", "...": "...", "review": "review-1.2+<config 해시>"}, "model": null}}
 ```
 
 # 6. 처리 — 안에서 어떻게 도는가
@@ -394,6 +394,6 @@ sequenceDiagram
 | 장 없음 | `slide_number` null (0 아님) | 4-3 |
 | 실패 | LLM 실패는 200 기본 결과 + `fallback_reason`(`LLM_*`만). 입력 오류(422)는 다시 부르지 않고, 연결 실패 · 시간 초과 · 408 · 429 · 5xx는 BE가 1번 다시. 끝내 실패하면 Take `COMPLETED`(리뷰 없음) + `/coach/plan`은 `previous_review` null | 7절 |
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번 | 8절 |
-| 버전 | `review-1.1` · `criteria_versions.review` `review-1.1+<config 해시>` · `schema_version` `1.0` | 9절 |
+| 버전 | `review-1.2` · `criteria_versions.review` `review-1.2+<config 해시>` · `schema_version` `1.0` | 9절 |
 | 입력 한도 | `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `targets` 20 (넘으면 422) | 5-2 |
 | 저장 | `take_ai_results`(`REVIEW`), `missions`(결과 · 다음 미션, `pitch_id` · `reason` · `observed`, UQ(`source_take_id`, `priority`), 인덱스 (`pitch_id`, `status`)), `takes.mission_ids`(지운 미션은 건너뜀), `take_summaries.summary` · `score`, `takes.review_status` · `completed_at` | 12-1 · 12-2 |
