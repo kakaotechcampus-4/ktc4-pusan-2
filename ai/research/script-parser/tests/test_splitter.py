@@ -38,6 +38,18 @@ def test_numbers_kept_as_written():
     assert [s.slide_number for s in result.slides] == [1, 3, 5]
 
 
+def test_four_digit_number_is_delimiter():
+    result = find_slides("[1] a\n[9999] b")
+    assert result.status == "success"
+    assert [s.slide_number for s in result.slides] == [1, 9999]
+
+
+def test_long_number_line_stays_in_slide():
+    result = find_slides("[1] a\n[12345] b")
+    assert result.status == "success"
+    assert result.slides == [SlideCandidate(1, "a\n[12345] b")]
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -46,6 +58,10 @@ def test_numbers_kept_as_written():
         "1. 시장\n2. 성과",  # 번호 목록
         "슬라이드 1\n본문",  # 콜론 없음
         "[Slide 1] 본문",  # 영문 형식
+        "[12345] 본문",  # 5자리 번호
+        "[슬라이드 12345] 본문",
+        "슬라이드 12345: 본문",
+        f"[{'1' * 4301}] 본문",  # int() 자릿수 한도를 넘는 번호도 오류 없이 본문
     ],
 )
 def test_not_delimiter(text):

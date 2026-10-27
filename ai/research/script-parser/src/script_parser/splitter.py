@@ -4,8 +4,11 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-# 줄 맨 앞(앞 공백 허용)의 [N] · [슬라이드 N] · 슬라이드 N: 만 구분자
-DELIMITER_RE = re.compile(r"^[ \t]*(?:\[(\d+)\]|\[슬라이드[ \t]+(\d+)\]|슬라이드[ \t]+(\d+):)")
+# 줄 맨 앞(앞 공백 허용)의 [N] · [슬라이드 N] · 슬라이드 N: 만 구분자.
+# N은 1~4자리이고, 더 길면 본문 줄로 본다(아주 긴 번호에서 int()가 ValueError를 내지 않게)
+DELIMITER_RE = re.compile(
+    r"^[ \t]*(?:\[(\d{1,4})\]|\[슬라이드[ \t]+(\d{1,4})\]|슬라이드[ \t]+(\d{1,4}):)"
+)
 
 
 @dataclass(frozen=True)
