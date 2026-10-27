@@ -10,10 +10,14 @@ import {
   MAX_CRITERION_CHARS,
   criteriaToSave,
   isEditableCriteria,
+  latestSavedCriteria,
   pendingVersion,
+  toPracticeCombo,
   type CriteriaVersion,
 } from '../lib/draft';
+import { computeGate } from '../lib/gate';
 import { NeedPitch } from './NeedPitch';
+import { PaneFooter, primaryButton, secondaryButton } from './PaneFooter';
 import { PaneHeading } from './PaneHeading';
 
 /**
@@ -401,13 +405,66 @@ function ReviseBar({ criteria }: { criteria: CriteriaVersion | null }) {
   );
 }
 
-export function CriteriaPane({ criteria }: { criteria: CriteriaVersion | null }) {
+/**
+ * 마지막 단계의 연습 시작. 평가기준은 선택이라 없으면 "건너뛰기"로 시작합니다.
+ *
+ * 장치 점검에 넘기는 조합에는 평가기준이 없습니다 — 서버가 저장된 마지막 버전으로 채점합니다.
+ * 그래서 저장한 기준이 있으면 건너뛸 수 없고(건너뛰어도 그 기준으로 채점됩니다), "건너뛰기"를 내지 않습니다.
+ */
+function StartFooter({ onStart }: { onStart: () => void }) {
+  const draft = useCreateStore((s) => s.draft);
+  const chosen = useCreateStore((s) => s.chosen);
+  const select = useCreateStore((s) => s.select);
+  const gate = computeGate(draft, chosen);
+  const ready = toPracticeCombo(draft, chosen) !== null;
+  const hasCriteria = latestSavedCriteria(draft) !== null;
+
+  return (
+    <PaneFooter
+      hint={
+        ready ? (
+          '연습할 준비가 됐어요.'
+        ) : (
+          <span className="font-bold text-coral">
+            {gate.ready ? '대본 매핑을 확인하고 저장해 주세요.' : gate.message}
+          </span>
+        )
+      }
+    >
+      <button type="button" onClick={() => select('info')} className={secondaryButton}>
+        ← 이전
+      </button>
+      {!hasCriteria && (
+        <button type="button" disabled={!ready} onClick={onStart} className={secondaryButton}>
+          건너뛰기
+        </button>
+      )}
+      <button
+        type="button"
+        disabled={!ready || !hasCriteria}
+        onClick={onStart}
+        className={primaryButton}
+      >
+        연습 시작 →
+      </button>
+    </PaneFooter>
+  );
+}
+
+export function CriteriaPane({
+  criteria,
+  onStart,
+}: {
+  criteria: CriteriaVersion | null;
+  /** 연습 시작 — 장치 점검으로 갑니다 */
+  onStart: () => void;
+}) {
   const pitchId = useCreateStore((s) => s.pitchId);
   return (
     <div className="flex flex-1 flex-col">
       <PaneHeading
-        title="평가기준"
-        subtitle="원하는 기준을 한 번에 적고, 정리된 결과를 확인해 주세요."
+        title="평가기준 (선택)"
+        subtitle="연습할 때 무엇을 볼지 정해요. 건너뛰어도 연습할 수 있어요."
       />
       {pitchId === null ? (
         <NeedPitch what="평가기준" />
@@ -418,6 +475,9 @@ export function CriteriaPane({ criteria }: { criteria: CriteriaVersion | null })
           <Result criteria={criteria} pitchId={pitchId} />
         </div>
       )}
+      <div className="mt-5 flex flex-1 flex-col">
+        <StartFooter onStart={onStart} />
+      </div>
     </div>
   );
 }
