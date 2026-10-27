@@ -370,17 +370,30 @@ def plan_coaching(
             draft = out if isinstance(out, PlanDraft) else PlanDraft.model_validate(out)
         except Exception as exc:  # noqa: BLE001 — 계획이 없어도 코칭은 기본 계획으로 계속한다
             reason = _fallback_reason(exc)
-            log.exception("coach plan failed pitch_id=%s reason=%s", req.pitch_id, reason)
+            # 예외 메시지 · 체인에는 LLM 출력 · 요청 원문이 섞일 수 있어 종류만 남긴다
+            # (architecture.md 11절)
+            log.warning(
+                "coach plan failed pitch_id=%s reason=%s error=%s",
+                req.pitch_id,
+                reason,
+                type(exc).__name__,
+            )
             return respond(CoachingPlan(), reason)
         if cache is not None:
             try:
                 cache.put(key, phash, draft.model_dump_json())
-            except Exception:  # noqa: BLE001 — 저장하지 못해도 이번 계획은 쓴다
-                log.warning("coach plan cache put failed pitch_id=%s", req.pitch_id, exc_info=True)
+            except Exception as exc:  # noqa: BLE001 — 저장하지 못해도 이번 계획은 쓴다
+                log.warning(
+                    "coach plan cache put failed pitch_id=%s error=%s",
+                    req.pitch_id,
+                    type(exc).__name__,
+                )
     try:
         plan, dropped = validate_draft(draft, req, cfg)
-    except Exception:  # noqa: BLE001 — 검증이 깨져도 기본 계획으로 돌려 코칭을 막지 않는다
-        log.exception("coach plan validation failed pitch_id=%s", req.pitch_id)
+    except Exception as exc:  # noqa: BLE001 — 검증이 깨져도 기본 계획으로 돌려 코칭을 막지 않는다
+        log.warning(
+            "coach plan validation failed pitch_id=%s error=%s", req.pitch_id, type(exc).__name__
+        )
         return respond(CoachingPlan(), "LLM_INVALID_OUTPUT")
     return respond(plan, None, dropped)
 
@@ -392,6 +405,6 @@ def _cached(cache: PlanCache | None, key: str, phash: str) -> PlanDraft | None:
     try:
         raw = cache.get(key, phash)
         return PlanDraft.model_validate_json(raw) if raw is not None else None
-    except Exception:  # noqa: BLE001 — 캐시 문제로 계획을 못 세우면 안 된다
-        log.warning("coach plan cache get failed", exc_info=True)
+    except Exception as exc:  # noqa: BLE001 — 캐시 문제로 계획을 못 세우면 안 된다
+        log.warning("coach plan cache get failed error=%s", type(exc).__name__)
         return None

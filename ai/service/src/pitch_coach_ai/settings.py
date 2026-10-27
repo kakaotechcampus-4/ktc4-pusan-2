@@ -86,6 +86,9 @@ LLM_ROLES: dict[str, LlmRole] = {
     "script_coverage.verifier": LlmRole(
         bundle="default", max_output_tokens=2048, timeout_setting=_SCRIPT_COVERAGE_TIMEOUT
     ),
+    # 코치 코칭 계획: 잰 최대 출력 × 2 를 1,024 단위로 올림(최소 2,048).
+    # 호출 한 번은 LLM_TIMEOUT_SECONDS (코치 기능 문서 8절)
+    "coach.plan": LlmRole(bundle="default", max_output_tokens=2048),
 }
 
 
