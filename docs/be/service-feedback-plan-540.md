@@ -402,6 +402,7 @@ FE 파일은 BE에서 수정하지 않는다. 아래 내용을 전달할 계약�
 | `GET /admin/api/service-feedbacks` | 평점·연결된 팝업 의견·제출 시각·사용자 ID |
 | `GET /admin/api/suggestions` | 의견·출처·평점 연결 ID·제출 시각·사용자 ID, 선택 `source`·`category`·`user_id` 필터 |
 | `GET /admin/api/service-feedbacks/by-user` | 작성자 묶음별 평점 0~1개·의견 수·최근 의견 3개 (14절) |
+| `GET /admin/api/service-feedbacks/summary` | 평점 수·평균. 미평가 제외 (14절) |
 
 공통으로 `limit` 기본 50·최대 200, `offset` 기본 0·최소 0, `(created_at DESC, id DESC)` 정렬을 사용한다.
 응답은 `items`·`next_offset`이며 `limit+1`건 조회로 다음 페이지 존재를 판단해 마지막에는 null을 반환한다.
@@ -612,3 +613,16 @@ NULL 작성자를 한 행으로 합치지 않고 위처럼 따로 묶는다. 팝
 - 페이지당 쿼리는 묶음 조회와 미리보기 조회 두 번이다. 미리보기는 `row_number()`로 묶음마다 3개를 자른다.
 - 기존 조회와 같이 페이지 이동 중 새 제출이 들어오면 순서가 바뀔 수 있다. 스냅샷 일관성은 보장하지 않는다.
 - 이메일 등 개인정보는 추가하지 않고 사용자 ID만 보인다. 의견은 `textContent`로 넣어 HTML이 실행되지 않는다.
+- 화면의 사용자 ID는 앞 8자·뒤 4자로 줄이고 전체는 마우스를 올리면 보인다. UUIDv7은 앞자리가 만든 시각이라
+  비슷한 때 가입한 사용자끼리 앞자리가 겹쳐 뒷자리를 함께 보인다.
+
+### `GET /admin/api/service-feedbacks/summary`
+
+표 위에 보이는 평점 평균이다. 현재 페이지가 아니라 저장된 평점 전체로 계산한다.
+
+```json
+{"rated_count": 2, "avg_rating": 3.5}
+```
+
+- 평점을 남긴 수만 센다. 의견만 보낸 미평가 사용자는 빠진다. 평점이 없으면 `avg_rating`이 null이다.
+- 탈퇴 뒤 보관한 평점도 평균에 넣는다. 탈퇴해도 평점은 남는다는 12절 정책과 맞춘다.
