@@ -325,12 +325,13 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
 
   const save = useMutation({
     // 정리와 같습니다 — 저장하는 사이 새 피치를 시작했으면 결과를 새 작성에 넣지 않습니다
-    mutationFn: ({ list }: { list: string[]; draftId: string }) => saveStandards(pitchId, list),
-    onSuccess: (res, { list, draftId: from }) => {
+    mutationFn: ({ list }: { list: string[]; draftId: string; sourceVersion: number }) =>
+      saveStandards(pitchId, list),
+    onSuccess: (res, { list, draftId: from, sourceVersion }) => {
       if (!isCurrentDraft(from)) return;
       const saved = res.standards.map((s) => s.standard);
       setRefined(saved.join('\n') !== list.join('\n'));
-      markCriteriaSaved(criteria.version, {
+      markCriteriaSaved(sourceVersion, {
         version: res.version,
         standards: saved,
         exceptText: res.except_standard,
@@ -363,7 +364,7 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
         <button
           type="button"
           disabled={!edited || standards.length === 0 || save.isPending}
-          onClick={() => save.mutate({ list: standards, draftId })}
+          onClick={() => save.mutate({ list: standards, draftId, sourceVersion: criteria.version })}
           className="h-10 shrink-0 rounded-lg bg-coral px-5 text-sm font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
         >
           {save.isPending ? '저장하는 중…' : '고친 내용 저장'}

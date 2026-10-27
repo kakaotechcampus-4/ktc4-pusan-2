@@ -16,13 +16,12 @@ afterEach(() => {
 });
 
 describe('종료 보내기', () => {
-  it('세션을 끝낸 뒤 시작 · 종료 시각을 보내고 보냈다고 적는다', async () => {
+  it('세션을 끝낸 뒤 종료 시각만 보내 서버의 시작 시각을 보존한다', async () => {
     const endTake = vi.fn(async () => undefined);
     await sendEnding('t1', 's1', ENDING, endTake);
 
     expect(endSession).toHaveBeenCalledWith('s1');
     expect(endTake).toHaveBeenCalledWith({
-      started_at: '2026-10-25T01:00:00.000Z',
       ended_at: ENDING.endedAtIso,
     });
     expect(markSubmitted).toHaveBeenCalledWith('s1');
@@ -36,14 +35,13 @@ describe('종료 보내기', () => {
     expect(markSubmitted).not.toHaveBeenCalled();
   });
 
-  it('종료 재시도가 늦어져도 고정한 종료 시각과 발표 길이로 시작을 계산한다', async () => {
+  it('종료 재시도가 늦어져도 고정한 종료 시각만 보낸다', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-25T02:00:00.000Z'));
     const endTake = vi.fn(async () => undefined);
     await sendEnding('t1', 's1', ENDING, endTake);
 
     expect(endTake).toHaveBeenCalledWith({
-      started_at: '2026-10-25T01:00:00.000Z',
       ended_at: ENDING.endedAtIso,
     });
   });

@@ -18,14 +18,12 @@ export function completedTakes(rows: TakeHistoryRow[]) {
   return rows.filter((r) => r.status === 'COMPLETED');
 }
 
-/**
- * 시선 값을 나란히 놓으면 안 되는 Take 인가. 같은 사람도 시선 엔진이 다르면 숫자가 달라져서,
- * 최신 Take 의 엔진과 다른 Take 는 시선 값을 비교하지 않습니다. 시선을 못 잰 Take(null)도 여기 듭니다.
- */
+/** 최신순 목록에서 엔진을 아는 가장 최근 Take를 비교 기준으로 씁니다. */
 export function latestGazeEngine(rows: TakeHistoryRow[]) {
   return rows.find((r) => r.gaze_engine !== null)?.gaze_engine ?? null;
 }
 
+/** 기준 엔진과 다르거나 엔진을 모르는 Take의 시선 값은 나란히 비교하지 않습니다. */
 export function gazeOffEngine(row: TakeHistoryRow, latestEngine: string | null) {
   return row.gaze_engine === null || row.gaze_engine !== latestEngine;
 }

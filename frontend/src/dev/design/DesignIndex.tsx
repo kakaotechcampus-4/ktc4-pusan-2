@@ -92,7 +92,7 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
     path: '/takes/t-confirm/confirm',
     id: 'P6-0',
     title: '대본 확인',
-    note: 'API 는 합의 전 FE 제안이에요. 답하거나 건너뛰면 분석 대기를 거쳐 리포트로 가요',
+    note: 'BE 확인 API에 연결했어요. 답하거나 건너뛰면 분석 대기를 거쳐 리포트로 가요',
   },
   {
     path: '/takes/t-confirm-timeout/confirm',

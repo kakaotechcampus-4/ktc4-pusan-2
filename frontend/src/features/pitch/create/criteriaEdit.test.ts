@@ -17,6 +17,7 @@ const texts = (version: number) => find(version).items.map((i) => i.text);
 beforeEach(() => {
   store().reset();
   store().setPitchId('pitch1');
+  store().select('criteria');
   store().applyParsedCriteria(null, {
     version: 1,
     sourceText: '추임새는 5번 이하, 청중을 자주 보기',
@@ -275,3 +276,40 @@ describe('평가기준 — 계약 상한', () => {
     expect(MAX_CRITERIA).toBe(10);
   });
 });
+
+it('재정리와 저장이 겹쳐도 새 빈 버전과 서버 저장 버전이 중복되지 않는다', () => {
+  store().editCriterion(1, v1().items[0]!.id, '저장 요청한 기준');
+  // 저장 요청 중 원문 정리 결과가 먼저 도착한 뒤 새 버전을 만든 경우입니다.
+  store().applyParsedCriteria(1, {
+    version: 2,
+    sourceText: '재정리',
+    standards: ['재정리 기준'],
+    exceptText: null,
+  });
+  store().addCriteriaVersion();
+  store().markCriteriaSaved(1, {
+    version: 3,
+    sourceText: '저장 요청한 기준',
+    standards: ['저장 기준'],
+    exceptText: null,
+  });
+  expect(store().draft.criteria.map((v) => v.version)).toEqual([1, 2, 3]);
+  expect(texts(3)).toEqual(['저장 기준']);
+  expect(pendingVersion(store().draft, 'criteria')).toBeNull();
+});
+
+it.each([false, true])(
+  '정리 응답은 이동한 대본 화면의 버전을 바꾸지 않는다 (빈 버전: %s)',
+  (pending) => {
+    if (pending) store().addCriteriaVersion();
+    store().select('script', 7);
+    store().applyParsedCriteria(pending ? 2 : 1, {
+      version: 4,
+      sourceText: '정리',
+      standards: ['새 기준'],
+      exceptText: null,
+    });
+    expect(store()).toMatchObject({ node: 'script', version: 7 });
+    expect(texts(4)).toEqual(['새 기준']);
+  },
+);
