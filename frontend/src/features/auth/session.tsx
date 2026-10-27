@@ -43,7 +43,11 @@ export function RequireSession({
     return (
       <Navigate
         replace
-        to={`/login?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`}
+        to={
+          location.pathname === '/'
+            ? '/welcome'
+            : `/login?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`
+        }
       />
     );
 
