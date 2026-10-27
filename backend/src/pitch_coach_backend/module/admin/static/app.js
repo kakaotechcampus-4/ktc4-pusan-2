@@ -169,13 +169,13 @@ const feedbackPages = {
 const opinionText = (text) => el('span', { className: 'opinion', textContent: text ?? '—' });
 const FEEDBACK_COLUMNS = [
   ['제출 시각', (row) => dateTime(row.created_at)],
-  ['사용자 ID', (row) => row.user_id],
+  ['사용자 ID', (row) => row.user_id ?? '탈퇴한 사용자'],
   ['평점', (row) => `${row.rating} / 5`, true],
   ['의견', (row) => opinionText(row.suggestion)],
 ];
 const SUGGESTION_COLUMNS = [
   ['제출 시각', (row) => dateTime(row.created_at)],
-  ['사용자 ID', (row) => row.user_id],
+  ['사용자 ID', (row) => row.user_id ?? '탈퇴한 사용자'],
   ['보낸 곳', (row) => label(row.source)],
   ['의견', (row) => opinionText(row.content)],
 ];

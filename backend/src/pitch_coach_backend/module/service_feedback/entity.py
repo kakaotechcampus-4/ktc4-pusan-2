@@ -25,8 +25,8 @@ class ServiceFeedback(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         Index("ix_service_feedbacks_created", "created_at", "id"),
     )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
 
@@ -47,10 +47,10 @@ class UserSuggestion(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         Index("ix_user_suggestions_created", "created_at", "id"),
     )
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid,
-        ForeignKey("users.id", ondelete="CASCADE", name="fk_user_suggestions_user"),
-        nullable=False,
+        ForeignKey("users.id", ondelete="SET NULL", name="fk_user_suggestions_user"),
+        nullable=True,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String(16), nullable=False)

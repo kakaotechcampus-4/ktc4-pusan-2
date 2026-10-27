@@ -75,7 +75,7 @@ class AdminTakeRow(BaseModel):
 
 class AdminFeedbackRow(BaseModel):
     id: uuid.UUID
-    user_id: uuid.UUID
+    user_id: uuid.UUID | None
     rating: int
     suggestion: str | None
     created_at: datetime
@@ -83,7 +83,7 @@ class AdminFeedbackRow(BaseModel):
 
 class AdminSuggestionRow(BaseModel):
     id: uuid.UUID
-    user_id: uuid.UUID
+    user_id: uuid.UUID | None
     content: str
     source: str
     service_feedback_id: uuid.UUID | None
