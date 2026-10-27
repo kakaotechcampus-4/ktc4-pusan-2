@@ -15,7 +15,7 @@
 #   - 앱 import. 지워진 이름을 import 한 채로 머지돼 develop·main 이 기동조차 못 한 적이
 #     있습니다 (PR #69). 이 검사가 그때 있었으면 PR 에서 막혔습니다.
 #   - 빈 DB 에 마이그레이션 적용 + alembic check (엔티티와 마이그레이션이 같은지)
-#   - pytest. PostgreSQL·Redis 는 아래 services 컨테이너를 쓴다
+#   - pytest. PostgreSQL 은 아래 services 컨테이너를 쓴다
 #
 # ★ 이 파일만으로는 게이트가 아닙니다. Settings → Branches → 브랜치 보호에서
 #   `backend` 를 Require status checks 에 넣어야 실패한 PR 이 막힙니다.
@@ -58,18 +58,9 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      redis:
-        image: redis:7
-        ports: ['6379:6379']
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
 
     # Settings 가 요구하는 필수 값. DATABASE_URL 은 위 postgres 서비스를 가리킨다.
     # 마이그레이션 검사는 이 ci DB 를, pytest 는 conftest 가 만드는 ci_test DB 를 쓴다.
-    # REDIS_URL 은 기본값(localhost:6379)이 서비스와 맞아 넣지 않는다.
     # 나머지는 형식만 맞으면 된다 — 외부 호출은 테스트에서 모킹한다.
     env:
       DATABASE_URL: postgresql+psycopg://ci:ci@localhost:5432/ci
