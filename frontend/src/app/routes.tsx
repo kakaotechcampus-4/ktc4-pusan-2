@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { createBrowserRouter } from 'react-router';
 import { PageTitle } from './PageTitle';
+import { LaunchGate } from './LaunchGate';
 import { StageDemo } from '@/features/rehearsal/stage/StageDemo';
 import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
 import { SttDevPage } from '@/features/rehearsal/media/SttDevPage';
@@ -107,29 +108,35 @@ export const router = createBrowserRouter(
     publicPaths.includes(route.path)
       ? {
           path: route.path,
-          element: <PageTitle title={route.title}>{route.element}</PageTitle>,
+          element: (
+            <PageTitle title={route.title}>
+              {route.path === '/login' ? <LaunchGate>{route.element}</LaunchGate> : route.element}
+            </PageTitle>
+          ),
         }
       : {
           path: route.path,
           element: (
             <PageTitle title={route.title}>
-              {/* 분석 대기 · 대본 확인은 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
-              <RequireSession
-                showHeader={
-                  ![
-                    '/',
-                    '/pitches',
-                    '/pitch/new',
-                    '/pitch/:id/edit',
-                    '/takes/:takeId/processing',
-                    // 리포트는 화면 안에서 공용 헤더를 표시합니다.
-                    '/takes/:takeId',
-                    '/takes/:takeId/confirm',
-                  ].includes(route.path)
-                }
-                bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
-                header={appHeaderPaths.includes(route.path) ? <AppHeader /> : undefined}
-              />
+              <LaunchGate>
+                {/* 분석 대기 · 대본 확인은 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
+                <RequireSession
+                  showHeader={
+                    ![
+                      '/',
+                      '/pitches',
+                      '/pitch/new',
+                      '/pitch/:id/edit',
+                      '/takes/:takeId/processing',
+                      // 리포트는 화면 안에서 공용 헤더를 표시합니다.
+                      '/takes/:takeId',
+                      '/takes/:takeId/confirm',
+                    ].includes(route.path)
+                  }
+                  bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
+                  header={appHeaderPaths.includes(route.path) ? <AppHeader /> : undefined}
+                />
+              </LaunchGate>
             </PageTitle>
           ),
           children: [{ index: true, element: route.element }],
