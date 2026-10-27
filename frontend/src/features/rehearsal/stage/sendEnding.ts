@@ -1,4 +1,4 @@
-import { endSession, getSession, markSubmitted } from '../lib/db';
+import { endSession, markSubmitted } from '../lib/db';
 import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/writeFailures';
 import type { Ms } from '@/types/api';
 import type { TakeEndRequest } from '@/types/take';
@@ -36,9 +36,9 @@ export async function sendEnding(
     console.error('[rehearsal] 기록이 불완전합니다', { 실패: failures });
   }
 
-  const row = await getSession(id);
   await endTake({
-    started_at: row?.startedAtIso ?? new Date(Date.now() - durationMs).toISOString(),
+    // 장치 점검 시각 대신 실제 발표 길이로 계산합니다. 재시도해도 같은 시각입니다.
+    started_at: new Date(Date.parse(endedAtIso) - durationMs).toISOString(),
     ended_at: endedAtIso,
   });
   // 보냈다는 표시. 이 주소로 다시 들어오면(새로고침 · 뒤로 가기) 무대를 열지 않습니다.

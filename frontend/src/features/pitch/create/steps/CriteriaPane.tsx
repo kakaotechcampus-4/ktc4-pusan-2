@@ -115,11 +115,12 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
     <section className="flex min-w-0 flex-col gap-3 rounded-lg border border-line bg-white p-4 xl:p-5">
       <div>
         <h3 className="text-lg font-bold">평가기준 작성</h3>
-        <p className="mt-1 text-sm text-stone">문장이나 목록으로 자유롭게 작성해 주세요.</p>
+        <p className="mt-1 text-sm text-stone">문장이나 목록으로 2,000자까지 작성해 주세요.</p>
       </div>
 
       <textarea
         aria-label="평가기준 작성"
+        maxLength={2000}
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={PLACEHOLDER}
@@ -129,7 +130,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
 
       <button
         type="button"
-        disabled={text.trim() === '' || parse.isPending}
+        disabled={text.trim() === '' || text.length > 2000 || parse.isPending}
         onClick={() => parse.mutate({ source: text, draftId })}
         className={[
           'flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg text-sm font-bold',

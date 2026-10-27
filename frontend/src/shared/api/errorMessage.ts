@@ -27,6 +27,8 @@ const MESSAGE: Record<string, string> = {
   /** 평가기준 정리를 맡은 AI 가 실패했거나 답이 이상할 때 (502) */
   STANDARD_PARSE_FAILED:
     '평가기준을 정리하는 서버가 잠시 응답하지 않아요. 잠시 뒤 다시 정리해 주세요.',
+  STANDARD_INPUT_REJECTED:
+    '평가기준으로 사용할 수 없는 내용이에요. 측정할 수 있는 발표 기준으로 고쳐 주세요.',
   SCRIPT_ALREADY_PARSED: '이미 나눈 대본이에요. 잠시 뒤 결과가 보여요.',
   /** 발표자료를 BE 가 열지 못함 — PDF 가 아님 · 깨짐 · 여는 암호 · 40MB 초과 (BE #298) */
   INVALID_PRESENTATION: 'PDF를 열 수 없어요. 암호가 걸려 있거나 손상되지 않았는지 확인해 주세요.',

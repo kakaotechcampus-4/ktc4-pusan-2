@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { endSession, getSession, markSubmitted } from '../lib/db';
+import { endSession, markSubmitted } from '../lib/db';
 import { sendEnding } from './sendEnding';
 
 /** 테스트는 Node 에서 돌아 IndexedDB 가 없습니다. 세션 행만 흉내 냅니다 */
 vi.mock('../lib/db', () => ({
   endSession: vi.fn(async () => undefined),
-  getSession: vi.fn(async () => ({ startedAtIso: '2026-10-25T01:00:00.000Z' })),
   markSubmitted: vi.fn(async () => undefined),
 }));
 
@@ -37,15 +36,14 @@ describe('종료 보내기', () => {
     expect(markSubmitted).not.toHaveBeenCalled();
   });
 
-  it('행을 못 읽으면 시작 시각을 발표 길이로 거꾸로 셉니다', async () => {
+  it('종료 재시도가 늦어져도 고정한 종료 시각과 발표 길이로 시작을 계산한다', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-25T02:00:00.000Z'));
-    vi.mocked(getSession).mockResolvedValueOnce(undefined);
     const endTake = vi.fn(async () => undefined);
     await sendEnding('t1', 's1', ENDING, endTake);
 
     expect(endTake).toHaveBeenCalledWith({
-      started_at: '2026-10-25T01:59:00.000Z',
+      started_at: '2026-10-25T01:00:00.000Z',
       ended_at: ENDING.endedAtIso,
     });
   });

@@ -70,7 +70,7 @@ export type JudgeStatus = 'ACHIEVED' | 'PARTIAL' | 'FAILED' | 'NOT_EVALUABLE';
 export type Operator = 'LTE' | 'GTE';
 
 export interface ReviewPoint {
-  area: Area;
+  area: string;
   slide_number: number | null;
   text: string;
   evidence: Record<string, number>;
@@ -82,7 +82,7 @@ export interface ReviewResult {
   overall_summary: string;
   /** 화면에 보여 주지 않습니다 — "점수가 아니라 Take 간 변화" (CLAUDE.md) */
   score: number | null;
-  dimensions: Record<Dimension, DimensionStatus>;
+  dimensions: Record<Dimension, string>;
   strengths: ReviewPoint[];
   improvements: ReviewPoint[];
   comparison: {
@@ -111,12 +111,12 @@ export interface ReviewResult {
     status: JudgeStatus;
   }[];
   next_missions: {
-    area: Area;
+    area: string;
     slide_number: number | null;
     description: string;
     target: { metric: string; operator: Operator; value: number };
     priority: number;
-    reason: string;
+    reason: string | null;
   }[];
   fallback_reason: 'LLM_TIMEOUT' | 'LLM_ERROR' | 'LLM_INVALID_OUTPUT' | 'LLM_UNAVAILABLE' | null;
 }
