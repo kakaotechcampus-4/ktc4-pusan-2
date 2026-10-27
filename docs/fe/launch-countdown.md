@@ -2,6 +2,10 @@
 
 ## 확정한 정책
 
+- 카운트다운·공개 상태 조회·진입 제한은 브라우저 hostname이 `pitch-coach-release.duckdns.org`일 때만 적용한다. 브랜치명이나 빌드 모드로 판단하지 않는다.
+- 개발 도메인 `pitch-coach-dev.duckdns.org`, localhost 등 나머지 호스트에서는 공개 상태 API를 호출하지 않고 카운트다운을 숨기며 기존 로그인·세션 흐름을 유지한다.
+- 실제 테스트는 개발 도메인에서 진행한다. release 도메인에서는 로그인하지 않는다. 운영 분기는 자동 테스트에서 hostname을 모의해 확인한다.
+
 - 공개 예정: 2026-10-30 14:00 Asia/Seoul (`2026-10-30T14:00:00+09:00`).
 - 기존 온보딩 제목·캐릭터·소개·사용방법을 유지한다. 히어로 소개 아래, 시작 버튼 위에 공개 일시와 일/시간/분/초를 표시한다.
 - 상단·히어로·하단 CTA는 동일한 공개 상태를 사용하며 공개 전에는 비활성화한다.
@@ -29,13 +33,22 @@ FE는 화면 안내를 담당한다. 실제 인증/API/WS 차단은 BE 책임이
 ## 구현 및 연동 상태
 
 - FE 상태 어댑터는 `frontend/src/shared/api/launch.ts` 한 곳에 둔다. 계약 확정 후 이곳과 목을 갱신한다.
-- 개발 MSW는 현재 서버 시각·예정 일시·`is_open: false`를 반환한다. 운영 우회 설정은 없다.
-- 실제 API 미구현/실패 시 대기 안내를 유지하므로 BE API 동시 준비가 배포 전제다.
+- 개발 MSW는 현재 서버 시각·예정 일시·`is_open: false`를 반환한다. 개발 도메인에서는 해당 목을 조회하지 않는다.
+- release 도메인은 실제 API 미구현/실패 시 대기 안내를 유지하므로 BE API 동시 준비가 운영 배포 전제다. 도메인이 추가·변경되면 FE 적용 호스트도 함께 갱신해야 한다.
 - 공개 중 서비스 재차단의 API 오류/refresh/WS 처리는 계약 확정 후 추가 연동한다. 현재 가드는 라우트 진입과 주기적 상태 조회를 기준으로 안내한다.
 
 ## 검증
 
 공개 직전·정각·직후, 다른 타임존, 기기 시각 변경, 탭 복귀, 지연 공개, 상태 실패·복구, 모든 CTA, 기존 세션의 경로 진입, 약관 링크를 확인한다. 실제 OAuth·API·WS 접근 차단과 운영 배포는 BE 연동 후 별도 검증이 필요하다.
+
+### 2026-10-27 도메인 분기 검증
+
+- 실행 위치: `output/launch-countdown-pr/frontend`.
+- `npm run test -- src/shared/api/launch.test.ts src/features/onboarding/LaunchCountdown.test.tsx --maxWorkers=1`: 14개 통과. release의 기존 차단 정책과 dev·localhost·127.0.0.1의 CTA 활성화, 가드 통과, 안내 숨김, 탭 복귀 시 조회 생략을 확인했다.
+- Windows 임시 폴더 rename 권한 오류 때문에 TEMP/TMP를 작업 폴더의 `.tmp/launch-domain`으로 지정해 테스트를 실행했다.
+- `npm run build`: 타입 검사·프로덕션 빌드 통과(기존 번들 크기 경고).
+- 변경 TS/TSX 4개 파일 대상 `npx oxlint --max-warnings=0`, Prettier 및 저장소 루트 `git diff --check`: 통과.
+- release에 접속하거나 로그인하지 않았다. 실제 dev 서버의 OAuth·API·WS 및 운영 배포는 미검증이다.
 
 ### 2026-10-26 FE 구현 검증
 

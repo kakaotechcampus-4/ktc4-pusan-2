@@ -18,7 +18,7 @@ export function LaunchStart({
 }) {
   const launch = useLaunchStatus();
   const remaining = useLaunchRemaining(launch.data);
-  if (!launch.isError && launchIsOpen(launch.data)) {
+  if (!launch.required || (!launch.isError && launchIsOpen(launch.data))) {
     return (
       <Link to="/login?next=/" className={className}>
         {children}
@@ -44,7 +44,7 @@ export function LaunchCountdown() {
   const remaining = useLaunchRemaining(data);
 
   useEffect(() => {
-    if (!data || launchIsOpen(data)) return;
+    if (!launch.required || !data || launchIsOpen(data)) return;
     const delay =
       Date.parse(data.launch_at) -
       Date.parse(data.server_now) -
@@ -55,9 +55,9 @@ export function LaunchCountdown() {
       Math.min(delay, 2147483647),
     );
     return () => clearTimeout(timeout);
-  }, [data, refetch]);
+  }, [data, refetch, launch.required]);
 
-  if (!launch.isError && launchIsOpen(data)) return null;
+  if (!launch.required || (!launch.isError && launchIsOpen(data))) return null;
   const dateLabel = new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
     month: 'long',

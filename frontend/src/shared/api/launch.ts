@@ -36,8 +36,10 @@ export function countdownParts(remainingMs: number) {
 }
 
 export function useLaunchStatus() {
+  const required = window.location.hostname === 'pitch-coach-release.duckdns.org';
   const query = useQuery({
     queryKey: ['launch-status'],
+    enabled: required,
     queryFn: async ({ signal }) => {
       const response = await fetch(`${apiBase}/api/launch-status`, {
         cache: 'no-store',
@@ -57,14 +59,15 @@ export function useLaunchStatus() {
   const { refetch } = query;
 
   useEffect(() => {
+    if (!required) return;
     const refresh = () => {
       if (document.visibilityState === 'visible') refetch().catch(() => undefined);
     };
     document.addEventListener('visibilitychange', refresh);
     return () => document.removeEventListener('visibilitychange', refresh);
-  }, [refetch]);
+  }, [refetch, required]);
 
-  return query;
+  return { ...query, required };
 }
 
 export function launchIsOpen(data: ReturnType<typeof useLaunchStatus>['data']) {

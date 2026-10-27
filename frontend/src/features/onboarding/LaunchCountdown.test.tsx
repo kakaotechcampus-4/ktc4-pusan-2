@@ -14,6 +14,7 @@ let client: QueryClient;
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('location', new URL('https://pitch-coach-release.duckdns.org'));
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -106,6 +107,26 @@ it('최초 공개 상태 조회에 실패하면 보호 화면을 열지 않는�
   await show(null, true);
   expect(container.textContent).toBe('대기 페이지');
 });
+
+it.each(['pitch-coach-dev.duckdns.org', 'localhost', '127.0.0.1'])(
+  '%s에서는 상태 API 없이 카운트다운을 숨기고 CTA와 보호 화면을 연다',
+  async (hostname) => {
+    vi.stubGlobal('location', new URL(`https://${hostname}`));
+    await show(null);
+    expect(container.querySelector('section')).toBeNull();
+    expect(container.querySelectorAll('a[href="/login?next=/"]')).toHaveLength(3);
+    expect(fetch).not.toHaveBeenCalled();
+
+    await show(null, true);
+    expect(container.textContent).toBe('로그인 화면');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('focus'));
+      await client.invalidateQueries({ queryKey: ['launch-status'] });
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  },
+);
 
 it('공개 후 재조회 실패는 진행 중인 화면을 유지하고 명시적인 비공개 응답은 차단한다', async () => {
   const cleanup = vi.fn();
