@@ -76,6 +76,7 @@ function UploadFrame({ version, children }: { version: number | null; children: 
 }
 
 function DropZone({ upload, version }: { upload: SlideUpload; version: number | null }) {
+  const pitchId = useCreateStore((s) => s.pitchId);
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +113,13 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
         <p className="mt-1.5 text-sm text-stone">
           파일 이름으로 발표 제목을 채워 드려요 · 나중에 고칠 수 있어요 · 최대 40MB
         </p>
+        {pitchId === null && (
+          <p className="mt-3 text-xs text-stone">
+            PDF를 올리면 피치가 자동으로 만들어져요.
+            <br />
+            업로드에 실패하거나 나가도 내 피치에 남아, 나중에 이어서 준비할 수 있어요.
+          </p>
+        )}
 
         <button
           type="button"
@@ -135,6 +143,11 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
             <p className="text-xs font-bold text-coral">
               {failed.file.name} · {FAILURE_MESSAGE[failed.reason]}
             </p>
+            {pitchId !== null && (
+              <p className="text-xs text-stone">
+                피치는 내 피치에 보관돼 있어요. 이 피치에서 다시 업로드할 수 있어요.
+              </p>
+            )}
             {canRetry(failed.reason) && (
               <button
                 type="button"
