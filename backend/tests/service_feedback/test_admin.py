@@ -14,6 +14,7 @@ PATHS = [
     "/admin/api/service-feedbacks",
     "/admin/api/suggestions",
     "/admin/api/service-feedbacks/by-user",
+    "/admin/api/service-feedbacks/summary",
 ]
 T0 = datetime(2026, 10, 27, tzinfo=UTC)
 
@@ -199,3 +200,14 @@ def test_admin_by_user_empty(client, console):
 )
 def test_admin_by_user_validates_query(client, console, path):
     assert client.get(path, auth=ADMIN).status_code == 422
+
+
+def test_admin_rating_summary_skips_unrated_and_keeps_withdrawn(client, console, db_session):
+    path = "/admin/api/service-feedbacks/summary"
+    assert client.get(path, auth=ADMIN).json() == {"rated_count": 0, "avg_rating": None}
+    kept, gone = _user(db_session), _user(db_session)
+    _rate(db_session, kept, 4, minute=0)
+    _rate(db_session, gone, 3, "팝업", minute=1)
+    _suggest(db_session, _user(db_session, report=False), "의견만", minute=2)
+    user_service.delete(db_session, user_service.get(db_session, gone))
+    assert client.get(path, auth=ADMIN).json() == {"rated_count": 2, "avg_rating": 3.5}
