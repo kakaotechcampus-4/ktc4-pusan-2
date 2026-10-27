@@ -73,13 +73,13 @@ def _evidence(
     cfg: ReviewConfig,
     area: str | None = None,
     slide_number: int | None = None,
-) -> tuple[str, dict[str, Any]]:
-    """(영역, 근거). 잰 영역의 지표 중 값이 있는 첫 지표를 근거로 싣는다.
+) -> tuple[str, dict[str, Any], int | None]:
+    """(영역, 근거, 근거를 찾은 장). 잰 영역의 지표 중 값이 있는 첫 지표를 근거로 싣는다.
 
     - 지표 순서: 다음 미션 지표(차원에서 고른 문제의 mission_target) → 차원 표의 지표 순
     - area 가 있으면(개선점) 그 영역의 지표만, 없으면(강점) 잰 영역 어디든
-    - 장 개선점이면 그 장 값이 있는 지표를 먼저 찾고, 없으면 Take 값
-    - 못 찾으면 (area 또는 잰 영역 중 첫 영역, {})
+    - slide_number 가 있으면 그 장 값이 있는 지표를 먼저 찾고, 없으면 Take 값 (찾은 장 None)
+    - 못 찾으면 (area 또는 잰 영역 중 첫 영역, {}, None)
     """
     spec = DIMENSIONS[dim]
     _, issue, _ = focus(dim, burden, cfg)
@@ -91,9 +91,9 @@ def _evidence(
             found, value, _ = find_metric(take_result, script_coverage, metric, slide)
             if value is None or found not in measured or (area and found != area):
                 continue
-            return found, {metric: value}
+            return found, {metric: value}, slide
     fallback = area or next((a for a in spec.areas if a in measured), spec.areas[0])
-    return fallback, {}
+    return fallback, {}, None
 
 
 def _improved_slide(
@@ -152,9 +152,9 @@ def text_candidates(
     """강점 · 개선점 후보와 그 기본 문장.
 
     - strengths: STRENGTH · IMPROVED 차원 (차원 표 순서). area 는 근거 지표를 찾은 잰 영역.
-      IMPROVED 면 나아진 근거의 장(직전 반복 문제 → 이룬 장 미션, _improved_slide)을 싣고 근거는
-      개선점처럼 그 장 값 → Take 값. STRENGTH 는 그 차원의 Take 전체에 문제가 없다는 뜻이라
-      장 번호 null, 근거는 Take 값
+      IMPROVED 면 나아진 근거의 장(직전 반복 문제 → 이룬 장 미션, _improved_slide)의 값을 먼저
+      찾아 그 장을 싣고, 장 값이 없으면(이번에 재지 못한 장) Take 값과 장 번호 null.
+      STRENGTH 는 그 차원의 Take 전체에 문제가 없다는 뜻이라 장 번호 null, 근거는 Take 값
     - improvements: PRIORITY 차원 (부담 큰 순), 부담이 몰린 장이 있으면 장 번호.
       area 는 부담이 가장 큰 영역이고 근거도 그 영역의 지표
     - 못 잰 영역(측정 비율 기준 미만)은 area · 근거에 쓰지 않는다
@@ -172,13 +172,14 @@ def text_candidates(
         slide = None
         if state == "IMPROVED":
             slide = _improved_slide(dim, recurring_issues or [], mission_results or [])
-        area, evidence = _evidence(
+        area, evidence, found_slide = _evidence(
             dim, burden, take_result, script_coverage, measured, cfg, slide_number=slide
         )
-        item = {"area": area, "slide_number": slide, "text": text, "evidence": evidence}
+        item = {"area": area, "slide_number": found_slide, "text": text, "evidence": evidence}
         strengths.append(TextCandidate(dim, state, item))
 
-    # PRIORITY 차원 목록은 반복 문제와 같다 (부담 큰 순 · 영역 · 몰린 장)
+    # PRIORITY 차원 목록은 반복 문제와 같다 (부담 큰 순 · 영역 · 몰린 장).
+    # 개선점은 반복 문제와 같은 장을 가리켜야 해서 장 값이 없어도 장 번호를 그대로 둔다 (6-1 8번)
     improvements = []
     for it in build_recurring_issues(dimension_states, burden, cfg):
         dim, slide = it["dimension"], it["slide_number"]

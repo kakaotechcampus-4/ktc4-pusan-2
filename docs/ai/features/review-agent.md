@@ -237,7 +237,7 @@ ai/research/review-agent/
 - **실패**: LLM이 없거나 실패하면 기본 문장과 규칙 단계 결과(다음 미션은 후보 상위)를 200으로 돌려주고 `fallback_reason`을 단다.
 - **강점 · 개선점의 `area` · `evidence`**: 규칙 단계가 후보마다 정하고, 기본 문장과 LLM 문장이 같이 쓴다. 측정 비율이 기준 미만인 영역(6-1 1번)은 고르지 않는다. 지표는 그 차원의 다음 미션 지표 → 5-3 차원 표의 지표 순으로 보고, 값이 있는 첫 지표를 `evidence`에 싣는다.
   - 강점: 잰 영역 어디서든 찾고, 찾은 지표의 영역이 `area`다(예: SPEED · PAUSE를 못 잰 Take의 `pacing_rhythm` 강점 → `TIME`, `duration_ms`).
-  - 강점의 `slide_number`: `IMPROVED`면 나아진 근거의 장(그 차원의 `previous_recurring_issues` 장 → 이룬 장 미션의 장)이고, 근거는 개선점처럼 그 장 값을 먼저 찾는다. 그런 장이 없거나 `STRENGTH`면 null이다(`STRENGTH`는 그 차원의 Take 전체에 문제가 없다는 뜻이라 장 하나를 고르지 않는다).
+  - 강점의 `slide_number`: `IMPROVED`면 나아진 근거의 장(그 차원의 `previous_recurring_issues` 장 → 이룬 장 미션의 장)이고, 근거는 그 장 값을 먼저 찾는다. 그 장 값이 없으면(이번에 재지 못한 장) 근거는 Take 값이고 `slide_number`는 null이다. 그런 장이 없거나 `STRENGTH`면 null이다(`STRENGTH`는 그 차원의 Take 전체에 문제가 없다는 뜻이라 장 하나를 고르지 않는다).
   - 개선점: `area`는 그 차원에서 부담이 가장 큰 영역(6-1 8번과 같다)이고, 근거도 그 영역의 지표다. 장 개선점이면 그 장 값을 먼저 찾고 없으면 Take 값을 쓴다(예: 3번 장 `SLIDE_OVER` → `slide_duration_ms`).
   - 근거 지표를 찾지 못하면 `evidence`는 `{}`다.
 

@@ -134,6 +134,21 @@ def test_improved_strength_slide_is_previous_recurring_slide(req):
     assert (s.slide_number, s.evidence) == (1, {"audience_ratio": 0.6})
 
 
+def test_improved_strength_unmeasured_slide_is_null(req):
+    # 직전 반복 문제의 장을 이번에 재지 못했으면 그 장이 나아졌다고 말하지 않는다
+    # → 장 번호 null, 근거는 Take 값
+    req["previous_recurring_issues"].append(
+        {"area": "GAZE", "slide_number": 3, "dimension": "audience_gaze"}
+    )
+    req["take_result"]["areas"]["GAZE"]["slides"] = _gaze_slides(
+        {"audience_ratio": 0.6}, {"audience_ratio": 0.9}, None
+    )
+    resp, _ = run(req)
+    assert resp.dimensions["audience_gaze"] == "IMPROVED"
+    s = _strength(resp, "GAZE")
+    assert (s.slide_number, s.evidence) == (None, {"audience_ratio": 0.58})
+
+
 def test_sample_score_and_text(req):
     resp, _ = run(req)
     assert resp.score == 76  # (100 × 3 + 40 + 40) / 5
