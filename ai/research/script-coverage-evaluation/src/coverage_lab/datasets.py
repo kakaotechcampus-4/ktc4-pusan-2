@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-from script_coverage.script_analysis.schemas import SlideScript
-from script_coverage.stt_evaluation.schemas import Take
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import SlideScript
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import Take
 
 from .paths import SCRIPT_DIR, STT_DIR
 

@@ -42,6 +42,7 @@ class TakeHistoryRowDTO(BaseModel):
     take_number: int
     started_at: datetime
     status: str
+    end_reason: Literal["SILENCE", "TIME_LIMIT", "ABANDONED", "CLOSED"] | None
     script_mode: str
     # 끝나지 않았으면 null
     duration_ms: int | None

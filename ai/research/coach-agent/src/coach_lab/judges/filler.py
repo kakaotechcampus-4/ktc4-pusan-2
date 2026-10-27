@@ -13,9 +13,14 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from coach.config import criteria_version as _criteria_version
-from coach.schemas import IssueCriteria, JudgmentIssue, JudgmentResult, TallyItem
-from coach.vocab import FeedbackType, Issue
+from pitch_coach_ai.features.coach.config import criteria_version as _criteria_version
+from pitch_coach_ai.features.coach.schemas import (
+    IssueCriteria,
+    JudgmentIssue,
+    JudgmentResult,
+    TallyItem,
+)
+from pitch_coach_ai.features.coach.vocab import FeedbackType, Issue
 
 from ._common import HIGHER, In, Section, clean, parse, ramp, ratio
 

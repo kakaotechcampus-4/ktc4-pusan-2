@@ -24,15 +24,26 @@ import argparse
 import threading
 import time
 
-import script_coverage.core as core
+import pitch_coach_ai.features.script_coverage.core as core
 from coverage_lab.deadline_llm import CallLog, DeadlineLlm, wait_idle
 from coverage_lab.llm import load_settings, structured_llm
 from coverage_lab.results import write_result
 from coverage_lab.timing import build_deck, request_row, rubric_with_retry, slide_pool
 from coverage_lab.usage import UsageLog
-from script_coverage.schemas import AnalyzeRequest, RubricRequest, RubricResponse
-from script_coverage.script_analysis.schemas import FinalReview, SlideSemanticAnalysis, SlideUnits
-from script_coverage.stt_evaluation.schemas import SemanticEvaluation, VerifierResult
+from pitch_coach_ai.features.script_coverage.schemas import (
+    AnalyzeRequest,
+    RubricRequest,
+    RubricResponse,
+)
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
+    FinalReview,
+    SlideSemanticAnalysis,
+    SlideUnits,
+)
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
+    SemanticEvaluation,
+    VerifierResult,
+)
 
 REQUEST_DEADLINE_SECONDS = 120.0  # 요청 하나의 마감 (architecture.md 의 AI 예산)
 ANALYZE_WORKERS = 4  # 채점 동시 개수 (config.MAX_WORKERS 와 같게 둔다)

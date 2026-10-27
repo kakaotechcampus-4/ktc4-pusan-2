@@ -1,0 +1,2649 @@
+{
+  "components": {
+    "schemas": {
+      "Alignment": {
+        "properties": {
+          "coverage": {
+            "description": "대본 문장의 내용 형태소 중 STT 에 나온 비율 (0~1)",
+            "title": "Coverage",
+            "type": "number"
+          },
+          "sentence_index": {
+            "description": "대본 문장 번호",
+            "title": "Sentence Index",
+            "type": "integer"
+          },
+          "stt_ids": {
+            "description": "가장 비슷한 STT 문장 번호 (연속 1~3문장)",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Stt Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sentence_index",
+          "stt_ids",
+          "coverage"
+        ],
+        "title": "Alignment",
+        "type": "object"
+      },
+      "AnalyzeRequest": {
+        "description": "`/takes/analyze` 요청: 장별 STT, 장별 평가 기준, 채점할 장 번호(선택).",
+        "properties": {
+          "rubrics": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRubric"
+            },
+            "title": "Rubrics",
+            "type": "array"
+          },
+          "slide_numbers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "채점할 장 번호. 없으면 slides 의 장 전부",
+            "title": "Slide Numbers"
+          },
+          "slides": {
+            "items": {
+              "$ref": "#/components/schemas/TakeSlide"
+            },
+            "minItems": 1,
+            "title": "Slides",
+            "type": "array"
+          },
+          "take_id": {
+            "title": "Take Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "take_id",
+          "slides",
+          "rubrics"
+        ],
+        "title": "AnalyzeRequest",
+        "type": "object"
+      },
+      "Answer": {
+        "description": "비슷한 말 하나에 대한 사용자 확인 답.",
+        "properties": {
+          "answer": {
+            "enum": [
+              "as_script",
+              "as_stt"
+            ],
+            "title": "Answer",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "slide_number": {
+            "minimum": 1.0,
+            "title": "Slide Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slide_number",
+          "item_id",
+          "answer"
+        ],
+        "title": "Answer",
+        "type": "object"
+      },
+      "CoachingPlan": {
+        "properties": {
+          "focus": {
+            "items": {
+              "$ref": "#/components/schemas/FocusItem"
+            },
+            "title": "Focus",
+            "type": "array"
+          },
+          "max_interventions": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Interventions"
+          },
+          "relax": {
+            "items": {
+              "$ref": "#/components/schemas/RelaxItem"
+            },
+            "title": "Relax",
+            "type": "array"
+          }
+        },
+        "title": "CoachingPlan",
+        "type": "object"
+      },
+      "Confirmation": {
+        "description": "아직 답을 받지 않은 비슷한 말 하나.",
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "script_text": {
+            "title": "Script Text",
+            "type": "string"
+          },
+          "slide_number": {
+            "title": "Slide Number",
+            "type": "integer"
+          },
+          "stt_text": {
+            "title": "Stt Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slide_number",
+          "item_id",
+          "script_text",
+          "stt_text"
+        ],
+        "title": "Confirmation",
+        "type": "object"
+      },
+      "ContentUnit": {
+        "description": "전달 단위: 대본 문장 속 정보 하나 (주장·사실·수치·나열 항목 하나). STT 평가는 단위마다 말했는지 판정하고, 문장 판정은 코드가 모은다.",
+        "properties": {
+          "fact_ids": {
+            "description": "이 단위 안에 있는 Critical Fact",
+            "items": {
+              "type": "string"
+            },
+            "title": "Fact Ids",
+            "type": "array"
+          },
+          "id": {
+            "description": "S{문장 번호}-U{순번}",
+            "title": "Id",
+            "type": "string"
+          },
+          "quote": {
+            "description": "대본 문장 속 해당 표현 (대본 표기 그대로)",
+            "title": "Quote",
+            "type": "string"
+          },
+          "sentence_index": {
+            "title": "Sentence Index",
+            "type": "integer"
+          },
+          "source": {
+            "description": "llm: LLM 이 나눔 / fact: 어느 단위에도 안 들어간 수치·이름을 코드가 보탬 / sentence: 나누지 못해 문장 전체",
+            "enum": [
+              "llm",
+              "fact",
+              "sentence"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "span": {
+            "description": "quote 의 정규화 대본 기준 위치",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Span",
+            "type": "array"
+          },
+          "text": {
+            "description": "단위의 내용을 짧게 쓴 것",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sentence_index",
+          "text",
+          "quote",
+          "span",
+          "source"
+        ],
+        "title": "ContentUnit",
+        "type": "object"
+      },
+      "CriticalFact": {
+        "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "importance": {
+            "default": "normal",
+            "description": "연결된 Key Point 중 가장 높은 중요도",
+            "enum": [
+              "critical",
+              "high",
+              "normal"
+            ],
+            "title": "Importance",
+            "type": "string"
+          },
+          "key_point_ids": {
+            "description": "Rubric Builder 가 연결",
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Point Ids",
+            "type": "array"
+          },
+          "normalized": {
+            "description": "STT 와 비교할 정규형 (예: '12,400,000건')",
+            "title": "Normalized",
+            "type": "string"
+          },
+          "numeric_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Numeric Value"
+          },
+          "qualifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "약·이상·이내 같은 한정어",
+            "title": "Qualifier"
+          },
+          "sentence_indices": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Sentence Indices",
+            "type": "array"
+          },
+          "source": {
+            "default": "rule",
+            "enum": [
+              "rule",
+              "llm"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "spans": {
+            "description": "정규화 텍스트 기준 등장 위치 (첫 번째가 대표)",
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Spans",
+            "type": "array"
+          },
+          "type": {
+            "enum": [
+              "percentage",
+              "money",
+              "date",
+              "time",
+              "duration",
+              "quantity",
+              "ratio",
+              "number",
+              "proper_noun",
+              "term"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "description": "대본에 적힌 표기 그대로 (예: '약 1,240만 건')",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "value",
+          "normalized",
+          "spans",
+          "sentence_indices"
+        ],
+        "title": "CriticalFact",
+        "type": "object"
+      },
+      "ErrorBody": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "모든 에러 응답의 모양. OpenAPI 문서(`contracts/openapi.json`)에 이 모양을 싣는 데 쓴다.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "EvaluationResponse": {
+        "properties": {
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/Confirmation"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/SlideEvaluation"
+            },
+            "title": "Evaluations",
+            "type": "array"
+          },
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/SlideFailure"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ScoringMeta"
+          },
+          "take_id": {
+            "title": "Take Id",
+            "type": "string"
+          },
+          "take_scores": {
+            "$ref": "#/components/schemas/TakeScores"
+          }
+        },
+        "required": [
+          "take_id",
+          "evaluations",
+          "take_scores",
+          "confirmations",
+          "failed",
+          "meta"
+        ],
+        "title": "EvaluationResponse",
+        "type": "object"
+      },
+      "EvaluationRubric": {
+        "properties": {
+          "content_units": {
+            "description": "문장별 전달 단위 (6-2장). skip 문장은 나누지 않는다",
+            "items": {
+              "$ref": "#/components/schemas/ContentUnit"
+            },
+            "title": "Content Units",
+            "type": "array"
+          },
+          "core_claim": {
+            "title": "Core Claim",
+            "type": "string"
+          },
+          "critical_facts": {
+            "items": {
+              "$ref": "#/components/schemas/CriticalFact"
+            },
+            "title": "Critical Facts",
+            "type": "array"
+          },
+          "draft_warnings": {
+            "description": "1차 결과에 대한 코드 검증 경고 (최종 결론의 입력)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Draft Warnings",
+            "type": "array"
+          },
+          "key_points": {
+            "items": {
+              "$ref": "#/components/schemas/KeyPoint"
+            },
+            "title": "Key Points",
+            "type": "array"
+          },
+          "keywords": {
+            "items": {
+              "$ref": "#/components/schemas/Keyword"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/RubricMeta"
+          },
+          "name_decisions": {
+            "description": "이름·용어 후보별 최종 결정",
+            "items": {
+              "$ref": "#/components/schemas/NameDecision"
+            },
+            "title": "Name Decisions",
+            "type": "array"
+          },
+          "normalized_script": {
+            "title": "Normalized Script",
+            "type": "string"
+          },
+          "review_changes": {
+            "description": "최종 결론이 1차 결과에서 바꾼 점",
+            "items": {
+              "type": "string"
+            },
+            "title": "Review Changes",
+            "type": "array"
+          },
+          "sentence_roles": {
+            "description": "문장별 역할 (claim / evidence / detail / skip). sentences 와 순서가 같다",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sentence Roles",
+            "type": "array"
+          },
+          "sentences": {
+            "items": {
+              "$ref": "#/components/schemas/Sentence"
+            },
+            "title": "Sentences",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "meta",
+          "normalized_script",
+          "sentences",
+          "sentence_roles",
+          "core_claim",
+          "key_points",
+          "critical_facts",
+          "keywords",
+          "warnings"
+        ],
+        "title": "EvaluationRubric",
+        "type": "object"
+      },
+      "FactCheck": {
+        "properties": {
+          "cause": {
+            "anyOf": [
+              {
+                "enum": [
+                  "speaker_error",
+                  "asr_error",
+                  "approximation"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "규칙으로 정한 원인 (발음이 비슷하면 정하지 않음)",
+            "title": "Cause"
+          },
+          "cause_reason": {
+            "default": "",
+            "title": "Cause Reason",
+            "type": "string"
+          },
+          "fact_id": {
+            "title": "Fact Id",
+            "type": "string"
+          },
+          "importance": {
+            "enum": [
+              "critical",
+              "high",
+              "normal"
+            ],
+            "title": "Importance",
+            "type": "string"
+          },
+          "key_point_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Point Ids",
+            "type": "array"
+          },
+          "normalized": {
+            "title": "Normalized",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "rule_cause": {
+            "anyOf": [
+              {
+                "enum": [
+                  "speaker_error",
+                  "asr_error",
+                  "approximation"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "규칙 신호만으로 본 원인 (비교용)",
+            "title": "Rule Cause"
+          },
+          "signals": {
+            "description": "원인 판단에 쓰는 규칙 신호",
+            "items": {
+              "type": "string"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "sound": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "두 수의 발음 관계: similar / near / swap / different / approx",
+            "title": "Sound"
+          },
+          "status": {
+            "description": "matched: 같은 값을 말함 / mismatched: 다른 값을 말함 / missing: 없음 / unverified: 규칙으로 판단 불가(LLM 확인) / sound_alike: 발음이 비슷한 다른 말로 나옴 — 판단 보류, 비율에서 뺌 / approximate: 값을 어림해 말함",
+            "enum": [
+              "matched",
+              "mismatched",
+              "missing",
+              "unverified",
+              "sound_alike",
+              "approximate"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "stt_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Stt Ids",
+            "type": "array"
+          },
+          "stt_normalized": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stt Normalized"
+          },
+          "stt_numeric_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stt Numeric Value"
+          },
+          "stt_qualifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stt Qualifier"
+          },
+          "stt_span": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stt Span"
+          },
+          "stt_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "STT 에서 찾은 표기 (다른 값이면 그 값)",
+            "title": "Stt Value"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "description": "대본 표기",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fact_id",
+          "type",
+          "value",
+          "normalized",
+          "importance",
+          "key_point_ids",
+          "status"
+        ],
+        "title": "FactCheck",
+        "type": "object"
+      },
+      "FeedbackType": {
+        "description": "원인 영역. 리뷰의 ReviewPoint.type · Mission.type 과 같은 enum 입니다.",
+        "enum": [
+          "GAZE",
+          "SPEED",
+          "VOLUME",
+          "PAUSE",
+          "FILLER",
+          "CONTENT",
+          "TIME"
+        ],
+        "title": "FeedbackType",
+        "type": "string"
+      },
+      "FocusItem": {
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "weight": {
+            "default": 1.0,
+            "title": "Weight",
+            "type": "number"
+          },
+          "why": {
+            "default": "",
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "area"
+        ],
+        "title": "FocusItem",
+        "type": "object"
+      },
+      "KeyPoint": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "fact_ids": {
+            "description": "이 Key Point 가 직접 말하는 Critical Fact",
+            "items": {
+              "type": "string"
+            },
+            "title": "Fact Ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "importance": {
+            "description": "근거 문장의 역할로 코드가 정한다 (config.ROLE_IMPORTANCE)",
+            "enum": [
+              "critical",
+              "high",
+              "normal"
+            ],
+            "title": "Importance",
+            "type": "string"
+          },
+          "key_terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Terms",
+            "type": "array"
+          },
+          "sentence_indices": {
+            "description": "근거 문장 번호 (LLM 이 번호로 지정)",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Sentence Indices",
+            "type": "array"
+          },
+          "source_quote": {
+            "description": "근거 문장들의 원문",
+            "title": "Source Quote",
+            "type": "string"
+          },
+          "source_span": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "근거 문장들의 위치. 유효한 번호가 없으면 None",
+            "title": "Source Span"
+          }
+        },
+        "required": [
+          "id",
+          "content",
+          "importance",
+          "sentence_indices",
+          "source_quote",
+          "source_span",
+          "key_terms",
+          "fact_ids"
+        ],
+        "title": "KeyPoint",
+        "type": "object"
+      },
+      "KeyPointResult": {
+        "description": "Key Point 판정 = 근거 문장 판정을 모은 것 (코드, aggregate_status).",
+        "properties": {
+          "conflicts": {
+            "description": "근거 문장들의 충돌 이유",
+            "items": {
+              "type": "string"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_text": {
+            "title": "Evidence Text",
+            "type": "string"
+          },
+          "fact_statuses": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "이 Key Point 에 연결된 사실별 규칙 검증 결과",
+            "title": "Fact Statuses",
+            "type": "object"
+          },
+          "first_status": {
+            "description": "LLM 1차 문장 판정을 모은 판정",
+            "enum": [
+              "covered",
+              "partial",
+              "missing",
+              "contradicted"
+            ],
+            "title": "First Status",
+            "type": "string"
+          },
+          "importance": {
+            "enum": [
+              "critical",
+              "high",
+              "normal"
+            ],
+            "title": "Importance",
+            "type": "string"
+          },
+          "key_point_id": {
+            "title": "Key Point Id",
+            "type": "string"
+          },
+          "lexical_coverage": {
+            "title": "Lexical Coverage",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "sentence_indices": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Sentence Indices",
+            "type": "array"
+          },
+          "similar_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Similar Ids",
+            "type": "array"
+          },
+          "status": {
+            "description": "최종 판정",
+            "enum": [
+              "covered",
+              "partial",
+              "missing",
+              "contradicted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key_point_id",
+          "content",
+          "importance",
+          "sentence_indices",
+          "status",
+          "first_status",
+          "evidence",
+          "evidence_text",
+          "reason",
+          "lexical_coverage",
+          "fact_statuses"
+        ],
+        "title": "KeyPointResult",
+        "type": "object"
+      },
+      "Keyword": {
+        "properties": {
+          "score": {
+            "description": "TF-IDF 점수 (슬라이드 안에서 L2 정규화)",
+            "title": "Score",
+            "type": "number"
+          },
+          "term": {
+            "title": "Term",
+            "type": "string"
+          },
+          "tf": {
+            "description": "슬라이드 안 등장 횟수",
+            "title": "Tf",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "term",
+          "score",
+          "tf"
+        ],
+        "title": "Keyword",
+        "type": "object"
+      },
+      "MissionTarget": {
+        "properties": {
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "operator": {
+            "enum": [
+              "LT",
+              "LTE",
+              "GT",
+              "GTE"
+            ],
+            "title": "Operator",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "metric",
+          "operator",
+          "value"
+        ],
+        "title": "MissionTarget",
+        "type": "object"
+      },
+      "NameDecision": {
+        "properties": {
+          "keep": {
+            "description": "발표자가 이 말을 그대로 해야 하는가 (True 면 Critical Fact)",
+            "title": "Keep",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "rule",
+              "llm"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "source",
+          "keep",
+          "reason"
+        ],
+        "title": "NameDecision",
+        "type": "object"
+      },
+      "Plan": {
+        "description": "발표 계획. Take 동안 바뀌지 않는다.",
+        "properties": {
+          "max_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Ms"
+          },
+          "min_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Ms"
+          },
+          "slides": {
+            "items": {
+              "$ref": "#/components/schemas/SlidePlan"
+            },
+            "title": "Slides",
+            "type": "array"
+          },
+          "target_ms": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Ms"
+          }
+        },
+        "title": "Plan",
+        "type": "object"
+      },
+      "PlanMeta": {
+        "additionalProperties": false,
+        "description": "plan 응답을 만든 버전. 판정이 없어 criteria_versions 가 없다(architecture 5절).",
+        "properties": {
+          "feature_version": {
+            "default": "coach-1.3",
+            "title": "Feature Version",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "schema_version": {
+            "default": "1.0",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "title": "PlanMeta",
+        "type": "object"
+      },
+      "PlanMission": {
+        "description": "plan 요청의 미션. 공유 Mission 에 설명 길이 상한만 더한다(evaluate 에는 걸지 않는다).",
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "mission_id": {
+            "title": "Mission Id",
+            "type": "string"
+          },
+          "priority": {
+            "default": 1,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MissionTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "mission_id",
+          "area"
+        ],
+        "title": "PlanMission",
+        "type": "object"
+      },
+      "PlanRequest": {
+        "description": "Take 시작 전 코칭 계획 요청. 바탕 id · 발표 계획 · 장별 대본 · 미션 · 반복 문제 · 직전 Take\n결과 · 직전 리뷰.\n\n요청에 모드가 없다 — 계획은 Take 가 시작되기 전에 만들고, 실전 모드 Take 는 evaluate 에서\n말하지 않으므로 계획이 영향을 주지 않는다. 옛 필드(take_id · mode · memory)가 와도 무시한다.",
+        "properties": {
+          "missions": {
+            "items": {
+              "$ref": "#/components/schemas/PlanMission"
+            },
+            "maxItems": 20,
+            "title": "Missions",
+            "type": "array"
+          },
+          "pitch_id": {
+            "title": "Pitch Id",
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "previous_review": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Review"
+          },
+          "previous_take_result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Take Result"
+          },
+          "recurring_issues": {
+            "items": {
+              "$ref": "#/components/schemas/RecurringIssue"
+            },
+            "maxItems": 20,
+            "title": "Recurring Issues",
+            "type": "array"
+          },
+          "script_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Version Id"
+          },
+          "scripts": {
+            "items": {
+              "$ref": "#/components/schemas/SlideScript"
+            },
+            "maxItems": 100,
+            "title": "Scripts",
+            "type": "array"
+          },
+          "source_take_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Take Id"
+          }
+        },
+        "required": [
+          "pitch_id"
+        ],
+        "title": "PlanRequest",
+        "type": "object"
+      },
+      "PlanResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "coaching_plan": {
+            "$ref": "#/components/schemas/CoachingPlan"
+          },
+          "dropped": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dropped",
+            "type": "array"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "LLM_TIMEOUT",
+                  "LLM_ERROR",
+                  "LLM_INVALID_OUTPUT",
+                  "LLM_UNAVAILABLE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PlanMeta"
+          },
+          "planner_hash": {
+            "title": "Planner Hash",
+            "type": "string"
+          },
+          "script_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Version Id"
+          },
+          "source_take_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Take Id"
+          }
+        },
+        "required": [
+          "coaching_plan",
+          "source_take_id",
+          "script_version_id",
+          "planner_hash",
+          "meta"
+        ],
+        "title": "PlanResponse",
+        "type": "object"
+      },
+      "RecurringIssue": {
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          }
+        },
+        "required": [
+          "area"
+        ],
+        "title": "RecurringIssue",
+        "type": "object"
+      },
+      "RelaxItem": {
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "why": {
+            "default": "",
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "area"
+        ],
+        "title": "RelaxItem",
+        "type": "object"
+      },
+      "RescoreRequest": {
+        "description": "`/takes/rescore` 요청: 저장해 둔 채점 전체 + 평가 기준 + 이번에 받은 확인 답 + 저장된 실패 장.",
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/Answer"
+            },
+            "title": "Answers",
+            "type": "array"
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/SlideEvaluation"
+            },
+            "title": "Evaluations",
+            "type": "array"
+          },
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/SlideFailure"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "rubrics": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRubric"
+            },
+            "title": "Rubrics",
+            "type": "array"
+          },
+          "take_id": {
+            "title": "Take Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "take_id",
+          "evaluations",
+          "rubrics"
+        ],
+        "title": "RescoreRequest",
+        "type": "object"
+      },
+      "ResponseMeta": {
+        "description": "`/scripts/rubric` 응답의 meta (architecture.md 5절).",
+        "properties": {
+          "feature_version": {
+            "title": "Feature Version",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "feature_version",
+          "model"
+        ],
+        "title": "ResponseMeta",
+        "type": "object"
+      },
+      "RubricMeta": {
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "final_config_hash": {
+            "default": "",
+            "description": "최종 결론 LLM 설정 해시. 1차 결과(초안)면 빈 값",
+            "title": "Final Config Hash",
+            "type": "string"
+          },
+          "llm_config_hash": {
+            "description": "1차 분석 LLM 설정 해시",
+            "title": "Llm Config Hash",
+            "type": "string"
+          },
+          "llm_model": {
+            "title": "Llm Model",
+            "type": "string"
+          },
+          "rubric_id": {
+            "description": "대본·LLM 설정·스키마가 같으면 같은 값. 평가 결과가 어떤 기준으로 채점됐는지 가리킨다",
+            "title": "Rubric Id",
+            "type": "string"
+          },
+          "rubric_schema_version": {
+            "title": "Rubric Schema Version",
+            "type": "string"
+          },
+          "script_name": {
+            "description": "대본 식별자 (API 요청의 script_version_id. 연구에서는 대본 JSON 파일 이름)",
+            "title": "Script Name",
+            "type": "string"
+          },
+          "slide_number": {
+            "title": "Slide Number",
+            "type": "integer"
+          },
+          "unit_config_hash": {
+            "default": "",
+            "description": "전달 단위 LLM 설정 해시. 단위를 나누기 전이면 빈 값",
+            "title": "Unit Config Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rubric_id",
+          "script_name",
+          "slide_number",
+          "content_hash",
+          "rubric_schema_version",
+          "llm_model",
+          "llm_config_hash"
+        ],
+        "title": "RubricMeta",
+        "type": "object"
+      },
+      "RubricRequest": {
+        "description": "`/scripts/rubric` 요청: 대본의 모든 장과, 평가 기준을 만들 장 번호(선택).",
+        "properties": {
+          "pitch_id": {
+            "title": "Pitch Id",
+            "type": "string"
+          },
+          "script_version_id": {
+            "title": "Script Version Id",
+            "type": "string"
+          },
+          "slide_numbers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "평가 기준을 만들 장 번호. 없으면 모든 장. 다른 장은 키워드 · 이름 판정의 맥락으로만 쓴다",
+            "title": "Slide Numbers"
+          },
+          "slides": {
+            "items": {
+              "$ref": "#/components/schemas/ScriptSlide"
+            },
+            "minItems": 1,
+            "title": "Slides",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pitch_id",
+          "script_version_id",
+          "slides"
+        ],
+        "title": "RubricRequest",
+        "type": "object"
+      },
+      "RubricResponse": {
+        "properties": {
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/SlideFailure"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "rubrics": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRubric"
+            },
+            "title": "Rubrics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rubrics",
+          "failed",
+          "meta"
+        ],
+        "title": "RubricResponse",
+        "type": "object"
+      },
+      "ScoringMeta": {
+        "description": "`/takes/analyze` · `/takes/rescore` 응답의 meta (architecture.md 5절).",
+        "properties": {
+          "criteria_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Criteria Versions",
+            "type": "object"
+          },
+          "feature_version": {
+            "title": "Feature Version",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "feature_version",
+          "criteria_versions",
+          "model"
+        ],
+        "title": "ScoringMeta",
+        "type": "object"
+      },
+      "ScriptSlide": {
+        "properties": {
+          "script": {
+            "description": "대본 파싱이 낸 장별 대본 글. 빈 장도 싣는다",
+            "title": "Script",
+            "type": "string"
+          },
+          "slide_number": {
+            "minimum": 1.0,
+            "title": "Slide Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slide_number",
+          "script"
+        ],
+        "title": "ScriptSlide",
+        "type": "object"
+      },
+      "Sentence": {
+        "properties": {
+          "end": {
+            "description": "정규화 텍스트 기준 끝 오프셋 (exclusive)",
+            "title": "End",
+            "type": "integer"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "start": {
+            "description": "정규화 텍스트 기준 시작 오프셋",
+            "title": "Start",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "text",
+          "start",
+          "end"
+        ],
+        "title": "Sentence",
+        "type": "object"
+      },
+      "SentenceResult": {
+        "description": "대본 문장 한 개의 판정. 전달 단위 판정을 모은 문장 판정 + 규칙 결과 + 충돌.",
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "string"
+          },
+          "conflicts": {
+            "description": "규칙 결과와 LLM 판정이 어긋난 이유",
+            "items": {
+              "type": "string"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "evidence": {
+            "description": "근거 STT 문장 번호 (범위 밖 번호는 버림)",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_coverage": {
+            "description": "이 문장의 내용 형태소가 LLM 근거 STT 문장에 나온 비율 (근거가 이 문장과 관련 있는지)",
+            "title": "Evidence Coverage",
+            "type": "number"
+          },
+          "fact_statuses": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "이 문장에 있는 사실별 규칙 검증 결과",
+            "title": "Fact Statuses",
+            "type": "object"
+          },
+          "first_status": {
+            "description": "LLM 1차 판정 (전달 단위 1차 판정을 모은 것)",
+            "enum": [
+              "said",
+              "partial",
+              "missing",
+              "contradicted"
+            ],
+            "title": "First Status",
+            "type": "string"
+          },
+          "lexical_coverage": {
+            "description": "이 문장의 내용 형태소가 STT 정렬 구간에 나온 비율 (`align_sentences`)",
+            "title": "Lexical Coverage",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "sentence_index": {
+            "title": "Sentence Index",
+            "type": "integer"
+          },
+          "similar_ids": {
+            "description": "이 문장 자리의 비슷한 말 (R번호, 판단 보류)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Similar Ids",
+            "type": "array"
+          },
+          "status": {
+            "description": "최종 판정 (전달 단위 최종 판정을 모은 것)",
+            "enum": [
+              "said",
+              "partial",
+              "missing",
+              "contradicted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "units": {
+            "description": "전달 단위별 판정",
+            "items": {
+              "$ref": "#/components/schemas/UnitResult"
+            },
+            "title": "Units",
+            "type": "array"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sentence_index",
+          "text",
+          "role",
+          "status",
+          "first_status",
+          "confidence",
+          "evidence",
+          "reason",
+          "lexical_coverage",
+          "evidence_coverage",
+          "fact_statuses"
+        ],
+        "title": "SentenceResult",
+        "type": "object"
+      },
+      "SimilarItem": {
+        "description": "비슷한 말: 대본과 STT 의 같은 자리에 발음이 비슷한 다른 말(단어·수치)이 나온 곳.\n\n발표자가 잘못 말했는지 음성 인식이 잘못 적었는지는 텍스트만으로 가릴 수 없다. 그래서 점수 비율에서 빼고(판단 보류)\n개수만 점수에 넣으며, 위치와 함께 저장해 두고 리뷰 agent 가 사용자에게 확인한 뒤 점수를 다시 계산한다 (`confirm.py`).",
+        "properties": {
+          "fact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "관련 Critical Fact",
+            "title": "Fact Id"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "key_point_ids": {
+            "description": "이 자리가 걸린 Key Point",
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Point Ids",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "number",
+              "word"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "rule_guess": {
+            "description": "규칙 신호만으로 본 원인 — 참고 (asr_error: 인식 오류 쪽 / speaker_error: 발표자 실수 쪽)",
+            "enum": [
+              "asr_error",
+              "speaker_error",
+              "paraphrase"
+            ],
+            "title": "Rule Guess",
+            "type": "string"
+          },
+          "script_sentence_index": {
+            "description": "대본 문장 번호",
+            "title": "Script Sentence Index",
+            "type": "integer"
+          },
+          "script_span": {
+            "description": "정규화 대본 텍스트 기준 위치",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Script Span",
+            "type": "array"
+          },
+          "script_text": {
+            "description": "대본 표현",
+            "title": "Script Text",
+            "type": "string"
+          },
+          "signals": {
+            "description": "규칙 신호 (발음 거리, 읽기 비교 등)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "stt_raw_span": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "원본 STT 텍스트 기준 위치 — Deepgram 단어 타임스탬프와 맞출 때 쓴다",
+            "title": "Stt Raw Span"
+          },
+          "stt_sentence_index": {
+            "description": "정규화 STT 문장 번호 (T번호)",
+            "title": "Stt Sentence Index",
+            "type": "integer"
+          },
+          "stt_span": {
+            "description": "정규화 STT 텍스트 기준 위치",
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Stt Span",
+            "type": "array"
+          },
+          "stt_text": {
+            "description": "STT 표현",
+            "title": "Stt Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "kind",
+          "script_text",
+          "stt_text",
+          "script_sentence_index",
+          "script_span",
+          "stt_sentence_index",
+          "stt_span",
+          "stt_raw_span",
+          "key_point_ids",
+          "signals",
+          "rule_guess"
+        ],
+        "title": "SimilarItem",
+        "type": "object"
+      },
+      "SlideEvaluation": {
+        "description": "Structured Evaluation: 슬라이드 한 장의 평가 결과. 이 모양 그대로 DB 에 저장한다.",
+        "properties": {
+          "alignments": {
+            "items": {
+              "$ref": "#/components/schemas/Alignment"
+            },
+            "title": "Alignments",
+            "type": "array"
+          },
+          "applied_answers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "그 장의 채점에 이미 반영한 확인 답 {item_id: as_script · as_stt}. 처음 채점에는 비어 있다. Take 단위 confirmations(아직 답하지 않은 항목)와 다르다",
+            "title": "Applied Answers",
+            "type": "object"
+          },
+          "critical_facts": {
+            "items": {
+              "$ref": "#/components/schemas/FactCheck"
+            },
+            "title": "Critical Facts",
+            "type": "array"
+          },
+          "fidelity": {
+            "additionalProperties": true,
+            "description": "대본 충실도 세부 (recall / precision / fidelity)",
+            "title": "Fidelity",
+            "type": "object"
+          },
+          "key_points": {
+            "description": "Key Point 판정 = 근거 문장 판정을 모은 것",
+            "items": {
+              "$ref": "#/components/schemas/KeyPointResult"
+            },
+            "title": "Key Points",
+            "type": "array"
+          },
+          "rubric_id": {
+            "description": "채점에 쓴 평가 기준 (대본 분석 결과의 rubric_id)",
+            "title": "Rubric Id",
+            "type": "string"
+          },
+          "scores": {
+            "additionalProperties": true,
+            "title": "Scores",
+            "type": "object"
+          },
+          "script_name": {
+            "title": "Script Name",
+            "type": "string"
+          },
+          "sentences": {
+            "description": "대본 문장별 판정 (전달 단위 판정을 모은 문장 판정 + 규칙 + 교차 검증)",
+            "items": {
+              "$ref": "#/components/schemas/SentenceResult"
+            },
+            "title": "Sentences",
+            "type": "array"
+          },
+          "similar_items": {
+            "description": "비슷한 말 — 비율에서 뺀 판단 보류 항목 (위치 포함)",
+            "items": {
+              "$ref": "#/components/schemas/SimilarItem"
+            },
+            "title": "Similar Items",
+            "type": "array"
+          },
+          "slide_number": {
+            "title": "Slide Number",
+            "type": "integer"
+          },
+          "stt_sentences": {
+            "description": "정규화한 STT 문장 (근거 번호 T0, T1 … 의 원문)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Stt Sentences",
+            "type": "array"
+          },
+          "stt_text": {
+            "default": "",
+            "description": "정규화한 STT 전체 텍스트 — 사용자 확인 뒤 점수를 다시 계산할 때 쓴다 (`confirm.py`)",
+            "title": "Stt Text",
+            "type": "string"
+          },
+          "take_id": {
+            "title": "Take Id",
+            "type": "string"
+          },
+          "verification": {
+            "additionalProperties": true,
+            "description": "교차 검증 여부, 대상 문장, 충돌 조건별 문장 번호",
+            "title": "Verification",
+            "type": "object"
+          }
+        },
+        "required": [
+          "take_id",
+          "script_name",
+          "slide_number",
+          "rubric_id",
+          "scores",
+          "sentences",
+          "key_points",
+          "critical_facts",
+          "similar_items",
+          "fidelity",
+          "alignments",
+          "verification",
+          "stt_sentences"
+        ],
+        "title": "SlideEvaluation",
+        "type": "object"
+      },
+      "SlideFailure": {
+        "description": "처리하지 못한 장 하나. 나머지 장의 결과는 그대로 돌려준다.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          },
+          "slide_number": {
+            "minimum": 1.0,
+            "title": "Slide Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slide_number",
+          "error"
+        ],
+        "title": "SlideFailure",
+        "type": "object"
+      },
+      "SlidePlan": {
+        "description": "대본 분석이 주는 장별 계획.",
+        "properties": {
+          "script_chars": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Script Chars",
+            "type": "integer"
+          },
+          "slide_number": {
+            "title": "Slide Number",
+            "type": "integer"
+          },
+          "target_ms": {
+            "minimum": 0.0,
+            "title": "Target Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slide_number",
+          "target_ms"
+        ],
+        "title": "SlidePlan",
+        "type": "object"
+      },
+      "SlideScript": {
+        "description": "장 하나의 대본. 계획을 세울 때만 쓴다 (1초 판단에는 글자 수만 쓴다).",
+        "properties": {
+          "script": {
+            "default": "",
+            "title": "Script",
+            "type": "string"
+          },
+          "slide_number": {
+            "title": "Slide Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slide_number"
+        ],
+        "title": "SlideScript",
+        "type": "object"
+      },
+      "TakeScores": {
+        "description": "채점된 장들의 점수로 낸 Take 값 (기능 문서 6-4).",
+        "properties": {
+          "content_coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Coverage"
+          },
+          "critical_fact_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Critical Fact Accuracy"
+          },
+          "scored_ratio": {
+            "description": "채점된 장 수 ÷ 대상 장 수",
+            "title": "Scored Ratio",
+            "type": "number"
+          },
+          "script_fidelity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Fidelity"
+          },
+          "similar_numbers": {
+            "title": "Similar Numbers",
+            "type": "integer"
+          },
+          "similar_words": {
+            "title": "Similar Words",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "content_coverage",
+          "critical_fact_accuracy",
+          "script_fidelity",
+          "similar_words",
+          "similar_numbers",
+          "scored_ratio"
+        ],
+        "title": "TakeScores",
+        "type": "object"
+      },
+      "TakeSlide": {
+        "properties": {
+          "slide_number": {
+            "minimum": 1.0,
+            "title": "Slide Number",
+            "type": "integer"
+          },
+          "stt": {
+            "description": "장 변경 기록으로 나눈 그 장의 STT 텍스트. 발표에서 넘어간 장은 빈 문자열",
+            "title": "Stt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slide_number",
+          "stt"
+        ],
+        "title": "TakeSlide",
+        "type": "object"
+      },
+      "UnitResult": {
+        "description": "전달 단위 한 개의 판정 (LLM 1차 → 교차 검증).",
+        "properties": {
+          "fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fact Ids",
+            "type": "array"
+          },
+          "first_status": {
+            "description": "1차 판정 (LLM 판정 + 규칙 보정)",
+            "enum": [
+              "said",
+              "vague",
+              "missing",
+              "contradicted"
+            ],
+            "title": "First Status",
+            "type": "string"
+          },
+          "raised_by_rule": {
+            "default": false,
+            "description": "LLM 은 missing 이라 했지만 이 단위의 수치·이름이 STT 에 있어 vague 로 올림",
+            "title": "Raised By Rule",
+            "type": "boolean"
+          },
+          "status": {
+            "description": "최종 판정",
+            "enum": [
+              "said",
+              "vague",
+              "missing",
+              "contradicted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "unit_id": {
+            "title": "Unit Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit_id",
+          "text",
+          "status",
+          "first_status"
+        ],
+        "title": "UnitResult",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Pitch Coach AI",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/coach/plan": {
+      "post": {
+        "operationId": "plan_coach_plan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "처리되지 않은 예외(INTERNAL_ERROR)"
+          }
+        },
+        "summary": "Plan",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Ready Ready Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 을 쓸 수 없음(LLM_UNAVAILABLE) · 준비 전(NOT_READY)"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/scripts/rubric": {
+      "post": {
+        "operationId": "rubric_scripts_rubric_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RubricRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RubricResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "처리되지 않은 예외(INTERNAL_ERROR)"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 호출 실패(LLM_ERROR) · 잘못된 출력(LLM_INVALID_OUTPUT)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 을 쓸 수 없음(LLM_UNAVAILABLE) · 준비 전(NOT_READY)"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 응답 시간 초과(LLM_TIMEOUT)"
+          }
+        },
+        "summary": "Rubric",
+        "tags": [
+          "script_coverage"
+        ]
+      }
+    },
+    "/takes/analyze": {
+      "post": {
+        "operationId": "analyze_takes_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "처리되지 않은 예외(INTERNAL_ERROR)"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 호출 실패(LLM_ERROR) · 잘못된 출력(LLM_INVALID_OUTPUT)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 을 쓸 수 없음(LLM_UNAVAILABLE) · 준비 전(NOT_READY)"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 응답 시간 초과(LLM_TIMEOUT)"
+          }
+        },
+        "summary": "Analyze",
+        "tags": [
+          "script_coverage"
+        ]
+      }
+    },
+    "/takes/rescore": {
+      "post": {
+        "operationId": "rescore_takes_rescore_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RescoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "처리되지 않은 예외(INTERNAL_ERROR)"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 호출 실패(LLM_ERROR) · 잘못된 출력(LLM_INVALID_OUTPUT)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 을 쓸 수 없음(LLM_UNAVAILABLE) · 준비 전(NOT_READY)"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 응답 시간 초과(LLM_TIMEOUT)"
+          }
+        },
+        "summary": "Rescore",
+        "tags": [
+          "script_coverage"
+        ]
+      }
+    }
+  }
+}

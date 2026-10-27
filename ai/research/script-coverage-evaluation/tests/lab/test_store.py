@@ -19,8 +19,13 @@ from coverage_lab.store import (
     save_evaluation,
     save_rubric,
 )
-from script_coverage.shared.rubric import EvaluationRubric, RubricMeta
-from script_coverage.stt_evaluation.schemas import SimilarItem, SlideEvaluation, SlideSTT, Take
+from pitch_coach_ai.features.script_coverage.shared.rubric import EvaluationRubric, RubricMeta
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
+    SimilarItem,
+    SlideEvaluation,
+    SlideSTT,
+    Take,
+)
 
 
 @pytest.fixture

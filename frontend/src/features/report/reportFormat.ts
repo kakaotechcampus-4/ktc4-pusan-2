@@ -34,7 +34,7 @@ const AREA: Record<Area, string> = {
   TIME: '시간',
 };
 
-export const OP: Record<Operator, string> = { LTE: '이하', GTE: '이상' };
+export const OP: Record<Operator, string> = { LT: '미만', LTE: '이하', GT: '초과', GTE: '이상' };
 
 /** 지표 이름은 `architecture.md` 6-3 */
 const METRIC: Record<
@@ -92,8 +92,9 @@ export function duration(ms: number | null) {
   return ms === null ? '—' : formatDuration(ms);
 }
 
-export function where(area: Area, slide: number | null) {
-  return slide === null ? `${AREA[area]} · 발표 전체` : `${AREA[area]} · ${slide}번 장`;
+export function where(area: string, slide: number | null) {
+  const label = Object.hasOwn(AREA, area) ? AREA[area as Area] : area;
+  return slide === null ? `${label} · 발표 전체` : `${label} · ${slide}번 장`;
 }
 
 /** ISO 시각 → `2026. 10. 6. 오후 4:38` */

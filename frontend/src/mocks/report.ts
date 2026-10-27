@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { AnalysisStage, ReviewResult, TakeMeasures, TakeReport } from '@/types/report';
+import type { ConfirmationItem, Confirmations, ConfirmationsSent } from '@/types/confirmation';
 
 /**
  * Take 리포트 목 — `GET /api/takes/{take_id}/report` (BE 에 아직 없는 API, `types/report.ts`).
@@ -11,7 +12,13 @@ import type { AnalysisStage, ReviewResult, TakeMeasures, TakeReport } from '@/ty
  *   t-review-failed 리뷰 실패 — 측정값만
  *   t-failed        분석 실패
  *   t-held          리뷰 보류 — 사람이 복구할 때까지 멈춤
+ *   t-confirm         대본 확인 대기 — 답하거나 건너뛰면 리뷰를 거쳐 리포트로
+ *   t-confirm-timeout 대본 확인 대기 — 몇 초 뒤 시간이 다 되고, 보내면 409 `CONFIRMATION_CLOSED`
+ *   t-confirm-done    대본 확인을 이미 끝내 리뷰 중 — 확인 화면은 "이미 넘어갔어요"
  *   그 밖의 id      처음 물은 뒤로 몇 초마다 단계가 넘어가 정상으로 끝남 (리허설을 끝내고 온 Take)
+ *
+ * 대본 확인 목(`GET` · `POST /api/takes/{take_id}/confirmations`, `types/confirmation.ts`)도 여기 둡니다 —
+ * 같은 Take id 로 리포트와 단계가 맞아야 해서입니다.
  */
 
 export const measuresFixture: TakeMeasures = {
@@ -179,6 +186,17 @@ const gazeExcluded: TakeReport = {
   },
 };
 
+/** 대본 확인 대기 — 채점까지 끝났고 리뷰 전 */
+const awaiting = (takeId: string): TakeReport => ({
+  ...done,
+  take_id: takeId,
+  take_number: 4,
+  status: 'ANALYZING',
+  analysis_stage: 'AWAITING_CONFIRMATION',
+  review_status: null,
+  review: null,
+});
+
 const FIXED: Record<string, TakeReport> = {
   t2: gazeExcluded,
   t3: done,
@@ -186,7 +204,68 @@ const FIXED: Record<string, TakeReport> = {
   't-review-failed': reviewFailed,
   't-failed': failed,
   't-held': held,
+  't-confirm': awaiting('t-confirm'),
+  't-confirm-timeout': awaiting('t-confirm-timeout'),
+  't-confirm-done': { ...awaiting('t-confirm-done'), analysis_stage: 'REVIEWING' },
 };
+
+/**
+ * 확인 항목 — 계약 1-1 · 2절의 예("37%" ↔ "47%", "노쇼" → "노조"). 장마다 R1 부터 다시 셉니다.
+ * 문장 둘과 종류는 BE #528 응답 필드입니다 (`types/confirmation.ts`).
+ */
+export const confirmationItemsFixture: ConfirmationItem[] = [
+  {
+    slide_number: 3,
+    item_id: 'R1',
+    kind: 'number',
+    script_text: '37%',
+    stt_text: '47%',
+    script_sentence: '지난 분기 매출은 37% 늘었습니다.',
+    stt_sentence: '지난 분기 매출은 47% 늘었습니다',
+  },
+  {
+    slide_number: 5,
+    item_id: 'R1',
+    kind: 'word',
+    script_text: '노쇼',
+    stt_text: '노조',
+    script_sentence: '예약 노쇼를 절반으로 줄이는 것이 목표입니다.',
+    stt_sentence: '예약 노조를 절반으로 줄이는 것이 목표입니다',
+  },
+];
+
+const CONFIRM_MS = 10 * 60_000;
+/** t-confirm-timeout 은 시간 초과를 바로 보려고 몇 초만 남깁니다 */
+const TIMEOUT_DEMO_MS = 8000;
+/** 확인 대기가 끝난(답함 · 건너뜀 · 시간 초과) 시각. 그 뒤로는 리뷰를 거쳐 끝납니다 */
+const answeredAt = new Map<string, number>();
+
+/** 리포트 단계 — 확인 대기가 끝났으면 리뷰 한 단계를 거쳐 끝납니다 */
+function reportOf(takeId: string): TakeReport {
+  const answered = answeredAt.get(takeId);
+  if (answered !== undefined && Date.now() >= answered) {
+    const base = FIXED[takeId] ?? done;
+    if (Date.now() - answered >= STAGE_MS) return { ...done, take_id: takeId, take_number: 4 };
+    return { ...base, take_id: takeId, analysis_stage: 'REVIEWING' };
+  }
+  return FIXED[takeId] ?? progressing(takeId);
+}
+
+function confirmationsOf(takeId: string): Confirmations {
+  // 시간 초과 Take 는 처음 물은 때부터 몇 초 뒤 BE 가 그대로 넘긴 것처럼 굽니다
+  if (takeId === 't-confirm-timeout' && !answeredAt.has(takeId))
+    answeredAt.set(takeId, Date.now() + TIMEOUT_DEMO_MS);
+  const stage = reportOf(takeId).analysis_stage;
+  if (stage !== 'AWAITING_CONFIRMATION')
+    return { take_id: takeId, analysis_stage: stage, remaining_ms: null, items: [] };
+  const closesAt = answeredAt.get(takeId);
+  return {
+    take_id: takeId,
+    analysis_stage: stage,
+    remaining_ms: closesAt === undefined ? CONFIRM_MS - 30_000 : closesAt - Date.now(),
+    items: confirmationItemsFixture,
+  };
+}
 
 /** 단계 하나에 걸리는 시간. 대본 확인 단계도 한 번 거칩니다 */
 const STAGE_MS = 2500;
@@ -212,7 +291,22 @@ function progressing(takeId: string): TakeReport {
 
 export const reportHandlers = [
   http.get('*/api/takes/:takeId/report', ({ params }) => {
+    return HttpResponse.json(reportOf(String(params.takeId)));
+  }),
+
+  http.get('*/api/takes/:takeId/confirmations', ({ params }) =>
+    HttpResponse.json(confirmationsOf(String(params.takeId))),
+  ),
+
+  http.post('*/api/takes/:takeId/confirmations', async ({ params, request }) => {
     const takeId = String(params.takeId);
-    return HttpResponse.json(FIXED[takeId] ?? progressing(takeId));
+    await request.json();
+    if (takeId === 't-confirm-timeout' || confirmationsOf(takeId).items.length === 0)
+      return HttpResponse.json(
+        { code: 'CONFIRMATION_CLOSED', message: '확인을 받을 수 있는 시간이 지났습니다.' },
+        { status: 409 },
+      );
+    answeredAt.set(takeId, Date.now());
+    return HttpResponse.json({ analysis_stage: 'REVIEWING' } satisfies ConfirmationsSent);
   }),
 ];

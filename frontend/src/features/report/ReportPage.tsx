@@ -1,4 +1,5 @@
 import { Navigate, useParams } from 'react-router';
+import { AppHeader } from '@/shared/ui/AppHeader';
 import { useTakeReport } from '@/shared/api/report';
 import { formatDuration } from '@/shared/lib/clock';
 import { Badge, type Tone } from '@/shared/ui/Badge';
@@ -26,19 +27,25 @@ import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
  */
 export function ReportPage() {
   const { takeId = '' } = useParams();
+  return <ReportView key={takeId} takeId={takeId} />;
+}
+
+function ReportView({ takeId }: { takeId: string }) {
   const report = useTakeReport(takeId);
   const data = report.data;
-
   if (!takeId) return <Navigate replace to="/" />;
   // 분석 자체가 실패한 Take 는 보여 줄 측정값이 없습니다. 실패 · 리뷰 보류 안내는 분석 대기 화면이 맡습니다
   if (data?.status === 'FAILED' || data?.analysis_hold_reason)
     return <Navigate replace to={`/takes/${takeId}/processing`} />;
 
   return (
-    <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
-      <QueryState isPending={report.isPending} error={report.error} />
-      {data && <ReportBody report={data} />}
-    </ReportFrame>
+    <div className="flex min-h-dvh flex-col">
+      <AppHeader />
+      <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
+        <QueryState isPending={report.isPending} error={report.error} />
+        {data && <ReportBody key={takeId} report={data} />}
+      </ReportFrame>
+    </div>
   );
 }
 
@@ -343,7 +350,10 @@ function Dimensions({ value }: { value: ReviewResult['dimensions'] }) {
     <Card title="영역별 상태">
       <ul className="grid grid-cols-2 gap-2">
         {(Object.keys(DIMENSION_LABEL) as Dimension[]).map((d) => {
-          const s = DIMENSION_STATUS[value[d]];
+          const status = value[d];
+          const s = Object.hasOwn(DIMENSION_STATUS, status)
+            ? DIMENSION_STATUS[status as DimensionStatus]
+            : DIMENSION_STATUS.NOT_EVALUABLE;
           return (
             <li key={d} className="flex flex-col gap-2 border-b border-line px-0 py-3">
               <span className="text-sm font-bold">{DIMENSION_LABEL[d]}</span>
@@ -447,7 +457,8 @@ function NextMissions({
               <div className="min-w-0">
                 <p className="font-bold">{r.description}</p>
                 <p className="mt-0.5 text-sm text-stone">
-                  {where(r.area, r.slide_number)} · {r.reason}
+                  {where(r.area, r.slide_number)}
+                  {r.reason ? ` · ${r.reason}` : ''}
                 </p>
               </div>
             </li>

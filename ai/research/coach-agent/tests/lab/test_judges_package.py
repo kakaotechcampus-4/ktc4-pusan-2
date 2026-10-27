@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from coach.judges import Judges
 from coach_lab.judges import lab_judges, volume
+from pitch_coach_ai.features.coach.judges import Judges
 
 
 def test_lab_judges_bundles_the_four_modules():

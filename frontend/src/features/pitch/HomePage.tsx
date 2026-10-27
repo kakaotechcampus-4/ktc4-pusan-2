@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { HomeServiceReview } from './HomeServiceReview';
 import { Link } from 'react-router';
-import { HomeHelpDialog } from './HomeHelpDialog';
+import { HomeHelpDialog } from '@/shared/ui/HomeHelpDialog';
 import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { duration, totalElapsed } from './homeFormat';
@@ -13,8 +14,9 @@ export function HomePage() {
   const data = home.data;
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
   return (
-    <div className="pitch-create min-h-dvh bg-greige text-ink">
-      <main className="mx-auto max-w-7xl px-6 pb-16 pt-10 lg:px-10 lg:pt-14">
+    <div className="pitch-create flex flex-1 flex-col bg-greige text-ink">
+      <HomeServiceReview ready={!home.isPending && !home.isError} blocked={helpOpen} />
+      <main className="mx-auto w-full max-w-7xl flex-1 px-6 pb-12 pt-10 lg:px-10 lg:pt-14">
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="mb-2 font-mono text-[10px] tracking-widest text-stone">MY PITCHES</p>
@@ -50,32 +52,35 @@ export function HomePage() {
         ) : (
           data && (
             <>
-              <div className="mt-6 grid grid-cols-1 divide-y divide-ink border border-ink bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-                <div className="p-5">
-                  <p className="text-xs text-stone">내 발표 노트</p>
-                  <p className="mt-2">
-                    <strong className="font-mono text-2xl">
-                      {data.pitches.length.toString().padStart(2, '0')}
-                    </strong>
-                    <span className="ml-2 text-sm">개의 피치</span>
-                  </p>
+              {/* 피치가 없으면 셋 다 0 · — 이라 빼고, 빈 화면이 스크롤 없이 한 화면에 들어가게 합니다 */}
+              {data.pitches.length > 0 && (
+                <div className="mt-6 grid grid-cols-1 divide-y divide-ink border border-ink bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                  <div className="p-5">
+                    <p className="text-xs text-stone">내 발표 노트</p>
+                    <p className="mt-2">
+                      <strong className="font-mono text-2xl">
+                        {data.pitches.length.toString().padStart(2, '0')}
+                      </strong>
+                      <span className="ml-2 text-sm">개의 피치</span>
+                    </p>
+                  </div>
+                  <div className="p-5">
+                    <p className="text-xs text-stone">지금까지 쌓은 연습</p>
+                    <p className="mt-2">
+                      <strong className="font-mono text-2xl">
+                        {count.toString().padStart(2, '0')}
+                      </strong>
+                      <span className="ml-2 text-sm">TAKES</span>
+                    </p>
+                  </div>
+                  <div className="p-5">
+                    <p className="text-xs text-stone">누적 발표 시간</p>
+                    <p className="mt-3 flex items-center gap-3 text-sm font-bold">
+                      {duration(totalElapsed(data.pitches.flatMap((pitch) => pitch.takes)))}
+                    </p>
+                  </div>
                 </div>
-                <div className="p-5">
-                  <p className="text-xs text-stone">지금까지 쌓은 연습</p>
-                  <p className="mt-2">
-                    <strong className="font-mono text-2xl">
-                      {count.toString().padStart(2, '0')}
-                    </strong>
-                    <span className="ml-2 text-sm">TAKES</span>
-                  </p>
-                </div>
-                <div className="p-5">
-                  <p className="text-xs text-stone">누적 발표 시간</p>
-                  <p className="mt-3 flex items-center gap-3 text-sm font-bold">
-                    {duration(totalElapsed(data.pitches.flatMap((pitch) => pitch.takes)))}
-                  </p>
-                </div>
-              </div>
+              )}
               <section aria-labelledby="pitches-title" className="mt-12">
                 <h2 id="pitches-title" className="mb-5 text-xl font-bold">
                   발표 목록
@@ -92,7 +97,7 @@ export function HomePage() {
                     </div>
                   </>
                 ) : (
-                  <div className="border-2 border-dashed border-line-strong bg-white px-6 py-14 text-center">
+                  <div className="border-2 border-dashed border-line-strong bg-white px-6 py-8 text-center">
                     <p className="font-mono text-xs tracking-widest text-coral-deep">
                       YOUR FIRST PITCH
                     </p>
@@ -102,28 +107,28 @@ export function HomePage() {
                       <br />
                       치치와 함께 첫 번째 연습을 시작해 봐요.
                     </p>
-                    <Link to="/pitch/new" className={`${primary} mt-7`}>
-                      ＋ 첫 피치 만들기
-                    </Link>
                   </div>
                 )}
               </section>
             </>
           )
         )}
-        <aside className="mt-10 flex flex-wrap items-center justify-between gap-4 border-y border-line-strong py-5 text-sm">
-          <p>
-            <span className="mr-3 font-mono text-coral-deep">TIP /</span>연습 전, 슬라이드와 대본을
-            한 번 확인해 보세요.
-          </p>
-          <button
-            type="button"
-            onClick={() => setHelpOpen(true)}
-            className="text-stone hover:text-coral-deep"
-          >
-            사용방법 살펴보기
-          </button>
-        </aside>
+        {/* 피치가 없으면 확인할 슬라이드 · 대본이 없어 TIP 을 빼고 빈 화면을 한 화면에 둡니다. 사용방법은 상단바에 있습니다 */}
+        {data?.pitches.length !== 0 && (
+          <aside className="mt-10 flex flex-wrap items-center justify-between gap-4 border-y border-line-strong py-5 text-sm">
+            <p>
+              <span className="mr-3 font-mono text-coral-deep">TIP /</span>연습 전, 슬라이드와
+              대본을 한 번 확인해 보세요.
+            </p>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="text-stone hover:text-coral-deep"
+            >
+              사용방법 살펴보기
+            </button>
+          </aside>
+        )}
       </main>
       <footer className="border-t border-line-strong">
         <div className="mx-auto flex max-w-7xl flex-wrap justify-between gap-4 px-6 py-6 text-xs text-stone lg:px-10">

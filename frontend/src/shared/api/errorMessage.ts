@@ -27,11 +27,17 @@ const MESSAGE: Record<string, string> = {
   /** 평가기준 정리를 맡은 AI 가 실패했거나 답이 이상할 때 (502) */
   STANDARD_PARSE_FAILED:
     '평가기준을 정리하는 서버가 잠시 응답하지 않아요. 잠시 뒤 다시 정리해 주세요.',
+  STANDARD_INPUT_REJECTED:
+    '평가기준으로 사용할 수 없는 내용이에요. 측정할 수 있는 발표 기준으로 고쳐 주세요.',
   SCRIPT_ALREADY_PARSED: '이미 나눈 대본이에요. 잠시 뒤 결과가 보여요.',
   /** 발표자료를 BE 가 열지 못함 — PDF 가 아님 · 깨짐 · 여는 암호 · 40MB 초과 (BE #298) */
   INVALID_PRESENTATION: 'PDF를 열 수 없어요. 암호가 걸려 있거나 손상되지 않았는지 확인해 주세요.',
   PRESENTATION_VERSION_NOT_FOUND: '발표자료를 찾을 수 없어요. 다시 올려 주세요.',
   TAKE_NOT_FOUND: '연습 기록을 찾을 수 없어요. 처음부터 다시 시작해 주세요.',
+  /** 대본 확인 — 시간이 지남 · 이미 답함 · 다른 답 반영 중 · 리뷰 시작 (#528) */
+  CONFIRMATION_CLOSED: '확인을 받을 수 없어요. 분석 상태를 다시 확인해 주세요.',
+  /** rescore 실패 뒤에도 확인 대기 단계는 유지되므로 기한 안에 다시 보낼 수 있습니다 (#528). */
+  COVERAGE_RESCORE_FAILED: '답을 반영하지 못했어요. 남은 시간 안에 다시 보내 주세요.',
   INTERNAL_SERVER_ERROR: '서버에 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요.',
   SCRIPT_PARSE_IN_PROGRESS: '대본을 나누는 중이에요. 잠시만 기다려 주세요.',
   SCRIPT_REUPLOAD_REQUIRED: '이 대본은 다시 올려야 해요. 대본 매핑을 다시 눌러 주세요.',

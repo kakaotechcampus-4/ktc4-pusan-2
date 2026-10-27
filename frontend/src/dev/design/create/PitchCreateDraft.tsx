@@ -196,6 +196,7 @@ export function PitchCreateDraft() {
     <DraftPage
       title="피치 생성 · 시작 플로우 개편"
       eyebrow="새 피치"
+      fitViewport
       variants={VARIANTS}
       variant={variant}
       onVariant={setVariant}
@@ -207,8 +208,8 @@ export function PitchCreateDraft() {
         '버전은 지금 규칙 그대로예요 — 슬라이드 · 대본 · 평가기준이 각자 쌓이고, 저장한 버전은 고치지 않고 새 버전을 만들어요. 사이드바에서 갈래를 저장하기 전에는 이름만 보이고, 저장하면 그 아래에 V1과 "+ 새 버전"이 나타나요. 대본의 "+ 새 버전"을 누르면 시안 상태 5가 돼요. "+ 새 버전"은 사이드바에만 둬요.',
       ]}
     >
-      <div className="flex min-h-176 overflow-hidden rounded-lg border border-line-strong bg-greige">
-        <aside className="flex w-sidebar shrink-0 flex-col gap-4 border-r border-line-strong bg-cream/60 p-4">
+      <div className="pitch-create-square flex min-h-0 flex-1 overflow-hidden border border-line-strong bg-greige">
+        <aside className="flex w-sidebar shrink-0 flex-col gap-4 overflow-y-auto border-r border-line-strong bg-cream/60 p-4">
           <Rail
             step={step}
             stepIndex={stepIndex}
@@ -223,10 +224,10 @@ export function PitchCreateDraft() {
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col gap-3 p-4 xl:p-6">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden p-4">
           <SummaryLine uploaded={uploaded} title={title} date={date} time={time} />
           <StepBar stepIndex={stepIndex} uploaded={uploaded} revised={revised} onPick={go} />
-          <section className="flex min-h-128 flex-auto flex-col rounded-lg border border-line bg-panel p-5 xl:p-6">
+          <section className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg border border-line bg-panel p-5">
             {pane}
           </section>
         </main>

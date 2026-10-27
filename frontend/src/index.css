@@ -174,3 +174,8 @@ body {
   --color-stone: #6b7280;
   --color-coral-wash: #fff0e9;
 }
+
+/* 발표 생성 화면의 사각형 컴포넌트. 단계 번호 같은 원형 표시는 유지합니다. */
+.pitch-create-square :is(.rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, .rounded-r) {
+  border-radius: 0;
+}

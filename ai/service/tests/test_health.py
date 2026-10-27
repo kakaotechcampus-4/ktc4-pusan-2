@@ -23,3 +23,11 @@ def test_no_registered_route_uses_api_prefix(client: TestClient) -> None:
     paths = [*app.openapi()["paths"], app.docs_url, app.redoc_url, app.openapi_url]
     assert [p for p in paths if p and (p == "/api" or p.startswith("/api/"))] == []
     assert client.get("/api/health").status_code == 404
+
+
+def test_only_the_uvicorn_app_stops_the_process_when_warmup_fails() -> None:
+    from pitch_coach_ai import main
+
+    assert main.app.state.readiness._on_failure is main._stop_process
+    # 테스트가 만드는 앱은 불러오기가 실패해도 테스트 프로세스를 끝내지 않는다
+    assert main.create_app().state.readiness._on_failure is None

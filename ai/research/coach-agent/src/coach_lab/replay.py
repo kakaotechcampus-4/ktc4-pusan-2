@@ -16,10 +16,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from coach.config import CoachConfig, load_config
-from coach.renderer import format_duration
-from coach.schemas import TakeResult
-from coach.vocab import Instruction, Outcome
+from pitch_coach_ai.features.coach.config import CoachConfig, load_config
+from pitch_coach_ai.features.coach.renderer import format_duration
+from pitch_coach_ai.features.coach.schemas import TakeResult
+from pitch_coach_ai.features.coach.vocab import Instruction, Outcome
 
 from .paths import REPLAY_DIR, SCENARIOS_DIR
 from .simulator import RunResult, Scenario, check_expect, run
