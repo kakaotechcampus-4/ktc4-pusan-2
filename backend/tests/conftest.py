@@ -22,13 +22,9 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 _dotenv = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
-for _target, _source in (
-    ("DATABASE_URL", "LOCAL_DATABASE_URL"),
-    ("REDIS_URL", "LOCAL_REDIS_URL"),
-):
-    _value = os.environ.get(_source) or _dotenv.get(_source)
-    if _value:
-        os.environ[_target] = _value
+_local_database_url = os.environ.get("LOCAL_DATABASE_URL") or _dotenv.get("LOCAL_DATABASE_URL")
+if _local_database_url:
+    os.environ["DATABASE_URL"] = _local_database_url
 
 # 테스트 토큰은 항상 같은 키로 서명된다 (.env 값보다 우선)
 os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-do-not-use-in-production")
