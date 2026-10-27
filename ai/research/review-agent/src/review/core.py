@@ -149,6 +149,9 @@ _UNIT_SCALE = {
     "db": 1,
     "": 1,
 }
+#: 정수로 쓰면 반올림하지 않고 입력 값과 그대로 대조하는 단위 (개수 · 점수 · 단위 없음, architecture.md 0-2 ④).
+#: 반올림하면 비율 0.62 가 1 이 되어 입력에 없는 "1번" 이 통과한다
+_EXACT_UNITS = {"번", "개", "점", ""}
 #: 정수 · 소수. 1,240 처럼 세 자리마다 쉼표를 찍은 수도 한 값이다
 _NUM = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?"
 #: 이어 쓴 "N분 M초" 는 한 값 (초로 센다)
@@ -195,7 +198,8 @@ def check_numbers(sentence: str, allowed_numbers: Iterable[float | int | None]) 
     1. 비율과 퍼센트: 0.6248 ↔ 62% · 62퍼센트 · 0.62. 단위 없는 62 는 다르다
     2. 시간: 88000 ↔ 88초 · 1분 28초 · 88000ms
     3. 문장에 보인 소수 자리까지 반올림한 입력 값과 같다 (0.6248 ↔ 0.62)
-    4. 개수 · 점수는 그대로 (5 ↔ 5번)
+    4. 개수 · 점수는 그대로 (5 ↔ 5번). 번 · 개 · 점 · 단위 없는 정수는 반올림하지 않는다
+       (0.62 ↔ 1번 은 다름)
     5. 음수는 크기로 본다 (−1.5 ↔ 1.5dB). 방향 말("작게")은 보지 않는다
 
     숫자가 없는 문장은 True. None · bool 은 입력 값으로 보지 않는다.
@@ -203,7 +207,11 @@ def check_numbers(sentence: str, allowed_numbers: Iterable[float | int | None]) 
     allowed = [abs(float(a)) for a in allowed_numbers if a is not None and not isinstance(a, bool)]
     for unit, value, places in _numbers(sentence):
         scale = _UNIT_SCALE[unit]
-        if not any(abs(_round_half_up(a * scale, places) - value) < 1e-9 for a in allowed):
+        if places == 0 and unit in _EXACT_UNITS:
+            same = any(abs(a * scale - value) < 1e-9 for a in allowed)
+        else:
+            same = any(abs(_round_half_up(a * scale, places) - value) < 1e-9 for a in allowed)
+        if not same:
             return False
     return True
 
