@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { useConfirmations, useSendConfirmations } from '@/shared/api/confirmation';
 import { toMessage } from '@/shared/api/errorMessage';
-import { useTakeReport } from '@/shared/api/report';
+import { fetchTakeReport } from '@/shared/api/report';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { Button, ButtonLink } from '@/shared/ui/Button';
 import type { ConfirmationItem, Confirmations } from '@/types/confirmation';
@@ -30,7 +31,15 @@ import {
  */
 export function ConfirmPage() {
   const { takeId = '' } = useParams();
-  const report = useTakeReport(takeId);
+  // 헤더에 쓸 정보는 바뀌지 않으므로 답을 고르는 동안 다시 조회하지 않습니다.
+  const report = useQuery({
+    queryKey: ['takes', takeId, 'report'],
+    queryFn: () => fetchTakeReport(takeId),
+    enabled: !!takeId,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
   const confirmations = useConfirmations(takeId);
 
   if (!takeId) return <Navigate replace to="/" />;

@@ -7,9 +7,48 @@ import { it, expect, vi } from 'vitest';
 import { ConfirmPage } from './ConfirmPage';
 import { apiRequest, postJson } from '@/shared/api/client';
 import { ApiFailure } from '@/shared/api/tokenStore';
+import { fetchTakeReport } from '@/shared/api/report';
 
 vi.mock('@/shared/api/client', () => ({ apiRequest: vi.fn(), postJson: vi.fn() }));
-vi.mock('@/shared/api/report', () => ({ useTakeReport: () => ({ data: undefined }) }));
+vi.mock('@/shared/api/report', () => ({
+  fetchTakeReport: vi.fn().mockResolvedValue({ pitch_title: '테스트 피치', take_number: 1 }),
+}));
+
+it('fetches the header once while answers are being selected', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.useFakeTimers();
+  vi.mocked(fetchTakeReport).mockClear();
+  vi.mocked(apiRequest).mockResolvedValue(confirmationResponse());
+  const query = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={query}>
+          <MemoryRouter initialEntries={['/takes/t1/confirm']}>
+            <Routes>
+              <Route path="/takes/:takeId/confirm" element={<ConfirmPage />} />
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(container.textContent).toContain('테스트 피치 / TAKE 1');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(fetchTakeReport).toHaveBeenCalledExactlyOnceWith('t1');
+  } finally {
+    await act(async () => root.unmount());
+    query.clear();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
+});
 
 it.each([false, true])(
   'keeps a selected answer after reconnect (refetch fails: %s)',
