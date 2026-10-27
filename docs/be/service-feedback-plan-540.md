@@ -99,10 +99,14 @@ BE 평가 기능 완료와 이슈 전체 완료를 구분한다.
 
 ### ERD
 
+![서비스 평가 ERD](images/service-feedback-erd.png)
+
+이미지 원본은 `images/service-feedback-erd.dot`이며 `dot -Tpng -Gdpi=150`으로 다시 만들 수 있다.
+
 ```mermaid
 erDiagram
-    users ||..o| service_feedbacks : "평점 최대 1건"
-    users ||..o{ user_suggestions : "의견 여러 건"
+    users |o..o| service_feedbacks : "평점 최대 1건"
+    users |o..o{ user_suggestions : "의견 여러 건"
     users ||..o{ service_feedback_impressions : "표시 승인 최대 3건"
     service_feedbacks |o..o| user_suggestions : "선택 팝업 의견"
 
@@ -111,13 +115,13 @@ erDiagram
     }
     service_feedbacks {
         uuid id PK
-        uuid user_id FK, UK
+        uuid user_id FK, UK "nullable, 탈퇴 시 NULL"
         integer rating "1~5"
         timestamptz created_at
     }
     user_suggestions {
         uuid id PK
-        uuid user_id FK
+        uuid user_id FK "nullable, 탈퇴 시 NULL"
         text content "1~2000자"
         string source "RATING_POPUP 또는 MY_PAGE"
         uuid service_feedback_id FK, UK "nullable"
@@ -141,7 +145,7 @@ ERD의 다건 표기 자체는 3건 상한을 표현하지 않으므로 아래 C
 | 컬럼 | 타입·제약 |
 |---|---|
 | `id` | UUIDv7 PK, 기존 `UUIDPrimaryKeyMixin` |
-| `user_id` | UUID NOT NULL, UNIQUE, FK → `users.id`, `ON DELETE CASCADE` |
+| `user_id` | nullable UUID, UNIQUE, FK → `users.id`, `ON DELETE SET NULL` |
 | `rating` | Integer NOT NULL, `CHECK (rating BETWEEN 1 AND 5)` |
 | `created_at` | timestamptz NOT NULL, 기존 `CreatedAtMixin` |
 
@@ -152,7 +156,7 @@ ERD의 다건 표기 자체는 3건 상한을 표현하지 않으므로 아래 C
 | 컬럼 | 타입·제약 |
 |---|---|
 | `id` | UUIDv7 PK, 기존 mixin |
-| `user_id` | UUID NOT NULL, FK → `users.id`, `ON DELETE CASCADE` |
+| `user_id` | nullable UUID, FK → `users.id`, `ON DELETE SET NULL` |
 | `content` | Text NOT NULL, `CHECK (char_length(content) BETWEEN 1 AND 2000)` |
 | `source` | String NOT NULL, `RATING_POPUP`·`MY_PAGE` CHECK |
 | `service_feedback_id` | nullable UUID, UNIQUE, FK → `service_feedbacks.id`, `ON DELETE CASCADE` |
@@ -189,7 +193,15 @@ DB에서도 사용자당 최대 3행을 제한한다. 단순히 `COUNT(*) < 3`�
 
 각 UNIQUE는 자동 생성되는 인덱스를 활용한다. 같은 컬럼의 중복 인덱스는 추가하지 않는다.
 관리자 최신순 조회에 사용하는 평점·의견 테이블에는 `(created_at, id)` 인덱스를 둔다.
-세 테이블은 회원 탈퇴 시 삭제하며 기존 사용자 백필은 없다. 리포트 삭제는 평점·의견·노출 기록을 지우지 않는다.
+회원 탈퇴 시 평점·의견은 삭제하지 않고 `user_id`를 NULL로 바꿔 작성자 연결을 해제한다.
+평점과 팝업 의견의 연결·내용·제출 시각은 유지한다. 표시 승인 기록만 CASCADE로 삭제한다.
+NULL 사용자끼리는 UNIQUE 충돌이 나지 않으므로 여러 탈퇴자의 평점·의견을 함께 보관할 수 있다.
+관리자 응답의 `user_id`는 nullable이며 화면에 “탈퇴한 사용자”로 표시한다.
+재가입은 새 사용자 ID로 처리하며 보관한 평가를 새 계정에 자동 연결하지 않는다.
+기존 사용자 백필은 없으며 리포트 삭제는 평점·의견·노출 기록을 지우지 않는다.
+
+이미 추가한 `f54000000001`은 수정하지 않고 `f54000000002`에서 NULL 허용·FK 동작을 변경한다.
+보관 데이터가 있는 상태에서는 NOT NULL·CASCADE로 되돌리는 downgrade를 거절해 자료 유실을 막는다.
 
 ## 5. 동시 처리·트랜잭션
 
@@ -403,7 +415,7 @@ FE 파일은 BE에서 수정하지 않는다. 아래 내용을 전달할 계약�
 
 새 테스트는 `tests/test_service_feedback_entity.py`, `tests/test_service_feedback.py`,
 `tests/test_service_feedback_concurrency.py`, `tests/test_user_suggestions.py`를 제안한다.
-관리자 조회는 기존 `tests/test_admin.py`, 탈퇴 삭제는 `tests/auth/test_withdraw.py`와 연결한다.
+관리자 조회와 탈퇴 후 보관은 `tests/service_feedback/`에서 검증한다. 기존 회원 탈퇴의 인증·삭제 계약은 `tests/auth/test_withdraw.py`를 유지한다.
 
 | 검증 | 반드시 확인할 결과 |
 |---|---|
@@ -419,7 +431,7 @@ FE 파일은 BE에서 수정하지 않는다. 아래 내용을 전달할 계약�
 | 마이페이지 | 리포트 없음·기평가·3회 승인 후에도 접수, 평점·노출 불변, 새 요청은 새 행 |
 | 의견 재시도 | 같은 ID·내용 한 행, 같은 ID·다른 내용 409, 사용자별 ID 격리, 동시 재전송 한 행 |
 | 입력 | 엄격한 1~5 정수, 의견 공백 정규화·1/2000/2001자·NUL·잘못된 유니코드·추가 필드 |
-| 삭제·인증 | 리포트 삭제 후 승인 횟수 유지, 탈퇴 시 세 테이블 CASCADE, 미인증·만료·탈퇴 후 요청 401, 마이페이지 저장과 탈퇴 경쟁 시 FK 오류를 500으로 노출하지 않음 |
+| 삭제·인증 | 리포트 삭제 후 승인 횟수 유지, 탈퇴 시 평점·의견 보관/작성자 연결 해제·표시 기록 삭제, 미인증·만료·탈퇴 후 요청 401, 마이페이지 저장과 탈퇴 경쟁 시 FK 오류를 500으로 노출하지 않음 |
 | 관리자·FE | 관리자 인증·출처 필터·offset·정렬·텍스트 출력, 홈 방문당 1회 열기·계정 전환·오류 후 재시도 |
 
 동시성 테스트는 savepoint fixture 하나를 여러 작업에서 공유하지 않는다.
@@ -488,7 +500,7 @@ BE 저장·API·관리자·검증 완료 후 FE 실연동에서 홈 팝업·마�
 | `uv sync --locked` | 잠금 파일에 맞는 환경 준비 완료 |
 | `.venv/bin/ruff check src tests/service_feedback` | 통과 |
 | `.venv/bin/python -c "import pitch_coach_backend.main"` | 통과 |
-| `.venv/bin/alembic heads` | `f54000000001` 단일 head |
+| `.venv/bin/alembic heads` | 초기 구현은 `f54000000001`, 탈퇴 보관 변경은 `f54000000002` 단일 head |
 | `.venv/bin/alembic upgrade head` | 빈 임시 DB 적용 통과 |
 | `.venv/bin/alembic check` | `No new upgrade operations detected.` |
 | `.venv/bin/python -m pytest -q --tb=short` | 1,399 passed · 1 skipped |
@@ -510,3 +522,14 @@ BE 저장·API·관리자·검증 완료 후 FE 실연동에서 홈 팝업·마�
 
 미확인 범위는 FE 실연동, 관리자 브라우저 시각 확인, Mermaid 렌더링이다.
 관리자 API의 인증·출처 필터·페이지 조회와 독립 PostgreSQL 연결의 경쟁 처리는 테스트로 확인했다.
+
+## 12. PR 추가 요청 반영 (2026-10-27)
+
+- 평점·공통 의견은 탈퇴 후 보관하고 사용자 FK를 `SET NULL`로 변경했다. 표시 승인 기록만 삭제한다.
+- 관리자 DTO의 nullable 작성자와 “탈퇴한 사용자” 표시를 반영했다.
+- 기존 데이터 → 추가 migration → 탈퇴 → 평점/의견 보관과 표시 기록 삭제를 독립 임시 DB에서 검증한다.
+- 보관한 행이 있으면 이전 NOT NULL 스키마로의 downgrade는 실패시키며 임의로 데이터를 지우지 않는다.
+- PR #576 본문에 ERD PNG, 원래 FE 이슈/PR과의 차이와 FE 변경 체크리스트를 추가한다.
+- 추가 검증: Ruff·앱 import·`f54000000002` 단일 head·빈 DB migration·`alembic check` 통과.
+- 전체 테스트는 1,402 passed · 1 skipped다. 기존 데이터의 migration 전후 보관과 안전한 downgrade도 검증했다.
+- Graphviz로 만든 ERD PNG의 컬럼·FK·탈퇴 정책을 직접 확인했다. 관리자 JS 문법과 문서 링크 검사도 통과했다.

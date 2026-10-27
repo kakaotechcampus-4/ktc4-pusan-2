@@ -1,0 +1,43 @@
+digraph service_feedback {
+  graph [rankdir=LR, bgcolor="#f5f7fb", pad="0.38", nodesep="0.65", ranksep="1.2", splines=polyline,
+    fontname="Apple SD Gothic Neo", fontsize=22,
+    label="서비스 평점 · 공통 의견 · 표시 승인 기록\n회원 탈퇴 후 평점·의견 보관 / 작성자 연결 해제", labelloc=t, fontcolor="#14243a"];
+  node [shape=plain, fontname="Apple SD Gothic Neo"];
+  edge [fontname="Apple SD Gothic Neo", fontsize=12, color="#64748b", fontcolor="#334155", arrowsize=0.7];
+  users [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#d6dde8" BGCOLOR="white">
+    <TR><TD BGCOLOR="#14243a" COLSPAN="3"><FONT COLOR="white"><B>users · 기존 사용자</B></FONT></TD></TR>
+    <TR><TD PORT="id"><B>id</B></TD><TD>UUID</TD><TD>PK</TD></TR>
+  </TABLE>>];
+  ratings [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#d6dde8" BGCOLOR="white">
+    <TR><TD BGCOLOR="#2563eb" COLSPAN="3"><FONT COLOR="white"><B>service_feedbacks · 평점</B></FONT></TD></TR>
+    <TR><TD>id</TD><TD>UUIDv7</TD><TD>PK</TD></TR>
+    <TR><TD PORT="user_id">user_id</TD><TD>UUID · nullable</TD><TD>FK / UNIQUE</TD></TR>
+    <TR><TD>rating</TD><TD>INTEGER</TD><TD>1~5</TD></TR>
+    <TR><TD>created_at</TD><TD>TIMESTAMPTZ</TD><TD>NOT NULL</TD></TR>
+    <TR><TD COLSPAN="3" BGCOLOR="#eff6ff">탈퇴: user_id = NULL · 평점 유지</TD></TR>
+  </TABLE>>];
+  opinions [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#d6dde8" BGCOLOR="white">
+    <TR><TD BGCOLOR="#0f766e" COLSPAN="3"><FONT COLOR="white"><B>user_suggestions · 공통 의견</B></FONT></TD></TR>
+    <TR><TD>id</TD><TD>UUIDv7</TD><TD>PK</TD></TR>
+    <TR><TD PORT="user_id">user_id</TD><TD>UUID · nullable</TD><TD>FK</TD></TR>
+    <TR><TD>content</TD><TD>TEXT</TD><TD>1~2,000자</TD></TR>
+    <TR><TD>source</TD><TD COLSPAN="2">RATING_POPUP / MY_PAGE</TD></TR>
+    <TR><TD PORT="feedback_id">service_feedback_id</TD><TD>UUID · nullable</TD><TD>FK / UNIQUE</TD></TR>
+    <TR><TD>request_id</TD><TD>UUID · nullable</TD><TD>사용자와 복합 UNIQUE</TD></TR>
+    <TR><TD>created_at</TD><TD>TIMESTAMPTZ</TD><TD>NOT NULL</TD></TR>
+    <TR><TD COLSPAN="3" BGCOLOR="#f0fdfa">탈퇴: user_id = NULL · 내용과 평점 연결 유지</TD></TR>
+  </TABLE>>];
+  displays [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#d6dde8" BGCOLOR="white">
+    <TR><TD BGCOLOR="#7c3aed" COLSPAN="3"><FONT COLOR="white"><B>service_feedback_impressions · 표시 승인</B></FONT></TD></TR>
+    <TR><TD>id</TD><TD>UUIDv7</TD><TD>PK</TD></TR>
+    <TR><TD PORT="user_id">user_id</TD><TD>UUID · NOT NULL</TD><TD>FK</TD></TR>
+    <TR><TD>display_request_id</TD><TD>UUID</TD><TD>사용자와 복합 UNIQUE</TD></TR>
+    <TR><TD>display_number</TD><TD>INTEGER · 1~3</TD><TD>사용자와 복합 UNIQUE</TD></TR>
+    <TR><TD>created_at</TD><TD>TIMESTAMPTZ</TD><TD>NOT NULL</TD></TR>
+    <TR><TD COLSPAN="3" BGCOLOR="#f5f3ff">사용자당 최대 3건 · 탈퇴 시 삭제</TD></TR>
+  </TABLE>>];
+  users:id -> ratings:user_id [label="0..1 평점\nON DELETE SET NULL"];
+  users:id -> opinions:user_id [label="0..N 의견\nON DELETE SET NULL"];
+  users:id -> displays:user_id [label="0..3 승인\nON DELETE CASCADE"];
+  ratings -> opinions:feedback_id [label="0..1 팝업 의견\n마이페이지는 연결 없음", color="#0f766e"];
+}
