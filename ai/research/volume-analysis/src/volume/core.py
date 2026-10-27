@@ -34,6 +34,8 @@ from .schemas import (
 )
 from .version import FEATURE_VERSION
 
+SECOND_MS = 1000
+
 
 def judge(
     inputs: VolumeInput | dict[str, Any], t_ms: int, config: Config = Config()
@@ -83,7 +85,7 @@ def judge(
     )
 
     # PAUSE: 마지막 1초 끝의 연속 무음을 오디오가 다시 흐른 뒤로 잘라 본다
-    silence = _silence(seen)
+    silence = _silence(seen, t_ms)
     pause_issues: list[LongSilenceIssue] = []
     if silence is None:
         pause_state = "UNKNOWN"
@@ -236,7 +238,8 @@ def _smoothed(
     """(level_db, voice_diff_db). end_ms 에서 끝나는 짧은 창의 말한 1초들로 낸다.
 
     level_db 는 dB 평균이 아니라 에너지 평균(Leq)이다. voice_diff_db 는 잴 수 있을 때만 낸다 —
-    마지막 1초에 오디오가 흐르고, 기준 음량이 있고, 말한 1초가 기준 개수 이상.
+    end_ms 에서 끝나는 1초가 있고 그 1초에 오디오가 흐르고, 기준 음량이 있고,
+    말한 1초가 기준 개수 이상.
     """
     window = [
         r
@@ -250,7 +253,8 @@ def _smoothed(
         return None, None
     energy = sum(10 ** (r.level_db / 10) * r.voiced_ms for r in window)  # type: ignore[operator]
     level = round(10 * math.log10(energy / voiced), 2)
-    last_live = bool(seen) and seen[-1].audio_live
+    # 기록이 끊겼으면 마지막으로 받은 1초로 판정하지 않는다(없는 값을 추측하지 않는다)
+    last_live = bool(seen) and seen[-1].audio_live and _end(seen[-1]) == end_ms
     if not last_live or base is None or len(window) < config.min_voiced_seconds:
         return level, None
     return level, round(level - base, 2)
@@ -267,13 +271,13 @@ def _low_run_ms(seen: list[VoiceRecord], base: float | None, config: Config) -> 
     return run
 
 
-def _silence(seen: list[VoiceRecord]) -> int | None:
-    """마지막 1초 끝의 연속 무음. 오디오가 멈췄으면 None.
+def _silence(seen: list[VoiceRecord], end_ms: int) -> int | None:
+    """end_ms 에서 끝나는 1초 끝의 연속 무음. 그 1초가 없거나 오디오가 멈췄으면 None.
 
     받은 창 안에 오디오가 끊긴 1초가 있으면, 다시 흐른 첫 1초의 시작부터만 침묵으로 본다
     (끊긴 시간은 침묵이 아니다). 창 안에 끊김이 없으면 자르지 않는다.
     """
-    if not seen or not seen[-1].audio_live:
+    if not seen or not seen[-1].audio_live or _end(seen[-1]) != end_ms:
         return None
     last = seen[-1]
     dead = [i for i, r in enumerate(seen) if not r.audio_live]
@@ -298,14 +302,18 @@ def _tally(
     total_ms 만 센다.
 
     '말한 1초'로 거르지 않고 오디오가 흐른 모든 1초를 더한다. 한 번 센 몫은 바꾸지 않는다.
+    기록이 없는 시간은 시작부터 1초씩(끝 조각 포함) 나눠 낸다 — 코치가 몫을 그 t_ms 의 장에
+    더하므로, 빈 시간 중간에 장이 바뀌어도 시간이 앞 장에 몰리지 않게.
     """
     new = [r for r in records if r.t_ms >= since_ms and _end(r) <= t_ms]
     volume: list[VolumeTallyItem] = []
     pause: list[PauseTallyItem] = []
 
     def gap(start: int, end: int) -> None:
-        volume.append(VolumeTallyItem(t_ms=start, values=VolumeTally(total_ms=end - start)))
-        pause.append(PauseTallyItem(t_ms=start, values=PauseTally(total_ms=end - start)))
+        for p in range(start, end, SECOND_MS):
+            ms = min(p + SECOND_MS, end) - p
+            volume.append(VolumeTallyItem(t_ms=p, values=VolumeTally(total_ms=ms)))
+            pause.append(PauseTallyItem(t_ms=p, values=PauseTally(total_ms=ms)))
 
     pos = since_ms
     for r in new:
@@ -337,7 +345,7 @@ def _tally(
             )
         )
         # 잘린 침묵이 이 1초 안에서 긴 침묵 기준을 처음 넘으면 1 (한 침묵은 한 번)
-        silence = _silence(upto)
+        silence = _silence(upto, _end(r))
         crossed = (
             silence is not None and silence - r.duration_ms <= config.long_silence_ms < silence
         )

@@ -102,6 +102,20 @@ def test_audio_dead_is_unknown_for_both() -> None:
     assert pause.metrics.silence_ms is None
 
 
+def test_records_stopped_is_unknown_for_both() -> None:
+    # 작게 말하다 긴 침묵에 들어간 뒤 기록이 끊겼다. 판정 시각에 끝나는 1초가 없으면
+    # 마지막으로 받은 기록으로 LOW · SILENT 를 이어 가지 않는다
+    records = speech(0, 5000, BASE - 10) + silent(5000, 12000)
+    volume, pause = run(records, 15000, since_ms=12000)
+    assert (volume.state, pause.state) == ("UNKNOWN", "UNKNOWN")
+    assert not volume.measurable and not pause.measurable
+    assert volume.issues == [] and pause.issues == []
+    assert volume.metrics.voice_diff_db is None
+    assert pause.metrics.silence_ms is None
+    low, _ = run(speech(0, 5000, BASE - 10), 7000, since_ms=5000)
+    assert low.state == "UNKNOWN" and low.issues == []
+
+
 def test_too_few_spoken_seconds_is_unknown() -> None:
     cfg = Config()
     records = speech(0, (cfg.min_voiced_seconds - 1) * 1000, BASE - 10)
@@ -268,10 +282,22 @@ def test_tally_without_baseline_has_no_level_voiced() -> None:
 
 def test_missing_seconds_count_only_total() -> None:
     volume, pause = run([rec(40000)], 41000, since_ms=38000)
-    assert [(i.t_ms, i.values.total_ms) for i in volume.tally] == [(38000, 2000), (40000, 1000)]
-    gap = volume.tally[0].values
-    assert gap.voiced_ms == gap.audio_live_ms == 0
-    assert pause.tally[0].values.audio_live_ms == 0
+    # 빈 시간도 1초씩 낸다(코치가 t_ms 의 장에 더하므로 중간에 장이 바뀌어도 나뉘게)
+    expected = [(38000, 1000), (39000, 1000), (40000, 1000)]
+    assert [(i.t_ms, i.values.total_ms) for i in volume.tally] == expected
+    assert [(i.t_ms, i.values.total_ms) for i in pause.tally] == expected
+    for i in range(2):
+        gap = volume.tally[i].values
+        assert gap.voiced_ms == gap.audio_live_ms == 0
+        assert pause.tally[i].values.audio_live_ms == 0
+
+
+def test_missing_seconds_split_with_last_piece() -> None:
+    volume, pause = run([], 40500, since_ms=38000)
+    expected = [(38000, 1000), (39000, 1000), (40000, 500)]
+    assert [(i.t_ms, i.values.total_ms) for i in volume.tally] == expected
+    assert [(i.t_ms, i.values.total_ms) for i in pause.tally] == expected
+    assert volume.counted_until_ms == 40500
 
 
 def test_audio_dead_seconds_count_only_total() -> None:
