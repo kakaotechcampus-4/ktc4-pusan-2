@@ -49,3 +49,17 @@ def test_failed_loader_leaves_it_not_ready_and_logs_without_message(
     assert line.startswith("warmup_failed name=")
     assert "RuntimeError at" in line
     assert "비밀" not in line
+
+
+def test_failed_loader_calls_on_failure_once() -> None:
+    called: list[str] = []
+
+    def broken() -> None:
+        raise RuntimeError("x")
+
+    r = Readiness(
+        [broken, lambda: called.append("never")], on_failure=lambda: called.append("stop")
+    )
+    r.start()
+    assert not r.wait(1)
+    assert called == ["stop"]

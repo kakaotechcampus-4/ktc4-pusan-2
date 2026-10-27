@@ -122,7 +122,6 @@ ai/service/
 │   ├── settings.py              # 환경변수 읽기 (pydantic-settings)
 │   ├── api/                     # 라우터만. 로직 없음
 │   │   ├── health.py            #   GET /health · /ready
-│   │   ├── sample.py            #   POST /sample/judge — 규약 확인용 대역. AI_ENABLE_SAMPLE 일 때만 등록 (첫 실제 기능이 붙으면 지운다)
 │   │   └── <이름>.py            #   기능 엔드포인트 (coach.py 는 판정 모듈을 묶어 코치에 넘긴다)
 │   ├── common/                  # 기능들이 같이 쓰는 코드
 │   │   ├── llm.py               #   LLM 객체는 여기서만 만든다
@@ -130,7 +129,6 @@ ai/service/
 │   │   ├── request_log.py       #   X-Request-ID · 요청마다 한 줄 로그
 │   │   └── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
 │   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다
-│       ├── sample/              #   규약 확인용 대역 판정 모듈 (`architecture.md` 7 · 8절 모양 그대로, 실제 판정 없음)
 │       └── <기능>/              #   schemas.py · core.py · config.py · version.py · examples/ · prompts/ (`architecture.md` 8절)
 └── tests/
     ├── conftest.py · test_health.py
@@ -138,8 +136,8 @@ ai/service/
     └── live/                    # 실제 LLM 호출 (live 표시, 기본 실행에서 제외)
 ```
 - 패키지 이름은 BE의 `pitch_coach_backend`에 맞춰 `pitch_coach_ai`, 실행은 `uvicorn pitch_coach_ai.main:app`이다.
-- 처음 뼈대에는 `/health`, 공통(`settings.py` · `common/llm.py` · `common/errors.py` · `common/request_log.py` · `common/meta.py`), 규약 확인용 대역(`features/sample/` · `api/sample.py`)이 있다. `contracts/` · `/ready`는 그것이 필요한 첫 기능과 함께 만든다. 파일마다의 역할은 서비스가 생기면 `ai/service/README.md`의 파일 지도에 둔다.
-- **규약 확인용 대역**: 실제 기능을 옮기기 전에, 판정 모듈 · 에이전트가 같은 규약(요청 검사 · 결과와 `meta` · 공통 에러 본문 · `X-Request-ID` · 처리 시간 로그)으로 붙는지 로컬 컨테이너에서 확인하는 가짜 판정 모듈이다. `architecture.md` 7 · 8절 모양(`schemas.py` · `core.py` · `config.py` · `version.py` · `examples/`, `judge` · `summarize` · `criteria`)을 그대로 따르고 실제 판정은 하지 않는다. `AI_ENABLE_SAMPLE=true`일 때만 라우터를 등록하므로 서버(기본 `false`)에서는 경로가 없다(404). 첫 실제 기능 엔드포인트가 붙으면 대역과 그 테스트를 지운다(그 기능의 계약 테스트가 대신한다).
+- 처음 뼈대에는 `/health`, 공통(`settings.py` · `common/llm.py` · `common/errors.py` · `common/request_log.py` · `common/meta.py`), 규약 확인용 대역(`features/sample/` · `api/sample.py`)이 있었다. 첫 실제 기능(대본 전달도)을 붙이며 대역을 지우고 `contracts/` · `/ready`(`common/readiness.py`)를 만들었다. 파일마다의 역할은 `ai/service/README.md`의 파일 지도에 있다.
+- **규약 확인용 대역**(지웠다): 실제 기능을 옮기기 전에 판정 모듈 · 에이전트가 같은 규약(요청 검사 · 결과와 `meta` · 공통 에러 본문 · `X-Request-ID` · 처리 시간 로그)으로 붙는지 확인하던 가짜 판정 모듈(`features/sample/` · `POST /sample/judge` · `AI_ENABLE_SAMPLE`)이다. 첫 실제 기능 엔드포인트(대본 전달도)가 붙으며 그 기능의 계약 테스트가 대신하게 되어 지웠다.
 
 ## 4-2. 진입 함수
 | 함수 · 엔드포인트 | 하는 일 | 부르는 쪽 |
@@ -148,7 +146,6 @@ ai/service/
 | `GET /health` | 프로세스가 살아 있는지. LLM을 부르지 않는다(부를 때마다 비용 · 지연) | compose 헬스체크 · 배포 확인 |
 | `GET /ready` | 시작할 때 불러올 모델까지 준비됐는지 | compose 헬스체크 (서버 안 모델이 생긴 뒤) |
 | `api/<이름>.py`의 `router` | 기능 경로. 요청 검사 → 기능 코어 호출 | BE |
-| `POST /sample/judge` (`api/sample.py`) | 규약 확인용 대역. 요청 `{t_ms, since_ms, records}`를 받아 `{results: [JudgmentResult], meta}`를 돌려준다. `AI_ENABLE_SAMPLE=true`일 때만 등록 | AI 담당의 로컬 확인 (BE는 부르지 않는다) |
 | `common/llm.py`의 `structured_llm(schema, model=…, deadline=…)` | 출력 스키마를 고정한 LLM 객체를 돌려준다 | 라우터 (기능 코어에 인자로 넘긴다) |
 | `settings.py`의 `settings` | 환경변수를 읽은 설정 객체 | `main.py` · `common/` · 라우터 |
 
@@ -170,7 +167,6 @@ ai/service/
 |---|---|---|
 | `GET /health` | 컨테이너가 떠 있는 동안 주기적으로 | compose 헬스체크, 배포 확인 명령 |
 | `GET /ready` | 서버 안 모델을 쓰는 기능이 생긴 뒤 | compose 헬스체크 |
-| `POST /sample/judge` | 로컬에서 `AI_ENABLE_SAMPLE=true`로 띄웠을 때만 (규약 확인용 대역, 4-1) | AI 담당 |
 | 기능 엔드포인트 | `architecture.md` 1-2 표 | BE |
 
 ## 5-2. 입력
@@ -272,6 +268,7 @@ LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 
   torch = { index = "pytorch-cpu" }
   ```
 - **메모리를 먼저 잰다.** 모델은 워커마다 따로 올라간다. 붙이는 PR에서 `docker stats`로 컨테이너 메모리를 재고, 잰 값의 1.5배를 compose 메모리 상한(`mem_limit`)으로 둔다.
+- **잰 값 (대본 전달도의 형태소 분석기를 붙일 때, 2026-10-26)**: 이미지 374 MB → 896 MB(Kiwi 모델 · scikit-learn · scipy), 컨테이너를 띄운 뒤 요청을 받기까지 약 5초 + Kiwi 불러오기 약 1.2초(`warmup_done`), 준비된 뒤 컨테이너 메모리 약 414 MiB(워커 1개, 요청 없음). 지금 헬스체크 시작 유예 10초 안에 준비된다. 1.5배 규칙으로는 `mem_limit` 약 620 MiB(워커를 늘리면 워커 수만큼 늘린다).
 
 ## 6-4. 의존성 더하기
 - 운영 의존성은 `ai/service`에서 `uv add <패키지>`, 테스트 · 도구는 `uv add --dev <패키지>`.
@@ -345,18 +342,7 @@ curl.exe http://localhost:8001/health                               # {"status":
 ```
 - `-p 8001:8000`은 내 PC의 8001번을 컨테이너의 8000번에 연결한다. 컨테이너는 자기 네트워크를 쓰므로 이 연결이 없으면 밖에서 들어갈 수 없다.
 - 키 없이 뜨는지만 볼 때는 `--env-file`을 빼도 된다. `--rm`은 종료할 때 컨테이너를 지운다. Ctrl+C로 끈다.
-- **규약 확인용 대역 켜기**: 같은 이미지를 `-e AI_ENABLE_SAMPLE=true`로 띄우고 `features/sample/examples/`의 요청을 보낸다. 저장소 맨 위에서:
-  ```powershell
-  docker run --rm -p 8001:8000 -e AI_ENABLE_SAMPLE=true pitch-coach-ai:local
-  # 다른 창에서
-  curl.exe -i -X POST http://localhost:8001/sample/judge -H "Content-Type: application/json" -H "X-Request-ID: sample-check-1" --data-binary "@ai/service/src/pitch_coach_ai/features/sample/examples/judge_request.json"
-      # 200, x-request-id: sample-check-1, 본문 = examples/judge_response.json (meta.model null, criteria_versions 있음)
-  curl.exe -i -X POST http://localhost:8001/sample/judge -H "Content-Type: application/json" -d "{}"
-      # 422 {"error":{"code":"VALIDATION_ERROR","message":"요청 형식이 올바르지 않습니다."}}
-  curl.exe -i http://localhost:8001/no-such-path
-      # 404 {"error":{"code":"NOT_FOUND","message":"요청한 경로를 찾을 수 없습니다."}}
-  ```
-  컨테이너 로그에는 요청마다 `request_id=… method=POST path=/sample/judge status=200 code=- duration_ms=…` 한 줄이 남는다(422는 검증 오류의 필드 이름만, 값은 없다). 대역을 끈 채(기본) 같은 요청을 보내면 404 `NOT_FOUND`다. 실제 출력은 `ai/service/README.md`에 있다.
+- **대본 전달도 확인**: 키 없이 띄운 컨테이너에서 `curl.exe -i http://localhost:8001/ready`(형태소 분석기를 다 불러오면 200)와 `features/script_coverage/examples/rescore/request.json`을 `POST /takes/rescore`로 보내 예시 응답과 같은지 본다(LLM 없음). 명령과 기대 출력은 `ai/service/README.md` '대본 전달도 확인'.
 - macOS · Linux에서는 `curl.exe` 대신 `curl`을 쓴다.
 
 **BE와 같이 띄우기 (BE 담당)**
@@ -554,7 +540,7 @@ FE는 AI를 부르지 않는다. 기능별로 누가 언제 무엇을 부르는�
 | compose에 `ai` 서비스 (11-3 그대로, `ports` 없음, `be.depends_on`에 넣지 않음) | develop 서버의 be 컨테이너에서 `http://ai:8000/health` 200 (11-6 명령) |
 | 두 배포 워크플로의 build · push 대상에 `ai`, 빈 env 파일에 `ai/.env`, 서버 env 단계에 `AI_ENV`. 운영 배포에도 develop과 같은 마이그레이션 단계 | 이미지 `pitch-coach:ai-<sha>`가 ECR · Docker Hub에 올라감 |
 | `.github/workflows/ai-ci.yml` (11-5) | PR에서 job `ai` 통과 |
-| GitHub 시크릿 `AI_ENV` (내용 = `ai/.env` 전체, 따옴표 없이. `AI_ENABLE_SAMPLE`은 넣지 않음) | 서버 `~/pitch-coach/ai/.env` |
+| GitHub 시크릿 `AI_ENV` (내용 = `ai/.env` 전체, 따옴표 없이) | 서버 `~/pitch-coach/ai/.env` |
 | 서버 BE 환경변수 `AI_BASE_URL=http://ai:8000` | BE가 내부망으로 AI를 부름 |
 | (권장) 배포의 `docker compose up`이 `ai`가 healthy가 될 때까지 기다리게 함(예: `--wait --wait-timeout 120`) | AI가 뜨지 못하면 배포 워크플로가 실패로 끝남 |
 | BE의 AI 호출: 경로 버전 없음, `X-Request-ID`, `architecture.md` 3절 시간 예산 · 재시도, 백그라운드 동시 개수 제한, 결과와 `meta` 저장 | BE의 AI 호출 코드가 `architecture.md` 2 · 3 · 5절대로 동작함 |
@@ -592,15 +578,14 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 **정한 값**
 - **모델 설정 칸**: 모델마다 이름 · 주소 · 키 묶음(`OPENAI_*` 기본 · `OPENAI_SOL_*`), `architecture.md` 10절. 서비스가 이 묶음을 읽는 설정은 `settings.py`이고, 묶음이 반만 차 있으면 시작 오류다.
 - **역할 → 묶음 연결**: `settings.py`의 상수 한 곳에 둔다(환경변수가 아니다). 지금은 모든 역할이 기본 묶음이다.
-- **만드는 쪽**: 아래 표의 최소 서버 · 공통과 규약 확인용 대역(4-1)은 AI가 만들고 로컬 컨테이너로 확인한다. CI · compose · 배포는 BE가 만들고, AI는 그 내용을 BE에 전달한다.
-- **규약 확인용 대역**: `features/sample/` · `POST /sample/judge`, `AI_ENABLE_SAMPLE=true`일 때만 등록하고 첫 실제 기능이 붙으면 지운다(4-1).
+- **만드는 쪽**: 아래 표의 최소 서버 · 공통(과 지금은 지운 규약 확인용 대역, 4-1)은 AI가 만들고 로컬 컨테이너로 확인한다. CI · compose · 배포는 BE가 만들고, AI는 그 내용을 BE에 전달한다.
 - **운영 배포의 마이그레이션 단계**: 운영 배포(`main-deploy.yml`)에도 develop 배포와 같은 마이그레이션 단계(`alembic upgrade head` · `alembic-git-revisions`)를 둔다. BE가 넣는다.
 
 | 구성 | 만드는 것 | 누가 | 다 됐는지 확인 |
 |---|---|---|---|
 | 최소 서버 | FastAPI 앱 · `/health` · `pyproject.toml` · `uv.lock` · Dockerfile · `.dockerignore` · 테스트 · README | AI | 로컬 `docker run` 뒤 `/health` 200 |
 | CI | `ai-ci.yml` | BE (내용은 11-5) | PR에서 통과 |
-| 공통 | `settings.py` · `common/llm.py`(호출 시간 제한 · 요청 마감) · `common/errors.py` · `X-Request-ID` · 처리 시간 로그 · 테스트, 규약 확인용 대역 | AI | 키 없이 뜸, 대역으로 결과 · `meta` · 에러 본문 확인, live 테스트로 실제 호출 1회 |
+| 공통 | `settings.py` · `common/llm.py`(호출 시간 제한 · 요청 마감) · `common/errors.py` · `X-Request-ID` · 처리 시간 로그 · 테스트 | AI | 키 없이 뜸, 첫 기능(대본 전달도)의 계약 · 엔드포인트 테스트로 결과 · `meta` · 에러 본문 확인, live 테스트로 실제 호출 (처음에는 규약 확인용 대역으로 확인했고 지금은 지웠다) |
 | compose · 배포 | compose `ai` 서비스, 배포 워크플로(develop · 운영)의 `ai` 빌드 · push, 시크릿 `AI_ENV` | BE (내용은 11-3 · 11-5) | develop 서버의 be 컨테이너에서 `http://ai:8000/health` 200 |
 | 기능 엔드포인트 | 기능별 코어와 엔드포인트, `contracts/openapi.json`(기능이 하나라도 있으면), `/ready`(서버 안 모델을 쓰는 기능이 있으면) | AI | 기능별 |
 
@@ -610,7 +595,7 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 - 기능마다 쓸 모델 고르기(역할별 묶음, 측정 조건): 아직 정하지 않았다. 그 전에는 모든 역할이 기본 묶음이다.
 
 **알려진 한계**
-- 이 문서의 명령 · 출력 중 실행해 확인한 것은 10절의 코드 실행 · 테스트(live 포함) · Docker 이미지 실행 · 규약 확인용 대역과 11-1의 이미지 파일(Dockerfile · `.dockerignore`)이다(로컬 Windows · Docker Desktop, #210). 10절 'BE와 같이 띄우기'와 11-3 compose · 11-5 CI · 배포 · 11-6 운영의 명령 · 출력은 BE가 만들기 전이라 아직 목표다.
+- 이 문서의 명령 · 출력 중 실행해 확인한 것은 10절의 코드 실행 · 테스트(live 포함) · Docker 이미지 실행 · 대본 전달도 확인(처음에는 규약 확인용 대역)과 11-1의 이미지 파일(Dockerfile · `.dockerignore`)이다(로컬 Windows · Docker Desktop, #210). 10절 'BE와 같이 띄우기'와 11-3 compose · 11-5 CI · 배포 · 11-6 운영의 명령 · 출력은 BE가 만들기 전이라 아직 목표다.
 - 인증이 없어 내부망을 벗어나면 안전하지 않다.
 - 워커마다 모델이 따로 올라가 워커를 늘리면 메모리가 그만큼 는다.
 - LLM 호출 시간 제한은 서비스가 그 호출을 기다리지 않게 할 뿐, 이미 보낸 생성을 멈추지는 못한다. 시간 초과로 버린 호출은 출력 상한까지 생성을 마칠 때까지 LLM 호출 스레드(40개) 하나를 쓰고 토큰 비용도 든다. BE가 백그라운드 AI 호출을 합쳐 동시에 4개로 제한하므로(대본 등록은 그 안에서 2개, `architecture.md` 3절) 스레드가 모자랄 가능성은 낮다. 시간 초과가 잦아 모자라면 버린 호출의 스트림을 닫도록 고친다.
@@ -624,7 +609,6 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 | Python · 패키지 · 실행 | 3.12, `pitch_coach_ai`, `uvicorn pitch_coach_ai.main:app`, uv `0.11` (이미지의 `ghcr.io/astral-sh/uv:0.11`) | 4절 · 11-1 |
 | 헬스체크 | `/health` (간격 10초 · 시간 제한 3초 · 재시도 5 · 시작 유예 10초). 서버 안 모델이 생기면 `/ready` | 8절 · 11-3 |
 | 워커 · 종료 대기 | 워커 1 (`WEB_CONCURRENCY`로 조정), 종료 대기 30초 | 8절 |
-| 규약 확인용 대역 | `features/sample/` · `POST /sample/judge`, `AI_ENABLE_SAMPLE`(기본 `false`) | 4-1 · 15절 |
 | 역할 → 모델 묶음 | `settings.py` 상수, 지금은 모두 기본 묶음 | 15절 · `architecture.md` 9절 |
 | 메모리 상한 | 서버 안 모델을 붙일 때 잰 값의 1.5배 | 6-3 |
 | 모델 파일 | git 밖, manifest만 커밋. 공개 모델은 빌드할 때 이미지에 넣는다 | 6-3 |
