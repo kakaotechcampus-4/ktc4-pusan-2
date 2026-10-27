@@ -47,6 +47,18 @@ it('uses server UUIDs for editor and report URLs instead of version numbers', ()
     expect(markup).toContain('/takes/' + take.take_id);
   expect(markup).not.toContain('href="/takes/3"');
   expect(markup.indexOf('TAKE 03')).toBeLessThan(markup.indexOf('TAKE 01'));
+  expect(markup).not.toContain('연습 전');
+});
+
+it('연습 기록이 없는 피치는 연습 전으로 표시하고 이어서 준비할 수 있다', () => {
+  const markup = renderToStaticMarkup(
+    <MemoryRouter>
+      <HomePitchCard pitch={{ ...homeFixture.pitches[0], takes: [] }} index={0} />
+    </MemoryRouter>,
+  );
+  expect(markup).toContain('연습 전');
+  expect(markup).toContain('피치 제목을 눌러 자료와 대본을 이어서 준비');
+  expect(markup).toContain('/pitch/10000000-0000-4000-8000-000000000001/edit');
 });
 
 it('preserves zero scores and deltas; enables navigation only for supplied IDs', () => {

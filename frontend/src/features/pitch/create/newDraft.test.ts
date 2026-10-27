@@ -75,6 +75,28 @@ describe('슬라이드부터 올리는 새 피치', () => {
     },
   };
 
+  it('업로드 실패 뒤에는 만든 피치를 유지하고 재시도할 때 같은 피치를 쓴다', async () => {
+    vi.mocked(createPitch).mockResolvedValue({ message: 'ok', pitch_id: 'pitch-new' });
+    vi.mocked(uploadPresentation)
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce(uploaded);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const file = new File(['%PDF'], 'a.pdf', { type: 'application/pdf' });
+    try {
+      await uploadSlides(file);
+      expect(store().pitchId).toBe('pitch-new');
+      expect(store().slideUpload).toMatchObject({ status: 'failed' });
+
+      await uploadSlides(file);
+      expect(createPitch).toHaveBeenCalledOnce();
+      expect(uploadPresentation).toHaveBeenNthCalledWith(2, 'pitch-new', file);
+      expect(store().draft.slides).toHaveLength(1);
+      expect(store().slideUpload).toEqual({ status: 'idle' });
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it('피치가 없으면 파일 이름을 제목으로 피치부터 만들고 그 아래에 올린다', async () => {
     vi.mocked(createPitch).mockResolvedValue({ message: 'ok', pitch_id: 'pitch-new' });
     vi.mocked(uploadPresentation).mockResolvedValue(uploaded);
