@@ -67,7 +67,7 @@ export type Dimension =
   | 'content_delivery';
 export type DimensionStatus = 'PRIORITY' | 'IMPROVED' | 'STRENGTH' | 'STABLE' | 'NOT_EVALUABLE';
 export type JudgeStatus = 'ACHIEVED' | 'PARTIAL' | 'FAILED' | 'NOT_EVALUABLE';
-export type Operator = 'LTE' | 'GTE';
+export type Operator = 'LT' | 'LTE' | 'GT' | 'GTE';
 
 export interface ReviewPoint {
   area: string;

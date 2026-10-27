@@ -34,7 +34,7 @@ const AREA: Record<Area, string> = {
   TIME: '시간',
 };
 
-export const OP: Record<Operator, string> = { LTE: '이하', GTE: '이상' };
+export const OP: Record<Operator, string> = { LT: '미만', LTE: '이하', GT: '초과', GTE: '이상' };
 
 /** 지표 이름은 `architecture.md` 6-3 */
 const METRIC: Record<

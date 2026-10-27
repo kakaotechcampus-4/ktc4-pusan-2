@@ -47,7 +47,7 @@ export function ComparisonPage() {
 
   if (!history.data)
     return (
-      <InfoPage title="Take 비교">
+      <InfoPage title="Take 비교" logo={false}>
         {isPitchMissing(history.error) ? (
           <Card>
             <div role="alert" className="flex flex-col gap-3">
@@ -73,7 +73,7 @@ export function ComparisonPage() {
   const offEngine = rows.filter((r) => r.gaze_engine !== null && gazeOffEngine(r, latestEngine));
 
   return (
-    <InfoPage title="Take 비교">
+    <InfoPage title="Take 비교" logo={false}>
       {rows[0] && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
           <p className="font-bold">{rows[0].pitch_title}</p>

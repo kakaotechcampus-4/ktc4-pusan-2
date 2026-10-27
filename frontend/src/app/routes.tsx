@@ -91,6 +91,18 @@ const publicPaths = [
   '*',
 ];
 
+// 홈과 같은 상단바(AppHeader)를 얹는 화면. 메뉴를 옮기거나 기록을 열어도 상단바가 바뀌지 않게 합니다.
+// 편집 화면(/pitch/new · edit)은 자체 헤더를, 장치 점검 · 리허설 · 분석 대기는 집중 화면이라 각자의 틀을 씁니다
+const appHeaderPaths = [
+  '/',
+  '/pitches',
+  '/takes',
+  '/me',
+  '/takes/:takeId',
+  '/takes/:takeId/retry',
+  '/pitch/:id/comparison',
+];
+
 export const router = createBrowserRouter(
   routes.map((route) =>
     publicPaths.includes(route.path)
@@ -109,16 +121,13 @@ export const router = createBrowserRouter(
                     '/',
                     '/pitches',
                     '/pitch/new',
+                    '/pitch/:id/edit',
                     '/takes/:takeId/processing',
                     '/takes/:takeId/confirm',
                   ].includes(route.path)
                 }
                 bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
-                header={
-                  ['/', '/pitches', '/takes', '/me'].includes(route.path) ? (
-                    <AppHeader />
-                  ) : undefined
-                }
+                header={appHeaderPaths.includes(route.path) ? <AppHeader /> : undefined}
               />
             </PageTitle>
           ),

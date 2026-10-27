@@ -71,7 +71,10 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="mb-2 text-xs text-stone">목표 {duration(pitch.pitch_time)}</p>
+          <p className="mb-2 text-xs text-stone">
+            {takes.length === 0 && <span className="mr-2 font-bold text-coral-deep">연습 전</span>}
+            목표 {duration(pitch.pitch_time)}
+          </p>
           {pitch.pitch_id ? (
             <Link
               to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
@@ -106,7 +109,10 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
       </div>
       <div id={recordsId} hidden={!open} className="border-t border-line-strong">
         {takes.length === 0 ? (
-          <p className="p-6 text-sm text-stone">아직 연습 기록이 없어요.</p>
+          <p className="p-6 text-sm text-stone">
+            아직 연습 기록이 없어요.
+            {pitch.pitch_id && ' 피치 제목을 눌러 자료와 대본을 이어서 준비해 보세요.'}
+          </p>
         ) : (
           <ul>
             {takes.map((take) => {
