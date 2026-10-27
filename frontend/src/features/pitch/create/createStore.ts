@@ -95,6 +95,14 @@ interface CreateState {
   /** 발표정보 저장이 서버에서 끝났습니다. 고치던 값은 비웁니다 */
   setMeta: (saved: InfoForm) => void;
 
+  /**
+   * 이 작성에서 슬라이드를 올리며 파일 이름으로 정한 발표 제목. 그렇게 피치를 만들었을 때만 있습니다 —
+   * 슬라이드 화면의 제목 확인 상자와 "파일 이름" 표시가 봅니다. 수정 화면에서는 null 입니다.
+   */
+  autoTitle: string | null;
+  /** 슬라이드를 올리려고 피치를 만들었습니다 (`slideUpload.ts`). 만든 발표정보와 제목을 함께 넣습니다 */
+  startFromFile: (pitchId: string, saved: InfoForm) => void;
+
   /** 슬라이드 새 버전. 올리기 전이라 장수는 아직 모릅니다 */
   addSlideVersion: () => void;
   /** 업로드 진행 상태. 흐름은 `slideUpload.ts` 가 몹니다 */
@@ -107,8 +115,6 @@ interface CreateState {
    * 들어오는" 중간 상태가 생기고, 그 틈에 진행 조건이 한 번 잘못 계산됩니다.
    */
   attachSlides: (uploaded: UploadedSlides, targetVersion?: number | null) => void;
-  /** "파일 교체" — 이 버전의 파일만 바꿉니다. 버전 번호는 그대로입니다 */
-  replaceSlides: (version: number, uploaded: UploadedSlides) => void;
 
   /** 대본 새 버전. 직전 글을 물려받고, 마지막으로 올린 슬라이드에 연결합니다 */
   addScriptVersion: (text?: string) => void;
@@ -210,8 +216,8 @@ const editCriteria = (
 
 export const useCreateStore = create<CreateState>((set) => ({
   draft: EMPTY_DRAFT,
-  // 목업의 순서대로 발표정보부터 엽니다
-  node: 'info',
+  // 시안의 순서대로 슬라이드부터 엽니다
+  node: 'slides',
   version: null,
 
   pitchId: null,
@@ -221,7 +227,7 @@ export const useCreateStore = create<CreateState>((set) => ({
   entryKey: null,
   beginEntry: (key) => set((s) => (s.entryKey === key ? s : { ...freshDraft(), entryKey: key })),
   hydrate: (key, pitchId, draft) =>
-    set({ ...freshDraft(), entryKey: key, pitchId, draft, chosen: chosenOf(draft) }),
+    set({ ...freshDraft(), entryKey: key, pitchId, draft, node: 'info', chosen: chosenOf(draft) }),
 
   chosen: CHOOSE_LATEST,
   chooseVersion: (node, version) => set((s) => ({ chosen: { ...s.chosen, [node]: version } })),
@@ -233,6 +239,15 @@ export const useCreateStore = create<CreateState>((set) => ({
     set((s) => ({ infoEdits: { ...(s.infoEdits ?? infoOf(s.draft)), ...patch } })),
 
   setMeta: (saved) => set((s) => ({ draft: { ...s.draft, ...saved }, infoEdits: null })),
+
+  autoTitle: null,
+  startFromFile: (pitchId, saved) =>
+    set((s) => ({
+      pitchId,
+      draft: { ...s.draft, ...saved },
+      infoEdits: null,
+      autoTitle: saved.title,
+    })),
 
   addSlideVersion: () =>
     set((s) => {
@@ -276,18 +291,6 @@ export const useCreateStore = create<CreateState>((set) => ({
         version,
       };
     }),
-
-  replaceSlides: (version, uploaded) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        slides: s.draft.slides.map((v) => (v.version === version ? { ...v, ...uploaded } : v)),
-        // 이 슬라이드로 정한 연습 조합은 다시 확인해야 합니다 — 장수나 내용이 바뀌었을 수 있습니다
-        scripts: s.draft.scripts.map((v) =>
-          v.slideVersion === version ? { ...v, saved: false } : v,
-        ),
-      },
-    })),
 
   addScriptVersion: (text = '') =>
     set((s) => {
@@ -519,9 +522,11 @@ function chosenOf(draft: PitchDraft): Chosen {
 function freshDraft() {
   return {
     draft: EMPTY_DRAFT,
-    node: 'info' as const,
+    // 슬라이드부터 올립니다 — 올리면 피치가 생깁니다 (시안 `pitch-create`)
+    node: 'slides' as const,
     version: null,
     pitchId: null,
+    autoTitle: null,
     infoEdits: null,
     chosen: CHOOSE_LATEST,
     slideUpload: { status: 'idle' as const },
