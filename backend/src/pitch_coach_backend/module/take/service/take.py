@@ -241,6 +241,7 @@ def list_takes_service(
                 take_number=row.take_number,
                 started_at=row.started_at,
                 status=row.status,
+                end_reason=row.end_reason,
                 script_mode=row.script_mode,
                 duration_ms=None if row.duration_sec is None else row.duration_sec * 1000,
                 goal_ms=row.goal_time_sec * 1000,
