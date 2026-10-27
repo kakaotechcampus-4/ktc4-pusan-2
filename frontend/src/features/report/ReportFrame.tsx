@@ -16,7 +16,7 @@ export function ReportFrame({
   children: ReactNode;
 }) {
   return (
-    <div className="pitch-create min-h-dvh bg-greige text-ink">
+    <div className="pitch-create flex-1 bg-greige text-ink">
       <header className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 pt-6 lg:px-10">
         {/* 로고는 위의 공용 상단바(AppHeader)에 있어 여기서는 제목만 둡니다 */}
         <h1 className="text-lg font-bold">{title}</h1>

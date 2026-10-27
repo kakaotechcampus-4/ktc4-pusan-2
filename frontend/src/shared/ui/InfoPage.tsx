@@ -19,7 +19,7 @@ export function InfoPage({
 }) {
   return (
     // 밝은 지면(시안 10–12 기준). 토큰만 바꾸는 클래스입니다 (index.css)
-    <div className="pitch-create min-h-dvh bg-greige text-ink">
+    <div className={`pitch-create ${logo ? 'min-h-dvh' : 'flex-1'} bg-greige text-ink`}>
       <header className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-3 px-6 pt-6 lg:px-10">
         {logo && (
           <>
