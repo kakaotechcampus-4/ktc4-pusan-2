@@ -94,10 +94,12 @@ describe('평가기준 — 나눈 결과 (감싸지 않은 응답)', () => {
   it('standards 와 except_standard 를 꺼낸다', () => {
     const res: StandardTextResponse = {
       pitch_id: 'p1',
+      version: 3,
       standards: [{ standard: '시장 규모 말하기' }, { standard: '채움말 5회 이하' }],
       except_standard: '발표를 멋지게',
     };
     expect(fromStandardsPosted(res)).toEqual({
+      version: 3,
       standards: ['시장 규모 말하기', '채움말 5회 이하'],
       exceptText: '발표를 멋지게',
     });
@@ -106,6 +108,7 @@ describe('평가기준 — 나눈 결과 (감싸지 않은 응답)', () => {
   it('제외된 부분이 없으면 exceptText 는 null', () => {
     const res: StandardTextResponse = {
       pitch_id: 'p1',
+      version: 4,
       standards: [{ standard: '시장 규모 말하기' }],
       except_standard: null,
     };

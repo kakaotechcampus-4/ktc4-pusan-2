@@ -133,22 +133,24 @@ interface CreateState {
   /** 평가기준 새 버전. 원문을 물려받습니다 — 대개 "조금 고쳐서 다시 정리"입니다 */
   addCriteriaVersion: () => void;
   /**
-   * 서버가 나누고 저장한 결과를 넣습니다. "+ 새 버전"으로 만든 빈 버전이면 거기 채우고,
+   * 서버가 나누고 저장한 결과를 넣습니다. "+ 새 버전"으로 만든 빈 버전이면 서버 버전으로 바꾸고,
    * 아니면 새 버전을 만듭니다 — 서버도 정리할 때마다 새 버전으로 저장합니다 (#463).
    */
   applyParsedCriteria: (
     version: number | null,
-    parsed: { sourceText: string; standards: string[]; exceptText: string | null },
+    parsed: { version: number; sourceText: string; standards: string[]; exceptText: string | null },
   ) => void;
   /** 목록 고치기. 서버에 있는 가장 최근 버전만 고치고(`isEditableCriteria`), 고치면 `edited` 가 됩니다 */
   editCriterion: (version: number, id: string, text: string) => void;
   addCriterion: (version: number) => void;
   removeCriterion: (version: number, id: string) => void;
   /**
-   * 고친 목록을 저장했습니다. `standards` 는 **서버가 돌려준 목록**입니다 — 계약상 서버가 고친 글로
-   * 한 번 더 분석해 저장하므로, 보낸 문장과 다를 수 있습니다
+   * 고친 목록을 새 버전으로 저장했습니다 (#532). 서버가 돌려준 버전과 다시 분석한 문장을 씁니다.
    */
-  markCriteriaSaved: (version: number, standards: string[]) => void;
+  markCriteriaSaved: (
+    sourceVersion: number,
+    saved: { version: number; standards: string[]; exceptText: string | null; sourceText: string },
+  ) => void;
   /**
    * 지난 버전을 고치려면 — 그 버전의 원문을 물려받은 빈 버전을 만듭니다. 다시 정리해야 서버에 새 버전이
    * 생깁니다. 지난 버전은 지난 Take 가 가리키므로 그 자리에서 고치지 않습니다
@@ -373,7 +375,7 @@ export const useCreateStore = create<CreateState>((set) => ({
       };
     }),
 
-  applyParsedCriteria: (version, { sourceText, standards, exceptText }) =>
+  applyParsedCriteria: (version, { version: savedVersion, sourceText, standards, exceptText }) =>
     set((s) => {
       // 개수를 자르지 않습니다. BE 는 받은 기준을 모두 저장해 채점에 쓰므로,
       // 화면에서만 자르면 보이지 않는 기준으로 채점됩니다. 많으면 목록이 스크롤됩니다
@@ -382,42 +384,48 @@ export const useCreateStore = create<CreateState>((set) => ({
 
       // 정리하면 서버에 새 버전으로 저장됩니다 (#463). 고칠 수는 있고, 고치면 다시 저장합니다
       if (!target || target.saved) {
-        const next = nextVersion(s.draft.criteria);
         return {
           draft: {
             ...s.draft,
             criteria: [
               // 고친 채로 다시 정리했으면 그 고친 내용은 버리고 서버 목록으로 되돌립니다.
               // 이 버전은 이제 최신이 아니라 고칠 수도 저장할 수도 없습니다 (`isEditableCriteria`)
-              ...s.draft.criteria.map((v) =>
-                v.version === target?.version && v.edited
-                  ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
-                  : v,
-              ),
-              { version: next, items, saved: true, edited: false, sourceText, exceptText },
-            ],
+              ...s.draft.criteria
+                // 요청 중 만든 같은 번호의 빈 버전은 서버 결과로 교체합니다.
+                .filter((v) => v.saved || v.version !== savedVersion)
+                .map((v) =>
+                  v.version === target?.version && v.edited
+                    ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
+                    : v,
+                ),
+              { version: savedVersion, items, saved: true, edited: false, sourceText, exceptText },
+            ].sort((a, b) => a.version - b.version),
           },
           node: 'criteria' as const,
-          version: next,
+          version: savedVersion,
         };
       }
       return {
         draft: {
           ...s.draft,
-          criteria: s.draft.criteria.map((v) =>
-            v.version === target.version
-              ? {
-                  ...v,
-                  items,
-                  saved: true,
-                  edited: false,
-                  savedItems: undefined,
-                  sourceText,
-                  exceptText,
-                }
-              : v,
-          ),
+          criteria: s.draft.criteria
+            .map((v) =>
+              v.version === target.version
+                ? {
+                    ...v,
+                    version: savedVersion,
+                    items,
+                    saved: true,
+                    edited: false,
+                    savedItems: undefined,
+                    sourceText,
+                    exceptText,
+                  }
+                : v,
+            )
+            .sort((a, b) => a.version - b.version),
         },
+        version: savedVersion,
       };
     }),
 
@@ -445,23 +453,27 @@ export const useCreateStore = create<CreateState>((set) => ({
       })),
     })),
 
-  markCriteriaSaved: (version, standards) =>
+  markCriteriaSaved: (sourceVersion, { version, standards, exceptText, sourceText }) =>
     set((s) => ({
       draft: {
         ...s.draft,
-        criteria: s.draft.criteria.map((v) =>
-          v.version === version
-            ? {
-                ...v,
-                saved: true,
-                edited: false,
-                savedItems: undefined,
-                // 서버가 다시 분석해 저장한 목록입니다. 화면은 이것으로 다시 그립니다
-                items: standards.map((text) => ({ id: crypto.randomUUID(), text })),
-              }
-            : v,
-        ),
+        criteria: [
+          ...s.draft.criteria.map((v) =>
+            v.version === sourceVersion
+              ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
+              : v,
+          ),
+          {
+            version,
+            saved: true,
+            edited: false,
+            sourceText,
+            exceptText,
+            items: standards.map((text) => ({ id: crypto.randomUUID(), text })),
+          },
+        ].sort((a, b) => a.version - b.version),
       },
+      version: s.node === 'criteria' && s.version === sourceVersion ? version : s.version,
     })),
 
   reviseCriteria: (version) =>
