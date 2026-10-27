@@ -8,7 +8,7 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { PolicyPage } from '@/features/onboarding/PolicyPage';
-import { AppHeader } from '@/features/pitch/AppHeader';
+import { AppHeader } from '@/shared/ui/AppHeader';
 import { HomePage } from '@/features/pitch/HomePage';
 import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
@@ -98,7 +98,6 @@ const appHeaderPaths = [
   '/pitches',
   '/takes',
   '/me',
-  '/takes/:takeId',
   '/takes/:takeId/retry',
   '/pitch/:id/comparison',
 ];
@@ -123,6 +122,8 @@ export const router = createBrowserRouter(
                     '/pitch/new',
                     '/pitch/:id/edit',
                     '/takes/:takeId/processing',
+                    // 리포트는 화면 안에서 공용 헤더를 표시합니다.
+                    '/takes/:takeId',
                     '/takes/:takeId/confirm',
                   ].includes(route.path)
                 }

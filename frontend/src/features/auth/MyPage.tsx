@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SuggestionForm } from './SuggestionForm';
 import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/shared/ui/Button';
@@ -106,6 +107,8 @@ export function MyPage() {
             '다른 탭에서 피치코치가 열려 있어 아직 지우지 못했어요. 그 탭을 닫으면 지워져요.'}
         </p>
       </Card>
+
+      {user && <SuggestionForm key={user.id} />}
 
       <Card title="약관 · 정책">
         <ul className="space-y-2 text-sm">

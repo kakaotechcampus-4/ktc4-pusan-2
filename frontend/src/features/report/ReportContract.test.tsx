@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { ReportPage } from './ReportPage';
@@ -44,11 +45,13 @@ vi.mock('@/shared/api/report', () => ({
 
 it('알 수 없는 영역·상태와 null 미션 사유가 와도 리포트를 표시한다', () => {
   const html = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/takes/t1']}>
-      <Routes>
-        <Route path="/takes/:takeId" element={<ReportPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter initialEntries={['/takes/t1']}>
+        <Routes>
+          <Route path="/takes/:takeId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
   expect(html).toContain('판단 불가');
   expect(html).toContain('NEW_AREA · 발표 전체');

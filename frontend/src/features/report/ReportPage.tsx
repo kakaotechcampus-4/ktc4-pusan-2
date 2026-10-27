@@ -1,4 +1,5 @@
 import { Navigate, useParams } from 'react-router';
+import { AppHeader } from '@/shared/ui/AppHeader';
 import { useTakeReport } from '@/shared/api/report';
 import { formatDuration } from '@/shared/lib/clock';
 import { Badge, type Tone } from '@/shared/ui/Badge';
@@ -26,19 +27,25 @@ import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
  */
 export function ReportPage() {
   const { takeId = '' } = useParams();
+  return <ReportView key={takeId} takeId={takeId} />;
+}
+
+function ReportView({ takeId }: { takeId: string }) {
   const report = useTakeReport(takeId);
   const data = report.data;
-
   if (!takeId) return <Navigate replace to="/" />;
   // 분석 자체가 실패한 Take 는 보여 줄 측정값이 없습니다. 실패 · 리뷰 보류 안내는 분석 대기 화면이 맡습니다
   if (data?.status === 'FAILED' || data?.analysis_hold_reason)
     return <Navigate replace to={`/takes/${takeId}/processing`} />;
 
   return (
-    <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
-      <QueryState isPending={report.isPending} error={report.error} />
-      {data && <ReportBody report={data} />}
-    </ReportFrame>
+    <div className="flex min-h-dvh flex-col">
+      <AppHeader />
+      <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
+        <QueryState isPending={report.isPending} error={report.error} />
+        {data && <ReportBody key={takeId} report={data} />}
+      </ReportFrame>
+    </div>
   );
 }
 

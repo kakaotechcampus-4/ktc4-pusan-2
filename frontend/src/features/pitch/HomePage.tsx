@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { HomeServiceReview } from './HomeServiceReview';
 import { Link } from 'react-router';
-import { HomeHelpDialog } from './HomeHelpDialog';
+import { HomeHelpDialog } from '@/shared/ui/HomeHelpDialog';
 import { usePitchList } from '@/shared/api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { duration, totalElapsed } from './homeFormat';
@@ -14,6 +15,7 @@ export function HomePage() {
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
   return (
     <div className="pitch-create flex flex-1 flex-col bg-greige text-ink">
+      <HomeServiceReview ready={!home.isPending && !home.isError} blocked={helpOpen} />
       <main className="mx-auto w-full max-w-7xl flex-1 px-6 pb-12 pt-10 lg:px-10 lg:pt-14">
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
