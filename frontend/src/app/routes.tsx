@@ -1,29 +1,34 @@
-import type { ReactElement } from 'react';
+import { Suspense, type ReactElement } from 'react';
+import { RouteLoadError } from './RouteLoadError';
+import {
+  StageDemo,
+  MediaDevPage,
+  SttDevPage,
+  PolicyPage,
+  DeviceCheckPage,
+  PitchCreatePage,
+  PitchEditPage,
+  RehearsalPage,
+  RetryPage,
+  ProcessingPage,
+  ReportPage,
+  DesignIndex,
+  DesignDraftRoute,
+  AboutPage,
+  UnsupportedPage,
+  NotFoundPage,
+  MyPage,
+  TakesPage,
+  ComparisonPage,
+} from './LazyScreens';
 import { createBrowserRouter } from 'react-router';
 import { PageTitle } from './PageTitle';
-import { StageDemo } from '@/features/rehearsal/stage/StageDemo';
-import { MediaDevPage } from '@/features/rehearsal/media/MediaDevPage';
-import { SttDevPage } from '@/features/rehearsal/media/SttDevPage';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireSession } from '@/features/auth/session';
 import { WelcomePage } from '@/features/onboarding/WelcomePage';
-import { PolicyPage } from '@/features/onboarding/PolicyPage';
 import { AppHeader } from '@/features/pitch/AppHeader';
 import { HomePage } from '@/features/pitch/HomePage';
-import { DeviceCheckPage } from '@/features/rehearsal/prepare/DeviceCheckPage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
-import { PitchCreatePage, PitchEditPage } from '@/features/pitch/create/PitchCreatePage';
-import { RehearsalPage } from '@/features/rehearsal/stage/RehearsalPage';
-import { RetryPage } from '@/features/rehearsal/retry/RetryPage';
-import { ProcessingPage } from '@/features/report/ProcessingPage';
-import { ReportPage } from '@/features/report/ReportPage';
-import { DesignDraftRoute, DesignIndex } from '@/dev/design/DesignIndex';
-import { AboutPage } from '@/features/info/AboutPage';
-import { UnsupportedPage } from '@/features/info/UnsupportedPage';
-import { NotFoundPage } from '@/features/info/NotFoundPage';
-import { MyPage } from '@/features/auth/MyPage';
-import { TakesPage } from '@/features/report/TakesPage';
-import { ComparisonPage } from '@/features/report/ComparisonPage';
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -89,32 +94,44 @@ const publicPaths = [
   '*',
 ];
 
-export const router = createBrowserRouter(
-  routes.map((route) =>
-    publicPaths.includes(route.path)
-      ? {
-          path: route.path,
-          element: <PageTitle title={route.title}>{route.element}</PageTitle>,
-        }
-      : {
-          path: route.path,
-          element: (
-            <PageTitle title={route.title}>
-              {/* 분석 대기는 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
-              <RequireSession
-                showHeader={
-                  !['/', '/pitches', '/pitch/new', '/takes/:takeId/processing'].includes(route.path)
-                }
-                bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
-                header={
-                  ['/', '/pitches', '/takes', '/me'].includes(route.path) ? (
-                    <AppHeader />
-                  ) : undefined
-                }
-              />
-            </PageTitle>
-          ),
-          children: [{ index: true, element: route.element }],
-        },
-  ),
-);
+export const appRoutes = routes.map((route) => {
+  // 인증 확인 안쪽에 두어 로그인 전에는 보호된 화면 코드를 요청하지 않습니다.
+  const screen = (
+    <Suspense
+      fallback={
+        <p role="status" className="bg-panel p-8 text-ink">
+          화면을 불러오고 있어요.
+        </p>
+      }
+    >
+      {route.element}
+    </Suspense>
+  );
+  return publicPaths.includes(route.path)
+    ? {
+        path: route.path,
+        errorElement: <RouteLoadError />,
+        element: <PageTitle title={route.title}>{screen}</PageTitle>,
+      }
+    : {
+        path: route.path,
+        errorElement: <RouteLoadError />,
+        element: (
+          <PageTitle title={route.title}>
+            {/* 분석 대기는 화면 전체가 그림이라 이름 · 로그아웃 줄을 얹지 않습니다 */}
+            <RequireSession
+              showHeader={
+                !['/', '/pitches', '/pitch/new', '/takes/:takeId/processing'].includes(route.path)
+              }
+              bright={!['/takes/:takeId/rehearsal', '/takes/:takeId/exam'].includes(route.path)}
+              header={
+                ['/', '/pitches', '/takes', '/me'].includes(route.path) ? <AppHeader /> : undefined
+              }
+            />
+          </PageTitle>
+        ),
+        children: [{ index: true, element: screen }],
+      };
+});
+
+export const router = createBrowserRouter(appRoutes);
