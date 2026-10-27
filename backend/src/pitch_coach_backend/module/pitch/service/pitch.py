@@ -15,6 +15,7 @@ from pitch_coach_backend.module.pitch.adapter.storage import delete_prefix
 from pitch_coach_backend.module.pitch.dto import (
     NewerScriptDTO,
     ParsedScriptDTO,
+    PitchInfoResponseDTO,
     PitchListItemDTO,
     PitchListResponseDTO,
     PitchSaveRequestDTO,
@@ -119,6 +120,20 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
 def to_version_dtos(rows: Iterable[Versioned]) -> list[VersionDTO]:
     return [VersionDTO(id=row.id, version=row.version) for row in rows]
 
+def get_pitch_info(db: Session, pitch_id: uuid.UUID) -> PitchListItemDTO:
+    pitch_repository = PitchRepository(db)
+    pitch = pitch_repository.get_by_id(pitch_id)
+    if not pitch:
+        raise NonExistentPitch()
+
+    return PitchInfoResponseDTO(
+        pitch_id=pitch.id,
+        title=pitch.title,
+        time_limit_sec=pitch.time_limit_sec,
+        presentation_date=pitch.presentation_date,
+        upper_deviation=pitch.upper_deviation,
+        lower_deviation=pitch.lower_deviation
+    )
 
 # 발표 자료 버전 들고오기
 def get_pitch_datas(db: Session, pitch_id: uuid.UUID):
