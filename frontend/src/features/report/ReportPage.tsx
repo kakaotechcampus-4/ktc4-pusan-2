@@ -18,7 +18,7 @@ import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
 /**
  * Take 리포트 (P6).
  *
- * 순서는 "무엇이 문제였나 → 지난번보다 나아졌나 → 다음엔 무엇을" 입니다 (AI 리뷰의 목적, `review-agent.md` 1절).
+ * 요약과 지난 Take의 변화를 먼저 보여 주고, 측정 근거와 다음 미션을 이어 보여 줍니다.
  * `score` 는 일부러 보여 주지 않습니다 — FE 원칙이 "점수가 아니라 Take 간 변화"라서입니다 (CLAUDE.md).
  * 시선 3색은 리허설 테두리 전용이라 여기서 쓰지 않습니다.
  *
@@ -49,6 +49,7 @@ function ReportBody({ report }: { report: TakeReport }) {
   return (
     <>
       <Hero report={report} />
+      {review && <Comparison rows={review.comparison} />}
       {report.measures ? (
         <Measures m={report.measures} />
       ) : (
@@ -94,8 +95,6 @@ function ReportBody({ report }: { report: TakeReport }) {
               items={review.strengths}
             />
           </div>
-
-          <Comparison rows={review.comparison} />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <JudgeList
@@ -426,7 +425,7 @@ function NextMissions({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold">Take {nextTake}에서 해 볼 것</h2>
-          <p className="mt-1 text-sm text-stone">
+          <p className="mt-1 text-sm text-ink">
             다음 연습에서 코치가 이 미션을 기준으로 알려 드려요.
           </p>
         </div>
@@ -434,19 +433,17 @@ function NextMissions({
         <ButtonLink to={`/pitch/${pitchId}/device-check`}>Take {nextTake} 연습하기</ButtonLink>
       </div>
       {rows.length === 0 ? (
-        <p className="mt-4 text-sm text-stone">
-          이번에는 새 미션이 없어요. 지금처럼 연습해 보세요.
-        </p>
+        <p className="mt-4 text-sm text-ink">이번에는 새 미션이 없어요. 지금처럼 연습해 보세요.</p>
       ) : (
         <ol className="mt-4 flex flex-col gap-2.5">
           {rows.map((r) => (
             <li key={r.priority} className="flex gap-4 border-t border-ink/15 px-0 py-4">
-              <span className="tabular flex h-7 w-7 shrink-0 items-center justify-center bg-coral text-sm font-bold text-white">
+              <span className="tabular flex h-7 w-7 shrink-0 items-center justify-center bg-coral-deep text-sm font-bold text-white">
                 {r.priority}
               </span>
               <div className="min-w-0">
                 <p className="font-bold">{r.description}</p>
-                <p className="mt-0.5 text-sm text-stone">
+                <p className="mt-0.5 text-sm text-ink">
                   {where(r.area, r.slide_number)} · {r.reason}
                 </p>
               </div>

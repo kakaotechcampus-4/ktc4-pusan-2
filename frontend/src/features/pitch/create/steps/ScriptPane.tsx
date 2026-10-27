@@ -84,7 +84,7 @@ function SlideLink({ script, linked }: { script: ScriptVersion; linked: SlideVer
       <button
         type="button"
         onClick={() => select('slides')}
-        className="flex h-10 items-center gap-2 rounded-lg border border-dashed border-line-strong bg-white px-4 text-sm text-stone hover:border-ink hover:text-ink"
+        className="flex h-10 items-center gap-2 rounded-lg border border-dashed border-line-strong bg-white px-4 text-sm text-ink/80 hover:border-ink hover:text-ink"
       >
         <LinkIcon />
         연결할 슬라이드가 없어요 · 슬라이드 올리기
@@ -100,7 +100,7 @@ function SlideLink({ script, linked }: { script: ScriptVersion; linked: SlideVer
         aria-label="연결할 슬라이드"
         value={linked?.version ?? ''}
         onChange={(e) => linkSlides(script.version, Number(e.target.value))}
-        className="tabular cursor-pointer appearance-none bg-transparent pr-1 outline-none"
+        className="tabular cursor-pointer appearance-none bg-transparent pr-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
       >
         {linked === null && <option value="">고르기</option>}
         {slides.map((v) => (
@@ -140,7 +140,7 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
               aria-live="polite"
               className={[
                 'tabular rounded-lg px-3 py-2 text-sm font-bold',
-                markerCount === pageCount ? 'bg-panel text-ink' : 'bg-coral-wash text-coral-deep',
+                markerCount === pageCount ? 'bg-panel text-ink' : 'bg-coral-wash text-ink',
               ].join(' ')}
             >
               구분 {markerCount} / {pageCount}
@@ -148,14 +148,14 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
           )}
         </div>
         <div className="flex items-center gap-4">
-          <span className="tabular text-sm text-stone">
+          <span className="tabular text-sm text-ink/80">
             {chars.toLocaleString()}자 · 예상 {estimate}
           </span>
           <button
             type="button"
             disabled={chars === 0 || pending || tooLong}
             onClick={() => startScriptMapping(script.version)}
-            className="h-11 rounded-lg bg-coral px-6 text-sm font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
+            className="h-11 rounded-lg bg-coral-deep px-6 text-sm font-bold text-white hover:bg-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-ink/80"
           >
             {mapLabel(pending)}
           </button>
@@ -172,12 +172,12 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
       )}
 
       {failure && (
-        <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-coral">
+        <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-ink">
           {failure}
           <button
             type="button"
             onClick={() => retryScriptMapping(script.version)}
-            className="rounded-lg border border-coral px-3 py-1 text-xs text-coral-deep hover:bg-coral-wash"
+            className="rounded-lg border border-coral px-3 py-1 text-xs text-ink hover:bg-coral-wash"
           >
             다시 시도
           </button>
@@ -191,7 +191,7 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
       <div className="flex min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-white focus-within:border-ink">
         <ol
           aria-hidden="true"
-          className="tabular sticky left-0 shrink-0 select-none border-r border-line bg-panel/50 px-4 py-5 text-right text-sm leading-8 text-stone"
+          className="tabular sticky left-0 shrink-0 select-none border-r border-line bg-panel/50 px-4 py-5 text-right text-sm leading-8 text-ink/80"
         >
           {Array.from({ length: lineCount }, (_, i) => (
             <li key={i}>{i + 1}</li>
@@ -206,13 +206,13 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
           placeholder={PLACEHOLDER}
           wrap="off"
           rows={lineCount}
-          className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent px-5 py-5 text-sm leading-8 outline-none placeholder:text-stone"
+          className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent px-5 py-5 text-sm leading-8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-ink/80"
           // 전역 :focus-visible 링은 레이어 밖이라 유틸리티로 못 덮습니다 — 포커스는 바깥 상자 테두리가 보여 줍니다
           style={{ outline: 'none' }}
         />
       </div>
 
-      <p className="mt-3 border-t border-line pt-3 text-sm text-stone">
+      <p className="mt-3 border-t border-line pt-3 text-sm text-ink/80">
         입력한 대본을 슬라이드별로 연결합니다. 슬라이드마다 “슬라이드 1” · “Slide 1” · “1.” 처럼
         구분해 적어 주세요 — 구분이 없으면 대본 전체를 한 슬라이드로 연결해요.
       </p>
@@ -231,7 +231,7 @@ function SlideThumb({ slide, pageNumber }: { slide: SlideVersion | null; pageNum
       {opened && 'doc' in opened && pageNumber <= opened.doc.numPages ? (
         <PdfPage doc={opened.doc} pageNumber={pageNumber} fit="width" className="w-full" />
       ) : (
-        <span className="tabular text-xs text-stone">{pageNumber}</span>
+        <span className="tabular text-xs text-ink/80">{pageNumber}</span>
       )}
     </div>
   );
@@ -278,16 +278,17 @@ function SaveHint({
   blockCount: number;
   pageCount: number;
 }) {
-  if (countsMatch) return <p className="text-sm text-stone">매핑 결과를 확인하고 저장해 주세요.</p>;
+  if (countsMatch)
+    return <p className="text-sm text-ink/80">매핑 결과를 확인하고 저장해 주세요.</p>;
   if (pageCount === 0) {
-    return <p className="text-sm font-bold text-coral">연결할 슬라이드를 먼저 골라 주세요.</p>;
+    return <p className="text-sm font-bold text-ink">연결할 슬라이드를 먼저 골라 주세요.</p>;
   }
   return (
     <p className="text-sm">
-      <span className="block font-bold text-coral">
+      <span className="block font-bold text-ink">
         대본은 {blockCount}장, 슬라이드는 {pageCount}장이라 저장할 수 없어요.
       </span>
-      <span className="block text-xs text-stone">
+      <span className="block text-xs text-ink/80">
         ← 대본 수정에서 “슬라이드 1”처럼 장마다 구분을 넣고 다시 매핑해 주세요.
       </span>
     </p>
@@ -344,7 +345,7 @@ function MappingReview({
       />
 
       <div className="mb-3 flex flex-wrap gap-2">
-        <span className="tabular flex items-center gap-2 rounded-lg bg-coral-wash px-3 py-1.5 text-sm font-bold text-coral-deep">
+        <span className="tabular flex items-center gap-2 rounded-lg bg-coral-wash px-3 py-1.5 text-sm font-bold text-ink">
           슬라이드 V{linked?.version ?? '?'} · {pageCount}장
         </span>
         <span className="tabular flex items-center gap-2 rounded-lg bg-panel px-3 py-1.5 text-sm font-bold">
@@ -354,12 +355,12 @@ function MappingReview({
       </div>
 
       {!script.remote && (
-        <p role="status" className="mb-3 text-sm text-coral-deep">
+        <p role="status" className="mb-3 text-sm text-ink">
           수정한 문장은 원문에도 반영됩니다. 수정 대본을 다시 매핑한 뒤 저장해 주세요.
         </p>
       )}
       {script.parse.status === 'failed' && (
-        <p role="alert" className="mb-3 text-sm text-coral-deep">
+        <p role="alert" className="mb-3 text-sm text-ink">
           {script.parse.message}
         </p>
       )}
@@ -375,7 +376,7 @@ function MappingReview({
           return (
             <li
               key={i}
-              className="flex items-center gap-5 rounded-lg border border-line bg-white px-4 py-3"
+              className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white px-4 py-3 sm:flex-nowrap sm:gap-5"
             >
               <SlideThumb slide={linked} pageNumber={i + 1} />
               <span className="tabular w-20 shrink-0 text-sm font-bold">
@@ -389,12 +390,12 @@ function MappingReview({
                 placeholder="이 슬라이드에 연결된 대본이 없어요"
                 rows={3}
                 className={[
-                  'min-w-0 flex-1 whitespace-pre-line rounded-md border px-4 py-3 text-sm leading-relaxed',
-                  empty ? 'border-dashed border-line-strong text-stone' : 'border-line',
+                  'min-w-0 basis-full whitespace-pre-line rounded-md border px-4 py-3 text-sm leading-relaxed sm:flex-1 sm:basis-auto',
+                  empty ? 'border-dashed border-line-strong text-ink/80' : 'border-line',
                 ].join(' ')}
               />
               {empty ? (
-                <span className="w-20 shrink-0 text-center text-xs font-bold text-coral">
+                <span className="w-20 shrink-0 text-center text-xs font-bold text-ink">
                   비어 있음
                 </span>
               ) : (
@@ -408,7 +409,7 @@ function MappingReview({
         })}
       </ol>
 
-      <p className="tabular mt-3 text-sm text-stone">
+      <p className="tabular mt-3 text-sm text-ink/80">
         {filled === rows.length
           ? `${rows.length}개 슬라이드 연결 완료`
           : `${rows.length}개 중 ${filled}개 연결 · 빈 슬라이드 ${rows.length - filled}개`}
@@ -424,7 +425,7 @@ function MappingReview({
               <span className="block text-sm font-bold">
                 저장 완료 · 슬라이드 V{linked?.version} / 대본 V{script.version}
               </span>
-              <span className="block text-xs text-stone">
+              <span className="block text-xs text-ink/80">
                 {gate.ready ? '이 조합으로 연습을 진행해요.' : gate.message}
               </span>
             </span>
@@ -434,7 +435,7 @@ function MappingReview({
         )}
 
         <div className="flex flex-col items-end gap-1.5">
-          <div className="flex gap-3">
+          <div className="flex flex-wrap justify-end gap-3">
             {(!script.remote || script.parse.status !== 'idle') && (
               <button
                 type="button"
@@ -444,7 +445,7 @@ function MappingReview({
                     ? retryScriptMapping(script.version)
                     : startScriptMapping(script.version)
                 }
-                className="rounded-lg border border-coral px-4 text-sm font-bold text-coral-deep disabled:opacity-50"
+                className="rounded-lg border border-coral px-4 text-sm font-bold text-ink disabled:opacity-50"
               >
                 {pending ? '매핑 중…' : '수정 대본 매핑'}
               </button>
@@ -453,7 +454,7 @@ function MappingReview({
               type="button"
               disabled={!canSave}
               onClick={() => saveMapping(script.version)}
-              className="h-12 w-36 rounded-lg border border-ink bg-white text-sm font-bold hover:bg-panel disabled:cursor-not-allowed disabled:border-line disabled:text-stone disabled:hover:bg-white"
+              className="h-12 w-36 rounded-lg border border-ink bg-white text-sm font-bold hover:bg-panel disabled:cursor-not-allowed disabled:border-line disabled:text-ink/80 disabled:hover:bg-white"
             >
               저장
             </button>
@@ -465,12 +466,12 @@ function MappingReview({
                 saveMapping(script.version);
                 onStart();
               }}
-              className="h-12 w-40 rounded-lg bg-coral text-sm font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
+              className="h-12 w-40 rounded-lg bg-coral-deep text-sm font-bold text-white hover:bg-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-ink/80"
             >
               다음 →
             </button>
           </div>
-          <p className="text-xs text-stone">매핑을 수정하면 다시 저장한 뒤 진행할 수 있어요.</p>
+          <p className="text-xs text-ink/80">매핑을 수정하면 다시 저장한 뒤 진행할 수 있어요.</p>
         </div>
       </div>
     </div>
@@ -505,11 +506,11 @@ export function ScriptPane({
       <div className="flex flex-1 flex-col">
         <PaneHeading title="대본 입력" subtitle="선택한 슬라이드에 맞춰 대본을 준비해 주세요." />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-line-strong bg-white">
-          <p className="text-sm text-stone">아직 대본이 없어요</p>
+          <p className="text-sm text-ink/80">아직 대본이 없어요</p>
           <button
             type="button"
             onClick={() => addScriptVersion()}
-            className="rounded-lg bg-coral px-5 py-2.5 text-sm font-bold text-white hover:bg-coral-deep"
+            className="rounded-lg bg-coral-deep px-5 py-2.5 text-sm font-bold text-white hover:bg-ink"
           >
             대본 작성 시작
           </button>

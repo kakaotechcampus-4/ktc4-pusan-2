@@ -130,7 +130,7 @@ const fallback: TakeReport = {
   review: {
     ...reviewFixture,
     take_id: 't-fallback',
-    overall_summary: '먼저 고칠 차원: 대본 의존(3번 장). 점수 74.',
+    overall_summary: '먼저 고칠 차원: 대본 의존(3번 장).',
     strengths: [{ ...reviewFixture.strengths[0]!, text: '내용 전달: 핵심 내용 전달률 0.92' }],
     fallback_reason: 'LLM_TIMEOUT',
   },

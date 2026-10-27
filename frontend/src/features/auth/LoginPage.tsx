@@ -82,11 +82,11 @@ export function LoginPage() {
   return (
     <div className="flex min-h-dvh flex-col bg-panel text-ink">
       <header className="border-b border-line-strong">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-6 py-4 lg:px-10">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-4 lg:px-10">
           <Link to="/welcome" aria-label="PITCH COACH · 서비스 소개로">
             <PitchCoachWordmark />
           </Link>
-          <Link to="/welcome" className="text-sm font-bold hover:text-coral-deep">
+          <Link to="/welcome" className="text-sm font-bold hover:text-ink">
             ← 서비스 소개
           </Link>
         </div>
@@ -95,7 +95,7 @@ export function LoginPage() {
       <main className="flex flex-1 items-center justify-center px-6 py-12">
         <section
           aria-labelledby="login-title"
-          className="w-full max-w-md border-2 border-ink bg-panel px-8 py-10 text-center shadow-[4px_4px_0_var(--color-ink)] sm:px-12"
+          className="w-full max-w-md border-2 border-ink bg-panel px-4 py-10 text-center shadow-[4px_4px_0_var(--color-ink)] [overflow-wrap:anywhere] sm:px-12"
         >
           <img
             src="/onboarding/chichi-bust.png"
@@ -104,7 +104,7 @@ export function LoginPage() {
             height={96}
             className="mx-auto h-24 w-20 object-contain [image-rendering:pixelated]"
           />
-          <p className="mt-4 font-mono text-xs tracking-widest text-stone">
+          <p className="mt-4 font-mono text-xs tracking-widest text-ink/80">
             READY FOR YOUR FIRST TAKE?
           </p>
           <h1 id="login-title" className="mt-2 text-2xl font-extrabold tracking-tight">
@@ -122,7 +122,7 @@ export function LoginPage() {
             aria-label="Google 계정으로 로그인"
             aria-describedby="login-status"
             aria-busy={redirecting}
-            className="mx-auto mt-8 block max-w-full cursor-pointer rounded disabled:cursor-wait disabled:opacity-60"
+            className="mx-auto mt-8 flex min-h-11 max-w-full cursor-pointer items-center rounded disabled:cursor-wait disabled:opacity-60"
           >
             <img
               src="/auth/google-sign-in.png"
@@ -140,7 +140,7 @@ export function LoginPage() {
             {message && <p className="border border-line-strong bg-cream px-4 py-3">{message}</p>}
             {session.isError && (
               <button
-                className="mt-3 underline"
+                className="mt-3 min-h-11 underline"
                 onClick={() => session.refetch().catch(() => undefined)}
               >
                 연결 다시 확인
@@ -148,7 +148,7 @@ export function LoginPage() {
             )}
           </div>
           {/* 정책 문서가 아직 검토용 초안이라 "동의한 것으로 본다"고 쓰지 않습니다 — 확인만 안내합니다 */}
-          <p className="mt-6 border-t border-line pt-5 text-xs leading-5 text-stone">
+          <p className="mt-6 border-t border-line pt-5 text-xs leading-5 text-ink/80">
             로그인 전에{' '}
             <Link className="font-bold text-ink underline underline-offset-4" to="/terms">
               이용약관

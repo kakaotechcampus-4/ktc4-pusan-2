@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
 import { isPitchMissing, useTakeHistory } from '@/shared/api/takeHistory';
@@ -38,6 +38,7 @@ export function ComparisonPage() {
   const { id = '' } = useParams();
   const history = useTakeHistory(id);
   const [metric, setMetric] = useState<MetricKey>('audience_ratio');
+  const tabsId = useId();
 
   if (!history.data)
     return (
@@ -70,7 +71,7 @@ export function ComparisonPage() {
     <InfoPage title="Take 비교">
       {rows[0] && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
-          <p className="font-bold">{rows[0].pitch_title}</p>
+          <p className="min-w-0 font-bold [overflow-wrap:anywhere]">{rows[0].pitch_title}</p>
           <p className="tabular text-sm text-stone">Take {rows.length}개</p>
         </div>
       )}
@@ -84,17 +85,44 @@ export function ComparisonPage() {
           <Card
             title="지표 흐름"
             action={
-              <div role="tablist" className="flex flex-wrap gap-1.5">
-                {METRICS.map((x) => (
+              <div role="tablist" aria-label="비교 지표" className="flex flex-wrap gap-1.5">
+                {METRICS.map((x, index) => (
                   <button
                     key={x.key}
                     type="button"
                     role="tab"
+                    id={`${tabsId}-${x.key}`}
+                    aria-controls={`${tabsId}-panel`}
                     aria-selected={metric === x.key}
+                    tabIndex={metric === x.key ? 0 : -1}
+                    onKeyDown={(event) => {
+                      let next: number;
+                      switch (event.key) {
+                        case 'ArrowRight':
+                          next = (index + 1) % METRICS.length;
+                          break;
+                        case 'ArrowLeft':
+                          next = (index + METRICS.length - 1) % METRICS.length;
+                          break;
+                        case 'Home':
+                          next = 0;
+                          break;
+                        case 'End':
+                          next = METRICS.length - 1;
+                          break;
+                        default:
+                          return;
+                      }
+                      event.preventDefault();
+                      setMetric(METRICS[next]!.key);
+                      event.currentTarget.parentElement?.querySelectorAll('button')[next]?.focus();
+                    }}
                     onClick={() => setMetric(x.key)}
                     className={[
-                      'px-3 py-1 text-sm font-bold',
-                      metric === x.key ? 'bg-ink text-panel' : 'bg-cream text-stone hover:text-ink',
+                      'min-h-11 px-3 py-1 text-sm font-bold',
+                      metric === x.key
+                        ? 'bg-ink text-panel'
+                        : 'bg-cream text-ink/80 hover:text-ink',
                     ].join(' ')}
                   >
                     {x.label}
@@ -103,49 +131,73 @@ export function ComparisonPage() {
               </div>
             }
           >
-            <ol className="flex h-48 gap-4 border-b-2 border-ink">
-              {series.map((r) => {
-                const v = r[metric];
-                const off = GAZE.includes(metric) && gazeOffEngine(r, latestEngine);
-                const empty = v === null || off;
-                return (
-                  <li key={r.take_id} className="flex flex-1 flex-col items-center gap-2">
-                    <span className="tabular font-mono text-sm font-bold">
-                      {empty ? '—' : m.fmt(v)}
-                    </span>
-                    {/* 막대 높이의 기준이 되는 칸. 숫자 줄을 뺀 나머지 높이입니다 */}
-                    <div className="flex w-full flex-1 items-end">
-                      <div
-                        className={
-                          empty
-                            ? 'w-full border-2 border-dashed border-line-strong'
-                            : 'w-full bg-coral'
-                        }
-                        style={{ height: `${empty ? 8 : (v / max) * 100}%` }}
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-            <ol className="flex gap-4">
-              {series.map((r) => (
-                <li key={r.take_id} className="flex-1 text-center text-xs font-bold">
-                  TAKE {r.take_number}
-                </li>
-              ))}
-            </ol>
+            <div
+              role="tabpanel"
+              id={`${tabsId}-panel`}
+              aria-labelledby={`${tabsId}-${metric}`}
+              tabIndex={0}
+              className="min-w-0 max-w-full overflow-x-auto p-1"
+            >
+              <div style={{ minWidth: `${series.length * 6}rem` }}>
+                <ol
+                  className="flex h-48 gap-4 border-b-2 border-ink"
+                  aria-label={`${m.label} Take별 값`}
+                >
+                  {series.map((r) => {
+                    const v = r[metric];
+                    const off = GAZE.includes(metric) && gazeOffEngine(r, latestEngine);
+                    const empty = v === null || off;
+                    return (
+                      <li
+                        key={r.take_id}
+                        aria-label={`Take ${r.take_number}: ${empty ? '측정하지 못했거나 시선 엔진이 달라 비교하지 않아요' : m.fmt(v)}`}
+                        className="flex min-w-0 flex-1 flex-col items-center gap-2"
+                      >
+                        <span className="tabular font-mono text-sm font-bold">
+                          {empty ? '—' : m.fmt(v)}
+                        </span>
+                        {/* 막대 높이의 기준이 되는 칸. 숫자 줄을 뺀 나머지 높이입니다 */}
+                        <div className="flex w-full flex-1 items-end">
+                          <div
+                            className={
+                              empty
+                                ? 'w-full border-2 border-dashed border-line-strong'
+                                : 'w-full bg-coral'
+                            }
+                            style={{ height: `${empty ? 8 : (v / max) * 100}%` }}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+                <ol className="flex gap-4">
+                  {series.map((r) => (
+                    <li key={r.take_id} className="flex-1 text-center text-xs font-bold">
+                      TAKE {r.take_number}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
             <p className="text-xs text-stone">
               {m.hint}점선은 측정하지 못했거나 시선 엔진이 달라 비교하지 않는 Take예요.
             </p>
           </Card>
 
           <Card title="Take별 기록">
-            <div className="overflow-x-auto">
+            <div
+              role="region"
+              aria-label="Take별 기록 표 · 좌우로 스크롤"
+              tabIndex={0}
+              className="min-w-0 max-w-full overflow-x-auto"
+            >
               <table className="w-full min-w-[40rem] text-left text-sm">
                 <thead className="border-b-2 border-ink text-xs text-stone">
                   <tr>
-                    <th className="py-2 pr-4 font-bold">Take</th>
+                    <th scope="col" className="py-2 pr-4 font-bold">
+                      Take
+                    </th>
                     <th className="py-2 pr-4 font-bold">대본 보기</th>
                     <th className="py-2 pr-4 font-bold">시간</th>
                     {METRICS.map((x) => (

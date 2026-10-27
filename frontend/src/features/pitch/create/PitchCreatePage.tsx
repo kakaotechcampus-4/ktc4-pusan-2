@@ -131,7 +131,7 @@ export function PitchEditPage() {
             onClick={() => {
               pitch.refetch().catch(() => undefined);
             }}
-            className="h-11 rounded-md bg-coral px-6 text-sm font-bold text-white hover:bg-coral-deep"
+            className="h-11 rounded-md bg-coral-deep px-6 text-sm font-bold text-white hover:bg-ink"
           >
             다시 불러오기
           </button>
@@ -161,7 +161,7 @@ function EditNotice({
   busy?: boolean;
 }) {
   return (
-    <div className="pitch-create flex h-dvh flex-col bg-greige text-ink">
+    <div className="pitch-create flex min-h-dvh flex-col bg-greige text-ink lg:h-dvh">
       <PageHeader />
       <div className="flex flex-1 items-center justify-center p-6">
         <div
@@ -169,10 +169,10 @@ function EditNotice({
           className="flex w-full max-w-md flex-col items-center gap-3 rounded-lg border border-line bg-panel p-8 text-center"
         >
           <h1 className="text-lg font-bold">{title}</h1>
-          <p className="text-sm text-stone">{body}</p>
+          <p className="text-sm text-ink/80">{body}</p>
           <div className="mt-2 flex items-center gap-3">
             {action}
-            <Link to="/" className="text-sm font-bold hover:text-coral-deep">
+            <Link to="/" className="text-sm font-bold hover:text-ink">
               내 피치로
             </Link>
           </div>
@@ -188,7 +188,7 @@ function PageHeader() {
       <Link to="/" aria-label="PITCH COACH 홈">
         <PitchCoachWordmark />
       </Link>
-      <Link to="/" className="text-sm font-bold hover:text-coral-deep">
+      <Link to="/" className="text-sm font-bold hover:text-ink">
         ← 내 피치
       </Link>
     </header>
@@ -250,20 +250,25 @@ function PitchCreateScreen() {
   })();
 
   return (
-    <div className="pitch-create flex h-dvh flex-col bg-greige text-ink">
+    <div className="pitch-create flex min-h-dvh flex-col bg-greige text-ink lg:h-dvh">
       <PageHeader />
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* ── 좌측: 발표 자료 트리 · 치치 ─────────────────────────── */}
-        <aside className="flex w-sidebar shrink-0 flex-col gap-4 overflow-y-auto border-r border-line-strong bg-cream/60 p-4">
+        <aside className="flex shrink-0 flex-col gap-4 border-b border-line-strong bg-cream/60 p-4 lg:w-sidebar lg:overflow-y-auto lg:border-b-0 lg:border-r">
           <VersionRail />
 
-          <Mascot message={mascotLine(node, pickedScript)} />
+          <div className="hidden lg:block">
+            <Mascot message={mascotLine(node, pickedScript)} />
+          </div>
         </aside>
 
         {/* ── 우측: 경로 · 발표 정보 줄 · 본문 ────────────────────── */}
-        <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-auto p-4 xl:p-6">
-          <nav aria-label="경로" className="flex items-center gap-2 text-xs text-stone">
+        <main className="flex min-w-0 flex-1 flex-col gap-3 p-4 lg:overflow-auto xl:p-6">
+          <nav
+            aria-label="경로"
+            className="flex flex-wrap items-center gap-2 text-xs text-ink/80 [overflow-wrap:anywhere]"
+          >
             <Link to="/" className="hover:text-ink">
               내 피치
             </Link>

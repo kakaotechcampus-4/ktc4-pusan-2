@@ -55,12 +55,13 @@ function otherTip(current: number) {
 }
 
 /** 팁 번호. 매번 앞부분만 보지 않게 처음 팁도, 다음 팁도 무작위로 고릅니다 */
-function useRotatingTip() {
+function useRotatingTip(paused: boolean) {
   const [index, setIndex] = useState(() => Math.floor(Math.random() * TIPS.length));
   useEffect(() => {
+    if (paused) return;
     const id = window.setInterval(() => setIndex(otherTip), TIP_MS);
     return () => window.clearInterval(id);
-  }, []);
+  }, [paused]);
   return index;
 }
 
@@ -94,7 +95,7 @@ export function ProcessingPage() {
           <PitchCoachWordmark />
         </Link>
         {data && (
-          <p className="tabular bg-dusk px-2 py-1 text-sm font-bold text-dusk-ink">
+          <p className="tabular min-w-0 [overflow-wrap:anywhere] bg-dusk px-2 py-1 text-sm font-bold text-dusk-ink">
             {data.pitch_title} / TAKE {data.take_number}
             {data.measures && ` · 발표 길이 ${formatDuration(data.measures.duration_ms)}`}
           </p>
@@ -102,6 +103,7 @@ export function ProcessingPage() {
       </header>
 
       <main className="relative z-10 flex flex-1 items-end justify-center px-5 pb-8 pt-4 sm:px-8 lg:items-center lg:justify-end lg:pb-4">
+        <h1 className="sr-only">분석 대기</h1>
         <DialogBox>
           <DialogContent
             isPending={report.isPending}
@@ -120,7 +122,7 @@ export function ProcessingPage() {
 /** 게임 대화 상자 — 진한 바탕에 두 겹 테두리 */
 function DialogBox({ children }: { children: ReactNode }) {
   return (
-    <section className="flex w-full max-w-xl flex-col items-center gap-4 border-4 border-dusk-ink bg-dusk px-5 py-5 text-center text-dusk-ink shadow-[inset_0_0_0_3px_var(--color-dusk),inset_0_0_0_5px_var(--color-dusk-line)] sm:px-8 lg:max-w-md">
+    <section className="flex w-full min-w-0 [overflow-wrap:anywhere] max-w-xl flex-col items-center gap-4 border-4 border-dusk-ink bg-dusk px-5 py-5 text-center text-dusk-ink shadow-[inset_0_0_0_3px_var(--color-dusk),inset_0_0_0_5px_var(--color-dusk-line)] sm:px-8 lg:max-w-md">
       {children}
     </section>
   );
@@ -209,7 +211,8 @@ function StatusLine({ text }: { text: string }) {
 }
 
 function Progress({ states }: { states: StepState[] }) {
-  const tip = useRotatingTip();
+  const [paused, setPaused] = useState(false);
+  const tip = useRotatingTip(paused);
   const current = states.findIndex((s) => s === 'RUNNING' || s === 'WAITING');
   const waiting = states[current] === 'WAITING';
 
@@ -246,6 +249,14 @@ function Progress({ states }: { states: StepState[] }) {
       <div className="w-full border-t-2 border-dashed border-dusk-line pt-4 text-left">
         <p className="font-mono text-xs font-bold text-dusk-accent">TIP · 치치</p>
         <p className="mt-1 text-sm leading-relaxed">{TIPS[tip]}</p>
+        <button
+          type="button"
+          aria-pressed={paused}
+          onClick={() => setPaused(!paused)}
+          className="mt-2 min-h-11 text-xs text-dusk-accent underline underline-offset-4"
+        >
+          {paused ? '팁 자동 전환 재개' : '팁 자동 전환 일시정지'}
+        </button>
       </div>
 
       <p className="text-xs text-dusk-accent">

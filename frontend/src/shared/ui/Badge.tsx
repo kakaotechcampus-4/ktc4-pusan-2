@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 export type Tone = 'bad' | 'good' | 'strong' | 'plain' | 'muted';
 
 const TONE: Record<Tone, string> = {
-  bad: 'bg-coral text-white',
-  good: 'bg-coral-wash text-coral-deep',
+  bad: 'bg-coral-deep text-white',
+  good: 'bg-coral-wash text-ink',
   strong: 'bg-ink text-panel',
   plain: 'bg-cream text-ink',
   muted: 'border border-dashed border-line-strong text-stone',

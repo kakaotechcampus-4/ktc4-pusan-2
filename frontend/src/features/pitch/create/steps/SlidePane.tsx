@@ -115,19 +115,19 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
       >
         <PdfUploadIcon />
         <p className="mt-5 text-lg font-bold">PDF를 여기에 끌어다 놓으세요</p>
-        <p className="mt-1.5 text-sm text-stone">또는 파일을 선택해 주세요 · 최대 40MB</p>
+        <p className="mt-1.5 text-sm text-ink/80">또는 파일을 선택해 주세요 · 최대 40MB</p>
 
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="mt-6 inline-flex items-center gap-2.5 rounded-lg bg-coral px-12 py-3 text-sm font-bold text-white hover:bg-coral-deep"
+          className="mt-6 inline-flex items-center gap-2.5 rounded-lg bg-coral-deep px-12 py-3 text-sm font-bold text-white hover:bg-ink"
         >
           <FileIcon />
           PDF 파일 선택
         </button>
 
         {error && (
-          <p role="alert" className="mt-3 text-xs font-bold text-coral">
+          <p role="alert" className="mt-3 text-xs font-bold text-ink">
             {error}
           </p>
         )}
@@ -136,14 +136,14 @@ function DropZone({ upload, version }: { upload: SlideUpload; version: number | 
             다시 보내도 같으니 다른 파일을 고르게 합니다 */}
         {failed && !error && (
           <div role="alert" className="mt-4 flex flex-col items-center gap-2">
-            <p className="text-xs font-bold text-coral">
+            <p className="text-xs font-bold text-ink">
               {failed.file.name} · {FAILURE_MESSAGE[failed.reason]}
             </p>
             {canRetry(failed.reason) && (
               <button
                 type="button"
                 onClick={() => startSlideUpload(failed.file)}
-                className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-coral-deep hover:bg-coral-wash"
+                className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-ink hover:bg-coral-wash"
               >
                 다시 시도
               </button>
@@ -168,8 +168,8 @@ function Uploading({ file, version }: { file: File; version: number | null }) {
           <PdfUploadIcon />
         </span>
         <p className="mt-5 text-lg font-bold">올리는 중…</p>
-        <p className="mt-1.5 max-w-full truncate text-sm text-stone">{file.name}</p>
-        <p className="mt-4 text-xs text-stone">
+        <p className="mt-1.5 max-w-full truncate text-sm text-ink/80">{file.name}</p>
+        <p className="mt-4 text-xs text-ink/80">
           다른 자료를 먼저 준비해도 괜찮아요. 업로드는 계속돼요.
         </p>
       </div>
@@ -189,7 +189,7 @@ const toolButton =
 
 function ViewerMessage({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-1 items-center justify-center text-sm text-stone">{children}</div>
+    <div className="flex flex-1 items-center justify-center text-sm text-ink/80">{children}</div>
   );
 }
 
@@ -215,7 +215,7 @@ function Toolbar({
   onFullscreen: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-line px-4 py-2.5">
+    <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5">
       <DocIcon className="h-4 w-4 shrink-0 stroke-ink" />
       <span className="min-w-0 flex-1 truncate text-sm font-bold">{fileName}</span>
 
@@ -326,7 +326,7 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
       />
 
       <div className="flex min-h-0 flex-1">
-        <ul className="w-44 shrink-0 overflow-y-auto border-r border-line bg-panel/50 p-4">
+        <ul className="w-20 shrink-0 overflow-y-auto border-r border-line bg-panel/50 p-2 sm:w-44 sm:p-4">
           {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
             <li key={n} className="mb-4">
               <button
@@ -341,7 +341,7 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
               >
                 <PdfPage doc={doc} pageNumber={n} fit="width" className="w-full" />
               </button>
-              <span className="tabular mt-1.5 block text-center text-xs text-stone">{n}</span>
+              <span className="tabular mt-1.5 block text-center text-xs text-ink/80">{n}</span>
             </li>
           ))}
         </ul>
@@ -392,7 +392,7 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
             <button
               type="button"
               onClick={opened.retry}
-              className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-coral-deep hover:bg-coral-wash"
+              className="rounded-lg border border-coral px-4 py-1.5 text-xs font-bold text-ink hover:bg-coral-wash"
             >
               다시 열기
             </button>
@@ -410,7 +410,7 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
         badges={
           <>
             {total > 0 && (
-              <span className="tabular rounded-md bg-panel px-2.5 py-1 text-sm text-stone">
+              <span className="tabular rounded-md bg-panel px-2.5 py-1 text-sm text-ink/80">
                 {total}장
               </span>
             )}
@@ -444,7 +444,7 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
                 pendingSlide !== null ? `V${pendingSlide}에 파일을 먼저 올려 주세요` : undefined
               }
               onClick={addSlideVersion}
-              className="flex h-11 items-center gap-2 rounded-lg border border-coral bg-white px-5 text-sm font-bold text-coral hover:bg-coral-wash disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-11 items-center gap-2 rounded-lg border border-coral bg-white px-5 text-sm font-bold text-ink hover:bg-coral-wash disabled:cursor-not-allowed disabled:opacity-50"
             >
               + 새 버전
             </button>
@@ -454,13 +454,13 @@ function Viewer({ slide, upload }: { slide: SlideVersion; upload: SlideUpload })
       />
 
       {(error || replaceFailed) && (
-        <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-coral">
+        <p role="alert" className="mb-3 flex items-center gap-3 text-sm font-bold text-ink">
           {error ?? (replaceFailed && FAILURE_MESSAGE[replaceFailed.reason])}
           {replaceFailed && !error && canRetry(replaceFailed.reason) && (
             <button
               type="button"
               onClick={() => startSlideUpload(replaceFailed.file, slide.version)}
-              className="rounded-lg border border-coral px-3 py-1 text-xs text-coral-deep hover:bg-coral-wash"
+              className="rounded-lg border border-coral px-3 py-1 text-xs text-ink hover:bg-coral-wash"
             >
               다시 시도
             </button>

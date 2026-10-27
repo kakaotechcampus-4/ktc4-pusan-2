@@ -127,7 +127,7 @@ function ToleranceField({
         onDecrease={() => onChange(unknown ? 0 : sec - TOLERANCE_STEP_SEC)}
         onIncrease={() => onChange(sec + TOLERANCE_STEP_SEC)}
       />
-      <p className={unknown ? 'text-xs font-bold text-coral' : 'text-xs text-stone'}>
+      <p className={unknown ? 'text-xs font-bold text-ink' : 'text-xs text-ink/80'}>
         {unknown ? '저장된 값을 불러오지 못했어요. 다시 정해 주세요' : hint}
       </p>
     </div>
@@ -193,7 +193,7 @@ export function InfoPane() {
             <label htmlFor={`${id}-title`} className="text-sm font-bold">
               발표 제목
             </label>
-            <span className="tabular text-xs text-stone" aria-live="polite">
+            <span className="tabular text-xs text-ink/80" aria-live="polite">
               {form.title.length} / {MAX_TITLE_CHARS}
             </span>
           </div>
@@ -204,13 +204,13 @@ export function InfoPane() {
             // BE 가 50자를 넘으면 422 로 거절합니다 — 저장할 때 알게 하지 않고 입력에서 막습니다
             maxLength={MAX_TITLE_CHARS}
             onChange={(e) => patch({ title: e.target.value })}
-            className="h-12 rounded-md border border-line-strong bg-white px-4 text-base outline-none placeholder:text-stone focus:border-ink"
+            className="h-12 rounded-md border border-line-strong bg-white px-4 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-ink/80 focus:border-ink"
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-0">
+        <div className="grid grid-cols-1 gap-8 xl:grid-cols-2 xl:gap-0">
           {/* ── 왼쪽: 발표 날짜 ── */}
-          <div className="flex flex-col gap-3 lg:border-r lg:border-line lg:pr-8">
+          <div className="flex flex-col gap-3 xl:border-r xl:border-line xl:pr-8">
             <div className="flex items-baseline justify-between">
               <p className="text-sm font-bold">발표 날짜</p>
               <span className="tabular text-sm font-bold" aria-live="polite">
@@ -224,7 +224,7 @@ export function InfoPane() {
           </div>
 
           {/* ── 오른쪽: 발표시간 ── */}
-          <div className="flex flex-col gap-6 lg:pl-8">
+          <div className="flex flex-col gap-6 xl:pl-8">
             <div className="flex flex-col gap-2">
               <p className="text-sm font-bold">목표 발표시간</p>
               <Stepper
@@ -238,7 +238,7 @@ export function InfoPane() {
               />
             </div>
 
-            <div className="flex gap-6">
+            <div className="flex flex-col gap-6 sm:flex-row">
               <ToleranceField
                 label="하한 허용오차"
                 hint="목표보다 짧게 발표해도 되는 시간"
@@ -246,7 +246,7 @@ export function InfoPane() {
                 maxSec={Math.min(MAX_TOLERANCE_SEC, form.timeLimitSec)}
                 onChange={(sec) => patch({ lowerToleranceSec: sec })}
               />
-              <div className="w-px bg-line" aria-hidden="true" />
+              <div className="hidden w-px bg-line sm:block" aria-hidden="true" />
               <ToleranceField
                 label="상한 허용오차"
                 hint="목표보다 길게 발표해도 되는 시간"
@@ -256,9 +256,9 @@ export function InfoPane() {
               />
             </div>
 
-            <div className="mt-auto flex items-center justify-between gap-4 border-t border-line pt-5">
+            <div className="mt-auto flex flex-wrap items-center justify-between gap-4 border-t border-line pt-5">
               <p className="flex items-baseline gap-4 text-sm">
-                <span className="text-stone">허용 범위</span>
+                <span className="text-ink/80">허용 범위</span>
                 <span className="tabular text-lg font-bold">
                   {formatAllowedRange(
                     form.timeLimitSec,
@@ -274,13 +274,13 @@ export function InfoPane() {
                   if (infoReady(form)) save.mutate({ body: toPitchRequest(form), draftId });
                 }}
                 title={blocked}
-                className="h-12 w-44 shrink-0 rounded-md bg-coral text-base font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
+                className="h-12 w-44 shrink-0 rounded-md bg-coral-deep text-base font-bold text-white hover:bg-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-ink/80"
               >
                 {saveLabel(save.isPending, dirty || blocked !== undefined)}
               </button>
             </div>
             {save.isError && (
-              <p role="alert" className="-mt-4 text-right text-sm font-bold text-coral">
+              <p role="alert" className="-mt-4 text-right text-sm font-bold text-ink">
                 발표정보를 저장하지 못했어요. {toMessage(save.error)}
               </p>
             )}

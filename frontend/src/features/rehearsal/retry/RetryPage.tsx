@@ -80,8 +80,12 @@ export function RetryPage() {
     });
   }, [takeId, passed, navigate]);
 
-  // IndexedDB 를 읽는 동안(몇 ms)은 아무것도 그리지 않습니다
-  if (found === undefined) return null;
+  if (found === undefined)
+    return (
+      <InfoPage title="업로드 실패 · 재시도">
+        <p role="status">이 브라우저의 발표 기록을 확인하고 있어요.</p>
+      </InfoPage>
+    );
 
   if (found === null) {
     return (
@@ -120,7 +124,7 @@ export function RetryPage() {
 
   return (
     <InfoPage title="업로드 실패 · 재시도">
-      <p className="border-b border-line pb-4 font-bold">
+      <p className="border-b border-line pb-4 font-bold [overflow-wrap:anywhere]">
         {ticket.title}
         {ticket.takeNumber !== null && (
           <>

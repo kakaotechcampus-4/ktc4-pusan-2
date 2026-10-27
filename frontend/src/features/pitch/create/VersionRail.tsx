@@ -96,7 +96,7 @@ function GroupBlock({ group }: { group: RailGroup }) {
               type="button"
               onClick={group.onAdd}
               disabled={group.pending !== null}
-              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-stone hover:text-ink disabled:cursor-not-allowed disabled:text-line-strong disabled:hover:text-line-strong"
+              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-ink/80 hover:text-ink disabled:cursor-not-allowed disabled:text-line-strong disabled:hover:text-line-strong"
             >
               <span aria-hidden="true" className="w-4 text-center text-base leading-none">
                 +
@@ -104,7 +104,7 @@ function GroupBlock({ group }: { group: RailGroup }) {
               새 버전
             </button>
             {group.pendingNote !== null && (
-              <p className="px-2 pb-1 text-xs text-stone">{group.pendingNote}</p>
+              <p className="px-2 pb-1 text-xs text-ink/80">{group.pendingNote}</p>
             )}
           </li>
         </ul>
@@ -131,7 +131,7 @@ function InfoItem() {
         <DocIcon className="h-4 w-4 shrink-0 stroke-ink" />
         발표정보
         {/* 고치다 다른 화면으로 왔을 때 — 저장하지 않은 값이 남아 있다는 것을 여기서 압니다 */}
-        {unsaved && <span className="ml-auto text-xs font-bold text-coral">저장 안 됨</span>}
+        {unsaved && <span className="ml-auto text-xs font-bold text-ink">저장 안 됨</span>}
       </button>
     </li>
   );

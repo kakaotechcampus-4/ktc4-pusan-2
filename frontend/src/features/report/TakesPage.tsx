@@ -48,12 +48,12 @@ export function TakesPage() {
         <Card
           title="최근 연습"
           action={
-            <label className="flex items-center gap-2 text-sm font-bold">
+            <label className="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-sm font-bold">
               피치
               <select
                 value={pitch}
                 onChange={(e) => setPitch(e.target.value)}
-                className="border-2 border-ink bg-white px-2 py-1"
+                className="min-h-11 min-w-0 max-w-full border-2 border-ink bg-white px-2 py-1 sm:max-w-xs"
               >
                 <option value={ALL}>전체</option>
                 {[...pitches].map(([id, title]) => (
@@ -65,6 +65,9 @@ export function TakesPage() {
             </label>
           }
         >
+          <p role="status" className="sr-only">
+            연습 기록 {shown.length}개
+          </p>
           <ul className="flex flex-col">
             {shown.map((t) => {
               // Take 목록 응답에는 end_reason 이 없어 FAILED 는 모두 "실패" 로 보입니다
@@ -75,7 +78,7 @@ export function TakesPage() {
                   className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-x-4 gap-y-3 border-b border-line py-4 last:border-b-0 lg:grid-cols-[minmax(0,1fr)_5rem_24rem_6rem]"
                 >
                   <div className="min-w-0">
-                    <p className="break-words text-xs text-stone">
+                    <p className="[overflow-wrap:anywhere] text-xs text-stone">
                       {takeDay(t.started_at)} · {t.pitch_title}
                     </p>
                     <p className="mt-0.5 font-mono font-bold">TAKE {t.take_number}</p>
@@ -102,7 +105,11 @@ export function TakesPage() {
                   </dl>
                   <div className="col-span-2 min-h-5 text-right lg:col-span-1">
                     {status.link && (
-                      <Link to={status.link.to} className="text-sm font-bold hover:text-coral-deep">
+                      <Link
+                        to={status.link.to}
+                        aria-label={`${t.pitch_title} Take ${t.take_number} ${status.link.text}`}
+                        className="inline-flex min-h-11 items-center text-sm font-bold hover:text-coral-deep"
+                      >
                         {status.link.text} →
                       </Link>
                     )}
