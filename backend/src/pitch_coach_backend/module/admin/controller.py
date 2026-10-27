@@ -5,6 +5,7 @@
 /admin 은 Caddy 가 /admin/ 으로 보낸다 — 여기서 보내면 uvicorn 이 https 를 몰라 http 주소가 된다.
 """
 
+import uuid
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -16,6 +17,7 @@ from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module.admin import service
 from pitch_coach_backend.module.admin.dependencies import require_admin
 from pitch_coach_backend.module.admin.dto import (
+    AdminFeedbackGroupRow,
     AdminFeedbackRow,
     AdminPage,
     AdminSuggestionRow,
@@ -92,14 +94,24 @@ def feedbacks(
     return service.list_feedbacks(db, limit=limit, offset=offset)
 
 
+@router.get("/api/service-feedbacks/by-user", response_model=AdminPage[AdminFeedbackGroupRow])
+def feedbacks_by_user(
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminPage[AdminFeedbackGroupRow]:
+    return service.list_feedback_groups(db, limit=limit, offset=offset)
+
+
 @router.get("/api/suggestions", response_model=AdminPage[AdminSuggestionRow])
 def suggestions(
     db: Annotated[Session, Depends(get_db)],
     source: SuggestionSource | None = None,
     category: SuggestionCategory | None = None,
+    user_id: uuid.UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> AdminPage[AdminSuggestionRow]:
     return service.list_suggestions(
-        db, source=source, category=category, limit=limit, offset=offset
+        db, source=source, category=category, limit=limit, offset=offset, user_id=user_id
     )

@@ -1,12 +1,15 @@
 """관리자 콘솔 집계. 읽기만 하고 커밋하지 않는다."""
 
+import uuid
 from datetime import UTC, datetime, time, timedelta
 
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.admin import repository
 from pitch_coach_backend.module.admin.dto import (
+    AdminFeedbackGroupRow,
     AdminFeedbackRow,
+    AdminGroupSuggestion,
     AdminPage,
     AdminSuggestionRow,
     AdminTakeRow,
@@ -31,6 +34,8 @@ STUCK_LIMIT = 50
 # 사용자가 직접 끝낸 Take 는 end_reason 이 비어 있다.
 # 비율에서 자동 종료와 나란히 보이게 이름을 붙인다
 USER_ENDED = "USER"
+# 사용자별 평점 · 의견에서 한 행에 미리 싣는 의견 수. 마이페이지 의견은 수에 제한이 없다
+GROUP_SUGGESTION_PREVIEW = 3
 
 
 def get_stats(db: Session, now: datetime | None = None) -> StatsResponse:
@@ -100,12 +105,45 @@ def list_feedbacks(db: Session, *, limit: int, offset: int) -> AdminPage[AdminFe
 
 
 def list_suggestions(
-    db: Session, *, source: str | None, limit: int, offset: int, category: str | None = None
+    db: Session,
+    *,
+    source: str | None,
+    limit: int,
+    offset: int,
+    category: str | None = None,
+    user_id: uuid.UUID | None = None,
 ) -> AdminPage[AdminSuggestionRow]:
     rows = repository.list_suggestions(
-        db, source=source, category=category, limit=limit, offset=offset
+        db, source=source, category=category, limit=limit, offset=offset, user_id=user_id
     )
     return AdminPage[AdminSuggestionRow](
         items=[AdminSuggestionRow(**row) for row in rows[:limit]],
         next_offset=offset + limit if len(rows) > limit else None,
+    )
+
+
+def list_feedback_groups(
+    db: Session, *, limit: int, offset: int
+) -> AdminPage[AdminFeedbackGroupRow]:
+    groups = repository.list_feedback_groups(db, limit=limit, offset=offset)
+    page = groups[:limit]
+    suggestions: dict[tuple[uuid.UUID | None, uuid.UUID | None], list[AdminGroupSuggestion]] = {
+        (group["user_id"], group["retained_id"]): [] for group in page
+    }
+    rows = repository.list_group_suggestions(
+        db,
+        user_ids=[group["user_id"] for group in page if group["user_id"] is not None],
+        retained_ids=[group["retained_id"] for group in page if group["retained_id"] is not None],
+        per_group=GROUP_SUGGESTION_PREVIEW,
+    )
+    for row in rows:
+        suggestions[row["user_id"], row["retained_id"]].append(AdminGroupSuggestion(**row))
+    return AdminPage[AdminFeedbackGroupRow](
+        items=[
+            AdminFeedbackGroupRow(
+                **group, suggestions=suggestions[group["user_id"], group["retained_id"]]
+            )
+            for group in page
+        ],
+        next_offset=offset + limit if len(groups) > limit else None,
     )
