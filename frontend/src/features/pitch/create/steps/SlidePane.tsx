@@ -326,25 +326,28 @@ function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentProxy }) {
       />
 
       <div className="flex min-h-0 flex-1">
-        <ul className="w-44 shrink-0 overflow-y-auto border-r border-line bg-panel/50 p-4">
-          {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
-            <li key={n} className="mb-4">
-              <button
-                type="button"
-                onClick={() => setPage(n)}
-                aria-current={page === n ? 'true' : undefined}
-                aria-label={`${n}번 슬라이드`}
-                className={[
-                  'block w-full rounded-md border-2 p-1',
-                  page === n ? 'border-coral' : 'border-transparent hover:border-line-strong',
-                ].join(' ')}
-              >
-                <PdfPage doc={doc} pageNumber={n} fit="width" className="w-full" />
-              </button>
-              <span className="tabular mt-1.5 block text-center text-xs text-stone">{n}</span>
-            </li>
-          ))}
-        </ul>
+        {/* 썸네일은 띄워 둡니다 — 목록 길이가 카드 키를 정하면 본문이 그 가운데(한참 아래)에 그려집니다 */}
+        <div className="relative w-44 shrink-0 border-r border-line bg-panel/50">
+          <ul className="absolute inset-0 overflow-y-auto p-4">
+            {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
+              <li key={n} className="mb-4">
+                <button
+                  type="button"
+                  onClick={() => setPage(n)}
+                  aria-current={page === n ? 'true' : undefined}
+                  aria-label={`${n}번 슬라이드`}
+                  className={[
+                    'block w-full rounded-md border-2 p-1',
+                    page === n ? 'border-coral' : 'border-transparent hover:border-line-strong',
+                  ].join(' ')}
+                >
+                  <PdfPage doc={doc} pageNumber={n} fit="width" className="w-full" />
+                </button>
+                <span className="tabular mt-1.5 block text-center text-xs text-stone">{n}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
 
         <PdfPage
           doc={doc}
