@@ -20,12 +20,15 @@ from pitch_coach_ai.features.gaze.schemas import (
 from pitch_coach_ai.features.gaze.version import FEATURE_VERSION
 
 REQUIRED = {"t_ms": 1000, "since_ms": 0}
-#: 소리 크기 판정 모듈의 기준값 파일. 시선 모듈 폴더에서 찾는다:
-#: 서비스는 같은 features/ 아래 volume/, 연구 폴더는 ai/research/volume-analysis/src/volume/
+#: 소리 크기 판정 모듈의 기준값 파일. 서비스의 같은 features/ 아래 volume/ 을 먼저 찾고,
+#: 소리 크기가 서비스에 오기 전에는 저장소의 연구 폴더 것(ai/research/volume-analysis/)과 비교한다.
+#: 연구 폴더 경로는 이 테스트 파일 위치(ai/service/tests/unit/gaze/)에서 찾는다.
+#: 소리 크기를 서비스로 옮기면 이 후보를 지운다
 _GAZE_DIR = Path(config.__file__).parent
+_AI_DIR = Path(__file__).resolve().parents[4]
 _VOLUME_CONFIGS = (
     _GAZE_DIR.parent / "volume" / "config.py",
-    _GAZE_DIR.parents[2] / "volume-analysis" / "src" / "volume" / "config.py",
+    _AI_DIR / "research" / "volume-analysis" / "src" / "volume" / "config.py",
 )
 VOLUME_CONFIG = next((p for p in _VOLUME_CONFIGS if p.exists()), _VOLUME_CONFIGS[0])
 
@@ -177,5 +180,5 @@ def test_speaking_second_threshold_matches_volume():
     """'말한 1초'의 기준은 시선 · 소리 크기가 같은 값이다(architecture.md 6-2)."""
     volume = _volume_voiced_min_ms()
     if volume is None:
-        pytest.skip(f"소리 크기 모듈이 아직 없다: {VOLUME_CONFIG}")
+        pytest.skip(f"소리 크기 기준값 파일이 없다(서비스 폴더만 있는 사본): {VOLUME_CONFIG}")
     assert DEFAULT.speaking_min_voiced_ms == volume

@@ -324,7 +324,7 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
 | `tools/make_examples.py` | 서비스 위치의 예시를 다시 만들어도 git diff 없음 |
 | 공통 패키지 판 | 연구 `uv.lock`을 서비스 `uv.lock`과 같게 맞춤 |
 
-- 서비스의 '말한 1초' 기준값 비교(`test_speaking_second_threshold_matches_volume`)는 같은 `features/` 아래 `volume/config.py`를 읽습니다. 소리 크기 모듈이 아직 서비스에 없어 이유를 보이고 건너뜁니다(1 skipped). 소리 크기가 서비스에 오면 다시 비교합니다.
+- 서비스의 '말한 1초' 기준값 비교(`test_speaking_second_threshold_matches_volume`)는 같은 `features/` 아래 `volume/config.py`를 먼저 찾고, 소리 크기가 서비스에 오기 전에는 연구 폴더의 소리 크기 `config.py`(`ai/research/volume-analysis/src/volume/`)와 비교합니다. 옮길 때(위 표)는 서비스 위치의 경로만 찾아 건너뛰었고(1 skipped), 서비스 탑재 리뷰를 반영하며 고쳤습니다.
 
 ---
 
