@@ -6,6 +6,9 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.admin import repository
 from pitch_coach_backend.module.admin.dto import (
+    AdminFeedbackRow,
+    AdminPage,
+    AdminSuggestionRow,
     AdminTakeRow,
     AdminUserRow,
     DailyCount,
@@ -86,3 +89,21 @@ def list_stuck_takes(db: Session, now: datetime | None = None) -> list[AdminTake
 def _named(counts: dict[str | None, int]) -> dict[str, int]:
     # NOT NULL 컬럼이라 None 키는 없다
     return {key: n for key, n in counts.items() if key is not None}
+
+
+def list_feedbacks(db: Session, *, limit: int, offset: int) -> AdminPage[AdminFeedbackRow]:
+    rows = repository.list_feedbacks(db, limit=limit, offset=offset)
+    return AdminPage[AdminFeedbackRow](
+        items=[AdminFeedbackRow(**row) for row in rows[:limit]],
+        next_offset=offset + limit if len(rows) > limit else None,
+    )
+
+
+def list_suggestions(
+    db: Session, *, source: str | None, limit: int, offset: int
+) -> AdminPage[AdminSuggestionRow]:
+    rows = repository.list_suggestions(db, source=source, limit=limit, offset=offset)
+    return AdminPage[AdminSuggestionRow](
+        items=[AdminSuggestionRow(**row) for row in rows[:limit]],
+        next_offset=offset + limit if len(rows) > limit else None,
+    )

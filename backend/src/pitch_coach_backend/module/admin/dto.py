@@ -71,3 +71,25 @@ class AdminTakeRow(BaseModel):
     ended_at: datetime | None
     elapsed_sec: float | None
     goal_time_sec: int
+
+
+class AdminFeedbackRow(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    rating: int
+    suggestion: str | None
+    created_at: datetime
+
+
+class AdminSuggestionRow(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    content: str
+    source: str
+    service_feedback_id: uuid.UUID | None
+    created_at: datetime
+
+
+class AdminPage[T](BaseModel):
+    items: list[T]
+    next_offset: int | None

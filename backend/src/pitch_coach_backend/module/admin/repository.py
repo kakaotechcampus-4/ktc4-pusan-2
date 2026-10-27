@@ -7,6 +7,7 @@ from sqlalchemy import ColumnElement, Select, case, distinct, extract, func, sel
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from pitch_coach_backend.module.pitch.entity import Pitch
+from pitch_coach_backend.module.service_feedback.entity import ServiceFeedback, UserSuggestion
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import last_active_at
 from pitch_coach_backend.module.user.entity import User
@@ -175,3 +176,40 @@ def _count_per_day(
 def _float_or_none(value: Any) -> float | None:
     # AVG · percentile 은 Decimal 을 돌려주고 대상이 없으면 NULL 이다
     return None if value is None else float(value)
+
+
+def list_feedbacks(db: Session, *, limit: int, offset: int) -> list[dict[str, Any]]:
+    stmt = select(
+        ServiceFeedback.id,
+        ServiceFeedback.user_id,
+        ServiceFeedback.rating,
+        ServiceFeedback.created_at,
+        UserSuggestion.content.label("suggestion"),
+    ).outerjoin(UserSuggestion, UserSuggestion.service_feedback_id == ServiceFeedback.id)
+    return _fetch(
+        db,
+        stmt.order_by(ServiceFeedback.created_at.desc(), ServiceFeedback.id.desc())
+        .offset(offset)
+        .limit(limit + 1),
+    )
+
+
+def list_suggestions(
+    db: Session, *, source: str | None, limit: int, offset: int
+) -> list[dict[str, Any]]:
+    stmt = select(
+        UserSuggestion.id,
+        UserSuggestion.user_id,
+        UserSuggestion.content,
+        UserSuggestion.source,
+        UserSuggestion.service_feedback_id,
+        UserSuggestion.created_at,
+    )
+    if source is not None:
+        stmt = stmt.where(UserSuggestion.source == source)
+    return _fetch(
+        db,
+        stmt.order_by(UserSuggestion.created_at.desc(), UserSuggestion.id.desc())
+        .offset(offset)
+        .limit(limit + 1),
+    )

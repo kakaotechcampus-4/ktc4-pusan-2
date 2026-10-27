@@ -18,6 +18,8 @@ const LABELS = {
   ABANDONED: '이탈',
   CLOSED: '창 닫음',
   USER: '직접 종료',
+  RATING_POPUP: '평점 팝업',
+  MY_PAGE: '마이페이지',
 };
 
 const label = (value) => (value == null ? '—' : LABELS[value] ?? value);
@@ -158,6 +160,80 @@ const USER_COLUMNS = [
   ['마지막 연습', (u) => dateTime(u.last_take_at)],
 ];
 
+// ---------- 서비스 평점 · 의견 ----------
+
+const feedbackPages = {
+  feedbacks: { path: 'api/service-feedbacks', offset: 0, next: null, request: 0 },
+  suggestions: { path: 'api/suggestions', offset: 0, next: null, request: 0 },
+};
+const opinionText = (text) => el('span', { className: 'opinion', textContent: text ?? '—' });
+const FEEDBACK_COLUMNS = [
+  ['제출 시각', (row) => dateTime(row.created_at)],
+  ['사용자 ID', (row) => row.user_id],
+  ['평점', (row) => `${row.rating} / 5`, true],
+  ['의견', (row) => opinionText(row.suggestion)],
+];
+const SUGGESTION_COLUMNS = [
+  ['제출 시각', (row) => dateTime(row.created_at)],
+  ['사용자 ID', (row) => row.user_id],
+  ['보낸 곳', (row) => label(row.source)],
+  ['의견', (row) => opinionText(row.content)],
+];
+
+async function loadFeedbackPage(id, offset) {
+  const state = feedbackPages[id];
+  const request = ++state.request;
+  const previous = document.getElementById(`${id}-prev`);
+  const next = document.getElementById(`${id}-next`);
+  const error = document.getElementById(`${id}-error`);
+  previous.disabled = next.disabled = true;
+  error.hidden = true;
+  const query = new URLSearchParams({ limit: '50', offset: String(offset) });
+  if (id === 'suggestions') {
+    const source = document.getElementById('suggestions-source').value;
+    if (source) query.set('source', source);
+  }
+  try {
+    const page = await getJSON(`${state.path}?${query}`);
+    if (request !== state.request) return;
+    state.offset = offset;
+    state.next = page.next_offset;
+    renderTable(id, id === 'feedbacks' ? FEEDBACK_COLUMNS : SUGGESTION_COLUMNS, page.items);
+    document.getElementById(`${id}-page`).textContent = `${offset / 50 + 1}페이지`;
+  } catch (failure) {
+    if (request !== state.request) return;
+    // 이전 필터의 내용이 현재 필터 결과처럼 남지 않게 지운다.
+    state.offset = 0;
+    state.next = null;
+    renderTable(id, id === 'feedbacks' ? FEEDBACK_COLUMNS : SUGGESTION_COLUMNS, [], '불러오지 못했습니다');
+    document.getElementById(`${id}-page`).textContent = '';
+    error.textContent = failure.message;
+    error.hidden = false;
+  } finally {
+    if (request === state.request) {
+      previous.disabled = state.offset === 0;
+      next.disabled = state.next === null;
+    }
+  }
+}
+
+for (const [id, state] of Object.entries(feedbackPages)) {
+  document.getElementById(`${id}-prev`).addEventListener('click', () => {
+    loadFeedbackPage(id, Math.max(0, state.offset - 50)).catch(showFeedbackError);
+  });
+  document.getElementById(`${id}-next`).addEventListener('click', () => {
+    if (state.next !== null) loadFeedbackPage(id, state.next).catch(showFeedbackError);
+  });
+}
+function showFeedbackError(error) {
+  const node = document.getElementById('error');
+  node.textContent = error.message;
+  node.hidden = false;
+}
+document.getElementById('suggestions-source').addEventListener('change', () => {
+  loadFeedbackPage('suggestions', 0).catch(showFeedbackError);
+});
+
 // ---------- 불러오기 ----------
 
 // 하나가 실패해도 나머지는 그린다. 실패를 보려고 연 화면에서 전부 비면 안 된다
@@ -183,7 +259,10 @@ const SECTIONS = [
 async function load() {
   const error = document.getElementById('error');
   error.hidden = true;
-  const results = await Promise.allSettled(SECTIONS.map(([path]) => getJSON(path)));
+  const requests = SECTIONS.map(([path]) => getJSON(path));
+  const feedbackRequests = Object.keys(feedbackPages).map((id) => loadFeedbackPage(id, 0));
+  const results = await Promise.allSettled(requests);
+  await Promise.all(feedbackRequests);
   const failures = [];
   results.forEach((result, i) => {
     if (result.status === 'fulfilled') SECTIONS[i][1](result.value);

@@ -15,7 +15,15 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module.admin import service
 from pitch_coach_backend.module.admin.dependencies import require_admin
-from pitch_coach_backend.module.admin.dto import AdminTakeRow, AdminUserRow, StatsResponse
+from pitch_coach_backend.module.admin.dto import (
+    AdminFeedbackRow,
+    AdminPage,
+    AdminSuggestionRow,
+    AdminTakeRow,
+    AdminUserRow,
+    StatsResponse,
+)
+from pitch_coach_backend.module.service_feedback.dto import SuggestionSource
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -72,3 +80,22 @@ def takes(
 @router.get("/api/takes/stuck")
 def stuck_takes(db: Annotated[Session, Depends(get_db)]) -> list[AdminTakeRow]:
     return service.list_stuck_takes(db)
+
+
+@router.get("/api/service-feedbacks", response_model=AdminPage[AdminFeedbackRow])
+def feedbacks(
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminPage[AdminFeedbackRow]:
+    return service.list_feedbacks(db, limit=limit, offset=offset)
+
+
+@router.get("/api/suggestions", response_model=AdminPage[AdminSuggestionRow])
+def suggestions(
+    db: Annotated[Session, Depends(get_db)],
+    source: SuggestionSource | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminPage[AdminSuggestionRow]:
+    return service.list_suggestions(db, source=source, limit=limit, offset=offset)
