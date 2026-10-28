@@ -2,14 +2,17 @@
  * What crosses into the frontend, and the frontend's light entry point.
  *
  * The frontend's entry points into this folder (copied to `frontend/src/vendor/gaze/engine/`)
- * are `index.ts` and `contract.ts`.  The camera view (`src/camera/`, owned by the frontend
- * from #611) uses only these two and `worker/protocol.ts` too (test/engine-boundary.test.ts).  Direct imports of `config.ts` / `evidence.ts` made before
- * `contract.ts` re-exported them keep working, but may break when files behind it change.
+ * are `index.ts` and `contract.ts`.  The camera view (`src/camera/`, the frontend's from #611)
+ * reaches the engine only through these two (`index.ts` type-only) and the worker only through
+ * `worker/protocol.ts` (test/camera-boundary.test.ts).  Direct imports of `config.ts` /
+ * `evidence.ts` made before `contract.ts` re-exported them keep working, but may break when
+ * files behind it change.
  *
  *   index.ts     `createClassifier` and the engine.  It pulls MediaPipe in, so the worker
  *                loads it with a dynamic `import()`.
  *   contract.ts  everything the host needs without MediaPipe: the shapes its adapter reads,
- *                the engine config hash, the 1 s record slicer (re-exported at the bottom).
+ *                the engine config hash, the 1 s record slicer and the words a screen draws
+ *                with (`GAZE_DIRECTIONS`, `Cue`, `State`, ...; re-exported at the bottom).
  *
  * The frontend's `workers/aiAdapter.ts` maps the engine's snake_case outputs (calibration
  * quality, placement, version parts) onto its `GazeClassifier` contract.  The types below

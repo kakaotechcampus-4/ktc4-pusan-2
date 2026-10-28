@@ -23,30 +23,36 @@ const FILES = readdirSync(CAMERA)
 const ANY_USE = new Set(['../engine/contract', '../worker/protocol']);
 const TYPE_ONLY = new Set(['../engine']);
 
-/** Every import · re-export specifier, and whether the compiler erases it (type-only). */
+/**
+ * Every import · re-export · dynamic `import()` specifier, and whether the compiler erases it.
+ * Only `import type` / `export type` count as type-only: with `verbatimModuleSyntax` an
+ * `import { type A }` statement stays in the output as `import {}` and still loads the module.
+ */
 function specifiers(file: string): { spec: string; typeOnly: boolean }[] {
   const src = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest);
   const out: { spec: string; typeOnly: boolean }[] = [];
-  ts.forEachChild(src, (node) => {
+  const walk = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node)) {
-      const clause = node.importClause;
-      const named = clause?.namedBindings;
-      const allNamedTypeOnly =
-        !!named &&
-        ts.isNamedImports(named) &&
-        !clause?.name &&
-        named.elements.every((e) => e.isTypeOnly);
       out.push({
         spec: (node.moduleSpecifier as ts.StringLiteral).text,
-        typeOnly: !!clause?.isTypeOnly || allNamedTypeOnly,
+        typeOnly: !!node.importClause?.isTypeOnly,
       });
     } else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
       out.push({
         spec: (node.moduleSpecifier as ts.StringLiteral).text,
         typeOnly: node.isTypeOnly,
       });
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments[0] &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      out.push({ spec: node.arguments[0].text, typeOnly: false });
     }
-  });
+    ts.forEachChild(node, walk);
+  };
+  walk(src);
   return out;
 }
 
