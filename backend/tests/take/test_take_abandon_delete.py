@@ -41,6 +41,42 @@ def test_abandon_fails_a_take_whose_tab_was_closed(
     assert (take.status, take.end_reason, take.ended_at) == ("FAILED", "CLOSED", take.created_at)
 
 
+def test_replace_ends_a_take_that_is_still_presenting(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    versions: Versions,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """다른 곳에서 새 Take 를 시작하려고 사용자가 고른 끝내기다. 발표 중이어도 실패(CLOSED)로 끝내고
+    붙어 있는 연결에 그렇게 알린다."""
+    from pitch_coach_backend.realtime.stream import registry
+
+    take = _make_take(db_session, pitch_id, versions, 1)
+    take.status = "RUNNING"
+    db_session.flush()
+    monkeypatch.setattr(registry, "is_live", lambda take_id: True)
+    ended: list[tuple[uuid.UUID, bool]] = []
+
+    async def end_closed_tab(take_id: uuid.UUID, *, replaced: bool = False) -> None:
+        ended.append((take_id, replaced))
+
+    monkeypatch.setattr(registry, "end_closed_tab", end_closed_tab)
+
+    response = client.post(
+        f"/api/pitches/{take.pitch_id}/takes/{take.id}/abandon",
+        params={"replace": "true"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "FAILED"
+    db_session.refresh(take)
+    assert (take.status, take.end_reason) == ("FAILED", "CLOSED")
+    assert ended == [(take.id, True)]
+
+
 def test_abandon_leaves_a_take_that_already_ended(
     client: TestClient,
     db_session: Session,
