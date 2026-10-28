@@ -1,6 +1,6 @@
 """코치 AI 응답 읽기 · 요약 값.
 
-AI 예시 파일(`ai/research/coach-agent/src/coach/examples/`)을 직접 읽는다.
+AI 예시 파일(`ai/service/src/pitch_coach_ai/features/coach/examples/`)을 직접 읽는다.
 """
 
 import copy

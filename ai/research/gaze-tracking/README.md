@@ -4,7 +4,7 @@
 그 기록으로 코치가 읽을 **1초 판정 결과(시선 문제 · 지표)**와 리뷰가 읽을 **Take 시선 지표**를 만드는 기능입니다.
 
 판정은 **사용자 브라우저 안에서(온디바이스)** 돕니다. 카메라 영상 · 얼굴 랜드마크 · 얼굴 측정값은 기기를 떠나지 않고,
-서버에는 **1초 기록**(1초마다 상태 하나, 필드 8개)만 갑니다.
+서버에는 발표 중 **1초 기록**(1초마다 상태 하나, 필드 8개)과 발표 전 보정 결과 요약만 갑니다.
 
 | | |
 |---|---|
@@ -73,7 +73,7 @@ tools/export_config.py · make_fixtures.py  ──생성──▶  web/src/engin
 ### 지키는 규칙
 
 1. **얼굴에서 나온 값은 기기 메모리에만.** 프레임 · 랜드마크 · 얼굴 측정값 · 보정 모델은 저장 · 전송 · 로그하지 않습니다.
-   기기 밖으로 나가는 것은 1초 기록뿐입니다 ([7장](#7-얼굴-데이터와-예외-처리)). 테스트로 막습니다.
+   기기 밖으로 나가는 것은 발표 중 1초 기록과 발표 전 보정 결과 요약 두 가지뿐입니다 ([7장](#7-얼굴-데이터와-예외-처리)). 테스트로 막습니다.
 2. **막지 않는다.** 시선은 정보를 얻으려는 기능이지 발표를 통제하는 기능이 아닙니다. 조건이 나쁘면 "측정 못 함"으로 남기고,
    발표는 어떤 경우에도 멈추지 않습니다. 이상한 1초 기록은 그 1초만 버립니다.
 3. **임계값 원본은 하나다.** 엔진 임계값은 `configs/*.yaml`이 원본이고 TS는 생성된 `defaults.generated.ts`만 읽습니다.
@@ -178,7 +178,7 @@ gaze-tracking/
 
 한 프레임은 이렇게 됩니다: MediaPipe가 얼굴 랜드마크와 변환 행렬을 냄 → 행렬에서 고개 yaw · pitch →
 사용자의 세 기준점(화면 중앙 · 렌즈 · 대본)과 비교 → 상태와 확률, OTHER면 방향 → 촬영 조건 감시가 신뢰도를 붙임.
-8프레임(1초)이 모이면 다수결로 1초 기록 하나가 됩니다.
+첫 프레임에서 시작하는 1초 격자로 프레임(초당 8개 목표)을 모아 다수결로 1초 기록 하나를 만듭니다.
 
 ### 4-2. 서버 판정 모듈
 
@@ -216,8 +216,8 @@ configs/evidence.yaml 에는 1초 나누기 값만 (서버 판정 값이 다시 
 ### 4-4. 코치와 이어지는 곳 · 연구용 대역과 달라진 판정
 
 코치는 판정 모듈을 import하지 않고 `Judges`로 `judge` · `summarize` · `criteria`를 받습니다(기능 문서 5-1).
-코치 연구 폴더는 아직 옛 코치 평가기를 옮긴 연구용 대역(`coach_lab/judges/gaze.py`, `gaze-0.2`)을 씁니다.
-같은 입력에서 이 모듈과 달라지는 점은 아래와 같습니다.
+코치 연구 폴더의 재생 · 채점 · 복구 실험은 이 모듈을 씁니다(`coach_lab.judges.real_judges()`, 2026-10-26 #558). 옛 코치 평가기를 옮긴 연구용 대역(`coach_lab/judges/gaze.py`, `gaze-0.2`)은 BE가 읽는 예시 생성(`lab_judges()`)과 대역 자체의 테스트에만 남았습니다.
+같은 입력에서 이 모듈과 대역이 달라지는 점은 아래와 같습니다.
 
 | | 연구용 대역 (`gaze-0.2`) | 이 모듈 (`gaze-1.3`) |
 |---|---|---|
@@ -229,12 +229,12 @@ configs/evidence.yaml 에는 1초 나누기 값만 (서버 판정 값이 다시 
 | 빠진 `reliability` | 1.0으로 봄 | 0으로 봄(기능 문서 5-2 "없으면 0") |
 | 기록이 잠깐 끊김 | 마지막 기록이 2초 안이면 이어짐을 유지 | 빈 1초가 끼면 이어짐이 끊김 |
 
-코치 코어(최신 코치 작업 브랜치)의 `Judges`에 대역 대신 이 모듈을 넣어 재생 시나리오(`ai/research/coach-agent/scenarios/`) 16개를 돌려 확인했습니다.
-- 코치의 `JudgmentResult` · `IssueCriteria` 검증 오류는 0건입니다(`judge` 2,756번).
-- 시뮬레이터가 만드는 시선 기록에는 `reliability`가 없어, 이 모듈에서는 Take 내내 측정 불가가 됩니다.
-- 기록에 신뢰도를 실제 엔진처럼 채우면 16개 중 15개가 대역과 같게 기대를 통과합니다.
+바꾸기 전에 코치 코어의 `Judges`에 대역 대신 이 모듈을 넣어 재생 시나리오(`ai/research/coach-agent/scenarios/`) 16개를 돌려 본 결과입니다(2026-10-25).
+- 코치의 `JudgmentResult` · `IssueCriteria` 검증 오류는 0건이었습니다(`judge` 2,756번).
+- 그때 시뮬레이터가 만드는 시선 기록에는 `reliability`가 없어, 이 모듈에서는 Take 내내 측정 불가가 됐습니다.
+- 기록에 신뢰도를 실제 엔진처럼 채우면 16개 중 15개가 대역과 같게 기대를 통과했습니다.
 - 남은 하나(대본 응시를 포기하는 시나리오)는 시선 사다리의 두 번째 개입이 새로 생긴 `GAZE_LOW_EYE_CONTACT`로 가서 기대가 달라졌습니다.
-- 대역을 이 모듈로 바꿀 때 시뮬레이터 기록과 그 시나리오의 기대를 함께 맞춥니다.
+- 바꿀 때 시뮬레이터 기록에 `reliability`(0.95)를 넣고 그 시나리오의 기대를 맞췄습니다. 지금 재생은 16/16 통과입니다(코치 연구 폴더 README 7절).
 
 ---
 
@@ -246,9 +246,10 @@ configs/evidence.yaml 에는 1초 나누기 값만 (서버 판정 값이 다시 
 cd ai/research/gaze-tracking
 uv sync                                  # Python 3.12, 라이브러리 + 개발 도구
 uv run python tools/fetch_assets.py      # 모델 · 테스트 얼굴(합성, git 밖)을 받고 sha256 확인
-cd web && npm ci                         # Node 24
+cd web && npm ci && cd ..               # Node 24
 ```
 
+- 아래 명령은 모두 `ai/research/gaze-tracking`에서 돌립니다. `npm` 명령은 `web/`에서 돌므로 그 줄에서 `cd web`으로 들어가고 블록 끝에서 돌아옵니다.
 - `fetch_assets.py`는 토큰 없이 받습니다(테스트 얼굴은 공개 CC0 데이터셋). 네트워크가 막히면 `--model-file` / `--face-file`.
 - torch는 눈 기반 백본 비교 실험에만 씁니다: `uv sync --extra torch` (CPU 판).
 - Windows에서는 `pytest.exe`가 앱 제어로 막혀 있을 수 있어 `uv run python -m pytest`로 부릅니다.
@@ -258,7 +259,7 @@ cd web && npm ci                         # Node 24
 ```bash
 run_demo.bat                                           # Python 데모 (웹캠, OpenCV 창). 또는:
 uv run python tools/pipeline_demo.py --video tests/fixtures/local/static_face_30fps.mp4 --no-window --advisory --countdown 0
-cd web && npm run dev                                  # 브라우저 데모 http://localhost:5180
+cd web && npm run dev                                  # 브라우저 데모 http://localhost:5180 (끝낸 뒤 cd ..)
 ```
 
 ### 테스트
@@ -273,13 +274,14 @@ npm run typecheck                          # tsc 4종 (전체 / 설정 / FE 컴�
 npm run lint                               # FE 와 같은 oxlint 규칙으로 엔진 · Worker
 npm run smoke                              # 실제 브라우저 (Chrome. CHROME=<경로> 로 다른 Chromium), COOP/COEP 켬
 npm run smoke:prod                         # 운영처럼 격리 헤더 없이
+cd ..
 ```
 
 ### 생성 파일 · 평가
 
 ```bash
 uv run python tools/make_examples.py       # 서비스 features/gaze 의 기준값 · 판정을 바꾼 뒤: examples/ 출력 다시 생성
-cd web && npm run fixtures                 # configs 나 gaze_lab 을 바꾼 뒤: TS 임계값 · 기준 답 다시 생성
+cd web && npm run fixtures && cd ..        # configs 나 gaze_lab 을 바꾼 뒤: TS 임계값 · 기준 답 다시 생성
 uv run python -m gaze_lab.evaluation.gaze_eval --help      # 녹화한 특징 테이블이 있어야 돈다
 uv run python experiments/exp1_backbone.py --help
 ```
@@ -290,7 +292,7 @@ uv run python experiments/exp1_backbone.py --help
 
 | 묶음 | 위치 | 무엇을 | 수 |
 |---|---|---|---|
-| 서버 판정 모듈 | 서비스 `tests/unit/gaze/` | `judge`(읽기 · 빈 시간 · 겹침 · 커서 · 대본 의존 · 지표 · 상태 · 다섯 문제 · 시작 직후 억제 · 기준값 경계), `summarize` · `criteria`, `examples/` 계약, 입출력 모델, 코어 import 경계 | 205 + 1 skipped (서비스, 2026-10-26) |
+| 서버 판정 모듈 | 서비스 `tests/unit/gaze/` | `judge`(읽기 · 빈 시간 · 겹침 · 커서 · 대본 의존 · 지표 · 상태 · 다섯 문제 · 시작 직후 억제 · 기준값 경계), `summarize` · `criteria`, `examples/` 계약, 입출력 모델, 코어 import 경계 | 206 passed (서비스, 2026-10-28) |
 | 기준 구현 | `tests/lab/` | 전처리 기하 · 고개 방향 · 보정 · 조건 감시 · 평가 · 데모 · 시나리오 S01~S24, 생성 파일 최신, 1초 나누기 값과 서버 판정 값의 분리 | 1628 passed · 155 skipped (얼굴 자산 없이, 2026-10-26) |
 | TS 엔진 | `web/src/engine/__tests__/` | Python 기준 답과 1e-9~1e-12 안에서 일치, 엔진 흐름, 시나리오, 초기화 실패 | 145 |
 | 그 밖의 web | `web/test/` | FE 계약(FE의 실제 `workers/modelClassifier.ts` · `aiAdapter.ts`를 이 엔진에 붙여 실행), 엔진 import · 저장 API 경계(`contract.ts`가 MediaPipe에 닿지 않음 포함), Worker, 자산 검증 | 53 |
@@ -337,7 +339,7 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
 | 카메라 프레임, 랜드마크 478점, 변환 행렬 | Worker 안에서만. 처리 직후 `close` | 엔진 코드는 저장 · 전송 · 로그 API를 쓰면 테스트가 실패 |
 | 얼굴 가이드 7점, 준비 점검 측정값(얼굴 크기 · 홍채 · 거리) | 화면 표시용 메모리 | 〃 |
 | 보정 모델 `CalibrationModel` (기준점 각도 + 얼굴 위치 · 면적 · 홍채 · 거리) | 그 세션의 메모리에만. 다음 세션은 다시 보정 | 타입 · 주석에 "저장 금지" 명시 |
-| **1초 기록** (상태 · 방향 · 투표 비율 · 신뢰도 · 조건 이슈 · 프레임 수) | **기기 밖으로 나가는 유일한 값** | 서버 계약이 필드 8개만 받음 (얼굴 값은 계약에 없음) |
+| **1초 기록** (상태 · 방향 · 투표 비율 · 신뢰도 · 조건 이슈 · 프레임 수) | **발표 중 기기 밖으로 나가는 값** (보정 결과 요약은 발표 전에 따로, 기능 문서 12-1) | 서버 계약이 필드 8개만 받음 (얼굴 값은 계약에 없음) |
 
 원본 얼굴 영상을 녹화 · 저장하는 archive의 수집 도구(`collect` · `label_review` · `extract_features`)는 옮기지 않았습니다.
 실측 데이터 수집은 동의 · 보관 기간 · 삭제 절차를 정한 뒤 별도 작업으로 합니다.

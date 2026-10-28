@@ -12,7 +12,7 @@ Take 시작 전에는 LLM이 이번 Take의 **코칭 계획**(먼저 챙길 것 
 | 판단 방식 | 규칙 + 되돌아보기. 1초 판단에는 LLM을 쓰지 않고, Take 시작 전 코칭 계획에만 LLM을 한 번 씁니다 |
 | 판정 | 시선 · 속도 · 음량 · 군더더기 판정은 코치가 하지 않습니다. 판정 모듈(#152~#155)이 하고 코치는 결과를 받습니다 |
 | 기능 버전 | `coach-1.3`(시간 판정 `timing-1.1`), 요청 · 응답 스키마 `1.0`, `coach_state` 모양 `2` (서비스 `features/coach/version.py`) |
-| 상태 | 판정 모듈 계약 · 패키지 + 테스트. **가상 발표자와 대역 판정 모듈로만 확인했습니다.** 기준값은 실제 발표 데이터로 검증하지 않았습니다 |
+| 상태 | 코어와 `POST /coach/plan`이 AI 서비스에 있습니다(`evaluate` · `finalize`는 아직 열지 않음). **가상 발표자로만 확인했습니다**: 시선 · 군더더기 · 말 속도는 서비스의 실제 판정 모듈, 소리 크기는 대역입니다. 기준값은 실제 발표 데이터로 검증하지 않았습니다 |
 | 설계 | 목적 · BE ↔ 코치 계약 · 처리 · 배포 → [`docs/ai/features/coach-agent.md`](../../../docs/ai/features/coach-agent.md) |
 
 ## 1. 이 기능이 하는 일
@@ -77,7 +77,7 @@ coach-agent/
 | 옮긴 뒤 확인 | 결과 |
 |---|---|
 | 옮긴 코어 · 예시 · 프롬프트 | 이름만 바뀜(100%) |
-| 테스트 수 | 옮기기 전 605 passed = 서비스 465 + 이 폴더 140 (+ 사본 검사 1) |
+| 테스트 수 | 옮기기 전 605 passed = 옮긴 뒤 서비스 465 + 이 폴더 140 (+ 사본 검사 1). 그 뒤의 테스트 수는 기능 문서 10절 |
 | `python -m coach_lab.replay` | 16/16 통과, 출력은 처리 시간(p50 · p95)만 다름 |
 | `evaluate --sweep` · `recovery_eval` · `coach_lab.examples` | 다시 만든 `take_result.json` · `recovery.json` · 예시가 옮기기 전과 같음 |
 
@@ -85,7 +85,7 @@ coach-agent/
 
 | 파일 | 하는 일 |
 |---|---|
-| `core.py` | 유일한 진입점: `decide` · `decide_safe` · `finalize` · `ReplayRequired`. 아래 흐름의 순서를 정한다 |
+| `core.py` | 1초 판단 · Take 종료의 진입점: `decide` · `decide_safe` · `finalize` · `ReplayRequired`. 아래 흐름의 순서를 정한다(코칭 계획의 진입점은 `planner.py`의 `plan_coaching`) |
 | `judges.py` | `Judges` 묶음과 한 번의 판정 라운드(`run`): filler → pace → gaze → volume → timing 호출, 커서 · 합계 누적, 모듈 예외 처리, 기준 음량(volume의 `speaking_levels` · `baseline`), 새로 시작한 상태의 커서 시작, `skip` |
 | `tally.py` | 판정 결과의 `tally` 조각을 Take 합계 · 장 번호별 합계 · 장 방문에 더하고 센 구간을 표시 |
 | `measure.py` | 판정 결과 → `Tick`(지표 · 문제 `Detection`). 상태 표시(`indicators`) |
@@ -101,6 +101,7 @@ coach-agent/
 | `recovery.py` | replay: Take 전체 원자료로 실시간 요청 시각(1초 기록이 끝난 시각)마다의 요청을 다시 만든다 |
 | `timing.py` | 계획 대비 시간 판정. 다른 판정 모듈과 같은 결과 모양으로 낸다 |
 | `planner.py` | Take 시작 전 코칭 계획 (LLM은 인자) |
+| `prompts/plan.py` | 코칭 계획 LLM 프롬프트. 바꾸면 `planner_hash`가 바뀐다 |
 | `renderer.py` | `instruction` + `variant` → 템플릿 문장 (LLM이 문장을 만들지 않는다) |
 | `schemas.py` | 요청 · 응답 · 이벤트 · Take 결과 · 판정 결과 모양의 단일 진실 원천 (pydantic) |
 | `config.py` | 모든 기준값 · 사다리 · 문구. `config_hash()`가 응답 `meta`에 실린다 |
@@ -114,7 +115,7 @@ coach-agent/
 | 파일 | 하는 일 |
 |---|---|
 | `simulator.py` | 가상 발표자: 시나리오 JSON → 1초 단위 요청. BE가 할 일(창 모으기 · `coach_state` 붙이기 · 이벤트 쌓기 · finalize)을 흉내 내고, 측정 잡음(`clean` · `noisy` · `harsh`)과 정답 기록을 더한다 |
-| `judges/` | **대역 판정 모듈** (gaze · pace · volume · filler). 옛 평가기의 규칙 · 기준값을 #152~#155 계약 모양으로 옮긴 것. `lab_judges()`가 `Judges`로 묶는다. 기능 모듈이 나오면 이것 대신 그 모듈을 쓴다 |
+| `judges/` | **대역 판정 모듈** (gaze · pace · volume · filler). 옛 평가기의 규칙 · 기준값을 #152~#155 계약 모양으로 옮긴 것. `real_judges()`는 시선 · 군더더기 · 말 속도를 서비스의 실제 판정 모듈로, 소리 크기를 대역으로 묶어 재생 · 채점 · 복구 실험이 쓴다. `lab_judges()`는 대역 넷을 묶어 예시 생성 · 대역 시험이 쓴다. 소리 크기 모듈이 서비스에 오면 `real_judges()`의 대역을 바꾼다 |
 | `replay.py` | 시나리오 재생과 `expect` 검사. 결과는 `outputs/replay/`에 |
 | `truth.py` | 정답: 잡음 없는 실제 상태 × 코치와 같은 기준값. 센서가 볼 수 없던 문제는 정답에서도 뺀다 |
 | `evaluate.py` | Take 결과 채점 (구간 재현율 · 정밀도 · 근거 없는 지적 · IoU · 시작 오차 · 조각남 · 장별 오차 · 효과 판정 정확도). 병합 간격 × 최소 구간 격자(`--sweep`) |
@@ -186,9 +187,9 @@ uv sync                                   # Python 3.12, 라이브러리 + 개�
 
 ```python
 from pitch_coach_ai.features.coach import decide_safe, finalize
-from coach_lab.judges import lab_judges  # 대역 판정 모듈. 배포에서는 기능 모듈로 만든 Judges
+from coach_lab.judges import real_judges  # 시선 · 군더더기 · 말 속도는 실제 모듈, 소리 크기는 대역
 
-judges = lab_judges()
+judges = real_judges()
 resp = decide_safe(request_dict, judges)  # 1초마다. resp.coach_state 를 다음 요청에 붙인다
 result = finalize(finalize_request_dict, judges)
 ```

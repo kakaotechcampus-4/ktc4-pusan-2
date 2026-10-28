@@ -110,25 +110,27 @@ async def app_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     return _error_response(exc.status_code, exc.code, exc.message, exc.detail)
 
 
-def _finite_only(value: Any) -> Any:
-    """NaN · Infinity 를 문자열로 바꾼다. JSON 응답은 이 값을 담지 못한다."""
+def _json_safe_values(value: Any) -> Any:
+    """검증 오류의 비유한 수·잘못된 유니코드도 JSON으로 응답할 수 있게 한다."""
     if isinstance(value, float) and not math.isfinite(value):
         return str(value)
+    if isinstance(value, str):
+        return value.encode("utf-8", errors="backslashreplace").decode("utf-8")
     if isinstance(value, dict):
-        return {key: _finite_only(item) for key, item in value.items()}
+        return {_json_safe_values(key): _json_safe_values(item) for key, item in value.items()}
     if isinstance(value, list):
-        return [_finite_only(item) for item in value]
+        return [_json_safe_values(item) for item in value]
     return value
 
 
 async def validation_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
-    # 받은 값이 detail 의 input 으로 그대로 돌아간다. NaN 을 보냈으면 422 를 만들다 500 이 된다
+    # 검증에서 거절한 값이 detail에 다시 들어가도 응답 직렬화가 실패하지 않게 한다.
     return _error_response(
         status.HTTP_422_UNPROCESSABLE_CONTENT,
         "VALIDATION_ERROR",
         "요청 형식이 올바르지 않습니다.",
-        _finite_only(jsonable_encoder(exc.errors())),
+        _json_safe_values(jsonable_encoder(exc.errors())),
     )
 
 

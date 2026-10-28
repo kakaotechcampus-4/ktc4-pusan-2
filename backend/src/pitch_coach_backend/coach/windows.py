@@ -1,8 +1,9 @@
 """코치 요청의 창 · 지금 장 · replay 입력. 순수 함수다 (DB 도 네트워크도 모른다).
 
-**창을 고르는 규칙은 AI 의 replay 와 같다** (`ai/research/coach-agent/src/coach/recovery.py` 의
-`inputs_at`). 발표 중 BE 가 보낸 창과 Take 뒤 원자료로 다시 만든 창이 같아야, 응답이 빠져 replay
-로 만든 Take 결과가 정상 진행과 같다(coach-agent.md 1-2). 지금 장도 발표 중과 replay 가 같은 장 변경
+**창을 고르는 규칙은 AI 의 replay 와 같다**
+(`ai/service/src/pitch_coach_ai/features/coach/recovery.py` 의 `inputs_at`). 발표 중 BE 가 보낸
+창과 Take 뒤 원자료로 다시 만든 창이 같아야, 응답이 빠져 replay 로 만든 Take 결과가 정상 진행과
+같다(coach-agent.md 1-2). 지금 장도 발표 중과 replay 가 같은 장 변경
 기록(`take_slide_events`, WS `slide`)으로 정한다 (`slide_at`).
 """
 

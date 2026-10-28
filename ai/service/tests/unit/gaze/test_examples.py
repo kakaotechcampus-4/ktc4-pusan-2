@@ -17,7 +17,7 @@ from pitch_coach_ai.features.gaze import core
 from pitch_coach_ai.features.gaze.core import criteria, judge, summarize
 from pitch_coach_ai.features.gaze.schemas import GazeMetrics, IssueCriteria, JudgmentResult
 
-# 모듈 파일 기준이라 서비스(features/gaze/)로 옮겨도 import 접두어만 바꾸면 된다
+# 모듈 파일 기준이라 패키지 위치가 바뀌어도 import 접두어만 바꾸면 된다
 EXAMPLES = Path(core.__file__).parent / "examples"
 JUDGE_INPUTS = sorted(EXAMPLES.glob("judge_input*.json"))
 TALLY_KEYS = {

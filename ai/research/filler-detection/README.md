@@ -58,7 +58,7 @@ flowchart LR
 | 서비스 `features/filler/version.py` | 기능 버전 `filler-1.0` | — → 문자열 | `core.py` | 판정 규칙 · 출력의 뜻이 바뀔 때만 올립니다 |
 | 서비스 `features/filler/__init__.py` | 밖에서 쓰는 이름만 내보냅니다 | — | 코치 · 도구 | 새 진입 함수를 더할 때 |
 | 서비스 `features/filler/keyterms.json` (생성) | STT keyterm 15개와 그 목록을 만든 `criteria_version` | `config.py` 사전 → JSON | BE(복사본으로 STT 연결 때 씀), `tests/test_keyterms.py` | 사전의 keyterm이 바뀌면 `tools/export_keyterms.py`로 다시 만들어 같은 PR에 넣습니다 |
-| 서비스 `features/filler/examples/` | `judge` · `summarize` · `criteria` 입력 · 출력 예시 JSON. 코치 · 말 속도가 이 예시로 먼저 개발합니다 | `examples/judge_input*.json` ↔ `judge_output*.json`, `summarize_input.json` ↔ `summarize_output.json`, `criteria.json` | `tests/test_examples.py`, 코치 개발 | 입력만 손으로 고치고 출력(생성)은 `tools/make_examples.py`로 다시 만듭니다 |
+| 서비스 `features/filler/examples/` | `judge` · `summarize` · `criteria` 입력 · 출력 예시 JSON. 코치 · 말 속도가 이 예시로 먼저 개발합니다 | `examples/judge_input*.json` ↔ `judge_output*.json`, `summarize_input.json` ↔ `summarize_output.json`, `criteria.json` | 서비스 `tests/unit/filler/test_examples.py`, 코치 개발 | 입력만 손으로 고치고 출력(생성)은 `tools/make_examples.py`로 다시 만듭니다 |
 | `tools/make_examples.py` | 예시 입력을 읽어 지금 코드로 출력 JSON을 다시 씁니다 | `examples/judge_input*.json` → `judge_output*.json`, `summarize_input.json` → `summarize_output.json`, `criteria.json` | 사람(기준값 · 규칙을 바꾼 뒤) | 출력 JSON을 손으로 고치지 않습니다 |
 | `tools/export_keyterms.py` | `keyterms.json`을 지금 사전에서 다시 씁니다 | 사전 → `keyterms.json` | 사람(사전 · 기준값을 바꾼 뒤) | 커밋된 파일과 같으면 `git diff`가 빕니다 |
 | `data/virtual/source.json` | 손으로 쓴 가상 발표 발화 73개. 단어에 `*`(말한 사람이 넣은 군더더기)와 쉼 표시를 달았습니다 | — → 표기 문장 목록 | `tools/make_virtual_data.py` | 정답은 규칙이 아니라 사람이 들었을 때의 뜻으로 답니다. 고치면 `words.json`을 다시 만듭니다 |
@@ -100,6 +100,7 @@ uv run python tools/make_examples.py     # 예시 출력 다시 만들기 (기�
 ```
 ```text
 judge_input.json -> judge_output.json
+judge_input_default.json -> judge_output_default.json
 judge_input_frequent.json -> judge_output_frequent.json
 judge_input_pending.json -> judge_output_pending.json
 judge_input_stt_down.json -> judge_output_stt_down.json

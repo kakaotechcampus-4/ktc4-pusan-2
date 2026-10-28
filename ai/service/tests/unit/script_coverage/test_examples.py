@@ -1,7 +1,7 @@
 """API 예시(`features/script_coverage/examples/`)의 계약 테스트.
 
 `llm_cache.json` 으로 만든 캐시와, 부르면 시간 초과가 되는 LLM 으로 `request.json` 을 진입 함수에 넣어
-`response.json` 과 같은 응답이 나오는지 본다. `coverage_lab` 을 쓰지 않는다 — 코어와 함께 서비스로 옮겨 가는 테스트다.
+`response.json` 과 같은 응답이 나오는지 본다. `coverage_lab` 을 쓰지 않는다 — 연구 폴더 없이 서비스만으로 돈다.
 """
 
 import json
@@ -18,7 +18,7 @@ from pitch_coach_ai.features.script_coverage.core import (
     rescore_evaluation,
 )
 
-# 예시 폴더는 코어 패키지 안에 있다. 코어를 옮기면 위 import 앞부분만 바뀐다
+# 예시 폴더는 코어 패키지 안에 있다. 패키지 위치가 바뀌면 위 import 앞부분만 바뀐다
 EXAMPLES = Path(core_module.__file__).resolve().parent / "examples"
 MODEL = "openai/gpt-5.6-luna"  # 예시를 만든 모델. 캐시 항목의 설정 해시가 이 이름에 의존한다
 
