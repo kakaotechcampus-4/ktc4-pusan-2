@@ -1,8 +1,11 @@
 """common/request_log.py: X-Request-ID 를 돌려주고, 요청마다 한 줄 로그를 남긴다."""
 
 import logging
+import sys
 
 from fastapi.testclient import TestClient
+
+from pitch_coach_ai.common.request_log import SafeFormatter
 
 
 def _request_lines(records: list[logging.LogRecord]) -> list[str]:
@@ -86,3 +89,23 @@ def test_outside_values_cannot_forge_log_fields(
 def test_uvicorn_access_log_is_turned_off(client: TestClient) -> None:
     """uvicorn 접근 로그는 쿼리 문자열을 싣고 요청 로그와 겹쳐서 끈다."""
     assert logging.getLogger("uvicorn.access").disabled is True
+
+
+def test_exceptions_are_logged_as_kind_and_place_only() -> None:
+    """`log.exception` 의 예외 메시지 · traceback 은 찍지 않는다.
+
+    예외 메시지에 STT · 대본 원문이 섞일 수 있다(architecture.md 11절).
+    """
+    try:
+        raise ValueError("단어 원문 비밀")
+    except ValueError:
+        exc_info = sys.exc_info()
+    record = logging.LogRecord(
+        "pitch_coach_ai.features.coach.core", logging.ERROR, __file__, 1, "coach decide failed",
+        None, exc_info,
+    )  # fmt: skip
+    line = SafeFormatter("%(levelname)s %(name)s %(message)s").format(record)
+    assert "coach decide failed" in line
+    assert "error=ValueError at test_request_log.py:" in line
+    assert "단어 원문 비밀" not in line
+    assert "Traceback" not in line
