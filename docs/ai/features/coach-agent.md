@@ -57,7 +57,7 @@
 | Take 결과 | Take가 끝난 뒤 코치가 만드는 사실 묶음 (지표 · 문제 구간 · 개입 · 포기 · 판정 기준) | `take_result` |
 | `replay` | 코치가 Take를 다 세지 못했을 때 BE가 보내는 Take 전체 원자료. 코치는 이것으로 0초부터 다시 판정한다 | 409 `REPLAY_REQUIRED` 뒤 다시 부름 |
 | 문장 끝 신호 | Deepgram `UtteranceEnd`가 알린 마지막 단어의 끝 시각(`architecture.md` 6-2). 코치는 말하는 도중이면 이 신호까지 기다린다 | `utterance_ends: [89400]` |
-| 연구용 판정 대역 | 연구 폴더(`coach_lab/judges/`)에서 판정 모듈 대신 쓰는 모듈. 시선 · 군더더기 · 말 속도는 서비스의 실제 판정 모듈로 바꿨고, 소리 크기만 대역이다. 재생 · 채점 · 복구 실험은 실제 모듈을 섞은 `real_judges()`를, 예시 생성 · 대역 시험은 대역 넷인 `lab_judges()`를 쓴다 | `real_judges()` · `lab_judges()` |
+| 연구용 판정 대역 | 연구 폴더(`coach_lab/judges/`)에서 판정 모듈 대신 쓰는 모듈. 재생 · 채점 · 복구 실험은 서비스의 실제 판정 모듈 넷을 묶은 `real_judges()`를, 예시 생성 · 대역 시험은 대역 넷인 `lab_judges()`를 쓴다 | `real_judges()` · `lab_judges()` |
 
 # 3. 전체 흐름
 ```mermaid
@@ -613,7 +613,7 @@ uv sync
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
 | 코어 테스트 (`ai/service`에서, 실제 LLM 제외) | `uv run python -m pytest tests/unit/coach` | 통과 (489 passed, 1 deselected(`slow`), 2026-10-28) |
-| 실험 도구 테스트 (연구 폴더에서, 실제 LLM 제외) | `uv run python -m pytest` | 통과, live 1개 제외 (142 passed, 1 deselected, 2026-10-28) |
+| 실험 도구 테스트 (연구 폴더에서, 실제 LLM 제외) | `uv run python -m pytest` | 통과, live 1개 제외 (143 passed, 1 deselected, 2026-10-29) |
 | 실제 LLM으로 계획 한 번 (과금) | 연구 폴더에서 `uv run python -m pytest -m live`(`tests/live/test_live_planner.py`), 서비스 `/coach/plan` 경로는 `ai/service`에서 `uv run python -m pytest -m live tests/live/test_coach_plan_live.py` | 유효한 계획 |
 | 한 시간 Take 복구 규모 (`ai/service`에서) | `uv run python -m pytest -m slow tests/unit/coach/test_extremes.py` | 시간 · `take_result` 크기 (12-1) |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
@@ -644,7 +644,7 @@ uv sync
 **옮긴 뒤 같은 결과인지 확인**
 1. 단위 테스트 통과 (코어 경계 테스트 포함).
 2. 연구 폴더가 서비스를 editable 의존성으로 설치하고 `coach_lab`의 import를 새 패키지 이름으로 바꾼다.
-3. 연구용 판정 대역을 그대로 둔 채 `python -m coach_lab.replay`가 전부 통과하고, `python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` · `python -m coach_lab.recovery_eval` 뒤 `git diff`가 비어 있는지 본다. 그 뒤 대역을 서비스에 있는 실제 판정 모듈로 바꿔 끼워 다시 돌리고, 달라진 판정을 연구 폴더 README에 적는다(서비스에 아직 없는 모듈의 대역은 그 모듈이 오면 바꾼다).
+3. 연구용 판정 대역을 그대로 둔 채 `python -m coach_lab.replay`가 전부 통과하고, `python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` · `python -m coach_lab.recovery_eval` 뒤 `git diff`가 비어 있는지 본다. 그 뒤 대역을 서비스에 있는 실제 판정 모듈로 바꿔 끼워 다시 돌리고, 달라진 판정을 연구 폴더 README에 적는다(넷 모두 바꿨다. 소리 크기가 마지막으로 2026-10-29).
 4. `python -m pytest -m live`(실제 LLM 1회)와 `python -m coach_lab.plan_eval`이 커밋된 `reports/results/coaching_plan.json`과 비슷한지 본다(LLM 답이라 바이트까지 같지는 않다).
 5. 연구 폴더의 `src/coach/`를 지운다. 이후 코어는 서비스에서만 고친다. 다만 BE 테스트가 경로로 읽는 `examples/`는 BE가 서비스 경로(`ai/service/src/pitch_coach_ai/features/coach/examples/`)로 바꿀 때까지 연구 폴더에 사본으로 남기고, 서비스 예시와 같은지 연구 폴더 테스트가 본다(`ai-service.md` 6-1 2번).
 
@@ -733,7 +733,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 | 장 전환 시각과 진행 정답을 단 발표 재생 | 장 시간 오차 · 늦음 판정 시작 오차 (`timing`) | 장 시간이 정답과 맞고, 늦음을 늦지 않게 알아채는 것 | 재생 |
 | 코칭 계획 시나리오(`scenarios/plan/`)마다 여러 번 | 유효율 · 기대 통과율 · 일관성 · 지연 · 첫 계획으로 재생했을 때의 개입 변화 | 기본 계획으로 돌아가지 않고 시나리오가 기대한 계획을 내는 것 | `coach_lab.plan_eval` → `coaching_plan.json` (실제 LLM, 과금) |
 
-- 시선 · 군더더기 · 말 속도는 서비스의 실제 판정 모듈로 재생 · 실험을 다시 돌렸다(연구 폴더 README 7절. 말 속도로 바꾸며 구간 · 개입 지표는 같고 장별 CPM 오차만 줄었다). 소리 크기는 아직 대역이라, 그 모듈이 서비스에 오면 같은 실험을 다시 돌린다.
+- 판정 모듈 넷을 서비스의 실제 모듈로 바꿔 재생 · 실험을 다시 돌렸다(연구 폴더 README 7절. 말 속도로 바꾸며 구간 · 개입 지표는 같고 장별 CPM 오차만 줄었다. 소리 크기로 바꾸며 작은 목소리 구간이 정해진 지연만큼 늦게 시작해 시작 오차가 조금 늘었다).
 - 모델을 바꾸면 같은 시나리오로 이전 모델과 비교한 뒤 바꾼다(프롬프트 · 검증 범위는 잰 모델에 맞춰 골랐다).
 
 # 14. 지표 정의
@@ -775,7 +775,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 - 새로 시작하면(`T_MS_JUMP` · `STATE_RESET`) 쿨다운뿐 아니라 개입 수 · 사다리 칸 · 포기도 처음부터다. 그 Take의 개입 상한은 새로 시작한 뒤부터 다시 센다.
 - 리뷰의 다음 미션 · 반복 문제는 `review-agent.md` 5-3이 이 입력 한도(20개 · 설명 500자 · 20개) 안으로 낸다. 리뷰 출력 예시(`review-agent.md` 5-5)로 계획 입력을 시험한다.
 - BE가 재기동해 finalize를 원자료로 다시 할 때 Take 상수는 저장된 값으로 다시 만든다. Take 시작 뒤 발표의 제한 시간 · 허용 범위 · 장별 값이 바뀌었으면 시간 판정의 기준이 원래 Take와 달라질 수 있다. 그래서 원자료를 보관해도 복구 결과가 원래 결과와 같다고 보장하지 않는다. 고치려면 BE가 Take 시작 당시의 시간 계획을 Take에 함께 보관해 복구에 싣는다(저장 설계 변경이라 따로 정한다).
-- 가상 발표자로만 확인했다. 시선 · 군더더기 · 말 속도는 서비스의 실제 판정 모듈로, 소리 크기는 연구용 대역으로 재생 · 실험을 돌렸다(연구 폴더 README 7절). 판정 기준값은 실제 연습 데이터로 검증하지 않았다. 소리 크기 대역은 실제 모듈과 다를 수 있고, 예전 시선 대역은 `GAZE_LOW_EYE_CONTACT` · `GAZE_ON_SCREEN`을 내지 않았다(실제 시선 모듈은 `GAZE_LOW_EYE_CONTACT`를 `GAZE_ON_SCRIPT`와 겹쳐 낸다).
+- 가상 발표자로만 확인했다. 판정 모듈 넷은 서비스의 실제 모듈로 재생 · 실험을 돌렸다(연구 폴더 README 7절). 판정 기준값은 실제 연습 데이터로 검증하지 않았다. 예전 시선 대역은 `GAZE_LOW_EYE_CONTACT` · `GAZE_ON_SCREEN`을 내지 않았다(실제 시선 모듈은 `GAZE_LOW_EYE_CONTACT`를 `GAZE_ON_SCRIPT`와 겹쳐 낸다).
 - 요청이 30초보다 길게 빠지면 합계로는 Take 결과를 만들 수 없고 `replay`가 필요하다. `replay`는 BE가 Take 전체 원자료를 보관해야 쓸 수 있다.
 - Take 도중 BE가 재시작하면 메모리에 있던 문장 끝 신호를 잃어, 그 Take의 `replay`는 문장 끝 없이 판정된다(군더더기 보류 풀기 · 문장 끝 기다리기가 부정확해진다, `architecture.md` 1-3 3번).
 - 요청 사이에 장이 여러 번 바뀌면 중간 장은 실시간 판정(시간 판정 · 장 방문)에서 빠질 수 있다. Take 결과를 `replay`로 만들 때는 장 변경 전체를 쓴다(`architecture.md` 1-3 2번).
