@@ -158,7 +158,7 @@ ai/research/script-parser/
      "keywords": ["분기", "MAU", "37%"], "highlights": [{"start": 3, "end": 5}, {"start": 6, "end": 9}, {"start": 19, "end": 22}], "expected_ms": 140000}
   ],
   "terms": ["MAU"],
-  "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.0", "model": "<응답한 모델>"}
+  "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.1", "model": "<응답한 모델>"}
 }
 ```
 - `expected_ms`: 1번 장 = 반올림(300000 × 24 ÷ 45) = 160,000, 2번 장 = 300000 − 160000 = 140,000 (누적 반올림이라 합이 목표와 같다). 글자 수는 공백과 문장부호를 빼므로 1번 장은 쉼표 · 마침표, 2번 장은 `%` · 마침표를 세지 않는다(26 → 24, 23 → 21).
@@ -169,7 +169,7 @@ ai/research/script-parser/
  "slides": [{"slide_number": 1, "script": "피치코치는 발표 연습을 돕는 AI 코치입니다.", "script_chars": 19,
              "keywords": ["피치코치", "발표 연습", "AI 코치"], "highlights": [{"start": 0, "end": 4}, {"start": 6, "end": 11}, {"start": 16, "end": 21}], "expected_ms": 300000}],
  "terms": ["피치코치"],
- "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.0", "model": "<응답한 모델>"}}
+ "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.1", "model": "<응답한 모델>"}}
 ```
 **경계 — 목표 시간 없음**: `target_ms`가 null이면 장마다 `script_chars ÷ 기준 말 속도 × 60000`을 반올림하고 누적 반올림은 하지 않는다(맞출 합이 없으므로).
 
@@ -327,5 +327,5 @@ sequenceDiagram
 | 예상 시간 | 목표 비례(누적 반올림, 합 = 목표 · 음수 없음) · 목표 없으면 기준 말 속도(반올림) | 5-3 |
 | 에러 | 422 `EMPTY_SCRIPT` · `VALIDATION_ERROR`, LLM 실패 `LLM_*` | 5-4 |
 | 시간 예산 | AI 25초 / BE 30초, BE 재시도 1번 | 8절 |
-| 버전 | `script_parser-1.0` · `schema_version` `1.0` | 9절 |
+| 버전 | `script_parser-1.1` · `schema_version` `1.0` | 9절 |
 | 저장 | `script_versions`(`parse_meta` · `parse_error` 새 칸) · `script_slides`(`script_chars` · `expected_ms` 새 칸) | 12-1 |

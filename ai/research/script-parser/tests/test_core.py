@@ -56,7 +56,7 @@ def test_doc_example():
              "expected_ms": 140000},
         ],
         "terms": ["MAU"],
-        "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.0", "model": None},
+        "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.1", "model": None},
     }
 
 
