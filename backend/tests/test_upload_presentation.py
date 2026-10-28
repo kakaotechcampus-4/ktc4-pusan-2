@@ -6,14 +6,20 @@ from collections.abc import Callable
 from datetime import date
 from io import BytesIO
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 from fastapi import UploadFile
+from PIL import Image
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.pitch.adapter.presentation_file import (
+    THUMBNAIL_WIDTH,
+    render_first_page,
+)
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO, UploadPresentationDTO
+from pitch_coach_backend.module.pitch.entity import PresentationVersion
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
@@ -26,6 +32,33 @@ def upload_mock(monkeypatch) -> MagicMock:
     # generate_presigned_url 함수를 람다함수로 생성하도록 대체
     monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}") 
     return mock
+
+
+@pytest.fixture
+def upload_bytes_mock(monkeypatch) -> MagicMock:
+    mock = MagicMock(side_effect=lambda data, key, content_type: key)
+    monkeypatch.setattr(presentation_service, "upload_bytes", mock)
+    return mock
+
+
+def test_render_first_page_returns_webp_thumbnail(make_pdf: Callable[[int], bytes]) -> None:
+    file = BytesIO(make_pdf(2))
+
+    thumbnail = render_first_page(file)
+
+    assert thumbnail is not None
+    image = Image.open(BytesIO(thumbnail))
+    assert image.format == "WEBP"
+    assert image.mode == "RGB"
+    assert image.width == THUMBNAIL_WIDTH
+    assert file.tell() == 0
+
+
+def test_render_first_page_returns_none_for_broken_pdf() -> None:
+    file = BytesIO(b"%PDF-1.7\nnot really a pdf")
+
+    assert render_first_page(file) is None
+    assert file.tell() == 0
 
 
 def _make_pitch(db: Session, user_id: uuid.UUID, title: str = "기존 발표") -> uuid.UUID:
@@ -41,6 +74,7 @@ def test_upload_presentation_service(
         db_session: Session,
         user_id: uuid.UUID,
         upload_mock: MagicMock,
+        upload_bytes_mock: MagicMock,
         make_pdf: Callable[[int], bytes],
 ):
     # Given
@@ -56,6 +90,12 @@ def test_upload_presentation_service(
     )
     assert result.pitch_id == pitch_id
     assert result.file_url == f"https://fake/{expected_file_key}"
+
+    expected_thumbnail_key = f"pitches/{pitch_id}/presentations/1.webp"
+    upload_bytes_mock.assert_called_once_with(ANY, expected_thumbnail_key, "image/webp")
+    presentation = db_session.get(PresentationVersion, result.presentation_version_id)
+    assert presentation is not None
+    assert presentation.thumbnail_key == expected_thumbnail_key
 
 
 
@@ -83,6 +123,9 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
         return key
 
     monkeypatch.setattr(presentation_service, "upload", slow_upload)
+    monkeypatch.setattr(
+        presentation_service, "upload_bytes", lambda data, key, content_type: key
+    )
     monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
 
     with Session(engine) as setup:
