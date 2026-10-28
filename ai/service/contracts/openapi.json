@@ -1,6 +1,15 @@
 {
   "components": {
     "schemas": {
+      "Action": {
+        "enum": [
+          "WAIT",
+          "IGNORE",
+          "INTERVENE"
+        ],
+        "title": "Action",
+        "type": "string"
+      },
       "Alignment": {
         "properties": {
           "coverage": {
@@ -103,6 +112,330 @@
           "answer"
         ],
         "title": "Answer",
+        "type": "object"
+      },
+      "AreaCriteria": {
+        "additionalProperties": false,
+        "description": "영역 하나의 판정 기준: 모듈의 기준 버전과 그 영역 문제의 criteria().",
+        "properties": {
+          "criteria_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Criteria Version"
+          },
+          "issues": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/IssueCriteria"
+            },
+            "title": "Issues",
+            "type": "object"
+          }
+        },
+        "title": "AreaCriteria",
+        "type": "object"
+      },
+      "AreaResult": {
+        "additionalProperties": false,
+        "properties": {
+          "measured_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured Ratio"
+          },
+          "slides": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SlideResult"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slides"
+          },
+          "take": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take"
+          },
+          "unmeasured_reason": {
+            "anyOf": [
+              {
+                "const": "LOW_MEASURED_RATIO",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmeasured Reason"
+          }
+        },
+        "title": "AreaResult",
+        "type": "object"
+      },
+      "Calibration": {
+        "description": "Take 밖에서 잡아 둔 값. base_level_db 가 null 이면 코치가 Take 첫 발화로 잡는다.",
+        "properties": {
+          "base_level_db": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Level Db"
+          }
+        },
+        "title": "Calibration",
+        "type": "object"
+      },
+      "CandidateStatus": {
+        "enum": [
+          "SELECTED",
+          "OUTRANKED",
+          "WAITING",
+          "IGNORED"
+        ],
+        "title": "CandidateStatus",
+        "type": "string"
+      },
+      "CoachInputs": {
+        "description": "판정 모듈에 넘길 원자료. 창 길이는 judges.py 의 GAZE_VOICE_WINDOW_MS · WORDS_WINDOW_MS.",
+        "properties": {
+          "gaze_records": {
+            "items": {
+              "$ref": "#/components/schemas/GazeRecordIn"
+            },
+            "title": "Gaze Records",
+            "type": "array"
+          },
+          "slide": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SlideNow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stt_status": {
+            "default": "ok",
+            "title": "Stt Status",
+            "type": "string"
+          },
+          "utterance_ends": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Utterance Ends",
+            "type": "array"
+          },
+          "voice_records": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceRecordIn"
+            },
+            "title": "Voice Records",
+            "type": "array"
+          },
+          "words": {
+            "items": {
+              "$ref": "#/components/schemas/WordIn"
+            },
+            "title": "Words",
+            "type": "array"
+          }
+        },
+        "title": "CoachInputs",
+        "type": "object"
+      },
+      "CoachRequest": {
+        "properties": {
+          "calibration": {
+            "$ref": "#/components/schemas/Calibration"
+          },
+          "coach_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach State"
+          },
+          "coaching_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoachingPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/CoachInputs"
+          },
+          "missions": {
+            "items": {
+              "$ref": "#/components/schemas/Mission"
+            },
+            "title": "Missions",
+            "type": "array"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode",
+            "default": "COACHING"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "recurring_issues": {
+            "items": {
+              "$ref": "#/components/schemas/RecurringIssue"
+            },
+            "title": "Recurring Issues",
+            "type": "array"
+          },
+          "script_used": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Used"
+          },
+          "t_ms": {
+            "maximum": 3660000.0,
+            "minimum": 0.0,
+            "title": "T Ms",
+            "type": "integer"
+          },
+          "take_id": {
+            "title": "Take Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "take_id",
+          "t_ms"
+        ],
+        "title": "CoachRequest",
+        "type": "object"
+      },
+      "CoachResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/Action"
+          },
+          "coach_state": {
+            "additionalProperties": true,
+            "title": "Coach State",
+            "type": "object"
+          },
+          "events": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "EPISODE": "#/components/schemas/EpisodeEvent",
+                  "INTERVENTION": "#/components/schemas/InterventionEvent",
+                  "OUTCOME": "#/components/schemas/OutcomeEvent",
+                  "SLIDE": "#/components/schemas/SlideEvent",
+                  "STRATEGY": "#/components/schemas/StrategyEvent",
+                  "SUPPRESSED": "#/components/schemas/SuppressedEvent"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InterventionEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/OutcomeEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/EpisodeEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SuppressedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/StrategyEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SlideEvent"
+                }
+              ]
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Feedback"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "indicators": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Indicators",
+            "type": "object"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/pitch_coach_ai__features__coach__schemas__Meta"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action",
+          "coach_state",
+          "meta"
+        ],
+        "title": "CoachResponse",
         "type": "object"
       },
       "CoachingPlan": {
@@ -517,6 +850,95 @@
           "sentence_indices"
         ],
         "title": "CriticalFact",
+        "type": "object"
+      },
+      "EpisodeEvent": {
+        "additionalProperties": false,
+        "description": "문제 구간 하나가 끝났다. 개입했든 안 했든 남긴다 — 리뷰의 '문제 구간'이 된다.",
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "end_ms": {
+            "title": "End Ms",
+            "type": "integer"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "intervention_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Intervention Ids",
+            "type": "array"
+          },
+          "issue_type": {
+            "$ref": "#/components/schemas/Issue"
+          },
+          "kind": {
+            "const": "EPISODE",
+            "default": "EPISODE",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mean_severity": {
+            "default": 0.0,
+            "title": "Mean Severity",
+            "type": "number"
+          },
+          "peak_severity": {
+            "title": "Peak Severity",
+            "type": "number"
+          },
+          "reliable_ms": {
+            "default": 0,
+            "title": "Reliable Ms",
+            "type": "integer"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "start_ms": {
+            "title": "Start Ms",
+            "type": "integer"
+          },
+          "suppressed_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suppressed Reasons",
+            "type": "array"
+          },
+          "t_ms": {
+            "title": "T Ms",
+            "type": "integer"
+          },
+          "unreliable_ms": {
+            "default": 0,
+            "title": "Unreliable Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_id",
+          "t_ms",
+          "issue_type",
+          "area",
+          "start_ms",
+          "end_ms",
+          "peak_severity"
+        ],
+        "title": "EpisodeEvent",
         "type": "object"
       },
       "ErrorBody": {
@@ -957,6 +1379,48 @@
         "title": "FactCheck",
         "type": "object"
       },
+      "Feedback": {
+        "additionalProperties": false,
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "title": "Evidence",
+            "type": "object"
+          },
+          "instruction": {
+            "$ref": "#/components/schemas/Instruction"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "priority": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Priority",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "area",
+          "instruction",
+          "message",
+          "priority",
+          "confidence",
+          "evidence"
+        ],
+        "title": "Feedback",
+        "type": "object"
+      },
       "FeedbackType": {
         "description": "원인 영역. 리뷰의 ReviewPoint.type · Mission.type 과 같은 enum 입니다.",
         "enum": [
@@ -970,6 +1434,209 @@
         ],
         "title": "FeedbackType",
         "type": "string"
+      },
+      "FinalizeRequest": {
+        "description": "Take 종료. /coach/evaluate 와 같은 Take 상수에 마지막 창 · 이벤트 · coach_state 를 더한다.",
+        "properties": {
+          "calibration": {
+            "$ref": "#/components/schemas/Calibration"
+          },
+          "coach_state": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coach State"
+          },
+          "coaching_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoachingPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "events": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "EPISODE": "#/components/schemas/EpisodeEvent",
+                  "INTERVENTION": "#/components/schemas/InterventionEvent",
+                  "OUTCOME": "#/components/schemas/OutcomeEvent",
+                  "SLIDE": "#/components/schemas/SlideEvent",
+                  "STRATEGY": "#/components/schemas/StrategyEvent",
+                  "SUPPRESSED": "#/components/schemas/SuppressedEvent"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InterventionEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/OutcomeEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/EpisodeEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SuppressedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/StrategyEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SlideEvent"
+                }
+              ]
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/CoachInputs"
+          },
+          "missions": {
+            "items": {
+              "$ref": "#/components/schemas/Mission"
+            },
+            "title": "Missions",
+            "type": "array"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode",
+            "default": "COACHING"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "recurring_issues": {
+            "items": {
+              "$ref": "#/components/schemas/RecurringIssue"
+            },
+            "title": "Recurring Issues",
+            "type": "array"
+          },
+          "replay": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplayInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_version": {
+            "default": "1.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "script_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "HIGHLIGHT",
+                  "KEYWORD",
+                  "OFF"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Mode"
+          },
+          "script_used": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Used"
+          },
+          "t_ms": {
+            "maximum": 3660000.0,
+            "minimum": 0.0,
+            "title": "T Ms",
+            "type": "integer"
+          },
+          "take_id": {
+            "title": "Take Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "take_id",
+          "t_ms"
+        ],
+        "title": "FinalizeRequest",
+        "type": "object"
+      },
+      "FinalizeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "EPISODE": "#/components/schemas/EpisodeEvent",
+                  "INTERVENTION": "#/components/schemas/InterventionEvent",
+                  "OUTCOME": "#/components/schemas/OutcomeEvent",
+                  "SLIDE": "#/components/schemas/SlideEvent",
+                  "STRATEGY": "#/components/schemas/StrategyEvent",
+                  "SUPPRESSED": "#/components/schemas/SuppressedEvent"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/InterventionEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/OutcomeEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/EpisodeEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SuppressedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/StrategyEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/SlideEvent"
+                }
+              ]
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/pitch_coach_ai__features__coach__schemas__Meta"
+          },
+          "take_result": {
+            "$ref": "#/components/schemas/TakeResult"
+          }
+        },
+        "required": [
+          "take_result",
+          "meta"
+        ],
+        "title": "FinalizeResponse",
+        "type": "object"
       },
       "FocusItem": {
         "properties": {
@@ -1004,6 +1671,108 @@
         "title": "FocusItem",
         "type": "object"
       },
+      "GaveUp": {
+        "additionalProperties": false,
+        "description": "효과가 없어 더 말하지 않기로 한 문제.",
+        "properties": {
+          "issue_type": {
+            "$ref": "#/components/schemas/Issue"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          }
+        },
+        "required": [
+          "issue_type"
+        ],
+        "title": "GaveUp",
+        "type": "object"
+      },
+      "GazeRecordIn": {
+        "description": "FE 가 보내는 시선 1초 기록(#153).",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "duration_ms": {
+            "default": 1000,
+            "exclusiveMinimum": 0.0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "frames": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frames"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "reliability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reliability"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "t_ms": {
+            "minimum": 0.0,
+            "title": "T Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "t_ms",
+          "state"
+        ],
+        "title": "GazeRecordIn",
+        "type": "object"
+      },
       "Highlight": {
         "additionalProperties": false,
         "properties": {
@@ -1025,6 +1794,170 @@
           "end"
         ],
         "title": "Highlight",
+        "type": "object"
+      },
+      "Instruction": {
+        "description": "발표자에게 하라는 행동. 같은 type 이라도 상황에 따라 다르다 (TIME → SPEED_UP · WRAP_UP).",
+        "enum": [
+          "LOOK_AT_CAMERA",
+          "SLOW_DOWN",
+          "SPEED_UP",
+          "SPEAK_LOUDER",
+          "RESUME",
+          "REDUCE_FILLER",
+          "CONDENSE",
+          "MOVE_ON",
+          "WRAP_UP",
+          "CONTINUE"
+        ],
+        "title": "Instruction",
+        "type": "string"
+      },
+      "InterventionEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "title": "Evidence",
+            "type": "object"
+          },
+          "instruction": {
+            "$ref": "#/components/schemas/Instruction"
+          },
+          "intervention_id": {
+            "title": "Intervention Id",
+            "type": "string"
+          },
+          "issue_type": {
+            "$ref": "#/components/schemas/Issue"
+          },
+          "kind": {
+            "const": "INTERVENTION",
+            "default": "INTERVENTION",
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Codes",
+            "type": "array"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "t_ms": {
+            "title": "T Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_id",
+          "t_ms",
+          "intervention_id",
+          "issue_type",
+          "area",
+          "instruction",
+          "message",
+          "priority",
+          "confidence",
+          "reason_codes"
+        ],
+        "title": "InterventionEvent",
+        "type": "object"
+      },
+      "Issue": {
+        "description": "평가기가 찾는 문제. 후보 하나는 문제 하나에서 나온다.",
+        "enum": [
+          "GAZE_ON_SCRIPT",
+          "GAZE_AWAY",
+          "GAZE_LOW_EYE_CONTACT",
+          "GAZE_ON_SCREEN",
+          "GAZE_UNMEASURABLE",
+          "PACE_FAST",
+          "PACE_SLOW",
+          "VOLUME_LOW",
+          "LONG_SILENCE",
+          "FILLER_FREQUENT",
+          "BEHIND_SCHEDULE",
+          "AHEAD_OF_SCHEDULE",
+          "SLIDE_OVER",
+          "FINAL_MINUTE",
+          "TIME_OVER",
+          "IMPROVED_AFTER_FEEDBACK"
+        ],
+        "title": "Issue",
+        "type": "string"
+      },
+      "IssueCriteria": {
+        "description": "문제 하나의 판정 기준. 소비자가 같은 기준으로 다시 셀 수 있게 공개한다.",
+        "properties": {
+          "bad": {
+            "title": "Bad",
+            "type": "number"
+          },
+          "direction": {
+            "enum": [
+              "HIGHER_IS_WORSE",
+              "LOWER_IS_WORSE"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "offset_lag_ms": {
+            "default": 0,
+            "title": "Offset Lag Ms",
+            "type": "integer"
+          },
+          "onset_lag_ms": {
+            "default": 0,
+            "title": "Onset Lag Ms",
+            "type": "integer"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "metric",
+          "direction",
+          "threshold",
+          "bad"
+        ],
+        "title": "IssueCriteria",
         "type": "object"
       },
       "KeyPoint": {
@@ -1249,14 +2182,13 @@
         "title": "Keyword",
         "type": "object"
       },
-      "Meta": {
-        "additionalProperties": false,
+      "Mission": {
+        "description": "직전 리뷰의 next_missions 그대로.",
         "properties": {
-          "feature_version": {
-            "title": "Feature Version",
-            "type": "string"
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
           },
-          "model": {
+          "description": {
             "anyOf": [
               {
                 "type": "string"
@@ -1265,19 +2197,44 @@
                 "type": "null"
               }
             ],
-            "description": "실제로 응답한 LLM 모델. 서비스 라우터가 넣는다",
-            "title": "Model"
+            "title": "Description"
           },
-          "schema_version": {
-            "title": "Schema Version",
+          "mission_id": {
+            "title": "Mission Id",
             "type": "string"
+          },
+          "priority": {
+            "default": 1,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MissionTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
-          "schema_version",
-          "feature_version"
+          "mission_id",
+          "area"
         ],
-        "title": "Meta",
+        "title": "Mission",
         "type": "object"
       },
       "MissionTarget": {
@@ -1308,6 +2265,14 @@
         ],
         "title": "MissionTarget",
         "type": "object"
+      },
+      "Mode": {
+        "enum": [
+          "COACHING",
+          "EXAM"
+        ],
+        "title": "Mode",
+        "type": "string"
       },
       "NameDecision": {
         "properties": {
@@ -1342,6 +2307,83 @@
         "title": "NameDecision",
         "type": "object"
       },
+      "Outcome": {
+        "enum": [
+          "EFFECTIVE",
+          "INEFFECTIVE",
+          "NOT_MEASURED"
+        ],
+        "title": "Outcome",
+        "type": "string"
+      },
+      "OutcomeEvent": {
+        "additionalProperties": false,
+        "description": "개입 몇 초 뒤 실제로 행동이 바뀌었는가.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "intervention_id": {
+            "title": "Intervention Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "OUTCOME",
+            "default": "OUTCOME",
+            "title": "Kind",
+            "type": "string"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome"
+          },
+          "t_ms": {
+            "title": "T Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_id",
+          "t_ms",
+          "intervention_id",
+          "outcome"
+        ],
+        "title": "OutcomeEvent",
+        "type": "object"
+      },
       "ParseRequest": {
         "properties": {
           "script_text": {
@@ -1374,7 +2416,7 @@
         "additionalProperties": false,
         "properties": {
           "meta": {
-            "$ref": "#/components/schemas/Meta"
+            "$ref": "#/components/schemas/pitch_coach_ai__features__script_parser__schemas__Meta"
           },
           "slides": {
             "description": "장별 결과. fail이면 정확히 1개",
@@ -1702,6 +2744,60 @@
         "title": "PlanResponse",
         "type": "object"
       },
+      "ProblemSegment": {
+        "additionalProperties": false,
+        "description": "문제 구간 하나. 같은 문제의 끊긴 조각은 합치고, 판정 지연만큼 되돌려 Take 안으로 자른다.",
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "coached": {
+            "title": "Coached",
+            "type": "boolean"
+          },
+          "end_ms": {
+            "title": "End Ms",
+            "type": "integer"
+          },
+          "issue_type": {
+            "$ref": "#/components/schemas/Issue"
+          },
+          "mean_severity": {
+            "title": "Mean Severity",
+            "type": "number"
+          },
+          "reliable": {
+            "title": "Reliable",
+            "type": "boolean"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "start_ms": {
+            "title": "Start Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "area",
+          "issue_type",
+          "start_ms",
+          "end_ms",
+          "mean_severity",
+          "reliable",
+          "coached"
+        ],
+        "title": "ProblemSegment",
+        "type": "object"
+      },
       "RecurringIssue": {
         "properties": {
           "area": {
@@ -1751,6 +2847,87 @@
           "area"
         ],
         "title": "RelaxItem",
+        "type": "object"
+      },
+      "ReplayInput": {
+        "description": "Take 전체 원자료. 409 REPLAY_REQUIRED 를 받았거나 coach_state 를 잃었을 때만 싣는다.\n\n코치는 이것으로 BE 가 1초마다 보냈을 /coach/evaluate 요청을 다시 만들어 처음부터 판정한다.",
+        "properties": {
+          "gaze_records": {
+            "items": {
+              "$ref": "#/components/schemas/GazeRecordIn"
+            },
+            "title": "Gaze Records",
+            "type": "array"
+          },
+          "slides": {
+            "items": {
+              "$ref": "#/components/schemas/SlideNow"
+            },
+            "title": "Slides",
+            "type": "array"
+          },
+          "stt_status_changes": {
+            "items": {
+              "$ref": "#/components/schemas/SttStatusChange"
+            },
+            "title": "Stt Status Changes",
+            "type": "array"
+          },
+          "utterance_ends": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Utterance Ends",
+            "type": "array"
+          },
+          "voice_records": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceRecordIn"
+            },
+            "title": "Voice Records",
+            "type": "array"
+          },
+          "words": {
+            "items": {
+              "$ref": "#/components/schemas/ReplayWord"
+            },
+            "title": "Words",
+            "type": "array"
+          }
+        },
+        "title": "ReplayInput",
+        "type": "object"
+      },
+      "ReplayWord": {
+        "description": "Take 전체 원자료의 확정 단어. 확정된 시각이 지난 요청에만 싣는다.",
+        "properties": {
+          "end_ms": {
+            "minimum": 0.0,
+            "title": "End Ms",
+            "type": "integer"
+          },
+          "final_at_ms": {
+            "title": "Final At Ms",
+            "type": "integer"
+          },
+          "start_ms": {
+            "minimum": 0.0,
+            "title": "Start Ms",
+            "type": "integer"
+          },
+          "word": {
+            "maxLength": 50,
+            "title": "Word",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word",
+          "start_ms",
+          "end_ms",
+          "final_at_ms"
+        ],
+        "title": "ReplayWord",
         "type": "object"
       },
       "RescoreRequest": {
@@ -2476,6 +3653,68 @@
         "title": "SlideEvaluation",
         "type": "object"
       },
+      "SlideEvent": {
+        "additionalProperties": false,
+        "description": "한 장 방문의 영역별 합계. 장을 떠나고 그 장의 단어가 다 확정되면(또는 Take 가 끝나면) 하나.\n\n다시 돌아온 장은 방문마다 하나씩 낸다. 평균은 합계에서 모듈의 summarize 로 낸다.",
+        "properties": {
+          "end_ms": {
+            "title": "End Ms",
+            "type": "integer"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "SLIDE",
+            "default": "SLIDE",
+            "title": "Kind",
+            "type": "string"
+          },
+          "slide_number": {
+            "title": "Slide Number",
+            "type": "integer"
+          },
+          "start_ms": {
+            "title": "Start Ms",
+            "type": "integer"
+          },
+          "t_ms": {
+            "title": "T Ms",
+            "type": "integer"
+          },
+          "tally": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "title": "Tally",
+            "type": "object"
+          },
+          "target_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Ms"
+          }
+        },
+        "required": [
+          "event_id",
+          "t_ms",
+          "slide_number",
+          "start_ms",
+          "end_ms"
+        ],
+        "title": "SlideEvent",
+        "type": "object"
+      },
       "SlideFailure": {
         "description": "처리하지 못한 장 하나. 나머지 장의 결과는 그대로 돌려준다.",
         "properties": {
@@ -2493,6 +3732,25 @@
           "error"
         ],
         "title": "SlideFailure",
+        "type": "object"
+      },
+      "SlideNow": {
+        "description": "지금 장과 그 장이 시작된 시각.",
+        "properties": {
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "started_ms": {
+            "title": "Started Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "number",
+          "started_ms"
+        ],
+        "title": "SlideNow",
         "type": "object"
       },
       "SlidePlan": {
@@ -2521,6 +3779,77 @@
         "title": "SlidePlan",
         "type": "object"
       },
+      "SlideResult": {
+        "additionalProperties": false,
+        "description": "장 하나의 값. 다시 온 장은 합친다. start_ms · end_ms 는 첫 방문 시작 · 마지막 방문 끝.",
+        "properties": {
+          "end_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Ms"
+          },
+          "measured_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured Ratio"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metrics"
+          },
+          "slide_number": {
+            "title": "Slide Number",
+            "type": "integer"
+          },
+          "start_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Ms"
+          },
+          "target_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Ms"
+          }
+        },
+        "required": [
+          "slide_number"
+        ],
+        "title": "SlideResult",
+        "type": "object"
+      },
       "SlideScript": {
         "description": "장 하나의 대본. 계획을 세울 때만 쓴다 (1초 판단에는 글자 수만 쓴다).",
         "properties": {
@@ -2538,6 +3867,398 @@
           "slide_number"
         ],
         "title": "SlideScript",
+        "type": "object"
+      },
+      "StrategyChange": {
+        "enum": [
+          "ESCALATED",
+          "GAVE_UP"
+        ],
+        "title": "StrategyChange",
+        "type": "string"
+      },
+      "StrategyEvent": {
+        "additionalProperties": false,
+        "description": "효과가 없어 방법을 바꿨거나(ESCALATED) 그만뒀다(GAVE_UP).",
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "change": {
+            "$ref": "#/components/schemas/StrategyChange"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "from_instruction": {
+            "$ref": "#/components/schemas/Instruction"
+          },
+          "from_variant": {
+            "title": "From Variant",
+            "type": "string"
+          },
+          "intervention_id": {
+            "title": "Intervention Id",
+            "type": "string"
+          },
+          "issue_type": {
+            "$ref": "#/components/schemas/Issue"
+          },
+          "kind": {
+            "const": "STRATEGY",
+            "default": "STRATEGY",
+            "title": "Kind",
+            "type": "string"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "t_ms": {
+            "title": "T Ms",
+            "type": "integer"
+          },
+          "to_instruction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Instruction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_variant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Variant"
+          }
+        },
+        "required": [
+          "event_id",
+          "t_ms",
+          "issue_type",
+          "area",
+          "change",
+          "from_instruction",
+          "from_variant",
+          "intervention_id"
+        ],
+        "title": "StrategyEvent",
+        "type": "object"
+      },
+      "SttStatusChange": {
+        "description": "STT 상태가 바뀐 시각과 바뀐 상태.",
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "t_ms": {
+            "minimum": 0.0,
+            "title": "T Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "t_ms",
+          "status"
+        ],
+        "title": "SttStatusChange",
+        "type": "object"
+      },
+      "SuppressedEvent": {
+        "additionalProperties": false,
+        "description": "걸렸지만 말하지 않은 기록. 같은 문제는 suppress_log_gap_ms 에 한 번만 남는다.",
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "instruction": {
+            "$ref": "#/components/schemas/Instruction"
+          },
+          "issue_type": {
+            "$ref": "#/components/schemas/Issue"
+          },
+          "kind": {
+            "const": "SUPPRESSED",
+            "default": "SUPPRESSED",
+            "title": "Kind",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CandidateStatus"
+          },
+          "t_ms": {
+            "title": "T Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_id",
+          "t_ms",
+          "issue_type",
+          "area",
+          "instruction",
+          "status",
+          "priority",
+          "reasons"
+        ],
+        "title": "SuppressedEvent",
+        "type": "object"
+      },
+      "TakeIntervention": {
+        "additionalProperties": false,
+        "description": "말을 건 기록 하나와 그 효과.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "instruction": {
+            "$ref": "#/components/schemas/Instruction"
+          },
+          "intervention_id": {
+            "title": "Intervention Id",
+            "type": "string"
+          },
+          "issue_type": {
+            "$ref": "#/components/schemas/Issue"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Outcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "t_ms": {
+            "title": "T Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "intervention_id",
+          "t_ms",
+          "area",
+          "issue_type",
+          "instruction",
+          "message"
+        ],
+        "title": "TakeIntervention",
+        "type": "object"
+      },
+      "TakePlan": {
+        "additionalProperties": false,
+        "description": "이 Take 를 판정한 시간 계획 — 요청 plan 에서 장 목록을 뺀 것. 리뷰가 시간 지표의 좋은 방향을\n정할 때 쓴다(장 목표는 areas.TIME.slides 에 있다).",
+        "properties": {
+          "max_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Ms"
+          },
+          "min_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Ms"
+          },
+          "target_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Ms"
+          }
+        },
+        "title": "TakePlan",
+        "type": "object"
+      },
+      "TakeResult": {
+        "additionalProperties": false,
+        "description": "Take 의 사실(지표 · 판정 기준). 결론은 담지 않는다.",
+        "properties": {
+          "areas": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AreaResult"
+            },
+            "title": "Areas",
+            "type": "object"
+          },
+          "criteria": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AreaCriteria"
+            },
+            "title": "Criteria",
+            "type": "object"
+          },
+          "criteria_changed": {
+            "default": false,
+            "title": "Criteria Changed",
+            "type": "boolean"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "gave_up": {
+            "items": {
+              "$ref": "#/components/schemas/GaveUp"
+            },
+            "title": "Gave Up",
+            "type": "array"
+          },
+          "interventions": {
+            "items": {
+              "$ref": "#/components/schemas/TakeIntervention"
+            },
+            "title": "Interventions",
+            "type": "array"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TakePlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "problem_segments": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemSegment"
+            },
+            "title": "Problem Segments",
+            "type": "array"
+          },
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "script_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "HIGHLIGHT",
+                  "KEYWORD",
+                  "OFF"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Mode"
+          },
+          "take_id": {
+            "title": "Take Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "take_id",
+          "duration_ms",
+          "areas",
+          "criteria"
+        ],
+        "title": "TakeResult",
         "type": "object"
       },
       "TakeScores": {
@@ -2725,6 +4446,152 @@
         ],
         "title": "UnitResult",
         "type": "object"
+      },
+      "VoiceRecordIn": {
+        "description": "FE 가 보내는 음량 1초 기록(#155). 시선 판정도 같은 1초들의 voiced_ms 를 쓴다.",
+        "properties": {
+          "audio_live": {
+            "default": true,
+            "title": "Audio Live",
+            "type": "boolean"
+          },
+          "duration_ms": {
+            "default": 1000,
+            "exclusiveMinimum": 0.0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "level_db": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Db"
+          },
+          "silence_ms": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Silence Ms",
+            "type": "integer"
+          },
+          "t_ms": {
+            "minimum": 0.0,
+            "title": "T Ms",
+            "type": "integer"
+          },
+          "voiced_ms": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Voiced Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "t_ms"
+        ],
+        "title": "VoiceRecordIn",
+        "type": "object"
+      },
+      "WordIn": {
+        "description": "STT 확정 단어.",
+        "properties": {
+          "end_ms": {
+            "minimum": 0.0,
+            "title": "End Ms",
+            "type": "integer"
+          },
+          "start_ms": {
+            "minimum": 0.0,
+            "title": "Start Ms",
+            "type": "integer"
+          },
+          "word": {
+            "maxLength": 50,
+            "title": "Word",
+            "type": "string"
+          }
+        },
+        "required": [
+          "word",
+          "start_ms",
+          "end_ms"
+        ],
+        "title": "WordIn",
+        "type": "object"
+      },
+      "pitch_coach_ai__features__coach__schemas__Meta": {
+        "additionalProperties": false,
+        "description": "응답을 만든 버전. BE 가 결과와 함께 저장한다.",
+        "properties": {
+          "criteria_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Criteria Versions",
+            "type": "object"
+          },
+          "feature_version": {
+            "default": "coach-1.3",
+            "title": "Feature Version",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "schema_version": {
+            "default": "1.0",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "criteria_versions"
+        ],
+        "title": "Meta",
+        "type": "object"
+      },
+      "pitch_coach_ai__features__script_parser__schemas__Meta": {
+        "additionalProperties": false,
+        "properties": {
+          "feature_version": {
+            "title": "Feature Version",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "실제로 응답한 LLM 모델. 서비스 라우터가 넣는다",
+            "title": "Model"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "feature_version"
+        ],
+        "title": "Meta",
+        "type": "object"
       }
     }
   },
@@ -2734,6 +4601,118 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/coach/evaluate": {
+      "post": {
+        "operationId": "evaluate_coach_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoachRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoachResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "처리되지 않은 예외(INTERNAL_ERROR)"
+          }
+        },
+        "summary": "Evaluate",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
+    "/coach/finalize": {
+      "post": {
+        "operationId": "finalize_take_coach_finalize_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalizeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "센 구간이 Take 를 덮지 못함(REPLAY_REQUIRED). replay 를 실어 다시"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "처리되지 않은 예외(INTERNAL_ERROR)"
+          }
+        },
+        "summary": "Finalize Take",
+        "tags": [
+          "coach"
+        ]
+      }
+    },
     "/coach/plan": {
       "post": {
         "operationId": "plan_coach_plan_post",
