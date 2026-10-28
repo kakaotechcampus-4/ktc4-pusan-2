@@ -130,14 +130,24 @@ export type {
   FrameDecision,
   OtherMapping,
 } from './contract';
+// Reason codes a screen words (doc 5-6, "화면이 쓰는 엔진 코드"): the camera view imports
+// them type-only from here, so a new code fails its typecheck instead of slipping through.
 export type { ConditionIssue, ConditionState, SceneBaseline } from './condition';
-export type { GaugeStatus } from './gauge';
-export type { PlacementResultDict } from './placement';
+export type { GaugeReason, GaugeStatus } from './gauge';
+export type { CameraPlacement, PlacementReason, PlacementResultDict } from './placement';
 export type { PreconditionReport, PreconditionReason, PreconditionStatus } from './preconditions';
 export { directionOfAngle, HeadSweep } from './sweep';
 export type { SweepState, SweepStatus } from './sweep';
-export type { CalibrationQualityDict, ReferenceModelData } from './reference';
-export type { Cue, FaceGuide, GazeDirection, Observation, State, StateClass } from './types';
+export type { CalibrationQualityDict, FailReason, ReferenceModelData } from './reference';
+export type {
+  Cue,
+  FaceGuide,
+  GazeDirection,
+  InvalidReason,
+  Observation,
+  State,
+  StateClass,
+} from './types';
 export { GAZE_DIRECTIONS } from './types';
 export { CONFIG_HASH, makeConfig, VERSION } from './config';
 export type { EngineConfig, EvidenceConfig, SweepConfig } from './config';

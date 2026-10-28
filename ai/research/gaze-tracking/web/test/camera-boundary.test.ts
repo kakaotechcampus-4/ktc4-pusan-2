@@ -8,9 +8,12 @@
  *   ../engine/contract  types and values (the light entry point)
  *   ../worker/protocol  the messages between the view and its worker
  *
- * Its own files (./...) are free.  The worker itself is started by URL, not imported.
+ * Its own files (./...) are free.  The worker itself is started by URL, not imported:
+ * `new Worker(new URL('../worker/gaze.worker.ts', import.meta.url))`.  That entry path and the
+ * side-by-side camera/ · worker/ layout are the frontend's contract too
+ * (docs/ai/features/gaze-tracking.md 5-6), so moving the worker file fails here first.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -22,6 +25,7 @@ const FILES = readdirSync(CAMERA)
   .map((name) => join(CAMERA, name));
 const ANY_USE = new Set(['../engine/contract', '../worker/protocol']);
 const TYPE_ONLY = new Set(['../engine']);
+const WORKER_ENTRY = '../worker/gaze.worker.ts';
 
 /**
  * Every import · re-export · dynamic `import()` specifier, and whether the compiler erases it.
@@ -56,6 +60,41 @@ function specifiers(file: string): { spec: string; typeOnly: boolean }[] {
   return out;
 }
 
+/**
+ * The target of every `new Worker(...)`.  Only `new Worker(new URL('<literal>', import.meta.url))`
+ * names a path the bundler can follow; any other shape is reported as `<not a URL literal>`.
+ */
+function workerEntries(file: string): string[] {
+  const src = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest);
+  const out: string[] = [];
+  const isImportMetaUrl = (node: ts.Node | undefined): boolean =>
+    !!node &&
+    ts.isPropertyAccessExpression(node) &&
+    ts.isMetaProperty(node.expression) &&
+    node.name.text === 'url';
+  const walk = (node: ts.Node): void => {
+    if (
+      ts.isNewExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'Worker'
+    ) {
+      const url = node.arguments?.[0];
+      const ok =
+        url &&
+        ts.isNewExpression(url) &&
+        ts.isIdentifier(url.expression) &&
+        url.expression.text === 'URL' &&
+        url.arguments?.[0] &&
+        ts.isStringLiteralLike(url.arguments[0]) &&
+        isImportMetaUrl(url.arguments[1]);
+      out.push(ok ? (url.arguments![0] as ts.StringLiteralLike).text : '<not a URL literal>');
+    }
+    ts.forEachChild(node, walk);
+  };
+  walk(src);
+  return out;
+}
+
 describe('camera view boundary', () => {
   it('has source files', () => {
     expect(FILES.length).toBeGreaterThan(5);
@@ -71,4 +110,11 @@ describe('camera view boundary', () => {
       expect(bad).toEqual([]);
     },
   );
+
+  it(`starts its worker from ${WORKER_ENTRY}, which exists`, () => {
+    const entries = FILES.flatMap(workerEntries);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.filter((spec) => spec !== WORKER_ENTRY)).toEqual([]);
+    expect(existsSync(join(CAMERA, WORKER_ENTRY))).toBe(true);
+  });
 });

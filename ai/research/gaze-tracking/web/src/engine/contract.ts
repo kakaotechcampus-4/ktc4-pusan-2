@@ -4,9 +4,11 @@
  * The frontend's entry points into this folder (copied to `frontend/src/vendor/gaze/engine/`)
  * are `index.ts` and `contract.ts`.  The camera view (`src/camera/`, the frontend's from #611)
  * reaches the engine only through these two (`index.ts` type-only) and the worker only through
- * `worker/protocol.ts` (test/camera-boundary.test.ts).  Direct imports of `config.ts` /
- * `evidence.ts` made before `contract.ts` re-exported them keep working, but may break when
- * files behind it change.
+ * `worker/protocol.ts`, and starts the worker from `worker/gaze.worker.ts` by URL
+ * (test/camera-boundary.test.ts).  That entry path and the side-by-side `camera/` · `worker/`
+ * layout are part of the contract (docs/ai/features/gaze-tracking.md 5-6).  Direct imports
+ * of `config.ts` / `evidence.ts` made before `contract.ts` re-exported them keep working, but
+ * may break when files behind it change.
  *
  *   index.ts     `createClassifier` and the engine.  It pulls MediaPipe in, so the worker
  *                loads it with a dynamic `import()`.

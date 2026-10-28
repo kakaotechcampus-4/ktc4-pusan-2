@@ -47,7 +47,7 @@
 | 용어 | 뜻 | 예 |
 |---|---|---|
 | 브라우저 엔진 | 사용자 브라우저의 Web Worker 안에서 프레임을 받아 1초 기록을 만드는 TS 코드. DOM 없이 돈다 | `GazeEngine` |
-| 서버 판정 모듈 | 1초 기록으로 1초 판정 결과 · Take 지표를 내는 Python 코어. AI 서비스의 `features/gaze/`로 간다 | `gaze.judge` |
+| 서버 판정 모듈 | 1초 기록으로 1초 판정 결과 · Take 지표를 내는 Python 코어. AI 서비스의 `features/gaze/`에 있다 | `gaze.judge` |
 | 보정 | 발표 전에 청중(카메라 렌즈) · 화면 중앙 · 대본 세 곳을 하나씩 보게 해 사용자마다 기준점 세 개를 잡는 것. 안내 순서는 카메라 화면(FE)이 정한다 | 지점마다 약 2초 |
 | 보정 모델 | 보정 결과(기준점의 고개 방향 + 얼굴 위치 · 크기 · 홍채 크기 · 거리). 얼굴 측정값이라 그 세션의 메모리에만 둔다 | `CalibrationModel` |
 | 보정 품질 | 보정이 얼마나 잘 됐는지 0–1. 실패면 0. BE가 발표 전 점검 결과로 저장한다 | `0.82` |
@@ -362,6 +362,8 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 
 **Worker 메시지** (`worker/protocol.ts`, 카메라 화면 ↔ Worker)
 
+메시지 형식은 `worker/protocol.ts`이고, 기본 Worker 엔트리는 `worker/gaze.worker.ts`다(카메라 화면이 `new Worker(new URL('../worker/gaze.worker.ts', import.meta.url), { type: 'module' })`로 띄운다). `camera/` · `worker/`를 나란히 두는 배치와 이 엔트리 경로는 FE가 쓰는 계약이라 AI가 바꾸지 않는다(연구 폴더 `web/test/camera-boundary.test.ts`가 화면이 띄우는 대상과 그 파일이 있는지 본다).
+
 | 방향 | 메시지 | 뜻 |
 |---|---|---|
 | → Worker | `init {assetDir, otherAs?, delegate?}` | 엔진 시작 (`createClassifier`) |
@@ -395,7 +397,7 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 
 `SECOND_FACE`(다른 얼굴이 보임)도 타입에는 있지만 신뢰도를 낮추지 않는 알림이라 `issues`로 가지 않는다.
 
-**화면이 쓰는 엔진 코드** — 카메라 화면(FE 담당, 11절)이 안내 문구를 고를 때 쓰는 값이다. 엔진은 코드만 내고 문구는 화면이 정한다. 화면은 엔진을 `index.ts`(타입만)와 `contract.ts`, Worker를 `worker/protocol.ts`로만 쓴다(연구 폴더 `web/test/camera-boundary.test.ts`가 지킨다). 원본은 각 타입 정의이고, 모르는 코드가 와도 화면은 일반 문구로 견딘다.
+**화면이 쓰는 엔진 코드** — 카메라 화면(FE 담당, 11절)이 안내 문구를 고를 때 쓰는 값이다. 엔진은 코드만 내고 문구는 화면이 정한다. 화면은 엔진을 `index.ts`(타입만)와 `contract.ts`, Worker를 `worker/protocol.ts`와 위 엔트리로만 쓴다(연구 폴더 `web/test/camera-boundary.test.ts`가 지킨다). 이유 코드 타입(`PreconditionReason` · `InvalidReason` · `GaugeReason` · `CameraPlacement` · `PlacementReason` · `FailReason`)은 `index.ts`에서 `import type`으로 쓴다. 고개 원 · 판정 보류는 따로 타입이 없고 출력 필드(`SweepStatus.last_reason` · `GaugeStatus.last_reason` · `FrameDecision.uncertain_reason`)가 `string`이다. 원본은 각 타입 정의이고, 모르는 코드가 와도 화면은 일반 문구로 견딘다.
 
 | 묶음 (타입 · 어디에 실리나) | 코드 | 뜻 |
 |---|---|---|
@@ -509,7 +511,7 @@ cd web && npm ci
 # 11. 배포
 **어디서 도는가**: 두 곳에 배포된다.
 - **서버 판정 모듈**(`examples/` 포함)은 AI 서비스의 `features/gaze/`에 있다(연구 폴더 `src/gaze/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮겼다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 '말한 1초' 기준값을 소리 크기 판정 모듈의 기준값 파일과 비교한다(`architecture.md` 6-2). 그 파일을 서비스의 `features/volume/`에서 먼저 찾고, 소리 크기가 서비스에 오기 전에는 연구 폴더의 소리 크기 `config.py`와 비교한다. 소리 크기를 서비스로 옮기면 연구 폴더 후보를 지운다). 자기 HTTP 엔드포인트는 없다. 코치 `evaluate` · `finalize`를 열 때 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 지금은 코치 연구 폴더의 재생 · 실험(`real_judges()`)이 이 모듈을 쓴다. 의존성은 pydantic 하나다.
-- **브라우저 엔진 · Worker**: `web/src/engine/` · `web/src/worker/`가 원본이고 AI가 고친다. FE는 `frontend/src/vendor/gaze/`로 복사해 쓰고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. FE는 엔진의 `index.ts` · `contract.ts`와 Worker의 `protocol.ts`만 쓴다. 엔진 · Worker 안은 FE에서 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다.
+- **브라우저 엔진 · Worker**: `web/src/engine/` · `web/src/worker/`가 원본이고 AI가 고친다. FE는 `frontend/src/vendor/gaze/`로 복사해 쓰고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. FE는 엔진의 `index.ts` · `contract.ts`와 Worker의 `protocol.ts`(메시지) · `gaze.worker.ts`(엔트리)만 쓴다(5-6 'Worker 메시지'). 엔진 · Worker 안은 FE에서 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다.
 - **카메라 화면**(`camera/`: 준비 점검 · 고개 원 · 보정 · 결과 카드의 흐름 · 그리기 · 안내 문구)은 FE 담당이다(#611). FE 사본이 원본이 되고 FE가 고친다. 화면은 엔진 공개 입구와 5-6의 '화면이 쓰는 엔진 코드'만으로 만든다. 연구 폴더의 `web/src/camera/`는 연구 데모와 브라우저 시험(`npm run smoke`)용으로만 남고, FE와 동기화하지 않는다(FE 화면을 데모로 보고 싶으면 그때 받아 온다). FE가 넘겨받기 전까지는 지금처럼 연구 폴더 판을 복사한다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 있고 아래 '옮긴 뒤 확인' 1을 통과해 옮겼다(2026-10-26). 2(코치 연구 폴더 재생)도 마쳤다(2026-10-26, 코치 연구 폴더 README 7절). 3(FE) · 4(연구 도구와 FE 사본 대조)와 코치 앱 연결은 이어지는 작업이다.
