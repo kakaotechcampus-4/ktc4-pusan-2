@@ -56,7 +56,7 @@ flowchart LR
   L --> S2["정제 · 판정 · 글자 수 · 예상 시간 · 하이라이트 (코드)"]
   S2 -- "status · slides · terms · meta" --> BE
   BE -- "script_versions · script_slides 저장" --> DB[(DB)]
-  BE -- "장별 대본 (새 버전의 첫 생성만, 1-7)" --> R["대본 전달도 /scripts/rubric"]
+  BE -- "장별 대본 (기준 생성 이력이 없을 때만, 1-7)" --> R["대본 전달도 /scripts/rubric"]
   BE -- "terms + 군더더기 keyterm" --> DG["Deepgram (STT 연결 때)"]
   BE -- "plan.slides · scripts" --> C["코치 /coach/plan · evaluate"]
 ```
@@ -64,7 +64,7 @@ flowchart LR
 2. **구분자 찾기**: 코드가 줄 맨 앞 구분자를 찾아 장 후보와 첫 구분자 앞 글(머리글)을 나눈다.
 3. **LLM 한 번**: 대본과 장 후보를 주고, 머리글 · 장마다의 제목 줄, 장마다 키워드, 대본 전체 용어를 고르게 한다. 출력은 짧다(키워드 · 줄 · 용어 목록).
 4. **코드 마무리**: 제목 줄을 걷어 낸 뒤 머리글에 본문이 남으면 `fail`로 바꾼다. 장 대본을 정제하고 글자 수 · 예상 시간 · 하이라이트를 계산한다. 대본에 그대로 없는 키워드 · 용어를 버린다.
-5. **BE**: 응답을 저장하고(처리 상태 `DONE`, `fail`이면 `segmented` false) 대본 전달도 평가 기준 · 코칭 계획을 부른다. 평가 기준(`/scripts/rubric`)은 새 버전의 첫 생성 때만 모든 장으로 부르고, 같은 버전의 성공 기준 · meta는 보존한다. 같은 버전을 다시 파싱한 결과가 저장본과 다르면 적용하지 않고(`parse_error` = `REPARSE_MISMATCH`, 12-2) rubric도 부르지 않는다. 조건은 `architecture.md` 1-6 · 1-7을 따른다. STT keyterm은 Take의 STT를 연결할 때 `terms`와 군더더기 keyterm 단어로 만든다.
+5. **BE**: 응답을 저장하고(처리 상태 `DONE`, `fail`이면 `segmented` false) 대본 전달도 평가 기준 · 코칭 계획을 부른다. 평가 기준(`/scripts/rubric`)은 기준 생성 이력이 없을 때만 모든 장으로 첫 작업을 시작하고, 같은 버전의 기존 생성 작업 · 성공 기준 · meta는 다시 만들지 않는다. 같은 버전을 다시 파싱한 결과가 저장본과 다르면 적용하지 않고(`parse_error` = `REPARSE_MISMATCH`, 12-2) rubric · 코칭 계획도 부르지 않는다. 조건은 `architecture.md` 1-6 · 1-7을 따른다. STT keyterm은 Take의 STT를 연결할 때 `terms`와 군더더기 keyterm 단어로 만든다.
 
 # 4. 구성과 폴더
 ## 4-1. 폴더 트리
@@ -260,9 +260,10 @@ sequenceDiagram
         BE->>BE: script_versions (DONE, segmented, terms, parse_meta) · script_slides 저장
         BE->>BE: 대본 전달도 /scripts/rubric (기준 생성 이력이 없을 때만) · /coach/plan (백그라운드)
     else 같은 버전을 다시 파싱 · 저장본과 같음
-        BE->>BE: 기존 장 · 성공 기준 · meta 재사용 (rubric 다시 부르지 않음)
+        BE->>BE: 기존 장 · 성공 기준 · meta 재사용 (기준 생성 이력이 없을 때만 /scripts/rubric 첫 작업)
+        BE->>BE: /coach/plan (백그라운드)
     else 같은 버전을 다시 파싱 · 저장본과 다름
-        BE->>BE: 적용하지 않음 · parse_error = REPARSE_MISMATCH (rubric 부르지 않음, 12-2)
+        BE->>BE: 적용하지 않음 · parse_error = REPARSE_MISMATCH (rubric · /coach/plan 부르지 않음, 12-2)
     end
     FE->>BE: 상태 조회 (1초 폴링)
     BE-->>FE: 장별 대본 · 키워드 · 하이라이트 · segmented
