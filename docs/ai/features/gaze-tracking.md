@@ -358,7 +358,7 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 
 **보정 모델 `CalibrationModel`** — `fitCalibration` · `finishCalibration`이 만든다. 구역별 기준 자세에 `scene`(얼굴 중심 · 면적, 홍채 픽셀 크기, 밝기, 고개 방향, 카메라까지 거리 같은 얼굴 측정값)과 `configHash`가 붙는다. 메모리에만 두고 브라우저 저장소 · 서버 어디에도 두지 않는다(4-3). 일반 데이터라 `structuredClone`을 통과하므로, 같은 세션에서 새 Worker를 만들면 `calibrate(model)`이나 Worker 메시지 `restore`로 넘겨 이어받는다. 받는 쪽은 보정 모델의 모양(스키마 · 필수 구조)만 확인하고 설정 해시(`configHash`)는 비교하지 않는다. 그래서 FE는 같은 탭에서 화면 배치 · 엔진 버전 · 설정 해시가 같을 때만 보정 모델을 넘긴다(설정 해시는 FE가 비교한다).
 
-**1초 기록 만들기** — `GazeEvidenceRecorder.record(decision)`은 프레임 판정을 받아 끝난 1초 조각을 돌려준다(없으면 빈 목록). `flush(tEndMs)`는 Take 끝의 마지막 짧은 조각을 닫으며 Take가 끝나면 꼭 부른다. `reset()`은 비운다. `sampleToDict(sample)`이 전송 모양(5-2, `confidence` · `reliability`는 소수 4자리)을 만들고 FE는 그대로 보낸다. FE는 Take마다 새 기록기를 쓰고 `tMs`를 Take 시작 기준으로 넘긴다(6-1). 엔진은 시각을 되돌리지 않는다: 프레임 시각은 `max(반올림한 tMs, 앞 프레임 시각 + 1)`이고 이 값이 `FrameDecision.t_ms`가 된다. 그래서 보정 때 쓴 엔진에 Take 시작 기준 시각(0부터)을 이어 넘기면 시각이 밀린다. FE는 발표 화면(Take)마다 새 엔진 · Worker를 만들어 보정 모델만 넘기고, 엔진과 기록기에 같은 Take 시작 기준 시각을 넘긴다.
+**1초 기록 만들기** — FE Worker는 `frameFromDecision(decision)`으로 프레임 판정을 프레임으로 바꿔 `GazeSlicer.push(frame)`에 넣고, 끝난 1초 조각을 받는다(없으면 빈 목록). 연구 데모가 쓰는 `GazeEvidenceRecorder.record(decision)`은 같은 일을 프레임 판정에서 바로 한다(`reset()`으로 비움). 어느 쪽이든 `flush(tEndMs)`는 Take 끝의 마지막 짧은 조각을 닫으며 Take가 끝나면 꼭 부른다. `sampleToDict(sample)`이 전송 모양(5-2, `confidence` · `reliability`는 소수 4자리)을 만들고 FE는 그대로 보낸다. FE는 Take마다 새 `GazeSlicer`를 쓰고 `tMs`를 Take 시작 기준으로 넘긴다(6-1). 엔진은 시각을 되돌리지 않는다: 프레임 시각은 `max(반올림한 tMs, 앞 프레임 시각 + 1)`이고 이 값이 `FrameDecision.t_ms`가 된다. 그래서 보정 때 쓴 엔진에 Take 시작 기준 시각(0부터)을 이어 넘기면 시각이 밀린다. FE는 발표 화면(Take)마다 새 엔진 · Worker를 만들어 보정 모델만 넘기고, 엔진과 기록기에 같은 Take 시작 기준 시각을 넘긴다.
 
 **Worker 메시지** (`worker/protocol.ts`, 카메라 화면 ↔ Worker)
 
