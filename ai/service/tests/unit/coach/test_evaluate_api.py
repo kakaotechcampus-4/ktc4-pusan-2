@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from pitch_coach_ai.api import coach as api
 from pitch_coach_ai.features.coach import core
 from pitch_coach_ai.features.coach.schemas import (
+    MAX_REPLAY_CHANGES,
     MAX_T_MS,
     MAX_WINDOW_RECORDS,
     MAX_WINDOW_UTTERANCE_ENDS,
@@ -156,7 +157,9 @@ def test_internal_error_is_200_wait_and_logs_without_the_message(
     assert (body["action"], body["reason_codes"]) == ("WAIT", ["INTERNAL_ERROR"])
     assert body["coach_state"]["last_t_ms"] == 92000  # 같은 요청이 다시 오면 STALE_TICK
     assert "단어 원문 비밀" not in res.text
-    line = _coach_lines(log_records, "coach_evaluate ")[0]
+    records = [r for r in log_records if r.getMessage().startswith("coach_evaluate ")]
+    assert len(records) == 1 and records[0].levelno == logging.WARNING
+    line = records[0].getMessage()
     assert "reasons=INTERNAL_ERROR" in line
     assert "단어 원문 비밀" not in line
 
@@ -215,3 +218,31 @@ def test_finalize_bad_request_is_422(client: TestClient) -> None:
     res = client.post("/coach/finalize", json=request)
     assert res.status_code == 422
     assert res.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_finalize_replay_over_the_limit_is_422(client: TestClient) -> None:
+    """replay 배열 한도(기능 문서 8절)도 요청 전체 422 다. 잘라서 성공처럼 돌려주지 않는다."""
+    request = copy.deepcopy(_example("finalize/request_replay.json"))
+    one = request["replay"]["stt_status_changes"][0]
+    request["replay"]["stt_status_changes"] = [one] * (MAX_REPLAY_CHANGES + 1)
+    res = client.post("/coach/finalize", json=request)
+    assert res.status_code == 422
+    assert res.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_finalize_unexpected_error_is_500_and_logged(
+    client: TestClient, log_records: list[logging.LogRecord], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """코어 밖으로 나온 예외는 공통 500 이고(BE 가 한 번 다시 부름), finalize 로그도 남는다."""
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("단어 원문 비밀")
+
+    monkeypatch.setattr(api, "finalize", boom)
+    res = client.post("/coach/finalize", json=_example("finalize/request.json"))
+    assert res.status_code == 500
+    assert res.json()["error"]["code"] == "INTERNAL_ERROR"
+    assert "단어 원문 비밀" not in res.text
+    records = [r for r in log_records if r.getMessage().startswith("coach_finalize ")]
+    assert len(records) == 1 and records[0].levelno == logging.WARNING
+    assert "result=INTERNAL_ERROR" in records[0].getMessage()

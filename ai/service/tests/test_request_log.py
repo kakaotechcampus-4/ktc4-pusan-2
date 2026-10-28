@@ -5,7 +5,7 @@ import sys
 
 from fastapi.testclient import TestClient
 
-from pitch_coach_ai.common.request_log import SafeFormatter
+from pitch_coach_ai.common.request_log import SafeFormatter, configure_logging
 
 
 def _request_lines(records: list[logging.LogRecord]) -> list[str]:
@@ -109,3 +109,13 @@ def test_exceptions_are_logged_as_kind_and_place_only() -> None:
     assert "error=ValueError at test_request_log.py:" in line
     assert "단어 원문 비밀" not in line
     assert "Traceback" not in line
+
+
+def test_the_service_handler_uses_the_safe_formatter() -> None:
+    """앱이 단 출력기가 위 형식을 쓴다 — 코치 코어 같은 아래 로거의 예외도 여기로 나간다."""
+    configure_logging()
+    # pytest 가 같은 로거에 붙이는 수집기는 빼고, configure_logging 이 다는 표준 출력기만 본다
+    ours = [
+        h for h in logging.getLogger("pitch_coach_ai").handlers if type(h) is logging.StreamHandler
+    ]
+    assert ours and all(isinstance(h.formatter, SafeFormatter) for h in ours)

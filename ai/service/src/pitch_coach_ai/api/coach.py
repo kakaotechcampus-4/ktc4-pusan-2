@@ -24,7 +24,8 @@
   - evaluate: 새로 시작(`STATE_RESET`) · 크게 앞선 시각(`T_MS_JUMP`) · 코치 안 예외
     (`INTERNAL_ERROR`)가 난 응답만 `coach_evaluate take_id=… t_ms=… reasons=… duration_ms=…`.
     1초마다 오는 정상 응답은 남기지 않는다. 리셋 건수는 이 줄을 센다(기능 문서 11절 증상표)
-  - finalize: 요청마다 `coach_finalize take_id=… t_ms=… replay=… result=… duration_ms=…`
+  - finalize: 형식 검사를 통과한 요청마다 `coach_finalize take_id=… t_ms=… replay=… result=…
+    duration_ms=…` (`result` 는 `OK` · `REPLAY_REQUIRED` · `INTERNAL_ERROR`, 마지막은 500)
   - plan: `coach_plan slides=… missions=… fallback=… duration_ms=…`
 - 라우터는 `def` 다(코어가 동기 — 스레드 풀에서 돈다. `async def` 안에서 부르면 서버가 멈춘다)
 """
@@ -188,6 +189,16 @@ def finalize_take(
         )
         # 메시지는 코어가 만든 빠진 구간 문장이다(숫자뿐, 사용자 입력이 없다)
         raise ReplayRequiredError(str(exc)) from None
+    except Exception:
+        # 마지막 창의 예외는 코어가 잡는다. 여기까지 온 것은 500 이고 BE 가 한 번 다시 부른다
+        logger.warning(
+            "coach_finalize take_id=%s t_ms=%d replay=%s result=INTERNAL_ERROR duration_ms=%.1f",
+            log_safe(req.take_id),
+            req.t_ms,
+            replay,
+            _ms_since(started),
+        )
+        raise
     logger.info(
         "coach_finalize take_id=%s t_ms=%d replay=%s result=OK events=%d duration_ms=%.1f",
         log_safe(req.take_id),
