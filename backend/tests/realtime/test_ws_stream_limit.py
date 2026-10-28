@@ -15,6 +15,8 @@ from tests.realtime.conftest import (
     FakeSttAdapter,
     FakeTranscriptStore,
     FakeWebSocket,
+    Plan,
+    _wait_until_ok,
     auth,
     closed_with,
     frame,
@@ -124,6 +126,46 @@ async def test_simultaneous_connections_of_one_user_do_not_pass_the_limit():
     assert len(rejected) == 2
     assert len(_open(owner_id)) == MAX_STREAMS_PER_USER
     await _close_all()
+
+
+@pytest.mark.anyio
+async def test_draining_streams_still_occupy_a_deepgram_slot():
+    # CloseStream 뒤 마지막 전사를 기다리는 중에도 실제 Deepgram 세션은 열려 있다.
+    adapter = FakeSttAdapter(*(Plan(swallow_close=True) for _ in range(8)))
+    owner_id = uuid.uuid7()
+    streams = [await _attach(adapter, owner_id) for _ in range(MAX_STREAMS_PER_USER)]
+    for stream in streams:
+        await _wait_until_ok(stream)
+
+    old = streams[0]
+    old.push(frame(1, 0), source=old._client.ws)
+    old.detach(old._client.ws)
+    attaching = asyncio.create_task(_attach(adapter, owner_id))
+    competing = asyncio.create_task(_attach(adapter, owner_id))
+    try:
+        # 충분히 이벤트 루프를 돌려도 옛 세션이 살아 있는 동안 새 세션을 열면 안 된다.
+        for _ in range(20):
+            await asyncio.sleep(0)
+        live = [session for session in adapter.sessions if not session.aborted]
+        assert len(live) <= MAX_STREAMS_PER_USER
+        assert not attaching.done()
+        assert not competing.done()
+        # 한 사용자의 drain 대기는 다른 사용자의 연결을 붙잡지 않는다.
+        other = await asyncio.wait_for(_attach(FakeSttAdapter(), uuid.uuid7()), timeout=0.5)
+        assert other.has_client
+        old.cancel()
+        await old.wait_closed(timeout=1.0)
+        fresh = await asyncio.wait_for(attaching, timeout=1.0)
+        with pytest.raises(TooManyStreams):
+            await competing
+        await _wait_until_ok(fresh)
+        assert len([s for s in adapter.sessions if not s.aborted]) <= MAX_STREAMS_PER_USER
+        assert not state.owner_locks
+    finally:
+        attaching.cancel()
+        competing.cancel()
+        await asyncio.gather(attaching, competing, return_exceptions=True)
+        await _close_all()
 
 
 def test_rejected_connection_gets_the_error_and_a_policy_close(

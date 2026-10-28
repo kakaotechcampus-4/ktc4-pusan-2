@@ -51,7 +51,7 @@ WS /api/ws/takes/{take_id}
   | `BAD_MESSAGE` | 유지 |
   | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
   | `TAKE_TAKEN_OVER` | `1008` 로 닫는다. FE 는 **재연결하지 않는다** |
-  | `TOO_MANY_STREAMS` | `1008` 로 닫는다 — 그 사용자가 다른 Take 에 붙여 둔 연결이 3개(`MAX_STREAMS_PER_USER`)다. 끊겨 다시 붙기를 기다리는 스트림이 있으면 오래된 것부터 정리하고 받으므로, 다른 창 셋이 실제로 붙어 있을 때만 나온다. 같은 Take 로 다시 붙는 연결은 세지 않는다 |
+  | `TOO_MANY_STREAMS` | `1008` 로 닫는다 — 사용자별 스트림 상한 3개(`MAX_STREAMS_PER_USER`)에 닿았다. 끊겨 다시 붙기를 기다리는 스트림부터 정리하고 실제로 닫힌 뒤 새 스트림을 연다. 붙어 있는 연결만으로 차 있거나 정리가 제한 시간 안에 끝나지 않으면 거절한다. 같은 Take 로 다시 붙는 연결은 새 스트림으로 세지 않는다 |
 
 - `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
 - **인증 뒤 Take 를 검사한다.** 사용자 존재 → Take 존재·소유(`takes` → `pitches.user_id`) → 상태
