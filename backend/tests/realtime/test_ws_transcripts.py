@@ -542,7 +542,7 @@ def test_persist_failure_keeps_the_stream_alive(
             )
         )
     )
-    use_store(FakeTranscriptStore(fail=True))
+    store = use_store(FakeTranscriptStore(fail=True))
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
@@ -556,7 +556,9 @@ def test_persist_failure_keeps_the_stream_alive(
     assert (first["text"], second["text"]) == ("하나", "둘")
     assert status["state"] == "closed" and status["frames"] == 2
     assert "확정 전사 저장 실패" in caplog.text
-    assert "확정 전사 를 다 저장하지 못해 버린다" in caplog.text and "개수=2" in caplog.text
+    # 전사를 버리고 끝내지 않는다. 저장한 뒤에 끝낸 것으로 적는다
+    assert "확정 전사를 다 저장하지 못했다" in caplog.text and "개수=2" in caplog.text
+    assert "mark_ended" not in store.calls
     assert "하나" not in caplog.text, "전사 원문은 로그에 남기지 않는다"
 
 
