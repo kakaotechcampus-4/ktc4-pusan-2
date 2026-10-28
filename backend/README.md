@@ -378,6 +378,10 @@ POST /api/auth/logout           현재 세션 폐기
   출처는 `Origin`, 없으면 `Referer` 순으로 보고 **둘 다 없으면 막는다** (OWASP 권장).
   프론트는 `csrf_token` 쿠키를 읽어 `X-CSRF-Token` 헤더에 실어야 한다.
 - 구글이 준 토큰은 신원 확인에만 쓰고 **저장하지 않는다.** Google refresh token 은 요청하지 않는다.
+- `LAUNCH_AT`(출시 시각) 전에는 `start`·`callback` 이 구글로 보내지 않고 사용자·세션도 만들지
+  않는다. 프론트로 `auth_error=service_not_open` 을 붙여 돌려보낸다. 이미 발급된 세션은 막지 않는다.
+  release 의 `RELEASE_BACKEND_ENV` secret 에만 넣고 dev·로컬은 비워 둔다(비면 막지 않는다).
+  배포가 이 secret 으로 서버의 `backend/.env` 를 매번 다시 쓰므로 서버 파일을 직접 고치면 사라진다.
 
 OAuth 요청의 `state`·`nonce`·PKCE verifier는 콜백까지 필요한 임시 값이라
 `oauth_authorization_requests` 에 만료 시각(10분, `module/auth/state_store.py` 의 `STATE_TTL_SECONDS`)과
@@ -447,6 +451,15 @@ POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_ver
 발표 중 마이크 오디오를 Deepgram 으로 흘리고 전사를 FE 로 돌려준다 (`WS /api/ws/takes/{take_id}`).
 메시지 순서 · 에러 코드 · 재연결 · 저장 · 종료 · 자동 종료 규칙은 [docs/be/realtime-stt.md](../docs/be/realtime-stt.md) 에 있다.
 Take 가 언제 어떤 상태로 끝나는지는 [docs/be/take-lifecycle.md](../docs/be/take-lifecycle.md) 다.
+
+배포 이미지의 Uvicorn은 `--ws-max-size 65536`으로 수신 메시지 하나를 64KiB까지 받는다.
+텍스트는 UTF-8 바이트로 세며 인증 전에도 적용된다. 여러 프레임으로 나눈 메시지나 압축된
+메시지도 합치고 압축을 푼 크기가 상한을 넘으면 연결을 코드 `1009`로 닫는다.
+FE의 오디오는 100ms당 3,208바이트이며 BE가 허용하는 최대 1초 오디오는 헤더 포함 32,008바이트다.
+시선·음량 기록은 각각 4,096바이트 이하여서 인증·장 변경·측정값 JSON도 이 상한 안에 들어간다.
+`fastapi dev`에는 Dockerfile 인수가 적용되지 않는다. 같은 제한으로 로컬에서 확인하려면
+`uv run uvicorn pitch_coach_backend.main:app --ws-max-size 65536`으로 실행한다.
+연결 수나 전체 메모리 사용량을 제한하는 설정은 별도다.
 
 ## 대본 파싱 (AI)
 

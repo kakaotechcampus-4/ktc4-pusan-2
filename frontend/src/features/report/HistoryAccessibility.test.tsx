@@ -41,10 +41,10 @@ afterEach(async () => {
   host.remove();
   vi.unstubAllGlobals();
 });
-async function render(page: 'compare' | 'takes') {
+async function render(page: 'compare' | 'takes', search = '') {
   await act(async () =>
     root.render(
-      <MemoryRouter initialEntries={['/pitch/p1/comparison']}>
+      <MemoryRouter initialEntries={[`/pitch/p1/comparison${search}`]}>
         <Routes>
           <Route
             path="/pitch/:id/comparison"
@@ -99,4 +99,14 @@ it('filters by pitch and announces the result count without losing report destin
     '다른 발표 Take 1 리포트',
   );
   expect(host.querySelector('a[href="/takes/t2"]')).toBeNull();
+});
+it('opens filtered by ?pitch= and falls back to all for a pitch that is not in the list', async () => {
+  await render('takes', '?pitch=p2');
+  expect(host.querySelector('select')?.value).toBe('p2');
+  expect(host.querySelector('[role="status"]')?.textContent).toBe('연습 기록 1개');
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await render('takes', '?pitch=gone');
+  expect(host.querySelector('select')?.value).toBe('');
+  expect(host.querySelector('[role="status"]')?.textContent).toBe('연습 기록 3개');
 });

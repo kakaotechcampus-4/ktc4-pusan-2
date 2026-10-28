@@ -20,9 +20,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from coach.version import FEATURE_VERSION as COACH_FEATURE_VERSION
 from coach_lab.paths import SCENARIOS_DIR
 from coach_lab.simulator import NOISE_PRESETS, Scenario, run, scenario_config
+
+from pitch_coach_ai.features.coach.version import FEATURE_VERSION as COACH_FEATURE_VERSION
 
 TAKES_DIR = Path(__file__).resolve().parents[2] / "data" / "takes"
 

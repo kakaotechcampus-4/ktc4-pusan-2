@@ -22,6 +22,10 @@
   src: url("/fonts/IBMPlexMono-Bold-latin.woff2") format("woff2");
 }
 
+/* 홈을 한 화면에 고정할 만큼 넓고 높은 창. 낮으면(배율 125~150% 노트북) 목록이 몇 줄만 남아
+   고정하지 않고 페이지를 스크롤합니다 (PR #669 리뷰) */
+@custom-variant one-screen (@media (min-width: 64rem) and (min-height: 40rem));
+
 /* ═══════════════════════════════════════════════════════════════
    피치코치 디자인 토큰
 

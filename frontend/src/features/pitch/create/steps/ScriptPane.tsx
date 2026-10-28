@@ -205,7 +205,7 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
       </div>
 
       <div className="mt-3">
-        <PaneFooter hint="슬라이드마다 [N] · [슬라이드 N] · 슬라이드 N: 중 하나를 새 줄에 적어 주세요. N은 슬라이드 번호예요. 구분자가 없으면 대본 전체를 한 슬라이드로 연결해요.">
+        <PaneFooter hint="슬라이드마다 “[N]” · “[슬라이드 N]” · “슬라이드 N:” 중 하나를 새 줄에 적어 주세요. N은 슬라이드 번호예요. 구분자가 없으면 대본 전체를 한 슬라이드로 연결해요.">
           <button type="button" onClick={() => select('slides')} className={secondaryButton}>
             ← 이전
           </button>

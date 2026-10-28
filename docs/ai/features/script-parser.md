@@ -221,6 +221,7 @@ uv sync
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
 | 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/script_parser` | 구분자 · 판정 · 정제 · 글자 수 · 예상 시간(합 · 누적 반올림) · 하이라이트 · 계약(`examples/`, 가짜 LLM) · 코어 경계 통과 |
+| 연구 폴더 준비 확인 | `uv run python -m pytest` | `run.py`가 서비스 코어를 import하고, `data/scripts/`와 `data/labels/`의 이름이 짝을 이룸 (LLM 호출 없음) |
 | 실제 LLM 테스트 | `uv run python -m pytest -m live` | 예시 대본이 스키마를 통과 (과금) |
 | 대본 실행 | `uv run python run.py --all` | `results/<이름>.json` (과금) |
 | 평가 | `uv run python run.py --eval --out reports/results/script_parser_eval.json` | 장 나눔 정확도 · 예상 시간 오차 · 호출 시간 (13절, 과금) |

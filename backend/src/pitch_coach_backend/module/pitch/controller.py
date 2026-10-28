@@ -147,22 +147,24 @@ def upload_presentation(
     }
 
 @router.post("/add/{pitch_id}/standards", response_model=StandardTextResponseDTO)
-def post_pitch_standard_text(
+async def post_pitch_standard_text(
     pitch_id: OwnedPitch,
+    current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     standard_text: StandardTextDTO
 ):
-    return add_pitch_standard_service(db, pitch_id, standard_text)
+    return await add_pitch_standard_service(db, current_user.id, pitch_id, standard_text)
 
 # 사용자가 고친 표시 기준 저장. 다시 분석한 문장을 새 버전으로 저장한다
 # (evaluation-criteria.md 12절)
 @router.post("/{pitch_id}/standards", response_model=StandardTextResponseDTO)
-def save_pitch_standards(
+async def save_pitch_standards(
     pitch_id: OwnedPitch,
+    current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     standards: StandardsSaveRequestDTO,
 ):
-    return save_pitch_standards_service(db, pitch_id, standards)
+    return await save_pitch_standards_service(db, current_user.id, pitch_id, standards)
 
 
 # 대본 새 버전. 202: 원문 저장까지만 하고 돌려준다. 슬라이드 분리(AI)는 응답 뒤 백그라운드에서

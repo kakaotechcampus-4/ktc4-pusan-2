@@ -51,7 +51,6 @@ from pitch_coach_backend.coach.windows import (
     WORDS_WINDOW_MS,
     FinalWord,
     slide_at,
-    slide_changes,
     window_inputs,
 )
 from pitch_coach_backend.core.row_buffer import RowBuffer
@@ -67,6 +66,7 @@ _KEEP_SLACK_MS = 5_000
 SEAL_WAIT_SEC = 2.0
 # 저장 못 한 이벤트를 들고 있을 개수. 넘치면 오래된 것부터 버린다 (finalize 가 받은 것만 센다)
 MAX_UNSAVED_EVENTS = 2_000
+MAX_SLIDE_CHANGES = 10_000
 # FE 에 코치 메시지를 보내는 상한. 보내기는 판단 하나(`_inflight`) 안에서 돌아, 소켓이 막혀 기다리는
 # 동안에는 다음 판단을 모두 건너뛴다. 넘기면 그 메시지는 버린다
 NOTIFY_TIMEOUT_SEC = 1.0
@@ -288,13 +288,17 @@ class CoachSession:
         if at == len(self._utterance_ends) or self._utterance_ends[at] != ms:
             self._utterance_ends.insert(at, ms)
 
+    def slide_room(self, event: SlideEvent) -> bool:
+        return event.started_ms in self._slides or len(self._slides) < MAX_SLIDE_CHANGES
+
     def on_slide(self, event: SlideEvent) -> None:
         if self._released or self._inputs_sealed or event.started_ms in self._slides:
             return
         self._slides[event.started_ms] = event.slide_number
-        self._slide_changes = slide_changes(
-            (SlideEvent(number, started_ms) for started_ms, number in self._slides.items()),
-            normalize_start=False,
+        bisect.insort(
+            self._slide_changes,
+            {"number": event.slide_number, "started_ms": event.started_ms},
+            key=lambda change: change["started_ms"],
         )
 
     @property
