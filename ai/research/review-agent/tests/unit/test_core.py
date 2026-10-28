@@ -178,6 +178,11 @@ def test_all_stable_take_summary(req, monkeypatch):
     resp = review_take(req)
     assert resp.strengths == [] and resp.improvements == []
     assert resp.overall_summary == STABLE_TEXT
+    # 예시 요청의 사용자 기준 FAILED 는 다음 미션 1순위로 나가므로
+    # 요약이 '고칠 점 없음'이라 하지 않는다
+    assert any(r.status == "FAILED" for r in resp.criteria_results)
+    assert resp.next_missions[0].priority == 1
+    assert "고칠 점" not in resp.overall_summary
 
 
 def test_score_none_when_nothing_evaluable():
