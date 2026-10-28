@@ -648,6 +648,9 @@ export function RehearsalPage() {
   const nextSlideNumber = Math.min(slideNumber + 1, pageCount);
 
   // ── 종료 ─────────────────────────────────────────────────────────
+  // 끝까지 하지 않은 발표는 BE 가 중간 종료로 구분하지 않고 점수까지 남겨 평가 기준이 흐려집니다 (#695).
+  // 그래서 끝내기는 마지막 장에서만 열어 둡니다. 장 수를 모르면(0) 막지 않습니다
+  const onLastSlide = pageCount === 0 || slideNumber >= pageCount;
   const finish = async () => {
     if (!running || !sessionId || !ticket) return;
 
@@ -940,7 +943,8 @@ export function RehearsalPage() {
               <button
                 type="button"
                 className="end"
-                disabled={!running || phase !== 'RUNNING'}
+                disabled={!running || phase !== 'RUNNING' || !onLastSlide}
+                title={onLastSlide ? undefined : '마지막 슬라이드에서 끝낼 수 있어요'}
                 onClick={() => {
                   // 되돌릴 수 없어서 한 번 더 묻습니다. 모달을 띄우지 않는 이유는
                   // 발표 중에 화면을 덮으면 남은 시간을 못 보기 때문입니다
@@ -957,11 +961,7 @@ export function RehearsalPage() {
                   });
                 }}
               >
-                {endButtonText(
-                  phase === 'ENDING',
-                  confirming,
-                  pageCount > 0 && slideNumber === pageCount,
-                )}
+                {endButtonText(phase === 'ENDING', confirming)}
               </button>
             </div>
           </div>
@@ -1068,10 +1068,10 @@ function startGateText(gate: Exclude<StartGate, { kind: 'STARTED' }>): string {
   }
 }
 
-function endButtonText(ending: boolean, confirming: boolean, last: boolean): string {
+function endButtonText(ending: boolean, confirming: boolean): string {
   if (ending) return '정리하는 중…';
   if (confirming) return '정말 끝낼까요?';
-  return last ? '발표 끝내기' : '중간 종료';
+  return '발표 끝내기';
 }
 
 /**
