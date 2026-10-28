@@ -452,6 +452,15 @@ POST /api/pitches/{pitch_id}/takes/    {"mode", "script_mode", "presentation_ver
 메시지 순서 · 에러 코드 · 재연결 · 저장 · 종료 · 자동 종료 규칙은 [docs/be/realtime-stt.md](../docs/be/realtime-stt.md) 에 있다.
 Take 가 언제 어떤 상태로 끝나는지는 [docs/be/take-lifecycle.md](../docs/be/take-lifecycle.md) 다.
 
+배포 이미지의 Uvicorn은 `--ws-max-size 65536`으로 수신 메시지 하나를 64KiB까지 받는다.
+텍스트는 UTF-8 바이트로 세며 인증 전에도 적용된다. 여러 프레임으로 나눈 메시지나 압축된
+메시지도 합치고 압축을 푼 크기가 상한을 넘으면 연결을 코드 `1009`로 닫는다.
+FE의 오디오는 100ms당 3,208바이트이며 BE가 허용하는 최대 1초 오디오는 헤더 포함 32,008바이트다.
+시선·음량 기록은 각각 4,096바이트 이하여서 인증·장 변경·측정값 JSON도 이 상한 안에 들어간다.
+`fastapi dev`에는 Dockerfile 인수가 적용되지 않는다. 같은 제한으로 로컬에서 확인하려면
+`uv run uvicorn pitch_coach_backend.main:app --ws-max-size 65536`으로 실행한다.
+연결 수나 전체 메모리 사용량을 제한하는 설정은 별도다.
+
 ## 대본 파싱 (AI)
 
 올린 대본을 AI 서버가 슬라이드 단위로 나누고 키워드를 뽑는다. FE 쪽은 비동기다 (즉시 `202` + 폴링).
