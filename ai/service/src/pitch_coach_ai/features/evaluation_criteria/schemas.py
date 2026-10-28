@@ -75,7 +75,7 @@ class EvaluationCriteriaAnalysis(BaseModel):
     )
 
 
-class Meta(BaseModel):
+class CriteriaMeta(BaseModel):
     schema_version: str
     feature_version: str
     model: str | None
@@ -84,4 +84,4 @@ class Meta(BaseModel):
 class EvaluationCriteriaResponse(EvaluationCriteriaAnalysis):
     """POST /evaluation-criteria/parse 응답: LLM 출력 + meta."""
 
-    meta: Meta
+    meta: CriteriaMeta

@@ -6,10 +6,10 @@ from typing import Any, get_args
 from .config import DEFAULT, EvaluationCriteriaConfig
 from .prompts import SYSTEM_PROMPT
 from .schemas import (
+    CriteriaMeta,
     EvaluationCriteriaAnalysis,
     EvaluationCriteriaRequest,
     EvaluationCriteriaResponse,
-    Meta,
     Metric,
     Operator,
     Target,
@@ -37,7 +37,9 @@ def analyze_criteria(request: EvaluationCriteriaRequest, llm: Any) -> Evaluation
         values=out.values,
         targets=check_targets(out.targets, display_criteria, DEFAULT),
         excluded=out.excluded,
-        meta=Meta(schema_version=SCHEMA_VERSION, feature_version=FEATURE_VERSION, model=None),
+        meta=CriteriaMeta(
+            schema_version=SCHEMA_VERSION, feature_version=FEATURE_VERSION, model=None
+        ),
     )
 
 
