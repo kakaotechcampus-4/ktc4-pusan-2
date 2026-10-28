@@ -249,16 +249,12 @@ async def _make_room(owner_id: uuid.UUID) -> None:
     정리 중인 스트림도 실제로 닫힐 때까지 센다. request_stop만 하고 자리에서 빼면 반복해서
     끊고 붙이는 동안 drain 중인 Deepgram 세션이 상한 밖으로 계속 쌓인다.
     """
-    open_streams = [
-        stream
-        for stream in state.streams.values()
-        if stream.owner_id == owner_id and not stream.is_finished
-    ]
+    open_streams = _open_streams(owner_id)
     excess = len(open_streams) - MAX_STREAMS_PER_USER + 1
     if excess <= 0:
         return
     # 맵은 넣은 순서다. 앞이 오래된 것이다
-    waiting = [stream for stream in open_streams if stream.is_stopping or not stream.has_client]
+    waiting = [stream for stream in open_streams if _reclaimable(stream)]
     if len(waiting) < excess:
         logger.warning(
             "사용자의 스트림이 상한이라 새 연결을 거절한다 user=%s limit=%d",
@@ -277,6 +273,34 @@ async def _make_room(owner_id: uuid.UUID) -> None:
             # 정리가 끝나지 않았으면 레지스트리에 남겨 다음 요청에서도 세고 새 세션은 거절한다.
             if not await stream.wait_closed(stt_loop.ABORT_TIMEOUT_SEC):
                 raise TooManyStreams
+
+
+def has_room(owner_id: uuid.UUID, take_id: uuid.UUID) -> bool:
+    """이 사용자가 그 Take 의 스트림을 열 자리가 있다. `_make_room` 이 비울 수 있는 자리도 센다.
+
+    첫 연결이 Take 를 시작(`RUNNING`)하기 전에 묻는다 — 거절할 Take 를 시작해 두면 떠난 Take 로
+    끝나 기록에 남는다. 잠그지 않고 보므로 그 사이 다른 Take 가 자리를 차지하면 `attach` 가
+    거절한다.
+    """
+    blocking = [
+        stream
+        for stream in _open_streams(owner_id)
+        if stream.take_id != take_id and not _reclaimable(stream)
+    ]
+    return len(blocking) < MAX_STREAMS_PER_USER
+
+
+def _open_streams(owner_id: uuid.UUID) -> list[TakeStream]:
+    return [
+        stream
+        for stream in state.streams.values()
+        if stream.owner_id == owner_id and not stream.is_finished
+    ]
+
+
+def _reclaimable(stream: TakeStream) -> bool:
+    """새 스트림 자리를 위해 정리해도 되는 스트림 — 정리 중이거나 다시 붙기를 기다린다."""
+    return stream.is_stopping or not stream.has_client
 
 
 async def _stored_utterance_ends(take_id: uuid.UUID, store: TranscriptStore) -> list[int]:

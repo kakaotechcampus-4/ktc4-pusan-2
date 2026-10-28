@@ -187,7 +187,8 @@ class WsErrorCode(StrEnum):
     - `FORBIDDEN` 은 소유권 검사(DB) 뒤의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
     - 사용자는 한 번에 연습 하나만 한다 (`registry.MAX_STREAMS_PER_USER` = 1).
       `TOO_MANY_STREAMS` 는 다른 Take가 연결돼 있거나 이전 스트림 정리가 늦어질 때다.
-      같은 Take 로 다시 붙는 연결은 기존 스트림을 이어받는다.
+      같은 Take 로 다시 붙는 연결은 기존 스트림을 이어받는다. 첫 연결이면 Take 를 시작하기 전에
+      거절해 `READY` 로 남는다.
     """
 
     UNAUTHORIZED = "UNAUTHORIZED"
