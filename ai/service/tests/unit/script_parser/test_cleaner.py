@@ -1,6 +1,6 @@
 import pytest
 
-from script_parser.cleaner import clean_script, count_chars, find_highlights
+from pitch_coach_ai.features.script_parser.cleaner import clean_script, count_chars, find_highlights
 
 
 @pytest.mark.parametrize(

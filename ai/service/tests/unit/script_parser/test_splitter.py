@@ -1,6 +1,6 @@
 import pytest
 
-from script_parser.splitter import SlideCandidate, find_slides
+from pitch_coach_ai.features.script_parser.splitter import SlideCandidate, find_slides
 
 
 @pytest.mark.parametrize(

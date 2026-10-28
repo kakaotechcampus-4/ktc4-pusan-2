@@ -1,8 +1,8 @@
 import pytest
 
-from script_parser import EmptyScriptError, parse_script
-from script_parser.config import BASE_CPM
-from script_parser.schemas import LLMOutput, ParseRequest
+from pitch_coach_ai.features.script_parser import EmptyScriptError, parse_script
+from pitch_coach_ai.features.script_parser.config import BASE_CPM
+from pitch_coach_ai.features.script_parser.schemas import LLMOutput, ParseRequest
 
 
 class FakeLLM:
