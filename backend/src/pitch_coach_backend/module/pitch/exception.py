@@ -19,6 +19,15 @@ class InvalidPresentation(AppException):
     code = "INVALID_PRESENTATION"
     message = "40MB 이하의 PDF 만 올릴 수 있습니다. 암호가 걸린 PDF 는 풀어서 올려 주세요."
 
+class PresentationTooComplex(AppException):
+    code = "PRESENTATION_TOO_COMPLEX"
+    message = "쪽이나 구성 요소가 너무 많은 PDF 입니다. 나눠서 올려 주세요."
+
+class PresentationBusy(AppException):
+    status_code = 503
+    code = "PRESENTATION_BUSY"
+    message = "발표자료를 올리는 사람이 많습니다. 잠시 후 다시 올려 주세요."
+
 class NonExistentEvaluation(AppException):
     status_code = 404
     code = "EVALUATION_NOT_FOUND"
