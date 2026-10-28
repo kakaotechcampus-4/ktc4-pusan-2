@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.connection import session
+from pitch_coach_backend.realtime.dto import MetricsMessage
+from pitch_coach_backend.realtime.stream import client as client_module
 from pitch_coach_backend.realtime.stream import registry, runtime, state
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt import loop as stt_loop
@@ -30,6 +32,7 @@ from tests.realtime.conftest import (
     closed_with,
     frame,
     handshake,
+    metrics,
     stop,
     transcript,
     use,
@@ -503,6 +506,151 @@ async def test_stop_from_a_taken_over_connection_is_ignored():
     await realtime._pump_client(stream)
 
     assert not stream.is_stopping
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
+class StuckWebSocket(FakeWebSocket):
+    """받지 않는 상대. `send_stuck` · `close_stuck` 인 단계는 끝나지 않는다."""
+
+    def __init__(self, *, send_stuck: bool = False, close_stuck: bool = False) -> None:
+        super().__init__()
+        self.send_stuck = send_stuck
+        self.close_stuck = close_stuck
+        self.close_tried = False
+
+    async def send_text(self, text: str) -> None:
+        if self.send_stuck:
+            await asyncio.Event().wait()
+        await super().send_text(text)
+
+    async def close(self, code: int = 1000, reason: str = "") -> None:
+        self.close_tried = True
+        if self.close_stuck:
+            await asyncio.Event().wait()
+        await super().close(code, reason)
+
+
+def _taken_over(ws: FakeWebSocket) -> bool:
+    return [json.loads(t)["code"] for t in ws.sent] == ["TAKE_TAKEN_OVER"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("send_stuck", "close_stuck"), [(True, False), (False, True), (True, True)]
+)
+async def test_takeover_does_not_wait_forever_for_the_old_connection(
+    monkeypatch: pytest.MonkeyPatch, send_stuck: bool, close_stuck: bool
+):
+    """이어받을 때 옛 연결에 알리고 닫기를 기다린다. 옛 연결이 받지 않으면 새 연결의 ready 가 그
+    연결에 붙잡힌다. 알림이 막혀도 닫기는 해 본다."""
+    monkeypatch.setattr(client_module, "CLOSE_STEP_TIMEOUT_SEC", 0.05)
+    stream = registry.create_stream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    old_tab = StuckWebSocket(send_stuck=send_stuck, close_stuck=close_stuck)
+    new_tab = FakeWebSocket()
+    await stream.attach(old_tab)
+
+    started = time.monotonic()
+    await asyncio.wait_for(stream.attach(new_tab), timeout=1.0)
+
+    assert time.monotonic() - started < 0.5
+    assert stream.is_client(new_tab)
+    assert old_tab.close_tried
+    assert _taken_over(old_tab) is not send_stuck
+    # 옛 연결이 뒤늦게 끊겨도 새 연결은 그대로 붙어 있다
+    stream.detach(old_tab)
+    assert stream.is_client(new_tab)
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_metrics_from_a_connection_taken_over_while_closing_are_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(client_module, "CLOSE_STEP_TIMEOUT_SEC", 0.05)
+    stream = registry.create_stream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    old_tab = StuckWebSocket(send_stuck=True, close_stuck=True)
+    await stream.attach(old_tab)
+    await asyncio.wait_for(stream.attach(FakeWebSocket()), timeout=1.0)
+
+    stream.push_metrics(MetricsMessage.model_validate(metrics(1_000)), source=old_tab)
+    stream.push(frame(1, 0), source=old_tab)
+
+    assert not stream._record.metrics.pending
+    assert stream.sequencer.frames == 0
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_concurrent_takeovers_of_a_stuck_connection_share_one_stream(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """옛 연결이 받지 않는 동안 탭 둘이 같이 이어받는다. 둘 다 상한 안에 끝나고 스트림 · Deepgram
+    세션은 하나다. 나중에 붙은 탭이 남는다."""
+    monkeypatch.setattr(client_module, "CLOSE_STEP_TIMEOUT_SEC", 0.05)
+    take_id = uuid.uuid7()
+    owner_id = uuid.uuid7()
+    adapter = FakeSttAdapter()
+
+    def attach(ws: FakeWebSocket):
+        return registry.attach(
+            take_id,
+            ws,
+            owner_id=owner_id,
+            stt_adapter=adapter,
+            config=SttConfig(),
+            store=FakeTranscriptStore(),
+        )
+
+    old_tab = StuckWebSocket(send_stuck=True, close_stuck=True)
+    first = await attach(old_tab)
+    await _wait_until_ok(first)
+    second_tab, third_tab = FakeWebSocket(), FakeWebSocket()
+
+    second, third = await asyncio.wait_for(
+        asyncio.gather(attach(second_tab), attach(third_tab)), timeout=1.0
+    )
+
+    assert first is second is third
+    assert registry.active_count() == 1
+    assert len(adapter.sessions) == 1
+    assert first.is_client(third_tab)
+    assert _taken_over(second_tab)
+
+
+@pytest.mark.anyio
+async def test_sign_out_does_not_wait_forever_for_a_stuck_connection(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """로그아웃은 그 사용자의 연결을 모두 닫고 나서 답한다. 받지 않는 연결 하나가 응답을 붙잡지
+    않는다."""
+    monkeypatch.setattr(client_module, "CLOSE_STEP_TIMEOUT_SEC", 0.05)
+    owner_id = uuid.uuid7()
+    stream = await registry.attach(
+        uuid.uuid7(),
+        StuckWebSocket(send_stuck=True, close_stuck=True),
+        owner_id=owner_id,
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+
+    await asyncio.wait_for(registry.sign_out(owner_id), timeout=1.0)
+
     stream.cancel()
     await stream.wait_closed(timeout=1.0)
 

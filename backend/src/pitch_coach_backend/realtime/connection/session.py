@@ -153,7 +153,7 @@ class RealtimeSession:
                 )
             )
             # 떨어져 있는 동안 화면에 못 간 final 을 먼저 따라잡는다
-            await stream.resend_missed()
+            await stream.resend_missed(source=self.ws)
             await self._pump_client(stream)
         except WebSocketDisconnect:
             # ready 나 재전송 도중 클라이언트가 사라졌다 (Starlette 는 끊긴 상대에게 보내면

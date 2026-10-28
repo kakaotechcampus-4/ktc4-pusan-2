@@ -41,6 +41,7 @@ export function useSlideDeck({
 
   const go = useCallback(
     (next: number) => {
+      if (!enabled) return;
       // 지금 값은 스토어에서 바로 읽습니다. 렌더에서 ref 에 옮겨 두면
       // 그 자체가 "렌더 중 ref 접근"이 되고, 한 박자 늦은 값을 보게 됩니다
       const clamped = Math.min(Math.max(1, next), Math.max(1, total));
@@ -58,7 +59,7 @@ export function useSlideDeck({
         );
       }
     },
-    [total, elapsedMs, setSlide, clientSessionId],
+    [enabled, total, elapsedMs, setSlide, clientSessionId],
   );
 
   // 첫 장도 기록합니다. 없으면 발표 시작부터 첫 전환까지가 어느 슬라이드였는지
@@ -90,6 +91,7 @@ export function useSlideDeck({
       // 종료 확인 같은 대화상자가 뜨면 그쪽이 키를 가져가야 합니다
       const el = document.activeElement;
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return;
+      if (e.key === ' ' && el instanceof HTMLButtonElement) return;
 
       const now = useRehearsalStore.getState().slideNumber;
       if (e.key === 'ArrowRight' || e.key === ' ') {

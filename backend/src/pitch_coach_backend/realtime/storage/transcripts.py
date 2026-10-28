@@ -83,7 +83,10 @@ class TranscriptBuffer:
                         len(self.missed_finals),
                     )
                     return
-                self.missed_finals.pop(0)
+                # 전송을 기다리는 동안 새 final이 쌓여 상한으로 이 메시지가 이미 밀려났을 수
+                # 있다. 그때 다음 메시지를 대신 지우면 아직 보내지 않은 final을 잃는다.
+                if self.missed_finals and self.missed_finals[0] is message:
+                    self.missed_finals.pop(0)
             logger.info("재연결 중 놓친 final 을 모두 다시 보냈다 take=%s", self.take_id)
 
     async def persist(

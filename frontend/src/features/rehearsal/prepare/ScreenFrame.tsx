@@ -38,7 +38,7 @@ export function ScreenFrame({
   children: ReactNode;
 }) {
   return (
-    <div className="pitch-create min-h-full bg-greige px-4 py-5 text-ink [&_.text-stone]:text-ink/80">
+    <div className="pitch-create min-h-full bg-greige px-4 py-5 text-ink [&_.text-stone]:text-ink/80 [&_button:disabled]:opacity-100 [&_button:disabled]:bg-cream [&_button:disabled]:text-ink/80 [&_button:disabled]:border-line-strong [&_button:disabled]:shadow-none">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
         <div className="flex flex-wrap items-baseline gap-3 px-1">
           <span className="tabular font-mono text-xs font-bold text-stone">{screenNo}</span>
