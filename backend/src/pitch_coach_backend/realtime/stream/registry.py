@@ -313,6 +313,15 @@ def has_room(owner_id: uuid.UUID, take_id: uuid.UUID) -> bool:
     return len(blocking) < MAX_STREAMS_PER_USER
 
 
+def blocking_take(owner_id: uuid.UUID) -> uuid.UUID | None:
+    """새 Take 를 막는 이 사용자의 Take. 연결이 붙어 있고 오디오가 멈추지 않은 스트림이다
+    (`has_room` 이 세는 것). FE 가 새 Take 를 시작하기 전에 그 연습을 끝낼지 묻는 데 쓴다."""
+    for stream in _open_streams(owner_id):
+        if not _reclaimable(stream):
+            return stream.take_id
+    return None
+
+
 def _open_streams(owner_id: uuid.UUID) -> list[TakeStream]:
     return [
         stream
@@ -432,8 +441,11 @@ def is_live(take_id: uuid.UUID) -> bool:
     return stream is not None and stream.is_receiving_audio
 
 
-async def end_closed_tab(take_id: uuid.UUID) -> None:
+async def end_closed_tab(take_id: uuid.UUID, *, replaced: bool = False) -> None:
     """창을 다시 연 FE 가 Take 를 실패(`CLOSED`)로 끝냈다. DB 에 적은 뒤 부른다.
+
+    `replaced` 는 다른 곳에서 새 Take 를 시작하려고 발표 중인 이 Take 를 끝낸 것이다. 붙어 있는
+    연결에 그렇게 알린다 (`TakeStream.drop_closed_tab`).
 
     떠난 것으로 끝낼 타이머를 끄고, 같은 Take 로 다시 붙지 못하게 하고, 남은 스트림을 끊는다.
     브라우저가 닫힘 프레임 없이 사라졌으면 서버는 아직 그 연결이 붙어 있다고 믿는다 — 그 연결도
@@ -449,7 +461,7 @@ async def end_closed_tab(take_id: uuid.UUID) -> None:
     # 창을 닫은 Take 는 결과를 만들지 않는다. 스트림이 이미 정리됐어도 코치의 기억은 남아 있다
     finish.release_coach(take_id)
     if stream is not None:
-        stream.drop_closed_tab()
+        stream.drop_closed_tab(replaced=replaced)
 
 
 async def discard(take_ids: Iterable[uuid.UUID]) -> None:

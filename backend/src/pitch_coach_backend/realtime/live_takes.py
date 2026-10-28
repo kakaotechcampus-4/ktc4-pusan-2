@@ -5,6 +5,7 @@
 `realtime.dependencies`).
 """
 
+import functools
 import uuid
 from collections.abc import Iterable
 
@@ -23,8 +24,13 @@ class RealtimeLiveTakes:
     def is_live(self, take_id: uuid.UUID) -> bool:
         return anyio.from_thread.run_sync(registry.is_live, take_id)
 
-    def end_closed_tab(self, take_id: uuid.UUID) -> None:
-        anyio.from_thread.run(registry.end_closed_tab, take_id)
+    def end_closed_tab(self, take_id: uuid.UUID, *, replaced: bool = False) -> None:
+        anyio.from_thread.run(
+            functools.partial(registry.end_closed_tab, replaced=replaced), take_id
+        )
+
+    def blocking_take(self, user_id: uuid.UUID) -> uuid.UUID | None:
+        return anyio.from_thread.run_sync(registry.blocking_take, user_id)
 
     def end(self, take_id: uuid.UUID, mark: MarkEnded) -> None:
         ending = anyio.from_thread.run(finish.end_without_stop, take_id)

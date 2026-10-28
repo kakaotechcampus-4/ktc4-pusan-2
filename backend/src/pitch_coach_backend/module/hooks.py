@@ -30,9 +30,13 @@ class LiveTakes(Protocol):
         """그 Take 를 어느 창에서 발표 중이다."""
         ...
 
-    def end_closed_tab(self, take_id: uuid.UUID) -> None:
+    def end_closed_tab(self, take_id: uuid.UUID, *, replaced: bool = False) -> None:
         """창을 닫아 실패(`CLOSED`)로 끝낸 Take 의 스트림 · 떠난 Take 타이머 · 코치를 정리한다.
-        DB 에 적은 뒤 부른다."""
+        DB 에 적은 뒤 부른다. `replaced` 면 다른 곳에서 새 Take 를 시작하려고 끝낸 것이다."""
+        ...
+
+    def blocking_take(self, user_id: uuid.UUID) -> uuid.UUID | None:
+        """그 사용자의 새 Take 를 막는, 어느 창에서 발표 중인 Take. 없으면 None."""
         ...
 
     def end(self, take_id: uuid.UUID, mark: MarkEnded) -> None:
@@ -62,7 +66,10 @@ class _NoLiveTakes:
     def is_live(self, take_id: uuid.UUID) -> bool:
         return False
 
-    def end_closed_tab(self, take_id: uuid.UUID) -> None:
+    def end_closed_tab(self, take_id: uuid.UUID, *, replaced: bool = False) -> None:
+        return None
+
+    def blocking_take(self, user_id: uuid.UUID) -> uuid.UUID | None:
         return None
 
     def end(self, take_id: uuid.UUID, mark: MarkEnded) -> None:
