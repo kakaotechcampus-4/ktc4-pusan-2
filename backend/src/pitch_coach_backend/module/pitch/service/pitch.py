@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.adapter.storage import delete_prefix
+from pitch_coach_backend.module.pitch.adapter.storage import delete_prefix, generate_presigned_url
 from pitch_coach_backend.module.pitch.dto import (
     NewerScriptDTO,
     ParsedScriptDTO,
@@ -101,11 +101,16 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
 
             take_summaries.append(take_summary)
 
+        presentation = pitch_repository.get_latest_presentation(pitch.id)
         pitch_dto = PitchListItemDTO(
             pitch_id=pitch.id,
             pitch_title=pitch.title,
             pitch_time=pitch.time_limit_sec,
-            thumbnail_url=None,
+            thumbnail_url=(
+                generate_presigned_url(presentation.thumbnail_key)
+                if presentation is not None and presentation.thumbnail_key
+                else None
+            ),
             presentation_date=pitch.presentation_date,
             takes=take_summaries
         )

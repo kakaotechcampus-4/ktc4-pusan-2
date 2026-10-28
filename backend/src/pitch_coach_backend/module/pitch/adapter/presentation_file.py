@@ -3,15 +3,19 @@
 쪽수는 대본과 짝을 맞추는 데 쓴다 (대본 장 수 = PDF 쪽수). FE 매핑 확인과 같은 규칙이다.
 """
 
+import io
 import logging
 from typing import BinaryIO
 
+import pypdfium2 as pdfium
 from pypdf import PdfReader
 
 logger = logging.getLogger(__name__)
 
 # FE 의 업로드 제한(MAX_SLIDE_BYTES)과 같다
 MAX_PRESENTATION_BYTES = 40 * 1024 * 1024
+
+THUMBNAIL_WIDTH = 480
 
 # 망가진 파일을 읽을 때마다 경고를 남긴다. 그런 파일은 400 으로 거절하므로 로그에 둘 필요가 없다
 logging.getLogger("pypdf").setLevel(logging.ERROR)
@@ -39,3 +43,21 @@ def count_pdf_pages(file: BinaryIO) -> int | None:
     finally:
         file.seek(0)
     return pages or None
+
+
+def render_first_page(file: BinaryIO) -> bytes | None:
+    try:
+        pdf = pdfium.PdfDocument(file)
+        try:
+            page = pdf[0]
+            image = page.render(scale=THUMBNAIL_WIDTH / page.get_width()).to_pil()
+        finally:
+            pdf.close()
+        buffer = io.BytesIO()
+        image.convert("RGB").save(buffer, format="WEBP", quality=80)
+        return buffer.getvalue()
+    except Exception as e:
+        logger.info("발표자료 첫 장을 그리지 못했다: %s", type(e).__name__)
+        return None
+    finally:
+        file.seek(0)
