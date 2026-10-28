@@ -94,7 +94,7 @@ response = parse_script(ParseRequest(script_text=text, target_ms=300000), llm)
      "highlights": [{"start": 7, "end": 9}], "expected_ms": 160000}
   ],
   "terms": ["..."],
-  "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.0", "model": null}
+  "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.1", "model": null}
 }
 ```
 전체 계약 · 예시는 설계 문서 5절입니다. `meta.model`은 서비스 라우터가 채웁니다.
