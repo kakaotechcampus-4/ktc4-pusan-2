@@ -53,6 +53,11 @@ WS /api/ws/takes/{take_id}
   | `TAKE_TAKEN_OVER` | `1008` 로 닫는다. FE 는 **재연결하지 않는다** |
 
 - `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
+- **auth 를 기다리는 연결은 IP 하나에 20개, 전체 200개까지다** (`handshake.pending_auth`). 넘으면 받기 전에
+  닫아 브라우저에는 연결 실패(닫힘 코드 `1006`)로 보이고 FE 는 백오프로 다시 붙는다. IP 는 `X-Forwarded-For` 의
+  첫 값이다 — 바깥 Caddy 가 믿지 않는 상대가 보낸 값을 버리고 상대 주소로 채운다(`infra/Caddyfile` 의
+  `trusted_proxies`). Caddy 를 거치지 않고 BE 에 바로 붙을 수 있게 열면 이 값을 꾸밀 수 있어 IP 별 상한이 의미가
+  없어진다.
 - **인증 뒤 Take 를 검사한다.** 사용자 존재 → Take 존재·소유(`takes` → `pitches.user_id`) → 상태
   (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 는 첫 연결이라 받고, 통과하면
   `RUNNING` 으로 바꾼다 (`docs/ai/architecture.md` 1-3). 못 바꾸면(DB 오류) `1011` 로 닫아 FE 가 다시 붙게
