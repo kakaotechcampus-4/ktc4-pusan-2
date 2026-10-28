@@ -83,7 +83,7 @@ export function RequireSession({
           <button
             disabled={signOut.isPending}
             onClick={() => signOut.mutate()}
-            className="underline disabled:opacity-60"
+            className="underline"
           >
             {signOut.isPending ? '로그아웃 중…' : '로그아웃'}
           </button>

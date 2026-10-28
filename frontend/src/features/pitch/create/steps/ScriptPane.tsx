@@ -439,7 +439,7 @@ function MappingReview({ script, linked }: { script: ScriptVersion; linked: Slid
                     ? retryScriptMapping(script.version)
                     : startScriptMapping(script.version)
                 }
-                className="rounded-lg border border-coral px-4 text-sm font-bold text-ink disabled:opacity-50"
+                className="rounded-lg border border-coral px-4 text-sm font-bold text-ink disabled:cursor-not-allowed disabled:border-line-strong disabled:bg-cream disabled:text-ink/80"
               >
                 {pending ? '매핑 중…' : '수정 대본 매핑'}
               </button>

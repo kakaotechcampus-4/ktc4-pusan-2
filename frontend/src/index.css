@@ -80,6 +80,7 @@
   --spacing-script-off: 0px;
 
   --spacing-sidebar: 236px;         /* 공통 셸 사이드바 */
+  --container-page: 90rem;          /* max-w-page · 상단바와 본문 폭 (1440px) */
 
   /* ── 타이포 ────────────────────────────────────────────────── */
   --font-sans: "Pretendard", "Noto Sans KR", -apple-system,
