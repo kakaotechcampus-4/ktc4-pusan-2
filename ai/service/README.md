@@ -190,11 +190,11 @@ ai/service/
 | `tests/unit/gaze/` | 시선 판정 모듈 단위(`judge` · `summarize`) · 계약(`test_examples.py`) · 코어 경계 테스트. 소리 크기 기준값 비교는 `features/volume/`이 올 때까지 연구 폴더의 소리 크기 `config.py`와 한다 | — | pytest | — |
 | `tests/unit/filler/` | 군더더기 판정 모듈 규칙 · 보류 · 커서 · 지표 · 합계 · 계약(`test_examples.py`) · 코어 경계 테스트. 도우미 `helpers.py` | — | pytest | keyterm 파일 최신 검사는 연구 폴더 `tests/test_keyterms.py` |
 | `tests/unit/pace/` | 말 속도 판정 모듈 규칙(`test_judge.py`) · 단어 · 시간 몫(`test_tally.py`) · 입력 · 출력 모델(`test_contract.py`) · 예시(`test_examples.py`) · 코어 경계 테스트. 도우미 `helpers.py` | — | pytest | — |
-| `tests/unit/script_parser/` | 대본 파싱 구분자(`test_splitter.py`) · 정제 · 글자 수 · 하이라이트(`test_cleaner.py`) · `parse_script`(`test_core.py`, 가짜 LLM) · 예시 계약(`test_examples.py`) · 코어 경계 테스트, `/scripts/parse` 엔드포인트(`test_api.py`: 예시 응답 · 422 두 종류 · LLM 오류 넷 · 설정 없음 · 마감 · 역할 · 원문 없는 로그) | — | pytest | 서비스 경로의 실제 LLM 확인은 `tests/live/test_script_parser_live.py`, 연구 도구(`run.py`)로 부르는 실제 LLM 테스트는 연구 폴더 `tests/live/` |
+| `tests/unit/script_parser/` | 대본 파싱 구분자(`test_splitter.py`) · 정제 · 글자 수 · 하이라이트(`test_cleaner.py`) · `parse_script`(`test_core.py`, 가짜 LLM) · 예시 계약(`test_examples.py`) · 코어 경계 테스트, `/scripts/parse` 엔드포인트(`test_api.py`: 예시 응답 · 422 두 종류 · LLM 오류 넷 · 설정 없음 · 마감 · 역할 · `meta.model` 대체 · 요청 ID · 원문 없는 로그) | — | pytest | 서비스 경로의 실제 LLM 확인은 `tests/live/test_script_parser_live.py`, 연구 도구(`run.py`)로 부르는 실제 LLM 테스트는 연구 폴더 `tests/live/` |
 | `tests/unit/coach/` | 코치 코어 단위 · 계약 · 경계 · 복구 · 입력 한도 테스트, `/coach/plan` 엔드포인트(`test_plan_api.py`), 예시 요청에 모르는 필드가 없는지(`test_example_fields.py`), 위조 상태 · 한 시간 Take 복구(`test_extremes.py`, 규모는 `slow`). 가짜 판정 모듈 `fakes.py`, fixture `conftest.py` | — | pytest | — |
 | `tests/live/test_llm_live.py` | 실제 LLM 1회 호출 (과금) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
 | `tests/live/test_coach_plan_live.py` | 코칭 계획을 실제 LLM 으로 한 번(과금) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
-| `tests/live/test_script_parser_live.py` | 대본 파싱을 서비스 경로(역할 · 마감)로 실제 LLM 2번(과금): 예시 대본의 장 · 정제 · 예상 시간이 예시와 같고 25초 안 | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
+| `tests/live/test_script_parser_live.py` | 대본 파싱을 서비스 경로(역할 · 마감)로 실제 LLM 2번(과금): 예시 대본의 장 · 정제 · 예상 시간이 예시와 같음(걸린 시간은 출력) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
 | `tests/live/test_script_coverage_live.py` | 대본 전달도를 실제 LLM 으로 장 하나 끝까지(평가 기준 → 채점, 약 4~5번 호출, 과금) | `ai/.env` 기본 묶음 | `pytest -m live` | 기본 실행에서 빠진다 |
 
 ## 테스트

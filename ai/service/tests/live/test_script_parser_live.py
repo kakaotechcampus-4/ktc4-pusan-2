@@ -2,6 +2,7 @@
 
 `POST /scripts/parse` 를 서비스의 LLM 객체 · 역할(`script_parser`, 출력 상한 2,000 · 추론 low) ·
 마감(25초)으로 부르고, 예시 대본의 장 나누기 · 정제 · 예상 시간이 예시 응답과 같은지 본다.
+걸린 시간은 출력만 한다.
 키워드 · 용어는 LLM 마다 다를 수 있어 대본에 그대로 있는지만 본다(기능 문서 11절).
 `ai/.env` 의 기본 묶음을 직접 읽는다(`test_llm_live.py` 와 같다).
 """
@@ -45,7 +46,8 @@ def test_script_parse_with_the_real_llm(case: str) -> None:
     body = res.json()
     print(f"model={body['meta']['model']} seconds={seconds:.1f} terms={body['terms']}")
     assert body["meta"]["model"]
-    assert seconds < 25
+    # 걸린 시간은 출력만 한다. 마감(25초)은 서버가 지키고, 게이트웨이 지연이 흔들리면
+    # 504 가 된다(기능 문서 8절 '서비스 경로로 잰 시간')
     # 장 나누기 · 판정 · 정제 · 예상 시간은 코드가 하므로 예시와 같아야 한다
     assert body["status"] == expected["status"]
     for key in ("slide_number", "script", "script_chars", "expected_ms"):

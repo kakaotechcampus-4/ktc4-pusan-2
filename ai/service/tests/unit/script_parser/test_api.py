@@ -232,3 +232,65 @@ def test_error_log_has_the_code(make_client, log_records: list[logging.LogRecord
     make_client(FakeLLM(LlmTimeout())).post("/scripts/parse", json=load("success", "request.json"))
     (line,) = [r.getMessage() for r in log_records if r.name == "pitch_coach_ai.script_parser"]
     assert " slides=- status=- code=LLM_TIMEOUT " in line
+
+
+def test_empty_script_log_line_has_the_code_and_no_target(
+    make_client, log_records: list[logging.LogRecord]
+) -> None:
+    make_client(FakeLLM(load("success", "llm_output.json"))).post(
+        "/scripts/parse", json={"script_text": "[1]\n"}
+    )
+    (line,) = [r.getMessage() for r in log_records if r.name == "pitch_coach_ai.script_parser"]
+    assert line.startswith("script_parser chars=4 target_ms=- slides=- status=- code=EMPTY_SCRIPT ")
+
+
+# ── meta.model · LLM 만들기 · 요청 ID ─────────────────────────────────────────
+
+
+class _Silent(FakeLLM):
+    """응답한 모델 이름을 알려 주지 않는 LLM (콜백이 모델 이름을 받지 못한 경우)."""
+
+    def invoke(self, messages: Any) -> LLMOutput:
+        result = super().invoke(messages)
+        self.responded_model = None
+        return result
+
+
+def test_meta_model_falls_back_to_the_configured_model(make_client) -> None:
+    body = (
+        make_client(_Silent(load("success", "llm_output.json")))
+        .post("/scripts/parse", json=load("success", "request.json"))
+        .json()
+    )
+    assert body["meta"]["model"] == MODEL
+
+
+def test_default_factory_builds_the_llm_with_role_deadline_and_app_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple] = []
+
+    def fake_structured_llm(schema, model, deadline, *, app_settings):
+        calls.append((schema, model, deadline, app_settings))
+        return FakeLLM(load("success", "llm_output.json"))
+
+    monkeypatch.setattr(api, "structured_llm", fake_structured_llm)
+    with TestClient(create_app(FULL)) as client:
+        before = time.monotonic()
+        res = client.post("/scripts/parse", json=load("success", "request.json"))
+    assert res.status_code == 200
+    ((schema, model, deadline, app_settings),) = calls
+    assert (schema, model, app_settings) == (LLMOutput, "script_parser", FULL)
+    assert deadline >= before + api.BUDGET_SECONDS
+
+
+@pytest.mark.parametrize(
+    ("body", "status"),
+    [(load("success", "request.json"), 200), ({"script_text": "[1]\n"}, 422)],
+    ids=["ok", "empty_script"],
+)
+def test_request_id_comes_back_on_success_and_error(make_client, body: dict, status: int) -> None:
+    client = make_client(FakeLLM(load("success", "llm_output.json")))
+    res = client.post("/scripts/parse", json=body, headers={"X-Request-ID": "req-abc"})
+    assert res.status_code == status
+    assert res.headers["X-Request-ID"] == "req-abc"
