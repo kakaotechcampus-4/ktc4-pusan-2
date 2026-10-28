@@ -9,10 +9,11 @@ import type {
 } from '../engine';
 import type { GazeDirection, State } from '../engine/contract';
 
-// 엔진의 이유 코드 타입이 있는 표는 `satisfies` 로 키 범위를 검사합니다 (docs/ai/features/gaze-tracking.md 5-6).
-// 엔진에 코드가 늘면 typecheck 가 빠진 문구를, 줄면 남은 문구를 알려 줍니다. 표의 타입은 `Record<string, string>`
-// 그대로라 엔진이 `string` 으로 내는 필드(`last_reason` 등)로도 찾을 수 있습니다.
-// 고개 원 · 판정 보류 사유(SWEEP_REASON · UNCERTAIN_REASON)는 엔진에 타입이 없어 검사하지 않습니다.
+// Tables keyed by an engine reason type check their keys with `satisfies` (docs/ai/features/gaze-tracking.md
+// 5-6): a code the engine adds fails the typecheck as a missing line, a code it drops as a stale one. The
+// declared type stays `Record<string, string>` so fields the engine sends as `string` (`last_reason` …)
+// can still look them up. Head-circle and on-hold reasons (SWEEP_REASON · UNCERTAIN_REASON) have no engine
+// type yet, so they are not checked.
 
 export const CHECK_NAME: Record<Exclude<PreconditionReason, 'OK'>, string> = {
   NO_FACE: '얼굴 인식',
@@ -41,7 +42,7 @@ export const CHECK_FIX: Record<PreconditionReason, string> = {
 
 /**
  * Gauge reject reasons (head-pose engine: no blink / head-moved rules).
- * SETTLING(자리 잡는 중)는 화면이 거르고, NOT_ACTIVE 는 사용자에게 보일 일이 없어 문구가 없습니다.
+ * No line for SETTLING (the view filters it out) or NOT_ACTIVE (never shown to the user).
  */
 export const GAUGE_REASON: Record<string, string> = {
   NO_FACE: '얼굴이 보이지 않아요',
@@ -139,7 +140,7 @@ export const PLACEMENT_NAME: Record<string, string> = {
   INCONCLUSIVE: '판정 불가',
 } satisfies Record<CameraPlacement, string>;
 
-/** 판정한 위치(INCONCLUSIVE 제외)의 안내, 판정하지 못했으면 그 이유(OK 제외)의 안내. */
+/** A hint for the placement found (not INCONCLUSIVE), or for why none was found (not OK). */
 export const PLACEMENT_HINT: Record<string, string> = {
   TOP: '카메라가 화면 위 가운데에 있어요.',
   BOTTOM:
@@ -157,7 +158,7 @@ export const PLACEMENT_HINT: Record<string, string> = {
   string
 >;
 
-/** 보정 실패 사유(FailReason)와, 통과했지만 붙는 경고 두 가지(`warnings` 문장의 앞머리). */
+/** Calibration failures (FailReason), plus the two warnings a passing calibration can carry (`warnings` prefixes). */
 export const CALIBRATION_HINT: Record<string, string> = {
   NOT_ENOUGH_SAMPLES: '쓸 수 있는 프레임이 부족해요. 얼굴이 잘 보이게 하고 다시 해 주세요.',
   DEGENERATE_FEATURES:
