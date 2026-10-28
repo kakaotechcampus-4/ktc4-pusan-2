@@ -155,7 +155,7 @@ def decide_safe(
     try:
         return decide(req, judges, cfg, policy)
     except Exception:  # noqa: BLE001 — 실시간 경로는 어떤 예외로도 발표를 방해하면 안 된다
-        log.exception("coach decide failed take_id=%s t_ms=%s", req.take_id, req.t_ms)
+        log.exception("coach decide failed take_id=%r t_ms=%s", req.take_id, req.t_ms)
         state, reset = load_state(req.coach_state)
         reasons = [Reason.INTERNAL_ERROR.value]
         if reset:
@@ -164,7 +164,7 @@ def decide_safe(
             judges_mod.skip(req, state)
             state.last_t_ms = req.t_ms
         except Exception:  # noqa: BLE001 — 넘기지 못해도 발표를 방해하지 않는다
-            log.exception("coach skip failed take_id=%s t_ms=%s", req.take_id, req.t_ms)
+            log.exception("coach skip failed take_id=%r t_ms=%s", req.take_id, req.t_ms)
             # 일부만 반영된 state 를 버리고 받은 상태 그대로 돌려준다
             state, _ = load_state(req.coach_state)
             if req.coach_state is not None and not reset:
@@ -441,14 +441,14 @@ def _last_window(
         state.last_t_ms = t
         return state, sink, run
     except Exception:  # noqa: BLE001 — 마지막 창이 깨져도 이미 센 합계로 Take 결과를 낸다
-        log.exception("coach finalize window failed take_id=%s t_ms=%s", req.take_id, t)
+        log.exception("coach finalize window failed take_id=%r t_ms=%s", req.take_id, t)
     state, _ = load_state(req.coach_state)
     sink = EventSink(state)
     try:
         judges_mod.skip(creq, state)
         state.last_t_ms = t
     except Exception:  # noqa: BLE001
-        log.exception("coach finalize skip failed take_id=%s t_ms=%s", req.take_id, t)
+        log.exception("coach finalize skip failed take_id=%r t_ms=%s", req.take_id, t)
         state, _ = load_state(req.coach_state)
         sink = EventSink(state)
     return state, sink, None
