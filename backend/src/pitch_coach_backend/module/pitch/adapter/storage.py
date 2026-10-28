@@ -35,6 +35,14 @@ def generate_presigned_url(key: str, expiration: int = 3600):
     return url
 
 
+def delete(key: str) -> None:
+    """파일 하나를 지운다. 없는 파일이어도 성공이다 (S3 DeleteObject)."""
+    try:
+        get_s3().delete_object(Bucket=settings.s3_bucket_name, Key=key)
+    except (ClientError, BotoCoreError) as e:
+        raise Exception(f"S3 파일 삭제 실패: {str(e)}") from e
+
+
 def delete_prefix(prefix: str) -> None:
     """prefix 아래 파일을 모두 지운다. 목록과 삭제 모두 한 번에 1000개까지라 페이지마다 지운다."""
     s3 = get_s3()

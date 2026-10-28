@@ -1,5 +1,6 @@
 """발표자료(PDF) 업로드 · 조회."""
 
+import logging
 import uuid
 
 from sqlalchemy.orm import Session
@@ -9,7 +10,7 @@ from pitch_coach_backend.module.pitch.adapter.presentation_file import (
     count_pdf_pages,
     file_size,
 )
-from pitch_coach_backend.module.pitch.adapter.storage import generate_presigned_url, upload
+from pitch_coach_backend.module.pitch.adapter.storage import delete, generate_presigned_url, upload
 from pitch_coach_backend.module.pitch.dto import PresentationDetailDTO, UploadPresentationResultDTO
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
 from pitch_coach_backend.module.pitch.exception import (
@@ -19,6 +20,8 @@ from pitch_coach_backend.module.pitch.exception import (
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.pitch.service.pitch import KST
+
+logger = logging.getLogger(__name__)
 
 
 def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
@@ -46,22 +49,65 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
         content_type="application/pdf",
     )
 
-    presentation = PresentationVersion(
-        pitch_id=pitch_id,
-        version=version,
-        file_key=presentation_key,
-        page_count=page_count,
-    )
-
-    pitch_repository.save_presentation(presentation)
-    db.commit()
+    # 여기부터 실패하면 S3 에만 파일이 남는다. 버전을 남기지 못했으면 올린 파일을 지운다
+    try:
+        # 조회 URL 은 커밋 전에 만든다. 커밋한 뒤에 실패하면 사용자는 오류를 받는데 버전은 생겨서
+        # 다시 올릴 때 버전이 하나 더 생긴다
+        file_url = generate_presigned_url(presentation_key)
+        presentation = PresentationVersion(
+            pitch_id=pitch_id,
+            version=version,
+            file_key=presentation_key,
+            page_count=page_count,
+        )
+        pitch_repository.save_presentation(presentation)
+    except Exception:
+        db.rollback()
+        _discard_upload(pitch_id, version, presentation_key)
+        raise
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        # 커밋 응답만 잃었을 수 있다 (커밋 뒤 연결이 끊김). 버전 행이 없을 때만 지운다
+        if _version_saved(db, pitch_id, version) is False:
+            _discard_upload(pitch_id, version, presentation_key)
+        raise
 
     return UploadPresentationResultDTO(
         pitch_id=pitch_id,
         presentation_version_id=presentation.id,
-        file_url = generate_presigned_url(presentation_key),
+        file_url=file_url,
         page_count=page_count,
     )
+
+
+def _version_saved(db: Session, pitch_id: uuid.UUID, version: int) -> bool | None:
+    """그 버전 행이 DB 에 있는가. 확인도 못 하면 None — 이때는 파일을 지우지 않는다."""
+    try:
+        return PitchRepository(db).has_presentation_version(pitch_id, version)
+    except Exception:
+        logger.warning(
+            "발표자료 버전이 저장됐는지 확인하지 못해 올린 파일을 남긴다 pitch_id=%s version=%d",
+            pitch_id,
+            version,
+        )
+        return None
+    finally:
+        db.rollback()
+
+
+def _discard_upload(pitch_id: uuid.UUID, version: int, key: str) -> None:
+    """버전을 남기지 못한 업로드의 파일을 지운다. 못 지워도 같은 번호의 다음 업로드가 덮어쓰고,
+    발표를 지울 때 같이 지워진다. 원래 실패를 가리지 않게 여기서 난 오류는 로그만 남긴다."""
+    try:
+        delete(key)
+    except Exception:
+        logger.error(
+            "버전을 남기지 못한 발표자료 파일을 지우지 못했다 pitch_id=%s version=%d",
+            pitch_id,
+            version,
+        )
 
 
 # 각 발표자료 버전의 상세 정보.
