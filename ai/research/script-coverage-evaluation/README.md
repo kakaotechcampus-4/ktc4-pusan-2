@@ -460,7 +460,7 @@ uv run python -m pytest tests/lab          # 실험 도구만
 uv run python -m pytest -m live            # 실제 API 를 부르는 테스트만 (과금)
 ```
 
-기본 실행은 95 passed · 2 skipped(로컬 데이터 파일이 필요한 테스트) · 2 deselected(live)입니다. 코어 테스트는 `ai/service`에서 `uv run python -m pytest tests/unit/script_coverage`(354 passed)로 돌립니다(2026-10-28).
+기본 실행은 95 passed · 2 skipped(연구 캐시 `outputs/rubrics.sqlite`가 있어야 하는 `test_examples_build.py`) · 2 deselected(live)입니다. 코어 테스트는 `ai/service`에서 `uv run python -m pytest tests/unit/script_coverage`(354 passed)로 돌립니다(2026-10-28).
 
 `tests/live/test_live_pipeline.py`는 가상대본1 슬라이드 6 한 장을 캐시 없이 평가 기준 만들기 → 채점까지 돌립니다(약 4~5회 호출). 캐시 재생으로는 확인되지 않는 경로, 곧 LLM 클라이언트를 만들어 실제로 부르는 경로를 확인합니다.
 

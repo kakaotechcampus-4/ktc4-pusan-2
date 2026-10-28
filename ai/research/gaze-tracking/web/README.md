@@ -118,7 +118,7 @@ web/
 │   ├── sweep.ts                   고개 원 확인 (방향별 칸, 놓친 방향, 힌트)
 │   ├── gauge.ts                   보정 게이지
 │   ├── reference.ts               기준점 분류기 + 품질 판정 + SCREEN 합치기 + OTHER 방향
-│   ├── evidence.ts                프레임 판정 → 1초 기록 (기기 밖으로 나가는 유일한 값)
+│   ├── evidence.ts                프레임 판정 → 1초 기록 (발표 중 기기 밖으로 나가는 값)
 │   ├── placement.ts               카메라 배치 판정
 │   ├── condition.ts               촬영 중 조건 감시 (신뢰도)
 │   ├── math.ts                    log Φ(scipy log_ndtr 동일 분기), logsumexp, median
@@ -312,7 +312,7 @@ function GazeCamera({ stream, onCalibrated }: { stream: MediaStream; onCalibrate
 
 **보정 모델은 메모리 전용입니다.** `model.scene`에 얼굴 측정값(얼굴 위치 · 면적, 홍채 픽셀 크기, 카메라까지 거리)이 들어 있어
 IndexedDB · localStorage · 서버 어디에도 저장하거나 보내지 않습니다. 순수 데이터라 같은 세션 안에서는 `structuredClone`으로
-새 Worker에 넘길 수 있고, 다음 세션에서는 다시 보정합니다(지점마다 약 2초). 기기 밖으로 나가는 것은 1초 기록뿐입니다.
+새 Worker에 넘길 수 있고, 다음 세션에서는 다시 보정합니다(지점마다 약 2초). 기기 밖으로 나가는 것은 발표 중 1초 기록과 발표 전 보정 결과 요약뿐입니다.
 
 `decision`은 엔진의 프레임 판정 그대로입니다. 서버로 보낼 1초 기록은 `contract.ts`의 `frameFromDecision` · `GazeSlicer`로
 만듭니다([에이전트 입력](#에이전트-입력-코치리뷰)). 데모 페이지(`src/demo/main.ts`)는 1초 기록을 모아 개발 패널과 테두리에 씁니다.
