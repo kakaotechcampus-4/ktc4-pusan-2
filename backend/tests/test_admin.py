@@ -108,14 +108,15 @@ def test_wrong_login_is_logged_but_first_visit_is_not(
     client.get("/admin/")
     client.get(
         "/admin/api/auth",
-        auth=("admin", "wrong"),
+        # 아이디 칸에 비밀번호를 잘못 넣은 경우다. 입력한 아이디도 남기지 않는다
+        auth=("secret-typed-as-username", "wrong"),
         headers={"X-Forwarded-For": "203.0.113.7", "X-Forwarded-Uri": "/admin/logs/"},
     )
 
     [record] = caplog.records
-    assert "username='admin'" in record.getMessage()
     assert "ip=203.0.113.7" in record.getMessage()
     assert "path=/admin/logs/" in record.getMessage()
+    assert "secret-typed-as-username" not in record.getMessage()
     assert "wrong" not in record.getMessage()
 
 
