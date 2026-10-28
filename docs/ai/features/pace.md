@@ -77,7 +77,7 @@ ai/research/speech-pace/
 ├─ tools/                                   평가 스크립트 (아직 없음)
 └─ reports/results/                         평가 결과 JSON (CPM 오차 · 상태 일치율 · 멈춤 재현율) (아직 없음)
 ```
-폴더 이름은 `speech-pace`다. 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역 `ai/research/coach-agent/src/coach_lab/judges/pace.py`에 있고, 이 모듈이 생기면 코치 재생 · 실험은 대역 대신 이 모듈을 쓴다.
+폴더 이름은 `speech-pace`다. 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역 `ai/research/coach-agent/src/coach_lab/judges/pace.py`에 있고, 코치 재생 · 실험은 대역 대신 서비스의 이 모듈을 쓴다(`coach_lab.judges.real_judges`, 2026-10-28부터. 대역은 BE가 읽는 코치 예시를 만드는 `lab_judges`와, 채점 정답이 쓰는 기준값(`coach_lab/truth.py`, 빠름 기준은 이 모듈과 같은 값)에 남는다).
 
 ## 4-2. 진입 함수
 | 함수 | 하는 일 | 부르는 쪽 |
@@ -276,7 +276,7 @@ uv sync
 
 **옮긴 뒤 같은 결과인지 확인**
 1. 서비스: 옮긴 `tests/unit/pace/`가 (경로를 고친 뒤) 통과하고, 코어 경계 테스트가 새 위치를 본다. 옮기기 전후 `examples/`의 `judge` · `summarize` · `criteria` 출력과 `criteria_version`이 바이트까지 같다.
-2. 코치 연구 폴더: 연구용 대역 대신 이 모듈을 `Judges`에 넣어 재생 · 실험을 다시 돌리고 달라진 판정을 README에 기록한다.
+2. 코치 연구 폴더: 연구용 대역 대신 이 모듈을 `Judges`에 넣어 재생 · 실험을 다시 돌리고 달라진 판정을 README에 기록한다. 재생 16/16 통과, 구간 · 개입 지표는 같고 장별 CPM 평균 절대 오차만 줄었다(clean 4.2 → 0.2, 코치 연구 폴더 README 7절).
 
 **증상별 원인**
 
