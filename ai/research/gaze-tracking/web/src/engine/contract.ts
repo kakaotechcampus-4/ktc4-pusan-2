@@ -2,7 +2,8 @@
  * What crosses into the frontend, and the frontend's light entry point.
  *
  * The frontend's entry points into this folder (copied to `frontend/src/vendor/gaze/engine/`)
- * are `index.ts` and `contract.ts`.  Direct imports of `config.ts` / `evidence.ts` made before
+ * are `index.ts` and `contract.ts`.  The camera view (`src/camera/`, owned by the frontend
+ * from #611) uses only these two and `worker/protocol.ts` too (test/engine-boundary.test.ts).  Direct imports of `config.ts` / `evidence.ts` made before
  * `contract.ts` re-exported them keep working, but may break when files behind it change.
  *
  *   index.ts     `createClassifier` and the engine.  It pulls MediaPipe in, so the worker
@@ -129,3 +130,7 @@ export {
 } from './evidence';
 export type { GazeFrame, GazeSample, SampleState } from './evidence';
 export { SCREEN_MERGED_WARNING } from './reference';
+// The vocabulary a screen needs to draw and word the engine's outputs (the camera view uses
+// these; types it needs beyond them come from `index.ts` as type-only imports).
+export { GAZE_DIRECTIONS } from './types';
+export type { Cue, FaceGuide, GazeDirection, State, StateClass } from './types';
