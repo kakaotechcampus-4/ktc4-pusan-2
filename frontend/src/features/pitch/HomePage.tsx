@@ -14,8 +14,9 @@ export function HomePage() {
   const data = home.data;
   const count = data?.pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0) ?? 0;
   return (
-    // xl 이상은 한 화면에 고정합니다 — h-0 으로 남은 높이만 받고, 피치가 많으면 목록 안에서만 스크롤됩니다
-    <div className="pitch-create flex flex-1 flex-col bg-greige text-ink xl:h-0">
+    // xl 이상은 한 화면에 고정합니다 — basis-0 · min-h-0 으로 남은 높이만 받고 피치가 많으면 목록 안에서만 스크롤됩니다.
+    // flex-1 의 basis 0% 는 부모(min-h-dvh) 높이가 정해지지 않아 내용 높이로 풀립니다
+    <div className="pitch-create flex flex-1 flex-col bg-greige text-ink xl:min-h-0 xl:basis-0">
       <HomeServiceReview ready={!home.isPending && !home.isError} blocked={helpOpen} />
       <main className="mx-auto w-full max-w-7xl flex-1 px-6 pb-12 pt-10 lg:px-10 lg:pt-14 xl:flex xl:min-h-0 xl:flex-col xl:py-6">
         <div className="flex flex-wrap items-end justify-between gap-5 xl:flex-nowrap xl:gap-8">
