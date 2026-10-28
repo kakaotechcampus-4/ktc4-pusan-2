@@ -1,6 +1,9 @@
+export type SuggestionCategory = 'POSITIVE' | 'IMPROVEMENT' | 'PROBLEM' | 'QUESTION' | 'OTHER';
+
 export interface ServiceReviewRequest {
   rating: number;
   suggestion?: string | null;
+  category?: SuggestionCategory;
 }
 
 export interface ServiceReviewReceipt {
@@ -25,9 +28,11 @@ export interface ServiceReviewImpression {
 export interface SuggestionRequest {
   request_id: string;
   content: string;
+  category?: SuggestionCategory;
 }
 export interface SuggestionReceipt {
   id: string;
   source: 'MY_PAGE';
+  category: SuggestionCategory;
   created_at: string;
 }

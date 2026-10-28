@@ -25,8 +25,8 @@ afterEach(() => {
 it('uses the authenticated production endpoints and sends no take/user/source fields', async () => {
   const id = crypto.randomUUID();
   await requestServiceReview(id);
-  await submitServiceReview({ rating: 4, suggestion: '의견' });
-  await submitSuggestion({ request_id: id, content: '추가 의견' });
+  await submitServiceReview({ rating: 4, suggestion: '의견', category: 'POSITIVE' });
+  await submitSuggestion({ request_id: id, content: '추가 의견', category: 'QUESTION' });
   await getServiceReviewState();
   const calls = vi.mocked(fetch).mock.calls;
   expect(calls.map((c) => c[0])).toEqual([
@@ -37,8 +37,8 @@ it('uses the authenticated production endpoints and sends no take/user/source fi
   ]);
   expect(calls.slice(0, 3).map((c) => JSON.parse(String(c[1]!.body)))).toEqual([
     { display_request_id: id },
-    { rating: 4, suggestion: '의견' },
-    { request_id: id, content: '추가 의견' },
+    { rating: 4, suggestion: '의견', category: 'POSITIVE' },
+    { request_id: id, content: '추가 의견', category: 'QUESTION' },
   ]);
   for (const call of calls)
     expect(new Headers(call[1]!.headers).get('Authorization')).toBe('Bearer test-access');
