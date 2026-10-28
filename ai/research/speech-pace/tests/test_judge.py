@@ -6,7 +6,8 @@ import pytest
 
 from pace.config import PaceConfig
 from pace.schemas import TallyItem
-from tests.helpers import CFG, run, steady, total, word, word_items
+
+from .helpers import CFG, run, steady, total, word, word_items
 
 T = 60_000
 

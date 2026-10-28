@@ -8,7 +8,8 @@ from __future__ import annotations
 from typing import Any
 
 from pace.schemas import TallyItem
-from tests.helpers import run, time_items, total, word, word_items
+
+from .helpers import run, time_items, total, word, word_items
 
 # ── 단어 몫 ────────────────────────────────────────────────────────────────────
 

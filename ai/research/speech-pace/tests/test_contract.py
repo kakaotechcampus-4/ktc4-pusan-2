@@ -9,7 +9,8 @@ from pace.config import DEFAULT, PaceConfig
 from pace.core import criteria, judge, summarize
 from pace.schemas import JudgmentResult, PaceInput
 from pace.version import FEATURE_VERSION
-from tests.helpers import CFG, inputs, run, steady, total
+
+from .helpers import CFG, inputs, run, steady, total
 
 T = 60_000
 
