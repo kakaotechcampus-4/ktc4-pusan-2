@@ -19,12 +19,12 @@
 - **연구 코드**: 활성 연구 폴더에 코드가 있습니다. 목표 계약 전체 구현이나 실제 발표 데이터 검증 완료를 뜻하지 않습니다.
 - **서비스 탑재**: `ai/service/`의 실제 기능이 앱에 연결돼 있습니다. 배포·BE 호출 여부는 별도로 확인합니다.
 
-| 기능 | 문서 | 담당 | 상태 | 활성 연구 코드 |
+| 기능 | 문서 | 담당 | 상태 | 활성 코드 (연구 · 서비스) |
 |---|---|---|---|---|
-| 실시간 코치 (시간 판정 포함) | [coach-agent.md](features/coach-agent.md) | JWK0395 | 서비스 탑재 (코칭 계획만) | [coach-agent/](../../ai/research/coach-agent/README.md) |
-| 시선 | [gaze-tracking.md](features/gaze-tracking.md) | JWK0395 | 연구 코드 | [gaze-tracking/](../../ai/research/gaze-tracking/README.md) |
-| 군더더기 | [filler.md](features/filler.md) | JWK0395 | 연구 코드 | [filler-detection/](../../ai/research/filler-detection/README.md) |
-| 대본 전달도 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) | JWK0395 | 서비스 탑재 | [script-coverage-evaluation/](../../ai/research/script-coverage-evaluation/README.md) |
+| 실시간 코치 (시간 판정 포함) | [coach-agent.md](features/coach-agent.md) | JWK0395 | 서비스 탑재 (코칭 계획만) | [coach-agent/](../../ai/research/coach-agent/README.md) · 서비스 [`features/coach/`](../../ai/service/src/pitch_coach_ai/features/coach/) |
+| 시선 | [gaze-tracking.md](features/gaze-tracking.md) | JWK0395 | 연구 코드 | [gaze-tracking/](../../ai/research/gaze-tracking/README.md) · 서비스 [`features/gaze/`](../../ai/service/src/pitch_coach_ai/features/gaze/) |
+| 군더더기 | [filler.md](features/filler.md) | JWK0395 | 연구 코드 | [filler-detection/](../../ai/research/filler-detection/README.md) · 서비스 [`features/filler/`](../../ai/service/src/pitch_coach_ai/features/filler/) |
+| 대본 전달도 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) | JWK0395 | 서비스 탑재 | [script-coverage-evaluation/](../../ai/research/script-coverage-evaluation/README.md) · 서비스 [`features/script_coverage/`](../../ai/service/src/pitch_coach_ai/features/script_coverage/) |
 | 대본 파싱 | [script-parser.md](features/script-parser.md) | jinn-ie | 연구 코드 | [script-parser/](../../ai/research/script-parser/README.md) |
 | 평가 기준 분석 | [evaluation-criteria.md](features/evaluation-criteria.md) | jinn-ie | 연구 코드 | [evaluation-criteria/](../../ai/research/evaluation-criteria/README.md) |
 | 말 속도 · 멈춤 | [pace.md](features/pace.md) | jinn-ie | 연구 코드 | [speech-pace/](../../ai/research/speech-pace/README.md) |

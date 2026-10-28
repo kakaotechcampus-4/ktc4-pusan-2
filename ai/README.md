@@ -15,6 +15,7 @@
 | [service/](service/README.md) | 배포되는 AI 서버. 실제 기능 탑재 여부는 기능 지도에서 확인 |
 | [research/](research/README.md) | 기능별 코드·실험·평가와 실행법 |
 | [archive/](archive/README.md) | 구조를 바꾸기 전 코드의 동결본. 새 작업은 research·service에서 진행 |
+| [tools/](tools/docs-check/README.md) | AI 문서 검사 도구(docs-check: 절 참조·상대 링크·앵커·PR 본문의 Issue 관계 줄) |
 
 ## 환경변수
 
