@@ -79,7 +79,7 @@ npm run dev        # http://localhost:5180
 - 화면 가운데부터 보는 이유: 원이 이미 가운데에 있어 사용자가 그 자리를 보고 있기 때문입니다. 렌즈와 화면 가운데가
   모이면 바로 카메라 위치를 판정하고, 대본 자리는 마지막입니다.
 - 미리보기는 거울상입니다. 엔진은 항상 원본 프레임을 받습니다.
-- 얼굴 가이드(타원 + 십자)는 얼굴 랜드마크 6개로 그리고, 초당 8번 오는 결과를 화면 주사율로 부드럽게 따라갑니다.
+- 얼굴 가이드(타원 + 십자)는 얼굴 랜드마크 7개(이마 · 턱 · 양쪽 얼굴 옆 · 양쪽 눈꼬리 · 코끝)로 그리고, 초당 8번 오는 결과를 화면 주사율로 부드럽게 따라갑니다.
 - 실시간 테두리는 청중 초록 2px, 화면·대본 노랑 5px, 판정 불가 빨강 점선 5px입니다. 데모 페이지가 1초 기록이
   하나 끝날 때마다 그 상태를 세 구역으로 접어(청중 / 화면·대본 / 그 밖은 판정 불가) `setZone()`으로 넘깁니다.
   서버로 가는 1초 기록은 접지 않고 여섯 상태 그대로입니다.
@@ -126,7 +126,8 @@ web/
 │   ├── types.ts
 │   └── __tests__/                 엔진 테스트(engine · parity · scenarios)와 Python 기준 답(fixtures/parity.json). 엔진과 같이 옮긴다
 ├── test/                          vitest — fe-contract(FE의 실제 시선 코드를 이 엔진에 붙여 실행) · 엔진 import 경계 · Worker · 자산 검증
-├── scripts/                       copy-assets · smoke · bench (Node) (Python 생성기는 `../tools/`)
+├── scripts/                       copy-assets · smoke · bench, 모델 해시 · 런타임 판 검사 verify-assets (Node) (Python 생성기는 `../tools/`)
+├── package.json · package-lock.json · vite.config.ts · .oxlintrc.json · .prettierrc · .prettierignore   npm 명령 · 의존성, 개발 서버 · 별칭 · 테스트 수집, 린트 · 서식
 ├── bench.html, src/bench.ts       화면 없는 성능 측정 페이지
 └── tsconfig.json / tsconfig.fe.json (FE 컴파일러 옵션 그대로) / tsconfig.engine.json (DOM 없이 Worker 전역만) / tsconfig.node.json
     tsconfig.json · tsconfig.fe.json · vite.config.ts는 `@/vendor/gaze/*`를 이 폴더의 `src/*`로, 나머지 `@/*` · `@fe/*`를 `frontend/src`(읽기 전용)로 찾음
@@ -151,7 +152,7 @@ npm run typecheck    # tsc 4번: 전체 / 설정 파일 / FE 컴파일러 옵션
 npm run lint         # FE 와 같은 oxlint 규칙(--max-warnings=0)으로 엔진 · Worker
 npm run smoke        # 헤드리스 Chrome + 가짜 카메라로 데모 전체 (검사 23개, 화면 캡처 .cache/screens/)
 npm run smoke:prod   # 같은 검사를 운영처럼 격리 헤더(COOP/COEP) 없이
-npm run bench        # Worker 프레임당 ms (CPU·GPU delegate), -- --no-isolation 으로 격리 헤더 없이
+npm run bench        # Worker 프레임당 ms (CPU·GPU delegate), -- --no-isolation 으로 격리 헤더 없이. 먼저 smoke 를 한 번 돌려 .cache/static_face.y4m 을 만든다
 npm run fixtures     # Python에서 defaults.generated.ts와 기준 답 다시 생성 (Python 쪽을 바꾼 뒤)
 ```
 
@@ -286,7 +287,7 @@ function GazeCamera({ stream, onCalibrated }: { stream: MediaStream; onCalibrate
 | `attach(stream)` / `detach()` | 스트림을 보여 주고 분석 시작 / 멈춤 (`idle`에서도 얼굴 십자선과 인식 상태는 보임) |
 | `startSetup('align' \| 'calib')` | ① 준비 점검부터, 또는 고개 원을 둔 채 ③ 세 지점부터 |
 | `goLive()` / `cancel()` | 실시간 / 영상만 (`idle`) |
-| `useCalibration(model)` | 이번 세션에서 받은 `SetupResult.model`을 (새) Worker에 넣고 바로 실시간. 다른 엔진·설정의 값이면 `false` |
+| `useCalibration(model)` | 이번 세션에서 받은 `SetupResult.model`을 (새) Worker에 넣고 바로 실시간. 보정 모델의 모양이 맞지 않으면 `false`(설정 해시가 지금 엔진과 같은지는 부르는 쪽이 본다. FE는 `fitsCurrentEngine`) |
 | `reanchor()` | 실시간에서 렌즈를 1초 보면 기준점을 옮김(결과는 화면 알림과 `reanchor` 이벤트) |
 | `setZone(zone)` | 페이지가 정한 구역을 테두리로 (`CAMERA` / `BOTTOM` / `UNCERTAIN` / `null`). 데모는 최근 1초 기록을 접어 넘김 |
 | `destroy()` | 타이머·Worker·DOM 정리 |
@@ -323,7 +324,7 @@ IndexedDB · localStorage · 서버 어디에도 저장하거나 보내지 않�
 | Worker 안에서 동작 (DOM 없음) | ✅ 모듈 Worker에서 MediaPipe 로드·검출, OffscreenCanvas 밝기 |
 | Vite 개발 서버 | ✅ 동적 import에 `?import`가 붙어 막히는 문제를 자산 경로를 절대 URL로 바꿔 해결 (엔진 안에서 처리) |
 | 입력 | ✅ `ImageBitmap`. 엔진은 비트맵을 닫지 않습니다(FE 규칙대로 호출부가 닫음) |
-| 보정 모델 | ✅ 메모리 전용(저장 · 전송 안 함). 순수 데이터라 같은 세션의 새 Worker에 `structuredClone`으로 넘김. 스키마나 설정이 다르면 `calibrate()`가 거절 |
+| 보정 모델 | ✅ 메모리 전용(저장 · 전송 안 함). 순수 데이터라 같은 세션의 새 Worker에 `structuredClone`으로 넘김. 모양(스키마 · 필수 구조)이 다르면 `calibrate()`가 거절하고, 설정 해시(`configHash`)는 FE가 비교 |
 | 출력 키 | ✅ Python `to_dict()`와 같은 이름이라 FE `aiAdapter.ts`가 그대로 변환 |
 | FE 컴파일러 옵션 | ✅ `tsconfig.fe.json`으로 엔진 · 카메라 화면 · Worker와 그것을 쓰는 FE 코드를 함께 검사 |
 | 격리 헤더 없이 | ✅ 운영 서버(Caddy)에 COOP/COEP가 없어도 동작 (`npm run smoke:prod`, `crossOriginIsolated=false`) |
@@ -333,8 +334,8 @@ IndexedDB · localStorage · 서버 어디에도 저장하거나 보내지 않�
 
 ### FE 연동 시 확인할 것
 
-프론트엔드는 지금 이 엔진의 `1f92351` 판을 복사해 쓰고 있습니다(엔진 · 카메라 화면 · Worker 모두 그 판과 같음).
-지금 판을 다시 복사하면 엔진 파일 6개가 바뀝니다.
+프론트엔드 사본(`frontend/src/vendor/gaze/`, 기준 커밋은 그 폴더 README)은 2026-10-28 `develop-next`에서 이 폴더의 엔진 · 카메라 화면 · Worker와 파일 내용이 같습니다.
+아래 표는 그 전 사본(`1f92351` 판)에서 지금 판으로 다시 복사할 때 바뀐 엔진 파일 6개의 기록입니다.
 
 | 바뀌는 것 | 무엇이 | 프론트엔드에 주는 영향 |
 |---|---|---|
