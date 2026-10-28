@@ -41,7 +41,7 @@ it('카드는 Take 목록 대신 Take 기록 · 비교 링크만 둔다', () => 
   );
   expect(markup).toContain('캡스톤 최종 발표');
   expect(markup).toContain('/pitch/10000000-0000-4000-8000-000000000001/edit');
-  expect(markup).toContain('href="/takes"');
+  expect(markup).toContain('href="/takes?pitch=10000000-0000-4000-8000-000000000001"');
   expect(markup).toContain('/pitch/10000000-0000-4000-8000-000000000001/comparison');
   expect(markup).not.toContain('TAKE 01');
   expect(markup).not.toContain('연습 전');
@@ -56,6 +56,7 @@ it('연습 기록이 없는 피치는 연습 전으로 표시하고 비교 링�
   expect(markup).toContain('연습 전');
   expect(markup).toContain('/pitch/10000000-0000-4000-8000-000000000001/edit');
   expect(markup).not.toContain('/comparison');
+  expect(markup).not.toContain('href="/takes');
 });
 
 it('누적 발표 시간은 길이를 아는 Take 만 더하고, 하나도 모르면 0 이 아니라 — 로 둔다', () => {

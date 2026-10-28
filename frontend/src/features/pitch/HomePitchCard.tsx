@@ -49,14 +49,20 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
           목표 {duration(pitch.pitch_time)}
         </span>
       </div>
-      {/* Take 기록 화면은 피치 필터를 화면 안 상태로만 들고 있어 피치를 골라 보내지 못합니다 */}
-      <Link
-        to="/takes"
-        aria-label={`${pitch.pitch_title} Take 기록 ${takes}개 보기`}
-        className={rowLink}
-      >
-        Take 기록 <span className="font-mono">{takes}</span> →
-      </Link>
+      {/* 기록이 없는 피치는 걸러 볼 Take 가 없어 링크 대신 글자만 둡니다 */}
+      {takes > 0 && pitch.pitch_id ? (
+        <Link
+          to={`/takes?pitch=${encodeURIComponent(pitch.pitch_id)}`}
+          aria-label={`${pitch.pitch_title} Take 기록 ${takes}개 보기`}
+          className={rowLink}
+        >
+          Take 기록 <span className="font-mono">{takes}</span> →
+        </Link>
+      ) : (
+        <span className="whitespace-nowrap text-xs text-ink/80">
+          Take 기록 <span className="font-mono">{takes}</span>
+        </span>
+      )}
       {/* 비교는 Take 가 둘 이상일 때만 뜻이 있어, 없을 때도 자리를 비워 줄을 맞춥니다 */}
       <span className="w-20 text-right">
         {pitch.pitch_id && takes >= 2 && (

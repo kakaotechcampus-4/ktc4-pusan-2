@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
 import { useTakeHistory } from '@/shared/api/takeHistory';
 import { takeStatusView } from '@/shared/lib/takeStatus';
@@ -14,14 +14,16 @@ import { SCRIPT_MODE_LABEL, takeDay } from './takeHistoryFormat';
 
 /**
  * P16 Take 기록 — 모든 피치의 연습 기록을 최신순으로.
- * 홈은 피치별로 접어 보여 주고, 여기는 "언제 무엇을 연습했나"를 한 줄씩 봅니다.
+ * 홈은 피치 목록만 두고 이리로 보냅니다(?pitch= 로 그 피치를 골라서). 여기는 "언제 무엇을 연습했나"를 한 줄씩 봅니다.
  */
 
 const ALL = '';
 
 export function TakesPage() {
   const history = useTakeHistory();
-  const [pitch, setPitch] = useState(ALL);
+  // 홈의 'Take 기록' 링크가 ?pitch= 로 그 피치를 골라서 엽니다
+  const [params] = useSearchParams();
+  const [pitch, setPitch] = useState(params.get('pitch') ?? ALL);
   const rows = history.data?.takes;
 
   if (!rows)
