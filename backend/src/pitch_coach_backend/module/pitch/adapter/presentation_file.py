@@ -5,6 +5,7 @@
 
 import io
 import logging
+import threading
 from typing import BinaryIO
 
 import pypdfium2 as pdfium
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 MAX_PRESENTATION_BYTES = 40 * 1024 * 1024
 
 THUMBNAIL_WIDTH = 480
+
+_PDFIUM_LOCK = threading.Lock()
 
 # 망가진 파일을 읽을 때마다 경고를 남긴다. 그런 파일은 400 으로 거절하므로 로그에 둘 필요가 없다
 logging.getLogger("pypdf").setLevel(logging.ERROR)
@@ -47,12 +50,13 @@ def count_pdf_pages(file: BinaryIO) -> int | None:
 
 def render_first_page(file: BinaryIO) -> bytes | None:
     try:
-        pdf = pdfium.PdfDocument(file)
-        try:
-            page = pdf[0]
-            image = page.render(scale=THUMBNAIL_WIDTH / page.get_width()).to_pil()
-        finally:
-            pdf.close()
+        with _PDFIUM_LOCK:
+            pdf = pdfium.PdfDocument(file)
+            try:
+                page = pdf[0]
+                image = page.render(scale=THUMBNAIL_WIDTH / page.get_width()).to_pil()
+            finally:
+                pdf.close()
         buffer = io.BytesIO()
         image.convert("RGB").save(buffer, format="WEBP", quality=80)
         return buffer.getvalue()
