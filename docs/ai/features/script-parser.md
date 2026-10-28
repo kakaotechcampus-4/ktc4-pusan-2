@@ -4,7 +4,7 @@
 > **기준 범위**: 대본 파싱 모듈(`POST /scripts/parse`)의 목표 설계다. 기능 사이 공통 계약(에러 · `meta` · 시간 예산 · LLM 공통 규칙 · 글자 위치 단위 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **관련 Issue**: #156
 > **한 줄 요약**: 대본 원문을 코드가 구분자로 장마다 나누고 정제해 장별 글자 수 · 예상 발표 시간 · 하이라이트를 내고, LLM은 장별 키워드 · 제목 줄과 대본 전체의 STT 용어만 고른다.
-> **기준값**: 기준 말 속도(CPM) · 키워드 개수 · 용어 상한은 `src/script_parser/config.py`에만 두고, 이 문서에는 BE와 맞춰야 하는 통신 값(구분자 형식 · 용어 50개 · 입력 한도 · 시간 예산)과 예시만 적는다.
+> **기준값**: 기준 말 속도(CPM) · 키워드 개수 · 용어 상한은 서비스 `features/script_parser/config.py`에만 두고, 이 문서에는 BE와 맞춰야 하는 통신 값(구분자 형식 · 용어 50개 · 입력 한도 · 시간 예산)과 예시만 적는다.
 
 # 0. 한눈에 보기
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
@@ -71,8 +71,8 @@ flowchart LR
 ```
 ai/research/script-parser/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock                 Python 3.12. 코어는 pydantic 하나, 연구 도구만 LLM 라이브러리
-├─ src/script_parser/                       코어 → 서비스 features/script_parser/로 폴더째 옮긴다
+├─ pyproject.toml · uv.lock                 Python 3.12. 서비스를 editable로 설치해 코어를 쓴다(코어는 pydantic 하나), 연구 도구만 LLM 라이브러리
+├─ (서비스 ai/service/src/pitch_coach_ai/features/script_parser/)   코어 (연구 폴더 src/script_parser/에서 폴더째 옮김, 단위 테스트는 서비스 tests/unit/script_parser/)
 │   ├─ schemas.py                           요청 · 응답 · LLM 출력 pydantic 모델 = 계약
 │   ├─ core.py                              parse_script(): 구분자 → LLM → 정제 · 계산
 │   ├─ splitter.py · cleaner.py             구분자 찾기 · 판정, 정제 · 글자 수 · 하이라이트 (LLM 없는 순수 함수)
@@ -81,7 +81,7 @@ ai/research/script-parser/
 │   └─ examples/                            요청 · 응답 예시 (계약 테스트가 읽는다)
 ├─ run.py                                   실험 도구: ai/.env로 LLM을 만들어 data/scripts를 돌림 (build_llm은 여기로)
 ├─ data/scripts/ · data/labels/             평가 대본과 정답 장 나눔 라벨
-├─ tests/ · tests/live/                     구분자 · 정제 · 계산 · 계약(가짜 LLM) / 실제 LLM(live 표시)
+├─ tests/live/                              실제 LLM(live 표시, run.py의 build_llm을 씀). 구분자 · 정제 · 계산 · 계약(가짜 LLM)은 서비스 tests/unit/script_parser/
 └─ reports/results/                         평가 결과 JSON
 ```
 위는 모듈 규약(`architecture.md` 8절)을 따른 모양이다. 파일 이름은 담당자가 정하고 README의 파일 지도에 둔다.
@@ -102,7 +102,7 @@ ai/research/script-parser/
 | 기준 말 속도 · 개수 상한은 `config.py`에 둔다 | 기준값을 한곳에서 관리한다 |
 
 # 5. 입력 · 출력 계약
-요청 · 응답의 원본은 `src/script_parser/schemas.py`의 pydantic 모델이다. 요청은 모르는 필드를 무시하고, 응답은 정해진 필드만 낸다(`architecture.md` 2절). 글자 위치는 코드 포인트 `[start, end)`다(`architecture.md` 6-1).
+요청 · 응답의 원본은 서비스 `features/script_parser/schemas.py`의 pydantic 모델이다. 요청은 모르는 필드를 무시하고, 응답은 정해진 필드만 낸다(`architecture.md` 2절). 글자 위치는 코드 포인트 `[start, end)`다(`architecture.md` 6-1).
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 | 방식 |
@@ -208,18 +208,18 @@ LLM은 장 대본을 다시 쓰지 않고 키워드 · 제목 줄 · 용어만 �
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `script_parser-<버전>` (첫 판 `script_parser-1.0`) | `src/script_parser/version.py` | 구분자 규칙 · 정제 · 프롬프트 · 출력의 뜻이 바뀔 때 |
+| `feature_version` | `script_parser-<버전>` (첫 판 `script_parser-1.0`) | 서비스 `features/script_parser/version.py` | 구분자 규칙 · 정제 · 프롬프트 · 출력의 뜻이 바뀔 때 |
 | `schema_version` | `1.0` | 응답 `meta` (`architecture.md` 5절) | 필드 이름 변경 · 삭제 · 뜻 변경 (예: `highlights` 모양) |
 
 # 10. 실행 · 테스트
-준비 (`ai/research/script-parser`에서. Python 3.12, `.venv`는 git에 없어 처음 한 번 만든다. 실제 LLM을 부르는 일만 `ai/.env`의 기본 묶음이 필요하다)
+준비 (코어 · 단위 테스트는 `ai/service`에, 실험 도구 `run.py`와 평가 데이터는 `ai/research/script-parser`에 있다. Python 3.12, `.venv`는 git에 없어 폴더마다 처음 한 번 만든다. 연구 폴더는 서비스를 editable로 설치한다. 실제 LLM을 부르는 일만 `ai/.env`의 기본 묶음이 필요하다)
 ```bash
 cd ai/research/script-parser
 uv sync
 ```
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 | `uv run python -m pytest` | 구분자 · 판정 · 정제 · 글자 수 · 예상 시간(합 · 누적 반올림) · 하이라이트 · 계약(`examples/`, 가짜 LLM) 통과 |
+| 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/script_parser` | 구분자 · 판정 · 정제 · 글자 수 · 예상 시간(합 · 누적 반올림) · 하이라이트 · 계약(`examples/`, 가짜 LLM) · 코어 경계 통과 |
 | 실제 LLM 테스트 | `uv run python -m pytest -m live` | 예시 대본이 스키마를 통과 (과금) |
 | 대본 실행 | `uv run python run.py --all` | `results/<이름>.json` (과금) |
 | 평가 | `uv run python run.py --eval --out reports/results/script_parser_eval.json` | 장 나눔 정확도 · 예상 시간 오차 · 호출 시간 (13절, 과금) |
