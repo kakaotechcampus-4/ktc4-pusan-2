@@ -15,7 +15,7 @@ const sizes: Record<ButtonSize, string> = {
 };
 
 function styles(variant: ButtonVariant, size: ButtonSize, className = '') {
-  return `inline-flex max-w-full items-center justify-center gap-2 border-2 text-center font-bold transition-colors ${variants[variant]} disabled:pointer-events-none disabled:border-line-strong disabled:bg-cream disabled:text-ink/80 disabled:shadow-none ${sizes[size]} ${className}`;
+  return `inline-flex max-w-full items-center justify-center gap-2 border-2 text-center font-bold transition-colors disabled:pointer-events-none disabled:border-line-strong disabled:bg-cream disabled:text-ink/80 disabled:shadow-none ${variants[variant]} ${sizes[size]} ${className}`;
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
