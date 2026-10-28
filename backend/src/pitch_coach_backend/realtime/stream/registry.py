@@ -45,9 +45,17 @@ from pitch_coach_backend.realtime.stt.adapter import (
 
 logger = logging.getLogger(__name__)
 
+# 사용자는 한 번에 연습 하나만 한다. 같은 Take의 재연결은 기존 스트림을 이어받는다.
+# 다른 Take가 붙어 있으면 거절하고, 끊겨 grace를 기다리던 스트림은 닫은 뒤 교체한다.
+MAX_STREAMS_PER_USER = 1
+
 
 class StreamOwnerMismatch(Exception):
     """다른 사용자가 이미 쓰고 있는 Take 다."""
+
+
+class TooManyStreams(Exception):
+    """이 사용자가 다른 Take 로 연 스트림이 상한(`MAX_STREAMS_PER_USER`)에 닿았다."""
 
 
 class TakeEnded(Exception):
@@ -159,7 +167,8 @@ async def attach(
 
     Take 존재·소유·상태는 호출자(service)가 DB 로 먼저 검사한다. 여기서는 스트림을
     만든 사용자와 다르면 `StreamOwnerMismatch` — 그 검사의 이중 안전장치다.
-    이 프로세스에서 끝낸 Take 면 `TakeEnded`.
+    이 프로세스에서 끝낸 Take 면 `TakeEnded`. 새 스트림을 열 자리가 없으면 `TooManyStreams`
+    (`_make_room`).
 
     `coach_context` 는 Take 를 시작할 때 읽은 값이다. 코치가 아직 꺼져 있으면 이 값으로 켠다 —
     다시 붙은 연결이면 이미 켜져 있고 그 `coach_state` 를 이어 간다. 없으면(읽기 실패) STT 만 돈다.
@@ -197,20 +206,31 @@ async def attach(
             )
             # 저장된 마지막 번호에서 이어 받는다. 이 스트림이 처음이면 (0, 0) 이라 1·0 부터
             last_seq, last_session_no = await store.cursor(take_id)
-            stream = create_stream(
-                take_id,
-                owner_id=owner_id,
-                stt_adapter=stt_adapter,
-                config=config,
-                store=store,
-                segment_no=last_seq + 1,
-                stt_session_no=last_session_no,
-                coach=coach,
-            )
-            state.streams[take_id] = stream
-            for ms in restored:
-                stream._record.coach.on_utterance_end(ms)
-            stream.start()
+            # 자리 확보 중에는 옛 Deepgram 세션이 실제로 닫히기를 기다린다. 같은 사용자의
+            # 다른 Take도 이 확인부터 등록까지 함께 잠가 빈자리를 중복으로 쓰지 못하게 한다.
+            async with state.stream_owner_lock(owner_id):
+                try:
+                    await _make_room(owner_id)
+                except TooManyStreams:
+                    if not abandon.armed(take_id):
+                        # 첫 연결이 Take 를 시작했는데(`RUNNING`) 스트림이 없다. 아무도 다시
+                        # 붙지 않으면 떠난 것으로 끝낸다 — 스트림이 닫힌 Take 와 같다
+                        arm_abandon(take_id, store, closed_at=datetime.now(UTC))
+                    raise
+                stream = create_stream(
+                    take_id,
+                    owner_id=owner_id,
+                    stt_adapter=stt_adapter,
+                    config=config,
+                    store=store,
+                    segment_no=last_seq + 1,
+                    stt_session_no=last_session_no,
+                    coach=coach,
+                )
+                state.streams[take_id] = stream
+                for ms in restored:
+                    stream._record.coach.on_utterance_end(ms)
+                stream.start()
         elif stream.owner_id != owner_id:
             raise StreamOwnerMismatch
         if coach is not None and coach_context is not None:
@@ -218,6 +238,45 @@ async def attach(
 
     await stream.attach(ws)
     return stream
+
+
+async def _make_room(owner_id: uuid.UUID) -> None:
+    """이 사용자의 새 스트림 자리를 만든다. 열린 스트림이 `MAX_STREAMS_PER_USER` 개면 연결이 끊겨
+    다시 붙기를 기다리는(grace) 스트림을 오래된 것부터 정리한다. 그래도 차 있으면 `TooManyStreams`.
+
+    붙어 있는 연결의 스트림은 정리하지 않는다 — 다른 창에서 발표 중일 수 있다. 정리한 스트림의
+    Take 는 끝나지 않는다. grace 가 만료된 것과 같아 다시 붙으면 새 스트림이 번호를 이어 받는다.
+    정리 중인 스트림도 실제로 닫힐 때까지 센다. request_stop만 하고 자리에서 빼면 반복해서
+    끊고 붙이는 동안 drain 중인 Deepgram 세션이 상한 밖으로 계속 쌓인다.
+    """
+    open_streams = [
+        stream
+        for stream in state.streams.values()
+        if stream.owner_id == owner_id and not stream.is_finished
+    ]
+    excess = len(open_streams) - MAX_STREAMS_PER_USER + 1
+    if excess <= 0:
+        return
+    # 맵은 넣은 순서다. 앞이 오래된 것이다
+    waiting = [stream for stream in open_streams if stream.is_stopping or not stream.has_client]
+    if len(waiting) < excess:
+        logger.warning(
+            "사용자의 스트림이 상한이라 새 연결을 거절한다 user=%s limit=%d",
+            owner_id,
+            MAX_STREAMS_PER_USER,
+        )
+        raise TooManyStreams
+    for stream in waiting[:excess]:
+        logger.info(
+            "새 스트림 자리를 만들려고 다시 붙기를 기다리던 스트림을 정리한다 take=%s",
+            stream.take_id,
+        )
+        stream.request_stop()
+        if not await stream.wait_closed():
+            stream.cancel()
+            # 정리가 끝나지 않았으면 레지스트리에 남겨 다음 요청에서도 세고 새 세션은 거절한다.
+            if not await stream.wait_closed(stt_loop.ABORT_TIMEOUT_SEC):
+                raise TooManyStreams
 
 
 async def _stored_utterance_ends(take_id: uuid.UUID, store: TranscriptStore) -> list[int]:

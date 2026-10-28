@@ -38,7 +38,11 @@ from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream import finish, registry
 from pitch_coach_backend.realtime.stream.record import CoachDeps
-from pitch_coach_backend.realtime.stream.registry import StreamOwnerMismatch, TakeEnded
+from pitch_coach_backend.realtime.stream.registry import (
+    StreamOwnerMismatch,
+    TakeEnded,
+    TooManyStreams,
+)
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt.adapter import SttAdapter, SttConfig
 from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
@@ -127,6 +131,12 @@ class RealtimeSession:
             # 방금 끝낸 Take 다. DB 에 적히기 전이라 인가는 통과했다
             await handshake.reject_ended(e.reason)
             return
+        except TooManyStreams:
+            await handshake.reject(
+                WsErrorCode.TOO_MANY_STREAMS,
+                "다른 창에서 진행 중인 연습이 있어요. 그 창을 닫고 다시 시작해 주세요.",
+            )
+            return
 
         # attach() 가 성공한 순간부터는 반드시 detach() 로 짝을 맞춘다. ready 전송이나
         # resend_missed 중간에 클라이언트가 사라져 예외가 나도 detach() 없이 빠져나가면
@@ -143,7 +153,7 @@ class RealtimeSession:
                 )
             )
             # 떨어져 있는 동안 화면에 못 간 final 을 먼저 따라잡는다
-            await stream.resend_missed()
+            await stream.resend_missed(source=self.ws)
             await self._pump_client(stream)
         except WebSocketDisconnect:
             # ready 나 재전송 도중 클라이언트가 사라졌다 (Starlette 는 끊긴 상대에게 보내면

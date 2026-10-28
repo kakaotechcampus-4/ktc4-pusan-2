@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import ast
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
-from pitch_coach_ai.features.gaze import config
 from pitch_coach_ai.features.gaze.config import DEFAULT, GazeConfig
 from pitch_coach_ai.features.gaze.schemas import (
     GazeInput,
@@ -18,19 +14,9 @@ from pitch_coach_ai.features.gaze.schemas import (
     TallyItem,
 )
 from pitch_coach_ai.features.gaze.version import FEATURE_VERSION
+from pitch_coach_ai.features.volume.config import Config as VolumeConfig
 
 REQUIRED = {"t_ms": 1000, "since_ms": 0}
-#: 소리 크기 판정 모듈의 기준값 파일. 서비스의 같은 features/ 아래 volume/ 을 먼저 찾고,
-#: 소리 크기가 서비스에 오기 전에는 저장소의 연구 폴더 것(ai/research/volume-analysis/)과 비교한다.
-#: 연구 폴더 경로는 이 테스트 파일 위치(ai/service/tests/unit/gaze/)에서 찾는다.
-#: 소리 크기를 서비스로 옮기면 이 후보를 지운다
-_GAZE_DIR = Path(config.__file__).parent
-_AI_DIR = Path(__file__).resolve().parents[4]
-_VOLUME_CONFIGS = (
-    _GAZE_DIR.parent / "volume" / "config.py",
-    _AI_DIR / "research" / "volume-analysis" / "src" / "volume" / "config.py",
-)
-VOLUME_CONFIG = next((p for p in _VOLUME_CONFIGS if p.exists()), _VOLUME_CONFIGS[0])
 
 # ── 입력 ───────────────────────────────────────────────────────────────────────
 
@@ -161,24 +147,6 @@ def test_config_is_frozen():
         DEFAULT.script_run_ms = 1  # type: ignore[misc]
 
 
-def _volume_voiced_min_ms() -> int | None:
-    """소리 크기 config.py 의 voiced_min_ms 기본값 (파일이 없으면 None). import 하지 않고 읽는다."""
-    if not VOLUME_CONFIG.exists():
-        return None
-    for node in ast.walk(ast.parse(VOLUME_CONFIG.read_text(encoding="utf-8"))):
-        if (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and node.target.id == "voiced_min_ms"
-            and isinstance(node.value, ast.Constant)
-        ):
-            return int(node.value.value)
-    raise AssertionError(f"voiced_min_ms 를 찾지 못했다: {VOLUME_CONFIG}")
-
-
 def test_speaking_second_threshold_matches_volume():
     """'말한 1초'의 기준은 시선 · 소리 크기가 같은 값이다(architecture.md 6-2)."""
-    volume = _volume_voiced_min_ms()
-    if volume is None:
-        pytest.skip(f"소리 크기 기준값 파일이 없다(서비스 폴더만 있는 사본): {VOLUME_CONFIG}")
-    assert DEFAULT.speaking_min_voiced_ms == volume
+    assert DEFAULT.speaking_min_voiced_ms == VolumeConfig().voiced_min_ms

@@ -8,10 +8,15 @@ import asyncio
 import contextlib
 from collections.abc import Awaitable
 
+import anyio
 from fastapi import WebSocket
 from pydantic import BaseModel
 
 from pitch_coach_backend.realtime.dto import ErrorMessage, WsErrorCode
+
+# 끊는 연결에 오류를 알리고 닫는 단계마다 기다리는 상한. 상대가 받지 않으면 전송이 끝나지 않는다 —
+# 다른 탭이 이어받을 때 그 탭의 ready 가, 로그아웃할 때 응답이 이 연결 하나에 붙잡힌다
+CLOSE_STEP_TIMEOUT_SEC = 1.0
 
 
 class ClientSlot:
@@ -38,6 +43,7 @@ class ClientSlot:
 
         반대(새 연결을 거절) 로 하면 재연결 레이스에서 사용자가 영영 못 붙는다 —
         서버는 아직 옛 연결이 살아 있다고 믿는데 브라우저는 이미 그걸 버린 상태가 된다.
+        옛 연결을 닫는 일은 기다리되 상한이 있다 (`close_with`). 늦어도 새 연결은 이미 붙어 있다.
         """
         previous = self._ws
         self._ws = ws
@@ -81,9 +87,14 @@ class ClientSlot:
 
 
 async def close_with(ws: WebSocket, error: ErrorMessage) -> None:
-    """에러를 알리고 1008 로 닫는다. 이미 끊겼으면 조용히 넘어간다."""
-    await quiet(ws.send_text(error.model_dump_json()))
-    await quiet(ws.close(code=1008, reason=error.code))
+    """에러를 알리고 1008 로 닫는다. 이미 끊겼으면 조용히 넘어간다.
+
+    단계마다 `CLOSE_STEP_TIMEOUT_SEC` 까지만 기다린다. 알림이 막혀도 닫기는 해 본다.
+    """
+    with anyio.move_on_after(CLOSE_STEP_TIMEOUT_SEC):
+        await quiet(ws.send_text(error.model_dump_json()))
+    with anyio.move_on_after(CLOSE_STEP_TIMEOUT_SEC):
+        await quiet(ws.close(code=1008, reason=error.code))
 
 
 async def quiet(awaitable: Awaitable[object]) -> None:

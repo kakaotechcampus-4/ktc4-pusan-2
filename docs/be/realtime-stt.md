@@ -27,6 +27,12 @@ WS /api/ws/takes/{take_id}
   뒤로 가면 탭을 새로고침해 처음부터 다시 센 것으로 본다 — 보낸 프레임을 다시 보내면 중복이 아니라 재시작으로
   읽힌다. 확인 응답이 없을 때 다시 보내는 기능을 넣으려면 먼저 이어 보내는지 처음부터 다시 세는지를 FE 가
   첫 메시지에서 알려 주도록 이 규약부터 바꾼다.
+- **오디오는 실시간으로 보낸다.** BE 는 프레임 사이 틈(5초 이하)을 무음으로 메워 Deepgram 에 보내는데, 틈은
+  `offset_ms` 로만 잰다. 그래서 Deepgram 에 보낼 길이(받은 PCM + 메울 무음)를 Take별 서버 경과 시간으로
+  묶고, 다시 붙을 때 몰아 보내는 몫으로 10초까지 앞서 받는다 (`event_ingestion.AudioBudget`). 넘는 프레임은
+  버리고 `dropped_frames` · `lost_ms` 로 센다. FE 가 쌓아 두는 오디오(2초)와 무음으로 메우는 틈(5초)을 합친 것보다
+  크므로 정상 흐름에서는 버리지 않는다. 1ms 미만 PCM도 실제 샘플 길이만큼 계산하고, 스트림을 교체해도
+  예산을 이어 쓴다. 끊겨 있던 동안에도 최대 10초까지만 채운다.
 - `stt_status` 는 상태가 바뀔 때마다 온다. `connecting` → `ok` → (`reconnecting` → `degraded`) → `closed`.
   숫자(`frames`·`dropped_frames`·`silence_ms`·`lost_ms`)는 연결 단위가 아니라 **Take 누적**이다.
 - **Deepgram 이 죽어도 연결을 끊지 않는다.** 오디오를 최대 5초 큐에 담고 백오프로 재접속하며
@@ -51,6 +57,7 @@ WS /api/ws/takes/{take_id}
   | `BAD_MESSAGE` | 유지 |
   | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
   | `TAKE_TAKEN_OVER` | `1008` 로 닫는다. FE 는 **재연결하지 않는다** |
+  | `TOO_MANY_STREAMS` | `1008` 로 닫는다 — 사용자는 한 번에 연습 하나만 하므로 스트림 상한은 1개(`MAX_STREAMS_PER_USER`)다. 다른 Take가 연결돼 있으면 기존 연습을 유지하고 새 연결을 거절한다. 끊겨 다시 붙기를 기다리는 스트림은 실제로 닫힌 뒤 새 스트림으로 교체하며, 정리가 제한 시간 안에 끝나지 않아도 거절한다. 같은 Take의 새로고침·탭 이어받기는 기존 스트림을 재사용한다 |
 
 - `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
 - **auth 를 기다리는 연결은 IP 하나에 20개, 전체 200개까지다** (`handshake.pending_auth`). 넘으면 받기 전에
