@@ -262,7 +262,7 @@ ai/research/review-agent/
 | `/takes/review` | 25초 (호출 한 번 기본 12초, 남은 예산 안에서만 1번 더) | 30초 | 연결 실패 · 시간 초과 · 408 · 429 · 5xx면 1번 | `architecture.md` 3절 '백그라운드 LLM' |
 
 - 규칙 단계는 입력 크기에 비례하는 계산이라 LLM 시간에 비해 작다. LLM 출력은 문장 몇 개라 짧다.
-- 모델: 기본 묶음(역할 `review` → 기본 묶음, `architecture.md` 9절). 역할 `review`의 출력 상한은 2,048(서비스 `settings.LLM_ROLES`)이고, 추론 강도는 `low`로 정했다(연구 `review_lab.llm.REASONING_EFFORT`. 서비스 역할에는 아직 넣지 않았다, 15절).
+- 모델: 기본 묶음(역할 `review` → 기본 묶음, `architecture.md` 9절). 역할 `review`의 출력 상한은 2,048, 추론 강도는 `low`다(서비스 `settings.LLM_ROLES`, 연구 `review_lab.llm.REASONING_EFFORT`).
   - 추론 강도를 보내지 않으면(모델 기본값) 호출 한 번이 12초를 자주 넘는다. 서비스 경로에서 clean 16 Take 중 3번이 넘었고(최대 19.4초), 대본 전달도 채점 · 미션 · 사용자 기준이 모두 있는 예시 요청은 15초 안팎이었다. `low`에서는 48 Take 모두 12초 안(최대 8.0초, 예시 요청 7.6초)이고, 평가 지표(스키마 유효율 · 입력에 없는 숫자 · 숫자 검사)는 같거나 나았다(연구 폴더 README 3절, 2026-10-28).
   - 출력 토큰(추론 포함)은 `low` 48 Take 최대 802, 기본값 clean 16 Take 최대 1,809다. 상한 2,048은 `low`의 최대 × 2를 1,024 단위로 올린 값이다. 잘리면 `LLM_INVALID_OUTPUT`이다(`architecture.md` 9절).
 - 요청에는 대본 전달도 채점 전체가 실려 장 수에 비례해 커진다(10장 약 98 KB, 30장 약 0.3 MB). 서비스의 요청 본문 크기 상한이 이 값을 넉넉히 넘어야 한다.
@@ -282,7 +282,7 @@ uv sync
 ```
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 코어 테스트 (`ai/service`에서, 실제 LLM 제외) | `uv run python -m pytest tests/unit/review` | 규칙 단계 · 숫자 검사 · 기본 결과 · 계약(`examples/`, 가짜 LLM) · `/takes/review` 통과 (180 passed, 2026-10-28) |
+| 코어 테스트 (`ai/service`에서, 실제 LLM 제외) | `uv run python -m pytest tests/unit/review` | 규칙 단계 · 숫자 검사 · 기본 결과 · 계약(`examples/`, 가짜 LLM) · `/takes/review` 통과 (181 passed, 2026-10-29) |
 | 준비 확인 (연구 폴더에서) | `uv run python -m pytest` | 연구 도구가 서비스 코어를 쓰는지, 예시 폴더 · 평가 묶음 · 캐시 키 (4 passed, 3 deselected, 2026-10-28) |
 | 실제 LLM 테스트 (과금) | 연구 폴더에서 `uv run python -m pytest -m live`(예시가 스키마 · 숫자 검사를 통과), 서비스 경로는 `ai/service`에서 `uv run python -m pytest -m live tests/live/test_review_live.py` | 기본 결과가 아니고 25초 안 |
 | 평가 (과금) | `uv run python -m review_lab.evaluate --out reports/results/review_eval.json` | 13절 지표 |
@@ -293,7 +293,7 @@ uv sync
 **어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/review/`에 있다(연구 폴더 `src/review/`에서 폴더째 옮겼다). 라우터 `api/review.py`가 `POST /takes/review`를 연다. 라우터는 요청마다 마감 시각(AI 예산 25초)을 만들고 `structured_llm(ReviewDraft, "review", deadline)`으로 LLM 객체를 받아 `review_take(req, llm, model=…)`에 넘긴다. LLM 설정이 없어 객체를 만들 수 없으면 `llm=None`을 넘겨 기본 결과 + `LLM_UNAVAILABLE`을 200으로 돌려준다. LLM 실패는 코어가 잡아 기본 결과로 돌아가고, 서비스 `common/llm.py`가 예외에 붙인 `code`를 `fallback_reason`으로 쓴다(코치의 코칭 계획과 같은 방식, `coach-agent.md` 6-4). `meta.model`은 응답한 모델이다. 연구 도구(`review_lab`)는 옮기지 않는다. 의존성은 pydantic 하나.
 
 **옮긴 뒤 같은 결과인지 확인** (2026-10-28)
-1. 코어 테스트 169개를 서비스 `tests/unit/review/`로 옮겨 통과했다(엔드포인트 `test_api.py` 11개를 더해 180개). `test_examples.py` · `test_core_boundary.py`는 예시 · 코어 폴더를 패키지 위치로 찾는다.
+1. 코어 테스트 169개를 서비스 `tests/unit/review/`로 옮겨 통과했다(엔드포인트 `test_api.py` 12개를 더해 181개). `test_examples.py` · `test_core_boundary.py`는 예시 · 코어 폴더를 패키지 위치로 찾는다.
 2. 연구 폴더는 서비스를 editable로 설치하고 `review_lab`의 import를 `pitch_coach_ai.features.review`로 바꿨다. 예시 폴더(`paths.EXAMPLES_DIR`)는 서비스 코어 패키지 안이다.
 3. 옮기기 전 · 뒤의 응답이 바이트까지 같다: 예시 요청(LLM 없음 · 예시 LLM 출력), 평가 묶음 48개(LLM 없음).
 4. OpenAPI 스키마 이름이 다른 기능과 겹치지 않게 응답 · 입력 모델 몇 개의 클래스 이름만 바꿨다(JSON 필드는 같다). 기존 경로 · 스키마는 그대로다.
@@ -394,7 +394,7 @@ sequenceDiagram
 **알려진 한계**
 - 부담 기준(`PRIORITY`가 되는 최소 부담)만 13절 평가로 골랐다. 허용치 · 한 걸음 폭 · 점수 · 가중은 정답이 없거나 적어 아직 임시값이다. 실제 리허설 Take와 사람이 단 정답으로 다시 고른다.
 - 13절 평가는 공통 기준 Take(`architecture.md` 12절)가 아직 없어 코치 가상 발표 시나리오를 재생한 Take 결과로 대신했고, 정답 리뷰도 시나리오로 적은 초안이다. 대본 전달도 채점 · 이어진 Take · 사용자 평가 기준이 없는 묶음이라 내용 규칙과 반복 `PRIORITY` 비율은 재지 않았다(결과와 묶음은 연구 폴더 README).
-- 추론 강도 `low`를 서비스 역할 `review`에 넣기 전(2026-10-28 기준 서비스는 추론 강도를 보내지 않음)에는 호출 한 번 12초 제한(8절)에 걸려 `LLM_TIMEOUT`이 되는 Take가 있다(연구 평가 48 Take에서 3번, 실제 요청에 가까운 예시 요청은 늘 넘음). `low`의 문장 품질은 같은 요청 17개를 눈으로만 비교했고, 품질을 재는 지표는 없다.
+- 추론 강도 `low`의 문장 품질은 같은 요청 17개(가상 발표 clean 16 + 예시 요청)를 기본값과 눈으로만 비교했고, 품질을 재는 지표는 없다. 실제 리허설 Take가 생기면 다시 본다(추론 기본값은 호출 한 번이 12초를 자주 넘어 고르지 않았다, 8절).
 - 이전 Take 비교는 같은 발표 안에서만이고, 대본 보기가 다른 Take끼리의 비교는 해석에 주의가 필요하다.
 - 다음 미션 목표는 지금 값에서 한 걸음이라, 측정 비율이 낮은 Take에서는 후보가 줄어든다.
 - 숫자 검사는 허용 숫자를 단위 구분 없이 한 목록으로 대조한다(4-2 `check_numbers(sentence, allowed_numbers)`). 그래서 입력에 장 번호 · 개수 같은 작은 정수가 있으면 같은 숫자를 다른 단위로 쓴 문장도 통과한다(예: 장 번호 3이 있으면 실제 값이 −2.1인 음량을 "3dB"라고 써도 통과하고, 사용자 기준 값 5가 있으면 없는 "5번 장"도 통과한다).
