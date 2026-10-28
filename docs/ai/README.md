@@ -19,6 +19,8 @@
 - **연구 코드**: 활성 연구 폴더에 코드가 있습니다. 목표 계약 전체 구현이나 실제 발표 데이터 검증 완료를 뜻하지 않습니다.
 - **서비스 탑재**: `ai/service/`의 실제 기능이 앱에 연결돼 있습니다. 배포·BE 호출 여부는 별도로 확인합니다.
 
+'활성 코드'의 서비스 경로는 코어가 `ai/service/`에 있다는 뜻입니다. 앱에 연결됐는지는 상태 열로만 봅니다.
+
 | 기능 | 문서 | 담당 | 상태 | 활성 코드 (연구 · 서비스) |
 |---|---|---|---|---|
 | 실시간 코치 (시간 판정 포함) | [coach-agent.md](features/coach-agent.md) | JWK0395 | 서비스 탑재 (코칭 계획만) | [coach-agent/](../../ai/research/coach-agent/README.md) · 서비스 [`features/coach/`](../../ai/service/src/pitch_coach_ai/features/coach/) |

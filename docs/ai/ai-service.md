@@ -72,7 +72,7 @@ flowchart LR
     C -->|"그 밖의 경로"| FE["fe<br>frontend/"]
     BE -->|"http://ai:8000<br>Docker 내부망"| AI["ai<br>ai/service/"]
     AI -->|"HTTPS"| LLM["외부 LLM API"]
-    BE --> DB["db · redis"]
+    BE --> DB["db"]
 ```
 | 컨테이너 | 이미지를 만드는 곳 | 하는 일 | 밖에서 접근 |
 |---|---|---|---|
@@ -80,7 +80,7 @@ flowchart LR
 | fe | `frontend/` | 화면. 시선 · 마이크 레벨 측정은 브라우저 안에서 실행 (판정은 AI) | caddy를 거쳐서 |
 | be | `backend/` | API, DB 저장, 실시간 STT, AI 호출 | caddy `/api/*`를 거쳐서 |
 | **ai** | `ai/service/` | AI 기능. LLM 호출과 서버 안 모델 실행 | **없음** (be만 내부망으로 부른다) |
-| db · redis | 공식 이미지 | BE 전용 저장소 | 없음 |
+| db | 공식 이미지 | BE 전용 저장소 | 없음 |
 
 **요청 하나가 처리되는 길**
 1. FE가 caddy를 거쳐 be(`/api/...`)를 부른다.
@@ -247,7 +247,7 @@ LLM 공통 규칙(모델 고르기 · 시간 제한 · 재시도 · 요청 마�
 - `structured_llm`은 역할마다 출력 토큰 상한(필요하면 추론 강도)을 `settings.py` 상수(역할 → 묶음과 같은 곳)에서 읽어 명시한다. 게이트웨이 기본값에 기대지 않는다. 값은 그 기능 PR에서 잰 출력 길이로 정하고, 출력이 상한에서 잘리면(`LengthFinishReasonError` · 끝난 이유 `length`) `LLM_INVALID_OUTPUT`이다(`architecture.md` 9절).
 - `structured_llm`은 스트리밍으로 부른다. 지금 LLM 게이트웨이는 스트리밍이 아닌 요청의 출력 상한을 2,000토큰 이하로만 받고(넘으면 400), 긴 비스트리밍 답은 생성 중에 끊는다. 결과는 다 모은 뒤 한 번에 돌려주므로 기능 코어가 받는 값은 같다.
 - 실제로 응답한 모델 이름은 LangChain 콜백으로 잡아 로그에 남기고 응답 `meta.model`에 싣는다. 결과가 기본 결과(`fallback_reason`이 있음)면 `meta.model`은 null이다(`architecture.md` 5절). 코어가 받는 반환값은 바뀌지 않는다.
-- 예비 모델은 아직 없다(15절 열린 질문). 붙일 때는 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
+- 예비 모델은 아직 없다(넘어갈 조건은 15절 열린 질문). 붙일 때는 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
 - LLM 에러(시간 초과 · 연결 실패 · 잘못된 출력)는 기능 코드에서 잡지 않고 `common/errors.py`가 상태 코드 · 에러 코드로 바꾼다. 예외는 둘이다. LLM이 결과를 보태기만 하는 기능(코칭 계획 · 리뷰 문장)은 실패를 잡아 기본 결과를 200으로 돌려준다(`fallback_reason`). 장별로 LLM을 부르는 기능(평가 기준 만들기 · 대본 전달도 채점)은 장마다 실패를 잡아 `failed`에 담고, 한 장이라도 성공하면 200을 돌려준다.
 - `common/llm.py`는 LLM 실패 예외에 `code`(`LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT` · `LLM_UNAVAILABLE`)를 달아 던진다. 기본 결과를 내는 기능의 코어는 LLM 라이브러리를 모르므로 이 `code`로 `fallback_reason`을 고르고, `common/errors.py`도 같은 `code`로 상태 코드를 고른다.
 - LLM 설정(키 등)이 없어 `structured_llm`이 LLM 객체를 만들지 못하면 그 오류는 `LLM_UNAVAILABLE`이다. 기본 결과를 내는 기능(코칭 계획 · 리뷰)의 라우터는 이때 LLM 없이(`llm=None`) 코어를 불러 200 + `fallback_reason: LLM_UNAVAILABLE`을 돌려준다. 그 밖의 기능은 503이다.

@@ -18,8 +18,8 @@
 - `ai/archive/`는 동결본이다. 수정·삭제하지 않고 새 작업은 `ai/research/` 또는 `ai/service/`에서 한다.
 
 ## 확인 명령
-- 바꾸는 코드가 있는 폴더의 README·`pyproject.toml`에서 실행 환경과 테스트를 확인한다. 서비스로 옮긴 기능(기능 지도의 '활성 코드'에 서비스 경로가 있는 기능)의 코어 테스트는 `ai/service/tests/unit/<기능>/`에 있고, 연구 폴더에는 실험·재생 도구의 테스트가 남는다. 코어를 바꾸면 둘 다 돌린다. 폴더가 없으면 실행했다고 보고하지 않는다.
-- Python 명령은 해당 폴더의 `.venv` Python으로 실행한다. 기본 실행에서 빠지는 테스트(`live`·`slow` 등)는 각 `pyproject.toml`의 `addopts`가 정하므로 `-m`을 덧붙이지 않는다(덧붙이면 그 설정을 덮는다). Windows 연구 폴더의 예시는 `.\.venv\Scripts\python.exe -m pytest`다. 서비스는 README의 `uv run python -m pytest`를 쓴다.
+- 바꾸는 코드가 있는 폴더의 README·`pyproject.toml`에서 실행 환경과 테스트를 확인한다. 코어를 서비스로 옮긴 기능(기능 지도 '활성 코드'에 서비스 경로 `features/<폴더>/`가 있는 기능)의 코어 테스트는 같은 이름의 `ai/service/tests/unit/<폴더>/`에 있고, 연구 폴더에는 실험·재생·기준 구현 도구의 테스트가 남는다. 코어를 바꾸면 둘 다 돌린다. 폴더가 없으면 실행했다고 보고하지 않는다.
+- Python 명령은 해당 폴더의 `.venv` Python으로 실행한다. 기본 실행에는 `-m`을 덧붙이지 않는다. 기본 실행에서 빠지는 테스트(`live`·`slow`)는 각 `pyproject.toml`의 `addopts`가 정하고(없는 폴더는 모든 테스트가 기본 실행이다), `-m`을 덧붙이면 그 설정을 덮어 과금되는 `live`나 오래 걸리는 `slow`가 돌 수 있다. `live`·`slow`는 README·기능 문서 10절의 명령으로 요청 범위에서만 돌린다. Windows 연구 폴더의 예시는 `.\.venv\Scripts\python.exe -m pytest`다. 서비스는 README의 `uv run python -m pytest`를 쓴다.
 - 시선 브라우저 코드는 `ai/research/gaze-tracking/web/README.md`의 검증 명령을 쓴다.
 - 실제 LLM·실험·노트북은 README에서 과금과 실행 범위를 확인한 뒤 요청 범위에 맞게 실행한다. `.env`의 비밀값은 출력·커밋하지 않는다.
 - 커밋한 문서는 루트에서 `python ai/tools/docs-check/check.py --base <PR-base-ref> --head HEAD --pr-body-file <PR본문파일>`로 검사한다. 검사한 head와 미커밋 변경을 보고한다. 도구가 없으면 경로·절을 직접 확인하고 미구현이라고 보고한다.
