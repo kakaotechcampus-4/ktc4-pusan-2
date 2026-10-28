@@ -241,7 +241,8 @@ def test_finalize_unexpected_error_is_500_and_logged(
     monkeypatch.setattr(api, "finalize", boom)
     res = client.post("/coach/finalize", json=_example("finalize/request.json"))
     assert res.status_code == 500
-    assert res.json()["error"]["code"] == "INTERNAL_ERROR"
+    error = {"code": "INTERNAL_ERROR", "message": "서버 오류가 발생했습니다."}
+    assert res.json() == {"error": error}
     assert "단어 원문 비밀" not in res.text
     records = [r for r in log_records if r.getMessage().startswith("coach_finalize ")]
     assert len(records) == 1 and records[0].levelno == logging.WARNING
