@@ -270,11 +270,12 @@ async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
 
 
 @pytest.mark.anyio
-async def test_handover_waits_for_the_old_stream_to_finish_saving(
+async def test_handover_numbers_after_the_final_the_old_stream_is_still_saving(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """정리 중인 스트림이 final 을 저장하는 도중에 끊겨도 그 저장은 끝까지 간다. 새 스트림은
-    그 저장이 끝난 뒤 번호를 읽는다 — 먼저 읽으면 같은 seq 로 저장하다 UNIQUE 위반으로 버려진다."""
+    """정리 중인 스트림이 final 을 저장하는 도중에 끊겨도 그 저장은 Take 의 버퍼가 끝까지 한다.
+    새 스트림은 저장된 번호와 아직 못 넣은 번호 중 큰 쪽 뒤에서 잇는다 — 저장된 번호만 보면 같은
+    seq 로 저장하다 UNIQUE 위반으로 버려진다."""
     monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 0.05)
     take_id = uuid.uuid7()
     owner_id = uuid.uuid7()
@@ -306,8 +307,9 @@ async def test_handover_waits_for_the_old_stream_to_finish_saving(
         store=store,
     )
 
-    assert [seg.transcript for seg in store.segments] == ["마지막 말"]
-    assert store.cursor_reads == [0, 1], "새 스트림이 옛 스트림의 저장보다 먼저 번호를 읽었다"
+    assert new_stream._transcripts.segment_no == 2, "옛 스트림이 저장 중인 seq 1 을 다시 쓴다"
+    assert await new_stream._record.finals.flush()
+    assert [(seg.seq, seg.transcript) for seg in store.segments] == [(1, "마지막 말")]
     await _wait_until_ok(new_stream)
     await asyncio.sleep(0.01)  # 세션 태스크가 뜨기 전에 끊으면 "never awaited" 경고가 난다
     new_stream.cancel()

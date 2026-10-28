@@ -18,6 +18,7 @@ from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.event_ingestion import AudioBudget
 from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuffer
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
+from pitch_coach_backend.realtime.storage.transcripts import FinalBuffer
 from pitch_coach_backend.realtime.stream.auto_end import SilenceTracker
 
 if TYPE_CHECKING:
@@ -45,6 +46,8 @@ class TakeRecord:
     # 아직 저장하지 않은 1초 원자료 · 장 변경. 스트림이 바뀌어도 앞 스트림이 못 넣은 행이 이어진다
     metrics: MetricBuffer
     slides: SlideBuffer
+    # 아직 저장하지 않은 확정 전사. 스트림이 바뀌어도 앞 스트림이 못 넣은 final 이 이어진다
+    finals: FinalBuffer
     # 발표 중 코치. coach_state · 창 · 확정 시각 · 문장 끝 신호가 스트림이 바뀌어도 이어진다
     coach: CoachSession
     store: TranscriptStore

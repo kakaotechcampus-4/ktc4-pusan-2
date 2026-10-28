@@ -20,6 +20,7 @@ from pitch_coach_backend.core.retry import retry_transient
 from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuffer
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
+from pitch_coach_backend.realtime.storage.transcripts import FinalBuffer
 from pitch_coach_backend.realtime.stream import state
 from pitch_coach_backend.realtime.stream.record import CoachDeps
 from pitch_coach_backend.realtime.stt import loop as stt_loop
@@ -41,8 +42,8 @@ FLUSH_METRICS_TIMEOUT_SEC = 5.0
 
 
 async def flush_metrics(take_id: uuid.UUID) -> None:
-    """Take 를 끝내기(`ANALYZING`) 직전이나 앱을 내릴 때 부른다. 남은 1초 원자료 · 장 변경을
-    저장한다.
+    """Take 를 끝내기(`ANALYZING`) 직전이나 앱을 내릴 때 부른다. 남은 1초 원자료 · 장 변경 ·
+    확정 전사를 저장한다.
 
     Take 뒤 분석이 원자료를 읽으므로 끝난 것으로 적기 전에 다 있어야 한다. 이 뒤로 오는 것은 받지
     않는다 (`MetricBuffer.seal`). 못 넣어도 끝내기는 계속한다 — 못 넣은 초는 복구 때 빈 구간으로
@@ -51,11 +52,15 @@ async def flush_metrics(take_id: uuid.UUID) -> None:
     record = state.takes.get(take_id)
     if record is None:
         return
-    buffers = ((record.metrics, "1초 원자료"), (record.slides, "장 변경"))
+    buffers = (
+        (record.metrics, "1초 원자료"),
+        (record.slides, "장 변경"),
+        (record.finals, "확정 전사"),
+    )
     for buffer, _ in buffers:
         buffer.seal()
 
-    async def flush(buffer: MetricBuffer | SlideBuffer) -> None:
+    async def flush(buffer: MetricBuffer | SlideBuffer | FinalBuffer) -> None:
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(buffer.flush(), FLUSH_METRICS_TIMEOUT_SEC)
 
