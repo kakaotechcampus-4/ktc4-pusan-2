@@ -70,8 +70,11 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 못했어도 사용한 1회로 남을 수 있다. 세 번째 팝업의 평점 제출·재시도는 계속 허용한다.
 
 운영자는 기존 Basic 인증의 `/admin/`에서 별점·의견을 확인한다. 조회 API는
-`GET /admin/api/service-feedbacks`, `GET /admin/api/suggestions`이며 `limit` 1~200, `offset` 0 이상을 받는다.
-의견 조회는 `source=RATING_POPUP|MY_PAGE`와 `category` 필터를 함께 제공한다.
+`GET /admin/api/service-feedbacks`, `GET /admin/api/suggestions`,
+`GET /admin/api/service-feedbacks/by-user`이며 `limit` 1~200, `offset` 0 이상을 받는다.
+의견 조회는 `source=RATING_POPUP|MY_PAGE`·`category`·`user_id` 필터를 함께 제공한다.
+사용자별 조회는 사용자 한 명을 한 행으로 묶어 평점 0~1개·의견 수·최근 의견 3개를 돌려준다.
+`GET /admin/api/service-feedbacks/summary`는 미평가를 뺀 평점 수와 평균을 돌려준다.
 자세한 요청/응답·오류·ERD·FE 연동은 [서비스 평가 문서](../docs/be/service-feedback-plan-540.md)에 있다.
 
 ## 홈 Take 응답

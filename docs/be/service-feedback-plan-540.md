@@ -400,7 +400,9 @@ FE 파일은 BE에서 수정하지 않는다. 아래 내용을 전달할 계약�
 | API | 반환·필터 |
 |---|---|
 | `GET /admin/api/service-feedbacks` | 평점·연결된 팝업 의견·제출 시각·사용자 ID |
-| `GET /admin/api/suggestions` | 의견·출처·평점 연결 ID·제출 시각·사용자 ID, 선택 `source`·`category` 필터 |
+| `GET /admin/api/suggestions` | 의견·출처·평점 연결 ID·제출 시각·사용자 ID, 선택 `source`·`category`·`user_id` 필터 |
+| `GET /admin/api/service-feedbacks/by-user` | 작성자 묶음별 평점 0~1개·의견 수·최근 의견 3개 (14절) |
+| `GET /admin/api/service-feedbacks/summary` | 평점 수·평균. 미평가 제외 (14절) |
 
 공통으로 `limit` 기본 50·최대 200, `offset` 기본 0·최소 0, `(created_at DESC, id DESC)` 정렬을 사용한다.
 응답은 `items`·`next_offset`이며 `limit+1`건 조회로 다음 페이지 존재를 판단해 마지막에는 null을 반환한다.
@@ -562,3 +564,65 @@ BE 저장·API·관리자·검증 완료 후 FE 실연동에서 홈 팝업·마�
 - 검증: Ruff·앱 import·`f54000000003` 단일 head·빈 DB migration·스키마 일치 검사 통과.
 - 전체 테스트 1,431 passed · 1 skipped. 유형 저장·기본 OTHER·유형 변경 재시도·관리자 조합 필터를 확인했다.
 - 갱신한 ERD PNG를 직접 확인했고 관리자 JS 문법·문서 링크 검사도 통과했다.
+
+## 14. 사용자별 평점·의견 모아보기 (#580, 2026-10-28)
+
+관리자 콘솔에 `사용자 | 평점 | 의견들` 표를 추가했다. 사용자 한 명이 한 행이고 의견은 같은 칸에 목록으로 모은다.
+
+### 묶는 기준
+
+| 작성자 | 묶음 | 한 행에 들어가는 것 |
+|---|---|---|
+| 활성 사용자 | `user_id` | 평점 0~1개, 팝업 의견과 마이페이지 의견 전부 |
+| 탈퇴 사용자의 평점 | 평점 ID | 그 평점과 연결된 팝업 의견 0~1개 |
+| 탈퇴 사용자의 마이페이지 의견 | 의견 ID | 그 의견 1개 |
+
+탈퇴하면 `user_id`가 NULL이 되어 평점과 마이페이지 의견을 같은 사람으로 이을 근거가 없다.
+NULL 작성자를 한 행으로 합치지 않고 위처럼 따로 묶는다. 팝업 의견만 `service_feedback_id`로 평점과 이어진다.
+
+### `GET /admin/api/service-feedbacks/by-user`
+
+`limit` 기본 50·최대 200, `offset` 기본 0이다. 응답은 다른 관리자 조회처럼 `items`·`next_offset`이다.
+
+```json
+{
+  "items": [
+    {
+      "user_id": "8f0c…",
+      "retained_id": null,
+      "rating": 4,
+      "rated_at": "2026-10-27T05:00:00Z",
+      "suggestion_count": 5,
+      "suggestions": [
+        {"id": "…", "content": "…", "source": "MY_PAGE", "category": "IMPROVEMENT", "created_at": "…"}
+      ],
+      "last_at": "2026-10-27T05:13:00Z"
+    }
+  ],
+  "next_offset": 50
+}
+```
+
+- 탈퇴 묶음은 `user_id`가 null이고 `retained_id`에 평점 ID 또는 의견 ID가 들어간다. 활성 사용자는 `retained_id`가 null이다.
+- 평점이 없으면 `rating`·`rated_at`이 null이다(화면 `미평가`). 의견이 없으면 `suggestion_count`가 0이다(화면 `의견 없음`).
+- 평점·의견을 한 목록으로 합쳐 묶음 단위로 GROUP BY 한 뒤 페이지를 나눈다. 한 사용자의 의견이 페이지 경계에서
+  갈리거나 같은 사용자가 두 행으로 나오지 않는다. 정렬은 마지막 제출 시각 내림차순이다.
+- `suggestions`는 최근 3개만 담는다. 마이페이지 의견 수에 제한이 없어 한 행이 커지지 않게 한다.
+  정렬은 `GET /admin/api/suggestions`와 같은 `(created_at DESC, id DESC)`라서 화면의 "더보기"는
+  `?user_id=…&offset=<받은 수>`로 나머지를 이어 받는다. 그 사이 새 의견이 오면 같은 의견이 다시 올 수 있어 화면이 ID로 거른다.
+- 페이지당 쿼리는 묶음 조회와 미리보기 조회 두 번이다. 미리보기는 `row_number()`로 묶음마다 3개를 자른다.
+- 기존 조회와 같이 페이지 이동 중 새 제출이 들어오면 순서가 바뀔 수 있다. 스냅샷 일관성은 보장하지 않는다.
+- 이메일 등 개인정보는 추가하지 않고 사용자 ID만 보인다. 의견은 `textContent`로 넣어 HTML이 실행되지 않는다.
+- 화면의 사용자 ID는 앞 8자·뒤 4자로 줄이고 전체는 마우스를 올리면 보인다. UUIDv7은 앞자리가 만든 시각이라
+  비슷한 때 가입한 사용자끼리 앞자리가 겹쳐 뒷자리를 함께 보인다.
+
+### `GET /admin/api/service-feedbacks/summary`
+
+표 위에 보이는 평점 평균이다. 현재 페이지가 아니라 저장된 평점 전체로 계산한다.
+
+```json
+{"rated_count": 2, "avg_rating": 3.5}
+```
+
+- 평점을 남긴 수만 센다. 의견만 보낸 미평가 사용자는 빠진다. 평점이 없으면 `avg_rating`이 null이다.
+- 탈퇴 뒤 보관한 평점도 평균에 넣는다. 탈퇴해도 평점은 남는다는 12절 정책과 맞춘다.

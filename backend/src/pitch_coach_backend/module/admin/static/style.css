@@ -102,3 +102,12 @@ tr.empty td { color: var(--muted); text-align: center; }
 button:disabled { opacity: 0.5; cursor: default; }
 select { margin: 0 0 10px 6px; padding: 4px; }
 .opinion { display: block; min-width: 220px; max-width: 580px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.block { display: block; }
+.error-text { color: var(--danger); }
+table.grouped td { vertical-align: top; }
+.opinions { margin: 0; padding-left: 18px; }
+.opinions li + li { margin-top: 8px; }
+.opinions .opinion { max-height: 12em; overflow-y: auto; }
+button.more { margin-top: 6px; }
+.summary { margin: 0 0 10px; }
+.summary strong { font-size: 18px; }

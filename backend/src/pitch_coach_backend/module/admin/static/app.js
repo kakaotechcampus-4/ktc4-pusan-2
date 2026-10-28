@@ -167,10 +167,6 @@ const USER_COLUMNS = [
 
 // ---------- 서비스 평점 · 의견 ----------
 
-const feedbackPages = {
-  feedbacks: { path: 'api/service-feedbacks', offset: 0, next: null, request: 0 },
-  suggestions: { path: 'api/suggestions', offset: 0, next: null, request: 0 },
-};
 const opinionText = (text) => el('span', { className: 'opinion', textContent: text ?? '—' });
 const FEEDBACK_COLUMNS = [
   ['제출 시각', (row) => dateTime(row.created_at)],
@@ -186,6 +182,101 @@ const SUGGESTION_COLUMNS = [
   ['의견 유형', (row) => label(row.category)],
   ['의견', (row) => opinionText(row.content)],
 ];
+
+// 사용자별 평점 · 의견. 한 사용자가 한 행이고 의견은 같은 칸에 목록으로 모은다
+const stars = (rating) => '★'.repeat(rating) + '☆'.repeat(5 - rating);
+const subText = (text) => el('small', { className: 'muted block', textContent: text });
+
+// UUIDv7 은 앞자리가 만든 시각이라 비슷한 때 가입한 사용자끼리 겹친다. 뒷자리를 붙여 가른다.
+// 전체 ID 는 마우스를 올리면 보인다
+const shortId = (id) => el('span', { title: id, textContent: `${id.slice(0, 8)}…${id.slice(-4)}` });
+
+function authorCell(row) {
+  if (row.user_id) return shortId(row.user_id);
+  // 탈퇴하면 작성자를 알 수 없다. 묶음마다 다른 ID 를 보여 서로 다른 탈퇴자를 가른다
+  const retained = el('small', { className: 'muted block' }, ['작성자 연결 없음 · ', shortId(row.retained_id)]);
+  return el('span', {}, ['탈퇴한 사용자', retained]);
+}
+
+function renderRatingSummary(summary) {
+  const node = document.getElementById('rating-summary');
+  if (summary.avg_rating == null) {
+    node.replaceChildren(el('span', { className: 'muted', textContent: '아직 평점이 없습니다' }));
+    return;
+  }
+  node.replaceChildren(
+    '평균 ',
+    el('strong', { textContent: `${summary.avg_rating.toFixed(1)}점` }),
+    el('span', { className: 'muted', textContent: ` · 평점 ${summary.rated_count}개, 미평가 제외` }),
+  );
+}
+
+function ratingCell(row) {
+  if (row.rating == null) return el('span', { className: 'muted', textContent: '미평가' });
+  return el('span', {}, [`${stars(row.rating)} · ${row.rating}점`, subText(dateTime(row.rated_at))]);
+}
+
+const suggestionItem = (s) =>
+  el('li', {}, [
+    opinionText(s.content),
+    subText(`${label(s.source)} · ${label(s.category)} · ${dateTime(s.created_at)}`),
+  ]);
+
+function suggestionsCell(row) {
+  if (row.suggestion_count === 0) return el('span', { className: 'muted', textContent: '의견 없음' });
+  const list = el('ul', { className: 'opinions' }, row.suggestions.map(suggestionItem));
+  // 탈퇴한 사용자의 묶음은 의견이 하나라 더 받을 것이 없다
+  if (!row.user_id || row.suggestions.length >= row.suggestion_count) return list;
+  // 나머지는 의견 목록을 이 사용자로 걸러 같은 순서로 이어서 받는다.
+  // 그 사이 새 의견이 오면 순서가 한 칸씩 밀려 받은 의견이 다시 올 수 있어 ID 로 거른다
+  const shown = new Set(row.suggestions.map((s) => s.id));
+  let offset = row.suggestions.length;
+  const more = el('button', { type: 'button', className: 'more' });
+  const error = el('small', { className: 'error-text block', hidden: true });
+  const updateMore = () => {
+    more.textContent = `의견 더보기 (${Math.max(0, row.suggestion_count - shown.size)}개 남음)`;
+  };
+  updateMore();
+  more.addEventListener('click', async () => {
+    more.disabled = true;
+    error.hidden = true;
+    const query = new URLSearchParams({ user_id: row.user_id, limit: '50', offset: String(offset) });
+    try {
+      const page = await getJSON(`api/suggestions?${query}`);
+      offset += page.items.length;
+      const fresh = page.items.filter((s) => !shown.has(s.id));
+      fresh.forEach((s) => shown.add(s.id));
+      list.append(...fresh.map(suggestionItem));
+      if (page.next_offset === null) more.remove();
+      else updateMore();
+    } catch (failure) {
+      error.textContent = `더 불러오지 못했습니다 — ${failure.message}`;
+      error.hidden = false;
+    } finally {
+      more.disabled = false;
+    }
+  });
+  return el('div', {}, [list, more, error]);
+}
+
+const FEEDBACK_USER_COLUMNS = [
+  ['사용자', authorCell],
+  ['평점', ratingCell],
+  ['의견들', suggestionsCell],
+  ['마지막 제출', (row) => dateTime(row.last_at)],
+];
+
+const feedbackPages = {
+  feedbacks: { path: 'api/service-feedbacks', columns: FEEDBACK_COLUMNS, offset: 0, next: null, request: 0 },
+  suggestions: { path: 'api/suggestions', columns: SUGGESTION_COLUMNS, offset: 0, next: null, request: 0 },
+  'feedback-users': {
+    path: 'api/service-feedbacks/by-user',
+    columns: FEEDBACK_USER_COLUMNS,
+    offset: 0,
+    next: null,
+    request: 0,
+  },
+};
 
 async function loadFeedbackPage(id, offset) {
   const state = feedbackPages[id];
@@ -207,14 +298,14 @@ async function loadFeedbackPage(id, offset) {
     if (request !== state.request) return;
     state.offset = offset;
     state.next = page.next_offset;
-    renderTable(id, id === 'feedbacks' ? FEEDBACK_COLUMNS : SUGGESTION_COLUMNS, page.items);
+    renderTable(id, state.columns, page.items);
     document.getElementById(`${id}-page`).textContent = `${offset / 50 + 1}페이지`;
   } catch (failure) {
     if (request !== state.request) return;
     // 이전 필터의 내용이 현재 필터 결과처럼 남지 않게 지운다.
     state.offset = 0;
     state.next = null;
-    renderTable(id, id === 'feedbacks' ? FEEDBACK_COLUMNS : SUGGESTION_COLUMNS, [], '불러오지 못했습니다');
+    renderTable(id, state.columns, [], '불러오지 못했습니다');
     document.getElementById(`${id}-page`).textContent = '';
     error.textContent = failure.message;
     error.hidden = false;
@@ -265,6 +356,7 @@ const SECTIONS = [
   ['api/takes?status=FAILED&limit=50', (rows) => renderTable('failed-takes', TAKE_COLUMNS, rows)],
   ['api/takes?limit=50', (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
   ['api/users', (rows) => renderTable('users', USER_COLUMNS, rows)],
+  ['api/service-feedbacks/summary', renderRatingSummary],
 ];
 
 async function load() {
