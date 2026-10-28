@@ -64,8 +64,10 @@
     "history": [
       {
         "t_ms": 32000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -75,8 +77,10 @@
       },
       {
         "t_ms": 33000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1724,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -86,8 +90,10 @@
       },
       {
         "t_ms": 34000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1379,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -97,8 +103,10 @@
       },
       {
         "t_ms": 35000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1333,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -108,8 +116,10 @@
       },
       {
         "t_ms": 36000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1333,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -119,8 +129,10 @@
       },
       {
         "t_ms": 37000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1333,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "voice_diff_db": 0.0,
         "speaking": true,
@@ -129,8 +141,10 @@
       },
       {
         "t_ms": 38000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1667,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "voice_diff_db": 0.0,
         "speaking": true,
@@ -139,8 +153,10 @@
       },
       {
         "t_ms": 39000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1667,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -150,8 +166,10 @@
       },
       {
         "t_ms": 40000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1667,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -161,8 +179,10 @@
       },
       {
         "t_ms": 41000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1667,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -172,8 +192,10 @@
       },
       {
         "t_ms": 42000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1333,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -183,8 +205,10 @@
       },
       {
         "t_ms": 43000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1333,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -194,8 +218,10 @@
       },
       {
         "t_ms": 44000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1333,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -205,8 +231,10 @@
       },
       {
         "t_ms": 45000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1333,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -216,8 +244,10 @@
       },
       {
         "t_ms": 46000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1667,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -227,8 +257,10 @@
       },
       {
         "t_ms": 47000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1333,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -238,8 +270,10 @@
       },
       {
         "t_ms": 48000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1333,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -249,8 +283,10 @@
       },
       {
         "t_ms": 49000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1333,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -260,8 +296,10 @@
       },
       {
         "t_ms": 50000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1333,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -271,8 +309,10 @@
       },
       {
         "t_ms": 51000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1667,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -282,8 +322,10 @@
       },
       {
         "t_ms": 52000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1667,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -293,8 +335,10 @@
       },
       {
         "t_ms": 53000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1667,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "speaking": false,
@@ -303,8 +347,10 @@
       },
       {
         "t_ms": 54000,
-        "script_ratio": 0.2222,
-        "script_ratio_short": 0.2222,
+        "script_ratio": 0.1724,
+        "script_ratio_short": 0.25,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.75,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -314,8 +360,10 @@
       },
       {
         "t_ms": 55000,
-        "script_ratio": 0.2222,
-        "script_ratio_short": 0.2222,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.25,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.75,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -325,8 +373,10 @@
       },
       {
         "t_ms": 56000,
-        "script_ratio": 0.1111,
-        "script_ratio_short": 0.1111,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -336,8 +386,10 @@
       },
       {
         "t_ms": 57000,
-        "script_ratio": 0.1111,
-        "script_ratio_short": 0.1111,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -347,8 +399,10 @@
       },
       {
         "t_ms": 58000,
-        "script_ratio": 0.1111,
-        "script_ratio_short": 0.1111,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "speaking": false,
@@ -357,8 +411,10 @@
       },
       {
         "t_ms": 59000,
-        "script_ratio": 0.2222,
-        "script_ratio_short": 0.2222,
+        "script_ratio": 0.1724,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -368,8 +424,10 @@
       },
       {
         "t_ms": 60000,
-        "script_ratio": 0.2222,
-        "script_ratio_short": 0.2222,
+        "script_ratio": 0.1724,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -379,8 +437,10 @@
       },
       {
         "t_ms": 61000,
-        "script_ratio": 0.1111,
-        "script_ratio_short": 0.1111,
+        "script_ratio": 0.1724,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -390,8 +450,10 @@
       },
       {
         "t_ms": 62000,
-        "script_ratio": 0.1111,
-        "script_ratio_short": 0.1111,
+        "script_ratio": 0.1724,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -401,8 +463,10 @@
       },
       {
         "t_ms": 63000,
-        "script_ratio": 0.1111,
-        "script_ratio_short": 0.1111,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -412,8 +476,10 @@
       },
       {
         "t_ms": 64000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -423,8 +489,10 @@
       },
       {
         "t_ms": 65000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -434,8 +502,10 @@
       },
       {
         "t_ms": 66000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -445,8 +515,10 @@
       },
       {
         "t_ms": 67000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1724,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -456,8 +528,10 @@
       },
       {
         "t_ms": 68000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1379,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -467,8 +541,10 @@
       },
       {
         "t_ms": 69000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -478,8 +554,10 @@
       },
       {
         "t_ms": 70000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -489,8 +567,10 @@
       },
       {
         "t_ms": 71000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -500,8 +580,10 @@
       },
       {
         "t_ms": 72000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1724,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "voice_diff_db": 0.0,
         "speaking": true,
@@ -510,8 +592,10 @@
       },
       {
         "t_ms": 73000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1724,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -521,8 +605,10 @@
       },
       {
         "t_ms": 74000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1724,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -532,8 +618,10 @@
       },
       {
         "t_ms": 75000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1724,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -543,8 +631,10 @@
       },
       {
         "t_ms": 76000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1379,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -554,8 +644,10 @@
       },
       {
         "t_ms": 77000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -565,8 +657,10 @@
       },
       {
         "t_ms": 78000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -576,8 +670,10 @@
       },
       {
         "t_ms": 79000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 1.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -587,8 +683,10 @@
       },
       {
         "t_ms": 80000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1724,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -598,8 +696,10 @@
       },
       {
         "t_ms": 81000,
-        "script_ratio": 0.2,
+        "script_ratio": 0.1379,
         "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -609,8 +709,10 @@
       },
       {
         "t_ms": 82000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -620,8 +722,10 @@
       },
       {
         "t_ms": 83000,
-        "script_ratio": 0.1,
-        "script_ratio_short": 0.1,
+        "script_ratio": 0.1379,
+        "script_ratio_short": 0.2,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.8,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -631,8 +735,10 @@
       },
       {
         "t_ms": 84000,
-        "script_ratio": 0.2,
-        "script_ratio_short": 0.2,
+        "script_ratio": 0.1667,
+        "script_ratio_short": 0.4,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.6,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -642,8 +748,10 @@
       },
       {
         "t_ms": 85000,
-        "script_ratio": 0.3,
-        "script_ratio_short": 0.3,
+        "script_ratio": 0.2,
+        "script_ratio_short": 0.4,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.6,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -653,8 +761,10 @@
       },
       {
         "t_ms": 86000,
-        "script_ratio": 0.4,
-        "script_ratio_short": 0.4,
+        "script_ratio": 0.2333,
+        "script_ratio_short": 0.6,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.4,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -664,8 +774,10 @@
       },
       {
         "t_ms": 87000,
-        "script_ratio": 0.5,
-        "script_ratio_short": 0.5,
+        "script_ratio": 0.2667,
+        "script_ratio_short": 0.8,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.2,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -675,8 +787,10 @@
       },
       {
         "t_ms": 88000,
-        "script_ratio": 0.6,
-        "script_ratio_short": 0.6,
+        "script_ratio": 0.3,
+        "script_ratio_short": 1.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -686,8 +800,10 @@
       },
       {
         "t_ms": 89000,
-        "script_ratio": 0.7,
-        "script_ratio_short": 0.7,
+        "script_ratio": 0.3,
+        "script_ratio_short": 1.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -697,8 +813,10 @@
       },
       {
         "t_ms": 90000,
-        "script_ratio": 0.7,
-        "script_ratio_short": 0.7,
+        "script_ratio": 0.3333,
+        "script_ratio_short": 1.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -708,8 +826,10 @@
       },
       {
         "t_ms": 91000,
-        "script_ratio": 0.7,
-        "script_ratio_short": 0.7,
+        "script_ratio": 0.3667,
+        "script_ratio_short": 1.0,
+        "away_ratio_short": 0.0,
+        "audience_ratio_short": 0.0,
         "cpm": 300.0,
         "cpm_short": 300.0,
         "voice_diff_db": 0.0,
@@ -743,22 +863,23 @@
         "severity_ms": 32000.0
       },
       "GAZE_ON_SCRIPT:3": {
-        "candidate_id": "GAZE_ON_SCRIPT-88000",
+        "candidate_id": "GAZE_ON_SCRIPT-86000",
         "issue_type": "GAZE_ON_SCRIPT",
         "area": "GAZE",
         "slide_number": 3,
-        "start_ms": 88000,
+        "start_ms": 86000,
         "last_seen_ms": 91000,
-        "peak_severity": 0.6,
+        "peak_severity": 0.8571,
         "intervention_ids": [],
         "suppressed_reasons": [
           "NOT_PERSISTENT",
+          "MIN_GAP",
           "WAITING_FOR_PAUSE"
         ],
-        "reliable_ms": 4000,
+        "reliable_ms": 6000,
         "unreliable_ms": 0,
-        "reliable_since_ms": 88000,
-        "severity_ms": 2150.0
+        "reliable_since_ms": 86000,
+        "severity_ms": 4071.4
       }
     },
     "last_fired_ms": 73000,
@@ -780,8 +901,8 @@
     },
     "praise": [],
     "hold": {
-      "candidate_id": "GAZE_ON_SCRIPT-88000",
-      "since_ms": 91000
+      "candidate_id": "GAZE_ON_SCRIPT-86000",
+      "since_ms": 89000
     },
     "slide_number": 3,
     "slide_log": [
@@ -813,7 +934,7 @@
     ],
     "suppress_log": {
       "AHEAD_OF_SCHEDULE": 90000,
-      "GAZE_ON_SCRIPT:3": 88000
+      "GAZE_ON_SCRIPT:3": 86000
     },
     "cursors": {
       "gaze": {
@@ -842,17 +963,16 @@
         "uncertain_ms": 3000.0,
         "total_ms": 91000.0,
         "speaking_ms": 91000.0,
-        "camera_ms": 69000.0,
+        "camera_ms": 68000.0,
         "measured_ms": 88000.0,
-        "script_ms": 19000.0,
-        "reading_ms": 19000.0,
-        "reading_runs": 1.0
+        "script_ms": 20000.0,
+        "reading_ms": 20000.0
       },
       "SPEED": {
         "ok_ms": 91000.0,
         "total_ms": 91000.0,
         "chars": 333.0,
-        "speak_ms": 67300.0
+        "speak_ms": 66600.0
       },
       "VOLUME": {
         "voiced_ms": 68560.0,
@@ -938,7 +1058,7 @@
           "ok_ms": 30000.0,
           "total_ms": 30000.0,
           "chars": 111.0,
-          "speak_ms": 22550.0
+          "speak_ms": 22200.0
         },
         "VOLUME": {
           "voiced_ms": 22560.0,
@@ -968,19 +1088,18 @@
           "planned_ms": 31610.0
         },
         "GAZE": {
-          "camera_ms": 21000.0,
+          "camera_ms": 20000.0,
           "total_ms": 31000.0,
           "measured_ms": 31000.0,
           "speaking_ms": 31000.0,
-          "script_ms": 10000.0,
-          "reading_ms": 10000.0,
-          "reading_runs": 1.0
+          "script_ms": 11000.0,
+          "reading_ms": 11000.0
         },
         "SPEED": {
           "ok_ms": 31000.0,
           "total_ms": 31000.0,
           "chars": 111.0,
-          "speak_ms": 22550.0
+          "speak_ms": 22200.0
         },
         "VOLUME": {
           "voiced_ms": 23320.0,
@@ -1029,17 +1148,17 @@
     "base_level_source": "CALIBRATION",
     "baseline_samples": [],
     "criteria_versions": {
-      "filler": "filler-0.1+4b2747c2be03",
-      "pace": "pace-0.2+685bb58a4c67",
-      "gaze": "gaze-0.2+b6f8b464a3ee",
-      "volume": "volume-0.2+862f8de95679",
+      "filler": "filler-1.0+3e62c0c87d2a",
+      "pace": "pace-1.0+b24c6ce0efd4",
+      "gaze": "gaze-1.3+1c10b82348a2",
+      "volume": "volume-1.1+19f685ae6d67",
       "timing": "timing-1.1+305f8e44237d"
     },
     "latest_criteria_versions": {
-      "filler": "filler-0.1+4b2747c2be03",
-      "pace": "pace-0.2+685bb58a4c67",
-      "gaze": "gaze-0.2+b6f8b464a3ee",
-      "volume": "volume-0.2+862f8de95679",
+      "filler": "filler-1.0+3e62c0c87d2a",
+      "pace": "pace-1.0+b24c6ce0efd4",
+      "gaze": "gaze-1.3+1c10b82348a2",
+      "volume": "volume-1.1+19f685ae6d67",
       "timing": "timing-1.1+305f8e44237d"
     },
     "criteria_changed": false,
@@ -1060,19 +1179,18 @@
             "planned_ms": 31610.0
           },
           "GAZE": {
-            "camera_ms": 21000.0,
+            "camera_ms": 20000.0,
             "total_ms": 31000.0,
             "measured_ms": 31000.0,
             "speaking_ms": 31000.0,
-            "script_ms": 10000.0,
-            "reading_ms": 10000.0,
-            "reading_runs": 1.0
+            "script_ms": 11000.0,
+            "reading_ms": 11000.0
           },
           "SPEED": {
             "ok_ms": 31000.0,
             "total_ms": 31000.0,
             "chars": 111.0,
-            "speak_ms": 22550.0
+            "speak_ms": 22200.0
           },
           "VOLUME": {
             "voiced_ms": 23320.0,
@@ -1100,22 +1218,6 @@
     ]
   },
   "events": [
-    {
-      "event_id": "ep-GAZE_UNMEASURABLE-1-1000",
-      "t_ms": 8000,
-      "kind": "EPISODE",
-      "issue_type": "GAZE_UNMEASURABLE",
-      "area": "GAZE",
-      "slide_number": 1,
-      "start_ms": 1000,
-      "end_ms": 4000,
-      "peak_severity": 1.0,
-      "intervention_ids": [],
-      "suppressed_reasons": [],
-      "reliable_ms": 0,
-      "unreliable_ms": 4000,
-      "mean_severity": 0.7205
-    },
     {
       "event_id": "sl-1-0",
       "t_ms": 31000,
@@ -1204,7 +1306,7 @@
           "ok_ms": 30000.0,
           "total_ms": 30000.0,
           "chars": 111.0,
-          "speak_ms": 22550.0
+          "speak_ms": 22200.0
         },
         "VOLUME": {
           "voiced_ms": 22560.0,
@@ -1308,8 +1410,8 @@
       "intervention_id": "iv-73000"
     },
     {
-      "event_id": "su-GAZE_ON_SCRIPT-88000",
-      "t_ms": 88000,
+      "event_id": "su-GAZE_ON_SCRIPT-86000",
+      "t_ms": 86000,
       "kind": "SUPPRESSED",
       "issue_type": "GAZE_ON_SCRIPT",
       "area": "GAZE",
@@ -1318,7 +1420,8 @@
       "status": "WAITING",
       "priority": 100,
       "reasons": [
-        "NOT_PERSISTENT"
+        "NOT_PERSISTENT",
+        "MIN_GAP"
       ]
     },
     {
@@ -1622,7 +1725,7 @@
       {
         "t_ms": 90000,
         "duration_ms": 1000,
-        "state": "CAMERA",
+        "state": "BOTTOM",
         "direction": null,
         "confidence": 0.88,
         "reliability": 0.95,
