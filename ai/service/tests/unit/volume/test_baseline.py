@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from volume.config import Config
-from volume.core import baseline, speaking_levels
+from pitch_coach_ai.features.volume.config import Config
+from pitch_coach_ai.features.volume.core import baseline, speaking_levels
 
 
 def rec(
