@@ -32,15 +32,22 @@ describe('측정 트랙 → 발표 전 점검 결과의 measure_track (#609)', (
     expect(measureTrackOf(measure)).toBe('FALLBACK');
   });
 
-  it('측정 트랙을 받고 자동 음량 조절이 꺼졌으면 UNPROCESSED 이다', async () => {
-    stubGetUserMedia(() => Promise.resolve(measureStream({ autoGainControl: false })));
+  const OFF = { autoGainControl: false, noiseSuppression: false, echoCancellation: false };
+
+  it('측정 트랙을 받고 세 가공이 모두 꺼진 게 확인되면 UNPROCESSED 이다', async () => {
+    stubGetUserMedia(() => Promise.resolve(measureStream(OFF)));
 
     expect(measureTrackOf(await openMeasureStream(recordingStream()))).toBe('UNPROCESSED');
   });
 
-  it('측정 트랙은 받았는데 브라우저가 자동 음량 조절을 끄지 않았으면 PROCESSED 이다', async () => {
+  it.each([
+    ['자동 음량 조절이 켜짐', { ...OFF, autoGainControl: true }],
+    ['잡음 제거가 켜짐', { ...OFF, noiseSuppression: true }],
+    ['에코 제거가 켜짐', { ...OFF, echoCancellation: true }],
+    ['브라우저가 값을 알려 주지 않음', {}],
+  ])('측정 트랙은 받았지만 %s — 확인되지 않았으니 PROCESSED 이다', async (_, settings) => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    stubGetUserMedia(() => Promise.resolve(measureStream({ autoGainControl: true })));
+    stubGetUserMedia(() => Promise.resolve(measureStream(settings)));
 
     expect(measureTrackOf(await openMeasureStream(recordingStream()))).toBe('PROCESSED');
   });

@@ -161,7 +161,10 @@ export async function createLevelMeter(stream: MediaStream): Promise<LevelMeter 
 
 export interface MeasureStream {
   stream: MediaStream;
-  /** 브라우저가 가공을 정말 껐나. false 면 크기가 자동 음량 조절에 휘둘립니다 */
+  /**
+   * 요청한 세 가공(자동 음량 조절 · 잡음 제거 · 에코 제거)이 모두 꺼진 걸 브라우저가 확인해 줬나.
+   * 하나라도 켜져 있거나 값을 알려 주지 않으면 false 입니다 — 확인되지 않은 크기는 믿지 않습니다
+   */
   unprocessed: boolean;
 }
 
@@ -205,9 +208,15 @@ export async function openMeasureStream(stream: MediaStream): Promise<MeasureStr
     }
 
     const settings = raw.getAudioTracks()[0]?.getSettings();
-    const unprocessed = settings?.autoGainControl === false;
+    // 세 가지를 모두 껐다고 요청했으니 셋 다 확인합니다. 잡음 제거도 작은 말소리를 깎습니다
+    const unprocessed =
+      settings?.autoGainControl === false &&
+      settings.noiseSuppression === false &&
+      settings.echoCancellation === false;
     if (!unprocessed) {
-      console.warn('[mic] 브라우저가 자동 음량 조절을 끄지 않았습니다. 목소리 크기가 부정확합니다');
+      console.warn(
+        '[mic] 브라우저가 가공을 끄지 않았거나 확인되지 않습니다. 목소리 크기가 부정확합니다',
+      );
     }
     return { stream: raw, unprocessed };
   } catch (err: unknown) {
