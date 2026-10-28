@@ -26,6 +26,7 @@ from pitch_coach_backend.module.auth.exception import (
     InvalidAuthorizationRequest,
     InvalidRefreshToken,
     RefreshTokenReused,
+    ServiceNotOpen,
 )
 from pitch_coach_backend.module.auth.state_store import AuthorizationRequest
 from pitch_coach_backend.module.user import service as user_service
@@ -50,6 +51,20 @@ class IssuedSession:
     return_to: str = "/"
 
 
+# --- 출시 전 차단 -------------------------------------------------------
+
+
+def ensure_launched() -> None:
+    """출시 시각(LAUNCH_AT) 전이면 로그인을 막는다. 설정이 비어 있으면 막지 않는다.
+
+    FE 는 기기 시각으로 시작 버튼만 막으므로 주소를 직접 열면 넘어올 수 있다. 실제로 막는 곳은
+    여기다. 사용자·세션은 콜백에서만 생기므로 시작과 콜백 두 곳만 막으면 새로 들어오는 길은
+    없다. 이미 발급된 세션(refresh·보호 API·WS)은 막지 않는다.
+    """
+    if settings.launch_at is not None and datetime.now(UTC) < settings.launch_at:
+        raise ServiceNotOpen()
+
+
 # --- 로그인 시작 ---------------------------------------------------------
 
 
@@ -59,6 +74,7 @@ def start_login(db: Session, *, return_to: str) -> LoginStart:
     browser_token 은 임시 쿠키로 브라우저에 심는다. state 를 훔쳐도 이 쿠키가 없으면
     콜백을 완성할 수 없다 (state 단독보다 한 겹 두껍다).
     """
+    ensure_launched()
     state = state_store.new_state()
     nonce = state_store.new_nonce()
     browser_token = state_store.new_browser_token()
@@ -109,6 +125,10 @@ def complete_login(
     # 로그인을 시작한 브라우저가 맞는지. compare_digest 로 타이밍 차이를 없앤다.
     if not security.constant_time_equals(browser_token, pending.browser_token):
         raise InvalidAuthorizationRequest()
+
+    # 시작에서 막으니 보통은 여기까지 오지 않는다. 막기 전에 시작해 둔 요청(state 는 10분 산다)이
+    # 출시 전에 들어오는 경우다. 구글과 통신하거나 사용자를 만들기 전에 끊는다
+    ensure_launched()
 
     id_token = google.exchange_code_for_id_token(code=code, code_verifier=pending.code_verifier)
     identity = google.verify_id_token(id_token, expected_nonce=pending.nonce)

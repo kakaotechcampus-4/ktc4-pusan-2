@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import field_validator, model_validator
+from pydantic import AwareDatetime, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/ 디렉터리 (core/config.py 기준 3단계 위)
@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     # 콜백이 끝난 뒤 브라우저를 돌려보낼 프론트 주소. CORS 허용 origin 으로도 쓴다.
     frontend_base_url: str = "http://localhost:3000"
 
+    # 출시 시각. 이 시각 전에는 구글 로그인을 막는다 (module/auth/service.py ensure_launched).
+    # 비어 있으면 막지 않는다. release 에만 넣고 dev·로컬·테스트는 비워 둔다.
+    # 시간대가 없는 값은 서버 시간대에 따라 뜻이 바뀌므로 받지 않는다 (예: +09:00 을 붙인다)
+    launch_at: AwareDatetime | None = None
+
     # 운영에서 설정을 빠뜨려도 Secure 가 붙는 쪽이 안전하다.
     # Chrome·Firefox 는 http://localhost 를 신뢰 출처로 보므로 로컬에서도 동작한다.
     cookie_secure: bool = True
@@ -90,6 +95,14 @@ class Settings(BaseSettings):
                 f"JWT_SECRET_KEY 는 {JWT_SECRET_KEY_MIN_BYTES}바이트 이상이어야 합니다. "
                 "openssl rand -hex 32 로 만드세요."
             )
+        return value
+
+    @field_validator("launch_at", mode="before")
+    @classmethod
+    def _blank_launch_at_is_unset(cls, value: object) -> object:
+        # 출시 뒤 값만 지우고 LAUNCH_AT= 를 남겨도 서버가 뜨게 한다. 빈 값은 막지 않는다는 뜻이다
+        if isinstance(value, str) and not value.strip():
+            return None
         return value
 
     @model_validator(mode="after")
