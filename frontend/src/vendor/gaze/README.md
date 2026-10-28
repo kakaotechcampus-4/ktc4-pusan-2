@@ -31,7 +31,10 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과, 그 엔진을 쓰�
 
 `camera/` 도 같은 입구로만, **상대 경로로** 부릅니다 — 엔진은 `../engine`(타입만) · `../engine/contract`, Worker 는 `../worker/protocol` 입니다. `@/vendor/...` 경로는 쓰지 않습니다.
 `.oxlintrc.json` 이 이것을 검사합니다. 그래야 엔진을 다시 복사해도 화면이 엔진 안쪽 파일에 묶이지 않습니다.
-Worker 는 `camera/view.ts` 가 `../worker/gaze.worker.ts` 를 경로로 띄우므로 `camera/` 와 `worker/` 는 이 폴더 아래 나란히 둡니다.
+Worker 는 `camera/view.ts` 가 `new Worker(new URL('../worker/gaze.worker.ts', import.meta.url))` 로 띄우므로
+`camera/` 와 `worker/` 는 이 폴더 아래 나란히 둡니다. 엔트리 경로 `worker/gaze.worker.ts` 와 메시지 `worker/protocol.ts` 는
+AI 가 바꾸지 않기로 한 계약입니다 (`docs/ai/features/gaze-tracking.md` 5-6 'Worker 메시지').
+`camera/` 를 이 폴더 밖으로 옮기려면 FE 가 Worker 를 만들어 `new GazeCameraView(box, { worker })` 로 넘깁니다 (#647).
 
 ## 자산
 
