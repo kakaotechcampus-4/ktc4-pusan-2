@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from review import review_take
+from pitch_coach_ai.features.review import review_take
 
 from .llm import CachedLLM, load_settings, review_llm
 from .paths import EXAMPLES_DIR, OUTPUTS_DIR

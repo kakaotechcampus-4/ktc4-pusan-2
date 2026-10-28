@@ -19,8 +19,8 @@ import openai
 from dotenv import find_dotenv, load_dotenv
 from langchain_openai import ChatOpenAI
 
-from review.prompts.review import REVIEW_SYSTEM_PROMPT
-from review.schemas import ReviewDraft
+from pitch_coach_ai.features.review.prompts.review import REVIEW_SYSTEM_PROMPT
+from pitch_coach_ai.features.review.schemas import ReviewDraft
 
 from .paths import PROJECT_ROOT
 

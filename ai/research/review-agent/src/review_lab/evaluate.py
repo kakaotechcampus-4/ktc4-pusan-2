@@ -29,11 +29,11 @@ from pathlib import Path
 from statistics import fmean, median
 from typing import Any
 
-from review import DEFAULT_CONFIG, apply_rules, review_take
-from review.core import _numbers, check_numbers, message_numbers
-from review.schemas import ReviewDraft
-from review.version import FEATURE_VERSION
-from review.vocab import DIMENSION_ORDER
+from pitch_coach_ai.features.review import DEFAULT_CONFIG, apply_rules, review_take
+from pitch_coach_ai.features.review.core import _numbers, check_numbers, message_numbers
+from pitch_coach_ai.features.review.schemas import ReviewDraft
+from pitch_coach_ai.features.review.version import FEATURE_VERSION
+from pitch_coach_ai.features.review.vocab import DIMENSION_ORDER
 
 from .llm import CachedLLM, load_settings, review_llm
 from .paths import ANSWERS_PATH, OUTPUTS_DIR, PROJECT_ROOT, TAKES_DIR

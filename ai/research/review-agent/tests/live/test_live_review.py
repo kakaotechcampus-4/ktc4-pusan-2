@@ -12,8 +12,8 @@ import json
 
 import pytest
 
-from review import review_take
-from review.core import check_numbers, message_numbers
+from pitch_coach_ai.features.review import review_take
+from pitch_coach_ai.features.review.core import check_numbers, message_numbers
 from review_lab.evaluate import draft_sentences
 from review_lab.llm import CachedLLM, load_settings, review_llm
 from review_lab.paths import EXAMPLES_DIR
