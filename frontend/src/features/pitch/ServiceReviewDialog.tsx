@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { toMessage } from '@/shared/api/errorMessage';
 import { getServiceReviewState, submitServiceReview } from '@/shared/api/serviceReview';
+import { SuggestionCategorySelect } from '@/shared/ui/SuggestionCategorySelect';
+import type { SuggestionCategory } from '@/types/serviceReview';
 import { Button } from '@/shared/ui/Button';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 
@@ -11,6 +13,7 @@ export function ServiceReviewDialog({ onContinue }: { onContinue: () => void }) 
   const description = useId();
   const [rating, setRating] = useState(0);
   const [suggestion, setSuggestion] = useState('');
+  const [category, setCategory] = useState<SuggestionCategory>('OTHER');
   const [locked, setLocked] = useState(false);
   const length = [...suggestion.trim()].length;
   const controller = useRef<AbortController | null>(null);
@@ -44,7 +47,7 @@ export function ServiceReviewDialog({ onContinue }: { onContinue: () => void }) 
     controller.current = new AbortController();
     try {
       await submitServiceReview(
-        { rating, suggestion: suggestion.trim() || null },
+        { rating, suggestion: suggestion.trim() || null, category },
         controller.current.signal,
       );
       if (alive.current) onContinue();
@@ -127,6 +130,11 @@ export function ServiceReviewDialog({ onContinue }: { onContinue: () => void }) 
         </div>
       </fieldset>
       <div className="mb-4 flex min-w-0 flex-col gap-2">
+        <SuggestionCategorySelect
+          value={category}
+          onChange={setCategory}
+          disabled={pending || locked}
+        />
         <label htmlFor={description + '-opinion'} className="text-sm font-bold">
           의견 (선택)
         </label>

@@ -118,6 +118,7 @@ it('submits the optional opinion and retains identical content on retry', async 
   await setOpinion('가'.repeat(2001));
   expect(buttons().find((b) => b.textContent === '별점 제출')!.disabled).toBe(true);
   await setOpinion('  좋은 서비스  ');
+  await chooseCategory('POSITIVE');
   vi.mocked(submitServiceReview).mockRejectedValue(new Error('lost'));
   await act(async () =>
     buttons()
@@ -125,14 +126,16 @@ it('submits the optional opinion and retains identical content on retry', async 
       .click(),
   );
   expect(host.querySelector('textarea')!.value).toBe('  좋은 서비스  ');
+  expect(host.querySelector('select')!.disabled).toBe(true);
+  expect(host.querySelector('select')!.value).toBe('POSITIVE');
   await act(async () =>
     buttons()
       .find((b) => b.textContent === '다시 제출')!
       .click(),
   );
   expect(vi.mocked(submitServiceReview).mock.calls.map((c) => c[0])).toEqual([
-    { rating: 4, suggestion: '좋은 서비스' },
-    { rating: 4, suggestion: '좋은 서비스' },
+    { rating: 4, suggestion: '좋은 서비스', category: 'POSITIVE' },
+    { rating: 4, suggestion: '좋은 서비스', category: 'POSITIVE' },
   ]);
 });
 it('refreshes server state and closes when another tab has already submitted', async () => {
@@ -164,4 +167,55 @@ it('announces missing report eligibility without claiming success', async () => 
   );
   expect(host.querySelector('[role="alert"]')!.textContent).toContain('완료 리포트가 없어요');
   expect(close).not.toHaveBeenCalled();
+});
+
+async function chooseCategory(value: string) {
+  await act(async () => {
+    const select = host.querySelector('select')!;
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+it.each(['POSITIVE', 'IMPROVEMENT', 'PROBLEM', 'QUESTION', 'OTHER'])(
+  'sends selected popup category %s',
+  async (category) => {
+    await act(async () => root.render(<ServiceReviewDialog onContinue={vi.fn()} />));
+    expect(host.querySelector('select')!.value).toBe('OTHER');
+    expect(host.querySelectorAll('option')).toHaveLength(5);
+    await act(async () => host.querySelector<HTMLInputElement>('input[value="4"]')!.click());
+    await setOpinion('의견');
+    await chooseCategory(category);
+    await act(async () =>
+      buttons()
+        .find((b) => b.textContent === '별점 제출')!
+        .click(),
+    );
+    expect(vi.mocked(submitServiceReview).mock.calls[0]![0]).toEqual({
+      rating: 4,
+      suggestion: '의견',
+      category,
+    });
+  },
+);
+it('allows changing category after 422 and clears it when the account form remounts', async () => {
+  await act(async () => root.render(<ServiceReviewDialog key="a" onContinue={vi.fn()} />));
+  await act(async () => host.querySelector<HTMLInputElement>('input[value="4"]')!.click());
+  await chooseCategory('QUESTION');
+  vi.mocked(submitServiceReview).mockRejectedValueOnce(new ApiFailure(422, 'VALIDATION_ERROR'));
+  await act(async () =>
+    buttons()
+      .find((b) => b.textContent === '별점 제출')!
+      .click(),
+  );
+  expect(host.querySelector('select')!.disabled).toBe(false);
+  await chooseCategory('PROBLEM');
+  await act(async () =>
+    buttons()
+      .find((b) => b.textContent === '다시 제출')!
+      .click(),
+  );
+  expect(vi.mocked(submitServiceReview).mock.calls[1]![0].category).toBe('PROBLEM');
+  await act(async () => root.render(<ServiceReviewDialog key="b" onContinue={vi.fn()} />));
+  expect(host.querySelector('select')!.value).toBe('OTHER');
 });
