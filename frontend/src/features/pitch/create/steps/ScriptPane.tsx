@@ -24,7 +24,7 @@ import { PaneHeading } from './PaneHeading';
  * `blocks` 가 없으면 입력, 있으면 매핑 확인.
  *
  * "대본 매핑"은 서버에 새 버전으로 올리고(`POST /pitches/{id}/scripts`) AI 가 나눈 결과를
- * 폴링으로 받습니다 (`scriptParse.ts`). AI 는 "슬라이드 1" 같은 **명시적 구분자**로만 나누고,
+ * 폴링으로 받습니다 (`scriptParse.ts`). AI 는 "[슬라이드 1]" 같은 **명시적 구분자**로만 나누고,
  * 구분자가 없으면 대본 전체를 한 슬라이드로 둡니다 — 그래서 작성 안내에 구분자를 적어 둡니다.
  *
  * 매핑 확인에서 "저장하고 다음"을 누르면 그 슬라이드 + 대본이 연습할 조합이 되고, 발표정보 확인으로 갑니다.
@@ -33,26 +33,26 @@ import { PaneHeading } from './PaneHeading';
  */
 
 const PLACEHOLDER = [
-  '슬라이드 1',
+  '[슬라이드 1]',
   '안녕하세요. 오늘은 …',
   '',
-  '슬라이드 2',
+  '[슬라이드 2]',
   '처음에 저희가 마주한 문제는 …',
 ].join('\n');
 
 /**
  * 입력 중 안내. 지금 대본대로 매핑하면 어떻게 나뉠지 미리 알려 줍니다.
- * 막지는 않습니다 — 실제 AI 는 조금 다른 표기도 알아들을 수 있습니다 (`shared/lib/slideMarkers`).
+ * 막지는 않습니다 — 기존 표기도 안내용으로 인식합니다 (`shared/lib/slideMarkers`).
  */
 function markerHint(scan: MarkerScan, pageCount: number, tooLong: boolean): string | null {
   if (tooLong) {
     return `대본은 ${MAX_SCRIPT_CHARS.toLocaleString()}자(공백 포함)까지 매핑할 수 있어요. 조금 줄여 주세요.`;
   }
   if (scan.numbers.length === 0) {
-    return '“슬라이드 1”처럼 슬라이드마다 구분해 주세요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.';
+    return '“[슬라이드 1]”처럼 슬라이드마다 구분해 주세요. 구분이 없으면 대본 전체가 한 슬라이드로 연결돼요.';
   }
   if (scan.leadingText) {
-    return '첫 구분 앞에는 제목 한 줄만 둘 수 있어요. 그보다 많으면 나뉘지 않으니 “슬라이드 1”을 앞으로 옮겨 주세요.';
+    return '첫 구분 앞에는 제목 한 줄만 둘 수 있어요. 그보다 많으면 나뉘지 않으니 “[슬라이드 1]”을 앞으로 옮겨 주세요.';
   }
   const last = Math.max(...scan.numbers);
   if (pageCount > 0 && last !== pageCount) {
@@ -205,7 +205,7 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
       </div>
 
       <div className="mt-3">
-        <PaneFooter hint="슬라이드마다 “슬라이드 1” · “Slide 1” · “1.” 처럼 구분해 적어 주세요 — 구분이 없으면 대본 전체를 한 슬라이드로 연결해요.">
+        <PaneFooter hint="슬라이드마다 “[N]” · “[슬라이드 N]” · “슬라이드 N:” 중 하나를 새 줄에 적어 주세요. N은 슬라이드 번호예요. 구분자가 없으면 대본 전체를 한 슬라이드로 연결해요.">
           <button type="button" onClick={() => select('slides')} className={secondaryButton}>
             ← 이전
           </button>
@@ -252,7 +252,7 @@ function MappingNotice({
 }) {
   const message = (() => {
     if (segmented === false) {
-      return '구분자가 없어 대본 전체를 한 슬라이드로 연결했어요. “슬라이드 1”처럼 나눠 적으면 장마다 연결돼요.';
+      return '구분자가 없어 대본 전체를 한 슬라이드로 연결했어요. “[슬라이드 1]”처럼 나눠 적으면 장마다 연결돼요.';
     }
     if (pageCount > 0 && blockCount !== pageCount) {
       return `대본은 ${blockCount}장, 슬라이드는 ${pageCount}장으로 나뉘었어요. 대본의 구분을 확인해 주세요.`;
@@ -292,7 +292,7 @@ function SaveHint({
         대본은 {blockCount}장, 슬라이드는 {pageCount}장이라 저장할 수 없어요.
       </span>
       <span className="block text-xs text-ink/80">
-        ← 대본 수정에서 “슬라이드 1”처럼 장마다 구분을 넣고 다시 매핑해 주세요.
+        ← 대본 수정에서 “[슬라이드 1]”처럼 장마다 구분을 넣고 다시 매핑해 주세요.
       </span>
     </p>
   );

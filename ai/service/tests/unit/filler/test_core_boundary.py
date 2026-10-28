@@ -1,4 +1,4 @@
-"""코어(filler)를 나중에 service 로 폴더째 옮길 수 있는지 검사한다
+"""코어(filler)가 서비스 · 연구 도구 어디에서 불려도 고칠 곳이 없는 순수 패키지인지 검사한다
 (filler.md 4-3, architecture.md 8절).
 
 - 패키지 안에서는 상대 import 만 쓴다. 패키지 경로가 바뀌어도 고칠 곳이 없게 하기 위해서다.
@@ -16,7 +16,7 @@ import pytest
 
 from pitch_coach_ai.features import filler
 
-# 코어 패키지 파일 기준으로 찾는다 — 서비스로 옮겨도 경로를 고치지 않게
+# 코어 패키지 파일 기준으로 찾는다 — 패키지 위치가 바뀌어도 경로를 고치지 않게
 CORE = Path(filler.__file__).resolve().parent
 
 # 코어가 쓰는 표준 모듈. 계산만 하는 모듈만 둔다. 새로 필요하면 그 모듈이

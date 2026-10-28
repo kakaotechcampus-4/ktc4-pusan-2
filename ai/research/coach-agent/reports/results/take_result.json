@@ -31,7 +31,7 @@
       "onset_error_s": 1.27,
       "fragments_per_problem": 1.5455,
       "slide_mae": {
-        "cpm": 4.2068,
+        "cpm": 0.1983,
         "duration_ms": 0.3403,
         "script_ratio": 0.0315
       },
@@ -48,7 +48,7 @@
       "onset_error_s": 2.25,
       "fragments_per_problem": 1.6949,
       "slide_mae": {
-        "cpm": 5.4847,
+        "cpm": 2.4776,
         "duration_ms": 0.3709,
         "script_ratio": 0.0594
       },
@@ -65,7 +65,7 @@
       "onset_error_s": 2.71,
       "fragments_per_problem": 1.614,
       "slide_mae": {
-        "cpm": 6.8817,
+        "cpm": 4.9492,
         "duration_ms": 0.374,
         "script_ratio": 0.1039
       },
@@ -88,7 +88,7 @@
         "onset_error_s": 2.25,
         "fragments_per_problem": 2.2034,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -108,7 +108,7 @@
         "onset_error_s": 2.25,
         "fragments_per_problem": 2.2034,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -128,7 +128,7 @@
         "onset_error_s": 2.85,
         "fragments_per_problem": 1.5263,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -148,7 +148,7 @@
         "onset_error_s": 2.25,
         "fragments_per_problem": 1.9153,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -168,7 +168,7 @@
         "onset_error_s": 2.25,
         "fragments_per_problem": 1.9153,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -188,7 +188,7 @@
         "onset_error_s": 2.61,
         "fragments_per_problem": 1.5789,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -208,7 +208,7 @@
         "onset_error_s": 2.25,
         "fragments_per_problem": 1.6949,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -228,7 +228,7 @@
         "onset_error_s": 2.25,
         "fragments_per_problem": 1.6949,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -248,7 +248,7 @@
         "onset_error_s": 2.6,
         "fragments_per_problem": 1.5439,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -268,7 +268,7 @@
         "onset_error_s": 2.25,
         "fragments_per_problem": 1.5254,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -288,7 +288,7 @@
         "onset_error_s": 2.25,
         "fragments_per_problem": 1.5254,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -308,7 +308,7 @@
         "onset_error_s": 2.32,
         "fragments_per_problem": 1.4737,
         "slide_mae": {
-          "cpm": 5.4847,
+          "cpm": 2.4776,
           "duration_ms": 0.3709,
           "script_ratio": 0.0594
         },
@@ -330,7 +330,7 @@
         "onset_error_s": 2.71,
         "fragments_per_problem": 1.9474,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -350,7 +350,7 @@
         "onset_error_s": 2.71,
         "fragments_per_problem": 1.9474,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -370,7 +370,7 @@
         "onset_error_s": 2.66,
         "fragments_per_problem": 1.3704,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -390,7 +390,7 @@
         "onset_error_s": 2.71,
         "fragments_per_problem": 1.7719,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -410,7 +410,7 @@
         "onset_error_s": 2.71,
         "fragments_per_problem": 1.7719,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -430,7 +430,7 @@
         "onset_error_s": 2.66,
         "fragments_per_problem": 1.4259,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -450,7 +450,7 @@
         "onset_error_s": 2.71,
         "fragments_per_problem": 1.614,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -470,7 +470,7 @@
         "onset_error_s": 2.71,
         "fragments_per_problem": 1.614,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -490,7 +490,7 @@
         "onset_error_s": 2.62,
         "fragments_per_problem": 1.4444,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -510,7 +510,7 @@
         "onset_error_s": 2.71,
         "fragments_per_problem": 1.4912,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -530,7 +530,7 @@
         "onset_error_s": 2.71,
         "fragments_per_problem": 1.4912,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },
@@ -550,7 +550,7 @@
         "onset_error_s": 2.53,
         "fragments_per_problem": 1.463,
         "slide_mae": {
-          "cpm": 6.8817,
+          "cpm": 4.9492,
           "duration_ms": 0.374,
           "script_ratio": 0.1039
         },

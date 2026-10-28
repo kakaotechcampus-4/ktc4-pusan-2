@@ -19,19 +19,21 @@
 - **연구 코드**: 활성 연구 폴더에 코드가 있습니다. 목표 계약 전체 구현이나 실제 발표 데이터 검증 완료를 뜻하지 않습니다.
 - **서비스 탑재**: `ai/service/`의 실제 기능이 앱에 연결돼 있습니다. 배포·BE 호출 여부는 별도로 확인합니다.
 
-| 기능 | 문서 | 담당 | 상태 | 활성 연구 코드 |
+'활성 코드'의 서비스 경로는 코어가 `ai/service/`에 있다는 뜻입니다. 앱에 연결됐는지는 상태 열로만 봅니다.
+
+| 기능 | 문서 | 담당 | 상태 | 활성 코드 (연구 · 서비스) |
 |---|---|---|---|---|
-| 실시간 코치 (시간 판정 포함) | [coach-agent.md](features/coach-agent.md) | JWK0395 | 서비스 탑재 (코칭 계획만) | [coach-agent/](../../ai/research/coach-agent/README.md) |
-| 시선 | [gaze-tracking.md](features/gaze-tracking.md) | JWK0395 | 연구 코드 | [gaze-tracking/](../../ai/research/gaze-tracking/README.md) |
-| 군더더기 | [filler.md](features/filler.md) | JWK0395 | 연구 코드 | [filler-detection/](../../ai/research/filler-detection/README.md) |
-| 대본 전달도 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) | JWK0395 | 서비스 탑재 | [script-coverage-evaluation/](../../ai/research/script-coverage-evaluation/README.md) |
-| 대본 파싱 | [script-parser.md](features/script-parser.md) | jinn-ie | 연구 코드 | [script-parser/](../../ai/research/script-parser/README.md) |
+| 실시간 코치 (시간 판정 포함) | [coach-agent.md](features/coach-agent.md) | JWK0395 | 서비스 탑재 (코칭 계획만) | [coach-agent/](../../ai/research/coach-agent/README.md) · 서비스 [`features/coach/`](../../ai/service/src/pitch_coach_ai/features/coach/) |
+| 시선 | [gaze-tracking.md](features/gaze-tracking.md) | JWK0395 | 연구 코드 | [gaze-tracking/](../../ai/research/gaze-tracking/README.md) · 서비스 [`features/gaze/`](../../ai/service/src/pitch_coach_ai/features/gaze/) |
+| 군더더기 | [filler.md](features/filler.md) | JWK0395 | 연구 코드 | [filler-detection/](../../ai/research/filler-detection/README.md) · 서비스 [`features/filler/`](../../ai/service/src/pitch_coach_ai/features/filler/) |
+| 대본 전달도 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) | JWK0395 | 서비스 탑재 | [script-coverage-evaluation/](../../ai/research/script-coverage-evaluation/README.md) · 서비스 [`features/script_coverage/`](../../ai/service/src/pitch_coach_ai/features/script_coverage/) |
+| 대본 파싱 | [script-parser.md](features/script-parser.md) | jinn-ie | 서비스 탑재 | [script-parser/](../../ai/research/script-parser/README.md) · 서비스 [`features/script_parser/`](../../ai/service/src/pitch_coach_ai/features/script_parser/) |
 | 평가 기준 분석 | [evaluation-criteria.md](features/evaluation-criteria.md) | jinn-ie | 연구 코드 | [evaluation-criteria/](../../ai/research/evaluation-criteria/README.md) |
-| 말 속도 · 멈춤 | [pace.md](features/pace.md) | jinn-ie | 연구 코드 | [speech-pace/](../../ai/research/speech-pace/README.md) |
-| 소리 크기 · 침묵 | [volume.md](features/volume.md) | jinn-ie | 연구 코드 | [volume-analysis/](../../ai/research/volume-analysis/README.md) |
+| 말 속도 · 멈춤 | [pace.md](features/pace.md) | jinn-ie | 연구 코드 | [speech-pace/](../../ai/research/speech-pace/README.md) · 서비스 [`features/pace/`](../../ai/service/src/pitch_coach_ai/features/pace/) |
+| 소리 크기 · 침묵 | [volume.md](features/volume.md) | jinn-ie | 연구 코드 | [volume-analysis/](../../ai/research/volume-analysis/README.md) · 서비스 [`features/volume/`](../../ai/service/src/pitch_coach_ai/features/volume/) |
 | 리뷰 에이전트 | [review-agent.md](features/review-agent.md) | jinn-ie | 연구 코드 | [review-agent/](../../ai/research/review-agent/README.md) |
 
-현재 서비스에는 `/health` · `/ready`와 대본 전달도(`/scripts/rubric` · `/takes/analyze` · `/takes/rescore`) · 코칭 계획(`/coach/plan`)이 연결되어 있고, 나머지 기능은 아직 서비스에 탑재되지 않았습니다(BE 호출 · 배포 여부는 별도). 시선 · 군더더기 판정 모듈은 서비스(`ai/service/src/pitch_coach_ai/features/gaze/` · `filler/`)로 옮겼지만, 코치 `evaluate` · `finalize`가 열리기 전이라 앱에는 연결되지 않았습니다(`coach-agent.md` 11절). 공통 서버·LLM 모듈 PR #223·#224는 기능 탑재와 구분합니다. 서비스 담당은 JWK0395입니다. 코치 연구 폴더의 `coach_lab/judges/`는 시험용 대역이므로 실제 판정 모듈로 세지 않습니다.
+현재 서비스에는 `/health` · `/ready`와 대본 파싱(`/scripts/parse`) · 대본 전달도(`/scripts/rubric` · `/takes/analyze` · `/takes/rescore`) · 코칭 계획(`/coach/plan`)이 연결되어 있고, 나머지 기능은 아직 서비스에 탑재되지 않았습니다(BE 호출 · 배포 여부는 별도). 시선 · 군더더기 · 말 속도 · 소리 크기 판정 모듈은 서비스(`ai/service/src/pitch_coach_ai/features/gaze/` · `filler/` · `pace/` · `volume/`)로 옮겼지만, 코치 `evaluate` · `finalize`가 열리기 전이라 앱에는 연결되지 않았습니다(`coach-agent.md` 11절). 공통 서버·LLM 모듈 PR #223·#224는 기능 탑재와 구분합니다. 서비스 담당은 JWK0395입니다. 코치 연구 폴더의 `coach_lab/judges/`는 시험용 대역이므로 실제 판정 모듈로 세지 않습니다.
 
 기능 코드 PR이 merge되면 담당자가 활성 폴더·앱 연결을 확인하고 이 표를 갱신합니다. 나중에 merge되는 README 수정은 먼저 반영된 기능을 보존합니다.
 

@@ -35,12 +35,16 @@ WS /api/ws/takes/{take_id}
   거절되면 그 키를 소진으로 표시하고 기다리지 않고 다음 키로 붙는다. 발표 도중 크레딧이 떨어져 끊겨도 재접속이
   402 로 거절되므로 같은 길로 넘어간다. 소진 표시는 서버 메모리에만 있고 모든 Take 가 같이 쓴다. 키가 전부
   소진이면 에러 로그를 남기고 위처럼 `degraded` 로 재시도하며, 그때는 첫 키부터 다시 확인한다
+- **Deepgram 은 발표 음성 · 전사를 보관하지 않는다.** 연결마다 `mip_opt_out=true` 를 붙여 Deepgram 모델 개선
+  프로그램에서 빠진다(기본은 참여 · 보관). 붙이면 처리하는 동안만 쓰고 저장하지 않는다. Pay as you Go · Growth
+  요금제는 붙여도 요금이 같다(Deepgram 2026-03-05 변경 기록). 우리 쪽 원자료 보관은 이것과 따로다
+  ([realtime-coach.md](realtime-coach.md))
 - 에러는 `{"type":"error","code","message"}`. **에러가 곧 종료는 아니다** — `code` 마다 다르다
   (`realtime/dto.py` 의 `WsErrorCode`).
 
   | code | 연결 |
   |---|---|
-  | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
+  | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다. 연결 중에 그 사용자가 로그아웃해도 이 코드로 닫는다(Take 는 끝내지 않고 grace 를 건다). FE 는 토큰을 한 번 새로 받아 다시 붙는다 |
   | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다). 연결 중에 Take 나 발표가 지워져도 이 코드로 닫는다 |
   | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다**. BE 가 끝냈으면 `end_reason`(`SILENCE`·`TIME_LIMIT`·`ABANDONED`·`CLOSED`)을 싣는다 — `CLOSED` 는 이어 가지 않고, `ABANDONED` 는 끝내기 PUT 이 되살린다 |
   | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
@@ -139,6 +143,7 @@ WS /api/ws/takes/{take_id}
 - Take PUT 은 상태와 순서를 본다. `COMPLETED`·`FAILED` 는 `409 TAKE_ENDED`, `ANALYZING` 은 시각만 받는다
   (`event_logs` 는 409). `ABANDONED` 로 끝난 Take 는 `ended_at` 이 있는 끝내기만 받는다 (`CLOSED` 는 409).
   `ended_at` 이 `started_at` 보다 앞서면 `400 INVALID_TAKE_TIME`, 시간대가 없는 시각은 422.
+  Take 를 만든 때 1일 전 ~ 지금 1일 뒤를 벗어난 시각도 `422 VALIDATION_ERROR`.
   `null` 은 보내지 않은 것으로 본다. 점검 결과(`calibration`)는 `READY` 일 때만 받는다 (아니면 `409 TAKE_STARTED`).
 - **Take 를 자동으로 끝낸다** (`realtime/stream/auto_end.py`). 둘 중 하나라도 맞으면 `{"type":"auto_end","reason","message"}`
   를 보내고 `stop` 과 같은 순서로 정리한다 (drain → `ANALYZING` → `closed` → `1000`). 오디오는 그 자리에서 끊는다.

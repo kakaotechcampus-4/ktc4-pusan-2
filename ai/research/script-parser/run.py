@@ -21,8 +21,8 @@ from dotenv import load_dotenv
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 
-from script_parser import parse_script
-from script_parser.schemas import LLMOutput, ParseRequest, ParseResponse
+from pitch_coach_ai.features.script_parser import parse_script
+from pitch_coach_ai.features.script_parser.schemas import LLMOutput, ParseRequest, ParseResponse
 
 ROOT = Path(__file__).resolve().parent
 SCRIPTS_DIR = ROOT / "data" / "scripts"

@@ -7,7 +7,7 @@
  * result at display rate, so it glides with the face.  Without a face the ring
  * waits, faded, in the middle of the picture.
  */
-import type { FaceGuide } from '../engine/types';
+import type { FaceGuide } from '../engine/contract';
 import { HeadArrowView } from './arrow3d';
 import { FaceGuideView } from './guide';
 

@@ -4,6 +4,7 @@
 이 폴더에 커밋하는 것은 이 문서와 `manifest.json`(출처 · 라이선스 · sha256)뿐입니다.
 
 ```bash
+cd ai/research/gaze-tracking
 uv run python tools/fetch_assets.py
 ```
 

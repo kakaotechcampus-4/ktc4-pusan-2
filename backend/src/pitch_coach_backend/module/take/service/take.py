@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -32,9 +33,15 @@ from pitch_coach_backend.module.take.exception import (
     TakeAlreadyStarted,
     TakeNotStarted,
     TakeSessionMismatch,
+    TakeTimeOutOfRange,
 )
 from pitch_coach_backend.module.take.measures import take_count, take_metric
 from pitch_coach_backend.module.take.repository import IN_PROGRESS_STATUSES, TakeRepository
+
+# 시작 · 끝 시각으로 받는 범위의 여유. Take 를 만든 때보다 이만큼 앞부터 지금보다 이만큼 뒤까지
+# 받는다. FE 시계로 잰 값이라 서버 시계와 어긋날 수 있다. 앞뒤로 같은 여유를 둔다 — 끝내기 PUT 이
+# 거절되면 FE 는 같은 값으로 계속 다시 보내서 시계가 빠른 브라우저는 Take 를 끝내지 못한다
+TAKE_TIME_TOLERANCE = timedelta(days=1)
 
 
 # Take 생성, 삭제, 업데이트 서비스 함수들 정의.
@@ -141,6 +148,13 @@ def update_take_service(db: Session, take_id: uuid.UUID, take_update_dto: TakeUp
         and (existing_take.status != "ANALYZING" or "event_logs" in changes)
     ):
         raise TakeAlreadyEnded()
+
+    # 0001년 같은 값은 UTC 로 바꾸면 날짜 범위를 벗어나 500 이 되고, 관리자 연습 시간도 망가진다
+    earliest = existing_take.created_at - TAKE_TIME_TOLERANCE
+    latest = datetime.now(UTC) + TAKE_TIME_TOLERANCE
+    for field in ("started_at", "ended_at"):
+        if field in changes and not earliest <= changes[field] <= latest:
+            raise TakeTimeOutOfRange()
 
     started_at = changes.get("started_at", existing_take.started_at)
     ended_at = changes.get("ended_at", existing_take.ended_at)
@@ -307,3 +321,8 @@ def get_take_report_service(
 def find_owned(db: Session, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | None:
     """없을 수 있는 조회. 남의 take 도 None — WebSocket 이 존재 여부를 흘리지 않게."""
     return TakeRepository(db).get_owned(take_id, user_id)
+
+
+def has_completed_report(db: Session, pitch_ids: list[uuid.UUID]) -> bool:
+    """본인 발표 범위에 완료된 측정 결과가 하나라도 남아 있는가."""
+    return TakeRepository(db).has_completed_report(pitch_ids)

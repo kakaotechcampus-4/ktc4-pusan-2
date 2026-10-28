@@ -108,14 +108,15 @@ def test_wrong_login_is_logged_but_first_visit_is_not(
     client.get("/admin/")
     client.get(
         "/admin/api/auth",
-        auth=("admin", "wrong"),
+        # 아이디 칸에 비밀번호를 잘못 넣은 경우다. 입력한 아이디도 남기지 않는다
+        auth=("secret-typed-as-username", "wrong"),
         headers={"X-Forwarded-For": "203.0.113.7", "X-Forwarded-Uri": "/admin/logs/"},
     )
 
     [record] = caplog.records
-    assert "username='admin'" in record.getMessage()
     assert "ip=203.0.113.7" in record.getMessage()
     assert "path=/admin/logs/" in record.getMessage()
+    assert "secret-typed-as-username" not in record.getMessage()
     assert "wrong" not in record.getMessage()
 
 
@@ -348,3 +349,32 @@ def test_negative_practice_time_is_left_out_everywhere(
     assert stats["measured_takes"] == 1
     assert stats["total_sec"] == pytest.approx(2 * 60)
     assert user["total_practice_sec"] == pytest.approx(2 * 60)
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_practice_time_longer_than_a_take_can_run_is_cut_to_that_length(
+    client: TestClient, db_session: Session
+) -> None:
+    """시각 범위 검사 전에 0001년 같은 시작 시각이 저장된 Take 다.
+
+    Take 는 최대 길이를 넘겨 돌 수 없어서 그 길이로 센다.
+    """
+    pitch = _pitch(db_session, _user(db_session, "앨리스"))
+    ended = datetime(2026, 10, 22, 1, 0, tzinfo=UTC)
+    _take(db_session, pitch, 1, **_ended(2))
+    _take(
+        db_session,
+        pitch,
+        2,
+        status="ANALYZING",
+        started_at=datetime(1, 1, 2, tzinfo=UTC),
+        ended_at=ended,
+    )
+
+    stats = client.get("/admin/api/stats", auth=ADMIN).json()["practice_time"]
+    [user] = client.get("/admin/api/users", auth=ADMIN).json()
+    takes = client.get("/admin/api/takes", auth=ADMIN).json()
+
+    assert stats["total_sec"] == pytest.approx(2 * 60 + 3600)
+    assert user["total_practice_sec"] == pytest.approx(2 * 60 + 3600)
+    assert max(take["elapsed_sec"] for take in takes) == pytest.approx(3600)

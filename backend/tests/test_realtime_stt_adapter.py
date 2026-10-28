@@ -76,6 +76,7 @@ def test_listen_url_has_raw_pcm_params_and_repeated_keyterms():
     assert query["interim_results"] == ["true"]
     assert query["punctuate"] == ["true"]
     assert query["smart_format"] == ["false"]
+    assert query["mip_opt_out"] == ["true"]
     assert query["keyterm"] == ["음", "피치코치"]
     assert "tag" not in query
 

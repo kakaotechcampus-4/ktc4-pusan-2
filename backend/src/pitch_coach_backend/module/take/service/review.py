@@ -7,6 +7,7 @@ import uuid
 import httpx
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.service import standard as standard_service
 from pitch_coach_backend.module.take.ai_response import validate_review_reply
@@ -124,7 +125,9 @@ async def request_review_async(
     InvalidReviewResponse(502). 저장하다 DB 제약에 걸리기 전에 여기서 거른다."""
     request_id = uuid.uuid4().hex
     body = review_request.model_dump(mode="json")
-    async with httpx.AsyncClient(timeout=REVIEW_TIMEOUT_SEC) as client:
+    async with httpx.AsyncClient(
+        timeout=REVIEW_TIMEOUT_SEC, event_hooks=AI_RESPONSE_HOOKS
+    ) as client:
         for attempt in range(2):
             try:
                 # httpx timeout 은 읽기 한 번의 제한이라 조금씩 오는 응답은 끝없이 기다린다.

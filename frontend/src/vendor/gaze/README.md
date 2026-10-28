@@ -1,14 +1,21 @@
-# vendor/gaze — AI 시선 엔진 v1.1 (복사본)
+# vendor/gaze — AI 시선 엔진 v1.1 (복사본) + 카메라 화면 (FE 원본)
 
-AI 파트(제원)가 만든 브라우저용 시선 엔진과 카메라 화면 모듈을 **그대로 복사**해 둔 폴더입니다.
-**여기서 고치지 않습니다.** 고칠 것이 생기면 AI 쪽에서 고치고 다시 복사합니다.
+AI 파트(제원)가 만든 브라우저용 시선 엔진과, 그 엔진을 쓰는 장치 점검의 카메라 화면 모듈이 있는 폴더입니다.
+**폴더마다 주인이 다릅니다** (#611).
+
+| 폴더 | 주인 | 고치는 곳 |
+| --- | --- | --- |
+| `engine/` · `worker/` | AI | **여기서 고치지 않습니다.** AI 쪽에서 고치고 다시 복사합니다 |
+| `camera/` | **FE** | 여기서 고칩니다. AI 쪽 `camera/` 는 연구 데모용으로만 남고, 다시 복사하지 않습니다 |
 
 | 항목 | 값 |
 | --- | --- |
-| 원본 | `ai/research/gaze-tracking/web/src/{engine,camera,worker}` (`engine/__tests__` 포함) |
-| 기준 커밋 | `10c9aae` (test(ai): 시선 웹 검증 반영 — #478) — develop `f52e65d` 시점 |
+| 원본 | `ai/research/gaze-tracking/web/src/{engine,worker}` (`engine/__tests__` 포함) |
+| 기준 커밋 | `16bb2d7a` (Merge PR #612 — 시선 엔진 공개 입구 정리, #611) — `develop-next` |
+| `camera/` 넘겨받은 판 | 같은 `16bb2d7a` (#647). 이 뒤로는 FE 원본이라 AI 쪽 `camera/` 와 맞추지 않습니다 |
 | 모델 버전 | `gaze_v1.1.0+head_pose+reference_anchor_v1` · 설정 해시 `32ad2751de59` |
-| 사용법 원문 | `ai/research/gaze-tracking/web/README.md` (FE에 붙이는 법 · 카메라 화면 붙이기) · `ai/research/gaze-tracking/DEPLOY.md` |
+| 사용법 원문 | `ai/research/gaze-tracking/web/README.md` (FE로 복사하기 · 카메라 화면 붙이기) · `docs/ai/features/gaze-tracking.md` 11절 (배포 · 분업) |
+| 화면이 쓰는 엔진 코드 | `docs/ai/features/gaze-tracking.md` 5-6 '화면이 쓰는 엔진 코드' (엔진은 코드만 내고 문구는 `camera/text.ts` 가 정합니다) |
 
 ## 누가 무엇을 쓰나
 
@@ -20,7 +27,14 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과 카메라 화면 �
 엔진은 두 입구로만 부릅니다(원문 README 'FE로 복사하기'). 안쪽 파일(`config` · `evidence` · `reference`)을 바로 부르지 않습니다.
 
 - `engine/index.ts` — `createClassifier`. MediaPipe 를 불러오므로 워커에서 동적 `import()` 로 부릅니다. 타입만 가져오는 `import type` 은 괜찮습니다
-- `engine/contract.ts` — MediaPipe 없이 쓰는 값 (`CONFIG_HASH` · `makeConfig` · `GazeSlicer` · `sampleToDict` · `frameFromDecision` · `SCREEN_MERGED_WARNING`)
+- `engine/contract.ts` — MediaPipe 없이 쓰는 값 (`CONFIG_HASH` · `makeConfig` · `GazeSlicer` · `sampleToDict` · `frameFromDecision` · `SCREEN_MERGED_WARNING`, 화면이 쓰는 `GAZE_DIRECTIONS` · `Cue` · `FaceGuide` · `State` …)
+
+`camera/` 도 같은 입구로만, **상대 경로로** 부릅니다 — 엔진은 `../engine`(타입만) · `../engine/contract`, Worker 는 `../worker/protocol` 입니다. `@/vendor/...` 경로는 쓰지 않습니다.
+`.oxlintrc.json` 이 이것을 검사합니다. 그래야 엔진을 다시 복사해도 화면이 엔진 안쪽 파일에 묶이지 않습니다.
+Worker 는 `camera/view.ts` 가 `new Worker(new URL('../worker/gaze.worker.ts', import.meta.url))` 로 띄우므로
+`camera/` 와 `worker/` 는 이 폴더 아래 나란히 둡니다. 엔트리 경로 `worker/gaze.worker.ts` 와 메시지 `worker/protocol.ts` 는
+AI 가 바꾸지 않기로 한 계약입니다 (`docs/ai/features/gaze-tracking.md` 5-6 'Worker 메시지').
+`camera/` 를 이 폴더 밖으로 옮기려면 FE 가 Worker 를 만들어 `new GazeCameraView(box, { worker })` 로 넘깁니다 (#647).
 
 ## 자산
 
@@ -34,10 +48,14 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과 카메라 화면 �
 
 ## 다시 복사할 때
 
-1. 위 원본 경로의 세 폴더를 통째로 덮어씁니다.
+1. 위 원본 경로의 **`engine` · `worker` 두 폴더만** 통째로 덮어씁니다. `camera/` 는 덮어쓰지 않습니다 — FE 가 고친 것이 사라집니다.
 2. 이 문서의 기준 커밋과 모델 버전을 고칩니다.
-3. 옛 보정 기준은 쓰이지 않습니다 — 기준은 탭 메모리에만 두어(`features/rehearsal/lib/zoneRefMemory.ts`) 새로고침하면 사라지고,
+3. `npm run typecheck` 가 `camera/` 에서 깨지면 엔진의 공개 입구가 바뀐 것입니다. 화면 쪽을 맞춥니다.
+   엔진에 이유 코드가 늘거나 줄면 `camera/text.ts` 의 문구표(`satisfies` 로 키 범위를 검사)가 typecheck 에서 알려 줍니다.
+   고개 원 · 판정 보류 사유(`SWEEP_REASON` · `UNCERTAIN_REASON`)는 엔진에 타입이 없어 검사되지 않으니
+   `gaze-tracking.md` 5-6 표와 직접 맞춰 봅니다.
+4. 옛 보정 기준은 쓰이지 않습니다 — 기준은 탭 메모리에만 두어(`features/rehearsal/lib/zoneRefMemory.ts`) 새로고침하면 사라지고,
    탭에 남아 있어도 엔진 버전이 다르면 `takeZoneRef` 가, 버전은 같아도 설정이 바뀌면 `configHash` 가 달라져
    `workers/calibrationModel.ts` 가 거릅니다.
    엔진의 `calibrate()` 는 모양(schema)만 보고 설정은 확인하지 않으니, 이 검사를 지우지 마세요.
-4. `npm run typecheck && npm run test`
+5. `npm run typecheck && npm run lint && npm run test`

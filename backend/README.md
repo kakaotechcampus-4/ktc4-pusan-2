@@ -49,6 +49,33 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 - CI 는 PostgreSQL 서비스와 `DATABASE_URL` 만 제공하면 된다.
   `JWT_SECRET_KEY` 와 구글 값은 conftest 가 테스트용 값을 넣는다.
 
+## 서비스 평점·의견
+
+홈 평점 팝업은 본인의 완료 Take와 `TAKE_RESULT`가 남아 있는 미평가자에게 최초 포함 최대 3회 요청한다.
+별점은 사용자당 한 건이며 팝업 의견과 마이페이지 의견은 공통 테이블에 별도로 저장한다.
+마이페이지 의견은 리포트·평점·노출 횟수와 관계없이 여러 번 보낼 수 있다.
+회원 탈퇴 뒤에도 평점·의견은 보관하고 작성자 `user_id`만 NULL로 바꾼다. 표시 승인 기록은 삭제한다.
+
+| API | 계약 |
+|---|---|
+| `POST /api/service-feedback/impressions` | `{display_request_id: UUID}`. 승인 시 `should_open=true`, 사용자 전체 최대 3회. 같은 ID 재시도는 추가 집계하지 않음 |
+| `GET /api/service-feedback/me` | `has_report`, `submitted`, `display_count`, `display_limit`, `should_prompt`. 읽기 전용이며 홈의 필수 사전 요청은 아님 |
+| `POST /api/service-feedback` | `{rating: 정수 1~5, suggestion?: string/null, category?: enum}`. 최초 201, 같은 내용 재시도 200, 다른 내용 409 |
+| `POST /api/suggestions` | `{request_id: UUID, content: string, category?: enum}`. 최초 201, 같은 ID·내용 200, 같은 ID·다른 내용 409 |
+
+모두 기존 Bearer 인증을 사용한다. 의견 유형은 `POSITIVE`·`IMPROVEMENT`·`PROBLEM`·`QUESTION`·`OTHER`이며 생략 시 `OTHER`다.
+유형은 전송 위치(`source`)와 별도로 저장하고 동일 요청의 유형 변경도 409로 처리한다. 의견은 앞뒤 공백 제거 후 최대 2,000자다. 마이페이지는 빈 의견을 거절한다.
+서버가 표시를 승인한 뒤 화면을 열며 응답 유실 시 같은 표시 ID를 재사용한다. 승인 뒤 탭 종료 시 실제로 열지
+못했어도 사용한 1회로 남을 수 있다. 세 번째 팝업의 평점 제출·재시도는 계속 허용한다.
+
+운영자는 기존 Basic 인증의 `/admin/`에서 별점·의견을 확인한다. 조회 API는
+`GET /admin/api/service-feedbacks`, `GET /admin/api/suggestions`,
+`GET /admin/api/service-feedbacks/by-user`이며 `limit` 1~200, `offset` 0 이상을 받는다.
+의견 조회는 `source=RATING_POPUP|MY_PAGE`·`category`·`user_id` 필터를 함께 제공한다.
+사용자별 조회는 사용자 한 명을 한 행으로 묶어 평점 0~1개·의견 수·최근 의견 3개를 돌려준다.
+`GET /admin/api/service-feedbacks/summary`는 미평가를 뺀 평점 수와 평균을 돌려준다.
+자세한 요청/응답·오류·ERD·FE 연동은 [서비스 평가 문서](../docs/be/service-feedback-plan-540.md)에 있다.
+
 ## 홈 Take 응답
 
 `GET /api/pitches/`의 `pitches[].takes[]`는 기존 필드에 `status`와 `end_reason`을 추가한다.
@@ -345,6 +372,8 @@ POST /api/auth/logout           현재 세션 폐기
 - 이메일이 같아도 기존 계정에 **자동으로 연결하지 않는다** (`409 CONFLICT`).
 - `refresh` 는 호출할 때마다 Refresh 를 회전시킨다. 폐기된 토큰이 다시 오면
   유출로 보고 그 세션(`device_id`)의 토큰을 전부 끊는다. 다른 기기는 살아남는다.
+- 회전·유예 재회전·로그아웃·재사용 탐지는 `(user_id, device_id)`의 PostgreSQL 트랜잭션
+  advisory lock을 공유한다. 커밋·롤백까지 직렬화해 로그아웃이 새로 발급된 토큰도 폐기한다.
 - 쿠키로 인증하는 `refresh`·`logout` 은 **출처 대조 + CSRF 토큰**(double-submit)으로 막는다.
   출처는 `Origin`, 없으면 `Referer` 순으로 보고 **둘 다 없으면 막는다** (OWASP 권장).
   프론트는 `csrf_token` 쿠키를 읽어 `X-CSRF-Token` 헤더에 실어야 한다.

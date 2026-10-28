@@ -3,7 +3,8 @@
 module 은 realtime · coach 를 import 하지 않는다 (README '의존 방향'). 그래서 HTTP 요청이 그쪽에
 알릴 일은 여기 두 자리를 거쳐 부른다.
 
-  - `live_takes()`: Take · 발표 · 회원을 지움, 창을 닫은 Take, STT 없이 끝낸 Take (끝내기 PUT)
+  - `live_takes()`: Take · 발표 · 회원을 지움, 창을 닫은 Take, STT 없이 끝낸 Take (끝내기 PUT),
+    로그아웃
   - `coaching()`: 리뷰 뒤 · 제한 시간을 바꾼 뒤 · 대본을 파싱한 뒤 다음 Take 의 코칭 계획
 
 실제 구현은 main.py 가 앱을 만들 때 꽂는다 (`install`). 꽂기 전에는 바깥이 없는 것처럼 군다 — 아무
@@ -40,6 +41,11 @@ class LiveTakes(Protocol):
         `mark` 가 실패하면 그 예외를 그대로 올리고, 적기는 뒤에서 다시 한다."""
         ...
 
+    def sign_out(self, user_id: uuid.UUID) -> None:
+        """로그아웃한 사용자의 발표 연결을 `UNAUTHORIZED` 로 닫는다. Take 는 끝내지 않는다.
+        Refresh 를 폐기한 커밋 뒤에 부른다."""
+        ...
+
 
 class Coaching(Protocol):
     """다음 Take 의 코칭 계획 (coach). 요청 스레드에서도 이벤트 루프에서도 부른다."""
@@ -61,6 +67,9 @@ class _NoLiveTakes:
 
     def end(self, take_id: uuid.UUID, mark: MarkEnded) -> None:
         mark(None, None)
+
+    def sign_out(self, user_id: uuid.UUID) -> None:
+        return None
 
 
 class _NoCoaching:

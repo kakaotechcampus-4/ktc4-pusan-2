@@ -1,6 +1,6 @@
 """코치 요청 만들기 — 시간 계획 · Take 상수 · 요청 모양.
 
-AI 예시 요청(`ai/research/coach-agent/src/coach/examples/`)과 키가 같은지 본다.
+AI 예시 요청(`ai/service/src/pitch_coach_ai/features/coach/examples/`)과 키가 같은지 본다.
 """
 
 import json

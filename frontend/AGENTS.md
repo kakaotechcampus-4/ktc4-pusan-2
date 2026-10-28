@@ -276,7 +276,7 @@ src/
     rehearsal/  ★ 리허설. 난이도 최상 (Track A)
     report/     리포트·비교·Take 기록·분석 대기
   workers/      시선 워커. 메인 스레드에서 격리
-  vendor/gaze/  AI 시선 엔진 v1.1 복사본 — 고치지 않습니다 (그 폴더 README)
+  vendor/gaze/  AI 시선 엔진 v1.1 — engine·worker 는 복사본(고치지 않음), camera 는 FE 원본 (그 폴더 README)
   mocks/        MSW. 명세 8-4의 JSON 그대로
   types/        API 타입. 명세가 바뀌면 여기부터
 ```
@@ -380,8 +380,10 @@ npm run lint         # oxlint
 그게 이 계약 파일이 따로 있는 이유입니다. 리허설은 실제로 그렇게 바뀌었습니다
 (`useLiveGaze`의 `'dummy'` → `'model'` 한 단어, `modelClassifier.ts`가 `vendor/gaze/engine`에 위임).
 
-**장치 점검의 시선 기준만은 예외입니다** — AI 카메라 화면 모듈(`GazeCameraView`)이 상자 안을
-직접 그립니다 (준비 점검 → 고개 원 → 3점 보정, 전체 화면). FE는 상자 · 스트림 · 결과 처리만
-맡습니다 (`prepare/useGazeSetup.ts`). 보정 화면의 문구와 단계는 AI 쪽에서 고칩니다.
+**장치 점검의 시선 기준만은 예외입니다** — 카메라 화면 모듈(`GazeCameraView`, `vendor/gaze/camera/`)이 상자 안을
+직접 그립니다 (준비 점검 → 고개 원 → 3점 보정, 전체 화면). 바깥의 상자 · 스트림 · 결과 처리는
+`prepare/useGazeSetup.ts` 가 맡습니다. 이 모듈은 AI 가 만들어 넘겼고, **지금은 FE 원본입니다** (#611) —
+보정 화면의 문구(`camera/text.ts`)와 단계는 FE 가 고칩니다. 엔진은 코드만 내고, 그 코드의 목록과 뜻은
+`docs/ai/features/gaze-tracking.md` 5-6 입니다. 모듈은 엔진의 공개 입구로만 엔진을 부릅니다(`.oxlintrc.json` 이 검사).
 기준은 탭 메모리(`lib/zoneRefMemory.ts`)를 거쳐 리허설 워커로 가고, 둘이 같은 화면 배치(`layoutSignature`)와
 엔진 버전으로 키를 맞춥니다.

@@ -7,20 +7,22 @@ name = "speech-pace"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "pydantic>=2.13",
+    # 판정 모듈은 AI 서비스(ai/service)의 pitch_coach_ai.features.pace 에 있고, 서비스를 editable 로 설치해
+    # 그대로 import 한다(원본은 서비스 한 곳, examples 포함). 판은 서비스 uv.lock 과 같게 맞춘다
+    "pitch-coach-ai",
 ]
+
+[tool.uv.sources]
+pitch-coach-ai = { path = "../../service", editable = true }
 
 [dependency-groups]
 dev = [
-    "pytest>=9",
     "ruff>=0.16",
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
+# 이 폴더에는 import 패키지가 없다(판정 모듈 · 테스트는 서비스, 평가 도구는 아직 없음). 빈 src/ 를 찾지 않게 한다
+[tool.setuptools]
+packages = []
 
 # backend/pyproject.toml 과 같은 규칙
 [tool.ruff]
@@ -31,4 +33,4 @@ src = ["src", "."]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["pace"]
+known-first-party = ["pitch_coach_ai"]

@@ -28,6 +28,9 @@ type _ByLoop = weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Sema
 # 운영은 uvicorn 루프 하나라 프로세스 전체에 하나다
 _background: _ByLoop = weakref.WeakKeyDictionary()
 _rubric: _ByLoop = weakref.WeakKeyDictionary()
+_standard: _ByLoop = weakref.WeakKeyDictionary()
+
+STANDARD_LIMIT = 4
 
 
 def background() -> asyncio.Semaphore:
@@ -41,6 +44,10 @@ async def rubric() -> AsyncIterator[None]:
     자리를 쥔 채 기다려 다른 호출이 쓸 자리가 준다."""
     async with _slots(_rubric, RUBRIC_LIMIT), background():
         yield
+
+
+def standard() -> asyncio.Semaphore:
+    return _slots(_standard, STANDARD_LIMIT)
 
 
 def _slots(by_loop: _ByLoop, limit: int) -> asyncio.Semaphore:
