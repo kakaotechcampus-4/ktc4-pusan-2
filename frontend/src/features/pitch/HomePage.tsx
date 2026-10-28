@@ -24,7 +24,10 @@ export function HomePage() {
             <p className="mb-2 font-mono text-[10px] tracking-widest text-ink/80">MY PITCHES</p>
             <h1 className="text-3xl font-bold">내 피치</h1>
             <p className="mt-3 text-sm text-ink/80">
-              발표 자료와 지금까지의 연습 기록을 확인해 보세요.
+              {/* 목록 위 안내를 여기로 올려 목록을 길게 씁니다. 피치가 없으면 가리킬 줄이 없어 처음 문구를 둡니다 */}
+              {data?.pitches.length
+                ? '제목을 누르면 자료와 대본을, Take 기록을 누르면 지금까지의 연습을 볼 수 있어요.'
+                : '발표 자료와 지금까지의 연습 기록을 확인해 보세요.'}
             </p>
           </div>
           <Link to="/pitch/new" className={primary}>
@@ -83,26 +86,17 @@ export function HomePage() {
                   </div>
                 </div>
               )}
+              {/* 피치가 많으면 페이지가 아니라 이 목록 상자 안에서만 스크롤됩니다 */}
               <section
-                aria-labelledby="pitches-title"
-                className="mt-8 lg:mt-6 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+                aria-label="발표 목록"
+                className="mt-5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
               >
-                <h2 id="pitches-title" className="mb-2 text-xl font-bold">
-                  발표 목록
-                </h2>
                 {data.pitches.length ? (
-                  <>
-                    <p className="mb-3 text-xs text-ink/80">
-                      제목을 누르면 자료와 대본을, Take 기록을 누르면 지금까지의 연습을 볼 수
-                      있어요.
-                    </p>
-                    {/* 피치가 많으면 페이지가 아니라 이 목록 상자 안에서만 스크롤됩니다 */}
-                    <ul className="divide-y divide-line border-2 border-ink bg-white lg:min-h-0 lg:overflow-y-auto">
-                      {data.pitches.map((pitch, index) => (
-                        <HomePitchCard key={pitch.pitch_id} pitch={pitch} index={index} />
-                      ))}
-                    </ul>
-                  </>
+                  <ul className="divide-y divide-line border-2 border-ink bg-white lg:min-h-0 lg:overflow-y-auto">
+                    {data.pitches.map((pitch, index) => (
+                      <HomePitchCard key={pitch.pitch_id} pitch={pitch} index={index} />
+                    ))}
+                  </ul>
                 ) : (
                   <div className="border-2 border-dashed border-line-strong bg-white px-6 py-8 text-center">
                     <p className="font-mono text-xs tracking-widest text-coral-deep">
