@@ -15,7 +15,7 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
       <div className="flex items-center gap-3 px-4 py-3 sm:gap-5 sm:px-5">
         <div
           aria-hidden="true"
-          className="relative hidden h-14 w-20 shrink-0 overflow-hidden border border-ink bg-cream sm:block"
+          className="hidden h-14 w-20 shrink-0 overflow-hidden border border-ink bg-cream sm:block"
         >
           {pitch.thumbnail_url && failedImage !== pitch.thumbnail_url ? (
             <img

@@ -18,7 +18,7 @@ export function HomePage() {
     // flex-1 의 basis 0% 는 부모(min-h-dvh) 높이가 정해지지 않아 내용 높이로 풀려 basis-0 을 따로 줍니다
     <div className="pitch-create flex flex-1 flex-col bg-greige text-ink lg:min-h-0 lg:basis-0">
       <HomeServiceReview ready={!home.isPending && !home.isError} blocked={helpOpen} />
-      <main className="mx-auto w-full max-w-7xl flex-1 px-6 pb-8 pt-8 lg:flex lg:min-h-0 lg:flex-col lg:px-10 lg:pb-5 lg:pt-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-6 pb-8 pt-8 lg:flex lg:min-h-0 lg:flex-col lg:px-10 lg:pb-5">
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="mb-2 font-mono text-[10px] tracking-widest text-ink/80">MY PITCHES</p>
