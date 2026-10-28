@@ -65,13 +65,17 @@ class Target(BaseModel):
 
 
 class EvaluationCriteriaAnalysis(BaseModel):
-    display_criteria: list[DisplayCriterion] = Field(description="사용자 입력 표현을 살려 짧게 다듬은 평가 기준 목록 (예: \"추임새 5번 이하\")")
+    display_criteria: list[DisplayCriterion] = Field(
+        description='사용자 입력 표현을 살려 짧게 다듬은 평가 기준 목록 (예: "추임새 5번 이하")'
+    )
     values: Criteria = Field(description="평가 요소별 기준 값 (기준이 없으면 null)")
     targets: list[Target] = Field(description="숫자로 읽히는 기준만 옮긴 숫자 목표 목록")
-    excluded: list[str] = Field(description="평가 요소에 없는 기준, 사용자 표현 구절 그대로 (예: \"발표는 5분 안에 끝내기\")")
+    excluded: list[str] = Field(
+        description='평가 요소에 없는 기준, 사용자 표현 구절 그대로 (예: "발표는 5분 안에 끝내기")'
+    )
 
 
-class Meta(BaseModel):
+class CriteriaMeta(BaseModel):
     schema_version: str
     feature_version: str
     model: str | None
@@ -80,4 +84,4 @@ class Meta(BaseModel):
 class EvaluationCriteriaResponse(EvaluationCriteriaAnalysis):
     """POST /evaluation-criteria/parse 응답: LLM 출력 + meta."""
 
-    meta: Meta
+    meta: CriteriaMeta

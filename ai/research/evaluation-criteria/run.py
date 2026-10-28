@@ -19,13 +19,13 @@ from dotenv import load_dotenv
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 
-from evaluation_criteria import analyze_criteria
-from evaluation_criteria.schemas import (
+from pitch_coach_ai.features.evaluation_criteria import analyze_criteria
+from pitch_coach_ai.features.evaluation_criteria.schemas import (
     Criteria,
     EvaluationCriteriaAnalysis,
     EvaluationCriteriaRequest,
 )
-from evaluation_criteria.version import FEATURE_VERSION, SCHEMA_VERSION
+from pitch_coach_ai.features.evaluation_criteria.version import FEATURE_VERSION, SCHEMA_VERSION
 
 ROOT = Path(__file__).resolve().parent
 EXAMPLES_PATH = ROOT / "data" / "examples.json"

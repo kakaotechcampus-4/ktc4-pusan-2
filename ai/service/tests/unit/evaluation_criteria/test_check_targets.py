@@ -2,9 +2,9 @@
 
 import pytest
 
-from evaluation_criteria import check_targets
-from evaluation_criteria.config import EvaluationCriteriaConfig
-from evaluation_criteria.schemas import Target
+from pitch_coach_ai.features.evaluation_criteria import check_targets
+from pitch_coach_ai.features.evaluation_criteria.config import EvaluationCriteriaConfig
+from pitch_coach_ai.features.evaluation_criteria.schemas import Target
 
 DISPLAY = "기준"
 
@@ -40,12 +40,16 @@ def test_unknown_metric_or_operator_is_dropped(field, bad):
 
 
 @pytest.mark.parametrize("metric", ["audience_ratio", "reading_ratio", "content_coverage"])
-@pytest.mark.parametrize("value, ok", [(0, True), (1, True), (0.7, True), (-0.1, False), (1.2, False), (70, False)])
+@pytest.mark.parametrize(
+    "value, ok", [(0, True), (1, True), (0.7, True), (-0.1, False), (1.2, False), (70, False)]
+)
 def test_ratio_metrics_are_between_0_and_1(metric, value, ok):
     assert bool(kept(target(metric, "GTE", value))) is ok
 
 
-@pytest.mark.parametrize("metric", ["pause_count", "long_silence_count", "filler_count", "filler_per_min"])
+@pytest.mark.parametrize(
+    "metric", ["pause_count", "long_silence_count", "filler_count", "filler_per_min"]
+)
 @pytest.mark.parametrize("value, ok", [(0, True), (3, True), (-1, False)])
 def test_count_metrics_are_not_negative(metric, value, ok):
     assert bool(kept(target(metric, "LTE", value))) is ok

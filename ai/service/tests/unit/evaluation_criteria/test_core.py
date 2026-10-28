@@ -2,11 +2,15 @@
 
 import pytest
 
-from evaluation_criteria import analyze_criteria
-from evaluation_criteria.prompts import SYSTEM_PROMPT
-from evaluation_criteria.schemas import EvaluationCriteriaRequest, EvaluationCriteriaResponse
-from evaluation_criteria.version import FEATURE_VERSION, SCHEMA_VERSION
-from tests.fakes import FakeLLM, analysis
+from pitch_coach_ai.features.evaluation_criteria import analyze_criteria
+from pitch_coach_ai.features.evaluation_criteria.prompts import SYSTEM_PROMPT
+from pitch_coach_ai.features.evaluation_criteria.schemas import (
+    EvaluationCriteriaRequest,
+    EvaluationCriteriaResponse,
+)
+from pitch_coach_ai.features.evaluation_criteria.version import FEATURE_VERSION, SCHEMA_VERSION
+
+from .fakes import FakeLLM, analysis
 
 
 def run(output=None, text="추임새는 5번 이하로 해 주세요.", llm=None):
@@ -32,7 +36,9 @@ def test_llm_output_is_passed_through():
     output = analysis(
         display_criteria=["추임새 5번 이하"],
         values={"filler": "5번 이하"},
-        targets=[{"display": "추임새 5번 이하", "metric": "filler_count", "operator": "LTE", "value": 5}],
+        targets=[
+            {"display": "추임새 5번 이하", "metric": "filler_count", "operator": "LTE", "value": 5}
+        ],
         excluded=["발표는 5분 안에 끝내기"],
     )
     response, _ = run(output)
@@ -58,7 +64,14 @@ def test_bad_target_is_dropped_but_display_criteria_stays():
     output = analysis(
         display_criteria=["청중 70% 이상 보기"],
         values={"gaze": "70% 이상"},
-        targets=[{"display": "청중 70% 이상 보기", "metric": "audience_ratio", "operator": "GTE", "value": 70}],
+        targets=[
+            {
+                "display": "청중 70% 이상 보기",
+                "metric": "audience_ratio",
+                "operator": "GTE",
+                "value": 70,
+            }
+        ],
     )
     response, _ = run(output)
     assert response.targets == []

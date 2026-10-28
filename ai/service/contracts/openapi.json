@@ -359,7 +359,162 @@
         "title": "ContentUnit",
         "type": "object"
       },
-      "CoverageKeyPoint": {
+      "Criteria": {
+        "properties": {
+          "filler": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "군더더기(추임새)",
+            "title": "Filler"
+          },
+          "gaze": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "청중을 보는 정도",
+            "title": "Gaze"
+          },
+          "pause": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "말 사이 멈춤",
+            "title": "Pause"
+          },
+          "script_dependency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "발표 중 대본을 보는 정도",
+            "title": "Script Dependency"
+          },
+          "script_similarity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "대본 내용을 얼마나 전달했나",
+            "title": "Script Similarity"
+          },
+          "script_used": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "대본을 봐도 되는가 (지표가 아닌 설정)",
+            "title": "Script Used"
+          },
+          "silence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "지나치게 긴 침묵",
+            "title": "Silence"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "말 속도",
+            "title": "Speed"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "목소리 크기",
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "speed",
+          "pause",
+          "silence",
+          "volume",
+          "filler",
+          "gaze",
+          "script_dependency",
+          "script_similarity",
+          "script_used"
+        ],
+        "title": "Criteria",
+        "type": "object"
+      },
+      "CriteriaMeta": {
+        "properties": {
+          "feature_version": {
+            "title": "Feature Version",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "feature_version",
+          "model"
+        ],
+        "title": "CriteriaMeta",
+        "type": "object"
+      },
+      "CriticalFact": {
         "properties": {
           "importance": {
             "anyOf": [
@@ -708,6 +863,67 @@
           "error"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "EvaluationCriteriaRequest": {
+        "description": "POST /evaluation-criteria/parse 요청. 모르는 필드는 무시한다.",
+        "properties": {
+          "standard_text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Standard Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "standard_text"
+        ],
+        "title": "EvaluationCriteriaRequest",
+        "type": "object"
+      },
+      "EvaluationCriteriaResponse": {
+        "description": "POST /evaluation-criteria/parse 응답: LLM 출력 + meta.",
+        "properties": {
+          "display_criteria": {
+            "description": "사용자 입력 표현을 살려 짧게 다듬은 평가 기준 목록 (예: \"추임새 5번 이하\")",
+            "items": {
+              "type": "string"
+            },
+            "title": "Display Criteria",
+            "type": "array"
+          },
+          "excluded": {
+            "description": "평가 요소에 없는 기준, 사용자 표현 구절 그대로 (예: \"발표는 5분 안에 끝내기\")",
+            "items": {
+              "type": "string"
+            },
+            "title": "Excluded",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/CriteriaMeta"
+          },
+          "targets": {
+            "description": "숫자로 읽히는 기준만 옮긴 숫자 목표 목록",
+            "items": {
+              "$ref": "#/components/schemas/Target"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "values": {
+            "$ref": "#/components/schemas/Criteria",
+            "description": "평가 요소별 기준 값 (기준이 없으면 null)"
+          }
+        },
+        "required": [
+          "display_criteria",
+          "values",
+          "targets",
+          "excluded",
+          "meta"
+        ],
+        "title": "EvaluationCriteriaResponse",
         "type": "object"
       },
       "EvaluationResponse": {
@@ -3650,6 +3866,55 @@
         "title": "TakeSlide",
         "type": "object"
       },
+      "Target": {
+        "properties": {
+          "display": {
+            "description": "이 목표의 display_criteria 문장",
+            "title": "Display",
+            "type": "string"
+          },
+          "metric": {
+            "description": "지표 이름",
+            "enum": [
+              "cpm",
+              "pause_count",
+              "long_silence_count",
+              "voice_diff_db",
+              "filler_count",
+              "filler_per_min",
+              "audience_ratio",
+              "reading_ratio",
+              "content_coverage"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "operator": {
+            "description": "LTE(이하) · GTE(이상) · LT(미만) · GT(초과)",
+            "enum": [
+              "LTE",
+              "GTE",
+              "LT",
+              "GT"
+            ],
+            "title": "Operator",
+            "type": "string"
+          },
+          "value": {
+            "description": "지표 단위의 숫자",
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "display",
+          "metric",
+          "operator",
+          "value"
+        ],
+        "title": "Target",
+        "type": "object"
+      },
       "UnitResult": {
         "description": "전달 단위 한 개의 판정 (LLM 1차 → 교차 검증).",
         "properties": {
@@ -3794,6 +4059,87 @@
         "summary": "Plan",
         "tags": [
           "coach"
+        ]
+      }
+    },
+    "/evaluation-criteria/parse": {
+      "post": {
+        "operationId": "parse_evaluation_criteria_parse_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationCriteriaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationCriteriaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "처리되지 않은 예외(INTERNAL_ERROR)"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 호출 실패(LLM_ERROR) · 잘못된 출력(LLM_INVALID_OUTPUT)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 을 쓸 수 없음(LLM_UNAVAILABLE) · 준비 전(NOT_READY)"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 응답 시간 초과(LLM_TIMEOUT)"
+          }
+        },
+        "summary": "Parse",
+        "tags": [
+          "evaluation_criteria"
         ]
       }
     },

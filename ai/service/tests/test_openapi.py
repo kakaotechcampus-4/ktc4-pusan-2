@@ -37,6 +37,7 @@ def test_feature_paths_are_listed_without_api_prefix() -> None:
         "/takes/rescore",
         "/coach/plan",
         "/takes/review",
+        "/evaluation-criteria/parse",
     }
 
 

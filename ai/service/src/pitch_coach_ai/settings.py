@@ -96,6 +96,9 @@ LLM_ROLES: dict[str, LlmRole] = {
     # 48 Take 최대 802 · 기본값 clean 16 Take 최대 1,809 (리뷰 기능 문서 8절, 연구 README 3절).
     # 호출 한 번은 LLM_TIMEOUT_SECONDS
     "review": LlmRole(bundle="default", max_output_tokens=2048),
+    # 평가 기준 분석: 잰 최대 출력 720토큰 × 2 를 1,024 단위로 올림(최소 2,048).
+    # 호출 한 번은 LLM_TIMEOUT_SECONDS (평가 기준 기능 문서 8절)
+    "evaluation_criteria": LlmRole(bundle="default", max_output_tokens=2048),
 }
 
 
