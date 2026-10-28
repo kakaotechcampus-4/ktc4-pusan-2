@@ -290,7 +290,7 @@ ai/research/filler-detection/
 코치는 `words` 중 `is_filler`가 true이거나 null(보류)인 단어를 `fillers[{start_ms, end_ms, is_filler}]`로 같은 요청의 말 속도에 넘긴다. 말 속도는 군더더기를 글자 수에서 빼고 보류 단어부터는 다음 요청에서 센다. 군더더기 판정이 실패하면(예외 · `words` 모양이 틀림) 코치는 `fillers: null`을 넘기고, 말 속도는 새 단어를 세지 않는다(`architecture.md` 7절, `coach-agent.md` 6-1). 말 속도의 계약은 `pace.md`가 기준이다.
 
 ## 6-4. `summarize` · `criteria`
-- `summarize`는 코치가 장 · Take 동안 더한 `tally` 합계를 받아 5-3 표대로 지표를 계산한다. `by_tier` · `by_word`는 Take 결과에 그대로 들어가는 묶음 값이다(`architecture.md` 7절). 코치는 값을 고치지 않고 `coach-agent.md` 5-3의 모양으로 Take 결과의 `areas.FILLER`에 담는다. `measured_ratio`는 `areas.FILLER.measured_ratio`로 따로 두고 나머지를 `take`에 담으며, 측정 비율이 코치의 기준 미만이면 `take`를 비운다(`unmeasured_reason`). `criteria()`는 `criteria.FILLER`에 `{criteria_version, issues}`로 담는다.
+- `summarize`는 코치가 장 · Take 동안 더한 `tally` 합계를 받아 5-3 표대로 지표를 계산한다. `by_tier` · `by_word`는 Take 결과에 그대로 들어가는 묶음 값이다(`architecture.md` 7절). 코치는 값을 고치지 않고 `coach-agent.md` 5-3의 모양으로 Take 결과의 `areas.FILLER`에 담는다. `measured_ratio`는 `areas.FILLER.measured_ratio`로 따로 두고 나머지를 `take`에 담으며, 측정 비율이 코치의 기준 미만이거나 읽지 못하면 `take` · `slides`를 비운다(`unmeasured_reason: LOW_MEASURED_RATIO`). `criteria()`는 `criteria.FILLER`에 `{criteria_version, issues}`로 담는다.
 - `criteria`는 `FILLER_FREQUENT`의 기준을 돌려준다.
 
 # 7. 실패할 때

@@ -524,7 +524,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | 요청 형식이 스키마와 다름 | 거절 | 422 `VALIDATION_ERROR` | 다시 불러도 같다 |
 | 한 장의 LLM 호출이 실패 · 시간 초과 · 잘못된 출력 (평가 기준 · 채점 · 교차 검증. 교차 검증이 대상 문장 · 전달 단위를 빠뜨리거나 겹친 것도 잘못된 출력, 6-2) | 그 장만 실패로 담고 나머지 장은 계속한다 | 200, `failed[{slide_number, error{code: LLM_TIMEOUT · LLM_ERROR · LLM_INVALID_OUTPUT · LLM_UNAVAILABLE}}]` | 한 장 때문에 나머지 채점을 잃지 않게. BE는 실패한 장만 다시 부른다 |
 | 채점할 장의 평가 기준이 없음 (평가 기준 만들기가 실패한 장) | 그 장은 채점하지 않고 나머지 장은 계속한다. 그 장도 `scored_ratio`의 대상 장이다 | 200, `failed`에 `RUBRIC_MISSING` | 전체를 멈추지 않고, 일부만 채점된 것을 비율로 알린다 |
-| 모든 장이 실패 | 결과를 내지 않는다 | `architecture.md` 4절 '장별 API'대로: 다시 부를 수 있는 오류(LLM 5xx: 504 `LLM_TIMEOUT` · 502 `LLM_ERROR` · 502 `LLM_INVALID_OUTPUT` · 503 `LLM_UNAVAILABLE`)가 있으면 그중 장 번호가 가장 작은 장의 오류, 모든 장이 입력 오류(평가 기준 없음)일 때만 422 `RUBRIC_MISSING` | LLM 오류는 BE가 한 번 다시 부를 수 있고, 평가 기준이 없는 것은 다시 불러도 같다 |
+| 모든 장이 실패 (대상 장이 하나 이상일 때. 대상이 없으면 빈 결과 200, 5-2) | 결과를 내지 않는다 | `architecture.md` 4절 '장별 API'대로: 다시 부를 수 있는 오류(LLM 5xx: 504 `LLM_TIMEOUT` · 502 `LLM_ERROR` · 502 `LLM_INVALID_OUTPUT` · 503 `LLM_UNAVAILABLE`)가 있으면 그중 장 번호가 가장 작은 장의 오류, 모든 장이 입력 오류(평가 기준 없음)일 때만 422 `RUBRIC_MISSING` | LLM 오류는 BE가 한 번 다시 부를 수 있고, 평가 기준이 없는 것은 다시 불러도 같다 |
 | LLM 설정 없음 (`/scripts/rubric` · `/takes/analyze`) | 모든 장이 실패 | 503 `LLM_UNAVAILABLE` | `architecture.md` 9 · 10절 |
 | `/takes/rescore`: 채점의 `rubric_id`가 받은 평가 기준과 다름 | 거절 | 422 `RUBRIC_MISMATCH` | 평가 기준이 바뀌었으면 다시 채점해야 한다 |
 | `/takes/rescore`: 채점에 `stt_text` 필드가 없음 (예전 모양) | 거절. 빈 문자열(발표에서 넘어간 장)은 정상이다 | 422 `STT_TEXT_MISSING` | 다시 계산에 필요한 STT가 없다 |
@@ -764,7 +764,7 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 - 기준값을 바꾸면 `criteria_version`이 바뀌므로 결과 JSON을 다시 만들어 같은 PR에 넣는다. 기준값은 고정한 채 새 데이터로 먼저 재고, 그다음에 조정한다.
 
 # 14. 지표 정의
-- **문장 판정 정확도**: 채점 대상 대본 문장(`skip` 제외) 중 판정(`said` · `partial` · `missing` · `contradicted`)이 정답 라벨과 같은 비율.
+- **문장 판정 정확도**: 채점 대상 대본 문장(`skip` 제외. 핵심 내용의 근거인 `skip` 문장은 채점하므로 포함, 5-4) 중 판정(`said` · `partial` · `missing` · `contradicted`)이 정답 라벨과 같은 비율.
 - **핵심 내용 판정 정확도**: 핵심 내용 중 판정이 정답(근거 문장 라벨을 같은 규칙으로 모은 것)과 같은 비율.
 - **심각한 오판 비율**: 정답이 전달(`said`)인데 `missing` · `contradicted`로, 또는 정답이 `missing` · `contradicted`인데 `said`로 판정한 문장의 비율.
 - **같은 입력 재실행 판정 일치율**: 같은 STT를 여러 번 채점했을 때 문장(핵심 내용) 판정이 모든 회차에서 같은 비율.

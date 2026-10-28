@@ -60,7 +60,7 @@
 
 | 덩어리 | 폴더 | 하는 일 | 나중에 |
 |---|---|---|---|
-| **TS 엔진** | `web/src/engine/` | 프레임 → 준비 점검 · 고개 원 · 보정 · 프레임 판정 · 1초 기록 (Web Worker 안) | `frontend/src/vendor/gaze/engine/`로 폴더째 (카메라 화면 · Worker와 함께) |
+| **TS 엔진** | `web/src/engine/` | 프레임 → 준비 점검 · 고개 원 · 보정 · 프레임 판정 · 1초 기록 (Web Worker 안) | `frontend/src/vendor/gaze/engine/`로 폴더째 (Worker와 함께. 카메라 화면은 FE 담당, #611) |
 | **서버 판정 모듈** | 서비스 `features/gaze/` | 1초 기록 → 1초 판정 결과(`judge`) · Take 지표(`summarize`) · 판정 기준(`criteria`) | `ai/service`로 옮겼음 |
 | **Python 기준 구현** | `src/gaze_lab/` | 같은 판정의 Python 판 + 데이터셋 · 평가 · 실험. TS 엔진의 임계값 · 기준 답을 만든다 | research에 남음 |
 

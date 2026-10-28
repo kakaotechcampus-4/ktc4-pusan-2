@@ -402,12 +402,13 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 | 준비 점검 `PreconditionReason` (`checkPreconditions` 결과) | `OK` · `NO_FACE` · `MULTIPLE_FACES` · `OFF_CENTER` · `TOO_FAR` · `TOO_CLOSE` · `FACING_AWAY` · `TOO_DARK` · `BACKLIT` · `LOW_FPS` | 통과 · 얼굴 없음 · 여러 명 · 가운데 아님 · 멂 · 가까움 · 정면 아님 · 어두움 · 역광 · 카메라 프레임이 느림 |
 | 얼굴을 못 읽은 프레임 `InvalidReason` (Worker `FrameSummary.invalidReason`, 그 프레임의 `FrameDecision.uncertain_reason`, 게이지 · 고개 원 사유에도 쓰임) | `NO_FACE` · `LOW_FACE_CONFIDENCE` · `FACE_TOO_SMALL` · `OUT_OF_FRAME` · `EYES_CLOSED` · `CROP_FAILED` · `BACKBONE_FAILED` | 얼굴 없음 · 얼굴 일부만 · 너무 작음 · 화면 밖 · 눈 감음 · 얼굴 잘라내기 실패 · 자세 계산 실패 |
 | 고개 원 (`SweepStatus.last_reason`) | `TOO_FAST` · `NO_HEAD_POSE` + 위 `InvalidReason` | 너무 빨리 돌림 · 고개 방향을 못 읽음 |
-| 보정 게이지 `GaugeReason` (`GaugeStatus`) | `LOW_GAZE_CONFIDENCE` · `SETTLING` · `HEAD_MOVED` · `BLINK` · `OUTLIER` · `NOT_ACTIVE` · `LOOK_HIGHER` · `LOOK_LOWER` · `OFF_TARGET` + 위 `InvalidReason` | 얼굴이 가장자리에 걸림 · 자리 잡는 중 · 고개가 움직임 · 깜빡임 · 다른 곳을 봄 · 지점 수집 중 아님 · 더 들어야 함 · 더 숙여야 함 · 과녁 방향이 아님 |
-| 카메라 위치 (`PlacementResultDict`) | 위치 `TOP` · `BOTTOM` · `SIDE_LEFT` · `SIDE_RIGHT` · `INCONCLUSIVE`, 판정하지 못한 이유 `PlacementReason` `NOT_ENOUGH_SAMPLES` · `TARGETS_NOT_SEPARATED` · `DISPLACEMENT_TOO_SMALL` · `AMBIGUOUS_AXIS` | 화면 위 가운데(정상) · 아래 · 왼쪽 · 오른쪽 · 판정 불가 / 프레임 부족 · 렌즈와 화면 가운데 자세가 거의 같음 · 방향 차이가 작음 · 대각선이라 축을 못 정함 |
+| 보정 게이지 `GaugeReason` (`GaugeStatus`) | `LOW_GAZE_CONFIDENCE` · `SETTLING` · `HEAD_MOVED` · `BLINK` · `OUTLIER` · `NOT_ACTIVE` · `LOOK_HIGHER` · `LOOK_LOWER` · `OFF_TARGET` + 위 `InvalidReason` | 얼굴이 가장자리에 걸림 · 자리 잡는 중 · 고개가 움직임 · 깜빡임 · 그 지점의 중앙값에서 벗어난 시선(흘끗 봄) · 지점 수집 중 아님 · 더 들어야 함 · 더 숙여야 함 · 과녁 방향이 아님 |
+| 카메라 위치 (`PlacementResultDict`) | 위치 `TOP` · `BOTTOM` · `SIDE_LEFT` · `SIDE_RIGHT` · `INCONCLUSIVE`, 판정 결과 `PlacementReason` `OK`(판정함) · `NOT_ENOUGH_SAMPLES` · `TARGETS_NOT_SEPARATED` · `DISPLACEMENT_TOO_SMALL` · `AMBIGUOUS_AXIS` | 화면 위 가운데(정상) · 아래 · 왼쪽 · 오른쪽 · 판정 불가 / 프레임 부족 · 렌즈와 화면 가운데 자세가 거의 같음 · 방향 차이가 작음 · 대각선이라 축을 못 정함 |
 | 보정 실패 `FailReason` (보정 결과 `status: RETRY_REQUIRED`일 때 `reason`) | `NOT_ENOUGH_SAMPLES` · `DEGENERATE_FEATURES` · `CLASS_NOT_SEPARABLE` · `CENTROIDS_TOO_CLOSE` · `ANCHOR_AMBIGUOUS` · `LOW_LOO_ACCURACY` | 프레임 부족 · 세 지점 자세가 같음 · 렌즈와 대본을 가를 수 없음 · 두 지점이 너무 가까움 · 한 지점이 주변과 구분되지 않음 · 지점별 값이 섞임 (재측정 권장은 7절) |
-| 보정 경고 (보정 결과 `warnings`) | `SCREEN_MERGED_WARNING`(`contract.ts`) · `INVERTED_PITCH:`로 시작하는 문장 | 화면 구역을 청중에 합침(4-3) · 지점의 위아래 순서가 뒤집힘(카메라 위치 확인) |
-| 판정 보류 (`FrameDecision.uncertain_reason`) | `LOW_CONFIDENCE` · `LOW_MARGIN` · `HEAD_AWAY` · `NOT_CALIBRATED` + 심한 촬영 조건 이슈(`FACE_LOST` · `FACE_REPLACED` · `MOVED_TOO_FAR`) | 두 구역 사이라 애매 · 확률 차이가 작음 · 고개가 보정 범위 밖 · 보정 전 |
-| 시작 · 실행 실패 | `EngineInitError.reason` · Worker `failed.reason` · 카메라 화면 `error` 이벤트 | 위 '시작' 표와 7절 |
+| 보정 경고 (보정 결과 `warnings`, 문장) | `SCREEN_MERGED_WARNING`(`contract.ts`) · `INVERTED_PITCH:`로 시작하는 문장 · `<지점> spread is more than twice the pooled noise` | 화면 구역을 청중에 합침(4-3) · 지점의 위아래 순서가 뒤집힘(카메라 위치 확인) · 그 지점에서 자세가 많이 흩어짐. 모르는 경고 문장은 일반 문구로 |
+| 판정 보류 (`FrameDecision.uncertain_reason`) | `LOW_CONFIDENCE` · `LOW_MARGIN` · `HEAD_AWAY` · `NOT_CALIBRATED` · `OTHER` + 위 `InvalidReason` + 심한 촬영 조건 이슈(`FACE_LOST` · `FACE_REPLACED` · `MOVED_TOO_FAR`) | 두 구역 사이라 애매 · 확률 차이가 작음 · 고개가 보정 범위 밖 · 보정 전 · 다른 곳을 봄(`otherAs: 'UNCERTAIN'`일 때) |
+| 촬영 조건 (`ConditionState.issues` · `notices`, 프레임 판정의 `condition`) | `HEAD_TURNED` · `TOO_FAR` · `TOO_CLOSE` · `OFF_CENTER` · `LOW_VALID_RATIO` · `NOISY_TRACKING` · `FACE_LOST` · `FACE_REPLACED` · `MOVED_TOO_FAR`, 알림 `SECOND_FACE` | 위 '촬영 조건 이슈' 표 |
+| 시작 · 실행 실패 | `EngineInitError.reason` `UNSUPPORTED_BROWSER` · `TIMEOUT` · `INIT_FAILED`, Worker `failed.reason`(+ `FRAME_FAILED`), 카메라 화면 `error` 이벤트(+ `WORKER_FAILED` · `CAMERA_LOST`) | 위 '시작' 표와 7절 |
 
 # 6. 처리 — 안에서 어떻게 도는가
 ## 6-1. 브라우저 엔진: 프레임 → 1초 기록
@@ -425,7 +426,7 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 4. **지표 (`metrics`)**: 최근 창과 짧은 창의 상태별 비율(분모 `measured_ms`), 짧은 창의 측정 비율 · 평균 신뢰도, 지금 이어지는 대본 · 화면 · 그 밖 응시 길이, 최근 창의 `reading_ratio`를 계산한다.
 5. **잴 수 있나 (`measurable`)**: 측정 비율(짧은 창과 최근 창 평균 중 나쁜 쪽)과 평균 신뢰도가 모두 기준 이상이어야 true다.
 6. **상태 (`state`)**: 잴 수 없으면 `UNMEASURABLE`. 아니면 짧은 창의 대본 응시 비율이 기준 이상이면 `SCRIPT`, 아니면 짧은 창에서 가장 많이 본 곳이다.
-7. **문제 (`issues`)**: 5-4의 조건으로 판정하고, Take 시작 직후에는 `GAZE_UNMEASURABLE`만 남긴다. `severity`는 공통 규칙, `confidence`는 측정 비율에서 정한다.
+7. **문제 (`issues`)**: 5-4의 조건으로 판정하고, Take 시작 직후에는 `GAZE_UNMEASURABLE`만 남긴다. `severity`는 공통 규칙, `confidence`는 측정 비율에서 정한다(`GAZE_UNMEASURABLE`은 늘 1.0, 5-3).
 8. **커서**: `counted_until_ms = max(t_ms, since_ms)`로 돌려주어 커서를 되돌리지 않는다(`architecture.md` 7절). 같은 입력을 두 번 넣으면 같은 결과가 나오고, 돌려준 커서로 다시 부르면 이미 센 몫은 나오지 않는다. 요청이 빠져 새 1초가 여러 개면 한 번에 모두 센다.
 
 ## 6-3. 대본 의존 (`reading_ms` · `reading_runs`)
