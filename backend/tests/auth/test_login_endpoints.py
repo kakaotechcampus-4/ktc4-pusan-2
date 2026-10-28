@@ -1,11 +1,13 @@
 """엔드포인트: google/start · callback · 쿠키 · 리다이렉트."""
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.auth import google, service, state_store
@@ -20,6 +22,7 @@ from pitch_coach_backend.module.auth.exception import (
     GoogleIdentityRejected,
     GoogleTokenExchangeFailed,
 )
+from pitch_coach_backend.module.user import service as user_service
 from tests.auth.conftest import CALLBACK, NON_ASCII, START, start_login
 
 # --- start --------------------------------------------------------------
@@ -293,6 +296,58 @@ def test_google_error_code_is_not_reflected_verbatim(client: TestClient) -> None
     location = res.headers["location"]
     assert "script" not in location
     assert "auth_error=login_failed" in location
+
+
+# --- 출시 전 ------------------------------------------------------------
+
+
+def _launch_in(monkeypatch: pytest.MonkeyPatch, delta: timedelta) -> None:
+    monkeypatch.setattr(settings, "launch_at", datetime.now(UTC) + delta)
+
+
+def test_start_before_launch_does_not_go_to_google(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FE 의 시작 버튼을 거치지 않고 주소를 직접 열어도 구글로 보내지 않는다."""
+    _launch_in(monkeypatch, timedelta(hours=1))
+
+    res = client.get(START, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert res.headers["location"].startswith(settings.frontend_base_url)
+    assert "auth_error=service_not_open" in res.headers["location"]
+    assert not any(name.startswith(BROWSER_COOKIE_NAME) for name in res.cookies)
+
+
+def test_callback_before_launch_creates_no_user_or_session(
+    client: TestClient,
+    db_session: Session,
+    fake_google: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """막기 전에 시작해 둔 요청이 출시 전에 돌아온 경우. 구글과 통신하지도 않는다."""
+    state = start_login(client)
+    _launch_in(monkeypatch, timedelta(hours=1))
+
+    res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
+
+    assert res.status_code == 302
+    assert "auth_error=service_not_open" in res.headers["location"]
+    assert REFRESH_COOKIE_NAME not in res.cookies
+    assert fake_google["exchanged"] == []
+    assert user_service.find_by_email(db_session, "new@example.com") is None
+
+
+def test_login_works_once_launched(
+    client: TestClient, fake_google: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _launch_in(monkeypatch, -timedelta(seconds=1))
+    state = start_login(client)
+
+    res = client.get(CALLBACK, params={"code": "c", "state": state}, follow_redirects=False)
+
+    assert "auth_error" not in res.headers["location"]
+    assert REFRESH_COOKIE_NAME in res.cookies
 
 
 # --- 헤더 · 쿠키 값 ------------------------------------------------------
