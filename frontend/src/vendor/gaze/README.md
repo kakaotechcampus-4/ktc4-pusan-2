@@ -29,7 +29,7 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과, 그 엔진을 쓰�
 - `engine/index.ts` — `createClassifier`. MediaPipe 를 불러오므로 워커에서 동적 `import()` 로 부릅니다. 타입만 가져오는 `import type` 은 괜찮습니다
 - `engine/contract.ts` — MediaPipe 없이 쓰는 값 (`CONFIG_HASH` · `makeConfig` · `GazeSlicer` · `sampleToDict` · `frameFromDecision` · `SCREEN_MERGED_WARNING`, 화면이 쓰는 `GAZE_DIRECTIONS` · `Cue` · `FaceGuide` · `State` …)
 
-`camera/` 도 같은 입구로만 부릅니다 — 엔진은 `../engine`(타입만) · `../engine/contract`, Worker 는 `../worker/protocol` 입니다.
+`camera/` 도 같은 입구로만, **상대 경로로** 부릅니다 — 엔진은 `../engine`(타입만) · `../engine/contract`, Worker 는 `../worker/protocol` 입니다. `@/vendor/...` 경로는 쓰지 않습니다.
 `.oxlintrc.json` 이 이것을 검사합니다. 그래야 엔진을 다시 복사해도 화면이 엔진 안쪽 파일에 묶이지 않습니다.
 Worker 는 `camera/view.ts` 가 `../worker/gaze.worker.ts` 를 경로로 띄우므로 `camera/` 와 `worker/` 는 이 폴더 아래 나란히 둡니다.
 

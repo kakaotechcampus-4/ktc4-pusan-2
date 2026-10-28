@@ -64,6 +64,10 @@
                   "!../worker/protocol"
                 ],
                 "message": "camera/ 는 엔진 · Worker 의 공개 입구(../engine/contract, ../worker/protocol)만 씁니다. 안쪽 파일을 부르면 엔진을 다시 복사할 때 화면이 깨집니다 (vendor/gaze/README.md, #611)."
+              },
+              {
+                "group": ["@/vendor/**"],
+                "message": "camera/ 는 엔진 · Worker 를 상대 경로(../engine, ../engine/contract, ../worker/protocol)로만 부릅니다. @/ 경로는 위 공개 입구 검사를 비켜 갑니다."
               }
             ]
           }
