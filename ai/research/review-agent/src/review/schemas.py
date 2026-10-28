@@ -43,7 +43,8 @@ class _Out(BaseModel):
 class SlideValues(_In):
     """Take 결과의 장별 값. 측정 비율 미달이면 metrics 가 null"""
 
-    slide_number: int
+    #: 장 번호는 1부터 (architecture.md 6-1). 0이 오면 출력 검증이 아니라 입력에서 422 로 막는다
+    slide_number: int = Field(ge=1)
     #: 장 목표 시간. 이전 Take 비교에서 slide_duration_ms 의 기준
     target_ms: int | None = None
     measured_ratio: float | None = None
@@ -64,7 +65,7 @@ class ProblemSegment(_In):
     area: str
     issue_type: str
     #: Take 전체 문제면 null
-    slide_number: int | None = None
+    slide_number: int | None = Field(default=None, ge=1)
     #: 코치가 판정 창만큼 되돌린 구간
     start_ms: int
     end_ms: int
@@ -100,7 +101,7 @@ class KeyPoint(_In):
 
 
 class SlideEvaluation(_In):
-    slide_number: int
+    slide_number: int = Field(ge=1)
     scores: dict[str, Any] = Field(default_factory=dict)
     key_points: list[KeyPoint] = Field(default_factory=list)
 

@@ -11,7 +11,7 @@ from review.score import compute_score
 from review.text import NOTHING_TEXT, STABLE_TEXT, TextCandidates, default_summary
 from review.vocab import DIMENSIONS
 
-from .conftest import run, segment, unmeasured
+from .conftest import run, sample_coverage, segment, unmeasured
 
 
 def test_sample_recurring_issues(req):
@@ -322,3 +322,17 @@ def test_output_mission_and_recurring_contract():
     RecurringIssue(area="GAZE", slide_number=None, dimension="script_independence")
     with pytest.raises(ValidationError):
         RecurringIssue(area="GAZE", slide_number=0, dimension="script_independence")
+
+
+@pytest.mark.parametrize("where", ["slide_values", "problem_segment", "coverage"])
+def test_input_slide_number_starts_at_one(req, where):
+    # 출력 장 번호는 입력 장 번호에서 고른다. 0이 들어오면 출력 검증(500)이 아니라 입력에서 422
+    if where == "slide_values":
+        req["take_result"]["areas"]["GAZE"]["slides"][0]["slide_number"] = 0
+    elif where == "problem_segment":
+        req["take_result"]["problem_segments"][0]["slide_number"] = 0
+    else:
+        req["script_coverage"] = sample_coverage()
+        req["script_coverage"]["evaluations"][0]["slide_number"] = 0
+    with pytest.raises(ValidationError):  # 라우터가 422 로 바꾼다
+        ReviewRequest.model_validate(req)
