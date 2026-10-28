@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from pitch_coach_ai.api import coach, health, script_coverage, script_parser
+from pitch_coach_ai.api import coach, health, review, script_coverage, script_parser
 from pitch_coach_ai.common.errors import register_exception_handlers
 from pitch_coach_ai.common.readiness import Readiness
 from pitch_coach_ai.common.request_log import configure_logging, register_request_log
@@ -68,6 +68,7 @@ def create_app(
     app.include_router(script_parser.router)
     app.include_router(script_coverage.router)
     app.include_router(coach.router)
+    app.include_router(review.router)
     return app
 
 

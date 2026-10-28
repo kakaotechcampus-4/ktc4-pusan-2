@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from pitch_coach_ai.features.review import ReviewRequest, load_config, review_take
-from pitch_coach_ai.features.review.schemas import NextMission, RecurringIssue
+from pitch_coach_ai.features.review.schemas import NextMission, RecurringIssueOut
 from pitch_coach_ai.features.review.score import compute_score
 from pitch_coach_ai.features.review.text import (
     NOTHING_TEXT,
@@ -324,9 +324,9 @@ def test_output_mission_and_recurring_contract():
     for bad in ({"area": None}, {"area": "EYE"}, {"slide_number": 0}):
         with pytest.raises(ValidationError):
             NextMission(**{**ok, **bad}, priority=1, reason="이유")
-    RecurringIssue(area="GAZE", slide_number=None, dimension="script_independence")
+    RecurringIssueOut(area="GAZE", slide_number=None, dimension="script_independence")
     with pytest.raises(ValidationError):
-        RecurringIssue(area="GAZE", slide_number=0, dimension="script_independence")
+        RecurringIssueOut(area="GAZE", slide_number=0, dimension="script_independence")
 
 
 @pytest.mark.parametrize("where", ["slide_values", "problem_segment", "coverage"])
