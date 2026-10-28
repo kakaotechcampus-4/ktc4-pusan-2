@@ -207,6 +207,48 @@ const TEMPLATE = `
   <div class="gzc-badge" data-ok="0"><i aria-hidden="true"></i><span>얼굴을 찾는 중</span></div>
   <div class="gzc-toast" role="alert"></div>`;
 
+// Small pickers for the view's labels. The frontend lints this folder (no nested ternaries), so a
+// choice between three or more goes through early returns.
+
+/** Which of the three steps (face · calib · done) a phase lights up. */
+function stepOfPhase(phase: CameraPhase): 'face' | 'calib' | 'done' {
+  if (phase === 'calib') return 'calib';
+  if (phase === 'result') return 'done';
+  return 'face';
+}
+
+/** A precondition row: not reported yet, failing, or passing. */
+function checkClass(seen: boolean, failing: boolean): string {
+  if (!seen) return '';
+  return failing ? 'is-fail' : 'is-ok';
+}
+
+/** One look in the gauge's three steps. */
+function meterStepState(done: boolean, current: boolean): 'done' | 'now' | 'next' {
+  if (done) return 'done';
+  return current ? 'now' : 'next';
+}
+
+function meterStepFill(done: boolean, current: boolean, progress: number): number {
+  if (done) return 1;
+  return current ? progress : 0;
+}
+
+/** The good-frame count under the gauge. */
+function meterCountText(status: GaugeStatus | null, paused: boolean): string {
+  if (!status) return '곧 시작해요';
+  if (status.state === 'DONE') return '완료';
+  const frames = `좋은 프레임 ${status.good} / ${status.target}`;
+  return paused ? `멈춤 · ${frames}` : frames;
+}
+
+/** The face badge: found, still looking, or why this frame was not read. */
+function badgeText(valid: boolean, reason: string | null): string {
+  if (valid) return '얼굴 인식됨';
+  if (reason === 'NO_FACE' || !reason) return '얼굴을 찾는 중';
+  return GAUGE_REASON[reason] ?? '얼굴 확인 중';
+}
+
 export class GazeCameraView {
   /** The view's root, appended to the host's box. */
   readonly element: HTMLDivElement;
@@ -546,7 +588,7 @@ export class GazeCameraView {
     const root = this.element;
     root.dataset.phase = phase;
     if (phase !== 'calib') root.dataset.cue = '';
-    const step = phase === 'calib' ? 'calib' : phase === 'result' ? 'done' : 'face';
+    const step = stepOfPhase(phase);
     const order = ['face', 'calib', 'done'];
     for (const li of root.querySelectorAll<HTMLElement>('.gzc-steps li')) {
       const mine = order.indexOf(li.dataset.step!);
@@ -624,7 +666,7 @@ export class GazeCameraView {
     const seen = new Set<string>(report.checks.map((c) => c.name));
     for (const li of this.#el.checks.querySelectorAll<HTMLElement>('li')) {
       const name = li.dataset.check!;
-      li.className = !seen.has(name) ? '' : failing.has(name) ? 'is-fail' : 'is-ok';
+      li.className = checkClass(seen.has(name), failing.has(name));
     }
     const holding = report.reason === 'OK';
     this.element.dataset.align = holding ? 'on' : 'off';
@@ -792,11 +834,7 @@ export class GazeCameraView {
     else this.#targetProgress(status.progress);
     const reason =
       status.last_reason && status.last_reason !== 'SETTLING' ? status.last_reason : null;
-    this.#el.hint.textContent = reason
-      ? (GAUGE_REASON[reason] ?? '')
-      : status.cue === 'SCREEN'
-        ? this.#baselineNote(status)
-        : '';
+    this.#el.hint.textContent = this.#gaugeHint(status, reason);
     this.#renderMeter(status, reason !== null);
     if (!status.finished) return;
     this.#cueStarted = false;
@@ -819,6 +857,12 @@ export class GazeCameraView {
   }
 
   /** The screen-centre look against the head circle's centre: confirming, confirmed, or measured again. */
+  /** Why the gauge paused, else (on the screen-centre look) the baseline note. */
+  #gaugeHint(status: GaugeStatus, reason: string | null): string {
+    if (reason) return GAUGE_REASON[reason] ?? '';
+    return status.cue === 'SCREEN' ? this.#baselineNote(status) : '';
+  }
+
   #baselineNote(status: GaugeStatus): string {
     const b = this.#baseline;
     if (b && b.confirmed && b.seeded)
@@ -836,20 +880,14 @@ export class GazeCameraView {
     for (const li of this.#el.meter.querySelectorAll<HTMLElement>('.gzc-meter-steps li')) {
       const i = CUE_ORDER.indexOf(li.dataset.cue as Cue);
       const done = i < now || (i === now && status?.state === 'DONE');
-      li.dataset.state = done ? 'done' : i === now ? 'now' : 'next';
-      const fill = done ? 1 : i === now ? (status?.progress ?? 0) : 0;
+      li.dataset.state = meterStepState(done, i === now);
+      const fill = meterStepFill(done, i === now, status?.progress ?? 0);
       li.querySelector<HTMLElement>('i')!.style.transform = `scaleX(${fill})`;
     }
     const p = status?.progress ?? 0;
     this.#el.meterFill.style.transform = `scaleX(${p})`;
     this.#el.meterPct.textContent = `${Math.round(p * 100)}%`;
-    this.#el.meterCount.textContent = !status
-      ? '곧 시작해요'
-      : status.state === 'DONE'
-        ? '완료'
-        : paused
-          ? `멈춤 · 좋은 프레임 ${status.good} / ${status.target}`
-          : `좋은 프레임 ${status.good} / ${status.target}`;
+    this.#el.meterCount.textContent = meterCountText(status, paused);
     this.#el.meter.dataset.paused = paused ? '1' : '0';
   }
 
@@ -1019,11 +1057,7 @@ export class GazeCameraView {
   #setBadge(valid: boolean, reason: string | null): void {
     const badge = this.#el.badge;
     badge.dataset.ok = valid ? '1' : '0';
-    badge.querySelector('span')!.textContent = valid
-      ? '얼굴 인식됨'
-      : reason === 'NO_FACE' || !reason
-        ? '얼굴을 찾는 중'
-        : (GAUGE_REASON[reason] ?? '얼굴 확인 중');
+    badge.querySelector('span')!.textContent = badgeText(valid, reason);
   }
 
   #toast(text: string): void {
