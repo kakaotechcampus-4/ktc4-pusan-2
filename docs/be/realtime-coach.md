@@ -28,8 +28,8 @@ Take 종료  stop ─▶ 분석 단계 FINALIZING ─▶ /coach/finalize (409 �
 - 응답은 BE 가 쓰는 칸만 검사한다. `coach_state` · `events` · `take_result` · `coaching_plan` · `meta` 는 받은 그대로 둔다
   (AI 로 다시 가거나 그대로 저장한다). `meta.schema_version` 의 major 가 1 이 아니면 쓰지 않는다.
 - 로그에는 상태 코드와 `error.code` 만 남긴다. 응답 본문에는 대본 · 전사가 되돌아올 수 있다.
-- 창은 AI 의 replay(`ai/research/coach-agent/src/coach/recovery.py`)와 같은 규칙으로 고른다. 시선 · 음량은 30초 안에 시작해
-  그 시각까지 끝난 1초 기록, 단어 · 문장 끝은 60초다. 그래야 응답이 빠져 replay 로 만든 Take 결과가 정상 진행과 같다.
+- 창은 AI 의 replay(`ai/service/src/pitch_coach_ai/features/coach/recovery.py`)와 같은 규칙으로 고른다.
+  시선 · 음량은 30초 안에 시작해 그 시각까지 끝난 1초 기록, 단어 · 문장 끝은 60초다. 그래야 응답이 빠져 replay 로 만든 Take 결과가 정상 진행과 같다.
 - `takes.mode` · `script_mode` 가 계약에 없는 값(`PRACTICE` · `FULL` 등)이면 싣지 않는다. 그대로 보내면 AI 가 422 로 거절한다.
 - **발표 중** (`coach/session.py`): Take 에 붙어 있어 연결 · 스트림이 바뀌어도 `coach_state` 가 이어진다. 한 Take 에서
   앞 응답을 받기 전에 온 `metrics` 는 창에만 넣고 그 1초는 부르지 않는다. `buffered` 인 `metrics` 도 부르지 않는다.
@@ -51,5 +51,5 @@ Take 종료  stop ─▶ 분석 단계 FINALIZING ─▶ /coach/finalize (409 �
   끝난 Take 의 1초 원자료는 7일 뒤 주기 작업이 지운다 (`coach/retention.py`).
 - **리뷰의 사용자 평가 기준**은 코치와 같은 `takes.standard_version` 으로 읽는다. Take 시작 때 기준이
   없었으면 나중에 기준을 등록해도 그 Take 는 끝까지 기준 없이 리뷰한다.
-- 테스트는 AI 예시 파일(`ai/research/coach-agent/src/coach/examples/`)을 직접 읽는다. backend CI 는 `backend/**` 가 바뀔 때만
-  돌아서, AI 가 예시만 바꾼 PR 에서는 이 테스트가 다시 돌지 않는다.
+- 테스트는 AI 예시 파일(`ai/service/src/pitch_coach_ai/features/coach/examples/`)을 직접 읽는다.
+  backend CI 는 `backend/**` 가 바뀔 때만 돌아서, AI 가 예시만 바꾼 PR 에서는 이 테스트가 다시 돌지 않는다.
