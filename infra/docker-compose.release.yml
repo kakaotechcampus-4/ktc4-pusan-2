@@ -7,6 +7,9 @@ services:
     ports: !reset []
   fe:
     ports: !reset []
+    build:
+      args:
+        VITE_LAUNCH_GATE_ENABLED: "true"
   db:
     ports: !reset []
   caddy:

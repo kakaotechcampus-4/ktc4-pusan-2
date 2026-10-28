@@ -18,7 +18,7 @@
 `keyterms` 는 STT keyterm 단어 목록을 낸다(filler.md 6-4).
 고칠 때 주의: 판정 규칙이나 이유 문자열의 뜻이 바뀌면 `version.py` 의 기능 버전을 올리고
 filler.md 6-1 과 `examples/` 를 함께 고친다. 파일 · 환경변수 · 시계 · 난수 · print 를 쓰지 않는다
-(같은 입력에 같은 결과, 서비스로 폴더째 옮겨도 고칠 곳이 없게 — filler.md 4-3).
+(같은 입력에 같은 결과, 패키지 위치가 바뀌어도 고칠 곳이 없게 — filler.md 4-3).
 """
 
 from __future__ import annotations

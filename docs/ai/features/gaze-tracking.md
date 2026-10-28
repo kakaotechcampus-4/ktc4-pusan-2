@@ -116,7 +116,8 @@ frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · 
 | `checkSupport()` | 카메라 권한을 묻기 전에 브라우저 지원을 확인 `{ok, missing}` | FE (발표 전) |
 | `createClassifier(opts)` | 모델 · 런타임을 불러 엔진을 만든다. 실패하면 `EngineInitError(reason)` | FE Worker |
 | `GazeEngine` 보정 · 판정 메서드 | 준비 점검 · 고개 원 · 보정 · 프레임 판정 (`checkPreconditions` · `startSweep` · `startCue` · `finishCalibration` · `classify` 등) | FE Worker · 카메라 화면 |
-| `GazeEvidenceRecorder.record(decision)` · `flush(t_end_ms)` | 프레임 판정 → 끝난 1초 기록. Take 끝에서 마지막 조각을 닫는다 | FE Worker |
+| `frameFromDecision(decision)` · `GazeSlicer(cfg).push(frame)` · `flush(t_end_ms)` | 프레임 판정 → 프레임 → 끝난 1초 기록. Take 끝에서 마지막 조각을 닫는다. MediaPipe 없이 쓰는 `contract.ts`에서 내보낸다 | FE Worker |
+| `GazeEvidenceRecorder.record(decision)` · `flush(t_end_ms)` | 위와 같은 1초 묶기를 프레임 판정에서 바로 한다 | 연구 데모 |
 | `sampleToDict(sample)` | 1초 기록의 전송 모양 (`confidence` · `reliability` 소수 4자리) | FE Worker |
 
 엔진 메서드의 인자 · 반환값과 Worker 메시지는 5-6에 있다(엔진 계약의 원본은 `engine/contract.ts`).
@@ -357,7 +358,7 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 
 **보정 모델 `CalibrationModel`** — `fitCalibration` · `finishCalibration`이 만든다. 구역별 기준 자세에 `scene`(얼굴 중심 · 면적, 홍채 픽셀 크기, 밝기, 고개 방향, 카메라까지 거리 같은 얼굴 측정값)과 `configHash`가 붙는다. 메모리에만 두고 브라우저 저장소 · 서버 어디에도 두지 않는다(4-3). 일반 데이터라 `structuredClone`을 통과하므로, 같은 세션에서 새 Worker를 만들면 `calibrate(model)`이나 Worker 메시지 `restore`로 넘겨 이어받는다. 받는 쪽은 보정 모델의 모양(스키마 · 필수 구조)만 확인하고 설정 해시(`configHash`)는 비교하지 않는다. 그래서 FE는 같은 탭에서 화면 배치 · 엔진 버전 · 설정 해시가 같을 때만 보정 모델을 넘긴다(설정 해시는 FE가 비교한다).
 
-**1초 기록 만들기** — `GazeEvidenceRecorder.record(decision)`은 프레임 판정을 받아 끝난 1초 조각을 돌려준다(없으면 빈 목록). `flush(tEndMs)`는 Take 끝의 마지막 짧은 조각을 닫으며 Take가 끝나면 꼭 부른다. `reset()`은 비운다. `sampleToDict(sample)`이 전송 모양(5-2, `confidence` · `reliability`는 소수 4자리)을 만들고 FE는 그대로 보낸다. FE는 Take마다 새 기록기를 쓰고 `tMs`를 Take 시작 기준으로 넘긴다(6-1). 엔진은 시각을 되돌리지 않는다: 프레임 시각은 `max(반올림한 tMs, 앞 프레임 시각 + 1)`이고 이 값이 `FrameDecision.t_ms`가 된다. 그래서 보정 때 쓴 엔진에 Take 시작 기준 시각(0부터)을 이어 넘기면 시각이 밀린다. FE는 발표 화면(Take)마다 새 엔진 · Worker를 만들어 보정 모델만 넘기고, 엔진과 기록기에 같은 Take 시작 기준 시각을 넘긴다.
+**1초 기록 만들기** — FE Worker는 `frameFromDecision(decision)`으로 프레임 판정을 프레임으로 바꿔 `GazeSlicer.push(frame)`에 넣고, 끝난 1초 조각을 받는다(없으면 빈 목록). 연구 데모가 쓰는 `GazeEvidenceRecorder.record(decision)`은 같은 일을 프레임 판정에서 바로 한다(`reset()`으로 비움). 어느 쪽이든 `flush(tEndMs)`는 Take 끝의 마지막 짧은 조각을 닫으며 Take가 끝나면 꼭 부른다. `sampleToDict(sample)`이 전송 모양(5-2, `confidence` · `reliability`는 소수 4자리)을 만들고 FE는 그대로 보낸다. FE는 Take마다 새 `GazeSlicer`를 쓰고 `tMs`를 Take 시작 기준으로 넘긴다(6-1). 엔진은 시각을 되돌리지 않는다: 프레임 시각은 `max(반올림한 tMs, 앞 프레임 시각 + 1)`이고 이 값이 `FrameDecision.t_ms`가 된다. 그래서 보정 때 쓴 엔진에 Take 시작 기준 시각(0부터)을 이어 넘기면 시각이 밀린다. FE는 발표 화면(Take)마다 새 엔진 · Worker를 만들어 보정 모델만 넘기고, 엔진과 기록기에 같은 Take 시작 기준 시각을 넘긴다.
 
 **Worker 메시지** (`worker/protocol.ts`, 카메라 화면 ↔ Worker)
 
@@ -400,8 +401,8 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 2. **고개 원** (`startSweep` · `offerSweepFrame`): 고개를 천천히 돌려 원을 채우게 해, 어느 방향에서도 얼굴을 따라가는지 확인하고 정면 기준을 잡는다.
 3. **보정** (`startCue` · `offerCalibrationFrame` · `finishCalibration`): 청중(카메라 렌즈) · 화면 중앙 · 대본 세 곳을 하나씩 보게 해 기준점 세 개(구역별 고개 방향)를 잡는다. 엔진은 지점(`cue`)마다 따로 받으므로 안내 순서는 카메라 화면이 정한다(연구 카메라 화면은 카메라 위치 점검에서 본 화면 중앙 프레임을 화면 보정에 다시 써서 화면 중앙 → 렌즈 → 대본 순으로 안내한다). 보정은 발표할 그 브라우저 화면 배치에서 하고, 화면 배치가 바뀌면 다시 보정한다. 화면을 다른 구역과 가를 수 없으면 화면 구역을 합치고, 그 Take에서는 `SCREEN`이 나오지 않을 수 있다. 결과는 보정 모델(메모리)과 보정 품질(0–1)이다. 카메라가 화면 위에 있고 대본이 화면 아래쪽 띠에 있다고 본다. 그래서 `BOTTOM`은 "화면 아래 대본 띠를 봄"이다.
 4. **프레임 판정** (`classify`): MediaPipe Face Landmarker의 변환 행렬에서 고개 yaw · pitch를 구해 세 기준점과 비교하고, 구역별 확률과 상태(`CAMERA` · `SCREEN` · `BOTTOM` · `OTHER` + 방향 · `UNCERTAIN`)를 정한다. 촬영 조건 감시가 보정 때와 비교해 신뢰도와 촬영 조건 이슈를 붙인다. 초당 8프레임이다.
-5. **1초 기록** (`GazeEvidenceRecorder`): 첫 프레임에서 시작하는 1초 격자로 프레임을 모아 다수결로 상태 하나를 정한다. 얼굴이 잡힌 프레임이 기준 개수 미만이면 `UNMEASURED`, 이긴 상태의 득표율이 기준 미만이면 `UNCERTAIN`이다. 프레임 사이가 1초 넘게 비었다가 다시 들어오면 그 사이도 `UNMEASURED` 조각으로 만든다. 프레임이 아예 끊기면 조각이 나오지 않고, 그 시간은 서버가 `UNMEASURED`로 본다. Take마다 새 기록기를 쓰고, Take 끝에서 `flush(Take 길이)`로 마지막 짧은 조각을 닫는다.
-6. **발표 중 자세가 크게 바뀌면** (`beginReanchor`): 기준점을 다시 잡는 수집을 시작할 수 있다. 그동안의 1초는 신뢰도가 낮게 나온다.
+5. **1초 기록** (FE Worker는 `frameFromDecision` + `GazeSlicer`, 연구 데모는 같은 규칙의 `GazeEvidenceRecorder`): 첫 프레임에서 시작하는 1초 격자로 프레임을 모아 다수결로 상태 하나를 정한다. 얼굴이 잡힌 프레임이 기준 개수 미만이면 `UNMEASURED`, 이긴 상태의 득표율이 기준 미만이면 `UNCERTAIN`이다. 프레임 사이가 1초 넘게 비었다가 다시 들어오면 그 사이도 `UNMEASURED` 조각으로 만든다. 프레임이 아예 끊기면 조각이 나오지 않고, 그 시간은 서버가 `UNMEASURED`로 본다. Take마다 새 기록기를 쓰고, Take 끝에서 `flush(Take 길이)`로 마지막 짧은 조각을 닫는다.
+6. **발표 중 자세가 크게 바뀌면** (`beginReanchor`): 기준점을 다시 잡는 수집을 시작할 수 있다. 수집하는 동안에도 프레임 판정은 이어지고, 신뢰도는 따로 낮추지 않고 촬영 조건 감시(보정 때와 비교)가 정한다. 자세가 보정 때와 크게 다르면 그 감시 때문에 낮게 나올 수 있다.
 
 ## 6-2. `judge` 요청 하나가 도는 과정
 1. **기록 읽기**: `records`를 읽어 이상한 기록은 그 1초만 버린다(5-2 읽는 규칙). 시각 순으로 정렬하고, 앞 기록과 겹치는 기록은 버린다(먼저 온 것이 남는다).
@@ -431,7 +432,7 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 | 모델 · 런타임 로딩 실패 · 지연 | `EngineInitError` (`TIMEOUT`: 기본 60초 안에 못 불러옴 / `INIT_FAILED`) | 위와 같음. 사유는 로그용 | 같음 |
 | 보정 실패(보정 모델 없음) · 보정 전 | 보정 품질 0. 보정 전의 1초는 `UNMEASURED` | 그 시간은 측정 불가, `GAZE_UNMEASURABLE` | 기준점 없이 판정하면 틀린 지적이 나간다 |
 | 재측정 권장 보정 (`RETRY_REQUIRED`이지만 보정 모델이 있음. 사유 `CLASS_NOT_SEPARABLE` · `ANCHOR_AMBIGUOUS` 등) | 발표를 막지 않고 그 보정으로 잰다. FE는 사유를 보정 실패 사유로 받아 다시 보정하기를 권한다 | 보정 품질(`gaze_confidence`) 0, `calibrations.result`의 `status` · `loo_accuracy`는 엔진 값 그대로(12-1) | 시선은 발표를 막지 않는다. 믿음이 낮은 Take인지는 보정 결과로 남는다 |
-| 프레임 처리 중 예외 | 그 프레임은 얼굴 없음으로 답하고 다음 프레임 계속. 연속 실패 중에는 첫 번째만 알림 (`FRAME_FAILED`) | 그 1초의 신뢰도 · 상태에 반영 | 한 프레임 때문에 엔진을 멈추지 않는다 |
+| 프레임 처리 중 예외 | 그 프레임은 얼굴 없음으로 답하고 다음 프레임 계속. 연속 실패 중에는 첫 번째만 알림 (`FRAME_FAILED`) | 그 프레임은 1초 기록에 들어가지 않는다. 얼굴이 잡힌 프레임이 기준 개수 미만이 되면 그 1초는 `UNMEASURED` | 한 프레임 때문에 엔진을 멈추지 않는다 |
 | Worker 종료 | 카메라 화면이 `WORKER_FAILED`를 한 번 알리고 프레임 전송을 멈춤 | 이후 1초 기록 없음 → `UNMEASURED` | 발표는 계속 |
 | 발표 중 카메라 끊김 | 카메라 화면이 `CAMERA_LOST`를 한 번 알리고 캡처를 멈춤. 끊기기 전까지 잰 1초 기록은 버리지 않는다 | 끊긴 시간만 `UNMEASURED`. 길어지면 `GAZE_UNMEASURABLE` | Take 전체의 시선을 잃지 않게 |
 | 탭 숨김 · 전송 유실 | 그 시간의 1초 기록이 없다 | 서버가 빈 시간을 `UNMEASURED`로 채움. 오래된 문제를 내지 않는다 | 마지막 상태가 이어진 것처럼 읽히지 않게 |
@@ -473,7 +474,7 @@ uv run python tools/fetch_assets.py      # 모델 · 테스트 얼굴(합성, gi
 cd web && npm ci
 ```
 - Windows에서는 `pytest.exe` 같은 실행 파일이 막힐 수 있어 `uv run python -m …`으로 부른다. 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`.
-- 서버 판정 모듈과 그 테스트는 pydantic과 pytest만 있으면 돈다. 기준 구현(`tests/lab`)은 mediapipe · numpy · opencv와 테스트 얼굴이 필요하고, 얼굴 사진이 필요한 테스트는 `fetch_assets.py`를 돌리지 않으면 이유를 보이고 건너뛴다.
+- 서버 판정 모듈의 의존성은 pydantic 하나다. 그 테스트는 서비스 공통 `tests/conftest.py`가 앱을 불러오므로 `ai/service`에서 `uv sync`한 개발 환경으로 돈다. 기준 구현(`tests/lab`)은 mediapipe · numpy · opencv와 테스트 얼굴이 필요하고, 얼굴 사진이 필요한 테스트는 `fetch_assets.py`를 돌리지 않으면 이유를 보이고 건너뛴다.
 - 시선은 LLM을 쓰지 않아 `ai/.env`가 필요 없다.
 
 | 하는 일 | 명령 | 기대 결과 |
@@ -492,7 +493,7 @@ cd web && npm ci
 
 # 11. 배포
 **어디서 도는가**: 두 곳에 배포된다.
-- **서버 판정 모듈**(`examples/` 포함)은 AI 서비스의 `features/gaze/`에 있다(연구 폴더 `src/gaze/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮겼다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 '말한 1초' 기준값을 소리 크기 판정 모듈의 기준값 파일과 비교한다(`architecture.md` 6-2). 그 파일을 서비스의 `features/volume/`에서 먼저 찾고, 소리 크기가 서비스에 오기 전에는 연구 폴더의 소리 크기 `config.py`와 비교한다. 소리 크기를 서비스로 옮기면 연구 폴더 후보를 지운다). 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다.
+- **서버 판정 모듈**(`examples/` 포함)은 AI 서비스의 `features/gaze/`에 있다(연구 폴더 `src/gaze/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮겼다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 '말한 1초' 기준값을 소리 크기 판정 모듈의 기준값 파일과 비교한다(`architecture.md` 6-2). 그 파일을 서비스의 `features/volume/`에서 먼저 찾고, 소리 크기가 서비스에 오기 전에는 연구 폴더의 소리 크기 `config.py`와 비교한다. 소리 크기를 서비스로 옮기면 연구 폴더 후보를 지운다). 자기 HTTP 엔드포인트는 없다. 코치 `evaluate` · `finalize`를 열 때 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 지금은 코치 연구 폴더의 재생 · 실험(`real_judges()`)이 이 모듈을 쓴다. 의존성은 pydantic 하나다.
 - **브라우저 엔진** `web/src/engine/`(원본)은 FE가 `frontend/src/vendor/gaze/`로 Worker · 카메라 화면과 함께 복사해 쓴다. FE는 엔진의 `index.ts` · `contract.ts`만 import하고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. 엔진 안은 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다. 화면(카메라 화면 · 보정 안내)은 FE가 고친다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 있고 아래 '옮긴 뒤 확인' 1을 통과해 옮겼다(2026-10-26). 2(코치 연구 폴더 재생)도 마쳤다(2026-10-26, 코치 연구 폴더 README 7절). 3(FE) · 4(연구 도구와 FE 사본 대조)와 코치 앱 연결은 이어지는 작업이다.
@@ -586,9 +587,9 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 
 | 평가 데이터 | 지표 | 중점 | 검증 방법 |
 |---|---|---|---|
-| 1초마다 시선 정답(엔진 상태)을 단 발표 녹화 (가상 발표 · 실제 리허설, 여러 사람) | 상태 macro F1, 대본(`BOTTOM`) 재현율, 사람별 F1, `UNCERTAIN` 비율, 보정 실패율, 프레임 처리 지연(p95) | 대본 응시를 놓치지 않고, 사람이 달라도 성능이 고른 것 | `gaze_lab.evaluation`(평가 · 릴리스 게이트, 기준값은 `configs/release_gate.yaml`) → `reports/results/` 결과 JSON |
+| 1초마다 시선 정답(엔진 상태)을 단 발표 녹화 (가상 발표 · 실제 리허설, 여러 사람) | 상태 macro F1, 대본(`BOTTOM`) 재현율, 사람별 F1, `UNCERTAIN` 비율, 보정 실패율, 프레임 처리 지연(p95) | 대본 응시를 놓치지 않고, 사람이 달라도 성능이 고른 것 | `gaze_lab.evaluation`(평가 · 릴리스 게이트, 기준값은 `configs/release_gate.yaml`) → `reports/results/` 결과 JSON. 지금 도구는 `CAMERA` · `BOTTOM` 정답의 프레임 단위 평가이고 결과를 `outputs/<실행 이름>/`에 쓴다. 1초 · 네 구역 평가와 커밋할 결과 JSON은 평가 데이터가 생기면 맞춘다 |
 | 같은 녹화의 1초 기록 + 문제 구간 정답 | 문제 구간 F1 · 구간 시작 오차 (코치가 Take 결과에서 잰다) | 리뷰가 믿고 쓸 문제 구간 | 코치 재생 · 채점 (`coach-agent.md` 13절) |
-| 판정 모듈 단위 시나리오 | 계약 · 경계 테스트 통과 | 같은 입력 같은 결과, 커서로 두 번 세지 않음 | `tests/unit/` · `examples/` |
+| 판정 모듈 단위 시나리오 | 계약 · 경계 테스트 통과 | 같은 입력 같은 결과, 커서로 두 번 세지 않음 | 서비스 `tests/unit/gaze/` · `features/gaze/examples/` |
 
 - 서버 판정 기준값(`config.py`)을 바꾸면 `criteria_version`이, 엔진 기준값(`configs/*.yaml` → `defaults.generated.ts`)을 바꾸면 엔진 설정 해시(`CONFIG_HASH`)가 바뀐다. 어느 쪽이든 평가 결과 JSON을 다시 만들어 같은 PR에 넣는다.
 - 임계값은 모두 초기값이다. 여러 사람의 실측으로 평가하기 전에는 테스트 얼굴 하나에 맞춰 바꾸지 않는다(과적합).

@@ -4,11 +4,13 @@ import { ApiFailure } from '@/shared/api/tokenStore';
 import { toMessage } from '@/shared/api/errorMessage';
 import { Card } from '@/shared/ui/Panel';
 import { Button } from '@/shared/ui/Button';
-import type { SuggestionRequest } from '@/types/serviceReview';
+import { SuggestionCategorySelect } from '@/shared/ui/SuggestionCategorySelect';
+import type { SuggestionCategory, SuggestionRequest } from '@/types/serviceReview';
 
 export function SuggestionForm() {
   const id = useId();
   const [content, setContent] = useState('');
+  const [category, setCategory] = useState<SuggestionCategory>('OTHER');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
@@ -25,7 +27,11 @@ export function SuggestionForm() {
   const length = [...content.trim()].length;
   async function send() {
     if (controller.current || !length || length > 2000) return;
-    const outgoing = request ?? { request_id: crypto.randomUUID(), content: content.trim() };
+    const outgoing = request ?? {
+      request_id: crypto.randomUUID(),
+      content: content.trim(),
+      category,
+    };
     setRequest(outgoing);
     controller.current = new AbortController();
     setPending(true);
@@ -36,6 +42,7 @@ export function SuggestionForm() {
       if (!alive.current) return;
       setRequest(null);
       setContent('');
+      setCategory('OTHER');
       setSent(true);
     } catch (failure) {
       if (!alive.current) return;
@@ -63,6 +70,14 @@ export function SuggestionForm() {
           send().catch(() => setError('다시 시도해 주세요.'));
         }}
       >
+        <SuggestionCategorySelect
+          value={category}
+          onChange={(value) => {
+            setCategory(value);
+            setSent(false);
+          }}
+          disabled={pending || Boolean(request)}
+        />
         <label htmlFor={id} className="text-sm font-bold">
           의견 (필수)
         </label>
@@ -110,6 +125,7 @@ export function SuggestionForm() {
                 setRequest(null);
                 setError('');
                 setContent('');
+                setCategory('OTHER');
               }}
             >
               새 의견 작성

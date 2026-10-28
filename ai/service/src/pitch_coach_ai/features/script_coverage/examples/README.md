@@ -29,11 +29,11 @@
 `ai/research/script-coverage-evaluation`에서:
 
 ```
-python -m coverage_lab.examples
+uv run python -m coverage_lab.examples
 ```
 
 연구 캐시가 있어야 한다. 다시 만들어도 내용이 같아야 하고(`tests/lab/test_examples_build.py`가 확인), 응답이 바뀌면 계약이 바뀐 것이므로 변경 내용을 보고 의도한 것인지 확인한다. `analyze` · `rescore` 응답의 `meta.criteria_versions`에는 기준값 해시가 들어 있어, `config.py` 기준값을 바꾸면 이 예시도 다시 만들어야 한다.
 
 ## 계약 테스트
 
-서비스 `tests/unit/script_coverage/test_examples.py`가 `llm_cache.json`으로 캐시를 만들고(`rescore`는 LLM 없이), 부르면 시간 초과가 되는 LLM으로 `request.json`을 코어에 넣어 `response.json`과 같은 응답이 나오는지 본다 (실수는 약간의 오차를 허용). 이 테스트는 `coverage_lab`을 쓰지 않으므로 코어를 서비스로 옮길 때 예시 폴더와 함께 가져간다.
+서비스 `tests/unit/script_coverage/test_examples.py`가 `llm_cache.json`으로 캐시를 만들고(`rescore`는 LLM 없이), 부르면 시간 초과가 되는 LLM으로 `request.json`을 코어에 넣어 `response.json`과 같은 응답이 나오는지 본다 (실수는 약간의 오차를 허용). 이 테스트는 `coverage_lab`을 쓰지 않아 연구 폴더 없이 서비스만으로 돈다.

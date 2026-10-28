@@ -35,6 +35,10 @@ WS /api/ws/takes/{take_id}
   거절되면 그 키를 소진으로 표시하고 기다리지 않고 다음 키로 붙는다. 발표 도중 크레딧이 떨어져 끊겨도 재접속이
   402 로 거절되므로 같은 길로 넘어간다. 소진 표시는 서버 메모리에만 있고 모든 Take 가 같이 쓴다. 키가 전부
   소진이면 에러 로그를 남기고 위처럼 `degraded` 로 재시도하며, 그때는 첫 키부터 다시 확인한다
+- **Deepgram 은 발표 음성 · 전사를 보관하지 않는다.** 연결마다 `mip_opt_out=true` 를 붙여 Deepgram 모델 개선
+  프로그램에서 빠진다(기본은 참여 · 보관). 붙이면 처리하는 동안만 쓰고 저장하지 않는다. Pay as you Go · Growth
+  요금제는 붙여도 요금이 같다(Deepgram 2026-03-05 변경 기록). 우리 쪽 원자료 보관은 이것과 따로다
+  ([realtime-coach.md](realtime-coach.md))
 - 에러는 `{"type":"error","code","message"}`. **에러가 곧 종료는 아니다** — `code` 마다 다르다
   (`realtime/dto.py` 의 `WsErrorCode`).
 
