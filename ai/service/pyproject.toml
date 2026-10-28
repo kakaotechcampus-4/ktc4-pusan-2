@@ -47,6 +47,9 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 # 남는 긴 줄은 한국어 주석 · 문자열이다 (연구 폴더에서 옮긴 그대로)
 "src/pitch_coach_ai/features/evaluation_criteria/**" = ["E501"]
 "tests/unit/evaluation_criteria/**" = ["E501"]
+# 소리 크기: 진입 함수의 기본값 config: Config = Config(). Config 는 frozen 이라 공유해도 바뀌지 않는다
+# (연구 폴더에서 옮긴 그대로)
+"src/pitch_coach_ai/features/volume/core.py" = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

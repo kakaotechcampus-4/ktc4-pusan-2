@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["react", "typescript", "oxc"],
-  "ignorePatterns": ["src/vendor/**"],
+  "ignorePatterns": ["src/vendor/gaze/engine/**", "src/vendor/gaze/worker/**"],
   "rules": {
     "react/rules-of-hooks": "error",
     "no-nested-ternary": "error",
@@ -35,6 +35,44 @@
               {
                 "group": ["@/features/**", "@/shared/**"],
                 "message": "workers/ 는 features/ 와 shared/ 를 참조하지 않습니다 (FRONTEND_CONVENTION.md 5). 타입만 필요하면 @/types 에서 가져오세요 — shared/ 경로로 열어 두면 나중에 런타임 코드가 워커 번들에 딸려 들어옵니다."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/vendor/gaze/camera/**"],
+      "rules": {
+        "typescript/no-import-type-side-effects": "error",
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "../engine",
+                "allowTypeImports": true,
+                "message": "camera/ 는 ../engine(index.ts) 에서 타입만 가져옵니다 — 값을 부르면 MediaPipe 가 화면 번들에 딸려 들어옵니다. 값은 ../engine/contract 에서 가져오세요 (vendor/gaze/README.md)."
+              }
+            ],
+            "patterns": [
+              {
+                "group": [
+                  "../engine/*",
+                  "!../engine/contract",
+                  "../worker/*",
+                  "!../worker/protocol",
+                  "../../**"
+                ],
+                "message": "camera/ 는 엔진 · Worker 의 공개 입구(../engine/contract, ../worker/protocol)만 씁니다. 안쪽 파일을 부르면 엔진을 다시 복사할 때 화면이 깨집니다 (vendor/gaze/README.md, #611)."
+              },
+              {
+                "group": ["@/vendor/**"],
+                "message": "camera/ 는 엔진 · Worker 를 상대 경로(../engine, ../engine/contract, ../worker/protocol)로만 부릅니다. @/ 경로는 위 공개 입구 검사를 비켜 갑니다."
+              },
+              {
+                "group": ["@/features/**"],
+                "message": "camera/ 는 features/ 를 참조하지 않습니다 (FRONTEND_CONVENTION.md 5). features/rehearsal 이 camera/ 를 부르므로 거꾸로 부르면 순환이 됩니다. (이 override 가 위 공통 규칙을 덮어써서 여기 다시 적습니다)"
               }
             ]
           }

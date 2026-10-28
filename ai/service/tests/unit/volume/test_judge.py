@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 
-from volume.config import Config
-from volume.core import judge
+from pitch_coach_ai.features.volume.config import Config
+from pitch_coach_ai.features.volume.core import judge
 
 BASE = -29.5
 

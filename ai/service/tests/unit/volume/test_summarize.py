@@ -6,8 +6,8 @@ import math
 
 import pytest
 
-from volume.config import Config
-from volume.core import criteria, summarize
+from pitch_coach_ai.features.volume.config import Config
+from pitch_coach_ai.features.volume.core import criteria, summarize
 
 
 def test_volume_metrics() -> None:

@@ -37,6 +37,17 @@ class StandardInputRejected(AppException):
     message = "평가 기준 입력을 확인해 주세요."
 
 
+class StandardParseInProgress(ConflictException):
+    code = "STANDARD_PARSE_IN_PROGRESS"
+    message = "평가 기준을 나누고 있습니다. 끝난 뒤 다시 시도해 주세요."
+
+
+class StandardParseBusy(AppException):
+    status_code = 503
+    code = "STANDARD_PARSE_BUSY"
+    message = "요청이 많아 평가 기준을 나누지 못했습니다. 잠시 후 다시 시도해 주세요."
+
+
 class InvalidScript(AppException):
     code = "INVALID_SCRIPT"
     message = "대본이 올바르지 않습니다."

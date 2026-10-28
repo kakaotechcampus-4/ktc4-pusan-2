@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import bisect
 import logging
 import uuid
 from collections.abc import Callable, Iterable, Mapping
@@ -74,13 +75,11 @@ def slide_stt(
     slide_events: Iterable[tuple[int, int]],
     words: Iterable[tuple[str, int]]) -> list[dict]:
     events = sorted(slide_events, key=lambda event: event[1])
+    starts = [started_ms for _, started_ms in events]
     spoken: dict[int, list[str]] = {number: [] for number in sorted(slide_numbers)}
     for text, start_ms in sorted(words, key=lambda word: word[1]):
-        current = None
-        for slide_number, started_ms in events:
-            if started_ms > start_ms:
-                break
-            current = slide_number
+        at = bisect.bisect_right(starts, start_ms)
+        current = events[at - 1][0] if at else None
         if current in spoken and text:
             spoken[current].append(text)
     return [{"slide_number": number, "stt": " ".join(texts)} for number, texts in spoken.items()]
