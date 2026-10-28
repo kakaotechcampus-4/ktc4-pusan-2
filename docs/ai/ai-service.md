@@ -215,7 +215,7 @@ LLM 설정 없이 LLM 기능을 부르면 (`architecture.md` 4절)
 3. **의존성**: 코어가 쓰는 패키지를 더한다(6-4).
 4. **LLM · 모델**: LLM은 `common/llm.py`로 만들어 넘긴다(6-2). 서버 안에서 돌리는 모델이 있으면 6-3.
 5. **라우터**: `api/<이름>.py`를 만들고 `main.py`에 등록한다. 경로 · 요청 · 응답 필드는 BE와 합의하고, `ai/service/README.md`의 API 목록과 `contracts/openapi.json`을 갱신한다.
-   - 판정 모듈은 자기 엔드포인트가 없고 `api/coach.py`가 묶어 코치에 넘긴다(4-3). 코치 `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우지 않는다. 코치는 견디지만 Take 결과의 그 영역 `measured_ratio`가 null이 되어 `architecture.md` 7절과 어긋난다(`coach-agent.md` 11절).
+   - 판정 모듈은 자기 엔드포인트가 없고 `api/coach.py`가 묶어 코치에 넘긴다(4-3). 코치 `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷이 서비스에 모두 있을 때 연다(넷이 모여 열었다, #673). 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우지 않는다. 코치는 견디지만 Take 결과의 그 영역 `measured_ratio`가 null이 되어 `architecture.md` 7절과 어긋난다(`coach-agent.md` 11절).
 6. **확인**: `uv run pytest`, 필요하면 `uv run pytest -m live`, 그리고 `docker build`로 이미지가 만들어지는지 본다(10절). 출력이 긴 기능이면 걸린 시간도 잰다(`architecture.md` 3절).
 7. **PR**: CI가 통과하면 merge한다. `develop-next`에 merge되면 develop 서버에 자동으로 배포되고, release 서버에는 `release` 브랜치에 들어갈 때 배포된다(11-5).
 
@@ -271,6 +271,7 @@ LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 
   ```
 - **메모리를 먼저 잰다.** 모델은 워커마다 따로 올라간다. 붙이는 PR에서 `docker stats`로 컨테이너 메모리를 재고, 잰 값의 1.5배를 compose 메모리 상한(`mem_limit`)으로 둔다.
 - **잰 값 (대본 전달도의 형태소 분석기를 붙일 때, 2026-10-26)**: 이미지 374 MB → 896 MB(Kiwi 모델 · scikit-learn · scipy), 컨테이너를 띄운 뒤 요청을 받기까지 약 5초 + Kiwi 불러오기 약 1.2초(`warmup_done`), 준비된 뒤 컨테이너 메모리 약 414 MiB(워커 1개, 요청 없음). 지금 헬스체크 시작 유예 10초 안에 준비된다. 1.5배 규칙으로 compose `ai`에 `mem_limit: 620m`을 두었다(#584, 워커를 늘리면 워커 수만큼 늘린다).
+- **잰 값 (코치 evaluate · finalize를 열 때, 2026-10-29)**: 판정 모듈 넷 · 평가 기준 분석이 함께 올라간 이미지 898 MB. `--memory 620m` · 워커 1 · 키 없음으로 띄워 준비된 뒤 쉬는 상태 약 419 MiB, 동시 Take 10개의 evaluate(1초마다 3분, 1,811건) · 한 시간 Take `replay` finalize 1번 · 코칭 계획 · 평가 기준 분석 호출을 함께 건 동안 최대 약 428 MiB(`docker stats` 1초 간격, OOM · 재시작 없음). 판정 모듈은 파이썬 코드뿐이라 부하로 는 몫은 약 9 MiB다. 1.5배 규칙(428 × 1.5 ≈ 642 MiB)으로는 620m보다 조금 크다 — 상한 아래 여유는 약 190 MiB(31%)다. 처리 시간은 `coach-agent.md` 8절.
 
 ## 6-4. 의존성 더하기
 - 운영 의존성은 `ai/service`에서 `uv add <패키지>`, 테스트 · 도구는 `uv add --dev <패키지>`.
