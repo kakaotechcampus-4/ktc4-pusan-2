@@ -20,7 +20,7 @@
 
 | 문서 | 담는 것 | 담당 |
 |---|---|---|
-| [출시 카운트다운](launch-countdown.md) | #541 확정 정책·BE 확인 요청·임시 API 계약 | FE |
+| [출시 카운트다운](launch-countdown.md) | #541 기기 시간 기준 자동 오픈·BE 역할·빌드 설정 | FE |
 | [Pitch / Take 데이터 계약 (#570)](pitch-take-contract-570.md) | FE 불일치 처리와 BE 선행 조건 · 검증 결과 | FE |
 
 문서를 추가하면 이 표에 한 줄 넣습니다.
