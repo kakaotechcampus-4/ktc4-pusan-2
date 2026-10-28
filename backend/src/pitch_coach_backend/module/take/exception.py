@@ -49,6 +49,13 @@ class InvalidTakeTime(AppException):
     message = "끝난 시각이 시작한 시각보다 앞섭니다."
 
 
+class TakeTimeOutOfRange(AppException):
+    # 시작 · 끝 시각이 Take 를 만든 때와 동떨어졌다 (service/take.py TAKE_TIME_TOLERANCE)
+    status_code = 422
+    code = "VALIDATION_ERROR"
+    message = "연습 시각이 올바른 범위를 벗어났습니다."
+
+
 class ConfirmationClosed(ConflictException):
     # 확인 답은 리뷰를 부르기 전까지만 받는다 (architecture.md 1-3). 이미 답했거나 건너뛰었거나
     # 10분이 지났거나 다른 답을 반영하는 중이다

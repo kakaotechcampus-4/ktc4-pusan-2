@@ -22,6 +22,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
+from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.service_feedback.entity import ServiceFeedback, UserSuggestion
 from pitch_coach_backend.module.take.entity import Take
@@ -40,9 +41,15 @@ _RAW_ELAPSED_SEC = func.coalesce(
     Take.duration_sec, extract("epoch", Take.ended_at - Take.started_at)
 )
 # 시작 시각은 FE 시계, 자동 종료 · 이탈의 끝 시각은 서버 시계라 어긋나면 음수가 된다.
-# 음수는 못 잰 것으로 본다.
+# 음수는 못 잰 것으로 본다. Take 최대 길이보다 길면 그 길이로 자른다.
+# 시각 범위 검사(#621) 전에 저장된 0001년 같은 시작 시각이 합계 · 평균을 망가뜨리지 않게.
 # 못 쟀거나 둘 다 없으면(시작 전 · 진행 중) NULL 이라 모든 합계 · 평균에서 똑같이 빠진다
-ELAPSED_SEC: ColumnElement[Any] = case((_RAW_ELAPSED_SEC >= 0, _RAW_ELAPSED_SEC))
+ELAPSED_SEC: ColumnElement[Any] = case(
+    (
+        _RAW_ELAPSED_SEC >= 0,
+        func.least(_RAW_ELAPSED_SEC, settings.take_max_duration_sec),
+    )
+)
 # 입력 검증(#147) 전에 만든 Take 는 목표가 0 이하일 수 있다.
 # 0 으로 나누면 쿼리가 실패하니 비율에서 뺀다
 _GOAL_SEC = case((Take.goal_time_sec > 0, Take.goal_time_sec))
