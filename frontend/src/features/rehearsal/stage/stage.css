@@ -748,3 +748,199 @@
   justify-content: center;
   gap: 12px;
 }
+
+.rehearsal-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.rehearsal-shell > :first-child {
+  flex: none;
+}
+
+.rehearsal-page {
+  flex: 1;
+  min-height: 0;
+  padding: 0 12px 8px;
+}
+
+.rehearsal-content {
+  height: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.rehearsal-frame {
+  height: 100%;
+  border: 2px solid var(--color-ink);
+}
+
+.stage-foot button:focus-visible {
+  outline: 2px solid var(--color-ink-stage);
+  outline-offset: 3px;
+}
+
+.stage-foot .key-help {
+  flex-basis: 100%;
+  order: 1;
+  font-size: 13px;
+}
+
+.stage-live {
+  --color-stone: color-mix(in srgb, var(--color-ink-stage) 78%, var(--color-stage));
+  --rail-w: clamp(160px, 22vw, 280px);
+  --coach-h: 32px;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: 32px minmax(0, 1fr) var(--coach-h) var(--spacing-script-highlight) 70px;
+  gap: 8px;
+  padding: 8px;
+}
+
+.stage-live .viewport {
+  grid-template-columns: minmax(0, 1fr) var(--rail-w);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.stage-live .rail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stage-live .rail .camera {
+  display: grid;
+  container-type: size;
+  flex: 1;
+  min-height: 0;
+}
+
+.stage-live .rail .camera .frame {
+  width: min(100cqw, 100cqh * 16 / 9);
+}
+
+.stage-live .rail section:not(.camera) {
+  flex: none;
+  padding: 4px 8px;
+}
+
+.stage-live .rail .next .thumb {
+  flex: none;
+  width: 64px;
+}
+
+.stage-live .rail .legend {
+  display: flex;
+  flex: none;
+  font-size: 11px;
+  gap: 6px;
+}
+
+.stage-live .stage-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 44px 20px;
+  gap: 6px 12px;
+  min-width: 0;
+  padding: 0;
+}
+
+.stage-live .stage-status {
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  max-height: 44px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.stage-live .stage-foot .end {
+  grid-column: 2;
+  grid-row: 1;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.stage-live .stage-foot .key-help,
+.stage-live .stage-foot .end-error {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  font-size: 12px;
+}
+
+.stage-foot .end-error {
+  color: var(--color-coral);
+}
+
+.stage-live .coach .indicators {
+  min-width: 0;
+  flex-shrink: 1;
+  overflow-x: auto;
+}
+
+/* 방향키 안내는 고정 조작부에 있으므로 긴 대본 위에 중복해서 겹치지 않는다. */
+.stage-live .script .foot {
+  display: none;
+}
+
+/* 낮은 창에서는 다음 장 썸네일만 접는다. 카메라는 항상 남는다. */
+@media (max-height: 800px) {
+  .stage-live .rail .next {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .rehearsal-page {
+    padding: 0 4px 4px;
+  }
+  .stage-live {
+    --rail-w: 128px;
+    --coach-h: 28px;
+    grid-template-rows: 54px minmax(0, 1fr) var(--coach-h) var(--spacing-script-highlight) 70px;
+    gap: 4px;
+    padding: 4px;
+  }
+  .stage-live .stage-head {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+  .stage-live .stage-head .elapsed {
+    font-size: 20px;
+  }
+  .stage-live .stage-head .limit {
+    font-size: 14px;
+  }
+  .stage-live .stage-head .bar {
+    min-width: 40px;
+  }
+  .stage-live .stage-foot {
+    gap: 4px;
+  }
+  .stage-live .stage-foot .end {
+    padding: 8px;
+  }
+  .stage-live .stage-foot .key-help,
+  .stage-live .stage-foot .end-error {
+    font-size: 10px;
+  }
+  .stage-live .rail .legend {
+    font-size: 10px;
+  }
+}
+
+.stage-live .rail .camera video {
+  object-fit: contain;
+}
+.stage-live .rail .next[hidden] {
+  display: none;
+}
+.stage-live .stage-status .gaze {
+  max-width: 100%;
+}

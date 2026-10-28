@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from review import load_config
+from pitch_coach_ai.features.review import load_config
 
 from .conftest import run, sample_coverage, segment, unmeasured
 

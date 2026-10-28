@@ -4,7 +4,7 @@
 > **기준 범위**: 리뷰 에이전트(`POST /takes/review`)의 목표 설계다. 기능 사이 공통 계약(에러 · `meta` · 시간 예산 · LLM 공통 규칙 · 지표 · 문제 이름 · 숫자 검사 원칙 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **관련 Issue**: #211
 > **한 줄 요약**: Take 결과 · 대본 전달도 채점 · 이전 Take · 미션 · 사용자 평가 기준을 받아, 규칙으로 차원 상태 · 점수 · 미션 판정 · 다음 미션 · 반복 문제를 정하고, LLM 한 번으로 요약 · 강점 · 개선점 문장과 다음 미션 설명을 쓴다. 숫자 · 상태 · 점수는 LLM이 바꾸지 못하고, 코드가 문장의 숫자를 검사한다.
-> **기준값**: 부담 기준 · 1순위 차원 수 · 중요도별 부담 · 허용치 · 지표별 한 걸음 폭과 최종 목표 · 장 집중 비율 · 상태별 점수 · 채점 비율 기준은 `src/review/config.py`에만 두고, 이 문서에는 BE · 코치와 맞춰야 하는 값(개수 · 길이 한도 · 시간 예산)과 예시만 적는다.
+> **기준값**: 부담 기준 · 1순위 차원 수 · 중요도별 부담 · 허용치 · 지표별 한 걸음 폭과 최종 목표 · 장 집중 비율 · 상태별 점수 · 채점 비율 기준은 서비스 `features/review/config.py`에만 두고, 이 문서에는 BE · 코치와 맞춰야 하는 값(개수 · 길이 한도 · 시간 예산)과 예시만 적는다.
 
 # 0. 한눈에 보기
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
@@ -69,8 +69,8 @@ flowchart LR
 ```
 ai/research/review-agent/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock                 Python 3.12. 코어는 pydantic 하나, 연구 도구만 LLM 라이브러리
-├─ src/review/                              리뷰 코어 → 서비스 features/review/로 폴더째 옮긴다
+├─ pyproject.toml · uv.lock                 패키지 하나: review_lab(연구). 서비스를 editable로 설치해 코어를 씀, Python 3.12
+├─ (서비스 ai/service/src/pitch_coach_ai/features/review/)  리뷰 코어 (연구 폴더 src/review/에서 폴더째 옮김, 테스트는 서비스 tests/unit/review/)
 │   ├─ __init__.py                          review_take 공개
 │   ├─ schemas.py                           요청 · 응답 · LLM 출력 pydantic 모델 = 계약
 │   ├─ core.py                              review_take(): 규칙 단계 → LLM 단계 → 숫자 검사
@@ -83,14 +83,15 @@ ai/research/review-agent/
 │   ├─ recurring.py                         6-1 8번: 반복 문제
 │   ├─ score.py                             6-1 9번: 점수
 │   ├─ metrics.py                           지표 찾기 · 비교 (미션 판정 · 다음 미션 · 근거가 같이 쓴다)
+│   ├─ llm_input.py                         LLM 입력 · 후보 번호
 │   ├─ vocab.py                             고정 어휘 · 5-3 차원 표
 │   ├─ text.py                              기본 문장
 │   ├─ config.py · version.py               부담 · 허용치 · 한 걸음 폭 · 점수 · 개수 한도, 기능 버전
 │   ├─ prompts/                             문장 쓰기 · 다음 미션 고르기 프롬프트
 │   └─ examples/                            요청 · 응답 예시 (계약 테스트가 읽는다)
-├─ src/review_lab/                          연구 전용(정답 리뷰 평가 · 실제 LLM 실행). 옮기지 않는다
+├─ src/review_lab/                          연구 전용(정답 리뷰 평가 · 실제 LLM 실행 · 예시 만들기). 옮기지 않는다
 ├─ data/                                    공통 기준 Take의 저장 결과 묶음과 정답 리뷰
-├─ tests/ · tests/live/                     규칙 · 숫자 검사 · 계약(가짜 LLM) / 실제 LLM(live 표시)
+├─ tests/ · tests/live/                     준비 확인(LLM 없음) / 실제 LLM(live 표시). 규칙 · 숫자 검사 · 계약 테스트는 서비스 tests/unit/review/
 └─ reports/results/                         평가 결과 JSON
 ```
 연구 폴더는 `ai/research/review-agent/`(코치 `coach-agent`와 같은 꼴)다. 파일 이름은 담당자가 정하고 README의 파일 지도에 둔다.
@@ -112,7 +113,7 @@ ai/research/review-agent/
 | 장이 없는 값(Take 전체)은 `slide_number` null이다. 0을 쓰지 않는다 | 미션 · 반복 문제 · 코칭 계획 · 코치가 모두 null을 Take 전체로 읽는다 |
 
 # 5. 입력 · 출력 계약
-요청 · 응답의 원본은 `src/review/schemas.py`의 pydantic 모델이다. 요청은 모르는 필드를 무시하고, 응답은 정해진 필드만 낸다(`architecture.md` 2절). 입력 값의 모양은 그 값을 만든 기능 문서가 기준이다(코치 5-3 `take_result`, 대본 전달도 5-3, 평가 기준 5-3).
+요청 · 응답의 원본은 서비스 `features/review/schemas.py`의 pydantic 모델이다. 요청은 모르는 필드를 무시하고, 응답은 정해진 필드만 낸다(`architecture.md` 2절). 입력 값의 모양은 그 값을 만든 기능 문서가 기준이다(코치 5-3 `take_result`, 대본 전달도 5-3, 평가 기준 5-3).
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 | 방식 |
@@ -261,32 +262,44 @@ ai/research/review-agent/
 | `/takes/review` | 25초 (호출 한 번 기본 12초, 남은 예산 안에서만 1번 더) | 30초 | 연결 실패 · 시간 초과 · 408 · 429 · 5xx면 1번 | `architecture.md` 3절 '백그라운드 LLM' |
 
 - 규칙 단계는 입력 크기에 비례하는 계산이라 LLM 시간에 비해 작다. LLM 출력은 문장 몇 개라 짧다.
-- 모델: 기본 묶음(역할 `review` → 기본 묶음, `architecture.md` 9절).
+- 모델: 기본 묶음(역할 `review` → 기본 묶음, `architecture.md` 9절). 역할 `review`의 출력 상한은 2,048, 추론 강도는 `low`다(서비스 `settings.LLM_ROLES`, 연구 `review_lab.llm.REASONING_EFFORT`).
+  - 추론 강도를 보내지 않으면(모델 기본값) 호출 한 번이 12초를 자주 넘는다. 서비스 경로에서 clean 16 Take 중 3번이 넘었고(최대 19.4초), 대본 전달도 채점 · 미션 · 사용자 기준이 모두 있는 예시 요청은 15초 안팎이었다. `low`에서는 48 Take 모두 12초 안(최대 8.0초, 예시 요청 7.6초)이고, 평가 지표(스키마 유효율 · 입력에 없는 숫자 · 숫자 검사)는 같거나 나았다(연구 폴더 README 3절, 2026-10-28).
+  - 출력 토큰(추론 포함)은 `low` 48 Take 최대 802, 기본값 clean 16 Take 최대 1,809다. 상한 2,048은 `low`의 최대 × 2를 1,024 단위로 올린 값이다. 잘리면 `LLM_INVALID_OUTPUT`이다(`architecture.md` 9절).
 - 요청에는 대본 전달도 채점 전체가 실려 장 수에 비례해 커진다(10장 약 98 KB, 30장 약 0.3 MB). 서비스의 요청 본문 크기 상한이 이 값을 넉넉히 넘어야 한다.
 
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `review-<버전>` (첫 판 `review-1.0`) | `src/review/version.py` | 규칙 · 프롬프트 · 출력의 뜻이 바뀔 때 |
+| `feature_version` | `review-<버전>` (첫 판 `review-1.0`) | 서비스 `features/review/version.py` | 규칙 · 프롬프트 · 출력의 뜻이 바뀔 때 |
 | `criteria_versions.review` | `review-<버전>+<config 해시 12자리>` | 응답 `meta` | 부담 기준 · 허용치 · 점수 같은 `config.py` 값을 바꾸면 해시가 바뀐다 |
 | `schema_version` | `1.0` | 응답 `meta` | 필드 이름 변경 · 삭제 · 뜻 변경 |
 
 # 10. 실행 · 테스트
-준비 (`ai/research/review-agent`에서. Python 3.12, `.venv`는 git에 없어 처음 한 번 만든다. 실제 LLM을 부르는 일만 `ai/.env`의 기본 묶음이 필요하다)
+준비 (Python 3.12, `ai/research/review-agent`에서. `.venv`는 git에 없어 처음 한 번 만든다. 실제 LLM을 부르는 일만 `ai/.env`의 기본 묶음이 필요하다)
 ```bash
 cd ai/research/review-agent
 uv sync
 ```
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 | `uv run python -m pytest` | 규칙 단계 · 숫자 검사 · 기본 결과 · 계약(`examples/`, 가짜 LLM) 통과 |
-| 실제 LLM 테스트 | `uv run python -m pytest -m live` | 예시가 스키마 · 숫자 검사를 통과 (과금) |
-| 평가 | `uv run python -m review_lab.evaluate --out reports/results/review_eval.json` | 13절 지표 (과금) |
+| 코어 테스트 (`ai/service`에서, 실제 LLM 제외) | `uv run python -m pytest tests/unit/review` | 규칙 단계 · 숫자 검사 · 기본 결과 · 계약(`examples/`, 가짜 LLM) · `/takes/review` 통과 (181 passed, 2026-10-29) |
+| 준비 확인 (연구 폴더에서) | `uv run python -m pytest` | 연구 도구가 서비스 코어를 쓰는지, 예시 폴더 · 평가 묶음 · 캐시 키 (4 passed, 3 deselected, 2026-10-28) |
+| 실제 LLM 테스트 (과금) | 연구 폴더에서 `uv run python -m pytest -m live`(예시가 스키마 · 숫자 검사를 통과), 서비스 경로는 `ai/service`에서 `uv run python -m pytest -m live tests/live/test_review_live.py` | 기본 결과가 아니고 25초 안 |
+| 평가 (과금) | `uv run python -m review_lab.evaluate --out reports/results/review_eval.json` | 13절 지표 |
 
 - 테스트가 볼 것: 차원마다 판단 불가 · 부담 · 상태 순서, `script_used`, 미션 판정 세 지표 출처(Take · 장 · 대본 전달도)와 `NOT_EVALUABLE` 조건, 허용치 · 개수 지표, 사용자 기준 `FAILED` 미션이 맨 앞, 장 미션 · Take 미션, 다음 미션 20개 · 설명 500자 상한, 반복 문제(`GAZE` 두 차원을 `dimension`으로 가름), 점수, 숫자 검사(표기 · 반올림 · 장 번호), LLM 실패 기본 결과, 이전 Take 없음.
 
 # 11. 배포
-**어디서 도는가**: 코어 `src/review/`(`prompts/` · `examples/` 포함)를 AI 서비스의 `features/review/`로 폴더째 옮기고, 라우터가 `POST /takes/review`를 연다. 라우터는 요청 마감 시각을 만들고 `structured_llm(LLM 출력 스키마, deadline)`을 넘긴다. LLM 실패는 코어가 잡아 기본 결과로 돌아가고, 서비스 `common/llm.py`가 예외에 붙인 `code`를 `fallback_reason`으로 쓴다(코치의 코칭 계획과 같은 방식, `coach-agent.md` 6-4). 의존성은 pydantic 하나.
+**어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/review/`에 있다(연구 폴더 `src/review/`에서 폴더째 옮겼다). 라우터 `api/review.py`가 `POST /takes/review`를 연다. 라우터는 요청마다 마감 시각(AI 예산 25초)을 만들고 `structured_llm(ReviewDraft, "review", deadline)`으로 LLM 객체를 받아 `review_take(req, llm, model=…)`에 넘긴다. LLM 설정이 없어 객체를 만들 수 없으면 `llm=None`을 넘겨 기본 결과 + `LLM_UNAVAILABLE`을 200으로 돌려준다. LLM 실패는 코어가 잡아 기본 결과로 돌아가고, 서비스 `common/llm.py`가 예외에 붙인 `code`를 `fallback_reason`으로 쓴다(코치의 코칭 계획과 같은 방식, `coach-agent.md` 6-4). `meta.model`은 응답한 모델이다. 연구 도구(`review_lab`)는 옮기지 않는다. 의존성은 pydantic 하나.
+
+**옮긴 뒤 같은 결과인지 확인** (2026-10-28)
+1. 코어 테스트 169개를 서비스 `tests/unit/review/`로 옮겨 통과했다(엔드포인트 `test_api.py` 12개를 더해 181개). `test_examples.py` · `test_core_boundary.py`는 예시 · 코어 폴더를 패키지 위치로 찾는다.
+2. 연구 폴더는 서비스를 editable로 설치하고 `review_lab`의 import를 `pitch_coach_ai.features.review`로 바꿨다. 예시 폴더(`paths.EXAMPLES_DIR`)는 서비스 코어 패키지 안이다.
+3. 옮기기 전 · 뒤의 응답이 바이트까지 같다: 예시 요청(LLM 없음 · 예시 LLM 출력), 평가 묶음 48개(LLM 없음).
+4. OpenAPI 스키마 이름이 다른 기능과 겹치지 않게 응답 · 입력 모델 몇 개의 클래스 이름만 바꿨다(JSON 필드는 같다). 기존 경로 · 스키마는 그대로다.
+5. BE 리뷰 DTO로 응답 50개(예시 둘 + 평가 묶음 48개)를 검사해 모두 통과했고, BE DTO를 거친 요청으로 돌린 리뷰가 원래 요청과 같다.
+6. 연구 폴더의 `src/review/`와 `tests/unit/`을 지웠다. 이후 코어는 서비스에서만 고친다.
+
 
 **BE와 함께 할 것**: 백그라운드 호출 · 저장(12절), Take 상태, `missions` 칸.
 
@@ -381,7 +394,7 @@ sequenceDiagram
 **알려진 한계**
 - 부담 기준(`PRIORITY`가 되는 최소 부담)만 13절 평가로 골랐다. 허용치 · 한 걸음 폭 · 점수 · 가중은 정답이 없거나 적어 아직 임시값이다. 실제 리허설 Take와 사람이 단 정답으로 다시 고른다.
 - 13절 평가는 공통 기준 Take(`architecture.md` 12절)가 아직 없어 코치 가상 발표 시나리오를 재생한 Take 결과로 대신했고, 정답 리뷰도 시나리오로 적은 초안이다. 대본 전달도 채점 · 이어진 Take · 사용자 평가 기준이 없는 묶음이라 내용 규칙과 반복 `PRIORITY` 비율은 재지 않았다(결과와 묶음은 연구 폴더 README).
-- 지금 기본 모델은 리뷰 한 번에 8초 안팎이 걸려, 호출 한 번 12초 제한(8절)에 걸려 `LLM_TIMEOUT`이 되는 Take가 있다(가상 발표 48 Take에서 3번).
+- 추론 강도 `low`의 문장 품질은 같은 요청 17개(가상 발표 clean 16 + 예시 요청)를 기본값과 눈으로만 비교했고, 품질을 재는 지표는 없다. 실제 리허설 Take가 생기면 다시 본다(추론 기본값은 호출 한 번이 12초를 자주 넘어 고르지 않았다, 8절).
 - 이전 Take 비교는 같은 발표 안에서만이고, 대본 보기가 다른 Take끼리의 비교는 해석에 주의가 필요하다.
 - 다음 미션 목표는 지금 값에서 한 걸음이라, 측정 비율이 낮은 Take에서는 후보가 줄어든다.
 - 숫자 검사는 허용 숫자를 단위 구분 없이 한 목록으로 대조한다(4-2 `check_numbers(sentence, allowed_numbers)`). 그래서 입력에 장 번호 · 개수 같은 작은 정수가 있으면 같은 숫자를 다른 단위로 쓴 문장도 통과한다(예: 장 번호 3이 있으면 실제 값이 −2.1인 음량을 "3dB"라고 써도 통과하고, 사용자 기준 값 5가 있으면 없는 "5번 장"도 통과한다).

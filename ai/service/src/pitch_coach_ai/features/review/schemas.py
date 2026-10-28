@@ -93,17 +93,17 @@ class TakeResult(_In):
     criteria: dict[str, Any] = Field(default_factory=dict)
 
 
-class KeyPoint(_In):
+class CoverageKeyPoint(_In):
     #: critical · high · normal
     importance: str | None = None
     #: covered · partial · missing · contradicted
     status: str | None = None
 
 
-class SlideEvaluation(_In):
+class CoverageSlideEvaluation(_In):
     slide_number: int = Field(ge=1)
     scores: dict[str, Any] = Field(default_factory=dict)
-    key_points: list[KeyPoint] = Field(default_factory=list)
+    key_points: list[CoverageKeyPoint] = Field(default_factory=list)
 
 
 class ScriptCoverage(_In):
@@ -111,12 +111,12 @@ class ScriptCoverage(_In):
 
     #: content_coverage · critical_fact_accuracy · script_fidelity · scored_ratio
     take_scores: dict[str, Any] = Field(default_factory=dict)
-    evaluations: list[SlideEvaluation] = Field(default_factory=list)
+    evaluations: list[CoverageSlideEvaluation] = Field(default_factory=list)
     #: 채점에 실패한 장. 장 번호 또는 {slide_number, ...}
     failed: list[Any] = Field(default_factory=list)
 
 
-class Target(_In):
+class MissionTargetIn(_In):
     metric: str
     operator: Operator
     value: Number
@@ -127,7 +127,7 @@ class Mission(_In):
     area: str | None = None
     #: null 이면 Take 전체. 장 번호는 1부터이고 0을 전체로 쓰지 않는다 (architecture.md 6-1)
     slide_number: int | None = Field(default=None, ge=1)
-    target: Target
+    target: MissionTargetIn
 
 
 class RecurringIssueIn(_In):
@@ -228,7 +228,7 @@ class CriteriaResult(_Out):
     status: JudgeStatus
 
 
-class MissionTarget(_Out):
+class MissionTargetOut(_Out):
     metric: str
     operator: Operator
     value: Number
@@ -241,19 +241,19 @@ class NextMission(_Out):
     area: Area
     slide_number: int | None = Field(ge=1)
     description: str | None = Field(max_length=MAX_DESCRIPTION_CHARS)
-    target: MissionTarget
+    target: MissionTargetOut
     priority: int
     reason: str
 
 
-class RecurringIssue(_Out):
+class RecurringIssueOut(_Out):
     area: str
     slide_number: int | None = Field(ge=1)
     #: 다음 리뷰가 반복된 차원을 찾는 값. area 만으로는 차원을 가르지 못한다 (GAZE 는 두 차원)
     dimension: str
 
 
-class Meta(_Out):
+class ReviewMeta(_Out):
     schema_version: str
     feature_version: str
     criteria_versions: dict[str, str]
@@ -273,9 +273,9 @@ class ReviewResponse(_Out):
     mission_results: list[MissionResult]
     criteria_results: list[CriteriaResult]
     next_missions: list[NextMission] = Field(max_length=MAX_NEXT_MISSIONS)
-    recurring_issues: list[RecurringIssue] = Field(max_length=MAX_RECURRING_ISSUES)
+    recurring_issues: list[RecurringIssueOut] = Field(max_length=MAX_RECURRING_ISSUES)
     fallback_reason: FallbackReason | None
-    meta: Meta
+    meta: ReviewMeta
 
 
 # ══════════════════════════════════════════════════════════════════════════
