@@ -1,13 +1,11 @@
 """연구용 판정 대역 · 예시 테스트의 공용 도우미 — 계약 모양 검사와 입력 만들기.
 
-`assert_same` · `words` 는 코치 단위 테스트(서비스로 옮겨 감)의 같은 이름 함수 사본이다.
+`words` 는 코치 단위 테스트(서비스로 옮겨 감)의 같은 이름 함수 사본이다.
 """
 
 from __future__ import annotations
 
 from typing import Any
-
-import pytest
 
 from pitch_coach_ai.features.coach.schemas import JudgmentResult
 
@@ -50,24 +48,6 @@ def pace_words(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def plain(word: str, start: int, end: int) -> dict[str, Any]:
     return {"word": word, "start_ms": start, "end_ms": end}
-
-
-def assert_same(actual: Any, expected: Any) -> None:
-    """모양은 같고 실수는 근사로 비교한다."""
-    if isinstance(expected, dict):
-        assert isinstance(actual, dict)
-        assert actual.keys() == expected.keys()
-        for k in expected:
-            assert_same(actual[k], expected[k])
-    elif isinstance(expected, list):
-        assert isinstance(actual, list)
-        assert len(actual) == len(expected)
-        for a, e in zip(actual, expected, strict=True):
-            assert_same(a, e)
-    elif isinstance(expected, float) and not isinstance(expected, bool):
-        assert actual == pytest.approx(expected, rel=1e-9, abs=1e-9)
-    else:
-        assert actual == expected
 
 
 def words(

@@ -1,9 +1,12 @@
 import type { ReactNode } from 'react';
 
-/** 본문 맨 아래 줄 — 왼쪽에 다음 할 일 한 줄, 오른쪽에 이전 · 다음 버튼 (시안 `pitch-create`) */
+/**
+ * 본문 맨 아래 줄 — 왼쪽에 다음 할 일 한 줄, 오른쪽에 이전 · 다음 버튼 (시안 `pitch-create`)
+ * 넓은 화면에서는 칸 아래에 붙여 낮은 창에서도 버튼이 보이게 하고, -5 셋으로 칸의 아래 여백(`sm:p-5`)까지 덮습니다.
+ */
 export function PaneFooter({ hint, children }: { hint?: ReactNode; children: ReactNode }) {
   return (
-    <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+    <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-line bg-panel pt-4 lg:sticky lg:-bottom-5 lg:-mb-5 lg:pb-5">
       <div className="text-sm text-ink/80">{hint}</div>
       <div className="flex w-full flex-wrap gap-3 sm:w-auto">{children}</div>
     </div>

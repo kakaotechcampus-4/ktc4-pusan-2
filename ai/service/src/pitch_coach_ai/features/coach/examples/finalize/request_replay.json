@@ -61,22 +61,6 @@
   "coach_state": null,
   "events": [
     {
-      "event_id": "ep-GAZE_UNMEASURABLE-1-1000",
-      "t_ms": 8000,
-      "kind": "EPISODE",
-      "issue_type": "GAZE_UNMEASURABLE",
-      "area": "GAZE",
-      "slide_number": 1,
-      "start_ms": 1000,
-      "end_ms": 4000,
-      "peak_severity": 1.0,
-      "intervention_ids": [],
-      "suppressed_reasons": [],
-      "reliable_ms": 0,
-      "unreliable_ms": 4000,
-      "mean_severity": 0.7205
-    },
-    {
       "event_id": "sl-1-0",
       "t_ms": 31000,
       "kind": "SLIDE",
@@ -164,7 +148,7 @@
           "ok_ms": 30000.0,
           "total_ms": 30000.0,
           "chars": 111.0,
-          "speak_ms": 22550.0
+          "speak_ms": 22200.0
         },
         "VOLUME": {
           "voiced_ms": 22560.0,
@@ -268,8 +252,8 @@
       "intervention_id": "iv-73000"
     },
     {
-      "event_id": "su-GAZE_ON_SCRIPT-88000",
-      "t_ms": 88000,
+      "event_id": "su-GAZE_ON_SCRIPT-86000",
+      "t_ms": 86000,
       "kind": "SUPPRESSED",
       "issue_type": "GAZE_ON_SCRIPT",
       "area": "GAZE",
@@ -278,7 +262,8 @@
       "status": "WAITING",
       "priority": 100,
       "reasons": [
-        "NOT_PERSISTENT"
+        "NOT_PERSISTENT",
+        "MIN_GAP"
       ]
     },
     {
@@ -582,7 +567,7 @@
       {
         "t_ms": 90000,
         "duration_ms": 1000,
-        "state": "CAMERA",
+        "state": "BOTTOM",
         "direction": null,
         "confidence": 0.88,
         "reliability": 0.95,
@@ -2150,7 +2135,7 @@
       {
         "t_ms": 90000,
         "duration_ms": 1000,
-        "state": "CAMERA",
+        "state": "BOTTOM",
         "direction": null,
         "confidence": 0.88,
         "reliability": 0.95,
