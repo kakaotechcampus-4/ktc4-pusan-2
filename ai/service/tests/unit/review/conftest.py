@@ -1,6 +1,6 @@
 """테스트 공용 — 예시 요청을 바탕으로 바꾼 요청을 만드는 도우미.
 
-예시 요청(src/review/examples/review/request.json)의 값으로 계산한 부담:
+예시 요청(features/review/examples/review/request.json)의 값으로 계산한 부담:
 - script_independence = (0.71 × 13초 + 0.55 × 7초) × 반복 가중 1.2 = 15.696 (3번 장)
 - fluency = 0.5 × 12초 × 미션 m-1 PARTIAL 가중 1.1 = 6.6 (2번 장)
 """
@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from review import (
+from pitch_coach_ai.features.review import (
     ReviewConfig,
     ReviewResponse,
     RuleResult,
@@ -22,8 +22,10 @@ from review import (
     load_config,
     review_take,
 )
+from pitch_coach_ai.features.review import core as review_core
 
-EXAMPLES = Path(__file__).parents[2] / "src" / "review" / "examples" / "review"
+#: 예시는 코어와 함께 옮겨지므로 테스트 파일이 아니라 패키지 위치로 찾는다
+EXAMPLES = Path(review_core.__file__).resolve().parent / "examples" / "review"
 _REQUEST = json.loads((EXAMPLES / "request.json").read_text(encoding="utf-8"))
 
 #: /takes/analyze 출력 모양 (명세 밖 대본 전달도 문서의 예시). 3번 장만 채점, 핵심 내용은 모두 전달

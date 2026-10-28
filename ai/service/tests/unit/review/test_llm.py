@@ -13,9 +13,9 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from review import review_take
-from review.prompts.review import REVIEW_SYSTEM_PROMPT
-from review.schemas import MAX_DESCRIPTION_CHARS, ReviewDraft
+from pitch_coach_ai.features.review import review_take
+from pitch_coach_ai.features.review.prompts.review import REVIEW_SYSTEM_PROMPT
+from pitch_coach_ai.features.review.schemas import MAX_DESCRIPTION_CHARS, ReviewDraft
 
 from .conftest import sample_coverage
 

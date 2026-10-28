@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from review import load_config
-from review.schemas import MAX_CRITERIA_TARGETS, MAX_DESCRIPTION_CHARS, MAX_NEXT_MISSIONS
+from pitch_coach_ai.features.review import load_config
+from pitch_coach_ai.features.review.schemas import (
+    MAX_CRITERIA_TARGETS,
+    MAX_DESCRIPTION_CHARS,
+    MAX_NEXT_MISSIONS,
+)
 
 from .conftest import run, sample_coverage, segment, target
 
