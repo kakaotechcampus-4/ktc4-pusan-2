@@ -49,16 +49,19 @@ def _count_pages(reader: PdfReader) -> int:
     while stack:
         ref = stack.pop()
         node = ref.get_object()
-        if node.get("/Type") == "/Pages" or "/Kids" in node:
+        node_type = node.get("/Type")
+        if node_type == "/Pages" or "/Kids" in node:
             key = ref.idnum if isinstance(ref, IndirectObject) else id(node)
             if key in seen:
                 raise ValueError("page tree cycle")
             seen.add(key)
             stack.extend(node["/Kids"])
-        else:
+        elif node_type in ("/Page", None):
             count += 1
             if count > MAX_PDF_PAGES:
                 raise PresentationTooComplex()
+        else:
+            raise ValueError("not a page")
     return count
 
 
