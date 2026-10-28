@@ -330,3 +330,48 @@ def test_retry_close_has_no_error_and_lets_the_client_reconnect(
 
     assert code == 1013
     assert stt.sessions == []
+
+
+@pytest.mark.anyio
+async def test_ending_stream_is_not_cancelled_to_make_room(monkeypatch: pytest.MonkeyPatch):
+    """끝내는 중인(stop) 스트림은 끝내는 쪽이 마지막 전사를 기다린다. 새 Take 자리를 만들려고
+    먼저 끊으면 끝낸 Take 의 마지막 문장이 빠진다. 끝내는 쪽의 상한까지 기다리고, 그래도 안 닫히면
+    다시 붙게 알린다."""
+    adapter = FakeSttAdapter()
+    owner_id = uuid.uuid7()
+    ending = await _attach(adapter, owner_id)
+    ending.push(frame(1, 0), source=ending._client.ws)
+    ending.end()
+    waits: list[float | None] = []
+    cancels: list[bool] = []
+
+    async def slow(timeout: float | None = None) -> bool:
+        waits.append(timeout)
+        return False
+
+    monkeypatch.setattr(ending, "wait_closed", slow)
+    monkeypatch.setattr(ending, "cancel", lambda: cancels.append(True))
+
+    with pytest.raises(StreamClosing):
+        await _attach(adapter, owner_id)
+
+    assert waits == [registry.ENDING_WAIT_SEC]
+    assert cancels == []
+    monkeypatch.undo()
+    await _close_all()
+
+
+@pytest.mark.anyio
+async def test_new_take_opens_after_the_ending_stream_closes_by_itself():
+    adapter = FakeSttAdapter()
+    owner_id = uuid.uuid7()
+    ending = await _attach(adapter, owner_id)
+    await _wait_until_ok(ending)
+    ending.push(frame(1, 0), source=ending._client.ws)
+    ending.end()
+
+    fresh = await asyncio.wait_for(_attach(adapter, owner_id), timeout=2.0)
+
+    assert ending.is_finished
+    assert _open(owner_id) == [fresh]
+    await _close_all()
