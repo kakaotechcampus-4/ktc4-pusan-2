@@ -59,19 +59,33 @@ class _KeyedLock:
 
 
 attach_locks: dict[uuid.UUID, _KeyedLock] = {}
+# 스트림 자리 확보는 사용자별로 직렬화한다. 다른 사용자의 연결은 기다리지 않는다.
+owner_locks: dict[uuid.UUID, _KeyedLock] = {}
 
 
 @contextlib.asynccontextmanager
 async def attach_lock(take_id: uuid.UUID):
-    entry = attach_locks.setdefault(take_id, _KeyedLock())
+    async with _keyed_lock(attach_locks, take_id):
+        yield
+
+
+@contextlib.asynccontextmanager
+async def stream_owner_lock(owner_id: uuid.UUID):
+    async with _keyed_lock(owner_locks, owner_id):
+        yield
+
+
+@contextlib.asynccontextmanager
+async def _keyed_lock(locks: dict[uuid.UUID, _KeyedLock], key: uuid.UUID):
+    entry = locks.setdefault(key, _KeyedLock())
     entry.holders += 1
     try:
         async with entry.lock:
             yield
     finally:
         entry.holders -= 1
-        if entry.holders == 0 and attach_locks.get(take_id) is entry:
-            del attach_locks[take_id]
+        if entry.holders == 0 and locks.get(key) is entry:
+            del locks[key]
 
 
 class _BoundedDict[K, V](OrderedDict[K, V]):

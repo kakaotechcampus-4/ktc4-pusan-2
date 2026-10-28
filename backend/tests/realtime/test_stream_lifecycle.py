@@ -414,18 +414,19 @@ async def test_wait_cancelled_gives_up_and_reports_closed(monkeypatch: pytest.Mo
 
 
 @pytest.mark.anyio
-async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.MonkeyPatch):
-    """attach 락이 프로세스 전역이면 한 Take 의 핸드오버 대기(DRAIN_TIMEOUT_SEC) 동안
-    다른 모든 Take 의 연결이 같이 멈춘다 (코드 리뷰 지적). take_id 별 락이어야 한다."""
+async def test_handover_wait_does_not_block_other_users(monkeypatch: pytest.MonkeyPatch):
+    """한 사용자의 핸드오버 대기(DRAIN_TIMEOUT_SEC)가 다른 사용자의 연습을 막으면 안 된다.
+    같은 사용자의 다른 Take는 사용자당 연습 하나 정책으로 제한한다."""
     monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 0.5)
     adapter = FakeSttAdapter(Plan(swallow_close=True), Plan(), Plan())
-    take_a, take_b, owner = uuid.uuid7(), uuid.uuid7(), uuid.uuid7()
+    take_a, take_b = uuid.uuid7(), uuid.uuid7()
+    owners = {take_a: uuid.uuid7(), take_b: uuid.uuid7()}
 
     def attach(take_id: uuid.UUID):
         return registry.attach(
             take_id,
             FakeWebSocket(),
-            owner_id=owner,
+            owner_id=owners[take_id],
             stt_adapter=adapter,
             config=SttConfig(),
             store=FakeTranscriptStore(),
@@ -442,7 +443,7 @@ async def test_handover_wait_does_not_block_other_takes(monkeypatch: pytest.Monk
 
     new_a, (elapsed_b, stream_b) = await asyncio.gather(attach(take_a), attach_b_timed())
 
-    assert elapsed_b < 0.25, f"다른 Take 가 핸드오버 대기에 같이 막혔다 ({elapsed_b:.2f}s)"
+    assert elapsed_b < 0.25, f"다른 사용자가 핸드오버 대기에 같이 막혔다 ({elapsed_b:.2f}s)"
     assert new_a is not old_a and stream_b is not old_a
     assert registry.active_count() == 2
     assert not state.attach_locks, "다 쓴 락은 남기지 않는다"
