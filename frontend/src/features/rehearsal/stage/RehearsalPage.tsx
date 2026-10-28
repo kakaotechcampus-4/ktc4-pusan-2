@@ -250,7 +250,7 @@ export function RehearsalPage() {
   const { meterRef, audioState, voiceRecord } = useMicLevel(stream, {
     clock: elapsedMs,
   });
-  const { slideNumber, go, slideStartedAtRef, slideAt } = useSlideDeck({
+  const { slideNumber, slideStartedAtRef, slideAt } = useSlideDeck({
     total: pageCount,
     clientSessionId: sessionId,
     elapsedMs,
@@ -896,22 +896,6 @@ export function RehearsalPage() {
             />
 
             <div className="stage-foot">
-              <nav className="slide-controls" aria-label="슬라이드 이동">
-                <button
-                  type="button"
-                  disabled={!running || slideNumber <= 1}
-                  onClick={() => go(slideNumber - 1)}
-                >
-                  ← 이전 슬라이드
-                </button>
-                <button
-                  type="button"
-                  disabled={!running || slideNumber >= pageCount}
-                  onClick={() => go(slideNumber + 1)}
-                >
-                  다음 슬라이드 →
-                </button>
-              </nav>
               {/* 끝내기 실패는 꼭 봐야 해서 스크롤되는 상태 칸 밖, 조작 안내 자리에 띄웁니다 */}
               {endError ? (
                 <span className="end-error" role="alert">
