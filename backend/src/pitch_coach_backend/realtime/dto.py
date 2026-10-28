@@ -185,8 +185,9 @@ class WsErrorCode(StrEnum):
     - `TAKE_ENDED` 는 ANALYZING·COMPLETED·FAILED 이거나 BE 가 자동 종료한 Take(`AutoEndMessage`).
       끝난 연습에 전사를 더 붙이면 리포트가 오염된다. BE 가 끝냈으면 `end_reason` 에 이유를 싣는다.
     - `FORBIDDEN` 은 소유권 검사(DB) 뒤의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
-    - `TOO_MANY_STREAMS` 는 다른 Take 에 붙어 있는 연결이 상한만큼 있을 때다
-      (`registry.MAX_STREAMS_PER_USER`). 같은 Take 로 다시 붙는 연결은 세지 않는다.
+    - 사용자는 한 번에 연습 하나만 한다 (`registry.MAX_STREAMS_PER_USER` = 1).
+      `TOO_MANY_STREAMS` 는 다른 Take가 연결돼 있거나 이전 스트림 정리가 늦어질 때다.
+      같은 Take 로 다시 붙는 연결은 기존 스트림을 이어받는다.
     """
 
     UNAUTHORIZED = "UNAUTHORIZED"

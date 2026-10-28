@@ -45,10 +45,9 @@ from pitch_coach_backend.realtime.stt.adapter import (
 
 logger = logging.getLogger(__name__)
 
-# 한 사용자가 동시에 열어 둘 스트림(= Deepgram 연결) 수. 스트림은 연결이 끊긴 뒤에도 grace 동안
-# Deepgram 에 붙어 있고, Deepgram 의 동시 연결 한도는 모든 사용자가 같이 쓴다. 정상 흐름은 하나지만
-# 브라우저가 닫힘 프레임 없이 사라진 연결은 한동안 붙어 있는 것으로 보여 여유를 둔다
-MAX_STREAMS_PER_USER = 3
+# 사용자는 한 번에 연습 하나만 한다. 같은 Take의 재연결은 기존 스트림을 이어받는다.
+# 다른 Take가 붙어 있으면 거절하고, 끊겨 grace를 기다리던 스트림은 닫은 뒤 교체한다.
+MAX_STREAMS_PER_USER = 1
 
 
 class StreamOwnerMismatch(Exception):

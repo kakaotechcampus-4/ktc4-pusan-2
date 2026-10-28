@@ -52,23 +52,23 @@ def _open(owner_id: uuid.UUID) -> list:
 
 
 @pytest.mark.anyio
-async def test_connection_over_the_limit_is_rejected_while_every_stream_is_attached():
-    """다른 창에서 발표 중일 수 있는 스트림은 정리하지 않는다. 새 연결을 거절하고 Deepgram 연결은
-    상한을 넘지 않는다. 거절한 Take 는 아무도 다시 붙지 않으면 떠난 것으로 끝낸다."""
+async def test_a_second_take_is_rejected_while_the_first_take_is_attached():
+    """사용자는 한 번에 연습 하나만 한다. 첫 Take는 유지하고 다른 Take의 연결을 거절한다.
+    거절한 Take는 아무도 다시 붙지 않으면 떠난 것으로 끝낸다."""
     adapter = FakeSttAdapter()
     owner_id = uuid.uuid7()
-    for _ in range(MAX_STREAMS_PER_USER):
-        await _attach(adapter, owner_id)
+    first = await _attach(adapter, owner_id)
     rejected = uuid.uuid7()
 
     with pytest.raises(TooManyStreams):
         await _attach(adapter, owner_id, rejected)
 
-    assert len(_open(owner_id)) == MAX_STREAMS_PER_USER
+    assert _open(owner_id) == [first]
+    assert first.has_client and not first.is_stopping
     assert rejected not in state.streams
     assert abandon.armed(rejected)
     await asyncio.sleep(0.05)
-    assert len(adapter.sessions) == MAX_STREAMS_PER_USER
+    assert len(adapter.sessions) == 1
     await _close_all()
 
 
@@ -78,20 +78,16 @@ async def test_stream_waiting_for_a_reconnect_makes_room_for_a_new_take():
     않는다."""
     adapter = FakeSttAdapter()
     owner_id = uuid.uuid7()
-    streams = [await _attach(adapter, owner_id) for _ in range(MAX_STREAMS_PER_USER)]
-    oldest, newer = streams[0], streams[1]
-    for stream in (oldest, newer):
-        tab = stream._client.ws
-        stream.push(frame(1, 0), source=tab)
-        stream.detach(tab)
+    previous = await _attach(adapter, owner_id)
+    tab = previous._client.ws
+    previous.push(frame(1, 0), source=tab)
+    previous.detach(tab)
 
     fresh = await _attach(adapter, owner_id)
 
-    assert oldest.is_stopping
-    assert not newer.is_stopping
-    assert fresh in _open(owner_id)
-    assert len(_open(owner_id)) == MAX_STREAMS_PER_USER
-    assert oldest.take_id not in state.ended
+    assert previous.is_finished
+    assert _open(owner_id) == [fresh]
+    assert previous.take_id not in state.ended
     await _close_all()
 
 
@@ -118,13 +114,13 @@ async def test_simultaneous_connections_of_one_user_do_not_pass_the_limit():
     owner_id = uuid.uuid7()
 
     results = await asyncio.gather(
-        *(_attach(adapter, owner_id) for _ in range(MAX_STREAMS_PER_USER + 2)),
+        *(_attach(adapter, owner_id) for _ in range(3)),
         return_exceptions=True,
     )
 
     rejected = [r for r in results if isinstance(r, TooManyStreams)]
     assert len(rejected) == 2
-    assert len(_open(owner_id)) == MAX_STREAMS_PER_USER
+    assert len(_open(owner_id)) == 1
     await _close_all()
 
 
