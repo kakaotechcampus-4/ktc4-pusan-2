@@ -5,11 +5,16 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from review import ReviewRequest, load_config, review_take
-from review.schemas import NextMission, RecurringIssue
-from review.score import compute_score
-from review.text import NOTHING_TEXT, STABLE_TEXT, TextCandidates, default_summary
-from review.vocab import DIMENSIONS
+from pitch_coach_ai.features.review import ReviewRequest, load_config, review_take
+from pitch_coach_ai.features.review.schemas import NextMission, RecurringIssueOut
+from pitch_coach_ai.features.review.score import compute_score
+from pitch_coach_ai.features.review.text import (
+    NOTHING_TEXT,
+    STABLE_TEXT,
+    TextCandidates,
+    default_summary,
+)
+from pitch_coach_ai.features.review.vocab import DIMENSIONS
 
 from .conftest import run, sample_coverage, segment, unmeasured
 
@@ -172,7 +177,7 @@ def test_default_summary_without_candidates(evaluable, expected):
 def test_all_stable_take_summary(req, monkeypatch):
     # 실제 입력으로 여섯 차원을 모두 STABLE 로 만들기 어려워 상태만 바꿔 본다
     monkeypatch.setattr(
-        "review.core.decide_dimension_states",
+        "pitch_coach_ai.features.review.core.decide_dimension_states",
         lambda *a, **k: dict.fromkeys(DIMENSIONS, "STABLE"),
     )
     resp = review_take(req)
@@ -254,7 +259,7 @@ def test_criteria_versions_carry_take_result_criteria(req):
 
 
 def test_comparison_shape():
-    from review.schemas import Comparison
+    from pitch_coach_ai.features.review.schemas import Comparison
 
     c = Comparison.model_validate(
         {
@@ -319,9 +324,9 @@ def test_output_mission_and_recurring_contract():
     for bad in ({"area": None}, {"area": "EYE"}, {"slide_number": 0}):
         with pytest.raises(ValidationError):
             NextMission(**{**ok, **bad}, priority=1, reason="이유")
-    RecurringIssue(area="GAZE", slide_number=None, dimension="script_independence")
+    RecurringIssueOut(area="GAZE", slide_number=None, dimension="script_independence")
     with pytest.raises(ValidationError):
-        RecurringIssue(area="GAZE", slide_number=0, dimension="script_independence")
+        RecurringIssueOut(area="GAZE", slide_number=0, dimension="script_independence")
 
 
 @pytest.mark.parametrize("where", ["slide_values", "problem_segment", "coverage"])

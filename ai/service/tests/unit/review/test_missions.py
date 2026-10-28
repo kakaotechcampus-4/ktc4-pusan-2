@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from review import load_config
-from review.missions import judge_target
+from pitch_coach_ai.features.review import load_config
+from pitch_coach_ai.features.review.missions import judge_target
 
 from .conftest import run, sample_coverage, sample_request, target
 

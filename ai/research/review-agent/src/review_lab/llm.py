@@ -19,14 +19,17 @@ import openai
 from dotenv import find_dotenv, load_dotenv
 from langchain_openai import ChatOpenAI
 
-from review.prompts.review import REVIEW_SYSTEM_PROMPT
-from review.schemas import ReviewDraft
+from pitch_coach_ai.features.review.prompts.review import REVIEW_SYSTEM_PROMPT
+from pitch_coach_ai.features.review.schemas import ReviewDraft
 
 from .paths import PROJECT_ROOT
 
 #: 호출 한 번의 시간 제한 · 재시도 (architecture.md 9절 기본값과 같게)
 TIMEOUT_S = 12.0
 MAX_RETRIES = 1
+#: 추론 강도 (README 3절 · 기능 문서 8절에서 고른 값).
+#: None 이면 보내지 않는다(모델 · 게이트웨이 기본값)
+REASONING_EFFORT: str | None = "low"
 
 
 @dataclass(frozen=True)
@@ -59,7 +62,11 @@ def load_settings() -> Settings:
     return Settings(base_url=os.getenv("OPENAI_BASE_URL"), api_key=api_key, model=model)
 
 
-def review_llm(settings: Settings, timeout_s: float = TIMEOUT_S) -> Any:
+def review_llm(
+    settings: Settings,
+    timeout_s: float = TIMEOUT_S,
+    reasoning_effort: str | None = REASONING_EFFORT,
+) -> Any:
     """ReviewDraft 모양으로만 답하도록 고정한 LLM. `review_take(..., llm=..., model=s.model)`"""
     client = ChatOpenAI(
         base_url=settings.base_url,
@@ -67,6 +74,7 @@ def review_llm(settings: Settings, timeout_s: float = TIMEOUT_S) -> Any:
         model=settings.model,
         timeout=timeout_s,
         max_retries=MAX_RETRIES,
+        reasoning_effort=reasoning_effort,
     )
     return client.with_structured_output(ReviewDraft)
 
@@ -74,20 +82,25 @@ def review_llm(settings: Settings, timeout_s: float = TIMEOUT_S) -> Any:
 class CachedLLM:
     """실제 LLM 앞의 캐시 겸 기록기.
 
-    같은 프롬프트 · 출력 스키마 · 모델 · 입력이면 캐시(JSON 파일)의 답을 돌려줘 다시 부르지 않는다.
+    같은 프롬프트 · 출력 스키마 · 모델 · 추론 강도 · 입력이면 캐시(JSON 파일)의 답을 돌려줘 다시
+    부르지 않는다.
     마지막 호출의 입력 메시지 · LLM 초안(숫자 검사 전) · 캐시 여부 · 실제로 부른 시간 · 예외 종류를
     남긴다. LLM 예외는 그대로 올린다 (review_take 가 잡아 기본 결과로 돌아간다). 실패한 답은
     캐시하지 않는다.
     """
 
-    def __init__(self, llm: Any, model: str, cache_path: Path) -> None:
+    def __init__(
+        self, llm: Any, model: str, cache_path: Path, reasoning_effort: str | None = None
+    ) -> None:
         self.llm = llm
         self.cache_path = cache_path
         self.cache: dict[str, Any] = (
             json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.is_file() else {}
         )
         schema = json.dumps(ReviewDraft.model_json_schema(), sort_keys=True)
-        self.prefix = f"{model}\n{REVIEW_SYSTEM_PROMPT}\n{schema}\n"
+        # 추론 강도를 보내지 않은 답의 키는 전과 같다(이전 캐시를 그대로 쓴다)
+        effort = f"reasoning_effort={reasoning_effort}\n" if reasoning_effort else ""
+        self.prefix = f"{model}\n{effort}{REVIEW_SYSTEM_PROMPT}\n{schema}\n"
         self.last_message: str | None = None
         self.last_draft: ReviewDraft | None = None
         self.last_cached = False
