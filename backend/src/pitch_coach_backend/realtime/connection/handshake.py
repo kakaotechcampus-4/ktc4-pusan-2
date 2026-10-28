@@ -9,7 +9,9 @@
 
 import contextlib
 import logging
+import time
 import uuid
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from typing import cast
 from urllib.parse import urlsplit
@@ -47,8 +49,17 @@ logger = logging.getLogger(__name__)
 # RFC 6455 close code
 CLOSE_POLICY_VIOLATION = 1008  # 인증·권한·프로토콜 위반
 CLOSE_INTERNAL_ERROR = 1011  # 서버 쪽 일시 오류. FE 는 다시 붙는다
+CLOSE_TRY_AGAIN_LATER = 1013  # 받을 자리가 없다. 받기 전이라 브라우저에는 연결 실패로 보인다
 
 AUTH_TIMEOUT_SEC = 5.0
+
+# 인증 전(연결을 받고 auth 를 기다리는 동안) 연결 수 상한. 정상 FE 는 연결하자마자 auth 를 보내 이
+# 상태가 왕복 한 번이면 끝난다. 같은 와이파이의 수강생 수십 명이 동시에 새로고침해도 IP 하나에 몇
+# 개를 넘지 않는다. auth 없이 붙여 두면 연결 하나가 `AUTH_TIMEOUT_SEC` 동안 남는다
+MAX_PENDING_AUTH_PER_IP = 20
+MAX_PENDING_AUTH = 200
+# 상한에 걸린 연결을 로그에 남기는 간격(초). 걸리는 동안은 연결마다 남기지 않는다
+PENDING_AUTH_LOG_SEC = 60.0
 
 # 오디오를 받아도 되는 Take 상태 (FE `TakeStatus` 와 같은 값). 나머지(ANALYZING·COMPLETED·
 # FAILED)는 이미 끝난 연습이라 전사를 더 붙이면 리포트가 오염된다.
@@ -80,6 +91,57 @@ def origin_allowed(origin: str | None) -> bool:
     return (given.scheme, given.netloc) == (allowed.scheme, allowed.netloc) and bool(given.netloc)
 
 
+def client_ip(ws: WebSocket) -> str:
+    """연결한 쪽의 IP. Caddy 뒤라 `X-Forwarded-For` 의 첫 값이다.
+
+    바깥에서 붙는 첫 Caddy 는 믿지 않는 상대(`infra/Caddyfile` 의 `trusted_proxies` 밖)가 보낸
+    `X-Forwarded-For` 를 버리고 상대 주소로 채운다. release 는 그 Caddy 를 한 번 더 거쳐 뒤에 그
+    Caddy 주소가 붙으므로 마지막 값이 아니라 첫 값을 쓴다. 헤더가 없으면(Caddy 없이 띄운 로컬) 소켓
+    상대 주소다.
+    """
+    forwarded = ws.headers.get("x-forwarded-for")
+    if forwarded:
+        first = forwarded.split(",", 1)[0].strip()
+        if first:
+            return first
+    return ws.client.host if ws.client is not None else "unknown"
+
+
+class _PendingAuth:
+    """인증 전 연결 수. 전체와 IP 별로 센다. uvicorn 워커 하나 · 프로세스 하나가 전제다
+    (`stream/state.py`)."""
+
+    def __init__(self) -> None:
+        self.total = 0
+        self.per_ip: Counter[str] = Counter()
+        self._logged_at: float | None = None
+
+    def acquire(self, ip: str) -> bool:
+        if self.total >= MAX_PENDING_AUTH or self.per_ip[ip] >= MAX_PENDING_AUTH_PER_IP:
+            now = time.monotonic()
+            if self._logged_at is None or now - self._logged_at >= PENDING_AUTH_LOG_SEC:
+                self._logged_at = now
+                logger.warning(
+                    "인증 전 연결이 상한이라 받지 않는다 ip=%s ip_count=%d total=%d",
+                    ip,
+                    self.per_ip[ip],
+                    self.total,
+                )
+            return False
+        self.total += 1
+        self.per_ip[ip] += 1
+        return True
+
+    def release(self, ip: str) -> None:
+        self.total -= 1
+        self.per_ip[ip] -= 1
+        if self.per_ip[ip] <= 0:
+            del self.per_ip[ip]
+
+
+pending_auth = _PendingAuth()
+
+
 class Handshake:
     def __init__(
         self,
@@ -104,13 +166,24 @@ class Handshake:
         self.coach_context: TakeContext | None = None
 
     async def admit(self) -> bool:
-        """Origin → auth → 인가. 통과하면 True. 거절했으면 이미 닫았다."""
+        """Origin → auth → 인가. 통과하면 True. 거절했으면 이미 닫았다.
+
+        auth 를 기다리는 동안은 인증 전 연결로 센다 (`pending_auth`). 상한이면 받지 않는다.
+        """
         if not origin_allowed(self.ws.headers.get("origin")):
             await self.ws.close(code=CLOSE_POLICY_VIOLATION, reason="origin not allowed")
             return False
-        await self.ws.accept()
-
-        user_id = await self._authenticate()
+        ip = client_ip(self.ws)
+        if not pending_auth.acquire(ip):
+            # 받기 전에 닫으면 HTTP 403 이 된다. FE 는 연결이 실패한 것으로(닫힘 코드 1006) 보고
+            # 백오프로 다시 붙는다 — 1008 로 닫으면 다시 붙지 않는다
+            await self.ws.close(code=CLOSE_TRY_AGAIN_LATER, reason="too many connections")
+            return False
+        try:
+            await self.ws.accept()
+            user_id = await self._authenticate()
+        finally:
+            pending_auth.release(ip)
         if user_id is None:
             return False
         if not await self._authorize(user_id):
