@@ -11,10 +11,10 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과, 그 엔진을 쓰�
 | 항목 | 값 |
 | --- | --- |
 | 원본 | `ai/research/gaze-tracking/web/src/{engine,worker}` (`engine/__tests__` 포함) |
-| 기준 커밋 | `f7639880` — PR #612 브랜치(리뷰 반영 `9e6cde57` 포함), 머지 전. 머지되면 머지 커밋으로 고칩니다 |
-| `camera/` 넘겨받은 판 | `11db0f7d` (PR #612). 그 뒤 AI 쪽 `camera/` 는 바뀌지 않았고, 이 뒤로는 FE 원본입니다 |
+| 기준 커밋 | `16bb2d7a` (Merge PR #612 — 시선 엔진 공개 입구 정리, #611) — `develop-next` |
+| `camera/` 넘겨받은 판 | 같은 `16bb2d7a` (#647). 이 뒤로는 FE 원본이라 AI 쪽 `camera/` 와 맞추지 않습니다 |
 | 모델 버전 | `gaze_v1.1.0+head_pose+reference_anchor_v1` · 설정 해시 `32ad2751de59` |
-| 사용법 원문 | `ai/research/gaze-tracking/web/README.md` (FE에 붙이는 법 · 카메라 화면 붙이기) · `ai/research/gaze-tracking/DEPLOY.md` |
+| 사용법 원문 | `ai/research/gaze-tracking/web/README.md` (FE로 복사하기 · 카메라 화면 붙이기) · `docs/ai/features/gaze-tracking.md` 11절 (배포 · 분업) |
 | 화면이 쓰는 엔진 코드 | `docs/ai/features/gaze-tracking.md` 5-6 '화면이 쓰는 엔진 코드' (엔진은 코드만 내고 문구는 `camera/text.ts` 가 정합니다) |
 
 ## 누가 무엇을 쓰나
