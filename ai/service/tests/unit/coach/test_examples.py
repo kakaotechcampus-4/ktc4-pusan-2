@@ -19,7 +19,7 @@ from pitch_coach_ai.features.coach.schemas import (
 )
 from pitch_coach_ai.features.coach.timing import criteria, judge, summarize
 
-# 예시는 코어 패키지 안에 있다 — 서비스로 옮겨도 경로를 고치지 않게 모듈 파일 기준으로 찾는다
+# 예시는 코어 패키지 안에 있다 — 패키지 위치가 바뀌어도 경로를 고치지 않게 모듈 파일 기준으로 찾는다
 EXAMPLES = Path(coach.__file__).resolve().parent / "examples"
 TIMING = EXAMPLES / "timing"
 EVALUATE = EXAMPLES / "evaluate"

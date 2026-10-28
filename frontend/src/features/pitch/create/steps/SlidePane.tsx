@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useCreateStore } from '../createStore';
 import { FileIcon, PdfUploadIcon } from '../icons';
 import {
@@ -12,6 +13,7 @@ import { startSlideUpload } from '../slideUpload';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import { PaneFooter, primaryButton } from './PaneFooter';
 import { PaneHeading } from './PaneHeading';
+import { SlidePreviewDialog } from './SlidePreviewDialog';
 
 /**
  * 시안 슬라이드 — 첫 단계. 올린 것이 없으면 드롭존 → 올리는 중 → 제목 확인 + 썸네일.
@@ -280,14 +282,38 @@ function Thumbs({ slide }: { slide: SlideVersion }) {
         ))}
       </ul>
     );
+  return <OpenedThumbs doc={opened.doc} />;
+}
+
+/** 연 문서의 썸네일. 누르면 그 장을 크게 봅니다 (`SlidePreviewDialog`) */
+function OpenedThumbs({ doc }: { doc: PDFDocumentProxy }) {
+  const [preview, setPreview] = useState<number | null>(null);
+
   return (
-    <ul className={thumbGrid}>
-      {Array.from({ length: opened.doc.numPages }, (_, i) => (
-        <Thumb key={i}>
-          <PdfPage doc={opened.doc} pageNumber={i + 1} fit="width" className="w-full" />
-        </Thumb>
-      ))}
-    </ul>
+    <>
+      <ul className={thumbGrid}>
+        {Array.from({ length: doc.numPages }, (_, i) => (
+          <li key={i}>
+            <button
+              type="button"
+              onClick={() => setPreview(i + 1)}
+              aria-label={`${i + 1}번 슬라이드 크게 보기`}
+              className="tabular flex aspect-video w-full items-center justify-center overflow-hidden rounded-md border border-line bg-cream hover:border-ink focus-visible:border-ink"
+            >
+              <PdfPage doc={doc} pageNumber={i + 1} fit="width" className="w-full" />
+            </button>
+          </li>
+        ))}
+      </ul>
+      {preview !== null && (
+        <SlidePreviewDialog
+          doc={doc}
+          page={preview}
+          onPage={setPreview}
+          onClose={() => setPreview(null)}
+        />
+      )}
+    </>
   );
 }
 

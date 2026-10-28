@@ -15,7 +15,7 @@ from pitch_coach_ai.features.filler.schemas import IssueCriteria, JudgmentResult
 
 from .helpers import check_contract, word_items
 
-# 예시는 코어 패키지 안에 있다 — 서비스로 옮겨도 경로를 고치지 않게 모듈 파일 기준으로 찾는다
+# 예시는 코어 패키지 안에 있다 — 패키지 위치가 바뀌어도 경로를 고치지 않게 모듈 파일 기준으로 찾는다
 EXAMPLES = Path(filler_core.__file__).resolve().parent / "examples"
 JUDGE_INPUTS = sorted(EXAMPLES.glob("judge_input*.json"))
 

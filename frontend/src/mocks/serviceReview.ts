@@ -1,7 +1,15 @@
 import { http, HttpResponse } from 'msw';
 import { currentMockUserId } from './auth';
 import { homeFixture } from './home';
-import type { ServiceReviewReceipt, SuggestionReceipt } from '@/types/serviceReview';
+import { suggestionCategories } from '@/shared/lib/suggestionCategory';
+import type {
+  SuggestionCategory,
+  ServiceReviewReceipt,
+  SuggestionReceipt,
+} from '@/types/serviceReview';
+
+const validCategory = (v: unknown): v is SuggestionCategory =>
+  typeof v === 'string' && Object.hasOwn(suggestionCategories, v);
 
 const uuid = (v: unknown): v is string =>
   typeof v === 'string' &&
@@ -28,11 +36,13 @@ export function createServiceReviewHandlers(
       displays: Set<string>;
       review?: ServiceReviewReceipt;
       opinion: string;
+      category: SuggestionCategory | null;
       suggestions: Map<string, { content: string; receipt: SuggestionReceipt }>;
     }
   >();
   const state = (id: string) => {
-    if (!users.has(id)) users.set(id, { displays: new Set(), opinion: '', suggestions: new Map() });
+    if (!users.has(id))
+      users.set(id, { displays: new Set(), opinion: '', category: null, suggestions: new Map() });
     return users.get(id)!;
   };
   return [
@@ -80,7 +90,8 @@ export function createServiceReviewHandlers(
       if (!id) return error('UNAUTHORIZED', 401);
       if (
         !body ||
-        Object.keys(body).some((k) => !['rating', 'suggestion'].includes(k)) ||
+        Object.keys(body).some((k) => !['rating', 'suggestion', 'category'].includes(k)) ||
+        (body.category !== undefined && !validCategory(body.category)) ||
         !Number.isInteger(body.rating) ||
         Number(body.rating) < 1 ||
         Number(body.rating) > 5 ||
@@ -89,8 +100,11 @@ export function createServiceReviewHandlers(
         return error('VALIDATION_ERROR', 422);
       const s = state(id);
       const text = typeof body.suggestion === 'string' ? body.suggestion.trim() : '';
+      const category = body.category ?? 'OTHER';
       if (s.review)
-        return s.review.rating === body.rating && s.opinion === text
+        return s.review.rating === body.rating &&
+          s.opinion === text &&
+          (!text || s.category === category)
           ? HttpResponse.json(s.review)
           : error('SERVICE_FEEDBACK_ALREADY_SUBMITTED');
       if (!hasReport()) return error('SERVICE_FEEDBACK_NOT_ELIGIBLE');
@@ -100,6 +114,7 @@ export function createServiceReviewHandlers(
         created_at: new Date().toISOString(),
       };
       s.opinion = text;
+      s.category = text ? category : null;
       return HttpResponse.json(s.review, { status: 201 });
     }),
     http.post('*/api/suggestions', async ({ request }) => {
@@ -108,7 +123,8 @@ export function createServiceReviewHandlers(
       if (!id) return error('UNAUTHORIZED', 401);
       if (
         !body ||
-        Object.keys(body).some((k) => !['request_id', 'content'].includes(k)) ||
+        Object.keys(body).some((k) => !['request_id', 'content', 'category'].includes(k)) ||
+        (body.category !== undefined && !validCategory(body.category)) ||
         !uuid(body.request_id) ||
         !opinion(body.content) ||
         !body.content.trim()
@@ -116,14 +132,16 @@ export function createServiceReviewHandlers(
         return error('VALIDATION_ERROR', 422);
       const s = state(id);
       const content = body.content.trim();
+      const category = body.category ?? 'OTHER';
       const previous = s.suggestions.get(body.request_id);
       if (previous)
-        return previous.content === content
+        return previous.content === content && previous.receipt.category === category
           ? HttpResponse.json(previous.receipt)
           : error('SUGGESTION_REQUEST_CONFLICT');
       const receipt: SuggestionReceipt = {
         id: crypto.randomUUID(),
         source: 'MY_PAGE',
+        category,
         created_at: new Date().toISOString(),
       };
       s.suggestions.set(body.request_id, { content, receipt });

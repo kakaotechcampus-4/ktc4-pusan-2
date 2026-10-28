@@ -7,7 +7,7 @@
 저장소 루트에서 해당 실행 환경의 Python을 사용합니다.
 
 ```powershell
-python ai/tools/docs-check/check.py --base origin/develop --head HEAD --pr-body-file pr-body.md
+python ai/tools/docs-check/check.py --base origin/develop-next --head HEAD --pr-body-file pr-body.md
 python -m unittest discover -s ai/tools/docs-check -p "test_*.py"
 ```
 

@@ -13,9 +13,12 @@ beforeEach(async () => {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
-  vi.mocked(submitSuggestion)
-    .mockReset()
-    .mockResolvedValue({ id: 'one', source: 'MY_PAGE', created_at: '2026-10-27T00:00:00Z' });
+  vi.mocked(submitSuggestion).mockReset().mockResolvedValue({
+    id: 'one',
+    source: 'MY_PAGE',
+    category: 'OTHER',
+    created_at: '2026-10-27T00:00:00Z',
+  });
   await act(async () => root.render(<SuggestionForm key="a" />));
 });
 afterEach(async () => {
@@ -48,15 +51,20 @@ it('requires 1–2000 characters, preserves the exact retry, then creates a new 
   await send();
   expect(submitSuggestion).not.toHaveBeenCalled();
   await fill('  의견 🌱  ');
+  await chooseCategory('QUESTION');
   vi.mocked(submitSuggestion).mockRejectedValueOnce(new Error('lost response'));
   await send();
   const first = vi.mocked(submitSuggestion).mock.calls[0]![0];
   expect(first.content).toBe('의견 🌱');
+  expect(first.category).toBe('QUESTION');
+  expect(host.querySelector('select')!.disabled).toBe(true);
+  expect(host.querySelector('select')!.value).toBe('QUESTION');
   expect(host.querySelector('textarea')!.value).toBe('  의견 🌱  ');
   expect(host.querySelector('textarea')!.readOnly).toBe(true);
   await send();
   expect(vi.mocked(submitSuggestion).mock.calls[1]![0]).toEqual(first);
   expect(host.querySelector('textarea')!.value).toBe('');
+  expect(host.querySelector('select')!.value).toBe('OTHER');
   expect(host.querySelector('[role="status"]')).not.toBeNull();
   await fill('다음 의견');
   await send();
@@ -83,10 +91,55 @@ it('clears account input and ignores a late success after account changes', asyn
       }),
   );
   await fill('이전 사용자 의견');
+  await chooseCategory('PROBLEM');
   await send();
   await act(async () => root.render(<SuggestionForm key="b" />));
-  await act(async () => done({ id: 'one', source: 'MY_PAGE', created_at: '' }));
+  await act(async () => done({ id: 'one', source: 'MY_PAGE', category: 'OTHER', created_at: '' }));
   expect(host.querySelector('textarea')!.value).toBe('');
+  expect(host.querySelector('select')!.value).toBe('OTHER');
   expect(host.querySelector('[role="status"]')).toBeNull();
   expect(vi.mocked(submitSuggestion).mock.calls[0]![1]!.aborted).toBe(true);
+});
+
+async function chooseCategory(value: string) {
+  await act(async () => {
+    const select = host.querySelector('select')!;
+    select.value = value;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+it.each(['POSITIVE', 'IMPROVEMENT', 'PROBLEM', 'QUESTION', 'OTHER'])(
+  'sends selected category %s and resets it after success',
+  async (category) => {
+    expect(host.querySelector('select')!.value).toBe('OTHER');
+    expect(host.querySelectorAll('option')).toHaveLength(5);
+    await fill('의견');
+    await chooseCategory(category);
+    await send();
+    expect(vi.mocked(submitSuggestion).mock.calls[0]![0]).toMatchObject({ category });
+    expect(host.querySelector('select')!.value).toBe('OTHER');
+    expect(host.querySelector('select')!.disabled).toBe(false);
+  },
+);
+it('unlocks category after validation failure and keeps it locked after a conflict', async () => {
+  await fill('의견');
+  await chooseCategory('QUESTION');
+  vi.mocked(submitSuggestion).mockRejectedValueOnce(new ApiFailure(422, 'VALIDATION_ERROR'));
+  await send();
+  expect(host.querySelector('select')!.disabled).toBe(false);
+  await chooseCategory('IMPROVEMENT');
+  vi.mocked(submitSuggestion).mockRejectedValueOnce(
+    new ApiFailure(409, 'SUGGESTION_REQUEST_CONFLICT'),
+  );
+  await send();
+  expect(vi.mocked(submitSuggestion).mock.calls[1]![0].category).toBe('IMPROVEMENT');
+  expect(host.querySelector('select')!.disabled).toBe(true);
+  vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+  await act(async () =>
+    [...host.querySelectorAll('button')].find((b) => b.textContent === '새 의견 작성')!.click(),
+  );
+  expect(host.querySelector('select')!.value).toBe('OTHER');
+  expect(host.querySelector('select')!.disabled).toBe(false);
+  vi.restoreAllMocks();
 });

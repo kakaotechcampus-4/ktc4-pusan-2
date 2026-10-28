@@ -72,7 +72,7 @@ flowchart LR
     C -->|"그 밖의 경로"| FE["fe<br>frontend/"]
     BE -->|"http://ai:8000<br>Docker 내부망"| AI["ai<br>ai/service/"]
     AI -->|"HTTPS"| LLM["외부 LLM API"]
-    BE --> DB["db · redis"]
+    BE --> DB["db"]
 ```
 | 컨테이너 | 이미지를 만드는 곳 | 하는 일 | 밖에서 접근 |
 |---|---|---|---|
@@ -80,7 +80,7 @@ flowchart LR
 | fe | `frontend/` | 화면. 시선 · 마이크 레벨 측정은 브라우저 안에서 실행 (판정은 AI) | caddy를 거쳐서 |
 | be | `backend/` | API, DB 저장, 실시간 STT, AI 호출 | caddy `/api/*`를 거쳐서 |
 | **ai** | `ai/service/` | AI 기능. LLM 호출과 서버 안 모델 실행 | **없음** (be만 내부망으로 부른다) |
-| db · redis | 공식 이미지 | BE 전용 저장소 | 없음 |
+| db | 공식 이미지 | BE 전용 저장소 | 없음 |
 
 **요청 하나가 처리되는 길**
 1. FE가 caddy를 거쳐 be(`/api/...`)를 부른다.
@@ -101,7 +101,7 @@ ktc4-pusan-2/
 │   ├── archive/          # 동결된 과거 코드. 이미지에 안 들어간다
 │   └── .env.example      # LLM 환경변수 이름 (실제 ai/.env 는 git에 안 올린다)
 ├── infra/
-│   ├── docker-compose.yml          # 공통: caddy · fe · be · db · redis + ai
+│   ├── docker-compose.yml          # 공통: caddy · fe · be · db · dozzle(로그 보기) + ai
 │   ├── docker-compose.dev.yml      # develop 서버용 덮어쓰기
 │   └── docker-compose.release.yml  # release 서버(운영)용 덮어쓰기. 모든 서비스의 ports 를 비운다
 └── .github/workflows/
@@ -123,13 +123,14 @@ ai/service/
 │   ├── settings.py              # 환경변수 읽기 (pydantic-settings)
 │   ├── api/                     # 라우터만. 로직 없음
 │   │   ├── health.py            #   GET /health · /ready
-│   │   └── <이름>.py            #   기능 엔드포인트 (coach.py 는 판정 모듈을 묶어 코치에 넘긴다)
+│   │   └── <이름>.py            #   기능 엔드포인트 (지금은 script_coverage.py · coach.py. coach.py 는 evaluate · finalize 를 열 때 판정 모듈을 묶어 코치에 넘긴다)
 │   ├── common/                  # 기능들이 같이 쓰는 코드
 │   │   ├── llm.py               #   LLM 객체는 여기서만 만든다
 │   │   ├── errors.py            #   예외 → 상태 코드 · 에러 본문
 │   │   ├── request_log.py       #   X-Request-ID · 요청마다 한 줄 로그
-│   │   └── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
-│   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다
+│   │   ├── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
+│   │   └── readiness.py         #   시작할 때 불러올 모델 · 준비 상태 (/ready · NOT_READY)
+│   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다 (지금은 script_coverage · gaze · filler · pace · coach)
 │       └── <기능>/              #   schemas.py · core.py · config.py · version.py · examples/ · prompts/ (`architecture.md` 8절)
 └── tests/
     ├── conftest.py · test_health.py
@@ -246,7 +247,7 @@ LLM 공통 규칙(모델 고르기 · 시간 제한 · 재시도 · 요청 마�
 - `structured_llm`은 역할마다 출력 토큰 상한(필요하면 추론 강도)을 `settings.py` 상수(역할 → 묶음과 같은 곳)에서 읽어 명시한다. 게이트웨이 기본값에 기대지 않는다. 값은 그 기능 PR에서 잰 출력 길이로 정하고, 출력이 상한에서 잘리면(`LengthFinishReasonError` · 끝난 이유 `length`) `LLM_INVALID_OUTPUT`이다(`architecture.md` 9절).
 - `structured_llm`은 스트리밍으로 부른다. 지금 LLM 게이트웨이는 스트리밍이 아닌 요청의 출력 상한을 2,000토큰 이하로만 받고(넘으면 400), 긴 비스트리밍 답은 생성 중에 끊는다. 결과는 다 모은 뒤 한 번에 돌려주므로 기능 코어가 받는 값은 같다.
 - 실제로 응답한 모델 이름은 LangChain 콜백으로 잡아 로그에 남기고 응답 `meta.model`에 싣는다. 결과가 기본 결과(`fallback_reason`이 있음)면 `meta.model`은 null이다(`architecture.md` 5절). 코어가 받는 반환값은 바뀌지 않는다.
-- 예비 모델은 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
+- 예비 모델은 아직 없다(넘어갈 조건은 15절 열린 질문). 붙일 때는 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
 - LLM 에러(시간 초과 · 연결 실패 · 잘못된 출력)는 기능 코드에서 잡지 않고 `common/errors.py`가 상태 코드 · 에러 코드로 바꾼다. 예외는 둘이다. LLM이 결과를 보태기만 하는 기능(코칭 계획 · 리뷰 문장)은 실패를 잡아 기본 결과를 200으로 돌려준다(`fallback_reason`). 장별로 LLM을 부르는 기능(평가 기준 만들기 · 대본 전달도 채점)은 장마다 실패를 잡아 `failed`에 담고, 한 장이라도 성공하면 200을 돌려준다.
 - `common/llm.py`는 LLM 실패 예외에 `code`(`LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT` · `LLM_UNAVAILABLE`)를 달아 던진다. 기본 결과를 내는 기능의 코어는 LLM 라이브러리를 모르므로 이 `code`로 `fallback_reason`을 고르고, `common/errors.py`도 같은 `code`로 상태 코드를 고른다.
 - LLM 설정(키 등)이 없어 `structured_llm`이 LLM 객체를 만들지 못하면 그 오류는 `LLM_UNAVAILABLE`이다. 기본 결과를 내는 기능(코칭 계획 · 리뷰)의 라우터는 이때 LLM 없이(`llm=None`) 코어를 불러 200 + `fallback_reason: LLM_UNAVAILABLE`을 돌려준다. 그 밖의 기능은 503이다.
@@ -286,7 +287,7 @@ LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 
 | LLM 키 · 모델 설정이 없음 | 서버는 뜨고 `/health`는 응답한다. LLM을 쓰는 요청만 실패하고, 코칭 계획 · 리뷰는 기본 결과를 낸다 | `/health` 200 · LLM 기능 503 `LLM_UNAVAILABLE` · 코칭 계획 · 리뷰 200 + `fallback_reason` | CI · 로컬 확인은 키 없이 해야 한다 |
 | 요청 형식 오류 | 라우터가 거부한다 | 422 `VALIDATION_ERROR` | `architecture.md` 4절 |
 | 없는 경로 · 허용되지 않는 메서드 | 거부한다 | 404 `NOT_FOUND` · 405 `METHOD_NOT_ALLOWED` | BE 경로와 배포된 AI 경로가 다를 때 바로 보이게 |
-| 모델 로딩 중 | 기능 요청을 받지 않는다 | 503 `NOT_READY` (BE는 `architecture.md` 3절 표대로 다시 부름) | 반쯤 준비된 상태로 답하지 않기 위해 |
+| 모델 로딩 중 | 그 모델을 쓰는 기능 요청(지금은 대본 전달도 세 경로)을 받지 않는다. 모델을 쓰지 않는 `/coach/plan` · `/health`는 받는다 | 503 `NOT_READY` (BE는 `architecture.md` 3절 표대로 다시 부름) | 반쯤 준비된 상태로 답하지 않기 위해 |
 | 처리되지 않은 예외 | 내부 예외 내용(stack trace)은 AI 로그에만 남긴다 | 500 `INTERNAL_ERROR` | 내부 정보를 응답에 내보내지 않는다 |
 | 시작 중 예외 (import 오류 · 모델 로딩 실패 · 메모리 부족) | 컨테이너가 재시작을 되풀이한다 | 헬스체크 실패 | 11절 '증상별 원인' |
 | 배포로 컨테이너가 바뀌는 중 | 처리 중인 요청은 종료 대기(30초) 안에서 끝낸다. 새 요청은 몇 초 동안 연결 실패 | BE 쪽 `AI_UNAVAILABLE` | 백그라운드 호출은 BE가 한 번 더 부르고, 실시간 코칭은 다음 1초 요청으로 이어진다. 빠진 시간이 창보다 길면 종료 때 `replay`로 Take 결과를 다시 만든다 |
@@ -403,13 +404,14 @@ CMD ["uvicorn", "pitch_coach_ai.main:app", "--host", "0.0.0.0", "--port", "8000"
 # 비밀값은 이미지에 넣지 않는다. 패턴은 맨 위 폴더에만 맞으므로 src/ 아래 .env 까지 거르려고 **/ 를 붙인다
 **/.env
 **/.env.*
-# 테스트 · 계약 파일은 이미지에 필요 없다
+# 테스트 · 계약 파일 · 도구는 이미지에 필요 없다
 tests/
 contracts/
+tools/
 ```
 | 이미지에 들어간다 | 들어가지 않는다 |
 |---|---|
-| Python 3.12, `uv.lock` 기준 운영 의존성(`.venv`), `src/`(기능별 `examples/` 포함), 기능이 쓰는 공개 모델 파일(6-3) | `tests/`, `contracts/`, 개발 도구(pytest · ruff), `ai/research/`, `ai/archive/`, `.env`(키), 브라우저 엔진 |
+| Python 3.12, `uv.lock` 기준 운영 의존성(`.venv`), `src/`(기능별 `examples/` 포함), 기능이 쓰는 공개 모델 파일(6-3) | `tests/`, `contracts/`, `tools/`(OpenAPI 내보내기), 개발 도구(pytest · ruff), `ai/research/`, `ai/archive/`, `.env`(키), 브라우저 엔진 |
 
 | 항목 | AI 이미지 | 이유 |
 |---|---|---|
@@ -433,6 +435,7 @@ contracts/
 services:
   ai:
     restart: unless-stopped
+    logging: *default-logging       # 파일 맨 위 x-logging: 컨테이너 로그를 10MB × 3개까지만 (모든 서비스 같음)
     image: ${IMAGE_REPO:-pitch-coach}:ai-${IMAGE_TAG:-latest}   # be- · fe- 와 같은 태그 규칙
     build:
       context: ../ai/service        # 빌드 컨텍스트는 ai/service 하나
