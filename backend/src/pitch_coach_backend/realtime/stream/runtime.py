@@ -463,10 +463,14 @@ class TakeStream:
         쫓겨난 연결이 보낸 것은 버린다 (오디오와 같은 규칙). 스트림이 닫혀도 연결이 붙어 있으면
         받는다 — 자동 종료를 알린 뒤 FE 가 보내는 마지막 1초 조각은 Deepgram 정리가 끝난 뒤에 올 수
         있다. Take 를 끝낸 뒤에 온 것은 버퍼가 버린다 (`MetricBuffer.seal`).
+        이미 받은 1초와 Take 의 상한을 넘은 것은 저장하지도 코치에 넘기지도 않는다
+        (`MetricBuffer.admit`).
         """
         if self._discarded:
             return
         if source is not None and not self._client.holds(source):
+            return
+        if not self._record.metrics.admit(message.t_ms):
             return
         row = MetricSecondCreateDTO(
             t_ms=message.t_ms,
