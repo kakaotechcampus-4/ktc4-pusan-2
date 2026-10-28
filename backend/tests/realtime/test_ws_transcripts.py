@@ -20,6 +20,7 @@ from pitch_coach_backend.realtime.connection import session
 from pitch_coach_backend.realtime.dto import (
     TranscriptMessage,
 )
+from pitch_coach_backend.realtime.storage import transcripts as transcripts_module
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
 from pitch_coach_backend.realtime.stream import registry
@@ -322,6 +323,66 @@ async def test_final_that_failed_before_the_new_tab_is_ready_waits_for_its_catch
     assert new_tab.sent == []
     await stream.resend_missed()
     assert _texts(new_tab) == [("0-1", "기다린 말")]
+
+
+@pytest.mark.anyio
+async def test_successful_send_to_a_replaced_tab_also_reaches_the_caught_up_tab():
+    stream = _final_stream(FakeTranscriptStore())
+    old_tab = StuckWebSocket()
+    await stream.attach(old_tab)
+    showing = asyncio.create_task(
+        stream._on_transcript(transcript(0, 200, "이어받은 말", is_final=True))
+    )
+    await old_tab.sending.wait()
+    old_tab.stuck = False
+    new_tab = FakeWebSocket()
+    await stream.attach(new_tab)
+    await stream.resend_missed()
+    old_tab.release.set()
+    await showing
+
+    assert _texts(new_tab) == [("0-1", "이어받은 말")]
+
+
+@pytest.mark.anyio
+async def test_replay_does_not_switch_to_a_new_tab_before_its_ready():
+    stream = _final_stream(FakeTranscriptStore())
+    stream._transcripts.hold_missed(transcript_message("1-1", "첫"))
+    stream._transcripts.hold_missed(transcript_message("1-2", "둘"))
+    old_tab = StuckWebSocket()
+    await stream.attach(old_tab)
+    replay = asyncio.create_task(stream.resend_missed())
+    await old_tab.sending.wait()
+    old_tab.stuck = False
+    new_tab = FakeWebSocket()
+    await stream.attach(new_tab)
+    old_tab.release.set()
+    await replay
+
+    assert new_tab.sent == []
+    await stream.resend_missed()
+    assert _texts(new_tab) == [("1-1", "첫"), ("1-2", "둘")]
+
+
+@pytest.mark.anyio
+async def test_holding_a_final_during_replay_does_not_pop_the_next_unsent_final(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(transcripts_module, "MAX_MISSED_FINALS", 2)
+    stream = _final_stream(FakeTranscriptStore())
+    first, second, third = [transcript_message(f"1-{i}", str(i)) for i in range(1, 4)]
+    stream._transcripts.hold_missed(first)
+    stream._transcripts.hold_missed(second)
+    tab = StuckWebSocket()
+    await stream.attach(tab)
+    replay = asyncio.create_task(stream.resend_missed())
+    await tab.sending.wait()
+    stream._transcripts.hold_missed(third)
+    tab.stuck = False
+    tab.release.set()
+    await replay
+
+    assert _texts(tab) == [("1-1", "1"), ("1-2", "2"), ("1-3", "3")]
 
 
 # ── final 저장 ─────────────────────────────────────────────────────────
