@@ -48,8 +48,21 @@ export interface CalibrationRequest {
     separability: number | null;
     loo_accuracy: number | null;
     warnings: string[];
+    /** 음량을 잰 트랙 (#609). 측정 트랙을 열기 전이면 null */
+    measure_track: MeasureTrack | null;
   };
 }
+
+/**
+ * 음량을 잰 마이크 트랙 (`docs/ai/features/volume.md` 5-2). 장치 점검 때의 값입니다.
+ *
+ *   UNPROCESSED  가공을 끈 측정 트랙을 받았고 자동 음량 조절이 꺼졌다
+ *   PROCESSED    측정 트랙은 받았는데 브라우저가 자동 음량 조절을 끄지 않았다 — 작은 목소리가 크게 재진다
+ *   FALLBACK     측정 트랙을 못 받아 녹음용 스트림(가공 켜짐)으로 잰다
+ *
+ * ★ 필드 이름 · 위치는 AI 계약(`volume.md` 12-1) 확정 전입니다. 지금 BE 는 이 필드를 받지 않고 버립니다.
+ */
+export type MeasureTrack = 'UNPROCESSED' | 'PROCESSED' | 'FALLBACK';
 
 /** Take 생성 응답. `take_number` 는 BE 가 실제로 매긴 번호입니다 (#296) */
 export interface TakeCreated {

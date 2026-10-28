@@ -25,6 +25,7 @@
  * 필터가 끼면 안 됩니다. 크기는 반대로 귀가 느끼는 쪽에 맞춰야 합니다.
  */
 
+import type { MeasureTrack } from '@/types/take';
 import { aWeightingSections } from './aWeighting';
 import { createLoudness, type SpeechLevel } from './loudness';
 import { resumeOnGesture } from './resumeOnGesture';
@@ -213,4 +214,10 @@ export async function openMeasureStream(stream: MediaStream): Promise<MeasureStr
     console.warn('[mic] 측정용 트랙을 받지 못해 녹음용 스트림으로 잽니다', err);
     return null;
   }
+}
+
+/** `openMeasureStream` 결과 → 발표 전 점검 결과에 남길 값 (`MeasureTrack`, #609) */
+export function measureTrackOf(measure: MeasureStream | null): MeasureTrack {
+  if (!measure) return 'FALLBACK';
+  return measure.unprocessed ? 'UNPROCESSED' : 'PROCESSED';
 }

@@ -190,8 +190,17 @@ export function DeviceCheckPage() {
 
   const { stream, error: deviceError, request } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'device-check');
-  const { meterRef, echoMeterRef, rowRef, silentRef, micOk, audioState, meterError, voiceRecord } =
-    useMicLevel(stream, { clock: pageClock });
+  const {
+    meterRef,
+    echoMeterRef,
+    rowRef,
+    silentRef,
+    micOk,
+    audioState,
+    meterError,
+    voiceRecord,
+    measureTrack,
+  } = useMicLevel(stream, { clock: pageClock });
   // 평소 목소리 크기. 선택 단계라 시작을 막지 않습니다 — 안 재면 AI 가 Take 첫 발화로 잡습니다
   const baseVoice = useBaseVoice({ stream, clock: pageClock, voiceRecord });
   // 대본 표시는 준비 화면과 **같은 스토어**를 씁니다 — 여기서 고른 것이 그대로 이어집니다.
@@ -333,6 +342,7 @@ export function DeviceCheckPage() {
         const body = toCalibrationRequest(calibration, {
           micDetected: micOk,
           baseLevelDb: baseVoice.levelDb,
+          measureTrack,
         });
         await postCalibration(pitchId, take.takeId, body).catch((err: unknown) => {
           console.error('[장치 점검] 보정 요약을 보내지 못했습니다', err);

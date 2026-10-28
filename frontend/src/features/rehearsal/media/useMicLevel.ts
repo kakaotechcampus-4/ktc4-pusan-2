@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createLevelMeter, openMeasureStream, type LevelMeter, type MeasureStream } from './level';
+import {
+  createLevelMeter,
+  measureTrackOf,
+  openMeasureStream,
+  type LevelMeter,
+  type MeasureStream,
+} from './level';
 import { createVoiceRecorder, type VoiceRecord } from './voiceRecord';
 import type { Ms } from '@/types/api';
+import type { MeasureTrack } from '@/types/take';
 
 /** 화면에 쓰는 dB 바닥. 이보다 작으면 '입력 없음'으로 봅니다 */
 const DB_FLOOR = -60;
@@ -88,6 +95,14 @@ export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () 
    * "소리가 안 들어옴" 이 아니라 **"재보지도 못함"** 입니다 — 사용자가 할 일이 다릅니다.
    */
   const [failedFor, setFailedFor] = useState<MediaStream | null>(null);
+  /**
+   * 음량을 어느 트랙으로 재나 (#609). 스트림마다 한 번 정해집니다 — 장치를 바꾸면 이전 마이크의 값이
+   * 남지 않게 어느 스트림의 값인지 같이 둡니다.
+   */
+  const [measureFor, setMeasureFor] = useState<{
+    stream: MediaStream;
+    track: MeasureTrack;
+  } | null>(null);
 
   /**
    * 음량 1초 기록의 재료. 스트림이 바뀌면 비웁니다 — 다른 마이크의 레벨이 섞이면 안 됩니다.
@@ -117,6 +132,7 @@ export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () 
         measure?.stream.getTracks().forEach((t) => t.stop());
         return;
       }
+      setMeasureFor({ stream, track: measureTrackOf(measure) });
 
       // 제스처 뒤에 만듭니다 — getUserMedia가 이미 통한 시점이라 resume()이 먹습니다
       meter = await createLevelMeter(measure?.stream ?? stream);
@@ -215,6 +231,11 @@ export function useMicLevel(stream: MediaStream | null, { clock }: { clock?: () 
     statsRef,
     micOk: stream !== null && heardFor === stream,
     audioState: audio && audio.stream === stream ? audio.state : null,
+    /**
+     * 발표 전 점검 결과에 남길 측정 트랙. 측정 트랙을 열기 전이면 null 입니다.
+     * 계량기는 측정 트랙을 연 뒤에 만들어지므로 `micOk` 가 true 면 이 값도 이미 있습니다.
+     */
+    measureTrack: measureFor && measureFor.stream === stream ? measureFor.track : null,
     /** 계량기 자체가 못 떴을 때의 문구. null 이면 정상입니다 */
     meterError:
       stream !== null && failedFor === stream
