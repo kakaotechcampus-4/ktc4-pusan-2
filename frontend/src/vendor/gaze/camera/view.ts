@@ -856,13 +856,13 @@ export class GazeCameraView {
     this.#later(() => this.#nextCue(), this.#opts.unattended ? 0 : 450);
   }
 
-  /** The screen-centre look against the head circle's centre: confirming, confirmed, or measured again. */
   /** Why the gauge paused, else (on the screen-centre look) the baseline note. */
   #gaugeHint(status: GaugeStatus, reason: string | null): string {
     if (reason) return GAUGE_REASON[reason] ?? '';
     return status.cue === 'SCREEN' ? this.#baselineNote(status) : '';
   }
 
+  /** The screen-centre look against the head circle's centre: confirming, confirmed, or measured again. */
   #baselineNote(status: GaugeStatus): string {
     const b = this.#baseline;
     if (b && b.confirmed && b.seeded)
