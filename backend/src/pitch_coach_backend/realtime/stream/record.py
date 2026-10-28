@@ -5,15 +5,17 @@ registry 가 Take 마다 기록(`TakeRecord`)을 만들어 스트림(`runtime.Ta
 """
 
 import asyncio
+import time
 import uuid
 from collections.abc import Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
 from pitch_coach_backend.coach.client import CoachClient
 from pitch_coach_backend.coach.session import CoachSession, FinalizeSnapshot
 from pitch_coach_backend.coach.store import CoachStore
 from pitch_coach_backend.realtime.dto import AutoEndReason
+from pitch_coach_backend.realtime.event_ingestion import AudioBudget
 from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuffer
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream.auto_end import SilenceTracker
@@ -51,6 +53,9 @@ class TakeRecord:
     # Take 를 끝낼 때 finalize 재료를 만드는 작업. 끝내는 쪽이 여럿이어도(자동 종료와 그 뒤 온 stop)
     # 하나를 같이 기다리고 결과를 각자 들고 있는다. 코치의 기억을 놓을 때 같이 놓는다
     seal: asyncio.Task[FinalizeSnapshot | None] | None = None
+    # grace 만료 전 스트림을 교체해도 10초 몫을 새로 주지 않는다. 끊겨 있던 시간도 서버
+    # 시간으로 채우되 버킷 상한까지만 채운다.
+    audio_budget: AudioBudget = field(default_factory=lambda: AudioBudget(time.monotonic() * 1000))
 
 
 class StreamHost(Protocol):

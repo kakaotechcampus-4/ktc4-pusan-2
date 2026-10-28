@@ -154,6 +154,9 @@ class TakeStream:
         self._slides_capped = False
         # 마지막으로 받은 오디오 프레임 시각(monotonic). 발표 중인지 본다 (`is_live`)
         self._last_audio_at: float | None = None
+        # 스트림이 교체되어도 Take의 오디오 예산은 이어 쓴다.
+        self._budget = record.audio_budget
+        self._over_budget_logged = False
         # 끊김 없이 받은 오디오의 Take 시각. 1초 원자료의 STT 상태를 이걸로 정한다
         self._heard = HeardRange()
         # 최대 시간. start() 에서 서버 시계를 켠다
@@ -542,6 +545,7 @@ class TakeStream:
 
         `source` 는 프레임을 보낸 연결. 다른 탭이 이어받아 쫓겨난 연결이 닫히기 전에 보낸
         프레임은 버린다 — 섞이면 새 연결의 seq 를 앞질러 그쪽 오디오가 역행으로 버려진다.
+        Deepgram 에 보낼 길이가 서버 시간을 앞지른 프레임도 버린다 (`AudioBudget`).
         """
         frame = parse_audio_frame(data)
         if self._stopping:
@@ -549,9 +553,20 @@ class TakeStream:
             return
         if source is not None and not self._client.holds(source):
             return
-        self._last_audio_at = time.monotonic()
-        accepted = self.sequencer.accept(frame)
+        now = time.monotonic()
+        self._last_audio_at = now
+        accepted = self.sequencer.accept(
+            frame, allow=lambda cost_ms: self._budget.take(cost_ms, now * 1000)
+        )
         if accepted is None:
+            if self.sequencer.over_budget and not self._over_budget_logged:
+                self._over_budget_logged = True
+                logger.warning(
+                    "오디오가 서버 시간보다 빨리 와 프레임을 버린다 take=%s seq=%d offset_ms=%d",
+                    self.take_id,
+                    frame.seq,
+                    frame.offset_ms,
+                )
             return
         self._heard.add(accepted)
         if accepted.restart:
