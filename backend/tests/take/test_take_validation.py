@@ -80,6 +80,9 @@ _UNSTORABLE_EVENT_LOGS = [
     '[{"\\u0000": 1}]',
     '[{"type": "slide", "at_ms": NaN}]',
     '[{"type": "slide", "nested": [{"value": Infinity}]}]',
+    # 짝 없는 서로게이트는 UTF-8 로 바꿀 수 없다
+    '[{"type": "slide", "note": "\\ud800"}]',
+    '[{"\\udc00": 1}]',
 ]
 
 
@@ -109,6 +112,7 @@ def test_put_with_unstorable_event_logs_is_422(
         '{"engine_version": "1.0\\u0000"}',
         '{"status": "\\u0000"}',
         '{"warnings": ["ok", "\\u0000"]}',
+        '{"status": "\\ud800"}',
         '{"separability": NaN}',
         '{"loo_accuracy": Infinity}',
         '{"loo_accuracy": -Infinity}',
