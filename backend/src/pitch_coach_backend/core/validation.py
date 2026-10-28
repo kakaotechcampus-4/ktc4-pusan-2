@@ -1,6 +1,7 @@
 """요청 DTO 가 같이 쓰는 저장 가능 검사.
 
-PostgreSQL 은 TEXT 에 NUL(\\x00) 을, JSONB 에 \\u0000 · NaN · Infinity 를 넣지 못한다.
+PostgreSQL 은 TEXT 에 NUL(\\x00) 을, JSONB 에 \\u0000 · NaN · Infinity 를 넣지 못한다. 짝 없는
+서로게이트(\\ud800)는 UTF-8 로 바꿀 수 없어 어디에도 넣지 못한다.
 JSON 파서와 pydantic 은 이 값을 그대로 받아 주므로 막지 않으면 저장할 때 DataError 로 500 이 난다.
 받는 단계에서 ValueError 로 거절해 422 가 되게 한다.
 """
@@ -12,8 +13,13 @@ from pydantic import AfterValidator
 
 
 def reject_nul(value: str) -> str:
+    """NUL 과 UTF-8 로 바꿀 수 없는 문자(짝 없는 서로게이트)를 거절한다."""
     if "\x00" in value:
         raise ValueError("NUL 문자는 쓸 수 없습니다.")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError("저장할 수 없는 문자가 있습니다.") from exc
     return value
 
 
