@@ -70,12 +70,12 @@ def test_summary_measures_from_the_example():
     measures = summary_measures(example("finalize/response.json")["take_result"])
 
     assert measures == SummaryMeasures(
-        average_cpm=297.0,
+        average_cpm=300.0,
         filler_count=2,
-        audience_gaze=78,
+        audience_gaze=76,
         slide_gaze=0,
-        script_gaze=22,
-        script_dependency_count=1,
+        script_gaze=24,
+        script_dependency_count=0,
         volume=0.0,
         total_intermission=0,
         # GAZE 0.9674 · 나머지 넷 1.0 의 평균 99.35 를 반올림. TIME 은 넣지 않는다

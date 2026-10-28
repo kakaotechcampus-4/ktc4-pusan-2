@@ -22,7 +22,7 @@ export function SuggestionCategorySelect({
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value as SuggestionCategory)}
-        className="min-h-11 w-full min-w-0 border-2 border-ink bg-white p-3 text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:opacity-60"
+        className="min-h-11 w-full min-w-0 border-2 border-ink bg-white p-3 text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:border-line-strong disabled:bg-cream"
       >
         {Object.entries(suggestionCategories).map(([category, label]) => (
           <option key={category} value={category}>

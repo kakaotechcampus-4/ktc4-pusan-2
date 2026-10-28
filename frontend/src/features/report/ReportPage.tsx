@@ -65,7 +65,8 @@ function ReportBody({ report }: { report: TakeReport }) {
         </Card>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* 측정값이 아직 없으면 평가기준 카드 하나가 줄을 다 씁니다 */}
+      <div className="grid gap-4 lg:auto-cols-fr lg:grid-flow-col">
         {report.measures && <GazeBreakdown m={report.measures} />}
         {review ? (
           <JudgeList
