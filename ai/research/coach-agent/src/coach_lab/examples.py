@@ -1,12 +1,14 @@
 """evaluate · finalize 요청 · 응답 예시 만들기 — BE 개발자가 읽는 예시 파일.
 
 예시는 서비스 `features/coach/examples/` 한 곳에 있다(BE 테스트도 이 경로를 읽는다).
+판정 모듈은 서비스의 실제 모듈 넷이라(`real_judges()`), 예시 응답은 서비스
+`/coach/evaluate` · `/coach/finalize` 가 같은 요청에 내는 응답과 같다.
 
     python -m coach_lab.examples [--out 폴더]
 
 가상 발표자(simulator)가 1초마다 보내는 요청을 코치에 흘려보내 92초 시점의 요청을 만든다.
   request.json        92000 시점 evaluate 요청 (coach_state 는 91000 응답의 것)
-  judge_results.json  그 요청에서 판정 모듈이 낸 결과 · 기준 · 지표 (대역이 낸 계약 모양 값)
+  judge_results.json  그 요청에서 판정 모듈이 낸 결과 · 기준 · 지표 (실제 판정 모듈이 낸 값)
   response.json       그 요청에 코치가 준 응답
 
 같은 가상 발표를 Take 끝(92초)까지 재생해 finalize 예시도 만든다 (`finalize/`).
@@ -14,8 +16,9 @@
   request_replay.json · response_replay.json  coach_state 없이 Take 전체 원자료(replay)로 부른
                                               요청과 응답 (409 를 받은 BE 가 다시 부르는 경우)
 
-세 파일은 시계 · 난수 없이 만들어서 다시 돌려도 바이트까지 같다. 계약 테스트
-(tests/unit/test_examples.py)가 request + judge_results 를 코치에 넣어 response 와 맞는지 본다.
+파일은 시계 · 난수 없이 만들어서 다시 돌려도 바이트까지 같다. 서비스 계약 테스트가
+evaluate 는 request + judge_results 를 코치에 넣어(`tests/unit/coach/test_examples.py`),
+finalize 는 실제 판정 모듈로 다시 판정해(`test_finalize_examples.py`) response 와 맞는지 본다.
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ from pitch_coach_ai.features import coach as coach_pkg
 from pitch_coach_ai.features.coach import decide, finalize
 from pitch_coach_ai.features.coach.judges import Judges
 
-from .judges import filler, gaze, lab_judges, pace, volume
+from .judges import real_judges
 from .simulator import Presenter, Scenario
 
 # 예시는 서비스의 코어 패키지 안에 있다
@@ -65,15 +68,22 @@ SCENARIO = {
     ],
     "memory": {"recurring_issues": [{"area": "GAZE", "slide_number": 3}]},
     # 평소에는 청중을 보고 말하다 84초부터 대본을 읽는다. completion 은 앞 두 장을 대본의 일부만
-    # 말하고 넘기게 해서 3장이 60초 근처에 시작하게 맞춘 값이다
+    # 말하고 넘기게 해서 3장이 60초 근처에 시작하게 맞춘 값이다. 시선 모듈은 대본 응시가 이어진
+    # 시간으로 문제를 내므로, 92초까지 한 번도 고개를 들지 않게 읽는 비율을 0.9 로 둔다
+    # (0.85 면 90초에 한 번 청중을 봐서 92초 예시가 개입이 아니게 된다)
     "baseline": {"script_ratio": 0.15, "relative_db": _RELATIVE_DB, "completion": 0.37},
-    "segments": [{"from_ms": 84_000, "to_ms": 200_000, "set": {"script_ratio": 0.85}}],
+    "segments": [{"from_ms": 84_000, "to_ms": 200_000, "set": {"script_ratio": 0.9}}],
 }
 COACHING_PLAN = {
     "focus": [{"area": "GAZE", "slide_number": 3, "weight": 1.5}],
     "relax": [],
     "max_interventions": None,
 }
+
+
+def _plain(value: Any) -> Any:
+    """판정 모듈이 낸 값(모델 또는 dict)을 JSON 모양 dict 로. 모듈마다 내는 모양이 달라서 맞춘다."""
+    return value if isinstance(value, dict) else value.model_dump(mode="json")
 
 
 class _Recorder:
@@ -89,7 +99,7 @@ class _Recorder:
 
     def judge(self, inputs: dict[str, Any], t_ms: int) -> list[Any]:
         out = self.module.judge(inputs, t_ms)
-        self.results = [r if isinstance(r, dict) else r.model_dump(mode="json") for r in out]
+        self.results = [_plain(r) for r in out]
         return out
 
     def summarize(self, tally: dict[str, dict[str, float]]) -> dict[str, Any]:
@@ -123,14 +133,14 @@ def _full_records(request: dict[str, Any]) -> dict[str, Any]:
 def build() -> dict[str, Any]:
     """92000 시점 요청 · 판정 결과 · 응답을 만든다."""
     presenter = Presenter(Scenario.model_validate(SCENARIO), coaching_plan=COACHING_PLAN)
+    real = real_judges()
     modules = {
-        "gaze": _Recorder(gaze),
-        "pace": _Recorder(pace),
-        "volume": _Recorder(volume),
-        "filler": _Recorder(filler),
+        "gaze": _Recorder(real.gaze),
+        "pace": _Recorder(real.pace),
+        "volume": _Recorder(real.volume),
+        "filler": _Recorder(real.filler),
     }
-    lab = lab_judges()
-    judges = Judges(**modules, speaking_levels=lab.speaking_levels, baseline=lab.baseline)
+    judges = Judges(**modules, speaking_levels=real.speaking_levels, baseline=real.baseline)
     state: dict[str, Any] | None = None
     for t in range(0, FINAL_MS + 1, 1_000):
         for module in modules.values():
@@ -147,7 +157,7 @@ def build() -> dict[str, Any]:
         "judge_results": {
             name: {
                 "judge": m.results,
-                "criteria": {k: v.model_dump(mode="json") for k, v in m.criteria().items()},
+                "criteria": {k: _plain(v) for k, v in m.criteria().items()},
                 "summarize": m.summaries,
             }
             for name, m in modules.items()
@@ -172,7 +182,7 @@ def build_finalize() -> dict[str, Any]:
     Take 의 원자료 전체를 싣는다(STT 를 닫을 때 확정된 단어는 Take 끝에 확정된 것으로 본다).
     """
     presenter = Presenter(Scenario.model_validate(SCENARIO), coaching_plan=COACHING_PLAN)
-    judges = lab_judges()
+    judges = real_judges()
     state: dict[str, Any] | None = None
     events: list[dict[str, Any]] = []
     for t in range(0, FINAL_MS, 1_000):

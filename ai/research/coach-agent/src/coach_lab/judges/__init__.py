@@ -5,7 +5,7 @@
 - `real_judges()`: 서비스의 실제 판정 모듈 넷(시선 · 군더더기 · 말 속도 · 소리 크기) 묶음.
   재생 · 실험이 쓴다
   (코치 기능 문서 11절 '옮긴 뒤 같은 결과인지 확인' 3)
-- `lab_judges()`: 네 대역 묶음. BE 가 읽는 예시(`coach_lab.examples`)와 대역 자체의 테스트가 쓴다
+- `lab_judges()`: 네 대역 묶음. 대역 자체의 테스트가 쓴다
 """
 
 from __future__ import annotations
