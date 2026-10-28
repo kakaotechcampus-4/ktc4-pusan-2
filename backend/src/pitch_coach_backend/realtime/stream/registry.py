@@ -363,6 +363,24 @@ async def discard(take_ids: Iterable[uuid.UUID]) -> None:
             stream.discard()
 
 
+async def sign_out(user_id: uuid.UUID) -> None:
+    """로그아웃한 사용자의 연결을 `UNAUTHORIZED` 로 닫는다(`TakeStream.sign_out`).
+
+    WS 는 붙을 때만 Access 토큰을 본다. 닫지 않으면 로그아웃 뒤에도 발표 스트림이 최대 1시간
+    이어진다. Take 는 끝내지 않는다 — 끊긴 연결로 보고 grace · 떠난 Take 규칙을 따른다.
+    Access 토큰에 기기 정보가 없어 다른 기기의 연결도 닫힌다. FE 는 `UNAUTHORIZED` 를 받으면 토큰을
+    새로 받아 다시 붙으므로 그 기기는 이어지고, 로그아웃한 기기는 새로 받지 못해 다시 붙지 못한다.
+    끝내는 중인 스트림은 건너뛴다. 연결이 곧 닫히고, 여기서 닫으면 FE 가 끝내는 도중에 다시
+    붙으려 한다.
+    """
+    streams = [
+        stream
+        for stream in state.streams.values()
+        if stream.owner_id == user_id and not stream.is_stopping
+    ]
+    await asyncio.gather(*(stream.sign_out() for stream in streams))
+
+
 async def _save_utterance_ends(take_id: uuid.UUID, record: TakeRecord) -> None:
     ends = record.coach.utterance_ends
     if not ends:

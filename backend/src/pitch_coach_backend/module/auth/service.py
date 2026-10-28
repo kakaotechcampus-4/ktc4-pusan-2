@@ -284,23 +284,26 @@ def _reject_reuse(db: Session, stored: RefreshToken) -> NoReturn:
     raise RefreshTokenReused()
 
 
-def logout(db: Session, refresh_token: str | None) -> None:
-    """현재 세션의 Refresh 를 폐기한다.
+def logout(db: Session, refresh_token: str | None) -> uuid.UUID | None:
+    """현재 세션의 Refresh 를 폐기하고 그 사용자를 돌려준다. 폐기할 세션이 없으면 None.
 
     이미 발급된 Access 는 최대 15분 살아 있다. 즉시 무효화는 이번 범위가 아니다.
     토큰이 없거나 모르는 값이어도 성공으로 응답한다 — 로그아웃은 멱등해야 하고,
     실패를 알려주면 토큰 존재 여부를 확인하는 통로가 된다.
     """
     if not refresh_token:
-        return
+        return None
 
     # 먼저 진행하던 회전이 커밋된 뒤 폐기를 시작해야 새로 발급된 토큰도 함께 폐기한다.
     stored = repository.get_refresh_token_for_update(db, security.hash_refresh_token(refresh_token))
     if stored is None:
-        return
+        return None
 
-    repository.revoke_device(db, user_id=stored.user_id, device_id=stored.device_id)
+    revoked = repository.revoke_device(db, user_id=stored.user_id, device_id=stored.device_id)
     db.commit()
+    # 이미 로그아웃한 토큰으로 다른 기기의 발표 연결까지 반복해서 끊지 않는다.
+    # 회전 전 토큰이어도 살아 있는 후손을 폐기했다면 연결 종료를 알린다.
+    return stored.user_id if revoked else None
 
 
 def refresh_cookie_max_age() -> int:

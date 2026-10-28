@@ -42,3 +42,6 @@ class RealtimeLiveTakes:
             raise
         # WS stop 과 같은 뒤처리 — 적었으면 Take 결과를 띄우고, 아니면 코치의 기억을 놓는다
         anyio.from_thread.run_sync(finish.after_mark, take_id, marked, ending, coach)
+
+    def sign_out(self, user_id: uuid.UUID) -> None:
+        anyio.from_thread.run(registry.sign_out, user_id)
