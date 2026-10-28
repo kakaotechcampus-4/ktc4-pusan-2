@@ -214,7 +214,7 @@ ai/service/
 uv run python -m pytest              # 가짜 LLM, 키 · 과금 없음
 ```
 ```
-1831 passed, 6 deselected
+1834 passed, 6 deselected
 ```
 ```powershell
 uv run python -m pytest -m live      # 실제 LLM 약 9번 (ai/.env 의 기본 묶음, 과금)
@@ -226,7 +226,7 @@ uv run python -m pytest -m live      # 실제 LLM 약 9번 (ai/.env 의 기본 �
 uv run python -m pytest -m slow      # 한 시간 Take 복구 시간 · Take 결과 크기 (실제 판정 모듈, 약 25초)
 ```
 ```
-1 passed, 1836 deselected
+1 passed, 1839 deselected
 ```
 LLM 호출마다 한 줄이 남습니다(프롬프트 · 답 · 키는 남기지 않음).
 ```

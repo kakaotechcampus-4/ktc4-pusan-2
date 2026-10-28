@@ -614,7 +614,7 @@ uv sync
 
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 코어 테스트 (`ai/service`에서, 실제 LLM 제외) | `uv run python -m pytest tests/unit/coach` | 통과 (515 passed, 1 deselected(`slow`), 2026-10-29) |
+| 코어 테스트 (`ai/service`에서, 실제 LLM 제외) | `uv run python -m pytest tests/unit/coach` | 통과 (517 passed, 1 deselected(`slow`), 2026-10-29) |
 | 실험 도구 테스트 (연구 폴더에서, 실제 LLM 제외) | `uv run python -m pytest` | 통과, live 1개 제외 (143 passed, 1 deselected, 2026-10-29) |
 | 실제 LLM으로 계획 한 번 (과금) | 연구 폴더에서 `uv run python -m pytest -m live`(`tests/live/test_live_planner.py`), 서비스 `/coach/plan` 경로는 `ai/service`에서 `uv run python -m pytest -m live tests/live/test_coach_plan_live.py` | 유효한 계획 |
 | 한 시간 Take 복구 규모 (`ai/service`에서) | `uv run python -m pytest -m slow tests/unit/coach/test_extremes.py` | 시간 · `take_result` 크기 (12-1) |
@@ -638,7 +638,7 @@ uv sync
 | `Judges` 묶음 만들기 | 앱을 불러올 때 한 번(`api/coach.py`의 `build_judges()` → `JUDGES`). 판정 모듈 넷(`judge` · `summarize` · `criteria`)과 volume `speaking_levels` · `baseline`. `timing`은 코어 안에 있어 넘기지 않는다. 판정 모듈은 상태가 없어 요청 · 스레드 사이에 함께 쓴다 |
 | 호출 | `/coach/evaluate` → `decide_safe(req, judges)`, `/coach/finalize` → `finalize(req, judges)`, `/coach/plan` → `plan_coaching(req, llm=…, model=…)`. 라우터는 요청마다 마감 시각(AI 예산 25초)을 만들어 `structured_llm(<출력 스키마>, deadline=…)`으로 LLM 객체를 받는다(서비스 `common/llm.py`, 역할 → 묶음은 `settings.py`). `model`은 그 역할 묶음의 모델 이름이다(`planner_hash`). LLM 설정이 없어 객체를 만들 수 없으면 `llm=None`을 넘겨 코어가 기본 계획 + `LLM_UNAVAILABLE`을 200으로 돌려준다. 연구 도구의 고정 값(시간 제한 20초 · 재시도 0)은 쓰지 않는다 |
 | 오류 매핑 | 요청 형식 오류는 422 `VALIDATION_ERROR`. `ReplayRequired`는 409 `REPLAY_REQUIRED`(공통 에러 본문, 메시지에 빠진 구간) |
-| 로그 | 요청 본문 · 단어 · 대본 원문은 남기지 않는다(`architecture.md` 11절). evaluate는 1초마다 오므로 정상 응답은 요청 로그(`duration_ms`)에만 남고, `STATE_RESET` · `T_MS_JUMP` · `INTERNAL_ERROR`가 난 응답만 `coach_evaluate take_id=… t_ms=… reasons=… duration_ms=…` 한 줄을 더 남긴다(`INTERNAL_ERROR`는 WARNING). finalize는 요청마다 `coach_finalize take_id=… t_ms=… replay=… result=OK · REPLAY_REQUIRED … duration_ms=…`. 코어의 예외 로그는 서비스 로그 형식이 예외 종류 · 위치만 찍는다(예외 메시지에 단어가 섞일 수 있어서) |
+| 로그 | 요청 본문 · 단어 · 대본 원문은 남기지 않는다(`architecture.md` 11절). evaluate는 1초마다 오므로 정상 응답은 요청 로그(`duration_ms`)에만 남고, `STATE_RESET` · `T_MS_JUMP` · `INTERNAL_ERROR`가 난 응답만 `coach_evaluate take_id=… t_ms=… reasons=… duration_ms=…` 한 줄을 더 남긴다(`INTERNAL_ERROR`는 WARNING). finalize는 형식 검사를 통과한 요청마다 `coach_finalize take_id=… t_ms=… replay=… result=… duration_ms=…`(`result`는 `OK` · `REPLAY_REQUIRED` · `INTERNAL_ERROR`, 마지막은 500). 코어의 예외 로그는 서비스 로그 형식이 예외 종류 · 위치만 찍는다(예외 메시지에 단어가 섞일 수 있어서) |
 | 동기 함수 | 판단은 CPU만 쓰는 짧은 계산이라 `def` 라우터로 두면 스레드 풀에서 돈다(`async def` 안에서 동기 호출을 하면 서버 전체가 멈춘다) |
 | 옮긴 뒤 테스트 | `ai-service.md` 6-1 2번대로 했다. `tests/unit/`을 서비스 `tests/unit/coach/`로 옮기고, `test_examples.py` · `test_core_boundary.py`는 예시 · 코어 폴더를 패키지 위치로 찾게 고쳤다. `tests/lab/test_examples_build.py`는 예시를 다시 만들어도 같은지만 보며 연구 폴더에 남겼다(예시 생성 `coach_lab.examples`). 그 파일에 있던 finalize 예시 대조 검사(`test_finalize_response_matches_example` · `test_finalize_example_judges_the_last_window_with_stt_closed` · `test_finalize_examples_show_normal_and_replay`)는 실제 판정 모듈을 묶은 서비스 계약 테스트 `tests/unit/coach/test_finalize_examples.py`로 옮겼다(예시도 실제 모듈로 다시 만들었다. 대역은 서비스에 넣지 않는다). |
 
@@ -660,7 +660,7 @@ uv sync
 | evaluate · finalize가 422이고 `t_ms`가 큼 | `t_ms`가 상한 3,660,000을 넘음. Take가 1시간 1분을 넘어도 BE가 자동 종료하지 않았음 | BE의 Take 자동 종료(`architecture.md` 1-3) |
 | finalize가 자주 409 | 창(30초)보다 오래 evaluate 응답이 빠짐, Take 중 `STATE_RESET`, BE가 `coach_state`를 잃음 | AI 로그 `coach_finalize … result=REPLAY_REQUIRED missing_ms=…`, evaluate 시간 초과 빈도, `STATE_RESET` 수, BE의 진행 중 상태 보관 |
 | 응답에 `STATE_RESET`이 반복 | BE가 `coach_state`를 바꿔 보냄, 배포로 `coach_state` 버전이 바뀜 | AI 로그 `coach_evaluate … reasons=STATE_RESET` 줄 수(Take별 `take_id`), BE가 응답의 `coach_state`를 그대로 붙이는지, 배포 시각 |
-| 응답에 `INTERNAL_ERROR` | 코치 코어 예외 | AI 로그 `coach_evaluate … reasons=INTERNAL_ERROR`와 바로 앞 `coach decide failed … error=<예외 종류> at <파일:줄>`(같은 입력으로 재현), 그 시간은 Take 결과에서 잴 수 없음으로 남는다 |
+| 응답에 `INTERNAL_ERROR` | 코치 코어 예외 | AI 로그 `coach_evaluate … reasons=INTERNAL_ERROR`, 같은 `take_id` · `t_ms`의 `coach decide failed` 줄과 그 다음 줄의 `error=<예외 종류> at <파일:줄>`(동시 요청의 로그가 섞일 수 있다. 같은 입력으로 재현), 그 시간은 Take 결과에서 잴 수 없음으로 남는다 |
 | 한 영역 `indicators`가 계속 `UNKNOWN` · `UNMEASURABLE` | 그 판정 모듈의 예외 · 계약 위반, STT 끊김, 오디오 없음 | AI 로그, `inputs.stt_status`, 원자료 |
 | evaluate 시간 초과가 잦음 | 긴 LLM 요청이 스레드 풀을 채움, 큰 요청 | AI 요청 로그의 `path=/coach/evaluate … duration_ms`, BE 백그라운드 호출 동시 개수 (`ai-service.md` 8절) |
 | plan이 늘 `fallback_reason` | `LLM_UNAVAILABLE`: 키 · 모델 설정 없음 / `LLM_TIMEOUT`: 느린 모델 · 긴 입력 / `LLM_INVALID_OUTPUT`: 모델이 출력 스키마를 못 지킴 | 서버 `ai/.env`, AI 로그의 응답 모델 · 걸린 시간 |
