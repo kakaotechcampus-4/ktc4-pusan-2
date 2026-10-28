@@ -116,6 +116,13 @@ def test_records_stopped_is_unknown_for_both() -> None:
     assert low.state == "UNKNOWN" and low.issues == []
 
 
+def test_last_partial_second_is_measurable() -> None:
+    # Take 끝의 짧은 조각(stop 직전 실제 duration_ms)도 판정 시각에 끝나므로 잴 수 있다
+    records = speech(0, 4000) + [rec(4000, voiced_ms=500, duration_ms=600)]
+    volume, pause = run(records, 4600, since_ms=4000)
+    assert volume.measurable and pause.measurable
+
+
 def test_too_few_spoken_seconds_is_unknown() -> None:
     cfg = Config()
     records = speech(0, (cfg.min_voiced_seconds - 1) * 1000, BASE - 10)
