@@ -307,3 +307,8 @@ def get_take_report_service(
 def find_owned(db: Session, take_id: uuid.UUID, user_id: uuid.UUID) -> Take | None:
     """없을 수 있는 조회. 남의 take 도 None — WebSocket 이 존재 여부를 흘리지 않게."""
     return TakeRepository(db).get_owned(take_id, user_id)
+
+
+def has_completed_report(db: Session, pitch_ids: list[uuid.UUID]) -> bool:
+    """본인 발표 범위에 완료된 측정 결과가 하나라도 남아 있는가."""
+    return TakeRepository(db).has_completed_report(pitch_ids)
