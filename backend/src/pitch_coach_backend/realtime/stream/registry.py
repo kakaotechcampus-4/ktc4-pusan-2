@@ -49,6 +49,11 @@ logger = logging.getLogger(__name__)
 # 다른 Take가 붙어 있으면 거절하고, 끊겨 grace를 기다리던 스트림은 닫은 뒤 교체한다.
 MAX_STREAMS_PER_USER = 1
 
+# 끝내는 중인(stop · 자동 종료 · 끝내기 PUT) 스트림이 스스로 닫히기를 기다리는 상한. 끝내는 쪽은
+# 마지막 전사를 기다렸다가 늦으면 직접 끊는다. 가장 긴 쪽인 자동 종료(drain + abort 뒤 취소 정리)와
+# 같다 — 더 일찍 끊으면 끝낸 Take 의 마지막 문장이 빠진다
+ENDING_WAIT_SEC = stt_loop.DRAIN_TIMEOUT_SEC + 2 * stt_loop.ABORT_TIMEOUT_SEC
+
 
 class StreamOwnerMismatch(Exception):
     """다른 사용자가 이미 쓰고 있는 Take 다."""
@@ -255,6 +260,7 @@ async def _make_room(owner_id: uuid.UUID) -> None:
     Take 는 끝나지 않는다. grace 가 만료된 것과 같아 다시 붙으면 새 스트림이 번호를 이어 받는다.
     정리 중인 스트림도 실제로 닫힐 때까지 센다. request_stop만 하고 자리에서 빼면 반복해서
     끊고 붙이는 동안 drain 중인 Deepgram 세션이 상한 밖으로 계속 쌓인다.
+    Take 를 끝내는 중인 스트림은 끊지 않고 `ENDING_WAIT_SEC` 까지 기다린다.
     """
     open_streams = _open_streams(owner_id)
     excess = len(open_streams) - MAX_STREAMS_PER_USER + 1
@@ -270,6 +276,11 @@ async def _make_room(owner_id: uuid.UUID) -> None:
         )
         raise TooManyStreams
     for stream in waiting[:excess]:
+        if stream.is_stopping and stream.take_id in state.ended:
+            # Take 를 끝내는 중이다. 끝내는 쪽이 정리를 맡으므로 끊지 않고 기다린다
+            if not await stream.wait_closed(ENDING_WAIT_SEC):
+                raise StreamClosing
+            continue
         logger.info(
             "새 스트림 자리를 만들려고 끊겼거나 오디오가 멈춘 스트림을 정리한다 take=%s",
             stream.take_id,
