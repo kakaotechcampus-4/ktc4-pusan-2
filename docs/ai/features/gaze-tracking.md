@@ -183,7 +183,7 @@ frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · 
 | `tally` | 새로 센 1초마다 `{t_ms, values}`. `values`의 키: `camera_ms` · `screen_ms` · `script_ms` · `away_ms` · `uncertain_ms` · `unmeasured_ms` · `measured_ms` · `total_ms` · `speaking_ms` · `reading_ms` · `reading_runs`. 0인 키는 빼도 된다 | `[{"t_ms": 40000, "values": {"script_ms": 1000, "measured_ms": 1000, "total_ms": 1000, "speaking_ms": 1000, "reading_ms": 1000}}]` |
 | `state` | 짧은 창에서 가장 많이 본 곳 `AUDIENCE`(`CAMERA`) · `SCREEN` · `SCRIPT`(`BOTTOM`) · `AWAY`(`OTHER`). 짧은 창의 대본 응시 비율이 기준 이상이면 `SCRIPT`. 측정 불가면 `UNMEASURABLE`. 마지막 1초로 정하지 않는다(매초 깜빡이지 않게) | `SCRIPT` |
 | `measurable` | 측정 비율과 평균 신뢰도가 모두 기준 이상이면 true. 측정 비율은 지금 짧은 창과 최근 창 평균 중 나쁜 쪽을 쓴다(잡음으로 잠깐 좋아진 1초에 판정을 다시 열지 않게) | `true` |
-| `issues[].confidence` | 측정 비율이 높을수록 크다(`UNCERTAIN`이 많으면 작다). 입력 1초 기록의 `confidence`(최다 득표 비율)와 다른 값이다 | `0.86` |
+| `issues[].confidence` | 측정 비율이 높을수록 크다(`UNCERTAIN`이 많으면 작다). 측정 불가 신호 `GAZE_UNMEASURABLE`은 늘 1.0이다(잴 수 없다는 사실은 확실하다. `actionable: false`라 코치가 말을 걸지 않는다). 입력 1초 기록의 `confidence`(최다 득표 비율)와 다른 값이다 | `0.86` |
 | `issues[].evidence` | 키는 지표 이름이고 짧은 창 값은 `_short`를 붙인다. 창 길이를 키 이름에 넣지 않는다 | `{"script_run_ms": 4000, "script_ratio_short": 0.8}` |
 | `counted_until_ms` | 이번까지 센 시각(= `max(t_ms, since_ms)`, 6-2 8번). 코치가 다음 요청의 `since_ms`로 넘긴다 | `41000` |
 

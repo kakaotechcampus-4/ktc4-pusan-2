@@ -164,7 +164,7 @@ ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 �
 | `rubrics` | list | 예 | 대본 등록 때 받은 장별 평가 기준 그대로. 평가 기준이 없는 장(만들기가 실패한 장)은 빠질 수 있다 | `["<장별 평가 기준>"]` |
 | `slide_numbers` | list int · null | 아니오 | 채점할 장. null이면 `slides`의 장 전부 | `[5]` |
 
-- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 보아 422 `RUBRIC_MISSING`을 돌려준다.
+- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. 채점할 장이 있는데 `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 보아 422 `RUBRIC_MISSING`을 돌려준다. 채점할 장이 없으면(`slide_numbers: []`) `rubrics`와 상관없이 빈 결과 200이다(`evaluations` · `failed` 빈 목록, `scored_ratio` 0).
 
 **`POST /takes/rescore`**
 
@@ -175,6 +175,8 @@ ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 �
 | `rubrics` | list | 예 | 그 장들의 평가 기준 | `["<장별 평가 기준>"]` |
 | `answers` | list | 아니오 | 이번에 받은 확인 답 `[{slide_number, item_id, answer}]`, `slide_number`는 1 이상, `answer`는 `as_script` · `as_stt`. 없으면 Take 값만 다시 계산한다 | `[{"slide_number": 3, "item_id": "R1", "answer": "as_script"}]` |
 | `failed` | list | 아니오 | BE가 저장한 실패 장 `[{slide_number, error{code, message}}]`, `slide_number`는 1 이상(0 이하면 422). `scored_ratio`의 대상 장에 넣는다. BE는 `/takes/rescore`를 부를 때마다(사용자 확인 뒤 포함) 저장한 실패 목록 전체를 싣는다(빠지면 실패한 장이 대상에서 빠져 `scored_ratio`가 올라간다) | `[]` |
+
+**요청 검사** (어기면 422 `VALIDATION_ERROR`, 7절): `/scripts/rubric` · `/takes/analyze`의 `slides`는 1개 이상이고 같은 `slide_number`가 두 번 나오지 않는다. `slide_numbers`에는 `slides`에 있는 장만 쓴다. `/takes/analyze` · `/takes/rescore`의 `rubrics`와 `/takes/rescore`의 `evaluations`도 같은 장 번호가 두 번 나오지 않는다.
 
 ## 5-3. 출력
 **`/scripts/rubric` 응답**: `{rubrics, failed, meta}`
@@ -207,7 +209,7 @@ ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 �
 | 대상 | 상태 | 뜻 |
 |---|---|---|
 | 전달 단위 (LLM이 판정) | `said` · `vague` · `missing` · `contradicted` | 말함 · 흐리게 말함 · 없음 · 다르게 말함 |
-| 문장 (코드가 단위를 모음) | `said` · `partial` · `missing` · `contradicted` | 문장 역할이 `skip`이면 채점하지 않는다 |
+| 문장 (코드가 단위를 모음) | `said` · `partial` · `missing` · `contradicted` | 문장 역할이 `skip`이면 채점하지 않는다. 다만 핵심 내용의 근거 문장(`key_points[].sentence_indices`)이면 채점하고, 전달 단위가 없으므로 문장 전체를 단위 하나로 본다 |
 | 핵심 내용 (코드가 근거 문장을 모음) | `covered` · `partial` · `missing` · `contradicted` | 점수가 큰 순서는 `covered` > `partial` > `missing` > `contradicted` (모순은 빠뜨린 것보다 낮다) |
 | 핵심 수치 (코드가 값으로 비교) | `matched` · `approximate` · `mismatched` · `missing` · `sound_alike` · `unverified` | `sound_alike`(발음이 비슷한 다른 말)는 판단 보류로 점수에서 뺀다 |
 | 확인 답 | `as_script` · `as_stt` | 대본대로 말함(STT가 잘못 적음) · 들린 대로 말함(발표자가 다른 말을 함) |
@@ -387,7 +389,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | 필드 | 타입 | 뜻 |
 |---|---|---|
 | `sentence_index` · `text` · `role` | int · str · str | 대본 문장 번호 · 문장 · 문장 역할 |
-| `status` · `first_status` | 문장 상태 (5-4) | 최종 판정 · LLM 1차 판정(전달 단위 판정을 모은 것) |
+| `status` · `first_status` | 문장 상태 (5-4) | 최종 판정 · 교차 검증 전 판정(LLM 판정에 규칙 보정을 더한 전달 단위 판정을 모은 것. 규칙으로 올렸는지는 단위의 `raised_by_rule`) |
 | `units[]` | `{unit_id, text, fact_ids[], status, first_status, raised_by_rule}` (기본값 있음, `fact_ids` 빈 목록 · `raised_by_rule` false) | 전달 단위별 판정. `status`는 단위 상태(5-4). `raised_by_rule`은 LLM은 `missing`이라 했지만 그 단위의 수치 · 이름이 STT에 있어 `vague`로 올린 것(교차 검증이 6-2 ⑦대로 `missing`으로 되돌려도 true로 남는다) |
 | `confidence` | str (생성 값: `high` · `medium` · `low`) | LLM 확신도 |
 | `evidence[]` · `reason` | int · str | 근거 STT 문장 번호(범위 밖 번호는 버림) · 판정 이유(사용자에게 보여 줄 수 있음) |
