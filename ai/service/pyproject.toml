@@ -43,6 +43,10 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 "tests/unit/script_coverage/**" = ["E501"]
 # 대본 파싱: 프롬프트는 LLM 에 그대로 가는 글이라 줄을 나누면 프롬프트가 바뀐다(기능 버전 대상)
 "src/pitch_coach_ai/features/script_parser/prompts/**" = ["E501"]
+# 평가 기준 분석: 프롬프트 원문(prompts/system.py)은 줄을 나누면 LLM 에 보내는 문장이 바뀐다.
+# 남는 긴 줄은 한국어 주석 · 문자열이다 (연구 폴더에서 옮긴 그대로)
+"src/pitch_coach_ai/features/evaluation_criteria/**" = ["E501"]
+"tests/unit/evaluation_criteria/**" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

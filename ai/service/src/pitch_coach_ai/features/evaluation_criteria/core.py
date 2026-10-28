@@ -64,7 +64,12 @@ def check_targets(
         kept.append(target)
 
     if len(kept) > config.max_targets:
-        log.info("targets %d개 중 %d개를 뺐다 (상한 %d)", len(kept), len(kept) - config.max_targets, config.max_targets)
+        log.info(
+            "targets %d개 중 %d개를 뺐다 (상한 %d)",
+            len(kept),
+            len(kept) - config.max_targets,
+            config.max_targets,
+        )
         kept = kept[: config.max_targets]
     return kept
 

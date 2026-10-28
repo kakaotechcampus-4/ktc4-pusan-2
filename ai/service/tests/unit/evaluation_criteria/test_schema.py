@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from evaluation_criteria.schemas import (
+from pitch_coach_ai.features.evaluation_criteria.schemas import (
     Criteria,
     EvaluationCriteriaAnalysis,
     EvaluationCriteriaRequest,

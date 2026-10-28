@@ -11,7 +11,10 @@ from pathlib import Path
 
 import pytest
 
-CORE = Path(__file__).resolve().parents[1] / "src" / "evaluation_criteria"
+from pitch_coach_ai.features.evaluation_criteria import core
+
+# 모듈 파일 기준이라 서비스로 옮겨도 import 접두어만 바꾸면 새 위치를 본다
+CORE = Path(core.__file__).parent
 
 # 코어가 쓰는 표준 모듈. 새로 필요하면 그 모듈이 파일 · 네트워크 · 환경변수 · 시계를 쓰지 않는지
 # 확인하고 여기에 더한다
