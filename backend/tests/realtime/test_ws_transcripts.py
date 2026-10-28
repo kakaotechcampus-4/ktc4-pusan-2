@@ -23,7 +23,7 @@ from pitch_coach_backend.realtime.dto import (
 from pitch_coach_backend.realtime.storage import transcripts as transcripts_module
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
-from pitch_coach_backend.realtime.stream import registry
+from pitch_coach_backend.realtime.stream import registry, runtime
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
@@ -267,6 +267,46 @@ async def test_final_sent_normally_is_not_resent():
 
     assert _texts(ws) == [("0-1", "보낸 말")]
     assert stream._transcripts.missed_finals == []
+
+
+@pytest.mark.anyio
+async def test_interim_does_not_hold_up_stt_while_the_client_is_slow():
+    """STT 이벤트 펌프는 `_on_transcript` 를 기다린다. 받는 쪽이 멈춘 연결에 interim 을 보내느라
+    기다리면 다음 결과가 밀린다. 보내는 중에 온 interim 은 가장 새것만 이어 보낸다."""
+    stream = _final_stream(FakeTranscriptStore())
+    stuck = StuckWebSocket()
+    await stream.attach(stuck)
+
+    await asyncio.wait_for(stream._on_transcript(transcript(0, 100, "하나", is_final=False)), 0.1)
+    await stuck.sending.wait()
+    for text in ("하나 둘", "하나 둘 셋"):
+        await asyncio.wait_for(stream._on_transcript(transcript(0, 200, text, is_final=False)), 0.1)
+    stuck.stuck = False
+    stuck.release.set()
+    await asyncio.wait_for(stream._interim_task, 1.0)
+
+    assert _texts(stuck) == [("0-1", "하나"), ("0-1", "하나 둘 셋")]
+
+
+@pytest.mark.anyio
+async def test_old_interim_does_not_arrive_after_its_final(monkeypatch: pytest.MonkeyPatch):
+    """같은 구간의 interim 이 final 뒤에 닿으면 FE 는 같은 `segment_id` 로 덮는다. final 앞에서
+    남은 interim 을 버리고 보내는 중인 것은 상한까지 기다렸다 끊는다."""
+    monkeypatch.setattr(runtime, "INTERIM_SEND_TIMEOUT_SEC", 0.05)
+    stream = _final_stream(FakeTranscriptStore())
+    stuck = StuckWebSocket()
+    await stream.attach(stuck)
+
+    await stream._on_transcript(transcript(0, 100, "하나", is_final=False))
+    await stuck.sending.wait()
+    await stream._on_transcript(transcript(0, 200, "하나 둘", is_final=False))
+    # 멈춘 interim 하나는 그대로 두고 뒤의 전송은 통과시킨다
+    stuck.stuck = False
+    await stream._on_transcript(transcript(0, 300, "하나 둘 셋", is_final=True))
+    stuck.release.set()
+    await asyncio.sleep(0.01)
+
+    assert _texts(stuck) == [("0-1", "하나 둘 셋")]
 
 
 @pytest.mark.anyio
