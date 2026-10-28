@@ -1,7 +1,7 @@
 """API 예시(`features/script_coverage/examples/`)의 계약 테스트.
 
 `llm_cache.json` 으로 만든 캐시와, 부르면 시간 초과가 되는 LLM 으로 `request.json` 을 진입 함수에 넣어
-`response.json` 과 같은 응답이 나오는지 본다. `coverage_lab` 을 쓰지 않는다 — 코어와 함께 서비스로 옮겨 가는 테스트다.
+`response.json` 과 같은 응답이 나오는지 본다. `coverage_lab` 을 쓰지 않는다 — 연구 폴더 없이 서비스만으로 돈다.
 """
 
 import json

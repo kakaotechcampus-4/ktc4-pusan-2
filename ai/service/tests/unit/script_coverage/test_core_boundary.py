@@ -1,8 +1,8 @@
-"""코어(script_coverage)를 나중에 service 로 폴더째 옮길 수 있는지 검사한다.
+"""코어(script_coverage)가 서비스 · 연구 도구 어디에서 불려도 고칠 곳이 없는 순수 패키지인지 검사한다.
 
 - 패키지 안에서는 상대 import 만 쓴다. 패키지 경로가 바뀌어도 고칠 곳이 없게 하기 위해서다.
 - 허용한 라이브러리만 쓴다. 파일 · DB · 네트워크 · 환경변수 · LLM 클라이언트는 코어 밖이 맡는다
-  (research 에서는 coverage_lab, 나중에는 service).
+  (research 에서는 coverage_lab, service 에서는 라우터).
 - script_analysis 와 stt_evaluation 은 서로 import 하지 않는다.
 - shared 는 둘 중 어느 쪽도 import 하지 않는다.
 """
@@ -17,7 +17,7 @@ import pytest
 
 from pitch_coach_ai.features import script_coverage
 
-# 코어 패키지 파일 기준으로 찾는다 — 서비스로 옮겨도 경로를 고치지 않게
+# 코어 패키지 파일 기준으로 찾는다 — 패키지 위치가 바뀌어도 경로를 고치지 않게
 CORE = Path(script_coverage.__file__).resolve().parent
 
 THIRD_PARTY = {"pydantic", "kiwipiepy", "sklearn", "numpy", "scipy"}
