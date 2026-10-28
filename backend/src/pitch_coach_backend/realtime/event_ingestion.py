@@ -10,9 +10,14 @@ BE 는 이 값으로 (1) 순서 꼬임·중복을 버리고 (2) 끊긴 구간을
 왜 채우는가: Deepgram 타임스탬프는 "그 연결에 보낸 첫 바이트 = 0" 이다. 중간에 빠진
 오디오가 있으면 그 뒤의 모든 타임스탬프가 빠진 만큼 앞당겨진다. 갭을 무음으로 채우면
 한 연결 안에서는 Deepgram 타임라인과 Take 타임라인이 같다. 무음도 과금되지만 몇 초 수준이다.
+
+틈은 FE 가 보낸 offset_ms 로만 잰다. 그래서 Deepgram 에 보낼 길이(받은 PCM + 메울 무음)를
+서버가 실제로 지난 시간으로 묶는다 (`AudioBudget`). 묶지 않으면 1ms 프레임 하나가 5초 무음이 되어
+몇 초 만에 몇 시간 분량을 Deepgram 에 보낼 수 있다.
 """
 
 import struct
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from pitch_coach_backend.realtime.audio import BYTES_PER_MS
@@ -30,6 +35,10 @@ GAP_TOLERANCE_MS = 50
 # 멈추고 그만큼 과금된다. 대신 timeline_break 로 표시해 Deepgram 세션을 갈게 한다 —
 # 부분만 채우면 그 뒤 타임스탬프가 못 채운 만큼 통째로 앞당겨진다.
 MAX_SILENCE_FILL_MS = 5_000
+
+# 서버 시간보다 앞서 보낼 수 있는 길이. 다시 붙을 때 FE 가 쌓아 둔 오디오(2초, FE
+# `MAX_PENDING_FRAMES`)와 그 앞 틈을 메울 무음(최대 `MAX_SILENCE_FILL_MS`)을 한 번에 받을 만큼이다
+AUDIO_BURST_MS = 10_000
 
 
 class InvalidAudioFrame(ValueError):
@@ -85,6 +94,29 @@ class Accepted:
         return self.lost_ms > 0 or self.restart
 
 
+class AudioBudget:
+    """Deepgram 에 보낼 길이를 서버가 실제로 지난 시간으로 묶는다 (토큰 버킷).
+
+    지난 시간만큼 쌓이고 `AUDIO_BURST_MS` 까지 모아 둔다. FE 는 실시간으로 보내므로 평소에는 쌓이는
+    만큼 쓰고, 다시 붙을 때 몰아 보내는 것은 끊긴 동안 쌓인 몫으로 받는다. 시각은 밖에서 받는다
+    (monotonic, ms).
+    """
+
+    def __init__(self, now_ms: float, *, burst_ms: int = AUDIO_BURST_MS) -> None:
+        self._burst_ms = burst_ms
+        self._tokens = float(burst_ms)
+        self._at = now_ms
+
+    def take(self, cost_ms: int, now_ms: float) -> bool:
+        """`cost_ms` 를 쓸 수 있으면 쓰고 True. 모자라면 쓰지 않고 False."""
+        self._tokens = min(self._burst_ms, self._tokens + max(0.0, now_ms - self._at))
+        self._at = now_ms
+        if cost_ms > self._tokens:
+            return False
+        self._tokens -= cost_ms
+        return True
+
+
 class FrameSequencer:
     """프레임 순서를 추적하고 중복·역행을 버린다. 통계는 stt_status 로 FE 에 보낸다."""
 
@@ -93,6 +125,8 @@ class FrameSequencer:
         self.dropped = 0
         self.silence_ms = 0
         self.lost_ms = 0
+        # 보낼 길이가 서버 시간을 앞질러 버린 프레임 (`accept` 의 `allow`). `dropped` 에도 센다
+        self.over_budget = 0
         self._last: AudioFrame | None = None
         self._new_connection = False
 
@@ -100,11 +134,22 @@ class FrameSequencer:
         """연결이 바뀌었다. 그 연결의 첫 프레임으로 FE 가 처음부터 다시 셌는지 가린다."""
         self._new_connection = True
 
-    def accept(self, frame: AudioFrame) -> Accepted | None:
-        """받아들이면 Accepted, 버리면 None."""
+    def accept(
+        self, frame: AudioFrame, *, allow: Callable[[int], bool] | None = None
+    ) -> Accepted | None:
+        """받아들이면 Accepted, 버리면 None.
+
+        `allow` 는 Deepgram 에 보낼 길이(프레임 + 앞에 메울 무음, ms)를 받아 보내도 되는지 답한다
+        (`AudioBudget.take`). 안 된다면 버리고 그 구간(틈 + 프레임)을 `lost_ms` 로 센다. 다음 틈은
+        버린 프레임 뒤부터 잰다 — 버린 구간을 무음으로 메우면 버린 만큼 다시 보내고, 세션을 갈면
+        버릴 때마다 Deepgram 연결이 하나씩 더 생긴다. 대신 그 세션의 뒤 전사 시각이 버린 만큼
+        앞당겨진다.
+        정상 FE 는 실시간으로 보내 여기 오지 않는다.
+        새 연결의 첫 프레임(새로고침일 수 있다)은 순서 상태를 그대로 두고 다음 프레임이 다시 가린다.
+        """
+        last = self._last
         restart = False
         if self._new_connection:
-            self._new_connection = False
             # 재연결은 seq·offset 을 이어 보낸다 (FE 는 보낸 프레임을 다시 보내지 않는다 — README 의
             # STT 규약. 이 약속이 깨지면 다시 보낸 프레임을 새로고침으로 오인한다). 새 연결의
             # 첫 프레임이 뒤로 갔다면 FE 가 처음부터 다시 센 것이다 — 탭을 새로고침하면 seq 는
@@ -112,20 +157,21 @@ class FrameSequencer:
             # 예전 seq 를 넘을 때까지 통째로 사라진다.
             # offset 도 보는 이유: 이전 탭이 보낸 프레임이 적으면 새 탭의 첫 seq 가 더 클 수 있고,
             # 이어받은 시점이 추정값이면(탭이 죽은 경우) 이전 탭이 보낸 시각보다 앞설 수 있다
-            restart = self._last is not None and (
-                frame.seq <= self._last.seq or frame.offset_ms < self._last.offset_ms
+            restart = last is not None and (
+                frame.seq <= last.seq or frame.offset_ms < last.offset_ms
             )
             if restart:
-                self._last = None
+                last = None
 
-        if self._last is not None and frame.seq <= self._last.seq:
+        if last is not None and frame.seq <= last.seq:
+            self._new_connection = False
             self.dropped += 1
             return None
 
         silence_ms = 0
         lost_ms = 0
-        if self._last is not None:
-            gap_ms = frame.offset_ms - self._last.end_ms
+        if last is not None:
+            gap_ms = frame.offset_ms - last.end_ms
             if gap_ms > MAX_SILENCE_FILL_MS:
                 # 부분만 채우면 타임라인이 어긋난다. 아예 채우지 않고 세션 교체를 요구한다
                 lost_ms = gap_ms
@@ -133,6 +179,15 @@ class FrameSequencer:
                 silence_ms = gap_ms
             # 음수(겹침) 는 지터다. 그대로 이어 보낸다
 
+        if allow is not None and not allow(silence_ms + frame.duration_ms):
+            self.dropped += 1
+            self.over_budget += 1
+            if not self._new_connection:
+                self._last = frame
+                self.lost_ms += silence_ms + lost_ms + frame.duration_ms
+            return None
+
+        self._new_connection = False
         self._last = frame
         self.frames += 1
         self.silence_ms += silence_ms
