@@ -123,7 +123,7 @@ ai/service/
 │   ├── settings.py              # 환경변수 읽기 (pydantic-settings)
 │   ├── api/                     # 라우터만. 로직 없음
 │   │   ├── health.py            #   GET /health · /ready
-│   │   └── <이름>.py            #   기능 엔드포인트 (지금은 script_coverage.py · coach.py. coach.py 는 evaluate · finalize 를 열 때 판정 모듈을 묶어 코치에 넘긴다)
+│   │   └── <이름>.py            #   기능 엔드포인트 (지금은 script_parser.py · script_coverage.py · coach.py. coach.py 는 evaluate · finalize 를 열 때 판정 모듈을 묶어 코치에 넘긴다)
 │   ├── common/                  # 기능들이 같이 쓰는 코드
 │   │   ├── llm.py               #   LLM 객체는 여기서만 만든다
 │   │   ├── errors.py            #   예외 → 상태 코드 · 에러 본문
