@@ -107,7 +107,7 @@ class AudioBudget:
         self._tokens = float(burst_ms)
         self._at = now_ms
 
-    def take(self, cost_ms: int, now_ms: float) -> bool:
+    def take(self, cost_ms: float, now_ms: float) -> bool:
         """`cost_ms` 를 쓸 수 있으면 쓰고 True. 모자라면 쓰지 않고 False."""
         self._tokens = min(self._burst_ms, self._tokens + max(0.0, now_ms - self._at))
         self._at = now_ms
@@ -135,7 +135,7 @@ class FrameSequencer:
         self._new_connection = True
 
     def accept(
-        self, frame: AudioFrame, *, allow: Callable[[int], bool] | None = None
+        self, frame: AudioFrame, *, allow: Callable[[float], bool] | None = None
     ) -> Accepted | None:
         """받아들이면 Accepted, 버리면 None.
 
@@ -179,7 +179,10 @@ class FrameSequencer:
                 silence_ms = gap_ms
             # 음수(겹침) 는 지터다. 그대로 이어 보낸다
 
-        if allow is not None and not allow(silence_ms + frame.duration_ms):
+        # PCM은 1ms(16샘플)보다 작을 수도 있다. 정수 duration_ms로 내리면 한 샘플씩 보내는
+        # 프레임은 비용이 0이 되어 상한을 우회한다. 예산은 실제 바이트 수로 계산한다.
+        cost_ms = silence_ms + len(frame.pcm) / BYTES_PER_MS
+        if allow is not None and not allow(cost_ms):
             self.dropped += 1
             self.over_budget += 1
             if not self._new_connection:

@@ -108,7 +108,7 @@ class Clock:
         self.now = 0.0
         self.budget = AudioBudget(self.now)
 
-    def allow(self, cost_ms: int) -> bool:
+    def allow(self, cost_ms: float) -> bool:
         return self.budget.take(cost_ms, self.now)
 
 
@@ -121,6 +121,22 @@ def test_budget_refills_with_server_time_up_to_the_burst():
     # 오래 쉬어도 `AUDIO_BURST_MS` 까지만 모은다
     assert not budget.take(AUDIO_BURST_MS + 1, 60_000)
     assert budget.take(AUDIO_BURST_MS, 60_000)
+
+
+def test_sub_millisecond_pcm_is_charged_for_every_sample():
+    # 16 kHz PCM 한 샘플은 1/16 ms다. 정수 ms로 내리면 이 프레임은 무제한으로 통과한다.
+    budget = AudioBudget(0, burst_ms=1)
+    sequencer = FrameSequencer()
+    accepted = [
+        sequencer.accept(
+            AudioFrame(seq=i, offset_ms=0, pcm=b"\x00\x00"),
+            allow=lambda cost: budget.take(cost, 0),
+        )
+        for i in range(1, 33)
+    ]
+
+    assert sum(item is not None for item in accepted) == 16
+    assert sequencer.over_budget == 16
 
 
 def test_frames_sent_in_real_time_are_all_accepted():

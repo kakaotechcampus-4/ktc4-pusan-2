@@ -52,3 +52,31 @@ async def test_tiny_frames_with_long_gaps_cannot_send_hours_to_deepgram():
     assert stream.sequencer.over_budget > 2_000
     # 첫 세션과 새로고침(다시 붙은 연결의 첫 프레임이 처음부터 셈) 두 번
     assert len(adapter.sessions) == 3
+
+
+@pytest.mark.anyio
+async def test_replacing_a_stream_does_not_refill_the_take_audio_budget():
+    # 사용자별 상한이 grace 스트림을 먼저 정리하면 30초 전에도 같은 Take의 새 스트림이 열린다.
+    # 스트림마다 10초를 새로 주면 여러 Take를 번갈아 붙여 서버 시간 상한을 우회한다.
+    adapter = FakeSttAdapter()
+    store = FakeTranscriptStore()
+    take_id, owner_id = uuid.uuid7(), uuid.uuid7()
+    started = time.monotonic()
+    for _ in range(2):
+        tab = FakeWebSocket()
+        stream = await registry.attach(
+            take_id,
+            tab,
+            owner_id=owner_id,
+            stt_adapter=adapter,
+            config=SttConfig(),
+            store=store,
+        )
+        await _wait_until_ok(stream)
+        for i in range(10):
+            stream.push(frame(i + 1, i * 1_000, duration_ms=1_000), source=tab)
+        stream.request_stop()
+        assert await stream.wait_closed(timeout=1.0)
+
+    sent_ms = sum(session.audio_ms for session in adapter.sessions)
+    assert sent_ms <= AUDIO_BURST_MS + (time.monotonic() - started) * 1000

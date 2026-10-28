@@ -80,7 +80,6 @@ from pitch_coach_backend.realtime.dto import (
 )
 from pitch_coach_backend.realtime.event_ingestion import (
     Accepted,
-    AudioBudget,
     FrameSequencer,
     parse_audio_frame,
 )
@@ -155,8 +154,8 @@ class TakeStream:
         self._slides_capped = False
         # 마지막으로 받은 오디오 프레임 시각(monotonic). 발표 중인지 본다 (`is_live`)
         self._last_audio_at: float | None = None
-        # Deepgram 에 보낼 길이(받은 PCM + 메울 무음)를 이 스트림이 열려 있던 시간으로 묶는다
-        self._budget = AudioBudget(time.monotonic() * 1000)
+        # 스트림이 교체되어도 Take의 오디오 예산은 이어 쓴다.
+        self._budget = record.audio_budget
         self._over_budget_logged = False
         # 끊김 없이 받은 오디오의 Take 시각. 1초 원자료의 STT 상태를 이걸로 정한다
         self._heard = HeardRange()
