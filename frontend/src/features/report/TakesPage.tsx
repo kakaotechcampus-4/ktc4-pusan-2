@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
 import { useTakeHistory } from '@/shared/api/takeHistory';
@@ -21,9 +20,8 @@ const ALL = '';
 
 export function TakesPage() {
   const history = useTakeHistory();
-  // 홈의 'Take 기록' 링크가 ?pitch= 로 그 피치를 골라서 엽니다
-  const [params] = useSearchParams();
-  const [pitch, setPitch] = useState(params.get('pitch') ?? ALL);
+  // 고른 피치는 주소(?pitch=)에만 둡니다 — 홈 링크로 걸러 열고, 상단바(/takes)로 오면 풀리고, 새로고침해도 남습니다
+  const [params, setParams] = useSearchParams();
   const rows = history.data?.takes;
 
   if (!rows)
@@ -35,6 +33,9 @@ export function TakesPage() {
 
   // 제목은 겹칠 수 있어 pitch_id 로 거르고, 제목은 보여 주는 데만 씁니다
   const pitches = new Map(rows.map((t) => [t.pitch_id, t.pitch_title]));
+  // 지운 피치 · 오래된 주소처럼 목록에 없는 피치면 전체로 봅니다
+  const asked = params.get('pitch') ?? ALL;
+  const pitch = pitches.has(asked) ? asked : ALL;
   const shown = pitch === ALL ? rows : rows.filter((t) => t.pitch_id === pitch);
 
   return (
@@ -54,7 +55,9 @@ export function TakesPage() {
               피치
               <select
                 value={pitch}
-                onChange={(e) => setPitch(e.target.value)}
+                onChange={(e) =>
+                  setParams(e.target.value ? { pitch: e.target.value } : {}, { replace: true })
+                }
                 className="min-h-11 min-w-0 max-w-full border-2 border-ink bg-white px-2 py-1 sm:max-w-xs"
               >
                 <option value={ALL}>전체</option>
