@@ -12,6 +12,9 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.security import create_access_token
+from pitch_coach_backend.module.auth import service as auth_service
+from pitch_coach_backend.module.auth.controller import REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH
+from pitch_coach_backend.module.auth.dependencies import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
 from pitch_coach_backend.module.pitch.entity import (
     ScriptParseStatus,
     ScriptSlide,
@@ -745,3 +748,65 @@ def test_reconnect_is_authorized_again_even_while_the_stream_is_alive(
         assert ws.receive_json()["code"] == "TAKE_ENDED"
         assert closed_with(ws) == 1008
     assert len(stt.sessions) == 1, "재연결이 거절돼 새 Deepgram 세션이 생기지 않는다"
+
+
+# ── 로그아웃 ──────────────────────────────────────────────────────────
+
+
+def _log_in_browser(client: TestClient, db_session: Session, user: User) -> dict[str, str]:
+    """`user` 의 Refresh · CSRF 쿠키를 client 에 심고 로그아웃에 쓸 헤더를 돌려준다."""
+    issued = auth_service._issue_session(db_session, user=user, device_id=uuid.uuid7())
+    db_session.commit()
+    client.cookies.set(REFRESH_COOKIE_NAME, issued.refresh_token, path=REFRESH_COOKIE_PATH)
+    client.cookies.set(CSRF_COOKIE_NAME, "csrf")
+    return {CSRF_HEADER_NAME: "csrf", "Origin": settings.frontend_base_url}
+
+
+def test_logout_closes_the_users_connection_without_ending_the_take(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User, token: str
+):
+    """WS 는 붙을 때만 토큰을 본다. 로그아웃하면 연결을 닫고, Take 는 끊긴 연결처럼 grace 를 건다.
+    FE 는 `UNAUTHORIZED` 를 받으면 토큰을 새로 받아 다시 붙는다(다른 기기는 받을 수 있다)."""
+    headers = _log_in_browser(client, db_session, user)
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+
+        assert client.post("/api/auth/logout", headers=headers).status_code == 200
+
+        assert ws.receive_json()["code"] == "UNAUTHORIZED"
+        assert closed_with(ws) == 1008
+
+    assert TAKE_ID not in state.ended
+    # 새 토큰으로 다시 붙으면 같은 스트림 · Deepgram 세션을 이어 간다
+    with client.websocket_connect(WS_PATH) as again:
+        handshake(again, create_access_token(user.id))
+        again.send_bytes(frame(2, 100))
+        stop(again)
+    assert len(stt.sessions) == 1
+
+
+def test_logout_leaves_other_users_connections_alone(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User, token: str
+):
+    other = User(email="other@example.com", name="다른 사람")
+    db_session.add(other)
+    db_session.commit()
+    theirs_take = make_take(db_session, other.id)
+    headers = _log_in_browser(client, db_session, user)
+
+    with (
+        client.websocket_connect(WS_PATH) as mine,
+        client.websocket_connect(f"/api/ws/takes/{theirs_take.id}") as theirs,
+    ):
+        handshake(mine, token)
+        handshake(theirs, create_access_token(other.id))
+        wait_state(mine, "ok")
+        wait_state(theirs, "ok")
+
+        assert client.post("/api/auth/logout", headers=headers).status_code == 200
+
+        assert mine.receive_json()["code"] == "UNAUTHORIZED"
+        theirs.send_bytes(frame(1, 0))
+        assert stop(theirs)["frames"] == 1
