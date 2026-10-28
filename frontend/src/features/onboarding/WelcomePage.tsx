@@ -85,7 +85,7 @@ export function WelcomePage() {
         본문으로 건너뛰기
       </a>
       <header className="sticky top-0 z-30 border-b border-line-strong bg-panel/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-4 lg:px-10">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-5 px-6 py-5 lg:px-10">
           <a
             href="#main"
             onClick={(e) => jump(e, 'main')}
@@ -96,7 +96,7 @@ export function WelcomePage() {
           </a>
           <nav
             aria-label="랜딩 페이지 메뉴"
-            className="order-3 flex w-full justify-between gap-2 text-xs sm:order-none sm:w-auto sm:gap-6 sm:text-sm"
+            className="order-3 flex w-full justify-between gap-2 text-xs sm:order-none sm:ml-auto sm:w-auto sm:gap-8 sm:text-sm"
           >
             {sections.map(([id, label]) => (
               <a
