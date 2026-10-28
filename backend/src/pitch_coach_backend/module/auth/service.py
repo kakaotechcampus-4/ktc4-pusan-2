@@ -211,8 +211,8 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
     if not refresh_token:
         raise InvalidRefreshToken()
 
-    # 같은 토큰으로 요청이 여럿 동시에 와도 하나씩 처리한다. 잠그지 않으면 셋째 요청이
-    # 둘째가 이미 폐기한 토큰을 이어받으려다 재사용으로 걸려 그 브라우저가 로그아웃된다
+    # 같은 기기의 회전·로그아웃을 하나씩 처리한다. 토큰이 회전해 행이 달라져도 같은 잠금이다.
+    # 유예 재회전과 재사용 탐지도 커밋까지 이 잠금을 유지한다.
     stored = repository.get_refresh_token_for_update(db, security.hash_refresh_token(refresh_token))
     if stored is None:
         raise InvalidRefreshToken()
@@ -294,7 +294,8 @@ def logout(db: Session, refresh_token: str | None) -> None:
     if not refresh_token:
         return
 
-    stored = repository.get_refresh_token(db, security.hash_refresh_token(refresh_token))
+    # 먼저 진행하던 회전이 커밋된 뒤 폐기를 시작해야 새로 발급된 토큰도 함께 폐기한다.
+    stored = repository.get_refresh_token_for_update(db, security.hash_refresh_token(refresh_token))
     if stored is None:
         return
 
