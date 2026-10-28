@@ -63,15 +63,14 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
         pitch_repository.save_presentation(presentation)
     except Exception:
         db.rollback()
-        _discard_upload(pitch_id, version, presentation_key)
+        _discard_upload(db, pitch_id, version, presentation_key)
         raise
     try:
         db.commit()
     except Exception:
         db.rollback()
         # 커밋 응답만 잃었을 수 있다 (커밋 뒤 연결이 끊김). 버전 행이 없을 때만 지운다
-        if _version_saved(db, pitch_id, version) is False:
-            _discard_upload(pitch_id, version, presentation_key)
+        _discard_upload(db, pitch_id, version, presentation_key)
         raise
 
     return UploadPresentationResultDTO(
@@ -82,32 +81,26 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     )
 
 
-def _version_saved(db: Session, pitch_id: uuid.UUID, version: int) -> bool | None:
-    """그 버전 행이 DB 에 있는가. 확인도 못 하면 None — 이때는 파일을 지우지 않는다."""
+def _discard_upload(db: Session, pitch_id: uuid.UUID, version: int, key: str) -> None:
+    """롤백 뒤 같은 발표를 다시 잠그고, 버전 행이 없을 때만 올린 파일을 지운다.
+
+    롤백하면 다음 업로드가 같은 버전 번호 · S3 키를 쓸 수 있다. 확인부터 삭제까지 잠가 그 요청의
+    파일을 지우지 않게 한다. 커밋 응답만 잃었거나 다음 요청이 이미 같은 번호를 저장했으면 남긴다.
+    확인도 못 하면 남기고 원래 실패를 가리지 않게 로그만 남긴다.
+    """
     try:
-        return PitchRepository(db).has_presentation_version(pitch_id, version)
+        repository = PitchRepository(db)
+        repository.lock_for_new_version(pitch_id)
+        if not repository.has_presentation_version(pitch_id, version):
+            delete(key)
     except Exception:
         logger.warning(
-            "발표자료 버전이 저장됐는지 확인하지 못해 올린 파일을 남긴다 pitch_id=%s version=%d",
+            "발표자료 업로드 실패 뒤 파일을 정리하지 못해 남긴다 pitch_id=%s version=%d",
             pitch_id,
             version,
         )
-        return None
     finally:
         db.rollback()
-
-
-def _discard_upload(pitch_id: uuid.UUID, version: int, key: str) -> None:
-    """버전을 남기지 못한 업로드의 파일을 지운다. 못 지워도 같은 번호의 다음 업로드가 덮어쓰고,
-    발표를 지울 때 같이 지워진다. 원래 실패를 가리지 않게 여기서 난 오류는 로그만 남긴다."""
-    try:
-        delete(key)
-    except Exception:
-        logger.error(
-            "버전을 남기지 못한 발표자료 파일을 지우지 못했다 pitch_id=%s version=%d",
-            pitch_id,
-            version,
-        )
 
 
 # 각 발표자료 버전의 상세 정보.
@@ -127,5 +120,5 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         file_url=generate_presigned_url(presentation_version.file_key),
         page_count=presentation_version.page_count,
         description=presentation_version.description,
-        created_at=presentation_version.created_at.astimezone(KST).date()
+        created_at=presentation_version.created_at.astimezone(KST).date(),
     )
