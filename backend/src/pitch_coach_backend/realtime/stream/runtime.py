@@ -107,6 +107,8 @@ QUEUE_MAX_FRAMES = 50
 # 자동 종료를 알린 뒤 FE 가 마지막 1초 조각과 stop 을 보내기를 기다리는 상한. 그 전에 끝난 것으로
 # 적으면 마지막 조각이 빠진다. stop 을 보내지 않는 FE 도 있어 오래 기다리지 않는다
 FINAL_METRICS_WAIT_SEC = 2.0
+# 상태 · 자동 종료 알림은 이 시간 안에 보내지 못해도 STT 와 종료 정리를 계속한다
+CONTROL_SEND_TIMEOUT_SEC = 1.0
 # gaze · voice 가 둘 다 없는 metrics 의 1초 길이. FE 는 1초마다 보낸다
 METRICS_PERIOD_MS = 1_000
 # 연결이 붙어 있고 이 시간 안에 오디오가 왔으면 발표 중으로 본다. 창을 다시 연 FE 가 Take 를
@@ -771,9 +773,10 @@ class TakeStream:
         FE 가 그 사이 stop 을 보내도 괜찮다 — 양쪽 다 같은 스트림이 닫히기를 기다리고, 두 번
         보내는 closed 와 close 는 FE 가 이미 닫은 뒤라 조용히 버려진다.
         """
-        await self._client.send(
-            AutoEndMessage(reason=reason, message=self.auto_end_policy.message(reason))
-        )
+        with anyio.move_on_after(CONTROL_SEND_TIMEOUT_SEC):
+            await self._client.send(
+                AutoEndMessage(reason=reason, message=self.auto_end_policy.message(reason))
+            )
         if not await self.wait_closed(stt_loop.DRAIN_TIMEOUT_SEC + stt_loop.ABORT_TIMEOUT_SEC):
             logger.warning("자동 종료 drain 타임아웃 take=%s. 스트림을 끊는다", self.take_id)
             self.cancel()
@@ -810,16 +813,19 @@ class TakeStream:
         await self.send_status()
 
     async def send_status(self) -> None:
-        await self._client.send(
-            SttStatusMessage(
-                state=self.state,
-                stt_session_no=self.stt_session_no,
-                frames=self.sequencer.frames,
-                dropped_frames=self.sequencer.dropped,
-                silence_ms=self.sequencer.silence_ms,
-                lost_ms=self.sequencer.lost_ms + self.dropped_audio_ms,
+        # 상태 전송은 Deepgram 세션을 연 직후에도 한다. FE 가 받지 않아도 STT 에 진입하고,
+        # stop 을 처리해 세션을 닫을 수 있어야 한다
+        with anyio.move_on_after(CONTROL_SEND_TIMEOUT_SEC):
+            await self._client.send(
+                SttStatusMessage(
+                    state=self.state,
+                    stt_session_no=self.stt_session_no,
+                    frames=self.sequencer.frames,
+                    dropped_frames=self.sequencer.dropped,
+                    silence_ms=self.sequencer.silence_ms,
+                    lost_ms=self.sequencer.lost_ms + self.dropped_audio_ms,
+                )
             )
-        )
 
     async def _notify_coach(self, t_ms: int, reply: EvaluateReply) -> None:
         """코치의 한마디 · 상태 표시를 FE 에 보낸다 (WS `coach`). 떨어져 있으면 버린다."""

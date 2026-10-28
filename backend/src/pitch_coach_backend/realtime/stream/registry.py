@@ -50,9 +50,11 @@ logger = logging.getLogger(__name__)
 MAX_STREAMS_PER_USER = 1
 
 # 끝내는 중인(stop · 자동 종료 · 끝내기 PUT) 스트림이 스스로 닫히기를 기다리는 상한. 끝내는 쪽은
-# 마지막 전사를 기다렸다가 늦으면 직접 끊는다. 가장 긴 쪽인 자동 종료(drain + abort 뒤 취소 정리)와
-# 같다 — 더 일찍 끊으면 끝낸 Take 의 마지막 문장이 빠진다
-ENDING_WAIT_SEC = stt_loop.DRAIN_TIMEOUT_SEC + 2 * stt_loop.ABORT_TIMEOUT_SEC
+# 마지막 전사를 기다렸다가 늦으면 직접 끊는다. 가장 긴 쪽인 자동 종료(알림 + drain + abort 뒤
+# 취소 정리)와 같다 — 더 일찍 끊으면 끝낸 Take 의 마지막 문장이 빠진다
+ENDING_WAIT_SEC = (
+    runtime.CONTROL_SEND_TIMEOUT_SEC + stt_loop.DRAIN_TIMEOUT_SEC + 2 * stt_loop.ABORT_TIMEOUT_SEC
+)
 
 
 class StreamOwnerMismatch(Exception):
