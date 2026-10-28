@@ -87,7 +87,7 @@ def parse(req: ParseRequest) -> ParseResponse:
         meta=build_meta(FEATURE_VERSION, llm=llm),  # "script_parser-1.0"
     )
 ```
-- LLM 실패는 기능에서 잡지 않습니다. `structured_llm`이 공통 예외(`LLM_TIMEOUT` 504 · `LLM_ERROR` 502 · `LLM_INVALID_OUTPUT` 502 · `LLM_UNAVAILABLE` 503)를 던지고, `common/errors.py`가 `{"error": {"code", "message"}}`로 바꿉니다.
+- LLM 실패는 보통 기능에서 잡지 않습니다(예외 둘은 아래 기본 결과 기능과, 장마다 실패를 `failed`에 담는 대본 전달도처럼 장별로 LLM을 부르는 기능. `docs/ai/ai-service.md` 6-2). `structured_llm`이 공통 예외(`LLM_TIMEOUT` 504 · `LLM_ERROR` 502 · `LLM_INVALID_OUTPUT` 502 · `LLM_UNAVAILABLE` 503)를 던지고, `common/errors.py`가 `{"error": {"code", "message"}}`로 바꿉니다.
 - 기본 결과를 내는 기능(코칭 계획 · 리뷰)은 예외의 `code`를 `fallback_reason`으로 쓰고 `build_meta(..., fallback=True)`로 `meta.model`을 null로 둡니다. 설정이 없으면 `structured_llm`이 바로 `LlmUnavailable`을 던지므로, 잡아서 `llm=None`으로 코어를 부릅니다.
 - 기능이 직접 알려야 하는 실패(예: 분석할 발화가 너무 적음)는 `AppError`를 상속해 422로 만듭니다(`common/errors.py` 머리 설명의 예).
 - 출력이 긴 기능은 `settings.py`의 `LLM_ROLES`에 역할을 더하고, 실제 데이터로 잰 출력 길이로 `max_output_tokens`를 정합니다. 호출 한 번 시간 제한이 기능마다 다르면 `Settings`에 칸을 더하고 역할의 `timeout_setting`에 그 칸 이름을 적습니다(예: 대본 전달도).
@@ -155,7 +155,7 @@ ai/service/
     ├── unit/pace/              말 속도 판정 모듈 규칙 · 단어 · 시간 몫 · 계약 · 경계 테스트
     ├── unit/script_parser/     대본 파싱 구분자 · 정제 · 계산 · 계약 · 경계 테스트
     ├── unit/coach/             코치 코어 단위 · 계약 · 경계 테스트
-    └── live/test_llm_live.py · test_script_parser_live.py · test_script_coverage_live.py
+    └── live/test_llm_live.py · test_coach_plan_live.py · test_script_parser_live.py · test_script_coverage_live.py
 ```
 
 | 파일 | 하는 일 | 입력 → 출력 | 부르는 곳 | 고칠 때 |
@@ -168,7 +168,7 @@ ai/service/
 | `src/pitch_coach_ai/settings.py` | 환경변수 읽기(`settings`), 모델 묶음 검사, 역할 → 묶음 · 출력 상한 · 기능별 호출 시간 제한(`LLM_ROLES`, `timeout_for`) | 환경변수 · `ai/.env` → `Settings` | `main.py` · `common/llm.py` | 새 변수는 기본값과 함께 더하고 `ai/.env.example` · 위 표도 |
 | `src/pitch_coach_ai/api/health.py` | `GET /health` · `GET /ready` | — → 200 `{"status": "ok"}` · 200 `{"status": "ready"}` 또는 503 `NOT_READY` | compose 헬스체크, 배포 확인 | LLM을 부르지 않게 둔다 |
 | `src/pitch_coach_ai/api/script_parser.py` | `POST /scripts/parse`. 요청마다 마감(25초)과 역할 `script_parser`(출력 상한 2,000 · 추론 `low`)의 LLM 객체를 만들어 코어에 넘기고(설정이 없으면 부를 때 `LLM_UNAVAILABLE` 을 내는 대역), 코어의 `EmptyScriptError` 를 422 `EMPTY_SCRIPT` 로, `meta.model` 을 응답한 모델로. 대본 길이 · 장 수 · `status` 만 로그 | 기능 문서 5-2 요청 → 5-3 응답 | BE | LLM 만들기는 `get_llm_factory` 의존성(테스트가 가짜로 바꾼다) |
-| `src/pitch_coach_ai/api/script_coverage.py` | 대본 전달도 세 경로. 요청마다 마감(120초)과 역할 다섯 개의 LLM 객체를 만들어 코어에 넘기고, 코어의 `CoverageError` 를 공통 에러 본문으로, `meta.model` 을 응답한 모델로. 장 수 · 글자 수만 로그 | 기능 문서 5-2 요청 → 5-3 응답 | BE | LLM 만들기는 `get_llm_factory` 의존성(테스트가 가짜로 바꾼다). 시작할 때 Kiwi(`WARMUP`) |
+| `src/pitch_coach_ai/api/script_coverage.py` | 대본 전달도 세 경로. 요청마다 마감(120초)과 그 경로 역할의 LLM 객체(`/scripts/rubric` 셋 · `/takes/analyze` 둘, `/takes/rescore`는 없음)를 만들어 코어에 넘기고, 코어의 `CoverageError` 를 공통 에러 본문으로, `meta.model` 을 응답한 모델로. 장 수 · 글자 수만 로그 | 기능 문서 5-2 요청 → 5-3 응답 | BE | LLM 만들기는 `get_llm_factory` 의존성(테스트가 가짜로 바꾼다). 시작할 때 Kiwi(`WARMUP`) |
 | `src/pitch_coach_ai/api/coach.py` | `POST /coach/plan`. 요청마다 마감(25초)과 역할 `coach.plan` 의 LLM 객체를 만들어 코어에 넘기고(설정이 없으면 `llm=None`), `meta.model` 을 응답한 모델로. 장 · 미션 수와 기본 계획 이유만 로그 | 코칭 계획 요청 → `{coaching_plan, fallback_reason, …, meta}` | BE | LLM 만들기는 `get_llm_factory` 의존성(테스트가 가짜로 바꾼다). `evaluate` · `finalize` 는 판정 모듈 넷이 모인 뒤 이 파일에 |
 | `src/pitch_coach_ai/common/errors.py` | 예외 → `{"error": {"code", "message"}}` · 상태 코드. `AppError` 와 LLM 예외 넷, `NotReady`(503), OpenAPI 에 싣는 공통 에러 본문(`ErrorResponse` · `ERROR_RESPONSES`) | 예외 → 에러 응답 | `main.py`(등록), `common/llm.py`(던짐), 기능(상속) | 새 공통 코드는 `architecture.md` 4절을 먼저 바꾼다 |
 | `src/pitch_coach_ai/common/request_log.py` | `X-Request-ID`(받은 그대로 · 없으면 생성), 처리되지 않은 예외 → 500, 요청마다 한 줄 로그 | 요청 → 응답 + 로그 | `main.py` | 로그에 요청 본문 · 쿼리 · 키를 넣지 않는다 |

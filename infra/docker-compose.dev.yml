@@ -1,4 +1,9 @@
 services:
+  fe:
+    build:
+      args:
+        VITE_LAUNCH_GATE_ENABLED: "false"
+        
   caddy:
     ports:
       - "80:80"
