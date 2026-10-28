@@ -77,7 +77,7 @@ ai/research/speech-pace/
 ├─ tools/                                   평가 스크립트 (아직 없음)
 └─ reports/results/                         평가 결과 JSON (CPM 오차 · 상태 일치율 · 멈춤 재현율) (아직 없음)
 ```
-폴더 이름은 `speech-pace`다. 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역 `ai/research/coach-agent/src/coach_lab/judges/pace.py`에 있고, 코치 재생 · 실험은 대역 대신 서비스의 이 모듈을 쓴다(`coach_lab.judges.real_judges`, 2026-10-28부터. 대역은 BE가 읽는 코치 예시를 만드는 `lab_judges`와, 채점 정답이 쓰는 기준값(`coach_lab/truth.py`, 빠름 기준은 이 모듈과 같은 값)에 남는다).
+폴더 이름은 `speech-pace`다. 같은 규칙의 연구용 대역이 코치 연구 폴더의 `ai/research/coach-agent/src/coach_lab/judges/pace.py`에 있다. 코치 재생 · 실험은 2026-10-28부터 대역 대신 서비스의 이 모듈을 쓰고(`coach_lab.judges.real_judges`), 대역은 BE가 읽는 코치 예시를 만드는 `lab_judges`와 채점 정답이 쓰는 기준값(`coach_lab/truth.py`, 빠름 기준은 이 모듈과 같은 값)에만 남는다.
 
 ## 4-2. 진입 함수
 | 함수 | 하는 일 | 부르는 쪽 |
@@ -266,7 +266,7 @@ uv sync
 | 평가 (`ai/research/speech-pace`에서, 아직 없음) | `uv run python tools/evaluate.py --out reports/results/pace_eval.json` | CPM 오차 · 상태 일치율 · 멈춤 재현율 (13절) |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 
-- 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역에 있다. 그 테스트(`tests/lab/test_judge_pace.py`, 코치 쪽 연결 `tests/unit/test_judges.py`)는 `cd ai/research/coach-agent` 뒤 `PYTHONPATH=src python -m pytest tests/lab/test_judge_pace.py tests/lab/test_judge_volume.py tests/lab/test_judges_package.py tests/lab/test_judges_run.py tests/unit/test_judges.py`로 돈다.
+- 코치 연구 폴더의 연구용 대역(`pace-0.2`)과 그 테스트는 `cd ai/research/coach-agent` 뒤 `uv run python -m pytest tests/lab/test_judge_pace.py tests/lab/test_judges_package.py tests/lab/test_judges_run.py`로 돈다. 코치 쪽 연결 테스트는 서비스 `tests/unit/coach/test_judges.py`다.
 - 테스트가 볼 것: 빠름 · 느림 · 기준과 같을 때, 군더더기 글자 빼기, 보류에서 커서 멈춤, `fillers: null`, `stt_ok_since_ms` 앞 단어 빼기와 그 간격은 멈춤 아님, 멈춤은 뒤 단어가 와야 셈, 요청이 빠져 새 1초가 여러 개면 1초마다 시간 몫, 같은 입력이면 같은 결과, 돌려준 커서로 겹친 창을 다시 부르면 중복 없음. 테스트 이름은 동작을 문장으로 짓는다.
 
 # 11. 배포
