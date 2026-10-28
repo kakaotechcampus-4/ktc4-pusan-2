@@ -168,6 +168,8 @@ class TakeStream:
         # 확정 전사의 번호 · 저장 재시도 · 화면에 못 보낸 final. 번호는 저장된 마지막 값에서 이어
         # 받는다
         self._transcripts = TranscriptBuffer(take_id, store, segment_no=segment_no)
+        # 놓친 final 을 다시 보내기 시작한 연결 (`resend_missed`). ready 를 받은 연결이다
+        self._caught_up: WebSocket | None = None
         self._grace_task: asyncio.Task[None] | None = None
         self._task: asyncio.Task[None] | None = None
         # cancel() 뒤 _run 의 정리를 기다리는 태스크. 참조를 들고 있어야 한다 — asyncio 는
@@ -252,12 +254,20 @@ class TakeStream:
         self.sequencer.new_connection()
         await self._client.attach(ws)
 
-    async def resend_missed(self) -> None:
+    async def resend_missed(self, source: WebSocket | None = None) -> None:
         """떨어져 있는 동안 온 final 을 순서대로 다시 보낸다 (`TranscriptBuffer.resend`).
 
         `ready` 뒤에 부른다. 실시간 화면(자막·2단 코치)이 끊긴 구간을 건너뛰지 않게 하는 용도다.
         """
-        await self._transcripts.resend(self._client.send_checked)
+        target = self._client.ws if source is None else source
+        if target is None or not self._client.holds(target):
+            return
+        self._caught_up = target
+
+        async def send(message: TranscriptMessage) -> bool:
+            return await self._send_final_to(message, target)
+
+        await self._transcripts.resend(send)
 
     def is_client(self, ws: WebSocket) -> bool:
         """지금 붙어 있는 연결인가. 다른 탭이 이어받아 쫓겨난 연결이면 False."""
@@ -272,6 +282,7 @@ class TakeStream:
         if not self._client.holds(ws):
             return
         self._client.detach()
+        self._caught_up = None
         self._tab_closed = tab_closed
         # 다시 붙을지 모른다. 모아 둔 1초 원자료를 지금 넣어 둔다
         self._record.metrics.flush_soon()
@@ -608,14 +619,9 @@ class TakeStream:
                     (w.word, w.start_ms, w.end_ms) for w in message.words
                 )
                 # 받은 final 은 정리(취소)가 와도 끝까지 처리한다. 중간에 끊기면 화면에도 DB 에도
-                # 남지 않는다. 화면 전송은 상대가 멈춰 있을 수 있어 상한을 둔다
+                # 남지 않는다
                 with anyio.CancelScope(shield=True):
-                    if not self._client.connected:
-                        # FE 가 떨어져 있다. interim 은 다음 것이 덮으니 버리고 final 만 모은다
-                        self._transcripts.hold_missed(message)
-                    else:
-                        with anyio.move_on_after(stt_loop.ABORT_TIMEOUT_SEC):
-                            await self._client.send(message)
+                    await self._show_final(message)
                     # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
                     # 리포트의 원천은 이 행이지 화면이 아니다
                     if not await self._transcripts.persist(
@@ -628,6 +634,35 @@ class TakeStream:
             self._transcripts.next_segment()
             # 빈 final 도 센다 — 말 없이 들은 구간이라는 뜻이다
             self._observe_silence(event)
+
+    async def _show_final(self, message: TranscriptMessage) -> None:
+        """final 을 화면에 보낸다. 못 보냈으면 모아 두었다가 다시 붙은 연결에 보낸다.
+
+        FE 가 떨어져 있을 때만이 아니라 보내다 실패하거나 상한에 걸렸을 때도 모은다 — 보낸 셈 치면
+        다시 붙은 화면에서 그 구간이 빈다. 전송은 상대가 멈춰 있을 수 있어 상한을 둔다. 늦었을 뿐
+        실제로는 닿았으면 같은 `segment_id` 로 한 번 더 가고 FE 는 덮어쓴다.
+        interim 은 다음 것이 덮으니 모으지 않는다.
+        """
+        target = self._client.ws
+        if target is not None and await self._send_final_to(message, target):
+            return
+        self._transcripts.hold_missed(message)
+        current = self._client.ws
+        if current is not None and current is not target and current is self._caught_up:
+            # 보내는 동안 다른 탭이 이어받았고 그 연결은 놓친 final 을 이미 받았다. 다음 재연결까지
+            # 기다리지 않고 지금 보낸다. 아직 ready 전인 연결이면 그 연결이 따라잡을 때 같이 간다
+            with anyio.move_on_after(stt_loop.ABORT_TIMEOUT_SEC):
+                await self.resend_missed()
+
+    async def _send_final_to(self, message: TranscriptMessage, target: WebSocket) -> bool:
+        # ready를 받은 연결 하나에 고정한다. 보내는 동안 이어받기가 일어나면 옛 연결로 성공한
+        # 전송도 현재 화면에는 닿지 않은 것이므로 목록에서 지우지 않는다.
+        if not self._client.holds(target):
+            return False
+        sent = False
+        with anyio.move_on_after(stt_loop.ABORT_TIMEOUT_SEC):
+            sent = await self._client.send_checked(message)
+        return sent and self._client.holds(target)
 
     def _observe_silence(self, event: Transcript) -> None:
         try:

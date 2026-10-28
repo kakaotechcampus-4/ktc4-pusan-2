@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # 배포 이름. import 패키지는 coach_lab(research 전용 재생 · 실험 도구) 하나다.
 # 판단 코어는 AI 서비스(ai/service)의 pitch_coach_ai.features.coach 에 있고, 서비스를 editable 로 설치해
-# 그대로 import 한다(원본은 서비스 한 곳). src/coach/examples/ 는 BE 테스트가 읽는 예시 사본이다
+# 그대로 import 한다(원본은 서비스 한 곳)
 name = "coach-agent"
 version = "1.0.0"
 description = "Pitch Coach realtime coach agent - research (core + lab)"
@@ -30,7 +30,6 @@ pitch-coach-ai = { path = "../../service", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["src"]
-# src/coach/ 는 BE 테스트용 예시 사본(패키지 아님)
 include = ["coach_lab*"]
 
 [tool.pytest.ini_options]
