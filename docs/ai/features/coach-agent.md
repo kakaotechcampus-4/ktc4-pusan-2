@@ -130,8 +130,6 @@ ai/research/coach-agent/
 | `POST /coach/finalize` | Take 종료 뒤 한 번 (백그라운드). 409면 `replay`를 붙여 한 번 더 | BE |
 | `POST /coach/plan` | 리뷰가 저장된 직후(리뷰가 끝내 실패해도 `previous_review` null로, 첫 Take는 대본 파싱이 끝난 직후), 그리고 대본 · 제한 시간이 바뀌었을 때 (백그라운드). Take 시작은 기다리지 않는다 | BE |
 
-지금 AI 서비스에 열린 것은 `POST /coach/plan`이다. `evaluate` · `finalize`는 11절의 조건이 갖춰지면 연다.
-
 ## 5-2. 입력
 **`/coach/evaluate`**
 
