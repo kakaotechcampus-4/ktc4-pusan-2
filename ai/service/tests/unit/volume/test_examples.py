@@ -12,10 +12,24 @@ from typing import Any
 
 import pytest
 
-from volume.core import baseline, criteria, judge, speaking_levels, summarize
-from volume.schemas import Criteria, PauseJudgment, Summary, VolumeInput, VolumeJudgment
+from pitch_coach_ai.features.volume import core as volume_core
+from pitch_coach_ai.features.volume.core import (
+    baseline,
+    criteria,
+    judge,
+    speaking_levels,
+    summarize,
+)
+from pitch_coach_ai.features.volume.schemas import (
+    Criteria,
+    PauseJudgment,
+    Summary,
+    VolumeInput,
+    VolumeJudgment,
+)
 
-EXAMPLES = Path(__file__).parents[1] / "src/volume/examples"
+#: 예시는 판정 모듈과 함께 옮겨지므로 테스트 파일이 아니라 패키지 위치로 찾는다
+EXAMPLES = Path(volume_core.__file__).resolve().parent / "examples"
 
 
 def load(name: str) -> Any:
