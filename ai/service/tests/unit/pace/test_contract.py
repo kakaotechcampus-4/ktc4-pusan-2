@@ -5,11 +5,12 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from pace.config import DEFAULT, PaceConfig
-from pace.core import criteria, judge, summarize
-from pace.schemas import JudgmentResult, PaceInput
-from pace.version import FEATURE_VERSION
-from tests.helpers import CFG, inputs, run, steady, total
+from pitch_coach_ai.features.pace.config import DEFAULT, PaceConfig
+from pitch_coach_ai.features.pace.core import criteria, judge, summarize
+from pitch_coach_ai.features.pace.schemas import JudgmentResult, PaceInput
+from pitch_coach_ai.features.pace.version import FEATURE_VERSION
+
+from .helpers import CFG, inputs, run, steady, total
 
 T = 60_000
 

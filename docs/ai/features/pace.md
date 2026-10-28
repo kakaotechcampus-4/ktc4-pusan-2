@@ -4,7 +4,7 @@
 > **기준 범위**: 말 속도 판정 모듈의 목표 설계다. 기능 사이 공통 계약(1초 판정 결과 형식 · 커서 · STT 모듈 입력 · 단위 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **관련 Issue**: #154
 > **한 줄 요약**: STT가 확정한 단어로 최근 말 속도(CPM, 군더더기를 뺀 글자 수 ÷ 단어 발화 시간)를 재고, 단어 사이 긴 멈춤을 세어 1초 판정 결과(영역 `SPEED`)를 낸다. 시간 판정이 장별 말한 글자 수와 말 속도를 받아 진행도를 잰다.
-> **기준값**: 빠름 · 느림 기준과 아주 나쁨 값, 최근 창 · 짧은 창 길이, 측정 가능 최소 발화 시간 · 단어 수, 멈춤 기준 시간은 `src/pace/config.py`에만 두고 이 문서에는 지표와 나쁜 방향만 쓴다. 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
+> **기준값**: 빠름 · 느림 기준과 아주 나쁨 값, 최근 창 · 짧은 창 길이, 측정 가능 최소 발화 시간 · 단어 수, 멈춤 기준 시간은 서비스 `features/pace/config.py`에만 두고 이 문서에는 지표와 나쁜 방향만 쓴다. 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
 
 # 0. 한눈에 보기
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
@@ -69,14 +69,13 @@ flowchart LR
 ```
 ai/research/speech-pace/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과, 대역과 달라진 점
-├─ pyproject.toml · uv.lock                 Python 3.12, 의존성은 pydantic 하나
-├─ src/pace/                                판정 모듈 → 서비스 features/pace/로 폴더째 옮긴다
+├─ pyproject.toml · uv.lock                 Python 3.12, 서비스를 editable로 설치해 판정 모듈을 쓴다
+├─ (서비스 ai/service/src/pitch_coach_ai/features/pace/)   판정 모듈 (연구 폴더 src/pace/에서 폴더째 옮김, 테스트는 서비스 tests/unit/pace/)
 │   ├─ schemas.py · core.py · config.py · version.py
 │   └─ examples/                            judge · summarize · criteria 입력 · 출력 예시 (계약 테스트가 읽는다)
-├─ data/                                    평가 데이터: 단어 시각을 사람이 확인한 발화 세트
-├─ tools/                                   평가 스크립트
-├─ tests/                                   판정 규칙 · 커서 · 보류 · 계약
-└─ reports/results/                         평가 결과 JSON (CPM 오차 · 상태 일치율 · 멈춤 재현율)
+├─ data/                                    평가 데이터: 단어 시각을 사람이 확인한 발화 세트 (아직 없음)
+├─ tools/                                   평가 스크립트 (아직 없음)
+└─ reports/results/                         평가 결과 JSON (CPM 오차 · 상태 일치율 · 멈춤 재현율) (아직 없음)
 ```
 폴더 이름은 `speech-pace`다. 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역 `ai/research/coach-agent/src/coach_lab/judges/pace.py`에 있고, 이 모듈이 생기면 코치 재생 · 실험은 대역 대신 이 모듈을 쓴다.
 
@@ -96,7 +95,7 @@ ai/research/speech-pace/
 | 입력 모델은 모르는 필드를 무시하고, 출력 모델은 정해진 필드만 낸다 | `architecture.md` 2절 |
 
 # 5. 입력 · 출력 계약
-입력 · 출력의 원본은 `src/pace/schemas.py`의 pydantic 모델이다. 시각은 모두 Take 시작 기준 ms다. 1초 판정 결과의 공통 필드와 STT 모듈 입력 · 커서 규칙은 `architecture.md` 7절이 기준이고, 아래는 말 속도에만 있는 값이다.
+입력 · 출력의 원본은 서비스 `features/pace/schemas.py`의 pydantic 모델이다. 시각은 모두 Take 시작 기준 ms다. 1초 판정 결과의 공통 필드와 STT 모듈 입력 · 커서 규칙은 `architecture.md` 7절이 기준이고, 아래는 말 속도에만 있는 값이다.
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 |
@@ -251,32 +250,32 @@ ai/research/speech-pace/
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `pace-<버전>` (첫 판 `pace-1.0`, 지금 대역은 `pace-0.2`) | `src/pace/version.py` | 판정 규칙 · 출력의 뜻이 바뀔 때 |
+| `feature_version` | `pace-<버전>` (첫 판 `pace-1.0`, 지금 대역은 `pace-0.2`) | 서비스 `features/pace/version.py` | 판정 규칙 · 출력의 뜻이 바뀔 때 |
 | `criteria_version` | `pace-<버전>+<config 해시 12자리>` | `judge` 출력 → `coach_state` → 응답 `meta.criteria_versions.pace` | 기준값을 바꾸면 해시가 바뀐다 |
 | `schema_version` | `1.0` | 코치 응답 `meta` (`architecture.md` 5절) | 판정 결과의 필드 이름 변경 · 삭제 · 뜻 변경 |
 
 # 10. 실행 · 테스트
-준비 (`ai/research/speech-pace`에서. Python 3.12, `.venv`는 git에 없어 처음 한 번 만든다. LLM을 쓰지 않아 `ai/.env`가 필요 없다)
+준비 (판정 모듈 · 테스트는 `ai/service`에, 평가는 `ai/research/speech-pace`에서. Python 3.12, `.venv`는 git에 없어 폴더마다 처음 한 번 만든다. 연구 폴더는 서비스를 editable로 설치한다. LLM을 쓰지 않아 `ai/.env`가 필요 없다)
 ```bash
-cd ai/research/speech-pace
+cd ai/service
 uv sync
 ```
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 | `uv run python -m pytest` | 판정 규칙 · 커서 · 보류 · 계약(`examples/`, 공통 계약 테스트 틀) 통과 |
-| 평가 | `uv run python tools/evaluate.py --out reports/results/pace_eval.json` | CPM 오차 · 상태 일치율 · 멈춤 재현율 (13절) |
+| 판정 모듈 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/pace` | 판정 규칙 · 커서 · 보류 · 계약(`examples/`, 공통 계약 테스트 틀) 통과 |
+| 평가 (`ai/research/speech-pace`에서, 아직 없음) | `uv run python tools/evaluate.py --out reports/results/pace_eval.json` | CPM 오차 · 상태 일치율 · 멈춤 재현율 (13절) |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 
 - 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역에 있다. 그 테스트(`tests/lab/test_judge_pace.py`, 코치 쪽 연결 `tests/unit/test_judges.py`)는 `cd ai/research/coach-agent` 뒤 `PYTHONPATH=src python -m pytest tests/lab/test_judge_pace.py tests/lab/test_judge_volume.py tests/lab/test_judges_package.py tests/lab/test_judges_run.py tests/unit/test_judges.py`로 돈다.
 - 테스트가 볼 것: 빠름 · 느림 · 기준과 같을 때, 군더더기 글자 빼기, 보류에서 커서 멈춤, `fillers: null`, `stt_ok_since_ms` 앞 단어 빼기와 그 간격은 멈춤 아님, 멈춤은 뒤 단어가 와야 셈, 요청이 빠져 새 1초가 여러 개면 1초마다 시간 몫, 같은 입력이면 같은 결과, 돌려준 커서로 겹친 창을 다시 부르면 중복 없음. 테스트 이름은 동작을 문장으로 짓는다.
 
 # 11. 배포
-**어디서 도는가**: 판정 모듈 `src/pace/`(`examples/` 포함)를 AI 서비스의 `features/pace/`로 폴더째 옮기고, 테스트는 `tests/unit/pace/`로 옮긴다. 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
+**어디서 도는가**: 판정 모듈(`examples/` 포함)은 AI 서비스의 `features/pace/`에 있다(연구 폴더 `src/pace/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 모두 `tests/unit/pace/`로 옮겼다. 예시 · 코어 폴더를 연구 폴더 경로로 찾던 `test_examples.py` · `test_core_boundary.py`는 패키지 위치로 찾게 고쳐 옮겼다. 연구 폴더에는 연구 도구를 쓰는 테스트가 없어 남긴 테스트가 없다. 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다. 코치 앱 연결(`evaluate` · `finalize`)은 소리 크기까지 서비스에 온 뒤다(`ai-service.md` 6-1 5번).
 
 **환경변수**: 말 속도 모듈은 환경변수를 읽지 않는다.
 
 **옮긴 뒤 같은 결과인지 확인**
-1. 서비스: 옮긴 `tests/unit/pace/`가 그대로 통과한다.
+1. 서비스: 옮긴 `tests/unit/pace/`가 (경로를 고친 뒤) 통과하고, 코어 경계 테스트가 새 위치를 본다. 옮기기 전후 `examples/`의 `judge` · `summarize` · `criteria` 출력과 `criteria_version`이 바이트까지 같다.
 2. 코치 연구 폴더: 연구용 대역 대신 이 모듈을 `Judges`에 넣어 재생 · 실험을 다시 돌리고 달라진 판정을 README에 기록한다.
 
 **증상별 원인**
@@ -350,4 +349,4 @@ uv sync
 | Take 지표 | `cpm` · `pause_count` · `measured_ratio` | 5-3 |
 | 버전 | `pace-1.0` · `criteria_version` `pace-1.0+<config 해시 12자리>` | 9절 |
 | 저장 | Take 결과 `areas.SPEED`, 리포트 `take_summaries.average_cpm` · `total_intermission` | 12-1 |
-| 의존성 | pydantic 하나, Python 3.12, 폴더 `ai/research/speech-pace/` | 4절 · 11절 |
+| 의존성 | pydantic 하나, Python 3.12, 서비스 `features/pace/` (연구 폴더 `ai/research/speech-pace/`) | 4절 · 11절 |
