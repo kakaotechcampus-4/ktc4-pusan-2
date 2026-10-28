@@ -57,7 +57,7 @@
 | Take 결과 | Take가 끝난 뒤 코치가 만드는 사실 묶음 (지표 · 문제 구간 · 개입 · 포기 · 판정 기준) | `take_result` |
 | `replay` | 코치가 Take를 다 세지 못했을 때 BE가 보내는 Take 전체 원자료. 코치는 이것으로 0초부터 다시 판정한다 | 409 `REPLAY_REQUIRED` 뒤 다시 부름 |
 | 문장 끝 신호 | Deepgram `UtteranceEnd`가 알린 마지막 단어의 끝 시각(`architecture.md` 6-2). 코치는 말하는 도중이면 이 신호까지 기다린다 | `utterance_ends: [89400]` |
-| 연구용 판정 대역 | 연구 폴더(`coach_lab/judges/`)에서 판정 모듈 대신 쓰는 모듈. 시선 · 군더더기는 서비스의 실제 판정 모듈로 바꿨고, 말 속도 · 소리 크기만 대역이다. 재생 · 채점 · 복구 실험은 실제 모듈을 섞은 `real_judges()`를, 예시 생성 · 대역 시험은 대역 넷인 `lab_judges()`를 쓴다 | `real_judges()` · `lab_judges()` |
+| 연구용 판정 대역 | 연구 폴더(`coach_lab/judges/`)에서 판정 모듈 대신 쓰는 모듈. 시선 · 군더더기 · 말 속도는 서비스의 실제 판정 모듈로 바꿨고, 소리 크기만 대역이다. 재생 · 채점 · 복구 실험은 실제 모듈을 섞은 `real_judges()`를, 예시 생성 · 대역 시험은 대역 넷인 `lab_judges()`를 쓴다 | `real_judges()` · `lab_judges()` |
 
 # 3. 전체 흐름
 ```mermaid
