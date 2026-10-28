@@ -22,7 +22,7 @@
   - 사용자 평가 기준의 대본 사용 허용(`script_used`)에 따라 결과를 바꾸지 않는다. 시선 모듈은 늘 같은 결과를 내고, 대본 응시를 지적하지 않는 판단은 코치 · 리뷰가 한다.
   - 대본 의존을 LLM으로 판단하지 않는다. 시선과 발화 시간으로만 잰다(`architecture.md` 0-3).
   - 이전 Take와의 비교 · 개입 효과 계산을 하지 않는다. 비교는 리뷰가, 개입 효과는 코치가 이 모듈의 짧은 창 지표로 잰다.
-  - 카메라 화면 · 보정 화면의 디자인을 정하지 않는다. 화면(UI)은 FE 담당이다.
+  - 카메라 화면 · 보정 화면(흐름 · 그리기 · 안내 문구)을 만들지 않는다. 화면(UI)은 FE 담당이고, 이 기능은 화면이 쓰는 값 · 코드와 판정 규칙을 낸다(5-6, 11절).
 
 # 1. 왜 필요한가
 ## 1-1. 배경
@@ -102,8 +102,8 @@ ai/research/gaze-tracking/
 ├─ tools/ · experiments/                    데모 · 자산 받기 · 생성기 · 비교 실험
 ├─ tests/lab/                               기준 구현과 생성 파일 (서버 판정 모듈 테스트는 서비스 tests/unit/gaze/)
 ├─ reports/results/                         평가 결과 JSON (평가 데이터가 생기면)
-└─ web/                                     브라우저 엔진 개발 사본 · Worker · 카메라 화면 · 데모 · bench (Node 24)
-frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · Worker · 카메라 화면 (FE 폴더. 엔진 계약은 AI, 화면은 FE)
+└─ web/                                     브라우저 엔진 · Worker 원본, 연구 데모 · 브라우저 시험용 카메라 화면 · bench (Node 24)
+frontend/src/vendor/gaze/                   배포되는 브라우저 엔진 · Worker (AI 원본 복사) · 카메라 화면 (FE 담당, 11절)
 ```
 파일마다의 역할은 `ai/research/gaze-tracking/README.md` 3절의 파일 지도에 있다.
 
@@ -395,6 +395,20 @@ FE와 브라우저 엔진 사이의 계약이다. 원본은 엔진의 `engine/co
 
 `SECOND_FACE`(다른 얼굴이 보임)도 타입에는 있지만 신뢰도를 낮추지 않는 알림이라 `issues`로 가지 않는다.
 
+**화면이 쓰는 엔진 코드** — 카메라 화면(FE 담당, 11절)이 안내 문구를 고를 때 쓰는 값이다. 엔진은 코드만 내고 문구는 화면이 정한다. 화면은 엔진을 `index.ts`(타입만)와 `contract.ts`, Worker를 `worker/protocol.ts`로만 쓴다(연구 폴더 `web/test/camera-boundary.test.ts`가 지킨다). 원본은 각 타입 정의이고, 모르는 코드가 와도 화면은 일반 문구로 견딘다.
+
+| 묶음 (타입 · 어디에 실리나) | 코드 | 뜻 |
+|---|---|---|
+| 준비 점검 `PreconditionReason` (`checkPreconditions` 결과) | `OK` · `NO_FACE` · `MULTIPLE_FACES` · `OFF_CENTER` · `TOO_FAR` · `TOO_CLOSE` · `FACING_AWAY` · `TOO_DARK` · `BACKLIT` · `LOW_FPS` | 통과 · 얼굴 없음 · 여러 명 · 가운데 아님 · 멂 · 가까움 · 정면 아님 · 어두움 · 역광 · 카메라 프레임이 느림 |
+| 얼굴을 못 읽은 프레임 `InvalidReason` (Worker `FrameSummary.invalidReason`, 그 프레임의 `FrameDecision.uncertain_reason`, 게이지 · 고개 원 사유에도 쓰임) | `NO_FACE` · `LOW_FACE_CONFIDENCE` · `FACE_TOO_SMALL` · `OUT_OF_FRAME` · `EYES_CLOSED` · `CROP_FAILED` · `BACKBONE_FAILED` | 얼굴 없음 · 얼굴 일부만 · 너무 작음 · 화면 밖 · 눈 감음 · 얼굴 잘라내기 실패 · 자세 계산 실패 |
+| 고개 원 (`SweepStatus.last_reason`) | `TOO_FAST` · `NO_HEAD_POSE` + 위 `InvalidReason` | 너무 빨리 돌림 · 고개 방향을 못 읽음 |
+| 보정 게이지 `GaugeReason` (`GaugeStatus`) | `LOW_GAZE_CONFIDENCE` · `SETTLING` · `HEAD_MOVED` · `BLINK` · `OUTLIER` · `NOT_ACTIVE` · `LOOK_HIGHER` · `LOOK_LOWER` · `OFF_TARGET` + 위 `InvalidReason` | 얼굴이 가장자리에 걸림 · 자리 잡는 중 · 고개가 움직임 · 깜빡임 · 다른 곳을 봄 · 지점 수집 중 아님 · 더 들어야 함 · 더 숙여야 함 · 과녁 방향이 아님 |
+| 카메라 위치 (`PlacementResultDict`) | 위치 `TOP` · `BOTTOM` · `SIDE_LEFT` · `SIDE_RIGHT` · `INCONCLUSIVE`, 판정하지 못한 이유 `PlacementReason` `NOT_ENOUGH_SAMPLES` · `TARGETS_NOT_SEPARATED` · `DISPLACEMENT_TOO_SMALL` · `AMBIGUOUS_AXIS` | 화면 위 가운데(정상) · 아래 · 왼쪽 · 오른쪽 · 판정 불가 / 프레임 부족 · 렌즈와 화면 가운데 자세가 거의 같음 · 방향 차이가 작음 · 대각선이라 축을 못 정함 |
+| 보정 실패 `FailReason` (보정 결과 `status: RETRY_REQUIRED`일 때 `reason`) | `NOT_ENOUGH_SAMPLES` · `DEGENERATE_FEATURES` · `CLASS_NOT_SEPARABLE` · `CENTROIDS_TOO_CLOSE` · `ANCHOR_AMBIGUOUS` · `LOW_LOO_ACCURACY` | 프레임 부족 · 세 지점 자세가 같음 · 렌즈와 대본을 가를 수 없음 · 두 지점이 너무 가까움 · 한 지점이 주변과 구분되지 않음 · 지점별 값이 섞임 (재측정 권장은 7절) |
+| 보정 경고 (보정 결과 `warnings`) | `SCREEN_MERGED_WARNING`(`contract.ts`) · `INVERTED_PITCH:`로 시작하는 문장 | 화면 구역을 청중에 합침(4-3) · 지점의 위아래 순서가 뒤집힘(카메라 위치 확인) |
+| 판정 보류 (`FrameDecision.uncertain_reason`) | `LOW_CONFIDENCE` · `LOW_MARGIN` · `HEAD_AWAY` · `NOT_CALIBRATED` + 심한 촬영 조건 이슈(`FACE_LOST` · `FACE_REPLACED` · `MOVED_TOO_FAR`) | 두 구역 사이라 애매 · 확률 차이가 작음 · 고개가 보정 범위 밖 · 보정 전 |
+| 시작 · 실행 실패 | `EngineInitError.reason` · Worker `failed.reason` · 카메라 화면 `error` 이벤트 | 위 '시작' 표와 7절 |
+
 # 6. 처리 — 안에서 어떻게 도는가
 ## 6-1. 브라우저 엔진: 프레임 → 1초 기록
 1. **준비 점검** (`checkPreconditions`): 얼굴이 한 명인지, 화면 가운데인지, 인식할 수 있는 크기 · 밝기인지 본다. 결과는 화면 안내용이고 발표를 막지 않는다.
@@ -494,7 +508,8 @@ cd web && npm ci
 # 11. 배포
 **어디서 도는가**: 두 곳에 배포된다.
 - **서버 판정 모듈**(`examples/` 포함)은 AI 서비스의 `features/gaze/`에 있다(연구 폴더 `src/gaze/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/gaze/`로 옮겼다(`tests/unit/`의 테스트는 이미 예시를 패키지 위치로 찾는다. `test_contract.py`는 '말한 1초' 기준값을 소리 크기 판정 모듈의 기준값 파일과 비교한다(`architecture.md` 6-2). 그 파일을 서비스의 `features/volume/`에서 먼저 찾고, 소리 크기가 서비스에 오기 전에는 연구 폴더의 소리 크기 `config.py`와 비교한다. 소리 크기를 서비스로 옮기면 연구 폴더 후보를 지운다). 자기 HTTP 엔드포인트는 없다. 코치 `evaluate` · `finalize`를 열 때 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 지금은 코치 연구 폴더의 재생 · 실험(`real_judges()`)이 이 모듈을 쓴다. 의존성은 pydantic 하나다.
-- **브라우저 엔진** `web/src/engine/`(원본)은 FE가 `frontend/src/vendor/gaze/`로 Worker · 카메라 화면과 함께 복사해 쓴다. FE는 엔진의 `index.ts` · `contract.ts`만 import하고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. 엔진 안은 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다. 화면(카메라 화면 · 보정 안내)은 FE가 고친다.
+- **브라우저 엔진 · Worker**: `web/src/engine/` · `web/src/worker/`가 원본이고 AI가 고친다. FE는 `frontend/src/vendor/gaze/`로 복사해 쓰고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. FE는 엔진의 `index.ts` · `contract.ts`와 Worker의 `protocol.ts`만 쓴다. 엔진 · Worker 안은 FE에서 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다.
+- **카메라 화면**(`camera/`: 준비 점검 · 고개 원 · 보정 · 결과 카드의 흐름 · 그리기 · 안내 문구)은 FE 담당이다(#611). FE 사본이 원본이 되고 FE가 고친다. 화면은 엔진 공개 입구와 5-6의 '화면이 쓰는 엔진 코드'만으로 만든다. 연구 폴더의 `web/src/camera/`는 연구 데모와 브라우저 시험(`npm run smoke`)용으로만 남고, FE와 동기화하지 않는다(FE 화면을 데모로 보고 싶으면 그때 받아 온다). FE가 넘겨받기 전까지는 지금처럼 연구 폴더 판을 복사한다.
 
 **옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 있고 아래 '옮긴 뒤 확인' 1을 통과해 옮겼다(2026-10-26). 2(코치 연구 폴더 재생)도 마쳤다(2026-10-26, 코치 연구 폴더 README 7절). 3(FE) · 4(연구 도구와 FE 사본 대조)와 코치 앱 연결은 이어지는 작업이다.
 
