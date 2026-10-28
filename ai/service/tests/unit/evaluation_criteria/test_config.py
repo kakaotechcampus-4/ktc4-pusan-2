@@ -6,9 +6,9 @@
 import re
 from typing import get_args
 
-from evaluation_criteria.config import DEFAULT
-from evaluation_criteria.prompts import SYSTEM_PROMPT
-from evaluation_criteria.schemas import Criteria, Metric
+from pitch_coach_ai.features.evaluation_criteria.config import DEFAULT
+from pitch_coach_ai.features.evaluation_criteria.prompts import SYSTEM_PROMPT
+from pitch_coach_ai.features.evaluation_criteria.schemas import Criteria, Metric
 
 METRICS = set(get_args(Metric))
 
@@ -24,7 +24,12 @@ def test_every_metric_belongs_to_exactly_one_element():
 
 def test_value_ranges_cover_every_metric_once():
     # voice_diff_db 는 평소 목소리 대비라 범위가 없다
-    groups = [DEFAULT.ratio_metrics, DEFAULT.count_metrics, DEFAULT.positive_metrics, {"voice_diff_db"}]
+    groups = [
+        DEFAULT.ratio_metrics,
+        DEFAULT.count_metrics,
+        DEFAULT.positive_metrics,
+        {"voice_diff_db"},
+    ]
     assert sorted(m for g in groups for m in g) == sorted(METRICS)
 
 

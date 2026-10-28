@@ -10,13 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from evaluation_criteria import analyze_criteria
-from evaluation_criteria.schemas import EvaluationCriteriaRequest, EvaluationCriteriaResponse
+from pitch_coach_ai.features.evaluation_criteria import analyze_criteria, core
+from pitch_coach_ai.features.evaluation_criteria.schemas import EvaluationCriteriaRequest, EvaluationCriteriaResponse
 from run import build_llm
 
 pytestmark = pytest.mark.live
 
-EXAMPLES = Path(__file__).resolve().parents[2] / "src" / "evaluation_criteria" / "examples"
+# 예시는 코어와 함께 서비스로 옮겼으므로 패키지 위치로 찾는다
+EXAMPLES = Path(core.__file__).parent / "examples"
 REQUESTS = sorted(EXAMPLES.glob("request*.json"))
 
 

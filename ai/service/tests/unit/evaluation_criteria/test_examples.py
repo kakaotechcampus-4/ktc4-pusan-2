@@ -10,15 +10,17 @@ from typing import Any
 
 import pytest
 
-from evaluation_criteria import analyze_criteria
-from evaluation_criteria.schemas import (
+from pitch_coach_ai.features.evaluation_criteria import analyze_criteria, core
+from pitch_coach_ai.features.evaluation_criteria.schemas import (
     EvaluationCriteriaAnalysis,
     EvaluationCriteriaRequest,
     EvaluationCriteriaResponse,
 )
-from tests.fakes import FakeLLM
 
-EXAMPLES = Path(__file__).resolve().parents[1] / "src" / "evaluation_criteria" / "examples"
+from .fakes import FakeLLM
+
+# 코어 파일과 함께 옮겨지므로 파일 위치가 아니라 패키지 위치로 찾는다
+EXAMPLES = Path(core.__file__).parent / "examples"
 #: 기본(5-5) · 경계 — 긴 침묵 · 말 속도 · 대본 사용 · 경계 — 숫자 목표 없음
 CASES = ["", "_long_silence", "_no_targets"]
 IDS = ["basic", "long_silence", "no_targets"]
