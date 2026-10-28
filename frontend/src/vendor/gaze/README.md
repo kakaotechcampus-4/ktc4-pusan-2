@@ -11,8 +11,8 @@ AI 파트(제원)가 만든 브라우저용 시선 엔진과, 그 엔진을 쓰�
 | 항목 | 값 |
 | --- | --- |
 | 원본 | `ai/research/gaze-tracking/web/src/{engine,worker}` (`engine/__tests__` 포함) |
-| 기준 커밋 | `11db0f7d` (docs(ai): 검증 반영 — #611) — PR #612 브랜치, 머지 전. 머지되면 머지 커밋으로 고칩니다 |
-| `camera/` 넘겨받은 판 | 같은 `11db0f7d`. 이 뒤로는 FE 원본입니다 |
+| 기준 커밋 | `f7639880` — PR #612 브랜치(리뷰 반영 `9e6cde57` 포함), 머지 전. 머지되면 머지 커밋으로 고칩니다 |
+| `camera/` 넘겨받은 판 | `11db0f7d` (PR #612). 그 뒤 AI 쪽 `camera/` 는 바뀌지 않았고, 이 뒤로는 FE 원본입니다 |
 | 모델 버전 | `gaze_v1.1.0+head_pose+reference_anchor_v1` · 설정 해시 `32ad2751de59` |
 | 사용법 원문 | `ai/research/gaze-tracking/web/README.md` (FE에 붙이는 법 · 카메라 화면 붙이기) · `ai/research/gaze-tracking/DEPLOY.md` |
 | 화면이 쓰는 엔진 코드 | `docs/ai/features/gaze-tracking.md` 5-6 '화면이 쓰는 엔진 코드' (엔진은 코드만 내고 문구는 `camera/text.ts` 가 정합니다) |
@@ -48,7 +48,9 @@ Worker 는 `camera/view.ts` 가 `../worker/gaze.worker.ts` 를 경로로 띄우�
 1. 위 원본 경로의 **`engine` · `worker` 두 폴더만** 통째로 덮어씁니다. `camera/` 는 덮어쓰지 않습니다 — FE 가 고친 것이 사라집니다.
 2. 이 문서의 기준 커밋과 모델 버전을 고칩니다.
 3. `npm run typecheck` 가 `camera/` 에서 깨지면 엔진의 공개 입구가 바뀐 것입니다. 화면 쪽을 맞춥니다.
-   엔진에 새 코드가 생겼으면(`gaze-tracking.md` 5-6) `camera/text.ts` 에 문구를 더합니다.
+   엔진에 이유 코드가 늘거나 줄면 `camera/text.ts` 의 문구표(`satisfies` 로 키 범위를 검사)가 typecheck 에서 알려 줍니다.
+   고개 원 · 판정 보류 사유(`SWEEP_REASON` · `UNCERTAIN_REASON`)는 엔진에 타입이 없어 검사되지 않으니
+   `gaze-tracking.md` 5-6 표와 직접 맞춰 봅니다.
 4. 옛 보정 기준은 쓰이지 않습니다 — 기준은 탭 메모리에만 두어(`features/rehearsal/lib/zoneRefMemory.ts`) 새로고침하면 사라지고,
    탭에 남아 있어도 엔진 버전이 다르면 `takeZoneRef` 가, 버전은 같아도 설정이 바뀌면 `configHash` 가 달라져
    `workers/calibrationModel.ts` 가 거릅니다.
