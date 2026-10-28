@@ -27,6 +27,11 @@ WS /api/ws/takes/{take_id}
   뒤로 가면 탭을 새로고침해 처음부터 다시 센 것으로 본다 — 보낸 프레임을 다시 보내면 중복이 아니라 재시작으로
   읽힌다. 확인 응답이 없을 때 다시 보내는 기능을 넣으려면 먼저 이어 보내는지 처음부터 다시 세는지를 FE 가
   첫 메시지에서 알려 주도록 이 규약부터 바꾼다.
+- **오디오는 실시간으로 보낸다.** BE 는 프레임 사이 틈(5초 이하)을 무음으로 메워 Deepgram 에 보내는데, 틈은
+  `offset_ms` 로만 잰다. 그래서 Deepgram 에 보낼 길이(받은 PCM + 메울 무음)를 스트림이 열려 있던 서버 시간으로
+  묶고, 다시 붙을 때 몰아 보내는 몫으로 10초까지 앞서 받는다 (`event_ingestion.AudioBudget`). 넘는 프레임은
+  버리고 `dropped_frames` · `lost_ms` 로 센다. FE 가 쌓아 두는 오디오(2초)와 무음으로 메우는 틈(5초)을 합친 것보다
+  크므로 정상 흐름에서는 버리지 않는다.
 - `stt_status` 는 상태가 바뀔 때마다 온다. `connecting` → `ok` → (`reconnecting` → `degraded`) → `closed`.
   숫자(`frames`·`dropped_frames`·`silence_ms`·`lost_ms`)는 연결 단위가 아니라 **Take 누적**이다.
 - **Deepgram 이 죽어도 연결을 끊지 않는다.** 오디오를 최대 5초 큐에 담고 백오프로 재접속하며
