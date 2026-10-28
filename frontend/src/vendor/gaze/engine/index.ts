@@ -137,7 +137,7 @@ export type { PreconditionReport, PreconditionReason, PreconditionStatus } from 
 export { directionOfAngle, HeadSweep } from './sweep';
 export type { SweepState, SweepStatus } from './sweep';
 export type { CalibrationQualityDict, ReferenceModelData } from './reference';
-export type { Cue, GazeDirection, Observation, State, StateClass } from './types';
+export type { Cue, FaceGuide, GazeDirection, Observation, State, StateClass } from './types';
 export { GAZE_DIRECTIONS } from './types';
 export { CONFIG_HASH, makeConfig, VERSION } from './config';
 export type { EngineConfig, EvidenceConfig, SweepConfig } from './config';

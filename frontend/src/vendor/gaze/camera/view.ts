@@ -25,15 +25,25 @@
  * calibration model goes to the host (`calibrated`) to keep or drop.
  */
 import './camera.css';
-import type { CalibrationQualityDict, CalibrationModel } from '../engine';
-import { makeConfig } from '../engine/config';
-import type { FrameDecision, OtherMapping } from '../engine/contract';
-import type { BaselineCheck, ReanchorStatus } from '../engine/engine';
-import type { GaugeStatus } from '../engine/gauge';
-import type { PlacementResultDict } from '../engine/placement';
-import type { PreconditionReport } from '../engine/preconditions';
-import type { SweepStatus } from '../engine/sweep';
-import { GAZE_DIRECTIONS, type Cue, type GazeDirection, type StateClass } from '../engine/types';
+import type {
+  BaselineCheck,
+  CalibrationModel,
+  CalibrationQualityDict,
+  GaugeStatus,
+  PlacementResultDict,
+  PreconditionReport,
+  ReanchorStatus,
+  SweepStatus,
+} from '../engine';
+import {
+  GAZE_DIRECTIONS,
+  makeConfig,
+  type Cue,
+  type FrameDecision,
+  type GazeDirection,
+  type OtherMapping,
+  type StateClass,
+} from '../engine/contract';
 import type {
   EngineFailure,
   FrameMode,
