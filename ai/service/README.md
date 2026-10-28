@@ -200,7 +200,7 @@ ai/service/
 | `tests/test_openapi.py` | 커밋된 `contracts/openapi.json` 이 코드와 같은지, 등록된 경로 목록, 에러 응답이 공통 본문으로 문서화됐는지 | — | pytest | 다르면 `tools/export_openapi.py` 로 다시 만든다 |
 | `tests/unit/common/` | 설정(기능별 시간 제한 포함) · LLM(가짜 LLM) · meta · 준비 상태 단위 테스트 | — | pytest | — |
 | `tests/unit/script_coverage/` | 대본 전달도 단위 · 계약(`test_examples.py`, 예시와 그 LLM 캐시) · 코어 경계(`test_core_boundary.py`, 코어 패키지 위치 기준) · 엔드포인트(`test_api.py`) · 마감이 중간에 지날 때(`test_deadline.py`) 테스트. 가짜 LLM `fakes.py` | — | pytest | 연구 lab 테스트가 `fakes.py` · `shared/slides.py`의 사본을 쓴다 |
-| `tests/unit/gaze/` | 시선 판정 모듈 단위(`judge` · `summarize`) · 계약(`test_examples.py`) · 코어 경계 테스트. 소리 크기 기준값 비교는 `features/volume/`이 올 때까지 연구 폴더의 소리 크기 `config.py`와 한다 | — | pytest | — |
+| `tests/unit/gaze/` | 시선 판정 모듈 단위(`judge` · `summarize`) · 계약(`test_examples.py`) · 코어 경계 테스트. '말한 1초' 기준값은 `features/volume/config.py`와 비교한다(`test_contract.py`) | — | pytest | — |
 | `tests/unit/filler/` | 군더더기 판정 모듈 규칙 · 보류 · 커서 · 지표 · 합계 · 계약(`test_examples.py`) · 코어 경계 테스트. 도우미 `helpers.py` | — | pytest | keyterm 파일 최신 검사는 연구 폴더 `tests/test_keyterms.py` |
 | `tests/unit/pace/` | 말 속도 판정 모듈 규칙(`test_judge.py`) · 단어 · 시간 몫(`test_tally.py`) · 입력 · 출력 모델(`test_contract.py`) · 예시(`test_examples.py`) · 코어 경계 테스트. 도우미 `helpers.py` | — | pytest | — |
 | `tests/unit/volume/` | 소리 크기 판정 모듈 규칙(`test_judge.py`) · 기준 음량(`test_baseline.py`) · 합계 · 판정 기준(`test_summarize.py`) · 예시 계약(`test_examples.py`) | — | pytest | — |
