@@ -122,7 +122,7 @@ ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 �
 
 - 최상위 진입 함수 이름은 `architecture.md` 8절의 모듈 표(`analyze_script` · `evaluate_take` · `rescore_evaluation`)와 같다.
 
-- LLM 객체와 캐시는 인자로 받는다. LLM 객체는 출력 스키마마다 하나씩(1차 분석 · 최종 결론 · 전달 단위 · 채점 · 교차 검증, 다섯 개) 서비스의 `common/llm.py`가 만든다(`architecture.md` 9절). 배포에서는 캐시를 쓰지 않는다(`cache=None`).
+- LLM 객체와 캐시는 인자로 받는다. LLM 객체는 출력 스키마마다 하나씩(전체 다섯 종: 1차 분석 · 최종 결론 · 전달 단위 · 채점 · 교차 검증) 서비스의 `common/llm.py`가 만들고, 요청에서는 그 경로가 쓰는 것만 만든다(`/scripts/rubric` 셋 · `/takes/analyze` 둘, 11절, `architecture.md` 9절). 배포에서는 캐시를 쓰지 않는다(`cache=None`).
 
 ## 4-3. 규칙과 이유
 | 규칙 | 이유 |
