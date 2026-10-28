@@ -266,7 +266,7 @@ uv sync
 | 평가 (`ai/research/speech-pace`에서, 아직 없음) | `uv run python tools/evaluate.py --out reports/results/pace_eval.json` | CPM 오차 · 상태 일치율 · 멈춤 재현율 (13절) |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 
-- 코치 연구 폴더의 연구용 대역(`pace-0.2`)과 그 테스트는 `cd ai/research/coach-agent` 뒤 `uv run python -m pytest tests/lab/test_judge_pace.py tests/lab/test_judges_package.py tests/lab/test_judges_run.py`로 돈다. 코치 쪽 연결 테스트는 서비스 `tests/unit/coach/test_judges.py`다.
+- 코치 연구 폴더의 연구용 대역(`pace-0.2`)과 그 테스트는 `cd ai/research/coach-agent` 뒤 `uv run python -m pytest tests/lab/test_judge_pace.py tests/lab/test_judge_volume.py tests/lab/test_judges_package.py tests/lab/test_judges_run.py`로 돈다(소리 크기 대역 테스트는 `volume.md` 10절이 이 명령을 가리켜 함께 둔다). 코치 쪽 연결 테스트는 서비스 `tests/unit/coach/test_judges.py`다.
 - 테스트가 볼 것: 빠름 · 느림 · 기준과 같을 때, 군더더기 글자 빼기, 보류에서 커서 멈춤, `fillers: null`, `stt_ok_since_ms` 앞 단어 빼기와 그 간격은 멈춤 아님, 멈춤은 뒤 단어가 와야 셈, 요청이 빠져 새 1초가 여러 개면 1초마다 시간 몫, 같은 입력이면 같은 결과, 돌려준 커서로 겹친 창을 다시 부르면 중복 없음. 테스트 이름은 동작을 문장으로 짓는다.
 
 # 11. 배포
