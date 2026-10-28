@@ -8,6 +8,7 @@ import threading
 from typing import BinaryIO
 
 from pypdf import PdfReader
+from pypdf.generic import IndirectObject
 
 from pitch_coach_backend.module.pitch.exception import PresentationBusy, PresentationTooComplex
 
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 MAX_PRESENTATION_BYTES = 40 * 1024 * 1024
 
 MAX_PDF_OBJECTS = 50_000
+
+MAX_PDF_PAGES = 100
 
 PAGE_COUNT_SLOTS = 2
 
@@ -39,6 +42,26 @@ def _object_count(reader: PdfReader) -> int:
     return sum(len(entries) for entries in reader.xref.values()) + len(reader.xref_objStm)
 
 
+def _count_pages(reader: PdfReader) -> int:
+    count = 0
+    seen: set[int] = set()
+    stack = [reader.trailer["/Root"].get_object()["/Pages"]]
+    while stack:
+        ref = stack.pop()
+        node = ref.get_object()
+        if node.get("/Type") == "/Pages" or "/Kids" in node:
+            key = ref.idnum if isinstance(ref, IndirectObject) else id(node)
+            if key in seen:
+                raise ValueError("page tree cycle")
+            seen.add(key)
+            stack.extend(node["/Kids"])
+        else:
+            count += 1
+            if count > MAX_PDF_PAGES:
+                raise PresentationTooComplex()
+    return count
+
+
 def count_pdf_pages(file: BinaryIO) -> int | None:
     """PDF 쪽수. 열리지 않거나(PDF 가 아님 · 깨짐 · 여는 암호) 쪽이 없으면 None.
 
@@ -50,7 +73,7 @@ def count_pdf_pages(file: BinaryIO) -> int | None:
         reader = PdfReader(file)
         if _object_count(reader) > MAX_PDF_OBJECTS:
             raise PresentationTooComplex()
-        pages = len(reader.pages)
+        pages = _count_pages(reader)
     except PresentationTooComplex:
         raise
     except Exception as e:
