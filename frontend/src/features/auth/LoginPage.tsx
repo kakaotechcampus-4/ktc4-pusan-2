@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router';
+import { Link, Navigate, useSearchParams } from 'react-router';
+import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { safeDestination, useSession } from './useSession';
 
 /** P11: 로그인 시작과 콜백 상태 안내, 세션 확인 후 목적지 이동을 담당한다. */
@@ -77,53 +78,95 @@ export function LoginPage() {
 
   if (session.data && !authError) return <Navigate replace to={destination} />;
 
+  // 웰컴(`/welcome`)과 같은 머리 · 테두리 · 그림자를 씁니다. 웰컴의 "시작하기"가 이 화면으로 옵니다
   return (
-    <main className="flex min-h-dvh items-center justify-center px-6 py-12">
-      <section
-        aria-labelledby="login-title"
-        className="w-full max-w-md rounded-2xl border border-line bg-panel px-8 py-14 text-center sm:px-12"
-      >
-        <h1 id="login-title" className="text-2xl font-bold tracking-tight">
-          로그인
-        </h1>
-        <p className="mt-4 text-sm leading-6 text-ink">
-          Google 계정으로 로그인하고
-          <br />
-          발표 연습을 시작하세요.
-        </p>
-        <button
-          type="button"
-          onClick={login}
-          disabled={redirecting || session.isPending}
-          aria-label="Google 계정으로 로그인"
-          aria-describedby="login-status"
-          aria-busy={redirecting}
-          className="mx-auto mt-8 block max-w-full cursor-pointer rounded disabled:cursor-wait disabled:opacity-60"
+    <div className="flex min-h-dvh flex-col bg-panel text-ink">
+      <header className="border-b border-line-strong">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-6 py-4 lg:px-10">
+          <Link to="/welcome" aria-label="PITCH COACH · 서비스 소개로">
+            <PitchCoachWordmark />
+          </Link>
+          <Link to="/welcome" className="text-sm font-bold hover:text-coral-deep">
+            ← 서비스 소개
+          </Link>
+        </div>
+      </header>
+
+      <main className="flex flex-1 items-center justify-center px-6 py-12">
+        <section
+          aria-labelledby="login-title"
+          className="w-full max-w-md border-2 border-ink bg-panel px-8 py-10 text-center shadow-[4px_4px_0_var(--color-ink)] sm:px-12"
         >
           <img
-            src="/auth/google-sign-in.png"
-            alt="Google 계정으로 로그인"
-            className="h-10 max-w-full w-auto"
+            src="/onboarding/chichi-bust.png"
+            alt=""
+            width={80}
+            height={96}
+            className="mx-auto h-24 w-20 object-contain [image-rendering:pixelated]"
           />
-        </button>
-        <div
-          id="login-status"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-          className="mt-6 text-sm leading-6 text-ink"
-        >
-          {message && <p className="rounded-lg border border-line bg-cream px-4 py-3">{message}</p>}
-          {session.isError && (
-            <button
-              className="mt-3 underline"
-              onClick={() => session.refetch().catch(() => undefined)}
-            >
-              연결 다시 확인
-            </button>
-          )}
-        </div>
-      </section>
-    </main>
+          <p className="mt-4 font-mono text-xs tracking-widest text-stone">
+            READY FOR YOUR FIRST TAKE?
+          </p>
+          <h1 id="login-title" className="mt-2 text-2xl font-extrabold tracking-tight">
+            로그인
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-ink">
+            Google 계정으로 로그인하고
+            <br />
+            발표 연습을 시작하세요.
+          </p>
+          <button
+            type="button"
+            onClick={login}
+            disabled={redirecting || session.isPending}
+            aria-label="Google 계정으로 로그인"
+            aria-describedby="login-status"
+            aria-busy={redirecting}
+            className="mx-auto mt-8 block max-w-full cursor-pointer rounded disabled:cursor-wait disabled:opacity-60"
+          >
+            <img
+              src="/auth/google-sign-in.png"
+              alt="Google 계정으로 로그인"
+              className="h-10 max-w-full w-auto"
+            />
+          </button>
+          <div
+            id="login-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="mt-6 text-sm leading-6 text-ink"
+          >
+            {message && <p className="border border-line-strong bg-cream px-4 py-3">{message}</p>}
+            {session.isError && (
+              <button
+                className="mt-3 underline"
+                onClick={() => session.refetch().catch(() => undefined)}
+              >
+                연결 다시 확인
+              </button>
+            )}
+          </div>
+          {/* 정책 문서가 아직 검토용 초안이라 "동의한 것으로 본다"고 쓰지 않습니다 — 확인만 안내합니다 */}
+          <p className="mt-6 border-t border-line pt-5 text-xs leading-5 text-stone">
+            로그인 전에{' '}
+            <Link className="font-bold text-ink underline underline-offset-4" to="/terms">
+              이용약관
+            </Link>
+            과{' '}
+            <Link className="font-bold text-ink underline underline-offset-4" to="/privacy">
+              개인정보 처리방침
+            </Link>
+            을 확인해 주세요.
+          </p>
+        </section>
+      </main>
+
+      <footer className="border-t border-line-strong px-6 py-6">
+        <p className="mx-auto max-w-7xl font-mono text-xs font-bold">
+          PITCH COACH / ONE TAKE AT A TIME.
+        </p>
+      </footer>
+    </div>
   );
 }

@@ -1,12 +1,14 @@
 """store: 평가 기준 · 평가 결과 저장과 읽기, 비슷한 말 표, 사용자 확인."""
 
 import json
+from datetime import datetime
 
 import pytest
 
 from coverage_lab.store import (
     confirm_similar_item,
     confirmed_evaluation,
+    confirmed_take_scores,
     connect,
     load_confirmations,
     load_evaluation,
@@ -34,10 +36,9 @@ def _rubric(script_name="대본", slide_number=1, rubric_id="rid1") -> Evaluatio
         script_name=script_name,
         slide_number=slide_number,
         content_hash=f"hash{slide_number}",
-        rubric_schema_version="1.1",
+        rubric_schema_version="1.2",
         llm_model="m",
         llm_config_hash="a",
-        created_at="2026-01-01T00:00:00+00:00",
     )
     return EvaluationRubric(
         meta=meta,
@@ -87,7 +88,6 @@ def _evaluation(slide_number=1, items=(), rubric_id="rid1") -> SlideEvaluation:
         verification={"required": False},
         stt_sentences=[],
         stt_text="말했다",
-        created_at="2026-01-01T00:00:00+00:00",
     )
 
 
@@ -116,9 +116,11 @@ def test_rubric_round_trip(conn):
     save_rubric(conn, rubric)
     assert load_rubric(conn, "대본", 1) == rubric
     assert load_rubric(conn, "대본", 2) is None
-    assert conn.execute("SELECT content_hash, created_at FROM evaluation_rubrics").fetchall() == [
-        ("hash1", "2026-01-01T00:00:00+00:00")
-    ]
+    # 시각은 코어가 아니라 저장할 때 DB 칸에 넣는다
+    [(content_hash, created_at)] = conn.execute(
+        "SELECT content_hash, created_at FROM evaluation_rubrics"
+    ).fetchall()
+    assert content_hash == "hash1" and datetime.fromisoformat(created_at).tzinfo is not None
 
 
 def test_load_rubrics_returns_one_script_ordered_by_slide(conn):
@@ -177,7 +179,7 @@ def test_confirmation_is_saved_and_applied_only_to_same_wording(conn):
     evaluation = _evaluation(items=[_item("R1")])
     save_evaluation(conn, evaluation)
     confirmed = confirm_similar_item(conn, "대본_take1", 1, "R1", "as_script")
-    assert confirmed.confirmations == {"R1": "as_script"}
+    assert confirmed.applied_answers == {"R1": "as_script"}
     assert conn.execute(
         "SELECT item_id, script_text, stt_text, answer FROM similar_confirmations"
     ).fetchall() == [("R1", "좌석", "자석", "as_script")]
@@ -190,3 +192,25 @@ def test_confirmation_is_saved_and_applied_only_to_same_wording(conn):
     save_evaluation(conn, changed)
     assert confirmed_evaluation(conn, "대본_take1", 1) == changed
     assert confirmed_evaluation(conn, "대본_take1", 9) is None
+
+
+def test_confirmations_accumulate_through_core_rescore(conn):
+    save_rubric(conn, _rubric())
+    save_evaluation(conn, _evaluation(items=[_item("R1"), _item("R2", "센서", "센터")]))
+    confirm_similar_item(conn, "대본_take1", 1, "R1", "as_script")
+    both = confirm_similar_item(conn, "대본_take1", 1, "R2", "as_stt")
+    # 두 번째 확인이 첫 번째 답을 잃지 않는다 (저장된 답 전부를 처음 채점에 한 번에 반영)
+    assert both.applied_answers == {"R1": "as_script", "R2": "as_stt"}
+    assert confirmed_evaluation(conn, "대본_take1", 1) == both
+
+
+def test_confirmed_take_scores_include_scored_ratio(conn):
+    save_rubric(conn, _rubric())
+    save_evaluation(conn, _evaluation(items=[_item("R1")]))
+    confirm_similar_item(conn, "대본_take1", 1, "R1", "as_script")
+    scores = confirmed_take_scores(conn, "대본_take1")
+    assert (
+        scores["scored_ratio"] == 1.0 and scores["similar_words"] == 0
+    )  # 답한 항목은 센 값에서 빠진다
+    # 연습의 대상 장을 주면 채점이 없는(실패한) 장도 분모에 든다
+    assert confirmed_take_scores(conn, "대본_take1", [1, 2])["scored_ratio"] == 0.5

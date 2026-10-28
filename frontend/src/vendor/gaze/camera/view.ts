@@ -25,7 +25,7 @@
  * calibration model goes to the host (`calibrated`) to keep or drop.
  */
 import './camera.css';
-import type { CalibrationQualityDict, StoredModel } from '../engine';
+import type { CalibrationQualityDict, CalibrationModel } from '../engine';
 import { makeConfig } from '../engine/config';
 import type { FrameDecision, OtherMapping } from '../engine/contract';
 import type { BaselineCheck, ReanchorStatus } from '../engine/engine';
@@ -34,7 +34,13 @@ import type { PlacementResultDict } from '../engine/placement';
 import type { PreconditionReport } from '../engine/preconditions';
 import type { SweepStatus } from '../engine/sweep';
 import { GAZE_DIRECTIONS, type Cue, type GazeDirection, type StateClass } from '../engine/types';
-import type { FrameMode, FrameSummary, FromWorker, ToWorker } from '../worker/protocol';
+import type {
+  EngineFailure,
+  FrameMode,
+  FrameSummary,
+  FromWorker,
+  ToWorker,
+} from '../worker/protocol';
 import { FaceTrackView } from './facetrack';
 import { RingView } from './ring';
 import {
@@ -84,8 +90,8 @@ export interface CameraViewOptions {
 export interface SetupResult {
   /** `status` OK or FAIL with `reason`, the anchors, separations and warnings. */
   quality: CalibrationQualityDict;
-  /** Plain data (structuredClone / IndexedDB): give it back with `useCalibration`. Null when none was built. */
-  model: StoredModel | null;
+  /** Plain data, memory only (face measurements inside): give it back with `useCalibration` in this session, never store it. Null when none was built. */
+  model: CalibrationModel | null;
   placement: PlacementResultDict | null;
   /** What live tells apart: CAMERA, SCREEN, BOTTOM, OTHER (fewer when an anchor is missing). */
   classes: StateClass[];
@@ -102,9 +108,13 @@ export interface SetupResult {
   notes: string[];
 }
 
+/** What the view reports as failed: the worker's reasons, or the camera stream ending. */
+export type ViewFailure = EngineFailure | 'WORKER_FAILED' | 'CAMERA_LOST';
+
 export interface CameraViewEvents {
   ready: { version: string; isolated: boolean };
-  error: { message: string };
+  /** `reason` when known: the engine did not start, one frame failed, or the camera went away. */
+  error: { message: string; reason?: ViewFailure };
   phase: { phase: CameraPhase; previous: CameraPhase };
   /** Every analysed frame: timing, face found or why not, head angles, face guide. */
   frame: FrameSummary;
@@ -222,6 +232,8 @@ export class GazeCameraView {
   #ready = false;
   #version = '';
   #inFlight = false;
+  #cameraLost = false;
+  #workerFailed = false;
   #t0 = performance.now();
 
   #phase: CameraPhase = 'idle';
@@ -292,6 +304,9 @@ export class GazeCameraView {
       options.worker ??
       new Worker(new URL('../worker/gaze.worker.ts', import.meta.url), { type: 'module' });
     this.#worker.addEventListener('message', this.#onMessage);
+    // A worker that dies, or a message it cannot read, would otherwise leave the view waiting for good.
+    this.#worker.addEventListener('error', this.#onWorkerError);
+    this.#worker.addEventListener('messageerror', this.#onWorkerError);
     this.#send({
       type: 'init',
       assetDir: this.#opts.assetDir,
@@ -333,6 +348,7 @@ export class GazeCameraView {
   /** Show and analyse the host's camera stream (the view never stops its tracks). */
   async attach(stream: MediaStream): Promise<void> {
     this.#stream = stream;
+    this.#cameraLost = false;
     this.#video.srcObject = stream;
     await this.#video.play();
     this.element.dataset.on = '1';
@@ -372,8 +388,8 @@ export class GazeCameraView {
     this.#track.showArrow(false);
   }
 
-  /** Adopt a stored calibration (`SetupResult.model`) and go live; false when it does not fit this engine. */
-  useCalibration(model: StoredModel): Promise<boolean> {
+  /** Adopt this session's calibration (`SetupResult.model`) and go live; false when it does not fit this engine. */
+  useCalibration(model: CalibrationModel): Promise<boolean> {
     return new Promise((resolve) => {
       this.#restoring?.(false);
       this.#restoring = (ok) => {
@@ -408,6 +424,8 @@ export class GazeCameraView {
     for (const id of this.#timers) window.clearTimeout(id);
     window.clearTimeout(this.#toastTimer);
     this.#worker.removeEventListener('message', this.#onMessage);
+    this.#worker.removeEventListener('error', this.#onWorkerError);
+    this.#worker.removeEventListener('messageerror', this.#onWorkerError);
     if (this.#ownsWorker) this.#worker.terminate();
     this.#restoring?.(false);
     this.#video.srcObject = null;
@@ -430,6 +448,7 @@ export class GazeCameraView {
   }
 
   async #pump(): Promise<void> {
+    if (this.#stream && this.#cameraEnded()) return;
     if (this.#inFlight || !this.#ready || !this.#stream || this.#video.readyState < 2) return;
     this.#inFlight = true;
     try {
@@ -441,6 +460,30 @@ export class GazeCameraView {
     }
   }
 
+  /**
+   * True once the host's camera track has ended (unplugged, taken by another app): reported
+   * once as CAMERA_LOST and no more frames are grabbed.  The host decides what to show.
+   */
+  #cameraEnded(): boolean {
+    const track = this.#stream?.getVideoTracks()[0];
+    if (track && track.readyState !== 'ended') return false;
+    if (!this.#cameraLost) {
+      this.#cameraLost = true;
+      this.#emit('error', { message: 'camera stream ended', reason: 'CAMERA_LOST' });
+    }
+    return true;
+  }
+
+  #onWorkerError = (event: Event): void => {
+    this.#ready = false; // no more frames to a worker that will not answer
+    if (this.#workerFailed) return; // reported once, like CAMERA_LOST
+    this.#workerFailed = true;
+    const message =
+      event instanceof ErrorEvent && event.message ? event.message : 'gaze worker stopped';
+    this.#emit('error', { message, reason: 'WORKER_FAILED' });
+    this.#toast(`엔진 오류: ${message}`);
+  };
+
   #onMessage = (event: MessageEvent<FromWorker>): void => {
     const msg = event.data;
     switch (msg.type) {
@@ -450,7 +493,7 @@ export class GazeCameraView {
         this.#emit('ready', { version: msg.version, isolated: msg.isolated });
         break;
       case 'failed':
-        this.#emit('error', { message: msg.message });
+        this.#emit('error', { message: msg.message, reason: msg.reason });
         this.#toast(`엔진 오류: ${msg.message}`);
         break;
       case 'frame':

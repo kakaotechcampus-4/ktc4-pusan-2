@@ -31,7 +31,7 @@ def test_internal_error_skips_the_window_and_moves_on(monkeypatch: pytest.Monkey
     assert resp.action.value == "WAIT"
     assert resp.reason_codes == ["INTERNAL_ERROR"]
     assert resp.feedback is None and resp.events == []
-    assert resp.meta.criteria_versions["coach"].startswith("coach-1.2+")
+    assert resp.meta.criteria_versions["coach"].startswith("coach-1.3+")
 
     after = resp.coach_state
     # 모든 모듈의 커서가 이번 창 끝으로 넘어간다

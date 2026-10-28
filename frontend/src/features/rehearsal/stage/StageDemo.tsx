@@ -51,6 +51,13 @@ export function StageDemo() {
     if (el) el.dataset.empty = el.dataset.empty === 'true' ? 'false' : 'true';
   };
 
+  // 발밑의 시선 기록 멈춤 경고(#235). 떠도 위 칸이 안 움직이는지 본다 — 발밑 줄이 커지면 슬라이드가 줄어든다
+  const gazeAlertRef = useRef<HTMLSpanElement>(null);
+  const toggleGazeAlert = () => {
+    const el = gazeAlertRef.current;
+    if (el) el.hidden = !el.hidden;
+  };
+
   return (
     <div className="flex h-full flex-col bg-greige">
       {/* 조작부는 평범한 UI라 Tailwind로 */}
@@ -90,6 +97,14 @@ export function StageDemo() {
           코치 줄
         </button>
 
+        <button
+          onClick={toggleGazeAlert}
+          className="rounded-full border border-line bg-cream px-3 py-1.5 text-xs font-semibold
+                     hover:bg-coral-wash"
+        >
+          시선 경고
+        </button>
+
         <span className="tabular ml-auto text-xs text-stone">
           렌더{' '}
           <b className="text-ink" ref={badgeRef}>
@@ -115,13 +130,15 @@ export function StageDemo() {
           {/* ★ 시선 테두리는 이 상자에 붙는다 — .stage 의 data-gaze 가 받는다 */}
           <div className="viewport">
             <div className="slide">
-              <span className="placeholder">슬라이드 영역 — 남는 만큼 커집니다</span>
+              <span className="placeholder">슬라이드 영역 — 대본 모드와 상관없이 같은 크기</span>
             </div>
 
             <div className="rail">
               <section className="camera">
-                <div className="guide" />
-                <span className="tag">CAMERA 16:9</span>
+                <div className="frame">
+                  <div className="guide" />
+                  <span className="tag">CAMERA 16:9</span>
+                </div>
               </section>
               <section className="mic">
                 <span className="text-xs text-stone">음량 — 실제 값은 P5에서</span>
@@ -167,7 +184,14 @@ export function StageDemo() {
           </div>
 
           <div className="stage-foot">
+            <span ref={gazeAlertRef} className="gaze" data-alert="true" role="alert" hidden>
+              시선 기준이 없어 이후 시선은 기록하지 않아요
+            </span>
             <span>이 페이지는 자리만 잡습니다 — 실제 기록은 P5에서</span>
+            {/* 발밑 줄 높이는 끝내기 버튼이 정한다 — 빼면 슬라이드 칸 높이가 실제와 달라진다 */}
+            <button type="button" className="end" disabled>
+              발표 끝내기
+            </button>
           </div>
         </div>
       </div>

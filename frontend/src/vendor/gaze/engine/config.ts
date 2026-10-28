@@ -1,9 +1,9 @@
 /**
  * Engine thresholds.  The values are generated from the Python configs
- * (`web/scripts/export_config.py` -> `defaults.ts`); keys keep the YAML
+ * (`tools/export_config.py` -> `defaults.generated.ts`); keys keep the YAML
  * spelling so a reader can grep one name across both implementations.
  */
-import { DEFAULTS as GENERATED } from './defaults';
+import { DEFAULTS as GENERATED } from './defaults.generated';
 
 export interface PreprocessConfig {
   analysis_fps: number;
@@ -117,28 +117,14 @@ export interface ConditionConfig {
   face_lost_ms: number;
 }
 
-/** Gaze evidence for the coach and review agents (`evidence.ts`, Python `vision.evidence.gaze`). */
+/**
+ * Cutting frame decisions into 1 s records (`evidence.ts`, Python `gaze_lab.evidence.gaze`).
+ * The server's judgment thresholds are not here: they live in the Python module `gaze`.
+ */
 export interface EvidenceConfig {
   slice_ms: number;
   min_frames_per_slice: number;
   slice_vote_threshold: number;
-  short_window_ms: number;
-  long_window_ms: number;
-  script_min_ms: number;
-  script_full_ms: number;
-  screen_min_ms: number;
-  screen_full_ms: number;
-  away_min_ms: number;
-  away_full_ms: number;
-  low_eye_contact_ratio: number;
-  low_eye_contact_min_measured_ms: number;
-  unmeasurable_coverage: number;
-  unmeasurable_reliability: number;
-  segment_min_ms: number;
-  outcome_before_ms: number;
-  outcome_delay_ms: number;
-  outcome_after_ms: number;
-  outcome_min_change: number;
 }
 
 /** Head circle check between the set-up check and calibration (`sweep.ts`, Python `vision.runtime.sweep`). */

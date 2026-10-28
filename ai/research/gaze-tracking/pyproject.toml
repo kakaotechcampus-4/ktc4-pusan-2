@@ -14,7 +14,7 @@ description = "Pitch Coach gaze tracking - research (server core + Python refere
 requires-python = ">=3.12,<3.13"
 dependencies = [
     # ── 서버 코어(gaze)가 쓰는 것. service 로 옮길 때 이 목록만 가져간다
-    "pydantic>=2.13",
+    "pydantic>=2.13,<3",
     # ── research 전용 (gaze_lab · tools · experiments)
     # 브라우저 엔진의 @mediapipe/tasks-vision 과 같은 버전으로 정확히 고정한다.
     # 버전이 바뀌면 랜드마크가 조금 달라져 보정값과 parity 기준 답이 틀어진다
@@ -74,9 +74,11 @@ src = ["src", "tools", "."]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
-ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
+# 서버 판정 모듈(src/gaze)과 그 테스트(tests/unit)는 서비스(ai/service)로 옮겨 가므로 서비스와 같은 줄 길이(E501)를 지킨다.
+# 나머지 경로는 줄 길이(E501)만 검사하지 않는다 (아래 "E" 전체 무시 항목은 그대로)
+"tools/**" = ["E501"]
 # archive 에서 옮긴 코드는 서식을 바꾸지 않는다 (archive 와 diff 가 import · 경로뿐이어야 리뷰 · 동등성 검증이 쉽다).
 # pyflakes(F) 만 검사한다
 "src/gaze_lab/**" = ["E", "I", "UP", "B", "SIM"]

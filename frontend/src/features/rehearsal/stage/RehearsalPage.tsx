@@ -1,53 +1,72 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { LevelBar } from '../media/LevelBar';
-import { useCameraStream } from '../media/useCameraStream';
+import { MIC_ERROR_MESSAGE, useCameraStream } from '../media/useCameraStream';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 import { usePrepareStore } from '../prepare/prepareStore';
-import { useCompleteTake } from '@/shared/api/take';
+import { useAbandonTake, useEndTake } from '@/shared/api/take';
+import { ApiFailure } from '@/shared/api/tokenStore';
+import { Button, ButtonLink } from '@/shared/ui/Button';
+import { InfoPage } from '@/shared/ui/InfoPage';
+import { Mascot } from '@/shared/ui/Mascot';
+import { Card } from '@/shared/ui/Panel';
 import { PdfPage } from '@/shared/ui/PdfPage';
-import { buildGazePayload } from '../lib/gazePayload';
+import { exclusionForDeviceError, exclusionForGazeError } from '../lib/gazeExclusion';
 import { stopTakeStream } from '../lib/sttSocket';
+import { forgetZoneRef } from '../lib/zoneRefMemory';
 import {
   beat,
   endSession,
   findSessionByTakeId,
   getSession,
   markEnding,
-  markSubmitted,
   markGazeExcluded,
-  readCoachLog,
-  readGazeDecisions,
+  readGazeSamples,
   readSlideChanges,
   setEngineVersion,
   setGazePerf,
   startSession,
 } from '../lib/db';
-import { clearWriteFailures, noteWriteFailure, readWriteFailures } from '../lib/writeFailures';
+import { noteWriteFailure } from '../lib/writeFailures';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ScreenLabel } from '@/shared/ui/ScreenLabel';
-import { TemporalVoter } from '@/workers/temporalVoter';
 import { formatDuration } from '@/shared/lib/clock';
-import type { CompleteRequest, GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
+import type { GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
-import { useCoach } from './useCoach';
+import { useLiveCoach } from './useLiveCoach';
 import { useLiveGaze } from './useLiveGaze';
 import { useRehearsalMaterials } from './useRehearsalMaterials';
-import { useRehearsalStore } from './rehearsalStore';
+import { useRehearsalStore, type Indicators } from './rehearsalStore';
+import { indicatorViews } from '../lib/coachIndicators';
+import { gazeNote } from '../lib/gazeNote';
 import {
+  abandonOutcome,
   clearClock,
-  coachHistory,
+  clearMetrics,
+  clearSlides,
   lastSlide,
+  leftWindow,
   readClock,
   recordedUntilMs,
   resumeFromMs,
+  mergeSlideChanges,
   saveClock,
-  type CoachHistory,
+  saveMetrics,
+  saveSlides,
+  takeMetrics,
+  takeSlides,
+  type AbandonOutcome,
+  type LeftWindow,
 } from './resume';
+import { sendEnding, type Ending } from './sendEnding';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
+import { CONNECT_SLOW_MS, hasCamera, hasLiveAudio, startGate, type StartGate } from './startGate';
+import { openStageDevices } from './openDevices';
 import { useSttStream } from './useSttStream';
+import { useMetricsSender } from './useMetricsSender';
+import { useSlideSender } from './useSlideSender';
 import type { TextRange } from '../lib/scriptMarks';
 import './stage.css';
 
@@ -57,11 +76,6 @@ const BEAT_MS = 5_000;
 /** 대본이 없는 장의 기본값. 매 렌더 새 배열을 만들면 대본 칸의 강조 계산이 매번 다시 돕니다 */
 const NO_KEYWORDS: string[] = [];
 const NO_HIGHLIGHTS: TextRange[] = [];
-
-interface Ending {
-  durationMs: Ms;
-  endedAtIso: string;
-}
 
 /**
  * 이 Take 를 어디서부터 여나. 세션 행을 읽어야 정해지고, 그 전에는 무대를 시작하지 않습니다 —
@@ -74,20 +88,30 @@ interface Resume {
   fromMs: Ms;
   /** 이어받은 슬라이드로 넘어온 시각. 처음이면 null */
   slideAt: Ms | null;
-  coach: CoachHistory | null;
+  /** 이어받은 장 넘김 기록 전체. 처음이거나 못 읽었으면 비어 있습니다 — WS `slide` 로 다시 보냅니다 */
+  slideHistory: { atMs: Ms; slideNumber: number }[];
   /** 끝내기를 누른 뒤에 새로고침했으면 그때 고정한 값. 무대를 열지 않고 종료를 이어갑니다 */
   ending: Ending | null;
-  /** `/complete` 까지 보낸 Take. 무대를 열지 않고 처리 화면으로 보냅니다 */
+  /** 종료까지 보낸 Take. 무대를 열지 않고 처리 화면으로 보냅니다 */
   submitted: boolean;
+  /**
+   * 이 창에서 무대를 열면 안 되는 이유 (`leftWindow`). 창을 닫았다 다시 열었으면 `CLOSED` —
+   * 실패로 끝냅니다. 다른 창이 발표 중이면 `OTHER_WINDOW` — 아무것도 바꾸지 않습니다
+   */
+  left: LeftWindow | null;
 }
+
+/** 이어받은 장 넘김 기록이 없을 때. 렌더마다 새 배열을 만들지 않게 둡니다 */
+const NO_SLIDES: Resume['slideHistory'] = [];
 
 const freshResume = (sessionId: string | null): Resume => ({
   sessionId,
   fromMs: 0,
   slideAt: null,
-  coach: null,
+  slideHistory: [],
   ending: null,
   submitted: false,
+  left: null,
 });
 
 /**
@@ -95,7 +119,7 @@ const freshResume = (sessionId: string | null): Resume => ({
  *
  * ── 이 화면이 지키는 것 ─────────────────────────────────────────────
  *
- * 1. **브라우저가 원본입니다.** 시선 판정·슬라이드 전환·코치 기록이
+ * 1. **브라우저가 원본입니다.** 시선 판정·슬라이드 전환이
  *    전부 IndexedDB에 먼저 쌓입니다. 서버로 가는 건 발표가 끝난 뒤입니다.
  *    음성만 예외입니다 — 로컬에 남기지 않고 WebSocket으로만 흘립니다 (CLAUDE.md 4번).
  *    중간에 탭이 죽어도 남은 기록으로 리포트를 만들 수 있어야 합니다.
@@ -107,10 +131,10 @@ const freshResume = (sessionId: string | null): Resume => ({
  * 3. **끝내기는 되돌릴 수 없습니다.** 숫자는 종료 시점에 영구 고정되고
  *    (서버는 시선을 재계산할 수 없습니다) 그래서 한 번 더 묻습니다.
  *
- * ── 2단(서버)은 어디까지 왔나 ───────────────────────────────────────
- * 마이크 PCM을 WebSocket으로 흘리고 전사를 받는 데까지 붙었습니다(`useSttStream`).
- * 속도·군더더기·대본 일치는 서버가 아직 `metrics`·`coach` 메시지를 안 보내서
- * 코치 줄에는 들어오지 않습니다. 1단이 그것과 무관하게 돈다는 게 이 구조의 요점입니다.
+ * ── 실시간 코치 ──────────────────────────────────────────────────────
+ * 판단은 AI 코치 에이전트가 합니다(`/coach/evaluate`, BE 가 부름). FE 는 WS `coach` 로 받은
+ * 한마디와 상태 표시를 띄우기만 합니다(`useLiveCoach`). FE 가 따로 판정하지 않습니다 —
+ * 기준이 두 곳에 있으면 화면의 말과 리포트의 숫자가 어긋납니다 (`docs/ai/architecture.md` 0절).
  */
 export function RehearsalPage() {
   const { takeId = '' } = useParams();
@@ -126,10 +150,13 @@ export function RehearsalPage() {
     () => (location.state as { ticket?: RehearsalTicket } | null)?.ticket,
   );
   const materials = useRehearsalMaterials(ticket ?? null);
-  const complete = useCompleteTake(takeId);
+  const endTake = useEndTake(ticket?.pitchId ?? '', takeId);
+  const { mutateAsync: abandonTake } = useAbandonTake(ticket?.pitchId ?? '', takeId);
 
   const phase = useRehearsalStore((s) => s.phase);
   const coach = useRehearsalStore((s) => s.coach);
+  const indicators = useRehearsalStore((s) => s.indicators);
+  const indicatorsStale = useRehearsalStore((s) => s.indicatorsStale);
   const setPhase = useRehearsalStore((s) => s.setPhase);
   const setSlide = useRehearsalStore((s) => s.setSlide);
   const resetStore = useRehearsalStore((s) => s.reset);
@@ -151,6 +178,9 @@ export function RehearsalPage() {
    *
    * `??=` 인 이유는 **먼저 정해진 사유가 이깁니다** — 카메라가 끊긴 뒤에
    * 저장까지 실패했다고 사유가 STORAGE_FAILED 로 덮이면 원인이 뒤바뀝니다.
+   *
+   * ★ 지금은 읽는 곳이 없습니다. 예전에는 `/complete` 의 시선 제외 사유로 보냈는데, 그 경로가
+   *   없어졌습니다(#134). 제외 사유를 서버에 어떻게 알릴지 BE 와 정하면 거기서 읽습니다.
    */
   const excludedRef = useRef<GazeExcludedReason | null>(null);
   const noteExclusion = useCallback((reason: GazeExcludedReason) => {
@@ -167,16 +197,45 @@ export function RehearsalPage() {
    */
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  const { stream, error: deviceError, request } = useCameraStream();
+  const {
+    stream,
+    cameraError,
+    micError,
+    request,
+    requestMic,
+    stop: stopCamera,
+  } = useCameraStream();
   const { videoRef, live } = useVideoStream(stream, 'rehearsal');
-  const { meterRef, statsRef, audioState } = useMicLevel(stream);
+  /** 카메라를 못 열어 마이크만 열었으면 false 입니다. 발표는 하고 시선만 뺍니다 */
+  const cameraOpened = hasCamera(stream);
+  /**
+   * 장치를 차례로 여는 중 (`openDevices.ts`). 최종 결과가 나오기 전에는
+   * 중간 오류로 시선을 제외하거나 장치 오류 안내를 띄우지 않습니다
+   */
+  const [opening, setOpening] = useState(false);
 
   const ready = materials.ready && resume !== null;
-  /** 이미 `/complete` 까지 보낸 Take 입니다 (끝낸 뒤 새로고침 · 뒤로 가기). 무대를 열지 않습니다 */
+  /** 이미 종료까지 보낸 Take 입니다 (끝낸 뒤 새로고침 · 뒤로 가기). 무대를 열지 않습니다 */
   const submitted = resume?.submitted ?? false;
-  /** 무대를 열 수 있나. 종료 중에 새로고침했으면 열지 않고 종료만 이어갑니다 */
-  const stageReady = ready && ending === null && !submitted;
-  const running = stageReady && phase === 'RUNNING';
+  const left = resume?.left ?? null;
+  /**
+   * 무대를 열 수 있나. 종료 중에 새로고침했으면 열지 않고 종료만 이어갑니다.
+   * 창을 닫았다 다시 열었거나 다른 창이 발표 중이면 열지 않습니다
+   */
+  const stageReady = ready && ending === null && !submitted && left === null;
+  /**
+   * 발표를 시작했나 (`startGate`). 마이크를 열고 서버 연결이 첫 `ready` 를 준 뒤에 true 가 되고,
+   * 그 뒤로는 끝까지 true 입니다. 시계 · 기록 · 끝내기 버튼은 모두 이걸 기다립니다.
+   * 아래 `useSttStream` 이 `ready` 를 알려 주므로 한 렌더 늦게 바뀝니다
+   */
+  const [started, setStarted] = useState(false);
+  const running = stageReady && phase === 'RUNNING' && started;
+  /** 첫 연결이 안 될 때 '다시 시도'가 올립니다. 소켓을 새로 만듭니다 */
+  const [connectAttempt, setConnectAttempt] = useState(0);
+  /** `ready` 를 `CONNECT_SLOW_MS` 넘게 기다렸다 */
+  const [connectSlow, setConnectSlow] = useState(false);
+  /** 끝내기가 `TAKE_NOT_STARTED` 를 받았다 — 서버에서 시작하지 않은 Take 입니다 */
+  const [notStarted, setNotStarted] = useState(false);
   const limitSec = ticket?.timeLimitSec ?? 600;
   const scriptMode = ticket?.scriptMode ?? 'HIGHLIGHT';
   const mode = ticket?.mode ?? 'COACHING';
@@ -187,13 +246,113 @@ export function RehearsalPage() {
     running,
     resume?.fromMs ?? 0,
   );
+  // 음량 1초 기록을 무대 시계로 쌓습니다 — 시선 1초 기록과 같은 시계라야 같은 1초를 가리킵니다.
+  // 기록은 `voiceRecord(t_ms, t_ms + duration_ms)` 로 꺼내 시선 기록과 함께 WS `metrics` 로 보냅니다 (`useMetricsSender`)
+  const { meterRef, audioState, voiceRecord } = useMicLevel(stream, {
+    clock: elapsedMs,
+  });
+  const { slideNumber, slideStartedAtRef, slideAt } = useSlideDeck({
+    total: pageCount,
+    clientSessionId: sessionId,
+    elapsedMs,
+    enabled: running,
+    resumedAt: resume?.slideAt ?? null,
+  });
+  /**
+   * 서버가 Take 를 자동으로 끝냈을 때(말 없음 · 최대 시간) 끝내기 버튼과 같은 흐름을 탑니다.
+   * `finish` 는 아래에서 매 렌더 새로 만들어지는 함수라 ref 로 최신 것을 부릅니다.
+   */
+  const finishRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const onAutoEnd = useCallback(() => {
+    finishRef.current().catch((e: unknown) => {
+      console.error('[rehearsal] 자동 종료 처리 실패', e);
+      setEndError(toMessage(e));
+    });
+  }, []);
+  /** 창을 닫아 끝난 Take 입니다. 무대를 닫고 실패로 끝냅니다 (아래 '창을 닫았다 다시 열었다') */
+  const leaveClosed = useCallback(() => {
+    setResume((current) => current && { ...current, left: 'CLOSED' });
+  }, []);
+  // 서버가 보낸 AI 코치의 한마디 · 상태 표시를 띄웁니다
+  const { onCoach, onConnection } = useLiveCoach({ enabled: running, mode });
+  /**
+   * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
+   * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
+   */
+  // 새로고침 전 페이지가 못 보내고 적어 둔 `metrics`. 소켓이 붙자마자 먼저 보냅니다 (resume.ts)
+  const restoredMetrics = useCallback(
+    () => (sessionId ? takeMetrics(takeId, sessionId) : []),
+    [takeId, sessionId],
+  );
+  const {
+    connected,
+    startFailure,
+    note: sttNote,
+    alert: sttAlert,
+    sendMetrics,
+    sendSlide,
+    handOffMetrics,
+    slideLog,
+    stop: stopStt,
+  } = useSttStream({
+    takeId,
+    stream,
+    // 시계보다 먼저 붙습니다 — 첫 `ready` 를 받아야 발표를 시작합니다
+    enabled: stageReady && (phase === 'RUNNING' || phase === 'ENDING'),
+    // 마이크는 시계가 돈 뒤에 겁니다. 종료 중에도 살려 둡니다 — 끝내기가 `stop` 으로 직접 끊습니다
+    capture: stageReady && started,
+    attempt: connectAttempt,
+    elapsedMs,
+    onAutoEnd,
+    restoredMetrics,
+    onClosed: leaveClosed,
+    onCoach,
+    onConnection,
+  });
+
+  const gate = startGate({
+    started,
+    // 새로고침으로 이어 가는 Take 는 서버에서 이미 시작했습니다
+    resumed: (resume?.fromMs ?? 0) > 0,
+    micLive: hasLiveAudio(stream),
+    micError: opening ? null : micError,
+    connected,
+    startFailure,
+    slow: connectSlow,
+  });
+  // 시작했으면 붙잡아 둡니다. 렌더 중에 바꿔 effect 를 한 번 더 돌리지 않습니다 — 그 뒤로는
+  // 마이크가 빠지거나 연결이 끊겨도 시계를 멈추지 않습니다
+  if (!started && stageReady && gate.kind === 'STARTED') setStarted(true);
+  // `ready` 를 오래 기다리면 다시 시도를 띄웁니다. 다시 시도하면 처음부터 셉니다
+  useEffect(() => {
+    if (!stageReady || gate.kind !== 'CONNECTING') return;
+    const id = window.setTimeout(() => setConnectSlow(true), CONNECT_SLOW_MS);
+    return () => window.clearTimeout(id);
+  }, [stageReady, gate.kind, connectAttempt]);
+
+  // 장이 바뀐 시각을 WS `slide` 로 알립니다. 서버가 장 구간을 나누는 기준입니다 (#324 6-4)
+  useSlideSender({
+    enabled: running,
+    slideNumber,
+    slideStartedAtRef,
+    history: resume?.slideHistory ?? NO_SLIDES,
+    send: sendSlide,
+  });
+  // 1초마다 시선 · 음량 · 슬라이드(참고값)를 WS `metrics` 로 보냅니다. 서버의 실시간 코치와 Take 결과의 재료입니다
+  const { onGazeRecords, finishMetrics, flushMetricsForHide } = useMetricsSender({
+    enabled: running,
+    elapsedMs,
+    voiceRecord,
+    slideAt,
+    send: sendMetrics,
+  });
   const {
     ready: gazeReady,
     engineVersion,
     error: gazeError,
     perf,
-    bottomRatio,
     missingCalibration,
+    flushGaze,
   } = useLiveGaze({
     stream,
     videoRef,
@@ -205,51 +364,18 @@ export function RehearsalPage() {
     onExcluded: noteExclusion,
     elapsedMs,
     // live 까지 봅니다 — 스트림 객체만 있고 아직 프레임이 없을 때 펌프를 돌리면
-    // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다
-    enabled: running && live,
-  });
-  const { slideNumber, slideStartedAtRef } = useSlideDeck({
-    total: pageCount,
-    clientSessionId: sessionId,
-    elapsedMs,
-    enabled: running,
-    resumedAt: resume?.slideAt ?? null,
-  });
-  /**
-   * 2단 코치의 입력선. `ENDING`에도 살려 두는 이유는 종료 CTA가 `stop`을 보내고
-   * 서버의 `closed`를 기다려야 하기 때문입니다 — 여기서 끊으면 마지막 문장이 사라집니다.
-   */
-  const {
-    transcriptRef,
-    note: sttNote,
-    alert: sttAlert,
-    stop: stopStt,
-  } = useSttStream({
-    takeId,
-    stream,
-    enabled: stageReady && (phase === 'RUNNING' || phase === 'ENDING'),
-    elapsedMs,
-  });
-
-  useCoach({
-    enabled: running,
-    mode,
-    clientSessionId: sessionId,
-    limitSec,
-    elapsedMs,
-    bottomRatio,
-    statsRef,
-    audioLive: audioState === 'running',
-    slideStartedAtRef,
-    history: resume?.coach ?? null,
+    // 워커가 "카메라 소실"로 읽고 스스로 멈춥니다. 마이크만 연 스트림도 같은 이유로 돌리지 않습니다
+    enabled: running && live && cameraOpened,
+    onRecords: onGazeRecords,
   });
 
   // ── 세션 잇기 ────────────────────────────────────────────────────
-  // 준비 화면이 넘겨준 값이 먼저입니다. 없으면(다른 탭에서 이 주소를 열었다) takeId로
-  // IndexedDB를 뒤지고, 그래도 없으면 새로 엽니다.
+  // 준비 화면이 넘겨준 값이 먼저입니다. 없으면(다른 창에서 이 주소를 열었다) takeId로
+  // IndexedDB를 뒤지고, 그래도 없으면 새로 엽니다. 다른 창에서 찾은 행은 이어 가지 않습니다 —
+  // 창을 닫았다 다시 열었거나, 다른 창이 아직 발표 중입니다 (`leftWindow`).
   //
   // ★ 새로고침해도 location.state 는 남습니다. 그래서 막 넘어왔는지 새로고침했는지는
-  //   행을 읽어야 압니다 — 두 길 모두 행을 읽고, 이어받을 것(시계·슬라이드·코치·준비 값·
+  //   행을 읽어야 압니다 — 두 길 모두 행을 읽고, 이어받을 것(시계·슬라이드·준비 값·
   //   종료 중이었나)을 모은 뒤에 무대를 엽니다.
   const resolvedRef = useRef(false);
   useEffect(() => {
@@ -259,6 +385,13 @@ export function RehearsalPage() {
     const passed = (location.state as { clientSessionId?: string } | null)?.clientSessionId;
     (async () => {
       const row = passed ? await getSession(passed) : await findSessionByTakeId(takeId);
+      const leftReason = leftWindow(row ?? null, passed !== undefined, Date.now());
+      if (leftReason) {
+        // 이어 가지 않습니다. 실패로 끝내거나(창을 닫음) 다른 창에 맡깁니다 — 아래 '창을 닫았다 다시 열었다'
+        setTicket((current) => current ?? row?.ticket ?? null);
+        setResume({ ...freshResume(row?.clientSessionId ?? null), left: leftReason });
+        return;
+      }
       if (!row) {
         // 준비 화면을 거쳤는데 행이 없으면(그사이 사이트 데이터를 지웠다) 그 값으로 이어 씁니다 —
         // POST /takes 의 멱등 키가 그 값이라 바꾸면 안 됩니다
@@ -273,28 +406,25 @@ export function RehearsalPage() {
       // 메모리 스토어는 새로고침하면 비어 있습니다. 시선 기준·장치를 되살립니다
       if (row.prepare) restorePrepare(row.prepare);
 
-      // 행은 읽었으니 세션은 잇습니다. 기록을 못 읽으면 슬라이드·코치만 처음부터입니다 —
+      // 행은 읽었으니 세션은 잇습니다. 기록을 못 읽으면 슬라이드만 처음부터입니다 —
       // 아래 catch 로 보내면 행까지 버려 기록이 하나도 안 쌓이고 시계도 0 부터 돕니다
-      let slide: ReturnType<typeof lastSlide> = null;
-      let coach: CoachHistory | null = null;
-      let recordedUntil: Ms = 0;
+      let stored: Resume['slideHistory'] = [];
+      let gaze: Awaited<ReturnType<typeof readGazeSamples>> = [];
       try {
-        const [changes, coachRows, decisions] = await Promise.all([
-          readSlideChanges(id),
-          readCoachLog(id),
-          readGazeDecisions(id),
-        ]);
-        slide = lastSlide(changes);
-        coach = coachHistory(coachRows);
-        recordedUntil = recordedUntilMs({
-          gazeTMs: decisions.map((d) => d.tMs),
-          gazeIntervalMs: TemporalVoter.INTERVAL_MS,
-          slideAtMs: changes.map((c) => c.atMs),
-          coachAtMs: coachRows.map((c) => c.atMs),
-        });
+        const [changes, samples] = await Promise.all([readSlideChanges(id), readGazeSamples(id)]);
+        stored = changes;
+        gaze = samples;
       } catch (err) {
-        console.error('[rehearsal] 슬라이드·코치·시선 기록을 읽지 못했습니다', err);
+        console.error('[rehearsal] 슬라이드·시선 기록을 읽지 못했습니다', err);
       }
+      // 새로고침 직전에 넘긴 장은 IndexedDB 에 아직 없을 수 있습니다. pagehide 에 적어 둔 기록과 합칩니다
+      // (resume.ts `SavedSlides`). 되살릴 장 · 기록이 덮는 시각도 합친 기록으로 셉니다
+      const slideHistory = mergeSlideChanges(stored, takeSlides(takeId, id));
+      const slide = lastSlide(slideHistory);
+      const recordedUntil = recordedUntilMs({
+        gaze,
+        slideAtMs: slideHistory.map((c) => c.atMs),
+      });
       // 무대보다 먼저 되살립니다. 시작하고 나서 바꾸면 1번 슬라이드가 잠깐 보이고 전환으로 기록됩니다
       if (slide) setSlide(slide.slideNumber);
 
@@ -302,7 +432,7 @@ export function RehearsalPage() {
         sessionId: id,
         fromMs: resumeFromMs(row, readClock(takeId), Date.now(), BEAT_MS, recordedUntil),
         slideAt: slide?.atMs ?? null,
-        coach,
+        slideHistory,
         ending:
           row.ending ??
           // ending 을 남기기 전에 끝낸 행입니다. 마지막 하트비트가 가장 가까운 값입니다
@@ -310,6 +440,7 @@ export function RehearsalPage() {
             ? null
             : { durationMs: row.elapsedMs, endedAtIso: new Date(row.lastBeatAt).toISOString() }),
         submitted: (row.submittedAt ?? null) !== null,
+        left: null,
       });
       // IndexedDB 를 못 열면(사생활 보호 모드 · 저장 공간 부족) 여기로 옵니다
     })().catch((err: unknown) => {
@@ -319,9 +450,12 @@ export function RehearsalPage() {
       );
       // 기록은 못 쌓아도 발표는 합니다. 무대를 막으면 이 문구만 남은 빈 화면이 됩니다.
       // 준비 화면이 넘겨준 값은 그대로 씁니다 — POST /takes 의 멱등 키라, 그래야 끝내기를 눌렀을 때
-      // 재시도 화면으로 가서 같은 값으로 다시 보낼 수 있습니다. 없으면 끝내기는 아무것도 하지 않습니다
+      // 재시도 화면으로 가서 같은 값으로 다시 보낼 수 있습니다.
+      // 준비 화면을 거치지 않았으면(다른 창에서 엶) 이어 가지 않습니다 (`leftWindow`)
       setTicket((current) => current ?? null);
-      setResume(freshResume(passed ?? null));
+      setResume(
+        passed !== undefined ? freshResume(passed) : { ...freshResume(null), left: 'CLOSED' },
+      );
     });
   }, [takeId, location.state, restorePrepare, setSlide]);
 
@@ -335,34 +469,88 @@ export function RehearsalPage() {
   useEffect(() => resetStore, [resetStore]);
 
   // 카메라는 준비 화면 CTA를 누른 직후라 바로 열립니다 (같은 문서 = 조작이 살아 있음).
-  // 점검에서 쓴 장치를 그대로 엽니다 — 기본 장치를 열면 USB 마이크로 점검하고
-  // 내장 마이크로 녹음하는 일이 생깁니다
+  // 점검에서 쓴 장치를 먼저 열고, 카메라를 못 열면 마이크만 엽니다 (`openDevices.ts`)
   //
   // 세션 행을 읽은 뒤에 엽니다 — 새로고침이면 점검한 장치를 거기서 되살립니다.
   // 종료 중에 새로고침했으면 열지 않습니다. 남은 일은 기록을 보내는 것뿐입니다
+  const openDevices = useCallback(() => {
+    setOpening(true);
+    // 카메라와 마이크를 못 연 이유는 훅이 각각 올립니다 —
+    // 마이크까지 못 열면 무대는 시작하지 않습니다 (`startGate`). 여기로 오는 건 예상 밖의 오류뿐이라
+    // 버리지 않고 남깁니다
+    openStageDevices(devices, { request, requestMic })
+      .catch((err: unknown) => {
+        console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
+      })
+      .finally(() => setOpening(false));
+  }, [request, requestMic, devices]);
   const askedRef = useRef(false);
   useEffect(() => {
-    if (askedRef.current || !resume || resume.ending || resume.submitted) return;
+    if (askedRef.current || !resume || resume.ending || resume.submitted || resume.left) return;
     askedRef.current = true;
+    openDevices();
+  }, [openDevices, resume]);
+
+  /** 시작하지 못한 무대의 '다시 시도'. 장치를 못 열었으면 다시 열고, 연결이 안 됐으면 다시 붙습니다 */
+  const retryStart = () => {
+    if (gate.kind === 'NO_MIC') {
+      openDevices();
+      return;
+    }
+    setConnectSlow(false);
+    setConnectAttempt((n) => n + 1);
+  };
+
+  // ── 창을 닫았다 다시 열었다 ───────────────────────────────────────
+  // 창을 닫은 Take 는 이어 가지 않습니다. 서버에 실패로 끝내 달라고 하고 실패 화면을 보여 줍니다.
+  // 무대가 열려 있다 닫힌 경우(닫은 탭을 늦게 복원 · 끝내기가 409)에는 카메라부터 놓습니다.
+  // 다른 창이 발표 중이면(서버 409) 행을 건드리지 않습니다 — 그 창이 같은 세션 행을 씁니다
+  const closingRef = useRef(false);
+  useEffect(() => {
+    if (left !== 'CLOSED' || closingRef.current) return;
+    closingRef.current = true;
+    stopCamera();
 
     (async () => {
-      const opened = await request(devices);
-      // 고른 장치가 그사이 빠졌으면(USB 분리 등) exact 제약에 걸려 못 엽니다.
-      // 발표를 못 여는 것보다 기본 장치로라도 여는 편이 낫습니다
-      if (!opened && (devices.videoDeviceId || devices.audioDeviceId)) {
-        await request();
+      // 연습 정보가 없으면(이 브라우저에 기록이 없음) 서버에 알릴 주소를 모릅니다. 타이머가 정리합니다
+      let outcome: AbandonOutcome = 'CLOSED';
+      if (ticket) {
+        try {
+          outcome = abandonOutcome((await abandonTake()).status, null);
+        } catch (e) {
+          outcome = abandonOutcome(null, e instanceof ApiFailure ? e.code : null);
+          if (outcome === 'CLOSED')
+            console.error('[rehearsal] 창을 닫은 Take 를 끝내지 못했습니다', e);
+        }
       }
-      // 장치를 못 연 이유(권한 거부 · 장치 없음)는 request 가 deviceError 로 올립니다 —
-      // 시선 제외와 화면 표시는 그쪽이 맡습니다. 여기로 오는 건 예상 밖의 오류뿐이라
-      // 버리지 않고 남깁니다
-    })().catch((err: unknown) => {
-      console.error('[rehearsal] 카메라·마이크를 여는 중 예상 밖의 오류', err);
+      if (outcome === 'PROCESSING') {
+        navigate(`/takes/${takeId}/processing`, { replace: true });
+        return;
+      }
+      if (outcome === 'OTHER_WINDOW') {
+        setResume((current) => current && { ...current, left: 'OTHER_WINDOW' });
+        return;
+      }
+      // 무대는 다시 열리지 않습니다. 시선 기준은 얼굴 측정값이라 버립니다
+      forgetZoneRef();
+      clearClock(takeId);
+      clearMetrics(takeId);
+      clearSlides(takeId);
+      if (sessionId) {
+        await endSession(sessionId, 'ABORTED').catch((err: unknown) =>
+          noteWriteFailure(sessionId, 'ending', err),
+        );
+      }
+    })().catch((e: unknown) => {
+      console.error('[rehearsal] 창을 닫은 Take 정리 실패', e);
     });
-  }, [request, devices, resume]);
+  }, [left, ticket, takeId, sessionId, stopCamera, abandonTake, navigate]);
 
   // ── 제외 사유 배선 ───────────────────────────────────────────────
   // 한 번 정해지면 되돌리지 않습니다. 발표 도중 엔진이 죽었다면 그 Take의
   // 시선 숫자는 앞뒤가 다른 조건에서 나온 것이라 믿을 수 없습니다.
+  // 카메라가 끊긴 것은 제외하지 않고 기록만 멈춥니다 — 빈 시간은 서버가 측정 못 함으로
+  // 채우므로 끊기기 전 기록을 살립니다 (`lib/gazeExclusion.ts`)
   const excludeGaze = useCallback(
     (id: string, reason: GazeExcludedReason) => {
       noteExclusion(reason);
@@ -374,13 +562,15 @@ export function RehearsalPage() {
   );
 
   useEffect(() => {
-    if (!sessionId || !deviceError) return;
-    excludeGaze(sessionId, deviceError === 'PERMISSION_DENIED' ? 'USER_DECLINED' : 'CAMERA_LOST');
-  }, [sessionId, deviceError, excludeGaze]);
+    if (opening || !sessionId || !cameraError) return;
+    const reason = exclusionForDeviceError(cameraError);
+    if (reason) excludeGaze(sessionId, reason);
+  }, [opening, sessionId, cameraError, excludeGaze]);
 
   useEffect(() => {
     if (!sessionId || !gazeError) return;
-    excludeGaze(sessionId, gazeError);
+    const reason = exclusionForGazeError(gazeError);
+    if (reason) excludeGaze(sessionId, reason);
   }, [sessionId, gazeError, excludeGaze]);
 
   // 엔진 버전은 종료 시점에 영구 고정됩니다 — 받는 즉시 기록해 둡니다
@@ -413,12 +603,28 @@ export function RehearsalPage() {
 
   // 새로고침하면 이 값에서 시계를 다시 돌립니다. 하트비트는 5초마다라 그만큼 어긋나고,
   // 가려진 탭에서는 브라우저가 더 늦춥니다. 탭이 닫히는 순간에 동기로 적어 둡니다 (resume.ts)
+  //
+  // 서버로 못 보낸 `metrics` 도 같은 순간에 적습니다 — 시선을 기다리느라 아직 안 만든 마지막 몇 초와
+  // 끊겨 있어 소켓이 들고 있던 것. 메모리에만 있어 새로고침하면 사라지고, 새 페이지는 아래 시계부터
+  // 다시 보내므로 그 구간을 보낼 길이 없습니다. 같은 `now` 로 메워야 새 시계와 빈틈 · 겹침 없이 이어집니다
   useEffect(() => {
     if (!running || !sessionId) return;
-    const save = () => saveClock(takeId, { clientSessionId: sessionId, elapsedMs: elapsedMs() });
+    const save = () => {
+      const now = elapsedMs();
+      saveClock(takeId, { clientSessionId: sessionId, elapsedMs: now });
+      // 끊겨 소켓에만 있던 장 · IndexedDB 쓰기가 끝나지 않은 장까지 이 페이지가 보낸 장 전부입니다
+      saveSlides(takeId, {
+        clientSessionId: sessionId,
+        slides: slideLog().map((s) => ({ atMs: s.t_ms, slideNumber: s.slide_number })),
+      });
+      saveMetrics(takeId, {
+        clientSessionId: sessionId,
+        messages: handOffMetrics(flushMetricsForHide(now)),
+      });
+    };
     window.addEventListener('pagehide', save);
     return () => window.removeEventListener('pagehide', save);
-  }, [running, sessionId, takeId, elapsedMs]);
+  }, [running, sessionId, takeId, elapsedMs, handOffMetrics, flushMetricsForHide, slideLog]);
 
   // 시선 판정이 아직 없는 dev 환경에서 테두리 3색을 눈으로 보려고 둡니다.
   // 1·2·3 키. **기록에는 남기지 않습니다** — 판정이 아니라 눈속임입니다
@@ -453,6 +659,14 @@ export function RehearsalPage() {
 
     setPhase('ENDING');
 
+    // 1초가 안 찬 마지막 시선 조각을 발표 길이까지로 닫아 저장합니다 (최대 0.5초, 실패하지 않습니다)
+    await flushGaze(ended.durationMs);
+    // 그 조각까지 안 보낸 시간을 발표 길이까지 `metrics` 로 보냅니다. 아래 `stop` 보다 먼저 나갑니다
+    // ★ 서버 자동 종료(`onAutoEnd`)로 왔으면 서버는 Deepgram 정리 뒤 이 조각을 **2초만** 기다리고
+    //   연결을 닫습니다 (BE `FINAL_METRICS_WAIT_SEC`). 닫힌 뒤 보내면 버려집니다 — 여기까지 오는
+    //   작업(`flushGaze` 최대 0.5초)을 늘리지 마세요. 오래 걸리는 일은 `finishMetrics` 뒤에 둡니다
+    finishMetrics(ended.durationMs);
+
     // ★ 종료 중에 새로고침해도 무대로 돌아가지 않고 이 값으로 종료를 이어가도록 먼저 적습니다.
     //   못 적어도 막지 않습니다 — 그때 새로고침하면 발표 중으로 돌아갈 뿐입니다
     await markEnding(sessionId, ended).catch((err: unknown) =>
@@ -461,103 +675,58 @@ export function RehearsalPage() {
 
     // 서버가 남은 오디오를 Deepgram에 흘리고 `closed`를 줄 때까지 기다립니다.
     // 보통 1초, 최대 3초입니다. 그 사이 버튼은 '정리하는 중…'을 보여 줍니다
-    // ★ 3초에서 끊겨도 서버는 마지막 전사까지 저장합니다. 그래서 아래 `/complete`가
-    //   그 저장보다 먼저 도착할 수 있습니다 — 분석이 저장을 기다리는 것은 BE 몫입니다
+    // ★ 이 WS `stop` 이 서버에 Take 가 끝났다고 알리는 신호입니다 (`architecture.md` 1-3).
+    //   3초에서 끊겨도 서버는 마지막 전사까지 저장합니다
     await stopStt();
     await submit(sessionId, ended);
   };
 
   /**
-   * 기록을 모아 `/complete` 로 보냅니다. 끝내기 버튼과 **종료 중 새로고침**이 같이 씁니다.
+   * Take 의 시작 · 종료 시각을 BE 에 적고 처리 화면으로 갑니다. 끝내기 버튼과 **종료 중 새로고침**이 같이 씁니다.
    *
-   * 새로고침으로 들어왔으면 메모리에 남은 것이 없습니다. 그래서 행(IndexedDB)이 먼저이고
-   * 메모리 값은 행을 못 적었을 때만 받습니다.
+   * 보내는 일은 재시도 화면(P15)과 같이 쓰는 `sendEnding` 이 합니다.
    */
-  const submit = async (id: string, { durationMs, endedAtIso }: Ending) => {
+  const submit = async (id: string, ending: Ending) => {
     if (!ticket) return;
+
+    // 무대는 다시 열리지 않으니 시선 기준은 더 쓸 데가 없습니다. 얼굴 측정값이 들어 있어 버립니다
+    forgetZoneRef();
 
     // ★ 여기서부터 끝까지 한 try 입니다. 중간이 실패해도 **무대를 되살리면 안 됩니다** —
     //   phase 가 RUNNING 으로 돌아가면 clock.start() 가 t0 를 다시 잡아 durationMs 가
     //   어긋나고, useSlideDeck 이 0ms 행을 덮어씁니다 (rehearsalStore 주석 참고).
     //   기록은 IndexedDB 에 그대로 있으므로 재시도 화면으로 보냅니다.
     try {
-      await endSession(id);
-
-      // ── 대조 ────────────────────────────────────────────────────────
-      // 발표는 한 번뿐이라 여기가 마지막 확인입니다. 장부에 쌓인 실패를 봅니다.
-      // ★ 지금은 알리는 곳이 콘솔뿐입니다.
-      const failures = readWriteFailures(id);
-      if (Object.keys(failures).length > 0) {
-        console.error('[rehearsal] 기록이 불완전합니다', { 실패: failures });
-      }
-
-      const row = await getSession(id);
-      const decisions = await readGazeDecisions(id);
-      const changes = await readSlideChanges(id);
-      const coachRows = await readCoachLog(id);
-
-      const gazePayload = buildGazePayload({
-        decisions,
-        durationMs,
-        // DB 쓰기가 실패했어도 값 자체는 메모리에 있습니다. 행을 못 읽었다고
-        // ENGINE_VERSION_UNAVAILABLE 로 보내면 없는 사실을 만들어 내는 셈입니다
-        engineVersion: row?.engineVersion ?? engineVersion,
-        decisionIntervalMs: TemporalVoter.INTERVAL_MS,
-        // 행이 우선이고, 못 적혔으면 ref 가 받습니다. 제외를 놓치는 쪽이
-        // 잘못 제외하는 쪽보다 나쁩니다 — 틀린 숫자가 정상인 척 실리니까요
-        excludedReason: row?.gazeExcluded ? row.gazeExcludedReason : excludedRef.current,
-        calibration: row?.prepare?.calibration ?? calibration,
-      });
-
-      const body: CompleteRequest = {
-        clientSessionId: id,
-        startedAt: row?.startedAtIso ?? new Date(Date.now() - durationMs).toISOString(),
-        endedAt: endedAtIso,
-        durationMs,
-        mode,
-        // 패널 숨김 UI는 아직 없습니다. 생기면 여기에 그 목록이 들어갑니다
-        hiddenPanels: [],
-        slideEvents: toSlideEvents(changes, durationMs),
-        gaze: gazePayload.payload,
-        liveFeedbacks: coachRows
-          .filter((c) => c.fired)
-          .map((c) => ({
-            type: c.type,
-            message: c.message ?? '',
-            triggeredAtMs: c.atMs,
-            // 1단은 규칙이라 확률이 없습니다. 2단(모델)이 붙으면 그쪽이 값을 채웁니다
-            confidence: 1,
-          })),
-        suppressedFeedbacks: coachRows
-          .filter((c) => !c.fired)
-          .map((c) => ({ type: c.type, atMs: c.atMs, reason: c.suppressedReason ?? 'UNKNOWN' })),
-        clientPerf: {
-          avgGazeFps: row?.gazeAvgFps ?? perf?.avgFps ?? 0,
-          droppedFrames: row?.gazeDroppedFrames ?? perf?.droppedFrames ?? 0,
-          // LIGHT 강등 임계값은 I-03이 정해져야 만들 수 있습니다
-          degradedToLightAtMs: null,
-        },
-      };
-
-      await complete.mutateAsync(body);
-      // 보냈다는 표시. 이 주소로 다시 들어오면(새로고침 · 뒤로 가기) 무대를 열지 않습니다.
-      // 못 적으면 다시 들어왔을 때 종료를 한 번 더 이어가는데, `/complete` 가 멱등이라 괜찮습니다
-      await markSubmitted(id).catch((err: unknown) => noteWriteFailure(id, 'ending', err));
-      clearWriteFailures(id);
-      clearClock(takeId);
+      await sendEnding(takeId, id, ending, endTake.mutateAsync);
       // 기록을 쌓지 않고 바꿉니다. 뒤로 가기로 리허설 화면에 돌아오지 않게 합니다
       navigate(`/takes/${takeId}/processing`, { replace: true });
     } catch (e) {
+      // 서버가 이미 끝낸 Take 입니다 — 창을 닫아 끝났는데(닫은 탭을 늦게 복원) 끝내기를 눌렀습니다.
+      // 다시 보내도 같아서 재시도 화면이 아니라 실패 화면으로 갑니다
+      if (e instanceof ApiFailure && e.code === 'TAKE_ENDED') {
+        leaveClosed();
+        return;
+      }
+      // 서버에서 시작하지 않은 Take 입니다 — 남은 기록이 없어 다시 보내도 같습니다
+      if (e instanceof ApiFailure && e.code === 'TAKE_NOT_STARTED') {
+        setNotStarted(true);
+        return;
+      }
       // 기록은 브라우저에 그대로 있습니다. 여기서 잃는 것은 없고,
-      // 재시도 화면이 같은 clientSessionId로 다시 보냅니다
+      // 재시도 화면이 같은 clientSessionId 의 세션으로 다시 보냅니다
       console.error('[rehearsal] 종료 처리 실패', e);
       setEndError(toMessage(e));
       navigate(`/takes/${takeId}/retry`, { state: { clientSessionId: id } });
     }
   };
 
+  // 자동 종료(onAutoEnd)가 최신 finish 를 부르게 합니다. finish 가 쓰는 submit 보다 뒤에 둡니다
+  useEffect(() => {
+    finishRef.current = finish;
+  });
+
   // 종료 중에 새로고침했습니다. 무대는 열지 않고 끝내기를 누른 순간 고정한 값으로 종료를 이어갑니다.
-  // `/complete` 는 clientSessionId 로 멱등이라 새로고침 전에 이미 갔어도 다시 보내도 됩니다.
+  // 종료 시각은 같은 값을 다시 적을 뿐이라 새로고침 전에 이미 갔어도 다시 보내도 됩니다.
   // 의존성 배열을 두지 않습니다 — submit 이 매 렌더 새로 만들어지는 함수라 넣으면 매번 돌고,
   // 빼면 오래된 submit 을 잡습니다. 한 번만 도는 것은 ref 가 지킵니다
   const resumedEndingRef = useRef(false);
@@ -570,7 +739,7 @@ export function RehearsalPage() {
     if (elapsedRef.current) elapsedRef.current.textContent = formatDuration(ending.durationMs);
     (async () => {
       // 새로고침 전에 `stop` 이 서버에 못 닿았을 수 있습니다. 그러면 서버는 끊긴 연결을 30초
-      // 기다린 뒤에야 마지막 전사를 정리하고, 그 사이 `/complete` 가 먼저 갑니다.
+      // 기다린 뒤에야 마지막 전사를 정리합니다. `stop` 이 Take 종료 신호이기도 해서
       // 붙어서 stop 만 보냅니다 (최대 3초). 이미 닿았으면 서버가 열었다 바로 닫습니다
       await stopTakeStream(takeId);
       await submit(sessionId, ending);
@@ -580,12 +749,27 @@ export function RehearsalPage() {
     });
   });
 
-  const gazeNote = gazeNoteText({
-    cameraLost: deviceError !== null,
-    missingCalibration,
-    error: gazeError,
-    ready: gazeReady,
-  });
+  if (left) return <LeftWindowNotice left={left} pitchId={ticket?.pitchId ?? null} />;
+  if (notStarted || (gate.kind === 'FAILED' && gate.reason === 'ENDED')) {
+    return <NotStartedNotice pitchId={ticket?.pitchId ?? null} />;
+  }
+
+  // 시선이 기록되지 않을 때만 발밑에 한 줄 띄웁니다(`gazeNote`). 발표 중에 고칠 수 없는 문제도 남깁니다 —
+  // 코치 상태 표시는 코칭 모드에서 소켓이 붙어 있을 때만 와서, 실전 모드 · 끊긴 동안에는 아무 표시가 없습니다
+  // 장치를 모두 연 뒤 발표 중에만 알립니다. 중간 오류나 종료 중 엔진 상태로 안내하지 않습니다
+  const gazeLine =
+    running && !opening
+      ? gazeNote({
+          declined: cameraError === 'PERMISSION_DENIED',
+          noCamera: stream !== null && !cameraOpened,
+          cameraLost:
+            (cameraError !== null && cameraError !== 'PERMISSION_DENIED') ||
+            gazeError === 'CAMERA_LOST',
+          missingCalibration,
+          error: gazeError,
+          ready: gazeReady,
+        })
+      : null;
 
   return (
     <div className="min-h-full bg-greige px-4 py-5">
@@ -596,7 +780,7 @@ export function RehearsalPage() {
           entry={`진입 · 리허설 준비의 Take ${ticket?.takeNumber ?? ''} 시작하기`}
         />
 
-        <div className="h-[calc(100vh-7rem)] min-h-[560px] overflow-hidden rounded-2xl shadow-lg">
+        <div className="h-[calc(100vh-7rem)] min-h-[560px] overflow-hidden border-2 border-ink shadow-[4px_4px_0_var(--color-line)]">
           {/* ★ data-gaze 한 줄이 테두리의 전부입니다. 워커의 1초 판정이 여기 도착합니다 */}
           <div
             className="stage"
@@ -605,6 +789,9 @@ export function RehearsalPage() {
             data-gaze="UNKNOWN"
             data-mode={mode}
           >
+            {stageReady && gate.kind !== 'STARTED' && (
+              <StartGateNotice gate={gate} pitchId={ticket?.pitchId ?? null} onRetry={retryStart} />
+            )}
             <header className="stage-head">
               <span className="elapsed" ref={elapsedRef}>
                 00:00
@@ -650,9 +837,11 @@ export function RehearsalPage() {
 
               <div className="rail">
                 <section className="camera">
-                  <video ref={videoRef} muted playsInline />
-                  {!live && <div className="guide" />}
-                  <span className="tag">CAMERA 16:9</span>
+                  <div className="frame">
+                    <video ref={videoRef} muted playsInline />
+                    {!(live && cameraOpened) && <div className="guide" />}
+                    <span className="tag">CAMERA 16:9</span>
+                  </div>
                 </section>
 
                 <section className="mic">
@@ -689,9 +878,17 @@ export function RehearsalPage() {
               </div>
             </div>
 
-            <div className="coach" data-empty={coach === null}>
-              <span>{coach?.text ?? ''}</span>
-              <span className="rule">한 번에 하나만 · 8초 후 사라짐</span>
+            {/* AI 코치의 한마디(8초)와 상태 표시. 실전 모드는 서버가 보내지 않아 비어 있습니다 */}
+            <div
+              className="coach"
+              data-empty={coach === null}
+              // 칭찬("지금처럼")까지 경고색이면 혼나는 느낌이 납니다
+              data-tone={coach?.instruction === 'CONTINUE' ? 'praise' : 'correct'}
+            >
+              <span className="coach-text" role="status">
+                {coach?.text ?? ''}
+              </span>
+              <CoachIndicators indicators={indicators} stale={indicatorsStale} />
             </div>
 
             <ScriptPane
@@ -703,15 +900,25 @@ export function RehearsalPage() {
             />
 
             <div className="stage-foot">
-              <span>{gazeNote}</span>
+              {/* 기록이 멈추면 경고(stage.css) — 화면 낭독기에도 바로 알립니다. 준비 중은 조용히 둡니다.
+                  key 로 요소를 갈아 끼웁니다 — 있던 status 의 role 만 alert 로 바꾸면 낭독기가 놓칩니다 */}
+              {gazeLine && (
+                <span
+                  key={gazeLine.alert ? 'alert' : 'status'}
+                  className="gaze"
+                  data-alert={gazeLine.alert}
+                  role={gazeLine.alert ? 'alert' : 'status'}
+                >
+                  {gazeLine.text}
+                </span>
+              )}
               {sttNote && (
                 <span className="stt" data-alert={sttAlert}>
                   {sttNote}
                 </span>
               )}
-              {/* 실전 모드에서는 전사를 숨깁니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
-                  기록은 그대로 서버에 쌓이니 리포트에서는 차이가 없습니다 */}
-              {mode !== 'EXAM' && <span className="stt-text" ref={transcriptRef} />}
+              {/* 실시간 전사는 띄우지 않습니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
+                  전사는 그대로 서버에 쌓이니 리포트에서는 차이가 없습니다 */}
               {audioState !== null && audioState !== 'running' && (
                 <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
               )}
@@ -753,19 +960,100 @@ export function RehearsalPage() {
 }
 
 /**
- * 시선 안내 한 줄. 위에서부터 먼저 걸리는 사유 하나만 보여 줍니다.
+ * 무대를 열지 않는 이유를 알립니다. 창을 닫은 Take 는 이어 가지 않으니 새 Take 로 보냅니다.
+ * 다른 창이 발표 중이면 그 창으로 돌아가게 합니다 — 여기서는 아무것도 바꾸지 않았습니다.
  */
-function gazeNoteText(state: {
-  cameraLost: boolean;
-  missingCalibration: boolean;
-  error: GazeExcludedReason | null;
-  ready: boolean;
-}): string {
-  if (state.cameraLost) return '카메라가 끊겼습니다 — 발표는 계속됩니다';
-  if (state.missingCalibration) return '시선 기준이 없어 측정 제외 — 발표는 계속됩니다';
-  if (state.error) return `시선 측정 제외 · ${state.error}`;
-  if (state.ready) return '시선 기록 중';
-  return '시선 엔진 준비 중';
+function LeftWindowNotice({ left, pitchId }: { left: LeftWindow; pitchId: string | null }) {
+  const closed = left === 'CLOSED';
+  return (
+    <InfoPage title={closed ? '연습 중단' : '다른 창에서 연습 중'}>
+      <Card>
+        <Mascot who="chichi">
+          {closed
+            ? '창이 닫혀서 이번 연습은 중단됐어. 새로 시작해 보자!'
+            : '이 연습은 다른 창에서 하고 있어. 그 창으로 돌아가 줘!'}
+        </Mascot>
+        <div className="flex flex-wrap gap-3">
+          {closed && pitchId && (
+            <ButtonLink to={`/pitch/${pitchId}/device-check`}>새 Take 준비</ButtonLink>
+          )}
+          <ButtonLink to="/" variant="secondary">
+            내 피치로
+          </ButtonLink>
+        </div>
+      </Card>
+    </InfoPage>
+  );
+}
+
+/**
+ * 시작하기 전에 끝난 Take 입니다. 서버 연결이 끝내 붙지 않아 시작하지 않은 Take 로 정리됐습니다
+ * (만든 지 10분 · 같은 발표에서 새 Take 를 만듦). 이 Take 는 다시 열 수 없어 새로 준비합니다.
+ */
+function NotStartedNotice({ pitchId }: { pitchId: string | null }) {
+  return (
+    <InfoPage title="연습 시작 안 됨">
+      <Card>
+        <Mascot who="chichi">이 연습은 시작하기 전에 끝났어. 장치 점검부터 다시 해 보자!</Mascot>
+        <div className="flex flex-wrap gap-3">
+          {pitchId && <ButtonLink to={`/pitch/${pitchId}/device-check`}>새 Take 준비</ButtonLink>}
+          <ButtonLink to="/" variant="secondary">
+            내 피치로
+          </ButtonLink>
+        </div>
+      </Card>
+    </InfoPage>
+  );
+}
+
+/**
+ * 발표를 시작하기 전에 무대 위에 띄우는 안내. 시계 · 기록 · 끝내기는 아직 멈춰 있습니다.
+ * 이어 가는 Take(새로고침)에서는 장치를 못 열었을 때만 뜹니다.
+ */
+function StartGateNotice({
+  gate,
+  pitchId,
+  onRetry,
+}: {
+  gate: Exclude<StartGate, { kind: 'STARTED' }>;
+  pitchId: string | null;
+  onRetry: () => void;
+}) {
+  const text = startGateText(gate);
+  const stuck =
+    gate.kind === 'NO_MIC' || gate.kind === 'FAILED' || (gate.kind === 'CONNECTING' && gate.slow);
+  return (
+    <div className="start-gate" role="status" data-stuck={stuck || undefined}>
+      <div className="box">
+        <p>{text}</p>
+        {stuck && (
+          <div className="actions">
+            <Button onClick={onRetry}>다시 시도</Button>
+            {pitchId && (
+              <ButtonLink variant="secondary" to={`/pitch/${pitchId}/device-check`}>
+                장치 점검으로
+              </ButtonLink>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function startGateText(gate: Exclude<StartGate, { kind: 'STARTED' }>): string {
+  switch (gate.kind) {
+    case 'OPENING':
+      return '카메라와 마이크를 여는 중이에요';
+    case 'NO_MIC':
+      return `${gate.error ? `${MIC_ERROR_MESSAGE[gate.error]} ` : ''}마이크가 있어야 발표를 시작할 수 있어요.`;
+    case 'CONNECTING':
+      return gate.slow
+        ? '말하기 분석 서버에 연결하지 못했어요. 연결되면 바로 시작해요.'
+        : '말하기 분석 서버에 연결하는 중이에요';
+    case 'FAILED':
+      return '말하기 분석 서버에 연결하지 못했어요. 다시 시도해 주세요.';
+  }
 }
 
 function endButtonText(ending: boolean, confirming: boolean): string {
@@ -775,16 +1063,24 @@ function endButtonText(ending: boolean, confirming: boolean): string {
 }
 
 /**
- * 전환 시각 목록을 구간으로 접습니다.
- * 마지막 슬라이드의 끝은 발표 길이입니다 — 그래야 구간의 합이 발표 전체가 됩니다.
+ * AI 코치의 상태 표시. 받은 영역만, 늘 같은 순서로 둡니다. 고칠 것이 있는 영역만 색을 입힙니다 —
+ * 여섯 칸이 모두 칠해져 있으면 어디를 봐야 할지 모릅니다.
  */
-function toSlideEvents(
-  changes: { atMs: Ms; slideNumber: number }[],
-  durationMs: Ms,
-): { slideNumber: number; startMs: Ms; endMs: Ms }[] {
-  return changes.map((c, i) => ({
-    slideNumber: c.slideNumber,
-    startMs: c.atMs,
-    endMs: changes[i + 1]?.atMs ?? durationMs,
-  }));
+function CoachIndicators({ indicators, stale }: { indicators: Indicators; stale: boolean }) {
+  const views = indicatorViews(indicators);
+  if (views.length === 0) return null;
+  return (
+    <ul
+      className="indicators"
+      data-stale={stale}
+      aria-label={stale ? '코치 상태 표시 (연결이 끊겨 지난 판정)' : '코치 상태 표시'}
+      title={stale ? '연결이 끊겨 지난 판정이에요' : undefined}
+    >
+      {views.map((v) => (
+        <li key={v.area} data-tone={v.tone}>
+          {v.label} <b>{v.value}</b>
+        </li>
+      ))}
+    </ul>
+  );
 }

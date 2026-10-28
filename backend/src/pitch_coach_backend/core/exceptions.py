@@ -14,6 +14,7 @@
 """
 
 import logging
+import math
 import re
 from http import HTTPStatus
 from typing import Any
@@ -23,6 +24,8 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
+
+from pitch_coach_backend.core.logging import sqlstate
 
 logger = logging.getLogger(__name__)
 
@@ -107,13 +110,25 @@ async def app_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     return _error_response(exc.status_code, exc.code, exc.message, exc.detail)
 
 
+def _finite_only(value: Any) -> Any:
+    """NaN · Infinity 를 문자열로 바꾼다. JSON 응답은 이 값을 담지 못한다."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _finite_only(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_finite_only(item) for item in value]
+    return value
+
+
 async def validation_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, RequestValidationError)
+    # 받은 값이 detail 의 input 으로 그대로 돌아간다. NaN 을 보냈으면 422 를 만들다 500 이 된다
     return _error_response(
         status.HTTP_422_UNPROCESSABLE_CONTENT,
         "VALIDATION_ERROR",
         "요청 형식이 올바르지 않습니다.",
-        exc.errors(),
+        _finite_only(jsonable_encoder(exc.errors())),
     )
 
 
@@ -125,8 +140,14 @@ async def http_exception_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """처리되지 않은 예외. 원인은 서버 로그에만 남기고 응답에는 넣지 않는다."""
-    logger.exception("처리되지 않은 예외: %s %s", request.method, request.url.path, exc_info=exc)
+    """처리되지 않은 예외. 원문을 포함할 수 있는 본문·traceback 대신 안전한 진단값만 남긴다."""
+    logger.error(
+        "처리되지 않은 예외: %s %s error=%s sqlstate=%s",
+        request.method,
+        request.url.path,
+        type(exc).__name__,
+        sqlstate(exc),
+    )
     return _error_response(
         status.HTTP_500_INTERNAL_SERVER_ERROR,
         "INTERNAL_SERVER_ERROR",

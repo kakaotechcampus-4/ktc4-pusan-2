@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router';
 import { PitchCoachWordmark } from './PitchCoachWordmark';
+import { ComfortScene } from './ComfortScene';
 
 const cta =
   'inline-flex items-center justify-center gap-6 border-2 border-ink bg-coral px-6 py-3.5 font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-1 hover:bg-coral-deep active:translate-x-1 active:translate-y-1 active:shadow-none';
@@ -179,14 +180,7 @@ export function WelcomePage() {
                 <span>— □ ×</span>
               </div>
               <div className="relative overflow-hidden">
-                <img
-                  src="/onboarding/chichi-professor.png"
-                  alt="눈물을 흘리지만 열심히 배우는 치치와 안경, 정장을 갖춘 피코 교수"
-                  width="1254"
-                  height="1254"
-                  fetchPriority="high"
-                  className="block aspect-[1.15] w-full object-cover"
-                />
+                <ComfortScene />
                 <div className="landing-float absolute left-5 top-6 max-w-[80%] border-2 border-ink bg-panel px-4 py-3 shadow-[3px_3px_0_var(--color-ink)] sm:left-8 sm:top-8">
                   <p className="mb-1 font-mono text-[9px] text-coral-deep">
                     PROFESSOR / 오늘의 한마디
@@ -379,19 +373,16 @@ export function WelcomePage() {
               >
                 <div className="mb-6 flex items-center gap-5">
                   <figure className="w-28 shrink-0 border border-ink bg-panel p-1.5 shadow-[3px_3px_0_var(--color-line-strong)] lg:w-32">
+                    {/* 정면 픽셀 증명사진은 원본 3:4 비율을 유지합니다. */}
                     <img
-                      src={
-                        professor
-                          ? '/onboarding/pico-portrait.png'
-                          : '/onboarding/chichi-portrait-longsleeve.png'
-                      }
+                      src={professor ? '/onboarding/pico-id.png' : '/onboarding/chichi-id.png'}
                       alt={
                         professor
-                          ? '안경과 정장을 갖춘 공작새 피코 교수의 픽셀 증명사진'
-                          : '아이보리 깃털에 짙은 갈색 포인트, 흰색 Stüssy 롱슬리브를 입은 뱁새 치치의 픽셀 증명사진'
+                          ? '안경과 정장을 갖춘 공작새 피코 교수가 정면을 바라보는 픽셀 증명사진'
+                          : '아이보리와 갈색 깃털에 흰색 롱슬리브를 입은 뱁새 치치의 정면 픽셀 증명사진'
                       }
-                      width={1254}
-                      height={1254}
+                      width={600}
+                      height={800}
                       loading="lazy"
                       className="aspect-[3/4] w-full object-cover [image-rendering:pixelated]"
                     />

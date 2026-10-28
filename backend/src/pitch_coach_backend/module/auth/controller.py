@@ -10,16 +10,17 @@
 쿠키가 셋이다.
     refresh_token   HttpOnly. Path=/api/auth — 다른 API 요청에는 실려 나가지 않는다
     csrf_token      JS 가 읽어 헤더에 실어야 하므로 HttpOnly 가 아니다
-    oauth_browser   start~callback 동안만 사는 임시 쿠키
+    oauth_browser_* start~callback 동안만 사는 임시 쿠키. 로그인 요청마다 이름 끝에 state 를 붙인다
 """
 
+import logging
 import re
 import secrets
 from typing import Annotated
 from urllib.parse import urlencode, urljoin
 
 import redis
-from fastapi import APIRouter, Cookie, Depends, Query, Response, status
+from fastapi import APIRouter, Cookie, Depends, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -42,6 +43,8 @@ from pitch_coach_backend.module.auth.exception import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+logger = logging.getLogger(__name__)
+
 REFRESH_COOKIE_NAME = "refresh_token"
 BROWSER_COOKIE_NAME = "oauth_browser"
 
@@ -52,6 +55,25 @@ CSRF_COOKIE_PATH = "/"
 
 # 로그인 시작부터 콜백까지만 살면 된다. state 의 TTL 과 맞춘다.
 BROWSER_COOKIE_MAX_AGE = 600
+
+# 우리가 만드는 state 의 모양(token_urlsafe). 쿠키 이름에 넣어도 되는 글자뿐이다.
+_STATE = re.compile(r"\A[A-Za-z0-9_-]{1,64}\Z")
+
+
+def browser_cookie_name(state: str) -> str:
+    """로그인 요청마다 따로 심는 임시 쿠키의 이름.
+
+    이름이 하나면 두 탭에서 로그인을 시작했을 때 나중 탭의 쿠키가 먼저 탭의 것을 덮어써
+    먼저 탭의 콜백이 실패한다.
+    """
+    return f"{BROWSER_COOKIE_NAME}_{state}"
+
+
+def _delete_browser_cookie(response: Response, state: str | None) -> None:
+    # 콜백의 state 는 밖에서 온 값이다. 쿠키 이름에 못 쓰는 글자가 섞이면 Set-Cookie 를
+    # 만들다 500 이 나므로, 우리가 만든 모양일 때만 지운다
+    if state and _STATE.match(state):
+        response.delete_cookie(browser_cookie_name(state), path=REFRESH_COOKIE_PATH)
 
 
 def _set_session_cookies(response: Response, issued: service.IssuedSession) -> str:
@@ -79,7 +101,8 @@ def _set_session_cookies(response: Response, issued: service.IssuedSession) -> s
     return csrf_token
 
 
-def _clear_session_cookies(response: Response) -> None:
+def clear_session_cookies(response: Response) -> None:
+    """로그아웃과 회원 탈퇴(/users/me)가 쓴다."""
     # 심을 때와 같은 path 로 지워야 실제로 지워진다.
     response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
     response.delete_cookie(CSRF_COOKIE_NAME, path=CSRF_COOKIE_PATH)
@@ -89,8 +112,9 @@ def _clear_session_cookies(response: Response) -> None:
 _ERROR_CODE = re.compile(r"\A[a-z_]{1,40}\Z")
 
 # 콜백 처리 중 난 도메인 예외 -> 프론트로 넘기는 auth_error. 구글 오류 코드와 같은 모양이다.
-# 프론트는 access_denied 외에는 같은 문구를 보여주므로 원인 추적용이다
-_CALLBACK_ERROR_CODES: dict[type[AppException], str] = {
+# 프론트는 access_denied 외에는 같은 문구를 보여주므로 원인 추적용이다.
+# 표에 없는 예외(DB 오류 등)는 login_failed 다
+_CALLBACK_ERROR_CODES: dict[type[Exception], str] = {
     InvalidAuthorizationRequest: "invalid_request",
     GoogleTokenExchangeFailed: "token_exchange_failed",
     GoogleIdentityRejected: "identity_rejected",
@@ -98,7 +122,7 @@ _CALLBACK_ERROR_CODES: dict[type[AppException], str] = {
 }
 
 
-def _callback_error_code(exc: AppException) -> str:
+def _callback_error_code(exc: Exception) -> str:
     return _CALLBACK_ERROR_CODES.get(type(exc), "login_failed")
 
 
@@ -144,12 +168,20 @@ def google_start(
     redis_client: Annotated[redis.Redis, Depends(get_redis)],
     return_to: Annotated[str | None, Query(description="로그인 후 돌아갈 프론트 경로")] = None,
 ) -> RedirectResponse:
-    started = service.start_login(redis_client, return_to=_safe_return_to(return_to))
+    try:
+        started = service.start_login(redis_client, return_to=_safe_return_to(return_to))
+    except Exception:
+        # 로그인 버튼이 화면째 이 주소로 옮겨 온다. Redis 오류 등으로 500 JSON 을 주면
+        # 사용자가 그대로 보므로 콜백 실패와 같이 프론트로 돌려보낸다
+        logger.exception("구글 로그인 시작 중 예상하지 못한 오류")
+        return RedirectResponse(
+            _frontend_url("/", auth_error="login_failed"), status_code=status.HTTP_302_FOUND
+        )
 
     response = RedirectResponse(started.authorization_url, status_code=status.HTTP_302_FOUND)
     # state 를 훔쳐도 이 쿠키가 없으면 콜백을 완성할 수 없다.
     response.set_cookie(
-        BROWSER_COOKIE_NAME,
+        browser_cookie_name(started.state),
         started.browser_token,
         max_age=BROWSER_COOKIE_MAX_AGE,
         path=REFRESH_COOKIE_PATH,
@@ -162,12 +194,12 @@ def google_start(
 
 @router.get("/google/callback", summary="구글 로그인 콜백")
 def google_callback(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     redis_client: Annotated[redis.Redis, Depends(get_redis)],
     code: Annotated[str | None, Query()] = None,
     state: Annotated[str | None, Query()] = None,
     error: Annotated[str | None, Query()] = None,
-    oauth_browser: Annotated[str | None, Cookie(alias=BROWSER_COOKIE_NAME)] = None,
 ) -> RedirectResponse:
     """구글이 돌아오는 지점. 토큰을 URL 에 절대 넣지 않는다.
 
@@ -186,26 +218,33 @@ def google_callback(
             _frontend_url("/", auth_error=error or "invalid_request"),
             status_code=status.HTTP_302_FOUND,
         )
-        response.delete_cookie(BROWSER_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+        _delete_browser_cookie(response, state)
         return response
 
     try:
         issued = service.complete_login(
-            db, redis_client, code=code, state=state, browser_token=oauth_browser
+            db,
+            redis_client,
+            code=code,
+            state=state,
+            browser_token=request.cookies.get(browser_cookie_name(state)),
         )
-    except AppException as e:
+    except Exception as e:
         # 브라우저가 최상위로 이동해 온 요청이라 JSON 을 돌려주면 사용자가 그대로 본다.
-        # 취소했을 때와 같이 프론트로 돌려보내고 원인은 auth_error 코드로만 알린다
+        # 취소했을 때와 같이 프론트로 돌려보내고 원인은 auth_error 코드로만 알린다.
+        # 예상하지 못한 예외도 500 JSON 대신 같은 길로 보내고, 원인은 서버 로그에 남긴다
+        if not isinstance(e, AppException):
+            logger.exception("구글 로그인 콜백 처리 중 예상하지 못한 오류")
         response = RedirectResponse(
             _frontend_url("/", auth_error=_callback_error_code(e)),
             status_code=status.HTTP_302_FOUND,
         )
-        response.delete_cookie(BROWSER_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+        _delete_browser_cookie(response, state)
         return response
 
     response = RedirectResponse(_frontend_url(issued.return_to), status_code=status.HTTP_302_FOUND)
     _set_session_cookies(response, issued)
-    response.delete_cookie(BROWSER_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+    _delete_browser_cookie(response, state)
     return response
 
 
@@ -234,5 +273,5 @@ def logout(
 ) -> LogoutResponse:
     """이미 발급된 Access 는 최대 15분 살아 있다. 즉시 무효화는 이번 범위가 아니다."""
     service.logout(db, refresh_token)
-    _clear_session_cookies(response)
+    clear_session_cookies(response)
     return LogoutResponse()

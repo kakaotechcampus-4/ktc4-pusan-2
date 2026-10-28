@@ -6,9 +6,14 @@ import {
   parseServerMessage,
   WS_CLOSE_NORMAL,
   WS_CLOSE_POLICY,
+  type AutoEndReason,
+  type CoachMessage,
+  type MetricsMessage,
+  type SlideMessage,
   type SttErrorCode,
   type SttState,
   type SttStatusMessage,
+  type TakeEndReason,
   type TranscriptMessage,
 } from './sttProtocol';
 
@@ -30,7 +35,7 @@ import {
  *      시계를 따라 이어진다. 서버는 새 연결의 첫 프레임 seq 가 뒤로 간 것을 보고 Deepgram
  *      세션을 갈아 그 offset 으로 새 구간을 받는다 (새로고침하는 동안의 공백을 무음으로 메우지 않는다).
  *   3. close 1000·1008 이면 재연결하지 않는다. 그 외에는 백오프 3회, 그 뒤로는
- *      4~6초마다 다시 붙어 본다. 횟수로는 포기하지 않고, 끊긴 지 30분이 지나야 멈춘다.
+ *      4~6초마다 다시 붙어 본다. 횟수로는 포기하지 않고, 끊긴 지 5분 30초가 지나야 멈춘다.
  *   4. `stop` 을 보낸 뒤 `stt_status.state === 'closed'` 를 기다리되 **3초까지만** 기다린다.
  *      마지막 전사를 저장하는 것은 서버 몫이다 — `stop` 을 받은 서버는 이 소켓이 먼저
  *      닫혀도 Deepgram 정리와 저장을 끝까지 한다. 그래서 FE 가 더 붙잡고 있을 이유가 없다.
@@ -40,6 +45,31 @@ import {
 
 /** 재연결될 때까지 들고 있을 프레임 수. 100ms × 20 = 2초 (BE 와 합의한 계약) */
 const MAX_PENDING_FRAMES = 20;
+
+/**
+ * 재연결될 때까지 들고 있을 `metrics` 수. 1초에 하나라 5분입니다.
+ *
+ * 오디오(2초)보다 훨씬 길게 듭니다. `metrics` 는 시선 · 음량 기록이 서버에 가는 **유일한 길**이고
+ * (발표 종료에 기록을 몰아 보내는 `/complete` 는 없어졌습니다, #134), BE 는 이걸 저장해 Take 결과를
+ * 만듭니다. 버리면 리포트에서 그 구간이 빠집니다. 다시 붙으면 몰아 보냅니다 — 같은 1초가 두 번
+ * 가도 BE 는 먼저 받은 것을 씁니다 (`architecture.md` 6-2). 몰아 보내는 것에는 `buffered: true` 를
+ * 붙여 BE 가 원자료로만 쌓고 코치는 부르지 않게 합니다 (#324). 5분은 BE 가 끊긴 Take 를 끝내는
+ * 시간(`ABANDONED`, #311)과 같습니다 — 그보다 오래 쌓아도 보낼 곳이 없습니다.
+ */
+const MAX_PENDING_METRICS = 300;
+
+/**
+ * 새로고침할 때 다음 페이지로 넘기는 `metrics` 하나 (`handOffMetrics` → `restoredMetrics`).
+ * 큐와 같은 모양이라 받는 쪽이 `data` 를 다시 읽어 시각을 꺼낼 필요가 없습니다.
+ * `data` 는 보낼 JSON 그대로(`buffered: true` 포함)입니다
+ */
+export interface HandedMetrics {
+  tMs: Ms;
+  data: string;
+}
+
+/** 다시 붙을 때까지 쌓아 둔 JSON 메시지 하나. `tMs` 로 시각 순서를 맞춥니다 */
+type PendingEvent = HandedMetrics;
 
 /** 빠른 백오프. 이걸 다 쓰면 화면을 `degraded` 로 두고 느린 재시도로 넘어갑니다 */
 const RETRY_DELAYS_MS = [500, 1_000, 2_000];
@@ -58,11 +88,12 @@ const SLOW_RETRY_MS = 5_000;
 const SLOW_RETRY_JITTER_MS = 1_000;
 
 /**
- * 끊긴 뒤 이만큼 지나도 못 붙으면 멈춥니다. 발표 중에 걸릴 일은 거의 없는 안전 상한입니다 —
- * 리허설 화면을 열어 둔 채 자리를 떠난 탭이 밤새 5초마다 서버를 두드리지 않게 합니다.
- * 한 번이라도 다시 붙으면(`ready`) 처음부터 다시 셉니다.
+ * 끊긴 뒤 이만큼 지나도 못 붙으면 멈춥니다. 서버가 창을 닫지 않고 끊긴 Take 를 기다리는 시간과
+ * 같습니다 — 끊긴 연결을 30초(grace) 살려 두고, 스트림을 정리한 뒤 5분을 더 기다립니다. 그 뒤로는
+ * 붙어도 서버가 `TAKE_ENDED`(`ABANDONED`)로 거절합니다. 발표는 STT 없이 이어 가고, 끝내기(PUT)를
+ * 보내면 서버가 되살립니다. 한 번이라도 다시 붙으면(`ready`) 처음부터 다시 셉니다.
  */
-const GIVE_UP_AFTER_MS = 30 * 60_000;
+const GIVE_UP_AFTER_MS = 5 * 60_000 + 30_000;
 
 /**
  * `stop()` 을 부른 뒤 종료가 풀리기까지의 상한. 끝내기 버튼을 누른 사람이 기다리는 시간입니다.
@@ -89,7 +120,7 @@ export interface SocketLike {
   onerror: (() => void) | null;
 }
 
-/** 네트워크 끊김은 `RETRY_LIMIT` 하나뿐입니다 — 30분 동안은 포기하지 않고 계속 붙어 봅니다 */
+/** 네트워크 끊김은 `RETRY_LIMIT` 하나뿐입니다 — 5분 30초 동안은 포기하지 않고 계속 붙어 봅니다 */
 export type GiveUpReason = 'FATAL' | 'NO_TOKEN' | 'CONNECT_FAILED' | 'RETRY_LIMIT';
 
 export interface SttSocketOptions {
@@ -97,14 +128,47 @@ export interface SttSocketOptions {
   onTranscript: (message: TranscriptMessage) => void;
   /** 화면에 뜨는 상태. 서버가 알려준 값과 우리가 아는 값(재연결 중)이 함께 옵니다 */
   onState: (state: SttState) => void;
+  /**
+   * 서버가 `ready` 를 보냈습니다 — 이 연결이 Take 를 시작했거나(`RUNNING`) 이어받았습니다.
+   * 무대는 첫 `ready` 를 받은 뒤에 시계를 돌립니다. 다시 붙을 때마다 옵니다
+   */
+  onReady?: () => void;
   onStatus?: (message: SttStatusMessage) => void;
-  onError?: (code: SttErrorCode, message: string) => void;
+  /** `endReason` 은 `TAKE_ENDED` 일 때 BE 가 끝낸 이유입니다 (`TakeEndReason`) */
+  onError?: (code: SttErrorCode, message: string, endReason: TakeEndReason | null) => void;
   /** 더 붙지 않습니다. 화면은 이 시점에 "말하기 분석 없이 계속"으로 넘어갑니다 */
   onGiveUp?: (reason: GiveUpReason) => void;
+  /**
+   * 서버가 Take 를 자동으로 끝냈습니다 (말 없음 · 최대 시간). 무대는 여기서 종료 흐름을 탑니다.
+   * 한 번만 옵니다. 이 뒤로는 다시 붙지 않습니다
+   */
+  onAutoEnd?: (reason: AutoEndReason, message: string) => void;
+  /** AI 코치의 한마디 · 상태 표시 (`coach`). `COACHING` 모드에서만 옵니다 */
+  onCoach?: (message: CoachMessage) => void;
+  /**
+   * 서버와 이어졌다(`ready`) · 끊겼다. `onState` 와 따로 둡니다 — `stt_state` 에는 BE↔Deepgram 상태도
+   * 섞여 있어서(서버가 보내는 `degraded`), 연결은 멀쩡하고 코치도 계속 오는데 `ok` 가 아닐 수 있습니다.
+   * 코치 상태 표시가 낡았는지는 이 연결로만 압니다 (`useLiveCoach`)
+   */
+  onConnection?: (connected: boolean) => void;
   createSocket?: (url: string) => SocketLike;
   getToken?: (options: { renew: boolean }) => Promise<string | null>;
   /** 느린 재시도 간격을 고르는 난수 [0, 1). 테스트에서 간격을 고정하려고 둡니다 */
   random?: () => number;
+  /**
+   * 새로고침 전 페이지가 못 보내고 넘긴 `metrics` (`handOffMetrics`). 쌓아 둔 것처럼 다루어 붙자마자
+   * 먼저 보냅니다. 저장소에서 꺼낼 때 모양을 확인했습니다 (`takeMetrics`)
+   */
+  restoredMetrics?: readonly HandedMetrics[];
+  /**
+   * 이 페이지에서 보낸 장 변경 전부 (`useSttStream` 이 들고 있음). `ready` 를 받을 때마다 **전부** 다시 보냅니다.
+   *
+   * 소켓보다 장 변경이 먼저 생깁니다 — 무대가 열리면 첫 장(새로고침이면 이어받은 기록 전체)을 바로
+   * 보내는데, 카메라 · 마이크가 열려야 소켓이 생깁니다. 끊기기 직전에 보낸 것도 닿았는지 모릅니다.
+   * 같은 것이 또 가도 BE 가 `(take_id, started_ms)` 로 거릅니다. 한 Take 에 수십 개라 부담이 없습니다.
+   * 주면 쌓아 둔 `slide` 대신 이것을 보냅니다 (쌓아 둔 것은 이 안에 있습니다).
+   */
+  slideHistory?: () => readonly SlideMessage[];
 }
 
 /**
@@ -117,18 +181,40 @@ export function sttUrl(takeId: string): string {
 }
 
 /**
- * 캐시된 토큰이 있으면 그대로, 없으면 갱신합니다.
+ * 캐시된 토큰이 곧 만료되는지 볼 여유. 인증 메시지가 서버에 닿기까지와 시계 차이를 덮습니다
+ */
+const TOKEN_EXPIRY_MARGIN_MS = 60_000;
+
+/**
+ * JWT 의 `exp` 가 `marginMs` 안에 오는가. 읽을 수 없는 토큰은 아니라고 봅니다 —
+ * 그대로 붙어 보고, 서버가 `UNAUTHORIZED` 로 닫으면 그때 새로 받습니다.
+ */
+export function tokenExpiresWithin(token: string, marginMs: number, now = Date.now()): boolean {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return false;
+    const { exp } = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as {
+      exp?: unknown;
+    };
+    return typeof exp === 'number' && exp * 1000 - now <= marginMs;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 캐시된 토큰이 있으면 그대로, 없거나 곧 만료되면 갱신합니다.
  *
  * `renew` 는 **캐시를 건너뜁니다.** 메모리에 든 access 토큰은 15분짜리라
  * 긴 발표 중에 만료될 수 있는데, 그걸 그대로 다시 들고 붙으면 서버가
- * `UNAUTHORIZED` 로 닫고 FE 는 치명 오류로 보고 영영 포기합니다 —
- * 실제로는 새로 받기만 하면 되는 상황입니다.
+ * `UNAUTHORIZED` 로 닫습니다 — 실제로는 새로 받기만 하면 되는 상황입니다.
+ * 만료 시각이 지났거나 가까우면 거절당하기 전에 미리 받습니다.
  */
 async function defaultGetToken({ renew }: { renew: boolean }): Promise<string | null> {
   if (renew) return refresh().catch(() => null);
 
   const token = getAccessToken();
-  if (token) return token;
+  if (token && !tokenExpiresWithin(token, TOKEN_EXPIRY_MARGIN_MS)) return token;
 
   return refresh().catch(() => null);
 }
@@ -140,6 +226,17 @@ export class SttSocket {
   /** Take 단위 누적입니다. 재연결에서 리셋하지 않습니다 (계약 2) */
   private seq = 0;
   private pending: Uint8Array[] = [];
+  /**
+   * 아직 못 보낸 `metrics` · `slide`. 다시 붙으면 오디오 다음에 둘을 합쳐 **Take 시각 순서대로**
+   * 흘립니다 (`architecture.md` 2절). 시선 1초 기록은 0.2~3초 늦게 나와서 넣은 순서와 시각 순서가 다를
+   * 수 있습니다.
+   *
+   * 배열을 나눈 이유 — 상한은 `metrics` 에만 겁니다. 한 배열에 섞으면 `metrics` 수를 따로 세고 가장
+   * 오래된 `metrics` 를 찾아 지워야 하는데, 그 수가 한 번 어긋나면 찾지 못해(-1) 마지막 `slide` 를 지웁니다.
+   * 나눠 두면 `metrics` 는 맨 앞이 가장 오래된 것이고, `slide` 는 지워질 길이 없습니다.
+   */
+  private pendingMetrics: PendingEvent[] = [];
+  private pendingSlides: PendingEvent[] = [];
   private ready = false;
 
   private retries = 0;
@@ -151,9 +248,12 @@ export class SttSocket {
 
   /** 닫혀도 다시 붙지 않는 상태. 에러 코드가 정합니다 */
   private fatal = false;
+  /** 서버가 Take 를 자동으로 끝냈다고 알렸습니다 (`auto_end`) */
+  private autoEnded = false;
 
   /** 토큰을 새로 받아 한 번 더 붙어 볼 것인가 (만료된 토큰과 진짜 인증 실패를 가릅니다) */
   private renewToken = false;
+  /** 이번 연결 시도에서 이미 새로 받았습니다. 다시 붙으면(`ready`) 비웁니다 */
   private authRetried = false;
   private disposed = false;
 
@@ -163,6 +263,9 @@ export class SttSocket {
 
   constructor(options: SttSocketOptions) {
     this.options = options;
+    this.pendingMetrics = (options.restoredMetrics ?? [])
+      .slice(-MAX_PENDING_METRICS)
+      .map(({ tMs, data }) => ({ tMs, data }));
   }
 
   /** 지금까지 보낸(또는 버린) 프레임 수. 화면 계기판용입니다 */
@@ -172,6 +275,16 @@ export class SttSocket {
 
   get bufferedFrames(): number {
     return this.pending.length;
+  }
+
+  /** 아직 못 보낸 `metrics` 수. 화면 계기판 · 테스트용입니다 */
+  get bufferedMetrics(): number {
+    return this.pendingMetrics.length;
+  }
+
+  /** 아직 못 보낸 `slide` 수. 테스트용입니다 */
+  get bufferedSlides(): number {
+    return this.pendingSlides.length;
   }
 
   start(): void {
@@ -198,6 +311,85 @@ export class SttSocket {
 
     this.pending.push(frame);
     while (this.pending.length > MAX_PENDING_FRAMES) this.pending.shift();
+  }
+
+  /**
+   * 1초 측정값 하나 (`metrics`). `ready` 전이거나 끊겨 있으면 쌓았다가 다시 붙을 때 보냅니다.
+   *
+   * 끝내기는 이 함수로 마지막 조각을 보낸 **뒤에** `stop()` 을 부릅니다. `stop` 은 쌓인 것부터
+   * 흘린 다음 `stop` 을 보내므로, 끊겨 있던 중에 끝내도 마지막 조각이 `stop` 보다 먼저 갑니다.
+   */
+  sendMetrics(message: MetricsMessage): void {
+    if (this.disposed || this.stopping) {
+      // 자동 종료 뒤 서버가 먼저 닫았습니다. 마지막 조각이 서버에 가지 않습니다 — 일어나는지 보려고 남깁니다
+      if (this.autoEnded && this.disposed) {
+        console.warn('[stt] 자동 종료 뒤 연결이 닫혀 metrics 를 보내지 못했습니다', message.t_ms);
+      }
+      return;
+    }
+
+    if (this.ready && this.socket) {
+      this.socket.send(JSON.stringify(message));
+      return;
+    }
+
+    // 쌓아 둔 것은 다시 붙은 뒤에야 나갑니다 — 이미 지난 시각입니다. BE 가 저장만 하고 코치를
+    // 부르지 않도록 표시합니다 (`architecture.md` 1-4 · 2절). 시작 직후 `ready` 전 몇 초도 같습니다
+    this.pendingMetrics.push({
+      tMs: message.t_ms,
+      data: JSON.stringify({ ...message, buffered: true }),
+    });
+    // 넘치면 가장 오래된 `metrics` 만 버립니다. `slide` 는 따로 두어 버리지 않습니다 — 장 구간 나누기가
+    // 이벤트 전체를 쓰므로 하나만 빠져도 그 뒤 장들의 말이 앞 장으로 들어갑니다. 5분에 몇 개뿐입니다
+    while (this.pendingMetrics.length > MAX_PENDING_METRICS) this.pendingMetrics.shift();
+  }
+
+  /**
+   * 장이 바뀌었습니다 (`slide`). `t_ms` 는 그 장으로 넘어온 Take 시각입니다. 끊겨 있으면 쌓았다가
+   * 다시 붙을 때 `metrics` 와 시각 순서대로 보냅니다. `buffered` 표시는 없습니다 — BE 는 받는 대로
+   * 저장하고, 실시간 코치는 요청 시각 이하의 가장 늦은 장을 고릅니다 (`architecture.md` 1-4 · 2절).
+   */
+  sendSlide(message: SlideMessage): void {
+    if (this.disposed || this.stopping) return;
+    const data = JSON.stringify(message);
+
+    if (this.ready && this.socket) {
+      this.socket.send(data);
+      return;
+    }
+
+    this.pendingSlides.push({ tMs: message.t_ms, data });
+  }
+
+  /**
+   * 탭이 사라지기 직전(`pagehide`). 남은 1초들을 보내 보고, **아직 서버에 닿았다고 볼 수 없는 것**을
+   * 모두 돌려줍니다 — 쌓아 둔 것과 방금 받은 것. 새로고침한 페이지가 `restoredMetrics` 로 다시 보냅니다.
+   *
+   * 붙어 있어 방금 보낸 것도 돌려줍니다. 사라지는 페이지의 `send` 는 닿는다는 보장이 없고,
+   * 두 번 가도 BE 는 먼저 받은 것을 둡니다 (`architecture.md` 6-2). 쌓아 둔 것은 비우지 않습니다 —
+   * 페이지가 되살아나면(bfcache) 다시 붙어 보냅니다.
+   */
+  handOffMetrics(messages: readonly MetricsMessage[]): HandedMetrics[] {
+    if (this.disposed || this.stopping) return [];
+
+    if (!(this.ready && this.socket)) {
+      for (const message of messages) this.sendMetrics(message);
+      return this.queuedMetrics();
+    }
+    for (const message of messages) this.socket.send(JSON.stringify(message));
+    const sent = messages.map((message) => ({
+      tMs: message.t_ms,
+      data: JSON.stringify({ ...message, buffered: true }),
+    }));
+    return [...this.queuedMetrics(), ...sent].slice(-MAX_PENDING_METRICS);
+  }
+
+  /**
+   * 쌓아 둔 `metrics`. `slide` 는 넘기지 않습니다 — 장 기록 전체를 따로 적어 두었다가(`saveSlides`)
+   * 새 페이지가 IndexedDB 기록과 합쳐 다시 보냅니다 (`useSlideSender`)
+   */
+  private queuedMetrics(): HandedMetrics[] {
+    return this.pendingMetrics.map(({ tMs, data }) => ({ tMs, data }));
   }
 
   /**
@@ -230,8 +422,15 @@ export class SttSocket {
         this.clearRetry();
         this.armStopTimer(STOP_WAIT_MS);
         this.sendStop();
-      } else if (this.connecting || (this.pending.length > 0 && this.retryTimer !== null)) {
+      } else if (
+        this.connecting ||
+        ((this.pending.length > 0 ||
+          this.pendingMetrics.length > 0 ||
+          this.pendingSlides.length > 0) &&
+          this.retryTimer !== null)
+      ) {
         // 붙는 중이거나 예약된 재연결이 있으면 그대로 둡니다. 붙으면 sendStop 이 버퍼부터 흘립니다.
+        // 쌓인 `metrics` 만 있어도 기다립니다 — 마지막 1초 조각이 거기 있습니다.
         // 붙는 중이면 버퍼가 비어 있어도 기다립니다 — `stop` 이 가야 서버가 끊긴 연결을
         // 30초 기다리지 않고 바로 마지막 전사를 정리합니다 (`stopTakeStream`)
         this.armStopTimer(STOP_WAIT_MS);
@@ -264,7 +463,8 @@ export class SttSocket {
     if (!this.socket || !this.ready) return;
 
     try {
-      this.flushPending();
+      // 장 기록은 `ready` 에서 이미 보냈습니다. 붙어 있는 동안 넘긴 장은 바로 나갔습니다
+      this.flushPending({ withSlideHistory: false });
       this.socket.send(JSON.stringify({ type: 'stop' }));
     } catch {
       this.dispose();
@@ -291,7 +491,7 @@ export class SttSocket {
     }
     this.socket = null;
     this.ready = false;
-    this.pending = [];
+    this.clearPending();
 
     this.flushStopResolvers();
   }
@@ -339,16 +539,20 @@ export class SttSocket {
 
   private handleMessage(data: unknown): void {
     const message = parseServerMessage(data);
-    // 모르는 메시지는 버립니다. 서버가 나중에 metrics·coach 를 추가해도 안 깨집니다
+    // 모르는 메시지는 버립니다. 서버가 나중에 새 메시지를 추가해도 안 깨집니다
     if (!message) return;
 
     switch (message.type) {
       case 'ready':
         this.retries = 0;
         this.disconnectedAt = null;
-        this.flushPending();
+        // 새 토큰이 통했습니다. 15분 뒤 다시 만료되면 그때 또 새로 받아야 합니다
+        this.authRetried = false;
+        this.flushPending({ withSlideHistory: true });
         this.ready = true;
         this.options.onState(message.stt_state);
+        this.options.onReady?.();
+        this.options.onConnection?.(true);
         // 인증을 기다리느라 미뤄 둔 종료가 있으면 이제 보냅니다
         if (this.stopping) this.sendStop();
         break;
@@ -364,11 +568,30 @@ export class SttSocket {
         if (message.state === 'closed') this.dispose();
         break;
 
+      case 'coach':
+        this.options.onCoach?.(message);
+        break;
+
+      case 'auto_end':
+        // 서버는 이 Take 를 다시 받지 않습니다. 재연결해 봐야 TAKE_ENDED 로 닫힙니다
+        this.fatal = true;
+        if (!this.autoEnded) {
+          this.autoEnded = true;
+          this.options.onAutoEnd?.(message.reason, message.message);
+        }
+        break;
+
       case 'error':
-        this.options.onError?.(message.code, message.message);
+        // 끊겨 있다 다시 붙으면 auto_end 뒤에 TAKE_ENDED 가 옵니다. 이유는 이미 알렸으니
+        // "이미 끝난 연습이라…" 로 덮지 않습니다
+        if (this.autoEnded && message.code === 'TAKE_ENDED') {
+          this.fatal = true;
+          break;
+        }
+        this.options.onError?.(message.code, message.message, message.end_reason);
 
         // 토큰이 만료된 것뿐일 수 있습니다. 새로 받아 **한 번만** 다시 붙어 봅니다 —
-        // 그래도 거절당하면 진짜 인증 실패이므로 그때 포기합니다
+        // 그래도 `ready` 전에 또 거절당하면 진짜 인증 실패이므로 그때 포기합니다
         if (message.code === 'UNAUTHORIZED' && !this.authRetried) {
           this.authRetried = true;
           this.renewToken = true;
@@ -384,31 +607,54 @@ export class SttSocket {
   /**
    * 버퍼를 **먼저** 비우고 그 다음에 실시간을 엽니다 (계약 1).
    * 순서가 뒤집히면 서버가 낮은 seq 를 역행으로 보고 버립니다.
+   * 쌓인 `metrics` 도 여기서 시각 순서대로 흘립니다.
    */
-  private flushPending(): void {
+  private flushPending({ withSlideHistory }: { withSlideHistory: boolean }): void {
     if (!this.socket) return;
 
-    for (const frame of this.pending) this.socket.send(frame);
+    const socket = this.socket;
+    for (const frame of this.pending) socket.send(frame);
     this.pending = [];
+    // 장 기록을 받으면 쌓아 둔 `slide` 대신 기록 전체를 보냅니다 (`slideHistory`)
+    const history = withSlideHistory ? this.options.slideHistory?.() : undefined;
+    const slides = history
+      ? history.map((s) => ({ tMs: s.t_ms, data: JSON.stringify(s) }))
+      : this.pendingSlides;
+    // 정렬은 안정 정렬이라 같은 시각이면 `metrics` 가 먼저입니다
+    const events = [...this.pendingMetrics, ...slides].sort((a, b) => a.tMs - b.tMs);
+    this.pendingMetrics = [];
+    this.pendingSlides = [];
+    for (const e of events) socket.send(e.data);
+  }
+
+  private clearPending(): void {
+    this.pending = [];
+    this.pendingMetrics = [];
+    this.pendingSlides = [];
   }
 
   private handleClose(code: number): void {
+    const wasReady = this.ready;
     this.detach(this.socket);
     this.socket = null;
     this.ready = false;
+    // 이어져 있던 연결만 알립니다. 붙는 중에 닫힌 것은 원래 끊긴 상태입니다
+    if (wasReady && !this.disposed) this.options.onConnection?.(false);
 
     if (this.disposed) return;
+
+    // 토큰 갱신이 예약돼 있으면 1008 이어도 한 번 더 붙습니다 (백오프 없이 바로).
+    // 끝내는 중이어도 붙습니다 — 거절당한 연결은 `ready` 전이라 `stop` 이 아직 안 나갔고,
+    // 들고 있는 버퍼가 마무리 문장입니다. 3초 상한은 `stop()` 이 건 그대로 둡니다
+    if (!this.fatal && this.renewToken) {
+      this.options.onState('reconnecting');
+      this.connect().catch(() => this.giveUp('CONNECT_FAILED'));
+      return;
+    }
 
     // stop 을 보낸 뒤라면 서버가 정리를 마치고 닫은 것입니다
     if (this.stopping) {
       this.dispose();
-      return;
-    }
-
-    // 토큰 갱신이 예약돼 있으면 1008 이어도 한 번 더 붙습니다 (백오프 없이 바로)
-    if (!this.fatal && this.renewToken) {
-      this.options.onState('reconnecting');
-      this.connect().catch(() => this.giveUp('CONNECT_FAILED'));
       return;
     }
 
@@ -445,7 +691,7 @@ export class SttSocket {
    * 정리가 끝났다"는 뜻이라, 여기서 쓰면 화면이 아무 문제 없었던 것처럼 보입니다.
    */
   private giveUp(reason: GiveUpReason): void {
-    this.pending = [];
+    this.clearPending();
     this.options.onState('degraded');
     this.options.onGiveUp?.(reason);
     this.dispose();
@@ -475,7 +721,7 @@ export class SttSocket {
  * 소켓을 잠깐 열어 `stop` 만 보내고 `closed` 를 기다립니다. 오디오는 보내지 않습니다.
  *
  * 종료 중에 새로고침했을 때 씁니다. 새로고침 전에 `stop` 이 서버에 못 닿았으면 서버는 끊긴
- * 연결을 30초 기다린 뒤에야 마지막 전사를 정리하는데, 그 사이 `/complete` 가 먼저 갑니다.
+ * 연결을 30초 기다린 뒤에야 마지막 전사를 정리합니다. `stop` 은 Take 종료 신호이기도 합니다.
  * 이미 닿았으면 서버가 스트림을 새로 열었다가 바로 닫습니다. 기다리는 시간은 `stop()` 과 같이
  * 3초까지이고, 실패해도 던지지 않습니다 — 종료는 이것 없이도 이어갑니다.
  */

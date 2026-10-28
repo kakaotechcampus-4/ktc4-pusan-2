@@ -1,0 +1,13 @@
+{
+  "note": "구분자 없음 — fail, 금융공학(블랙-숄즈)",
+  "status": "fail",
+  "slides": [
+    {
+      "slide_number": 1,
+      "first": "안녕하세요. 오늘은 옵션 가격을 계산하는 블랙-숄즈 모형에 대해 발표하겠습니다.",
+      "last": "감사합니다."
+    }
+  ],
+  "title_lines": [],
+  "actual_slide_ms": null
+}

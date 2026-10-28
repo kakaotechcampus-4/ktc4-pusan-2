@@ -7,11 +7,11 @@ from typing import Any
 import pytest
 
 import coach.core as core_mod
-from coach import ReplayRequired, finalize, recovery
-from coach.schemas import ReplayInput
+from coach import ReplayRequired, decide, finalize, recovery
+from coach.schemas import FinalizeRequest, ReplayInput
 
 from .conftest import PLAN
-from .fakes import ScriptedJudge, fake_issue, fake_judges
+from .fakes import FakeJudge, ScriptedJudge, fake_issue, fake_judges
 
 
 def raw(t_end: int = 30_000, **over: Any) -> dict[str, Any]:
@@ -93,6 +93,189 @@ def test_request_window_at_a_given_second():
     )
     assert recovery.inputs_at(r, 50_000).stt_status == "ok"
     assert recovery.inputs_at(r, 10_000).slide.number == 1
+
+
+def shifted(t_end: int, offset: int = 400) -> dict[str, Any]:
+    """1초 격자가 offset 만큼 어긋난 원자료: 기록이 [offset, offset+1000), … 이고 t_end 에 끝남."""
+    starts = range(offset, t_end - 1_000 + 1, 1_000)
+    return raw(
+        t_end,
+        gaze_records=[{"t_ms": t, "duration_ms": 1_000, "state": "CAMERA"} for t in starts],
+        voice_records=[
+            {"t_ms": t, "duration_ms": 1_000, "level_db": -30.0, "voiced_ms": 800, "silence_ms": 0}
+            for t in starts
+        ],
+        words=[
+            {"word": "가나다", "start_ms": t, "end_ms": t + 600, "final_at_ms": t + 1_600}
+            for t in range(offset, t_end - 1_000, 1_000)
+        ],
+    )
+
+
+class MeasuredJudge(FakeJudge):
+    """summarize 가 measured_ratio 1 을 더해 영역 값이 비지 않는 가짜 판정."""
+
+    def summarize(self, tally: dict[str, dict[str, float]]) -> dict[str, Any]:
+        return {area: {**values, "measured_ratio": 1.0} for area, values in tally.items()}
+
+
+def record_tally(inputs: dict[str, Any], t: int) -> list[dict[str, Any]]:
+    """시선 1초 기록을 실제로 세는 가짜 판정: 커서(since_ms) 이상에서 시작한 기록의 길이를
+    measured_ms 로 센다. 요청 시각이 기록 중간이면 다음 요청에서 그 기록을 건너뛰게 된다."""
+    since = inputs["since_ms"]
+    tally = [
+        {"t_ms": r["t_ms"], "values": {"measured_ms": r["duration_ms"]}}
+        for r in inputs["records"]
+        if r["t_ms"] >= since
+    ]
+    return [
+        {
+            "evaluator": "gaze",
+            "area": "GAZE",
+            "t_ms": t,
+            "counted_until_ms": max(t, since),
+            "criteria_version": "gaze-fake-1",
+            "measurable": True,
+            "state": "CAMERA",
+            "tally": tally,
+        }
+    ]
+
+
+def test_ticks_on_a_thousand_grid_are_every_second():
+    r = ReplayInput.model_validate(raw(10_000))
+    assert recovery.ticks(r, 10_000) == list(range(0, 10_000, 1_000))
+
+
+def test_ticks_follow_the_ends_of_a_shifted_grid():
+    r = ReplayInput.model_validate(shifted(8_400))
+    ticks = recovery.ticks(r, 8_400)
+    # 0 다음은 첫 기록 [400, 1400) 의 끝부터 — 1000 은 그 기록 안이라 부르지 않는다
+    assert ticks == [0, 1_400, 2_400, 3_400, 4_400, 5_400, 6_400, 7_400]
+    spans = [(g.t_ms, g.t_ms + g.duration_ms) for g in r.gaze_records]
+    assert not [t for t in ticks if any(start < t < end for start, end in spans)]
+
+
+def test_ticks_fill_a_gap_without_records_every_second():
+    gaze = [{"t_ms": t, "duration_ms": 1_000, "state": "CAMERA"} for t in (0, 1_000, 2_000)]
+    gaze += [
+        {"t_ms": t, "duration_ms": 1_000, "state": "CAMERA"} for t in range(13_000, 16_000, 1_000)
+    ]
+    r = ReplayInput.model_validate(raw(16_000, gaze_records=gaze, voice_records=[]))
+    # 3초 ~ 13초는 기록이 없어 1초 간격으로 채운다
+    assert recovery.ticks(r, 16_000) == list(range(0, 16_000, 1_000))
+
+
+def test_ticks_fill_before_the_first_record_and_skip_times_inside_a_record():
+    gaze = [{"t_ms": 2_500, "duration_ms": 1_000, "state": "CAMERA"}]
+    r = ReplayInput.model_validate(raw(6_000, gaze_records=gaze, voice_records=[]))
+    # 1000 · 2000 은 채우고, 3000 은 기록 [2500, 3500) 안이라 건너뛴 뒤 끝 3500 부터 잇는다
+    assert recovery.ticks(r, 6_000) == [0, 1_000, 2_000, 3_500, 4_500, 5_500]
+
+
+def test_word_confirmed_at_the_request_time_goes_in_the_next_request():
+    r = ReplayInput.model_validate(
+        raw(
+            10_000,
+            words=[{"word": "가나다", "start_ms": 2_000, "end_ms": 2_600, "final_at_ms": 4_000}],
+        )
+    )
+    assert recovery.inputs_at(r, 4_000).words == []
+    assert [w.start_ms for w in recovery.inputs_at(r, 5_000).words] == [2_000]
+
+
+def test_last_window_takes_words_confirmed_exactly_at_the_take_end():
+    r = ReplayInput.model_validate(
+        raw(
+            10_000,
+            words=[{"word": "가나다", "start_ms": 9_200, "end_ms": 9_800, "final_at_ms": 10_000}],
+        )
+    )
+    assert recovery.inputs_at(r, 10_000).words == []
+    assert [w.start_ms for w in recovery.inputs_at(r, 10_000, last_window=True).words] == [9_200]
+
+
+def test_replay_counts_a_word_confirmed_exactly_at_the_take_end():
+    # BE 는 Take 끝보다 늦게 확정된 단어를 Take 끝으로 잘라 싣는다 — replay 의 마지막 창이 센다
+    data = raw(
+        10_000,
+        words=[{"word": "가나다라", "start_ms": 9_200, "end_ms": 9_800, "final_at_ms": 10_000}],
+    )
+    judges = fake_judges(pace=MeasuredJudge("pace"))
+    r = finalize(request(replay=data, t_ms=10_000), judges).take_result
+    assert r.areas["SPEED"].take["chars"] == 4
+
+
+def test_replay_window_lists_words_in_speaking_order():
+    # 늦게 확정된 앞 단어가 원자료에서 뒤에 와도 창에는 말한 순서로 싣는다(실시간 창과 같게)
+    words = [
+        {"word": "나", "start_ms": 3_000, "end_ms": 3_400, "final_at_ms": 4_000},
+        {"word": "가", "start_ms": 1_000, "end_ms": 1_400, "final_at_ms": 4_500},
+    ]
+    r = ReplayInput.model_validate(raw(10_000, words=words))
+    assert [w.word for w in recovery.inputs_at(r, 6_000).words] == ["가", "나"]
+
+
+def test_replay_last_window_keeps_the_stt_status_the_be_sent():
+    # 마지막 metrics 뒤에 STT 가 돌아왔으면 원자료 이력에는 없다 — 요청의 마지막 창 상태를 쓴다
+    data = raw(
+        10_000,
+        stt_status_changes=[{"t_ms": 0, "status": "reconnecting"}],
+        words=[{"word": "가나다라", "start_ms": 9_200, "end_ms": 9_800, "final_at_ms": 10_000}],
+    )
+    seen: list[str] = []
+    judges = fake_judges()
+    real = judges.pace.judge
+
+    def spy(inputs: dict[str, Any], t: int):
+        seen.append(inputs["stt_status"])
+        return real(inputs, t)
+
+    judges.pace.judge = spy  # type: ignore[method-assign]
+    req = {**request(replay=data, t_ms=10_000), "inputs": {"stt_status": "ok"}}
+    finalize(req, judges)
+    assert seen[-1] == "ok" and set(seen[:-1]) == {"reconnecting"}
+    # 요청에 마지막 창이 없으면 원자료 이력의 상태 그대로
+    seen.clear()
+    finalize(request(replay=data, t_ms=10_000), judges)
+    assert seen[-1] == "reconnecting"
+    # 마지막 창은 실렸지만 stt_status 가 빠졌으면 기본값(ok)이 아니라 원자료 이력의 상태
+    for inputs in ({}, {"words": []}):
+        seen.clear()
+        finalize({**request(replay=data, t_ms=10_000), "inputs": inputs}, judges)
+        assert seen[-1] == "reconnecting", inputs
+
+
+def test_replay_of_a_shifted_grid_matches_the_live_run():
+    t_end = 20_400
+    data = shifted(t_end)
+    # 실시간: BE 가 1초 기록이 끝날 때마다 요청을 보내고 coach_state 를 이어 간다
+    live_req = request(t_ms=t_end, replay=data)
+    parsed = ReplayInput.model_validate(data)
+    judges = fake_judges(gaze=MeasuredJudge("gaze", script=record_tally))
+    state = None
+    for t in range(1_400, t_end, 1_000):
+        creq = recovery.request_at(FinalizeRequest.model_validate(live_req), parsed, t, state)
+        state = decide(creq, judges).coach_state
+    live = finalize(
+        {
+            **live_req,
+            "replay": None,
+            "coach_state": state,
+            "inputs": recovery.inputs_at(parsed, t_end, last_window=True).model_dump(mode="json"),
+        },
+        judges,
+    ).take_result
+    replayed = finalize(
+        live_req, fake_judges(gaze=MeasuredJudge("gaze", script=record_tally))
+    ).take_result
+
+    assert replayed.replayed is True and live.replayed is False
+    # 기록을 하나도 건너뛰지 않았다: [400, 20400) 의 1초 기록 20개
+    assert replayed.areas["GAZE"].take["measured_ms"] == 20_000
+    for area, result in live.areas.items():
+        assert replayed.areas[area].take == result.take, area
+        assert replayed.areas[area].slides == result.slides, area
 
 
 def test_rebuild_requests_are_exam_mode_every_second(monkeypatch: pytest.MonkeyPatch):
@@ -264,6 +447,19 @@ def test_empty_raw_data_still_gives_a_result():
     }
     r = finalize(request(replay=empty), fake_judges()).take_result
     assert r.replayed is True and r.duration_ms == 30_000
+
+
+def test_replay_take_result_carries_the_plan_like_the_normal_path():
+    with_plan = finalize(request(), fake_judges()).take_result
+    assert with_plan.plan is not None
+    assert with_plan.plan.model_dump() == {
+        "target_ms": 180_000,
+        "min_ms": 165_000,
+        "max_ms": 195_000,
+    }
+    req = request()
+    del req["plan"]
+    assert finalize(req, fake_judges()).take_result.plan is None
 
 
 def test_same_replay_same_result():

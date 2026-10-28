@@ -98,6 +98,15 @@ def test_validation_error_same_shape(probe: TestClient) -> None:
     assert body["detail"][0]["loc"] == ["body", "n"]
 
 
+def test_validation_error_with_nan_input_is_still_422(probe: TestClient) -> None:
+    # httpx 는 NaN 을 직렬화하지 않아 본문을 문자열로 보낸다
+    res = probe.post(
+        "/validate", content='{"n": NaN}', headers={"Content-Type": "application/json"}
+    )
+    assert res.status_code == 422
+    assert res.json()["detail"][0]["input"] == "nan"
+
+
 def test_unknown_path_same_shape(probe: TestClient) -> None:
     """라우터가 만드는 404 도 code 를 갖는다. HTTPException 을 던지지 않아도 발생한다."""
     res = probe.get("/이런-경로-없음")
@@ -134,6 +143,7 @@ def test_unhandled_exception_returns_json_without_internals(
         "message": "서버 오류가 발생했습니다.",
         "detail": None,
     }
-    # 내부 예외 내용은 응답이 아니라 서버 로그에만 남는다
+    # 응답과 서버 로그 모두 예외 본문 대신 안전한 진단값만 남긴다
     assert "DB 비밀번호" not in res.text
-    assert "DB 비밀번호가 틀렸습니다" in caplog.text
+    assert "DB 비밀번호" not in caplog.text
+    assert "GET /boom error=RuntimeError sqlstate=None" in caplog.text

@@ -8,9 +8,18 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from .version import FEATURE_VERSION, SCHEMA_VERSION
 from .vocab import (
@@ -23,6 +32,113 @@ from .vocab import (
     Outcome,
     StrategyChange,
 )
+
+#: 계약 상수(features/coach-agent.md 5-2). config.py 에 두지 않는다 — 설정 해시(판정 기준 버전)가
+#: 바뀌면 안 된다
+#: t_ms 상한: Take 최대 1시간 + 60초. evaluate 와 finalize 가 함께 쓴다
+MAX_T_MS = 3_660_000
+#: 지난 처리 시각보다 이만큼 넘게 앞선 요청은 처리하지 않는다(T_MS_JUMP)
+MAX_T_MS_JUMP = 60_000
+#: plan 요청 입력 크기 상한(5-2). plan 요청에만 건다 — evaluate · finalize 의 같은 필드에는 걸지
+#: 않는다(거절하면 그 Take 의 코칭이 멈춘다). description 은 Python len(코드 포인트 수)
+PLAN_MAX_SLIDES = 100
+PLAN_MAX_MISSIONS = 20
+PLAN_MAX_RECURRING_ISSUES = 20
+PLAN_MAX_MISSION_DESCRIPTION = 500
+#: evaluate · finalize 원자료 배열 한도(5-2 '입력 한도'). 정상 흐름에서는 닿지 않는 정책상 한도다:
+#: 창 30초 기록 30개 · 60초 단어 수백 개의 몇 배. 넘으면 요청 전체가 422 다
+MAX_WINDOW_RECORDS = 120
+MAX_WINDOW_WORDS = 1_000
+MAX_WINDOW_UTTERANCE_ENDS = 300
+#: 단어 하나: 글자 수와 길이(끝 − 시작). 넘는 단어는 그 단어만 버린다. 길이 상한은 늦게 확정된
+#: 단어가 말한 시각의 장을 찾도록 장 전환 기록을 남겨 두는 여유와 같은 값이다(judges.py)
+MAX_WORD_CHARS = 50
+MAX_WORD_SPAN_MS = 10_000
+MAX_FINALIZE_EVENTS = 20_000
+#: replay(Take 전체 원자료) 배열 한도. 1초 기록은 같은 t_ms 를 하나로 센 수다(한 시간 + 60초는
+#: 3,660개). 단어 · 문장 끝은 60초 창 한도를 Take 최대 길이(61분)만큼 늘린 값이다 — 창으로는
+#: 받는 발표를 복구에서 거절하지 않게
+MAX_REPLAY_RECORDS = 4_000
+MAX_REPLAY_WORDS = MAX_WINDOW_WORDS * 61
+MAX_REPLAY_UTTERANCE_ENDS = MAX_WINDOW_UTTERANCE_ENDS * 61
+MAX_REPLAY_CHANGES = 5_000
+#: STT 상태. 모르는 값은 믿지 않는 상태(degraded)로 읽는다
+STT_STATUSES = frozenset({"connecting", "ok", "reconnecting", "degraded", "closed"})
+
+log = logging.getLogger(__name__)
+
+
+#: by_t_ms 로 셀 때 배열 전체 길이의 상한(한도의 배수). 같은 1초가 되풀이돼도 받되, 버릴 기록이
+#: 끝없이 와서 검사 비용이 커지지 않게 한다
+REPEAT_ALLOWANCE = 4
+
+
+_INT = TypeAdapter(int)
+
+
+def _t_key(item: Any) -> int | None:
+    """같은 1초를 하나로 셀 때의 키. 기록 모델과 같은 규칙으로 정수로 읽는다("1000" · 1000.0 도
+    1000). 읽을 수 없으면 None(그 기록은 버리므로 안 센다)."""
+    try:
+        return _INT.validate_python(item.get("t_ms") if isinstance(item, dict) else None)
+    except ValidationError:
+        return None
+
+
+def _too_many(raw: Any, limit: int, name: str, *, by_t_ms: bool = False) -> None:
+    """배열이 한도를 넘으면 ValueError(→ 422).
+
+    by_t_ms 면 읽을 수 있는 t_ms 를 같은 것끼리 하나로 센 수를 한도와 비교하고, 배열 전체 길이는
+    한도 × REPEAT_ALLOWANCE 까지 받는다.
+    """
+    if not isinstance(raw, list):
+        return
+    if by_t_ms:
+        if len(raw) > limit * REPEAT_ALLOWANCE:
+            raise ValueError(f"{name} 는 {limit * REPEAT_ALLOWANCE}개 이하여야 한다")
+        count = len({_t_key(item) for item in raw} - {None}) if len(raw) > limit else len(raw)
+    else:
+        count = len(raw)
+    if count > limit:
+        raise ValueError(f"{name} 는 {limit}개 이하여야 한다")
+
+
+def _readable(raw: Any, model: type[BaseModel], name: str) -> Any:
+    """읽을 수 없는 항목(타입 · 범위가 틀림)은 그 항목만 버린다(gaze-tracking.md 5-2와 같은 규칙).
+
+    항목 하나 때문에 요청 전체가 422 가 되어 그 1초의 모든 판정을 잃지 않게 하기 위해서다.
+    같은 1초가 여러 번 와도 여기서는 지우지 않는다 — 판정 모듈이 읽을 수 있는 기록 중 먼저 온 것을
+    쓴다. 로그에는 버린 수만 남긴다(값은 사용자 원자료).
+    """
+    if not isinstance(raw, list):
+        return raw
+    kept = []
+    for item in raw:
+        try:
+            kept.append(model.model_validate(item))
+        except ValidationError:
+            continue
+    if len(kept) < len(raw):
+        log.warning("dropped unreadable %s count=%d", name, len(raw) - len(kept))
+    return kept
+
+
+def _readable_ints(raw: Any, name: str) -> Any:
+    """정수가 아니거나 음수인 시각은 그 값만 버린다."""
+    if not isinstance(raw, list):
+        return raw
+    kept = [v for v in raw if isinstance(v, int) and not isinstance(v, bool) and v >= 0]
+    if len(kept) < len(raw):
+        log.warning("dropped unreadable %s count=%d", name, len(raw) - len(kept))
+    return kept
+
+
+def _stt_status(value: Any) -> Any:
+    """모르는 STT 상태 · null · 문자열이 아닌 값은 degraded(믿지 않음).
+
+    판정 모듈은 다섯 값만 받는다.
+    """
+    return value if isinstance(value, str) and value in STT_STATUSES else "degraded"
 
 
 class _In(BaseModel):
@@ -46,8 +162,6 @@ class SlidePlan(_In):
     target_ms: int = Field(ge=0)
     #: 이 장 대본 글자 수 (공백 제외). 진행도 = 이 장에서 말한 글자 수 / script_chars
     script_chars: int = Field(default=0, ge=0)
-    #: 코칭 계획(LLM) 입력에만 쓴다. 발표 중 코치는 보지 않는다
-    required_keywords: list[str] = Field(default_factory=list)
 
 
 class Plan(_In):
@@ -83,12 +197,6 @@ class RecurringIssue(_In):
     slide_number: int | None = None
 
 
-class Memory(_In):
-    """이전 Take 기억. 직전 리뷰가 '아직 남은 문제'로 꼽은 것."""
-
-    recurring_issues: list[RecurringIssue] = Field(default_factory=list)
-
-
 class GazeRecordIn(_In):
     """FE 가 보내는 시선 1초 기록(#153)."""
 
@@ -101,6 +209,14 @@ class GazeRecordIn(_In):
     issues: list[str] = Field(default_factory=list)
     frames: int | None = None
 
+    @field_validator("issues", mode="before")
+    @classmethod
+    def _issues(cls, v: Any) -> Any:
+        # null 이면 빈 목록, 문자열이 아닌 값은 버린다(gaze-tracking.md 5-2)
+        if v is None:
+            return []
+        return [i for i in v if isinstance(i, str)] if isinstance(v, list) else v
+
 
 class VoiceRecordIn(_In):
     """FE 가 보내는 음량 1초 기록(#155). 시선 판정도 같은 1초들의 voiced_ms 를 쓴다."""
@@ -108,17 +224,29 @@ class VoiceRecordIn(_In):
     t_ms: int = Field(ge=0)
     duration_ms: int = Field(default=1000, gt=0)
     level_db: float | None = None
-    voiced_ms: int = 0
-    silence_ms: int = 0
+    voiced_ms: int = Field(default=0, ge=0)
+    silence_ms: int = Field(default=0, ge=0)
     audio_live: bool = True
+
+    @model_validator(mode="after")
+    def _within_duration(self) -> VoiceRecordIn:
+        if self.voiced_ms > self.duration_ms:
+            raise ValueError("voiced_ms 는 duration_ms 이하여야 한다")
+        return self
 
 
 class WordIn(_In):
     """STT 확정 단어."""
 
-    word: str
-    start_ms: int
-    end_ms: int
+    word: str = Field(max_length=MAX_WORD_CHARS)
+    start_ms: int = Field(ge=0)
+    end_ms: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _span(self) -> WordIn:
+        if not 0 <= self.end_ms - self.start_ms <= MAX_WORD_SPAN_MS:
+            raise ValueError("단어는 시작 ≤ 끝이고 길이가 10초 이하여야 한다")
+        return self
 
 
 class SlideNow(_In):
@@ -138,6 +266,36 @@ class CoachInputs(_In):
     stt_status: str = "ok"
     slide: SlideNow | None = None
 
+    # 배열이 한도를 넘으면 요청 전체를 거절하고(422), 한도 안이면 읽을 수 없는 항목만 버린다
+    @field_validator("gaze_records", mode="before")
+    @classmethod
+    def _gaze(cls, v: Any) -> Any:
+        _too_many(v, MAX_WINDOW_RECORDS, "inputs.gaze_records")
+        return _readable(v, GazeRecordIn, "gaze_records")
+
+    @field_validator("voice_records", mode="before")
+    @classmethod
+    def _voice(cls, v: Any) -> Any:
+        _too_many(v, MAX_WINDOW_RECORDS, "inputs.voice_records")
+        return _readable(v, VoiceRecordIn, "voice_records")
+
+    @field_validator("words", mode="before")
+    @classmethod
+    def _words(cls, v: Any) -> Any:
+        _too_many(v, MAX_WINDOW_WORDS, "inputs.words")
+        return _readable(v, WordIn, "words")
+
+    @field_validator("utterance_ends", mode="before")
+    @classmethod
+    def _ends(cls, v: Any) -> Any:
+        _too_many(v, MAX_WINDOW_UTTERANCE_ENDS, "inputs.utterance_ends")
+        return _readable_ints(v, "utterance_ends")
+
+    @field_validator("stt_status", mode="before")
+    @classmethod
+    def _stt(cls, v: Any) -> Any:
+        return _stt_status(v)
+
 
 class Calibration(_In):
     """Take 밖에서 잡아 둔 값. base_level_db 가 null 이면 코치가 Take 첫 발화로 잡는다."""
@@ -148,13 +306,13 @@ class Calibration(_In):
 class CoachRequest(_In):
     take_id: str
     #: Take 시작 기준 경과 ms. 모든 시각이 이 시간축이다
-    t_ms: int = Field(ge=0)
+    t_ms: int = Field(ge=0, le=MAX_T_MS)
     mode: Mode = Mode.COACHING
     plan: Plan = Field(default_factory=Plan)
     missions: list[Mission] = Field(default_factory=list)
     #: 직전 리뷰의 반복 문제
     recurring_issues: list[RecurringIssue] = Field(default_factory=list)
-    #: 코칭 계획. null 이면 계획 없음. why · source 는 와도 쓰지 않는다
+    #: 코칭 계획. null 이면 계획 없음. why 는 와도 쓰지 않는다
     coaching_plan: CoachingPlan | None = None
     #: 사용자 평가 기준의 대본 사용 설정. true 면 대본 응시를 지적하지 않는다 (SCRIPT_ALLOWED)
     script_used: bool | None = None
@@ -185,7 +343,6 @@ class RelaxItem(_In):
 
 
 class CoachingPlan(_In):
-    source: Literal["DEFAULT", "LLM"] = "DEFAULT"
     focus: list[FocusItem] = Field(default_factory=list)
     relax: list[RelaxItem] = Field(default_factory=list)
     max_interventions: int | None = Field(default=None, ge=0)
@@ -198,18 +355,40 @@ class SlideScript(_In):
     script: str = ""
 
 
-class PlanRequest(_In):
-    """Take 시작 전 코칭 계획 요청. 이번 Take 의 계획 · 장별 대본 · 미션 · 기억 · 직전 리뷰 근거."""
+class PlanMission(Mission):
+    """plan 요청의 미션. 공유 Mission 에 설명 길이 상한만 더한다(evaluate 에는 걸지 않는다)."""
 
-    schema_version: str = SCHEMA_VERSION
-    take_id: str
-    mode: Mode = Mode.COACHING
+    description: str | None = Field(default=None, max_length=PLAN_MAX_MISSION_DESCRIPTION)
+
+
+class PlanRequest(_In):
+    """Take 시작 전 코칭 계획 요청. 바탕 id · 발표 계획 · 장별 대본 · 미션 · 반복 문제 · 직전 Take
+    결과 · 직전 리뷰.
+
+    요청에 모드가 없다 — 계획은 Take 가 시작되기 전에 만들고, 실전 모드 Take 는 evaluate 에서
+    말하지 않으므로 계획이 영향을 주지 않는다. 옛 필드(take_id · mode · memory)가 와도 무시한다.
+    """
+
+    pitch_id: str
+    #: 이 계획의 바탕이 된 Take · 대본 버전. 응답에 그대로 돌려준다(BE 의 계획 고르기용)
+    source_take_id: str | None = None
+    script_version_id: str | None = None
     plan: Plan = Field(default_factory=Plan)
-    scripts: list[SlideScript] = Field(default_factory=list)
-    missions: list[Mission] = Field(default_factory=list)
-    memory: Memory = Field(default_factory=Memory)
-    #: 직전 Take 의 리뷰 요약 그대로. 없으면 null
+    scripts: list[SlideScript] = Field(default_factory=list, max_length=PLAN_MAX_SLIDES)
+    missions: list[PlanMission] = Field(default_factory=list, max_length=PLAN_MAX_MISSIONS)
+    recurring_issues: list[RecurringIssue] = Field(
+        default_factory=list, max_length=PLAN_MAX_RECURRING_ISSUES
+    )
+    #: 직전 Take 결과(take_result)와 직전 리뷰 출력 그대로. 크기를 묶지 않는 dict 다 — 개입 수 ·
+    #: 효과 · 포기한 문제는 코치가 여기서 직접 센다
+    previous_take_result: dict[str, Any] | None = None
     previous_review: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _limit_plan_slides(self) -> PlanRequest:
+        if len(self.plan.slides) > PLAN_MAX_SLIDES:
+            raise ValueError(f"plan.slides 는 {PLAN_MAX_SLIDES}개까지")
+        return self
 
 
 class PlanFocusDraft(BaseModel):
@@ -239,17 +418,31 @@ class PlanDraft(BaseModel):
     )
 
 
-class PlanResponse(_Out):
+PlanFallbackReason = Literal["LLM_TIMEOUT", "LLM_ERROR", "LLM_INVALID_OUTPUT", "LLM_UNAVAILABLE"]
+
+
+class PlanMeta(_Out):
+    """plan 응답을 만든 버전. 판정이 없어 criteria_versions 가 없다(architecture 5절)."""
+
     schema_version: str = SCHEMA_VERSION
-    policy_version: str
-    #: 프롬프트 · 출력 스키마 · 모델로 만든 해시. 같은 해시 · 같은 입력이면 같은 질문이다
-    planner_hash: str
-    take_id: str
-    plan: CoachingPlan
-    #: 기본 계획으로 돌아간 이유 (EXAM_MODE · NO_LLM · LLM_ERROR). LLM 계획을 썼으면 null
-    fallback_reason: str | None = None
+    feature_version: str = FEATURE_VERSION
+    #: 응답한 모델. 기본 계획이면 LLM 이 답했어도 null
+    model: str | None = None
+
+
+class PlanResponse(_Out):
+    coaching_plan: CoachingPlan
+    #: 요청 값 그대로(BE 의 계획 고르기용)
+    source_take_id: str | None
+    script_version_id: str | None
+    #: 기본 계획으로 돌아간 이유. LLM 계획을 썼으면 null
+    fallback_reason: PlanFallbackReason | None = None
     #: 검증에서 뺀 항목과 이유 (예: "relax TIME 3: 봐줄 수 없는 영역")
     dropped: list[str] = Field(default_factory=list)
+    #: 프롬프트 · 출력 스키마 · 요청한 모델 이름으로 만든 해시. 같은 해시 · 같은 입력이면 같은
+    #: 질문이다
+    planner_hash: str
+    meta: PlanMeta
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -287,6 +480,9 @@ class InterventionEvent(_Event):
     confidence: float
     reason_codes: list[str]
     slide_number: int | None = None
+    #: 같은 응답 feedback.evidence 와 같은 값 — 문제 구간 start_ms · end_ms · slide_number 와 판정
+    #: 모듈이 준 근거. 기본값은 이 필드가 없던 옛 이벤트를 finalize 가 받을 수 있게 한다
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 class OutcomeEvent(_Event):
@@ -410,8 +606,13 @@ class ReplayWord(WordIn):
 class SttStatusChange(_In):
     """STT 상태가 바뀐 시각과 바뀐 상태."""
 
-    t_ms: int
+    t_ms: int = Field(ge=0)
     status: str
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _stt(cls, v: Any) -> Any:
+        return _stt_status(v)
 
 
 class ReplayInput(_In):
@@ -427,6 +628,42 @@ class ReplayInput(_In):
     utterance_ends: list[int] = Field(default_factory=list)
     slides: list[SlideNow] = Field(default_factory=list)
 
+    @field_validator("gaze_records", mode="before")
+    @classmethod
+    def _gaze(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_RECORDS, "replay.gaze_records", by_t_ms=True)
+        return _readable(v, GazeRecordIn, "replay.gaze_records")
+
+    @field_validator("voice_records", mode="before")
+    @classmethod
+    def _voice(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_RECORDS, "replay.voice_records", by_t_ms=True)
+        return _readable(v, VoiceRecordIn, "replay.voice_records")
+
+    @field_validator("words", mode="before")
+    @classmethod
+    def _words(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_WORDS, "replay.words")
+        return _readable(v, ReplayWord, "replay.words")
+
+    @field_validator("utterance_ends", mode="before")
+    @classmethod
+    def _ends(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_UTTERANCE_ENDS, "replay.utterance_ends")
+        return _readable_ints(v, "replay.utterance_ends")
+
+    @field_validator("stt_status_changes", mode="before")
+    @classmethod
+    def _changes(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_CHANGES, "replay.stt_status_changes")
+        return _readable(v, SttStatusChange, "replay.stt_status_changes")
+
+    @field_validator("slides", mode="before")
+    @classmethod
+    def _slides(cls, v: Any) -> Any:
+        _too_many(v, MAX_REPLAY_CHANGES, "replay.slides")
+        return _readable(v, SlideNow, "replay.slides")
+
 
 class FinalizeRequest(_In):
     """Take 종료. /coach/evaluate 와 같은 Take 상수에 마지막 창 · 이벤트 · coach_state 를 더한다."""
@@ -434,7 +671,7 @@ class FinalizeRequest(_In):
     schema_version: str = SCHEMA_VERSION
     take_id: str
     #: Take 가 끝난 시각
-    t_ms: int = Field(ge=0)
+    t_ms: int = Field(ge=0, le=MAX_T_MS)
     mode: Mode = Mode.COACHING
     plan: Plan = Field(default_factory=Plan)
     missions: list[Mission] = Field(default_factory=list)
@@ -448,6 +685,13 @@ class FinalizeRequest(_In):
     coach_state: dict[str, Any] | None = None
     #: 이 Take 에서 BE 가 쌓은 코치 이벤트 전부(받은 순서대로)
     events: list[CoachEvent] = Field(default_factory=list)
+
+    @field_validator("events", mode="before")
+    @classmethod
+    def _events(cls, v: Any) -> Any:
+        _too_many(v, MAX_FINALIZE_EVENTS, "events")
+        return v
+
     #: 마지막 창. /coach/evaluate 의 inputs 와 같은 모양
     inputs: CoachInputs = Field(default_factory=CoachInputs)
     #: Take 전체 원자료. 있으면 처음부터 다시 판정해 Take 결과를 만든다(replayed)
@@ -521,12 +765,23 @@ class GaveUp(_Out):
     slide_number: int | None = None
 
 
+class TakePlan(_Out):
+    """이 Take 를 판정한 시간 계획 — 요청 plan 에서 장 목록을 뺀 것. 리뷰가 시간 지표의 좋은 방향을
+    정할 때 쓴다(장 목표는 areas.TIME.slides 에 있다)."""
+
+    target_ms: int | None = None
+    min_ms: int | None = None
+    max_ms: int | None = None
+
+
 class TakeResult(_Out):
     """Take 의 사실(지표 · 판정 기준). 결론은 담지 않는다."""
 
     take_id: str
     duration_ms: int
     script_mode: Literal["HIGHLIGHT", "KEYWORD", "OFF"] | None = None
+    #: 요청에 plan 이 실렸을 때만. 없으면 null
+    plan: TakePlan | None = None
     replayed: bool = False
     criteria_changed: bool = False
     #: 영역(GAZE · SPEED · VOLUME · PAUSE · FILLER · TIME) → 값

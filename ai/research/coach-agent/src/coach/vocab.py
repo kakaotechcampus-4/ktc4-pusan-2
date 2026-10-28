@@ -102,6 +102,7 @@ class Reason(StrEnum):
     COOLDOWN = "COOLDOWN"
     WAITING_FOR_PAUSE = "WAITING_FOR_PAUSE"
     STALE_TICK = "STALE_TICK"
+    T_MS_JUMP = "T_MS_JUMP"
     # ── 버린 이유 (IGNORE) ───────────────────────────────────────────────
     EXAM_MODE = "EXAM_MODE"
     SENSOR_UNUSABLE = "SENSOR_UNUSABLE"

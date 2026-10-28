@@ -1,11 +1,12 @@
 import type { ScriptMode } from '@/types/api';
+import { Card } from '@/shared/ui/Panel';
 
 /**
  * 발표 중 대본을 어떻게 띄울지. **시작하면 못 바꿉니다.**
  *
- * 대본 영역 높이가 모드마다 다르고(`--spacing-script-*`), 그 높이가 바뀌면 시선 각도가
- * 바뀌어 캘리브레이션 기준이 어긋납니다 (CLAUDE.md 7번). 발표 도중에 바꾸면 그 Take 의
- * 시선 숫자가 앞뒤로 갈라져 비교가 불가능해집니다.
+ * 대본 상자 높이가 모드마다 다르고(`--spacing-script-*`), 그만큼 대본을 보는 시선 각도가
+ * 달라집니다 (CLAUDE.md 7번). 슬라이드 칸은 세 모드가 같은 크기 · 같은 자리입니다 (#443).
+ * 발표 도중에 바꾸면 그 Take 의 시선 숫자가 앞뒤로 갈라져 비교가 불가능해집니다.
  *
  * 시안 09 의 세 줄입니다. 전에는 FULL(전체 대본)이 따로 있었는데 HIGHLIGHT 로
  * 합쳤습니다 — 보이는 글이 둘 다 대본 전체라 고르는 사람에게는 같은 것이 둘로
@@ -35,14 +36,12 @@ export function ScriptModeChoice({
   onChange: (mode: ScriptMode) => void;
 }) {
   return (
-    <section className="rounded-xl border border-line-strong bg-panel p-4">
-      <div className="flex flex-wrap items-baseline gap-2">
-        <h2 className="text-sm font-bold">발표 중 대본 표시</h2>
-        <span className="text-xs text-stone">시작 후 변경 불가</span>
-      </div>
-
+    <Card
+      title="발표 중 대본 표시"
+      action={<span className="text-xs text-stone">시작 후 변경 불가</span>}
+    >
       {/* 세로 목록입니다 — 넷을 가로로 놓으면 문구가 잘려 무엇이 다른지 안 보입니다 */}
-      <div role="radiogroup" aria-label="발표 중 대본 표시" className="mt-3 flex flex-col gap-2">
+      <div role="radiogroup" aria-label="발표 중 대본 표시" className="flex flex-col gap-2">
         {OPTIONS.map((opt) => {
           const on = value === opt.value;
           return (
@@ -53,10 +52,8 @@ export function ScriptModeChoice({
               aria-checked={on}
               onClick={() => onChange(opt.value)}
               className={[
-                'flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left',
-                on
-                  ? 'border-coral bg-coral-wash'
-                  : 'border-dashed border-line-strong hover:bg-cream',
+                'flex items-start gap-3 border-2 px-3 py-2.5 text-left',
+                on ? 'border-ink bg-coral-wash' : 'border-line-strong bg-panel hover:bg-cream',
               ].join(' ')}
             >
               {/* 색만으로 고른 것을 말하지 않습니다 — 모양이 같이 바뀝니다 */}
@@ -71,6 +68,6 @@ export function ScriptModeChoice({
           );
         })}
       </div>
-    </section>
+    </Card>
   );
 }

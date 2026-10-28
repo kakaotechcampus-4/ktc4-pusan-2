@@ -109,6 +109,13 @@ def test_any_stt_gap_switches_to_time() -> None:
     assert one(behind(stt_ok={"3": 38_999})).metrics["required_ratio"] != 1.5
 
 
+def test_stt_lost_in_this_request_switches_to_time() -> None:
+    # 지금까지는 계속 믿었지만(39초 = 39초) 이번 요청에서 STT 가 끊겼다 → 이번부터 시간으로 잰다
+    r = one({**behind(chars={"3": 540}), "stt_trusted": False})
+    assert r.metrics["required_ratio"] == pytest.approx(1.3333)
+    assert r.issues[0].confidence == CFG.progress_confidence_time
+
+
 def test_stt_gap_in_earlier_slide_does_not_affect_current_slide() -> None:
     # 2장은 STT 가 끊겼던 장(믿은 시간 0), 지금 보는 3장은 글자 수로 잰다
     r = one(behind(stt_ok={"2": 0, "3": 39_000}, dwell={"2": 90_000, "3": 39_000}))
@@ -359,7 +366,8 @@ def test_summarize() -> None:
 
 
 def test_summarize_zero_elapsed_and_missing() -> None:
-    zero = {"TIME": {"duration_ms": 0, "measured_ratio": None}}
+    # 잰 시간이 없으면 0 — null 로 두지 않는다(architecture.md 7절)
+    zero = {"TIME": {"duration_ms": 0, "measured_ratio": 0.0}}
     assert summarize({"TIME": {"elapsed_ms": 0, "planned_ms": 0}}) == zero
     assert summarize({}) == zero
     assert summarize({"TIME": {}}) == zero
@@ -384,9 +392,9 @@ def test_criteria_keys_and_directions() -> None:
 
 def test_criteria_version_format_and_changes_with_config() -> None:
     r = one(make(240_000))
-    assert re.fullmatch(r"timing-1\.0\+[0-9a-f]{12}", r.criteria_version)
+    assert re.fullmatch(r"timing-1\.1\+[0-9a-f]{12}", r.criteria_version)
     changed = TimingConfig(behind_ratio=1.1)
-    assert criteria_version("timing-1.0", changed) != r.criteria_version
+    assert criteria_version("timing-1.1", changed) != r.criteria_version
     assert one(make(240_000), changed).criteria_version != r.criteria_version
 
 

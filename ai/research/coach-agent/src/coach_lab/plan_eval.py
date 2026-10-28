@@ -59,12 +59,14 @@ class TimedLLM:
 def plan_request(sc: Scenario) -> PlanRequest:
     return PlanRequest.model_validate(
         {
-            "take_id": sc.take_id,
-            "mode": sc.mode,
+            "pitch_id": f"pitch-{sc.name}",
+            "source_take_id": None,
+            "script_version_id": None,
             "plan": sc.plan,
             "scripts": sc.scripts,
             "missions": sc.missions,
-            "memory": sc.memory,
+            "recurring_issues": sc.memory.get("recurring_issues", []),
+            "previous_take_result": sc.previous_take_result,
             "previous_review": sc.previous_review,
         }
     )
@@ -139,14 +141,16 @@ def evaluate_plans(
         ]
         first = responses[0]
         base = run(sc)
-        with_plan = run(sc, coaching_plan=first.plan.model_dump(mode="json"))
+        with_plan = run(sc, coaching_plan=first.coaching_plan.model_dump(mode="json"))
         before, after = interventions_by_scope(base), interventions_by_scope(with_plan)
-        failures = [check_plan(r.plan, sc.plan_expect) for r in responses]
+        failures = [check_plan(r.coaching_plan, sc.plan_expect) for r in responses]
         for item in sc.plan_expect.get("with_plan_no_interventions", []):
             key = f"{item['area']} {item['slide_number']}"
             if after.get(key):
                 failures[0].append(f"계획으로 재생해도 {key} 개입 {after[key]}번")
-        scopes = [(_scopes(r.plan.focus), _scopes(r.plan.relax)) for r in responses]
+        scopes = [
+            (_scopes(r.coaching_plan.focus), _scopes(r.coaching_plan.relax)) for r in responses
+        ]
         rows.append(
             {
                 "scenario": sc.name,
@@ -154,7 +158,7 @@ def evaluate_plans(
                 "fallback_reasons": [r.fallback_reason for r in responses],
                 "expect_failures": failures,
                 "consistent": [s == scopes[0] for s in scopes],
-                "plans": [r.plan.model_dump(mode="json") for r in responses],
+                "plans": [r.coaching_plan.model_dump(mode="json") for r in responses],
                 "dropped": [r.dropped for r in responses],
                 "interventions_without_plan": before,
                 "interventions_with_plan": after,
@@ -217,21 +221,44 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--samples", type=int, default=5, help="같은 입력을 몇 번 물을지")
     parser.add_argument("--out", default=str(OUTPUTS_DIR / "coaching_plan.json"))
     parser.add_argument("--no-cache", action="store_true", help="캐시를 쓰지 않고 매번 부른다")
+    parser.add_argument(
+        "--usage",
+        action="store_true",
+        help="서비스처럼 스트리밍으로 받으며 출력 토큰 수를 잰다(캐시 안 씀). 역할 상한을 정할 때",
+    )
+    parser.add_argument("--cap", type=int, help="출력 토큰 상한을 걸고 잰다(잘림 확인용)")
     args = parser.parse_args(argv)
 
     from .llm import load_settings, plan_llm  # LLM 라이브러리는 실제로 부를 때만 불러온다
+    from .usage import UsageLog
 
     settings = load_settings()
     paths = [Path(p) for p in args.scenarios] or sorted(PLAN_SCENARIOS_DIR.glob("*.json"))
     scenarios = [Scenario.load(p) for p in paths]
-    cache = None if args.no_cache else SqlitePlanCache()
+    cache = None if args.no_cache or args.usage else SqlitePlanCache()
+    usage = UsageLog() if args.usage else None
+    # 출력 토큰을 잴 때만 스트리밍 · 상한 · 기록을 건다(평소 실험은 예전 그대로)
+    llm = (
+        plan_llm(
+            settings,
+            streaming=True,
+            max_completion_tokens=args.cap,
+            callbacks=[usage] if usage else None,
+        )
+        if args.usage or args.cap
+        else plan_llm(settings)
+    )
     report = {
         "model": settings.model,
         "planner_hash": planner_hash(settings.model),
-        "policy_version": FEATURE_VERSION,
+        "feature_version": FEATURE_VERSION,
         "samples": args.samples,
-        **evaluate_plans(scenarios, plan_llm(settings), settings.model, cache, args.samples),
+        **evaluate_plans(scenarios, llm, settings.model, cache, args.samples),
     }
+    if usage is not None:
+        # 역할 coach.plan 의 출력 토큰 수와 끝난 이유, 상한(잰 최대 × 2, 1,024 단위, 최소 2,048)
+        report["usage"] = {"role": "coach.plan", "cap": args.cap, **usage.summary()}
+        print(f"coach.plan 출력 토큰: {report['usage']}")
     _print(report)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

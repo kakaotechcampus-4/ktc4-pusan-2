@@ -18,20 +18,27 @@
      머리   타이머 · 진행 막대 · 슬라이드 번호        (내용만큼)
      무대   슬라이드 + 오른쪽 레일  ★ 시선 테두리     (남는 만큼)
      코치   한 줄 배너                                (자리를 늘 비워 둔다)
-     대본   모드마다 고정                             (계측 조건)
+     대본   늘 하이라이트 높이 · 상자는 모드 높이     (계측 조건)
      발밑   기록 상태 · 끝내기                        (내용만큼)
 
    ★ 코치 줄의 높이를 늘 잡아 두는 이유 —
      말풍선이 뜰 때 위 칸이 줄어들면 슬라이드가 움직이고,
      그만큼 발표자의 시선 각도가 흔들린다. 그 흔들림이 곧 측정 오차다.
-     그래서 메시지가 없어도 자리는 남는다.                       */
+     그래서 메시지가 없어도 자리는 남는다.
+
+   ★ 대본 줄도 같은 이유로 대본 모드와 상관없이 하이라이트 높이를 잡는다 (#443) —
+     줄이 모드 높이를 따라가면 남는 높이(1fr)를 받는 슬라이드 칸이 모드마다 커지고
+     자리도 바뀐다. 그래서 슬라이드 · 레일 · 코치 줄은 세 모드에서 같은 크기 · 같은 자리다.  */
 .stage {
   --script-h: var(--spacing-script-highlight);
   --rail-w: 320px;
   --coach-h: 46px;
+  /* 상자 선. 시안 07 의 어두운 지면 규칙 — 진한 테두리는 묻혀서 밝은 선(35%)으로 그린다.
+     모서리는 각지게 둔다 (시작 전 안내 .start-gate .box 와 같은 규칙) */
+  --stage-line: 2px solid color-mix(in srgb, var(--color-ink-stage) 35%, transparent);
 
   display: grid;
-  grid-template-rows: auto 1fr var(--coach-h) var(--script-h) auto;
+  grid-template-rows: auto 1fr var(--coach-h) var(--spacing-script-highlight) auto;
   gap: 12px;
   height: 100%;
   padding: 16px;
@@ -42,10 +49,10 @@
   color: var(--color-ink-stage);
 }
 
-/* ── Script Mode 4단 ───────────────────────────────────────────
-   Keyword는 이미 16:9 폭 한계에 닿아 있어서,
-   Off로 가도 슬라이드가 더 커지지 않고 위아래 여백만 늘어난다.
-   그래서 실제 슬라이드 크기는 네 모드에 두 종류뿐이다.        */
+/* ── Script Mode 3단 ───────────────────────────────────────────
+   --script-h 는 대본 상자의 높이만 정한다. 줄은 늘 하이라이트 높이라서(.stage 주석),
+   키워드 · 실전 모드에서 남는 높이는 코치 줄과 대본 상자 사이에 비워 둔다.
+   대본 상자는 줄 아래쪽(발밑 줄 바로 위)에 앉는다 — 모드가 달라도 그 자리다.  */
 .stage[data-script-mode='HIGHLIGHT'] {
   --script-h: var(--spacing-script-highlight);
 }
@@ -60,6 +67,18 @@
   display: none;
 }
 
+/* 줄을 자리로 못 박는다 — 실전 모드는 대본 상자가 없어서, 그냥 두면 발밑 줄이 비어 있는
+   대본 줄로 한 칸 당겨 앉는다 (화면 가운데에 끝내기 버튼이 뜬다) */
+.script {
+  grid-row: 4;
+  align-self: end;
+  height: var(--script-h);
+}
+
+.stage-foot {
+  grid-row: 5;
+}
+
 /* ── 머리줄 ───────────────────────────────────────────────────
    숫자는 React를 거치지 않는다. 1초마다 useStageClock이 여기 직접 쓴다.  */
 .stage-head {
@@ -70,12 +89,14 @@
 }
 
 .stage-head .elapsed {
+  font-family: var(--font-mono);
   font-size: 26px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .stage-head .limit {
+  font-family: var(--font-mono);
   font-size: 20px;
   color: var(--color-stone);
   font-variant-numeric: tabular-nums;
@@ -83,9 +104,9 @@
 
 .stage-head .bar {
   flex: 1;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--color-stage-panel);
+  height: 12px;
+  border: var(--stage-line);
+  background: var(--color-stage-deep);
   overflow: hidden;
 }
 
@@ -112,6 +133,7 @@
 .stage-head .slide-no {
   font-family: var(--font-mono);
   font-size: 12px;
+  font-weight: 700;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
 }
@@ -128,16 +150,18 @@
 
    ★ 테두리 두께가 상태마다 다르므로 padding으로 상쇄한다.
      두께만 바꾸면 안쪽 상자가 3px 움직이고, 그게 매 초 반복되면
-     발표자의 시선이 그 움직임을 따라간다.                      */
+     발표자의 시선이 그 움직임을 따라간다.
+
+   ★ 칸은 `minmax(0, 1fr)` 이다. 그냥 `1fr` 이면 안에 든 것(PDF canvas)이 버틸 때
+     칸이 그만큼 넓어져 레일을 테두리 밖으로 밀어낸다.             */
 .viewport {
   display: grid;
-  grid-template-columns: 1fr var(--rail-w);
+  grid-template-columns: minmax(0, 1fr) var(--rail-w);
   gap: 12px;
   min-height: 0;
 
   border: 5px solid transparent;
   padding: 0;
-  border-radius: 12px;
   transition: border-color 400ms ease;
 }
 
@@ -161,7 +185,7 @@
   place-items: center;
   min-height: 0;
   background: var(--color-stage-deep);
-  border-radius: 8px;
+  border: var(--stage-line);
   overflow: hidden;
 }
 
@@ -189,26 +213,47 @@
 
 /* ── 오른쪽 레일 ───────────────────────────────────────────────
    자기 화면 · 음량 · 다음 슬라이드. 발표 중 곁눈으로 보는 것들이라
-   위치가 고정이어야 한다 — 자리가 바뀌면 찾느라 시선이 움직인다.   */
+   위치가 고정이어야 한다 — 자리가 바뀌면 찾느라 시선이 움직인다.
+
+   ★ 폭은 --rail-w 를 넘지 않는다. 칸 하나가 넓어지면 같은 열의 자기 화면·음량까지
+     함께 넓어져 테두리 밖으로 나간다 (다음 슬라이드 썸네일이 그랬다).
+
+   ★ 대본 모드가 바뀌어도 레일은 그대로다. 위에서부터 쌓고 남는 높이는 아래에 비워 둔다 —
+     예전처럼 카메라 칸이 남는 높이를 다 먹으면 모드마다 카메라 모양이 달라졌다 (#235).
+     카메라 줄은 16:9 높이까지만 자라고, 창이 낮아 모자랄 때만 줄어든다.   */
 .rail {
   display: grid;
-  grid-template-rows: 1fr auto auto auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, calc(var(--rail-w) * 9 / 16)) auto auto auto;
+  align-content: start;
   gap: 10px;
   min-height: 0;
 }
 
-.rail section {
+.rail section:not(.camera) {
   background: var(--color-stage-panel);
-  border-radius: 10px;
+  border: var(--stage-line);
   padding: 10px;
   min-height: 0;
 }
 
+/* 카메라 칸은 늘 16:9 — 영상이 다른 비율이면 가운데를 잘라 채운다(cover, 찌그러뜨리지 않는다).
+   칸(.camera)이 크기 기준이 되고, 틀(.frame)은 그 안에 들어가는 가장 큰 16:9 다 */
 .rail .camera {
+  container-type: size;
+  display: grid;
+  justify-items: center;
+  min-height: 0;
+}
+
+.rail .camera .frame {
   position: relative;
   display: grid;
   place-items: center;
+  width: min(100cqw, 100cqh * 16 / 9);
+  aspect-ratio: 16 / 9;
   background: var(--color-stage-deep);
+  border: var(--stage-line);
   overflow: hidden;
 }
 
@@ -222,8 +267,9 @@
   transform: scaleX(-1);
 }
 
+/* 틀이 줄면 같이 준다 */
 .rail .camera .guide {
-  width: 88px;
+  height: 66%;
   aspect-ratio: 3 / 4;
   border: 1px dashed var(--color-stone);
   border-radius: 999px;
@@ -246,28 +292,52 @@
   gap: 10px;
 }
 
+/* 음량계(LevelBar)가 칸을 다 쓴다. 안 주면 내용만큼만 잡히는데, 막대는 내용이 없어
+   폭이 0 이 되고 "음량" 글자만 남는다 */
+.rail .mic > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 빈 칸 색. 음량계 기본값(stage-panel)이 이 칸의 바탕색과 같아서 빈 칸이 안 보인다 */
+.rail .mic [data-meter-track] > span {
+  background: var(--color-stage-deep);
+}
+
+/* 칸도 다른 상자처럼 각지게 */
+.rail .mic [data-meter-track] > span,
+.rail .mic [data-meter] > span {
+  border-radius: 0;
+}
+
 .rail .next {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
+/* ★ min-width · overflow 가 없으면 안의 PDF canvas 가 그려진 크기로 버텨서 썸네일이
+     줄어들지 않는다. 그러면 레일 전체가 --rail-w 보다 넓어진다 (PdfPage 주석: 상자는
+     바깥이 정한 크기여야 한다). overflow 는 aspect-ratio 높이도 canvas 에 밀리지 않게 한다 */
 .rail .next .thumb {
   position: relative;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
   aspect-ratio: 16 / 9;
   display: grid;
   place-items: center;
   background: var(--color-stage-deep);
-  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-ink-stage) 35%, transparent);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.06em;
   color: var(--color-stone);
 }
 
+/* 썸네일 높이는 이 폭이 정한다. 넓히면 썸네일이 커져 1440×900 의 하이라이트 모드에서 레일이 넘친다 */
 .rail .next .label {
-  width: 96px;
+  width: 112px;
   font-size: 12px;
 }
 
@@ -321,11 +391,12 @@
 }
 
 /* ── 코치 한 줄 ────────────────────────────────────────────────
-   8초 뒤 사라진다. 위치는 고정 — 뜰 때마다 자리가 바뀌면
+   AI 코치의 한마디는 8초 뒤 사라진다. 위치는 고정 — 뜰 때마다 자리가 바뀌면
    사용자가 그것을 찾느라 시선이 움직인다.
 
    한 번에 하나만 띄운다. 두 개가 겹치면 둘 다 안 읽힌다.
-   자리는 메시지가 없어도 남아 있다(.stage의 --coach-h 주석 참고).  */
+   자리는 메시지가 없어도 남아 있다(.stage의 --coach-h 주석 참고).
+   오른쪽 상태 표시(.indicators)는 한마디가 없어도 보인다.  */
 .coach {
   display: flex;
   align-items: center;
@@ -340,10 +411,62 @@
   transition: opacity 240ms ease;
 }
 
-/* 비어 있을 때도 높이는 유지한다. visibility 라서 자리가 남는다 */
+/* 칭찬(CONTINUE)은 경고색 대신 청중 응시와 같은 초록으로 */
+.coach[data-tone='praise'] {
+  border-color: var(--color-gaze-audience);
+  background: color-mix(in srgb, var(--color-gaze-audience) 14%, transparent);
+}
+
+/* 한마디가 없으면 줄의 테두리 · 배경과 글을 감춘다. 높이와 상태 표시는 남는다 */
 .coach[data-empty='true'] {
+  border-color: transparent;
+  background: transparent;
+}
+
+.coach[data-empty='true'] > :not(.indicators) {
   opacity: 0;
   visibility: hidden;
+}
+
+.coach .coach-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 상태 표시. 좋은 영역은 흐리게, 고칠 것이 있는 영역만 색을 입힌다 */
+.coach .indicators {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.coach .indicators li {
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-ink-stage) 20%, transparent);
+  border-radius: 999px;
+  color: var(--color-stone);
+  white-space: nowrap;
+}
+
+.coach .indicators li[data-tone='warn'] {
+  border-color: var(--color-coral);
+  background: color-mix(in srgb, var(--color-coral) 14%, transparent);
+  color: var(--color-ink-stage);
+}
+
+/* 서버와 끊겨 더 오지 않는 지난 판정. 경고색을 빼고 모두 흐리게 — 지우면 짧게 끊길 때마다 깜빡인다 */
+.coach .indicators[data-stale='true'] li {
+  border-color: color-mix(in srgb, var(--color-ink-stage) 12%, transparent);
+  background: transparent;
+  color: var(--color-stone);
+  opacity: 0.5;
 }
 
 .coach .rule {
@@ -360,7 +483,7 @@
   overflow-y: auto;
   padding: 14px 18px 22px;
   background: var(--color-stage-panel);
-  border-radius: 8px;
+  border: var(--stage-line);
   line-height: 1.7;
   scroll-behavior: smooth;
 }
@@ -407,9 +530,9 @@
 
 .script .keywords span {
   padding: 4px 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-ink-stage) 16%, transparent);
+  border: var(--stage-line);
   font-size: 13px;
+  font-weight: 700;
 }
 
 .script .foot {
@@ -441,9 +564,26 @@
   color: var(--color-stone);
 }
 
+/* 발밑 문구는 모두 한 줄이다 — 자리가 모자라면 접히지 않고 말줄임으로 잘린다.
+   하나라도 여러 줄로 접히면 발밑 줄이 커지고, 슬라이드 칸(1fr)이 줄어 시선 각도가 흔들린다.
+   발밑 줄도 min-width 0 — 아니면 한 줄 문구 길이만큼 무대 칸이 넓어진다 */
+.stage-foot {
+  min-width: 0;
+}
+
+.stage-foot > span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 끝내기는 줄지도 접히지도 않는다 — 발밑 문구가 많을 때 버튼 글자가 두 줄이 되면 발밑 줄이 커진다 */
 .stage-foot .end {
+  flex-shrink: 0;
   margin-left: auto;
   padding: 10px 22px;
+  white-space: nowrap;
   border: none;
   border-radius: 999px;
   background: var(--color-coral);
@@ -467,12 +607,13 @@
    레일을 접어 슬라이드를 살린다 — 대본 높이는 건드리지 않는다.    */
 @media (max-width: 900px) {
   .viewport {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .rail {
+    grid-template-columns: none;
     grid-template-rows: auto;
     grid-auto-flow: column;
-    grid-auto-columns: 1fr;
+    grid-auto-columns: minmax(0, 1fr);
   }
   .rail .camera,
   .rail .legend {
@@ -526,13 +667,84 @@
   color: var(--color-gaze-screen);
 }
 
-.stage-foot .stt-text {
-  flex: 1;
-  min-width: 0;
-  max-width: 48ch;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+/* 시선 기록이 멈춘 동안의 안내 (#235). 회색 상태 문구 사이에서 놓치지 않게 코랄 경고 상자로 둔다.
+   판정 불가 테두리(빨간 점선)와 헷갈리지 않게 실선 · 채운 바탕이고, 앞에 '!' 를 붙여 색만으로 나누지 않는다.
+   높이는 끝내기 버튼보다 낮다 — 발밑 줄이 커지면 슬라이드 칸(1fr)이 줄어 시선 각도가 흔들린다.
+   자리가 모자라면 다른 문구가 먼저 잘린다. 경고는 발밑 줄의 절반까지는 줄지 않는다 */
+.stage-foot .gaze[data-alert='true'] {
+  flex-shrink: 0;
+  max-width: 50%;
+  display: inline-block;
+  padding: 3px 10px 3px 4px;
+  border: 1px solid var(--color-coral);
+  background: color-mix(in srgb, var(--color-coral) 14%, transparent);
   color: var(--color-ink-stage);
-  opacity: 0.75;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.stage-foot .gaze[data-alert='true']::before {
+  content: '!';
+  /* 글이 이미 상태를 말한다 — 화면 낭독기는 '!' 를 읽지 않는다 */
+  content: '!' / '';
+  display: inline-grid;
+  place-items: center;
+  vertical-align: top;
+  width: 18px;
+  height: 18px;
+  margin: 1px 8px 0 0;
+  line-height: 1;
+  background: var(--color-coral);
+  color: var(--color-stage);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* ── 시작 전 안내 ─────────────────────────────────────────────
+   마이크를 열고 서버 연결이 첫 ready 를 주기 전에는 발표를 시작하지 않는다 (startGate.ts).
+   그동안 무대 전체를 덮는다 — 시계가 멈춘 무대에서 말을 시작하면 그 말은 어디에도 남지 않는다.
+   레이아웃 칸을 바꾸지 않도록 행을 쓰지 않고 위에 얹는다 (대본 높이는 계측 조건이다). */
+.start-gate {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--color-stage) 88%, transparent);
+  color: var(--color-ink-stage);
+  text-align: center;
+  font-size: 15px;
+}
+
+/* 안내 상자 — 시안 07 의 어두운 지면 규칙대로 각진 모서리 · 밝은 선 · 밀린 그림자.
+   진한 테두리는 어두운 무대에 묻혀서 선을 밝게 바꾼다. 막혀서 사용자가 눌러야 할 때만 코랄 선 */
+.start-gate .box {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  max-width: 30rem;
+  padding: 24px 28px;
+  background: var(--color-stage-panel);
+  border: var(--stage-line);
+  box-shadow: 4px 4px 0 var(--color-stage-deep);
+}
+
+.start-gate[data-stuck] .box {
+  border-color: var(--color-coral);
+}
+
+.start-gate p {
+  max-width: 44ch;
+  line-height: 1.6;
+  font-weight: 700;
+}
+
+/* 버튼은 공용 Button · ButtonLink 를 그대로 쓴다 */
+.start-gate .actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
 }

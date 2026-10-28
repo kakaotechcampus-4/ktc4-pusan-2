@@ -6,30 +6,44 @@ from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile, status
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.database import get_db
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth.dependencies import CurrentUser
 from pitch_coach_backend.module.pitch.dependencies import OwnedPitch, ScriptParseRunnerDep
 from pitch_coach_backend.module.pitch.dto import (
     ParseRequestedDTO,
     PitchSaveRequestDTO,
+    PrepareDTO,
     ScriptCreatedDTO,
     ScriptCreateDTO,
     ScriptDetailDTO,
+    StandardsSaveRequestDTO,
     StandardTextDTO,
+    StandardTextResponseDTO,
     UploadPresentationDTO,
 )
-from pitch_coach_backend.module.pitch.service import (
+from pitch_coach_backend.module.pitch.service.pitch import (
     add_pitch_service,
-    add_pitch_standard_service,
-    create_script_service,
+    delete_pitch_files,
     delete_pitch_service,
     get_all_pitches_service,
     get_pitch_datas,
-    get_presentation_detail,
-    get_script_detail,
-    get_standard_detail,
-    request_reparse,
+    get_prepare_service,
+    pitch_timing,
     update_pitch_service,
+)
+from pitch_coach_backend.module.pitch.service.presentation import (
+    get_presentation_detail,
     upload_presentation_service,
+)
+from pitch_coach_backend.module.pitch.service.script import (
+    create_script_service,
+    get_script_detail,
+    request_reparse,
+)
+from pitch_coach_backend.module.pitch.service.standard import (
+    add_pitch_standard_service,
+    get_standard_detail,
+    save_pitch_standards_service,
 )
 
 router = APIRouter(prefix="/pitches", tags=["Pitch"])
@@ -52,6 +66,14 @@ def get_pitch_summaries(
 ):
     pitch_summaries = get_pitch_datas(db, pitch_id)
     return pitch_summaries
+
+# 장치 점검 화면. 이번 연습에 쓸 버전 · 다음 Take 번호 · 지난번 대본 표시 방식
+@router.get("/{pitch_id}/prepare", response_model=PrepareDTO)
+def get_prepare(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)]
+):
+    return get_prepare_service(db, pitch_id)
 
 @router.get("/{pitch_id}/presentations/{presentation_id}")
 def get_presentation(
@@ -76,18 +98,28 @@ def add_pitch(
 def update_pitch(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
-    pitch_dto: PitchSaveRequestDTO
+    pitch_dto: PitchSaveRequestDTO,
 ):
+    before = pitch_timing(db, pitch_id)
     result = update_pitch_service(db, pitch_id, pitch_dto)
+    # 제한 시간 · 허용 범위가 바뀌면 다음 Take 의 코칭 계획을 다시 만든다 (coach-agent.md 5-1).
+    # 백그라운드 작업이라 응답을 기다리게 하지 않는다
+    if pitch_timing(db, pitch_id) != before:
+        hooks.coaching().plan_next_take(pitch_id)
     return {"message": "Pitch updated successfully", "pitch_id": result}
 
 @router.delete("/delete/{pitch_id}")
 def delete_pitch(
     pitch_id: OwnedPitch,
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ):
-    result = delete_pitch_service(db, pitch_id)
-    return {"message": "Pitch deleted successfully", "pitch_id": result}
+    take_ids = delete_pitch_service(db, pitch_id)
+    # 진행 중이던 Take 가 있으면 실시간 STT(Deepgram) · 코치도 끊는다
+    hooks.live_takes().discard(take_ids)
+    # 발표자료 파일은 CASCADE 로 지워지지 않는다. 응답을 늦추지 않게 보낸 뒤 지운다
+    background_tasks.add_task(delete_pitch_files, pitch_id)
+    return {"message": "Pitch deleted successfully", "pitch_id": pitch_id}
 
 @router.post("/add/{pitch_id}/presentation")
 def upload_presentation(
@@ -106,14 +138,23 @@ def upload_presentation(
         "presentation": result
     }
 
-@router.post("/add/{pitch_id}/standards")
+@router.post("/add/{pitch_id}/standards", response_model=StandardTextResponseDTO)
 def post_pitch_standard_text(
     pitch_id: OwnedPitch,
     db: Annotated[Session, Depends(get_db)],
     standard_text: StandardTextDTO
 ):
-    result = add_pitch_standard_service(db, pitch_id, standard_text)
-    return {"message": "Pitch standard text added successfully", "pitch_id": result}
+    return add_pitch_standard_service(db, pitch_id, standard_text)
+
+# 사용자가 고친 표시 기준 저장. 다시 분석한 문장을 새 버전으로 저장한다
+# (evaluation-criteria.md 12절)
+@router.post("/{pitch_id}/standards", response_model=StandardTextResponseDTO)
+def save_pitch_standards(
+    pitch_id: OwnedPitch,
+    db: Annotated[Session, Depends(get_db)],
+    standards: StandardsSaveRequestDTO,
+):
+    return save_pitch_standards_service(db, pitch_id, standards)
 
 
 # 대본 새 버전. 202: 원문 저장까지만 하고 돌려준다. 슬라이드 분리(AI)는 응답 뒤 백그라운드에서

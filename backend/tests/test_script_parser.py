@@ -1,6 +1,7 @@
 """AI 대본 파서 어댑터. 실제 httpx 요청을 만들고 MockTransport 로 AI 응답만 바꿔 끼운다.
 
-응답 모양은 AI 노트북(script_slide_analysis.ipynb) 의 SeperatedSlides 그대로다.
+응답은 두 모양을 다 쓴다. 계약(docs/ai/features/script-parser.md 5-3)과, 지금 AI 연구 코드가 내는
+옛 모양(highlights 가 "start:end" 문자열이고 script_chars · expected_ms · meta 가 없음)이다.
 """
 
 import asyncio
@@ -10,16 +11,17 @@ from typing import Any
 import httpx
 import pytest
 
-from pitch_coach_backend.module.pitch import service
-from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
-from pitch_coach_backend.module.pitch.script_parser import (
+from pitch_coach_backend.module.pitch.adapter.script_parser import (
     ATTEMPT_TIMEOUT_SEC,
     DEFAULT_ATTEMPTS,
     DEFAULT_RETRY_DELAY_SEC,
     PARSE_PATH,
     HttpScriptParser,
+    ParseMeta,
     ScriptParseError,
 )
+from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
+from pitch_coach_backend.module.pitch.service import script as script_service
 
 BASE_URL = "http://ai.test"
 
@@ -73,7 +75,73 @@ def _parser(recorder: Recorder, attempts: int = 2) -> HttpScriptParser:
     )
 
 
-async def test_sends_script_text_and_converts_success() -> None:
+@pytest.mark.parametrize("target_ms", [300_000, None])
+async def test_sends_script_text_and_target_ms_to_the_unversioned_path(
+    target_ms: int | None,
+) -> None:
+    recorder = Recorder(httpx.Response(200, json=_body()))
+
+    await _parser(recorder).parse("원문 대본", target_ms)
+
+    [request] = recorder.requests
+    assert request.method == "POST"
+    # 계약의 경로에는 /v1 같은 버전이 없다 (architecture.md 2절)
+    assert str(request.url) == f"{BASE_URL}/scripts/parse"
+    assert json.loads(request.content) == {"script_text": "원문 대본", "target_ms": target_ms}
+
+
+async def test_contract_shape_is_converted() -> None:
+    """script-parser.md 5-5 의 응답 예시 그대로."""
+    first = "안녕하세요, 오늘은 신규 서비스 성과를 말씀드리겠습니다."
+    meta = {
+        "schema_version": "1.0",
+        "feature_version": "script_parser-1.0",
+        "model": "openai/gpt-6-luna",
+    }
+    body = {
+        "status": "success",
+        "slides": [
+            {
+                "slide_number": 1,
+                "script": first,
+                "script_chars": 24,
+                "keywords": ["오늘", "신규 서비스", "성과"],
+                "highlights": [
+                    {"start": 7, "end": 9},
+                    {"start": 11, "end": 17},
+                    {"start": 18, "end": 20},
+                ],
+                "expected_ms": 160000,
+            },
+            {
+                "slide_number": 2,
+                "script": "지난 분기 MAU는 12만 명으로 37% 늘었습니다.",
+                "script_chars": 21,
+                "keywords": ["분기", "MAU", "37%"],
+                "highlights": [
+                    {"start": 3, "end": 5},
+                    {"start": 6, "end": 9},
+                    {"start": 19, "end": 22},
+                ],
+                "expected_ms": 140000,
+            },
+        ],
+        "terms": ["MAU"],
+        "meta": meta,
+    }
+    recorder = Recorder(httpx.Response(200, json=body))
+
+    parsed = await _parser(recorder).parse("x", 300_000)
+
+    first_slide, second_slide = parsed.slides
+    assert first_slide.highlights == ((7, 9), (11, 17), (18, 20))
+    assert [first[s:e] for s, e in first_slide.highlights] == ["오늘", "신규 서비스", "성과"]
+    assert (first_slide.script_chars, first_slide.expected_ms) == (24, 160000)
+    assert (second_slide.script_chars, second_slide.expected_ms) == (21, 140000)
+    assert parsed.meta == ParseMeta("1.0", "script_parser-1.0", "openai/gpt-6-luna")
+
+
+async def test_old_shape_is_converted_and_leaves_new_fields_empty() -> None:
     content = "안녕하세요. 멸종위기청년에 대해 발표하겠습니다."
     recorder = Recorder(
         httpx.Response(
@@ -85,12 +153,7 @@ async def test_sends_script_text_and_converts_success() -> None:
         )
     )
 
-    parsed = await _parser(recorder).parse("원문 대본")
-
-    [request] = recorder.requests
-    assert request.method == "POST"
-    assert str(request.url) == f"{BASE_URL}{PARSE_PATH}"
-    assert json.loads(request.content) == {"script_text": "원문 대본"}
+    parsed = await _parser(recorder).parse("원문 대본", 300_000)
 
     assert parsed.segmented is True
     # 원문 번호를 그대로 쓴다 (1, 3)
@@ -98,41 +161,56 @@ async def test_sends_script_text_and_converts_success() -> None:
     assert parsed.slides[0].highlights == ((7, 13),)
     assert content[7:13] == "멸종위기청년"
     assert parsed.terms == ("멸종위기청년", "SeatFlow")
+    assert [(slide.script_chars, slide.expected_ms) for slide in parsed.slides] == [
+        (None, None),
+        (None, None),
+    ]
+    assert parsed.meta is None
 
 
-async def test_fail_status_is_an_unsegmented_success() -> None:
+@pytest.mark.parametrize("number", [None, 1], ids=["old-null", "contract-1"])
+async def test_fail_status_is_an_unsegmented_success(number: int | None) -> None:
     """AI 의 status="fail" 은 처리 실패가 아니라 "구분자 없음". 한 장짜리 결과로 받는다."""
-    recorder = Recorder(httpx.Response(200, json=_body("fail", [_slide(None, "대본 전체")])))
+    recorder = Recorder(httpx.Response(200, json=_body("fail", [_slide(number, "대본 전체")])))
 
-    parsed = await _parser(recorder).parse("대본 전체")
+    parsed = await _parser(recorder).parse("대본 전체", None)
 
     assert parsed.segmented is False
     [slide] = parsed.slides
-    assert slide.slide_number == 1  # AI 는 null. slide_number 가 NOT NULL 이라 1
+    # 옛 모양은 null, 계약은 1. slide_number 가 NOT NULL 이라 어느 쪽이든 1
+    assert slide.slide_number == 1
     assert slide.content == "대본 전체"
 
 
 async def test_broken_highlights_are_dropped_one_by_one() -> None:
     content = "0123456789"
-    highlights = [
-        "0:3",  # 정상
+    highlights: list[Any] = [
+        "0:3",  # 정상 (옛 모양)
         "-1:5",  # 노트북: 키워드가 본문에 없으면 find() 가 -1
         "멸종위기청년",  # 시스템 프롬프트 없이 불렀을 때 LLM 이 위치 대신 단어를 넣음
         "5:5",  # 빈 구간
         "8:11",  # 본문 밖
         " 4:6 ",  # 공백은 허용
+        {"start": 6, "end": 8},  # 정상 (계약 모양). 한 응답에 두 모양이 섞여도 받는다
+        {"start": -1, "end": 2},  # 음수
+        {"start": 8, "end": 11},  # 본문 밖
+        {"start": "1", "end": 2},  # 숫자가 아님
+        {"start": True, "end": 2},  # bool 은 int 로 치지 않는다
+        {"start": 1},  # end 가 없음
+        [1, 2],  # 저장 모양을 그대로 보냄
+        3,
     ]
     recorder = Recorder(httpx.Response(200, json=_body(slides=[_slide(1, content, highlights)])))
 
-    parsed = await _parser(recorder).parse("x")
+    parsed = await _parser(recorder).parse("x", None)
 
-    assert parsed.slides[0].highlights == ((0, 3), (4, 6))
+    assert parsed.slides[0].highlights == ((0, 3), (4, 6), (6, 8))
 
 
 async def test_terms_drop_blanks_and_duplicates_keeping_order() -> None:
     recorder = Recorder(httpx.Response(200, json=_body(terms=["B", " ", "A", "B", " A "])))
 
-    parsed = await _parser(recorder).parse("x")
+    parsed = await _parser(recorder).parse("x", None)
 
     assert parsed.terms == ("B", "A")
 
@@ -140,7 +218,7 @@ async def test_terms_drop_blanks_and_duplicates_keeping_order() -> None:
 async def test_extra_fields_from_ai_are_ignored() -> None:
     recorder = Recorder(httpx.Response(200, json=_body(model="gpt", elapsed_ms=3100)))
 
-    parsed = await _parser(recorder).parse("x")
+    parsed = await _parser(recorder).parse("x", None)
 
     assert parsed.segmented is True
 
@@ -163,13 +241,25 @@ async def test_extra_fields_from_ai_are_ignored() -> None:
             _body(slides=[{**_slide(1, "ab"), "keywords": ["a\x00"]}]), id="nul-in-keyword"
         ),
         pytest.param(_body(terms=["x\x00"]), id="nul-in-term"),
+        pytest.param(
+            _body(slides=[{**_slide(1, "a"), "script_chars": -1}]), id="negative-script-chars"
+        ),
+        # DB 의 integer(int4) 를 넘는 예상 시간
+        pytest.param(
+            _body(slides=[{**_slide(1, "a"), "expected_ms": 2**31}]), id="expected-ms-over-int4"
+        ),
+        pytest.param(_body(meta={"feature_version": "script_parser-1.0"}), id="meta-incomplete"),
+        pytest.param(
+            _body(meta={"schema_version": "1.0", "feature_version": "f", "model": "m\x00"}),
+            id="nul-in-meta",
+        ),
     ],
 )
 async def test_contract_violations_are_invalid_output(body: dict) -> None:
     recorder = Recorder(httpx.Response(200, json=body), httpx.Response(200, json=body))
 
     with pytest.raises(ScriptParseError) as caught:
-        await _parser(recorder).parse("x")
+        await _parser(recorder).parse("x", None)
 
     assert caught.value.code is ScriptParseErrorCode.AI_INVALID_OUTPUT
     # LLM 출력은 다시 부르면 맞을 수 있어 한 번 더 부른다
@@ -180,7 +270,7 @@ async def test_non_json_body_is_invalid_output() -> None:
     recorder = Recorder(httpx.Response(200, text="<html>502</html>"))
 
     with pytest.raises(ScriptParseError) as caught:
-        await _parser(recorder, attempts=1).parse("x")
+        await _parser(recorder, attempts=1).parse("x", None)
 
     assert caught.value.code is ScriptParseErrorCode.AI_INVALID_OUTPUT
 
@@ -189,7 +279,7 @@ async def test_client_error_is_rejected_without_retry() -> None:
     recorder = Recorder(httpx.Response(422, json={"error": {"code": "EMPTY_SCRIPT"}}))
 
     with pytest.raises(ScriptParseError) as caught:
-        await _parser(recorder).parse("x")
+        await _parser(recorder).parse("x", None)
 
     assert caught.value.code is ScriptParseErrorCode.AI_REJECTED
     assert caught.value.retryable is False
@@ -202,7 +292,7 @@ async def test_server_errors_are_retried_once(status: int) -> None:
     recorder = Recorder(httpx.Response(status), httpx.Response(status))
 
     with pytest.raises(ScriptParseError) as caught:
-        await _parser(recorder).parse("x")
+        await _parser(recorder).parse("x", None)
 
     assert caught.value.code is ScriptParseErrorCode.AI_ERROR
     assert len(recorder.requests) == 2
@@ -211,7 +301,7 @@ async def test_server_errors_are_retried_once(status: int) -> None:
 async def test_retry_succeeds_after_one_server_error() -> None:
     recorder = Recorder(httpx.Response(503), httpx.Response(200, json=_body()))
 
-    parsed = await _parser(recorder).parse("x")
+    parsed = await _parser(recorder).parse("x", None)
 
     assert parsed.segmented is True
     assert len(recorder.requests) == 2
@@ -221,7 +311,7 @@ async def test_timeout_is_ai_timeout() -> None:
     recorder = Recorder(httpx.ReadTimeout("slow"), httpx.ReadTimeout("slow"))
 
     with pytest.raises(ScriptParseError) as caught:
-        await _parser(recorder).parse("x")
+        await _parser(recorder).parse("x", None)
 
     assert caught.value.code is ScriptParseErrorCode.AI_TIMEOUT
     assert len(recorder.requests) == 2
@@ -231,7 +321,7 @@ async def test_connection_failure_is_ai_unavailable() -> None:
     recorder = Recorder(httpx.ConnectError("refused"), httpx.ConnectError("refused"))
 
     with pytest.raises(ScriptParseError) as caught:
-        await _parser(recorder).parse("x")
+        await _parser(recorder).parse("x", None)
 
     assert caught.value.code is ScriptParseErrorCode.AI_UNAVAILABLE
 
@@ -242,7 +332,7 @@ async def test_base_url_trailing_slash_is_tolerated() -> None:
         f"{BASE_URL}/", retry_delay_sec=0, transport=httpx.MockTransport(recorder)
     )
 
-    await parser.parse("x")
+    await parser.parse("x", None)
 
     assert str(recorder.requests[0].url) == f"{BASE_URL}{PARSE_PATH}"
 
@@ -265,7 +355,7 @@ async def test_slow_trickling_response_hits_the_attempt_timeout() -> None:
     )
 
     with pytest.raises(ScriptParseError) as caught:
-        await parser.parse("x")
+        await parser.parse("x", None)
 
     assert caught.value.code is ScriptParseErrorCode.AI_TIMEOUT
     assert calls == 2  # 타임아웃은 재시도 대상
@@ -276,4 +366,14 @@ def test_worst_case_parse_time_is_shorter_than_expiry() -> None:
     worst = ATTEMPT_TIMEOUT_SEC * DEFAULT_ATTEMPTS + DEFAULT_RETRY_DELAY_SEC * (
         DEFAULT_ATTEMPTS - 1
     )
-    assert worst < service.PARSE_EXPIRE_AFTER.total_seconds()
+    assert worst < script_service.PARSE_EXPIRE_AFTER.total_seconds()
+
+
+async def test_success_carries_the_request_id_sent_to_ai() -> None:
+    """결과 저장이 실패하면 runner 가 이 값으로 AI 로그와 맞춰 본다. 재시도해도 같은 값이다."""
+    recorder = Recorder(httpx.Response(503), httpx.Response(200, json=_body()))
+
+    parsed = await _parser(recorder).parse("x", None)
+
+    sent = {request.headers["X-Request-ID"] for request in recorder.requests}
+    assert sent == {parsed.request_id}

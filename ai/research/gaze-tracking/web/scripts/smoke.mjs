@@ -224,7 +224,19 @@ try {
     typeof jitter === 'number' && jitter < 1.5,
     `head-direction jitter of real MediaPipe on a still face (${typeof jitter === 'number' ? `${jitter.toFixed(2)}°` : 'none'})`,
   );
-  check(s.zones.length >= 1, `1-second votes from the frontend TemporalVoter (${s.zones.length})`);
+  // The border follows the latest 1 s record, folded to the view's three zones.
+  const fold = (state) =>
+    state === 'CAMERA'
+      ? 'CAMERA'
+      : state === 'SCREEN' || state === 'BOTTOM'
+        ? 'BOTTOM'
+        : 'UNCERTAIN';
+  const bordersOk =
+    s.zones.length >= 1 && s.zones.every((z) => z.zone === fold(z.state) && z.shown === z.zone);
+  check(
+    bordersOk,
+    `1-second border from the 1 s records, shown on the view (${s.zones.map((z) => `${z.state}->${z.shown}`).join(' ')})`,
+  );
   const ev = s.evidence;
   const wire = [
     't_ms',
@@ -239,11 +251,6 @@ try {
   check(
     ev.samples.length >= 1 && ev.samples.every((x) => wire.every((k) => k in x)),
     `1 s agent records from live decisions (${ev.samples.map((x) => x.state).join(' ')})`,
-  );
-  check(
-    ev.issues.every((i) => i.evaluator === 'gaze' && 'severity' in i && 'persistence_sec' in i) &&
-      'problem_segments' in ev.summary,
-    `coach issues and review summary in the agents' format (${ev.issues.map((i) => i.issue_type).join(', ') || 'none'})`,
   );
   console.log(
     `      worker ms: median ${s.processMsMedian.toFixed(1)} (MediaPipe ${s.detectMsMedian.toFixed(1)}), p95 ${s.processMsP95.toFixed(1)}, first frames ${s.processMsWarm.join(' ')}`,

@@ -5,7 +5,7 @@
  * AI 대본 나누기가 슬라이드마다 `keywords`(대본에 있는 표현 그대로)와 그 위치
  * `highlights`(content 안의 문자 위치, end 미포함)를 함께 줍니다. BE 는 그대로 전달합니다.
  *
- *   highlights 가 있으면 → 그 위치를 씁니다 (AI 가 정한 자리)
+ *   highlights 가 있으면 → 그 위치를 UTF-16 위치로 바꿔 씁니다 (AI 가 정한 자리)
  *   없고 keywords 만 있으면 → 각 키워드가 **처음 나오는 자리**를 찾아 씁니다
  *                              (AI 의 find_highlights 와 같은 규칙. 못 찾은 키워드는 건너뜁니다)
  *
@@ -24,7 +24,35 @@ export interface MarkPart {
   mark: boolean;
 }
 
-/** 키워드가 처음 나오는 자리. 못 찾으면 그 키워드는 뺍니다 */
+/**
+ * API 의 문자 위치(유니코드 코드 포인트)를 JS 문자열 위치(UTF-16 코드 단위)로 바꿉니다.
+ *
+ * AI 는 Python 이라 `highlights` 를 코드 포인트로 셉니다 — 😀 한 글자가 1칸입니다.
+ * JS 의 `slice` 는 UTF-16 으로 세서 같은 글자가 2칸입니다(보조 평면 문자, 서로게이트 쌍).
+ * 그대로 쓰면 이모지가 하나 앞에 있을 때마다 강조가 한 칸씩 밀립니다
+ * ("😀 핵심" 에 AI 의 `2:4` 를 그대로 넣으면 "핵심" 대신 " 핵"이 강조됩니다).
+ *
+ * 한글 · 영문처럼 기본 평면 글자만 있으면 두 단위가 같아 값이 그대로입니다.
+ * 결합 이모지(👨‍👩‍👧)는 여러 코드 포인트라 Python 도 여러 칸으로 세고, 여기서도 코드 포인트마다
+ * 바꾸므로 맞습니다. 대본 밖을 가리키는 위치는 끝으로 붙입니다 — 정리는 `normalizeRanges` 가 합니다.
+ */
+export function codePointRangesToUtf16(content: string, ranges: readonly TextRange[]): TextRange[] {
+  // offsets[i] = 코드 포인트 i 가 시작하는 UTF-16 위치. 마지막 칸은 문자열 끝입니다
+  const offsets: number[] = [];
+  let at = 0;
+  for (const ch of content) {
+    offsets.push(at);
+    at += ch.length;
+  }
+  offsets.push(at);
+  const toUtf16 = (i: number) => offsets[Math.min(Math.max(0, Math.floor(i)), offsets.length - 1)];
+  return ranges.map((r) => ({ start: toUtf16(r.start), end: toUtf16(r.end) }));
+}
+
+/**
+ * 키워드가 처음 나오는 자리. 못 찾으면 그 키워드는 뺍니다.
+ * JS 의 `indexOf` 로 찾으므로 처음부터 UTF-16 위치입니다 — 바꾸지 않습니다.
+ */
 export function rangesFromKeywords(content: string, keywords: readonly string[]): TextRange[] {
   const ranges: TextRange[] = [];
   for (const keyword of keywords) {
@@ -66,7 +94,11 @@ export function markScriptLines(
   highlights: readonly TextRange[],
   keywords: readonly string[],
 ): MarkPart[][] {
-  const source = highlights.length > 0 ? highlights : rangesFromKeywords(content, keywords);
+  // AI 가 준 위치만 단위를 바꿉니다. 키워드로 찾은 위치는 이미 JS 단위입니다
+  const source =
+    highlights.length > 0
+      ? codePointRangesToUtf16(content, highlights)
+      : rangesFromKeywords(content, keywords);
   const ranges = normalizeRanges(source, content.length);
 
   const lines: MarkPart[][] = [];

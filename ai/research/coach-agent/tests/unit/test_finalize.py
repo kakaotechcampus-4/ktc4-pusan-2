@@ -10,22 +10,22 @@ import coach.core as core_mod
 from coach import ReplayRequired, finalize
 from coach.config import load_config
 from coach.judges import Judges
-from coach.state import CoachState, dump_state
+from coach.state import CoachState, dump_state, load_state
 from coach.timing import criteria as timing_criteria
 
-from .conftest import PLAN, Session
-from .fakes import AREAS, FakeJudge, fake_judges
+from .conftest import PLAN, Session, gaze_on
+from .fakes import AREAS, FakeJudge, ScriptedJudge, fake_judges
 
 
 class SummaryJudge(FakeJudge):
     """summarize 가 합계를 그대로 지표로 내고 측정 비율은 합계에 적힌 값(없으면 1.0)을 쓴다.
 
-    군더더기 모듈은 문장 끝 신호가 오면 첫 단어를 군더더기 하나로 센다(보류 단어 시험).
+    군더더기 모듈은 Take 끝(take_end_ms)이 오면 첫 단어를 군더더기 하나로 센다(보류 단어 시험).
     """
 
     def judge(self, inputs: dict[str, Any], t_ms: int) -> list[dict[str, Any]]:
         results = super().judge(inputs, t_ms)
-        if self.name == "filler" and t_ms in inputs["utterance_ends"] and inputs["words"]:
+        if self.name == "filler" and inputs["take_end_ms"] == t_ms and inputs["words"]:
             first = inputs["words"][0]
             results[0]["tally"].append({"t_ms": first["start_ms"], "values": {"filler_count": 1}})
         return results
@@ -36,6 +36,13 @@ class SummaryJudge(FakeJudge):
             count = int(out["FILLER"].get("filler_count", 0))
             out["FILLER"] |= {"by_tier": {"T1": count}, "by_word": {"음": count}}
         return out
+
+
+class RatioJudge(ScriptedJudge):
+    """문제 · 지표를 정해 주는 가짜 모듈에 측정 비율 1.0 을 내는 summarize 를 더한 것."""
+
+    def summarize(self, tally: dict[str, dict[str, float]]) -> dict[str, Any]:
+        return {a: {"measured_ratio": 1.0, **v} for a, v in tally.items()}
 
 
 def judges(**over: FakeJudge) -> Judges:
@@ -54,7 +61,8 @@ def finish(s: Session, t_ms: int, **extra: Any):
 def from_state(t_ms: int = 60_000, *, judges_: Judges | None = None, **fields: Any):
     """센 구간이 Take 를 덮은 coach_state 를 직접 만들어 마지막 창 없이 finalize 한다."""
     fields.setdefault("covered", [[0, t_ms]])
-    state = CoachState(last_t_ms=t_ms, **fields)
+    # 마지막 처리가 Take 끝보다 뒤라 마지막 창을 부르지 않는다(finalize 가 낡은 t 로 건너뛴다)
+    state = CoachState(last_t_ms=t_ms + 1, **fields)
     req = {"take_id": "test-take", "t_ms": t_ms, "plan": PLAN, "coach_state": dump_state(state)}
     return finalize(req, judges_ or judges())
 
@@ -62,32 +70,97 @@ def from_state(t_ms: int = 60_000, *, judges_: Judges | None = None, **fields: A
 # ── 마지막 창 ────────────────────────────────────────────────────────────
 
 
-def test_last_window_is_judged_with_take_end_as_utterance_end():
+def test_last_window_gets_take_end_as_take_end_ms_not_as_an_utterance_end():
     s = session()
     s.run(1_000, 10_000)
+    # evaluate 에서는 take_end_ms 가 없다
+    assert s.judges.filler.calls[-1][0]["take_end_ms"] is None
     last = {
         "words": [{"word": "음", "start_ms": 10_200, "end_ms": 10_600}],
         "utterance_ends": [8_000],
     }
     fin = finish(s, 11_000, inputs=last)
 
-    filler = s.judges.filler
-    inputs, t = filler.calls[-1]
-    assert t == 11_000 and inputs["utterance_ends"] == [8_000, 11_000]
-    # 보류했던 단어가 Take 끝에 군더더기로 세어진다
+    for module in (s.judges.filler, s.judges.pace):
+        inputs, t = module.calls[-1]
+        # Take 끝은 문장 끝 신호에 끼워 넣지 않고 take_end_ms 로 따로 받는다
+        assert t == 11_000 and inputs["take_end_ms"] == 11_000
+        assert inputs["utterance_ends"] == [8_000]
+    # 보류했던 단어가 Take 끝에 군더더기로 세어진다(테스트용 군더더기 모듈이 take_end_ms 를 본다)
     assert fin.take_result.areas["FILLER"].take["filler_count"] == 1
 
 
-def test_last_window_is_skipped_when_the_tick_was_already_processed():
+def test_a_real_utterance_end_at_the_take_end_is_passed_as_it_is():
+    # 실제 UtteranceEnd 가 Take 끝과 같은 시각이어도 문장 끝 신호는 받은 그대로이고, Take 끝은
+    # take_end_ms 로 따로 간다(둘을 섞지 않으므로 구분된다)
+    s = session()
+    s.run(1_000, 10_000)
+    finish(s, 11_000, inputs={"utterance_ends": [11_000]})
+    for module in (s.judges.filler, s.judges.pace):
+        inputs, _ = module.calls[-1]
+        assert inputs["utterance_ends"] == [11_000] and inputs["take_end_ms"] == 11_000
+
+
+def test_last_window_keeps_the_stt_status_the_be_sent_even_if_the_audio_stopped():
+    s = session()
+    s.run(1_000, 10_000)
+    stopped = {"voice_records": [{"t_ms": 10_000, "audio_live": False}], "stt_status": "ok"}
+    finish(s, 11_000, inputs=stopped)
+    assert s.judges.filler.calls[-1][0]["stt_status"] == "ok"
+    assert s.judges.pace.calls[-1][0]["stt_status"] == "ok"
+
+
+def test_last_window_is_skipped_only_when_the_take_end_is_before_the_last_tick():
     s = session()
     s.run(1_000, 10_000)
     before = len(s.judges.gaze.calls)
-    fin = finish(s, 10_000)
+    # 마지막 처리보다 이른 시각은 낡은 요청이라 마지막 창을 부르지 않는다
+    fin = finish(s, 9_000)
     assert len(s.judges.gaze.calls) == before
-    assert fin.take_result.duration_ms == 10_000
-    # 이미 처리한 시각 뒤로 오는 낡은 요청도 건너뛴다
-    finish(s, 9_000)
-    assert len(s.judges.gaze.calls) == before
+    assert fin.take_result.duration_ms == 9_000
+    # 같은 시각이면 부른다(STT 를 닫은 뒤 확정된 단어 · Take 끝 신호가 있을 수 있다)
+    finish(s, 10_000)
+    assert len(s.judges.gaze.calls) == before + 1
+
+
+def test_last_window_at_the_same_tick_counts_words_confirmed_after_stt_closed():
+    # 마지막 evaluate 가 10 초까지 처리한 뒤 STT 를 닫아 확정된 단어(끝 ≤ 10 초)는 finalize 의
+    # 같은 시각 마지막 창에서 Take 합계에 들어간다. 시간 몫은 시각 커서라 다시 세지 않는다
+    s = Session(plan=PLAN)
+    s.judges = fake_judges(
+        **{n: RatioJudge(n, s._spec(n)) for n in ("gaze", "pace", "volume", "filler")}
+    )
+    s.run(1_000, 10_000, **gaze_on(0.9))
+    open_state = load_state(s.state)[0]
+    assert open_state.episodes  # 문제 구간이 열려 있다
+
+    late = {
+        "words": [
+            {"word": "가가가", "start_ms": 9_000, "end_ms": 9_500},
+            {"word": "나나나나", "start_ms": 9_500, "end_ms": 10_000},
+        ]
+    }
+    base = finish(s, 10_000)
+    fin = finish(s, 10_000, inputs=late)
+
+    # STT 모듈과 판정 모듈이 take_end_ms 를 받는다
+    assert s.judges.pace.calls[-1][1] == 10_000
+    assert s.judges.pace.calls[-1][0]["take_end_ms"] == 10_000
+    # 뒤늦게 확정된 단어는 합계에 들어간다
+    assert fin.take_result.areas["SPEED"].take["chars"] == 7
+    assert "chars" not in base.take_result.areas["SPEED"].take
+    # 시간은 두 번 세지 않는다
+    assert fin.take_result.duration_ms == base.take_result.duration_ms == 10_000
+    assert fin.take_result.areas["TIME"].take["duration_ms"] == 10_000
+    for area in ("GAZE", "SPEED", "VOLUME", "FILLER", "TIME"):
+        assert fin.take_result.areas[area].take.get("total_ms") == base.take_result.areas[
+            area
+        ].take.get("total_ms")
+    assert fin.take_result.areas["GAZE"].take["total_ms"] == 10_000
+    # 열린 문제 구간의 믿을 수 있던 시간도 늘지 않는다
+    episodes = [(e.issue_type, e.reliable_ms) for e in fin.events if e.kind == "EPISODE"]
+    assert episodes == [(e.issue_type, e.reliable_ms) for e in base.events if e.kind == "EPISODE"]
+    assert any(reliable > 0 for _, reliable in episodes)
 
 
 def test_last_window_failure_is_counted_as_unmeasured_time(monkeypatch: pytest.MonkeyPatch):
@@ -152,6 +225,18 @@ def test_replay_required_when_the_take_ends_long_after_the_last_response():
     with pytest.raises(ReplayRequired) as e:
         finish(s, 60_000)  # 마지막 창이 30초라 [5000, 30000) 는 셀 수 없다
     assert e.value.missing == [(5_000, 30_000)]
+
+
+def test_replay_required_after_a_jump_started_the_state_fresh():
+    # 0초부터 센 뒤 60초 넘게 앞선 요청(T_MS_JUMP)으로 새로 시작하면 앞부분 합계가 없어 409
+    s = session()
+    s.run(1_000, 5_000)
+    assert s.step(100_000).reason_codes == ["T_MS_JUMP"]
+    s.run(101_000, 103_000)
+    with pytest.raises(ReplayRequired) as e:
+        finish(s, 103_000)
+    # 새로 시작한 첫 요청(101_000)은 창 앞(71_000)부터 센다
+    assert e.value.missing == [(0, 71_000)]
 
 
 def test_no_replay_when_the_gap_fits_in_the_window():
@@ -289,7 +374,7 @@ def test_area_below_the_measured_ratio_is_left_empty():
 
 def test_threshold_comes_from_the_config():
     state = CoachState(
-        last_t_ms=1_000, covered=[[0, 1_000]], totals={"GAZE": {"measured_ratio": 0.6}}
+        last_t_ms=1_001, covered=[[0, 1_000]], totals={"GAZE": {"measured_ratio": 0.6}}
     )
     req = {"take_id": "test-take", "t_ms": 1_000, "coach_state": dump_state(state)}
     strict = load_config(take_result={"min_measured_ratio": 0.8})
@@ -369,6 +454,37 @@ def test_criteria_changed_when_a_version_changed_during_the_take():
     assert changed.take_result.criteria["SPEED"].criteria_version == "pace-2"
 
 
+def test_criteria_changed_when_a_version_changed_and_came_back():
+    # A → B → A: 처음과 마지막이 같아도 Take 도중 바뀐 적이 있으면 true
+    back = from_state(
+        criteria_versions={"gaze": "gaze-1"},
+        latest_criteria_versions={"gaze": "gaze-1"},
+        criteria_changed=True,
+    )
+    assert back.take_result.criteria_changed is True
+
+
+# ── 시간 계획 ───────────────────────────────────────────────────────────
+
+
+def test_take_result_carries_the_plan_without_the_slides():
+    s = session(plan=PLAN)
+    s.run(1_000, 20_000)
+    fin = finish(s, 21_000, plan=PLAN)
+    assert fin.take_result.plan is not None
+    assert fin.take_result.plan.model_dump() == {
+        "target_ms": 180_000,
+        "min_ms": 165_000,
+        "max_ms": 195_000,
+    }
+
+
+def test_take_result_plan_is_null_without_a_plan_in_the_request():
+    s = session()
+    s.run(1_000, 20_000)
+    assert finish(s, 21_000).take_result.plan is None
+
+
 # ── 응답 ────────────────────────────────────────────────────────────────
 
 
@@ -385,6 +501,7 @@ def test_response_shape_and_determinism():
         "take_id",
         "duration_ms",
         "script_mode",
+        "plan",
         "replayed",
         "criteria_changed",
         "areas",

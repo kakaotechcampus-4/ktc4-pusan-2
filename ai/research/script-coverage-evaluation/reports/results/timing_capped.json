@@ -1,0 +1,139 @@
+{
+  "feature_version": "script_coverage-1.0",
+  "criteria_version": "script_coverage-1.0+e7d09c338962",
+  "model": "openai/gpt-6-luna",
+  "request_deadline_seconds": 120.0,
+  "call_timeout_seconds": 20.0,
+  "be_retry": true,
+  "client": "streaming, transport timeout = call timeout, executor 40, output token caps {'script_coverage.semantic': 4096, 'script_coverage.final': 4096, 'script_coverage.unit': 5120, 'script_coverage.eval': 3072, 'script_coverage.verifier': 2048}",
+  "output_token_caps": {
+    "script_coverage.semantic": 4096,
+    "script_coverage.final": 4096,
+    "script_coverage.unit": 5120,
+    "script_coverage.eval": 3072,
+    "script_coverage.verifier": 2048
+  },
+  "usage": {
+    "script_coverage.semantic": {
+      "calls": 30,
+      "errors": 0,
+      "unknown_usage": 0,
+      "finish_reason": {
+        "stop": 30
+      },
+      "output_tokens": {
+        "min": 503,
+        "median": 894,
+        "p95": 1232,
+        "max": 1341
+      },
+      "recommended_cap": 3072
+    },
+    "script_coverage.final": {
+      "calls": 32,
+      "errors": 0,
+      "unknown_usage": 0,
+      "finish_reason": {
+        "stop": 32
+      },
+      "output_tokens": {
+        "min": 405,
+        "median": 888,
+        "p95": 1937,
+        "max": 1948
+      },
+      "recommended_cap": 4096
+    },
+    "script_coverage.unit": {
+      "calls": 30,
+      "errors": 0,
+      "unknown_usage": 0,
+      "finish_reason": {
+        "stop": 30
+      },
+      "output_tokens": {
+        "min": 414,
+        "median": 852,
+        "p95": 1388,
+        "max": 1492
+      },
+      "recommended_cap": 3072
+    },
+    "script_coverage.eval": {
+      "calls": 30,
+      "errors": 0,
+      "unknown_usage": 0,
+      "finish_reason": {
+        "stop": 30
+      },
+      "output_tokens": {
+        "min": 258,
+        "median": 465,
+        "p95": 752,
+        "max": 799
+      },
+      "recommended_cap": 2048
+    },
+    "script_coverage.verifier": {
+      "calls": 1,
+      "errors": 0,
+      "unknown_usage": 0,
+      "finish_reason": {
+        "stop": 1
+      },
+      "output_tokens": {
+        "min": 129,
+        "median": 129,
+        "p95": 129,
+        "max": 129
+      },
+      "recommended_cap": 2048
+    }
+  },
+  "total_calls": 123,
+  "combinations": {
+    "N30_W12_K1": {
+      "slides": 30,
+      "rubric_workers": 12,
+      "analyze_workers": 4,
+      "concurrent_requests": 1,
+      "complete_requests": 1,
+      "jobs": [
+        {
+          "first": {
+            "seconds": 102.7,
+            "within_deadline": true,
+            "target_slides": 30,
+            "produced_slides": 30,
+            "failed_slides": 0,
+            "failed": {},
+            "request_error": null,
+            "calls": 92,
+            "retries": 2,
+            "timeouts": 2,
+            "call_median_seconds": 8.92,
+            "call_max_seconds": 20.14
+          },
+          "retry": null,
+          "final_produced": 30,
+          "complete": true,
+          "seconds": 102.7
+        }
+      ],
+      "analyze": {
+        "seconds": 40.0,
+        "within_deadline": true,
+        "target_slides": 30,
+        "produced_slides": 30,
+        "failed_slides": 0,
+        "failed": {},
+        "request_error": null,
+        "calls": 31,
+        "retries": 0,
+        "timeouts": 0,
+        "call_median_seconds": 4.17,
+        "call_max_seconds": 7.03
+      }
+    }
+  }
+}

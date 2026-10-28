@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONFIG_HASH } from '@/vendor/gaze/engine/config';
+import { CONFIG_HASH } from '@/vendor/gaze/engine/contract';
 import { fitsCurrentEngine } from './calibrationModel';
 
 describe('저장된 보정이 지금 엔진 설정과 맞는가', () => {

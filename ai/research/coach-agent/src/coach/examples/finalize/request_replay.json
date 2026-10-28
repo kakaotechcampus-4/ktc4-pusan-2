@@ -217,7 +217,16 @@
       "reason_codes": [
         "AHEAD_OF_SCHEDULE"
       ],
-      "slide_number": 3
+      "slide_number": 3,
+      "evidence": {
+        "start_ms": 60000,
+        "end_ms": 73000,
+        "slide_number": 3,
+        "projected_end_ms": 118837,
+        "early_limit_ms": 270000,
+        "target_ms": 300000,
+        "projected_end_ratio": 0.4401
+      }
     },
     {
       "event_id": "su-AHEAD_OF_SCHEDULE-80000",

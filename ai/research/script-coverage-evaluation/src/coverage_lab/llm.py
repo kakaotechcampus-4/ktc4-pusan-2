@@ -10,6 +10,7 @@ from dotenv import find_dotenv, load_dotenv
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
+from script_coverage.core import ScriptLLMs, TakeLLMs
 from script_coverage.script_analysis.schemas import FinalReview, SlideSemanticAnalysis, SlideUnits
 from script_coverage.stt_evaluation.schemas import SemanticEvaluation, VerifierResult
 
@@ -46,26 +47,50 @@ def load_settings() -> Settings:
     return Settings(base_url=os.getenv("OPENAI_BASE_URL"), api_key=api_key, model=model)
 
 
-def structured_llm(schema: type[BaseModel], settings: Settings):
-    """주어진 출력 스키마 모양으로만 답하도록 고정한 LLM (`.invoke(messages)` 가 스키마 객체를 돌려준다)."""
+def structured_llm(
+    schema: type[BaseModel],
+    settings: Settings,
+    *,
+    max_retries: int = 2,
+    timeout: float | None = None,
+    streaming: bool = False,
+    max_completion_tokens: int | None = None,
+    callbacks: list | None = None,
+):
+    """주어진 출력 스키마 모양으로만 답하도록 고정한 LLM (`.invoke(messages)` 가 스키마 객체를 돌려준다).
+
+    - `max_retries`: SDK 가 알아서 다시 부르는 횟수. 재시도를 직접 세어야 하는 시간 측정은 0 으로 준다
+    - `timeout` · `streaming`: 시간 측정은 서비스 `common/llm.py` 처럼 전송 시간 제한을 호출 시간 제한과 같게 두고
+      (버린 호출이 오래 남지 않게) 스트리밍으로 받는다. 연구 실험의 기본값은 예전 그대로다
+    - `max_completion_tokens`: 출력 토큰 상한(추론 토큰 포함). 서비스의 역할별 상한과 같은 조건으로 잴 때 준다
+    - `callbacks`: 호출마다 출력 토큰 수를 모을 때 `coverage_lab.usage.UsageLog` 를 넘긴다
+    """
     client = ChatOpenAI(
-        base_url=settings.base_url, api_key=settings.api_key, model=settings.model, max_retries=2
+        base_url=settings.base_url,
+        api_key=settings.api_key,
+        model=settings.model,
+        max_retries=max_retries,
+        timeout=timeout,
+        streaming=streaming,
+        stream_usage=streaming,
+        max_completion_tokens=max_completion_tokens,
+        callbacks=callbacks,
     )
     return client.with_structured_output(schema)
 
 
-def script_llms(settings: Settings) -> dict:
-    """`analyze_script(..., **script_llms(settings), model=settings.model)` 로 쓴다."""
-    return {
-        "semantic_llm": structured_llm(SlideSemanticAnalysis, settings),  # 1차 분석
-        "final_llm": structured_llm(FinalReview, settings),  # 최종 결론
-        "unit_llm": structured_llm(SlideUnits, settings),  # 전달 단위
-    }
+def script_llms(settings: Settings) -> ScriptLLMs:
+    """`/scripts/rubric` 진입 함수(`script_coverage.core.analyze_script`)에 넘기는 LLM 묶음."""
+    return ScriptLLMs(
+        semantic=structured_llm(SlideSemanticAnalysis, settings),  # 1차 분석
+        final=structured_llm(FinalReview, settings),  # 최종 결론
+        unit=structured_llm(SlideUnits, settings),  # 전달 단위
+    )
 
 
-def stt_llms(settings: Settings) -> dict:
-    """`evaluate_take(..., **stt_llms(settings), model=settings.model)` 로 쓴다."""
-    return {
-        "eval_llm": structured_llm(SemanticEvaluation, settings),  # 의미 평가
-        "verifier_llm": structured_llm(VerifierResult, settings),  # 교차 검증
-    }
+def stt_llms(settings: Settings) -> TakeLLMs:
+    """`/takes/analyze` 진입 함수(`script_coverage.core.evaluate_take`)에 넘기는 LLM 묶음."""
+    return TakeLLMs(
+        eval=structured_llm(SemanticEvaluation, settings),  # 의미 평가
+        verifier=structured_llm(VerifierResult, settings),  # 교차 검증
+    )

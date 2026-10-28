@@ -3,6 +3,11 @@
     "take_id": "take-123",
     "duration_ms": 92000,
     "script_mode": "HIGHLIGHT",
+    "plan": {
+      "target_ms": 300000,
+      "min_ms": 270000,
+      "max_ms": 330000
+    },
     "replayed": false,
     "criteria_changed": false,
     "areas": {
@@ -404,7 +409,7 @@
         }
       },
       "VOLUME": {
-        "criteria_version": "volume-0.2+06b3417cd48b",
+        "criteria_version": "volume-0.2+862f8de95679",
         "issues": {
           "VOLUME_LOW": {
             "metric": "voice_diff_db",
@@ -417,7 +422,7 @@
         }
       },
       "PAUSE": {
-        "criteria_version": "volume-0.2+06b3417cd48b",
+        "criteria_version": "volume-0.2+862f8de95679",
         "issues": {
           "LONG_SILENCE": {
             "metric": "silence_ms",
@@ -443,7 +448,7 @@
         }
       },
       "TIME": {
-        "criteria_version": "timing-1.0+305f8e44237d",
+        "criteria_version": "timing-1.1+305f8e44237d",
         "issues": {
           "TIME_OVER": {
             "metric": "elapsed_ratio",
@@ -587,14 +592,14 @@
   ],
   "meta": {
     "schema_version": "1.0",
-    "feature_version": "coach-1.2",
+    "feature_version": "coach-1.3",
     "criteria_versions": {
       "filler": "filler-0.1+4b2747c2be03",
       "pace": "pace-0.2+685bb58a4c67",
       "gaze": "gaze-0.2+b6f8b464a3ee",
-      "volume": "volume-0.2+06b3417cd48b",
-      "timing": "timing-1.0+305f8e44237d",
-      "coach": "coach-1.2+9d82f5b1d7bb"
+      "volume": "volume-0.2+862f8de95679",
+      "timing": "timing-1.1+305f8e44237d",
+      "coach": "coach-1.3+8b1e640e988a"
     },
     "model": null
   }

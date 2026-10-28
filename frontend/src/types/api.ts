@@ -9,7 +9,6 @@
  * 이 파일은 **타입만** 있고, API 를 거치지 않는 곳에서도 씁니다:
  *
  *   workers/gaze.contract.ts     워커. shared/api 를 참조하면 안 되는 곳
- *   workers/temporalVoter.ts     워커
  *   features/rehearsal/lib/db.ts IndexedDB. 서버 통신과 무관
  *   mocks/handlers.ts            목 서버. 쿼리 훅의 반대편
  *
@@ -63,6 +62,8 @@ export type PracticeMode = 'COACHING' | 'EXAM';
  */
 export type ScriptMode = 'HIGHLIGHT' | 'KEYWORD' | 'OFF';
 export type TakeStatus = 'READY' | 'RUNNING' | 'ANALYZING' | 'COMPLETED' | 'FAILED';
+/** Take 가 끝난 이유. ABANDONED · CLOSED 는 사용자가 발표를 끝내지 못한 경우입니다 (BE #490) */
+export type TakeEndReason = 'SILENCE' | 'TIME_LIMIT' | 'ABANDONED' | 'CLOSED';
 
 /** AI팀 파이프라인의 최종 출력. 4분할이 아니라 3값입니다. */
 export type GazeZone = 'CAMERA' | 'BOTTOM' | 'UNCERTAIN';
@@ -71,6 +72,11 @@ export type GazeExcludedReason =
   | 'LOW_CONFIDENCE'
   | 'ENGINE_UNAVAILABLE'
   | 'CAMERA_LOST'
+  /**
+   * 시선 기준(보정)을 잃었습니다 — 리허설 중 새로고침 등. 기준은 탭 메모리에만 있어서입니다.
+   * 카메라 끊김처럼 **제외하지 않고** 그 뒤 기록만 멈춥니다 (`gazeExclusion.ts`).
+   */
+  | 'CALIBRATION_LOST'
   | 'USER_DECLINED'
   | 'VALIDATION_FAILED'
   | 'UNCERTAIN_RATIO_EXCEEDED'
@@ -84,13 +90,6 @@ export type GazeExcludedReason =
 /** NORMAL 정상 · LIGHT 경량 모드 · OFF 시선 없이 진행 */
 export type GazeEngineProfile = 'NORMAL' | 'LIGHT' | 'OFF';
 
-export interface ApiError {
-  code: string;
-  /** 화면에 그대로 노출 가능한 문구 */
-  message: string;
-  detail: string | null;
-}
-
 /* ------------------------------------------------------------------ */
 /* Pitch · 자료 · 대본                                                  */
 /*                                                                     */
@@ -101,7 +100,11 @@ export interface ApiError {
 /* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
-/* 발표 종료 — POST /takes/{id}/complete                                */
+/* 시선 구간 요약 — 옛 `/complete` 본문의 `gaze` 모양                    */
+/*                                                                     */
+/* `/complete` 는 BE 가 만들지 않기로 했습니다(#134). 종료는 `types/take.ts` 의 */
+/* `TakeEndRequest`, 기록은 발표 중 WS `metrics` 입니다. 아래 `GazePayload` 는 */
+/* 지금 `/dev/media` 가 저장한 기록을 접어 보여 주는 데만 씁니다.              */
 /* ------------------------------------------------------------------ */
 
 export interface GazeSegment {
@@ -128,6 +131,12 @@ export interface CalibrationSummary {
    * 0 으로 채우면 "분리도가 0" 이라는 뜻이 되어 리포트가 거짓말을 합니다.
    */
   separability: number | null;
+  /** 보정 표본을 하나씩 빼고 맞힌 비율 0–1 (AI `loo_accuracy`). 모르면 null */
+  looAccuracy: number | null;
+  /** 합격이어도 붙는 경고 (AI `warnings`, 예: `SCREEN_MERGED: …`) */
+  warnings: string[];
+  /** 이 보정을 만든 엔진. Take 끼리 비교할 때 같은 엔진인지 봅니다 */
+  engineVersion: string;
   coordinateSpace: 'raw' | 'mirrored';
   /** 해상도·배율·카메라 위치. 이게 다르면 다른 기기의 값이라 재사용 불가 */
   layoutSignature: string;
@@ -155,41 +164,9 @@ export interface GazePayload {
   segments: GazeSegment[];
 }
 
-export interface CompleteRequest {
-  /** 같은 값으로 재전송하면 서버는 새 Take를 만들지 않습니다 (P15 재시도) */
-  clientSessionId: string;
-  startedAt: string;
-  endedAt: string;
-  durationMs: Ms;
-  mode: PracticeMode;
-  hiddenPanels: string[];
-  slideEvents: { slideNumber: number; startMs: Ms; endMs: Ms }[];
-  gaze: GazePayload;
-  liveFeedbacks: {
-    type: string;
-    message: string;
-    triggeredAtMs: Ms;
-    confidence: number;
-  }[];
-  /** 띄우려다 참은 것과 사유 — 코칭 임계값 조정의 유일한 근거 */
-  suppressedFeedbacks: { type: string; atMs: Ms; reason: string }[];
-  clientPerf: {
-    avgGazeFps: number;
-    droppedFrames: number;
-    degradedToLightAtMs: Ms | null;
-  };
-}
-
 /* ------------------------------------------------------------------ */
-/* 리포트 — GET /takes/{id}/report                                      */
+/* 리포트 시선 — 새 리포트 응답은 types/report.ts                        */
 /* ------------------------------------------------------------------ */
-
-export interface Metric {
-  value: number;
-  /** 첫 Take는 null. 증감 화살표를 그리지 않습니다 */
-  delta: number | null;
-  direction: 'IMPROVED' | 'WORSENED' | 'SAME' | null;
-}
 
 export interface ReportGaze {
   excluded: boolean;
@@ -208,115 +185,6 @@ export interface ReportGaze {
   reliability: 'HIGH' | 'MEDIUM' | 'LOW' | null;
 }
 
-export interface Finding {
-  id: string;
-  type: string;
-  polarity: 'ISSUE' | 'GOOD' | 'NEUTRAL';
-  slideNumber: number;
-  startMs: Ms;
-  endMs: Ms;
-  severity: number;
-  title: string;
-  message: string;
-  evidence: { label: string; value: string }[];
-}
-
-export interface TakeReport {
-  takeId: string;
-  takeNumber: number;
-  mode: PracticeMode;
-  scriptMode: ScriptMode;
-  headline: string;
-  summary: {
-    durationMs: Ms;
-    timeLimitMs: Ms;
-    /** 음수가 여유 시간입니다. -2000 = 2초 남김 */
-    overTimeMs: Ms;
-    averageWpm: Metric;
-    fillerCount: Metric;
-    /** 대본 의존도의 새 주근거 — STT 전사와 대본 원문의 유사도 */
-    scriptSimilarity: Metric;
-    scriptDependencyCount: Metric;
-    overallConfidence: number;
-  };
-  gaze: ReportGaze;
-  findings: Finding[];
-  missions: {
-    id: string;
-    priority: number;
-    slideNumber: number;
-    description: string;
-    result: 'DONE' | 'PARTIAL' | 'MISSED' | null;
-  }[];
-  /** MVP에서는 항상 false. 영상은 서버로 가지 않습니다 */
-  hasRecording: boolean;
-}
-
-/* ------------------------------------------------------------------ */
-/* 홈 · 비교                                                            */
-/* ------------------------------------------------------------------ */
-
-export interface HomeResponse {
-  nearestPitch: { title: string; daysUntil: number } | null;
-  nextMission: {
-    pitchId: string;
-    nextTakeNumber: number;
-    missions: { id: string; priority: number; description: string }[];
-  } | null;
-  weeklyTakeCount: number;
-  weeklyDelta: number;
-  pitches: {
-    id: string;
-    title: string;
-    timeLimitSec: number;
-    daysUntil: number;
-    presentationVersion: number;
-    scriptVersion: number;
-    bestTakeId: string | null;
-    takes: { id: string; takeNumber: number; status: TakeStatus; isBest: boolean }[];
-  }[];
-  inProgressTake: { takeId: string; pitchTitle: string; startedAt: string } | null;
-}
-
-export interface ComparisonResponse {
-  bestTakeId: string | null;
-  /** 행들의 engineVersion이 하나라도 다르면 false — 추세선을 그리지 않습니다 */
-  gazeComparable: boolean;
-  recommendedTakeId: string | null;
-  recommendReasons: string[];
-  rows: {
-    takeId: string;
-    takeNumber: number;
-    date: string;
-    durationMs: Ms;
-    overTimeMs: Ms;
-    averageWpm: number;
-    fillerCount: number;
-    cameraMs: Ms | null;
-    bottomMs: Ms | null;
-    measuredMs: Ms | null;
-    scriptSimilarity: number;
-    gazeEngineVersion: string;
-    gazeReliability: 'HIGH' | 'MEDIUM' | 'LOW' | null;
-    scriptDependencyCount: number;
-    scriptMode: ScriptMode;
-    isBest: boolean;
-  }[];
-  missionResults: {
-    takeNumber: number;
-    missions: { id: string; description: string; result: 'DONE' | 'PARTIAL' | 'MISSED' }[];
-  }[];
-}
-
-export interface AnalysisStatus {
-  status: TakeStatus;
-  steps: {
-    name: 'UPLOAD' | 'STT' | 'CONTENT' | 'REPORT';
-    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
-  }[];
-  estimatedRemainSec: number;
-}
-
 /* ------------------------------------------------------------------ */
 /* 리허설 준비 (P4) · 장치 점검                                         */
 /*                                                                     */
@@ -324,31 +192,58 @@ export interface AnalysisStatus {
 /*   명세가 나오면 다른 타입과 같이 여기서부터 고칩니다.                */
 /* ------------------------------------------------------------------ */
 
-/** 사용자가 직접 적은 평가 기준. 준비 화면에서는 읽기 전용입니다 */
-export interface EvalCriterion {
-  id: string;
-  order: number;
-  text: string;
-}
-
+/**
+ * 장치 점검 준비 정보 — `GET /api/pitches/{pitch_id}/prepare` (BE #296 `PrepareDTO`). BE 그대로 snake_case 입니다.
+ * 화면이 쓰는 모양으로는 `features/rehearsal/prepare/prepareInfo.ts` 에서 바꿉니다.
+ *
+ * 피치 생성을 거치지 않고(홈 · 새로고침) 들어와도 이번 연습의 버전을 알게 해 줍니다.
+ */
 export interface PrepareResponse {
-  pitchId: string;
+  pitch_id: string;
   title: string;
-  /** Take가 스냅샷하는 값 — 준비 화면에서 고정됩니다 (CLAUDE.md 8번) */
-  presentationVersion: number;
-  scriptVersion: number;
+  time_limit_sec: number;
   /**
-   * 위 두 버전의 서버 id. BE 의 Take 생성(`TakeInitRequestDTO`)은 번호가 아니라 id 를 받습니다.
-   * ★ `/prepare` 는 BE 에 아직 없습니다 — 생기면 이 둘도 함께 내려 달라고 요청할 값입니다.
+   * 대본 장 수와 쪽수가 같은 가장 최근 발표자료. 맞는 것이 없으면 가장 최근 것이라 쪽수가 다를 수 있습니다.
+   * 발표자료가 없으면 null — Take 를 만들 수 없습니다.
+   * `page_count` 는 BE #298 부터 옵니다. 쪽수를 아직 세지 않은 옛 발표자료는 null 입니다.
    */
-  presentationVersionId: string;
-  scriptVersionId: string;
-  timeLimitSec: number;
-  /** 이번에 만들어질 Take 번호. POST /takes의 응답과 같아야 합니다 */
-  nextTakeNumber: number;
-  criteria: { version: number; readOnly: boolean; items: EvalCriterion[] };
-  /** 지난 Take에서 고른 Script Mode. 화면의 초기 선택값입니다 */
-  defaultScriptMode: ScriptMode;
+  presentation: { id: string; version: number; page_count?: number | null } | null;
+  /**
+   * 나누기가 끝난 가장 최근 대본. 없으면 null — Take 를 만들 수 없습니다.
+   * `slide_count`(나눈 장 수)는 BE #298 부터 옵니다.
+   */
+  script: { id: string; version: number; slide_count?: number } | null;
+  /** `script` 보다 새 대본이 아직 나누는 중(PENDING)이거나 실패(FAILED)했으면 그 대본. 대개 null */
+  newer_script: {
+    id: string;
+    version: number;
+    parse_status: 'PENDING' | 'FAILED';
+    error_code: string | null;
+  } | null;
+  /** 지금 기준 다음 번호. 실제로 매긴 번호는 Take 생성 응답(`take_number`)이 맞습니다 */
+  next_take_number: number;
+  /** 가장 최근 Take 의 대본 표시 방식. Take 가 없으면 HIGHLIGHT */
+  default_script_mode: ScriptMode;
+  /**
+   * 이번 Take 미션 (BE #409) — 리뷰가 끝난 가장 최근 Take 가 정한 다음 미션.
+   * 리뷰가 끝난 Take 가 없으면(첫 Take) null, 리뷰는 끝났지만 다음 미션이 없으면 `items: []`.
+   * `source_take_number` 가 `next_take_number - 1` 보다 작을 수 있습니다 — 뒤 Take 가 아직 분석 중이거나
+   * 리뷰에 실패했을 때인데, 어느 쪽인지는 이 응답으로 알 수 없습니다.
+   */
+  missions: {
+    source_take_number: number;
+    items: {
+      mission_id: string;
+      priority: number;
+      /** 보통 GAZE · SPEED · VOLUME · PAUSE · FILLER · CONTENT · TIME. BE 가 문자열로 내려 모르는 값이 올 수 있습니다 */
+      area: string;
+      slide_number: number | null;
+      description: string;
+      target: { metric: string; operator: string; value: number };
+      /** 리뷰한 Take 기준 문장("이번 Take 7번")이라 다음 Take 화면에서는 보이지 않습니다 */
+      reason: string | null;
+    }[];
+  } | null;
 }
 
 /**
@@ -366,7 +261,7 @@ export interface RehearsalTicket {
   timeLimitSec: number;
   mode: PracticeMode;
   scriptMode: ScriptMode;
-  /** 몇 번째 Take 인가. BE 가 돌려주지 않아 준비 화면 응답에 있을 때만 압니다 */
+  /** 몇 번째 Take 인가. Take 생성 응답(`take_number`)이 실제로 매긴 번호입니다 */
   takeNumber: number | null;
 }
 

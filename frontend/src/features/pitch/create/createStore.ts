@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   Chosen,
+  CriteriaVersion,
   DraftNode,
   InfoForm,
   PaneNode,
@@ -12,10 +13,11 @@ import type {
 } from './lib/draft';
 import {
   CHOOSE_LATEST,
+  pendingVersion,
   canSaveMapping,
-  MAX_CRITERIA,
   infoChanged,
   infoOf,
+  isEditableCriteria,
   latestUploadedSlides,
 } from './lib/draft';
 
@@ -30,8 +32,8 @@ import {
  * 각 저장 지점(발표정보 저장 · 슬라이드 업로드 · 평가기준 정리 · 대본 매핑)에서 서버로 올리고,
  * 서버가 준 id 를 버전 안에 들고 있습니다.
  *
- * ★ 새로고침하면 사라집니다. 서버에는 남아 있지만, 다시 열어 사이드바를 채우는 일
- *   (`GET /pitches/{id}/resources`)은 아직 붙지 않았습니다.
+ * ★ 새로고침하면 사라집니다. 서버에 남은 피치는 수정 화면(`/pitch/:id/edit`)이 다시 읽어
+ *   채웁니다 (`loadPitch.ts` → `hydrate`).
  */
 
 interface CreateState {
@@ -48,6 +50,30 @@ interface CreateState {
    */
   pitchId: string | null;
   setPitchId: (id: string) => void;
+
+  /**
+   * 지금 작성의 회차 id. `reset` 때마다 새로 만듭니다.
+   *
+   * 업로드 · 매핑 · 정리 · 저장은 시작할 때 이 값을 쥐고 있다가, 끝나고 결과를 쓰기 직전에
+   * 아직 같은지 봅니다 (`isCurrentDraft`). 그사이 새 피치를 시작했으면 앞 피치의 결과를 버립니다 —
+   * 안 버리면 A 의 PDF · 대본 · 기준 · pitchId 가 새로 시작한 B 에 들어갑니다.
+   */
+  draftId: string;
+  /**
+   * 이 작성을 연 브라우저 기록 항목(`location.key`). 피치 생성 화면에 들어올 때 이 값과 다르면
+   * 새로 시작한 것이라 비웁니다 (`beginEntry`).
+   *
+   * 홈의 "새 피치 만들기"는 새 기록 항목이라 키가 새로 생기고, 장치 점검에서 뒤로 가기로 돌아오면
+   * 같은 항목이라 키가 같습니다. 그래서 "새로 시작"과 "작성 중 복귀"가 플래그 없이 갈립니다.
+   */
+  entryKey: string | null;
+  /** 피치 생성 화면에 들어올 때 부릅니다. 다른 기록 항목에서 왔으면 비우고 새로 시작합니다 */
+  beginEntry: (key: string) => void;
+  /**
+   * 수정 화면 — 서버에서 읽어 온 피치로 새 작성을 시작합니다 (`loadPitch.ts`). `beginEntry` 처럼
+   * 기록 항목 키를 남겨, 장치 점검에서 뒤로 돌아오면 다시 읽지 않고 고치던 그대로 둡니다.
+   */
+  hydrate: (key: string, pitchId: string, draft: PitchDraft) => void;
 
   /**
    * 이번 연습에 들고 갈 버전. 슬라이드와 대본은 매핑을 저장할 때 함께 정해집니다.
@@ -108,12 +134,26 @@ interface CreateState {
   addCriteriaVersion: () => void;
   /**
    * 서버가 나누고 저장한 결과를 넣습니다. "+ 새 버전"으로 만든 빈 버전이면 거기 채우고,
-   * 아니면 새 버전을 만듭니다 — 서버도 정리할 때마다 새로 저장하고, 저장한 것은 고치지 않습니다.
+   * 아니면 새 버전을 만듭니다 — 서버도 정리할 때마다 새 버전으로 저장합니다 (#463).
    */
   applyParsedCriteria: (
     version: number | null,
     parsed: { sourceText: string; standards: string[]; exceptText: string | null },
   ) => void;
+  /** 목록 고치기. 서버에 있는 가장 최근 버전만 고치고(`isEditableCriteria`), 고치면 `edited` 가 됩니다 */
+  editCriterion: (version: number, id: string, text: string) => void;
+  addCriterion: (version: number) => void;
+  removeCriterion: (version: number, id: string) => void;
+  /**
+   * 고친 목록을 저장했습니다. `standards` 는 **서버가 돌려준 목록**입니다 — 계약상 서버가 고친 글로
+   * 한 번 더 분석해 저장하므로, 보낸 문장과 다를 수 있습니다
+   */
+  markCriteriaSaved: (version: number, standards: string[]) => void;
+  /**
+   * 지난 버전을 고치려면 — 그 버전의 원문을 물려받은 빈 버전을 만듭니다. 다시 정리해야 서버에 새 버전이
+   * 생깁니다. 지난 버전은 지난 Take 가 가리키므로 그 자리에서 고치지 않습니다
+   */
+  reviseCriteria: (version: number) => void;
 
   reset: () => void;
 }
@@ -151,6 +191,21 @@ const mapScripts = (
   scripts: draft.scripts.map((v) => (v.version === version ? update(v) : v)),
 });
 
+/** 고칠 수 있는 평가기준 버전만 고치고 `edited` 로 둡니다. 그 밖의 버전은 그대로 돌려줍니다 */
+const editCriteria = (
+  draft: PitchDraft,
+  version: number,
+  update: (v: CriteriaVersion) => CriteriaVersion,
+): PitchDraft => ({
+  ...draft,
+  criteria: draft.criteria.map((v) =>
+    v.version === version && isEditableCriteria(draft, v)
+      ? // 처음 고칠 때 서버 목록을 적어 둡니다 — 고친 채로 다시 정리하면 이것으로 되돌립니다
+        { ...update(v), edited: true, savedItems: v.edited ? v.savedItems : v.items }
+      : v,
+  ),
+});
+
 export const useCreateStore = create<CreateState>((set) => ({
   draft: EMPTY_DRAFT,
   // 목업의 순서대로 발표정보부터 엽니다
@@ -159,6 +214,12 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   pitchId: null,
   setPitchId: (id) => set({ pitchId: id }),
+
+  draftId: crypto.randomUUID(),
+  entryKey: null,
+  beginEntry: (key) => set((s) => (s.entryKey === key ? s : { ...freshDraft(), entryKey: key })),
+  hydrate: (key, pitchId, draft) =>
+    set({ ...freshDraft(), entryKey: key, pitchId, draft, chosen: chosenOf(draft) }),
 
   chosen: CHOOSE_LATEST,
   chooseVersion: (node, version) => set((s) => ({ chosen: { ...s.chosen, [node]: version } })),
@@ -173,6 +234,9 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   addSlideVersion: () =>
     set((s) => {
+      // 파일을 기다리는 빈 버전이 있으면 새로 만들지 않고 그 버전을 엽니다 (`pendingVersion`)
+      const pending = pendingVersion(s.draft, 'slides');
+      if (pending !== null) return { node: 'slides' as const, version: pending };
       const version = nextVersion(s.draft.slides);
       return {
         draft: { ...s.draft, slides: [...s.draft.slides, { version, pageCount: null }] },
@@ -225,6 +289,9 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   addScriptVersion: (text = '') =>
     set((s) => {
+      // 매핑을 저장하지 않은 버전이 있으면 새로 만들지 않고 그 버전을 엽니다
+      const pending = pendingVersion(s.draft, 'script');
+      if (pending !== null) return { node: 'script' as const, version: pending };
       const version = nextVersion(s.draft.scripts);
       const slideVersion = latestUploadedSlides(s.draft)?.version ?? null;
       return {
@@ -284,6 +351,9 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   addCriteriaVersion: () =>
     set((s) => {
+      // 저장하지 않은 버전이 있으면 새로 만들지 않고 그 버전을 엽니다
+      const pending = pendingVersion(s.draft, 'criteria');
+      if (pending !== null) return { node: 'criteria' as const, version: pending };
       const version = nextVersion(s.draft.criteria);
       return {
         draft: {
@@ -305,19 +375,26 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   applyParsedCriteria: (version, { sourceText, standards, exceptText }) =>
     set((s) => {
-      const items = standards
-        .slice(0, MAX_CRITERIA)
-        .map((text) => ({ id: crypto.randomUUID(), text }));
+      // 개수를 자르지 않습니다. BE 는 받은 기준을 모두 저장해 채점에 쓰므로,
+      // 화면에서만 자르면 보이지 않는 기준으로 채점됩니다. 많으면 목록이 스크롤됩니다
+      const items = standards.map((text) => ({ id: crypto.randomUUID(), text }));
       const target = s.draft.criteria.find((v) => v.version === version);
 
+      // 정리하면 서버에 새 버전으로 저장됩니다 (#463). 고칠 수는 있고, 고치면 다시 저장합니다
       if (!target || target.saved) {
         const next = nextVersion(s.draft.criteria);
         return {
           draft: {
             ...s.draft,
             criteria: [
-              ...s.draft.criteria,
-              { version: next, items, saved: true, sourceText, exceptText },
+              // 고친 채로 다시 정리했으면 그 고친 내용은 버리고 서버 목록으로 되돌립니다.
+              // 이 버전은 이제 최신이 아니라 고칠 수도 저장할 수도 없습니다 (`isEditableCriteria`)
+              ...s.draft.criteria.map((v) =>
+                v.version === target?.version && v.edited
+                  ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
+                  : v,
+              ),
+              { version: next, items, saved: true, edited: false, sourceText, exceptText },
             ],
           },
           node: 'criteria' as const,
@@ -328,28 +405,136 @@ export const useCreateStore = create<CreateState>((set) => ({
         draft: {
           ...s.draft,
           criteria: s.draft.criteria.map((v) =>
-            v.version === target.version ? { ...v, items, saved: true, sourceText, exceptText } : v,
+            v.version === target.version
+              ? {
+                  ...v,
+                  items,
+                  saved: true,
+                  edited: false,
+                  savedItems: undefined,
+                  sourceText,
+                  exceptText,
+                }
+              : v,
           ),
         },
       };
     }),
 
-  reset: () =>
-    set({
-      draft: EMPTY_DRAFT,
-      node: 'info',
-      version: null,
-      pitchId: null,
-      infoEdits: null,
-      chosen: CHOOSE_LATEST,
-      slideUpload: { status: 'idle' },
+  editCriterion: (version, id, text) =>
+    set((s) => ({
+      draft: editCriteria(s.draft, version, (v) => ({
+        ...v,
+        items: v.items.map((i) => (i.id === id ? { ...i, text } : i)),
+      })),
+    })),
+
+  addCriterion: (version) =>
+    set((s) => ({
+      draft: editCriteria(s.draft, version, (v) => ({
+        ...v,
+        items: [...v.items, { id: crypto.randomUUID(), text: '' }],
+      })),
+    })),
+
+  removeCriterion: (version, id) =>
+    set((s) => ({
+      draft: editCriteria(s.draft, version, (v) => ({
+        ...v,
+        items: v.items.filter((i) => i.id !== id),
+      })),
+    })),
+
+  markCriteriaSaved: (version, standards) =>
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        criteria: s.draft.criteria.map((v) =>
+          v.version === version
+            ? {
+                ...v,
+                saved: true,
+                edited: false,
+                savedItems: undefined,
+                // 서버가 다시 분석해 저장한 목록입니다. 화면은 이것으로 다시 그립니다
+                items: standards.map((text) => ({ id: crypto.randomUUID(), text })),
+              }
+            : v,
+        ),
+      },
+    })),
+
+  reviseCriteria: (version) =>
+    set((s) => {
+      const pending = pendingVersion(s.draft, 'criteria');
+      if (pending !== null) return { node: 'criteria' as const, version: pending };
+      const from = s.draft.criteria.find((v) => v.version === version);
+      if (!from) return s;
+      const next = nextVersion(s.draft.criteria);
+      // 서버는 원문을 저장하지 않아 불러온 버전에는 원문이 없습니다. 그때는 목록을 한 줄씩 이어
+      // 원문으로 물려줍니다 — 처음부터 다시 쓰지 않게. 불러올 때(loadCriteria) 채우지 않는 것은
+      // 사용자가 적은 원문처럼 보이지 않게 하려는 것입니다
+      const sourceText = from.sourceText ?? from.items.map((i) => i.text).join('\n');
+      return {
+        draft: {
+          ...s.draft,
+          criteria: [
+            ...s.draft.criteria,
+            // 원문만 물려받습니다. 목록은 다시 정리해야 서버에 새 버전으로 생깁니다 (#463)
+            { version: next, items: [], saved: false, sourceText },
+          ],
+        },
+        node: 'criteria' as const,
+        version: next,
+      };
     }),
+
+  reset: () => set(freshDraft()),
 }));
+
+/**
+ * 불러온 피치로 연습할 조합. 최신 대본이 연결된 슬라이드와 맞으면 그 둘을 고릅니다 — "최신"끼리
+ * 고르면 최신 대본이 옛 슬라이드에 맞춘 것일 때 장수가 어긋나 시작할 수 없습니다.
+ */
+function chosenOf(draft: PitchDraft): Chosen {
+  const script = draft.scripts.at(-1);
+  const slide = draft.slides.find((v) => v.version === script?.slideVersion);
+  if (!script || !canSaveMapping(script, slide)) return CHOOSE_LATEST;
+  return { ...CHOOSE_LATEST, slides: script.slideVersion, script: script.version };
+}
+
+/** 비운 작성. 회차 id 를 새로 만들어 앞 작성에서 시작한 비동기 결과가 들어오지 못하게 합니다 */
+function freshDraft() {
+  return {
+    draft: EMPTY_DRAFT,
+    node: 'info' as const,
+    version: null,
+    pitchId: null,
+    infoEdits: null,
+    chosen: CHOOSE_LATEST,
+    slideUpload: { status: 'idle' as const },
+    draftId: crypto.randomUUID(),
+  };
+}
+
+/**
+ * 비동기 작업이 시작할 때의 작성이 아직 지금 작성인가. 결과를 스토어에 쓰기 직전에 봅니다.
+ * 아니면 그 결과는 앞 피치의 것이라 버립니다 (`draftId`).
+ */
+export const isCurrentDraft = (draftId: string): boolean =>
+  useCreateStore.getState().draftId === draftId;
 
 /** 발표정보를 고치고 아직 저장하지 않았나. 사이드바 표시와 떠나기 경고가 함께 봅니다 */
 export const selectInfoUnsaved = (s: CreateState): boolean =>
   s.infoEdits !== null && infoChanged(s.infoEdits, infoOf(s.draft));
 
 /** 서버로 가는 중인 일이 있나 — 슬라이드 업로드 · 대본 나누기. 지금 떠나면 결과를 받을 곳이 없습니다 */
+/**
+ * 고친 평가기준을 아직 저장하지 않았나. 떠나기 경고가 봅니다. 정리만 한 목록은 이미 서버에 있어(#463)
+ * 경고하지 않습니다
+ */
+export const selectCriteriaUnsaved = (s: CreateState): boolean =>
+  s.draft.criteria.some((v) => v.edited === true);
+
 export const selectBusy = (s: CreateState): boolean =>
   s.slideUpload.status === 'uploading' || s.draft.scripts.some((v) => v.parse.status === 'pending');

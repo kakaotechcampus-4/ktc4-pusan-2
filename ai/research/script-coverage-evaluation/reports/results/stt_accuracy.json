@@ -1,63 +1,64 @@
 {
-  "feature_version": "1.0",
-  "model": "openai/gpt-5.6-luna",
+  "feature_version": "script_coverage-1.0",
+  "criteria_version": "script_coverage-1.0+e7d09c338962",
+  "model": "openai/gpt-6-luna",
   "counts": {
     "sentences": 765,
-    "key_points": 720,
-    "facts": 738,
-    "held_facts": 18
+    "key_points": 774,
+    "facts": 729,
+    "held_facts": 17
   },
   "sentence_accuracy": {
     "규칙만": {
-      "정확도": 0.848,
+      "정확도": 0.85,
       "심각한 오판 비율": 0.02
     },
     "LLM 1차": {
-      "정확도": 0.97,
-      "심각한 오판 비율": 0.024
+      "정확도": 0.963,
+      "심각한 오판 비율": 0.022
     },
     "최종": {
-      "정확도": 0.992,
-      "심각한 오판 비율": 0.004
+      "정확도": 0.984,
+      "심각한 오판 비율": 0.005
     }
   },
   "sentence_accuracy_by_scenario": {
-    "누락": 1.0,
+    "누락": 0.988,
     "더듬기": 1.0,
     "발음": 1.0,
     "실수": 0.988,
-    "요약": 0.965,
+    "요약": 0.918,
     "의역": 1.0,
     "인식오류": 1.0,
     "충실": 1.0,
-    "혼합": 0.976
+    "혼합": 0.965
   },
   "key_point_accuracy": {
     "규칙만": {
-      "정확도": 0.846,
-      "심각한 오판 비율": 0.019
+      "정확도": 0.848,
+      "심각한 오판 비율": 0.018
     },
     "LLM 1차": {
-      "정확도": 0.967,
-      "심각한 오판 비율": 0.026
+      "정확도": 0.96,
+      "심각한 오판 비율": 0.023
     },
     "최종": {
-      "정확도": 0.992,
+      "정확도": 0.983,
       "심각한 오판 비율": 0.004
     }
   },
   "key_point_accuracy_by_scenario": {
-    "누락": 1.0,
+    "누락": 0.988,
     "더듬기": 1.0,
     "발음": 1.0,
     "실수": 0.988,
-    "요약": 0.963,
+    "요약": 0.907,
     "의역": 1.0,
     "인식오류": 1.0,
     "충실": 1.0,
-    "혼합": 0.975
+    "혼합": 0.965
   },
-  "fact_accuracy": 0.999,
+  "fact_accuracy": 0.996,
   "similar": {
     "인식 오류를 보류한 비율": 1.0,
     "보류한 것 중 실제 인식 오류": 0.897,
@@ -65,23 +66,23 @@
     "규칙 추정 정확도": 0.897
   },
   "slide_coverage_error": {
-    "LLM 1차": 0.044,
-    "최종": 0.011
+    "LLM 1차": 0.043,
+    "최종": 0.016
   },
   "conflict_check": {
     "contradicted": {
       "발동": 42,
-      "단독": 22,
-      "1차 오답": 17,
+      "단독": 23,
+      "1차 오답": 16,
       "단독 1차 오답": 0,
-      "바로잡음": 17,
+      "바로잡음": 16,
       "망침": 3
     },
     "low_confidence": {
-      "발동": 3,
-      "단독": 2,
+      "발동": 7,
+      "단독": 5,
       "1차 오답": 2,
-      "단독 1차 오답": 1,
+      "단독 1차 오답": 0,
       "바로잡음": 2,
       "망침": 0
     },
@@ -94,8 +95,8 @@
       "망침": 0
     },
     "evidence_invalid": {
-      "발동": 7,
-      "단독": 7,
+      "발동": 0,
+      "단독": 0,
       "1차 오답": 0,
       "단독 1차 오답": 0,
       "바로잡음": 0,
@@ -118,19 +119,19 @@
       "망침": 0
     },
     "sound_alike": {
-      "발동": 21,
+      "발동": 20,
       "단독": 0,
-      "1차 오답": 18,
+      "1차 오답": 17,
       "단독 1차 오답": 0,
-      "바로잡음": 18,
+      "바로잡음": 17,
       "망침": 3
     },
     "speaker_changed": {
-      "발동": 1,
-      "단독": 1,
-      "1차 오답": 1,
-      "단독 1차 오답": 1,
-      "바로잡음": 1,
+      "발동": 0,
+      "단독": 0,
+      "1차 오답": 0,
+      "단독 1차 오답": 0,
+      "바로잡음": 0,
       "망침": 0
     },
     "approximation": {
@@ -142,11 +143,11 @@
       "망침": 0
     },
     "partial_complete": {
-      "발동": 0,
-      "단독": 0,
-      "1차 오답": 0,
-      "단독 1차 오답": 0,
-      "바로잡음": 0,
+      "발동": 4,
+      "단독": 2,
+      "1차 오답": 4,
+      "단독 1차 오답": 2,
+      "바로잡음": 3,
       "망침": 0
     },
     "fact_present": {
@@ -181,78 +182,78 @@
     },
     "accuracy": {
       "처음 채점": {
-        "대본 문장 정확도": 0.992,
-        "Key Point 정확도": 0.992,
+        "대본 문장 정확도": 0.984,
+        "Key Point 정확도": 0.983,
         "Key Point 심각한 오판 비율": 0.004,
-        "사실 정확도 (보류 제외)": 0.999,
-        "보류한 사실": 18,
-        "슬라이드 내용 점수 평균 오차": 0.011
+        "사실 정확도 (보류 제외)": 0.996,
+        "보류한 사실": 17,
+        "슬라이드 내용 점수 평균 오차": 0.016
       },
       "사용자 확인 뒤": {
-        "대본 문장 정확도": 0.996,
-        "Key Point 정확도": 0.996,
+        "대본 문장 정확도": 0.988,
+        "Key Point 정확도": 0.987,
         "Key Point 심각한 오판 비율": 0.0,
-        "사실 정확도 (보류 제외)": 0.999,
+        "사실 정확도 (보류 제외)": 0.996,
         "보류한 사실": 0,
-        "슬라이드 내용 점수 평균 오차": 0.002
+        "슬라이드 내용 점수 평균 오차": 0.006
       }
     },
     "changed_sentences": 3,
     "changed_take_scores": {
       "가상대본1_take5": {
-        "content_coverage (처음)": 0.778,
-        "critical_fact_accuracy (처음)": 0.802,
+        "content_coverage (처음)": 0.753,
+        "critical_fact_accuracy (처음)": 0.845,
         "script_fidelity (처음)": 0.647,
-        "content_coverage (확인 뒤)": 0.74,
-        "critical_fact_accuracy (확인 뒤)": 0.787,
+        "content_coverage (확인 뒤)": 0.718,
+        "critical_fact_accuracy (확인 뒤)": 0.828,
         "script_fidelity (확인 뒤)": 0.645
       },
       "가상대본1_take6": {
-        "content_coverage (처음)": 0.905,
-        "critical_fact_accuracy (처음)": 0.947,
+        "content_coverage (처음)": 0.914,
+        "critical_fact_accuracy (처음)": 0.944,
         "script_fidelity (처음)": 0.903,
-        "content_coverage (확인 뒤)": 0.905,
-        "critical_fact_accuracy (확인 뒤)": 0.951,
+        "content_coverage (확인 뒤)": 0.914,
+        "critical_fact_accuracy (확인 뒤)": 0.949,
         "script_fidelity (확인 뒤)": 0.903
       },
       "가상대본1_take9": {
-        "content_coverage (처음)": 0.924,
+        "content_coverage (처음)": 0.931,
         "critical_fact_accuracy (처음)": 1.0,
         "script_fidelity (처음)": 0.965,
-        "content_coverage (확인 뒤)": 0.924,
+        "content_coverage (확인 뒤)": 0.931,
         "critical_fact_accuracy (확인 뒤)": 1.0,
         "script_fidelity (확인 뒤)": 0.965
       },
       "가상대본2_take4": {
-        "content_coverage (처음)": 0.81,
-        "critical_fact_accuracy (처음)": 0.921,
+        "content_coverage (처음)": 0.819,
+        "critical_fact_accuracy (처음)": 0.937,
         "script_fidelity (처음)": 0.916,
-        "content_coverage (확인 뒤)": 0.753,
-        "critical_fact_accuracy (확인 뒤)": 0.879,
+        "content_coverage (확인 뒤)": 0.765,
+        "critical_fact_accuracy (확인 뒤)": 0.895,
         "script_fidelity (확인 뒤)": 0.914
       },
       "가상대본2_take5": {
-        "content_coverage (처음)": 0.797,
-        "critical_fact_accuracy (처음)": 0.841,
+        "content_coverage (처음)": 0.783,
+        "critical_fact_accuracy (처음)": 0.828,
         "script_fidelity (처음)": 0.588,
-        "content_coverage (확인 뒤)": 0.747,
-        "critical_fact_accuracy (확인 뒤)": 0.803,
+        "content_coverage (확인 뒤)": 0.735,
+        "critical_fact_accuracy (확인 뒤)": 0.791,
         "script_fidelity (확인 뒤)": 0.587
       },
       "가상대본2_take6": {
-        "content_coverage (처음)": 0.943,
-        "critical_fact_accuracy (처음)": 0.946,
+        "content_coverage (처음)": 0.946,
+        "critical_fact_accuracy (처음)": 0.947,
         "script_fidelity (처음)": 0.918,
-        "content_coverage (확인 뒤)": 0.943,
+        "content_coverage (확인 뒤)": 0.946,
         "critical_fact_accuracy (확인 뒤)": 0.955,
         "script_fidelity (확인 뒤)": 0.918
       },
       "가상대본2_take9": {
-        "content_coverage (처음)": 0.943,
-        "critical_fact_accuracy (처음)": 0.952,
+        "content_coverage (처음)": 0.964,
+        "critical_fact_accuracy (처음)": 1.0,
         "script_fidelity (처음)": 0.958,
-        "content_coverage (확인 뒤)": 0.943,
-        "critical_fact_accuracy (확인 뒤)": 0.955,
+        "content_coverage (확인 뒤)": 0.964,
+        "critical_fact_accuracy (확인 뒤)": 1.0,
         "script_fidelity (확인 뒤)": 0.958
       }
     }

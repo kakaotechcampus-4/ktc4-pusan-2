@@ -1,0 +1,10 @@
+{
+  "SPEED": {
+    "chars": 781,
+    "speak_ms": 150000,
+    "pause_count": 6,
+    "pause_ms": 15800,
+    "ok_ms": 174600,
+    "total_ms": 180000
+  }
+}

@@ -7,13 +7,13 @@
 | | |
 |---|---|
 | 담당 | jewon-kim |
-| 기능 버전 | `1.0` (`src/script_coverage/version.py`의 `FEATURE_VERSION`), 평가 기준 형식 `1.1` |
-| 검증한 LLM | OpenAI 호환 API, 모델 `openai/gpt-5.6-luna` |
+| 기능 버전 | `script_coverage-1.0` (`src/script_coverage/version.py`의 `FEATURE_VERSION`), 평가 기준 형식 `1.2`. 기준 버전 `script_coverage-1.0+<config 해시 12자리>` (`src/script_coverage/config.py`의 `CRITERIA_VERSION`, 임계값 · 점수표를 바꾸면 해시가 달라짐) |
+| 검증한 LLM | OpenAI 호환 API. 정확도 · 장 수별 시간은 기본 묶음 `openai/gpt-6-luna`, 반복 측정(일관성 · 안정성)은 `openai/gpt-5.6-luna` (8절) |
 | 상태 | v1. **가상 데이터로만 측정했습니다.** 실제 Deepgram 결과와 실제 발표자의 말투로는 아직 측정하지 않았습니다 |
-| 배포 | 코어(`src/script_coverage/`)는 나중에 AI 서버로 그대로 옮깁니다 → [DEPLOY.md](DEPLOY.md) |
+| 설계 | API 계약 · 평가 기준과 채점 필드 · 처리 · 배포 → [`docs/ai/features/script-coverage-evaluation.md`](../../../docs/ai/features/script-coverage-evaluation.md) |
 
 > 이 프로젝트는 `ai/archive/workspaces/jewon-kim/script-coverage-evaluation/v1/local/`의 노트북 2개를 구조만 바꿔 옮긴 것입니다.
-> 판정 로직과 프롬프트는 같고, 같은 LLM 응답 캐시로 돌리면 결과가 바이트 단위로 같습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
+> 옮길 당시에는 판정 로직과 프롬프트가 같고 같은 LLM 응답 캐시로 돌리면 결과가 바이트 단위로 같았습니다. 그 뒤 계약에 맞춰 코어를 고쳤고(평가 기준 형식 `1.2`로 `rubric_id`가 바뀜), 다시 캐시를 재생해도 결과 JSON의 숫자 지표는 그대로였습니다 ([옮긴 뒤 검증](#옮긴-뒤-검증)).
 
 ## 목차
 
@@ -71,7 +71,7 @@ LLM은 판정만 하고 **점수는 매기지 않습니다.**
 
 - 음성 인식 (Deepgram 결과를 입력으로 받는다), 슬라이드 경계 추정 (슬라이드별 STT를 받는다고 전제)
 - 발표자 실수인지 인식 오류인지 **최종 판단** (비슷한 말은 위치와 함께 넘기고, 사용자 답이 오면 다시 계산만 한다)
-- 전달력(말 속도 · 간투사 빈도 · 시선) 평가, 코칭 문구 생성, HTTP API · DB 저장 (배포는 [DEPLOY.md](DEPLOY.md))
+- 전달력(말 속도 · 간투사 빈도 · 시선) 평가, 코칭 문구 생성, HTTP API · DB 저장 (배포는 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 11절)
 
 ---
 
@@ -92,6 +92,11 @@ src/script_coverage/        코어: 실제 판정 로직                     →
 | 코어 `script_coverage` | 평가 기준 만들기 · 채점 · 다시 계산 | AI 서버로 그대로 옮김 |
 | 실험 도구 `coverage_lab` | LLM 연결, 캐시, DB 저장, 정확도 측정 | 옮기지 않음. 서버 공통 코드와 BE가 같은 역할 |
 | 실행 · 보고 `experiments` · `reports` | 사람이 돌리고 결과를 봄 | 옮기지 않음 |
+
+코어 안에서도 서비스가 부르는 곳은 **최상위 파일**(`core.py` · `schemas.py` · `config.py` · `version.py`)입니다. 진입 함수 세 개(`analyze_script` · `evaluate_take` ·
+`rescore_evaluation`)가 하위 `script_analysis/` · `stt_evaluation/`의 함수를 감싸 API 모양(`failed` · `slide_numbers` · Take 값)으로 바꿉니다.
+실험 도구(`coverage_lab/runs.py`)도 같은 진입 함수를 거치므로 연구에서 잰 값이 서비스 응답과 같습니다.
+연구 DB의 확인 뒤 점수(`store.confirmed_take_scores`)는 그 연습의 대상 장(`targets`)을 `scored_ratio`의 분모로 받습니다.
 
 ### 코어의 규칙 세 가지
 
@@ -120,13 +125,13 @@ src/script_coverage/        코어: 실제 판정 로직                     →
 ```
 script-coverage-evaluation/
 ├── README.md                      이 문서
-├── INTERFACE.md                   코어의 입출력 (API 를 만들 때 기준)
-├── DEPLOY.md                      배포 가이드
 ├── pyproject.toml · uv.lock       라이브러리 목록 (코어용 / research 전용 구분) · 버전 고정
 ├── .gitignore                     outputs/ 와 data/ 제외 (data/virtual/ 만 커밋)
 │
 ├── src/script_coverage/           ── 코어 ──
-│   ├── version.py                 기능 버전 · 평가 기준 형식 버전
+│   ├── core.py · schemas.py       서비스가 부르는 진입 함수 3개 · API 요청 · 응답 모양 (계약)
+│   ├── config.py · version.py     기준값(점수표 · 중요도 · 장 동시 처리 수) · 기준 버전 해시 · 기능 버전
+│   ├── examples/                  API 요청 · 응답 예시 JSON (계약 테스트가 읽음)
 │   ├── shared/                    두 단계가 같이 쓰는 도구
 │   ├── script_analysis/           1단계: 대본 → 평가 기준
 │   └── stt_evaluation/            2 · 3단계: STT → 채점, 사용자 확인 뒤 다시 계산
@@ -142,6 +147,16 @@ script-coverage-evaluation/
 
 ### 3-2. 코어 `src/script_coverage/`
 
+**최상위: 서비스가 부르는 곳**
+
+| 파일 | 역할 | 주요 이름 |
+|---|---|---|
+| `core.py` | 진입 함수 3개. 일부 장만 실패하면 `failed`에 담아 200, 대상 장이 모두 실패하면 `CoverageError`(상태 · 코드 · 고정 문구) | `analyze_script`, `evaluate_take`, `rescore_evaluation`, `take_scores`, `ScriptLLMs`, `TakeLLMs` |
+| `schemas.py` | 요청 · 응답 모양 (`slide_numbers`, `failed`, `scored_ratio`, `confirmations` 등). LLM 출력 스키마와는 별개 | `RubricRequest`, `AnalyzeRequest`, `RescoreRequest`, `EvaluationResponse` |
+| `config.py` | 점수표 · 중요도 같은 기준값과 그 해시(`CRITERIA_VERSION`), 동시 LLM 호출 수 `RUBRIC_MAX_WORKERS`(평가 기준 만들기 12) · `MAX_WORKERS`(채점 4, 둘 다 해시에 안 들어감) | `CRITERIA_VERSION`, `RUBRIC_MAX_WORKERS`, `MAX_WORKERS` |
+| `version.py` | 기능 버전 · 응답 스키마 버전 · 평가 기준 형식 버전 | `FEATURE_VERSION`, `SCHEMA_VERSION`, `RUBRIC_SCHEMA_VERSION` |
+| `examples/` | 세 API의 요청 · 응답 예시와 이를 만드는 데 읽은 LLM 캐시. 만들기: `python -m coverage_lab.examples` (과금 없음, 연구 캐시 재생). 설명은 `examples/README.md` | |
+
 **`shared/`: 두 단계가 같이 쓰는 도구**
 
 | 파일 | 역할 | 주요 이름 |
@@ -151,7 +166,7 @@ script-coverage-evaluation/
 | `numbers.py` | 한국어 숫자 읽기: `1,240만` · `천이백사십만` · `사점육` → 값 | `parse_korean_number` |
 | `facts.py` | 핵심 사실(퍼센트 · 금액 · 수량 · 날짜 · 시간 · 영문 이름) **뽑기**. 대본과 STT 양쪽에 씀 | `extract_critical_facts`, `CriticalFact` |
 | `rubric.py` | **평가 기준의 모양**. 1단계가 만들고 2단계가 읽는 약속 | `EvaluationRubric`, `KeyPoint`, `ContentUnit`, `SCORE_WEIGHT` |
-| `llm_step.py` | LLM 호출 공통 도구: 캐시 확인 → 없는 것만 동시에 호출 → 저장, 캐시 키 계산 | `llm_step`, `cache_get`, `cache_put`, `LLMCache` |
+| `llm_step.py` | LLM 호출 공통 도구: 캐시 확인 → 없는 것만 동시에 호출 → 저장, 캐시 키 계산. 실패한 호출의 예외를 에러 코드(`LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT`)로 바꾸고, 응답에 싣는 고정 문구를 가짐 | `llm_step`, `cache_get`, `cache_put`, `LLMCache`, `llm_error_code` |
 
 **`script_analysis/`: 1단계, 대본 → 평가 기준**
 
@@ -191,10 +206,12 @@ script-coverage-evaluation/
 
 | 함께 쓰는 파일 | 내용 |
 |---|---|
-| `confirm.py` | 사용자 답(대본대로 / 들린 대로)으로 판정 · 점수 다시 계산. LLM 없음 |
+| `confirm.py` | 사용자 답(대본대로 / 들린 대로)으로 판정 · 점수 다시 계산. LLM 없음. 이미 반영한 답(`applied_answers`)에 새 답을 더해 가므로, 답을 나눠 줘도 한 번에 준 것과 같은 결과 |
 | `schemas.py` | STT 입력(`Take`), LLM 답, 채점 결과(`SlideEvaluation`, `SimilarItem`)의 모양 |
 | `prompts/semantic.py` · `verifier.py` | LLM 지시문 |
 | `config.py` | 판정 기준 숫자(임계값), 점수표 |
+
+`judge.py`는 STT가 빈 장(발표에서 넘어간 장)을 LLM을 부르지 않고 전달 단위를 모두 "없음"으로 채점합니다.
 
 `shared/facts.py`는 사실을 **뽑고**, `stt_evaluation/fact_check.py`는 뽑은 사실이 STT에 맞게 나왔는지 **대조합니다.**
 
@@ -203,12 +220,16 @@ script-coverage-evaluation/
 | 파일 | 역할 |
 |---|---|
 | `paths.py` | 폴더 위치 모음 (데이터 · DB · 결과) |
-| `llm.py` | `ai/.env`에서 키를 읽어 LLM 객체 만들기 (이미 있는 환경변수가 우선) |
+| `llm.py` | `ai/.env`에서 키를 읽어 진입 함수에 넘길 LLM 묶음(`ScriptLLMs` · `TakeLLMs`) 만들기 (이미 있는 환경변수가 우선) |
 | `cache.py` | LLM 답을 SQLite에 저장 · 조회. 예전 노트북과 같은 표라서 옛 캐시도 그대로 쓴다 |
 | `store.py` | 평가 기준 · 채점 결과 · 비슷한 말 · 사용자 확인 저장. 배포에서 BE가 할 일을 대신한다 |
 | `datasets.py` | 대본 · STT 파일 읽기 |
-| `runs.py` | 코어를 돌리고 DB에 저장하는 연결 다리 (`run_script_analysis`, `run_take_evaluation`) |
-| `results.py` | 지표를 `reports/results/*.json`으로 저장 · 읽기 |
+| `runs.py` | 최상위 진입 함수를 부르고 DB에 저장하는 연결 다리 (`run_script_analysis`, `run_take_evaluation`). 호출 수는 LLM 객체를 세는 감싸개로 센다 |
+| `examples.py` | `src/script_coverage/examples/`의 API 예시를 연구 캐시로 다시 만든다 (`python -m coverage_lab.examples`) |
+| `deadline_llm.py` | 서비스 `common/llm.py`와 같은 규칙(요청 마감 하나를 모든 호출이 같이 씀 · 호출 한 번 제한 · 남은 시간이 있을 때만 1번 더 · 서비스와 같은 재시도 분류 · 실행 스레드 40개)으로 LLM을 감싸고 호출 수 · 시간을 기록한다. 시간 초과로 버린 호출이 끝나기를 기다리는 `wait_idle`도 있다. 장 수별 시간 측정(`07`)이 쓴다 |
+| `timing.py` | 장 수별 시간 측정의 덱 만들기(가상대본 장을 이어 붙여 N장, 각 장에 같은 장의 STT), 요청 하나의 기록 모양, BE 재시도 1번과 최종 완료 장 수 계산(`rubric_with_retry`) |
+| `results.py` | 지표를 기능 버전 · 기준 버전 · 모델과 함께 `reports/results/*.json`으로 저장 · 읽기 |
+| `usage.py` | LLM 호출마다 출력 토큰 수(추론 포함) · 끝난 이유를 역할별로 모으고 역할 상한(잰 최대 × 2, 1,024 단위, 최소 2,048)을 계산한다. `08` · `07`이 쓴다 |
 | `rubric_report.py` · `rubric_quality.py` · `rubric_consistency.py` | 평가 기준 요약 표 · 품질 지표 · 같은 대본 반복 분석의 흔들림 |
 | `stt_report.py` · `stt_labels.py` · `stt_checks.py` · `stt_stability.py` | 채점 결과 표 · 정답 라벨 비교 · 충돌 점검과 사용자 확인 뒤 정확도 · 같은 STT 반복 채점의 흔들림 |
 
@@ -216,7 +237,7 @@ script-coverage-evaluation/
 
 ### 3-4. 실행 스크립트 `experiments/`
 
-번호가 실행 순서입니다. LLM 호출 수는 **캐시가 비어 있을 때** 기준이고, 같은 입력으로 다시 돌리면 0회입니다.
+번호가 실행 순서입니다. `01` ~ `06`의 LLM 호출 수는 **캐시가 비어 있을 때** 기준이고, 같은 입력으로 다시 돌리면 0회입니다. `07`은 캐시를 쓰지 않아 돌릴 때마다 호출합니다(과금).
 
 | 파일 | 하는 일 | LLM 호출 | 남기는 것 |
 |---|---|---|---|
@@ -226,15 +247,18 @@ script-coverage-evaluation/
 | `04_evaluate_takes.py` | 연습 18개 채점 | 약 225회 | DB `slide_evaluations` · `similar_items` |
 | `05_accuracy.py` | 정답 비교, 충돌 조건 점검, 사용자 확인 뒤 정확도 | 0회 | `reports/results/stt_accuracy.json` |
 | `06_stability.py` | 같은 STT를 3번 채점해 흔들림 측정 | 약 450회 | `reports/results/stt_stability.json` |
+| `07_timing.py` | 장 수 × 동시 개수별로 평가 기준 만들기(+ BE 재시도 1번 · 동시 요청 K개)와 채점의 시간을 잰다. 호출 제한 · 동시 요청 · 재시도 · 채점 · 역할별 출력 토큰 상한(`--cap`)은 인자로 고른다. 역할마다 끝난 이유 · 출력 토큰을 결과에 남긴다. 캐시를 쓰지 않는다 | 조합마다 장 수 × 3 × 동시 요청 수 (+ 채점 장 수 × 약 1.25) | `reports/results/<name>.json` (`--name`) |
+| `08_output_tokens.py` | 가상대본 두 개의 모든 장으로 평가 기준을 만들고 모든 가상 Take를 채점하며 역할별(1차 분석 · 최종 결론 · 전달 단위 · 의미 평가 · 교차 검증) 출력 토큰 수 · 끝난 이유를 잰다. 서비스처럼 스트리밍, 캐시 없음, `ai/` 폴더에서 실행해 `ai/.env`를 읽는다 | 약 290회 (평가 기준 장 × 3 + 채점 장 × 약 1.25, 실측 284번) | `reports/results/<name>.json` (`--name`) |
+| `09_verifier_completeness.py` | 연구 캐시를 복사본으로 읽어 가상 Take 18개를 다시 채점하며, 교차 검증 출력 검사(대상 문장 · 전달 단위를 다 덮지 못하면 장 실패)를 켠 때와 끈 때의 실패 장 수를 비교한다. 캐시를 만든 모델 이름을 `--model`로 준다 | 0회 (캐시 재생, 부르면 실패하는 대역) | `reports/results/<name>.json` (`--name`) |
 
-- `01`이 먼저입니다. `02`~`04`는 `01`의 평가 기준을, `05` · `06`은 `04`의 채점을 읽습니다.
+- `01`이 먼저입니다. `02`~`04`는 `01`의 평가 기준을, `05` · `06`은 `04`의 채점을 읽습니다. `07`은 DB를 쓰지 않아 따로 돌릴 수 있습니다.
 - 비싼 반복 측정(`03`, `06`)은 `RUBRIC_CONSISTENCY_SAMPLES=1` · `STT_CONSISTENCY_SAMPLES=1`로 끌 수 있고, 끄면 결과 JSON을 덮어쓰지 않습니다.
 
 ### 3-5. 나머지
 
 | 폴더 | 내용 |
 |---|---|
-| `reports/` | `script_analysis.ipynb` · `stt_evaluation.ipynb`는 DB와 JSON을 읽어 표로 보여 주기만 한다(계산 · LLM 없음). `results/*.json`은 핵심 지표 (기능 버전 · 모델 포함) |
+| `reports/` | `script_analysis.ipynb` · `stt_evaluation.ipynb`는 DB와 JSON을 읽어 표로 보여 주기만 한다(계산 · LLM 없음). `results/*.json`은 핵심 지표 (기능 버전 · 기준 버전 · 모델 포함) |
 | `data/virtual/` | `scripts/` 대본 2개(9장 · 11장), `stt/` 연습 18개(대본마다 9가지 상황), `stt_labels/` 문장별 정답 18개. 정답 라벨은 채점에 쓰지 않고 정확도를 잴 때만 쓴다 |
 | `outputs/` | `rubrics.sqlite` 하나에 LLM 캐시와 모든 결과가 들어 있다. git에 올리지 않는다 |
 | `tests/unit/` | 코어 테스트 (`shared/` · `script_analysis/` · `stt_evaluation/`)와 코어 규칙 검사(`test_core_boundary.py`). 코어와 함께 서버로 간다 |
@@ -272,10 +296,14 @@ script-coverage-evaluation/
 01_build_rubrics.py
 ├─ load_settings() · connect() · script_llms()        coverage_lab   키 읽기, DB 열기, LLM 객체 3개
 └─ 대본 파일마다 run_script_analysis()                 coverage_lab/runs.py
-   ├─ load_script_json()                              대본 JSON → 슬라이드 목록
-   ├─ analyze_script()                                script_coverage/script_analysis/core.py  ← 코어
-   └─ save_rubric()                                   DB evaluation_rubrics 에 저장
+   ├─ load_script_json()                              대본 JSON → 요청 (대본 식별자 = 파일 이름, slide_numbers 없음 = 전체)
+   ├─ core.analyze_script()                           script_coverage/core.py  ← 코어 진입 함수
+   │  └─ script_analysis.core.analyze_script()        장별 평가 기준 만들기 (하위 함수)
+   ├─ save_rubric()                                   응답 rubrics 를 DB evaluation_rubrics 에 저장
+   └─ delete_rubric()                                 응답 failed 의 장은 예전 평가 기준을 지움
 ```
+
+일부 장만 실패하면 응답 `failed`(장 번호 + 에러 코드 · 고정 문구)에 담기고 성공한 장은 저장됩니다. 모든 장이 실패하면 `CoverageError`가 올라옵니다.
 
 | 단계 | 결과 (예시 슬라이드) |
 |---|---|
@@ -289,6 +317,8 @@ script-coverage-evaluation/
 
 중요도는 문장 역할로 정합니다. 핵심 주장 문장의 Key Point는 critical, 근거 문장은 high, 나머지는 normal입니다.
 
+장끼리는 서로 기다리지 않습니다. 한 장의 LLM 단계(③ 문장 역할 · ⑤ 최종 확인 · ⑥ 전달 단위)가 끝나면 그 장의 다음 단계를 바로 넣고, 동시에 도는 LLM 호출은 `config.RUBRIC_MAX_WORKERS`(12)개까지입니다. 빈자리에는 이미 시작한 장의 다음 단계를 먼저 넣습니다. 캐시 읽기 · 쓰기와 코드 단계는 부르는 스레드에서 해서, 실행 순서가 달라도 결과는 같습니다.
+
 > **캐시가 끼어드는 자리**: LLM을 부르기 직전마다 `shared/llm_step.py`가 "같은 질문을 전에 한 적 있나?"를 DB에서 찾아봅니다.
 > - "같은 질문"은 같은 입력 · 프롬프트 · 출력 모양 · 모델입니다.
 > - 있으면 저장된 답을 쓰고 LLM을 부르지 않습니다. 두 번째 실행부터는 0원입니다.
@@ -299,10 +329,13 @@ script-coverage-evaluation/
 04_evaluate_takes.py
 ├─ load_settings() · connect() · stt_llms()           키 읽기, DB 열기, LLM 객체 2개
 └─ 연습마다 run_take_evaluation()                      coverage_lab/runs.py
-   ├─ load_rubrics()                                  DB 에서 그 대본의 평가 기준 꺼내기
-   ├─ evaluate_take()                                 script_coverage/stt_evaluation/core.py  ← 코어
-   └─ save_evaluation()                               DB slide_evaluations · similar_items 에 저장
+   ├─ load_rubrics()                                  DB 에서 그 대본의 평가 기준 꺼내 요청에 넣기
+   ├─ core.evaluate_take()                            script_coverage/core.py  ← 코어 진입 함수
+   │  └─ stt_evaluation.core.evaluate_take()          장별 채점 (하위 함수)
+   └─ save_evaluation()                               응답 evaluations 를 DB slide_evaluations · similar_items 에 저장
 ```
+
+평가 기준이 없는 장은 응답 `failed`에 `RUBRIC_MISSING`으로 담기지만 `scored_ratio`(채점된 장 ÷ 대상 장)의 대상에는 들어갑니다. 대상 장을 줄여 부르려면 요청의 `slide_numbers`를 씁니다.
 
 | 단계 | 결과 (예시 슬라이드) |
 |---|---|
@@ -324,9 +357,15 @@ script-coverage-evaluation/
 
 ```
 store.confirm_similar_item()                 답 저장
-└─ confirm.rescore_evaluation()              script_coverage/stt_evaluation/confirm.py  ← 코어 (LLM 없음)
+└─ core.rescore_evaluation()                 script_coverage/core.py  ← 코어 진입 함수 (LLM 없음)
+   └─ stt_evaluation.confirm.rescore_evaluation()   장별 다시 계산 (하위 함수)
    → DB confirmed_evaluations 에 저장 (처음 채점은 그대로 둔다)
 ```
+
+요청에는 처음 채점 · 평가 기준 · 저장된 답 전부를 넣습니다. 다시 계산한 평가에는 반영된 답이 `applied_answers`로 남고, 응답 `confirmations`에는 아직 답하지 않은 비슷한 말만 남습니다.
+`store.confirmed_take_scores`는 `core.take_scores`로 Take 값을 모으므로 `scored_ratio`도 나옵니다.
+
+다시 채점하면 비슷한 말의 `item_id`가 바뀔 수 있어서, `store.confirm_similar_item`은 답과 함께 그 항목의 `script_text` · `stt_text`를 저장하고, 답을 다시 적용할 때 표현이 같은지 확인합니다.
 
 | 답 | 뜻 | 결과 |
 |---|---|---|
@@ -355,7 +394,7 @@ uv sync                      # Python 3.12, 라이브러리 + 개발 도구 설�
 | 변수 | 필수 | 뜻 |
 |---|---|---|
 | `OPENAI_API_KEY` | 예 | API 키 |
-| `OPENAI_MODEL` | 예 | 모델 이름. 엔드포인트가 허용하는 이름이어야 합니다 (아니면 400). 검증한 값은 `openai/gpt-5.6-luna` |
+| `OPENAI_MODEL` | 예 | 모델 이름. 엔드포인트가 허용하는 이름이어야 합니다 (아니면 400). 검증한 값은 기본 묶음 `openai/gpt-6-luna`와 예전 모델 `openai/gpt-5.6-luna` (8절) |
 | `OPENAI_BASE_URL` | 아니오 | OpenAI 호환 엔드포인트. 없으면 OpenAI 기본 주소 |
 
 - `coverage_lab/llm.py`가 현재 폴더부터 위로 올라가며 처음 만나는 `.env`를 읽고, 없으면 프로젝트 폴더부터 위로 찾습니다. 보통 `ai/.env`가 잡힙니다.
@@ -384,7 +423,7 @@ $env:OPENAI_BASE_URL = "http://127.0.0.1:9"; $env:OPENAI_API_KEY = "dummy"; $env
 uv run python experiments/01_build_rubrics.py
 ```
 
-실패한 슬라이드는 평가 기준을 만들지 않고 `stats["failed"]`에 남습니다. 성공한 호출은 캐시에 남으므로, 나중에 제대로 된 주소로 다시 돌리면 실패한 것만 부릅니다.
+실패한 슬라이드는 평가 기준을 만들지 않고 응답 `failed`(에러 코드 `LLM_TIMEOUT` 등)에 남습니다 (`run_script_analysis`가 돌려주는 `stats["failed"]`는 응답 `failed`에서 만든 `{장 번호: 에러 코드}`이고, `stats["causes"]`는 `{장 번호: 고정 문구}`입니다). 모든 슬라이드가 실패하면 `CoverageError`로 멈춥니다. 성공한 호출은 캐시에 남으므로, 나중에 제대로 된 주소로 다시 돌리면 실패한 것만 부릅니다.
 
 ### 실험 돌리기
 
@@ -420,7 +459,7 @@ uv run python -m pytest -m live            # 실제 API 를 부르는 테스트�
 
 ### 옮긴 뒤 검증
 
-아카이브 노트북이 남긴 LLM 캐시를 새 코드로 재생해 비교했습니다 (LLM 호출 0회).
+**옮길 당시의 검증 결과**입니다. 아카이브 노트북이 남긴 LLM 캐시를 새 코드로 재생해 비교했습니다 (LLM 호출 0회).
 
 | 항목 | 결과 |
 |---|---|
@@ -431,6 +470,8 @@ uv run python -m pytest -m live            # 실제 API 를 부르는 테스트�
 
 코어를 고친 뒤에도 같은 방식(캐시 재생 → 결과 비교)으로, 평가 기준 · 평가 결과가 의도 밖으로 바뀌지 않았는지 확인할 수 있습니다.
 
+계약에 맞춰 코어를 고친 뒤(최상위 진입 함수 · 에러 코드 · 평가 기준 형식 `1.2`)에도 캐시를 재생해 `reports/results/*.json`을 다시 만들었고, 숫자 지표는 모두 그대로이며 `feature_version`과 `criteria_version`만 달라졌습니다. 평가 기준 형식이 `1.2`로 올라 `rubric_id`는 바뀌었으므로 위 표의 "바이트 단위로 같음"은 옛 코드에서의 결과입니다.
+
 ---
 
 ## 6. 코드 읽는 순서와 자주 묻는 것
@@ -438,17 +479,18 @@ uv run python -m pytest -m live            # 실제 API 를 부르는 테스트�
 ### 처음 읽는다면 이 순서로
 
 1. `src/script_coverage/shared/rubric.py`: 평가 기준이 어떤 모양인지 봅니다. 모든 것의 중심입니다.
-2. `src/script_coverage/script_analysis/core.py`: `analyze_script` 한 함수에 1단계 흐름이 다 보입니다.
-3. `src/script_coverage/stt_evaluation/core.py`: `evaluate_take` 한 함수가 2단계 흐름입니다.
+2. `src/script_coverage/core.py`: 서비스가 부르는 진입 함수 3개. 하위 함수를 어떻게 감싸는지 봅니다.
+3. `src/script_coverage/script_analysis/core.py`: `analyze_script` 한 함수에 1단계 흐름이 다 보입니다.
+   `src/script_coverage/stt_evaluation/core.py`: `evaluate_take` 한 함수가 2단계 흐름입니다.
 4. `src/script_coverage/stt_evaluation/schemas.py`: 채점 결과의 모양을 봅니다.
-5. `src/coverage_lab/runs.py`: 코어와 DB가 어떻게 이어지는지 봅니다 (70줄 정도).
+5. `src/coverage_lab/runs.py`: 코어 진입 함수와 DB가 어떻게 이어지는지 봅니다 (130줄 정도).
 6. `experiments/01_build_rubrics.py`, `04_evaluate_takes.py`: 실제로 어떻게 돌리는지 봅니다.
 7. 궁금한 단계가 생기면 그 단계 파일로 들어갑니다. 예: 숫자 비교가 궁금하면 `stt_evaluation/fact_check.py`
 
 ### 자주 묻는 것
 
-**`core.py`가 왜 두 개인가요?**
-단계마다 시작점이 하나씩 있기 때문입니다. `script_analysis/core.py`는 대본을 등록할 때 한 번, `stt_evaluation/core.py`는 연습할 때마다 실행됩니다.
+**`core.py`가 왜 세 개인가요?**
+단계마다 시작점이 하나씩 있고(`script_analysis/core.py`는 대본을 등록할 때 한 번, `stt_evaluation/core.py`는 연습할 때마다), 최상위 `core.py`는 서비스가 부르는 진입 함수 3개로 이 둘을 API 모양으로 감쌉니다.
 
 **왜 LLM과 규칙을 둘 다 쓰나요?**
 규칙은 숫자 비교처럼 정답이 분명한 일에 강하고 결과가 늘 같습니다. LLM은 "말을 바꿔 했지만 뜻은 같다" 같은 의미 판단에 강합니다. 둘이 어긋나는 곳(충돌)만 LLM에 다시 물어서 비용을 아끼면서 실수를 줄입니다.
@@ -473,17 +515,8 @@ uv run python -m pytest -m live            # 실제 API 를 부르는 테스트�
 
 ## 7. 입출력
 
-코어가 무엇을 받아 무엇을 돌려주는지는 **[INTERFACE.md](INTERFACE.md)**에 정리했습니다. API 요청 · 응답을 정할 때 기준이 되는 문서입니다.
-
-| 내용 | INTERFACE.md |
-|---|---|
-| 진입점 3개(`analyze_script` · `evaluate_take` · `rescore_evaluation`)의 입력 · 출력 · 실패 처리와 실제 JSON 예시 | 1절 |
-| 데이터 모델 필드: 입력, 평가 기준(`EvaluationRubric`), 평가 결과(`SlideEvaluation`), 판정 값의 뜻 | 2절 |
-| 단계 모듈마다 주고받는 것 | 3절 |
-| LLM에 보내는 것과 받는 스키마 5종 | 4절 |
-| 버전 값과 호환 규칙 | 5절 |
-
-다운스트림(BE · 리뷰 agent)과의 접점은 네 가지입니다: 평가 기준, 슬라이드 평가, 비슷한 말, 사용자 확인. 필드의 원본은 pydantic 모델이고, 문서와 코드가 다르면 코드가 맞습니다.
+코어가 무엇을 받아 무엇을 돌려주는지(API 요청 · 응답, 평가 기준 · 채점 필드, 단계별 함수, LLM 출력 스키마)는 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 5 · 6절에 있습니다. 필드의 원본은 pydantic 모델이고, 문서와 코드가 다르면 코드가 맞습니다.
+계약(요청 · 응답 모양)은 설계 문서 5절과 `src/script_coverage/schemas.py`, 실제 값 예시는 `src/script_coverage/examples/`를 봅니다.
 
 ### research의 SQLite 표 (`coverage_lab/store.py`, `outputs/rubrics.sqlite`)
 
@@ -509,9 +542,54 @@ BE가 배포 환경에서 맡을 저장을 research 에서는 이 표들이 대�
 > 실제 Deepgram 출력과 실제 발표자로는 측정하지 않았습니다. LLM 판정의 실제 정확도는 아직 검증되지 않았습니다.
 > 규칙 부분(수 파서, 수치 검증, 비슷한 말 위치)은 결정적이고 가상 데이터 전체에서 정답과 일치했습니다.
 
-### v1 (기능 버전 `1.0`, 모델 `openai/gpt-5.6-luna`)
+### v1 · 기본 묶음 `openai/gpt-6-luna` (기능 버전 `script_coverage-1.0`)
 
-데이터: 대본 2개(슬라이드 20장, Key Point 80개), 연습 18번(대본당 9개 시나리오), 대본 문장 765개. 숫자는 `reports/results/*.json` 입니다.
+기본 묶음 모델로 `01` → `04` → `05`를 다시 돌린 값입니다(LLM 약 290회). 지금 `reports/results/stt_accuracy.json`은 이 값입니다. 반복 측정(`03` · `06`)은 이 모델로 다시 재지 않아서, `rubric_consistency.json` · `stt_stability.json`은 아래 예전 모델 값입니다. 테스트는 399개(`-m "not live"`, 연구 캐시가 있을 때)가 통과합니다.
+
+| 지표 (문장 765개 · Key Point 774개 · 사실 729개) | 규칙만 | LLM 1차 | 최종 | 사용자 확인 뒤 |
+|---|---|---|---|---|
+| 대본 문장 판정 정확도 | 0.850 | 0.963 | **0.984** | 0.988 |
+| Key Point 판정 정확도 | 0.848 | 0.960 | **0.983** | 0.987 |
+| 심각한 오판 (문장) | — | 2.2% | **0.5%** | — |
+| 핵심 사실 정확도 (최종: 보류 17개 제외 · 확인 뒤: 보류 0개) | | | 0.996 | 0.996 |
+| 슬라이드 내용 점수 평균 오차 | | | 0.016 | 0.006 |
+
+- 예전 모델보다 최종 정확도가 약 0.8%p 낮습니다. 가장 많이 내려간 것은 요약형 발표(take8, 문장 0.965 → 0.918 · Key Point 0.963 → 0.907)입니다. 평가 기준도 새 모델로 다시 만들어 Key Point 수가 720 → 774개로 달라졌습니다.
+
+**장 수별 소요 시간** (`07_timing.py`, 같은 모델, 캐시 없음, 서비스와 같은 규칙 · 클라이언트: 요청 마감 120초 · 호출 한 번 **20초** · 남은 시간이 있으면 1번 더 · 스트리밍 · LLM 실행 스레드 40개, BE 재시도 1번까지)
+
+| 장 수 | 동시 개수 | 동시 요청 | 평가 기준 만들기 (최초 → 재시도 뒤) | 채점 |
+|---|---|---|---|---|
+| 30 | 8 | 1 | 108초 · 29/30장 → 재시도 32초 · 30/30장 | 34초 |
+| 30 | **12** | 1 | **77초 · 30/30장** (재시도 필요 없음) | 35초 |
+| 20 | **12** | 4 | 4개 모두 76 ~ 87초 · 20/20장 (호출 241번 중 시간 초과 1번, 요청 안 재시도로 회복해 BE 재시도 없음) | — |
+| 30 | 12 | 1 | 출력 토큰 상한을 걸고: 103초 · 30/30장 (재시도 필요 없음, `timing_capped.json`) | 40초 |
+| 30 | 12 | 4 | 출력 토큰 상한을 걸고: 최초 117 ~ 120초 · 2 ~ 4/30장 → 재시도 뒤 6 ~ 10/30장 (호출 527번, 대부분 20초 시간 초과, `timing_capped_concurrent.json`) | — |
+| 30 | 12 | 2 | 출력 토큰 상한을 걸고: 둘 다 최초 103 ~ 108초 · 26 ~ 29/30장 → 재시도 31 ~ 32초 뒤 30/30장 (호출 195번, `timing_capped_concurrent2.json`) | — |
+
+- 그래서 `config.py`의 평가 기준 만들기 동시 개수 `RUBRIC_MAX_WORKERS`는 12, 호출 시간 제한은 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`(기능 문서 8 · 11절)입니다. 결과는 `timing_20s.json` · `timing_20s_concurrent.json`.
+- 호출 시간 20초는 12초 제한 없이 잰 평가 기준 호출(20장 · 60번)의 p50 8.6초 · p95 16.8초 · 최대 18.4초로 정했습니다(20초를 넘은 호출 0번). 이 분포는 저장소 밖에서 한 번 돌린 임시 측정이라 결과 JSON은 없습니다(`07_timing.py --call-timeout 90`으로 비슷한 조건을 잴 수 있지만 단계별 백분위는 남기지 않음).
+- 장끼리 서로 기다리지 않게(장마다 세 단계를 이어서) 코어를 바꿨습니다. 예전에는 단계마다 모든 장을 기다려 느린 장 하나가 다음 단계 전체를 늦췄습니다. 결과 · LLM 메시지는 같습니다(연구 캐시로 20장을 다시 만들어 바이트까지 같음을 확인).
+- 이 측정의 LLM 호출은 약 545회입니다(제한 없는 분포 60 · 30장 두 조합 244 · 동시 요청 241).
+- 30장 × 4개 동시가 실패한 원인은 가르지 못했습니다. 20장 × 4개도 동시 호출이 48개였는데 성공했으므로 실행 스레드(40개)만으로는 설명되지 않습니다(추측: 긴 요청에서 게이트웨이 지연이 겹침). 출력이 잘린 호출은 없었습니다(모든 역할 `finish_reason` `stop`). 그래서 BE가 대본 등록 요청을 동시에 2개까지만 보내고 나머지는 기다리게 정했습니다(30장 × 2개는 BE 재시도로 모두 성공, 기능 문서 8절 · `architecture.md` 3절).
+- 역할별 출력 토큰 상한(기능 문서 8절)은 `08_output_tokens.py`로 잰 최대 × 2입니다(`output_tokens.json`, 호출 284번 모두 `stop`).
+- 상한을 건 세 측정의 LLM 호출은 845번입니다(30장 하나 123 · 4개 동시 527 · 2개 동시 195). 위의 약 545회는 상한을 걸기 전 측정입니다.
+- 재지 않은 것: 가상 장보다 긴 실제 대본, 30장이 넘는 대본.
+
+**고치기 전** (`timing.json`: 호출 12초 · 단계마다 모든 장을 기다림 · 스트리밍 없이 · 버린 호출이 다음 측정과 겹쳤을 수 있음)
+
+| 장 수 | 동시 개수 | 평가 기준 만들기 (초 · 실패 장) |
+|---|---|---|
+| 10 | 4 · 8 | 110 · 6장 / 68 · 3장 시간 초과 |
+| 20 | 4 · 8 | 모든 장 / 118초 · 9장 시간 초과 |
+| 30 | 4 · 8 | 모든 장 시간 초과 |
+
+### v1 · 예전 모델 `openai/gpt-5.6-luna` (기능 버전 `script_coverage-1.0`)
+
+데이터: 대본 2개(슬라이드 20장, Key Point 80개), 연습 18번(대본당 9개 시나리오), 대본 문장 765개. ① · ②의 반복 측정 값은 지금 `reports/results/rubric_consistency.json` · `stt_stability.json`이고, ②의 정확도 값은 6 luna로 다시 재기 전의 `stt_accuracy.json`입니다(git 기록).
+
+> 기능 문서의 계약에 맞춰 코어를 고친 뒤(최상위 진입 함수 · 에러 코드 · 대상 장 · 누적 답) 같은 모델의 캐시를 재생(LLM 호출 0회)해 결과 JSON을 다시 만들었습니다.
+> 값은 같고 버전 문자열(`feature_version`)과 기준 버전(`criteria_version`)만 달라졌습니다.
 
 **① 대본 분석** (`rubric_consistency.json`)
 
@@ -574,7 +652,7 @@ v1을 "완료"라고 부르려면 실제 슬라이드별 Deepgram 결과와 녹�
 
 ## 9. 배포
 
-AI 서버에 올리는 데 필요한 작업(서버 · 인프라 · BE 연동)과 순서, API, 비용, 결정해야 할 것은 [DEPLOY.md](DEPLOY.md)에 있습니다.
+AI 서버로 옮기는 방법과 옮긴 뒤 확인은 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 11절에 있습니다.
 
 ---
 
@@ -599,14 +677,7 @@ AI 서버에 올리는 데 필요한 작업(서버 · 인프라 · BE 연동)과
 
 ### 점수
 
-LLM은 점수를 매기지 않습니다. 모두 `stt_evaluation/scoring.py`가 계산하고, 발표 전체 점수는 슬라이드 점수의 가중 평균(개수는 합)입니다.
-
-| 점수 | 계산 |
-|---|---|
-| `content_coverage` | Σ(Key Point 판정 점수 × 중요도 가중치) / Σ(가중치). `covered` 1 / `partial` 0.5 / `missing` 0 / `contradicted` −0.5, 가중치 critical 3 / high 2 / normal 1. 음수면 0 |
-| `critical_fact_accuracy` | Σ(사실 점수 × 가중치) / Σ(가중치). `matched` 1, `approximate` 0.5, 나머지 0. **`sound_alike`는 분자 · 분모에서 뺌** |
-| `script_fidelity` | 순서를 지킨 형태소 일치의 recall · precision 조화평균. **비슷한 말 자리의 형태소는 양쪽에서 뺌** |
-| `similar_words` / `similar_numbers` | 비율에서 뺀 비슷한 단어 · 수치의 개수 |
+LLM은 점수를 매기지 않습니다. 모두 `stt_evaluation/scoring.py`가 계산합니다. 계산 방법은 [설계 문서](../../../docs/ai/features/script-coverage-evaluation.md) 6-4에 있습니다.
 
 임계값은 가상 STT와 정답 라벨로 맞춘 값이라(`stt_evaluation/config.py`) 바꾸면 채점 결과가 달라집니다. 바꾸기 전에 기준값을 고정한 채 먼저 재고, 그다음에 조정하세요.
 

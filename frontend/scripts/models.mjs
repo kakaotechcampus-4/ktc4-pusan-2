@@ -5,7 +5,9 @@
 //
 //   vision_wasm_*         node_modules/@mediapipe/tasks-vision/wasm/ 에서 복사
 //                         (모듈 Worker 는 vision_wasm_module_internal.* 를 씁니다)
-//   face_landmarker.task  AI 리그에 있으면 복사, 없으면 받는 명령을 알려 줍니다
+//   face_landmarker.task  AI 리그에 있으면 복사, 없으면 받는 명령을 알려 줍니다.
+//                         `npm run models -- --download` 면 공식 주소에서 직접 받습니다 — 배포 이미지가
+//                         이렇게 받습니다(Dockerfile). 이미지 빌드에서는 AI 리그 폴더가 보이지 않습니다
 //
 // ── 왜 해시와 버전을 확인하나 ──────────────────────────────────────────
 // 모델이나 런타임이 다르면 얼굴 랜드마크가 조금씩 달라져, 같은 사람의 보정값과 판정이
@@ -13,7 +15,15 @@
 // AI 의 verify-assets 와 같은 값으로 확인하고, 다르면 복사하지 않고 실패합니다.
 // 기준 값의 출처: ai/research/gaze-tracking/artifacts/face_landmarker.task.json
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -59,10 +69,30 @@ const candidates = [
   ai('archive', 'workspaces', 'jewon-kim', 'gaze-tracking', 'v1', 'local', 'ai', 'models', TASK),
 ];
 
-const download = [
-  `  curl -L -o public/models/${TASK} \\`,
-  `    https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/${TASK}`,
-];
+const TASK_URL = `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/${TASK}`;
+const download = [`  curl -L -o public/models/${TASK} \\`, `    ${TASK_URL}`];
+
+/**
+ * `--download` — 없으면 공식 주소에서 받습니다. 받은 파일도 아래에서 크기 · sha256 을 확인하고, 다르면 지우고
+ * 실패합니다. 이미지 빌드가 이 실패로 멈춰야 검증하지 않은 모델로 배포되지 않습니다
+ */
+if (process.argv.includes('--download') && !existsSync(target)) {
+  const res = await fetch(TASK_URL);
+  if (!res.ok) {
+    fail([`${TASK} 를 받지 못했습니다 (HTTP ${res.status}): ${TASK_URL}`]);
+  } else {
+    writeFileSync(target, Buffer.from(await res.arrayBuffer()));
+    if (isExpected(target)) {
+      console.log(`${TASK} 받음 -> ${target}`);
+    } else {
+      // 남겨 두면 다음 실행이 "검증한 파일과 다릅니다"로만 실패해 원인이 다운로드인지 알기 어렵습니다
+      rmSync(target);
+      fail([
+        `받은 ${TASK} 가 시선 엔진이 검증한 파일과 다릅니다 (크기 또는 sha256 불일치): ${TASK_URL}`,
+      ]);
+    }
+  }
+}
 
 if (existsSync(target)) {
   if (isExpected(target)) {

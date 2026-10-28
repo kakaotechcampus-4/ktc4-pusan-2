@@ -68,3 +68,6 @@
 # 이 아래는 팀이 자유롭게 쓰세요. 파트별 자동 리뷰어 지정 예시:
 #   /backend/   @member-a @member-b
 #   /frontend/  @member-c
+
+/ai/                                          @JWK0395 @jinn-ie
+/docs/ai/                                     @JWK0395 @jinn-ie
