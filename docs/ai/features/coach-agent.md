@@ -57,7 +57,7 @@
 | Take 결과 | Take가 끝난 뒤 코치가 만드는 사실 묶음 (지표 · 문제 구간 · 개입 · 포기 · 판정 기준) | `take_result` |
 | `replay` | 코치가 Take를 다 세지 못했을 때 BE가 보내는 Take 전체 원자료. 코치는 이것으로 0초부터 다시 판정한다 | 409 `REPLAY_REQUIRED` 뒤 다시 부름 |
 | 문장 끝 신호 | Deepgram `UtteranceEnd`가 알린 마지막 단어의 끝 시각(`architecture.md` 6-2). 코치는 말하는 도중이면 이 신호까지 기다린다 | `utterance_ends: [89400]` |
-| 연구용 판정 대역 | 연구 폴더(`coach_lab/judges/`)에서 판정 모듈 대신 쓰는 모듈. 재생 · 채점 · 복구 실험은 서비스의 실제 판정 모듈 넷을 묶은 `real_judges()`를, 예시 생성 · 대역 시험은 대역 넷인 `lab_judges()`를 쓴다 | `real_judges()` · `lab_judges()` |
+| 연구용 판정 대역 | 연구 폴더(`coach_lab/judges/`)에서 판정 모듈 대신 쓰는 모듈. 재생 · 채점 · 복구 실험은 서비스의 실제 판정 모듈 넷을 묶은 `real_judges()`를, 대역 시험은 대역 넷인 `lab_judges()`를 쓴다 | `real_judges()` · `lab_judges()` |
 
 # 3. 전체 흐름
 ```mermaid
@@ -90,8 +90,7 @@ ai/research/coach-agent/
 ├─ README.md                              폴더 · 파일 지도, 실행법, 실험 결과
 ├─ pyproject.toml · uv.lock               패키지 하나: coach_lab(실험), 서비스를 editable로 설치해 코어를 씀, Python 3.12
 ├─ (서비스 ai/service/src/pitch_coach_ai/features/coach/)  판단 코어 (연구 폴더 src/coach/에서 폴더째 옮김, 테스트는 서비스 tests/unit/coach/)
-├─ src/coach/examples/                    BE 테스트가 읽는 예시 사본 evaluate · finalize · timing (원본은 서비스 features/coach/examples/, 11절 확인 5)
-├─ src/coach_lab/                         재생 · 실험 도구 (가상 발표자 · 연구용 판정 대역 · 채점 · 예시 생성). 연구에만 남는다
+├─ src/coach_lab/                         재생 · 실험 도구 (가상 발표자 · 연구용 판정 대역 · 채점 · 예시 생성). 연구에만 남는다. 예시는 서비스 features/coach/examples/ 한 곳(BE 테스트도 읽는다)
 ├─ scenarios/                             가상 발표 시나리오 (+ plan/ 코칭 계획 실험용)
 ├─ tests/{lab,live}/                      실험 도구 · 실제 LLM (코어 단위 · 계약 테스트는 서비스 tests/unit/coach/)
 └─ reports/results/                       커밋하는 실험 결과 (take_result · recovery · coaching_plan)
@@ -264,7 +263,7 @@ ai/research/coach-agent/
 | `AHEAD_OF_SCHEDULE` | 이 속도면 `min_ms`(없으면 목표의 정해진 비율)보다 일찍 끝남 (초반 제외) | `projected_end_ratio`(예상 종료 ÷ 이른 한계) — 작을수록 나쁨 |
 
 ## 5-5. 예시
-예시 파일은 서비스 `features/coach/examples/`에 있고(BE 테스트용 사본이 연구 폴더 `src/coach/examples/`에 있다) `python -m coach_lab.examples`로 둘 다 다시 만든다(바이트까지 같다). 아래는 발췌다.
+예시 파일은 서비스 `features/coach/examples/`에 있고(BE 테스트도 이 경로를 읽는다) `python -m coach_lab.examples`로 다시 만든다(바이트까지 같다). 판정 모듈은 서비스의 실제 모듈 넷이라, 예시 응답은 같은 요청에 서비스가 내는 응답과 같다(서비스 계약 테스트 `test_examples.py` · `test_finalize_examples.py`). 아래는 발췌다.
 
 **evaluate 요청** (`examples/evaluate/request.json` 발췌. 시선 기록 30개 · 단어 74개 중 한 줄씩만 싣는다)
 ```json
@@ -287,7 +286,7 @@ ai/research/coach-agent/
 {"action": "INTERVENE",
  "feedback": {"area": "GAZE", "instruction": "LOOK_AT_CAMERA", "message": "대본보다 청중을 조금 더 바라보세요",
               "priority": 100, "confidence": 1.0,
-              "evidence": {"start_ms": 88000, "end_ms": 92000, "slide_number": 3, "script_ratio": 0.8, "window_ms": 10000}},
+              "evidence": {"start_ms": 86000, "end_ms": 92000, "slide_number": 3, "script_run_ms": 9000, "script_ratio_short": 1.0}},
  "indicators": {"GAZE": "SCRIPT", "SPEED": "NORMAL", "VOLUME": "NORMAL", "PAUSE": "NORMAL", "FILLER": "NORMAL", "TIME": "AHEAD"},
  "reason_codes": ["GAZE_ON_SCRIPT", "MISSION_RELEVANT", "RECURRING", "PLAN_FOCUS", "WORSENING"],
  "events": [{"event_id": "iv-92000", "t_ms": 92000, "kind": "INTERVENTION", "intervention_id": "iv-92000", "...": "..."}],
@@ -322,19 +321,20 @@ ai/research/coach-agent/
    "plan": {"target_ms": 300000, "min_ms": 270000, "max_ms": 330000},
    "areas": {
      "GAZE": {"measured_ratio": 0.9674,
-              "take": {"audience_ratio": 0.7753, "script_ratio": 0.2247, "reading_runs": 1.0, "...": "..."},
+              "take": {"audience_ratio": 0.764, "script_ratio": 0.236, "reading_runs": 0, "...": "..."},
               "slides": [{"slide_number": 3, "start_ms": 59390, "end_ms": 92000, "target_ms": 90000, "measured_ratio": 1.0,
-                          "metrics": {"audience_ratio": 0.6562, "script_ratio": 0.3438, "...": "..."}}],
+                          "metrics": {"audience_ratio": 0.625, "script_ratio": 0.375, "...": "..."}}],
               "unmeasured_reason": null},
      "TIME": {"measured_ratio": 1.0, "take": {"duration_ms": 92000.0}, "slides": ["..."]},
      "VOLUME": {"take": {"level_db": -29.5, "base_level_source": "CALIBRATION", "...": "..."}, "...": "..."}},
    "problem_segments": [
-     {"area": "GAZE", "issue_type": "GAZE_ON_SCRIPT", "slide_number": 3, "start_ms": 81000, "end_ms": 90000, "mean_severity": 0.57, "reliable": true, "coached": false}],
+     {"area": "TIME", "issue_type": "AHEAD_OF_SCHEDULE", "slide_number": 3, "start_ms": 60000, "end_ms": 92000, "mean_severity": 1.0, "reliable": true, "coached": true},
+     {"area": "GAZE", "issue_type": "GAZE_ON_SCRIPT", "slide_number": 3, "start_ms": 83000, "end_ms": 92000, "mean_severity": 0.7143, "reliable": true, "coached": false}],
    "interventions": [{"intervention_id": "iv-73000", "t_ms": 73000, "area": "TIME", "issue_type": "AHEAD_OF_SCHEDULE", "instruction": "SLOW_DOWN",
                       "message": "시간 여유가 있어요. 천천히 말해도 돼요", "outcome": "INEFFECTIVE", "metric": "cpm_short", "before": 300.0, "after": 300.0}],
    "gave_up": [{"issue_type": "AHEAD_OF_SCHEDULE", "slide_number": 3}],
    "criteria": {"GAZE": {"criteria_version": "<모듈 기준 버전>", "issues": {"GAZE_ON_SCRIPT": {"metric": "script_run_ms", "direction": "HIGHER_IS_WORSE", "threshold": "<기준값>", "bad": "<아주 나쁨 값>", "onset_lag_ms": "<값>", "offset_lag_ms": "<값>"}}}, "...": "..."}},
- "events": [{"event_id": "ep-AHEAD_OF_SCHEDULE-3-60000", "kind": "EPISODE", "...": "..."}, {"event_id": "ep-GAZE_ON_SCRIPT-3-88000", "kind": "EPISODE", "...": "..."}, {"event_id": "sl-3-59390", "kind": "SLIDE", "...": "..."}],
+ "events": [{"event_id": "ep-AHEAD_OF_SCHEDULE-3-60000", "kind": "EPISODE", "...": "..."}, {"event_id": "ep-GAZE_ON_SCRIPT-3-86000", "kind": "EPISODE", "...": "..."}, {"event_id": "sl-3-59390", "kind": "SLIDE", "...": "..."}],
  "meta": {"...": "..."}}
 ```
 **경계 — 다 세지 못함** (응답이 창보다 오래 빠졌거나 `coach_state`를 잃음. 공통 에러 본문, `architecture.md` 4절)
@@ -620,11 +620,11 @@ uv sync
 | 시나리오 재생 | `uv run python -m coach_lab.replay` (하나만: `… replay scenarios/05_time_behind.json -v`) | 16개 PASS |
 | Take 결과 채점 | `uv run python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` | 결과 파일이 커밋된 것과 같으면 `git diff`가 빈다 |
 | 복구 실험 | `uv run python -m coach_lab.recovery_eval` | `reports/results/recovery.json` |
-| 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` | 서비스 `features/coach/examples/`와 연구 폴더 사본이 바이트까지 그대로 (생성 결과라 직접 고치지 않는다) |
+| 예시 파일 다시 만들기 | `uv run python -m coach_lab.examples` | 서비스 `features/coach/examples/`가 바이트까지 그대로 (실제 판정 모듈로 만든다. 생성 결과라 직접 고치지 않는다) |
 | 코칭 계획 실험 (과금) | `uv run python -m coach_lab.plan_eval --out reports/results/coaching_plan.json` | 유효율 · 기대 통과율 · 일관성 · 지연 |
 
 - 설정은 `config.py`에만 있다. 재생에서는 바꿀 값만 JSON으로 덮어쓰고(`--config`), 코어에서는 `load_config(policy={...})`처럼 키워드로 넘긴다(코어는 파일을 읽지 않는다).
-- 계약 테스트(서비스 `tests/unit/coach/`): `test_contract.py`(응답 필드 · 모르는 요청 필드 무시 · 음수 시각 거부 · 모르는 상태 리셋), `test_examples.py`(예시 요청을 넣은 응답이 예시 응답과 같음), `tests/lab/test_examples_build.py`(예시를 다시 만들어도 같음).
+- 계약 테스트(서비스 `tests/unit/coach/`): `test_contract.py`(응답 필드 · 모르는 요청 필드 무시 · 음수 시각 거부 · 모르는 상태 리셋), `test_examples.py`(예시 요청을 넣은 응답이 예시 응답과 같음), `test_finalize_examples.py`(실제 판정 모듈 넷으로 finalize 예시를 다시 판정해도 같음 · 영역마다 측정 비율 · 판정 기준이 참), `tests/lab/test_examples_build.py`(예시를 다시 만들어도 같음).
 
 # 11. 배포
 **어디서 도는가**: 코어(`examples/` · `prompts/` 포함)는 AI 서비스의 `features/coach/`에 있다(연구 폴더 `src/coach/`에서 폴더째 옮겼다). 라우터 `api/coach.py`가 엔드포인트를 연다(`ai-service.md`). 지금 열린 것은 `/coach/plan`이다. `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷(시선 · 말 속도 · 소리 크기 · 군더더기)이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우면 코어는 그 영역을 잴 수 없음(시선은 `UNMEASURABLE`, 나머지는 `UNKNOWN`)으로 두고 견디지만, Take 결과의 그 영역 `measured_ratio`가 null이 되고 판정 기준 · 기준 버전이 비어 공통 계약(`architecture.md` 7절)과 어긋나기 때문이다. 재생 · 실험 도구(`coach_lab`)와 연구용 판정 대역은 옮기지 않는다. 의존성은 pydantic 하나다.
@@ -637,7 +637,7 @@ uv sync
 | 호출 | `/coach/evaluate` → `decide_safe(req, judges)`, `/coach/finalize` → `finalize(req, judges)`, `/coach/plan` → `plan_coaching(req, llm=…, model=…)`. 라우터는 요청마다 마감 시각(AI 예산 25초)을 만들어 `structured_llm(<출력 스키마>, deadline=…)`으로 LLM 객체를 받는다(서비스 `common/llm.py`, 역할 → 묶음은 `settings.py`). `model`은 그 역할 묶음의 모델 이름이다(`planner_hash`). LLM 설정이 없어 객체를 만들 수 없으면 `llm=None`을 넘겨 코어가 기본 계획 + `LLM_UNAVAILABLE`을 200으로 돌려준다. 연구 도구의 고정 값(시간 제한 20초 · 재시도 0)은 쓰지 않는다 |
 | 오류 매핑 | 요청 형식 오류는 422 `VALIDATION_ERROR`. `ReplayRequired`는 409 `REPLAY_REQUIRED`(공통 에러 본문, 메시지에 빠진 구간) |
 | 동기 함수 | 판단은 CPU만 쓰는 짧은 계산이라 `def` 라우터로 두면 스레드 풀에서 돈다(`async def` 안에서 동기 호출을 하면 서버 전체가 멈춘다) |
-| 옮긴 뒤 테스트 | `ai-service.md` 6-1 2번대로 했다. `tests/unit/`을 서비스 `tests/unit/coach/`로 옮기고, `test_examples.py` · `test_core_boundary.py`는 예시 · 코어 폴더를 패키지 위치로 찾게 고쳤다. `tests/lab/test_examples_build.py`는 연구 폴더에 남겼다(예시 생성 `coach_lab.examples`와 연구용 대역을 쓴다). 그중 finalize 예시를 대조하는 검사(`test_finalize_response_matches_example` · `test_finalize_example_judges_the_last_window_with_stt_closed` · `test_finalize_examples_show_normal_and_replay`)는 실제 판정 모듈을 묶은 서비스 계약 테스트로 새로 만든다(대역은 서비스에 넣지 않는다. evaluate · finalize를 열 때 함께). 이 파일이 쓰던 `assert_same`은 연구 폴더 `tests/lab/judge_helpers.py`에 같은 함수를 두었다(예전에는 `tests/unit/test_examples.py`에서 가져왔다). |
+| 옮긴 뒤 테스트 | `ai-service.md` 6-1 2번대로 했다. `tests/unit/`을 서비스 `tests/unit/coach/`로 옮기고, `test_examples.py` · `test_core_boundary.py`는 예시 · 코어 폴더를 패키지 위치로 찾게 고쳤다. `tests/lab/test_examples_build.py`는 예시를 다시 만들어도 같은지만 보며 연구 폴더에 남겼다(예시 생성 `coach_lab.examples`). 그 파일에 있던 finalize 예시 대조 검사(`test_finalize_response_matches_example` · `test_finalize_example_judges_the_last_window_with_stt_closed` · `test_finalize_examples_show_normal_and_replay`)는 실제 판정 모듈을 묶은 서비스 계약 테스트 `tests/unit/coach/test_finalize_examples.py`로 옮겼다(예시도 실제 모듈로 다시 만들었다. 대역은 서비스에 넣지 않는다). |
 
 **환경변수**: 코치 코어는 환경변수를 읽지 않는다. 코칭 계획의 LLM 설정은 서비스 공통 환경변수(`architecture.md` 10절)를 쓴다.
 
@@ -646,7 +646,7 @@ uv sync
 2. 연구 폴더가 서비스를 editable 의존성으로 설치하고 `coach_lab`의 import를 새 패키지 이름으로 바꾼다.
 3. 연구용 판정 대역을 그대로 둔 채 `python -m coach_lab.replay`가 전부 통과하고, `python -m coach_lab.evaluate --sweep --out reports/results/take_result.json` · `python -m coach_lab.recovery_eval` 뒤 `git diff`가 비어 있는지 본다. 그 뒤 대역을 서비스에 있는 실제 판정 모듈로 바꿔 끼워 다시 돌리고, 달라진 판정을 연구 폴더 README에 적는다(넷 모두 바꿨다. 소리 크기가 마지막으로 2026-10-29).
 4. `python -m pytest -m live`(실제 LLM 1회)와 `python -m coach_lab.plan_eval`이 커밋된 `reports/results/coaching_plan.json`과 비슷한지 본다(LLM 답이라 바이트까지 같지는 않다).
-5. 연구 폴더의 `src/coach/`를 지운다. 이후 코어는 서비스에서만 고친다. 다만 BE 테스트가 경로로 읽는 `examples/`는 BE가 서비스 경로(`ai/service/src/pitch_coach_ai/features/coach/examples/`)로 바꿀 때까지 연구 폴더에 사본으로 남기고, 서비스 예시와 같은지 연구 폴더 테스트가 본다(`ai-service.md` 6-1 2번).
+5. 연구 폴더의 `src/coach/`를 지운다. 이후 코어는 서비스에서만 고친다. BE 테스트가 경로로 읽는 `examples/`는 BE가 서비스 경로(`ai/service/src/pitch_coach_ai/features/coach/examples/`)로 바꿀 때까지 연구 폴더에 사본으로 남겼고, BE가 바꾼 뒤(#585) 사본과 사본 비교 테스트를 지웠다(`ai-service.md` 6-1 2번).
 
 **증상별 원인**
 
@@ -703,7 +703,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 | 코칭 계획 (응답마다 한 행) | `/coach/plan` 응답 (기본 계획 포함) | `coaching_plans` 테이블: `id` · `pitch_id` · `source_take_id` · `script_version_id` · `target_ms` · `min_ms` · `max_ms` · `requested_at` · `payload` · `meta`. 인덱스 (`pitch_id`, `requested_at`) | `id` UUID PK. `pitch_id` UUID NOT NULL, `pitches.id` 외래 키(발표를 지우면 함께 지움, ON DELETE CASCADE). `source_take_id` · `script_version_id`는 요청 값(UUID, nullable)이고 외래 키로 묶지 않는다(Take를 지워도 계획 행은 발표와 함께 남고, 이 값은 바탕 값 비교에만 쓴다). `target_ms` · `min_ms` · `max_ms`는 요청 `plan`의 값(Integer ms, nullable). `requested_at`은 BE가 그 계획 요청을 보낸 시각(timestamptz, NOT NULL). `payload`(JSONB, NOT NULL) = 응답의 `{coaching_plan, fallback_reason, dropped, planner_hash}`, `meta`(JSONB, NOT NULL) = 응답의 `meta`. 크기: 행 하나 수 KB(`focus` · `relax` 각 3개 이하) | BE가 쓴다 · BE가 다음 Take 시작 때 골라 evaluate에 싣는다(12-2 계획 고르기) | 덮어쓰지 않고 응답마다 행을 더한다. 유일 제약은 두지 않는다 | 발표와 함께. 옛 행도 따로 기한을 두지 않고 발표를 지울 때 함께 지운다(행 수는 계획 요청 수만큼만 는다) |
 | `coach_state` | evaluate 응답마다 | Take를 맡은 BE 프로세스 메모리 (여러 프로세스면 Redis `coach_state:{take_id}` 등) | 응답의 JSON 그대로. 잰 크기: 공백 없는 JSON 약 16 KB(예시 92초 Take), 한 시간 Take를 1초 요청으로 돌려도 14.3–14.7 KB로 일정 | BE가 쓰고 다음 요청에 붙인다. BE는 해석하지 않는다 | 최신 하나만 둔다 | Take가 끝나면 지운다 |
 | 코치 이벤트 (코치가 한 말 `INTERVENTION` 포함) | evaluate · finalize 응답마다 | `coach_events` (`take_id` · `seq` · `kind` · `event_id` · `t_ms` · `payload` JSONB · `meta` JSONB) | 이벤트 JSON 그대로 `payload`(`INTERVENTION`이면 `evidence`도 그 안에, 5-3), 그 응답의 `meta`를 `meta`에. 코치가 한 말은 이 테이블에만 두고 `live_feedbacks`에는 쓰지 않는다(리포트도 여기서 읽는다). `seq`는 BE가 받은 순서로 매긴다(12-2). 잰 크기: 이벤트 하나 약 0.3–0.4 KB(예시 finalize 요청 이벤트 11개 3.7 KB) | BE가 받은 순서대로 추가만 · finalize의 `events`, 리포트 | `(take_id, event_id)` · `(take_id, seq)` 유일 제약, 같은 `event_id`가 이미 있으면 건너뛴다. `event_id`가 같으면 같은 이벤트다(그래도 finalize가 한 번 더 거른다) | Take와 함께 |
-| Take 결과 | finalize 응답 | `take_ai_results` (`take_id` · `kind`=`TAKE_RESULT` · `payload` JSONB · `meta` JSONB) | 응답의 `take_result`를 `payload`에, 응답의 `meta`를 `meta`에. 잰 크기: 공백 없는 JSON 약 6.7 KB(예시 92초 Take, 3장). 크기는 Take 길이가 아니라 장 수 · 문제 구간 수(하나 약 0.15 KB) · 개입 수(하나 약 0.3 KB)에 비례한다. 한 시간 Take(30장, 합성 원자료, 말 속도 · 소리 크기는 가짜 판정 모듈)를 `replay`로 만든 결과는 공백 없는 JSON 약 18 KB였다(서비스 `tests/unit/coach/test_extremes.py`, `pytest -m slow`) | BE가 쓴다 · 리뷰 `take_result` · `previous_takes`, 코칭 계획 `previous_take_result` | `(take_id, kind)` 유일 제약. Take마다 하나 (`replay`로 다시 만들면 덮는다) | Take와 함께 |
+| Take 결과 | finalize 응답 | `take_ai_results` (`take_id` · `kind`=`TAKE_RESULT` · `payload` JSONB · `meta` JSONB) | 응답의 `take_result`를 `payload`에, 응답의 `meta`를 `meta`에. 잰 크기: 공백 없는 JSON 약 7.0 KB(예시 92초 Take, 3장, 실제 판정 모듈). 크기는 Take 길이가 아니라 장 수 · 문제 구간 수(하나 약 0.15 KB) · 개입 수(하나 약 0.3 KB)에 비례한다. 한 시간 Take(30장, 합성 원자료, 말 속도 · 소리 크기는 가짜 판정 모듈)를 `replay`로 만든 결과는 공백 없는 JSON 약 18 KB였다(서비스 `tests/unit/coach/test_extremes.py`, `pytest -m slow`) | BE가 쓴다 · 리뷰 `take_result` · `previous_takes`, 코칭 계획 `previous_take_result` | `(take_id, kind)` 유일 제약. Take마다 하나 (`replay`로 다시 만들면 덮는다) | Take와 함께 |
 | 리포트 요약 측정 칸 | finalize 응답 | `take_summaries` (`architecture.md` 1-1 대응 표) | 칸, 값 칸은 모두 nullable | BE · FE 리포트 목록 | Take마다 한 행 | Take와 함께 |
 | 복구용 원자료 | Take 동안 (`utterance_ends`는 Take 종료 때) | `take_metric_seconds` (`take_id` · `t_ms` · `slide_number` · `gaze` JSONB · `voice` JSONB · `stt_status`), `take_slide_events` (`take_id` UUID NOT NULL, `takes.id` 외래 키 ON DELETE CASCADE · `slide_number` Integer NOT NULL · `started_ms` Integer NOT NULL. 기본 키 (`take_id`, `started_ms`), 다른 테이블이 참조하지 않으므로 `id` 칸은 두지 않는다), `take_transcript_segments` (확정 단어 `words`와 `final_at_ms` Integer), `takes.utterance_ends` (JSONB, ms 목록) | Take 기준 ms. 1초 원자료는 몇 초씩 모아 쓴다. `take_metric_seconds.slide_number`는 FE가 보낸 참고값이고, 장은 `take_slide_events`로 정한다. `take_slide_events`는 WS `slide` 하나가 한 행이다(`started_ms` = 메시지의 `t_ms`, `architecture.md` 1-4). `final_at_ms`는 BE가 그 확정 결과를 받기 직전의 마지막 `metrics.t_ms`(아직 `metrics`가 없으면 0)다. STT는 구간 단위로 확정되므로 확정 시각은 구간마다 한 칸이고, `replay`에 실을 때 구간 안의 단어마다 그 구간의 `final_at_ms`를 붙인다(Take 끝보다 늦으면 Take 끝으로 자른다, 5-2). `utterance_ends`는 Take 동안 BE 메모리에 두고 창에 싣다가, Take 종료 때(`architecture.md` 1-3 3번 ③) 한 번에 쓴다. 한 시간 Take의 `replay` 요청은 합성 Take에서 약 1.9 MB | BE가 쓴다 · 409 때 `replay`. `take_slide_events`는 evaluate `inputs.slide`와 `/takes/analyze`의 장 구간 나누기에도 쓴다 | `take_metric_seconds`는 `(take_id, t_ms)`, `take_slide_events`는 기본 키 `(take_id, started_ms)`. 같은 키가 또 오면 먼저 저장한 것을 둔다. 늦게 온 이벤트도 키가 새로우면 그대로 넣는다 | Take와 함께 (`architecture.md` 1-1. 1초 기록은 생체 정보가 아닌 파생값이다). 동의 없는 Take의 `take_metric_seconds` 예외는 `architecture.md` 1-1 '지우기 · 보관' |
 
