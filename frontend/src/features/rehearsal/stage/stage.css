@@ -896,10 +896,15 @@
   white-space: nowrap;
 }
 
-.stage-live .stage-foot .key-help {
+.stage-live .stage-foot .key-help,
+.stage-live .stage-foot .end-error {
   grid-column: 1 / -1;
   grid-row: 2;
   font-size: 12px;
+}
+
+.stage-foot .end-error {
+  color: var(--color-coral);
 }
 
 .stage-live .coach .indicators {
@@ -965,7 +970,8 @@
     grid-row: 3;
     max-height: 24px;
   }
-  .stage-live .stage-foot .key-help {
+  .stage-live .stage-foot .key-help,
+  .stage-live .stage-foot .end-error {
     font-size: 10px;
   }
   .stage-live .rail .legend {

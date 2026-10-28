@@ -912,10 +912,18 @@ export function RehearsalPage() {
                   다음 슬라이드 →
                 </button>
               </nav>
-              <span className="key-help">
-                ← → 슬라이드 이동 · Space 다음 장{scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
-              </span>
-              <div className="stage-status" role="status">
+              {/* 끝내기 실패는 꼭 봐야 해서 스크롤되는 상태 칸 밖, 조작 안내 자리에 띄웁니다 */}
+              {endError ? (
+                <span className="end-error" role="alert">
+                  {endError}
+                </span>
+              ) : (
+                <span className="key-help">
+                  ← → 슬라이드 이동 · Space 다음 장{scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
+                </span>
+              )}
+              {/* 알림 영역은 안쪽 문구가 각자 잡습니다 — 여기도 status 면 낭독기가 두 번 읽습니다 */}
+              <div className="stage-status">
                 {/* 기록이 멈추면 경고(stage.css) — 화면 낭독기에도 바로 알립니다. 준비 중은 조용히 둡니다.
                     key 로 요소를 갈아 끼웁니다 — 있던 status 의 role 만 alert 로 바꾸면 낭독기가 놓칩니다 */}
                 {gazeLine && (
@@ -943,7 +951,6 @@ export function RehearsalPage() {
                   <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
                 )}
                 {sessionError && <span>{sessionError}</span>}
-                {endError && <span>{endError}</span>}
               </div>
 
               <button
