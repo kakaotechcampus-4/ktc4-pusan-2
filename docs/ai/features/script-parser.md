@@ -202,6 +202,7 @@ LLM은 장 대본을 다시 쓰지 않고 키워드 · 제목 줄 · 용어만 �
 | `/scripts/parse` | 25초 (호출 한 번 기본 12초, 남은 예산 안에서만 1번 더) | 30초 (호출 전체) | 연결 실패 · 시간 초과 · 408 · 429 · 5xx면 1번 | `architecture.md` 3절 '백그라운드 LLM' |
 
 - 잰 시간 (2026-10-24, 기본 묶음 6 luna, 목표 설계 구현, 평가 대본 15개 · 495~4,198자, 출력 상한은 게이트웨이 기본 2,000토큰): 추론 강도를 정하지 않으면(모델 기본값) 922자 · 2,455자 · 4,440자 대본이 출력 2,000토큰을 추론에 다 써 실패했고(`LengthFinishReasonError`, 옛 평가 대본 20개 기준), 응답한 것도 중앙값 13.2초로 12초를 자주 넘었다. 추론 토큰은 대본 길이와 관계없이 호출마다 달랐다. 추론 강도 `low`에서는 실패 없이 1,000자 미만 13개가 중앙값 6.2초 · 최대 7.9초, 2,052자 7.5초, 4,198자 9.9초였고 최대 출력은 1,283토큰(그중 답은 21장에 약 1,000토큰)이었다. 출력 한도 · 추론 강도는 `architecture.md` 9절대로 역할 `script_parser`의 `settings.py` 상수로 둔다(잰 값: 출력 상한 2,000 · 추론 `low`). 대본별 결과는 연구 폴더 README의 '평가 결과'다.
+- 서비스 경로로 잰 시간 (2026-10-28, 기본 묶음 6 luna, 서비스 `/scripts/parse`를 BE의 AI 호출 코드(`HttpScriptParser`)로 부름, 출력 상한 2,000 · 추론 `low`): 평가 대본 15개는 첫 시도에 모두 200이었고 5.97~10.95초(4,198자 10.95초 · 2,052자 9.22초), BE가 읽은 하이라이트 중 버려진 것은 없었다. 같은 날 조금 뒤에는 게이트웨이 지연이 크게 흔들려, 4,198자 대본이 다섯 번 중 네 번 504 `LLM_TIMEOUT`(호출마다 12초 제한에 걸림)이었고, 시간 제한을 60초로 풀고 재면 808자 대본도 12.0~38.4초 · 4,198자 대본은 11.2~42.5초였다. 대본 길이보다 응답 지연 변동이 커서, 호출 한 번 12초 · AI 예산 25초에서는 지연이 높은 때 BE 재시도까지 실패할 수 있다.
 - 옛 측정 (2026-10-12, 6 luna, LLM이 전문을 다시 쓰던 구현): 595~1,125자 대본 9개는 6.4~10.2초에 응답했고, 808자 대본 1개와 이어 붙인 2,225자 · 4,397자 대본은 출력 2,000토큰이 추론에 다 쓰여 실패했다.
 - 모델: 기본 묶음(역할 `script_parser` → 기본 묶음, `architecture.md` 9절).
 
@@ -228,13 +229,13 @@ uv sync
 - 테스트가 볼 것: 구분자 세 형식 · 줄 맨 앞이 아닌 표시 · '첫째' 같은 말, 머리글이 제목 줄뿐(`success`) · 본문 있음(`fail`), 구분자 뒤 같은 줄 본문, 정제(`#1` · `4 * 6` 남김), 코드 포인트 위치(이모지 뒤 하이라이트), 예상 시간 합 · 마지막 장 0자 · 목표 없음, 대본에 없는 키워드 · 용어 버림, 키워드 대본 순서 · `fail`로 바뀐 대본의 키워드가 장마다 고르게 남음, 번호 0 · 겹침 · 거꾸로는 `fail`, 정제 뒤 0자 422, 공백뿐 · 구분자만 있음 422, LLM 예외가 잡히지 않고 올라감, `examples/` 계약(예시 요청을 가짜 LLM으로 돌린 응답이 예시 응답과 같음).
 
 # 11. 배포
-**어디서 도는가**: 코어 `src/script_parser/`(`prompts/` · `examples/` 포함)를 AI 서비스의 `features/script_parser/`로 폴더째 옮기고, 라우터가 `POST /scripts/parse`를 연다. 라우터는 요청 마감 시각을 만들고 `structured_llm(LLM 출력 스키마, deadline)`을 `parse_script`에 넘긴다. LLM 에러는 `common/errors.py`가 상태 코드로 바꾼다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
+**어디서 도는가**: 코어(`prompts/` · `examples/` 포함)는 AI 서비스의 `features/script_parser/`에 있다(연구 폴더 `src/script_parser/`에서 폴더째 옮겼다). 단위 테스트는 서비스 `tests/unit/script_parser/`로 옮겼고, `run.py`(`build_llm`)를 쓰는 실제 LLM 테스트는 연구 폴더 `tests/live/`에 남겼다. 라우터 `api/script_parser.py`가 `POST /scripts/parse`를 연다. 라우터는 요청마다 마감 시각(25초)을 만들고 `structured_llm(LLMOutput, "script_parser", deadline)`을 `parse_script`에 넘긴다. 역할 `script_parser`는 출력 상한 2,000 · 추론 `low`다(8절의 잰 값, `settings.py`의 `LLM_ROLES`). 모델 설정이 없어도 입력 검사가 먼저라 빈 대본은 422 `EMPTY_SCRIPT`이고, LLM을 부를 때만 503 `LLM_UNAVAILABLE`이다. 코어의 `EmptyScriptError`는 라우터가 422 `EMPTY_SCRIPT`로, LLM 에러는 `common/errors.py`가 상태 코드로 바꾼다. `meta.model`에는 실제로 응답한 모델 이름을 싣는다.
 
-**BE와 함께 바꿀 것**: 경로 `/scripts/parse` · `X-Request-ID` · 30초 · 재시도 1번 · `target_ms` 싣기 · `script_chars` · `expected_ms` · `meta` 저장. `highlights`를 `{start, end}`로 바꾸면 `"start:end"` 문자열만 받는 BE 검증은 모든 응답을 실패로 본다. 그래서 BE와 AI가 같은 시점에 바꾼다. BE가 두 모양을 먼저 받게 한 뒤 AI가 바꾸는 순서로 할지는 아직 정하지 않았다(15절 열린 질문).
+**BE와 함께 바꿀 것**: 경로 `/scripts/parse` · `X-Request-ID` · 30초 · 재시도 1번 · `target_ms` 싣기 · `script_chars` · `expected_ms` · `meta` 저장. `highlights`를 `{start, end}`로 바꾸면 `"start:end"` 문자열만 받는 BE 검증은 모든 응답을 실패로 본다. 그래서 BE가 두 모양을 먼저 받게 했고(BE의 AI 호출 코드 `backend/src/pitch_coach_backend/module/pitch/adapter/script_parser.py`가 `{start, end}`와 `"start:end"`를 모두 받는다), AI는 서비스 탑재로 `{start, end}`를 낸다. BE의 옛 모양 처리를 지우는 것은 BE가 고른다(15절).
 
 **환경변수**: 서비스 공통의 LLM 묶음과 시간 제한을 쓴다. 대본 파싱만 시간 제한이 달라야 하면 잰 값과 함께 `SCRIPT_PARSER_LLM_TIMEOUT_SECONDS`를 더한다(`architecture.md` 10절).
 
-**로그**: 대본 원문 · 키워드 · 용어는 남기지 않는다. 대본 길이 · 장 수 · `status`만 남긴다(`architecture.md` 11절).
+**로그**: 대본 원문 · 키워드 · 용어는 남기지 않는다. 대본 길이 · 장 수 · `status`만 남긴다(`architecture.md` 11절). 요청마다 `script_parser chars=… target_ms=… slides=… status=… code=… duration_ms=…` 한 줄이다(실패면 `slides` · `status`는 `-`이고 `code`에 에러 코드).
 
 **증상별 원인**
 
@@ -305,10 +306,10 @@ sequenceDiagram
 # 15. 열린 질문 · 알려진 한계
 **정한 것**
 - 번호 0 · 겹침 · 거꾸로는 `fail`, 용어도 대본에 있는지로 거름, 정제 뒤 0자 422, `fail` 키워드 합치기, 입력 50,000자 한도, 제한 시간만 바뀌면 다시 파싱하지 않음 · `parse_meta`에 `target_ms`.
+- `highlights` 배포 순서: BE가 `"start:end"`와 `{start, end}`를 모두 받게 한 뒤(BE의 AI 호출 코드) AI가 서비스 탑재로 새 모양을 낸다. BE가 옛 모양 처리를 지울지는 BE가 고른다.
 
 **열린 질문** (에이전트 입출력과는 관계없는 FE · BE 쪽)
 - 아직 정하지 않았다: 구분자 형식을 넓힐지. 후보 안은 모호하지 않은 형식(`[Slide N]` · `Slide N:` · 줄 전체가 `슬라이드 N`/`Slide N`, 앞의 `#` 제목 표시)만 더하고 번호 목록(`1.` · `1)`)은 넣지 않으며, FE 안내 정규식을 같은 정의로 맞추는 것이다.
-- 아직 정하지 않았다: `highlights` 배포 순서. 후보 안은 같은 시점 배포 대신 BE가 `"start:end"`와 `{start, end}`를 모두 받게 한 뒤 AI가 새 모양을 내고, 그다음 BE가 옛 모양 처리를 지우는 것이다.
 - 아직 정하지 않았다: FE 예상 시간 표시. 후보 안은 파싱이 끝난 대본은 서버 `expected_ms`를 보이고, 파싱 전 미리보기만 FE 계산을 쓰되 기준 말 속도를 이 문서에 적어 FE 상수를 그 값으로 맞추는 것이다.
 - 아직 정하지 않았다: BE의 파싱 오류 안내. 후보 안은 BE가 대본 파싱의 AI 422를 상태 코드만으로 사용자 입력 오류로 남기고, FE가 "대본을 확인해 주세요"로 안내하는 것이다(에러 본문은 읽지 않는다, `architecture.md` 4절).
 
