@@ -16,6 +16,8 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 
+from pitch_coach_backend.core.database import is_transient_db_error
+from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.core.row_buffer import RowBuffer
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO, TranscriptWordDTO
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
@@ -171,5 +173,17 @@ class FinalBuffer(RowBuffer[TranscriptSegmentCreateDTO]):
                 # final 이 이것에 막혀 영영 저장되지 않는다
                 logger.warning(
                     "이미 저장된 final 이다. 넘어간다 take=%s seq=%d", take_id, segments[0].seq
+                )
+            except Exception as error:
+                if isinstance(error, NonExistentTake) or is_transient_db_error(error):
+                    raise
+                # 저장은 한 행씩 커밋한다. 값이 잘못된 한 행 때문에 대기 중인 나머지 전사까지
+                # RowBuffer 가 묶어서 버리지 않게 여기서 그 행만 넘긴다. 원문은 로그에 남기지 않는다
+                logger.error(
+                    "확정 전사 한 행을 저장할 수 없어 버린다 take=%s seq=%d error=%s sqlstate=%s",
+                    take_id,
+                    segments[0].seq,
+                    type(error).__name__,
+                    sqlstate(error),
                 )
             segments.pop(0)
