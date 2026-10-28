@@ -61,6 +61,7 @@ from fastapi import WebSocket
 
 from pitch_coach_backend.coach.replies import EvaluateReply
 from pitch_coach_backend.coach.requests import SlideEvent
+from pitch_coach_backend.coach.session import MAX_SLIDE_CHANGES
 from pitch_coach_backend.module.take.dto import (
     MetricSecondCreateDTO,
 )
@@ -150,6 +151,7 @@ class TakeStream:
         self.dropped_audio_ms = 0
         # 말 없음 기록 · 서버 시계 · 1초 원자료. Take 에 붙어 있어 이 스트림보다 오래 산다
         self._record = record
+        self._slides_capped = False
         # 마지막으로 받은 오디오 프레임 시각(monotonic). 발표 중인지 본다 (`is_live`)
         self._last_audio_at: float | None = None
         # 끊김 없이 받은 오디오의 Take 시각. 1초 원자료의 STT 상태를 이걸로 정한다
@@ -474,6 +476,13 @@ class TakeStream:
         if source is not None and not self._client.holds(source):
             return
         event = SlideEvent(message.slide_number, message.t_ms)
+        if not self._record.coach.slide_room(event):
+            if not self._slides_capped:
+                self._slides_capped = True
+                logger.warning(
+                    "장 변경이 상한을 넘어 버린다 take=%s limit=%d", self.take_id, MAX_SLIDE_CHANGES
+                )
+            return
         self._record.slides.add(event)
         self._record.coach.on_slide(event)
 
