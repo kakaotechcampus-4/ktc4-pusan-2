@@ -52,6 +52,8 @@ CLOSE_INTERNAL_ERROR = 1011  # 서버 쪽 일시 오류. FE 는 다시 붙는다
 CLOSE_TRY_AGAIN_LATER = 1013  # 받을 자리가 없다. 받기 전이라 브라우저에는 연결 실패로 보인다
 
 AUTH_TIMEOUT_SEC = 5.0
+# 인증 실패 알림을 받지 않는 상대도 슬롯을 계속 붙잡지 못하게 단계마다 기다림을 묶는다.
+REJECT_STEP_TIMEOUT_SEC = 1.0
 
 # 인증 전(연결을 받고 auth 를 기다리는 동안) 연결 수 상한. 정상 FE 는 연결하자마자 auth 를 보내 이
 # 상태가 왕복 한 번이면 끝난다. 같은 와이파이의 수강생 수십 명이 동시에 새로고침해도 IP 하나에 몇
@@ -344,10 +346,12 @@ class Handshake:
         self, code: WsErrorCode, message: str, *, end_reason: TakeEndReason | None = None
     ) -> None:
         """인증 단계 거절. 에러를 한 번 보내고 1008 로 닫는다."""
-        await self._quiet(
-            self._send(ErrorMessage(code=code, message=message, end_reason=end_reason))
-        )
-        await self._quiet(self.ws.close(code=CLOSE_POLICY_VIOLATION, reason=code))
+        with anyio.move_on_after(REJECT_STEP_TIMEOUT_SEC):
+            await self._quiet(
+                self._send(ErrorMessage(code=code, message=message, end_reason=end_reason))
+            )
+        with anyio.move_on_after(REJECT_STEP_TIMEOUT_SEC):
+            await self._quiet(self.ws.close(code=CLOSE_POLICY_VIOLATION, reason=code))
 
     async def reject_ended(self, end_reason: str | None) -> None:
         """끝난 Take 라 `TAKE_ENDED` 로 거절한다.

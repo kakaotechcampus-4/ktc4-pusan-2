@@ -57,7 +57,8 @@ WS /api/ws/takes/{take_id}
   닫아 브라우저에는 연결 실패(닫힘 코드 `1006`)로 보이고 FE 는 백오프로 다시 붙는다. IP 는 `X-Forwarded-For` 의
   첫 값이다 — 바깥 Caddy 가 믿지 않는 상대가 보낸 값을 버리고 상대 주소로 채운다(`infra/Caddyfile` 의
   `trusted_proxies`). Caddy 를 거치지 않고 BE 에 바로 붙을 수 있게 열면 이 값을 꾸밀 수 있어 IP 별 상한이 의미가
-  없어진다.
+  없어진다. 인증 실패 알림 전송과 닫기도 각각 1초까지만 기다려, 응답을 받지 않는 상대가 인증 전 슬롯을
+  계속 붙잡지 못하게 한다.
 - **인증 뒤 Take 를 검사한다.** 사용자 존재 → Take 존재·소유(`takes` → `pitches.user_id`) → 상태
   (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 는 첫 연결이라 받고, 통과하면
   `RUNNING` 으로 바꾼다 (`docs/ai/architecture.md` 1-3). 못 바꾸면(DB 오류) `1011` 로 닫아 FE 가 다시 붙게

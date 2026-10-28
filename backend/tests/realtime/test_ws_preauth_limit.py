@@ -120,6 +120,37 @@ async def test_slots_come_back_after_the_auth_timeout(monkeypatch: pytest.Monkey
     await task
 
 
+@pytest.mark.anyio
+async def test_auth_timeout_releases_the_slot_even_if_rejection_cannot_be_sent(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(handshake_module, "AUTH_TIMEOUT_SEC", 0.01)
+    # 제한 시간 자체는 짧게 바꾸고, 거절 알림/닫기가 모두 막힌 상대를 재현한다.
+    monkeypatch.setattr(handshake_module, "REJECT_STEP_TIMEOUT_SEC", 0.01, raising=False)
+    ws = SilentWebSocket("203.0.113.7")
+    close_tried = asyncio.Event()
+
+    async def stuck_send(text: str) -> None:
+        await asyncio.Event().wait()
+
+    async def stuck_close(code: int = 1000, reason: str = "") -> None:
+        close_tried.set()
+        await asyncio.Event().wait()
+
+    ws.send_text = stuck_send
+    ws.close = stuck_close
+    task = _admit(ws)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=0.3)
+        assert task in done, "거절 전송이 인증 전 슬롯을 계속 붙잡고 있다"
+        assert task.result() is False
+        assert close_tried.is_set()
+        assert pending_auth.total == 0
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 def test_endpoint_refuses_before_accept_and_normal_connections_still_work(
     client: TestClient, stt: FakeSttAdapter, token: str, monkeypatch: pytest.MonkeyPatch
 ):
