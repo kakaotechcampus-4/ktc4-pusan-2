@@ -242,9 +242,10 @@ async def attach(
 
 async def _make_room(owner_id: uuid.UUID) -> None:
     """이 사용자의 새 스트림 자리를 만든다. 열린 스트림이 `MAX_STREAMS_PER_USER` 개면 연결이 끊겨
-    다시 붙기를 기다리는(grace) 스트림을 오래된 것부터 정리한다. 그래도 차 있으면 `TooManyStreams`.
+    다시 붙기를 기다리는(grace) 스트림과 오디오가 멈춘 연결(`is_idle`)의 스트림을 오래된 것부터
+    정리한다. 그래도 차 있으면 `TooManyStreams`.
 
-    붙어 있는 연결의 스트림은 정리하지 않는다 — 다른 창에서 발표 중일 수 있다. 정리한 스트림의
+    오디오가 오는 연결의 스트림은 정리하지 않는다 — 다른 창에서 발표 중일 수 있다. 정리한 스트림의
     Take 는 끝나지 않는다. grace 가 만료된 것과 같아 다시 붙으면 새 스트림이 번호를 이어 받는다.
     정리 중인 스트림도 실제로 닫힐 때까지 센다. request_stop만 하고 자리에서 빼면 반복해서
     끊고 붙이는 동안 drain 중인 Deepgram 세션이 상한 밖으로 계속 쌓인다.
@@ -264,10 +265,14 @@ async def _make_room(owner_id: uuid.UUID) -> None:
         raise TooManyStreams
     for stream in waiting[:excess]:
         logger.info(
-            "새 스트림 자리를 만들려고 다시 붙기를 기다리던 스트림을 정리한다 take=%s",
+            "새 스트림 자리를 만들려고 끊겼거나 오디오가 멈춘 스트림을 정리한다 take=%s",
             stream.take_id,
         )
-        stream.request_stop()
+        if stream.has_client and not stream.is_stopping:
+            # 오디오가 멈춘 연결이다. 그 연결을 닫고 정리한다
+            stream.release_idle()
+        else:
+            stream.request_stop()
         if not await stream.wait_closed():
             stream.cancel()
             # 정리가 끝나지 않았으면 레지스트리에 남겨 다음 요청에서도 세고 새 세션은 거절한다.
@@ -299,8 +304,9 @@ def _open_streams(owner_id: uuid.UUID) -> list[TakeStream]:
 
 
 def _reclaimable(stream: TakeStream) -> bool:
-    """새 스트림 자리를 위해 정리해도 되는 스트림 — 정리 중이거나 다시 붙기를 기다린다."""
-    return stream.is_stopping or not stream.has_client
+    """새 스트림 자리를 위해 정리해도 되는 스트림 — 정리 중이거나 다시 붙기를 기다리거나 붙은
+    연결의 오디오가 멈췄다."""
+    return stream.is_stopping or not stream.has_client or stream.is_idle
 
 
 async def _stored_utterance_ends(take_id: uuid.UUID, store: TranscriptStore) -> list[int]:
