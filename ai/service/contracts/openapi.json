@@ -359,6 +359,60 @@
         "title": "ContentUnit",
         "type": "object"
       },
+      "CoverageKeyPoint": {
+        "properties": {
+          "importance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importance"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "CoverageKeyPoint",
+        "type": "object"
+      },
+      "CoverageSlideEvaluation": {
+        "properties": {
+          "key_points": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageKeyPoint"
+            },
+            "title": "Key Points",
+            "type": "array"
+          },
+          "scores": {
+            "additionalProperties": true,
+            "title": "Scores",
+            "type": "object"
+          },
+          "slide_number": {
+            "minimum": 1.0,
+            "title": "Slide Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slide_number"
+        ],
+        "title": "CoverageSlideEvaluation",
+        "type": "object"
+      },
       "Criteria": {
         "properties": {
           "filler": {
@@ -512,60 +566,6 @@
           "model"
         ],
         "title": "CriteriaMeta",
-        "type": "object"
-      },
-      "CriticalFact": {
-        "properties": {
-          "importance": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Importance"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          }
-        },
-        "title": "CoverageKeyPoint",
-        "type": "object"
-      },
-      "CoverageSlideEvaluation": {
-        "properties": {
-          "key_points": {
-            "items": {
-              "$ref": "#/components/schemas/CoverageKeyPoint"
-            },
-            "title": "Key Points",
-            "type": "array"
-          },
-          "scores": {
-            "additionalProperties": true,
-            "title": "Scores",
-            "type": "object"
-          },
-          "slide_number": {
-            "minimum": 1.0,
-            "title": "Slide Number",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "slide_number"
-        ],
-        "title": "CoverageSlideEvaluation",
         "type": "object"
       },
       "CriteriaResult": {

@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 # 그대로 import 한다(원본은 서비스 한 곳, examples 포함)
 name = "review-agent"
 version = "1.0.0"
-description = "Pitch Coach review agent - research (core + lab)"
+description = "Pitch Coach review agent - research lab (core is in ai/service)"
 # service 가 쓸 Python 버전(3.12)에서 검증한다
 requires-python = ">=3.12"
 dependencies = [

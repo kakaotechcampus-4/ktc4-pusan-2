@@ -18,7 +18,7 @@ from pitch_coach_ai.api import review as api
 from pitch_coach_ai.common.errors import LlmCallFailed, LlmInvalidOutput, LlmTimeout
 from pitch_coach_ai.features.review.schemas import MAX_MISSIONS
 from pitch_coach_ai.main import create_app
-from pitch_coach_ai.settings import Settings
+from pitch_coach_ai.settings import LLM_ROLES, Settings
 
 from .conftest import EXAMPLES, sample_request
 from .test_llm import FakeLLM, full_draft
@@ -144,6 +144,11 @@ def test_review_llm_gets_the_25_second_budget_its_role_and_the_draft_schema(make
     assert schema.__name__ == "ReviewDraft"
     assert role == "review"
     assert before + api.BUDGET_SECONDS <= deadline <= time.monotonic() + api.BUDGET_SECONDS
+
+
+def test_role_uses_the_measured_output_limit_and_low_reasoning() -> None:
+    role = LLM_ROLES["review"]
+    assert (role.bundle, role.max_output_tokens, role.reasoning_effort) == ("default", 2048, "low")
 
 
 def test_review_log_has_counts_but_no_review_text(
