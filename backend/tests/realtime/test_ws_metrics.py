@@ -17,6 +17,7 @@ from pitch_coach_backend.module.take.service import record as record_service
 from pitch_coach_backend.realtime.dto import (
     MetricsMessage,
 )
+from pitch_coach_backend.realtime.storage import metrics as metrics_module
 from pitch_coach_backend.realtime.storage.metrics import METRICS_BATCH, MetricBuffer
 from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
 from pitch_coach_backend.realtime.stt.adapter import (
@@ -302,6 +303,98 @@ async def test_metrics_from_an_evicted_tab_are_dropped():
     await finish.flush_metrics(TAKE_ID)
 
     assert sorted(store.metrics) == [2000]
+
+
+def _push(stream, *messages: dict, source: FakeWebSocket) -> None:
+    for message in messages:
+        stream.push_metrics(MetricsMessage.model_validate(message), source=source)
+
+
+@pytest.mark.anyio
+async def test_close_t_ms_flood_stays_under_the_take_limit(monkeypatch: pytest.MonkeyPatch):
+    """`t_ms` 만 1ms 씩 바꿔 보내도 저장 행 · 코치의 버퍼가 Take 상한을 넘지 않는다. 코치가 꺼져
+    있어도 마찬가지다. 상한까지는 먼저 받은 것을 둔다."""
+    monkeypatch.setattr(metrics_module, "MAX_METRICS_PER_TAKE", 50)
+    store = FakeTranscriptStore()
+    stream = registry.create_stream(
+        TAKE_ID,
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=store,
+    )
+    ws = FakeWebSocket()
+    await stream.attach(ws)
+
+    _push(stream, *(metrics(1_000 + i) for i in range(500)), source=ws)
+    await finish.flush_metrics(TAKE_ID)
+
+    assert sorted(store.metrics) == list(range(1_000, 1_050))
+    coach = stream._record.coach
+    assert not coach.enabled
+    assert len(coach._seen_metrics) == 50
+    assert len(coach._pending_metrics) == 50
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_normal_seconds_short_pieces_and_buffered_resends_are_all_kept():
+    """정상 기록은 상한에 걸리지 않는다. 1초 기록 · 새로고침 직전의 짧은 조각 · 이어받은 뒤의 1초 ·
+    다시 붙은 뒤 몰아 온(시각이 거꾸로 가는) 기록 · 끝의 짧은 조각을 모두 받고, 같은 1초는 먼저
+    받은 것을 둔다."""
+    store = FakeTranscriptStore()
+    stream = registry.create_stream(
+        TAKE_ID,
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=store,
+    )
+    old_tab = FakeWebSocket()
+    await stream.attach(old_tab)
+    _push(stream, metrics(1_000), metrics(2_000), metrics(2_400, duration_ms=400), source=old_tab)
+
+    new_tab = FakeWebSocket()
+    await stream.attach(new_tab)
+    late = metrics(3_400) | {"buffered": True}
+    _push(
+        stream,
+        metrics(5_400),
+        metrics(4_400) | {"buffered": True},
+        late,
+        metrics(2_000, slide_number=9),
+        metrics(5_700, duration_ms=300),
+        source=new_tab,
+    )
+    await finish.flush_metrics(TAKE_ID)
+
+    assert sorted(store.metrics) == [1_000, 2_000, 2_400, 3_400, 4_400, 5_400, 5_700]
+    assert store.metrics[2_000].slide_number == 1
+    stream.cancel()
+    await stream.wait_closed(timeout=1.0)
+
+
+@pytest.mark.anyio
+async def test_metric_buffer_admits_each_second_once_up_to_the_limit(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(metrics_module, "MAX_METRICS_PER_TAKE", 3)
+    buffer = MetricBuffer(uuid.uuid7(), FakeTranscriptStore())
+
+    assert [buffer.admit(t) for t in (3_000, 1_000, 3_000, 2_000, 4_000, 1_000)] == [
+        True,
+        True,
+        False,
+        True,
+        False,
+        False,
+    ]
+    assert len(buffer._admitted) == 3
+    # Take 를 끝내면 더 받지 않고 기억도 놓는다
+    buffer.seal()
+    assert not buffer.admit(5_000)
+    assert buffer._admitted == set()
 
 
 @pytest.mark.anyio
