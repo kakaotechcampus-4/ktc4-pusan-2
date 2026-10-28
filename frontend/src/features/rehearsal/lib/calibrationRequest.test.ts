@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CalibrationSummary } from '@/types/api';
+import type { MeasureTrack } from '@/types/take';
 import { toCalibrationRequest } from './calibrationRequest';
 
 const summary: CalibrationSummary = {
@@ -79,7 +80,7 @@ describe('보정 요약 → 발표 전 점검 결과 (AI 시선 문서 12-1)', (
   });
 
   it('음량을 잰 트랙을 그대로 싣고, 모르면 null 로 보낸다 (#609)', () => {
-    const track = (measureTrack: 'PROCESSED' | 'FALLBACK' | null) =>
+    const track = (measureTrack: MeasureTrack | null) =>
       toCalibrationRequest(summary, { micDetected: true, baseLevelDb: null, measureTrack }).result
         .measure_track;
     expect(track('PROCESSED')).toBe('PROCESSED');

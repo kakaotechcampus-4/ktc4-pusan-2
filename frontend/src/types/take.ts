@@ -26,7 +26,8 @@ export interface TakeCreateRequest {
  * 발표 전 점검 결과 — `POST /api/pitches/{pitch_id}/takes/{take_id}/calibration`.
  *
  * 앞의 넷은 BE `CalibrationDTO` 그대로이고, `result` 는 AI 시선 문서(`docs/ai/features/gaze-tracking.md`
- * 12-1)가 정한 `calibrations.result` 입니다 (BE `CalibrationResultDTO`).
+ * 12-1)가 정한 `calibrations.result` 입니다 (BE `CalibrationResultDTO`). 단 `result.measure_track` 은
+ * 음량 쪽 값으로 #609 에서 더했고, AI 계약 확정 전이라 시선 문서와 BE DTO 에는 아직 없습니다.
  *
  * ★ 보정 모델(얼굴 측정값)은 보내지 않습니다. 요약 수치만 갑니다.
  * ★ `base_volume` 은 보내지 않습니다. 뜻이 다른 옛 칸(조용한 환경의 소음 기준)이고 AI 가 쓰지 않습니다
