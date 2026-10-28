@@ -377,6 +377,14 @@ class Handshake:
         with anyio.move_on_after(REJECT_STEP_TIMEOUT_SEC):
             await self._quiet(self.ws.close(code=CLOSE_POLICY_VIOLATION, reason=code))
 
+    async def reject_busy(self) -> None:
+        """잠시 받을 수 없어 1013 으로 닫는다. 오류는 보내지 않는다 — FE 는 1013 을 연결 실패로 보고
+        백오프로 다시 붙는다 (1000 · 1008 만 포기한다)."""
+        with anyio.move_on_after(REJECT_STEP_TIMEOUT_SEC):
+            await self._quiet(
+                self.ws.close(code=CLOSE_TRY_AGAIN_LATER, reason="previous stream closing")
+            )
+
     async def reject_ended(self, end_reason: str | None) -> None:
         """끝난 Take 라 `TAKE_ENDED` 로 거절한다.
 

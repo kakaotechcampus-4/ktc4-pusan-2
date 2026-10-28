@@ -58,6 +58,11 @@ class TooManyStreams(Exception):
     """이 사용자가 다른 Take 로 연 스트림이 상한(`MAX_STREAMS_PER_USER`)에 닿았다."""
 
 
+class StreamClosing(Exception):
+    """이 사용자의 이전 스트림이 제한 시간 안에 닫히지 않아 자리를 못 냈다. 잠시 뒤 다시 붙으면
+    열린다 — 다른 Take 가 발표 중이라 거절하는 `TooManyStreams` 와 다르다."""
+
+
 class TakeEnded(Exception):
     """이 프로세스에서 끝낸 Take 다. DB 에 적히기 전이라도 다시 붙지 못한다.
 
@@ -168,7 +173,7 @@ async def attach(
     Take 존재·소유·상태는 호출자(service)가 DB 로 먼저 검사한다. 여기서는 스트림을
     만든 사용자와 다르면 `StreamOwnerMismatch` — 그 검사의 이중 안전장치다.
     이 프로세스에서 끝낸 Take 면 `TakeEnded`. 새 스트림을 열 자리가 없으면 `TooManyStreams`
-    (`_make_room`).
+    (`_make_room`), 이전 스트림 정리가 늦어 자리를 못 냈으면 `StreamClosing`.
 
     `coach_context` 는 Take 를 시작할 때 읽은 값이다. 코치가 아직 꺼져 있으면 이 값으로 켠다 —
     다시 붙은 연결이면 이미 켜져 있고 그 `coach_state` 를 이어 간다. 없으면(읽기 실패) STT 만 돈다.
@@ -211,7 +216,7 @@ async def attach(
             async with state.stream_owner_lock(owner_id):
                 try:
                     await _make_room(owner_id)
-                except TooManyStreams:
+                except TooManyStreams, StreamClosing:
                     if not abandon.armed(take_id):
                         # 첫 연결이 Take 를 시작했는데(`RUNNING`) 스트림이 없다. 아무도 다시
                         # 붙지 않으면 떠난 것으로 끝낸다 — 스트림이 닫힌 Take 와 같다
@@ -243,7 +248,8 @@ async def attach(
 async def _make_room(owner_id: uuid.UUID) -> None:
     """이 사용자의 새 스트림 자리를 만든다. 열린 스트림이 `MAX_STREAMS_PER_USER` 개면 연결이 끊겨
     다시 붙기를 기다리는(grace) 스트림과 오디오가 멈춘 연결(`is_idle`)의 스트림을 오래된 것부터
-    정리한다. 그래도 차 있으면 `TooManyStreams`.
+    정리한다. 그래도 차 있으면 `TooManyStreams`, 정리할 스트림이 제한 시간 안에 닫히지 않으면
+    `StreamClosing`.
 
     오디오가 오는 연결의 스트림은 정리하지 않는다 — 다른 창에서 발표 중일 수 있다. 정리한 스트림의
     Take 는 끝나지 않는다. grace 가 만료된 것과 같아 다시 붙으면 새 스트림이 번호를 이어 받는다.
@@ -276,8 +282,9 @@ async def _make_room(owner_id: uuid.UUID) -> None:
         if not await stream.wait_closed():
             stream.cancel()
             # 정리가 끝나지 않았으면 레지스트리에 남겨 다음 요청에서도 세고 새 세션은 거절한다.
+            # 곧 닫히므로 다시 붙을 수 있게 알린다
             if not await stream.wait_closed(stt_loop.ABORT_TIMEOUT_SEC):
-                raise TooManyStreams
+                raise StreamClosing
 
 
 def has_room(owner_id: uuid.UUID, take_id: uuid.UUID) -> bool:

@@ -186,7 +186,8 @@ class WsErrorCode(StrEnum):
       끝난 연습에 전사를 더 붙이면 리포트가 오염된다. BE 가 끝냈으면 `end_reason` 에 이유를 싣는다.
     - `FORBIDDEN` 은 소유권 검사(DB) 뒤의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
     - 사용자는 한 번에 연습 하나만 한다 (`registry.MAX_STREAMS_PER_USER` = 1).
-      `TOO_MANY_STREAMS` 는 다른 Take가 연결돼 있거나 이전 스트림 정리가 늦어질 때다.
+      `TOO_MANY_STREAMS` 는 다른 Take 가 연결돼 있을 때다. 이전 스트림 정리가 늦으면 오류 없이
+      1013 으로 닫아 FE 가 다시 붙는다.
       같은 Take 로 다시 붙는 연결은 기존 스트림을 이어받는다. 첫 연결이면 Take 를 시작하기 전에
       거절해 `READY` 로 남는다.
     """
