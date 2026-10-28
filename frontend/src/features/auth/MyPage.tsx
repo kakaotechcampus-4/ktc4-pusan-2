@@ -140,7 +140,7 @@ export function MyPage() {
             type="button"
             disabled={withdraw.isPending}
             onClick={confirmWithdraw}
-            className="min-h-11 text-sm font-bold text-coral-deep underline underline-offset-4 disabled:opacity-50"
+            className="min-h-11 text-sm font-bold text-coral-deep underline underline-offset-4"
           >
             {withdraw.isPending ? '삭제하는 중…' : '계정 삭제하기'}
           </button>

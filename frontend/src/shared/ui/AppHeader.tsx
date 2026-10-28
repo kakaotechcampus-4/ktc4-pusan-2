@@ -30,7 +30,7 @@ export function AppHeader() {
   const { pathname } = useLocation();
   return (
     <header className="border-b border-line-strong bg-panel text-ink">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-5 px-6 py-5 lg:px-10">
+      <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-5 px-6 py-5 lg:px-10">
         <Link to="/" aria-label="PITCH COACH 홈">
           <PitchCoachWordmark />
         </Link>
@@ -51,7 +51,7 @@ export function AppHeader() {
           <button
             disabled={logout.isPending}
             onClick={() => logout.mutate()}
-            className="min-h-11 text-ink/80 hover:text-ink disabled:opacity-50"
+            className="min-h-11 text-ink/80 hover:text-ink"
           >
             {logout.isPending ? '로그아웃 중…' : '로그아웃'}
           </button>
