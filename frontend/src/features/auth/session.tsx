@@ -62,7 +62,7 @@ export function RequireSession({
     );
 
   return (
-    <>
+    <div className={bright ? 'contents' : 'rehearsal-shell'}>
       {showHeader && (
         <div
           className={`${bright ? 'pitch-create flex-wrap bg-greige text-ink [&>a]:shrink-0 [&>button]:shrink-0 ' : ''}flex items-center justify-end gap-4 px-6 py-3 text-sm`}
@@ -83,7 +83,7 @@ export function RequireSession({
           <button
             disabled={signOut.isPending}
             onClick={() => signOut.mutate()}
-            className="underline disabled:opacity-60"
+            className="underline"
           >
             {signOut.isPending ? '로그아웃 중…' : '로그아웃'}
           </button>
@@ -93,6 +93,6 @@ export function RequireSession({
         </div>
       )}
       <Outlet />
-    </>
+    </div>
   );
 }

@@ -24,5 +24,5 @@ COPY alembic/ ./alembic/
 # 포트 8000 노출 명시
 EXPOSE 8000
 
-# uvicorn 실행, 8000번 포트로 외부 접속 허용
-CMD ["uvicorn", "pitch_coach_backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 인증 전에도 수신 메시지를 64KiB 로 제한한다. 최대 오디오 프레임은 32,008바이트다.
+CMD ["uvicorn", "pitch_coach_backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--ws-max-size", "65536"]

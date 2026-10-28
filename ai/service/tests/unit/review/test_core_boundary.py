@@ -13,7 +13,10 @@ from pathlib import Path
 
 import pytest
 
-CORE = Path(__file__).resolve().parents[2] / "src" / "review"
+from pitch_coach_ai.features import review
+
+#: 코어 폴더는 테스트 파일이 아니라 패키지 위치로 찾는다 (옮겨도 그대로 돈다)
+CORE = Path(review.__file__).resolve().parent
 
 # 코어가 쓰는 표준 모듈. 계산만 하는 모듈만 둔다. 새로 필요하면 그 모듈이
 # 파일 · 네트워크 · 환경변수 · 시계 · 난수를 쓰지 않는지 확인하고 여기에 더한다

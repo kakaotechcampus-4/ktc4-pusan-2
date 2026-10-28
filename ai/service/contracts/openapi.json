@@ -140,7 +140,62 @@
         "title": "AreaCriteria",
         "type": "object"
       },
-      "AreaResult": {
+      "AreaResult-Input": {
+        "description": "Take 결과의 영역 하나. 코치가 측정 비율 미달로 본 영역은\nunmeasured_reason 이 LOW_MEASURED_RATIO 이고 take · slides 가 null",
+        "properties": {
+          "measured_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured Ratio"
+          },
+          "slides": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SlideValues"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slides"
+          },
+          "take": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take"
+          },
+          "unmeasured_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmeasured Reason"
+          }
+        },
+        "title": "AreaResult",
+        "type": "object"
+      },
+      "AreaResult-Output": {
         "additionalProperties": false,
         "properties": {
           "measured_ratio": {
@@ -306,7 +361,7 @@
           },
           "missions": {
             "items": {
-              "$ref": "#/components/schemas/Mission"
+              "$ref": "#/components/schemas/pitch_coach_ai__features__coach__schemas__Mission"
             },
             "title": "Missions",
             "type": "array"
@@ -470,6 +525,77 @@
         "title": "CoachingPlan",
         "type": "object"
       },
+      "Comparison": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Current"
+          },
+          "improved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Improved"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Previous"
+          },
+          "script_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScriptMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          }
+        },
+        "required": [
+          "metric",
+          "previous",
+          "current",
+          "improved"
+        ],
+        "title": "Comparison",
+        "type": "object"
+      },
       "Confirmation": {
         "description": "아직 답을 받지 않은 비슷한 말 하나.",
         "properties": {
@@ -564,6 +690,60 @@
           "source"
         ],
         "title": "ContentUnit",
+        "type": "object"
+      },
+      "CoverageKeyPoint": {
+        "properties": {
+          "importance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importance"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "CoverageKeyPoint",
+        "type": "object"
+      },
+      "CoverageSlideEvaluation": {
+        "properties": {
+          "key_points": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageKeyPoint"
+            },
+            "title": "Key Points",
+            "type": "array"
+          },
+          "scores": {
+            "additionalProperties": true,
+            "title": "Scores",
+            "type": "object"
+          },
+          "slide_number": {
+            "minimum": 1.0,
+            "title": "Slide Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slide_number"
+        ],
+        "title": "CoverageSlideEvaluation",
         "type": "object"
       },
       "Criteria": {
@@ -719,6 +899,141 @@
           "model"
         ],
         "title": "CriteriaMeta",
+        "type": "object"
+      },
+      "CriteriaResult": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "observed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed"
+          },
+          "operator": {
+            "enum": [
+              "LT",
+              "LTE",
+              "GT",
+              "GTE"
+            ],
+            "title": "Operator",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ACHIEVED",
+              "PARTIAL",
+              "FAILED",
+              "NOT_EVALUABLE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "required": [
+          "display",
+          "metric",
+          "operator",
+          "target",
+          "observed",
+          "status"
+        ],
+        "title": "CriteriaResult",
+        "type": "object"
+      },
+      "CriteriaTarget": {
+        "description": "사용자 기준 하나. 숫자 목표(metric · operator · value)가 없으면 판정하지 않는다",
+        "properties": {
+          "display": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "enum": [
+                  "LT",
+                  "LTE",
+                  "GT",
+                  "GTE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "title": "CriteriaTarget",
         "type": "object"
       },
       "CriticalFact": {
@@ -1505,7 +1820,7 @@
           },
           "missions": {
             "items": {
-              "$ref": "#/components/schemas/Mission"
+              "$ref": "#/components/schemas/pitch_coach_ai__features__coach__schemas__Mission"
             },
             "title": "Missions",
             "type": "array"
@@ -1628,7 +1943,7 @@
             "$ref": "#/components/schemas/pitch_coach_ai__features__coach__schemas__Meta"
           },
           "take_result": {
-            "$ref": "#/components/schemas/TakeResult"
+            "$ref": "#/components/schemas/TakeResult-Output"
           }
         },
         "required": [
@@ -1671,7 +1986,31 @@
         "title": "FocusItem",
         "type": "object"
       },
-      "GaveUp": {
+      "GaveUp-Input": {
+        "properties": {
+          "issue_type": {
+            "title": "Issue Type",
+            "type": "string"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          }
+        },
+        "required": [
+          "issue_type"
+        ],
+        "title": "GaveUp",
+        "type": "object"
+      },
+      "GaveUp-Output": {
         "additionalProperties": false,
         "description": "효과가 없어 더 말하지 않기로 한 문제.",
         "properties": {
@@ -1794,6 +2133,52 @@
           "end"
         ],
         "title": "Highlight",
+        "type": "object"
+      },
+      "Improvement": {
+        "additionalProperties": false,
+        "properties": {
+          "area": {
+            "title": "Area",
+            "type": "string"
+          },
+          "evidence": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "title": "Evidence",
+            "type": "object"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "area",
+          "slide_number",
+          "text",
+          "evidence"
+        ],
+        "title": "Improvement",
         "type": "object"
       },
       "Instruction": {
@@ -2182,31 +2567,40 @@
         "title": "Keyword",
         "type": "object"
       },
-      "Mission": {
-        "description": "직전 리뷰의 next_missions 그대로.",
+      "MissionResult": {
+        "additionalProperties": false,
         "properties": {
-          "area": {
-            "$ref": "#/components/schemas/FeedbackType"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
+          "metric": {
+            "title": "Metric",
+            "type": "string"
           },
           "mission_id": {
             "title": "Mission Id",
             "type": "string"
           },
-          "priority": {
-            "default": 1,
-            "title": "Priority",
-            "type": "integer"
+          "observed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed"
+          },
+          "operator": {
+            "enum": [
+              "LT",
+              "LTE",
+              "GT",
+              "GTE"
+            ],
+            "title": "Operator",
+            "type": "string"
           },
           "slide_number": {
             "anyOf": [
@@ -2219,22 +2613,38 @@
             ],
             "title": "Slide Number"
           },
+          "status": {
+            "enum": [
+              "ACHIEVED",
+              "PARTIAL",
+              "FAILED",
+              "NOT_EVALUABLE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
           "target": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/MissionTarget"
+                "type": "integer"
               },
               {
-                "type": "null"
+                "type": "number"
               }
-            ]
+            ],
+            "title": "Target"
           }
         },
         "required": [
           "mission_id",
-          "area"
+          "status",
+          "metric",
+          "operator",
+          "slide_number",
+          "target",
+          "observed"
         ],
-        "title": "Mission",
+        "title": "MissionResult",
         "type": "object"
       },
       "MissionTarget": {
@@ -2264,6 +2674,79 @@
           "value"
         ],
         "title": "MissionTarget",
+        "type": "object"
+      },
+      "MissionTargetIn": {
+        "properties": {
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "operator": {
+            "enum": [
+              "LT",
+              "LTE",
+              "GT",
+              "GTE"
+            ],
+            "title": "Operator",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "metric",
+          "operator",
+          "value"
+        ],
+        "title": "MissionTargetIn",
+        "type": "object"
+      },
+      "MissionTargetOut": {
+        "additionalProperties": false,
+        "properties": {
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "operator": {
+            "enum": [
+              "LT",
+              "LTE",
+              "GT",
+              "GTE"
+            ],
+            "title": "Operator",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "metric",
+          "operator",
+          "value"
+        ],
+        "title": "MissionTargetOut",
         "type": "object"
       },
       "Mode": {
@@ -2305,6 +2788,70 @@
           "reason"
         ],
         "title": "NameDecision",
+        "type": "object"
+      },
+      "NextMission": {
+        "additionalProperties": false,
+        "description": "mission_id 는 없다. BE 가 missions 에 저장하며 붙인다",
+        "properties": {
+          "area": {
+            "enum": [
+              "GAZE",
+              "SPEED",
+              "VOLUME",
+              "PAUSE",
+              "FILLER",
+              "CONTENT",
+              "TIME"
+            ],
+            "title": "Area",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "target": {
+            "$ref": "#/components/schemas/MissionTargetOut"
+          }
+        },
+        "required": [
+          "area",
+          "slide_number",
+          "description",
+          "target",
+          "priority",
+          "reason"
+        ],
+        "title": "NextMission",
         "type": "object"
       },
       "Outcome": {
@@ -2744,7 +3291,81 @@
         "title": "PlanResponse",
         "type": "object"
       },
-      "ProblemSegment": {
+      "PreviousTake": {
+        "properties": {
+          "take_result": {
+            "$ref": "#/components/schemas/TakeResult-Input"
+          },
+          "take_scores": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Take Scores"
+          }
+        },
+        "required": [
+          "take_result"
+        ],
+        "title": "PreviousTake",
+        "type": "object"
+      },
+      "ProblemSegment-Input": {
+        "properties": {
+          "area": {
+            "title": "Area",
+            "type": "string"
+          },
+          "end_ms": {
+            "title": "End Ms",
+            "type": "integer"
+          },
+          "issue_type": {
+            "title": "Issue Type",
+            "type": "string"
+          },
+          "mean_severity": {
+            "title": "Mean Severity",
+            "type": "number"
+          },
+          "reliable": {
+            "default": false,
+            "title": "Reliable",
+            "type": "boolean"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "start_ms": {
+            "title": "Start Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "area",
+          "issue_type",
+          "start_ms",
+          "end_ms",
+          "mean_severity"
+        ],
+        "title": "ProblemSegment",
+        "type": "object"
+      },
+      "ProblemSegment-Output": {
         "additionalProperties": false,
         "description": "문제 구간 하나. 같은 문제의 끊긴 조각은 합치고, 판정 지연만큼 되돌려 Take 안으로 자른다.",
         "properties": {
@@ -2819,6 +3440,77 @@
           "area"
         ],
         "title": "RecurringIssue",
+        "type": "object"
+      },
+      "RecurringIssueIn": {
+        "properties": {
+          "area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area"
+          },
+          "dimension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          }
+        },
+        "title": "RecurringIssueIn",
+        "type": "object"
+      },
+      "RecurringIssueOut": {
+        "additionalProperties": false,
+        "properties": {
+          "area": {
+            "title": "Area",
+            "type": "string"
+          },
+          "dimension": {
+            "title": "Dimension",
+            "type": "string"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          }
+        },
+        "required": [
+          "area",
+          "slide_number",
+          "dimension"
+        ],
+        "title": "RecurringIssueOut",
         "type": "object"
       },
       "RelaxItem": {
@@ -3005,6 +3697,248 @@
         "title": "ResponseMeta",
         "type": "object"
       },
+      "ReviewMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "criteria_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Criteria Versions",
+            "type": "object"
+          },
+          "feature_version": {
+            "title": "Feature Version",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "feature_version",
+          "criteria_versions",
+          "model"
+        ],
+        "title": "ReviewMeta",
+        "type": "object"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "missions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/pitch_coach_ai__features__review__schemas__Mission"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missions"
+          },
+          "previous_recurring_issues": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RecurringIssueIn"
+                },
+                "maxItems": 20,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Recurring Issues"
+          },
+          "previous_takes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PreviousTake"
+                },
+                "maxItems": 3,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Takes"
+          },
+          "script_coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScriptCoverage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "take_result": {
+            "$ref": "#/components/schemas/TakeResult-Input"
+          },
+          "user_criteria": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserCriteria"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "take_result"
+        ],
+        "title": "ReviewRequest",
+        "type": "object"
+      },
+      "ReviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "comparison": {
+            "items": {
+              "$ref": "#/components/schemas/Comparison"
+            },
+            "title": "Comparison",
+            "type": "array"
+          },
+          "criteria_results": {
+            "items": {
+              "$ref": "#/components/schemas/CriteriaResult"
+            },
+            "title": "Criteria Results",
+            "type": "array"
+          },
+          "dimensions": {
+            "additionalProperties": {
+              "enum": [
+                "IMPROVED",
+                "PRIORITY",
+                "STABLE",
+                "STRENGTH",
+                "NOT_EVALUABLE"
+              ],
+              "type": "string"
+            },
+            "title": "Dimensions",
+            "type": "object"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "LLM_TIMEOUT",
+                  "LLM_ERROR",
+                  "LLM_INVALID_OUTPUT",
+                  "LLM_UNAVAILABLE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "improvements": {
+            "items": {
+              "$ref": "#/components/schemas/Improvement"
+            },
+            "title": "Improvements",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ReviewMeta"
+          },
+          "mission_results": {
+            "items": {
+              "$ref": "#/components/schemas/MissionResult"
+            },
+            "title": "Mission Results",
+            "type": "array"
+          },
+          "next_missions": {
+            "items": {
+              "$ref": "#/components/schemas/NextMission"
+            },
+            "maxItems": 20,
+            "title": "Next Missions",
+            "type": "array"
+          },
+          "overall_summary": {
+            "title": "Overall Summary",
+            "type": "string"
+          },
+          "recurring_issues": {
+            "items": {
+              "$ref": "#/components/schemas/RecurringIssueOut"
+            },
+            "maxItems": 20,
+            "title": "Recurring Issues",
+            "type": "array"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "strengths": {
+            "items": {
+              "$ref": "#/components/schemas/Strength"
+            },
+            "title": "Strengths",
+            "type": "array"
+          },
+          "take_id": {
+            "title": "Take Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "take_id",
+          "overall_summary",
+          "score",
+          "dimensions",
+          "strengths",
+          "improvements",
+          "comparison",
+          "mission_results",
+          "criteria_results",
+          "next_missions",
+          "recurring_issues",
+          "fallback_reason",
+          "meta"
+        ],
+        "title": "ReviewResponse",
+        "type": "object"
+      },
       "RubricMeta": {
         "properties": {
           "content_hash": {
@@ -3171,6 +4105,63 @@
           "model"
         ],
         "title": "ScoringMeta",
+        "type": "object"
+      },
+      "ScriptCoverage": {
+        "description": "대본 전달도 채점 (/takes/analyze · /takes/rescore 출력). 리뷰가 읽는 필드만",
+        "properties": {
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageSlideEvaluation"
+            },
+            "title": "Evaluations",
+            "type": "array"
+          },
+          "failed": {
+            "items": {},
+            "title": "Failed",
+            "type": "array"
+          },
+          "take_scores": {
+            "additionalProperties": true,
+            "title": "Take Scores",
+            "type": "object"
+          }
+        },
+        "title": "ScriptCoverage",
+        "type": "object"
+      },
+      "ScriptMode": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          }
+        },
+        "required": [
+          "previous",
+          "current"
+        ],
+        "title": "ScriptMode",
         "type": "object"
       },
       "ScriptSlide": {
@@ -3869,6 +4860,55 @@
         "title": "SlideScript",
         "type": "object"
       },
+      "SlideValues": {
+        "description": "Take 결과의 장별 값. 측정 비율 미달이면 metrics 가 null",
+        "properties": {
+          "measured_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured Ratio"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metrics"
+          },
+          "slide_number": {
+            "minimum": 1.0,
+            "title": "Slide Number",
+            "type": "integer"
+          },
+          "target_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Ms"
+          }
+        },
+        "required": [
+          "slide_number"
+        ],
+        "title": "SlideValues",
+        "type": "object"
+      },
       "StrategyChange": {
         "enum": [
           "ESCALATED",
@@ -3959,6 +4999,52 @@
           "intervention_id"
         ],
         "title": "StrategyEvent",
+        "type": "object"
+      },
+      "Strength": {
+        "additionalProperties": false,
+        "properties": {
+          "area": {
+            "title": "Area",
+            "type": "string"
+          },
+          "evidence": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "title": "Evidence",
+            "type": "object"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "area",
+          "slide_number",
+          "text",
+          "evidence"
+        ],
+        "title": "Strength",
         "type": "object"
       },
       "SttStatusChange": {
@@ -4168,13 +5254,77 @@
         "title": "TakePlan",
         "type": "object"
       },
-      "TakeResult": {
+      "TakeResult-Input": {
+        "description": "코치 Take 결과 (coach-agent.md 5-3). 리뷰가 읽는 필드만",
+        "properties": {
+          "areas": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AreaResult-Input"
+            },
+            "title": "Areas",
+            "type": "object"
+          },
+          "criteria": {
+            "additionalProperties": true,
+            "title": "Criteria",
+            "type": "object"
+          },
+          "gave_up": {
+            "items": {
+              "$ref": "#/components/schemas/GaveUp-Input"
+            },
+            "title": "Gave Up",
+            "type": "array"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
+          },
+          "problem_segments": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemSegment-Input"
+            },
+            "title": "Problem Segments",
+            "type": "array"
+          },
+          "script_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Mode"
+          },
+          "take_id": {
+            "title": "Take Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "take_id",
+          "areas"
+        ],
+        "title": "TakeResult",
+        "type": "object"
+      },
+      "TakeResult-Output": {
         "additionalProperties": false,
         "description": "Take 의 사실(지표 · 판정 기준). 결론은 담지 않는다.",
         "properties": {
           "areas": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/AreaResult"
+              "$ref": "#/components/schemas/AreaResult-Output"
             },
             "title": "Areas",
             "type": "object"
@@ -4197,7 +5347,7 @@
           },
           "gave_up": {
             "items": {
-              "$ref": "#/components/schemas/GaveUp"
+              "$ref": "#/components/schemas/GaveUp-Output"
             },
             "title": "Gave Up",
             "type": "array"
@@ -4221,7 +5371,7 @@
           },
           "problem_segments": {
             "items": {
-              "$ref": "#/components/schemas/ProblemSegment"
+              "$ref": "#/components/schemas/ProblemSegment-Output"
             },
             "title": "Problem Segments",
             "type": "array"
@@ -4447,6 +5597,38 @@
         "title": "UnitResult",
         "type": "object"
       },
+      "UserCriteria": {
+        "properties": {
+          "display_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Display Criteria",
+            "type": "array"
+          },
+          "script_used": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Used"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/CriteriaTarget"
+            },
+            "maxItems": 20,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "title": "UserCriteria",
+        "type": "object"
+      },
       "VoiceRecordIn": {
         "description": "FE 가 보내는 음량 1초 기록(#155). 시선 판정도 같은 1초들의 voiced_ms 를 쓴다.",
         "properties": {
@@ -4560,6 +5742,101 @@
           "criteria_versions"
         ],
         "title": "Meta",
+        "type": "object"
+      },
+      "pitch_coach_ai__features__coach__schemas__Mission": {
+        "description": "직전 리뷰의 next_missions 그대로.",
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/FeedbackType"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "mission_id": {
+            "title": "Mission Id",
+            "type": "string"
+          },
+          "priority": {
+            "default": 1,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MissionTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "mission_id",
+          "area"
+        ],
+        "title": "Mission",
+        "type": "object"
+      },
+      "pitch_coach_ai__features__review__schemas__Mission": {
+        "properties": {
+          "area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area"
+          },
+          "mission_id": {
+            "title": "Mission Id",
+            "type": "string"
+          },
+          "slide_number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slide Number"
+          },
+          "target": {
+            "$ref": "#/components/schemas/MissionTargetIn"
+          }
+        },
+        "required": [
+          "mission_id",
+          "target"
+        ],
+        "title": "Mission",
         "type": "object"
       },
       "pitch_coach_ai__features__script_parser__schemas__Meta": {
@@ -5226,6 +6503,57 @@
         "summary": "Rescore",
         "tags": [
           "script_coverage"
+        ]
+      }
+    },
+    "/takes/review": {
+      "post": {
+        "operationId": "review_takes_review_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "처리되지 않은 예외(INTERNAL_ERROR)"
+          }
+        },
+        "summary": "Review",
+        "tags": [
+          "review"
         ]
       }
     }

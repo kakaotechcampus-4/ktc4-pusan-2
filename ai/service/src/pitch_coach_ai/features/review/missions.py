@@ -42,10 +42,8 @@ def judge_target(
     tolerance = cfg.mission.tolerance.get(metric)
     if tolerance is None:
         return "FAILED", observed
-    if operator in ("LT", "LTE"):
-        gap = observed - value
-    else:  # GT · GTE
-        gap = value - observed
+    # LT · LTE 는 기준을 넘은 만큼, GT · GTE 는 기준에 못 미친 만큼이 차이다
+    gap = observed - value if operator in ("LT", "LTE") else value - observed
     return ("PARTIAL" if gap <= tolerance + 1e-9 else "FAILED"), observed
 
 

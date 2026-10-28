@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from review.core import check_numbers, message_numbers
+from pitch_coach_ai.features.review.core import check_numbers, message_numbers
 
 #: architecture.md 0-2 숫자 검사 예시 표 (입력 값, 문장 속 숫자, 같은가)
 CONTRACT_TABLE = [

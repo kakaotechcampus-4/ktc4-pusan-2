@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
 import { useTakeHistory } from '@/shared/api/takeHistory';
 import { takeStatusView } from '@/shared/lib/takeStatus';
@@ -14,14 +13,15 @@ import { SCRIPT_MODE_LABEL, takeDay } from './takeHistoryFormat';
 
 /**
  * P16 Take 기록 — 모든 피치의 연습 기록을 최신순으로.
- * 홈은 피치별로 접어 보여 주고, 여기는 "언제 무엇을 연습했나"를 한 줄씩 봅니다.
+ * 홈은 피치 목록만 두고 이리로 보냅니다(?pitch= 로 그 피치를 골라서). 여기는 "언제 무엇을 연습했나"를 한 줄씩 봅니다.
  */
 
 const ALL = '';
 
 export function TakesPage() {
   const history = useTakeHistory();
-  const [pitch, setPitch] = useState(ALL);
+  // 고른 피치는 주소(?pitch=)에만 둡니다 — 홈 링크로 걸러 열고, 상단바(/takes)로 오면 풀리고, 새로고침해도 남습니다
+  const [params, setParams] = useSearchParams();
   const rows = history.data?.takes;
 
   if (!rows)
@@ -33,6 +33,9 @@ export function TakesPage() {
 
   // 제목은 겹칠 수 있어 pitch_id 로 거르고, 제목은 보여 주는 데만 씁니다
   const pitches = new Map(rows.map((t) => [t.pitch_id, t.pitch_title]));
+  // 지운 피치 · 오래된 주소처럼 목록에 없는 피치면 전체로 봅니다
+  const asked = params.get('pitch') ?? ALL;
+  const pitch = pitches.has(asked) ? asked : ALL;
   const shown = pitch === ALL ? rows : rows.filter((t) => t.pitch_id === pitch);
 
   return (
@@ -52,7 +55,9 @@ export function TakesPage() {
               피치
               <select
                 value={pitch}
-                onChange={(e) => setPitch(e.target.value)}
+                onChange={(e) =>
+                  setParams(e.target.value ? { pitch: e.target.value } : {}, { replace: true })
+                }
                 className="min-h-11 min-w-0 max-w-full border-2 border-ink bg-white px-2 py-1 sm:max-w-xs"
               >
                 <option value={ALL}>전체</option>

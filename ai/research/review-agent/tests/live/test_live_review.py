@@ -12,10 +12,10 @@ import json
 
 import pytest
 
-from review import review_take
-from review.core import check_numbers, message_numbers
+from pitch_coach_ai.features.review import review_take
+from pitch_coach_ai.features.review.core import check_numbers, message_numbers
 from review_lab.evaluate import draft_sentences
-from review_lab.llm import CachedLLM, load_settings, review_llm
+from review_lab.llm import REASONING_EFFORT, CachedLLM, load_settings, review_llm
 from review_lab.paths import EXAMPLES_DIR
 
 pytestmark = pytest.mark.live
@@ -31,6 +31,7 @@ def reviewed(tmp_path_factory):
         review_llm(settings, timeout_s=TIMEOUT_S),
         settings.model,
         tmp_path_factory.mktemp("llm") / "cache.json",  # 빈 캐시 → 늘 실제로 부른다
+        reasoning_effort=REASONING_EFFORT,
     )
     request = json.loads((EXAMPLES_DIR / "request.json").read_text(encoding="utf-8"))
     return settings, llm, review_take(request, llm, model=settings.model)

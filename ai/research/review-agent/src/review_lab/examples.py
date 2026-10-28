@@ -16,9 +16,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from review import review_take
+from pitch_coach_ai.features.review import review_take
 
-from .llm import CachedLLM, load_settings, review_llm
+from .llm import REASONING_EFFORT, CachedLLM, load_settings, review_llm
 from .paths import EXAMPLES_DIR, OUTPUTS_DIR
 
 
@@ -30,7 +30,12 @@ def write_json(name: str, data: Any) -> None:
 
 def main() -> None:
     settings = load_settings()
-    llm = CachedLLM(review_llm(settings), settings.model, OUTPUTS_DIR / "llm_cache.json")
+    llm = CachedLLM(
+        review_llm(settings),
+        settings.model,
+        OUTPUTS_DIR / "llm_cache.json",
+        reasoning_effort=REASONING_EFFORT,
+    )
     request = json.loads((EXAMPLES_DIR / "request.json").read_text(encoding="utf-8"))
     response = review_take(request, llm, model=settings.model)
     if response.fallback_reason is not None or llm.last_draft is None:

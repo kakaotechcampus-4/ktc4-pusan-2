@@ -30,7 +30,6 @@ import {
 } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
 import { toMessage } from '@/shared/api/errorMessage';
-import { ScreenLabel } from '@/shared/ui/ScreenLabel';
 import { formatDuration } from '@/shared/lib/clock';
 import type { GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
@@ -773,18 +772,14 @@ export function RehearsalPage() {
       : null;
 
   return (
-    <div className="min-h-full bg-greige px-4 py-5">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
-        <ScreenLabel
-          screenNo="07"
-          screenName="발표 연습"
-          entry={`진입 · 리허설 준비의 Take ${ticket?.takeNumber ?? ''} 시작하기`}
-        />
+    <div className="rehearsal-page">
+      <div className="rehearsal-content">
+        <h1 className="sr-only">발표 연습 · Take {ticket?.takeNumber ?? ''}</h1>
 
-        <div className="h-[calc(100vh-7rem)] min-h-[560px] overflow-hidden border-2 border-ink shadow-[4px_4px_0_var(--color-line)]">
+        <div className="rehearsal-frame">
           {/* ★ data-gaze 한 줄이 테두리의 전부입니다. 워커의 1초 판정이 여기 도착합니다 */}
           <div
-            className="stage"
+            className="stage stage-live"
             ref={stageRef}
             data-script-mode={scriptMode}
             data-gaze="UNKNOWN"
@@ -822,7 +817,7 @@ export function RehearsalPage() {
                     doc={materials.doc}
                     pageNumber={slideNumber}
                     fit="contain"
-                    className="h-full w-full"
+                    className="h-full min-h-0 w-full min-w-0 overflow-hidden"
                   />
                 ) : (
                   <span className="placeholder">SLIDE {slideNumber} · 16:9</span>
@@ -849,14 +844,14 @@ export function RehearsalPage() {
                   <LevelBar variant="segments" meterRef={meterRef} />
                 </section>
 
-                <section className="next">
+                <section className="next" hidden={slideNumber >= pageCount}>
                   <div className="thumb">
                     {materials.doc && nextSlideNumber > 0 ? (
                       <PdfPage
                         doc={materials.doc}
                         pageNumber={nextSlideNumber}
                         fit="contain"
-                        className="h-full w-full"
+                        className="h-full min-h-0 w-full min-w-0 overflow-hidden"
                       />
                     ) : (
                       `SLIDE ${nextSlideNumber} · 16:9`
@@ -901,34 +896,46 @@ export function RehearsalPage() {
             />
 
             <div className="stage-foot">
-              {/* 기록이 멈추면 경고(stage.css) — 화면 낭독기에도 바로 알립니다. 준비 중은 조용히 둡니다.
-                  key 로 요소를 갈아 끼웁니다 — 있던 status 의 role 만 alert 로 바꾸면 낭독기가 놓칩니다 */}
-              {gazeLine && (
-                <span
-                  key={gazeLine.alert ? 'alert' : 'status'}
-                  className="gaze"
-                  data-alert={gazeLine.alert}
-                  role={gazeLine.alert ? 'alert' : 'status'}
-                >
-                  {gazeLine.text}
+              {/* 끝내기 실패는 꼭 봐야 해서 스크롤되는 상태 칸 밖, 조작 안내 자리에 띄웁니다 */}
+              {endError ? (
+                <span className="end-error" role="alert">
+                  {endError}
+                </span>
+              ) : (
+                <span className="key-help">
+                  ← → 슬라이드 이동 · Space 다음 장{scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
                 </span>
               )}
-              {sttNote && (
-                <span className="stt" data-alert={sttAlert}>
-                  {sttNote}
-                </span>
-              )}
-              {/* 실시간 전사는 띄우지 않습니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
+              {/* 알림 영역은 안쪽 문구가 각자 잡습니다 — 여기도 status 면 낭독기가 두 번 읽습니다 */}
+              <div className="stage-status">
+                {/* 기록이 멈추면 경고(stage.css) — 화면 낭독기에도 바로 알립니다. 준비 중은 조용히 둡니다.
+                    key 로 요소를 갈아 끼웁니다 — 있던 status 의 role 만 alert 로 바꾸면 낭독기가 놓칩니다 */}
+                {gazeLine && (
+                  <span
+                    key={gazeLine.alert ? 'alert' : 'status'}
+                    className="gaze"
+                    data-alert={gazeLine.alert}
+                    role={gazeLine.alert ? 'alert' : 'status'}
+                  >
+                    {gazeLine.text}
+                  </span>
+                )}
+                {sttNote && (
+                  <span className="stt" data-alert={sttAlert}>
+                    {sttNote}
+                  </span>
+                )}
+                {/* 실시간 전사는 띄우지 않습니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
                   전사는 그대로 서버에 쌓이니 리포트에서는 차이가 없습니다 */}
-              {audioState !== null && audioState !== 'running' && (
-                <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
-              )}
-              {mode === 'EXAM' && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
-              {ticket === null && (
-                <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
-              )}
-              {sessionError && <span>{sessionError}</span>}
-              {endError && <span>{endError}</span>}
+                {audioState !== null && audioState !== 'running' && (
+                  <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
+                )}
+                {mode === 'EXAM' && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
+                {ticket === null && (
+                  <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
+                )}
+                {sessionError && <span>{sessionError}</span>}
+              </div>
 
               <button
                 type="button"
@@ -950,7 +957,11 @@ export function RehearsalPage() {
                   });
                 }}
               >
-                {endButtonText(phase === 'ENDING', confirming)}
+                {endButtonText(
+                  phase === 'ENDING',
+                  confirming,
+                  pageCount > 0 && slideNumber === pageCount,
+                )}
               </button>
             </div>
           </div>
@@ -1057,10 +1068,10 @@ function startGateText(gate: Exclude<StartGate, { kind: 'STARTED' }>): string {
   }
 }
 
-function endButtonText(ending: boolean, confirming: boolean): string {
+function endButtonText(ending: boolean, confirming: boolean, last: boolean): string {
   if (ending) return '정리하는 중…';
   if (confirming) return '정말 끝낼까요?';
-  return '발표 끝내기';
+  return last ? '발표 끝내기' : '중간 종료';
 }
 
 /**

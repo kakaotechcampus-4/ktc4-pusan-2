@@ -11,8 +11,8 @@ from typing import Any
 
 import pytest
 
-from review import ReviewRequest, ReviewResponse, review_take
-from review.schemas import ReviewDraft
+from pitch_coach_ai.features.review import ReviewRequest, ReviewResponse, review_take
+from pitch_coach_ai.features.review.schemas import ReviewDraft
 
 from .conftest import EXAMPLES
 
