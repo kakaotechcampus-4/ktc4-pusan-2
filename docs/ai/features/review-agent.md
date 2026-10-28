@@ -126,9 +126,10 @@ ai/research/review-agent/
 | `script_coverage` | object · null | 아니오 | 대본 전달도 채점 `{take_id, evaluations, take_scores, confirmations, failed}`(사용자가 확인했으면 확인 반영본). 대본이 없거나 모든 장이 실패했으면 null |
 | `previous_takes` | list | 아니오 | 같은 발표에서 `take_number`가 이번 Take보다 작은 `COMPLETED` Take 중 번호가 큰 것부터 3개까지 `[{take_result, take_scores}]`(`architecture.md` 1-1). `take_scores`는 그 Take의 대본 전달도 Take 값(없으면 null) |
 | `previous_recurring_issues` | list | 아니오 | 직전 리뷰의 반복 문제 `[{area, slide_number, dimension}]`(`REVIEW` 결과가 있는 Take 중 가장 늦게 끝난 Take의 `recurring_issues` 그대로, 고르는 순서는 `architecture.md` 1-1 · 1-3, 없으면 빈 목록). `dimension`이 없거나 차원 이름이 아닌 항목은 반복 판정(6-1 4 · 5번)에 쓰지 않고 로그에 남긴다(그 항목 때문에 리뷰 전체를 거절하지 않는다) |
-| `missions` | list | 아니오 | 이번 Take에 실린 미션 `[{mission_id, area, slide_number, target{metric, operator, value}}]` (`slide_number`가 null이면 Take 전체) |
+| `missions` | list | 아니오 | 이번 Take에 실린 미션 `[{mission_id, area, slide_number, target{metric, operator, value}}]` (`slide_number`는 null(Take 전체) 또는 1 이상, 0 · 음수면 422) |
 | `user_criteria` | object · null | 아니오 | 사용자 평가 기준 `{display_criteria, targets, script_used}` (없으면 null). BE는 이 Take의 `takes.standard_version`이 가리키는 버전의 평가 기준 분석 결과로 만들고(`architecture.md` 1-3 1번, `standard_version`이 null이면 기준 없음이라 `user_criteria` null), 그 결과의 `display_criteria` · `targets`를 그대로 싣고, `values.script_used`(저장 칸 `standard_analyses.script_used`)를 `script_used`로 옮긴다. `script_used`는 bool 또는 null(언급이 없으면 null) |
 
+- 장 번호는 1부터다(`architecture.md` 6-1). `missions` · `take_result`의 장별 값(`areas.*.slides[]`) · `problem_segments[]` · `script_coverage.evaluations[]`의 `slide_number`가 0 · 음수면 422 `VALIDATION_ERROR`다(null은 Take 전체를 뜻하는 칸에서만 받는다). 출력의 장 번호는 이 입력에서 고르므로, 잘못된 장 번호는 출력에서 500이 되지 않게 입력에서 막는다.
 - 입력 개수 한도: `previous_takes` 3 · `missions` 20 · `previous_recurring_issues` 20 · `user_criteria.targets` 20. 넘으면 422 `VALIDATION_ERROR`이고 BE는 다시 부르지 않는다. `targets` 20은 평가 기준 분석의 표시 기준 10개 × 범위 목표 2개다. `take_result` · `script_coverage` 크기는 요청 본문 크기 상한(`ai-service.md` 15절 열린 질문)으로 정한다.
 
 ## 5-3. 출력
@@ -143,8 +144,8 @@ ai/research/review-agent/
 | `comparison[]` | list | 바로 앞 Take(`previous_takes[0]`)와 같은 지표 비교 `{metric, slide_number, previous, current, improved, script_mode}`. `improved`는 좋아진 방향인지(bool, 방향을 정할 수 없으면 null). `script_mode`는 두 Take의 대본 보기가 다를 때 `{previous, current}`, 같으면 null |
 | `mission_results[]` | list | `{mission_id, status, metric, operator, slide_number, target, observed}`. `observed`는 판정에 쓴 관측값(float), 없으면 null |
 | `criteria_results[]` | list | 사용자 기준 판정 `{display, metric, operator, target, observed, status}`. `observed`는 float · null |
-| `next_missions[]` | list | `{area, slide_number, description, target{metric, operator, value}, priority, reason}`. `mission_id`는 없다(BE가 저장하며 붙인다). `priority`는 코드가 1부터 차례로 붙인다(실패한 사용자 목표가 먼저, 이어서 LLM이 고른 순서, LLM 실패면 후보 순서. 한 리뷰 안에서 겹치지 않는다 — 저장 UQ). **20개 이하, `description`은 500자 이하**(코칭 계획 입력 한도, `coach-agent.md` 5-2) |
-| `recurring_issues[]` | list | `{area, slide_number, dimension}`, **20개 이하**(같은 이유). `PRIORITY` 차원마다 하나다. `dimension`은 그 차원 이름(아래 차원 표의 여섯 중 하나), `area`는 그 차원의 영역(영역이 여럿이면 부담이 가장 큰 영역, 6-1 8번)이다. `GAZE` 한 영역에 `audience_gaze` · `script_independence` 두 차원이 있어 `area`만으로는 차원을 가르지 못한다 |
+| `next_missions[]` | list | `{area, slide_number, description, target{metric, operator, value}, priority, reason}`. `area`는 일곱 영역 중 하나(null 아님, `architecture.md` 6-3), `slide_number`는 null(Take 전체) 또는 1 이상이다. `mission_id`는 없다(BE가 저장하며 붙인다). `priority`는 코드가 1부터 차례로 붙인다(실패한 사용자 목표가 먼저, 이어서 LLM이 고른 순서, LLM 실패면 후보 순서. 한 리뷰 안에서 겹치지 않는다 — 저장 UQ). **20개 이하, `description`은 500자 이하**(코칭 계획 입력 한도, `coach-agent.md` 5-2) |
+| `recurring_issues[]` | list | `{area, slide_number, dimension}`, **20개 이하**(같은 이유). `slide_number`는 null(Take 전체) 또는 1 이상이다. `PRIORITY` 차원마다 하나다. `dimension`은 그 차원 이름(아래 차원 표의 여섯 중 하나), `area`는 그 차원의 영역(영역이 여럿이면 부담이 가장 큰 영역, 6-1 8번)이다. `GAZE` 한 영역에 `audience_gaze` · `script_independence` 두 차원이 있어 `area`만으로는 차원을 가르지 못한다 |
 | `fallback_reason` | enum · null | LLM 단계를 쓰지 못하고 기본 문장 · 후보 상위를 낸 이유 `LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT` · `LLM_UNAVAILABLE`. 성공이면 null. 숫자 검사로 문장 일부만 바꾼 것은 달지 않는다(바꾼 문장 수는 로그에). BE가 나중에 다시 부르는 것은 이 값이 있을 때만이다 |
 | `meta` | object | `{schema_version, feature_version: "review-<버전>", criteria_versions, model}` (`architecture.md` 5절). `criteria_versions`에는 `take_result.criteria`에 실린 기능별 기준 버전과 리뷰 자체 규칙 버전 `review-<버전>+<config 해시 12자리>`를 함께 싣는다. `model`은 기본 결과면 null |
 
@@ -235,6 +236,7 @@ ai/research/review-agent/
 - **규칙**: 대본 전달도는 점수보다 장별 판정 · 근거로 말한다(같은 입력에서도 장 점수가 흔들린다). 사용자 기준이 `FAILED`인 다음 미션은 늘 앞에 둔다(코드가 다시 맞춘다). `description`은 500자에서 자른다.
 - **숫자 검사**: 코드가 문장마다 숫자를 규칙 단계 결과 · 근거 숫자와 대조한다. 숫자 뽑기와 예시 표는 `architecture.md` 0-2를 따른다. 같은 값으로 보는 표기는 ① 비율과 퍼센트(0.62 ↔ 62% ↔ 62퍼센트. 단위 없는 62는 같은 값이 아니다) ② 시간 ms ↔ 초 ↔ 분(88000 ↔ 88초 ↔ 1분 28초. 이어 쓴 "N분 M초"는 한 값이다) ③ 보여 준 자리까지 반올림한 값(0.6248 ↔ 0.62 ↔ 62%) ④ 정수 개수 · 점수는 그대로이고, ⑤ 음수는 크기로 본다(`voice_diff_db` −1.5 ↔ "1.5dB 작게". "작게 · 줄었다" 같은 방향 말은 검사하지 않는다). 장 번호 · Take 번호 · 날짜는 입력에 있으면 입력에 있는 숫자로 본다. 한글로 쓴 수("세 번")는 검사하지 않으므로 프롬프트가 숫자를 아라비아 숫자로 쓰게 한다(`architecture.md` 0-2를 구체화한 것). 없는 숫자가 든 문장은 규칙 단계의 기본 문장으로 바꾼다. 문장 단위로 바꾸므로 `fallback_reason`은 달지 않고 바꾼 문장 수를 로그에 남긴다.
 - **실패**: LLM이 없거나 실패하면 기본 문장과 규칙 단계 결과(다음 미션은 후보 상위)를 200으로 돌려주고 `fallback_reason`을 단다.
+- **기본 요약**: 강점 · 개선점 후보의 차원 이름(개선점은 장 번호도)을 잇는다. 후보가 없으면, 판단할 수 있는 차원이 있을 때(모두 `STABLE`) '전반적으로 보통이었고 두드러진 강점이나 크게 흔들린 항목은 없었다'는 문장이고, 모두 `NOT_EVALUABLE`일 때만 '평가할 수 있는 항목이 부족했다'는 문장이다. 차원 평가에 대해서만 말하고 '고칠 점이 없다'고 하지 않는다(사용자 기준 `FAILED`는 다음 미션 1순위로 따로 나간다, 6-1).
 - **강점 · 개선점의 `area` · `evidence`**: 규칙 단계가 후보마다 정하고, 기본 문장과 LLM 문장이 같이 쓴다. 측정 비율이 기준 미만인 영역(6-1 1번)은 고르지 않는다. 지표는 그 차원의 다음 미션 지표 → 5-3 차원 표의 지표 순으로 보고, 값이 있는 첫 지표를 `evidence`에 싣는다.
   - 강점: 잰 영역 어디서든 찾고, 찾은 지표의 영역이 `area`다(예: SPEED · PAUSE를 못 잰 Take의 `pacing_rhythm` 강점 → `TIME`, `duration_ms`).
   - 강점의 `slide_number`: `IMPROVED`면 나아진 근거의 장(그 차원의 `previous_recurring_issues` 장 → 이룬 장 미션의 장)이고, 근거는 그 장 값을 먼저 찾는다. 그 장 값이 없으면(이번에 재지 못한 장) 근거는 Take 값이고 `slide_number`는 null이다. 그런 장이 없거나 `STRENGTH`면 null이다(`STRENGTH`는 그 차원의 Take 전체에 문제가 없다는 뜻이라 장 하나를 고르지 않는다).
