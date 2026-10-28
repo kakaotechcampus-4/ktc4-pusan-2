@@ -47,7 +47,8 @@ ParseResponse {status, slides[], terms, meta}
 | 서비스 `tests/unit/script_parser/test_examples.py` | 계약 테스트: `examples/`의 요청을 돌린 응답이 `response.json`과 같은지, 예시가 계약(장 번호 · fail 1장 · 예상 시간 합 · 하이라이트 위치)을 지키는지 |
 | `data/scripts/` | 평가 대본 15개. `script1`–`5`는 원래 대본(`script1`만 구분자 형식, `2`–`5`는 형식이 다른 `fail` 경우), `script6`–`15`는 평가 경우마다 새로 쓴 대본으로, 분야를 나눴다: `[N]` 수학 · `[슬라이드 N]` 화학 · 머리글 제목만 법률 · 머리글 본문 기계공학 · 일부만 구분자 생명과학 · 마크다운 컴퓨터공학 · 번호 겹침 물리 · 구분자 없음 금융공학 · 2,000자대(2,052자) 전자공학 · 4,000자대(4,198자) 토목공학 |
 | `data/labels/` | 대본마다 정답 라벨: `status`, 장마다 첫 줄 · 마지막 줄, 남으면 안 되는 제목 줄, 장별 실제 시간(`actual_slide_ms`, 아직 없음) |
-| `tests/live/` | 실제 LLM 테스트 (`live` 표시, 과금). `run.build_llm`을 써서 연구 폴더에 남겼습니다. 이 폴더의 기본 실행(`pytest`)에는 고를 테스트가 없습니다 |
+| `tests/test_run.py` | 연구 폴더 준비 확인 (LLM 호출 없음): `run.py`가 서비스 코어를 import하는지, `data/scripts/`와 `data/labels/`의 이름이 짝을 이루는지. 이 폴더의 기본 실행(`pytest`)이 고르는 시험입니다 |
+| `tests/live/` | 실제 LLM 테스트 (`live` 표시, 과금). `run.build_llm`을 써서 연구 폴더에 남겼습니다 |
 | `reports/results/` | 평가 결과 JSON (`run.py --eval`) |
 | `results/` | 실행 결과 (gitignore) |
 
@@ -65,6 +66,7 @@ uv sync
 
 ```bash
 # 코어 단위 테스트는 서비스에서: cd ai/service && uv run python -m pytest tests/unit/script_parser  (가짜 LLM, 과금 없음)
+uv run python -m pytest                           # 연구 폴더 준비 확인 (LLM 호출 없음, 과금 없음)
 uv run python -m pytest -m live                   # 실제 LLM 테스트 (과금)
 uv run python run.py --file script3.txt           # 대본 하나 (과금)
 uv run python run.py --all                        # 전체 (순차 호출이라 시간이 걸림, 과금)
