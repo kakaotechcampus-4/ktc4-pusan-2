@@ -125,3 +125,121 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
         with Session(engine) as cleanup:
             cleanup.delete(cleanup.get(User, user_id))  # pitch·버전은 CASCADE
             cleanup.commit()
+
+
+# ── S3 에 올린 뒤 실패하면 한쪽만 남기지 않는다 ──────────────────────────────
+
+
+@pytest.fixture
+def deleted(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    keys: list[str] = []
+    monkeypatch.setattr(presentation_service, "delete", keys.append)
+    return keys
+
+
+def _upload_one(db: Session, pitch_id: uuid.UUID, make_pdf: Callable[[int], bytes]):
+    file = UploadFile(filename="deck.pdf", file=BytesIO(make_pdf(1)))
+    return presentation_service.upload_presentation_service(
+        db, pitch_id, UploadPresentationDTO(presentation_file=file)
+    )
+
+
+def _versions(db: Session, pitch_id: uuid.UUID) -> list[int]:
+    from pitch_coach_backend.module.pitch.repository import PitchRepository
+
+    return [row.version for row in PitchRepository(db).get_presentations(pitch_id)]
+
+
+def test_url_failure_leaves_neither_a_version_nor_the_file(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    deleted: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+):
+    """조회 URL 은 커밋 전에 만든다. 커밋 뒤에 실패하면 오류를 받은 사용자가 다시 올려 버전이
+    하나 더 생긴다."""
+    pitch_id = _make_pitch(db_session, user_id)
+
+    def broken(key: str) -> str:
+        raise RuntimeError("presign failed")
+
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", broken)
+
+    with pytest.raises(RuntimeError):
+        _upload_one(db_session, pitch_id, make_pdf)
+
+    assert _versions(db_session, pitch_id) == []
+    assert deleted == [f"pitches/{pitch_id}/presentations/1.pdf"]
+
+
+def test_save_failure_deletes_the_uploaded_file(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    deleted: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+):
+    from pitch_coach_backend.module.pitch.repository import PitchRepository
+
+    pitch_id = _make_pitch(db_session, user_id)
+
+    def broken(self, presentation):
+        raise RuntimeError("insert failed")
+
+    monkeypatch.setattr(PitchRepository, "save_presentation", broken)
+
+    with pytest.raises(RuntimeError):
+        _upload_one(db_session, pitch_id, make_pdf)
+
+    assert deleted == [f"pitches/{pitch_id}/presentations/1.pdf"]
+
+
+def test_failed_commit_deletes_the_file_only_when_the_version_is_missing(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    deleted: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+):
+    pitch_id = _make_pitch(db_session, user_id)
+
+    def broken() -> None:
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(db_session, "commit", broken)
+
+    with pytest.raises(RuntimeError):
+        _upload_one(db_session, pitch_id, make_pdf)
+
+    assert _versions(db_session, pitch_id) == []
+    assert deleted == [f"pitches/{pitch_id}/presentations/1.pdf"]
+
+
+def test_commit_whose_reply_was_lost_keeps_the_file(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    deleted: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+):
+    """커밋은 됐는데 응답 전에 연결이 끊겼다. 버전 행이 가리키는 파일을 지우면 그 버전을 열 수
+    없다."""
+    pitch_id = _make_pitch(db_session, user_id)
+    real_commit = db_session.commit
+
+    def lost_reply() -> None:
+        real_commit()
+        raise RuntimeError("connection lost after commit")
+
+    monkeypatch.setattr(db_session, "commit", lost_reply)
+
+    with pytest.raises(RuntimeError):
+        _upload_one(db_session, pitch_id, make_pdf)
+
+    assert _versions(db_session, pitch_id) == [1]
+    assert deleted == []
