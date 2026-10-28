@@ -45,7 +45,7 @@ export function StepBar() {
               disabled={!canLeaveSlides && s.node !== 'slides'}
               aria-current={current ? 'step' : undefined}
               className={[
-                'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50',
+                'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm disabled:cursor-not-allowed disabled:bg-cream disabled:text-ink/80',
                 current
                   ? 'border-ink bg-panel font-bold'
                   : 'border-line bg-panel/60 hover:border-line-strong',
