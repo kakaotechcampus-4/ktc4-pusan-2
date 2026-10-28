@@ -83,7 +83,7 @@ export function ServiceReviewDialog({ onContinue }: { onContinue: () => void }) 
         event.preventDefault();
         onContinue();
       }}
-      className="pitch-create fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-md overflow-y-auto border-2 border-ink bg-panel p-6 text-ink backdrop:bg-ink/40 sm:p-8"
+      className="pitch-create fixed inset-0 m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-2xl overflow-y-auto border-2 border-ink bg-panel p-6 text-ink backdrop:bg-ink/40"
     >
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 flex-1 [&>svg]:h-auto [&>svg]:w-full [&>svg]:max-w-48">
@@ -99,57 +99,62 @@ export function ServiceReviewDialog({ onContinue }: { onContinue: () => void }) 
           닫기
         </Button>
       </div>
-      <h2 id={title} className="mt-6 text-xl font-bold">
+      <h2 id={title} className="mt-4 text-xl font-bold">
         피치코치가 도움이 되었나요?
       </h2>
-      <p id={description} className="mt-3 text-sm leading-relaxed text-ink/80">
+      <p id={description} className="mt-2 text-sm leading-relaxed text-ink/80">
         연습과 리포트 경험을 별점으로 알려주세요.
       </p>
-      <fieldset disabled={pending || locked} className="my-6">
-        <legend className="mb-3 text-sm font-bold">서비스 만족도</legend>
-        <div className="flex justify-between gap-1">
-          {[1, 2, 3, 4, 5].map((value) => (
-            <label key={value} className="relative cursor-pointer">
-              <input
-                type="radio"
-                name="service-rating"
-                value={value}
-                checked={rating === value}
-                onChange={() => setRating(value)}
-                aria-label={`${value}점`}
-                className="peer sr-only"
-              />
-              <span
-                aria-hidden="true"
-                className={`flex h-11 w-10 sm:h-12 sm:w-12 items-center justify-center text-3xl peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-ink ${value <= rating ? 'text-coral-deep' : 'text-stone'}`}
-              >
-                ★
-              </span>
-            </label>
-          ))}
+      {/* 노트북 높이(650px)에서도 스크롤 없이 보이도록 별점·유형과 의견을 두 칸으로 나눕니다. */}
+      <div className="my-5 grid gap-6 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-4">
+          <fieldset disabled={pending || locked}>
+            <legend className="mb-3 text-sm font-bold">서비스 만족도</legend>
+            <div className="flex justify-between gap-1">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <label key={value} className="relative cursor-pointer">
+                  <input
+                    type="radio"
+                    name="service-rating"
+                    value={value}
+                    checked={rating === value}
+                    onChange={() => setRating(value)}
+                    aria-label={`${value}점`}
+                    className="peer sr-only"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className={`flex h-12 w-12 items-center justify-center text-3xl peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-ink ${value <= rating ? 'text-coral-deep' : 'text-stone'}`}
+                  >
+                    ★
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <SuggestionCategorySelect
+            value={category}
+            onChange={setCategory}
+            disabled={pending || locked}
+          />
         </div>
-      </fieldset>
-      <div className="mb-4 flex min-w-0 flex-col gap-2">
-        <SuggestionCategorySelect
-          value={category}
-          onChange={setCategory}
-          disabled={pending || locked}
-        />
-        <label htmlFor={description + '-opinion'} className="text-sm font-bold">
-          의견 (선택)
-        </label>
-        <textarea
-          id={description + '-opinion'}
-          rows={4}
-          value={suggestion}
-          readOnly={pending || locked}
-          onChange={(event) => setSuggestion(event.target.value)}
-          aria-describedby={description + '-count'}
-          className="w-full min-w-0 resize-y border-2 border-ink bg-white p-3 text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-        />
-        <p id={description + '-count'} className="text-sm text-ink/80">
-          {length.toLocaleString()} / 2,000자
-        </p>
+        <div className="flex min-w-0 flex-col gap-2">
+          <label htmlFor={description + '-opinion'} className="text-sm font-bold">
+            의견 (선택)
+          </label>
+          <textarea
+            id={description + '-opinion'}
+            rows={4}
+            value={suggestion}
+            readOnly={pending || locked}
+            onChange={(event) => setSuggestion(event.target.value)}
+            aria-describedby={description + '-count'}
+            className="w-full min-w-0 resize-y border-2 border-ink bg-white p-3 text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+          />
+          <p id={description + '-count'} className="text-sm text-ink/80">
+            {length.toLocaleString()} / 2,000자
+          </p>
+        </div>
       </div>
       {error && (
         <p role="alert" className="mb-4 text-sm">
@@ -161,7 +166,7 @@ export function ServiceReviewDialog({ onContinue }: { onContinue: () => void }) 
           리뷰를 보내고 있어요.
         </p>
       )}
-      <div className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Button
           disabled={!rating || pending || length > 2000}
           onClick={() => {
