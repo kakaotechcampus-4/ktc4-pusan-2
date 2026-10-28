@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DataError, OperationalError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
@@ -694,6 +694,35 @@ def test_final_already_committed_does_not_block_the_rest(
 
 
 PRIVATE_TRANSCRIPT = "PRIVATE_TRANSCRIPT_AUDIT_MARKER"
+
+
+@pytest.mark.anyio
+async def test_invalid_final_does_not_drop_the_valid_finals_queued_after_it(
+    caplog: pytest.LogCaptureFixture,
+):
+    """DB 장애 동안 모인 final 중 하나가 저장할 수 없는 값이어도 그 뒤의 정상 전사까지 버리지
+    않는다. 오류에는 전사 원문이 섞일 수 있어 종류만 남긴다."""
+
+    class OneInvalidFinalStore(FakeTranscriptStore):
+        async def append(self, take_id, segment):
+            if segment.seq == 2:
+                raise DataError("INSERT ...", {"transcript": PRIVATE_TRANSCRIPT}, ValueError())
+            await super().append(take_id, segment)
+
+    store = OneInvalidFinalStore()
+    take_id = uuid.uuid7()
+    buffer = FinalBuffer(take_id, store)
+    transcripts = TranscriptBuffer(take_id, store)
+    for text in ("첫", PRIVATE_TRANSCRIPT, "셋"):
+        buffer.add(transcripts.segment(transcript_message("1-1", text), 100, 1))
+        transcripts.next_segment()
+
+    with caplog.at_level("ERROR"):
+        await buffer.flush()
+
+    assert [(row.seq, row.transcript) for row in store.segments] == [(1, "첫"), (3, "셋")]
+    assert PRIVATE_TRANSCRIPT not in caplog.text
+    buffer.close()
 
 
 class _DriverError(Exception):
