@@ -68,6 +68,10 @@
               {
                 "group": ["@/vendor/**"],
                 "message": "camera/ 는 엔진 · Worker 를 상대 경로(../engine, ../engine/contract, ../worker/protocol)로만 부릅니다. @/ 경로는 위 공개 입구 검사를 비켜 갑니다."
+              },
+              {
+                "group": ["@/features/**"],
+                "message": "camera/ 는 features/ 를 참조하지 않습니다 (FRONTEND_CONVENTION.md 5). features/rehearsal 이 camera/ 를 부르므로 거꾸로 부르면 순환이 됩니다. (이 override 가 위 공통 규칙을 덮어써서 여기 다시 적습니다)"
               }
             ]
           }
