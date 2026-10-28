@@ -376,6 +376,10 @@ POST /api/auth/logout           현재 세션 폐기
   출처는 `Origin`, 없으면 `Referer` 순으로 보고 **둘 다 없으면 막는다** (OWASP 권장).
   프론트는 `csrf_token` 쿠키를 읽어 `X-CSRF-Token` 헤더에 실어야 한다.
 - 구글이 준 토큰은 신원 확인에만 쓰고 **저장하지 않는다.** Google refresh token 은 요청하지 않는다.
+- `LAUNCH_AT`(출시 시각) 전에는 `start`·`callback` 이 구글로 보내지 않고 사용자·세션도 만들지
+  않는다. 프론트로 `auth_error=service_not_open` 을 붙여 돌려보낸다. 이미 발급된 세션은 막지 않는다.
+  release 의 `RELEASE_BACKEND_ENV` secret 에만 넣고 dev·로컬은 비워 둔다(비면 막지 않는다).
+  배포가 이 secret 으로 서버의 `backend/.env` 를 매번 다시 쓰므로 서버 파일을 직접 고치면 사라진다.
 
 OAuth 요청의 `state`·`nonce`·PKCE verifier는 콜백까지 필요한 임시 값이라
 `oauth_authorization_requests` 에 만료 시각(10분, `module/auth/state_store.py` 의 `STATE_TTL_SECONDS`)과
