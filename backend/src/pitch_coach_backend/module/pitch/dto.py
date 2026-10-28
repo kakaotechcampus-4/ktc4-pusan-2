@@ -32,8 +32,13 @@ class PitchSaveRequestDTO(BaseModel):
     lower_deviation: int = Field(default=0, ge=0, le=MAX_DEVIATION_SEC)
     presentation_date: date | None = None
 
-class PitchInfoResponseDTO(PitchSaveRequestDTO):
+class PitchInfoResponseDTO(BaseModel):
     pitch_id: uuid.UUID
+    title: str
+    time_limit_sec: int
+    upper_deviation: int
+    lower_deviation: int
+    presentation_date: date | None = None
 
 class PitchListItemDTO(BaseModel):
     pitch_id: uuid.UUID
