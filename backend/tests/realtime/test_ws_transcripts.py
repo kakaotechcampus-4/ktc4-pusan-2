@@ -23,6 +23,7 @@ from pitch_coach_backend.realtime.dto import (
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
 from pitch_coach_backend.realtime.stream import registry
+from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
 )
@@ -180,6 +181,147 @@ async def test_concurrent_resend_missed_does_not_race_on_the_shared_list():
     # 두 메시지 모두 (중복 없이) 정확히 한 번씩만 나갔다
     sent_texts = [json.loads(t)["text"] for t in ws_a.sent]
     assert sent_texts == ["첫", "둘"]
+
+
+# ── 보내다 실패한 final ────────────────────────────────────────────────
+
+
+class StuckWebSocket(FakeWebSocket):
+    """`stuck` 인 동안 보내기가 `release` 될 때까지 멈춘다. 상대가 받지 않는 연결이다."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stuck = True
+        self.release = asyncio.Event()
+        self.sending = asyncio.Event()
+
+    async def send_text(self, text: str) -> None:
+        if self.stuck:
+            self.sending.set()
+            await self.release.wait()
+        await super().send_text(text)
+
+
+def _final_stream(store: FakeTranscriptStore):
+    return registry.create_stream(
+        uuid.uuid7(),
+        owner_id=uuid.uuid7(),
+        stt_adapter=FakeSttAdapter(),
+        config=SttConfig(),
+        store=store,
+    )
+
+
+def _texts(ws: FakeWebSocket) -> list[tuple[str, str]]:
+    return [(m["segment_id"], m["text"]) for m in map(json.loads, ws.sent)]
+
+
+@pytest.mark.anyio
+async def test_final_that_fails_to_send_is_resent_on_reconnect():
+    """붙어 있는 연결로 보내다 실패한 final 도 떨어져 있던 동안 온 것처럼 모은다. 보낸 셈 치면
+    다시 붙은 화면에서 그 구간이 빈다. 저장은 화면과 따로 한다."""
+    store = FakeTranscriptStore()
+    stream = _final_stream(store)
+    dead = FakeWebSocket(fail_send_after=1)
+    await stream.attach(dead)
+
+    await stream._on_transcript(transcript(0, 200, "끊긴 말", is_final=True))
+
+    assert [seg.transcript for seg in store.segments] == ["끊긴 말"]
+    stream.detach(dead)
+    fresh = FakeWebSocket()
+    await stream.attach(fresh)
+    await stream.resend_missed()
+    assert _texts(fresh) == [("0-1", "끊긴 말")]
+    assert stream._transcripts.missed_finals == []
+
+
+@pytest.mark.anyio
+async def test_final_that_times_out_is_resent_on_reconnect(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.05)
+    store = FakeTranscriptStore()
+    stream = _final_stream(store)
+    stuck = StuckWebSocket()
+    await stream.attach(stuck)
+
+    await stream._on_transcript(transcript(0, 200, "멈춘 말", is_final=True))
+
+    assert [seg.transcript for seg in store.segments] == ["멈춘 말"]
+    assert [m.segment_id for m in stream._transcripts.missed_finals] == ["0-1"]
+    stream.detach(stuck)
+    fresh = FakeWebSocket()
+    await stream.attach(fresh)
+    await stream.resend_missed()
+    assert _texts(fresh) == [("0-1", "멈춘 말")]
+
+
+@pytest.mark.anyio
+async def test_final_sent_normally_is_not_resent():
+    stream = _final_stream(FakeTranscriptStore())
+    ws = FakeWebSocket()
+    await stream.attach(ws)
+
+    await stream._on_transcript(transcript(0, 200, "보낸 말", is_final=True))
+    await stream.resend_missed()
+
+    assert _texts(ws) == [("0-1", "보낸 말")]
+    assert stream._transcripts.missed_finals == []
+
+
+@pytest.mark.anyio
+async def test_final_that_failed_while_another_tab_caught_up_goes_to_that_tab(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """옛 연결로 보내는 동안 다른 탭이 이어받아 놓친 final 을 이미 받았다. 실패한 final 을 다음
+    재연결까지 들고 있으면 지금 탭의 화면에서 그 구간이 빈다."""
+    monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.2)
+    store = FakeTranscriptStore()
+    stream = _final_stream(store)
+    old_tab = StuckWebSocket()
+    await stream.attach(old_tab)
+    showing = asyncio.create_task(
+        stream._on_transcript(transcript(0, 200, "겹친 말", is_final=True))
+    )
+    await old_tab.sending.wait()
+
+    # 옛 연결은 이제 무엇을 보내도 실패한다. 쫓겨나며 받는 알림도 바로 실패한다
+    old_tab.stuck = False
+    old_tab.fail_send_after = 1
+    new_tab = FakeWebSocket()
+    await stream.attach(new_tab)
+    await stream.resend_missed()
+    assert new_tab.sent == []
+    # 새 탭이 따라잡은 뒤에야 옛 연결로 보내던 final 이 실패한다
+    old_tab.release.set()
+    await showing
+
+    assert _texts(new_tab) == [("0-1", "겹친 말")]
+    assert stream._transcripts.missed_finals == []
+    assert [seg.transcript for seg in store.segments] == ["겹친 말"]
+
+
+@pytest.mark.anyio
+async def test_final_that_failed_before_the_new_tab_is_ready_waits_for_its_catch_up():
+    """이어받은 연결이 아직 ready 전이면 지금 보내지 않는다. 그 연결이 따라잡을 때 같이 간다."""
+    stream = _final_stream(FakeTranscriptStore())
+    old_tab = FakeWebSocket(fail_send_after=1)
+    await stream.attach(old_tab)
+    await stream.resend_missed()
+
+    new_tab = FakeWebSocket()
+    sending = old_tab.send_text
+
+    async def take_over_while_sending(text: str) -> None:
+        # 옛 연결로 보내는 사이 새 연결이 붙는다. 새 연결은 아직 ready 를 받지 않았다
+        stream._client._ws = new_tab
+        await sending(text)
+
+    old_tab.send_text = take_over_while_sending  # type: ignore[method-assign]
+    await stream._on_transcript(transcript(0, 200, "기다린 말", is_final=True))
+
+    assert new_tab.sent == []
+    await stream.resend_missed()
+    assert _texts(new_tab) == [("0-1", "기다린 말")]
 
 
 # ── final 저장 ─────────────────────────────────────────────────────────
