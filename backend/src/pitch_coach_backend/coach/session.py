@@ -66,6 +66,10 @@ _KEEP_SLACK_MS = 5_000
 SEAL_WAIT_SEC = 2.0
 # 저장 못 한 이벤트를 들고 있을 개수. 넘치면 오래된 것부터 버린다 (finalize 가 받은 것만 센다)
 MAX_UNSAVED_EVENTS = 2_000
+# 코치가 꺼져 있는 동안 들고 있을 1초. 저장하지 못해 들고 있는 1초 원자료 상한
+# (`realtime.storage.metrics.MAX_UNSAVED_METRICS`)과 같다 — 그보다 오래된 것은 DB 에 들어가 켤 때
+# 읽는 값(`TakeContext.seconds`)에 있거나 이미 버려졌다. 코치를 끝내 켜지 못한 Take 도 이만큼만 든다
+MAX_PENDING_METRICS = 600
 MAX_SLIDE_CHANGES = 10_000
 # FE 에 코치 메시지를 보내는 상한. 보내기는 판단 하나(`_inflight`) 안에서 돌아, 소켓이 막혀 기다리는
 # 동안에는 다음 판단을 모두 건너뛴다. 넘기면 그 메시지는 버린다
@@ -241,6 +245,7 @@ class CoachSession:
                     stt_status,
                 )
             )
+            del self._pending_metrics[:-MAX_PENDING_METRICS]
         # 같은 1초는 시작 시각 그대로 가린다 — replay 와 같은 규칙이어야 같은 창이 나온다
         if gaze is not None:
             self._windows.gaze.setdefault(gaze["t_ms"], dict(gaze))
