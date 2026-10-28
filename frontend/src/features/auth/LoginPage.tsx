@@ -82,7 +82,7 @@ export function LoginPage() {
   return (
     <div className="flex min-h-dvh flex-col bg-panel text-ink">
       <header className="border-b border-line-strong">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-4 lg:px-10">
+        <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-3 px-6 py-4 lg:px-10">
           <Link to="/welcome" aria-label="PITCH COACH · 서비스 소개로">
             <PitchCoachWordmark />
           </Link>
@@ -163,7 +163,7 @@ export function LoginPage() {
       </main>
 
       <footer className="border-t border-line-strong px-6 py-6">
-        <p className="mx-auto max-w-7xl font-mono text-xs font-bold">
+        <p className="mx-auto max-w-page font-mono text-xs font-bold">
           PITCH COACH / ONE TAKE AT A TIME.
         </p>
       </footer>

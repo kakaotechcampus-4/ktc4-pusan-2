@@ -30,7 +30,7 @@ export function AppHeader() {
   const { pathname } = useLocation();
   return (
     <header className="border-b border-line-strong bg-panel text-ink">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-5 px-6 py-5 lg:px-10">
+      <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-5 px-6 py-5 lg:px-10">
         <Link to="/" aria-label="PITCH COACH 홈">
           <PitchCoachWordmark />
         </Link>
