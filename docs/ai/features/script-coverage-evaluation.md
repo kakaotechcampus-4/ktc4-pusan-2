@@ -164,7 +164,7 @@ ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 �
 | `rubrics` | list | 예 | 대본 등록 때 받은 장별 평가 기준 그대로. 평가 기준이 없는 장(만들기가 실패한 장)은 빠질 수 있다 | `["<장별 평가 기준>"]` |
 | `slide_numbers` | list int · null | 아니오 | 채점할 장. null이면 `slides`의 장 전부 | `[5]` |
 
-- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 보아 422 `RUBRIC_MISSING`을 돌려준다.
+- 대본 식별자(`script_name`)는 요청에 따로 없다. 최상위 `core.evaluate_take`가 `rubrics` 중 장 번호가 가장 작은 것의 `meta.script_name`(= 대본 버전)에서 채운다. 채점할 장이 있는데 `rubrics`가 비어 있으면(모든 장의 평가 기준이 없음) 채점하지 않고 모든 대상 장을 `RUBRIC_MISSING`으로 보아 422 `RUBRIC_MISSING`을 돌려준다. 채점할 장이 없으면(`slide_numbers: []`) `rubrics`와 상관없이 빈 결과 200이다(`evaluations` · `failed` 빈 목록, `scored_ratio` 0). 단, LLM 설정이 없으면 대상 유무와 관계없이 7절대로 503 `LLM_UNAVAILABLE`이다.
 
 **`POST /takes/rescore`**
 
@@ -175,6 +175,8 @@ ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 �
 | `rubrics` | list | 예 | 그 장들의 평가 기준 | `["<장별 평가 기준>"]` |
 | `answers` | list | 아니오 | 이번에 받은 확인 답 `[{slide_number, item_id, answer}]`, `slide_number`는 1 이상, `answer`는 `as_script` · `as_stt`. 없으면 Take 값만 다시 계산한다 | `[{"slide_number": 3, "item_id": "R1", "answer": "as_script"}]` |
 | `failed` | list | 아니오 | BE가 저장한 실패 장 `[{slide_number, error{code, message}}]`, `slide_number`는 1 이상(0 이하면 422). `scored_ratio`의 대상 장에 넣는다. BE는 `/takes/rescore`를 부를 때마다(사용자 확인 뒤 포함) 저장한 실패 목록 전체를 싣는다(빠지면 실패한 장이 대상에서 빠져 `scored_ratio`가 올라간다) | `[]` |
+
+**요청 검사** (어기면 422 `VALIDATION_ERROR`, 7절): `/scripts/rubric` · `/takes/analyze`의 `slides`는 1개 이상이고 같은 `slide_number`가 두 번 나오지 않는다. `slide_numbers`에는 `slides`에 있는 장만 쓴다. `/takes/analyze` · `/takes/rescore`의 `rubrics`와 `/takes/rescore`의 `evaluations`도 같은 장 번호가 두 번 나오지 않는다.
 
 ## 5-3. 출력
 **`/scripts/rubric` 응답**: `{rubrics, failed, meta}`
@@ -207,7 +209,7 @@ ai/research/script-coverage-evaluation/     연구 (이미지에 들어가지 �
 | 대상 | 상태 | 뜻 |
 |---|---|---|
 | 전달 단위 (LLM이 판정) | `said` · `vague` · `missing` · `contradicted` | 말함 · 흐리게 말함 · 없음 · 다르게 말함 |
-| 문장 (코드가 단위를 모음) | `said` · `partial` · `missing` · `contradicted` | 문장 역할이 `skip`이면 채점하지 않는다 |
+| 문장 (코드가 단위를 모음) | `said` · `partial` · `missing` · `contradicted` | 문장 역할이 `skip`이면 채점하지 않는다. 다만 핵심 내용의 근거 문장(`key_points[].sentence_indices`)이면 채점하고, 전달 단위가 없으므로 문장 전체를 단위 하나로 본다 |
 | 핵심 내용 (코드가 근거 문장을 모음) | `covered` · `partial` · `missing` · `contradicted` | 점수가 큰 순서는 `covered` > `partial` > `missing` > `contradicted` (모순은 빠뜨린 것보다 낮다) |
 | 핵심 수치 (코드가 값으로 비교) | `matched` · `approximate` · `mismatched` · `missing` · `sound_alike` · `unverified` | `sound_alike`(발음이 비슷한 다른 말)는 판단 보류로 점수에서 뺀다 |
 | 확인 답 | `as_script` · `as_stt` | 대본대로 말함(STT가 잘못 적음) · 들린 대로 말함(발표자가 다른 말을 함) |
@@ -387,7 +389,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | 필드 | 타입 | 뜻 |
 |---|---|---|
 | `sentence_index` · `text` · `role` | int · str · str | 대본 문장 번호 · 문장 · 문장 역할 |
-| `status` · `first_status` | 문장 상태 (5-4) | 최종 판정 · LLM 1차 판정(전달 단위 판정을 모은 것) |
+| `status` · `first_status` | 문장 상태 (5-4) | 최종 판정 · 교차 검증 전 판정(LLM 판정에 규칙 보정을 더한 전달 단위 판정을 모은 것. 규칙으로 올렸는지는 단위의 `raised_by_rule`) |
 | `units[]` | `{unit_id, text, fact_ids[], status, first_status, raised_by_rule}` (기본값 있음, `fact_ids` 빈 목록 · `raised_by_rule` false) | 전달 단위별 판정. `status`는 단위 상태(5-4). `raised_by_rule`은 LLM은 `missing`이라 했지만 그 단위의 수치 · 이름이 STT에 있어 `vague`로 올린 것(교차 검증이 6-2 ⑦대로 `missing`으로 되돌려도 true로 남는다) |
 | `confidence` | str (생성 값: `high` · `medium` · `low`) | LLM 확신도 |
 | `evidence[]` · `reason` | int · str | 근거 STT 문장 번호(범위 밖 번호는 버림) · 판정 이유(사용자에게 보여 줄 수 있음) |
@@ -522,7 +524,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 | 요청 형식이 스키마와 다름 | 거절 | 422 `VALIDATION_ERROR` | 다시 불러도 같다 |
 | 한 장의 LLM 호출이 실패 · 시간 초과 · 잘못된 출력 (평가 기준 · 채점 · 교차 검증. 교차 검증이 대상 문장 · 전달 단위를 빠뜨리거나 겹친 것도 잘못된 출력, 6-2) | 그 장만 실패로 담고 나머지 장은 계속한다 | 200, `failed[{slide_number, error{code: LLM_TIMEOUT · LLM_ERROR · LLM_INVALID_OUTPUT · LLM_UNAVAILABLE}}]` | 한 장 때문에 나머지 채점을 잃지 않게. BE는 실패한 장만 다시 부른다 |
 | 채점할 장의 평가 기준이 없음 (평가 기준 만들기가 실패한 장) | 그 장은 채점하지 않고 나머지 장은 계속한다. 그 장도 `scored_ratio`의 대상 장이다 | 200, `failed`에 `RUBRIC_MISSING` | 전체를 멈추지 않고, 일부만 채점된 것을 비율로 알린다 |
-| 모든 장이 실패 | 결과를 내지 않는다 | `architecture.md` 4절 '장별 API'대로: 다시 부를 수 있는 오류(LLM 5xx: 504 `LLM_TIMEOUT` · 502 `LLM_ERROR` · 502 `LLM_INVALID_OUTPUT` · 503 `LLM_UNAVAILABLE`)가 있으면 그중 장 번호가 가장 작은 장의 오류, 모든 장이 입력 오류(평가 기준 없음)일 때만 422 `RUBRIC_MISSING` | LLM 오류는 BE가 한 번 다시 부를 수 있고, 평가 기준이 없는 것은 다시 불러도 같다 |
+| 모든 장이 실패 (대상 장이 하나 이상일 때. 대상이 없으면 빈 결과 200, 5-2) | 결과를 내지 않는다 | `architecture.md` 4절 '장별 API'대로: 다시 부를 수 있는 오류(LLM 5xx: 504 `LLM_TIMEOUT` · 502 `LLM_ERROR` · 502 `LLM_INVALID_OUTPUT` · 503 `LLM_UNAVAILABLE`)가 있으면 그중 장 번호가 가장 작은 장의 오류, 모든 장이 입력 오류(평가 기준 없음)일 때만 422 `RUBRIC_MISSING` | LLM 오류는 BE가 한 번 다시 부를 수 있고, 평가 기준이 없는 것은 다시 불러도 같다 |
 | LLM 설정 없음 (`/scripts/rubric` · `/takes/analyze`) | 모든 장이 실패 | 503 `LLM_UNAVAILABLE` | `architecture.md` 9 · 10절 |
 | `/takes/rescore`: 채점의 `rubric_id`가 받은 평가 기준과 다름 | 거절 | 422 `RUBRIC_MISMATCH` | 평가 기준이 바뀌었으면 다시 채점해야 한다 |
 | `/takes/rescore`: 채점에 `stt_text` 필드가 없음 (예전 모양) | 거절. 빈 문자열(발표에서 넘어간 장)은 정상이다 | 422 `STT_TEXT_MISSING` | 다시 계산에 필요한 STT가 없다 |
@@ -542,7 +544,7 @@ BE는 7번 장만 `slide_numbers: [7]`로 한 번 다시 부르고, 받은 채�
 최초 rubric·analyze와 허용 재시도는 같은 작업이다. 재시도 전송 때 1회 한도를 쓰고, 전체 문맥 입력은 유지하며 대상 번호만 고른다. 부분 재시도가 에러·무응답이면 최초 응답을 보존한다. AI 내부 재시도와 rescore 재시도는 각각 별도다(`architecture.md` 1-7 · 3절).
 
 - **LLM 호출 한 번**: 대본 전달도는 20초에서 끊는다(`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20`, 평가 기준 만들기 · 채점 모두, `architecture.md` 10절의 기능별 시간 제한). 기본 12초로는 6 luna의 평가 기준 호출이 자주 잘려서다(아래 잰 값: 12초 제한 없이 p95 16.8초 · 최대 18.4초). 요청 마감 시각 안에 남은 시간이 있을 때만 한 번 더 시도한다. 요청 하나의 모든 호출(장별 · 단계별)이 마감 시각 하나를 같이 쓴다(`architecture.md` 9절). 이것은 코어에 넘기는 LLM 객체가 맡고, 코어는 시계를 쓰지 않는다.
-- **출력 토큰 상한**: LLM 역할마다 출력 토큰 상한(추론 토큰 포함, `architecture.md` 9절)을 둔다. 값은 잰 최대 × 2를 1,024 단위로 올린 값(최소 2,048)이다. 서비스로 옮길 때 `settings.LLM_ROLES`에 이 역할 이름과 값을 넣는다. 잘리면 그 장은 `LLM_INVALID_OUTPUT`이다(7절).
+- **출력 토큰 상한**: LLM 역할마다 출력 토큰 상한(추론 토큰 포함, `architecture.md` 9절)을 둔다. 값은 잰 최대 × 2를 1,024 단위로 올린 값(최소 2,048)이다. 이 역할 이름과 값은 서비스 `settings.LLM_ROLES`에 설정되어 있다. 잘리면 그 장은 `LLM_INVALID_OUTPUT`이다(7절).
 
   | 역할 | 단계 | 잰 최대 (결과 파일) | 상한 |
   |---|---|---|---|
@@ -608,12 +610,12 @@ uv sync
 - 단위 테스트가 볼 것: `slide_numbers` 선택, 장별 실패 → `failed` 모양, 모두 실패, `scored_ratio`(analyze · rescore, `failed` 있음 · 없음), 다시 계산의 누적 답, 답 없는 다시 계산, 같은 입력 같은 결과.
 
 # 11. 배포
-**어디서 도는가**: 코어(`examples/` · `prompts/` 포함)는 AI 서비스의 `features/script_coverage/`에 있고(연구 폴더 `src/script_coverage/`에서 폴더째 옮겼다), 라우터가 세 엔드포인트를 연다. 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/`만 `tests/unit/script_coverage/`로 옮겼다(import 접두어를 바꾸고, `test_core_boundary.py`의 코어 폴더 경로를 새 위치에 맞춘다. `test_examples.py`는 이미 예시를 패키지 위치로 찾는다). 연구 도구(`coverage_lab`)를 쓰는 `tests/lab/`은 연구 폴더에 남긴다. 실험 도구(`coverage_lab`) · 실험 · 노트북은 옮기지 않는다.
+**어디서 도는가**: 코어(`examples/` · `prompts/` 포함)는 AI 서비스의 `features/script_coverage/`에 있고(연구 폴더 `src/script_coverage/`에서 폴더째 옮겼다), 라우터가 세 엔드포인트를 연다. 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/`만 `tests/unit/script_coverage/`로 옮겼다(import 접두어를 바꾸고, `test_core_boundary.py`의 코어 폴더 경로를 새 위치에 맞췄다. `test_examples.py`는 이미 예시를 패키지 위치로 찾는다). 연구 도구(`coverage_lab`)를 쓰는 `tests/lab/`은 연구 폴더에 남긴다. 실험 도구(`coverage_lab`) · 실험 · 노트북은 옮기지 않는다.
 
 | 라우터 · 서비스가 할 일 | 설명 |
 |---|---|
-| 의존성 | 서비스 `pyproject.toml`에 코어 의존성 `pydantic` · `kiwipiepy>=0.23,<0.24` · `scikit-learn>=1.8,<1.9`를 더한다 |
-| 형태소 분석기 미리 불러오기 | 처음 불러오기가 느리므로 lifespan에서 한 번 불러오고, 끝나기 전에는 `/ready`가 503 `NOT_READY`다(`ai-service.md` 6-3 · 7절). 대본 전달도가 서버 안 모델을 쓰는 첫 기능이면 이때 `/ready`와 compose 헬스체크를 함께 바꾼다 |
+| 의존성 | 코어 의존성 `pydantic` · `kiwipiepy>=0.23,<0.24` · `scikit-learn>=1.8,<1.9`는 서비스 `pyproject.toml`에 들어 있다 |
+| 형태소 분석기 미리 불러오기 | 처음 불러오기가 느리므로 lifespan에서 한 번 불러오고, 끝나기 전에는 `/ready`가 503 `NOT_READY`다(`ai-service.md` 6-3 · 7절). compose의 AI 헬스체크는 `/ready`를 부른다(#584, `ai-service.md` 11-3) |
 | LLM 객체 | 요청마다 마감 시각(AI 예산 120초)을 만들어 그 경로의 역할마다 `structured_llm(<스키마>, deadline=…)`을 받는다: `/scripts/rubric`은 셋(의미 분석 · 최종 · 전달 단위), `/takes/analyze`는 둘(의미 평가 · 교차 검증), `/takes/rescore`는 LLM을 쓰지 않는다. 역할 → 모델 묶음은 서비스 `settings.py` 상수(지금은 기본 묶음) |
 | 장별 실패 | 장마다 LLM 오류를 잡아 `failed`에 에러 코드로 담는다. 모든 장이 실패했을 때만 에러 상태 코드(7절). 장별로 LLM을 부르는 기능의 예외다(`architecture.md` 9절) |
 | 동기 함수 | 코어는 동기 함수이고 안에서 스레드 풀을 쓴다. `def` 라우터로 두어 이벤트 루프를 막지 않는다 |
@@ -627,7 +629,7 @@ uv sync
 1. 단위 테스트 · 계약 테스트 통과 (코어 경계 테스트 포함).
 2. 연구 캐시로 같은 입력을 넣어, 옮기기 전과 평가 기준 · 채점이 같은지 비교한다(LLM 답은 캐시에서 오므로 바이트까지 같아야 한다).
 3. 실제 LLM으로 장 하나 끝까지(live 테스트).
-4. 연구 폴더는 `coverage_lab`만 남기고 코어를 서비스에서 import하도록 바꾼다(서비스를 editable로 설치하고 `src/script_coverage/`를 지운다). 이후 코어는 서비스에서만 고친다.
+4. 연구 폴더는 `coverage_lab`만 남기고 코어를 서비스에서 import하도록 바꿨다(서비스를 editable로 설치하고 `src/script_coverage/`를 지웠다). 이후 코어는 서비스에서만 고친다.
 
 **증상별 원인**
 
@@ -762,7 +764,7 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 - 기준값을 바꾸면 `criteria_version`이 바뀌므로 결과 JSON을 다시 만들어 같은 PR에 넣는다. 기준값은 고정한 채 새 데이터로 먼저 재고, 그다음에 조정한다.
 
 # 14. 지표 정의
-- **문장 판정 정확도**: 채점 대상 대본 문장(`skip` 제외) 중 판정(`said` · `partial` · `missing` · `contradicted`)이 정답 라벨과 같은 비율.
+- **문장 판정 정확도**: 채점 대상 대본 문장(`skip` 제외. 핵심 내용의 근거인 `skip` 문장은 채점하므로 포함, 5-4) 중 판정(`said` · `partial` · `missing` · `contradicted`)이 정답 라벨과 같은 비율.
 - **핵심 내용 판정 정확도**: 핵심 내용 중 판정이 정답(근거 문장 라벨을 같은 규칙으로 모은 것)과 같은 비율.
 - **심각한 오판 비율**: 정답이 전달(`said`)인데 `missing` · `contradicted`로, 또는 정답이 `missing` · `contradicted`인데 `said`로 판정한 문장의 비율.
 - **같은 입력 재실행 판정 일치율**: 같은 STT를 여러 번 채점했을 때 문장(핵심 내용) 판정이 모든 회차에서 같은 비율.
@@ -799,7 +801,7 @@ BE · 리뷰 호출 순서는 `architecture.md` 1-3 · 1-6에 있다. 확인 답
 | LLM 호출 | 평가 기준 장마다 최대 3번, 채점 장마다 1번 + 어긋난 장 1번, 다시 계산 0번 | 8절 |
 | 시간 예산 | rubric · analyze AI 120초 / BE 130초 (최초 200이면 LLM 오류 장만, 408 · 429 · 5xx · 무응답이면 전체를 합쳐 1번), rescore BE 10초 (1번), LLM 호출 한 번 20초 (`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`) | 8절 |
 | BE 동시 개수 | 백그라운드 AI 호출 BE 전체 합계 4(권장), 그 안에서 `/scripts/rubric` 동시 2개, 넘으면 BE에서 대기 | 8절 · `architecture.md` 3절 |
-| LLM 출력 토큰 상한 | `script_coverage.semantic` 4,096 · `final` 4,096 · `unit` 5,120 · `eval` 3,072 · `verifier` 2,048 (잰 최대 × 2, 1,024 단위, 최소 2,048. 서비스 `settings.LLM_ROLES`에 넣는다) | 8절 |
+| LLM 출력 토큰 상한 | `script_coverage.semantic` 4,096 · `final` 4,096 · `unit` 5,120 · `eval` 3,072 · `verifier` 2,048 (잰 최대 × 2, 1,024 단위, 최소 2,048. 서비스 `settings.py`의 `LLM_ROLES`에 설정되어 있다) | 8절 |
 | 버전 | `schema_version` `1.0` · `feature_version` `script_coverage-1.1` · `criteria_version` `script_coverage-1.1+<config 해시>` · `rubric_schema_version` `1.2` | 9절 |
 | 저장 | 평가 기준 `script_slides.rubric` · `rubric_meta`, 상태 · 작업 기록 `script_versions.rubric_status` · `rubric_requested_at` · `rubric_retry_used`, 채점 `take_ai_results` (`take_id`, `kind`=`SCRIPT_COVERAGE`, 바꿀 때마다 `revision` + 1), 병합 후보 `SCRIPT_COVERAGE_PENDING`(`base_revision`), Take 재시도 기록 · 보류 사유 · 작업 표식 `takes.coverage_retry_used` · `coverage_rescore_retry_used` · `analysis_hold_reason` · `coverage_requested_at`, 리포트 `take_summaries.speak_accuracy` — 괄호는 유일 제약. 확인 답은 채점 안 `applied_answers` | 12-1 · 12-2 |
 | 장 구간 | 장 변경 기록 `take_slide_events` 전체, 단어는 `start_ms`가 든 구간의 장 | 5-2 |

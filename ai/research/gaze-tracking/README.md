@@ -60,7 +60,7 @@
 
 | 덩어리 | 폴더 | 하는 일 | 나중에 |
 |---|---|---|---|
-| **TS 엔진** | `web/src/engine/` | 프레임 → 준비 점검 · 고개 원 · 보정 · 프레임 판정 · 1초 기록 (Web Worker 안) | `frontend/src/vendor/gaze/engine/`로 폴더째 (카메라 화면 · Worker와 함께) |
+| **TS 엔진** | `web/src/engine/` | 프레임 → 준비 점검 · 고개 원 · 보정 · 프레임 판정 · 1초 기록 (Web Worker 안) | `frontend/src/vendor/gaze/engine/`로 폴더째 (Worker와 함께. 카메라 화면은 FE 담당, #611) |
 | **서버 판정 모듈** | 서비스 `features/gaze/` | 1초 기록 → 1초 판정 결과(`judge`) · Take 지표(`summarize`) · 판정 기준(`criteria`) | `ai/service`로 옮겼음 |
 | **Python 기준 구현** | `src/gaze_lab/` | 같은 판정의 Python 판 + 데이터셋 · 평가 · 실험. TS 엔진의 임계값 · 기준 답을 만든다 | research에 남음 |
 
@@ -149,7 +149,7 @@ gaze-tracking/
 |---|---|
 | `src/engine/` | **TS 엔진** — frontend로 갈 폴더. `index.ts`(진입점 · 지원 확인 · 초기화 실패 사유, MediaPipe를 불러옴) · `contract.ts`(MediaPipe 없이 쓰는 FE 진입점) 외에는 엔진 안에서만 쓴다. `__tests__/`에 엔진 테스트와 Python 기준 답 |
 | `src/worker/` | 카메라 화면용 Worker (메시지 처리) |
-| `src/camera/` | 카메라 화면 모듈: 영상 · 얼굴 원 · 보정 안내 (FE가 가져가 고칠 UI, 지금은 그대로) |
+| `src/camera/` | 카메라 화면 모듈: 영상 · 얼굴 원 · 보정 안내. 화면은 FE 담당(#611)이라 이 폴더 판은 연구 데모 · 브라우저 시험용 |
 | `src/demo/` | 로컬 데모 페이지 (FE 페이지 대역). 서버로 가는 1초 기록과 그 기록의 테두리를 보여 준다 (문제 판정은 서버 모듈) |
 | `test/` | FE 계약 확인(FE의 실제 시선 코드를 이 엔진에 붙여 실행) · 엔진 경계 · Worker · 자산 검증 |
 | `scripts/` | `copy-assets`(해시 확인 후 복사) · `smoke`(실제 브라우저) · `bench`(지연 측정) |
@@ -295,7 +295,7 @@ uv run python experiments/exp1_backbone.py --help
 | 서버 판정 모듈 | 서비스 `tests/unit/gaze/` | `judge`(읽기 · 빈 시간 · 겹침 · 커서 · 대본 의존 · 지표 · 상태 · 다섯 문제 · 시작 직후 억제 · 기준값 경계), `summarize` · `criteria`, `examples/` 계약, 입출력 모델, 코어 import 경계 | 206 passed (서비스, 2026-10-28) |
 | 기준 구현 | `tests/lab/` | 전처리 기하 · 고개 방향 · 보정 · 조건 감시 · 평가 · 데모 · 시나리오 S01~S24, 생성 파일 최신, 1초 나누기 값과 서버 판정 값의 분리 | 1628 passed · 155 skipped (얼굴 자산 없이, 2026-10-26) |
 | TS 엔진 | `web/src/engine/__tests__/` | Python 기준 답과 1e-9~1e-12 안에서 일치, 엔진 흐름, 시나리오, 초기화 실패 | 145 |
-| 그 밖의 web | `web/test/` | FE 계약(FE의 실제 `workers/modelClassifier.ts` · `aiAdapter.ts`를 이 엔진에 붙여 실행), 엔진 import · 저장 API 경계(`contract.ts`가 MediaPipe에 닿지 않음 포함), Worker, 자산 검증 | 53 |
+| 그 밖의 web | `web/test/` | FE 계약(FE의 실제 `workers/modelClassifier.ts` · `aiAdapter.ts`를 이 엔진에 붙여 실행), 엔진 import · 저장 API 경계(`contract.ts`가 MediaPipe에 닿지 않음 포함), 카메라 화면 경계(엔진 공개 입구만), Worker, 자산 검증 | 62 |
 | 실제 브라우저 | `web/scripts/smoke.mjs` | MediaPipe를 Worker에서 로드, 준비 점검 → 고개 원 → 보정 → 실시간 → 1초 기록, 카메라 끊김, 지연 | 23 항목 (Chrome `smoke` · `smoke:prod` 통과, Edge는 기능 22개 통과 · 지연만 초과) |
 
 Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetch_assets.py`를 돌려야 실행되고, 아니면 이유를 보이고 건너뜁니다.
@@ -382,7 +382,7 @@ Python 테스트 중 얼굴 사진이 필요한 것(66개 함수)은 `tools/fetc
   PnP 경로가 pitch를 약 18° 더 읽습니다. MediaPipe가 변환 행렬을 주면 이 경로를 타지 않고, 브라우저 엔진에는 이 경로가 없습니다.
 - **GPU delegate는 Python과 같은 값인지 확인하지 않았습니다.** 운영은 CPU입니다.
 - **브라우저는 Chrome · Edge(둘 다 Chromium)에서만 확인했습니다.** Edge는 기능 항목은 모두 통과했고, 부하가 있는 PC에서 프레임 지연이 예산을 넘었습니다. Safari · Firefox는 확인 전입니다.
-- **카메라 화면(`web/src/camera/view.ts`)은 FE lint의 중첩 삼항식 규칙에 8곳 걸립니다.** UI를 지금 고치지 않기로 해서 그대로 두었습니다.
+- **카메라 화면(`web/src/camera/view.ts`)은 FE lint의 중첩 삼항식 규칙에 8곳 걸립니다.** 화면은 FE 담당(#611)이라 FE가 넘겨받으며 정합니다.
 - 지연은 개발 PC 기준입니다. 한가할 때 Worker p95 약 30~38 ms였지만, 다른 일로 CPU를 쓰는 상태에서는 74~207 ms까지 흔들려
   예산(125 ms)을 넘기도 했습니다([web/README.md](web/README.md) '지연 시간'). 실제 사용자 기기 · 저사양 노트북에서 다시 재야 합니다.
 
