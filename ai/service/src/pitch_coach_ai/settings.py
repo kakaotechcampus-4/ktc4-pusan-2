@@ -89,6 +89,9 @@ LLM_ROLES: dict[str, LlmRole] = {
     # 코치 코칭 계획: 잰 최대 출력 × 2 를 1,024 단위로 올림(최소 2,048).
     # 호출 한 번은 LLM_TIMEOUT_SECONDS (코치 기능 문서 8절)
     "coach.plan": LlmRole(bundle="default", max_output_tokens=2048),
+    # 대본 파싱: 기능 문서 8절에서 잰 값(출력 상한 2,000 · 추론 low). 추론 강도를 정하지 않으면
+    # 추론이 출력 상한을 다 써 긴 대본이 실패했다. 호출 한 번은 LLM_TIMEOUT_SECONDS
+    "script_parser": LlmRole(bundle="default", max_output_tokens=2000, reasoning_effort="low"),
 }
 
 
