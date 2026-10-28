@@ -788,6 +788,29 @@
         "title": "FocusItem",
         "type": "object"
       },
+      "Highlight": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "description": "키워드 끝 위치(코드 포인트, 미포함)",
+            "minimum": 0.0,
+            "title": "End",
+            "type": "integer"
+          },
+          "start": {
+            "description": "키워드 시작 위치(코드 포인트)",
+            "minimum": 0.0,
+            "title": "Start",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "Highlight",
+        "type": "object"
+      },
       "KeyPoint": {
         "properties": {
           "content": {
@@ -1010,6 +1033,37 @@
         "title": "Keyword",
         "type": "object"
       },
+      "Meta": {
+        "additionalProperties": false,
+        "properties": {
+          "feature_version": {
+            "title": "Feature Version",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "실제로 응답한 LLM 모델. 서비스 라우터가 넣는다",
+            "title": "Model"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "feature_version"
+        ],
+        "title": "Meta",
+        "type": "object"
+      },
       "MissionTarget": {
         "properties": {
           "metric": {
@@ -1070,6 +1124,76 @@
           "reason"
         ],
         "title": "NameDecision",
+        "type": "object"
+      },
+      "ParseRequest": {
+        "properties": {
+          "script_text": {
+            "description": "대본 원문. 50,000자 이하",
+            "maxLength": 50000,
+            "title": "Script Text",
+            "type": "string"
+          },
+          "target_ms": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "발표 제한 시간(ms). 없으면 null",
+            "title": "Target Ms"
+          }
+        },
+        "required": [
+          "script_text"
+        ],
+        "title": "ParseRequest",
+        "type": "object"
+      },
+      "ParseResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/Meta"
+          },
+          "slides": {
+            "description": "장별 결과. fail이면 정확히 1개",
+            "items": {
+              "$ref": "#/components/schemas/Slide"
+            },
+            "title": "Slides",
+            "type": "array"
+          },
+          "status": {
+            "description": "구분자로 대본 전체가 나뉘었는가",
+            "enum": [
+              "success",
+              "fail"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "terms": {
+            "description": "STT가 틀리기 쉬운 고유명사 · 용어, 중요한 순서",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "slides",
+          "terms",
+          "meta"
+        ],
+        "title": "ParseResponse",
         "type": "object"
       },
       "Plan": {
@@ -1966,6 +2090,60 @@
         "title": "SimilarItem",
         "type": "object"
       },
+      "Slide": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_ms": {
+            "description": "예상 발표 시간(ms)",
+            "minimum": 0.0,
+            "title": "Expected Ms",
+            "type": "integer"
+          },
+          "highlights": {
+            "description": "키워드마다 장 대본에서 처음 나오는 위치, 키워드 순서",
+            "items": {
+              "$ref": "#/components/schemas/Highlight"
+            },
+            "title": "Highlights",
+            "type": "array"
+          },
+          "keywords": {
+            "description": "대본 표현 그대로의 중요 단어, 대본 순서, 중복 없음",
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "script": {
+            "description": "정제한 장 대본",
+            "title": "Script",
+            "type": "string"
+          },
+          "script_chars": {
+            "description": "공백 · 문장부호를 뺀 글자 수(코드 포인트)",
+            "minimum": 0.0,
+            "title": "Script Chars",
+            "type": "integer"
+          },
+          "slide_number": {
+            "description": "구분자에 적힌 번호. fail이면 1",
+            "minimum": 1.0,
+            "title": "Slide Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slide_number",
+          "script",
+          "script_chars",
+          "keywords",
+          "highlights",
+          "expected_ms"
+        ],
+        "title": "Slide",
+        "type": "object"
+      },
       "SlideEvaluation": {
         "description": "Structured Evaluation: 슬라이드 한 장의 평가 결과. 이 모양 그대로 DB 에 저장한다.",
         "properties": {
@@ -2399,6 +2577,87 @@
         "summary": "Ready",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/scripts/parse": {
+      "post": {
+        "operationId": "parse_scripts_parse_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 형식 오류(VALIDATION_ERROR) 또는 기능의 입력 오류"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "처리되지 않은 예외(INTERNAL_ERROR)"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 호출 실패(LLM_ERROR) · 잘못된 출력(LLM_INVALID_OUTPUT)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 을 쓸 수 없음(LLM_UNAVAILABLE) · 준비 전(NOT_READY)"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "LLM 응답 시간 초과(LLM_TIMEOUT)"
+          }
+        },
+        "summary": "Parse",
+        "tags": [
+          "script_parser"
         ]
       }
     },
