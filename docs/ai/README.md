@@ -27,7 +27,7 @@
 | 시선 | [gaze-tracking.md](features/gaze-tracking.md) | JWK0395 | 연구 코드 | [gaze-tracking/](../../ai/research/gaze-tracking/README.md) · 서비스 [`features/gaze/`](../../ai/service/src/pitch_coach_ai/features/gaze/) |
 | 군더더기 | [filler.md](features/filler.md) | JWK0395 | 연구 코드 | [filler-detection/](../../ai/research/filler-detection/README.md) · 서비스 [`features/filler/`](../../ai/service/src/pitch_coach_ai/features/filler/) |
 | 대본 전달도 | [script-coverage-evaluation.md](features/script-coverage-evaluation.md) | JWK0395 | 서비스 탑재 | [script-coverage-evaluation/](../../ai/research/script-coverage-evaluation/README.md) · 서비스 [`features/script_coverage/`](../../ai/service/src/pitch_coach_ai/features/script_coverage/) |
-| 대본 파싱 | [script-parser.md](features/script-parser.md) | jinn-ie | 연구 코드 | [script-parser/](../../ai/research/script-parser/README.md) |
+| 대본 파싱 | [script-parser.md](features/script-parser.md) | jinn-ie | 연구 코드 | [script-parser/](../../ai/research/script-parser/README.md) · 서비스 [`features/script_parser/`](../../ai/service/src/pitch_coach_ai/features/script_parser/) |
 | 평가 기준 분석 | [evaluation-criteria.md](features/evaluation-criteria.md) | jinn-ie | 연구 코드 | [evaluation-criteria/](../../ai/research/evaluation-criteria/README.md) |
 | 말 속도 · 멈춤 | [pace.md](features/pace.md) | jinn-ie | 연구 코드 | [speech-pace/](../../ai/research/speech-pace/README.md) · 서비스 [`features/pace/`](../../ai/service/src/pitch_coach_ai/features/pace/) |
 | 소리 크기 · 침묵 | [volume.md](features/volume.md) | jinn-ie | 연구 코드 | [volume-analysis/](../../ai/research/volume-analysis/README.md) |

@@ -5,10 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from script_parser import parse_script
-from script_parser.schemas import LLMOutput, ParseRequest, ParseResponse
+from pitch_coach_ai.features.script_parser import core, parse_script
+from pitch_coach_ai.features.script_parser.schemas import LLMOutput, ParseRequest, ParseResponse
 
-EXAMPLES = Path(__file__).parents[1] / "src/script_parser/examples"
+# 예시는 코어 패키지 안에 있다 — 패키지 위치가 바뀌어도 경로를 고치지 않게 모듈 파일 기준으로 찾는다
+EXAMPLES = Path(core.__file__).resolve().parent / "examples"
 CASES = sorted(p.name for p in EXAMPLES.iterdir() if p.is_dir())
 
 
@@ -46,4 +47,4 @@ def test_example_follows_contract(case):
     if request.target_ms is not None:
         assert sum(s.expected_ms for s in response.slides) == request.target_ms
     for s in response.slides:
-        assert [s.script[h.start:h.end] for h in s.highlights] == s.keywords
+        assert [s.script[h.start : h.end] for h in s.highlights] == s.keywords

@@ -1,6 +1,6 @@
 import pytest
 
-from script_parser.cleaner import clean_script, count_chars, find_highlights
+from pitch_coach_ai.features.script_parser.cleaner import clean_script, count_chars, find_highlights
 
 
 @pytest.mark.parametrize(
@@ -34,7 +34,10 @@ def test_clean_script(text, expected):
 
 def test_find_highlights_offsets():
     script = "발표 시간과 말하기 속도"
-    assert find_highlights(script, ["발표", "말하기 속도"]) == [{"start": 0, "end": 2}, {"start": 7, "end": 13}]
+    assert find_highlights(script, ["발표", "말하기 속도"]) == [
+        {"start": 0, "end": 2},
+        {"start": 7, "end": 13},
+    ]
 
 
 def test_find_highlights_first_occurrence():

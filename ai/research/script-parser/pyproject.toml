@@ -3,29 +3,35 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# 코어 script_parser 는 나중에 ai/service 의 features/script_parser/ 로 폴더째 옮긴다
 name = "script-parser"
 version = "1.0.0"
 description = "발표 대본 장 나누기 · 키워드 · terms 추출 (research)"
 # service 가 쓸 Python 버전(3.12)에서 검증한다
 requires-python = ">=3.12"
 dependencies = [
-    # ── 코어(script_parser)가 쓰는 것은 pydantic 하나뿐이다. LLM 은 인자로 받는다
-    "pydantic>=2.14",
+    # ── 코어는 AI 서비스(ai/service)의 pitch_coach_ai.features.script_parser 에 있고, 서비스를 editable 로
+    #    설치해 그대로 import 한다(원본은 서비스 한 곳, prompts · examples 포함). 판은 서비스 uv.lock 과 같게 맞춘다
+    "pitch-coach-ai",
     # ── research 전용 (run.py 의 build_llm)
     "langchain-openai>=1.7",
     "python-dotenv>=1.2",
 ]
 
+[tool.uv.sources]
+pitch-coach-ai = { path = "../../service", editable = true }
+
 [dependency-groups]
 dev = ["pytest>=9"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+# 이 폴더에는 import 패키지가 없다(코어는 서비스, 실험 도구는 run.py 스크립트). 빈 src/ 를 찾지 않게 한다
+[tool.setuptools]
+packages = []
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "."]
+# run.py 를 import 한다 (tests/live)
+pythonpath = ["."]
 testpaths = ["tests"]
-# live: 실제 LLM API 를 부르는 테스트 (과금). 기본 실행에서 빼고 `pytest -m live` 로 따로 돌린다
+# live: 실제 LLM API 를 부르는 테스트 (과금). 기본 실행에서 빼고 `pytest -m live` 로 따로 돌린다.
+# 코어 단위 테스트는 서비스 tests/unit/script_parser/ 에 있어, 이 폴더의 기본 실행에는 고를 테스트가 없다
 markers = ["live: 실제 LLM API 를 호출한다 (과금)"]
 addopts = "-m 'not live'"
