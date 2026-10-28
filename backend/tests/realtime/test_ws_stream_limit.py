@@ -10,12 +10,14 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.user.entity import User
+from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.stream import abandon, registry, runtime, state
 from pitch_coach_backend.realtime.stream.registry import (
     MAX_STREAMS_PER_USER,
     StreamClosing,
     TooManyStreams,
 )
+from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import SttConfig
 from tests.realtime.conftest import (
     TAKE_ID,
@@ -375,3 +377,49 @@ async def test_new_take_opens_after_the_ending_stream_closes_by_itself():
     assert ending.is_finished
     assert _open(owner_id) == [fresh]
     await _close_all()
+
+
+@pytest.mark.anyio
+async def test_auto_end_can_make_room_even_when_its_client_stops_reading(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """상태 알림과 자동 종료 알림 전송이 모두 막혀도 종료 정리가 시작되어야 한다. 알림을 무한히
+    기다리면 새 연결은 계속 1013 으로 거절되고 이전 Deepgram 세션도 남는다."""
+    sending = asyncio.Event()
+    release = asyncio.Event()
+
+    class BlockedWebSocket(FakeWebSocket):
+        async def send_text(self, text):
+            sending.set()
+            await release.wait()
+            await super().send_text(text)
+
+    monkeypatch.setattr(runtime, "CONTROL_SEND_TIMEOUT_SEC", 0.01)
+    monkeypatch.setattr(runtime, "FINAL_METRICS_WAIT_SEC", 0.01)
+    monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 0.02)
+    monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.01)
+    monkeypatch.setattr(registry, "ENDING_WAIT_SEC", 0.2)
+    adapter = FakeSttAdapter()
+    owner_id = uuid.uuid7()
+    ending = await registry.attach(
+        uuid.uuid7(),
+        BlockedWebSocket(),
+        owner_id=owner_id,
+        stt_adapter=adapter,
+        config=SttConfig(),
+        store=FakeTranscriptStore(),
+    )
+    try:
+        await asyncio.wait_for(sending.wait(), 0.5)
+        ending._auto_end(AutoEndReason.TIME_LIMIT)
+
+        fresh = await asyncio.wait_for(_attach(adapter, owner_id), 0.5)
+
+        assert ending.is_finished
+        assert _open(owner_id) == [fresh]
+        assert adapter.sessions[0].aborted
+    finally:
+        release.set()
+        await _close_all()
+        if state.background.tasks():
+            await asyncio.wait(state.background.tasks(), timeout=0.5)
