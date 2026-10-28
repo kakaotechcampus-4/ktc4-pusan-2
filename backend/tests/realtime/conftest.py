@@ -458,6 +458,8 @@ class FakeWebSocket:
         fail_send_after: int | None = None,
     ) -> None:
         self.headers: dict[str, str] = {}
+        # Starlette 의 `WebSocket.client`. 소켓 상대 주소이고 모르면 None 이다
+        self.client = None
         self._inbound = list(inbound or [])
         self.sent: list[str] = []
         self.closed: tuple[int, str] | None = None
