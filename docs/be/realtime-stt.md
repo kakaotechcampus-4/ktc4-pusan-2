@@ -143,6 +143,7 @@ WS /api/ws/takes/{take_id}
 - Take PUT 은 상태와 순서를 본다. `COMPLETED`·`FAILED` 는 `409 TAKE_ENDED`, `ANALYZING` 은 시각만 받는다
   (`event_logs` 는 409). `ABANDONED` 로 끝난 Take 는 `ended_at` 이 있는 끝내기만 받는다 (`CLOSED` 는 409).
   `ended_at` 이 `started_at` 보다 앞서면 `400 INVALID_TAKE_TIME`, 시간대가 없는 시각은 422.
+  Take 를 만든 때 1일 전 ~ 지금 1일 뒤를 벗어난 시각도 `422 VALIDATION_ERROR`.
   `null` 은 보내지 않은 것으로 본다. 점검 결과(`calibration`)는 `READY` 일 때만 받는다 (아니면 `409 TAKE_STARTED`).
 - **Take 를 자동으로 끝낸다** (`realtime/stream/auto_end.py`). 둘 중 하나라도 맞으면 `{"type":"auto_end","reason","message"}`
   를 보내고 `stop` 과 같은 순서로 정리한다 (drain → `ANALYZING` → `closed` → `1000`). 오디오는 그 자리에서 끊는다.
