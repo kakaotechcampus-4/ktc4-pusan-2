@@ -642,6 +642,24 @@ class _DriverError(Exception):
 
 
 @pytest.mark.anyio
+async def test_slow_database_does_not_hold_up_the_next_stt_result():
+    """STT 이벤트 펌프는 `_on_transcript` 를 기다린다. final 저장을 기다리면 DB 가 느릴 때 다음
+    결과 · 문장 끝 신호가 밀린다. 저장은 Take 의 버퍼가 뒤에서 번호 순서대로 한다."""
+    store = FakeTranscriptStore(append_delay=1.0)
+    stream = _final_stream(store)
+    await stream.attach(FakeWebSocket())
+
+    for start_ms, text in ((0, "하나"), (200, "둘")):
+        await asyncio.wait_for(
+            stream._on_transcript(transcript(start_ms, start_ms + 200, text, is_final=True)), 0.2
+        )
+
+    assert store.segments == []
+    assert await stream._record.finals.flush()
+    assert [(seg.seq, seg.transcript) for seg in store.segments] == [(1, "하나"), (2, "둘")]
+
+
+@pytest.mark.anyio
 async def test_save_failure_log_omits_transcript_text(caplog: pytest.LogCaptureFixture):
     """SQLAlchemy 예외 본문에는 SQL 매개변수가 붙는다. traceback 을 그대로 남기면 전사 원문이
     로그에 나간다. 예외 종류와 SQLSTATE 만 남기고 버퍼는 다시 넣는다."""
