@@ -47,4 +47,4 @@ def test_example_follows_contract(case):
     if request.target_ms is not None:
         assert sum(s.expected_ms for s in response.slides) == request.target_ms
     for s in response.slides:
-        assert [s.script[h.start:h.end] for h in s.highlights] == s.keywords
+        assert [s.script[h.start : h.end] for h in s.highlights] == s.keywords

@@ -20,7 +20,8 @@ def clean_script(text: str) -> str:
     text = re.sub(r"(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?!\*)", r"\1", text)
     # 백틱 제거
     text = text.replace("`", "")
-    # 마크다운 링크 [텍스트](URL) -> 텍스트 (슬라이드 마커 [슬라이드 1] 등은 뒤에 괄호가 없어 영향 없음)
+    # 마크다운 링크 [텍스트](URL) -> 텍스트
+    # (슬라이드 마커 [슬라이드 1] 등은 뒤에 괄호가 없어 영향 없음)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
     # 줄 안의 연속 공백/탭만 하나로 정리, 문단 구분은 최대 빈 줄 하나(\n\n)까지 유지
     text = re.sub(r"[ \t]+", " ", text)
@@ -30,13 +31,16 @@ def clean_script(text: str) -> str:
 
 def count_chars(text: str) -> int:
     """공백과 문장부호(유니코드 P 범주: 쉼표 · 마침표 · % 등)를 뺀 글자 수(코드 포인트)."""
-    return sum(1 for ch in text if not ch.isspace() and not unicodedata.category(ch).startswith("P"))
+    return sum(
+        1 for ch in text if not ch.isspace() and not unicodedata.category(ch).startswith("P")
+    )
 
 
 def find_highlights(script: str, keywords: list[str]) -> list[dict[str, int]]:
     """keyword가 script에 처음 등장하는 위치를 {"start", "end"}로 돌려줍니다.
 
-    위치는 코드 포인트 기준이고 end는 포함하지 않습니다. clean_script를 거친 script 기준이어야 합니다.
+    위치는 코드 포인트 기준이고 end는 포함하지 않습니다.
+    clean_script를 거친 script 기준이어야 합니다.
     script에 없는 keyword는 건너뜁니다.
     """
     highlights = []

@@ -1,4 +1,7 @@
-"""대본 → 장별 결과: 구분자 찾기(코드) → 제목 줄 · 키워드 · 용어 고르기(LLM) → 판정 · 정제 · 계산(코드)."""
+"""대본 → 장별 결과.
+
+구분자 찾기(코드) → 제목 줄 · 키워드 · 용어 고르기(LLM) → 판정 · 정제 · 계산(코드).
+"""
 
 from itertools import zip_longest
 from typing import Any
@@ -57,7 +60,12 @@ def parse_script(request: ParseRequest, llm: Any) -> ParseResponse:
         parts = [(1, whole, set(), merged)]
     elif status == "success":
         parts = [
-            (s.slide_number, s.text, titles.get(s.slide_number, set()), keywords.get(s.slide_number, []))
+            (
+                s.slide_number,
+                s.text,
+                titles.get(s.slide_number, set()),
+                keywords.get(s.slide_number, []),
+            )
             for s in split.slides
         ]
     else:
@@ -72,14 +80,20 @@ def parse_script(request: ParseRequest, llm: Any) -> ParseResponse:
         # 대본 순서로 낸다 (장마다 번갈아 합친 fail 키워드도 여기서 대본 순서가 된다)
         kept = sorted(_keep(picked_keywords, script, limit), key=script.find)
         slides.append(
-            {"slide_number": number, "script": script, "script_chars": count_chars(script),
-             "keywords": kept, "highlights": find_highlights(script, kept)}
+            {
+                "slide_number": number,
+                "script": script,
+                "script_chars": count_chars(script),
+                "keywords": kept,
+                "highlights": find_highlights(script, kept),
+            }
         )
 
     total = sum(s["script_chars"] for s in slides)
     if total == 0:
         raise EmptyScriptError("제목 줄을 빼면 대본에 글이 없습니다.")
-    for s, ms in zip(slides, _expected_ms([s["script_chars"] for s in slides], request.target_ms)):
+    expected = _expected_ms([s["script_chars"] for s in slides], request.target_ms)
+    for s, ms in zip(slides, expected, strict=True):
         s["expected_ms"] = ms
 
     return ParseResponse(
