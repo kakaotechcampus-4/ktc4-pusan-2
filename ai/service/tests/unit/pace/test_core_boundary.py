@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-import pace
+from pitch_coach_ai.features import pace
 
 # 코어 패키지 파일 기준으로 찾는다 — 서비스로 옮겨도 경로를 고치지 않게
 CORE = Path(pace.__file__).resolve().parent

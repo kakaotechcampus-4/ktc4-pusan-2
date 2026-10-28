@@ -12,9 +12,9 @@ from typing import Any
 
 import pytest
 
-from pace import core as pace_core
-from pace.core import criteria, judge, summarize
-from pace.schemas import IssueCriteria, PaceInput, TallyItem
+from pitch_coach_ai.features.pace import core as pace_core
+from pitch_coach_ai.features.pace.core import criteria, judge, summarize
+from pitch_coach_ai.features.pace.schemas import IssueCriteria, PaceInput, TallyItem
 
 from .helpers import check_contract, time_items, word_items
 

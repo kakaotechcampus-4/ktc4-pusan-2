@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pace.schemas import TallyItem
+from pitch_coach_ai.features.pace.schemas import TallyItem
 
 from .helpers import run, time_items, total, word, word_items
 
