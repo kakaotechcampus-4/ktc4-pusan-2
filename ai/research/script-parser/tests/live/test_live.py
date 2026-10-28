@@ -6,10 +6,11 @@ from pathlib import Path
 import pytest
 
 from run import build_llm
-from script_parser import parse_script
+from script_parser import core, parse_script
 from script_parser.schemas import ParseRequest
 
-EXAMPLES = Path(__file__).parents[2] / "src/script_parser/examples"
+# 예시는 코어 패키지 안에 있다 — 패키지 위치가 바뀌어도 경로를 고치지 않게 모듈 파일 기준으로 찾는다
+EXAMPLES = Path(core.__file__).resolve().parent / "examples"
 
 pytestmark = pytest.mark.live
 
