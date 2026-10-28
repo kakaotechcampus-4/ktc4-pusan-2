@@ -130,7 +130,7 @@ ai/service/
 │   │   ├── request_log.py       #   X-Request-ID · 요청마다 한 줄 로그
 │   │   ├── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
 │   │   └── readiness.py         #   시작할 때 불러올 모델 · 준비 상태 (/ready · NOT_READY)
-│   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다 (지금은 script_coverage · script_parser · gaze · filler · pace · coach)
+│   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다 (지금은 script_coverage · script_parser · gaze · filler · pace · volume · coach)
 │       └── <기능>/              #   schemas.py · core.py · config.py · version.py · examples/ · prompts/ (`architecture.md` 8절)
 └── tests/
     ├── conftest.py · test_health.py
