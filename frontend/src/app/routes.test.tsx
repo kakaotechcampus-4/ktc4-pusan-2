@@ -15,8 +15,7 @@ vi.mock('@/features/auth/useSession', () => ({
   useLogout: () => ({ isPending: false, isError: false }),
 }));
 vi.mock('@/shared/api/launch', () => ({
-  useLaunchStatus: () => ({ required: true, isPending: false }),
-  launchIsOpen: () => state.launchOpen,
+  useLaunchStatus: () => ({ isOpen: state.launchOpen }),
 }));
 vi.mock('@/features/onboarding/WelcomePage', () => ({ WelcomePage: () => <p>서비스 소개</p> }));
 vi.mock('@/features/auth/LoginPage', () => ({ LoginPage: () => <p>로그인</p> }));
