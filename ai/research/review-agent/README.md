@@ -5,7 +5,7 @@ Take가 끝난 뒤 코치의 **Take 결과**와 **대본 전달도 채점**을 �
 | | |
 |---|---|
 | 담당 | seojin-lee |
-| 기능 버전 | `review-1.1`, 요청 · 응답 스키마 `1.0` (`src/review/version.py`) |
+| 기능 버전 | `review-1.2`, 요청 · 응답 스키마 `1.0` (`src/review/version.py`) |
 | 상태 | 패키지 + 테스트(규칙 단계 · 가짜 LLM · 숫자 검사 계약 · 실제 LLM). **가상 발표 48 Take로만 평가했습니다** (실제 리허설 없음) |
 | 설계 | 목적 · BE ↔ 리뷰 계약 · 처리 · 배포 → [`docs/ai/features/review-agent.md`](../../../docs/ai/features/review-agent.md) |
 

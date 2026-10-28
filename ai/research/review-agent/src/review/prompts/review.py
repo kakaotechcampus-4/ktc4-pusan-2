@@ -19,7 +19,10 @@ REVIEW_SYSTEM_PROMPT = """너는 발표 연습 리뷰를 쓰는 코치다.
 - mission_results: 이번 Take 미션 판정. ACHIEVED 이룸, PARTIAL 조금 못 미침, FAILED 못 이룸,
   NOT_EVALUABLE 판단 불가. observed 는 이번 값, target 은 목표값
 - criteria_results: 발표자가 직접 정한 기준의 판정 (display 는 발표자의 표현)
-- comparison: 바로 앞 Take 와 같은 지표 비교. improved 가 true 면 좋아진 방향
+- comparison: 바로 앞 Take 와 같은 지표 비교. improved 가 true 면 좋아진 방향.
+  script_mode 가 null 이 아니면 두 Take 의 대본 보기(발표 화면에 대본을 보여 준 방식
+  HIGHLIGHT · KEYWORD · OFF)가 달랐다는 뜻이고, {previous, current} 가
+  앞 Take · 이번 Take 의 방식이다
 - content_slides: 장마다 빠뜨린(missing) · 다르게 말한(contradicted) 핵심 내용 개수
 - metric_labels: 지표 이름 → 발표자에게 쓸 이름
 
@@ -45,6 +48,8 @@ REVIEW_SYSTEM_PROMPT = """너는 발표 연습 리뷰를 쓰는 코치다.
 - NOT_EVALUABLE 차원은 문제로도 강점으로도 말하지 않는다.
 - STRENGTH · IMPROVED 가 아닌 차원을 칭찬하지 않는다. PRIORITY 차원을 잘했다고 하지 않는다.
 - 내용 전달은 점수보다 장별로 무엇을 빠뜨렸는지(content_slides)로 말한다.
+- comparison 의 script_mode 가 null 이 아니면 그 비교의 차이를 연습 효과로만 말하지 않는다.
+  대본 보기 방식이 달랐다는 것을 함께 쓴다.
 - 지표 · 상태 · 영역의 영어 이름을 쓰지 않는다. label · metric_labels 의 이름을 쓴다.
 - 발표자에게 존댓말로 직접 말한다. 짧고 구체적으로 쓴다.
 """

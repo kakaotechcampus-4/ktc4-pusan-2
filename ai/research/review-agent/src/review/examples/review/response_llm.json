@@ -117,10 +117,10 @@
   "fallback_reason": null,
   "meta": {
     "schema_version": "1.0",
-    "feature_version": "review-1.1",
+    "feature_version": "review-1.2",
     "criteria_versions": {
       "gaze": "gaze-1.1+000000000000",
-      "review": "review-1.1+99c57adfbbb0"
+      "review": "review-1.2+99c57adfbbb0"
     },
     "model": "openai/gpt-6-luna"
   }

@@ -6,10 +6,12 @@ import pytest
 from pydantic import ValidationError
 
 from review import ReviewRequest, load_config, review_take
+from review.schemas import NextMission, RecurringIssue
 from review.score import compute_score
+from review.text import NOTHING_TEXT, STABLE_TEXT, TextCandidates, default_summary
 from review.vocab import DIMENSIONS
 
-from .conftest import run, segment, unmeasured
+from .conftest import run, sample_coverage, segment, unmeasured
 
 
 def test_sample_recurring_issues(req):
@@ -161,6 +163,28 @@ def test_sample_score_and_text(req):
     assert [s.area for s in resp.strengths] == ["GAZE", "SPEED", "VOLUME"]
 
 
+@pytest.mark.parametrize(("evaluable", "expected"), [(True, STABLE_TEXT), (False, NOTHING_TEXT)])
+def test_default_summary_without_candidates(evaluable, expected):
+    # 판단할 수 있는 차원이 모두 STABLE 이면 '측정 부족'이 아니라 '전반적으로 보통'
+    assert default_summary(TextCandidates([], [], evaluable)) == expected
+
+
+def test_all_stable_take_summary(req, monkeypatch):
+    # 실제 입력으로 여섯 차원을 모두 STABLE 로 만들기 어려워 상태만 바꿔 본다
+    monkeypatch.setattr(
+        "review.core.decide_dimension_states",
+        lambda *a, **k: dict.fromkeys(DIMENSIONS, "STABLE"),
+    )
+    resp = review_take(req)
+    assert resp.strengths == [] and resp.improvements == []
+    assert resp.overall_summary == STABLE_TEXT
+    # 예시 요청의 사용자 기준 FAILED 는 다음 미션 1순위로 나가므로
+    # 요약이 '고칠 점 없음'이라 하지 않는다
+    assert any(r.status == "FAILED" for r in resp.criteria_results)
+    assert resp.next_missions[0].priority == 1
+    assert "고칠 점" not in resp.overall_summary
+
+
 def test_score_none_when_nothing_evaluable():
     assert compute_score({d: "NOT_EVALUABLE" for d in DIMENSIONS}, load_config()) is None
 
@@ -175,8 +199,8 @@ def test_fallback_and_meta(req):
     assert resp.fallback_reason == "LLM_UNAVAILABLE"
     assert resp.comparison == []
     assert resp.meta.schema_version == "1.0"
-    assert resp.meta.feature_version == "review-1.1"
-    assert resp.meta.criteria_versions["review"].startswith("review-1.1+")
+    assert resp.meta.feature_version == "review-1.2"
+    assert resp.meta.criteria_versions["review"].startswith("review-1.2+")
     assert resp.meta.model is None
 
 
@@ -226,7 +250,7 @@ def test_criteria_versions_carry_take_result_criteria(req):
     assert versions.keys() == {"gaze", "volume", "review"}
     assert versions["gaze"] == "gaze-1.1+000000000000"
     assert versions["volume"] == "volume-1.0+aaaaaaaaaaaa"
-    assert versions["review"].startswith("review-1.1+")
+    assert versions["review"].startswith("review-1.2+")
 
 
 def test_comparison_shape():
@@ -279,3 +303,36 @@ def test_eq_operator_is_rejected(req, field):
         req["user_criteria"]["targets"][0]["operator"] = "EQ"
     with pytest.raises(ValidationError):  # 라우터가 422 로 바꾼다
         review_take(req)
+
+
+def test_mission_slide_number_starts_at_one(req):
+    # 장 번호는 1부터, 0을 Take 전체로 쓰지 않는다 (architecture.md 6-1)
+    req["missions"][0]["slide_number"] = 0
+    with pytest.raises(ValidationError):  # 라우터가 422 로 바꾼다
+        review_take(req)
+
+
+def test_output_mission_and_recurring_contract():
+    target = {"metric": "script_ratio", "operator": "LTE", "value": 0.52}
+    ok = {"area": "GAZE", "slide_number": 3, "description": None, "target": target}
+    NextMission(**ok, priority=1, reason="이유")
+    for bad in ({"area": None}, {"area": "EYE"}, {"slide_number": 0}):
+        with pytest.raises(ValidationError):
+            NextMission(**{**ok, **bad}, priority=1, reason="이유")
+    RecurringIssue(area="GAZE", slide_number=None, dimension="script_independence")
+    with pytest.raises(ValidationError):
+        RecurringIssue(area="GAZE", slide_number=0, dimension="script_independence")
+
+
+@pytest.mark.parametrize("where", ["slide_values", "problem_segment", "coverage"])
+def test_input_slide_number_starts_at_one(req, where):
+    # 출력 장 번호는 입력 장 번호에서 고른다. 0이 들어오면 출력 검증(500)이 아니라 입력에서 422
+    if where == "slide_values":
+        req["take_result"]["areas"]["GAZE"]["slides"][0]["slide_number"] = 0
+    elif where == "problem_segment":
+        req["take_result"]["problem_segments"][0]["slide_number"] = 0
+    else:
+        req["script_coverage"] = sample_coverage()
+        req["script_coverage"]["evaluations"][0]["slide_number"] = 0
+    with pytest.raises(ValidationError):  # 라우터가 422 로 바꾼다
+        ReviewRequest.model_validate(req)
