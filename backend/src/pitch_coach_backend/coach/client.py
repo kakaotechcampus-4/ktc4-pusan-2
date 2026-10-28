@@ -50,6 +50,7 @@ from pitch_coach_backend.coach.replies import (
     Reply,
 )
 from pitch_coach_backend.core import ai_slots
+from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +323,7 @@ class HttpCoachClient:
                     timeout=timeout_sec,
                     transport=self._transport,
                     verify=_ssl_context(),
+                    event_hooks=AI_RESPONSE_HOOKS,
                 ) as client,
             ):
                 response = await client.post(

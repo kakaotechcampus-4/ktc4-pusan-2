@@ -20,6 +20,7 @@ from typing import Any, Protocol
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
 from pitch_coach_backend.core.validation import reject_unstorable_json
 from pitch_coach_backend.module.pitch.adapter.script_parser import _error_code, _ssl_context
 
@@ -213,6 +214,7 @@ class HttpRubricClient:
                 timeout=self._timeout,
                 transport=self._transport,
                 verify=_ssl_context(),
+                event_hooks=AI_RESPONSE_HOOKS,
             ) as client:
                 return await client.post(
                     RUBRIC_PATH, json=payload, headers={REQUEST_ID_HEADER: request_id}

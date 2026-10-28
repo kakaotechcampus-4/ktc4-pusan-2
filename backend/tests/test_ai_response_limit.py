@@ -1,12 +1,19 @@
 """AI 응답 본문 크기 상한 (`core/ai_response_limit.py`)."""
 
 from collections.abc import AsyncIterator
+from functools import partial
 
 import httpx
 import pytest
 
 from pitch_coach_backend.core import ai_response_limit
 from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS, AiResponseTooLarge
+from pitch_coach_backend.module.pitch.adapter.script_parser import (
+    HttpScriptParser,
+    ScriptParseError,
+)
+from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
+from pitch_coach_backend.module.take.service import coverage as coverage_service
 
 LIMIT = 10
 
@@ -50,3 +57,30 @@ async def test_body_without_content_length_is_cut_while_reading() -> None:
     """AI 가 조각으로 보내면 길이를 미리 알 수 없다. 읽은 양이 넘는 순간 끊는다."""
     with pytest.raises(AiResponseTooLarge):
         await _post(httpx.Response(200, stream=_Chunks(b"123456", b"789012")))
+
+
+async def test_script_parser_treats_a_too_large_body_as_invalid_output() -> None:
+    """`httpx.TransportError` 만 잡는 곳이라 따로 받는다."""
+    parser = HttpScriptParser(
+        "http://ai",
+        attempts=1,
+        retry_delay_sec=0,
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=b"x" * 64)),
+    )
+
+    with pytest.raises(ScriptParseError) as caught:
+        await parser.parse("x", None)
+
+    assert caught.value.code is ScriptParseErrorCode.AI_INVALID_OUTPUT
+
+
+async def test_coverage_treats_a_too_large_body_as_a_failed_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=b"x" * 64))
+    monkeypatch.setattr(
+        coverage_service.httpx, "AsyncClient", partial(httpx.AsyncClient, transport=transport)
+    )
+
+    with pytest.raises(coverage_service.CoverageCallError):
+        await coverage_service.request_analyze({"take_id": "t"}, "id")

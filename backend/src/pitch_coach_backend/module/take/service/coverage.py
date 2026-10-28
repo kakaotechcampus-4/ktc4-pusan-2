@@ -14,6 +14,7 @@ import httpx
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.rounding import round_half_up
@@ -40,7 +41,9 @@ RUBRIC_WAIT = timedelta(minutes=5)
 async def _post_ai(path: str, body: dict, request_id: str, timeout_sec: float) -> dict:
     try:
         async with asyncio.timeout(timeout_sec):
-            async with httpx.AsyncClient(timeout=timeout_sec) as client:
+            async with httpx.AsyncClient(
+                timeout=timeout_sec, event_hooks=AI_RESPONSE_HOOKS
+            ) as client:
                 response = await client.post(
                     f"{settings.ai_base_url}{path}", json=body, headers={"X-Request-ID": request_id}
                 )
