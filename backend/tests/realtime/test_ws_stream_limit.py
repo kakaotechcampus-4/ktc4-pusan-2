@@ -1,6 +1,7 @@
 """사용자별 동시 스트림(= Deepgram 연결) 상한."""
 
 import asyncio
+import json
 import uuid
 
 import pytest
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.user.entity import User
-from pitch_coach_backend.realtime.stream import abandon, registry, state
+from pitch_coach_backend.realtime.stream import abandon, registry, runtime, state
 from pitch_coach_backend.realtime.stream.registry import MAX_STREAMS_PER_USER, TooManyStreams
 from pitch_coach_backend.realtime.stt.adapter import SttConfig
 from tests.realtime.conftest import (
@@ -228,3 +229,53 @@ def test_ready_take_is_not_started_when_there_is_no_room(
     assert ready_take.status == "READY"
     assert not abandon.armed(ready_take.id)
     assert stt.sessions == []
+
+
+@pytest.mark.anyio
+async def test_attached_stream_without_audio_makes_room_for_a_new_take(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """브라우저가 닫힘 프레임 없이 사라진 연결은 서버에 붙어 있는 것으로 남는다. 오디오가
+    `LIVE_AUDIO_SEC` 넘게 없으면 새 Take 에 자리를 내준다. 그 연결은 다시 붙지 않게 닫고 Take 는
+    끝내지 않는다."""
+    monkeypatch.setattr(runtime, "LIVE_AUDIO_SEC", 0.05)
+    adapter = FakeSttAdapter()
+    owner_id = uuid.uuid7()
+    previous = await _attach(adapter, owner_id)
+    ghost = previous._client.ws
+    previous.push(frame(1, 0), source=ghost)
+    await asyncio.sleep(0.06)
+
+    assert registry.has_room(owner_id, uuid.uuid7())
+    fresh = await _attach(adapter, owner_id)
+
+    assert previous.is_finished
+    assert _open(owner_id) == [fresh]
+    assert previous.take_id not in state.ended
+    assert abandon.armed(previous.take_id)
+    await asyncio.sleep(0.01)
+    assert json.loads(ghost.sent[-1])["code"] == "TOO_MANY_STREAMS"
+    assert ghost.closed is not None and ghost.closed[0] == 1008
+    # 닫힌 연결이 뒤늦게 떨어져도 새 스트림에는 영향이 없다
+    previous.detach(ghost)
+    assert fresh.has_client
+    await _close_all()
+
+
+@pytest.mark.anyio
+async def test_stream_with_recent_audio_keeps_its_place(monkeypatch: pytest.MonkeyPatch):
+    """막 붙었거나 오디오가 오는 연결은 다른 곳에서 발표 중일 수 있어 정리하지 않는다."""
+    monkeypatch.setattr(runtime, "LIVE_AUDIO_SEC", 0.5)
+    adapter = FakeSttAdapter()
+    owner_id = uuid.uuid7()
+    first = await _attach(adapter, owner_id)
+    await asyncio.sleep(0.3)
+    first.push(frame(1, 0), source=first._client.ws)
+    await asyncio.sleep(0.3)
+
+    # 붙은 지는 0.5 초가 넘었지만 마지막 오디오는 그보다 최근이다
+    assert not first.is_idle
+    with pytest.raises(TooManyStreams):
+        await _attach(adapter, owner_id)
+    assert first.has_client and not first.is_stopping
+    await _close_all()
