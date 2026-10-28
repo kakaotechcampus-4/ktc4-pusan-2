@@ -96,12 +96,12 @@ export function HomePage() {
                       제목을 누르면 자료와 대본을, Take 기록을 누르면 지금까지의 연습을 볼 수
                       있어요.
                     </p>
-                    {/* pb-1 · pr-1 은 카드 그림자(4px)가 스크롤 영역에 잘리지 않게 둡니다 */}
-                    <div className="space-y-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pb-1 lg:pr-1">
+                    {/* 피치가 많으면 페이지가 아니라 이 목록 상자 안에서만 스크롤됩니다 */}
+                    <ul className="divide-y divide-line border-2 border-ink bg-white lg:min-h-0 lg:overflow-y-auto">
                       {data.pitches.map((pitch, index) => (
                         <HomePitchCard key={pitch.pitch_id} pitch={pitch} index={index} />
                       ))}
-                    </div>
+                    </ul>
                   </>
                 ) : (
                   <div className="border-2 border-dashed border-line-strong bg-white px-6 py-8 text-center">
