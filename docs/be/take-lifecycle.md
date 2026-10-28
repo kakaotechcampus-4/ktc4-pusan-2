@@ -195,6 +195,8 @@ Take 는 장치 점검에서 시작을 누를 때 만들어 곧바로 연결이 
 | `FAILED`(`CLOSED`) · 그 밖의 `FAILED` · `COMPLETED` | 없음 | 409 `TAKE_ENDED` |
 
 `ended_at` 이 `started_at` 보다 앞서면 400 `INVALID_TAKE_TIME` 입니다.
+시각은 Take 를 만든 때 1일 전부터 지금 1일 뒤까지만 받고 나머지는 422 `VALIDATION_ERROR` 입니다.
+FE 시계로 잰 값이라 앞뒤로 같은 여유를 둡니다.
 
 ## 6. 상수 위치
 

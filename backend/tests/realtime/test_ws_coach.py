@@ -7,6 +7,7 @@
 import asyncio
 import json
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -322,9 +323,11 @@ def test_put_end_without_stop_also_starts_the_take_result(
     from pitch_coach_backend.core.security import create_access_token
 
     headers = {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    started = datetime.now(UTC)
+    ended = started + timedelta(minutes=5)
     response = client.put(
         f"/api/pitches/{take.pitch_id}/takes/{take.id}",
-        json={"started_at": "2026-10-24T10:00:00+09:00", "ended_at": "2026-10-24T10:05:00+09:00"},
+        json={"started_at": started.isoformat(), "ended_at": ended.isoformat()},
         headers=headers,
     )
 
@@ -670,7 +673,7 @@ def _put_end(client: TestClient, user, take: Take):
 
     return client.put(
         f"/api/pitches/{take.pitch_id}/takes/{take.id}",
-        json={"ended_at": "2026-10-24T10:05:00+09:00"},
+        json={"ended_at": datetime.now(UTC).isoformat()},
         headers={"Authorization": f"Bearer {create_access_token(user.id)}"},
     )
 

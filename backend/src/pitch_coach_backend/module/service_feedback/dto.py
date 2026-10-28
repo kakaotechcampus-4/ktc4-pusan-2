@@ -15,10 +15,6 @@ def normalize_suggestion(value: str | None) -> str | None:
     if value is None:
         return None
     reject_nul(value)
-    try:
-        value.encode("utf-8")
-    except UnicodeEncodeError as exc:
-        raise ValueError("저장할 수 없는 문자가 있습니다.") from exc
     value = value.strip()
     if len(value) > 2000:
         raise ValueError("의견은 2000자까지 보낼 수 있습니다.")

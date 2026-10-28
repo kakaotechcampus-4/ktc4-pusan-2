@@ -46,7 +46,7 @@ def find_slides(script_text: str) -> SplitResult:
         number = int(next(g for g in match.groups() if g is not None))
         if number == 0 or (slides and number <= slides[-1][0]):
             valid = False
-        rest = line[match.end():].strip()
+        rest = line[match.end() :].strip()
         slides.append((number, [rest] if rest else []))
         if rest:
             stripped.append(rest)

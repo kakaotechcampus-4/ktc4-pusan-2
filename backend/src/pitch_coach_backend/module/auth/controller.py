@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.core.exceptions import AppException
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth import service
 from pitch_coach_backend.module.auth.dependencies import (
     CSRF_COOKIE_NAME,
@@ -267,7 +268,12 @@ def logout(
     refresh_token: Annotated[str | None, Cookie(alias=REFRESH_COOKIE_NAME)] = None,
     _csrf: None = CsrfProtected,
 ) -> LogoutResponse:
-    """이미 발급된 Access 는 최대 15분 살아 있다. 즉시 무효화는 이번 범위가 아니다."""
-    service.logout(db, refresh_token)
+    """이미 발급된 Access 는 최대 15분 살아 있다. 즉시 무효화는 이번 범위가 아니다.
+
+    WS 는 붙을 때만 토큰을 보므로 열려 있는 발표 연결은 여기서 닫는다.
+    """
+    user_id = service.logout(db, refresh_token)
+    if user_id is not None:
+        hooks.live_takes().sign_out(user_id)
     clear_session_cookies(response)
     return LogoutResponse()

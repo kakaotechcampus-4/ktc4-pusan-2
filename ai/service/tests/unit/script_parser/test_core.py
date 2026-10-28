@@ -1,8 +1,8 @@
 import pytest
 
-from script_parser import EmptyScriptError, parse_script
-from script_parser.config import BASE_CPM
-from script_parser.schemas import LLMOutput, ParseRequest
+from pitch_coach_ai.features.script_parser import EmptyScriptError, parse_script
+from pitch_coach_ai.features.script_parser.config import BASE_CPM
+from pitch_coach_ai.features.script_parser.schemas import LLMOutput, ParseRequest
 
 
 class FakeLLM:
@@ -42,18 +42,36 @@ DOC_LLM = llm_out(
 
 def test_doc_example():
     """문서 5-5 예시와 같은 응답."""
-    response = parse_script(ParseRequest(script_text=DOC_SCRIPT, target_ms=300000), FakeLLM(DOC_LLM))
+    response = parse_script(
+        ParseRequest(script_text=DOC_SCRIPT, target_ms=300000), FakeLLM(DOC_LLM)
+    )
     assert response.model_dump() == {
         "status": "success",
         "slides": [
-            {"slide_number": 1, "script": "안녕하세요, 오늘은 신규 서비스 성과를 말씀드리겠습니다.", "script_chars": 24,
-             "keywords": ["오늘", "신규 서비스", "성과"],
-             "highlights": [{"start": 7, "end": 9}, {"start": 11, "end": 17}, {"start": 18, "end": 20}],
-             "expected_ms": 160000},
-            {"slide_number": 2, "script": "지난 분기 MAU는 12만 명으로 37% 늘었습니다.", "script_chars": 21,
-             "keywords": ["분기", "MAU", "37%"],
-             "highlights": [{"start": 3, "end": 5}, {"start": 6, "end": 9}, {"start": 19, "end": 22}],
-             "expected_ms": 140000},
+            {
+                "slide_number": 1,
+                "script": "안녕하세요, 오늘은 신규 서비스 성과를 말씀드리겠습니다.",
+                "script_chars": 24,
+                "keywords": ["오늘", "신규 서비스", "성과"],
+                "highlights": [
+                    {"start": 7, "end": 9},
+                    {"start": 11, "end": 17},
+                    {"start": 18, "end": 20},
+                ],
+                "expected_ms": 160000,
+            },
+            {
+                "slide_number": 2,
+                "script": "지난 분기 MAU는 12만 명으로 37% 늘었습니다.",
+                "script_chars": 21,
+                "keywords": ["분기", "MAU", "37%"],
+                "highlights": [
+                    {"start": 3, "end": 5},
+                    {"start": 6, "end": 9},
+                    {"start": 19, "end": 22},
+                ],
+                "expected_ms": 140000,
+            },
         ],
         "terms": ["MAU"],
         "meta": {"schema_version": "1.0", "feature_version": "script_parser-1.1", "model": None},
@@ -77,18 +95,26 @@ def test_preface_body_turns_fail():
     assert len(response.slides) == 1
     slide = response.slides[0]
     assert slide.slide_number == 1
-    assert slide.script == "안녕하세요, 시작합니다.\n매출이 늘었습니다.\n감사합니다."  # 제목 줄 · 구분자 없음
+    assert (
+        slide.script == "안녕하세요, 시작합니다.\n매출이 늘었습니다.\n감사합니다."
+    )  # 제목 줄 · 구분자 없음
     assert slide.keywords == ["매출", "감사"]  # 장별 키워드를 합침
     assert slide.expected_ms == 1000
 
 
 def test_preface_fail_keeps_other_slide_body():
     # 1장 제목 줄 "성과"가 2장의 본문 줄 "성과"를 지우지 않는다
-    text = "도입 설명입니다.\n[1] 성과\n매출이 늘었습니다.\n[2] 다음 계획\n성과\n를 말씀드리면 이렇습니다."
+    text = (
+        "도입 설명입니다.\n[1] 성과\n매출이 늘었습니다.\n[2] 다음 계획\n성과\n"
+        "를 말씀드리면 이렇습니다."
+    )
     llm = FakeLLM(llm_out([(1, ["성과"], []), (2, ["다음 계획"], [])]))
     response = parse_script(ParseRequest(script_text=text), llm)
     assert response.status == "fail"
-    assert response.slides[0].script == "도입 설명입니다.\n매출이 늘었습니다.\n성과\n를 말씀드리면 이렇습니다."
+    assert (
+        response.slides[0].script
+        == "도입 설명입니다.\n매출이 늘었습니다.\n성과\n를 말씀드리면 이렇습니다."
+    )
 
 
 def test_preface_fail_ignores_unknown_slide_titles():
@@ -124,7 +150,12 @@ def test_no_delimiter_fail():
 
 
 def test_drops_words_not_in_script():
-    llm = FakeLLM(llm_out([(1, ["없는 제목"], ["발표", "없는말", "발표", ""])], terms=["피치코치", "없는용어", "피치코치"]))
+    llm = FakeLLM(
+        llm_out(
+            [(1, ["없는 제목"], ["발표", "없는말", "발표", ""])],
+            terms=["피치코치", "없는용어", "피치코치"],
+        )
+    )
     response = parse_script(ParseRequest(script_text="[1] 피치코치 발표"), llm)
     assert response.status == "success"
     assert response.slides[0].script == "피치코치 발표"

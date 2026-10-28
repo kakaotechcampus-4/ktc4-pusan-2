@@ -142,6 +142,20 @@ async def test_rubric_with_nul_is_dropped() -> None:
     assert reply.rubrics == {2: literal}
 
 
+async def test_rubric_with_nan_or_infinity_is_dropped() -> None:
+    """JSONB 는 NaN · Infinity 를 넣지 못한다. 그 장만 버리고 나머지 장은 남긴다."""
+    nan = json.dumps(_rubric(1) | {"weight": None}).replace("null", "NaN")
+    # 1e400 은 float 범위를 넘어 Infinity 로 읽힌다
+    infinite = json.dumps(_rubric(2) | {"weight": None}).replace("null", "1e400")
+    meta = json.dumps(META)
+    body = f'{{"rubrics": [{nan}, {infinite}, {json.dumps(_rubric(3))}], "meta": {meta}}}'
+    response = httpx.Response(200, content=body, headers={"Content-Type": "application/json"})
+
+    reply = await _generate(_client(Recorder(response)))
+
+    assert reply.rubrics == {3: _rubric(3)}
+
+
 @pytest.mark.parametrize(
     ("response", "retryable"),
     [

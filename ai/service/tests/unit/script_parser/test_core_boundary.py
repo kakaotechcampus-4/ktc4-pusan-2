@@ -1,9 +1,10 @@
-"""코어(pace)를 나중에 service 로 폴더째 옮길 수 있는지 검사한다 (pace.md 4-3, architecture.md 8절).
+"""코어(script_parser)가 서비스 · 연구 도구 어디에서 불려도 고칠 곳이 없는 순수 패키지인지 검사한다
+(script-parser.md 4-3, architecture.md 8절).
 
 - 패키지 안에서는 상대 import 만 쓴다. 패키지 경로가 바뀌어도 고칠 곳이 없게 하기 위해서다.
-- 다른 판정 모듈(군더더기 등)을 import 하지 않는다. 군더더기 판정은 코치가 입력으로 넘긴다.
 - 허용한 라이브러리만 쓴다: 계산만 하는 표준 모듈과 pydantic. 파일 · DB · 네트워크 · 환경변수 ·
-  시계 · 난수는 쓰지 않는다. 시간은 입력의 t_ms 뿐이다 — 같은 입력에 같은 결과가 나오게.
+  시계 · LLM 클라이언트는 쓰지 않는다. LLM 은 인자로 받고(`.invoke` 만), 만드는 것은 서비스 라우터 ·
+  연구 폴더 `run.py` 다 — 가짜 LLM 으로 시험할 수 있게.
 """
 
 from __future__ import annotations
@@ -13,13 +14,15 @@ from pathlib import Path
 
 import pytest
 
-CORE = Path(__file__).resolve().parents[1] / "src" / "pace"
+from pitch_coach_ai.features import script_parser
+
+# 코어 패키지 파일 기준으로 찾는다 — 패키지 위치가 바뀌어도 경로를 고치지 않게
+CORE = Path(script_parser.__file__).resolve().parent
 
 # 코어가 쓰는 표준 모듈. 계산만 하는 모듈만 둔다. 새로 필요하면 그 모듈이
 # 파일 · 네트워크 · 환경변수 · 시계 · 난수를 쓰지 않는지 확인하고 여기에 더한다
 STDLIB = {
-    "__future__", "abc", "bisect", "collections", "copy", "dataclasses", "enum", "functools",
-    "hashlib", "heapq", "itertools", "json", "logging", "math", "operator", "re", "statistics",
+    "__future__", "collections", "dataclasses", "functools", "itertools", "logging", "re",
     "typing", "unicodedata",
 }  # fmt: skip
 THIRD_PARTY = {"pydantic"}
@@ -43,7 +46,7 @@ def test_core_has_files():
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.relative_to(CORE).as_posix())
 def test_core_imports(path: Path):
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    # 이 파일에서 상대 import 가 올라갈 수 있는 최대 단계. 넘으면 pace 패키지 밖을 가리킨다
+    # 이 파일에서 상대 import 가 올라갈 수 있는 최대 단계. 넘으면 script_parser 패키지 밖을 가리킨다
     max_level = len(path.relative_to(CORE).parent.parts) + 1
     problems = []
     for node in ast.walk(tree):
@@ -53,7 +56,7 @@ def test_core_imports(path: Path):
                     problems.append(f"{node.lineno}: import {alias.name}")
         elif isinstance(node, ast.ImportFrom):
             if node.level > max_level:
-                problems.append(f"{node.lineno}: pace 패키지 밖을 가리키는 상대 import")
+                problems.append(f"{node.lineno}: script_parser 패키지 밖을 가리키는 상대 import")
             elif node.level == 0:
                 module = node.module or ""
                 names = [f"{module}.{alias.name}" for alias in node.names]

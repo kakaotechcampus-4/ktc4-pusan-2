@@ -12,11 +12,14 @@ from typing import Any
 
 import pytest
 
-from pace.core import criteria, judge, summarize
-from pace.schemas import IssueCriteria, PaceInput, TallyItem
-from tests.helpers import check_contract, time_items, word_items
+from pitch_coach_ai.features.pace import core as pace_core
+from pitch_coach_ai.features.pace.core import criteria, judge, summarize
+from pitch_coach_ai.features.pace.schemas import IssueCriteria, PaceInput, TallyItem
 
-EXAMPLES = Path(__file__).resolve().parents[1] / "src" / "pace" / "examples"
+from .helpers import check_contract, time_items, word_items
+
+# 예시는 코어 패키지 안에 있다 — 패키지 위치가 바뀌어도 경로를 고치지 않게 모듈 파일 기준으로 찾는다
+EXAMPLES = Path(pace_core.__file__).resolve().parent / "examples"
 #: judge 예시: 기본(pace.md 5-5) · 경계 — 보류 단어 · 경계 — 군더더기 판정 실패
 CASES = ["", "_pending", "_fillers_null"]
 IDS = ["basic", "pending", "fillers_null"]

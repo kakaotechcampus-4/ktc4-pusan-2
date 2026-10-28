@@ -150,7 +150,7 @@ ai/research/filler-detection/
 | `words` | list | 아니오 | 최근 60초 STT 확정 단어 `[{word, start_ms, end_ms}]`. BE가 매 요청 겹쳐 보낸다 | 아래 5-5 |
 | `utterance_ends` | list int | 아니오 | 창 안의 문장 끝 신호 시각. 값은 Deepgram `UtteranceEnd` 이벤트가 알린 마지막 단어의 끝 시각이다(그 뒤로 정해진 시간 넘게 말이 없었다는 뜻) | `[36800]` |
 | `take_end_ms` | int · null | 아니오 | finalize 마지막 창의 Take 끝 시각(evaluate에서는 null). 그때까지 보류인 단어의 뒤 간격을 `take_end_ms − end_ms`로 재서 정한다(`architecture.md` 7절, 6-2) | `92000` |
-| `stt_status` | enum | 아니오 | `connecting` · `ok` · `reconnecting` · `degraded` · `closed`. `ok`가 아니면 잴 수 없음 | `ok` |
+| `stt_status` | enum · null | 아니오 | `connecting` · `ok` · `reconnecting` · `degraded` · `closed`. `ok`가 아니면 잴 수 없음. 없거나 null이면 모르는 것으로 보고 잴 수 없음 | `ok` |
 | `stt_ok_since_ms` | int | 아니오 | STT가 마지막으로 `ok`가 된 시각. 코치가 `coach_state`에서 넣는다. 끊긴 적이 없으면 0. `start_ms`가 이보다 이른 단어는 창에서 뺀다 | `0` |
 
 ## 5-3. 출력
@@ -164,7 +164,7 @@ ai/research/filler-detection/
 | `state` | `NORMAL` · `HIGH`(최근 창 군더더기 수가 기준 이상). 잴 수 없으면 `UNKNOWN` | `NORMAL` |
 | `measurable` | STT 상태가 `ok`면 true | `true` |
 | `issues[].confidence` | 잴 수 있으면 1 | `1.0` |
-| `counted_until_ms` · `words_counted_until_ms` | 이번까지 센 시각 · 단어 커서. 단어 커서는 판정이 정해진 단어 `end_ms` 중 가장 큰 값이고(받은 커서보다 작아지지 않는다, `architecture.md` 7절), 보류 단어가 있으면 그 앞에서 멈춘다 | `41000` · `40980` |
+| `counted_until_ms` · `words_counted_until_ms` | 이번까지 센 시각 · 단어 커서. 단어 커서는 판정이 정해진 단어 `end_ms` 중 가장 큰 값이고(받은 커서보다 작아지지 않는다, `architecture.md` 7절), 보류 단어가 있으면 그 앞에서 멈춘다. 판정에서 뺀 단어(겹친 단어 등)의 끝도 커서를 넘기되, 보류 단어 시작 뒤에 끝나는 것은 넣지 않는다(그 보류 단어를 다음 요청에서 세게) | `41000` · `40980` |
 
 **`summarize(tally)` → `{"FILLER": {...}}`** (장 · Take 값, 분모가 0이면 null. `measured_ratio`만 분모가 0이면 0, `architecture.md` 7절)
 
@@ -290,7 +290,7 @@ ai/research/filler-detection/
 코치는 `words` 중 `is_filler`가 true이거나 null(보류)인 단어를 `fillers[{start_ms, end_ms, is_filler}]`로 같은 요청의 말 속도에 넘긴다. 말 속도는 군더더기를 글자 수에서 빼고 보류 단어부터는 다음 요청에서 센다. 군더더기 판정이 실패하면(예외 · `words` 모양이 틀림) 코치는 `fillers: null`을 넘기고, 말 속도는 새 단어를 세지 않는다(`architecture.md` 7절, `coach-agent.md` 6-1). 말 속도의 계약은 `pace.md`가 기준이다.
 
 ## 6-4. `summarize` · `criteria`
-- `summarize`는 코치가 장 · Take 동안 더한 `tally` 합계를 받아 5-3 표대로 지표를 계산한다. `by_tier` · `by_word`는 Take 결과에 그대로 들어가는 묶음 값이다(`architecture.md` 7절). 코치는 결과를 고치지 않고 Take 결과의 `areas.FILLER`에 담는다.
+- `summarize`는 코치가 장 · Take 동안 더한 `tally` 합계를 받아 5-3 표대로 지표를 계산한다. `by_tier` · `by_word`는 Take 결과에 그대로 들어가는 묶음 값이다(`architecture.md` 7절). 코치는 값을 고치지 않고 `coach-agent.md` 5-3의 모양으로 Take 결과의 `areas.FILLER`에 담는다. `measured_ratio`는 `areas.FILLER.measured_ratio`로 따로 두고 나머지를 `take`에 담으며, 측정 비율이 코치의 기준 미만이거나 읽지 못하면 `take` · `slides`를 비운다(`unmeasured_reason: LOW_MEASURED_RATIO`). `criteria()`는 `criteria.FILLER`에 `{criteria_version, issues}`로 담는다.
 - `criteria`는 `FILLER_FREQUENT`의 기준을 돌려준다.
 
 # 7. 실패할 때
@@ -395,7 +395,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
-| 군더더기 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.FILLER`(`take` · `slides`) · `criteria.FILLER` | 코치가 `summarize` · `criteria` 결과를 고치지 않고 담는다. 잰 크기: 서로 다른 군더더기 단어 20개면 Take 또는 장 하나에 약 0.33 KB(장 10개면 약 3.7 KB). `by_word`의 키는 사전 단어뿐이라 개수에 상한이 있다(사전 55개) | 코치가 만들고 BE가 쓴다 · 리뷰(`fluency`) · 리포트 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
+| 군더더기 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.FILLER`(`take` · `slides`) · `criteria.FILLER` | 코치가 `summarize` · `criteria` 결과의 값을 고치지 않고 `coach-agent.md` 5-3의 모양으로 담는다(6-4). 잰 크기: 서로 다른 군더더기 단어 20개면 Take 또는 장 하나에 약 0.33 KB(장 10개면 약 3.7 KB). `by_word`의 키는 사전 단어뿐이라 개수에 상한이 있다(사전 55개) | 코치가 만들고 BE가 쓴다 · 리뷰(`fluency`) · 리포트 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
 | 리포트 요약 군더더기 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.filler_count` (Integer, nullable) | FILLER `filler_count`(정수). `filler_per_min` · 층별 · 단어별은 칸이 없고 Take 결과에서 읽는다. STT를 잴 수 없었으면(`measured_ratio`가 0) null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
 | 군더더기 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `FILLER`일 때 | `coach_events`의 `INTERVENTION` 이벤트(`area` = `FILLER`). `live_feedbacks`에는 쓰지 않는다 | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
 | STT 확정 단어 · 문장 끝 신호 (원자료, 이 모듈의 입력) | 단어는 Take 동안, 문장 끝 신호는 Take 종료 때 한 번에(`architecture.md` 1-3) | `take_transcript_segments.words` · `takes.utterance_ends` | `architecture.md` 1-1, `coach-agent.md` 12-1. 문장 끝 신호에는 Deepgram `UtteranceEnd`의 마지막 단어 끝 시각을 넣는다(5-2) | BE가 쓴다 · `replay` · 대본 전달도 | `coach-agent.md` 12-1 | Take와 함께. 사용자 발화다 |

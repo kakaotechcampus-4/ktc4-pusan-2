@@ -1,9 +1,10 @@
 """oauth_accounts·refresh_tokens 쿼리. 커밋은 service 가 한다."""
 
+import hashlib
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.auth.entity import OAuthAccount, RefreshToken
@@ -71,10 +72,29 @@ def get_refresh_token(db: Session, token_hash: str) -> RefreshToken | None:
 
 
 def get_refresh_token_for_update(db: Session, token_hash: str) -> RefreshToken | None:
-    """get_refresh_token 과 같되 행을 잠근다. 같은 토큰으로 온 회전이 커밋 순서대로 줄을 선다.
+    """같은 기기의 회전·로그아웃을 커밋까지 직렬화한 뒤 토큰 행을 잠근다.
 
+    회전 전후 토큰은 서로 다른 행이라 행 잠금만으로는 로그아웃과 줄을 세울 수 없다.
+    먼저 변하지 않는 사용자·기기 ID로 트랜잭션 advisory lock을 잡는다. 잠금을 기다리는
+    동안 앞선 회전이 커밋됐을 수 있어, 토큰 조회는 잠금 뒤 별도 문장으로 실행한다.
     populate_existing: 잠금을 기다리는 사이 다른 요청이 바꾼 값으로 ORM 객체를 덮어쓴다.
     """
+    device = db.execute(
+        select(RefreshToken.user_id, RefreshToken.device_id).where(
+            RefreshToken.token_hash == token_hash
+        )
+    ).one_or_none()
+    if device is None:
+        return None
+    # 프로세스마다 달라지는 hash() 대신 같은 입력에 같은 64비트 키를 쓴다.
+    # 해시가 충돌해도 서로 기다릴 뿐 다른 기기의 토큰을 폐기하지는 않는다.
+    key = int.from_bytes(
+        hashlib.blake2b(
+            b"auth-refresh:" + device.user_id.bytes + device.device_id.bytes, digest_size=8
+        ).digest(),
+        signed=True,
+    )
+    db.execute(select(func.pg_advisory_xact_lock(key)))
     return db.scalar(
         select(RefreshToken)
         .where(RefreshToken.token_hash == token_hash)

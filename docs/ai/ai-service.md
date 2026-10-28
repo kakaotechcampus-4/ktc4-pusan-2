@@ -123,14 +123,14 @@ ai/service/
 │   ├── settings.py              # 환경변수 읽기 (pydantic-settings)
 │   ├── api/                     # 라우터만. 로직 없음
 │   │   ├── health.py            #   GET /health · /ready
-│   │   └── <이름>.py            #   기능 엔드포인트 (지금은 script_coverage.py · coach.py. coach.py 는 evaluate · finalize 를 열 때 판정 모듈을 묶어 코치에 넘긴다)
+│   │   └── <이름>.py            #   기능 엔드포인트 (지금은 script_parser.py · script_coverage.py · coach.py. coach.py 는 evaluate · finalize 를 열 때 판정 모듈을 묶어 코치에 넘긴다)
 │   ├── common/                  # 기능들이 같이 쓰는 코드
 │   │   ├── llm.py               #   LLM 객체는 여기서만 만든다
 │   │   ├── errors.py            #   예외 → 상태 코드 · 에러 본문
 │   │   ├── request_log.py       #   X-Request-ID · 요청마다 한 줄 로그
 │   │   ├── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
 │   │   └── readiness.py         #   시작할 때 불러올 모델 · 준비 상태 (/ready · NOT_READY)
-│   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다 (지금은 script_coverage · gaze · filler · coach)
+│   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다 (지금은 script_coverage · script_parser · gaze · filler · pace · coach)
 │       └── <기능>/              #   schemas.py · core.py · config.py · version.py · examples/ · prompts/ (`architecture.md` 8절)
 └── tests/
     ├── conftest.py · test_health.py
@@ -255,7 +255,7 @@ LLM 공통 규칙(모델 고르기 · 시간 제한 · 재시도 · 요청 마�
 ## 6-3. 서버 안 모델 · 무거운 리소스를 쓰는 기능
 LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 분류기 가중치, 형태소 분석기 사전 등)이 있을 때의 규칙이다.
 - **시작할 때 한 번만 불러온다.** `main.py`의 lifespan에서 불러와 보관하고, 라우터가 그것을 코어에 넘긴다. 요청마다 불러오지 않는다.
-- **`/ready`를 함께 만든다.** 로딩이 끝나기 전에는 503(`NOT_READY`)을 돌려준다. compose 헬스체크를 `/ready`로 바꾸고, 로딩 시간에 맞춰 `start_period`를 늘린다. 로딩 중에 들어온 BE 요청은 503을 받아 한 번 더 부르게 된다.
+- **이미 있는 `/ready`에 준비 상태를 반영한다**(`common/readiness.py`). 로딩이 끝나기 전에는 503(`NOT_READY`)을 돌려준다. compose 헬스체크는 이미 `/ready`를 부르므로(11-3), 모델을 더할 때 로딩 시간에 맞춰 `start_period`를 늘린다. 로딩 중에 들어온 BE 요청은 503을 받아 한 번 더 부르게 된다.
 - **가중치 파일은 git에 올리지 않는다.** 이름 · 출처 · 버전 · 해시를 담은 manifest(JSON)만 커밋한다.
 - **이미지에 넣는다.** 공개 모델(Hugging Face 등)은 Dockerfile에서 버전과 해시를 고정해 빌드할 때 내려받는다. 시작 시간이 일정하고 서버가 외부 네트워크에 의존하지 않는다. 대신 이미지가 커진다. 패키지 안에 사전이 들어 있는 경우(예: 형태소 분석기)는 의존성 설치만으로 된다. 팀이 만든 비공개 가중치가 생기면 저장 위치를 인프라와 정하고 이 문서를 고친다.
 - **PyTorch가 필요하면 CPU 전용 빌드를 쓴다.** 기본 설치는 GPU(CUDA) 라이브러리까지 받아 이미지가 수 GB 커진다.

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from pace.config import PaceConfig
-from pace.schemas import TallyItem
-from tests.helpers import CFG, run, steady, total, word, word_items
+from pitch_coach_ai.features.pace.config import PaceConfig
+from pitch_coach_ai.features.pace.schemas import TallyItem
+
+from .helpers import CFG, run, steady, total, word, word_items
 
 T = 60_000
 

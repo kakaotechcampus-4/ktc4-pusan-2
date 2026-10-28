@@ -402,6 +402,21 @@ class TakeStream:
             )
         )
 
+    async def sign_out(self) -> None:
+        """사용자가 로그아웃했다. 붙어 있는 연결에 `UNAUTHORIZED` 를 알리고 닫는다.
+
+        연결을 떼지 않는다. 닫힌 연결이 평소처럼 `detach` 해 grace 를 건다 — 여기서 떼면 그 `detach`
+        가 아무것도 하지 않아 grace 가 걸리지 않는다.
+        """
+        client = self._client.ws
+        if client is not None:
+            await close_with(
+                client,
+                ErrorMessage(
+                    code=WsErrorCode.UNAUTHORIZED, message="로그아웃했습니다. 다시 로그인해 주세요."
+                ),
+            )
+
     def _cut(self, error: ErrorMessage) -> None:
         if self._discarded:
             return

@@ -8,9 +8,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from pace.config import PaceConfig
-from pace.core import judge
-from pace.schemas import JudgmentResult, TallyItem
+from pitch_coach_ai.features.pace.config import PaceConfig
+from pitch_coach_ai.features.pace.core import judge
+from pitch_coach_ai.features.pace.schemas import JudgmentResult, TallyItem
 
 #: 규칙 테스트가 쓰는 기준값. 지금 config.py 기본값과 같지만, 기준값을 다시 골라도(pace.md 13절)
 #: 규칙 테스트가 깨지지 않게 따로 적는다. 기본값 자체는 test_examples · test_contract 가 본다
