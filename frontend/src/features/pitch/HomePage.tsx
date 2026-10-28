@@ -16,7 +16,7 @@ export function HomePage() {
   return (
     <div className="pitch-create flex flex-1 flex-col bg-greige text-ink">
       <HomeServiceReview ready={!home.isPending && !home.isError} blocked={helpOpen} />
-      <main className="mx-auto w-full max-w-7xl flex-1 px-6 pb-12 pt-10 lg:px-10 lg:pt-14">
+      <main className="mx-auto w-full max-w-page flex-1 px-6 pb-12 pt-10 lg:px-10 lg:pt-14">
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="mb-2 font-mono text-[10px] tracking-widest text-ink/80">MY PITCHES</p>
@@ -131,7 +131,7 @@ export function HomePage() {
         )}
       </main>
       <footer className="border-t border-line-strong">
-        <div className="mx-auto flex max-w-7xl flex-wrap justify-between gap-4 px-6 py-6 text-xs text-ink/80 lg:px-10">
+        <div className="mx-auto flex max-w-page flex-wrap justify-between gap-4 px-6 py-6 text-xs text-ink/80 lg:px-10">
           <span className="font-mono tracking-widest">PITCH COACH · ONE TAKE AT A TIME.</span>
           <div className="flex gap-5">
             <Link to="/terms?from=home" className="hover:text-ink">
