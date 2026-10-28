@@ -23,8 +23,6 @@ MAX_PDF_PAGES = 100
 
 PAGE_COUNT_SLOTS = 2
 
-PAGE_COUNT_WAIT_SEC = 10.0
-
 _page_count_slots = threading.BoundedSemaphore(PAGE_COUNT_SLOTS)
 
 # 망가진 파일을 읽을 때마다 경고를 남긴다. 그런 파일은 400 으로 거절하므로 로그에 둘 필요가 없다
@@ -70,7 +68,8 @@ def count_pdf_pages(file: BinaryIO) -> int | None:
 
     쓰기 제한만 걸린 PDF 는 빈 암호로 열린다. 다 읽은 뒤 파일 위치를 처음으로 돌려 둔다.
     """
-    if not _page_count_slots.acquire(timeout=PAGE_COUNT_WAIT_SEC):
+    # 슬롯을 기다리며 공용 스레드풀을 차지하지 않도록, 빈자리가 없으면 바로 거절한다.
+    if not _page_count_slots.acquire(blocking=False):
         raise PresentationBusy()
     try:
         reader = PdfReader(file)
