@@ -4,9 +4,10 @@
 
     python -m review_lab.evaluate --out reports/results/review_eval.json   # 실제 LLM (과금)
     python -m review_lab.evaluate --rules-only                             # 규칙 단계만
+    python -m review_lab.evaluate --reasoning-effort none                  # 추론 강도를 보내지 않음
 
-LLM 응답은 outputs/llm_cache.json 에 캐시해, 같은 프롬프트 · 출력 스키마 · 모델 · 입력이면 다시
-부르지 않는다. 결과는 잡음(clean · noisy · harsh)별과 전체로 낸다.
+LLM 응답은 outputs/llm_cache.json 에 캐시해, 같은 프롬프트 · 출력 스키마 · 모델 · 추론 강도 ·
+입력이면 다시 부르지 않는다. 결과는 잡음(clean · noisy · harsh)별과 전체로 낸다.
 
 | 지표 | 뜻 |
 |---|---|
@@ -35,7 +36,7 @@ from pitch_coach_ai.features.review.schemas import ReviewDraft
 from pitch_coach_ai.features.review.version import FEATURE_VERSION
 from pitch_coach_ai.features.review.vocab import DIMENSION_ORDER
 
-from .llm import CachedLLM, load_settings, review_llm
+from .llm import REASONING_EFFORT, CachedLLM, load_settings, review_llm
 from .paths import ANSWERS_PATH, OUTPUTS_DIR, PROJECT_ROOT, TAKES_DIR
 
 NOISES = ("clean", "noisy", "harsh")
@@ -216,14 +217,25 @@ def main() -> None:
         "--rules-only", action="store_true", help="LLM 을 부르지 않는다 (과금 없음)"
     )
     parser.add_argument("--out", type=Path, help="결과 JSON 경로 (커밋하는 결과)")
+    parser.add_argument(
+        "--reasoning-effort",
+        default=REASONING_EFFORT,
+        help=f"추론 강도 (기본 {REASONING_EFFORT}). none 이면 보내지 않는다",
+    )
     args = parser.parse_args()
+    effort = None if args.reasoning_effort == "none" else args.reasoning_effort
 
     answers = json.loads(ANSWERS_PATH.read_text(encoding="utf-8"))["scenarios"]
     llm, model = None, None
     if not args.rules_only:
         settings = load_settings()
         model = settings.model
-        llm = CachedLLM(review_llm(settings), model, OUTPUTS_DIR / "llm_cache.json")
+        llm = CachedLLM(
+            review_llm(settings, reasoning_effort=effort),
+            model,
+            OUTPUTS_DIR / "llm_cache.json",
+            reasoning_effort=effort,
+        )
 
     records = []
     for case in load_cases():
@@ -240,6 +252,7 @@ def main() -> None:
             "feature_version": FEATURE_VERSION,
             "criteria_version": DEFAULT_CONFIG.criteria_version(),
             "model": model,
+            "reasoning_effort": None if args.rules_only else effort,
             "data": {
                 "takes": len(records),
                 "scenarios": len({r["scenario"] for r in records}),
