@@ -810,3 +810,25 @@ def test_logout_leaves_other_users_connections_alone(
         assert mine.receive_json()["code"] == "UNAUTHORIZED"
         theirs.send_bytes(frame(1, 0))
         assert stop(theirs)["frames"] == 1
+
+
+def test_logged_out_token_does_not_close_a_new_sessions_connection(
+    client: TestClient, stt: FakeSttAdapter, db_session: Session, user: User, token: str
+):
+    headers = _log_in_browser(client, db_session, user)
+    old_refresh = client.cookies.get(REFRESH_COOKIE_NAME)
+    assert client.post("/api/auth/logout", headers=headers).status_code == 200
+
+    headers = _log_in_browser(client, db_session, user)
+    new_refresh = client.cookies.get(REFRESH_COOKIE_NAME)
+    # 앞선 로그아웃 요청을 재전송해도 새 세션의 발표를 끊지 않는다.
+    client.cookies.set(REFRESH_COOKIE_NAME, old_refresh, path=REFRESH_COOKIE_PATH)
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+
+        assert client.post("/api/auth/logout", headers=headers).status_code == 200
+
+        ws.send_bytes(frame(1, 0))
+        assert stop(ws)["frames"] == 1
+    assert auth_service.rotate(db_session, new_refresh) is not None
