@@ -51,7 +51,7 @@ export function AppHeader() {
           <button
             disabled={logout.isPending}
             onClick={() => logout.mutate()}
-            className="min-h-11 text-ink/80 hover:text-ink disabled:opacity-50"
+            className="min-h-11 text-ink/80 hover:text-ink"
           >
             {logout.isPending ? '로그아웃 중…' : '로그아웃'}
           </button>

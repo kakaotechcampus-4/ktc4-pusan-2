@@ -122,7 +122,7 @@ export function LoginPage() {
             aria-label="Google 계정으로 로그인"
             aria-describedby="login-status"
             aria-busy={redirecting}
-            className="mx-auto mt-8 flex min-h-11 max-w-full cursor-pointer items-center rounded disabled:cursor-wait disabled:opacity-60"
+            className="mx-auto mt-8 flex min-h-11 max-w-full cursor-pointer items-center rounded disabled:cursor-wait"
           >
             <img
               src="/auth/google-sign-in.png"
