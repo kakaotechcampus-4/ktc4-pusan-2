@@ -2,8 +2,8 @@
 
 기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. 코치 코어(`coach`)는 이 패키지를 모른다.
 
-- `real_judges()`: 서비스에 있는 실제 판정 모듈(시선 · 군더더기)에 아직 서비스에 없는
-  말 속도 · 소리 크기 대역을 더한 묶음. 재생 · 실험이 쓴다
+- `real_judges()`: 서비스에 있는 실제 판정 모듈(시선 · 군더더기 · 말 속도)에 아직 서비스에 없는
+  소리 크기 대역을 더한 묶음. 재생 · 실험이 쓴다
   (코치 기능 문서 11절 '옮긴 뒤 같은 결과인지 확인' 3)
 - `lab_judges()`: 네 대역 묶음. BE 가 읽는 예시(`coach_lab.examples`)와 대역 자체의 테스트가 쓴다
 """
@@ -13,6 +13,7 @@ from __future__ import annotations
 from pitch_coach_ai.features.coach.judges import Judges
 from pitch_coach_ai.features.filler import core as real_filler
 from pitch_coach_ai.features.gaze import core as real_gaze
+from pitch_coach_ai.features.pace import core as real_pace
 
 from . import filler, gaze, pace, volume
 
@@ -33,13 +34,13 @@ def lab_judges() -> Judges:
 
 
 def real_judges() -> Judges:
-    """시선 · 군더더기는 서비스의 실제 판정 모듈, 말 속도 · 소리 크기는 대역.
+    """시선 · 군더더기 · 말 속도는 서비스의 실제 판정 모듈, 소리 크기는 대역.
 
-    말 속도 · 소리 크기가 서비스에 오면 그 모듈로 바꾼다.
+    소리 크기가 서비스에 오면 그 모듈로 바꾼다.
     """
     return Judges(
         gaze=real_gaze,
-        pace=pace,
+        pace=real_pace,
         volume=volume,
         filler=real_filler,
         speaking_levels=volume.speaking_levels,
