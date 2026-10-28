@@ -63,7 +63,11 @@ it('마지막 장에서 →를 눌러도 마지막 장 밖으로 나가지 않�
 
 it('열려 있는 동안 배경 스크롤을 잠그고, 닫은 뒤 원래 값으로 돌려놓는다', async () => {
   document.body.style.overflow = 'scroll';
-  const { onClose } = await renderDialog(2, vi.fn(), vi.fn(() => root.render(null)));
+  const { onClose } = await renderDialog(
+    2,
+    vi.fn(),
+    vi.fn(() => root.render(null)),
+  );
   expect(document.body.style.overflow).toBe('hidden');
 
   const closeButton = [...container.querySelectorAll('button')].find(
