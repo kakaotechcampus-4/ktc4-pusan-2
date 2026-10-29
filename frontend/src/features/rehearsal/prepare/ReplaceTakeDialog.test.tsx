@@ -66,6 +66,25 @@ it('끝내고 시작 · 취소 · Esc 가 각각 알린다', async () => {
   expect(onCancel).toHaveBeenCalledTimes(2);
 });
 
+/** 브라우저는 Esc 를 연달아 받으면 preventDefault 를 무시하고 창을 닫습니다 */
+it('브라우저가 창을 닫아도 끝내는 중이면 다시 띄우고, 아니면 취소로 본다', async () => {
+  const closeByBrowser = () =>
+    act(async () => {
+      const dialog = host.querySelector('dialog')!;
+      dialog.open = false;
+      dialog.dispatchEvent(new Event('close'));
+    });
+
+  const busy = await render(true);
+  await closeByBrowser();
+  expect(host.querySelector('dialog')!.open).toBe(true);
+  expect(busy.onCancel).not.toHaveBeenCalled();
+
+  const idle = await render(false);
+  await closeByBrowser();
+  expect(idle.onCancel).toHaveBeenCalledOnce();
+});
+
 it('끝내는 중에는 버튼도 Esc 도 막는다', async () => {
   const { onConfirm, onCancel } = await render(true);
   expect(button('끝내는 중…').disabled).toBe(true);

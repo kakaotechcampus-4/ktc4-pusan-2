@@ -20,11 +20,17 @@ export function ReplaceTakeDialog({
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const bodyId = useId();
+  /** 부모가 이 창을 내리는 중이면 닫힘은 우리가 낸 것입니다. 아래 onClose 가 되살리지 않습니다 */
+  const mounted = useRef(true);
 
   useEffect(() => {
+    mounted.current = true;
     const dialog = ref.current;
     dialog?.showModal();
-    return () => dialog?.close();
+    return () => {
+      mounted.current = false;
+      dialog?.close();
+    };
   }, []);
 
   return (
@@ -36,6 +42,13 @@ export function ReplaceTakeDialog({
         // Esc 입니다. 닫는 것은 부모가 정합니다 (취소면 이 창을 내립니다)
         e.preventDefault();
         if (!busy) onCancel();
+      }}
+      onClose={() => {
+        // 브라우저가 Esc 를 연달아 받으면 preventDefault 를 무시하고 닫습니다 (사이에 다른 조작이
+        // 없을 때). 끝내는 중이면 결과를 알려야 하니 다시 띄우고, 아니면 취소로 봅니다
+        if (!mounted.current) return;
+        if (busy) ref.current?.showModal();
+        else onCancel();
       }}
       className="pitch-create fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md border-2 border-ink bg-panel p-0 text-ink backdrop:bg-ink/20"
     >
