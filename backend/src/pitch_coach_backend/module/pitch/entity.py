@@ -245,3 +245,21 @@ class CoachingPlan(UUIDPrimaryKeyMixin, Base):
     # 응답의 {coaching_plan, fallback_reason, dropped, planner_hash}
     payload: Mapped[Any] = mapped_column(JSONB, nullable=False)
     meta: Mapped[Any] = mapped_column(JSONB, nullable=False)
+
+
+class PendingFileDeletion(Base):
+    """아직 지우지 못한 S3 경로 하나. 발표를 지운 같은 트랜잭션에 넣고, 지운 뒤에 뺀다.
+
+    발표 행은 이미 사라져 외래 키로 묶을 수 없다. 지우는 일이 중간에 끊겨도(프로세스 중단 ·
+    S3 장애) 이 행이 남아 주기 작업이 성공할 때까지 다시 한다 (`service/file_cleanup.py`).
+    """
+
+    __tablename__ = "pending_file_deletions"
+
+    # 지울 S3 경로(`pitches/<id>/`). 같은 경로를 두 번 넣어도 한 행이다
+    prefix: Mapped[str] = mapped_column(String(255), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # 지금까지 실패한 횟수. 오래 남은 행을 찾는 데 쓴다
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0", nullable=False)
