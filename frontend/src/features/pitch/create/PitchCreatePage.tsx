@@ -257,21 +257,8 @@ function PitchCreateScreen() {
           </div>
         </aside>
 
-        {/* ── 우측: 경로 · 발표 정보 줄 · 본문 ────────────────────── */}
+        {/* ── 우측: 발표 정보 줄 · 본문. 돌아가기는 상단바의 "내 피치"가 맡습니다 ── */}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 lg:overflow-hidden p-4">
-          <nav
-            aria-label="경로"
-            className="flex flex-wrap items-center gap-2 text-xs text-ink/80 [overflow-wrap:anywhere]"
-          >
-            <Link to="/" className="hover:text-ink">
-              내 피치
-            </Link>
-            <span aria-hidden="true">›</span>
-            <span aria-current="page" className="text-ink">
-              {draft.title.trim() || '새 피치'}
-            </span>
-          </nav>
-
           <InfoBar />
           <StepBar />
           {saveInfoRequired && unsaved && node === 'info' && (
