@@ -30,6 +30,20 @@ describe('시작 전에 발표 중인 Take 묻기', () => {
       null,
     );
   });
+
+  /** 기다리기만 하면 시작 버튼이 "연습을 여는 중…" 에 멈춥니다 */
+  it('답이 늦으면 없는 것으로 보고 시작한다', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const hanging = new Promise<ActiveTake | null>(() => undefined);
+      const answer = activeTakeOrNone(() => hanging, 3_000);
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(await answer).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('끝내기로 고른 Take 끝내기', () => {
