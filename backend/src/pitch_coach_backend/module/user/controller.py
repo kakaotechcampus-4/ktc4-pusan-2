@@ -11,6 +11,7 @@ from pitch_coach_backend.module.pitch.service.pitch import (
     delete_pitch_files,
     get_pitch_ids_of_user,
     get_take_ids_of_user,
+    reserve_pitch_file_deletions,
 )
 from pitch_coach_backend.module.user import service
 from pitch_coach_backend.module.user.dto import UserResponse, UserSettingsUpdate
@@ -49,6 +50,8 @@ def withdraw(
     # 지운 뒤에는 CASCADE 로 사라져 읽을 수 없다
     pitch_ids = get_pitch_ids_of_user(db, current_user.id)
     take_ids = get_take_ids_of_user(db, current_user.id)
+    # 파일을 지울 일을 회원을 지우는 커밋에 같이 남긴다 (발표 삭제와 같다)
+    reserve_pitch_file_deletions(db, pitch_ids)
     service.delete(db, current_user)
     # 발표 삭제와 같다. 진행 중이던 Take 의 실시간 STT 를 끊고, 발표자료 파일은 응답 뒤에 지운다
     hooks.live_takes().discard(take_ids)

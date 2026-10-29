@@ -3,7 +3,6 @@
 다른 도메인과 코치가 쓰는 발표 조회 · 코칭 계획 행도 여기 둔다.
 """
 
-import logging
 import uuid
 from collections import defaultdict
 from collections.abc import Iterable
@@ -11,7 +10,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.adapter.storage import delete_prefix, generate_presigned_url
+from pitch_coach_backend.module.pitch.adapter.storage import generate_presigned_url
 from pitch_coach_backend.module.pitch.dto import (
     NewerScriptDTO,
     ParsedScriptDTO,
@@ -31,13 +30,11 @@ from pitch_coach_backend.module.pitch.dto import (
 from pitch_coach_backend.module.pitch.entity import CoachingPlan, Pitch, PresentationVersion
 from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.pitch.repository import PitchRepository
+from pitch_coach_backend.module.pitch.service import file_cleanup
 from pitch_coach_backend.module.pitch.service.script import effective_status
 from pitch_coach_backend.module.take.coach_repository import CoachRepository
 from pitch_coach_backend.module.take.dto import TakeSummaryDTO
 from pitch_coach_backend.module.take.repository import TakeRepository
-
-logger = logging.getLogger(__name__)
-
 
 # 발표일은 사용자가 고른 한국 날짜다. 오늘도 한국 날짜로 봐야 0~9시에 오늘 발표가 지난 발표가
 # 되지 않는다. 관리자 콘솔(admin/repository.py)과 같은 고정 오프셋이다
@@ -262,6 +259,9 @@ def delete_pitch_service(db: Session, pitch_id: uuid.UUID) -> list[uuid.UUID]:
 
     # 지운 뒤에는 CASCADE 로 사라져 읽을 수 없다
     take_ids = pitch_repository.get_take_ids(pitch_id)
+    # 발표자료 파일은 CASCADE 로 지워지지 않는다. 지울 일을 같은 커밋에 남겨 둬야 S3 삭제가
+    # 실패하거나 프로세스가 끊겨도 다시 한다
+    file_cleanup.reserve(db, [pitch_id])
     pitch_repository.delete(existing_pitch)
     db.commit()
 
@@ -271,12 +271,15 @@ def delete_pitch_service(db: Session, pitch_id: uuid.UUID) -> list[uuid.UUID]:
 def delete_pitch_files(pitch_id: uuid.UUID) -> None:
     """S3 에 올린 이 pitch 의 파일을 지운다. pitch 행을 지운 커밋 뒤 백그라운드로 돈다.
 
-    실패해도 삭제 요청은 이미 성공했다. 남은 파일은 로그의 pitch_id 로 찾아 지운다.
+    실패해도 삭제 요청은 이미 성공했다. 지울 경로가 DB 에 남아 있어 주기 작업이 다시 한다
+    (`file_cleanup_sweep.py`).
     """
-    try:
-        delete_prefix(f"pitches/{pitch_id}/")
-    except Exception:
-        logger.exception("pitch 파일 삭제 실패 pitch_id=%s", pitch_id)
+    file_cleanup.delete_files(file_cleanup.pitch_prefix(pitch_id))
+
+
+def reserve_pitch_file_deletions(db: Session, pitch_ids: list[uuid.UUID]) -> None:
+    """회원 탈퇴처럼 발표를 한꺼번에 지울 때, 지우는 커밋에 같이 묶을 파일 삭제 기록을 남긴다."""
+    file_cleanup.reserve(db, pitch_ids)
 
 
 def get_pitch_ids_of_user(db: Session, user_id: uuid.UUID) -> list[uuid.UUID]:
