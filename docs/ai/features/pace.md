@@ -23,7 +23,7 @@
 # 1. 왜 필요한가
 ## 1-1. 배경
 긴장하면 말이 빨라진다. 너무 빠르면 청중이 따라오지 못하고, 시간이 남는다. 반대로 너무 느리면 시간이 모자란다. 말 속도는 STT 단어 시각으로 잴 수 있지만, STT가 끊긴 동안의 듬성한 단어나 "음 · 어" 같은 군더더기를 그대로 세면 속도가 틀린다.
-지금은 같은 규칙이 코치 연구 폴더 안의 연구용 대역(`coach_lab/judges/pace.py`, `pace-0.2`)에만 있고, 정식 모듈 · 평가 데이터가 없다.
+판정 모듈(`pace-1.0`)은 AI 서비스 `features/pace/`에 있고 코치 연구 폴더에는 연구용 대역(`coach_lab/judges/pace.py`, `pace-0.2`)이 남아 있다. 평가 데이터는 아직 없다.
 
 ## 1-2. 목표
 - 사람이 단어 시각으로 잰 CPM과 맞는 말 속도를 낸다.
@@ -77,7 +77,7 @@ ai/research/speech-pace/
 ├─ tools/                                   평가 스크립트 (아직 없음)
 └─ reports/results/                         평가 결과 JSON (CPM 오차 · 상태 일치율 · 멈춤 재현율) (아직 없음)
 ```
-폴더 이름은 `speech-pace`다. 같은 규칙의 연구용 대역이 코치 연구 폴더의 `ai/research/coach-agent/src/coach_lab/judges/pace.py`에 있다. 코치 재생 · 실험은 2026-10-28부터 대역 대신 서비스의 이 모듈을 쓰고(`coach_lab.judges.real_judges`), 대역은 BE가 읽는 코치 예시를 만드는 `lab_judges`와 채점 정답이 쓰는 기준값(`coach_lab/truth.py`, 빠름 기준은 이 모듈과 같은 값)에만 남는다.
+폴더 이름은 `speech-pace`다. 같은 규칙의 연구용 대역이 코치 연구 폴더의 `ai/research/coach-agent/src/coach_lab/judges/pace.py`에 있다. 코치 재생 · 실험은 2026-10-28부터 대역 대신 서비스의 이 모듈을 쓰고(`coach_lab.judges.real_judges`), 대역은 대역 자체의 테스트(`lab_judges`)와 채점 정답이 쓰는 기준값(`coach_lab/truth.py`, 빠름 기준은 이 모듈과 같은 값)에만 남는다.
 
 ## 4-2. 진입 함수
 | 함수 | 하는 일 | 부르는 쪽 |
@@ -270,7 +270,7 @@ uv sync
 - 테스트가 볼 것: 빠름 · 느림 · 기준과 같을 때, 군더더기 글자 빼기, 보류에서 커서 멈춤, `fillers: null`, `stt_ok_since_ms` 앞 단어 빼기와 그 간격은 멈춤 아님, 멈춤은 뒤 단어가 와야 셈, 요청이 빠져 새 1초가 여러 개면 1초마다 시간 몫, 같은 입력이면 같은 결과, 돌려준 커서로 겹친 창을 다시 부르면 중복 없음. 테스트 이름은 동작을 문장으로 짓는다.
 
 # 11. 배포
-**어디서 도는가**: 판정 모듈(`examples/` 포함)은 AI 서비스의 `features/pace/`에 있다(연구 폴더 `src/pace/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 모두 `tests/unit/pace/`로 옮겼다. 예시 · 코어 폴더를 연구 폴더 경로로 찾던 `test_examples.py` · `test_core_boundary.py`는 패키지 위치로 찾게 고쳐 옮겼다. 연구 폴더에는 연구 도구를 쓰는 테스트가 없어 남긴 테스트가 없다. 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다. 코치 앱 연결(`evaluate` · `finalize`)은 소리 크기까지 서비스에 온 뒤다(`ai-service.md` 6-1 5번).
+**어디서 도는가**: 판정 모듈(`examples/` 포함)은 AI 서비스의 `features/pace/`에 있다(연구 폴더 `src/pace/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 모두 `tests/unit/pace/`로 옮겼다. 예시 · 코어 폴더를 연구 폴더 경로로 찾던 `test_examples.py` · `test_core_boundary.py`는 패키지 위치로 찾게 고쳐 옮겼다. 연구 폴더에는 연구 도구를 쓰는 테스트가 없어 남긴 테스트가 없다. 자기 HTTP 엔드포인트는 없고, 코치 라우터(`api/coach.py`)가 앱을 불러올 때 만드는 `Judges` 묶음(`JUDGES`)에 `judge` · `summarize` · `criteria`를 넣어 `/coach/evaluate` · `/coach/finalize`에서 코치에 넘긴다(`coach-agent.md` 11절). 코치 연구 폴더의 재생 · 실험(`real_judges()`)도 이 모듈을 쓴다. 의존성은 pydantic 하나다.
 
 **환경변수**: 말 속도 모듈은 환경변수를 읽지 않는다.
 
