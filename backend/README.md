@@ -60,32 +60,28 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 실패 횟수가 적은 경로부터, 같으면 오래된 경로부터 한 번에 100개를 고른다. 계속 실패하는 한 묶음이
 뒤의 다른 경로를 막지 않게 한다.
 
-## 서비스 평점·의견
+## Take별 설문 · 의견
 
-홈 평점 팝업은 본인의 완료 Take와 `TAKE_RESULT`가 남아 있는 미평가자에게 최초 포함 최대 3회 요청한다.
-별점은 사용자당 한 건이며 팝업 의견과 마이페이지 의견은 공통 테이블에 별도로 저장한다.
-마이페이지 의견은 리포트·평점·노출 횟수와 관계없이 여러 번 보낼 수 있다.
-회원 탈퇴 뒤에도 평점·의견은 보관하고 작성자 `user_id`만 NULL로 바꾼다. 표시 승인 기록은 삭제한다.
+사용자 테스트 설문은 리포트마다 받는다. 리포트가 있는 Take(완료 + `TAKE_RESULT`)마다 한 번이고 고치지 않는다.
+설문을 자동으로 띄우지 않는다. 홈은 미작성 목록으로 알리고 사용자가 리포트에서 직접 남긴다.
+1차 배포의 홈 팝업 별점은 `first_release_feedbacks` 로 이름을 바꿔 보관만 한다. 팝업 API 는 없앴다.
 
 | API | 계약 |
 |---|---|
-| `POST /api/service-feedback/impressions` | `{display_request_id: UUID}`. 승인 시 `should_open=true`, 사용자 전체 최대 3회. 같은 ID 재시도는 추가 집계하지 않음 |
-| `GET /api/service-feedback/me` | `has_report`, `submitted`, `display_count`, `display_limit`, `should_prompt`. 읽기 전용이며 홈의 필수 사전 요청은 아님 |
-| `POST /api/service-feedback` | `{rating: 정수 1~5, suggestion?: string/null, category?: enum}`. 최초 201, 같은 내용 재시도 200, 다른 내용 409 |
-| `POST /api/suggestions` | `{request_id: UUID, content: string, category?: enum}`. 최초 201, 같은 ID·내용 200, 같은 ID·다른 내용 409 |
+| `POST /api/takes/{take_id}/survey` | `{accuracy_rating: 1~5, usefulness_rating: 1~5, comment?: string/null, question_version?: 정수≥1}`. 최초 201, 같은 답 재전송 200, 다른 답 409. 남의 Take 404, 리포트 없는 Take 409 |
+| `GET /api/takes/{take_id}/survey` | `{submitted, survey}`. 제출 전에는 `survey` 가 null |
+| `GET /api/take-surveys/pending` | 테스트 참여에 동의한 뒤 끝난 리포트 중 설문을 남기지 않은 것. 최근에 끝난 것부터 |
+| `PATCH /api/users/me` | `test_consent_version` 을 보내면 동의 시각을 적는다. 같은 버전은 처음 시각을 유지한다 |
+| `POST /api/suggestions` | 마이페이지 의견. `{request_id: UUID, content: string, category?: enum}`. 최초 201, 같은 ID·내용 200, 같은 ID·다른 내용 409 |
 
-모두 기존 Bearer 인증을 사용한다. 의견 유형은 `POSITIVE`·`IMPROVEMENT`·`PROBLEM`·`QUESTION`·`OTHER`이며 생략 시 `OTHER`다.
-유형은 전송 위치(`source`)와 별도로 저장하고 동일 요청의 유형 변경도 409로 처리한다. 의견은 앞뒤 공백 제거 후 최대 2,000자다. 마이페이지는 빈 의견을 거절한다.
-서버가 표시를 승인한 뒤 화면을 열며 응답 유실 시 같은 표시 ID를 재사용한다. 승인 뒤 탭 종료 시 실제로 열지
-못했어도 사용한 1회로 남을 수 있다. 세 번째 팝업의 평점 제출·재시도는 계속 허용한다.
+의견(`comment`·`content`)은 앞뒤 공백 제거 후 최대 2,000자다. 설문의 빈 의견은 남기지 않은 것으로 본다.
+회원 탈퇴나 발표·Take 삭제 뒤에도 설문·의견은 남기고 `user_id`·`take_id` 연결만 끊는다.
 
-운영자는 기존 Basic 인증의 `/admin/`에서 별점·의견을 확인한다. 조회 API는
-`GET /admin/api/service-feedbacks`, `GET /admin/api/suggestions`,
-`GET /admin/api/service-feedbacks/by-user`이며 `limit` 1~200, `offset` 0 이상을 받는다.
-의견 조회는 `source=RATING_POPUP|MY_PAGE`·`category`·`user_id` 필터를 함께 제공한다.
-사용자별 조회는 사용자 한 명을 한 행으로 묶어 평점 0~1개·의견 수·최근 의견 3개를 돌려준다.
-`GET /admin/api/service-feedbacks/summary`는 미평가를 뺀 평점 수와 평균을 돌려준다.
-자세한 요청/응답·오류·ERD·FE 연동은 [서비스 평가 문서](../docs/be/service-feedback-plan-540.md)에 있다.
+운영자는 기존 Basic 인증의 `/admin/` 에서 본다. `GET /admin/api/take-surveys`(목록)와
+`GET /admin/api/take-surveys/summary`(문항 버전별 응답 수·평균)를 추가했다.
+1차 배포 평점·의견 조회(`/admin/api/service-feedbacks*`, `/admin/api/suggestions`)는 그대로 둔다.
+목록 조회는 `limit` 1~200, `offset` 0 이상을 받는다.
+결정 배경·FE 전달 사항은 [Take별 설문 문서](../docs/be/take-survey.md)에 있다.
 
 ## 홈 Take 응답
 

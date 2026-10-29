@@ -1,5 +1,9 @@
 # 평점 팝업·마이페이지 의견 보내기 BE 작업 계획 (#540)
 
+> 2026-10-30 (#776): 홈 팝업 별점과 표시 승인은 Take별 설문으로 바뀌었다. `service_feedbacks` 는
+> `first_release_feedbacks` 로 이름을 바꿔 보관만 하고, 표시 승인 테이블과 팝업 API 는 없앴다.
+> 마이페이지 의견은 그대로다. 현재 계약은 [take-survey.md](take-survey.md)를 본다.
+
 - 작성일: 2026-10-26 / 재검토: 2026-10-27
 - 관련 이슈: [#540](https://github.com/kakaotechcampus-4/ktc4-pusan-2/issues/540)
 - 계획 검토 기준: `refactor/be-stream-split`, `fc5fd312`

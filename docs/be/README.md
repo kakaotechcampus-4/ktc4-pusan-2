@@ -12,4 +12,5 @@
 | [script-parse.md](script-parse.md) | 발표자료 · 대본 업로드, AI 대본 파싱 호출 · 재시도 · 만료 · 조건부 저장 |
 | [realtime-coach.md](realtime-coach.md) | 발표 중 코치 · 종료 뒤 Take 결과 · 코칭 계획 · 원자료 보관 |
 | [file-split-plan.md](file-split-plan.md) | 백엔드 폴더 구조를 나눈 기준 · 계획 · 적용 결과 |
+| [take-survey.md](take-survey.md) | 리포트마다 받는 Take별 설문 · 테스트 참여 동의 · 1차 배포 별점 보관 · FE 전달 사항 |
 | [service-feedback-plan-540.md](service-feedback-plan-540.md) | 평점 팝업·마이페이지 의견 API · 테이블 3개와 ERD · 동시 처리 · FE 연동 |
