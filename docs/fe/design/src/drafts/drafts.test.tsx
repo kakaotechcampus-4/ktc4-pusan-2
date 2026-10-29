@@ -1,9 +1,10 @@
-/** 옮긴 시안이 모두 설계서 안에서 오류 없이 그려지는지 확인한다. */
+/** 옛 시안이 모두 설계서 뷰어 안에서 오류 없이 그려지고, 옛 주소(`#/<이름>`)로도 열리는지 확인한다. */
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterEach, expect, it } from 'vitest';
-import { DesignDraftRoute, DesignIndex } from './DesignIndex';
+import { MemoryRouter } from 'react-router';
+import { afterEach, expect, it, vi } from 'vitest';
+import { screens } from '@/catalog';
+import { DesignRoutes } from '@/DesignGuide';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -11,6 +12,7 @@ let root: Root | undefined;
 afterEach(() => {
   act(() => root?.unmount());
   document.body.innerHTML = '';
+  vi.restoreAllMocks();
 });
 
 function render(path: string) {
@@ -20,33 +22,35 @@ function render(path: string) {
   act(() =>
     root!.render(
       <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/" element={<DesignIndex />} />
-          <Route path="/:name" element={<DesignDraftRoute />} />
-        </Routes>
+        <DesignRoutes />
       </MemoryRouter>,
     ),
   );
   return container;
 }
 
-it('목록의 시안 주소가 모두 시안을 연다', () => {
-  const index = render('/');
-  const names = [...index.querySelectorAll<HTMLAnchorElement>('a[href^="/"]')]
-    .map((a) => a.getAttribute('href')!.slice(1))
-    .filter(Boolean);
-  expect(names.length).toBeGreaterThan(10);
-  act(() => root?.unmount());
+const drafts = screens.filter((screen) => screen.status === '시안만');
 
-  for (const name of names) {
-    const page = render(`/${name}`);
-    expect(page.textContent, name).not.toBe('');
+it('옛 주소마다 그 시안을 뷰어에서 오류 없이 연다', () => {
+  const errors = vi.spyOn(console, 'error');
+  expect(drafts.length).toBeGreaterThan(10);
+  for (const draft of drafts) {
+    const page = render(draft.route);
+    const region = page.querySelector(`[role="region"][aria-label="${draft.title} 미리보기"]`);
+    expect(region?.textContent, draft.route).toBeTruthy();
     act(() => root?.unmount());
   }
+  expect(errors).not.toHaveBeenCalled();
 });
 
-it('구현된 화면은 제품 개발 서버의 새 탭으로 연다', () => {
-  const index = render('/');
-  const live = index.querySelector<HTMLAnchorElement>('a[href^="http://localhost:3000"]');
+it('없는 시안 이름이면 기본 화면을 연다', () => {
+  const page = render('/no-such-draft');
+  expect(page.querySelector('[aria-current="page"]')?.textContent).toBe(screens[0]!.title);
+});
+
+it('제품에서 열기는 제품 개발 서버를 새 탭으로 연다', () => {
+  const page = render('/report');
+  const live = page.querySelector<HTMLAnchorElement>('a[href^="http://localhost:3000"]');
+  expect(live?.getAttribute('href')).toBe('http://localhost:3000/takes/t3');
   expect(live?.target).toBe('_blank');
 });
