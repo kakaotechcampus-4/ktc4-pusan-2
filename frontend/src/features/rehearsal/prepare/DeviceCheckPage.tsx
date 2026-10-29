@@ -90,6 +90,16 @@ function deviceCheckHint({
   return '점검이 끝났어요';
 }
 
+/**
+ * 시작을 누른 뒤의 안내. 다른 곳에서 발표 중인 Take 를 끝낼지 묻는 동안은 아직 여는 중이
+ * 아닙니다 (#719)
+ */
+function startingHint(replacing: { busy: boolean } | null): string {
+  if (!replacing) return '연습을 여는 중…';
+  if (replacing.busy) return '다른 곳의 연습을 끝내는 중…';
+  return '다른 곳에서 진행 중인 연습을 끝낼지 골라 주세요';
+}
+
 /** 평소 목소리 항목의 문구 */
 function baseVoiceLabel(status: BaseVoiceStatus, reason: ShortReason | null): string {
   switch (status) {
@@ -401,7 +411,7 @@ export function DeviceCheckPage() {
   const hint =
     startError ??
     (starting
-      ? '연습을 여는 중…'
+      ? startingHint(replacing)
       : (prepareBlocked ??
         deviceCheckHint({
           deviceError,
