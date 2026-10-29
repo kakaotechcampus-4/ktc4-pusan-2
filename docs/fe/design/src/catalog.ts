@@ -105,7 +105,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/pitch/create/steps/SlidePreviewDialog.tsx',
     ],
     productNote:
-      '제품은 왼쪽에 자료 버전 트리(VersionRail)와 치치, 본문 위에 경로 · 발표 정보 줄(InfoBar) · 단계 표시줄(StepBar)을 둔다. 미리보기는 단계 목록 하나로 줄였고 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않는다. "대본 매핑"은 매핑 확인 대신 다음 단계로 넘어간다.',
+      '제품은 왼쪽에 자료 버전 트리(VersionRail)와 치치, 본문 위에 경로 · 발표 정보 줄(InfoBar) · 단계 표시줄(StepBar)을 둔다. 미리보기는 단계 목록 하나로 줄였고 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않는다. "대본 매핑"은 매핑 확인 대신 다음 단계로 넘어간다. 슬라이드 크게 보기는 제품에서 썸네일을 눌러 연다(미리보기는 버튼 하나).',
     productLinks: [link('새 피치', '/pitch/new'), link('피치 수정', PITCH_EDIT)],
     next: [next('연습 시작 → 시작 전 세팅', 'prepare-mission'), next('내 피치', 'home')],
   },
@@ -133,8 +133,8 @@ const productScreens: GuideScreen[] = [
     ],
     rules: [
       'Take는 이 화면의 시작 버튼에서만 만든다. 들어오는 것만으로는 만들지 않는다.',
-      '카메라 영상 · 마이크 입력 · 시선 기준 셋이 모두 돼야 시작한다. 카메라가 없으면 시작할 수 없다.',
-      '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 장치 오류 → 카메라 → 마이크 → 시선 기준이다.',
+      '카메라 영상 · 마이크 입력 · 시선 기준 셋이 모두 되고, 이번 연습의 슬라이드 · 대본 조합이 정해져야(제품 `choice !== null`) 시작한다. 카메라가 없으면 시작할 수 없다.',
+      '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 시작 실패 → 시작을 누른 뒤 여는 중 → 준비 정보 문제(불러오기 실패 · 버전 없음 등) → 평소 목소리 읽는 중 → 장치 오류 → 시선 분석을 쓸 수 없음 → 카메라 → 마이크 → 시선 분석 준비 중 → 기준 잡기 실패 → 기준 미완료 → 기준이 흐릿함(막지 않고 권하기만) → 평소 목소리 권유(선택) → "점검이 끝났어요"다.',
       '평소 목소리 읽기는 선택이라 시작을 막지 않는다.',
       '"실전 모드 · 대본 없이"를 고르면 버튼이 "실전 모드로 시작"으로 바뀌고 실전 무대로 간다.',
     ],
@@ -155,7 +155,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/rehearsal/prepare/prepareStore.ts',
     ],
     productNote:
-      '카메라 미리보기 · 시선 기준 전체 화면 · 장치 선택 · 음량 막대 · 평소 목소리 읽기 패널은 그리지 않고 자리만 둔다. 시선 기준의 "누르면 시작"은 기준을 다 잡은 상태로 바로 넘어간다.',
+      '카메라 미리보기 · 시선 기준 전체 화면 · 장치 선택 · 음량 막대 · 평소 목소리 읽기 패널은 그리지 않고 자리만 둔다. 시선 기준의 "누르면 시작"은 기준을 다 잡은 상태로 바로 넘어간다. 안내 줄은 카메라 · 마이크 · 시선 기준 세 갈래만 그린다(제품 순서는 동작 규칙).',
     productLinks: [link('시작 전 세팅', '/pitch/p1/device-check')],
     next: [
       next('Take 시작 → 리허설', 'stage'),
@@ -231,7 +231,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/report/DuskScreen.tsx',
     ],
     productNote:
-      '팁은 바뀌지 않고 첫 문장에 머문다. 분석 완료 뒤 자동 이동은 아래 "이어지는 화면"의 "분석 완료 → 리포트"로 대신한다.',
+      '팁은 바뀌지 않고 첫 문장에 머물며, 제품의 "팁 자동 전환 일시정지" 버튼은 뺐다. 분석 완료 뒤 자동 이동은 아래 "이어지는 화면"의 "분석 완료 → 리포트"로 대신한다.',
     productLinks: [
       PROCESSING,
       link('분석 실패', '/takes/t-failed/processing'),
@@ -270,7 +270,8 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/report/ConfirmPage.tsx',
       'frontend/src/features/report/DuskScreen.tsx',
     ],
-    productNote: '남은 시간은 줄지 않는 예시 값이다. 확인 항목은 하나만 그린다.',
+    productNote:
+      '남은 시간은 줄지 않는 예시 값이다. 확인 항목은 하나만 그린다. 제품의 "답을 반영하는 중" · "확인을 받을 수 없어요" 상태는 그리지 않는다.',
     productLinks: [
       link(
         '대본 확인',
@@ -398,7 +399,7 @@ const productScreens: GuideScreen[] = [
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
     sources: ['frontend/src/features/report/ComparisonPage.tsx'],
     productNote:
-      '상단바(AppHeader)는 뺐다. 지표 탭은 청중 응시 하나만 그리고, Take별 기록 표는 줄였다.',
+      '상단바(AppHeader)는 뺐다. 지표 탭은 청중 응시 하나만 그리고, 제품의 Take별 기록 표는 그리지 않는다.',
     productLinks: [
       link('Take 비교', COMPARISON),
       link('완료 Take 없음', '/pitch/p2/comparison'),

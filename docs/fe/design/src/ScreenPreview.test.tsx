@@ -120,9 +120,9 @@ it('카메라 · 마이크 · 시선 기준이 모두 돼야 시작할 수 있�
   expect(host.textContent).toContain('마이크에 대고 한 마디 해보세요');
 });
 
-it('슬라이드가 없을 때는 다음 단계가 막히고 샘플 파일 선택 뒤 진행할 수 있다', async () => {
+it('슬라이드가 없을 때는 다음 단계 버튼이 없고 샘플 파일 선택 뒤 진행할 수 있다', async () => {
   await render('pitch-create', 'empty');
-  expect(button('다음 · 대본 →')?.disabled).toBe(true);
+  expect(button('다음 · 대본 →')).toBeUndefined();
   await click('PDF 파일 선택');
   await click('다음 · 대본 →');
   expect(host.textContent).toContain('대본 입력');
