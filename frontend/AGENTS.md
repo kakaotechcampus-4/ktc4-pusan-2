@@ -135,6 +135,15 @@ state(`clientSessionId`)가 새로고침해도 남아서 같은 탭인 걸 압�
 (`stage/resume.ts` `leftWindow`). 닫은 탭을 늦게 복원하면 서버가 첫 연결을 `TAKE_ENDED`(`CLOSED`)로
 거절하고, 그때도 같은 안내 화면으로 갑니다. 전체 조건은 `docs/be/take-lifecycle.md` 에 있습니다.
 
+**사용자당 연습은 하나입니다** (BE #683, #719). 장치 점검의 시작 버튼은 Take 를 만들기 전에
+`GET /api/takes/active` 로 다른 창 · 기기에서 발표 중인 Take 를 묻고, 있으면 끝낼지 확인한 뒤
+`abandon?replace=true` 로 끝냅니다 (`prepare/activeTake.ts` · `ReplaceTakeDialog.tsx`). **묻지 못하면
+(404 · 네트워크 · 3초 넘게 늦음) 없는 것으로 보고 시작합니다** — 미리 알리려는 것일 뿐이라 시작을 막지 않습니다.
+그래도 겹치면 연결이 `TOO_MANY_STREAMS`(1008)로 거절되고, 시작 전이면 `BUSY` 로 안내합니다 (`stage/startGate.ts`).
+밀려난 창은 `TAKE_ENDED`(`CLOSED`)를 받습니다. 창을 닫았을 때와 이유가 같아 BE 문구("다른 곳에서 …")로만
+가려 안내를 바꿉니다 (`stage/resume.ts` `replacedElsewhere`) — BE 문구가 바뀌면 창 닫음 안내로 돌아갑니다.
+API 모양은 `docs/be/take-lifecycle.md` "발표 중인 Take 묻기" 에 있습니다.
+
 서버로 보내는 경로는 `AudioWorklet` -> Int16 16kHz 다운샘플입니다
 (`MediaRecorder`의 webm/opus는 스트리밍 STT에 못 씁니다).
 worklet 파일은 `public/worklets/`에 평범한 JS로 둡니다 - 번들러를 태우지 않습니다.
