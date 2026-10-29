@@ -33,6 +33,7 @@ import { toMessage } from '@/shared/api/errorMessage';
 import { formatDuration } from '@/shared/lib/clock';
 import type { GazeExcludedReason, Ms, RehearsalTicket } from '@/types/api';
 import { ScriptPane } from './ScriptPane';
+import { CoachStrip } from './CoachStrip';
 import { useLiveCoach } from './useLiveCoach';
 import { useLiveGaze } from './useLiveGaze';
 import { useRehearsalMaterials } from './useRehearsalMaterials';
@@ -831,17 +832,19 @@ export function RehearsalPage() {
 
             <div className="viewport">
               <div className="slide">
-                {/* PDF 한 장을 상자에 맞춰 그립니다. 못 열었으면 자리표시 — 깨진 화면보다 낫습니다 */}
-                {materials.doc ? (
-                  <PdfPage
-                    doc={materials.doc}
-                    pageNumber={slideNumber}
-                    fit="contain"
-                    className="h-full min-h-0 w-full min-w-0 overflow-hidden"
-                  />
-                ) : (
-                  <span className="placeholder">SLIDE {slideNumber} · 16:9</span>
-                )}
+                <div className="slide-content">
+                  {/* PDF 한 장을 상자에 맞춰 그립니다. 못 열었으면 자리표시 — 깨진 화면보다 낫습니다 */}
+                  {materials.doc ? (
+                    <PdfPage
+                      doc={materials.doc}
+                      pageNumber={slideNumber}
+                      fit="contain"
+                      className="h-full min-h-0 w-full min-w-0 overflow-hidden"
+                    />
+                  ) : (
+                    <span className="placeholder">SLIDE {slideNumber} · 16:9</span>
+                  )}
+                </div>
                 {!materials.doc && (
                   <span className="note">
                     {materials.presentationFailed
@@ -856,7 +859,7 @@ export function RehearsalPage() {
                   <div className="frame">
                     <video ref={videoRef} muted playsInline />
                     {!(live && cameraOpened) && <div className="guide" />}
-                    <span className="tag">CAMERA 16:9</span>
+                    <span className="tag">카메라 · 4:3</span>
                   </div>
                 </section>
 
@@ -895,17 +898,13 @@ export function RehearsalPage() {
             </div>
 
             {/* AI 코치의 한마디(8초)와 상태 표시. 실전 모드는 서버가 보내지 않아 비어 있습니다 */}
-            <div
-              className="coach"
-              data-empty={coach === null}
-              // 칭찬("지금처럼")까지 경고색이면 혼나는 느낌이 납니다
-              data-tone={coach?.instruction === 'CONTINUE' ? 'praise' : 'correct'}
+            <CoachStrip
+              message={coach?.text ?? null}
+              exam={mode === 'EXAM'}
+              praise={coach?.instruction === 'CONTINUE'}
             >
-              <span className="coach-text" role="status">
-                {coach?.text ?? ''}
-              </span>
               <CoachIndicators indicators={indicators} stale={indicatorsStale} />
-            </div>
+            </CoachStrip>
 
             <ScriptPane
               mode={scriptMode}
@@ -916,53 +915,53 @@ export function RehearsalPage() {
             />
 
             <div className="stage-foot">
-              {/* 끝내기 실패는 꼭 봐야 해서 스크롤되는 상태 칸 밖, 조작 안내 자리에 띄웁니다 */}
-              {endError ? (
-                <span className="end-error" role="alert">
-                  {endError}
-                </span>
-              ) : (
-                <span className="key-help">
-                  ← → 슬라이드 이동 · Space 다음 장{scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
-                </span>
-              )}
-              {/* 알림 영역은 안쪽 문구가 각자 잡습니다 — 여기도 status 면 낭독기가 두 번 읽습니다 */}
-              <div className="stage-status">
-                {/* 기록이 멈추면 경고(stage.css) — 화면 낭독기에도 바로 알립니다. 준비 중은 조용히 둡니다.
+              <div className="stage-notes">
+                <div className="stage-status">
+                  {/* 기록이 멈추면 경고(stage.css) — 화면 낭독기에도 바로 알립니다. 준비 중은 조용히 둡니다.
                     key 로 요소를 갈아 끼웁니다 — 있던 status 의 role 만 alert 로 바꾸면 낭독기가 놓칩니다 */}
-                {gazeLine && (
-                  <span
-                    key={gazeLine.alert ? 'alert' : 'status'}
-                    className="gaze"
-                    data-alert={gazeLine.alert}
-                    role={gazeLine.alert ? 'alert' : 'status'}
-                  >
-                    {gazeLine.text}
-                  </span>
-                )}
-                {sttNote && (
-                  <span className="stt" data-alert={sttAlert}>
-                    {sttNote}
-                  </span>
-                )}
-                {/* 실시간 전사는 띄우지 않습니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
+                  {gazeLine && (
+                    <span
+                      key={gazeLine.alert ? 'alert' : 'status'}
+                      className="gaze"
+                      data-alert={gazeLine.alert}
+                      role={gazeLine.alert ? 'alert' : 'status'}
+                    >
+                      {gazeLine.text}
+                    </span>
+                  )}
+                  {sttNote && (
+                    <span className="stt" data-alert={sttAlert}>
+                      {sttNote}
+                    </span>
+                  )}
+                  {/* 실시간 전사는 띄우지 않습니다 — 자기 말이 글로 따라붙으면 그걸 읽게 됩니다.
                   전사는 그대로 서버에 쌓이니 리포트에서는 차이가 없습니다 */}
-                {audioState !== null && audioState !== 'running' && (
-                  <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
+                  {audioState !== null && audioState !== 'running' && (
+                    <span>소리가 흐르지 않습니다 — 화면을 한 번 클릭해 주세요</span>
+                  )}
+                  {mode === 'EXAM' && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
+                  {ticket === null && (
+                    <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
+                  )}
+                  {sessionError && <span>{sessionError}</span>}
+                  {!endable && (
+                    <span id="end-hint" className="end-hint">
+                      마지막 장에서 끝낼 수 있어요
+                    </span>
+                  )}
+                </div>
+                {/* 끝내기 실패는 꼭 봐야 해서 스크롤되는 상태 칸 밖, 조작 안내 자리에 띄웁니다 */}
+                {endError ? (
+                  <span className="end-error" role="alert">
+                    {endError}
+                  </span>
+                ) : (
+                  <span className="key-help">
+                    ← → 슬라이드 이동 · Space 다음 장{scriptMode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
+                  </span>
                 )}
-                {mode === 'EXAM' && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
-                {ticket === null && (
-                  <span>연습 정보를 찾을 수 없어요. 장치 점검부터 다시 시작해 주세요.</span>
-                )}
-                {sessionError && <span>{sessionError}</span>}
               </div>
 
-              {/* 비활성 버튼은 초점을 못 받고 title 도 잘 안 보여서 이유를 글자로 둡니다 */}
-              {!endable && (
-                <span id="end-hint" className="end-hint">
-                  마지막 장에서 끝낼 수 있어요
-                </span>
-              )}
               <button
                 type="button"
                 className="end"
