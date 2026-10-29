@@ -24,7 +24,13 @@ export const PRODUCT_CHECKED: {
 } = {
   commit: '43b95161106639e48db50b904683fddc5c9e38d4',
   date: '2026-10-30',
-  pending: [],
+  pending: [
+    {
+      pr: 790,
+      head: 'e38d4dc4d2cf2c15daac325c7f15d5ce50a2d87d',
+      what: '발표 생성 한 페이지 흐름 · 날짜 제거 · 편차 0/0 · 읽기 전용 버전 창과 매핑 확인 창',
+    },
+  ],
 };
 
 const state = (id: string, label: string, description: string): GuideState => ({
@@ -131,7 +137,7 @@ const productScreens: GuideScreen[] = [
     productNote:
       '한 페이지 배치 · 날짜 제거 · 편차 0/0 · 접힌 버전 폴더 · 고정 하단 CTA를 제품과 맞췄다. 공용 상단바는 설계서 틀이 얹는다. 샘플의 PDF와 버전 창 내용은 예시이며 실제 렌더링·업로드·매핑 API는 호출하지 않는다. 연결할 슬라이드는 V1만 표시하고, 매핑 편집은 1장으로 줄여 그린다. 평가기준 정리·저장과 실패 재시도는 제품에서 확인한다.',
     productLinks: [link('새 피치', '/pitch/new'), link('피치 수정', PITCH_EDIT)],
-    next: [next('연습 시작 → 시작 전 세팅', 'prepare-mission'), next('내 피치', 'home')],
+    next: [next('시작 전 점검 → 시작 전 세팅', 'prepare-mission'), next('내 피치', 'home')],
   },
   {
     kind: 'screen',
