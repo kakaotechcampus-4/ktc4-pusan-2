@@ -5,10 +5,10 @@ import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DesignRoutes } from './DesignGuide';
 
-vi.mock('./catalog', () => ({
-  PRODUCT_ORIGIN: 'http://localhost:3000',
-  screens: [
+vi.mock('./catalog', () => {
+  const screens = [
     {
+      kind: 'screen',
       id: 'pitch-create',
       title: '피치 생성',
       group: '연습',
@@ -28,6 +28,7 @@ vi.mock('./catalog', () => ({
       next: [{ label: '시작 전 세팅', screenId: 'prepare' }],
     },
     {
+      kind: 'screen',
       id: 'prepare',
       title: '시작 전 세팅',
       group: '연습',
@@ -46,6 +47,7 @@ vi.mock('./catalog', () => ({
       next: [],
     },
     {
+      kind: 'screen',
       id: 'new-idea',
       title: '새 화면 시안',
       group: '시안',
@@ -59,8 +61,25 @@ vi.mock('./catalog', () => ({
       sources: [],
       next: [],
     },
-  ],
-}));
+  ];
+  const foundation = {
+    kind: 'foundation',
+    id: 'colors',
+    title: '색',
+    group: '기초',
+    status: '제품에 있음',
+    summary: '색 견본',
+    states: [{ id: 'all', label: '전체 색', description: '모든 색' }],
+    rules: ['정한 색만 쓴다.'],
+    tokens: [],
+    sources: [],
+  };
+  return {
+    PRODUCT_ORIGIN: 'http://localhost:3000',
+    screens,
+    entries: [foundation, ...screens],
+  };
+});
 
 // 미리보기 iframe은 jsdom에서 앱을 불러오지 않으므로, 같은 약속(화면 · 상태 · 이동)을 지키는 대역으로 바꾼다
 vi.mock('./PreviewFrame', () => ({
@@ -289,4 +308,17 @@ it('목록에서 새로 고른 화면은 두 보기 모두 기본 상태로 연�
   expect(host.querySelector('[data-preview="pitch-create:ready"]')).toBeTruthy();
   await click('전체 화면');
   expect(host.querySelector('[data-preview="pitch-create:ready"]')).toBeTruthy();
+});
+
+it('기초 항목은 쓰는 규칙을 보이고, 전체 보기는 같은 갈래만 나란히 둔다', async () => {
+  await render('/?screen=colors');
+  expect(host.textContent).toContain('기초 설명');
+  expect(host.textContent).toContain('쓰는 규칙');
+  expect(host.textContent).not.toContain('제품 경로');
+  expect(host.textContent).not.toContain('이어지는 화면');
+  await click('전체 화면');
+  expect(
+    [...host.querySelectorAll('[data-preview]')].map((el) => el.getAttribute('data-preview')),
+  ).toEqual(['colors:all']);
+  expect(host.textContent).toContain('전체 기초');
 });

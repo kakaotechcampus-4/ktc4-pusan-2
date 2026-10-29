@@ -12,5 +12,7 @@ export default defineConfig({
   },
   server: { port: 3100, strictPort: true },
   preview: { port: 3101, strictPort: true },
-  test: { environment: 'jsdom' },
+  // 기초 문서가 styles.css를 글로 읽는다(src/foundations/tokens.ts). Vitest는 CSS를 기본으로 빈 글로
+  // 바꾸므로 이 파일만 처리하게 둔다
+  test: { environment: 'jsdom', css: { include: [/styles\.css/] } },
 });

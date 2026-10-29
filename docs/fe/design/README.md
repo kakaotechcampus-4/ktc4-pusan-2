@@ -23,7 +23,8 @@ npm run dev
 
 ## 화면을 살펴보는 방법
 
-- 왼쪽 목록에서 화면 이름이나 경로를 검색한다. 좁은 화면에서는 "화면 목록 열기"를 누른다.
+- 왼쪽 목록은 **기초**(색 · 글꼴 · 간격 · 테두리와 그림자) → **화면** 순서다. 이름이나 경로로 검색한다. 좁은 화면에서는 "화면 목록 열기"를 누른다.
+- **기초**는 `src/styles.css`를 그대로 읽어 보여 준다(`src/foundations/`). 값을 문서에 따로 적지 않아서, `styles.css`를 저장하면 견본 · 값이 바로 바뀐다. 색은 "전체 색 · 밝은 지면 · 글자 대비"로 보고, 글자 대비는 실제로 쓰는 글자 · 바탕 조합의 WCAG 대비와 AA 판정을 계산한다. 위쪽 `── 제목 ──` 주석이 묶음 제목, 줄 끝 주석이 쓰는 곳이 되니 새 값을 더할 때 같은 모양으로 적는다.
 - "제품 화면 · 설계서 샘플" · "안내 · 계정 화면"은 제품 코드를 읽고 설계서가 다시 그린 **샘플**이다. 서버 처리와 장치는 재현하지 않는다. 아직 제품에 없는 새 디자인은 상태가 **시안**으로 표시된다(아래 "시안 관리").
 - **개별 보기**에서 "화면 상태"를 고르고, 화면 안 버튼으로 피치 생성 → 시작 전 세팅 → 리허설 → 분석 대기 → 리포트를 따라간다. 대본 확인 · 재시도 · 기록 · 비교 갈래도 이어진다. 화면 아래 "이어지는 화면"은 제품에서 자동으로 넘어가는 이동(분석 완료 → 리포트 등)도 대신한다.
 - **전체 보기**에서는 모든 화면을 나란히 두고 카드마다 상태를 바꿔 비교한다. 카드 안에서 같은 화면의 상태를 바꾸면 전체 보기에 머물고, 다른 화면으로 가는 버튼 · 링크를 누르면 그 화면의 개별 보기로 간다.
@@ -43,9 +44,10 @@ http://localhost:3100/#/?screen=prepare-mission&state=mic-error&view=single&devi
 
 ## 화면 추가하는 법
 
-1. `src/catalog.ts`에 화면을 등록한다. 고유 `id` · 상태 · 동작 규칙 · 제품 코드 위치(`sources`, 참고용 문자열) · `status`(`제품에 있음` / `시안`)를 적고, 제품과 다르게 그린 점은 `productNote`에만 적는다([제품 대조](audit.md)의 쓰는 법). 제품 개발 서버로 열 수 있으면 `productLinks`에 예시 경로를 넣는다.
+1. `src/catalog.ts`에 화면을 등록한다(`kind: 'screen'`). 고유 `id` · 상태 · 동작 규칙 · 제품 코드 위치(`sources`, 참고용 문자열) · `status`(`제품에 있음` / `시안`)를 적고, 제품과 다르게 그린 점은 `productNote`에만 적는다([제품 대조](audit.md)의 쓰는 법). 제품 개발 서버로 열 수 있으면 `productLinks`에 예시 경로를 넣는다.
 2. `src/screens/`에 화면 파일(예: `HomeScreen.tsx`)을 만들어 상태 ID마다 무엇이 바뀌는지 그리고, `src/ScreenPreview.tsx`의 `CurrentScreen`에 그 `id`를 한 줄 연결한다. 화면 안 버튼은 `onNavigate(화면 ID, 상태 ID)`로 이동하고, 여러 화면이 쓰는 틀 · 샘플 이름은 `src/screens/shared.tsx`에 둔다. 제품 경로로 가는 링크는 `ScreenPreview.tsx`의 `targetFor`에 연결하면 설계서 안에서만 이동한다.
 3. 새 UI 조각이 필요하면 `src/ui/`에 둔다. 제품 컴포넌트를 가져올 때는 import하지 않고 복사하며, 파일 머리에 어디서 복사해 시작했는지 한 줄 적는다.
+
 ## 시안 관리
 
 새 디자인과 제품 샘플을 **같은 자리**(`catalog.ts` + `src/screens/`)에서 관리한다. 시안을 따로 모아 두는 폴더는 두지 않는다 — 검사 · 빌드에서 빼야 하고, 제품이 바뀌어도 아무도 고치지 않아 금방 낡는다.
@@ -86,7 +88,8 @@ React 코드 종류에 따라 화면 안의 입력 상태는 처음으로 돌아
 | `src/screens/` | 화면별 샘플(장치 · API 없이 그림). 분석 대기 · 대본 확인은 `AnalysisScreen.tsx`, 소개 · 미지원 · 404 · 마이페이지는 `InfoScreens.tsx`, 공통 틀 · 이동 타입은 `shared.tsx` |
 | `src/*.test.tsx` | 뷰어의 주소 · 포커스, 미리보기 iframe의 크기 · 메시지, 미리보기 흐름 · 무대 클래스, 모든 화면 · 상태가 그려지는지 확인 |
 | `src/ui/` | 버튼 · 카드 · 배지 · 마스코트 · 워드마크와 홈 줄(HomePitchCard) · 노을 화면(DuskScreen) · 피치 생성 머리/바닥(PaneHeading · PaneFooter) · 무대 CSS(stage.css). 제품에서 복사해 시작했다 |
-| `src/styles.css` | 색 · 글꼴 · 간격 등 디자인 값. 제품 `index.css`에서 복사해 시작했다 |
+| `src/foundations/` | 기초 문서. `tokens.ts`가 `styles.css`를 읽고(묶음 · 설명 · 밝은 지면 · 대비), `Foundations.tsx`가 그리며, `entries.ts`가 목록 칸(보기 · 규칙)이다 |
+| `src/styles.css` | 색 · 글꼴 · 간격 등 디자인 값의 원본. 제품 `index.css`에서 복사해 시작했다 |
 | `src/lib/` · `src/samples/` | 시간 표기와 예시 데이터 |
 | `public/` | 글꼴 · 마스코트 · 노을 그림 |
 | `scripts/compare-tokens.mjs` · `scripts/product-drift.mjs` | `npm run tokens` · `npm run drift`의 스크립트 |

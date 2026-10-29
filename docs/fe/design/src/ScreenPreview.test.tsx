@@ -7,7 +7,7 @@ import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { screens } from './catalog';
+import { entries } from './catalog';
 import { ScreenPreview } from './ScreenPreview';
 
 let host: HTMLDivElement;
@@ -228,12 +228,12 @@ it('무대 미리보기의 클래스는 모두 설계서의 stage.css에 있다'
   expect(missing).toEqual([]);
 });
 
-it('모든 화면 · 상태가 오류 없이 그려지고, 미리보기 안에는 <main>이 없다', async () => {
+it('모든 기초 · 화면 · 상태가 오류 없이 그려지고, 미리보기 안에는 <main>이 없다', async () => {
   const errors = vi.spyOn(console, 'error');
   HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
     this.open = true;
   };
-  for (const screen of screens) {
+  for (const screen of entries) {
     for (const { id } of screen.states) {
       await render(screen.id, id);
       expect(host.textContent, `${screen.id}:${id}`).not.toBe('');

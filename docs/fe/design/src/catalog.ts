@@ -3,7 +3,9 @@
  * DesignGuide가 목록과 설명을, ScreenPreview가 화면 · 상태 ID를 쓴다.
  * 제품과 다른 점은 여기 productNote가 원본이다(설명 패널에 보인다). 미리보기를 고치면 상태 · 규칙 · productNote를 함께 맞춘다.
  */
-import type { GuideScreen, GuideState, ProductLink } from './model';
+// 확장자를 적는다 — npm run drift가 이 파일을 Node로 바로 읽는다(scripts/product-drift.mjs)
+import { foundationEntries } from './foundations/entries.ts';
+import type { GuideEntry, GuideScreen, GuideState, ProductLink } from './model';
 
 /** 제품 개발 서버(`frontend/`에서 `npm run dev`). 설계서와 따로 띄운다 */
 export const PRODUCT_ORIGIN = 'http://localhost:3000';
@@ -49,6 +51,7 @@ const group = '제품 화면 · 설계서 샘플';
 
 const productScreens: GuideScreen[] = [
   {
+    kind: 'screen',
     id: 'home',
     title: '홈 · 내 피치',
     group,
@@ -86,6 +89,7 @@ const productScreens: GuideScreen[] = [
     ],
   },
   {
+    kind: 'screen',
     id: 'pitch-create',
     title: '피치 생성 · 수정',
     group,
@@ -119,6 +123,7 @@ const productScreens: GuideScreen[] = [
     next: [next('연습 시작 → 시작 전 세팅', 'prepare-mission'), next('내 피치', 'home')],
   },
   {
+    kind: 'screen',
     id: 'prepare-mission',
     title: '시작 전 세팅',
     group,
@@ -176,6 +181,7 @@ const productScreens: GuideScreen[] = [
     ],
   },
   {
+    kind: 'screen',
     id: 'stage',
     title: '리허설 무대',
     group,
@@ -213,6 +219,7 @@ const productScreens: GuideScreen[] = [
     next: [next('끝내기 → 분석 대기', 'processing-loading'), next('전송 실패 → 재시도', 'retry')],
   },
   {
+    kind: 'screen',
     id: 'processing-loading',
     title: '분석 대기',
     group,
@@ -258,6 +265,7 @@ const productScreens: GuideScreen[] = [
     ],
   },
   {
+    kind: 'screen',
     id: 'confirm',
     title: '대본 확인',
     group,
@@ -297,6 +305,7 @@ const productScreens: GuideScreen[] = [
     next: [next('분석 대기로', 'processing-loading')],
   },
   {
+    kind: 'screen',
     id: 'retry',
     title: '업로드 실패 · 재시도',
     group,
@@ -328,6 +337,7 @@ const productScreens: GuideScreen[] = [
     ],
   },
   {
+    kind: 'screen',
     id: 'report',
     title: 'Take 리포트',
     group,
@@ -365,6 +375,7 @@ const productScreens: GuideScreen[] = [
     next: [next('Take 3 연습하기', 'prepare-mission'), next('내 피치로', 'home')],
   },
   {
+    kind: 'screen',
     id: 'takes',
     title: 'Take 기록',
     group,
@@ -393,6 +404,7 @@ const productScreens: GuideScreen[] = [
     next: [next('리포트', 'report'), next('내 피치로', 'home')],
   },
   {
+    kind: 'screen',
     id: 'comparison',
     title: 'Take 비교',
     group,
@@ -428,6 +440,7 @@ const infoGroup = '안내 · 계정 화면';
 /** 글 위주 화면. 제품 `shared/ui/InfoPage` 틀을 쓴다 */
 const infoScreens: GuideScreen[] = [
   {
+    kind: 'screen',
     id: 'about',
     title: '분석 방식 설명',
     group: infoGroup,
@@ -447,6 +460,7 @@ const infoScreens: GuideScreen[] = [
     next: [next('로고 · 내 피치', 'home')],
   },
   {
+    kind: 'screen',
     id: 'unsupported',
     title: '미지원 브라우저',
     group: infoGroup,
@@ -476,6 +490,7 @@ const infoScreens: GuideScreen[] = [
     next: [next('내 피치로', 'home')],
   },
   {
+    kind: 'screen',
     id: 'not-found',
     title: '찾을 수 없음',
     group: infoGroup,
@@ -492,6 +507,7 @@ const infoScreens: GuideScreen[] = [
     next: [next('내 피치로', 'home')],
   },
   {
+    kind: 'screen',
     id: 'me',
     title: '마이페이지',
     group: infoGroup,
@@ -520,5 +536,8 @@ const infoScreens: GuideScreen[] = [
     next: [next('내 피치로', 'home')],
   },
 ];
+
+/** 목록 순서 그대로 왼쪽 목록에 보인다: 기초 → 화면 */
+export const entries: GuideEntry[] = [...foundationEntries, ...productScreens, ...infoScreens];
 
 export const screens: GuideScreen[] = [...productScreens, ...infoScreens];

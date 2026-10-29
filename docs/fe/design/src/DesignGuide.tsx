@@ -1,16 +1,16 @@
 /**
- * 화면 설계서 뷰어. 화면 목록은 catalog, 미리보기는 PreviewFrame(iframe 안의 ScreenPreview)이 맡는다.
+ * 화면 설계서 뷰어. 목록(기초 · 화면)은 catalog, 미리보기는 PreviewFrame(iframe 안의 ScreenPreview)이 맡는다.
  * 고른 화면 · 상태 · 보기 방식 · 미리보기 크기는 주소(`#/?screen=&state=&view=&device=`)에 두어
  * 새로고침 · 뒤로 가기에서 이어진다. 옛 시안 주소(`#/report` 등)는 같은 이름의 화면으로 바꿔 연다.
  */
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Navigate, Route, Routes, useParams, useSearchParams } from 'react-router';
 import { Button } from '@/ui/Button';
-import { PRODUCT_ORIGIN, screens } from './catalog';
+import { PRODUCT_ORIGIN, entries, screens } from './catalog';
 import { FramePage } from './FramePage';
 import { DEVICES, FRAME_UPDATED_EVENT, frameUrl, isDevice, type Device } from './frame';
 import { PreviewFrame } from './PreviewFrame';
-import type { GuideScreen } from './model';
+import type { GuideEntry } from './model';
 
 const control =
   'min-h-11 w-full border-2 border-ink/60 bg-panel px-3 py-2 text-left text-sm text-ink';
@@ -30,21 +30,24 @@ export function DesignRoutes() {
 }
 
 /**
- * 옛 시안 주소 `/:name`(예: `#/report`)을 같은 ID의 화면으로 바꾼다. 시안은 지웠지만(README "옛 시안")
+ * 옛 시안 주소 `/:name`(예: `#/report`)을 같은 ID의 항목으로 바꾼다. 시안은 지웠지만(README "시안 관리")
  * 공유된 주소가 남아 있을 수 있어서다. 없는 이름이면 기본 화면
  */
 function LegacyDraftRoute() {
   const { name = '' } = useParams();
-  const to = screens.some((screen) => screen.id === name)
+  const to = entries.some((entry) => entry.id === name)
     ? `/?${new URLSearchParams({ screen: name })}`
     : '/';
   return <Navigate to={to} replace />;
 }
 
-/** 그 화면에 있는 상태 ID면 그대로, 아니면 undefined */
-function validState(screen: GuideScreen, id: string | null | undefined) {
+/** 그 항목에 있는 상태 ID면 그대로, 아니면 undefined */
+function validState(screen: GuideEntry, id: string | null | undefined) {
   return screen.states.find((state) => state.id === id)?.id;
 }
+
+/** 목록 갈래의 이름. 전체 보기는 고른 항목과 같은 갈래만 나란히 둔다 */
+const KIND_LABEL: Record<GuideEntry['kind'], string> = { foundation: '기초', screen: '화면' };
 
 function tokenName(item: string) {
   return item.startsWith('script-') ? `--spacing-${item}` : `--color-${item}`;
@@ -69,8 +72,8 @@ function Navigation({
   query: string;
   onQuery: (value: string) => void;
 }) {
-  const filtered = screens.filter((screen) =>
-    `${screen.title} ${screen.id} ${screen.group} ${screen.summary} ${screen.route}`
+  const filtered = entries.filter((screen) =>
+    `${screen.title} ${screen.id} ${screen.group} ${screen.summary} ${screen.kind === 'screen' ? screen.route : ''}`
       .toLocaleLowerCase()
       .includes(query.trim().toLocaleLowerCase()),
   );
@@ -83,7 +86,7 @@ function Navigation({
         <input
           className={control}
           type="search"
-          placeholder="화면 이름이나 경로 검색"
+          placeholder="이름 · 경로 검색"
           value={query}
           onChange={(event) => onQuery(event.target.value)}
         />
@@ -189,27 +192,30 @@ function Details({
   stateId,
   preview,
 }: {
-  screen: GuideScreen;
+  screen: GuideEntry;
   stateId: string;
   preview: RefObject<HTMLIFrameElement>;
 }) {
   const state = screen.states.find((item) => item.id === stateId);
   const links = screen.productLinks ?? [];
+  const label = `${KIND_LABEL[screen.kind]} 설명`;
   return (
-    <aside aria-label="화면 설명" className="flex min-w-0 flex-col gap-4 bg-panel p-5">
+    <aside aria-label={label} className="flex min-w-0 flex-col gap-4 bg-panel p-5">
       <div>
-        <p className="text-xs font-bold text-ink/80">화면 설명</p>
+        <p className="text-xs font-bold text-ink/80">{label}</p>
         <h2 className="mt-1 text-lg font-bold">{screen.title}</h2>
         <p className="mt-2 text-sm leading-relaxed">{screen.summary}</p>
         <p className="mt-2 text-sm font-bold">{screen.status}</p>
       </div>
       {state && (
         <section className="border-t border-line pt-4">
-          <h3 className="text-sm font-bold">현재 상태: {state.label}</h3>
+          <h3 className="text-sm font-bold">
+            {screen.kind === 'screen' ? '현재 상태' : '보기'}: {state.label}
+          </h3>
           <p className="mt-2 text-sm leading-relaxed">{state.description}</p>
         </section>
       )}
-      <List title="동작 규칙" items={screen.rules} />
+      <List title={screen.kind === 'screen' ? '동작 규칙' : '쓰는 규칙'} items={screen.rules} />
       {screen.productNote && (
         <section className="border-t border-line pt-4">
           <h3 className="text-sm font-bold">제품과 다른 점</h3>
@@ -240,15 +246,17 @@ function Details({
           </p>
         </section>
       )}
-      <List title="사용하는 컴포넌트" items={screen.components} />
-      <TokenList items={screen.tokens} preview={preview} />
+      {screen.kind === 'screen' && <List title="사용하는 컴포넌트" items={screen.components} />}
+      {screen.tokens.length > 0 && <TokenList items={screen.tokens} preview={preview} />}
       <List title="관련 코드" items={screen.sources} />
-      <section className="border-t border-line pt-4">
-        <h3 className="text-sm font-bold">
-          {screen.status === '시안' ? '제품에 넣을 경로' : '제품 경로'}
-        </h3>
-        <p className="mt-2 break-all font-mono text-xs">{screen.route}</p>
-      </section>
+      {screen.kind === 'screen' && (
+        <section className="border-t border-line pt-4">
+          <h3 className="text-sm font-bold">
+            {screen.status === '시안' ? '제품에 넣을 경로' : '제품 경로'}
+          </h3>
+          <p className="mt-2 break-all font-mono text-xs">{screen.route}</p>
+        </section>
+      )}
     </aside>
   );
 }
@@ -258,14 +266,14 @@ function StateSelect({
   value,
   onChange,
 }: {
-  screen: GuideScreen;
+  screen: GuideEntry;
   value: string;
   onChange: (stateId: string) => void;
 }) {
   if (screen.states.length === 0) return null;
   return (
     <label className="flex min-w-0 flex-col gap-1 text-xs font-bold sm:min-w-44">
-      화면 상태
+      {screen.kind === 'screen' ? '화면 상태' : '보기'}
       <select className={control} value={value} onChange={(event) => onChange(event.target.value)}>
         {screen.states.map((state) => (
           <option key={state.id} value={state.id}>
@@ -308,9 +316,12 @@ export function DesignGuide() {
   // 다음 주소 변경 때 제목으로 포커스를 옮길지. 실제로 주소를 바꿀 때만 채운다
   const pendingFocus = useRef<'move' | 'keep' | null>(null);
 
+  // 주소에 없으면 첫 화면(홈)을 연다. 목록 맨 위는 기초지만 가장 자주 보는 것은 화면이다
   const screenId = params.get('screen') ?? screens[0]?.id;
-  const selected = screens.find((screen) => screen.id === screenId);
+  const selected = entries.find((entry) => entry.id === screenId);
   const view: View = params.get('view') === 'all' ? 'all' : 'single';
+  // 전체 보기는 고른 항목과 같은 갈래(기초 · 화면)만 나란히 둔다
+  const allKind = selected?.kind ?? 'screen';
   const deviceParam = params.get('device');
   const device: Device = isDevice(deviceParam) ? deviceParam : 'fit';
   // 고른 화면은 state, 나머지 카드는 state.<화면 ID>에 상태를 둔다
@@ -320,7 +331,7 @@ export function DesignGuide() {
       selected.states[0]?.id ??
       '')
     : '';
-  const cardState = (screen: GuideScreen) =>
+  const cardState = (screen: GuideEntry) =>
     screen.id === selected?.id
       ? selectedState
       : (validState(screen, params.get(`state.${screen.id}`)) ?? screen.states[0]?.id ?? '');
@@ -349,7 +360,7 @@ export function DesignGuide() {
     // 전체 보기에서 떠나는 카드의 상태를 남겨, 돌아왔을 때 그대로 보이게 한다
     if (view === 'all' && selected && selected.id !== id)
       next.set(`state.${selected.id}`, selectedState);
-    const target = screens.find((screen) => screen.id === id);
+    const target = entries.find((entry) => entry.id === id);
     const state = target && (validState(target, stateId) ?? target.states[0]?.id);
     next.set('screen', id);
     next.set('view', 'single');
@@ -368,7 +379,7 @@ export function DesignGuide() {
   }
 
   /** 미리보기 안의 버튼 · 링크. 같은 화면이면 상태만, 다른 화면이면 그 화면을 개별 보기로 */
-  function previewNavigate(source: GuideScreen, id: string, stateId?: string) {
+  function previewNavigate(source: GuideEntry, id: string, stateId?: string) {
     if (id === source.id)
       changeState(id, validState(source, stateId) ?? source.states[0]?.id ?? '');
     else openScreen(id, stateId);
@@ -424,12 +435,14 @@ export function DesignGuide() {
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line-strong px-5 py-4">
             <div>
               <h2 ref={heading} tabIndex={-1} className="text-lg font-bold">
-                {view === 'all' ? '전체 화면' : (selected?.title ?? '화면을 찾을 수 없음')}
+                {view === 'all'
+                  ? `전체 ${KIND_LABEL[allKind]}`
+                  : (selected?.title ?? '화면을 찾을 수 없음')}
               </h2>
               <p className="mt-1 text-sm text-ink/80">
                 {view === 'all'
-                  ? '각 화면의 상태를 바꿔 비교하세요. 화면별 선택은 주소에 저장됩니다.'
-                  : '화면과 오른쪽 설명을 함께 확인하세요.'}
+                  ? `각 ${KIND_LABEL[allKind]}의 상태를 바꿔 비교하세요. 선택은 주소에 저장됩니다.`
+                  : '미리보기와 오른쪽 설명을 함께 확인하세요.'}
               </p>
             </div>
             <div className="flex flex-wrap items-end gap-3">
@@ -490,7 +503,7 @@ export function DesignGuide() {
                     title={`${selected.title} 미리보기 화면`}
                   />
                 </div>
-                {selected.next.length > 0 && (
+                {selected.kind === 'screen' && selected.next.length > 0 && (
                   <section
                     aria-label="이어지는 화면"
                     className="mt-5 flex flex-wrap items-center gap-2"
@@ -519,43 +532,52 @@ export function DesignGuide() {
           )}
           {view === 'all' && (
             <div className="grid min-w-0 grid-cols-1 gap-5 p-4 sm:p-5 2xl:grid-cols-2">
-              {screens.map((screen) => {
-                const stateId = cardState(screen);
-                return (
-                  <section key={screen.id} className="min-w-0 border-2 border-line-strong bg-panel">
-                    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line-strong p-4">
-                      <div>
-                        <h3 className="font-bold">{screen.title}</h3>
-                        <p className="mt-1 text-xs">{screen.status}</p>
+              {entries
+                .filter((entry) => entry.kind === allKind)
+                .map((screen) => {
+                  const stateId = cardState(screen);
+                  return (
+                    <section
+                      key={screen.id}
+                      className="min-w-0 border-2 border-line-strong bg-panel"
+                    >
+                      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line-strong p-4">
+                        <div>
+                          <h3 className="font-bold">{screen.title}</h3>
+                          <p className="mt-1 text-xs">{screen.status}</p>
+                        </div>
+                        <StateSelect
+                          screen={screen}
+                          value={stateId}
+                          onChange={(id) => changeState(screen.id, id)}
+                        />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => openScreen(screen.id, stateId)}
+                        >
+                          개별로 보기
+                        </Button>
                       </div>
-                      <StateSelect
-                        screen={screen}
-                        value={stateId}
-                        onChange={(id) => changeState(screen.id, id)}
-                      />
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => openScreen(screen.id, stateId)}
+                      <div
+                        className="min-w-0"
+                        role="region"
+                        aria-label={`${screen.title} 미리보기`}
                       >
-                        개별로 보기
-                      </Button>
-                    </div>
-                    <div className="min-w-0" role="region" aria-label={`${screen.title} 미리보기`}>
-                      <PreviewFrame
-                        screenId={screen.id}
-                        stateId={stateId}
-                        onNavigate={(id, next) => previewNavigate(screen, id, next)}
-                        device={device}
-                        fitHeight={384}
-                        title={`${screen.title} 미리보기 화면`}
-                        inline
-                        lazy
-                      />
-                    </div>
-                  </section>
-                );
-              })}
+                        <PreviewFrame
+                          screenId={screen.id}
+                          stateId={stateId}
+                          onNavigate={(id, next) => previewNavigate(screen, id, next)}
+                          device={device}
+                          fitHeight={384}
+                          title={`${screen.title} 미리보기 화면`}
+                          inline
+                          lazy
+                        />
+                      </div>
+                    </section>
+                  );
+                })}
             </div>
           )}
         </main>

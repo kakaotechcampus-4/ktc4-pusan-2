@@ -4,7 +4,7 @@
  */
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router';
-import { screens } from './catalog';
+import { entries } from './catalog';
 import { FRAME_MESSAGE, type FrameMessage } from './frame';
 import { ScreenPreview } from './ScreenPreview';
 
@@ -35,7 +35,7 @@ export function FramePage() {
       post({ kind: FRAME_MESSAGE, type: 'navigate', screenId: id, stateId: next });
       return;
     }
-    const target = screens.find((screen) => screen.id === id);
+    const target = entries.find((entry) => entry.id === id);
     const state = target?.states.find((item) => item.id === next)?.id ?? target?.states[0]?.id;
     setParams({ screen: id, state: state ?? '' }, { replace: id === screenId });
   }
