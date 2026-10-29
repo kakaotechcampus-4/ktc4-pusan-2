@@ -228,6 +228,17 @@ export function DeviceCheckPage() {
   const [startError, setStartError] = useState<string | null>(null);
   /** 다른 곳에서 발표 중인 Take 를 끝낼지 묻는 중. `busy` 면 끝내는 중입니다 (#719) */
   const [replacing, setReplacing] = useState<{ take: ActiveTake; busy: boolean } | null>(null);
+  /**
+   * 이 화면을 떠났다 (뒤로 가기 등). 묻거나 끝내는 요청은 화면이 닫혀도 마저 끝나니, 그 뒤에
+   * Take 를 만들어 리허설로 끌고 가지 않도록 봅니다
+   */
+  const leftPage = useRef(false);
+  useEffect(() => {
+    leftPage.current = false;
+    return () => {
+      leftPage.current = true;
+    };
+  }, []);
 
   // 지금 열려 있는 트랙이 곧 선택값입니다. 따로 상태로 들고 있으면
   // 브라우저가 다른 장치를 열었을 때 화면과 실제가 갈라집니다
@@ -288,6 +299,7 @@ export function DeviceCheckPage() {
     setStarting(true);
     setStartError(null);
     const other = await activeTakeOrNone();
+    if (leftPage.current) return;
     if (other) {
       setReplacing({ take: other, busy: false });
       return;
@@ -307,6 +319,7 @@ export function DeviceCheckPage() {
       setStarting(false);
       return;
     }
+    if (leftPage.current) return;
     setReplacing(null);
     await begin();
   };
