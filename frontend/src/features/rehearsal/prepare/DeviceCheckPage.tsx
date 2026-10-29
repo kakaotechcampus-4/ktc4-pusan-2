@@ -377,9 +377,7 @@ export function DeviceCheckPage() {
 
   return (
     <ScreenFrame
-      screenNo="09"
-      screenName="시작 전 세팅 (Take 준비)"
-      entry="진입 · 피치 생성 완료 / 리포트의 다시 연습하기"
+      screenName="시작 전 세팅"
       title={info?.title ?? combo?.title ?? '불러오는 중…'}
       subtitle={subtitle}
       badge={`TAKE ${takeNumber || '—'} · 시작 전 세팅`}
