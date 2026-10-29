@@ -165,7 +165,7 @@ const USER_COLUMNS = [
   ['마지막 연습', (u) => dateTime(u.last_take_at)],
 ];
 
-// ---------- 서비스 평점 · 의견 ----------
+// ---------- Take별 설문 · 1차 배포 평점 · 의견 ----------
 
 const opinionText = (text) => el('span', { className: 'opinion', textContent: text ?? '—' });
 const FEEDBACK_COLUMNS = [
@@ -182,6 +182,38 @@ const SUGGESTION_COLUMNS = [
   ['의견 유형', (row) => label(row.category)],
   ['의견', (row) => opinionText(row.content)],
 ];
+
+const TAKE_SURVEY_COLUMNS = [
+  ['제출 시각', (row) => dateTime(row.created_at)],
+  ['사용자 ID', (row) => row.user_id ?? '탈퇴한 사용자'],
+  ['연습', (row) => (row.take_id ? `${row.pitch_title} · ${row.take_number}번째` : '지운 연습')],
+  ['정확도', (row) => `${row.accuracy_rating} / 5`, true],
+  ['유용성', (row) => `${row.usefulness_rating} / 5`, true],
+  ['아쉬운 점', (row) => opinionText(row.comment)],
+  ['문항 버전', (row) => row.question_version, true],
+];
+
+// 문항 버전마다 한 줄. 문구가 바뀐 앞뒤 응답을 섞어 평균 내지 않는다
+function renderTakeSurveySummary(rows) {
+  const node = document.getElementById('take-survey-summary');
+  if (!rows.length) {
+    node.replaceChildren(el('span', { className: 'muted', textContent: '아직 응답이 없습니다' }));
+    return;
+  }
+  node.replaceChildren(
+    ...rows.map((row) =>
+      el('span', { className: 'block' }, [
+        el('strong', {
+          textContent: `정확도 ${row.avg_accuracy.toFixed(1)} · 유용성 ${row.avg_usefulness.toFixed(1)}`,
+        }),
+        el('span', {
+          className: 'muted',
+          textContent: ` · 문항 버전 ${row.question_version} · 응답 ${row.survey_count}개`,
+        }),
+      ]),
+    ),
+  );
+}
 
 // 사용자별 평점 · 의견. 한 사용자가 한 행이고 의견은 같은 칸에 목록으로 모은다
 const stars = (rating) => '★'.repeat(rating) + '☆'.repeat(5 - rating);
@@ -267,6 +299,13 @@ const FEEDBACK_USER_COLUMNS = [
 ];
 
 const feedbackPages = {
+  'take-surveys': {
+    path: 'api/take-surveys',
+    columns: TAKE_SURVEY_COLUMNS,
+    offset: 0,
+    next: null,
+    request: 0,
+  },
   feedbacks: { path: 'api/service-feedbacks', columns: FEEDBACK_COLUMNS, offset: 0, next: null, request: 0 },
   suggestions: { path: 'api/suggestions', columns: SUGGESTION_COLUMNS, offset: 0, next: null, request: 0 },
   'feedback-users': {
@@ -357,6 +396,7 @@ const SECTIONS = [
   ['api/takes?limit=50', (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
   ['api/users', (rows) => renderTable('users', USER_COLUMNS, rows)],
   ['api/service-feedbacks/summary', renderRatingSummary],
+  ['api/take-surveys/summary', renderTakeSurveySummary],
 ];
 
 async function load() {

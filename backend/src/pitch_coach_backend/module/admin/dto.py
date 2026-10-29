@@ -84,6 +84,28 @@ class AdminFeedbackRow(BaseModel):
     created_at: datetime
 
 
+class AdminTakeSurveyRow(BaseModel):
+    id: uuid.UUID
+    # 탈퇴했으면 user_id, 발표 · Take 를 지웠으면 take_id 이하가 비어 있다
+    user_id: uuid.UUID | None
+    take_id: uuid.UUID | None
+    pitch_title: str | None
+    take_number: int | None
+    accuracy_rating: int
+    usefulness_rating: int
+    comment: str | None
+    question_version: int
+    created_at: datetime
+
+
+class AdminTakeSurveySummary(BaseModel):
+    # 문항 문구가 바뀌면 앞뒤 응답을 섞어 평균 내지 않도록 버전마다 따로 센다
+    question_version: int
+    survey_count: int
+    avg_accuracy: float
+    avg_usefulness: float
+
+
 class AdminSuggestionRow(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID | None

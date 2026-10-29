@@ -24,7 +24,11 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.entity import Pitch
-from pitch_coach_backend.module.service_feedback.entity import FirstReleaseFeedback, UserSuggestion
+from pitch_coach_backend.module.service_feedback.entity import (
+    FirstReleaseFeedback,
+    TakeSurvey,
+    UserSuggestion,
+)
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import last_active_at
 from pitch_coach_backend.module.user.entity import User
@@ -221,6 +225,46 @@ def list_feedbacks(db: Session, *, limit: int, offset: int) -> list[dict[str, An
     return _fetch(
         db,
         stmt.order_by(FirstReleaseFeedback.created_at.desc(), FirstReleaseFeedback.id.desc())
+        .offset(offset)
+        .limit(limit + 1),
+    )
+
+
+def take_survey_summary(db: Session) -> list[dict[str, Any]]:
+    """문항 버전별 (응답 수, 정확도 평균, 유용성 평균). 탈퇴 뒤 보관한 응답도 센다."""
+    return _fetch(
+        db,
+        select(
+            TakeSurvey.question_version,
+            func.count(TakeSurvey.id).label("survey_count"),
+            func.avg(TakeSurvey.accuracy_rating).label("avg_accuracy"),
+            func.avg(TakeSurvey.usefulness_rating).label("avg_usefulness"),
+        )
+        .group_by(TakeSurvey.question_version)
+        .order_by(TakeSurvey.question_version.desc()),
+    )
+
+
+def list_take_surveys(db: Session, *, limit: int, offset: int) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            TakeSurvey.id,
+            TakeSurvey.user_id,
+            TakeSurvey.take_id,
+            Pitch.title.label("pitch_title"),
+            Take.take_number,
+            TakeSurvey.accuracy_rating,
+            TakeSurvey.usefulness_rating,
+            TakeSurvey.comment,
+            TakeSurvey.question_version,
+            TakeSurvey.created_at,
+        )
+        .outerjoin(Take, Take.id == TakeSurvey.take_id)
+        .outerjoin(Pitch, Pitch.id == Take.pitch_id)
+    )
+    return _fetch(
+        db,
+        stmt.order_by(TakeSurvey.created_at.desc(), TakeSurvey.id.desc())
         .offset(offset)
         .limit(limit + 1),
     )

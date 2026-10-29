@@ -14,6 +14,8 @@ from pitch_coach_backend.module.admin.dto import (
     AdminRatingSummary,
     AdminSuggestionRow,
     AdminTakeRow,
+    AdminTakeSurveyRow,
+    AdminTakeSurveySummary,
     AdminUserRow,
     DailyCount,
     PracticeTimeStats,
@@ -100,6 +102,26 @@ def _named(counts: dict[str | None, int]) -> dict[str, int]:
 def rating_summary(db: Session) -> AdminRatingSummary:
     count, avg = repository.rating_summary(db)
     return AdminRatingSummary(rated_count=count, avg_rating=avg)
+
+
+def take_survey_summary(db: Session) -> list[AdminTakeSurveySummary]:
+    return [
+        AdminTakeSurveySummary(
+            question_version=row["question_version"],
+            survey_count=row["survey_count"],
+            avg_accuracy=float(row["avg_accuracy"]),
+            avg_usefulness=float(row["avg_usefulness"]),
+        )
+        for row in repository.take_survey_summary(db)
+    ]
+
+
+def list_take_surveys(db: Session, *, limit: int, offset: int) -> AdminPage[AdminTakeSurveyRow]:
+    rows = repository.list_take_surveys(db, limit=limit, offset=offset)
+    return AdminPage[AdminTakeSurveyRow](
+        items=[AdminTakeSurveyRow(**row) for row in rows[:limit]],
+        next_offset=offset + limit if len(rows) > limit else None,
+    )
 
 
 def list_feedbacks(db: Session, *, limit: int, offset: int) -> AdminPage[AdminFeedbackRow]:

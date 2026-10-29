@@ -5,12 +5,15 @@ import pytest
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.service_feedback import service
+from pitch_coach_backend.module.service_feedback.dto import TakeSurveyCreate
 from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.module.user.entity import User
-from tests.service_feedback.conftest import make_first_release
+from tests.service_feedback.conftest import make_first_release, make_report
 
 ADMIN = ("admin", "console-test-password")
 PATHS = [
+    "/admin/api/take-surveys",
+    "/admin/api/take-surveys/summary",
     "/admin/api/service-feedbacks",
     "/admin/api/suggestions",
     "/admin/api/service-feedbacks/by-user",
@@ -201,3 +204,66 @@ def test_admin_rating_summary_skips_unrated_and_keeps_withdrawn(client, console,
     _suggest(db_session, _user(db_session), "의견만", minute=2)
     user_service.delete(db_session, user_service.get(db_session, gone))
     assert client.get(path, auth=ADMIN).json() == {"rated_count": 2, "avg_rating": 3.5}
+
+
+def _survey(db, user_id, accuracy, usefulness, comment=None, *, version=1, minute):
+    take = make_report(db, user_id)
+    body = TakeSurveyCreate(
+        accuracy_rating=accuracy,
+        usefulness_rating=usefulness,
+        comment=comment,
+        question_version=version,
+    )
+    survey, _ = service.submit_survey(db, user_id, take.id, body)
+    survey.created_at = T0 + timedelta(minutes=minute)
+    db.commit()
+    return take, survey
+
+
+def test_admin_lists_take_surveys_and_keeps_deleted_links(client, console, db_session):
+    kept, gone = _user(db_session), _user(db_session)
+    take, _ = _survey(db_session, kept, 4, 3, "<b>속도</b>가 이상해요", minute=0)
+    removed, _ = _survey(db_session, kept, 2, 2, minute=1)
+    _, withdrawn = _survey(db_session, gone, 5, 5, minute=2)
+    db_session.delete(removed)
+    # 탈퇴한 뒤의 모양만 만든다. 실제 탈퇴는 test_concurrency 가 커밋된 설문으로 본다
+    withdrawn.user_id = None
+    db_session.commit()
+
+    first = client.get("/admin/api/take-surveys?limit=2", auth=ADMIN).json()
+    assert first["next_offset"] == 2
+    withdrawn, deleted = first["items"]
+    assert (withdrawn["user_id"], withdrawn["accuracy_rating"]) == (None, 5)
+    assert (deleted["take_id"], deleted["pitch_title"], deleted["take_number"]) == (
+        None,
+        None,
+        None,
+    )
+    last = client.get("/admin/api/take-surveys?limit=2&offset=2", auth=ADMIN).json()
+    assert last["next_offset"] is None
+    assert last["items"][0] | {"id": None, "created_at": None} == {
+        "id": None,
+        "user_id": str(kept),
+        "take_id": str(take.id),
+        "pitch_title": "발표",
+        "take_number": 1,
+        "accuracy_rating": 4,
+        "usefulness_rating": 3,
+        "comment": "<b>속도</b>가 이상해요",
+        "question_version": 1,
+        "created_at": None,
+    }
+    assert "email" not in str(first) + str(last)
+
+
+def test_admin_take_survey_summary_by_question_version(client, console, db_session):
+    path = "/admin/api/take-surveys/summary"
+    assert client.get(path, auth=ADMIN).json() == []
+    user = _user(db_session)
+    _survey(db_session, user, 4, 2, minute=0)
+    _survey(db_session, user, 3, 5, minute=1)
+    _survey(db_session, user, 1, 1, version=2, minute=2)
+    assert client.get(path, auth=ADMIN).json() == [
+        {"question_version": 2, "survey_count": 1, "avg_accuracy": 1.0, "avg_usefulness": 1.0},
+        {"question_version": 1, "survey_count": 2, "avg_accuracy": 3.5, "avg_usefulness": 3.5},
+    ]

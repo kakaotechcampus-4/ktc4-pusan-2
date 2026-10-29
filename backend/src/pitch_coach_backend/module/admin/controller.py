@@ -23,6 +23,8 @@ from pitch_coach_backend.module.admin.dto import (
     AdminRatingSummary,
     AdminSuggestionRow,
     AdminTakeRow,
+    AdminTakeSurveyRow,
+    AdminTakeSurveySummary,
     AdminUserRow,
     StatsResponse,
 )
@@ -84,6 +86,20 @@ def takes(
 @router.get("/api/takes/stuck")
 def stuck_takes(db: Annotated[Session, Depends(get_db)]) -> list[AdminTakeRow]:
     return service.list_stuck_takes(db)
+
+
+@router.get("/api/take-surveys", response_model=AdminPage[AdminTakeSurveyRow])
+def take_surveys(
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminPage[AdminTakeSurveyRow]:
+    return service.list_take_surveys(db, limit=limit, offset=offset)
+
+
+@router.get("/api/take-surveys/summary")
+def take_survey_summary(db: Annotated[Session, Depends(get_db)]) -> list[AdminTakeSurveySummary]:
+    return service.take_survey_summary(db)
 
 
 @router.get("/api/service-feedbacks", response_model=AdminPage[AdminFeedbackRow])

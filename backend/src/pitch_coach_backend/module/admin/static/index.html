@@ -56,6 +56,18 @@
     </section>
 
     <section class="panel">
+      <h2>Take별 설문 <small class="muted">리포트마다 받은 체감 정확도 · 피드백 유용성</small></h2>
+      <p id="take-survey-summary" class="summary"></p>
+      <p id="take-surveys-error" class="error" hidden></p>
+      <div class="scroll"><table id="take-surveys"></table></div>
+      <div class="pager">
+        <button id="take-surveys-prev" type="button" disabled>이전</button>
+        <span id="take-surveys-page" class="muted"></span>
+        <button id="take-surveys-next" type="button" disabled>다음</button>
+      </div>
+    </section>
+
+    <section class="panel">
       <h2>1차 배포 서비스 평점 <small class="muted">홈 팝업으로 받은 별점. 지금은 받지 않는다</small></h2>
       <p id="feedbacks-error" class="error" hidden></p>
       <div class="scroll"><table id="feedbacks"></table></div>
