@@ -3,7 +3,7 @@
 > **이 문서는** 군더더기 판정 기능의 전체 설명서다. 처음 보는 사람이 이 문서만 읽고 이 기능이 왜 있고, 무엇을 받아 무엇을 내며, 안에서 어떻게 돌고, 어떻게 실행 · 배포하는지 알 수 있게 쓴다.
 > **기준 범위**: 군더더기 판정 모듈의 목표 설계다. 기능 사이 공통 계약(1초 원자료 모양 · 1초 판정 결과 형식 · 커서 · 에러 · meta · 시간 예산 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **한 줄 요약**: STT가 확정한 단어마다 "음 · 그 · 그니까" 같은 군더더기인지 층(T1 · T2 · T3)과 함께 판정하고, 최근 빈도로 1초 판정 결과를 낸다. 군더더기 사전의 원본을 이 모듈이 갖고, BE는 여기서 STT keyterm 단어만 가져간다.
-> **기준값**: 판정 수치(앞 · 뒤 간격 기준, 문장 첫 단어 간격 기준, 잦음 기준, 판정 창 길이)와 사전은 `src/filler/config.py`에만 두고 이 문서에는 지표와 나쁜 방향만 쓴다. 사전의 단어 목록은 BE · STT와 맞춰야 하는 값이라 이 문서에도 적는다(5-2). 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
+> **기준값**: 판정 수치(앞 · 뒤 간격 기준, 문장 첫 단어 간격 기준, 잦음 기준, 판정 창 길이)와 사전은 서비스 `features/filler/config.py`에만 두고 이 문서에는 지표와 나쁜 방향만 쓴다. 사전의 단어 목록은 BE · STT와 맞춰야 하는 값이라 이 문서에도 적는다(5-2). 문서의 숫자는 BE와 맞춰야 하는 통신 값과 예시뿐이다.
 > **관련 Issue**: #152
 
 # 0. 한눈에 보기
@@ -83,14 +83,14 @@ flowchart LR
 ```
 ai/research/filler-detection/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과
-├─ pyproject.toml · uv.lock                 Python 3.12, 의존성은 pydantic 하나
-├─ src/filler/                              판정 모듈 → 서비스 features/filler/로 폴더째 옮긴다
+├─ pyproject.toml · uv.lock                 Python 3.12, 서비스를 editable로 설치해 판정 모듈을 쓴다
+├─ (서비스 ai/service/src/pitch_coach_ai/features/filler/)   판정 모듈 (연구 폴더 src/filler/에서 폴더째 옮김, 테스트는 서비스 tests/unit/filler/)
 │   ├─ schemas.py · core.py · config.py · version.py
 │   ├─ keyterms.json                        keyterm 단어 목록 (config.py 사전에서 만든 생성 파일, BE가 가져간다)
 │   └─ examples/                            judge · summarize · criteria 입력 · 출력 예시 (계약 테스트가 읽는다)
 ├─ data/                                    평가 데이터: 층 · 군더더기 여부를 단어마다 표시한 발화 세트
 ├─ tools/                                   예시 · keyterm 파일 · 가상 평가 데이터 다시 만들기, 평가 스크립트
-├─ tests/                                   판정 규칙 · 커서 · 계약 · keyterm 파일 최신 검사
+├─ tests/                                   keyterm 파일 최신 · 가상 데이터 · 평가 검사 (판정 규칙 · 커서 · 계약은 서비스 tests/unit/filler/)
 └─ reports/results/                         평가 결과 JSON (층별 정밀도 · 재현율)
 ```
 파일마다의 역할은 연구 폴더를 만들 때 README의 파일 지도에 둔다.
@@ -113,7 +113,7 @@ ai/research/filler-detection/
 | 입력 모델은 모르는 필드를 무시하고, 출력 모델은 정해진 필드만 낸다 | `architecture.md` 2절 '모르는 필드' |
 
 # 5. 입력 · 출력 계약
-입력 · 출력의 원본은 `src/filler/schemas.py`의 pydantic 모델이다. 시각은 모두 Take 시작 기준 ms다. 1초 판정 결과의 공통 필드와 STT 모듈 입력 · 커서 규칙은 `architecture.md` 7절이 기준이고, 아래는 군더더기에만 있는 값이다.
+입력 · 출력의 원본은 서비스 `features/filler/schemas.py`의 pydantic 모델이다. 시각은 모두 Take 시작 기준 ms다. 1초 판정 결과의 공통 필드와 STT 모듈 입력 · 커서 규칙은 `architecture.md` 7절이 기준이고, 아래는 군더더기에만 있는 값이다.
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 |
@@ -150,7 +150,7 @@ ai/research/filler-detection/
 | `words` | list | 아니오 | 최근 60초 STT 확정 단어 `[{word, start_ms, end_ms}]`. BE가 매 요청 겹쳐 보낸다 | 아래 5-5 |
 | `utterance_ends` | list int | 아니오 | 창 안의 문장 끝 신호 시각. 값은 Deepgram `UtteranceEnd` 이벤트가 알린 마지막 단어의 끝 시각이다(그 뒤로 정해진 시간 넘게 말이 없었다는 뜻) | `[36800]` |
 | `take_end_ms` | int · null | 아니오 | finalize 마지막 창의 Take 끝 시각(evaluate에서는 null). 그때까지 보류인 단어의 뒤 간격을 `take_end_ms − end_ms`로 재서 정한다(`architecture.md` 7절, 6-2) | `92000` |
-| `stt_status` | enum | 아니오 | `connecting` · `ok` · `reconnecting` · `degraded` · `closed`. `ok`가 아니면 잴 수 없음 | `ok` |
+| `stt_status` | enum · null | 아니오 | `connecting` · `ok` · `reconnecting` · `degraded` · `closed`. `ok`가 아니면 잴 수 없음. 없거나 null이면 모르는 것으로 보고 잴 수 없음 | `ok` |
 | `stt_ok_since_ms` | int | 아니오 | STT가 마지막으로 `ok`가 된 시각. 코치가 `coach_state`에서 넣는다. 끊긴 적이 없으면 0. `start_ms`가 이보다 이른 단어는 창에서 뺀다 | `0` |
 
 ## 5-3. 출력
@@ -164,7 +164,7 @@ ai/research/filler-detection/
 | `state` | `NORMAL` · `HIGH`(최근 창 군더더기 수가 기준 이상). 잴 수 없으면 `UNKNOWN` | `NORMAL` |
 | `measurable` | STT 상태가 `ok`면 true | `true` |
 | `issues[].confidence` | 잴 수 있으면 1 | `1.0` |
-| `counted_until_ms` · `words_counted_until_ms` | 이번까지 센 시각 · 단어 커서. 단어 커서는 판정이 정해진 단어 `end_ms` 중 가장 큰 값이고(받은 커서보다 작아지지 않는다, `architecture.md` 7절), 보류 단어가 있으면 그 앞에서 멈춘다 | `41000` · `40980` |
+| `counted_until_ms` · `words_counted_until_ms` | 이번까지 센 시각 · 단어 커서. 단어 커서는 판정이 정해진 단어 `end_ms` 중 가장 큰 값이고(받은 커서보다 작아지지 않는다, `architecture.md` 7절), 보류 단어가 있으면 그 앞에서 멈춘다. 판정에서 뺀 단어(겹친 단어 등)의 끝도 커서를 넘기되, 보류 단어 시작 뒤에 끝나는 것은 넣지 않는다(그 보류 단어를 다음 요청에서 세게) | `41000` · `40980` |
 
 **`summarize(tally)` → `{"FILLER": {...}}`** (장 · Take 값, 분모가 0이면 null. `measured_ratio`만 분모가 0이면 0, `architecture.md` 7절)
 
@@ -290,7 +290,7 @@ ai/research/filler-detection/
 코치는 `words` 중 `is_filler`가 true이거나 null(보류)인 단어를 `fillers[{start_ms, end_ms, is_filler}]`로 같은 요청의 말 속도에 넘긴다. 말 속도는 군더더기를 글자 수에서 빼고 보류 단어부터는 다음 요청에서 센다. 군더더기 판정이 실패하면(예외 · `words` 모양이 틀림) 코치는 `fillers: null`을 넘기고, 말 속도는 새 단어를 세지 않는다(`architecture.md` 7절, `coach-agent.md` 6-1). 말 속도의 계약은 `pace.md`가 기준이다.
 
 ## 6-4. `summarize` · `criteria`
-- `summarize`는 코치가 장 · Take 동안 더한 `tally` 합계를 받아 5-3 표대로 지표를 계산한다. `by_tier` · `by_word`는 Take 결과에 그대로 들어가는 묶음 값이다(`architecture.md` 7절). 코치는 결과를 고치지 않고 Take 결과의 `areas.FILLER`에 담는다.
+- `summarize`는 코치가 장 · Take 동안 더한 `tally` 합계를 받아 5-3 표대로 지표를 계산한다. `by_tier` · `by_word`는 Take 결과에 그대로 들어가는 묶음 값이다(`architecture.md` 7절). 코치는 값을 고치지 않고 `coach-agent.md` 5-3의 모양으로 Take 결과의 `areas.FILLER`에 담는다. `measured_ratio`는 `areas.FILLER.measured_ratio`로 따로 두고 나머지를 `take`에 담으며, 측정 비율이 코치의 기준 미만이거나 읽지 못하면 `take` · `slides`를 비운다(`unmeasured_reason: LOW_MEASURED_RATIO`). `criteria()`는 `criteria.FILLER`에 `{criteria_version, issues}`로 담는다.
 - `criteria`는 `FILLER_FREQUENT`의 기준을 돌려준다.
 
 # 7. 실패할 때
@@ -315,7 +315,7 @@ ai/research/filler-detection/
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `filler-<버전>` (첫 판 `filler-1.0`) | `src/filler/version.py` | 판정 규칙 · 출력의 뜻이 바뀔 때 |
+| `feature_version` | `filler-<버전>` (첫 판 `filler-1.0`) | 서비스 `features/filler/version.py` | 판정 규칙 · 출력의 뜻이 바뀔 때 |
 | `criteria_version` | `filler-<버전>+<config 해시 12자리>` | `judge` 출력 → `coach_state` → 응답 `meta.criteria_versions.filler`, `keyterms.json` | 사전 · 간격 기준 · 잦음 기준을 바꾸면 해시가 바뀐다 |
 | `schema_version` | `1.0` | 코치 응답 `meta` (`architecture.md` 5절) | 판정 결과 · `words`의 필드 이름 변경 · 삭제 · 뜻 변경 |
 
@@ -331,8 +331,9 @@ uv sync
 
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 | `uv run python -m pytest` | 판정 규칙 · 커서 · 계약(`examples/`) · keyterm 파일 최신 검사 통과 |
-| keyterm 파일 다시 만들기 | `uv run python tools/export_keyterms.py` | 사전에서 `src/filler/keyterms.json`을 다시 만든다. 커밋된 것과 같으면 `git diff`가 빈다 |
+| 판정 모듈 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/filler` | 판정 규칙 · 커서 · 계약(`examples/`) 통과 |
+| 연구 폴더 테스트 | `uv run python -m pytest` | keyterm 파일 최신 · 가상 데이터 · 평가 검사 통과 |
+| keyterm 파일 다시 만들기 | `uv run python tools/export_keyterms.py` | 사전에서 서비스 `features/filler/keyterms.json`을 다시 만든다. 커밋된 것과 같으면 `git diff`가 빈다 |
 | 예시 다시 만들기 | `uv run python tools/make_examples.py` | 기준값 · 규칙을 바꾼 뒤 `examples/`의 출력 JSON을 다시 만든다 |
 | 가상 평가 데이터 다시 만들기 | `uv run python tools/make_virtual_data.py --seed 0` | 손으로 쓴 발화 원본(`data/virtual/source.json`)에서 단어 시각을 만든 `data/virtual/words.json` |
 | 평가 | `uv run python tools/evaluate.py --out reports/results/filler_eval.json` | 층별 정밀도 · 재현율, 앞 · 뒤 간격 기준을 바꾼 민감도 (13절) |
@@ -341,9 +342,9 @@ uv sync
 - 판정 테스트가 볼 것: T1 · T2 · T3 각 규칙과 경계(간격이 기준과 같을 때), 문장 첫 단어(문장 끝 신호 뒤 · 큰 앞 간격), 바로 반복, 보류와 다음 요청에서의 판정, Take 끝(`take_end_ms`로 보류 단어 정하기, 마지막 단어 끝과 같은 시각이면 뒤 간격 0), `stt_ok_since_ms` 앞 단어 제외, STT가 `ok`가 아님, 사전에 없는 단어 · 문장부호가 붙은 단어. 커서: 보류 단어 앞에서 멈춤, 같은 입력이면 같은 결과, 돌려준 커서로 겹친 창을 다시 부르면 중복 집계 없음, 요청이 빠져 새 1초가 여러 개면 1초마다 시간 몫. 테스트 이름은 동작을 문장으로 짓는다(예: `test_t2_word_is_pending_until_next_word_arrives`).
 
 # 11. 배포
-**어디서 도는가**: 판정 모듈 `src/filler/`(`examples/` · `keyterms.json` 포함)를 AI 서비스의 `features/filler/`로 폴더째 옮기고, 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/filler/`로 옮긴다. 예시를 연구 폴더 경로로 찾는 `test_examples.py`는 옮기고 패키지 위치로 찾게 고친다. 연구 도구 · 가상 데이터를 쓰는 테스트(`test_evaluate.py` · `test_virtual_data.py` · `test_virtual_tool.py`)와, 생성 도구(`tools/export_keyterms.py`)를 불러 `keyterms.json`이 최신인지 보는 `test_keyterms.py`는 연구 폴더에 남긴다. 생성 도구와 `test_keyterms.py`는 서비스의 `features/filler/keyterms.json`을 원본으로 읽고 쓰게 바꾸고, 연구 폴더의 `keyterms.json`은 지운다. 자기 HTTP 엔드포인트는 없고, 라우터가 앱 시작 때 만드는 `Judges` 묶음에 `judge` · `summarize` · `criteria`를 넣어 코치에 넘긴다(`coach-agent.md` 11절). 의존성은 pydantic 하나다. 서비스로 옮기려면 서비스 뼈대(`ai-service.md`)가 먼저 있어야 한다.
+**어디서 도는가**: 판정 모듈(`examples/` · `keyterms.json` 포함)은 AI 서비스의 `features/filler/`에 있다(연구 폴더 `src/filler/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 `tests/unit/filler/`로 옮겼다. 예시를 연구 폴더 경로로 찾던 `test_examples.py`는 패키지 위치로 찾게 고쳐 옮겼다. 연구 도구 · 가상 데이터를 쓰는 테스트(`test_evaluate.py` · `test_virtual_data.py` · `test_virtual_tool.py`)와, 생성 도구(`tools/export_keyterms.py`)를 불러 `keyterms.json`이 최신인지 보는 `test_keyterms.py`는 연구 폴더에 남겼다. 생성 도구와 `test_keyterms.py`는 서비스의 `features/filler/keyterms.json`을 원본으로 읽고 쓰고, 연구 폴더에는 `keyterms.json` 사본이 없다. 자기 HTTP 엔드포인트는 없다. 코치 라우터(`api/coach.py`)가 앱을 불러올 때 만드는 `Judges` 묶음(`JUDGES`)에 `judge` · `summarize` · `criteria`를 넣어 `/coach/evaluate` · `/coach/finalize`에서 코치에 넘긴다(`coach-agent.md` 11절). 코치 연구 폴더의 재생 · 실험(`real_judges()`)도 이 모듈을 쓴다. 의존성은 pydantic 하나다.
 
-**keyterm 목록이 BE로 가는 길**: BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽을 수 없다. 그래서 BE가 `keyterms.json`의 복사본을 `backend/` 안에 두고 STT 연결 때 그 목록을 쓴다. BE 테스트가 저장소의 AI 파일(`ai/.../filler/keyterms.json`)과 복사본이 같은지 확인한다. 사전의 keyterm 표시가 바뀌면 AI가 같은 PR에서 파일을 다시 만들고 BE에 알린다.
+**keyterm 목록이 BE로 가는 길**: BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽을 수 없다. 그래서 BE가 `keyterms.json`의 복사본을 `backend/` 안에 두고 STT 연결 때 그 목록을 쓴다. BE 테스트가 저장소의 AI 파일(`ai/.../filler/keyterms.json`)과 복사본이 같은지 확인한다. 사전의 keyterm 표시가 바뀌면 AI가 같은 PR에서 파일을 다시 만들고 BE에 알린다. 지금 BE는 자기 목록(`backend/src/pitch_coach_backend/realtime/stt/fillers.py`의 `KEYTERM_FILLERS`)을 쓰고, 이 복사본과 같은지 보는 테스트는 아직 없다(BE에 전할 일).
 
 **환경변수**: 군더더기 판정 모듈은 환경변수를 읽지 않는다. 서비스 공통 환경변수는 `architecture.md` 10절이다.
 
@@ -394,7 +395,7 @@ BE가 요청을 만드는 법과 Take 한 번의 순서는 `architecture.md` 1-3
 
 | 데이터 | 언제 생기나 | 저장 위치(테이블.칸) | 형식(JSON · 칸, 크기) | 쓰는 쪽 · 읽는 쪽 | 덮어쓰기 막기 | 보관 기간 · 개인정보 |
 |---|---|---|---|---|---|---|
-| 군더더기 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.FILLER`(`take` · `slides`) · `criteria.FILLER` | 코치가 `summarize` · `criteria` 결과를 고치지 않고 담는다. 잰 크기: 서로 다른 군더더기 단어 20개면 Take 또는 장 하나에 약 0.33 KB(장 10개면 약 3.7 KB). `by_word`의 키는 사전 단어뿐이라 개수에 상한이 있다(사전 55개) | 코치가 만들고 BE가 쓴다 · 리뷰(`fluency`) · 리포트 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
+| 군더더기 Take 지표 · 판정 기준 | `/coach/finalize` 응답 | `take_ai_results.payload`(`kind` = `TAKE_RESULT`)의 `areas.FILLER`(`take` · `slides`) · `criteria.FILLER` | 코치가 `summarize` · `criteria` 결과의 값을 고치지 않고 `coach-agent.md` 5-3의 모양으로 담는다(6-4). 잰 크기: 서로 다른 군더더기 단어 20개면 Take 또는 장 하나에 약 0.33 KB(장 10개면 약 3.7 KB). `by_word`의 키는 사전 단어뿐이라 개수에 상한이 있다(사전 55개) | 코치가 만들고 BE가 쓴다 · 리뷰(`fluency`) · 리포트 | `coach-agent.md` 12-1 (`(take_id, kind)` 유일) | Take와 함께 |
 | 리포트 요약 군더더기 칸 | `/coach/finalize` 응답을 저장할 때 | `take_summaries.filler_count` (Integer, nullable) | FILLER `filler_count`(정수). `filler_per_min` · 층별 · 단어별은 칸이 없고 Take 결과에서 읽는다. STT를 잴 수 없었으면(`measured_ratio`가 0) null | BE가 쓴다 · FE 리포트 목록 · Take 비교 | Take마다 한 행 | Take와 함께 |
 | 군더더기 개입 | `/coach/evaluate` 응답이 `INTERVENE`이고 영역이 `FILLER`일 때 | `coach_events`의 `INTERVENTION` 이벤트(`area` = `FILLER`). `live_feedbacks`에는 쓰지 않는다 | `coach-agent.md` 12-1 | 코치 | `coach-agent.md` 12-1 | Take와 함께 |
 | STT 확정 단어 · 문장 끝 신호 (원자료, 이 모듈의 입력) | 단어는 Take 동안, 문장 끝 신호는 Take 종료 때 한 번에(`architecture.md` 1-3) | `take_transcript_segments.words` · `takes.utterance_ends` | `architecture.md` 1-1, `coach-agent.md` 12-1. 문장 끝 신호에는 Deepgram `UtteranceEnd`의 마지막 단어 끝 시각을 넣는다(5-2) | BE가 쓴다 · `replay` · 대본 전달도 | `coach-agent.md` 12-1 | Take와 함께. 사용자 발화다 |

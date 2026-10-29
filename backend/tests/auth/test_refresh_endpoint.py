@@ -17,9 +17,6 @@ from tests.auth.conftest import (
     do_login,
 )
 
-pytestmark = pytest.mark.usefixtures("_clean_redis", "_use_test_redis")
-
-
 # --- refresh ------------------------------------------------------------
 
 

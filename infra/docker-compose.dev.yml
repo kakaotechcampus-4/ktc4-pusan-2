@@ -1,7 +1,22 @@
 services:
+  fe:
+    build:
+      args:
+        VITE_LAUNCH_GATE_ENABLED: "false"
+        
   caddy:
     ports:
       - "80:80"
       - "443:443"
     environment:
       SITE_URL: https://pitch-coach-dev.duckdns.org
+      RELEASE_SITE_URL: https://pitch-coach-release.duckdns.org
+    volumes:
+      - ./release.caddy:/etc/caddy/sites/release.caddy
+    networks:
+      - default
+      - edge
+
+networks:
+  edge:
+    external: true

@@ -16,7 +16,7 @@ import { formatTimeLimit } from './lib/draft';
 function Item({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex min-w-0 items-start gap-2 py-1 lg:px-4 lg:first:pl-0 lg:last:pr-0">
-      <dt className="shrink-0 text-xs leading-5 text-stone">{label}</dt>
+      <dt className="shrink-0 text-xs leading-5 text-ink/80">{label}</dt>
       <dd className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm">{children}</dd>
     </div>
   );
@@ -25,6 +25,7 @@ function Item({ label, children }: { label: string; children: ReactNode }) {
 export function InfoBar() {
   const pitchId = useCreateStore((s) => s.pitchId);
   const title = useCreateStore((s) => s.draft.title.trim());
+  const fromFile = useCreateStore((s) => s.autoTitle !== null && s.draft.title === s.autoTitle);
   const date = useCreateStore((s) => s.draft.presentationDate);
   const limitSec = useCreateStore((s) => s.draft.timeLimitSec);
   const lowerSec = useCreateStore((s) => s.draft.lowerToleranceSec);
@@ -35,30 +36,35 @@ export function InfoBar() {
 
   return (
     <section aria-label={heading} className="shrink-0 border-b border-line pb-2">
-      <p className="mb-1 text-xs font-medium text-stone">{heading}</p>
+      <p className="mb-1 text-xs font-medium text-ink/80">{heading}</p>
       <dl className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1.3fr)] lg:divide-x lg:divide-line">
         <Item label="발표 제목">
           <span
             className={[
               'min-w-0 [overflow-wrap:anywhere]',
-              title ? 'font-bold' : 'font-normal text-stone',
+              title ? 'font-bold' : 'font-normal text-ink/80',
             ].join(' ')}
           >
             {title || '제목 미입력'}
           </span>
+          {fromFile && (
+            <span className="rounded bg-cream px-1.5 py-0.5 text-xs font-medium text-stone">
+              파일 이름
+            </span>
+          )}
         </Item>
 
         <Item label="발표 날짜">
           <span
             className={[
               'tabular whitespace-nowrap font-medium',
-              date ? '' : 'font-normal text-stone',
+              date ? '' : 'font-normal text-ink/80',
             ].join(' ')}
           >
             {date ? dotDate(date) : '날짜 미정'}
           </span>
           {d !== null && (
-            <span className="tabular shrink-0 text-xs font-medium text-coral">D-{d}</span>
+            <span className="tabular shrink-0 text-xs font-medium text-ink">D-{d}</span>
           )}
         </Item>
 

@@ -31,7 +31,7 @@ flowchart LR
 4. keyterm 목록은 BE가 STT 연결 때 Deepgram에 넘깁니다. 목록은 이 모듈의 사전에서 만든 파일(`keyterms.json`)로 전합니다.
 
 ## 판정 규칙 요약
-값은 모두 `src/filler/config.py`가 원본이고 이 표에는 이름만 적습니다. 자세한 규칙과 이유는 filler.md 5-2 · 6-1입니다.
+값은 모두 서비스 `features/filler/config.py`가 원본이고 이 표에는 이름만 적습니다. 자세한 규칙과 이유는 filler.md 5-2 · 6-1입니다.
 
 | 층 | 단어(예) | 군더더기로 세는 때 |
 |---|---|---|
@@ -52,13 +52,13 @@ flowchart LR
 
 | 파일 | 하는 일 | 입력 → 출력 | 부르는 곳 | 고칠 때 |
 |---|---|---|---|---|
-| `src/filler/core.py` | 진입 함수. 단어별 층 · 간격 판정, 보류, 새 몫과 커서, 최근 창 지표, 잦음 문제, 장 · Take 합계 | `judge(inputs, t_ms, config)` → `[JudgmentResult]`, `summarize(tally)` → `{"FILLER": ...}`, `criteria()`, `keyterms()` | 코치(`/coach/evaluate` · `/coach/finalize` · `replay`) | 규칙 · 이유 문자열의 뜻이 바뀌면 기능 버전을 올리고 filler.md 6-1 · `examples/`를 함께 고칩니다 |
-| `src/filler/schemas.py` | 입출력 pydantic 모델(= 계약). 입력은 모르는 필드를 무시하고 출력은 정해진 필드만 냅니다 | `judge` 입력 dict → `FillerInput`, 결과 → `JudgmentResult` · `FillerSummary` · `IssueCriteria` | `core.py`, 테스트 | 필드 이름 · 뜻이 바뀌면 `schema_version` · filler.md 5절을 함께 고칩니다 |
-| `src/filler/config.py` | 사전(T1 · T2 · T3 · keyterm)과 기준값 `FillerConfig`, 단어 정규화 `normalize`. 값의 해시가 `criteria_version`에 들어갑니다 | — → `FillerConfig` | `core.py`, 도구, 테스트 | 단어 · keyterm 순서를 바꾸면 filler.md 5-2 표를 맞추고 `keyterms.json` · 평가 결과를 다시 만듭니다 |
-| `src/filler/version.py` | 기능 버전 `filler-1.0` | — → 문자열 | `core.py` | 판정 규칙 · 출력의 뜻이 바뀔 때만 올립니다 |
-| `src/filler/__init__.py` | 밖에서 쓰는 이름만 내보냅니다 | — | 코치 · 도구 | 새 진입 함수를 더할 때 |
-| `src/filler/keyterms.json` (생성) | STT keyterm 15개와 그 목록을 만든 `criteria_version` | `config.py` 사전 → JSON | BE(복사본으로 STT 연결 때 씀), `tests/test_keyterms.py` | 사전의 keyterm이 바뀌면 `tools/export_keyterms.py`로 다시 만들어 같은 PR에 넣습니다 |
-| `src/filler/examples/` | `judge` · `summarize` · `criteria` 입력 · 출력 예시 JSON. 코치 · 말 속도가 이 예시로 먼저 개발합니다 | `src/filler/examples/judge_input*.json` ↔ `judge_output*.json`, `summarize_input.json` ↔ `summarize_output.json`, `criteria.json` | `tests/test_examples.py`, 코치 개발 | 입력만 손으로 고치고 출력(생성)은 `tools/make_examples.py`로 다시 만듭니다 |
+| 서비스 `features/filler/core.py` | 진입 함수. 단어별 층 · 간격 판정, 보류, 새 몫과 커서, 최근 창 지표, 잦음 문제, 장 · Take 합계 | `judge(inputs, t_ms, config)` → `[JudgmentResult]`, `summarize(tally)` → `{"FILLER": ...}`, `criteria()`, `keyterms()` | 코치(`/coach/evaluate` · `/coach/finalize` · `replay`) | 규칙 · 이유 문자열의 뜻이 바뀌면 기능 버전을 올리고 filler.md 6-1 · `examples/`를 함께 고칩니다 |
+| 서비스 `features/filler/schemas.py` | 입출력 pydantic 모델(= 계약). 입력은 모르는 필드를 무시하고 출력은 정해진 필드만 냅니다 | `judge` 입력 dict → `FillerInput`, 결과 → `JudgmentResult` · `FillerSummary` · `IssueCriteria` | `core.py`, 테스트 | 필드 이름 · 뜻이 바뀌면 `schema_version` · filler.md 5절을 함께 고칩니다 |
+| 서비스 `features/filler/config.py` | 사전(T1 · T2 · T3 · keyterm)과 기준값 `FillerConfig`, 단어 정규화 `normalize`. 값의 해시가 `criteria_version`에 들어갑니다 | — → `FillerConfig` | `core.py`, 도구, 테스트 | 단어 · keyterm 순서를 바꾸면 filler.md 5-2 표를 맞추고 `keyterms.json` · 평가 결과를 다시 만듭니다 |
+| 서비스 `features/filler/version.py` | 기능 버전 `filler-1.0` | — → 문자열 | `core.py` | 판정 규칙 · 출력의 뜻이 바뀔 때만 올립니다 |
+| 서비스 `features/filler/__init__.py` | 밖에서 쓰는 이름만 내보냅니다 | — | 코치 · 도구 | 새 진입 함수를 더할 때 |
+| 서비스 `features/filler/keyterms.json` (생성) | STT keyterm 15개와 그 목록을 만든 `criteria_version` | `config.py` 사전 → JSON | BE(복사본으로 STT 연결 때 씀), `tests/test_keyterms.py` | 사전의 keyterm이 바뀌면 `tools/export_keyterms.py`로 다시 만들어 같은 PR에 넣습니다 |
+| 서비스 `features/filler/examples/` | `judge` · `summarize` · `criteria` 입력 · 출력 예시 JSON. 코치 · 말 속도가 이 예시로 먼저 개발합니다 | `examples/judge_input*.json` ↔ `judge_output*.json`, `summarize_input.json` ↔ `summarize_output.json`, `criteria.json` | 서비스 `tests/unit/filler/test_examples.py`, 코치 개발 | 입력만 손으로 고치고 출력(생성)은 `tools/make_examples.py`로 다시 만듭니다 |
 | `tools/make_examples.py` | 예시 입력을 읽어 지금 코드로 출력 JSON을 다시 씁니다 | `examples/judge_input*.json` → `judge_output*.json`, `summarize_input.json` → `summarize_output.json`, `criteria.json` | 사람(기준값 · 규칙을 바꾼 뒤) | 출력 JSON을 손으로 고치지 않습니다 |
 | `tools/export_keyterms.py` | `keyterms.json`을 지금 사전에서 다시 씁니다 | 사전 → `keyterms.json` | 사람(사전 · 기준값을 바꾼 뒤) | 커밋된 파일과 같으면 `git diff`가 빕니다 |
 | `data/virtual/source.json` | 손으로 쓴 가상 발표 발화 73개. 단어에 `*`(말한 사람이 넣은 군더더기)와 쉼 표시를 달았습니다 | — → 표기 문장 목록 | `tools/make_virtual_data.py` | 정답은 규칙이 아니라 사람이 들었을 때의 뜻으로 답니다. 고치면 `words.json`을 다시 만듭니다 |
@@ -66,10 +66,17 @@ flowchart LR
 | `data/virtual/words.json` (생성) | 발화를 하나의 Take 시간선에 이은 단어 목록: 단어마다 발화 id(`utt`) · `start_ms` · `end_ms` · 정답 군더더기 · 사전 층, 문장 끝 신호, Take 끝 시각 | 원본 + seed 0 → Take 하나 | `tools/evaluate.py`, `tests/test_virtual_data.py` | 손으로 고치지 않습니다 |
 | `tools/evaluate.py` | Take를 1초 간격으로 이어 불러 층별 정밀도 · 재현율, `gap_ms` 민감도, 틀린 예, 반복 규칙 결과를 냅니다 | `words.json` → 결과 JSON | 사람(사전 · 기준값 · 규칙을 바꾼 뒤), `tests/test_evaluate.py` | 지표 정의를 바꾸면 이 README의 결과 표도 함께 고칩니다 |
 | `reports/results/filler_eval.json` (생성) | 가상 평가 결과 | — | 사람, `tests/test_evaluate.py` | 사전 · 기준값 · 규칙을 바꾸면 다시 만들어 같은 PR에 넣습니다 |
-| `tests/` | 규칙 · 보류 · 커서 · 지표 · 합계 · 계약 · 예시 · keyterm 파일 · 가상 데이터 · 평가 테스트 | — | pytest | 아래 '테스트' |
-| `pyproject.toml` · `uv.lock` · `.python-version` | Python 3.12, 의존성은 pydantic 하나(개발용 pytest · ruff) | — | `uv sync` | 의존성을 바꾸면 `uv.lock`도 함께 |
+| `tests/` | keyterm 파일 최신 · 가상 데이터 · 평가 테스트 (판정 모듈 테스트는 서비스 `tests/unit/filler/`) | — | pytest | 아래 '테스트' |
+| `pyproject.toml` · `uv.lock` · `.python-version` | Python 3.12, 서비스(editable) 하나 — 판정 모듈 · pydantic을 가져옴(개발용 pytest · ruff), 공통 판은 서비스 `uv.lock`과 같게 | — | `uv sync` | 의존성을 바꾸면 `uv.lock`도 함께 |
 
-`src/filler/`는 나중에 AI 서비스의 `features/filler/`로 폴더째 옮깁니다. 코어는 pydantic 말고는 외부 패키지를 쓰지 않고, 다른 판정 모듈을 import하지 않으며, 파일을 읽지 않습니다(평가는 `tools/`에 있는 이유입니다).
+**판정 모듈은 AI 서비스로 옮겼습니다**(2026-10-26). 판정 모듈(`keyterms.json` · `examples/` 포함)은 `ai/service/src/pitch_coach_ai/features/filler/`, 코어 테스트는 `ai/service/tests/unit/filler/`에 있습니다. 이 폴더는 서비스를 editable로 설치해(`pyproject.toml`의 `[tool.uv.sources]`) 도구 · 남은 테스트가 `pitch_coach_ai.features.filler`를 import합니다. 판정 모듈과 `keyterms.json`은 서비스에서 고치고(원본은 서비스 한 곳), 이 폴더의 도구가 서비스 위치의 예시 · keyterm 파일을 다시 씁니다. 연구 도구 · 가상 데이터를 쓰는 테스트(`test_evaluate.py` · `test_virtual_data.py` · `test_virtual_tool.py`)와 keyterm 최신 검사(`test_keyterms.py`)는 여기 남았습니다(기능 문서 11절).
+
+| 옮긴 뒤 확인 | 결과 |
+|---|---|
+| 옮긴 코어 · 예시 · `keyterms.json` | 이름만 바뀜(100%) |
+| 테스트 변경 | 도우미를 상대 import로, 예시 · 코어 폴더를 패키지 파일 기준으로 찾게 한 뒤 import 접두어만 |
+| 테스트 수 | 옮기기 전 334 passed = 서비스 296 + 이 폴더 38 |
+| `tools/evaluate.py` · `make_examples.py` · `export_keyterms.py` | 다시 만든 `filler_eval.json` · 예시 · `keyterms.json`이 옮기기 전과 같음 |
 
 ## 준비 · 실행
 Python 3.12. LLM을 쓰지 않아 `ai/.env`가 필요 없습니다. 모든 명령은 `ai/research/filler-detection`에서 돌립니다. Windows에서 `pytest.exe` 같은 실행 파일이 막히면 아래처럼 `python -m`으로 부르고, 콘솔 한글이 깨지면 `PYTHONIOENCODING=utf-8`을 붙입니다.
@@ -78,19 +85,14 @@ Python 3.12. LLM을 쓰지 않아 `ai/.env`가 필요 없습니다. 모든 명�
 cd ai/research/filler-detection
 uv sync                                  # .venv 만들기 (처음 한 번)
 ```
-```text
-Resolved 13 packages in 30ms
-Checked 13 packages in 11ms
-```
 
 ```bash
 uv run python -m pytest -q               # 테스트
 uv run ruff check . && uv run ruff format --check .
 ```
 ```text
-334 passed in 12.81s
+38 passed in 6.81s
 All checks passed!
-25 files already formatted
 ```
 
 ```bash
@@ -98,6 +100,7 @@ uv run python tools/make_examples.py     # 예시 출력 다시 만들기 (기�
 ```
 ```text
 judge_input.json -> judge_output.json
+judge_input_default.json -> judge_output_default.json
 judge_input_frequent.json -> judge_output_frequent.json
 judge_input_pending.json -> judge_output_pending.json
 judge_input_stt_down.json -> judge_output_stt_down.json
@@ -137,7 +140,7 @@ T3     13   27   23    0.325   0.3611
 `judge`는 입력 dict와 판정 시각을 받아 결과 하나가 든 목록을 냅니다. 아래는 "저희는 · 음 · 그니까" 세 단어가 있는 41초 창을 배포 기본값(T1만 셈)으로 판정한 것입니다.
 
 ```python
-from filler.core import judge
+from pitch_coach_ai.features.filler.core import judge
 
 inputs = {
     "t_ms": 41000,
@@ -164,7 +167,7 @@ NORMAL 1 40800
 그니까 T3 False 세지 않는 층
 [(40050, {'filler_count': 1, 'filler_t1': 1, 'filler_word:음': 1})]
 ```
-세 층을 모두 켜고(`judge(inputs, t_ms=41000, config=ALL_TIERS)`, `from filler.config import ALL_TIERS`) 같은 창을 판정하면 결과가 이렇게 바뀝니다.
+세 층을 모두 켜고(`judge(inputs, t_ms=41000, config=ALL_TIERS)`, `from pitch_coach_ai.features.filler.config import ALL_TIERS`) 같은 창을 판정하면 결과가 이렇게 바뀝니다.
 ```text
 NORMAL 1 40400
 저희는 None False 사전에 없음
@@ -174,7 +177,7 @@ NORMAL 1 40400
 ```
 기본값에서 "음"은 T1이라 바로 세고, "그니까"는 T3라 세지 않으므로 단어 커서가 그 끝(40800)까지 갑니다. 세 층을 켜면 "그니까"는 마지막 단어라 뒤 간격을 몰라 보류(`None`)이고, 그래서 단어 커서(`words_counted_until_ms`)가 "음"의 끝(40400)에서 멈춥니다. 다음 요청에서 다음 단어나 문장 끝 신호가 오면 정해집니다.
 
-`src/filler/examples/`에는 같은 방식의 입력 · 출력 JSON이 있습니다. 출력은 지금 코드로 돌린 값입니다. 보류 · 문장 끝 신호 · T2 · T3 규칙을 보여 주려고, 이름에 `default`가 들어간 예시만 배포 기본값(T1만 셈)으로 판정하고 나머지는 세 층을 모두 켠 설정(`ALL_TIERS`)으로 판정합니다.
+서비스 `features/filler/examples/`에는 같은 방식의 입력 · 출력 JSON이 있습니다. 출력은 지금 코드로 돌린 값입니다. 보류 · 문장 끝 신호 · T2 · T3 규칙을 보여 주려고, 이름에 `default`가 들어간 예시만 배포 기본값(T1만 셈)으로 판정하고 나머지는 세 층을 모두 켠 설정(`ALL_TIERS`)으로 판정합니다.
 
 | 파일 | 보여 주는 것 |
 |---|---|
@@ -187,7 +190,7 @@ NORMAL 1 40400
 | `summarize_input.json` · `summarize_output.json` | Take `tally` 합계 → 군더더기 7개 · 분당 2.4 · 측정 비율 0.97 (filler.md 5-5 값) |
 | `criteria.json` | `FILLER_FREQUENT` 판정 기준 |
 
-기준값(`config.py`)이나 규칙을 바꾸면 출력과 `criteria_version`이 달라져 `tests/test_examples.py`가 깨집니다. 그때는 입력은 그대로 두고 `tools/make_examples.py`로 출력만 다시 만들어 같은 PR에 넣습니다(architecture.md 12절). 다시 만든 뒤에도 문서 대조 테스트(상태 · 보류 등)가 깨지면 새 기준값에서 예시가 보여 주려던 상황이 달라진 것이므로 입력을 고칩니다.
+기준값(`config.py`)이나 규칙을 바꾸면 출력과 `criteria_version`이 달라져 서비스 `tests/unit/filler/test_examples.py`가 깨집니다. 그때는 입력은 그대로 두고 `tools/make_examples.py`로 출력만 다시 만들어 같은 PR에 넣습니다(architecture.md 12절). 다시 만든 뒤에도 문서 대조 테스트(상태 · 보류 등)가 깨지면 새 기준값에서 예시가 보여 주려던 상황이 달라진 것이므로 입력을 고칩니다.
 
 ## 가상 평가 결과
 `tools/evaluate.py`가 만든 `reports/results/filler_eval.json`을 옮긴 것입니다(세 층을 모두 켠 설정 `ALL_TIERS`로 잼 — 간격 규칙을 재는 평가라서. `criteria_version` `filler-1.0+60cd87861ea9`, 가상 발화 73개 · 단어 959개 · seed 0).
@@ -265,7 +268,7 @@ NORMAL 1 40400
 - STT가 채움말을 지우거나 없던 단어를 끼우는 일은 모사하지 않았습니다.
 
 ## keyterm 파일을 BE가 쓰는 법
-BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽을 수 없습니다. 그래서 BE는 `src/filler/keyterms.json`의 복사본을 `backend/` 안에 두고 STT 연결 때 그 목록을 대본 용어와 함께 keyterm으로 넘깁니다. BE 테스트가 저장소의 이 파일과 복사본이 같은지 확인합니다. 파일의 `keyterms` 순서는 BE 목록과 같고(T1 짧은 5 → T2 7 → T1 늘인 3), `criteria_version`은 그 목록을 만든 사전의 버전입니다. 사전의 keyterm 표시가 바뀌면 같은 PR에서 `tools/export_keyterms.py`로 파일을 다시 만들고 BE에 알립니다(filler.md 9 · 11절). `tests/test_keyterms.py`가 파일이 지금 사전과 같은지 봅니다.
+BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽을 수 없습니다. 그래서 BE는 서비스 `features/filler/keyterms.json`의 복사본을 `backend/` 안에 두고 STT 연결 때 그 목록을 대본 용어와 함께 keyterm으로 넘깁니다. BE 테스트가 저장소의 이 파일과 복사본이 같은지 확인합니다. 파일의 `keyterms` 순서는 BE 목록과 같고(T1 짧은 5 → T2 7 → T1 늘인 3), `criteria_version`은 그 목록을 만든 사전의 버전입니다. 사전의 keyterm 표시가 바뀌면 같은 PR에서 `tools/export_keyterms.py`로 파일을 다시 만들고 BE에 알립니다(filler.md 9 · 11절). `tests/test_keyterms.py`가 파일이 지금 사전과 같은지 봅니다. 지금 BE는 자기 목록(`KEYTERM_FILLERS`)을 쓰고 이 복사본 · 같은지 테스트는 아직 없습니다(BE에 전할 일).
 
 ## 기준값
 모두 잠정값이고 원본은 `config.py`입니다.
@@ -287,7 +290,7 @@ BE 이미지는 `backend/` 폴더만 담으므로 AI 파일을 실행 중에 읽
 - `frequent_count`는 1 이상이어야 합니다(`persistence_sec`을 셀 단어가 있어야 해서).
 
 ## 테스트
-`uv run python -m pytest`로 모두 돕니다.
+판정 모듈 테스트(아래 표의 `test_rules.py` ~ `test_examples.py`)는 서비스로 옮겼습니다. `ai/service`에서 `uv run python -m pytest tests/unit/filler`, 이 폴더의 나머지는 `uv run python -m pytest`로 돕니다.
 
 | 파일 | 보는 것 |
 |---|---|

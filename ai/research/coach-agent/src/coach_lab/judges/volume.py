@@ -1,8 +1,9 @@
 """음량 · 침묵 판정 — 연구용 대역.
 
 옛 코치 평가기(PR #131 의 `coach.evaluators.voice`)의 규칙 · 기준값을 #155 계약 모양으로
-옮긴 것이다.
-기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. 숫자는 옛 평가기와 같게 두고 출력 모양만 바꿨다.
+옮긴 것이다. 재생 · 실험은 서비스의 소리 크기 모듈을 쓰고(`real_judges()`), 이 대역은
+대역 묶음(`lab_judges()`)과 대역 자체의 테스트에만 쓴다.
+숫자는 옛 평가기와 같게 두고 출력 모양만 바꿨다.
 
 결과는 둘이다 — 작은 목소리(VOLUME)와 긴 침묵(PAUSE). 상태를 갖지 않는다. 옛 평가기가
 history 에 둔 최근 음량 값과 오디오 재개 시각은 입력 기록 30초에서 다시 계산한다.
@@ -15,9 +16,14 @@ import math
 from statistics import fmean, median
 from typing import Any
 
-from coach.config import criteria_version as _criteria_version
-from coach.schemas import IssueCriteria, JudgmentIssue, JudgmentResult, TallyItem
-from coach.vocab import FeedbackType, Issue
+from pitch_coach_ai.features.coach.config import criteria_version as _criteria_version
+from pitch_coach_ai.features.coach.schemas import (
+    IssueCriteria,
+    JudgmentIssue,
+    JudgmentResult,
+    TallyItem,
+)
+from pitch_coach_ai.features.coach.vocab import FeedbackType, Issue
 
 from ._common import HIGHER, LOWER, In, Section, parse, ramp, ratio
 

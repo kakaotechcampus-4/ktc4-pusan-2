@@ -5,6 +5,7 @@ import uuid
 
 import httpx
 
+from pitch_coach_backend.core.ai_response_limit import AI_RESPONSE_HOOKS
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.dto import StandardAIResponseDTO
 from pitch_coach_backend.module.pitch.exception import StandardInputRejected, StandardParseFailed
@@ -18,7 +19,9 @@ async def parse_standard_text(text: str) -> StandardAIResponseDTO:
         # httpx의 read timeout은 바이트 사이 간격이므로 요청 전체 상한을 함께 둔다.
         async with (
             asyncio.timeout(ATTEMPT_TIMEOUT_SEC),
-            httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client,
+            httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=5.0), event_hooks=AI_RESPONSE_HOOKS
+            ) as client,
         ):
             response = await client.post(
                 f"{settings.ai_base_url}/evaluation-criteria/parse",

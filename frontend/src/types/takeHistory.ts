@@ -1,4 +1,4 @@
-import type { ScriptMode, TakeStatus } from './api';
+import type { ScriptMode, TakeStatus, TakeEndReason } from './api';
 
 /**
  * Take 목록 — `GET /api/takes/` (`?pitch_id=` 로 한 피치만, BE #398).
@@ -16,6 +16,7 @@ export interface TakeHistoryRow {
   /** ISO 8601. 연습을 시작한 시각 */
   started_at: string;
   status: TakeStatus;
+  end_reason: TakeEndReason | null;
   script_mode: ScriptMode;
   /** 발표 중이거나 분석에 실패해 발표 시간을 모르면 null (0초가 아닙니다) */
   duration_ms: number | null;

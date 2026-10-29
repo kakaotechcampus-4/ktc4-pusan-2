@@ -8,8 +8,8 @@
 # 0. 한눈에 보기
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
 |---|---|---|---|
-| 컨테이너가 떠 있는 동안 (`GET /health`) | — | `{"status": "ok"}` | compose 헬스체크, 배포 확인 |
-| 서버 안 모델을 쓰는 기능이 생긴 뒤 (`GET /ready`) | — | 준비 전 503, 준비 후 200 | compose 헬스체크 |
+| 컨테이너가 떠 있는 동안 (`GET /health`) | — | `{"status": "ok"}` | 배포 확인 (프로세스가 살아 있는지) |
+| 컨테이너가 떠 있는 동안 (`GET /ready`) | — | 준비 전 503 `NOT_READY`, 준비 후 200 | compose 헬스체크 (서버 안 모델까지 준비됐는지) |
 | 기능 호출 (`POST /<기능 경로>`) | BE가 만든 요청 JSON + 헤더 `X-Request-ID` | 결과 + `meta`, 또는 공통 에러 본문 | BE (경로 목록은 `architecture.md` 1-2) |
 
 | 역할 | 하려는 일 | 볼 곳 |
@@ -52,7 +52,7 @@
 | Dockerfile | 이미지를 만드는 순서를 적은 파일 | 11절 |
 | `.dockerignore` | 빌드 컨텍스트에서 엔진에 보내지 않을 파일 목록 | `.venv/` · `.env` |
 | compose | 여러 컨테이너(be · fe · ai · db …)를 한 파일로 함께 띄우는 도구. 서비스 이름이 내부 주소가 된다 | `infra/docker-compose.yml` |
-| 헬스체크 | compose가 컨테이너가 살아 있는지 주기적으로 확인하는 명령 | `/health` 호출 |
+| 헬스체크 | compose가 컨테이너가 요청을 받을 수 있는지 주기적으로 확인하는 명령 | `/ready` 호출 |
 | uvicorn | HTTP 요청을 받아 Python 앱(FastAPI)에 넘기는 서버 | `uvicorn pitch_coach_ai.main:app` |
 | 워커 | uvicorn 프로세스 하나. 워커마다 메모리 · 모델이 따로 올라간다 | `WEB_CONCURRENCY=1` |
 | 스레드 풀 | `def` 라우터를 돌리는 스레드 묶음. LLM을 기다리는 요청 여러 개를 동시에 처리한다 | 기본 최대 40개 |
@@ -61,7 +61,8 @@
 | 잠금 파일 | 설치할 정확한 라이브러리 버전 목록 | `uv.lock` |
 | 기능 코어 | 연구 폴더에서 옮겨 온 순수 로직 폴더(`schemas.py` · `core.py` · `config.py` · `version.py`) | `features/coach/` |
 | 라우터 | 경로 하나를 받아 요청을 검사하고 기능 코어를 부르는 얇은 코드 | `api/coach.py` |
-| ECR · Docker Hub | 이미지를 올려 두는 저장소. develop은 ECR, 운영은 Docker Hub | — |
+| ECR | 이미지를 올려 두는 AWS 저장소. develop · release 배포 모두 여기에 올린다 | `pitch-coach:ai-<sha>` |
+| develop · release | 서버 환경 두 개. develop은 `develop-next` 브랜치, release(운영)는 `release` 브랜치가 배포된다. 같은 EC2에 폴더 · compose 프로젝트를 나눠 띄운다 | `~/pitch-coach` · `~/pitch-coach-release` |
 
 # 3. 전체 흐름
 ```mermaid
@@ -71,7 +72,7 @@ flowchart LR
     C -->|"그 밖의 경로"| FE["fe<br>frontend/"]
     BE -->|"http://ai:8000<br>Docker 내부망"| AI["ai<br>ai/service/"]
     AI -->|"HTTPS"| LLM["외부 LLM API"]
-    BE --> DB["db · redis"]
+    BE --> DB["db"]
 ```
 | 컨테이너 | 이미지를 만드는 곳 | 하는 일 | 밖에서 접근 |
 |---|---|---|---|
@@ -79,7 +80,7 @@ flowchart LR
 | fe | `frontend/` | 화면. 시선 · 마이크 레벨 측정은 브라우저 안에서 실행 (판정은 AI) | caddy를 거쳐서 |
 | be | `backend/` | API, DB 저장, 실시간 STT, AI 호출 | caddy `/api/*`를 거쳐서 |
 | **ai** | `ai/service/` | AI 기능. LLM 호출과 서버 안 모델 실행 | **없음** (be만 내부망으로 부른다) |
-| db · redis | 공식 이미지 | BE 전용 저장소 | 없음 |
+| db | 공식 이미지 | BE 전용 저장소 | 없음 |
 
 **요청 하나가 처리되는 길**
 1. FE가 caddy를 거쳐 be(`/api/...`)를 부른다.
@@ -100,13 +101,13 @@ ktc4-pusan-2/
 │   ├── archive/          # 동결된 과거 코드. 이미지에 안 들어간다
 │   └── .env.example      # LLM 환경변수 이름 (실제 ai/.env 는 git에 안 올린다)
 ├── infra/
-│   ├── docker-compose.yml        # 공통: caddy · fe · be · db · redis + ai
-│   ├── docker-compose.dev.yml    # develop 서버용 덮어쓰기
-│   └── docker-compose.prod.yml   # 운영 서버용 덮어쓰기
+│   ├── docker-compose.yml          # 공통: caddy · fe · be · db · dozzle(로그 보기) + ai
+│   ├── docker-compose.dev.yml      # develop 서버용 덮어쓰기
+│   └── docker-compose.release.yml  # release 서버(운영)용 덮어쓰기. 모든 서비스의 ports 를 비운다
 └── .github/workflows/
     ├── ai-ci.yml                 # ai/service 검사: lint · 테스트 · 이미지 빌드
-    ├── develop-deploy.yml        # be · fe · ai 이미지 빌드 · push · develop 서버 배포
-    └── main-deploy.yml           # 같은 흐름으로 운영 서버 배포
+    ├── develop-deploy.yml        # develop-next push: be · fe · ai 이미지 빌드 · push · develop 서버 배포
+    └── release-deploy.yml        # release push(또는 수동 실행): 같은 흐름으로 release 서버 배포
 ```
 - `ai/`는 AI가, `infra/` · `.github/workflows/`는 BE가 관리한다. 위 트리의 `ai` 항목 · `ai-ci.yml` · 배포 워크플로의 `ai` 빌드는 BE가 만든다(12절).
 ```
@@ -122,15 +123,14 @@ ai/service/
 │   ├── settings.py              # 환경변수 읽기 (pydantic-settings)
 │   ├── api/                     # 라우터만. 로직 없음
 │   │   ├── health.py            #   GET /health · /ready
-│   │   ├── sample.py            #   POST /sample/judge — 규약 확인용 대역. AI_ENABLE_SAMPLE 일 때만 등록 (첫 실제 기능이 붙으면 지운다)
-│   │   └── <이름>.py            #   기능 엔드포인트 (coach.py 는 판정 모듈을 묶어 코치에 넘긴다)
+│   │   └── <이름>.py            #   기능 엔드포인트 (지금은 script_parser.py · script_coverage.py · coach.py · evaluation_criteria.py · review.py. coach.py 는 판정 모듈을 묶어 evaluate · finalize 에서 코치에 넘긴다)
 │   ├── common/                  # 기능들이 같이 쓰는 코드
 │   │   ├── llm.py               #   LLM 객체는 여기서만 만든다
 │   │   ├── errors.py            #   예외 → 상태 코드 · 에러 본문
 │   │   ├── request_log.py       #   X-Request-ID · 요청마다 한 줄 로그
-│   │   └── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
-│   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다
-│       ├── sample/              #   규약 확인용 대역 판정 모듈 (`architecture.md` 7 · 8절 모양 그대로, 실제 판정 없음)
+│   │   ├── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
+│   │   └── readiness.py         #   시작할 때 불러올 모델 · 준비 상태 (/ready · NOT_READY)
+│   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다 (지금은 script_coverage · script_parser · gaze · filler · pace · volume · coach · evaluation_criteria · review)
 │       └── <기능>/              #   schemas.py · core.py · config.py · version.py · examples/ · prompts/ (`architecture.md` 8절)
 └── tests/
     ├── conftest.py · test_health.py
@@ -138,17 +138,16 @@ ai/service/
     └── live/                    # 실제 LLM 호출 (live 표시, 기본 실행에서 제외)
 ```
 - 패키지 이름은 BE의 `pitch_coach_backend`에 맞춰 `pitch_coach_ai`, 실행은 `uvicorn pitch_coach_ai.main:app`이다.
-- 처음 뼈대에는 `/health`, 공통(`settings.py` · `common/llm.py` · `common/errors.py` · `common/request_log.py` · `common/meta.py`), 규약 확인용 대역(`features/sample/` · `api/sample.py`)이 있다. `contracts/` · `/ready`는 그것이 필요한 첫 기능과 함께 만든다. 파일마다의 역할은 서비스가 생기면 `ai/service/README.md`의 파일 지도에 둔다.
-- **규약 확인용 대역**: 실제 기능을 옮기기 전에, 판정 모듈 · 에이전트가 같은 규약(요청 검사 · 결과와 `meta` · 공통 에러 본문 · `X-Request-ID` · 처리 시간 로그)으로 붙는지 로컬 컨테이너에서 확인하는 가짜 판정 모듈이다. `architecture.md` 7 · 8절 모양(`schemas.py` · `core.py` · `config.py` · `version.py` · `examples/`, `judge` · `summarize` · `criteria`)을 그대로 따르고 실제 판정은 하지 않는다. `AI_ENABLE_SAMPLE=true`일 때만 라우터를 등록하므로 서버(기본 `false`)에서는 경로가 없다(404). 첫 실제 기능 엔드포인트가 붙으면 대역과 그 테스트를 지운다(그 기능의 계약 테스트가 대신한다).
+- 처음 뼈대에는 `/health`, 공통(`settings.py` · `common/llm.py` · `common/errors.py` · `common/request_log.py` · `common/meta.py`), 규약 확인용 대역(`features/sample/` · `api/sample.py`)이 있었다. 첫 실제 기능(대본 전달도)을 붙이며 대역을 지우고 `contracts/` · `/ready`(`common/readiness.py`)를 만들었다. 파일마다의 역할은 `ai/service/README.md`의 파일 지도에 있다.
+- **규약 확인용 대역**(지웠다): 실제 기능을 옮기기 전에 판정 모듈 · 에이전트가 같은 규약(요청 검사 · 결과와 `meta` · 공통 에러 본문 · `X-Request-ID` · 처리 시간 로그)으로 붙는지 확인하던 가짜 판정 모듈(`features/sample/` · `POST /sample/judge` · `AI_ENABLE_SAMPLE`)이다. 첫 실제 기능 엔드포인트(대본 전달도)가 붙으며 그 기능의 계약 테스트가 대신하게 되어 지웠다.
 
 ## 4-2. 진입 함수
 | 함수 · 엔드포인트 | 하는 일 | 부르는 쪽 |
 |---|---|---|
 | `pitch_coach_ai.main:app` | FastAPI 앱. 라우터 · 예외 처리(`register_exception_handlers(app)`)를 등록하고, lifespan에서 서버 안 모델을 불러온다 | uvicorn |
-| `GET /health` | 프로세스가 살아 있는지. LLM을 부르지 않는다(부를 때마다 비용 · 지연) | compose 헬스체크 · 배포 확인 |
-| `GET /ready` | 시작할 때 불러올 모델까지 준비됐는지 | compose 헬스체크 (서버 안 모델이 생긴 뒤) |
+| `GET /health` | 프로세스가 살아 있는지. LLM을 부르지 않는다(부를 때마다 비용 · 지연) | 배포 확인 |
+| `GET /ready` | 시작할 때 불러올 모델까지 준비됐는지 | compose 헬스체크 |
 | `api/<이름>.py`의 `router` | 기능 경로. 요청 검사 → 기능 코어 호출 | BE |
-| `POST /sample/judge` (`api/sample.py`) | 규약 확인용 대역. 요청 `{t_ms, since_ms, records}`를 받아 `{results: [JudgmentResult], meta}`를 돌려준다. `AI_ENABLE_SAMPLE=true`일 때만 등록 | AI 담당의 로컬 확인 (BE는 부르지 않는다) |
 | `common/llm.py`의 `structured_llm(schema, model=…, deadline=…)` | 출력 스키마를 고정한 LLM 객체를 돌려준다 | 라우터 (기능 코어에 인자로 넘긴다) |
 | `settings.py`의 `settings` | 환경변수를 읽은 설정 객체 | `main.py` · `common/` · 라우터 |
 
@@ -168,9 +167,8 @@ ai/service/
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 |
 |---|---|---|
-| `GET /health` | 컨테이너가 떠 있는 동안 주기적으로 | compose 헬스체크, 배포 확인 명령 |
-| `GET /ready` | 서버 안 모델을 쓰는 기능이 생긴 뒤 | compose 헬스체크 |
-| `POST /sample/judge` | 로컬에서 `AI_ENABLE_SAMPLE=true`로 띄웠을 때만 (규약 확인용 대역, 4-1) | AI 담당 |
+| `GET /health` | 배포 뒤 확인할 때 | 배포 확인 명령 |
+| `GET /ready` | 컨테이너가 떠 있는 동안 주기적으로 | compose 헬스체크, 배포 확인 명령 |
 | 기능 엔드포인트 | `architecture.md` 1-2 표 | BE |
 
 ## 5-2. 입력
@@ -213,11 +211,13 @@ LLM 설정 없이 LLM 기능을 부르면 (`architecture.md` 4절)
    - 코어 경계 테스트는 코어 폴더를 찾는 경로를 새 위치에 맞춘다.
    - 연구 도구 · 실험 데이터 · 결과 파일을 쓰는 테스트(평가 · 예시 생성 · 대역 판정 모듈로 돌리는 재생)는 옮기지 않고 연구 폴더에 남긴다. 그 기능 문서 11절이 어느 테스트를 옮기는지 적는다.
    - 코어 파일을 만드는 연구 도구(예: 군더더기 `keyterms.json`)는 옮긴 뒤 서비스 위치의 파일을 원본으로 읽고 쓰게 바꾼다. 원본이 두 곳이 되지 않게 연구 폴더의 사본은 지운다.
+   - 연구 폴더 밖(다른 팀 테스트 등)에서 코어 파일을 경로로 읽는 곳이 있으면, 그쪽이 서비스 경로로 바꿀 때까지 그 파일만 연구 폴더에 사본으로 두고 서비스 파일과 같은지 연구 폴더 테스트가 본다. 바꾸면 사본과 그 테스트를 지운다(예: BE 테스트가 읽던 코치 `examples/` 사본 — BE가 서비스 경로로 바꾼 뒤(#585) 지웠다, `coach-agent.md` 11절).
 3. **의존성**: 코어가 쓰는 패키지를 더한다(6-4).
 4. **LLM · 모델**: LLM은 `common/llm.py`로 만들어 넘긴다(6-2). 서버 안에서 돌리는 모델이 있으면 6-3.
 5. **라우터**: `api/<이름>.py`를 만들고 `main.py`에 등록한다. 경로 · 요청 · 응답 필드는 BE와 합의하고, `ai/service/README.md`의 API 목록과 `contracts/openapi.json`을 갱신한다.
+   - 판정 모듈은 자기 엔드포인트가 없고 `api/coach.py`가 묶어 코치에 넘긴다(4-3). 코치 `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷이 서비스에 모두 있을 때 연다(넷이 모여 열었다, #673). 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우지 않는다. 코치는 견디지만 Take 결과의 그 영역 `measured_ratio`가 null이 되어 `architecture.md` 7절과 어긋난다(`coach-agent.md` 11절).
 6. **확인**: `uv run pytest`, 필요하면 `uv run pytest -m live`, 그리고 `docker build`로 이미지가 만들어지는지 본다(10절). 출력이 긴 기능이면 걸린 시간도 잰다(`architecture.md` 3절).
-7. **PR**: CI가 통과하면 merge한다. develop에 merge되면 자동으로 배포된다.
+7. **PR**: CI가 통과하면 merge한다. `develop-next`에 merge되면 develop 서버에 자동으로 배포되고, release 서버에는 `release` 브랜치에 들어갈 때 배포된다(11-5).
 
 ```python
 # src/pitch_coach_ai/api/example.py  (경로 · 이름은 예시. 실제 경로와 필드는 BE와 정한다)
@@ -247,7 +247,7 @@ LLM 공통 규칙(모델 고르기 · 시간 제한 · 재시도 · 요청 마�
 - `structured_llm`은 역할마다 출력 토큰 상한(필요하면 추론 강도)을 `settings.py` 상수(역할 → 묶음과 같은 곳)에서 읽어 명시한다. 게이트웨이 기본값에 기대지 않는다. 값은 그 기능 PR에서 잰 출력 길이로 정하고, 출력이 상한에서 잘리면(`LengthFinishReasonError` · 끝난 이유 `length`) `LLM_INVALID_OUTPUT`이다(`architecture.md` 9절).
 - `structured_llm`은 스트리밍으로 부른다. 지금 LLM 게이트웨이는 스트리밍이 아닌 요청의 출력 상한을 2,000토큰 이하로만 받고(넘으면 400), 긴 비스트리밍 답은 생성 중에 끊는다. 결과는 다 모은 뒤 한 번에 돌려주므로 기능 코어가 받는 값은 같다.
 - 실제로 응답한 모델 이름은 LangChain 콜백으로 잡아 로그에 남기고 응답 `meta.model`에 싣는다. 결과가 기본 결과(`fallback_reason`이 있음)면 `meta.model`은 null이다(`architecture.md` 5절). 코어가 받는 반환값은 바뀌지 않는다.
-- 예비 모델은 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
+- 예비 모델은 아직 없다(넘어갈 조건은 15절 열린 질문). 붙일 때는 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
 - LLM 에러(시간 초과 · 연결 실패 · 잘못된 출력)는 기능 코드에서 잡지 않고 `common/errors.py`가 상태 코드 · 에러 코드로 바꾼다. 예외는 둘이다. LLM이 결과를 보태기만 하는 기능(코칭 계획 · 리뷰 문장)은 실패를 잡아 기본 결과를 200으로 돌려준다(`fallback_reason`). 장별로 LLM을 부르는 기능(평가 기준 만들기 · 대본 전달도 채점)은 장마다 실패를 잡아 `failed`에 담고, 한 장이라도 성공하면 200을 돌려준다.
 - `common/llm.py`는 LLM 실패 예외에 `code`(`LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT` · `LLM_UNAVAILABLE`)를 달아 던진다. 기본 결과를 내는 기능의 코어는 LLM 라이브러리를 모르므로 이 `code`로 `fallback_reason`을 고르고, `common/errors.py`도 같은 `code`로 상태 코드를 고른다.
 - LLM 설정(키 등)이 없어 `structured_llm`이 LLM 객체를 만들지 못하면 그 오류는 `LLM_UNAVAILABLE`이다. 기본 결과를 내는 기능(코칭 계획 · 리뷰)의 라우터는 이때 LLM 없이(`llm=None`) 코어를 불러 200 + `fallback_reason: LLM_UNAVAILABLE`을 돌려준다. 그 밖의 기능은 503이다.
@@ -255,7 +255,7 @@ LLM 공통 규칙(모델 고르기 · 시간 제한 · 재시도 · 요청 마�
 ## 6-3. 서버 안 모델 · 무거운 리소스를 쓰는 기능
 LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 분류기 가중치, 형태소 분석기 사전 등)이 있을 때의 규칙이다.
 - **시작할 때 한 번만 불러온다.** `main.py`의 lifespan에서 불러와 보관하고, 라우터가 그것을 코어에 넘긴다. 요청마다 불러오지 않는다.
-- **`/ready`를 함께 만든다.** 로딩이 끝나기 전에는 503(`NOT_READY`)을 돌려준다. compose 헬스체크를 `/ready`로 바꾸고, 로딩 시간에 맞춰 `start_period`를 늘린다. 로딩 중에 들어온 BE 요청은 503을 받아 한 번 더 부르게 된다.
+- **이미 있는 `/ready`에 준비 상태를 반영한다**(`common/readiness.py`). 로딩이 끝나기 전에는 503(`NOT_READY`)을 돌려준다. compose 헬스체크는 이미 `/ready`를 부르므로(11-3), 모델을 더할 때 로딩 시간에 맞춰 `start_period`를 늘린다. 로딩 중에 들어온 BE 요청은 503을 받아 한 번 더 부르게 된다.
 - **가중치 파일은 git에 올리지 않는다.** 이름 · 출처 · 버전 · 해시를 담은 manifest(JSON)만 커밋한다.
 - **이미지에 넣는다.** 공개 모델(Hugging Face 등)은 Dockerfile에서 버전과 해시를 고정해 빌드할 때 내려받는다. 시작 시간이 일정하고 서버가 외부 네트워크에 의존하지 않는다. 대신 이미지가 커진다. 패키지 안에 사전이 들어 있는 경우(예: 형태소 분석기)는 의존성 설치만으로 된다. 팀이 만든 비공개 가중치가 생기면 저장 위치를 인프라와 정하고 이 문서를 고친다.
 - **PyTorch가 필요하면 CPU 전용 빌드를 쓴다.** 기본 설치는 GPU(CUDA) 라이브러리까지 받아 이미지가 수 GB 커진다.
@@ -270,6 +270,8 @@ LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 
   torch = { index = "pytorch-cpu" }
   ```
 - **메모리를 먼저 잰다.** 모델은 워커마다 따로 올라간다. 붙이는 PR에서 `docker stats`로 컨테이너 메모리를 재고, 잰 값의 1.5배를 compose 메모리 상한(`mem_limit`)으로 둔다.
+- **잰 값 (대본 전달도의 형태소 분석기를 붙일 때, 2026-10-26)**: 이미지 374 MB → 896 MB(Kiwi 모델 · scikit-learn · scipy), 컨테이너를 띄운 뒤 요청을 받기까지 약 5초 + Kiwi 불러오기 약 1.2초(`warmup_done`), 준비된 뒤 컨테이너 메모리 약 414 MiB(워커 1개, 요청 없음). 지금 헬스체크 시작 유예 10초 안에 준비된다. 1.5배 규칙으로 compose `ai`에 `mem_limit: 620m`을 두었다(#584, 워커를 늘리면 워커 수만큼 늘린다).
+- **잰 값 (코치 evaluate · finalize를 열 때, 2026-10-29)**: 판정 모듈 넷 · 평가 기준 분석이 함께 올라간 이미지 898 MB. `--memory 620m` · 워커 1 · 키 없음으로 띄워 준비된 뒤 쉬는 상태 약 419 MiB, 동시 Take 10개의 evaluate(1초마다 3분, 1,811건) · 한 시간 Take `replay` finalize 1번 · 코칭 계획 · 평가 기준 분석 호출을 함께 건 동안 최대 약 428 MiB(`docker stats` 1초 간격, OOM · 재시작 없음). 부하 중 최대는 쉬는 상태보다 약 9 MiB 높았다(판정 모듈은 모델 없이 파이썬 코드뿐이다). 키 없이 돌려 실제 LLM 호출이 든 부하와 서버에서의 값은 재지 않았다. 1.5배 규칙은 서버 안 모델을 붙일 때 다시 정하는 규칙이고, 판정 모듈 넷은 모델이 아니라 파이썬 코드라 상한을 다시 정할 대상이 아니다. 620m 아래 여유는 약 190 MiB(31%)다. 상한을 바꾸려면 BE · 인프라와 Issue로 정한다. 처리 시간은 `coach-agent.md` 8절.
 
 ## 6-4. 의존성 더하기
 - 운영 의존성은 `ai/service`에서 `uv add <패키지>`, 테스트 · 도구는 `uv add --dev <패키지>`.
@@ -286,7 +288,7 @@ LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 
 | LLM 키 · 모델 설정이 없음 | 서버는 뜨고 `/health`는 응답한다. LLM을 쓰는 요청만 실패하고, 코칭 계획 · 리뷰는 기본 결과를 낸다 | `/health` 200 · LLM 기능 503 `LLM_UNAVAILABLE` · 코칭 계획 · 리뷰 200 + `fallback_reason` | CI · 로컬 확인은 키 없이 해야 한다 |
 | 요청 형식 오류 | 라우터가 거부한다 | 422 `VALIDATION_ERROR` | `architecture.md` 4절 |
 | 없는 경로 · 허용되지 않는 메서드 | 거부한다 | 404 `NOT_FOUND` · 405 `METHOD_NOT_ALLOWED` | BE 경로와 배포된 AI 경로가 다를 때 바로 보이게 |
-| 모델 로딩 중 | 기능 요청을 받지 않는다 | 503 `NOT_READY` (BE는 `architecture.md` 3절 표대로 다시 부름) | 반쯤 준비된 상태로 답하지 않기 위해 |
+| 모델 로딩 중 | 그 모델을 쓰는 기능 요청(지금은 대본 전달도 세 경로)을 받지 않는다. 모델을 쓰지 않는 `/coach/plan` · `/health`는 받는다 | 503 `NOT_READY` (BE는 `architecture.md` 3절 표대로 다시 부름) | 반쯤 준비된 상태로 답하지 않기 위해 |
 | 처리되지 않은 예외 | 내부 예외 내용(stack trace)은 AI 로그에만 남긴다 | 500 `INTERNAL_ERROR` | 내부 정보를 응답에 내보내지 않는다 |
 | 시작 중 예외 (import 오류 · 모델 로딩 실패 · 메모리 부족) | 컨테이너가 재시작을 되풀이한다 | 헬스체크 실패 | 11절 '증상별 원인' |
 | 배포로 컨테이너가 바뀌는 중 | 처리 중인 요청은 종료 대기(30초) 안에서 끝낸다. 새 요청은 몇 초 동안 연결 실패 | BE 쪽 `AI_UNAVAILABLE` | 백그라운드 호출은 BE가 한 번 더 부르고, 실시간 코칭은 다음 1초 요청으로 이어진다. 빠진 시간이 창보다 길면 종료 때 `replay`로 Take 결과를 다시 만든다 |
@@ -301,7 +303,7 @@ API별 시간 예산 · BE 재시도는 `architecture.md` 3절이다. 서비스�
 | 실시간 경로 보호 | `/coach/evaluate`(진행 중인 Take마다 1초에 한 번, BE 약 300 ms)가 긴 LLM 요청에 밀리지 않게, BE는 백그라운드 AI 호출의 동시 개수를 제한하고 AI는 `/coach/evaluate` 처리 시간을 로그로 남긴다 | 긴 LLM 요청이 스레드 풀을 채우면 실시간 요청이 스레드를 기다리다 시간 제한을 넘긴다 |
 | LLM 호출 한 번 | 기본 12초, 요청 마감 시각 안에서만 재시도 1회 | `architecture.md` 9절 |
 | 종료 대기 | 30초 (`stop_grace_period: 30s`) | Docker는 기본 10초만 기다린다. LLM 한 번짜리 요청은 예산이 약 25초라 기본값이면 배포할 때마다 처리 중인 요청이 끊긴다. 이보다 긴 요청(장별 LLM 120초, `replay`를 붙인 finalize 60초)은 배포 때 끊길 수 있고, BE는 응답을 받지 못했으므로 `architecture.md` 3절대로 다시 부른다(장별은 전체 1번) |
-| 헬스체크 | 간격 10초 · 시간 제한 3초 · 재시도 5번 · 시작 유예 10초 | 모델을 불러오는 기능이 생기면 시작 유예를 로딩 시간에 맞춰 늘린다 |
+| 헬스체크 | `/ready`, 간격 10초 · 시간 제한 3초 · 재시도 5번 · 시작 유예 10초 | 서버 안 모델(Kiwi)을 불러와 준비되기까지 약 6초라 10초 안에 든다(6-3). 모델이 늘어 준비 시간이 길어지면 시작 유예를 그에 맞춰 늘린다 |
 
 # 9. 버전
 | 버전 | 어디에 | 언제 바뀌나 |
@@ -343,18 +345,7 @@ curl.exe http://localhost:8001/health                               # {"status":
 ```
 - `-p 8001:8000`은 내 PC의 8001번을 컨테이너의 8000번에 연결한다. 컨테이너는 자기 네트워크를 쓰므로 이 연결이 없으면 밖에서 들어갈 수 없다.
 - 키 없이 뜨는지만 볼 때는 `--env-file`을 빼도 된다. `--rm`은 종료할 때 컨테이너를 지운다. Ctrl+C로 끈다.
-- **규약 확인용 대역 켜기**: 같은 이미지를 `-e AI_ENABLE_SAMPLE=true`로 띄우고 `features/sample/examples/`의 요청을 보낸다. 저장소 맨 위에서:
-  ```powershell
-  docker run --rm -p 8001:8000 -e AI_ENABLE_SAMPLE=true pitch-coach-ai:local
-  # 다른 창에서
-  curl.exe -i -X POST http://localhost:8001/sample/judge -H "Content-Type: application/json" -H "X-Request-ID: sample-check-1" --data-binary "@ai/service/src/pitch_coach_ai/features/sample/examples/judge_request.json"
-      # 200, x-request-id: sample-check-1, 본문 = examples/judge_response.json (meta.model null, criteria_versions 있음)
-  curl.exe -i -X POST http://localhost:8001/sample/judge -H "Content-Type: application/json" -d "{}"
-      # 422 {"error":{"code":"VALIDATION_ERROR","message":"요청 형식이 올바르지 않습니다."}}
-  curl.exe -i http://localhost:8001/no-such-path
-      # 404 {"error":{"code":"NOT_FOUND","message":"요청한 경로를 찾을 수 없습니다."}}
-  ```
-  컨테이너 로그에는 요청마다 `request_id=… method=POST path=/sample/judge status=200 code=- duration_ms=…` 한 줄이 남는다(422는 검증 오류의 필드 이름만, 값은 없다). 대역을 끈 채(기본) 같은 요청을 보내면 404 `NOT_FOUND`다. 실제 출력은 `ai/service/README.md`에 있다.
+- **대본 전달도 확인**: 키 없이 띄운 컨테이너에서 `curl.exe -i http://localhost:8001/ready`(형태소 분석기를 다 불러오면 200)와 `features/script_coverage/examples/rescore/request.json`을 `POST /takes/rescore`로 보내 예시 응답과 같은지 본다(LLM 없음). 명령과 기대 출력은 `ai/service/README.md` '대본 전달도 확인'.
 - macOS · Linux에서는 `curl.exe` 대신 `curl`을 쓴다.
 
 **BE와 같이 띄우기 (BE 담당)**
@@ -414,13 +405,14 @@ CMD ["uvicorn", "pitch_coach_ai.main:app", "--host", "0.0.0.0", "--port", "8000"
 # 비밀값은 이미지에 넣지 않는다. 패턴은 맨 위 폴더에만 맞으므로 src/ 아래 .env 까지 거르려고 **/ 를 붙인다
 **/.env
 **/.env.*
-# 테스트 · 계약 파일은 이미지에 필요 없다
+# 테스트 · 계약 파일 · 도구는 이미지에 필요 없다
 tests/
 contracts/
+tools/
 ```
 | 이미지에 들어간다 | 들어가지 않는다 |
 |---|---|
-| Python 3.12, `uv.lock` 기준 운영 의존성(`.venv`), `src/`(기능별 `examples/` 포함), 기능이 쓰는 공개 모델 파일(6-3) | `tests/`, `contracts/`, 개발 도구(pytest · ruff), `ai/research/`, `ai/archive/`, `.env`(키), 브라우저 엔진 |
+| Python 3.12, `uv.lock` 기준 운영 의존성(`.venv`), `src/`(기능별 `examples/` 포함), 기능이 쓰는 공개 모델 파일(6-3) | `tests/`, `contracts/`, `tools/`(OpenAPI 내보내기), 개발 도구(pytest · ruff), `ai/research/`, `ai/archive/`, `.env`(키), 브라우저 엔진 |
 
 | 항목 | AI 이미지 | 이유 |
 |---|---|---|
@@ -435,8 +427,8 @@ contracts/
 |---|---|---|---|
 | 로컬 개발 | `uv run uvicorn ... --reload --port 8001` (10절) | `http://localhost:8001` | `ai/.env` |
 | 로컬 Docker 확인 | `docker build` 뒤 `docker run -p 8001:8000` (10절) | `http://localhost:8001` | `--env-file ai/.env` |
-| develop 서버 | compose(`docker-compose.yml`에 `docker-compose.dev.yml`을 덮어서). CI가 만든 이미지를 받아 띄운다 | 내부망 `http://ai:8000`만 | 서버의 `ai/.env` |
-| 운영 서버 | compose(`docker-compose.yml`에 `docker-compose.prod.yml`을 덮어서) | 내부망 `http://ai:8000`만 | 서버의 `ai/.env` |
+| develop 서버 | `~/pitch-coach`에서 compose(`docker-compose.yml`에 `docker-compose.dev.yml`을 덮어서). CI가 만든 이미지를 받아 띄운다 | 내부망 `http://ai:8000`만 | `~/pitch-coach/ai/.env` (시크릿 `AI_ENV`) |
+| release 서버(운영) | develop과 같은 EC2의 `~/pitch-coach-release`에서 compose(`docker-compose.yml`에 `docker-compose.release.yml`을 덮어서, 프로젝트 이름 `pitch-coach-release`) | 내부망 `http://ai:8000`만 | `~/pitch-coach-release/ai/.env` (시크릿 `RELEASE_AI_ENV`) |
 
 ## 11-3. compose 연결
 ```yaml
@@ -444,6 +436,7 @@ contracts/
 services:
   ai:
     restart: unless-stopped
+    logging: *default-logging       # 파일 맨 위 x-logging: 컨테이너 로그를 10MB × 3개까지만 (모든 서비스 같음)
     image: ${IMAGE_REPO:-pitch-coach}:ai-${IMAGE_TAG:-latest}   # be- · fe- 와 같은 태그 규칙
     build:
       context: ../ai/service        # 빌드 컨텍스트는 ai/service 하나
@@ -452,53 +445,62 @@ services:
       - ../ai/.env                  # LLM 키. 서버에서는 배포 워크플로가 만든다
     stop_grace_period: 30s          # 배포로 재시작할 때 처리 중인 요청을 끝내고 내린다
     healthcheck:                    # 슬림 이미지에 curl 이 없어 Python 으로 확인
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 10s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready')"]
+      interval: 10s                 # /ready 는 준비 전 503 이라 그동안 healthy 가 되지 않는다
       timeout: 3s
       retries: 5
-      start_period: 10s             # 모델을 불러오는 기능이 생기면 로딩 시간에 맞춰 늘린다
-    # mem_limit: 서버 안 모델을 붙이는 PR에서 잰 값의 1.5배로 둔다 (6-3)
+      start_period: 10s             # 준비까지 약 6초 (6-3). 모델이 늘어 길어지면 그에 맞춰 늘린다
+    mem_limit: 620m                 # 준비 뒤 잰 값 414 MiB × 1.5 (6-3). 워커를 늘리면 워커 수만큼 늘린다
     # ports 없음: 서버 밖으로 열지 않는다. 같은 compose 의 be 만 http://ai:8000 으로 부른다
 ```
 - **서비스 이름이 주소다.** 같은 compose 안에서는 서비스 이름 `ai`가 내부 DNS 이름이 되어, be가 `http://ai:8000`으로 부른다. 서버의 BE 환경변수는 `AI_BASE_URL=http://ai:8000`.
 - **`be`의 `depends_on`에 `ai`를 넣지 않는다.** BE는 AI 없이도 뜨게 만들어져 있다. 넣으면 AI가 실패할 때 BE도 못 뜬다.
-- **메모리 상한**: AI와 BE · DB가 같은 서버에 있다. 무거운 모델을 붙인 AI가 메모리를 다 쓰면 BE나 DB가 같이 죽을 수 있으므로, 서버 안 모델을 붙일 때 `mem_limit`을 둔다.
-- **`docker-compose.dev.yml`은 develop 서버의 설정이다.** 여기에 소스 마운트나 `--reload`를 넣으면 서버에는 소스 폴더가 없어 AI가 뜨지 못한다. 로컬 개발은 10절로 한다.
-- **compose의 `env_file`은 파일이 없으면 실패한다.** 그래서 CI가 빌드 전에 만드는 빈 env 파일에 `ai/.env`를 더하고, 서버의 env 파일을 쓰는 단계에 `AI_ENV`를 더한다.
+- **헬스체크는 `/ready`를 부른다.** `/health`는 프로세스가 살아 있으면 200이라, 서버 안 모델을 불러오기 전인 컨테이너도 healthy로 보인다. `/ready`는 준비 전 503이라 준비가 끝나야 healthy가 된다(#584).
+- **메모리 상한**: AI와 BE · DB가 같은 서버에 있다. 무거운 모델을 붙인 AI가 메모리를 다 쓰면 BE나 DB가 같이 죽을 수 있으므로 `mem_limit`을 둔다. 지금 값은 620m(대본 전달도의 형태소 분석기를 붙일 때 잰 값의 1.5배, #584)이고, 서버 안 모델을 더 붙이면 6-3대로 다시 잰다.
+- **`docker-compose.dev.yml` · `docker-compose.release.yml`은 서버의 설정이다.** 여기에 소스 마운트나 `--reload`를 넣으면 서버에는 소스 폴더가 없어 AI가 뜨지 못한다. 로컬 개발은 10절로 한다.
+- **compose의 `env_file`은 파일이 없으면 실패한다.** 그래서 CI가 빌드 전에 만드는 빈 env 파일에 `ai/.env`를 더하고, 서버의 env 파일을 쓰는 단계에 `AI_ENV`(release 배포는 `RELEASE_AI_ENV`)를 더한다.
 
 ## 11-4. 환경변수
 변수 목록 · 작성 규칙 · 비밀값이 가는 길은 `architecture.md` 10절이다. 서비스에서는 `settings.py`만 환경변수를 읽고, 값이 없어도 서버가 뜨도록 기본값을 둔다. 새 변수를 더하는 순서도 `architecture.md` 10절을 따른다.
 
 ## 11-5. CI와 배포
-- **CI** (`.github/workflows/ai-ci.yml`): `ai/service/**`나 이 워크플로 파일이 바뀐 PR, 그리고 main · develop push에서 job `ai` 하나가 `uv sync --locked` → ruff → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build ai/service`를 돈다. 실제 LLM은 부르지 않으므로 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다. 실패한 PR을 막으려면 저장소 관리자가 브랜치 보호의 필수 체크에 `ai`를 넣는다(`backend`와 같은 방식). 이때 워크플로를 경로 필터(`paths`)로 아예 돌리지 않으면, `ai/service/`를 건드리지 않은 PR에서 필수 체크가 대기에 머물러 병합이 막힌다. 필수 체크로 두려면 워크플로는 모든 PR에서 돌고, 바뀐 경로에 따라 검사 단계만 건너뛰게 만든다.
-- **배포** (`develop-deploy.yml` · `main-deploy.yml`, 두 워크플로가 같은 흐름)
+- **CI** (`.github/workflows/ai-ci.yml`): `ai/service/**`나 이 워크플로 파일이 바뀐 PR과 push(push는 main · develop · release · develop-next. backend · frontend CI와 같은 브랜치, #584)에서 job `ai` 하나가 `uv sync --locked` → ruff → 앱 import 확인 → pytest(계약 테스트 포함) → `docker build ai/service`를 돈다. 실제 LLM은 부르지 않으므로 키 없이 통과해야 한다. `ai/research/`만 바뀐 PR에서는 돌지 않는다. 실패한 PR을 막으려면 저장소 관리자가 브랜치 보호의 필수 체크에 `ai`를 넣는다(`backend`와 같은 방식). 이때 워크플로를 경로 필터(`paths`)로 아예 돌리지 않으면, `ai/service/`를 건드리지 않은 PR에서 필수 체크가 대기에 머물러 병합이 막힌다. 필수 체크로 두려면 워크플로는 모든 PR에서 돌고, 바뀐 경로에 따라 검사 단계만 건너뛰게 만든다.
+- **배포** (`develop-deploy.yml` · `release-deploy.yml`. 빌드 · 서버 배포 흐름은 같고, 트리거 브랜치 · compose 덮어쓰기 파일 · 서버 폴더 · 시크릿이 다르며, release에는 배포 뒤 PR 만들기 단계가 더 있다. 배포 순서 · hotfix는 `docs/be/release.md`)
 ```
-develop push (merge)                          main push
+develop-next push (merge)                     release push
+(둘 다 Actions에서 수동 실행도 된다)
   ▼                                             ▼
 GitHub Actions
   ├─ 빌드용 빈 env 파일 만들기 (backend · frontend · ai)
   ├─ docker compose build be fe ai
-  ├─ docker compose push  be fe ai    ──▶ develop: ECR  pitch-coach:be-<sha> · fe-<sha> · ai-<sha>
-  │                                      운영:    Docker Hub  <계정>/pitch-coach:<같은 태그>
-  ├─ compose 파일 · 시크릿(BACKEND_ENV · FRONTEND_ENV · AI_ENV)을 서버의 .env 로 복사
+  ├─ docker compose push  be fe ai    ──▶ ECR  pitch-coach:be-<sha> · fe-<sha> · ai-<sha> (두 배포 같음)
+  ├─ compose 파일을 서버에 복사하고, 시크릿을 SSH stdin으로 서버의 .env 에 쓴다
+  │     develop: BACKEND_ENV · FRONTEND_ENV · AI_ENV                          → ~/pitch-coach/<폴더>/.env
+  │     release: RELEASE_BACKEND_ENV · RELEASE_FRONTEND_ENV · RELEASE_AI_ENV  → ~/pitch-coach-release/<폴더>/.env
   ▼
-서버 (EC2)
+서버 (EC2, 두 배포가 같은 서버)
   ├─ docker compose pull                         이미지를 받는다
   ├─ docker compose run --rm be alembic upgrade head   새 BE 이미지로 DB 스키마를 올린다 (실패하면 멈춘다)
   └─ docker compose up -d --no-build             받은 이미지로 띄운다 (서버에서 빌드하지 않는다)
 ```
 - 서버는 이미지를 직접 빌드하지 않고 받아서 띄우기만 한다. 그래서 compose에 `ai`를 넣으면 **두 배포 워크플로의 build · push 대상에도 `ai`를 같이 넣어야 한다.** 빠뜨리면 서버의 `pull`이 없는 이미지를 찾다가 배포 전체가 실패한다.
-- **되돌리기**: 문제가 생긴 커밋을 `git revert`해 develop 서버는 develop에, 운영 서버는 main에 올리면 그 브랜치의 배포 워크플로가 같은 흐름으로 다시 배포한다.
+- **release 배포 뒤**: `release-deploy.yml`은 배포를 마치고 `release` → `develop-next` PR을 만든다(이미 열려 있거나 `develop-next`가 `release`를 다 담고 있으면 만들지 않는다). 이 PR은 만들어지기만 하고, 승인 · merge되어야 `develop-next`에 들어간다. `main` 브랜치는 배포 워크플로 없이 수동으로 배포하기로 했다(#380).
+- **되돌리기**: develop 서버는 문제가 생긴 커밋을 `git revert`해 `develop-next`에 merge하면 `develop-deploy.yml`이 다시 배포한다. release 서버는 `docs/be/release.md`의 hotfix대로 `release`에서 브랜치를 갈라 되돌리고 PR로 `release`에 merge하면 `release-deploy.yml`이 다시 배포한다. 그 수정은 위 `release` → `develop-next` PR이 merge되어야 `develop-next`에도 들어간다.
 
 ## 11-6. 운영과 문제 해결
-develop 서버의 `~/pitch-coach/infra`에서:
+develop 서버는 `~/pitch-coach/infra`, release 서버는 `~/pitch-coach-release/infra`에서(같은 EC2이고 `FILES`만 다르다):
 ```bash
-FILES="-f docker-compose.yml -f docker-compose.dev.yml"
+FILES="-f docker-compose.yml -f docker-compose.dev.yml"       # develop
+# release 서버에서는 위 줄 대신: FILES="-f docker-compose.yml -f docker-compose.release.yml"
 docker compose $FILES ps ai                     # 상태. (healthy) 인지 본다
 docker compose $FILES logs -f --tail=200 ai     # 로그
 docker compose $FILES exec be python -c "import urllib.request as u; print(u.urlopen('http://ai:8000/health').read())"
                                                 # BE 컨테이너에서 AI가 보이는지
-docker stats --no-stream                        # 컨테이너별 CPU · 메모리
+docker compose $FILES exec be python -c "import urllib.request as u; print(u.urlopen('http://ai:8000/ready').status)"
+                                                # 200 이면 서버 안 모델까지 준비됨 (준비 전이면 503 오류)
+docker inspect --format '{{.HostConfig.Memory}}' $(docker compose $FILES ps -q ai)
+                                                # 메모리 상한. 650117120 (= 620m). 0 이면 상한 없음 (12절 '지금 상태'의 release 차이)
+docker stats --no-stream                        # 컨테이너별 CPU · 메모리 (두 환경의 컨테이너가 함께 보인다)
 docker compose $FILES restart ai                # AI만 다시 띄우기
 ```
 **증상별 원인**
@@ -512,7 +514,8 @@ docker compose $FILES restart ai                # AI만 다시 띄우기
 | 503 `LLM_UNAVAILABLE` · `NOT_READY` | LLM 키 · 모델 설정 없음, `.env` 값에 따옴표나 줄 끝 주석이 붙음, LLM 일시 장애, 모델 로딩 중 | 서버 `ai/.env`, AI 로그 |
 | 504 `LLM_TIMEOUT` · BE의 `AI_TIMEOUT` | LLM 응답이 느림, 입력이 너무 김 | AI 로그의 걸린 시간 · 응답한 모델 |
 | `/coach/evaluate` 시간 초과가 잦음 | 긴 LLM 요청이 스레드 풀을 채움, CPU를 많이 쓰는 기능 | AI 로그의 `/coach/evaluate` 처리 시간, BE 백그라운드 호출 동시 개수, `docker stats` |
-| ai 컨테이너가 계속 재시작 | 시작 중 예외(import 오류, 모델 로딩 실패), 메모리 부족 | `logs ai`, `docker inspect`의 `OOMKilled` |
+| ai 컨테이너가 계속 재시작 | 시작 중 예외(import 오류, 모델 로딩 실패 `warmup_failed`), 메모리 부족(`mem_limit` 620m을 넘음) | `logs ai`, `docker inspect`의 `OOMKilled` |
+| `ps ai`가 `(unhealthy)`에 머묾 | `/ready`가 503에서 바뀌지 않음(모델 준비가 끝나지 않음) | `logs ai`에 `warmup_done`이 있는지, 위 `/ready` 명령 |
 | 배포가 `docker compose pull`에서 실패 | ai 이미지를 push하지 않음 | 배포 워크플로의 build · push 대상 |
 | CI의 `uv sync --locked` 실패 | `pyproject.toml`을 고치고 `uv.lock`을 안 올림 | `uv lock` 뒤 함께 커밋 |
 
@@ -543,21 +546,30 @@ FE는 AI를 부르지 않는다. 기능별로 누가 언제 무엇을 부르는�
 | API 경로와 요청 · 응답 필드 | AI (`schemas.py`) | BE와 합의 |
 | AI 기능 결과의 저장 설계(테이블 · 칸 · JSON 형식) | AI가 정한다 (`architecture.md` 1-1 · 각 기능 문서 12-1) | BE (마이그레이션 · 구현) |
 | BE의 AI 호출 코드 (변환 · 시간 예산 · 재시도 · `X-Request-ID` · 백그라운드 동시 개수 · 결과와 `meta` 저장) | BE | AI |
-| `.github/workflows/ai-ci.yml`, `infra/docker-compose*.yml`의 `ai` 서비스, 배포 워크플로(develop · 운영)의 `ai` 빌드 · push, GitHub 시크릿 `AI_ENV`, 서버 `ai/.env` · 자원, BE `AI_BASE_URL` | BE. AI는 11-3 · 11-5의 내용(그대로 쓸 수 있는 파일 내용 포함)을 BE에 전달한다 | AI |
+| `.github/workflows/ai-ci.yml`, `infra/docker-compose*.yml`의 `ai` 서비스, 배포 워크플로(`develop-deploy.yml` · `release-deploy.yml`)의 `ai` 빌드 · push, GitHub 시크릿 `AI_ENV` · `RELEASE_AI_ENV`, 서버 `ai/.env` · 자원, BE `AI_BASE_URL` | BE. AI는 11-3 · 11-5의 내용(그대로 쓸 수 있는 파일 내용 포함)을 BE에 전달한다 | AI |
 
 **BE에 요청하는 것과 받는 값**
 
 | 요청하는 것 | 받는 값 · 확인 |
 |---|---|
-| compose에 `ai` 서비스 (11-3 그대로, `ports` 없음, `be.depends_on`에 넣지 않음) | develop 서버의 be 컨테이너에서 `http://ai:8000/health` 200 (11-6 명령) |
-| 두 배포 워크플로의 build · push 대상에 `ai`, 빈 env 파일에 `ai/.env`, 서버 env 단계에 `AI_ENV`. 운영 배포에도 develop과 같은 마이그레이션 단계 | 이미지 `pitch-coach:ai-<sha>`가 ECR · Docker Hub에 올라감 |
-| `.github/workflows/ai-ci.yml` (11-5) | PR에서 job `ai` 통과 |
-| GitHub 시크릿 `AI_ENV` (내용 = `ai/.env` 전체, 따옴표 없이. `AI_ENABLE_SAMPLE`은 넣지 않음) | 서버 `~/pitch-coach/ai/.env` |
+| compose에 `ai` 서비스 (11-3 그대로: 헬스체크 `/ready` · `mem_limit: 620m`, `ports` 없음, `be.depends_on`에 넣지 않음) | 서버의 be 컨테이너에서 `http://ai:8000/ready` 200, `ps ai`가 `(healthy)`, 메모리 상한 650117120 (11-6 명령) |
+| 두 배포 워크플로의 build · push 대상에 `ai`, 빈 env 파일에 `ai/.env`, 서버 env 단계에 `AI_ENV` · `RELEASE_AI_ENV`. release 배포에도 develop과 같은 마이그레이션 단계 | 이미지 `pitch-coach:ai-<sha>`가 ECR에 올라감 |
+| `.github/workflows/ai-ci.yml` (11-5, push 트리거 `[main, develop, release, develop-next]`) | `ai/service/**`가 바뀐 PR과 그 브랜치 push에서 job `ai` 통과 |
+| GitHub 시크릿 `AI_ENV` · `RELEASE_AI_ENV` (내용 = `ai/.env` 전체, 따옴표 없이) | 서버 `~/pitch-coach/ai/.env` · `~/pitch-coach-release/ai/.env` |
 | 서버 BE 환경변수 `AI_BASE_URL=http://ai:8000` | BE가 내부망으로 AI를 부름 |
 | (권장) 배포의 `docker compose up`이 `ai`가 healthy가 될 때까지 기다리게 함(예: `--wait --wait-timeout 120`) | AI가 뜨지 못하면 배포 워크플로가 실패로 끝남 |
 | BE의 AI 호출: 경로 버전 없음, `X-Request-ID`, `architecture.md` 3절 시간 예산 · 재시도, 백그라운드 동시 개수 제한, 결과와 `meta` 저장 | BE의 AI 호출 코드가 `architecture.md` 2 · 3 · 5절대로 동작함 |
 
-- **순서**: compose의 `ai` 항목과 두 배포 워크플로의 `ai` 빌드 · push는 같은 PR에서, 첫 AI 서비스 PR이 develop에 merge된 뒤에 넣는다. compose에만 넣으면 서버의 `pull`이 없는 이미지를 찾다가 배포 전체가 실패하고, `ai/service/`가 없으면 빌드가 실패한다.
+**지금 상태** (2026-10-27 `develop-next`)
+- 반영됨(#380, #564): compose `ai`(`env_file` · 헬스체크 · 종료 대기 30초, `ports` 없음), 두 배포 워크플로의 `ai` 빌드 · push · 빈 env 파일 · 서버 env 단계(`AI_ENV` · `RELEASE_AI_ENV`), release 배포의 마이그레이션 단계, `ai-ci.yml`.
+- 반영됨(#584, `develop-next` `13d3fd5e`): 헬스체크 `/health` → `/ready`, `ai`의 `mem_limit: 620m`, `ai-ci.yml` push 트리거 `[main, develop]` → `[main, develop, release, develop-next]`.
+- `release`와 다른 곳: `release`(2026-10-27 `017fa228`)에는 위 #584 변경이 아직 없다(헬스체크 `/health`, 메모리 상한 없음, push `[main, develop]`). release 배포는 `release`의 compose 파일을 서버에 복사하므로 release 서버도 이 설정일 것이고(서버에서 확인한 기록은 없다), 그러면 모델 준비 전에도 healthy로 보인다. `release` push에서는 AI CI가 돌지 않는다. `release`를 이 변경이 든 `develop-next` 커밋까지 올리면(`docs/be/release.md`) 같아진다.
+- BE가 확인함: 두 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)에 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20` 줄이 있다(2026-10-27, #584 완료 표시 · #588 리뷰). AI는 시크릿 내용을 볼 수 없어 BE 확인을 따른다.
+- 확인하지 못한 것: 서버에서 11-6 명령(`(healthy)` · `/ready` 200 · 메모리 상한)을 돌린 기록이 아직 없다(#584 완료 조건).
+- 반영됨(#585): BE 테스트가 읽는 코치 예시 경로를 서비스 폴더로. AI 쪽 연구 폴더 사본은 지웠다.
+- 아직 요청하지 않음: 위 표의 (권장) 배포의 `up` 대기.
+
+- **순서**: compose의 `ai` 항목과 두 배포 워크플로의 `ai` 빌드 · push는 같은 PR에서, 첫 AI 서비스 PR이 merge된 뒤에 넣었다(#380). compose에만 넣으면 서버의 `pull`이 없는 이미지를 찾다가 배포 전체가 실패하고, `ai/service/`가 없으면 빌드가 실패한다.
 
 ## 12-1. 저장 (DB)
 AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음). 기능 결과의 저장 위치는 `architecture.md` 1-1(저장 지도)과 각 기능 문서 12-1에 있다.
@@ -576,30 +588,30 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 |---|---|---|---|
 | `tests/` (가짜 LLM) | 단위 · 계약 테스트 통과 | 키 없이 CI가 통과하고, 각 기능 예시 응답과 같은 것 | `ai-ci.yml` |
 | 로컬 이미지 | `docker build` 성공 · 컨테이너 `/health` 200 | 배포와 같은 이미지가 뜨는 것 | 10절 Docker 실행 |
-| develop 서버 | be 컨테이너에서 `http://ai:8000/health` 200 | 내부망 연결 | 11-6 명령 |
+| develop · release 서버 | be 컨테이너에서 `http://ai:8000/ready` 200, `ps ai` `(healthy)`, 메모리 상한 650117120 (release 서버는 #584 변경이 `release`에 들어가 배포된 뒤) | 내부망 연결, 모델 준비, 메모리 상한 | 11-6 명령 |
 | 실제 LLM (live) | 기능별 실제 호출 1회 성공 · 걸린 시간 | 모델 설정이 맞고 시간 제한 안에 끝나는 것 | `pytest -m live` (과금) |
 | 재생 중 측정 | `/coach/evaluate` 처리 시간 | 백그라운드 LLM 요청이 몰려도 실시간 경로가 BE 시간 제한 안에 끝나는 것 | AI 로그 · 부하 확인 |
 
 # 14. 지표 정의
 - **`/health` 응답**: 컨테이너 안에서 `http://localhost:8000/health`가 200과 `{"status": "ok"}`를 돌려주면 성공이다. LLM을 부르지 않으므로 모델이 실제로 응답하는지는 live 테스트로 따로 본다.
+- **`/ready` 응답**: 컨테이너 안에서 `http://localhost:8000/ready`가 200과 `{"status": "ready"}`를 돌려주면 시작할 때 불러오는 서버 안 모델까지 준비된 것이다(compose 헬스체크 · 13절 서버 확인의 기준). 준비 전에는 503 `NOT_READY`(공통 에러 본문)다. 불러오기에 실패하면 프로세스가 끝나 다시 뜨므로(`main.py`), 503이 이어지면 불러오기가 끝나지 않은 것이다(11-6 증상 표의 `(unhealthy)`). 걸린 시간은 AI 로그의 `warmup_done ... duration_ms`로 본다. `/health`처럼 LLM 연결은 보지 않는다.
 - **기능 처리 시간**: 라우터가 요청을 받은 때부터 응답을 보낸 때까지. AI 로그에 경로 · 상태 코드 · 걸린 시간 · `X-Request-ID`와 함께 남긴다.
-- **컨테이너 메모리**: `docker stats --no-stream`의 MEM USAGE. 서버 안 모델을 붙일 때 이 값의 1.5배를 `mem_limit`으로 둔다.
+- **컨테이너 메모리**: `docker stats --no-stream`의 MEM USAGE. 서버 안 모델을 붙일 때 이 값의 1.5배를 `mem_limit`으로 둔다(지금 620m, 6-3).
 - **이미지 크기**: 로컬은 `docker images pitch-coach-ai`(10절에서 만든 `pitch-coach-ai:local`), 서버는 `docker compose $FILES images ai`의 SIZE. 의존성을 더할 때 전후를 비교한다.
 
 # 15. 열린 질문 · 알려진 한계
 **정한 값**
 - **모델 설정 칸**: 모델마다 이름 · 주소 · 키 묶음(`OPENAI_*` 기본 · `OPENAI_SOL_*`), `architecture.md` 10절. 서비스가 이 묶음을 읽는 설정은 `settings.py`이고, 묶음이 반만 차 있으면 시작 오류다.
 - **역할 → 묶음 연결**: `settings.py`의 상수 한 곳에 둔다(환경변수가 아니다). 지금은 모든 역할이 기본 묶음이다.
-- **만드는 쪽**: 아래 표의 최소 서버 · 공통과 규약 확인용 대역(4-1)은 AI가 만들고 로컬 컨테이너로 확인한다. CI · compose · 배포는 BE가 만들고, AI는 그 내용을 BE에 전달한다.
-- **규약 확인용 대역**: `features/sample/` · `POST /sample/judge`, `AI_ENABLE_SAMPLE=true`일 때만 등록하고 첫 실제 기능이 붙으면 지운다(4-1).
-- **운영 배포의 마이그레이션 단계**: 운영 배포(`main-deploy.yml`)에도 develop 배포와 같은 마이그레이션 단계(`alembic upgrade head` · `alembic-git-revisions`)를 둔다. BE가 넣는다.
+- **만드는 쪽**: 아래 표의 최소 서버 · 공통(과 지금은 지운 규약 확인용 대역, 4-1)은 AI가 만들고 로컬 컨테이너로 확인한다. CI · compose · 배포는 BE가 만들고, AI는 그 내용을 BE에 전달한다.
+- **release 배포의 마이그레이션 단계**: release 배포(`release-deploy.yml`)에도 develop 배포와 같은 마이그레이션 단계(`alembic-git-revisions` · `alembic upgrade head`)가 있다. BE가 넣었다(#564).
 
 | 구성 | 만드는 것 | 누가 | 다 됐는지 확인 |
 |---|---|---|---|
 | 최소 서버 | FastAPI 앱 · `/health` · `pyproject.toml` · `uv.lock` · Dockerfile · `.dockerignore` · 테스트 · README | AI | 로컬 `docker run` 뒤 `/health` 200 |
 | CI | `ai-ci.yml` | BE (내용은 11-5) | PR에서 통과 |
-| 공통 | `settings.py` · `common/llm.py`(호출 시간 제한 · 요청 마감) · `common/errors.py` · `X-Request-ID` · 처리 시간 로그 · 테스트, 규약 확인용 대역 | AI | 키 없이 뜸, 대역으로 결과 · `meta` · 에러 본문 확인, live 테스트로 실제 호출 1회 |
-| compose · 배포 | compose `ai` 서비스, 배포 워크플로(develop · 운영)의 `ai` 빌드 · push, 시크릿 `AI_ENV` | BE (내용은 11-3 · 11-5) | develop 서버의 be 컨테이너에서 `http://ai:8000/health` 200 |
+| 공통 | `settings.py` · `common/llm.py`(호출 시간 제한 · 요청 마감) · `common/errors.py` · `X-Request-ID` · 처리 시간 로그 · 테스트 | AI | 키 없이 뜸, 첫 기능(대본 전달도)의 계약 · 엔드포인트 테스트로 결과 · `meta` · 에러 본문 확인, live 테스트로 실제 호출 (처음에는 규약 확인용 대역으로 확인했고 지금은 지웠다) |
+| compose · 배포 | compose `ai` 서비스, 배포 워크플로(develop · release)의 `ai` 빌드 · push, 시크릿 `AI_ENV` · `RELEASE_AI_ENV` | BE (내용은 11-3 · 11-5) | 서버의 be 컨테이너에서 `http://ai:8000/ready` 200 |
 | 기능 엔드포인트 | 기능별 코어와 엔드포인트, `contracts/openapi.json`(기능이 하나라도 있으면), `/ready`(서버 안 모델을 쓰는 기능이 있으면) | AI | 기능별 |
 
 **열린 질문**
@@ -608,7 +620,7 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 - 기능마다 쓸 모델 고르기(역할별 묶음, 측정 조건): 아직 정하지 않았다. 그 전에는 모든 역할이 기본 묶음이다.
 
 **알려진 한계**
-- 이 문서의 명령 · 출력 중 실행해 확인한 것은 10절의 코드 실행 · 테스트(live 포함) · Docker 이미지 실행 · 규약 확인용 대역과 11-1의 이미지 파일(Dockerfile · `.dockerignore`)이다(로컬 Windows · Docker Desktop, #210). 10절 'BE와 같이 띄우기'와 11-3 compose · 11-5 CI · 배포 · 11-6 운영의 명령 · 출력은 BE가 만들기 전이라 아직 목표다.
+- 이 문서의 명령 · 출력 중 실행해 확인한 것은 10절의 코드 실행 · 테스트(live 포함) · Docker 이미지 실행 · 대본 전달도 확인(처음에는 규약 확인용 대역)과 11-1의 이미지 파일(Dockerfile · `.dockerignore`)이다(로컬 Windows · Docker Desktop, #210). 11-3 compose · 11-5 CI · 배포는 BE가 만들어 `infra/docker-compose*.yml`과 두 배포 워크플로 · `ai-ci.yml`에 들어가 있다. 지금 구성은 그 파일이 기준이고, 11-3 · 11-5의 주석 · 문단에 적은 권장 · 앞으로의 설정(필수 체크 등)은 아직 파일에 없을 수 있다. 헬스체크 `/ready` · 메모리 상한 · CI push 트리거는 `develop-next`에 들어갔고 `release`에는 아직 없다(12절 '지금 상태'). 10절 'BE와 같이 띄우기'와 11-6 운영 명령은 이 문서에서 실행해 확인한 기록이 없다.
 - 인증이 없어 내부망을 벗어나면 안전하지 않다.
 - 워커마다 모델이 따로 올라가 워커를 늘리면 메모리가 그만큼 는다.
 - LLM 호출 시간 제한은 서비스가 그 호출을 기다리지 않게 할 뿐, 이미 보낸 생성을 멈추지는 못한다. 시간 초과로 버린 호출은 출력 상한까지 생성을 마칠 때까지 LLM 호출 스레드(40개) 하나를 쓰고 토큰 비용도 든다. BE가 백그라운드 AI 호출을 합쳐 동시에 4개로 제한하므로(대본 등록은 그 안에서 2개, `architecture.md` 3절) 스레드가 모자랄 가능성은 낮다. 시간 초과가 잦아 모자라면 버린 호출의 스트림을 닫도록 고친다.
@@ -617,14 +629,13 @@ AI 서비스는 아무것도 저장하지 않는다(DB · Redis · 파일 없음
 | 항목 | 값 | 어디서 정하나 |
 |---|---|---|
 | 배포 단위 · 빌드 컨텍스트 | `ai/service/` | 4절 |
-| 이미지 | `pitch-coach:ai-<커밋 SHA>` (BE · FE와 같은 저장소. develop은 ECR, 운영은 Docker Hub) | 9절 · 11-5 |
+| 이미지 | `pitch-coach:ai-<커밋 SHA>` (BE · FE와 같은 ECR 저장소. develop · release 배포 같음) | 9절 · 11-5 |
 | 컨테이너 · 주소 | `ai`, 내부망 `http://ai:8000` (로컬 `http://localhost:8001`). 외부 공개 없음 | 11-2 · 11-3 |
 | Python · 패키지 · 실행 | 3.12, `pitch_coach_ai`, `uvicorn pitch_coach_ai.main:app`, uv `0.11` (이미지의 `ghcr.io/astral-sh/uv:0.11`) | 4절 · 11-1 |
-| 헬스체크 | `/health` (간격 10초 · 시간 제한 3초 · 재시도 5 · 시작 유예 10초). 서버 안 모델이 생기면 `/ready` | 8절 · 11-3 |
+| 헬스체크 | `/ready` (간격 10초 · 시간 제한 3초 · 재시도 5 · 시작 유예 10초). `/health`는 배포 확인용 | 8절 · 11-3 |
 | 워커 · 종료 대기 | 워커 1 (`WEB_CONCURRENCY`로 조정), 종료 대기 30초 | 8절 |
-| 규약 확인용 대역 | `features/sample/` · `POST /sample/judge`, `AI_ENABLE_SAMPLE`(기본 `false`) | 4-1 · 15절 |
 | 역할 → 모델 묶음 | `settings.py` 상수, 지금은 모두 기본 묶음 | 15절 · `architecture.md` 9절 |
-| 메모리 상한 | 서버 안 모델을 붙일 때 잰 값의 1.5배 | 6-3 |
+| 메모리 상한 | `mem_limit: 620m` (준비 뒤 잰 값 414 MiB × 1.5, 워커 1). 서버 안 모델을 더 붙이면 다시 재서 1.5배 | 6-3 · 11-3 |
 | 모델 파일 | git 밖, manifest만 커밋. 공개 모델은 빌드할 때 이미지에 넣는다 | 6-3 |
-| 서버 시크릿 | GitHub 시크릿 `AI_ENV` → 서버 `~/pitch-coach/ai/.env` | `architecture.md` 10절 |
+| 서버 시크릿 | GitHub 시크릿 `AI_ENV` → develop 서버 `~/pitch-coach/ai/.env`, `RELEASE_AI_ENV` → release 서버 `~/pitch-coach-release/ai/.env` | `architecture.md` 10절 |
 | 에러 본문 · `meta` · 시간 예산 · 환경변수 | `architecture.md` 4 · 5 · 3 · 10절 | `architecture.md` |

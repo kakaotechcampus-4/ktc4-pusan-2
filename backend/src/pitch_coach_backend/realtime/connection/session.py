@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.coach.client import CoachClient
 from pitch_coach_backend.coach.requests import TakeContext
 from pitch_coach_backend.coach.store import CoachStore
-from pitch_coach_backend.realtime.connection.handshake import Handshake
+from pitch_coach_backend.realtime.connection.handshake import TOO_MANY_STREAMS_MESSAGE, Handshake
 from pitch_coach_backend.realtime.dto import (
     ErrorMessage,
     MetricsMessage,
@@ -38,7 +38,12 @@ from pitch_coach_backend.realtime.event_ingestion import InvalidAudioFrame
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream import finish, registry
 from pitch_coach_backend.realtime.stream.record import CoachDeps
-from pitch_coach_backend.realtime.stream.registry import StreamOwnerMismatch, TakeEnded
+from pitch_coach_backend.realtime.stream.registry import (
+    StreamClosing,
+    StreamOwnerMismatch,
+    TakeEnded,
+    TooManyStreams,
+)
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt.adapter import SttAdapter, SttConfig
 from pitch_coach_backend.realtime.stt.fillers import KEYTERM_FILLERS
@@ -101,6 +106,7 @@ class RealtimeSession:
             needs_coach_context=lambda: (
                 self.coach is not None and not registry.coach_enabled(self.take_id)
             ),
+            has_room=lambda user_id: registry.has_room(user_id, self.take_id),
         )
         if not await handshake.admit():
             return
@@ -127,6 +133,13 @@ class RealtimeSession:
             # 방금 끝낸 Take 다. DB 에 적히기 전이라 인가는 통과했다
             await handshake.reject_ended(e.reason)
             return
+        except TooManyStreams:
+            await handshake.reject(WsErrorCode.TOO_MANY_STREAMS, TOO_MANY_STREAMS_MESSAGE)
+            return
+        except StreamClosing:
+            # 이전 스트림 정리가 늦다. 곧 닫히므로 FE 가 다시 붙게 한다
+            await handshake.reject_busy()
+            return
 
         # attach() 가 성공한 순간부터는 반드시 detach() 로 짝을 맞춘다. ready 전송이나
         # resend_missed 중간에 클라이언트가 사라져 예외가 나도 detach() 없이 빠져나가면
@@ -143,7 +156,7 @@ class RealtimeSession:
                 )
             )
             # 떨어져 있는 동안 화면에 못 간 final 을 먼저 따라잡는다
-            await stream.resend_missed()
+            await stream.resend_missed(source=self.ws)
             await self._pump_client(stream)
         except WebSocketDisconnect:
             # ready 나 재전송 도중 클라이언트가 사라졌다 (Starlette 는 끊긴 상대에게 보내면

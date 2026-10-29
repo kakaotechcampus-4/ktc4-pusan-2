@@ -9,7 +9,9 @@
 
 import contextlib
 import logging
+import time
 import uuid
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from typing import cast
 from urllib.parse import urlsplit
@@ -47,8 +49,22 @@ logger = logging.getLogger(__name__)
 # RFC 6455 close code
 CLOSE_POLICY_VIOLATION = 1008  # 인증·권한·프로토콜 위반
 CLOSE_INTERNAL_ERROR = 1011  # 서버 쪽 일시 오류. FE 는 다시 붙는다
+CLOSE_TRY_AGAIN_LATER = 1013  # 받을 자리가 없다. 받기 전이라 브라우저에는 연결 실패로 보인다
 
 AUTH_TIMEOUT_SEC = 5.0
+# 인증 실패 알림을 받지 않는 상대도 슬롯을 계속 붙잡지 못하게 단계마다 기다림을 묶는다.
+REJECT_STEP_TIMEOUT_SEC = 1.0
+
+# 인증 전(연결을 받고 auth 를 기다리는 동안) 연결 수 상한. 정상 FE 는 연결하자마자 auth 를 보내 이
+# 상태가 왕복 한 번이면 끝난다. 같은 와이파이의 수강생 수십 명이 동시에 새로고침해도 IP 하나에 몇
+# 개를 넘지 않는다. auth 없이 붙여 두면 연결 하나가 `AUTH_TIMEOUT_SEC` 동안 남는다
+MAX_PENDING_AUTH_PER_IP = 20
+MAX_PENDING_AUTH = 200
+# 상한에 걸린 연결을 로그에 남기는 간격(초). 걸리는 동안은 연결마다 남기지 않는다
+PENDING_AUTH_LOG_SEC = 60.0
+
+# 사용자의 연습 자리가 없어 거절할 때 (`TOO_MANY_STREAMS`). 인가 · 스트림 붙이기가 같이 쓴다
+TOO_MANY_STREAMS_MESSAGE = "다른 창에서 진행 중인 연습이 있어요. 그 창을 닫고 다시 시작해 주세요."
 
 # 오디오를 받아도 되는 Take 상태 (FE `TakeStatus` 와 같은 값). 나머지(ANALYZING·COMPLETED·
 # FAILED)는 이미 끝난 연습이라 전사를 더 붙이면 리포트가 오염된다.
@@ -80,6 +96,57 @@ def origin_allowed(origin: str | None) -> bool:
     return (given.scheme, given.netloc) == (allowed.scheme, allowed.netloc) and bool(given.netloc)
 
 
+def client_ip(ws: WebSocket) -> str:
+    """연결한 쪽의 IP. Caddy 뒤라 `X-Forwarded-For` 의 첫 값이다.
+
+    바깥에서 붙는 첫 Caddy 는 믿지 않는 상대(`infra/Caddyfile` 의 `trusted_proxies` 밖)가 보낸
+    `X-Forwarded-For` 를 버리고 상대 주소로 채운다. release 는 그 Caddy 를 한 번 더 거쳐 뒤에 그
+    Caddy 주소가 붙으므로 마지막 값이 아니라 첫 값을 쓴다. 헤더가 없으면(Caddy 없이 띄운 로컬) 소켓
+    상대 주소다.
+    """
+    forwarded = ws.headers.get("x-forwarded-for")
+    if forwarded:
+        first = forwarded.split(",", 1)[0].strip()
+        if first:
+            return first
+    return ws.client.host if ws.client is not None else "unknown"
+
+
+class _PendingAuth:
+    """인증 전 연결 수. 전체와 IP 별로 센다. uvicorn 워커 하나 · 프로세스 하나가 전제다
+    (`stream/state.py`)."""
+
+    def __init__(self) -> None:
+        self.total = 0
+        self.per_ip: Counter[str] = Counter()
+        self._logged_at: float | None = None
+
+    def acquire(self, ip: str) -> bool:
+        if self.total >= MAX_PENDING_AUTH or self.per_ip[ip] >= MAX_PENDING_AUTH_PER_IP:
+            now = time.monotonic()
+            if self._logged_at is None or now - self._logged_at >= PENDING_AUTH_LOG_SEC:
+                self._logged_at = now
+                logger.warning(
+                    "인증 전 연결이 상한이라 받지 않는다 ip=%s ip_count=%d total=%d",
+                    ip,
+                    self.per_ip[ip],
+                    self.total,
+                )
+            return False
+        self.total += 1
+        self.per_ip[ip] += 1
+        return True
+
+    def release(self, ip: str) -> None:
+        self.total -= 1
+        self.per_ip[ip] -= 1
+        if self.per_ip[ip] <= 0:
+            del self.per_ip[ip]
+
+
+pending_auth = _PendingAuth()
+
+
 class Handshake:
     def __init__(
         self,
@@ -88,6 +155,7 @@ class Handshake:
         take_id: uuid.UUID,
         db: Session,
         needs_coach_context: Callable[[], bool],
+        has_room: Callable[[uuid.UUID], bool] = lambda user_id: True,
     ) -> None:
         self.ws = ws
         self.take_id = take_id
@@ -95,6 +163,9 @@ class Handshake:
         # 코치가 Take 동안 들고 있을 값을 읽어야 하는가. 인가할 때 묻는다 — 다시 붙은 연결이면
         # 코치는 이미 Take 를 시작할 때의 값을 들고 있다
         self._needs_coach_context = needs_coach_context
+        # 이 사용자가 새 스트림을 열 자리가 있는가 (`registry.has_room`). 첫 연결이 Take 를 시작하기
+        # 전에 묻는다
+        self._has_room = has_room
 
         # 통과하면 채운다. entity 가 아니라 id 만 들고 있는다
         self.user_id: uuid.UUID | None = None
@@ -104,13 +175,24 @@ class Handshake:
         self.coach_context: TakeContext | None = None
 
     async def admit(self) -> bool:
-        """Origin → auth → 인가. 통과하면 True. 거절했으면 이미 닫았다."""
+        """Origin → auth → 인가. 통과하면 True. 거절했으면 이미 닫았다.
+
+        auth 를 기다리는 동안은 인증 전 연결로 센다 (`pending_auth`). 상한이면 받지 않는다.
+        """
         if not origin_allowed(self.ws.headers.get("origin")):
             await self.ws.close(code=CLOSE_POLICY_VIOLATION, reason="origin not allowed")
             return False
-        await self.ws.accept()
-
-        user_id = await self._authenticate()
+        ip = client_ip(self.ws)
+        if not pending_auth.acquire(ip):
+            # 받기 전에 닫으면 HTTP 403 이 된다. FE 는 연결이 실패한 것으로(닫힘 코드 1006) 보고
+            # 백오프로 다시 붙는다 — 1008 로 닫으면 다시 붙지 않는다
+            await self.ws.close(code=CLOSE_TRY_AGAIN_LATER, reason="too many connections")
+            return False
+        try:
+            await self.ws.accept()
+            user_id = await self._authenticate()
+        finally:
+            pending_auth.release(ip)
         if user_id is None:
             return False
         if not await self._authorize(user_id):
@@ -165,14 +247,17 @@ class Handshake:
         같은 규칙 — 존재 여부를 흘리지 않는다). 끝난 Take 는 `TAKE_ENDED`. BE 가 자동으로 끝낸
         Take 는 상태가 `ANALYZING` 이라 같이 걸리고, 이유(`end_reason`)는 알림에만 쓴다.
         `READY` 면 `RUNNING` 으로 바꾼다. 다시 붙은 연결(이미 `RUNNING`)은 그대로 둔다.
-        바꾸지 못하면(DB 오류) 1011 로 닫는다.
+        바꾸지 못하면(DB 오류) 1011 로 닫는다. `READY` 인데 이 사용자의 연습 자리가 없으면 시작하지
+        않고 `TOO_MANY_STREAMS` 로 거절한다 — Take 는 `READY` 로 남는다.
         """
 
         # 다시 붙은 연결이면 코치는 이미 Take 를 시작할 때의 값을 들고 있다
         need_context = self._needs_coach_context()
+        # 레지스트리는 이벤트 루프에서만 본다. threadpool 에 들어가기 전에 묻는다
+        room = self._has_room(user_id)
 
         def load() -> tuple[
-            bool, bool, bool, str | None, str | None, list[str], TakeContext | None
+            bool, bool, bool, bool, str | None, str | None, list[str], TakeContext | None
         ]:
             # 동기 SQLAlchemy 를 이벤트 루프에서 직접 부르면 다른 Take 의 오디오까지 멈춘다.
             # 그래서 threadpool 이고, 왕복을 아끼려 한 함수에서 전부 읽는다
@@ -204,7 +289,8 @@ class Handshake:
             self.db.rollback()
             take_found = take is not None
             started = True
-            if status == "READY":
+            blocked = status == "READY" and not room
+            if status == "READY" and not blocked:
                 # 첫 연결이 Take 를 시작한다. 위 조회와 따로 짧은 트랜잭션 하나로 쓴다 — 용어 조회가
                 # 실패해 트랜잭션이 깨졌어도 적히고, 커밋하면 커넥션도 돌려준다.
                 # 미션 · 평가 기준 버전 · 원자료 사용 동의가 고정되기 전에는 ready 를 보내지 않는다
@@ -232,19 +318,29 @@ class Handshake:
                         started = False
                         break
             context = None
-            if started and status in STREAMABLE_TAKE_STATUSES and need_context:
+            if started and not blocked and status in STREAMABLE_TAKE_STATUSES and need_context:
                 # 코칭은 부가 기능이다. 못 읽어도 STT 는 돈다
                 try:
                     context = coach_store.load_take_context(self.db, self.take_id)
                 except Exception:
                     logger.exception("코치 값을 읽지 못해 코칭 없이 돈다 take=%s", self.take_id)
                 self.db.rollback()
-            return user is not None, take_found, started, status, end_reason, terms, context
+            return (
+                user is not None,
+                take_found,
+                started,
+                blocked,
+                status,
+                end_reason,
+                terms,
+                context,
+            )
 
         (
             user_found,
             take_found,
             started,
+            blocked,
             status,
             end_reason,
             terms,
@@ -255,6 +351,9 @@ class Handshake:
             return False
         if not take_found:
             await self.reject(WsErrorCode.TAKE_NOT_FOUND, "연습을 찾을 수 없습니다.")
+            return False
+        if blocked:
+            await self.reject(WsErrorCode.TOO_MANY_STREAMS, TOO_MANY_STREAMS_MESSAGE)
             return False
         if not started:
             # 잠깐 DB 가 안 됐다. 1011 이면 FE 가 백오프로 다시 붙는다 (1000 · 1008 만 포기한다)
@@ -271,10 +370,20 @@ class Handshake:
         self, code: WsErrorCode, message: str, *, end_reason: TakeEndReason | None = None
     ) -> None:
         """인증 단계 거절. 에러를 한 번 보내고 1008 로 닫는다."""
-        await self._quiet(
-            self._send(ErrorMessage(code=code, message=message, end_reason=end_reason))
-        )
-        await self._quiet(self.ws.close(code=CLOSE_POLICY_VIOLATION, reason=code))
+        with anyio.move_on_after(REJECT_STEP_TIMEOUT_SEC):
+            await self._quiet(
+                self._send(ErrorMessage(code=code, message=message, end_reason=end_reason))
+            )
+        with anyio.move_on_after(REJECT_STEP_TIMEOUT_SEC):
+            await self._quiet(self.ws.close(code=CLOSE_POLICY_VIOLATION, reason=code))
+
+    async def reject_busy(self) -> None:
+        """잠시 받을 수 없어 1013 으로 닫는다. 오류는 보내지 않는다 — FE 는 1013 을 연결 실패로 보고
+        백오프로 다시 붙는다 (1000 · 1008 만 포기한다)."""
+        with anyio.move_on_after(REJECT_STEP_TIMEOUT_SEC):
+            await self._quiet(
+                self.ws.close(code=CLOSE_TRY_AGAIN_LATER, reason="previous stream closing")
+            )
 
     async def reject_ended(self, end_reason: str | None) -> None:
         """끝난 Take 라 `TAKE_ENDED` 로 거절한다.

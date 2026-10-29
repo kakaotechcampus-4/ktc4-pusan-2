@@ -60,7 +60,7 @@ export interface TakeCreated {
 
 /**
  * 발표 종료 — `PUT /api/pitches/{pitch_id}/takes/{take_id}` (`TakeUpdateRequestDTO`).
- * BE 는 **보낸 필드만** 덮어씁니다 (`exclude_unset`). 같은 값을 다시 보내도 결과가 같습니다.
+ * BE 는 null이 아닌 보낸 필드만 덮어씁니다 (`exclude_none`). 시작 시각은 보내지 않아 서버 값을 유지합니다.
  *
  * ★ 시선 · 슬라이드 기록은 여기로 보내지 않습니다. 계약(`docs/ai/architecture.md` 1-4)에서
  *   발표 중 WS `metrics` 로 1초마다 가는 값입니다 — 그 전송이 붙기 전까지는 서버로 가지 않습니다.
@@ -68,8 +68,6 @@ export interface TakeCreated {
  *   보내지 않으면 BE 는 그 칸을 건드리지 않습니다.
  */
 export interface TakeEndRequest {
-  /** ISO 8601. 리허설 세션을 연 시각 */
-  started_at: string;
   /** ISO 8601. 끝내기를 누른 순간 */
   ended_at: string;
 }

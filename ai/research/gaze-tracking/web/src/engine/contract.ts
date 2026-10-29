@@ -2,13 +2,19 @@
  * What crosses into the frontend, and the frontend's light entry point.
  *
  * The frontend's entry points into this folder (copied to `frontend/src/vendor/gaze/engine/`)
- * are `index.ts` and `contract.ts`.  Direct imports of `config.ts` / `evidence.ts` made before
- * `contract.ts` re-exported them keep working, but may break when files behind it change.
+ * are `index.ts` and `contract.ts`.  The camera view (`src/camera/`, the frontend's from #611)
+ * reaches the engine only through these two (`index.ts` type-only) and the worker only through
+ * `worker/protocol.ts`, and starts the worker from `worker/gaze.worker.ts` by URL
+ * (test/camera-boundary.test.ts).  That entry path and the side-by-side `camera/` · `worker/`
+ * layout are part of the contract (docs/ai/features/gaze-tracking.md 5-6).  Direct imports
+ * of `config.ts` / `evidence.ts` made before `contract.ts` re-exported them keep working, but
+ * may break when files behind it change.
  *
  *   index.ts     `createClassifier` and the engine.  It pulls MediaPipe in, so the worker
  *                loads it with a dynamic `import()`.
  *   contract.ts  everything the host needs without MediaPipe: the shapes its adapter reads,
- *                the engine config hash, the 1 s record slicer (re-exported at the bottom).
+ *                the engine config hash, the 1 s record slicer and the words a screen draws
+ *                with (`GAZE_DIRECTIONS`, `Cue`, `State`, ...; re-exported at the bottom).
  *
  * The frontend's `workers/aiAdapter.ts` maps the engine's snake_case outputs (calibration
  * quality, placement, version parts) onto its `GazeClassifier` contract.  The types below
@@ -129,3 +135,7 @@ export {
 } from './evidence';
 export type { GazeFrame, GazeSample, SampleState } from './evidence';
 export { SCREEN_MERGED_WARNING } from './reference';
+// The vocabulary a screen needs to draw and word the engine's outputs (the camera view uses
+// these; types it needs beyond them come from `index.ts` as type-only imports).
+export { GAZE_DIRECTIONS } from './types';
+export type { Cue, FaceGuide, GazeDirection, State, StateClass } from './types';
