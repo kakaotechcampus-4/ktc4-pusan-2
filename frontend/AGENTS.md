@@ -274,16 +274,19 @@ grep -rnE "(^|[^:>|] )void [a-zA-Z(]|=> void [a-zA-Z(]" src/ --include=*.ts --in
 
 ```
 src/
-  app/          라우팅. 화면 19개 + 모달 3개
+  app/          라우팅
+  dev/          검증용 화면 /dev/* (무대 · 미디어 · STT). 개발 서버에서만 등록. 화면 시안은 docs/fe/design
   shared/
     ui/         공용 컴포넌트 (버튼·모달·빈 상태·스켈레톤)
     lib/        순수 함수 (시계, 구간 압축) — 여기 있는 건 테스트가 쉽습니다
-    api/        쿼리 훅
-  features/
-    auth/       로그인·토큰
-    pitch/      Pitch 생성·수정·목록
-    rehearsal/  ★ 리허설. 난이도 최상 (Track A)
-    report/     리포트·비교·Take 기록·분석 대기
+    api/        두 곳 이상이 쓰는 서버 호출 · client · 토큰 · 세션
+  features/     각 feature 만 쓰는 서버 호출은 그 안의 api/ (FRONTEND_CONVENTION.md 5)
+    auth/       로그인 · 마이페이지 · 탈퇴
+    info/       분석 방식 설명 · 미지원 브라우저 · 404
+    onboarding/ 웰컴 · 출시 카운트다운 · 약관
+    pitch/      홈 · Pitch 생성·수정 (api/ create/)
+    rehearsal/  ★ 리허설. 난이도 최상 (Track A) (api/ prepare/ stage/ retry/ media/ lib/)
+    report/     리포트·비교·Take 기록·분석 대기·대본 확인 (api/)
   workers/      시선 워커. 메인 스레드에서 격리
   vendor/gaze/  AI 시선 엔진 v1.1 — engine·worker 는 복사본(고치지 않음), camera 는 FE 원본 (그 폴더 README)
   mocks/        MSW. 명세 8-4의 JSON 그대로
@@ -301,7 +304,7 @@ src/
 
 1. 명세 8-4의 응답을 `types/api.ts`에 타입으로
 2. 그 JSON을 `mocks/handlers.ts`에 그대로
-3. 쿼리 훅 (`shared/api/`)
+3. 쿼리 훅 (`features/<기능>/api/`. 둘 이상이 쓰면 `shared/api/`)
 4. 화면 컴포넌트
 5. **상태 붙이기 — 로딩·빈·에러·부분 실패.** 명세 8-3 표가 체크리스트입니다
 6. (W8) 목만 걷어냄

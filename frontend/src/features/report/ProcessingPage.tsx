@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
-import { isSettled, useTakeReport } from '@/shared/api/report';
+import { isSettled, useTakeReport } from './api/report';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ButtonLink } from '@/shared/ui/Button';
 import { DuskScreen, StatusLine } from './DuskScreen';

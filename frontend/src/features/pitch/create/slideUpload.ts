@@ -1,4 +1,4 @@
-import { createPitch } from '@/shared/api/pitch';
+import { createPitch } from '../api/pitch';
 import { uploadPresentation } from '@/shared/api/presentation';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { openPdf } from '@/shared/lib/pdf';

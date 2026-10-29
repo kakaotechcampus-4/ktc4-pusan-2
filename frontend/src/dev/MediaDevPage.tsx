@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DEVICE_ERROR_MESSAGE, useCameraStream } from './useCameraStream';
-import { useGazeWorker, type GazeImpl } from './useGazeWorker';
-import { createLevelMeter, type LevelMeter } from './level';
-import { buildGazePayload } from '../lib/gazePayload';
+import { DEVICE_ERROR_MESSAGE, useCameraStream } from '@/features/rehearsal/media/useCameraStream';
+import { useGazeWorker, type GazeImpl } from '@/features/rehearsal/media/useGazeWorker';
+import { createLevelMeter, type LevelMeter } from '@/features/rehearsal/media/level';
+import { buildGazePayload } from '@/features/rehearsal/lib/gazePayload';
 import {
   appendGazeSamples,
   countAll,
@@ -13,7 +13,7 @@ import {
   setEngineVersion,
   setGazePerf,
   startSession,
-} from '../lib/db';
+} from '@/features/rehearsal/lib/db';
 import type { GazeSampleRecord } from '@/workers/gaze.contract';
 import type { GazeExcludedReason } from '@/types/api';
 

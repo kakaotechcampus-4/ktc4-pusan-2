@@ -1,14 +1,15 @@
 import { lazy } from 'react';
 
-// 첫 진입 화면은 즉시 표시하고, PDF·시선 엔진·개발 시안은 해당 화면 진입 때만 가져옵니다.
-export const StageDemo = lazy(() =>
-  import('@/features/rehearsal/stage/StageDemo').then((m) => ({ default: m.StageDemo })),
+// 첫 진입 화면은 즉시 표시하고, PDF·시선 엔진은 해당 화면 진입 때만 가져옵니다.
+// 개발 화면(src/dev, /dev/*)에는 @__PURE__ 를 붙입니다 — 운영 빌드는 경로를 등록하지 않아(routes.tsx) 청크까지 빠집니다.
+export const StageDemo = /* @__PURE__ */ lazy(() =>
+  import('@/dev/StageDemo').then((m) => ({ default: m.StageDemo })),
 );
-export const MediaDevPage = lazy(() =>
-  import('@/features/rehearsal/media/MediaDevPage').then((m) => ({ default: m.MediaDevPage })),
+export const MediaDevPage = /* @__PURE__ */ lazy(() =>
+  import('@/dev/MediaDevPage').then((m) => ({ default: m.MediaDevPage })),
 );
-export const SttDevPage = lazy(() =>
-  import('@/features/rehearsal/media/SttDevPage').then((m) => ({ default: m.SttDevPage })),
+export const SttDevPage = /* @__PURE__ */ lazy(() =>
+  import('@/dev/SttDevPage').then((m) => ({ default: m.SttDevPage })),
 );
 export const PolicyPage = lazy(() =>
   import('@/features/onboarding/PolicyPage').then((m) => ({ default: m.PolicyPage })),
@@ -35,12 +36,6 @@ export const ProcessingPage = lazy(() =>
 );
 export const ReportPage = lazy(() =>
   import('@/features/report/ReportPage').then((m) => ({ default: m.ReportPage })),
-);
-export const DesignIndex = lazy(() =>
-  import('@/dev/design/DesignIndex').then((m) => ({ default: m.DesignIndex })),
-);
-export const DesignDraftRoute = lazy(() =>
-  import('@/dev/design/DesignIndex').then((m) => ({ default: m.DesignDraftRoute })),
 );
 export const AboutPage = lazy(() =>
   import('@/features/info/AboutPage').then((m) => ({ default: m.AboutPage })),

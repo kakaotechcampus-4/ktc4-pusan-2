@@ -46,19 +46,35 @@
 ```
 src/
   app/        라우팅
-  features/   도메인 — auth · onboarding · pitch · rehearsal · report
-  shared/     ui · lib · api. 도메인을 모른다
+  dev/        검증용 화면(/dev/*). 개발 서버에서만 등록된다. 화면 시안은 docs/fe/design
+  features/   도메인 — auth · info · onboarding · pitch · rehearsal · report
+  shared/     ui · lib · api. 둘 이상의 feature 가 쓰는 것만
   workers/    시선 워커. 메인 스레드에서 격리
+  vendor/     AI 시선 엔진 복사본 (vendor/gaze/README.md)
   types/      API 타입. 런타임 코드가 없다 (잎사귀)
   mocks/      MSW
 ```
+
+### 서버 호출(API 훅)을 어디에 둘지
+
+- feature **하나**만 쓰면 그 feature 의 `api/` 에 둔다 — `features/pitch/api/pitch.ts`.
+  파일이 하나뿐이면 폴더 없이 feature 바로 아래에 둔다 — `features/auth/useWithdraw.ts`.
+- feature **둘 이상**이 쓰거나 공통 기반(`client` · `tokenStore` · `errorMessage` · 세션)이면 `shared/api/` 에 둔다.
+- 다른 feature 가 쓰게 되면 그때 `shared/api/` 로 올린다. feature 끼리 import 하는 것으로 풀지 않는다.
+
+### 문서
+
+FE 기술 문서는 `docs/fe/` 에 둔다(지도: `docs/fe/README.md`). `frontend/` 에는 진입 문서
+(README · AGENTS · 이 문서)만, `src/` 안에는 그 폴더를 고칠 때 꼭 읽어야 하는 README 만 둔다
+(`vendor/gaze/README.md` · `shared/ui/README.md`).
 
 ### 의존 방향
 
 `features → shared → types` 한 방향이다. 역방향은 없다.
 
 - **`features/` 끼리 서로 import 하지 않는다.** 공유가 필요해지면 `shared/` 로 올린다.
-- `shared/` 는 특정 도메인을 알지 못한다. `@/features/...` 를 import 하면 방향이 뒤집힌 것이다.
+- `shared/` 는 `@/features/...` 를 import 하지 않는다. 그러면 방향이 뒤집힌 것이다.
+- `app/` · `dev/` 는 화면을 조립하는 자리라 여러 feature 를 가져다 쓴다 (lint 예외).
 - `workers/` 는 `shared/` 를 참조하지 않는다. 타입만 가져와도 import 경로가 그렇게 생기면
   나중에 누군가 같은 경로에서 런타임 코드를 가져오고, 그 순간 워커 번들에
   TanStack Query 가 들어간다. 빌드는 통과하고 워커만 런타임에 죽는다.
@@ -66,12 +82,15 @@ src/
 
 ### feature 내부 구획
 
-파일이 많은 feature 만 하위 폴더로 쪼갠다. 지금은 `rehearsal/` 하나뿐이다 (파일 20여 개).
+파일이 많은 feature 만 하위 폴더로 쪼갠다 — `rehearsal/` 과 `pitch/create/`.
+서버 호출을 모은 `api/` 는 파일 수와 상관없이 둔다 (위 "서버 호출을 어디에 둘지").
 
 ```
 features/rehearsal/
+  api/       서버 호출 — Take · 시작 전 세팅
   prepare/   화면 단계 — 준비 (P4)
   stage/     화면 단계 — 무대 (P5)
+  retry/     화면 단계 — 업로드 실패 · 재시도
   media/     장치 — 카메라 · 마이크
   lib/       순수 로직 — IndexedDB · 구간 압축
 ```

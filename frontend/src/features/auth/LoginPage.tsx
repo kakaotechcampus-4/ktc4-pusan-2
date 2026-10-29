@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
-import { safeDestination, useSession } from './useSession';
+import { safeDestination, useSession } from '@/shared/api/useSession';
 
 /** P11: 로그인 시작과 콜백 상태 안내, 세션 확인 후 목적지 이동을 담당한다. */
 function authErrorMessage(authError: string | null): string | null {

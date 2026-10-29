@@ -13,8 +13,6 @@ import {
   ProcessingPage,
   ReportPage,
   ConfirmPage,
-  DesignIndex,
-  DesignDraftRoute,
   AboutPage,
   UnsupportedPage,
   NotFoundPage,
@@ -31,6 +29,18 @@ import { WelcomePage } from '@/features/onboarding/WelcomePage';
 import { AppHeader } from '@/shared/ui/AppHeader';
 import { HomePage } from '@/features/pitch/HomePage';
 import { PrepareRedirect } from '@/features/rehearsal/prepare/PrepareRedirect';
+
+// 제품 화면이 아닌 검증용 화면(src/dev). 개발 서버(`npm run dev`)에만 등록한다 —
+// 운영 빌드에 두면 주소만 알면 로그인 없이 열린다. 조건이 빌드 때 false 로 접혀 운영 번들에서 빠진다.
+// prettier-ignore
+const devRoutes = !import.meta.env.DEV ? [] : [
+  // 무대 레이아웃·시선 테두리 검증용.
+  { path: '/dev/stage',   title: '무대 레이아웃 검증 | 피치코치', element: <StageDemo /> },
+  // 프레임 예산 계기판. 부하별 처리 fps 를 읽는 곳.
+  { path: '/dev/media',   title: '미디어 성능 검증 | 피치코치', element: <MediaDevPage /> },
+  // 실시간 STT WebSocket 검증. takeId 를 손으로 넣어 WS 경로만 실서버에 붙인다.
+  { path: '/dev/stt',     title: '실시간 STT 검증 | 피치코치', element: <SttDevPage /> },
+];
 
 /**
  * 화면 19개 + 모달 3개 + 상태 10개.
@@ -70,15 +80,7 @@ const routes = [
   { path: '/privacy',     title: '개인정보 처리방침 | 피치코치', element: <PolicyPage kind="privacy" /> },
   { path: '/terms',       title: '이용약관 | 피치코치', element: <PolicyPage kind="terms" /> },
   { path: '/unsupported', title: '미지원 브라우저 | 피치코치', element: <UnsupportedPage /> },
-  // 제품 화면이 아니다. 무대 레이아웃·시선 테두리 검증용.
-  { path: '/dev/stage',   title: '무대 레이아웃 검증 | 피치코치', element: <StageDemo /> },
-  // 프레임 예산 계기판. 부하별 처리 fps 를 읽는 곳.
-  { path: '/dev/media',   title: '미디어 성능 검증 | 피치코치', element: <MediaDevPage /> },
-  // 실시간 STT WebSocket 검증. takeId 를 손으로 넣어 WS 경로만 실서버에 붙인다.
-  { path: '/dev/stt',     title: '실시간 STT 검증 | 피치코치', element: <SttDevPage /> },
-  // 디자인 시안. 실제 화면이 아니라 검토용이다 (docs/fe/design)
-  { path: '/dev/design',       title: '디자인 시안 | 피치코치', element: <DesignIndex /> },
-  { path: '/dev/design/:name', title: '디자인 시안 | 피치코치', element: <DesignDraftRoute /> },
+  ...devRoutes,
   { path: '*',            title: '찾을 수 없음 | 피치코치', element: <NotFoundPage /> },
 ] satisfies { path: string; title: string; element: ReactElement }[];
 
@@ -89,11 +91,7 @@ const publicPaths = [
   '/privacy',
   '/terms',
   '/unsupported',
-  '/dev/stage',
-  '/dev/media',
-  '/dev/stt',
-  '/dev/design',
-  '/dev/design/:name',
+  ...devRoutes.map((route) => route.path),
   '*',
 ];
 

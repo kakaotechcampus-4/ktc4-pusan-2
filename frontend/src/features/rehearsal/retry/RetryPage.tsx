@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
-import { useEndTake } from '@/shared/api/take';
+import { useEndTake } from '../api/take';
 import { toMessage } from '@/shared/api/errorMessage';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { formatDuration } from '@/shared/lib/clock';

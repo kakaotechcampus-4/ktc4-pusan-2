@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { HomeServiceReview } from './HomeServiceReview';
 import { Link } from 'react-router';
 import { HomeHelpDialog } from '@/shared/ui/HomeHelpDialog';
-import { usePitchList } from '@/shared/api/home';
+import { usePitchList } from './api/home';
 import { HomePitchCard } from './HomePitchCard';
 import { duration, totalElapsed } from './homeFormat';
 

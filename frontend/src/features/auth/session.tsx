@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
-import { useLogout, useSession } from './useSession';
+import { useLogout, useSession } from '@/shared/api/useSession';
 
 /**
  * @param bright 이름 · 로그아웃 줄을 아래 화면과 같은 밝은 지면(`pitch-create`)으로 둡니다.

@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toMessage } from '@/shared/api/errorMessage';
-import { createPitch, updatePitch } from '@/shared/api/pitch';
+import { createPitch, updatePitch } from '../../api/pitch';
 import type { PitchRequest } from '@/types/pitch';
 import { isCurrentDraft, useCreateStore } from '../createStore';
 import { fromPitchSaved, toPitchRequest } from '../lib/beAdapter';

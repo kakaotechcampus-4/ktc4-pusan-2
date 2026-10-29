@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { ReportPage } from './ReportPage';
 
-vi.mock('@/shared/api/report', () => ({
+vi.mock('./api/report', () => ({
   useTakeReport: () => ({
     isPending: false,
     error: null,

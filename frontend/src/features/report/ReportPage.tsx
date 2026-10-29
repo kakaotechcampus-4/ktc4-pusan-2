@@ -1,6 +1,6 @@
 import { Navigate, useParams } from 'react-router';
 import { AppHeader } from '@/shared/ui/AppHeader';
-import { useTakeReport } from '@/shared/api/report';
+import { useTakeReport } from './api/report';
 import { formatDuration } from '@/shared/lib/clock';
 import { Badge, type Tone } from '@/shared/ui/Badge';
 import { ButtonLink } from '@/shared/ui/Button';

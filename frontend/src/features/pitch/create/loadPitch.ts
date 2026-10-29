@@ -1,7 +1,7 @@
-import { getPitch, getPitchResources } from '@/shared/api/pitch';
+import { getPitch, getPitchResources } from '../api/pitch';
 import { getPresentation } from '@/shared/api/presentation';
 import { getScript } from '@/shared/api/script';
-import { getEvaluation } from '@/shared/api/standards';
+import { getEvaluation } from '../api/standards';
 import { openPdf } from '@/shared/lib/pdf';
 import type { VersionRef } from '@/types/pitch';
 import { fromEvaluation, fromPitchDetail, fromScriptDetail } from './lib/beAdapter';

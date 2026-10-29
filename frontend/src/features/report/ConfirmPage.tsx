@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useParams } from 'react-router';
-import { useConfirmations, useSendConfirmations } from '@/shared/api/confirmation';
+import { useConfirmations, useSendConfirmations } from './api/confirmation';
 import { toMessage } from '@/shared/api/errorMessage';
-import { fetchTakeReport } from '@/shared/api/report';
+import { fetchTakeReport } from './api/report';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { Button, ButtonLink } from '@/shared/ui/Button';
 import type { ConfirmationItem, Confirmations } from '@/types/confirmation';

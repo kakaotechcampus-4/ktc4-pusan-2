@@ -1,8 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { apiRequest } from './client';
+import { apiRequest } from '@/shared/api/client';
 import { fetchActiveTake, replaceTake } from './take';
 
-vi.mock('./client', () => ({ apiRequest: vi.fn() }));
+vi.mock('@/shared/api/client', () => ({ apiRequest: vi.fn() }));
 
 afterEach(() => {
   vi.mocked(apiRequest).mockReset();

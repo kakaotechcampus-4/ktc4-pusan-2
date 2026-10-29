@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { withdraw } from './useWithdraw';
-import { getAccessToken } from './tokenStore';
+import { getAccessToken } from '@/shared/api/tokenStore';
 
 /** deleteDatabase 요청 흉내. 다음 틱에 onsuccess 또는 onblocked 를 부릅니다 */
 function stubIndexedDb(outcome: 'success' | 'blocked') {

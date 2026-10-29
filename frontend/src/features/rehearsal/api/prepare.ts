@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { apiRequest, postJson } from './client';
+import { apiRequest, postJson } from '@/shared/api/client';
 import type { PrepareResponse } from '@/types/api';
 import type { CalibrationRequest, TakeCreateRequest, TakeCreated } from '@/types/take';
 

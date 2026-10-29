@@ -13,7 +13,7 @@ const query = vi.hoisted(() => ({
   error: null as Error | null,
   isPending: false,
 }));
-vi.mock('@/shared/api/report', () => ({ useTakeReport: () => query }));
+vi.mock('./api/report', () => ({ useTakeReport: () => query }));
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {

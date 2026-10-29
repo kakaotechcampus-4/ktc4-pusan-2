@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPitch } from '@/shared/api/pitch';
+import { createPitch } from '../api/pitch';
 import { uploadPresentation } from '@/shared/api/presentation';
 import { createScript } from '@/shared/api/script';
 import { openPdf } from '@/shared/lib/pdf';
@@ -7,7 +7,7 @@ import { isCurrentDraft, useCreateStore } from './createStore';
 import { startScriptMapping } from './scriptParse';
 import { uploadSlides } from './slideUpload';
 
-vi.mock('@/shared/api/pitch', () => ({ createPitch: vi.fn() }));
+vi.mock('../api/pitch', () => ({ createPitch: vi.fn() }));
 vi.mock('@/shared/api/presentation', () => ({ uploadPresentation: vi.fn() }));
 vi.mock('@/shared/lib/pdf', () => ({ openPdf: vi.fn() }));
 vi.mock('@/shared/api/script', () => ({

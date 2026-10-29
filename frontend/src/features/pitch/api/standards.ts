@@ -1,4 +1,4 @@
-import { apiRequest, postJson } from './client';
+import { apiRequest, postJson } from '@/shared/api/client';
 import type {
   EvaluationDetail,
   StandardTextRequest,

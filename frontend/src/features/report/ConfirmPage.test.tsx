@@ -7,10 +7,10 @@ import { it, expect, vi } from 'vitest';
 import { ConfirmPage } from './ConfirmPage';
 import { apiRequest, postJson } from '@/shared/api/client';
 import { ApiFailure } from '@/shared/api/tokenStore';
-import { fetchTakeReport } from '@/shared/api/report';
+import { fetchTakeReport } from './api/report';
 
 vi.mock('@/shared/api/client', () => ({ apiRequest: vi.fn(), postJson: vi.fn() }));
-vi.mock('@/shared/api/report', () => ({
+vi.mock('./api/report', () => ({
   fetchTakeReport: vi.fn().mockResolvedValue({ pitch_title: '테스트 피치', take_number: 1 }),
 }));
 

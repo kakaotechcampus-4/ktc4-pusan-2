@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { useParams } from 'react-router';
 import { formatDuration } from '@/shared/lib/clock';
-import { isPitchMissing, useTakeHistory } from '@/shared/api/takeHistory';
+import { isPitchMissing, useTakeHistory } from './api/takeHistory';
 import { ButtonLink } from '@/shared/ui/Button';
 import { InfoPage } from '@/shared/ui/InfoPage';
 import { Mascot } from '@/shared/ui/Mascot';

@@ -7,8 +7,8 @@ import { Card } from '@/shared/ui/Panel';
 import { InfoPage } from '@/shared/ui/InfoPage';
 import { apiRequest } from '@/shared/api/client';
 import { deleteLocalRecords } from '@/shared/lib/localData';
-import { useWithdraw } from '@/shared/api/useWithdraw';
-import { useSession, type User } from './useSession';
+import { useWithdraw } from './useWithdraw';
+import { useSession, type User } from '@/shared/api/useSession';
 
 /**
  * P9 마이페이지.

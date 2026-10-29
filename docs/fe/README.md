@@ -22,15 +22,20 @@
 |---|---|---|
 | [출시 카운트다운](launch-countdown.md) | #541 기기 시간 기준 자동 오픈·BE 역할·빌드 설정 | FE |
 | [Pitch / Take 데이터 계약 (#570)](pitch-take-contract-570.md) | FE 불일치 처리와 BE 선행 조건 · 검증 결과 | FE |
+| [화면 설계서](design/README.md) | 제품과 따로 도는 React 화면 시안 · 상태 · 흐름, 제품과의 차이 | FE |
+| [로그인 인증 연동](auth.md) | 로그인 화면(P11) · 인증 흐름 | FE |
+| [서비스 평점 · 의견 (#540)](service-review-540.md) | 홈 평점 · 의견 실 API 연동 계획과 계약 | FE |
 
-문서를 추가하면 이 표에 한 줄 넣습니다.
+문서를 추가하면 이 표에 한 줄 넣습니다. 폴더 규칙은 [frontend/FRONTEND_CONVENTION.md](../../frontend/FRONTEND_CONVENTION.md) 5절입니다.
 
-## 지금 다른 곳에 있는 FE 문서
+## 코드 옆에 두는 FE 문서
+
+그 폴더를 고칠 때 꼭 읽어야 해서 코드 옆에 둡니다.
 
 | 문서 | 담는 것 |
 |---|---|
-| [frontend/src/features/auth/README.md](../../frontend/src/features/auth/README.md) | 로그인 인증 연동 |
 | [frontend/src/vendor/gaze/README.md](../../frontend/src/vendor/gaze/README.md) | AI 시선 엔진 · Worker 복사본(여기서 고치지 않음)과 FE 원본 카메라 화면 |
+| [frontend/src/shared/ui/README.md](../../frontend/src/shared/ui/README.md) | 공용 컴포넌트 목록과 옵션 |
 
 ## FE가 함께 읽는 다른 파트 문서
 

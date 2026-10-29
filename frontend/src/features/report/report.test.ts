@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { fetchTakeReport, isSettled } from '@/shared/api/report';
+import { fetchTakeReport, isSettled } from './api/report';
 import { clearTokens } from '@/shared/api/tokenStore';
 import type { Operator, TakeReport } from '@/types/report';
 import { OP, duration, fmt, pct, stepStates } from './reportFormat';

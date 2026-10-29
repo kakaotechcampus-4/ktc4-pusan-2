@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ProcessingPage } from './ProcessingPage';
 
 const report = vi.hoisted(() => ({ analysis_stage: 'SCORING' }));
-vi.mock('@/shared/api/report', () => ({
+vi.mock('./api/report', () => ({
   useTakeReport: () => ({ data: report, isPending: false, error: null }),
   isSettled: () => false,
 }));

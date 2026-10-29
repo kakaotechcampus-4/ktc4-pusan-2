@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router';
 import type { PracticeCombo, RehearsalTicket } from '@/types/api';
 import { useShallow } from 'zustand/react/shallow';
 import { DEVICE_ERROR_MESSAGE, useCameraStream, type DeviceError } from '../media/useCameraStream';
-import { postCalibration, useCreateTake, usePrepare } from '@/shared/api/prepare';
+import { postCalibration, useCreateTake, usePrepare } from '../api/prepare';
 import { setPrepareContext, setSessionTicket, setTakeId, startSession } from '../lib/db';
 import { noteWriteFailure } from '../lib/writeFailures';
 import { toCalibrationRequest } from '../lib/calibrationRequest';

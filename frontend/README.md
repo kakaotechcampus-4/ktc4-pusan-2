@@ -54,24 +54,22 @@ MSW 워커 파일은 **커밋되어 있고** `package.json`의 `msw.workerDirect
 **디자인 토큰** (`src/index.css` `@theme`) — 시안 v5의 팔레트와 시선 3색, 그리고 **계측 조건인 고정 높이 네 값**이 있습니다. 밝은 지면(홈·리포트)과 어두운 지면(리허설)이 나뉘어 있습니다. **색을 새로 만들지 말고 여기 있는 것만 쓰세요.**
 
 **라우팅 21개** (`src/app/routes.tsx`) — 전부 Stub이지만 이동은 됩니다. P 번호는 화면 목록 문서와 같습니다.
-여기에 제품 화면이 아닌 검증용 `/dev/stage` · `/dev/media` 둘이 더 있습니다.
+여기에 제품 화면이 아닌 검증용 `/dev/*`(`src/dev/`)가 더 있습니다. 개발 서버(`npm run dev`)에서만 등록되고 운영 빌드에는 없습니다. 화면 시안은 제품과 따로 도는 [화면 설계서](../docs/fe/design/README.md)에 있습니다.
 
 **API 타입** (`src/types/api.ts`) — 명세 8-4를 옮긴 것. 시선 3값, 시간 필드 셋, `null` 규칙이 들어 있습니다.
 
 **MSW 목** (`src/mocks/handlers.ts`) — 홈·리포트·분석 상태·complete. **측정 제외 케이스(`t2`)를 일부러 넣어뒀습니다** — 이 화면을 나중에 만들면 W9에 몰립니다.
 
-**빈 자리** (`src/features/auth` · `pitch` · `report`) — `.gitkeep`만 있습니다. Track B가 여기 채웁니다.
-
 **시선 파이프라인** — 프레임이 워커까지 흐르고 1초 판정이 나옵니다
 - `workers/gaze.contract.ts` — **분류기 계약. 고정하고 바꾸지 않습니다.** AI 모델은 이것만 구현하면 됩니다
 - `workers/gaze.worker.ts` — 워커. 모델 자리에 지금은 가짜 부하(`?load=`)가 들어 있습니다
-- `workers/temporalVoter.ts` — 1초 다수결. **모델이 아니라 우리 정책이라 계약 밖입니다**
+- 1초 묶기 — AI 엔진의 `GazeSlicer`(`vendor/gaze/engine`)가 합니다. 서버와 같은 규칙이어야 해서 FE 가 따로 다수결을 두지 않습니다
 - `workers/dummyClassifier.ts` — 프레임 하나만 판단합니다 (`classify`)
 - `workers/modelClassifier.ts` — 실모델 자리. `toTensor`·`runInference`·`fromOutput` 셋으로 갈라
   **AI팀 답이 오면 양쪽 두 함수만 채우면 됩니다**
 - `features/rehearsal/media/useCameraStream.ts` — 권한 3종 분기 + HMR 정리
 - `features/rehearsal/media/useGazeWorker.ts` — **프레임 펌프 + 백프레셔.** 여기가 성능의 전부입니다
-- `features/rehearsal/media/MediaDevPage.tsx` — `/dev/media` 프레임 예산 계기판
+- `dev/MediaDevPage.tsx` — `/dev/media` 프레임 예산 계기판 (개발 서버에서만 열림)
 
 **음성 · 음량** — 음성은 로컬에 남기지 않고 WebSocket으로만 보냅니다 (AGENTS.md 4번)
 - `features/rehearsal/media/pcmCapture.ts` — `AudioWorklet` → 16kHz Int16 100ms 프레임 → STT 소켓
@@ -141,7 +139,7 @@ workers/gaze.worker.ts                          워커 경계. 여기부터 다�
         │   classifier.classify(bitmap, tMs)  →  FrameVerdict (프레임 단위)
         │   bitmap.close()                       ★ 프레임은 즉시 폐기. 저장하지 않는다
         ▼
-workers/temporalVoter.ts                        1초 다수결 → ZoneDecision
+vendor/gaze/engine  GazeSlicer                  1초 묶기 → 1초 기록 (서버와 같은 규칙)
         │   postMessage({ type: 'decision', ... })   ← 워커에서 나가는 건 이것뿐
         ▼
 features/rehearsal/lib/db.ts                    IndexedDB 에 1초 판정을 쌓는다

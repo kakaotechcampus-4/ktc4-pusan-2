@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from './client';
+import { apiRequest } from '@/shared/api/client';
 import type { TakeReport } from '@/types/report';
 
 /** 분석이 끝나기 전에는 이 간격으로 다시 묻습니다 */

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GazeZone, ScriptMode } from '@/types/api';
-import './stage.css';
+import '@/features/rehearsal/stage/stage.css';
 
 /** contract의 Zone → 테두리 상태. 워커가 뭘 주든 매핑은 한 곳에서만 한다. */
 const BORDER: Record<GazeZone, string> = {

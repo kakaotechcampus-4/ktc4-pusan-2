@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from './client';
-import { ApiFailure } from './tokenStore';
+import { apiRequest } from '@/shared/api/client';
+import { ApiFailure } from '@/shared/api/tokenStore';
 import type { TakeHistoryResponse } from '@/types/takeHistory';
 
 export function fetchTakeHistory(pitchId?: string) {

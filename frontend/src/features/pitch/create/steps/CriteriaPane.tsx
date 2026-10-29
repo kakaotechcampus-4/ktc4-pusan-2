@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toMessage } from '@/shared/api/errorMessage';
-import { parseStandards, saveStandards } from '@/shared/api/standards';
+import { parseStandards, saveStandards } from '../../api/standards';
 import { isCurrentDraft, useCreateStore } from '../createStore';
 import { AlertIcon, CheckIcon, DocIcon, RefreshIcon } from '../icons';
 import { fromStandardsPosted } from '../lib/beAdapter';

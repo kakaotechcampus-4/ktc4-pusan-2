@@ -1,6 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router';
-import { PitchCoachWordmark } from './PitchCoachWordmark';
+import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { ComfortScene } from './ComfortScene';
 import { LaunchCountdown, LaunchStart } from './LaunchCountdown';
 

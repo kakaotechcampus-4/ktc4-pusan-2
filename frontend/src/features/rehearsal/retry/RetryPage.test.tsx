@@ -12,7 +12,7 @@ vi.mock('../lib/db', () => ({
   countAll: vi.fn(),
   readSlideChanges: vi.fn(),
 }));
-vi.mock('@/shared/api/take', () => ({ useEndTake: () => ({ isPending: false }) }));
+vi.mock('../api/take', () => ({ useEndTake: () => ({ isPending: false }) }));
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {

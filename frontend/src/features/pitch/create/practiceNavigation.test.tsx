@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
-import { updatePitch } from '@/shared/api/pitch';
+import { updatePitch } from '../api/pitch';
 import { useCreateStore } from './createStore';
 import { PitchCreatePage } from './PitchCreatePage';
 import { ScriptPane } from './steps/ScriptPane';
@@ -15,7 +15,7 @@ vi.mock('@/shared/ui/PdfPage', () => ({ PdfPage: () => null }));
 vi.mock('@/shared/lib/usePdfDocument', () => ({ usePdfDocument: () => null }));
 vi.mock('@/shared/lib/pdf', () => ({ openPdf: vi.fn() }));
 vi.mock('./scriptParse', () => ({ startScriptMapping: vi.fn(), retryScriptMapping: vi.fn() }));
-vi.mock('@/shared/api/pitch', () => ({ updatePitch: vi.fn(), createPitch: vi.fn() }));
+vi.mock('../api/pitch', () => ({ updatePitch: vi.fn(), createPitch: vi.fn() }));
 
 let root: Root;
 let container: HTMLDivElement;

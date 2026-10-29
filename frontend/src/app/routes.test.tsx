@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { appRoutes, router as browserRouter } from './routes';
 
 const state = vi.hoisted(() => ({ signedIn: false, stageImports: 0, launchOpen: true }));
-vi.mock('@/features/auth/useSession', () => ({
+vi.mock('@/shared/api/useSession', () => ({
   useSession: () => ({
     isPending: false,
     isError: false,

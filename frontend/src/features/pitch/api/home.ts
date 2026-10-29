@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from './client';
+import { apiRequest } from '@/shared/api/client';
 import type { PitchListResponse } from '@/types/home';
 
 export const pitchesKey = ['pitches'] as const;

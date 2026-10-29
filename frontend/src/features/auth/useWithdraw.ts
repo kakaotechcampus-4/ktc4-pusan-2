@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
-import { apiRequest } from './client';
-import { clearTokens } from './tokenStore';
+import { apiRequest } from '@/shared/api/client';
+import { clearTokens } from '@/shared/api/tokenStore';
 import { deleteLocalRecords } from '@/shared/lib/localData';
 
 /**

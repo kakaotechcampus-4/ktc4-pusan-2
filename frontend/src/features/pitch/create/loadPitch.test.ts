@@ -3,7 +3,7 @@ import type { ScriptDetail } from '@/types/script';
 import { useCreateStore } from './createStore';
 import { pendingVersion, toPracticeCombo } from './lib/draft';
 import { loadPitch } from './loadPitch';
-import { getPitch, getPitchResources } from '@/shared/api/pitch';
+import { getPitch, getPitchResources } from '../api/pitch';
 import { openPdf } from '@/shared/lib/pdf';
 
 /**
@@ -13,7 +13,7 @@ import { openPdf } from '@/shared/lib/pdf';
  *   대본      V1 3장 · V2 3장 (V2 도 슬라이드 V1 에 맞음 — 최신끼리 짝이 아닌 경우)
  *   평가기준  V1
  */
-vi.mock('@/shared/api/home', () => ({
+vi.mock('../api/home', () => ({
   fetchPitchList: vi.fn(async () => ({
     pitches: [
       {
@@ -27,7 +27,7 @@ vi.mock('@/shared/api/home', () => ({
     ],
   })),
 }));
-vi.mock('@/shared/api/pitch', () => ({
+vi.mock('../api/pitch', () => ({
   getPitch: vi.fn(async () => ({
     pitch_id: 'p1',
     title: '캡스톤',
@@ -81,7 +81,7 @@ const script = (id: string, version: number, n: number): ScriptDetail => ({
 vi.mock('@/shared/api/script', () => ({
   getScript: vi.fn(async (_pitchId: string, id: string) => script(id, id === 'sv1' ? 1 : 2, 3)),
 }));
-vi.mock('@/shared/api/standards', () => ({
+vi.mock('../api/standards', () => ({
   getEvaluation: vi.fn(async () => ({
     pitch_id: 'p1',
     evaluation_version: 1,

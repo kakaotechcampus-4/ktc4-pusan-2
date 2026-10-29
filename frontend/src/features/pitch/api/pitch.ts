@@ -1,4 +1,4 @@
-import { apiRequest, postJson } from './client';
+import { apiRequest, postJson } from '@/shared/api/client';
 import type { PitchDetail, PitchRequest, PitchResources, PitchSavedResponse } from '@/types/pitch';
 
 /** 피치를 만듭니다. 발표자료 · 대본 · 평가기준은 전부 이 응답의 pitch_id 아래에 올라갑니다 */

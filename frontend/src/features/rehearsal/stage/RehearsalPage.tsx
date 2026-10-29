@@ -5,7 +5,7 @@ import { MIC_ERROR_MESSAGE, useCameraStream } from '../media/useCameraStream';
 import { useMicLevel } from '../media/useMicLevel';
 import { useVideoStream } from '../media/useVideoStream';
 import { usePrepareStore } from '../prepare/prepareStore';
-import { useAbandonTake, useEndTake } from '@/shared/api/take';
+import { useAbandonTake, useEndTake } from '../api/take';
 import { ApiFailure } from '@/shared/api/tokenStore';
 import { Button, ButtonLink } from '@/shared/ui/Button';
 import { InfoPage } from '@/shared/ui/InfoPage';
