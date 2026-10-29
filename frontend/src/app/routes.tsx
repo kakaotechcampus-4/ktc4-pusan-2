@@ -91,7 +91,7 @@ const publicPaths = [
 ];
 
 // 홈과 같은 상단바(AppHeader)를 얹는 화면. 메뉴를 옮기거나 기록을 열어도 상단바가 바뀌지 않게 합니다.
-// 편집 화면(/pitch/new · edit)은 자체 헤더를, 장치 점검 · 리허설 · 분석 대기는 집중 화면이라 각자의 틀을 씁니다
+// 장치 점검 · 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 각자의 틀을 씁니다 (장치 점검은 #706 에서 단순화하며 같이 정리)
 const appHeaderPaths = [
   '/',
   '/pitches',
@@ -99,6 +99,8 @@ const appHeaderPaths = [
   '/me',
   '/takes/:takeId/retry',
   '/pitch/:id/comparison',
+  '/pitch/new',
+  '/pitch/:id/edit',
 ];
 
 export const appRoutes = routes.map((route) => {
