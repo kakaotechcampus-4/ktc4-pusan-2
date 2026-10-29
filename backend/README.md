@@ -34,6 +34,8 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 
 로컬 DB 는 인프라 담당의 docker-compose 를 사용한다. `.env.example` 의 `DATABASE_URL` 기본값이 그 컨테이너와 맞춰져 있다.
 
+앱의 DB 연결은 잠금 대기 `DB_LOCK_TIMEOUT_MS`(기본 5초)와 문장 실행 `DB_STATEMENT_TIMEOUT_MS`(기본 30초) 상한을 건다. 넘으면 `OperationalError` 라서 `is_transient_db_error` 가 일시 오류로 보고, 재시도 경로(WS 인가 1011 등)로 간다. 마이그레이션(alembic)은 자기 엔진을 써서 걸리지 않는다.
+
 ### 테스트
 
 - 테스트는 `DATABASE_URL` 의 DB 이름에 `_test` 를 붙인 DB 를 쓴다 (예: `pitch_coach_test`). 없으면 `conftest.py` 가 만든다. 개발 DB 는 건드리지 않는다.
@@ -48,6 +50,15 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
   테스트용 RSA 키로 진짜 RS256 토큰을 서명해 위조·만료·`aud` 불일치를 실제로 거부시킨다.
 - CI 는 PostgreSQL 서비스와 `DATABASE_URL` 만 제공하면 된다.
   `JWT_SECRET_KEY` 와 구글 값은 conftest 가 테스트용 값을 넣는다.
+
+## 발표 파일 정리
+
+발표자료 파일(S3 `pitches/<pitch_id>/`)은 CASCADE 로 지워지지 않는다. 발표 삭제 · 회원 탈퇴는 지울 경로를
+`pending_file_deletions` 에 행을 지우는 커밋과 같이 남기고, 응답 뒤 백그라운드로 S3 에서 지운다. 성공하면 기록을
+빼고 실패하면 `attempts` 를 올려 남긴다. 5분마다 도는 주기 작업(`pitch/file_cleanup_sweep.py`, 뜰 때 한 번)이
+남은 기록을 다시 지운다. 방금 남긴 기록은 응답 뒤 삭제와 겹치지 않게 1분이 지난 것만 다시 한다.
+실패 횟수가 적은 경로부터, 같으면 오래된 경로부터 한 번에 100개를 고른다. 계속 실패하는 한 묶음이
+뒤의 다른 경로를 막지 않게 한다.
 
 ## 서비스 평점·의견
 
@@ -180,11 +191,13 @@ backend/
     │   │   ├── controller.py · repository.py · entity.py · dto.py · dependencies.py · exception.py
     │   │   ├── service/          # 업무별로 나눈다. __init__.py 는 비워 두고 호출부는 하위 모듈을 import 한다
     │   │   │   ├── pitch.py              # 발표 생성 · 목록 · 자료 모음 · 준비 화면 · 수정 · 삭제 · 코칭 계획 행
+    │   │   │   ├── file_cleanup.py       # 발표를 지운 뒤 S3 파일 삭제 기록 · 삭제 · 다시 지우기
     │   │   │   ├── presentation.py       # 발표자료(PDF) 업로드 · 조회
     │   │   │   ├── script.py             # 대본 검사 · 생성 · 파싱 상태 · 재파싱 · 결과 저장 · 장별 평가 기준 상태 · STT 용어
     │   │   │   ├── standard.py           # 평가 기준 저장 · 나누기 · 조회
     │   │   │   ├── script_parse_runner.py   # 업로드 뒤 BackgroundTasks 로 도는 파싱 작업. 짧은 세션으로 저장
     │   │   │   └── script_rubric_runner.py  # 파싱 뒤 장별 평가 기준 작업. 앱이 뜰 때 이어 간다
+    │   │   ├── file_cleanup_sweep.py  # S3 에 남은 발표 파일을 다시 지우는 주기 작업
     │   │   └── adapter/          # 외부 연동. DB 를 모른다
     │   │       ├── storage.py            # S3 업로드 · presigned URL · prefix 삭제
     │   │       ├── presentation_file.py  # PDF 열기 · 쪽수

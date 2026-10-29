@@ -12,6 +12,7 @@ from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.pitch.adapter import storage
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO
 from pitch_coach_backend.module.pitch.entity import PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.service import file_cleanup
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.user.entity import User
@@ -116,7 +117,8 @@ def test_delete_pitch_files_logs_a_failure_instead_of_raising(
     def fail(prefix: str) -> None:
         raise Exception("S3 파일 삭제 실패")
 
-    monkeypatch.setattr(pitch_service, "delete_prefix", fail)
+    monkeypatch.setattr(file_cleanup, "delete_prefix", fail)
+    monkeypatch.setattr(file_cleanup, "_record", lambda *args, **kwargs: None)
 
     pitch_service.delete_pitch_files(pitch_id)
 
@@ -130,7 +132,7 @@ def test_deleting_a_pitch_deletes_its_files(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     prefixes: list[str] = []
-    monkeypatch.setattr(pitch_service, "delete_prefix", prefixes.append)
+    monkeypatch.setattr(file_cleanup, "delete_prefix", prefixes.append)
     pitch_id = _add_pitch(db_session, user_id)
 
     res = client.delete(

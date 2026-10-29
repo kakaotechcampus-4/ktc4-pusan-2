@@ -2,11 +2,13 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Row, and_, case, func, literal, or_, select, union_all, update
+from sqlalchemy import Row, and_, case, delete, func, literal, or_, select, union_all, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, defer
 
 from pitch_coach_backend.module.pitch.entity import (
     CoachingPlan,
+    PendingFileDeletion,
     Pitch,
     PresentationVersion,
     ScriptParseStatus,
@@ -92,6 +94,37 @@ class PitchRepository:
     def delete(self, pitch: Pitch) -> None:
         self.db.delete(pitch)
         self.db.flush()
+
+    def add_file_deletions(self, prefixes: list[str]) -> None:
+        """지울 S3 경로를 남긴다. commit 은 호출자가 한다 — 발표를 지우는 트랜잭션에 같이 묶는다."""
+        if not prefixes:
+            return
+        self.db.execute(
+            insert(PendingFileDeletion)
+            .values([{"prefix": prefix} for prefix in dict.fromkeys(prefixes)])
+            .on_conflict_do_nothing()
+        )
+
+    def list_file_deletions(self, older_than: datetime, limit: int) -> list[str]:
+        return list(
+            self.db.scalars(
+                select(PendingFileDeletion.prefix)
+                .where(PendingFileDeletion.created_at < older_than)
+                # 계속 실패하는 오래된 한 묶음이 뒤의 모든 경로를 막지 않게 기회를 나눈다
+                .order_by(PendingFileDeletion.attempts, PendingFileDeletion.created_at)
+                .limit(limit)
+            )
+        )
+
+    def remove_file_deletion(self, prefix: str) -> None:
+        self.db.execute(delete(PendingFileDeletion).where(PendingFileDeletion.prefix == prefix))
+
+    def count_file_deletion_failure(self, prefix: str) -> None:
+        self.db.execute(
+            update(PendingFileDeletion)
+            .where(PendingFileDeletion.prefix == prefix)
+            .values(attempts=PendingFileDeletion.attempts + 1)
+        )
 
     def lock_for_new_version(self, pitch_id: uuid.UUID) -> bool:
         """이 pitch 에 새 버전을 만드는 요청을 한 줄로 세운다 (트랜잭션이 끝날 때까지 잠금).
@@ -190,6 +223,17 @@ class PitchRepository:
             .options(defer(ScriptVersion.content), defer(ScriptVersion.terms))
             .order_by(ScriptVersion.version.asc())
         ).all()
+
+    def get_latest_presentations(
+        self, pitch_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, PresentationVersion]:
+        rows = self.db.scalars(
+            select(PresentationVersion)
+            .where(PresentationVersion.pitch_id.in_(pitch_ids))
+            .distinct(PresentationVersion.pitch_id)
+            .order_by(PresentationVersion.pitch_id, PresentationVersion.version.desc())
+        ).all()
+        return {row.pitch_id: row for row in rows}
 
     def get_latest_presentation(
         self, pitch_id: uuid.UUID, page_count: int | None = None

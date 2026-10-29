@@ -23,6 +23,7 @@ from pitch_coach_backend.module.pitch.dependencies import (
     resume_script_parses,
     resume_script_rubrics,
 )
+from pitch_coach_backend.module.pitch.file_cleanup_sweep import start as start_file_cleanup_sweep
 from pitch_coach_backend.module.service_feedback.controller import router as feedback_router
 from pitch_coach_backend.module.service_feedback.controller import suggestions_router
 from pitch_coach_backend.module.take.controller import router as take_router
@@ -68,6 +69,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop_analysis = start_analysis_runner()
     # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
     stop_ready_sweep = start_ready_sweep()
+    # 발표를 지운 뒤 S3 에 남은 파일을 지우지 못했으면 DB 에 남은 기록으로 다시 지운다
+    stop_file_cleanup = start_file_cleanup_sweep()
     # 평가 기준 작업도 메모리에서 돌다 사라졌다. PENDING 으로 남은 버전을 이어 간다.
     # AI 를 길게 기다리므로 앱이 뜨는 것을 막지 않게 따로 띄운다
     rubric_resume = asyncio.create_task(resume_script_rubrics(), name="resume-script-rubrics")
@@ -84,6 +87,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.
     await stop_all_streams()
     await stop_ready_sweep()
+    await stop_file_cleanup()
     await stop_coach_background()
     await stop_analysis()
 

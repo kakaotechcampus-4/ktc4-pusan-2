@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     )
 
     database_url: str
+    # 연결마다 거는 대기 상한(ms). 0 이면 끝없이 기다린다.
+    # lock_timeout: 다른 트랜잭션이 쥔 행 · 테이블 잠금을 기다리는 시간. 발표 행 잠금(PDF 업로드 ·
+    # Take 시작)이 길어져도 뒤 요청이 끝없이 쌓이지 않게 한다. 넘으면 일시 오류로 끝난다
+    # statement_timeout: 문장 하나의 실행 시간. 관리자 통계 같은 정상 쿼리보다 넉넉해야 한다
+    db_lock_timeout_ms: int = 5_000
+    db_statement_timeout_ms: int = 30_000
 
     # 앱 로거(pitch_coach_backend.*)의 레벨. DEBUG · INFO · WARNING · ERROR (core/logging.py)
     log_level: str = "INFO"
