@@ -110,7 +110,8 @@ class PitchRepository:
             self.db.scalars(
                 select(PendingFileDeletion.prefix)
                 .where(PendingFileDeletion.created_at < older_than)
-                .order_by(PendingFileDeletion.created_at)
+                # 계속 실패하는 오래된 한 묶음이 뒤의 모든 경로를 막지 않게 기회를 나눈다
+                .order_by(PendingFileDeletion.attempts, PendingFileDeletion.created_at)
                 .limit(limit)
             )
         )

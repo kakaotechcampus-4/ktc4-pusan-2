@@ -158,3 +158,36 @@ async def test_sweep_retries_what_an_earlier_failure_left(
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+def test_persistent_failures_do_not_starve_later_deletions(
+    db_session: Session,
+    session_factory: Callable[[], Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """한 묶음 전체가 계속 실패해도 다음 묶음의 경로는 다시 지울 기회를 얻는다."""
+    blocked = [uuid.uuid4() for _ in range(file_cleanup.RETRY_BATCH)]
+    later = uuid.uuid4()
+    file_cleanup.reserve(db_session, [*blocked, later])
+    old = datetime.now(UTC) - timedelta(minutes=10)
+    db_session.execute(update(PendingFileDeletion).values(created_at=old))
+    later_prefix = file_cleanup.pitch_prefix(later)
+    db_session.execute(
+        update(PendingFileDeletion)
+        .where(PendingFileDeletion.prefix == later_prefix)
+        .values(created_at=old + timedelta(minutes=1))
+    )
+    deleted: list[str] = []
+
+    def delete(prefix: str) -> None:
+        if prefix != later_prefix:
+            raise RuntimeError("이 경로는 계속 지울 수 없다")
+        deleted.append(prefix)
+
+    monkeypatch.setattr(file_cleanup, "delete_prefix", delete)
+
+    file_cleanup.retry_pending(session_factory)
+    file_cleanup.retry_pending(session_factory)
+
+    assert deleted == [later_prefix]
+    assert later_prefix not in _rows(db_session)
