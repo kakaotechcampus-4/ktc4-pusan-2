@@ -1,6 +1,7 @@
 /**
  * 미리보기 진입점. 화면 ID로 그릴 화면을 고르고, 미리보기 안의 링크를 설계서 안에서만 이동시킨다.
- * 화면은 `src/screens/`의 샘플(제품 코드를 읽고 설계서가 다시 그린 것, import하지 않음), 기초는 `src/foundations/`다.
+ * 화면은 `src/screens/`의 샘플(제품 코드를 읽고 설계서가 다시 그린 것, import하지 않음), 기초는 `src/foundations/`,
+ * 컴포넌트 · 대화 상자는 `src/components/`다.
  * 실제 서버나 기기에 접근하지 않는다.
  */
 import { useState, type MouseEvent } from 'react';
@@ -21,6 +22,8 @@ import {
   SurfacesFoundation,
   TypographyFoundation,
 } from './foundations/Foundations';
+import { ComponentDoc } from './components/ComponentDocs';
+import { componentEntries } from './components/entries';
 
 export type { Navigate as PreviewNavigate } from './screens/shared';
 
@@ -157,7 +160,12 @@ function CurrentScreen({
       return <NotFoundScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'me':
       return <MyScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'slide-preview':
+      // 피치 생성 샘플 안의 그 창을 그대로 보인다
+      return <CreateScreen stateId="preview" onNavigate={onNavigate} inline={inline} />;
     default:
+      if (componentEntries.some((entry) => entry.id === screenId))
+        return <ComponentDoc id={screenId} stateId={stateId} />;
       return (
         <Frame title="화면을 찾을 수 없어요">
           <p>목록에서 확인할 화면을 골라 주세요.</p>

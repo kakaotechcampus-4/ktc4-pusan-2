@@ -3,19 +3,8 @@ import { useState } from 'react';
 import { Button } from '@/ui/Button';
 import { Card } from '@/ui/Panel';
 import { Badge } from '@/ui/Badge';
+import { ScriptModeChoice, type ScriptMode } from '@/ui/ScriptModeChoice';
 import { PITCH, type Navigate } from './shared';
-
-// 제품 `prepare/ScriptModeChoice.tsx`의 선택지
-const SCRIPT_MODES = [
-  { value: 'HIGHLIGHT', label: '전체 대본 + 하이라이트', note: '대본 전체에 강조가 붙습니다' },
-  { value: 'KEYWORD', label: '핵심 키워드만', note: '문장 대신 단어만 남습니다' },
-  {
-    value: 'OFF',
-    label: '실전 모드 · 대본 없이',
-    note: '대본도 실시간 코치도 없습니다. 기록은 남아 리포트에서 봅니다',
-  },
-] as const;
-type ScriptMode = (typeof SCRIPT_MODES)[number]['value'];
 
 /** 상태별 점검 결과. 제품은 카메라 · 마이크 · 시선 기준이 모두 돼야 시작한다(DeviceCheckPage `ready`) */
 function prepareChecks(stateId: string) {
@@ -135,40 +124,7 @@ export function PrepareScreen({ stateId, onNavigate }: { stateId: string; onNavi
                     : '발표 중에 이 미션을 기준으로 코치가 알려 드려요.'}
                 </p>
               </section>
-              <Card
-                title="발표 중 대본 표시"
-                action={<span className="text-xs text-stone">시작 후 변경 불가</span>}
-              >
-                <div
-                  role="radiogroup"
-                  aria-label="발표 중 대본 표시"
-                  className="flex flex-col gap-2"
-                >
-                  {SCRIPT_MODES.map((opt) => {
-                    const on = mode === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={on}
-                        onClick={() => setMode(opt.value)}
-                        className={`flex items-start gap-3 border-2 px-3 py-2.5 text-left ${on ? 'border-ink bg-coral-wash' : 'border-line-strong bg-panel hover:bg-cream'}`}
-                      >
-                        <span aria-hidden="true" className="mt-0.5 text-xs">
-                          {on ? '◉' : '○'}
-                        </span>
-                        <span>
-                          <span className={`block text-sm ${on ? 'font-bold' : ''}`}>
-                            {opt.label}
-                          </span>
-                          <span className="mt-0.5 block text-xs text-ink/80">{opt.note}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </Card>
+              <ScriptModeChoice value={mode} onChange={setMode} />
             </div>
           </div>
 

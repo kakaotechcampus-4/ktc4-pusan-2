@@ -74,10 +74,25 @@ vi.mock('./catalog', () => {
     tokens: [],
     sources: [],
   };
+  const component = {
+    kind: 'component',
+    id: 'button',
+    title: '버튼',
+    group: '컴포넌트',
+    status: '제품에 있음',
+    summary: '누르는 것',
+    states: [{ id: 'variants', label: '종류', description: '세 종류' }],
+    rules: ['primary는 하나만.'],
+    tokens: [],
+    sources: ['frontend/src/shared/ui/Button.tsx'],
+    file: 'src/ui/Button.tsx',
+    props: [['variant', "'primary' | 'secondary'", '기본 primary']],
+    code: '<Button>시작</Button>',
+  };
   return {
     PRODUCT_ORIGIN: 'http://localhost:3000',
     screens,
-    entries: [foundation, ...screens],
+    entries: [foundation, component, ...screens],
   };
 });
 
@@ -321,4 +336,17 @@ it('기초 항목은 쓰는 규칙을 보이고, 전체 보기는 같은 갈래�
     [...host.querySelectorAll('[data-preview]')].map((el) => el.getAttribute('data-preview')),
   ).toEqual(['colors:all']);
   expect(host.textContent).toContain('전체 기초');
+});
+
+it('컴포넌트는 속성 · 사용 예 · 설계서 파일을 보이고, 사용 예를 복사한다', async () => {
+  const writeText = vi.fn(() => Promise.resolve());
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+  await render('/?screen=button');
+  expect(host.textContent).toContain('컴포넌트 설명');
+  expect(host.textContent).toContain('속성');
+  expect(host.textContent).toContain('설계서 src/ui/Button.tsx');
+  expect(host.querySelector('pre')?.textContent).toBe('<Button>시작</Button>');
+  await click('복사');
+  expect(writeText).toHaveBeenCalledWith('<Button>시작</Button>');
+  expect(host.textContent).toContain('복사했어요.');
 });
