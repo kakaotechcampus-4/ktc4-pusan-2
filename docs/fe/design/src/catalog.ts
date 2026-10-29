@@ -1,0 +1,559 @@
+/**
+ * 화면 이름 · 상태 · 동작 규칙 · 제품과 다른 점을 한 곳에서 정의한다.
+ * DesignGuide가 목록과 설명을, ScreenPreview가 화면 · 상태 ID를 쓴다.
+ * 미리보기를 고치면 상태 · 규칙 · productNote와 audit.md를 함께 맞춘다.
+ */
+import type { GuideScreen, GuideState, ProductLink } from './model';
+
+/** 제품 개발 서버(`frontend/`에서 `npm run dev`). 설계서와 따로 띄운다 */
+export const PRODUCT_ORIGIN = 'http://localhost:3000';
+
+const state = (id: string, label: string, description: string): GuideState => ({
+  id,
+  label,
+  description,
+});
+const base = state('default', '기본', '대표 화면을 표시한다.');
+const next = (label: string, screenId: string, stateId?: string) => ({
+  label,
+  screenId,
+  stateId,
+});
+const link = (label: string, path: string, note?: string): ProductLink => ({ label, path, note });
+
+// 제품 목 데이터(`frontend/src/mocks/`)의 id. 피치 p1 · Take t3이 기본이다
+const PITCH_EDIT = '/pitch/10000000-0000-4000-8000-000000000001/edit';
+const COMPARISON = '/pitch/10000000-0000-4000-8000-000000000001/comparison';
+const REHEARSAL = link('리허설 · 실시간 코칭', '/takes/t3/rehearsal');
+const PROCESSING = link(
+  '분석 대기',
+  '/takes/t4/processing',
+  '몇 초마다 단계가 넘어가고 리포트로 간다',
+);
+const RETRY = link(
+  '업로드 실패 · 재시도',
+  '/takes/t3/retry',
+  '이 브라우저에 기록이 없으면 안내만 뜬다. 콘솔에 mockTakeEnd.fail() 뒤 발표를 끝내면 열린다',
+);
+
+const group = '제품 화면 · 설계서 샘플';
+
+const productScreens: GuideScreen[] = [
+  {
+    id: 'home',
+    title: '홈 · 내 피치',
+    group,
+    route: '/',
+    status: '제품에 있음',
+    summary:
+      '피치 목록과 연습 통계를 보고 새 피치 만들기 · 피치 수정 · Take 기록 · Take 비교로 간다. 데이터는 예시다.',
+    states: [
+      base,
+      state('loading', '불러오는 중', '발표 노트를 가져오는 동안 안내한다.'),
+      state('empty', '첫 피치 전', '통계 · TIP을 빼고 첫 피치 안내만 둔다.'),
+      state('error', '오류', '목록을 가져오지 못했고 다시 불러오기를 안내한다.'),
+    ],
+    rules: [
+      '홈에는 연습 시작 버튼이 없다. 연습은 피치 생성 · 수정의 마지막 단계에서 시작 전 세팅으로 간다.',
+      '피치 제목은 피치 수정, "Take 기록"은 그 피치로 거른 Take 기록을 연다.',
+      'Take 비교 링크는 Take가 둘 이상인 피치에만 있다.',
+      '누적 발표 시간은 길이를 아는 Take만 더하고, 하나도 모르면 —로 둔다.',
+    ],
+    components: ['HomePitchCard', '통계 3칸', 'TIP 줄'],
+    tokens: ['greige', 'panel', 'ink', 'coral-deep', 'line-strong'],
+    sources: [
+      'frontend/src/features/pitch/HomePage.tsx',
+      'frontend/src/features/pitch/HomePitchCard.tsx',
+      'frontend/src/features/pitch/homeFormat.ts',
+    ],
+    productNote:
+      '상단바(AppHeader) · 서비스 리뷰 창 · 사용방법 창 · 바닥글(이용약관 · 개인정보 처리방침)은 미리보기에서 뺐다. "사용방법 살펴보기"는 글자만 둔다.',
+    productLinks: [link('홈 · 내 피치', '/')],
+    next: [
+      next('새 피치 만들기', 'pitch-create', 'empty'),
+      next('피치 수정', 'pitch-create'),
+      next('Take 기록', 'takes'),
+      next('Take 비교', 'comparison'),
+    ],
+  },
+  {
+    id: 'pitch-create',
+    title: '피치 생성 · 수정',
+    group,
+    route: '/pitch/new',
+    status: '제품에 있음',
+    summary: '슬라이드 · 대본 · 발표정보 · 평가기준을 차례로 준비하고 시작 전 세팅으로 간다.',
+    states: [
+      state('default', '슬라이드 올린 뒤', '올린 슬라이드를 확인하는 첫 단계다.'),
+      state('empty', '슬라이드 전', 'PDF를 올리기 전이라 다음 단계가 막힌다.'),
+      state('error', '업로드 오류', '자료를 다시 올릴 수 있도록 안내한다.'),
+      state('preview', '슬라이드 미리보기', '슬라이드를 크게 보는 창을 연다.'),
+    ],
+    rules: [
+      '슬라이드 → 대본 → 발표정보 확인 → 평가기준(선택) 순서로 준비한다.',
+      '"연습 시작 →"은 Take를 만들지 않고 시작 전 세팅으로 간다. 저장한 평가기준이 없으면 "건너뛰기"로 시작한다.',
+      '발표정보를 저장하지 않았으면 연습 시작 대신 발표정보 단계로 돌아가 저장을 요청한다.',
+      'PDF만, 40MB까지 올린다. 파일 이름으로 발표 제목을 채운다.',
+    ],
+    components: ['PaneHeading', 'PaneFooter', 'primaryButton · secondaryButton'],
+    tokens: ['greige', 'cream', 'panel', 'ink', 'coral-deep'],
+    sources: [
+      'frontend/src/features/pitch/create/PitchCreatePage.tsx',
+      'frontend/src/features/pitch/create/lib/draft.ts',
+      'frontend/src/features/pitch/create/steps/SlidePane.tsx',
+      'frontend/src/features/pitch/create/steps/CriteriaPane.tsx',
+      'frontend/src/features/pitch/create/steps/SlidePreviewDialog.tsx',
+    ],
+    productNote:
+      '제품은 왼쪽에 자료 버전 트리(VersionRail)와 치치, 본문 위에 경로 · 발표 정보 줄(InfoBar) · 단계 표시줄(StepBar)을 둔다. 미리보기는 단계 목록 하나로 줄였고 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않는다. "대본 매핑"은 매핑 확인 대신 다음 단계로 넘어간다.',
+    productLinks: [link('새 피치', '/pitch/new'), link('피치 수정', PITCH_EDIT)],
+    next: [next('연습 시작 → 시작 전 세팅', 'prepare-mission'), next('내 피치', 'home')],
+  },
+  {
+    id: 'prepare-mission',
+    title: '시작 전 세팅',
+    group,
+    route: '/pitch/:pitchId/device-check',
+    status: '제품에 있음',
+    summary:
+      '카메라 · 마이크 · 시선 기준을 점검하고 대본 표시를 고른 뒤, 이 화면의 시작 버튼에서 Take를 만들어 리허설을 연다.',
+    states: [
+      state('default', '점검 완료', '카메라 · 마이크 · 시선 기준이 모두 돼 시작할 수 있다.'),
+      state(
+        'no-camera',
+        '카메라 꺼짐',
+        '카메라 영상이 없어 점검을 시작할 수 없고 시작 버튼이 막힌다.',
+      ),
+      state('mic-error', '마이크 입력 없음', '마이크 입력이 확인되지 않아 시작 버튼이 막힌다.'),
+      state(
+        'calibration',
+        '시선 기준 전',
+        '카메라 · 마이크는 됐지만 시선 기준(3점)을 아직 잡지 않아 시작 버튼이 막힌다.',
+      ),
+    ],
+    rules: [
+      'Take는 이 화면의 시작 버튼에서만 만든다. 들어오는 것만으로는 만들지 않는다.',
+      '카메라 영상 · 마이크 입력 · 시선 기준 셋이 모두 돼야 시작한다. 카메라가 없으면 시작할 수 없다.',
+      '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 장치 오류 → 카메라 → 마이크 → 시선 기준이다.',
+      '평소 목소리 읽기는 선택이라 시작을 막지 않는다.',
+      '"실전 모드 · 대본 없이"를 고르면 버튼이 "실전 모드로 시작"으로 바뀌고 실전 무대로 간다.',
+    ],
+    components: [
+      'ScreenFrame 틀',
+      'CheckCard 점검 항목',
+      'MissionCard',
+      'ScriptModeChoice',
+      'Card',
+      'Button',
+    ],
+    tokens: ['greige', 'panel', 'ink', 'stage'],
+    sources: [
+      'frontend/src/features/rehearsal/prepare/DeviceCheckPage.tsx',
+      'frontend/src/features/rehearsal/prepare/ScreenFrame.tsx',
+      'frontend/src/features/rehearsal/prepare/CheckCard.tsx',
+      'frontend/src/features/rehearsal/prepare/ScriptModeChoice.tsx',
+      'frontend/src/features/rehearsal/prepare/prepareStore.ts',
+    ],
+    productNote:
+      '카메라 미리보기 · 시선 기준 전체 화면 · 장치 선택 · 음량 막대 · 평소 목소리 읽기 패널은 그리지 않고 자리만 둔다. 시선 기준의 "누르면 시작"은 기준을 다 잡은 상태로 바로 넘어간다.',
+    productLinks: [link('시작 전 세팅', '/pitch/p1/device-check')],
+    next: [
+      next('Take 시작 → 리허설', 'stage'),
+      next('실전 모드로 시작', 'stage', 'exam'),
+      next('뒤로 · 피치 수정', 'pitch-create'),
+    ],
+  },
+  {
+    id: 'stage',
+    title: '리허설 무대',
+    group,
+    route: '/takes/:takeId/rehearsal',
+    status: '제품에 있음',
+    summary:
+      '슬라이드와 대본을 보며 연습한다. 설계서에서는 카메라 · 마이크를 열거나 음성을 보내지 않는다.',
+    states: [
+      base,
+      state('exam', '실전 모드', '대본 칸 없이 실전처럼 연습한다. 코치가 말하지 않는다.'),
+      state('keyword', '핵심 키워드', '대본 대신 키워드를 보며 연습한다.'),
+      state('confirm-end', '종료 확인', '끝내기 버튼을 한 번 더 눌러야 끝난다.'),
+      state('exam-confirm', '실전 모드 종료 확인', '실전 모드를 유지하며 종료를 확인한다.'),
+      state('keyword-confirm', '키워드 모드 종료 확인', '키워드 모드를 유지하며 종료를 확인한다.'),
+      state('disconnected', '연결 끊김', '말하기 분석 연결이 끊겨도 발표는 계속하도록 안내한다.'),
+    ],
+    rules: [
+      '끝내기 버튼은 마지막 장이 아니면 "중간 종료", 마지막 장이면 "발표 끝내기"다.',
+      '한 번 누르면 "정말 끝낼까요?"로 바뀌고 4초 안에 다시 눌러야 끝난다. 화면을 덮는 창은 띄우지 않는다.',
+      '시작 뒤 말하기 분석 연결이 끊겨도 시계와 발표는 계속된다.',
+      '시선 테두리(data-gaze)와 대본 칸 높이는 계측 조건이라 바꾸지 않는다.',
+      '실전 모드는 대본 칸을 그리지 않는다.',
+    ],
+    components: ['stage.css 무대 배치', '대본 칸(ScriptPane)'],
+    tokens: ['stage', 'stage-panel', 'ink-stage', 'gaze-audience', 'script-highlight'],
+    sources: [
+      'frontend/src/features/rehearsal/stage/RehearsalPage.tsx',
+      'frontend/src/features/rehearsal/stage/ScriptPane.tsx',
+      'frontend/src/features/rehearsal/stage/stage.css',
+    ],
+    productNote:
+      '카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 시작 전 안내(장치 여는 중 · 연결 중 · 마이크 없음)와 코치 상태 표시는 그리지 않는다. 종료 확인은 4초 뒤 풀리지 않고 유지된다. 무대 배치는 설계서의 src/ui/stage.css를 쓴다.',
+    productLinks: [REHEARSAL, link('리허설 · 실전 모드', '/takes/t3/exam')],
+    next: [next('끝내기 → 분석 대기', 'processing-loading'), next('전송 실패 → 재시도', 'retry')],
+  },
+  {
+    id: 'processing-loading',
+    title: '분석 대기',
+    group,
+    route: '/takes/:takeId/processing',
+    status: '제품에 있음',
+    summary: '노을 화면에서 분석 세 단계의 진행을 보여 주고, 끝나면 리포트로 넘어간다.',
+    states: [
+      state('default', '분석 중', '세 단계 중 지금 단계와 치치의 팁을 보여 준다.'),
+      state('loading', '불러오는 중', '연습 기록을 불러오는 동안 안내한다.'),
+      state(
+        'confirm',
+        '대본 확인 대기',
+        '비슷하게 들린 말이 있어 대본 확인으로 가는 버튼을 띄운다.',
+      ),
+      state('failed', '분석 실패', '다시 연습하기와 홈으로를 안내한다.'),
+      state('held', '리뷰 보류', '분석이 멈춰 나중에 홈에서 확인하도록 안내한다.'),
+      state('error', '오류', '연습 기록을 불러오지 못했다.'),
+    ],
+    rules: [
+      '분석이 끝나면 리포트로 자동 이동한다(주소를 바꿔 끼움).',
+      '확인 대기면 "비슷하게 들린 말 확인하기"로 대본 확인을 연다. 답이 없으면 10분 안에 그대로 진행된다.',
+      '분석 실패는 다시 연습하기(시작 전 세팅) · 홈으로, 리뷰 보류는 홈으로만 안내한다.',
+      '화면을 떠나도 분석은 계속되고 홈에서 다시 볼 수 있다.',
+    ],
+    components: ['DuskScreen', 'StatusLine', 'ButtonLink'],
+    tokens: ['dusk', 'dusk-line', 'dusk-ink', 'dusk-accent'],
+    sources: [
+      'frontend/src/features/report/ProcessingPage.tsx',
+      'frontend/src/features/report/DuskScreen.tsx',
+    ],
+    productNote:
+      '팁은 바뀌지 않고 첫 문장에 머문다. 분석 완료 뒤 자동 이동은 아래 "이어지는 화면"의 "분석 완료 → 리포트"로 대신한다.',
+    productLinks: [
+      PROCESSING,
+      link('분석 실패', '/takes/t-failed/processing'),
+      link('리뷰 보류', '/takes/t-held/processing'),
+      link('대본 확인 대기', '/takes/t-confirm/processing', '확인 화면으로 가는 버튼이 뜬다'),
+    ],
+    next: [
+      next('분석 완료 → 리포트', 'report'),
+      next('대본 확인', 'confirm'),
+      next('홈으로', 'home'),
+    ],
+  },
+  {
+    id: 'confirm',
+    title: '대본 확인',
+    group,
+    route: '/takes/:takeId/confirm',
+    status: '제품에 있음',
+    summary: '발표 뒤 인식이 헷갈린 말을 "대본대로 / 들린 대로"로 확인하고 분석 대기로 돌아간다.',
+    states: [
+      base,
+      state('loading', '불러오는 중', '확인할 말을 불러오는 동안 안내한다.'),
+      state('error', '오류', '확인할 말을 불러오지 못해 다시 불러오기와 분석 대기로를 안내한다.'),
+      state('timeout', '시간 초과', '확인 시간이 끝나 답 없이 진행됨을 알린다.'),
+      state('closed', '이미 넘어감', '확인 시간이 끝났거나 이미 답해 확인할 말이 없다.'),
+    ],
+    rules: [
+      '녹음 다시 듣기는 없다. 음성을 저장하지 않으므로 그 말이 든 문장을 보여 준다.',
+      '답은 한 번에 보내고, 보내거나 건너뛰면 분석 대기로 돌아간다.',
+      '고르지 않은 말과 "잘 모르겠어요"는 보류로 남고 내용 점수는 잠정값을 유지한다.',
+      '확인 대기가 시작된 지 10분이 지나면 답 없이 진행된다.',
+    ],
+    components: ['DuskScreen', 'StatusLine', 'Button'],
+    tokens: ['dusk', 'dusk-ink', 'dusk-accent'],
+    sources: [
+      'frontend/src/features/report/ConfirmPage.tsx',
+      'frontend/src/features/report/DuskScreen.tsx',
+    ],
+    productNote: '남은 시간은 줄지 않는 예시 값이다. 확인 항목은 하나만 그린다.',
+    productLinks: [
+      link(
+        '대본 확인',
+        '/takes/t-confirm/confirm',
+        '답하거나 건너뛰면 분석 대기를 거쳐 리포트로 간다',
+      ),
+      link('대본 확인 · 시간 초과', '/takes/t-confirm-timeout/confirm', '8초 뒤 시간이 끝난다'),
+      link('대본 확인 · 이미 넘어감', '/takes/t-confirm-done/confirm'),
+    ],
+    next: [next('분석 대기로', 'processing-loading')],
+  },
+  {
+    id: 'retry',
+    title: '업로드 실패 · 재시도',
+    group,
+    route: '/takes/:takeId/retry',
+    status: '제품에 있음',
+    summary: '종료 기록을 서버로 보내지 못했을 때 이 브라우저에 남은 기록을 다시 보낸다.',
+    states: [
+      state('default', '보내지 못함', '남은 기록을 보여 주고 다시 보내기를 권한다.'),
+      state('checking', '기록 확인 중', '이 브라우저의 발표 기록을 찾는 동안 안내한다.'),
+      state('sending', '다시 보내는 중', '다 보낼 때까지 창을 열어 두도록 안내한다.'),
+      state('empty', '남은 기록 없음', '이 브라우저에 다시 보낼 기록이 없을 때 안내한다.'),
+      state('gone', '서버에서 끝남', '서버가 이미 끝낸 Take라 새 Take 준비로 안내한다.'),
+    ],
+    rules: [
+      '다시 보낼 기록은 이 브라우저(IndexedDB)의 사본을 쓴다. 없으면 안내만 한다.',
+      '서버가 이미 끝낸 Take는 다시 보내지 않고 새 Take 준비로 보낸다.',
+      '"나중에 할게요"는 홈으로 간다. 서버는 몇 분 뒤 그 Take를 끝낸다.',
+    ],
+    components: ['InfoPage 틀', 'Card', 'Stat', 'Button', 'Mascot'],
+    tokens: ['greige', 'panel', 'ink', 'coral-deep'],
+    sources: ['frontend/src/features/rehearsal/retry/RetryPage.tsx'],
+    productNote: '남은 기록 수치(발표 길이 · 시선 기록 · 슬라이드 이동)는 예시 값이다.',
+    productLinks: [RETRY],
+    next: [
+      next('다시 보내기 → 분석 대기', 'processing-loading'),
+      next('새 Take 준비', 'prepare-mission'),
+      next('내 피치로', 'home'),
+    ],
+  },
+  {
+    id: 'report',
+    title: 'Take 리포트',
+    group,
+    route: '/takes/:takeId',
+    status: '제품에 있음',
+    summary: '한 Take의 코칭 노트 · 지난 Take와의 변화 · 측정값 · 다음 미션을 보여 준다.',
+    states: [
+      base,
+      state('loading', '불러오는 중', '연습 기록을 불러오는 동안 안내한다.'),
+      state('error', '오류', '연습 기록을 불러오지 못했다.'),
+      state('no-gaze', '시선 측정 제외', '재지 않은 시선은 0%가 아니라 —로 둔다.'),
+      state('no-review', '코치 총평 실패', '받은 측정값은 그대로 두고 총평이 없음을 알린다.'),
+    ],
+    rules: [
+      '점수(score)는 보여 주지 않는다. 요약과 지난 Take와의 변화를 먼저 보여 준다.',
+      '리뷰가 없거나 실패해도 측정값은 먼저 보여 준다.',
+      '측정하지 않은 값은 —로 두어 측정된 0과 구별한다.',
+      '"Take N 연습하기"는 시작 전 세팅으로 이동만 한다. 여기서 Take를 만들지 않는다.',
+      '분석 실패 · 리뷰 보류 Take는 분석 대기 화면으로 보낸다.',
+    ],
+    components: ['Card', 'Stat', 'Badge', 'ButtonLink'],
+    tokens: ['greige', 'panel', 'ink', 'coral-deep'],
+    sources: [
+      'frontend/src/features/report/ReportPage.tsx',
+      'frontend/src/features/report/ReportFrame.tsx',
+    ],
+    productNote:
+      '상단바(AppHeader)는 뺐다. 제품은 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드를 더 둔다. 미리보기는 코칭 노트 · 지난 Take와 비교 · 측정값 · 시선 비율 · 다음 미션만 그린다.',
+    productLinks: [
+      link('Take 리포트', '/takes/t3'),
+      link('AI 문장 실패', '/takes/t-fallback'),
+      link('리뷰 실패', '/takes/t-review-failed'),
+      link('시선 측정 제외', '/takes/t2'),
+    ],
+    next: [next('Take 3 연습하기', 'prepare-mission'), next('내 피치로', 'home')],
+  },
+  {
+    id: 'takes',
+    title: 'Take 기록',
+    group,
+    route: '/takes',
+    status: '제품에 있음',
+    summary: '모든 피치의 연습 기록을 최신순으로 보고 리포트나 진행 화면으로 간다.',
+    states: [
+      base,
+      state('loading', '불러오는 중', '연습 기록을 가져오는 동안 안내한다.'),
+      state('empty', '기록 없음', '첫 Take를 권하고 내 피치로 안내한다.'),
+      state('error', '오류', '연습 기록을 가져오지 못해 다시 불러오기를 안내한다.'),
+    ],
+    rules: [
+      '피치 선택은 주소(?pitch=)에만 둔다. 홈의 "Take 기록" 링크가 그 피치로 걸러 연다.',
+      '완료 Take는 리포트, 분석 중 Take는 진행 보기로 간다.',
+      '측정하지 않은 응시는 —로 둔다.',
+    ],
+    components: ['InfoPage 틀', 'Card', 'TakeStatusBadge', 'Mascot'],
+    tokens: ['greige', 'panel', 'ink'],
+    sources: [
+      'frontend/src/features/report/TakesPage.tsx',
+      'frontend/src/shared/lib/takeStatus.ts',
+    ],
+    productNote: '상단바(AppHeader)는 뺐다. 상태 배지는 Badge로 대신 그린다.',
+    productLinks: [link('Take 기록', '/takes')],
+    next: [next('리포트', 'report'), next('내 피치로', 'home')],
+  },
+  {
+    id: 'comparison',
+    title: 'Take 비교',
+    group,
+    route: '/pitch/:id/comparison',
+    status: '제품에 있음',
+    summary: '같은 피치의 완료된 Take를 지표별 흐름과 표로 비교한다.',
+    states: [
+      base,
+      state('loading', '불러오는 중', '연습 기록을 가져오는 동안 안내한다.'),
+      state('empty', '완료 Take 하나', '비교하려면 Take가 2개 이상 필요하다고 안내한다.'),
+      state('error', '피치 없음', '지워졌거나 열 수 없는 피치를 안내한다.'),
+    ],
+    rules: [
+      '완료된 Take만 비교한다. 둘 미만이면 한 번 더 연습하자고 안내한다.',
+      '측정하지 않았거나 시선 엔진이 다른 Take는 —로 두고 비교하지 않는다.',
+    ],
+    components: ['InfoPage 틀', 'Card', 'Mascot'],
+    tokens: ['greige', 'panel', 'ink', 'coral-deep'],
+    sources: ['frontend/src/features/report/ComparisonPage.tsx'],
+    productNote:
+      '상단바(AppHeader)는 뺐다. 지표 탭은 청중 응시 하나만 그리고, Take별 기록 표는 줄였다.',
+    productLinks: [
+      link('Take 비교', COMPARISON),
+      link('완료 Take 없음', '/pitch/p2/comparison'),
+      link('찾을 수 없는 피치', '/pitch/00000000-0000-4000-8000-000000000000/comparison'),
+    ],
+    next: [next('Take 기록', 'takes'), next('내 피치로', 'home')],
+  },
+];
+
+/** 옛 시안. 제품 화면과 따로, 검토 당시 모습을 남긴다. 주소 `#/<name>`으로도 열린다 */
+const draftEntries: {
+  name: string;
+  title: string;
+  source: string;
+  product?: string;
+  productNote: string;
+  productLinks?: ProductLink[];
+}[] = [
+  {
+    name: 'components',
+    title: '공용 컴포넌트',
+    source: 'ComponentsDraft.tsx',
+    product: 'frontend/src/shared/ui/',
+    productNote: '설계서 src/ui의 버튼 · 카드 · 배지를 쓴다. 제품 shared/ui에서 복사해 시작했다.',
+  },
+  {
+    name: 'pitch-create',
+    title: '피치 생성 · 시작 흐름',
+    source: 'create/PitchCreateDraft.tsx',
+    product: 'frontend/src/features/pitch/create/PitchCreatePage.tsx',
+    productNote:
+      '옛 목록의 "실제 화면은 아직 발표정보부터 시작" 설명은 지났다. 제품은 슬라이드 → 대본 → 발표정보 확인 → 평가기준 순서다.',
+    productLinks: [link('새 피치', '/pitch/new')],
+  },
+  {
+    name: 'prepare-mission',
+    title: '시작 전 세팅 · 이번 Take 미션',
+    source: 'prepare/PrepareMissionDraft.tsx',
+    product: 'frontend/src/features/rehearsal/prepare/DeviceCheckPage.tsx',
+    productNote:
+      '제품에 구현됐다. 장치 점검 · 시선 기준 · 미션 · 대본 표시를 한 화면에 두고, 카메라 · 마이크 · 시선 기준이 모두 돼야 시작한다.',
+    productLinks: [link('시작 전 세팅', '/pitch/p1/device-check')],
+  },
+  {
+    name: 'stage',
+    title: '리허설 무대 · 스타일',
+    source: 'stage/StageDraft.tsx',
+    product: 'frontend/src/features/rehearsal/stage/RehearsalPage.tsx',
+    productNote:
+      '어두운 무대로 정했다. 제품은 전용 CSS로 슬라이드 · 대본 배치와 시선 테두리를 고정한다. 시안의 배치와 계측 조건을 혼동하지 않는다.',
+    productLinks: [REHEARSAL],
+  },
+  {
+    name: 'processing-loading',
+    title: '분석 대기 · 8비트 로딩',
+    source: 'loading/LoadingDraft.tsx',
+    product: 'frontend/src/features/report/ProcessingPage.tsx',
+    productNote: '제품에 구현됐다. 노을 화면에 분석 실패 · 리뷰 보류 · 대본 확인 대기가 더 있다.',
+    productLinks: [PROCESSING],
+  },
+  {
+    name: 'retry',
+    title: '업로드 실패 · 재시도',
+    source: 'retry/RetryDraft.tsx',
+    product: 'frontend/src/features/rehearsal/retry/RetryPage.tsx',
+    productNote: '제품에 구현됐다. 남은 기록 없음 · 서버에서 이미 끝남을 따로 안내한다.',
+    productLinks: [RETRY],
+  },
+  {
+    name: 'about',
+    title: '분석 방식 설명',
+    source: 'static/StaticDrafts.tsx',
+    product: 'frontend/src/features/info/AboutPage.tsx',
+    productNote: '제품 화면이 있다. 시안의 "구현 전" 표시는 지났고 지금 모습과 다를 수 있다.',
+    productLinks: [link('분석 방식 설명', '/about')],
+  },
+  {
+    name: 'unsupported',
+    title: '미지원 브라우저',
+    source: 'static/StaticDrafts.tsx',
+    product: 'frontend/src/features/info/UnsupportedPage.tsx',
+    productNote: '제품 화면이 있고 브라우저에 맞는 사유 하나만 보인다.',
+    productLinks: [
+      link('미지원 브라우저', '/unsupported', '이 브라우저에 맞는 사유 하나만 보인다'),
+    ],
+  },
+  {
+    name: 'not-found',
+    title: '찾을 수 없음',
+    source: 'static/StaticDrafts.tsx',
+    product: 'frontend/src/features/info/NotFoundPage.tsx',
+    productNote: '제품의 공통 404 화면이 있다.',
+    productLinks: [link('찾을 수 없음', '/없는-주소')],
+  },
+  {
+    name: 'me',
+    title: '마이페이지',
+    source: 'me/MyPageDraft.tsx',
+    product: 'frontend/src/features/auth/MyPage.tsx',
+    productNote: '제품 화면이 있다. 시안은 검토 당시 내용을 남긴다.',
+    productLinks: [link('마이페이지', '/me')],
+  },
+  {
+    name: 'takes',
+    title: 'Take 기록',
+    source: 'takes/TakesDraft.tsx',
+    product: 'frontend/src/features/report/TakesPage.tsx',
+    productNote: '제품 화면이 있다. 불러오기 · 실패 · 빈 목록을 다룬다.',
+    productLinks: [link('Take 기록', '/takes')],
+  },
+  {
+    name: 'comparison',
+    title: 'Take 비교',
+    source: 'comparison/ComparisonDraft.tsx',
+    product: 'frontend/src/features/report/ComparisonPage.tsx',
+    productNote: '제품 화면이 있다. 완료된 Take만 비교한다.',
+    productLinks: [link('Take 비교', COMPARISON)],
+  },
+  {
+    name: 'report',
+    title: 'Take 리포트',
+    source: 'report/ReportDraft.tsx',
+    product: 'frontend/src/features/report/ReportPage.tsx',
+    productNote: '제품 화면이 있다. 시안 안의 응답 형식 질문을 지금 계약으로 읽지 않는다.',
+    productLinks: [link('Take 리포트', '/takes/t3')],
+  },
+  {
+    name: 'processing',
+    title: '분석 대기 · 단계 화면',
+    source: 'processing/ProcessingDraft.tsx',
+    product: 'frontend/src/features/report/ProcessingPage.tsx',
+    productNote:
+      '별도 단계형 시안이다. 제품은 노을 화면에서 분석 단계를 보여 준다. 시안의 통신 방식 질문을 지금 구현으로 읽지 않는다.',
+    productLinks: [PROCESSING],
+  },
+];
+
+const draftScreens = draftEntries.map(
+  ({ name, title, source, product, productNote, productLinks }): GuideScreen => ({
+    id: `draft-${name}`,
+    title,
+    group: '옛 시안',
+    route: `/${name}`,
+    status: '시안만',
+    summary:
+      '이전 검토용 시안이다. 제품 화면과 다를 수 있고, 시안 안의 검토 도구에서 시안 상태를 바꿀 수 있다.',
+    states: [state('default', '시안', '시안 안의 검토 도구에서 추가 상태를 고를 수 있다.')],
+    rules: ['시안 안의 설명은 작성 당시의 검토 내용이며 지금 제품 동작과 다를 수 있다.'],
+    components: ['설계서 src/ui의 공용 UI'],
+    tokens: ['greige', 'panel', 'ink'],
+    sources: [`docs/fe/design/src/drafts/${source}`, ...(product ? [product] : [])],
+    productNote,
+    productLinks,
+    next: [],
+  }),
+);
+
+export const screens: GuideScreen[] = [...productScreens, ...draftScreens];
