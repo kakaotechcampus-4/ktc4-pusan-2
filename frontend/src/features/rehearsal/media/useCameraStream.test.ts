@@ -226,3 +226,70 @@ describe('고른 마이크를 기본 마이크로 바꾸는 조건', () => {
     }
   });
 });
+
+describe('늦게 도착한 스트림 놓기 (#689)', () => {
+  it('기다리는 사이 화면을 떠나면 늦게 온 스트림을 바로 놓는다', async () => {
+    const { stream, audio, video } = fakeStream(true);
+    let resolve!: (s: MediaStream) => void;
+    getUserMedia.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    const opening = media.request();
+    await act(async () => root.unmount());
+    await act(async () => {
+      resolve(stream);
+      expect(await opening).toBeNull();
+    });
+    expect(audio.stop).toHaveBeenCalledOnce();
+    expect(video[0].stop).toHaveBeenCalledOnce();
+  });
+
+  it('요청이 겹치면 앞 요청의 스트림을 놓고 마지막 것만 쓴다', async () => {
+    const first = fakeStream(true);
+    const second = fakeStream(true);
+    const resolvers: ((s: MediaStream) => void)[] = [];
+    getUserMedia.mockImplementation(() => new Promise((r) => resolvers.push(r)));
+    const a = media.request({ videoDeviceId: 'a' });
+    const b = media.request({ videoDeviceId: 'b' });
+    await act(async () => {
+      resolvers[0](first.stream);
+      resolvers[1](second.stream);
+      await Promise.all([a, b]);
+    });
+    expect(first.video[0].stop).toHaveBeenCalledOnce();
+    expect(media.stream).toBe(second.stream);
+    await act(async () => root.unmount());
+    expect(second.video[0].stop).toHaveBeenCalledOnce();
+  });
+
+  it('밀려난 요청이 늦게 실패해도 지금 열린 장치에 오류를 띄우지 않는다', async () => {
+    const second = fakeStream(true);
+    let rejectFirst!: (e: unknown) => void;
+    getUserMedia
+      .mockReturnValueOnce(new Promise((_, reject) => (rejectFirst = reject)))
+      .mockResolvedValueOnce(second.stream);
+    const a = media.request({ videoDeviceId: 'a' });
+    await act(async () => {
+      await media.request({ videoDeviceId: 'b' });
+    });
+    await act(async () => {
+      rejectFirst(failure('NotReadableError'));
+      expect(await a).toBeNull();
+    });
+    expect(media.stream).toBe(second.stream);
+    expect(media.error).toBeNull();
+    expect(media.cameraError).toBeNull();
+  });
+
+  it('발표 화면에서 여는 중에 떠나면 다음 단계 장치를 열지 않는다', async () => {
+    const { stream, video } = fakeStream(true);
+    let resolve!: (s: MediaStream) => void;
+    getUserMedia.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    const opening = openStageDevices(chosen, media);
+    await act(async () => root.unmount());
+    await act(async () => {
+      resolve(stream);
+      expect(await opening).toBeNull();
+    });
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(video[0].stop).toHaveBeenCalledOnce();
+  });
+});

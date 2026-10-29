@@ -50,13 +50,22 @@ export function useCameraStream() {
   const [cameraError, setCameraError] = useState<DeviceError | null>(null);
   const [micError, setMicError] = useState<DeviceError | null>(null);
 
+  // 요청마다 1씩 올립니다. 기다리는 사이 새 요청·언마운트가 오면 늦게 온 스트림은 바로 놓습니다
+  const seqRef = useRef(0);
+  // 언마운트는 번호 대신 이 값으로 봅니다. StrictMode 의 가짜 언마운트가 번호를 올리면 자동으로 연 스트림까지 버립니다
+  const mountedRef = useRef(true);
+
   const stop = useCallback(() => {
     if (streamRef.current) release(streamRef.current);
     streamRef.current = null;
     setStream(null);
   }, []);
 
-  const adopt = useCallback((s: MediaStream) => {
+  const adopt = useCallback((s: MediaStream, seq: number) => {
+    if (seq !== seqRef.current || !mountedRef.current) {
+      s.getTracks().forEach((t) => t.stop());
+      return null;
+    }
     liveStreams.add(s);
     streamRef.current = s;
     setStream(s);
@@ -65,7 +74,10 @@ export function useCameraStream() {
 
   const request = useCallback(
     async (choice: DeviceChoice = {}, options: DeviceRequestOptions = {}) => {
+      // 떠난 화면은 열지 않습니다. 발표 화면은 null 을 실패로 보고 다음 단계로 또 엽니다 (openDevices.ts)
+      if (!mountedRef.current) return null;
       stop();
+      const seq = ++seqRef.current;
       setError(null);
       setCameraError(null);
       setMicError(null);
@@ -88,8 +100,10 @@ export function useCameraStream() {
           // 기본 카메라와 고른 마이크를 함께 못 찾았을 때만 기본 마이크로 다시 엽니다.
           return navigator.mediaDevices.getUserMedia({ ...constraints, audio: audioConstraints() });
         });
-        return adopt(s);
+        return adopt(s, seq);
       } catch (e) {
+        // 밀려난 요청이 늦게 실패해도 지금 열린 장치의 오류로 바꾸지 않습니다
+        if (seq !== seqRef.current) return null;
         setError(toDeviceError(e));
         // 마이크 오류인지는 마이크만 다시 열어 확인합니다.
         setCameraError(toDeviceError(e));
@@ -106,7 +120,9 @@ export function useCameraStream() {
    */
   const requestMic = useCallback(
     async (audioDeviceId?: string) => {
+      if (!mountedRef.current) return null;
       stop();
+      const seq = ++seqRef.current;
       setMicError(null);
       try {
         const s = await navigator.mediaDevices
@@ -115,8 +131,9 @@ export function useCameraStream() {
             if (!audioDeviceId || toDeviceError(e) !== 'NOT_FOUND') throw e;
             return navigator.mediaDevices.getUserMedia({ audio: audioConstraints() });
           });
-        return adopt(s);
+        return adopt(s, seq);
       } catch (e) {
+        if (seq !== seqRef.current) return null;
         setMicError(toDeviceError(e));
         return null;
       }
@@ -125,7 +142,13 @@ export function useCameraStream() {
   );
 
   // 언마운트 시 반드시 놓아줍니다. 안 그러면 카메라 불이 안 꺼집니다.
-  useEffect(() => stop, [stop]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      stop();
+    };
+  }, [stop]);
 
   // 트랙 종료도 봅니다. devicechange 없이 마이크가 끝나도 시작 덮개를 갱신해야 합니다.
   useEffect(() => {
