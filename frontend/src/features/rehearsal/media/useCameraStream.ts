@@ -74,6 +74,8 @@ export function useCameraStream() {
 
   const request = useCallback(
     async (choice: DeviceChoice = {}, options: DeviceRequestOptions = {}) => {
+      // 떠난 화면은 열지 않습니다. 발표 화면은 null 을 실패로 보고 다음 단계로 또 엽니다 (openDevices.ts)
+      if (!mountedRef.current) return null;
       stop();
       const seq = ++seqRef.current;
       setError(null);
@@ -100,6 +102,8 @@ export function useCameraStream() {
         });
         return adopt(s, seq);
       } catch (e) {
+        // 밀려난 요청이 늦게 실패해도 지금 열린 장치의 오류로 바꾸지 않습니다
+        if (seq !== seqRef.current) return null;
         setError(toDeviceError(e));
         // 마이크 오류인지는 마이크만 다시 열어 확인합니다.
         setCameraError(toDeviceError(e));
@@ -116,6 +120,7 @@ export function useCameraStream() {
    */
   const requestMic = useCallback(
     async (audioDeviceId?: string) => {
+      if (!mountedRef.current) return null;
       stop();
       const seq = ++seqRef.current;
       setMicError(null);
@@ -128,6 +133,7 @@ export function useCameraStream() {
           });
         return adopt(s, seq);
       } catch (e) {
+        if (seq !== seqRef.current) return null;
         setMicError(toDeviceError(e));
         return null;
       }
