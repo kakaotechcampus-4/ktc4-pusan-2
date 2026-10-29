@@ -62,6 +62,7 @@ class AdminUserRow(BaseModel):
 class AdminTakeRow(BaseModel):
     id: uuid.UUID
     take_number: int
+    pitch_id: uuid.UUID
     pitch_title: str
     user_name: str
     user_email: str
@@ -102,6 +103,50 @@ class AdminTakeLive(BaseModel):
     status: str
     segments: list[AdminLiveSegment]
     seconds: list[AdminLiveSecond]
+
+
+class AdminScriptDetail(BaseModel):
+    version: int
+    created_at: datetime
+    parse_status: str
+    parse_error: str | None
+    parse_requested_at: datetime
+    rubric_status: str | None
+    rubric_requested_at: datetime | None
+    rubric_retry_used: bool
+    slide_count: int
+    rubric_slide_count: int
+    missing_rubric_slides: list[int]
+
+
+class AdminStandardAnalysis(BaseModel):
+    version: int
+    criteria_count: int
+    script_used: bool | None = None
+    targets: Any | None = None
+    excluded: Any | None = None
+    values: Any | None = None
+    meta: Any | None = None
+    analyzed_at: datetime | None = None
+
+
+class AdminCoachingPlan(BaseModel):
+    requested_at: datetime
+    source_take_id: uuid.UUID | None
+    script_version_id: uuid.UUID | None
+    target_ms: int | None
+    min_ms: int | None
+    max_ms: int | None
+    fallback_reason: str | None
+    model: str | None
+    payload: Any
+    meta: Any
+
+
+class AdminPitchAI(BaseModel):
+    scripts: list[AdminScriptDetail]
+    standards: list[AdminStandardAnalysis]
+    coaching_plans: list[AdminCoachingPlan]
 
 
 class AdminFeedbackRow(BaseModel):

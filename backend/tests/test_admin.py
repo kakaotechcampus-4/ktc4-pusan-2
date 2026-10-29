@@ -9,7 +9,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
+from pitch_coach_backend.module.pitch.entity import (
+    CoachingPlan,
+    Pitch,
+    PresentationVersion,
+    ScriptSlide,
+    ScriptVersion,
+    StandardAnalyses,
+    Standards,
+)
 from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond, TakeTranscriptSegment
 from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
 from pitch_coach_backend.module.user.entity import User
@@ -357,10 +365,83 @@ def test_takes_carry_analysis_state(client: TestClient, db_session: Session) -> 
 
     [row] = client.get("/admin/api/takes", auth=ADMIN).json()
 
+    assert row["pitch_id"] == str(pitch.id)
     assert row["analysis_stage"] == "REVIEWING"
     assert datetime.fromisoformat(row["analysis_stage_at"]) == stage_at
     assert row["review_status"] == "FAILED"
     assert row["analysis_hold_reason"] is None
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_pitch_ai_shows_scripts_standards_and_plans(
+    client: TestClient, db_session: Session
+) -> None:
+    pitch = _pitch(db_session, _user(db_session, "앨리스"))
+    script = ScriptVersion(
+        pitch_id=pitch.id,
+        version=2,
+        content="대본",
+        parse_status="DONE",
+        rubric_status="PARTIAL",
+        rubric_retry_used=True,
+    )
+    db_session.add(script)
+    db_session.flush()
+    db_session.add_all([
+        ScriptSlide(script_version_id=script.id, slide_number=1, full_content="일", rubric={}),
+        ScriptSlide(script_version_id=script.id, slide_number=2, full_content="이"),
+        ScriptSlide(script_version_id=script.id, slide_number=3, full_content="삼"),
+        Standards(pitch_id=pitch.id, version=1, position=1, title="천천히"),
+        Standards(pitch_id=pitch.id, version=1, position=2, title="청중 보기"),
+        Standards(pitch_id=pitch.id, version=2, position=1, title="또박또박"),
+        StandardAnalyses(
+            pitch_id=pitch.id,
+            version=1,
+            targets=[],
+            excluded=[],
+            script_used=False,
+            meta={"model": "m"},
+        ),
+    ])
+    requested = datetime(2026, 10, 22, 1, 0, tzinfo=UTC)
+    db_session.add_all([
+        CoachingPlan(
+            pitch_id=pitch.id,
+            requested_at=requested,
+            payload={"coaching_plan": {}, "fallback_reason": None},
+            meta={"model": "planner-model"},
+        ),
+        CoachingPlan(
+            pitch_id=pitch.id,
+            requested_at=requested + timedelta(minutes=1),
+            payload={"coaching_plan": {}, "fallback_reason": "LLM_TIMEOUT"},
+            meta={"model": "fallback"},
+        ),
+    ])
+    db_session.flush()
+
+    body = client.get(f"/admin/api/pitches/{pitch.id}/ai", auth=ADMIN).json()
+
+    assert [s["version"] for s in body["scripts"]] == [2, 1]
+    latest = body["scripts"][0]
+    assert latest["rubric_status"] == "PARTIAL"
+    assert (latest["slide_count"], latest["rubric_slide_count"]) == (3, 1)
+    assert latest["missing_rubric_slides"] == [2, 3]
+    assert body["scripts"][1]["missing_rubric_slides"] == []
+    assert [(s["version"], s["criteria_count"]) for s in body["standards"]] == [(2, 1), (1, 2)]
+    assert body["standards"][0]["analyzed_at"] is None
+    assert body["standards"][1]["script_used"] is False
+    assert [(p["fallback_reason"], p["model"]) for p in body["coaching_plans"]] == [
+        ("LLM_TIMEOUT", "fallback"),
+        (None, "planner-model"),
+    ]
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_pitch_ai_of_unknown_pitch_is_not_found(client: TestClient) -> None:
+    response = client.get(f"/admin/api/pitches/{uuid.uuid4()}/ai", auth=ADMIN)
+
+    assert response.status_code == 404
 
 
 @pytest.mark.usefixtures("admin_account")

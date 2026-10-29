@@ -32,6 +32,8 @@ const LABELS = {
   DONE: '완료',
   SKIPPED: '건너뜀',
   COVERAGE_RESCORE_FAILED: '병합 재채점 실패',
+  PENDING: '진행 중',
+  PARTIAL: '일부 실패',
 };
 
 const label = (value) => (value == null ? '—' : LABELS[value] ?? value);
@@ -176,7 +178,7 @@ const TAKE_COLUMNS = [
   ['ID', takeIdCell],
   ['만든 시각', (t) => dateTime(t.created_at)],
   ['사용자', (t) => `${t.user_name} (${t.user_email})`],
-  ['발표', (t) => t.pitch_title],
+  ['발표', pitchButton],
   ['회차', (t) => t.take_number, true],
   ['모드', (t) => label(t.mode)],
   ['상태', (t) => statusBadge(t.status)],
@@ -468,6 +470,84 @@ function renderLive(status) {
 }
 
 document.getElementById('live-close').addEventListener('click', closeLive);
+
+const pitchAI = { request: 0 };
+
+const folded = (name, value) =>
+  value == null ? '—' : el('details', {}, [el('summary', { textContent: name }), record(value)]);
+const yesNo = (value) => (value == null ? '—' : value ? '예' : '아니오');
+const msDuration = (ms) => (ms == null ? '—' : duration(ms / 1000));
+
+const SCRIPT_COLUMNS = [
+  ['버전', (s) => `v${s.version}`],
+  ['만든 시각', (s) => dateTime(s.created_at)],
+  ['파싱', (s) => (s.parse_error ? `${label(s.parse_status)} (${s.parse_error})` : label(s.parse_status))],
+  ['파싱 요청', (s) => dateTime(s.parse_requested_at)],
+  ['장별 기준', (s) => label(s.rubric_status)],
+  ['기준 있는 장', (s) => `${s.rubric_slide_count} / ${s.slide_count}`, true],
+  ['빠진 장', (s) => (s.missing_rubric_slides.length ? s.missing_rubric_slides.join(', ') : '—')],
+  ['재시도 씀', (s) => yesNo(s.rubric_retry_used)],
+  ['기준 요청', (s) => dateTime(s.rubric_requested_at)],
+];
+
+const STANDARD_COLUMNS = [
+  ['버전', (s) => `v${s.version}`],
+  ['표시 기준', (s) => s.criteria_count, true],
+  ['분석', (s) => (s.analyzed_at ? dateTime(s.analyzed_at) : '분석 없음')],
+  ['대본 사용', (s) => yesNo(s.script_used)],
+  ['targets', (s) => folded('targets', s.targets)],
+  ['excluded', (s) => folded('excluded', s.excluded)],
+  ['values', (s) => folded('values', s.values)],
+  ['meta', (s) => folded('meta', s.meta)],
+];
+
+const PLAN_COLUMNS = [
+  ['요청 시각', (p) => dateTime(p.requested_at)],
+  ['결과', (p) => p.fallback_reason ?? '정상'],
+  ['모델', (p) => p.model ?? '—'],
+  ['바탕 Take', (p) => (p.source_take_id ? shortId(p.source_take_id) : '—')],
+  ['대본 버전 ID', (p) => (p.script_version_id ? shortId(p.script_version_id) : '—')],
+  ['목표', (p) => msDuration(p.target_ms), true],
+  ['최소', (p) => msDuration(p.min_ms), true],
+  ['최대', (p) => msDuration(p.max_ms), true],
+  ['payload', (p) => folded('payload', p.payload)],
+  ['meta', (p) => folded('meta', p.meta)],
+];
+
+function pitchButton(take) {
+  const button = el('button', { type: 'button', className: 'link', textContent: take.pitch_title });
+  button.addEventListener('click', () => openPitchAI(take));
+  return button;
+}
+
+async function openPitchAI(take) {
+  const request = ++pitchAI.request;
+  const panel = document.getElementById('pitch-ai');
+  const error = document.getElementById('pitch-ai-error');
+  document.getElementById('pitch-ai-title').textContent = `${take.user_name} · ${take.pitch_title}`;
+  error.hidden = true;
+  for (const id of ['pitch-ai-scripts', 'pitch-ai-standards', 'pitch-ai-plans']) {
+    document.getElementById(id).replaceChildren();
+  }
+  panel.hidden = false;
+  panel.scrollIntoView({ behavior: 'smooth' });
+  try {
+    const data = await getJSON(`api/pitches/${take.pitch_id}/ai`);
+    if (request !== pitchAI.request) return;
+    renderTable('pitch-ai-scripts', SCRIPT_COLUMNS, data.scripts, '대본이 없습니다');
+    renderTable('pitch-ai-standards', STANDARD_COLUMNS, data.standards, '평가 기준이 없습니다');
+    renderTable('pitch-ai-plans', PLAN_COLUMNS, data.coaching_plans, '코칭 계획이 없습니다');
+  } catch (failure) {
+    if (request !== pitchAI.request) return;
+    error.textContent = `불러오지 못했습니다 — ${failure.message}`;
+    error.hidden = false;
+  }
+}
+
+document.getElementById('pitch-ai-close').addEventListener('click', () => {
+  pitchAI.request += 1;
+  document.getElementById('pitch-ai').hidden = true;
+});
 
 // ---------- 불러오기 ----------
 

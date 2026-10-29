@@ -20,10 +20,18 @@ from sqlalchemy import (
     select,
     union_all,
 )
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.module.pitch.entity import Pitch
+from pitch_coach_backend.module.pitch.entity import (
+    CoachingPlan,
+    Pitch,
+    ScriptSlide,
+    ScriptVersion,
+    StandardAnalyses,
+    Standards,
+)
 from pitch_coach_backend.module.service_feedback.entity import ServiceFeedback, UserSuggestion
 from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond, TakeTranscriptSegment
 from pitch_coach_backend.module.take.repository import last_active_at
@@ -209,11 +217,93 @@ def live_seconds(
     return _fetch(db, stmt.order_by(TakeMetricSecond.t_ms).limit(limit))
 
 
+def pitch_exists(db: Session, pitch_id: uuid.UUID) -> bool:
+    return db.scalar(select(Pitch.id).where(Pitch.id == pitch_id)) is not None
+
+
+def script_versions(db: Session, pitch_id: uuid.UUID) -> list[dict[str, Any]]:
+    slides = (
+        select(
+            ScriptSlide.script_version_id,
+            func.count().label("slide_count"),
+            func.count(ScriptSlide.rubric).label("rubric_slide_count"),
+            func.array_agg(aggregate_order_by(ScriptSlide.slide_number, ScriptSlide.slide_number))
+            .filter(ScriptSlide.rubric.is_(None))
+            .label("missing_rubric_slides"),
+        )
+        .group_by(ScriptSlide.script_version_id)
+        .subquery()
+    )
+    stmt = (
+        select(
+            ScriptVersion.version,
+            ScriptVersion.created_at,
+            ScriptVersion.parse_status,
+            ScriptVersion.parse_error,
+            ScriptVersion.parse_requested_at,
+            ScriptVersion.rubric_status,
+            ScriptVersion.rubric_requested_at,
+            ScriptVersion.rubric_retry_used,
+            func.coalesce(slides.c.slide_count, 0).label("slide_count"),
+            func.coalesce(slides.c.rubric_slide_count, 0).label("rubric_slide_count"),
+            slides.c.missing_rubric_slides,
+        )
+        .outerjoin(slides, slides.c.script_version_id == ScriptVersion.id)
+        .where(ScriptVersion.pitch_id == pitch_id)
+        .order_by(ScriptVersion.version.desc())
+    )
+    return _fetch(db, stmt)
+
+
+def standard_criteria_counts(db: Session, pitch_id: uuid.UUID) -> dict[int, int]:
+    rows = db.execute(
+        select(Standards.version, func.count())
+        .where(Standards.pitch_id == pitch_id)
+        .group_by(Standards.version)
+    ).all()
+    return {version: count for version, count in rows}
+
+
+def standard_analyses(db: Session, pitch_id: uuid.UUID) -> list[dict[str, Any]]:
+    stmt = select(
+        StandardAnalyses.version,
+        StandardAnalyses.script_used,
+        StandardAnalyses.targets,
+        StandardAnalyses.excluded,
+        StandardAnalyses.values,
+        StandardAnalyses.meta,
+        StandardAnalyses.updated_at.label("analyzed_at"),
+    ).where(StandardAnalyses.pitch_id == pitch_id)
+    return _fetch(db, stmt)
+
+
+def coaching_plans(db: Session, pitch_id: uuid.UUID, limit: int) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            CoachingPlan.requested_at,
+            CoachingPlan.source_take_id,
+            CoachingPlan.script_version_id,
+            CoachingPlan.target_ms,
+            CoachingPlan.min_ms,
+            CoachingPlan.max_ms,
+            CoachingPlan.payload["fallback_reason"].astext.label("fallback_reason"),
+            CoachingPlan.meta["model"].astext.label("model"),
+            CoachingPlan.payload,
+            CoachingPlan.meta,
+        )
+        .where(CoachingPlan.pitch_id == pitch_id)
+        .order_by(CoachingPlan.requested_at.desc())
+        .limit(limit)
+    )
+    return _fetch(db, stmt)
+
+
 def _take_rows() -> Select[Any]:
     return (
         select(
             Take.id,
             Take.take_number,
+            Take.pitch_id,
             Pitch.title.label("pitch_title"),
             User.name.label("user_name"),
             User.email.label("user_email"),

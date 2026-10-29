@@ -20,6 +20,7 @@ from pitch_coach_backend.module.admin.dto import (
     AdminFeedbackGroupRow,
     AdminFeedbackRow,
     AdminPage,
+    AdminPitchAI,
     AdminRatingSummary,
     AdminSuggestionRow,
     AdminTakeLive,
@@ -100,6 +101,11 @@ def take_live(
     after_t_ms: Annotated[int | None, Query(ge=0)] = None,
 ) -> AdminTakeLive:
     return service.get_take_live(db, take_id, after_seq=after_seq, after_t_ms=after_t_ms)
+
+
+@router.get("/api/pitches/{pitch_id}/ai")
+def pitch_ai(pitch_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> AdminPitchAI:
+    return service.get_pitch_ai(db, pitch_id)
 
 
 @router.get("/api/service-feedbacks", response_model=AdminPage[AdminFeedbackRow])

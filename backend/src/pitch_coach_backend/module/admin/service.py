@@ -7,13 +7,17 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.admin import repository
 from pitch_coach_backend.module.admin.dto import (
+    AdminCoachingPlan,
     AdminFeedbackGroupRow,
     AdminFeedbackRow,
     AdminGroupSuggestion,
     AdminLiveSecond,
     AdminLiveSegment,
     AdminPage,
+    AdminPitchAI,
     AdminRatingSummary,
+    AdminScriptDetail,
+    AdminStandardAnalysis,
     AdminSuggestionRow,
     AdminTakeLive,
     AdminTakeRow,
@@ -25,6 +29,7 @@ from pitch_coach_backend.module.admin.dto import (
     UserStats,
 )
 from pitch_coach_backend.module.admin.repository import KST
+from pitch_coach_backend.module.pitch.exception import NonExistentPitch
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.repository import CONFIRMATION_WAIT
@@ -48,6 +53,7 @@ USER_ENDED = "USER"
 # 사용자별 평점 · 의견에서 한 행에 미리 싣는 의견 수. 마이페이지 의견은 수에 제한이 없다
 GROUP_SUGGESTION_PREVIEW = 3
 LIVE_LIMIT = 500
+PLAN_LIMIT = 20
 
 
 def get_stats(db: Session, now: datetime | None = None) -> StatsResponse:
@@ -127,6 +133,30 @@ def get_take_live(
         status=status,
         segments=[AdminLiveSegment(**row) for row in segments],
         seconds=[AdminLiveSecond(**row) for row in seconds],
+    )
+
+
+def get_pitch_ai(db: Session, pitch_id: uuid.UUID) -> AdminPitchAI:
+    if not repository.pitch_exists(db, pitch_id):
+        raise NonExistentPitch()
+    scripts = [
+        AdminScriptDetail(**{**row, "missing_rubric_slides": row["missing_rubric_slides"] or []})
+        for row in repository.script_versions(db, pitch_id)
+    ]
+    counts = repository.standard_criteria_counts(db, pitch_id)
+    analyses = {row["version"]: row for row in repository.standard_analyses(db, pitch_id)}
+    standards = [
+        AdminStandardAnalysis(
+            **analyses.get(version, {"version": version}),
+            criteria_count=counts.get(version, 0),
+        )
+        for version in sorted(counts.keys() | analyses.keys(), reverse=True)
+    ]
+    plans = repository.coaching_plans(db, pitch_id, PLAN_LIMIT)
+    return AdminPitchAI(
+        scripts=scripts,
+        standards=standards,
+        coaching_plans=[AdminCoachingPlan(**row) for row in plans],
     )
 
 
