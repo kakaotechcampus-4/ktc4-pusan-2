@@ -12,11 +12,11 @@ from pitch_coach_backend.module.pitch.adapter.presentation_file import (
     render_first_page,
 )
 from pitch_coach_backend.module.pitch.adapter.storage import (
+    delete,
     generate_presigned_url,
     upload,
     upload_bytes,
 )
-from pitch_coach_backend.module.pitch.adapter.storage import delete
 from pitch_coach_backend.module.pitch.dto import PresentationDetailDTO, UploadPresentationResultDTO
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
 from pitch_coach_backend.module.pitch.exception import (

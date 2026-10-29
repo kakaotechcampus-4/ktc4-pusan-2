@@ -14,6 +14,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.adapter.presentation_file import (
+    THUMBNAIL_HEIGHT,
     THUMBNAIL_WIDTH,
     render_first_page,
 )
@@ -51,7 +52,8 @@ def test_render_first_page_returns_webp_thumbnail(make_pdf: Callable[[int], byte
     image = Image.open(BytesIO(thumbnail))
     assert image.format == "WEBP"
     assert image.mode == "RGB"
-    assert image.width == THUMBNAIL_WIDTH
+    assert image.width <= THUMBNAIL_WIDTH
+    assert image.height == THUMBNAIL_HEIGHT
     assert file.tell() == 0
 
 

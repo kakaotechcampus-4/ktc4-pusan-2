@@ -30,7 +30,7 @@ _page_count_slots = threading.BoundedSemaphore(PAGE_COUNT_SLOTS)
 TIMEOUT_SECONDS = 5.0
 
 THUMBNAIL_WIDTH = 480
-THUMNAIL_HEIGHT = 270
+THUMBNAIL_HEIGHT = 270
 
 _PDFIUM_LOCK = threading.Lock()
 
@@ -107,7 +107,7 @@ def render_first_page(file: BinaryIO) -> bytes | None:
         pdf = pdfium.PdfDocument(file)
         try:
             page = pdf[0]
-            scale = min(THUMBNAIL_WIDTH / page.get_width(), THUMNAIL_HEIGHT / page.get_height())
+            scale = min(THUMBNAIL_WIDTH / page.get_width(), THUMBNAIL_HEIGHT / page.get_height())
             image = page.render(scale=scale).to_pil()
         finally:
             pdf.close()
