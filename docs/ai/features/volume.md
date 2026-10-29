@@ -83,7 +83,7 @@ ai/research/volume-analysis/
 ├─ tools/                                   녹음 → 1초 기록 만들기(FE와 같은 규칙) · 평가 스크립트 (아직 없음)
 └─ reports/results/                         평가 결과 JSON (아직 없음)
 ```
-폴더 이름은 `volume-analysis`다. 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역 `ai/research/coach-agent/src/coach_lab/judges/volume.py`에 있었고, 코치 재생 · 실험은 아직 이 대역을 쓴다(11절 '옮긴 뒤 같은 결과인지 확인' 2). FE 측정 코드는 `frontend/src/features/rehearsal/media/`(`loudness.ts` · `level.ts`)에 있고 FE가 관리한다.
+폴더 이름은 `volume-analysis`다. 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역 `ai/research/coach-agent/src/coach_lab/judges/volume.py`에 있었다. 코치 재생 · 실험은 2026-10-29부터 대역 대신 서비스의 이 모듈을 쓰고(`coach_lab.judges.real_judges`, 11절 '옮긴 뒤 같은 결과인지 확인' 2), 대역은 대역 자체의 테스트(`lab_judges`)와 채점 정답이 쓰는 기준값(`coach_lab/truth.py`, 작음 · 긴 침묵 기준은 이 모듈과 같은 값)에만 남는다. FE 측정 코드는 `frontend/src/features/rehearsal/media/`(`loudness.ts` · `level.ts`)에 있고 FE가 관리한다.
 
 ## 4-2. 진입 함수
 | 함수 | 하는 일 | 부르는 쪽 |
@@ -282,11 +282,11 @@ uv sync
 | 평가 (`ai/research/volume-analysis`에서, 아직 없음) | `uv run python tools/evaluate.py --out reports/results/volume_eval.json` | `VOLUME_LOW` 정밀도 · 재현율, 침묵 감지 지연 (13절) |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 
-- 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역에 있다. 대역 테스트(`tests/lab/test_judge_volume.py`와 코치 쪽 연결 `tests/unit/test_judges.py`의 기준 음량 · 실패 시험)는 말 속도와 같은 명령으로 돈다(`pace.md` 10절).
+- 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역에 있었다. 대역 테스트(`tests/lab/test_judge_volume.py`)는 말 속도와 같은 명령으로 돈다(`pace.md` 10절). 코치 쪽 연결의 기준 음량 · 실패 시험은 서비스 `tests/unit/coach/test_judges.py`다.
 - 테스트가 볼 것: 작음 · 기준과 같을 때, 기준 음량 없음 · 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기와 창 안에 끊김이 없을 때, 긴 침묵을 한 번만 셈, 같은 1초 두 번(먼저 온 것), `baseline` 표본 부족 · 충분, 마지막 조각(1000 미만).
 
 # 11. 배포
-**어디서 도는가**: 판정 모듈(`examples/` 포함)은 AI 서비스의 `features/volume/`에 있다(연구 폴더 `src/volume/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 모두 `tests/unit/volume/`로 옮겼다. 예시를 연구 폴더 경로로 찾던 `test_examples.py`는 패키지 위치로 찾게 고쳐 옮겼다. 연구 폴더에는 연구 도구를 쓰는 테스트가 없어 남긴 테스트가 없다. 자기 HTTP 엔드포인트는 없고, 라우터가 `Judges` 묶음에 `judge` · `summarize` · `criteria` · `speaking_levels` · `baseline`을 넣어 코치에 넘긴다(`architecture.md` 8절). 의존성은 pydantic 하나다. 코치 앱 연결(`evaluate` · `finalize`)은 이어지는 작업이다(`coach-agent.md` 11절).
+**어디서 도는가**: 판정 모듈(`examples/` 포함)은 AI 서비스의 `features/volume/`에 있다(연구 폴더 `src/volume/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 모두 `tests/unit/volume/`로 옮겼다. 예시를 연구 폴더 경로로 찾던 `test_examples.py`는 패키지 위치로 찾게 고쳐 옮겼다. 연구 폴더에는 연구 도구를 쓰는 테스트가 없어 남긴 테스트가 없다. 자기 HTTP 엔드포인트는 없고, 코치 라우터(`api/coach.py`)가 앱을 불러올 때 만드는 `Judges` 묶음(`JUDGES`)에 `judge` · `summarize` · `criteria` · `speaking_levels` · `baseline`을 넣어 `/coach/evaluate` · `/coach/finalize`에서 코치에 넘긴다(`architecture.md` 8절, `coach-agent.md` 11절). 코치 연구 폴더의 재생 · 실험(`real_judges()`)도 이 모듈을 쓴다. 의존성은 pydantic 하나다.
 
 **FE와 함께 할 것**: 음량 1초 기록 만들기(에너지 차분 · 한 기준의 '말하는 중' · `audio_live`), WS `metrics.voice` 전송, 발표 전 점검의 평소 목소리 측정. BE는 `calibrations.base_level_db` 새 칸과 `take_metric_seconds.voice`를 마이그레이션한다.
 
@@ -294,7 +294,7 @@ uv sync
 
 **옮긴 뒤 같은 결과인지 확인**
 1. 서비스: 옮긴 `tests/unit/volume/`가 (예시 경로를 고친 뒤) 통과한다. 옮기기 전후 `examples/`의 `judge` · `speaking_levels` · `baseline` · `summarize` · `criteria` 출력과 `criteria_version`(`volume-1.1+19f685ae6d67`)이 바이트까지 같다(2026-10-28).
-2. 코치 연구 폴더: 대역 대신 이 모듈로 재생 · 실험을 다시 돌리고 달라진 판정(에너지 Leq 등)을 README에 기록한다.
+2. 코치 연구 폴더: 대역 대신 이 모듈로 재생 · 실험을 다시 돌리고 달라진 판정(에너지 Leq 등)을 README에 기록한다. 재생 16/16 통과, 바뀐 시나리오는 `16_noisy_sensors` 하나다(작은 목소리 구간이 2초 늦게 잡힘). 채점에서는 시작 오차가 조금 늘고(clean 1.27 → 1.36초 · noisy 2.25 → 2.31초) 구간 IoU · noisy 효과 판정 정확도가 조금 낮아졌으며(0.786 → 0.781 · 0.943 → 0.938), 재현율 · 정밀도 · F1과 복구 실험은 같다(2026-10-29, #676, 코치 연구 폴더 README 7절).
 
 **증상별 원인**
 

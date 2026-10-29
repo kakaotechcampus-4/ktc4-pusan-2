@@ -9,11 +9,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.connection import session
 from pitch_coach_backend.realtime.dto import MetricsMessage
 from pitch_coach_backend.realtime.stream import client as client_module
-from pitch_coach_backend.realtime.stream import registry, runtime, state
+from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
@@ -30,9 +31,11 @@ from tests.realtime.conftest import (
     _wait_for,
     _wait_until_ok,
     closed_with,
+    db_down,
     frame,
     handshake,
     metrics,
+    row,
     stop,
     transcript,
     use,
@@ -851,3 +854,64 @@ async def test_unexpected_exception_in_session_reconnects_instead_of_dying(
     stream.request_stop()
     assert await stream.wait_closed(timeout=2.0)
     assert [len(a) for a in adapter.sessions[1].audio] == [3200]
+
+
+# ── 앱을 내릴 때 ──────────────────────────────────────────────────────
+
+
+def _segment(seq: int) -> TranscriptSegmentCreateDTO:
+    return TranscriptSegmentCreateDTO(
+        seq=seq,
+        stt_session_no=1,
+        start_ms=seq * 1000,
+        end_ms=seq * 1000 + 500,
+        transcript="하나",
+        words=[],
+        confidence=0.9,
+        speech_final=True,
+    )
+
+
+@pytest.mark.anyio
+async def test_shutdown_closes_slow_streams_together_then_saves_records(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """컨테이너는 정해 둔 시간이 지나면 프로세스를 강제로 끝낸다. CloseStream 에 답하지 않는
+    스트림을 하나씩 기다리면 그 시간이 스트림 수만큼 늘어 기록을 저장하기 전에 잘린다. 스트림은
+    같이 닫고, DB 가 느려도 남은 1초 원자료와 확정 전사를 같이 저장해 상한 안에 끝낸다."""
+    monkeypatch.setattr(registry, "SHUTDOWN_CLOSE_WAIT_SEC", 0.2)
+    monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.2)
+    monkeypatch.setattr(finish, "FLUSH_METRICS_TIMEOUT_SEC", 0.4)
+    # 확정 전사는 받는 대로 넣는데 처음 넣기가 실패해 들고 있다. 앱을 내릴 때 다시 넣는다
+    store = FakeTranscriptStore(append_delay=0.35, errors=[db_down()] * 3)
+    streams = []
+    for i in range(1, 4):
+        stream = registry.create_stream(
+            uuid.uuid7(),
+            owner_id=uuid.uuid7(),
+            stt_adapter=FakeSttAdapter(Plan(swallow_close=True)),
+            config=SttConfig(),
+            store=store,
+        )
+        stream.start()
+        await _wait_until_ok(stream)
+        state.streams[stream.take_id] = stream
+        record = state.takes[stream.take_id]
+        record.metrics.add(row(i * 1000))
+        record.finals.add(_segment(i))
+        streams.append(stream)
+    await _wait_for(lambda: not store.errors)
+    await asyncio.sleep(0.05)
+
+    started = time.monotonic()
+    await registry.stop_all()
+    elapsed = time.monotonic() - started
+
+    # 하나씩 닫으면 3 × 0.2 + 0.35 초, 원자료 → 확정 전사를 차례로 저장하면 0.2 + 2 × 0.35 초다
+    assert elapsed < (
+        registry.SHUTDOWN_CLOSE_WAIT_SEC
+        + stt_loop.ABORT_TIMEOUT_SEC
+        + finish.FLUSH_METRICS_TIMEOUT_SEC
+    )
+    assert sorted(store.metrics) == [1000, 2000, 3000]
+    assert sorted(store.take_ids) == sorted(stream.take_id for stream in streams)
