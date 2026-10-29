@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
@@ -43,3 +43,52 @@ class SuggestionResponse(BaseModel):
     source: SuggestionSource
     category: SuggestionCategory
     created_at: datetime
+
+
+Rating = Annotated[int, Field(strict=True, ge=1, le=5)]
+
+
+class TakeSurveyCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accuracy_rating: Rating
+    usefulness_rating: Rating
+    # 생략 · null · 공백만이면 남기지 않은 것으로 본다
+    comment: str | None = None
+    question_version: Annotated[int, Field(strict=True, ge=1)] = 1
+
+    _normalize = field_validator("comment")(normalize_suggestion)
+
+
+class TakeSurveyResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    take_id: uuid.UUID
+    accuracy_rating: int
+    usefulness_rating: int
+    comment: str | None
+    question_version: int
+    created_at: datetime
+
+
+class TakeSurveyState(BaseModel):
+    """리포트 아래 설문 버튼이 쓴다. 제출하지 않았으면 survey 가 null 이다."""
+
+    submitted: bool
+    survey: TakeSurveyResponse | None
+
+
+class PendingSurvey(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    take_id: uuid.UUID
+    pitch_id: uuid.UUID
+    pitch_title: str
+    take_number: int
+    completed_at: datetime
+
+
+class PendingSurveys(BaseModel):
+    """홈 알림이 쓴다. 테스트 참여에 동의한 뒤 끝난 Take 중 설문을 남기지 않은 것."""
+
+    items: list[PendingSurvey]
