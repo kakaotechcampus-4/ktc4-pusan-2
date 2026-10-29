@@ -3,14 +3,13 @@
 Revision ID: a74200000001
 """
 
-from collections.abc import Sequence
-
 import sqlalchemy as sa
 from alembic import op
-from alembic_git_revisions import get_down_revision
 
 revision: str = "a74200000001"
-down_revision: str | Sequence[str] | None = get_down_revision(revision)
+# 썸네일이 이미 적용된 DB 에서도 이 테이블을 만들어야 한다. git 순서에 따라 기존 head 앞에
+# 끼어들면 upgrade head 가 건너뛰므로, 먼저 머지된 썸네일 마이그레이션 뒤로 고정한다
+down_revision: str = "7267d294887b"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
