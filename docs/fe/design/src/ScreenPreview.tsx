@@ -7,6 +7,7 @@
 import { useState, type MouseEvent } from 'react';
 import { Frame, type Navigate } from './screens/shared';
 import { HomeScreen } from './screens/HomeScreen';
+import { CreateConceptScreen } from './screens/CreateConceptScreen';
 import { CreateScreen } from './screens/CreateScreen';
 import { PrepareScreen } from './screens/PrepareScreen';
 import { StageScreen } from './screens/StageScreen';
@@ -49,6 +50,7 @@ const APP_HEADER: Record<string, 'home' | 'takes' | 'me' | null> = {
   comparison: null,
   report: null,
   'pitch-create': null,
+  'pitch-create-a': null,
 };
 
 /** 제품 경로를 설계서 화면으로 바꾼다. 알 수 없는 경로는 제품으로 열지 않는다 */
@@ -178,6 +180,8 @@ function CurrentScreen({
       return <WritingFoundation stateId={stateId} />;
     case 'home':
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'pitch-create-a':
+      return <CreateConceptScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'pitch-create':
       return <CreateScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'prepare-mission':
