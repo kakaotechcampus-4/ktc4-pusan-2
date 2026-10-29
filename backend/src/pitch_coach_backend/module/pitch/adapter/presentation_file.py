@@ -16,7 +16,10 @@ logger = logging.getLogger(__name__)
 # FE 의 업로드 제한(MAX_SLIDE_BYTES)과 같다
 MAX_PRESENTATION_BYTES = 40 * 1024 * 1024
 
+TIMEOUT_SECONDS = 5.0
+
 THUMBNAIL_WIDTH = 480
+THUMNAIL_HEIGHT = 270
 
 _PDFIUM_LOCK = threading.Lock()
 
@@ -49,19 +52,24 @@ def count_pdf_pages(file: BinaryIO) -> int | None:
 
 
 def render_first_page(file: BinaryIO) -> bytes | None:
+    if not _PDFIUM_LOCK.acquire(timeout=TIMEOUT_SECONDS):
+        return None
+
+    result = None
     try:
-        with _PDFIUM_LOCK:
-            pdf = pdfium.PdfDocument(file)
-            try:
-                page = pdf[0]
-                image = page.render(scale=THUMBNAIL_WIDTH / page.get_width()).to_pil()
-            finally:
-                pdf.close()
+        pdf = pdfium.PdfDocument(file)
+        try:
+            page = pdf[0]
+            scale = min(THUMBNAIL_WIDTH / page.get_width(), THUMNAIL_HEIGHT / page.get_height())
+            image = page.render(scale=scale).to_pil()
+        finally:
+            pdf.close()
         buffer = io.BytesIO()
         image.convert("RGB").save(buffer, format="WEBP", quality=80)
-        return buffer.getvalue()
+        result = buffer.getvalue()
     except Exception as e:
         logger.info("발표자료 첫 장을 그리지 못했다: %s", type(e).__name__)
-        return None
     finally:
+        _PDFIUM_LOCK.release()
         file.seek(0)
+    return result
