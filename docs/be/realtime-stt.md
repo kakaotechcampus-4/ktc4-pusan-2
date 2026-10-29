@@ -34,6 +34,7 @@ WS /api/ws/takes/{take_id}
   크므로 정상 흐름에서는 버리지 않는다. 1ms 미만 PCM도 실제 샘플 길이만큼 계산하고, 스트림을 교체해도
   예산을 이어 쓴다. 끊겨 있던 동안에도 최대 10초까지만 채운다.
 - `stt_status` 는 상태가 바뀔 때마다 온다. `connecting` → `ok` → (`reconnecting` → `degraded`) → `closed`.
+  상태 · 자동 종료 알림 전송은 각각 1초(`CONTROL_SEND_TIMEOUT_SEC`)까지 기다린다. FE 가 받지 않아도 STT 처리와 종료 정리를 이어 간다.
   숫자(`frames`·`dropped_frames`·`silence_ms`·`lost_ms`)는 연결 단위가 아니라 **Take 누적**이다.
 - **Deepgram 이 죽어도 연결을 끊지 않는다.** 오디오를 최대 5초 큐에 담고 백오프로 재접속하며
   `degraded` 만 알린다 — 그동안 FE 1단 코치는 계속 돌아야 하기 때문이다.
@@ -57,7 +58,7 @@ WS /api/ws/takes/{take_id}
   | `BAD_MESSAGE` | 유지 |
   | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
   | `TAKE_TAKEN_OVER` | `1008` 로 닫는다. FE 는 **재연결하지 않는다** |
-  | `TOO_MANY_STREAMS` | `1008` 로 닫는다 — 사용자는 한 번에 연습 하나만 하므로 스트림 상한은 1개(`MAX_STREAMS_PER_USER`)다. 다른 Take가 연결돼 있으면 기존 연습을 유지하고 새 연결을 거절한다. 끊겨 다시 붙기를 기다리는 스트림과 붙어 있어도 오디오가 `LIVE_AUDIO_SEC`(10초) 넘게 오지 않은 연결의 스트림은 실제로 닫힌 뒤 새 스트림으로 교체하며(오디오가 멈춘 연결은 `TOO_MANY_STREAMS` 로 닫는다), 정리가 제한 시간 안에 끝나지 않으면 오류 메시지 없이 `1013` 으로 닫아 FE 가 백오프로 다시 붙게 한다. 같은 Take의 새로고침·탭 이어받기는 기존 스트림을 재사용한다. 첫 연결이면 Take 를 시작(`RUNNING`)하기 전에 자리를 확인해 `READY` 로 둔 채 거절한다 |
+  | `TOO_MANY_STREAMS` | `1008` 로 닫는다 — 사용자는 한 번에 연습 하나만 하므로 스트림 상한은 1개(`MAX_STREAMS_PER_USER`)다. 다른 Take가 연결돼 있으면 기존 연습을 유지하고 새 연결을 거절한다. 끊겨 다시 붙기를 기다리는 스트림과 붙어 있어도 오디오가 `LIVE_AUDIO_SEC`(10초) 넘게 오지 않은 연결의 스트림은 실제로 닫힌 뒤 새 스트림으로 교체하며(오디오가 멈춘 연결은 `TOO_MANY_STREAMS` 로 닫는다), Take 를 끝내는 중인(stop · 자동 종료 · 끝내기 PUT) 스트림은 끊지 않고 끝내는 쪽의 상한(`ENDING_WAIT_SEC`, 17초)까지 기다린다. 정리가 제한 시간 안에 끝나지 않으면 오류 메시지 없이 `1013` 으로 닫아 FE 가 백오프로 다시 붙게 한다. 같은 Take의 새로고침·탭 이어받기는 기존 스트림을 재사용한다. 첫 연결이면 Take 를 시작(`RUNNING`)하기 전에 자리를 확인해 `READY` 로 둔 채 거절한다 |
 
 - `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
 - **auth 를 기다리는 연결은 IP 하나에 20개, 전체 200개까지다** (`handshake.pending_auth`). 넘으면 받기 전에
