@@ -34,6 +34,8 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 
 로컬 DB 는 인프라 담당의 docker-compose 를 사용한다. `.env.example` 의 `DATABASE_URL` 기본값이 그 컨테이너와 맞춰져 있다.
 
+앱의 DB 연결은 잠금 대기 `DB_LOCK_TIMEOUT_MS`(기본 5초)와 문장 실행 `DB_STATEMENT_TIMEOUT_MS`(기본 30초) 상한을 건다. 넘으면 `OperationalError` 라서 `is_transient_db_error` 가 일시 오류로 보고, 재시도 경로(WS 인가 1011 등)로 간다. 마이그레이션(alembic)은 자기 엔진을 써서 걸리지 않는다.
+
 ### 테스트
 
 - 테스트는 `DATABASE_URL` 의 DB 이름에 `_test` 를 붙인 DB 를 쓴다 (예: `pitch_coach_test`). 없으면 `conftest.py` 가 만든다. 개발 DB 는 건드리지 않는다.
