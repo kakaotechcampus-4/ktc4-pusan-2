@@ -22,6 +22,7 @@ function MenuLink({ to, label, current }: { to: string; label: string; current: 
 
 /**
  * 홈 · Take 기록 · 마이페이지가 같이 쓰는 상단바. 메뉴를 옮겨도 모양이 바뀌지 않게 한 곳에 둡니다.
+ * 높이를 바꾸면 index.css 의 `--spacing-app-header` 도 같이 바꿉니다 — 피치 생성 화면이 그 값으로 남은 높이를 계산합니다.
  * 바탕은 기본 지면(`bg-panel`)으로 고정합니다 — 아래 화면이 흰 지면이어도 상단바 색은 그대로입니다.
  */
 export function AppHeader() {

@@ -83,7 +83,7 @@
   --spacing-script-keyword: 120px;
   --spacing-script-off: 0px;
 
-  --spacing-app-header: 5.3rem;     /* AppHeader 높이(약 85px) — 위에 얹힌 화면이 남은 높이를 계산할 때 */
+  --spacing-app-header: 5.3rem;     /* AppHeader 높이(약 85px, 높이를 바꾸면 AppHeader.tsx 와 같이 맞출 것) — 위에 얹힌 화면이 남은 높이를 계산할 때 */
   --spacing-sidebar: 236px;         /* 공통 셸 사이드바 */
   --container-page: 90rem;          /* max-w-page · 상단바와 본문 폭 (1440px) */
 
@@ -94,8 +94,6 @@
 }
 
 html, body, #root { height: 100%; }
-/* 사용방법 같은 모달이 body 스크롤을 잠그면 스크롤바가 사라져 가운데 정렬된 상단바가 옆으로 밀립니다 */
-html { scrollbar-gutter: stable; }
 
 body {
   margin: 0;

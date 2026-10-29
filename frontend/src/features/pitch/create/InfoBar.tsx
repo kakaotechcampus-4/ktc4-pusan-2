@@ -35,10 +35,14 @@ export function InfoBar() {
   const heading = pitchId === null ? '발표정보 · 아직 저장 전' : '저장된 발표정보';
 
   return (
-    // 머리글 줄은 본문 높이를 아끼려고 화면에서 뺐습니다 — 저장 여부는 화면 읽기 도구에만 알립니다
     <section aria-label={heading} className="shrink-0 border-b border-line pb-2">
       <dl className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1.3fr)] lg:divide-x lg:divide-line">
         <Item label="발표 제목">
+          {pitchId === null && (
+            <span className="shrink-0 rounded bg-cream px-1.5 py-0.5 text-xs font-medium text-stone">
+              저장 전
+            </span>
+          )}
           <span
             className={[
               'min-w-0 [overflow-wrap:anywhere]',
