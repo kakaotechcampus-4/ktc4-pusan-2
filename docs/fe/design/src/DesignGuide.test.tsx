@@ -62,8 +62,9 @@ vi.mock('./catalog', () => ({
   ],
 }));
 
-vi.mock('./ScreenPreview', () => ({
-  ScreenPreview: ({
+// 미리보기 iframe은 jsdom에서 앱을 불러오지 않으므로, 같은 약속(화면 · 상태 · 이동)을 지키는 대역으로 바꾼다
+vi.mock('./PreviewFrame', () => ({
+  PreviewFrame: ({
     screenId,
     stateId,
     onNavigate,
@@ -144,6 +145,12 @@ async function choose(select: HTMLSelectElement, value: string) {
   });
 }
 
+/** "화면 상태" 고르기만. 머리의 "미리보기 크기"는 뺀다 */
+const stateSelects = () =>
+  [...host.querySelectorAll<HTMLSelectElement>('select')].filter((select) =>
+    select.closest('label')?.textContent?.startsWith('화면 상태'),
+  );
+
 it('저장된 상태를 열고, 다른 화면으로 가면 기록을 쌓아 뒤로 가기로 돌아온다', async () => {
   await render('/?screen=pitch-create&state=empty');
   expect(host.querySelector('[data-preview="pitch-create:empty"]')).toBeTruthy();
@@ -159,7 +166,7 @@ it('저장된 상태를 열고, 다른 화면으로 가면 기록을 쌓아 뒤�
 
 it('같은 화면 안 상태 전환은 기록을 바꿔 끼우고 포커스를 옮기지 않는다', async () => {
   await render('/?screen=prepare', '/?screen=pitch-create&state=ready');
-  const select = host.querySelector<HTMLSelectElement>('select')!;
+  const select = stateSelects()[0]!;
   select.focus();
   await choose(select, 'empty');
   expect(host.querySelector('[data-preview="pitch-create:empty"]')).toBeTruthy();
@@ -216,8 +223,12 @@ it('설명 패널에 디자인 값 · 제품과 다른 점 · 제품에서 열�
   await render('/?screen=pitch-create');
   expect(host.textContent).toContain('--color-ink: #111111');
   expect(host.textContent).toContain('버전 트리를 줄였습니다.');
-  const live = host.querySelector<HTMLAnchorElement>('a[target="_blank"]');
+  const links = [...host.querySelectorAll<HTMLAnchorElement>('a[target="_blank"]')];
+  const live = links.find((link) => link.textContent === '새 피치 ↗');
   expect(live?.getAttribute('href')).toBe('http://localhost:3000/pitch/new');
+  // 화면만 보기는 같은 앱의 frame 주소를 연다
+  const frame = links.find((link) => link.textContent?.startsWith('새 탭에서 화면만 보기'));
+  expect(frame?.getAttribute('href')).toMatch(/#\/frame\?screen=pitch-create&state=ready$/);
   expect(host.querySelectorAll('main')).toHaveLength(1);
 });
 
@@ -235,7 +246,7 @@ it('전체 보기에서 카드 상태를 바꿔도 보기 · 고른 화면 · �
   await render('/?screen=pitch-create');
   await click('전체 화면');
   expect(host.querySelectorAll('[data-preview]')).toHaveLength(3);
-  await choose(host.querySelectorAll<HTMLSelectElement>('select')[1]!, 'error');
+  await choose(stateSelects()[1]!, 'error');
   expect(host.querySelector('[data-preview="prepare:error"]')).toBeTruthy();
   expect(address()).toContain('view=all');
   expect(address()).toContain('screen=pitch-create');
@@ -255,7 +266,7 @@ it('전체 보기의 미리보기 조작: 같은 화면이면 전체 보기를 �
 
 it('전체 보기에서 다른 카드를 바꿔도 고른 화면의 상태를 지킨다', async () => {
   await render('/?view=all&screen=pitch-create&state=empty');
-  await choose(host.querySelectorAll<HTMLSelectElement>('select')[1]!, 'error');
+  await choose(stateSelects()[1]!, 'error');
   expect(host.querySelector('[data-preview="pitch-create:empty"]')).toBeTruthy();
   expect(host.querySelector('[data-preview="prepare:error"]')).toBeTruthy();
   expect(address()).toContain('state=empty');
