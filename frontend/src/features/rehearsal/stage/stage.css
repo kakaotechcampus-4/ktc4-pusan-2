@@ -597,6 +597,15 @@
   background: var(--color-coral-deep);
 }
 
+/* 끝낼 수 없는 장의 안내는 버튼 바로 옆에 붙인다 */
+.stage-foot .end-hint {
+  margin-left: auto;
+}
+
+.stage-foot .end-hint + .end {
+  margin-left: 0;
+}
+
 .stage-foot .end:disabled {
   opacity: 0.5;
   cursor: not-allowed;
