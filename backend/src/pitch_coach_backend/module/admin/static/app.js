@@ -18,7 +18,7 @@ const LABELS = {
   ABANDONED: '이탈',
   CLOSED: '창 닫음',
   USER: '직접 종료',
-  RATING_POPUP: '평점 팝업',
+  RATING_POPUP: '1차 배포 팝업',
   MY_PAGE: '마이페이지',
   POSITIVE: '좋았던 점',
   IMPROVEMENT: '개선할 점',

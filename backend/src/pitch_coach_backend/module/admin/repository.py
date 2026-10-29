@@ -24,7 +24,7 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.entity import Pitch
-from pitch_coach_backend.module.service_feedback.entity import ServiceFeedback, UserSuggestion
+from pitch_coach_backend.module.service_feedback.entity import FirstReleaseFeedback, UserSuggestion
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import last_active_at
 from pitch_coach_backend.module.user.entity import User
@@ -204,23 +204,23 @@ def _float_or_none(value: Any) -> float | None:
 def rating_summary(db: Session) -> tuple[int, float | None]:
     """(평점 수, 평균). 탈퇴 뒤 보관한 평점도 센다. 평점이 없으면 평균은 None."""
     count, avg = db.execute(
-        select(func.count(ServiceFeedback.id), func.avg(ServiceFeedback.rating))
+        select(func.count(FirstReleaseFeedback.id), func.avg(FirstReleaseFeedback.rating))
     ).one()
     return int(count), _float_or_none(avg)
 
 
 def list_feedbacks(db: Session, *, limit: int, offset: int) -> list[dict[str, Any]]:
     stmt = select(
-        ServiceFeedback.id,
-        ServiceFeedback.user_id,
-        ServiceFeedback.rating,
-        ServiceFeedback.created_at,
+        FirstReleaseFeedback.id,
+        FirstReleaseFeedback.user_id,
+        FirstReleaseFeedback.rating,
+        FirstReleaseFeedback.created_at,
         UserSuggestion.content.label("suggestion"),
         UserSuggestion.category,
-    ).outerjoin(UserSuggestion, UserSuggestion.service_feedback_id == ServiceFeedback.id)
+    ).outerjoin(UserSuggestion, UserSuggestion.service_feedback_id == FirstReleaseFeedback.id)
     return _fetch(
         db,
-        stmt.order_by(ServiceFeedback.created_at.desc(), ServiceFeedback.id.desc())
+        stmt.order_by(FirstReleaseFeedback.created_at.desc(), FirstReleaseFeedback.id.desc())
         .offset(offset)
         .limit(limit + 1),
     )
@@ -275,11 +275,11 @@ def list_feedback_groups(db: Session, *, limit: int, offset: int) -> list[dict[s
     """
     activity = union_all(
         select(
-            ServiceFeedback.user_id,
-            ServiceFeedback.id.label("feedback_id"),
+            FirstReleaseFeedback.user_id,
+            FirstReleaseFeedback.id.label("feedback_id"),
             cast(null(), Uuid).label("suggestion_id"),
-            ServiceFeedback.rating,
-            ServiceFeedback.created_at,
+            FirstReleaseFeedback.rating,
+            FirstReleaseFeedback.created_at,
         ),
         select(
             UserSuggestion.user_id,

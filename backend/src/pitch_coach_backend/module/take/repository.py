@@ -38,22 +38,6 @@ class TakeRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def has_completed_report(self, pitch_ids: list[uuid.UUID]) -> bool:
-        if not pitch_ids:
-            return False
-        return self.db.scalar(
-            select(
-                select(Take.id)
-                .join(TakeAIResults, TakeAIResults.take_id == Take.id)
-                .where(
-                    Take.pitch_id.in_(pitch_ids),
-                    Take.status == "COMPLETED",
-                    TakeAIResults.kind == "TAKE_RESULT",
-                )
-                .exists()
-            )
-        )
-
     def get_take(self, take_id: uuid.UUID) -> Take | None:
         return self.db.scalar(
             select(Take).where(Take.id == take_id)

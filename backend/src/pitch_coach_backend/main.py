@@ -25,7 +25,6 @@ from pitch_coach_backend.module.pitch.dependencies import (
     resume_script_rubrics,
 )
 from pitch_coach_backend.module.pitch.file_cleanup_sweep import start as start_file_cleanup_sweep
-from pitch_coach_backend.module.service_feedback.controller import router as feedback_router
 from pitch_coach_backend.module.service_feedback.controller import suggestions_router
 from pitch_coach_backend.module.take.controller import router as take_router
 from pitch_coach_backend.module.take.controller import takes_router
@@ -149,7 +148,6 @@ def health() -> dict[str, str]:
 
 api.include_router(auth_router)
 api.include_router(user_router)
-api.include_router(feedback_router)
 api.include_router(suggestions_router)
 api.include_router(pitch_router)
 api.include_router(take_router)

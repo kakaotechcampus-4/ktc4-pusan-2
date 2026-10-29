@@ -4,10 +4,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from pitch_coach_backend.core.config import settings
-from pitch_coach_backend.module.service_feedback import repository, service
+from pitch_coach_backend.module.service_feedback import service
 from pitch_coach_backend.module.user import service as user_service
 from pitch_coach_backend.module.user.entity import User
-from tests.service_feedback.conftest import make_report
+from tests.service_feedback.conftest import make_first_release
 
 ADMIN = ("admin", "console-test-password")
 PATHS = [
@@ -36,10 +36,8 @@ def test_admin_auth_required(client, console, path):
     assert client.get(path, auth=("admin", "wrong")).status_code == 401
 
 
-def test_admin_lists_popup_and_mypage_independently(client, console, db_session, user_id, report):
-    feedback, _ = service.submit_feedback(
-        db_session, user_id, rating=4, suggestion="<script>의견</script>"
-    )
+def test_admin_lists_popup_and_mypage_independently(client, console, db_session, user_id):
+    feedback = make_first_release(db_session, user_id, 4, "<script>의견</script>")
     for number in range(3):
         row, _ = service.submit_suggestion(
             db_session, user_id, request_id=uuid.uuid4(), content=f"의견 {number}"
@@ -67,10 +65,8 @@ def test_admin_validates_pagination_and_source(client, console, query):
     assert client.get(f"/admin/api/suggestions?{query}", auth=ADMIN).status_code == 422
 
 
-def test_admin_can_read_retained_feedback_after_withdrawal(
-    client, console, db_session, user_id, report
-):
-    feedback, _ = service.submit_feedback(db_session, user_id, rating=5, suggestion="팝업 의견")
+def test_admin_can_read_retained_feedback_after_withdrawal(client, console, db_session, user_id):
+    feedback = make_first_release(db_session, user_id, 5, "팝업 의견")
     service.submit_suggestion(db_session, user_id, request_id=uuid.uuid4(), content="추가 의견")
     user_service.delete(db_session, user_service.get(db_session, user_id))
     ratings = client.get("/admin/api/service-feedbacks", auth=ADMIN)
@@ -83,23 +79,17 @@ def test_admin_can_read_retained_feedback_after_withdrawal(
     assert all(row["user_id"] is None for row in opinions.json()["items"])
 
 
-def _user(db, *, report=True):
+def _user(db):
     user = User(email=f"{uuid.uuid4()}@example.com", name="사용자")
     db.add(user)
     db.flush()
-    if report:
-        make_report(db, user.id)
     return user.id
 
 
 def _rate(db, user_id, rating, suggestion=None, *, minute):
-    feedback, _ = service.submit_feedback(db, user_id, rating=rating, suggestion=suggestion)
-    feedback.created_at = T0 + timedelta(minutes=minute)
-    popup = repository.popup_suggestion(db, feedback.id)
-    if popup is not None:
-        popup.created_at = feedback.created_at
-    db.commit()
-    return feedback
+    return make_first_release(
+        db, user_id, rating, suggestion, created_at=T0 + timedelta(minutes=minute)
+    )
 
 
 def _suggest(db, user_id, content, *, minute):
@@ -124,7 +114,7 @@ def test_admin_by_user_groups_rating_and_all_suggestions(client, console, db_ses
     both, rated, opinion_only = (
         _user(db_session),
         _user(db_session),
-        _user(db_session, report=False),
+        _user(db_session),
     )
     _rate(db_session, both, 4, "<b>팝업</b>\n두 줄", minute=0)
     mine = [_suggest(db_session, both, f"마이페이지 {n}", minute=10 + n) for n in range(4)]
@@ -208,6 +198,6 @@ def test_admin_rating_summary_skips_unrated_and_keeps_withdrawn(client, console,
     kept, gone = _user(db_session), _user(db_session)
     _rate(db_session, kept, 4, minute=0)
     _rate(db_session, gone, 3, "팝업", minute=1)
-    _suggest(db_session, _user(db_session, report=False), "의견만", minute=2)
+    _suggest(db_session, _user(db_session), "의견만", minute=2)
     user_service.delete(db_session, user_service.get(db_session, gone))
     assert client.get(path, auth=ADMIN).json() == {"rated_count": 2, "avg_rating": 3.5}

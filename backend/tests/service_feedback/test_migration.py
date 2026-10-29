@@ -1,4 +1,4 @@
-"""이미 저장된 평점·의견도 추가 마이그레이션 뒤 탈퇴 시 유지한다."""
+"""이미 저장된 평점·의견은 1차 배포 별점으로 이름을 바꾼 뒤에도, 탈퇴한 뒤에도 남는다."""
 
 import uuid
 from pathlib import Path
@@ -83,14 +83,26 @@ def test_retention_upgrade_preserves_existing_rows_and_safe_downgrade(
             assert connection.scalars(
                 text("SELECT DISTINCT category FROM user_suggestions")
             ).all() == ["OTHER"]
+            assert (
+                connection.scalar(
+                    text("SELECT rating FROM first_release_feedbacks WHERE id = :feedback_id"),
+                    values,
+                )
+                == 4
+            )
+            assert connection.scalar(text("SELECT to_regclass('service_feedbacks')")) is None
+            assert (
+                connection.scalar(text("SELECT to_regclass('service_feedback_impressions')"))
+                is None
+            )
         if withdraw:
             with migration_engine.begin() as connection:
                 connection.execute(text("DELETE FROM users WHERE id = :user_id"), values)
                 assert (
                     connection.scalar(
                         text(
-                            "SELECT rating FROM service_feedbacks WHERE id = :feedback_id AND "
-                            "user_id IS NULL"
+                            "SELECT rating FROM first_release_feedbacks WHERE id = :feedback_id "
+                            "AND user_id IS NULL"
                         ),
                         values,
                     )
@@ -111,10 +123,6 @@ def test_retention_upgrade_preserves_existing_rows_and_safe_downgrade(
                     )
                     == feedback_id
                 )
-                assert (
-                    connection.scalar(text("SELECT count(*) FROM service_feedback_impressions"))
-                    == 0
-                )
             with pytest.raises(RuntimeError, match="이전 스키마로 되돌릴 수 없습니다"):
                 command.downgrade(config, "f54000000001")
             with migration_engine.connect() as connection:
@@ -122,7 +130,7 @@ def test_retention_upgrade_preserves_existing_rows_and_safe_downgrade(
                     MigrationContext.configure(connection).get_current_revision()
                     == ScriptDirectory.from_config(config).get_current_head()
                 )
-                assert connection.scalar(text("SELECT count(*) FROM service_feedbacks")) == 1
+                assert connection.scalar(text("SELECT count(*) FROM first_release_feedbacks")) == 1
                 assert connection.scalar(text("SELECT count(*) FROM user_suggestions")) == 2
         else:
             command.downgrade(config, "f54000000001")
