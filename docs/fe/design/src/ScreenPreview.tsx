@@ -9,6 +9,7 @@ import { Frame, type Navigate } from './screens/shared';
 import { HomeScreen } from './screens/HomeScreen';
 import { CreateScreen } from './screens/CreateScreen';
 import { PrepareScreen } from './screens/PrepareScreen';
+import { PrepareLayoutDraft } from './screens/PrepareLayoutDraft';
 import { StageScreen } from './screens/StageScreen';
 import { ProcessingScreen, ConfirmScreen } from './screens/AnalysisScreen';
 import { RetryScreen } from './screens/RetryScreen';
@@ -182,6 +183,8 @@ function CurrentScreen({
       return <CreateScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'prepare-mission':
       return <PrepareScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'prepare-layout-review':
+      return <PrepareLayoutDraft stateId={stateId} onNavigate={onNavigate} />;
     case 'stage':
       return <StageScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'processing-loading':
