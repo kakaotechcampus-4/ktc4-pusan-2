@@ -60,6 +60,7 @@ import {
 } from './resume';
 import { canEnd } from './canEnd';
 import { sendEnding, type Ending } from './sendEnding';
+import { useEndConfirm } from './useEndConfirm';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
 import { CONNECT_SLOW_MS, hasCamera, hasLiveAudio, startGate, type StartGate } from './startGate';
@@ -189,8 +190,6 @@ export function RehearsalPage() {
   const [resume, setResume] = useState<Resume | null>(null);
   const sessionId = resume?.sessionId ?? null;
   const ending = resume?.ending ?? null;
-  // 한 번 눌러 "정말 끝낼까요?" 가 된 장. 장이 바뀌면 풀려서, 이전 장에 갔다 4초 안에 돌아와도 한 번에 끝나지 않습니다
-  const [confirmingSlide, setConfirmingSlide] = useState<number | null>(null);
   const [endError, setEndError] = useState<string | null>(null);
   /**
    * 세션을 못 연 이유. 이게 있으면 이 Take 의 기록(시선·슬라이드·코치)이 하나도 쌓이지 않고
@@ -651,7 +650,7 @@ export function RehearsalPage() {
 
   // ── 종료 ─────────────────────────────────────────────────────────
   const endable = canEnd(pageCount, slideNumber);
-  const confirming = confirmingSlide === slideNumber;
+  const { confirming, ask: askEnd } = useEndConfirm(slideNumber);
   const finish = async () => {
     if (!running || !sessionId || !ticket) return;
 
@@ -956,8 +955,7 @@ export function RehearsalPage() {
                   // 되돌릴 수 없어서 한 번 더 묻습니다. 모달을 띄우지 않는 이유는
                   // 발표 중에 화면을 덮으면 남은 시간을 못 보기 때문입니다
                   if (!confirming) {
-                    setConfirmingSlide(slideNumber);
-                    window.setTimeout(() => setConfirmingSlide(null), 4000);
+                    askEnd();
                     return;
                   }
                   // 복구는 finish() 안에서 끝납니다 (재시도 화면으로 이동).
