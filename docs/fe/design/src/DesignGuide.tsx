@@ -1,7 +1,7 @@
 /**
  * 화면 설계서 뷰어. 화면 목록은 catalog, 미리보기는 PreviewFrame(iframe 안의 ScreenPreview)이 맡는다.
  * 고른 화면 · 상태 · 보기 방식 · 미리보기 크기는 주소(`#/?screen=&state=&view=&device=`)에 두어
- * 새로고침 · 뒤로 가기에서 이어진다. 옛 시안 주소(`#/report` 등)는 그 시안 항목으로 바꿔 연다.
+ * 새로고침 · 뒤로 가기에서 이어진다. 옛 시안 주소(`#/report` 등)는 같은 이름의 화면으로 바꿔 연다.
  */
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Navigate, Route, Routes, useParams, useSearchParams } from 'react-router';
@@ -29,12 +29,14 @@ export function DesignRoutes() {
   );
 }
 
-/** 옛 시안 주소 `/:name`을 뷰어의 시안 항목으로 바꾼다. 없는 이름이면 기본 화면 */
+/**
+ * 옛 시안 주소 `/:name`(예: `#/report`)을 같은 ID의 화면으로 바꾼다. 시안은 지웠지만(README "옛 시안")
+ * 공유된 주소가 남아 있을 수 있어서다. 없는 이름이면 기본 화면
+ */
 function LegacyDraftRoute() {
   const { name = '' } = useParams();
-  const id = `draft-${name}`;
-  const to = screens.some((screen) => screen.id === id)
-    ? `/?${new URLSearchParams({ screen: id })}`
+  const to = screens.some((screen) => screen.id === name)
+    ? `/?${new URLSearchParams({ screen: name })}`
     : '/';
   return <Navigate to={to} replace />;
 }
@@ -243,11 +245,9 @@ function Details({
       <List title="관련 코드" items={screen.sources} />
       <section className="border-t border-line pt-4">
         <h3 className="text-sm font-bold">
-          {screen.status === '시안만' ? '옛 시안 주소' : '제품 경로'}
+          {screen.status === '시안' ? '제품에 넣을 경로' : '제품 경로'}
         </h3>
-        <p className="mt-2 break-all font-mono text-xs">
-          {screen.status === '시안만' ? `#${screen.route}` : screen.route}
-        </p>
+        <p className="mt-2 break-all font-mono text-xs">{screen.route}</p>
       </section>
     </aside>
   );

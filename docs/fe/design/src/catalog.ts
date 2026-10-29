@@ -423,152 +423,102 @@ const productScreens: GuideScreen[] = [
   },
 ];
 
-/** 옛 시안. 제품 화면과 따로, 검토 당시 모습을 남긴다. 주소 `#/<name>`으로도 열린다 */
-const draftEntries: {
-  name: string;
-  title: string;
-  source: string;
-  product?: string;
-  productNote: string;
-  productLinks?: ProductLink[];
-}[] = [
+const infoGroup = '안내 · 계정 화면';
+
+/** 글 위주 화면. 제품 `shared/ui/InfoPage` 틀을 쓴다 */
+const infoScreens: GuideScreen[] = [
   {
-    name: 'components',
-    title: '공용 컴포넌트',
-    source: 'ComponentsDraft.tsx',
-    product: 'frontend/src/shared/ui/',
-    productNote: '설계서 src/ui의 버튼 · 카드 · 배지를 쓴다. 제품 shared/ui에서 복사해 시작했다.',
-  },
-  {
-    name: 'pitch-create',
-    title: '피치 생성 · 시작 흐름',
-    source: 'create/PitchCreateDraft.tsx',
-    product: 'frontend/src/features/pitch/create/PitchCreatePage.tsx',
-    productNote:
-      '옛 목록의 "실제 화면은 아직 발표정보부터 시작" 설명은 지났다. 제품은 슬라이드 → 대본 → 발표정보 확인 → 평가기준 순서다.',
-    productLinks: [link('새 피치', '/pitch/new')],
-  },
-  {
-    name: 'prepare-mission',
-    title: '시작 전 세팅 · 이번 Take 미션',
-    source: 'prepare/PrepareMissionDraft.tsx',
-    product: 'frontend/src/features/rehearsal/prepare/DeviceCheckPage.tsx',
-    productNote:
-      '제품에 구현됐다. 장치 점검 · 시선 기준 · 미션 · 대본 표시를 한 화면에 두고, 카메라 · 마이크 · 시선 기준이 모두 돼야 시작한다.',
-    productLinks: [link('시작 전 세팅', '/pitch/p1/device-check')],
-  },
-  {
-    name: 'stage',
-    title: '리허설 무대 · 스타일',
-    source: 'stage/StageDraft.tsx',
-    product: 'frontend/src/features/rehearsal/stage/RehearsalPage.tsx',
-    productNote:
-      '어두운 무대로 정했다. 제품은 전용 CSS로 슬라이드 · 대본 배치와 시선 테두리를 고정한다. 시안의 배치와 계측 조건을 혼동하지 않는다.',
-    productLinks: [REHEARSAL],
-  },
-  {
-    name: 'processing-loading',
-    title: '분석 대기 · 8비트 로딩',
-    source: 'loading/LoadingDraft.tsx',
-    product: 'frontend/src/features/report/ProcessingPage.tsx',
-    productNote: '제품에 구현됐다. 노을 화면에 분석 실패 · 리뷰 보류 · 대본 확인 대기가 더 있다.',
-    productLinks: [PROCESSING],
-  },
-  {
-    name: 'retry',
-    title: '업로드 실패 · 재시도',
-    source: 'retry/RetryDraft.tsx',
-    product: 'frontend/src/features/rehearsal/retry/RetryPage.tsx',
-    productNote: '제품에 구현됐다. 남은 기록 없음 · 서버에서 이미 끝남을 따로 안내한다.',
-    productLinks: [RETRY],
-  },
-  {
-    name: 'about',
+    id: 'about',
     title: '분석 방식 설명',
-    source: 'static/StaticDrafts.tsx',
-    product: 'frontend/src/features/info/AboutPage.tsx',
-    productNote: '제품 화면이 있다. 시안의 "구현 전" 표시는 지났고 지금 모습과 다를 수 있다.',
+    group: infoGroup,
+    route: '/about',
+    status: '제품에 있음',
+    summary: '무엇을 어디서(브라우저 · 서버) 분석하는지 알린다. 로그인 없이 열린다.',
+    states: [base],
+    rules: [
+      '점수가 아니라 지난번보다 나아진 것을 본다는 말을 먼저 둔다.',
+      '분석마다 어디서 하는지(이 브라우저 안 · 서버)를 적는다.',
+    ],
+    components: ['InfoPage 틀(로고 줄)', 'Card', 'Mascot'],
+    tokens: ['greige', 'panel', 'ink', 'coral-deep'],
+    sources: ['frontend/src/features/info/AboutPage.tsx', 'frontend/src/shared/ui/InfoPage.tsx'],
+    productNote: '문구 · 배치는 제품과 같다.',
     productLinks: [link('분석 방식 설명', '/about')],
+    next: [next('로고 · 내 피치', 'home')],
   },
   {
-    name: 'unsupported',
+    id: 'unsupported',
     title: '미지원 브라우저',
-    source: 'static/StaticDrafts.tsx',
-    product: 'frontend/src/features/info/UnsupportedPage.tsx',
-    productNote: '제품 화면이 있고 브라우저에 맞는 사유 하나만 보인다.',
+    group: infoGroup,
+    route: '/unsupported',
+    status: '제품에 있음',
+    summary: '이 브라우저 · 기기에서 연습할 수 없는 이유와 쓸 브라우저를 알린다.',
+    states: [
+      state('browser', '시선 분석 불가', '시선 분석에 필요한 브라우저 기능이 없다.'),
+      state('mobile', '터치 기기', '터치만 되는 기기라 PC에서 연습하라고 알린다.'),
+      state('supported', '연습 가능', '이 주소로 바로 들어왔지만 이 브라우저는 연습할 수 있다.'),
+    ],
+    rules: [
+      '사유는 이 화면이 직접 고른다. 시선 분석 기능이 없으면 그게 먼저고, 그다음 터치 전용 기기(`pointer: coarse`)다.',
+      '지금 제품에는 이 화면으로 자동으로 보내는 곳이 없다. 연습은 PC 정책이고, 이 화면이 그 안내다.',
+      '"링크 복사"는 주소를 복사하고, 복사할 수 없으면 주소를 직접 옮기라고 알린다.',
+    ],
+    components: ['InfoPage 틀(로고 줄)', 'Card', 'Button'],
+    tokens: ['greige', 'panel', 'ink', 'stone'],
+    sources: [
+      'frontend/src/features/info/UnsupportedPage.tsx',
+      'frontend/src/features/info/unsupportedReason.ts',
+    ],
+    productNote: '"링크 복사"는 샘플에서 클립보드를 쓰지 않고 복사 결과 문구도 띄우지 않는다.',
     productLinks: [
       link('미지원 브라우저', '/unsupported', '이 브라우저에 맞는 사유 하나만 보인다'),
     ],
+    next: [next('내 피치로', 'home')],
   },
   {
-    name: 'not-found',
+    id: 'not-found',
     title: '찾을 수 없음',
-    source: 'static/StaticDrafts.tsx',
-    product: 'frontend/src/features/info/NotFoundPage.tsx',
-    productNote: '제품의 공통 404 화면이 있다.',
+    group: infoGroup,
+    route: '*',
+    status: '제품에 있음',
+    summary: '없는 주소로 들어오면 보이는 공통 화면이다.',
+    states: [base],
+    rules: ['목록에 없는 모든 주소가 이 화면이다. 홈으로 돌아가는 버튼 하나만 둔다.'],
+    components: ['InfoPage 틀(로고 줄)', 'Card', 'Mascot', 'ButtonLink'],
+    tokens: ['greige', 'panel', 'ink'],
+    sources: ['frontend/src/features/info/NotFoundPage.tsx'],
+    productNote: '문구 · 배치는 제품과 같다.',
     productLinks: [link('찾을 수 없음', '/없는-주소')],
+    next: [next('내 피치로', 'home')],
   },
   {
-    name: 'me',
+    id: 'me',
     title: '마이페이지',
-    source: 'me/MyPageDraft.tsx',
-    product: 'frontend/src/features/auth/MyPage.tsx',
-    productNote: '제품 화면이 있다. 시안은 검토 당시 내용을 남긴다.',
-    productLinks: [link('마이페이지', '/me')],
-  },
-  {
-    name: 'takes',
-    title: 'Take 기록',
-    source: 'takes/TakesDraft.tsx',
-    product: 'frontend/src/features/report/TakesPage.tsx',
-    productNote: '제품 화면이 있다. 불러오기 · 실패 · 빈 목록을 다룬다.',
-    productLinks: [link('Take 기록', '/takes')],
-  },
-  {
-    name: 'comparison',
-    title: 'Take 비교',
-    source: 'comparison/ComparisonDraft.tsx',
-    product: 'frontend/src/features/report/ComparisonPage.tsx',
-    productNote: '제품 화면이 있다. 완료된 Take만 비교한다.',
-    productLinks: [link('Take 비교', COMPARISON)],
-  },
-  {
-    name: 'report',
-    title: 'Take 리포트',
-    source: 'report/ReportDraft.tsx',
-    product: 'frontend/src/features/report/ReportPage.tsx',
-    productNote: '제품 화면이 있다. 시안 안의 응답 형식 질문을 지금 계약으로 읽지 않는다.',
-    productLinks: [link('Take 리포트', '/takes/t3')],
-  },
-  {
-    name: 'processing',
-    title: '분석 대기 · 단계 화면',
-    source: 'processing/ProcessingDraft.tsx',
-    product: 'frontend/src/features/report/ProcessingPage.tsx',
+    group: infoGroup,
+    route: '/me',
+    status: '제품에 있음',
+    summary:
+      '계정 정보, 연습 기록 사용 동의, 이 브라우저 기록 지우기, 의견 보내기, 계정 삭제를 둔다.',
+    states: [
+      state('default', '동의 안 함', '연습 기록 사용 동의를 하지 않은 기본 상태다.'),
+      state('consented', '동의함', '연습 기록을 남겨 다시 분석하는 데 동의했다.'),
+    ],
+    rules: [
+      '상단바 아래에 놓여 로고 줄 없이 제목만 둔다. 로그아웃은 상단바, 연습 요약은 홈에 있다.',
+      '동의를 바꾸면 다음에 시작하는 연습부터 적용한다.',
+      '브라우저 기록 지우기 · 계정 삭제는 브라우저 확인 창으로 한 번 더 묻는다.',
+    ],
+    components: ['InfoPage 틀(logo=false)', 'Card', 'Button', 'SuggestionForm'],
+    tokens: ['greige', 'panel', 'ink', 'stone', 'coral-deep'],
+    sources: [
+      'frontend/src/features/auth/MyPage.tsx',
+      'frontend/src/features/auth/SuggestionForm.tsx',
+    ],
     productNote:
-      '별도 단계형 시안이다. 제품은 노을 화면에서 분석 단계를 보여 준다. 시안의 통신 방식 질문을 지금 구현으로 읽지 않는다.',
-    productLinks: [PROCESSING],
+      '상단바(AppHeader)는 뺐다. 의견 보내기 칸(SuggestionForm)은 자리만 둔다. 동의 · 지우기 · 삭제는 서버 · 브라우저에 아무것도 하지 않고, 확인 창도 띄우지 않는다.',
+    productLinks: [link('마이페이지', '/me')],
+    next: [next('내 피치로', 'home')],
   },
 ];
 
-const draftScreens = draftEntries.map(
-  ({ name, title, source, product, productNote, productLinks }): GuideScreen => ({
-    id: `draft-${name}`,
-    title,
-    group: '옛 시안',
-    route: `/${name}`,
-    status: '시안만',
-    summary:
-      '이전 검토용 시안이다. 제품 화면과 다를 수 있고, 시안 안의 검토 도구에서 시안 상태를 바꿀 수 있다.',
-    states: [state('default', '시안', '시안 안의 검토 도구에서 추가 상태를 고를 수 있다.')],
-    rules: ['시안 안의 설명은 작성 당시의 검토 내용이며 지금 제품 동작과 다를 수 있다.'],
-    components: ['설계서 src/ui의 공용 UI'],
-    tokens: ['greige', 'panel', 'ink'],
-    sources: [`docs/fe/design/src/drafts/${source}`, ...(product ? [product] : [])],
-    productNote,
-    productLinks,
-    next: [],
-  }),
-);
-
-export const screens: GuideScreen[] = [...productScreens, ...draftScreens];
+export const screens: GuideScreen[] = [...productScreens, ...infoScreens];

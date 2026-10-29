@@ -16,9 +16,10 @@ export interface GuideScreen {
   id: string;
   title: string;
   group: string;
-  /** 제품 경로(제품에 있음) 또는 옛 시안 주소(시안만) */
+  /** 제품 경로. 시안이면 제품에 넣을 경로 */
   route: string;
-  status: '제품에 있음' | '시안만';
+  /** 시안: 제품에 아직 없는 새 디자인. 제품에 들어가면 '제품에 있음'으로 바꾼다(README "시안 관리") */
+  status: '제품에 있음' | '시안';
   summary: string;
   states: GuideState[];
   rules: string[];

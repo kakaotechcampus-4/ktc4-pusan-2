@@ -1,6 +1,7 @@
 /** 설계서 샘플 화면(`src/screens/*`)이 함께 쓰는 이동 타입 · 샘플 이름 · 글 위주 틀. */
 import type { ReactNode } from 'react';
 import { Button } from '@/ui/Button';
+import { PitchCoachWordmark } from '@/ui/PitchCoachWordmark';
 
 /** 미리보기 안의 버튼 · 링크가 부르는 이동. 같은 화면이면 상태만, 다른 화면이면 화면을 바꾼다 */
 export type Navigate = (screenId: string, stateId?: string) => void;
@@ -9,22 +10,35 @@ export type Navigate = (screenId: string, stateId?: string) => void;
 export const PITCH = '캡스톤 중간발표';
 
 /**
- * 글 위주 화면의 틀. 제품 `shared/ui/InfoPage`(logo=false) · `report/ReportFrame`과 같은 모양이다.
+ * 글 위주 화면의 틀. 제품 `shared/ui/InfoPage` · `report/ReportFrame`과 같은 모양이다.
+ * `onHome`을 주면 InfoPage(logo=true)처럼 홈으로 가는 로고 줄을 둔다(로그인 없이 여는 화면).
  * 제품은 본문이 `<main>`이지만, 설계서 안에서는 뷰어가 `<main>`을 가지므로 `<div>`로 둔다.
  */
 export function Frame({
   title,
   meta,
+  onHome,
   children,
 }: {
   title: string;
   meta?: string;
+  onHome?: () => void;
   children: ReactNode;
 }) {
   return (
     <div className="pitch-create min-h-[40rem] bg-greige text-ink">
       <header className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 pt-6 lg:px-10">
-        <h1 className="text-lg font-bold">{title}</h1>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          {onHome && (
+            <>
+              <button type="button" onClick={onHome} aria-label="피치코치 홈">
+                <PitchCoachWordmark />
+              </button>
+              <span className="h-5 w-px bg-line-strong" aria-hidden="true" />
+            </>
+          )}
+          <h1 className="text-lg font-bold">{title}</h1>
+        </div>
         {meta && <p className="tabular text-sm text-stone">{meta}</p>}
       </header>
       <div className="mx-auto flex max-w-page flex-col gap-6 px-6 pb-12 pt-5 lg:px-10">

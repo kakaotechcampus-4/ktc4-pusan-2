@@ -46,12 +46,12 @@ vi.mock('./catalog', () => ({
       next: [],
     },
     {
-      id: 'draft-pitch-create',
-      title: '생성 시안',
+      id: 'new-idea',
+      title: '새 화면 시안',
       group: '시안',
-      route: '/pitch-create',
-      status: '시안만',
-      summary: '이전 시안입니다.',
+      route: '/new-idea',
+      status: '시안',
+      summary: '제품에 넣을 새 화면입니다.',
       states: [{ id: 'ready', label: '기본', description: '시안' }],
       rules: [],
       components: [],
@@ -232,14 +232,19 @@ it('설명 패널에 디자인 값 · 제품과 다른 점 · 제품에서 열�
   expect(host.querySelectorAll('main')).toHaveLength(1);
 });
 
-it('옛 시안 주소는 시안 항목으로, 없는 이름은 기본 화면으로 바꿔 연다', async () => {
-  await render('/pitch-create');
-  expect(address()).toBe('/?screen=draft-pitch-create');
-  expect(host.querySelector('[data-preview="draft-pitch-create:ready"]')).toBeTruthy();
+it('옛 시안 주소는 같은 ID의 화면으로, 없는 이름은 기본 화면으로 바꿔 연다', async () => {
+  await render('/prepare');
+  expect(address()).toBe('/?screen=prepare');
+  expect(host.querySelector('[data-preview="prepare:ready"]')).toBeTruthy();
   await act(async () => root.render(null));
   await render('/no-such-draft');
   expect(address()).toBe('/');
   expect(host.querySelector('[data-preview="pitch-create:ready"]')).toBeTruthy();
+});
+
+it('시안 화면은 제품에 넣을 경로를 보여 준다', async () => {
+  await render('/?screen=new-idea');
+  expect(host.textContent).toContain('제품에 넣을 경로/new-idea');
 });
 
 it('전체 보기에서 카드 상태를 바꿔도 보기 · 고른 화면 · 목록 표시는 그대로다', async () => {
