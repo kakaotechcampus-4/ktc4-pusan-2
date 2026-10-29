@@ -200,10 +200,11 @@ const TYPE_SCALE: [string, string, string][] = [
   ['text-sm', '14px', '본문 · 버튼(md) · 표 — 가장 많이 쓴다'],
   ['text-xs', '12px', '캡션 · 배지 · 작은 버튼(sm) · 보조 설명'],
   ['text-lg', '18px', '카드 제목 · 안내 화면 제목'],
+  ['text-3xl', '30px', '피치 생성 단계 제목 · 홈 머리 · 랜딩 · 약관 제목'],
   ['text-xl', '20px', '홈 · 피치 정보 · 대화 상자 제목'],
   ['text-2xl', '24px', '안내 화면의 큰 제목(미지원 · 재시도) · 로그인'],
-  ['text-3xl', '30px', '피치 생성 단계 제목 · 홈 머리'],
   ['text-4xl', '36px', '지표 숫자(Stat)'],
+  ['text-base', '16px', '피치 생성 입력칸 · 부제목'],
   ['text-5xl', '48px', '404 같은 큰 숫자'],
 ];
 
@@ -249,7 +250,7 @@ export function TypographyFoundation({ stateId }: { stateId: string }) {
   return (
     <Page
       title="글꼴 · 크기와 굵기"
-      intro="Tailwind 기본 크기를 쓴다. 굵기는 대부분 `font-bold` 하나로 강조하고, 보통 굵기와 섞어 위계를 만든다. 웰컴 · 로그인(랜딩)만 text-6xl 이상과 font-black · extrabold의 큰 제목을 쓴다."
+      intro="Tailwind 기본 크기를 쓴다. 굵기는 대부분 `font-bold` 하나로 강조하고, 보통 굵기와 섞어 위계를 만든다. 웰컴(랜딩)만 text-6xl 이상을, 웰컴 · 로그인 · 약관의 큰 제목만 font-black · extrabold를 쓴다(예외)."
     >
       <div className="flex flex-col border-t border-line">
         {TYPE_SCALE.map(([name, size, where]) => (
@@ -270,7 +271,7 @@ export function TypographyFoundation({ stateId }: { stateId: string }) {
       </div>
       <Section
         title="굵기"
-        description="font-bold가 기본 강조다. font-semibold · font-medium은 드물게 쓴다. font-black · extrabold는 웰컴 · 로그인의 큰 제목에만 쓴다."
+        description="font-bold가 기본 강조다. font-semibold · font-medium은 드물게 쓴다. font-black · extrabold는 웰컴 · 로그인 · 약관의 큰 제목에만 쓴다(예외)."
       >
         <p className="flex flex-wrap gap-6 border border-line bg-panel p-4 text-lg">
           <span className="font-normal">보통 normal</span>
@@ -402,7 +403,7 @@ export function SurfacesFoundation() {
       </Section>
       <Section
         title="모서리"
-        description="면은 각지게 둔다. 피치 생성 화면은 `pitch-create-square`로 안쪽 rounded를 모두 0으로 바꾼다. 둥근 것은 단계 번호 · 음량 막대 · 카메라 켜기 같은 원형 표시(`rounded-full`)뿐이다."
+        description="면은 각지게 둔다. 피치 생성 화면은 `pitch-create-square`로 안쪽 rounded를 모두 0으로 바꾼다. 둥근 것은 단계 번호 · 음량 막대 · 카메라 켜기 같은 원형 표시(`rounded-full`)다. 예외: 웰컴 카운트다운 숫자판(FlipNumber, rounded-md · sm)은 일부러 둥글다. 제품에 남은 예외(FE 확인): 로그인 버튼 감싸개(rounded) · 시선 기준 화면(GazeSetupView, rounded-lg) · 음량 막대(LevelBar, rounded-xs)."
       >
         <div className="flex flex-wrap items-center gap-4">
           <span className="flex h-14 w-24 items-center justify-center border-2 border-ink bg-panel text-xs">
@@ -418,7 +419,7 @@ export function SurfacesFoundation() {
       </Section>
       <Section
         title="포커스"
-        description="키보드 조작이 요구사항이라 포커스 링을 지우지 않는다. 모든 요소에 코랄 2px 선, 2px 띄움(`:focus-visible`)."
+        description="키보드 조작이 요구사항이라 포커스 링을 지우지 않는다. 기본은 코랄 2px 선, 2px 띄움(`:focus-visible`). 예외: 밝은 지면의 입력칸(피치 생성의 대본 · 평가기준 · 정보, 리뷰 창, 의견 종류)은 ink(`focus-visible:outline-ink`), 대본 확인은 dusk 색이다. 제품에 남은 예외(FE 확인): 슬라이드 칸 한 곳이 outline-none이다."
       >
         <span className="inline-flex min-h-11 items-center border-2 border-ink bg-panel px-6 text-sm font-bold outline outline-2 outline-offset-2 outline-coral">
           포커스된 버튼
@@ -547,13 +548,13 @@ export function ResponsiveFoundation() {
       </Section>
       <Section
         title="무대(stage.css) 기준"
-        description="리허설 무대는 PC 전용이지만 준비하며 태블릿으로 열어 보는 경우가 있어 자기 기준을 둔다. 대본 칸 높이(계측 조건)는 어느 크기에서도 바꾸지 않는다."
+        description="리허설 무대는 자기 크기 기준을 둔다(stage.css 주석: 준비하며 태블릿으로 열어 보는 경우). 대본 칸 높이(계측 조건)는 어느 크기에서도 바꾸지 않는다."
       >
         <Rows rows={STAGE_QUERIES} columns="sm:grid-cols-[12rem_minmax(0,1fr)]" />
       </Section>
       <Section
         title="확인할 크기"
-        description="휴대폰 360 · 390, 태블릿 768, 노트북 1280 × 800 · 1366 × 768(가장 흔함)에서 가로 넘침 · 잘림이 없어야 한다. PC 전용 화면(시작 전 세팅 · 리허설)도 1024 이상 노트북 크기에서 한 화면에 들어가야 한다. 미리보기 크기에서 고르거나 직접 입력으로 넣어 본다."
+        description="제품은 노트북 · 데스크톱 전용이고 팀 기준 크기는 1366 × 650 · 1920 × 950이다. 이 두 크기와 브라우저 확대 125% · 150%(배율을 올린 노트북)에서 가로 넘침 · 잘림이 없어야 한다. 휴대폰 · 태블릿 크기는 참고용이다(#710에서 모바일 접속 차단 예정). 미리보기 크기 맨 위의 팀 기준을 고르고 브라우저 확대를 바꿔 본다."
       />
     </Page>
   );
@@ -561,7 +562,7 @@ export function ResponsiveFoundation() {
 
 // 말투 · 상황별 문구 · 표기. 제품 문구(2026-10-29)를 보고 적었다
 const TONE: string[][] = [
-  ['기본', '해요체', '"연습 기록을 불러오지 못했어요." — 제품 문구의 약 8할'],
+  ['기본', '해요체', '"연습 기록을 불러오지 못했어요." — 제품 문구 대부분'],
   ['치치(연습생)', '반말 · 함께 하는 말투', '"어라, 여기는 아무것도 없어. 길을 잃었나 봐!"'],
   ['피코(교수)', '존댓말 · 짚어 주는 말투', '"괜찮습니다. 처음부터 잘하는 새는 없어요."'],
 ];
@@ -618,7 +619,7 @@ export function WritingFoundation({ stateId }: { stateId: string }) {
       <Rows rows={TONE} columns="sm:grid-cols-[8rem_12rem_minmax(0,1fr)]" />
       <Section
         title="알려진 문제: 합니다체가 섞인 곳"
-        description="로그인 상태 줄 · 약관 · 웰컴 일부 · 시작 전 세팅 안내 줄(…할 수 있습니다) · 대본 표시 설명(…붙습니다) 등은 합니다체다(제품 문구의 약 2할). 한 화면 안에서 섞이면 어색하니 해요체로 맞출지 FE와 정한다. 설계서 샘플은 제품 문구를 그대로 둔다."
+        description="로그인 상태 줄 · 약관 · 웰컴 일부 · 시작 전 세팅 안내 줄(…할 수 있습니다) · 대본 표시 설명(…붙습니다) 등 일부는 합니다체다. 한 화면 안에서 섞이면 어색하니 해요체로 맞출지 FE와 정한다. 설계서 샘플은 제품 문구를 그대로 둔다."
       />
     </Page>
   );

@@ -71,7 +71,6 @@ const productScreens: GuideScreen[] = [
     title: '홈 · 내 피치',
     group,
     route: '/',
-    devices: 'all',
     status: '제품에 있음',
     summary:
       '피치 목록과 연습 통계를 보고 새 피치 만들기 · 피치 수정 · Take 기록 · Take 비교로 간다. 데이터는 예시다.',
@@ -110,7 +109,6 @@ const productScreens: GuideScreen[] = [
     title: '피치 생성 · 수정',
     group,
     route: '/pitch/new',
-    devices: 'all',
     status: '제품에 있음',
     summary: '슬라이드 · 대본 · 발표정보 · 평가기준을 차례로 준비하고 시작 전 세팅으로 간다.',
     states: [
@@ -145,7 +143,6 @@ const productScreens: GuideScreen[] = [
     title: '시작 전 세팅',
     group,
     route: '/pitch/:pitchId/device-check',
-    devices: 'pc',
     status: '제품에 있음',
     summary:
       '카메라 · 마이크 · 시선 기준을 점검하고 대본 표시를 고른 뒤, 이 화면의 시작 버튼에서 Take를 만들어 리허설을 연다.',
@@ -205,7 +202,6 @@ const productScreens: GuideScreen[] = [
     title: '리허설 무대',
     group,
     route: '/takes/:takeId/rehearsal',
-    devices: 'pc',
     status: '제품에 있음',
     summary:
       '슬라이드와 대본을 보며 연습한다. 설계서에서는 카메라 · 마이크를 열거나 음성을 보내지 않는다.',
@@ -267,7 +263,6 @@ const productScreens: GuideScreen[] = [
     title: '분석 대기',
     group,
     route: '/takes/:takeId/processing',
-    devices: 'all',
     status: '제품에 있음',
     summary: '노을 화면에서 분석 세 단계의 진행을 보여 주고, 끝나면 리포트로 넘어간다.',
     states: [
@@ -314,7 +309,6 @@ const productScreens: GuideScreen[] = [
     title: '대본 확인',
     group,
     route: '/takes/:takeId/confirm',
-    devices: 'all',
     status: '제품에 있음',
     summary: '발표 뒤 인식이 헷갈린 말을 "대본대로 / 들린 대로"로 확인하고 분석 대기로 돌아간다.',
     states: [
@@ -355,7 +349,6 @@ const productScreens: GuideScreen[] = [
     title: '업로드 실패 · 재시도',
     group,
     route: '/takes/:takeId/retry',
-    devices: 'all',
     status: '제품에 있음',
     summary: '종료 기록을 서버로 보내지 못했을 때 이 브라우저에 남은 기록을 다시 보낸다.',
     states: [
@@ -388,7 +381,6 @@ const productScreens: GuideScreen[] = [
     title: 'Take 리포트',
     group,
     route: '/takes/:takeId',
-    devices: 'all',
     status: '제품에 있음',
     summary: '한 Take의 코칭 노트 · 지난 Take와의 변화 · 측정값 · 다음 미션을 보여 준다.',
     states: [
@@ -427,7 +419,6 @@ const productScreens: GuideScreen[] = [
     title: 'Take 기록',
     group,
     route: '/takes',
-    devices: 'all',
     status: '제품에 있음',
     summary: '모든 피치의 연습 기록을 최신순으로 보고 리포트나 진행 화면으로 간다.',
     states: [
@@ -457,7 +448,6 @@ const productScreens: GuideScreen[] = [
     title: 'Take 비교',
     group,
     route: '/pitch/:id/comparison',
-    devices: 'all',
     status: '제품에 있음',
     summary: '같은 피치의 완료된 Take를 지표별 흐름과 표로 비교한다.',
     states: [
@@ -493,7 +483,6 @@ const infoScreens: GuideScreen[] = [
     title: '무대를 열지 않는 안내',
     group: infoGroup,
     route: '/takes/:takeId/rehearsal',
-    devices: 'pc',
     status: '제품에 있음',
     summary: '리허설 주소로 왔지만 무대를 열지 않을 때 이유와 갈 곳을 알린다.',
     states: [
@@ -531,7 +520,6 @@ const infoScreens: GuideScreen[] = [
     title: '분석 방식 설명',
     group: infoGroup,
     route: '/about',
-    devices: 'all',
     status: '제품에 있음',
     summary: '무엇을 어디서(브라우저 · 서버) 분석하는지 알린다. 로그인 없이 열린다.',
     states: [base],
@@ -552,7 +540,6 @@ const infoScreens: GuideScreen[] = [
     title: '미지원 브라우저',
     group: infoGroup,
     route: '/unsupported',
-    devices: 'all',
     status: '제품에 있음',
     summary: '이 브라우저 · 기기에서 연습할 수 없는 이유와 쓸 브라우저를 알린다.',
     states: [
@@ -583,7 +570,6 @@ const infoScreens: GuideScreen[] = [
     title: '찾을 수 없음',
     group: infoGroup,
     route: '*',
-    devices: 'all',
     status: '제품에 있음',
     summary: '없는 주소로 들어오면 보이는 공통 화면이다.',
     states: [base],
@@ -601,7 +587,6 @@ const infoScreens: GuideScreen[] = [
     title: '마이페이지',
     group: infoGroup,
     route: '/me',
-    devices: 'all',
     status: '제품에 있음',
     summary:
       '계정 정보, 연습 기록 사용 동의, 이 브라우저 기록 지우기, 의견 보내기, 계정 삭제를 둔다.',
@@ -621,7 +606,7 @@ const infoScreens: GuideScreen[] = [
       'frontend/src/features/auth/SuggestionForm.tsx',
     ],
     productNote:
-      '의견 보내기 칸(SuggestionForm)은 자리만 둔다. 동의 · 지우기 · 삭제는 서버 · 브라우저에 아무것도 하지 않고, 확인 창도 띄우지 않는다.',
+      '의견 보내기 칸(SuggestionForm)은 자리만 둔다. 동의 · 지우기 · 삭제는 서버 · 브라우저에 아무것도 하지 않고, 확인 창과 결과 · 오류 문구("동의 설정을 바꾸지 못했어요" · "이 브라우저의 기록을 지웠어요" · "삭제하는 중…" 등)도 그리지 않는다.',
     productLinks: [link('마이페이지', '/me')],
     next: [next('내 피치로', 'home')],
   },
@@ -637,7 +622,6 @@ const onboardingScreens: GuideScreen[] = [
     title: '웰컴 · 서비스 소개',
     group: onboardingGroup,
     route: '/welcome',
-    devices: 'all',
     status: '제품에 있음',
     summary: '서비스를 소개하고 로그인으로 보낸다. 공개 전에는 카운트다운과 "오픈 예정"을 보인다.',
     states: [
@@ -676,7 +660,6 @@ const onboardingScreens: GuideScreen[] = [
     title: '로그인',
     group: onboardingGroup,
     route: '/login',
-    devices: 'all',
     status: '제품에 있음',
     summary:
       'Google 계정으로 로그인한다. 세션 확인 · Google로 이동 · 취소 · 실패를 상태 줄에 알린다.',
