@@ -313,7 +313,11 @@ export function DeviceCheckPage() {
    * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
    */
   const begin = async () => {
-    if (!choice) return;
+    // 확인 창을 거치는 동안 고를 조합이 사라졌을 수 있습니다. 시작 버튼을 잠근 채 두지 않습니다
+    if (!choice) {
+      setStarting(false);
+      return;
+    }
 
     // 드롭다운 값이 아니라 **실제로 열린 트랙**의 장치를 넘깁니다. 기본 장치로 통과했어도
     // 그 장치가 남아서, 그사이 OS 기본값이 바뀌어도 리허설이 같은 장치를 엽니다.
