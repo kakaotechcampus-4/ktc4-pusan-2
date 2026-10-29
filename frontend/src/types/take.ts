@@ -88,3 +88,20 @@ export interface TakeAbandoned {
   take_id: string;
   status: TakeStatus;
 }
+
+/**
+ * 어느 창 · 기기에서 발표 중인 Take — `GET /api/takes/active` (BE #718).
+ * 사용자는 한 번에 연습 하나만 해서, 새 Take 를 만들기 전에 이것을 끝낼지 묻습니다
+ */
+export interface ActiveTake {
+  take_id: string;
+  /** 다른 피치의 Take 일 수 있습니다. 끝낼 때 이 값으로 주소를 만듭니다 */
+  pitch_id: string;
+  pitch_title: string;
+  take_number: number;
+}
+
+/** 발표 중인 Take 가 없으면 `take` 가 null 입니다 */
+export interface ActiveTakeResponse {
+  take: ActiveTake | null;
+}
