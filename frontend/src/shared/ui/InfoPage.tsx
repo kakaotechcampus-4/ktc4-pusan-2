@@ -6,7 +6,7 @@ import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
  * 글 위주 화면의 틀 — 분석 방식 설명(P14) · 미지원 브라우저(P18) · 404 · 마이페이지(P9).
  * 홈으로 가는 로고 줄을 직접 둡니다. 로그인 없이 열리는 화면에는 앱 머리(RequireSession)가 없어서입니다.
  * 상단바(`AppHeader`) 아래에 놓이는 Take 기록 · 마이페이지는 `logo={false}` 로 로고를 빼고 제목만 둡니다.
- * 모양은 디자인 시안(`dev/design/ui.tsx` DraftPage)과 같습니다.
+ * 모양은 디자인 시안(`docs/fe/design/src/drafts/ui.tsx` DraftPage)과 같습니다.
  */
 export function InfoPage({
   title,

@@ -1,10 +1,10 @@
-"""확정 전사(final)의 번호 · 저장 재시도 · 화면에 못 보낸 final 보관. Take 스트림 하나에 하나다.
+"""확정 전사(final)의 번호 · 화면에 못 보낸 final 보관(`TranscriptBuffer`, 스트림 하나에 하나)과
+저장(`FinalBuffer`, Take 하나에 하나).
 
 final 은 `TranscriptStore` 로 저장한다 (take 모듈 service 에 위임). 스트림이 새로 만들어질 때는
-저장된 마지막 번호를 이어 받는다 — grace 가 만료돼 스트림이 사라진 뒤 다시 붙어도 `segment_id` 가
-`"1-1"` 부터 다시 나오지 않아야 FE 가 앞부분을 덮어쓰지 않고, `UNIQUE(take_id, seq)` 도 지켜진다.
-저장에 실패한 final 은 들고 있다가 다음 final 을 저장할 때와 스트림이 정상으로 끝날 때 다시
-저장한다.
+저장된 마지막 번호와 아직 못 넣은 final 의 번호 중 큰 쪽을 이어 받는다 — grace 가 만료돼 스트림이
+사라진 뒤 다시 붙어도 `segment_id` 가 `"1-1"` 부터 다시 나오지 않아야 FE 가 앞부분을 덮어쓰지 않고,
+`UNIQUE(take_id, seq)` 도 지켜진다. 저장에 실패한 final 은 Take 가 들고 있다가 다시 넣는다.
 
 FE 가 떨어져 있는 동안 온 final 은 모아 두었다가 다시 붙으면 보낸다. 실제 WebSocket 전송은 스트림
 (`stream/runtime.py`)이 하고, 여기서는 그 결과를 받아 목록을 고친다. connection · stream 을
@@ -16,7 +16,9 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 
+from pitch_coach_backend.core.database import is_transient_db_error
 from pitch_coach_backend.core.logging import sqlstate
+from pitch_coach_backend.core.row_buffer import RowBuffer
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO, TranscriptWordDTO
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.realtime.dto import TranscriptMessage
@@ -26,8 +28,9 @@ logger = logging.getLogger(__name__)
 
 # FE 가 떨어져 있는 동안 모아 둘 final 개수. 10분 발표가 200개 안팎이다
 MAX_MISSED_FINALS = 200
-# 저장에 실패해 들고 있을 final 개수. 넘치면 오래된 것부터 버린다
-MAX_UNSAVED_FINALS = 200
+# 저장에 실패해 들고 있을 final 개수. 넘치면 오래된 것부터 버린다. Take 를 끝낼 때까지 DB 가 안 돼도
+# 리포트에 빠지지 않게 최대 시간(1시간) 발표의 final 이 다 들어가게 둔다 (10분이 200개 안팎)
+MAX_UNSAVED_FINALS = 1_500
 
 
 class TranscriptBuffer:
@@ -89,23 +92,10 @@ class TranscriptBuffer:
                     self.missed_finals.pop(0)
             logger.info("재연결 중 놓친 final 을 모두 다시 보냈다 take=%s", self.take_id)
 
-    async def persist(
-        self, message: TranscriptMessage, final_at_ms: int, stt_session_no: int
-    ) -> bool:
-        """final 하나를 저장할 목록에 넣고 저장한다. Take 가 지워져 저장할 곳이 없으면 False."""
-        self.unsaved.append(self._segment(message, final_at_ms, stt_session_no))
-        if len(self.unsaved) > MAX_UNSAVED_FINALS:
-            dropped = self.unsaved.pop(0)
-            logger.error(
-                "저장 못 한 final 이 너무 많아 오래된 것을 버린다 take=%s seq=%d",
-                self.take_id,
-                dropped.seq,
-            )
-        return await self.save_unsaved()
-
-    def _segment(
+    def segment(
         self, message: TranscriptMessage, final_at_ms: int, stt_session_no: int
     ) -> TranscriptSegmentCreateDTO:
+        """저장할 행. 번호는 지금 구간이다 — `next_segment` 전에 부른다."""
         return TranscriptSegmentCreateDTO(
             seq=self.segment_no,
             stt_session_no=stt_session_no,
@@ -127,53 +117,9 @@ class TranscriptBuffer:
             final_at_ms=final_at_ms,
         )
 
-    async def save_unsaved(self) -> bool:
-        """저장 못 한 final 을 번호 순서대로 저장한다. 실패하면 거기서 멈추고 다음에 다시 한다.
-
-        Take 가 지워져 저장할 곳이 없으면 남은 것을 버리고 False. 스트림은 이걸 보고 끊는다.
-
-        DB 가 죽어 있으면 하나씩 다 시도해도 다 실패한다. 첫 실패에서 멈춰야 final 하나마다
-        DB 왕복이 하나로 끝난다.
-        """
-        while self.unsaved:
-            segment = self.unsaved[0]
-            try:
-                await self._store.append(self.take_id, segment)
-            except NonExistentTake:
-                # Take 가 지워졌다. 지운 요청이 이 스트림을 끊기 직전에 온 final 이거나, 그 요청이
-                # 이 스트림을 보지 못했다. 저장할 곳이 없으니 더 돌 이유가 없다
-                logger.warning(
-                    "Take 가 지워져 final 을 저장하지 못했다. 스트림을 끊는다 take=%s seq=%d",
-                    self.take_id,
-                    segment.seq,
-                )
-                self.unsaved.clear()
-                return False
-            except DuplicateTranscriptSegment:
-                # 실패로 알았던 저장이 실제로는 커밋됐다 (커밋 뒤 연결이 끊김). 남겨 두면 뒤의
-                # final 이 이것에 막혀 영영 저장되지 않는다
-                logger.warning(
-                    "이미 저장된 final 이다. 넘어간다 take=%s seq=%d", self.take_id, segment.seq
-                )
-            except Exception as exc:
-                # DB 장애로 스트림까지 멈추면 안 된다 — 화면 전사는 이미 나갔고 발표는 계속된다.
-                # 전사 원문은 로그에 남기지 않는다 (seq 와 길이만). SQLAlchemy 예외 본문에는 SQL
-                # 매개변수와 DB 오류 메시지가 붙어 원문이 섞이므로 traceback 도 남기지 않는다
-                logger.error(
-                    "final 저장 실패 take=%s seq=%d len=%d 남은 개수=%d error=%s sqlstate=%s",
-                    self.take_id,
-                    segment.seq,
-                    len(segment.transcript),
-                    len(self.unsaved),
-                    type(exc).__name__,
-                    sqlstate(exc),
-                )
-                return True
-            self.unsaved.pop(0)
-        return True
-
     def report_leftovers(self) -> None:
-        """스트림이 닫힐 때 남은 것을 로그로 남긴다. 화면에 못 보낸 final 과 저장하지 못한 final."""
+        """스트림이 닫힐 때 화면에 못 보낸 final 을 로그로 남긴다. 저장하지 못한 final 은 Take 에
+        남아 있다 (`FinalBuffer`)."""
         if self.missed_finals:
             # 저장은 화면과 따로 한다 (final 은 붙어 있는 클라이언트와 무관하게 저장한다).
             # 실시간 화면에만 못 간 것이라 개수만 남긴다
@@ -182,12 +128,63 @@ class TranscriptBuffer:
                 self.take_id,
                 len(self.missed_finals),
             )
-        if self.unsaved:
-            # 끝날 때까지 저장하지 못했다. 이 구간은 리포트에서 빠진다
-            logger.error(
-                "저장하지 못한 final 을 버린다 take=%s count=%d seq=%d~%d",
-                self.take_id,
-                len(self.unsaved),
-                self.unsaved[0].seq,
-                self.unsaved[-1].seq,
-            )
+
+
+class FinalBuffer(RowBuffer[TranscriptSegmentCreateDTO]):
+    """확정 전사 (take_transcript_segments). 받는 대로 백그라운드로 하나씩 넣는다.
+
+    STT 결과 처리는 저장을 기다리지 않는다 — DB 가 느려도 다음 결과 · 문장 끝 신호가 밀리지 않는다.
+    저장은 하나씩만 돌아 번호 순서가 지켜진다. 버퍼는 스트림이 아니라 Take 에 붙어 있어
+    (`stream/record.TakeRecord`) grace 가 지나 스트림이 새로 열려도 앞 스트림이 못 넣은 final 이
+    이어진다. 다시 넣기 · 지워진 Take · 끝낼 때의 `seal` · `flush` 규칙은 1초 원자료와 같다
+    (`RowBuffer`).
+    """
+
+    def __init__(self, take_id: uuid.UUID, store: TranscriptStore) -> None:
+        super().__init__(
+            take_id,
+            self._append_all,
+            what="확정 전사",
+            batch=1,
+            key=lambda segment: segment.start_ms,
+            max_unsaved=MAX_UNSAVED_FINALS,
+            gone_errors=(NonExistentTake,),
+        )
+        self._store = store
+        # 받은 final 의 가장 큰 번호 · Deepgram 세션 번호. 새 스트림이 저장된 번호보다 뒤에서 잇게
+        # 한다 — 아직 못 넣은 final 의 번호를 다시 쓰면 `UNIQUE(take_id, seq)` 에 걸린다
+        self.last_seq = 0
+        self.last_session_no = 0
+
+    def add(self, row: TranscriptSegmentCreateDTO) -> None:
+        self.last_seq = max(self.last_seq, row.seq)
+        self.last_session_no = max(self.last_session_no, row.stt_session_no)
+        super().add(row)
+
+    async def _append_all(
+        self, take_id: uuid.UUID, segments: list[TranscriptSegmentCreateDTO]
+    ) -> None:
+        # 넣은 것을 목록 앞에서 뺀다. 실패하면 `RowBuffer` 가 이 목록을 되돌려 두므로 남은 것만
+        # 다시 넣는다
+        while segments:
+            try:
+                await self._store.append(take_id, segments[0])
+            except DuplicateTranscriptSegment:
+                # 실패로 알았던 저장이 실제로는 커밋됐다 (커밋 뒤 연결이 끊김). 남겨 두면 뒤의
+                # final 이 이것에 막혀 영영 저장되지 않는다
+                logger.warning(
+                    "이미 저장된 final 이다. 넘어간다 take=%s seq=%d", take_id, segments[0].seq
+                )
+            except Exception as error:
+                if isinstance(error, NonExistentTake) or is_transient_db_error(error):
+                    raise
+                # 저장은 한 행씩 커밋한다. 값이 잘못된 한 행 때문에 대기 중인 나머지 전사까지
+                # RowBuffer 가 묶어서 버리지 않게 여기서 그 행만 넘긴다. 원문은 로그에 남기지 않는다
+                logger.error(
+                    "확정 전사 한 행을 저장할 수 없어 버린다 take=%s seq=%d error=%s sqlstate=%s",
+                    take_id,
+                    segments[0].seq,
+                    type(error).__name__,
+                    sqlstate(error),
+                )
+            segments.pop(0)

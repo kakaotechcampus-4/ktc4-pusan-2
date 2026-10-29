@@ -19,6 +19,7 @@ from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.realtime.dto import AutoEndReason
 from pitch_coach_backend.realtime.storage.metrics import MetricBuffer, SlideBuffer
 from pitch_coach_backend.realtime.storage.store import TranscriptStore
+from pitch_coach_backend.realtime.storage.transcripts import FinalBuffer
 from pitch_coach_backend.realtime.stream.abandon import LeftReason
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy, SilenceTracker
 from pitch_coach_backend.realtime.stream.record import TakeRecord
@@ -117,6 +118,7 @@ def take_record(take_id: uuid.UUID, policy: AutoEndPolicy, store: TranscriptStor
             silence=SilenceTracker(policy),
             metrics=MetricBuffer(take_id, store),
             slides=SlideBuffer(take_id, store),
+            finals=FinalBuffer(take_id, store),
             coach=CoachSession(take_id),
             store=store,
         )

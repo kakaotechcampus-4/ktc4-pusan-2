@@ -5,6 +5,7 @@
 `realtime.dependencies`).
 """
 
+import functools
 import uuid
 from collections.abc import Iterable
 
@@ -12,6 +13,7 @@ import anyio
 
 from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
 from pitch_coach_backend.module.hooks import MarkEnded
+from pitch_coach_backend.module.take.exception import TakeRecordsNotSaved
 from pitch_coach_backend.realtime.dependencies import get_transcript_store
 from pitch_coach_backend.realtime.stream import finish, record, registry
 
@@ -23,8 +25,13 @@ class RealtimeLiveTakes:
     def is_live(self, take_id: uuid.UUID) -> bool:
         return anyio.from_thread.run_sync(registry.is_live, take_id)
 
-    def end_closed_tab(self, take_id: uuid.UUID) -> None:
-        anyio.from_thread.run(registry.end_closed_tab, take_id)
+    def end_closed_tab(self, take_id: uuid.UUID, *, replaced: bool = False) -> None:
+        anyio.from_thread.run(
+            functools.partial(registry.end_closed_tab, replaced=replaced), take_id
+        )
+
+    def blocking_take(self, user_id: uuid.UUID) -> uuid.UUID | None:
+        return anyio.from_thread.run_sync(registry.blocking_take, user_id)
 
     def end(self, take_id: uuid.UUID, mark: MarkEnded) -> None:
         ending = anyio.from_thread.run(finish.end_without_stop, take_id)
@@ -32,6 +39,13 @@ class RealtimeLiveTakes:
             # 연결이 붙어 있다. 그 연결의 stop 이 마지막 전사를 저장한 뒤 끝낸다
             return
         coach = record.CoachDeps(client=get_coach_client(), store=get_coach_store())
+        if not ending.finals_saved:
+            # 확정 전사를 아직 저장하지 못했다. 지금 적으면 리포트에서 빠진다. 뒤에서 저장한 뒤
+            # 적고, FE 에는 실패로 답해 다시 보내게 한다
+            anyio.from_thread.run_sync(
+                finish.mark_later, take_id, get_transcript_store(), ending, coach
+            )
+            raise TakeRecordsNotSaved()
         try:
             marked = mark(ending.end_reason, ending.utterance_ends)
         except Exception:

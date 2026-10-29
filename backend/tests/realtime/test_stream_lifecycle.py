@@ -9,11 +9,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.connection import session
 from pitch_coach_backend.realtime.dto import MetricsMessage
 from pitch_coach_backend.realtime.stream import client as client_module
-from pitch_coach_backend.realtime.stream import registry, runtime, state
+from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
 from pitch_coach_backend.realtime.stream.runtime import TakeStream
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
@@ -30,9 +31,11 @@ from tests.realtime.conftest import (
     _wait_for,
     _wait_until_ok,
     closed_with,
+    db_down,
     frame,
     handshake,
     metrics,
+    row,
     stop,
     transcript,
     use,
@@ -270,11 +273,12 @@ async def test_handover_timeout_cancels_the_old_stream_instead_of_orphaning_it(
 
 
 @pytest.mark.anyio
-async def test_handover_waits_for_the_old_stream_to_finish_saving(
+async def test_handover_numbers_after_the_final_the_old_stream_is_still_saving(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """정리 중인 스트림이 final 을 저장하는 도중에 끊겨도 그 저장은 끝까지 간다. 새 스트림은
-    그 저장이 끝난 뒤 번호를 읽는다 — 먼저 읽으면 같은 seq 로 저장하다 UNIQUE 위반으로 버려진다."""
+    """정리 중인 스트림이 final 을 저장하는 도중에 끊겨도 그 저장은 Take 의 버퍼가 끝까지 한다.
+    새 스트림은 저장된 번호와 아직 못 넣은 번호 중 큰 쪽 뒤에서 잇는다 — 저장된 번호만 보면 같은
+    seq 로 저장하다 UNIQUE 위반으로 버려진다."""
     monkeypatch.setattr(stt_loop, "DRAIN_TIMEOUT_SEC", 0.05)
     take_id = uuid.uuid7()
     owner_id = uuid.uuid7()
@@ -306,8 +310,9 @@ async def test_handover_waits_for_the_old_stream_to_finish_saving(
         store=store,
     )
 
-    assert [seg.transcript for seg in store.segments] == ["마지막 말"]
-    assert store.cursor_reads == [0, 1], "새 스트림이 옛 스트림의 저장보다 먼저 번호를 읽었다"
+    assert new_stream._transcripts.segment_no == 2, "옛 스트림이 저장 중인 seq 1 을 다시 쓴다"
+    assert await new_stream._record.finals.flush()
+    assert [(seg.seq, seg.transcript) for seg in store.segments] == [(1, "마지막 말")]
     await _wait_until_ok(new_stream)
     await asyncio.sleep(0.01)  # 세션 태스크가 뜨기 전에 끊으면 "never awaited" 경고가 난다
     new_stream.cancel()
@@ -849,3 +854,64 @@ async def test_unexpected_exception_in_session_reconnects_instead_of_dying(
     stream.request_stop()
     assert await stream.wait_closed(timeout=2.0)
     assert [len(a) for a in adapter.sessions[1].audio] == [3200]
+
+
+# ── 앱을 내릴 때 ──────────────────────────────────────────────────────
+
+
+def _segment(seq: int) -> TranscriptSegmentCreateDTO:
+    return TranscriptSegmentCreateDTO(
+        seq=seq,
+        stt_session_no=1,
+        start_ms=seq * 1000,
+        end_ms=seq * 1000 + 500,
+        transcript="하나",
+        words=[],
+        confidence=0.9,
+        speech_final=True,
+    )
+
+
+@pytest.mark.anyio
+async def test_shutdown_closes_slow_streams_together_then_saves_records(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """컨테이너는 정해 둔 시간이 지나면 프로세스를 강제로 끝낸다. CloseStream 에 답하지 않는
+    스트림을 하나씩 기다리면 그 시간이 스트림 수만큼 늘어 기록을 저장하기 전에 잘린다. 스트림은
+    같이 닫고, DB 가 느려도 남은 1초 원자료와 확정 전사를 같이 저장해 상한 안에 끝낸다."""
+    monkeypatch.setattr(registry, "SHUTDOWN_CLOSE_WAIT_SEC", 0.2)
+    monkeypatch.setattr(stt_loop, "ABORT_TIMEOUT_SEC", 0.2)
+    monkeypatch.setattr(finish, "FLUSH_METRICS_TIMEOUT_SEC", 0.4)
+    # 확정 전사는 받는 대로 넣는데 처음 넣기가 실패해 들고 있다. 앱을 내릴 때 다시 넣는다
+    store = FakeTranscriptStore(append_delay=0.35, errors=[db_down()] * 3)
+    streams = []
+    for i in range(1, 4):
+        stream = registry.create_stream(
+            uuid.uuid7(),
+            owner_id=uuid.uuid7(),
+            stt_adapter=FakeSttAdapter(Plan(swallow_close=True)),
+            config=SttConfig(),
+            store=store,
+        )
+        stream.start()
+        await _wait_until_ok(stream)
+        state.streams[stream.take_id] = stream
+        record = state.takes[stream.take_id]
+        record.metrics.add(row(i * 1000))
+        record.finals.add(_segment(i))
+        streams.append(stream)
+    await _wait_for(lambda: not store.errors)
+    await asyncio.sleep(0.05)
+
+    started = time.monotonic()
+    await registry.stop_all()
+    elapsed = time.monotonic() - started
+
+    # 하나씩 닫으면 3 × 0.2 + 0.35 초, 원자료 → 확정 전사를 차례로 저장하면 0.2 + 2 × 0.35 초다
+    assert elapsed < (
+        registry.SHUTDOWN_CLOSE_WAIT_SEC
+        + stt_loop.ABORT_TIMEOUT_SEC
+        + finish.FLUSH_METRICS_TIMEOUT_SEC
+    )
+    assert sorted(store.metrics) == [1000, 2000, 3000]
+    assert sorted(store.take_ids) == sorted(stream.take_id for stream in streams)

@@ -155,6 +155,15 @@ export function leftWindow(
   return now - row.lastBeatAt < LIVE_BEAT_MS ? 'OTHER_WINDOW' : 'CLOSED';
 }
 
+/**
+ * 다른 곳에서 새 Take 를 시작하려고 이 Take 를 끝냈나 (`abandon?replace=true`, BE #718).
+ * 끝낸 이유는 창을 닫았을 때와 같은 `CLOSED` 라, BE 가 함께 보내는 문구로만 가립니다 —
+ * "다른 곳에서 새 연습을 시작해 이 연습을 끝냈어요." (`docs/be/take-lifecycle.md` abandon API)
+ */
+export function replacedElsewhere(message: string | null | undefined): boolean {
+  return message?.startsWith('다른 곳에서') ?? false;
+}
+
 /** 창을 닫은 Take 를 서버에 끝내 달라고 한 뒤 어디로 갈지 */
 export type AbandonOutcome = 'CLOSED' | 'OTHER_WINDOW' | 'PROCESSING';
 

@@ -514,7 +514,7 @@ cd web && npm ci
 - **브라우저 엔진 · Worker**: `web/src/engine/` · `web/src/worker/`가 원본이고 AI가 고친다. FE는 `frontend/src/vendor/gaze/`로 복사해 쓰고, 복사한 기준 커밋을 `vendor/gaze/README.md`에 적는다. FE는 엔진의 `index.ts` · `contract.ts`와 Worker의 `protocol.ts`(메시지) · `gaze.worker.ts`(엔트리)만 쓴다(5-6 'Worker 메시지'). 엔진 · Worker 안은 FE에서 고치지 않고, 고칠 것은 연구 폴더에서 고쳐 다시 복사한다.
 - **카메라 화면**(`camera/`: 준비 점검 · 고개 원 · 보정 · 결과 카드의 흐름 · 그리기 · 안내 문구)은 FE 담당이다(#611). FE 사본이 원본이 되고 FE가 고친다. 화면은 엔진 공개 입구와 5-6의 '화면이 쓰는 엔진 코드'만으로 만든다. 연구 폴더의 `web/src/camera/`는 연구 데모와 브라우저 시험(`npm run smoke`)용으로만 남고, FE와 동기화하지 않는다(FE 화면을 데모로 보고 싶으면 그때 받아 온다). FE가 넘겨받기 전까지는 지금처럼 연구 폴더 판을 복사한다.
 
-**옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 있고 아래 '옮긴 뒤 확인' 1을 통과해 옮겼다(2026-10-26). 2(코치 연구 폴더 재생)도 마쳤다(2026-10-26, 코치 연구 폴더 README 7절). 3(FE) · 4(연구 도구와 FE 사본 대조)와 코치 앱 연결은 이어지는 작업이다.
+**옮기는 조건**: 서비스의 Python 3.12와 pydantic 판(서비스 `uv.lock`)을 쓴다. `judge` · `summarize` · `criteria`와 `examples/` 계약 테스트가 있고 아래 '옮긴 뒤 확인' 1을 통과해 옮겼다(2026-10-26). 2(코치 연구 폴더 재생)도 마쳤다(2026-10-26, 코치 연구 폴더 README 7절). 코치 앱 연결(`/coach/evaluate` · `/coach/finalize`)은 #685로 마쳤다. 3(FE) · 4(연구 도구와 FE 사본 대조)는 이어지는 작업이다.
 
 **환경변수**: 시선 판정 모듈은 환경변수를 읽지 않는다. 서비스 공통 환경변수는 `architecture.md` 10절이다.
 

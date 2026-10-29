@@ -18,6 +18,10 @@ POST /api/pitches/add/{pitch_id}/presentation                     발표자료(P
   S3 에는 `{version}.pdf` · `application/pdf` 로 올린다. 연 김에 쪽수를 `presentation_versions.page_count` 에 두고
   업로드 응답 · `/resources` · 발표자료 상세에 싣는다. 이 칸이 생기기 전에 올린 발표자료는
   `uv run python dev/backfill-presentation-page-count.py` 로 채운다 (`--dry-run` 으로 먼저 본다).
+- **S3 에 올린 뒤 실패하면 한쪽만 남기지 않는다.** 조회 URL 은 커밋 전에 만들고, 버전을 저장하지 못하면 올린 파일을 지운다.
+  롤백 뒤 발표 행을 다시 잠그고 버전 행이 없을 때만 지운다. 삭제가 끝나기 전에는 같은 번호의 다음 업로드가 시작되지 않는다.
+  커밋 응답만 잃었거나 다음 업로드가 이미 같은 번호를 저장했으면 파일을 남긴다. 지우지 못한 파일은 같은 번호의
+  다음 업로드가 덮어쓰고 발표를 지울 때 같이 지워진다.
 - **대본은 발표자료와 따로 올린다.** 대본만 여러 번 고치는 게 정상 흐름이라, 발표자료 업로드에 묶으면 PDF 를 매번 다시 올려야 한다.
   버전은 pitch 안에서 자동으로 1, 2, … 로 매기고, 발표자료 버전과는 따로 센다.
 - 대본은 JSON `{"content": "..."}` 로 받는다 (FE 는 textarea 내용 그대로). 비어 있거나 5만 자를 넘거나 NUL 문자가 있으면
@@ -40,10 +44,17 @@ POST /api/pitches/add/{pitch_id}/presentation                     발표자료(P
   이 값들을 주지 않는 응답(지금 AI 연구 코드)이면 비워 둔다. 제한 시간만 바뀌면 다시 파싱하지 않는다 — 쓰는 쪽이 `expected_ms` 를 `parse_meta.target_ms` 에 대한 비율로 읽는다.
 - 작업은 `BackgroundTasks` + `async`. **AI 를 기다리는 동안 DB 세션을 쥐지 않고**, 저장만 threadpool 의
   짧은 세션으로 한다 (`realtime/storage/store.py` 와 같은 이유 — 같은 이벤트 루프에서 STT 가 돈다).
+- **AI 를 부르는 동안은 백그라운드 AI 자리 하나를 쓴다** (`core/ai_slots.py`, 코치 · 분석 · 평가 기준과 합계 4).
+  자리가 없으면 20초(`SLOT_WAIT_SEC`)까지만 기다리고 `FAILED (AI_UNAVAILABLE)` 로 끝낸다. 기다린 시간도 90초 만료에
+  들어가므로 기다림 20초 + 어댑터 최악 소요 61초가 90초 안에 들어와야 한다. 저장과 평가 기준 요청은 자리 밖이다.
 - 상태 전이는 전부 **조건부 UPDATE** 다. 재시도 두 번 눌러도 작업은 하나, 늦게 끝난 옛 작업은
   `parse_requested_at` 이 달라 새 결과를 못 덮는다. 만료가 지난 작업도 쓰지 못한다 (FAILED 가 DONE 으로 뒤집히지 않게).
-- BE 가 재시작돼 작업이 사라지면 PENDING 이 남는다. 요청 후 **90초**가 지난 PENDING 은 읽을 때
-  `FAILED (PARSE_EXPIRED)` 로 보여주고 재시도를 연다. 90초는 어댑터 최악 소요(30 × 2 + 1 = 61초)보다 길어야 한다 (테스트가 확인한다).
+- BE 가 재시작돼 작업이 사라지면 PENDING 이 남는다. 뜰 때 **만료 전 PENDING 을 이어받는다** (`ScriptParseRunner.resume_all`).
+  앱 시작 시각 이전에 요청한 행만 고른다. 복구 조회가 늦어져도 새 업로드·재시도 작업은 이어받지 않는다.
+  표식(`parse_requested_at`)을 이어받는 시각으로 바꿔 90초를 다시 센다 — 옛 시각 그대로면 남은 시간이 61초보다 짧은 행이
+  AI 가 답하는 중에 만료로 보인다. 이어받은 작업들은 한꺼번에 띄우고, 원문이 DB 에 없는 행은 이어받지 않는다.
+- 요청 후 **90초**가 지난 PENDING 은 읽을 때 `FAILED (PARSE_EXPIRED)` 로 보여주고 재시도를 연다. 이어받지도 않는다.
+  90초는 어댑터 최악 소요(30 × 2 + 1 = 61초)보다 길어야 한다 (테스트가 확인한다).
 - 테스트는 `conftest.py` 가 파싱 작업을 기본으로 끈다(실제 AI 를 부르지 않게). 흐름 테스트는 가짜 파서를 끼운
   실제 runner 로 바꿔 끼운다 (`tests/script_parse/`).
 - 파싱된 `terms`(STT 가 틀리기 쉬운 용어)는 리허설 STT `keyterm` 으로 쓰인다 ([realtime-stt.md](realtime-stt.md)).

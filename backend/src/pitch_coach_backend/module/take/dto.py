@@ -61,6 +61,18 @@ class TakeHistoryRowDTO(BaseModel):
 class TakeHistoryResponseDTO(BaseModel):
     takes: list[TakeHistoryRowDTO]
 
+class ActiveTakeDTO(BaseModel):
+    """어느 창 · 기기에서 발표 중인 Take. 새 Take 를 시작하기 전에 FE 가 끝낼지 묻는다."""
+
+    take_id: uuid.UUID
+    pitch_id: uuid.UUID
+    pitch_title: str
+    take_number: int
+
+class ActiveTakeResponseDTO(BaseModel):
+    # 발표 중인 Take 가 없으면 null
+    take: ActiveTakeDTO | None
+
 class TakeMeasuresDTO(BaseModel):
     duration_ms: int
     goal_ms: int
@@ -245,13 +257,15 @@ class ReviewRequestDTO(BaseModel):
     missions: list[MissionInputDTO] = []
     user_criteria: UserCriteriaDTO | None = None
 
+DimensionState = Literal["IMPROVED", "PRIORITY", "STABLE", "STRENGTH", "NOT_EVALUABLE"]
+
 class DimensionStatus(BaseModel):
-    audience_gaze: str
-    script_independence: str
-    pacing_rhythm: str
-    vocal_delivery: str
-    fluency: str
-    content_delivery: str
+    audience_gaze: DimensionState
+    script_independence: DimensionState
+    pacing_rhythm: DimensionState
+    vocal_delivery: DimensionState
+    fluency: DimensionState
+    content_delivery: DimensionState
 
 class ScriptModeChangeDTO(BaseModel):
     previous: str

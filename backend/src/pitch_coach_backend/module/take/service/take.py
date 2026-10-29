@@ -17,6 +17,8 @@ from pitch_coach_backend.module.pitch.exception import (
 )
 from pitch_coach_backend.module.pitch.repository import PitchRepository
 from pitch_coach_backend.module.take.dto import (
+    ActiveTakeDTO,
+    ActiveTakeResponseDTO,
     CalibrationDTO,
     TakeHistoryResponseDTO,
     TakeHistoryRowDTO,
@@ -186,7 +188,10 @@ def delete_take_service(db: Session, take_id: uuid.UUID):
 # Calibration 완료 후 Calibration 데이터 저장
 def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto: CalibrationDTO):
     take_repository = TakeRepository(db)
-    existing_take = take_repository.get_take(take_id)
+    # 같은 Take 를 시작하는 요청(`coach_service.start_take`)과 줄을 세운다. 검사와 저장 사이에
+    # Take 가 시작되면 코치는 옛 기준값으로 돌고 DB 에는 새 값이 남는다. 발표 행은 잠그지 않아
+    # 시작 쪽의 발표 → Take 잠금 순서와 엇갈리지 않는다
+    existing_take = take_repository.lock_take(take_id)
 
     if not existing_take:
         raise NonExistentTake()
@@ -269,6 +274,29 @@ def list_takes_service(
             )
             for row in rows
         ]
+    )
+
+
+def active_take_service(
+    db: Session, user_id: uuid.UUID, take_id: uuid.UUID | None
+) -> ActiveTakeResponseDTO:
+    """발표 중인 Take(`take_id`, 실시간 연결이 알려 준 것)의 발표 제목 · 번호. 그 사이 끝났거나
+    지워졌으면 없는 것으로 답한다."""
+    owned = (
+        TakeRepository(db).get_owned_with_pitch_title(take_id, user_id)
+        if take_id is not None
+        else None
+    )
+    if owned is None or owned[0].status not in IN_PROGRESS_STATUSES:
+        return ActiveTakeResponseDTO(take=None)
+    take, pitch_title = owned
+    return ActiveTakeResponseDTO(
+        take=ActiveTakeDTO(
+            take_id=take.id,
+            pitch_id=take.pitch_id,
+            pitch_title=pitch_title,
+            take_number=take.take_number,
+        )
     )
 
 

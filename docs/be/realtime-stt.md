@@ -34,6 +34,7 @@ WS /api/ws/takes/{take_id}
   크므로 정상 흐름에서는 버리지 않는다. 1ms 미만 PCM도 실제 샘플 길이만큼 계산하고, 스트림을 교체해도
   예산을 이어 쓴다. 끊겨 있던 동안에도 최대 10초까지만 채운다.
 - `stt_status` 는 상태가 바뀔 때마다 온다. `connecting` → `ok` → (`reconnecting` → `degraded`) → `closed`.
+  상태 · 자동 종료 알림 전송은 각각 1초(`CONTROL_SEND_TIMEOUT_SEC`)까지 기다린다. FE 가 받지 않아도 STT 처리와 종료 정리를 이어 간다.
   숫자(`frames`·`dropped_frames`·`silence_ms`·`lost_ms`)는 연결 단위가 아니라 **Take 누적**이다.
 - **Deepgram 이 죽어도 연결을 끊지 않는다.** 오디오를 최대 5초 큐에 담고 백오프로 재접속하며
   `degraded` 만 알린다 — 그동안 FE 1단 코치는 계속 돌아야 하기 때문이다.
@@ -57,7 +58,7 @@ WS /api/ws/takes/{take_id}
   | `BAD_MESSAGE` | 유지 |
   | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
   | `TAKE_TAKEN_OVER` | `1008` 로 닫는다. FE 는 **재연결하지 않는다** |
-  | `TOO_MANY_STREAMS` | `1008` 로 닫는다 — 사용자는 한 번에 연습 하나만 하므로 스트림 상한은 1개(`MAX_STREAMS_PER_USER`)다. 다른 Take가 연결돼 있으면 기존 연습을 유지하고 새 연결을 거절한다. 끊겨 다시 붙기를 기다리는 스트림은 실제로 닫힌 뒤 새 스트림으로 교체하며, 정리가 제한 시간 안에 끝나지 않아도 거절한다. 같은 Take의 새로고침·탭 이어받기는 기존 스트림을 재사용한다 |
+  | `TOO_MANY_STREAMS` | `1008` 로 닫는다 — 사용자는 한 번에 연습 하나만 하므로 스트림 상한은 1개(`MAX_STREAMS_PER_USER`)다. 다른 Take가 연결돼 있으면 기존 연습을 유지하고 새 연결을 거절한다. 끊겨 다시 붙기를 기다리는 스트림과 붙어 있어도 오디오가 `LIVE_AUDIO_SEC`(10초) 넘게 오지 않은 연결의 스트림은 실제로 닫힌 뒤 새 스트림으로 교체하며(오디오가 멈춘 연결은 `TOO_MANY_STREAMS` 로 닫는다), Take 를 끝내는 중인(stop · 자동 종료 · 끝내기 PUT) 스트림은 끊지 않고 끝내는 쪽의 상한(`ENDING_WAIT_SEC`, 17초)까지 기다린다. 정리가 제한 시간 안에 끝나지 않으면 오류 메시지 없이 `1013` 으로 닫아 FE 가 백오프로 다시 붙게 한다. 같은 Take의 새로고침·탭 이어받기는 기존 스트림을 재사용한다. 첫 연결이면 Take 를 시작(`RUNNING`)하기 전에 자리를 확인해 `READY` 로 둔 채 거절한다 |
 
 - `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
 - **auth 를 기다리는 연결은 IP 하나에 20개, 전체 200개까지다** (`handshake.pending_auth`). 넘으면 받기 전에
@@ -81,8 +82,17 @@ WS /api/ws/takes/{take_id}
   원천이다. 시각은 Take 기준(ms), `words` 는 `[{word, punctuated_word, start_ms, end_ms, confidence}]`
   JSONB. 저장은 realtime 이 아니라 `take/service/record.py` 가 하고(`append_transcript_segment`), 스트림이
   DB 를 직접 만지지 않도록 `realtime/storage/store.py` 가 저장할 때마다 짧은 세션을 연다.
-  **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다. 단 Take 가 지워져
-  저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
+  **저장은 STT 처리를 기다리게 하지 않는다** — final 은 Take 별 버퍼(`storage/transcripts.FinalBuffer`, 1초 원자료와
+  같은 `RowBuffer`)에 넣고 뒤에서 번호 순서대로 하나씩 넣는다. 스트림이 바뀌어도 버퍼는 Take 에 남아 새 스트림은 저장된
+  번호와 버퍼에 남은 번호 중 큰 쪽 뒤에서 잇는다. **저장 실패는 스트림을 멈추지 않는다** — DB 가 잠깐 안 되면 들고 있다가
+  다시 넣고 화면 전사는 계속 나간다(1시간 발표 분량인 1,500개까지). Take 를 끝내기 전에는 남은 final 을 저장한 뒤 `ANALYZING` 으로 적는다.
+  DB 장애로 다 넣지 못했으면 버리지 않고 지금 적지도 않는다 — 뒤에서 final 부터 다시 넣고 그 뒤에 적는다(`finish.mark_later`). 끝내기
+  PUT 이면 `503 TAKE_RECORDS_NOT_SAVED` 로 답해 FE 가 다시 보낸다. 프로세스가 내려가면 메모리의 final 은 잃는다. 단 Take 가
+  지워져 저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
+- **interim 은 STT 처리를 기다리게 하지 않는다.** 보내는 중이면 가장 새것만 남겼다가 이어 보내고, 한 번 보내기는
+  1초(`INTERIM_SEND_TIMEOUT_SEC`)까지다. 받는 쪽이 느려도 다음 STT 결과 · 문장 끝 신호가 밀리지 않는다. final 을
+  보내기 전에는 남은 interim 을 버리고 보내는 중인 것을 끝낸다 — 옛 interim 이 같은 `segment_id` 로 확정 자막을
+  덮지 않게.
 - **`metrics` 는 `take_metric_seconds` 에 1초 원자료로 저장한다** (`realtime/storage/metrics.py`). Take 결과를
   다시 만들 때(`/coach/finalize` 의 `replay`) 읽는다. 시선 · 음량 기록은 해석하지 않고 받은 그대로 두고, 받았을 때의
   STT 상태(`stt_status`)를 같이 남긴다. 5개가 모이면 한 번에 넣고, 연결이 끊기거나 스트림이 닫히면 남은 것을

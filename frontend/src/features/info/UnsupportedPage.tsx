@@ -6,7 +6,7 @@ import { InfoPage } from '@/shared/ui/InfoPage';
 import { unsupportedReason, type UnsupportedReason } from './unsupportedReason';
 
 /**
- * P18 미지원 브라우저 — 시안 `/dev/design/unsupported`.
+ * P18 미지원 브라우저 — 시안 `docs/fe/design` unsupported.
  *
  * 왜 왔는지는 이 화면이 직접 봅니다. 아직 이 화면으로 보내는 곳이 없고(언제 보낼지는 시안의
  * 남은 질문), 보내는 쪽마다 사유를 실어 주지 않아도 되게 하려는 것입니다.

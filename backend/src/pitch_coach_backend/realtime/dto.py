@@ -179,15 +179,17 @@ class WsErrorCode(StrEnum):
     | `BAD_MESSAGE` | 유지 |
     | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
     | `TAKE_TAKEN_OVER` | 1008 로 닫는다. FE 는 **재연결하지 않는다** |
-    | `TOO_MANY_STREAMS` | 1008 로 닫는다 — 그 사용자가 다른 Take 로 연 스트림이 상한에 닿았다 |
+    | `TOO_MANY_STREAMS` | 1008 로 닫는다 — 다른 Take 가 자리를 쓰거나, 멈춘 연결이 자리를 내줬다 |
 
     - `TAKE_NOT_FOUND` 는 REST 의 404 와 같은 규칙으로 "없음" 과 "남의 것" 을 구분하지 않는다.
     - `TAKE_ENDED` 는 ANALYZING·COMPLETED·FAILED 이거나 BE 가 자동 종료한 Take(`AutoEndMessage`).
       끝난 연습에 전사를 더 붙이면 리포트가 오염된다. BE 가 끝냈으면 `end_reason` 에 이유를 싣는다.
     - `FORBIDDEN` 은 소유권 검사(DB) 뒤의 이중 안전장치라 정상 흐름에서는 나오지 않는다.
     - 사용자는 한 번에 연습 하나만 한다 (`registry.MAX_STREAMS_PER_USER` = 1).
-      `TOO_MANY_STREAMS` 는 다른 Take가 연결돼 있거나 이전 스트림 정리가 늦어질 때다.
-      같은 Take 로 다시 붙는 연결은 기존 스트림을 이어받는다.
+      `TOO_MANY_STREAMS` 는 다른 Take 가 연결돼 있을 때다. 이전 스트림 정리가 늦으면 오류 없이
+      1013 으로 닫아 FE 가 다시 붙는다.
+      같은 Take 로 다시 붙는 연결은 기존 스트림을 이어받는다. 첫 연결이면 Take 를 시작하기 전에
+      거절해 `READY` 로 남는다.
     """
 
     UNAUTHORIZED = "UNAUTHORIZED"

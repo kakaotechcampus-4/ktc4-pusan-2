@@ -1,11 +1,13 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from pitch_coach_backend import entities  # noqa: F401  # 모든 entity 를 매퍼에 등록
+from pitch_coach_backend.coach.background import STOP_TIMEOUT_SEC as COACH_STOP_TIMEOUT_SEC
 from pitch_coach_backend.coach.background import start as start_coach_background
 from pitch_coach_backend.coach.dependencies import get_coach_client, get_coach_store
 from pitch_coach_backend.coach.planner import PlannerCoaching
@@ -18,7 +20,11 @@ from pitch_coach_backend.module.admin.controller import router as admin_router
 from pitch_coach_backend.module.auth.controller import router as auth_router
 from pitch_coach_backend.module.auth.dependencies import CSRF_HEADER_NAME
 from pitch_coach_backend.module.pitch.controller import router as pitch_router
-from pitch_coach_backend.module.pitch.dependencies import resume_script_rubrics
+from pitch_coach_backend.module.pitch.dependencies import (
+    resume_script_parses,
+    resume_script_rubrics,
+)
+from pitch_coach_backend.module.pitch.file_cleanup_sweep import start as start_file_cleanup_sweep
 from pitch_coach_backend.module.service_feedback.controller import router as feedback_router
 from pitch_coach_backend.module.service_feedback.controller import suggestions_router
 from pitch_coach_backend.module.take.controller import router as take_router
@@ -35,6 +41,9 @@ from pitch_coach_backend.realtime.live_takes import RealtimeLiveTakes
 from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.stream.registry import arm_abandoned_takes
 from pitch_coach_backend.realtime.stream.registry import stop_all as stop_all_streams
+from pitch_coach_backend.realtime.stream.registry import (
+    stop_all_max_sec as stop_all_streams_max_sec,
+)
 
 # Caddy 는 /api/* 만 백엔드로 넘긴다 (infra/Caddyfile). 접두어 없는 경로는 404 도 아니고
 # 프론트 화면이 돌아온다. 그래서 /docs·/openapi.json 까지 전부 /api 아래로 옮긴다.
@@ -47,8 +56,25 @@ API_PREFIX = "/api"
 hooks.install(live_takes=RealtimeLiveTakes(), coaching=PlannerCoaching())
 
 
+def shutdown_max_sec() -> float:
+    """lifespan 을 내리는 데 걸리는 상한.
+
+    컨테이너는 SIGTERM 뒤 `stop_grace_period`(infra/docker-compose.yml)가 지나면 강제로 끝낸다.
+    uvicorn 은 먼저 열린 요청 · 연결이 끝나기를 `--timeout-graceful-shutdown`(Dockerfile)까지
+    기다린 뒤 이 정리를 부른다. 그래서 `stop_grace_period` 는 둘을 더한 것보다 길어야 메모리의
+    기록을 저장하기 전에 잘리지 않는다 (tests/test_shutdown_budget.py).
+    """
+    return (
+        stop_all_streams_max_sec()
+        # 코치 finalize 와 계획 요청을 차례로 끊는다
+        + 2 * COACH_STOP_TIMEOUT_SEC
+        + analysis_runner.STOP_TIMEOUT_SEC
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    started_before = datetime.now(UTC)
     # 아래에서 남기는 로그부터 나오도록 맨 먼저 건다. 레벨이 틀렸으면 지금 실패한다
     configure_logging(settings.log_level)
     get_s3()
@@ -63,17 +89,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop_analysis = start_analysis_runner()
     # 시작하지 않은 채 남은 Take 를 끝내는 주기 작업. 뜰 때 한 번 하고 1분마다 한다
     stop_ready_sweep = start_ready_sweep()
+    # 발표를 지운 뒤 S3 에 남은 파일을 지우지 못했으면 DB 에 남은 기록으로 다시 지운다
+    stop_file_cleanup = start_file_cleanup_sweep()
     # 평가 기준 작업도 메모리에서 돌다 사라졌다. PENDING 으로 남은 버전을 이어 간다.
     # AI 를 길게 기다리므로 앱이 뜨는 것을 막지 않게 따로 띄운다
     rubric_resume = asyncio.create_task(resume_script_rubrics(), name="resume-script-rubrics")
+    # 대본 파싱도 같다. 만료 전 PENDING 을 이어 간다
+    parse_resume = asyncio.create_task(
+        resume_script_parses(started_before), name="resume-script-parses"
+    )
     yield
     rubric_resume.cancel()
+    parse_resume.cancel()
     # 끊긴 작업은 PENDING 으로 남아 다음에 뜰 때 이어받는다
-    await asyncio.gather(rubric_resume, return_exceptions=True)
+    await asyncio.gather(rubric_resume, parse_resume, return_exceptions=True)
     # 실시간 STT 스트림은 WebSocket 요청 밖에서 도는 백그라운드 태스크다.
     # 종료 시 Deepgram 에 CloseStream 을 보내 마지막 전사를 받고 정리한다.
     await stop_all_streams()
     await stop_ready_sweep()
+    await stop_file_cleanup()
     await stop_coach_background()
     await stop_analysis()
 

@@ -25,4 +25,6 @@ COPY alembic/ ./alembic/
 EXPOSE 8000
 
 # 인증 전에도 수신 메시지를 64KiB 로 제한한다. 최대 오디오 프레임은 32,008바이트다.
-CMD ["uvicorn", "pitch_coach_backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--ws-max-size", "65536"]
+# 내릴 때 열린 요청을 5초까지만 기다리고 메모리의 기록을 저장하러 간다. 기본값은 끝없이 기다린다
+# (main.shutdown_max_sec, infra/docker-compose.yml 의 stop_grace_period)
+CMD ["uvicorn", "pitch_coach_backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--ws-max-size", "65536", "--timeout-graceful-shutdown", "5"]

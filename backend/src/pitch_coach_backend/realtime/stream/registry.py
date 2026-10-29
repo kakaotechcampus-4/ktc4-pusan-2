@@ -49,6 +49,17 @@ logger = logging.getLogger(__name__)
 # 다른 Take가 붙어 있으면 거절하고, 끊겨 grace를 기다리던 스트림은 닫은 뒤 교체한다.
 MAX_STREAMS_PER_USER = 1
 
+# 끝내는 중인(stop · 자동 종료 · 끝내기 PUT) 스트림이 스스로 닫히기를 기다리는 상한. 끝내는 쪽은
+# 마지막 전사를 기다렸다가 늦으면 직접 끊는다. 가장 긴 쪽인 자동 종료(알림 + drain + abort 뒤
+# 취소 정리)와 같다 — 더 일찍 끊으면 끝낸 Take 의 마지막 문장이 빠진다
+ENDING_WAIT_SEC = (
+    runtime.CONTROL_SEND_TIMEOUT_SEC + stt_loop.DRAIN_TIMEOUT_SEC + 2 * stt_loop.ABORT_TIMEOUT_SEC
+)
+
+# 앱을 내릴 때 스트림이 CloseStream 으로 스스로 닫히기를 기다리는 상한. 넘으면 끊고 정리를
+# `ABORT_TIMEOUT_SEC` 더 기다린다
+SHUTDOWN_CLOSE_WAIT_SEC = 2.0
+
 
 class StreamOwnerMismatch(Exception):
     """다른 사용자가 이미 쓰고 있는 Take 다."""
@@ -56,6 +67,11 @@ class StreamOwnerMismatch(Exception):
 
 class TooManyStreams(Exception):
     """이 사용자가 다른 Take 로 연 스트림이 상한(`MAX_STREAMS_PER_USER`)에 닿았다."""
+
+
+class StreamClosing(Exception):
+    """이 사용자의 이전 스트림이 제한 시간 안에 닫히지 않아 자리를 못 냈다. 잠시 뒤 다시 붙으면
+    열린다 — 다른 Take 가 발표 중이라 거절하는 `TooManyStreams` 와 다르다."""
 
 
 class TakeEnded(Exception):
@@ -168,7 +184,7 @@ async def attach(
     Take 존재·소유·상태는 호출자(service)가 DB 로 먼저 검사한다. 여기서는 스트림을
     만든 사용자와 다르면 `StreamOwnerMismatch` — 그 검사의 이중 안전장치다.
     이 프로세스에서 끝낸 Take 면 `TakeEnded`. 새 스트림을 열 자리가 없으면 `TooManyStreams`
-    (`_make_room`).
+    (`_make_room`), 이전 스트림 정리가 늦어 자리를 못 냈으면 `StreamClosing`.
 
     `coach_context` 는 Take 를 시작할 때 읽은 값이다. 코치가 아직 꺼져 있으면 이 값으로 켠다 —
     다시 붙은 연결이면 이미 켜져 있고 그 `coach_state` 를 이어 간다. 없으면(읽기 실패) STT 만 돈다.
@@ -206,12 +222,17 @@ async def attach(
             )
             # 저장된 마지막 번호에서 이어 받는다. 이 스트림이 처음이면 (0, 0) 이라 1·0 부터
             last_seq, last_session_no = await store.cursor(take_id)
+            record = state.takes.get(take_id)
+            if record is not None:
+                # 앞 스트림이 아직 못 넣은 final 이 있으면 그 번호 뒤에서 잇는다
+                last_seq = max(last_seq, record.finals.last_seq)
+                last_session_no = max(last_session_no, record.finals.last_session_no)
             # 자리 확보 중에는 옛 Deepgram 세션이 실제로 닫히기를 기다린다. 같은 사용자의
             # 다른 Take도 이 확인부터 등록까지 함께 잠가 빈자리를 중복으로 쓰지 못하게 한다.
             async with state.stream_owner_lock(owner_id):
                 try:
                     await _make_room(owner_id)
-                except TooManyStreams:
+                except TooManyStreams, StreamClosing:
                     if not abandon.armed(take_id):
                         # 첫 연결이 Take 를 시작했는데(`RUNNING`) 스트림이 없다. 아무도 다시
                         # 붙지 않으면 떠난 것으로 끝낸다 — 스트림이 닫힌 Take 와 같다
@@ -242,23 +263,22 @@ async def attach(
 
 async def _make_room(owner_id: uuid.UUID) -> None:
     """이 사용자의 새 스트림 자리를 만든다. 열린 스트림이 `MAX_STREAMS_PER_USER` 개면 연결이 끊겨
-    다시 붙기를 기다리는(grace) 스트림을 오래된 것부터 정리한다. 그래도 차 있으면 `TooManyStreams`.
+    다시 붙기를 기다리는(grace) 스트림과 오디오가 멈춘 연결(`is_idle`)의 스트림을 오래된 것부터
+    정리한다. 그래도 차 있으면 `TooManyStreams`, 정리할 스트림이 제한 시간 안에 닫히지 않으면
+    `StreamClosing`.
 
-    붙어 있는 연결의 스트림은 정리하지 않는다 — 다른 창에서 발표 중일 수 있다. 정리한 스트림의
+    오디오가 오는 연결의 스트림은 정리하지 않는다 — 다른 창에서 발표 중일 수 있다. 정리한 스트림의
     Take 는 끝나지 않는다. grace 가 만료된 것과 같아 다시 붙으면 새 스트림이 번호를 이어 받는다.
     정리 중인 스트림도 실제로 닫힐 때까지 센다. request_stop만 하고 자리에서 빼면 반복해서
     끊고 붙이는 동안 drain 중인 Deepgram 세션이 상한 밖으로 계속 쌓인다.
+    Take 를 끝내는 중인 스트림은 끊지 않고 `ENDING_WAIT_SEC` 까지 기다린다.
     """
-    open_streams = [
-        stream
-        for stream in state.streams.values()
-        if stream.owner_id == owner_id and not stream.is_finished
-    ]
+    open_streams = _open_streams(owner_id)
     excess = len(open_streams) - MAX_STREAMS_PER_USER + 1
     if excess <= 0:
         return
     # 맵은 넣은 순서다. 앞이 오래된 것이다
-    waiting = [stream for stream in open_streams if stream.is_stopping or not stream.has_client]
+    waiting = [stream for stream in open_streams if _reclaimable(stream)]
     if len(waiting) < excess:
         logger.warning(
             "사용자의 스트림이 상한이라 새 연결을 거절한다 user=%s limit=%d",
@@ -267,16 +287,64 @@ async def _make_room(owner_id: uuid.UUID) -> None:
         )
         raise TooManyStreams
     for stream in waiting[:excess]:
+        if stream.is_stopping and stream.take_id in state.ended:
+            # Take 를 끝내는 중이다. 끝내는 쪽이 정리를 맡으므로 끊지 않고 기다린다
+            if not await stream.wait_closed(ENDING_WAIT_SEC):
+                raise StreamClosing
+            continue
         logger.info(
-            "새 스트림 자리를 만들려고 다시 붙기를 기다리던 스트림을 정리한다 take=%s",
+            "새 스트림 자리를 만들려고 끊겼거나 오디오가 멈춘 스트림을 정리한다 take=%s",
             stream.take_id,
         )
-        stream.request_stop()
+        if stream.has_client and not stream.is_stopping:
+            # 오디오가 멈춘 연결이다. 그 연결을 닫고 정리한다
+            stream.release_idle()
+        else:
+            stream.request_stop()
         if not await stream.wait_closed():
             stream.cancel()
             # 정리가 끝나지 않았으면 레지스트리에 남겨 다음 요청에서도 세고 새 세션은 거절한다.
+            # 곧 닫히므로 다시 붙을 수 있게 알린다
             if not await stream.wait_closed(stt_loop.ABORT_TIMEOUT_SEC):
-                raise TooManyStreams
+                raise StreamClosing
+
+
+def has_room(owner_id: uuid.UUID, take_id: uuid.UUID) -> bool:
+    """이 사용자가 그 Take 의 스트림을 열 자리가 있다. `_make_room` 이 비울 수 있는 자리도 센다.
+
+    첫 연결이 Take 를 시작(`RUNNING`)하기 전에 묻는다 — 거절할 Take 를 시작해 두면 떠난 Take 로
+    끝나 기록에 남는다. 잠그지 않고 보므로 그 사이 다른 Take 가 자리를 차지하면 `attach` 가
+    거절한다.
+    """
+    blocking = [
+        stream
+        for stream in _open_streams(owner_id)
+        if stream.take_id != take_id and not _reclaimable(stream)
+    ]
+    return len(blocking) < MAX_STREAMS_PER_USER
+
+
+def blocking_take(owner_id: uuid.UUID) -> uuid.UUID | None:
+    """새 Take 를 막는 이 사용자의 Take. 연결이 붙어 있고 오디오가 멈추지 않은 스트림이다
+    (`has_room` 이 세는 것). FE 가 새 Take 를 시작하기 전에 그 연습을 끝낼지 묻는 데 쓴다."""
+    for stream in _open_streams(owner_id):
+        if not _reclaimable(stream):
+            return stream.take_id
+    return None
+
+
+def _open_streams(owner_id: uuid.UUID) -> list[TakeStream]:
+    return [
+        stream
+        for stream in state.streams.values()
+        if stream.owner_id == owner_id and not stream.is_finished
+    ]
+
+
+def _reclaimable(stream: TakeStream) -> bool:
+    """새 스트림 자리를 위해 정리해도 되는 스트림 — 정리 중이거나 다시 붙기를 기다리거나 붙은
+    연결의 오디오가 멈췄다."""
+    return stream.is_stopping or not stream.has_client or stream.is_idle
 
 
 async def _stored_utterance_ends(take_id: uuid.UUID, store: TranscriptStore) -> list[int]:
@@ -384,8 +452,11 @@ def is_live(take_id: uuid.UUID) -> bool:
     return stream is not None and stream.is_receiving_audio
 
 
-async def end_closed_tab(take_id: uuid.UUID) -> None:
+async def end_closed_tab(take_id: uuid.UUID, *, replaced: bool = False) -> None:
     """창을 다시 연 FE 가 Take 를 실패(`CLOSED`)로 끝냈다. DB 에 적은 뒤 부른다.
+
+    `replaced` 는 다른 곳에서 새 Take 를 시작하려고 발표 중인 이 Take 를 끝낸 것이다. 붙어 있는
+    연결에 그렇게 알린다 (`TakeStream.drop_closed_tab`).
 
     떠난 것으로 끝낼 타이머를 끄고, 같은 Take 로 다시 붙지 못하게 하고, 남은 스트림을 끊는다.
     브라우저가 닫힘 프레임 없이 사라졌으면 서버는 아직 그 연결이 붙어 있다고 믿는다 — 그 연결도
@@ -401,7 +472,7 @@ async def end_closed_tab(take_id: uuid.UUID) -> None:
     # 창을 닫은 Take 는 결과를 만들지 않는다. 스트림이 이미 정리됐어도 코치의 기억은 남아 있다
     finish.release_coach(take_id)
     if stream is not None:
-        stream.drop_closed_tab()
+        stream.drop_closed_tab(replaced=replaced)
 
 
 async def discard(take_ids: Iterable[uuid.UUID]) -> None:
@@ -456,27 +527,54 @@ def active_count() -> int:
     return len(state.streams)
 
 
+def _finishing_sec() -> float:
+    """Take 끝내기 정리(자동 종료 · 떠난 Take · 늦은 종료 기록) 하나가 걸리는 상한. 스트림이 닫힌
+    뒤 남은 것은 FE 의 마지막 1초 조각 기다리기, 재료 만들기와 원자료 저장(같이 돈다), DB 에
+    적기, FE 에 closed 를 보내고 닫기다. 다시 적으려고 쉬는 중인 것은 이 상한에서 끊긴다."""
+    return (
+        runtime.FINAL_METRICS_WAIT_SEC
+        + max(finish.FLUSH_METRICS_TIMEOUT_SEC, 2 * SEAL_WAIT_SEC)
+        + finish.MARK_AUTO_END_TIMEOUT_SEC
+        + stt_loop.ABORT_TIMEOUT_SEC
+    )
+
+
+def stop_all_max_sec() -> float:
+    """`stop_all` 이 걸리는 상한. 스트림 닫기 → 기록 저장과, 그동안 같이 돈 Take 끝내기 정리 중
+    긴 쪽에 끝나지 않은 정리를 끊고 기다리는 시간을 더한다. 앱 전체 종료 상한(`main`)에 들어간다."""
+    closing = SHUTDOWN_CLOSE_WAIT_SEC + stt_loop.ABORT_TIMEOUT_SEC
+    saving = finish.FLUSH_METRICS_TIMEOUT_SEC
+    return max(closing + saving, _finishing_sec()) + stt_loop.ABORT_TIMEOUT_SEC
+
+
+async def _close_for_shutdown(stream: TakeStream) -> None:
+    if not await stream.wait_closed(timeout=SHUTDOWN_CLOSE_WAIT_SEC):
+        stream.cancel()
+        await stream.wait_closed(timeout=stt_loop.ABORT_TIMEOUT_SEC)
+
+
 async def stop_all() -> None:
     """앱 종료. 남은 스트림을 정리한다.
 
     정상 종료(CloseStream) 를 잠깐 기다렸다가 안 끝나면 끊는다. 끊은 뒤에도 정리
     (Deepgram 소켓 닫기) 가 끝나기를 기다린다 — 여기서 바로 돌아가면 이벤트 루프가
     닫히면서 "Task was destroyed but it is pending" 로 정리가 중간에 잘린다.
+
+    컨테이너는 정해 둔 시간(`stop_grace_period`)이 지나면 프로세스를 강제로 끝낸다. 그 전에
+    메모리의 기록을 저장하도록 스트림은 같이 닫는다 — 하나씩 기다리면 스트림 수만큼 늘어난다.
     """
+    started = asyncio.get_running_loop().time()
     streams = list(state.streams.values())
     state.streams.clear()
     for stream in streams:
         stream.request_stop()
-    for stream in streams:
-        if not await stream.wait_closed(timeout=2.0):
-            stream.cancel()
-            await stream.wait_closed(timeout=stt_loop.ABORT_TIMEOUT_SEC)
-    # 닫힌 스트림이 남긴 1초 원자료. 다시 뜨면 메모리에 없다. 스트림이 닫히며 시작한 백그라운드
-    # 저장은 행을 꺼내 가 버퍼가 비어 보이므로 `pending` 으로 고른다
+    await asyncio.gather(*(_close_for_shutdown(stream) for stream in streams))
+    # 닫힌 스트림이 남긴 1초 원자료 · 확정 전사. 다시 뜨면 메모리에 없다. 스트림이 닫히며 시작한
+    # 백그라운드 저장은 행을 꺼내 가 버퍼가 비어 보이므로 `pending` 으로 고른다
     unsaved = [
         take_id
         for take_id, record in list(state.takes.items())
-        if record.metrics.pending or record.slides.pending
+        if record.metrics.pending or record.slides.pending or record.finals.pending
     ]
     # 진행 중인 Take 의 문장 끝 신호는 Take 를 끝낼 때 한 번에 적는다. 다시 뜬 프로세스가 이어
     # 받도록(`attach`) 지금 적어 둔다
@@ -485,30 +583,22 @@ async def stop_all() -> None:
         for take_id, record in list(state.takes.items())
         if not record.coach.released
     ]
+    # 진행 중인 코치 판단을 끊고 저장 못 한 코치 이벤트도 넣는다. 다시 뜨면 메모리에 없다. 서로
+    # 다른 기록이라 같이 저장한다
     await asyncio.gather(
         *(finish.flush_metrics(take_id) for take_id in unsaved),
         *(_save_utterance_ends(take_id, record) for take_id, record in live),
-    )
-    # 진행 중인 코치 판단을 끊고 저장 못 한 코치 이벤트를 넣는다. 다시 뜨면 메모리에 없다
-    await asyncio.gather(
         *(
             record.coach.shutdown(finish.FLUSH_METRICS_TIMEOUT_SEC)
             for record in list(state.takes.values())
-        )
+        ),
     )
     if state.background:
         # Take 끝내기 정리(자동 종료 · 떠난 Take · 늦은 종료 기록)가 아직 돌고 있을 수 있다.
-        # 여기서 잘리면 Take 가 진행 중으로 남아 다시 뜬 뒤 떠난 Take 로 끝난다. 스트림은 위에서 다
-        # 닫혔으므로 정리에 남은 것은 FE 의 마지막 1초 조각 기다리기, 재료 만들기와 원자료 저장(같이
-        # 돈다), DB 에 적기, FE 에 closed 를 보내고 닫기다. 다시 적으려고 쉬는 중인 것은 상한에서
-        # 끊긴다
-        finishing_sec = (
-            runtime.FINAL_METRICS_WAIT_SEC
-            + max(finish.FLUSH_METRICS_TIMEOUT_SEC, 2 * SEAL_WAIT_SEC)
-            + finish.MARK_AUTO_END_TIMEOUT_SEC
-            + stt_loop.ABORT_TIMEOUT_SEC
-        )
-        _, pending = await asyncio.wait(state.background.tasks(), timeout=finishing_sec)
+        # 여기서 잘리면 Take 가 진행 중으로 남아 다시 뜬 뒤 떠난 Take 로 끝난다. 위에서 스트림을
+        # 닫고 기록을 저장하는 동안에도 같이 돌았으므로 상한은 stop_all 을 시작한 때부터 잰다
+        remaining = started + _finishing_sec() - asyncio.get_running_loop().time()
+        _, pending = await asyncio.wait(state.background.tasks(), timeout=max(0.0, remaining))
         for task in pending:
             # 루프가 닫히며 "pending 인 채로 사라졌다" 로만 남지 않게, 무엇이 남았는지 적고 끊는다
             logger.error("종료 때까지 끝나지 않은 백그라운드 태스크를 끊는다 %s", task.get_name())

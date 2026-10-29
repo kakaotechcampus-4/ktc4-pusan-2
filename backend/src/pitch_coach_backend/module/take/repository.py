@@ -360,11 +360,18 @@ class TakeRepository:
         )
 
     def lock_take(self, take_id: uuid.UUID) -> Take | None:
+        """Take 행을 트랜잭션이 끝날 때까지 잠그고, 잠근 뒤의 값을 돌려준다.
+
+        FOR NO KEY UPDATE 다. 상태를 바꾸는 UPDATE(`CoachRepository.mark_started` 등)와는 서로
+        기다리고, 이 Take 의 자식 행 쓰기(FK 검사의 KEY SHARE)는 막지 않는다. 같은 세션이 미리
+        읽어 둔 객체(Take 권한 확인)가 있어도 잠금을 기다리는 사이 바뀐 값으로 덮어쓴다.
+        """
         return self.db.scalar(
             select(Take)
             .where(Take.id == take_id)
             .options(defer(Take.event_logs))
-            .with_for_update()
+            .with_for_update(key_share=True)
+            .execution_options(populate_existing=True)
         )
 
     def claim_coverage(self, take_id: uuid.UUID, *, takeover: bool = False) -> datetime | None:

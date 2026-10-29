@@ -211,7 +211,7 @@ def _no_analysis_runner() -> Callable[[], Awaitable[None]]:
     return stop
 
 
-async def _no_rubric_resume() -> None:
+async def _no_resume(*args: object) -> None:
     return None
 
 
@@ -222,11 +222,15 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[Te
     from pitch_coach_backend.core.database import get_db
     from pitch_coach_backend.main import app
     from pitch_coach_backend.module.pitch.dependencies import get_script_parse_runner
-    from pitch_coach_backend.module.pitch.service import pitch as pitch_service
+    from pitch_coach_backend.module.pitch.service import file_cleanup
 
     monkeypatch.setattr(main, "get_s3", lambda: None)
     # 발표 삭제·회원 탈퇴 뒤 S3 파일 정리가 실제 버킷을 부르지 않게 막는다
-    monkeypatch.setattr(pitch_service, "delete_prefix", lambda prefix: None)
+    monkeypatch.setattr(file_cleanup, "delete_prefix", lambda prefix: None)
+    # 삭제 기록 갱신은 SessionLocal(테스트 DB 가 아니다)로 연다. 막는다
+    # (test_file_cleanup.py 가 테스트 세션으로 따로 본다). 다시 지우는 주기 작업도 막는다
+    monkeypatch.setattr(file_cleanup, "_record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main, "start_file_cleanup_sweep", _no_ready_sweep)
     # 앱이 뜰 때 진행 중인 Take 를 SessionLocal(테스트 DB 가 아니다)로 읽고 타이머를 건다. 막는다
     monkeypatch.setattr(main, "arm_abandoned_takes", _no_abandon_timers)
     # 시작하지 않은 Take 정리도 SessionLocal 로 돈다. 테스트는 sweep_once 에 세션을 넘겨 따로 본다
@@ -234,8 +238,9 @@ def client(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Generator[Te
     # 같은 이유로 만들다 만 Take 결과 이어 가기 · 원자료 보관 주기 작업도 막는다
     monkeypatch.setattr(main, "start_coach_background", _no_coach_background)
     monkeypatch.setattr(main, "start_analysis_runner", _no_analysis_runner)
-    # 남은 평가 기준 작업도 SessionLocal 로 읽고 실제 AI 를 부른다. 막는다
-    monkeypatch.setattr(main, "resume_script_rubrics", _no_rubric_resume)
+    # 남은 평가 기준 · 대본 파싱 작업도 SessionLocal 로 읽고 실제 AI 를 부른다. 막는다
+    monkeypatch.setattr(main, "resume_script_rubrics", _no_resume)
+    monkeypatch.setattr(main, "resume_script_parses", _no_resume)
     app.dependency_overrides[get_db] = lambda: db_session
     # 업로드 뒤 백그라운드 대본 파싱이 실제 AI 서버를 부르지 않게 막는다.
     # 파싱을 확인하는 테스트는 가짜 파서를 끼운 runner 로 다시 바꿔 끼운다

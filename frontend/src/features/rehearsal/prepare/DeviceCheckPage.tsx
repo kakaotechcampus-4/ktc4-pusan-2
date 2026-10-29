@@ -15,6 +15,9 @@ import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { ScreenFrame } from './ScreenFrame';
 import { ScriptModeChoice } from './ScriptModeChoice';
+import { ReplaceTakeDialog } from './ReplaceTakeDialog';
+import { activeTakeOrNone, endActiveTake } from './activeTake';
+import type { ActiveTake } from '@/types/take';
 import { MissionCard } from './MissionCard';
 import { practiceModeFor, usePrepareStore } from './prepareStore';
 import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
@@ -85,6 +88,16 @@ function deviceCheckHint({
   if (voiceStatus !== 'DONE')
     return '점검이 끝났어요. 평소 목소리를 재 두면 작게 말할 때 더 정확히 알려 드려요 (선택)';
   return '점검이 끝났어요';
+}
+
+/**
+ * 시작을 누른 뒤의 안내. 다른 곳에서 발표 중인 Take 를 끝낼지 묻는 동안은 아직 여는 중이
+ * 아닙니다 (#719)
+ */
+function startingHint(replacing: { busy: boolean } | null): string {
+  if (!replacing) return '연습을 여는 중…';
+  if (replacing.busy) return '다른 곳의 연습을 끝내는 중…';
+  return '다른 곳에서 진행 중인 연습을 끝낼지 골라 주세요';
 }
 
 /** 평소 목소리 항목의 문구 */
@@ -213,6 +226,19 @@ export function DeviceCheckPage() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  /** 다른 곳에서 발표 중인 Take 를 끝낼지 묻는 중. `busy` 면 끝내는 중입니다 (#719) */
+  const [replacing, setReplacing] = useState<{ take: ActiveTake; busy: boolean } | null>(null);
+  /**
+   * 이 화면을 떠났다 (뒤로 가기 등). 묻거나 끝내는 요청은 화면이 닫혀도 마저 끝나니, 그 뒤에
+   * Take 를 만들어 리허설로 끌고 가지 않도록 봅니다
+   */
+  const leftPage = useRef(false);
+  useEffect(() => {
+    leftPage.current = false;
+    return () => {
+      leftPage.current = true;
+    };
+  }, []);
 
   // 지금 열려 있는 트랙이 곧 선택값입니다. 따로 상태로 들고 있으면
   // 브라우저가 다른 장치를 열었을 때 화면과 실제가 갈라집니다
@@ -265,15 +291,56 @@ export function DeviceCheckPage() {
   const ready = live && micOk && cal.status === 'DONE' && choice !== null && !starting;
 
   /**
-   * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
-   *
-   * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
-   * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
+   * 시작 버튼. 사용자는 한 번에 연습 하나만 해서, 다른 창 · 기기에서 발표 중인 Take 가 있으면
+   * 그것을 끝낼지 먼저 묻습니다 (#719). 없거나 묻지 못했으면 바로 `begin` 입니다.
    */
   const start = async () => {
     if (!choice || starting) return;
     setStarting(true);
     setStartError(null);
+    const other = await activeTakeOrNone();
+    if (leftPage.current) return;
+    if (other) {
+      setReplacing({ take: other, busy: false });
+      return;
+    }
+    await begin();
+  };
+
+  /** 확인 창의 [그 연습 끝내고 시작]. 끝내지 못하면 시작하지 않습니다 — 새 연결이 거절됩니다 */
+  const confirmReplace = async () => {
+    if (!replacing || replacing.busy) return;
+    setReplacing({ ...replacing, busy: true });
+    try {
+      await endActiveTake(replacing.take);
+    } catch (e) {
+      setReplacing(null);
+      setStartError(`다른 곳의 연습을 끝내지 못했어요. ${toMessage(e)}`);
+      setStarting(false);
+      return;
+    }
+    if (leftPage.current) return;
+    setReplacing(null);
+    await begin();
+  };
+
+  const cancelReplace = () => {
+    setReplacing(null);
+    setStarting(false);
+  };
+
+  /**
+   * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
+   *
+   * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
+   * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
+   */
+  const begin = async () => {
+    // 확인 창을 거치는 동안 고를 조합이 사라졌을 수 있습니다. 시작 버튼을 잠근 채 두지 않습니다
+    if (!choice) {
+      setStarting(false);
+      return;
+    }
 
     // 드롭다운 값이 아니라 **실제로 열린 트랙**의 장치를 넘깁니다. 기본 장치로 통과했어도
     // 그 장치가 남아서, 그사이 OS 기본값이 바뀌어도 리허설이 같은 장치를 엽니다.
@@ -357,7 +424,7 @@ export function DeviceCheckPage() {
   const hint =
     startError ??
     (starting
-      ? '연습을 여는 중…'
+      ? startingHint(replacing)
       : (prepareBlocked ??
         deviceCheckHint({
           deviceError,
@@ -377,9 +444,7 @@ export function DeviceCheckPage() {
 
   return (
     <ScreenFrame
-      screenNo="09"
-      screenName="시작 전 세팅 (Take 준비)"
-      entry="진입 · 피치 생성 완료 / 리포트의 다시 연습하기"
+      screenName="시작 전 세팅"
       title={info?.title ?? combo?.title ?? '불러오는 중…'}
       subtitle={subtitle}
       badge={`TAKE ${takeNumber || '—'} · 시작 전 세팅`}
@@ -390,6 +455,14 @@ export function DeviceCheckPage() {
           <Button disabled={!ready} onClick={() => start().catch(() => undefined)}>
             {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
           </Button>
+          {replacing && (
+            <ReplaceTakeDialog
+              take={replacing.take}
+              busy={replacing.busy}
+              onConfirm={() => confirmReplace().catch(() => undefined)}
+              onCancel={cancelReplace}
+            />
+          )}
         </>
       }
     >
@@ -417,11 +490,13 @@ export function DeviceCheckPage() {
           {/* 장치 선택과 점검 항목을 나란히 — 고른 장치의 결과가 바로 옆에서 보입니다 */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
             <Card title="장치 선택">
+              {/* 시작을 누른 뒤에는 잠급니다. Take 는 누른 순간의 장치 · 대본 표시로 만들어집니다 (#719) */}
               <DeviceSelect
                 label="카메라"
                 value={videoId}
                 options={cameras}
                 fallback="기본 카메라"
+                disabled={starting}
                 onChange={(id) =>
                   request({ videoDeviceId: id, audioDeviceId: audioId }).catch(() => undefined)
                 }
@@ -431,6 +506,7 @@ export function DeviceCheckPage() {
                 value={audioId}
                 options={mics}
                 fallback="기본 마이크"
+                disabled={starting}
                 onChange={(id) =>
                   request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
                 }
@@ -501,7 +577,11 @@ export function DeviceCheckPage() {
         <div className="flex min-w-0 flex-col gap-4">
           {/* 준비 정보가 와야 압니다 — 불러오는 중 · 실패면 자리를 비워 둡니다 */}
           {info && <MissionCard info={info} exam={practiceModeFor(scriptMode) === 'EXAM'} />}
-          <ScriptModeChoice value={scriptMode} onChange={(m) => setScriptMode(m)} />
+          <ScriptModeChoice
+            value={scriptMode}
+            onChange={(m) => setScriptMode(m)}
+            disabled={starting}
+          />
 
           {/* 권한·무입력 안내. 문구는 useCameraStream이 들고 있는 것을 그대로 씁니다 —
               화면마다 새로 지으면 사용자가 뭘 해야 할지 매번 달라집니다 */}
@@ -689,12 +769,14 @@ function DeviceSelect({
   options,
   fallback,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: string;
   options: MediaDeviceInfo[];
   fallback: string;
   onChange: (deviceId: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
@@ -702,7 +784,7 @@ function DeviceSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        disabled={options.length === 0}
+        disabled={disabled || options.length === 0}
         className="mt-1 w-full border-2 border-ink bg-panel px-3 py-2 text-sm disabled:opacity-50"
       >
         {options.length === 0 ? (

@@ -1,6 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from './client';
-import type { TakeAbandoned, TakeEndRequest, TakeUpdated } from '@/types/take';
+import type {
+  ActiveTake,
+  ActiveTakeResponse,
+  TakeAbandoned,
+  TakeEndRequest,
+  TakeUpdated,
+} from '@/types/take';
 
 /**
  * 발표 종료. Take 의 종료 시각을 BE 에 적습니다 (`PUT /pitches/{pitch_id}/takes/{take_id}`).
@@ -33,4 +39,24 @@ export function useAbandonTake(pitchId: string, takeId: string) {
         method: 'POST',
       }),
   });
+}
+
+/**
+ * 어느 창 · 기기에서 발표 중인 Take. 없으면 null 입니다 (`GET /api/takes/active`, BE #718).
+ * 시작을 누를 때 한 번 묻습니다 — 화면에 들어올 때 받아 두면 그사이 바뀐 것을 모릅니다
+ */
+export async function fetchActiveTake(): Promise<ActiveTake | null> {
+  return (await apiRequest<ActiveTakeResponse>('/api/takes/active')).take;
+}
+
+/**
+ * 다른 곳에서 발표 중인 Take 를 끝내고 여기서 새로 시작합니다 (`abandon?replace=true`).
+ * 발표 중이어도 409 없이 실패로 끝내고, 그 창에는 BE 가 "다른 곳에서 새 연습을 시작해…" 를 보냅니다.
+ * 이미 끝났으면 바꾸지 않고 지금 상태가 옵니다
+ */
+export function replaceTake(take: Pick<ActiveTake, 'pitch_id' | 'take_id'>) {
+  return apiRequest<TakeAbandoned>(
+    `/api/pitches/${take.pitch_id}/takes/${take.take_id}/abandon?replace=true`,
+    { method: 'POST' },
+  );
 }
