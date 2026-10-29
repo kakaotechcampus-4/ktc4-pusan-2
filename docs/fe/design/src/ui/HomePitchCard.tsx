@@ -95,7 +95,7 @@ export function HomePitchCard({
       </span>
       {showPrepare && pitch.pitch_id && (
         <ButtonLink
-          to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/device-check`}
+          to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
           aria-label={`${pitch.pitch_title} 발표 준비`}
           size="sm"
           className="shrink-0"
