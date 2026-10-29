@@ -49,8 +49,12 @@ POST /api/pitches/add/{pitch_id}/presentation                     발표자료(P
   들어가므로 기다림 20초 + 어댑터 최악 소요 61초가 90초 안에 들어와야 한다. 저장과 평가 기준 요청은 자리 밖이다.
 - 상태 전이는 전부 **조건부 UPDATE** 다. 재시도 두 번 눌러도 작업은 하나, 늦게 끝난 옛 작업은
   `parse_requested_at` 이 달라 새 결과를 못 덮는다. 만료가 지난 작업도 쓰지 못한다 (FAILED 가 DONE 으로 뒤집히지 않게).
-- BE 가 재시작돼 작업이 사라지면 PENDING 이 남는다. 요청 후 **90초**가 지난 PENDING 은 읽을 때
-  `FAILED (PARSE_EXPIRED)` 로 보여주고 재시도를 연다. 90초는 어댑터 최악 소요(30 × 2 + 1 = 61초)보다 길어야 한다 (테스트가 확인한다).
+- BE 가 재시작돼 작업이 사라지면 PENDING 이 남는다. 뜰 때 **만료 전 PENDING 을 이어받는다** (`ScriptParseRunner.resume_all`).
+  앱 시작 시각 이전에 요청한 행만 고른다. 복구 조회가 늦어져도 새 업로드·재시도 작업은 이어받지 않는다.
+  표식(`parse_requested_at`)을 이어받는 시각으로 바꿔 90초를 다시 센다 — 옛 시각 그대로면 남은 시간이 61초보다 짧은 행이
+  AI 가 답하는 중에 만료로 보인다. 이어받은 작업들은 한꺼번에 띄우고, 원문이 DB 에 없는 행은 이어받지 않는다.
+- 요청 후 **90초**가 지난 PENDING 은 읽을 때 `FAILED (PARSE_EXPIRED)` 로 보여주고 재시도를 연다. 이어받지도 않는다.
+  90초는 어댑터 최악 소요(30 × 2 + 1 = 61초)보다 길어야 한다 (테스트가 확인한다).
 - 테스트는 `conftest.py` 가 파싱 작업을 기본으로 끈다(실제 AI 를 부르지 않게). 흐름 테스트는 가짜 파서를 끼운
   실제 runner 로 바꿔 끼운다 (`tests/script_parse/`).
 - 파싱된 `terms`(STT 가 틀리기 쉬운 용어)는 리허설 STT `keyterm` 으로 쓰인다 ([realtime-stt.md](realtime-stt.md)).

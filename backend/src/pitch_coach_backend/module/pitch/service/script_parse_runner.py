@@ -17,6 +17,8 @@ AI 실패는 FAILED 로 저장한다. 결과 저장이 실패하면(값 문제 �
 그마저 실패하면(DB 장애) 로그만 남긴다. 그 행은 PENDING 으로 남지만 script.PARSE_EXPIRE_AFTER 가
 지나면 FAILED(PARSE_EXPIRED) 로 보여 재시도할 수 있다.
 
+BE 가 재시작돼 작업이 사라지면 뜰 때 resume_all 이 만료 전 PENDING 을 이어받는다.
+
 AI 를 부르는 동안에는 백그라운드 AI 자리(`core/ai_slots.py`) 하나를 쥔다. 자리가 없으면
 SLOT_WAIT_SEC 까지만 기다리고, 넘으면 AI_UNAVAILABLE 로 실패시킨다. 기다린 시간도 PARSE_EXPIRE_AFTER
 (90초)에 들어가므로, 기다림 + 최악 소요(61초)가 90초를 넘지 않게 묶는다.
@@ -26,6 +28,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -63,6 +66,29 @@ class ScriptParseRunner:
         self._on_parsed = on_parsed
         # 이어서 장별 평가 기준을 만든다 (architecture.md 1-7)
         self._rubric_runner = rubric_runner
+
+    async def resume_all(self, *, started_before: datetime | None = None) -> None:
+        """BE 가 뜰 때 부른다. 만료 전 PENDING 으로 남은 파싱을 이어 간다.
+
+        이어받으며 만료 시각을 다시 센 작업들이라 차례로 돌리면 뒤의 것이 만료된다. 한꺼번에 띄운다.
+        """
+        # threadpool 에서 DB 를 읽을 때는 이미 새 업로드가 시작됐을 수 있다. 기준 시각은
+        # 첫 await 전에 고정한다. lifespan 은 요청을 받기 전의 앱 시작 시각을 넘긴다
+        if started_before is None:
+            started_before = datetime.now(UTC)
+        try:
+            tickets = await run_in_threadpool(self._resume, started_before)
+        except Exception as exc:
+            logger.error(
+                "남은 대본 파싱 작업을 읽지 못했다 error=%s sqlstate=%s",
+                type(exc).__name__,
+                sqlstate(exc),
+            )
+            return
+        if tickets:
+            logger.info("대본 파싱 작업 %d개를 이어받았다", len(tickets))
+        # run 은 실패를 던지지 않는다
+        await asyncio.gather(*(self.run(ticket) for ticket in tickets))
 
     async def run(self, ticket: ParseTicket) -> None:
         script_id = ticket.script_version_id
@@ -158,6 +184,13 @@ class ScriptParseRunner:
         db = self._session_factory()
         try:
             return script_service.complete_parse(db, ticket, parsed)
+        finally:
+            db.close()
+
+    def _resume(self, started_before: datetime) -> list[ParseTicket]:
+        db = self._session_factory()
+        try:
+            return script_service.resume_parses(db, started_before=started_before)
         finally:
             db.close()
 

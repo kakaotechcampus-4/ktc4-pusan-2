@@ -379,6 +379,44 @@ class PitchRepository:
         )
         return result.rowcount == 1
 
+    def get_resumable_parses(
+        self, expired_before: datetime, started_before: datetime
+    ) -> list[tuple[uuid.UUID, datetime]]:
+        """만료 전인 PENDING 파싱. 원문이 없는 행(파싱 기능 전 대본)은 다시 보낼 수 없어 뺀다."""
+        rows = self.db.execute(
+            select(ScriptVersion.id, ScriptVersion.parse_requested_at).where(
+                ScriptVersion.parse_status == ScriptParseStatus.PENDING,
+                ScriptVersion.parse_requested_at >= expired_before,
+                ScriptVersion.parse_requested_at <= started_before,
+                ScriptVersion.content.is_not(None),
+            )
+        ).all()
+        return [(script_version_id, requested_at) for script_version_id, requested_at in rows]
+
+    def take_over_parse(
+        self,
+        script_version_id: uuid.UUID,
+        read_at: datetime,
+        now: datetime,
+        *,
+        expired_before: datetime,
+    ) -> bool:
+        """읽은 표식이 그대로이고 아직 만료 전인 PENDING 이면 표식을 새 시각으로 바꾼다.
+
+        바꿨으면 True. 옛 작업은 표식이 달라 아무것도 쓰지 못한다.
+        """
+        result = self.db.execute(
+            update(ScriptVersion)
+            .where(
+                ScriptVersion.id == script_version_id,
+                ScriptVersion.parse_status == ScriptParseStatus.PENDING,
+                ScriptVersion.parse_requested_at == read_at,
+                ScriptVersion.parse_requested_at >= expired_before,
+            )
+            .values(parse_requested_at=now)
+        )
+        return result.rowcount == 1
+
     def mark_parse_failed(
         self,
         script_version_id: uuid.UUID,
