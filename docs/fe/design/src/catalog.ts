@@ -4,6 +4,7 @@
  * 제품과 다른 점은 여기 productNote가 원본이다(설명 패널에 보인다). 미리보기를 고치면 상태 · 규칙 · productNote를 함께 맞춘다.
  */
 // 확장자를 적는다 — npm run drift가 이 파일을 Node로 바로 읽는다(scripts/product-drift.mjs)
+import { componentEntries } from './components/entries.ts';
 import { foundationEntries } from './foundations/entries.ts';
 import type { GuideEntry, GuideScreen, GuideState, ProductLink } from './model';
 
@@ -537,7 +538,12 @@ const infoScreens: GuideScreen[] = [
   },
 ];
 
-/** 목록 순서 그대로 왼쪽 목록에 보인다: 기초 → 화면 */
-export const entries: GuideEntry[] = [...foundationEntries, ...productScreens, ...infoScreens];
+/** 목록 순서 그대로 왼쪽 목록에 보인다: 기초 → 컴포넌트 · 대화 상자 → 화면 */
+export const entries: GuideEntry[] = [
+  ...foundationEntries,
+  ...componentEntries,
+  ...productScreens,
+  ...infoScreens,
+];
 
 export const screens: GuideScreen[] = [...productScreens, ...infoScreens];

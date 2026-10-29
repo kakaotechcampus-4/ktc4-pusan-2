@@ -47,7 +47,11 @@ function validState(screen: GuideEntry, id: string | null | undefined) {
 }
 
 /** 목록 갈래의 이름. 전체 보기는 고른 항목과 같은 갈래만 나란히 둔다 */
-const KIND_LABEL: Record<GuideEntry['kind'], string> = { foundation: '기초', screen: '화면' };
+const KIND_LABEL: Record<GuideEntry['kind'], string> = {
+  foundation: '기초',
+  component: '컴포넌트',
+  screen: '화면',
+};
 
 function tokenName(item: string) {
   return item.startsWith('script-') ? `--spacing-${item}` : `--color-${item}`;
@@ -118,6 +122,63 @@ function Navigation({
         {filtered.length === 0 && <p role="status">검색한 화면이 없습니다.</p>}
       </nav>
     </div>
+  );
+}
+
+/** 컴포넌트의 속성 표 */
+function Props({ rows }: { rows: [string, string, string][] }) {
+  if (rows.length === 0) return null;
+  return (
+    <section className="border-t border-line pt-4">
+      <h3 className="mb-2 text-sm font-bold">속성</h3>
+      <dl className="flex flex-col gap-2 text-sm">
+        {rows.map(([name, values, description]) => (
+          <div key={name}>
+            <dt className="font-mono text-xs font-bold">{name}</dt>
+            <dd className="break-words font-mono text-xs text-ink/80">{values}</dd>
+            <dd className="text-xs">{description}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/** 복사해 쓰는 사용 예. 클립보드를 못 쓰면(http 주소 등) 글을 골라 두고 알린다 */
+function CodeSample({ code }: { code: string }) {
+  const block = useRef<HTMLPreElement>(null);
+  const [copied, setCopied] = useState<'OK' | 'FAILED' | null>(null);
+  function copy() {
+    Promise.resolve()
+      .then(() => navigator.clipboard.writeText(code))
+      .then(() => setCopied('OK'))
+      .catch(() => {
+        const range = document.createRange();
+        if (block.current) range.selectNodeContents(block.current);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
+        setCopied('FAILED');
+      });
+  }
+  return (
+    <section className="border-t border-line pt-4">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-bold">사용 예</h3>
+        <Button size="sm" variant="secondary" onClick={copy}>
+          복사
+        </Button>
+      </div>
+      <pre
+        ref={block}
+        className="overflow-x-auto bg-ink p-3 font-mono text-xs leading-relaxed text-panel"
+      >
+        <code>{code}</code>
+      </pre>
+      <p role="status" className="mt-1 text-xs text-ink/80">
+        {copied === 'OK' && '복사했어요.'}
+        {copied === 'FAILED' && '복사하지 못해 글을 골라 두었어요. Ctrl+C로 복사해 주세요.'}
+      </p>
+    </section>
   );
 }
 
@@ -247,8 +308,21 @@ function Details({
         </section>
       )}
       {screen.kind === 'screen' && <List title="사용하는 컴포넌트" items={screen.components} />}
+      {screen.kind === 'component' && (
+        <>
+          <Props rows={screen.props} />
+          <CodeSample code={screen.code} />
+        </>
+      )}
       {screen.tokens.length > 0 && <TokenList items={screen.tokens} preview={preview} />}
-      <List title="관련 코드" items={screen.sources} />
+      <List
+        title="관련 코드"
+        items={
+          screen.kind === 'component'
+            ? [`설계서 ${screen.file}`, ...screen.sources]
+            : screen.sources
+        }
+      />
       {screen.kind === 'screen' && (
         <section className="border-t border-line pt-4">
           <h3 className="text-sm font-bold">

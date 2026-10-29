@@ -35,6 +35,17 @@ export interface GuideFoundation extends GuideEntryBase {
   kind: 'foundation';
 }
 
+/** 버튼 · 배지 · 대화 상자처럼 여러 화면이 같이 쓰는 조각. 견본은 화면 샘플과 같은 src/ui를 쓴다 */
+export interface GuideComponent extends GuideEntryBase {
+  kind: 'component';
+  /** 설계서 src/ui의 파일. 제품으로 옮길 때 이 파일을 본다 */
+  file: string;
+  /** 복사해 쓰는 사용 예 */
+  code: string;
+  /** [이름, 값, 설명] */
+  props: [string, string, string][];
+}
+
 export interface GuideScreen extends GuideEntryBase {
   kind: 'screen';
   /** 제품 경로. 시안이면 제품에 넣을 경로 */
@@ -43,4 +54,4 @@ export interface GuideScreen extends GuideEntryBase {
   next: { label: string; screenId: string; stateId?: string }[];
 }
 
-export type GuideEntry = GuideFoundation | GuideScreen;
+export type GuideEntry = GuideFoundation | GuideComponent | GuideScreen;

@@ -230,6 +230,9 @@ it('무대 미리보기의 클래스는 모두 설계서의 stage.css에 있다'
 
 it('모든 기초 · 화면 · 상태가 오류 없이 그려지고, 미리보기 안에는 <main>이 없다', async () => {
   const errors = vi.spyOn(console, 'error');
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.open = false;
+  };
   HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
     this.open = true;
   };
@@ -258,4 +261,33 @@ it('안내 화면: 미지원 사유는 상태마다 제품 문구로, 로고 · 
     host.querySelector<HTMLButtonElement>('[aria-label="피치코치 홈"]')!.click(),
   );
   expect(host.textContent).toContain('새 피치 만들기');
+});
+
+it('컴포넌트 · 대화 상자 견본: 종류가 다 보이고, 창은 상태대로 막히며 닫으면 다시 열 수 있다', async () => {
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.open = false;
+  };
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  await render('button', 'variants');
+  for (const label of ['primary', 'secondary', 'quiet', 'ButtonLink'])
+    expect(host.textContent).toContain(label);
+  await act(async () => root.render(null));
+
+  await render('confirm-dialog', 'busy');
+  expect(button('끝내는 중…')?.disabled).toBe(true);
+  expect(button('취소')?.disabled).toBe(true);
+  await act(async () => root.render(null));
+
+  await render('review-dialog', 'open');
+  expect(button('별점 제출')?.disabled).toBe(true);
+  await click('나중에');
+  expect(button('별점 제출')).toBeUndefined();
+  await click('리뷰 창 다시 열기');
+  expect(button('별점 제출')).toBeDefined();
+  await act(async () => root.render(null));
+
+  await render('review-dialog', 'rated');
+  expect(button('별점 제출')?.disabled).toBe(false);
 });
