@@ -8,6 +8,7 @@ import {
   leftWindow,
   LIVE_BEAT_MS,
   recordedUntilMs,
+  replacedElsewhere,
   resumeFromMs,
   saveMetrics,
   saveSlides,
@@ -90,6 +91,20 @@ describe('창을 닫은 Take 를 서버에 끝내 달라고 한 뒤', () => {
   it('알리지 못했어도 실패 화면이다', () => {
     expect(abandonOutcome(null, 'REQUEST_FAILED')).toBe('CLOSED');
     expect(abandonOutcome(null, null)).toBe('CLOSED');
+  });
+});
+
+describe('다른 곳에서 새 Take 를 시작해 끝났나 (TAKE_ENDED · CLOSED 의 문구)', () => {
+  it('abandon?replace=true 로 끝낸 문구면 그렇다', () => {
+    expect(replacedElsewhere('다른 곳에서 새 연습을 시작해 이 연습을 끝냈어요.')).toBe(true);
+  });
+
+  /** 창을 닫았다 늦게 복원했을 때 BE 가 보내는 문구 · PUT 409 처럼 문구가 없는 경우 */
+  it('창을 닫아 끝났거나 문구가 없으면 아니다', () => {
+    expect(replacedElsewhere('이미 끝난 연습입니다.')).toBe(false);
+    expect(replacedElsewhere('')).toBe(false);
+    expect(replacedElsewhere(undefined)).toBe(false);
+    expect(replacedElsewhere(null)).toBe(false);
   });
 });
 

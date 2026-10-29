@@ -48,6 +48,7 @@ import {
   leftWindow,
   readClock,
   recordedUntilMs,
+  replacedElsewhere,
   resumeFromMs,
   mergeSlideChanges,
   saveClock,
@@ -98,6 +99,8 @@ interface Resume {
    * 실패로 끝냅니다. 다른 창이 발표 중이면 `OTHER_WINDOW` — 아무것도 바꾸지 않습니다
    */
   left: LeftWindow | null;
+  /** `CLOSED` 중에서도 다른 곳에서 새 Take 를 시작해 끝난 것 (`replacedElsewhere`) */
+  replaced: boolean;
 }
 
 /** 이어받은 장 넘김 기록이 없을 때. 렌더마다 새 배열을 만들지 않게 둡니다 */
@@ -111,6 +114,7 @@ const freshResume = (sessionId: string | null): Resume => ({
   ending: null,
   submitted: false,
   left: null,
+  replaced: false,
 });
 
 /**
@@ -268,9 +272,14 @@ export function RehearsalPage() {
       setEndError(toMessage(e));
     });
   }, []);
-  /** 창을 닫아 끝난 Take 입니다. 무대를 닫고 실패로 끝냅니다 (아래 '창을 닫았다 다시 열었다') */
-  const leaveClosed = useCallback(() => {
-    setResume((current) => current && { ...current, left: 'CLOSED' });
+  /**
+   * 창을 닫아 끝난 Take 입니다. 무대를 닫고 실패로 끝냅니다 (아래 '창을 닫았다 다시 열었다').
+   * BE 문구가 있으면 다른 곳에서 새 Take 를 시작해 끝났는지 가려 안내를 바꿉니다
+   */
+  const leaveClosed = useCallback((message?: string) => {
+    setResume(
+      (current) => current && { ...current, left: 'CLOSED', replaced: replacedElsewhere(message) },
+    );
   }, []);
   // 서버가 보낸 AI 코치의 한마디 · 상태 표시를 띄웁니다
   const { onCoach, onConnection } = useLiveCoach({ enabled: running, mode });
@@ -440,6 +449,7 @@ export function RehearsalPage() {
             : { durationMs: row.elapsedMs, endedAtIso: new Date(row.lastBeatAt).toISOString() }),
         submitted: (row.submittedAt ?? null) !== null,
         left: null,
+        replaced: false,
       });
       // IndexedDB 를 못 열면(사생활 보호 모드 · 저장 공간 부족) 여기로 옵니다
     })().catch((err: unknown) => {
@@ -749,7 +759,14 @@ export function RehearsalPage() {
     });
   });
 
-  if (left) return <LeftWindowNotice left={left} pitchId={ticket?.pitchId ?? null} />;
+  if (left)
+    return (
+      <LeftWindowNotice
+        left={left}
+        replaced={resume?.replaced ?? false}
+        pitchId={ticket?.pitchId ?? null}
+      />
+    );
   if (notStarted || (gate.kind === 'FAILED' && gate.reason === 'ENDED')) {
     return <NotStartedNotice pitchId={ticket?.pitchId ?? null} />;
   }
@@ -971,22 +988,43 @@ export function RehearsalPage() {
   );
 }
 
+/** 무대를 열지 않는 이유의 제목과 치치의 말 */
+function leftWindowText(left: LeftWindow, replaced: boolean): { title: string; line: string } {
+  if (left === 'OTHER_WINDOW')
+    return {
+      title: '다른 창에서 연습 중',
+      line: '이 연습은 다른 창에서 하고 있어. 그 창으로 돌아가 줘!',
+    };
+  if (replaced)
+    return {
+      title: '연습 중단',
+      line: '다른 곳에서 새 연습을 시작해서 이번 연습은 끝났어. 그쪽에서 이어서 연습해 줘!',
+    };
+  return { title: '연습 중단', line: '창이 닫혀서 이번 연습은 중단됐어. 새로 시작해 보자!' };
+}
+
 /**
  * 무대를 열지 않는 이유를 알립니다. 창을 닫은 Take 는 이어 가지 않으니 새 Take 로 보냅니다.
  * 다른 창이 발표 중이면 그 창으로 돌아가게 합니다 — 여기서는 아무것도 바꾸지 않았습니다.
+ * 다른 곳에서 새 Take 를 시작해 끝났으면 그쪽이 이번 연습이라 여기서 새 Take 를 권하지 않습니다.
  */
-function LeftWindowNotice({ left, pitchId }: { left: LeftWindow; pitchId: string | null }) {
+function LeftWindowNotice({
+  left,
+  replaced,
+  pitchId,
+}: {
+  left: LeftWindow;
+  replaced: boolean;
+  pitchId: string | null;
+}) {
   const closed = left === 'CLOSED';
+  const { title, line } = leftWindowText(left, replaced);
   return (
-    <InfoPage title={closed ? '연습 중단' : '다른 창에서 연습 중'}>
+    <InfoPage title={title}>
       <Card>
-        <Mascot who="chichi">
-          {closed
-            ? '창이 닫혀서 이번 연습은 중단됐어. 새로 시작해 보자!'
-            : '이 연습은 다른 창에서 하고 있어. 그 창으로 돌아가 줘!'}
-        </Mascot>
+        <Mascot who="chichi">{line}</Mascot>
         <div className="flex flex-wrap gap-3">
-          {closed && pitchId && (
+          {closed && !replaced && pitchId && (
             <ButtonLink to={`/pitch/${pitchId}/device-check`}>새 Take 준비</ButtonLink>
           )}
           <ButtonLink to="/" variant="secondary">

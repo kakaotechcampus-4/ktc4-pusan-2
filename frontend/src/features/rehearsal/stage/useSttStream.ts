@@ -79,9 +79,10 @@ export function useSttStream({
   restoredMetrics?: () => HandedMetrics[];
   /**
    * 창을 닫아 끝난 Take 입니다 (`TAKE_ENDED` · `CLOSED`). 닫은 탭을 늦게 복원했거나 다른 창이
-   * 실패로 끝냈습니다. 무대는 이어 가지 않고 실패 화면으로 갑니다
+   * 실패로 끝냈습니다. 무대는 이어 가지 않고 실패 화면으로 갑니다.
+   * `message` 는 BE 가 보낸 문구입니다 — 다른 곳에서 새 Take 를 시작해 끝냈는지 이것으로 압니다
    */
-  onClosed?: () => void;
+  onClosed?: (message: string) => void;
   /** AI 코치의 한마디 · 상태 표시. 서버가 `COACHING` 모드에서만 보냅니다 (`useLiveCoach`) */
   onCoach?: (message: CoachMessage) => void;
   /** 서버와 이어졌다 · 끊겼다 (`SttSocket` `onConnection`). 코치 상태 표시가 낡았는지 압니다 */
@@ -173,10 +174,10 @@ export function useSttStream({
       onStatus: (message) => {
         statsRef.current = { frames: message.frames, lostMs: message.lost_ms };
       },
-      onError: (code, _message, endReason) => {
+      onError: (code, message, endReason) => {
         if (cancelled) return;
         if (code === 'TAKE_ENDED' && endReason === 'CLOSED') {
-          onClosedRef.current?.();
+          onClosedRef.current?.(message);
           return;
         }
         if (!everReady) {
