@@ -9,6 +9,7 @@ import {
   type SttState,
 } from '../lib/sttProtocol';
 import { SttSocket, type HandedMetrics } from '../lib/sttSocket';
+import type { StartFailure } from './startGate';
 import { PCM_CAPTURE_ERROR_MESSAGE, startPcmCapture, type PcmCapture } from '../media/pcmCapture';
 import type { Ms } from '@/types/api';
 
@@ -117,10 +118,9 @@ export function useSttStream({
   /** `ready` 를 받은 소켓. 무대는 지금 소켓이 받은 뒤에 시계를 돌립니다 */
   const [readyKey, setReadyKey] = useState<string | null>(null);
   /**
-   * 첫 `ready` 전에 소켓이 포기했다. `ENDED` 는 서버가 이미 끝낸 Take(시작하지 않은 채 정리됨 등),
-   * `GAVE_UP` 은 그 밖의 이유(인증 등)입니다. 무대는 시작하지 않고 안내를 띄웁니다
+   * 첫 `ready` 전에 소켓이 포기했다 (`StartFailure`). 무대는 시작하지 않고 안내를 띄웁니다
    */
-  const [failure, setFailure] = useState<{ key: string; reason: 'ENDED' | 'GAVE_UP' } | null>(null);
+  const [failure, setFailure] = useState<{ key: string; reason: StartFailure } | null>(null);
   const connected = socketKey !== null && readyKey === socketKey;
   const startFailure = failure !== null && failure.key === socketKey ? failure.reason : null;
   /** 지금 소켓으로 마이크 캡처를 거는 함수. 소켓 effect 가 넣고, 캡처 effect 가 부릅니다 */
@@ -184,6 +184,8 @@ export function useSttStream({
           // 시작하기 전에 끝난 Take 입니다 (시작하지 않은 채 정리됨 · 다른 곳에서 끝냄). 발표를
           // 시작하지 않았으니 이어 갈 것도 없습니다. 나머지 이유는 아래 onGiveUp 이 받습니다
           if (code === 'TAKE_ENDED') setFailure({ key, reason: 'ENDED' });
+          // 다른 곳에서 발표 중입니다. 그 연습을 끝내면 다시 시도로 붙을 수 있어 따로 알립니다
+          if (code === 'TOO_MANY_STREAMS') setFailure({ key, reason: 'BUSY' });
           return;
         }
         // 오래 끊겨 서버가 끝냈지만 발표는 이어 갑니다. 끝내기를 보내면 서버가 되살립니다

@@ -1102,7 +1102,9 @@ function startGateText(gate: Exclude<StartGate, { kind: 'STARTED' }>): string {
         ? '말하기 분석 서버에 연결하지 못했어요. 연결되면 바로 시작해요.'
         : '말하기 분석 서버에 연결하는 중이에요';
     case 'FAILED':
-      return '말하기 분석 서버에 연결하지 못했어요. 다시 시도해 주세요.';
+      return gate.reason === 'BUSY'
+        ? '다른 기기나 창에서 연습이 진행 중이에요. 그 연습을 끝낸 뒤 다시 시도해 주세요.'
+        : '말하기 분석 서버에 연결하지 못했어요. 다시 시도해 주세요.';
   }
 }
 

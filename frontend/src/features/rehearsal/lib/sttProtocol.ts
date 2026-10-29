@@ -139,7 +139,9 @@ export type SttErrorCode =
   | 'FORBIDDEN'
   | 'BAD_MESSAGE'
   | 'BAD_AUDIO_FRAME'
-  | 'TAKE_TAKEN_OVER';
+  | 'TAKE_TAKEN_OVER'
+  /** 다른 창 · 기기에서 다른 Take 로 발표 중입니다. 사용자당 연습은 하나라 1008 로 닫습니다 (BE #683) */
+  | 'TOO_MANY_STREAMS';
 
 /**
  * BE 가 Take 를 끝낸 이유. `TAKE_ENDED` 에 실려 옵니다 (서버는 사용자가 끝낸 Take 면 필드를 빼고,
@@ -235,6 +237,7 @@ const FATAL_CODES: ReadonlySet<string> = new Set<SttErrorCode>([
   'TAKE_ENDED',
   'FORBIDDEN',
   'TAKE_TAKEN_OVER',
+  'TOO_MANY_STREAMS',
 ]);
 
 export function isFatalError(code: SttErrorCode): boolean {
@@ -253,6 +256,8 @@ export const STT_ERROR_MESSAGE: Record<SttErrorCode, string> = {
   BAD_MESSAGE: '말하기 분석에 문제가 생겼어요. 발표는 계속하세요.',
   BAD_AUDIO_FRAME: '소리를 보내는 중 문제가 생겼어요. 발표는 계속하세요.',
   TAKE_TAKEN_OVER: '다른 탭에서 같은 연습을 이어받았어요. 이 탭의 말하기 분석은 멈춥니다.',
+  TOO_MANY_STREAMS:
+    '다른 기기나 창에서 연습 중이라 말하기 분석을 켜지 못했어요. 발표는 계속하세요.',
 };
 
 /** `TAKE_ENDED`(`ABANDONED`) — 오래 끊겨 서버가 Take 를 끝냈지만 발표는 이어 갑니다 */
