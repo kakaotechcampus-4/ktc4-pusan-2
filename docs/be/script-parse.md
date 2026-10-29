@@ -44,6 +44,9 @@ POST /api/pitches/add/{pitch_id}/presentation                     발표자료(P
   이 값들을 주지 않는 응답(지금 AI 연구 코드)이면 비워 둔다. 제한 시간만 바뀌면 다시 파싱하지 않는다 — 쓰는 쪽이 `expected_ms` 를 `parse_meta.target_ms` 에 대한 비율로 읽는다.
 - 작업은 `BackgroundTasks` + `async`. **AI 를 기다리는 동안 DB 세션을 쥐지 않고**, 저장만 threadpool 의
   짧은 세션으로 한다 (`realtime/storage/store.py` 와 같은 이유 — 같은 이벤트 루프에서 STT 가 돈다).
+- **AI 를 부르는 동안은 백그라운드 AI 자리 하나를 쓴다** (`core/ai_slots.py`, 코치 · 분석 · 평가 기준과 합계 4).
+  자리가 없으면 20초(`SLOT_WAIT_SEC`)까지만 기다리고 `FAILED (AI_UNAVAILABLE)` 로 끝낸다. 기다린 시간도 90초 만료에
+  들어가므로 기다림 20초 + 어댑터 최악 소요 61초가 90초 안에 들어와야 한다. 저장과 평가 기준 요청은 자리 밖이다.
 - 상태 전이는 전부 **조건부 UPDATE** 다. 재시도 두 번 눌러도 작업은 하나, 늦게 끝난 옛 작업은
   `parse_requested_at` 이 달라 새 결과를 못 덮는다. 만료가 지난 작업도 쓰지 못한다 (FAILED 가 DONE 으로 뒤집히지 않게).
 - BE 가 재시작돼 작업이 사라지면 PENDING 이 남는다. 요청 후 **90초**가 지난 PENDING 은 읽을 때

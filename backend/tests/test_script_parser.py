@@ -22,6 +22,7 @@ from pitch_coach_backend.module.pitch.adapter.script_parser import (
 )
 from pitch_coach_backend.module.pitch.dto import ScriptParseErrorCode
 from pitch_coach_backend.module.pitch.service import script as script_service
+from pitch_coach_backend.module.pitch.service import script_parse_runner as parse_runner
 
 BASE_URL = "http://ai.test"
 
@@ -362,9 +363,14 @@ async def test_slow_trickling_response_hits_the_attempt_timeout() -> None:
 
 
 def test_worst_case_parse_time_is_shorter_than_expiry() -> None:
-    """최악 소요가 만료보다 길면, 아직 도는 작업이 PARSE_EXPIRED 로 보이고 재시도가 열린다."""
-    worst = ATTEMPT_TIMEOUT_SEC * DEFAULT_ATTEMPTS + DEFAULT_RETRY_DELAY_SEC * (
-        DEFAULT_ATTEMPTS - 1
+    """최악 소요가 만료보다 길면, 아직 도는 작업이 PARSE_EXPIRED 로 보이고 재시도가 열린다.
+
+    AI 자리를 기다린 시간도 만료에 들어간다 (script_parse_runner.SLOT_WAIT_SEC).
+    """
+    worst = (
+        parse_runner.SLOT_WAIT_SEC
+        + ATTEMPT_TIMEOUT_SEC * DEFAULT_ATTEMPTS
+        + DEFAULT_RETRY_DELAY_SEC * (DEFAULT_ATTEMPTS - 1)
     )
     assert worst < script_service.PARSE_EXPIRE_AFTER.total_seconds()
 
