@@ -39,6 +39,7 @@ export const componentEntries: GuideComponent[] = [
       ['variant', "'primary' | 'secondary' | 'quiet'", '기본 primary'],
       ['size', "'sm' | 'md'", '기본 md'],
       ['disabled', 'boolean', '회색 바탕 · 그림자 없음'],
+      ['ref (Button)', 'Ref<HTMLButtonElement>', '창을 닫은 뒤 초점을 되돌릴 때'],
       ['to (ButtonLink)', 'string', '라우터 경로'],
     ],
     code: `import { Button, ButtonLink } from '@/shared/ui/Button';
@@ -266,9 +267,8 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '처리 중에는 버튼과 Esc를 막고, 끝나면 결과를 알린 뒤 닫는다.',
       '제목 · 본문을 aria-labelledby · aria-describedby로 잇는다.',
       '지금 제품의 다른 확인(브라우저 기록 지우기 · 계정 삭제)은 브라우저 confirm()이다. 새로 만들면 이 창을 쓴다.',
-    ],
-    knownIssues: [
-      '취소하면 부모가 창을 지우고, 창은 useEffect 정리에서 닫힌다. 그때는 이미 문서에서 빠져 있어 초점이 연 버튼으로 돌아오지 않는다(제품도 같은 코드). 정리를 useLayoutEffect로 옮기면 DOM에서 빠지기 전에 닫혀 초점이 돌아온다 — FE에서 고치기로 했다(#766 리뷰). 고쳐지면 설계서 복사본도 맞춘다.',
+      '닫을 때 close()는 useLayoutEffect 정리에서 부른다. <dialog>가 문서에서 빠지기 전에 닫아야 브라우저가 초점을 연 버튼으로 돌려준다(useEffect 정리는 DOM을 뗀 뒤라 초점이 페이지 처음으로 간다, #771).',
+      '연 버튼이 창이 열린 동안 막혀 있으면(시작 전 세팅의 시작 버튼) 브라우저가 초점을 돌려주지 못한다. 그때는 부모가 창을 내리고 버튼이 풀린 뒤 ref로 직접 초점을 준다.',
     ],
     tokens: ['panel', 'ink'],
     sources: ['frontend/src/features/rehearsal/prepare/ReplaceTakeDialog.tsx'],
