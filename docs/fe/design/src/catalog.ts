@@ -218,6 +218,27 @@ const productScreens: GuideScreen[] = [
       state('exam-confirm', '실전 모드 종료 확인', '실전 모드를 유지하며 종료를 확인한다.'),
       state('keyword-confirm', '키워드 모드 종료 확인', '키워드 모드를 유지하며 종료를 확인한다.'),
       state('disconnected', '연결 끊김', '말하기 분석 연결이 끊겨도 발표는 계속하도록 안내한다.'),
+      state(
+        'opening',
+        '시작 전 · 장치 여는 중',
+        '카메라 · 마이크를 여는 동안. 시계 · 끝내기는 멈춰 있다.',
+      ),
+      state('connecting', '시작 전 · 연결 중', '말하기 분석 서버에 붙는 동안.'),
+      state(
+        'connect-slow',
+        '시작 전 · 연결 늦음',
+        '연결이 늦어 다시 시도 · 장치 점검으로를 함께 보인다. 연결되면 바로 시작한다.',
+      ),
+      state(
+        'no-mic',
+        '시작 전 · 마이크 없음',
+        '마이크 권한 · 장치 문제 문구와 함께 시작을 막는다.',
+      ),
+      state(
+        'busy',
+        '시작 전 · 다른 곳에서 연습 중',
+        '다른 기기 · 창의 연습을 끝낸 뒤 다시 시도하게 한다.',
+      ),
     ],
     rules: [
       '끝내기("발표 끝내기")는 마지막 장에서만 열린다. 마지막 장이 아니면 막히고 "마지막 슬라이드에서 끝낼 수 있어요"를 띄운다. 장 수를 모르면(0) 막지 않는다. 중간 종료는 없다 — BE가 중간 종료를 구분하지 않아 일부만 한 발표도 점수가 남기 때문이다.',
@@ -236,7 +257,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/rehearsal/stage/stage.css',
     ],
     productNote:
-      '카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 시작 전 안내(장치 여는 중 · 연결 중 · 마이크 없음)와 코치 상태 표시는 그리지 않는다. 무대를 열지 않는 안내(다른 창에서 연습 중 · 연습 중단)도 그리지 않는다. 종료 확인은 4초 뒤 풀리지 않고 유지된다. 무대 배치는 설계서의 src/ui/stage.css(제품 stage.css 복사본)를 쓴다.',
+      '카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 코치 상태 표시는 그리지 않는다. 시작 전 안내는 "시작 전 · …" 상태로, 무대를 열지 않는 안내는 "무대를 열지 않는 안내" 화면으로 본다. 종료 확인은 4초 뒤 풀리지 않고 유지된다. 무대 배치는 설계서의 src/ui/stage.css(제품 stage.css 복사본)를 쓴다.',
     productLinks: [REHEARSAL, link('리허설 · 실전 모드', '/takes/t3/exam')],
     next: [next('끝내기 → 분석 대기', 'processing-loading'), next('전송 실패 → 재시도', 'retry')],
   },
@@ -468,6 +489,44 @@ const infoGroup = '안내 · 계정 화면';
 const infoScreens: GuideScreen[] = [
   {
     kind: 'screen',
+    id: 'stage-blocked',
+    title: '무대를 열지 않는 안내',
+    group: infoGroup,
+    route: '/takes/:takeId/rehearsal',
+    devices: 'pc',
+    status: '제품에 있음',
+    summary: '리허설 주소로 왔지만 무대를 열지 않을 때 이유와 갈 곳을 알린다.',
+    states: [
+      state(
+        'other-window',
+        '다른 창에서 연습 중',
+        '이 Take를 다른 창에서 하고 있다. 그 창으로 돌아가게 한다.',
+      ),
+      state('closed', '창이 닫혀 중단', '창을 닫아 끝난 Take다. 새 Take 준비를 권한다.'),
+      state(
+        'replaced',
+        '다른 곳에서 새 연습',
+        '다른 곳에서 새 Take를 시작해 끝났다. 그쪽이 이번 연습이라 새 Take를 권하지 않는다.',
+      ),
+      state(
+        'not-started',
+        '시작 안 됨',
+        '서버 연결이 끝내 붙지 않아 시작하지 않은 Take로 정리됐다.',
+      ),
+    ],
+    rules: [
+      '무대를 열지 않은 이유 하나와 갈 곳만 둔다. 여기서는 아무것도 바꾸지 않는다.',
+      '창을 닫아 끝났거나 시작하지 못했으면 "새 Take 준비"(시작 전 세팅)를, 다른 곳이 이번 연습이면 "내 피치로"만 둔다.',
+    ],
+    components: ['InfoPage 틀(로고 줄)', 'Card', 'Mascot', 'ButtonLink'],
+    tokens: ['greige', 'panel', 'ink'],
+    sources: ['frontend/src/features/rehearsal/stage/RehearsalPage.tsx'],
+    productNote: '문구 · 버튼은 제품과 같다(LeftWindowNotice · NotStartedNotice).',
+    productLinks: [REHEARSAL],
+    next: [next('새 Take 준비', 'prepare-mission'), next('내 피치로', 'home')],
+  },
+  {
+    kind: 'screen',
     id: 'about',
     title: '분석 방식 설명',
     group: infoGroup,
@@ -568,12 +627,90 @@ const infoScreens: GuideScreen[] = [
   },
 ];
 
+const onboardingGroup = '처음 화면 · 로그인';
+
+/** 로그인 전에 보는 화면. 웰컴과 로그인은 같은 머리 · 테두리 · 그림자를 쓴다 */
+const onboardingScreens: GuideScreen[] = [
+  {
+    kind: 'screen',
+    id: 'welcome',
+    title: '웰컴 · 서비스 소개',
+    group: onboardingGroup,
+    route: '/welcome',
+    devices: 'all',
+    status: '제품에 있음',
+    summary: '서비스를 소개하고 로그인으로 보낸다. 공개 전에는 카운트다운과 "오픈 예정"을 보인다.',
+    states: [
+      state('default', '공개 뒤', '"시작하기"가 로그인으로 간다.'),
+      state(
+        'before-launch',
+        '공개 전',
+        '공개 시각(2026-10-30 14:00 한국 시간)까지 카운트다운을 보이고 시작 버튼을 "오픈 예정"으로 막는다.',
+      ),
+    ],
+    rules: [
+      '머리의 메뉴는 같은 쪽 안 구역(서비스 소개 · 사용방법 · 연구실 소개 · FAQ · 이용안내)으로 스크롤하고, 보고 있는 구역을 표시한다.',
+      '시작 버튼은 공개 전에는 막혀 "오픈 예정"이고, 공개 뒤에는 로그인(`/login?next=/`)으로 간다.',
+      '랜딩만 큰 제목(font-black · extrabold)과 움직임(landing-float · landing-wave)을 쓴다. 동작 줄이기를 켜면 멈춘다.',
+    ],
+    components: [
+      'PitchCoachWordmark',
+      'LaunchStart · LaunchCountdown',
+      'ComfortScene',
+      'details(FAQ)',
+    ],
+    tokens: ['panel', 'ink', 'coral-deep', 'coral-wash', 'cream'],
+    sources: [
+      'frontend/src/features/onboarding/WelcomePage.tsx',
+      'frontend/src/features/onboarding/LaunchCountdown.tsx',
+      'frontend/src/shared/api/launch.ts',
+    ],
+    productNote:
+      '움직이는 장면(ComfortScene) · 코칭 예시 · 연구실 소개 글 · 구성원 카드는 자리만 둔다. 카운트다운 숫자는 넘어가지 않는 예시 값이다. 머리 메뉴의 "보고 있는 구역" 표시와 바닥글은 그리지 않는다.',
+    productLinks: [link('웰컴', '/welcome')],
+    next: [next('시작하기 → 로그인', 'login')],
+  },
+  {
+    kind: 'screen',
+    id: 'login',
+    title: '로그인',
+    group: onboardingGroup,
+    route: '/login',
+    devices: 'all',
+    status: '제품에 있음',
+    summary:
+      'Google 계정으로 로그인한다. 세션 확인 · Google로 이동 · 취소 · 실패를 상태 줄에 알린다.',
+    states: [
+      state('default', '기본', '로그인 버튼과 약관 안내.'),
+      state('checking', '세션 확인 중', '로그인 상태를 확인하는 동안 버튼을 막는다.'),
+      state('check-failed', '세션 확인 실패', '연결을 확인하라고 알리고 "연결 다시 확인"을 둔다.'),
+      state('redirecting', 'Google로 이동 중', '버튼을 막고 이동 중이라고 알린다.'),
+      state('cancelled', '로그인 취소', 'Google에서 취소하고 돌아왔다(auth_error=access_denied).'),
+      state('failed', '로그인 실패', '그 밖의 이유로 로그인을 끝내지 못했다.'),
+    ],
+    rules: [
+      '이미 로그인했으면 목적지(next)로 바로 보낸다. 외부 주소는 목적지로 받지 않는다.',
+      '상태 줄은 role="status"로 한 줄만 보인다.',
+      '정책 문서가 검토용 초안이라 "동의한 것으로 본다"고 쓰지 않고 확인만 안내한다.',
+      '문구가 합니다체다(다른 화면은 해요체) — 문구 규칙의 "섞인 곳".',
+    ],
+    components: ['PitchCoachWordmark', 'Google 로그인 버튼 그림'],
+    tokens: ['panel', 'ink', 'cream', 'line-strong'],
+    sources: ['frontend/src/features/auth/LoginPage.tsx'],
+    productNote:
+      '로그인 버튼은 Google로 가지 않고 홈 샘플로 간다. 개발 환경의 "화면 미리보기 환경" 안내는 그리지 않는다.',
+    productLinks: [link('로그인', '/login')],
+    next: [next('로그인 → 홈', 'home'), next('서비스 소개', 'welcome')],
+  },
+];
+
 /** 목록 순서 그대로 왼쪽 목록에 보인다: 기초 → 컴포넌트 · 대화 상자 → 화면 */
 export const entries: GuideEntry[] = [
   ...foundationEntries,
   ...componentEntries,
   ...productScreens,
   ...infoScreens,
+  ...onboardingScreens,
 ];
 
-export const screens: GuideScreen[] = [...productScreens, ...infoScreens];
+export const screens: GuideScreen[] = [...productScreens, ...infoScreens, ...onboardingScreens];

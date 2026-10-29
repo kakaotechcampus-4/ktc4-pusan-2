@@ -2,8 +2,15 @@
  * 기초 문서(색 · 글꼴 · 간격 · 테두리와 그림자). 값은 tokens.ts가 src/styles.css에서 읽고, 견본은
  * CSS 변수(`var(--color-…)`)로 칠해 styles.css를 저장하면 바로 바뀐다. 쓰는 곳 · 규칙은 제품 코드를 보고 적었다.
  */
-import type { ReactNode } from 'react';
-import { contrast, lightOverrides, themeGroups, themeTokens, type Token } from './tokens';
+import { useEffect, useState, type ReactNode } from 'react';
+import {
+  contrast,
+  customVariants,
+  lightOverrides,
+  themeGroups,
+  themeTokens,
+  type Token,
+} from './tokens';
 
 function Page({ title, intro, children }: { title: string; intro: string; children: ReactNode }) {
   return (
@@ -26,7 +33,7 @@ function Section({
 }: {
   title: string;
   description?: string;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-3">
@@ -242,7 +249,7 @@ export function TypographyFoundation({ stateId }: { stateId: string }) {
   return (
     <Page
       title="글꼴 · 크기와 굵기"
-      intro="Tailwind 기본 크기를 쓴다. 굵기는 대부분 `font-bold` 하나로 강조하고, 보통 굵기와 섞어 위계를 만든다."
+      intro="Tailwind 기본 크기를 쓴다. 굵기는 대부분 `font-bold` 하나로 강조하고, 보통 굵기와 섞어 위계를 만든다. 웰컴 · 로그인(랜딩)만 text-6xl 이상과 font-black · extrabold의 큰 제목을 쓴다."
     >
       <div className="flex flex-col border-t border-line">
         {TYPE_SCALE.map(([name, size, where]) => (
@@ -263,7 +270,7 @@ export function TypographyFoundation({ stateId }: { stateId: string }) {
       </div>
       <Section
         title="굵기"
-        description="font-bold가 기본 강조다. font-semibold · font-medium은 드물게, font-black은 쓰지 않는다."
+        description="font-bold가 기본 강조다. font-semibold · font-medium은 드물게 쓴다. font-black · extrabold는 웰컴 · 로그인의 큰 제목에만 쓴다."
       >
         <p className="flex flex-wrap gap-6 border border-line bg-panel p-4 text-lg">
           <span className="font-normal">보통 normal</span>
@@ -417,6 +424,202 @@ export function SurfacesFoundation() {
           포커스된 버튼
         </span>
       </Section>
+    </Page>
+  );
+}
+
+/** Tailwind 기본 크기 기준(min-width). 제품 · 설계서가 따로 바꾸지 않았다 */
+const BREAKPOINTS: [string, string, string][] = [
+  ['sm', '40rem (640px)', '버튼 · 메뉴를 한 줄로, 글자 크기 한 단계, 카드 2열 시작'],
+  ['md', '48rem (768px)', '카드 2~3열(분석 방식 설명 · 사용방법 · FAQ · 연구실 구성원)'],
+  [
+    'lg',
+    '64rem (1024px)',
+    '두 단 배치(피치 생성 사이드바 · 시작 전 세팅 오른쪽 결정 칸 · 웰컴 첫 화면), 좌우 여백 px-10, 피치 생성 높이 고정',
+  ],
+  ['xl', '80rem (1280px)', '시작 전 세팅의 장치 선택 · 점검 항목을 나란히, 웰컴 큰 제목 7xl'],
+  ['2xl', '96rem (1536px)', '거의 쓰지 않는다'],
+];
+
+// stage.css의 미디어 쿼리. 무대는 Tailwind 기준 대신 자기 크기 기준을 쓴다
+const STAGE_QUERIES: [string, string][] = [
+  [
+    '(max-width: 900px)',
+    '레일을 아래로 접어 슬라이드를 살린다. 카메라 · 범례는 숨긴다. 대본 높이는 그대로다.',
+  ],
+  ['(max-height: 800px)', '다음 장 썸네일만 접는다. 카메라는 항상 남는다.'],
+  ['(max-width: 600px)', '여백 · 레일 폭 · 코치 줄을 줄인다.'],
+];
+
+const TAILWIND_QUERIES: [string, string][] = [
+  ['sm', '(min-width: 40rem)'],
+  ['md', '(min-width: 48rem)'],
+  ['lg', '(min-width: 64rem)'],
+  ['xl', '(min-width: 80rem)'],
+  ['2xl', '(min-width: 96rem)'],
+];
+
+/** 지금 이 미리보기(iframe) 크기와 켜진 기준. 미리보기 크기를 바꾸면 따라 바뀐다 */
+function LiveSize() {
+  const read = () => ({ width: window.innerWidth, height: window.innerHeight });
+  const [size, setSize] = useState(read);
+  useEffect(() => {
+    const update = () => setSize(read());
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  const queries = [
+    ...TAILWIND_QUERIES,
+    ...customVariants().map(({ name, query }): [string, string] => [name, query]),
+  ];
+  const on = (query: string) =>
+    typeof window.matchMedia === 'function' && window.matchMedia(query).matches;
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center gap-3 border-2 border-ink bg-panel p-4"
+    >
+      <p className="tabular font-mono text-lg font-bold">
+        {size.width} × {size.height}
+      </p>
+      <ul className="flex flex-wrap gap-2">
+        {queries.map(([name, query]) => (
+          <li
+            key={name}
+            className={`px-2 py-0.5 font-mono text-xs font-bold ${on(query) ? 'bg-ink text-panel' : 'border border-dashed border-line-strong text-stone'}`}
+          >
+            {on(query) ? '✓' : '○'} {name}
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-stone">위의 "미리보기 크기"를 바꾸면 따라 바뀐다.</p>
+    </div>
+  );
+}
+
+/** 첫 칸은 이름(굵게), 마지막 칸은 예 · 쓰는 곳(흐리게) */
+function cellClass(index: number, length: number) {
+  if (index === 0) return 'font-bold';
+  return index === length - 1 ? 'text-stone' : '';
+}
+
+function Rows({ rows, columns }: { rows: string[][]; columns: string }) {
+  return (
+    <ul className="flex flex-col gap-2">
+      {rows.map((row) => (
+        <li
+          key={row[0]}
+          className={`grid gap-1 border border-line bg-panel p-3 text-sm ${columns}`}
+        >
+          {row.map((cell, index) => (
+            <span key={index} className={cellClass(index, row.length)}>
+              {cell}
+            </span>
+          ))}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** 반응형 기준 */
+export function ResponsiveFoundation() {
+  return (
+    <Page
+      title="반응형 기준"
+      intro="작은 화면부터 쓰고 넓어질 때 바꾼다(min-width). 기준은 Tailwind 기본값, 설계서가 더한 one-screen, 무대 전용 stage.css 기준이다. 미리보기는 iframe이라 이 문서도 그 크기에 반응한다."
+    >
+      <LiveSize />
+      <Section
+        title="Tailwind 기준"
+        description="sm: · md: 같은 앞붙이가 이 폭부터 켜진다. 자주 쓰는 것은 sm · lg다."
+      >
+        <Rows rows={BREAKPOINTS} columns="sm:grid-cols-[4rem_10rem_minmax(0,1fr)]" />
+      </Section>
+      <Section
+        title="설계서가 더한 기준"
+        description="styles.css의 @custom-variant에서 읽는다. 홈을 한 화면에 고정할 만큼 넓고 높은 창에서만 켠다 — 배율 125~150% 노트북처럼 낮으면 고정하지 않고 스크롤한다."
+      >
+        <Rows
+          rows={customVariants().map(({ name, query }) => [`${name}:`, query])}
+          columns="sm:grid-cols-[8rem_minmax(0,1fr)]"
+        />
+      </Section>
+      <Section
+        title="무대(stage.css) 기준"
+        description="리허설 무대는 PC 전용이지만 준비하며 태블릿으로 열어 보는 경우가 있어 자기 기준을 둔다. 대본 칸 높이(계측 조건)는 어느 크기에서도 바꾸지 않는다."
+      >
+        <Rows rows={STAGE_QUERIES} columns="sm:grid-cols-[12rem_minmax(0,1fr)]" />
+      </Section>
+      <Section
+        title="확인할 크기"
+        description="휴대폰 360 · 390, 태블릿 768, 노트북 1280 × 800 · 1366 × 768(가장 흔함)에서 가로 넘침 · 잘림이 없어야 한다. PC 전용 화면(시작 전 세팅 · 리허설)도 1024 이상 노트북 크기에서 한 화면에 들어가야 한다. 미리보기 크기에서 고르거나 직접 입력으로 넣어 본다."
+      />
+    </Page>
+  );
+}
+
+// 말투 · 상황별 문구 · 표기. 제품 문구(2026-10-29)를 보고 적었다
+const TONE: string[][] = [
+  ['기본', '해요체', '"연습 기록을 불러오지 못했어요." — 제품 문구의 약 8할'],
+  ['치치(연습생)', '반말 · 함께 하는 말투', '"어라, 여기는 아무것도 없어. 길을 잃었나 봐!"'],
+  ['피코(교수)', '존댓말 · 짚어 주는 말투', '"괜찮습니다. 처음부터 잘하는 새는 없어요."'],
+];
+
+const PATTERNS: string[][] = [
+  ['실패', '무엇이 안 됐는지 + 할 일', '"동의 설정을 바꾸지 못했어요. 다시 시도해 주세요."'],
+  [
+    '진행 중',
+    '"…하는 중이에요", 버튼은 "…하는 중…"',
+    '"말하기 분석 서버에 연결하는 중이에요" · "끝내는 중…"',
+  ],
+  ['막힌 이유', '지금 막는 것 하나만, 할 일로', '"마이크에 대고 한 마디 해보세요"'],
+  ['버튼', '하는 일을 동사로, 이동은 "…로"', '"Take 3 시작하기" · "다시 불러오기" · "내 피치로"'],
+  [
+    '되돌리기 어려움',
+    '결과를 먼저 말하고 묻는다',
+    '"탈퇴하면 피치 · 연습 기록 · 리포트가 모두 지워지고 되돌릴 수 없어요. 탈퇴할까요?"',
+  ],
+  ['빈 자리', '왜 비었는지 + 다음 할 일', '"아직 연습한 Take가 없어요"'],
+];
+
+const FORMATS: string[][] = [
+  ['측정 못 한 값', '"—"와 이유를 쓴다. 0으로 채우지 않는다'],
+  ['시간', 'mm:ss(05:12). 남은 시간은 "남은 02:46"'],
+  ['비율 · 변화', '68%, "지난 Take보다 +6%p"'],
+  ['목록 날짜', 'MM.DD(10.28)'],
+  [
+    '용어',
+    '피치(발표 하나) · Take(한 번의 연습, T는 늘 대문자) · 슬라이드 · 대본 · 시작 전 세팅 · 리허설 · 리포트',
+  ],
+  ['화살표', '"→" 다음 단계, "←" 이전 · 뒤로, "↗" 새 흐름 · 바깥으로'],
+  ['나열', '항목 사이는 " · "(가운데점, 양옆 띄움)'],
+];
+
+/** 문구 규칙. 상태: tone 말투 · patterns 상황별 문구 · format 표기 */
+export function WritingFoundation({ stateId }: { stateId: string }) {
+  if (stateId === 'patterns')
+    return (
+      <Page title="문구 · 상황별" intro="사용자가 지금 할 수 있는 일을 한 문장으로 알린다.">
+        <Rows rows={PATTERNS} columns="sm:grid-cols-[8rem_14rem_minmax(0,1fr)]" />
+      </Page>
+    );
+  if (stateId === 'format')
+    return (
+      <Page title="문구 · 표기" intro="숫자 · 용어 · 기호는 화면마다 같게 쓴다.">
+        <Rows rows={FORMATS} columns="sm:grid-cols-[10rem_minmax(0,1fr)]" />
+      </Page>
+    );
+  return (
+    <Page
+      title="문구 · 말투"
+      intro="기본은 해요체다. 마스코트는 각자의 말투가 있다. 새 문구는 해요체로 쓴다."
+    >
+      <Rows rows={TONE} columns="sm:grid-cols-[8rem_12rem_minmax(0,1fr)]" />
+      <Section
+        title="알려진 문제: 합니다체가 섞인 곳"
+        description="로그인 상태 줄 · 약관 · 웰컴 일부 · 시작 전 세팅 안내 줄(…할 수 있습니다) · 대본 표시 설명(…붙습니다) 등은 합니다체다(제품 문구의 약 2할). 한 화면 안에서 섞이면 어색하니 해요체로 맞출지 FE와 정한다. 설계서 샘플은 제품 문구를 그대로 둔다."
+      />
     </Page>
   );
 }

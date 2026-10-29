@@ -194,3 +194,47 @@ export function MyScreen({ stateId }: ScreenProps) {
     </Frame>
   );
 }
+
+// 제품 RehearsalPage의 leftWindowText · NotStartedNotice. 상태 ID → 제목 · 치치의 말 · 새 Take를 권하나
+const STAGE_BLOCKED: Record<string, { title: string; line: string; retake: boolean }> = {
+  'other-window': {
+    title: '다른 창에서 연습 중',
+    line: '이 연습은 다른 창에서 하고 있어. 그 창으로 돌아가 줘!',
+    retake: false,
+  },
+  closed: {
+    title: '연습 중단',
+    line: '창이 닫혀서 이번 연습은 중단됐어. 새로 시작해 보자!',
+    retake: true,
+  },
+  replaced: {
+    title: '연습 중단',
+    line: '다른 곳에서 새 연습을 시작해서 이번 연습은 끝났어. 그쪽에서 이어서 연습해 줘!',
+    retake: false,
+  },
+  'not-started': {
+    title: '연습 시작 안 됨',
+    line: '이 연습은 시작하기 전에 끝났어. 장치 점검부터 다시 해 보자!',
+    retake: true,
+  },
+};
+
+/** 리허설 주소로 왔지만 무대를 열지 않는 경우. 다른 곳이 이번 연습이면 새 Take를 권하지 않는다 */
+export function StageBlockedScreen({ stateId, onNavigate }: ScreenProps) {
+  const copy = STAGE_BLOCKED[stateId] ?? STAGE_BLOCKED['other-window']!;
+  return (
+    <Frame title={copy.title} onHome={() => onNavigate('home')}>
+      <Card>
+        <Mascot who="chichi">{copy.line}</Mascot>
+        <div className="flex flex-wrap gap-3">
+          {copy.retake && (
+            <Button onClick={() => onNavigate('prepare-mission', 'default')}>새 Take 준비</Button>
+          )}
+          <Button variant="secondary" onClick={() => onNavigate('home')}>
+            내 피치로
+          </Button>
+        </div>
+      </Card>
+    </Frame>
+  );
+}

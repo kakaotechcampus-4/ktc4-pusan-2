@@ -123,3 +123,26 @@ it('칸보다 좁은 화면은 줄이지 않고 가운데에 둔다', async () =
   expect(iframe.parentElement!.className).toContain('mx-auto');
   expect(iframe.parentElement!.style.width).toBe('390px');
 });
+
+it('브라우저 확대는 페이지 크기를 줄이고 그만큼 키워 보인다(1366 × 768 · 125%)', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(2000);
+  await act(async () =>
+    root.render(
+      <PreviewFrame
+        screenId="home"
+        stateId="default"
+        onNavigate={vi.fn()}
+        size={{ width: 1366, height: 768 }}
+        zoom={1.25}
+        fitHeight={384}
+        title="홈 미리보기 화면"
+      />,
+    ),
+  );
+  const iframe = host.querySelector('iframe')!;
+  expect(parseFloat(iframe.style.width)).toBeCloseTo(1092.8, 1);
+  expect(parseFloat(iframe.style.height)).toBeCloseTo(614.4, 1);
+  expect(iframe.style.transform).toBe('scale(1.25)');
+  // 화면에 차지하는 크기는 창 크기 그대로
+  expect(iframe.parentElement!.style.width).toBe('1366px');
+});
