@@ -447,17 +447,20 @@ class TakeStream:
             )
         self.request_stop()
 
-    def drop_closed_tab(self) -> None:
+    def drop_closed_tab(self, *, replaced: bool = False) -> None:
         """창을 다시 연 FE 가 이 Take 를 실패로 끝냈다. 남은 전사를 기다리지 않고 끊는다.
 
         분석하지 않는 Take 라 전사를 받을 이유가 없다. 붙어 있는 연결(브라우저는 이미 닫았는데
         서버가 아직 모르는 연결)에는 다시 붙을 때 받을 것과 같은 `TAKE_ENDED` 를 보낸다.
+        `replaced` 면 다른 곳에서 새 연습을 시작해 끝낸 것이다. 그 창은 아직 발표 중이었을 수 있어
+        문구로 알린다 — 이유는 같은 `CLOSED` 라 FE 는 다시 붙지 않고 이어 가지도 않는다.
         """
-        self._cut(
-            ErrorMessage(
-                code=WsErrorCode.TAKE_ENDED, message="이미 끝난 연습입니다.", end_reason="CLOSED"
-            )
+        message = (
+            "다른 곳에서 새 연습을 시작해 이 연습을 끝냈어요."
+            if replaced
+            else "이미 끝난 연습입니다."
         )
+        self._cut(ErrorMessage(code=WsErrorCode.TAKE_ENDED, message=message, end_reason="CLOSED"))
 
     async def sign_out(self) -> None:
         """사용자가 로그아웃했다. 붙어 있는 연결에 `UNAUTHORIZED` 를 알리고 닫는다.

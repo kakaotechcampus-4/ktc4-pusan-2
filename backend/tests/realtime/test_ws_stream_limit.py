@@ -380,6 +380,48 @@ async def test_new_take_opens_after_the_ending_stream_closes_by_itself():
 
 
 @pytest.mark.anyio
+async def test_blocking_take_is_the_one_still_presenting(monkeypatch: pytest.MonkeyPatch):
+    """FE 가 새 Take 를 시작하기 전에 끝낼지 묻는 Take. `has_room` 이 세는 것과 같다."""
+    monkeypatch.setattr(runtime, "LIVE_AUDIO_SEC", 0.2)
+    adapter = FakeSttAdapter()
+    owner_id = uuid.uuid7()
+    first = await _attach(adapter, owner_id)
+
+    assert registry.blocking_take(owner_id) == first.take_id
+    assert registry.blocking_take(uuid.uuid7()) is None
+    # 오디오가 멈춘 연결은 새 Take 가 정리하므로 묻지 않는다
+    await asyncio.sleep(0.25)
+    assert registry.blocking_take(owner_id) is None
+    await _close_all()
+
+
+@pytest.mark.anyio
+async def test_replaced_take_tells_its_window_why_it_ended():
+    """다른 곳에서 새 Take 를 시작하려고 끝낸 Take 다. 그 창은 아직 발표 중일 수 있어 문구로
+    알린다. 이유는 창 닫음과 같은 CLOSED 라 FE 는 다시 붙지 않는다."""
+    adapter = FakeSttAdapter()
+    owner_id = uuid.uuid7()
+    stream = await _attach(adapter, owner_id)
+    tab = stream._client.ws
+
+    await registry.end_closed_tab(stream.take_id, replaced=True)
+
+    assert await stream.wait_closed(timeout=2.0)
+    for _ in range(20):
+        if tab.closed is not None:
+            break
+        await asyncio.sleep(0.01)
+    assert json.loads(tab.sent[-1]) == {
+        "type": "error",
+        "code": "TAKE_ENDED",
+        "message": "다른 곳에서 새 연습을 시작해 이 연습을 끝냈어요.",
+        "end_reason": "CLOSED",
+    }
+    assert tab.closed == (1008, "TAKE_ENDED")
+    await _close_all()
+
+
+@pytest.mark.anyio
 async def test_auto_end_can_make_room_even_when_its_client_stops_reading(
     monkeypatch: pytest.MonkeyPatch,
 ):
