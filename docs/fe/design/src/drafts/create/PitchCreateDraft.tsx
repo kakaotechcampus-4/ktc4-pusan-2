@@ -224,13 +224,13 @@ export function PitchCreateDraft() {
           </div>
         </aside>
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden p-4">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden p-4">
           <SummaryLine uploaded={uploaded} title={title} date={date} time={time} />
           <StepBar stepIndex={stepIndex} uploaded={uploaded} revised={revised} onPick={go} />
           <section className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg border border-line bg-panel p-5">
             {pane}
           </section>
-        </main>
+        </div>
       </div>
     </DraftPage>
   );

@@ -89,9 +89,9 @@ export function LoadingDraft() {
       </header>
 
       {/* 대화 상자는 넓은 화면에서 오른쪽, 좁은 화면에서 아래쪽에. 그림 왼쪽의 치치를 가리지 않습니다 */}
-      <main className="relative z-10 flex flex-1 items-end justify-center px-5 pb-8 pt-4 sm:px-8 lg:items-center lg:justify-end lg:pb-4">
+      <div className="relative z-10 flex flex-1 items-end justify-center px-5 pb-8 pt-4 sm:px-8 lg:items-center lg:justify-end lg:pb-4">
         <Dialog waiting={waiting} states={states} current={current} />
-      </main>
+      </div>
 
       <DraftTools variant={variant} onVariant={setVariant} />
     </div>

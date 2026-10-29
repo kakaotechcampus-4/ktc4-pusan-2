@@ -7,3 +7,9 @@ export function formatDuration(ms: number, showSign = false): string {
   if (!showSign) return `${mm}:${ss}`;
   return `${neg ? '+' : '-'}${mm}:${ss}`;
 }
+
+/** 초 단위 길이를 04:38 형태로. 모르면 —. 제품 `features/pitch/homeFormat.ts`의 duration과 같은 표기다. */
+export function formatSeconds(seconds: number | null): string {
+  if (seconds === null) return '—';
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}

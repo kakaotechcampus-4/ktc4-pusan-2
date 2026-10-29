@@ -55,7 +55,8 @@ export function DraftPage<V extends string>({
         {meta && <p className="tabular text-sm text-stone">{meta}</p>}
       </header>
 
-      <main
+      {/* 시안은 뷰어의 <main> 안에 놓이므로 본문을 <div>로 둔다 */}
+      <div
         className={`mx-auto flex w-full max-w-7xl flex-col px-5 sm:px-8 ${fitViewport ? 'min-h-0 flex-1 gap-2 overflow-hidden pb-3 pt-2' : 'gap-6 pb-12 pt-5'}`}
       >
         <div
@@ -102,7 +103,7 @@ export function DraftPage<V extends string>({
             </aside>
           </div>
         </details>
-      </main>
+      </div>
     </div>
   );
 }
