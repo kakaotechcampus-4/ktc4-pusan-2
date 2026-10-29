@@ -102,11 +102,9 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
 def _discard_upload(
     db: Session, presentation_id: uuid.UUID, key: str, thumbnail_key: str | None
 ) -> None:
-    """롤백 뒤 같은 발표를 다시 잠그고, 버전 행이 없을 때만 올린 파일을 지운다.
-
-    롤백하면 다음 업로드가 같은 버전 번호 · S3 키를 쓸 수 있다. 확인부터 삭제까지 잠가 그 요청의
-    파일을 지우지 않게 한다. 커밋 응답만 잃었거나 다음 요청이 이미 같은 번호를 저장했으면 남긴다.
-    확인도 못 하면 남기고 원래 실패를 가리지 않게 로그만 남긴다.
+    """
+    presentation_id 로 버전 행이 없을 때만 이 요청이 올린 PDF · 썸네일을 지운다. 
+    커밋 응답만 잃었으면 행이 이미 있는 상태라 남긴다
     """
     try:
         exists = PitchRepository(db).has_presentation(presentation_id)
