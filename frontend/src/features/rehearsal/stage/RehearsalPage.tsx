@@ -58,6 +58,7 @@ import {
   type AbandonOutcome,
   type LeftWindow,
 } from './resume';
+import { canEnd } from './canEnd';
 import { sendEnding, type Ending } from './sendEnding';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
@@ -188,7 +189,8 @@ export function RehearsalPage() {
   const [resume, setResume] = useState<Resume | null>(null);
   const sessionId = resume?.sessionId ?? null;
   const ending = resume?.ending ?? null;
-  const [confirming, setConfirming] = useState(false);
+  // 한 번 눌러 "정말 끝낼까요?" 가 된 장. 장이 바뀌면 풀려서, 이전 장에 갔다 4초 안에 돌아와도 한 번에 끝나지 않습니다
+  const [confirmingSlide, setConfirmingSlide] = useState<number | null>(null);
   const [endError, setEndError] = useState<string | null>(null);
   /**
    * 세션을 못 연 이유. 이게 있으면 이 Take 의 기록(시선·슬라이드·코치)이 하나도 쌓이지 않고
@@ -648,9 +650,8 @@ export function RehearsalPage() {
   const nextSlideNumber = Math.min(slideNumber + 1, pageCount);
 
   // ── 종료 ─────────────────────────────────────────────────────────
-  // 끝까지 하지 않은 발표는 BE 가 중간 종료로 구분하지 않고 점수까지 남겨 평가 기준이 흐려집니다 (#695).
-  // 그래서 끝내기는 마지막 장에서만 열어 둡니다. 장 수를 모르면(0) 막지 않습니다
-  const onLastSlide = pageCount === 0 || slideNumber >= pageCount;
+  const endable = canEnd(pageCount, slideNumber);
+  const confirming = confirmingSlide === slideNumber;
   const finish = async () => {
     if (!running || !sessionId || !ticket) return;
 
@@ -940,17 +941,23 @@ export function RehearsalPage() {
                 {sessionError && <span>{sessionError}</span>}
               </div>
 
+              {/* 비활성 버튼은 초점을 못 받고 title 도 잘 안 보여서 이유를 글자로 둡니다 */}
+              {!endable && (
+                <span id="end-hint" className="end-hint">
+                  마지막 장에서 끝낼 수 있어요
+                </span>
+              )}
               <button
                 type="button"
                 className="end"
-                disabled={!running || phase !== 'RUNNING' || !onLastSlide}
-                title={onLastSlide ? undefined : '마지막 슬라이드에서 끝낼 수 있어요'}
+                disabled={!running || phase !== 'RUNNING' || !endable}
+                aria-describedby={endable ? undefined : 'end-hint'}
                 onClick={() => {
                   // 되돌릴 수 없어서 한 번 더 묻습니다. 모달을 띄우지 않는 이유는
                   // 발표 중에 화면을 덮으면 남은 시간을 못 보기 때문입니다
                   if (!confirming) {
-                    setConfirming(true);
-                    window.setTimeout(() => setConfirming(false), 4000);
+                    setConfirmingSlide(slideNumber);
+                    window.setTimeout(() => setConfirmingSlide(null), 4000);
                     return;
                   }
                   // 복구는 finish() 안에서 끝납니다 (재시도 화면으로 이동).
