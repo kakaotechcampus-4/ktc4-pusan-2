@@ -9,8 +9,7 @@ import type { Ms } from '@/types/api';
 // 엔진은 정적으로 부릅니다 — 동적 import 로 조각을 나누면 운영 빌드에서 그 조각이 워커 시작 파일을
 // 쿼리 없이 다시 불러와 워커 코드가 두 번 돕니다. 두 번째 실행이 onmessage 를 덮어써
 // 발표 중 프레임을 하나도 처리하지 않습니다 (#779). 워커 안에서만 불러서 화면 번들은 그대로입니다
-import { createClassifier, type GazeEngine } from '@/vendor/gaze/engine';
-import { frameFromDecision } from '@/vendor/gaze/engine/contract';
+import { createClassifier, frameFromDecision, type GazeEngine } from '@/vendor/gaze/engine';
 import { engineVersion, toCalibrationResult, toPlacementResult } from './aiAdapter';
 import { fitsCurrentEngine } from './calibrationModel';
 
