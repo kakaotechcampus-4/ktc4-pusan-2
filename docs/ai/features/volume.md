@@ -282,7 +282,7 @@ uv sync
 | 평가 (`ai/research/volume-analysis`에서, 아직 없음) | `uv run python tools/evaluate.py --out reports/results/volume_eval.json` | `VOLUME_LOW` 정밀도 · 재현율, 침묵 감지 지연 (13절) |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 
-- 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역에 있다. 대역 테스트(`tests/lab/test_judge_volume.py`와 코치 쪽 연결 `tests/unit/test_judges.py`의 기준 음량 · 실패 시험)는 말 속도와 같은 명령으로 돈다(`pace.md` 10절).
+- 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역에 있었다. 대역 테스트(`tests/lab/test_judge_volume.py`)는 말 속도와 같은 명령으로 돈다(`pace.md` 10절). 코치 쪽 연결의 기준 음량 · 실패 시험은 서비스 `tests/unit/coach/test_judges.py`다.
 - 테스트가 볼 것: 작음 · 기준과 같을 때, 기준 음량 없음 · 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기와 창 안에 끊김이 없을 때, 긴 침묵을 한 번만 셈, 같은 1초 두 번(먼저 온 것), `baseline` 표본 부족 · 충분, 마지막 조각(1000 미만).
 
 # 11. 배포
