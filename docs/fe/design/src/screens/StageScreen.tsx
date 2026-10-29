@@ -1,16 +1,32 @@
 // 제품 리허설 무대(`frontend/src/features/rehearsal/stage/RehearsalPage.tsx`, `ScriptPane.tsx`)의 설계서 샘플.
+import { useEffect, useState } from 'react';
 import type { Navigate } from './shared';
 import '@/ui/stage.css';
 
 /**
  * 제품 RehearsalPage의 무대 DOM을 같은 클래스로 그린다. 배치 · 색은 src/ui/stage.css가 정한다.
  * 클래스 이름은 ScreenPreview.test가 stage.css에 있는지 확인한다.
+ * 슬라이드는 ← → · Space로 넘긴다(제품과 같은 키). 끝내기는 마지막 장에서만 열린다(제품 #697).
  */
+const PAGES = 12;
 export function StageScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const exam = stateId === 'exam' || stateId === 'exam-confirm';
   const keyword = stateId === 'keyword' || stateId === 'keyword-confirm';
   const confirming =
     stateId === 'confirm-end' || stateId === 'exam-confirm' || stateId === 'keyword-confirm';
+  // 종료 확인은 마지막 장에서만 열 수 있으니 그 상태들은 마지막 장에서 시작한다
+  const [slide, setSlide] = useState(stateId === 'last-slide' || confirming ? PAGES : 3);
+  const onLastSlide = slide >= PAGES;
+  useEffect(() => {
+    function move(event: KeyboardEvent) {
+      if (event.key === 'ArrowRight' || event.key === ' ') setSlide((n) => Math.min(PAGES, n + 1));
+      else if (event.key === 'ArrowLeft') setSlide((n) => Math.max(1, n - 1));
+      else return;
+      event.preventDefault();
+    }
+    window.addEventListener('keydown', move);
+    return () => window.removeEventListener('keydown', move);
+  }, []);
   let scriptMode = 'HIGHLIGHT';
   let confirmState = 'confirm-end';
   if (exam) {
@@ -21,7 +37,8 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
     confirmState = 'keyword-confirm';
   }
   return (
-    <div className="flex h-[40rem] flex-col">
+    // 무대는 창 높이를 채운다(미리보기 iframe의 높이가 곧 창 높이). 아주 낮으면 24rem에서 멈춘다
+    <div className="flex h-dvh min-h-[24rem] flex-col">
       <div className="rehearsal-page">
         <div className="rehearsal-content">
           <h1 className="sr-only">발표 연습 · Take 3</h1>
@@ -39,11 +56,13 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                   <i style={{ width: '45%' }} />
                 </div>
                 <span className="meta">남은 02:46</span>
-                <span className="slide-no">SLIDE 3 / 12</span>
+                <span className="slide-no">
+                  SLIDE {slide} / {PAGES}
+                </span>
               </header>
               <div className="viewport">
                 <div className="slide">
-                  <span className="placeholder">SLIDE 3 · 16:9</span>
+                  <span className="placeholder">SLIDE {slide} · 16:9</span>
                 </div>
                 <div className="rail">
                   <section className="camera">
@@ -56,7 +75,14 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                     <span>음량</span>
                   </section>
                   <section className="next">
-                    <div className="thumb">SLIDE 4 · 16:9</div>
+                    <button
+                      type="button"
+                      className="thumb"
+                      onClick={() => setSlide((n) => Math.min(PAGES, n + 1))}
+                      disabled={onLastSlide}
+                    >
+                      {onLastSlide ? '마지막 장' : `SLIDE ${slide + 1} · 16:9`}
+                    </button>
                     <div className="label">
                       <b>다음 슬라이드</b>
                       <span>→ 키로 이동</span>
@@ -106,17 +132,19 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                   )}
                   {exam && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
                 </div>
-                {/* 마지막 장이 아니라 "중간 종료". 제품은 4초 뒤 확인이 풀린다 */}
+                {/* 끝내기는 마지막 장에서만 연다(제품 #697). 제품은 4초 뒤 확인이 풀린다 */}
                 <button
                   type="button"
                   className="end"
+                  disabled={!onLastSlide}
+                  title={onLastSlide ? undefined : '마지막 슬라이드에서 끝낼 수 있어요'}
                   onClick={() =>
                     confirming
                       ? onNavigate('processing-loading')
                       : onNavigate('stage', confirmState)
                   }
                 >
-                  {confirming ? '정말 끝낼까요?' : '중간 종료'}
+                  {confirming ? '정말 끝낼까요?' : '발표 끝내기'}
                 </button>
               </div>
             </div>

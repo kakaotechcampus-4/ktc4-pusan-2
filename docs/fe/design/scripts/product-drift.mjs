@@ -43,6 +43,10 @@ const targetCommit = git('rev-parse', '--short', target);
 console.log(
   `대조 기준 ${PRODUCT_CHECKED.commit.slice(0, 8)}(${PRODUCT_CHECKED.date}) → ${target}(${targetCommit})`,
 );
+for (const item of PRODUCT_CHECKED.pending)
+  console.log(
+    `  merge 전 미리 맞춤: #${item.pr}(${item.head}) ${item.what} — merge 뒤 다시 대조하고 pending에서 지운다`,
+  );
 
 let stale = 0;
 for (const entry of entries) {

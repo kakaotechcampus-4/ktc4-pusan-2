@@ -115,4 +115,6 @@ FE PR이 merge돼 설계서가 가리키는 제품 화면이 바뀌면 설명을
 4. `catalog.ts`의 `PRODUCT_CHECKED`를 비교한 커밋(출력 마지막 줄)과 날짜로 올리고, `npm run drift`가 "바뀐 제품 코드가 없습니다"를 내는지 본다.
 5. 검사(`typecheck` · `lint` · `test` · `format:check`)를 통과시키고, 2~4를 한 커밋으로 올린다.
 
+**merge 전 FE PR에 미리 맞출 때:** 열린 FE PR의 head를 읽고 설명 · 샘플을 맞춘 뒤, `PRODUCT_CHECKED.pending`에 PR 번호 · head · 바뀌는 것을 적는다(기준 커밋은 그대로 기본 브랜치 커밋). `npm run drift`가 첫 줄에 이것을 보여 준다. PR이 merge되면 drift가 그 파일을 "바뀜"으로 보이니 최종 코드와 다시 대조하고 `pending`에서 지운다. 리뷰 중에 바뀐 곳이 있으면 그때 고친다.
+
 제품 화면 자체는 제품 개발 서버(`frontend/`에서 `npm run dev`, http://localhost:3000)에서 본다. 설명 패널의 "제품에서 열기"가 그 주소를 새 탭으로 연다.

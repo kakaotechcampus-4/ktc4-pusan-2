@@ -23,11 +23,17 @@ export function HomeHelpDialog({ onDismiss }: { onDismiss: () => void }) {
 
   useEffect(() => {
     const dialog = dialogRef.current;
-    const previousOverflow = document.body.style.overflow;
+    const { style } = document.body;
+    const previousOverflow = style.overflow;
+    const previousPadding = style.paddingRight;
+    // 스크롤바가 사라진 만큼 본문을 밀어 가운데 정렬된 상단바가 옆으로 움직이지 않게 한다
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
     dialog?.showModal();
-    document.body.style.overflow = 'hidden';
+    style.overflow = 'hidden';
+    if (scrollbar > 0) style.paddingRight = `${scrollbar}px`;
     return () => {
-      document.body.style.overflow = previousOverflow;
+      style.overflow = previousOverflow;
+      style.paddingRight = previousPadding;
     };
   }, []);
 

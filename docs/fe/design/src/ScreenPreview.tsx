@@ -24,8 +24,24 @@ import {
 } from './foundations/Foundations';
 import { ComponentDoc } from './components/ComponentDocs';
 import { componentEntries } from './components/entries';
+import { AppHeader } from '@/ui/AppHeader';
 
 export type { Navigate as PreviewNavigate } from './screens/shared';
+
+/**
+ * 위에 공용 상단바가 얹히는 화면과 그때 표시되는 메뉴. 제품 `app/routes.tsx`의 appHeaderPaths와
+ * 리포트(ReportPage가 직접 둔다)다. 피치 생성 · 시작 전 세팅은 #738에서 더해졌다
+ */
+const APP_HEADER: Record<string, 'home' | 'takes' | 'me' | null> = {
+  home: 'home',
+  takes: 'takes',
+  me: 'me',
+  retry: null,
+  comparison: null,
+  report: null,
+  'pitch-create': null,
+  'prepare-mission': null,
+};
 
 /** 제품 경로를 설계서 화면으로 바꾼다. 알 수 없는 경로는 제품으로 열지 않는다 */
 function targetFor(path: string): string | null {
@@ -102,12 +118,26 @@ export function ScreenPreview({
           이 링크는 설계서에서 연결하지 않은 화면이에요. 왼쪽 목록에서 화면을 골라 주세요.
         </p>
       )}
-      <CurrentScreen
-        screenId={screenId}
-        stateId={stateId}
-        onNavigate={onNavigate}
-        inline={inline}
-      />
+      {screenId in APP_HEADER ? (
+        <div className="flex min-h-dvh flex-col">
+          <AppHeader current={APP_HEADER[screenId] ?? undefined} />
+          <div className="flex min-h-0 flex-1 flex-col">
+            <CurrentScreen
+              screenId={screenId}
+              stateId={stateId}
+              onNavigate={onNavigate}
+              inline={inline}
+            />
+          </div>
+        </div>
+      ) : (
+        <CurrentScreen
+          screenId={screenId}
+          stateId={stateId}
+          onNavigate={onNavigate}
+          inline={inline}
+        />
+      )}
     </div>
   );
 }

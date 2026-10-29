@@ -113,7 +113,7 @@ it('새 탭에서 연 화면만 보기는 그 주소에서 바로 이동한다',
   expect(host.querySelector('[data-location]')?.textContent).toBe(
     '/frame?screen=stage&state=default',
   );
-  expect(host.textContent).toContain('중간 종료');
+  expect(host.textContent).toContain('발표 끝내기');
 });
 
 it('칸보다 좁은 화면은 줄이지 않고 가운데에 둔다', async () => {

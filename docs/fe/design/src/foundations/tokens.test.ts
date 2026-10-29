@@ -12,6 +12,7 @@ it('@theme 값을 제목 주석별로 묶고 줄 끝 설명을 붙인다', () =>
   ]);
   expect(measured?.description).toContain('팀 합의');
   expect(groups.get('크기')?.tokens.map((token) => token.name)).toEqual([
+    '--spacing-app-header',
     '--spacing-sidebar',
     '--container-page',
   ]);

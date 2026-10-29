@@ -22,10 +22,11 @@ function MenuLink({ to, label, current }: { to: string; label: string; current: 
 }
 
 /**
- * 홈 · Take 기록 · 마이페이지가 같이 쓰는 상단바. 바탕은 기본 지면(`bg-panel`)으로 고정한다 —
- * 아래 화면이 흰 지면이어도 상단바 색은 그대로다.
+ * 홈 · Take 기록 · 마이페이지 · 재시도 · 비교 · 피치 생성 · 시작 전 세팅이 같이 쓰는 상단바(제품 appHeaderPaths).
+ * 바탕은 기본 지면(`bg-panel`)으로 고정한다 — 아래 화면이 흰 지면이어도 상단바 색은 그대로다.
+ * 높이를 바꾸면 styles.css의 `--spacing-app-header`도 같이 바꾼다 — 피치 생성 화면이 그 값으로 남은 높이를 계산한다.
  */
-export function AppHeader({ current }: { current: 'home' | 'takes' | 'me' }) {
+export function AppHeader({ current }: { current?: 'home' | 'takes' | 'me' }) {
   const [helpOpen, setHelpOpen] = useState(false);
   return (
     <header className="border-b border-line-strong bg-panel text-ink">

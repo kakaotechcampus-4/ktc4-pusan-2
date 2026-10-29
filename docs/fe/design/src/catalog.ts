@@ -13,11 +13,25 @@ export const PRODUCT_ORIGIN = 'http://localhost:3000';
 
 /**
  * 설명을 마지막으로 대조한 제품 커밋. `npm run drift`가 이 뒤로 바뀐 sources를 화면별로 보여 준다.
- * 바뀐 화면의 설명을 맞춘 뒤 비교한 커밋으로 올린다(README "제품이 바뀌었을 때")
+ * 바뀐 화면의 설명을 맞춘 뒤 비교한 커밋으로 올린다(README "제품이 바뀌었을 때").
+ * `pending`은 아직 merge 전인 FE PR을 그 head 기준으로 미리 맞춘 것이다. merge되면 drift가 그 파일을
+ * 바뀜으로 보이니, 최종 코드와 다시 대조하고 여기서 지운다
  */
-export const PRODUCT_CHECKED = {
-  commit: '108256a39cb9cae97af72a2016a6c62e6abac5bf',
+export const PRODUCT_CHECKED: {
+  commit: string;
+  date: string;
+  pending: { pr: number; head: string; what: string }[];
+} = {
+  commit: '9d927007040fbffbacce0144d65c674234c7dca0',
   date: '2026-10-29',
+  pending: [
+    {
+      pr: 738,
+      head: '72c8db32',
+      what: '피치 생성 · 시작 전 세팅 상단바, 상단바 높이 값, 도움말 창 스크롤바',
+    },
+    { pr: 697, head: 'dbc715af', what: '리허설 끝내기는 마지막 장에서만, 중간 종료 없앰' },
+  ],
 };
 
 const state = (id: string, label: string, description: string): GuideState => ({
@@ -81,7 +95,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/pitch/homeFormat.ts',
     ],
     productNote:
-      '상단바(AppHeader) · 서비스 리뷰 창 · 사용방법 창 · 바닥글(이용약관 · 개인정보 처리방침)은 미리보기에서 뺐다. "사용방법 살펴보기"는 글자만 둔다. 홈에 연습 시작 버튼이 없는 것은 제품과 같다.',
+      '서비스 리뷰 창 · 바닥글(이용약관 · 개인정보 처리방침)은 미리보기에서 뺐다(리뷰 창은 대화 상자의 "리뷰 창"에서 본다). 홈에 연습 시작 버튼이 없는 것은 제품과 같다.',
     productLinks: [link('홈 · 내 피치', '/')],
     next: [
       next('새 피치 만들기', 'pitch-create', 'empty'),
@@ -121,7 +135,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/pitch/create/steps/SlidePreviewDialog.tsx',
     ],
     productNote:
-      '제품은 왼쪽에 자료 버전 트리(VersionRail)와 치치, 본문 위에 경로 · 발표 정보 줄(InfoBar) · 단계 표시줄(StepBar)을 둔다. 미리보기는 단계 목록 하나로 줄였고 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않는다. "대본 매핑"은 매핑 확인 대신 다음 단계로 넘어간다. 슬라이드 크게 보기는 제품에서 썸네일을 눌러 연다(미리보기는 버튼 하나). 단계별 제목 · 버튼 · 안내 문구와 슬라이드를 올리기 전 아래 줄이 없는 것은 제품과 같다.',
+      '제품은 왼쪽에 자료 버전 트리(VersionRail)와 치치, 본문 위에 발표 정보 줄(InfoBar · 저장 전이면 "저장 전" 표시) · 단계 표시줄(StepBar)을 둔다. 위에는 공용 상단바가 얹히고 경로 줄은 없다(#738). 미리보기는 단계 목록 하나로 줄였고 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않는다. "대본 매핑"은 매핑 확인 대신 다음 단계로 넘어간다. 슬라이드 크게 보기는 제품에서 썸네일을 눌러 연다(미리보기는 버튼 하나). 단계별 제목 · 버튼 · 안내 문구와 슬라이드를 올리기 전 아래 줄이 없는 것은 제품과 같다.',
     productLinks: [link('새 피치', '/pitch/new'), link('피치 수정', PITCH_EDIT)],
     next: [next('연습 시작 → 시작 전 세팅', 'prepare-mission'), next('내 피치', 'home')],
   },
@@ -150,6 +164,7 @@ const productScreens: GuideScreen[] = [
       ),
     ],
     rules: [
+      '위에 공용 상단바(AppHeader)가 얹힌다(#738).',
       'Take는 이 화면의 시작 버튼에서만 만든다. 들어오는 것만으로는 만들지 않는다.',
       '카메라 영상 · 마이크 입력 · 시선 기준 셋이 모두 되고, 이번 연습의 슬라이드 · 대본 조합이 정해져야(제품 `choice !== null`) 시작한다. 카메라가 없으면 시작할 수 없다.',
       '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 시작 실패 → 시작을 누른 뒤 여는 중(다른 곳의 연습을 끝낼지 묻는 동안은 그 안내) → 준비 정보 문제(불러오기 실패 · 버전 없음 등) → 평소 목소리 읽는 중 → 장치 오류 → 시선 분석을 쓸 수 없음 → 카메라 → 마이크 → 시선 분석 준비 중 → 기준 잡기 실패 → 기준 미완료 → 기준이 흐릿함(막지 않고 권하기만) → 평소 목소리 권유(선택) → "점검이 끝났어요"다.',
@@ -195,16 +210,18 @@ const productScreens: GuideScreen[] = [
     summary:
       '슬라이드와 대본을 보며 연습한다. 설계서에서는 카메라 · 마이크를 열거나 음성을 보내지 않는다.',
     states: [
-      base,
+      state('default', '기본', '3번째 장. 마지막 장이 아니라 끝내기가 막혀 있다.'),
+      state('last-slide', '마지막 장', '12번째 장. 끝내기를 누를 수 있다.'),
       state('exam', '실전 모드', '대본 칸 없이 실전처럼 연습한다. 코치가 말하지 않는다.'),
       state('keyword', '핵심 키워드', '대본 대신 키워드를 보며 연습한다.'),
-      state('confirm-end', '종료 확인', '끝내기 버튼을 한 번 더 눌러야 끝난다.'),
+      state('confirm-end', '종료 확인', '마지막 장에서 끝내기를 한 번 더 눌러야 끝난다.'),
       state('exam-confirm', '실전 모드 종료 확인', '실전 모드를 유지하며 종료를 확인한다.'),
       state('keyword-confirm', '키워드 모드 종료 확인', '키워드 모드를 유지하며 종료를 확인한다.'),
       state('disconnected', '연결 끊김', '말하기 분석 연결이 끊겨도 발표는 계속하도록 안내한다.'),
     ],
     rules: [
-      '끝내기 버튼은 마지막 장이 아니면 "중간 종료", 마지막 장이면 "발표 끝내기"다.',
+      '끝내기("발표 끝내기")는 마지막 장에서만 열린다. 마지막 장이 아니면 막히고 "마지막 슬라이드에서 끝낼 수 있어요"를 띄운다. 장 수를 모르면(0) 막지 않는다. 중간 종료는 없다 — BE가 중간 종료를 구분하지 않아 일부만 한 발표도 점수가 남기 때문이다.',
+      '슬라이드는 ← → · Space로 넘긴다.',
       '한 번 누르면 "정말 끝낼까요?"로 바뀌고 4초 안에 다시 눌러야 끝난다. 화면을 덮는 창은 띄우지 않는다.',
       '시작 뒤 말하기 분석 연결이 끊겨도 시계와 발표는 계속된다. 시작 전에 다른 곳에서 발표 중이라 연결이 거절되면 연결 실패 대신 그 이유를 알린다.',
       '이 Take를 다른 창에서 하고 있으면 무대를 열지 않고 "다른 창에서 연습 중"을, 창이 닫혀 끝났으면 "연습 중단"을 안내한다. 다른 곳에서 새 연습을 시작해 끝났으면 새 Take를 권하지 않는다.',
@@ -374,7 +391,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/report/ReportFrame.tsx',
     ],
     productNote:
-      '상단바(AppHeader)는 뺐다. 제품은 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드를 더 둔다. 미리보기는 코칭 노트 · 지난 Take와 비교 · 측정값 · 시선 비율 · 다음 미션만 그린다.',
+      '제품은 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드를 더 둔다. 미리보기는 코칭 노트 · 지난 Take와 비교 · 측정값 · 시선 비율 · 다음 미션만 그린다.',
     productLinks: [
       link('Take 리포트', '/takes/t3'),
       link('AI 문장 실패', '/takes/t-fallback'),
@@ -409,7 +426,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/report/TakesPage.tsx',
       'frontend/src/shared/lib/takeStatus.ts',
     ],
-    productNote: '상단바(AppHeader)는 뺐다. 상태 배지는 Badge로 대신 그린다.',
+    productNote: '상태 배지는 TakeStatusBadge와 같은 Badge로 그린다.',
     productLinks: [link('Take 기록', '/takes')],
     next: [next('리포트', 'report'), next('내 피치로', 'home')],
   },
@@ -435,8 +452,7 @@ const productScreens: GuideScreen[] = [
     components: ['InfoPage 틀', 'Card', 'Mascot'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
     sources: ['frontend/src/features/report/ComparisonPage.tsx'],
-    productNote:
-      '상단바(AppHeader)는 뺐다. 지표 탭은 청중 응시 하나만 그리고, 제품의 Take별 기록 표는 그리지 않는다.',
+    productNote: '지표 탭은 청중 응시 하나만 그리고, 제품의 Take별 기록 표는 그리지 않는다.',
     productLinks: [
       link('Take 비교', COMPARISON),
       link('완료 Take 없음', '/pitch/p2/comparison'),
@@ -546,7 +562,7 @@ const infoScreens: GuideScreen[] = [
       'frontend/src/features/auth/SuggestionForm.tsx',
     ],
     productNote:
-      '상단바(AppHeader)는 뺐다. 의견 보내기 칸(SuggestionForm)은 자리만 둔다. 동의 · 지우기 · 삭제는 서버 · 브라우저에 아무것도 하지 않고, 확인 창도 띄우지 않는다.',
+      '의견 보내기 칸(SuggestionForm)은 자리만 둔다. 동의 · 지우기 · 삭제는 서버 · 브라우저에 아무것도 하지 않고, 확인 창도 띄우지 않는다.',
     productLinks: [link('마이페이지', '/me')],
     next: [next('내 피치로', 'home')],
   },
