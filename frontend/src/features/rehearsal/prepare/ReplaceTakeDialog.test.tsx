@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ActiveTake } from '@/types/take';
@@ -83,6 +83,27 @@ it('브라우저가 창을 닫아도 끝내는 중이면 다시 띄우고, 아�
   const idle = await render(false);
   await closeByBrowser();
   expect(idle.onCancel).toHaveBeenCalledOnce();
+});
+
+/** StrictMode 는 개발 중 effect 를 한 번 더 돌립니다 — 닫고 다시 연 뒤에 지난 close 이벤트가 옵니다 */
+it('StrictMode 에서 열자마자 취소되지 않는다', async () => {
+  // 브라우저처럼 close() 의 이벤트는 다음 task 에 옵니다
+  HTMLDialogElement.prototype.close = function () {
+    if (!this.open) return;
+    this.open = false;
+    setTimeout(() => this.dispatchEvent(new Event('close')), 0);
+  };
+  const onCancel = vi.fn();
+  await act(async () =>
+    root.render(
+      <StrictMode>
+        <ReplaceTakeDialog take={other} busy={false} onConfirm={vi.fn()} onCancel={onCancel} />
+      </StrictMode>,
+    ),
+  );
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  expect(host.querySelector('dialog')!.open).toBe(true);
+  expect(onCancel).not.toHaveBeenCalled();
 });
 
 it('끝내는 중에는 버튼도 Esc 도 막는다', async () => {

@@ -45,8 +45,10 @@ export function ReplaceTakeDialog({
       }}
       onClose={() => {
         // 브라우저가 Esc 를 연달아 받으면 preventDefault 를 무시하고 닫습니다 (사이에 다른 조작이
-        // 없을 때). 끝내는 중이면 결과를 알려야 하니 다시 띄우고, 아니면 취소로 봅니다
-        if (!mounted.current) return;
+        // 없을 때). 끝내는 중이면 결과를 알려야 하니 다시 띄우고, 아니면 취소로 봅니다.
+        // 지금 열려 있으면 지난 닫힘이 늦게 온 것입니다 — StrictMode 는 개발 중 effect 를
+        // 한 번 더 돌려(닫고 다시 엶) 그 close 이벤트가 다시 연 뒤에 도착합니다
+        if (!mounted.current || ref.current?.open) return;
         if (busy) ref.current?.showModal();
         else onCancel();
       }}
