@@ -28,8 +28,9 @@ if (workers.length === 0) {
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const problems = [];
 for (const worker of workers) {
-  // `from"./x.js"` · `import"./x.js"` · `import("./x.js")` — 워커 주소를 만드는 `new URL(...)` 은 import 가 아닙니다
-  const imports = new RegExp(`(?:\\bfrom|\\bimport)\\s*\\(?\\s*["']\\./${escape(worker)}["']`);
+  // `from"./x.js"` · `import"./x.js"` · `import("./x.js")` · import(`./x.js`) — 빌드는 동적 import 를 백틱으로 냅니다.
+  // 워커 주소를 만드는 `new URL(...)` 은 import 가 아닙니다
+  const imports = new RegExp(`(?:\\bfrom|\\bimport)\\s*\\(?\\s*["'\`]\\./${escape(worker)}["'\`]`);
   for (const chunk of scripts) {
     if (chunk === worker) continue;
     if (imports.test(readFileSync(join(assets, chunk), 'utf8'))) problems.push({ chunk, worker });
