@@ -199,7 +199,7 @@ function Draft({
           <PrepareDraftMissionCard
             info={fixture.info}
             exam={mode === 'OFF'}
-            compact={voice !== 'IDLE' || fixture.permissionError}
+            compact={voice === 'READING' || fixture.permissionError}
           />
           <PrepareDraftScriptMode value={mode} onChange={setMode} disabled={fixture.starting} />
         </div>

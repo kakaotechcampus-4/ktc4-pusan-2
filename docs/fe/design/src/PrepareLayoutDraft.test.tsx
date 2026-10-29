@@ -104,6 +104,7 @@ it('keeps optional voice reading and all mission access inside the draft', async
   expect(button('전체 미션 보기')).toBeDefined();
   await click('다 읽었어요');
   expect(host.textContent).toContain('실제 소리를 측정하지 않았어요');
+  expect(host.querySelectorAll('.prepare-draft-mission-list li').length).toBeGreaterThan(0);
   expect(button('Take 3 시작하기').disabled).toBe(false);
 });
 
