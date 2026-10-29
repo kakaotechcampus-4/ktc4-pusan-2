@@ -61,7 +61,7 @@ def delete(db: Session, user: User) -> None:
     """회원을 지운다. 되살릴 수 없다.
 
     소셜 계정·Refresh 토큰·발표와 그 아래 행은 FK의 CASCADE로 DB가 같이 지운다.
-    Take별 설문·1차 배포 평점·의견은 user_id를 NULL로 바꿔 남긴다.
+    Take별 설문·의견은 user_id를 NULL로 바꿔 남긴다.
     같은 구글 계정으로 다시 로그인하면 기록이 없는 새 회원이 된다.
     """
     repository.delete(db, user)

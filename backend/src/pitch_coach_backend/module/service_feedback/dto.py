@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pitch_coach_backend.core.validation import reject_nul
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
-SuggestionSource = Literal["RATING_POPUP", "MY_PAGE"]
+SuggestionSource = Literal["MY_PAGE"]
 
 
 def normalize_suggestion(value: str | None) -> str | None:

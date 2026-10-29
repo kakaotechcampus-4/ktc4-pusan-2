@@ -5,12 +5,8 @@ import pytest
 from sqlalchemy import func, select
 
 from pitch_coach_backend.core.security import create_access_token
-from pitch_coach_backend.module.service_feedback.entity import (
-    FirstReleaseFeedback,
-    UserSuggestion,
-)
+from pitch_coach_backend.module.service_feedback.entity import UserSuggestion
 from pitch_coach_backend.module.user.entity import User
-from tests.service_feedback.conftest import make_first_release
 
 SUGGESTIONS = "/api/suggestions"
 
@@ -84,8 +80,7 @@ def test_rejects_forged_or_invalid_fields(client, auth, body):
     assert client.post(SUGGESTIONS, headers=auth, json=body).status_code == 422
 
 
-def test_withdraw_retains_first_release_feedback_and_opinions(client, auth, user_id, db_session):
-    make_first_release(db_session, user_id, 5, "팝업 의견")
+def test_withdraw_retains_opinions(client, auth, db_session):
     client.post(
         SUGGESTIONS,
         headers=auth,
@@ -93,11 +88,5 @@ def test_withdraw_retains_first_release_feedback_and_opinions(client, auth, user
     )
     assert client.delete("/api/users/me", headers=auth).status_code == 204
     db_session.expire_all()
-    feedback = db_session.scalar(select(FirstReleaseFeedback))
-    opinions = db_session.scalars(select(UserSuggestion)).all()
-    assert feedback.user_id is None
-    assert feedback.rating == 5
-    assert all(row.user_id is None for row in opinions)
-    popup = next(row for row in opinions if row.source == "RATING_POPUP")
-    assert popup.service_feedback_id == feedback.id
-    assert {row.content for row in opinions} == {"팝업 의견", "마이페이지 의견"}
+    opinion = db_session.scalar(select(UserSuggestion))
+    assert (opinion.user_id, opinion.content) == (None, "마이페이지 의견")

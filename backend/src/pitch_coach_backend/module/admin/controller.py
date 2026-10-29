@@ -17,10 +17,7 @@ from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module.admin import service
 from pitch_coach_backend.module.admin.dependencies import require_admin
 from pitch_coach_backend.module.admin.dto import (
-    AdminFeedbackGroupRow,
-    AdminFeedbackRow,
     AdminPage,
-    AdminRatingSummary,
     AdminSuggestionRow,
     AdminTakeRow,
     AdminTakeSurveyRow,
@@ -100,29 +97,6 @@ def take_surveys(
 @router.get("/api/take-surveys/summary")
 def take_survey_summary(db: Annotated[Session, Depends(get_db)]) -> list[AdminTakeSurveySummary]:
     return service.take_survey_summary(db)
-
-
-@router.get("/api/service-feedbacks", response_model=AdminPage[AdminFeedbackRow])
-def feedbacks(
-    db: Annotated[Session, Depends(get_db)],
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> AdminPage[AdminFeedbackRow]:
-    return service.list_feedbacks(db, limit=limit, offset=offset)
-
-
-@router.get("/api/service-feedbacks/summary")
-def rating_summary(db: Annotated[Session, Depends(get_db)]) -> AdminRatingSummary:
-    return service.rating_summary(db)
-
-
-@router.get("/api/service-feedbacks/by-user", response_model=AdminPage[AdminFeedbackGroupRow])
-def feedbacks_by_user(
-    db: Annotated[Session, Depends(get_db)],
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> AdminPage[AdminFeedbackGroupRow]:
-    return service.list_feedback_groups(db, limit=limit, offset=offset)
 
 
 @router.get("/api/suggestions", response_model=AdminPage[AdminSuggestionRow])

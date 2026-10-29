@@ -7,7 +7,6 @@ from sqlalchemy.exc import IntegrityError
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.service_feedback.entity import UserSuggestion
 from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
-from tests.service_feedback.conftest import make_first_release
 
 SUGGESTIONS = "/api/suggestions"
 CATEGORIES = ["POSITIVE", "IMPROVEMENT", "PROBLEM", "QUESTION", "OTHER"]
@@ -80,16 +79,8 @@ def test_admin_filters_category_and_source_together(client, auth, user_id, db_se
     monkeypatch.setattr(settings, "admin_password", ADMIN[1])
     for category in CATEGORIES:
         assert client.post(SUGGESTIONS, headers=auth, json=payload(category)).status_code == 201
-    make_first_release(db_session, user_id, 4, "의견", category="PROBLEM")
-    all_problems = client.get("/admin/api/suggestions?category=PROBLEM", auth=ADMIN).json()
-    assert len(all_problems["items"]) == 2
-    assert all(row["category"] == "PROBLEM" for row in all_problems["items"])
-    popup = client.get(
-        "/admin/api/suggestions?category=PROBLEM&source=RATING_POPUP", auth=ADMIN
-    ).json()
-    assert len(popup["items"]) == 1
-    ratings = client.get("/admin/api/service-feedbacks", auth=ADMIN).json()
-    assert ratings["items"][0]["category"] == "PROBLEM"
+    problems = client.get("/admin/api/suggestions?category=PROBLEM", auth=ADMIN).json()
+    assert [row["category"] for row in problems["items"]] == ["PROBLEM"]
     assert client.get("/admin/api/suggestions?category=UNKNOWN", auth=ADMIN).status_code == 422
 
 
