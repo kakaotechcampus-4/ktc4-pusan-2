@@ -194,9 +194,9 @@ it('제품 링크 · 옛 시안 주소를 설계서 안에서 처리하고 가�
   expect(middle.defaultPrevented).toBe(true);
   expect(navigate).toHaveBeenCalledTimes(1);
 
-  anchor.setAttribute('href', '/report');
+  anchor.setAttribute('href', '/about');
   await act(async () => anchor.click());
-  expect(navigate).toHaveBeenLastCalledWith('draft-report');
+  expect(navigate).toHaveBeenLastCalledWith('about');
 
   anchor.setAttribute('href', '/takes/t1/processing-extra');
   await act(async () => anchor.click());
@@ -242,4 +242,20 @@ it('모든 화면 · 상태가 오류 없이 그려지고, 미리보기 안에�
     }
   }
   expect(errors).not.toHaveBeenCalled();
+});
+
+it('안내 화면: 미지원 사유는 상태마다 제품 문구로, 로고 · 버튼은 홈으로 간다', async () => {
+  await render('unsupported', 'mobile');
+  expect(host.textContent).toContain('발표 연습은 PC에서 해 주세요');
+  await act(async () => root.render(null));
+  await render('unsupported', 'browser');
+  expect(host.textContent).toContain('이 브라우저에서는 시선 분석을 할 수 없어요');
+  await click('내 피치로');
+  expect(host.textContent).toContain('새 피치 만들기');
+  await act(async () => root.render(null));
+  await render('about');
+  await act(async () =>
+    host.querySelector<HTMLButtonElement>('[aria-label="피치코치 홈"]')!.click(),
+  );
+  expect(host.textContent).toContain('새 피치 만들기');
 });
