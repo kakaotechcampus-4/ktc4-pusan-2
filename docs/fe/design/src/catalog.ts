@@ -195,9 +195,9 @@ const productScreens: GuideScreen[] = [
     title: '리허설 무대',
     group,
     route: '/takes/:takeId/rehearsal',
-    status: '제품에 있음',
+    status: '시안',
     summary:
-      '슬라이드와 대본을 보며 연습한다. 설계서에서는 카메라 · 마이크를 열거나 음성을 보내지 않는다.',
+      'PM 승인 대기 디자인 시안. 슬라이드와 대본을 보며 연습한다. 카메라 · 마이크를 열거나 음성을 보내지 않는다.',
     states: [
       state(
         'default',
@@ -249,13 +249,13 @@ const productScreens: GuideScreen[] = [
     sources: [
       'frontend/src/features/rehearsal/stage/RehearsalPage.tsx',
       'frontend/src/features/rehearsal/stage/ScriptPane.tsx',
-      'frontend/src/features/rehearsal/stage/CoachStrip.tsx',
+      'frontend/src/dev/stage/CoachStrip.tsx',
       'frontend/src/features/rehearsal/stage/stage.css',
       'frontend/src/features/rehearsal/stage/canEnd.ts',
       'frontend/src/features/rehearsal/stage/useEndConfirm.ts',
     ],
     productNote:
-      '카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 코치 상태 표시는 그리지 않는다. 시작 전 안내는 "시작 전 · …" 상태로, 무대를 열지 않는 안내는 "무대를 열지 않는 안내" 화면으로 본다. 종료 확인은 4초 뒤 풀리지 않고 유지된다(장을 넘기면 풀리는 것은 제품과 같다). 무대 배치는 설계서의 src/ui/stage.css(제품 stage.css 복사본)를 쓴다.',
+      '제품은 PM 승인 전의 어두운 무대·카메라 16:9 contain·코치 32px·판정 불가 점선을 유지한다. 이 시안의 흰 지면·카메라 4:3 크롭·44px 피코 코치·범례 칩·하단 정렬은 승인 후 별도 반영한다. 카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 코치 상태 표시는 그리지 않는다. 시작 전 안내는 "시작 전 · …" 상태로, 무대를 열지 않는 안내는 "무대를 열지 않는 안내" 화면으로 본다. 종료 확인은 4초 뒤 풀리지 않고 유지된다(장을 넘기면 풀리는 것은 제품과 같다). 무대 배치는 설계서 자체 src/ui/stage.css를 쓴다. /dev/stage도 제품 UI와 분리된 디자인 시안으로 유지한다.',
     productLinks: [REHEARSAL, link('리허설 · 실전 모드', '/takes/t3/exam')],
     next: [next('끝내기 → 분석 대기', 'processing-loading'), next('전송 실패 → 재시도', 'retry')],
   },

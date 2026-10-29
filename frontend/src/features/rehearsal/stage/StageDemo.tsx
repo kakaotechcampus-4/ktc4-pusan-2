@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GazeZone, ScriptMode } from '@/types/api';
-import { ScriptPane } from './ScriptPane';
-import { CoachStrip } from './CoachStrip';
+import { ScriptPane } from '@/dev/stage/ScriptPane';
+import { CoachStrip } from '@/dev/stage/CoachStrip';
 import './stage.css';
+import '@/dev/stage/stage-preview.css';
 
 /** contract의 Zone → 테두리 상태. 워커가 뭘 주든 매핑은 한 곳에서만 한다. */
 const BORDER: Record<GazeZone, string> = {
@@ -56,7 +57,7 @@ export function StageDemo() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-greige">
+    <div className="stage-design-preview flex h-full flex-col bg-greige">
       {/* 조작부는 평범한 UI라 Tailwind로 */}
       {tools && (
         <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel p-3">
