@@ -112,3 +112,26 @@ it('남은 설문이 없으면 아무것도 두지 않는다', async () => {
   await render();
   expect(host.textContent).toBe('');
 });
+
+it('응답에 동의 시각이 없으면(동의를 모르는 BE) 저장되지 않은 것으로 알리고 창을 닫지 않는다', async () => {
+  session.user = base;
+  // #777 이전 BE 는 test_consent_version 을 무시하고 옛 사용자를 그대로 돌려줍니다
+  request.mockResolvedValue(base);
+  await render();
+  await act(async () => button('안내 보고 참여하기')!.click());
+  await act(async () => button('동의하고 참여하기')!.click());
+  await flush();
+  expect(host.querySelector('dialog')?.open).toBe(true);
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('참여를 저장하지 못했어요');
+});
+
+it('안내문은 동의로 달라지는 것과 동의와 상관없이 저장되는 것을 나눠 적는다', async () => {
+  session.user = base;
+  await render();
+  await act(async () => button('안내 보고 참여하기')!.click());
+  const text = host.querySelector('dialog')!.textContent!;
+  expect(text).toContain('동의하면 무엇이 달라지나요');
+  expect(text).toContain('동의와 상관없이 저장되는 것');
+  for (const stored of ['발표자료', '대본', '시선 구간', '음성 · 영상 원본은 저장하지 않습니다'])
+    expect(text).toContain(stored);
+});
