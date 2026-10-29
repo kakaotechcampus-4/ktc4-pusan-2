@@ -31,13 +31,19 @@ function render(path: string) {
 
 const drafts = screens.filter((screen) => screen.status === '시안만');
 
-it('옛 주소마다 그 시안을 뷰어에서 오류 없이 연다', () => {
+it('옛 주소마다 그 시안을 뷰어의 미리보기로 열고, 미리보기 주소에서 오류 없이 그린다', () => {
   const errors = vi.spyOn(console, 'error');
   expect(drafts.length).toBeGreaterThan(10);
   for (const draft of drafts) {
     const page = render(draft.route);
-    const region = page.querySelector(`[role="region"][aria-label="${draft.title} 미리보기"]`);
-    expect(region?.textContent, draft.route).toBeTruthy();
+    const frame = page.querySelector<HTMLIFrameElement>(
+      `[role="region"][aria-label="${draft.title} 미리보기"] iframe`,
+    );
+    expect(frame?.getAttribute('src'), draft.route).toContain(`#/frame?screen=${draft.id}&`);
+    act(() => root?.unmount());
+    // iframe이 여는 주소. jsdom은 iframe 안을 불러오지 않아 그 주소를 직접 그린다
+    const preview = render(`/frame?screen=${draft.id}&state=default`);
+    expect(preview.textContent, draft.route).toBeTruthy();
     act(() => root?.unmount());
   }
   expect(errors).not.toHaveBeenCalled();
@@ -50,7 +56,7 @@ it('없는 시안 이름이면 기본 화면을 연다', () => {
 
 it('제품에서 열기는 제품 개발 서버를 새 탭으로 연다', () => {
   const page = render('/report');
-  const live = page.querySelector<HTMLAnchorElement>('a[href^="http://localhost:3000"]');
-  expect(live?.getAttribute('href')).toBe('http://localhost:3000/takes/t3');
+  const live = page.querySelector<HTMLAnchorElement>('a[href="http://localhost:3000/takes/t3"]');
+  expect(live).toBeTruthy();
   expect(live?.target).toBe('_blank');
 });

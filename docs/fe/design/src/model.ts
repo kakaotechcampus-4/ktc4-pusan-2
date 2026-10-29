@@ -26,7 +26,7 @@ export interface GuideScreen {
   tokens: string[];
   /** 제품 파일 경로. 참고용 문자열이고 import하지 않는다 */
   sources: string[];
-  /** 설계서 미리보기가 제품과 다른 점. 같은 내용을 audit.md에도 적는다 */
+  /** 설계서 미리보기가 제품과 다른 점. 차이의 원본이고 설명 패널에 보인다 */
   productNote?: string;
   productLinks?: ProductLink[];
   next: { label: string; screenId: string; stateId?: string }[];

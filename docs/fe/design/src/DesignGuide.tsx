@@ -1,13 +1,15 @@
 /**
- * 화면 설계서 뷰어. 화면 목록은 catalog, 미리보기는 ScreenPreview가 맡는다.
- * 고른 화면 · 상태 · 보기 방식은 주소(`#/?screen=&state=&view=`)에 두어 새로고침 · 뒤로 가기에서 이어진다.
- * 옛 시안 주소(`#/report` 등)는 그 시안 항목으로 바꿔 연다.
+ * 화면 설계서 뷰어. 화면 목록은 catalog, 미리보기는 PreviewFrame(iframe 안의 ScreenPreview)이 맡는다.
+ * 고른 화면 · 상태 · 보기 방식 · 미리보기 크기는 주소(`#/?screen=&state=&view=&device=`)에 두어
+ * 새로고침 · 뒤로 가기에서 이어진다. 옛 시안 주소(`#/report` 등)는 그 시안 항목으로 바꿔 연다.
  */
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Navigate, Route, Routes, useParams, useSearchParams } from 'react-router';
 import { Button } from '@/ui/Button';
 import { PRODUCT_ORIGIN, screens } from './catalog';
-import { ScreenPreview } from './ScreenPreview';
+import { FramePage } from './FramePage';
+import { DEVICES, FRAME_UPDATED_EVENT, frameUrl, isDevice, type Device } from './frame';
+import { PreviewFrame } from './PreviewFrame';
 import type { GuideScreen } from './model';
 
 const control =
@@ -20,6 +22,7 @@ export function DesignRoutes() {
   return (
     <Routes>
       <Route path="/" element={<DesignGuide />} />
+      <Route path="/frame" element={<FramePage />} />
       <Route path="/:name" element={<LegacyDraftRoute />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -132,16 +135,18 @@ function List({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-/** 화면이 쓰는 디자인 값. 처음 그릴 때와 개발 서버가 CSS를 바꿔 끼운 뒤에 읽는다 */
-function TokenList({ items, preview }: { items: string[]; preview: RefObject<HTMLDivElement> }) {
+/** 화면이 쓰는 디자인 값. 처음 그릴 때와 개발 서버가 CSS를 바꿔 끼운 뒤(뷰어 · 미리보기 iframe 모두)에 읽는다 */
+function TokenList({ items, preview }: { items: string[]; preview: RefObject<HTMLIFrameElement> }) {
   const container = useRef<HTMLElement>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   useEffect(() => {
     function refresh() {
       if (!container.current) return;
       // 밝은 지면(.pitch-create)은 같은 이름의 색을 다시 정의하므로, 미리보기에 있으면 그 범위에서 읽는다
-      const scope = preview.current?.querySelector('.pitch-create') ?? container.current;
-      const styles = getComputedStyle(scope);
+      const light = preview.current?.contentDocument?.querySelector('.pitch-create');
+      const styles = light
+        ? light.ownerDocument.defaultView!.getComputedStyle(light)
+        : getComputedStyle(container.current);
       setValues(
         Object.fromEntries(
           items.map((item) => [item, styles.getPropertyValue(tokenName(item)).trim()]),
@@ -149,10 +154,14 @@ function TokenList({ items, preview }: { items: string[]; preview: RefObject<HTM
       );
     }
     refresh();
+    window.addEventListener(FRAME_UPDATED_EVENT, refresh);
     const hot = import.meta.hot;
     hot?.on('vite:afterUpdate', refresh);
-    // Vitest가 넣는 hot 대역에는 off가 없다
-    return () => hot?.off?.('vite:afterUpdate', refresh);
+    return () => {
+      window.removeEventListener(FRAME_UPDATED_EVENT, refresh);
+      // Vitest가 넣는 hot 대역에는 off가 없다
+      hot?.off?.('vite:afterUpdate', refresh);
+    };
   }, [items, preview]);
 
   return (
@@ -180,7 +189,7 @@ function Details({
 }: {
   screen: GuideScreen;
   stateId: string;
-  preview: RefObject<HTMLDivElement>;
+  preview: RefObject<HTMLIFrameElement>;
 }) {
   const state = screen.states.find((item) => item.id === stateId);
   const links = screen.productLinks ?? [];
@@ -268,18 +277,42 @@ function StateSelect({
   );
 }
 
+/** 미리보기를 어떤 화면 크기로 그릴지. 칸보다 넓으면 줄여 보인다 */
+function DeviceSelect({ value, onChange }: { value: Device; onChange: (device: Device) => void }) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1 text-xs font-bold sm:min-w-44">
+      미리보기 크기
+      <select
+        className={control}
+        value={value}
+        onChange={(event) => {
+          if (isDevice(event.target.value)) onChange(event.target.value);
+        }}
+      >
+        {Object.entries(DEVICES).map(([id, device]) => (
+          <option key={id} value={id}>
+            {device.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function DesignGuide() {
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const mobileNavigation = useRef<HTMLDetailsElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const preview = useRef<HTMLDivElement>(null);
+  const preview = useRef<HTMLIFrameElement>(null);
   // 다음 주소 변경 때 제목으로 포커스를 옮길지. 실제로 주소를 바꿀 때만 채운다
   const pendingFocus = useRef<'move' | 'keep' | null>(null);
 
   const screenId = params.get('screen') ?? screens[0]?.id;
   const selected = screens.find((screen) => screen.id === screenId);
   const view: View = params.get('view') === 'all' ? 'all' : 'single';
+  const deviceParam = params.get('device');
+  const device: Device = isDevice(deviceParam) ? deviceParam : 'fit';
   // 고른 화면은 state, 나머지 카드는 state.<화면 ID>에 상태를 둔다
   const selectedState = selected
     ? (validState(selected, params.get('state')) ??
@@ -347,6 +380,14 @@ export function DesignGuide() {
     commit(next, false, 'move');
   }
 
+  /** 미리보기 크기는 보는 방식이라 기록을 쌓지 않는다 */
+  function changeDevice(nextDevice: Device) {
+    const next = new URLSearchParams(params);
+    if (nextDevice === 'fit') next.delete('device');
+    else next.set('device', nextDevice);
+    commit(next, true, 'keep');
+  }
+
   const navigation = (
     <Navigation
       currentId={selected?.id}
@@ -391,23 +432,26 @@ export function DesignGuide() {
                   : '화면과 오른쪽 설명을 함께 확인하세요.'}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2" role="group" aria-label="보기 방식">
-              <Button
-                size="sm"
-                variant={view === 'single' ? 'primary' : 'secondary'}
-                aria-pressed={view === 'single'}
-                onClick={() => changeView('single')}
-              >
-                개별 화면
-              </Button>
-              <Button
-                size="sm"
-                variant={view === 'all' ? 'primary' : 'secondary'}
-                aria-pressed={view === 'all'}
-                onClick={() => changeView('all')}
-              >
-                전체 화면
-              </Button>
+            <div className="flex flex-wrap items-end gap-3">
+              <DeviceSelect value={device} onChange={changeDevice} />
+              <div className="flex flex-wrap gap-2" role="group" aria-label="보기 방식">
+                <Button
+                  size="sm"
+                  variant={view === 'single' ? 'primary' : 'secondary'}
+                  aria-pressed={view === 'single'}
+                  onClick={() => changeView('single')}
+                >
+                  개별 화면
+                </Button>
+                <Button
+                  size="sm"
+                  variant={view === 'all' ? 'primary' : 'secondary'}
+                  aria-pressed={view === 'all'}
+                  onClick={() => changeView('all')}
+                >
+                  전체 화면
+                </Button>
+              </div>
             </div>
           </div>
           {view === 'single' && selected && (
@@ -419,20 +463,31 @@ export function DesignGuide() {
                     value={selectedState}
                     onChange={(id) => changeState(selected.id, id)}
                   />
-                  <span className="text-sm font-bold">{selected.status}</span>
+                  <span className="flex flex-wrap items-center gap-3 text-sm font-bold">
+                    {selected.status}
+                    <a
+                      href={frameUrl(selected.id, selectedState)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline hover:text-coral-deep"
+                    >
+                      새 탭에서 화면만 보기 ↗
+                    </a>
+                  </span>
                 </div>
                 <div
-                  ref={preview}
                   role="region"
-                  tabIndex={0}
                   aria-label={`${selected.title} 미리보기`}
-                  className="min-w-0 overflow-auto border-2 border-line-strong bg-panel"
+                  className="min-w-0 border-2 border-line-strong bg-panel"
                 >
-                  <ScreenPreview
-                    key={`${selected.id}:${selectedState}`}
+                  <PreviewFrame
+                    frameRef={preview}
                     screenId={selected.id}
                     stateId={selectedState}
                     onNavigate={(id, stateId) => previewNavigate(selected, id, stateId)}
+                    device={device}
+                    fitHeight={800}
+                    title={`${selected.title} 미리보기 화면`}
                   />
                 </div>
                 {selected.next.length > 0 && (
@@ -486,18 +541,16 @@ export function DesignGuide() {
                         개별로 보기
                       </Button>
                     </div>
-                    <div
-                      className="h-96 min-w-0 overflow-auto"
-                      role="region"
-                      tabIndex={0}
-                      aria-label={`${screen.title} 미리보기`}
-                    >
-                      <ScreenPreview
-                        key={`${screen.id}:${stateId}`}
+                    <div className="min-w-0" role="region" aria-label={`${screen.title} 미리보기`}>
+                      <PreviewFrame
                         screenId={screen.id}
                         stateId={stateId}
                         onNavigate={(id, next) => previewNavigate(screen, id, next)}
+                        device={device}
+                        fitHeight={384}
+                        title={`${screen.title} 미리보기 화면`}
                         inline
+                        lazy
                       />
                     </div>
                   </section>
