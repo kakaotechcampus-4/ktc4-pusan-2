@@ -64,16 +64,30 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
         except Exception as e:
             logger.warning("발표자료 썸네일을 올리지 못했다 pitch=%s: %s", pitch_id, e)
 
-    presentation = PresentationVersion(
-        pitch_id=pitch_id,
-        version=version,
-        file_key=presentation_key,
-        page_count=page_count,
-        thumbnail_key=thumbnail_key,
-    )
-
-    pitch_repository.save_presentation(presentation)
-    db.commit()
+    # 여기부터 실패하면 S3 에만 파일이 남는다. 버전을 남기지 못했으면 올린 파일을 지운다
+    try:
+        # 조회 URL 은 커밋 전에 만든다. 커밋한 뒤에 실패하면 사용자는 오류를 받는데 버전은 생겨서
+        # 다시 올릴 때 버전이 하나 더 생긴다
+        file_url = generate_presigned_url(presentation_key)
+        presentation = PresentationVersion(
+            pitch_id=pitch_id,
+            version=version,
+            file_key=presentation_key,
+            page_count=page_count,
+            thumbnail_key=thumbnail_key,
+        )
+        pitch_repository.save_presentation(presentation)
+    except Exception:
+        db.rollback()
+        _discard_upload(db, pitch_id, version, presentation_key)
+        raise
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        # 커밋 응답만 잃었을 수 있다 (커밋 뒤 연결이 끊김). 버전 행이 없을 때만 지운다
+        _discard_upload(db, pitch_id, version, presentation_key)
+        raise
 
     return UploadPresentationResultDTO(
         pitch_id=pitch_id,

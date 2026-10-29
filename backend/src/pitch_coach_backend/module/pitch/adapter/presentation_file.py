@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 # FE 의 업로드 제한(MAX_SLIDE_BYTES)과 같다
 MAX_PRESENTATION_BYTES = 40 * 1024 * 1024
 
+MAX_PDF_OBJECTS = 50_000
+
+MAX_PDF_PAGES = 100
+
+PAGE_COUNT_SLOTS = 2
+
+_page_count_slots = threading.BoundedSemaphore(PAGE_COUNT_SLOTS)
+
 TIMEOUT_SECONDS = 5.0
 
 THUMBNAIL_WIDTH = 480
