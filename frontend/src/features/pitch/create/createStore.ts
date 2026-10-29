@@ -37,6 +37,9 @@ import {
  */
 
 interface CreateState {
+  viewedVersions: Record<DraftNode, number | null>;
+  infoConfirmed: boolean;
+  infoSaving: boolean;
   draft: PitchDraft;
   /** 본문에 무엇을 띄울지. 사이드바에서 고른 것 */
   node: PaneNode;
@@ -166,13 +169,26 @@ interface CreateState {
   reset: () => void;
 }
 
+/** 각 섹션에서 보던 버전을 다른 섹션으로 이동해도 유지합니다. */
+function viewSelection(state: CreateState, node: PaneNode, version: number | null) {
+  return {
+    node,
+    version,
+    viewedVersions: {
+      ...state.viewedVersions,
+      ...(state.node === 'info' ? {} : { [state.node]: state.version }),
+      ...(node === 'info' ? {} : { [node]: version }),
+    },
+  };
+}
+
 const EMPTY_DRAFT: PitchDraft = {
   title: '',
   presentationDate: '',
-  // 5분 · −30초 / +1분. 목업의 기본값입니다
+  // 새 발표만 5분 · 허용 편차 없음으로 시작합니다. 기존 발표는 hydrate 값 그대로 둡니다.
   timeLimitSec: 300,
-  lowerToleranceSec: 30,
-  upperToleranceSec: 60,
+  lowerToleranceSec: 0,
+  upperToleranceSec: 0,
   slides: [],
   scripts: [],
   criteria: [],
@@ -215,6 +231,9 @@ const editCriteria = (
 });
 
 export const useCreateStore = create<CreateState>((set) => ({
+  viewedVersions: { slides: null, script: null, criteria: null },
+  infoConfirmed: false,
+  infoSaving: false,
   draft: EMPTY_DRAFT,
   // 시안의 순서대로 슬라이드부터 엽니다
   node: 'slides',
@@ -227,18 +246,26 @@ export const useCreateStore = create<CreateState>((set) => ({
   entryKey: null,
   beginEntry: (key) => set((s) => (s.entryKey === key ? s : { ...freshDraft(), entryKey: key })),
   hydrate: (key, pitchId, draft) =>
-    set({ ...freshDraft(), entryKey: key, pitchId, draft, node: 'info', chosen: chosenOf(draft) }),
+    set({
+      ...freshDraft(),
+      entryKey: key,
+      pitchId,
+      draft,
+      chosen: chosenOf(draft),
+      infoConfirmed: true,
+    }),
 
   chosen: CHOOSE_LATEST,
   chooseVersion: (node, version) => set((s) => ({ chosen: { ...s.chosen, [node]: version } })),
 
-  select: (node, version = null) => set({ node, version }),
+  select: (node, version = null) => set((s) => viewSelection(s, node, version)),
 
   infoEdits: null,
   editInfo: (patch) =>
     set((s) => ({ infoEdits: { ...(s.infoEdits ?? infoOf(s.draft)), ...patch } })),
 
-  setMeta: (saved) => set((s) => ({ draft: { ...s.draft, ...saved }, infoEdits: null })),
+  setMeta: (saved) =>
+    set((s) => ({ draft: { ...s.draft, ...saved }, infoEdits: null, infoConfirmed: true })),
 
   autoTitle: null,
   startFromFile: (pitchId, saved) =>
@@ -247,18 +274,18 @@ export const useCreateStore = create<CreateState>((set) => ({
       draft: { ...s.draft, ...saved },
       infoEdits: null,
       autoTitle: saved.title,
+      infoConfirmed: false,
     })),
 
   addSlideVersion: () =>
     set((s) => {
       // 파일을 기다리는 빈 버전이 있으면 새로 만들지 않고 그 버전을 엽니다 (`pendingVersion`)
       const pending = pendingVersion(s.draft, 'slides');
-      if (pending !== null) return { node: 'slides' as const, version: pending };
+      if (pending !== null) return { ...viewSelection(s, 'slides', pending) };
       const version = nextVersion(s.draft.slides);
       return {
         draft: { ...s.draft, slides: [...s.draft.slides, { version, pageCount: null }] },
-        node: 'slides',
-        version,
+        ...viewSelection(s, 'slides', version),
       };
     }),
 
@@ -280,15 +307,13 @@ export const useCreateStore = create<CreateState>((set) => ({
               v.version === pending.version ? { ...v, ...uploaded } : v,
             ),
           },
-          node: 'slides' as const,
-          version: pending.version,
+          ...viewSelection(s, 'slides', pending.version),
         };
       }
       const version = nextVersion(s.draft.slides);
       return {
         draft: { ...s.draft, slides: [...s.draft.slides, { version, ...uploaded }] },
-        node: 'slides' as const,
-        version,
+        ...viewSelection(s, 'slides', version),
       };
     }),
 
@@ -296,7 +321,7 @@ export const useCreateStore = create<CreateState>((set) => ({
     set((s) => {
       // 매핑을 저장하지 않은 버전이 있으면 새로 만들지 않고 그 버전을 엽니다
       const pending = pendingVersion(s.draft, 'script');
-      if (pending !== null) return { node: 'script' as const, version: pending };
+      if (pending !== null) return { ...viewSelection(s, 'script', pending) };
       const version = nextVersion(s.draft.scripts);
       const slideVersion = latestUploadedSlides(s.draft)?.version ?? null;
       return {
@@ -304,8 +329,7 @@ export const useCreateStore = create<CreateState>((set) => ({
           ...s.draft,
           scripts: [...s.draft.scripts, { version, text, slideVersion, ...DETACHED }],
         },
-        node: 'script',
-        version,
+        ...viewSelection(s, 'script', version),
       };
     }),
 
@@ -358,7 +382,7 @@ export const useCreateStore = create<CreateState>((set) => ({
     set((s) => {
       // 저장하지 않은 버전이 있으면 새로 만들지 않고 그 버전을 엽니다
       const pending = pendingVersion(s.draft, 'criteria');
-      if (pending !== null) return { node: 'criteria' as const, version: pending };
+      if (pending !== null) return { ...viewSelection(s, 'criteria', pending) };
       const version = nextVersion(s.draft.criteria);
       return {
         draft: {
@@ -373,8 +397,7 @@ export const useCreateStore = create<CreateState>((set) => ({
             },
           ],
         },
-        node: 'criteria',
-        version,
+        ...viewSelection(s, 'criteria', version),
       };
     }),
 
@@ -384,6 +407,8 @@ export const useCreateStore = create<CreateState>((set) => ({
       // 화면에서만 자르면 보이지 않는 기준으로 채점됩니다. 많으면 목록이 스크롤됩니다
       const items = standards.map((text) => ({ id: crypto.randomUUID(), text }));
       const target = s.draft.criteria.find((v) => v.version === version);
+      const viewed = s.node === 'criteria' ? s.version : s.viewedVersions.criteria;
+      const viewedVersion = viewed === null || viewed === version ? savedVersion : viewed;
       // 요청을 보낸 뒤 다른 화면을 열었다면 그 화면의 선택은 유지합니다.
       const selectedVersion =
         s.node === 'criteria' &&
@@ -411,6 +436,7 @@ export const useCreateStore = create<CreateState>((set) => ({
             ].sort((a, b) => a.version - b.version),
           },
           version: selectedVersion,
+          viewedVersions: { ...s.viewedVersions, criteria: viewedVersion },
         };
       }
       return {
@@ -434,6 +460,7 @@ export const useCreateStore = create<CreateState>((set) => ({
             .sort((a, b) => a.version - b.version),
         },
         version: selectedVersion,
+        viewedVersions: { ...s.viewedVersions, criteria: viewedVersion },
       };
     }),
 
@@ -484,12 +511,19 @@ export const useCreateStore = create<CreateState>((set) => ({
         ].sort((a, b) => a.version - b.version),
       },
       version: s.node === 'criteria' && s.version === sourceVersion ? version : s.version,
+      viewedVersions: {
+        ...s.viewedVersions,
+        criteria:
+          s.viewedVersions.criteria === null || s.viewedVersions.criteria === sourceVersion
+            ? version
+            : s.viewedVersions.criteria,
+      },
     })),
 
   reviseCriteria: (version) =>
     set((s) => {
       const pending = pendingVersion(s.draft, 'criteria');
-      if (pending !== null) return { node: 'criteria' as const, version: pending };
+      if (pending !== null) return { ...viewSelection(s, 'criteria', pending) };
       const from = s.draft.criteria.find((v) => v.version === version);
       if (!from) return s;
       const next = nextVersion(s.draft.criteria);
@@ -506,8 +540,7 @@ export const useCreateStore = create<CreateState>((set) => ({
             { version: next, items: [], saved: false, sourceText },
           ],
         },
-        node: 'criteria' as const,
-        version: next,
+        ...viewSelection(s, 'criteria', next),
       };
     }),
 
@@ -528,6 +561,9 @@ function chosenOf(draft: PitchDraft): Chosen {
 /** 비운 작성. 회차 id 를 새로 만들어 앞 작성에서 시작한 비동기 결과가 들어오지 못하게 합니다 */
 function freshDraft() {
   return {
+    viewedVersions: { slides: null, script: null, criteria: null },
+    infoConfirmed: false,
+    infoSaving: false,
     draft: EMPTY_DRAFT,
     // 슬라이드부터 올립니다 — 올리면 피치가 생깁니다 (시안 `pitch-create`)
     node: 'slides' as const,
@@ -561,4 +597,6 @@ export const selectCriteriaUnsaved = (s: CreateState): boolean =>
   s.draft.criteria.some((v) => v.edited === true);
 
 export const selectBusy = (s: CreateState): boolean =>
-  s.slideUpload.status === 'uploading' || s.draft.scripts.some((v) => v.parse.status === 'pending');
+  s.infoSaving ||
+  s.slideUpload.status === 'uploading' ||
+  s.draft.scripts.some((v) => v.parse.status === 'pending');

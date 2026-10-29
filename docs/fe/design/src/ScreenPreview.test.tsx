@@ -93,14 +93,16 @@ afterEach(async () => {
 
 it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대기로 이동한다', async () => {
   await render();
-  await click('다음 · 대본 →');
-  expect(host.textContent).toContain('대본 입력');
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  expect(host.querySelectorAll('.create-content > section')).toHaveLength(4);
   await click('대본 매핑');
+  await click('저장');
   expect(host.textContent).toContain('목표 발표시간');
-  await click('다음 →');
-  // 저장한 평가기준이 없으면 "연습 시작"은 막히고 "건너뛰기"로 시작한다
-  expect(button('연습 시작 →')?.disabled).toBe(true);
-  await click('건너뛰기');
+  expect(button('시작 전 점검 →')?.disabled).toBe(true);
+  await click('발표정보 저장');
+  await click('시작 전 점검 →');
   await click('Take 3 시작하기');
   expect(host.querySelector('.stage')?.getAttribute('data-script-mode')).toBe('HIGHLIGHT');
   // 마지막 장이 아니면 끝낼 수 없다(#697)
@@ -138,8 +140,7 @@ it('슬라이드가 없을 때는 다음 단계 버튼이 없고 샘플 파일 �
   await render('pitch-create', 'empty');
   expect(button('다음 · 대본 →')).toBeUndefined();
   await click('PDF 파일 선택');
-  await click('다음 · 대본 →');
-  expect(host.textContent).toContain('대본 입력');
+  expect(button('대본 매핑')).toBeDefined();
 });
 
 it('실전 모드를 고르면 대본 칸 없는 실전 무대로 가고 종료 확인에서도 유지한다', async () => {

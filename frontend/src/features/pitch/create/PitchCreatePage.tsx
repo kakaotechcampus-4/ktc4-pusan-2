@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ApiFailure } from '@/shared/api/tokenStore';
-import { Mascot } from './Mascot';
-import { InfoBar } from './InfoBar';
+import { CheckIcon } from './icons';
+import { useSavePitchInfo } from './useSavePitchInfo';
+import './create.css';
 import { loadPitch } from './loadPitch';
-import { StepBar } from './StepBar';
 import { VersionRail } from './VersionRail';
 import {
   selectBusy,
@@ -14,45 +14,17 @@ import {
   useCreateStore,
 } from './createStore';
 import {
-  latestCriteria,
-  latestScript,
-  latestSlides,
-  latestUploadedSlides,
+  infoOf,
+  infoReady,
+  resolveChosen,
   toPracticeCombo,
   type PaneNode,
-  type ScriptVersion,
+  type DraftNode,
 } from './lib/draft';
 import { CriteriaPane } from './steps/CriteriaPane';
 import { InfoPane } from './steps/InfoPane';
 import { ScriptPane } from './steps/ScriptPane';
 import { SlidePane } from './steps/SlidePane';
-
-/**
- * P3 피치 생성. 슬라이드 · 대본 · 발표정보 확인 · 평가기준이 **한 라우트**입니다 (시안 `pitch-create`).
- *
- * 본문 위 단계 표시줄과 단계마다 이전 · 다음 버튼으로 처음 온 사람도 차례로 끝까지 갑니다.
- * 그래도 마법사처럼 잠그지 않습니다 — 사이드바가 버전 트리라 아무 때나 지난 버전으로 돌아갈 수 있고,
- * 대본만 세 번 고치는(V3) 일이 정상 흐름입니다. 연습 시작은 마지막 단계(평가기준)에 있습니다.
- *
- * 본문은 사이드바 · 단계 표시줄에서 고른 것(`node` + `version`)이 정합니다.
- */
-
-/** 사이드바 아래 치치의 말풍선. 지금 화면에서 할 일을 한마디로 */
-function mascotLine(node: PaneNode, script: ScriptVersion | null, uploaded: boolean): string {
-  if (node === 'criteria') return '기준은 골라도 되고\n건너뛰어도 돼!';
-  if (node === 'slides')
-    return uploaded ? '발표할 자료를\n확인해 봐!' : '발표 자료부터\n올려 볼까?';
-  if (node === 'info') return '날짜만 고르면\n거의 끝!';
-  if (node === 'script' && script?.parse.status === 'pending')
-    return '수정한 대본을\n연결하고 있어!';
-  if (node === 'script' && script?.blocks && !script.remote)
-    return '수정한 문장을\n다시 매핑해 줘!';
-  if (node === 'script' && script?.blocks && !script.saved)
-    return '슬라이드와 대본을\n확인하고 저장해 줘!';
-  if (node === 'script' && script?.saved) return '저장 완료!\n이제 연습하자.';
-  if (node === 'script') return '한 문장씩\n준비해 보자!';
-  return '준비부터\n차근차근!';
-}
 
 /**
  * 새로 시작한 작성인지 보고, 그렇다면 앞 피치를 비운 뒤에 화면을 그립니다.
@@ -163,7 +135,7 @@ function EditNotice({
   busy?: boolean;
 }) {
   return (
-    <div className="pitch-create pitch-create-square flex min-h-0 flex-1 flex-col lg:h-[calc(100dvh-var(--spacing-app-header))] bg-greige text-ink">
+    <div className="pitch-create flex min-h-0 flex-1 flex-col bg-greige text-ink">
       <div className="flex flex-1 items-center justify-center p-6">
         <div
           role={busy ? 'status' : 'alert'}
@@ -183,94 +155,212 @@ function EditNotice({
   );
 }
 
+const SECTIONS: { node: PaneNode; label: string }[] = [
+  { node: 'slides', label: '슬라이드' },
+  { node: 'script', label: '대본 연결' },
+  { node: 'info', label: '발표정보' },
+  { node: 'criteria', label: '평가기준' },
+];
+
+function scrollToSection(node: PaneNode) {
+  const section = document.getElementById(`create-${node}`);
+  section?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  section?.focus({ preventScroll: true });
+}
+
 function PitchCreateScreen() {
   const draft = useCreateStore((s) => s.draft);
   const node = useCreateStore((s) => s.node);
   const version = useCreateStore((s) => s.version);
   const pitchId = useCreateStore((s) => s.pitchId);
   const chosen = useCreateStore((s) => s.chosen);
-  const navigate = useNavigate();
+  const infoEdits = useCreateStore((s) => s.infoEdits);
+  const confirmed = useCreateStore((s) => s.infoConfirmed);
+  const select = useCreateStore((s) => s.select);
   const unsaved = useCreateStore(selectInfoUnsaved);
-  const [saveInfoRequired, setSaveInfoRequired] = useState(false);
   const busy = useCreateStore(selectBusy);
-
-  // 탭을 닫거나 새로고침하면 저장하지 않은 발표정보와 진행 중인 업로드 · 나누기가 사라집니다.
-  // 브라우저 기본 확인 창만 띄웁니다 — 문구는 브라우저가 정하고 바꿀 수 없습니다
   const criteriaUnsaved = useCreateStore(selectCriteriaUnsaved);
+  const navigate = useNavigate();
+  const save = useSavePitchInfo();
+  const viewed = useCreateStore((s) => s.viewedVersions);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    if (mounted.current) scrollToSection(node);
+    mounted.current = true;
+  }, [node, version]);
+
   useEffect(() => {
     if (!unsaved && !busy && !criteriaUnsaved) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [unsaved, busy, criteriaUnsaved]);
 
-  const pickedScript =
-    node === 'script'
-      ? (draft.scripts.find((v) => v.version === version) ?? latestScript(draft))
-      : null;
+  const selectedVersion = (kind: DraftNode) => (node === kind ? version : viewed[kind]);
+  const slide =
+    draft.slides.find((v) => v.version === selectedVersion('slides')) ??
+    draft.slides.at(-1) ??
+    null;
+  const script =
+    draft.scripts.find((v) => v.version === selectedVersion('script')) ??
+    draft.scripts.at(-1) ??
+    null;
+  const criteria =
+    draft.criteria.find((v) => v.version === selectedVersion('criteria')) ??
+    draft.criteria.at(-1) ??
+    null;
+  const currentChoice = script
+    ? { ...chosen, slides: script.slideVersion, script: script.version }
+    : chosen;
+  const practice = toPracticeCombo(draft, currentChoice);
+  const resolved = resolveChosen(draft, currentChoice);
+  const form = infoEdits ?? infoOf(draft);
+  const validInfo = form.title.trim() !== '' && infoReady(form);
+  const infoDone = !!pitchId && confirmed && !unsaved && validInfo;
+  const slidesDone = (resolved.slides?.pageCount ?? 0) > 0;
+  const done: Record<PaneNode, boolean> = {
+    slides: slidesDone,
+    script: practice !== null,
+    info: infoDone,
+    criteria: !!resolved.criteria?.items.length && !criteriaUnsaved,
+  };
+  const complete = Number(done.slides) + Number(done.script) + Number(done.info);
+  let next: PaneNode | null = null;
+  if (!slidesDone) next = 'slides';
+  else if (!practice) next = 'script';
+  else if (!infoDone) next = 'info';
+  else if (criteriaUnsaved) next = 'criteria';
 
-  /*
-    평가기준 단계의 "연습 시작" — 장치 점검 → 준비 화면 → 시작 CTA 순서입니다.
-
-    ★ 여기서 POST /takes 를 부르지 않습니다 (CLAUDE.md 8번) —
-      Take 는 준비 화면의 시작 CTA 에서만 생깁니다. 여기서 만들면
-      점검하다 그만둔 만큼 빈 Take 가 쌓이고 takeNumber 가 어긋납니다.
-
-    ★ 매핑을 저장하며 고른 조합(슬라이드 + 대본)을 장치 점검에 넘깁니다. BE 는 이 조합을
-      Take 에 박아 두므로(TakeInitRequestDTO), "어느 슬라이드에 맞춘 대본인가"가 남는 곳은 거기뿐입니다.
-  */
+  const go = (target: PaneNode) => {
+    select(target, target === 'info' ? null : selectedVersion(target));
+    scrollToSection(target);
+  };
   const start = () => {
-    if (unsaved) {
-      setSaveInfoRequired(true);
-      useCreateStore.getState().select('info');
-      return;
-    }
-    const practice = toPracticeCombo(draft, chosen);
-    if (pitchId && practice) navigate(`/pitch/${pitchId}/device-check`, { state: { practice } });
+    // 저장 직후의 상태를 읽어 이전 제목·시간이나 다른 자료 조합을 넘기지 않습니다.
+    if (script) useCreateStore.getState().saveMapping(script.version);
+    const current = useCreateStore.getState();
+    const combo = toPracticeCombo(current.draft, current.chosen);
+    if (
+      current.pitchId &&
+      combo &&
+      current.infoConfirmed &&
+      !selectInfoUnsaved(current) &&
+      !selectCriteriaUnsaved(current) &&
+      !selectBusy(current)
+    )
+      navigate(`/pitch/${current.pitchId}/device-check`, { state: { practice: combo } });
+  };
+  const saveAndStart = next === 'info' && node === 'info' && validInfo;
+  const labels: Record<PaneNode, string> = {
+    slides: '슬라이드 올리기 ↓',
+    script: '대본 연결 확인하기 ↓',
+    info: '발표정보 확인하기 ↓',
+    criteria: '평가기준 저장하기 ↓',
+  };
+  const hints: Record<PaneNode, string> = {
+    slides: '발표에 사용할 PDF부터 올려 주세요.',
+    script: '슬라이드에 맞춰 대본을 매핑하고 저장해 주세요.',
+    info: '발표정보를 저장하면 준비가 끝나요.',
+    criteria: '고친 평가기준을 먼저 저장해 주세요.',
   };
 
-  // 고른 버전이 없으면 그 갈래의 최신을 봅니다 — 사이드바가 강조한 것
-  const pane = (() => {
-    if (node === 'info') return <InfoPane />;
-    if (node === 'slides') {
-      const picked = draft.slides.find((v) => v.version === version) ?? latestSlides(draft);
-      return <SlidePane slide={picked} />;
-    }
-    if (node === 'script') return <ScriptPane script={pickedScript} />;
-    // 확인 창 없이 바로 장치 점검으로 갑니다. 조합은 사이드바의 "연습 중"과 매핑 확인 화면에 보이고,
-    // 조합이 맞지 않으면 "연습 시작" 이 막혀 있습니다 (CriteriaPane · `computeGate`)
-    const picked = draft.criteria.find((v) => v.version === version) ?? latestCriteria(draft);
-    return <CriteriaPane criteria={picked} onStart={start} />;
-  })();
+  let actionLabel = '시작 전 점검 →';
+  if (busy) actionLabel = '저장하는 중…';
+  else if (saveAndStart) actionLabel = '저장하고 시작 전 점검 →';
+  else if (next) actionLabel = labels[next];
+  let actionHint = `슬라이드 V${practice?.slideVersion} / 대본 V${practice?.scriptVersion} · 시작 전 점검으로 이동해요.`;
+  if (busy) actionHint = '자료를 저장하고 있어요. 잠시만 기다려 주세요.';
+  else if (next) actionHint = hints[next];
 
   return (
-    <div className="pitch-create pitch-create-square flex min-h-0 flex-1 flex-col lg:h-[calc(100dvh-var(--spacing-app-header))] bg-greige text-ink">
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        {/* ── 좌측: 발표 자료 트리 · 치치 ─────────────────────────── */}
-        <aside className="flex shrink-0 flex-col gap-4 border-b border-line-strong bg-cream/60 p-4 lg:w-sidebar lg:overflow-y-auto lg:border-b-0 lg:border-r">
-          <VersionRail />
-
-          <div className="hidden lg:block">
-            <Mascot
-              message={mascotLine(node, pickedScript, latestUploadedSlides(draft) !== null)}
-            />
-          </div>
+    <div className="pitch-create create-page">
+      <div className="create-layout">
+        <aside className="create-sidebar">
+          <nav aria-label="준비 순서">
+            <h2>준비 순서</h2>
+            <ol>
+              {SECTIONS.map((section, index) => (
+                <li key={section.node}>
+                  <button
+                    type="button"
+                    onClick={() => go(section.node)}
+                    aria-current={node === section.node ? 'step' : undefined}
+                  >
+                    <span className="create-step-number">{index + 1}</span>
+                    <span>{section.label}</span>
+                    {done[section.node] ? (
+                      <span className="create-step-done" aria-label="완료">
+                        <CheckIcon />
+                      </span>
+                    ) : null}
+                    {!done[section.node] && section.node === 'criteria' && <small>선택</small>}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </nav>
+          <details className="create-versions">
+            <summary>자료 버전 관리</summary>
+            <VersionRail />
+          </details>
         </aside>
-
-        {/* ── 우측: 발표 정보 줄 · 본문. 돌아가기는 상단바의 "내 피치"가 맡습니다 ── */}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 lg:overflow-hidden p-4">
-          <InfoBar />
-          <StepBar />
-          {saveInfoRequired && unsaved && node === 'info' && (
-            <p role="alert" className="text-sm font-bold text-ink">
-              연습을 시작하기 전에 발표정보를 저장해 주세요.
-            </p>
-          )}
-          <section className="flex min-h-0 flex-1 flex-col lg:overflow-y-auto rounded-lg border border-line bg-panel p-2 sm:p-5">
-            {pane}
+        <main className="create-content">
+          <div className="create-intro">
+            <div>
+              <h1>발표 준비</h1>
+              <p>자료부터 연습 설정까지, 이 페이지에서 준비해요.</p>
+            </div>
+            <div className="create-progress">
+              <p>
+                필수 준비 <strong>{complete}/3</strong> 완료
+              </p>
+              <progress aria-label="필수 준비" max={3} value={complete} />
+            </div>
+          </div>
+          <section id="create-slides" aria-label="슬라이드" tabIndex={-1}>
+            <fieldset disabled={save.isPending} className="min-w-0">
+              <SlidePane slide={slide} />
+            </fieldset>
+          </section>
+          <section id="create-script" aria-label="대본 연결" tabIndex={-1}>
+            <ScriptPane key={script?.version ?? 'none'} script={script} />
+          </section>
+          <section id="create-info" aria-label="발표정보" tabIndex={-1}>
+            <InfoPane save={save} />
+          </section>
+          <section id="create-criteria" aria-label="평가기준 (선택)" tabIndex={-1}>
+            <CriteriaPane criteria={criteria} />
           </section>
         </main>
       </div>
+      <footer className="create-action-bar">
+        <div>
+          <p role="status">{actionHint}</p>
+          <div className="create-actions">
+            <Link to="/" className="create-secondary">
+              내 피치로
+            </Link>
+            <button
+              type="button"
+              className="create-primary"
+              disabled={busy}
+              onClick={() => {
+                if (saveAndStart)
+                  save.mutate(undefined, {
+                    onSuccess: (saved) => {
+                      if (saved) start();
+                    },
+                  });
+                else if (next) go(next);
+                else start();
+              }}
+            >
+              {actionLabel}
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -35,15 +35,17 @@ export async function uploadSlides(file: File): Promise<void> {
   const { draftId } = store;
   let { pitchId } = store;
   // 업로드가 끝나기 전에 다른 빈 버전을 만들어도 시작한 자리에 채웁니다.
-  const targetVersion = store.version ?? store.draft.slides.at(-1)?.version ?? null;
+  const viewed = store.node === 'slides' ? store.version : store.viewedVersions.slides;
+  const targetVersion = viewed ?? store.draft.slides.at(-1)?.version ?? null;
   // 두 번 눌러도 한 번만 올립니다
-  if (store.slideUpload.status === 'uploading') return;
+  if (store.slideUpload.status === 'uploading' || store.infoSaving) return;
   const set = store.setSlideUpload;
 
   set({ status: 'uploading', file });
 
   if (!pitchId) {
-    const info = { ...infoOf(store.draft), title: titleFromFile(file.name) };
+    const current = store.infoEdits ?? infoOf(store.draft);
+    const info = { ...current, title: current.title.trim() || titleFromFile(file.name) };
     // 새 작성의 시간 기본값은 늘 알고 있습니다. 모르는 허용오차(수정 화면)는 여기 오지 않습니다
     if (!infoReady(info)) return set({ status: 'failed', file, reason: 'upload' });
     try {

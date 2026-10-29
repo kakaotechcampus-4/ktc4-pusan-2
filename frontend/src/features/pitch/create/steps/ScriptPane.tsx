@@ -1,6 +1,7 @@
+import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import { scanSlideMarkers, type MarkerScan } from '@/shared/lib/slideMarkers';
 import { useCreateStore } from '../createStore';
-import { CheckIcon, DocIcon, LinkIcon } from '../icons';
+import { CaretIcon, CheckIcon, DocIcon, LinkIcon } from '../icons';
 import {
   canSaveMapping,
   countChars,
@@ -16,7 +17,6 @@ import { PdfPage } from '@/shared/ui/PdfPage';
 import { retryScriptMapping, startScriptMapping } from '../scriptParse';
 import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import { NeedPitch } from './NeedPitch';
-import { PaneFooter, primaryButton, secondaryButton } from './PaneFooter';
 import { PaneHeading } from './PaneHeading';
 
 /**
@@ -27,8 +27,7 @@ import { PaneHeading } from './PaneHeading';
  * 폴링으로 받습니다 (`scriptParse.ts`). AI 는 "[슬라이드 1]" 같은 **명시적 구분자**로만 나누고,
  * 구분자가 없으면 대본 전체를 한 슬라이드로 둡니다 — 그래서 작성 안내에 구분자를 적어 둡니다.
  *
- * 매핑 확인에서 "저장하고 다음"을 누르면 그 슬라이드 + 대본이 연습할 조합이 되고, 발표정보 확인으로 갑니다.
- * 연습 시작은 마지막 단계(평가기준)에 있습니다.
+ * 매핑 확인에서 "저장"하면 그 슬라이드 + 대본이 연습할 조합이 됩니다. 페이지 하단에서 시작 전 점검으로 갑니다.
  * 서버는 대본이 어느 슬라이드에 맞춘 것인지 모르므로, 장수 비교는 화면이 합니다.
  */
 
@@ -72,13 +71,30 @@ const MIN_GUTTER_LINES = 12;
 /* 대본 입력                                                           */
 /* ------------------------------------------------------------------ */
 
-/** "연결할 슬라이드 V1 · 12장". 올린 슬라이드가 여럿이면 여기서 고릅니다 */
+/** 올린 슬라이드가 여럿이면 버전을 보고 고릅니다. */
 function SlideLink({ script, linked }: { script: ScriptVersion; linked: SlideVersion | null }) {
   // 배열을 통째로 꺼내 밖에서 거릅니다 — 셀렉터 안에서 filter 하면 매번 새 배열이라 무한히 다시 그립니다
   const allSlides = useCreateStore((s) => s.draft.slides);
   const slides = allSlides.filter((v) => v.pageCount !== null);
   const linkSlides = useCreateStore((s) => s.linkSlides);
   const select = useCreateStore((s) => s.select);
+  const [open, setOpen] = useState(false);
+  const container = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const menu = container.current;
+    const options = menu?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
+    const selected = menu?.querySelector<HTMLButtonElement>('[aria-checked="true"]');
+    (selected ?? options?.[0])?.focus();
+    const dismiss = (event: PointerEvent) => {
+      if (!menu?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [open]);
 
   if (slides.length === 0) {
     return (
@@ -94,29 +110,94 @@ function SlideLink({ script, linked }: { script: ScriptVersion; linked: SlideVer
   }
 
   return (
-    <label className="flex h-10 items-center gap-2 rounded-lg border border-line-strong bg-white px-4 text-sm">
-      <LinkIcon />
-      <span className="font-bold">연결할 슬라이드</span>
-      <select
-        aria-label="연결할 슬라이드"
-        value={linked?.version ?? ''}
-        onChange={(e) => linkSlides(script.version, Number(e.target.value))}
-        className="tabular cursor-pointer appearance-none bg-transparent pr-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+    <div
+      ref={container}
+      className="relative"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          setOpen(false);
+          trigger.current?.focus();
+        }
+      }}
+    >
+      <button
+        ref={trigger}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen(!open)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className="flex h-10 items-center gap-3 rounded-lg border border-line-strong bg-white px-4 text-sm hover:border-ink aria-expanded:border-ink aria-expanded:bg-panel"
       >
-        {linked === null && <option value="">고르기</option>}
-        {slides.map((v) => (
-          <option key={v.version} value={v.version}>
-            V{v.version} · {v.pageCount}장
-          </option>
-        ))}
-      </select>
-    </label>
+        <LinkIcon />
+        <span className="font-bold">연결할 슬라이드</span>
+        <span className="tabular">
+          {linked ? `V${linked.version} · ${linked.pageCount}장` : '고르기'}
+        </span>
+        <span className={open ? 'rotate-180' : ''}>
+          <CaretIcon open />
+        </span>
+      </button>
+      {open && (
+        <div
+          id={menuId}
+          role="menu"
+          aria-label="연결할 슬라이드"
+          className="absolute left-0 top-full z-30 mt-2 max-h-60 w-full overflow-y-auto rounded-xl border border-line-strong bg-white p-1.5"
+          onKeyDown={(event) => {
+            const options = Array.from(
+              event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'),
+            );
+            const index = options.indexOf(document.activeElement as HTMLButtonElement);
+            let next = index;
+            if (event.key === 'ArrowDown') next = (index + 1) % options.length;
+            else if (event.key === 'ArrowUp') next = (index - 1 + options.length) % options.length;
+            else if (event.key === 'Home') next = 0;
+            else if (event.key === 'End') next = options.length - 1;
+            else return;
+            event.preventDefault();
+            options[next]?.focus();
+          }}
+        >
+          {slides.map((v) => (
+            <button
+              key={v.version}
+              type="button"
+              role="menuitemradio"
+              aria-checked={v.version === linked?.version}
+              tabIndex={-1}
+              onClick={() => {
+                if (v.version !== linked?.version) linkSlides(script.version, v.version);
+                setOpen(false);
+                trigger.current?.focus();
+              }}
+              className="tabular flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm hover:bg-panel focus-visible:bg-panel aria-checked:bg-coral-wash aria-checked:font-bold"
+            >
+              <span className="flex h-4 w-4 items-center">
+                {v.version === linked?.version && <CheckIcon />}
+              </span>
+              <span>V{v.version}</span>
+              <span className="ml-auto">{v.pageCount}장</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
 function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersion | null }) {
   const editScript = useCreateStore((s) => s.editScript);
-  const select = useCreateStore((s) => s.select);
 
   const chars = countChars(script.text);
   const estimate = formatEstimate(estimateDurationMs(script.text));
@@ -132,7 +213,7 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PaneHeading title="대본 입력" subtitle="선택한 슬라이드에 맞춰 대본을 준비해 주세요." />
+      <PaneHeading title="2. 대본 연결" subtitle="선택한 슬라이드에 맞춰 대본을 준비해 주세요." />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -149,9 +230,19 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
             </span>
           )}
         </div>
-        <span className="tabular text-sm text-ink/80">
-          {chars.toLocaleString()}자 · 예상 {estimate}
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="tabular text-sm text-ink/80">
+            {chars.toLocaleString()}자 · 예상 {estimate}
+          </span>
+          <button
+            type="button"
+            disabled={chars === 0 || pending || tooLong}
+            onClick={() => startScriptMapping(script.version)}
+            className="h-11 rounded-lg bg-coral-deep px-6 text-sm font-bold text-white hover:bg-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-ink/80"
+          >
+            {mapLabel(pending)}
+          </button>
+        </div>
       </div>
 
       {hint && !failure && (
@@ -180,7 +271,7 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
         줄 번호와 글이 같이 스크롤되도록 한 상자에 둡니다. 줄을 접지 않아야 번호가 맞습니다.
         포커스 표시는 상자 테두리가 맡습니다 — 글 칸의 포커스 링은 스크롤 상자에 잘려 선 하나만 남습니다
       */}
-      <div className="flex min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-white focus-within:border-ink">
+      <div className="create-script-editor flex min-h-0 overflow-auto rounded-lg border border-line bg-white focus-within:border-ink">
         <ol
           aria-hidden="true"
           className="tabular sticky left-0 shrink-0 select-none border-r border-line bg-panel/50 px-4 py-5 text-right text-sm leading-8 text-ink/80"
@@ -204,21 +295,10 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
         />
       </div>
 
-      <div className="mt-3">
-        <PaneFooter hint="슬라이드마다 “[N]” · “[슬라이드 N]” · “슬라이드 N:” 중 하나를 새 줄에 적어 주세요. N은 슬라이드 번호예요. 구분자가 없으면 대본 전체를 한 슬라이드로 연결해요.">
-          <button type="button" onClick={() => select('slides')} className={secondaryButton}>
-            ← 이전
-          </button>
-          <button
-            type="button"
-            disabled={chars === 0 || pending || tooLong}
-            onClick={() => startScriptMapping(script.version)}
-            className={primaryButton}
-          >
-            {mapLabel(pending)}
-          </button>
-        </PaneFooter>
-      </div>
+      <p className="mt-3 border-t border-line pt-3 text-sm text-ink/80">
+        슬라이드마다 [N] · [슬라이드 N] · 슬라이드 N: 중 하나를 새 줄에 적어 주세요. N은 슬라이드
+        번호예요. 구분자가 없으면 대본 전체를 한 슬라이드로 연결해요.
+      </p>
     </div>
   );
 }
@@ -230,9 +310,9 @@ function Editor({ script, linked }: { script: ScriptVersion; linked: SlideVersio
 function SlideThumb({ slide, pageNumber }: { slide: SlideVersion | null; pageNumber: number }) {
   const opened = usePdfDocument(slide?.fileUrl);
   return (
-    <div className="flex h-20 w-36 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-panel">
+    <div className="create-mapping-preview">
       {opened && 'doc' in opened && pageNumber <= opened.doc.numPages ? (
-        <PdfPage doc={opened.doc} pageNumber={pageNumber} fit="width" className="w-full" />
+        <PdfPage doc={opened.doc} pageNumber={pageNumber} fit="contain" className="h-full w-full" />
       ) : (
         <span className="tabular text-xs text-ink/80">{pageNumber}</span>
       )}
@@ -292,17 +372,155 @@ function SaveHint({
         대본은 {blockCount}장, 슬라이드는 {pageCount}장이라 저장할 수 없어요.
       </span>
       <span className="block text-xs text-ink/80">
-        ← 대본 수정에서 “[슬라이드 1]”처럼 장마다 구분을 넣고 다시 매핑해 주세요.
+        창을 닫고 대본 원문 수정에서 “[슬라이드 1]”처럼 장마다 구분을 넣고 다시 매핑해 주세요.
       </span>
     </p>
   );
 }
 
-function MappingReview({ script, linked }: { script: ScriptVersion; linked: SlideVersion | null }) {
+function MappingDialog({
+  script,
+  linked,
+  onClose,
+  returnFocus,
+}: {
+  script: ScriptVersion;
+  linked: SlideVersion | null;
+  onClose: () => void;
+  returnFocus: RefObject<HTMLButtonElement | null>;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const dialog = ref.current!;
+    const previous = returnFocus.current;
+    const overflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    return () => {
+      dialog.close();
+      document.body.style.overflow = overflow;
+      previous?.focus({ preventScroll: true });
+    };
+  }, [returnFocus]);
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby={titleId}
+      onClose={onClose}
+      className="create-mapping-dialog"
+      onKeyDown={(event) => {
+        if (event.key !== 'Tab') return;
+        const controls = [
+          ...event.currentTarget.querySelectorAll<HTMLElement>('button, textarea'),
+        ].filter((control) => !control.hasAttribute('disabled'));
+        const first = controls[0];
+        const last = controls.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }}
+    >
+      <header>
+        <h2 id={titleId}>매핑 확인·수정</h2>
+        <button
+          type="button"
+          autoFocus
+          className="create-secondary"
+          onClick={() => ref.current?.close()}
+        >
+          닫기
+        </button>
+      </header>
+      <MappingEditor script={script} linked={linked} />
+    </dialog>
+  );
+}
+
+function MappingReview({
+  script,
+  linked,
+  open,
+  setOpen,
+}: {
+  script: ScriptVersion;
+  linked: SlideVersion | null;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+}) {
+  const trigger = useRef<HTMLButtonElement>(null);
   const unmapScript = useCreateStore((s) => s.unmapScript);
+  const blocks = script.blocks ?? [];
+  const pages = linked?.pageCount ?? 0;
+  const missing = Array.from(
+    { length: Math.max(pages, blocks.length) },
+    (_, i) => blocks[i] ?? '',
+  ).filter((text) => !text.trim()).length;
+  return (
+    <div>
+      <PaneHeading
+        title="2. 대본 연결"
+        subtitle="장별 대본을 확인하고, 수정한 매핑은 다시 저장해 주세요."
+      />
+      <div className="create-mapping-summary">
+        <div>
+          <p className="font-bold">
+            슬라이드 V{linked?.version ?? '?'} · {pages}장 / 대본 V{script.version} ·{' '}
+            {blocks.length}장
+          </p>
+          <p role="status" className="mt-2 text-sm">
+            {script.saved ? '저장 완료' : '저장 필요'} ·{' '}
+            {missing > 0 ? `빈 대본 ${missing}장` : '빈 대본 없음'}
+          </p>
+        </div>
+        <button
+          ref={trigger}
+          type="button"
+          className="create-secondary"
+          onClick={() => setOpen(true)}
+        >
+          매핑 확인/수정
+        </button>
+      </div>
+      <MappingNotice segmented={script.segmented} blockCount={blocks.length} pageCount={pages} />
+      {script.parse.status === 'failed' && (
+        <p role="alert" className="mt-3 text-sm">
+          {script.parse.message}
+        </p>
+      )}
+      {!script.remote && (
+        <p className="mt-3 text-sm">
+          수정한 문장은 유지됩니다. 확인 창에서 다시 매핑하고 저장해 주세요.
+        </p>
+      )}
+      <button
+        type="button"
+        className="mt-3 min-h-11 text-sm underline underline-offset-4"
+        disabled={script.parse.status === 'pending'}
+        onClick={() => unmapScript(script.version)}
+      >
+        대본 원문 수정
+      </button>
+      {open && (
+        <MappingDialog
+          script={script}
+          linked={linked}
+          returnFocus={trigger}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MappingEditor({ script, linked }: { script: ScriptVersion; linked: SlideVersion | null }) {
+  const [selected, setSelected] = useState(0);
   const editMappingBlock = useCreateStore((s) => s.editMappingBlock);
   const saveMapping = useCreateStore((s) => s.saveMapping);
-  const select = useCreateStore((s) => s.select);
   const draft = useCreateStore((s) => s.draft);
   const chosen = useCreateStore((s) => s.chosen);
 
@@ -313,31 +531,18 @@ function MappingReview({ script, linked }: { script: ScriptVersion; linked: Slid
     { length: Math.max(blocks.length, pageCount) },
     (_, i) => blocks[i] ?? '',
   );
+  const active = Math.min(selected, Math.max(0, rows.length - 1));
   const filled = rows.filter((b) => b.trim() !== '').length;
   const currentChoice = { ...chosen, slides: script.slideVersion, script: script.version };
   const gate = computeGate(draft, currentChoice);
   const pending = script.parse.status === 'pending';
+  // 저장한 이 조합으로 넘어갑니다. 저장 뒤에 다른 버전을 고쳤으면 진행 조건이 다시 막습니다
   // ★ 장수가 맞아야 저장합니다. 맞지 않는 조합을 저장하면 "저장 완료"인데 "다음"이 막혀 헷갈립니다
   const countsMatch = pageCount > 0 && blocks.length === pageCount;
   const canSave = !script.saved && canSaveMapping(script, linked);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PaneHeading
-        title="대본 매핑 확인"
-        subtitle="슬라이드와 대본이 잘 연결되었는지 확인해 주세요."
-        actions={
-          <button
-            type="button"
-            onClick={() => unmapScript(script.version)}
-            disabled={pending}
-            className="h-11 rounded-lg border border-line-strong bg-white px-5 text-sm font-bold hover:bg-panel"
-          >
-            ← 대본 수정
-          </button>
-        }
-      />
-
       <div className="mb-3 flex flex-wrap gap-2">
         <span className="tabular flex items-center gap-2 rounded-lg bg-coral-wash px-3 py-1.5 text-sm font-bold text-ink">
           슬라이드 V{linked?.version ?? '?'} · {pageCount}장
@@ -364,44 +569,59 @@ function MappingReview({ script, linked }: { script: ScriptVersion; linked: Slid
         pageCount={pageCount}
       />
 
-      <ol className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto">
-        {rows.map((block, i) => {
-          const empty = block.trim() === '';
-          return (
-            <li
+      <div className="create-mapping-workspace">
+        <nav aria-label="매핑 슬라이드 목록">
+          {rows.map((block, i) => (
+            <button
+              type="button"
               key={i}
-              className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white px-4 py-3 sm:flex-nowrap sm:gap-5"
+              aria-current={active === i ? 'true' : undefined}
+              onClick={() => setSelected(i)}
             >
-              <SlideThumb slide={linked} pageNumber={i + 1} />
-              <span className="tabular w-20 shrink-0 text-sm font-bold">
-                SLIDE {String(i + 1).padStart(2, '0')}
-              </span>
-              <textarea
-                aria-label={`슬라이드 ${i + 1} 대본`}
-                value={block}
-                readOnly={pending || i >= blocks.length}
-                onChange={(e) => editMappingBlock(script.version, i, e.target.value)}
-                placeholder="이 슬라이드에 연결된 대본이 없어요"
-                rows={3}
-                className={[
-                  'min-w-0 basis-full whitespace-pre-line rounded-md border px-4 py-3 text-sm leading-relaxed sm:flex-1 sm:basis-auto',
-                  empty ? 'border-dashed border-line-strong text-ink/80' : 'border-line',
-                ].join(' ')}
-              />
-              {empty ? (
-                <span className="w-20 shrink-0 text-center text-xs font-bold text-ink">
-                  비어 있음
-                </span>
-              ) : (
-                <span className="flex w-20 shrink-0 items-center justify-center gap-1 rounded-md border border-line-strong bg-panel py-1.5 text-xs font-bold">
-                  <CheckIcon />
-                  확인됨
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ol>
+              {i + 1}장 · {i >= pageCount && '슬라이드 없음'}
+              {i < pageCount && (block.trim() ? '연결됨' : '대본 없음')}
+            </button>
+          ))}
+        </nav>
+        <div className="create-mapping-selected">
+          {active < pageCount ? (
+            <SlideThumb slide={linked} pageNumber={active + 1} />
+          ) : (
+            <p>연결된 슬라이드가 없어요.</p>
+          )}
+          <label>
+            <span className="font-bold">{active + 1}장 대본</span>
+            <textarea
+              aria-label={`슬라이드 ${active + 1} 대본`}
+              value={rows[active] ?? ''}
+              readOnly={pending || active >= blocks.length}
+              onChange={(e) => editMappingBlock(script.version, active, e.target.value)}
+              placeholder="이 슬라이드에 연결된 대본이 없어요"
+            />
+          </label>
+        </div>
+      </div>
+      <div className="create-mapping-pagination">
+        <button
+          type="button"
+          className="create-secondary"
+          disabled={active === 0}
+          onClick={() => setSelected(active - 1)}
+        >
+          이전 장
+        </button>
+        <span aria-live="polite">
+          {rows.length === 0 ? 0 : active + 1} / {rows.length}장
+        </span>
+        <button
+          type="button"
+          className="create-secondary"
+          disabled={active >= rows.length - 1}
+          onClick={() => setSelected(active + 1)}
+        >
+          다음 장
+        </button>
+      </div>
 
       <p className="tabular mt-3 text-sm text-ink/80">
         {filled === rows.length
@@ -439,25 +659,18 @@ function MappingReview({ script, linked }: { script: ScriptVersion; linked: Slid
                     ? retryScriptMapping(script.version)
                     : startScriptMapping(script.version)
                 }
-                className="rounded-lg border border-coral px-4 text-sm font-bold text-ink disabled:cursor-not-allowed disabled:border-line-strong disabled:bg-cream disabled:text-ink/80"
+                className="rounded-lg border border-coral px-4 text-sm font-bold text-ink disabled:opacity-50"
               >
                 {pending ? '매핑 중…' : '수정 대본 매핑'}
               </button>
             )}
-            <button type="button" onClick={() => select('slides')} className={secondaryButton}>
-              ← 이전
-            </button>
             <button
               type="button"
-              disabled={!script.saved && !canSave}
-              onClick={() => {
-                // 저장한 조합(슬라이드 + 대본)이 연습할 조합이 됩니다 — 사이드바의 "연습 중"
-                saveMapping(script.version);
-                select('info');
-              }}
-              className={primaryButton}
+              disabled={!canSave}
+              onClick={() => saveMapping(script.version)}
+              className="h-12 w-36 rounded-lg border border-ink bg-white text-sm font-bold hover:bg-panel disabled:cursor-not-allowed disabled:border-line disabled:text-ink/80 disabled:hover:bg-white"
             >
-              {script.saved ? '다음 →' : '저장하고 다음 →'}
+              저장
             </button>
           </div>
           <p className="text-xs text-ink/80">매핑을 수정하면 다시 저장한 뒤 진행할 수 있어요.</p>
@@ -468,6 +681,18 @@ function MappingReview({ script, linked }: { script: ScriptVersion; linked: Slid
 }
 
 export function ScriptPane({ script }: { script: ScriptVersion | null }) {
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const previousParse = useRef(script?.parse.status);
+  useEffect(() => {
+    if (
+      previousParse.current === 'pending' &&
+      script?.parse.status === 'idle' &&
+      script.blocks !== null
+    ) {
+      setReviewOpen(true);
+    }
+    previousParse.current = script?.parse.status;
+  }, [script?.parse.status, script?.blocks]);
   const addScriptVersion = useCreateStore((s) => s.addScriptVersion);
   const hasPitch = useCreateStore((s) => s.pitchId !== null);
   const linked = useCreateStore(
@@ -477,7 +702,7 @@ export function ScriptPane({ script }: { script: ScriptVersion | null }) {
   if (!hasPitch) {
     return (
       <div className="flex flex-1 flex-col">
-        <PaneHeading title="대본 입력" subtitle="선택한 슬라이드에 맞춰 대본을 준비해 주세요." />
+        <PaneHeading title="2. 대본 연결" subtitle="선택한 슬라이드에 맞춰 대본을 준비해 주세요." />
         <NeedPitch what="대본" />
       </div>
     );
@@ -486,7 +711,7 @@ export function ScriptPane({ script }: { script: ScriptVersion | null }) {
   if (script === null) {
     return (
       <div className="flex flex-1 flex-col">
-        <PaneHeading title="대본 입력" subtitle="선택한 슬라이드에 맞춰 대본을 준비해 주세요." />
+        <PaneHeading title="2. 대본 연결" subtitle="선택한 슬라이드에 맞춰 대본을 준비해 주세요." />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-line-strong bg-white">
           <p className="text-sm text-ink/80">아직 대본이 없어요</p>
           <button
@@ -504,6 +729,12 @@ export function ScriptPane({ script }: { script: ScriptVersion | null }) {
   return script.blocks === null ? (
     <Editor script={script} linked={linked} />
   ) : (
-    <MappingReview script={script} linked={linked} />
+    <MappingReview
+      key={script.version}
+      script={script}
+      linked={linked}
+      open={reviewOpen}
+      setOpen={setReviewOpen}
+    />
   );
 }

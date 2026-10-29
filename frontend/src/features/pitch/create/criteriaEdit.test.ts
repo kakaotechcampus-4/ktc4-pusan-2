@@ -309,7 +309,7 @@ it.each([false, true])(
       standards: ['새 기준'],
       exceptText: null,
     });
-    expect(store()).toMatchObject({ node: 'script', version: 7 });
+    expect(store()).toMatchObject({ node: 'script', version: 7, viewedVersions: { criteria: 4 } });
     expect(texts(4)).toEqual(['새 기준']);
   },
 );

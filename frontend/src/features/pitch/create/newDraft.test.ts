@@ -106,8 +106,8 @@ describe('슬라이드부터 올리는 새 피치', () => {
     expect(createPitch).toHaveBeenCalledWith({
       title: '캡스톤 중간발표 최종',
       time_limit_sec: 300,
-      lower_deviation: 30,
-      upper_deviation: 60,
+      lower_deviation: 0,
+      upper_deviation: 0,
       presentation_date: null,
     });
     expect(vi.mocked(uploadPresentation).mock.calls[0]?.[0]).toBe('pitch-new');
