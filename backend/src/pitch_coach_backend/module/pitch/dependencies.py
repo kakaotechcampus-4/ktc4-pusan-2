@@ -32,6 +32,11 @@ _script_parse_runner = ScriptParseRunner(
 )
 
 
+async def resume_script_parses() -> None:
+    """앱이 뜰 때 만료 전 PENDING 으로 남은 대본 파싱을 이어 간다 (main.lifespan)."""
+    await _script_parse_runner.resume_all()
+
+
 async def resume_script_rubrics() -> None:
     """앱이 뜰 때 PENDING 으로 남은 평가 기준 작업을 이어 간다 (main.lifespan)."""
     await _script_rubric_runner.resume_all()
