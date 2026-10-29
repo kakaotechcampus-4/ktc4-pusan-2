@@ -8,13 +8,14 @@
 | 전 (#540, 1차 배포) | 지금 |
 |---|---|
 | 홈 진입 때 팝업으로 서비스 별점을 사용자당 한 번, 최대 3회 요청 | 리포트마다 설문을 한 번. 자동으로 띄우지 않는다 |
-| `service_feedbacks` (사용자당 별점 1건) | `first_release_feedbacks` 로 이름을 바꿔 보관만 한다 |
+| `service_feedbacks` (사용자당 별점 1건) | 지웠다. 운영에 받은 별점이 없다 |
 | `service_feedback_impressions` (팝업 표시 승인) | 지웠다. 띄운 횟수만 담은 기록이라 옮기지 않았다 |
 | `/api/service-feedback`, `/impressions`, `/me` | 없앴다 |
-| 마이페이지 의견 `POST /api/suggestions` | 그대로다 |
+| `user_suggestions` 의 `service_feedback_id` (팝업 의견 → 별점) | 칸을 지웠다. 행과 마이페이지 의견 API 는 그대로다 |
+| 관리자 별점 목록 · 요약 · 사용자별 묶음 | 없앴다. 의견 목록은 남긴다 |
 
-1차 배포 별점은 Take 와 이어져 있지 않아 새 설문으로 옮길 수 없다. 지우지 않고 테이블 이름만 바꿨다.
-그때 팝업에서 같이 받은 의견(`user_suggestions.source = 'RATING_POPUP'`)도 그대로 별점과 이어져 있다.
+마이그레이션은 별점이나 팝업 의견(`source = 'RATING_POPUP'`)이 한 건이라도 있으면 지우지 않고 실패한다.
+운영에 데이터가 없다는 전제를 확인하는 장치다. 이제 `user_suggestions.source` 는 `MY_PAGE` 만 있다.
 
 ## 2. 저장
 

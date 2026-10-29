@@ -64,7 +64,7 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 
 사용자 테스트 설문은 리포트마다 받는다. 리포트가 있는 Take(완료 + `TAKE_RESULT`)마다 한 번이고 고치지 않는다.
 설문을 자동으로 띄우지 않는다. 홈은 미작성 목록으로 알리고 사용자가 리포트에서 직접 남긴다.
-1차 배포의 홈 팝업 별점은 `first_release_feedbacks` 로 이름을 바꿔 보관만 한다. 팝업 API 는 없앴다.
+1차 배포의 홈 팝업 별점(`service_feedbacks`)과 표시 기록, 팝업 API 는 없앴다. 마이페이지 의견은 그대로다.
 
 | API | 계약 |
 |---|---|
@@ -79,7 +79,7 @@ uv run alembic upgrade head  # DB 가 떠 있는 상태에서. 스키마를 최�
 
 운영자는 기존 Basic 인증의 `/admin/` 에서 본다. `GET /admin/api/take-surveys`(목록)와
 `GET /admin/api/take-surveys/summary`(문항 버전별 응답 수·평균)를 추가했다.
-1차 배포 평점·의견 조회(`/admin/api/service-feedbacks*`, `/admin/api/suggestions`)는 그대로 둔다.
+별점 조회(`/admin/api/service-feedbacks*`)는 없앴고 의견 조회(`/admin/api/suggestions`)는 남겼다.
 목록 조회는 `limit` 1~200, `offset` 0 이상을 받는다.
 결정 배경·FE 전달 사항은 [Take별 설문 문서](../docs/be/take-survey.md)에 있다.
 
