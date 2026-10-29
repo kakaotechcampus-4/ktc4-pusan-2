@@ -94,6 +94,8 @@
 }
 
 html, body, #root { height: 100%; }
+/* 사용방법 같은 모달이 body 스크롤을 잠그면 스크롤바가 사라져 가운데 정렬된 상단바가 옆으로 밀립니다 */
+html { scrollbar-gutter: stable; }
 
 body {
   margin: 0;
