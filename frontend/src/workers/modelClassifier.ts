@@ -6,8 +6,10 @@ import type {
   ZoneReference,
 } from './gaze.contract';
 import type { Ms } from '@/types/api';
-import type { GazeEngine } from '@/vendor/gaze/engine';
-// 진입점(index)이 아니라 파일을 직접 엽니다 — 진입점은 MediaPipe 까지 끌고 옵니다
+// 엔진은 정적으로 부릅니다 — 동적 import 로 조각을 나누면 운영 빌드에서 그 조각이 워커 시작 파일을
+// 쿼리 없이 다시 불러와 워커 코드가 두 번 돕니다. 두 번째 실행이 onmessage 를 덮어써
+// 발표 중 프레임을 하나도 처리하지 않습니다 (#779). 워커 안에서만 불러서 화면 번들은 그대로입니다
+import { createClassifier, type GazeEngine } from '@/vendor/gaze/engine';
 import { frameFromDecision } from '@/vendor/gaze/engine/contract';
 import { engineVersion, toCalibrationResult, toPlacementResult } from './aiAdapter';
 import { fitsCurrentEngine } from './calibrationModel';
@@ -24,7 +26,7 @@ import { fitsCurrentEngine } from './calibrationModel';
  * 우리 `aiAdapter.ts` 에 붙여 미리 돌려 봤습니다.
  *
  * 엔진은 `src/vendor/gaze/engine` 에 복사해 두었습니다 (고치지 않습니다, 그 폴더 README 참고).
- * 동적 import 라 dummy 로 뜬 워커에는 MediaPipe 가 실리지 않습니다.
+ * 정적 import 라 dummy 로 뜬 워커에도 엔진 코드는 실립니다. 모델 자산(`/models/`)은 `init` 에서만 받습니다.
  *
  * ── AI팀에 물었던 넷의 답 ───────────────────────────────────────────
  *
@@ -72,7 +74,6 @@ export class ModelGazeClassifier implements GazeClassifier {
    * `/models/` 에 자산이 없을 때가 대표적입니다.
    */
   async init(): Promise<void> {
-    const { createClassifier } = await import('@/vendor/gaze/engine');
     this.#impl = await createClassifier({ assetDir: ASSET_DIR });
     this.#version = engineVersion(this.#impl.version);
   }
