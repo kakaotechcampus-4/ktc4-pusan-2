@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ApiFailure } from '@/shared/api/tokenStore';
-import { PitchCoachWordmark } from '@/shared/ui/PitchCoachWordmark';
 import { Mascot } from './Mascot';
 import { InfoBar } from './InfoBar';
 import { loadPitch } from './loadPitch';
@@ -164,8 +163,7 @@ function EditNotice({
   busy?: boolean;
 }) {
   return (
-    <div className="pitch-create pitch-create-square flex min-h-dvh lg:h-dvh flex-col bg-greige text-ink">
-      <PageHeader />
+    <div className="pitch-create pitch-create-square flex min-h-0 flex-1 flex-col lg:h-[calc(100dvh-var(--spacing-app-header))] bg-greige text-ink">
       <div className="flex flex-1 items-center justify-center p-6">
         <div
           role={busy ? 'status' : 'alert'}
@@ -182,19 +180,6 @@ function EditNotice({
         </div>
       </div>
     </div>
-  );
-}
-
-function PageHeader() {
-  return (
-    <header className="flex shrink-0 items-center justify-between border-b border-line-strong bg-panel px-6 py-4">
-      <Link to="/" aria-label="PITCH COACH 홈">
-        <PitchCoachWordmark />
-      </Link>
-      <Link to="/" className="text-sm font-bold hover:text-ink">
-        ← 내 피치
-      </Link>
-    </header>
   );
 }
 
@@ -259,9 +244,7 @@ function PitchCreateScreen() {
   })();
 
   return (
-    <div className="pitch-create pitch-create-square flex min-h-dvh lg:h-dvh flex-col bg-greige text-ink">
-      <PageHeader />
-
+    <div className="pitch-create pitch-create-square flex min-h-0 flex-1 flex-col lg:h-[calc(100dvh-var(--spacing-app-header))] bg-greige text-ink">
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* ── 좌측: 발표 자료 트리 · 치치 ─────────────────────────── */}
         <aside className="flex shrink-0 flex-col gap-4 border-b border-line-strong bg-cream/60 p-4 lg:w-sidebar lg:overflow-y-auto lg:border-b-0 lg:border-r">

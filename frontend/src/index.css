@@ -83,6 +83,7 @@
   --spacing-script-keyword: 120px;
   --spacing-script-off: 0px;
 
+  --spacing-app-header: 5.3rem;     /* AppHeader 높이(약 85px) — 위에 얹힌 화면이 남은 높이를 계산할 때 */
   --spacing-sidebar: 236px;         /* 공통 셸 사이드바 */
   --container-page: 90rem;          /* max-w-page · 상단바와 본문 폭 (1440px) */
 
