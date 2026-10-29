@@ -3,10 +3,12 @@
 쪽수는 대본과 짝을 맞추는 데 쓴다 (대본 장 수 = PDF 쪽수). FE 매핑 확인과 같은 규칙이다.
 """
 
+import io
 import logging
 import threading
 from typing import BinaryIO
 
+import pypdfium2 as pdfium
 from pypdf import PdfReader
 from pypdf.generic import IndirectObject
 
@@ -24,6 +26,13 @@ MAX_PDF_PAGES = 100
 PAGE_COUNT_SLOTS = 2
 
 _page_count_slots = threading.BoundedSemaphore(PAGE_COUNT_SLOTS)
+
+TIMEOUT_SECONDS = 5.0
+
+THUMBNAIL_WIDTH = 480
+THUMBNAIL_HEIGHT = 270
+
+_PDFIUM_LOCK = threading.Lock()
 
 # 망가진 파일을 읽을 때마다 경고를 남긴다. 그런 파일은 400 으로 거절하므로 로그에 둘 필요가 없다
 logging.getLogger("pypdf").setLevel(logging.ERROR)
@@ -87,3 +96,27 @@ def count_pdf_pages(file: BinaryIO) -> int | None:
         file.seek(0)
         _page_count_slots.release()
     return pages or None
+
+
+def render_first_page(file: BinaryIO) -> bytes | None:
+    if not _PDFIUM_LOCK.acquire(timeout=TIMEOUT_SECONDS):
+        return None
+
+    result = None
+    try:
+        pdf = pdfium.PdfDocument(file)
+        try:
+            page = pdf[0]
+            scale = min(THUMBNAIL_WIDTH / page.get_width(), THUMBNAIL_HEIGHT / page.get_height())
+            image = page.render(scale=scale).to_pil()
+        finally:
+            pdf.close()
+        buffer = io.BytesIO()
+        image.convert("RGB").save(buffer, format="WEBP", quality=80)
+        result = buffer.getvalue()
+    except Exception as e:
+        logger.info("발표자료 첫 장을 그리지 못했다: %s", type(e).__name__)
+    finally:
+        _PDFIUM_LOCK.release()
+        file.seek(0)
+    return result

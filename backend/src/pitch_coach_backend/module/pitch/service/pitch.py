@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from pitch_coach_backend.module.pitch.adapter.storage import delete_prefix
+from pitch_coach_backend.module.pitch.adapter.storage import delete_prefix, generate_presigned_url
 from pitch_coach_backend.module.pitch.dto import (
     NewerScriptDTO,
     ParsedScriptDTO,
@@ -69,6 +69,7 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
     rows_by_pitch = defaultdict(list)
     for row in pitch_repository.get_takes_with_scores_in_pitches([p.id for p in pitches]):
         rows_by_pitch[row.Take.pitch_id].append(row)
+    latest = pitch_repository.get_latest_presentations([p.id for p in pitches])
 
     results = []
     for pitch in pitches:
@@ -101,11 +102,16 @@ def get_all_pitches_service(db: Session, user_id: uuid.UUID) -> PitchListRespons
 
             take_summaries.append(take_summary)
 
+        presentation = latest.get(pitch.id)
         pitch_dto = PitchListItemDTO(
             pitch_id=pitch.id,
             pitch_title=pitch.title,
             pitch_time=pitch.time_limit_sec,
-            thumbnail_url=None,
+            thumbnail_url=(
+                generate_presigned_url(presentation.thumbnail_key)
+                if presentation is not None and presentation.thumbnail_key
+                else None
+            ),
             presentation_date=pitch.presentation_date,
             takes=take_summaries
         )
