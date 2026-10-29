@@ -1,5 +1,4 @@
 import type { ScriptMode } from '@/types/api';
-import { Card } from '@/shared/ui/Panel';
 
 /**
  * 발표 중 대본을 어떻게 띄울지. **시작하면 못 바꿉니다.**
@@ -19,12 +18,12 @@ import { Card } from '@/shared/ui/Panel';
  *   발표 도중에 알게 됩니다.
  */
 const OPTIONS: { value: ScriptMode; label: string; note: string }[] = [
-  { value: 'HIGHLIGHT', label: '전체 대본 + 하이라이트', note: '대본 전체에 강조가 붙습니다' },
-  { value: 'KEYWORD', label: '핵심 키워드만', note: '문장 대신 단어만 남습니다' },
+  { value: 'HIGHLIGHT', label: '전체 대본 + 하이라이트', note: '대본 전체에 강조가 붙어요' },
+  { value: 'KEYWORD', label: '핵심 키워드만', note: '문장 대신 단어만 보여요' },
   {
     value: 'OFF',
     label: '실전 모드 · 대본 없이',
-    note: '대본도 실시간 코치도 없습니다. 기록은 남아 리포트에서 봅니다',
+    note: '대본과 실시간 코치 없이 진행해요. 기록은 리포트에서 봐요',
   },
 ];
 
@@ -35,20 +34,19 @@ export function ScriptModeChoice({
 }: {
   value: ScriptMode;
   onChange: (mode: ScriptMode) => void;
-  /** 시작을 누른 뒤에는 잠급니다 — 그사이 바꾸면 화면과 만들어질 Take 의 값이 갈라집니다 */
   disabled?: boolean;
 }) {
   return (
-    <Card
-      title="발표 중 대본 표시"
-      action={<span className="text-xs text-stone">시작 후 변경 불가</span>}
-    >
-      {/* 세로 목록입니다 — 넷을 가로로 놓으면 문구가 잘려 무엇이 다른지 안 보입니다 */}
+    <section className="prepare-script-mode">
+      <div className="prepare-section-heading">
+        <h2>발표 중 대본 표시</h2>
+        <span>시작 후 변경 불가</span>
+      </div>
       <div
         role="radiogroup"
         aria-label="발표 중 대본 표시"
         aria-disabled={disabled || undefined}
-        className="flex flex-col gap-2"
+        className="prepare-script-options"
       >
         {OPTIONS.map((opt, index) => {
           const on = value === opt.value;
@@ -85,23 +83,20 @@ export function ScriptModeChoice({
                 event.currentTarget.parentElement?.querySelectorAll('button')[next]?.focus();
               }}
               onClick={() => onChange(opt.value)}
-              className={[
-                'flex items-start gap-3 border-2 px-3 py-2.5 text-left disabled:cursor-not-allowed disabled:opacity-60',
-                on ? 'border-ink bg-coral-wash' : 'border-line-strong bg-panel hover:bg-cream',
-              ].join(' ')}
+              className={['prepare-script-option', on ? 'is-selected' : ''].join(' ')}
             >
-              {/* 색만으로 고른 것을 말하지 않습니다 — 모양이 같이 바뀝니다 */}
-              <span aria-hidden="true" className="mt-0.5 text-xs">
-                {on ? '◉' : '○'}
-              </span>
+              <span aria-hidden="true" className="prepare-radio" />
               <span>
                 <span className={`block text-sm ${on ? 'font-bold' : ''}`}>{opt.label}</span>
-                <span className="mt-0.5 block text-xs text-ink/80">{opt.note}</span>
+                <span className="sr-only">{opt.note}</span>
               </span>
             </button>
           );
         })}
       </div>
-    </Card>
+      <p className="prepare-mode-note">
+        실전 모드는 대본과 실시간 코치 없이 진행해요. 기록은 리포트에서 봐요.
+      </p>
+    </section>
   );
 }

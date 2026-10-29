@@ -1,53 +1,248 @@
-import { Badge } from '@/shared/ui/Badge';
-import { Card } from '@/shared/ui/Panel';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { missionSourceNote, type PrepareInfo } from './prepareInfo';
 
-/**
- * 이번 Take 미션 (시안 09 · `git show d83376c6:frontend/src/dev/design/prepare/PrepareMissionDraft.tsx`). 장치 점검 오른쪽 맨 위에 둡니다 —
- * 미션도 "이번 Take 를 어떻게 할지"입니다.
- *
- * 실전 모드에서는 코치가 말하지 않으므로 "끝나고 리포트에서 확인"으로 바꿔 말합니다 (CLAUDE.md 8번).
- * 미션 이유(reason)는 보이지 않습니다 — `prepareInfo.ts` `fromPrepare` 참고.
- */
-export function MissionCard({ info, exam }: { info: PrepareInfo; exam: boolean }) {
-  const { missions } = info;
+const PAGE_SIZE = 3;
 
-  if (!missions?.items.length) {
-    return (
-      <Card title="이번 Take 미션">
-        <p className="text-sm text-ink/80">
+export function MissionCard({
+  info,
+  exam,
+  compact = false,
+}: {
+  info: PrepareInfo;
+  exam: boolean;
+  compact?: boolean;
+}) {
+  const [requestedPage, setPage] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { missions } = info;
+  const items = missions?.items ?? [];
+  const page = Math.min(requestedPage, Math.max(0, Math.ceil(items.length / PAGE_SIZE) - 1));
+  const offset = page * PAGE_SIZE;
+  const selected = items.findIndex((mission) => mission.id === selectedId);
+  const note = missionSourceNote(info);
+  const coachNote = exam
+    ? '실전 모드에서는 코치가 알려 주지 않아요. 끝난 뒤 리포트에서 결과를 확인해요.'
+    : '발표 중 코치가 이 미션을 알려 드려요.';
+
+  return (
+    <section
+      className={`prepare-missions${compact ? ' prepare-missions-compact' : ''}`}
+      aria-label="이번 Take 미션"
+    >
+      <div className="prepare-section-heading">
+        <h2>이번 Take 미션</h2>
+        <span>{items.length}개</span>
+        {missions && (
+          <span className="prepare-mission-source">Take {missions.sourceTakeNumber}에서 정함</span>
+        )}
+        {compact && items.length > 0 && (
+          <button
+            type="button"
+            className="prepare-text-action"
+            onClick={() => setSelectedId(items[0]!.id)}
+          >
+            전체 미션 보기
+          </button>
+        )}
+      </div>
+      {!items.length ? (
+        <p className="prepare-empty-mission">
           {missions
-            ? `Take ${missions.sourceTakeNumber} 리뷰에서 정한 미션이 없어요. 지난번처럼 편하게 연습해 보세요.`
+            ? `Take ${missions.sourceTakeNumber} 리뷰에서 정한 미션이 없어요. 편하게 연습해 보세요.`
             : '첫 Take라 아직 미션이 없어요. 편하게 연습해 보세요. 끝나면 다음에 해 볼 것을 알려 드려요.'}
         </p>
-      </Card>
-    );
-  }
-
-  const note = missionSourceNote(info);
-  return (
-    <section className="border-2 border-ink bg-coral-wash p-5 shadow-[4px_4px_0_var(--color-line)] sm:p-6">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-bold">이번 Take 미션</h2>
-        <Badge tone="plain">Take {missions.sourceTakeNumber}에서 정함</Badge>
-      </div>
-      <ol className="mt-3 flex flex-col gap-2">
-        {missions.items.map((m, i) => (
-          <li key={m.id} className="flex gap-3 border-t border-ink/15 py-3">
-            {/* 번호는 보이는 순서입니다 — BE priority 가 1부터 빈틈없이 온다고 믿지 않습니다 */}
-            <span className="tabular flex h-6 w-6 shrink-0 items-center justify-center bg-coral-deep text-xs font-bold text-white">
-              {i + 1}
-            </span>
-            <p className="min-w-0 text-sm font-bold">{m.description}</p>
-          </li>
-        ))}
-      </ol>
-      {note && <p className="mt-3 text-xs leading-relaxed text-ink/80">{note}</p>}
-      <p className="mt-3 text-xs leading-relaxed text-ink/80">
-        {exam
-          ? '실전 모드에서는 코치가 알려 주지 않아요. 끝난 뒤 리포트에서 결과를 확인해요.'
-          : '발표 중에 이 미션을 기준으로 코치가 알려 드려요.'}
-      </p>
+      ) : (
+        !compact && (
+          <>
+            <ol start={offset + 1} className="prepare-mission-list" aria-label="미션 목록">
+              {items.slice(offset, offset + PAGE_SIZE).map((mission, index) => (
+                <MissionItem
+                  key={mission.id}
+                  description={mission.description}
+                  number={offset + index + 1}
+                  onRead={() => setSelectedId(mission.id)}
+                />
+              ))}
+            </ol>
+            <div className="prepare-mission-footer">
+              <p>
+                {items.length > PAGE_SIZE
+                  ? `전체 ${items.length}개가 이번 Take에 적용돼요.`
+                  : coachNote}
+              </p>
+              {items.length > PAGE_SIZE && (
+                <nav aria-label="미션 페이지">
+                  <span aria-live="polite">
+                    {offset + 1}–{Math.min(offset + PAGE_SIZE, items.length)} / {items.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="prepare-action"
+                    aria-label="이전 미션 페이지"
+                    disabled={page === 0}
+                    onClick={() => setPage(page - 1)}
+                  >
+                    이전
+                  </button>
+                  <button
+                    type="button"
+                    className="prepare-action"
+                    aria-label="다음 미션 페이지"
+                    disabled={offset + PAGE_SIZE >= items.length}
+                    onClick={() => setPage(page + 1)}
+                  >
+                    다음
+                  </button>
+                </nav>
+              )}
+            </div>
+            {note && <p className="sr-only">{note}</p>}
+          </>
+        )
+      )}
+      {selected >= 0 && missions && (
+        <MissionReader
+          items={items}
+          index={selected}
+          source={missions.sourceTakeNumber}
+          note={coachNote}
+          onSelect={(index) => setSelectedId(items[index]!.id)}
+          onClose={() => setSelectedId(null)}
+        />
+      )}
     </section>
+  );
+}
+
+/** 글자 수 대신 실제 남은 폭으로 판단해, 다 읽히는 미션에는 추가 조작을 두지 않습니다. */
+function MissionItem({
+  description,
+  number,
+  onRead,
+}: {
+  description: string;
+  number: number;
+  onRead: () => void;
+}) {
+  const rowRef = useRef<HTMLLIElement>(null);
+  const textRef = useRef<HTMLParagraphElement>(null);
+  const [truncated, setTruncated] = useState(false);
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    const text = textRef.current;
+    if (!row || !text) return;
+    let alive = true;
+    const measure = () => {
+      if (!alive) return;
+      const numberWidth =
+        row.querySelector<HTMLElement>('.prepare-mission-number')?.offsetWidth ?? 0;
+      const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+      // '더 보기'가 차지하는 폭은 빼지 않아, 버튼 때문에 잘리는 순환을 피합니다.
+      setTruncated(text.scrollWidth > row.clientWidth - numberWidth - gap);
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(row);
+    document.fonts?.ready.then(measure).catch(() => undefined);
+    return () => {
+      alive = false;
+      observer?.disconnect();
+    };
+  }, [description]);
+  return (
+    <li ref={rowRef}>
+      <span className="prepare-mission-number" aria-hidden="true">
+        {number}
+      </span>
+      <p ref={textRef}>{description}</p>
+      {truncated && (
+        <button
+          type="button"
+          className="prepare-text-action"
+          aria-label={`미션 ${number} 전체 보기`}
+          onClick={onRead}
+        >
+          더 보기
+        </button>
+      )}
+    </li>
+  );
+}
+
+function MissionReader({
+  items,
+  index,
+  source,
+  note,
+  onSelect,
+  onClose,
+}: {
+  items: NonNullable<PrepareInfo['missions']>['items'];
+  index: number;
+  source: number;
+  note: string;
+  onSelect: (index: number) => void;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const previous = document.activeElement;
+    dialog?.showModal();
+    return () => {
+      dialog?.close();
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="pitch-create prepare-mission-reader"
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <header>
+        <div>
+          <h2 id={titleId}>미션 전문</h2>
+          <p>
+            {index + 1} / {items.length} · Take {source}에서 정함
+          </p>
+        </div>
+        <button type="button" className="prepare-action" onClick={onClose}>
+          닫기
+        </button>
+      </header>
+      <p className="prepare-mission-description" aria-live="polite">
+        {items[index]!.description}
+      </p>
+      <p>{note}</p>
+      <footer>
+        <p>모든 미션이 이번 Take에 적용돼요.</p>
+        <button
+          type="button"
+          className="prepare-action"
+          disabled={index === 0}
+          onClick={() => onSelect(index - 1)}
+        >
+          이전 미션
+        </button>
+        <button
+          type="button"
+          className="prepare-action"
+          disabled={index === items.length - 1}
+          onClick={() => onSelect(index + 1)}
+        >
+          다음 미션
+        </button>
+        <button type="button" className="prepare-action prepare-action-primary" onClick={onClose}>
+          목록으로
+        </button>
+      </footer>
+    </dialog>
   );
 }
