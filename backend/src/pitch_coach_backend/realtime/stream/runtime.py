@@ -154,6 +154,8 @@ class TakeStream:
         self._slides_capped = False
         # 마지막으로 받은 오디오 프레임 시각(monotonic). 발표 중인지 본다 (`is_live`)
         self._last_audio_at: float | None = None
+        # 지금 연결이 붙은 시각(monotonic). 오디오가 멈춘 연결인지 본다 (`is_idle`)
+        self._attached_at: float | None = None
         # 스트림이 교체되어도 Take의 오디오 예산은 이어 쓴다.
         self._budget = record.audio_budget
         self._over_budget_logged = False
@@ -182,6 +184,8 @@ class TakeStream:
         # Take 가 지워져 끊었다 (`discard`). 붙어 있던 연결에 알리는 태스크도 위와 같은 이유로 든다
         self._discarded = False
         self._closer: asyncio.Task[None] | None = None
+        # 다른 Take 에 자리를 내주며 붙어 있던 연결을 닫는 태스크 (`release_idle`)
+        self._releaser: asyncio.Task[None] | None = None
         # 마지막 연결이 창을 닫아(닫힘 코드 1001) 끊겼다. 다시 붙으면 지운다
         self._tab_closed = False
         self._stopping = False
@@ -230,6 +234,18 @@ class TakeStream:
         )
 
     @property
+    def is_idle(self) -> bool:
+        """연결이 붙어 있지만 붙은 뒤 · 마지막 오디오 뒤 `LIVE_AUDIO_SEC` 가 지났다.
+
+        브라우저가 닫힘 프레임 없이 사라진 연결이다 — 서버는 ping 이 끊을 때까지 붙어 있다고 본다.
+        막 붙어 아직 오디오를 보내기 전인 연결은 아니다.
+        """
+        if not self._client.connected or self._attached_at is None:
+            return False
+        last = max(self._attached_at, self._last_audio_at or self._attached_at)
+        return time.monotonic() - last >= LIVE_AUDIO_SEC
+
+    @property
     def has_client(self) -> bool:
         """연결이 붙어 있다. 끊긴 뒤 다시 붙기를 기다리는 동안은 False."""
         return self._client.connected
@@ -255,6 +271,7 @@ class TakeStream:
         self._record.coach.notify = self._notify_coach
         self._record.coach.forget_display()
         self.sequencer.new_connection()
+        self._attached_at = time.monotonic()
         await self._client.attach(ws)
 
     async def resend_missed(self, source: WebSocket | None = None) -> None:
@@ -405,6 +422,28 @@ class TakeStream:
         이유다 — 여기서 기다리면 `cancel()` 이 그 자리를 끊어 알림이 안 나간다.
         """
         self._cut(ErrorMessage(code=WsErrorCode.TAKE_NOT_FOUND, message="연습을 찾을 수 없습니다."))
+
+    def release_idle(self) -> None:
+        """다른 Take 에 자리를 내준다 (`registry._make_room`). 오디오가 멈춘 연결(`is_idle`)을
+        `TOO_MANY_STREAMS` 로 닫고 남은 오디오까지 보내 정리한다.
+
+        Take 는 끝내지 않는다 — 연결이 끊긴 채 정리된 스트림과 같다. 닫힌 연결이 뒤늦게 `detach`
+        해도 이미 떼었으므로 아무것도 하지 않는다.
+        """
+        client = self._client.detach()
+        self._caught_up = None
+        if client is not None:
+            self._releaser = asyncio.create_task(
+                close_with(
+                    client,
+                    ErrorMessage(
+                        code=WsErrorCode.TOO_MANY_STREAMS,
+                        message="다른 곳에서 새 연습을 시작해 이 연결을 닫았어요.",
+                    ),
+                ),
+                name=f"take-stream-release:{self.take_id}",
+            )
+        self.request_stop()
 
     def drop_closed_tab(self) -> None:
         """창을 다시 연 FE 가 이 Take 를 실패로 끝냈다. 남은 전사를 기다리지 않고 끊는다.

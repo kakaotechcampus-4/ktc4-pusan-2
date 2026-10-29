@@ -179,7 +179,7 @@ class WsErrorCode(StrEnum):
     | `BAD_MESSAGE` | 유지 |
     | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
     | `TAKE_TAKEN_OVER` | 1008 로 닫는다. FE 는 **재연결하지 않는다** |
-    | `TOO_MANY_STREAMS` | 1008 로 닫는다 — 그 사용자가 다른 Take 로 연 스트림이 상한에 닿았다 |
+    | `TOO_MANY_STREAMS` | 1008 로 닫는다 — 다른 Take 가 자리를 쓰거나, 멈춘 연결이 자리를 내줬다 |
 
     - `TAKE_NOT_FOUND` 는 REST 의 404 와 같은 규칙으로 "없음" 과 "남의 것" 을 구분하지 않는다.
     - `TAKE_ENDED` 는 ANALYZING·COMPLETED·FAILED 이거나 BE 가 자동 종료한 Take(`AutoEndMessage`).
