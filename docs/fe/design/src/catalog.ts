@@ -22,16 +22,9 @@ export const PRODUCT_CHECKED: {
   date: string;
   pending: { pr: number; head: string; what: string }[];
 } = {
-  commit: '9d927007040fbffbacce0144d65c674234c7dca0',
-  date: '2026-10-29',
-  pending: [
-    {
-      pr: 738,
-      head: '72c8db32',
-      what: '피치 생성 · 시작 전 세팅 상단바, 상단바 높이 값, 도움말 창 스크롤바',
-    },
-    { pr: 697, head: 'dbc715af', what: '리허설 끝내기는 마지막 장에서만, 중간 종료 없앰' },
-  ],
+  commit: 'fb171a95e89ee06f3a758b17fd8c97bc14ff7a0d',
+  date: '2026-10-30',
+  pending: [],
 };
 
 const state = (id: string, label: string, description: string): GuideState => ({
@@ -161,7 +154,7 @@ const productScreens: GuideScreen[] = [
       ),
     ],
     rules: [
-      '위에 공용 상단바(AppHeader)가 얹힌다(#738).',
+      '공용 상단바(AppHeader)는 두지 않고 자체 틀(ScreenFrame)을 쓴다. 상단바 높이만큼 시작 버튼이 첫 화면 밖으로 밀려서다. 상단바는 시작 전 세팅을 단순화할 때(#706) 같이 정한다.',
       'Take는 이 화면의 시작 버튼에서만 만든다. 들어오는 것만으로는 만들지 않는다.',
       '카메라 영상 · 마이크 입력 · 시선 기준 셋이 모두 되고, 이번 연습의 슬라이드 · 대본 조합이 정해져야(제품 `choice !== null`) 시작한다. 카메라가 없으면 시작할 수 없다.',
       '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 시작 실패 → 시작을 누른 뒤 여는 중(다른 곳의 연습을 끝낼지 묻는 동안은 그 안내) → 준비 정보 문제(불러오기 실패 · 버전 없음 등) → 평소 목소리 읽는 중 → 장치 오류 → 시선 분석을 쓸 수 없음 → 카메라 → 마이크 → 시선 분석 준비 중 → 기준 잡기 실패 → 기준 미완료 → 기준이 흐릿함(막지 않고 권하기만) → 평소 목소리 권유(선택) → "점검이 끝났어요"다.',
@@ -206,7 +199,11 @@ const productScreens: GuideScreen[] = [
     summary:
       '슬라이드와 대본을 보며 연습한다. 설계서에서는 카메라 · 마이크를 열거나 음성을 보내지 않는다.',
     states: [
-      state('default', '기본', '3번째 장. 마지막 장이 아니라 끝내기가 막혀 있다.'),
+      state(
+        'default',
+        '기본',
+        '3번째 장. 마지막 장이 아니라 끝내기가 막혀 있고, 버튼 옆에 그 이유를 글자로 둔다.',
+      ),
       state('last-slide', '마지막 장', '12번째 장. 끝내기를 누를 수 있다.'),
       state('exam', '실전 모드', '대본 칸 없이 실전처럼 연습한다. 코치가 말하지 않는다.'),
       state('keyword', '핵심 키워드', '대본 대신 키워드를 보며 연습한다.'),
@@ -237,9 +234,9 @@ const productScreens: GuideScreen[] = [
       ),
     ],
     rules: [
-      '끝내기("발표 끝내기")는 마지막 장에서만 열린다. 마지막 장이 아니면 막히고 "마지막 슬라이드에서 끝낼 수 있어요"를 띄운다. 장 수를 모르면(0) 막지 않는다. 중간 종료는 없다 — BE가 중간 종료를 구분하지 않아 일부만 한 발표도 점수가 남기 때문이다.',
+      '끝내기("발표 끝내기")는 마지막 장에서만 열린다. 마지막 장이 아니면 막히고 버튼 바로 옆에 "마지막 장에서 끝낼 수 있어요"를 글자로 둔다(버튼의 aria-describedby). 막힌 버튼은 초점을 받지 못하고 title 툴팁도 잘 보이지 않아서다. 장 수를 모르면(0) 막지 않는다. 중간 종료는 없다 — BE가 중간 종료를 구분하지 않아 일부만 한 발표도 점수가 남기 때문이다.',
       '슬라이드는 ← → · Space로 넘긴다.',
-      '한 번 누르면 "정말 끝낼까요?"로 바뀌고 4초 안에 다시 눌러야 끝난다. 화면을 덮는 창은 띄우지 않는다.',
+      '한 번 누르면 "정말 끝낼까요?"로 바뀌고 4초 안에 다시 눌러야 끝난다. 장이 바뀌면 확인이 풀린다 — 이전 장에 갔다가 4초 안에 돌아와도 처음부터 다시 묻는다. 화면을 덮는 창은 띄우지 않는다.',
       '시작 뒤 말하기 분석 연결이 끊겨도 시계와 발표는 계속된다. 시작 전에 다른 곳에서 발표 중이라 연결이 거절되면 연결 실패 대신 그 이유를 알린다.',
       '이 Take를 다른 창에서 하고 있으면 무대를 열지 않고 "다른 창에서 연습 중"을, 창이 닫혀 끝났으면 "연습 중단"을 안내한다. 다른 곳에서 새 연습을 시작해 끝났으면 새 Take를 권하지 않는다.',
       '시선 테두리(data-gaze)와 대본 칸 높이는 계측 조건이라 바꾸지 않는다.',
@@ -251,9 +248,11 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/rehearsal/stage/RehearsalPage.tsx',
       'frontend/src/features/rehearsal/stage/ScriptPane.tsx',
       'frontend/src/features/rehearsal/stage/stage.css',
+      'frontend/src/features/rehearsal/stage/canEnd.ts',
+      'frontend/src/features/rehearsal/stage/useEndConfirm.ts',
     ],
     productNote:
-      '카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 코치 상태 표시는 그리지 않는다. 시작 전 안내는 "시작 전 · …" 상태로, 무대를 열지 않는 안내는 "무대를 열지 않는 안내" 화면으로 본다. 종료 확인은 4초 뒤 풀리지 않고 유지된다. 무대 배치는 설계서의 src/ui/stage.css(제품 stage.css 복사본)를 쓴다.',
+      '카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 코치 상태 표시는 그리지 않는다. 시작 전 안내는 "시작 전 · …" 상태로, 무대를 열지 않는 안내는 "무대를 열지 않는 안내" 화면으로 본다. 종료 확인은 4초 뒤 풀리지 않고 유지된다(장을 넘기면 풀리는 것은 제품과 같다). 무대 배치는 설계서의 src/ui/stage.css(제품 stage.css 복사본)를 쓴다.',
     productLinks: [REHEARSAL, link('리허설 · 실전 모드', '/takes/t3/exam')],
     next: [next('끝내기 → 분석 대기', 'processing-loading'), next('전송 실패 → 재시도', 'retry')],
   },
