@@ -18,6 +18,10 @@
 
 ## 2. 저장
 
+![Take별 설문 ERD](images/take-survey-erd.png)
+
+이미지 원본은 `images/take-survey-erd.dot`이며 `dot -Tpng -Gdpi=150`으로 다시 만들 수 있다.
+
 ### `take_surveys`
 
 | 칸 | 제약 · 뜻 |
