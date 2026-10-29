@@ -1,0 +1,7 @@
+# frontend/.gitattributes 와 같다. OS가 달라도 줄바꿈이 갈리지 않게 LF로 고정한다 (Prettier endOfLine: lf).
+* text=auto eol=lf
+
+# 바이너리는 건드리지 않는다
+*.png   binary
+*.woff2 binary
+*.svg   text eol=lf

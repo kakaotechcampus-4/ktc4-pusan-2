@@ -1,0 +1,187 @@
+@import "tailwindcss";
+
+/* 화면 설계서의 디자인 값. 제품 frontend/src/index.css 에서 복사해 시작했고, 이제 설계서가 직접 관리합니다.
+   디자인을 바꾸면 여기를 먼저 고치고, 제품과의 차이는 `npm run tokens` 로 확인합니다 (README "제품으로 옮기기").
+   글꼴은 직접 둡니다. 라이선스는 public/fonts/*-OFL.txt */
+@font-face {
+  font-family: "Pretendard";
+  font-weight: 45 920;
+  font-display: swap;
+  src: url("/fonts/PretendardVariable.woff2") format("woff2-variations");
+}
+/* 숫자 · 영문만 담은 latin 조각. 한글은 아래 --font-mono 의 Pretendard 로 넘어갑니다 */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/IBMPlexMono-Regular-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/IBMPlexMono-Bold-latin.woff2") format("woff2");
+}
+
+/* 홈을 한 화면에 고정할 만큼 넓고 높은 창. 낮으면(배율 125~150% 노트북) 목록이 몇 줄만 남아
+   고정하지 않고 페이지를 스크롤합니다 (PR #669 리뷰) */
+@custom-variant one-screen (@media (min-width: 64rem) and (min-height: 40rem));
+
+/* ═══════════════════════════════════════════════════════════════
+   피치코치 디자인 토큰
+
+   색을 새로 만들지 않습니다. 여기 있는 것만 씁니다.
+   임의값(`bg-[#EDE6DD]`)이 보이면 리뷰에서 잡습니다.
+   ═══════════════════════════════════════════════════════════════ */
+@theme {
+  /* ── 지면 · 밝은 화면 (홈 · 폼 · 리포트) ───────────────────── */
+  --color-greige: #EDE6DD;          /* 앱 배경 */
+  --color-cream: #E6DFD5;           /* 한 단 낮은 면 */
+  --color-panel: #F5F0E9;           /* 카드 · 패널 */
+  --color-line: #DDD4C7;            /* 기본 경계 */
+  --color-line-strong: #C6BCAC;     /* 강조 경계 */
+
+  /* ── 지면 · 어두운 화면 (리허설 전용) ──────────────────────── */
+  --color-stage: #332E28;           /* 무대 배경 */
+  --color-stage-panel: #443D35;     /* 무대 위 패널 */
+  --color-stage-deep: #2A2622;      /* 슬라이드 레터박스 */
+
+  /* ── 글자 ──────────────────────────────────────────────────── */
+  --color-ink: #2A2723;             /* 본문 */
+  --color-stone: #8C8375;           /* 보조 · 캡션 */
+  --color-ink-stage: #F5F0E9;       /* 무대 위 본문 */
+
+  /* ── 강조 ──────────────────────────────────────────────────── */
+  --color-coral: #E8532A;
+  --color-coral-deep: #C9421C;      /* hover · 눌림 */
+  --color-coral-wash: #F3DED5;      /* 배경 강조 */
+
+  /* ── 시선 상태 3색 ─────────────────────────────────────────────
+     리허설 화면 테두리에만 씁니다. 다른 곳에서 쓰지 않습니다.
+     여기서 색이 새면 사용자가 "초록 = 좋음"을 다른 화면에서 학습합니다. */
+  --color-gaze-audience: #6B9E78;   /* 청중 · solid 2px */
+  --color-gaze-screen: #D9A441;     /* 대본 · 슬라이드 · solid 5px */
+  --color-gaze-unknown: #C0392B;    /* 판정 불가 · dashed 5px */
+
+  /* ── 분석 대기 로딩 화면 ───────────────────────────────────────
+     노을 그림(public/loading) 위 게임 대화 상자. 그 화면에서만 씁니다. */
+  --color-dusk: #2B2140;            /* 대화 상자 바탕 · 그림 밖 여백 */
+  --color-dusk-line: #4A3A66;       /* 안쪽 테두리 · 구분선 · 빈 칸 */
+  --color-dusk-ink: #FFF4E0;        /* 본문 · 바깥 테두리 */
+  --color-dusk-accent: #F9BE7A;     /* 진행 막대 · 이름표 */
+
+  /* ── ★ 계측 조건 ───────────────────────────────────────────────
+     이 네 값은 디자인이 아닙니다.
+
+     대본 영역 높이가 바뀌면 사용자가 대본을 볼 때의 시선 각도가
+     바뀌고, Calibration으로 잡은 기준이 어긋납니다.
+     그러면 지난 Take와 비교가 불가능해집니다.
+
+     ★ 고치려면 팀 합의가 필요합니다. 여백이 답답해 보인다는 이유로
+       고치면 그 시점 이전 기록이 전부 못 쓰게 됩니다.              */
+  /* FULL 은 HIGHLIGHT 로 합쳐졌습니다 (types/api.ts). 원래 둘 다 180px 이라 높이 변화 없음 */
+  --spacing-script-highlight: 180px;
+  --spacing-script-keyword: 120px;
+  --spacing-script-off: 0px;
+
+  --spacing-sidebar: 236px;         /* 공통 셸 사이드바 */
+  --container-page: 90rem;          /* max-w-page · 상단바와 본문 폭 (1440px) */
+
+  /* ── 타이포 ────────────────────────────────────────────────── */
+  --font-sans: "Pretendard", "Noto Sans KR", -apple-system,
+               "Apple SD Gothic Neo", sans-serif;
+  --font-mono: "IBM Plex Mono", "Pretendard", ui-monospace, monospace;
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--color-greige);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 숫자가 세로로 정렬돼야 하는 곳 — 타이머 · 지표 · 비교표 */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* 키보드 전용 조작이 요구사항이라 포커스 링을 지우지 않습니다 */
+:focus-visible {
+  outline: 2px solid var(--color-coral);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* Landing-only motion: no changes to the measured rehearsal layout. */
+@keyframes landing-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes landing-wave {
+  0%, 100% { transform: scaleY(.55); }
+  50% { transform: scaleY(1); }
+}
+.landing-float { animation: landing-float 4s ease-in-out infinite; }
+.landing-wave { animation: landing-wave 1.6s ease-in-out infinite; }
+.landing[data-motion="off"] .landing-float,
+.landing[data-motion="off"] .landing-wave { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .landing-float, .landing-wave { animation: none; }
+}
+
+/* 분석 대기의 "분석 중..." 점. 배경 그림은 움직이지 않습니다. */
+/* 출시 시계: 1초 갱신 중 560ms만 움직이며, 변한 단위의 카드만 재생한다. */
+@keyframes flip-top {
+  0% { transform: rotateX(0deg); }
+  50%, 100% { transform: rotateX(-90deg); }
+}
+@keyframes flip-bottom {
+  0%, 50% { transform: rotateX(90deg); }
+  100% { transform: rotateX(0deg); }
+}
+@keyframes flip-old-bottom {
+  0%, 49.9% { visibility: visible; }
+  50%, 100% { visibility: hidden; }
+}
+.flip-top { animation: flip-top 560ms ease-in forwards; backface-visibility: hidden; }
+.flip-bottom { animation: flip-bottom 560ms ease-out forwards; backface-visibility: hidden; }
+.flip-old-bottom { animation: flip-old-bottom 560ms linear forwards; }
+.landing[data-motion="off"] :is(.flip-top, .flip-bottom, .flip-old-bottom) { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .flip-top, .flip-bottom, .flip-old-bottom { display: none; }
+}
+
+@keyframes loading-dot {
+  0%, 20% { opacity: 0; }
+  30%, 90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.loading-dot { animation: loading-dot 1.6s infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .loading-dot { animation: none; }
+}
+
+/* 피치 생성 화면의 밝은 지면. */
+.pitch-create {
+  --color-greige: #faf9f6;
+  --color-cream: #f1f0eb;
+  --color-panel: #ffffff;
+  --color-line: #e3e3e3;
+  --color-line-strong: #d0d1d4;
+  --color-ink: #17191e;
+  --color-stone: #6b7280;
+  --color-coral-wash: #fff0e9;
+}
+
+/* 발표 생성 화면의 사각형 컴포넌트. 단계 번호 같은 원형 표시는 유지합니다. */
+.pitch-create-square :is(.rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, .rounded-r) {
+  border-radius: 0;
+}
