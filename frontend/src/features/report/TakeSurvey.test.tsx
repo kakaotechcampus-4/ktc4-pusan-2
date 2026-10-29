@@ -141,3 +141,36 @@ it('이미 낸 리포트는 버튼 대신 보냈다는 줄만 둔다', async () 
   expect(button('이번 분석 설문 남기기')).toBeUndefined();
   expect(host.textContent).toContain('설문을 보냈어요');
 });
+
+// 브라우저는 Esc 를 연달아 받으면 preventDefault 를 무시하고 닫습니다. 그때 화면 상태를 맞추는지 봅니다
+const forceClose = async () =>
+  act(async () => {
+    const dialog = host.querySelector('dialog')!;
+    dialog.open = false;
+    dialog.dispatchEvent(new Event('close'));
+  });
+
+it('보내는 중에 브라우저가 강제로 닫으면 다시 띄워 결과를 알린다', async () => {
+  await render();
+  await act(async () => button('이번 분석 설문 남기기')!.click());
+  await choose('accuracy', 3);
+  await choose('usefulness', 3);
+  let fail!: (e: unknown) => void;
+  api.post.mockReturnValueOnce(new Promise((_, reject) => (fail = reject)));
+  await act(async () => button('설문 보내기')!.click());
+  await forceClose();
+  expect(host.querySelector('dialog')?.open).toBe(true);
+
+  await act(async () => fail(new ApiFailure(500, 'INTERNAL_SERVER_ERROR')));
+  await flush();
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('보내지 못했어요');
+});
+
+it('보내는 중이 아닐 때 강제로 닫히면 닫힌 것으로 맞춰 버튼으로 다시 열 수 있다', async () => {
+  await render();
+  await act(async () => button('이번 분석 설문 남기기')!.click());
+  await forceClose();
+  expect(host.querySelector('dialog')).toBeNull();
+  await act(async () => button('이번 분석 설문 남기기')!.click());
+  expect(host.querySelector('dialog')?.open).toBe(true);
+});

@@ -131,6 +131,14 @@ function TakeSurveyDialog({
         event.preventDefault();
         if (!pending) onClose();
       }}
+      onClose={() => {
+        // 브라우저는 Esc 를 연달아 받으면 preventDefault 를 무시하고 닫습니다. 그대로 두면 화면은 열린
+        // 줄 알고 버튼을 눌러도 다시 열리지 않습니다 — 보내는 중이면 다시 띄우고, 아니면 닫힌 것으로 맞춥니다.
+        // 지금 열려 있으면 내리면서 낸 닫힘이 늦게 온 것입니다 (ReplaceTakeDialog 와 같음)
+        if (!alive.current || ref.current?.open) return;
+        if (pending) ref.current?.showModal();
+        else onClose();
+      }}
       className="pitch-create fixed inset-0 m-auto max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-lg overflow-hidden border-2 border-ink bg-panel p-0 text-ink backdrop:bg-ink/40"
     >
       <div className="flex max-h-[calc(100dvh_-_2rem_-_4px)] flex-col">

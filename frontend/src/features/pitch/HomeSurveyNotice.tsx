@@ -87,11 +87,17 @@ function ConsentDialog({ onClose }: { onClose: () => void }) {
     },
   });
 
+  const alive = useRef(true);
+
   // 닫기를 DOM 에서 빠지기 전에 해야 브라우저가 초점을 연 버튼으로 돌려줍니다 (#771)
   useLayoutEffect(() => {
+    alive.current = true;
     const dialog = ref.current;
     dialog?.showModal();
-    return () => dialog?.close();
+    return () => {
+      alive.current = false;
+      dialog?.close();
+    };
   }, []);
 
   return (
@@ -101,6 +107,12 @@ function ConsentDialog({ onClose }: { onClose: () => void }) {
       onCancel={(event) => {
         event.preventDefault();
         if (!consent.isPending) onClose();
+      }}
+      onClose={() => {
+        // Esc 를 연달아 받은 브라우저가 강제로 닫았으면 화면 상태를 맞춥니다. 저장 중이면 다시 띄웁니다
+        if (!alive.current || ref.current?.open) return;
+        if (consent.isPending) ref.current?.showModal();
+        else onClose();
       }}
       className="pitch-create fixed inset-0 m-auto max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-lg overflow-hidden border-2 border-ink bg-panel p-0 text-ink backdrop:bg-ink/40"
     >
