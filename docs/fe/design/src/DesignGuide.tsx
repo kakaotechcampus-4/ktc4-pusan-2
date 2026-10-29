@@ -44,10 +44,17 @@ export function DesignRoutes() {
  * 옛 시안 주소 `/:name`(예: `#/report`)을 같은 ID의 항목으로 바꾼다. 시안은 지웠지만(README "시안 관리")
  * 공유된 주소가 남아 있을 수 있어서다. 없는 이름이면 기본 화면
  */
+// 옛 시안 14개 중 같은 ID가 없는 둘. 단계형 분석 대기 시안 → 분석 대기, 공용 컴포넌트 시안 → 버튼
+const LEGACY_ALIASES: Record<string, string> = {
+  processing: 'processing-loading',
+  components: 'button',
+};
+
 function LegacyDraftRoute() {
   const { name = '' } = useParams();
-  const to = entries.some((entry) => entry.id === name)
-    ? `/?${new URLSearchParams({ screen: name })}`
+  const id = LEGACY_ALIASES[name] ?? name;
+  const to = entries.some((entry) => entry.id === id)
+    ? `/?${new URLSearchParams({ screen: id })}`
     : '/';
   return <Navigate to={to} replace />;
 }
@@ -326,6 +333,9 @@ function Details({
         </>
       )}
       {screen.tokens.length > 0 && <TokenList items={screen.tokens} preview={preview} />}
+      {screen.knownIssues && screen.knownIssues.length > 0 && (
+        <List title="알려진 문제 (FE와 정할 것)" items={screen.knownIssues} />
+      )}
       <List
         title="관련 코드"
         items={
@@ -340,12 +350,6 @@ function Details({
             {screen.status === '시안' ? '제품에 넣을 경로' : '제품 경로'}
           </h3>
           <p className="mt-2 break-all font-mono text-xs">{screen.route}</p>
-          <h3 className="mt-4 text-sm font-bold">지원 기기</h3>
-          <p className="mt-2 text-sm">
-            {screen.devices === 'pc'
-              ? 'PC 전용. 제품은 연습을 PC에서 하도록 안내한다(미지원 브라우저 · 터치 기기).'
-              : 'PC · 휴대폰. 휴대폰 크기로 바꿔 배치를 확인한다.'}
-          </p>
         </section>
       )}
     </aside>
@@ -505,13 +509,8 @@ export function DesignGuide() {
     height: Math.round(size.height / zoom),
   };
   const rotated = params.get('rotate') === '1';
-  // PC 전용 화면을 휴대폰 크기로 보면 제품 정책을 함께 알린다
-  const phoneOnPcScreen =
-    selected?.kind === 'screen' &&
-    selected.devices === 'pc' &&
-    size !== null &&
-    layout !== null &&
-    layout.width <= PHONE_MAX_WIDTH;
+  // 휴대폰 폭으로 보면 팀 기준(노트북 · 데스크톱 전용)을 함께 알린다
+  const phoneWidth = layout !== null && layout.width <= PHONE_MAX_WIDTH;
   // 고른 화면은 state, 나머지 카드는 state.<화면 ID>에 상태를 둔다
   const selectedState = selected
     ? (validState(selected, params.get('state')) ??
@@ -676,11 +675,6 @@ export function DesignGuide() {
                   />
                   <span className="flex flex-wrap items-center gap-3 text-sm font-bold">
                     {selected.status}
-                    {selected.kind === 'screen' && (
-                      <span className="font-normal text-ink/80">
-                        {selected.devices === 'pc' ? 'PC 전용' : 'PC · 휴대폰'}
-                      </span>
-                    )}
                     {size && (
                       <span className="tabular font-mono text-xs font-normal">
                         {size.width} × {size.height}
@@ -698,14 +692,15 @@ export function DesignGuide() {
                     </a>
                   </span>
                 </div>
-                {phoneOnPcScreen && (
+                {phoneWidth && (
                   <div
                     role="note"
                     className="mb-4 flex flex-wrap items-center justify-between gap-3 border-2 border-coral-deep bg-coral-wash p-3 text-sm"
                   >
                     <p>
-                      이 화면은 <strong>PC 전용</strong>이다. 제품은 발표 연습을 PC에서 하도록
-                      안내한다(자동으로 막지는 않는다). 휴대폰 크기 미리보기는 참고용이다.
+                      피치코치는 <strong>노트북 · 데스크톱 전용</strong>이다(팀 기준 1366 × 650 ·
+                      1920 × 950, #710에서 모바일 접속 차단 예정). 휴대폰 크기 미리보기는
+                      참고용이다.
                     </p>
                     <Button
                       size="sm"
@@ -773,12 +768,7 @@ export function DesignGuide() {
                       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line-strong p-4">
                         <div>
                           <h3 className="font-bold">{screen.title}</h3>
-                          <p className="mt-1 text-xs">
-                            {screen.status}
-                            {screen.kind === 'screen' && screen.devices === 'pc'
-                              ? ' · PC 전용'
-                              : ''}
-                          </p>
+                          <p className="mt-1 text-xs">{screen.status}</p>
                         </div>
                         <StateSelect
                           screen={screen}

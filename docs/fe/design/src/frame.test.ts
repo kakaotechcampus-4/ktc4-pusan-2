@@ -9,6 +9,9 @@ it('기기 크기 · 칸에 맞춤 · 알 수 없는 값', () => {
   expect(size('device=fit')).toBeNull();
   expect(size('device=mobile')).toEqual({ width: 390, height: 844 });
   expect(size('device=laptop-wide')).toEqual({ width: 1366, height: 768 });
+  // 팀 기준(노트북 · 데스크톱 전용)
+  expect(size('device=team-laptop')).toEqual({ width: 1366, height: 650 });
+  expect(size('device=team-desktop')).toEqual({ width: 1920, height: 950 });
   expect(size('device=nope')).toBeNull();
 });
 

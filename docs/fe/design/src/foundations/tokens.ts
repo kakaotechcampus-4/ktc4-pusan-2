@@ -21,7 +21,10 @@ export interface TokenGroup {
   tokens: Token[];
 }
 
-/** `{ … }` 한 덩어리의 본문. 중첩이 없는 블록(@theme · 클래스)만 쓴다 */
+/**
+ * `{ … }` 한 덩어리의 본문. 중첩이 없는 블록(@theme · 클래스)만 쓴다.
+ * 끝은 줄 맨 앞의 `}`로 찾으므로, 블록 안에 들여쓴 `}`나 중첩 블록을 두면 값이 잘린다(tokens.test가 잡는다)
+ */
 function block(selector: string): string {
   const start = css.indexOf(`${selector} {`);
   if (start < 0) return '';

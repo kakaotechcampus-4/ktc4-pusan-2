@@ -34,9 +34,10 @@ try {
   git('rev-parse', '--verify', '--quiet', `${target}^{commit}`);
 } catch {
   console.log(
-    `커밋을 찾지 못했습니다(${PRODUCT_CHECKED.commit} · ${target}). 저장소에서 git fetch 뒤 실행하세요.`,
+    `커밋을 찾지 못했습니다(${PRODUCT_CHECKED.commit} · ${target}). 저장소에서 git fetch 뒤 실행하세요(CI는 fetch-depth: 0).`,
   );
-  process.exit(0);
+  // 실패로 끝낸다 — 자동으로 돌릴 때 "바뀐 것 없음"과 섞이지 않게(#763 리뷰)
+  process.exit(1);
 }
 
 const targetCommit = git('rev-parse', '--short', target);
@@ -53,7 +54,15 @@ for (const entry of entries) {
   // 제품 코드만 본다
   const sources = entry.sources.filter((path) => path.startsWith('frontend/'));
   if (sources.length === 0) continue;
-  const changed = git('diff', '--name-only', PRODUCT_CHECKED.commit, target, '--', ...sources)
+  // 점 세 개: 기준과 갈라진 지점부터 대상이 바꾼 것만 본다. 두 점이면 기준보다 먼저 갈라진 브랜치(열린 FE PR)에서
+  // 그 브랜치가 고치지 않은 파일까지 "바뀜"으로 나온다(#763 리뷰). 기본값(develop-next)에서는 결과가 같다
+  const changed = git(
+    'diff',
+    '--name-only',
+    `${PRODUCT_CHECKED.commit}...${target}`,
+    '--',
+    ...sources,
+  )
     .split('\n')
     .filter(Boolean);
   const missing = sources.filter((path) => !exists(target, path));

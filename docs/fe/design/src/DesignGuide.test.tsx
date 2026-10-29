@@ -13,7 +13,6 @@ vi.mock('./catalog', () => {
       title: '피치 생성',
       group: '연습',
       route: '/pitch/new',
-      devices: 'all',
       status: '제품에 있음',
       summary: '자료를 준비합니다.',
       states: [
@@ -34,7 +33,6 @@ vi.mock('./catalog', () => {
       title: '시작 전 세팅',
       group: '연습',
       route: '/pitch/:id/device-check',
-      devices: 'pc',
       status: '제품에 있음',
       summary: '장치를 확인합니다.',
       states: [
@@ -54,7 +52,6 @@ vi.mock('./catalog', () => {
       title: '새 화면 시안',
       group: '시안',
       route: '/new-idea',
-      devices: 'all',
       status: '시안',
       summary: '제품에 넣을 새 화면입니다.',
       states: [{ id: 'ready', label: '기본', description: '시안' }],
@@ -91,6 +88,7 @@ vi.mock('./catalog', () => {
     file: 'src/ui/Button.tsx',
     props: [['variant', "'primary' | 'secondary'", '기본 primary']],
     code: '<Button>시작</Button>',
+    knownIssues: ['포커스 색이 한 곳 다르다.'],
   };
   return {
     PRODUCT_ORIGIN: 'http://localhost:3000',
@@ -269,10 +267,13 @@ it('설명 패널에 디자인 값 · 제품과 다른 점 · 제품에서 열�
   expect(host.querySelectorAll('main')).toHaveLength(1);
 });
 
-it('옛 시안 주소는 같은 ID의 화면으로, 없는 이름은 기본 화면으로 바꿔 연다', async () => {
+it('옛 시안 주소는 같은 ID로, 같은 ID가 없는 공용 컴포넌트 시안은 버튼으로, 없는 이름은 기본 화면으로 연다', async () => {
   await render('/prepare');
   expect(address()).toBe('/?screen=prepare');
   expect(host.querySelector('[data-preview="prepare:ready"]')).toBeTruthy();
+  await act(async () => root.render(null));
+  await render('/components');
+  expect(address()).toBe('/?screen=button');
   await act(async () => root.render(null));
   await render('/no-such-draft');
   expect(address()).toBe('/');
@@ -348,15 +349,17 @@ it('컴포넌트는 속성 · 사용 예 · 설계서 파일을 보이고, 사�
   expect(host.textContent).toContain('컴포넌트 설명');
   expect(host.textContent).toContain('속성');
   expect(host.textContent).toContain('설계서 src/ui/Button.tsx');
+  // 알려진 문제는 쓰는 규칙과 따로 보인다
+  expect(host.textContent).toContain('알려진 문제 (FE와 정할 것)포커스 색이 한 곳 다르다.');
   expect(host.querySelector('pre')?.textContent).toBe('<Button>시작</Button>');
   await click('복사');
   expect(writeText).toHaveBeenCalledWith('<Button>시작</Button>');
   expect(host.textContent).toContain('복사했어요.');
 });
 
-it('PC 전용 화면을 휴대폰 크기로 보면 정책을 알리고, 크기 조절은 주소에 남는다', async () => {
+it('휴대폰 폭으로 보면 노트북 · 데스크톱 전용을 알리고, 크기 조절은 주소에 남는다', async () => {
   await render('/?screen=prepare&device=mobile');
-  expect(host.textContent).toContain('PC 전용');
+  expect(host.querySelector('[role="note"]')?.textContent).toContain('노트북 · 데스크톱 전용');
   expect(host.textContent).toContain('390 × 844');
   await click('가로 · 세로 돌리기');
   expect(address()).toContain('rotate=1');
@@ -367,8 +370,10 @@ it('PC 전용 화면을 휴대폰 크기로 보면 정책을 알리고, 크기 �
   expect(address()).toContain('screen=unsupported');
 
   await act(async () => root.render(null));
-  await render('/?screen=pitch-create&device=mobile');
+  // 팀 기준 크기에서는 안내가 없다
+  await render('/?screen=pitch-create&device=team-laptop');
   expect(host.querySelector('[role="note"]')).toBeNull();
+  expect(host.textContent).toContain('1366 × 650');
   const size = [...host.querySelectorAll('select')].find((select) =>
     select.closest('label')?.textContent?.startsWith('미리보기 크기'),
   )!;

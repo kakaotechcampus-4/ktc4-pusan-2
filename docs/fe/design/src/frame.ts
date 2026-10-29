@@ -9,9 +9,12 @@
  */
 export const DEVICES = {
   fit: { label: '칸에 맞춤', width: null, height: null },
-  'mobile-s': { label: '휴대폰 360 × 780', width: 360, height: 780 },
-  mobile: { label: '휴대폰 390 × 844', width: 390, height: 844 },
-  tablet: { label: '태블릿 768 × 1024', width: 768, height: 1024 },
+  // 팀 기준(노트북 · 데스크톱 전용). 출시 화면은 이 두 크기에서 잘리지 않아야 한다
+  'team-laptop': { label: '팀 기준 노트북 1366 × 650', width: 1366, height: 650 },
+  'team-desktop': { label: '팀 기준 데스크톱 1920 × 950', width: 1920, height: 950 },
+  'mobile-s': { label: '참고 · 휴대폰 360 × 780', width: 360, height: 780 },
+  mobile: { label: '참고 · 휴대폰 390 × 844', width: 390, height: 844 },
+  tablet: { label: '참고 · 태블릿 768 × 1024', width: 768, height: 1024 },
   laptop: { label: '노트북 1280 × 800', width: 1280, height: 800 },
   'laptop-wide': { label: '노트북 1366 × 768', width: 1366, height: 768 },
   desktop: { label: '데스크톱 1440 × 900', width: 1440, height: 900 },
@@ -39,7 +42,7 @@ export function previewZoom(params: URLSearchParams): number {
 /** 직접 입력의 범위. 이보다 작거나 크면 맞춰 넣는다 */
 export const CUSTOM_LIMIT = { min: 280, max: 2560 };
 
-/** 휴대폰 크기로 보는가. 이보다 좁으면 PC 전용 화면에 안내를 띄운다 */
+/** 휴대폰 폭으로 보는가. 이보다 좁으면 노트북 · 데스크톱 전용이라는 안내를 띄운다 */
 export const PHONE_MAX_WIDTH = 767;
 
 function clampSize(value: string | null, fallback: number) {

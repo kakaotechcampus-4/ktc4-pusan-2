@@ -266,7 +266,9 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '처리 중에는 버튼과 Esc를 막고, 끝나면 결과를 알린 뒤 닫는다.',
       '제목 · 본문을 aria-labelledby · aria-describedby로 잇는다.',
       '지금 제품의 다른 확인(브라우저 기록 지우기 · 계정 삭제)은 브라우저 confirm()이다. 새로 만들면 이 창을 쓴다.',
-      '알려진 문제: 취소하면 부모가 창을 지우고, 창은 useEffect 정리에서 닫힌다. 그때는 이미 문서에서 빠져 있어 초점이 연 버튼으로 돌아오지 않고 페이지 맨 처음으로 간다(설계서 복사본에서 확인, 제품도 같은 코드). 정리를 useLayoutEffect로 옮기거나 닫은 뒤 연 버튼에 초점을 주는 방법을 FE와 정한다.',
+    ],
+    knownIssues: [
+      '취소하면 부모가 창을 지우고, 창은 useEffect 정리에서 닫힌다. 그때는 이미 문서에서 빠져 있어 초점이 연 버튼으로 돌아오지 않는다(제품도 같은 코드). 정리를 useLayoutEffect로 옮기면 DOM에서 빠지기 전에 닫혀 초점이 돌아온다 — FE에서 고치기로 했다(#766 리뷰). 고쳐지면 설계서 복사본도 맞춘다.',
     ],
     tokens: ['panel', 'ink'],
     sources: ['frontend/src/features/rehearsal/prepare/ReplaceTakeDialog.tsx'],
@@ -290,7 +292,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     title: '도움말 창',
     group: dialogs,
     status: '제품에 있음',
-    summary: '사용방법 세 단계. 휴대폰에서는 화면 전체, 넓은 화면에서는 가운데 창.',
+    summary: '사용방법 세 단계. 가운데 창으로 열리고, 640px보다 좁은 창에서만 화면 전체를 채운다.',
     states: [view('open', '열림', '닫기 버튼에 처음 초점.')],
     rules: [
       '긴 내용은 창 안에서 스크롤하고, 제목 줄은 위에 붙여 둔다(sticky).',
