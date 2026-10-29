@@ -39,6 +39,7 @@ from pitch_coach_backend.realtime.storage.store import TranscriptStore
 from pitch_coach_backend.realtime.stream import finish, registry
 from pitch_coach_backend.realtime.stream.record import CoachDeps
 from pitch_coach_backend.realtime.stream.registry import (
+    StreamClosing,
     StreamOwnerMismatch,
     TakeEnded,
     TooManyStreams,
@@ -134,6 +135,10 @@ class RealtimeSession:
             return
         except TooManyStreams:
             await handshake.reject(WsErrorCode.TOO_MANY_STREAMS, TOO_MANY_STREAMS_MESSAGE)
+            return
+        except StreamClosing:
+            # 이전 스트림 정리가 늦다. 곧 닫히므로 FE 가 다시 붙게 한다
+            await handshake.reject_busy()
             return
 
         # attach() 가 성공한 순간부터는 반드시 detach() 로 짝을 맞춘다. ready 전송이나

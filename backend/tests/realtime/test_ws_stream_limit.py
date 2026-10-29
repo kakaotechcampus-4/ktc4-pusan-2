@@ -11,7 +11,11 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.stream import abandon, registry, runtime, state
-from pitch_coach_backend.realtime.stream.registry import MAX_STREAMS_PER_USER, TooManyStreams
+from pitch_coach_backend.realtime.stream.registry import (
+    MAX_STREAMS_PER_USER,
+    StreamClosing,
+    TooManyStreams,
+)
 from pitch_coach_backend.realtime.stt.adapter import SttConfig
 from tests.realtime.conftest import (
     TAKE_ID,
@@ -279,3 +283,50 @@ async def test_stream_with_recent_audio_keeps_its_place(monkeypatch: pytest.Monk
         await _attach(adapter, owner_id)
     assert first.has_client and not first.is_stopping
     await _close_all()
+
+
+@pytest.mark.anyio
+async def test_previous_stream_that_does_not_close_asks_to_retry(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """정리할 스트림이 제한 시간 안에 닫히지 않으면 다른 Take 가 발표 중인 것과 구분해 알린다.
+    옛 스트림은 레지스트리에 남아 계속 세고, 첫 연결이 시작한 Take 에는 떠남 타이머를 건다."""
+    adapter = FakeSttAdapter()
+    owner_id = uuid.uuid7()
+    previous = await _attach(adapter, owner_id)
+    tab = previous._client.ws
+    previous.push(frame(1, 0), source=tab)
+    previous.detach(tab)
+
+    async def never_closes(timeout: float | None = None) -> bool:
+        return False
+
+    monkeypatch.setattr(previous, "wait_closed", never_closes)
+    waiting = uuid.uuid7()
+
+    with pytest.raises(StreamClosing):
+        await _attach(adapter, owner_id, waiting)
+
+    assert state.streams.get(previous.take_id) is previous
+    assert waiting not in state.streams
+    assert abandon.armed(waiting)
+    monkeypatch.undo()
+    await _close_all()
+
+
+def test_retry_close_has_no_error_and_lets_the_client_reconnect(
+    client: TestClient, stt: FakeSttAdapter, token: str, monkeypatch: pytest.MonkeyPatch
+):
+    """FE 는 1013 이면 백오프로 다시 붙는다. 오류 안내를 띄우지 않게 오류 메시지는 보내지 않는다."""
+
+    async def closing(*args, **kwargs):
+        raise StreamClosing
+
+    monkeypatch.setattr(registry, "attach", closing)
+
+    with client.websocket_connect(WS_PATH) as ws:
+        auth(ws, token)
+        code = closed_with(ws)
+
+    assert code == 1013
+    assert stt.sessions == []
