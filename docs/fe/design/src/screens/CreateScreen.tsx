@@ -1,8 +1,6 @@
 // 제품 피치 생성 · 수정(`frontend/src/features/pitch/create/PitchCreatePage.tsx`, `steps/*`)의 설계서 샘플.
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
 import { Button } from '@/ui/Button';
-import { PitchCoachWordmark } from '@/ui/PitchCoachWordmark';
 import { PaneHeading } from '@/ui/PaneHeading';
 import { PaneFooter, primaryButton, secondaryButton } from '@/ui/PaneFooter';
 import { PITCH, type Navigate } from './shared';
@@ -48,15 +46,8 @@ export function CreateScreen({
   const current = STEPS[step]!;
 
   return (
-    <div className="pitch-create pitch-create-square flex min-h-[40rem] flex-col bg-greige text-ink">
-      <header className="flex shrink-0 items-center justify-between border-b border-line-strong bg-panel px-6 py-4">
-        <Link to="/" aria-label="PITCH COACH 홈">
-          <PitchCoachWordmark />
-        </Link>
-        <Link to="/" className="text-sm font-bold hover:text-ink">
-          ← 내 피치
-        </Link>
-      </header>
+    // 위에 공용 상단바가 얹힌다(#738). 넓은 화면에서는 남은 높이를 채우고 안쪽만 스크롤한다
+    <div className="pitch-create pitch-create-square flex min-h-0 flex-1 flex-col bg-greige text-ink lg:h-[calc(100dvh-var(--spacing-app-header))]">
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* 제품은 여기에 자료 버전 트리(VersionRail)와 치치를 둔다. 설계서는 버전 목록만 줄여 그린다 */}
         <aside className="flex shrink-0 flex-col gap-2 border-b border-line-strong bg-cream/60 p-4 text-sm lg:w-sidebar lg:border-b-0 lg:border-r">
@@ -66,15 +57,7 @@ export function CreateScreen({
           <p className="text-ink/80">평가기준 —</p>
         </aside>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-4">
-          <nav aria-label="경로" className="flex flex-wrap items-center gap-2 text-xs text-ink/80">
-            <Link to="/" className="hover:text-ink">
-              내 피치
-            </Link>
-            <span aria-hidden="true">›</span>
-            <span aria-current="page" className="text-ink">
-              {hasSlides ? PITCH : '새 피치'}
-            </span>
-          </nav>
+          {/* 돌아가기는 상단바의 "내 피치"가 맡아 경로 줄을 두지 않는다(#738) */}
           <ol aria-label="진행 단계" className="grid shrink-0 grid-cols-2 gap-2 lg:grid-cols-4">
             {STEPS.map((s, index) => {
               const on = index === step;

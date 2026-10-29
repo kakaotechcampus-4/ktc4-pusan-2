@@ -163,7 +163,8 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     title: '상단바',
     group: components,
     status: '제품에 있음',
-    summary: '홈 · Take 기록 · 마이페이지가 같이 쓰는 머리. 사용방법 창을 연다.',
+    summary:
+      '홈 · Take 기록 · 마이페이지 · 재시도 · 비교 · 리포트 · 피치 생성 · 시작 전 세팅이 같이 쓰는 머리. 사용방법 창을 연다.',
     states: [
       view('home', '내 피치', '홈에 있을 때.'),
       view('takes', 'Take 기록', 'Take 기록에 있을 때.'),
@@ -172,12 +173,13 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     rules: [
       '지금 화면의 메뉴는 코랄 밑줄 · 굵게와 aria-current="page"로 표시한다.',
       '바탕은 기본 지면(bg-panel)으로 고정한다. 아래 화면이 밝은 지면이어도 바꾸지 않는다.',
-      '연습 화면(시작 전 세팅 · 리허설)에는 두지 않는다.',
+      '리허설 · 분석 대기 · 대본 확인은 집중 화면이라 두지 않는다. 피치 생성 · 시작 전 세팅에는 #738부터 둔다.',
+      '높이(약 85px)는 styles.css의 --spacing-app-header와 맞춘다. 피치 생성 화면이 그 값으로 남은 높이를 계산한다.',
     ],
     tokens: ['panel', 'ink', 'coral', 'line-strong'],
-    sources: ['frontend/src/shared/ui/AppHeader.tsx'],
+    sources: ['frontend/src/shared/ui/AppHeader.tsx', 'frontend/src/app/routes.tsx'],
     file: 'src/ui/AppHeader.tsx',
-    props: [['current (설계서)', "'home' | 'takes' | 'me'", '제품은 지금 경로로 정한다']],
+    props: [['current (설계서)', "'home' | 'takes' | 'me' | 없음", '제품은 지금 경로로 정한다']],
     code: `import { AppHeader } from '@/shared/ui/AppHeader';
 
 // 라우트 묶음에서 한 번. 메뉴의 현재 표시는 경로로 정한다
