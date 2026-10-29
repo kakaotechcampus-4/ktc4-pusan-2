@@ -7,21 +7,14 @@
  * 크기를 고르면 그 화면 크기로 그린 뒤 칸 폭에 맞게 줄여 보인다.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import {
-  DEVICES,
-  FRAME_MESSAGE,
-  FRAME_UPDATED_EVENT,
-  frameUrl,
-  type Device,
-  type FrameMessage,
-} from './frame';
+import { FRAME_MESSAGE, FRAME_UPDATED_EVENT, frameUrl, type FrameMessage } from './frame';
 import type { PreviewNavigate } from './ScreenPreview';
 
 export function PreviewFrame({
   screenId,
   stateId,
   onNavigate,
-  device,
+  size,
   fitHeight,
   title,
   inline = false,
@@ -31,7 +24,8 @@ export function PreviewFrame({
   screenId: string;
   stateId: string;
   onNavigate: PreviewNavigate;
-  device: Device;
+  /** 그릴 화면 크기(frame.ts previewSize). null이면 칸 폭에 맞춘다 */
+  size: { width: number; height: number } | null;
   /** "칸에 맞춤"일 때의 높이(px) */
   fitHeight: number;
   title: string;
@@ -85,25 +79,30 @@ export function PreviewFrame({
     return () => observer.disconnect();
   }, []);
 
-  const size = DEVICES[device];
-  const scale = size.width && boxWidth ? Math.min(1, boxWidth / size.width) : 1;
-  const height = size.height ?? fitHeight;
+  const scale = size && boxWidth ? Math.min(1, boxWidth / size.width) : 1;
+  const height = size?.height ?? fitHeight;
 
   return (
     <div ref={box} className="min-w-0 overflow-hidden" style={{ height: height * scale }}>
-      <iframe
-        ref={iframe}
-        src={initialUrl}
-        title={title}
-        loading={lazy ? 'lazy' : undefined}
-        className="block border-0 bg-panel"
-        style={{
-          width: size.width ?? '100%',
-          height,
-          transform: scale < 1 ? `scale(${scale})` : undefined,
-          transformOrigin: 'top left',
-        }}
-      />
+      {/* 칸보다 좁은 화면(휴대폰 등)은 가운데에 둔다 */}
+      <div
+        className="mx-auto overflow-hidden"
+        style={{ width: size ? size.width * scale : '100%', height: height * scale }}
+      >
+        <iframe
+          ref={iframe}
+          src={initialUrl}
+          title={title}
+          loading={lazy ? 'lazy' : undefined}
+          className="block border-0 bg-panel"
+          style={{
+            width: size?.width ?? '100%',
+            height,
+            transform: scale < 1 ? `scale(${scale})` : undefined,
+            transformOrigin: 'top left',
+          }}
+        />
+      </div>
     </div>
   );
 }

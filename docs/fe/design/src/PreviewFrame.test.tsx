@@ -34,14 +34,17 @@ function LocationProbe() {
   );
 }
 
-async function renderFrame(onNavigate = vi.fn(), device: 'fit' | 'laptop' = 'fit') {
+async function renderFrame(
+  onNavigate = vi.fn(),
+  size: { width: number; height: number } | null = null,
+) {
   await act(async () =>
     root.render(
       <PreviewFrame
         screenId="prepare-mission"
         stateId="mic-error"
         onNavigate={onNavigate}
-        device={device}
+        size={size}
         fitHeight={384}
         title="시작 전 세팅 미리보기 화면"
       />,
@@ -68,7 +71,7 @@ it('iframe은 같은 앱의 화면만 보기 주소를 열고, 그 iframe에서 
 
 it('칸보다 넓은 화면 크기는 그 크기로 그린 뒤 칸 폭에 맞게 줄인다', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(640);
-  const iframe = await renderFrame(vi.fn(), 'laptop');
+  const iframe = await renderFrame(vi.fn(), { width: 1280, height: 800 });
   expect(iframe.style.width).toBe('1280px');
   expect(iframe.style.height).toBe('800px');
   expect(iframe.style.transform).toBe('scale(0.5)');
@@ -111,4 +114,12 @@ it('새 탭에서 연 화면만 보기는 그 주소에서 바로 이동한다',
     '/frame?screen=stage&state=default',
   );
   expect(host.textContent).toContain('중간 종료');
+});
+
+it('칸보다 좁은 화면은 줄이지 않고 가운데에 둔다', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900);
+  const iframe = await renderFrame(vi.fn(), { width: 390, height: 844 });
+  expect(iframe.style.transform).toBe('');
+  expect(iframe.parentElement!.className).toContain('mx-auto');
+  expect(iframe.parentElement!.style.width).toBe('390px');
 });

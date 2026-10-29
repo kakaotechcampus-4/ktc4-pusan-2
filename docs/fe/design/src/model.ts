@@ -50,6 +50,11 @@ export interface GuideScreen extends GuideEntryBase {
   kind: 'screen';
   /** 제품 경로. 시안이면 제품에 넣을 경로 */
   route: string;
+  /**
+   * 지원 기기. pc: 연습 화면처럼 PC에서만 쓰는 것(제품 UnsupportedPage의 "발표 연습은 PC에서"),
+   * all: 휴대폰에서도 보는 것(피치 확인 · 리포트 등)
+   */
+  devices: 'pc' | 'all';
   components: string[];
   next: { label: string; screenId: string; stateId?: string }[];
 }

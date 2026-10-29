@@ -1,6 +1,6 @@
 /**
  * 화면 설계서 뷰어. 목록(기초 · 화면)은 catalog, 미리보기는 PreviewFrame(iframe 안의 ScreenPreview)이 맡는다.
- * 고른 화면 · 상태 · 보기 방식 · 미리보기 크기는 주소(`#/?screen=&state=&view=&device=`)에 두어
+ * 고른 화면 · 상태 · 보기 방식 · 미리보기 크기는 주소(`#/?screen=&state=&view=&device=&w=&h=&rotate=`)에 두어
  * 새로고침 · 뒤로 가기에서 이어진다. 옛 시안 주소(`#/report` 등)는 같은 이름의 화면으로 바꿔 연다.
  */
 import { useEffect, useRef, useState, type RefObject } from 'react';
@@ -8,7 +8,16 @@ import { Navigate, Route, Routes, useParams, useSearchParams } from 'react-route
 import { Button } from '@/ui/Button';
 import { PRODUCT_ORIGIN, entries, screens } from './catalog';
 import { FramePage } from './FramePage';
-import { DEVICES, FRAME_UPDATED_EVENT, frameUrl, isDevice, type Device } from './frame';
+import {
+  CUSTOM_LIMIT,
+  DEVICES,
+  FRAME_UPDATED_EVENT,
+  PHONE_MAX_WIDTH,
+  frameUrl,
+  isDevice,
+  previewSize,
+  type Device,
+} from './frame';
 import { PreviewFrame } from './PreviewFrame';
 import type { GuideEntry } from './model';
 
@@ -329,6 +338,12 @@ function Details({
             {screen.status === '시안' ? '제품에 넣을 경로' : '제품 경로'}
           </h3>
           <p className="mt-2 break-all font-mono text-xs">{screen.route}</p>
+          <h3 className="mt-4 text-sm font-bold">지원 기기</h3>
+          <p className="mt-2 text-sm">
+            {screen.devices === 'pc'
+              ? 'PC 전용. 제품은 연습을 PC에서 하도록 안내한다(미지원 브라우저 · 터치 기기).'
+              : 'PC · 휴대폰. 휴대폰 크기로 바꿔 배치를 확인한다.'}
+          </p>
         </section>
       )}
     </aside>
@@ -359,25 +374,87 @@ function StateSelect({
   );
 }
 
-/** 미리보기를 어떤 화면 크기로 그릴지. 칸보다 넓으면 줄여 보인다 */
-function DeviceSelect({ value, onChange }: { value: Device; onChange: (device: Device) => void }) {
+type SizePatch = Partial<Record<'device' | 'w' | 'h' | 'rotate', string | null>>;
+
+/**
+ * 미리보기를 어떤 화면 크기로 그릴지: 기기 크기 · 직접 입력 · 가로/세로 돌리기. 칸보다 넓으면 줄여 보인다.
+ * 크기만 맞춘다 — 터치 입력 · 모바일 브라우저 동작은 재현하지 않는다(frame.ts DEVICES)
+ */
+function SizeControls({
+  device,
+  custom,
+  rotated,
+  onChange,
+}: {
+  device: Device;
+  /** 직접 입력의 주소 값(돌리기 전) */
+  custom: { w: string; h: string };
+  rotated: boolean;
+  onChange: (patch: SizePatch) => void;
+}) {
+  const number = `${control} w-24 tabular`;
   return (
-    <label className="flex min-w-0 flex-col gap-1 text-xs font-bold sm:min-w-44">
-      미리보기 크기
-      <select
-        className={control}
-        value={value}
-        onChange={(event) => {
-          if (isDevice(event.target.value)) onChange(event.target.value);
-        }}
-      >
-        {Object.entries(DEVICES).map(([id, device]) => (
-          <option key={id} value={id}>
-            {device.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="flex min-w-0 flex-col gap-1 text-xs font-bold sm:min-w-44">
+        미리보기 크기
+        <select
+          className={control}
+          value={device}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (!isDevice(value)) return;
+            if (value === 'custom')
+              onChange({ device: value, w: custom.w || '1280', h: custom.h || '800' });
+            else onChange({ device: value === 'fit' ? null : value, w: null, h: null });
+          }}
+        >
+          {Object.entries(DEVICES).map(([id, item]) => (
+            <option key={id} value={id}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {device === 'custom' && (
+        <>
+          <label className="flex flex-col gap-1 text-xs font-bold">
+            폭
+            <input
+              type="number"
+              inputMode="numeric"
+              min={CUSTOM_LIMIT.min}
+              max={CUSTOM_LIMIT.max}
+              className={number}
+              value={custom.w}
+              onChange={(event) => onChange({ w: event.target.value })}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-bold">
+            높이
+            <input
+              type="number"
+              inputMode="numeric"
+              min={CUSTOM_LIMIT.min}
+              max={CUSTOM_LIMIT.max}
+              className={number}
+              value={custom.h}
+              onChange={(event) => onChange({ h: event.target.value })}
+            />
+          </label>
+        </>
+      )}
+      {device !== 'fit' && (
+        <Button
+          size="sm"
+          variant="secondary"
+          aria-pressed={rotated}
+          className="min-h-11"
+          onClick={() => onChange({ rotate: rotated ? null : '1' })}
+        >
+          가로 · 세로 돌리기
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -398,6 +475,14 @@ export function DesignGuide() {
   const allKind = selected?.kind ?? 'screen';
   const deviceParam = params.get('device');
   const device: Device = isDevice(deviceParam) ? deviceParam : 'fit';
+  const size = previewSize(params);
+  const rotated = params.get('rotate') === '1';
+  // PC 전용 화면을 휴대폰 크기로 보면 제품 정책을 함께 알린다
+  const phoneOnPcScreen =
+    selected?.kind === 'screen' &&
+    selected.devices === 'pc' &&
+    size !== null &&
+    size.width <= PHONE_MAX_WIDTH;
   // 고른 화면은 state, 나머지 카드는 state.<화면 ID>에 상태를 둔다
   const selectedState = selected
     ? (validState(selected, params.get('state')) ??
@@ -466,10 +551,14 @@ export function DesignGuide() {
   }
 
   /** 미리보기 크기는 보는 방식이라 기록을 쌓지 않는다 */
-  function changeDevice(nextDevice: Device) {
+  function changeSize(patch: SizePatch) {
     const next = new URLSearchParams(params);
-    if (nextDevice === 'fit') next.delete('device');
-    else next.set('device', nextDevice);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    // 칸에 맞춤은 돌릴 것이 없다
+    if (!next.get('device')) next.delete('rotate');
     commit(next, true, 'keep');
   }
 
@@ -520,7 +609,12 @@ export function DesignGuide() {
               </p>
             </div>
             <div className="flex flex-wrap items-end gap-3">
-              <DeviceSelect value={device} onChange={changeDevice} />
+              <SizeControls
+                device={device}
+                custom={{ w: params.get('w') ?? '', h: params.get('h') ?? '' }}
+                rotated={rotated}
+                onChange={changeSize}
+              />
               <div className="flex flex-wrap gap-2" role="group" aria-label="보기 방식">
                 <Button
                   size="sm"
@@ -552,6 +646,16 @@ export function DesignGuide() {
                   />
                   <span className="flex flex-wrap items-center gap-3 text-sm font-bold">
                     {selected.status}
+                    {selected.kind === 'screen' && (
+                      <span className="font-normal text-ink/80">
+                        {selected.devices === 'pc' ? 'PC 전용' : 'PC · 휴대폰'}
+                      </span>
+                    )}
+                    {size && (
+                      <span className="tabular font-mono text-xs font-normal">
+                        {size.width} × {size.height}
+                      </span>
+                    )}
                     <a
                       href={frameUrl(selected.id, selectedState)}
                       target="_blank"
@@ -562,17 +666,35 @@ export function DesignGuide() {
                     </a>
                   </span>
                 </div>
+                {phoneOnPcScreen && (
+                  <div
+                    role="note"
+                    className="mb-4 flex flex-wrap items-center justify-between gap-3 border-2 border-coral-deep bg-coral-wash p-3 text-sm"
+                  >
+                    <p>
+                      이 화면은 <strong>PC 전용</strong>이다. 제품은 발표 연습을 PC에서 하도록
+                      안내한다(자동으로 막지는 않는다). 휴대폰 크기 미리보기는 참고용이다.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openScreen('unsupported', 'mobile')}
+                    >
+                      휴대폰 안내 화면 보기
+                    </Button>
+                  </div>
+                )}
                 <div
                   role="region"
                   aria-label={`${selected.title} 미리보기`}
-                  className="min-w-0 border-2 border-line-strong bg-panel"
+                  className="min-w-0 border-2 border-line-strong bg-greige"
                 >
                   <PreviewFrame
                     frameRef={preview}
                     screenId={selected.id}
                     stateId={selectedState}
                     onNavigate={(id, stateId) => previewNavigate(selected, id, stateId)}
-                    device={device}
+                    size={size}
                     fitHeight={800}
                     title={`${selected.title} 미리보기 화면`}
                   />
@@ -618,7 +740,12 @@ export function DesignGuide() {
                       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line-strong p-4">
                         <div>
                           <h3 className="font-bold">{screen.title}</h3>
-                          <p className="mt-1 text-xs">{screen.status}</p>
+                          <p className="mt-1 text-xs">
+                            {screen.status}
+                            {screen.kind === 'screen' && screen.devices === 'pc'
+                              ? ' · PC 전용'
+                              : ''}
+                          </p>
                         </div>
                         <StateSelect
                           screen={screen}
@@ -642,7 +769,7 @@ export function DesignGuide() {
                           screenId={screen.id}
                           stateId={stateId}
                           onNavigate={(id, next) => previewNavigate(screen, id, next)}
-                          device={device}
+                          size={size}
                           fitHeight={384}
                           title={`${screen.title} 미리보기 화면`}
                           inline

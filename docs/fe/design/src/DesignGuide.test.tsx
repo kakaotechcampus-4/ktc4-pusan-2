@@ -13,6 +13,7 @@ vi.mock('./catalog', () => {
       title: '피치 생성',
       group: '연습',
       route: '/pitch/new',
+      devices: 'all',
       status: '제품에 있음',
       summary: '자료를 준비합니다.',
       states: [
@@ -33,6 +34,7 @@ vi.mock('./catalog', () => {
       title: '시작 전 세팅',
       group: '연습',
       route: '/pitch/:id/device-check',
+      devices: 'pc',
       status: '제품에 있음',
       summary: '장치를 확인합니다.',
       states: [
@@ -52,6 +54,7 @@ vi.mock('./catalog', () => {
       title: '새 화면 시안',
       group: '시안',
       route: '/new-idea',
+      devices: 'all',
       status: '시안',
       summary: '제품에 넣을 새 화면입니다.',
       states: [{ id: 'ready', label: '기본', description: '시안' }],
@@ -349,4 +352,30 @@ it('컴포넌트는 속성 · 사용 예 · 설계서 파일을 보이고, 사�
   await click('복사');
   expect(writeText).toHaveBeenCalledWith('<Button>시작</Button>');
   expect(host.textContent).toContain('복사했어요.');
+});
+
+it('PC 전용 화면을 휴대폰 크기로 보면 정책을 알리고, 크기 조절은 주소에 남는다', async () => {
+  await render('/?screen=prepare&device=mobile');
+  expect(host.textContent).toContain('PC 전용');
+  expect(host.textContent).toContain('390 × 844');
+  await click('가로 · 세로 돌리기');
+  expect(address()).toContain('rotate=1');
+  // 눕히면 휴대폰 폭이 아니라 안내를 내린다
+  expect(host.querySelector('[role="note"]')).toBeNull();
+  await click('가로 · 세로 돌리기');
+  await click('휴대폰 안내 화면 보기');
+  expect(address()).toContain('screen=unsupported');
+
+  await act(async () => root.render(null));
+  await render('/?screen=pitch-create&device=mobile');
+  expect(host.querySelector('[role="note"]')).toBeNull();
+  const size = [...host.querySelectorAll('select')].find((select) =>
+    select.closest('label')?.textContent?.startsWith('미리보기 크기'),
+  )!;
+  await choose(size, 'custom');
+  expect(address()).toContain('device=custom');
+  expect(address()).toContain('w=1280');
+  await choose(size, 'fit');
+  expect(address()).not.toContain('device=');
+  expect(address()).not.toContain('w=');
 });
