@@ -15,7 +15,8 @@ import { TakeStatusBadge } from '@/ui/TakeStatusBadge';
 import { TAKE_STATUSES } from '@/lib/takeStatus';
 import { HomeHelpDialog } from '@/ui/dialogs/HomeHelpDialog';
 import { ReplaceTakeDialog } from '@/ui/dialogs/ReplaceTakeDialog';
-import { ServiceReviewDialog } from '@/ui/dialogs/ServiceReviewDialog';
+import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';
+import { TestConsentDialog } from '@/ui/dialogs/TestConsentDialog';
 import { QueryNotice, PITCH } from '../screens/shared';
 
 /** 견본 한 장. 밝은 지면이 기본인 조각은 light로 감싼다 */
@@ -300,13 +301,28 @@ export function ComponentDoc({ id, stateId }: { id: string; stateId: string }) {
       return (
         <DialogDoc title="도움말 창" render={(close) => <HomeHelpDialog onDismiss={close} />} />
       );
-    case 'review-dialog':
+    case 'survey-dialog':
       return (
         <DialogDoc
-          title="리뷰 창"
+          title="설문 창"
           render={(close) => (
-            <ServiceReviewDialog onContinue={close} initialRating={stateId === 'rated' ? 4 : 0} />
+            <TakeSurveyDialog
+              onClose={close}
+              onSent={close}
+              initial={
+                stateId === 'filled'
+                  ? { accuracy: 4, usefulness: 5 }
+                  : { accuracy: 0, usefulness: 0 }
+              }
+            />
           )}
+        />
+      );
+    case 'consent-dialog':
+      return (
+        <DialogDoc
+          title="참여 동의 창"
+          render={(close) => <TestConsentDialog onClose={close} onAgree={close} />}
         />
       );
     default:

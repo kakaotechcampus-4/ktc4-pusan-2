@@ -307,30 +307,65 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
   },
   {
     kind: 'component',
-    id: 'review-dialog',
-    title: '리뷰 창',
+    id: 'survey-dialog',
+    title: '설문 창',
     group: dialogs,
     status: '제품에 있음',
-    summary: '별점 · 의견을 받는 입력 창. 제출 줄은 스크롤 밖 아래에 둔다.',
+    summary:
+      '리포트마다 받는 설문(#776). 정확도 · 유용성 1~5와 아쉬운 점(선택)을 받는다. 보내기 줄은 스크롤 밖 아래에 둔다.',
     states: [
-      view('open', '열림', '별을 고르기 전이라 제출이 막혀 있다.'),
-      view('rated', '별점 고름', '별 4개를 고른 상태.'),
+      view('open', '열림', '점수를 고르기 전이라 보내기가 막혀 있다.'),
+      view('filled', '점수 고름', '정확도 4 · 유용성 5를 고른 상태.'),
     ],
     rules: [
-      '입력이 길어지면 창 안만 스크롤하고, 제출 · 나중에 줄은 늘 보이게 둔다.',
-      '필수 입력(별점)이 없으면 제출을 막는다.',
-      '닫기 · 나중에 · Esc는 모두 같은 동작(계속하기)이다.',
+      '리포트 아래 버튼으로만 연다. 홈에서 자동으로 띄우지 않는다 — 미룬 설문이 쌓이면 어느 Take 이야기인지 구별하기 어렵다.',
+      '두 점수를 다 골라야 보낸다. 아쉬운 점은 선택이고 2,000자까지다.',
+      '보내지 못하면 입력을 남기고 같은 답으로 다시 보낸다(같은 답이면 BE 가 200). 다른 곳에서 먼저 냈으면 보냈다고 맞춘다.',
+      '보내는 중에는 Esc · 나중에를 막는다. 브라우저가 Esc 를 연달아 받아 강제로 닫으면 다시 띄운다.',
+      '문구를 바꾸면 QUESTION_VERSION 을 올린다. BE 가 버전별로 응답을 나눠 평균 낸다.',
     ],
-    tokens: ['panel', 'ink', 'coral-deep', 'stone', 'line'],
-    sources: ['frontend/src/features/pitch/ServiceReviewDialog.tsx'],
-    file: 'src/ui/dialogs/ServiceReviewDialog.tsx',
+    tokens: ['panel', 'ink', 'coral-deep', 'line-strong', 'line'],
+    sources: ['frontend/src/features/report/TakeSurvey.tsx'],
+    file: 'src/ui/dialogs/TakeSurveyDialog.tsx',
     props: [
-      ['onContinue', '() => void', '닫기 · 나중에 · 제출 뒤'],
-      ['initialRating (설계서)', 'number', '샘플용 처음 별점'],
+      ['takeId', 'string', '설문을 보낼 Take (제품)'],
+      ['onClose', '() => void', '나중에 · Esc'],
+      ['onDone', '(message: string) => void', '보냈거나 이미 보냈을 때 (제품)'],
+      ['onSent · initial (설계서)', '() => void · 점수', '샘플용 보내기 · 처음 점수'],
     ],
-    code: `// 제품: 홈에서 리뷰를 받을 차례면 연다(HomeServiceReview)
-<ServiceReviewDialog onContinue={() => setClosed(true)} />`,
-    productNote: '서버에 보내지 않는다. 제출해도 오류 · 중복 처리 없이 바로 닫힌다.',
+    code: `// 제품: 리포트 아래 줄. 분석이 끝난 리포트에만 버튼을 둔다
+<TakeSurvey takeId={report.take_id} completed={report.status === 'COMPLETED'} />`,
+    productNote:
+      '서버에 보내지 않는다. 보내기를 누르면 바로 닫히고 오류 · 중복 처리는 그리지 않는다. 문항 문구는 아직 임시다(팀 확정 전).',
+  },
+  {
+    kind: 'component',
+    id: 'consent-dialog',
+    title: '참여 동의 창',
+    group: dialogs,
+    status: '제품에 있음',
+    summary:
+      '사용자 테스트 참여 안내(#776). 무엇을 · 왜 · 언제까지 모으는지 보여 주고 동의를 받는다.',
+    states: [view('open', '열림', '안내를 읽고 동의하거나 나중으로 미룬다.')],
+    rules: [
+      '홈의 참여 안내 카드에서 연다. 동의하지 않아도 연습 · 리포트 · 설문은 그대로 쓸 수 있다.',
+      '동의하면 안내문 버전(TEST_CONSENT_VERSION)을 보낸다. 안내문을 바꾸면 버전을 올린다.',
+      '음성 · 영상 원본은 저장하지 않고, 음성을 글로 옮긴 결과와 분석 결과는 저장한다고 적는다.',
+      '마이페이지의 "연습 기록 사용 동의"(1초 원자료 보관)와 다른 동의다.',
+    ],
+    tokens: ['panel', 'ink', 'line'],
+    sources: ['frontend/src/features/pitch/HomeSurveyNotice.tsx'],
+    file: 'src/ui/dialogs/TestConsentDialog.tsx',
+    props: [
+      ['onClose', '() => void', '나중에 · Esc · 동의 저장 뒤'],
+      ['onAgree (설계서)', '() => void', '샘플용 동의'],
+    ],
+    code: `// 제품: 동의하지 않은 사용자의 홈 위쪽 카드 → 안내 보고 참여하기
+<HomeSurveyNotice />`,
+    knownIssues: [
+      '보관 기한 "2026년 12월 31일"은 임시 값이다. BE 삭제 일정과 함께 팀이 정한다(BE take-survey.md 5절).',
+    ],
+    productNote: '서버에 보내지 않는다. 동의를 누르면 바로 닫힌다.',
   },
   {
     kind: 'component',

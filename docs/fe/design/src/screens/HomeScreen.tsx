@@ -1,7 +1,9 @@
 // 제품 홈 · 내 피치(`frontend/src/features/pitch/HomePage.tsx`)의 설계서 샘플.
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { Button } from '@/ui/Button';
 import { HomeHelpDialog } from '@/ui/dialogs/HomeHelpDialog';
+import { TestConsentDialog } from '@/ui/dialogs/TestConsentDialog';
 import { HomePitchCard, type HomePitch } from '@/ui/HomePitchCard';
 import { PITCH, type Navigate } from './shared';
 
@@ -22,10 +24,13 @@ const homePrimary =
 export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const pitches = stateId === 'empty' ? [] : HOME_PITCHES;
-  const ready = stateId === 'default' || stateId === 'empty';
+  // 설문 안내 두 상태(#776)도 목록은 평소와 같다
+  const ready = ['default', 'empty', 'consent', 'pending'].includes(stateId);
   const takeCount = pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0);
   return (
     <div className="pitch-create flex min-h-[40rem] flex-col bg-greige text-ink">
+      {stateId === 'consent' && <ConsentPrompt onAgree={() => onNavigate('home', 'default')} />}
+      {stateId === 'pending' && <PendingSurveys onNavigate={onNavigate} />}
       <div className="mx-auto w-full max-w-page flex-1 px-6 pb-8 pt-8 lg:px-10">
         <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
@@ -128,5 +133,58 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
       </div>
       {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
     </div>
+  );
+}
+
+/**
+ * 테스트 참여에 동의하지 않은 사용자의 홈 위쪽 카드 (제품 `HomeSurveyNotice.tsx`, #776).
+ * 동의하면 카드가 사라진다. 동의한 뒤 끝난 Take 가 아직 없어서 남은 설문도 비어 있다.
+ */
+function ConsentPrompt({ onAgree }: { onAgree: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section
+      aria-label="사용자 테스트 참여"
+      className="mx-auto mt-5 w-full max-w-page px-6 lg:px-10"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 border border-dashed border-line-strong bg-white px-4 py-3 text-sm">
+        <p>
+          <span className="font-bold">사용자 테스트에 참여해 주세요.</span> 연습이 끝날 때마다 짧은
+          설문으로 분석이 맞았는지 알려 주시면 됩니다.
+        </p>
+        <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
+          안내 보고 참여하기
+        </Button>
+      </div>
+      {open && <TestConsentDialog onClose={() => setOpen(false)} onAgree={onAgree} />}
+    </section>
+  );
+}
+
+/** 동의한 뒤 끝났는데 설문을 남기지 않은 리포트. 누르면 그 리포트로 가고, 설문은 리포트 아래에서 한다 */
+function PendingSurveys({ onNavigate }: { onNavigate: Navigate }) {
+  const items = [
+    { take: 'Take 2', pitch: PITCH },
+    { take: 'Take 1', pitch: PITCH },
+  ];
+  return (
+    <section aria-label="남은 설문" className="mx-auto mt-5 w-full max-w-page px-6 lg:px-10">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-2 border-ink bg-coral-wash px-4 py-3 text-sm">
+        <p className="font-bold">설문을 기다리는 리포트가 {items.length}개 있어요.</p>
+        <ul className="flex flex-wrap gap-x-4 gap-y-1">
+          {items.map((item) => (
+            <li key={item.take}>
+              <button
+                type="button"
+                onClick={() => onNavigate('report')}
+                className="underline hover:text-coral-deep"
+              >
+                {item.pitch} · {item.take}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   );
 }

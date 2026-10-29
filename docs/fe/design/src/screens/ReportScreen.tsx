@@ -1,5 +1,7 @@
 // 제품 Take 리포트(`frontend/src/features/report/ReportPage.tsx`, `ReportFrame.tsx`)의 설계서 샘플.
+import { useState } from 'react';
 import { Button } from '@/ui/Button';
+import { TakeSurveyDialog } from '@/ui/dialogs/TakeSurveyDialog';
 import { Card, Stat } from '@/ui/Panel';
 import { Badge } from '@/ui/Badge';
 import { Frame, PITCH, type Navigate } from './shared';
@@ -7,7 +9,8 @@ import { Frame, PITCH, type Navigate } from './shared';
 export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const noGaze = stateId === 'no-gaze';
   const noReview = stateId === 'no-review';
-  const ready = stateId === 'default' || noGaze || noReview;
+  const surveySent = stateId === 'survey-sent';
+  const ready = stateId === 'default' || noGaze || noReview || surveySent;
   return (
     <Frame title="발표 리포트" meta="10월 28일 오후 3:12">
       {stateId === 'loading' && (
@@ -90,11 +93,36 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
               </div>
             </section>
           )}
-          <footer className="flex justify-end border-t border-line-strong pt-5">
-            <Button onClick={() => onNavigate('home')}>내 피치로</Button>
+          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line-strong pt-5">
+            <SurveyLine sent={surveySent} onSent={() => onNavigate('report', 'survey-sent')} />
+            <Button className="ml-auto" onClick={() => onNavigate('home')}>
+              내 피치로
+            </Button>
           </footer>
         </>
       )}
     </Frame>
+  );
+}
+
+/**
+ * 리포트 아래 설문 줄 (제품 `TakeSurvey.tsx`, #776). 분석이 끝난 리포트에만 두고, 버튼으로만 연다.
+ * 보낸 리포트에는 버튼 대신 보냈다는 줄만 둔다
+ */
+function SurveyLine({ sent, onSent }: { sent: boolean; onSent: () => void }) {
+  const [open, setOpen] = useState(false);
+  if (sent)
+    return (
+      <p role="status" className="text-sm text-ink/80">
+        설문을 보냈어요. 다음 분석을 고치는 데 쓸게요.
+      </p>
+    );
+  return (
+    <>
+      <Button variant="secondary" onClick={() => setOpen(true)}>
+        이번 분석 설문 남기기
+      </Button>
+      {open && <TakeSurveyDialog onClose={() => setOpen(false)} onSent={onSent} />}
+    </>
   );
 }

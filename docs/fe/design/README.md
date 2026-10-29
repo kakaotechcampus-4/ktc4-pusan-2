@@ -91,7 +91,7 @@ React 코드 종류에 따라 화면 안의 입력 상태는 처음으로 돌아
 | `src/ScreenPreview.tsx` | 미리보기 진입점. 화면 ID로 그릴 화면을 고르고, 미리보기 안의 링크를 설계서 안에서만 이동시킨다 |
 | `src/screens/` | 화면별 샘플(장치 · API 없이 그림). 분석 대기 · 대본 확인은 `AnalysisScreen.tsx`, 소개 · 미지원 · 404 · 마이페이지 · 무대를 열지 않는 안내는 `InfoScreens.tsx`, 웰컴 · 로그인은 `OnboardingScreens.tsx`, 공통 틀 · 이동 타입은 `shared.tsx` |
 | `src/*.test.tsx` | 뷰어의 주소 · 포커스, 미리보기 iframe의 크기 · 메시지, 미리보기 흐름 · 무대 클래스, 모든 화면 · 상태가 그려지는지 확인 |
-| `src/ui/` | 버튼 · 카드 · 배지(TakeStatusBadge) · 마스코트 · 워드마크 · 상단바(AppHeader) · 선택 상자 · 대본 표시 선택(ScriptModeChoice)과 홈 줄(HomePitchCard) · 노을 화면(DuskScreen) · 피치 생성 머리/바닥(PaneHeading · PaneFooter) · 무대 CSS(stage.css), `dialogs/`의 확인 · 도움말 · 리뷰 창. 제품에서 복사해 시작했다 |
+| `src/ui/` | 버튼 · 카드 · 배지(TakeStatusBadge) · 마스코트 · 워드마크 · 상단바(AppHeader) · 선택 상자 · 대본 표시 선택(ScriptModeChoice)과 홈 줄(HomePitchCard) · 노을 화면(DuskScreen) · 피치 생성 머리/바닥(PaneHeading · PaneFooter) · 무대 CSS(stage.css), `dialogs/`의 확인 · 도움말 · 설문 · 참여 동의 창. 제품에서 복사해 시작했다 |
 | `src/components/` | 컴포넌트 · 대화 상자 문서. `ComponentDocs.tsx`가 견본을 그리고, `entries.ts`가 목록 칸(보기 · 규칙 · 속성 · 사용 예)이다 |
 | `src/foundations/` | 기초 문서. `tokens.ts`가 `styles.css`를 읽고(묶음 · 설명 · 밝은 지면 · 대비), `Foundations.tsx`가 그리며, `entries.ts`가 목록 칸(보기 · 규칙)이다 |
 | `src/styles.css` | 색 · 글꼴 · 간격 등 디자인 값의 원본. 제품 `index.css`에서 복사해 시작했다 |
