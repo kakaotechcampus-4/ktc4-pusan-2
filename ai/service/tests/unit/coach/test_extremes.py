@@ -3,7 +3,7 @@
 - 위조한 `coach_state`: 모양은 맞지만 값을 바꾼 상태가 와도 코치는 예외 없이 계약대로
   응답한다. 무엇을 믿을지(정합성 검사 · 서명)는 아직 정하지 않았으므로(코치 기능 문서 15절)
   여기서는 깨지지 않는 것만 본다
-- 한 시간 Take 복구(`replay`): 실제 시선 · 군더더기 모듈과 가짜 말 속도 · 소리 크기로
+- 한 시간 Take 복구(`replay`): 서비스 라우터와 같은 실제 판정 모듈 넷(`api.coach.JUDGES`)으로
   finalize 를 한 번 부르고 걸린 시간과 Take 결과 크기를 잰다. 오래 걸려 기본 실행에서 빼고
   `pytest -m slow` 로 돈다
 """
@@ -14,11 +14,10 @@ from pathlib import Path
 
 import pytest
 
+from pitch_coach_ai.api.coach import JUDGES
 from pitch_coach_ai.features import coach
 from pitch_coach_ai.features.coach import decide_safe, finalize
 from pitch_coach_ai.features.coach.schemas import CoachResponse
-from pitch_coach_ai.features.filler import core as filler_core
-from pitch_coach_ai.features.gaze import core as gaze_core
 
 from .conftest import PLAN
 from .fakes import fake_judges
@@ -94,9 +93,8 @@ def test_one_hour_take_replay_finishes_inside_the_be_limit() -> None:
         "events": [],
         "replay": replay,
     }
-    judges = fake_judges(gaze=gaze_core, filler=filler_core)
     started = time.perf_counter()
-    res = finalize(req, judges)
+    res = finalize(req, JUDGES)
     seconds = time.perf_counter() - started
     # 저장하는 payload(`take_result`)를 공백 없는 JSON 으로 잰다 (코치 기능 문서 12-1)
     payload = res.take_result.model_dump(mode="json")

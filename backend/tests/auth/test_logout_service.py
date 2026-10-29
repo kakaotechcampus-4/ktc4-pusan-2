@@ -137,3 +137,25 @@ def test_logout_is_idempotent_and_silent(db_session: Session, fake_google: dict[
     service.logout(db_session, issued.refresh_token)
     service.logout(db_session, None)
     service.logout(db_session, security.create_refresh_token())
+
+
+def test_repeated_logout_does_not_request_another_websocket_disconnect(
+    db_session: Session, fake_google: dict[str, Any]
+) -> None:
+    issued = login(db_session)
+
+    assert service.logout(db_session, issued.refresh_token) == issued.user.id
+    # 이미 끝난 세션의 토큰으로 다른 기기의 새 발표 연결까지 계속 끊으면 안 된다.
+    assert service.logout(db_session, issued.refresh_token) is None
+
+
+def test_logout_with_rotated_token_still_disconnects_the_active_device(
+    db_session: Session, fake_google: dict[str, Any]
+) -> None:
+    issued = login(db_session)
+    service.rotate(db_session, issued.refresh_token)
+
+    # 회전 응답을 못 받아 이전 토큰으로 로그아웃해도 살아 있는 후손을 폐기한다.
+    assert service.logout(db_session, issued.refresh_token) == issued.user.id
+    alive = db_session.scalars(select(RefreshToken).where(RefreshToken.revoked_at.is_(None))).all()
+    assert alive == []

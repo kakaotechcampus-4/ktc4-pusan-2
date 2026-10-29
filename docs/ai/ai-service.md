@@ -72,7 +72,7 @@ flowchart LR
     C -->|"그 밖의 경로"| FE["fe<br>frontend/"]
     BE -->|"http://ai:8000<br>Docker 내부망"| AI["ai<br>ai/service/"]
     AI -->|"HTTPS"| LLM["외부 LLM API"]
-    BE --> DB["db · redis"]
+    BE --> DB["db"]
 ```
 | 컨테이너 | 이미지를 만드는 곳 | 하는 일 | 밖에서 접근 |
 |---|---|---|---|
@@ -80,7 +80,7 @@ flowchart LR
 | fe | `frontend/` | 화면. 시선 · 마이크 레벨 측정은 브라우저 안에서 실행 (판정은 AI) | caddy를 거쳐서 |
 | be | `backend/` | API, DB 저장, 실시간 STT, AI 호출 | caddy `/api/*`를 거쳐서 |
 | **ai** | `ai/service/` | AI 기능. LLM 호출과 서버 안 모델 실행 | **없음** (be만 내부망으로 부른다) |
-| db · redis | 공식 이미지 | BE 전용 저장소 | 없음 |
+| db | 공식 이미지 | BE 전용 저장소 | 없음 |
 
 **요청 하나가 처리되는 길**
 1. FE가 caddy를 거쳐 be(`/api/...`)를 부른다.
@@ -101,7 +101,7 @@ ktc4-pusan-2/
 │   ├── archive/          # 동결된 과거 코드. 이미지에 안 들어간다
 │   └── .env.example      # LLM 환경변수 이름 (실제 ai/.env 는 git에 안 올린다)
 ├── infra/
-│   ├── docker-compose.yml          # 공통: caddy · fe · be · db · redis + ai
+│   ├── docker-compose.yml          # 공통: caddy · fe · be · db · dozzle(로그 보기) + ai
 │   ├── docker-compose.dev.yml      # develop 서버용 덮어쓰기
 │   └── docker-compose.release.yml  # release 서버(운영)용 덮어쓰기. 모든 서비스의 ports 를 비운다
 └── .github/workflows/
@@ -123,13 +123,14 @@ ai/service/
 │   ├── settings.py              # 환경변수 읽기 (pydantic-settings)
 │   ├── api/                     # 라우터만. 로직 없음
 │   │   ├── health.py            #   GET /health · /ready
-│   │   └── <이름>.py            #   기능 엔드포인트 (coach.py 는 판정 모듈을 묶어 코치에 넘긴다)
+│   │   └── <이름>.py            #   기능 엔드포인트 (지금은 script_parser.py · script_coverage.py · coach.py · evaluation_criteria.py · review.py. coach.py 는 판정 모듈을 묶어 evaluate · finalize 에서 코치에 넘긴다)
 │   ├── common/                  # 기능들이 같이 쓰는 코드
 │   │   ├── llm.py               #   LLM 객체는 여기서만 만든다
 │   │   ├── errors.py            #   예외 → 상태 코드 · 에러 본문
 │   │   ├── request_log.py       #   X-Request-ID · 요청마다 한 줄 로그
-│   │   └── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
-│   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다
+│   │   ├── meta.py              #   응답 meta (schema_version · feature_version · model · criteria_versions)
+│   │   └── readiness.py         #   시작할 때 불러올 모델 · 준비 상태 (/ready · NOT_READY)
+│   └── features/                # 기능별 코어. research에서 폴더째 옮겨 온다 (지금은 script_coverage · script_parser · gaze · filler · pace · volume · coach · evaluation_criteria · review)
 │       └── <기능>/              #   schemas.py · core.py · config.py · version.py · examples/ · prompts/ (`architecture.md` 8절)
 └── tests/
     ├── conftest.py · test_health.py
@@ -210,11 +211,11 @@ LLM 설정 없이 LLM 기능을 부르면 (`architecture.md` 4절)
    - 코어 경계 테스트는 코어 폴더를 찾는 경로를 새 위치에 맞춘다.
    - 연구 도구 · 실험 데이터 · 결과 파일을 쓰는 테스트(평가 · 예시 생성 · 대역 판정 모듈로 돌리는 재생)는 옮기지 않고 연구 폴더에 남긴다. 그 기능 문서 11절이 어느 테스트를 옮기는지 적는다.
    - 코어 파일을 만드는 연구 도구(예: 군더더기 `keyterms.json`)는 옮긴 뒤 서비스 위치의 파일을 원본으로 읽고 쓰게 바꾼다. 원본이 두 곳이 되지 않게 연구 폴더의 사본은 지운다.
-   - 연구 폴더 밖(다른 팀 테스트 등)에서 코어 파일을 경로로 읽는 곳이 있으면, 그쪽이 서비스 경로로 바꿀 때까지 그 파일만 연구 폴더에 사본으로 두고 서비스 파일과 같은지 연구 폴더 테스트가 본다. 바꾸면 사본과 그 테스트를 지운다(예: BE 테스트가 읽는 코치 `examples/`, `coach-agent.md` 11절).
+   - 연구 폴더 밖(다른 팀 테스트 등)에서 코어 파일을 경로로 읽는 곳이 있으면, 그쪽이 서비스 경로로 바꿀 때까지 그 파일만 연구 폴더에 사본으로 두고 서비스 파일과 같은지 연구 폴더 테스트가 본다. 바꾸면 사본과 그 테스트를 지운다(예: BE 테스트가 읽던 코치 `examples/` 사본 — BE가 서비스 경로로 바꾼 뒤(#585) 지웠다, `coach-agent.md` 11절).
 3. **의존성**: 코어가 쓰는 패키지를 더한다(6-4).
 4. **LLM · 모델**: LLM은 `common/llm.py`로 만들어 넘긴다(6-2). 서버 안에서 돌리는 모델이 있으면 6-3.
 5. **라우터**: `api/<이름>.py`를 만들고 `main.py`에 등록한다. 경로 · 요청 · 응답 필드는 BE와 합의하고, `ai/service/README.md`의 API 목록과 `contracts/openapi.json`을 갱신한다.
-   - 판정 모듈은 자기 엔드포인트가 없고 `api/coach.py`가 묶어 코치에 넘긴다(4-3). 코치 `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷이 서비스에 모두 있을 때 연다. 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우지 않는다. 코치는 견디지만 Take 결과의 그 영역 `measured_ratio`가 null이 되어 `architecture.md` 7절과 어긋난다(`coach-agent.md` 11절).
+   - 판정 모듈은 자기 엔드포인트가 없고 `api/coach.py`가 묶어 코치에 넘긴다(4-3). 코치 `/coach/evaluate` · `/coach/finalize`는 판정 모듈 넷이 서비스에 모두 있을 때 연다(넷이 모여 열었다, #673). 빈 자리를 `judge` · `summarize` · `criteria`가 예외를 내는 자리표시로 채우지 않는다. 코치는 견디지만 Take 결과의 그 영역 `measured_ratio`가 null이 되어 `architecture.md` 7절과 어긋난다(`coach-agent.md` 11절).
 6. **확인**: `uv run pytest`, 필요하면 `uv run pytest -m live`, 그리고 `docker build`로 이미지가 만들어지는지 본다(10절). 출력이 긴 기능이면 걸린 시간도 잰다(`architecture.md` 3절).
 7. **PR**: CI가 통과하면 merge한다. `develop-next`에 merge되면 develop 서버에 자동으로 배포되고, release 서버에는 `release` 브랜치에 들어갈 때 배포된다(11-5).
 
@@ -246,7 +247,7 @@ LLM 공통 규칙(모델 고르기 · 시간 제한 · 재시도 · 요청 마�
 - `structured_llm`은 역할마다 출력 토큰 상한(필요하면 추론 강도)을 `settings.py` 상수(역할 → 묶음과 같은 곳)에서 읽어 명시한다. 게이트웨이 기본값에 기대지 않는다. 값은 그 기능 PR에서 잰 출력 길이로 정하고, 출력이 상한에서 잘리면(`LengthFinishReasonError` · 끝난 이유 `length`) `LLM_INVALID_OUTPUT`이다(`architecture.md` 9절).
 - `structured_llm`은 스트리밍으로 부른다. 지금 LLM 게이트웨이는 스트리밍이 아닌 요청의 출력 상한을 2,000토큰 이하로만 받고(넘으면 400), 긴 비스트리밍 답은 생성 중에 끊는다. 결과는 다 모은 뒤 한 번에 돌려주므로 기능 코어가 받는 값은 같다.
 - 실제로 응답한 모델 이름은 LangChain 콜백으로 잡아 로그에 남기고 응답 `meta.model`에 싣는다. 결과가 기본 결과(`fallback_reason`이 있음)면 `meta.model`은 null이다(`architecture.md` 5절). 코어가 받는 반환값은 바뀌지 않는다.
-- 예비 모델은 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
+- 예비 모델은 아직 없다(넘어갈 조건은 15절 열린 질문). 붙일 때는 `common/llm.py` 안에서 LangChain `with_fallbacks`로 붙인다. 반환 객체가 그대로 `.invoke`를 가지므로 기능 코어는 바뀌지 않는다.
 - LLM 에러(시간 초과 · 연결 실패 · 잘못된 출력)는 기능 코드에서 잡지 않고 `common/errors.py`가 상태 코드 · 에러 코드로 바꾼다. 예외는 둘이다. LLM이 결과를 보태기만 하는 기능(코칭 계획 · 리뷰 문장)은 실패를 잡아 기본 결과를 200으로 돌려준다(`fallback_reason`). 장별로 LLM을 부르는 기능(평가 기준 만들기 · 대본 전달도 채점)은 장마다 실패를 잡아 `failed`에 담고, 한 장이라도 성공하면 200을 돌려준다.
 - `common/llm.py`는 LLM 실패 예외에 `code`(`LLM_TIMEOUT` · `LLM_ERROR` · `LLM_INVALID_OUTPUT` · `LLM_UNAVAILABLE`)를 달아 던진다. 기본 결과를 내는 기능의 코어는 LLM 라이브러리를 모르므로 이 `code`로 `fallback_reason`을 고르고, `common/errors.py`도 같은 `code`로 상태 코드를 고른다.
 - LLM 설정(키 등)이 없어 `structured_llm`이 LLM 객체를 만들지 못하면 그 오류는 `LLM_UNAVAILABLE`이다. 기본 결과를 내는 기능(코칭 계획 · 리뷰)의 라우터는 이때 LLM 없이(`llm=None`) 코어를 불러 200 + `fallback_reason: LLM_UNAVAILABLE`을 돌려준다. 그 밖의 기능은 503이다.
@@ -254,7 +255,7 @@ LLM 공통 규칙(모델 고르기 · 시간 제한 · 재시도 · 요청 마�
 ## 6-3. 서버 안 모델 · 무거운 리소스를 쓰는 기능
 LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 분류기 가중치, 형태소 분석기 사전 등)이 있을 때의 규칙이다.
 - **시작할 때 한 번만 불러온다.** `main.py`의 lifespan에서 불러와 보관하고, 라우터가 그것을 코어에 넘긴다. 요청마다 불러오지 않는다.
-- **`/ready`를 함께 만든다.** 로딩이 끝나기 전에는 503(`NOT_READY`)을 돌려준다. compose 헬스체크를 `/ready`로 바꾸고, 로딩 시간에 맞춰 `start_period`를 늘린다. 로딩 중에 들어온 BE 요청은 503을 받아 한 번 더 부르게 된다.
+- **이미 있는 `/ready`에 준비 상태를 반영한다**(`common/readiness.py`). 로딩이 끝나기 전에는 503(`NOT_READY`)을 돌려준다. compose 헬스체크는 이미 `/ready`를 부르므로(11-3), 모델을 더할 때 로딩 시간에 맞춰 `start_period`를 늘린다. 로딩 중에 들어온 BE 요청은 503을 받아 한 번 더 부르게 된다.
 - **가중치 파일은 git에 올리지 않는다.** 이름 · 출처 · 버전 · 해시를 담은 manifest(JSON)만 커밋한다.
 - **이미지에 넣는다.** 공개 모델(Hugging Face 등)은 Dockerfile에서 버전과 해시를 고정해 빌드할 때 내려받는다. 시작 시간이 일정하고 서버가 외부 네트워크에 의존하지 않는다. 대신 이미지가 커진다. 패키지 안에 사전이 들어 있는 경우(예: 형태소 분석기)는 의존성 설치만으로 된다. 팀이 만든 비공개 가중치가 생기면 저장 위치를 인프라와 정하고 이 문서를 고친다.
 - **PyTorch가 필요하면 CPU 전용 빌드를 쓴다.** 기본 설치는 GPU(CUDA) 라이브러리까지 받아 이미지가 수 GB 커진다.
@@ -270,6 +271,7 @@ LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 
   ```
 - **메모리를 먼저 잰다.** 모델은 워커마다 따로 올라간다. 붙이는 PR에서 `docker stats`로 컨테이너 메모리를 재고, 잰 값의 1.5배를 compose 메모리 상한(`mem_limit`)으로 둔다.
 - **잰 값 (대본 전달도의 형태소 분석기를 붙일 때, 2026-10-26)**: 이미지 374 MB → 896 MB(Kiwi 모델 · scikit-learn · scipy), 컨테이너를 띄운 뒤 요청을 받기까지 약 5초 + Kiwi 불러오기 약 1.2초(`warmup_done`), 준비된 뒤 컨테이너 메모리 약 414 MiB(워커 1개, 요청 없음). 지금 헬스체크 시작 유예 10초 안에 준비된다. 1.5배 규칙으로 compose `ai`에 `mem_limit: 620m`을 두었다(#584, 워커를 늘리면 워커 수만큼 늘린다).
+- **잰 값 (코치 evaluate · finalize를 열 때, 2026-10-29)**: 판정 모듈 넷 · 평가 기준 분석이 함께 올라간 이미지 898 MB. `--memory 620m` · 워커 1 · 키 없음으로 띄워 준비된 뒤 쉬는 상태 약 419 MiB, 동시 Take 10개의 evaluate(1초마다 3분, 1,811건) · 한 시간 Take `replay` finalize 1번 · 코칭 계획 · 평가 기준 분석 호출을 함께 건 동안 최대 약 428 MiB(`docker stats` 1초 간격, OOM · 재시작 없음). 부하 중 최대는 쉬는 상태보다 약 9 MiB 높았다(판정 모듈은 모델 없이 파이썬 코드뿐이다). 키 없이 돌려 실제 LLM 호출이 든 부하와 서버에서의 값은 재지 않았다. 1.5배 규칙은 서버 안 모델을 붙일 때 다시 정하는 규칙이고, 판정 모듈 넷은 모델이 아니라 파이썬 코드라 상한을 다시 정할 대상이 아니다. 620m 아래 여유는 약 190 MiB(31%)다. 상한을 바꾸려면 BE · 인프라와 Issue로 정한다. 처리 시간은 `coach-agent.md` 8절.
 
 ## 6-4. 의존성 더하기
 - 운영 의존성은 `ai/service`에서 `uv add <패키지>`, 테스트 · 도구는 `uv add --dev <패키지>`.
@@ -286,7 +288,7 @@ LLM API가 아니라 서버 안에서 직접 돌리는 모델(임베딩 모델, 
 | LLM 키 · 모델 설정이 없음 | 서버는 뜨고 `/health`는 응답한다. LLM을 쓰는 요청만 실패하고, 코칭 계획 · 리뷰는 기본 결과를 낸다 | `/health` 200 · LLM 기능 503 `LLM_UNAVAILABLE` · 코칭 계획 · 리뷰 200 + `fallback_reason` | CI · 로컬 확인은 키 없이 해야 한다 |
 | 요청 형식 오류 | 라우터가 거부한다 | 422 `VALIDATION_ERROR` | `architecture.md` 4절 |
 | 없는 경로 · 허용되지 않는 메서드 | 거부한다 | 404 `NOT_FOUND` · 405 `METHOD_NOT_ALLOWED` | BE 경로와 배포된 AI 경로가 다를 때 바로 보이게 |
-| 모델 로딩 중 | 기능 요청을 받지 않는다 | 503 `NOT_READY` (BE는 `architecture.md` 3절 표대로 다시 부름) | 반쯤 준비된 상태로 답하지 않기 위해 |
+| 모델 로딩 중 | 그 모델을 쓰는 기능 요청(지금은 대본 전달도 세 경로)을 받지 않는다. 모델을 쓰지 않는 `/coach/plan` · `/health`는 받는다 | 503 `NOT_READY` (BE는 `architecture.md` 3절 표대로 다시 부름) | 반쯤 준비된 상태로 답하지 않기 위해 |
 | 처리되지 않은 예외 | 내부 예외 내용(stack trace)은 AI 로그에만 남긴다 | 500 `INTERNAL_ERROR` | 내부 정보를 응답에 내보내지 않는다 |
 | 시작 중 예외 (import 오류 · 모델 로딩 실패 · 메모리 부족) | 컨테이너가 재시작을 되풀이한다 | 헬스체크 실패 | 11절 '증상별 원인' |
 | 배포로 컨테이너가 바뀌는 중 | 처리 중인 요청은 종료 대기(30초) 안에서 끝낸다. 새 요청은 몇 초 동안 연결 실패 | BE 쪽 `AI_UNAVAILABLE` | 백그라운드 호출은 BE가 한 번 더 부르고, 실시간 코칭은 다음 1초 요청으로 이어진다. 빠진 시간이 창보다 길면 종료 때 `replay`로 Take 결과를 다시 만든다 |
@@ -403,13 +405,14 @@ CMD ["uvicorn", "pitch_coach_ai.main:app", "--host", "0.0.0.0", "--port", "8000"
 # 비밀값은 이미지에 넣지 않는다. 패턴은 맨 위 폴더에만 맞으므로 src/ 아래 .env 까지 거르려고 **/ 를 붙인다
 **/.env
 **/.env.*
-# 테스트 · 계약 파일은 이미지에 필요 없다
+# 테스트 · 계약 파일 · 도구는 이미지에 필요 없다
 tests/
 contracts/
+tools/
 ```
 | 이미지에 들어간다 | 들어가지 않는다 |
 |---|---|
-| Python 3.12, `uv.lock` 기준 운영 의존성(`.venv`), `src/`(기능별 `examples/` 포함), 기능이 쓰는 공개 모델 파일(6-3) | `tests/`, `contracts/`, 개발 도구(pytest · ruff), `ai/research/`, `ai/archive/`, `.env`(키), 브라우저 엔진 |
+| Python 3.12, `uv.lock` 기준 운영 의존성(`.venv`), `src/`(기능별 `examples/` 포함), 기능이 쓰는 공개 모델 파일(6-3) | `tests/`, `contracts/`, `tools/`(OpenAPI 내보내기), 개발 도구(pytest · ruff), `ai/research/`, `ai/archive/`, `.env`(키), 브라우저 엔진 |
 
 | 항목 | AI 이미지 | 이유 |
 |---|---|---|
@@ -433,6 +436,7 @@ contracts/
 services:
   ai:
     restart: unless-stopped
+    logging: *default-logging       # 파일 맨 위 x-logging: 컨테이너 로그를 10MB × 3개까지만 (모든 서비스 같음)
     image: ${IMAGE_REPO:-pitch-coach}:ai-${IMAGE_TAG:-latest}   # be- · fe- 와 같은 태그 규칙
     build:
       context: ../ai/service        # 빌드 컨텍스트는 ai/service 하나
@@ -562,7 +566,7 @@ FE는 AI를 부르지 않는다. 기능별로 누가 언제 무엇을 부르는�
 - `release`와 다른 곳: `release`(2026-10-27 `017fa228`)에는 위 #584 변경이 아직 없다(헬스체크 `/health`, 메모리 상한 없음, push `[main, develop]`). release 배포는 `release`의 compose 파일을 서버에 복사하므로 release 서버도 이 설정일 것이고(서버에서 확인한 기록은 없다), 그러면 모델 준비 전에도 healthy로 보인다. `release` push에서는 AI CI가 돌지 않는다. `release`를 이 변경이 든 `develop-next` 커밋까지 올리면(`docs/be/release.md`) 같아진다.
 - BE가 확인함: 두 시크릿(`AI_ENV` · `RELEASE_AI_ENV`)에 `SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS=20` 줄이 있다(2026-10-27, #584 완료 표시 · #588 리뷰). AI는 시크릿 내용을 볼 수 없어 BE 확인을 따른다.
 - 확인하지 못한 것: 서버에서 11-6 명령(`(healthy)` · `/ready` 200 · 메모리 상한)을 돌린 기록이 아직 없다(#584 완료 조건).
-- 요청 중: #585 — BE 테스트가 읽는 코치 예시 경로를 서비스 폴더로.
+- 반영됨(#585): BE 테스트가 읽는 코치 예시 경로를 서비스 폴더로. AI 쪽 연구 폴더 사본은 지웠다.
 - 아직 요청하지 않음: 위 표의 (권장) 배포의 `up` 대기.
 
 - **순서**: compose의 `ai` 항목과 두 배포 워크플로의 `ai` 빌드 · push는 같은 PR에서, 첫 AI 서비스 PR이 merge된 뒤에 넣었다(#380). compose에만 넣으면 서버의 `pull`이 없는 이미지를 찾다가 배포 전체가 실패하고, `ai/service/`가 없으면 빌드가 실패한다.

@@ -88,3 +88,52 @@ it('validates content and unknown fields and permits 2000 Unicode characters', a
   expect((await send('service-feedback', { rating: 4, takeId: 'old' })).status).toBe(422);
   expect((await send('suggestions', { request_id: 'not-uuid', content: '의견' })).status).toBe(422);
 });
+
+it.each(['POSITIVE', 'IMPROVEMENT', 'PROBLEM', 'QUESTION', 'OTHER'])(
+  'stores %s and rejects changed categories on both retry paths',
+  async (category) => {
+    const review = { rating: 4, suggestion: '의견', category };
+    expect((await send('service-feedback', review)).status).toBe(201);
+    expect((await send('service-feedback', review)).status).toBe(200);
+    const changed = category === 'OTHER' ? 'QUESTION' : 'OTHER';
+    const reviewConflict = await send('service-feedback', { ...review, category: changed });
+    expect(reviewConflict.status).toBe(409);
+    expect(await reviewConflict.json()).toMatchObject({
+      code: 'SERVICE_FEEDBACK_ALREADY_SUBMITTED',
+    });
+    const suggestion = { request_id: crypto.randomUUID(), content: '의견', category };
+    const saved = await send('suggestions', suggestion);
+    expect(saved.status).toBe(201);
+    const receipt = await saved.json();
+    expect(receipt).toMatchObject({ category, source: 'MY_PAGE' });
+    expect(await (await send('suggestions', suggestion)).json()).toEqual(receipt);
+    const conflict = await send('suggestions', { ...suggestion, category: changed });
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({ code: 'SUGGESTION_REQUEST_CONFLICT' });
+    expect(await (await send('suggestions', suggestion)).json()).toEqual(receipt);
+  },
+);
+it.each([null, 'UNKNOWN', 'positive', '', 1, {}, 'toString'])(
+  'rejects invalid category %j on both endpoints',
+  async (category) => {
+    expect((await send('service-feedback', { rating: 4, category })).status).toBe(422);
+    expect(
+      (await send('suggestions', { request_id: crypto.randomUUID(), content: '의견', category }))
+        .status,
+    ).toBe(422);
+  },
+);
+it('defaults omitted categories to OTHER and ignores valid categories without a popup opinion', async () => {
+  const suggestion = { request_id: crypto.randomUUID(), content: '의견' };
+  expect(await (await send('suggestions', suggestion)).json()).toMatchObject({ category: 'OTHER' });
+  expect((await send('suggestions', { ...suggestion, category: 'OTHER' })).status).toBe(200);
+  expect((await send('service-feedback', { rating: 4, suggestion: '의견' })).status).toBe(201);
+  expect(
+    (await send('service-feedback', { rating: 4, suggestion: '의견', category: 'OTHER' })).status,
+  ).toBe(200);
+  user = 'no-opinion';
+  expect((await send('service-feedback', { rating: 5, category: 'POSITIVE' })).status).toBe(201);
+  expect(
+    (await send('service-feedback', { rating: 5, suggestion: '  ', category: 'QUESTION' })).status,
+  ).toBe(200);
+});

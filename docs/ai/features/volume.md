@@ -4,7 +4,7 @@
 > **기준 범위**: 소리 크기 · 침묵 판정 모듈과, 그 입력인 음량 1초 기록을 FE가 재는 법의 목표 설계다(`architecture.md` 6-2: "각 필드를 어떻게 재는지는 측정 기능 문서에 있다"). 기능 사이 공통 계약(1초 원자료 모양 · 1초 판정 결과 형식 · 커서 · 단위 · 저장 지도)은 `architecture.md`에 따르고, 이 문서에는 이 기능에만 있는 규칙 · 예외만 적는다.
 > **관련 Issue**: #155
 > **한 줄 요약**: 브라우저가 마이크 레벨을 A 가중 · Fast로 재서 1초마다 말한 구간의 음량(Leq) · 말한 시간 · 끝의 무음 길이를 보내면, 이 모듈이 평소 목소리(기준 음량)보다 작게 말하는지(`VOLUME`)와 말이 오래 끊겼는지(`PAUSE`)를 따로 판정한다. 기준 음량이 없으면 Take 첫 발화로 잡는 `baseline`도 이 모듈이 정한다.
-> **기준값**: 작음 기준 · 아주 작음 값, 평활 창 길이, 말한 1초의 `voiced_ms` 기준(시선 `config.py`와 같은 값, 계약 테스트), 측정에 필요한 말한 1초 수, 기준 음량 표본 수, 긴 침묵 기준 · 아주 긴 침묵 값은 `src/volume/config.py`에만 둔다. FE가 말소리를 가르는 값(말소리 하한 · 잡음 바닥 여유)은 FE 상수다. 이 문서의 숫자는 BE · FE와 맞춰야 하는 통신 값과 예시뿐이다.
+> **기준값**: 작음 기준 · 아주 작음 값, 평활 창 길이, 말한 1초의 `voiced_ms` 기준(시선 `config.py`와 같은 값, 계약 테스트), 측정에 필요한 말한 1초 수, 기준 음량 표본 수, 긴 침묵 기준 · 아주 긴 침묵 값은 서비스 `features/volume/config.py`에만 둔다. FE가 말소리를 가르는 값(말소리 하한 · 잡음 바닥 여유)은 FE 상수다. 이 문서의 숫자는 BE · FE와 맞춰야 하는 통신 값과 예시뿐이다.
 
 # 0. 한눈에 보기
 | 언제 | 받는 것 | 내는 것 | 쓰는 곳 |
@@ -25,7 +25,7 @@
 # 1. 왜 필요한가
 ## 1-1. 배경
 긴장하면 목소리가 작아지고, 말이 막히면 길게 끊긴다. 청중에게 들리지 않는 발표는 내용이 좋아도 전달되지 않는다. 그런데 마이크마다 · 방마다 음량 숫자가 달라 "몇 dB 이하면 작다"로는 판정할 수 없다. 그래서 같은 사람의 평소 목소리를 기준으로 삼고 그보다 얼마나 작은지를 본다.
-지금은 같은 규칙이 코치 연구 폴더 안의 연구용 대역(`coach_lab/judges/volume.py`, `volume-0.2`)에만 있고, FE는 누적 Leq와 말하는 중 판정만 있을 뿐 1초 기록을 만들지 않으며 평소 목소리도 재지 않는다.
+판정 모듈(`volume-1.1`)은 AI 서비스 `features/volume/`에 있고 코치 연구 폴더에는 연구용 대역(`coach_lab/judges/volume.py`, `volume-0.2`)이 남아 있다. FE는 누적 Leq와 말하는 중 판정만 있을 뿐 1초 기록을 만들지 않으며 평소 목소리도 재지 않는다.
 
 ## 1-2. 목표
 - 마이크가 달라도 같은 사람의 같은 발화에 같은 판정을 낸다(평소 목소리 대비).
@@ -75,16 +75,15 @@ flowchart LR
 ```
 ai/research/volume-analysis/
 ├─ README.md                                폴더 · 파일 지도, 실행법, 실험 결과, 대역과 달라진 점
-├─ pyproject.toml · uv.lock                 Python 3.12, 의존성은 pydantic 하나
-├─ src/volume/                              판정 모듈 → 서비스 features/volume/로 폴더째 옮긴다
+├─ pyproject.toml · uv.lock                 Python 3.12, 서비스를 editable로 설치해 판정 모듈을 쓴다
+├─ (서비스 ai/service/src/pitch_coach_ai/features/volume/)   판정 모듈 (연구 폴더 src/volume/에서 폴더째 옮김, 테스트는 서비스 tests/unit/volume/)
 │   ├─ schemas.py · core.py · config.py · version.py
-│   └─ examples/                            judge(판정 창 전체) · summarize · criteria · baseline 입력 · 출력 예시
-├─ data/                                    평가 데이터: 같은 사람이 평소 · 작게 · 크게 읽은 녹음(마이크 여러 종)과 1초 기록
-├─ tools/                                   녹음 → 1초 기록 만들기(FE와 같은 규칙) · 평가 스크립트
-├─ tests/                                   판정 규칙 · 침묵 자르기 · 커서 · 계약
-└─ reports/results/                         평가 결과 JSON
+│   └─ examples/                            judge(판정 창 전체) · summarize · criteria · speaking_levels · baseline 입력 · 출력 예시
+├─ data/                                    평가 데이터: 같은 사람이 평소 · 작게 · 크게 읽은 녹음(마이크 여러 종)과 1초 기록 (아직 없음)
+├─ tools/                                   녹음 → 1초 기록 만들기(FE와 같은 규칙) · 평가 스크립트 (아직 없음)
+└─ reports/results/                         평가 결과 JSON (아직 없음)
 ```
-폴더 이름은 `volume-analysis`다. 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역 `ai/research/coach-agent/src/coach_lab/judges/volume.py`에 있다. FE 측정 코드는 `frontend/src/features/rehearsal/media/`(`loudness.ts` · `level.ts`)에 있고 FE가 관리한다.
+폴더 이름은 `volume-analysis`다. 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역 `ai/research/coach-agent/src/coach_lab/judges/volume.py`에 있었고, 코치 재생 · 실험은 아직 이 대역을 쓴다(11절 '옮긴 뒤 같은 결과인지 확인' 2). FE 측정 코드는 `frontend/src/features/rehearsal/media/`(`loudness.ts` · `level.ts`)에 있고 FE가 관리한다.
 
 ## 4-2. 진입 함수
 | 함수 | 하는 일 | 부르는 쪽 |
@@ -105,7 +104,7 @@ ai/research/volume-analysis/
 | 음량 평균은 에너지로 낸다(Leq). dB 값을 그대로 평균하지 않는다 | dB 평균은 큰 소리를 덜 반영해 실제 들리는 크기와 다르다 |
 
 # 5. 입력 · 출력 계약
-입력 · 출력의 원본은 `src/volume/schemas.py`의 pydantic 모델이다. 시각은 모두 Take 시작 기준 ms다. 1초 판정 결과의 공통 필드와 커서 규칙은 `architecture.md` 7절이 기준이다.
+입력 · 출력의 원본은 서비스 `features/volume/schemas.py`의 pydantic 모델이다. 시각은 모두 Take 시작 기준 ms다. 1초 판정 결과의 공통 필드와 커서 규칙은 `architecture.md` 7절이 기준이다.
 
 ## 5-1. 호출 목록
 | 호출 | 언제 | 누가 |
@@ -129,7 +128,7 @@ ai/research/volume-analysis/
 
 - **말하는 중**: A 가중 · Fast 레벨이 말소리 하한을 넘고 잡음 바닥보다 여유 이상 클 때. `voiced_ms` · `level_db` · `silence_ms`는 모두 이 한 기준으로 잰다.
 - 에너지 E · 시간 T는 반올림하지 않은 누적값으로 차분한다.
-- 측정은 자동 음량 조절 · 잡음 제거 · 에코 제거를 끄도록 요청한 별도 마이크 트랙으로 한다. 별도 트랙을 얻지 못하면 녹음용 스트림으로 계속 재고(판정은 유지), 발표 전 점검 결과(`calibrations.result`)에 측정 트랙 실패를 남긴다.
+- 측정은 자동 음량 조절 · 잡음 제거 · 에코 제거를 끄도록 요청한 별도 마이크 트랙으로 한다. 별도 트랙을 얻지 못하면 녹음용 스트림으로 계속 잰다(판정은 유지).
 
 **발표 전 점검의 기준 음량** (FE가 잰다)
 - 발표 전 점검에서 평소 목소리를 읽게 해 Leq(dBFS)를 `base_level_db`로 보낸다. 값이 없으면 Take 첫 발화로 잡는다. 정해진 문장을 평소 목소리로 읽게 하고 '말하는 중' 구간만 Leq로 잰다. 말한 시간이 5초 미만이면 null로 보내 Take 첫 발화로 잡게 한다.
@@ -265,36 +264,36 @@ ai/research/volume-analysis/
 # 9. 버전
 | 버전 | 값 | 어디에 | 언제 오르나 |
 |---|---|---|---|
-| `feature_version` | `volume-<버전>` (첫 판 `volume-1.0`, 지금 대역은 `volume-0.2`) | `src/volume/version.py` | 판정 규칙 · 출력의 뜻이 바뀔 때 |
+| `feature_version` | `volume-<버전>` (첫 판 `volume-1.0`, 지금 대역은 `volume-0.2`) | 서비스 `features/volume/version.py` | 판정 규칙 · 출력의 뜻이 바뀔 때 |
 | `criteria_version` | `volume-<버전>+<config 해시 12자리>` | 두 결과 공통 → `coach_state` → 응답 `meta.criteria_versions.volume` | 기준값을 바꾸면 해시가 바뀐다 |
 | `schema_version` | `1.0` | 코치 응답 `meta` | 판정 결과 · 음량 1초 기록의 필드 이름 변경 · 삭제 · 뜻 변경 |
 
 - FE의 측정 규칙(말소리 하한 · 잡음 바닥 여유 · A 가중 필터)을 바꾸면 같은 발화의 1초 기록이 달라진다. 그런 FE 변경은 이 모듈 담당을 리뷰어로 지정하고 평가 데이터로 다시 잰다.
 
 # 10. 실행 · 테스트
-준비 (`ai/research/volume-analysis`에서. Python 3.12, `.venv`는 git에 없어 처음 한 번 만든다. LLM을 쓰지 않는다)
+준비 (판정 모듈 · 테스트는 `ai/service`에, 평가는 `ai/research/volume-analysis`에서. Python 3.12, `.venv`는 git에 없어 폴더마다 처음 한 번 만든다. 연구 폴더는 서비스를 editable로 설치한다. LLM을 쓰지 않아 `ai/.env`가 필요 없다)
 ```bash
-cd ai/research/volume-analysis
+cd ai/service
 uv sync
 ```
 | 하는 일 | 명령 | 기대 결과 |
 |---|---|---|
-| 테스트 | `uv run python -m pytest` | 판정 규칙 · 침묵 자르기 · 긴 침묵 한 번만 세기 · 커서 · 계약(`examples/`, 공통 계약 테스트 틀) 통과 |
-| 평가 | `uv run python tools/evaluate.py --out reports/results/volume_eval.json` | `VOLUME_LOW` 정밀도 · 재현율, 침묵 감지 지연 (13절) |
+| 판정 모듈 테스트 (`ai/service`에서) | `uv run python -m pytest tests/unit/volume` | 판정 규칙 · 침묵 자르기 · 긴 침묵 한 번만 세기 · 커서 · 계약(`examples/`, 공통 계약 테스트 틀) 통과 (55 passed, 2026-10-28) |
+| 평가 (`ai/research/volume-analysis`에서, 아직 없음) | `uv run python tools/evaluate.py --out reports/results/volume_eval.json` | `VOLUME_LOW` 정밀도 · 재현율, 침묵 감지 지연 (13절) |
 | 린트 | `uv run ruff check . && uv run ruff format --check .` | 지적 없음 |
 
 - 연구 폴더가 생기기 전에는 같은 규칙이 코치 연구 폴더의 연구용 대역에 있다. 대역 테스트(`tests/lab/test_judge_volume.py`와 코치 쪽 연결 `tests/unit/test_judges.py`의 기준 음량 · 실패 시험)는 말 속도와 같은 명령으로 돈다(`pace.md` 10절).
 - 테스트가 볼 것: 작음 · 기준과 같을 때, 기준 음량 없음 · 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기와 창 안에 끊김이 없을 때, 긴 침묵을 한 번만 셈, 같은 1초 두 번(먼저 온 것), `baseline` 표본 부족 · 충분, 마지막 조각(1000 미만).
 
 # 11. 배포
-**어디서 도는가**: 판정 모듈 `src/volume/`(`examples/` 포함)를 AI 서비스의 `features/volume/`로 폴더째 옮기고, 테스트는 `tests/unit/volume/`로 옮긴다. 자기 HTTP 엔드포인트는 없고, 라우터가 `Judges` 묶음에 `judge` · `summarize` · `criteria` · `speaking_levels` · `baseline`을 넣어 코치에 넘긴다(`architecture.md` 8절). 의존성은 pydantic 하나다.
+**어디서 도는가**: 판정 모듈(`examples/` 포함)은 AI 서비스의 `features/volume/`에 있다(연구 폴더 `src/volume/`에서 폴더째 옮겼다). 테스트는 `ai-service.md` 6-1 2번대로 모두 `tests/unit/volume/`로 옮겼다. 예시를 연구 폴더 경로로 찾던 `test_examples.py`는 패키지 위치로 찾게 고쳐 옮겼다. 연구 폴더에는 연구 도구를 쓰는 테스트가 없어 남긴 테스트가 없다. 자기 HTTP 엔드포인트는 없고, 라우터가 `Judges` 묶음에 `judge` · `summarize` · `criteria` · `speaking_levels` · `baseline`을 넣어 코치에 넘긴다(`architecture.md` 8절). 의존성은 pydantic 하나다. 코치 앱 연결(`evaluate` · `finalize`)은 이어지는 작업이다(`coach-agent.md` 11절).
 
 **FE와 함께 할 것**: 음량 1초 기록 만들기(에너지 차분 · 한 기준의 '말하는 중' · `audio_live`), WS `metrics.voice` 전송, 발표 전 점검의 평소 목소리 측정. BE는 `calibrations.base_level_db` 새 칸과 `take_metric_seconds.voice`를 마이그레이션한다.
 
 **환경변수**: 소리 크기 모듈은 환경변수를 읽지 않는다.
 
 **옮긴 뒤 같은 결과인지 확인**
-1. 서비스: 옮긴 `tests/unit/volume/`가 그대로 통과한다.
+1. 서비스: 옮긴 `tests/unit/volume/`가 (예시 경로를 고친 뒤) 통과한다. 옮기기 전후 `examples/`의 `judge` · `speaking_levels` · `baseline` · `summarize` · `criteria` 출력과 `criteria_version`(`volume-1.1+19f685ae6d67`)이 바이트까지 같다(2026-10-28).
 2. 코치 연구 폴더: 대역 대신 이 모듈로 재생 · 실험을 다시 돌리고 달라진 판정(에너지 Leq 등)을 README에 기록한다.
 
 **증상별 원인**
@@ -374,6 +373,7 @@ sequenceDiagram
 - Take 첫 발화로 잡은 기준 음량은 처음부터 작게 말하면 낮게 잡힌다(그때 `voice_diff_db`는 Take 안의 변화만 뜻한다).
 - 기준 음량이 잡히기 전(첫 발화 십여 초) `VOLUME`은 잴 수 없다.
 - 1초 기록은 마이크 레벨의 파생값이라 마이크 자동 조절을 끄지 못한 기기(일부 브라우저 · 블루투스 마이크)에서는 판정이 흔들린다.
+- 측정 트랙을 얻지 못했는지 · 브라우저가 가공을 끄지 않았는지는 저장하지 않는다. 그래서 Take 결과만으로는 그 Take의 음량을 믿을 수 있는지 확인할 수 없다(필요해지면 #609).
 - FE가 음량 1초 기록을 만들지 않거나 BE가 `metrics`를 받지 않으면 이 모듈은 입력이 없다(잴 수 없음으로 둔다).
 
 # 16. 확정 값 한눈에
@@ -386,4 +386,4 @@ sequenceDiagram
 | Take 지표 | `level_db` · `voice_diff_db` · `low_ratio` · `measured_ratio` (+ 코치가 붙이는 `base_level_source`), `long_silence_count` · `measured_ratio` | 5-3 |
 | 버전 | `volume-1.1` · `criteria_version` `volume-1.1+<config 해시 12자리>` | 9절 |
 | 저장 | `calibrations.base_level_db`(새 칸), `take_metric_seconds.voice`, Take 결과 `areas.VOLUME` · `PAUSE`, `take_summaries.volume` | 12-1 |
-| 의존성 | pydantic 하나, Python 3.12, 폴더 `ai/research/volume-analysis/` | 4절 · 11절 |
+| 의존성 | pydantic 하나, Python 3.12, 서비스 `features/volume/` (연구 폴더 `ai/research/volume-analysis/`) | 4절 · 11절 |

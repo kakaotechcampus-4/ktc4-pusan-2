@@ -377,9 +377,7 @@ export function DeviceCheckPage() {
 
   return (
     <ScreenFrame
-      screenNo="09"
-      screenName="시작 전 세팅 (Take 준비)"
-      entry="진입 · 피치 생성 완료 / 리포트의 다시 연습하기"
+      screenName="시작 전 세팅"
       title={info?.title ?? combo?.title ?? '불러오는 중…'}
       subtitle={subtitle}
       badge={`TAKE ${takeNumber || '—'} · 시작 전 세팅`}
@@ -400,7 +398,7 @@ export function DeviceCheckPage() {
       */}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-4">
-          <div className="aspect-video w-full">
+          <div className="aspect-video max-h-[360px] w-full">
             <GazeSetupView
               frameRef={cal.frameRef}
               boxRef={cal.boxRef}

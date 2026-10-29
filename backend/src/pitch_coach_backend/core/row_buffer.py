@@ -56,6 +56,8 @@ class RowBuffer[T]:
         self._task: asyncio.Task[bool] | None = None
         # 넣을 곳이 지워졌다. 더 받지 않는다
         self._gone = False
+        # 넣을 곳이 지워진 걸 알았을 때 부른다. 쓰는 쪽이 붙였다 뗀다 (발표 중 스트림이 끊는다)
+        self.on_gone: Callable[[], None] | None = None
         # 끝냈다 (`seal`). 더 받지 않는다
         self._sealed = False
         # 이어서 실패한 횟수와 다시 넣을 타이머. 타이머가 걸려 있는 동안은 백그라운드로 넣지 않는다
@@ -64,6 +66,11 @@ class RowBuffer[T]:
 
     def __len__(self) -> int:
         return len(self._rows)
+
+    @property
+    def gone(self) -> bool:
+        """넣을 곳이 지워졌다 (`gone_errors`). 더 받지 않는다."""
+        return self._gone
 
     @property
     def pending(self) -> bool:
@@ -145,6 +152,8 @@ class RowBuffer[T]:
                     self._gone = True
                     self._rows.clear()
                     self._cancel_retry()
+                    if self.on_gone is not None:
+                        self.on_gone()
                     return False
                 except BaseException as e:
                     if self._closed:

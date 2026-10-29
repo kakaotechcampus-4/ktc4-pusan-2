@@ -31,10 +31,15 @@ def test_feature_paths_are_listed_without_api_prefix() -> None:
     assert paths == {
         "/health",
         "/ready",
+        "/scripts/parse",
         "/scripts/rubric",
         "/takes/analyze",
         "/takes/rescore",
+        "/coach/evaluate",
+        "/coach/finalize",
         "/coach/plan",
+        "/takes/review",
+        "/evaluation-criteria/parse",
     }
 
 
@@ -57,3 +62,15 @@ def test_coach_plan_documents_only_422_and_500_as_errors() -> None:
     responses = json.loads(_export_module().render())["paths"]["/coach/plan"]["post"]["responses"]
     # LLM 실패는 기본 계획 200 이라 502 · 503 · 504 를 내지 않는다
     assert set(responses) == {"200", "422", "500"}
+
+
+def test_coach_evaluate_and_finalize_document_their_errors() -> None:
+    """evaluate 는 코치 안 예외도 200(INTERNAL_ERROR)이라 422 · 500 만, finalize 는 409 도."""
+    import json
+
+    paths = json.loads(_export_module().render())["paths"]
+    assert set(paths["/coach/evaluate"]["post"]["responses"]) == {"200", "422", "500"}
+    finalize = paths["/coach/finalize"]["post"]["responses"]
+    assert set(finalize) == {"200", "409", "422", "500"}
+    schema = finalize["409"]["content"]["application/json"]["schema"]
+    assert schema == {"$ref": "#/components/schemas/ErrorResponse"}

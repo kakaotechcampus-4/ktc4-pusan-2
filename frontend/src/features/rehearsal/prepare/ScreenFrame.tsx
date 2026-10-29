@@ -14,9 +14,7 @@ import type { ReactNode } from 'react';
  * 겉모양은 리포트 · 홈과 같은 진한 테두리 · 각진 모서리 · 밀린 그림자입니다 (시안 09, 공용 `Card` · `Button`).
  */
 export function ScreenFrame({
-  screenNo,
   screenName,
-  entry,
   title,
   subtitle,
   badge,
@@ -25,10 +23,8 @@ export function ScreenFrame({
   actions,
   children,
 }: {
-  screenNo: string;
+  /** 화면 읽기 프로그램용 제목입니다. 화면에는 띄우지 않습니다 */
   screenName: string;
-  /** 이 화면으로 들어오는 길 — 시안의 머리말입니다 */
-  entry: string;
   title: string;
   subtitle: string;
   badge: string;
@@ -38,13 +34,9 @@ export function ScreenFrame({
   children: ReactNode;
 }) {
   return (
-    <div className="pitch-create min-h-full bg-greige px-4 py-5 text-ink [&_.text-stone]:text-ink/80">
+    <div className="pitch-create min-h-full bg-greige px-4 py-5 text-ink [&_.text-stone]:text-ink/80 [&_button:disabled]:opacity-100 [&_button:disabled]:bg-cream [&_button:disabled]:text-ink/80 [&_button:disabled]:border-line-strong [&_button:disabled]:shadow-none">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
-        <div className="flex flex-wrap items-baseline gap-3 px-1">
-          <span className="tabular font-mono text-xs font-bold text-stone">{screenNo}</span>
-          <h1 className="text-lg font-bold">{screenName}</h1>
-          <span className="text-xs text-stone">{entry}</span>
-        </div>
+        <h1 className="sr-only">{screenName}</h1>
 
         <div className="border-2 border-ink bg-panel shadow-[4px_4px_0_var(--color-line)]">
           <header className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-4 [overflow-wrap:anywhere] sm:px-6">

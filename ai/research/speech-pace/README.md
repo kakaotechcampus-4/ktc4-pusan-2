@@ -6,32 +6,38 @@
 - 공통 계약: [docs/ai/architecture.md](../../../docs/ai/architecture.md) 7절
 - Issue: #154
 
-> **진행 중**: 판정 코어(`src/pace/`) · 예시(`src/pace/examples/`) · 테스트(`tests/`)까지 있습니다. 평가 데이터 · 스크립트는 아직 없습니다.
+> **진행 중**: 판정 모듈 · 예시 · 테스트는 AI 서비스로 옮겼습니다(`ai/service/src/pitch_coach_ai/features/pace/` · `ai/service/tests/unit/pace/`). 이 폴더는 평가 데이터 · 스크립트 자리이고, 그것은 아직 없습니다.
 
 ## 폴더 · 파일 지도
+판정 모듈의 원본은 서비스 한 곳입니다. 이 폴더는 서비스를 editable로 설치해 `pitch_coach_ai.features.pace`를 그대로 import합니다.
+
 | 위치 | 하는 일 |
 |---|---|
-| `src/pace/core.py` | 진입 함수 `judge` · `summarize` · `criteria` |
-| `src/pace/schemas.py` | 입력 · 출력 pydantic 모델 (= 계약) |
-| `src/pace/config.py` | 기준값 `PaceConfig`. 값의 해시가 `criteria_version`에 들어갑니다 |
-| `src/pace/version.py` | 기능 버전 `pace-1.0` |
-| `src/pace/examples/` | `judge` · `summarize` · `criteria` 입력 · 출력 예시 JSON. 계약 테스트가 읽습니다 (아래 '예시') |
-| `tests/` | 판정 규칙 · 커서 · 보류 · 계약 테스트 (아래 '테스트') |
+| `pyproject.toml` · `uv.lock` | 서비스(`ai/service`)를 editable로 설치. 판은 서비스 `uv.lock`과 같게 맞춥니다 |
+| 서비스 `features/pace/core.py` | 진입 함수 `judge` · `summarize` · `criteria` |
+| 서비스 `features/pace/schemas.py` | 입력 · 출력 pydantic 모델 (= 계약) |
+| 서비스 `features/pace/config.py` | 기준값 `PaceConfig`. 값의 해시가 `criteria_version`에 들어갑니다 |
+| 서비스 `features/pace/version.py` | 기능 버전 `pace-1.0` |
+| 서비스 `features/pace/examples/` | `judge` · `summarize` · `criteria` 입력 · 출력 예시 JSON. 계약 테스트가 읽습니다 (아래 '예시') |
+| 서비스 `tests/unit/pace/` | 판정 규칙 · 커서 · 보류 · 계약 테스트 (아래 '테스트') |
 
-`src/pace/`는 나중에 AI 서비스의 `features/pace/`로 폴더째 옮깁니다. 코어는 pydantic 말고는 외부 패키지를 쓰지 않고, 다른 판정 모듈을 import하지 않습니다.
+판정 모듈은 이 폴더의 `src/pace/`에서 서비스의 `features/pace/`로 폴더째 옮겼습니다(코드는 그대로, 테스트는 import 접두어와 예시 · 코어 폴더를 패키지 위치로 찾는 것만 바꿈). 코어는 pydantic 말고는 외부 패키지를 쓰지 않고, 다른 판정 모듈을 import하지 않습니다.
 
 ## 실행
-Python 3.12. LLM을 쓰지 않아 `ai/.env`가 필요 없습니다.
+Python 3.12. LLM을 쓰지 않아 `ai/.env`가 필요 없습니다. 테스트는 서비스 폴더에서 돌립니다.
 ```bash
-cd ai/research/speech-pace
+cd ai/service
+uv sync
+uv run python -m pytest tests/unit/pace
+
+cd ../research/speech-pace   # 평가 도구를 쓸 때 (서비스를 editable로 설치)
 uv sync
 uv run ruff check . && uv run ruff format --check .
-uv run python -m pytest
 ```
 
 직접 불러 보기:
 ```python
-from pace.core import judge, summarize, criteria
+from pitch_coach_ai.features.pace.core import judge, summarize, criteria
 
 judge(
     {
@@ -46,7 +52,7 @@ judge(
 ```
 
 ## 예시
-`src/pace/examples/`에 입력 · 출력 JSON이 있습니다. 세 `judge` 예시는 한 발표(단어 68개)를 41초 · 52초에 판정한 것이고, 출력은 지금 코드로 돌린 값입니다. `judge` 입력에는 `t_ms`도 실려 있습니다(입력 모델은 모르는 필드를 무시합니다).
+서비스 `features/pace/examples/`에 입력 · 출력 JSON이 있습니다. 세 `judge` 예시는 한 발표(단어 68개)를 41초 · 52초에 판정한 것이고, 출력은 지금 코드로 돌린 값입니다. `judge` 입력에는 `t_ms`도 실려 있습니다(입력 모델은 모르는 필드를 무시합니다).
 
 | 파일 | 보여 주는 것 |
 |---|---|
@@ -60,21 +66,24 @@ judge(
 import json
 from pathlib import Path
 
-from pace.core import judge
+from pitch_coach_ai.features.pace import core
+from pitch_coach_ai.features.pace.core import judge
 
-inputs = json.loads(Path("src/pace/examples/judge_input.json").read_text(encoding="utf-8"))
+examples = Path(core.__file__).parent / "examples"
+inputs = json.loads((examples / "judge_input.json").read_text(encoding="utf-8"))
 judge(inputs, inputs["t_ms"])  # = judge_output.json
 ```
 
-기준값(`config.py`)을 바꾸면 출력과 `criteria_version`이 달라져 `tests/test_examples.py`가 깨집니다. 그때는 출력 JSON을 다시 만들어 같은 PR에 넣습니다(architecture.md 12절). 입력은 그대로 두고 출력만 다시 만듭니다.
+기준값(`config.py`)을 바꾸면 출력과 `criteria_version`이 달라져 서비스 `tests/unit/pace/test_examples.py`가 깨집니다. 그때는 출력 JSON을 다시 만들어 같은 PR에 넣습니다(architecture.md 12절). 입력은 그대로 두고 출력만 다시 만듭니다(`ai/service`에서).
 ```bash
 uv run python - <<'EOF'
 import json
 from pathlib import Path
 
-from pace.core import criteria, judge, summarize
+from pitch_coach_ai.features.pace import core
+from pitch_coach_ai.features.pace.core import criteria, judge, summarize
 
-ex = Path("src/pace/examples")
+ex = Path(core.__file__).parent / "examples"
 
 def load(name):
     return json.loads((ex / name).read_text(encoding="utf-8"))
@@ -92,7 +101,7 @@ EOF
 다시 만든 뒤에도 `test_examples.py`의 문서 대조 테스트(상태 · 보류 등)가 깨지면, 새 기준값에서 예시가 보여 주려던 상황이 달라진 것이므로 입력을 고칩니다.
 
 ## 테스트
-`uv run python -m pytest`로 모두 돕니다.
+서비스 `tests/unit/pace/`에 있고, `ai/service`에서 `uv run python -m pytest tests/unit/pace`로 모두 돕니다. 이 폴더에는 연구 도구를 쓰는 테스트가 아직 없어 남은 테스트가 없습니다.
 
 | 파일 | 보는 것 |
 |---|---|

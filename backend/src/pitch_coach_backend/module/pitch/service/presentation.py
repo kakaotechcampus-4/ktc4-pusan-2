@@ -16,6 +16,7 @@ from pitch_coach_backend.module.pitch.adapter.storage import (
     upload,
     upload_bytes,
 )
+from pitch_coach_backend.module.pitch.adapter.storage import delete
 from pitch_coach_backend.module.pitch.dto import PresentationDetailDTO, UploadPresentationResultDTO
 from pitch_coach_backend.module.pitch.entity import PresentationVersion
 from pitch_coach_backend.module.pitch.exception import (
@@ -77,9 +78,31 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     return UploadPresentationResultDTO(
         pitch_id=pitch_id,
         presentation_version_id=presentation.id,
-        file_url = generate_presigned_url(presentation_key),
+        file_url=file_url,
         page_count=page_count,
     )
+
+
+def _discard_upload(db: Session, pitch_id: uuid.UUID, version: int, key: str) -> None:
+    """롤백 뒤 같은 발표를 다시 잠그고, 버전 행이 없을 때만 올린 파일을 지운다.
+
+    롤백하면 다음 업로드가 같은 버전 번호 · S3 키를 쓸 수 있다. 확인부터 삭제까지 잠가 그 요청의
+    파일을 지우지 않게 한다. 커밋 응답만 잃었거나 다음 요청이 이미 같은 번호를 저장했으면 남긴다.
+    확인도 못 하면 남기고 원래 실패를 가리지 않게 로그만 남긴다.
+    """
+    try:
+        repository = PitchRepository(db)
+        repository.lock_for_new_version(pitch_id)
+        if not repository.has_presentation_version(pitch_id, version):
+            delete(key)
+    except Exception:
+        logger.warning(
+            "발표자료 업로드 실패 뒤 파일을 정리하지 못해 남긴다 pitch_id=%s version=%d",
+            pitch_id,
+            version,
+        )
+    finally:
+        db.rollback()
 
 
 # 각 발표자료 버전의 상세 정보.
@@ -99,5 +122,5 @@ def get_presentation_detail(db: Session, pitch_id: uuid.UUID, presentation_versi
         file_url=generate_presigned_url(presentation_version.file_key),
         page_count=presentation_version.page_count,
         description=presentation_version.description,
-        created_at=presentation_version.created_at.astimezone(KST).date()
+        created_at=presentation_version.created_at.astimezone(KST).date(),
     )

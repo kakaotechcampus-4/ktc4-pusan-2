@@ -26,6 +26,7 @@ from pitch_coach_backend.module.auth.exception import (
     InvalidAuthorizationRequest,
     InvalidRefreshToken,
     RefreshTokenReused,
+    ServiceNotOpen,
 )
 from pitch_coach_backend.module.auth.state_store import AuthorizationRequest
 from pitch_coach_backend.module.user import service as user_service
@@ -50,6 +51,20 @@ class IssuedSession:
     return_to: str = "/"
 
 
+# --- 출시 전 차단 -------------------------------------------------------
+
+
+def ensure_launched() -> None:
+    """출시 시각(LAUNCH_AT) 전이면 로그인을 막는다. 설정이 비어 있으면 막지 않는다.
+
+    FE 는 기기 시각으로 시작 버튼만 막으므로 주소를 직접 열면 넘어올 수 있다. 실제로 막는 곳은
+    여기다. 사용자·세션은 콜백에서만 생기므로 시작과 콜백 두 곳만 막으면 새로 들어오는 길은
+    없다. 이미 발급된 세션(refresh·보호 API·WS)은 막지 않는다.
+    """
+    if settings.launch_at is not None and datetime.now(UTC) < settings.launch_at:
+        raise ServiceNotOpen()
+
+
 # --- 로그인 시작 ---------------------------------------------------------
 
 
@@ -59,6 +74,7 @@ def start_login(db: Session, *, return_to: str) -> LoginStart:
     browser_token 은 임시 쿠키로 브라우저에 심는다. state 를 훔쳐도 이 쿠키가 없으면
     콜백을 완성할 수 없다 (state 단독보다 한 겹 두껍다).
     """
+    ensure_launched()
     state = state_store.new_state()
     nonce = state_store.new_nonce()
     browser_token = state_store.new_browser_token()
@@ -109,6 +125,10 @@ def complete_login(
     # 로그인을 시작한 브라우저가 맞는지. compare_digest 로 타이밍 차이를 없앤다.
     if not security.constant_time_equals(browser_token, pending.browser_token):
         raise InvalidAuthorizationRequest()
+
+    # 시작에서 막으니 보통은 여기까지 오지 않는다. 막기 전에 시작해 둔 요청(state 는 10분 산다)이
+    # 출시 전에 들어오는 경우다. 구글과 통신하거나 사용자를 만들기 전에 끊는다
+    ensure_launched()
 
     id_token = google.exchange_code_for_id_token(code=code, code_verifier=pending.code_verifier)
     identity = google.verify_id_token(id_token, expected_nonce=pending.nonce)
@@ -211,8 +231,8 @@ def rotate(db: Session, refresh_token: str | None) -> IssuedSession:
     if not refresh_token:
         raise InvalidRefreshToken()
 
-    # 같은 토큰으로 요청이 여럿 동시에 와도 하나씩 처리한다. 잠그지 않으면 셋째 요청이
-    # 둘째가 이미 폐기한 토큰을 이어받으려다 재사용으로 걸려 그 브라우저가 로그아웃된다
+    # 같은 기기의 회전·로그아웃을 하나씩 처리한다. 토큰이 회전해 행이 달라져도 같은 잠금이다.
+    # 유예 재회전과 재사용 탐지도 커밋까지 이 잠금을 유지한다.
     stored = repository.get_refresh_token_for_update(db, security.hash_refresh_token(refresh_token))
     if stored is None:
         raise InvalidRefreshToken()
@@ -284,22 +304,26 @@ def _reject_reuse(db: Session, stored: RefreshToken) -> NoReturn:
     raise RefreshTokenReused()
 
 
-def logout(db: Session, refresh_token: str | None) -> None:
-    """현재 세션의 Refresh 를 폐기한다.
+def logout(db: Session, refresh_token: str | None) -> uuid.UUID | None:
+    """현재 세션의 Refresh 를 폐기하고 그 사용자를 돌려준다. 폐기할 세션이 없으면 None.
 
     이미 발급된 Access 는 최대 15분 살아 있다. 즉시 무효화는 이번 범위가 아니다.
     토큰이 없거나 모르는 값이어도 성공으로 응답한다 — 로그아웃은 멱등해야 하고,
     실패를 알려주면 토큰 존재 여부를 확인하는 통로가 된다.
     """
     if not refresh_token:
-        return
+        return None
 
-    stored = repository.get_refresh_token(db, security.hash_refresh_token(refresh_token))
+    # 먼저 진행하던 회전이 커밋된 뒤 폐기를 시작해야 새로 발급된 토큰도 함께 폐기한다.
+    stored = repository.get_refresh_token_for_update(db, security.hash_refresh_token(refresh_token))
     if stored is None:
-        return
+        return None
 
-    repository.revoke_device(db, user_id=stored.user_id, device_id=stored.device_id)
+    revoked = repository.revoke_device(db, user_id=stored.user_id, device_id=stored.device_id)
     db.commit()
+    # 이미 로그아웃한 토큰으로 다른 기기의 발표 연결까지 반복해서 끊지 않는다.
+    # 회전 전 토큰이어도 살아 있는 후손을 폐기했다면 연결 종료를 알린다.
+    return stored.user_id if revoked else None
 
 
 def refresh_cookie_max_age() -> int:

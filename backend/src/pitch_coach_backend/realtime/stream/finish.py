@@ -40,26 +40,30 @@ MARK_RETRY_SEC = (2.0, 5.0, 15.0, 30.0, 60.0, 120.0)
 FLUSH_METRICS_TIMEOUT_SEC = 5.0
 
 
-async def flush_metrics(take_id: uuid.UUID) -> None:
-    """Take 를 끝내기(`ANALYZING`) 직전이나 앱을 내릴 때 부른다. 남은 1초 원자료 · 장 변경을
-    저장한다.
+async def flush_metrics(take_id: uuid.UUID) -> bool:
+    """Take 를 끝내기(`ANALYZING`) 직전이나 앱을 내릴 때 부른다. 남은 1초 원자료 · 장 변경 ·
+    확정 전사를 저장한다. 확정 전사를 다 저장했으면 True.
 
     Take 뒤 분석이 원자료를 읽으므로 끝난 것으로 적기 전에 다 있어야 한다. 이 뒤로 오는 것은 받지
-    않는다 (`MetricBuffer.seal`). 못 넣어도 끝내기는 계속한다 — 못 넣은 초는 복구 때 빈 구간으로
-    남는다. 백그라운드 저장이 돌고 있으면 그 저장이 끝나기를 기다린다 (같은 락).
+    않는다 (`MetricBuffer.seal`). 1초 원자료 · 장 변경은 못 넣어도 끝내기는 계속한다 — 못 넣은 초는
+    복구 때 빈 구간으로 남는다. 확정 전사는 리포트의 원천이라 버리지 않는다. 못 넣었으면 들고 있다가
+    다시 넣고, 끝내는 쪽은 그 뒤에 끝난 것으로 적는다 (`save_finals`). 백그라운드 저장이 돌고 있으면
+    그 저장이 끝나기를 기다린다 (같은 락).
     """
     record = state.takes.get(take_id)
     if record is None:
-        return
+        return True
     buffers = ((record.metrics, "1초 원자료"), (record.slides, "장 변경"))
     for buffer, _ in buffers:
         buffer.seal()
+    record.finals.seal()
 
     async def flush(buffer: MetricBuffer | SlideBuffer) -> None:
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(buffer.flush(), FLUSH_METRICS_TIMEOUT_SEC)
 
-    await asyncio.gather(*(flush(buffer) for buffer, _ in buffers))
+    await asyncio.gather(*(flush(buffer) for buffer in (record.metrics, record.slides)))
+    saved = await save_finals(take_id)
     for buffer, what in buffers:
         # 못 넣은 행은 여기서 버린다. 끝난 뒤 다시 넣으면 Take 결과 저장과 엇갈린다 (`close`)
         dropped = buffer.close()
@@ -70,6 +74,31 @@ async def flush_metrics(take_id: uuid.UUID) -> None:
                 take_id,
                 dropped,
             )
+
+    return saved
+
+
+async def save_finals(take_id: uuid.UUID) -> bool:
+    """남은 확정 전사를 저장한다. 다 넣었으면 버퍼를 닫고 True. Take 를 끝낸 것으로 적기 전에
+    부른다.
+
+    못 넣었으면 그대로 들고 있다 — 버퍼가 뒤에서 다시 넣고(`RowBuffer`), 끝내는 쪽은 다시 부른 뒤
+    적는다 (`mark_later`). 프로세스가 내려가면 잃는다.
+    """
+    record = state.takes.get(take_id)
+    if record is None:
+        return True
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(record.finals.flush(), FLUSH_METRICS_TIMEOUT_SEC)
+    if record.finals.pending:
+        logger.error(
+            "확정 전사를 다 저장하지 못했다 take=%s 개수=%d",
+            take_id,
+            len(record.finals),
+        )
+        return False
+    record.finals.close()
+    return True
 
 
 async def seal_take(take_id: uuid.UUID) -> FinalizeSnapshot | None:
@@ -110,6 +139,8 @@ class Ending:
     end_reason: str | None
     utterance_ends: list[int] | None
     snapshot: FinalizeSnapshot | None
+    # 확정 전사를 다 저장했다. 아니면 지금 끝난 것으로 적지 않는다 — 분석이 빠진 전사로 돈다
+    finals_saved: bool = True
 
 
 async def seal_and_flush(take_id: uuid.UUID, end_reason: str | None) -> Ending:
@@ -122,8 +153,8 @@ async def seal_and_flush(take_id: uuid.UUID, end_reason: str | None) -> Ending:
         record.metrics.seal()
         record.slides.seal()
         record.coach.seal_inputs()
-    snapshot, _ = await asyncio.gather(seal_take(take_id), flush_metrics(take_id))
-    return Ending(end_reason, utterance_ends_of(take_id), snapshot)
+    snapshot, finals_saved = await asyncio.gather(seal_take(take_id), flush_metrics(take_id))
+    return Ending(end_reason, utterance_ends_of(take_id), snapshot, finals_saved)
 
 
 def start_finalize(
@@ -164,6 +195,10 @@ async def finish_take(
     마저 적는다 (`mark_later`).
     """
     ending = await seal_and_flush(take_id, end_reason)
+    if not ending.finals_saved:
+        # 분석이 읽을 확정 전사가 아직 DB 에 없다. 지금 적으면 리포트에서 빠진다
+        mark_later(take_id, store, ending, coach)
+        return False
     marking = asyncio.ensure_future(store.mark_ended(take_id, end_reason, ending.utterance_ends))
     try:
         # 상한을 넘겨도 적는 일은 멈추지 않는다 (DB 는 늦게라도 커밋한다)
@@ -218,6 +253,9 @@ async def _mark_later(
 
     async def mark() -> bool:
         nonlocal started
+        if not await save_finals(take_id):
+            # DB 가 아직 안 된다. 다음 간격에 전사부터 다시 넣는다
+            raise TimeoutError("확정 전사를 아직 저장하지 못했다")
         if started is None:
             return await store.mark_ended(take_id, ending.end_reason, ending.utterance_ends)
         first, started = started, None

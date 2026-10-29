@@ -8,9 +8,10 @@
   `/scripts` · `/takes` 아래에는 다른 기능 경로도 오므로(`/scripts/parse` · `/takes/review`)
   접두어를 두지 않고 경로를 다 적는다
 - 형태소 분석기(Kiwi)를 쓰므로 시작할 때 불러오고(`WARMUP`), 준비 전에는 503 `NOT_READY` 다
-- LLM: 요청마다 마감 하나(AI 예산 120초, 기능 문서 8절)를 만들어 출력 스키마 다섯 개로 LLM 객체를
-  만든다. 역할 → 묶음 · 출력 상한 · 호출 한 번 시간 제한(`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`)은
-  `settings.LLM_ROLES`. 설정이 없으면 코어에 `llms=None` 을 넘겨 503 `LLM_UNAVAILABLE` 이다.
+- LLM: 요청마다 마감 하나(AI 예산 120초, 기능 문서 8절)를 만들어 그 경로 역할의 출력 스키마로
+  (`/scripts/rubric` 셋 · `/takes/analyze` 둘) LLM 객체를 만든다. 역할 → 묶음 · 출력 상한 ·
+  호출 한 번 시간 제한(`SCRIPT_COVERAGE_LLM_TIMEOUT_SECONDS`)은 `settings.LLM_ROLES`.
+  설정이 없으면 코어에 `llms=None` 을 넘겨 503 `LLM_UNAVAILABLE` 이다.
   캐시는 쓰지 않는다(평가 기준은 BE 가 저장한다)
 - 장별 실패: 코어가 장마다 LLM 오류를 잡아 `failed` 에 담고 200 을 돌려준다.
   대상 장이 모두 실패하거나 입력 오류면 코어의 `CoverageError` 를 공통 에러 본문으로 바꾼다

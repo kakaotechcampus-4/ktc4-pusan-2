@@ -4,11 +4,14 @@ v1.1 시선 엔진(고개 방향 `head_pose` + 기준점 분류기)을 **브라�
 그 엔진을 쓰는 **로컬 데모 화면**입니다.
 
 - `src/engine/` — 엔진. Web Worker 안에서 돌고(DOM 없음), 프레임 판정과 서버로 보내는 1초 기록을 냅니다.
-  프론트엔드는 이 폴더를 통째로 `frontend/src/vendor/gaze/engine/`에 복사해 씁니다([FE로 복사하기](#fe로-복사하기)).
+  AI가 고치는 원본이고, 프론트엔드가 통째로 `frontend/src/vendor/gaze/engine/`에 복사해 씁니다([FE로 복사하기](#fe로-복사하기)).
 - `src/camera/` + `src/worker/` — **카메라 화면 모듈**(`GazeCameraView`). 프론트엔드가 준 상자 하나를 채우고,
   카메라 영상과 그 안에 뜨는 것(얼굴 원, 3D 십자선·화살표, 보정 과녁, 안내 카드, 게이지, 결과, 실시간 상태)을 모두 그립니다.
   얼굴 확인(준비 점검 + 고개 원) → 3점 보정 → 실시간 확인이 이 상자 안에서 끊김 없이 이어집니다.
-  이 두 폴더도 엔진과 나란히 `frontend/src/vendor/gaze/camera/` · `worker/`로 복사합니다([카메라 화면 붙이기](#카메라-화면-붙이기)).
+  `src/worker/`는 엔진과 함께 AI가 고치는 원본이고 프론트엔드가 `frontend/src/vendor/gaze/worker/`로 복사합니다.
+  `src/camera/`(화면 흐름 · 그리기 · 안내 문구)는 **프론트엔드 담당**입니다(#611). 프론트엔드가 넘겨받은 뒤에는 FE 사본이 원본이고,
+  이 폴더의 `src/camera/`는 연구 데모와 브라우저 시험(`npm run smoke`)용으로만 둡니다(동기화하지 않음).
+  넘겨받을 때의 사용법은 [카메라 화면 붙이기](#카메라-화면-붙이기)입니다.
 - `src/demo/` — 로컬 데모 페이지. **프론트엔드 페이지의 대역**입니다. 상자 크기, 전체 화면, 시작 카드, 실시간 개발 패널처럼
   카메라 화면 바깥은 원래 프론트엔드가 맡으니, 데모는 모듈의 이벤트만 받아서 그립니다.
 - 다른 곳(OTHER)을 보면 **어느 쪽인지**(발표자 기준 8방향)가 붙고, 프레임 판정을 1초 기록으로 모아
@@ -38,8 +41,8 @@ npm run dev        # http://localhost:5180
 `카메라 켜고 시작하기`를 누르면 **전체 화면 하나**에서 아래가 버튼 없이 이어집니다. 화면 가운데의 **원 하나**가
 모든 단계를 잇습니다. 처음엔 얼굴을 담고, 고개를 돌리면 눈금이 켜지고, 그다음 보정 과녁이 됩니다.
 
-**맡는 범위: 카메라 화면 안쪽만.** 카메라와 인식은 AI 파트가 맡고, 전체 화면으로 띄우는 일과 그 바깥 페이지는
-프론트엔드가 맡습니다. 그래서 화면을 둘로 나눴습니다.
+**맡는 범위**: 엔진 · Worker(카메라 영상 인식과 판정)는 AI, 카메라 화면 안쪽과 그 바깥 페이지는 프론트엔드입니다(#611).
+이 폴더의 카메라 화면은 연구 데모 · 브라우저 시험용 판입니다. 데모는 화면을 둘로 나눠 보여 줍니다.
 
 - **카메라 화면 모듈**(`src/camera/`): 받은 상자를 꽉 채웁니다. 상자 크기는 정하지 않고 따라갑니다. 창 크기가 아니라 상자 크기로
   배치가 바뀌고(컨테이너 쿼리), 클래스 이름은 모두 `gzc-`로 시작해서 프론트엔드 스타일(Tailwind)과 섞이지 않습니다.
@@ -79,7 +82,7 @@ npm run dev        # http://localhost:5180
 - 화면 가운데부터 보는 이유: 원이 이미 가운데에 있어 사용자가 그 자리를 보고 있기 때문입니다. 렌즈와 화면 가운데가
   모이면 바로 카메라 위치를 판정하고, 대본 자리는 마지막입니다.
 - 미리보기는 거울상입니다. 엔진은 항상 원본 프레임을 받습니다.
-- 얼굴 가이드(타원 + 십자)는 얼굴 랜드마크 6개로 그리고, 초당 8번 오는 결과를 화면 주사율로 부드럽게 따라갑니다.
+- 얼굴 가이드(타원 + 십자)는 얼굴 랜드마크 7개(이마 · 턱 · 양쪽 얼굴 옆 · 양쪽 눈꼬리 · 코끝)로 그리고, 초당 8번 오는 결과를 화면 주사율로 부드럽게 따라갑니다.
 - 실시간 테두리는 청중 초록 2px, 화면·대본 노랑 5px, 판정 불가 빨강 점선 5px입니다. 데모 페이지가 1초 기록이
   하나 끝날 때마다 그 상태를 세 구역으로 접어(청중 / 화면·대본 / 그 밖은 판정 불가) `setZone()`으로 넘깁니다.
   서버로 가는 1초 기록은 접지 않고 여섯 상태 그대로입니다.
@@ -96,7 +99,7 @@ npm run dev        # http://localhost:5180
 
 ```
 web/
-├── src/camera/                    ★ 카메라 화면 모듈 — 프론트엔드에 넣을 폴더
+├── src/camera/                    카메라 화면 모듈 — 연구 데모 · 브라우저 시험용 (화면은 FE 담당, #611)
 │   ├── index.ts                   GazeCameraView와 타입 — 진입점
 │   ├── view.ts                    상자 하나를 채우는 화면: 영상, 프레임 펌프, 설정 흐름(①②③ → 결과), 실시간 표시, 이벤트
 │   ├── camera.css                 .gzc 아래로만 적용되는 스타일 (gzc- 접두사, 컨테이너 쿼리)
@@ -118,7 +121,7 @@ web/
 │   ├── sweep.ts                   고개 원 확인 (방향별 칸, 놓친 방향, 힌트)
 │   ├── gauge.ts                   보정 게이지
 │   ├── reference.ts               기준점 분류기 + 품질 판정 + SCREEN 합치기 + OTHER 방향
-│   ├── evidence.ts                프레임 판정 → 1초 기록 (기기 밖으로 나가는 유일한 값)
+│   ├── evidence.ts                프레임 판정 → 1초 기록 (발표 중 기기 밖으로 나가는 값)
 │   ├── placement.ts               카메라 배치 판정
 │   ├── condition.ts               촬영 중 조건 감시 (신뢰도)
 │   ├── math.ts                    log Φ(scipy log_ndtr 동일 분기), logsumexp, median
@@ -126,7 +129,8 @@ web/
 │   ├── types.ts
 │   └── __tests__/                 엔진 테스트(engine · parity · scenarios)와 Python 기준 답(fixtures/parity.json). 엔진과 같이 옮긴다
 ├── test/                          vitest — fe-contract(FE의 실제 시선 코드를 이 엔진에 붙여 실행) · 엔진 import 경계 · Worker · 자산 검증
-├── scripts/                       copy-assets · smoke · bench (Node) (Python 생성기는 `../tools/`)
+├── scripts/                       copy-assets · smoke · bench, 모델 해시 · 런타임 판 검사 verify-assets (Node) (Python 생성기는 `../tools/`)
+├── package.json · package-lock.json · vite.config.ts · .oxlintrc.json · .prettierrc · .prettierignore   npm 명령 · 의존성, 개발 서버 · 별칭 · 테스트 수집, 린트 · 서식
 ├── bench.html, src/bench.ts       화면 없는 성능 측정 페이지
 └── tsconfig.json / tsconfig.fe.json (FE 컴파일러 옵션 그대로) / tsconfig.engine.json (DOM 없이 Worker 전역만) / tsconfig.node.json
     tsconfig.json · tsconfig.fe.json · vite.config.ts는 `@/vendor/gaze/*`를 이 폴더의 `src/*`로, 나머지 `@/*` · `@fe/*`를 `frontend/src`(읽기 전용)로 찾음
@@ -146,12 +150,12 @@ web/
 ## 검증
 
 ```bash
-npm test             # vitest 198개
+npm test             # vitest 208개
 npm run typecheck    # tsc 4번: 전체 / 설정 파일 / FE 컴파일러 옵션(tsconfig.fe.json: 엔진·Worker·카메라 화면 + FE 시선 코드) / DOM 없는 엔진(tsconfig.engine.json)
 npm run lint         # FE 와 같은 oxlint 규칙(--max-warnings=0)으로 엔진 · Worker
 npm run smoke        # 헤드리스 Chrome + 가짜 카메라로 데모 전체 (검사 23개, 화면 캡처 .cache/screens/)
 npm run smoke:prod   # 같은 검사를 운영처럼 격리 헤더(COOP/COEP) 없이
-npm run bench        # Worker 프레임당 ms (CPU·GPU delegate), -- --no-isolation 으로 격리 헤더 없이
+npm run bench        # Worker 프레임당 ms (CPU·GPU delegate), -- --no-isolation 으로 격리 헤더 없이. 먼저 smoke 를 한 번 돌려 .cache/static_face.y4m 을 만든다
 npm run fixtures     # Python에서 defaults.generated.ts와 기준 답 다시 생성 (Python 쪽을 바꾼 뒤)
 ```
 
@@ -163,6 +167,7 @@ npm run fixtures     # Python에서 defaults.generated.ts와 기준 답 다시 �
 | FE 계약 | FE의 실제 `workers/modelClassifier.ts` · `aiAdapter.ts` · `calibrationModel.ts`를 이 엔진에 붙여(`@/vendor/gaze` → `src`, MediaPipe만 가짜 검출기) 실행 — 버전, 배치 → 보정 → 발표 화면의 새 엔진에 보정 모델 넘기기 → 프레임 → `GazeSlicer` 1초 기록(8필드, 마지막 조각은 Take 끝에서), 얼굴 없음은 `UNMEASURED`, 다른 설정의 보정 모델 거절, 재측정 권장 보정(`POOR` + 안내), `ANCHOR_AMBIGUOUS`, 보정에 쓴 엔진을 이어 쓰면 Take 시각이 밀림 | 8개 통과 |
 | 엔진 시작 · 실패 | 지원 확인, 지원하지 않는 브라우저, 제한 시간(늦게 온 검출기는 닫음), 로딩 실패 사유 (MediaPipe를 가짜로 바꿔 Node에서) | 6개 통과 |
 | 엔진 경계 | 엔진 폴더가 바깥(React · DOM · 카메라 화면 · 데모)을 import하지 않고, 저장 · 전송 · 로그 API(`localStorage` · `indexedDB` · `fetch` · `console` …)를 쓰지 않음. `contract.ts`에서 이어지는 import가 MediaPipe에 닿지 않음 | 40개 통과 |
+| 카메라 화면 경계 | `src/camera/`가 엔진을 `index.ts`(타입만) · `contract.ts`로, Worker를 `worker/protocol.ts`로만 부르는지(FE가 넘겨받은 화면이 엔진 안쪽에 묶이지 않게, #611). 화면이 `new Worker(new URL(…, import.meta.url))`로 띄우는 대상이 모두 `../worker/gaze.worker.ts`이고 그 파일이 있는지(설계 문서 5-6 'Worker 메시지') | 10개 통과 |
 | Worker | 프레임 처리 중 예외에도 그 프레임에 답하고 오류는 연속 실패당 한 번, 시작 실패 사유 | 2개 통과 |
 | 자산 | `npm run assets`가 모델 sha256 · MediaPipe 버전이 `../artifacts/face_landmarker.task.json`과 같을 때만 복사 | 3개 통과 |
 | FE에서 컴파일되는가 | `tsconfig.fe.json` = FE `tsconfig.app.json` 옵션(`erasableSyntaxOnly`, `noUnusedLocals/Parameters`, JSON import 없음 …)으로 엔진·Worker·카메라 화면 모듈과, 그것을 쓰는 FE 코드(`workers/modelClassifier.ts` · `workers/gaze.worker.ts`) | 통과 |
@@ -214,15 +219,19 @@ for (const sample of slicer.flush(takeLengthMs)) post(sampleToDict(sample));  //
 
 ## FE로 복사하기
 
-프론트엔드는 `src/engine/` · `src/camera/` · `src/worker/`를 `frontend/src/vendor/gaze/`에 복사해 씁니다
+프론트엔드는 `src/engine/` · `src/worker/`를 `frontend/src/vendor/gaze/`에 복사해 씁니다. 카메라 화면(`src/camera/`)은 넘겨받을 때 한 번 복사하고 그 뒤로는 프론트엔드가 고칩니다
 ([설계 문서](../../../../docs/ai/features/gaze-tracking.md) 11절). 이 폴더에서는 프론트엔드 코드를 고치지 않습니다.
 
-1. **복사** — 세 폴더를 통째로(엔진 `__tests__`와 기준 답 포함) `vendor/gaze/engine` · `camera` · `worker`로 복사하고,
-   복사한 기준 커밋을 `vendor/gaze/README.md`에 적습니다. 엔진 안은 고치지 않습니다. 고칠 것은 이 폴더에서 고쳐 다시 복사합니다.
+1. **복사** — 엔진 · Worker 두 폴더를 통째로(엔진 `__tests__`와 기준 답 포함) `vendor/gaze/engine` · `worker`로 복사하고,
+   복사한 기준 커밋을 `vendor/gaze/README.md`에 적습니다. 엔진 · Worker 안은 고치지 않습니다. 고칠 것은 이 폴더에서 고쳐 다시 복사합니다.
+   카메라 화면(`camera/`)은 프론트엔드 담당이라(#611) 넘겨받을 때 이 폴더 판을 마지막으로 한 번 복사하고, 그 뒤로는 프론트엔드가 고칩니다.
 2. **import** — 엔진은 `index.ts`와 `contract.ts`만 씁니다.
    - `index.ts`: `createClassifier`. MediaPipe를 불러오므로 Worker 안에서 동적 import로 부릅니다.
    - `contract.ts`: MediaPipe 없이 쓰는 값(`CONFIG_HASH` · `makeConfig` · `frameFromDecision` · `GazeSlicer` · `sampleToDict` · `SCREEN_MERGED_WARNING` · 타입).
-   - 카메라 화면은 `camera/index.ts` · `camera/text.ts`로 씁니다.
+   - 카메라 화면은 `camera/index.ts` · `camera/text.ts`로 씁니다. 카메라 화면 자신은 엔진을 `index.ts`(타입만) · `contract.ts`로,
+     Worker를 `worker/protocol.ts`로만 부르고 `worker/gaze.worker.ts`를 URL로 띄웁니다(`test/camera-boundary.test.ts`). 그래서 엔진 안쪽 파일이 바뀌어도 화면은 그대로 돕니다.
+     Worker 엔트리 경로와 폴더 배치는 설계 문서 5-6 'Worker 메시지'의 계약입니다.
+     화면 문구를 고를 때 쓰는 엔진 코드 목록과 뜻은 설계 문서 5-6 '화면이 쓰는 엔진 코드'이고, 이유 코드 타입(`InvalidReason` · `GaugeReason` 등)은 `index.ts`에서 `import type`으로 가져옵니다.
    - 타입만 쓰는 import(`import type`)는 실행 코드에 남지 않으므로 `index.ts`에서 가져와도 됩니다.
 3. **자산** — `frontend/public/models/`에 아래 파일을 둡니다(`npm run assets`가 만드는 `public/models/`와 같은 구성).
    운영 빌드(이미지)에도 들어가야 엔진이 시작합니다.
@@ -244,7 +253,9 @@ for (const sample of slicer.flush(takeLengthMs)) post(sampleToDict(sample));  //
 
 ### 카메라 화면 붙이기
 
-`src/camera/`, `src/worker/`, `src/engine/`은 서로 상대 경로로 부르므로 `vendor/gaze/` 아래에 나란히 둡니다.
+이 절은 프론트엔드가 카메라 화면을 넘겨받을 때의 지금 판 사용법입니다. 넘겨받은 뒤 화면을 어떻게 바꿀지는 프론트엔드가 정합니다.
+
+`src/camera/`, `src/worker/`, `src/engine/`은 서로 상대 경로로 부르므로 `vendor/gaze/` 아래에 나란히 둡니다(이 배치와 Worker 엔트리 경로는 설계 문서 5-6 'Worker 메시지'의 계약).
 프론트엔드가 할 일은 **상자, 카메라 스트림, 결과 처리** 셋입니다. 상자 안은 모듈이 그립니다.
 
 ```tsx
@@ -286,7 +297,7 @@ function GazeCamera({ stream, onCalibrated }: { stream: MediaStream; onCalibrate
 | `attach(stream)` / `detach()` | 스트림을 보여 주고 분석 시작 / 멈춤 (`idle`에서도 얼굴 십자선과 인식 상태는 보임) |
 | `startSetup('align' \| 'calib')` | ① 준비 점검부터, 또는 고개 원을 둔 채 ③ 세 지점부터 |
 | `goLive()` / `cancel()` | 실시간 / 영상만 (`idle`) |
-| `useCalibration(model)` | 이번 세션에서 받은 `SetupResult.model`을 (새) Worker에 넣고 바로 실시간. 다른 엔진·설정의 값이면 `false` |
+| `useCalibration(model)` | 이번 세션에서 받은 `SetupResult.model`을 (새) Worker에 넣고 바로 실시간. 보정 모델의 모양이 맞지 않으면 `false`(설정 해시가 지금 엔진과 같은지는 부르는 쪽이 본다. FE는 `fitsCurrentEngine`) |
 | `reanchor()` | 실시간에서 렌즈를 1초 보면 기준점을 옮김(결과는 화면 알림과 `reanchor` 이벤트) |
 | `setZone(zone)` | 페이지가 정한 구역을 테두리로 (`CAMERA` / `BOTTOM` / `UNCERTAIN` / `null`). 데모는 최근 1초 기록을 접어 넘김 |
 | `destroy()` | 타이머·Worker·DOM 정리 |
@@ -311,7 +322,7 @@ function GazeCamera({ stream, onCalibrated }: { stream: MediaStream; onCalibrate
 
 **보정 모델은 메모리 전용입니다.** `model.scene`에 얼굴 측정값(얼굴 위치 · 면적, 홍채 픽셀 크기, 카메라까지 거리)이 들어 있어
 IndexedDB · localStorage · 서버 어디에도 저장하거나 보내지 않습니다. 순수 데이터라 같은 세션 안에서는 `structuredClone`으로
-새 Worker에 넘길 수 있고, 다음 세션에서는 다시 보정합니다(지점마다 약 2초). 기기 밖으로 나가는 것은 1초 기록뿐입니다.
+새 Worker에 넘길 수 있고, 다음 세션에서는 다시 보정합니다(지점마다 약 2초). 기기 밖으로 나가는 것은 발표 중 1초 기록과 발표 전 보정 결과 요약뿐입니다.
 
 `decision`은 엔진의 프레임 판정 그대로입니다. 서버로 보낼 1초 기록은 `contract.ts`의 `frameFromDecision` · `GazeSlicer`로
 만듭니다([에이전트 입력](#에이전트-입력-코치리뷰)). 데모 페이지(`src/demo/main.ts`)는 1초 기록을 모아 개발 패널과 테두리에 씁니다.
@@ -323,7 +334,7 @@ IndexedDB · localStorage · 서버 어디에도 저장하거나 보내지 않�
 | Worker 안에서 동작 (DOM 없음) | ✅ 모듈 Worker에서 MediaPipe 로드·검출, OffscreenCanvas 밝기 |
 | Vite 개발 서버 | ✅ 동적 import에 `?import`가 붙어 막히는 문제를 자산 경로를 절대 URL로 바꿔 해결 (엔진 안에서 처리) |
 | 입력 | ✅ `ImageBitmap`. 엔진은 비트맵을 닫지 않습니다(FE 규칙대로 호출부가 닫음) |
-| 보정 모델 | ✅ 메모리 전용(저장 · 전송 안 함). 순수 데이터라 같은 세션의 새 Worker에 `structuredClone`으로 넘김. 스키마나 설정이 다르면 `calibrate()`가 거절 |
+| 보정 모델 | ✅ 메모리 전용(저장 · 전송 안 함). 순수 데이터라 같은 세션의 새 Worker에 `structuredClone`으로 넘김. 모양(스키마 · 필수 구조)이 다르면 `calibrate()`가 거절하고, 설정 해시(`configHash`)는 FE가 비교 |
 | 출력 키 | ✅ Python `to_dict()`와 같은 이름이라 FE `aiAdapter.ts`가 그대로 변환 |
 | FE 컴파일러 옵션 | ✅ `tsconfig.fe.json`으로 엔진 · 카메라 화면 · Worker와 그것을 쓰는 FE 코드를 함께 검사 |
 | 격리 헤더 없이 | ✅ 운영 서버(Caddy)에 COOP/COEP가 없어도 동작 (`npm run smoke:prod`, `crossOriginIsolated=false`) |
@@ -333,8 +344,8 @@ IndexedDB · localStorage · 서버 어디에도 저장하거나 보내지 않�
 
 ### FE 연동 시 확인할 것
 
-프론트엔드는 지금 이 엔진의 `1f92351` 판을 복사해 쓰고 있습니다(엔진 · 카메라 화면 · Worker 모두 그 판과 같음).
-지금 판을 다시 복사하면 엔진 파일 6개가 바뀝니다.
+프론트엔드 사본(`frontend/src/vendor/gaze/`, 기준 커밋은 그 폴더 README)은 2026-10-28 `develop-next`에서 이 폴더의 엔진 · 카메라 화면 · Worker와 파일 내용이 같습니다. 카메라 화면은 프론트엔드가 넘겨받은 뒤에는 이 폴더와 달라도 됩니다.
+아래 표는 그 전 사본(`1f92351` 판)에서 지금 판으로 다시 복사할 때 바뀐 엔진 파일 6개의 기록입니다.
 
 | 바뀌는 것 | 무엇이 | 프론트엔드에 주는 영향 |
 |---|---|---|

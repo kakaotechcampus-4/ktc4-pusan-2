@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.core.exceptions import AppException
+from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.auth import service
 from pitch_coach_backend.module.auth.dependencies import (
     CSRF_COOKIE_NAME,
@@ -37,6 +38,7 @@ from pitch_coach_backend.module.auth.exception import (
     GoogleIdentityRejected,
     GoogleTokenExchangeFailed,
     InvalidAuthorizationRequest,
+    ServiceNotOpen,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -109,19 +111,20 @@ def clear_session_cookies(response: Response) -> None:
 # 구글이 돌려주는 오류 코드는 소문자와 밑줄뿐이다. 그 밖의 값은 URL 에 싣지 않는다.
 _ERROR_CODE = re.compile(r"\A[a-z_]{1,40}\Z")
 
-# 콜백 처리 중 난 도메인 예외 -> 프론트로 넘기는 auth_error. 구글 오류 코드와 같은 모양이다.
-# 프론트는 access_denied 외에는 같은 문구를 보여주므로 원인 추적용이다.
+# 로그인 시작·콜백 처리 중 난 도메인 예외 -> 프론트로 넘기는 auth_error. 구글 오류 코드와 같은
+# 모양이다. 프론트는 access_denied 외에는 같은 문구를 보여주므로 원인 추적용이다.
 # 표에 없는 예외(DB 오류 등)는 login_failed 다
-_CALLBACK_ERROR_CODES: dict[type[Exception], str] = {
+_LOGIN_ERROR_CODES: dict[type[Exception], str] = {
     InvalidAuthorizationRequest: "invalid_request",
     GoogleTokenExchangeFailed: "token_exchange_failed",
     GoogleIdentityRejected: "identity_rejected",
     EmailAlreadyRegistered: "email_already_registered",
+    ServiceNotOpen: "service_not_open",
 }
 
 
-def _callback_error_code(exc: Exception) -> str:
-    return _CALLBACK_ERROR_CODES.get(type(exc), "login_failed")
+def _login_error_code(exc: Exception) -> str:
+    return _LOGIN_ERROR_CODES.get(type(exc), "login_failed")
 
 
 def _safe_return_to(value: str | None) -> str:
@@ -168,12 +171,13 @@ def google_start(
 ) -> RedirectResponse:
     try:
         started = service.start_login(db, return_to=_safe_return_to(return_to))
-    except Exception:
-        # 로그인 버튼이 화면째 이 주소로 옮겨 온다. DB 오류 등으로 500 JSON 을 주면
+    except Exception as e:
+        # 로그인 버튼이 화면째 이 주소로 옮겨 온다. 출시 전이거나 DB 오류 등으로 JSON 을 주면
         # 사용자가 그대로 보므로 콜백 실패와 같이 프론트로 돌려보낸다
-        logger.exception("구글 로그인 시작 중 예상하지 못한 오류")
+        if not isinstance(e, AppException):
+            logger.exception("구글 로그인 시작 중 예상하지 못한 오류")
         return RedirectResponse(
-            _frontend_url("/", auth_error="login_failed"), status_code=status.HTTP_302_FOUND
+            _frontend_url("/", auth_error=_login_error_code(e)), status_code=status.HTTP_302_FOUND
         )
 
     response = RedirectResponse(started.authorization_url, status_code=status.HTTP_302_FOUND)
@@ -232,7 +236,7 @@ def google_callback(
         if not isinstance(e, AppException):
             logger.exception("구글 로그인 콜백 처리 중 예상하지 못한 오류")
         response = RedirectResponse(
-            _frontend_url("/", auth_error=_callback_error_code(e)),
+            _frontend_url("/", auth_error=_login_error_code(e)),
             status_code=status.HTTP_302_FOUND,
         )
         _delete_browser_cookie(response, state)
@@ -267,7 +271,12 @@ def logout(
     refresh_token: Annotated[str | None, Cookie(alias=REFRESH_COOKIE_NAME)] = None,
     _csrf: None = CsrfProtected,
 ) -> LogoutResponse:
-    """이미 발급된 Access 는 최대 15분 살아 있다. 즉시 무효화는 이번 범위가 아니다."""
-    service.logout(db, refresh_token)
+    """이미 발급된 Access 는 최대 15분 살아 있다. 즉시 무효화는 이번 범위가 아니다.
+
+    WS 는 붙을 때만 토큰을 보므로 열려 있는 발표 연결은 여기서 닫는다.
+    """
+    user_id = service.logout(db, refresh_token)
+    if user_id is not None:
+        hooks.live_takes().sign_out(user_id)
     clear_session_cookies(response)
     return LogoutResponse()

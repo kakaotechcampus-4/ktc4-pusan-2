@@ -1,7 +1,8 @@
 """시선 판정 — 연구용 대역.
 
 옛 코치 평가기(PR #131 의 `coach.evaluators.gaze`)의 규칙 · 기준값을 #153 계약 모양으로 옮긴 것이다.
-기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. 숫자는 옛 평가기와 같게 두고 출력 모양만 바꿨다.
+재생 · 실험은 서비스의 시선 모듈을 쓰고(`real_judges()`), 이 대역은 대역 묶음(`lab_judges()`)과
+대역 자체의 테스트에만 쓴다. 숫자는 옛 평가기와 같게 두고 출력 모양만 바꿨다.
 
 센서를 쓸 수 없으면 `GAZE_ON_SCRIPT` 대신 측정 불가 신호 `GAZE_UNMEASURABLE`(actionable false)
 하나만 낸다 (#158: measurable 이 false 면 이슈는 측정 불가 신호뿐). 옛 평가기에는 `GAZE_AWAY` ·

@@ -30,7 +30,7 @@
 | 문서 | 담는 것 |
 |---|---|
 | [frontend/src/features/auth/README.md](../../frontend/src/features/auth/README.md) | 로그인 인증 연동 |
-| [frontend/src/vendor/gaze/README.md](../../frontend/src/vendor/gaze/README.md) | AI 시선 엔진 복사본 (여기서 고치지 않음) |
+| [frontend/src/vendor/gaze/README.md](../../frontend/src/vendor/gaze/README.md) | AI 시선 엔진 · Worker 복사본(여기서 고치지 않음)과 FE 원본 카메라 화면 |
 
 ## FE가 함께 읽는 다른 파트 문서
 

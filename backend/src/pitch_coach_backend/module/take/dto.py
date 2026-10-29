@@ -61,6 +61,18 @@ class TakeHistoryRowDTO(BaseModel):
 class TakeHistoryResponseDTO(BaseModel):
     takes: list[TakeHistoryRowDTO]
 
+class ActiveTakeDTO(BaseModel):
+    """어느 창 · 기기에서 발표 중인 Take. 새 Take 를 시작하기 전에 FE 가 끝낼지 묻는다."""
+
+    take_id: uuid.UUID
+    pitch_id: uuid.UUID
+    pitch_title: str
+    take_number: int
+
+class ActiveTakeResponseDTO(BaseModel):
+    # 발표 중인 Take 가 없으면 null
+    take: ActiveTakeDTO | None
+
 class TakeMeasuresDTO(BaseModel):
     duration_ms: int
     goal_ms: int

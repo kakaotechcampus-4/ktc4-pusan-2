@@ -5,6 +5,7 @@
 /admin 은 Caddy 가 /admin/ 으로 보낸다 — 여기서 보내면 uvicorn 이 https 를 몰라 http 주소가 된다.
 """
 
+import uuid
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -15,7 +16,18 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.core.database import get_db
 from pitch_coach_backend.module.admin import service
 from pitch_coach_backend.module.admin.dependencies import require_admin
-from pitch_coach_backend.module.admin.dto import AdminTakeRow, AdminUserRow, StatsResponse
+from pitch_coach_backend.module.admin.dto import (
+    AdminFeedbackGroupRow,
+    AdminFeedbackRow,
+    AdminPage,
+    AdminRatingSummary,
+    AdminSuggestionRow,
+    AdminTakeRow,
+    AdminUserRow,
+    StatsResponse,
+)
+from pitch_coach_backend.module.service_feedback.dto import SuggestionSource
+from pitch_coach_backend.module.service_feedback.enums import SuggestionCategory
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -72,3 +84,40 @@ def takes(
 @router.get("/api/takes/stuck")
 def stuck_takes(db: Annotated[Session, Depends(get_db)]) -> list[AdminTakeRow]:
     return service.list_stuck_takes(db)
+
+
+@router.get("/api/service-feedbacks", response_model=AdminPage[AdminFeedbackRow])
+def feedbacks(
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminPage[AdminFeedbackRow]:
+    return service.list_feedbacks(db, limit=limit, offset=offset)
+
+
+@router.get("/api/service-feedbacks/summary")
+def rating_summary(db: Annotated[Session, Depends(get_db)]) -> AdminRatingSummary:
+    return service.rating_summary(db)
+
+
+@router.get("/api/service-feedbacks/by-user", response_model=AdminPage[AdminFeedbackGroupRow])
+def feedbacks_by_user(
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminPage[AdminFeedbackGroupRow]:
+    return service.list_feedback_groups(db, limit=limit, offset=offset)
+
+
+@router.get("/api/suggestions", response_model=AdminPage[AdminSuggestionRow])
+def suggestions(
+    db: Annotated[Session, Depends(get_db)],
+    source: SuggestionSource | None = None,
+    category: SuggestionCategory | None = None,
+    user_id: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminPage[AdminSuggestionRow]:
+    return service.list_suggestions(
+        db, source=source, category=category, limit=limit, offset=offset, user_id=user_id
+    )
