@@ -109,17 +109,26 @@ def _discard_upload(
     확인도 못 하면 남기고 원래 실패를 가리지 않게 로그만 남긴다.
     """
     try:
-        if not PitchRepository(db).has_presentation(presentation_id):
-            delete(key)
-            if thumbnail_key is not None:
-                delete(thumbnail_key)
+        exists = PitchRepository(db).has_presentation(presentation_id)
     except Exception:
         logger.warning(
-            "발표자료 업로드 실패 뒤 파일을 정리하지 못해 남긴다 presentation_id=%s",
+            "발표자료 업로드 실패 후 버전 행 확인 중 오류 발생 presentation_id=%s, keys=%s",
             presentation_id,
+            [k for k in (key, thumbnail_key) if k is not None],
+            exc_info=True,
         )
+        return
     finally:
-        db.rollback()
+        db.rollback() # 성공 시 트랜잭션 정리용, 실패 시 잠금 해제용
+
+    if not exists:
+        for k in (key, thumbnail_key):
+            if k is None:
+                continue
+            try:
+                delete(k)
+            except Exception:
+                logger.warning("발표자료 업로드 실패 후 삭제 중 오류 발생 key=%s", k, exc_info=True)
 
 
 # 각 발표자료 버전의 상세 정보.
