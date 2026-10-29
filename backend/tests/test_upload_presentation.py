@@ -1,4 +1,3 @@
-
 import threading
 import time
 import uuid
@@ -22,9 +21,11 @@ from pitch_coach_backend.module.pitch.service import presentation as presentatio
 def upload_mock(monkeypatch) -> MagicMock:
     mock = MagicMock(side_effect=lambda file, key, content_type=None: key)
     # upload 함수를 mock으로 대체
-    monkeypatch.setattr(presentation_service, "upload", mock) 
+    monkeypatch.setattr(presentation_service, "upload", mock)
     # generate_presigned_url 함수를 람다함수로 생성하도록 대체
-    monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}") 
+    monkeypatch.setattr(
+        presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}"
+    )
     return mock
 
 
@@ -32,16 +33,15 @@ def _make_pitch(db: Session, user_id: uuid.UUID, title: str = "기존 발표") -
     return pitch_service.add_pitch_service(
         db,
         user_id,
-        PitchSaveRequestDTO(
-            title=title, time_limit_sec=300, presentation_date=date(2026, 3, 1)
-            ),
+        PitchSaveRequestDTO(title=title, time_limit_sec=300, presentation_date=date(2026, 3, 1)),
     )
 
+
 def test_upload_presentation_service(
-        db_session: Session,
-        user_id: uuid.UUID,
-        upload_mock: MagicMock,
-        make_pdf: Callable[[int], bytes],
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    make_pdf: Callable[[int], bytes],
 ):
     # Given
     pitch_id = _make_pitch(db_session, user_id)
@@ -56,7 +56,6 @@ def test_upload_presentation_service(
     )
     assert result.pitch_id == pitch_id
     assert result.file_url == f"https://fake/{expected_file_key}"
-
 
 
 def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
@@ -83,7 +82,9 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
         return key
 
     monkeypatch.setattr(presentation_service, "upload", slow_upload)
-    monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
+    monkeypatch.setattr(
+        presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}"
+    )
 
     with Session(engine) as setup:
         user = User(email=f"{uuid.uuid4()}@example.com", name="동시 업로드")
@@ -124,4 +125,222 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
     finally:
         with Session(engine) as cleanup:
             cleanup.delete(cleanup.get(User, user_id))  # pitch·버전은 CASCADE
+            cleanup.commit()
+
+
+# ── S3 에 올린 뒤 실패하면 한쪽만 남기지 않는다 ──────────────────────────────
+
+
+@pytest.fixture
+def deleted(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    keys: list[str] = []
+    monkeypatch.setattr(presentation_service, "delete", keys.append)
+    return keys
+
+
+def _upload_one(db: Session, pitch_id: uuid.UUID, make_pdf: Callable[[int], bytes]):
+    file = UploadFile(filename="deck.pdf", file=BytesIO(make_pdf(1)))
+    return presentation_service.upload_presentation_service(
+        db, pitch_id, UploadPresentationDTO(presentation_file=file)
+    )
+
+
+def _versions(db: Session, pitch_id: uuid.UUID) -> list[int]:
+    from pitch_coach_backend.module.pitch.repository import PitchRepository
+
+    return [row.version for row in PitchRepository(db).get_presentations(pitch_id)]
+
+
+def test_url_failure_leaves_neither_a_version_nor_the_file(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    deleted: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+):
+    """조회 URL 은 커밋 전에 만든다. 커밋 뒤에 실패하면 오류를 받은 사용자가 다시 올려 버전이
+    하나 더 생긴다."""
+    pitch_id = _make_pitch(db_session, user_id)
+
+    def broken(key: str) -> str:
+        raise RuntimeError("presign failed")
+
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", broken)
+
+    with pytest.raises(RuntimeError):
+        _upload_one(db_session, pitch_id, make_pdf)
+
+    assert _versions(db_session, pitch_id) == []
+    assert deleted == [f"pitches/{pitch_id}/presentations/1.pdf"]
+
+
+def test_save_failure_deletes_the_uploaded_file(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    deleted: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+):
+    from pitch_coach_backend.module.pitch.repository import PitchRepository
+
+    pitch_id = _make_pitch(db_session, user_id)
+
+    def broken(self, presentation):
+        raise RuntimeError("insert failed")
+
+    monkeypatch.setattr(PitchRepository, "save_presentation", broken)
+
+    with pytest.raises(RuntimeError):
+        _upload_one(db_session, pitch_id, make_pdf)
+
+    assert deleted == [f"pitches/{pitch_id}/presentations/1.pdf"]
+
+
+def test_failed_commit_deletes_the_file_only_when_the_version_is_missing(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    deleted: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+):
+    pitch_id = _make_pitch(db_session, user_id)
+
+    def broken() -> None:
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(db_session, "commit", broken)
+
+    with pytest.raises(RuntimeError):
+        _upload_one(db_session, pitch_id, make_pdf)
+
+    assert _versions(db_session, pitch_id) == []
+    assert deleted == [f"pitches/{pitch_id}/presentations/1.pdf"]
+
+
+def test_commit_whose_reply_was_lost_keeps_the_file(
+    db_session: Session,
+    user_id: uuid.UUID,
+    upload_mock: MagicMock,
+    deleted: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+):
+    """커밋은 됐는데 응답 전에 연결이 끊겼다. 버전 행이 가리키는 파일을 지우면 그 버전을 열 수
+    없다."""
+    pitch_id = _make_pitch(db_session, user_id)
+    real_commit = db_session.commit
+
+    def lost_reply() -> None:
+        real_commit()
+        raise RuntimeError("connection lost after commit")
+
+    monkeypatch.setattr(db_session, "commit", lost_reply)
+
+    with pytest.raises(RuntimeError):
+        _upload_one(db_session, pitch_id, make_pdf)
+
+    assert _versions(db_session, pitch_id) == [1]
+    assert deleted == []
+
+
+@pytest.mark.parametrize("next_upload_first", [False, True])
+def test_failed_upload_cleanup_does_not_delete_the_next_upload(
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    make_pdf: Callable[[int], bytes],
+    next_upload_first: bool,
+):
+    """롤백하면 같은 버전 번호를 다시 쓴다. 다음 업로드가 정리 전이나 정리 중에 와도 그 파일을
+    지우지 않아야 한다. 잠금 확인에는 savepoint 대신 별도 트랜잭션 둘을 쓴다."""
+    from pitch_coach_backend.module.pitch.entity import Pitch
+    from pitch_coach_backend.module.user.entity import User
+
+    cleanup_started = threading.Event()
+    release_cleanup = threading.Event()
+    next_uploaded = threading.Event()
+    files: dict[str, str] = {}
+    results: dict[str, Any] = {}
+
+    def upload(file, key, content_type=None):
+        name = threading.current_thread().name
+        files[key] = name
+        if name == "next-upload":
+            next_uploaded.set()
+        return key
+
+    def presign(key):
+        if threading.current_thread().name == "failed-upload":
+            raise RuntimeError("presign failed")
+        return f"https://fake/{key}"
+
+    def delete(key):
+        if not next_upload_first:
+            cleanup_started.set()
+            assert release_cleanup.wait(5)
+        files.pop(key, None)
+
+    monkeypatch.setattr(presentation_service, "upload", upload)
+    monkeypatch.setattr(presentation_service, "generate_presigned_url", presign)
+    monkeypatch.setattr(presentation_service, "delete", delete)
+
+    with Session(engine) as setup:
+        user = User(email=f"{uuid.uuid4()}@example.com", name="실패 뒤 동시 업로드")
+        setup.add(user)
+        setup.flush()
+        pitch = Pitch(user_id=user.id, title="동시", time_limit_sec=60)
+        setup.add(pitch)
+        setup.commit()
+        user_id, pitch_id = user.id, pitch.id
+
+    def request() -> None:
+        name = threading.current_thread().name
+        with Session(engine, expire_on_commit=False) as db:
+            if name == "failed-upload" and next_upload_first:
+                rollback = db.rollback
+
+                def pause_after_rollback():
+                    rollback()
+                    cleanup_started.set()
+                    assert release_cleanup.wait(5)
+
+                db.rollback = pause_after_rollback
+            try:
+                results[name] = _upload_one(db, pitch_id, make_pdf)
+            except Exception as exc:
+                results[name] = exc
+
+    first = threading.Thread(target=request, name="failed-upload")
+    second = threading.Thread(target=request, name="next-upload")
+    try:
+        first.start()
+        assert cleanup_started.wait(5)
+        second.start()
+        if next_upload_first:
+            second.join(5)
+            assert not second.is_alive()
+        else:
+            # 파일을 지우는 동안은 새 업로드도 같은 잠금에서 기다려야 한다
+            blocked = not next_uploaded.wait(0.2)
+        release_cleanup.set()
+        first.join(5)
+        second.join(5)
+
+        assert not first.is_alive() and not second.is_alive()
+        assert isinstance(results["failed-upload"], RuntimeError)
+        assert not isinstance(results["next-upload"], Exception), results
+        if not next_upload_first:
+            assert blocked
+        assert files == {f"pitches/{pitch_id}/presentations/1.pdf": "next-upload"}
+        with Session(engine) as check:
+            assert _versions(check, pitch_id) == [1]
+    finally:
+        release_cleanup.set()
+        first.join(5)
+        if second.ident is not None:
+            second.join(5)
+        with Session(engine) as cleanup:
+            cleanup.delete(cleanup.get(User, user_id))
             cleanup.commit()

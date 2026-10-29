@@ -132,6 +132,17 @@ class PitchRepository:
         )
         return (current or 0) + 1
 
+    def has_presentation_version(self, pitch_id: uuid.UUID, version: int) -> bool:
+        return (
+            self.db.scalar(
+                select(PresentationVersion.id).where(
+                    PresentationVersion.pitch_id == pitch_id,
+                    PresentationVersion.version == version,
+                )
+            )
+            is not None
+        )
+
     def save_presentation(self, presentation_version: PresentationVersion) -> PresentationVersion:
         self.db.add(presentation_version)
         self.db.flush()
