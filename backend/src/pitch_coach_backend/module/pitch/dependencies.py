@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends
@@ -32,9 +33,9 @@ _script_parse_runner = ScriptParseRunner(
 )
 
 
-async def resume_script_parses() -> None:
+async def resume_script_parses(started_before: datetime) -> None:
     """앱이 뜰 때 만료 전 PENDING 으로 남은 대본 파싱을 이어 간다 (main.lifespan)."""
-    await _script_parse_runner.resume_all()
+    await _script_parse_runner.resume_all(started_before=started_before)
 
 
 async def resume_script_rubrics() -> None:

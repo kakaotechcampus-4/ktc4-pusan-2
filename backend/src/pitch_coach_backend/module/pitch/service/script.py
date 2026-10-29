@@ -227,19 +227,21 @@ def request_reparse(
     )
 
 
-def resume_parses(db: Session) -> list[ParseTicket]:
+def resume_parses(db: Session, *, started_before: datetime | None = None) -> list[ParseTicket]:
     """BE 가 뜰 때 부른다. 만료 전 PENDING 으로 남은 파싱마다 표식을 새로 바꿔 이어받는다.
 
     표식을 지금으로 바꾸므로 만료(PARSE_EXPIRE_AFTER)도 지금부터 다시 센다. 옛 시각을 그대로 쓰면
     남은 시간이 어댑터 최악 소요보다 짧은 행은 AI 가 답하는 중에 만료로 보인다.
     이미 만료된 행은 두고 FAILED(PARSE_EXPIRED) 로 보여 사용자가 다시 시도하게 한다.
-    BE 프로세스가 하나라 앞 작업은 이미 끝났다 (resume_rubrics 와 같다).
+    시작 시각 뒤에 접수한 파싱은 현재 프로세스에서 돌고 있으므로 이어받지 않는다.
     """
     pitch_repository = PitchRepository(db)
     tickets: list[ParseTicket] = []
     now = datetime.now(UTC)
     expired_before = now - PARSE_EXPIRE_AFTER
-    for script_version_id, read_at in pitch_repository.get_resumable_parses(expired_before):
+    for script_version_id, read_at in pitch_repository.get_resumable_parses(
+        expired_before, started_before if started_before is not None else now
+    ):
         if not pitch_repository.take_over_parse(
             script_version_id, read_at, now, expired_before=expired_before
         ):

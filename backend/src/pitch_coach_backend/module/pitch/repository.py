@@ -335,12 +335,15 @@ class PitchRepository:
         )
         return result.rowcount == 1
 
-    def get_resumable_parses(self, expired_before: datetime) -> list[tuple[uuid.UUID, datetime]]:
+    def get_resumable_parses(
+        self, expired_before: datetime, started_before: datetime
+    ) -> list[tuple[uuid.UUID, datetime]]:
         """만료 전인 PENDING 파싱. 원문이 없는 행(파싱 기능 전 대본)은 다시 보낼 수 없어 뺀다."""
         rows = self.db.execute(
             select(ScriptVersion.id, ScriptVersion.parse_requested_at).where(
                 ScriptVersion.parse_status == ScriptParseStatus.PENDING,
                 ScriptVersion.parse_requested_at >= expired_before,
+                ScriptVersion.parse_requested_at <= started_before,
                 ScriptVersion.content.is_not(None),
             )
         ).all()

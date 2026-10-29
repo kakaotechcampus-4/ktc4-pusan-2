@@ -24,6 +24,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -57,13 +58,17 @@ class ScriptParseRunner:
         # 이어서 장별 평가 기준을 만든다 (architecture.md 1-7)
         self._rubric_runner = rubric_runner
 
-    async def resume_all(self) -> None:
+    async def resume_all(self, *, started_before: datetime | None = None) -> None:
         """BE 가 뜰 때 부른다. 만료 전 PENDING 으로 남은 파싱을 이어 간다.
 
         이어받으며 만료 시각을 다시 센 작업들이라 차례로 돌리면 뒤의 것이 만료된다. 한꺼번에 띄운다.
         """
+        # threadpool 에서 DB 를 읽을 때는 이미 새 업로드가 시작됐을 수 있다. 기준 시각은
+        # 첫 await 전에 고정한다. lifespan 은 요청을 받기 전의 앱 시작 시각을 넘긴다
+        if started_before is None:
+            started_before = datetime.now(UTC)
         try:
-            tickets = await run_in_threadpool(self._resume)
+            tickets = await run_in_threadpool(self._resume, started_before)
         except Exception as exc:
             logger.error(
                 "남은 대본 파싱 작업을 읽지 못했다 error=%s sqlstate=%s",
@@ -160,10 +165,10 @@ class ScriptParseRunner:
         finally:
             db.close()
 
-    def _resume(self) -> list[ParseTicket]:
+    def _resume(self, started_before: datetime) -> list[ParseTicket]:
         db = self._session_factory()
         try:
-            return script_service.resume_parses(db)
+            return script_service.resume_parses(db, started_before=started_before)
         finally:
             db.close()
 

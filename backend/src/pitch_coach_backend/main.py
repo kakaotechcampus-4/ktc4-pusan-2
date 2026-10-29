@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,6 +53,7 @@ hooks.install(live_takes=RealtimeLiveTakes(), coaching=PlannerCoaching())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    started_before = datetime.now(UTC)
     # 아래에서 남기는 로그부터 나오도록 맨 먼저 건다. 레벨이 틀렸으면 지금 실패한다
     configure_logging(settings.log_level)
     get_s3()
@@ -70,7 +72,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # AI 를 길게 기다리므로 앱이 뜨는 것을 막지 않게 따로 띄운다
     rubric_resume = asyncio.create_task(resume_script_rubrics(), name="resume-script-rubrics")
     # 대본 파싱도 같다. 만료 전 PENDING 을 이어 간다
-    parse_resume = asyncio.create_task(resume_script_parses(), name="resume-script-parses")
+    parse_resume = asyncio.create_task(
+        resume_script_parses(started_before), name="resume-script-parses"
+    )
     yield
     rubric_resume.cancel()
     parse_resume.cancel()

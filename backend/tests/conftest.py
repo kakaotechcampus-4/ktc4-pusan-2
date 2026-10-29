@@ -211,7 +211,7 @@ def _no_analysis_runner() -> Callable[[], Awaitable[None]]:
     return stop
 
 
-async def _no_resume() -> None:
+async def _no_resume(*args: object) -> None:
     return None
 
 

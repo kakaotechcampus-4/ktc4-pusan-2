@@ -1,5 +1,7 @@
 """BE 가 다시 뜰 때 만료 전 PENDING 파싱을 이어받는다 (`ScriptParseRunner.resume_all`)."""
 
+import asyncio
+import threading
 import uuid
 
 import pytest
@@ -161,3 +163,61 @@ async def test_resume_does_not_raise_when_db_is_down(caplog: pytest.LogCaptureFi
 
     assert parser.calls == []
     assert "남은 대본 파싱 작업을 읽지 못했다" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_resume_does_not_take_over_a_new_live_parse(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """복구 조회가 늦어져도 그 사이 새 요청에서 돌기 시작한 파싱을 다시 부르지 않는다."""
+    reading = threading.Event()
+    allow_read = threading.Event()
+    parsing = asyncio.Event()
+    allow_result = asyncio.Event()
+
+    class LiveParser(FakeParser):
+        async def parse(self, script_text: str, target_ms: int | None):
+            self.calls.append(script_text)
+            if len(self.calls) > 1:
+                raise ScriptParseError(
+                    ScriptParseErrorCode.AI_UNAVAILABLE, "중복 호출 실패", retryable=False
+                )
+            parsing.set()
+            await allow_result.wait()
+            return TWO_SLIDES
+
+    parser = LiveParser()
+    runner = _runner(db_session, parser)
+    resume = runner._resume
+
+    def delayed_resume(*args, **kwargs):
+        reading.set()
+        assert allow_read.wait(timeout=5)
+        return resume(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "_resume", delayed_resume)
+    recovery = asyncio.create_task(runner.resume_all())
+    live = None
+    try:
+        assert await asyncio.to_thread(reading.wait, 5)
+        script_id = _create_ok(client, pitch_id, auth_headers)
+        script = db_session.get(ScriptVersion, script_id)
+        assert script is not None
+        ticket = ParseTicket(script_id, script.parse_requested_at, SCRIPT_TEXT, TARGET_MS)
+        live = asyncio.create_task(runner.run(ticket))
+        async with asyncio.timeout(5):
+            await parsing.wait()
+        allow_read.set()
+        async with asyncio.timeout(5):
+            await recovery
+    finally:
+        allow_read.set()
+        allow_result.set()
+        await asyncio.gather(recovery, *([live] if live is not None else []))
+
+    assert parser.calls == [SCRIPT_TEXT]
+    assert _status(client, pitch_id, script_id, auth_headers) == ("DONE", None)
