@@ -18,6 +18,7 @@ from pitch_coach_backend.module.pitch.service import presentation as presentatio
 @pytest.fixture(autouse=True)
 def s3_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(presentation_service, "upload", lambda file, key, content_type=None: key)
+    monkeypatch.setattr(presentation_service, "upload_bytes", lambda data, key, content_type: key)
     monkeypatch.setattr(presentation_service, "generate_presigned_url", lambda key: f"https://fake/{key}")
 
 
@@ -168,14 +169,18 @@ def test_pitch_deleted_while_counting_pages_is_404_and_uploaded_file_is_deleted(
     delete_mock = MagicMock()
     monkeypatch.setattr(presentation_service, "count_pdf_pages", count_after_delete)
     monkeypatch.setattr(presentation_service, "upload", upload_mock)
-    monkeypatch.setattr(presentation_service, "delete_object", delete_mock)
+    monkeypatch.setattr(presentation_service, "delete", delete_mock)
 
     response = _upload(client, pitch_id, pdf, auth_headers)
 
     assert response.status_code == 404
     assert response.json()["code"] == "PITCH_NOT_FOUND"
     upload_mock.assert_called_once()
-    delete_mock.assert_called_once_with(upload_mock.call_args.args[1])
+    pdf_key = upload_mock.call_args.args[1]
+    assert [c.args[0] for c in delete_mock.call_args_list] == [
+        pdf_key,
+        pdf_key.removesuffix(".pdf") + ".webp",
+    ]
 
 
 def test_failed_save_deletes_uploaded_file(
@@ -191,7 +196,7 @@ def test_failed_save_deletes_uploaded_file(
     upload_mock = MagicMock(side_effect=lambda file, key, content_type=None: key)
     delete_mock = MagicMock()
     monkeypatch.setattr(presentation_service, "upload", upload_mock)
-    monkeypatch.setattr(presentation_service, "delete_object", delete_mock)
+    monkeypatch.setattr(presentation_service, "delete", delete_mock)
     monkeypatch.setattr(
         PitchRepository, "save_presentation", MagicMock(side_effect=RuntimeError("db down"))
     )
@@ -199,7 +204,11 @@ def test_failed_save_deletes_uploaded_file(
     with pytest.raises(RuntimeError):
         _upload(client, pitch_id, pdf, auth_headers)
 
-    delete_mock.assert_called_once_with(upload_mock.call_args.args[1])
+    pdf_key = upload_mock.call_args.args[1]
+    assert [c.args[0] for c in delete_mock.call_args_list] == [
+        pdf_key,
+        pdf_key.removesuffix(".pdf") + ".webp",
+    ]
     assert _presentation_count(db_session, pitch_id) == 0
 
 

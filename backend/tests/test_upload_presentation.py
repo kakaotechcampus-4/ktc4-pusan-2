@@ -9,8 +9,8 @@ from unittest.mock import ANY, MagicMock
 
 import pytest
 from fastapi import UploadFile
-from sqlalchemy import Engine, select
 from PIL import Image
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.adapter.presentation_file import (
