@@ -43,7 +43,7 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
           </section>
           {!noReview && (
             <Card title="지난 Take와 비교">
-              <ul className="grid grid-cols-5 gap-3">
+              <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                 {(
                   [
                     ['멈춤', '14회', '9회', '방향 없음', 'muted'],
@@ -58,7 +58,7 @@ export function ReportScreen({ stateId, onNavigate }: { stateId: string; onNavig
                     className="flex min-w-0 flex-col gap-1.5 border-l-2 border-line pl-3"
                   >
                     <b className="text-sm">{label}</b>
-                    <span className="tabular flex items-center gap-1.5 whitespace-nowrap text-sm">
+                    <span className="tabular flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
                       <span className="text-ink/80">{prev}</span>→<b className="text-lg">{cur}</b>
                       <Badge tone={tone}>{badge}</Badge>
                     </span>

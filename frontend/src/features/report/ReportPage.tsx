@@ -301,14 +301,14 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
       {rows.length === 0 ? (
         <p className="text-sm text-ink/80">비교할 지난 Take가 없어요.</p>
       ) : (
-        <ul className="grid grid-cols-5 gap-3">
+        <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           {rows.map((r, i) => (
             <li key={i} className="flex min-w-0 flex-col gap-1.5 border-l-2 border-line pl-3">
               <span className="text-xs text-ink/80">
                 <b className="text-sm text-ink">{metricLabel(r.metric)}</b>
                 {r.slide_number !== null && <> · {r.slide_number}번 장</>}
               </span>
-              <span className="tabular flex items-center gap-1.5 whitespace-nowrap text-sm">
+              <span className="tabular flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
                 <span className="text-ink/80">{fmt(r.metric, r.previous)}</span>→
                 <b className="text-lg">{fmt(r.metric, r.current)}</b>
                 <Badge tone={trend(r).tone}>{trend(r).label}</Badge>
