@@ -1,6 +1,6 @@
 /**
  * 미리보기 진입점. 화면 ID로 그릴 화면을 고르고, 미리보기 안의 링크를 설계서 안에서만 이동시킨다.
- * 화면은 `src/screens/`의 샘플(제품 코드를 읽고 설계서가 다시 그린 것, import하지 않음)이다.
+ * 화면은 `src/screens/`의 샘플(제품 코드를 읽고 설계서가 다시 그린 것, import하지 않음), 기초는 `src/foundations/`다.
  * 실제 서버나 기기에 접근하지 않는다.
  */
 import { useState, type MouseEvent } from 'react';
@@ -15,6 +15,12 @@ import { ReportScreen } from './screens/ReportScreen';
 import { TakesScreen } from './screens/TakesScreen';
 import { ComparisonScreen } from './screens/ComparisonScreen';
 import { AboutScreen, MyScreen, NotFoundScreen, UnsupportedScreen } from './screens/InfoScreens';
+import {
+  ColorsFoundation,
+  SpacingFoundation,
+  SurfacesFoundation,
+  TypographyFoundation,
+} from './foundations/Foundations';
 
 export type { Navigate as PreviewNavigate } from './screens/shared';
 
@@ -115,6 +121,14 @@ function CurrentScreen({
   inline: boolean;
 }) {
   switch (screenId) {
+    case 'colors':
+      return <ColorsFoundation stateId={stateId} />;
+    case 'typography':
+      return <TypographyFoundation stateId={stateId} />;
+    case 'spacing':
+      return <SpacingFoundation />;
+    case 'surfaces':
+      return <SurfacesFoundation />;
     case 'home':
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'pitch-create':
