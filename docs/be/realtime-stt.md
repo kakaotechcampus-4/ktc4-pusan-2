@@ -84,6 +84,10 @@ WS /api/ws/takes/{take_id}
   DB 를 직접 만지지 않도록 `realtime/storage/store.py` 가 저장할 때마다 짧은 세션을 연다.
   **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다. 단 Take 가 지워져
   저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
+- **interim 은 STT 처리를 기다리게 하지 않는다.** 보내는 중이면 가장 새것만 남겼다가 이어 보내고, 한 번 보내기는
+  1초(`INTERIM_SEND_TIMEOUT_SEC`)까지다. 받는 쪽이 느려도 다음 STT 결과 · 문장 끝 신호가 밀리지 않는다. final 을
+  보내기 전에는 남은 interim 을 버리고 보내는 중인 것을 끝낸다 — 옛 interim 이 같은 `segment_id` 로 확정 자막을
+  덮지 않게.
 - **`metrics` 는 `take_metric_seconds` 에 1초 원자료로 저장한다** (`realtime/storage/metrics.py`). Take 결과를
   다시 만들 때(`/coach/finalize` 의 `replay`) 읽는다. 시선 · 음량 기록은 해석하지 않고 받은 그대로 두고, 받았을 때의
   STT 상태(`stt_status`)를 같이 남긴다. 5개가 모이면 한 번에 넣고, 연결이 끊기거나 스트림이 닫히면 남은 것을

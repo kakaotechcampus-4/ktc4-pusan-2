@@ -114,6 +114,9 @@ METRICS_PERIOD_MS = 1_000
 # 연결이 붙어 있고 이 시간 안에 오디오가 왔으면 발표 중으로 본다. 창을 다시 연 FE 가 Take 를
 # 실패로 끝내려 해도 거절한다 (`is_live`). FE 가 다른 창이 살아 있다고 보는 하트비트 기준과 같다
 LIVE_AUDIO_SEC = 10.0
+# 중간 자막(interim) 하나를 보내는 상한. 받는 쪽이 멈춰 있어도 다음 것을 보낼 수 있게 한다 — 다음
+# interim 이 덮으므로 못 보낸 것은 버린다
+INTERIM_SEND_TIMEOUT_SEC = 1.0
 
 
 class TakeStream:
@@ -177,6 +180,9 @@ class TakeStream:
         self._transcripts = TranscriptBuffer(take_id, store, segment_no=segment_no)
         # 놓친 final 을 다시 보내기 시작한 연결 (`resend_missed`). ready 를 받은 연결이다
         self._caught_up: WebSocket | None = None
+        # 보낼 가장 새 interim 과 보내는 태스크 (`_show_interim`). STT 처리는 전송을 기다리지 않는다
+        self._interim_next: TranscriptMessage | None = None
+        self._interim_task: asyncio.Task[None] | None = None
         self._grace_task: asyncio.Task[None] | None = None
         self._task: asyncio.Task[None] | None = None
         # cancel() 뒤 _run 의 정리를 기다리는 태스크. 참조를 들고 있어야 한다 — asyncio 는
@@ -494,6 +500,10 @@ class TakeStream:
     def _finish(self) -> None:
         if self._closed.is_set():
             return
+        # 닫힌 스트림의 중간 자막은 보낼 곳이 없다
+        self._interim_next = None
+        if self._interim_task is not None:
+            self._interim_task.cancel()
         self._record.streamed_sec += self._time_limit.stop()
         # Deepgram 에 닿지 못한 채 큐에 남은 오디오는 유실이다. 마지막 stt_status 의
         # lost_ms 가 이걸 빼먹으면 리포트가 "STT 다 받았다" 고 잘못 말한다
@@ -669,7 +679,7 @@ class TakeStream:
                 ],
             )
             if not event.is_final:
-                await self._client.send(message)
+                self._show_interim(message)
             else:
                 # 확정 시각은 이 결과를 받기 직전의 마지막 metrics 시각이다 (coach-agent.md 12-1).
                 # 화면에 보내는 await 보다 먼저 매긴다 — 그동안 온 metrics 의 요청에는 이 단어가
@@ -694,6 +704,39 @@ class TakeStream:
             # 빈 final 도 센다 — 말 없이 들은 구간이라는 뜻이다
             self._observe_silence(event)
 
+    def _show_interim(self, message: TranscriptMessage) -> None:
+        """interim 을 기다리지 않고 보낸다. 보내는 중이면 가장 새것만 남겼다가 이어 보낸다.
+
+        STT 이벤트 펌프가 `_on_transcript` 를 기다리므로 여기서 전송을 기다리면 받는 쪽이 느린 FE
+        하나가 다음 STT 결과 · 문장 끝 신호를 늦춘다. 사이의 interim 은 다음 것이 덮으니 버린다.
+        """
+        self._interim_next = message
+        if self._interim_task is None or self._interim_task.done():
+            self._interim_task = asyncio.create_task(
+                self._send_interims(), name=f"take-stream-interim:{self.take_id}"
+            )
+
+    async def _send_interims(self) -> None:
+        while self._interim_next is not None:
+            message, self._interim_next = self._interim_next, None
+            # uvicorn 은 쓸 수 있을 때까지 기다린 뒤 프레임을 한 번에 쓴다. 기다리다 끊으면 그
+            # 프레임은 나가지 않을 뿐 깨지지 않는다
+            with anyio.move_on_after(INTERIM_SEND_TIMEOUT_SEC):
+                await self._client.send(message)
+
+    async def _settle_interims(self) -> None:
+        """final 을 보내기 전에 부른다. 남은 interim 을 버리고 보내는 중인 것이 끝나기를 기다린다.
+
+        같은 구간의 옛 interim 이 final 뒤에 닿으면 FE 는 같은 `segment_id` 로 덮어 확정 자막이
+        중간 자막으로 돌아간다. 보내는 중인 것은 상한 안에 끝나고, 그래도 남았으면 끊는다 — 쓰기
+        전에 끊긴 프레임은 나가지 않는다.
+        """
+        self._interim_next = None
+        task = self._interim_task
+        if task is not None and not task.done():
+            await asyncio.wait({task}, timeout=INTERIM_SEND_TIMEOUT_SEC)
+            task.cancel()
+
     async def _show_final(self, message: TranscriptMessage) -> None:
         """final 을 화면에 보낸다. 못 보냈으면 모아 두었다가 다시 붙은 연결에 보낸다.
 
@@ -702,6 +745,7 @@ class TakeStream:
         실제로는 닿았으면 같은 `segment_id` 로 한 번 더 가고 FE 는 덮어쓴다.
         interim 은 다음 것이 덮으니 모으지 않는다.
         """
+        await self._settle_interims()
         target = self._client.ws
         if target is not None and await self._send_final_to(message, target):
             return
