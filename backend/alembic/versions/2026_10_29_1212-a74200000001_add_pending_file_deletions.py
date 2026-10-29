@@ -3,6 +3,8 @@
 Revision ID: a74200000001
 """
 
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 from alembic import op
 
