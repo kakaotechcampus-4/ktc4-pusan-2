@@ -240,6 +240,19 @@ export function DeviceCheckPage() {
     };
   }, []);
 
+  /**
+   * 확인 창을 닫은 뒤(취소 · Esc · 끝내기 실패) 초점을 시작 버튼으로 돌립니다. 브라우저에 맡기면
+   * 안 됩니다 — 창이 열려 있는 동안 시작 버튼이 비활성이라, 브라우저가 초점을 body 로 옮겨 둡니다.
+   * 비활성이 풀린 뒤에야 초점을 받으니 창이 내려가고 starting 이 false 가 된 다음에 줍니다
+   */
+  const startButton = useRef<HTMLButtonElement>(null);
+  const focusStartAfterClose = useRef(false);
+  useEffect(() => {
+    if (replacing || starting || !focusStartAfterClose.current) return;
+    focusStartAfterClose.current = false;
+    startButton.current?.focus();
+  }, [replacing, starting]);
+
   // 지금 열려 있는 트랙이 곧 선택값입니다. 따로 상태로 들고 있으면
   // 브라우저가 다른 장치를 열었을 때 화면과 실제가 갈라집니다
   const videoId = stream?.getVideoTracks()[0]?.getSettings().deviceId ?? '';
@@ -314,6 +327,7 @@ export function DeviceCheckPage() {
     try {
       await endActiveTake(replacing.take);
     } catch (e) {
+      focusStartAfterClose.current = true;
       setReplacing(null);
       setStartError(`다른 곳의 연습을 끝내지 못했어요. ${toMessage(e)}`);
       setStarting(false);
@@ -325,6 +339,7 @@ export function DeviceCheckPage() {
   };
 
   const cancelReplace = () => {
+    focusStartAfterClose.current = true;
     setReplacing(null);
     setStarting(false);
   };
@@ -452,7 +467,11 @@ export function DeviceCheckPage() {
       hint={hint}
       actions={
         <>
-          <Button disabled={!ready} onClick={() => start().catch(() => undefined)}>
+          <Button
+            ref={startButton}
+            disabled={!ready}
+            onClick={() => start().catch(() => undefined)}
+          >
             {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
           </Button>
           {replacing && (
