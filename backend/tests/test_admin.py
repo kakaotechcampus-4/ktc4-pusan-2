@@ -292,14 +292,75 @@ def test_stuck_takes_are_running_without_activity_past_abandon(
     speaking = _take(db_session, pitch, 2, status="RUNNING", created_at=long_ago)
     _final_segment(db_session, speaking, now)
     _take(db_session, pitch, 3, status="RUNNING", created_at=long_ago, started_at=now)
-    # 시작 전에 떠난 Take 는 정리하는 곳이 없어 쌓이기만 한다. 넣지 않는다
+    # 시작 전에 떠난 Take 는 ready_sweep 이 끝낸다. 넣지 않는다
     _take(db_session, pitch, 4, status="READY", created_at=long_ago)
-    # 끝난 Take 는 아직 전부 분석 중에 머문다. 넣지 않는다
+    # 분석 중인 Take 는 분석이 멈춘 연습에서 따로 본다. 넣지 않는다
     _take(db_session, pitch, 5, status="ANALYZING", created_at=long_ago)
 
     rows = client.get("/admin/api/takes/stuck", auth=ADMIN).json()
 
     assert [row["id"] for row in rows] == [str(stuck.id)]
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_stalled_analyses_are_held_or_past_resume_sweep(
+    client: TestClient, db_session: Session
+) -> None:
+    pitch = _pitch(db_session, _user(db_session, "앨리스"))
+    now = datetime.now(UTC)
+
+    def analyzing(number: int, stage: str | None, minutes_ago: float | None, **fields) -> Take:
+        stage_at = None if minutes_ago is None else now - timedelta(minutes=minutes_ago)
+        return _take(
+            db_session,
+            pitch,
+            number,
+            status=fields.pop("status", "ANALYZING"),
+            analysis_stage=stage,
+            analysis_stage_at=stage_at,
+            **fields,
+        )
+
+    held = analyzing(1, "SCORING", 1, analysis_hold_reason="COVERAGE_RESCORE_FAILED")
+    finalizing = analyzing(2, "FINALIZING", 16)
+    confirming = analyzing(3, "AWAITING_CONFIRMATION", 26)
+    unknown_at = analyzing(4, None, None)
+    analyzing(5, "SCORING", 5)
+    analyzing(6, "AWAITING_CONFIRMATION", 20)
+    analyzing(7, "DONE", 60, status="COMPLETED", review_status="DONE")
+    analyzing(8, "FINALIZING", 60, status="FAILED")
+
+    rows = client.get("/admin/api/takes/stalled-analysis", auth=ADMIN).json()
+
+    assert [row["id"] for row in rows] == [
+        str(unknown_at.id),
+        str(confirming.id),
+        str(finalizing.id),
+        str(held.id),
+    ]
+    assert rows[-1]["analysis_hold_reason"] == "COVERAGE_RESCORE_FAILED"
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_takes_carry_analysis_state(client: TestClient, db_session: Session) -> None:
+    pitch = _pitch(db_session, _user(db_session, "앨리스"))
+    stage_at = datetime(2026, 10, 22, 1, 30, tzinfo=UTC)
+    _take(
+        db_session,
+        pitch,
+        1,
+        **_ended(3),
+        analysis_stage="REVIEWING",
+        analysis_stage_at=stage_at,
+        review_status="FAILED",
+    )
+
+    [row] = client.get("/admin/api/takes", auth=ADMIN).json()
+
+    assert row["analysis_stage"] == "REVIEWING"
+    assert datetime.fromisoformat(row["analysis_stage_at"]) == stage_at
+    assert row["review_status"] == "FAILED"
+    assert row["analysis_hold_reason"] is None
 
 
 @pytest.mark.usefixtures("admin_account")

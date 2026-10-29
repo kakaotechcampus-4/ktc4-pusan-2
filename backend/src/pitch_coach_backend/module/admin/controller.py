@@ -87,6 +87,11 @@ def stuck_takes(db: Annotated[Session, Depends(get_db)]) -> list[AdminTakeRow]:
     return service.list_stuck_takes(db)
 
 
+@router.get("/api/takes/stalled-analysis")
+def stalled_analyses(db: Annotated[Session, Depends(get_db)]) -> list[AdminTakeRow]:
+    return service.list_stalled_analyses(db)
+
+
 @router.get("/api/takes/{take_id}/live")
 def take_live(
     take_id: uuid.UUID,

@@ -74,6 +74,10 @@ class AdminTakeRow(BaseModel):
     ended_at: datetime | None
     elapsed_sec: float | None
     goal_time_sec: int
+    analysis_stage: str | None
+    analysis_stage_at: datetime | None
+    review_status: str | None
+    analysis_hold_reason: str | None
 
 
 class AdminLiveSegment(BaseModel):

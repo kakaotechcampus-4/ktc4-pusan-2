@@ -25,6 +25,13 @@ const LABELS = {
   PROBLEM: '문제 신고',
   QUESTION: '질문',
   OTHER: '기타',
+  FINALIZING: '결과 만드는 중',
+  SCORING: '채점 중',
+  AWAITING_CONFIRMATION: '확인 대기',
+  REVIEWING: '리뷰 중',
+  DONE: '완료',
+  SKIPPED: '건너뜀',
+  COVERAGE_RESCORE_FAILED: '병합 재채점 실패',
 };
 
 const label = (value) => (value == null ? '—' : LABELS[value] ?? value);
@@ -143,7 +150,30 @@ function renderCounts(id, counts) {
 
 const statusBadge = (status) => el('span', { className: `badge ${status}`, textContent: label(status) });
 
+function takeIdCell(take) {
+  const short = `${take.id.slice(0, 8)}…${take.id.slice(-4)}`;
+  const button = el('button', { type: 'button', className: 'copy', title: take.id, textContent: short });
+  button.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(take.id);
+      button.textContent = '복사됨';
+      setTimeout(() => {
+        button.textContent = short;
+      }, 1500);
+    } catch {
+      window.prompt('Take ID', take.id);
+    }
+  });
+  return button;
+}
+
+function stageCell(take) {
+  if (take.analysis_stage == null) return '—';
+  return el('span', {}, [label(take.analysis_stage), subText(dateTime(take.analysis_stage_at))]);
+}
+
 const TAKE_COLUMNS = [
+  ['ID', takeIdCell],
   ['만든 시각', (t) => dateTime(t.created_at)],
   ['사용자', (t) => `${t.user_name} (${t.user_email})`],
   ['발표', (t) => t.pitch_title],
@@ -153,6 +183,9 @@ const TAKE_COLUMNS = [
   ['종료 이유', (t) => (t.ended_at ? label(t.end_reason ?? 'USER') : '—')],
   ['연습 시간', (t) => duration(t.elapsed_sec), true],
   ['목표', (t) => duration(t.goal_time_sec), true],
+  ['분석 단계', stageCell],
+  ['리뷰', (t) => label(t.review_status)],
+  ['보류', (t) => label(t.analysis_hold_reason)],
   ['기록', liveButton],
 ];
 
@@ -453,6 +486,7 @@ const SECTIONS = [
     renderCounts('by-end-reason', stats.takes.by_end_reason);
   }],
   ['api/takes/stuck', (rows) => renderTable('stuck-takes', TAKE_COLUMNS, rows)],
+  ['api/takes/stalled-analysis', (rows) => renderTable('stalled-analyses', TAKE_COLUMNS, rows)],
   ['api/takes?status=FAILED&limit=50', (rows) => renderTable('failed-takes', TAKE_COLUMNS, rows)],
   ['api/takes?limit=50', (rows) => renderTable('recent-takes', TAKE_COLUMNS, rows)],
   ['api/users', (rows) => renderTable('users', USER_COLUMNS, rows)],

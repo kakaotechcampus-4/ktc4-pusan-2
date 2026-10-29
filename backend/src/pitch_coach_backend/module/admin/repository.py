@@ -141,13 +141,33 @@ def list_stuck_takes(db: Session, active_before: datetime, limit: int) -> list[d
     (`TakeRepository.running_takes_last_active`). 시작 시각만으로는 못 잰다.
     FE 가 발표를 끝낼 때에야 보내서 진행 중에는 비어 있다.
 
-    시작 전(`READY`)은 넣지 않는다. 시작하기 전에 떠난 Take 는 정리하는 곳이 없어 계속 쌓인다.
-    분석 중(`ANALYZING`)도 넣지 않는다. 아직 `COMPLETED` 로 바꾸는 곳이 없어
-    끝난 Take 가 모두 여기 머문다.
+    시작 전(`READY`)은 넣지 않는다. 만든 지 10분이 지나면 `ready_sweep` 이 이탈로 끝낸다.
+    분석 중(`ANALYZING`)은 `list_stalled_analyses` 가 분석 단계 시각으로 따로 본다.
     """
     active_at = last_active_at()
     stmt = _take_rows().where(Take.status == "RUNNING", active_at < active_before)
     return _fetch(db, stmt.order_by(active_at).limit(limit))
+
+
+def list_stalled_analyses(
+    db: Session, *, stage_before: datetime, confirmation_before: datetime, limit: int
+) -> list[dict[str, Any]]:
+    waited_too_long = case(
+        (
+            Take.analysis_stage == "AWAITING_CONFIRMATION",
+            Take.analysis_stage_at < confirmation_before,
+        ),
+        else_=Take.analysis_stage_at < stage_before,
+    )
+    stmt = _take_rows().where(
+        Take.status == "ANALYZING",
+        or_(
+            Take.analysis_hold_reason.is_not(None),
+            Take.analysis_stage_at.is_(None),
+            waited_too_long,
+        ),
+    )
+    return _fetch(db, stmt.order_by(Take.analysis_stage_at.asc().nulls_first()).limit(limit))
 
 
 def take_status(db: Session, take_id: uuid.UUID) -> str | None:
@@ -206,6 +226,10 @@ def _take_rows() -> Select[Any]:
             Take.ended_at,
             ELAPSED_SEC.label("elapsed_sec"),
             Take.goal_time_sec,
+            Take.analysis_stage,
+            Take.analysis_stage_at,
+            Take.review_status,
+            Take.analysis_hold_reason,
         )
         .join(Pitch, Pitch.id == Take.pitch_id)
         .join(User, User.id == Pitch.user_id)

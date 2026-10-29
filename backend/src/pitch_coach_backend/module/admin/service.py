@@ -27,6 +27,11 @@ from pitch_coach_backend.module.admin.dto import (
 from pitch_coach_backend.module.admin.repository import KST
 from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.exception import NonExistentTake
+from pitch_coach_backend.module.take.repository import CONFIRMATION_WAIT
+from pitch_coach_backend.module.take.service.analysis_runner import (
+    STALE_ANALYSIS,
+    SWEEP_INTERVAL_SEC,
+)
 from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
 
 DAILY_DAYS = 30
@@ -36,6 +41,7 @@ USER_LIMIT = 500
 # 이탈 대기보다 여유만큼 더 지났으면 멈춘 것으로 본다
 STUCK_MARGIN = timedelta(minutes=10)
 STUCK_LIMIT = 50
+ANALYSIS_STALL_AFTER = STALE_ANALYSIS + timedelta(seconds=SWEEP_INTERVAL_SEC)
 # 사용자가 직접 끝낸 Take 는 end_reason 이 비어 있다.
 # 비율에서 자동 종료와 나란히 보이게 이름을 붙인다
 USER_ENDED = "USER"
@@ -94,6 +100,18 @@ def list_stuck_takes(db: Session, now: datetime | None = None) -> list[AdminTake
     now = now or datetime.now(UTC)
     active_before = now - timedelta(seconds=ABANDON_AFTER_SEC) - STUCK_MARGIN
     rows = repository.list_stuck_takes(db, active_before, STUCK_LIMIT)
+    return [AdminTakeRow(**row) for row in rows]
+
+
+def list_stalled_analyses(db: Session, now: datetime | None = None) -> list[AdminTakeRow]:
+    now = now or datetime.now(UTC)
+    stage_before = now - ANALYSIS_STALL_AFTER
+    rows = repository.list_stalled_analyses(
+        db,
+        stage_before=stage_before,
+        confirmation_before=stage_before - CONFIRMATION_WAIT,
+        limit=STUCK_LIMIT,
+    )
     return [AdminTakeRow(**row) for row in rows]
 
 
