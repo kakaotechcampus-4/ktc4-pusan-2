@@ -1,6 +1,6 @@
 # 화면 설계서
 
-피치코치 화면과 시안을 모아 보는 React 앱이다. **제품(`frontend/`)과 따로 돈다** — 제품 코드를 import하지 않고, 버튼 · 카드 같은 UI와 색 · 글꼴 · 간격 값을 이 폴더가 직접 가진다. 디자인은 제품보다 앞서거나 달라질 수 있어서, 둘 사이의 차이는 [대조표](audit.md)와 아래 "제품으로 옮기기"대로 확인한다.
+피치코치 화면과 시안을 모아 보는 React 앱이다. **제품(`frontend/`)과 따로 돈다** — 제품 코드를 import하지 않고, 버튼 · 카드 같은 UI와 색 · 글꼴 · 간격 값을 이 폴더가 직접 가진다. 디자인은 제품보다 앞서거나 달라질 수 있어서, 화면별 차이는 설명 패널의 "제품과 다른 점"(`src/catalog.ts`의 `productNote`)에서 보고, 대조 방법은 [제품 대조](audit.md)와 아래 "제품이 바뀌었을 때" · "제품으로 옮기기"에 있다.
 
 ## 실행
 
@@ -19,6 +19,7 @@ npm run dev
 | `npm run build` | 공유용 정적 파일을 `dist/`에 만든다. 정적 서버의 루트에 올리거나 `npm run preview`(3101)로 연다 |
 | `npm run typecheck` · `lint` · `test` · `format:check` | 검사. 고친 뒤 넷 다 통과시킨다 |
 | `npm run tokens` | 설계서와 제품의 디자인 값(CSS 변수) 중 다른 것을 보여 준다. 제품 파일은 읽기만 한다 |
+| `npm run drift` | 마지막 대조 뒤로 바뀌거나 없어진 제품 코드를 화면별로 보여 준다(기본 `origin/develop-next`, 먼저 `git fetch`). 다른 ref는 `npm run drift -- <ref>` |
 
 ## 화면을 살펴보는 방법
 
@@ -40,7 +41,7 @@ http://localhost:3100/#/?screen=prepare-mission&state=mic-error&view=single
 
 ## 화면 추가하는 법
 
-1. `src/catalog.ts`에 화면을 등록한다. 고유 `id` · 상태 · 동작 규칙 · 제품 코드 위치(`sources`, 참고용 문자열) · `status`(`제품에 있음` / `시안만`)를 적고, 제품과 다르게 그린 점은 `productNote`와 [대조표](audit.md)에 함께 적는다. 제품 개발 서버로 열 수 있으면 `productLinks`에 예시 경로를 넣는다.
+1. `src/catalog.ts`에 화면을 등록한다. 고유 `id` · 상태 · 동작 규칙 · 제품 코드 위치(`sources`, 참고용 문자열) · `status`(`제품에 있음` / `시안만`)를 적고, 제품과 다르게 그린 점은 `productNote`에만 적는다([제품 대조](audit.md)의 쓰는 법). 제품 개발 서버로 열 수 있으면 `productLinks`에 예시 경로를 넣는다.
 2. `src/screens/`에 화면 파일(예: `HomeScreen.tsx`)을 만들어 상태 ID마다 무엇이 바뀌는지 그리고, `src/ScreenPreview.tsx`의 `CurrentScreen`에 그 `id`를 한 줄 연결한다. 화면 안 버튼은 `onNavigate(화면 ID, 상태 ID)`로 이동하고, 여러 화면이 쓰는 틀 · 샘플 이름은 `src/screens/shared.tsx`에 둔다. 제품 경로로 가는 링크는 `ScreenPreview.tsx`의 `targetFor`에 연결하면 설계서 안에서만 이동한다.
 3. 새 UI 조각이 필요하면 `src/ui/`에 둔다. 제품 컴포넌트를 가져올 때는 import하지 않고 복사하며, 파일 머리에 어디서 복사해 시작했는지 한 줄 적는다.
 4. 옛 시안을 더할 때는 `src/drafts/`에 두고 `catalog.ts`의 `draftEntries`와 `ScreenPreview.tsx`의 `draftScreens`에 한 줄씩 넣는다.
@@ -71,13 +72,23 @@ React 코드 종류에 따라 화면 안의 입력 상태는 처음으로 돌아
 | `src/styles.css` | 색 · 글꼴 · 간격 등 디자인 값. 제품 `index.css`에서 복사해 시작했다 |
 | `src/lib/` · `src/samples/` | 시간 표기와 예시 데이터 |
 | `public/` | 글꼴 · 마스코트 · 노을 그림 |
-| `scripts/compare-tokens.mjs` | `npm run tokens`의 비교 스크립트 |
-| `audit.md` | 설계서 미리보기 · 옛 시안과 제품의 차이 |
+| `scripts/compare-tokens.mjs` · `scripts/product-drift.mjs` | `npm run tokens` · `npm run drift`의 스크립트 |
+| `audit.md` | 제품과의 차이를 어디서 보고 어떻게 맞추는지 |
 
 ## 제품으로 옮기기
 
 1. 설계서에서 디자인을 고친다(`src/styles.css` · `src/ui/` · 미리보기 · 시안).
 2. `npm run tokens`로 제품과 다른 디자인 값을 확인한다.
-3. 제품에 반영할 것만 FE 작업으로 `frontend/src/index.css` · `shared/ui` 등에 옮긴다. 제품에서 먼저 바뀐 값은 반대로 설계서에 가져오고, [대조표](audit.md)를 맞춘다.
+3. 제품에 반영할 것만 FE 작업으로 `frontend/src/index.css` · `shared/ui` 등에 옮긴다. 제품에서 먼저 바뀐 값은 반대로 설계서에 가져온다.
+
+## 제품이 바뀌었을 때
+
+FE PR이 merge돼 설계서가 가리키는 제품 화면이 바뀌면 설명을 다시 맞춘다. 출시 전처럼 제품이 자주 바뀔 때는 화면 설계서를 고치기 전에 한 번씩 한다.
+
+1. 저장소에서 `git fetch`한 뒤 이 폴더에서 `npm run drift`를 실행한다. 바뀐 화면과 파일이 나온다.
+2. 바뀐 파일의 변경을 읽는다. 출력 첫 줄의 두 커밋으로 `git diff <대조 기준> origin/develop-next -- <파일>`을 본다.
+3. 그 화면의 `catalog.ts` 동작 규칙 · 상태 · `productNote`와 `src/screens/`의 샘플 문구를 제품 코드에 맞춘다. 파일이 옮겨졌으면 `sources`를 고친다. 그리지 않을 것은 productNote에 적는다.
+4. `catalog.ts`의 `PRODUCT_CHECKED`를 비교한 커밋(출력 마지막 줄)과 날짜로 올리고, `npm run drift`가 "바뀐 제품 코드가 없습니다"를 내는지 본다.
+5. 검사(`typecheck` · `lint` · `test` · `format:check`)를 통과시키고, 2~4를 한 커밋으로 올린다.
 
 제품 화면 자체는 제품 개발 서버(`frontend/`에서 `npm run dev`, http://localhost:3000)에서 본다. 설명 패널의 "제품에서 열기"가 그 주소를 새 탭으로 연다.

@@ -1,12 +1,21 @@
 /**
  * 화면 이름 · 상태 · 동작 규칙 · 제품과 다른 점을 한 곳에서 정의한다.
  * DesignGuide가 목록과 설명을, ScreenPreview가 화면 · 상태 ID를 쓴다.
- * 미리보기를 고치면 상태 · 규칙 · productNote와 audit.md를 함께 맞춘다.
+ * 제품과 다른 점은 여기 productNote가 원본이다(설명 패널에 보인다). 미리보기를 고치면 상태 · 규칙 · productNote를 함께 맞춘다.
  */
 import type { GuideScreen, GuideState, ProductLink } from './model';
 
 /** 제품 개발 서버(`frontend/`에서 `npm run dev`). 설계서와 따로 띄운다 */
 export const PRODUCT_ORIGIN = 'http://localhost:3000';
+
+/**
+ * 설명을 마지막으로 대조한 제품 커밋. `npm run drift`가 이 뒤로 바뀐 sources를 화면별로 보여 준다.
+ * 바뀐 화면의 설명을 맞춘 뒤 비교한 커밋으로 올린다(README "제품이 바뀌었을 때")
+ */
+export const PRODUCT_CHECKED = {
+  commit: '108256a39cb9cae97af72a2016a6c62e6abac5bf',
+  date: '2026-10-29',
+};
 
 const state = (id: string, label: string, description: string): GuideState => ({
   id,
@@ -67,7 +76,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/pitch/homeFormat.ts',
     ],
     productNote:
-      '상단바(AppHeader) · 서비스 리뷰 창 · 사용방법 창 · 바닥글(이용약관 · 개인정보 처리방침)은 미리보기에서 뺐다. "사용방법 살펴보기"는 글자만 둔다.',
+      '상단바(AppHeader) · 서비스 리뷰 창 · 사용방법 창 · 바닥글(이용약관 · 개인정보 처리방침)은 미리보기에서 뺐다. "사용방법 살펴보기"는 글자만 둔다. 홈에 연습 시작 버튼이 없는 것은 제품과 같다.',
     productLinks: [link('홈 · 내 피치', '/')],
     next: [
       next('새 피치 만들기', 'pitch-create', 'empty'),
@@ -105,7 +114,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/pitch/create/steps/SlidePreviewDialog.tsx',
     ],
     productNote:
-      '제품은 왼쪽에 자료 버전 트리(VersionRail)와 치치, 본문 위에 경로 · 발표 정보 줄(InfoBar) · 단계 표시줄(StepBar)을 둔다. 미리보기는 단계 목록 하나로 줄였고 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않는다. "대본 매핑"은 매핑 확인 대신 다음 단계로 넘어간다. 슬라이드 크게 보기는 제품에서 썸네일을 눌러 연다(미리보기는 버튼 하나).',
+      '제품은 왼쪽에 자료 버전 트리(VersionRail)와 치치, 본문 위에 경로 · 발표 정보 줄(InfoBar) · 단계 표시줄(StepBar)을 둔다. 미리보기는 단계 목록 하나로 줄였고 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않는다. "대본 매핑"은 매핑 확인 대신 다음 단계로 넘어간다. 슬라이드 크게 보기는 제품에서 썸네일을 눌러 연다(미리보기는 버튼 하나). 단계별 제목 · 버튼 · 안내 문구와 슬라이드를 올리기 전 아래 줄이 없는 것은 제품과 같다.',
     productLinks: [link('새 피치', '/pitch/new'), link('피치 수정', PITCH_EDIT)],
     next: [next('연습 시작 → 시작 전 세팅', 'prepare-mission'), next('내 피치', 'home')],
   },
@@ -134,8 +143,9 @@ const productScreens: GuideScreen[] = [
     rules: [
       'Take는 이 화면의 시작 버튼에서만 만든다. 들어오는 것만으로는 만들지 않는다.',
       '카메라 영상 · 마이크 입력 · 시선 기준 셋이 모두 되고, 이번 연습의 슬라이드 · 대본 조합이 정해져야(제품 `choice !== null`) 시작한다. 카메라가 없으면 시작할 수 없다.',
-      '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 시작 실패 → 시작을 누른 뒤 여는 중 → 준비 정보 문제(불러오기 실패 · 버전 없음 등) → 평소 목소리 읽는 중 → 장치 오류 → 시선 분석을 쓸 수 없음 → 카메라 → 마이크 → 시선 분석 준비 중 → 기준 잡기 실패 → 기준 미완료 → 기준이 흐릿함(막지 않고 권하기만) → 평소 목소리 권유(선택) → "점검이 끝났어요"다.',
+      '안내 줄은 지금 막고 있는 것 하나만 말한다. 순서는 시작 실패 → 시작을 누른 뒤 여는 중(다른 곳의 연습을 끝낼지 묻는 동안은 그 안내) → 준비 정보 문제(불러오기 실패 · 버전 없음 등) → 평소 목소리 읽는 중 → 장치 오류 → 시선 분석을 쓸 수 없음 → 카메라 → 마이크 → 시선 분석 준비 중 → 기준 잡기 실패 → 기준 미완료 → 기준이 흐릿함(막지 않고 권하기만) → 평소 목소리 권유(선택) → "점검이 끝났어요"다.',
       '평소 목소리 읽기는 선택이라 시작을 막지 않는다.',
+      '다른 창 · 기기에서 발표 중인 Take가 있으면 시작을 누를 때 그 연습을 끝내고 시작할지 묻는다. 끝내지 못하면 시작하지 않는다. 시작을 누른 뒤에는 대본 표시 · 장치 선택을 잠근다.',
       '"실전 모드 · 대본 없이"를 고르면 버튼이 "실전 모드로 시작"으로 바뀌고 실전 무대로 간다.',
     ],
     components: [
@@ -152,10 +162,12 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/rehearsal/prepare/ScreenFrame.tsx',
       'frontend/src/features/rehearsal/prepare/CheckCard.tsx',
       'frontend/src/features/rehearsal/prepare/ScriptModeChoice.tsx',
+      'frontend/src/features/rehearsal/prepare/ReplaceTakeDialog.tsx',
+      'frontend/src/features/rehearsal/prepare/activeTake.ts',
       'frontend/src/features/rehearsal/prepare/prepareStore.ts',
     ],
     productNote:
-      '카메라 미리보기 · 시선 기준 전체 화면 · 장치 선택 · 음량 막대 · 평소 목소리 읽기 패널은 그리지 않고 자리만 둔다. 시선 기준의 "누르면 시작"은 기준을 다 잡은 상태로 바로 넘어간다. 안내 줄은 카메라 · 마이크 · 시선 기준 세 갈래만 그린다(제품 순서는 동작 규칙).',
+      '카메라 미리보기 · 시선 기준 전체 화면 · 장치 선택 · 음량 막대 · 평소 목소리 읽기 패널은 그리지 않고 자리만 둔다. 시선 기준의 "누르면 시작"은 기준을 다 잡은 상태로 바로 넘어간다. 안내 줄은 카메라 · 마이크 · 시선 기준 세 갈래만 그린다(제품 순서는 동작 규칙). 다른 곳의 연습을 끝낼지 묻는 창은 그리지 않는다. 시작 조건은 제품과 같다.',
     productLinks: [link('시작 전 세팅', '/pitch/p1/device-check')],
     next: [
       next('Take 시작 → 리허설', 'stage'),
@@ -183,7 +195,8 @@ const productScreens: GuideScreen[] = [
     rules: [
       '끝내기 버튼은 마지막 장이 아니면 "중간 종료", 마지막 장이면 "발표 끝내기"다.',
       '한 번 누르면 "정말 끝낼까요?"로 바뀌고 4초 안에 다시 눌러야 끝난다. 화면을 덮는 창은 띄우지 않는다.',
-      '시작 뒤 말하기 분석 연결이 끊겨도 시계와 발표는 계속된다.',
+      '시작 뒤 말하기 분석 연결이 끊겨도 시계와 발표는 계속된다. 시작 전에 다른 곳에서 발표 중이라 연결이 거절되면 연결 실패 대신 그 이유를 알린다.',
+      '이 Take를 다른 창에서 하고 있으면 무대를 열지 않고 "다른 창에서 연습 중"을, 창이 닫혀 끝났으면 "연습 중단"을 안내한다. 다른 곳에서 새 연습을 시작해 끝났으면 새 Take를 권하지 않는다.',
       '시선 테두리(data-gaze)와 대본 칸 높이는 계측 조건이라 바꾸지 않는다.',
       '실전 모드는 대본 칸을 그리지 않는다.',
     ],
@@ -195,7 +208,7 @@ const productScreens: GuideScreen[] = [
       'frontend/src/features/rehearsal/stage/stage.css',
     ],
     productNote:
-      '카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 시작 전 안내(장치 여는 중 · 연결 중 · 마이크 없음)와 코치 상태 표시는 그리지 않는다. 종료 확인은 4초 뒤 풀리지 않고 유지된다. 무대 배치는 설계서의 src/ui/stage.css를 쓴다.',
+      '카메라 영상 · 음량 막대 · PDF 슬라이드 대신 자리표시를 둔다. 시작 전 안내(장치 여는 중 · 연결 중 · 마이크 없음)와 코치 상태 표시는 그리지 않는다. 무대를 열지 않는 안내(다른 창에서 연습 중 · 연습 중단)도 그리지 않는다. 종료 확인은 4초 뒤 풀리지 않고 유지된다. 무대 배치는 설계서의 src/ui/stage.css(제품 stage.css 복사본)를 쓴다.',
     productLinks: [REHEARSAL, link('리허설 · 실전 모드', '/takes/t3/exam')],
     next: [next('끝내기 → 분석 대기', 'processing-loading'), next('전송 실패 → 재시도', 'retry')],
   },
@@ -305,7 +318,8 @@ const productScreens: GuideScreen[] = [
     components: ['InfoPage 틀', 'Card', 'Stat', 'Button', 'Mascot'],
     tokens: ['greige', 'panel', 'ink', 'coral-deep'],
     sources: ['frontend/src/features/rehearsal/retry/RetryPage.tsx'],
-    productNote: '남은 기록 수치(발표 길이 · 시선 기록 · 슬라이드 이동)는 예시 값이다.',
+    productNote:
+      '남은 기록 수치(발표 길이 · 시선 기록 · 슬라이드 이동)는 예시 값이다. 기록 확인 중 · 다시 보내는 중 · 기록 없음 · 서버에서 이미 끝남 상태의 문구는 제품과 같다.',
     productLinks: [RETRY],
     next: [
       next('다시 보내기 → 분석 대기', 'processing-loading'),
