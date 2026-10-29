@@ -15,6 +15,9 @@ import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Panel';
 import { ScreenFrame } from './ScreenFrame';
 import { ScriptModeChoice } from './ScriptModeChoice';
+import { ReplaceTakeDialog } from './ReplaceTakeDialog';
+import { activeTakeOrNone, endActiveTake } from './activeTake';
+import type { ActiveTake } from '@/types/take';
 import { MissionCard } from './MissionCard';
 import { practiceModeFor, usePrepareStore } from './prepareStore';
 import { fromPrepare, newerScriptNotice, prepareProblem, takeChoice } from './prepareInfo';
@@ -213,6 +216,8 @@ export function DeviceCheckPage() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  /** 다른 곳에서 발표 중인 Take 를 끝낼지 묻는 중. `busy` 면 끝내는 중입니다 (#719) */
+  const [replacing, setReplacing] = useState<{ take: ActiveTake; busy: boolean } | null>(null);
 
   // 지금 열려 있는 트랙이 곧 선택값입니다. 따로 상태로 들고 있으면
   // 브라우저가 다른 장치를 열었을 때 화면과 실제가 갈라집니다
@@ -265,15 +270,50 @@ export function DeviceCheckPage() {
   const ready = live && micOk && cal.status === 'DONE' && choice !== null && !starting;
 
   /**
-   * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
-   *
-   * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
-   * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
+   * 시작 버튼. 사용자는 한 번에 연습 하나만 해서, 다른 창 · 기기에서 발표 중인 Take 가 있으면
+   * 그것을 끝낼지 먼저 묻습니다 (#719). 없거나 묻지 못했으면 바로 `begin` 입니다.
    */
   const start = async () => {
     if (!choice || starting) return;
     setStarting(true);
     setStartError(null);
+    const other = await activeTakeOrNone();
+    if (other) {
+      setReplacing({ take: other, busy: false });
+      return;
+    }
+    await begin();
+  };
+
+  /** 확인 창의 [그 연습 끝내고 시작]. 끝내지 못하면 시작하지 않습니다 — 새 연결이 거절됩니다 */
+  const confirmReplace = async () => {
+    if (!replacing || replacing.busy) return;
+    setReplacing({ ...replacing, busy: true });
+    try {
+      await endActiveTake(replacing.take);
+    } catch (e) {
+      setReplacing(null);
+      setStartError(`다른 곳의 연습을 끝내지 못했어요. ${toMessage(e)}`);
+      setStarting(false);
+      return;
+    }
+    setReplacing(null);
+    await begin();
+  };
+
+  const cancelReplace = () => {
+    setReplacing(null);
+    setStarting(false);
+  };
+
+  /**
+   * ★ Take 는 여기서만 생깁니다. 이 함수를 다른 화면으로 복사하지 마세요.
+   *
+   * 순서가 중요합니다 - 세션(clientSessionId)이 먼저입니다. 그 값이 POST /takes 의
+   * 멱등 키이자 IndexedDB 에 쌓일 모든 기록의 키입니다 (업로드 재시도도 같은 값).
+   */
+  const begin = async () => {
+    if (!choice) return;
 
     // 드롭다운 값이 아니라 **실제로 열린 트랙**의 장치를 넘깁니다. 기본 장치로 통과했어도
     // 그 장치가 남아서, 그사이 OS 기본값이 바뀌어도 리허설이 같은 장치를 엽니다.
@@ -390,6 +430,14 @@ export function DeviceCheckPage() {
           <Button disabled={!ready} onClick={() => start().catch(() => undefined)}>
             {takeNumber > 0 ? `Take ${takeNumber} ${startLabel}` : startLabel}
           </Button>
+          {replacing && (
+            <ReplaceTakeDialog
+              take={replacing.take}
+              busy={replacing.busy}
+              onConfirm={() => confirmReplace().catch(() => undefined)}
+              onCancel={cancelReplace}
+            />
+          )}
         </>
       }
     >
