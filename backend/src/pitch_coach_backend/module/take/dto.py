@@ -257,13 +257,15 @@ class ReviewRequestDTO(BaseModel):
     missions: list[MissionInputDTO] = []
     user_criteria: UserCriteriaDTO | None = None
 
+DimensionState = Literal["IMPROVED", "PRIORITY", "STABLE", "STRENGTH", "NOT_EVALUABLE"]
+
 class DimensionStatus(BaseModel):
-    audience_gaze: str
-    script_independence: str
-    pacing_rhythm: str
-    vocal_delivery: str
-    fluency: str
-    content_delivery: str
+    audience_gaze: DimensionState
+    script_independence: DimensionState
+    pacing_rhythm: DimensionState
+    vocal_delivery: DimensionState
+    fluency: DimensionState
+    content_delivery: DimensionState
 
 class ScriptModeChangeDTO(BaseModel):
     previous: str

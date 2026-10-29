@@ -16,8 +16,13 @@ AI 실패는 FAILED 로 저장한다. 결과 저장이 실패하면(값 문제 �
 를 한 번 더 시도한다 — 안 그러면 FE 가 90초 동안 "분석 중"을 보다가 엉뚱한 PARSE_EXPIRED 를 받는다.
 그마저 실패하면(DB 장애) 로그만 남긴다. 그 행은 PENDING 으로 남지만 script.PARSE_EXPIRE_AFTER 가
 지나면 FAILED(PARSE_EXPIRED) 로 보여 재시도할 수 있다.
+
+AI 를 부르는 동안에는 백그라운드 AI 자리(`core/ai_slots.py`) 하나를 쥔다. 자리가 없으면
+SLOT_WAIT_SEC 까지만 기다리고, 넘으면 AI_UNAVAILABLE 로 실패시킨다. 기다린 시간도 PARSE_EXPIRE_AFTER
+(90초)에 들어가므로, 기다림 + 최악 소요(61초)가 90초를 넘지 않게 묶는다.
 """
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
@@ -25,6 +30,7 @@ from collections.abc import Awaitable, Callable
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.core.database import SessionLocal
 from pitch_coach_backend.core.logging import sqlstate
 from pitch_coach_backend.module.pitch.adapter.script_parser import (
@@ -37,6 +43,10 @@ from pitch_coach_backend.module.pitch.service import script as script_service
 from pitch_coach_backend.module.pitch.service.script_rubric_runner import ScriptRubricRunner
 
 logger = logging.getLogger(__name__)
+
+# 최악 소요 61초(script_parser.py)와 합쳐 만료(90초) 안에 끝나야 "만료"로 보인 작업이 뒤에서 도는
+# 일이 없다
+SLOT_WAIT_SEC = 20.0
 
 
 class ScriptParseRunner:
@@ -56,8 +66,21 @@ class ScriptParseRunner:
 
     async def run(self, ticket: ParseTicket) -> None:
         script_id = ticket.script_version_id
+        slots = ai_slots.background()
         try:
-            parsed = await self._parser.parse(ticket.script_text, ticket.target_ms)
+            async with asyncio.timeout(SLOT_WAIT_SEC):
+                await slots.acquire()
+        except TimeoutError:
+            logger.warning("대본 파싱 AI 자리를 얻지 못함 script_version_id=%s", script_id)
+            await self._save_failure(ticket, ScriptParseErrorCode.AI_UNAVAILABLE)
+            return
+        try:
+            try:
+                parsed = await self._parser.parse(ticket.script_text, ticket.target_ms)
+            finally:
+                # 실패 · 결과 저장과 평가 기준 요청은 자리 밖이다. 쥔 채 평가 기준이 자리를 잡으면
+                # 서로 기다린다
+                slots.release()
         except ScriptParseError as exc:
             # 대본 원문은 로그에 남기지 않는다 (사용자 콘텐츠)
             logger.warning(

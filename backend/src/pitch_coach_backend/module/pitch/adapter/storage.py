@@ -22,6 +22,15 @@ def upload(file: UploadFile, key: str, content_type: str | None = None):
 
     return key
 
+def upload_bytes(data: bytes, key: str, content_type: str) -> str:
+    try:
+        get_s3().put_object(
+            Bucket=settings.s3_bucket_name, Key=key, Body=data, ContentType=content_type
+        )
+    except (ClientError, BotoCoreError) as e:
+        raise Exception(f"S3에 파일 업로드 실패: {str(e)}") from e
+    return key
+
 def generate_presigned_url(key: str, expiration: int = 3600):
     try:
         url = get_s3().generate_presigned_url(

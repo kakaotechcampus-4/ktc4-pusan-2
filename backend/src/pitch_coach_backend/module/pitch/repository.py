@@ -224,6 +224,17 @@ class PitchRepository:
             .order_by(ScriptVersion.version.asc())
         ).all()
 
+    def get_latest_presentations(
+        self, pitch_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, PresentationVersion]:
+        rows = self.db.scalars(
+            select(PresentationVersion)
+            .where(PresentationVersion.pitch_id.in_(pitch_ids))
+            .distinct(PresentationVersion.pitch_id)
+            .order_by(PresentationVersion.pitch_id, PresentationVersion.version.desc())
+        ).all()
+        return {row.pitch_id: row for row in rows}
+
     def get_latest_presentation(
         self, pitch_id: uuid.UUID, page_count: int | None = None
     ) -> PresentationVersion | None:
