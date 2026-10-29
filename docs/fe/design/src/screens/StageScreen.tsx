@@ -1,6 +1,7 @@
 // 제품 리허설 무대(`frontend/src/features/rehearsal/stage/RehearsalPage.tsx`, `ScriptPane.tsx`)의 설계서 샘플.
 import { useEffect, useState } from 'react';
 import { Button } from '@/ui/Button';
+import { CoachStrip } from '@/ui/CoachStrip';
 import type { Navigate } from './shared';
 import '@/ui/stage.css';
 
@@ -104,19 +105,21 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
               </header>
               <div className="viewport">
                 <div className="slide">
-                  <span className="placeholder">SLIDE {slide} · 16:9</span>
+                  <div className="slide-content">
+                    <span className="placeholder">SLIDE {slide} · 16:9</span>
+                  </div>
                 </div>
                 <div className="rail">
                   <section className="camera">
                     <div className="frame">
                       <div className="guide" />
-                      <span className="tag">CAMERA 16:9</span>
+                      <span className="tag">카메라 · 4:3</span>
                     </div>
                   </section>
                   <section className="mic">
                     <span>음량</span>
                   </section>
-                  <section className="next">
+                  <section className="next" hidden={onLastSlide}>
                     <button
                       type="button"
                       className="thumb"
@@ -138,15 +141,14 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                   </div>
                 </div>
               </div>
-              {/* 실전 모드는 서버가 코치 말을 보내지 않아 비어 있다 */}
-              <div className="coach" data-empty={exam} data-tone="correct">
-                <span className="coach-text" role="status">
-                  {exam ? '' : '한 호흡 쉬고 가세요.'}
-                </span>
-              </div>
+              <CoachStrip message={exam || gate ? null : '한 호흡 쉬고 가세요.'} exam={exam} />
               {/* 대본 칸(제품 ScriptPane). 실전 모드는 그리지 않는다 */}
               {!exam && (
                 <div className="script">
+                  <div className="script-heading">
+                    <span>대본</span>
+                    <span>{keyword ? '핵심 키워드만' : '전체 대본 + 하이라이트'}</span>
+                  </div>
                   {keyword ? (
                     <div className="keywords">
                       <span>해결할 문제</span>
@@ -163,24 +165,26 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                 </div>
               )}
               <div className="stage-foot">
-                <span className="key-help">
-                  ← → 슬라이드 이동 · Space 다음 장{!exam && ' · ↑ ↓ 대본 스크롤'}
-                </span>
-                <div className="stage-status">
-                  {stateId === 'disconnected' && (
-                    <span className="stt" data-alert="true">
-                      말하기 분석 연결이 끊겼어요. 발표는 계속하세요.
-                    </span>
-                  )}
-                  {exam && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
-                </div>
-                {/* 끝내기는 마지막 장에서만 연다(제품 #697). 막힌 버튼은 초점 · title이 안 보여 이유를 글자로 둔다.
-                    제품은 4초 뒤에도 확인이 풀린다 */}
-                {!onLastSlide && (
-                  <span id="end-hint" className="end-hint">
-                    마지막 장에서 끝낼 수 있어요
+                <div className="stage-notes">
+                  <span className="key-help">
+                    ← → 슬라이드 이동 · Space 다음 장{!exam && ' · ↑ ↓ 대본 스크롤'}
                   </span>
-                )}
+                  <div className="stage-status">
+                    {stateId === 'disconnected' && (
+                      <span className="stt" data-alert="true">
+                        말하기 분석 연결이 끊겼어요. 발표는 계속하세요.
+                      </span>
+                    )}
+                    {exam && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
+                    {/* 끝내기는 마지막 장에서만 연다(제품 #697). 막힌 버튼은 초점 · title이 안 보여 이유를 글자로 둔다.
+                    제품은 4초 뒤에도 확인이 풀린다 */}
+                    {!onLastSlide && (
+                      <span id="end-hint" className="end-hint">
+                        마지막 장에서 끝낼 수 있어요
+                      </span>
+                    )}
+                  </div>
+                </div>
                 <button
                   type="button"
                   className="end"

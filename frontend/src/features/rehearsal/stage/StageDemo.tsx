@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GazeZone, ScriptMode } from '@/types/api';
+import { ScriptPane } from './ScriptPane';
+import { CoachStrip } from './CoachStrip';
 import './stage.css';
 
 /** contract의 Zone → 테두리 상태. 워커가 뭘 주든 매핑은 한 곳에서만 한다. */
@@ -29,6 +31,10 @@ const BORDER: Record<GazeZone, string> = {
 export function StageDemo() {
   const stageRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<ScriptMode>('HIGHLIGHT');
+  const [tools, setTools] = useState(
+    () => new URLSearchParams(window.location.search).get('tools') !== 'hide',
+  );
+  const [showCoach, setShowCoach] = useState(false);
 
   // 렌더 횟수를 세는 것도 DOM에 직접 쓴다 — 세느라 렌더를 유발하면 의미가 없다
   const countRef = useRef(0);
@@ -45,78 +51,75 @@ export function StageDemo() {
 
   // 코치 줄도 같은 이유로 DOM에 직접 쓴다. 여기서 확인하려는 건
   // "떴다 사라져도 위 칸이 안 움직이는가" 하나다 — 자리를 늘 잡아 두기 때문이다.
-  const coachRef = useRef<HTMLDivElement>(null);
   const toggleCoach = () => {
-    const el = coachRef.current;
-    if (el) el.dataset.empty = el.dataset.empty === 'true' ? 'false' : 'true';
-  };
-
-  // 발밑의 시선 기록 멈춤 경고(#235). 떠도 위 칸이 안 움직이는지 본다 — 발밑 줄이 커지면 슬라이드가 줄어든다
-  const gazeAlertRef = useRef<HTMLSpanElement>(null);
-  const toggleGazeAlert = () => {
-    const el = gazeAlertRef.current;
-    if (el) el.hidden = !el.hidden;
+    setShowCoach((shown) => !shown);
   };
 
   return (
     <div className="flex h-full flex-col bg-greige">
       {/* 조작부는 평범한 UI라 Tailwind로 */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel p-3">
-        <span className="mr-1 text-xs font-bold text-stone">시선</span>
-        {(['CAMERA', 'BOTTOM', 'UNCERTAIN'] as GazeZone[]).map((z) => (
+      {tools && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel p-3">
           <button
-            key={z}
-            onClick={() => setGaze(z)}
-            className="rounded-full border border-line bg-cream px-3 py-1.5 text-xs font-semibold
+            type="button"
+            onClick={() => setTools(false)}
+            className="border border-line px-2 py-1 text-xs"
+          >
+            검토 도구 숨기기
+          </button>
+          <span className="mr-1 text-xs font-bold text-stone">시선</span>
+          {(['CAMERA', 'BOTTOM', 'UNCERTAIN'] as GazeZone[]).map((z) => (
+            <button
+              key={z}
+              onClick={() => setGaze(z)}
+              className="rounded-full border border-line bg-cream px-3 py-1.5 text-xs font-semibold
                        hover:bg-coral-wash"
-          >
-            {z}
-          </button>
-        ))}
+            >
+              {z}
+            </button>
+          ))}
 
-        <span className="mr-1 ml-4 text-xs font-bold text-stone">대본</span>
-        {(['HIGHLIGHT', 'KEYWORD', 'OFF'] as ScriptMode[]).map((m) => (
+          <span className="mr-1 ml-4 text-xs font-bold text-stone">대본</span>
+          {(['HIGHLIGHT', 'KEYWORD', 'OFF'] as ScriptMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                mode === m
+                  ? 'border-coral bg-coral text-white'
+                  : 'border-line bg-cream hover:bg-coral-wash'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+
           <button
-            key={m}
-            onClick={() => setMode(m)}
-            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-              mode === m
-                ? 'border-coral bg-coral text-white'
-                : 'border-line bg-cream hover:bg-coral-wash'
-            }`}
-          >
-            {m}
-          </button>
-        ))}
-
-        <button
-          onClick={toggleCoach}
-          className="ml-4 rounded-full border border-line bg-cream px-3 py-1.5 text-xs
+            onClick={toggleCoach}
+            className="ml-4 rounded-full border border-line bg-cream px-3 py-1.5 text-xs
                      font-semibold hover:bg-coral-wash"
-        >
-          코치 줄
-        </button>
+          >
+            코치 줄
+          </button>
 
-        <button
-          onClick={toggleGazeAlert}
-          className="rounded-full border border-line bg-cream px-3 py-1.5 text-xs font-semibold
-                     hover:bg-coral-wash"
-        >
-          시선 경고
-        </button>
-
-        <span className="tabular ml-auto text-xs text-stone">
-          렌더{' '}
-          <b className="text-ink" ref={badgeRef}>
-            0
-          </b>{' '}
-          — 시선 버튼으로는 안 올라야 정상
-        </span>
-      </div>
+          <span className="tabular ml-auto text-xs text-stone">
+            렌더{' '}
+            <b className="text-ink" ref={badgeRef}>
+              0
+            </b>{' '}
+            — 시선 변경 시 유지
+          </span>
+        </div>
+      )}
 
       {/* 무대는 전용 CSS로 */}
       <div className="relative min-h-0 flex-1">
-        <div ref={stageRef} className="stage" data-script-mode={mode} data-gaze="UNKNOWN">
+        <div
+          ref={stageRef}
+          className="stage stage-live"
+          data-script-mode={mode}
+          data-gaze="UNKNOWN"
+        >
           <header className="stage-head">
             <span className="elapsed">06:32</span>
             <span className="limit">/ 10:00</span>
@@ -130,14 +133,28 @@ export function StageDemo() {
           {/* ★ 시선 테두리는 이 상자에 붙는다 — .stage 의 data-gaze 가 받는다 */}
           <div className="viewport">
             <div className="slide">
-              <span className="placeholder">슬라이드 영역 — 대본 모드와 상관없이 같은 크기</span>
+              <div className="slide-content">
+                <div className="stage-demo-slide">
+                  <h2>
+                    혼자 하는 연습에서
+                    <br />
+                    <strong>변화를 확인하는 연습으로</strong>
+                  </h2>
+                  <p>피치코치</p>
+                  <span>발표 → 피드백 → 다음 Take</span>
+                </div>
+              </div>
             </div>
 
             <div className="rail">
               <section className="camera">
                 <div className="frame">
-                  <div className="guide" />
-                  <span className="tag">CAMERA 16:9</span>
+                  <img
+                    className="stage-demo-camera"
+                    src="/onboarding/chichi-portrait-longsleeve.png"
+                    alt="카메라 예시 이미지"
+                  />
+                  <span className="tag">예시 이미지 · 4:3</span>
                 </div>
               </section>
               <section className="mic">
@@ -159,37 +176,29 @@ export function StageDemo() {
             </div>
           </div>
 
-          <div ref={coachRef} className="coach" data-empty="true">
-            <span>조금 빨라요. 한 호흡 쉬고 가세요</span>
-            <span className="rule">한 번에 하나만 · 8초 후 사라짐</span>
-          </div>
+          <CoachStrip
+            message={showCoach ? '조금 빨라요. 한 호흡 쉬고 가세요' : null}
+            exam={mode === 'OFF'}
+          />
 
-          <div className="script">
-            <p data-current="true">
-              안녕하세요. 오늘 저희가 소개할 서비스는 발표 연습을 도와주는 <mark>피치코치</mark>
-              입니다.
-            </p>
-            <p>
-              발표를 앞두고 혼자 연습할 때 가장 어려운 건, 내가 지금 잘하고 있는지를 스스로 알 수
-              없다는 점입니다.
-            </p>
-            <p>
-              말이 빨라졌는지, 청중을 보고 있는지, 대본에 얼마나 기대고 있는지는 발표하는 본인이
-              가장 모릅니다.
-            </p>
-            <div className="foot">
-              <span>SCRIPT · 높이는 --spacing-script-* 가 정한다</span>
-              <span>↑↓ 대본 · ←→ 슬라이드</span>
-            </div>
-          </div>
+          <ScriptPane
+            mode={mode}
+            slideNumber={6}
+            text={
+              '안녕하세요. 오늘 저희가 소개할 서비스는 발표 연습을 도와주는 피치코치입니다.\n발표를 앞두고 혼자 연습할 때 가장 어려운 건, 내가 지금 잘하고 있는지를 스스로 알 수 없다는 점입니다.\n말이 빨라졌는지, 청중을 보고 있는지, 대본에 얼마나 기대고 있는지는 발표하는 본인이 가장 모릅니다.'
+            }
+            keywords={['피치코치', '혼자 연습의 한계', '속도 · 시선 · 대본 의존']}
+            highlights={[]}
+          />
 
           <div className="stage-foot">
-            <span ref={gazeAlertRef} className="gaze" data-alert="true" role="alert" hidden>
-              시선 기준이 없어 이후 시선은 기록하지 않아요
-            </span>
-            <span>이 페이지는 자리만 잡습니다 — 실제 기록은 P5에서</span>
-            {/* 발밑 줄 높이는 끝내기 버튼이 정한다 — 빼면 슬라이드 칸 높이가 실제와 달라진다 */}
-            <button type="button" className="end" disabled>
+            <div className="stage-notes">
+              <span className="stage-status" id="end-hint">
+                레이아웃 미리보기 · 마지막 장에서 끝낼 수 있어요
+              </span>
+              <span className="key-help">← → 슬라이드 이동 · Space 다음 장 · ↑ ↓ 대본 스크롤</span>
+            </div>
+            <button className="end" type="button" disabled aria-describedby="end-hint">
               발표 끝내기
             </button>
           </div>

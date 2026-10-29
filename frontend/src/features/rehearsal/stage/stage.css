@@ -759,6 +759,7 @@
 }
 
 .rehearsal-shell {
+  background: #faf9f6;
   display: flex;
   flex-direction: column;
   height: 100dvh;
@@ -797,9 +798,16 @@
 }
 
 .stage-live {
-  --color-stone: color-mix(in srgb, var(--color-ink-stage) 78%, var(--color-stage));
-  --rail-w: clamp(160px, 22vw, 280px);
-  --coach-h: 32px;
+  /* 기존 밝은 시안의 지면을 이 무대에만 적용한다. 공용·준비 화면 토큰은 바꾸지 않는다. */
+  --color-stage: #faf9f6;
+  --color-stage-panel: #ffffff;
+  --color-stage-deep: #f1f0eb;
+  --color-ink-stage: #17191e;
+  --color-stone: #6b7280;
+  --stage-line: 2px solid var(--color-ink-stage);
+  --rail-w: clamp(200px, 18vw, 320px);
+  /* 코치 확대분은 슬라이드 행이 받는다. 대본 예약 행과 하단 좌표는 유지한다. */
+  --coach-h: 44px;
   height: 100%;
   min-height: 0;
   grid-template-rows: 32px minmax(0, 1fr) var(--coach-h) var(--spacing-script-highlight) 70px;
@@ -813,6 +821,10 @@
   gap: 8px;
 }
 
+.stage-live[data-gaze='UNKNOWN'] .viewport {
+  border-style: solid;
+}
+
 .stage-live .rail {
   display: flex;
   flex-direction: column;
@@ -821,14 +833,166 @@
 }
 
 .stage-live .rail .camera {
-  display: grid;
   container-type: size;
-  flex: 1;
+  flex: 0 1 auto;
+  width: 100%;
+  aspect-ratio: 4 / 3;
   min-height: 0;
 }
 
 .stage-live .rail .camera .frame {
+  width: min(100cqw, 100cqh * 4 / 3);
+  aspect-ratio: 4 / 3;
+}
+
+/* 미리보기만 중앙 크롭한다. 분석에 쓰는 원본 스트림은 바꾸지 않는다. */
+.stage-live .rail .camera video {
+  object-fit: cover;
+  object-position: center;
+}
+
+.stage-live .rail .camera .tag {
+  padding: 2px 6px;
+  background: var(--color-stage-panel);
+  color: var(--color-ink-stage);
+}
+
+.stage-live .slide {
+  container-type: size;
+}
+
+/* 16:9 표시 틀 안에 원본 전체를 넣는다. 4:3·세로 PDF도 자르지 않는다. */
+.stage-live .slide-content {
+  display: grid;
+  place-items: center;
   width: min(100cqw, 100cqh * 16 / 9);
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage-live .slide .placeholder,
+.stage-live .next .thumb {
+  color: var(--color-ink-stage);
+}
+
+.stage-demo-slide {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  height: 100%;
+  padding: 8%;
+  background: var(--color-stage-panel);
+  color: var(--color-ink-stage);
+  font-size: clamp(10px, 3cqh, 18px);
+}
+
+.stage-demo-slide h2 {
+  font-size: clamp(16px, 6cqh, 36px);
+}
+
+.stage-demo-slide p {
+  color: var(--color-coral-deep);
+}
+
+.stage-demo-camera {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+}
+
+.stage-live .coach {
+  --coach-surface: color-mix(in srgb, var(--color-cream) 65%, var(--color-stage-panel));
+  gap: 12px;
+  padding: 0 12px;
+  border: 2px solid var(--color-ink-stage);
+  border-radius: 0;
+  background: var(--coach-surface);
+  font-size: 16px;
+  box-shadow: inset 2px 2px 0 var(--color-stage-panel);
+}
+
+.stage-live .coach[data-empty='true'] {
+  border-color: var(--color-ink-stage);
+  background: var(--coach-surface);
+}
+
+.stage-live .coach[data-empty='true'] > * {
+  opacity: 1;
+  visibility: visible;
+}
+
+.coach-avatar {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.coach-label {
+  flex: none;
+  font-size: 12px;
+}
+
+.coach-idle {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-ink-stage);
+}
+
+.coach-text:empty {
+  display: none;
+}
+
+.stage-live .coach .indicators li,
+.stage-live .stage-foot .end {
+  border-radius: 0;
+}
+
+.stage-live .script {
+  grid-row: 4;
+  align-self: end;
+  height: var(--script-h);
+}
+
+.stage-live .script p {
+  color: var(--color-stone);
+}
+
+.stage-live .script p[data-current='true'] {
+  color: var(--color-ink-stage);
+}
+
+.stage-live .script mark {
+  color: var(--color-ink-stage);
+  text-decoration: underline;
+  text-decoration-color: var(--color-coral);
+  text-underline-offset: 3px;
+}
+
+.script-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--color-line);
+  padding-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.script-heading span:last-child {
+  color: var(--color-stone);
+  font-weight: 400;
 }
 
 .stage-live .rail section:not(.camera) {
@@ -842,27 +1006,78 @@
 }
 
 .stage-live .rail .legend {
-  display: flex;
   flex: none;
   font-size: 11px;
   gap: 6px;
 }
 
+/* 작은 범례 글자는 읽을 수 있는 먹색으로, 시선 색은 선으로만 구분한다. */
+.stage-live .rail .legend i {
+  color: var(--color-ink-stage);
+}
+
+.stage-live .rail .legend .audience::before {
+  color: var(--color-gaze-audience);
+}
+
+.stage-live .rail .legend .screen::before {
+  color: var(--color-gaze-screen);
+}
+
+.stage-live .rail .legend .unknown::before {
+  color: var(--color-gaze-unknown);
+  border-top-style: solid;
+}
+
+/* 판정 불가도 실선이라 테두리 모양으로는 셋이 구분되지 않는다(2026-10-30).
+   지금 상태의 범례 글자를 먹색 칩으로 뒤집어 색 없이도 읽히게 한다.
+   가로 padding은 늘 두어 칩이 켜지고 꺼질 때 글자 자리가 움직이지 않게 하고,
+   세로 padding은 두지 않아 범례 줄 높이(그 위 카메라 칸)를 바꾸지 않는다. */
+.stage-live .rail .legend i {
+  padding: 0 4px;
+  transition:
+    background-color 400ms ease,
+    color 400ms ease;
+}
+
+.stage-live[data-gaze='AUDIENCE'] .rail .legend .audience,
+.stage-live[data-gaze='SCREEN'] .rail .legend .screen,
+.stage-live[data-gaze='UNKNOWN'] .rail .legend .unknown {
+  background: var(--color-ink-stage);
+  color: var(--color-stage-panel);
+}
+
+.stage-live .stage-foot .stt {
+  color: var(--color-stone);
+}
+
+.stage-live .stage-foot .gaze[data-alert='true'],
+.stage-live .stage-foot .stt[data-alert='true'] {
+  color: var(--color-ink-stage);
+  font-weight: 700;
+}
+
 .stage-live .stage-foot {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: 44px 20px;
+  grid-template-rows: 70px;
   gap: 6px 12px;
   min-width: 0;
   padding: 0;
+}
+
+.stage-notes {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
 }
 
 .stage-live .stage-status {
   display: flex;
   flex-direction: column;
   justify-content: safe center;
-  grid-column: 1;
-  grid-row: 1;
+  flex-shrink: 1;
   min-width: 0;
   max-height: 44px;
   overflow-y: auto;
@@ -873,18 +1088,14 @@
   grid-column: 2;
   grid-row: 1;
   min-height: 44px;
+  align-self: center;
   white-space: nowrap;
 }
 
-.stage-live .stage-foot .key-help,
-.stage-live .stage-foot .end-error {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  font-size: 12px;
-}
-
-.stage-foot .end-error {
-  color: var(--color-coral);
+.stage-live .stage-foot .key-help {
+  flex: 0 0 auto;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .stage-live .coach .indicators {
@@ -898,7 +1109,7 @@
   display: none;
 }
 
-/* 낮은 창에서는 다음 장 썸네일만 접는다. 카메라는 항상 남는다. */
+/* 낮은 창에서는 다음 장 썸네일만 접고 카메라는 유지한다. */
 @media (max-height: 800px) {
   .stage-live .rail .next {
     display: none;
@@ -911,7 +1122,7 @@
   }
   .stage-live {
     --rail-w: 128px;
-    --coach-h: 28px;
+    --coach-h: 44px;
     grid-template-rows: 54px minmax(0, 1fr) var(--coach-h) var(--spacing-script-highlight) 70px;
     gap: 4px;
     padding: 4px;
@@ -944,12 +1155,23 @@
   }
 }
 
-.stage-live .rail .camera video {
-  object-fit: contain;
-}
 .stage-live .rail .next[hidden] {
   display: none;
 }
+
 .stage-live .stage-status .gaze {
   max-width: 100%;
+}
+
+.stage-live .stage-foot .end-hint {
+  margin-left: 0;
+}
+
+.stage-live .stage-foot .end-error {
+  min-width: 0;
+  max-height: 44px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  color: var(--color-ink-stage);
+  font-weight: 700;
 }
