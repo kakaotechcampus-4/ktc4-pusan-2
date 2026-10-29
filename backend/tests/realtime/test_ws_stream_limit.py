@@ -5,7 +5,10 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.security import create_access_token
+from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.stream import abandon, registry, state
 from pitch_coach_backend.realtime.stream.registry import MAX_STREAMS_PER_USER, TooManyStreams
 from pitch_coach_backend.realtime.stt.adapter import SttConfig
@@ -20,6 +23,7 @@ from tests.realtime.conftest import (
     auth,
     closed_with,
     frame,
+    make_take,
 )
 
 
@@ -178,4 +182,49 @@ def test_rejected_connection_gets_the_error_and_a_policy_close(
     assert (error["type"], error["code"]) == ("error", "TOO_MANY_STREAMS")
     assert code == 1008
     assert TAKE_ID not in state.streams
+    assert stt.sessions == []
+
+
+@pytest.mark.anyio
+async def test_has_room_counts_only_attached_streams_of_other_takes():
+    """첫 연결이 Take 를 시작하기 전에 묻는 자리 (`has_room`). `_make_room` 이 비울 스트림은 세지
+    않는다."""
+    adapter = FakeSttAdapter()
+    owner_id = uuid.uuid7()
+    first = await _attach(adapter, owner_id)
+
+    assert not registry.has_room(owner_id, uuid.uuid7())
+    # 같은 Take 로 다시 붙는 연결은 자리가 필요 없다 · 다른 사용자는 세지 않는다
+    assert registry.has_room(owner_id, first.take_id)
+    assert registry.has_room(uuid.uuid7(), uuid.uuid7())
+
+    tab = first._client.ws
+    first.push(frame(1, 0), source=tab)
+    first.detach(tab)
+    # 다시 붙기를 기다리는 스트림은 새 Take 가 정리하고 자리를 쓴다
+    assert registry.has_room(owner_id, uuid.uuid7())
+    await _close_all()
+
+
+def test_ready_take_is_not_started_when_there_is_no_room(
+    client: TestClient,
+    stt: FakeSttAdapter,
+    db_session: Session,
+    user: User,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """자리가 없으면 첫 연결이 Take 를 시작하지 않는다. 떠난 Take 로 끝나 기록에 남지 않는다."""
+    monkeypatch.setattr(registry, "MAX_STREAMS_PER_USER", 0)
+    ready_take = make_take(db_session, user.id, status="READY")
+
+    with client.websocket_connect(f"/api/ws/takes/{ready_take.id}") as ws:
+        auth(ws, create_access_token(user.id))
+        error = ws.receive_json()
+        code = closed_with(ws)
+
+    assert (error["type"], error["code"]) == ("error", "TOO_MANY_STREAMS")
+    assert code == 1008
+    db_session.refresh(ready_take)
+    assert ready_take.status == "READY"
+    assert not abandon.armed(ready_take.id)
     assert stt.sessions == []

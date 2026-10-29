@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from pitch_coach_backend.coach.client import CoachClient
 from pitch_coach_backend.coach.requests import TakeContext
 from pitch_coach_backend.coach.store import CoachStore
-from pitch_coach_backend.realtime.connection.handshake import Handshake
+from pitch_coach_backend.realtime.connection.handshake import TOO_MANY_STREAMS_MESSAGE, Handshake
 from pitch_coach_backend.realtime.dto import (
     ErrorMessage,
     MetricsMessage,
@@ -105,6 +105,7 @@ class RealtimeSession:
             needs_coach_context=lambda: (
                 self.coach is not None and not registry.coach_enabled(self.take_id)
             ),
+            has_room=lambda user_id: registry.has_room(user_id, self.take_id),
         )
         if not await handshake.admit():
             return
@@ -132,10 +133,7 @@ class RealtimeSession:
             await handshake.reject_ended(e.reason)
             return
         except TooManyStreams:
-            await handshake.reject(
-                WsErrorCode.TOO_MANY_STREAMS,
-                "다른 창에서 진행 중인 연습이 있어요. 그 창을 닫고 다시 시작해 주세요.",
-            )
+            await handshake.reject(WsErrorCode.TOO_MANY_STREAMS, TOO_MANY_STREAMS_MESSAGE)
             return
 
         # attach() 가 성공한 순간부터는 반드시 detach() 로 짝을 맞춘다. ready 전송이나
