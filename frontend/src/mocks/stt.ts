@@ -53,7 +53,7 @@ const INDICATOR_STEPS: Record<string, string>[] = [
 ];
 
 /**
- * AI 코치 문구 템플릿 그대로입니다 (`ai/research/coach-agent/src/coach/config.py`, coach-1.2).
+ * AI 코치 문구 템플릿 그대로입니다 (`ai/service/src/pitch_coach_ai/features/coach/config.py`, coach-1.3).
  * `{remaining_slides}` 같은 자리는 그럴듯한 값으로 채웠습니다. 길이 · 말투를 실제와 같게 보려는 것입니다
  */
 const FEEDBACKS = [
