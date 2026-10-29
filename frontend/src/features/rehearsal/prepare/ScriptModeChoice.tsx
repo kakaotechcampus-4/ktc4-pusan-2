@@ -31,9 +31,12 @@ const OPTIONS: { value: ScriptMode; label: string; note: string }[] = [
 export function ScriptModeChoice({
   value,
   onChange,
+  disabled = false,
 }: {
   value: ScriptMode;
   onChange: (mode: ScriptMode) => void;
+  /** 시작을 누른 뒤에는 잠급니다 — 그사이 바꾸면 화면과 만들어질 Take 의 값이 갈라집니다 */
+  disabled?: boolean;
 }) {
   return (
     <Card
@@ -41,7 +44,12 @@ export function ScriptModeChoice({
       action={<span className="text-xs text-stone">시작 후 변경 불가</span>}
     >
       {/* 세로 목록입니다 — 넷을 가로로 놓으면 문구가 잘려 무엇이 다른지 안 보입니다 */}
-      <div role="radiogroup" aria-label="발표 중 대본 표시" className="flex flex-col gap-2">
+      <div
+        role="radiogroup"
+        aria-label="발표 중 대본 표시"
+        aria-disabled={disabled || undefined}
+        className="flex flex-col gap-2"
+      >
         {OPTIONS.map((opt, index) => {
           const on = value === opt.value;
           return (
@@ -50,6 +58,7 @@ export function ScriptModeChoice({
               type="button"
               role="radio"
               aria-checked={on}
+              disabled={disabled}
               tabIndex={on ? 0 : -1}
               onKeyDown={(event) => {
                 let next: number;
@@ -77,7 +86,7 @@ export function ScriptModeChoice({
               }}
               onClick={() => onChange(opt.value)}
               className={[
-                'flex items-start gap-3 border-2 px-3 py-2.5 text-left',
+                'flex items-start gap-3 border-2 px-3 py-2.5 text-left disabled:cursor-not-allowed disabled:opacity-60',
                 on ? 'border-ink bg-coral-wash' : 'border-line-strong bg-panel hover:bg-cream',
               ].join(' ')}
             >

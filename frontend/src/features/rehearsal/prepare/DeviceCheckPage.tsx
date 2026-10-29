@@ -492,11 +492,13 @@ export function DeviceCheckPage() {
           {/* 장치 선택과 점검 항목을 나란히 — 고른 장치의 결과가 바로 옆에서 보입니다 */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
             <Card title="장치 선택">
+              {/* 시작을 누른 뒤에는 잠급니다. Take 는 누른 순간의 장치 · 대본 표시로 만들어집니다 (#719) */}
               <DeviceSelect
                 label="카메라"
                 value={videoId}
                 options={cameras}
                 fallback="기본 카메라"
+                disabled={starting}
                 onChange={(id) =>
                   request({ videoDeviceId: id, audioDeviceId: audioId }).catch(() => undefined)
                 }
@@ -506,6 +508,7 @@ export function DeviceCheckPage() {
                 value={audioId}
                 options={mics}
                 fallback="기본 마이크"
+                disabled={starting}
                 onChange={(id) =>
                   request({ videoDeviceId: videoId, audioDeviceId: id }).catch(() => undefined)
                 }
@@ -576,7 +579,11 @@ export function DeviceCheckPage() {
         <div className="flex min-w-0 flex-col gap-4">
           {/* 준비 정보가 와야 압니다 — 불러오는 중 · 실패면 자리를 비워 둡니다 */}
           {info && <MissionCard info={info} exam={practiceModeFor(scriptMode) === 'EXAM'} />}
-          <ScriptModeChoice value={scriptMode} onChange={(m) => setScriptMode(m)} />
+          <ScriptModeChoice
+            value={scriptMode}
+            onChange={(m) => setScriptMode(m)}
+            disabled={starting}
+          />
 
           {/* 권한·무입력 안내. 문구는 useCameraStream이 들고 있는 것을 그대로 씁니다 —
               화면마다 새로 지으면 사용자가 뭘 해야 할지 매번 달라집니다 */}
@@ -764,12 +771,14 @@ function DeviceSelect({
   options,
   fallback,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: string;
   options: MediaDeviceInfo[];
   fallback: string;
   onChange: (deviceId: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
@@ -777,7 +786,7 @@ function DeviceSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        disabled={options.length === 0}
+        disabled={disabled || options.length === 0}
         className="mt-1 w-full border-2 border-ink bg-panel px-3 py-2 text-sm disabled:opacity-50"
       >
         {options.length === 0 ? (

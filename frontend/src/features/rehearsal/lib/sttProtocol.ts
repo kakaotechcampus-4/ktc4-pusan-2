@@ -256,8 +256,10 @@ export const STT_ERROR_MESSAGE: Record<SttErrorCode, string> = {
   BAD_MESSAGE: '말하기 분석에 문제가 생겼어요. 발표는 계속하세요.',
   BAD_AUDIO_FRAME: '소리를 보내는 중 문제가 생겼어요. 발표는 계속하세요.',
   TAKE_TAKEN_OVER: '다른 탭에서 같은 연습을 이어받았어요. 이 탭의 말하기 분석은 멈춥니다.',
+  // 발표 중에만 보입니다(시작 전은 `BUSY` 안내). BE 가 오디오가 멈춘 연결을 다른 곳의 새 연습에
+  // 자리를 내주려고 닫는 경우뿐이라(`release_idle`), 켜져 있던 분석이 멈춘 것입니다
   TOO_MANY_STREAMS:
-    '다른 기기나 창에서 연습 중이라 말하기 분석을 켜지 못했어요. 발표는 계속하세요.',
+    '다른 기기나 창에서 새 연습을 시작해 말하기 분석이 멈췄어요. 발표는 계속하세요.',
 };
 
 /** `TAKE_ENDED`(`ABANDONED`) — 오래 끊겨 서버가 Take 를 끝냈지만 발표는 이어 갑니다 */
