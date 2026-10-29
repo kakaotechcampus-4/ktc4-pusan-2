@@ -12,6 +12,7 @@ from typing import Any
 
 from sqlalchemy.exc import OperationalError
 
+from pitch_coach_backend.coach.client import EvaluateMiss
 from pitch_coach_backend.coach.replies import (
     EvaluateReply,
     FinalizeReply,
@@ -89,14 +90,14 @@ class FakeClient:
         self.finalized: list[dict[str, Any]] = []
         self.planned: list[dict[str, Any]] = []
         # 받은 요청마다 돌려줄 것. 비면 WAIT
-        self.replies: list[EvaluateReply | None] = []
+        self.replies: list[EvaluateReply | EvaluateMiss] = []
         self.finalize_replies: list[FinalizeReply | ReplayRequired | None] = []
         self.plan_reply: PlanReply | None = None
         # 이게 set 될 때까지 evaluate 응답을 미룬다
         self.release = asyncio.Event()
         self.release.set()
 
-    async def evaluate(self, request: dict[str, Any]) -> EvaluateReply | None:
+    async def evaluate(self, request: dict[str, Any]) -> EvaluateReply | EvaluateMiss:
         self.evaluated.append(copy.deepcopy(request))
         await self.release.wait()
         if self.replies:
