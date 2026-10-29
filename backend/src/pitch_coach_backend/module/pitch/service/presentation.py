@@ -42,6 +42,7 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     if page_count is None:
         raise InvalidPresentation()
     thumbnail = render_first_page(presentation_file.file)
+    presentation_id = uuid.uuid7()
 
     # 같은 pitch 에 동시에 올려도 같은 버전 번호를 받지 않게 커밋까지 줄을 세운다.
     # 번호가 S3 키에도 들어가서, 잠그지 않으면 500 에 더해 앞서 올린 파일이 덮어쓰인다.
@@ -52,14 +53,14 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     version = pitch_repository.next_presentation_version(pitch_id)
     presentation_key = upload(
         presentation_file,
-        f"pitches/{pitch_id}/presentations/{version}.pdf",
+        f"pitches/{pitch_id}/presentations/{presentation_id}.pdf",
         content_type="application/pdf",
     )
     thumbnail_key = None
     if thumbnail is not None:
         try:
             thumbnail_key = upload_bytes(
-                thumbnail, f"pitches/{pitch_id}/presentations/{version}.webp", "image/webp"
+                thumbnail, f"pitches/{pitch_id}/presentations/{presentation_id}.webp", "image/webp"
             )
         except Exception as e:
             logger.warning("발표자료 썸네일을 올리지 못했다 pitch=%s: %s", pitch_id, e)
@@ -70,6 +71,7 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
         # 다시 올릴 때 버전이 하나 더 생긴다
         file_url = generate_presigned_url(presentation_key)
         presentation = PresentationVersion(
+            id=presentation_id,
             pitch_id=pitch_id,
             version=version,
             file_key=presentation_key,
@@ -79,14 +81,14 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
         pitch_repository.save_presentation(presentation)
     except Exception:
         db.rollback()
-        _discard_upload(db, pitch_id, version, presentation_key)
+        _discard_upload(db, presentation_id, presentation_key, thumbnail_key)
         raise
     try:
         db.commit()
     except Exception:
         db.rollback()
         # 커밋 응답만 잃었을 수 있다 (커밋 뒤 연결이 끊김). 버전 행이 없을 때만 지운다
-        _discard_upload(db, pitch_id, version, presentation_key)
+        _discard_upload(db, presentation_id, presentation_key, thumbnail_key)
         raise
 
     return UploadPresentationResultDTO(
@@ -97,26 +99,34 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     )
 
 
-def _discard_upload(db: Session, pitch_id: uuid.UUID, version: int, key: str) -> None:
-    """롤백 뒤 같은 발표를 다시 잠그고, 버전 행이 없을 때만 올린 파일을 지운다.
-
-    롤백하면 다음 업로드가 같은 버전 번호 · S3 키를 쓸 수 있다. 확인부터 삭제까지 잠가 그 요청의
-    파일을 지우지 않게 한다. 커밋 응답만 잃었거나 다음 요청이 이미 같은 번호를 저장했으면 남긴다.
-    확인도 못 하면 남기고 원래 실패를 가리지 않게 로그만 남긴다.
+def _discard_upload(
+    db: Session, presentation_id: uuid.UUID, key: str, thumbnail_key: str | None
+) -> None:
+    """
+    presentation_id 로 버전 행이 없을 때만 이 요청이 올린 PDF · 썸네일을 지운다. 
+    커밋 응답만 잃었으면 행이 이미 있는 상태라 남긴다
     """
     try:
-        repository = PitchRepository(db)
-        repository.lock_for_new_version(pitch_id)
-        if not repository.has_presentation_version(pitch_id, version):
-            delete(key)
+        exists = PitchRepository(db).has_presentation(presentation_id)
     except Exception:
         logger.warning(
-            "발표자료 업로드 실패 뒤 파일을 정리하지 못해 남긴다 pitch_id=%s version=%d",
-            pitch_id,
-            version,
+            "발표자료 업로드 실패 후 버전 행 확인 중 오류 발생 presentation_id=%s, keys=%s",
+            presentation_id,
+            [k for k in (key, thumbnail_key) if k is not None],
+            exc_info=True,
         )
+        return
     finally:
-        db.rollback()
+        db.rollback() # 성공 시 트랜잭션 정리용, 실패 시 잠금 해제용
+
+    if not exists:
+        for k in (key, thumbnail_key):
+            if k is None:
+                continue
+            try:
+                delete(k)
+            except Exception:
+                logger.warning("발표자료 업로드 실패 후 삭제 중 오류 발생 key=%s", k, exc_info=True)
 
 
 # 각 발표자료 버전의 상세 정보.

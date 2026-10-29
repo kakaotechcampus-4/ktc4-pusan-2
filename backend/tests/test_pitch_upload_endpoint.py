@@ -98,7 +98,7 @@ def test_upload_persists_presentation_version_one(
         PresentationVersion, uuid.UUID(body["presentation_version_id"])
     )
 
-    expected_key = f"pitches/{pitch_id}/presentations/1.pdf"
+    expected_key = f"pitches/{pitch_id}/presentations/{body['presentation_version_id']}.pdf"
     assert presentation is not None
     assert presentation.version == 1
     assert presentation.file_key == expected_key
@@ -127,7 +127,7 @@ def test_second_upload_increments_version(
 
     assert presentation is not None
     assert presentation.version == 2
-    assert presentation.file_key == f"pitches/{pitch_id}/presentations/2.pdf"
+    assert presentation.file_key == f"pitches/{pitch_id}/presentations/{presentation.id}.pdf"
 
 
 def test_upload_to_another_users_pitch_is_rejected(
@@ -194,7 +194,8 @@ def test_file_extension_does_not_decide_the_key(
     response = _upload(client, pitch_id, pdf, auth_headers, filename="slides.key")
 
     assert response.status_code == 200
-    assert response.json()["presentation"]["file_url"].endswith("/presentations/1.pdf")
+    body = response.json()["presentation"]
+    assert body["file_url"].endswith(f"/presentations/{body['presentation_version_id']}.pdf")
 
 
 @pytest.mark.parametrize(
