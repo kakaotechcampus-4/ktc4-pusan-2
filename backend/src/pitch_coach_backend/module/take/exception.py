@@ -7,6 +7,14 @@ class NonExistentTake(AppException):
     message = "존재하지 않는 연습 기록입니다."
 
 
+class TakeRecordsNotSaved(AppException):
+    # 끝내기 PUT 이 왔는데 확정 전사를 아직 저장하지 못했다 (DB 장애). 끝난 것으로 적지 않고 뒤에서
+    # 저장한 뒤 적는다. FE 는 같은 값으로 다시 보낸다
+    status_code = 503
+    code = "TAKE_RECORDS_NOT_SAVED"
+    message = "발표 기록을 아직 저장하지 못했어요. 잠시 후 다시 시도해 주세요."
+
+
 class TakeAlreadyEnded(ConflictException):
     # WebSocket 이 끝난 Take 를 거절할 때와 같은 code 다 (realtime/dto.py WsErrorCode)
     code = "TAKE_ENDED"

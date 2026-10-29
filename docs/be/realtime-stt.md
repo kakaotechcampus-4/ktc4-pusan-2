@@ -85,7 +85,9 @@ WS /api/ws/takes/{take_id}
   **저장은 STT 처리를 기다리게 하지 않는다** — final 은 Take 별 버퍼(`storage/transcripts.FinalBuffer`, 1초 원자료와
   같은 `RowBuffer`)에 넣고 뒤에서 번호 순서대로 하나씩 넣는다. 스트림이 바뀌어도 버퍼는 Take 에 남아 새 스트림은 저장된
   번호와 버퍼에 남은 번호 중 큰 쪽 뒤에서 잇는다. **저장 실패는 스트림을 멈추지 않는다** — DB 가 잠깐 안 되면 들고 있다가
-  다시 넣고 화면 전사는 계속 나간다. Take 를 끝내기 전에는 남은 final 을 저장한 뒤 `ANALYZING` 으로 적는다. 단 Take 가
+  다시 넣고 화면 전사는 계속 나간다(1시간 발표 분량인 1,500개까지). Take 를 끝내기 전에는 남은 final 을 저장한 뒤 `ANALYZING` 으로 적는다.
+  DB 장애로 다 넣지 못했으면 버리지 않고 지금 적지도 않는다 — 뒤에서 final 부터 다시 넣고 그 뒤에 적는다(`finish.mark_later`). 끝내기
+  PUT 이면 `503 TAKE_RECORDS_NOT_SAVED` 로 답해 FE 가 다시 보낸다. 프로세스가 내려가면 메모리의 final 은 잃는다. 단 Take 가
   지워져 저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
 - **interim 은 STT 처리를 기다리게 하지 않는다.** 보내는 중이면 가장 새것만 남겼다가 이어 보내고, 한 번 보내기는
   1초(`INTERIM_SEND_TIMEOUT_SEC`)까지다. 받는 쪽이 느려도 다음 STT 결과 · 문장 끝 신호가 밀리지 않는다. final 을

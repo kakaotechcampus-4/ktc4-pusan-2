@@ -28,8 +28,9 @@ logger = logging.getLogger(__name__)
 
 # FE 가 떨어져 있는 동안 모아 둘 final 개수. 10분 발표가 200개 안팎이다
 MAX_MISSED_FINALS = 200
-# 저장에 실패해 들고 있을 final 개수. 넘치면 오래된 것부터 버린다
-MAX_UNSAVED_FINALS = 200
+# 저장에 실패해 들고 있을 final 개수. 넘치면 오래된 것부터 버린다. Take 를 끝낼 때까지 DB 가 안 돼도
+# 리포트에 빠지지 않게 최대 시간(1시간) 발표의 final 이 다 들어가게 둔다 (10분이 200개 안팎)
+MAX_UNSAVED_FINALS = 1_500
 
 
 class TranscriptBuffer:

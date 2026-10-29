@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,10 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import DataError, OperationalError
 from sqlalchemy.orm import Session
 
+from pitch_coach_backend.core.security import create_access_token
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
 from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
 from pitch_coach_backend.module.take.exception import DuplicateTranscriptSegment, NonExistentTake
 from pitch_coach_backend.module.take.service import record as record_service
+from pitch_coach_backend.module.user.entity import User
 from pitch_coach_backend.realtime.connection import session
 from pitch_coach_backend.realtime.dto import (
     TranscriptMessage,
@@ -23,7 +26,8 @@ from pitch_coach_backend.realtime.dto import (
 from pitch_coach_backend.realtime.storage import transcripts as transcripts_module
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
 from pitch_coach_backend.realtime.storage.transcripts import FinalBuffer, TranscriptBuffer
-from pitch_coach_backend.realtime.stream import registry, runtime
+from pitch_coach_backend.realtime.stream import finish, registry, runtime, state
+from pitch_coach_backend.realtime.stream.auto_end import AutoEndPolicy
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
     SttConfig,
@@ -542,7 +546,7 @@ def test_persist_failure_keeps_the_stream_alive(
             )
         )
     )
-    use_store(FakeTranscriptStore(fail=True))
+    store = use_store(FakeTranscriptStore(fail=True))
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
@@ -556,7 +560,9 @@ def test_persist_failure_keeps_the_stream_alive(
     assert (first["text"], second["text"]) == ("하나", "둘")
     assert status["state"] == "closed" and status["frames"] == 2
     assert "확정 전사 저장 실패" in caplog.text
-    assert "확정 전사 를 다 저장하지 못해 버린다" in caplog.text and "개수=2" in caplog.text
+    # 전사를 버리고 끝내지 않는다. 저장한 뒤에 끝낸 것으로 적는다
+    assert "확정 전사를 다 저장하지 못했다" in caplog.text and "개수=2" in caplog.text
+    assert "mark_ended" not in store.calls
     assert "하나" not in caplog.text, "전사 원문은 로그에 남기지 않는다"
 
 
@@ -598,6 +604,61 @@ def test_failed_last_final_is_saved_before_the_take_ends(client: TestClient, tok
         stop(ws)
 
     assert [seg.transcript for seg in store.segments] == ["마지막"]
+    assert store.calls == ["append", "mark_ended"]
+
+
+def test_take_is_ended_after_its_finals_are_saved_once_the_database_is_back(
+    client: TestClient, token: str, monkeypatch: pytest.MonkeyPatch
+):
+    """DB 장애가 stop 까지 이어져도 final 을 버리고 끝내지 않는다. 분석은 `ANALYZING` 을 보고 전사를
+    읽으므로, DB 가 돌아오면 final 을 먼저 넣고 그 뒤에 끝난 것으로 적는다."""
+    monkeypatch.setattr(finish, "MARK_RETRY_SEC", (0.05,) * 40)
+    use(FakeSttAdapter(Plan(replies=[transcript(0, 100, "마지막", is_final=True)])))
+    store = use_store(FakeTranscriptStore(fail=True))
+    with client.websocket_connect(WS_PATH) as ws:
+        handshake(ws, token)
+        wait_state(ws, "ok")
+        ws.send_bytes(frame(1, 0))
+        ws.receive_json()
+        stop(ws)
+
+    assert store.calls == []
+    store.fail = False
+    wait_until(lambda: "mark_ended" in store.calls)
+    assert store.calls == ["append", "mark_ended"]
+    assert [seg.transcript for seg in store.segments] == ["마지막"]
+
+
+def test_put_end_waits_for_finals_that_are_not_saved_yet(
+    client: TestClient,
+    db_session: Session,
+    user: User,
+    take: Take,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """STT 없이 끝내는 PUT 이 왔는데 확정 전사를 아직 저장하지 못했다. 끝난 것으로 적지 않고
+    503 으로 답해 FE 가 다시 보내게 한다. 뒤에서 final 을 넣은 뒤 적는다."""
+    monkeypatch.setattr(finish, "MARK_RETRY_SEC", (0.05,) * 40)
+    store = use_store(FakeTranscriptStore(fail=True))
+    record = state.take_record(TAKE_ID, AutoEndPolicy.from_settings(), store)
+    record.finals.add(
+        TranscriptBuffer(TAKE_ID, store).segment(transcript_message("1-1", "마지막"), 100, 1)
+    )
+    started = datetime.now(UTC)
+    response = client.put(
+        f"/api/pitches/{take.pitch_id}/takes/{take.id}",
+        json={
+            "started_at": started.isoformat(),
+            "ended_at": (started + timedelta(minutes=1)).isoformat(),
+        },
+        headers={"Authorization": f"Bearer {create_access_token(user.id)}"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "TAKE_RECORDS_NOT_SAVED"
+    assert store.ended == []
+    store.fail = False
+    wait_until(lambda: store.ended == [TAKE_ID])
     assert store.calls == ["append", "mark_ended"]
 
 
