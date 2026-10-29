@@ -9,7 +9,9 @@ import pytest
 
 from pitch_coach_backend.coach.client import HttpCoachClient
 
-EXAMPLES = Path(__file__).resolve().parents[3] / "ai/research/coach-agent/src/coach/examples"
+EXAMPLES = (
+    Path(__file__).resolve().parents[3] / "ai/service/src/pitch_coach_ai/features/coach/examples"
+)
 
 
 def example(name: str) -> dict[str, Any]:

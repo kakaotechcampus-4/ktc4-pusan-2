@@ -19,7 +19,7 @@ infra/
 특정 URL, 혹은 URL 형식에 대해 어떤 주소와 port로 요청을 보낼지가 작성되어 있습니다.
     * `/api/*` 요청 본문 크기 상한도 여기서 겁니다. 발표자료 업로드는 41MiB, 나머지 API 는 1MiB 이고, 넘으면 BE 에 닿기 전에 413 입니다. Caddy 2.7 전에는 413 대신 502 가 나서 이미지를 2.11.7 로 올렸습니다.
 
-* docker-compose.yml : FE, BE, AI, DB(PostgreSQL, Redis), Caddy를 각각의 컨테이너로 띄운 후, 해당 컨테이너들의 관리 방침과 자동 재시작 정책, 종속성 관리 등을 명시하는 파일입니다.
+* docker-compose.yml : FE, BE, AI, DB(PostgreSQL), Caddy를 각각의 컨테이너로 띄운 후, 해당 컨테이너들의 관리 방침과 자동 재시작 정책, 종속성 관리 등을 명시하는 파일입니다.
     * 테스트 사이트와 운영 사이트의 caddy 포트 공개와 사이트 URL 지정을 위해 테스트 사이트의 경우 docker-compose.dev.yml, 운영 사이트의 경우 docker-compose.prod.yml에 각각 필요한 정보를 명시하였습니다.
 
 ## 컨테이너 별 로그 확인
@@ -73,6 +73,21 @@ develop/main branch에 push를 할 때 해당 과정이 진행됩니다.
     ```
     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
     ```
+
+## Redis 를 뺀 배포 (#577)
+
+구글 로그인의 임시 인증 요청을 Redis 에서 PostgreSQL(`oauth_authorization_requests`)로 옮기면서 compose 에서 `redis` 서비스를 뺐습니다. 이 변경이 처음 올라가는 배포는 아래 순서로 진행됩니다. 따로 손댈 것은 마지막의 볼륨 정리뿐입니다.
+
+1. 배포 워크플로가 `alembic upgrade head` 로 새 테이블을 먼저 만듭니다.
+2. `up -d --remove-orphans` 가 새 BE 를 띄우고, compose 에 없는 `redis` 컨테이너를 내립니다.
+3. 배포 직전에 구글 동의 화면에 있던 사용자는 콜백에서 `auth_error=invalid_request` 로 돌아옵니다. Redis 의 진행 중 요청은 옮기지 않으므로 다시 로그인하면 됩니다. 로그인을 시작한 지 10분 안의 사용자만 해당해서 유예 기간을 두지 않았습니다.
+4. 서버에서 로그인이 되는지, `docker ps` 에 redis 가 없는지 확인합니다.
+5. 확인이 끝나면 Redis 볼륨을 지웁니다. `--remove-orphans` 는 볼륨을 지우지 않습니다.
+    ```
+    docker volume ls --filter name=redis_data
+    docker volume rm <위에서 나온 이름>
+    ```
+6. `backend/.env` 의 `REDIS_URL` · `REDIS_PASSWORD` · `LOCAL_REDIS_URL` 은 더 읽지 않습니다. 남아 있어도 무시되니 편할 때 지웁니다.
 
 ## 주의사항
 * 배포 전 main branch와 develop branch에 사용할 환경변수들을 다시 확인해주세요. 공유해도 되는 환경변수는 두 경우 모두 같게 하되, 그렇지 않은 경우에는 분리를 필수적으로 진행하여야 합니다.

@@ -8,8 +8,8 @@
 |---|---|
 | 판단 방식 | 규칙. LLM · 네트워크를 쓰지 않는다 |
 | 부르는 쪽 | 코치(`/coach/evaluate` · `/coach/finalize` · `replay`). 자기 HTTP 엔드포인트는 없다 |
-| 기능 버전 | `volume-1.0` (`src/volume/version.py`), `criteria_version` = `volume-1.0+<config 해시 12자리>` |
-| 상태 | 진입 함수 5개 + 테스트. **기준값은 옛 평가기 값이고 실제 녹음으로 검증하지 않았다** |
+| 기능 버전 | `volume-1.1` (서비스 `features/volume/version.py`), `criteria_version` = `volume-1.1+<config 해시 12자리>` |
+| 상태 | 진입 함수 5개 + 테스트. 판정 모듈 · 예시 · 테스트는 AI 서비스로 옮겼습니다(`ai/service/src/pitch_coach_ai/features/volume/` · `ai/service/tests/unit/volume/`). **기준값은 옛 평가기 값이고 실제 녹음으로 검증하지 않았다** |
 | 설계 | 목적 · 입출력 계약 · 처리 · 배포 → [`docs/ai/features/volume.md`](../../../docs/ai/features/volume.md) |
 
 ## 1. 진입 함수
@@ -33,36 +33,46 @@ FE (마이크 → 음량 1초 기록) → BE (30초 창) → 코치
 
 ## 2. 폴더와 파일
 
+판정 모듈의 원본은 서비스 한 곳입니다. 이 폴더는 서비스를 editable로 설치해 `pitch_coach_ai.features.volume`을 그대로 import합니다.
+
 ```
 volume-analysis/
 ├─ README.md
-├─ pyproject.toml · uv.lock    Python 3.12, 의존성은 pydantic 하나
-├─ src/volume/                 판정 모듈 → 서비스 features/volume/로 폴더째 옮긴다
-│   ├─ schemas.py              입력 · 출력 pydantic 모델 = 계약
-│   ├─ core.py                 순수 함수 (judge · summarize · criteria · speaking_levels · baseline)
-│   ├─ config.py               기준값. 해시가 criteria_version 에 들어간다
-│   ├─ version.py              기능 버전
-│   └─ examples/               judge(판정 창 전체) · summarize · criteria · speaking_levels · baseline 입력 · 출력 예시
+├─ pyproject.toml · uv.lock    Python 3.12, 서비스(ai/service)를 editable로 설치. 판은 서비스 uv.lock과 같게 맞춘다
 ├─ data/                       평가 데이터 (아직 없음)
 ├─ tools/                      녹음 → 1초 기록 · 평가 스크립트 (아직 없음)
-├─ tests/                      판정 규칙 · 기준 음량 · summarize · 예시 계약
 └─ reports/results/            평가 결과 JSON (아직 없음)
+
+ai/service/src/pitch_coach_ai/features/volume/   판정 모듈 (이 폴더의 src/volume/에서 폴더째 옮김)
+├─ schemas.py                  입력 · 출력 pydantic 모델 = 계약
+├─ core.py                     순수 함수 (judge · summarize · criteria · speaking_levels · baseline)
+├─ config.py                   기준값. 해시가 criteria_version 에 들어간다
+├─ version.py                  기능 버전
+└─ examples/                   judge(판정 창 전체) · summarize · criteria · speaking_levels · baseline 입력 · 출력 예시
+
+ai/service/tests/unit/volume/  판정 규칙 · 기준 음량 · summarize · 예시 계약 (이 폴더의 tests/에서 옮김)
 ```
 
+옮길 때 코드는 그대로 두고, 테스트는 import 접두어와 예시 폴더를 패키지 위치로 찾는 것만 바꿨습니다.
 코어 규칙: 파일 · DB · 네트워크 · 환경변수 · 시계를 쓰지 않고(시간은 입력의 `t_ms`뿐), 모듈 안은 상대 import만 씁니다.
 같은 입력에는 같은 결과가 나옵니다.
 
 ## 3. 실행
 
+LLM을 쓰지 않아 `ai/.env`가 필요 없습니다. 테스트는 서비스 폴더에서 돌립니다.
+
 ```bash
-cd ai/research/volume-analysis
+cd ai/service
 uv sync                                  # 처음 한 번 (.venv 는 git 에 없다)
-uv run python -m pytest                  # 테스트
+uv run python -m pytest tests/unit/volume
+
+cd ../research/volume-analysis           # 평가 도구를 쓸 때 (서비스를 editable로 설치)
+uv sync
 uv run ruff check . && uv run ruff format --check .
 ```
 
 ```python
-from volume.core import judge, summarize, criteria, speaking_levels, baseline
+from pitch_coach_ai.features.volume.core import judge, summarize, criteria, speaking_levels, baseline
 
 volume, pause = judge(
     {"records": [...], "base_level_db": -29.5, "since_ms": 40000},  # records: 최근 30초 1초 기록
@@ -77,12 +87,16 @@ volume.state, volume.metrics.voice_diff_db, pause.metrics.silence_ms
 
 ## 4. 테스트
 
+서비스 `ai/service/tests/unit/volume/`에 있습니다.
+
 | 파일 | 보는 것 |
 |---|---|
-| `tests/test_judge.py` | 작음 · 기준과 같을 때, 기준 음량 없음 · Take 안에서 생김, 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기 · 창 안에 끊김이 없을 때, 긴 침묵 한 번만, 같은 1초 두 번, 마지막 조각(시간 · 에너지 · 커서), 커서 · `tally`, 끊긴 1초는 `tally`에 시간만 |
-| `tests/test_baseline.py` | 말한 1초 고르기, `baseline` 표본 부족 · 충분 · 튀는 값 |
-| `tests/test_summarize.py` | Take 지표 계산, 분모가 0일 때, `criteria`가 config를 따르는지, 둘의 결과가 안쪽까지 dict인지 |
-| `tests/test_examples.py` | `examples/`가 구현 · 계약 모델과 같은지 |
+| `test_judge.py` | 작음 · 기준과 같을 때, 기준 음량 없음 · Take 안에서 생김, 오디오 멈춤 · 말한 1초 부족, 에너지 Leq(dB 평균이 아님), 침묵 자르기 · 창 안에 끊김이 없을 때, 긴 침묵 한 번만, 같은 1초 두 번, 마지막 조각(시간 · 에너지 · 커서), 커서 · `tally`, 끊긴 1초는 `tally`에 시간만 |
+| `test_baseline.py` | 말한 1초 고르기, `baseline` 표본 부족 · 충분 · 튀는 값 |
+| `test_summarize.py` | Take 지표 계산, 분모가 0일 때, `criteria`가 config를 따르는지, 둘의 결과가 안쪽까지 dict인지 |
+| `test_examples.py` | `examples/`가 구현 · 계약 모델과 같은지 |
+
+옮기기 전후 `examples/` 입력의 다섯 함수 출력과 `criteria_version`(`volume-1.1+19f685ae6d67`)은 바이트까지 같았습니다(2026-10-28, 테스트 55개 그대로 통과).
 
 ## 5. 실험 결과
 
@@ -94,7 +108,7 @@ volume.state, volume.metrics.voice_diff_db, pause.metrics.silence_ms
 
 코치 연구 폴더의 대역 `coach_lab/judges/volume.py`와 출력 모양은 같고 규칙이 다릅니다.
 
-| | 대역 `volume-0.2` | 이 모듈 `volume-1.0` |
+| | 대역 `volume-0.2` | 이 모듈 `volume-1.1` |
 |---|---|---|
 | 짧은 창의 음량 | dB 값 평균 | 에너지 평균(Leq), `voiced_ms`로 가중 |
 | 말한 1초 | `silence_ms` < 300 · 오디오 흐름 · `level_db` 있음 | `voiced_ms` ≥ `voiced_min_ms` · `audio_live` (시선과 같은 기준) |

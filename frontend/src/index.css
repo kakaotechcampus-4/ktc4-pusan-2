@@ -22,6 +22,10 @@
   src: url("/fonts/IBMPlexMono-Bold-latin.woff2") format("woff2");
 }
 
+/* 홈을 한 화면에 고정할 만큼 넓고 높은 창. 낮으면(배율 125~150% 노트북) 목록이 몇 줄만 남아
+   고정하지 않고 페이지를 스크롤합니다 (PR #669 리뷰) */
+@custom-variant one-screen (@media (min-width: 64rem) and (min-height: 40rem));
+
 /* ═══════════════════════════════════════════════════════════════
    피치코치 디자인 토큰
 
@@ -80,6 +84,7 @@
   --spacing-script-off: 0px;
 
   --spacing-sidebar: 236px;         /* 공통 셸 사이드바 */
+  --container-page: 90rem;          /* max-w-page · 상단바와 본문 폭 (1440px) */
 
   /* ── 타이포 ────────────────────────────────────────────────── */
   --font-sans: "Pretendard", "Noto Sans KR", -apple-system,
@@ -132,6 +137,27 @@ body {
 }
 
 /* 분석 대기의 "분석 중..." 점. 배경 그림은 움직이지 않습니다. */
+/* 출시 시계: 1초 갱신 중 560ms만 움직이며, 변한 단위의 카드만 재생한다. */
+@keyframes flip-top {
+  0% { transform: rotateX(0deg); }
+  50%, 100% { transform: rotateX(-90deg); }
+}
+@keyframes flip-bottom {
+  0%, 50% { transform: rotateX(90deg); }
+  100% { transform: rotateX(0deg); }
+}
+@keyframes flip-old-bottom {
+  0%, 49.9% { visibility: visible; }
+  50%, 100% { visibility: hidden; }
+}
+.flip-top { animation: flip-top 560ms ease-in forwards; backface-visibility: hidden; }
+.flip-bottom { animation: flip-bottom 560ms ease-out forwards; backface-visibility: hidden; }
+.flip-old-bottom { animation: flip-old-bottom 560ms linear forwards; }
+.landing[data-motion="off"] :is(.flip-top, .flip-bottom, .flip-old-bottom) { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .flip-top, .flip-bottom, .flip-old-bottom { display: none; }
+}
+
 @keyframes loading-dot {
   0%, 20% { opacity: 0; }
   30%, 90% { opacity: 1; }
@@ -152,4 +178,9 @@ body {
   --color-ink: #17191e;
   --color-stone: #6b7280;
   --color-coral-wash: #fff0e9;
+}
+
+/* 발표 생성 화면의 사각형 컴포넌트. 단계 번호 같은 원형 표시는 유지합니다. */
+.pitch-create-square :is(.rounded, .rounded-sm, .rounded-md, .rounded-lg, .rounded-xl, .rounded-r) {
+  border-radius: 0;
 }

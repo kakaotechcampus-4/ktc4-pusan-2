@@ -34,7 +34,9 @@ from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service import record as record_service
 from pitch_coach_backend.module.user.entity import User
 
-EXAMPLES = Path(__file__).resolve().parents[2] / "ai/research/coach-agent/src/coach/examples"
+EXAMPLES = (
+    Path(__file__).resolve().parents[2] / "ai/service/src/pitch_coach_ai/features/coach/examples"
+)
 
 META = {"schema_version": "1.0", "feature_version": "coach-1.2", "model": None}
 
@@ -171,7 +173,7 @@ def test_take_result_is_saved_in_one_transaction(db_session: Session, take_parts
     assert result.revision == 0
     summary = db_session.get(TakeSummary, take.id)
     assert summary is not None
-    assert (summary.average_cpm, summary.filler_count, summary.overall_confidence) == (297.0, 2, 99)
+    assert (summary.average_cpm, summary.filler_count, summary.overall_confidence) == (300.0, 2, 99)
     events = db_session.scalars(
         select(CoachEvent.event_id).where(CoachEvent.take_id == take.id).order_by(CoachEvent.seq)
     ).all()
@@ -206,7 +208,7 @@ def test_take_result_keeps_the_review_columns(db_session: Session, take_parts):
     summary = db_session.get(TakeSummary, take.id)
     db_session.refresh(summary)
     assert (summary.summary, summary.score, summary.speak_accuracy) == ("리뷰", 80, 70)
-    assert summary.average_cpm == 297.0
+    assert summary.average_cpm == 300.0
 
 
 @pytest.mark.parametrize(

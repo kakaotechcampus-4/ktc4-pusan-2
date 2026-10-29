@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# 배포 이름. import 패키지는 두 개다.
-#   gaze      — 서버 코어 (1초 기록 → 이슈 · 요약). 나중에 ai/service 의 features/gaze/ 로 폴더째 옮긴다
-#   gaze_lab  — Python 기준 구현 · 평가. research 전용이라 옮기지 않는다
+# 배포 이름. import 패키지는 gaze_lab(Python 기준 구현 · 평가, research 전용) 하나다.
+# 서버 판정 모듈(1초 기록 → 이슈 · 요약)은 AI 서비스(ai/service)의 pitch_coach_ai.features.gaze 에 있고,
+# 서비스를 editable 로 설치해 그대로 import 한다(원본은 서비스 한 곳). 고칠 때는 서비스에서 고친다
 # 브라우저에서 실제로 도는 TS 엔진은 web/ 에 있다 (npm 프로젝트).
 name = "gaze-tracking"
 version = "1.1.0"
@@ -13,7 +13,9 @@ description = "Pitch Coach gaze tracking - research (server core + Python refere
 # service 가 쓸 Python 버전(3.12)에서 검증한다. mediapipe · torch 때문에 3.13 미만으로 둔다
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    # ── 서버 코어(gaze)가 쓰는 것. service 로 옮길 때 이 목록만 가져간다
+    # ── 서버 판정 모듈: 서비스 패키지가 가져온다(pydantic 포함). 판은 서비스 uv.lock 과 같게 맞춘다
+    "pitch-coach-ai",
+    # gaze_lab 도 쓴다
     "pydantic>=2.13,<3",
     # ── research 전용 (gaze_lab · tools · experiments)
     # 브라우저 엔진의 @mediapipe/tasks-vision 과 같은 버전으로 정확히 고정한다.
@@ -50,6 +52,7 @@ dev = [
 ]
 
 [tool.uv.sources]
+pitch-coach-ai = { path = "../../service", editable = true }
 torch = { index = "pytorch-cpu" }
 torchvision = { index = "pytorch-cpu" }
 
@@ -76,8 +79,8 @@ src = ["src", "tools", "."]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-# 서버 판정 모듈(src/gaze)과 그 테스트(tests/unit)는 서비스(ai/service)로 옮겨 가므로 서비스와 같은 줄 길이(E501)를 지킨다.
-# 나머지 경로는 줄 길이(E501)만 검사하지 않는다 (아래 "E" 전체 무시 항목은 그대로)
+# 줄 길이(E501)는 검사하지 않는다 (아래 "E" 전체 무시 항목은 그대로). 서버 판정 모듈과 그 테스트는
+# 서비스(ai/service)로 옮겨 서비스 규칙으로 검사한다
 "tools/**" = ["E501"]
 # archive 에서 옮긴 코드는 서식을 바꾸지 않는다 (archive 와 diff 가 import · 경로뿐이어야 리뷰 · 동등성 검증이 쉽다).
 # pyflakes(F) 만 검사한다
@@ -90,4 +93,4 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 "tests/lab/**" = ["E", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["gaze", "gaze_lab"]
+known-first-party = ["pitch_coach_ai", "gaze_lab"]

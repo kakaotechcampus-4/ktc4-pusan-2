@@ -43,6 +43,19 @@ def current_request_id() -> str | None:
     return _request_id.get()
 
 
+class SafeFormatter(logging.Formatter):
+    """`log.exception` · `exc_info` 로 넘어온 예외를 종류와 위치만 찍는다(`exception_summary`).
+
+    기본 형식은 예외 메시지와 traceback 을 그대로 찍는데, 예외 메시지에는 STT 단어 · 대본 같은
+    사용자 원문이 섞일 수 있다(`architecture.md` 11절). 기능 코어(코치 등)는 서비스 모듈을 모르고
+    표준 logging 만 쓰므로, 출력기 쪽에서 한 번에 막는다.
+    """
+
+    def formatException(self, ei) -> str:  # noqa: N802 — logging.Formatter 의 이름 그대로
+        exc = ei[1]
+        return f"error={exception_summary(exc)}" if exc is not None else ""
+
+
 def configure_logging() -> None:
     """`pitch_coach_ai` 로거가 INFO 이상을 표준 출력으로 내게 한다. 여러 번 불러도 한 번만 단다.
 
@@ -55,7 +68,7 @@ def configure_logging() -> None:
     if root.handlers:
         return
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    handler.setFormatter(SafeFormatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
     root.addHandler(handler)
     root.setLevel(logging.INFO)
     # root 로거로 올려 보내지 않는다 (uvicorn 등 다른 출력기와 두 번 찍히지 않게)

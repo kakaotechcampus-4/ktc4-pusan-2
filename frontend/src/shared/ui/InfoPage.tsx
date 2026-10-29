@@ -19,8 +19,8 @@ export function InfoPage({
 }) {
   return (
     // 밝은 지면(시안 10–12 기준). 토큰만 바꾸는 클래스입니다 (index.css)
-    <div className="pitch-create min-h-dvh bg-greige text-ink">
-      <header className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-3 px-5 pt-6 sm:px-8">
+    <div className={`pitch-create ${logo ? 'min-h-dvh' : 'flex-1'} bg-greige text-ink`}>
+      <header className="mx-auto flex max-w-page flex-wrap items-center gap-x-4 gap-y-3 px-6 pt-6 lg:px-10">
         {logo && (
           <>
             <Link to="/" aria-label="피치코치 홈">
@@ -32,7 +32,7 @@ export function InfoPage({
         <h1 className="text-lg font-bold">{title}</h1>
       </header>
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-5 pb-12 pt-5 sm:px-8">
+      <main className="mx-auto flex max-w-page flex-col gap-6 px-6 pb-12 pt-5 lg:px-10">
         {children}
       </main>
     </div>

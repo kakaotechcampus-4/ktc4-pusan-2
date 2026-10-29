@@ -10,6 +10,7 @@
 from pitch_coach_backend.core.exceptions import (
     AppException,
     ConflictException,
+    ForbiddenException,
     UnauthorizedException,
 )
 
@@ -50,3 +51,10 @@ class RefreshTokenReused(UnauthorizedException):
 
 class CsrfValidationFailed(UnauthorizedException):
     message = "잘못된 요청입니다. 다시 로그인해 주세요."
+
+
+class ServiceNotOpen(ForbiddenException):
+    """출시 시각(LAUNCH_AT) 전이다. 이때는 새로 로그인할 수 없다."""
+
+    code = "SERVICE_NOT_OPEN"
+    message = "아직 서비스가 공개되지 않았습니다."

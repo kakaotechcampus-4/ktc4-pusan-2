@@ -7,7 +7,7 @@
   주지 않고(자연스러운 길이를 보려고), 호출 시간 제한은 넉넉히(`--call-timeout`, 기본 60초) 둔다. `--cap 역할=N` 을
   주면 그 상한을 걸고 다시 돌려 잘림(`finish_reason=length`)이 없는지 본다. 캐시는 쓰지 않는다.
 - 상한: 잰 최대 × 2 를 1,024 단위로 올림, 최소 2,048. 잘린 호출이 있는 역할은 정하지 않는다(`usage.recommended_cap`).
-- LLM 호출(과금): 평가 기준 장마다 3번(가상대본 두 개 18장이면 54번) + 채점 장마다 약 1.25번(Take 18개면 약 200번).
+- LLM 호출(과금): 평가 기준 장마다 3번(가상대본 두 개 20장이면 60번) + 채점 장마다 약 1.25번(Take 18개면 약 225번).
   `--takes K` 로 대본마다 앞 K개 Take 만 쓸 수 있다.
 - 쓰는 곳: `--name` 을 주면 `reports/results/<name>.json`. DB 는 쓰지 않는다
 - 실행: 키가 든 `ai/.env` 를 찾도록 `ai/` 폴더에서 이 폴더의 python 으로
@@ -17,14 +17,26 @@
 import argparse
 import time
 
-import script_coverage.core as core
+import pitch_coach_ai.features.script_coverage.core as core
 from coverage_lab.datasets import load_script_json, load_take, script_files, take_files
 from coverage_lab.llm import load_settings, structured_llm
 from coverage_lab.results import write_result
 from coverage_lab.usage import UsageLog
-from script_coverage.schemas import AnalyzeRequest, RubricRequest, ScriptSlide, TakeSlide
-from script_coverage.script_analysis.schemas import FinalReview, SlideSemanticAnalysis, SlideUnits
-from script_coverage.stt_evaluation.schemas import SemanticEvaluation, VerifierResult
+from pitch_coach_ai.features.script_coverage.schemas import (
+    AnalyzeRequest,
+    RubricRequest,
+    ScriptSlide,
+    TakeSlide,
+)
+from pitch_coach_ai.features.script_coverage.script_analysis.schemas import (
+    FinalReview,
+    SlideSemanticAnalysis,
+    SlideUnits,
+)
+from pitch_coach_ai.features.script_coverage.stt_evaluation.schemas import (
+    SemanticEvaluation,
+    VerifierResult,
+)
 
 #: 역할 이름 → 출력 스키마. 이름은 서비스 `settings.LLM_ROLES` 에 더할 역할 이름이다
 ROLES = {

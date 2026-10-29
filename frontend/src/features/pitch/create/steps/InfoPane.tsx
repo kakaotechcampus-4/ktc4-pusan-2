@@ -19,6 +19,7 @@ import {
   formatDuration,
 } from '../lib/draft';
 import { DatePicker } from './DatePicker';
+import { PaneFooter, primaryButton, secondaryButton } from './PaneFooter';
 import { PaneHeading } from './PaneHeading';
 
 /**
@@ -35,10 +36,10 @@ import { PaneHeading } from './PaneHeading';
  * 처럼 두 쪽이 다른 경우가 흔합니다. 서버도 `lower_deviation` · `upper_deviation` 으로 나눠 받습니다.
  */
 
-function saveLabel(pending: boolean, unsaved: boolean): string {
+/** 고친 게 없으면 저장할 것 없이 다음 단계로만 갑니다 */
+function nextLabel(pending: boolean, dirty: boolean): string {
   if (pending) return '저장하는 중…';
-  if (unsaved) return '저장';
-  return '저장됨';
+  return dirty ? '저장하고 다음 →' : '다음 →';
 }
 
 const stepButton =
@@ -127,7 +128,7 @@ function ToleranceField({
         onDecrease={() => onChange(unknown ? 0 : sec - TOLERANCE_STEP_SEC)}
         onIncrease={() => onChange(sec + TOLERANCE_STEP_SEC)}
       />
-      <p className={unknown ? 'text-xs font-bold text-coral' : 'text-xs text-stone'}>
+      <p className={unknown ? 'text-xs font-bold text-ink' : 'text-xs text-ink/80'}>
         {unknown ? '저장된 값을 불러오지 못했어요. 다시 정해 주세요' : hint}
       </p>
     </div>
@@ -148,6 +149,7 @@ export function InfoPane() {
   const setMeta = useCreateStore((s) => s.setMeta);
   const pitchId = useCreateStore((s) => s.pitchId);
   const setPitchId = useCreateStore((s) => s.setPitchId);
+  const select = useCreateStore((s) => s.select);
   const id = useId();
 
   const saved = infoOf(draft);
@@ -165,6 +167,8 @@ export function InfoPane() {
   };
 
   const draftId = useCreateStore((s) => s.draftId);
+  const autoTitle = useCreateStore((s) => s.autoTitle);
+  const fileName = useCreateStore((s) => s.draft.slides[0]?.fileName ?? null);
   // 저장을 시작한 작성(draftId)을 함께 넘깁니다. 응답이 오기 전에 새 피치를 시작했으면
   // 앞 피치의 id 를 새 작성에 넣지 않습니다 — 넣으면 새 피치의 저장이 앞 피치 수정(PATCH)이 됩니다
   const save = useMutation({
@@ -185,15 +189,18 @@ export function InfoPane() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <PaneHeading title="발표정보" subtitle="발표의 기본 정보를 설정해 주세요." />
+      <PaneHeading
+        title="발표정보 확인"
+        subtitle="채워 둔 값을 확인하고 발표 날짜를 골라 주세요."
+      />
 
-      <div className="flex flex-col gap-4 rounded-lg border border-line bg-white px-7 py-5">
+      <div className="mb-5 flex flex-col gap-4 rounded-lg border border-line bg-white px-3 py-5 sm:px-7">
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between">
             <label htmlFor={`${id}-title`} className="text-sm font-bold">
               발표 제목
             </label>
-            <span className="tabular text-xs text-stone" aria-live="polite">
+            <span className="tabular text-xs text-ink/80" aria-live="polite">
               {form.title.length} / {MAX_TITLE_CHARS}
             </span>
           </div>
@@ -204,13 +211,16 @@ export function InfoPane() {
             // BE 가 50자를 넘으면 422 로 거절합니다 — 저장할 때 알게 하지 않고 입력에서 막습니다
             maxLength={MAX_TITLE_CHARS}
             onChange={(e) => patch({ title: e.target.value })}
-            className="h-12 rounded-md border border-line-strong bg-white px-4 text-base outline-none placeholder:text-stone focus:border-ink"
+            className="h-12 rounded-md border border-line-strong bg-white px-4 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-ink/80 focus:border-ink"
           />
+          {autoTitle !== null && form.title === autoTitle && fileName && (
+            <p className="text-xs text-ink/80">{fileName} 에서 가져왔어요</p>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-0">
+        <div className="grid grid-cols-1 gap-8 xl:grid-cols-2 xl:gap-0">
           {/* ── 왼쪽: 발표 날짜 ── */}
-          <div className="flex flex-col gap-3 lg:border-r lg:border-line lg:pr-8">
+          <div className="flex flex-col gap-3 xl:border-r xl:border-line xl:pr-8">
             <div className="flex items-baseline justify-between">
               <p className="text-sm font-bold">발표 날짜</p>
               <span className="tabular text-sm font-bold" aria-live="polite">
@@ -224,7 +234,7 @@ export function InfoPane() {
           </div>
 
           {/* ── 오른쪽: 발표시간 ── */}
-          <div className="flex flex-col gap-6 lg:pl-8">
+          <div className="flex flex-col gap-6 xl:pl-8">
             <div className="flex flex-col gap-2">
               <p className="text-sm font-bold">목표 발표시간</p>
               <Stepper
@@ -238,7 +248,7 @@ export function InfoPane() {
               />
             </div>
 
-            <div className="flex gap-6">
+            <div className="flex flex-col gap-6 sm:flex-row">
               <ToleranceField
                 label="하한 허용오차"
                 hint="목표보다 짧게 발표해도 되는 시간"
@@ -246,7 +256,7 @@ export function InfoPane() {
                 maxSec={Math.min(MAX_TOLERANCE_SEC, form.timeLimitSec)}
                 onChange={(sec) => patch({ lowerToleranceSec: sec })}
               />
-              <div className="w-px bg-line" aria-hidden="true" />
+              <div className="hidden w-px bg-line sm:block" aria-hidden="true" />
               <ToleranceField
                 label="상한 허용오차"
                 hint="목표보다 길게 발표해도 되는 시간"
@@ -256,37 +266,54 @@ export function InfoPane() {
               />
             </div>
 
-            <div className="mt-auto flex items-center justify-between gap-4 border-t border-line pt-5">
-              <p className="flex items-baseline gap-4 text-sm">
-                <span className="text-stone">허용 범위</span>
-                <span className="tabular text-lg font-bold">
-                  {formatAllowedRange(
-                    form.timeLimitSec,
-                    form.lowerToleranceSec,
-                    form.upperToleranceSec,
-                  )}
-                </span>
-              </p>
-              <button
-                type="button"
-                disabled={!dirty || blocked !== undefined || save.isPending}
-                onClick={() => {
-                  if (infoReady(form)) save.mutate({ body: toPitchRequest(form), draftId });
-                }}
-                title={blocked}
-                className="h-12 w-44 shrink-0 rounded-md bg-coral text-base font-bold text-white hover:bg-coral-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
-              >
-                {saveLabel(save.isPending, dirty || blocked !== undefined)}
-              </button>
-            </div>
-            {save.isError && (
-              <p role="alert" className="-mt-4 text-right text-sm font-bold text-coral">
-                발표정보를 저장하지 못했어요. {toMessage(save.error)}
-              </p>
-            )}
+            <p className="flex flex-wrap items-baseline gap-4 border-t border-line pt-4 text-sm">
+              <span className="text-ink/80">허용 범위</span>
+              <span className="tabular text-lg font-bold">
+                {formatAllowedRange(
+                  form.timeLimitSec,
+                  form.lowerToleranceSec,
+                  form.upperToleranceSec,
+                )}
+              </span>
+            </p>
           </div>
         </div>
       </div>
+
+      <PaneFooter
+        hint={
+          save.isError ? (
+            <p role="alert" className="font-bold text-ink">
+              발표정보를 저장하지 못했어요. {toMessage(save.error)}
+            </p>
+          ) : (
+            (blocked ?? '평가기준은 골라도 되고 건너뛰어도 돼요.')
+          )
+        }
+      >
+        <button type="button" onClick={() => select('script')} className={secondaryButton}>
+          ← 이전
+        </button>
+        <button
+          type="button"
+          disabled={blocked !== undefined || save.isPending}
+          onClick={() => {
+            if (!dirty) return select('criteria');
+            if (!infoReady(form)) return;
+            save.mutate(
+              { body: toPitchRequest(form), draftId },
+              {
+                onSuccess: () => {
+                  if (isCurrentDraft(draftId)) select('criteria');
+                },
+              },
+            );
+          }}
+          className={primaryButton}
+        >
+          {nextLabel(save.isPending, dirty)}
+        </button>
+      </PaneFooter>
     </div>
   );
 }

@@ -2,14 +2,10 @@
 
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 
 from pitch_coach_backend.module.auth.controller import REFRESH_COOKIE_NAME
 from tests.auth.conftest import FRONTEND_ORIGIN, ME, REFRESH, csrf_headers, do_login
-
-pytestmark = pytest.mark.usefixtures("_clean_redis", "_use_test_redis")
-
 
 LOGOUT = "/api/auth/logout"
 

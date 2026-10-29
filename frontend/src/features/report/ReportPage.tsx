@@ -1,4 +1,5 @@
 import { Navigate, useParams } from 'react-router';
+import { AppHeader } from '@/shared/ui/AppHeader';
 import { useTakeReport } from '@/shared/api/report';
 import { formatDuration } from '@/shared/lib/clock';
 import { Badge, type Tone } from '@/shared/ui/Badge';
@@ -18,7 +19,7 @@ import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
 /**
  * Take 리포트 (P6).
  *
- * 순서는 "무엇이 문제였나 → 지난번보다 나아졌나 → 다음엔 무엇을" 입니다 (AI 리뷰의 목적, `review-agent.md` 1절).
+ * 요약과 지난 Take의 변화를 먼저 보여 주고, 측정 근거와 다음 미션을 이어 보여 줍니다.
  * `score` 는 일부러 보여 주지 않습니다 — FE 원칙이 "점수가 아니라 Take 간 변화"라서입니다 (CLAUDE.md).
  * 시선 3색은 리허설 테두리 전용이라 여기서 쓰지 않습니다.
  *
@@ -26,19 +27,25 @@ import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
  */
 export function ReportPage() {
   const { takeId = '' } = useParams();
+  return <ReportView key={takeId} takeId={takeId} />;
+}
+
+function ReportView({ takeId }: { takeId: string }) {
   const report = useTakeReport(takeId);
   const data = report.data;
-
   if (!takeId) return <Navigate replace to="/" />;
   // 분석 자체가 실패한 Take 는 보여 줄 측정값이 없습니다. 실패 · 리뷰 보류 안내는 분석 대기 화면이 맡습니다
   if (data?.status === 'FAILED' || data?.analysis_hold_reason)
     return <Navigate replace to={`/takes/${takeId}/processing`} />;
 
   return (
-    <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
-      <QueryState isPending={report.isPending} error={report.error} />
-      {data && <ReportBody report={data} />}
-    </ReportFrame>
+    <div className="flex min-h-dvh flex-col">
+      <AppHeader />
+      <ReportFrame title="발표 리포트" report={data} meta={endedAt(data?.ended_at ?? null)}>
+        <QueryState isPending={report.isPending} error={report.error} />
+        {data && <ReportBody key={takeId} report={data} />}
+      </ReportFrame>
+    </div>
   );
 }
 
@@ -49,15 +56,17 @@ function ReportBody({ report }: { report: TakeReport }) {
   return (
     <>
       <Hero report={report} />
+      {review && <Comparison rows={review.comparison} />}
       {report.measures ? (
         <Measures m={report.measures} />
       ) : (
         <Card title="측정값">
-          <p className="text-sm text-stone">발표 기록을 정리하고 있어요.</p>
+          <p className="text-sm text-ink/80">발표 기록을 정리하고 있어요.</p>
         </Card>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* 측정값이 아직 없으면 평가기준 카드 하나가 줄을 다 씁니다 */}
+      <div className="grid gap-4 lg:auto-cols-fr lg:grid-flow-col">
         {report.measures && <GazeBreakdown m={report.measures} />}
         {review ? (
           <JudgeList
@@ -71,7 +80,7 @@ function ReportBody({ report }: { report: TakeReport }) {
           />
         ) : (
           <Card title="평가기준">
-            <p className="text-sm text-stone">
+            <p className="text-sm text-ink/80">
               {report.review_status === null
                 ? '분석이 끝나면 평가기준 결과를 보여 드릴게요.'
                 : '이번 Take의 평가기준 결과를 불러오지 못했어요.'}
@@ -94,8 +103,6 @@ function ReportBody({ report }: { report: TakeReport }) {
               items={review.strengths}
             />
           </div>
-
-          <Comparison rows={review.comparison} />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <JudgeList
@@ -149,12 +156,12 @@ function Hero({ report }: { report: TakeReport }) {
         className="hidden h-28 w-28 shrink-0 -scale-x-100 object-contain [image-rendering:pixelated] sm:block"
       />
       <div className="min-w-0">
-        <p className="text-xs font-bold text-stone">피코의 코칭 노트</p>
+        <p className="text-xs font-bold text-ink/80">피코의 코칭 노트</p>
         <p role="status" className="mt-3 max-w-3xl text-xl font-bold leading-relaxed xl:text-3xl">
           {review?.overall_summary ?? noReviewLine(report.review_status)}
         </p>
         {review?.fallback_reason && (
-          <p className="mt-2 text-sm text-stone">
+          <p className="mt-2 text-sm text-ink/80">
             코치 문장을 만들지 못해 기본 문장으로 보여 드려요. 숫자와 판정은 같아요.
           </p>
         )}
@@ -192,7 +199,7 @@ function Measures({ m }: { m: TakeMeasures }) {
  */
 function GazeBreakdown({ m }: { m: TakeMeasures }) {
   const rows = [
-    { label: '청중', value: m.audience_ratio, color: 'bg-coral' },
+    { label: '청중', value: m.audience_ratio, color: 'bg-coral-deep' },
     { label: '화면', value: m.screen_ratio, color: 'bg-stone' },
     { label: '대본', value: m.script_ratio, color: 'bg-ink' },
     { label: '다른 곳', value: m.away_ratio, color: 'bg-line-strong' },
@@ -201,7 +208,7 @@ function GazeBreakdown({ m }: { m: TakeMeasures }) {
   if (rows.every((row) => row.value === null))
     return (
       <Card title="시선 비율">
-        <p className="text-sm text-stone">
+        <p className="text-sm text-ink/80">
           이번 Take는 시선을 재지 않았어요. 말하기 · 시간 기록은 그대로예요.
         </p>
       </Card>
@@ -220,7 +227,7 @@ function GazeBreakdown({ m }: { m: TakeMeasures }) {
       <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {rows.map((row) => (
           <div key={row.label}>
-            <dt className="flex items-center gap-2 text-sm text-stone">
+            <dt className="flex items-center gap-2 text-sm text-ink/80">
               <span className={`h-2.5 w-2.5 ${row.color}`} aria-hidden="true" />
               {row.label}
             </dt>
@@ -228,7 +235,7 @@ function GazeBreakdown({ m }: { m: TakeMeasures }) {
           </div>
         ))}
       </dl>
-      <p className="text-xs leading-relaxed text-stone">
+      <p className="text-xs leading-relaxed text-ink/80">
         측정한 시간 기준이에요.
         {m.unmeasured_ms !== null &&
           ` 얼굴이 안 보이는 등 측정 못 한 ${Math.round(m.unmeasured_ms / 1000)}초는 빼고 계산했어요.`}
@@ -251,14 +258,14 @@ function Points({
   return (
     <Card title={title}>
       {items.length === 0 ? (
-        <p className="text-sm text-stone">{empty}</p>
+        <p className="text-sm text-ink/80">{empty}</p>
       ) : (
         <ul className="flex flex-col gap-2.5">
           {items.map((p, i) => (
             <li key={i} className="border-b border-line px-0 py-4 last:border-b-0">
-              <p className="text-xs font-bold text-stone">{where(p.area, p.slide_number)}</p>
+              <p className="text-xs font-bold text-ink/80">{where(p.area, p.slide_number)}</p>
               <p className="mt-1 font-bold leading-snug">{p.text}</p>
-              <p className="tabular mt-1.5 text-xs text-stone">
+              <p className="tabular mt-1.5 text-xs text-ink/80">
                 {Object.entries(p.evidence)
                   .map(([k, v]) => `${metricLabel(k)} ${fmt(k, v)}`)
                   .join(' · ')}
@@ -284,7 +291,7 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
   return (
     <Card title="지난 Take와 비교">
       {rows.length === 0 ? (
-        <p className="text-sm text-stone">비교할 지난 Take가 없어요.</p>
+        <p className="text-sm text-ink/80">비교할 지난 Take가 없어요.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-line">
           {rows.map((r, i) => (
@@ -295,18 +302,18 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
               <span className="text-sm">
                 <b>{metricLabel(r.metric)}</b>
                 {r.slide_number !== null && (
-                  <span className="text-stone"> · {r.slide_number}번 장</span>
+                  <span className="text-ink/80"> · {r.slide_number}번 장</span>
                 )}
               </span>
               <span className="tabular flex items-center gap-2 text-sm">
-                <span className="text-stone">{fmt(r.metric, r.previous)}</span>→
+                <span className="text-ink/80">{fmt(r.metric, r.previous)}</span>→
                 <b>{fmt(r.metric, r.current)}</b>
                 <Badge tone={TREND[String(r.improved)]!.tone}>
                   {TREND[String(r.improved)]!.label}
                 </Badge>
               </span>
               {r.script_mode && (
-                <p className="w-full text-xs text-stone">
+                <p className="w-full text-xs text-ink/80">
                   대본 보기가 달랐어요 ({r.script_mode.previous} → {r.script_mode.current}). 비교는
                   참고만 해 주세요.
                 </p>
@@ -343,7 +350,10 @@ function Dimensions({ value }: { value: ReviewResult['dimensions'] }) {
     <Card title="영역별 상태">
       <ul className="grid grid-cols-2 gap-2">
         {(Object.keys(DIMENSION_LABEL) as Dimension[]).map((d) => {
-          const s = DIMENSION_STATUS[value[d]];
+          const status = value[d];
+          const s = Object.hasOwn(DIMENSION_STATUS, status)
+            ? DIMENSION_STATUS[status as DimensionStatus]
+            : DIMENSION_STATUS.NOT_EVALUABLE;
           return (
             <li key={d} className="flex flex-col gap-2 border-b border-line px-0 py-3">
               <span className="text-sm font-bold">{DIMENSION_LABEL[d]}</span>
@@ -384,7 +394,7 @@ function JudgeList({
   return (
     <Card title={title}>
       {rows.length === 0 ? (
-        <p className="text-sm text-stone">{empty}</p>
+        <p className="text-sm text-ink/80">{empty}</p>
       ) : (
         <ul className="flex flex-col gap-2.5">
           {rows.map((r, i) => (
@@ -394,7 +404,7 @@ function JudgeList({
             >
               <div className="min-w-0">
                 <p className="font-bold">{r.title}</p>
-                <p className="mt-0.5 text-xs text-stone">{r.sub}</p>
+                <p className="mt-0.5 text-xs text-ink/80">{r.sub}</p>
               </div>
               <div className="flex shrink-0 items-center gap-3">
                 <span className="tabular text-sm">
@@ -426,7 +436,7 @@ function NextMissions({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold">Take {nextTake}에서 해 볼 것</h2>
-          <p className="mt-1 text-sm text-stone">
+          <p className="mt-1 text-sm text-ink">
             다음 연습에서 코치가 이 미션을 기준으로 알려 드려요.
           </p>
         </div>
@@ -434,20 +444,19 @@ function NextMissions({
         <ButtonLink to={`/pitch/${pitchId}/device-check`}>Take {nextTake} 연습하기</ButtonLink>
       </div>
       {rows.length === 0 ? (
-        <p className="mt-4 text-sm text-stone">
-          이번에는 새 미션이 없어요. 지금처럼 연습해 보세요.
-        </p>
+        <p className="mt-4 text-sm text-ink">이번에는 새 미션이 없어요. 지금처럼 연습해 보세요.</p>
       ) : (
         <ol className="mt-4 flex flex-col gap-2.5">
           {rows.map((r) => (
             <li key={r.priority} className="flex gap-4 border-t border-ink/15 px-0 py-4">
-              <span className="tabular flex h-7 w-7 shrink-0 items-center justify-center bg-coral text-sm font-bold text-white">
+              <span className="tabular flex h-7 w-7 shrink-0 items-center justify-center bg-coral-deep text-sm font-bold text-white">
                 {r.priority}
               </span>
               <div className="min-w-0">
                 <p className="font-bold">{r.description}</p>
-                <p className="mt-0.5 text-sm text-stone">
-                  {where(r.area, r.slide_number)} · {r.reason}
+                <p className="mt-0.5 text-sm text-ink/80">
+                  {where(r.area, r.slide_number)}
+                  {r.reason ? ` · ${r.reason}` : ''}
                 </p>
               </div>
             </li>

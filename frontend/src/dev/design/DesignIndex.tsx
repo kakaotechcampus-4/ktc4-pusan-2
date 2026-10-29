@@ -8,6 +8,12 @@ import { LoadingDraft } from './loading/LoadingDraft';
 import { PrepareMissionDraft } from './prepare/PrepareMissionDraft';
 import { RetryDraft } from './retry/RetryDraft';
 import { PitchCreateDraft } from './create/PitchCreateDraft';
+import { AboutDraft, UnsupportedDraft, NotFoundDraft } from './static/StaticDrafts';
+import { MyPageDraft } from './me/MyPageDraft';
+import { TakesDraft } from './takes/TakesDraft';
+import { ComparisonDraft } from './comparison/ComparisonDraft';
+import { ReportDraft } from './report/ReportDraft';
+import { ProcessingDraft } from './processing/ProcessingDraft';
 
 /**
  * 디자인 시안 목록 — `/dev/design`, 각 시안은 `/dev/design/:name`.
@@ -52,6 +58,62 @@ const DRAFTS: { name: string; id: string; title: string; note?: string; element:
       note: '구현됨 — 위 "업로드 실패 · 재시도"가 실제 화면이에요',
       element: <RetryDraft />,
     },
+    {
+      name: 'about',
+      id: 'P14',
+      title: '분석 방식 설명',
+      note: '구현 전 시안 — 실제 화면은 위 "구현된 화면"에 있어요. 지금 모습과 다를 수 있어요',
+      element: <AboutDraft />,
+    },
+    {
+      name: 'unsupported',
+      id: 'P18',
+      title: '미지원 브라우저',
+      note: '구현 전 시안 — 실제 화면은 위 "구현된 화면"에 있어요. 지금 모습과 다를 수 있어요',
+      element: <UnsupportedDraft />,
+    },
+    {
+      name: 'not-found',
+      id: '404',
+      title: '찾을 수 없음',
+      note: '구현 전 시안 — 실제 화면은 위 "구현된 화면"에 있어요. 지금 모습과 다를 수 있어요',
+      element: <NotFoundDraft />,
+    },
+    {
+      name: 'me',
+      id: 'P9',
+      title: '마이페이지',
+      note: '구현 전 시안 — 실제 화면은 위 "구현된 화면"에 있어요. 지금 모습과 다를 수 있어요',
+      element: <MyPageDraft />,
+    },
+    {
+      name: 'takes',
+      id: 'P16',
+      title: 'Take 기록',
+      note: '구현 전 시안 — 실제 화면은 위 "구현된 화면"에 있어요. 지금 모습과 다를 수 있어요',
+      element: <TakesDraft />,
+    },
+    {
+      name: 'comparison',
+      id: 'P7',
+      title: 'Take 비교',
+      note: '구현 전 시안 — 실제 화면은 위 "구현된 화면"에 있어요. 지금 모습과 다를 수 있어요',
+      element: <ComparisonDraft />,
+    },
+    {
+      name: 'report',
+      id: 'P6',
+      title: 'Take 리포트',
+      note: '구현 전 시안 — 실제 화면은 위 "구현된 화면"에 있어요. 지금 모습과 다를 수 있어요',
+      element: <ReportDraft />,
+    },
+    {
+      name: 'processing',
+      id: 'P6-0',
+      title: '분석 대기 · 단계 화면',
+      note: '구현 전 시안 — 실제 화면은 위 "구현된 화면"에 있어요. 지금 모습과 다를 수 있어요',
+      element: <ProcessingDraft />,
+    },
   ];
 
 /**
@@ -82,6 +144,25 @@ const LIVE: { path: string; id: string; title: string; note?: string }[] = [
   },
   { path: '/takes/t-failed/processing', id: 'P6-0', title: '분석 대기 · 분석 실패' },
   { path: '/takes/t-held/processing', id: 'P6-0', title: '분석 대기 · 리뷰 보류' },
+  {
+    path: '/takes/t-confirm/processing',
+    id: 'P6-0',
+    title: '분석 대기 · 대본 확인 대기',
+    note: '확인 화면으로 가는 버튼이 떠요',
+  },
+  {
+    path: '/takes/t-confirm/confirm',
+    id: 'P6-0',
+    title: '대본 확인',
+    note: 'BE 확인 API에 연결했어요. 답하거나 건너뛰면 분석 대기를 거쳐 리포트로 가요',
+  },
+  {
+    path: '/takes/t-confirm-timeout/confirm',
+    id: 'P6-0',
+    title: '대본 확인 · 시간 초과',
+    note: '8초 뒤 시간이 끝나요. 그 전에 보내면 409 로 막혀요',
+  },
+  { path: '/takes/t-confirm-done/confirm', id: 'P6-0', title: '대본 확인 · 이미 넘어감' },
   { path: '/takes/t3', id: 'P6', title: 'Take 리포트' },
   { path: '/takes/t-fallback', id: 'P6', title: 'Take 리포트 · AI 문장 실패' },
   { path: '/takes/t-review-failed', id: 'P6', title: 'Take 리포트 · 리뷰 실패' },

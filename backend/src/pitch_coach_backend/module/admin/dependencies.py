@@ -50,11 +50,11 @@ def require_admin(
         return
     # 계정 없이 온 요청은 남기지 않는다. 브라우저는 처음에 계정 없이 와서 401 을 받고 창을 띄운다.
     # BE 는 Caddy 뒤라 보낸 곳은 X-Forwarded-For 에, Caddy 가 물을 때(forward_auth)의 원래 주소는
-    # X-Forwarded-Uri 에 있다
+    # X-Forwarded-Uri 에 있다. 입력한 아이디는 남기지 않는다 — 아이디 칸에 비밀번호를 잘못 넣으면
+    # 그 값이 로그에 보인다
     if credentials is not None:
         logger.warning(
-            "관리자 로그인 실패 username=%r ip=%s path=%s",
-            credentials.username,
+            "관리자 로그인 실패 ip=%s path=%s",
             request.headers.get("x-forwarded-for"),
             request.headers.get("x-forwarded-uri", request.url.path),
         )

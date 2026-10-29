@@ -2,8 +2,10 @@
 
 옛 코치 평가기(PR #131 의 `coach.evaluators.speech`)의 군더더기 규칙 · 기준값을 #152 계약 모양으로
 옮긴 것이다.
-기능 모듈이 나오면 이 대역 대신 그 모듈을 쓴다. 규칙은 소리뿐인 간투사(음 · 어 · 으 …)만 T1 로
-셀 뿐이고, 사전(T2 · T3)과 판정 보류는 진짜 모듈의 일이라 여기에는 없다. 단어마다 바로 정한다.
+재생 · 실험은 서비스의 군더더기 모듈을 쓰고(`real_judges()`), 이 대역은
+대역 묶음(`lab_judges()`)과 대역 자체의 테스트에만 쓴다.
+규칙은 소리뿐인 간투사(음 · 어 · 으 …)만 T1 로 셀 뿐이고, 사전(T2 · T3)과 판정 보류는
+진짜 모듈의 일이라 여기에는 없다. 단어마다 바로 정한다.
 
 상태를 갖지 않는다. 최근 60초의 단어를 입력으로 받아 개수를 다시 센다.
 """
@@ -13,9 +15,14 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from coach.config import criteria_version as _criteria_version
-from coach.schemas import IssueCriteria, JudgmentIssue, JudgmentResult, TallyItem
-from coach.vocab import FeedbackType, Issue
+from pitch_coach_ai.features.coach.config import criteria_version as _criteria_version
+from pitch_coach_ai.features.coach.schemas import (
+    IssueCriteria,
+    JudgmentIssue,
+    JudgmentResult,
+    TallyItem,
+)
+from pitch_coach_ai.features.coach.vocab import FeedbackType, Issue
 
 from ._common import HIGHER, In, Section, clean, parse, ramp, ratio
 

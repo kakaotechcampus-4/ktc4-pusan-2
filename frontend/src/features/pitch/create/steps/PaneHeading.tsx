@@ -19,7 +19,7 @@ export function PaneHeading({
           <h2 className="text-3xl font-bold">{title}</h2>
           {badges}
         </div>
-        {subtitle && <p className="mt-1.5 text-base text-stone">{subtitle}</p>}
+        {subtitle && <p className="mt-1.5 text-base text-ink/80">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-3">{actions}</div>}
     </div>

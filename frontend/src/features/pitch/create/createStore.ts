@@ -95,6 +95,14 @@ interface CreateState {
   /** 발표정보 저장이 서버에서 끝났습니다. 고치던 값은 비웁니다 */
   setMeta: (saved: InfoForm) => void;
 
+  /**
+   * 이 작성에서 슬라이드를 올리며 파일 이름으로 정한 발표 제목. 그렇게 피치를 만들었을 때만 있습니다 —
+   * 슬라이드 화면의 제목 확인 상자와 "파일 이름" 표시가 봅니다. 수정 화면에서는 null 입니다.
+   */
+  autoTitle: string | null;
+  /** 슬라이드를 올리려고 피치를 만들었습니다 (`slideUpload.ts`). 만든 발표정보와 제목을 함께 넣습니다 */
+  startFromFile: (pitchId: string, saved: InfoForm) => void;
+
   /** 슬라이드 새 버전. 올리기 전이라 장수는 아직 모릅니다 */
   addSlideVersion: () => void;
   /** 업로드 진행 상태. 흐름은 `slideUpload.ts` 가 몹니다 */
@@ -107,8 +115,6 @@ interface CreateState {
    * 들어오는" 중간 상태가 생기고, 그 틈에 진행 조건이 한 번 잘못 계산됩니다.
    */
   attachSlides: (uploaded: UploadedSlides, targetVersion?: number | null) => void;
-  /** "파일 교체" — 이 버전의 파일만 바꿉니다. 버전 번호는 그대로입니다 */
-  replaceSlides: (version: number, uploaded: UploadedSlides) => void;
 
   /** 대본 새 버전. 직전 글을 물려받고, 마지막으로 올린 슬라이드에 연결합니다 */
   addScriptVersion: (text?: string) => void;
@@ -133,22 +139,24 @@ interface CreateState {
   /** 평가기준 새 버전. 원문을 물려받습니다 — 대개 "조금 고쳐서 다시 정리"입니다 */
   addCriteriaVersion: () => void;
   /**
-   * 서버가 나누고 저장한 결과를 넣습니다. "+ 새 버전"으로 만든 빈 버전이면 거기 채우고,
+   * 서버가 나누고 저장한 결과를 넣습니다. "+ 새 버전"으로 만든 빈 버전이면 서버 버전으로 바꾸고,
    * 아니면 새 버전을 만듭니다 — 서버도 정리할 때마다 새 버전으로 저장합니다 (#463).
    */
   applyParsedCriteria: (
     version: number | null,
-    parsed: { sourceText: string; standards: string[]; exceptText: string | null },
+    parsed: { version: number; sourceText: string; standards: string[]; exceptText: string | null },
   ) => void;
   /** 목록 고치기. 서버에 있는 가장 최근 버전만 고치고(`isEditableCriteria`), 고치면 `edited` 가 됩니다 */
   editCriterion: (version: number, id: string, text: string) => void;
   addCriterion: (version: number) => void;
   removeCriterion: (version: number, id: string) => void;
   /**
-   * 고친 목록을 저장했습니다. `standards` 는 **서버가 돌려준 목록**입니다 — 계약상 서버가 고친 글로
-   * 한 번 더 분석해 저장하므로, 보낸 문장과 다를 수 있습니다
+   * 고친 목록을 새 버전으로 저장했습니다 (#532). 서버가 돌려준 버전과 다시 분석한 문장을 씁니다.
    */
-  markCriteriaSaved: (version: number, standards: string[]) => void;
+  markCriteriaSaved: (
+    sourceVersion: number,
+    saved: { version: number; standards: string[]; exceptText: string | null; sourceText: string },
+  ) => void;
   /**
    * 지난 버전을 고치려면 — 그 버전의 원문을 물려받은 빈 버전을 만듭니다. 다시 정리해야 서버에 새 버전이
    * 생깁니다. 지난 버전은 지난 Take 가 가리키므로 그 자리에서 고치지 않습니다
@@ -208,8 +216,8 @@ const editCriteria = (
 
 export const useCreateStore = create<CreateState>((set) => ({
   draft: EMPTY_DRAFT,
-  // 목업의 순서대로 발표정보부터 엽니다
-  node: 'info',
+  // 시안의 순서대로 슬라이드부터 엽니다
+  node: 'slides',
   version: null,
 
   pitchId: null,
@@ -219,7 +227,7 @@ export const useCreateStore = create<CreateState>((set) => ({
   entryKey: null,
   beginEntry: (key) => set((s) => (s.entryKey === key ? s : { ...freshDraft(), entryKey: key })),
   hydrate: (key, pitchId, draft) =>
-    set({ ...freshDraft(), entryKey: key, pitchId, draft, chosen: chosenOf(draft) }),
+    set({ ...freshDraft(), entryKey: key, pitchId, draft, node: 'info', chosen: chosenOf(draft) }),
 
   chosen: CHOOSE_LATEST,
   chooseVersion: (node, version) => set((s) => ({ chosen: { ...s.chosen, [node]: version } })),
@@ -231,6 +239,15 @@ export const useCreateStore = create<CreateState>((set) => ({
     set((s) => ({ infoEdits: { ...(s.infoEdits ?? infoOf(s.draft)), ...patch } })),
 
   setMeta: (saved) => set((s) => ({ draft: { ...s.draft, ...saved }, infoEdits: null })),
+
+  autoTitle: null,
+  startFromFile: (pitchId, saved) =>
+    set((s) => ({
+      pitchId,
+      draft: { ...s.draft, ...saved },
+      infoEdits: null,
+      autoTitle: saved.title,
+    })),
 
   addSlideVersion: () =>
     set((s) => {
@@ -274,18 +291,6 @@ export const useCreateStore = create<CreateState>((set) => ({
         version,
       };
     }),
-
-  replaceSlides: (version, uploaded) =>
-    set((s) => ({
-      draft: {
-        ...s.draft,
-        slides: s.draft.slides.map((v) => (v.version === version ? { ...v, ...uploaded } : v)),
-        // 이 슬라이드로 정한 연습 조합은 다시 확인해야 합니다 — 장수나 내용이 바뀌었을 수 있습니다
-        scripts: s.draft.scripts.map((v) =>
-          v.slideVersion === version ? { ...v, saved: false } : v,
-        ),
-      },
-    })),
 
   addScriptVersion: (text = '') =>
     set((s) => {
@@ -373,51 +378,62 @@ export const useCreateStore = create<CreateState>((set) => ({
       };
     }),
 
-  applyParsedCriteria: (version, { sourceText, standards, exceptText }) =>
+  applyParsedCriteria: (version, { version: savedVersion, sourceText, standards, exceptText }) =>
     set((s) => {
       // 개수를 자르지 않습니다. BE 는 받은 기준을 모두 저장해 채점에 쓰므로,
       // 화면에서만 자르면 보이지 않는 기준으로 채점됩니다. 많으면 목록이 스크롤됩니다
       const items = standards.map((text) => ({ id: crypto.randomUUID(), text }));
       const target = s.draft.criteria.find((v) => v.version === version);
+      // 요청을 보낸 뒤 다른 화면을 열었다면 그 화면의 선택은 유지합니다.
+      const selectedVersion =
+        s.node === 'criteria' &&
+        (s.version === null || s.version === version || s.version === savedVersion)
+          ? savedVersion
+          : s.version;
 
       // 정리하면 서버에 새 버전으로 저장됩니다 (#463). 고칠 수는 있고, 고치면 다시 저장합니다
       if (!target || target.saved) {
-        const next = nextVersion(s.draft.criteria);
         return {
           draft: {
             ...s.draft,
             criteria: [
               // 고친 채로 다시 정리했으면 그 고친 내용은 버리고 서버 목록으로 되돌립니다.
               // 이 버전은 이제 최신이 아니라 고칠 수도 저장할 수도 없습니다 (`isEditableCriteria`)
-              ...s.draft.criteria.map((v) =>
-                v.version === target?.version && v.edited
-                  ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
-                  : v,
-              ),
-              { version: next, items, saved: true, edited: false, sourceText, exceptText },
-            ],
+              ...s.draft.criteria
+                // 요청 중 만든 같은 번호의 빈 버전은 서버 결과로 교체합니다.
+                .filter((v) => v.saved || v.version !== savedVersion)
+                .map((v) =>
+                  v.version === target?.version && v.edited
+                    ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
+                    : v,
+                ),
+              { version: savedVersion, items, saved: true, edited: false, sourceText, exceptText },
+            ].sort((a, b) => a.version - b.version),
           },
-          node: 'criteria' as const,
-          version: next,
+          version: selectedVersion,
         };
       }
       return {
         draft: {
           ...s.draft,
-          criteria: s.draft.criteria.map((v) =>
-            v.version === target.version
-              ? {
-                  ...v,
-                  items,
-                  saved: true,
-                  edited: false,
-                  savedItems: undefined,
-                  sourceText,
-                  exceptText,
-                }
-              : v,
-          ),
+          criteria: s.draft.criteria
+            .map((v) =>
+              v.version === target.version
+                ? {
+                    ...v,
+                    version: savedVersion,
+                    items,
+                    saved: true,
+                    edited: false,
+                    savedItems: undefined,
+                    sourceText,
+                    exceptText,
+                  }
+                : v,
+            )
+            .sort((a, b) => a.version - b.version),
         },
+        version: selectedVersion,
       };
     }),
 
@@ -445,23 +461,29 @@ export const useCreateStore = create<CreateState>((set) => ({
       })),
     })),
 
-  markCriteriaSaved: (version, standards) =>
+  markCriteriaSaved: (sourceVersion, { version, standards, exceptText, sourceText }) =>
     set((s) => ({
       draft: {
         ...s.draft,
-        criteria: s.draft.criteria.map((v) =>
-          v.version === version
-            ? {
-                ...v,
-                saved: true,
-                edited: false,
-                savedItems: undefined,
-                // 서버가 다시 분석해 저장한 목록입니다. 화면은 이것으로 다시 그립니다
-                items: standards.map((text) => ({ id: crypto.randomUUID(), text })),
-              }
-            : v,
-        ),
+        criteria: [
+          ...s.draft.criteria
+            .filter((v) => v.saved || v.version !== version)
+            .map((v) =>
+              v.version === sourceVersion
+                ? { ...v, items: v.savedItems ?? v.items, edited: false, savedItems: undefined }
+                : v,
+            ),
+          {
+            version,
+            saved: true,
+            edited: false,
+            sourceText,
+            exceptText,
+            items: standards.map((text) => ({ id: crypto.randomUUID(), text })),
+          },
+        ].sort((a, b) => a.version - b.version),
       },
+      version: s.node === 'criteria' && s.version === sourceVersion ? version : s.version,
     })),
 
   reviseCriteria: (version) =>
@@ -507,9 +529,11 @@ function chosenOf(draft: PitchDraft): Chosen {
 function freshDraft() {
   return {
     draft: EMPTY_DRAFT,
-    node: 'info' as const,
+    // 슬라이드부터 올립니다 — 올리면 피치가 생깁니다 (시안 `pitch-create`)
+    node: 'slides' as const,
     version: null,
     pitchId: null,
+    autoTitle: null,
     infoEdits: null,
     chosen: CHOOSE_LATEST,
     slideUpload: { status: 'idle' as const },

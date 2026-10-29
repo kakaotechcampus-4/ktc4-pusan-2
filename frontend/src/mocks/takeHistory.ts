@@ -25,6 +25,7 @@ const base: TakeHistoryRow = {
   take_number: 0,
   started_at: '',
   status: 'COMPLETED',
+  end_reason: null,
   script_mode: 'HIGHLIGHT',
   duration_ms: 0,
   goal_ms: homePitch.pitch_time * 1000,
@@ -43,6 +44,7 @@ function fromHome(take_version: number, patch: Partial<TakeHistoryRow>): TakeHis
   return {
     ...base,
     take_id: t.take_id,
+    end_reason: t.end_reason,
     take_number: t.take_version,
     duration_ms: t.take_elapsed === null ? null : t.take_elapsed * 1000,
     goal_ms: t.take_time * 1000,

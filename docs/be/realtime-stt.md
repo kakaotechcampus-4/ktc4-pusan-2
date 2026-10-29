@@ -27,7 +27,14 @@ WS /api/ws/takes/{take_id}
   뒤로 가면 탭을 새로고침해 처음부터 다시 센 것으로 본다 — 보낸 프레임을 다시 보내면 중복이 아니라 재시작으로
   읽힌다. 확인 응답이 없을 때 다시 보내는 기능을 넣으려면 먼저 이어 보내는지 처음부터 다시 세는지를 FE 가
   첫 메시지에서 알려 주도록 이 규약부터 바꾼다.
+- **오디오는 실시간으로 보낸다.** BE 는 프레임 사이 틈(5초 이하)을 무음으로 메워 Deepgram 에 보내는데, 틈은
+  `offset_ms` 로만 잰다. 그래서 Deepgram 에 보낼 길이(받은 PCM + 메울 무음)를 Take별 서버 경과 시간으로
+  묶고, 다시 붙을 때 몰아 보내는 몫으로 10초까지 앞서 받는다 (`event_ingestion.AudioBudget`). 넘는 프레임은
+  버리고 `dropped_frames` · `lost_ms` 로 센다. FE 가 쌓아 두는 오디오(2초)와 무음으로 메우는 틈(5초)을 합친 것보다
+  크므로 정상 흐름에서는 버리지 않는다. 1ms 미만 PCM도 실제 샘플 길이만큼 계산하고, 스트림을 교체해도
+  예산을 이어 쓴다. 끊겨 있던 동안에도 최대 10초까지만 채운다.
 - `stt_status` 는 상태가 바뀔 때마다 온다. `connecting` → `ok` → (`reconnecting` → `degraded`) → `closed`.
+  상태 · 자동 종료 알림 전송은 각각 1초(`CONTROL_SEND_TIMEOUT_SEC`)까지 기다린다. FE 가 받지 않아도 STT 처리와 종료 정리를 이어 간다.
   숫자(`frames`·`dropped_frames`·`silence_ms`·`lost_ms`)는 연결 단위가 아니라 **Take 누적**이다.
 - **Deepgram 이 죽어도 연결을 끊지 않는다.** 오디오를 최대 5초 큐에 담고 백오프로 재접속하며
   `degraded` 만 알린다 — 그동안 FE 1단 코치는 계속 돌아야 하기 때문이다.
@@ -35,20 +42,31 @@ WS /api/ws/takes/{take_id}
   거절되면 그 키를 소진으로 표시하고 기다리지 않고 다음 키로 붙는다. 발표 도중 크레딧이 떨어져 끊겨도 재접속이
   402 로 거절되므로 같은 길로 넘어간다. 소진 표시는 서버 메모리에만 있고 모든 Take 가 같이 쓴다. 키가 전부
   소진이면 에러 로그를 남기고 위처럼 `degraded` 로 재시도하며, 그때는 첫 키부터 다시 확인한다
+- **Deepgram 은 발표 음성 · 전사를 보관하지 않는다.** 연결마다 `mip_opt_out=true` 를 붙여 Deepgram 모델 개선
+  프로그램에서 빠진다(기본은 참여 · 보관). 붙이면 처리하는 동안만 쓰고 저장하지 않는다. Pay as you Go · Growth
+  요금제는 붙여도 요금이 같다(Deepgram 2026-03-05 변경 기록). 우리 쪽 원자료 보관은 이것과 따로다
+  ([realtime-coach.md](realtime-coach.md))
 - 에러는 `{"type":"error","code","message"}`. **에러가 곧 종료는 아니다** — `code` 마다 다르다
   (`realtime/dto.py` 의 `WsErrorCode`).
 
   | code | 연결 |
   |---|---|
-  | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다 |
+  | `UNAUTHORIZED` | `1008` 로 닫는다 — 토큰이 없거나 틀리거나 사용자가 없다. 연결 중에 그 사용자가 로그아웃해도 이 코드로 닫는다(Take 는 끝내지 않고 grace 를 건다). FE 는 토큰을 한 번 새로 받아 다시 붙는다 |
   | `TAKE_NOT_FOUND` | `1008` 로 닫는다 — Take 가 없거나 내 것이 아니다 (REST 404 처럼 둘을 구분하지 않는다). 연결 중에 Take 나 발표가 지워져도 이 코드로 닫는다 |
   | `TAKE_ENDED` | `1008` 로 닫는다 — 이미 끝난 Take (`ANALYZING`·`COMPLETED`·`FAILED`. 자동 종료된 Take 도 `ANALYZING` 이다). FE 는 **재연결하지 않는다**. BE 가 끝냈으면 `end_reason`(`SILENCE`·`TIME_LIMIT`·`ABANDONED`·`CLOSED`)을 싣는다 — `CLOSED` 는 이어 가지 않고, `ABANDONED` 는 끝내기 PUT 이 되살린다 |
   | `FORBIDDEN` | `1008` 로 닫는다 — 다른 사용자가 쓰고 있는 스트림 (정상 흐름에서는 안 나온다) |
   | `BAD_MESSAGE` | 유지 |
   | `BAD_AUDIO_FRAME` | 유지. 연결당 첫 오류만 알린다 |
   | `TAKE_TAKEN_OVER` | `1008` 로 닫는다. FE 는 **재연결하지 않는다** |
+  | `TOO_MANY_STREAMS` | `1008` 로 닫는다 — 사용자는 한 번에 연습 하나만 하므로 스트림 상한은 1개(`MAX_STREAMS_PER_USER`)다. 다른 Take가 연결돼 있으면 기존 연습을 유지하고 새 연결을 거절한다. 끊겨 다시 붙기를 기다리는 스트림과 붙어 있어도 오디오가 `LIVE_AUDIO_SEC`(10초) 넘게 오지 않은 연결의 스트림은 실제로 닫힌 뒤 새 스트림으로 교체하며(오디오가 멈춘 연결은 `TOO_MANY_STREAMS` 로 닫는다), Take 를 끝내는 중인(stop · 자동 종료 · 끝내기 PUT) 스트림은 끊지 않고 끝내는 쪽의 상한(`ENDING_WAIT_SEC`, 17초)까지 기다린다. 정리가 제한 시간 안에 끝나지 않으면 오류 메시지 없이 `1013` 으로 닫아 FE 가 백오프로 다시 붙게 한다. 같은 Take의 새로고침·탭 이어받기는 기존 스트림을 재사용한다. 첫 연결이면 Take 를 시작(`RUNNING`)하기 전에 자리를 확인해 `READY` 로 둔 채 거절한다 |
 
 - `Origin` 이 있으면 `FRONTEND_BASE_URL` 과 같아야 한다. 없으면(스크립트) 통과.
+- **auth 를 기다리는 연결은 IP 하나에 20개, 전체 200개까지다** (`handshake.pending_auth`). 넘으면 받기 전에
+  닫아 브라우저에는 연결 실패(닫힘 코드 `1006`)로 보이고 FE 는 백오프로 다시 붙는다. IP 는 `X-Forwarded-For` 의
+  첫 값이다 — 바깥 Caddy 가 믿지 않는 상대가 보낸 값을 버리고 상대 주소로 채운다(`infra/Caddyfile` 의
+  `trusted_proxies`). Caddy 를 거치지 않고 BE 에 바로 붙을 수 있게 열면 이 값을 꾸밀 수 있어 IP 별 상한이 의미가
+  없어진다. 인증 실패 알림 전송과 닫기도 각각 1초까지만 기다려, 응답을 받지 않는 상대가 인증 전 슬롯을
+  계속 붙잡지 못하게 한다.
 - **인증 뒤 Take 를 검사한다.** 사용자 존재 → Take 존재·소유(`takes` → `pitches.user_id`) → 상태
   (`READY`·`RUNNING` 만 통과) 를 DB 왕복 한 번으로 본다. `READY` 는 첫 연결이라 받고, 통과하면
   `RUNNING` 으로 바꾼다 (`docs/ai/architecture.md` 1-3). 못 바꾸면(DB 오류) `1011` 로 닫아 FE 가 다시 붙게
@@ -64,8 +82,17 @@ WS /api/ws/takes/{take_id}
   원천이다. 시각은 Take 기준(ms), `words` 는 `[{word, punctuated_word, start_ms, end_ms, confidence}]`
   JSONB. 저장은 realtime 이 아니라 `take/service/record.py` 가 하고(`append_transcript_segment`), 스트림이
   DB 를 직접 만지지 않도록 `realtime/storage/store.py` 가 저장할 때마다 짧은 세션을 연다.
-  **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다. 단 Take 가 지워져
-  저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
+  **저장은 STT 처리를 기다리게 하지 않는다** — final 은 Take 별 버퍼(`storage/transcripts.FinalBuffer`, 1초 원자료와
+  같은 `RowBuffer`)에 넣고 뒤에서 번호 순서대로 하나씩 넣는다. 스트림이 바뀌어도 버퍼는 Take 에 남아 새 스트림은 저장된
+  번호와 버퍼에 남은 번호 중 큰 쪽 뒤에서 잇는다. **저장 실패는 스트림을 멈추지 않는다** — DB 가 잠깐 안 되면 들고 있다가
+  다시 넣고 화면 전사는 계속 나간다(1시간 발표 분량인 1,500개까지). Take 를 끝내기 전에는 남은 final 을 저장한 뒤 `ANALYZING` 으로 적는다.
+  DB 장애로 다 넣지 못했으면 버리지 않고 지금 적지도 않는다 — 뒤에서 final 부터 다시 넣고 그 뒤에 적는다(`finish.mark_later`). 끝내기
+  PUT 이면 `503 TAKE_RECORDS_NOT_SAVED` 로 답해 FE 가 다시 보낸다. 프로세스가 내려가면 메모리의 final 은 잃는다. 단 Take 가
+  지워져 저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
+- **interim 은 STT 처리를 기다리게 하지 않는다.** 보내는 중이면 가장 새것만 남겼다가 이어 보내고, 한 번 보내기는
+  1초(`INTERIM_SEND_TIMEOUT_SEC`)까지다. 받는 쪽이 느려도 다음 STT 결과 · 문장 끝 신호가 밀리지 않는다. final 을
+  보내기 전에는 남은 interim 을 버리고 보내는 중인 것을 끝낸다 — 옛 interim 이 같은 `segment_id` 로 확정 자막을
+  덮지 않게.
 - **`metrics` 는 `take_metric_seconds` 에 1초 원자료로 저장한다** (`realtime/storage/metrics.py`). Take 결과를
   다시 만들 때(`/coach/finalize` 의 `replay`) 읽는다. 시선 · 음량 기록은 해석하지 않고 받은 그대로 두고, 받았을 때의
   STT 상태(`stt_status`)를 같이 남긴다. 5개가 모이면 한 번에 넣고, 연결이 끊기거나 스트림이 닫히면 남은 것을
@@ -139,6 +166,7 @@ WS /api/ws/takes/{take_id}
 - Take PUT 은 상태와 순서를 본다. `COMPLETED`·`FAILED` 는 `409 TAKE_ENDED`, `ANALYZING` 은 시각만 받는다
   (`event_logs` 는 409). `ABANDONED` 로 끝난 Take 는 `ended_at` 이 있는 끝내기만 받는다 (`CLOSED` 는 409).
   `ended_at` 이 `started_at` 보다 앞서면 `400 INVALID_TAKE_TIME`, 시간대가 없는 시각은 422.
+  Take 를 만든 때 1일 전 ~ 지금 1일 뒤를 벗어난 시각도 `422 VALIDATION_ERROR`.
   `null` 은 보내지 않은 것으로 본다. 점검 결과(`calibration`)는 `READY` 일 때만 받는다 (아니면 `409 TAKE_STARTED`).
 - **Take 를 자동으로 끝낸다** (`realtime/stream/auto_end.py`). 둘 중 하나라도 맞으면 `{"type":"auto_end","reason","message"}`
   를 보내고 `stop` 과 같은 순서로 정리한다 (drain → `ANALYZING` → `closed` → `1000`). 오디오는 그 자리에서 끊는다.

@@ -3,7 +3,8 @@
 module 은 realtime · coach 를 import 하지 않는다 (README '의존 방향'). 그래서 HTTP 요청이 그쪽에
 알릴 일은 여기 두 자리를 거쳐 부른다.
 
-  - `live_takes()`: Take · 발표 · 회원을 지움, 창을 닫은 Take, STT 없이 끝낸 Take (끝내기 PUT)
+  - `live_takes()`: Take · 발표 · 회원을 지움, 창을 닫은 Take, STT 없이 끝낸 Take (끝내기 PUT),
+    로그아웃
   - `coaching()`: 리뷰 뒤 · 제한 시간을 바꾼 뒤 · 대본을 파싱한 뒤 다음 Take 의 코칭 계획
 
 실제 구현은 main.py 가 앱을 만들 때 꽂는다 (`install`). 꽂기 전에는 바깥이 없는 것처럼 군다 — 아무
@@ -29,15 +30,24 @@ class LiveTakes(Protocol):
         """그 Take 를 어느 창에서 발표 중이다."""
         ...
 
-    def end_closed_tab(self, take_id: uuid.UUID) -> None:
+    def end_closed_tab(self, take_id: uuid.UUID, *, replaced: bool = False) -> None:
         """창을 닫아 실패(`CLOSED`)로 끝낸 Take 의 스트림 · 떠난 Take 타이머 · 코치를 정리한다.
-        DB 에 적은 뒤 부른다."""
+        DB 에 적은 뒤 부른다. `replaced` 면 다른 곳에서 새 Take 를 시작하려고 끝낸 것이다."""
+        ...
+
+    def blocking_take(self, user_id: uuid.UUID) -> uuid.UUID | None:
+        """그 사용자의 새 Take 를 막는, 어느 창에서 발표 중인 Take. 없으면 None."""
         ...
 
     def end(self, take_id: uuid.UUID, mark: MarkEnded) -> None:
         """WS stop 없이 Take 를 끝낸다 (끝내기 PUT). 남은 전사 · 원자료를 저장하고 `mark` 로 끝난
         것으로 적은 뒤 Take 결과를 띄운다. 연결이 그 Take 를 끝내는 중이면 아무것도 하지 않는다.
         `mark` 가 실패하면 그 예외를 그대로 올리고, 적기는 뒤에서 다시 한다."""
+        ...
+
+    def sign_out(self, user_id: uuid.UUID) -> None:
+        """로그아웃한 사용자의 발표 연결을 `UNAUTHORIZED` 로 닫는다. Take 는 끝내지 않는다.
+        Refresh 를 폐기한 커밋 뒤에 부른다."""
         ...
 
 
@@ -56,11 +66,17 @@ class _NoLiveTakes:
     def is_live(self, take_id: uuid.UUID) -> bool:
         return False
 
-    def end_closed_tab(self, take_id: uuid.UUID) -> None:
+    def end_closed_tab(self, take_id: uuid.UUID, *, replaced: bool = False) -> None:
+        return None
+
+    def blocking_take(self, user_id: uuid.UUID) -> uuid.UUID | None:
         return None
 
     def end(self, take_id: uuid.UUID, mark: MarkEnded) -> None:
         mark(None, None)
+
+    def sign_out(self, user_id: uuid.UUID) -> None:
+        return None
 
 
 class _NoCoaching:

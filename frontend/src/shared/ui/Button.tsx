@@ -5,8 +5,10 @@ type ButtonVariant = 'primary' | 'secondary' | 'quiet';
 type ButtonSize = 'sm' | 'md';
 
 const variants: Record<ButtonVariant, string> = {
-  primary: 'border-ink bg-coral text-white shadow-[3px_3px_0_var(--color-ink)] hover:bg-coral-deep',
-  secondary: 'border-ink bg-panel text-ink hover:bg-cream',
+  primary:
+    'border-ink bg-coral-deep text-white shadow-[3px_3px_0_var(--color-ink)] hover:bg-ink disabled:border-line-strong disabled:bg-cream',
+  secondary:
+    'border-ink bg-panel text-ink hover:bg-cream disabled:border-line-strong disabled:bg-cream',
   quiet: 'border-transparent bg-transparent text-ink hover:bg-cream',
 };
 const sizes: Record<ButtonSize, string> = {
@@ -15,7 +17,7 @@ const sizes: Record<ButtonSize, string> = {
 };
 
 function styles(variant: ButtonVariant, size: ButtonSize, className = '') {
-  return `inline-flex max-w-full items-center justify-center gap-2 border-2 text-center font-bold transition-colors disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none ${variants[variant]} ${sizes[size]} ${className}`;
+  return `inline-flex max-w-full items-center justify-center gap-2 border-2 text-center font-bold transition-colors disabled:pointer-events-none disabled:text-ink/80 disabled:shadow-none ${variants[variant]} ${sizes[size]} ${className}`;
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

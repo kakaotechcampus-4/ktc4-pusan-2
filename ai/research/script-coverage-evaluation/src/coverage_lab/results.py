@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from script_coverage.config import CRITERIA_VERSION
-from script_coverage.version import FEATURE_VERSION
+from pitch_coach_ai.features.script_coverage.config import CRITERIA_VERSION
+from pitch_coach_ai.features.script_coverage.version import FEATURE_VERSION
 
 from .paths import RESULTS_DIR
 

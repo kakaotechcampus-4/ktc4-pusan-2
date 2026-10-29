@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from coach.config import DEFAULT_CONFIG
-from coach.judges import Judges, run
-from coach.schemas import CoachRequest
-from coach.state import initial_state
 from coach_lab.judges import filler, gaze, pace, volume
+from pitch_coach_ai.features.coach.config import DEFAULT_CONFIG
+from pitch_coach_ai.features.coach.judges import Judges, run
+from pitch_coach_ai.features.coach.schemas import CoachRequest
+from pitch_coach_ai.features.coach.state import initial_state
 
 ROUNDS = 20
 WORD = "안녕하세요"  # 5자, 군더더기 아님
