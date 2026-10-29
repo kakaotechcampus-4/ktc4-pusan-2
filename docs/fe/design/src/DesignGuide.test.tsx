@@ -379,3 +379,15 @@ it('PC 전용 화면을 휴대폰 크기로 보면 정책을 알리고, 크기 �
   expect(address()).not.toContain('device=');
   expect(address()).not.toContain('w=');
 });
+
+it('브라우저 확대는 주소에 남고, 페이지가 쓰는 크기를 함께 보인다', async () => {
+  await render('/?screen=pitch-create&device=laptop-wide');
+  const zoom = [...host.querySelectorAll('select')].find((select) =>
+    select.closest('label')?.textContent?.startsWith('브라우저 확대'),
+  )!;
+  await choose(zoom, '125');
+  expect(address()).toContain('zoom=125');
+  expect(host.textContent).toContain('1366 × 768 · 125% → 페이지 1093 × 614');
+  await choose(zoom, '100');
+  expect(address()).not.toContain('zoom=');
+});

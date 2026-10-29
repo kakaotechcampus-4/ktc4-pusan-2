@@ -15,12 +15,21 @@ import { RetryScreen } from './screens/RetryScreen';
 import { ReportScreen } from './screens/ReportScreen';
 import { TakesScreen } from './screens/TakesScreen';
 import { ComparisonScreen } from './screens/ComparisonScreen';
-import { AboutScreen, MyScreen, NotFoundScreen, UnsupportedScreen } from './screens/InfoScreens';
+import {
+  AboutScreen,
+  MyScreen,
+  NotFoundScreen,
+  StageBlockedScreen,
+  UnsupportedScreen,
+} from './screens/InfoScreens';
+import { LoginScreen, WelcomeScreen } from './screens/OnboardingScreens';
 import {
   ColorsFoundation,
+  ResponsiveFoundation,
   SpacingFoundation,
   SurfacesFoundation,
   TypographyFoundation,
+  WritingFoundation,
 } from './foundations/Foundations';
 import { ComponentDoc } from './components/ComponentDocs';
 import { componentEntries } from './components/entries';
@@ -58,6 +67,8 @@ function targetFor(path: string): string | null {
   if (path === '/about') return 'about';
   if (path === '/unsupported') return 'unsupported';
   if (path === '/me') return 'me';
+  if (path === '/welcome') return 'welcome';
+  if (path.startsWith('/login')) return 'login';
   return null;
 }
 
@@ -162,6 +173,10 @@ function CurrentScreen({
       return <SpacingFoundation />;
     case 'surfaces':
       return <SurfacesFoundation />;
+    case 'responsive':
+      return <ResponsiveFoundation />;
+    case 'writing':
+      return <WritingFoundation stateId={stateId} />;
     case 'home':
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'pitch-create':
@@ -188,6 +203,12 @@ function CurrentScreen({
       return <UnsupportedScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'not-found':
       return <NotFoundScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'welcome':
+      return <WelcomeScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'login':
+      return <LoginScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'stage-blocked':
+      return <StageBlockedScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'me':
       return <MyScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'slide-preview':

@@ -16,6 +16,8 @@ import {
   frameUrl,
   isDevice,
   previewSize,
+  previewZoom,
+  ZOOMS,
   type Device,
 } from './frame';
 import { PreviewFrame } from './PreviewFrame';
@@ -374,7 +376,7 @@ function StateSelect({
   );
 }
 
-type SizePatch = Partial<Record<'device' | 'w' | 'h' | 'rotate', string | null>>;
+type SizePatch = Partial<Record<'device' | 'w' | 'h' | 'rotate' | 'zoom', string | null>>;
 
 /**
  * 미리보기를 어떤 화면 크기로 그릴지: 기기 크기 · 직접 입력 · 가로/세로 돌리기. 칸보다 넓으면 줄여 보인다.
@@ -384,12 +386,15 @@ function SizeControls({
   device,
   custom,
   rotated,
+  zoom,
   onChange,
 }: {
   device: Device;
   /** 직접 입력의 주소 값(돌리기 전) */
   custom: { w: string; h: string };
   rotated: boolean;
+  /** 브라우저 확대 배율(1 = 100%) */
+  zoom: number;
   onChange: (patch: SizePatch) => void;
 }) {
   const number = `${control} w-24 tabular`;
@@ -443,6 +448,23 @@ function SizeControls({
           </label>
         </>
       )}
+      <label className="flex flex-col gap-1 text-xs font-bold">
+        브라우저 확대
+        <select
+          className={`${control} w-24`}
+          value={Math.round(zoom * 100)}
+          onChange={(event) => {
+            const value = event.target.value;
+            onChange({ zoom: value === '100' ? null : value });
+          }}
+        >
+          {ZOOMS.map((value) => (
+            <option key={value} value={value}>
+              {value}%
+            </option>
+          ))}
+        </select>
+      </label>
       {device !== 'fit' && (
         <Button
           size="sm"
@@ -476,13 +498,20 @@ export function DesignGuide() {
   const deviceParam = params.get('device');
   const device: Device = isDevice(deviceParam) ? deviceParam : 'fit';
   const size = previewSize(params);
+  const zoom = previewZoom(params);
+  // 페이지가 실제로 쓰는 크기(창 크기 ÷ 확대). 미디어 쿼리는 이 값을 본다
+  const layout = size && {
+    width: Math.round(size.width / zoom),
+    height: Math.round(size.height / zoom),
+  };
   const rotated = params.get('rotate') === '1';
   // PC 전용 화면을 휴대폰 크기로 보면 제품 정책을 함께 알린다
   const phoneOnPcScreen =
     selected?.kind === 'screen' &&
     selected.devices === 'pc' &&
     size !== null &&
-    size.width <= PHONE_MAX_WIDTH;
+    layout !== null &&
+    layout.width <= PHONE_MAX_WIDTH;
   // 고른 화면은 state, 나머지 카드는 state.<화면 ID>에 상태를 둔다
   const selectedState = selected
     ? (validState(selected, params.get('state')) ??
@@ -613,6 +642,7 @@ export function DesignGuide() {
                 device={device}
                 custom={{ w: params.get('w') ?? '', h: params.get('h') ?? '' }}
                 rotated={rotated}
+                zoom={zoom}
                 onChange={changeSize}
               />
               <div className="flex flex-wrap gap-2" role="group" aria-label="보기 방식">
@@ -654,6 +684,8 @@ export function DesignGuide() {
                     {size && (
                       <span className="tabular font-mono text-xs font-normal">
                         {size.width} × {size.height}
+                        {zoom !== 1 &&
+                          ` · ${Math.round(zoom * 100)}% → 페이지 ${layout!.width} × ${layout!.height}`}
                       </span>
                     )}
                     <a
@@ -695,6 +727,7 @@ export function DesignGuide() {
                     stateId={selectedState}
                     onNavigate={(id, stateId) => previewNavigate(selected, id, stateId)}
                     size={size}
+                    zoom={zoom}
                     fitHeight={800}
                     title={`${selected.title} 미리보기 화면`}
                   />
@@ -770,6 +803,7 @@ export function DesignGuide() {
                           stateId={stateId}
                           onNavigate={(id, next) => previewNavigate(screen, id, next)}
                           size={size}
+                          zoom={zoom}
                           fitHeight={384}
                           title={`${screen.title} 미리보기 화면`}
                           inline

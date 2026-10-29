@@ -324,3 +324,16 @@ it('공용 상단바는 제품과 같은 화면에만 얹히고, 지금 메뉴�
   await render('stage');
   expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
 });
+
+it('무대 시작 전 안내: 막힌 경우에만 다시 시도 · 장치 점검으로를 두고, 시작 전에는 끝낼 수 없다', async () => {
+  await render('stage', 'opening');
+  expect(host.textContent).toContain('카메라와 마이크를 여는 중이에요');
+  expect(button('다시 시도')).toBeUndefined();
+  await act(async () => root.render(null));
+  await render('stage', 'busy');
+  expect(button('다시 시도')).toBeDefined();
+  await toLastSlide();
+  expect(button('발표 끝내기')?.disabled).toBe(true);
+  await click('장치 점검으로');
+  expect(host.textContent).toContain('점검 항목');
+});

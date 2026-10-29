@@ -24,6 +24,18 @@ export function isDevice(value: string | null): value is Device {
   return value !== null && value in DEVICES;
 }
 
+/**
+ * 브라우저 확대(%) — 크롬의 확대 · 축소 단계와 같다. Windows 배율(125% · 150%)도 같은 효과다.
+ * 확대하면 페이지가 쓰는 폭 · 높이가 그만큼 줄어(1366 × 768을 125%로 보면 1093 × 614) 배치가 바뀐다
+ */
+export const ZOOMS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200] as const;
+
+/** 주소의 zoom(%)을 배율로. 목록에 없으면 100% */
+export function previewZoom(params: URLSearchParams): number {
+  const value = Number(params.get('zoom'));
+  return (ZOOMS as readonly number[]).includes(value) ? value / 100 : 1;
+}
+
 /** 직접 입력의 범위. 이보다 작거나 크면 맞춰 넣는다 */
 export const CUSTOM_LIMIT = { min: 280, max: 2560 };
 

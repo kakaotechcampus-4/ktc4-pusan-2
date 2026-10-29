@@ -1,5 +1,6 @@
 // 제품 리허설 무대(`frontend/src/features/rehearsal/stage/RehearsalPage.tsx`, `ScriptPane.tsx`)의 설계서 샘플.
 import { useEffect, useState } from 'react';
+import { Button } from '@/ui/Button';
 import type { Navigate } from './shared';
 import '@/ui/stage.css';
 
@@ -9,6 +10,27 @@ import '@/ui/stage.css';
  * 슬라이드는 ← → · Space로 넘긴다(제품과 같은 키). 끝내기는 마지막 장에서만 열린다(제품 #697).
  */
 const PAGES = 12;
+
+/**
+ * 발표를 시작하기 전 무대 위 안내(제품 StartGateNotice · startGateText). 상태 ID → 문구 · 막혔는지.
+ * 막힌 것(stuck)에만 "다시 시도" · "장치 점검으로"를 둔다. 그동안 시계 · 기록 · 끝내기는 멈춰 있다
+ */
+const START_GATES: Record<string, { text: string; stuck: boolean }> = {
+  opening: { text: '카메라와 마이크를 여는 중이에요', stuck: false },
+  connecting: { text: '말하기 분석 서버에 연결하는 중이에요', stuck: false },
+  'connect-slow': {
+    text: '말하기 분석 서버에 연결하지 못했어요. 연결되면 바로 시작해요.',
+    stuck: true,
+  },
+  'no-mic': {
+    text: '마이크 사용을 허용해 주세요. 주소창 왼쪽 자물쇠에서 바꿀 수 있어요. 마이크가 있어야 발표를 시작할 수 있어요.',
+    stuck: true,
+  },
+  busy: {
+    text: '다른 기기나 창에서 연습이 진행 중이에요. 그 연습을 끝낸 뒤 다시 시도해 주세요.',
+    stuck: true,
+  },
+};
 export function StageScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const exam = stateId === 'exam' || stateId === 'exam-confirm';
   const keyword = stateId === 'keyword' || stateId === 'keyword-confirm';
@@ -17,6 +39,7 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
   // 종료 확인은 마지막 장에서만 열 수 있으니 그 상태들은 마지막 장에서 시작한다
   const [slide, setSlide] = useState(stateId === 'last-slide' || confirming ? PAGES : 3);
   const onLastSlide = slide >= PAGES;
+  const gate = START_GATES[stateId];
   useEffect(() => {
     function move(event: KeyboardEvent) {
       if (event.key === 'ArrowRight' || event.key === ' ') setSlide((n) => Math.min(PAGES, n + 1));
@@ -46,11 +69,29 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
             <div
               className="stage stage-live"
               data-script-mode={scriptMode}
-              data-gaze="AUDIENCE"
+              data-gaze={gate ? 'UNKNOWN' : 'AUDIENCE'}
               data-mode={exam ? 'EXAM' : 'COACHING'}
             >
+              {gate && (
+                <div className="start-gate" role="status" data-stuck={gate.stuck || undefined}>
+                  <div className="box">
+                    <p>{gate.text}</p>
+                    {gate.stuck && (
+                      <div className="actions">
+                        <Button onClick={() => onNavigate('stage', 'default')}>다시 시도</Button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => onNavigate('prepare-mission', 'default')}
+                        >
+                          장치 점검으로
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               <header className="stage-head">
-                <span className="elapsed">02:14</span>
+                <span className="elapsed">{gate ? '00:00' : '02:14'}</span>
                 <span className="limit">/ 05:00</span>
                 <div className="bar" data-over="false">
                   <i style={{ width: '45%' }} />
@@ -136,7 +177,7 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                 <button
                   type="button"
                   className="end"
-                  disabled={!onLastSlide}
+                  disabled={!onLastSlide || Boolean(gate)}
                   title={onLastSlide ? undefined : '마지막 슬라이드에서 끝낼 수 있어요'}
                   onClick={() =>
                     confirming

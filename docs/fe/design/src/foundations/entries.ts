@@ -105,4 +105,59 @@ export const foundationEntries: GuideFoundation[] = [
     sources,
     productNote,
   },
+  {
+    kind: 'foundation',
+    id: 'responsive',
+    title: '반응형 기준',
+    group,
+    status: '제품에 있음',
+    summary:
+      'Tailwind 크기 기준, 설계서가 더한 one-screen, 무대 전용 기준, 확인할 크기 · 브라우저 확대.',
+    states: [
+      {
+        id: 'default',
+        label: '기본',
+        description: '지금 미리보기 크기 · 확대에서 켜진 기준과 기준별로 바뀌는 곳.',
+      },
+    ],
+    rules: [
+      '작은 화면부터 쓰고 넓어질 때 바꾼다(min-width 앞붙이).',
+      '브라우저 확대(크롬 125% · 150%, Windows 배율 포함)는 페이지가 쓰는 폭을 그만큼 줄인다. 1366 × 768에서 125%면 1093 × 614로 배치된다.',
+      'PC 전용 화면도 노트북 크기 · 확대 125%에서 한 화면에 들어가는지 본다.',
+      '무대 대본 칸 높이는 어느 크기에서도 바꾸지 않는다(계측 조건).',
+    ],
+    tokens: [],
+    sources: [...sources, 'frontend/src/features/rehearsal/stage/stage.css'],
+    productNote,
+  },
+  {
+    kind: 'foundation',
+    id: 'writing',
+    title: '문구',
+    group,
+    status: '제품에 있음',
+    summary: '말투(해요체 · 마스코트), 상황별 문구, 숫자 · 용어 · 기호 표기.',
+    states: [
+      { id: 'tone', label: '말투', description: '기본 해요체, 치치 반말, 피코 존댓말과 섞인 곳.' },
+      {
+        id: 'patterns',
+        label: '상황별',
+        description: '실패 · 진행 중 · 막힘 · 버튼 · 되돌리기 어려움 · 빈 자리.',
+      },
+      {
+        id: 'format',
+        label: '표기',
+        description: '측정 못 한 값 · 시간 · 비율 · 날짜 · 용어 · 화살표.',
+      },
+    ],
+    rules: [
+      '새 문구는 해요체로 쓴다. 마스코트만 각자의 말투를 쓴다.',
+      '실패는 무엇이 안 됐는지와 할 일을 같이 쓴다.',
+      '측정하지 못한 값은 "—"와 이유로 쓰고 0으로 채우지 않는다.',
+      '알려진 문제: 로그인 · 약관 · 장치 점검 안내 등 약 2할이 합니다체다. 맞출지 FE와 정한다.',
+    ],
+    tokens: [],
+    sources: [],
+    productNote: '제품 문구(2026-10-29)를 보고 정리했다. 화면별 문구의 원본은 각 화면 샘플이다.',
+  },
 ];

@@ -88,3 +88,11 @@ export function contrast(foreground: string, background: string) {
   const [a, b] = [luminance(foreground), luminance(background)].sort((x, y) => y - x);
   return (a! + 0.05) / (b! + 0.05);
 }
+
+/** styles.css의 `@custom-variant 이름 (@media …);` — Tailwind 기본 크기 말고 설계서가 더한 기준 */
+export function customVariants(): { name: string; query: string }[] {
+  return [...css.matchAll(/@custom-variant\s+([\w-]+)\s+\(@media\s+(.+?)\);/g)].map((match) => ({
+    name: match[1]!,
+    query: match[2]!.trim(),
+  }));
+}

@@ -1,6 +1,6 @@
 /** 기초 문서가 styles.css를 제대로 읽는지 — 제목 주석 묶음 · 줄 끝 설명 · 밝은 지면 · 대비 계산. */
 import { expect, it } from 'vitest';
-import { contrast, lightOverrides, themeGroups, themeTokens } from './tokens';
+import { contrast, customVariants, lightOverrides, themeGroups, themeTokens } from './tokens';
 
 it('@theme 값을 제목 주석별로 묶고 줄 끝 설명을 붙인다', () => {
   const groups = new Map(themeGroups().map((group) => [group.title, group]));
@@ -32,4 +32,10 @@ it('대비는 WCAG 식대로 1~21이다', () => {
   expect(contrast('#000000', '#FFFFFF')).toBeCloseTo(21, 5);
   expect(contrast('#FFFFFF', '#FFFFFF')).toBeCloseTo(1, 5);
   expect(contrast('#767676', '#FFFFFF')).toBeCloseTo(4.54, 2);
+});
+
+it('설계서가 더한 화면 크기 기준(@custom-variant)을 읽는다', () => {
+  expect(customVariants()).toEqual([
+    { name: 'one-screen', query: '(min-width: 64rem) and (min-height: 40rem)' },
+  ]);
 });
