@@ -39,6 +39,7 @@ export const componentEntries: GuideComponent[] = [
       ['variant', "'primary' | 'secondary' | 'quiet'", '기본 primary'],
       ['size', "'sm' | 'md'", '기본 md'],
       ['disabled', 'boolean', '회색 바탕 · 그림자 없음'],
+      ['ref (Button)', 'Ref<HTMLButtonElement>', '창을 닫은 뒤 초점을 되돌릴 때'],
       ['to (ButtonLink)', 'string', '라우터 경로'],
     ],
     code: `import { Button, ButtonLink } from '@/shared/ui/Button';
@@ -164,7 +165,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     group: components,
     status: '제품에 있음',
     summary:
-      '홈 · Take 기록 · 마이페이지 · 재시도 · 비교 · 리포트 · 피치 생성 · 시작 전 세팅이 같이 쓰는 머리. 사용방법 창을 연다.',
+      '홈 · Take 기록 · 마이페이지 · 재시도 · 비교 · 리포트 · 피치 생성이 같이 쓰는 머리. 사용방법 창을 연다.',
     states: [
       view('home', '내 피치', '홈에 있을 때.'),
       view('takes', 'Take 기록', 'Take 기록에 있을 때.'),
@@ -173,7 +174,7 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
     rules: [
       '지금 화면의 메뉴는 코랄 밑줄 · 굵게와 aria-current="page"로 표시한다.',
       '바탕은 기본 지면(bg-panel)으로 고정한다. 아래 화면이 밝은 지면이어도 바꾸지 않는다.',
-      '리허설 · 분석 대기 · 대본 확인은 집중 화면이라 두지 않는다. 피치 생성 · 시작 전 세팅에는 #738부터 둔다.',
+      '시작 전 세팅 · 리허설 · 분석 대기 · 대본 확인은 집중 화면이라 두지 않는다. 피치 생성에는 #738부터 둔다. 시작 전 세팅은 단순화할 때(#706) 같이 정한다.',
       '높이(약 85px)는 styles.css의 --spacing-app-header와 맞춘다. 피치 생성 화면이 그 값으로 남은 높이를 계산한다.',
     ],
     tokens: ['panel', 'ink', 'coral', 'line-strong'],
@@ -266,9 +267,8 @@ import { TakeStatusBadge } from '@/shared/ui/TakeStatusBadge';
       '처리 중에는 버튼과 Esc를 막고, 끝나면 결과를 알린 뒤 닫는다.',
       '제목 · 본문을 aria-labelledby · aria-describedby로 잇는다.',
       '지금 제품의 다른 확인(브라우저 기록 지우기 · 계정 삭제)은 브라우저 confirm()이다. 새로 만들면 이 창을 쓴다.',
-    ],
-    knownIssues: [
-      '취소하면 부모가 창을 지우고, 창은 useEffect 정리에서 닫힌다. 그때는 이미 문서에서 빠져 있어 초점이 연 버튼으로 돌아오지 않는다(제품도 같은 코드). 정리를 useLayoutEffect로 옮기면 DOM에서 빠지기 전에 닫혀 초점이 돌아온다 — FE에서 고치기로 했다(#766 리뷰). 고쳐지면 설계서 복사본도 맞춘다.',
+      '닫을 때 close()는 useLayoutEffect 정리에서 부른다. <dialog>가 문서에서 빠지기 전에 닫아야 브라우저가 초점을 연 버튼으로 돌려준다(useEffect 정리는 DOM을 뗀 뒤라 초점이 페이지 처음으로 간다, #771).',
+      '연 버튼이 창이 열린 동안 막혀 있으면(시작 전 세팅의 시작 버튼) 브라우저가 초점을 돌려주지 못한다. 그때는 부모가 창을 내리고 버튼이 풀린 뒤 ref로 직접 초점을 준다.',
     ],
     tokens: ['panel', 'ink'],
     sources: ['frontend/src/features/rehearsal/prepare/ReplaceTakeDialog.tsx'],

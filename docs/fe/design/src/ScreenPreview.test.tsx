@@ -105,7 +105,8 @@ it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대�
   expect(host.querySelector('.stage')?.getAttribute('data-script-mode')).toBe('HIGHLIGHT');
   // 마지막 장이 아니면 끝낼 수 없다(#697)
   expect(button('발표 끝내기')?.disabled).toBe(true);
-  expect(button('발표 끝내기')?.title).toBe('마지막 슬라이드에서 끝낼 수 있어요');
+  expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBe('end-hint');
+  expect(host.querySelector('#end-hint')?.textContent).toBe('마지막 장에서 끝낼 수 있어요');
   await toLastSlide();
   expect(host.textContent).toContain('SLIDE 12 / 12');
   await click('발표 끝내기');
@@ -152,7 +153,8 @@ it('실전 모드를 고르면 대본 칸 없는 실전 무대로 가고 종료 
   expect(host.querySelector('.script')).toBeNull();
   // 마지막 장이 아니면 끝낼 수 없다(#697)
   expect(button('발표 끝내기')?.disabled).toBe(true);
-  expect(button('발표 끝내기')?.title).toBe('마지막 슬라이드에서 끝낼 수 있어요');
+  expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBe('end-hint');
+  expect(host.querySelector('#end-hint')?.textContent).toBe('마지막 장에서 끝낼 수 있어요');
   await toLastSlide();
   expect(host.textContent).toContain('SLIDE 12 / 12');
   await click('발표 끝내기');
@@ -323,6 +325,28 @@ it('공용 상단바는 제품과 같은 화면에만 얹히고, 지금 메뉴�
   await act(async () => root.render(null));
   await render('stage');
   expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
+  await act(async () => root.render(null));
+  // 시작 전 세팅은 상단바 없이 자체 틀을 쓴다(#738 최종, #706에서 정함)
+  await render('prepare-mission');
+  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
+});
+
+it('끝내기 확인은 장이 바뀌면 풀리고, 마지막 장에서는 안내 글자가 없다', async () => {
+  await render('stage', 'last-slide');
+  expect(host.querySelector('#end-hint')).toBeNull();
+  expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBeNull();
+  await click('발표 끝내기');
+  expect(button('정말 끝낼까요?')).toBeDefined();
+  // 이전 장에 갔다 돌아오면 처음부터 다시 묻는다(제품 useEndConfirm)
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+  });
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+  });
+  expect(host.textContent).toContain('SLIDE 12 / 12');
+  expect(button('정말 끝낼까요?')).toBeUndefined();
+  expect(button('발표 끝내기')?.disabled).toBe(false);
 });
 
 it('무대 시작 전 안내: 막힌 경우에만 다시 시도 · 장치 점검으로를 두고, 시작 전에는 끝낼 수 없다', async () => {

@@ -39,6 +39,13 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
   // 종료 확인은 마지막 장에서만 열 수 있으니 그 상태들은 마지막 장에서 시작한다
   const [slide, setSlide] = useState(stateId === 'last-slide' || confirming ? PAGES : 3);
   const onLastSlide = slide >= PAGES;
+  // 제품 useEndConfirm처럼 장이 바뀌면 확인을 푼다. 앞 렌더의 장을 기억해 렌더 중에 맞춘다
+  const [asking, setAsking] = useState(confirming);
+  const [askedSlide, setAskedSlide] = useState(slide);
+  if (askedSlide !== slide) {
+    setAskedSlide(slide);
+    setAsking(false);
+  }
   const gate = START_GATES[stateId];
   useEffect(() => {
     function move(event: KeyboardEvent) {
@@ -51,14 +58,8 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
     return () => window.removeEventListener('keydown', move);
   }, []);
   let scriptMode = 'HIGHLIGHT';
-  let confirmState = 'confirm-end';
-  if (exam) {
-    scriptMode = 'OFF';
-    confirmState = 'exam-confirm';
-  } else if (keyword) {
-    scriptMode = 'KEYWORD';
-    confirmState = 'keyword-confirm';
-  }
+  if (exam) scriptMode = 'OFF';
+  else if (keyword) scriptMode = 'KEYWORD';
   return (
     // 무대는 창 높이를 채운다(미리보기 iframe의 높이가 곧 창 높이). 아주 낮으면 24rem에서 멈춘다
     <div className="flex h-dvh min-h-[24rem] flex-col">
@@ -173,19 +174,21 @@ export function StageScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                   )}
                   {exam && <span>실전 모드 — 발표 중에는 코치가 말하지 않습니다</span>}
                 </div>
-                {/* 끝내기는 마지막 장에서만 연다(제품 #697). 제품은 4초 뒤 확인이 풀린다 */}
+                {/* 끝내기는 마지막 장에서만 연다(제품 #697). 막힌 버튼은 초점 · title이 안 보여 이유를 글자로 둔다.
+                    제품은 4초 뒤에도 확인이 풀린다 */}
+                {!onLastSlide && (
+                  <span id="end-hint" className="end-hint">
+                    마지막 장에서 끝낼 수 있어요
+                  </span>
+                )}
                 <button
                   type="button"
                   className="end"
                   disabled={!onLastSlide || Boolean(gate)}
-                  title={onLastSlide ? undefined : '마지막 슬라이드에서 끝낼 수 있어요'}
-                  onClick={() =>
-                    confirming
-                      ? onNavigate('processing-loading')
-                      : onNavigate('stage', confirmState)
-                  }
+                  aria-describedby={onLastSlide ? undefined : 'end-hint'}
+                  onClick={() => (asking ? onNavigate('processing-loading') : setAsking(true))}
                 >
-                  {confirming ? '정말 끝낼까요?' : '발표 끝내기'}
+                  {asking ? '정말 끝낼까요?' : '발표 끝내기'}
                 </button>
               </div>
             </div>
