@@ -82,8 +82,11 @@ WS /api/ws/takes/{take_id}
   원천이다. 시각은 Take 기준(ms), `words` 는 `[{word, punctuated_word, start_ms, end_ms, confidence}]`
   JSONB. 저장은 realtime 이 아니라 `take/service/record.py` 가 하고(`append_transcript_segment`), 스트림이
   DB 를 직접 만지지 않도록 `realtime/storage/store.py` 가 저장할 때마다 짧은 세션을 연다.
-  **저장 실패는 스트림을 멈추지 않는다** — 로그만 남기고 화면 전사는 계속 나간다. 단 Take 가 지워져
-  저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
+  **저장은 STT 처리를 기다리게 하지 않는다** — final 은 Take 별 버퍼(`storage/transcripts.FinalBuffer`, 1초 원자료와
+  같은 `RowBuffer`)에 넣고 뒤에서 번호 순서대로 하나씩 넣는다. 스트림이 바뀌어도 버퍼는 Take 에 남아 새 스트림은 저장된
+  번호와 버퍼에 남은 번호 중 큰 쪽 뒤에서 잇는다. **저장 실패는 스트림을 멈추지 않는다** — DB 가 잠깐 안 되면 들고 있다가
+  다시 넣고 화면 전사는 계속 나간다. Take 를 끝내기 전에는 남은 final 을 저장한 뒤 `ANALYZING` 으로 적는다. 단 Take 가
+  지워져 저장할 곳이 없으면(외래 키 위반) 아래처럼 스트림을 끊는다.
 - **interim 은 STT 처리를 기다리게 하지 않는다.** 보내는 중이면 가장 새것만 남겼다가 이어 보내고, 한 번 보내기는
   1초(`INTERIM_SEND_TIMEOUT_SEC`)까지다. 받는 쪽이 느려도 다음 STT 결과 · 문장 끝 신호가 밀리지 않는다. final 을
   보내기 전에는 남은 interim 을 버리고 보내는 중인 것을 끝낸다 — 옛 interim 이 같은 `segment_id` 로 확정 자막을

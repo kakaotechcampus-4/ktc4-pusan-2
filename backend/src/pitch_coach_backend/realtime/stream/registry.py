@@ -218,6 +218,11 @@ async def attach(
             )
             # 저장된 마지막 번호에서 이어 받는다. 이 스트림이 처음이면 (0, 0) 이라 1·0 부터
             last_seq, last_session_no = await store.cursor(take_id)
+            record = state.takes.get(take_id)
+            if record is not None:
+                # 앞 스트림이 아직 못 넣은 final 이 있으면 그 번호 뒤에서 잇는다
+                last_seq = max(last_seq, record.finals.last_seq)
+                last_session_no = max(last_session_no, record.finals.last_session_no)
             # 자리 확보 중에는 옛 Deepgram 세션이 실제로 닫히기를 기다린다. 같은 사용자의
             # 다른 Take도 이 확인부터 등록까지 함께 잠가 빈자리를 중복으로 쓰지 못하게 한다.
             async with state.stream_owner_lock(owner_id):
@@ -533,12 +538,12 @@ async def stop_all() -> None:
         if not await stream.wait_closed(timeout=2.0):
             stream.cancel()
             await stream.wait_closed(timeout=stt_loop.ABORT_TIMEOUT_SEC)
-    # 닫힌 스트림이 남긴 1초 원자료. 다시 뜨면 메모리에 없다. 스트림이 닫히며 시작한 백그라운드
-    # 저장은 행을 꺼내 가 버퍼가 비어 보이므로 `pending` 으로 고른다
+    # 닫힌 스트림이 남긴 1초 원자료 · 확정 전사. 다시 뜨면 메모리에 없다. 스트림이 닫히며 시작한
+    # 백그라운드 저장은 행을 꺼내 가 버퍼가 비어 보이므로 `pending` 으로 고른다
     unsaved = [
         take_id
         for take_id, record in list(state.takes.items())
-        if record.metrics.pending or record.slides.pending
+        if record.metrics.pending or record.slides.pending or record.finals.pending
     ]
     # 진행 중인 Take 의 문장 끝 신호는 Take 를 끝낼 때 한 번에 적는다. 다시 뜬 프로세스가 이어
     # 받도록(`attach`) 지금 적어 둔다

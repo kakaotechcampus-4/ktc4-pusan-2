@@ -262,6 +262,8 @@ class TakeStream:
 
     def start(self) -> None:
         """백그라운드 태스크로 띄운다. WebSocket 요청 스코프에 묶지 않는다."""
+        # final 을 넣다 Take 가 지워진 걸 알면 끊는다. 저장할 곳이 없으니 더 돌 이유가 없다
+        self._record.finals.on_gone = self.discard
         # 다시 붙었다. 떠난 것으로 보고 끝내려던 타이머를 끈다
         self._host.stream_started(self.take_id)
         self._task = asyncio.create_task(self._run(), name=f"take-stream:{self.take_id}")
@@ -512,6 +514,9 @@ class TakeStream:
         # Take 를 끝내는 쪽(stop · 자동 종료 · 끝내기 PUT)은 따로 기다린다. 스트림만 닫힌 경우를
         # 위해 남은 것을 넣어 둔다 — 아무도 다시 붙지 않아 떠난 것으로 끝나도 원자료는 남긴다
         self._record.metrics.flush_soon()
+        self._record.finals.flush_soon()
+        if self._record.finals.on_gone == self.discard:
+            self._record.finals.on_gone = None
         self.state = "closed"
         self._closed.set()
         if self._record.coach.notify == self._notify_coach:
@@ -650,9 +655,9 @@ class TakeStream:
         try:
             await self._stt.run()
             # 정상으로 끝났다. 저장 못 한 final 을 한 번 더 저장해 본다. Take 종료는 이 스트림이
-            # 닫힌 뒤에 적으므로(`RealtimeSession._stop`) 종료 전에 들어간다
-            if not await self._transcripts.save_unsaved():
-                self.discard()
+            # 닫힌 뒤에 적으므로(`RealtimeSession._stop`) 종료 전에 들어간다. Take 가 지워졌으면
+            # 버퍼가 알린다 (`on_gone`)
+            await self._record.finals.flush()
         finally:
             self._finish()
 
@@ -687,17 +692,15 @@ class TakeStream:
                 final_at_ms = self._record.coach.on_final(
                     (w.word, w.start_ms, w.end_ms) for w in message.words
                 )
-                # 받은 final 은 정리(취소)가 와도 끝까지 처리한다. 중간에 끊기면 화면에도 DB 에도
-                # 남지 않는다
+                # 저장은 Take 의 버퍼가 백그라운드로 한다 — 기다리면 DB 가 느릴 때 다음 결과가
+                # 밀린다. 클라이언트가 붙어 있든 없든 넣는다. 리포트의 원천은 화면이 아니라
+                # 이 행이다
+                self._record.finals.add(
+                    self._transcripts.segment(message, final_at_ms, self.stt_session_no)
+                )
+                # 받은 final 은 정리(취소)가 와도 끝까지 화면에 보낸다
                 with anyio.CancelScope(shield=True):
                     await self._show_final(message)
-                    # 화면에 먼저 보내고 저장한다. 저장은 클라이언트가 붙어 있든 없든 한다 —
-                    # 리포트의 원천은 이 행이지 화면이 아니다
-                    if not await self._transcripts.persist(
-                        message, final_at_ms, self.stt_session_no
-                    ):
-                        # Take 가 지워졌다. 저장할 곳이 없으니 더 돌 이유가 없다
-                        self.discard()
         if event.is_final:
             # 빈 final 도 구간을 닫는다. 다음 interim 은 새 번호로
             self._transcripts.next_segment()

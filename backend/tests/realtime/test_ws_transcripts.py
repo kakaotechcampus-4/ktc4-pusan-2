@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DataError, OperationalError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.take.dto import TranscriptSegmentCreateDTO
@@ -22,7 +22,7 @@ from pitch_coach_backend.realtime.dto import (
 )
 from pitch_coach_backend.realtime.storage import transcripts as transcripts_module
 from pitch_coach_backend.realtime.storage.store import DbTranscriptStore
-from pitch_coach_backend.realtime.storage.transcripts import TranscriptBuffer
+from pitch_coach_backend.realtime.storage.transcripts import FinalBuffer, TranscriptBuffer
 from pitch_coach_backend.realtime.stream import registry, runtime
 from pitch_coach_backend.realtime.stt import loop as stt_loop
 from pitch_coach_backend.realtime.stt.adapter import (
@@ -38,6 +38,7 @@ from tests.realtime.conftest import (
     _wait_for,
     _wait_until_ok,
     closed_with,
+    db_down,
     frame,
     handshake,
     stop,
@@ -228,6 +229,7 @@ async def test_final_that_fails_to_send_is_resent_on_reconnect():
 
     await stream._on_transcript(transcript(0, 200, "끊긴 말", is_final=True))
 
+    assert await stream._record.finals.flush()
     assert [seg.transcript for seg in store.segments] == ["끊긴 말"]
     stream.detach(dead)
     fresh = FakeWebSocket()
@@ -247,6 +249,7 @@ async def test_final_that_times_out_is_resent_on_reconnect(monkeypatch: pytest.M
 
     await stream._on_transcript(transcript(0, 200, "멈춘 말", is_final=True))
 
+    assert await stream._record.finals.flush()
     assert [seg.transcript for seg in store.segments] == ["멈춘 말"]
     assert [m.segment_id for m in stream._transcripts.missed_finals] == ["0-1"]
     stream.detach(stuck)
@@ -552,13 +555,13 @@ def test_persist_failure_keeps_the_stream_alive(
 
     assert (first["text"], second["text"]) == ("하나", "둘")
     assert status["state"] == "closed" and status["frames"] == 2
-    assert "final 저장 실패" in caplog.text
-    assert "저장하지 못한 final 을 버린다" in caplog.text and "count=2 seq=1~2" in caplog.text
+    assert "확정 전사 저장 실패" in caplog.text
+    assert "확정 전사 를 다 저장하지 못해 버린다" in caplog.text and "개수=2" in caplog.text
     assert "하나" not in caplog.text, "전사 원문은 로그에 남기지 않는다"
 
 
 def test_failed_final_is_saved_with_the_next_one(client: TestClient, token: str):
-    """DB 가 잠깐 죽었다 돌아오면 그사이 저장 못 한 final 을 다음 final 앞에 저장한다."""
+    """DB 가 잠깐 죽었다 돌아오면 그사이 저장 못 한 final 을 번호 순서대로 다시 저장한다."""
     use(
         FakeSttAdapter(
             Plan(
@@ -569,7 +572,7 @@ def test_failed_final_is_saved_with_the_next_one(client: TestClient, token: str)
             )
         )
     )
-    store = use_store(FakeTranscriptStore(errors=[RuntimeError("db down")]))
+    store = use_store(FakeTranscriptStore(errors=[db_down()]))
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
@@ -586,7 +589,7 @@ def test_failed_last_final_is_saved_before_the_take_ends(client: TestClient, tok
     """마지막 final 저장이 실패해도 스트림이 끝날 때 한 번 더 저장한다. Take 종료는 그 뒤에
     적는다."""
     use(FakeSttAdapter(Plan(replies=[transcript(0, 100, "마지막", is_final=True)])))
-    store = use_store(FakeTranscriptStore(errors=[RuntimeError("db down")]))
+    store = use_store(FakeTranscriptStore(errors=[db_down()]))
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
@@ -613,9 +616,7 @@ def test_final_already_committed_does_not_block_the_rest(
             )
         )
     )
-    store = use_store(
-        FakeTranscriptStore(errors=[RuntimeError("db down"), DuplicateTranscriptSegment()])
-    )
+    store = use_store(FakeTranscriptStore(errors=[db_down(), DuplicateTranscriptSegment()]))
     with client.websocket_connect(WS_PATH) as ws:
         handshake(ws, token)
         wait_state(ws, "ok")
@@ -628,10 +629,39 @@ def test_final_already_committed_does_not_block_the_rest(
 
     assert [(seg.seq, seg.transcript) for seg in store.segments] == [(2, "둘")]
     assert "이미 저장된 final" in caplog.text
-    assert "저장하지 못한 final 을 버린다" not in caplog.text
+    assert "다 저장하지 못해 버린다" not in caplog.text
 
 
 PRIVATE_TRANSCRIPT = "PRIVATE_TRANSCRIPT_AUDIT_MARKER"
+
+
+@pytest.mark.anyio
+async def test_invalid_final_does_not_drop_the_valid_finals_queued_after_it(
+    caplog: pytest.LogCaptureFixture,
+):
+    """DB 장애 동안 모인 final 중 하나가 저장할 수 없는 값이어도 그 뒤의 정상 전사까지 버리지
+    않는다. 오류에는 전사 원문이 섞일 수 있어 종류만 남긴다."""
+
+    class OneInvalidFinalStore(FakeTranscriptStore):
+        async def append(self, take_id, segment):
+            if segment.seq == 2:
+                raise DataError("INSERT ...", {"transcript": PRIVATE_TRANSCRIPT}, ValueError())
+            await super().append(take_id, segment)
+
+    store = OneInvalidFinalStore()
+    take_id = uuid.uuid7()
+    buffer = FinalBuffer(take_id, store)
+    transcripts = TranscriptBuffer(take_id, store)
+    for text in ("첫", PRIVATE_TRANSCRIPT, "셋"):
+        buffer.add(transcripts.segment(transcript_message("1-1", text), 100, 1))
+        transcripts.next_segment()
+
+    with caplog.at_level("ERROR"):
+        await buffer.flush()
+
+    assert [(row.seq, row.transcript) for row in store.segments] == [(1, "첫"), (3, "셋")]
+    assert PRIVATE_TRANSCRIPT not in caplog.text
+    buffer.close()
 
 
 class _DriverError(Exception):
@@ -641,29 +671,51 @@ class _DriverError(Exception):
 
 
 @pytest.mark.anyio
+async def test_slow_database_does_not_hold_up_the_next_stt_result():
+    """STT 이벤트 펌프는 `_on_transcript` 를 기다린다. final 저장을 기다리면 DB 가 느릴 때 다음
+    결과 · 문장 끝 신호가 밀린다. 저장은 Take 의 버퍼가 뒤에서 번호 순서대로 한다."""
+    store = FakeTranscriptStore(append_delay=1.0)
+    stream = _final_stream(store)
+    await stream.attach(FakeWebSocket())
+
+    for start_ms, text in ((0, "하나"), (200, "둘")):
+        await asyncio.wait_for(
+            stream._on_transcript(transcript(start_ms, start_ms + 200, text, is_final=True)), 0.2
+        )
+
+    assert store.segments == []
+    assert await stream._record.finals.flush()
+    assert [(seg.seq, seg.transcript) for seg in store.segments] == [(1, "하나"), (2, "둘")]
+
+
+@pytest.mark.anyio
 async def test_save_failure_log_omits_transcript_text(caplog: pytest.LogCaptureFixture):
     """SQLAlchemy 예외 본문에는 SQL 매개변수가 붙는다. traceback 을 그대로 남기면 전사 원문이
-    로그에 나간다. 예외 종류와 SQLSTATE 만 남기고 버퍼는 다음 저장 때 다시 넣는다."""
+    로그에 나간다. 예외 종류와 SQLSTATE 만 남기고 버퍼는 다시 넣는다."""
     error = OperationalError(
         "INSERT INTO take_transcript_segments ...",
         {"transcript": PRIVATE_TRANSCRIPT},
         _DriverError(f"connection lost while writing {PRIVATE_TRANSCRIPT}"),
     )
     store = FakeTranscriptStore(errors=[error])
-    buffer = TranscriptBuffer(uuid.uuid7(), store)
+    take_id = uuid.uuid7()
+    buffer = FinalBuffer(take_id, store)
+    segment = TranscriptBuffer(take_id, store).segment(
+        transcript_message("1-1", PRIVATE_TRANSCRIPT), 100, 1
+    )
 
     with caplog.at_level("ERROR"):
-        assert await buffer.persist(transcript_message("1-1", PRIVATE_TRANSCRIPT), 100, 1)
+        buffer.add(segment)
+        assert not await buffer.flush()
 
     assert PRIVATE_TRANSCRIPT not in caplog.text
-    assert "final 저장 실패" in caplog.text
+    assert "확정 전사 저장 실패" in caplog.text
     assert "error=OperationalError sqlstate=08006" in caplog.text
-    assert f"len={len(PRIVATE_TRANSCRIPT)}" in caplog.text
-    assert [seg.transcript for seg in buffer.unsaved] == [PRIVATE_TRANSCRIPT]
-
-    assert await buffer.save_unsaved()
+    # add 가 띄운 백그라운드 저장이 뒤이어 다시 넣는다
+    assert await buffer.flush()
     assert [seg.transcript for seg in store.segments] == [PRIVATE_TRANSCRIPT]
-    assert buffer.unsaved == []
+    assert not buffer.pending
+    buffer.close()
 
 
 @pytest.mark.anyio
@@ -769,9 +821,9 @@ def test_final_for_a_deleted_take_cuts_the_stream(
             error = ws.receive_json()
             code = closed_with(ws)
 
-    assert final["text"] == "지운 뒤", "화면에는 저장보다 먼저 나간다"
+    assert final["text"] == "지운 뒤", "화면에는 final 이 나간다"
     assert (error["code"], code) == ("TAKE_NOT_FOUND", 1008)
-    assert "Take 가 지워져" in caplog.text
+    assert "넣을 곳이 지워져 확정 전사" in caplog.text
     assert "final 저장 실패" not in caplog.text
     session = adapter.session
     assert session is not None
