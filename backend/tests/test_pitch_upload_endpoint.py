@@ -98,7 +98,7 @@ def test_upload_persists_presentation_version_one(
         PresentationVersion, uuid.UUID(body["presentation_version_id"])
     )
 
-    expected_key = f"pitches/{pitch_id}/presentations/1.pdf"
+    expected_key = f"pitches/{pitch_id}/presentations/{body['presentation_version_id']}.pdf"
     assert presentation is not None
     assert presentation.version == 1
     assert presentation.file_key == expected_key
@@ -127,7 +127,7 @@ def test_second_upload_increments_version(
 
     assert presentation is not None
     assert presentation.version == 2
-    assert presentation.file_key == f"pitches/{pitch_id}/presentations/2.pdf"
+    assert presentation.file_key == f"pitches/{pitch_id}/presentations/{presentation.id}.pdf"
 
 
 def test_upload_to_another_users_pitch_is_rejected(
@@ -144,7 +144,7 @@ def test_upload_to_another_users_pitch_is_rejected(
     assert _presentation_count(db_session, pitch_id) == 0
 
 
-def test_pitch_deleted_while_counting_pages_is_404_without_s3_upload(
+def test_pitch_deleted_while_counting_pages_is_404_and_uploaded_file_is_deleted(
     client: TestClient,
     db_session: Session,
     auth_headers: dict[str, str],
@@ -165,14 +165,42 @@ def test_pitch_deleted_while_counting_pages_is_404_without_s3_upload(
         return count_pages(file)
 
     upload_mock = MagicMock(side_effect=lambda file, key, content_type=None: key)
+    delete_mock = MagicMock()
     monkeypatch.setattr(presentation_service, "count_pdf_pages", count_after_delete)
     monkeypatch.setattr(presentation_service, "upload", upload_mock)
+    monkeypatch.setattr(presentation_service, "delete_object", delete_mock)
 
     response = _upload(client, pitch_id, pdf, auth_headers)
 
     assert response.status_code == 404
     assert response.json()["code"] == "PITCH_NOT_FOUND"
-    upload_mock.assert_not_called()
+    upload_mock.assert_called_once()
+    delete_mock.assert_called_once_with(upload_mock.call_args.args[1])
+
+
+def test_failed_save_deletes_uploaded_file(
+    client: TestClient,
+    db_session: Session,
+    auth_headers: dict[str, str],
+    pitch_id: uuid.UUID,
+    pdf: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pitch_coach_backend.module.pitch.repository import PitchRepository
+
+    upload_mock = MagicMock(side_effect=lambda file, key, content_type=None: key)
+    delete_mock = MagicMock()
+    monkeypatch.setattr(presentation_service, "upload", upload_mock)
+    monkeypatch.setattr(presentation_service, "delete_object", delete_mock)
+    monkeypatch.setattr(
+        PitchRepository, "save_presentation", MagicMock(side_effect=RuntimeError("db down"))
+    )
+
+    with pytest.raises(RuntimeError):
+        _upload(client, pitch_id, pdf, auth_headers)
+
+    delete_mock.assert_called_once_with(upload_mock.call_args.args[1])
+    assert _presentation_count(db_session, pitch_id) == 0
 
 
 def test_upload_without_token_is_rejected(
@@ -194,7 +222,8 @@ def test_file_extension_does_not_decide_the_key(
     response = _upload(client, pitch_id, pdf, auth_headers, filename="slides.key")
 
     assert response.status_code == 200
-    assert response.json()["presentation"]["file_url"].endswith("/presentations/1.pdf")
+    body = response.json()["presentation"]
+    assert body["file_url"].endswith(f"/presentations/{body['presentation_version_id']}.pdf")
 
 
 @pytest.mark.parametrize(

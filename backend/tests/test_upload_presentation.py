@@ -10,10 +10,11 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import UploadFile
-from sqlalchemy import Engine
+from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.module.pitch.dto import PitchSaveRequestDTO, UploadPresentationDTO
+from pitch_coach_backend.module.pitch.entity import PresentationVersion
 from pitch_coach_backend.module.pitch.service import pitch as pitch_service
 from pitch_coach_backend.module.pitch.service import presentation as presentation_service
 
@@ -50,7 +51,7 @@ def test_upload_presentation_service(
 
     result = presentation_service.upload_presentation_service(db_session, pitch_id, dto)
 
-    expected_file_key = f"pitches/{pitch_id}/presentations/1.pdf"
+    expected_file_key = f"pitches/{pitch_id}/presentations/{result.presentation_version_id}.pdf"
     upload_mock.assert_called_once_with(
         dto.presentation_file, expected_file_key, content_type="application/pdf"
     )
@@ -117,10 +118,15 @@ def test_concurrent_uploads_on_one_pitch_get_distinct_versions_and_keys(
 
         # 잠금이 없으면 한쪽이 IntegrityError(unique 위반) 다
         assert not any(isinstance(v, Exception) for v in results.values()), results
-        assert sorted(uploaded_keys) == [
-            f"pitches/{target}/presentations/1.pdf",
-            f"pitches/{target}/presentations/2.pdf",
-        ]
+        assert sorted(uploaded_keys) == sorted(
+            f"pitches/{target}/presentations/{r.presentation_version_id}.pdf"
+            for r in results.values()
+        )
+        with Session(engine) as check:
+            versions = check.scalars(
+                select(PresentationVersion.version).where(PresentationVersion.pitch_id == target)
+            ).all()
+        assert sorted(versions) == [1, 2]
     finally:
         with Session(engine) as cleanup:
             cleanup.delete(cleanup.get(User, user_id))  # pitch·버전은 CASCADE
