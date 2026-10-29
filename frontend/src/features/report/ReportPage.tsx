@@ -15,6 +15,7 @@ import type {
 } from '@/types/report';
 import { QueryState, ReportFrame } from './ReportFrame';
 import { OP, endedAt, fmt, metricLabel, pct, where } from './reportFormat';
+import { TakeSurvey } from './TakeSurvey';
 
 /**
  * Take 리포트 (P6).
@@ -121,8 +122,11 @@ function ReportBody({ report }: { report: TakeReport }) {
         </>
       )}
 
-      <footer className="flex justify-end border-t border-line-strong pt-5">
-        <ButtonLink to="/">내 피치로</ButtonLink>
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line-strong pt-5">
+        <TakeSurvey takeId={report.take_id} completed={report.status === 'COMPLETED'} />
+        <ButtonLink to="/" className="ml-auto">
+          내 피치로
+        </ButtonLink>
       </footer>
     </>
   );
