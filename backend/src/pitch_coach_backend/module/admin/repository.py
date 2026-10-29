@@ -25,7 +25,7 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.entity import Pitch
 from pitch_coach_backend.module.service_feedback.entity import ServiceFeedback, UserSuggestion
-from pitch_coach_backend.module.take.entity import Take
+from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond, TakeTranscriptSegment
 from pitch_coach_backend.module.take.repository import last_active_at
 from pitch_coach_backend.module.user.entity import User
 
@@ -148,6 +148,45 @@ def list_stuck_takes(db: Session, active_before: datetime, limit: int) -> list[d
     active_at = last_active_at()
     stmt = _take_rows().where(Take.status == "RUNNING", active_at < active_before)
     return _fetch(db, stmt.order_by(active_at).limit(limit))
+
+
+def take_status(db: Session, take_id: uuid.UUID) -> str | None:
+    return db.scalar(select(Take.status).where(Take.id == take_id))
+
+
+def live_segments(
+    db: Session, take_id: uuid.UUID, *, after_seq: int, limit: int
+) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            TakeTranscriptSegment.seq,
+            TakeTranscriptSegment.stt_session_no,
+            TakeTranscriptSegment.start_ms,
+            TakeTranscriptSegment.end_ms,
+            TakeTranscriptSegment.transcript,
+            TakeTranscriptSegment.confidence,
+            TakeTranscriptSegment.speech_final,
+        )
+        .where(TakeTranscriptSegment.take_id == take_id, TakeTranscriptSegment.seq > after_seq)
+        .order_by(TakeTranscriptSegment.seq)
+        .limit(limit)
+    )
+    return _fetch(db, stmt)
+
+
+def live_seconds(
+    db: Session, take_id: uuid.UUID, *, after_t_ms: int | None, limit: int
+) -> list[dict[str, Any]]:
+    stmt = select(
+        TakeMetricSecond.t_ms,
+        TakeMetricSecond.slide_number,
+        TakeMetricSecond.gaze,
+        TakeMetricSecond.voice,
+        TakeMetricSecond.stt_status,
+    ).where(TakeMetricSecond.take_id == take_id)
+    if after_t_ms is not None:
+        stmt = stmt.where(TakeMetricSecond.t_ms > after_t_ms)
+    return _fetch(db, stmt.order_by(TakeMetricSecond.t_ms).limit(limit))
 
 
 def _take_rows() -> Select[Any]:

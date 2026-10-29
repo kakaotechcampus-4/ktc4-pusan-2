@@ -111,3 +111,6 @@ table.grouped td { vertical-align: top; }
 button.more { margin-top: 6px; }
 .summary { margin: 0 0 10px; }
 .summary strong { font-size: 18px; }
+.panel h3 { margin: 14px 0 6px; font-size: 13px; }
+.scroll.live { max-height: 420px; overflow-y: auto; }
+.record { display: block; min-width: 220px; max-width: 520px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }

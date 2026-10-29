@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.config import settings
 from pitch_coach_backend.module.pitch.entity import Pitch, PresentationVersion, ScriptVersion
-from pitch_coach_backend.module.take.entity import Take, TakeTranscriptSegment
+from pitch_coach_backend.module.take.entity import Take, TakeMetricSecond, TakeTranscriptSegment
 from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
 from pitch_coach_backend.module.user.entity import User
 
@@ -300,6 +300,67 @@ def test_stuck_takes_are_running_without_activity_past_abandon(
     rows = client.get("/admin/api/takes/stuck", auth=ADMIN).json()
 
     assert [row["id"] for row in rows] == [str(stuck.id)]
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_live_returns_rows_after_cursors_in_order(
+    client: TestClient, db_session: Session
+) -> None:
+    pitch = _pitch(db_session, _user(db_session, "앨리스"))
+    take = _take(db_session, pitch, 1, status="RUNNING")
+    other = _take(db_session, pitch, 2, status="RUNNING")
+    for seq in (3, 1, 2):
+        db_session.add(
+            TakeTranscriptSegment(
+                take_id=take.id,
+                seq=seq,
+                stt_session_no=1,
+                start_ms=seq * 1000,
+                end_ms=seq * 1000 + 500,
+                transcript=f"문장 {seq}",
+                words=[],
+                confidence=0.9,
+                speech_final=True,
+            )
+        )
+    for t_ms in (3000, 1000, 2000):
+        db_session.add(
+            TakeMetricSecond(
+                take_id=take.id,
+                t_ms=t_ms,
+                slide_number=1,
+                gaze={"t_ms": t_ms - 1000, "duration_ms": 1000},
+                voice=None,
+                stt_status="ok",
+            )
+        )
+    db_session.add(TakeMetricSecond(take_id=other.id, t_ms=4000, stt_status="ok"))
+    db_session.flush()
+
+    first = client.get(f"/admin/api/takes/{take.id}/live", auth=ADMIN).json()
+    rest = client.get(
+        f"/admin/api/takes/{take.id}/live",
+        params={"after_seq": 1, "after_t_ms": 2000},
+        auth=ADMIN,
+    ).json()
+
+    assert first["status"] == "RUNNING"
+    assert [s["seq"] for s in first["segments"]] == [1, 2, 3]
+    assert first["segments"][0]["transcript"] == "문장 1"
+    assert "words" not in first["segments"][0]
+    assert [s["t_ms"] for s in first["seconds"]] == [1000, 2000, 3000]
+    assert first["seconds"][0]["gaze"] == {"t_ms": 0, "duration_ms": 1000}
+    assert first["seconds"][0]["voice"] is None
+    assert [s["seq"] for s in rest["segments"]] == [2, 3]
+    assert [s["t_ms"] for s in rest["seconds"]] == [3000]
+
+
+@pytest.mark.usefixtures("admin_account")
+def test_take_live_of_unknown_take_is_not_found(client: TestClient) -> None:
+    response = client.get(f"/admin/api/takes/{uuid.uuid4()}/live", auth=ADMIN)
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "TAKE_NOT_FOUND"
 
 
 @pytest.mark.usefixtures("admin_account")

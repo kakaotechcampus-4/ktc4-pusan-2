@@ -22,6 +22,7 @@ from pitch_coach_backend.module.admin.dto import (
     AdminPage,
     AdminRatingSummary,
     AdminSuggestionRow,
+    AdminTakeLive,
     AdminTakeRow,
     AdminUserRow,
     StatsResponse,
@@ -84,6 +85,16 @@ def takes(
 @router.get("/api/takes/stuck")
 def stuck_takes(db: Annotated[Session, Depends(get_db)]) -> list[AdminTakeRow]:
     return service.list_stuck_takes(db)
+
+
+@router.get("/api/takes/{take_id}/live")
+def take_live(
+    take_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    after_seq: Annotated[int, Query(ge=0)] = 0,
+    after_t_ms: Annotated[int | None, Query(ge=0)] = None,
+) -> AdminTakeLive:
+    return service.get_take_live(db, take_id, after_seq=after_seq, after_t_ms=after_t_ms)
 
 
 @router.get("/api/service-feedbacks", response_model=AdminPage[AdminFeedbackRow])

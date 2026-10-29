@@ -10,9 +10,12 @@ from pitch_coach_backend.module.admin.dto import (
     AdminFeedbackGroupRow,
     AdminFeedbackRow,
     AdminGroupSuggestion,
+    AdminLiveSecond,
+    AdminLiveSegment,
     AdminPage,
     AdminRatingSummary,
     AdminSuggestionRow,
+    AdminTakeLive,
     AdminTakeRow,
     AdminUserRow,
     DailyCount,
@@ -23,6 +26,7 @@ from pitch_coach_backend.module.admin.dto import (
 )
 from pitch_coach_backend.module.admin.repository import KST
 from pitch_coach_backend.module.take.entity import Take
+from pitch_coach_backend.module.take.exception import NonExistentTake
 from pitch_coach_backend.module.take.service.lifecycle import ABANDON_AFTER_SEC
 
 DAILY_DAYS = 30
@@ -37,6 +41,7 @@ STUCK_LIMIT = 50
 USER_ENDED = "USER"
 # 사용자별 평점 · 의견에서 한 행에 미리 싣는 의견 수. 마이페이지 의견은 수에 제한이 없다
 GROUP_SUGGESTION_PREVIEW = 3
+LIVE_LIMIT = 500
 
 
 def get_stats(db: Session, now: datetime | None = None) -> StatsResponse:
@@ -90,6 +95,21 @@ def list_stuck_takes(db: Session, now: datetime | None = None) -> list[AdminTake
     active_before = now - timedelta(seconds=ABANDON_AFTER_SEC) - STUCK_MARGIN
     rows = repository.list_stuck_takes(db, active_before, STUCK_LIMIT)
     return [AdminTakeRow(**row) for row in rows]
+
+
+def get_take_live(
+    db: Session, take_id: uuid.UUID, *, after_seq: int, after_t_ms: int | None
+) -> AdminTakeLive:
+    status = repository.take_status(db, take_id)
+    if status is None:
+        raise NonExistentTake()
+    segments = repository.live_segments(db, take_id, after_seq=after_seq, limit=LIVE_LIMIT)
+    seconds = repository.live_seconds(db, take_id, after_t_ms=after_t_ms, limit=LIVE_LIMIT)
+    return AdminTakeLive(
+        status=status,
+        segments=[AdminLiveSegment(**row) for row in segments],
+        seconds=[AdminLiveSecond(**row) for row in seconds],
+    )
 
 
 def _named(counts: dict[str | None, int]) -> dict[str, int]:

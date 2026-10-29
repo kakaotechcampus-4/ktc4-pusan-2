@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -73,6 +74,30 @@ class AdminTakeRow(BaseModel):
     ended_at: datetime | None
     elapsed_sec: float | None
     goal_time_sec: int
+
+
+class AdminLiveSegment(BaseModel):
+    seq: int
+    stt_session_no: int
+    start_ms: int
+    end_ms: int
+    transcript: str
+    confidence: float
+    speech_final: bool
+
+
+class AdminLiveSecond(BaseModel):
+    t_ms: int
+    slide_number: int | None
+    gaze: dict[str, Any] | None
+    voice: dict[str, Any] | None
+    stt_status: str
+
+
+class AdminTakeLive(BaseModel):
+    status: str
+    segments: list[AdminLiveSegment]
+    seconds: list[AdminLiveSecond]
 
 
 class AdminFeedbackRow(BaseModel):

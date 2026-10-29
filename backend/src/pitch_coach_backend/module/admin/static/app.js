@@ -153,6 +153,7 @@ const TAKE_COLUMNS = [
   ['종료 이유', (t) => (t.ended_at ? label(t.end_reason ?? 'USER') : '—')],
   ['연습 시간', (t) => duration(t.elapsed_sec), true],
   ['목표', (t) => duration(t.goal_time_sec), true],
+  ['기록', liveButton],
 ];
 
 const USER_COLUMNS = [
@@ -335,6 +336,105 @@ for (const id of ['suggestions-source', 'suggestions-category']) {
     loadFeedbackPage('suggestions', 0).catch(showFeedbackError);
   });
 }
+
+// ---------- 연습 기록 ----------
+
+const LIVE_POLL_MS = 3000;
+const LIVE_STATUSES = ['READY', 'RUNNING'];
+const live = { takeId: null, timer: null, request: 0, segments: [], seconds: [] };
+
+function clock(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+const record = (value) =>
+  el('code', { className: 'record', textContent: value == null ? '—' : JSON.stringify(value) });
+
+const SEGMENT_COLUMNS = [
+  ['시각', (s) => `${clock(s.start_ms)}–${clock(s.end_ms)}`],
+  ['문장', (s) => opinionText(s.transcript)],
+  ['신뢰도', (s) => s.confidence.toFixed(2), true],
+  ['STT 세션', (s) => s.stt_session_no, true],
+];
+
+const SECOND_COLUMNS = [
+  ['시각', (s) => clock(s.t_ms)],
+  ['장', (s) => s.slide_number ?? '—', true],
+  ['STT 상태', (s) => s.stt_status],
+  ['시선', (s) => record(s.gaze)],
+  ['음량', (s) => record(s.voice)],
+];
+
+function liveButton(take) {
+  const button = el('button', { type: 'button', textContent: '보기' });
+  button.addEventListener('click', () => openLive(take));
+  return button;
+}
+
+function openLive(take) {
+  clearTimeout(live.timer);
+  live.request += 1;
+  Object.assign(live, { takeId: take.id, timer: null, segments: [], seconds: [] });
+  document.getElementById('live-title').textContent =
+    `${take.user_name} · ${take.pitch_title} · ${take.take_number}회차`;
+  document.getElementById('live-error').hidden = true;
+  const panel = document.getElementById('live');
+  panel.hidden = false;
+  renderLive(take.status);
+  pollLive();
+  panel.scrollIntoView({ behavior: 'smooth' });
+}
+
+function closeLive() {
+  clearTimeout(live.timer);
+  live.request += 1;
+  Object.assign(live, { takeId: null, timer: null, segments: [], seconds: [] });
+  document.getElementById('live').hidden = true;
+}
+
+async function pollLive() {
+  const request = ++live.request;
+  const error = document.getElementById('live-error');
+  const query = new URLSearchParams({ after_seq: String(live.segments.at(-1)?.seq ?? 0) });
+  const last = live.seconds.at(-1);
+  if (last) query.set('after_t_ms', String(last.t_ms));
+  try {
+    const data = await getJSON(`api/takes/${live.takeId}/live?${query}`);
+    if (request !== live.request) return;
+    live.segments.push(...data.segments);
+    live.seconds.push(...data.seconds);
+    error.hidden = true;
+    renderLive(data.status);
+    const running = LIVE_STATUSES.includes(data.status);
+    const more = data.segments.length > 0 || data.seconds.length > 0;
+    if (running || more) live.timer = setTimeout(pollLive, running ? LIVE_POLL_MS : 0);
+  } catch (failure) {
+    if (request !== live.request) return;
+    error.textContent = `불러오지 못했습니다 — ${failure.message}`;
+    error.hidden = false;
+    live.timer = setTimeout(pollLive, LIVE_POLL_MS);
+  }
+}
+
+function renderLive(status) {
+  document.getElementById('live-status').replaceChildren(
+    statusBadge(status),
+    el('span', {
+      className: 'muted',
+      textContent: ` 전사 ${live.segments.length}개 · 1초 기록 ${live.seconds.length}개`,
+    }),
+  );
+  renderTable('live-segments', SEGMENT_COLUMNS, [...live.segments].reverse(), '아직 저장된 전사가 없습니다');
+  renderTable(
+    'live-seconds',
+    SECOND_COLUMNS,
+    [...live.seconds].reverse(),
+    '1초 기록이 없습니다 — 동의하지 않은 연습은 리포트를 만든 뒤 지웁니다',
+  );
+}
+
+document.getElementById('live-close').addEventListener('click', closeLive);
 
 // ---------- 불러오기 ----------
 
