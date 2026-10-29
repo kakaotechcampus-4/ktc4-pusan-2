@@ -11,15 +11,15 @@
 | 화면 | 설계서 미리보기와 제품의 차이 | 제품 코드 |
 | --- | --- | --- |
 | 홈 · 내 피치 | 상단바(AppHeader) · 서비스 리뷰 창 · 사용방법 창 · 바닥글을 뺐다. "사용방법 살펴보기"는 글자만 둔다. 홈에는 연습 시작 버튼이 없다(제품과 같음). | `frontend/src/features/pitch/HomePage.tsx`, `HomePitchCard.tsx` |
-| 피치 생성 · 수정 | 제품의 자료 버전 트리(VersionRail) · 치치 · 발표 정보 줄(InfoBar)을 간단한 버전 목록으로 줄였다. 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않고, "대본 매핑"은 다음 단계로 넘어간다. 단계 표시줄 · 단계별 제목과 버튼 문구는 제품과 같다. | `frontend/src/features/pitch/create/PitchCreatePage.tsx`, `steps/*` |
-| 시작 전 세팅 | 카메라 미리보기 · 시선 기준 전체 화면 · 장치 선택 · 음량 막대 · 평소 목소리 읽기 패널은 자리만 둔다. 시선 기준의 "누르면 시작"은 기준을 다 잡은 상태로 바로 넘어간다. 시작 조건(카메라 · 마이크 · 시선 기준 모두)과 안내 줄 순서는 제품과 같다. | `frontend/src/features/rehearsal/prepare/DeviceCheckPage.tsx` |
+| 피치 생성 · 수정 | 제품의 자료 버전 트리(VersionRail) · 치치 · 발표 정보 줄(InfoBar)을 간단한 버전 목록으로 줄였다. 대본 매핑 확인 · 버전 고르기 · 평가기준 편집은 그리지 않고, "대본 매핑"은 다음 단계로 넘어간다. 슬라이드 크게 보기는 제품에서 썸네일을 눌러 연다. 단계 표시줄 · 단계별 제목과 버튼 · 안내 문구, 슬라이드를 올리기 전 아래 줄이 없는 것은 제품과 같다. | `frontend/src/features/pitch/create/PitchCreatePage.tsx`, `steps/*` |
+| 시작 전 세팅 | 카메라 미리보기 · 시선 기준 전체 화면 · 장치 선택 · 음량 막대 · 평소 목소리 읽기 패널은 자리만 둔다. 시선 기준의 "누르면 시작"은 기준을 다 잡은 상태로 바로 넘어간다. 안내 줄은 카메라 · 마이크 · 시선 기준 세 갈래만 그린다. 제품은 그 앞에 시작 실패 · 여는 중 · 준비 정보 문제 · 평소 목소리 읽는 중 · 장치 오류 · 시선 분석 불가를, 뒤에 기준이 흐릿함 등을 더 말한다(순서는 `catalog.ts` 동작 규칙). 시작 조건(카메라 · 마이크 · 시선 기준 · 슬라이드와 대본 조합)은 제품과 같다. | `frontend/src/features/rehearsal/prepare/DeviceCheckPage.tsx` |
 | 리허설 무대 | 카메라 영상 · 음량 막대 · PDF 대신 자리표시를 둔다. 시작 전 안내(장치 여는 중 · 연결 중 · 마이크 없음)와 코치 상태 표시는 그리지 않는다. 종료 확인은 4초 뒤 풀리지 않는다. 무대 배치는 설계서의 `src/ui/stage.css`(제품 `stage.css` 복사본)를 쓴다. | `frontend/src/features/rehearsal/stage/RehearsalPage.tsx`, `ScriptPane.tsx`, `stage.css` |
-| 분석 대기 | 팁이 바뀌지 않는다. 분석 완료 뒤 리포트로 자동 이동하는 대신 "이어지는 화면"의 "분석 완료 → 리포트"를 쓴다. | `frontend/src/features/report/ProcessingPage.tsx`, `DuskScreen.tsx` |
-| 대본 확인 | 남은 시간이 줄지 않는다. 확인 항목은 하나만 그린다. | `frontend/src/features/report/ConfirmPage.tsx` |
+| 분석 대기 | 팁이 바뀌지 않고 "팁 자동 전환 일시정지" 버튼을 뺐다. 분석 완료 뒤 리포트로 자동 이동하는 대신 "이어지는 화면"의 "분석 완료 → 리포트"를 쓴다. | `frontend/src/features/report/ProcessingPage.tsx`, `DuskScreen.tsx` |
+| 대본 확인 | 남은 시간이 줄지 않는다. 확인 항목은 하나만 그린다. "답을 반영하는 중" · "확인을 받을 수 없어요" 상태는 그리지 않는다. | `frontend/src/features/report/ConfirmPage.tsx` |
 | 업로드 실패 · 재시도 | 남은 기록 수치는 예시 값이다. 기록 확인 중 · 다시 보내는 중 · 기록 없음 · 서버에서 이미 끝남 상태는 제품 문구와 같다. | `frontend/src/features/rehearsal/retry/RetryPage.tsx` |
 | Take 리포트 | 상단바를 뺐다. 평가기준 · 고칠 것 · 잘한 점 · 미션 결과 · 영역별 상태 카드는 그리지 않고 코칭 노트 · 지난 Take와 비교 · 측정값 · 시선 비율 · 다음 미션만 그린다. | `frontend/src/features/report/ReportPage.tsx` |
 | Take 기록 | 상단바를 뺐다. 상태 배지는 Badge로 대신 그린다. | `frontend/src/features/report/TakesPage.tsx` |
-| Take 비교 | 상단바를 뺐다. 지표 탭은 청중 응시 하나, Take별 기록 표는 줄였다. | `frontend/src/features/report/ComparisonPage.tsx` |
+| Take 비교 | 상단바를 뺐다. 지표 탭은 청중 응시 하나만 그리고, Take별 기록 표는 그리지 않는다. | `frontend/src/features/report/ComparisonPage.tsx` |
 
 ## 옛 시안
 

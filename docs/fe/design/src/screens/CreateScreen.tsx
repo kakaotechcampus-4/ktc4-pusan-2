@@ -257,22 +257,19 @@ function CreateFooter({
       ← 이전
     </button>
   );
+  // 제품 SlidePane은 슬라이드를 올리기 전 화면에 아래 줄을 두지 않는다
+  if (step === 0 && !hasSlides) return null;
   if (step === 0)
     return (
       <PaneFooter hint="다음은 슬라이드에 맞춰 대본을 붙여요.">
-        <button
-          type="button"
-          disabled={!hasSlides}
-          onClick={() => onStep(1)}
-          className={primaryButton}
-        >
+        <button type="button" onClick={() => onStep(1)} className={primaryButton}>
           다음 · 대본 →
         </button>
       </PaneFooter>
     );
   if (step === 1)
     return (
-      <PaneFooter hint="슬라이드마다 “[N]” 같은 구분자를 새 줄에 적어 주세요. N은 슬라이드 번호예요.">
+      <PaneFooter hint="슬라이드마다 “[N]” · “[슬라이드 N]” · “슬라이드 N:” 중 하나를 새 줄에 적어 주세요. N은 슬라이드 번호예요. 구분자가 없으면 대본 전체를 한 슬라이드로 연결해요.">
         {back}
         <button type="button" onClick={() => onStep(2)} className={primaryButton}>
           대본 매핑

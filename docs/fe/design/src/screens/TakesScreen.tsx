@@ -41,7 +41,7 @@ export function TakesScreen({ stateId, onNavigate }: { stateId: string; onNaviga
                 className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-x-4 gap-y-3 border-b border-line py-4 last:border-b-0 lg:grid-cols-[minmax(0,1fr)_5rem_24rem_6rem]"
               >
                 <div className="min-w-0">
-                  <p className="text-xs text-stone">10월 28일 · {PITCH}</p>
+                  <p className="text-xs text-stone">10.28 · {PITCH}</p>
                   <p className="mt-0.5 font-mono font-bold">TAKE {t.take}</p>
                 </div>
                 <Badge tone="plain">완료</Badge>
