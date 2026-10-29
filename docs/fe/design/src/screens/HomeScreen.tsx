@@ -22,7 +22,8 @@ const homePrimary =
 export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const pitches = stateId === 'empty' ? [] : HOME_PITCHES;
-  const ready = stateId === 'default' || stateId === 'empty';
+  const showPrepare = stateId === 'prepare-entry-draft';
+  const ready = stateId === 'default' || stateId === 'empty' || showPrepare;
   const takeCount = pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0);
   return (
     <div className="pitch-create flex min-h-[40rem] flex-col bg-greige text-ink">
@@ -91,7 +92,12 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
             {pitches.length > 0 ? (
               <ul className="divide-y divide-line border-2 border-ink bg-white">
                 {pitches.map((pitch, index) => (
-                  <HomePitchCard key={pitch.pitch_id} pitch={pitch} index={index} />
+                  <HomePitchCard
+                    key={pitch.pitch_id}
+                    pitch={pitch}
+                    index={index}
+                    showPrepare={showPrepare}
+                  />
                 ))}
               </ul>
             ) : (

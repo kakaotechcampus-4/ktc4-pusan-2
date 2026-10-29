@@ -115,6 +115,36 @@ it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대�
   expect(host.textContent).toContain('분석 중');
 });
 
+it('홈 기본 상태는 유지하고 시안의 발표 준비 버튼은 각 제목과 같은 경로와 인자로 이동한다', async () => {
+  await render('home');
+  expect(host.querySelector('a[aria-label$=" 발표 준비"]')).toBeNull();
+  await act(async () => root.render(null));
+  const onNavigate = vi.fn();
+  await act(async () =>
+    root.render(
+      <MemoryRouter>
+        <ScreenPreview screenId="home" stateId="prepare-entry-draft" onNavigate={onNavigate} />
+      </MemoryRouter>,
+    ),
+  );
+  const rows = [...host.querySelectorAll('section[aria-label="발표 목록"] li')];
+  expect(rows).toHaveLength(2);
+  for (const row of rows) {
+    expect(row.querySelector('.w-28.shrink-0')?.textContent).toContain('Take 기록');
+    expect(row.querySelector('.w-20.shrink-0')).not.toBeNull();
+    expect(row.lastElementChild?.textContent?.trim()).toBe('발표 준비');
+    const title = row.querySelector('a')!;
+    const prepare = row.lastElementChild as HTMLAnchorElement;
+    expect(prepare.getAttribute('href')).toBe(title.getAttribute('href'));
+    expect(prepare.getAttribute('href')).toMatch(/\/edit$/);
+    await act(async () => title.click());
+    expect(onNavigate).toHaveBeenLastCalledWith('pitch-create');
+    const titleArguments = onNavigate.mock.calls.at(-1);
+    await act(async () => prepare.click());
+    expect(onNavigate.mock.calls.at(-1)).toEqual(titleArguments);
+  }
+});
+
 it('카메라 · 마이크 · 시선 기준이 모두 돼야 시작할 수 있다', async () => {
   await render('prepare-mission', 'no-camera');
   expect(button('Take 3 시작하기')?.disabled).toBe(true);
