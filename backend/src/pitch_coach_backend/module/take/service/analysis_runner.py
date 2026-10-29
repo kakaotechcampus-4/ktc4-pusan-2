@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from pitch_coach_backend.core import ai_slots
 from pitch_coach_backend.core.database import SessionLocal
+from pitch_coach_backend.core.retry import retry_transient
 from pitch_coach_backend.core.tasks import TaskRegistry
 from pitch_coach_backend.module import hooks
 from pitch_coach_backend.module.take.repository import TakeRepository
@@ -27,6 +28,7 @@ RESUME_READ_TIMEOUT_SEC = 10.0
 SWEEP_INTERVAL_SEC = 5 * 60.0
 STALE_ANALYSIS = timedelta(minutes=10)
 STOP_TIMEOUT_SEC = 5.0
+REVIEW_SAVE_RETRY_SEC = (1.0, 2.0)
 
 type SessionFactory = Callable[[], Session]
 
@@ -131,11 +133,15 @@ async def _review(
                 session_factory, review_service.build_review_request, take_id
             )
             reply = await review_service.request_review_async(take_id, review_request)
-            saved = await _in_session(
-                session_factory,
-                partial(review_service.save_review, request_id=request_id),
-                take_id,
-                reply,
+            saved = await retry_transient(
+                lambda: _in_session(
+                    session_factory,
+                    partial(review_service.save_review, request_id=request_id),
+                    take_id,
+                    reply,
+                ),
+                REVIEW_SAVE_RETRY_SEC,
+                what=f"리뷰 저장 take={take_id}",
             )
         except Exception:
             logger.exception("리뷰 실패 take=%s", take_id)

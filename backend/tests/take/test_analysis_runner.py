@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from pitch_coach_backend.core.tasks import TaskRegistry
@@ -43,6 +44,7 @@ def isolated_runner(monkeypatch, db_session: Session):
     monkeypatch.setattr(analysis_runner, "_in_session", in_current_session)
     monkeypatch.setattr(coverage_service, "_in_session", in_current_session)
     monkeypatch.setattr(review_service, "REVIEW_RETRY_DELAY_SEC", 0)
+    monkeypatch.setattr(analysis_runner, "REVIEW_SAVE_RETRY_SEC", (0, 0))
 
 
 @pytest.fixture
@@ -103,6 +105,49 @@ def test_review_failure_completes_the_take_and_still_plans(
     assert _states(db_session, take) == ("COMPLETED", "FAILED", "DONE")
     assert TakeRepository(db_session).get_ai_result(take.id, "REVIEW") is None
     assert plans.asked == [take.pitch_id]
+
+
+def _flaky_save(failures: int):
+    calls: list[uuid.UUID] = []
+    real = review_service.save_review
+
+    def save(db, take_id, reply, *, request_id=None):
+        calls.append(take_id)
+        if len(calls) <= failures:
+            raise OperationalError("UPDATE takes", {}, Exception("connection lost"))
+        return real(db, take_id, reply, request_id=request_id)
+
+    return save, calls
+
+
+def test_review_save_is_retried_when_the_db_blips(db_session, user_id, monkeypatch, plans):
+    take = _analyzing(db_session, user_id, "REVIEWING")
+    monkeypatch.setattr(
+        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+    )
+    save, calls = _flaky_save(2)
+    monkeypatch.setattr(review_service, "save_review", save)
+
+    asyncio.run(analysis_runner.run(take.id))
+
+    assert len(calls) == 3
+    assert _states(db_session, take) == ("COMPLETED", "DONE", "DONE")
+    assert plans.asked == [take.pitch_id]
+
+
+def test_review_fails_after_the_save_retries_run_out(db_session, user_id, monkeypatch, plans):
+    take = _analyzing(db_session, user_id, "REVIEWING")
+    monkeypatch.setattr(
+        review_service, "request_review_async", AsyncMock(return_value=_review(take))
+    )
+    save, calls = _flaky_save(3)
+    monkeypatch.setattr(review_service, "save_review", save)
+
+    asyncio.run(analysis_runner.run(take.id))
+
+    assert len(calls) == 3
+    assert _states(db_session, take) == ("COMPLETED", "FAILED", "DONE")
+    assert TakeRepository(db_session).get_ai_result(take.id, "REVIEW") is None
 
 
 @pytest.mark.parametrize("stage", ["FINALIZING", "DONE"])
