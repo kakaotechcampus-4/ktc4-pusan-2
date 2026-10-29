@@ -66,3 +66,22 @@ it('shows the previous Take comparison immediately after the summary and before 
   expect(comparison.nextElementSibling?.getAttribute('aria-label')).toBe('측정값');
   expect(main.querySelectorAll('h2')).toHaveLength(8);
 });
+
+it('shows 같음, not 나빠짐, when the visible values are equal even if improved is false', async () => {
+  const row = { slide_number: null, script_mode: null };
+  query.data!.review = {
+    ...reviewFixture,
+    comparison: [
+      { ...row, metric: 'filler_count', previous: 0, current: 0, improved: false },
+      { ...row, metric: 'script_ratio', previous: 0.621, current: 0.624, improved: false },
+      { ...row, metric: 'filler_count', previous: 0, current: 2, improved: false },
+    ],
+  };
+  await render();
+  const badges = [...host.querySelectorAll('main section:nth-of-type(2) li')].map(
+    (li) => li.textContent,
+  );
+  expect(badges[0]).toContain('같음');
+  expect(badges[1]).toContain('같음');
+  expect(badges[2]).toContain('나빠짐');
+});
