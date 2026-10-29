@@ -47,15 +47,12 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     # 같은 pitch 에 동시에 올려도 같은 버전 번호를 받지 않게 커밋까지 줄을 세운다.
     # 번호가 S3 키에도 들어가서, 잠그지 않으면 500 에 더해 앞서 올린 파일이 덮어쓰인다.
     # 소유권을 확인한 뒤 쪽수를 세는 사이에 발표가 지워졌으면 S3 에 올리기 전에 404 로 끝낸다
-    if not pitch_repository.lock_for_new_version(pitch_id):
-        raise NonExistentPitch()
-
-    version = pitch_repository.next_presentation_version(pitch_id)
     presentation_key = upload(
         presentation_file,
         f"pitches/{pitch_id}/presentations/{presentation_id}.pdf",
         content_type="application/pdf",
     )
+
     thumbnail_key = None
     if thumbnail is not None:
         try:
@@ -69,6 +66,9 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
     try:
         # 조회 URL 은 커밋 전에 만든다. 커밋한 뒤에 실패하면 사용자는 오류를 받는데 버전은 생겨서
         # 다시 올릴 때 버전이 하나 더 생긴다
+        if not pitch_repository.lock_for_new_version(pitch_id):
+            raise NonExistentPitch()
+        version = pitch_repository.next_presentation_version(pitch_id)
         file_url = generate_presigned_url(presentation_key)
         presentation = PresentationVersion(
             id=presentation_id,
@@ -95,7 +95,7 @@ def upload_presentation_service(db: Session, pitch_id: uuid.UUID, upload_dto):
         pitch_id=pitch_id,
         presentation_version_id=presentation.id,
         file_url=file_url,
-        page_count=page_count,
+        page_count=page_count
     )
 
 
