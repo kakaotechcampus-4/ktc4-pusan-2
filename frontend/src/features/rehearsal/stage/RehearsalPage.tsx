@@ -886,8 +886,8 @@ export function RehearsalPage() {
                   </div>
                 </section>
 
-                {/* 배지를 따로 두지 않습니다 — 테두리가 시선 표시의 전부입니다.
-                    대신 색이 무슨 뜻인지만 한 줄로 둡니다 (CLAUDE.md 3번) */}
+                {/* 배지를 따로 두지 않습니다 — 색의 뜻을 한 줄로 두고, 지금 상태 글자만
+                    stage.css 가 data-gaze 로 뒤집습니다(React 를 거치지 않음, AGENTS.md 3번) */}
                 <div className="legend">
                   <span>테두리 =</span>
                   <i className="audience">청중</i>
