@@ -188,7 +188,10 @@ def delete_take_service(db: Session, take_id: uuid.UUID):
 # Calibration 완료 후 Calibration 데이터 저장
 def create_calibration_service(db: Session, take_id: uuid.UUID, calibration_dto: CalibrationDTO):
     take_repository = TakeRepository(db)
-    existing_take = take_repository.get_take(take_id)
+    # 같은 Take 를 시작하는 요청(`coach_service.start_take`)과 줄을 세운다. 검사와 저장 사이에
+    # Take 가 시작되면 코치는 옛 기준값으로 돌고 DB 에는 새 값이 남는다. 발표 행은 잠그지 않아
+    # 시작 쪽의 발표 → Take 잠금 순서와 엇갈리지 않는다
+    existing_take = take_repository.lock_take(take_id)
 
     if not existing_take:
         raise NonExistentTake()
