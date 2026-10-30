@@ -15,7 +15,7 @@ services:
   caddy:
     container_name: caddy-release
     environment:
-      SITE_URL: https://pitch-coach-release.duckdns.org
+      SITE_URL: http://pitch-coach-release.duckdns.org
     networks:
       - default
       - edge
