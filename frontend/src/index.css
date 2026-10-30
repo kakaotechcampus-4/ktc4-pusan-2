@@ -55,6 +55,15 @@
   --color-coral-deep: #C9421C;      /* hover · 눌림 */
   --color-coral-wash: #F3DED5;      /* 배경 강조 */
 
+  /* 입력 미터는 .pitch-create의 지면 재정의와 별개로 승인 팔레트를 유지한다. */
+  --color-meter-panel: var(--color-panel);
+  --color-meter-line: var(--color-line-strong);
+  --color-meter-ink: var(--color-ink);
+  --color-meter-off: #E8E1D7;
+  --color-meter-green: #78C57F;
+  --color-meter-yellow: #E4BF45;
+  --color-meter-red: #DA5248;
+
   /* ── 시선 상태 3색 ─────────────────────────────────────────────
      리허설 화면 테두리에만 씁니다. 다른 곳에서 쓰지 않습니다.
      여기서 색이 새면 사용자가 "초록 = 좋음"을 다른 화면에서 학습합니다. */

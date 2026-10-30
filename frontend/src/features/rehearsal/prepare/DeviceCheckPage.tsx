@@ -493,7 +493,7 @@ export function DeviceCheckPage() {
       */}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-4">
-          <div className="prepare-camera-column">
+          <div className="flex w-full min-w-0 flex-col gap-2 max-lg:mx-auto max-lg:max-w-[640px]">
             <div className="aspect-video max-h-[360px] w-full">
               <GazeSetupView
                 frameRef={cal.frameRef}

@@ -1,30 +1,3 @@
-.prepare-camera-column {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-}
-.prepare-input-meter {
-  --prepare-audio-panel: #f5f0e9;
-  --prepare-audio-line: #c6bcac;
-  --prepare-audio-ink: #2a2723;
-  --prepare-audio-off: #e8e1d7;
-  --prepare-audio-green: #78c57f;
-  --prepare-audio-yellow: #e4bf45;
-  --prepare-audio-red: #da5248;
-  display: flex;
-  width: 100%;
-  height: 40px;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--prepare-audio-line);
-  background: var(--prepare-audio-panel);
-  color: var(--prepare-audio-ink);
-  padding: 8px 10px;
-}
-.prepare-input-meter > svg {
-  flex-shrink: 0;
-}
 .prepare-input-track,
 .prepare-input-fill {
   display: grid;
@@ -36,10 +9,10 @@
   min-width: 0;
   height: 18px;
   flex: 1;
-  background: var(--prepare-audio-panel);
+  background: var(--color-meter-panel);
 }
 .prepare-input-track > span {
-  background: var(--prepare-audio-off);
+  background: var(--color-meter-off);
 }
 .prepare-input-fill {
   position: absolute;
@@ -47,17 +20,11 @@
   clip-path: inset(0 calc(100% - var(--prepare-input-level, 0%)) 0 0);
 }
 .prepare-input-fill > [data-band='green'] {
-  background: var(--prepare-audio-green);
+  background: var(--color-meter-green);
 }
 .prepare-input-fill > [data-band='yellow'] {
-  background: var(--prepare-audio-yellow);
+  background: var(--color-meter-yellow);
 }
 .prepare-input-fill > [data-band='red'] {
-  background: var(--prepare-audio-red);
-}
-@media (max-width: 1023px) {
-  .prepare-camera-column {
-    max-width: 640px;
-    margin-inline: auto;
-  }
+  background: var(--color-meter-red);
 }

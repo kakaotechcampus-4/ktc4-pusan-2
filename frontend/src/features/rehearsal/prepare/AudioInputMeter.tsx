@@ -6,7 +6,7 @@ export function AudioInputMeter({ meterRef }: { meterRef: RefObject<HTMLDivEleme
   return (
     <div
       ref={meterRef}
-      className="prepare-input-meter"
+      className="prepare-input-meter flex h-10 w-full items-center gap-3 border border-meter-line bg-meter-panel px-2.5 py-2 text-meter-ink"
       data-meter="input"
       role="meter"
       aria-label="마이크 입력 레벨"
@@ -15,6 +15,7 @@ export function AudioInputMeter({ meterRef }: { meterRef: RefObject<HTMLDivEleme
       aria-valuenow={0}
     >
       <svg
+        className="shrink-0"
         width="20"
         height="20"
         viewBox="0 0 16 16"
