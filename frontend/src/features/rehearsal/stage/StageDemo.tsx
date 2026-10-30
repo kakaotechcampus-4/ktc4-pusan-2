@@ -17,7 +17,7 @@ const BORDER: Record<GazeZone, string> = {
  *
  * 이 페이지가 존재하는 이유
  * ────────────────────────
- * 1. Script Mode 네 벌의 높이가 실제로 맞는지 눈으로 본다
+ * 1. 대본 세 모드의 시안 높이와 위치를 눈으로 본다
  * 2. 시선 테두리가 **리렌더링 없이** 바뀌는지 확인한다
  * 3. Tailwind와 stage.css가 한 화면에서 충돌 없이 도는지 본다
  *
@@ -25,9 +25,9 @@ const BORDER: Record<GazeZone, string> = {
  * 올라가면 어딘가에서 setState를 하고 있다는 뜻이고,
  * 그 상태로 초당 15번 판정이 들어오면 타이머가 밀린다.
  *
- * ★ 마크업은 제품 화면(P5 RehearsalPage)과 같은 순서여야 한다.
- *   .stage 의 행은 자리로 정해지므로(머리·무대·코치·대본·발밑),
- *   여기서 한 줄을 빼면 검증하는 레이아웃이 실제와 달라진다.
+ * ★ PM 승인 전 배치 제안이다. 제품의 무대 배치·측정 계약은 변경하지 않는다.
+ *   시안의 행은 머리·무대·코치·조작 안내·대본 순서다.
+ *   종료는 상단, 조작 안내는 코치 아래, 대본은 맨 아래에 둔다.
  */
 export function StageDemo() {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -129,6 +129,9 @@ export function StageDemo() {
             </div>
             <span className="meta">남은 03:28</span>
             <span className="slide-no">SLIDE 6 / 12</span>
+            <button className="end" type="button" disabled aria-describedby="end-hint">
+              발표 끝내기
+            </button>
           </header>
 
           {/* ★ 시선 테두리는 이 상자에 붙는다 — .stage 의 data-gaze 가 받는다 */}
@@ -195,13 +198,12 @@ export function StageDemo() {
           <div className="stage-foot">
             <div className="stage-notes">
               <span className="stage-status" id="end-hint">
-                레이아웃 미리보기 · 마지막 장에서 끝낼 수 있어요
+                마지막 장에서 끝낼 수 있어요
               </span>
-              <span className="key-help">← → 슬라이드 이동 · Space 다음 장 · ↑ ↓ 대본 스크롤</span>
+              <span className="key-help">
+                ← → 슬라이드 이동 · Space 다음 장{mode !== 'OFF' && ' · ↑ ↓ 대본 스크롤'}
+              </span>
             </div>
-            <button className="end" type="button" disabled aria-describedby="end-hint">
-              발표 끝내기
-            </button>
           </div>
         </div>
       </div>
