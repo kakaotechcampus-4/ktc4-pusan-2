@@ -29,7 +29,7 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run format:check
-      - run: npm run build -- --base=./
+      - run: npm run build -- --base=/ktc4-pusan-2/
       - if: github.event_name == 'push' && github.ref == 'refs/heads/develop-next'
         uses: actions/upload-pages-artifact@v3
         with:
