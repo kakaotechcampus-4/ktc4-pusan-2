@@ -6,19 +6,12 @@ from typing import Any
 
 from sqlalchemy import (
     ColumnElement,
-    Integer,
     Select,
-    Uuid,
-    and_,
     case,
-    cast,
     distinct,
     extract,
     func,
-    null,
-    or_,
     select,
-    union_all,
 )
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.orm import InstrumentedAttribute, Session
@@ -43,6 +36,9 @@ from pitch_coach_backend.module.take.entity import (
     TakeSummary,
     TakeTranscriptSegment,
 )
+from pitch_coach_backend.module.pitch.entity import Pitch
+from pitch_coach_backend.module.service_feedback.entity import TakeSurvey, UserSuggestion
+from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import last_active_at
 from pitch_coach_backend.module.user.entity import User
 
@@ -454,26 +450,41 @@ def _float_or_none(value: Any) -> float | None:
     return None if value is None else float(value)
 
 
-def rating_summary(db: Session) -> tuple[int, float | None]:
-    """(평점 수, 평균). 탈퇴 뒤 보관한 평점도 센다. 평점이 없으면 평균은 None."""
-    count, avg = db.execute(
-        select(func.count(ServiceFeedback.id), func.avg(ServiceFeedback.rating))
-    ).one()
-    return int(count), _float_or_none(avg)
-
-
-def list_feedbacks(db: Session, *, limit: int, offset: int) -> list[dict[str, Any]]:
-    stmt = select(
-        ServiceFeedback.id,
-        ServiceFeedback.user_id,
-        ServiceFeedback.rating,
-        ServiceFeedback.created_at,
-        UserSuggestion.content.label("suggestion"),
-        UserSuggestion.category,
-    ).outerjoin(UserSuggestion, UserSuggestion.service_feedback_id == ServiceFeedback.id)
+def take_survey_summary(db: Session) -> list[dict[str, Any]]:
+    """문항 버전별 (응답 수, 정확도 평균, 유용성 평균). 탈퇴 뒤 보관한 응답도 센다."""
     return _fetch(
         db,
-        stmt.order_by(ServiceFeedback.created_at.desc(), ServiceFeedback.id.desc())
+        select(
+            TakeSurvey.question_version,
+            func.count(TakeSurvey.id).label("survey_count"),
+            func.avg(TakeSurvey.accuracy_rating).label("avg_accuracy"),
+            func.avg(TakeSurvey.usefulness_rating).label("avg_usefulness"),
+        )
+        .group_by(TakeSurvey.question_version)
+        .order_by(TakeSurvey.question_version.desc()),
+    )
+
+
+def list_take_surveys(db: Session, *, limit: int, offset: int) -> list[dict[str, Any]]:
+    stmt = (
+        select(
+            TakeSurvey.id,
+            TakeSurvey.user_id,
+            TakeSurvey.take_id,
+            Pitch.title.label("pitch_title"),
+            Take.take_number,
+            TakeSurvey.accuracy_rating,
+            TakeSurvey.usefulness_rating,
+            TakeSurvey.comment,
+            TakeSurvey.question_version,
+            TakeSurvey.created_at,
+        )
+        .outerjoin(Take, Take.id == TakeSurvey.take_id)
+        .outerjoin(Pitch, Pitch.id == Take.pitch_id)
+    )
+    return _fetch(
+        db,
+        stmt.order_by(TakeSurvey.created_at.desc(), TakeSurvey.id.desc())
         .offset(offset)
         .limit(limit + 1),
     )
@@ -494,7 +505,6 @@ def list_suggestions(
         UserSuggestion.content,
         UserSuggestion.source,
         UserSuggestion.category,
-        UserSuggestion.service_feedback_id,
         UserSuggestion.created_at,
     )
     if source is not None:
@@ -508,106 +518,4 @@ def list_suggestions(
         stmt.order_by(UserSuggestion.created_at.desc(), UserSuggestion.id.desc())
         .offset(offset)
         .limit(limit + 1),
-    )
-
-
-# 작성자 묶음. 활성 사용자는 user_id 하나로 평점 · 팝업 의견 · 마이페이지 의견을 묶는다.
-# 탈퇴하면 user_id 가 비어 누구 것인지 알 수 없다. 서로 다른 탈퇴자를 합치지 않게
-# 평점(과 그 팝업 의견)은 평점 ID, 마이페이지 의견은 의견 ID 로 따로 묶는다
-def _retained_id(
-    user_id: ColumnElement[Any], feedback_id: ColumnElement[Any], suggestion_id: ColumnElement[Any]
-) -> ColumnElement[Any]:
-    return case((user_id.is_(None), func.coalesce(feedback_id, suggestion_id)))
-
-
-def list_feedback_groups(db: Session, *, limit: int, offset: int) -> list[dict[str, Any]]:
-    """작성자 묶음마다 평점(0~1개)과 의견 수. 마지막으로 제출한 묶음부터.
-
-    평점과 의견을 한 목록으로 합친 뒤 묶음으로 GROUP BY 해서 페이지를 나눈다.
-    JOIN 한 행으로 나누면 한 사용자의 의견이 페이지 경계에서 갈린다.
-    """
-    activity = union_all(
-        select(
-            ServiceFeedback.user_id,
-            ServiceFeedback.id.label("feedback_id"),
-            cast(null(), Uuid).label("suggestion_id"),
-            ServiceFeedback.rating,
-            ServiceFeedback.created_at,
-        ),
-        select(
-            UserSuggestion.user_id,
-            UserSuggestion.service_feedback_id,
-            UserSuggestion.id,
-            cast(null(), Integer),
-            UserSuggestion.created_at,
-        ),
-    ).subquery()
-    rated = activity.c.suggestion_id.is_(None)
-    grouped = (
-        select(
-            activity.c.user_id,
-            _retained_id(
-                activity.c.user_id, activity.c.feedback_id, activity.c.suggestion_id
-            ).label("retained_id"),
-            func.max(activity.c.rating).label("rating"),
-            func.max(activity.c.created_at).filter(rated).label("rated_at"),
-            func.count(activity.c.suggestion_id).label("suggestion_count"),
-            func.max(activity.c.created_at).label("last_at"),
-        )
-        .group_by(activity.c.user_id, "retained_id")
-        .subquery()
-    )
-    return _fetch(
-        db,
-        select(grouped)
-        .order_by(
-            grouped.c.last_at.desc(),
-            grouped.c.user_id.nulls_last(),
-            grouped.c.retained_id,
-        )
-        .offset(offset)
-        .limit(limit + 1),
-    )
-
-
-def list_group_suggestions(
-    db: Session,
-    *,
-    user_ids: list[uuid.UUID],
-    retained_ids: list[uuid.UUID],
-    per_group: int,
-) -> list[dict[str, Any]]:
-    """묶음마다 최근 의견 `per_group` 개. 정렬은 의견 목록(`list_suggestions`)과 같다."""
-    retained_id = _retained_id(
-        UserSuggestion.user_id, UserSuggestion.service_feedback_id, UserSuggestion.id
-    )
-    ranked = (
-        select(
-            UserSuggestion.id,
-            UserSuggestion.user_id,
-            retained_id.label("retained_id"),
-            UserSuggestion.content,
-            UserSuggestion.source,
-            UserSuggestion.category,
-            UserSuggestion.created_at,
-            func.row_number()
-            .over(
-                partition_by=(UserSuggestion.user_id, retained_id),
-                order_by=(UserSuggestion.created_at.desc(), UserSuggestion.id.desc()),
-            )
-            .label("rank"),
-        )
-        .where(
-            or_(
-                UserSuggestion.user_id.in_(user_ids),
-                and_(UserSuggestion.user_id.is_(None), retained_id.in_(retained_ids)),
-            )
-        )
-        .subquery()
-    )
-    return _fetch(
-        db,
-        select(ranked)
-        .where(ranked.c.rank <= per_group)
-        .order_by(ranked.c.created_at.desc(), ranked.c.id.desc()),
     )

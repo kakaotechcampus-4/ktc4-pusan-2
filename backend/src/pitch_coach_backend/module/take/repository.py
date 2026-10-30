@@ -38,21 +38,41 @@ class TakeRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def has_completed_report(self, pitch_ids: list[uuid.UUID]) -> bool:
-        if not pitch_ids:
-            return False
+    def has_take_result(self, take_id: uuid.UUID) -> bool:
         return self.db.scalar(
             select(
-                select(Take.id)
-                .join(TakeAIResults, TakeAIResults.take_id == Take.id)
-                .where(
-                    Take.pitch_id.in_(pitch_ids),
-                    Take.status == "COMPLETED",
-                    TakeAIResults.kind == "TAKE_RESULT",
-                )
+                select(TakeAIResults.id)
+                .where(TakeAIResults.take_id == take_id, TakeAIResults.kind == "TAKE_RESULT")
                 .exists()
             )
         )
+
+    def list_reported(
+        self, user_id: uuid.UUID, *, completed_after: datetime, exclude: set[uuid.UUID]
+    ) -> list[Row]:
+        """완료되고 측정 결과가 남은 사용자의 Take. 최근에 끝난 것부터."""
+        stmt = (
+            select(
+                Take.id.label("take_id"),
+                Take.pitch_id,
+                Pitch.title.label("pitch_title"),
+                Take.take_number,
+                Take.completed_at,
+            )
+            .join(Pitch, Pitch.id == Take.pitch_id)
+            .where(
+                Pitch.user_id == user_id,
+                Take.status == "COMPLETED",
+                Take.completed_at >= completed_after,
+                select(TakeAIResults.id)
+                .where(TakeAIResults.take_id == Take.id, TakeAIResults.kind == "TAKE_RESULT")
+                .exists(),
+            )
+            .order_by(Take.completed_at.desc(), Take.id.desc())
+        )
+        if exclude:
+            stmt = stmt.where(Take.id.not_in(exclude))
+        return list(self.db.execute(stmt).all())
 
     def get_take(self, take_id: uuid.UUID) -> Take | None:
         return self.db.scalar(

@@ -1,6 +1,7 @@
 // 제품 `frontend/src/features/pitch/HomePitchCard.tsx`에서 복사해 시작했다. 설계서가 관리한다.
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { ButtonLink } from './Button';
 import { formatSeconds } from '@/lib/clock';
 
 /** 홈 한 줄에 필요한 값만. 제품 `types/home.ts`의 HomePitch에서 이 줄이 읽는 칸만 남겼다 */
@@ -17,7 +18,15 @@ export interface HomePitch {
 const rowLink = 'whitespace-nowrap text-xs font-bold hover:text-coral-deep';
 
 /** 홈 발표 목록의 한 줄. 목록 상자의 `<ul>` 안에 놓인다 */
-export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: number }) {
+export function HomePitchCard({
+  pitch,
+  index,
+  showPrepare = false,
+}: {
+  pitch: HomePitch;
+  index: number;
+  showPrepare?: boolean;
+}) {
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const takes = pitch.takes.length;
   const titleStyle = 'inline-flex min-w-0 items-center gap-2 font-bold';
@@ -61,27 +70,39 @@ export function HomePitchCard({ pitch, index }: { pitch: HomePitch; index: numbe
         </span>
       </div>
       {/* 기록이 없는 피치는 걸러 볼 Take가 없어 링크 대신 글자만 둔다 */}
-      {takes > 0 && pitch.pitch_id ? (
-        <Link
-          to={`/takes?pitch=${encodeURIComponent(pitch.pitch_id)}`}
-          aria-label={`${pitch.pitch_title} Take 기록 ${takes}개 보기`}
-          className={rowLink}
-        >
-          Take 기록 <span className="font-mono">{takes}</span> →
-        </Link>
-      ) : (
-        <span className="whitespace-nowrap text-xs text-ink/80">
-          Take 기록 <span className="font-mono">{takes}</span>
-        </span>
-      )}
+      <span className={showPrepare ? 'w-28 shrink-0' : 'contents'}>
+        {takes > 0 && pitch.pitch_id ? (
+          <Link
+            to={`/takes?pitch=${encodeURIComponent(pitch.pitch_id)}`}
+            aria-label={`${pitch.pitch_title} Take 기록 ${takes}개 보기`}
+            className={rowLink}
+          >
+            Take 기록 <span className="font-mono">{takes}</span> →
+          </Link>
+        ) : (
+          <span className="whitespace-nowrap text-xs text-ink/80">
+            Take 기록 <span className="font-mono">{takes}</span>
+          </span>
+        )}
+      </span>
       {/* 비교는 Take가 둘 이상일 때만 뜻이 있어, 없을 때도 자리를 비워 줄을 맞춘다 */}
-      <span className="w-20 text-right">
+      <span className={`w-20 text-right${showPrepare ? ' shrink-0' : ''}`}>
         {pitch.pitch_id && takes >= 2 && (
           <Link to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/comparison`} className={rowLink}>
             Take 비교 →
           </Link>
         )}
       </span>
+      {showPrepare && pitch.pitch_id && (
+        <ButtonLink
+          to={`/pitch/${encodeURIComponent(pitch.pitch_id)}/edit`}
+          aria-label={`${pitch.pitch_title} 발표 준비`}
+          size="sm"
+          className="shrink-0"
+        >
+          발표 준비
+        </ButtonLink>
+      )}
     </li>
   );
 }

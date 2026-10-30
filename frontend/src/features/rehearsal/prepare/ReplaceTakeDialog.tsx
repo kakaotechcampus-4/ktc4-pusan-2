@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react';
+import { useId, useLayoutEffect, useRef } from 'react';
 import { Button } from '@/shared/ui/Button';
 import type { ActiveTake } from '@/types/take';
 
@@ -23,7 +23,9 @@ export function ReplaceTakeDialog({
   /** 부모가 이 창을 내리는 중이면 닫힘은 우리가 낸 것입니다. 아래 onClose 가 되살리지 않습니다 */
   const mounted = useRef(true);
 
-  useEffect(() => {
+  // 창을 내릴 때 close() 를 <dialog> 가 문서에서 빠지기 전에 불러야 브라우저가 초점을 연 버튼으로
+  // 돌려줍니다. useEffect 정리는 DOM 을 뗀 뒤에 돌아 초점이 페이지 맨 처음으로 갑니다 (#766)
+  useLayoutEffect(() => {
     mounted.current = true;
     const dialog = ref.current;
     dialog?.showModal();

@@ -59,7 +59,9 @@ import {
   type AbandonOutcome,
   type LeftWindow,
 } from './resume';
+import { canEnd } from './canEnd';
 import { sendEnding, type Ending } from './sendEnding';
+import { useEndConfirm } from './useEndConfirm';
 import { useSlideDeck } from './useSlideDeck';
 import { useStageClock } from './useStageClock';
 import { CONNECT_SLOW_MS, hasCamera, hasLiveAudio, startGate, type StartGate } from './startGate';
@@ -192,7 +194,6 @@ export function RehearsalPage() {
   const [resume, setResume] = useState<Resume | null>(null);
   const sessionId = resume?.sessionId ?? null;
   const ending = resume?.ending ?? null;
-  const [confirming, setConfirming] = useState(false);
   const [endError, setEndError] = useState<string | null>(null);
   /**
    * 세션을 못 연 이유. 이게 있으면 이 Take 의 기록(시선·슬라이드·코치)이 하나도 쌓이지 않고
@@ -658,6 +659,8 @@ export function RehearsalPage() {
   const nextSlideNumber = Math.min(slideNumber + 1, pageCount);
 
   // ── 종료 ─────────────────────────────────────────────────────────
+  const endable = canEnd(pageCount, slideNumber);
+  const { confirming, ask: askEnd } = useEndConfirm(slideNumber);
   const finish = async () => {
     if (!running || !sessionId || !ticket) return;
 
@@ -954,16 +957,22 @@ export function RehearsalPage() {
                 {sessionError && <span>{sessionError}</span>}
               </div>
 
+              {/* 비활성 버튼은 초점을 못 받고 title 도 잘 안 보여서 이유를 글자로 둡니다 */}
+              {!endable && (
+                <span id="end-hint" className="end-hint">
+                  마지막 장에서 끝낼 수 있어요
+                </span>
+              )}
               <button
                 type="button"
                 className="end"
-                disabled={!running || phase !== 'RUNNING'}
+                disabled={!running || phase !== 'RUNNING' || !endable}
+                aria-describedby={endable ? undefined : 'end-hint'}
                 onClick={() => {
                   // 되돌릴 수 없어서 한 번 더 묻습니다. 모달을 띄우지 않는 이유는
                   // 발표 중에 화면을 덮으면 남은 시간을 못 보기 때문입니다
                   if (!confirming) {
-                    setConfirming(true);
-                    window.setTimeout(() => setConfirming(false), 4000);
+                    askEnd();
                     return;
                   }
                   // 복구는 finish() 안에서 끝납니다 (재시도 화면으로 이동).
@@ -974,11 +983,7 @@ export function RehearsalPage() {
                   });
                 }}
               >
-                {endButtonText(
-                  phase === 'ENDING',
-                  confirming,
-                  pageCount > 0 && slideNumber === pageCount,
-                )}
+                {endButtonText(phase === 'ENDING', confirming)}
               </button>
             </div>
           </div>
@@ -1108,10 +1113,10 @@ function startGateText(gate: Exclude<StartGate, { kind: 'STARTED' }>): string {
   }
 }
 
-function endButtonText(ending: boolean, confirming: boolean, last: boolean): string {
+function endButtonText(ending: boolean, confirming: boolean): string {
   if (ending) return '정리하는 중…';
   if (confirming) return '정말 끝낼까요?';
-  return last ? '발표 끝내기' : '중간 종료';
+  return '발표 끝내기';
 }
 
 /**

@@ -7,21 +7,15 @@
  * 크기를 고르면 그 화면 크기로 그린 뒤 칸 폭에 맞게 줄여 보인다.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import {
-  DEVICES,
-  FRAME_MESSAGE,
-  FRAME_UPDATED_EVENT,
-  frameUrl,
-  type Device,
-  type FrameMessage,
-} from './frame';
+import { FRAME_MESSAGE, FRAME_UPDATED_EVENT, frameUrl, type FrameMessage } from './frame';
 import type { PreviewNavigate } from './ScreenPreview';
 
 export function PreviewFrame({
   screenId,
   stateId,
   onNavigate,
-  device,
+  size,
+  zoom = 1,
   fitHeight,
   title,
   inline = false,
@@ -31,7 +25,13 @@ export function PreviewFrame({
   screenId: string;
   stateId: string;
   onNavigate: PreviewNavigate;
-  device: Device;
+  /** 그릴 화면 크기(frame.ts previewSize). null이면 칸 폭에 맞춘다 */
+  size: { width: number; height: number } | null;
+  /**
+   * 브라우저 확대 배율(1 = 100%). iframe 안 폭 · 높이를 크기 ÷ 배율로 두고 배율만큼 키워 보여,
+   * 크롬에서 확대했을 때처럼 미디어 쿼리 · 배치가 바뀐다
+   */
+  zoom?: number;
   /** "칸에 맞춤"일 때의 높이(px) */
   fitHeight: number;
   title: string;
@@ -85,25 +85,36 @@ export function PreviewFrame({
     return () => observer.disconnect();
   }, []);
 
-  const size = DEVICES[device];
-  const scale = size.width && boxWidth ? Math.min(1, boxWidth / size.width) : 1;
-  const height = size.height ?? fitHeight;
+  const scale = size && boxWidth ? Math.min(1, boxWidth / size.width) : 1;
+  // 화면에 차지하는 높이. 확대해도 창 크기는 그대로다
+  const height = size?.height ?? fitHeight;
+  // iframe 안(페이지가 쓰는) 크기는 창 크기 ÷ 배율이다. 칸에 맞춤 · 100%면 칸 폭 그대로 둔다
+  let frameWidth: number | string = '100%';
+  if (size) frameWidth = size.width / zoom;
+  else if (zoom !== 1 && boxWidth) frameWidth = boxWidth / zoom;
+  const transform = scale * zoom;
 
   return (
     <div ref={box} className="min-w-0 overflow-hidden" style={{ height: height * scale }}>
-      <iframe
-        ref={iframe}
-        src={initialUrl}
-        title={title}
-        loading={lazy ? 'lazy' : undefined}
-        className="block border-0 bg-panel"
-        style={{
-          width: size.width ?? '100%',
-          height,
-          transform: scale < 1 ? `scale(${scale})` : undefined,
-          transformOrigin: 'top left',
-        }}
-      />
+      {/* 칸보다 좁은 화면(휴대폰 등)은 가운데에 둔다 */}
+      <div
+        className="mx-auto overflow-hidden"
+        style={{ width: size ? size.width * scale : '100%', height: height * scale }}
+      >
+        <iframe
+          ref={iframe}
+          src={initialUrl}
+          title={title}
+          loading={lazy ? 'lazy' : undefined}
+          className="block border-0 bg-panel"
+          style={{
+            width: frameWidth,
+            height: height / zoom,
+            transform: transform !== 1 ? `scale(${transform})` : undefined,
+            transformOrigin: 'top left',
+          }}
+        />
+      </div>
     </div>
   );
 }

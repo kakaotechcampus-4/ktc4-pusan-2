@@ -26,6 +26,7 @@ from pitch_coach_backend.module.admin.dto import (
     AdminSegmentWords,
     AdminSlideEvent,
     AdminStandardAnalysis,
+    AdminPage,
     AdminSuggestionRow,
     AdminTakeExport,
     AdminTakeInputs,
@@ -33,6 +34,8 @@ from pitch_coach_backend.module.admin.dto import (
     AdminTakeResults,
     AdminTakeRow,
     AdminTakeSummary,
+    AdminTakeSurveyRow,
+    AdminTakeSurveySummary,
     AdminUserRow,
     DailyCount,
     PracticeTimeStats,
@@ -245,15 +248,22 @@ def _named(counts: dict[str | None, int]) -> dict[str, int]:
     return {key: n for key, n in counts.items() if key is not None}
 
 
-def rating_summary(db: Session) -> AdminRatingSummary:
-    count, avg = repository.rating_summary(db)
-    return AdminRatingSummary(rated_count=count, avg_rating=avg)
+def take_survey_summary(db: Session) -> list[AdminTakeSurveySummary]:
+    return [
+        AdminTakeSurveySummary(
+            question_version=row["question_version"],
+            survey_count=row["survey_count"],
+            avg_accuracy=float(row["avg_accuracy"]),
+            avg_usefulness=float(row["avg_usefulness"]),
+        )
+        for row in repository.take_survey_summary(db)
+    ]
 
 
-def list_feedbacks(db: Session, *, limit: int, offset: int) -> AdminPage[AdminFeedbackRow]:
-    rows = repository.list_feedbacks(db, limit=limit, offset=offset)
-    return AdminPage[AdminFeedbackRow](
-        items=[AdminFeedbackRow(**row) for row in rows[:limit]],
+def list_take_surveys(db: Session, *, limit: int, offset: int) -> AdminPage[AdminTakeSurveyRow]:
+    rows = repository.list_take_surveys(db, limit=limit, offset=offset)
+    return AdminPage[AdminTakeSurveyRow](
+        items=[AdminTakeSurveyRow(**row) for row in rows[:limit]],
         next_offset=offset + limit if len(rows) > limit else None,
     )
 
@@ -273,31 +283,4 @@ def list_suggestions(
     return AdminPage[AdminSuggestionRow](
         items=[AdminSuggestionRow(**row) for row in rows[:limit]],
         next_offset=offset + limit if len(rows) > limit else None,
-    )
-
-
-def list_feedback_groups(
-    db: Session, *, limit: int, offset: int
-) -> AdminPage[AdminFeedbackGroupRow]:
-    groups = repository.list_feedback_groups(db, limit=limit, offset=offset)
-    page = groups[:limit]
-    suggestions: dict[tuple[uuid.UUID | None, uuid.UUID | None], list[AdminGroupSuggestion]] = {
-        (group["user_id"], group["retained_id"]): [] for group in page
-    }
-    rows = repository.list_group_suggestions(
-        db,
-        user_ids=[group["user_id"] for group in page if group["user_id"] is not None],
-        retained_ids=[group["retained_id"] for group in page if group["retained_id"] is not None],
-        per_group=GROUP_SUGGESTION_PREVIEW,
-    )
-    for row in rows:
-        suggestions[row["user_id"], row["retained_id"]].append(AdminGroupSuggestion(**row))
-    return AdminPage[AdminFeedbackGroupRow](
-        items=[
-            AdminFeedbackGroupRow(
-                **group, suggestions=suggestions[group["user_id"], group["retained_id"]]
-            )
-            for group in page
-        ],
-        next_offset=offset + limit if len(groups) > limit else None,
     )

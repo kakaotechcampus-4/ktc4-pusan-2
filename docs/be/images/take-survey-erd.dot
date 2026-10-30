@@ -1,0 +1,48 @@
+digraph take_survey {
+  graph [rankdir=LR, bgcolor="#f5f7fb", pad="0.38", nodesep="0.65", ranksep="1.2", splines=polyline,
+    fontname="Apple SD Gothic Neo", fontsize=22,
+    label="Take별 설문 · 테스트 참여 동의 · 1차 배포 별점 삭제\n탈퇴 · Take 삭제 뒤에도 응답 보관 / 연결만 해제", labelloc=t, fontcolor="#14243a"];
+  node [shape=plain, fontname="Apple SD Gothic Neo"];
+  edge [fontname="Apple SD Gothic Neo", fontsize=12, color="#64748b", fontcolor="#334155", arrowsize=0.7];
+  users [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#d6dde8" BGCOLOR="white">
+    <TR><TD BGCOLOR="#14243a" COLSPAN="3"><FONT COLOR="white"><B>users · 기존 사용자</B></FONT></TD></TR>
+    <TR><TD><B>id</B></TD><TD>UUID</TD><TD PORT="id">PK</TD></TR>
+    <TR><TD BGCOLOR="#fef9c3">test_consent_at</TD><TD>TIMESTAMPTZ · nullable</TD><TD>추가</TD></TR>
+    <TR><TD BGCOLOR="#fef9c3">test_consent_version</TD><TD>INTEGER · nullable</TD><TD>추가</TD></TR>
+    <TR><TD COLSPAN="3" BGCOLOR="#fefce8">둘 다 있거나 둘 다 없음 (CHECK)</TD></TR>
+  </TABLE>>];
+  takes [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#d6dde8" BGCOLOR="white">
+    <TR><TD BGCOLOR="#14243a" COLSPAN="3"><FONT COLOR="white"><B>takes · 기존 연습</B></FONT></TD></TR>
+    <TR><TD><B>id</B></TD><TD>UUID</TD><TD PORT="id">PK</TD></TR>
+  </TABLE>>];
+  surveys [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#d6dde8" BGCOLOR="white">
+    <TR><TD BGCOLOR="#ea580c" COLSPAN="3"><FONT COLOR="white"><B>take_surveys · Take별 설문 (새 테이블)</B></FONT></TD></TR>
+    <TR><TD>id</TD><TD>UUIDv7</TD><TD>PK</TD></TR>
+    <TR><TD PORT="user_id">user_id</TD><TD>UUID · nullable</TD><TD>FK</TD></TR>
+    <TR><TD PORT="take_id">take_id</TD><TD>UUID · nullable</TD><TD>FK / UNIQUE</TD></TR>
+    <TR><TD>accuracy_rating</TD><TD>INTEGER</TD><TD>1~5</TD></TR>
+    <TR><TD>usefulness_rating</TD><TD>INTEGER</TD><TD>1~5</TD></TR>
+    <TR><TD>comment</TD><TD>TEXT · nullable</TD><TD>1~2,000자</TD></TR>
+    <TR><TD>question_version</TD><TD>INTEGER</TD><TD>≥1 · 기본 1</TD></TR>
+    <TR><TD>created_at</TD><TD>TIMESTAMPTZ</TD><TD>NOT NULL</TD></TR>
+    <TR><TD COLSPAN="3" BGCOLOR="#fff7ed">Take당 1건 · 탈퇴/Take 삭제 시 연결만 NULL</TD></TR>
+  </TABLE>>];
+  opinions [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#d6dde8" BGCOLOR="white">
+    <TR><TD BGCOLOR="#0f766e" COLSPAN="3"><FONT COLOR="white"><B>user_suggestions · 마이페이지 의견 (행 유지)</B></FONT></TD></TR>
+    <TR><TD>id</TD><TD>UUIDv7</TD><TD>PK</TD></TR>
+    <TR><TD PORT="user_id">user_id</TD><TD>UUID · nullable</TD><TD>FK</TD></TR>
+    <TR><TD>content · category</TD><TD COLSPAN="2">TEXT 1~2,000자 · 5가지 유형</TD></TR>
+    <TR><TD>source</TD><TD COLSPAN="2">MY_PAGE</TD></TR>
+    <TR><TD>request_id</TD><TD>UUID</TD><TD>사용자와 복합 UNIQUE</TD></TR>
+    <TR><TD>created_at</TD><TD>TIMESTAMPTZ</TD><TD>NOT NULL</TD></TR>
+    <TR><TD COLSPAN="3" BGCOLOR="#f0fdfa">service_feedback_id(별점 연결) 칸만 삭제</TD></TR>
+  </TABLE>>];
+  dropped [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#d6dde8" BGCOLOR="#f1f5f9">
+    <TR><TD BGCOLOR="#94a3b8"><FONT COLOR="white"><B>삭제한 테이블 (1차 배포 홈 팝업)</B></FONT></TD></TR>
+    <TR><TD><S>service_feedbacks</S> · 사용자당 별점. 받은 데이터 없음</TD></TR>
+    <TR><TD><S>service_feedback_impressions</S> · 팝업 표시 승인 기록</TD></TR>
+  </TABLE>>];
+  users:id:e -> surveys:user_id [label="0..N 설문\nON DELETE SET NULL", color="#ea580c"];
+  takes:id:e -> surveys:take_id [label="0..1 설문\nON DELETE SET NULL", color="#ea580c"];
+  users:id:e -> opinions:user_id [label="0..N 의견\nON DELETE SET NULL"];
+}

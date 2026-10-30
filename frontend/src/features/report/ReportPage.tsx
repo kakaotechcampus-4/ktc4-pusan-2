@@ -285,7 +285,15 @@ const TREND: Record<string, { label: string; tone: Tone }> = {
   true: { label: '나아짐', tone: 'good' },
   false: { label: '나빠짐', tone: 'bad' },
   null: { label: '방향 없음', tone: 'muted' },
+  same: { label: '같음', tone: 'muted' },
 };
+
+/** 화면에 보이는 값이 같으면 AI 의 `improved`(같으면 false)와 상관없이 "같음" */
+function trend(r: ReviewResult['comparison'][number]) {
+  return fmt(r.metric, r.previous) === fmt(r.metric, r.current)
+    ? TREND.same!
+    : TREND[String(r.improved)]!;
+}
 
 function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
   return (
@@ -293,27 +301,20 @@ function Comparison({ rows }: { rows: ReviewResult['comparison'] }) {
       {rows.length === 0 ? (
         <p className="text-sm text-ink/80">비교할 지난 Take가 없어요.</p>
       ) : (
-        <ul className="flex flex-col divide-y divide-line">
+        <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           {rows.map((r, i) => (
-            <li
-              key={i}
-              className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0"
-            >
-              <span className="text-sm">
-                <b>{metricLabel(r.metric)}</b>
-                {r.slide_number !== null && (
-                  <span className="text-ink/80"> · {r.slide_number}번 장</span>
-                )}
+            <li key={i} className="flex min-w-0 flex-col gap-1.5 border-l-2 border-line pl-3">
+              <span className="text-xs text-ink/80">
+                <b className="text-sm text-ink">{metricLabel(r.metric)}</b>
+                {r.slide_number !== null && <> · {r.slide_number}번 장</>}
               </span>
-              <span className="tabular flex items-center gap-2 text-sm">
+              <span className="tabular flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
                 <span className="text-ink/80">{fmt(r.metric, r.previous)}</span>→
-                <b>{fmt(r.metric, r.current)}</b>
-                <Badge tone={TREND[String(r.improved)]!.tone}>
-                  {TREND[String(r.improved)]!.label}
-                </Badge>
+                <b className="text-lg">{fmt(r.metric, r.current)}</b>
+                <Badge tone={trend(r).tone}>{trend(r).label}</Badge>
               </span>
               {r.script_mode && (
-                <p className="w-full text-xs text-ink/80">
+                <p className="text-xs text-ink/80">
                   대본 보기가 달랐어요 ({r.script_mode.previous} → {r.script_mode.current}). 비교는
                   참고만 해 주세요.
                 </p>

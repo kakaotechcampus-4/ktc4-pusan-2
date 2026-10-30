@@ -1,22 +1,58 @@
 /**
  * 미리보기 진입점. 화면 ID로 그릴 화면을 고르고, 미리보기 안의 링크를 설계서 안에서만 이동시킨다.
- * 화면은 `src/screens/`의 샘플(제품 코드를 읽고 설계서가 다시 그린 것, import하지 않음)이다.
+ * 화면은 `src/screens/`의 샘플(제품 코드를 읽고 설계서가 다시 그린 것, import하지 않음), 기초는 `src/foundations/`,
+ * 컴포넌트 · 대화 상자는 `src/components/`다.
  * 실제 서버나 기기에 접근하지 않는다.
  */
 import { useState, type MouseEvent } from 'react';
 import { Frame, type Navigate } from './screens/shared';
 import { HomeScreen } from './screens/HomeScreen';
+import { CreateConceptScreen } from './screens/CreateConceptScreen';
 import { CreateScreen } from './screens/CreateScreen';
 import { PrepareScreen } from './screens/PrepareScreen';
+import { PrepareLayoutDraft } from './screens/PrepareLayoutDraft';
 import { StageScreen } from './screens/StageScreen';
 import { ProcessingScreen, ConfirmScreen } from './screens/AnalysisScreen';
 import { RetryScreen } from './screens/RetryScreen';
 import { ReportScreen } from './screens/ReportScreen';
 import { TakesScreen } from './screens/TakesScreen';
 import { ComparisonScreen } from './screens/ComparisonScreen';
-import { AboutScreen, MyScreen, NotFoundScreen, UnsupportedScreen } from './screens/InfoScreens';
+import {
+  AboutScreen,
+  MyScreen,
+  NotFoundScreen,
+  StageBlockedScreen,
+  UnsupportedScreen,
+} from './screens/InfoScreens';
+import { LoginScreen, WelcomeScreen } from './screens/OnboardingScreens';
+import {
+  ColorsFoundation,
+  ResponsiveFoundation,
+  SpacingFoundation,
+  SurfacesFoundation,
+  TypographyFoundation,
+  WritingFoundation,
+} from './foundations/Foundations';
+import { ComponentDoc } from './components/ComponentDocs';
+import { componentEntries } from './components/entries';
+import { AppHeader } from '@/ui/AppHeader';
 
 export type { Navigate as PreviewNavigate } from './screens/shared';
+
+/**
+ * 위에 공용 상단바가 얹히는 화면과 그때 표시되는 메뉴. 제품 `app/routes.tsx`의 appHeaderPaths와
+ * 리포트(ReportPage가 직접 둔다)다. 피치 생성은 #738에서 더해졌다(시작 전 세팅은 #706에서 정한다)
+ */
+const APP_HEADER: Record<string, 'home' | 'takes' | 'me' | null> = {
+  home: 'home',
+  takes: 'takes',
+  me: 'me',
+  retry: null,
+  comparison: null,
+  report: null,
+  'pitch-create': null,
+  'pitch-create-a': null,
+};
 
 /** 제품 경로를 설계서 화면으로 바꾼다. 알 수 없는 경로는 제품으로 열지 않는다 */
 function targetFor(path: string): string | null {
@@ -33,6 +69,8 @@ function targetFor(path: string): string | null {
   if (path === '/about') return 'about';
   if (path === '/unsupported') return 'unsupported';
   if (path === '/me') return 'me';
+  if (path === '/welcome') return 'welcome';
+  if (path.startsWith('/login')) return 'login';
   return null;
 }
 
@@ -93,12 +131,26 @@ export function ScreenPreview({
           이 링크는 설계서에서 연결하지 않은 화면이에요. 왼쪽 목록에서 화면을 골라 주세요.
         </p>
       )}
-      <CurrentScreen
-        screenId={screenId}
-        stateId={stateId}
-        onNavigate={onNavigate}
-        inline={inline}
-      />
+      {screenId in APP_HEADER ? (
+        <div className="flex min-h-dvh flex-col">
+          <AppHeader current={APP_HEADER[screenId] ?? undefined} />
+          <div className="flex min-h-0 flex-1 flex-col">
+            <CurrentScreen
+              screenId={screenId}
+              stateId={stateId}
+              onNavigate={onNavigate}
+              inline={inline}
+            />
+          </div>
+        </div>
+      ) : (
+        <CurrentScreen
+          screenId={screenId}
+          stateId={stateId}
+          onNavigate={onNavigate}
+          inline={inline}
+        />
+      )}
     </div>
   );
 }
@@ -115,12 +167,28 @@ function CurrentScreen({
   inline: boolean;
 }) {
   switch (screenId) {
+    case 'colors':
+      return <ColorsFoundation stateId={stateId} />;
+    case 'typography':
+      return <TypographyFoundation stateId={stateId} />;
+    case 'spacing':
+      return <SpacingFoundation />;
+    case 'surfaces':
+      return <SurfacesFoundation />;
+    case 'responsive':
+      return <ResponsiveFoundation />;
+    case 'writing':
+      return <WritingFoundation stateId={stateId} />;
     case 'home':
       return <HomeScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'pitch-create-a':
+      return <CreateConceptScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'pitch-create':
       return <CreateScreen stateId={stateId} onNavigate={onNavigate} inline={inline} />;
     case 'prepare-mission':
       return <PrepareScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'prepare-layout-review':
+      return <PrepareLayoutDraft stateId={stateId} onNavigate={onNavigate} />;
     case 'stage':
       return <StageScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'processing-loading':
@@ -141,9 +209,20 @@ function CurrentScreen({
       return <UnsupportedScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'not-found':
       return <NotFoundScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'welcome':
+      return <WelcomeScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'login':
+      return <LoginScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'stage-blocked':
+      return <StageBlockedScreen stateId={stateId} onNavigate={onNavigate} />;
     case 'me':
       return <MyScreen stateId={stateId} onNavigate={onNavigate} />;
+    case 'slide-preview':
+      // 피치 생성 샘플 안의 그 창을 그대로 보인다
+      return <CreateScreen stateId="preview" onNavigate={onNavigate} inline={inline} />;
     default:
+      if (componentEntries.some((entry) => entry.id === screenId))
+        return <ComponentDoc id={screenId} stateId={stateId} />;
       return (
         <Frame title="화면을 찾을 수 없어요">
           <p>목록에서 확인할 화면을 골라 주세요.</p>

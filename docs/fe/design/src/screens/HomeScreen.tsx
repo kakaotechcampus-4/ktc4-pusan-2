@@ -1,5 +1,7 @@
 // 제품 홈 · 내 피치(`frontend/src/features/pitch/HomePage.tsx`)의 설계서 샘플.
+import { useState } from 'react';
 import { Link } from 'react-router';
+import { HomeHelpDialog } from '@/ui/dialogs/HomeHelpDialog';
 import { HomePitchCard, type HomePitch } from '@/ui/HomePitchCard';
 import { PITCH, type Navigate } from './shared';
 
@@ -18,8 +20,10 @@ const homePrimary =
   'inline-flex items-center justify-center gap-5 border-2 border-ink bg-coral-deep px-5 py-3 text-sm font-bold text-white shadow-[4px_4px_0_var(--color-ink)] transition hover:-translate-y-0.5 hover:bg-ink active:translate-y-1 active:shadow-none';
 
 export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigate: Navigate }) {
+  const [helpOpen, setHelpOpen] = useState(false);
   const pitches = stateId === 'empty' ? [] : HOME_PITCHES;
-  const ready = stateId === 'default' || stateId === 'empty';
+  const showPrepare = stateId === 'prepare-entry-draft';
+  const ready = stateId === 'default' || stateId === 'empty' || showPrepare;
   const takeCount = pitches.reduce((sum, pitch) => sum + pitch.takes.length, 0);
   return (
     <div className="pitch-create flex min-h-[40rem] flex-col bg-greige text-ink">
@@ -88,7 +92,12 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
             {pitches.length > 0 ? (
               <ul className="divide-y divide-line border-2 border-ink bg-white">
                 {pitches.map((pitch, index) => (
-                  <HomePitchCard key={pitch.pitch_id} pitch={pitch} index={index} />
+                  <HomePitchCard
+                    key={pitch.pitch_id}
+                    pitch={pitch}
+                    index={index}
+                    showPrepare={showPrepare}
+                  />
                 ))}
               </ul>
             ) : (
@@ -113,11 +122,17 @@ export function HomeScreen({ stateId, onNavigate }: { stateId: string; onNavigat
               <span className="mr-3 font-mono text-coral-deep">TIP /</span>연습 전, 슬라이드와
               대본을 한 번 확인해 보세요.
             </p>
-            {/* 제품은 사용방법 창을 연다. 설계서에는 그 창이 없어 글자만 둔다 */}
-            <span className="text-ink/80">사용방법 살펴보기</span>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="text-ink/80 hover:text-coral-deep"
+            >
+              사용방법 살펴보기
+            </button>
           </aside>
         )}
       </div>
+      {helpOpen && <HomeHelpDialog onDismiss={() => setHelpOpen(false)} />}
     </div>
   );
 }

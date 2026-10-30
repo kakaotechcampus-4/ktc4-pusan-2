@@ -3,7 +3,7 @@ import { Card } from '@/shared/ui/Panel';
 import { missionSourceNote, type PrepareInfo } from './prepareInfo';
 
 /**
- * 이번 Take 미션 (시안 09 · `docs/fe/design/src/drafts/prepare/PrepareMissionDraft.tsx`). 장치 점검 오른쪽 맨 위에 둡니다 —
+ * 이번 Take 미션 (시안 09 · `git show d83376c6:frontend/src/dev/design/prepare/PrepareMissionDraft.tsx`). 장치 점검 오른쪽 맨 위에 둡니다 —
  * 미션도 "이번 Take 를 어떻게 할지"입니다.
  *
  * 실전 모드에서는 코치가 말하지 않으므로 "끝나고 리포트에서 확인"으로 바꿔 말합니다 (CLAUDE.md 8번).

@@ -104,25 +104,19 @@
     </section>
 
     <section class="panel">
-      <h2>서비스 평점</h2>
-      <p id="feedbacks-error" class="error" hidden></p>
-      <div class="scroll"><table id="feedbacks"></table></div>
+      <h2>Take별 설문 <small class="muted">리포트마다 받은 체감 정확도 · 피드백 유용성</small></h2>
+      <p id="take-survey-summary" class="summary"></p>
+      <p id="take-surveys-error" class="error" hidden></p>
+      <div class="scroll"><table id="take-surveys"></table></div>
       <div class="pager">
-        <button id="feedbacks-prev" type="button" disabled>이전</button>
-        <span id="feedbacks-page" class="muted"></span>
-        <button id="feedbacks-next" type="button" disabled>다음</button>
+        <button id="take-surveys-prev" type="button" disabled>이전</button>
+        <span id="take-surveys-page" class="muted"></span>
+        <button id="take-surveys-next" type="button" disabled>다음</button>
       </div>
     </section>
 
     <section class="panel">
-      <h2>사용자 의견</h2>
-      <label>보낸 곳
-        <select id="suggestions-source">
-          <option value="">전체</option>
-          <option value="RATING_POPUP">평점 팝업</option>
-          <option value="MY_PAGE">마이페이지</option>
-        </select>
-      </label>
+      <h2>사용자 의견 <small class="muted">마이페이지</small></h2>
       <label>의견 유형
         <select id="suggestions-category">
           <option value="">전체</option>
@@ -139,18 +133,6 @@
         <button id="suggestions-prev" type="button" disabled>이전</button>
         <span id="suggestions-page" class="muted"></span>
         <button id="suggestions-next" type="button" disabled>다음</button>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>사용자별 평점 · 의견 <small class="muted">마지막으로 보낸 사용자부터</small></h2>
-      <p id="rating-summary" class="summary"></p>
-      <p id="feedback-users-error" class="error" hidden></p>
-      <div class="scroll"><table id="feedback-users" class="grouped"></table></div>
-      <div class="pager">
-        <button id="feedback-users-prev" type="button" disabled>이전</button>
-        <span id="feedback-users-page" class="muted"></span>
-        <button id="feedback-users-next" type="button" disabled>다음</button>
       </div>
     </section>
 

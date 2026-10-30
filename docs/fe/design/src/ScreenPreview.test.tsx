@@ -7,7 +7,7 @@ import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { screens } from './catalog';
+import { entries } from './catalog';
 import { ScreenPreview } from './ScreenPreview';
 
 let host: HTMLDivElement;
@@ -45,6 +45,14 @@ async function render(initial = 'pitch-create', initialState = 'default') {
 
 function button(label: string) {
   return [...host.querySelectorAll('button')].find((item) => item.textContent?.trim() === label);
+}
+
+/** 마지막 장까지 → 키로 넘긴다(무대 샘플은 3번째 장에서 시작) */
+async function toLastSlide() {
+  await act(async () => {
+    for (let i = 0; i < 12; i++)
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+  });
 }
 
 async function click(label: string) {
@@ -95,10 +103,46 @@ it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대�
   await click('건너뛰기');
   await click('Take 3 시작하기');
   expect(host.querySelector('.stage')?.getAttribute('data-script-mode')).toBe('HIGHLIGHT');
-  await click('중간 종료');
+  // 마지막 장이 아니면 끝낼 수 없다(#697)
+  expect(button('발표 끝내기')?.disabled).toBe(true);
+  expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBe('end-hint');
+  expect(host.querySelector('#end-hint')?.textContent).toBe('마지막 장에서 끝낼 수 있어요');
+  await toLastSlide();
+  expect(host.textContent).toContain('SLIDE 12 / 12');
+  await click('발표 끝내기');
   expect(host.textContent).toContain('정말 끝낼까요?');
   await click('정말 끝낼까요?');
   expect(host.textContent).toContain('분석 중');
+});
+
+it('홈 기본 상태는 유지하고 시안의 발표 준비 버튼은 각 제목과 같은 경로와 인자로 이동한다', async () => {
+  await render('home');
+  expect(host.querySelector('a[aria-label$=" 발표 준비"]')).toBeNull();
+  await act(async () => root.render(null));
+  const onNavigate = vi.fn();
+  await act(async () =>
+    root.render(
+      <MemoryRouter>
+        <ScreenPreview screenId="home" stateId="prepare-entry-draft" onNavigate={onNavigate} />
+      </MemoryRouter>,
+    ),
+  );
+  const rows = [...host.querySelectorAll('section[aria-label="발표 목록"] li')];
+  expect(rows).toHaveLength(2);
+  for (const row of rows) {
+    expect(row.querySelector('.w-28.shrink-0')?.textContent).toContain('Take 기록');
+    expect(row.querySelector('.w-20.shrink-0')).not.toBeNull();
+    expect(row.lastElementChild?.textContent?.trim()).toBe('발표 준비');
+    const title = row.querySelector('a')!;
+    const prepare = row.lastElementChild as HTMLAnchorElement;
+    expect(prepare.getAttribute('href')).toBe(title.getAttribute('href'));
+    expect(prepare.getAttribute('href')).toMatch(/\/edit$/);
+    await act(async () => title.click());
+    expect(onNavigate).toHaveBeenLastCalledWith('pitch-create');
+    const titleArguments = onNavigate.mock.calls.at(-1);
+    await act(async () => prepare.click());
+    expect(onNavigate.mock.calls.at(-1)).toEqual(titleArguments);
+  }
 });
 
 it('카메라 · 마이크 · 시선 기준이 모두 돼야 시작할 수 있다', async () => {
@@ -137,7 +181,13 @@ it('실전 모드를 고르면 대본 칸 없는 실전 무대로 가고 종료 
   await click('Take 3 실전 모드로 시작');
   expect(host.querySelector('.stage')?.getAttribute('data-script-mode')).toBe('OFF');
   expect(host.querySelector('.script')).toBeNull();
-  await click('중간 종료');
+  // 마지막 장이 아니면 끝낼 수 없다(#697)
+  expect(button('발표 끝내기')?.disabled).toBe(true);
+  expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBe('end-hint');
+  expect(host.querySelector('#end-hint')?.textContent).toBe('마지막 장에서 끝낼 수 있어요');
+  await toLastSlide();
+  expect(host.textContent).toContain('SLIDE 12 / 12');
+  await click('발표 끝내기');
   expect(host.querySelector('.stage')?.getAttribute('data-script-mode')).toBe('OFF');
   await click('정말 끝낼까요?');
   expect(host.textContent).toContain('분석 중');
@@ -228,12 +278,15 @@ it('무대 미리보기의 클래스는 모두 설계서의 stage.css에 있다'
   expect(missing).toEqual([]);
 });
 
-it('모든 화면 · 상태가 오류 없이 그려지고, 미리보기 안에는 <main>이 없다', async () => {
+it('모든 기초 · 화면 · 상태가 오류 없이 그려지고, 미리보기 안에는 <main>이 없다', async () => {
   const errors = vi.spyOn(console, 'error');
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.open = false;
+  };
   HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
     this.open = true;
   };
-  for (const screen of screens) {
+  for (const screen of entries) {
     for (const { id } of screen.states) {
       await render(screen.id, id);
       expect(host.textContent, `${screen.id}:${id}`).not.toBe('');
@@ -258,4 +311,83 @@ it('안내 화면: 미지원 사유는 상태마다 제품 문구로, 로고 · 
     host.querySelector<HTMLButtonElement>('[aria-label="피치코치 홈"]')!.click(),
   );
   expect(host.textContent).toContain('새 피치 만들기');
+});
+
+it('컴포넌트 · 대화 상자 견본: 종류가 다 보이고, 창은 상태대로 막히며 닫으면 다시 열 수 있다', async () => {
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    this.open = false;
+  };
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    this.open = true;
+  };
+  await render('button', 'variants');
+  for (const label of ['primary', 'secondary', 'quiet', 'ButtonLink'])
+    expect(host.textContent).toContain(label);
+  await act(async () => root.render(null));
+
+  await render('confirm-dialog', 'busy');
+  expect(button('끝내는 중…')?.disabled).toBe(true);
+  expect(button('취소')?.disabled).toBe(true);
+  await act(async () => root.render(null));
+
+  await render('review-dialog', 'open');
+  expect(button('별점 제출')?.disabled).toBe(true);
+  await click('나중에');
+  expect(button('별점 제출')).toBeUndefined();
+  await click('리뷰 창 다시 열기');
+  expect(button('별점 제출')).toBeDefined();
+  await act(async () => root.render(null));
+
+  await render('review-dialog', 'rated');
+  expect(button('별점 제출')?.disabled).toBe(false);
+});
+
+it('공용 상단바는 제품과 같은 화면에만 얹히고, 지금 메뉴를 표시한다', async () => {
+  const current = () => host.querySelector('nav[aria-label="홈 메뉴"] [aria-current="page"]');
+  await render('home');
+  expect(current()?.textContent).toBe('내 피치');
+  await act(async () => root.render(null));
+  await render('pitch-create');
+  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeTruthy();
+  expect(current()).toBeNull();
+  // 경로 줄은 상단바의 "내 피치"가 대신한다(#738)
+  expect(host.querySelector('nav[aria-label="경로"]')).toBeNull();
+  await act(async () => root.render(null));
+  await render('stage');
+  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
+  await act(async () => root.render(null));
+  // 시작 전 세팅은 상단바 없이 자체 틀을 쓴다(#738 최종, #706에서 정함)
+  await render('prepare-mission');
+  expect(host.querySelector('nav[aria-label="홈 메뉴"]')).toBeNull();
+});
+
+it('끝내기 확인은 장이 바뀌면 풀리고, 마지막 장에서는 안내 글자가 없다', async () => {
+  await render('stage', 'last-slide');
+  expect(host.querySelector('#end-hint')).toBeNull();
+  expect(button('발표 끝내기')?.getAttribute('aria-describedby')).toBeNull();
+  await click('발표 끝내기');
+  expect(button('정말 끝낼까요?')).toBeDefined();
+  // 이전 장에 갔다 돌아오면 처음부터 다시 묻는다(제품 useEndConfirm)
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+  });
+  await act(async () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+  });
+  expect(host.textContent).toContain('SLIDE 12 / 12');
+  expect(button('정말 끝낼까요?')).toBeUndefined();
+  expect(button('발표 끝내기')?.disabled).toBe(false);
+});
+
+it('무대 시작 전 안내: 막힌 경우에만 다시 시도 · 장치 점검으로를 두고, 시작 전에는 끝낼 수 없다', async () => {
+  await render('stage', 'opening');
+  expect(host.textContent).toContain('카메라와 마이크를 여는 중이에요');
+  expect(button('다시 시도')).toBeUndefined();
+  await act(async () => root.render(null));
+  await render('stage', 'busy');
+  expect(button('다시 시도')).toBeDefined();
+  await toLastSlide();
+  expect(button('발표 끝내기')?.disabled).toBe(true);
+  await click('장치 점검으로');
+  expect(host.textContent).toContain('점검 항목');
 });

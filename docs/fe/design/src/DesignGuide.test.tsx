@@ -5,10 +5,10 @@ import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DesignRoutes } from './DesignGuide';
 
-vi.mock('./catalog', () => ({
-  PRODUCT_ORIGIN: 'http://localhost:3000',
-  screens: [
+vi.mock('./catalog', () => {
+  const screens = [
     {
+      kind: 'screen',
       id: 'pitch-create',
       title: '피치 생성',
       group: '연습',
@@ -28,6 +28,7 @@ vi.mock('./catalog', () => ({
       next: [{ label: '시작 전 세팅', screenId: 'prepare' }],
     },
     {
+      kind: 'screen',
       id: 'prepare',
       title: '시작 전 세팅',
       group: '연습',
@@ -46,6 +47,7 @@ vi.mock('./catalog', () => ({
       next: [],
     },
     {
+      kind: 'screen',
       id: 'new-idea',
       title: '새 화면 시안',
       group: '시안',
@@ -59,8 +61,41 @@ vi.mock('./catalog', () => ({
       sources: [],
       next: [],
     },
-  ],
-}));
+  ];
+  const foundation = {
+    kind: 'foundation',
+    id: 'colors',
+    title: '색',
+    group: '기초',
+    status: '제품에 있음',
+    summary: '색 견본',
+    states: [{ id: 'all', label: '전체 색', description: '모든 색' }],
+    rules: ['정한 색만 쓴다.'],
+    tokens: [],
+    sources: [],
+  };
+  const component = {
+    kind: 'component',
+    id: 'button',
+    title: '버튼',
+    group: '컴포넌트',
+    status: '제품에 있음',
+    summary: '누르는 것',
+    states: [{ id: 'variants', label: '종류', description: '세 종류' }],
+    rules: ['primary는 하나만.'],
+    tokens: [],
+    sources: ['frontend/src/shared/ui/Button.tsx'],
+    file: 'src/ui/Button.tsx',
+    props: [['variant', "'primary' | 'secondary'", '기본 primary']],
+    code: '<Button>시작</Button>',
+    knownIssues: ['포커스 색이 한 곳 다르다.'],
+  };
+  return {
+    PRODUCT_ORIGIN: 'http://localhost:3000',
+    screens,
+    entries: [foundation, component, ...screens],
+  };
+});
 
 // 미리보기 iframe은 jsdom에서 앱을 불러오지 않으므로, 같은 약속(화면 · 상태 · 이동)을 지키는 대역으로 바꾼다
 vi.mock('./PreviewFrame', () => ({
@@ -232,10 +267,13 @@ it('설명 패널에 디자인 값 · 제품과 다른 점 · 제품에서 열�
   expect(host.querySelectorAll('main')).toHaveLength(1);
 });
 
-it('옛 시안 주소는 같은 ID의 화면으로, 없는 이름은 기본 화면으로 바꿔 연다', async () => {
+it('옛 시안 주소는 같은 ID로, 같은 ID가 없는 공용 컴포넌트 시안은 버튼으로, 없는 이름은 기본 화면으로 연다', async () => {
   await render('/prepare');
   expect(address()).toBe('/?screen=prepare');
   expect(host.querySelector('[data-preview="prepare:ready"]')).toBeTruthy();
+  await act(async () => root.render(null));
+  await render('/components');
+  expect(address()).toBe('/?screen=button');
   await act(async () => root.render(null));
   await render('/no-such-draft');
   expect(address()).toBe('/');
@@ -289,4 +327,72 @@ it('목록에서 새로 고른 화면은 두 보기 모두 기본 상태로 연�
   expect(host.querySelector('[data-preview="pitch-create:ready"]')).toBeTruthy();
   await click('전체 화면');
   expect(host.querySelector('[data-preview="pitch-create:ready"]')).toBeTruthy();
+});
+
+it('기초 항목은 쓰는 규칙을 보이고, 전체 보기는 같은 갈래만 나란히 둔다', async () => {
+  await render('/?screen=colors');
+  expect(host.textContent).toContain('기초 설명');
+  expect(host.textContent).toContain('쓰는 규칙');
+  expect(host.textContent).not.toContain('제품 경로');
+  expect(host.textContent).not.toContain('이어지는 화면');
+  await click('전체 화면');
+  expect(
+    [...host.querySelectorAll('[data-preview]')].map((el) => el.getAttribute('data-preview')),
+  ).toEqual(['colors:all']);
+  expect(host.textContent).toContain('전체 기초');
+});
+
+it('컴포넌트는 속성 · 사용 예 · 설계서 파일을 보이고, 사용 예를 복사한다', async () => {
+  const writeText = vi.fn(() => Promise.resolve());
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+  await render('/?screen=button');
+  expect(host.textContent).toContain('컴포넌트 설명');
+  expect(host.textContent).toContain('속성');
+  expect(host.textContent).toContain('설계서 src/ui/Button.tsx');
+  // 알려진 문제는 쓰는 규칙과 따로 보인다
+  expect(host.textContent).toContain('알려진 문제 (FE와 정할 것)포커스 색이 한 곳 다르다.');
+  expect(host.querySelector('pre')?.textContent).toBe('<Button>시작</Button>');
+  await click('복사');
+  expect(writeText).toHaveBeenCalledWith('<Button>시작</Button>');
+  expect(host.textContent).toContain('복사했어요.');
+});
+
+it('휴대폰 폭으로 보면 노트북 · 데스크톱 전용을 알리고, 크기 조절은 주소에 남는다', async () => {
+  await render('/?screen=prepare&device=mobile');
+  expect(host.querySelector('[role="note"]')?.textContent).toContain('노트북 · 데스크톱 전용');
+  expect(host.textContent).toContain('390 × 844');
+  await click('가로 · 세로 돌리기');
+  expect(address()).toContain('rotate=1');
+  // 눕히면 휴대폰 폭이 아니라 안내를 내린다
+  expect(host.querySelector('[role="note"]')).toBeNull();
+  await click('가로 · 세로 돌리기');
+  await click('휴대폰 안내 화면 보기');
+  expect(address()).toContain('screen=unsupported');
+
+  await act(async () => root.render(null));
+  // 팀 기준 크기에서는 안내가 없다
+  await render('/?screen=pitch-create&device=team-laptop');
+  expect(host.querySelector('[role="note"]')).toBeNull();
+  expect(host.textContent).toContain('1366 × 650');
+  const size = [...host.querySelectorAll('select')].find((select) =>
+    select.closest('label')?.textContent?.startsWith('미리보기 크기'),
+  )!;
+  await choose(size, 'custom');
+  expect(address()).toContain('device=custom');
+  expect(address()).toContain('w=1280');
+  await choose(size, 'fit');
+  expect(address()).not.toContain('device=');
+  expect(address()).not.toContain('w=');
+});
+
+it('브라우저 확대는 주소에 남고, 페이지가 쓰는 크기를 함께 보인다', async () => {
+  await render('/?screen=pitch-create&device=laptop-wide');
+  const zoom = [...host.querySelectorAll('select')].find((select) =>
+    select.closest('label')?.textContent?.startsWith('브라우저 확대'),
+  )!;
+  await choose(zoom, '125');
+  expect(address()).toContain('zoom=125');
+  expect(host.textContent).toContain('1366 × 768 · 125% → 페이지 1093 × 614');
+  await choose(zoom, '100');
+  expect(address()).not.toContain('zoom=');
 });

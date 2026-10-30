@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react';
+import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { Link, type LinkProps } from 'react-router';
 
 type ButtonVariant = 'primary' | 'secondary' | 'quiet';
@@ -25,16 +25,16 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize;
 }
 
-/** 동작은 Button, 화면 이동은 ButtonLink. 기본값으로 폼을 제출하지 않습니다. */
-export function Button({
-  variant = 'primary',
-  size = 'md',
-  type = 'button',
-  className,
-  ...props
-}: ButtonProps) {
-  return <button {...props} type={type} className={styles(variant, size, className)} />;
-}
+/**
+ * 동작은 Button, 화면 이동은 ButtonLink. 기본값으로 폼을 제출하지 않습니다.
+ * ref 는 창을 닫은 뒤 초점을 되돌리는 곳이 씁니다 (DeviceCheckPage)
+ */
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = 'primary', size = 'md', type = 'button', className, ...props },
+  ref,
+) {
+  return <button {...props} ref={ref} type={type} className={styles(variant, size, className)} />;
+});
 
 export function ButtonLink({
   variant = 'primary',
