@@ -628,11 +628,9 @@ export function DeviceCheckPage() {
               compact={
                 baseVoice.status === 'READING' ||
                 Boolean(
-                  notice ||
                   prepareBlocked ||
                   startError ||
                   deviceError ||
-                  cal.advice ||
                   cal.status === 'FAILED' ||
                   meterError ||
                   (audioState && audioState !== 'running'),

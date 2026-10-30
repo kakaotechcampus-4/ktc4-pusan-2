@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { PrepareResponse, PracticeCombo } from '@/types/api';
+import type { CalibrationFailReason } from '@/workers/gaze.contract';
+import type { DeviceError } from '../media/useCameraStream';
 import { DeviceCheckPage } from './DeviceCheckPage';
 import { usePrepareStore } from './prepareStore';
 import { setSessionTicket } from '../lib/db';
@@ -12,6 +14,8 @@ const fixture = vi.hoisted(() => ({
   live: true,
   micOk: true,
   gazeStatus: 'DONE',
+  gazeAdvice: null as CalibrationFailReason | null,
+  deviceError: null as DeviceError | null,
   voiceStatus: 'IDLE',
   data: null as unknown as PrepareResponse,
   request: vi.fn(),
@@ -31,10 +35,10 @@ const stream = {
   getAudioTracks: () => [{ getSettings: () => ({ deviceId: 'mic-a' }) }],
 };
 vi.mock('../media/useCameraStream', () => ({
-  DEVICE_ERROR_MESSAGE: {},
+  DEVICE_ERROR_MESSAGE: { PERMISSION_DENIED: '카메라와 마이크 사용을 허용해 주세요.' },
   useCameraStream: () => ({
     stream: fixture.live ? stream : null,
-    error: null,
+    error: fixture.deviceError,
     request: fixture.request,
   }),
 }));
@@ -57,7 +61,7 @@ vi.mock('./useGazeSetup', () => ({
   CALIBRATION_FAIL_MESSAGE: {},
   useGazeSetup: () => ({
     status: fixture.gazeStatus,
-    advice: null,
+    advice: fixture.gazeAdvice,
     failReason: null,
     unavailableMessage: null,
     overlay: false,
@@ -114,6 +118,8 @@ beforeEach(() => {
   fixture.live = true;
   fixture.micOk = true;
   fixture.gazeStatus = 'DONE';
+  fixture.gazeAdvice = null;
+  fixture.deviceError = null;
   fixture.voiceStatus = 'IDLE';
   fixture.request.mockReset().mockResolvedValue(undefined);
   fixture.create.mockReset().mockResolvedValue({ takeId: 't1', takeNumber: 4 });
@@ -249,6 +255,52 @@ it('restores the normal mission list after voice reading completes', async () =>
   await render();
   expect(host.querySelectorAll('.prepare-mission-list li')).toHaveLength(3);
   expect(host.querySelector('.prepare-missions-compact')).toBeNull();
+});
+
+it('keeps missions visible and starting available when calibration has non-blocking advice', async () => {
+  fixture.gazeAdvice = 'LOW_LOO_ACCURACY';
+  await render();
+  expect(host.querySelector('.prepare-equipment')!.textContent).toContain('시선 기준이 흐릿해요.');
+  expect(host.querySelectorAll('.prepare-mission-list li')).toHaveLength(3);
+  expect(host.querySelector('.prepare-missions-compact')).toBeNull();
+  expect(findButton('Take 4 시작하기').disabled).toBe(false);
+});
+
+it.each(['PENDING', 'FAILED'] as const)(
+  'keeps missions visible while a newer script is %s',
+  async (status) => {
+    fixture.data.newer_script = {
+      id: 'new-script',
+      version: 10,
+      parse_status: status,
+      error_code: null,
+    };
+    await render();
+    expect(host.querySelector('.prepare-pitch')!.textContent).toContain('새 대본(v10)');
+    expect(host.querySelectorAll('.prepare-mission-list li')).toHaveLength(3);
+    expect(host.querySelector('.prepare-missions-compact')).toBeNull();
+    expect(findButton('Take 4 시작하기').disabled).toBe(false);
+  },
+);
+
+it('still summarizes missions for a device permission error and keeps full mission access', async () => {
+  fixture.live = false;
+  fixture.deviceError = 'PERMISSION_DENIED';
+  await render();
+  expect(host.querySelector('.prepare-equipment')!.textContent).toContain('사용을 허용해 주세요.');
+  expect(host.querySelector('.prepare-missions-compact')).not.toBeNull();
+  expect(host.querySelector('.prepare-mission-list')).toBeNull();
+  expect(findButton('전체 미션 보기')).toBeTruthy();
+});
+
+it('still summarizes missions after starting fails and keeps retry available', async () => {
+  fixture.create.mockRejectedValueOnce(new Error('시작 실패'));
+  await render();
+  await act(async () => findButton('Take 4 시작하기').click());
+  expect(host.querySelector('.prepare-footer')!.textContent).toContain('요청을 처리하지 못했어요.');
+  expect(host.querySelector('.prepare-missions-compact')).not.toBeNull();
+  expect(findButton('전체 미션 보기')).toBeTruthy();
+  expect(findButton('Take 4 시작하기').disabled).toBe(false);
 });
 
 it('locks device and script choices while checking for an existing Take, and restores focus after cancellation', async () => {
