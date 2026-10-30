@@ -1,8 +1,6 @@
 /* A안: 생성 화면만 밝은 지면과 대비를 조정합니다. 공용 토큰은 바꾸지 않습니다. */
 .create-page {
   --color-greige: #faf9f6;
-  --color-panel: #ffffff;
-  --color-cream: #f1f0eb;
   --color-ink: #17191e;
   --color-stone: #5e626b;
   --color-line: #e3e3e3;
@@ -150,16 +148,18 @@
   font-size: 1rem;
 }
 .create-content {
+  --create-section-inset: 2.5rem;
   min-width: 0;
   border-left: 1px solid var(--color-line);
-  padding: 2rem 2.5rem;
+  padding: 2rem var(--create-section-inset);
 }
 .create-intro {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 2rem;
-  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  margin-bottom: 0;
 }
 .create-intro h1 {
   font-size: 1.75rem;
@@ -201,13 +201,23 @@
 .create-content > section {
   min-width: 0;
   scroll-margin-top: 1.5rem;
-  padding-bottom: 2rem;
-  margin-bottom: 2rem;
-  border-bottom: 1px solid var(--color-line);
+  padding: 2rem var(--create-section-inset);
+  margin-inline: calc(-1 * var(--create-section-inset));
+  border-bottom: 1px solid var(--color-line-strong);
+  background: var(--color-panel);
+}
+.create-content > section:nth-of-type(even) {
+  background: var(--color-cream);
 }
 .create-content > section:last-child {
   border-bottom: 0;
   margin-bottom: 0;
+}
+.create-content :is(input, textarea) {
+  border-color: var(--color-stone);
+}
+.create-content :is(input, textarea)::placeholder {
+  color: var(--color-stone);
 }
 .create-content > section:focus {
   outline: none;
@@ -456,6 +466,7 @@
     padding-inline: 0.75rem;
   }
   .create-content {
+    --create-section-inset: 1.5rem;
     padding: 1.5rem;
   }
   .create-intro {
@@ -490,6 +501,7 @@
     padding-top: 0.5rem;
   }
   .create-content {
+    --create-section-inset: 1.25rem;
     padding: 1.25rem;
     border-left: 0;
   }
