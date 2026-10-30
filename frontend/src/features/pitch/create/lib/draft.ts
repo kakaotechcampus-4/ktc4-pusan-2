@@ -255,6 +255,13 @@ export const infoChanged = (a: InfoForm, b: InfoForm): boolean =>
 /** 저장할 수 있는 발표정보 — 허용오차까지 아는 것 */
 export type KnownInfo = InfoForm & { lowerToleranceSec: number; upperToleranceSec: number };
 
+/** 편집 중 비운 편차만 저장 경계에서 0으로 확정합니다. */
+export const normalizeInfo = (form: InfoForm): KnownInfo => ({
+  ...form,
+  lowerToleranceSec: form.lowerToleranceSec ?? 0,
+  upperToleranceSec: form.upperToleranceSec ?? 0,
+});
+
 /** 시간 입력이 유효한가. 모르는 허용오차를 0으로 저장하지 않습니다 */
 export const infoReady = (form: InfoForm): form is KnownInfo =>
   form.lowerToleranceSec !== null &&

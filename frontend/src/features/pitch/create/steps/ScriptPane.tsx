@@ -407,6 +407,9 @@ function MappingDialog({
     <dialog
       ref={ref}
       aria-labelledby={titleId}
+      onCancel={(event) => {
+        if (script.parse.status === 'pending') event.preventDefault();
+      }}
       onClose={() => {
         // StrictMode의 effect 재실행 중 닫힌 창의 지연 이벤트는 다시 열린 창을 닫지 않습니다.
         if (!ref.current?.open) onClose();
@@ -433,12 +436,13 @@ function MappingDialog({
         <button
           type="button"
           className="inline-flex min-h-11 items-center justify-center border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
+          disabled={script.parse.status === 'pending'}
           onClick={() => ref.current?.close()}
         >
           닫기
         </button>
       </header>
-      <MappingEditor script={script} linked={linked} />
+      <MappingEditor script={script} linked={linked} onSaved={onClose} />
     </dialog>
   );
 }
@@ -519,7 +523,15 @@ function MappingReview({
   );
 }
 
-function MappingEditor({ script, linked }: { script: ScriptVersion; linked: SlideVersion | null }) {
+function MappingEditor({
+  script,
+  linked,
+  onSaved,
+}: {
+  script: ScriptVersion;
+  linked: SlideVersion | null;
+  onSaved: () => void;
+}) {
   const [selected, setSelected] = useState(0);
   const editMappingBlock = useCreateStore((s) => s.editMappingBlock);
   const saveMapping = useCreateStore((s) => s.saveMapping);
@@ -669,7 +681,14 @@ function MappingEditor({ script, linked }: { script: ScriptVersion; linked: Slid
             <button
               type="button"
               disabled={!canSave}
-              onClick={() => saveMapping(script.version)}
+              onClick={() => {
+                saveMapping(script.version);
+                if (
+                  useCreateStore.getState().draft.scripts.find((v) => v.version === script.version)
+                    ?.saved
+                )
+                  onSaved();
+              }}
               className="h-12 w-36 rounded-lg border border-ink bg-white text-sm font-bold hover:bg-panel disabled:cursor-not-allowed disabled:border-line disabled:text-ink/80 disabled:hover:bg-white"
             >
               저장
@@ -714,12 +733,12 @@ export function ScriptPane({ script }: { script: ScriptVersion | null }) {
     return (
       <div className="flex flex-1 flex-col">
         <PaneHeading title="2. 대본 연결" subtitle="선택한 슬라이드에 맞춰 대본을 준비해 주세요." />
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-line-strong bg-white">
+        <div className="flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed border-line-strong bg-white px-5 py-8 text-center">
           <p className="text-sm text-ink/80">아직 대본이 없어요</p>
           <button
             type="button"
             onClick={() => addScriptVersion()}
-            className="rounded-lg bg-coral-deep px-5 py-2.5 text-sm font-bold text-white hover:bg-ink"
+            className="min-h-11 rounded-lg bg-coral-deep px-5 py-2.5 text-sm font-bold text-white hover:bg-ink"
           >
             대본 작성 시작
           </button>

@@ -354,7 +354,11 @@ it('확인 창에서 장을 이동하고 편집해도 닫기와 재열기 후 �
   );
   await act(async () => button('저장').click());
   expect(state().draft.scripts[0]?.saved).toBe(true);
+  expect(host.querySelector('dialog')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  await act(async () => trigger.click());
   expect(host.querySelector('dialog')?.textContent).toContain('저장 완료');
+  expect(button('저장').disabled).toBe(true);
 });
 
 it('평가기준 정리 응답을 받기 전에는 점검 화면으로 넘어가지 않는다', async () => {
@@ -475,4 +479,136 @@ it('평가기준 원문을 고친 채 다른 버전이 생겨도 고치던 원�
   expect(host.querySelector<HTMLTextAreaElement>('[aria-label="평가기준 작성"]')?.value).toBe(
     '아직 정리하지 않은 원문',
   );
+});
+
+function numberField(label: string) {
+  const id = [...host.querySelectorAll('label')].find((el) => el.textContent === label)!.htmlFor;
+  return document.getElementById(id) as HTMLInputElement;
+}
+async function inputNumber(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+async function arrow(input: HTMLInputElement, key: string) {
+  await act(async () =>
+    input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })),
+  );
+}
+
+it('편차는 편집 중 비울 수 있고 blur 및 저장 경계에서만 0으로 확정한다', async () => {
+  ready();
+  await mount();
+  const lower = numberField('짧게 허용');
+  const upper = numberField('길게 허용');
+  expect([lower.value, upper.value]).toEqual(['30', '60']);
+  await inputNumber(lower, '');
+  expect(lower.value).toBe('');
+  expect(state().infoEdits?.lowerToleranceSec).toBeNull();
+  expect(state().draft.lowerToleranceSec).toBe(30);
+  await inputNumber(lower, '15');
+  expect(lower.validity.stepMismatch).toBe(false);
+  await inputNumber(lower, '');
+  await act(async () => lower.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
+  expect(lower.value).toBe('0');
+  await inputNumber(upper, '');
+  expect(upper.value).toBe('');
+  expect(button('발표정보 저장').disabled).toBe(false);
+  await act(async () => button('발표정보 저장').click());
+  await vi.waitFor(() =>
+    expect(updatePitch).toHaveBeenCalledWith(
+      'pitch-test',
+      expect.objectContaining({ lower_deviation: 0, upper_deviation: 0 }),
+    ),
+  );
+  await vi.waitFor(() => expect(upper.value).toBe('0'));
+});
+
+it('스피너와 방향키는 직접 입력한 15에서도 10초씩 움직이고 경계에서 멈춘다', async () => {
+  ready();
+  await mount();
+  for (const label of ['짧게 허용', '길게 허용']) {
+    const input = numberField(label);
+    await inputNumber(input, '15');
+    const control = (suffix: string) =>
+      host.querySelector<HTMLButtonElement>(`[aria-label="${label} 10초 ${suffix}"]`)!;
+    await act(async () => control('증가').click());
+    expect(input.value).toBe('25');
+    await act(async () => control('감소').click());
+    expect(input.value).toBe('15');
+    await arrow(input, 'ArrowUp');
+    expect(input.value).toBe('25');
+    await arrow(input, 'ArrowDown');
+    expect(input.value).toBe('15');
+    await inputNumber(input, '5');
+    await arrow(input, 'ArrowDown');
+    expect(input.value).toBe('0');
+    expect(control('감소').disabled).toBe(true);
+    await arrow(input, 'ArrowDown');
+    expect(input.value).toBe('0');
+    const max = Number(input.max);
+    await inputNumber(input, String(max - 5));
+    await act(async () => control('증가').click());
+    expect(input.value).toBe(String(max));
+    await arrow(input, 'ArrowUp');
+    expect(input.value).toBe(String(max));
+    expect(control('증가').disabled).toBe(true);
+    await inputNumber(input, String(max + 1));
+    expect(button('발표정보 저장').disabled).toBe(true);
+    await inputNumber(input, '15');
+    expect(input.validity.stepMismatch).toBe(false);
+  }
+  await inputNumber(numberField('목표 발표시간'), '1');
+  expect(numberField('짧게 허용').max).toBe('60');
+  await inputNumber(numberField('짧게 허용'), '55');
+  await arrow(numberField('짧게 허용'), 'ArrowUp');
+  expect(numberField('짧게 허용').value).toBe('60');
+});
+
+it('재매핑 중 중복 저장·닫기를 막고 실패하면 창과 편집 내용을 보존한다', async () => {
+  ready();
+  await mount();
+  await act(async () => button('매핑 확인/수정').click());
+  await act(async () => state().editMappingBlock(1, 0, '보존할 수정 대본'));
+  await act(async () => state().patchScript(1, { parse: { status: 'pending' } }));
+  expect(button('저장').disabled).toBe(true);
+  expect(button('닫기').disabled).toBe(true);
+  const cancel = new Event('cancel', { cancelable: true });
+  await act(async () => host.querySelector('dialog')!.dispatchEvent(cancel));
+  expect(cancel.defaultPrevented).toBe(true);
+  await act(async () =>
+    state().patchScript(1, { parse: { status: 'failed', message: '서버 저장 실패' } }),
+  );
+  expect(host.querySelector('dialog')?.textContent).toContain('서버 저장 실패');
+  expect(host.querySelector<HTMLTextAreaElement>('dialog textarea')?.value).toBe(
+    '보존할 수정 대본',
+  );
+  expect(button('저장').disabled).toBe(true);
+  expect(button('닫기').disabled).toBe(false);
+});
+
+it('PDF 열기 실패는 확인하지 않고 재열기·재시도 후 확인하면 닫힌다', async () => {
+  ready();
+  useCreateStore.setState({ pendingSlideReviews: [1] });
+  const retry = vi.fn();
+  vi.mocked(usePdfDocument).mockReturnValue({ url: '/test.pdf', failed: true, retry });
+  await mount();
+  await act(async () => button('슬라이드 확인').click());
+  expect(button('확인 완료').disabled).toBe(true);
+  expect(host.querySelector('dialog')?.textContent).toContain('PDF를 열지 못했어요');
+  await act(async () => button('다시 열기').click());
+  expect(retry).toHaveBeenCalledOnce();
+  await act(async () => button('닫기').click());
+  expect(state().pendingSlideReviews).toEqual([1]);
+  vi.mocked(usePdfDocument).mockReturnValue({
+    url: '/test.pdf',
+    doc: { numPages: 1 } as PDFDocumentProxy,
+  });
+  await act(async () => button('슬라이드 확인').click());
+  await act(async () => button('확인 완료').click());
+  expect(host.querySelector('dialog')).toBeNull();
+  expect(document.activeElement).toBe(button('슬라이드 확인'));
+  await act(async () => button('슬라이드 확인').click());
+  expect(button('확인 완료').disabled).toBe(true);
 });
