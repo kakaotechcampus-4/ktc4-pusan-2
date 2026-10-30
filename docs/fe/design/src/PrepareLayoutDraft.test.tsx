@@ -159,3 +159,26 @@ it('shows start locks and exam navigation without starting a product take', asyn
   await click('Take 3 실전 모드로 시작');
   expect(navigate).toHaveBeenCalledWith('stage', 'exam');
 });
+
+it('fills and clears one row of equal segments from left to right using example input only', async () => {
+  for (const [state, active] of [
+    ['audio-low', 12],
+    ['audio-high', 45],
+    ['audio-low', 12],
+    ['mic-error', 0],
+  ] as const) {
+    await render(state);
+    const meter = host.querySelector('[role="meter"]')!;
+    const segments = [...meter.querySelectorAll('.prepare-draft-audio-track > span')];
+    expect(segments).toHaveLength(48);
+    expect(segments.map((segment) => segment.getAttribute('data-active'))).toEqual(
+      segments.map((_, index) => String(index < active)),
+    );
+    expect(meter.querySelectorAll('[data-band="green"]')).toHaveLength(32);
+    expect(meter.querySelectorAll('[data-band="amber"]')).toHaveLength(10);
+    expect(meter.querySelectorAll('[data-band="brick"]')).toHaveLength(6);
+    expect(meter.textContent).toBe('');
+    expect(meter.querySelector('input, button')).toBeNull();
+    expect(meter.querySelector('svg')).not.toBeNull();
+  }
+});

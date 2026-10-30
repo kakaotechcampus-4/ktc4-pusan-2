@@ -86,6 +86,55 @@
   width: 100%;
   aspect-ratio: 16 / 9;
 }
+.prepare-draft-camera-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+/* 승인된 입력 미터 제안색만 이 시안에 한정한다. 시선 상태색·전역 토큰과 별개다. */
+.prepare-draft-audio-meter {
+  --prepare-audio-panel: #f5f0e9;
+  --prepare-audio-line: #c6bcac;
+  --prepare-audio-ink: #2a2723;
+  --prepare-audio-off: #e8e1d7;
+  --prepare-audio-green: #78c57f;
+  --prepare-audio-amber: #e4bf45;
+  --prepare-audio-brick: #da5248;
+  display: flex;
+  width: 100%;
+  height: 40px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--prepare-audio-line);
+  background: var(--prepare-audio-panel);
+  color: var(--prepare-audio-ink);
+  padding: 8px 10px;
+}
+.prepare-draft-audio-meter > svg {
+  flex-shrink: 0;
+}
+.prepare-draft-audio-track {
+  display: grid;
+  min-width: 0;
+  height: 18px;
+  flex: 1;
+  grid-template-columns: repeat(48, minmax(0, 1fr));
+  gap: 3px;
+  background: var(--prepare-audio-panel);
+}
+.prepare-draft-audio-track > span {
+  background: var(--prepare-audio-off);
+}
+.prepare-draft-audio-track > [data-active='true'][data-band='green'] {
+  background: var(--prepare-audio-green);
+}
+.prepare-draft-audio-track > [data-active='true'][data-band='amber'] {
+  background: var(--prepare-audio-amber);
+}
+.prepare-draft-audio-track > [data-active='true'][data-band='brick'] {
+  background: var(--prepare-audio-brick);
+}
 .prepare-draft-controls {
   display: flex;
   min-width: 0;

@@ -3,6 +3,7 @@ import { PrepareDraftCheckCard } from '@/ui/PrepareDraftCheckCard';
 import { PrepareDraftFrame } from '@/ui/PrepareDraftFrame';
 import { PrepareDraftMissionCard } from '@/ui/PrepareDraftMissionCard';
 import { PrepareDraftScriptMode } from '@/ui/PrepareDraftScriptMode';
+import { PrepareDraftAudioMeter } from '@/ui/PrepareDraftAudioMeter';
 import type { ScriptMode } from '@/ui/ScriptModeChoice';
 import { prepareDraftFixture } from './prepareDraftFixtures';
 import { PITCH, type Navigate } from './shared';
@@ -86,12 +87,15 @@ function Draft({
         PM 검토용 시안 · 실제 장비와 서버를 사용하지 않아요.
       </p>
       <div className="prepare-draft-content">
-        <div className="prepare-draft-camera prepare-draft-camera-example">
-          <p>
-            {camera
-              ? '카메라 미리보기 예시 · 실제 촬영 없음'
-              : '장비를 켜면 카메라 미리보기가 보여요.'}
-          </p>
+        <div className="prepare-draft-camera-column">
+          <div className="prepare-draft-camera prepare-draft-camera-example">
+            <p>
+              {camera
+                ? '카메라 미리보기 예시 · 실제 촬영 없음'
+                : '장비를 켜면 카메라 미리보기가 보여요.'}
+            </p>
+          </div>
+          <PrepareDraftAudioMeter level={mic ? fixture.audioLevel : 0} />
         </div>
         <div className="prepare-draft-controls">
           <PrepareDraftCheckCard
