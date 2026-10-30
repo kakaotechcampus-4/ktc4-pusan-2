@@ -22,6 +22,15 @@ const state = () => useCreateStore.getState();
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   Element.prototype.scrollIntoView = vi.fn();
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    if (this.open) {
+      this.open = false;
+      this.dispatchEvent(new Event('close'));
+    }
+  };
   state().reset();
   state().setPitchId('pitch1');
   state().attachSlides({
@@ -30,6 +39,7 @@ beforeEach(() => {
     fileName: 'slides.pdf',
     presentationVersionId: 'pv1',
   });
+  state().confirmSlides(1);
   state().addScriptVersion('first script');
   state().patchScript(1, {
     remote: { id: 'sv1', version: 1 },
@@ -87,6 +97,7 @@ it.each([false, true])(
         standards: ['출처 말하기'],
         exceptText: null,
       });
+      state().confirmCriteria(1);
     }
     state().select('criteria');
     await renderCreatePage();
@@ -100,7 +111,13 @@ it.each([false, true])(
     expect(updatePitch).not.toHaveBeenCalled();
 
     vi.mocked(updatePitch).mockResolvedValue({ message: 'ok', pitch_id: 'pitch1' });
-    await clickButton('저장하고 시작 전 점검 →');
+    await clickButton('발표정보 저장');
+    await act(async () => {
+      await vi.waitFor(() => expect(container.textContent).toContain('최종 확인 →'));
+    });
+    await clickButton('최종 확인 →');
+    expect(container.textContent).not.toContain('장치 점검 도착');
+    await clickButton('확인하고 시작 전 점검 →');
     await act(async () => {
       await vi.waitFor(() => expect(container.textContent).toContain('장치 점검 도착'));
     });
@@ -114,12 +131,14 @@ it.each([false, true])(
   },
 );
 
-it('발표정보를 고치지 않았으면 바로 장치 점검으로 이동한다', async () => {
+it('발표정보를 고치지 않았어도 최종 확인 뒤 장치 점검으로 이동한다', async () => {
   useCreateStore.setState({ entryKey: 'default' });
   state().setMeta({ ...state().draft, title: 'Plato ch01' });
   state().select('criteria');
   await renderCreatePage();
-  await clickButton('시작 전 점검 →');
+  await clickButton('최종 확인 →');
+  expect(container.textContent).not.toContain('장치 점검 도착');
+  await clickButton('확인하고 시작 전 점검 →');
   expect(container.textContent).toContain('장치 점검 도착');
   expect(updatePitch).not.toHaveBeenCalled();
 });
@@ -136,7 +155,9 @@ it('저장된 대본 V1을 본문에서 선택한 조합으로 점검에 넘긴�
   state().saveMapping(2);
   state().select('script', 1);
   await renderCreatePage();
-  await clickButton('시작 전 점검 →');
+  await clickButton('최종 확인 →');
+  expect(container.textContent).not.toContain('장치 점검 도착');
+  await clickButton('확인하고 시작 전 점검 →');
   expect(toPracticeCombo(state().draft, state().chosen)?.scriptVersionId).toBe('sv1');
 });
 
@@ -157,6 +178,8 @@ it('고친 매핑을 다시 매핑하고 저장하기 전에는 점검으로 이
   );
   expect(toPracticeCombo(state().draft, state().chosen)).toBeNull();
   await act(async () => state().saveMapping(1));
-  await clickButton('시작 전 점검 →');
+  await clickButton('최종 확인 →');
+  expect(container.textContent).not.toContain('장치 점검 도착');
+  await clickButton('확인하고 시작 전 점검 →');
   expect(container.textContent).toContain('장치 점검 도착');
 });

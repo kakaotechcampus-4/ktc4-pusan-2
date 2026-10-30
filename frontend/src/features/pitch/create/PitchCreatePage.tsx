@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useIsMutating, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { ApiFailure } from '@/shared/api/tokenStore';
@@ -24,6 +24,8 @@ import { CriteriaPane } from './steps/CriteriaPane';
 import { InfoPane } from './steps/InfoPane';
 import { ScriptPane } from './steps/ScriptPane';
 import { SlidePane } from './steps/SlidePane';
+import { FinalReviewDialog } from './FinalReviewDialog';
+import type { Chosen, PitchDraft } from './lib/draft';
 
 /**
  * 새로 시작한 작성인지 보고, 그렇다면 앞 피치를 비운 뒤에 화면을 그립니다.
@@ -183,10 +185,17 @@ function PitchCreateScreen() {
   const queryClient = useQueryClient();
   const busy = savingResources || criteriaSaving > 0;
   const criteriaUnsaved = useCreateStore(selectCriteriaUnsaved);
+  const sourceEdits = useCreateStore((s) => s.criteriaSourceEdits);
   const navigate = useNavigate();
   const save = useSavePitchInfo();
   const viewed = useCreateStore((s) => s.viewedVersions);
   const previousSelection = useRef({ node, version });
+  const [focus, setFocus] = useState({ node, version, active: node });
+  const active = focus.node === node && focus.version === version ? focus.active : node;
+  const setActive = (active: PaneNode) => setFocus({ node, version, active });
+  const [review, setReview] = useState<{ draft: PitchDraft; chosen: Chosen } | null>(null);
+  const pendingSlides = useCreateStore((s) => s.pendingSlideReviews);
+  const pendingCriteria = useCreateStore((s) => s.pendingCriteriaReviews);
 
   useEffect(() => {
     if (previousSelection.current.node !== node || previousSelection.current.version !== version)
@@ -222,59 +231,81 @@ function PitchCreateScreen() {
   const form = infoEdits ?? infoOf(draft);
   const validInfo = form.title.trim() !== '' && infoReady(form);
   const infoDone = !!pitchId && confirmed && !unsaved && validInfo;
-  const slidesDone = (resolved.slides?.pageCount ?? 0) > 0;
+  const slidesDone =
+    !!resolved.slides?.pageCount && !pendingSlides.includes(resolved.slides.version);
+  const criteriaNeedsReview =
+    !!resolved.criteria && pendingCriteria.includes(resolved.criteria.version);
   const done: Record<PaneNode, boolean> = {
     slides: slidesDone,
     script: practice !== null,
     info: infoDone,
-    criteria: !!resolved.criteria?.items.length && !criteriaUnsaved,
+    criteria: !!resolved.criteria?.items.length && !criteriaUnsaved && !criteriaNeedsReview,
   };
   const complete = Number(done.slides) + Number(done.script) + Number(done.info);
   let next: PaneNode | null = null;
   if (!slidesDone) next = 'slides';
   else if (!practice) next = 'script';
   else if (!infoDone) next = 'info';
-  else if (criteriaUnsaved) next = 'criteria';
+  else if (criteriaUnsaved || criteriaNeedsReview) next = 'criteria';
 
   const go = (target: PaneNode) => {
-    select(target, target === 'info' ? null : selectedVersion(target));
+    let targetVersion = target === 'info' ? null : selectedVersion(target);
+    if (target === 'slides' && resolved.slides && pendingSlides.includes(resolved.slides.version))
+      targetVersion = resolved.slides.version;
+    if (target === 'criteria') {
+      const source = Object.entries(sourceEdits).find(
+        ([version, text]) =>
+          text.trim() !== '' &&
+          text !== (draft.criteria.find((v) => v.version === Number(version))?.sourceText ?? ''),
+      );
+      const edited = draft.criteria.find((v) => v.edited);
+      if (source) targetVersion = Number(source[0]) || null;
+      else if (edited) targetVersion = edited.version;
+      else if (criteriaNeedsReview) targetVersion = resolved.criteria?.version ?? null;
+    }
+    setActive(target);
+    select(target, targetVersion);
     scrollToSection(target);
   };
   const start = () => {
-    // 저장 직후의 상태를 읽어 이전 제목·시간이나 다른 자료 조합을 넘기지 않습니다.
-    if (script) useCreateStore.getState().saveMapping(script.version);
     const current = useCreateStore.getState();
-    const combo = toPracticeCombo(current.draft, current.chosen);
+    if (!review || current.draft !== review.draft) return;
+    const combo = toPracticeCombo(current.draft, review.chosen);
+    const used = resolveChosen(current.draft, review.chosen);
     if (
       current.pitchId &&
       combo &&
       current.infoConfirmed &&
+      infoReady(infoOf(current.draft)) &&
       !selectInfoUnsaved(current) &&
       !selectCriteriaUnsaved(current) &&
       !selectBusy(current) &&
+      !current.pendingSlideReviews.includes(combo.slideVersion) &&
+      (!used.criteria || !current.pendingCriteriaReviews.includes(used.criteria.version)) &&
       queryClient.isMutating({ mutationKey: ['pitch-criteria', current.draftId] }) === 0
-    )
+    ) {
+      current.chooseVersion('slides', review.chosen.slides);
+      current.chooseVersion('script', review.chosen.script);
       navigate(`/pitch/${current.pitchId}/device-check`, { state: { practice: combo } });
+    }
   };
-  const saveAndStart = next === 'info' && node === 'info' && validInfo;
   const labels: Record<PaneNode, string> = {
-    slides: '슬라이드 올리기 ↓',
+    slides: '슬라이드 확인하기 ↓',
     script: '대본 연결 확인하기 ↓',
     info: '발표정보 확인하기 ↓',
-    criteria: '평가기준 저장하기 ↓',
+    criteria: '평가기준 확인하기 ↓',
   };
   const hints: Record<PaneNode, string> = {
-    slides: '발표에 사용할 PDF부터 올려 주세요.',
+    slides: 'PDF를 올리고 내용과 순서를 확인해 주세요.',
     script: '슬라이드에 맞춰 대본을 매핑하고 저장해 주세요.',
-    info: '발표정보를 저장하면 준비가 끝나요.',
-    criteria: '고친 평가기준을 먼저 저장해 주세요.',
+    info: '발표정보를 확인하고 저장해 주세요.',
+    criteria: '평가기준을 정리·저장하고 결과를 확인해 주세요.',
   };
 
-  let actionLabel = '시작 전 점검 →';
+  let actionLabel = '최종 확인 →';
   if (busy) actionLabel = '저장하는 중…';
-  else if (saveAndStart) actionLabel = '저장하고 시작 전 점검 →';
   else if (next) actionLabel = labels[next];
-  let actionHint = `슬라이드 V${practice?.slideVersion} / 대본 V${practice?.scriptVersion} · 시작 전 점검으로 이동해요.`;
+  let actionHint = `슬라이드 V${practice?.slideVersion} / 대본 V${practice?.scriptVersion} · 준비한 내용을 최종 확인해 주세요.`;
   if (busy) actionHint = '자료를 저장하고 있어요. 잠시만 기다려 주세요.';
   else if (next) actionHint = hints[next];
 
@@ -290,7 +321,7 @@ function PitchCreateScreen() {
                   <button
                     type="button"
                     onClick={() => go(section.node)}
-                    aria-current={node === section.node ? 'step' : undefined}
+                    aria-current={active === section.node ? 'step' : undefined}
                   >
                     <span className="grid size-[26px] shrink-0 place-items-center rounded-full bg-line text-xs text-ink [[aria-current]>&]:bg-coral-deep [[aria-current]>&]:text-white">
                       {index + 1}
@@ -312,7 +343,7 @@ function PitchCreateScreen() {
             <VersionRail />
           </details>
         </aside>
-        <main className="min-w-0 border-l border-line px-10 py-8 max-[1100px]:p-6 max-[760px]:border-l-0 max-[760px]:p-5 [&>section]:-mx-10 [&>section]:min-w-0 [&>section]:scroll-mt-6 [&>section]:border-b [&>section]:border-line-strong [&>section]:bg-panel [&>section]:px-10 [&>section]:py-8 [&>section:nth-of-type(even)]:bg-cream [&>section:last-child]:border-b-0 max-[1100px]:[&>section]:-mx-6 max-[1100px]:[&>section]:px-6 max-[760px]:[&>section]:-mx-5 max-[760px]:[&>section]:px-5">
+        <main className="min-w-0 border-l border-line px-10 py-8 max-[1100px]:p-6 max-[760px]:border-l-0 max-[760px]:p-5 [&>section]:-mx-10 [&>section]:min-w-0 [&>section]:scroll-mt-6 [&>section]:bg-[color-mix(in_srgb,var(--color-panel)_55%,var(--color-cream))] [&>section[data-current]]:outline [&>section[data-current]]:outline-1 [&>section[data-current]]:-outline-offset-1 [&>section[data-current]]:outline-coral-deep [&>section]:px-10 [&>section]:py-8 [&>section:nth-of-type(even)]:bg-cream max-[1100px]:[&>section]:-mx-6 max-[1100px]:[&>section]:px-6 max-[760px]:[&>section]:-mx-5 max-[760px]:[&>section]:px-5">
           <div className="flex items-center justify-between gap-8 pb-6 max-[1100px]:gap-4 max-[760px]:flex-wrap [&_h1]:text-[1.75rem] [&_h1]:font-bold [&_h1]:tracking-tight [&_p]:mt-2 [&_p]:text-sm [&_p]:text-stone">
             <div>
               <h1>발표 준비</h1>
@@ -325,18 +356,46 @@ function PitchCreateScreen() {
               <progress aria-label="필수 준비" max={3} value={complete} />
             </div>
           </div>
-          <section id="create-slides" aria-label="슬라이드" tabIndex={-1}>
+          <section
+            data-current={active === 'slides' ? true : undefined}
+            onFocusCapture={() => setActive('slides')}
+            onPointerDown={() => setActive('slides')}
+            id="create-slides"
+            aria-label="슬라이드"
+            tabIndex={-1}
+          >
             <fieldset disabled={save.isPending} className="min-w-0">
               <SlidePane slide={slide} />
             </fieldset>
           </section>
-          <section id="create-script" aria-label="대본 연결" tabIndex={-1}>
+          <section
+            data-current={active === 'script' ? true : undefined}
+            onFocusCapture={() => setActive('script')}
+            onPointerDown={() => setActive('script')}
+            id="create-script"
+            aria-label="대본 연결"
+            tabIndex={-1}
+          >
             <ScriptPane key={script?.version ?? 'none'} script={script} />
           </section>
-          <section id="create-info" aria-label="발표정보" tabIndex={-1}>
+          <section
+            data-current={active === 'info' ? true : undefined}
+            onFocusCapture={() => setActive('info')}
+            onPointerDown={() => setActive('info')}
+            id="create-info"
+            aria-label="발표정보"
+            tabIndex={-1}
+          >
             <InfoPane save={save} />
           </section>
-          <section id="create-criteria" aria-label="평가기준 (선택)" tabIndex={-1}>
+          <section
+            data-current={active === 'criteria' ? true : undefined}
+            onFocusCapture={() => setActive('criteria')}
+            onPointerDown={() => setActive('criteria')}
+            id="create-criteria"
+            aria-label="평가기준 (선택)"
+            tabIndex={-1}
+          >
             <CriteriaPane criteria={criteria} />
           </section>
         </main>
@@ -356,14 +415,8 @@ function PitchCreateScreen() {
               className="inline-flex min-h-11 items-center justify-center bg-coral-deep px-5 py-3 text-sm font-bold text-white hover:bg-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
               disabled={busy}
               onClick={() => {
-                if (saveAndStart)
-                  save.mutate(undefined, {
-                    onSuccess: (saved) => {
-                      if (saved) start();
-                    },
-                  });
-                else if (next) go(next);
-                else start();
+                if (next) go(next);
+                else setReview({ draft, chosen: currentChoice });
               }}
             >
               {actionLabel}
@@ -371,6 +424,20 @@ function PitchCreateScreen() {
           </div>
         </div>
       </footer>
+      {review &&
+        review.draft === draft &&
+        next === null &&
+        !busy &&
+        review.chosen.slides === currentChoice.slides &&
+        review.chosen.script === currentChoice.script &&
+        review.chosen.criteria === currentChoice.criteria && (
+          <FinalReviewDialog
+            draft={review.draft}
+            chosen={review.chosen}
+            onClose={() => setReview(null)}
+            onConfirm={start}
+          />
+        )}
     </div>
   );
 }

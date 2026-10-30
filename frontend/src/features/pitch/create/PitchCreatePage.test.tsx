@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { usePdfDocument } from '@/shared/lib/usePdfDocument';
 import { parseStandards } from '@/shared/api/standards';
 import { createPitch, updatePitch } from '@/shared/api/pitch';
 import { PitchCreatePage } from './PitchCreatePage';
@@ -11,7 +13,7 @@ import { useCreateStore } from './createStore';
 
 vi.mock('@/shared/api/standards', () => ({ parseStandards: vi.fn(), saveStandards: vi.fn() }));
 vi.mock('@/shared/api/useLogout', () => ({ useLogout: () => ({ mutate: vi.fn() }) }));
-vi.mock('@/shared/lib/usePdfDocument', () => ({ usePdfDocument: () => null }));
+vi.mock('@/shared/lib/usePdfDocument', () => ({ usePdfDocument: vi.fn(() => null) }));
 vi.mock('@/shared/ui/PdfPage', () => ({ PdfPage: () => null }));
 vi.mock('@/shared/api/pitch', () => ({ createPitch: vi.fn(), updatePitch: vi.fn() }));
 
@@ -59,6 +61,7 @@ function ready() {
     fileName: '발표.pdf',
     fileUrl: '/test.pdf',
   });
+  state().confirmSlides(1);
   state().addScriptVersion('[1]\n발표 내용');
   state().patchScript(1, {
     remote: { id: 'sv1', version: 1 },
@@ -135,6 +138,7 @@ beforeEach(() => {
     this.open = false;
     this.dispatchEvent(new Event('close'));
   };
+  vi.mocked(usePdfDocument).mockReturnValue(null);
   state().reset();
   state().beginEntry('page-test');
   host = document.createElement('div');
@@ -174,8 +178,12 @@ it('미저장 제목은 저장 성공 뒤 최신 값과 서버 버전 ID로 점�
   state().editInfo({ title: '고친 제목', timeLimitSec: 420 });
   state().select('info');
   await mount();
-  await act(async () => button('저장하고 시작 전 점검 →').click());
-  await vi.waitFor(() => expect(host.querySelector('[data-testid="practice"]')).not.toBeNull());
+  await act(async () => button('발표정보 저장').click());
+  await vi.waitFor(() => expect(button('최종 확인 →')).toBeDefined());
+  await act(async () => button('최종 확인 →').click());
+  expect(host.querySelector('[data-testid="practice"]')).toBeNull();
+  await act(async () => button('확인하고 시작 전 점검 →').click());
+  expect(host.querySelector('[data-testid="practice"]')).not.toBeNull();
   expect(updatePitch).toHaveBeenCalledWith(
     'pitch-test',
     expect.objectContaining({
@@ -197,12 +205,16 @@ it('저장 실패 시 입력을 보존하고 재시도 전에는 점검으로 �
   state().select('info');
   vi.mocked(updatePitch).mockRejectedValueOnce(new Error('연결 실패'));
   await mount();
-  await act(async () => button('저장하고 시작 전 점검 →').click());
+  await act(async () => button('발표정보 저장').click());
   await vi.waitFor(() => expect(host.textContent).toContain('발표정보를 저장하지 못했어요'));
   expect(state().infoEdits?.title).toBe('실패해도 남는 제목');
   expect(host.querySelector('[data-testid="practice"]')).toBeNull();
-  await act(async () => button('저장하고 시작 전 점검 →').click());
-  await vi.waitFor(() => expect(host.querySelector('[data-testid="practice"]')).not.toBeNull());
+  await act(async () => button('발표정보 저장').click());
+  await vi.waitFor(() => expect(button('최종 확인 →')).toBeDefined());
+  await act(async () => button('최종 확인 →').click());
+  expect(host.querySelector('[data-testid="practice"]')).toBeNull();
+  await act(async () => button('확인하고 시작 전 점검 →').click());
+  expect(host.querySelector('[data-testid="practice"]')).not.toBeNull();
 });
 
 it('다른 섹션으로 이동해도 보고 있던 버전은 유지한다', () => {
@@ -373,5 +385,94 @@ it('평가기준 정리 응답을 받기 전에는 점검 화면으로 넘어가
       except_standard: null,
     }),
   );
-  await vi.waitFor(() => expect(button('시작 전 점검 →')?.disabled).toBe(false));
+  await vi.waitFor(() => expect(button('평가기준 확인하기 ↓')).toBeDefined());
+  expect(button('최종 확인 →')).toBeUndefined();
+  await act(async () => button('평가기준 확인 완료').click());
+  expect(button('최종 확인 →')?.disabled).toBe(false);
+});
+
+it('PDF는 업로드 직후 확인 창을 열고 로딩·닫기로는 확인 완료가 되지 않는다', async () => {
+  ready();
+  await mount();
+  await act(async () =>
+    state().attachSlides({
+      pageCount: 1,
+      presentationVersionId: 'pv2',
+      fileName: '새 자료.pdf',
+      fileUrl: '/new.pdf',
+    }),
+  );
+  expect(host.querySelector('dialog')?.textContent).toContain('슬라이드 확인');
+  expect(button('확인 완료').disabled).toBe(true);
+  await act(async () => button('닫기').click());
+  expect(state().pendingSlideReviews).toEqual([2]);
+  vi.mocked(usePdfDocument).mockReturnValue({
+    url: '/new.pdf',
+    doc: { numPages: 1 } as PDFDocumentProxy,
+  });
+  await act(async () => button('슬라이드 확인').click());
+  expect(button('확인 완료').disabled).toBe(false);
+  await act(async () => button('확인 완료').click());
+  expect(state().pendingSlideReviews).toEqual([]);
+  expect(host.querySelector('dialog')).toBeNull();
+  expect(document.activeElement).toBe(button('슬라이드 확인'));
+});
+
+it('확인하지 않은 PDF를 쓰는 조합은 최종 확인으로 진행할 수 없다', async () => {
+  ready();
+  useCreateStore.setState({ pendingSlideReviews: [1] });
+  await mount();
+  expect(button('최종 확인 →')).toBeUndefined();
+  expect(host.querySelector('progress')?.value).toBe(2);
+});
+
+it('최종 확인을 닫거나 확인 중 정보가 바뀌면 이동하지 않고 재확인을 요구한다', async () => {
+  ready();
+  await mount();
+  await act(async () => button('최종 확인 →').click());
+  expect(host.querySelector('dialog')?.textContent).toContain('발표.pdf');
+  expect(host.querySelector('[data-testid="practice"]')).toBeNull();
+  await act(async () => button('돌아가서 수정').click());
+  await act(async () => button('최종 확인 →').click());
+  await act(async () => state().editInfo({ title: '다시 확인할 제목' }));
+  expect(host.querySelector('dialog')).toBeNull();
+  expect(host.querySelector('[data-testid="practice"]')).toBeNull();
+  await act(async () => state().setMeta({ ...state().draft, title: '다시 확인할 제목' }));
+  expect(host.querySelector('dialog')).toBeNull();
+  await act(async () => button('최종 확인 →').click());
+  expect(host.querySelector('dialog')?.textContent).toContain('다시 확인할 제목');
+});
+
+it('본문 포커스는 강조 영역만 이동하고 보던 버전과 입력 위치를 바꾸지 않는다', async () => {
+  ready();
+  await mount();
+  const before = state().viewedVersions;
+  await act(async () => host.querySelector<HTMLInputElement>('#create-info input')!.focus());
+  expect(host.querySelectorAll('main > section[data-current]')).toHaveLength(1);
+  expect(host.querySelector('main > section[data-current]')?.id).toBe('create-info');
+  expect(state().viewedVersions).toBe(before);
+});
+
+it('평가기준 원문을 고친 채 다른 버전이 생겨도 고치던 원문으로 돌아갈 수 있다', async () => {
+  ready();
+  state().applyParsedCriteria(null, {
+    version: 1,
+    sourceText: '원문',
+    standards: ['기준'],
+    exceptText: null,
+  });
+  state().confirmCriteria(1);
+  state().editCriteriaSource(1, '아직 정리하지 않은 원문');
+  state().markCriteriaSaved(1, {
+    version: 2,
+    sourceText: '저장한 목록',
+    standards: ['새 기준'],
+    exceptText: null,
+  });
+  await mount();
+  expect(button('최종 확인 →')).toBeUndefined();
+  await act(async () => button('평가기준 확인하기 ↓').click());
+  expect(host.querySelector<HTMLTextAreaElement>('[aria-label="평가기준 작성"]')?.value).toBe(
+    '아직 정리하지 않은 원문',
+  );
 });

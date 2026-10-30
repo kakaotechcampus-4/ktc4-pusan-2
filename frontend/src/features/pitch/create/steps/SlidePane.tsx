@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useCreateStore } from '../createStore';
 import {
@@ -322,7 +322,7 @@ export function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentPro
         if (e.key === 'ArrowRight' || e.key === 'PageDown') goTo(page + 1);
         if (e.key === 'ArrowLeft' || e.key === 'PageUp') goTo(page - 1);
       }}
-      className="flex min-h-0 flex-1 flex-col rounded-lg border border-line bg-white outline-none"
+      className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-line bg-white outline-none"
     >
       <Toolbar
         fileName={slide.fileName ?? `슬라이드 V${slide.version}.pdf`}
@@ -369,12 +369,87 @@ export function Pages({ slide, doc }: { slide: SlideVersion; doc: PDFDocumentPro
   );
 }
 
+function SlideReviewDialog({
+  children,
+  slide,
+  canConfirm,
+  returnFocus,
+}: {
+  children: ReactNode;
+  slide: SlideVersion;
+  canConfirm: boolean;
+  returnFocus: RefObject<HTMLButtonElement>;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const close = useCreateStore((s) => s.setSlideReview);
+  const confirm = useCreateStore((s) => s.confirmSlides);
+  const pending = useCreateStore((s) => s.pendingSlideReviews.includes(slide.version));
+  useEffect(() => {
+    const dialog = ref.current!;
+    const previous = returnFocus.current;
+    const overflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    return () => {
+      dialog.close();
+      document.body.style.overflow = overflow;
+      previous?.focus({ preventScroll: true });
+    };
+  }, [returnFocus]);
+  return (
+    <dialog
+      ref={ref}
+      aria-labelledby={titleId}
+      onClose={() => {
+        if (!ref.current?.open) close(null);
+      }}
+      className="m-auto h-[min(850px,calc(100dvh-3rem))] max-h-none w-[min(1200px,calc(100vw-3rem))] max-w-none overflow-auto border border-line-strong bg-panel p-5 text-ink open:flex open:flex-col open:gap-4 backdrop:bg-ink/45 max-[760px]:h-[calc(100dvh-1rem)] max-[760px]:w-[calc(100vw-1rem)] max-[760px]:p-4"
+    >
+      <header className="flex items-center justify-between gap-4">
+        <h2 id={titleId} className="text-xl font-bold">
+          슬라이드 확인
+        </h2>
+        <button
+          type="button"
+          className="min-h-11 border border-line-strong px-5 text-sm font-bold hover:bg-cream"
+          onClick={() => ref.current?.close()}
+        >
+          닫기
+        </button>
+      </header>
+      <p className="text-sm">PDF는 업로드되어 있어요. 내용과 순서를 확인해 주세요.</p>
+      <p className="text-sm">
+        슬라이드 V{slide.version} · {slide.pageCount}장
+      </p>
+      <div className="flex min-h-64 min-w-0 flex-1">{children}</div>
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+        <p role="status" className="min-w-0 break-all text-sm">
+          {pending ? '확인 필요' : '확인 완료'} · {slide.fileName ?? `슬라이드 V${slide.version}`}
+        </p>
+        <button
+          type="button"
+          disabled={!canConfirm || !pending}
+          onClick={() => confirm(slide.version)}
+          className="min-h-11 shrink-0 bg-coral-deep px-5 py-3 text-sm font-bold text-white hover:bg-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-stone"
+        >
+          확인 완료
+        </button>
+      </footer>
+    </dialog>
+  );
+}
+
 function Viewer({ slide }: { slide: SlideVersion }) {
   const addSlideVersion = useCreateStore((s) => s.addSlideVersion);
   // 파일을 기다리는 빈 버전이 있으면 새 버전을 막습니다 (`pendingVersion`)
   const pendingSlide = useCreateStore((s) => pendingVersion(s.draft, 'slides'));
   const opened = usePdfDocument(slide.fileUrl);
   const total = slide.pageCount ?? 0;
+  const reviewOpen = useCreateStore((s) => s.slideReviewVersion === slide.version);
+  const needsReview = useCreateStore((s) => s.pendingSlideReviews.includes(slide.version));
+  const setReview = useCreateStore((s) => s.setSlideReview);
+  const trigger = useRef<HTMLButtonElement>(null);
 
   const body = (() => {
     if (!slide.fileUrl) return <ViewerMessage>이 버전에는 파일 주소가 없어요</ViewerMessage>;
@@ -413,7 +488,7 @@ function Viewer({ slide }: { slide: SlideVersion }) {
               </span>
             )}
             <span className="flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-2.5 py-1 text-sm font-bold">
-              <CheckIcon /> 저장됨
+              <CheckIcon /> {needsReview ? '확인 필요' : '확인 완료'}
             </span>
           </>
         }
@@ -443,9 +518,32 @@ function Viewer({ slide }: { slide: SlideVersion }) {
           </span>
         </div>
       </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p role="status" className="text-sm">
+          {needsReview ? '업로드 완료 · 확인 필요' : '확인 완료'}
+        </p>
+        <button
+          ref={trigger}
+          type="button"
+          aria-haspopup="dialog"
+          onClick={() => setReview(slide.version)}
+          className="min-h-11 border border-line-strong px-5 py-3 text-sm font-bold hover:bg-cream"
+        >
+          슬라이드 확인
+        </button>
+      </div>
+      {reviewOpen && (
+        <SlideReviewDialog
+          slide={slide}
+          canConfirm={!!opened && 'doc' in opened}
+          returnFocus={trigger}
+        >
+          {body}
+        </SlideReviewDialog>
+      )}
       <details className="[&>summary]:min-h-11 [&>summary]:cursor-pointer [&>summary]:py-3 [&>summary]:text-sm [&>summary]:underline [&>summary]:underline-offset-4">
         <summary>슬라이드 미리보기</summary>
-        <div className="flex h-[min(34rem,75dvh)] min-h-80">{body}</div>
+        <div className="flex h-[min(34rem,75dvh)] min-h-80">{!reviewOpen && body}</div>
       </details>
     </div>
   );

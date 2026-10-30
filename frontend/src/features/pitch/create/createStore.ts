@@ -36,6 +36,15 @@ import {
  */
 
 interface CreateState {
+  // shortcut: 확인 상태는 이번 작성의 FE 메모리에만 두며, 서버 재조회 시 확인 완료로 간주합니다. 영속 승인 요구가 생기면 BE 계약이 필요합니다.
+  pendingSlideReviews: number[];
+  slideReviewVersion: number | null;
+  setSlideReview: (version: number | null) => void;
+  confirmSlides: (version: number) => void;
+  pendingCriteriaReviews: number[];
+  confirmCriteria: (version: number) => void;
+  criteriaSourceEdits: Record<number, string>;
+  editCriteriaSource: (version: number | null, text: string) => void;
   viewedVersions: Record<DraftNode, number | null>;
   infoConfirmed: boolean;
   infoSaving: boolean;
@@ -230,6 +239,28 @@ const editCriteria = (
 });
 
 export const useCreateStore = create<CreateState>((set) => ({
+  pendingSlideReviews: [],
+  slideReviewVersion: null,
+  setSlideReview: (version) => set({ slideReviewVersion: version }),
+  confirmSlides: (version) =>
+    set((s) => {
+      const slide = s.draft.slides.find((v) => v.version === version);
+      if (!slide?.presentationVersionId || !slide.pageCount) return s;
+      return {
+        pendingSlideReviews: s.pendingSlideReviews.filter((v) => v !== version),
+        slideReviewVersion: null,
+      };
+    }),
+  pendingCriteriaReviews: [],
+  confirmCriteria: (version) =>
+    set((s) => {
+      const criteria = s.draft.criteria.find((v) => v.version === version);
+      if (!criteria?.saved || criteria.edited) return s;
+      return { pendingCriteriaReviews: s.pendingCriteriaReviews.filter((v) => v !== version) };
+    }),
+  criteriaSourceEdits: {},
+  editCriteriaSource: (version, text) =>
+    set((s) => ({ criteriaSourceEdits: { ...s.criteriaSourceEdits, [version ?? 0]: text } })),
   viewedVersions: { slides: null, script: null, criteria: null },
   infoConfirmed: false,
   infoSaving: false,
@@ -306,12 +337,16 @@ export const useCreateStore = create<CreateState>((set) => ({
               v.version === pending.version ? { ...v, ...uploaded } : v,
             ),
           },
+          pendingSlideReviews: [...s.pendingSlideReviews, pending.version],
+          slideReviewVersion: pending.version,
           ...viewSelection(s, 'slides', pending.version),
         };
       }
       const version = nextVersion(s.draft.slides);
       return {
         draft: { ...s.draft, slides: [...s.draft.slides, { version, ...uploaded }] },
+        pendingSlideReviews: [...s.pendingSlideReviews, version],
+        slideReviewVersion: version,
         ...viewSelection(s, 'slides', version),
       };
     }),
@@ -415,9 +450,18 @@ export const useCreateStore = create<CreateState>((set) => ({
           ? savedVersion
           : s.version;
 
-      // 정리하면 서버에 새 버전으로 저장됩니다 (#463). 고칠 수는 있고, 고치면 다시 저장합니다
+      const criteriaSourceEdits = { ...s.criteriaSourceEdits };
+      if (criteriaSourceEdits[version ?? 0] === sourceText)
+        delete criteriaSourceEdits[version ?? 0];
+      const pendingCriteriaReviews = [
+        ...s.pendingCriteriaReviews.filter((v) => v !== savedVersion),
+        savedVersion,
+      ];
+      // 정리하면 서버에 저장되지만, 사용자의 결과 확인은 별도입니다.
       if (!target || target.saved) {
         return {
+          criteriaSourceEdits,
+          pendingCriteriaReviews,
           draft: {
             ...s.draft,
             criteria: [
@@ -439,6 +483,8 @@ export const useCreateStore = create<CreateState>((set) => ({
         };
       }
       return {
+        criteriaSourceEdits,
+        pendingCriteriaReviews,
         draft: {
           ...s.draft,
           criteria: s.draft.criteria
@@ -489,6 +535,7 @@ export const useCreateStore = create<CreateState>((set) => ({
 
   markCriteriaSaved: (sourceVersion, { version, standards, exceptText, sourceText }) =>
     set((s) => ({
+      pendingCriteriaReviews: [...s.pendingCriteriaReviews.filter((v) => v !== version), version],
       draft: {
         ...s.draft,
         criteria: [
@@ -560,6 +607,10 @@ function chosenOf(draft: PitchDraft): Chosen {
 /** 비운 작성. 회차 id 를 새로 만들어 앞 작성에서 시작한 비동기 결과가 들어오지 못하게 합니다 */
 function freshDraft() {
   return {
+    pendingSlideReviews: [],
+    slideReviewVersion: null,
+    pendingCriteriaReviews: [],
+    criteriaSourceEdits: {},
     viewedVersions: { slides: null, script: null, criteria: null },
     infoConfirmed: false,
     infoSaving: false,
@@ -593,7 +644,12 @@ export const selectInfoUnsaved = (s: CreateState): boolean =>
  * 경고하지 않습니다
  */
 export const selectCriteriaUnsaved = (s: CreateState): boolean =>
-  s.draft.criteria.some((v) => v.edited === true);
+  s.draft.criteria.some((v) => v.edited === true) ||
+  Object.entries(s.criteriaSourceEdits).some(
+    ([version, text]) =>
+      text.trim() !== '' &&
+      text !== (s.draft.criteria.find((v) => v.version === Number(version))?.sourceText ?? ''),
+  );
 
 export const selectBusy = (s: CreateState): boolean =>
   s.infoSaving ||

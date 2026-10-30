@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useIsMutating, useMutation } from '@tanstack/react-query';
 import { toMessage } from '@/shared/api/errorMessage';
 import { parseStandards, saveStandards } from '@/shared/api/standards';
 import { isCurrentDraft, useCreateStore } from '../createStore';
@@ -21,7 +21,7 @@ import { PaneHeading } from './PaneHeading';
  *
  * ── 정리 → (고치기 → 저장) (`docs/ai/features/evaluation-criteria.md` 57 · 282행) ─────────
  *   정리   `POST /pitches/add/{id}/standards` — 서버(→ AI)가 나누고 **그대로 새 버전으로 저장합니다** (#463).
- *          그래서 정리하면 바로 "저장됨"이고, 이 버전으로 연습할 수 있습니다
+ *          서버 저장 후 사용자가 결과를 확인해야 연습을 진행할 수 있습니다
  *   고치기 가장 최근 버전의 목록에서 문장 수정 · 추가 · 삭제. 서버에는 아직 고치기 전 목록이 있습니다
  *          ("고친 내용 저장 안 됨"). 한 줄 50자 · 10개까지 (계약 값)
  *   저장   고친 목록을 보내면 서버가 다시 분석해 **새 버전**으로 저장합니다 (#532).
@@ -93,7 +93,10 @@ function Guide({ except }: { except: string | null }) {
 function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitchId: string }) {
   const applyParsedCriteria = useCreateStore((s) => s.applyParsedCriteria);
   const draftId = useCreateStore((s) => s.draftId);
-  const [text, setText] = useState(criteria?.sourceText ?? '');
+  const text = useCreateStore(
+    (s) => s.criteriaSourceEdits[criteria?.version ?? 0] ?? criteria?.sourceText ?? '',
+  );
+  const editSource = useCreateStore((s) => s.editCriteriaSource);
 
   const parse = useMutation({
     mutationKey: ['pitch-criteria', draftId],
@@ -123,7 +126,7 @@ function Writer({ criteria, pitchId }: { criteria: CriteriaVersion | null; pitch
         aria-label="평가기준 작성"
         maxLength={2000}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => editSource(criteria?.version ?? null, e.target.value)}
         placeholder={PLACEHOLDER}
         rows={5}
         className="min-h-32 w-full resize-y rounded-lg border border-stone bg-white p-3 text-sm leading-relaxed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink placeholder:text-stone focus:border-ink"
@@ -249,6 +252,9 @@ function ItemNumber({ index }: { index: number }) {
  * 정리만 한 목록도 서버에 저장돼 있습니다 (#463)
  */
 function SavedBadge({ criteria }: { criteria: CriteriaVersion | null }) {
+  const needsReview = useCreateStore(
+    (s) => criteria !== null && s.pendingCriteriaReviews.includes(criteria.version),
+  );
   if (!criteria || criteria.items.length === 0) return null;
   if (criteria.edited) {
     return <span className="text-xs font-bold text-ink">고친 내용 저장 안 됨</span>;
@@ -256,7 +262,7 @@ function SavedBadge({ criteria }: { criteria: CriteriaVersion | null }) {
   if (criteria.saved) {
     return (
       <span className="flex items-center gap-1.5 rounded-md border border-line-strong bg-panel px-2.5 py-1 text-xs font-bold">
-        <CheckIcon />V{criteria.version} 저장됨
+        <CheckIcon />V{criteria.version} · {needsReview ? '확인 필요' : '확인 완료'}
       </span>
     );
   }
@@ -307,8 +313,8 @@ function EditableItem({
 
 /** 저장 안내 한 줄. 고친 내용이 없으면 이미 저장돼 있다는 것을, 있으면 저장해야 쓰인다는 것을 말합니다 */
 function saveHint(edited: boolean, count: number, refined: boolean): string {
-  if (refined && !edited) return 'AI가 문장을 다듬어 저장했어요. 이 목록으로 연습해요.';
-  if (!edited) return 'AI가 정리한 그대로 저장돼 연습에 쓰여요. 고치면 다시 저장할 수 있어요.';
+  if (refined && !edited) return 'AI가 문장을 다듬어 저장했어요. 바뀐 결과를 확인해 주세요.';
+  if (!edited) return '정리 결과는 저장되어 있어요. 이 목록을 사용할지 확인해 주세요.';
   if (count === 0) return '저장할 기준을 하나 이상 적어 주세요.';
   return '고친 내용을 저장해야 연습에 쓰여요. 저장할 때 AI가 한 번 더 다듬고, 빈 줄은 빠져요.';
 }
@@ -318,6 +324,8 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
   const addCriterion = useCreateStore((s) => s.addCriterion);
   const markCriteriaSaved = useCreateStore((s) => s.markCriteriaSaved);
   const draftId = useCreateStore((s) => s.draftId);
+  const needsReview = useCreateStore((s) => s.pendingCriteriaReviews.includes(criteria.version));
+  const confirmCriteria = useCreateStore((s) => s.confirmCriteria);
   const standards = criteriaToSave(criteria);
   const edited = criteria.edited === true;
   const full = criteria.items.length >= MAX_CRITERIA;
@@ -361,15 +369,20 @@ function SaveBar({ criteria, pitchId }: { criteria: CriteriaVersion; pitchId: st
           평가기준을 저장하지 못했어요. {toMessage(save.error)}
         </p>
       )}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-ink/80">{saveHint(edited, standards.length, refined)}</p>
         <button
           type="button"
-          disabled={!edited || standards.length === 0 || save.isPending}
-          onClick={() => save.mutate({ list: standards, draftId, sourceVersion: criteria.version })}
+          disabled={save.isPending || (edited ? standards.length === 0 : !needsReview)}
+          onClick={() => {
+            if (edited) save.mutate({ list: standards, draftId, sourceVersion: criteria.version });
+            else confirmCriteria(criteria.version);
+          }}
           className="h-10 shrink-0 rounded-lg bg-coral-deep px-5 text-sm font-bold text-white hover:bg-ink disabled:cursor-not-allowed disabled:bg-line disabled:text-ink/80"
         >
-          {save.isPending ? '저장하는 중…' : '고친 내용 저장'}
+          {save.isPending && '저장하는 중…'}
+          {!save.isPending && edited && '고친 내용 저장'}
+          {!save.isPending && !edited && (needsReview ? '평가기준 확인 완료' : '확인 완료')}
         </button>
       </div>
     </div>
@@ -385,7 +398,7 @@ function ReviseBar({ criteria }: { criteria: CriteriaVersion | null }) {
   if (!criteria || criteria.items.length === 0) {
     return (
       <p className="mt-4 border-t border-line pt-4 text-xs text-ink/80">
-        정리하면 바로 저장되고, 목록을 고쳐 다시 저장할 수 있어요.
+        정리 결과를 확인한 뒤 연습에 사용할 수 있어요. 목록을 고치면 다시 저장해 주세요.
       </p>
     );
   }
@@ -410,6 +423,8 @@ function ReviseBar({ criteria }: { criteria: CriteriaVersion | null }) {
 }
 
 export function CriteriaPane({ criteria }: { criteria: CriteriaVersion | null }) {
+  const draftId = useCreateStore((s) => s.draftId);
+  const pending = useIsMutating({ mutationKey: ['pitch-criteria', draftId] }) > 0;
   const pitchId = useCreateStore((s) => s.pitchId);
   return (
     <div className="flex flex-1 flex-col">
@@ -420,11 +435,14 @@ export function CriteriaPane({ criteria }: { criteria: CriteriaVersion | null })
       {pitchId === null ? (
         <NeedPitch what="평가기준" />
       ) : (
-        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
+        <fieldset
+          disabled={pending}
+          className="grid min-w-0 grid-cols-1 items-stretch gap-4 lg:grid-cols-2"
+        >
           {/* 버전을 바꾸면 그 버전의 원문으로 다시 채웁니다 */}
           <Writer key={criteria?.version ?? 'none'} criteria={criteria} pitchId={pitchId} />
           <Result criteria={criteria} pitchId={pitchId} />
-        </div>
+        </fieldset>
       )}
     </div>
   );
