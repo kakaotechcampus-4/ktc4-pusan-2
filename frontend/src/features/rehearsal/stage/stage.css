@@ -479,6 +479,8 @@
 /* ── 대본 ─────────────────────────────────────────────────────── */
 .script {
   position: relative;
+  min-width: 0;
+  overflow-wrap: anywhere;
   min-height: 0;
   overflow-y: auto;
   padding: 14px 18px 22px;
