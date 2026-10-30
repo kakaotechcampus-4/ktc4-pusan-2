@@ -163,7 +163,7 @@ it('현재 단계 강조 시안은 선택과 입력에 따라 한 영역만 표�
   expect(host.querySelector('[aria-current="step"]')?.textContent).toContain('발표정보');
 });
 
-it('PDF 업로드와 창 닫기만으로는 완료되지 않고 확인하고 저장해야 한다', async () => {
+it('PDF 업로드와 창 닫기만으로는 완료되지 않고 확인 완료를 눌러야 한다', async () => {
   await render('empty');
   await click('PDF 파일 선택');
   expect(host.querySelector('dialog')?.textContent).toContain('슬라이드 확인');
@@ -174,7 +174,7 @@ it('PDF 업로드와 창 닫기만으로는 완료되지 않고 확인하고 저
   await click('슬라이드 확인');
   await click('다음 장');
   expect(host.querySelector('dialog')?.textContent).toContain('2 / 3장');
-  await click('확인하고 저장');
+  await click('확인 완료');
   expect(host.querySelector('dialog')).toBeNull();
   expect(host.querySelector('progress')?.value).toBe(1);
   expect(host.textContent).toContain('확인 완료');

@@ -237,7 +237,7 @@ function PreviewDialog({
           확인용 창이에요. 현재 작성 중인 자료와 연습할 버전은 바뀌지 않아요.
         </p>
       )}
-      {isSlideReview && <p>올린 PDF의 내용과 순서를 확인한 뒤 저장해 주세요.</p>}
+      {isSlideReview && <p>PDF는 업로드되어 있어요. 내용과 순서를 확인해 주세요.</p>}
       {(isMapping || isSlideReview || preview.kind === '슬라이드') && (
         <>
           <p className="text-sm">
@@ -294,7 +294,7 @@ function PreviewDialog({
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
               <p role="status">{saved ? '확인 완료' : '확인 필요'} · 서비스 소개.pdf</p>
               <button type="button" className="create-primary" disabled={saved} onClick={onSave}>
-                {saved ? '확인 완료' : '확인하고 저장'}
+                확인 완료
               </button>
             </div>
           )}
