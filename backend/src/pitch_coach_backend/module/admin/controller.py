@@ -19,7 +19,6 @@ from pitch_coach_backend.module.admin.dependencies import require_admin
 from pitch_coach_backend.module.admin.dto import (
     AdminPage,
     AdminPitchAI,
-    AdminRatingSummary,
     AdminSuggestionRow,
     AdminTakeExport,
     AdminTakeInputs,
@@ -126,8 +125,6 @@ def pitch_ai(pitch_id: uuid.UUID, db: Annotated[Session, Depends(get_db)]) -> Ad
     return service.get_pitch_ai(db, pitch_id)
 
 
-@router.get("/api/service-feedbacks", response_model=AdminPage[AdminFeedbackRow])
-def feedbacks(
 @router.get("/api/take-surveys", response_model=AdminPage[AdminTakeSurveyRow])
 def take_surveys(
     db: Annotated[Session, Depends(get_db)],

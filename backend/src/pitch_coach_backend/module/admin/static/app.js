@@ -168,6 +168,9 @@ function takeIdCell(take) {
   return button;
 }
 
+const subText = (text) => el('small', { className: 'muted block', textContent: text });
+const shortId = (id) => el('span', { title: id, textContent: `${id.slice(0, 8)}…${id.slice(-4)}` });
+
 function stageCell(take) {
   if (take.analysis_stage == null) return '—';
   return el('span', {}, [label(take.analysis_stage), subText(dateTime(take.analysis_stage_at))]);

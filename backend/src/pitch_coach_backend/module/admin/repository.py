@@ -11,6 +11,7 @@ from sqlalchemy import (
     distinct,
     extract,
     func,
+    or_,
     select,
 )
 from sqlalchemy.dialects.postgresql import aggregate_order_by
@@ -25,7 +26,7 @@ from pitch_coach_backend.module.pitch.entity import (
     StandardAnalyses,
     Standards,
 )
-from pitch_coach_backend.module.service_feedback.entity import ServiceFeedback, UserSuggestion
+from pitch_coach_backend.module.service_feedback.entity import TakeSurvey, UserSuggestion
 from pitch_coach_backend.module.take.entity import (
     Calibration,
     CoachEvent,
@@ -36,9 +37,6 @@ from pitch_coach_backend.module.take.entity import (
     TakeSummary,
     TakeTranscriptSegment,
 )
-from pitch_coach_backend.module.pitch.entity import Pitch
-from pitch_coach_backend.module.service_feedback.entity import TakeSurvey, UserSuggestion
-from pitch_coach_backend.module.take.entity import Take
 from pitch_coach_backend.module.take.repository import last_active_at
 from pitch_coach_backend.module.user.entity import User
 
