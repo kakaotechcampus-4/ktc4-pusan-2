@@ -115,9 +115,9 @@ it('피치 생성 네 단계를 거쳐 세팅, 무대 종료 확인, 분석 대�
   expect(host.textContent).toContain('분석 중');
 });
 
-it('홈 기본 상태는 유지하고 시안의 발표 준비 버튼은 각 제목과 같은 경로와 인자로 이동한다', async () => {
+it('홈 기본·검토 상태의 발표 준비 버튼은 각 제목과 같은 경로와 인자로 이동한다', async () => {
   await render('home');
-  expect(host.querySelector('a[aria-label$=" 발표 준비"]')).toBeNull();
+  expect(host.querySelectorAll('a[aria-label$=" 발표 준비"]')).toHaveLength(2);
   await act(async () => root.render(null));
   const onNavigate = vi.fn();
   await act(async () =>
